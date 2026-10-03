@@ -34,6 +34,8 @@ export interface BotConfig {
 export interface Contact {
     qq: number;
     name: string;
+    /** 一两句“他是谁”，放在 ST 人设描述（personaDescription）的位置 */
+    persona?: string;
 }
 
 type Json = Record<string, unknown>;
@@ -80,7 +82,13 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
         if (typeof value !== 'object' || value === null) throw new Error(`配置 ${where} 应为对象`);
         const qq = num(value as Json, 'qq', where);
         if (!Number.isInteger(qq) || qq <= 0) throw new Error(`配置 ${where}.qq 应为 QQ 号`);
-        return { qq, name: str(value as Json, 'name', where) };
+        const contact: Contact = { qq, name: str(value as Json, 'name', where) };
+        const persona = (value as Json).persona;
+        if (persona !== undefined) {
+            if (typeof persona !== 'string') throw new Error(`配置 ${where}.persona 应为字符串`);
+            if (persona) contact.persona = persona;
+        }
+        return contact;
     });
     const duplicate = contacts.find((c, i) => contacts.findIndex(d => d.qq === c.qq) !== i);
     if (duplicate) throw new Error(`配置 contacts 里 QQ ${duplicate.qq} 重复`);

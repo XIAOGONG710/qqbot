@@ -48,7 +48,10 @@
 按 [ADR 0003](adr/0003-contact-tiers.md)：每个档位一张角色卡，私密信息靠「不写进去」保护。
 档位为 boyfriend / bestie / girl_friend / known / classmate / stranger，外加名单外好友用的 unlisted（被认真问到时承认是 AI）。
 
-- [ ] 提示词顺序改为 ST 实际使用的 `dummyId 100001`（多出 `personaDescription`），支持联系人的可选人设描述
+- [x] 提示词顺序改为 ST 实际使用的 `dummyId 100001`（多出 `personaDescription`），支持联系人的可选人设描述
+  - 验证：`npm test`（67 项）。`prompt.test.ts` 断言人设描述排在世界书 before 之后、角色描述之前且宏已替换，对照 `Default.json` 100001 与 `openai.js:1433`；
+    没配 `persona` 时拼出的消息与 100000 相同（原有顺序测试不变）。`runtime.test.ts` 覆盖配置里 `persona` 的校验。
+    尚未实测：目前没有联系人配了 `persona`
 - [ ] `characters/linmengyao/tiers.toml`（可见性表 + 改写字段 + 各档禁用词）；转换器按档位生成 7 张角色卡和场景世界书，
   测试保证低档位的卡里没有高档位的事实
 - [ ] 运行时：联系人配置加 `tier`，按档位加载角色卡；名单外好友走 unlisted；联系人换档位时提示清理聊天记录

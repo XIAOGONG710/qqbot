@@ -269,4 +269,17 @@ describe('配置', () => {
         assert.throws(() => withContacts([{ qq: 1, name: 'a' }, { qq: 1, name: 'b' }]), /重复/);
         assert.deepEqual(withContacts([{ qq: 1, name: '宝宝' }, { qq: 2, name: '宝宝' }]).contacts.map(c => c.qq), [1, 2]);
     });
+
+    test('联系人的人设描述可选，必须是字符串，空串当作没有', () => {
+        const withContacts = (contacts: unknown) => withConfig({ ...valid, contacts }, { QQBOT_LLM_API_KEY: 'k' });
+        const [a, b, c] = withContacts([
+            { qq: 1, name: '小王', persona: '同专业，坐你后排' },
+            { qq: 2, name: '小李' },
+            { qq: 3, name: '小张', persona: '' },
+        ]).contacts;
+        assert.equal(a!.persona, '同专业，坐你后排');
+        assert.equal(b!.persona, undefined);
+        assert.equal(c!.persona, undefined);
+        assert.throws(() => withContacts([{ qq: 1, name: 'a', persona: 1 }]), /contacts\[0\]\.persona/);
+    });
 });

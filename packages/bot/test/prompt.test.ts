@@ -104,4 +104,18 @@ describe('拼装规则', () => {
     test('不是角色卡的 JSON 报错', () => {
         assert.throws(() => parseCharacterCard({ entries: {} }), /不是角色卡/);
     });
+
+    test('personaDescription（dummyId 100001）插在世界书 before 之后、角色描述之前，宏已替换', () => {
+        const worldInfo = parseWorldInfo({ entries: { 0: { uid: 0, constant: true, position: 0, content: '世界观' } } }, 'w');
+        const { messages } = build([], {
+            character: minimalCard({ description: '角色描述' }),
+            worldInfo,
+            userPersona: '{{user}}是{{char}}的同班同学，坐后排。',
+        });
+        // 顺序应为：main -> wi.before ('世界观') -> personaDescription -> charDescription ('角色描述') -> [Start a new Chat]
+        assert.equal(messages[1]!.content, '世界观');
+        assert.equal(messages[2]!.content, '阿明是小红的同班同学，坐后排。');
+        assert.equal(messages[3]!.content, '角色描述');
+    });
 });
+

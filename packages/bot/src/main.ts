@@ -53,6 +53,7 @@ function createContactResponder(contact: Contact) {
             worldInfo,
             history: chat,
             userName: contact.name,
+            userPersona: contact.persona,
             settings: { maxContext: config.prompt.maxContext, maxTokens: config.llm.maxTokens, worldInfo: config.prompt.worldInfo },
             countTokens: estimateTokens,
         })),

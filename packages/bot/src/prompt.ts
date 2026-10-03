@@ -1,9 +1,9 @@
 // 按 SillyTavern 默认 Chat Completion 预设拼提示词。
 //
 // 对照 vendor/SillyTavern：
-//   顺序：default/content/presets/openai/Default.json 的 prompt_order（dummyId 100000）
-//     main → worldInfoBefore → charDescription → charPersonality → scenario → nsfw
-//     → worldInfoAfter → dialogueExamples → chatHistory → jailbreak
+//   顺序：default/content/presets/openai/Default.json 的 prompt_order（dummyId 100001）
+//     main → worldInfoBefore → personaDescription → charDescription → charPersonality
+//     → scenario → nsfw → worldInfoAfter → dialogueExamples → chatHistory → jailbreak
 //   内容：public/scripts/openai.js preparePromptsForChatCompletion / populateChatCompletion / populateChatHistory
 //     - 角色卡的 system_prompt 覆盖 main，post_history_instructions 覆盖 jailbreak，{{original}} 是被覆盖的原文
 //     - 聊天记录前插一条系统消息 “[Start a new Chat]”；从最新往前放，放不下就停
@@ -49,6 +49,8 @@ export interface PromptInput {
     history: ChatMessage[];
     /** {{user}}：聊天对象的称呼 */
     userName: string;
+    /** 联系人的人设描述（对应 ST dummyId 100001 的 personaDescription，可选） */
+    userPersona?: string;
     settings: PromptSettings;
     countTokens: (text: string) => number;
     random?: () => number;
@@ -95,11 +97,13 @@ export function buildPrompt(input: PromptInput): PromptResult {
     const scenario = character.scenario
         ? sub(ST_DEFAULT_PRESET.scenarioFormat, { scenario: sub(character.scenario) })
         : '';
+    const personaDescription = input.userPersona ? sub(input.userPersona) : '';
 
     const system = (content: string): OpenAIMessage => ({ role: 'system', content });
     const head = [
         system(main),
         system(wi.before),
+        system(personaDescription),
         system(sub(character.description)),
         system(personality),
         system(scenario),

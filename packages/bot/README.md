@@ -8,7 +8,8 @@ M1 只回复白名单（`contacts`）里的人的直接私聊（群聊、群临�
 1. 复制 `config.example.json` 到 `runtime/bot/config.json`（`runtime/` 不入库），填写：
    - `onebot.url`：NapCat OneBot 网络配置里“WebSocket 服务端”的地址，连根路径 `/`（`/api` 收不到事件）
    - `llm.baseUrl` / `llm.model`：OpenAI 兼容接口（`baseUrl` 不含 `/chat/completions`）
-   - `contacts`：白名单，每项是 `qq`（会回复的 QQ 号，须是小号的好友）和 `name`（提示词里 `{{user}}` 的称呼）；每个号的聊天记录分开存
+   - `contacts`：白名单，每项是 `qq`（会回复的 QQ 号，须是小号的好友）和 `name`（提示词里 `{{user}}` 的称呼）；每个号的聊天记录分开存。
+     可选的 `persona` 是一两句“他是谁”（例如「同专业，坐你后排」），放在 ST 人设描述（`personaDescription`）的位置，可以用 `{{user}}` `{{char}}`
    - `prompt.maxContext`：上下文 token 上限（同 ST 的 Context Size），世界书预算和聊天记录截断都按它算
    - `llm.promptPostProcessing`：发送前的消息后处理，取值同 ST 自定义接口的 Prompt Post-Processing（`""` / `merge` / `semi` / `strict`），默认不处理
    - `llm.extraBody`：合并进请求体的额外参数，同 ST 自定义接口的 Include Body Parameters
@@ -48,7 +49,7 @@ bot 运行期间小号在手机上手动发的消息不会推给 bot，聊天记
 
 | 模块 | 对照的 ST 源码 |
 | --- | --- |
-| `src/prompt.ts` | `default/content/presets/openai/Default.json` 的顺序；`public/scripts/openai.js` 的拼装与聊天记录截断 |
+| `src/prompt.ts` | `default/content/presets/openai/Default.json` 的顺序（`dummyId 100001`，含人设描述）；`public/scripts/openai.js` 的拼装与聊天记录截断 |
 | `src/st/world-info.ts` | `public/scripts/world-info.js` 的 `checkWorldInfo` 关键词激活子集 |
 | `src/st/macros.ts` | `{{user}}` `{{char}}` `{{original}}` `<USER>` `<BOT>` |
 | `src/reply.ts` | `public/script.js` 的 `cleanUpMessage`（默认设置下生效的部分） |
