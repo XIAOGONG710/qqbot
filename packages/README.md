@@ -7,7 +7,7 @@
 
 | 包 | 作用 | 状态 |
 | --- | --- | --- |
-| `bot/` | QQ 机器人服务：对接 NapCat（OneBot 11）、拼装提示词、调用模型、会话存储 | 计划中 |
+| `bot/` | QQ 机器人服务：对接 NapCat（OneBot 11）、拼装提示词、调用模型、会话存储 | 已建（M1） |
 | `character-tools/` | 角色资料工具：legacy TOML → SillyTavern 角色卡 / 世界书 JSON | 已建 |
 
 ## 开发

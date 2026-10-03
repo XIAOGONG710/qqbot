@@ -2,6 +2,8 @@
   // Sources run directly on Node >= 24 (type stripping); tsc only type-checks.
   "compilerOptions": {
     "target": "esnext",
+    // 不带 DOM 类型：fetch / WebSocket 等全局用 @types/node（undici）的定义
+    "lib": ["esnext"],
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "types": ["node"],

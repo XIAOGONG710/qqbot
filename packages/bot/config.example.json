@@ -1,0 +1,20 @@
+{
+    "onebot": {
+        "url": "ws://127.0.0.1:3001/"
+    },
+    "llm": {
+        "baseUrl": "https://api.example.com/v1",
+        "model": "model-name",
+        "temperature": 1,
+        "maxTokens": 300
+    },
+    "prompt": {
+        "maxContext": 8192
+    },
+    "characterCard": "characters/linmengyao/st/linmengyao.json",
+    "contact": {
+        "qq": 10001,
+        "name": "他的称呼"
+    },
+    "dataDir": "runtime/bot"
+}

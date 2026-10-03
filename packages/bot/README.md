@@ -1,0 +1,39 @@
+# @qqbot/bot
+
+QQ 机器人服务：通过 OneBot 11 WebSocket 连 NapCat，按 SillyTavern 角色卡 + 世界书拼提示词，调 OpenAI 兼容接口，把回复发回 QQ。
+M1 只回复配置里**一个人**的直接私聊（群聊、群临时会话、其他人一律忽略）。
+
+## 运行
+
+1. 复制 `config.example.json` 到 `runtime/bot/config.json`（`runtime/` 不入库），填写：
+   - `onebot.url`：NapCat OneBot 网络配置里“WebSocket 服务端”的地址，连根路径 `/`（`/api` 收不到事件）
+   - `llm.baseUrl` / `llm.model`：OpenAI 兼容接口（`baseUrl` 不含 `/chat/completions`）
+   - `contact.qq` / `contact.name`：唯一会回复的 QQ 号，以及提示词里 `{{user}}` 的称呼
+   - `prompt.maxContext`：上下文 token 上限（同 ST 的 Context Size），世界书预算和聊天记录截断都按它算
+2. 密钥只走环境变量：
+   ```powershell
+   $env:QQBOT_LLM_API_KEY = '...'      # 必填
+   $env:QQBOT_ONEBOT_TOKEN = '...'     # NapCat 那边设了 token 就必填
+   npm start -w @qqbot/bot
+   ```
+   配置文件换位置时用 `QQBOT_CONFIG` 指定。
+
+运行数据（都在 `runtime/bot/`）：
+
+- `chats/<QQ 号>.jsonl`：聊天记录，一行一条，只追加
+- `last-prompt.json`：最近一次发给模型的完整提示词和命中的世界书条目，用来和 SillyTavern 试聊对照
+
+## 提示词与 SillyTavern 的对应
+
+| 模块 | 对照的 ST 源码 |
+| --- | --- |
+| `src/prompt.ts` | `default/content/presets/openai/Default.json` 的顺序；`public/scripts/openai.js` 的拼装与聊天记录截断 |
+| `src/st/world-info.ts` | `public/scripts/world-info.js` 的 `checkWorldInfo` 关键词激活子集 |
+| `src/st/macros.ts` | `{{user}}` `{{char}}` `{{original}}` `<USER>` `<BOT>` |
+| `src/reply.ts` | `public/script.js` 的 `cleanUpMessage`（默认设置下生效的部分） |
+
+已知差异：
+
+- token 数用 ST 的兜底估算（UTF-8 字节数 / 3.35），不是模型的真实分词器。世界书预算和聊天记录截断的边界会和 ST 略有出入。
+- 世界书用到运行时未实现的功能（递归、包含组、sticky / cooldown / delay、@@ 装饰器、角色设定前 / 后以外的插入位置等）时，启动直接报错。
+- 角色卡的示例对话（`mes_example`）尚未实现，有内容时启动报错。
