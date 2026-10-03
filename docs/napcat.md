@@ -53,7 +53,7 @@ OneBot token 同时存在用户环境变量 `QQBOT_ONEBOT_TOKEN` 里，bot 从�
 ## 启动
 
 ```powershell
-.\scripts\start-napcat.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\start-napcat.ps1
 ```
 
 首次启动会在控制台打印登录二维码（`workdir/cache/` 下也有图片），用小号的手机 QQ 扫码。

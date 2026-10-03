@@ -54,7 +54,7 @@ git commit -m "chore(vendor): bump SillyTavern to <版本>"
 ## 用 SillyTavern 编写 / 试聊角色
 
 ```powershell
-.\scripts\start-sillytavern.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\start-sillytavern.ps1
 ```
 
 浏览器打开 http://127.0.0.1:8000/ 。配置和数据在 `runtime/sillytavern/`（`config.yaml`、`data/`），子模块里不产生改动。
@@ -64,3 +64,5 @@ git commit -m "chore(vendor): bump SillyTavern to <版本>"
 
 - Git
 - Node.js `>= 24`（`packages/` 直接运行 TypeScript；SillyTavern 本身要求 `>= 20`）
+- `scripts/*.ps1` 用 `powershell -ExecutionPolicy Bypass -File <脚本>` 运行：Windows 默认执行策略禁止直接运行脚本，
+  这样只对这一次运行放行，不改系统设置。
