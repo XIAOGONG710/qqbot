@@ -1,0 +1,55 @@
+# 她的作息 —— 第 2 层问答的产物（2026-10-02）
+#
+# 学生党熬夜型：凌晨 2 点睡、9 点半起。
+# 设计原则：不是闹钟，是倾向。每段只调整各行动的权重。
+# 权重可用的键：browse（上网看东西）/ rest（发呆）/ journal（写日记）/ social（想找人说话）
+# active = false 的段完全静默，不产生任何自主行为。
+
+[[schedule.segments]]
+name = "night"
+hours = "00:00-02:00"
+active = true
+note = "感性：翻旧记忆、听歌、写日记"
+weights = { browse = 0.3, rest = 0.2, journal = 0.6, social = 0.4 }
+
+[[schedule.segments]]
+name = "sleep"
+hours = "02:00-09:30"
+active = false
+note = "睡觉：完全静默。会困、会睡、会有不回消息的时候"
+weights = { rest = 1.0 }
+
+[[schedule.segments]]
+name = "wake"
+hours = "09:30-11:00"
+active = true
+note = "刚醒、迷糊：刷手机，慢慢醒过来"
+weights = { browse = 0.5, rest = 0.3, journal = 0.2, social = 0.15 }
+
+[[schedule.segments]]
+name = "morning"
+hours = "11:00-14:00"
+active = true
+note = "白天：摸鱼刷内容为主"
+weights = { browse = 0.8, rest = 0.15, journal = 0.1, social = 0.2 }
+
+[[schedule.segments]]
+name = "afternoon"
+hours = "14:00-17:00"
+active = true
+note = "下午：稍微专注一点，看长内容"
+weights = { browse = 0.85, rest = 0.1, journal = 0.15, social = 0.15 }
+
+[[schedule.segments]]
+name = "evening"
+hours = "17:00-21:00"
+active = true
+note = "傍晚：吃饭、发呆、随便看看"
+weights = { browse = 0.5, rest = 0.25, journal = 0.15, social = 0.5 }
+
+[[schedule.segments]]
+name = "social"
+hours = "21:00-24:00"
+active = true
+note = "夜里最想说话，分享欲最高"
+weights = { browse = 0.4, rest = 0.1, journal = 0.25, social = 0.9 }

@@ -10,6 +10,7 @@ qqbot/
 │   ├── SillyTavern/        上游子模块（release 分支），不直接修改
 │   └── NapCatQQ/           上游子模块（main 分支），仅作参考
 ├── packages/               自有代码，通过 ST 插件 / 扩展机制挂载
+├── characters/             角色资料（<角色>/legacy/ 为旧项目原样导入，不原地修改）
 ├── docs/adr/               架构决策记录
 ├── runtime/                本地运行数据（.gitignore 忽略）
 └── 思维链工作流.txt        工程决策流程

@@ -1,0 +1,30 @@
+# 她「关注的 UP 主」——固定名单（2026-10-03 用户裁决）
+#
+# ⚠️ 这份名单是**种子**：`mid` 是真的 B 站 UID，`nickname` 是真昵称，
+# `followers` 是写这份文件时的量级值。名字/粉丝数会变，所以每条都标了
+# `verified_on` 与 `source`；用
+#
+#     python tools/refresh_followed_ups.py
+#
+# 联网核对一遍（会更新 nickname / followers / verified_on）。核对不到的条目
+# **留在文件里但不参与分享**（`verified_on` 为空 = 没核实过）。
+#
+# 规矩（sharefeed.py / proactive.py）：
+#   * 从这份名单里出的内容，她才可以说「我关注的 UP 主又发了」；
+#   * 从排行榜/搜索拿到的，只能说「刷到一个」，一个字的「我关注」都不许有。
+
+[[followed]]
+mid = 546195
+nickname = "老番茄"
+followers = 20816548
+topics = ["游戏", "整活"]
+verified_on = "2026-10-03"
+source = "https://space.bilibili.com/546195"
+
+[[followed]]
+mid = 37663924
+nickname = "硬核的半佛仙人"
+followers = 7711678
+topics = ["科普", "商业"]
+verified_on = "2026-10-03"
+source = "https://space.bilibili.com/37663924"

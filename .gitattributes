@@ -4,6 +4,9 @@
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
+# 旧项目原样导入的资料：按原字节存储（原件为 CRLF），不做换行转换
+characters/*/legacy/** -text
+
 *.png binary
 *.jpg binary
 *.gif binary
