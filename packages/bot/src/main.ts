@@ -13,7 +13,7 @@ import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type His
 import { isPrivateFriendMessage, OneBotClient, segmentsToText, senderName, type MessageEvent, type OneBotEvent } from './onebot.ts';
 import { buildPrompt, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
-import { createResponder, type Responder } from './responder.ts';
+import { createResponder, DEFAULT_SETTLE, type Responder } from './responder.ts';
 import { loadCharacterCard, type Character } from './st/card.ts';
 import type { MacroNames } from './st/macros.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
@@ -97,6 +97,7 @@ function createContactResponder(contact: Contact) {
         clean: reply => cleanUpReply(reply, names),
         send: (userId, text) => client.sendPrivateText(userId, text),
         log: contactLog,
+        settle: DEFAULT_SETTLE,
         onPrompt: prompt => writeFileSync(
             join(config.dataDir, 'last-prompt.json'),
             JSON.stringify({ qq: contact.qq, ...prompt }, null, 2),

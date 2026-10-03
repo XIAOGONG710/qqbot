@@ -9,7 +9,7 @@ import { ChatHistory, type StoredMessage } from '../src/history.ts';
 import { isPrivateFriendMessage, segmentsToText, senderName, type MessageEvent } from '../src/onebot.ts';
 import type { PromptResult } from '../src/prompt.ts';
 import { cleanUpReply, splitReply } from '../src/reply.ts';
-import { createResponder, PART_GAP_MS, type ResponderDeps } from '../src/responder.ts';
+import { createResponder, DEFAULT_SETTLE, PART_GAP_MS, type ResponderDeps } from '../src/responder.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
 
@@ -180,21 +180,83 @@ describe('回复调度', () => {
         ]);
     });
 
-    test('发送期间来的消息排在已发出的后面，发完后再回复', async () => {
+    test('拆条发送中途对方插话：剩下的不发，已发的照常记录，接着回复新消息', async () => {
         let replies = 0;
         let onGap: () => void = () => {};
-        const { responder, stored, sent, prompts } = setup({
-            generate: async () => (++replies === 1 ? '第一条\n第二条' : '回你了'),
+        const { responder, stored, sent, prompts, logs } = setup({
+            generate: async () => (++replies === 1 ? '第一条\n第二条\n第三条' : '回你了'),
             sleep: async () => { onGap(); },
         });
         onGap = () => { onGap = () => {}; responder.receive('等下', 2, new Date()); };
         responder.receive('在吗', 1, new Date());
         await responder.whenIdle();
-        assert.deepEqual(sent, ['第一条', '第二条', '回你了']);
-        assert.deepEqual(stored.map(m => `${m.role}:${m.content}`), [
-            'user:在吗', 'assistant:第一条', 'user:等下', 'assistant:第二条', 'assistant:回你了',
-        ]);
-        assert.deepEqual(prompts[1], ['user:在吗', 'assistant:第一条', 'user:等下', 'assistant:第二条']);
+        assert.deepEqual(sent, ['第一条', '回你了']);
+        assert.deepEqual(stored.map(m => `${m.role}:${m.content}`), ['user:在吗', 'assistant:第一条', 'user:等下', 'assistant:回你了']);
+        assert.deepEqual(prompts[1], ['user:在吗', 'assistant:第一条', 'user:等下']);
+        assert.ok(logs.some(l => l.includes('剩下 2 条不发')));
+    });
+
+    /** 假时钟：sleep 挂起，由测试决定醒来时的时间 */
+    function clock() {
+        let t = 0;
+        let wake: ((at: number) => void) | undefined;
+        const asked: number[] = [];
+        return {
+            now: () => t,
+            sleep: (ms: number) => new Promise<void>(resolve => {
+                asked.push(ms);
+                wake = at => { t = at; wake = undefined; resolve(); };
+            }),
+            set: (at: number) => { t = at; },
+            /** 让正在等的 sleep 在 at 时刻醒来 */
+            wakeAt: async (at: number) => { assert.ok(wake, '没有在等'); wake(at); await tick(); },
+            asked,
+        };
+    }
+
+    test('连发合并：对方停下 2 秒才生成，几条一起回', async () => {
+        const c = clock();
+        const { responder, prompts, sent } = setup({ now: c.now, sleep: c.sleep, settle: DEFAULT_SETTLE, generate: async () => '下楼干嘛' });
+        responder.receive('刚才下楼', 1, new Date());
+        await tick();
+        c.set(500);
+        responder.receive('看到一只猫', 2, new Date());
+        c.set(1000);
+        responder.receive('好像是土豆', 3, new Date());
+        await c.wakeAt(2000); // 离最后一条才 1 秒，再等 1 秒
+        assert.deepEqual(prompts, []);
+        await c.wakeAt(3000);
+        await responder.whenIdle();
+        assert.deepEqual(c.asked, [2000, 1000]);
+        assert.deepEqual(prompts, [['user:刚才下楼', 'user:看到一只猫', 'user:好像是土豆']]);
+        assert.deepEqual(sent, ['下楼干嘛']);
+    });
+
+    test('连发合并：对方一直在发，从第一条算起最多等 6 秒', async () => {
+        const c = clock();
+        const { responder, prompts } = setup({ now: c.now, sleep: c.sleep, settle: DEFAULT_SETTLE, generate: async () => '好' });
+        responder.receive('0', 1, new Date());
+        await tick();
+        for (let i = 1; i <= 5; i++) {
+            c.set(i * 1000);
+            responder.receive(String(i), i + 1, new Date());
+            await c.wakeAt(i * 1000 + 1); // 每次醒来都刚收到新消息，接着等
+        }
+        c.set(5999);
+        await c.wakeAt(6000);
+        await responder.whenIdle();
+        assert.equal(prompts.length, 1);
+        assert.deepEqual(prompts[0], ['user:0', 'user:1', 'user:2', 'user:3', 'user:4', 'user:5']);
+    });
+
+    test('补回之后的 catchUp 不等待', async () => {
+        const c = clock();
+        const { responder, sent, stored } = setup({ now: c.now, sleep: c.sleep, settle: DEFAULT_SETTLE, generate: async () => '刚看到' });
+        stored.push({ time: 't', role: 'user', content: '在吗', messageId: 1 });
+        responder.catchUp();
+        await responder.whenIdle();
+        assert.deepEqual(sent, ['刚看到']);
+        assert.deepEqual(c.asked, []);
     });
 
     test('发到一半失败：已发出的照常记录，失败写进日志', async () => {
