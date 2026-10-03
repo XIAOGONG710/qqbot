@@ -1,10 +1,10 @@
 // 入口：npm start -w @qqbot/bot
-// 配置见 config.ts；M1 只回复配置里那一个人的私聊。
+// 配置见 config.ts；M1 只回复白名单（contacts）里的人的直接私聊。
 
 import { writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from './config.ts';
+import { loadConfig, type Contact } from './config.ts';
 import { ChatHistory } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import { isPrivateFriendMessage, OneBotClient, segmentsToText, type OneBotEvent } from './onebot.ts';
@@ -26,31 +26,40 @@ assertSupportedCharacter(character);
 const worldInfo = character.world
     ? loadWorldInfo(join(dirname(config.characterCard), `${character.world}.json`), character.world)
     : [];
-log(`角色 ${character.name}，世界书 ${character.world || '无'}（${worldInfo.length} 条），只回复 QQ ${config.contact.qq} 的私聊`);
+const whitelist = config.contacts.map(c => `${c.qq}（${c.name}）`).join('、');
+log(`角色 ${character.name}，世界书 ${character.world || '无'}（${worldInfo.length} 条），只回复这些 QQ 的私聊：${whitelist}`);
 
 const history = new ChatHistory(config.dataDir);
-const names = { user: config.contact.name, char: character.name };
 
 const client = new OneBotClient({ url: config.onebot.url, token: config.onebot.token, onEvent, log });
 
-const responder = createResponder({
-    userId: config.contact.qq,
-    history,
-    // last-prompt.json 记录的是后处理之后、实际发给模型的消息
-    buildPrompt: chat => withPostProcessing(buildPrompt({
-        character,
-        worldInfo,
-        history: chat,
-        userName: config.contact.name,
-        settings: { maxContext: config.prompt.maxContext, maxTokens: config.llm.maxTokens, worldInfo: config.prompt.worldInfo },
-        countTokens: estimateTokens,
-    })),
-    generate: messages => chatCompletion(config.llm, messages),
-    clean: reply => cleanUpReply(reply, names),
-    send: (userId, text) => client.sendPrivateText(userId, text),
-    log,
-    onPrompt: prompt => writeFileSync(join(config.dataDir, 'last-prompt.json'), JSON.stringify(prompt, null, 2)),
-});
+// 每个联系人一个回复器：聊天记录、生成和重新生成都互不影响
+const responders = new Map(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
+
+function createContactResponder(contact: Contact) {
+    const names = { user: contact.name, char: character.name };
+    return createResponder({
+        userId: contact.qq,
+        history,
+        // last-prompt.json 记录的是后处理之后、实际发给模型的消息
+        buildPrompt: chat => withPostProcessing(buildPrompt({
+            character,
+            worldInfo,
+            history: chat,
+            userName: contact.name,
+            settings: { maxContext: config.prompt.maxContext, maxTokens: config.llm.maxTokens, worldInfo: config.prompt.worldInfo },
+            countTokens: estimateTokens,
+        })),
+        generate: messages => chatCompletion(config.llm, messages),
+        clean: reply => cleanUpReply(reply, names),
+        send: (userId, text) => client.sendPrivateText(userId, text),
+        log: message => log(`[${contact.qq}] ${message}`),
+        onPrompt: prompt => writeFileSync(
+            join(config.dataDir, 'last-prompt.json'),
+            JSON.stringify({ qq: contact.qq, ...prompt }, null, 2),
+        ),
+    });
+}
 
 function withPostProcessing(prompt: PromptResult): PromptResult {
     return { ...prompt, messages: postProcessPrompt(prompt.messages, config.llm.promptPostProcessing) };
@@ -62,7 +71,8 @@ function onEvent(event: OneBotEvent): void {
         return;
     }
     if (!isPrivateFriendMessage(event)) return;
-    if (event.user_id !== config.contact.qq) {
+    const responder = responders.get(event.user_id);
+    if (!responder) {
         log(`忽略 QQ ${event.user_id} 的私聊（不在白名单）`);
         return;
     }

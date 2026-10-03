@@ -13,7 +13,7 @@
   - 验证：`scripts/start-sillytavern.ps1` 启动 1.19.0，日志显示 `Using config path` / `Using data root` 均在 `runtime/sillytavern/`；
     `http://127.0.0.1:8000/` 返回 200（标题 SillyTavern）；子模块 `git status --short --ignored` 只有被忽略的 `node_modules/`
 - [ ] 转换：legacy TOML → ST 角色卡 JSON + 世界书 JSON（`characters/linmengyao/st/`），能导入 SillyTavern 试聊
-- [ ] 运行时骨架：连 NapCat（OneBot 11 WS）、白名单单人私聊、按角色卡 + 世界书关键词拼提示词、调模型、回发；聊天记录存 `runtime/`
+- [ ] 运行时骨架：连 NapCat（OneBot 11 WS）、白名单私聊（都按男朋友处理）、按角色卡 + 世界书关键词拼提示词、调模型、回发；聊天记录存 `runtime/`
 - [x] 提示词拼装有单元测试
   - 验证：`npm test` 通过。`packages/bot/test/world-info.test.ts`、`prompt.test.ts` 对照 ST 1.19.0 源码，覆盖扫描深度、名字前缀、正则 / 次关键词逻辑、
     概率、预算、排序、插入位置、宏、消息顺序、聊天记录截断，并用林梦瑶的真实角色卡和世界书验证

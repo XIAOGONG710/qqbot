@@ -175,7 +175,7 @@ describe('配置', () => {
         onebot: { url: 'ws://127.0.0.1:3001/' },
         llm: { baseUrl: 'https://example.com/v1', model: 'm' },
         characterCard: 'characters/linmengyao/st/linmengyao.json',
-        contact: { qq: 123456, name: '阿明' },
+        contacts: [{ qq: 123456, name: '阿明' }],
     };
 
     test('密钥只从环境变量读取，其余默认值同 ST 默认预设', () => {
@@ -198,8 +198,12 @@ describe('配置', () => {
         assert.throws(() => withLlm({ extraBody: [] }), /extraBody/);
     });
 
-    test('缺少 API key 或白名单 QQ 号不对时报错', () => {
+    test('缺少 API key 或白名单不对时报错', () => {
         assert.throws(() => withConfig(valid, {}), /QQBOT_LLM_API_KEY/);
-        assert.throws(() => withConfig({ ...valid, contact: { qq: '123', name: 'a' } }, { QQBOT_LLM_API_KEY: 'k' }), /contact\.qq/);
+        const withContacts = (contacts: unknown) => withConfig({ ...valid, contacts }, { QQBOT_LLM_API_KEY: 'k' });
+        assert.throws(() => withContacts([{ qq: '123', name: 'a' }]), /contacts\[0\]\.qq/);
+        assert.throws(() => withContacts([]), /contacts/);
+        assert.throws(() => withContacts([{ qq: 1, name: 'a' }, { qq: 1, name: 'b' }]), /重复/);
+        assert.deepEqual(withContacts([{ qq: 1, name: '宝宝' }, { qq: 2, name: '宝宝' }]).contacts.map(c => c.qq), [1, 2]);
     });
 });

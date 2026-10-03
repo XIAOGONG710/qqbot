@@ -25,10 +25,15 @@ export interface BotConfig {
     prompt: { maxContext: number; worldInfo: WorldInfoSettings };
     /** 角色卡路径；世界书按卡里的 extensions.world 在同目录找 <world>.json */
     characterCard: string;
-    /** M1 只回复这一个人的私聊 */
-    contact: { qq: number; name: string };
+    /** 白名单：只回复这些人的私聊。name 是提示词里的 {{user}}。M1 都按男朋友处理（分档见 roadmap M2） */
+    contacts: Contact[];
     /** 运行数据目录（聊天记录等） */
     dataDir: string;
+}
+
+export interface Contact {
+    qq: number;
+    name: string;
 }
 
 type Json = Record<string, unknown>;
@@ -61,8 +66,6 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
     const onebot = section('onebot');
     const llm = section('llm');
     const prompt = (file.prompt ?? {}) as Json;
-    const contact = section('contact');
-    const qq = num(contact, 'qq', 'contact');
     const postProcessing = llm.promptPostProcessing ?? '';
     if (!PROMPT_POST_PROCESSING.includes(postProcessing as PromptPostProcessing)) {
         throw new Error(`配置 llm.promptPostProcessing 应为 ${PROMPT_POST_PROCESSING.map(v => JSON.stringify(v)).join(' / ')} 之一`);
@@ -71,7 +74,16 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
     if (typeof extraBody !== 'object' || extraBody === null || Array.isArray(extraBody)) {
         throw new Error('配置 llm.extraBody 应为对象');
     }
-    if (!Number.isInteger(qq) || qq <= 0) throw new Error('配置 contact.qq 应为 QQ 号');
+    if (!Array.isArray(file.contacts) || file.contacts.length === 0) throw new Error('配置 contacts 应为非空数组');
+    const contacts = (file.contacts as unknown[]).map((value, i): Contact => {
+        const where = `contacts[${i}]`;
+        if (typeof value !== 'object' || value === null) throw new Error(`配置 ${where} 应为对象`);
+        const qq = num(value as Json, 'qq', where);
+        if (!Number.isInteger(qq) || qq <= 0) throw new Error(`配置 ${where}.qq 应为 QQ 号`);
+        return { qq, name: str(value as Json, 'name', where) };
+    });
+    const duplicate = contacts.find((c, i) => contacts.findIndex(d => d.qq === c.qq) !== i);
+    if (duplicate) throw new Error(`配置 contacts 里 QQ ${duplicate.qq} 重复`);
 
     return {
         onebot: { url: str(onebot, 'url', 'onebot'), token: env.QQBOT_ONEBOT_TOKEN ?? '' },
@@ -91,7 +103,7 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
             worldInfo: { ...DEFAULT_WORLD_INFO_SETTINGS, ...((prompt.worldInfo ?? {}) as Partial<WorldInfoSettings>) },
         },
         characterCard: resolvePath(repoRoot, str(file, 'characterCard', '')),
-        contact: { qq, name: str(contact, 'name', 'contact') },
+        contacts,
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : 'runtime/bot'),
     };
 }

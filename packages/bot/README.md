@@ -1,14 +1,14 @@
 # @qqbot/bot
 
 QQ 机器人服务：通过 OneBot 11 WebSocket 连 NapCat，按 SillyTavern 角色卡 + 世界书拼提示词，调 OpenAI 兼容接口，把回复发回 QQ。
-M1 只回复配置里**一个人**的直接私聊（群聊、群临时会话、其他人一律忽略）。
+M1 只回复白名单（`contacts`）里的人的直接私聊（群聊、群临时会话、其他人一律忽略），白名单里的人都按男朋友处理，分档见 roadmap M2。
 
 ## 运行
 
 1. 复制 `config.example.json` 到 `runtime/bot/config.json`（`runtime/` 不入库），填写：
    - `onebot.url`：NapCat OneBot 网络配置里“WebSocket 服务端”的地址，连根路径 `/`（`/api` 收不到事件）
    - `llm.baseUrl` / `llm.model`：OpenAI 兼容接口（`baseUrl` 不含 `/chat/completions`）
-   - `contact.qq` / `contact.name`：唯一会回复的 QQ 号，以及提示词里 `{{user}}` 的称呼
+   - `contacts`：白名单，每项是 `qq`（会回复的 QQ 号，须是小号的好友）和 `name`（提示词里 `{{user}}` 的称呼）；每个号的聊天记录分开存
    - `prompt.maxContext`：上下文 token 上限（同 ST 的 Context Size），世界书预算和聊天记录截断都按它算
    - `llm.promptPostProcessing`：发送前的消息后处理，取值同 ST 自定义接口的 Prompt Post-Processing（`""` / `merge` / `semi` / `strict`），默认不处理
    - `llm.extraBody`：合并进请求体的额外参数，同 ST 自定义接口的 Include Body Parameters
@@ -31,7 +31,7 @@ M1 只回复配置里**一个人**的直接私聊（群聊、群临时会话、�
 运行数据（都在 `runtime/bot/`）：
 
 - `chats/<QQ 号>.jsonl`：聊天记录，一行一条，只追加
-- `last-prompt.json`：最近一次发给模型的完整提示词和命中的世界书条目，用来和 SillyTavern 试聊对照
+- `last-prompt.json`：最近一次发给模型的完整提示词（是谁的、后处理之后的消息、命中的世界书条目），用来和 SillyTavern 试聊对照
 
 ## 提示词与 SillyTavern 的对应
 

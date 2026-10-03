@@ -18,9 +18,11 @@
         "maxContext": 8192
     },
     "characterCard": "characters/linmengyao/st/linmengyao.json",
-    "contact": {
-        "qq": 10001,
-        "name": "他的称呼"
-    },
+    "contacts": [
+        {
+            "qq": 10001,
+            "name": "他的称呼"
+        }
+    ],
     "dataDir": "runtime/bot"
 }
