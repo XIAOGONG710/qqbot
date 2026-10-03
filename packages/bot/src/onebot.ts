@@ -143,6 +143,11 @@ export function isPrivateFriendMessage(event: OneBotEvent): event is MessageEven
     return event.post_type === 'message' && event.message_type === 'private' && event.sub_type === 'friend';
 }
 
+/** 名单外的人在提示词里的称呼（{{user}}）：QQ 昵称，没有就叫「对方」 */
+export function senderName(event: MessageEvent): string {
+    return event.sender.nickname?.trim() || '对方';
+}
+
 /** 把消息段转成给模型看的纯文本；非文字的段用占位符（M1 不看图、不听语音） */
 export function segmentsToText(message: Segment[] | string): string {
     if (typeof message === 'string') return message;

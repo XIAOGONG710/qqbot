@@ -18,12 +18,14 @@
         "maxContext": 8192,
         "pinExamples": true
     },
-    "characterCard": "characters/linmengyao/st/linmengyao-boyfriend.json",
+    "characterCard": "characters/linmengyao/st/linmengyao-{tier}.json",
     "contacts": [
         {
             "qq": 10001,
-            "name": "他的称呼"
+            "name": "他的称呼",
+            "tier": "boyfriend"
         }
     ],
+    "unlistedFriends": true,
     "dataDir": "runtime/bot"
 }

@@ -1,22 +1,24 @@
 // 入口：npm start -w @qqbot/bot
-// 配置见 config.ts；M1 只回复白名单（contacts）里的人的直接私聊。
+// 配置见 config.ts。回复名单（contacts）里的人的直接私聊，每人按自己的档位用对应的角色卡和世界书（ADR 0003）；
+// 名单外的好友私聊用 unlisted 档（配置 unlistedFriends 可关）。群聊、群临时会话不回复。
 
 import { writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig, type Contact } from './config.ts';
+import { loadConfig, UNLISTED_TIER, type Contact, type Tier } from './config.ts';
 import { acquireLock } from './lock.ts';
 import { ChatHistory } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from './backfill.ts';
-import { isPrivateFriendMessage, OneBotClient, segmentsToText, type MessageEvent, type OneBotEvent } from './onebot.ts';
+import { isPrivateFriendMessage, OneBotClient, segmentsToText, senderName, type MessageEvent, type OneBotEvent } from './onebot.ts';
 import { buildPrompt, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
-import { createResponder } from './responder.ts';
-import { loadCharacterCard } from './st/card.ts';
+import { createResponder, type Responder } from './responder.ts';
+import { loadCharacterCard, type Character } from './st/card.ts';
 import type { MacroNames } from './st/macros.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
-import { loadWorldInfo } from './st/world-info.ts';
+import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
+import { TierRecord } from './tier-record.ts';
 import { describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 
@@ -25,24 +27,47 @@ const log = (message: string) => console.log(`[${new Date().toLocaleString('zh-C
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const config = loadConfig(repoRoot);
 
-const character = loadCharacterCard(config.characterCard);
-const worldInfo = character.world
-    ? loadWorldInfo(join(dirname(config.characterCard), `${character.world}.json`), character.world)
-    : [];
-const whitelist = config.contacts.map(c => `${c.qq}（${c.name}）`).join('、');
-log(`角色 ${character.name}，世界书 ${character.world || '无'}（${worldInfo.length} 条），只回复这些 QQ 的私聊：${whitelist}`);
+// 每个档位一张角色卡和一本世界书，用到时读一次
+const cards = new Map<Tier, { character: Character; worldInfo: WorldInfoEntry[] }>();
+function cardFor(tier: Tier) {
+    let card = cards.get(tier);
+    if (!card) {
+        const path = config.characterCard.replaceAll('{tier}', tier);
+        const character = loadCharacterCard(path);
+        const worldInfo = character.world ? loadWorldInfo(join(dirname(path), `${character.world}.json`), character.world) : [];
+        card = { character, worldInfo };
+        cards.set(tier, card);
+    }
+    return card;
+}
+// 启动时先把要用到的都读一遍，缺文件立刻报错
+const tiersInUse = new Set<Tier>(config.contacts.map(c => c.tier));
+if (config.unlistedFriends) tiersInUse.add(UNLISTED_TIER);
+for (const tier of tiersInUse) {
+    const { character, worldInfo } = cardFor(tier);
+    log(`档位 ${tier}：角色 ${character.name}，世界书 ${character.world || '无'}（${worldInfo.length} 条）`);
+}
+const whitelist = config.contacts.map(c => `${c.qq}（${c.name}，${c.tier}）`).join('、');
+log(`名单：${whitelist}；名单外的好友${config.unlistedFriends ? '按 unlisted 档回复' : '不回复'}`);
 
 const history = new ChatHistory(config.dataDir);
 // 放在 ChatHistory 之后：它会建好数据目录
 const releaseLock = acquireLock(join(config.dataDir, 'bot.lock'));
 process.on('exit', releaseLock);
 
+const tierRecord = new TierRecord(join(config.dataDir, 'tiers.json'));
+for (const contact of config.contacts) {
+    const warning = tierRecord.update(contact.qq, contact.tier);
+    if (warning) log(warning);
+}
+
 const client = new OneBotClient({ url: config.onebot.url, token: config.onebot.token, onEvent, log });
 
 // 每个联系人一个回复器：聊天记录、生成和重新生成都互不影响
-const responders = new Map(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
+const responders = new Map<number, Responder>(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
 
 function createContactResponder(contact: Contact) {
+    const { character, worldInfo } = cardFor(contact.tier);
     const names = { user: contact.name, char: character.name };
     const contactLog = (message: string) => log(`[${contact.qq}] ${message}`);
     return createResponder({
@@ -104,10 +129,19 @@ function onEvent(event: OneBotEvent): void {
 }
 
 function onMessage(event: MessageEvent): void {
-    const responder = responders.get(event.user_id);
+    let responder = responders.get(event.user_id);
     if (!responder) {
-        log(`忽略 QQ ${event.user_id} 的私聊（不在白名单）`);
-        return;
+        if (!config.unlistedFriends) {
+            log(`忽略 QQ ${event.user_id} 的私聊（不在名单）`);
+            return;
+        }
+        // 名单外的好友：{{user}} 用对方的 QQ 昵称
+        const contact: Contact = { qq: event.user_id, name: senderName(event), tier: UNLISTED_TIER };
+        const warning = tierRecord.update(contact.qq, contact.tier);
+        if (warning) log(warning);
+        log(`QQ ${contact.qq}（${contact.name}）不在名单，按 ${UNLISTED_TIER} 档回复`);
+        responder = createContactResponder(contact);
+        responders.set(contact.qq, responder);
     }
     // 补回时可能已经从历史里拿到过这条
     if (history.load(event.user_id).some(m => m.messageId === event.message_id)) return;

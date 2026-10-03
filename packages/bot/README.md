@@ -1,15 +1,20 @@
 # @qqbot/bot
 
 QQ 机器人服务：通过 OneBot 11 WebSocket 连 NapCat，按 SillyTavern 角色卡 + 世界书拼提示词，调 OpenAI 兼容接口，把回复发回 QQ。
-M1 只回复白名单（`contacts`）里的人的直接私聊（群聊、群临时会话、其他人一律忽略），白名单里的人都按男朋友处理，分档见 roadmap M2。
+回复名单（`contacts`）里的人的直接私聊，每人按自己的档位（[ADR 0003](../../docs/adr/0003-contact-tiers.md)）用对应的角色卡和世界书；
+名单外的好友私聊用 `unlisted` 档回复（可关）；群聊、群临时会话一律忽略。
 
 ## 运行
 
 1. 复制 `config.example.json` 到 `runtime/bot/config.json`（`runtime/` 不入库），填写：
    - `onebot.url`：NapCat OneBot 网络配置里“WebSocket 服务端”的地址，连根路径 `/`（`/api` 收不到事件）
    - `llm.baseUrl` / `llm.model`：OpenAI 兼容接口（`baseUrl` 不含 `/chat/completions`）
-   - `contacts`：白名单，每项是 `qq`（会回复的 QQ 号，须是小号的好友）和 `name`（提示词里 `{{user}}` 的称呼）；每个号的聊天记录分开存。
+   - `characterCard`：角色卡路径，`{tier}` 换成档位名（`characters/linmengyao/st/linmengyao-{tier}.json`）；世界书按卡里关联的名字在同目录找
+   - `contacts`：名单，每项是 `qq`（会回复的 QQ 号，须是小号的好友）、`name`（提示词里 `{{user}}` 的称呼）和 `tier`
+     （`boyfriend` / `bestie` / `girl_friend` / `known` / `classmate` / `stranger`）；每个号的聊天记录分开存。
      可选的 `persona` 是一两句“他是谁”（例如「同专业，坐你后排」），放在 ST 人设描述（`personaDescription`）的位置，可以用 `{{user}}` `{{char}}`
+   - `unlistedFriends`：名单外的好友私聊时是否用 `unlisted` 档回复（被认真问到时承认是 AI），默认 `true`；`{{user}}` 用对方的 QQ 昵称。
+     任何人加小号好友就能让 bot 调用模型，没有频率限制
    - `prompt.maxContext`：上下文 token 上限（同 ST 的 Context Size），世界书预算和聊天记录截断都按它算
    - `prompt.pinExamples`：同 ST 的 Example Messages Behavior 选 Always include examples，示例对话先占预算、不会被聊天记录挤掉；
      默认 `false`（同 ST 默认的逐步挤出）。示例配置开着：示例对话是校正她语气的主要手段（调研方案 4.2 建议调试期常驻）
@@ -49,6 +54,7 @@ bot 运行期间小号在手机上手动发的消息不会推给 bot，聊天记
 运行数据（都在 `runtime/bot/`）：
 
 - `chats/<QQ 号>.jsonl`：聊天记录，一行一条 QQ 消息（拆开发的回复每条一行），只追加
+- `tiers.json`：每个联系人上次用的档位。启动时发现档位变了会提示；降档时提醒手动清理这个人的聊天记录（旧记录可能带着高档位才知道的内容），不自动删除
 - `last-prompt.json`：最近一次发给模型的完整提示词（是谁的、后处理之后的消息、命中的世界书条目），用来和 SillyTavern 试聊对照
 
 ## 提示词与 SillyTavern 的对应

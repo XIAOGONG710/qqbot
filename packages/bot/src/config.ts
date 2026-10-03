@@ -8,6 +8,13 @@ import { isAbsolute, resolve } from 'node:path';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from './st/prompt-converters.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from './st/world-info.ts';
 
+/** 名单里能用的档位（ADR 0003），从亲到疏 */
+export const CONTACT_TIERS = ['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger'] as const;
+export type ContactTier = (typeof CONTACT_TIERS)[number];
+/** 名单外的好友用的档位 */
+export const UNLISTED_TIER = 'unlisted';
+export type Tier = ContactTier | typeof UNLISTED_TIER;
+
 export interface BotConfig {
     onebot: { url: string; token: string };
     llm: {
@@ -24,10 +31,12 @@ export interface BotConfig {
     };
     /** pinExamples：同 ST 的 Example Messages Behavior 选 Always include examples，默认否（同 ST 默认的逐步挤出） */
     prompt: { maxContext: number; worldInfo: WorldInfoSettings; pinExamples: boolean };
-    /** 角色卡路径；世界书按卡里的 extensions.world 在同目录找 <world>.json */
+    /** 角色卡路径，{tier} 换成档位名；世界书按卡里的 extensions.world 在同目录找 <world>.json */
     characterCard: string;
-    /** 白名单：只回复这些人的私聊。name 是提示词里的 {{user}}。M1 都按男朋友处理（分档见 roadmap M2） */
+    /** 名单：按各自的档位回复这些人的私聊。name 是提示词里的 {{user}} */
     contacts: Contact[];
+    /** 名单外的好友私聊时是否用 unlisted 档回复（ADR 0003 决策 2），默认是 */
+    unlistedFriends: boolean;
     /** 运行数据目录（聊天记录等） */
     dataDir: string;
 }
@@ -35,6 +44,7 @@ export interface BotConfig {
 export interface Contact {
     qq: number;
     name: string;
+    tier: Tier;
     /** 一两句“他是谁”，放在 ST 人设描述（personaDescription）的位置 */
     persona?: string;
 }
@@ -88,7 +98,11 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
         if (typeof value !== 'object' || value === null) throw new Error(`配置 ${where} 应为对象`);
         const qq = num(value as Json, 'qq', where);
         if (!Number.isInteger(qq) || qq <= 0) throw new Error(`配置 ${where}.qq 应为 QQ 号`);
-        const contact: Contact = { qq, name: str(value as Json, 'name', where) };
+        const tier = (value as Json).tier;
+        if (!CONTACT_TIERS.includes(tier as ContactTier)) {
+            throw new Error(`配置 ${where}.tier 应为 ${CONTACT_TIERS.join(' / ')} 之一`);
+        }
+        const contact: Contact = { qq, name: str(value as Json, 'name', where), tier: tier as ContactTier };
         const persona = (value as Json).persona;
         if (persona !== undefined) {
             if (typeof persona !== 'string') throw new Error(`配置 ${where}.persona 应为字符串`);
@@ -98,6 +112,9 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
     });
     const duplicate = contacts.find((c, i) => contacts.findIndex(d => d.qq === c.qq) !== i);
     if (duplicate) throw new Error(`配置 contacts 里 QQ ${duplicate.qq} 重复`);
+
+    const characterCard = resolvePath(repoRoot, str(file, 'characterCard', ''));
+    if (!characterCard.includes('{tier}')) throw new Error('配置 characterCard 应包含 {tier}，例如 characters/linmengyao/st/linmengyao-{tier}.json');
 
     return {
         onebot: { url: str(onebot, 'url', 'onebot'), token: env.QQBOT_ONEBOT_TOKEN ?? '' },
@@ -117,8 +134,9 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
             worldInfo: { ...DEFAULT_WORLD_INFO_SETTINGS, ...((prompt.worldInfo ?? {}) as Partial<WorldInfoSettings>) },
             pinExamples: bool(prompt, 'pinExamples', 'prompt', false),
         },
-        characterCard: resolvePath(repoRoot, str(file, 'characterCard', '')),
+        characterCard,
         contacts,
+        unlistedFriends: bool(file, 'unlistedFriends', '', true),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : 'runtime/bot'),
     };
 }

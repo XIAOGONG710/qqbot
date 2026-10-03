@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { loadConfig } from '../src/config.ts';
+import { TierRecord } from '../src/tier-record.ts';
 import { ChatHistory, type StoredMessage } from '../src/history.ts';
-import { isPrivateFriendMessage, segmentsToText } from '../src/onebot.ts';
+import { isPrivateFriendMessage, segmentsToText, senderName, type MessageEvent } from '../src/onebot.ts';
 import type { PromptResult } from '../src/prompt.ts';
 import { cleanUpReply, splitReply } from '../src/reply.ts';
 import { createResponder, PART_GAP_MS, type ResponderDeps } from '../src/responder.ts';
@@ -40,6 +41,13 @@ describe('OneBot 消息', () => {
         ]), '你看[动画表情][图片][表情][语音][poke]');
         assert.equal(segmentsToText('纯文本'), '纯文本');
     });
+    test('名单外的人用 QQ 昵称称呼，没有昵称叫「对方」', () => {
+        const event = (nickname?: string) => ({ sender: { user_id: 1, nickname } }) as MessageEvent;
+        assert.equal(senderName(event(' 小周 ')), '小周');
+        assert.equal(senderName(event('')), '对方');
+        assert.equal(senderName(event()), '对方');
+    });
+
     test('只认直接私聊（sub_type friend），群临时会话和群消息不算', () => {
         const base = { post_type: 'message', message_type: 'private', sub_type: 'friend', user_id: 1 };
         assert.equal(isPrivateFriendMessage(base as never), true);
@@ -237,8 +245,8 @@ describe('配置', () => {
     const valid = {
         onebot: { url: 'ws://127.0.0.1:3001/' },
         llm: { baseUrl: 'https://example.com/v1', model: 'm' },
-        characterCard: 'characters/linmengyao/st/linmengyao-boyfriend.json',
-        contacts: [{ qq: 123456, name: '阿明' }],
+        characterCard: 'characters/linmengyao/st/linmengyao-{tier}.json',
+        contacts: [{ qq: 123456, name: '阿明', tier: 'boyfriend' }],
     };
 
     test('密钥只从环境变量读取，其余默认值同 ST 默认预设', () => {
@@ -265,22 +273,51 @@ describe('配置', () => {
     test('缺少 API key 或白名单不对时报错', () => {
         assert.throws(() => withConfig(valid, {}), /QQBOT_LLM_API_KEY/);
         const withContacts = (contacts: unknown) => withConfig({ ...valid, contacts }, { QQBOT_LLM_API_KEY: 'k' });
-        assert.throws(() => withContacts([{ qq: '123', name: 'a' }]), /contacts\[0\]\.qq/);
+        assert.throws(() => withContacts([{ qq: '123', name: 'a', tier: 'boyfriend' }]), /contacts\[0\]\.qq/);
         assert.throws(() => withContacts([]), /contacts/);
-        assert.throws(() => withContacts([{ qq: 1, name: 'a' }, { qq: 1, name: 'b' }]), /重复/);
-        assert.deepEqual(withContacts([{ qq: 1, name: '宝宝' }, { qq: 2, name: '宝宝' }]).contacts.map(c => c.qq), [1, 2]);
+        assert.throws(() => withContacts([{ qq: 1, name: 'a', tier: 'boyfriend' }, { qq: 1, name: 'b', tier: 'classmate' }]), /重复/);
+        const twins = [{ qq: 1, name: '宝宝', tier: 'boyfriend' }, { qq: 2, name: '宝宝', tier: 'boyfriend' }];
+        assert.deepEqual(withContacts(twins).contacts.map(c => c.qq), [1, 2]);
     });
 
     test('联系人的人设描述可选，必须是字符串，空串当作没有', () => {
         const withContacts = (contacts: unknown) => withConfig({ ...valid, contacts }, { QQBOT_LLM_API_KEY: 'k' });
         const [a, b, c] = withContacts([
-            { qq: 1, name: '小王', persona: '同专业，坐你后排' },
-            { qq: 2, name: '小李' },
-            { qq: 3, name: '小张', persona: '' },
+            { qq: 1, name: '小王', tier: 'classmate', persona: '同专业，坐你后排' },
+            { qq: 2, name: '小李', tier: 'classmate' },
+            { qq: 3, name: '小张', tier: 'classmate', persona: '' },
         ]).contacts;
         assert.equal(a!.persona, '同专业，坐你后排');
         assert.equal(b!.persona, undefined);
         assert.equal(c!.persona, undefined);
-        assert.throws(() => withContacts([{ qq: 1, name: 'a', persona: 1 }]), /contacts\[0\]\.persona/);
+        assert.throws(() => withContacts([{ qq: 1, name: 'a', tier: 'classmate', persona: 1 }]), /contacts\[0\]\.persona/);
+    });
+
+    test('每个联系人要有档位，unlisted 不能写在名单里；角色卡路径要带 {tier}；名单外好友默认回复', () => {
+        const key = { QQBOT_LLM_API_KEY: 'k' };
+        const withContacts = (contacts: unknown) => withConfig({ ...valid, contacts }, key);
+        assert.equal(withContacts([{ qq: 1, name: 'a', tier: 'known' }]).contacts[0]!.tier, 'known');
+        assert.throws(() => withContacts([{ qq: 1, name: 'a' }]), /contacts\[0\]\.tier/);
+        assert.throws(() => withContacts([{ qq: 1, name: 'a', tier: 'unlisted' }]), /contacts\[0\]\.tier/);
+        assert.throws(() => withConfig({ ...valid, characterCard: 'characters/linmengyao/st/linmengyao.json' }, key), /\{tier\}/);
+        assert.equal(withConfig(valid, key).unlistedFriends, true);
+        assert.equal(withConfig({ ...valid, unlistedFriends: false }, key).unlistedFriends, false);
+    });
+});
+
+describe('档位记录', () => {
+    test('第一次只记下；档位不变不提示；换档时提示，降档时提醒清理聊天记录', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-tiers-'));
+        try {
+            const path = join(dir, 'tiers.json');
+            const record = new TierRecord(path);
+            assert.equal(record.update(1, 'boyfriend'), undefined);
+            assert.equal(record.update(1, 'boyfriend'), undefined);
+            assert.match(record.update(1, 'classmate')!, /从 boyfriend 降到 classmate.*chats\/1\.jsonl/);
+            assert.match(new TierRecord(path).update(1, 'bestie')!, /从 classmate 变成 bestie/);
+            assert.equal(new TierRecord(path).update(2, 'unlisted'), undefined);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 });
