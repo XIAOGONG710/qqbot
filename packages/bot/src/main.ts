@@ -8,10 +8,11 @@ import { loadConfig } from './config.ts';
 import { ChatHistory } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import { isPrivateFriendMessage, OneBotClient, segmentsToText, type OneBotEvent } from './onebot.ts';
-import { assertSupportedCharacter, buildPrompt } from './prompt.ts';
+import { assertSupportedCharacter, buildPrompt, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
 import { createResponder } from './responder.ts';
 import { loadCharacterCard } from './st/card.ts';
+import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo } from './st/world-info.ts';
 import { estimateTokens } from './tokens.ts';
 
@@ -35,20 +36,25 @@ const client = new OneBotClient({ url: config.onebot.url, token: config.onebot.t
 const responder = createResponder({
     userId: config.contact.qq,
     history,
-    buildPrompt: chat => buildPrompt({
+    // last-prompt.json 记录的是后处理之后、实际发给模型的消息
+    buildPrompt: chat => withPostProcessing(buildPrompt({
         character,
         worldInfo,
         history: chat,
         userName: config.contact.name,
         settings: { maxContext: config.prompt.maxContext, maxTokens: config.llm.maxTokens, worldInfo: config.prompt.worldInfo },
         countTokens: estimateTokens,
-    }),
+    })),
     generate: messages => chatCompletion(config.llm, messages),
     clean: reply => cleanUpReply(reply, names),
     send: (userId, text) => client.sendPrivateText(userId, text),
     log,
     onPrompt: prompt => writeFileSync(join(config.dataDir, 'last-prompt.json'), JSON.stringify(prompt, null, 2)),
 });
+
+function withPostProcessing(prompt: PromptResult): PromptResult {
+    return { ...prompt, messages: postProcessPrompt(prompt.messages, config.llm.promptPostProcessing) };
+}
 
 function onEvent(event: OneBotEvent): void {
     if (event.post_type === 'meta_event' && event.meta_event_type === 'lifecycle') {

@@ -3,10 +3,16 @@
         "url": "ws://127.0.0.1:3001/"
     },
     "llm": {
-        "baseUrl": "https://api.example.com/v1",
-        "model": "model-name",
-        "temperature": 1,
-        "maxTokens": 300
+        "baseUrl": "https://api.deepseek.com",
+        "model": "deepseek-flash",
+        "temperature": 1.3,
+        "maxTokens": 300,
+        "promptPostProcessing": "semi",
+        "extraBody": {
+            "thinking": {
+                "type": "disabled"
+            }
+        }
     },
     "prompt": {
         "maxContext": 8192

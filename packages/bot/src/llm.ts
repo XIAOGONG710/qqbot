@@ -1,9 +1,10 @@
 // OpenAI 兼容的 Chat Completions 接口（POST {baseUrl}/chat/completions，非流式）。
+// extraBody 对应 ST 自定义接口的 Include Body Parameters：合并进请求体，同名字段以它为准。
 
 import type { OpenAIMessage } from './prompt.ts';
 
 export interface LlmOptions {
-    /** 例如 https://api.deepseek.com/v1（不含 /chat/completions） */
+    /** 例如 https://api.deepseek.com（不含 /chat/completions） */
     baseUrl: string;
     model: string;
     /** 只从环境变量读取，不写进任何文件 */
@@ -11,6 +12,8 @@ export interface LlmOptions {
     temperature: number;
     maxTokens: number;
     timeoutMs: number;
+    /** 例如 DeepSeek 关思考模式：{ "thinking": { "type": "disabled" } } */
+    extraBody: Record<string, unknown>;
 }
 
 export async function chatCompletion(options: LlmOptions, messages: OpenAIMessage[]): Promise<string> {
@@ -27,6 +30,7 @@ export async function chatCompletion(options: LlmOptions, messages: OpenAIMessag
             temperature: options.temperature,
             max_tokens: options.maxTokens,
             stream: false,
+            ...options.extraBody,
         }),
         signal: AbortSignal.timeout(options.timeoutMs),
     });

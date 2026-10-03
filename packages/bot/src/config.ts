@@ -5,6 +5,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
+import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from './st/prompt-converters.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from './st/world-info.ts';
 
 export interface BotConfig {
@@ -16,6 +17,10 @@ export interface BotConfig {
         temperature: number;
         maxTokens: number;
         timeoutMs: number;
+        /** 同 ST 自定义接口的 Prompt Post-Processing；默认不处理 */
+        promptPostProcessing: PromptPostProcessing;
+        /** 同 ST 自定义接口的 Include Body Parameters */
+        extraBody: Record<string, unknown>;
     };
     prompt: { maxContext: number; worldInfo: WorldInfoSettings };
     /** 角色卡路径；世界书按卡里的 extensions.world 在同目录找 <world>.json */
@@ -58,6 +63,14 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
     const prompt = (file.prompt ?? {}) as Json;
     const contact = section('contact');
     const qq = num(contact, 'qq', 'contact');
+    const postProcessing = llm.promptPostProcessing ?? '';
+    if (!PROMPT_POST_PROCESSING.includes(postProcessing as PromptPostProcessing)) {
+        throw new Error(`配置 llm.promptPostProcessing 应为 ${PROMPT_POST_PROCESSING.map(v => JSON.stringify(v)).join(' / ')} 之一`);
+    }
+    const extraBody = llm.extraBody ?? {};
+    if (typeof extraBody !== 'object' || extraBody === null || Array.isArray(extraBody)) {
+        throw new Error('配置 llm.extraBody 应为对象');
+    }
     if (!Number.isInteger(qq) || qq <= 0) throw new Error('配置 contact.qq 应为 QQ 号');
 
     return {
@@ -70,6 +83,8 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
             temperature: num(llm, 'temperature', 'llm', 1),
             maxTokens: num(llm, 'maxTokens', 'llm', 300),
             timeoutMs: num(llm, 'timeoutMs', 'llm', 120_000),
+            promptPostProcessing: postProcessing as PromptPostProcessing,
+            extraBody: extraBody as Record<string, unknown>,
         },
         prompt: {
             maxContext: num(prompt, 'maxContext', 'prompt', 8192),

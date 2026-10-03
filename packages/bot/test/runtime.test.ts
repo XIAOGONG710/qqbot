@@ -185,6 +185,17 @@ describe('配置', () => {
         assert.equal(config.llm.temperature, 1);
         assert.equal(config.llm.maxTokens, 300);
         assert.equal(config.prompt.worldInfo.depth, 2);
+        assert.equal(config.llm.promptPostProcessing, '');
+        assert.deepEqual(config.llm.extraBody, {});
+    });
+
+    test('后处理方式和额外请求参数要合法', () => {
+        const withLlm = (llm: object) => withConfig({ ...valid, llm: { ...valid.llm, ...llm } }, { QQBOT_LLM_API_KEY: 'k' });
+        const config = withLlm({ promptPostProcessing: 'semi', extraBody: { thinking: { type: 'disabled' } } });
+        assert.equal(config.llm.promptPostProcessing, 'semi');
+        assert.deepEqual(config.llm.extraBody, { thinking: { type: 'disabled' } });
+        assert.throws(() => withLlm({ promptPostProcessing: 'single' }), /promptPostProcessing/);
+        assert.throws(() => withLlm({ extraBody: [] }), /extraBody/);
     });
 
     test('缺少 API key 或白名单 QQ 号不对时报错', () => {

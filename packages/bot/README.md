@@ -10,10 +10,20 @@ M1 只回复配置里**一个人**的直接私聊（群聊、群临时会话、�
    - `llm.baseUrl` / `llm.model`：OpenAI 兼容接口（`baseUrl` 不含 `/chat/completions`）
    - `contact.qq` / `contact.name`：唯一会回复的 QQ 号，以及提示词里 `{{user}}` 的称呼
    - `prompt.maxContext`：上下文 token 上限（同 ST 的 Context Size），世界书预算和聊天记录截断都按它算
-2. 密钥只走环境变量：
+   - `llm.promptPostProcessing`：发送前的消息后处理，取值同 ST 自定义接口的 Prompt Post-Processing（`""` / `merge` / `semi` / `strict`），默认不处理
+   - `llm.extraBody`：合并进请求体的额外参数，同 ST 自定义接口的 Include Body Parameters
+
+   示例配置按 DeepSeek 填写（[接口文档](https://api-docs.deepseek.com/)）：
+   - `promptPostProcessing: "semi"`：和 ST 的 DeepSeek 接入一致，连续同角色的消息合并，中途的 system 改成 user
+   - `extraBody` 关掉思考模式：`deepseek-flash` 默认开思考，开着时 temperature 不生效，`max_tokens` 也会被推理过程占用
+   - `temperature: 1.3`：DeepSeek 文档对“通用对话”的建议值
+2. 密钥只走环境变量，存在用户级环境变量里（之后新开的终端都能读到；只写 `$env:...` 的话只在当前窗口有效）：
    ```powershell
-   $env:QQBOT_LLM_API_KEY = '...'      # 必填
-   $env:QQBOT_ONEBOT_TOKEN = '...'     # NapCat 那边设了 token 就必填
+   [Environment]::SetEnvironmentVariable('QQBOT_LLM_API_KEY', '...', 'User')    # 必填
+   [Environment]::SetEnvironmentVariable('QQBOT_ONEBOT_TOKEN', '...', 'User')   # NapCat 那边设了 token 就必填
+   ```
+   然后在**新开的**终端里启动：
+   ```powershell
    npm start -w @qqbot/bot
    ```
    配置文件换位置时用 `QQBOT_CONFIG` 指定。
@@ -31,6 +41,7 @@ M1 只回复配置里**一个人**的直接私聊（群聊、群临时会话、�
 | `src/st/world-info.ts` | `public/scripts/world-info.js` 的 `checkWorldInfo` 关键词激活子集 |
 | `src/st/macros.ts` | `{{user}}` `{{char}}` `{{original}}` `<USER>` `<BOT>` |
 | `src/reply.ts` | `public/script.js` 的 `cleanUpMessage`（默认设置下生效的部分） |
+| `src/st/prompt-converters.ts` | `src/prompt-converters.js` 的 `postProcessPrompt` / `mergeMessages`（无工具、无多模态） |
 
 已知差异：
 
