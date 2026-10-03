@@ -12,6 +12,7 @@ qqbot/
 ├── packages/               自有代码：独立的 QQ 机器人服务与工具（Node.js / TypeScript）
 ├── characters/             角色资料（<角色>/legacy/ 为旧项目原样导入，不原地修改）
 ├── docs/                   架构决策（adr/）、调研记录（research/）、路线图（roadmap.md）
+├── scripts/                本地开发脚本（启动 SillyTavern 等）
 ├── runtime/                本地运行数据（.gitignore 忽略）
 └── 思维链工作流.txt        工程决策流程
 ```
@@ -49,6 +50,15 @@ git commit -m "chore(vendor): bump SillyTavern to <版本>"
 | --- | --- | --- | --- |
 | SillyTavern | release | `06bde939f` | 1.19.0 |
 | NapCatQQ | main | `26d7533e` | v4.18.28 |
+
+## 用 SillyTavern 编写 / 试聊角色
+
+```powershell
+.\scripts\start-sillytavern.ps1
+```
+
+浏览器打开 http://127.0.0.1:8000/ 。配置和数据在 `runtime/sillytavern/`（`config.yaml`、`data/`），子模块里不产生改动。
+首次运行会在子模块里执行 `npm ci`；升级 SillyTavern 子模块后，删掉 `vendor/SillyTavern/node_modules` 再启动，让依赖重装。
 
 ## 环境要求
 
