@@ -148,6 +148,17 @@ describe('拼装规则', () => {
         assert.ok(pinned.chat < count(false, 200).chat, '置顶时聊天记录让出示例的预算');
     });
 
+    test('运行时追加的内容放在聊天记录之后、末尾指令之前，计入预算；时间宏按 now 替换', () => {
+        const character = minimalCard({ description: '今天是{{weekday}}', post_history_instructions: 'phi' });
+        const { messages } = build([{ role: 'user', content: '嗨' }], {
+            character,
+            worldInfo: [],
+            afterHistory: ['[当前时间：…]', ''],
+            now: new Date('2026-10-04T12:00:00'),
+        });
+        assert.deepEqual(messages.slice(1).map(m => m.content), ['今天是星期日', '[Start a new Chat]', '嗨', '[当前时间：…]', 'phi']);
+    });
+
     test('不是角色卡的 JSON 报错', () => {
         assert.throws(() => parseCharacterCard({ entries: {} }), /不是角色卡/);
     });

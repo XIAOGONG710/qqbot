@@ -68,7 +68,10 @@
   - 验证：`npm test`（69 项）。示例对话的拆块、`name`、预算挤出与 `pinExamples` 对照 `openai.js` `parseExampleIntoIndividual` / `populateDialogueExamples`；
     后处理里示例名字变成「名字: 」前缀对照 `prompt-converters.js` `mergeMessages`。
     尚未实测：重写后的语气要在 QQ 上复查（调研方案 T02、T03、T05、T23）
-- [ ] 时间：每次生成算出当前时间、星期和距上一组消息的间隔，放在聊天记录之后；ST 时间宏
+- [x] 时间：每次生成算出当前时间、星期和距上一组消息的间隔，放在聊天记录之后；ST 时间宏
+  - 验证：`npm test`（78 项）。`time.test.ts`：时间宏的格式与 `humanize` 阈值对照 `time-macros.js` 和 moment 默认值；
+    `idleDuration` 连发时只有「1 分钟」，运行时的提示按这一组第一条算出「3 天」；昨天、停机后补回、第一次聊天几种情况。
+    用一位联系人的真实记录干跑：时间提示排在聊天记录之后、末尾指令之前。尚未实测：要在 QQ 上问她今天星期几、隔天再聊（调研方案 T10、T11）
 - [ ] 消息调度：连发合并（静默约 2 秒、最长约 6 秒）；拆条发送中途来新消息时不发过时的剩余部分
 - [ ] 长期记忆：Hindsight，按片段写入、生成前召回、关系概况（Mental Model）
 

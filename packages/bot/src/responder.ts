@@ -49,7 +49,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             input = stored.length;
             if (!stored.slice(seen).some(m => m.role === 'user')) return;
 
-            const prompt = deps.buildPrompt(stored.map(({ role, content }) => ({ role, content })));
+            const prompt = deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })));
             deps.onPrompt?.(prompt);
             const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
             deps.log(`生成回复：${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);

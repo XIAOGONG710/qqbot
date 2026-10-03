@@ -38,6 +38,10 @@ M1 只回复白名单（`contacts`）里的人的直接私聊（群聊、群临�
 模型接口连不上（连接超时、被拒、被重置、DNS 失败）时自动重试 2 次，间隔 1 秒、3 秒；HTTP 错误和整体超时不重试。
 回复失败时对方的消息仍记在聊天记录里，下次收到消息会一起回复。
 
+每次生成时在聊天记录之后、末尾指令之前加一条时间提示（`src/time-context.ts`，ADR 0004 决策 2）：当前日期、星期和时间（本机时区），
+距上一条消息多久（对方连发几条时按第一条算），以及对方的消息如果是 10 分钟以前发的（例如停机期间发的），是什么时候发的。
+这部分 ST 里没有，用 SillyTavern 试聊时提示词会比运行时少这一条。
+
 每次连上 NapCat（启动或断线重连）先补回漏掉的消息：拉白名单里每人最近 20 条私聊，比本地最后一条新、本地又没有的补进聊天记录
 （按 QQ 消息 id 去重；小号自己发的算她说的）。补完后，最后一条没回的消息在 3 小时内就回一次，更早的只补记录，等对方下一条消息时一起回。
 bot 运行期间小号在手机上手动发的消息不会推给 bot，聊天记录里没有它们。
@@ -55,6 +59,7 @@ bot 运行期间小号在手机上手动发的消息不会推给 bot，聊天记
 | `src/st/world-info.ts` | `public/scripts/world-info.js` 的 `checkWorldInfo` 关键词激活子集 |
 | `src/st/examples.ts` | `public/script.js` 的 `parseMesExamples`；`public/scripts/openai.js` 的 `parseExampleIntoIndividual`、`populateDialogueExamples` |
 | `src/st/macros.ts` | `{{user}}` `{{char}}` `{{original}}` `<USER>` `<BOT>` |
+| `src/st/time-macros.ts` | `public/scripts/macros/definitions/time-macros.js`：`{{time}}` `{{date}}` `{{weekday}}` `{{isotime}}` `{{isodate}}` `{{idleDuration}}`，按中文界面（moment zh-cn）格式化 |
 | `src/reply.ts` | `public/script.js` 的 `cleanUpMessage`（默认设置下生效的部分） |
 | `src/st/prompt-converters.ts` | `src/prompt-converters.js` 的 `postProcessPrompt` / `mergeMessages`（无工具、无多模态） |
 

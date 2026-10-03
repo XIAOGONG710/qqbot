@@ -17,6 +17,7 @@ import { loadCharacterCard } from './st/card.ts';
 import type { MacroNames } from './st/macros.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo } from './st/world-info.ts';
+import { describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 
 const log = (message: string) => console.log(`[${new Date().toLocaleString('zh-CN', { hour12: false })}] ${message}`);
@@ -48,20 +49,25 @@ function createContactResponder(contact: Contact) {
         userId: contact.qq,
         history,
         // last-prompt.json 记录的是后处理之后、实际发给模型的消息
-        buildPrompt: chat => withPostProcessing(buildPrompt({
-            character,
-            worldInfo,
-            history: chat,
-            userName: contact.name,
-            userPersona: contact.persona,
-            settings: {
-                maxContext: config.prompt.maxContext,
-                maxTokens: config.llm.maxTokens,
-                worldInfo: config.prompt.worldInfo,
-                pinExamples: config.prompt.pinExamples,
-            },
-            countTokens: estimateTokens,
-        }), names),
+        buildPrompt: chat => {
+            const now = new Date();
+            return withPostProcessing(buildPrompt({
+                character,
+                worldInfo,
+                history: chat,
+                userName: contact.name,
+                userPersona: contact.persona,
+                afterHistory: [describeTime(chat, now)],
+                now,
+                settings: {
+                    maxContext: config.prompt.maxContext,
+                    maxTokens: config.llm.maxTokens,
+                    worldInfo: config.prompt.worldInfo,
+                    pinExamples: config.prompt.pinExamples,
+                },
+                countTokens: estimateTokens,
+            }), names);
+        },
         generate: messages => chatCompletion(config.llm, messages, { log: contactLog }),
         clean: reply => cleanUpReply(reply, names),
         send: (userId, text) => client.sendPrivateText(userId, text),

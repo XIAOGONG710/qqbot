@@ -10,11 +10,13 @@
 //     - 示例对话（populateDialogueExamples）：每块前插一条 “[Example Chat]”，整块放得下才放，放不下就停；
 //       默认先放聊天记录、剩下的预算给示例，pinExamples（ST 的 Always include examples）时反过来
 //     - 每段一条 system 消息，空内容的消息丢弃
+//   宏：st/macros.ts（{{user}} {{char}} 等）和 st/time-macros.ts（时间宏）
 //   世界书扫描文本：public/script.js 里的 chatForWI（“名字: 内容”，最新在前）
 
 import type { Character } from './st/card.ts';
 import { parseExampleIntoIndividual, parseMesExamples } from './st/examples.ts';
 import { substituteMacros } from './st/macros.ts';
+import { timeMacros } from './st/time-macros.ts';
 import { checkWorldInfo, type WorldInfoEntry, type WorldInfoSettings } from './st/world-info.ts';
 
 /** Default.json 里用到的预设文本 */
@@ -31,6 +33,8 @@ export const ST_DEFAULT_PRESET = {
 export interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
+    /** ISO 时间，时间宏用 */
+    time?: string;
 }
 
 export interface OpenAIMessage {
@@ -59,6 +63,13 @@ export interface PromptInput {
     userName: string;
     /** 联系人的人设描述（对应 ST dummyId 100001 的 personaDescription，可选） */
     userPersona?: string;
+    /**
+     * 运行时自己加的内容（时间提示、召回的记忆），每段一条 system 消息，放在聊天记录之后、末尾指令之前。
+     * ST 里没有固定对应（相当于作者注放在聊天中 depth 0）；放在后面是因为每次都变，不让前面的前缀缓存失效。
+     */
+    afterHistory?: string[];
+    /** 时间宏用的当前时间，默认现在 */
+    now?: Date;
     settings: PromptSettings;
     countTokens: (text: string) => number;
     random?: () => number;
@@ -72,7 +83,9 @@ export interface PromptResult {
 export function buildPrompt(input: PromptInput): PromptResult {
     const { character, history, settings, countTokens } = input;
     const names = { user: input.userName, char: character.name };
-    const sub = (text: string, extra?: Record<string, string>) => substituteMacros(text, names, extra).replace(/\r/g, '');
+    const time = timeMacros(input.now ?? new Date(), history);
+    const sub = (text: string, extra?: Record<string, string>) =>
+        substituteMacros(text, names, { ...time, ...extra }).replace(/\r/g, '');
 
     const chatForWI = history
         .map(m => (settings.worldInfo.includeNames ? `${m.role === 'user' ? names.user : names.char}: ${m.content}` : m.content))
@@ -113,13 +126,14 @@ export function buildPrompt(input: PromptInput): PromptResult {
         system(wi.after),
     ];
     const newChat = system(sub(ST_DEFAULT_PRESET.newChatPrompt));
+    const afterHistory = (input.afterHistory ?? []).map(text => system(text));
     const tail = [system(jailbreak)];
 
     // 预算：上下文 - 回复预留 - 回复引导（ST 固定预留 3）- 固定部分；剩下的分给聊天记录和示例对话
     const cost = (m: OpenAIMessage) =>
         (m.content ? countTokens(m.role) + countTokens(m.content) + (m.name ? countTokens(m.name) : 0) : 0);
     let remaining = settings.maxContext - settings.maxTokens - 3
-        - [...head, newChat, ...tail].reduce((sum, m) => sum + cost(m), 0);
+        - [...head, newChat, ...afterHistory, ...tail].reduce((sum, m) => sum + cost(m), 0);
 
     const chat: OpenAIMessage[] = [];
     const addHistory = () => {
@@ -152,6 +166,6 @@ export function buildPrompt(input: PromptInput): PromptResult {
         addExamples();
     }
 
-    const messages = [...head, ...examples, newChat, ...chat, ...tail].filter(m => m.content);
+    const messages = [...head, ...examples, newChat, ...chat, ...afterHistory, ...tail].filter(m => m.content);
     return { messages, activatedWorldInfo: wi.activated };
 }

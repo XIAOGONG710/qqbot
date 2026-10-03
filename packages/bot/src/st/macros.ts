@@ -14,5 +14,5 @@ export function substituteMacros(text: string, names: MacroNames, extra: Record<
     return text
         .replace(/<USER>/gi, '{{user}}')
         .replace(/<BOT>/gi, '{{char}}')
-        .replace(/\{\{\s*([a-zA-Z]+)\s*\}\}/g, (whole, name: string) => values[name.toLowerCase()] ?? whole);
+        .replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (whole, name: string) => values[name.toLowerCase()] ?? whole);
 }
