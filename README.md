@@ -11,8 +11,8 @@ qqbot/
 │   └── NapCatQQ/           上游子模块（main 分支），仅作参考
 ├── packages/               自有代码：独立的 QQ 机器人服务与工具（Node.js / TypeScript）
 ├── characters/             角色资料（<角色>/legacy/ 为旧项目原样导入，不原地修改）
-├── docs/                   架构决策（adr/）、调研记录（research/）、路线图（roadmap.md）
-├── scripts/                本地开发脚本（启动 SillyTavern 等）
+├── docs/                   架构决策（adr/）、调研记录（research/）、路线图（roadmap.md）、NapCat 安装记录（napcat.md）
+├── scripts/                本地脚本（启动 SillyTavern、NapCat）
 ├── runtime/                本地运行数据（.gitignore 忽略）
 └── 思维链工作流.txt        工程决策流程
 ```
