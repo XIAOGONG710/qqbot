@@ -23,7 +23,8 @@ export function scenesToLorebook(scenes: Scene[], tier: string): WorldInfoBook {
             content: sceneContent(scene),
             // 放在角色设定之后、聊天记录之前
             position: WORLD_INFO_POSITION.after,
-            // 中文没有词边界，必须关掉整词匹配（不跟随 ST 的全局设置）
+            // 固定关掉整词匹配，不跟随 ST 的全局设置：整词匹配按 \W 判边界，
+            // 中文字符算边界，但关键词紧挨英文或数字（如“上分666”）时会匹配失败
             matchWholeWords: false,
         });
     });
