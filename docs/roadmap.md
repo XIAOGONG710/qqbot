@@ -52,8 +52,12 @@
   - 验证：`npm test`（67 项）。`prompt.test.ts` 断言人设描述排在世界书 before 之后、角色描述之前且宏已替换，对照 `Default.json` 100001 与 `openai.js:1433`；
     没配 `persona` 时拼出的消息与 100000 相同（原有顺序测试不变）。`runtime.test.ts` 覆盖配置里 `persona` 的校验。
     尚未实测：目前没有联系人配了 `persona`
-- [ ] `characters/linmengyao/tiers.toml`（可见性表 + 改写字段 + 各档禁用词）；转换器按档位生成 7 张角色卡和场景世界书，
+- [x] `characters/linmengyao/tiers.toml`（可见性表 + 改写字段 + 各档禁用词）；转换器按档位生成 7 张角色卡和场景世界书，
   测试保证低档位的卡里没有高档位的事实
+  - 验证：`npm test`（character-tools 15 项）：每档的卡里都没有这一档的禁用词（`tiers.toml` 的 `banned`），
+    只有男朋友和闺蜜档知道「他」是男朋友，名单外好友的卡承认是 AI、世界书去掉两条否认场景；
+    `persona.toml` 新字段没登记可见性、改写对不上原文都会报错。男朋友档生成的卡与原来的 `linmengyao.json` 只差 `tags` 和 `creator_notes`。
+    与 ADR 0003 附录的不同见该 ADR「实现时的调整」。尚未在 SillyTavern 里导入试聊
 - [ ] 运行时：联系人配置加 `tier`，按档位加载角色卡；名单外好友走 unlisted；联系人换档位时提示清理聊天记录
 - [ ] 用户给出联系人名单，逐档实测（至少男朋友、同学、名单外各一个号）
 

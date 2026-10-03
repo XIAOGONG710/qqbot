@@ -40,21 +40,27 @@
 
 ## st/：SillyTavern 格式（运行时的输入）
 
-由 `packages/character-tools` 从 `legacy/` 转换生成（`npm run convert -w @qqbot/character-tools`）：
+由 `packages/character-tools` 从 `legacy/` 和 `tiers.toml` 转换生成（`npm run convert -w @qqbot/character-tools`），
+按 [ADR 0003](../../docs/adr/0003-contact-tiers.md) 每个档位一张卡、一本场景世界书：
 
 | 文件 | 内容 |
 | --- | --- |
-| `linmengyao.json` | 角色卡 V2。`description` 是 persona 各章节；`personality` 是自我定位 + 三面性格；`scenario` 是“正在私聊的是男朋友”+ 对男朋友的说话方式；`system_prompt` / `post_history_instructions` 是 QQ 私聊的框架和说话方式。`extensions.world` 关联下面的世界书 |
-| `linmengyao-scenes-boyfriend.json` | 世界书：`speech_library.toml` 中档位含 `boyfriend` 的 48 个场景，触发词即关键词，命中才注入 |
+| `linmengyao-<档位>.json` | 角色卡 V2。`description` 是这一档能看到的 persona 各章节；`personality` 是自我定位 + 性格；`scenario` 是“正在私聊的是谁”+ 对这一档的说话方式；`system_prompt` / `post_history_instructions` 是 QQ 私聊的框架和说话方式；男朋友档还有示例对话（`mes_example`）。`tags` 是档位名，`extensions.world` 关联同档位的世界书 |
+| `linmengyao-scenes-<档位>.json` | 世界书：`speech_library.toml` 中这一档的场景，触发词即关键词，命中才注入。`girl_friend` 借用 `bestie` 的场景，`unlisted` 用 `stranger` 的场景去掉否认是 AI 的两条 |
 
-- 场景按档位各出一本世界书：ST 的世界书不能按“聊天对象是谁”过滤，混在一本里会把对陌生人的话注入到对他的回复里。M1 只生成男朋友档。
+档位：`boyfriend` 男朋友、`bestie` 死党闺蜜、`girl_friend` 女生熟人、`known` 熟人、`classmate` 同学、`stranger` 陌生人、`unlisted` 名单外好友。
+
+- `tiers.toml`（入库，不在 `legacy/` 里）：每个字段给哪些档位、对部分档位的改写、各档的说话方式与禁用词。
+  私密信息靠“不写进去”保护；低档位也不写“别提你有男朋友”，改成中性的一句“感情上的事不跟外人聊”。
+  每档的禁用词由测试检查，也留给 M4 的出口检查用。
+- 场景按档位各出一本世界书：ST 的世界书不能按“聊天对象是谁”过滤，混在一本里会把对陌生人的话注入到对他的回复里。
 - 没转的内容由转换脚本运行时列出：旧引擎参数（`[engine]` `[reply]` `[corpus]` `[vision]` 和 `[persona.social.warmth]`），
-  以及留给后续里程碑的 `[persona.daily_moods]`（M3）、其他档位的说话方式、`[persona.him]`、`[persona.social_extra]`（M2）。
-- 转换时对原文的改动只有两处：`[persona.traits]` 原文的“你”指他，改成“他”以统一人称；`[persona.dates]` 和 `money.phone` 的含义在键名里，输出时加了标签。
-  `system_prompt` 和 `post_history_instructions` 里“只输出要发出去的消息”是新加的，原资料里没有。
+  `[persona.daily_moods]`（M3）、`[persona.him]`、群聊的 `social.group`，以及被中性说法代替的 `social.secret`。
+- 转换时对原文的改动都写在 `tiers.toml` 的 `[[rewrite]]` 里（例如 `[persona.traits]` 原文的“你”指他，男朋友档改成“他”、其他档改成“人”）；
+  `[persona.dates]` 和 `money.phone` 的含义在键名里，输出时加了标签。`post_history_instructions` 里的输出规则和男朋友档的分寸、示例对话是新加的，原资料里没有。
 - `st/` 里的文件可以在 SillyTavern 里继续改、再导出覆盖回来。转换脚本发现目标文件内容不同时默认不覆盖，要重新生成须加 `--force`。
 
-在 SillyTavern 里试聊：先导入世界书（World Info → Import），再导入角色卡（角色列表 → Import），角色会按名字自动关联世界书。
+在 SillyTavern 里试聊某一档：先导入这一档的世界书（World Info → Import），再导入这一档的角色卡（角色列表 → Import），角色会按名字自动关联世界书。
 用 Chat Completion 接口、默认预设即可（`Prefer Char. Prompt` 保持开启，角色卡里的 `system_prompt` 才会生效）；把自己的 Persona 名字改成你的称呼。
 
 ## 隐私

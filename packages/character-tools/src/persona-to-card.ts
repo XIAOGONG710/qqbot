@@ -1,9 +1,10 @@
-// persona.toml → SillyTavern 角色卡 V2。
+// persona.toml + tiers.toml → 每个档位一张 SillyTavern 角色卡 V2（ADR 0003）。
 //
-// 每个键都必须在下面登记为“转换”或“跳过（附原因）”；出现未登记的键直接报错，
-// 保证 legacy 里的内容不会被悄悄漏掉。
+// persona.toml 的每个键都必须在下面登记为“转换”或“跳过（附原因）”；
+// 写进卡的字段还要在 tiers.toml 的 [visible] 里登记给哪些档位。
+// 出现未登记的键直接报错，保证 legacy 里的内容不会被悄悄漏掉，也不会悄悄给错档位。
 
-import { getString, getStringArray, getTable, type Table } from './legacy.ts';
+import { getString, getStringArray, getTable, isTable, type Table } from './legacy.ts';
 import type { CharacterCardV2 } from './st-format.ts';
 
 /** 顶层表：不是角色设定的旧引擎参数 */
@@ -42,36 +43,23 @@ const FIELD_LABELS: Record<string, string> = {
 /** [persona] 下暂不转换的表 */
 const SKIPPED_PERSONA: Record<string, string> = {
     daily_moods: 'M3：每日心情要由运行时按天抽取，ST 没有对应机制',
-    him: 'M2：别人提起他时的识别；含脱敏占位符',
-    social_extra: 'M2：对女生熟人的说话方式',
+    him: '别人提起他时的识别（旧引擎动态判定 known 档用）；含脱敏占位符',
 };
 
-/** [persona.social] 里只转男朋友档，其余档位留给 M2 */
-const SOCIAL_FOR_M1 = 'boyfriend';
+/** [persona.social] 里转换的档位说话方式，和跳过的键 */
+const SOCIAL_KEYS = ['boyfriend', 'roommate', 'classmate', 'stranger'];
 const SKIPPED_SOCIAL: Record<string, string> = {
-    roommate: 'M2：按对象分档',
-    classmate: 'M2：按对象分档',
-    stranger: 'M2：按对象分档',
-    group: 'M2：按对象分档（群聊）',
-    secret: 'M2：对外不提恋爱关系，只在非男朋友档有意义',
+    group: '群聊里程碑',
+    secret: '用 tiers.toml 的 discreet 代替：原句会让低档位知道她有男朋友',
     warmth: '旧引擎按档位的数值旋钮，不是角色设定',
 };
-
-/**
- * [persona.traits] 原文以他的视角写“你”（= 他），而卡里其余部分的“你”都是她。
- * 这里只改人称，并核对原文，原文一变就报错。
- */
-const TRAIT_PRONOUN_FIX: Record<string, [original: string, fixed: string]> = {
-    hard_but_caring: ['嘴硬，不吃逗，但会自己跑来关心你。', '嘴硬，不吃逗，但会自己跑来关心他。'],
-    clingy: ['会想你，会直接说。', '会想他，会直接说。'],
-    noisy: ['有力气的时候很吵，会拉着人一起玩。', '有力气的时候很吵，会拉着人一起玩。'],
-};
+const SOCIAL_EXTRA_KEYS = ['girl_friend'];
 
 const SYSTEM_PROMPT = '你是{{char}}，正在用 QQ 和{{user}}私聊。下面是你的设定。';
 
 /**
  * 输出规则，放在 post_history_instructions，离回复最近。
- * M2 每档一张卡时原样复用，所以只写对谁都成立的话；只属于男朋友档的写在下面的 BOYFRIEND_*。
+ * 所有档位共用，所以只写对谁都成立的话；只属于某个档位的分寸写在 tiers.toml 的 demeanor。
  */
 const OUTPUT_RULE = [
     '只输出你要发出去的消息：不写动作、神态、心理活动和旁白，不加引号，也不加名字前缀；括号只用来补充说明。',
@@ -81,33 +69,104 @@ const OUTPUT_RULE = [
     '身材的雷区只针对拿体重、胖瘦、身高挑刺或说笑；聊吃的、关心你吃没吃饭不算，别因此冷下来。',
 ].join('\n');
 
-/**
- * 男朋友档的说话分寸。10-04 实测她对男朋友嘴硬过头、变成怼人，探索分支加了情感底色和示例之后好转；
- * 这里按同样的意思重写：不点名禁用语，用示例示范语气。M2 生成分档卡时移进 tiers.toml，其他档位另写。
- */
-const BOYFRIEND_DEMEANOR = [
-    '你喜欢他，也依赖他。对他嘴硬是情侣间的玩笑：嘴上嫌他幼稚肉麻，心里是甜的，照样耐心接住他的话；不嫌弃他，不对他不耐烦，也不质问他。',
-    '他撒娇、说想你、聊没头没脑的事时，俏皮地接住；意见不同就说清自己的想法，不故意闹别扭。',
-].join('\n');
+export interface Tier {
+    name: string;
+    code: string;
+    /** scenario 第一句：正在聊天的 {{user}} 是谁 */
+    userIs: string;
+    /** description 开头说明「他」是男朋友 */
+    knowsHim: boolean;
+    /** 说话方式取 persona.toml 的哪个字段（social.* / social_extra.*） */
+    social?: string;
+    /** legacy 里没有、在 tiers.toml 里写的说话方式 */
+    socialText?: string;
+    discreet: boolean;
+    /** 场景世界书用 speech_library.toml 里哪个档位的场景 */
+    scenes: string;
+    dropScenes: string[];
+    demeanor: string;
+    /** [对方, 她的第一行, 她的后续几行…] */
+    examples: string[][];
+    banned: string[];
+}
 
-/** 男朋友档的示例对话：只示范语气和长短，不是发生过的事；她的回复每行会拆成一条 QQ 消息 */
-const BOYFRIEND_EXAMPLES: string[][] = [
-    ['你是不是想我了', '想了', '你问得这么直接，我都不好意思装了'],
-    ['今天忙到现在，饭还没吃', '啊？都几点了', '先去吃饭，吃完再回我'],
-    ['我觉得这片子特别好看', '前半段我也喜欢', '结尾我有点不服，那个反转像临时补的'],
-    ['你们这学期课难吗', '别的还行，概率论听得我头大', '老师讲得飞快，一低头再抬头就不知道讲到哪了'],
-    ['今天心情不太好', '怎么了宝宝', '想说就跟我说，不想说我就陪你待会儿'],
-    ['发张自拍看看', '不要，我现在头发乱得像鸡窝', '你就记着我好看的样子吧'],
-    ['今晚王者双排吗', '来，我玩貂蝉', '你跟紧我，别又一个人冲上去送'],
-    ['哈哈哈哈哈', '笑什么啦'],
-    ['我睡了，晚安', '晚安，明天见'],
-];
+interface Rewrite {
+    field: string;
+    tiers: Set<string>;
+    original?: string;
+    replace?: [from: string, to: string][];
+    text?: string;
+}
 
-/** [对方, 她的第一行, 她的后续几行] → ST 的 mes_example 文本 */
-function formatExamples(examples: string[][]): string {
-    return examples
-        .map(([user, first, ...rest]) => ['<START>', `{{user}}: ${user}`, `{{char}}: ${first}`, ...rest].join('\n'))
-        .join('\n');
+export interface TierConfig {
+    tiers: Tier[];
+    /** 字段路径 → 可见的档位名 */
+    visible: Map<string, Set<string>>;
+    rewrites: Rewrite[];
+    discreet: string;
+}
+
+export function parseTierConfig(toml: Table): TierConfig {
+    const where = 'tiers.toml';
+    const tierTable = getTable(toml, 'tier', where);
+    const tiers = Object.keys(tierTable).map((name): Tier => {
+        const t = getTable(tierTable, name, `${where} tier`);
+        const at = `${where} tier.${name}`;
+        const optionalString = (key: string) => (t[key] === undefined ? undefined : getString(t, key, at));
+        const examples = t.examples ?? [];
+        if (!Array.isArray(examples) || !examples.every(e => Array.isArray(e) && e.length >= 2 && e.every(x => typeof x === 'string'))) {
+            throw new Error(`${at}.examples 应为 [对方, 她, ...] 的数组`);
+        }
+        return {
+            name,
+            code: getString(t, 'code', at),
+            userIs: getString(t, 'user_is', at),
+            knowsHim: t.knows_him === true,
+            social: optionalString('social'),
+            socialText: optionalString('social_text'),
+            discreet: t.discreet === true,
+            scenes: getString(t, 'scenes', at),
+            dropScenes: t.drop_scenes === undefined ? [] : getStringArray(t, 'drop_scenes', at),
+            demeanor: optionalString('demeanor') ?? '',
+            examples: examples as string[][],
+            banned: getStringArray(t, 'banned', at),
+        };
+    });
+    const byCode = new Map(tiers.map(t => [t.code, t.name]));
+    if (byCode.size !== tiers.length) throw new Error(`${where} 档位代号重复`);
+    const decode = (codes: string, at: string) => new Set([...codes].map(code => {
+        const name = byCode.get(code);
+        if (!name) throw new Error(`${at} 里的档位代号 ${code} 不存在`);
+        return name;
+    }));
+    for (const tier of tiers) {
+        if (!tier.social === !tier.socialText) throw new Error(`${where} tier.${tier.name} 要有 social 或 social_text 之一`);
+    }
+
+    const visibleTable = getTable(toml, 'visible', where);
+    const visible = new Map(Object.keys(visibleTable).map(path => [path, decode(getString(visibleTable, path, `${where} visible`), `visible."${path}"`)]));
+
+    const rewritesRaw = toml.rewrite ?? [];
+    if (!Array.isArray(rewritesRaw)) throw new Error(`${where} rewrite 应为 [[rewrite]] 数组`);
+    const rewrites = rewritesRaw.map((raw: unknown, i): Rewrite => {
+        const at = `${where} rewrite[${i}]`;
+        if (!isTable(raw)) throw new Error(`${at} 应为表`);
+        const replace = raw.replace;
+        if (replace !== undefined && !(Array.isArray(replace) && replace.every(p => Array.isArray(p) && p.length === 2 && p.every(x => typeof x === 'string')))) {
+            throw new Error(`${at}.replace 应为 [原文片段, 新片段] 的数组`);
+        }
+        const text = raw.text === undefined ? undefined : getString(raw, 'text', at);
+        if ((replace === undefined) === (text === undefined)) throw new Error(`${at} 要有 replace 或 text 之一`);
+        return {
+            field: getString(raw, 'field', at),
+            tiers: decode(getString(raw, 'tiers', at), `${at}.tiers`),
+            original: raw.original === undefined ? undefined : getString(raw, 'original', at),
+            replace: replace as [string, string][] | undefined,
+            text,
+        };
+    });
+
+    return { tiers, visible, rewrites, discreet: getString(toml, 'discreet', where) };
 }
 
 export interface CardOptions {
@@ -115,60 +174,74 @@ export interface CardOptions {
     world: string;
 }
 
-export function personaToCard(personaToml: Table, options: CardOptions): CharacterCardV2 {
+export function personaToCard(personaToml: Table, config: TierConfig, tierName: string, options: CardOptions): CharacterCardV2 {
+    const tier = config.tiers.find(t => t.name === tierName);
+    if (!tier) throw new Error(`tiers.toml 里没有档位 ${tierName}`);
+
     for (const key of Object.keys(personaToml)) {
         if (key !== 'persona' && !(key in SKIPPED_TOP_LEVEL)) throw new Error(`persona.toml 顶层出现未登记的键：${key}`);
     }
     const persona = getTable(personaToml, 'persona', 'persona.toml');
-
-    const handled = new Set(['name', 'identity', 'personality', 'reply_style', 'traits', 'social', 'redlines',
+    const handled = new Set(['name', 'identity', 'personality', 'reply_style', 'traits', 'social', 'social_extra', 'redlines',
         ...DESCRIPTION_SECTIONS.map(([key]) => key), ...Object.keys(SKIPPED_PERSONA)]);
     for (const key of Object.keys(persona)) {
         if (!handled.has(key)) throw new Error(`[persona] 出现未登记的键：${key}`);
     }
-
     for (const path of Object.keys(FIELD_LABELS)) {
         const [section = '', field = ''] = path.split('.');
         if (!(field in getTable(persona, section, 'persona'))) throw new Error(`FIELD_LABELS 指向不存在的字段：${path}`);
     }
+    checkKeys(getTable(persona, 'social', 'persona'), [...SOCIAL_KEYS, ...Object.keys(SKIPPED_SOCIAL)], 'persona.social');
+    checkKeys(getTable(persona, 'social_extra', 'persona'), SOCIAL_EXTRA_KEYS, 'persona.social_extra');
+
+    // 写进卡的字段（traits 和 description 各章节）都要登记可见性，登记的也都要存在
+    const gated = ['traits', ...DESCRIPTION_SECTIONS.map(([key]) => key)]
+        .flatMap(section => Object.keys(getTable(persona, section, 'persona')).map(field => `${section}.${field}`));
+    for (const path of gated) if (!config.visible.has(path)) throw new Error(`tiers.toml [visible] 没有登记 ${path}`);
+    for (const path of config.visible.keys()) if (!gated.includes(path)) throw new Error(`tiers.toml [visible] 登记了不存在的字段 ${path}`);
+
+    // 按档位改写后的字段原文
+    const text = (path: string): string => {
+        const [section = '', field = ''] = path.split('.');
+        const original = getString(getTable(persona, section, 'persona'), field, `persona.${section}`);
+        const rewrite = config.rewrites.find(r => r.field === path && r.tiers.has(tier.name));
+        return rewrite ? applyRewrite(rewrite, original) : original;
+    };
+    // 每条改写在所有档位上都检查一遍，不只是当前档位用到的
+    for (const rewrite of config.rewrites) {
+        const [section = '', field = ''] = rewrite.field.split('.');
+        applyRewrite(rewrite, getString(getTable(persona, section, 'persona'), field, `persona.${section}`));
+    }
+    const sees = (path: string) => config.visible.get(path)!.has(tier.name);
 
     const name = getString(persona, 'name', 'persona');
 
-    // description：身份 + 各章节 + 不接的话题
-    const parts = [`{{char}}，${getString(persona, 'identity', 'persona')}。下文的「你」就是{{char}}，「他」是你的男朋友。`];
+    // description：身份 + 这一档能看到的各章节 + 不接的话题
+    const intro = `{{char}}，${getString(persona, 'identity', 'persona')}。下文的「你」就是{{char}}${tier.knowsHim ? '，「他」是你的男朋友' : ''}。`;
+    const parts = [intro];
     for (const [key, title] of DESCRIPTION_SECTIONS) {
-        const section = getTable(persona, key, 'persona');
-        const lines = Object.keys(section).map(field => {
-            const text = getString(section, field, `persona.${key}`);
-            const label = FIELD_LABELS[`${key}.${field}`];
-            return label ? `${label}：${text}` : text;
-        });
-        parts.push(`【${title}】\n${lines.join('\n')}`);
+        const lines = Object.keys(getTable(persona, key, 'persona'))
+            .filter(field => sees(`${key}.${field}`))
+            .map(field => {
+                const label = FIELD_LABELS[`${key}.${field}`];
+                return label ? `${label}：${text(`${key}.${field}`)}` : text(`${key}.${field}`);
+            });
+        if (lines.length) parts.push(`【${title}】\n${lines.join('\n')}`);
     }
     const redlines = getTable(persona, 'redlines', 'persona');
     checkKeys(redlines, ['keywords', 'note'], 'persona.redlines');
     parts.push(`【不接的话题】\n${getStringArray(redlines, 'keywords', 'persona.redlines').join('、')}。${getString(redlines, 'note', 'persona.redlines')}`);
 
-    // personality：自我定位 + 三面性格
-    const traits = getTable(persona, 'traits', 'persona');
-    checkKeys(traits, Object.keys(TRAIT_PRONOUN_FIX), 'persona.traits');
-    const traitLines = Object.entries(TRAIT_PRONOUN_FIX).map(([key, [original, fixed]]) => {
-        const text = getString(traits, key, 'persona.traits');
-        if (text !== original) throw new Error(`persona.traits.${key} 与预期原文不符，请核对人称改写：${text}`);
-        return fixed;
-    });
+    // personality：自我定位 + 这一档能看到的性格
+    const traitLines = Object.keys(getTable(persona, 'traits', 'persona')).filter(f => sees(`traits.${f}`)).map(f => text(`traits.${f}`));
     const personality = [getString(persona, 'personality', 'persona'), ...traitLines].join('\n');
 
-    // scenario：当前聊天对象（M1 只有男朋友）
-    const social = getTable(persona, 'social', 'persona');
-    checkKeys(social, [SOCIAL_FOR_M1, ...Object.keys(SKIPPED_SOCIAL)], 'persona.social');
-    const scenario = [
-        '正在和你私聊的{{user}}就是你的男朋友，也就是设定里的「他」。',
-        getString(social, SOCIAL_FOR_M1, 'persona.social'),
-    ].join('\n');
+    // scenario：正在聊天的人是谁 + 对这一档的说话方式
+    const scenario = [tier.userIs, tier.socialText ?? text(tier.social!), tier.discreet ? config.discreet : '']
+        .filter(Boolean).join('\n');
 
     // post_history_instructions：说话方式放在聊天记录之后，离回复最近
-    const postHistory = [getString(persona, 'reply_style', 'persona'), OUTPUT_RULE, BOYFRIEND_DEMEANOR].join('\n');
+    const postHistory = [getString(persona, 'reply_style', 'persona'), OUTPUT_RULE, tier.demeanor].filter(Boolean).join('\n');
 
     return {
         spec: 'chara_card_v2',
@@ -179,17 +252,39 @@ export function personaToCard(personaToml: Table, options: CardOptions): Charact
             personality,
             scenario,
             first_mes: '',
-            mes_example: formatExamples(BOYFRIEND_EXAMPLES),
-            creator_notes: '由 packages/character-tools 从 characters/linmengyao/legacy/persona.toml 转换生成。',
+            mes_example: formatExamples(tier.examples),
+            creator_notes: `由 packages/character-tools 从 characters/linmengyao/legacy/persona.toml 和 tiers.toml 转换生成（档位 ${tier.name}）。`,
             system_prompt: SYSTEM_PROMPT,
             post_history_instructions: postHistory,
             alternate_greetings: [],
-            tags: [],
+            tags: [tier.name],
             creator: '',
             character_version: '',
             extensions: { world: options.world },
         },
     };
+}
+
+function applyRewrite(rewrite: Rewrite, original: string): string {
+    const where = `tiers.toml 对 ${rewrite.field} 的改写`;
+    if (rewrite.original !== undefined && rewrite.original !== original) {
+        throw new Error(`${where}：原文变了，请核对改写（现在是：${original}）`);
+    }
+    if (rewrite.text !== undefined) return rewrite.text;
+    let result = original;
+    for (const [from, to] of rewrite.replace!) {
+        const count = original.split(from).length - 1;
+        if (count !== 1) throw new Error(`${where}：「${from}」在原文里出现 ${count} 次，应恰好 1 次`);
+        result = result.replace(from, to);
+    }
+    return result;
+}
+
+/** [对方, 她的第一行, 她的后续几行] → ST 的 mes_example 文本 */
+function formatExamples(examples: string[][]): string {
+    return examples
+        .map(([user, first, ...rest]) => ['<START>', `{{user}}: ${user}`, `{{char}}: ${first}`, ...rest].join('\n'))
+        .join('\n');
 }
 
 /** 表里的键必须恰好是 expected（顺序不限） */

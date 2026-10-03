@@ -11,9 +11,14 @@ export function sceneContent(scene: Scene): string {
     return `[场景参考·${scene.kind}] 类似的话你可能会这样回：${quote(scene.examples)}；不要回：${quote(scene.avoid)}。只学语气和长短，别照抄。`;
 }
 
-export function scenesToLorebook(scenes: Scene[], tier: string): WorldInfoBook {
-    const selected = scenes.filter(scene => scene.tier.includes(tier));
-    if (selected.length === 0) throw new Error(`没有档位为 ${tier} 的场景`);
+/** drop：按 id 去掉的场景（例如名单外好友不要「被问是不是 AI 就否认」的场景） */
+export function scenesToLorebook(scenes: Scene[], tier: string, drop: string[] = []): WorldInfoBook {
+    const ofTier = scenes.filter(scene => scene.tier.includes(tier));
+    if (ofTier.length === 0) throw new Error(`没有档位为 ${tier} 的场景`);
+    for (const id of drop) {
+        if (!ofTier.some(scene => scene.id === id)) throw new Error(`档位 ${tier} 的场景里没有要去掉的 ${id}`);
+    }
+    const selected = ofTier.filter(scene => !drop.includes(scene.id));
 
     const entries: WorldInfoBook['entries'] = {};
     selected.forEach((scene, uid) => {

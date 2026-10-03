@@ -7,7 +7,7 @@ import { DEFAULT_WORLD_INFO_SETTINGS, loadWorldInfo, parseWorldInfo } from '../s
 import { estimateTokens } from '../src/tokens.ts';
 
 const stDir = resolve(import.meta.dirname, '../../../characters/linmengyao/st');
-const card = loadCharacterCard(resolve(stDir, 'linmengyao.json'));
+const card = loadCharacterCard(resolve(stDir, 'linmengyao-boyfriend.json'));
 const lorebook = loadWorldInfo(resolve(stDir, `${card.world}.json`), card.world);
 
 const settings = { maxContext: 8192, maxTokens: 300, worldInfo: DEFAULT_WORLD_INFO_SETTINGS };

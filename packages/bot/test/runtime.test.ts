@@ -237,7 +237,7 @@ describe('配置', () => {
     const valid = {
         onebot: { url: 'ws://127.0.0.1:3001/' },
         llm: { baseUrl: 'https://example.com/v1', model: 'm' },
-        characterCard: 'characters/linmengyao/st/linmengyao.json',
+        characterCard: 'characters/linmengyao/st/linmengyao-boyfriend.json',
         contacts: [{ qq: 123456, name: '阿明' }],
     };
 

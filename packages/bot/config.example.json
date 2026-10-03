@@ -18,7 +18,7 @@
         "maxContext": 8192,
         "pinExamples": true
     },
-    "characterCard": "characters/linmengyao/st/linmengyao.json",
+    "characterCard": "characters/linmengyao/st/linmengyao-boyfriend.json",
     "contacts": [
         {
             "qq": 10001,

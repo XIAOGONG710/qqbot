@@ -1,6 +1,7 @@
 // 用法：npm run convert -w @qqbot/character-tools [-- --force]
 //
-// 把 characters/linmengyao/legacy/ 转成 characters/linmengyao/st/ 下的角色卡和世界书。
+// 把 characters/linmengyao/legacy/ 和 tiers.toml 转成 characters/linmengyao/st/ 下的角色卡和世界书，
+// 每个档位一张卡 linmengyao-<档位>.json、一本场景世界书 linmengyao-scenes-<档位>.json（ADR 0003）。
 // st/ 里的文件转换后可以在 SillyTavern 里继续改、再导出覆盖回来，
 // 所以目标文件已存在且内容不同时默认拒绝覆盖，确认要重新生成时加 --force。
 
@@ -8,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readScenes, readToml } from './legacy.ts';
-import { personaToCard, skippedForReport } from './persona-to-card.ts';
+import { parseTierConfig, personaToCard, skippedForReport } from './persona-to-card.ts';
 import { scenesToLorebook } from './scenes-to-lorebook.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -16,19 +17,21 @@ const characterDir = join(repoRoot, 'characters/linmengyao');
 const legacyDir = join(characterDir, 'legacy');
 const outDir = join(characterDir, 'st');
 
-// M1 只有男朋友一个聊天对象
-const TIER = 'boyfriend';
-const WORLD_NAME = `linmengyao-scenes-${TIER}`;
-
 const force = process.argv.includes('--force');
 
-const card = personaToCard(readToml(join(legacyDir, 'persona.toml')), { world: WORLD_NAME });
-const lorebook = scenesToLorebook(readScenes(join(legacyDir, 'speech_library.toml')), TIER);
+const persona = readToml(join(legacyDir, 'persona.toml'));
+const tiers = parseTierConfig(readToml(join(characterDir, 'tiers.toml')));
+const scenes = readScenes(join(legacyDir, 'speech_library.toml'));
 
-const outputs: [file: string, data: unknown][] = [
-    ['linmengyao.json', card],
-    [`${WORLD_NAME}.json`, lorebook],
-];
+const outputs: [file: string, data: unknown][] = [];
+const summary: string[] = [];
+for (const tier of tiers.tiers) {
+    const world = `linmengyao-scenes-${tier.name}`;
+    const lorebook = scenesToLorebook(scenes, tier.scenes, tier.dropScenes);
+    outputs.push([`linmengyao-${tier.name}.json`, personaToCard(persona, tiers, tier.name, { world })]);
+    outputs.push([`${world}.json`, lorebook]);
+    summary.push(`  ${tier.name}：世界书 ${Object.keys(lorebook.entries).length} 条场景（取 ${tier.scenes} 档${tier.dropScenes.length ? `，去掉 ${tier.dropScenes.join('、')}` : ''}）`);
+}
 
 mkdirSync(outDir, { recursive: true });
 let refused = false;
@@ -45,7 +48,8 @@ for (const [file, data] of outputs) {
     console.log(`写入 ${shown}`);
 }
 
-console.log(`世界书 ${WORLD_NAME}：${Object.keys(lorebook.entries).length} 条场景（档位 ${TIER}）`);
+console.log('档位：');
+for (const line of summary) console.log(line);
 console.log('未转换：');
 for (const [group, table] of Object.entries(skippedForReport)) {
     for (const [key, reason] of Object.entries(table)) console.log(`  ${group} ${key}：${reason}`);
