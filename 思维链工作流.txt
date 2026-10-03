@@ -1,0 +1,131 @@
+Universal Engineering Decision Tree
+
+Target (File / Module / Feature / Subsystem)
+│
+├─ Phase 1：Establish Facts（先建立事实）
+│   │
+│   ├─ 当前状态是什么？
+│   ├─ 是否真正存在问题？
+│   ├─ 是否可以复现？
+│   ├─ 是否有日志 / 编译器 / 测试作为证据？
+│   ├─ 是否有源码、文档、历史版本可参考？
+│   └─ 不允许凭经验推断，一切建立在可验证证据上。
+│
+├─ Phase 2：Dependency Analysis（分析依赖）
+│   │
+│   ├─ 谁依赖它？
+│   ├─ 它依赖谁？
+│   ├─ 是否属于关键路径？
+│   ├─ 是否属于独立模块？
+│   └─ 绘制最小依赖链，而不是只看单个文件。
+│
+├─ Phase 3：Scope Analysis（确认范围）
+│   │
+│   ├─ 当前阶段是否需要处理？
+│   ├─ 是否属于本 Milestone？
+│   ├─ 是否会影响当前目标？
+│   └─ 不属于当前范围的不提前处理。
+│
+├─ Phase 4：Classify the Work（分类）
+│   │
+│   ├─ Bug Fix
+│   ├─ API Migration
+│   ├─ Refactor
+│   ├─ Rewrite
+│   ├─ Compatibility
+│   ├─ Legacy Cleanup
+│   ├─ Performance
+│   └─ New Feature
+│
+├─ Phase 5：Find the Lowest-Cost Solution（寻找最低成本方案）
+│   │
+│   ├─ 是否已有官方方案？
+│   ├─ 是否已有上游实现？
+│   ├─ 是否已有成熟社区实现？
+│   ├─ 是否只需机械迁移？
+│   └─ 优先复用，不重复发明轮子。
+│
+├─ Phase 6：Validate Before Coding（编码前验证）
+│   │
+│   ├─ 修改后是否能够测试？
+│   ├─ 是否能够运行？
+│   ├─ 是否能够验证结果？
+│   ├─ 是否存在自动测试？
+│   └─ 如果无法验证，应谨慎进入 Rewrite。
+│
+├─ Phase 7：Decision（做出决策）
+│   │
+│   ├─ Restore
+│   │     保留设计，修复实现。
+│   │
+│   ├─ Migrate
+│   │     跟随新版本 API。
+│   │
+│   ├─ Refactor
+│   │     改善结构，不改变行为。
+│   │
+│   ├─ Rewrite
+│   │     仅当现有方案无法继续维护，
+│   │     且能够验证时进行。
+│   │
+│   ├─ Freeze
+│   │     当前阶段暂缓，
+│   │     记录恢复条件。
+│   │
+│   ├─ Deprecate
+│   │     保留兼容层，
+│   │     标记即将废弃。
+│   │
+│   └─ Remove
+│         满足：
+│         • 无引用
+│         • 无运行路径
+│         • 无兼容需求
+│         • 有充分证据证明可删除
+│
+├─ Phase 8：Risk Assessment（风险评估）
+│   │
+│   ├─ 是否影响数据？
+│   ├─ 是否影响兼容性？
+│   ├─ 是否影响公共 API？
+│   ├─ 是否影响用户？
+│   ├─ 是否影响性能？
+│   └─ 是否可能产生隐性运行时 Bug？
+│
+├─ Phase 9：Implementation Rules（实施原则）
+│   │
+│   ├─ 小步提交
+│   ├─ 每步可编译
+│   ├─ 每步可运行
+│   ├─ 每步可验证
+│   ├─ 不为消除错误而删除功能
+│   ├─ 不引入新的技术债
+│   └─ 优先修复根因，而不是症状。
+│
+├─ Phase 10：Regression Check（回归检查）
+│   │
+│   ├─ 是否修复了原问题？
+│   ├─ 是否产生新的问题？
+│   ├─ 是否保持行为一致？
+│   ├─ 是否保持数据兼容？
+│   └─ 是否通过测试？
+│
+└─ Phase 11：Knowledge Capture（知识沉淀）
+    │
+    ├─ 更新文档
+    ├─ 更新架构图
+    ├─ 更新 TODO
+    ├─ 更新迁移记录
+    ├─ 记录设计决策（ADR）
+    ├─ 记录证据链
+    ├─ 记录恢复条件
+    └─ 为下一次会话留下完整上下文，而不是依赖记忆。
+
+Golden Rule
+
+Never optimize for passing the compiler.
+Always optimize for preserving the architecture.
+
+不要为了消除编译错误而修改设计。
+不要为了完成阶段目标而破坏长期可维护性。
+任何改动都必须有证据、有验证、有回滚路径。
