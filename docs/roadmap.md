@@ -6,7 +6,9 @@
 
 男朋友在 QQ 私聊林梦瑶的小号，收到一条按角色卡生成的回复。
 
-- [ ] 环境：Node.js LTS（≥ 20）
+- [x] 环境：Node.js LTS（≥ 20）
+  - 验证：v24.21.0 zip 的 SHA-256 与官方 `SHASUMS256.txt` 一致，`SHASUMS256.txt.sig` GPG 验签通过（签名者在 nodejs/node 的 release keys 名单中）；
+    `node -v` → v24.21.0，`npm -v` → 11.19.0
 - [ ] SillyTavern 能启动，数据目录在 `runtime/`
 - [ ] 转换：legacy TOML → ST 角色卡 JSON + 世界书 JSON（`characters/linmengyao/st/`），能导入 SillyTavern 试聊
 - [ ] 运行时骨架：连 NapCat（OneBot 11 WS）、白名单单人私聊、按角色卡 + 世界书关键词拼提示词、调模型、回发；聊天记录存 `runtime/`
