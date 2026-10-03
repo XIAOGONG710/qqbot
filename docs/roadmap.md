@@ -32,7 +32,10 @@
 
 ## M1 之后的收尾（2026-10-04 与用户对齐）
 
-- [ ] 仓库推到 GitHub 私有仓库（XIAOGONG710 账号；装 gh CLI 建仓，推送前扫一遍历史里有没有密钥）
+- [x] 仓库推到 GitHub 私有仓库（XIAOGONG710 账号；装 gh CLI 建仓，推送前扫一遍历史里有没有密钥）
+  - 验证：推送前扫描全部历史 blob，OneBot token 与 DeepSeek key 原值 0 命中，其余疑似项均为公开的哈希 / 指纹；
+    `gh` 登录账号 XIAOGONG710（id 304879021），建 `XIAOGONG710/qqbot`，API 返回 `private=true`，远程 `main` 与本地 HEAD 一致，无 `runtime/`。
+    推送凭据只在本仓库配置（`git config --local credential.https://github.com.helper` → `gh auth git-credential`）
 - [x] `scripts/start-bot.ps1`：用户在自己的终端里运行 bot；同一时间只允许一个 bot 实例
   - 验证：`test/lock.test.ts`；实测 bot（PID 9128）运行中再用脚本启动第二个，拒绝并提示「已有一个 bot 在运行（PID 9128）」，退出码 1，没有连 NapCat
 - [x] 补回漏掉的消息：启动和重连 NapCat 时拉白名单里每人最近 20 条私聊，补进聊天记录（按 QQ 消息 id 去重，小号自己发的算她说的）；
