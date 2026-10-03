@@ -12,7 +12,10 @@
 - [x] SillyTavern 能启动，数据目录在 `runtime/`
   - 验证：`scripts/start-sillytavern.ps1` 启动 1.19.0，日志显示 `Using config path` / `Using data root` 均在 `runtime/sillytavern/`；
     `http://127.0.0.1:8000/` 返回 200（标题 SillyTavern）；子模块 `git status --short --ignored` 只有被忽略的 `node_modules/`
-- [ ] 转换：legacy TOML → ST 角色卡 JSON + 世界书 JSON（`characters/linmengyao/st/`），能导入 SillyTavern 试聊
+- [x] 转换：legacy TOML → ST 角色卡 JSON + 世界书 JSON（`characters/linmengyao/st/`），能导入 SillyTavern 试聊
+  - 验证：`npm run convert -w @qqbot/character-tools` 生成，`npm test` 覆盖转换规则；角色卡和世界书已导入 SillyTavern 1.19.0（角色列表与世界书列表里都有）；
+    效果由用户确认：2026-10-04 通过 bot 在 QQ 上实测十余轮（同一份角色卡 + 世界书），回复内容与卡里设定一致（如「土豆」是楼下的三花猫）。
+    未在 SillyTavern 界面里试聊
 - [x] 运行时骨架：连 NapCat（OneBot 11 WS）、白名单私聊（都按男朋友处理）、按角色卡 + 世界书关键词拼提示词、调模型、回发；聊天记录存 `runtime/`
   - 验证：`npm test`（51 项）覆盖拼装、后处理、配置、回复清理、生成期间来新消息、模型请求重试；
     2026-10-04 实测（DeepSeek `deepseek-flash`，关思考模式）：白名单号私聊「在干嘛」，日志显示命中世界书「熟人随口招呼」，
