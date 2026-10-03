@@ -5,6 +5,7 @@ import { writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, type Contact } from './config.ts';
+import { acquireLock } from './lock.ts';
 import { ChatHistory } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import { isPrivateFriendMessage, OneBotClient, segmentsToText, type OneBotEvent } from './onebot.ts';
@@ -30,6 +31,9 @@ const whitelist = config.contacts.map(c => `${c.qq}（${c.name}）`).join('、')
 log(`角色 ${character.name}，世界书 ${character.world || '无'}（${worldInfo.length} 条），只回复这些 QQ 的私聊：${whitelist}`);
 
 const history = new ChatHistory(config.dataDir);
+// 放在 ChatHistory 之后：它会建好数据目录
+const releaseLock = acquireLock(join(config.dataDir, 'bot.lock'));
+process.on('exit', releaseLock);
 
 const client = new OneBotClient({ url: config.onebot.url, token: config.onebot.token, onEvent, log });
 
@@ -82,9 +86,12 @@ function onEvent(event: OneBotEvent): void {
     responder.receive(text, event.message_id, new Date(event.time * 1000));
 }
 
-process.on('SIGINT', () => {
-    client.stop();
-    process.exit(0);
-});
+// Ctrl+C 是 SIGINT；Windows 上直接关掉终端窗口是 SIGHUP
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    process.on(signal, () => {
+        client.stop();
+        process.exit(0);
+    });
+}
 
 client.start();

@@ -12,7 +12,7 @@ qqbot/
 ├── packages/               自有代码：独立的 QQ 机器人服务与工具（Node.js / TypeScript）
 ├── characters/             角色资料（<角色>/legacy/ 为旧项目原样导入，不原地修改）
 ├── docs/                   架构决策（adr/）、调研记录（research/）、路线图（roadmap.md）、NapCat 安装记录（napcat.md）
-├── scripts/                本地脚本（启动 SillyTavern、NapCat）
+├── scripts/                本地脚本（启动 SillyTavern、NapCat、bot）
 ├── runtime/                本地运行数据（.gitignore 忽略）
 └── 思维链工作流.txt        工程决策流程
 ```
@@ -59,6 +59,15 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-sillytavern.ps1
 
 浏览器打开 http://127.0.0.1:8000/ 。配置和数据在 `runtime/sillytavern/`（`config.yaml`、`data/`），子模块里不产生改动。
 首次运行会在子模块里执行 `npm ci`；升级 SillyTavern 子模块后，删掉 `vendor/SillyTavern/node_modules` 再启动，让依赖重装。
+
+## 运行 QQ 机器人
+
+先启动 NapCat（见 [docs/napcat.md](docs/napcat.md)），再启动 bot（配置见 [packages/bot/README.md](packages/bot/README.md)）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-napcat.ps1   # 一个终端
+powershell -ExecutionPolicy Bypass -File .\scripts\start-bot.ps1      # 另一个终端
+```
 
 ## 环境要求
 

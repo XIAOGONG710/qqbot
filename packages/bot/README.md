@@ -22,11 +22,14 @@ M1 只回复白名单（`contacts`）里的人的直接私聊（群聊、群临�
    [Environment]::SetEnvironmentVariable('QQBOT_LLM_API_KEY', '...', 'User')    # 必填
    [Environment]::SetEnvironmentVariable('QQBOT_ONEBOT_TOKEN', '...', 'User')   # NapCat 那边设了 token 就必填
    ```
-   然后在**新开的**终端里启动：
+3. 先启动 NapCat（`scripts/start-napcat.ps1`），再在另一个终端里启动 bot，Ctrl+C 或关掉窗口就停：
    ```powershell
-   npm start -w @qqbot/bot
+   powershell -ExecutionPolicy Bypass -File .\scripts\start-bot.ps1
    ```
-   配置文件换位置时用 `QQBOT_CONFIG` 指定。
+   脚本会在当前终端没有这两个环境变量时从用户级读取。配置文件换位置时用 `QQBOT_CONFIG` 指定。
+
+同一个数据目录只能跑一个 bot（锁文件 `runtime/bot/bot.lock`，里面是 PID），第二个会拒绝启动，免得每条消息被回两遍。
+进程被强杀后留下的锁，PID 已经不在了，下次启动会直接接管。
 
 回复按行拆成多条依次发出，条与条之间隔 1 秒，空行跳过（模型用换行表示连发几条）。
 模型接口连不上（连接超时、被拒、被重置、DNS 失败）时自动重试 2 次，间隔 1 秒、3 秒；HTTP 错误和整体超时不重试。
