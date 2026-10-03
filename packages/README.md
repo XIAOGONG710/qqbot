@@ -1,15 +1,11 @@
 # packages/
 
-本项目自有代码放在这里，**不直接改 `vendor/` 下的上游源码**。
+本项目自有代码。按 [ADR 0002](../docs/adr/0002-standalone-runtime.md)，这里是**独立的 Node.js / TypeScript 服务与工具**，
+不挂载进 SillyTavern，也不 import SillyTavern 的代码；**不直接改 `vendor/` 下的上游源码**。
 
-计划中的形态（尚未创建，按需落地）：
+计划中的包（尚未创建，名称可在实现时调整；避免叫 `runtime`，以免和根目录被忽略的 `runtime/` 数据目录混淆）：
 
-| 目录 | 类型 | 挂载到 SillyTavern 的位置 |
-| --- | --- | --- |
-| `st-server-plugin/` | ST 服务端插件（Node，`index.js`/`index.mjs` 或 `package.json` 的 `main`） | `vendor/SillyTavern/plugins/<name>/` |
-| `st-extension/` | ST 前端扩展（`manifest.json` + JS） | `vendor/SillyTavern/public/scripts/extensions/third-party/<name>/` |
-
-挂载方式：用目录联接（junction，无需管理员权限）把 `packages/<x>` 链接到上表位置。
-这两个位置都被 SillyTavern 自己的 `.gitignore` 忽略，所以链接后子模块工作区仍保持干净。
-
-服务端插件需要在 SillyTavern 的 `config.yaml` 中设置 `enableServerPlugins: true`（默认 `false`）。
+| 包 | 作用 |
+| --- | --- |
+| `bot/` | QQ 机器人服务：对接 NapCat（OneBot 11）、拼装提示词、调用模型、会话存储 |
+| `character-tools/` | 角色资料工具：legacy TOML → SillyTavern 角色卡 / 世界书 JSON 等 |

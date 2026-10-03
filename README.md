@@ -9,14 +9,16 @@ qqbot/
 ├── vendor/
 │   ├── SillyTavern/        上游子模块（release 分支），不直接修改
 │   └── NapCatQQ/           上游子模块（main 分支），仅作参考
-├── packages/               自有代码，通过 ST 插件 / 扩展机制挂载
+├── packages/               自有代码：独立的 QQ 机器人服务与工具（Node.js / TypeScript）
 ├── characters/             角色资料（<角色>/legacy/ 为旧项目原样导入，不原地修改）
-├── docs/adr/               架构决策记录
+├── docs/                   架构决策（adr/）、调研记录（research/）、路线图（roadmap.md）
 ├── runtime/                本地运行数据（.gitignore 忽略）
 └── 思维链工作流.txt        工程决策流程
 ```
 
-为什么这样组织，见 [ADR 0001](docs/adr/0001-repository-structure.md)。
+为什么这样组织，见 [ADR 0001](docs/adr/0001-repository-structure.md)；
+为什么运行时独立于 SillyTavern（SillyTavern 只用来编写角色），见 [ADR 0002](docs/adr/0002-standalone-runtime.md)。
+进度见 [路线图](docs/roadmap.md)。
 
 ## 获取代码
 
