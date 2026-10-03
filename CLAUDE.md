@@ -21,3 +21,6 @@ SillyTavern 只用来编写、试聊角色并定义数据格式（角色卡 / �
   安装前核对过：zip 的 SHA-256 与 `SHASUMS256.txt` 一致；`SHASUMS256.txt.sig` 由 Node 发布者 Antoine du Hamel
   （`5BE8A3F6C8A5C01D106C0AD820B1A390B168D356`，列于 nodejs/node README 的 release keys）签名有效。
   升级：下载新版 zip，按同样步骤核对后替换该目录。SillyTavern 要求 Node `>= 20`。
+- GitHub CLI v2.102.0，官方 `gh_2.102.0_windows_amd64.zip` 解压到 `%LOCALAPPDATA%\Programs\gh`（`bin\` 已加入用户 PATH，新终端生效）。
+  安装前核对过：zip 的 SHA-256 与 GitHub Release 资产摘要、官方 `checksums.txt` 三者一致；`gh.exe` 的 Authenticode 签名有效（GitHub, Inc.）。
+  登录账号须是 XIAOGONG710。
