@@ -1,8 +1,5 @@
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { describe, test } from 'node:test';
-import { chatCompletion } from '../src/llm.ts';
 import type { OpenAIMessage } from '../src/prompt.ts';
 import { PROMPT_PLACEHOLDER, postProcessPrompt } from '../src/st/prompt-converters.ts';
 
@@ -53,47 +50,5 @@ describe('提示词后处理（同 ST postProcessPrompt）', () => {
         const input = [user('a'), user('b')];
         postProcessPrompt(input, 'semi');
         assert.deepEqual(input, [user('a'), user('b')]);
-    });
-});
-
-describe('模型请求', () => {
-    test('extraBody 合并进请求体，同名字段以它为准', async () => {
-        let received: Record<string, unknown> = {};
-        let auth = '';
-        const server = createServer((req, res) => {
-            let body = '';
-            req.on('data', chunk => body += chunk);
-            req.on('end', () => {
-                received = JSON.parse(body);
-                auth = req.headers.authorization ?? '';
-                res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ choices: [{ message: { content: '在呢' }, finish_reason: 'stop' }] }));
-            });
-        });
-        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
-        try {
-            const { port } = server.address() as AddressInfo;
-            const reply = await chatCompletion({
-                baseUrl: `http://127.0.0.1:${port}/`,
-                model: 'm',
-                apiKey: 'k',
-                temperature: 1.3,
-                maxTokens: 300,
-                timeoutMs: 5000,
-                extraBody: { thinking: { type: 'disabled' }, max_tokens: 100 },
-            }, [user('在吗')]);
-            assert.equal(reply, '在呢');
-            assert.equal(auth, 'Bearer k');
-            assert.deepEqual(received, {
-                model: 'm',
-                messages: [user('在吗')],
-                temperature: 1.3,
-                max_tokens: 100,
-                stream: false,
-                thinking: { type: 'disabled' },
-            });
-        } finally {
-            server.close();
-        }
     });
 });

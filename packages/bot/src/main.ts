@@ -38,6 +38,7 @@ const responders = new Map(config.contacts.map(contact => [contact.qq, createCon
 
 function createContactResponder(contact: Contact) {
     const names = { user: contact.name, char: character.name };
+    const contactLog = (message: string) => log(`[${contact.qq}] ${message}`);
     return createResponder({
         userId: contact.qq,
         history,
@@ -50,10 +51,10 @@ function createContactResponder(contact: Contact) {
             settings: { maxContext: config.prompt.maxContext, maxTokens: config.llm.maxTokens, worldInfo: config.prompt.worldInfo },
             countTokens: estimateTokens,
         })),
-        generate: messages => chatCompletion(config.llm, messages),
+        generate: messages => chatCompletion(config.llm, messages, { log: contactLog }),
         clean: reply => cleanUpReply(reply, names),
         send: (userId, text) => client.sendPrivateText(userId, text),
-        log: message => log(`[${contact.qq}] ${message}`),
+        log: contactLog,
         onPrompt: prompt => writeFileSync(
             join(config.dataDir, 'last-prompt.json'),
             JSON.stringify({ qq: contact.qq, ...prompt }, null, 2),
