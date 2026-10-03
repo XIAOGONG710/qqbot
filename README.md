@@ -63,4 +63,4 @@ git commit -m "chore(vendor): bump SillyTavern to <版本>"
 ## 环境要求
 
 - Git
-- Node.js `>= 20`（SillyTavern `package.json` 的 engines 要求）
+- Node.js `>= 24`（`packages/` 直接运行 TypeScript；SillyTavern 本身要求 `>= 20`）

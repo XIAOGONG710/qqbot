@@ -1,0 +1,31 @@
+// speech_library.toml 的场景 → SillyTavern 世界书。
+//
+// 场景按对象档位（tier）区分，陌生人档的话绝不能出现在对男朋友的回复里。
+// ST 的世界书没有“按聊天对象过滤”，所以每个档位单独生成一本世界书，只收该档位的场景。
+
+import type { Scene } from './legacy.ts';
+import { newWorldInfoEntry, WORLD_INFO_POSITION, type WorldInfoBook } from './st-format.ts';
+
+export function sceneContent(scene: Scene): string {
+    const quote = (lines: string[]) => lines.map(x => `「${x}」`).join('');
+    return `[场景参考·${scene.kind}] 类似的话你可能会这样回：${quote(scene.examples)}；不要回：${quote(scene.avoid)}。只学语气和长短，别照抄。`;
+}
+
+export function scenesToLorebook(scenes: Scene[], tier: string): WorldInfoBook {
+    const selected = scenes.filter(scene => scene.tier.includes(tier));
+    if (selected.length === 0) throw new Error(`没有档位为 ${tier} 的场景`);
+
+    const entries: WorldInfoBook['entries'] = {};
+    selected.forEach((scene, uid) => {
+        entries[String(uid)] = newWorldInfoEntry(uid, {
+            key: scene.trigger,
+            comment: `${scene.kind}（${scene.id}）`,
+            content: sceneContent(scene),
+            // 放在角色设定之后、聊天记录之前
+            position: WORLD_INFO_POSITION.after,
+            // 中文没有词边界，必须关掉整词匹配（不跟随 ST 的全局设置）
+            matchWholeWords: false,
+        });
+    });
+    return { entries };
+}
