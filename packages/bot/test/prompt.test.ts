@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { buildPrompt, ST_DEFAULT_PRESET, type ChatMessage, type PromptInput } from '../src/prompt.ts';
+import { buildPrompt, ST_DEFAULT_PRESET, type ChatMessage, type OpenAIMessage, type PromptInput } from '../src/prompt.ts';
 import { loadCharacterCard, parseCharacterCard, type Character } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, loadWorldInfo, parseWorldInfo } from '../src/st/world-info.ts';
 import { estimateTokens } from '../src/tokens.ts';
@@ -31,15 +31,21 @@ describe('用林梦瑶的角色卡拼提示词', () => {
     test('消息顺序同 ST 默认预设，宏已替换', () => {
         const { messages } = build([{ role: 'user', content: '宝宝在干嘛' }]);
         const scene = lorebook.find(e => e.key.includes('在干嘛'))!;
-        assert.deepEqual(messages.map(m => m.role), ['system', 'system', 'system', 'system', 'system', 'system', 'user', 'system']);
         assert.equal(messages[0]!.content, '你是林梦瑶，正在用 QQ 和阿明私聊。下面是你的设定。');
         assert.ok(messages[1]!.content.startsWith('林梦瑶，在读学生。下文的「你」就是林梦瑶'));
         assert.equal(messages[2]!.content, card.personality);
         assert.ok(messages[3]!.content.startsWith('正在和你私聊的阿明就是你的男朋友'));
         assert.equal(messages[4]!.content, scene.content, '世界书 after 放在角色设定之后');
-        assert.equal(messages[5]!.content, ST_DEFAULT_PRESET.newChatPrompt);
-        assert.equal(messages[6]!.content, '宝宝在干嘛');
-        assert.equal(messages[7]!.content, card.postHistoryInstructions);
+        // 示例对话：每块一条 [Example Chat]，接着一问一答
+        const examples = messages.slice(5, -3);
+        const blocks = card.mesExample.split('<START>').length - 1;
+        assert.equal(examples.filter(m => m.content === ST_DEFAULT_PRESET.newExampleChatPrompt).length, blocks);
+        assert.deepEqual(examples.slice(0, 3).map(m => m.name), [undefined, 'example_user', 'example_assistant']);
+        assert.equal(examples.length, blocks * 3);
+        assert.deepEqual(messages.slice(-3).map(m => m.role), ['system', 'user', 'system']);
+        assert.equal(messages.at(-3)!.content, ST_DEFAULT_PRESET.newChatPrompt);
+        assert.equal(messages.at(-2)!.content, '宝宝在干嘛');
+        assert.equal(messages.at(-1)!.content, card.postHistoryInstructions);
         assert.ok(messages.every(m => !/\{\{|\}\}/.test(m.content)), '不应残留宏');
     });
 
@@ -97,8 +103,49 @@ describe('拼装规则', () => {
         assert.deepEqual(messages.slice(0, 3).map(m => m.content).slice(1), ['世界观', 'd']);
     });
 
-    test('有示例对话的角色卡报错（运行时尚未实现）', () => {
-        assert.throws(() => build([], { character: minimalCard({ mes_example: '<START>\n{{user}}: hi' }), worldInfo: [] }), /示例对话/);
+    test('示例对话按块拆开：每块前一条 [Example Chat]，按说话人分条带 name，放在聊天记录之前', () => {
+        const character = minimalCard({
+            description: 'd',
+            post_history_instructions: 'phi',
+            mes_example: '{{user}}: 在吗\n{{char}}: 在\n刚下课\n<START>\n{{user}}: 晚安\n{{user}}: 睡了\n{{char}}: 晚安',
+        });
+        const { messages } = build([{ role: 'user', content: '嗨' }], { character, worldInfo: [] });
+        const ex = (content: string, name: string): OpenAIMessage => ({ role: 'system', content, name });
+        assert.deepEqual(messages.slice(1), [
+            { role: 'system', content: 'd' },
+            { role: 'system', content: '[Example Chat]' },
+            ex('在吗', 'example_user'),
+            ex('在\n刚下课', 'example_assistant'),
+            { role: 'system', content: '[Example Chat]' },
+            ex('晚安\n阿明: 睡了', 'example_user'),
+            ex('晚安', 'example_assistant'),
+            { role: 'system', content: '[Start a new Chat]' },
+            { role: 'user', content: '嗨' },
+            { role: 'system', content: 'phi' },
+        ]);
+    });
+
+    test('示例对话默认用聊天记录剩下的预算，整块放不下就停；pinExamples 时先放示例', () => {
+        const block = (i: number) => `<START>\n{{user}}: 例${i}问，凑一点长度凑一点长度\n{{char}}: 例${i}答，凑一点长度凑一点长度`;
+        const character = minimalCard({ mes_example: [1, 2, 3].map(block).join('\n') });
+        const history: ChatMessage[] = Array.from({ length: 200 }, (_, i) => ({
+            role: i % 2 === 0 ? 'user' : 'assistant',
+            content: `第${i}条消息，凑一点长度凑一点长度凑一点长度`,
+        }));
+        const count = (pinExamples: boolean, length: number) => {
+            const { messages } = build(history.slice(-length), {
+                character, worldInfo: [], settings: { ...settings, maxContext: 1500, pinExamples },
+            });
+            return {
+                examples: messages.filter(m => m.name === 'example_user').length,
+                chat: messages.filter(m => m.role !== 'system').length,
+            };
+        };
+        assert.deepEqual(count(false, 4), { examples: 3, chat: 4 }, '记录少时示例都放得下');
+        assert.equal(count(false, 200).examples, 0, '记录占满预算时示例被挤掉');
+        const pinned = count(true, 200);
+        assert.equal(pinned.examples, 3, '置顶时示例始终保留');
+        assert.ok(pinned.chat < count(false, 200).chat, '置顶时聊天记录让出示例的预算');
     });
 
     test('不是角色卡的 JSON 报错', () => {

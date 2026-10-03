@@ -10,10 +10,11 @@ import { ChatHistory } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from './backfill.ts';
 import { isPrivateFriendMessage, OneBotClient, segmentsToText, type MessageEvent, type OneBotEvent } from './onebot.ts';
-import { assertSupportedCharacter, buildPrompt, type PromptResult } from './prompt.ts';
+import { buildPrompt, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
 import { createResponder } from './responder.ts';
 import { loadCharacterCard } from './st/card.ts';
+import type { MacroNames } from './st/macros.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo } from './st/world-info.ts';
 import { estimateTokens } from './tokens.ts';
@@ -24,7 +25,6 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const config = loadConfig(repoRoot);
 
 const character = loadCharacterCard(config.characterCard);
-assertSupportedCharacter(character);
 const worldInfo = character.world
     ? loadWorldInfo(join(dirname(config.characterCard), `${character.world}.json`), character.world)
     : [];
@@ -54,9 +54,14 @@ function createContactResponder(contact: Contact) {
             history: chat,
             userName: contact.name,
             userPersona: contact.persona,
-            settings: { maxContext: config.prompt.maxContext, maxTokens: config.llm.maxTokens, worldInfo: config.prompt.worldInfo },
+            settings: {
+                maxContext: config.prompt.maxContext,
+                maxTokens: config.llm.maxTokens,
+                worldInfo: config.prompt.worldInfo,
+                pinExamples: config.prompt.pinExamples,
+            },
             countTokens: estimateTokens,
-        })),
+        }), names),
         generate: messages => chatCompletion(config.llm, messages, { log: contactLog }),
         clean: reply => cleanUpReply(reply, names),
         send: (userId, text) => client.sendPrivateText(userId, text),
@@ -68,8 +73,8 @@ function createContactResponder(contact: Contact) {
     });
 }
 
-function withPostProcessing(prompt: PromptResult): PromptResult {
-    return { ...prompt, messages: postProcessPrompt(prompt.messages, config.llm.promptPostProcessing) };
+function withPostProcessing(prompt: PromptResult, names: MacroNames): PromptResult {
+    return { ...prompt, messages: postProcessPrompt(prompt.messages, config.llm.promptPostProcessing, names) };
 }
 
 // 每次连上 NapCat 先补回漏掉的消息；补完之前到的新消息先攒着，补完再按顺序处理

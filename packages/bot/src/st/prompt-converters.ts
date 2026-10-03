@@ -1,8 +1,10 @@
 // 发给模型前对消息列表的后处理，对照 vendor/SillyTavern/src/prompt-converters.js 的 postProcessPrompt / mergeMessages。
 // 取值同 ST 自定义接口（Custom, OpenAI-compatible）的 Prompt Post-Processing；ST 的 DeepSeek 接入固定用 semi。
-// 只实现无工具调用、无多模态、消息不带 name 的情况（运行时的消息都是这样），也没实现 single。
+// 只实现无工具调用、无多模态、单角色（没有群聊名字）的情况，也没实现 single。
+// 带 name 的只有示例对话：合并时 example_user / example_assistant 换成内容前的“名字: ”，name 去掉；不处理时原样保留 name。
 
 import type { OpenAIMessage } from '../prompt.ts';
+import type { MacroNames } from './macros.ts';
 
 export const PROMPT_POST_PROCESSING = ['', 'merge', 'semi', 'strict'] as const;
 export type PromptPostProcessing = (typeof PROMPT_POST_PROCESSING)[number];
@@ -10,17 +12,30 @@ export type PromptPostProcessing = (typeof PROMPT_POST_PROCESSING)[number];
 /** ST 的 promptPlaceholder 默认值（config.yaml 可改） */
 export const PROMPT_PLACEHOLDER = 'Let\'s get started.';
 
-export function postProcessPrompt(messages: OpenAIMessage[], type: PromptPostProcessing): OpenAIMessage[] {
+export function postProcessPrompt(messages: OpenAIMessage[], type: PromptPostProcessing, names: MacroNames): OpenAIMessage[] {
     switch (type) {
         case 'merge':
-            return mergeMessages(messages, { strict: false, placeholders: false });
+            return mergeMessages(removeNames(messages, names), { strict: false, placeholders: false });
         case 'semi':
-            return mergeMessages(messages, { strict: true, placeholders: false });
+            return mergeMessages(removeNames(messages, names), { strict: true, placeholders: false });
         case 'strict':
-            return mergeMessages(messages, { strict: true, placeholders: true });
+            return mergeMessages(removeNames(messages, names), { strict: true, placeholders: true });
         default:
             return messages;
     }
+}
+
+/** mergeMessages 开头的“Remove names from the messages” */
+function removeNames(messages: OpenAIMessage[], names: MacroNames): OpenAIMessage[] {
+    return messages.map(({ name, ...message }) => {
+        let content = message.content || '';
+        const prefix = message.role === 'system' && name === 'example_assistant' ? names.char
+            : message.role === 'system' && name === 'example_user' ? names.user
+                : name && message.role !== 'system' ? name
+                    : '';
+        if (prefix && !content.startsWith(`${prefix}: `)) content = `${prefix}: ${content}`;
+        return { ...message, content };
+    });
 }
 
 /**

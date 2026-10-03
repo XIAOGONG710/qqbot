@@ -22,7 +22,8 @@ export interface BotConfig {
         /** 同 ST 自定义接口的 Include Body Parameters */
         extraBody: Record<string, unknown>;
     };
-    prompt: { maxContext: number; worldInfo: WorldInfoSettings };
+    /** pinExamples：同 ST 的 Example Messages Behavior 选 Always include examples，默认否（同 ST 默认的逐步挤出） */
+    prompt: { maxContext: number; worldInfo: WorldInfoSettings; pinExamples: boolean };
     /** 角色卡路径；世界书按卡里的 extensions.world 在同目录找 <world>.json */
     characterCard: string;
     /** 白名单：只回复这些人的私聊。name 是提示词里的 {{user}}。M1 都按男朋友处理（分档见 roadmap M2） */
@@ -54,6 +55,11 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
     const str = (obj: Json, key: string, where: string): string => {
         const value = obj[key];
         if (typeof value !== 'string' || !value) throw new Error(`配置 ${where}.${key} 应为非空字符串`);
+        return value;
+    };
+    const bool = (obj: Json, key: string, where: string, fallback: boolean): boolean => {
+        const value = obj[key] ?? fallback;
+        if (typeof value !== 'boolean') throw new Error(`配置 ${where}.${key} 应为 true 或 false`);
         return value;
     };
     const num = (obj: Json, key: string, where: string, fallback?: number): number => {
@@ -109,6 +115,7 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
         prompt: {
             maxContext: num(prompt, 'maxContext', 'prompt', 8192),
             worldInfo: { ...DEFAULT_WORLD_INFO_SETTINGS, ...((prompt.worldInfo ?? {}) as Partial<WorldInfoSettings>) },
+            pinExamples: bool(prompt, 'pinExamples', 'prompt', false),
         },
         characterCard: resolvePath(repoRoot, str(file, 'characterCard', '')),
         contacts,

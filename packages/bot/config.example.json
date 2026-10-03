@@ -15,7 +15,8 @@
         }
     },
     "prompt": {
-        "maxContext": 8192
+        "maxContext": 8192,
+        "pinExamples": true
     },
     "characterCard": "characters/linmengyao/st/linmengyao.json",
     "contacts": [

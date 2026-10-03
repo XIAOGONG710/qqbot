@@ -7,10 +7,13 @@
 //   内容：public/scripts/openai.js preparePromptsForChatCompletion / populateChatCompletion / populateChatHistory
 //     - 角色卡的 system_prompt 覆盖 main，post_history_instructions 覆盖 jailbreak，{{original}} 是被覆盖的原文
 //     - 聊天记录前插一条系统消息 “[Start a new Chat]”；从最新往前放，放不下就停
+//     - 示例对话（populateDialogueExamples）：每块前插一条 “[Example Chat]”，整块放得下才放，放不下就停；
+//       默认先放聊天记录、剩下的预算给示例，pinExamples（ST 的 Always include examples）时反过来
 //     - 每段一条 system 消息，空内容的消息丢弃
 //   世界书扫描文本：public/script.js 里的 chatForWI（“名字: 内容”，最新在前）
 
 import type { Character } from './st/card.ts';
+import { parseExampleIntoIndividual, parseMesExamples } from './st/examples.ts';
 import { substituteMacros } from './st/macros.ts';
 import { checkWorldInfo, type WorldInfoEntry, type WorldInfoSettings } from './st/world-info.ts';
 
@@ -20,6 +23,7 @@ export const ST_DEFAULT_PRESET = {
     nsfw: '',
     jailbreak: '',
     newChatPrompt: '[Start a new Chat]',
+    newExampleChatPrompt: '[Example Chat]',
     personalityFormat: '{{personality}}',
     scenarioFormat: '{{scenario}}',
 };
@@ -32,6 +36,8 @@ export interface ChatMessage {
 export interface OpenAIMessage {
     role: 'system' | 'user' | 'assistant';
     content: string;
+    /** 只有示例对话带：example_user / example_assistant */
+    name?: string;
 }
 
 export interface PromptSettings {
@@ -40,6 +46,8 @@ export interface PromptSettings {
     /** 为回复预留的 token（ST 的 openai_max_tokens） */
     maxTokens: number;
     worldInfo: WorldInfoSettings;
+    /** ST 的 Example Messages Behavior 选 Always include examples（power_user.pin_examples）：示例先于聊天记录占预算 */
+    pinExamples?: boolean;
 }
 
 export interface PromptInput {
@@ -61,14 +69,8 @@ export interface PromptResult {
     activatedWorldInfo: WorldInfoEntry[];
 }
 
-/** 运行时没实现的角色卡功能，启动时检查 */
-export function assertSupportedCharacter(character: Character): void {
-    if (character.mesExample) throw new Error(`角色卡 ${character.name} 有示例对话（mes_example），运行时尚未实现`);
-}
-
 export function buildPrompt(input: PromptInput): PromptResult {
     const { character, history, settings, countTokens } = input;
-    assertSupportedCharacter(character);
     const names = { user: input.userName, char: character.name };
     const sub = (text: string, extra?: Record<string, string>) => substituteMacros(text, names, extra).replace(/\r/g, '');
 
@@ -113,19 +115,43 @@ export function buildPrompt(input: PromptInput): PromptResult {
     const newChat = system(sub(ST_DEFAULT_PRESET.newChatPrompt));
     const tail = [system(jailbreak)];
 
-    // 预算：上下文 - 回复预留 - 回复引导（ST 固定预留 3）- 固定部分；聊天记录从最新往前放
-    const cost = (m: OpenAIMessage) => (m.content ? countTokens(m.role) + countTokens(m.content) : 0);
+    // 预算：上下文 - 回复预留 - 回复引导（ST 固定预留 3）- 固定部分；剩下的分给聊天记录和示例对话
+    const cost = (m: OpenAIMessage) =>
+        (m.content ? countTokens(m.role) + countTokens(m.content) + (m.name ? countTokens(m.name) : 0) : 0);
     let remaining = settings.maxContext - settings.maxTokens - 3
         - [...head, newChat, ...tail].reduce((sum, m) => sum + cost(m), 0);
+
     const chat: OpenAIMessage[] = [];
-    for (let i = history.length - 1; i >= 0; i--) {
-        const m = history[i]!;
-        const message: OpenAIMessage = { role: m.role, content: m.content.replace(/\r/g, '') };
-        if (cost(message) > remaining) break;
-        remaining -= cost(message);
-        chat.unshift(message);
+    const addHistory = () => {
+        for (let i = history.length - 1; i >= 0; i--) {
+            const m = history[i]!;
+            const message: OpenAIMessage = { role: m.role, content: m.content.replace(/\r/g, '') };
+            if (cost(message) > remaining) break;
+            remaining -= cost(message);
+            chat.unshift(message);
+        }
+    };
+
+    const examples: OpenAIMessage[] = [];
+    const newExampleChat = system(sub(ST_DEFAULT_PRESET.newExampleChatPrompt));
+    const addExamples = () => {
+        for (const block of parseMesExamples(sub(character.mesExample))) {
+            const dialogue = [{ ...newExampleChat }, ...parseExampleIntoIndividual(block, names)];
+            const dialogueCost = dialogue.reduce((sum, m) => sum + cost(m), 0);
+            if (dialogueCost > remaining) break;
+            remaining -= dialogueCost;
+            examples.push(...dialogue);
+        }
+    };
+
+    if (settings.pinExamples) {
+        addExamples();
+        addHistory();
+    } else {
+        addHistory();
+        addExamples();
     }
 
-    const messages = [...head, newChat, ...chat, ...tail].filter(m => m.content);
+    const messages = [...head, ...examples, newChat, ...chat, ...tail].filter(m => m.content);
     return { messages, activatedWorldInfo: wi.activated };
 }

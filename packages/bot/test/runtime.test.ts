@@ -248,6 +248,7 @@ describe('配置', () => {
         assert.equal(config.llm.temperature, 1);
         assert.equal(config.llm.maxTokens, 300);
         assert.equal(config.prompt.worldInfo.depth, 2);
+        assert.equal(config.prompt.pinExamples, false);
         assert.equal(config.llm.promptPostProcessing, '');
         assert.deepEqual(config.llm.extraBody, {});
     });

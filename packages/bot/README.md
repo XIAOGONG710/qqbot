@@ -11,6 +11,8 @@ M1 只回复白名单（`contacts`）里的人的直接私聊（群聊、群临�
    - `contacts`：白名单，每项是 `qq`（会回复的 QQ 号，须是小号的好友）和 `name`（提示词里 `{{user}}` 的称呼）；每个号的聊天记录分开存。
      可选的 `persona` 是一两句“他是谁”（例如「同专业，坐你后排」），放在 ST 人设描述（`personaDescription`）的位置，可以用 `{{user}}` `{{char}}`
    - `prompt.maxContext`：上下文 token 上限（同 ST 的 Context Size），世界书预算和聊天记录截断都按它算
+   - `prompt.pinExamples`：同 ST 的 Example Messages Behavior 选 Always include examples，示例对话先占预算、不会被聊天记录挤掉；
+     默认 `false`（同 ST 默认的逐步挤出）。示例配置开着：示例对话是校正她语气的主要手段（调研方案 4.2 建议调试期常驻）
    - `llm.promptPostProcessing`：发送前的消息后处理，取值同 ST 自定义接口的 Prompt Post-Processing（`""` / `merge` / `semi` / `strict`），默认不处理
    - `llm.extraBody`：合并进请求体的额外参数，同 ST 自定义接口的 Include Body Parameters
 
@@ -51,6 +53,7 @@ bot 运行期间小号在手机上手动发的消息不会推给 bot，聊天记
 | --- | --- |
 | `src/prompt.ts` | `default/content/presets/openai/Default.json` 的顺序（`dummyId 100001`，含人设描述）；`public/scripts/openai.js` 的拼装与聊天记录截断 |
 | `src/st/world-info.ts` | `public/scripts/world-info.js` 的 `checkWorldInfo` 关键词激活子集 |
+| `src/st/examples.ts` | `public/script.js` 的 `parseMesExamples`；`public/scripts/openai.js` 的 `parseExampleIntoIndividual`、`populateDialogueExamples` |
 | `src/st/macros.ts` | `{{user}}` `{{char}}` `{{original}}` `<USER>` `<BOT>` |
 | `src/reply.ts` | `public/script.js` 的 `cleanUpMessage`（默认设置下生效的部分） |
 | `src/st/prompt-converters.ts` | `src/prompt-converters.js` 的 `postProcessPrompt` / `mergeMessages`（无工具、无多模态） |
@@ -59,6 +62,5 @@ bot 运行期间小号在手机上手动发的消息不会推给 bot，聊天记
 
 - token 数用 ST 的兜底估算（UTF-8 字节数 / 3.35），不是模型的真实分词器。世界书预算和聊天记录截断的边界会和 ST 略有出入。
 - 世界书用到运行时未实现的功能（递归、包含组、sticky / cooldown / delay、@@ 装饰器、角色设定前 / 后以外的插入位置等）时，启动直接报错。
-- 角色卡的示例对话（`mes_example`）尚未实现，有内容时启动报错。
 - 一次回复拆成几条发出后，聊天记录里是几条 assistant 消息；ST 里是一条带换行的消息。
   用 `semi` 后处理时，相邻几条会用空行合并成一条再发给模型，和 ST 只差在分隔符（空行而不是换行）。
