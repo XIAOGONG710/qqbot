@@ -33,6 +33,8 @@ try {
     # With 'Stop', PowerShell 5.1 turns node's stderr output into a terminating error.
     $ErrorActionPreference = 'Continue'
     node packages\bot\src\main.ts
+    $exitCode = $LASTEXITCODE
 } finally {
     Pop-Location
 }
+exit $exitCode
