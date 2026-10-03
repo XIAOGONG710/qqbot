@@ -20,3 +20,8 @@ export function cleanUpReply(text: string, names: MacroNames): string {
 
     return reply.trim();
 }
+
+/** 按行拆成几条消息：模型用换行表示连发几条（同一气泡里换行在 QQ 上不像真人），空行跳过 */
+export function splitReply(text: string): string[] {
+    return text.split('\n').map(line => line.trim()).filter(Boolean);
+}

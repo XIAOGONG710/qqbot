@@ -7,8 +7,8 @@ import { loadConfig } from '../src/config.ts';
 import { ChatHistory, type StoredMessage } from '../src/history.ts';
 import { isPrivateFriendMessage, segmentsToText } from '../src/onebot.ts';
 import type { PromptResult } from '../src/prompt.ts';
-import { cleanUpReply } from '../src/reply.ts';
-import { createResponder, type ResponderDeps } from '../src/responder.ts';
+import { cleanUpReply, splitReply } from '../src/reply.ts';
+import { createResponder, PART_GAP_MS, type ResponderDeps } from '../src/responder.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
 
@@ -20,6 +20,10 @@ describe('回复清理（同 ST cleanUpMessage 默认设置）', () => {
     test('以对方名字开头的整条作废，中途出现的截断', () => {
         assert.equal(cleanUpReply('阿明: 我来替你说', names), '');
         assert.equal(cleanUpReply('好呀\n阿明: 那走吧', names), '好呀');
+    });
+    test('按行拆成几条，空行和行首尾空白去掉', () => {
+        assert.deepEqual(splitReply('躺着呢 刷土豆的照片\n\n  怎么了嘛 \r\n这么晚'), ['躺着呢 刷土豆的照片', '怎么了嘛', '这么晚']);
+        assert.deepEqual(splitReply('\n \n'), []);
     });
 });
 
@@ -68,6 +72,7 @@ describe('回复调度', () => {
         const sent: string[] = [];
         const prompts: string[][] = [];
         const logs: string[] = [];
+        const gaps: number[] = [];
         let release: () => void = () => {};
         const deps: ResponderDeps = {
             userId: 1,
@@ -81,9 +86,10 @@ describe('回复调度', () => {
             clean: reply => reply.trim(),
             send: async (_id, text) => { sent.push(text); return 100 + sent.length; },
             log: message => logs.push(message),
+            sleep: async ms => { gaps.push(ms); },
             ...overrides,
         };
-        return { responder: createResponder(deps), stored, sent, prompts, logs, release: () => release() };
+        return { responder: createResponder(deps), stored, sent, prompts, logs, gaps, release: () => release() };
     }
 
     const tick = () => new Promise(r => setImmediate(r));
@@ -105,7 +111,7 @@ describe('回复调度', () => {
         assert.equal(stored[3]!.messageId, 101);
     });
 
-    test('对方一直在发：最多重新生成 2 次，之后照常发出', async () => {
+    test('对方一直在发：最多重新生成 2 次，之后照常发出，再回复没看到的那条', async () => {
         const { responder, sent, prompts, release } = setup();
         responder.receive('1', 1, new Date());
         for (let i = 2; i <= 4; i++) {
@@ -113,9 +119,13 @@ describe('回复调度', () => {
             responder.receive(String(i), i, new Date());
             release();
         }
+        await tick();
+        await tick();
+        release();
         await responder.whenIdle();
-        assert.equal(prompts.length, 3);
-        assert.deepEqual(sent, ['回复1']);
+        assert.deepEqual(prompts.map(p => p.at(-1)), ['user:1', 'user:2', 'user:3', 'assistant:回复1']);
+        assert.deepEqual(prompts[3], ['user:1', 'user:2', 'user:3', 'user:4', 'assistant:回复1']);
+        assert.deepEqual(sent, ['回复1', '回复2']);
     });
 
     test('发送之后才到的消息会再触发一次回复', async () => {
@@ -149,6 +159,46 @@ describe('回复调度', () => {
         await responder.whenIdle();
         assert.deepEqual(sent, ['好了']);
         assert.deepEqual(stored.map(m => m.content), ['在吗', '？', '好了']);
+    });
+
+    test('多行回复拆成几条依次发，每条单独记录', async () => {
+        const { responder, stored, sent, gaps } = setup({ generate: async () => '土豆是猫啊\n\n你能不能上点心\n我拍好多张呢' });
+        responder.receive('土豆是什么', 1, new Date());
+        await responder.whenIdle();
+        assert.deepEqual(sent, ['土豆是猫啊', '你能不能上点心', '我拍好多张呢']);
+        assert.deepEqual(gaps, [PART_GAP_MS, PART_GAP_MS]);
+        assert.deepEqual(stored.map(m => `${m.role}:${m.content}:${m.messageId}`), [
+            'user:土豆是什么:1', 'assistant:土豆是猫啊:101', 'assistant:你能不能上点心:102', 'assistant:我拍好多张呢:103',
+        ]);
+    });
+
+    test('发送期间来的消息排在已发出的后面，发完后再回复', async () => {
+        let replies = 0;
+        let onGap: () => void = () => {};
+        const { responder, stored, sent, prompts } = setup({
+            generate: async () => (++replies === 1 ? '第一条\n第二条' : '回你了'),
+            sleep: async () => { onGap(); },
+        });
+        onGap = () => { onGap = () => {}; responder.receive('等下', 2, new Date()); };
+        responder.receive('在吗', 1, new Date());
+        await responder.whenIdle();
+        assert.deepEqual(sent, ['第一条', '第二条', '回你了']);
+        assert.deepEqual(stored.map(m => `${m.role}:${m.content}`), [
+            'user:在吗', 'assistant:第一条', 'user:等下', 'assistant:第二条', 'assistant:回你了',
+        ]);
+        assert.deepEqual(prompts[1], ['user:在吗', 'assistant:第一条', 'user:等下', 'assistant:第二条']);
+    });
+
+    test('发到一半失败：已发出的照常记录，失败写进日志', async () => {
+        let sends = 0;
+        const { responder, stored, logs } = setup({
+            generate: async () => '一\n二',
+            send: async () => { if (++sends === 2) throw new Error('NapCat 未连接'); return 100 + sends; },
+        });
+        responder.receive('在吗', 1, new Date());
+        await responder.whenIdle();
+        assert.deepEqual(stored.map(m => `${m.role}:${m.content}`), ['user:在吗', 'assistant:一']);
+        assert.ok(logs.some(l => l.includes('回复失败：NapCat 未连接')));
     });
 
     test('清理后为空的回复不发送', async () => {
