@@ -8,7 +8,8 @@ import { loadConfig, type Contact } from './config.ts';
 import { acquireLock } from './lock.ts';
 import { ChatHistory } from './history.ts';
 import { chatCompletion } from './llm.ts';
-import { isPrivateFriendMessage, OneBotClient, segmentsToText, type OneBotEvent } from './onebot.ts';
+import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from './backfill.ts';
+import { isPrivateFriendMessage, OneBotClient, segmentsToText, type MessageEvent, type OneBotEvent } from './onebot.ts';
 import { assertSupportedCharacter, buildPrompt, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
 import { createResponder } from './responder.ts';
@@ -70,20 +71,73 @@ function withPostProcessing(prompt: PromptResult): PromptResult {
     return { ...prompt, messages: postProcessPrompt(prompt.messages, config.llm.promptPostProcessing) };
 }
 
+// 每次连上 NapCat 先补回漏掉的消息；补完之前到的新消息先攒着，补完再按顺序处理
+let syncing = false;
+const buffered: MessageEvent[] = [];
+
 function onEvent(event: OneBotEvent): void {
     if (event.post_type === 'meta_event' && event.meta_event_type === 'lifecycle') {
         log(`NapCat 账号 ${String(event.self_id)} 已就绪`);
+        syncing = true;
+        void syncMissed(Number(event.self_id)).finally(() => {
+            syncing = false;
+            for (const message of buffered.splice(0)) onMessage(message);
+            catchUpAll();
+        });
         return;
     }
     if (!isPrivateFriendMessage(event)) return;
+    if (syncing) buffered.push(event);
+    else onMessage(event);
+}
+
+function onMessage(event: MessageEvent): void {
     const responder = responders.get(event.user_id);
     if (!responder) {
         log(`忽略 QQ ${event.user_id} 的私聊（不在白名单）`);
         return;
     }
+    // 补回时可能已经从历史里拿到过这条
+    if (history.load(event.user_id).some(m => m.messageId === event.message_id)) return;
     const text = segmentsToText(event.message).trim();
     if (!text) return;
     responder.receive(text, event.message_id, new Date(event.time * 1000));
+}
+
+async function syncMissed(selfId: number): Promise<void> {
+    for (const contact of config.contacts) {
+        let fetched: HistoryMessage[] = [];
+        try {
+            const data = await client.call<{ messages: HistoryMessage[] }>('get_friend_msg_history', {
+                user_id: String(contact.qq),
+                count: BACKFILL_COUNT,
+            });
+            fetched = data.messages;
+        } catch (error) {
+            // 没有任何聊天记录时 NapCat 也报错（“消息…不存在”）
+            log(`[${contact.qq}] 拉取历史消息失败，跳过补回：${error instanceof Error ? error.message : String(error)}`);
+            continue;
+        }
+        const missed = findMissed(history.load(contact.qq), fetched, selfId);
+        for (const message of missed) history.append(contact.qq, message);
+        if (missed.length) {
+            const lines = missed.map(m => `${m.role === 'user' ? '对方' : '她'}：${m.content}`).join(' / ');
+            log(`[${contact.qq}] 补回 ${missed.length} 条漏掉的消息：${lines}`);
+        }
+    }
+}
+
+function catchUpAll(): void {
+    const now = new Date();
+    for (const contact of config.contacts) {
+        const stored = history.load(contact.qq);
+        if (shouldCatchUp(stored, now)) {
+            log(`[${contact.qq}] 有没回的消息，回复`);
+            responders.get(contact.qq)!.catchUp();
+        } else if (stored.at(-1)?.role === 'user') {
+            log(`[${contact.qq}] 没回的消息已超过 ${CATCH_UP_WINDOW_MS / 3_600_000} 小时，只补记录，等对方下一条消息时一起回`);
+        }
+    }
 }
 
 // Ctrl+C 是 SIGINT；Windows 上直接关掉终端窗口是 SIGHUP

@@ -201,6 +201,19 @@ describe('回复调度', () => {
         assert.ok(logs.some(l => l.includes('回复失败：NapCat 未连接')));
     });
 
+    test('catchUp：不记新消息，按现有记录回复一次；没有没回的消息时什么都不做', async () => {
+        const { responder, stored, sent } = setup({ generate: async () => '刚看到' });
+        stored.push({ time: 't', role: 'user', content: '在吗', messageId: 1 });
+        responder.catchUp();
+        await responder.whenIdle();
+        assert.deepEqual(sent, ['刚看到']);
+        assert.equal(stored.filter(m => m.role === 'user').length, 1);
+
+        responder.catchUp();
+        await responder.whenIdle();
+        assert.deepEqual(sent, ['刚看到']);
+    });
+
     test('清理后为空的回复不发送', async () => {
         const { responder, sent, logs } = setup({ generate: async () => '阿明: 替他说话', clean: r => cleanUpReply(r, names) });
         responder.receive('在吗', 1, new Date());

@@ -28,6 +28,8 @@ export interface ResponderDeps {
 
 export interface Responder {
     receive(text: string, messageId: number, time: Date): void;
+    /** 不记新消息，直接按现有聊天记录回复一次（补回漏掉的消息之后用） */
+    catchUp(): void;
     /** 当前没有在生成时 resolve（测试用） */
     whenIdle(): Promise<void>;
 }
@@ -81,13 +83,18 @@ export function createResponder(deps: ResponderDeps): Responder {
         }
     }
 
+    function schedule(): void {
+        pending = true;
+        running ??= loop().finally(() => { running = null; });
+    }
+
     return {
         receive(text, messageId, time) {
             deps.history.append(deps.userId, { time: time.toISOString(), role: 'user', content: text, messageId });
             deps.log(`收到：${text}`);
-            pending = true;
-            running ??= loop().finally(() => { running = null; });
+            schedule();
         },
+        catchUp: schedule,
         whenIdle: () => running ?? Promise.resolve(),
     };
 }
