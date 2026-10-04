@@ -14,12 +14,11 @@ if (-not $env:QQBOT_CONFIG -and -not (Test-Path $configPath)) {
     throw "Missing $configPath - copy packages\bot\config.example.json there and fill it in"
 }
 
-# A terminal opened before the variables were set does not have them yet; read them from the user scope.
+# The user-scope variables are the source of truth: a terminal opened before a key was set or changed
+# still carries the old value, so take the user-scope one whenever it exists.
 foreach ($name in 'QQBOT_LLM_API_KEY', 'QQBOT_ONEBOT_TOKEN') {
-    if (-not [Environment]::GetEnvironmentVariable($name, 'Process')) {
-        $value = [Environment]::GetEnvironmentVariable($name, 'User')
-        if ($value) { [Environment]::SetEnvironmentVariable($name, $value, 'Process') }
-    }
+    $value = [Environment]::GetEnvironmentVariable($name, 'User')
+    if ($value) { [Environment]::SetEnvironmentVariable($name, $value, 'Process') }
 }
 if (-not $env:QQBOT_LLM_API_KEY) {
     throw "QQBOT_LLM_API_KEY is not set (see packages\bot\README.md)"
