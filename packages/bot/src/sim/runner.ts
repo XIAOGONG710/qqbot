@@ -137,6 +137,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         log,
         now: clock.now,
         settle: options.settle,
+        retryAfterMs: [],
         send: async (_userId, text) => {
             current.bubbles.push({ time: clock.now(), text });
             bubblesThisStep++;

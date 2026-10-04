@@ -9,7 +9,7 @@ import { ChatHistory, type StoredMessage } from '../src/history.ts';
 import { isPrivateFriendMessage, segmentsToText, senderName, type MessageEvent } from '../src/onebot.ts';
 import type { PromptResult } from '../src/prompt.ts';
 import { cleanUpReply, splitReply } from '../src/reply.ts';
-import { createResponder, DEFAULT_SETTLE, PART_GAP_MS, type ResponderDeps } from '../src/responder.ts';
+import { createResponder, DEFAULT_SETTLE, PART_GAP_MS, RETRY_AFTER_MS, type ResponderDeps } from '../src/responder.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
 
@@ -177,6 +177,65 @@ describe('回复调度', () => {
         await responder.whenIdle();
         assert.deepEqual(sent, ['好了']);
         assert.deepEqual(stored.map(m => m.content), ['在吗', '？', '好了']);
+    });
+
+    /** 等待由测试放行：记下每次等多久 */
+    function manualSleep() {
+        const waits: { ms: number; release: () => void }[] = [];
+        const sleep = (ms: number) => new Promise<void>(resolve => { waits.push({ ms, release: resolve }); });
+        return { waits, sleep };
+    }
+
+    test('回复失败：隔 1 分钟、5 分钟各再试一次，都失败就等对方下一条消息', async () => {
+        let calls = 0;
+        const { waits, sleep } = manualSleep();
+        const { responder, sent, logs } = setup({
+            retryAfterMs: RETRY_AFTER_MS,
+            sleep,
+            generate: async () => { calls++; throw new Error('模型接口请求失败（UND_ERR_CONNECT_TIMEOUT）'); },
+        });
+        responder.receive('在吗', 1, new Date());
+        await responder.whenIdle();
+        assert.equal(calls, 1);
+        for (const [i, wait] of waits.entries()) {
+            wait.release();
+            await tick();
+            await responder.whenIdle();
+            assert.equal(calls, i + 2);
+        }
+        assert.deepEqual(waits.map(w => w.ms), [60_000, 300_000]);
+        assert.deepEqual(sent, []);
+        assert.deepEqual(
+            logs.filter(l => l.startsWith('回复失败')).map(l => l.slice(l.lastIndexOf('，') + 1)),
+            ['1 分钟后再试', '5 分钟后再试', '等对方下一条消息再回'],
+        );
+    });
+
+    test('等着再试时对方发了新消息：照常回复、重新计次，之前排定的那次作废', async () => {
+        let calls = 0;
+        const { waits, sleep } = manualSleep();
+        const { responder, sent } = setup({
+            retryAfterMs: RETRY_AFTER_MS,
+            sleep,
+            generate: async () => { if (++calls <= 2) throw new Error('断网'); return '好了'; },
+        });
+        responder.receive('在吗', 1, new Date());
+        await responder.whenIdle();
+        responder.receive('人呢', 2, new Date());
+        await responder.whenIdle();
+        assert.equal(calls, 2);
+        assert.deepEqual(waits.map(w => w.ms), [60_000, 60_000]);
+
+        waits[0]!.release();
+        await tick();
+        await responder.whenIdle();
+        assert.equal(calls, 2);
+
+        waits[1]!.release();
+        await tick();
+        await responder.whenIdle();
+        assert.equal(calls, 3);
+        assert.deepEqual(sent, ['好了']);
     });
 
     test('多行回复拆成几条依次发，每条单独记录', async () => {

@@ -10,7 +10,7 @@ import type { Log } from './log.ts';
 import type { LongTermMemory } from './memory/long-term.ts';
 import { buildPrompt, type OpenAIMessage, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
-import { createResponder, DEFAULT_SETTLE, type Responder } from './responder.ts';
+import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from './responder.ts';
 import { loadCharacterCard, type Character } from './st/card.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
@@ -49,6 +49,8 @@ export interface ContactPipelineOptions {
     generate?: (messages: OpenAIMessage[], log: Log) => Promise<string>;
     /** 连发合并的等待，默认 DEFAULT_SETTLE（测试用短的） */
     settle?: { quietMs: number; maxMs: number };
+    /** 回复失败之后隔多久再试，默认 RETRY_AFTER_MS；模拟器传 []（它的时钟是虚拟的，真等几分钟会插进后面的步骤） */
+    retryAfterMs?: readonly number[];
 }
 
 export function createContactResponder(options: ContactPipelineOptions): Responder {
@@ -103,6 +105,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         log,
         now,
         settle: options.settle ?? DEFAULT_SETTLE,
+        retryAfterMs: options.retryAfterMs ?? RETRY_AFTER_MS,
         onPrompt: options.onPrompt,
     });
 }

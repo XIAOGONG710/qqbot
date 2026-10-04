@@ -6,12 +6,16 @@
 //   （最多重来 MAX_REGENERATE 次，之后照常发出，避免对方一直在打字时永远回不了）。
 // - 拆成几条发送的中途对方插话：剩下的几条已经过时，不再发；已经发出的照常记录，接着回复新消息。
 // 同一时间只生成一条回复。（打字延迟、已读不回等拟人化行为在 M4。）
+// 回复失败（多半是断网，llm.ts 里连接已经试了 5 次）：隔 retryAfterMs 再试，都失败就等对方下一条消息；
+// 对方发了新消息就照常回复、重新计次。
 
 const MAX_REGENERATE = 2;
 /** 拆开的几条之间隔多久 */
 export const PART_GAP_MS = 1000;
 /** 连发合并的默认值：静默约 2 秒，最长约 6 秒（调研方案 5.2 的起点） */
 export const DEFAULT_SETTLE = { quietMs: 2000, maxMs: 6000 };
+/** 回复失败之后的再试间隔：1 分钟、5 分钟各一次（10-04 与用户确认，不无限重试） */
+export const RETRY_AFTER_MS = [60_000, 300_000];
 
 import type { ChatHistory } from './history.ts';
 import type { ChatMessage, OpenAIMessage, PromptResult } from './prompt.ts';
@@ -35,6 +39,8 @@ export interface ResponderDeps {
     settle?: { quietMs: number; maxMs: number };
     /** 每次生成前把完整提示词交给调用方（main 写到 runtime/ 便于和 ST 对照） */
     onPrompt?: (prompt: PromptResult) => void;
+    /** 回复失败之后隔多久再试，每项一次；不传就不再试，等下一条消息 */
+    retryAfterMs?: readonly number[];
 }
 
 export interface Responder {
@@ -53,6 +59,11 @@ export function createResponder(deps: ResponderDeps): Responder {
     /** 最近一次收到消息的时间；这一串连发里第一条的收到时间（开始生成时清掉） */
     let lastReceived: number | undefined;
     let burstStart: number | undefined;
+    /** 连着失败了几次；有新消息或者成功一次就清零 */
+    let failures = 0;
+    /** 每排定一次再试加一；等待期间来了新消息也加一，等到的那次就不再触发 */
+    let retryToken = 0;
+    const retryAfter = deps.retryAfterMs ?? [];
     const sleep = deps.sleep ?? (ms => new Promise<void>(resolve => setTimeout(resolve, ms)));
     const now = deps.now ?? Date.now;
 
@@ -116,10 +127,27 @@ export function createResponder(deps: ResponderDeps): Responder {
             pending = false;
             try {
                 await respondOnce();
+                failures = 0;
             } catch (error) {
-                deps.log(`回复失败：${error instanceof Error ? error.message : String(error)}`);
+                const reason = `回复失败：${error instanceof Error ? error.message : String(error)}`;
+                const delay = retryAfter[failures];
+                if (delay === undefined) {
+                    deps.log(retryAfter.length ? `${reason}，等对方下一条消息再回` : reason);
+                    continue;
+                }
+                failures++;
+                deps.log(`${reason}，${delay / 60_000} 分钟后再试`);
+                const token = ++retryToken;
+                void sleep(delay).then(() => { if (token === retryToken) schedule(); });
             }
         }
+    }
+
+    /** 新消息或补回：之前排定的再试作废，重新计次 */
+    function restart(): void {
+        retryToken++;
+        failures = 0;
+        schedule();
     }
 
     function schedule(): void {
@@ -133,9 +161,9 @@ export function createResponder(deps: ResponderDeps): Responder {
             deps.log(`收到：${text}`);
             lastReceived = now();
             burstStart ??= lastReceived;
-            schedule();
+            restart();
         },
-        catchUp: schedule,
+        catchUp: restart,
         whenIdle: () => running ?? Promise.resolve(),
     };
 }
