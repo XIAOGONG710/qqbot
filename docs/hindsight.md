@@ -13,6 +13,7 @@
 | embedding | `intfloat/multilingual-e5-small`（多语言，384 维，ONNX，Hugging Face） | `runtime/hindsight/hf/` |
 | 抽取用的模型 | DeepSeek `deepseek-flash`，关思考，key 同 bot（`QQBOT_LLM_API_KEY`） | — |
 | 重排 | `rrf`（不用模型） | — |
+| 网页面板（可选） | `@vectorize-io/hindsight-control-plane` 0.10.2（npm，自带 Next.js 16.3.4 standalone 服务） | `runtime/hindsight/control-plane/` |
 
 依赖用 `scripts/hindsight/requirements.txt` 固定版本和哈希（195 个包，`uv pip compile --generate-hashes` 生成，不含 torch）。
 安装前核对过：`hindsight_api_slim-0.10.2-py3-none-any.whl` 的 SHA-256 `5f05c101…5f7f64`、`pg0_embedded-0.15.2-py3-none-win_amd64.whl` 的 `1b47c938…50d3e`
@@ -42,6 +43,31 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-hindsight.ps1
 第一次启动会下载 embedding 模型（约 470 MB）。健康检查：`http://127.0.0.1:8888/health`。
 
 启动顺序：NapCat → Hindsight → bot。bot 的 `runtime/bot/config.json` 里有 `memory` 段才会用；Hindsight 没开时 bot 照常回复，日志里记写入 / 召回失败。
+
+## 网页面板（Control Plane）
+
+用来浏览每个 bank 的事实、观察和关系概况。只是查看工具，bot 不依赖它。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\hindsight\install-control-plane.ps1   # 装一次
+powershell -ExecutionPolicy Bypass -File .\scripts\start-hindsight-ui.ps1                # 先开着 Hindsight，再开这个
+```
+
+浏览器打开 `http://localhost:9999`，Ctrl+C 停止。
+
+- 来源核对（2026-10-04）：npm tarball `hindsight-control-plane-0.10.2.tgz` 的 SHA-256 `ede0825a…a7d6c4` 与 GitHub release
+  `vectorize-io/hindsight` v0.10.2 里同名附件公布的 digest 一致；sha512 / sha1 与 npm registry 的 `dist.integrity` / `shasum` 一致；
+  registry 签名（key `SHA256:DhQ8wR5A…`）验证通过。这个包没有 npm provenance 证明。安装脚本固定版本和 SHA-256，下载后先核对再解压。
+- 包里自带构建好的 standalone 服务和它用到的 `node_modules`，启动入口 `bin/cli.js` 只运行 `standalone/server.js`，
+  所以不跑 `npm install`（`package.json` 里列的 42 个依赖是构建用的，运行时用不到），也不跑任何安装脚本。
+- 查过打包后的代码：没有统计上报或第三方请求，外部地址只是页面上的文档链接；启动脚本另外关掉了 Next.js telemetry。
+  面板的服务端代为请求 Hindsight API，浏览器只连面板。
+- **只监听本机**：面板默认监听 `0.0.0.0`，启动脚本改成 `127.0.0.1`（它实际以 `localhost` 绑定并固定解析到 IPv4）。
+  实测只有 `127.0.0.1:9999` 在监听，用本机局域网地址连不上。
+- 包里的图片处理库 sharp 只带 Linux 版，但面板的图片都是静态文件，没有用到它。
+- **不要在面板里改 mission**：bank 的 mission 由 bot 设定（`packages/bot/src/memory/long-term.ts`），只在代码里的 mission 变了时才重新写入，
+  面板里的修改不会同步回代码。删记忆、删文档同样会让 bot 本地的写入记录（`runtime/bot/memory/<QQ>.json`）对不上。
+- 升级：和 `requirements.txt` 里的 hindsight-api-slim 同步换版本，按上面的方法核对新 tarball 后改安装脚本里的版本和 SHA-256。
 
 ## 从头安装
 
