@@ -2,6 +2,7 @@
 // 机密项只从环境变量读取：
 //   QQBOT_LLM_API_KEY   模型接口的 key（必填）
 //   QQBOT_ONEBOT_TOKEN  NapCat OneBot 网络配置里的 token（NapCat 没设 token 时可不填）
+// Koishi 插件（ADR 0008）没有 onebot 一节（连接归 adapter-onebot），其余部分和 config.json 同形，走同一个 parseAppConfig。
 
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
@@ -15,8 +16,13 @@ export type ContactTier = (typeof CONTACT_TIERS)[number];
 export const UNLISTED_TIER = 'unlisted';
 export type Tier = ContactTier | typeof UNLISTED_TIER;
 
-export interface BotConfig {
+/** 独立入口（main.ts）的配置：连 NapCat 的 onebot 一节 + 其余部分 */
+export interface BotConfig extends AppConfig {
     onebot: { url: string; token: string };
+}
+
+/** 两个入口共用的部分 */
+export interface AppConfig {
     llm: {
         baseUrl: string;
         model: string;
@@ -70,32 +76,17 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
         throw new Error(`找不到配置文件 ${path}，参照 packages/bot/config.example.json 创建`);
     }
     const file = JSON.parse(readFileSync(path, 'utf8')) as Json;
-    const section = (key: string): Json => {
-        const value = file[key];
-        if (typeof value !== 'object' || value === null) throw new Error(`配置缺少 ${key}`);
-        return value as Json;
-    };
-    const str = (obj: Json, key: string, where: string): string => {
-        const value = obj[key];
-        if (typeof value !== 'string' || !value) throw new Error(`配置 ${where}.${key} 应为非空字符串`);
-        return value;
-    };
-    const bool = (obj: Json, key: string, where: string, fallback: boolean): boolean => {
-        const value = obj[key] ?? fallback;
-        if (typeof value !== 'boolean') throw new Error(`配置 ${where}.${key} 应为 true 或 false`);
-        return value;
-    };
-    const num = (obj: Json, key: string, where: string, fallback?: number): number => {
-        const value = obj[key] ?? fallback;
-        if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`配置 ${where}.${key} 应为数字`);
-        return value;
-    };
+    const app = parseAppConfig(file, repoRoot, env);
+    const onebot = section(file, 'onebot');
+    return { onebot: { url: str(onebot, 'url', 'onebot'), token: env.QQBOT_ONEBOT_TOKEN ?? '' }, ...app };
+}
 
+/** config.json 里除 onebot 之外的部分（Koishi 插件的配置也是这个形状）：校验、补默认值，相对路径按仓库根目录解析 */
+export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.ProcessEnv = process.env): AppConfig {
     const apiKey = env.QQBOT_LLM_API_KEY;
     if (!apiKey) throw new Error('缺少环境变量 QQBOT_LLM_API_KEY');
 
-    const onebot = section('onebot');
-    const llm = section('llm');
+    const llm = section(file, 'llm');
     const prompt = (file.prompt ?? {}) as Json;
     const postProcessing = llm.promptPostProcessing ?? '';
     if (!PROMPT_POST_PROCESSING.includes(postProcessing as PromptPostProcessing)) {
@@ -129,9 +120,9 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
     const characterCard = resolvePath(repoRoot, str(file, 'characterCard', ''));
     if (!characterCard.includes('{tier}')) throw new Error('配置 characterCard 应包含 {tier}，例如 characters/linmengyao/st/linmengyao-{tier}.json');
 
-    let memory: BotConfig['memory'];
+    let memory: AppConfig['memory'];
     if (file.memory !== undefined) {
-        const m = section('memory');
+        const m = section(file, 'memory');
         memory = {
             baseUrl: str(m, 'baseUrl', 'memory'),
             timeoutMs: num(m, 'timeoutMs', 'memory', 30_000),
@@ -141,7 +132,6 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
     }
 
     return {
-        onebot: { url: str(onebot, 'url', 'onebot'), token: env.QQBOT_ONEBOT_TOKEN ?? '' },
         llm: {
             baseUrl: str(llm, 'baseUrl', 'llm'),
             model: str(llm, 'model', 'llm'),
@@ -165,6 +155,30 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
         ...(memory ? { memory } : {}),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : 'runtime/bot'),
     };
+}
+
+function section(file: Json, key: string): Json {
+    const value = file[key];
+    if (typeof value !== 'object' || value === null) throw new Error(`配置缺少 ${key}`);
+    return value as Json;
+}
+
+function str(obj: Json, key: string, where: string): string {
+    const value = obj[key];
+    if (typeof value !== 'string' || !value) throw new Error(`配置 ${where}.${key} 应为非空字符串`);
+    return value;
+}
+
+function bool(obj: Json, key: string, where: string, fallback: boolean): boolean {
+    const value = obj[key] ?? fallback;
+    if (typeof value !== 'boolean') throw new Error(`配置 ${where}.${key} 应为 true 或 false`);
+    return value;
+}
+
+function num(obj: Json, key: string, where: string, fallback?: number): number {
+    const value = obj[key] ?? fallback;
+    if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`配置 ${where}.${key} 应为数字`);
+    return value;
 }
 
 function resolvePath(repoRoot: string, path: string): string {

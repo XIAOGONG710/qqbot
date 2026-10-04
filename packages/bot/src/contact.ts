@@ -2,7 +2,7 @@
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
 import { dirname, join } from 'node:path';
-import { UNLISTED_TIER, type BotConfig, type Contact, type Tier } from './config.ts';
+import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { reviewReply } from './exit-check.ts';
 import type { ChatHistory } from './history.ts';
 import { chatCompletion } from './llm.ts';
@@ -35,8 +35,8 @@ export function loadTierCard(pattern: string, tier: Tier): TierCard {
 export interface ContactPipelineOptions {
     contact: Contact;
     card: TierCard;
-    llm: BotConfig['llm'];
-    prompt: BotConfig['prompt'];
+    llm: AppConfig['llm'];
+    prompt: AppConfig['prompt'];
     history: Pick<ChatHistory, 'load' | 'append'>;
     /** 长期记忆；名单外的好友（unlisted 档）不用 */
     memory?: LongTermMemory;

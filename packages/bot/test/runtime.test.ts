@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { loadConfig } from '../src/config.ts';
+import { loadConfig, parseAppConfig } from '../src/config.ts';
 import { currentTierHistory, TierRecord } from '../src/tier-record.ts';
 import { ChatHistory, type StoredMessage } from '../src/history.ts';
 import { isPrivateFriendMessage, segmentsToText, senderName, type MessageEvent } from '../src/onebot.ts';
@@ -588,6 +588,17 @@ describe('配置', () => {
         assert.equal(withConfig({ ...valid, unlistedFriends: false }, key).unlistedFriends, false);
         assert.equal(withConfig(valid, key).schedule, true);
         assert.equal(withConfig({ ...valid, schedule: false }, key).schedule, false);
+    });
+
+    test('Koishi 插件的配置没有 onebot 一节，同样校验、补默认值、按仓库根目录解析路径；独立入口仍要 onebot', () => {
+        const { onebot: _, ...rest } = valid;
+        const config = parseAppConfig(rest, 'C:/repo', { QQBOT_LLM_API_KEY: 'k' });
+        assert.equal(config.llm.maxTokens, 300);
+        assert.equal(config.characterCard, resolve('C:/repo', 'characters/linmengyao/st/linmengyao-{tier}.json'));
+        assert.equal(config.dataDir, resolve('C:/repo', 'runtime/bot'));
+        assert.equal('onebot' in config, false);
+        assert.throws(() => parseAppConfig({ ...rest, contacts: [] }, 'C:/repo', { QQBOT_LLM_API_KEY: 'k' }), /contacts/);
+        assert.throws(() => withConfig(rest, { QQBOT_LLM_API_KEY: 'k' }), /配置缺少 onebot/);
     });
 });
 
