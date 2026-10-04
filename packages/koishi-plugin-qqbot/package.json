@@ -1,0 +1,20 @@
+{
+  "name": "koishi-plugin-qqbot",
+  "version": "0.0.0",
+  "private": true,
+  "description": "林梦瑶：按档位回复 QQ 私聊（ADR 0008）",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "peerDependencies": {
+    "koishi": "^4.18.11"
+  },
+  "koishi": {
+    "description": {
+      "zh": "林梦瑶：按档位回复 QQ 私聊，核心在 packages/bot（ADR 0008）"
+    }
+  }
+}
