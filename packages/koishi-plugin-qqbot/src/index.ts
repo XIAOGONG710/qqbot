@@ -10,7 +10,7 @@ import type * as Koishi from 'koishi';
 import type { Bot, Context, Session } from 'koishi';
 import { watch } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startApp, type Transport } from '../../bot/src/app.ts';
 import type { HistoryMessage } from '../../bot/src/backfill.ts';
@@ -18,6 +18,7 @@ import { CONTACT_TIERS, DEFAULTS, parseAppConfig, type AppConfig, type ContactTi
 import { createLog, type Log } from '../../bot/src/log.ts';
 import { isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '../../bot/src/st/prompt-converters.ts';
+import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 
 // koishi 的 ESM 入口是坏的（@koishijs/loader/lib/index.mjs 默认导入了一个 CJS 文件）：取 loader 自己用的那份 CJS
 const { Schema } = createRequire(import.meta.url)('koishi') as typeof Koishi;
@@ -247,6 +248,11 @@ let friendsLoaded = false;
 let friendsKey = '';
 
 export function apply(ctx: Context, config: Config) {
+    // 控制台的「林梦瑶」页面（ADR 0010）：注册一次，插件失败时也在
+    registerConsole(ctx, repoRoot);
+    const card = config.characterCard ?? CHARACTER_CARD;
+    setConsoleState({ running: false, error: undefined, status: undefined, character: characterPaths(isAbsolute(card) ? card : resolve(repoRoot, card)) });
+
     const migrated = migrateThinking(config);
     if (migrated) {
         ctx.logger('qqbot').info(`迁移配置：其他参数里的思考设置搬到「思考」控件（${THINKING_LABELS[migrated.llm.thinking!]}），请求体不变`);
@@ -259,7 +265,9 @@ export function apply(ctx: Context, config: Config) {
     try {
         appConfig = parseAppConfig(toAppConfigInput(config), repoRoot);
     } catch (error) {
-        throw plainError('配置有误，插件没有启动', error);
+        const plain = plainError('配置有误，插件没有启动', error);
+        setConsoleState({ error: plain.message });
+        throw plain;
     }
     // 同一份按天日志（runtime/bot/logs），grep 的核对方式不变；控制台里看 ctx.logger 那份
     const fileLog = createLog(join(appConfig.dataDir, 'logs'), undefined, () => {});
@@ -283,9 +291,15 @@ export function apply(ctx: Context, config: Config) {
     try {
         app = startApp({ config: appConfig, transport, log });
     } catch (error) {
-        throw plainError('插件没有启动', error);
+        const plain = plainError('插件没有启动', error);
+        setConsoleState({ error: plain.message });
+        throw plain;
     }
-    ctx.on('dispose', () => app.stop());
+    setConsoleState({ running: true, error: undefined, status: () => app.status() });
+    ctx.on('dispose', () => {
+        app.stop();
+        setConsoleState({ running: false, status: undefined });
+    });
 
     ctx.middleware((session, next) => {
         const event = (session as Session & { onebot?: OneBotEvent }).onebot;

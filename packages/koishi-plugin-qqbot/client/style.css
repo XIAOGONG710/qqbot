@@ -1,0 +1,33 @@
+/* 「林梦瑶」页面（ADR 0010）。颜色用控制台的变量，深浅色主题都跟着变 */
+.qqbot-page {
+    padding: 16px 24px;
+    height: 100%;
+    overflow: auto;
+    box-sizing: border-box;
+}
+
+.qqbot-summary {
+    display: grid;
+    gap: 8px;
+}
+
+.qqbot-summary-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.qqbot-label {
+    width: 96px;
+    flex: none;
+    color: var(--k-text-light);
+}
+
+.qqbot-muted {
+    color: var(--k-text-light);
+    font-size: 13px;
+}
+
+.qqbot-error {
+    color: var(--k-color-danger);
+}

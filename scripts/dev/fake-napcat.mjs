@@ -47,7 +47,8 @@ function serve(logFile) {
 
     const sent = [];
     const history = new Map(); // QQ 号 -> 消息（含小号发的），get_friend_msg_history 用
-    let messageId = 1000;
+    // 按启动时间起编号：bot 按消息 id 去重，重启假 NapCat 后从同一个数编起，新消息会被当成聊天记录里已有的
+    let messageId = Date.now() % 1_000_000_000;
     let socket;
     const push = (userId, message) => {
         if (!history.has(userId)) history.set(userId, []);
