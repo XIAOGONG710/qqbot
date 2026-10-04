@@ -11,6 +11,8 @@ export const TIER_LABELS = {
     classmate: '同学',
     stranger: '陌生人',
     unlisted: '名单外好友',
+    // 场景档里还有群聊（群聊还没做，ADR 0003）
+    group: '群聊',
 };
 
 export const tierLabel = tier => TIER_LABELS[tier] ?? tier;

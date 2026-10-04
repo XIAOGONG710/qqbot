@@ -177,8 +177,10 @@ class Checker {
         return (value as string).trim();
     }
 
+    /** 没写、null、空白都当作没写（页面上清空一个可选项时会留下空串） */
     optionalString(value: unknown): string | undefined {
-        return value === undefined || value === null ? undefined : this.string(value);
+        if (value === undefined || value === null || (typeof value === 'string' && !value.trim())) return undefined;
+        return this.string(value);
     }
 
     strings(value: unknown, { allowEmpty = true } = {}): string[] {
@@ -211,7 +213,7 @@ function textField(c: Checker, value: unknown, { gated }: { gated: boolean }): T
     const field: TextField = { text: c.at('text').string(o.text) };
     if (gated) field.tiers = c.at('tiers').strings(o.tiers);
     else if (o.tiers !== undefined) c.at('tiers').fail('这个字段不按档位过滤，不要写 tiers');
-    if (o.variants !== undefined) {
+    if (o.variants !== undefined && o.variants !== null && !(Array.isArray(o.variants) && o.variants.length === 0)) {
         field.variants = c.at('variants').array(o.variants).map((raw, i) => {
             const v = c.at(`variants[${i}]`);
             const variant = v.object(raw);
@@ -323,7 +325,10 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         if (social) tier.social = social;
         if (socialText) tier.social_text = socialText;
         if (flag('discreet')) tier.discreet = true;
-        if (o.drop_scenes !== undefined) tier.drop_scenes = c.at('drop_scenes').strings(o.drop_scenes);
+        if (o.drop_scenes !== undefined && o.drop_scenes !== null) {
+            const drop = c.at('drop_scenes').strings(o.drop_scenes);
+            if (drop.length) tier.drop_scenes = drop;
+        }
         const demeanor = c.at('demeanor').optionalString(o.demeanor);
         if (demeanor) tier.demeanor = demeanor;
         if ((examples as string[][]).length) tier.examples = (examples as string[][]).map(e => e.map(x => x.trim()));
@@ -367,7 +372,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
             const o = c.object(value);
             c.keys(o, ['name', 'start', 'end', 'where', 'partner', 'partner_back', 'note']);
             const holiday: ScheduleSource['holidays'][number] = { name: c.at('name').string(o.name), start: date(c.at('start'), o.start), end: date(c.at('end'), o.end) };
-            if (o.where !== undefined) holiday.where = byTier(c.at('where'), o.where);
+            if (o.where !== undefined && o.where !== null && !(Array.isArray(o.where) && o.where.length === 0)) holiday.where = byTier(c.at('where'), o.where);
             const partnerText = c.at('partner').optionalString(o.partner);
             if (partnerText) holiday.partner = partnerText;
             const back = c.at('partner_back').optionalString(o.partner_back);
@@ -392,7 +397,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
                 name: c.at('name').string(o.name), day: c.at('day').integer(o.day, 1, 7), slot,
                 room: c.at('room').string(o.room), kind, weeks: c.at('weeks').string(o.weeks),
             };
-            if (o.practice !== undefined) {
+            if (o.practice !== undefined && o.practice !== null) {
                 course.practice = c.at('practice').integer(o.practice, 1, 60);
                 course.practice_room = c.at('practice_room').string(o.practice_room);
             }
@@ -405,7 +410,11 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
             const window = c.at('window').string(o.window) as ScheduleSource['free'][number]['window'];
             if (!['morning', 'afternoon', 'evening'].includes(window)) c.at('window').fail(`${window} 不是 morning / afternoon / evening`);
             const item: ScheduleSource['free'][number] = { window, text: c.at('text').string(o.text) };
-            if (o.tiers !== undefined) item.tiers = c.at('tiers').strings(o.tiers, { allowEmpty: false });
+            // 一个档位都没勾 = 所有档位都能看到（和没写一样）
+            if (o.tiers !== undefined && o.tiers !== null) {
+                const tiers = c.at('tiers').strings(o.tiers);
+                if (tiers.length) item.tiers = tiers;
+            }
             return withNote(c.at('note'), o.note, item);
         }),
         course_detail: withNote(h.at('course_detail.note'), courseDetail.note, { tiers: h.at('course_detail.tiers').strings(courseDetail.tiers) }),
@@ -413,14 +422,14 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
             const c = h.at(`kinds.${kind}`);
             const o = c.object(kinds[kind]);
             c.keys(o, ['label', 'see_after', 'max_bubbles']);
-            const see = o.see_after;
+            const see = o.see_after ?? undefined;
             if (see !== undefined && !(Array.isArray(see) && see.length === 2 && see.every(n => typeof n === 'number' && n >= 0) && see[0] <= see[1])) {
                 c.at('see_after').fail('应为 [最少分钟, 最多分钟]');
             }
             return [kind, {
                 label: c.at('label').string(o.label),
                 ...(see ? { see_after: see as [number, number] } : {}),
-                ...(o.max_bubbles !== undefined ? { max_bubbles: c.at('max_bubbles').integer(o.max_bubbles, 1, 100) } : {}),
+                ...(o.max_bubbles !== undefined && o.max_bubbles !== null ? { max_bubbles: c.at('max_bubbles').integer(o.max_bubbles, 1, 100) } : {}),
             }];
         })) as ScheduleSource['kinds'],
         ...(kindsNote ? { kinds_note: kindsNote } : {}),
