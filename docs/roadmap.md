@@ -259,7 +259,10 @@
     已修（`345518f`，用户 10-05 同意现在修）：「这次要回的那一串」去掉她收尾后对方开头的附和，时间块和回复时机共用这个定义。
     验证：`time.test.ts` 用 r3 的原样记录复现、`reply-timing.test.ts` 补冷场和夜里消息（bot 177 项）；重跑 `boyfriend-time`、`timing-boyfriend`、`timing-classmate` 各 3 次全过
     （`runtime/sim/20261005-031350/`），其中 `boyfriend-time` r1 正好走到收尾 + 附和，第二天的时间块是「距上一条消息：14 小时（上一条在昨天 22:10）」
-- [ ] 切到真 QQ：停 `main.ts`、用 `scripts/start-koishi.ps1` 启动（用户决定什么时候切；控制台密码 `QQBOT_KOISHI_PASSWORD` 由用户设）
+- [x] 切到真 QQ：停 `main.ts`、用 `scripts/start-koishi.ps1` 启动（用户 10-05 03:20 切换；控制台密码 `QQBOT_KOISHI_PASSWORD` 由用户设）
+  - 验证：日志 03:20:47、03:26:04（设好密码后重启）都是「NapCat 账号 … 已就绪」，长期记忆开着，锁在 Koishi 进程手里；用户登录控制台成功。
+    第一次设密码时示例里的占位符 `...` 被原样设了进去，登录不上：启动脚本现在拒绝这个占位符（`9234a0b`）。
+    尚未实测：经 Koishi 的 QQ 私聊回复、Hindsight 写入和召回（日志里搜「已回复」「召回长期记忆」）
 - [ ] Koishi 路线稳定跑一周后，决定删不删 `main.ts`
 
 ## 后续（顺序可调整）
