@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { isTable, readScenes, readToml, type Table } from '../src/legacy.ts';
 import { parseTierConfig, personaToCard, STAGE_DIRECTION_SCRIPT, type TierConfig } from '../src/persona-to-card.ts';
 import { scenesToLorebook } from '../src/scenes-to-lorebook.ts';
+import { scheduleForTier } from '../src/schedule-to-card.ts';
 import { WORLD_INFO_POSITION } from '../src/st-format.ts';
 
 const characterDir = resolve(import.meta.dirname, '../../../characters/linmengyao');
@@ -183,4 +184,81 @@ test('isTable 不把数组和日期当成表', () => {
     assert.equal(isTable([]), false);
     assert.equal(isTable(new Date()), false);
     assert.equal(isTable({}), true);
+});
+
+// ---------- 作息（ADR 0007） ----------
+const scheduleToml = readToml(join(legacyDir, 'schedule.toml'));
+const timetableToml = readToml(join(legacyDir, 'timetable.toml'));
+const scheduleOf = (tier: string, config: TierConfig = tiers) => scheduleForTier(scheduleToml, timetableToml, config.schedule, tier);
+/** 作息里所有会进提示词的文字 */
+const scheduleText = (tier: string) => JSON.stringify(scheduleOf(tier));
+
+test('作息：几点睡、几点起、节次、学期、假期、调休、课程、空闲活动都来自 legacy', () => {
+    const s = scheduleOf('boyfriend');
+    assert.equal(s.sleep, '02:00');
+    assert.deepEqual(s.wake, { early: '07:40', lazy: '09:30', earlySlot: '1-2' });
+    assert.deepEqual(s.periods['1-2'], { start: '08:20', end: '09:40' });
+    assert.deepEqual(s.semester, { start: '2026-08-31', weeks: 18 });
+    assert.deepEqual(s.holidays.map(h => [h.name, h.start, h.end]), [['中秋节', '2026-09-25', '2026-09-27'], ['国庆节', '2026-10-01', '2026-10-07']]);
+    assert.deepEqual(s.makeups, [{ date: '2026-09-20', asDay: 0 }, { date: '2026-10-10', asDay: 0 }]);
+    assert.equal(s.courses.length, (timetableToml.course as unknown[]).length);
+    assert.deepEqual(s.courses[1], {
+        day: 1, slot: '3-4', weeks: '1-16', kind: 'hard', name: '大数据应用技术', room: '知行楼303', practice: { fromWeek: 9, room: '知行楼303（机房）' },
+    });
+    assert.deepEqual(s.kinds.hard, { label: '专业课，认真听', seeAfterMin: [5, 20], maxBubbles: 1 });
+    assert.equal(s.free.morning.length + s.free.afternoon.length + s.free.evening.length, (timetableToml.free as unknown[]).length);
+});
+
+test('作息按档位裁剪：课名、教室、课型叫法只给 BFGK；拍照的活动只给 BFGK；城市同学以下不给；他在哪只给男朋友档', () => {
+    for (const tier of tiers.tiers) {
+        const s = scheduleOf(tier.name);
+        const detail = ['boyfriend', 'bestie', 'girl_friend', 'known'].includes(tier.name);
+        assert.equal(s.courses.every(c => c.name !== undefined && c.room !== undefined), detail, tier.name);
+        assert.equal(s.courses.some(c => c.name !== undefined || c.room !== undefined || c.practice?.room !== undefined), detail, tier.name);
+        assert.equal(Object.values(s.kinds).some(k => k.label !== undefined), detail, tier.name);
+        assert.equal(s.free.afternoon.includes('修昨天拍的片子'), detail, tier.name);
+        assert.equal(scheduleText(tier.name).includes('济南'), detail, tier.name);
+        assert.equal(scheduleText(tier.name).includes('青岛'), tier.name === 'boyfriend' || detail, tier.name);
+        assert.equal(s.partner !== undefined, tier.name === 'boyfriend', tier.name);
+        assert.equal(s.holidays.some(h => h.partner !== undefined), tier.name === 'boyfriend', tier.name);
+        // 上课多久才看到消息与档位无关
+        assert.deepEqual(s.kinds.machine.seeAfterMin, [2, 6], tier.name);
+    }
+    assert.equal(scheduleOf('classmate').holidays[1]!.where, '没回家，留在学校');
+    assert.equal(scheduleOf('boyfriend').holidays[1]!.partner, '他回青岛了');
+});
+
+test('作息里没有这一档的禁用词', () => {
+    for (const tier of tiers.tiers) {
+        const found = tier.banned.filter(word => scheduleText(tier.name).includes(word));
+        assert.deepEqual(found, [], `${tier.name} 的作息里出现了 ${found.join('、')}`);
+    }
+});
+
+test('作息写进卡的 extensions.qqbot.schedule，不进 ST 读的字段', () => {
+    const schedule = scheduleOf('classmate');
+    const { data } = personaToCard(loadPersona(), tiers, 'classmate', { world: 'w', schedule });
+    assert.deepEqual(data.extensions.qqbot, { banned: tiers.tiers.find(t => t.name === 'classmate')!.banned, schedule });
+    assert.equal(cardText('classmate'), [data.description, data.personality, data.scenario, data.post_history_instructions, data.mes_example, data.system_prompt].join('\n'));
+});
+
+test('[schedule] 写错时报错：没有的假期、没有的活动、不是调休日、缺档位；调休补哪天可以覆盖', () => {
+    const withSchedule = (patch: (s: Table) => void) => {
+        const toml = loadTiersToml();
+        patch(toml.schedule as Table);
+        return parseTierConfig(toml);
+    };
+    assert.throws(() => scheduleOf('boyfriend', withSchedule(s => { (s.holiday as Table)['元旦'] = { where: { BFGKCSU: '在家' } }; })), /没有这个假期/);
+    assert.throws(() => scheduleOf('boyfriend', withSchedule(s => { (s.free_only as Table)['去海边'] = 'B'; })), /没有「去海边」/);
+    assert.throws(() => scheduleOf('boyfriend', withSchedule(s => { s.makeup = { '2026-10-11': 4 }; })), /不是 timetable.toml 里的调休日/);
+    assert.throws(() => withSchedule(s => { s.where = { BFGK: '在学校' }; }), /缺少档位 classmate、stranger、unlisted/);
+    assert.throws(() => withSchedule(s => { s.where = { BFGK: '在学校', CSUB: '在学校' }; }), /档位 boyfriend 出现了两次/);
+    const overridden = scheduleOf('boyfriend', withSchedule(s => { s.makeup = { '2026-10-10': 4 }; }));
+    assert.deepEqual(overridden.makeups[1], { date: '2026-10-10', asDay: 4 });
+});
+
+test('作息：睡到几点和平时几点起对不上时报错', () => {
+    const toml = readToml(join(legacyDir, 'timetable.toml'));
+    (toml.wakeup as Table).lazy = '10:00';
+    assert.throws(() => scheduleForTier(scheduleToml, toml, tiers.schedule, 'boyfriend'), /睡到 09:30，timetable.toml 平时 10:00 起/);
 });

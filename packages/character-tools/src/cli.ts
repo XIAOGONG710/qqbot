@@ -10,6 +10,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readScenes, readToml } from './legacy.ts';
 import { parseTierConfig, personaToCard, skippedForReport } from './persona-to-card.ts';
+import { scheduleForTier } from './schedule-to-card.ts';
 import { scenesToLorebook } from './scenes-to-lorebook.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -22,13 +23,16 @@ const force = process.argv.includes('--force');
 const persona = readToml(join(legacyDir, 'persona.toml'));
 const tiers = parseTierConfig(readToml(join(characterDir, 'tiers.toml')));
 const scenes = readScenes(join(legacyDir, 'speech_library.toml'));
+const scheduleToml = readToml(join(legacyDir, 'schedule.toml'));
+const timetableToml = readToml(join(legacyDir, 'timetable.toml'));
 
 const outputs: [file: string, data: unknown][] = [];
 const summary: string[] = [];
 for (const tier of tiers.tiers) {
     const world = `linmengyao-scenes-${tier.name}`;
     const lorebook = scenesToLorebook(scenes, tier.scenes, tier.dropScenes);
-    outputs.push([`linmengyao-${tier.name}.json`, personaToCard(persona, tiers, tier.name, { world })]);
+    const schedule = scheduleForTier(scheduleToml, timetableToml, tiers.schedule, tier.name);
+    outputs.push([`linmengyao-${tier.name}.json`, personaToCard(persona, tiers, tier.name, { world, schedule })]);
     outputs.push([`${world}.json`, lorebook]);
     summary.push(`  ${tier.name}：世界书 ${Object.keys(lorebook.entries).length} 条场景（取 ${tier.scenes} 档${tier.dropScenes.length ? `，去掉 ${tier.dropScenes.join('、')}` : ''}）`);
 }

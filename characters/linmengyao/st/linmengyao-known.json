@@ -62,7 +62,245 @@
                     "考研",
                     "嘴硬是壳",
                     "痛经"
-                ]
+                ],
+                "schedule": {
+                    "sleep": "02:00",
+                    "wake": {
+                        "early": "07:40",
+                        "lazy": "09:30",
+                        "earlySlot": "1-2"
+                    },
+                    "periods": {
+                        "1-2": {
+                            "start": "08:20",
+                            "end": "09:40"
+                        },
+                        "3-4": {
+                            "start": "09:55",
+                            "end": "11:15"
+                        },
+                        "6-7": {
+                            "start": "13:40",
+                            "end": "15:00"
+                        },
+                        "8-9": {
+                            "start": "15:15",
+                            "end": "16:35"
+                        },
+                        "10-11": {
+                            "start": "18:30",
+                            "end": "20:00"
+                        }
+                    },
+                    "semester": {
+                        "start": "2026-08-31",
+                        "weeks": 18
+                    },
+                    "holidays": [
+                        {
+                            "name": "中秋节",
+                            "start": "2026-09-25",
+                            "end": "2026-09-27"
+                        },
+                        {
+                            "name": "国庆节",
+                            "start": "2026-10-01",
+                            "end": "2026-10-07",
+                            "where": "没回青岛，留在学校"
+                        }
+                    ],
+                    "makeups": [
+                        {
+                            "date": "2026-09-20",
+                            "asDay": 0
+                        },
+                        {
+                            "date": "2026-10-10",
+                            "asDay": 0
+                        }
+                    ],
+                    "kinds": {
+                        "hard": {
+                            "label": "专业课，认真听",
+                            "seeAfterMin": [
+                                5,
+                                20
+                            ],
+                            "maxBubbles": 1
+                        },
+                        "machine": {
+                            "label": "机房课，边敲代码边看手机",
+                            "seeAfterMin": [
+                                2,
+                                6
+                            ],
+                            "maxBubbles": 2
+                        },
+                        "water": {
+                            "label": "水课"
+                        },
+                        "pe": {
+                            "label": "体育课"
+                        }
+                    },
+                    "courses": [
+                        {
+                            "day": 1,
+                            "slot": "1-2",
+                            "weeks": "1-16",
+                            "kind": "machine",
+                            "name": "Linux操作系统",
+                            "room": "知行楼612"
+                        },
+                        {
+                            "day": 1,
+                            "slot": "3-4",
+                            "weeks": "1-16",
+                            "kind": "hard",
+                            "name": "大数据应用技术",
+                            "room": "知行楼303",
+                            "practice": {
+                                "fromWeek": 9,
+                                "room": "知行楼303（机房）"
+                            }
+                        },
+                        {
+                            "day": 1,
+                            "slot": "8-9",
+                            "weeks": "1-16",
+                            "kind": "hard",
+                            "name": "MySQL数据库应用",
+                            "room": "知行楼509",
+                            "practice": {
+                                "fromWeek": 13,
+                                "room": "知行楼509（机房）"
+                            }
+                        },
+                        {
+                            "day": 2,
+                            "slot": "3-4",
+                            "weeks": "1-16",
+                            "kind": "pe",
+                            "name": "体育（羽毛球）",
+                            "room": "东体育馆"
+                        },
+                        {
+                            "day": 2,
+                            "slot": "8-9",
+                            "weeks": "1-16",
+                            "kind": "hard",
+                            "name": "计算机网络技术",
+                            "room": "知行楼503",
+                            "practice": {
+                                "fromWeek": 13,
+                                "room": "知行楼503（机房）"
+                            }
+                        },
+                        {
+                            "day": 3,
+                            "slot": "1-2",
+                            "weeks": "9-12",
+                            "kind": "water",
+                            "name": "形势与政策Ⅲ",
+                            "room": "笃行楼305"
+                        },
+                        {
+                            "day": 3,
+                            "slot": "3-4",
+                            "weeks": "1-16",
+                            "kind": "water",
+                            "name": "高等数学",
+                            "room": "知行楼704"
+                        },
+                        {
+                            "day": 3,
+                            "slot": "6-7",
+                            "weeks": "1-2,4-16,18",
+                            "kind": "water",
+                            "name": "大学生创业基础",
+                            "room": "笃行楼414"
+                        },
+                        {
+                            "day": 3,
+                            "slot": "8-9",
+                            "weeks": "1-16",
+                            "kind": "water",
+                            "name": "习近平新时代中国特色社会主义思想概论",
+                            "room": "知行楼303"
+                        },
+                        {
+                            "day": 4,
+                            "slot": "3-4",
+                            "weeks": "1-16",
+                            "kind": "hard",
+                            "name": "数据结构",
+                            "room": "知行楼305",
+                            "practice": {
+                                "fromWeek": 9,
+                                "room": "知行楼305（机房）"
+                            }
+                        },
+                        {
+                            "day": 5,
+                            "slot": "1-2",
+                            "weeks": "1-6",
+                            "kind": "machine",
+                            "name": "Python编程基础",
+                            "room": "知行楼612"
+                        },
+                        {
+                            "day": 5,
+                            "slot": "3-4",
+                            "weeks": "1-16",
+                            "kind": "machine",
+                            "name": "概率论与数理统计",
+                            "room": "知行楼704"
+                        },
+                        {
+                            "day": 5,
+                            "slot": "6-7",
+                            "weeks": "1-16",
+                            "kind": "machine",
+                            "name": "数据采集与处理",
+                            "room": "知行楼303",
+                            "practice": {
+                                "fromWeek": 9,
+                                "room": "知行楼303（机房）"
+                            }
+                        },
+                        {
+                            "day": 4,
+                            "slot": "10-11",
+                            "weeks": "1-16",
+                            "kind": "water",
+                            "name": "Python数据分析",
+                            "room": "知行楼303"
+                        }
+                    ],
+                    "free": {
+                        "morning": [
+                            "窝在床上刷手机",
+                            "在宿舍写作业",
+                            "去图书馆占座"
+                        ],
+                        "afternoon": [
+                            "在图书馆赶作业",
+                            "修昨天拍的片子",
+                            "打独立游戏",
+                            "刷摄影区"
+                        ],
+                        "evening": [
+                            "在追一部剧",
+                            "打独立游戏",
+                            "在宿舍跟室友扯淡",
+                            "熬夜赶作业",
+                            "刷手机刷到忘了时间"
+                        ],
+                        "afternoonFrom": "12:00",
+                        "eveningFrom": "18:00"
+                    },
+                    "where": "在学校（济南），住宿舍"
+                }
             }
         }
     }

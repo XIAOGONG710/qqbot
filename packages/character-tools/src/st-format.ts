@@ -21,9 +21,38 @@ export interface CharacterCardV2 {
         creator: string;
         character_version: string;
         // world：关联的世界书名（= 世界书文件名去掉 .json），ST 选中角色时按名字加载
-        // regex_scripts：Scoped 正则（导入时 ST 会问是否允许）；qqbot：只给运行时用的字段，不进提示词（ADR 0002 决策 3）
-        extensions: { world?: string; regex_scripts?: RegexScript[]; qqbot?: { banned: string[] } };
+        // regex_scripts：Scoped 正则（导入时 ST 会问是否允许）
+        // qqbot：只给运行时用的字段，ST 不读（ADR 0002 决策 3）。banned 不进提示词；schedule 由运行时算成一行状态放进时间块（ADR 0007）
+        extensions: { world?: string; regex_scripts?: RegexScript[]; qqbot?: { banned: string[]; schedule?: CardSchedule } };
     };
+}
+
+/** 课型：硬课、机房课、水课、体育（timetable.toml 的 tier） */
+export type CourseKind = 'hard' | 'machine' | 'water' | 'pe';
+
+/** 一个档位的作息（ADR 0007 决策 1）。时间 HH:MM、日期 YYYY-MM-DD，都是本地时间；没写的字段是这一档不该知道的 */
+export interface CardSchedule {
+    /** 几点睡 */
+    sleep: string;
+    /** 有课在 earlySlot 那一节的日子 early 起，否则 lazy */
+    wake: { early: string; lazy: string; earlySlot: string };
+    periods: Record<string, { start: string; end: string }>;
+    /** start 是第 1 周的周一 */
+    semester: { start: string; weeks: number };
+    /** 含首尾两天；where：放假时她在哪，partner：他在哪 */
+    holidays: { name: string; start: string; end: string; where?: string; partner?: string }[];
+    /** 调休补课：asDay 补星期几的课（1–7），0 = 没课 */
+    makeups: { date: string; asDay: number }[];
+    /** label：课型的叫法；seeAfterMin：上这种课时过多少分钟才看到消息；maxBubbles：最多回几条 */
+    kinds: Record<CourseKind, { label?: string; seeAfterMin?: [number, number]; maxBubbles?: number }>;
+    /** day 1–7 是周一到周日；weeks 如 "1-2,4-16,18"；practice：从第几周起转机房实训（按机房课算） */
+    courses: { day: number; slot: string; weeks: string; kind: CourseKind; name?: string; room?: string; practice?: { fromWeek: number; room?: string } }[];
+    /** 没课时在干什么：上午（起床到 afternoonFrom）、下午（到 eveningFrom）、晚上（到睡觉）各几条，同一天同一时段固定一条 */
+    free: { morning: string[]; afternoon: string[]; evening: string[]; afternoonFrom: string; eveningFrom: string };
+    /** 上学期间她在哪 */
+    where: string;
+    /** 上学期间他在哪（只有知道他的档位） */
+    partner?: string;
 }
 
 /** 正则脚本，字段同 public/scripts/extensions/regex/index.js 保存脚本时写出的那些 */

@@ -5,7 +5,8 @@
 // 出现未登记的键直接报错，保证 legacy 里的内容不会被悄悄漏掉，也不会悄悄给错档位。
 
 import { getString, getStringArray, getTable, isTable, type Table } from './legacy.ts';
-import type { CharacterCardV2, RegexScript } from './st-format.ts';
+import { parseScheduleConfig, type ScheduleConfig } from './schedule-to-card.ts';
+import type { CardSchedule, CharacterCardV2, RegexScript } from './st-format.ts';
 
 /** 顶层表：不是角色设定的旧引擎参数 */
 const SKIPPED_TOP_LEVEL: Record<string, string> = {
@@ -120,6 +121,8 @@ interface Rewrite {
 
 export interface TierConfig {
     tiers: Tier[];
+    /** [schedule]：作息按档位裁剪的规则（ADR 0007） */
+    schedule: ScheduleConfig;
     /** 字段路径 → 可见的档位名 */
     visible: Map<string, Set<string>>;
     rewrites: Rewrite[];
@@ -186,12 +189,15 @@ export function parseTierConfig(toml: Table): TierConfig {
         };
     });
 
-    return { tiers, visible, rewrites, discreet: getString(toml, 'discreet', where) };
+    const schedule = parseScheduleConfig(toml, decode, tiers.map(t => t.name));
+    return { tiers, schedule, visible, rewrites, discreet: getString(toml, 'discreet', where) };
 }
 
 export interface CardOptions {
     /** 关联的世界书名（世界书文件名去掉 .json） */
     world: string;
+    /** 这一档的作息（schedule-to-card.ts），写进 extensions.qqbot.schedule */
+    schedule?: CardSchedule;
 }
 
 export function personaToCard(personaToml: Table, config: TierConfig, tierName: string, options: CardOptions): CharacterCardV2 {
@@ -280,7 +286,7 @@ export function personaToCard(personaToml: Table, config: TierConfig, tierName: 
             tags: [tier.name],
             creator: '',
             character_version: '',
-            extensions: { world: options.world, regex_scripts: [STAGE_DIRECTION_SCRIPT], qqbot: { banned: tier.banned } },
+            extensions: { world: options.world, regex_scripts: [STAGE_DIRECTION_SCRIPT], qqbot: { banned: tier.banned, ...(options.schedule ? { schedule: options.schedule } : {}) } },
         },
     };
 }
