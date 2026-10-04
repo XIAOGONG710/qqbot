@@ -29,6 +29,10 @@ if (-not $env:QQBOT_LLM_API_KEY) {
 if (-not $env:QQBOT_KOISHI_PASSWORD) {
     throw "QQBOT_KOISHI_PASSWORD is not set (console admin password, see docs\koishi.md)"
 }
+# The docs show '...' as the placeholder; it was once set literally
+if ($env:QQBOT_KOISHI_PASSWORD -eq '...') {
+    throw "QQBOT_KOISHI_PASSWORD is still the placeholder '...' - set your own password (docs\koishi.md)"
+}
 
 $nodeMajor = [int]((node -v) -replace '^v(\d+)\..*', '$1')
 if ($nodeMajor -lt 24) { throw "Node >= 24 is required (found $(node -v))" }

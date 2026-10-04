@@ -31,10 +31,13 @@
 2. 复制 `packages/koishi-app/koishi.example.yml` 到 `runtime/koishi/koishi.yml`，填 `adapter-onebot.selfId`（小号 QQ 号）和 `qqbot` 一节。
    `qqbot` 一节和 `runtime/bot/config.json` 同形（少了 `onebot`，连接归适配器），区别只有两处：`llm.extraBody` 写成 JSON 文本，长期记忆用 `memory.enabled` 开关。
    留空的数值参数用 `packages/bot/src/config.ts` 里的默认值。
-3. 控制台管理员密码放用户级环境变量（自己设，不进仓库、不写进 `koishi.yml`）：
+3. 控制台管理员密码放用户级环境变量（自己设，不进仓库、不写进 `koishi.yml`）。用下面两行，提示时输入密码，
+   这样密码不会出现在命令里（Windows PowerShell 5.1 会把整行命令存进 PSReadLine 的历史文件）：
    ```powershell
-   [Environment]::SetEnvironmentVariable('QQBOT_KOISHI_PASSWORD', '...', 'User')
+   $s = Read-Host '控制台密码' -AsSecureString
+   [Environment]::SetEnvironmentVariable('QQBOT_KOISHI_PASSWORD', [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)), 'User')
    ```
+   Koishi 只在启动时读一次密码：改了之后要重启 Koishi 才生效（登录插件每次启动都按当前密码更新管理员账号）。启动脚本发现密码还是占位的 `...` 时拒绝启动。
    模型 key、OneBot token 和独立入口一样，是 `QQBOT_LLM_API_KEY`、`QQBOT_ONEBOT_TOKEN`（见 [packages/bot/README.md](../packages/bot/README.md)）。
 
 ## 启动
