@@ -31,15 +31,8 @@ export const name = 'qqbot';
 // apply 在实例（fork）里运行：配置有误、apply 抛错时，控制台侧栏把插件标成失败（红点）。
 // 不是 reusable 时只有插件主体失败，控制台看的实例仍是绿点，还弹「配置已重载」（ADR 0009 试验结果第 2 条）
 export const reusable = true;
-// Koishi 通用的「过滤器设置」对这个插件没用
+// Koishi 通用的「过滤器设置」对这个插件没用。不导出 usage：用户不要页面顶部那段说明（10-05）
 export const filter = false;
-export const usage = [
-    '林梦瑶：按档位回复 QQ 私聊（ADR 0008、0009）。',
-    '',
-    '- 保存后只重启这个插件，正在等的回复由新的插件按聊天记录重算，「几点看到」不变。',
-    '- 侧栏变成红点说明配置有误、插件没在回复，原因看下面运行日志里的 [E] 那一行；改对再保存就恢复，这段时间来的消息会补回。',
-    '- 换档提示在运行日志里。改人设：改 `characters/<角色>/tiers.toml`，跑 `node packages/character-tools/src/cli.ts --force`，插件自动重新读。',
-].join('\n');
 
 const TIER_LABELS: Record<ContactTier, string> = {
     boyfriend: '男朋友',
