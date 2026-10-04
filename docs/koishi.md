@@ -89,6 +89,13 @@ Koishi 路线验收、稳定跑一周后再决定删不删 `main.ts`（ADR 0008 
 控制台只从实例目录往上找 `node_modules`，放在仓库外时插件页显示「此插件尚未安装」，表单打不开。
 两个实例的 Koishi 进程命令行一样，停临时实例时按它监听的端口找进程（worker 占着端口，它的父进程是 `koishi\bin.js`，先停父进程）。
 
+测试脚本（虚构的好友和消息，不连真 QQ）：
+
+- `node scripts/dev/fake-napcat.mjs serve [日志文件]`：假 NapCat（WS 3911）和假模型（3913）。临时实例的 `adapter-onebot.endpoint` 写 `ws://127.0.0.1:3911`、
+  `qqbot.llm.baseUrl` 写 `http://127.0.0.1:3913`。`inject <QQ> <文字>` 让某个好友发私聊，`drop` 断开连接，`sent` 看发出去的消息。假模型只记请求参数，不记消息。
+- `node scripts/dev/console-ws.mjs <端口> show | save <配置.json>`：经控制台的 WebSocket 读、存 qqbot 的配置（和表单保存是同一个请求），并打印实例状态。
+  密码放环境变量 `QQBOT_TEST_CONSOLE_PASSWORD`。浏览器窗口在后台时截不了图，可以用它。
+
 ## 回退
 
 停掉 Koishi，用 `scripts/start-bot.ps1` 启动独立入口：数据目录是同一个，配置用 `runtime/bot/config.json`。
