@@ -13,6 +13,7 @@
 | embedding | `intfloat/multilingual-e5-small`（多语言，384 维，ONNX，Hugging Face） | `runtime/hindsight/hf/` |
 | 抽取用的模型 | DeepSeek `deepseek-flash`，关思考，key 同 bot（`QQBOT_LLM_API_KEY`） | — |
 | 重排 | `rrf`（不用模型） | — |
+| 关键词检索 | PGroonga 4.0.9（Groonga 16.1.1），`TokenBigram`；Hindsight 的 `pgroonga` 后端 | 解压进 pg0 的 PostgreSQL（`%USERPROFILE%\.pg0\installation\18.1.0\`），安装包和文件清单在 `runtime/hindsight/pgroonga/` |
 | 网页面板（可选） | `@vectorize-io/hindsight-control-plane` 0.10.2（npm，自带 Next.js 16.3.4 standalone 服务） | `runtime/hindsight/control-plane/` |
 
 依赖用 `scripts/hindsight/requirements.txt` 固定版本和哈希（195 个包，`uv pip compile --generate-hashes` 生成，不含 torch）。
@@ -32,6 +33,50 @@ Windows 事件日志里出错模块是 `C:\WINDOWS\SYSTEM32\MSVCP140.dll` 14.36.
 - `msvcp140.dll`、`vcruntime140.dll`、`vcruntime140_1.dll` 复制到 `%USERPROFILE%\.pg0\installation\18.1.0\bin\`，postgres.exe 优先用同目录的。
 
 **更干净的做法是装最新的 VC++ 运行库**（需要管理员）：装好后上面两处复制的 DLL 都可以删掉。
+
+## PGroonga（中文关键词检索）
+
+**为什么要装**：Hindsight 默认的关键词检索用 PostgreSQL 的 `english` 分词，中文一整串连在一起算一个词。
+10-04 实测（尾号 73 的 bank，约 60 条记忆）：记忆里有「宝宝的组长外号叫「铁锅」」，查「铁锅」「铁锅 是谁」都排第 1，
+查「铁锅是谁」「铁锅今天又找我茬了」却完全召回不到（`budget` 调到 `mid` 也只排第 31–46）。bot 的召回查询是「她上一句 + 对方这次的几条」，
+绰号总是夹在句子里，等于只剩 embedding；`multilingual-e5-small` 对这种生僻绰号很弱。模拟器里同样的用例能过，是因为测试 bank 只有十来条记忆。
+Node 自带的 `Intl.Segmenter` 把「铁锅」切成「铁 锅」，在 bot 这边分词也不可靠。Hindsight 支持的 `pgroonga` 后端用二字切分（`TokenBigram`），两边都能对上。
+
+**来源核对（2026-10-04）**：`pgroonga-4.0.9-postgresql-18-x64.zip`（GitHub release `pgroonga/pgroonga` 4.0.9，2026-09-23 发布）
+
+- SHA-256 `84ba7b60…188f09` 与 GitHub 公布的附件 digest 一致；`.asc` 的 SHA-256 `e42c9665…30c30c5` 也一致。
+- GPG 签名验证通过（`Good signature`），签名密钥 `2701 F317 CFCC CB97 5CAD E9C2 624C F774 3483 9225`。这把钥匙的身份从两处独立核对：
+  Groonga 官方软件源 `https://packages.groonga.org/centos/RPM-GPG-KEY-34839225` 里是同一指纹，UID「Groonga Key (Groonga Official Signing Key) <packages@groonga.org>」；
+  keys.openpgp.org 按指纹查到的也是同一把（2018-01-29 创建）。验证用的是临时 GPG 目录，没有导入用户的钥匙环。
+- pg0 自带的是 EDB 的 PostgreSQL 18.1（安装目录里有 `StackBuilder`），正是 PGroonga Windows 包的目标环境。
+
+**安装**：把 zip 解压进 pg0 的 PostgreSQL 目录（PGroonga 文档的做法）。601 个文件全是新增，没有覆盖 PostgreSQL 原有文件；
+清单在 `runtime/hindsight/pgroonga/files.txt`，卸载就按清单删。装好后在临时数据库里 `CREATE EXTENSION pgroonga`，
+按 Hindsight 的查询方式（`pgroonga_tokenize` + `TokenBigram` + `NormalizerNFKC150`，词之间 `OR`，`&@~`）试过：
+「铁锅是谁」「铁锅今天又找我茬了」都能找到含「铁锅」的那条，「帮我想想等会喝什么奶茶」找到说奶茶的那条。临时数据库已删。
+
+**切换**：启动脚本设 `HINDSIGHT_API_TEXT_SEARCH_EXTENSION=pgroonga`，没装 PGroonga 时直接报错。
+**记忆表里有数据时 Hindsight 拒绝换检索后端**（`ensure_text_search_extension`：要么清空，要么换回原来的）。10-04 切换的步骤：
+
+1. `pg_dump -Fc` 备份到 `runtime/hindsight/backup/hindsight-20261004-before-pgroonga.dump`（2 个 bank、160 条记忆）。
+2. 停 bot；用 API 删掉两个 bank；bot 的写入记录挪到 `runtime/bot/memory/archive-20261004-pgroonga/`。
+3. 重启 Hindsight：建 `pgroonga` 扩展，`memory_units`、`mental_models` 的检索索引变成 pgroonga，`search_vector` 变成占位的 text 列。
+4. 启动 bot：按聊天记录重新建 bank、重新写入所有片段（每个片段调一次 DeepSeek）。
+
+**切换后实测（10-04 21:43，尾号 73 重建的 bank，90 条记忆，`budget` low、`max_tokens` 600）**：
+
+| 查询 | 切换前（native） | 切换后（pgroonga） |
+| --- | --- | --- |
+| 「铁锅是谁」 | 没召回 | 第 2 |
+| 「铁锅今天又找我茬了」 | 没召回 | 第 8（共 13） |
+| bot 的查询格式：她上一句 + 对方这句 | 没召回 | 第 10（共 12） |
+| 「组长今天又找我茬了」 | 没召回 | 第 5 |
+| 「我现在还爱吃甜的吗」→ 以前爱喝全糖那条 | — | 第 3 |
+
+10 个片段重新写入后 1 分钟内抽取完，没有失败的任务。
+
+**回退**：停 Hindsight，启动脚本里去掉 `HINDSIGHT_API_TEXT_SEARCH_EXTENSION`（回到 `native`）；同样要先清空记忆表（或者用上面的备份 `pg_restore`），
+bot 的写入记录也要一起清掉让它重写。
 
 ## 启动
 
@@ -91,6 +136,7 @@ uv pip install --python runtime/hindsight/venv/Scripts/python.exe --require-hash
 
 ## 已知限制
 
-- Hindsight 的全文检索用 PostgreSQL 自带分词（`english`），中文基本靠 embedding 和时间、关系图检索。
+- 关键词检索按两个字一切（PGroonga `TokenBigram`），查询里的每个二字词都参与打分，「今天」「找我」这类常见词也会给别的记忆加分，
+  所以夹在句子里的绰号虽然能召回，常排在第 8–10 条；bot 注入召回结果的上限因此从 8 条放宽到 12 条（`MAX_RECALLED`）。
 - 聊天记录里删掉的片段，Hindsight 里对应的文档不会自动删（调研方案 T17）；要删时用 `DELETE /v1/default/banks/{bank_id}/documents/{document_id}`。
 - 每个片段写入时 Hindsight 调一次 DeepSeek 抽取，进行中的片段每多 30 条整段重写一次。

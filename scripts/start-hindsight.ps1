@@ -5,6 +5,7 @@
 #   venv/       Python 3.12 venv with scripts/hindsight/requirements.txt installed (hindsight-api-slim, pg0, onnxruntime)
 #   pgdata/     PostgreSQL data of the pg0 instance "qqbot-hindsight", listening on 127.0.0.1:5433 only
 #   hf/         Hugging Face cache for the embedding model (intfloat/multilingual-e5-small, ONNX)
+#   pgroonga/   the verified PGroonga 4.0.9 zip and its file list; the files themselves are unpacked into pg0's PostgreSQL
 #   vcruntime/  msvcp140*.dll 14.44 from Microsoft's VC++ redistributable; the system copy (14.36) is too old
 #               for onnxruntime and the bundled PostgreSQL. Not needed once the latest VC++ redistributable is installed.
 #
@@ -26,11 +27,16 @@ $pg0 = Join-Path $venv 'Lib\site-packages\pg0\bin\pg0.exe'
 $api = Join-Path $venv 'Scripts\hindsight-api.exe'
 if (-not (Test-Path $api)) { throw "Hindsight is not installed at $venv (see docs\hindsight.md)" }
 
-# A terminal opened before the variable was set does not have it yet; read it from the user scope.
-if (-not $env:QQBOT_LLM_API_KEY) {
-    $env:QQBOT_LLM_API_KEY = [Environment]::GetEnvironmentVariable('QQBOT_LLM_API_KEY', 'User')
-}
+# The user-scope variable is the source of truth: a terminal opened before the key was set or changed
+# still carries the old value, so take the user-scope one whenever it exists.
+$userKey = [Environment]::GetEnvironmentVariable('QQBOT_LLM_API_KEY', 'User')
+if ($userKey) { $env:QQBOT_LLM_API_KEY = $userKey }
 if (-not $env:QQBOT_LLM_API_KEY) { throw 'QQBOT_LLM_API_KEY is not set (see packages\bot\README.md)' }
+
+# Chinese keyword search needs PGroonga in pg0's PostgreSQL (docs/hindsight.md, "PGroonga").
+if (-not (Get-ChildItem "$env:USERPROFILE\.pg0\installation\*\share\extension\pgroonga.control" -ErrorAction SilentlyContinue)) {
+    throw 'PGroonga is not installed in pg0''s PostgreSQL (see docs\hindsight.md, section PGroonga)'
+}
 
 # With 'Stop', PowerShell 5.1 turns native stderr output into a terminating error.
 $ErrorActionPreference = 'Continue'
@@ -55,6 +61,9 @@ $env:HINDSIGHT_API_LLM_MODEL = $Model
 $env:HINDSIGHT_API_LLM_EXTRA_BODY = '{"thinking":{"type":"disabled"}}'
 $env:HINDSIGHT_API_EMBEDDINGS_PROVIDER = 'onnx'
 $env:HINDSIGHT_API_RERANKER_PROVIDER = 'rrf'
+# Keyword search with TokenBigram: the default (native, english tsvector) cannot split Chinese, so a nickname
+# inside a sentence ("tie-guo jin-tian you...") never matched. Switching needs empty memory tables (docs/hindsight.md).
+$env:HINDSIGHT_API_TEXT_SEARCH_EXTENSION = 'pgroonga'
 
 try {
     & $api
