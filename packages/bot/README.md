@@ -1,10 +1,17 @@
 # @qqbot/bot
 
-QQ 机器人服务：通过 OneBot 11 WebSocket 连 NapCat，按 SillyTavern 角色卡 + 世界书拼提示词，调 OpenAI 兼容接口，把回复发回 QQ。
+QQ 机器人的核心：按 SillyTavern 角色卡 + 世界书拼提示词，调 OpenAI 兼容接口，按作息决定什么时候回，把回复发回 QQ（经 NapCat）。
 回复名单（`contacts`）里的人的直接私聊，每人按自己的档位（[ADR 0003](../../docs/adr/0003-contact-tiers.md)）用对应的角色卡和世界书；
 名单外的好友私聊用 `unlisted` 档回复（可关）；群聊、群临时会话一律忽略。
 
-## 运行
+两个入口共用同一份编排（`src/app.ts`）和数据目录 `runtime/bot`，同一时间只能跑一个（[ADR 0008](../../docs/adr/0008-koishi-runtime.md)）：
+
+- **Koishi 插件**（`packages/koishi-plugin-qqbot`）：Koishi 的 OneBot 适配器连 NapCat，名单、档位等在 Koishi 控制台里改，保存后生效。安装、配置、启动见 [docs/koishi.md](../../docs/koishi.md)。
+- **独立入口** `src/main.ts`：自写的 OneBot 客户端（`src/onebot.ts`），配置在 `runtime/bot/config.json`，下面「运行」一节。Koishi 路线验收、稳定跑一周之前保持可用。
+
+两边的配置项一样（Koishi 那边没有 `onebot` 一节，`llm.extraBody` 写成 JSON 文本，长期记忆用 `memory.enabled` 开关），校验和默认值都在 `src/config.ts`。
+
+## 运行（独立入口）
 
 1. 复制 `config.example.json` 到 `runtime/bot/config.json`（`runtime/` 不入库），填写：
    - `onebot.url`：NapCat OneBot 网络配置里“WebSocket 服务端”的地址，连根路径 `/`（`/api` 收不到事件）
@@ -41,7 +48,7 @@ QQ 机器人服务：通过 OneBot 11 WebSocket 连 NapCat，按 SillyTavern 角
    ```
    脚本会在当前终端没有这两个环境变量时从用户级读取。配置文件换位置时用 `QQBOT_CONFIG` 指定。
 
-同一个数据目录只能跑一个 bot（锁文件 `runtime/bot/bot.lock`，里面是 PID），第二个会拒绝启动，免得每条消息被回两遍。
+同一个数据目录只能跑一个 bot（锁文件 `runtime/bot/bot.lock`，里面是 PID），第二个会拒绝启动，免得每条消息被回两遍；Koishi 插件用的是同一把锁。
 进程被强杀后留下的锁，PID 已经不在了，下次启动会直接接管。
 
 回复按行拆成多条依次发出，空行跳过（模型用换行表示连发几条）；超过 5 行时按顺序合并成 5 条，每条里面换行。
@@ -66,7 +73,7 @@ Node 自带的固定 10 秒）；HTTP 错误和整体超时不重试。模型返
 等的时候来了新消息就重算。看到之后照上面的连发合并、生成；第一条最早在「看到 + 打字时间」发出（0.8 秒 + 每字 0.1 秒，1–4 秒，±20%）。
 她已经收尾（晚安、去忙吧……）之后对方只回「嗯」「好」或表情的，不回。日志里是「……，HH:MM:SS 看到」「睡着了，被连着来的消息吵醒」「她已经收尾……」。
 
-每次连上 NapCat（启动或断线重连）先补回漏掉的消息：拉白名单里每人最近 20 条私聊，比本地最后一条新、本地又没有的补进聊天记录
+每次连上 NapCat（启动或断线重连；Koishi 插件因改配置、角色卡文件变了而重启时也算）先补回漏掉的消息：拉白名单里每人最近 20 条私聊，比本地最后一条新、本地又没有的补进聊天记录
 （按 QQ 消息 id 去重；小号自己发的算她说的）。补完后，最后一条没回的消息在 3 小时内就回一次，更早的只补记录，等对方下一条消息时一起回；
 按作息时，她睡着时来的消息 12 小时内都照样回（还在睡就等起床）。
 bot 运行期间小号在手机上手动发的消息不会推给 bot，聊天记录里没有它们。
