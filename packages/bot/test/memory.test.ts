@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
@@ -9,6 +9,7 @@ import { retainBody, type HindsightApi, type MemoryItem, type MentalModel, type 
 import { BANK_MISSIONS, formatRecalled, LongTermMemory, OPEN_EPISODE_STEP, recallQuery, RELATIONSHIP_MODEL } from '../src/memory/long-term.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
+const A = { qq: 1, tier: 'boyfriend' };
 const MIN = 60_000;
 const T0 = new Date('2026-10-01T20:00:00').getTime();
 const msg = (minute: number, role: 'user' | 'assistant', content: string, messageId = minute): StoredMessage =>
@@ -54,16 +55,18 @@ const root = (name: keyof typeof openapi.roots): Schema => ({ $ref: `#/component
 
 /** 假的 Hindsight：记下请求，可以让某次调用失败 */
 function fakeApi(options: { failRetain?: number; recall?: RecallResult[] | Error; mentalModel?: MentalModel } = {}) {
-    const calls = { putBank: [] as unknown[], retain: [] as MemoryItem[], recall: [] as RecallRequest[], createMentalModel: [] as unknown[], getMentalModel: 0 };
+    const calls = { banks: [] as string[], putBank: [] as unknown[], retain: [] as MemoryItem[], recall: [] as RecallRequest[], createMentalModel: [] as unknown[], getMentalModel: 0 };
     let retains = 0;
     const api: HindsightApi = {
         putBank: async (_bank, config) => { calls.putBank.push(config); },
-        retain: async (_bank, item) => {
+        retain: async (bank, item) => {
+            calls.banks.push(`retain ${bank}`);
             retains++;
             if (retains === options.failRetain) throw new Error('Hindsight 返回 500');
             calls.retain.push(item);
         },
-        recall: async (_bank, request) => {
+        recall: async (bank, request) => {
+            calls.banks.push(`recall ${bank}`);
             calls.recall.push(request);
             if (options.recall instanceof Error) throw options.recall;
             return options.recall ?? [];
@@ -101,8 +104,8 @@ describe('长期记忆：请求体对照 Hindsight 0.10.2 的 OpenAPI', () => {
     test('召回', async () => {
         const { memory, calls, cleanup } = setup();
         try {
-            await memory.sync(1, names, [msg(0, 'user', '我明天下午面试')]);
-            await memory.recall(1, [{ role: 'user', content: '过了！', time: new Date().toISOString() }], new Date());
+            await memory.sync(A, names, [msg(0, 'user', '我明天下午面试')]);
+            await memory.recall(A, [{ role: 'user', content: '过了！', time: new Date().toISOString() }], new Date());
             assert.equal(calls.recall.length, 1);
             assert.deepEqual(check(calls.recall[0], root('recall')), []);
         } finally {
@@ -137,18 +140,18 @@ describe('长期记忆：写入', () => {
         const history = [msg(0, 'user', '在吗'), msg(1, 'assistant', '在'), msg(120, 'user', '刚下课')];
         const { memory, calls, logs, cleanup } = setup({}, T0 + 125 * MIN);
         try {
-            await memory.sync(1, names, history);
+            await memory.sync(A, names, history);
             assert.deepEqual(calls.retain.map(r => r.document_id), [`ep-${T0}`], '第二段还在进行，只有 1 条，不写');
             assert.equal(calls.putBank.length, 1);
             assert.equal(calls.createMentalModel.length, 1);
             assert.ok(logs.some(l => l.includes('已提交')));
 
-            await memory.sync(1, names, history);
+            await memory.sync(A, names, history);
             assert.equal(calls.retain.length, 1, '没有变化就不重复写');
             assert.equal(calls.putBank.length, 1);
 
             const busy = [...history, ...Array.from({ length: OPEN_EPISODE_STEP }, (_, i) => msg(121 + i / 10, 'user', `第${i}条`, 1000 + i))];
-            await memory.sync(1, names, busy);
+            await memory.sync(A, names, busy);
             assert.equal(calls.retain.at(-1)!.document_id, `ep-${T0 + 120 * MIN}`, '进行中的片段攒够条数，整段写一次');
             assert.equal(calls.retain.at(-1)!.metadata.messages, String(OPEN_EPISODE_STEP + 1));
         } finally {
@@ -160,16 +163,41 @@ describe('长期记忆：写入', () => {
         const history = [msg(0, 'user', '在吗'), msg(100, 'user', '人呢')];
         const { memory, calls, logs, dir, cleanup } = setup({ failRetain: 2 });
         try {
-            await memory.sync(1, names, history);
+            await memory.sync(A, names, history);
             assert.equal(calls.retain.length, 1);
             assert.ok(logs.some(l => l.includes('记忆写入失败：Hindsight 返回 500')));
             assert.equal(logs.filter(l => l.includes('已提交')).length, 1);
 
-            await memory.sync(1, names, history);
+            await memory.sync(A, names, history);
             assert.deepEqual(calls.retain.map(r => r.document_id), [`ep-${T0}`, `ep-${T0 + 100 * MIN}`]);
-            const state = JSON.parse(readFileSync(join(dir, '1.json'), 'utf8'));
-            assert.equal(state.bankId, memory.bankId(1));
+            const state = JSON.parse(readFileSync(join(dir, '1-boyfriend.json'), 'utf8'));
+            assert.equal(state.bankId, memory.bankId(A));
             assert.deepEqual(state.retained, { [`ep-${T0}`]: 1, [`ep-${T0 + 100 * MIN}`]: 1 });
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('换档位用另一个 bank 和状态文件：降档后不召回、不接着用原档位的写入进度', async () => {
+        const { memory, calls, dir, cleanup } = setup({ recall: [{ id: '1', text: '男朋友档时的事', document_id: 'ep-old' }] });
+        try {
+            const classmate = { qq: 1, tier: 'classmate' };
+            assert.notEqual(memory.bankId(A), memory.bankId(classmate));
+            const history = [msg(0, 'user', '在吗')];
+            const chat = [{ role: 'user' as const, content: '还记得吗', time: new Date().toISOString() }];
+            await memory.sync(A, names, history);
+            assert.match((await memory.recall(A, chat, new Date()))!, /男朋友档时的事/);
+
+            assert.equal(await memory.recall(classmate, chat, new Date()), undefined, '同学档的 bank 还没写过，不查');
+            assert.equal(memory.relationship(classmate), undefined);
+            await memory.sync(classmate, names, history);
+            await memory.recall(classmate, chat, new Date());
+            assert.deepEqual(calls.banks, [
+                `retain ${memory.bankId(A)}`, `recall ${memory.bankId(A)}`,
+                `retain ${memory.bankId(classmate)}`, `recall ${memory.bankId(classmate)}`,
+            ]);
+            assert.match((calls.putBank[1] as { name: string }).name, /（classmate）$/);
+            assert.ok(existsSync(join(dir, '1-boyfriend.json')) && existsSync(join(dir, '1-classmate.json')));
         } finally {
             cleanup();
         }
@@ -178,11 +206,12 @@ describe('长期记忆：写入', () => {
     test('同一联系人的写入串行；bank ID 不含 QQ 号', async () => {
         const { memory, calls, cleanup } = setup();
         try {
+            const big = { qq: 123456789, tier: 'boyfriend' };
             const history = [msg(0, 'user', '在吗')];
-            await Promise.all([memory.sync(123456789, names, history), memory.sync(123456789, names, history)]);
+            await Promise.all([memory.sync(big, names, history), memory.sync(big, names, history)]);
             assert.equal(calls.retain.length, 1, '第二次排在第一次之后，看到已经写过');
-            assert.match(memory.bankId(123456789), /^linmengyao-[0-9a-f]{16}$/);
-            assert.ok(!memory.bankId(123456789).includes('123456789'));
+            assert.match(memory.bankId(big), /^linmengyao-[0-9a-f]{16}$/);
+            assert.ok(!memory.bankId(big).includes('123456789'));
         } finally {
             cleanup();
         }
@@ -217,10 +246,10 @@ describe('长期记忆：召回与关系概况', () => {
         const { memory, calls, logs, cleanup } = setup({ recall: new Error('超时（3000 ms）') });
         try {
             const chat = [{ role: 'user' as const, content: '在吗', time: new Date().toISOString() }];
-            assert.equal(await memory.recall(1, chat, new Date()), undefined);
+            assert.equal(await memory.recall(A, chat, new Date()), undefined);
             assert.equal(calls.recall.length, 0, '还没有 bank');
-            await memory.sync(1, names, [msg(0, 'user', '在吗')]);
-            assert.equal(await memory.recall(1, chat, new Date()), undefined);
+            await memory.sync(A, names, [msg(0, 'user', '在吗')]);
+            assert.equal(await memory.recall(A, chat, new Date()), undefined);
             assert.ok(logs.some(l => l.includes('记忆召回失败，这次不带记忆：超时')));
         } finally {
             cleanup();
@@ -235,9 +264,9 @@ describe('长期记忆：召回与关系概况', () => {
         ];
         const { memory, cleanup } = setup({ recall: results }, now);
         try {
-            await memory.sync(1, names, [msg(-200, 'user', '很久以前')]);
+            await memory.sync(A, names, [msg(-200, 'user', '很久以前')]);
             const chat = [msg(0, 'user', '刚才说的'), msg(29, 'user', '还有')];
-            const text = await memory.recall(1, chat, new Date(now));
+            const text = await memory.recall(A, chat, new Date(now));
             assert.match(text!, /旧事/);
             assert.doesNotMatch(text!, /刚才说的/);
         } finally {
@@ -248,11 +277,11 @@ describe('长期记忆：召回与关系概况', () => {
     test('关系概况：第一次在后台读，读到之后放进提示；内容为空时不放', async () => {
         const { memory, calls, cleanup } = setup({ mentalModel: { id: 'relationship', content: '两人关系稳定，阿明在等面试结果。' } });
         try {
-            assert.equal(memory.relationship(1), undefined, '还没有 bank');
-            await memory.sync(1, names, [msg(0, 'user', '在吗')]);
-            assert.equal(memory.relationship(1), undefined, '第一次只是开始读');
+            assert.equal(memory.relationship(A), undefined, '还没有 bank');
+            await memory.sync(A, names, [msg(0, 'user', '在吗')]);
+            assert.equal(memory.relationship(A), undefined, '第一次只是开始读');
             await new Promise(r => setImmediate(r));
-            assert.match(memory.relationship(1)!, /两人关系稳定/);
+            assert.match(memory.relationship(A)!, /两人关系稳定/);
             assert.equal(calls.getMentalModel, 2, '建库时查过一次，后台读一次；没过期不再读');
         } finally {
             cleanup();

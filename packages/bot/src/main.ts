@@ -80,7 +80,7 @@ const MEMORY_SYNC_MS = 5 * 60_000;
 function syncMemory(): void {
     if (!memory) return;
     for (const contact of config.contacts) {
-        void memory.sync(contact.qq, { user: contact.name, char: cardFor(contact.tier).character.name }, history.load(contact.qq));
+        void memory.sync(contact, { user: contact.name, char: cardFor(contact.tier).character.name }, history.load(contact.qq));
     }
 }
 if (memory) setInterval(syncMemory, MEMORY_SYNC_MS).unref();
@@ -100,8 +100,8 @@ function createContactResponder(contact: Contact) {
             const now = new Date();
             // 长期记忆只给名单里的人
             const remembers = memory && contact.tier !== UNLISTED_TIER;
-            const recalled = remembers ? await memory.recall(contact.qq, chat, now) : undefined;
-            const relationship = remembers ? memory.relationship(contact.qq) : undefined;
+            const recalled = remembers ? await memory.recall(contact, chat, now) : undefined;
+            const relationship = remembers ? memory.relationship(contact) : undefined;
             if (recalled) contactLog(`召回长期记忆 ${recalled.split('\n').length - 1} 条`);
             return withPostProcessing(buildPrompt({
                 character,

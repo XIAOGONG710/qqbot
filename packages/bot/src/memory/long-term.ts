@@ -1,11 +1,12 @@
-// 长期记忆（ADR 0004 决策 3）：每位名单里的联系人一个 Hindsight bank。
+// 长期记忆（ADR 0004 决策 3）：名单里的联系人每人每个档位一个 Hindsight bank（ADR 0003「实现时的调整」第 3 条：
+// 降档后不会召回高档位时的记忆）。
 // - 写入：聊天记录按片段（episodes.ts）写入，一个片段一个 document_id。片段结束（安静 45 分钟）时写，
 //   还在进行的片段每多 OPEN_EPISODE_STEP 条也整段写一次，免得早先的话被挤出上下文后又还没进记忆。
-//   同一联系人的写入串行执行；每个片段写到第几条记在 runtime/bot/memory/<QQ>.json，失败的下次再写。
+//   同一联系人的写入串行执行；每个片段写到第几条记在 runtime/bot/memory/<QQ>-<档位>.json，失败的下次再写。
 // - 召回：生成前用这次对方发的几条（加上她上一句）去查，限时；查不到、超时、出错都不注入。
 //   结果里属于当前片段的去掉（那部分原文已经在上下文里）。
 // - 关系概况：bank 里的 Mental Model「relationship」，后台定期读取，放在 main 之后。
-// bank ID 不含原始 QQ 号（调研方案 9.3），用 QQ 号的哈希。
+// bank ID 不含原始 QQ 号（调研方案 9.3），用 QQ 号和档位的哈希。
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -66,6 +67,12 @@ export const RELATIONSHIP_MODEL: MentalModelRequest = {
     trigger: { refresh_after_consolidation: true, min_refresh_interval_seconds: 1800 },
 };
 
+/** 记忆按「联系人 + 档位」分开 */
+export interface MemoryContact {
+    qq: number;
+    tier: string;
+}
+
 interface ContactState {
     bankId: string;
     /** 已写入的 mission 版本（mission 改了就重新 PUT） */
@@ -90,9 +97,9 @@ export interface LongTermMemoryOptions {
 export class LongTermMemory {
     readonly #options: LongTermMemoryOptions;
     readonly #now: () => number;
-    /** 每个联系人的写入排队，保证串行 */
-    readonly #queues = new Map<number, Promise<void>>();
-    readonly #relationship = new Map<number, { content?: string; fetchedAt: number; fetching?: boolean }>();
+    /** 每个联系人（按 #key）的写入排队，保证串行 */
+    readonly #queues = new Map<string, Promise<void>>();
+    readonly #relationship = new Map<string, { content?: string; fetchedAt: number; fetching?: boolean }>();
 
     constructor(options: LongTermMemoryOptions) {
         this.#options = options;
@@ -100,22 +107,23 @@ export class LongTermMemory {
         mkdirSync(options.dir, { recursive: true });
     }
 
-    bankId(qq: number): string {
-        return `${this.#options.bankPrefix}-${createHash('sha256').update(`qqbot:${qq}`).digest('hex').slice(0, 16)}`;
+    bankId(contact: MemoryContact): string {
+        return `${this.#options.bankPrefix}-${createHash('sha256').update(`qqbot:${this.#key(contact)}`).digest('hex').slice(0, 16)}`;
     }
 
     /** 把还没写入的片段写进 Hindsight；同一联系人排队执行，返回这一次排进去的任务 */
-    sync(qq: number, names: MacroNames, history: StoredMessage[]): Promise<void> {
-        const previous = this.#queues.get(qq) ?? Promise.resolve();
-        const next = previous.then(() => this.#sync(qq, names, history)).catch(error => {
-            this.#options.log(`[${qq}] 记忆写入失败：${error instanceof Error ? error.message : String(error)}`);
+    sync(contact: MemoryContact, names: MacroNames, history: StoredMessage[]): Promise<void> {
+        const key = this.#key(contact);
+        const previous = this.#queues.get(key) ?? Promise.resolve();
+        const next = previous.then(() => this.#sync(contact, names, history)).catch(error => {
+            this.#options.log(`[${contact.qq}] 记忆写入失败：${error instanceof Error ? error.message : String(error)}`);
         });
-        this.#queues.set(qq, next);
+        this.#queues.set(key, next);
         return next;
     }
 
-    async #sync(qq: number, names: MacroNames, history: StoredMessage[]): Promise<void> {
-        const state = this.#load(qq);
+    async #sync(contact: MemoryContact, names: MacroNames, history: StoredMessage[]): Promise<void> {
+        const state = this.#load(contact);
         const pending = splitEpisodes(history).filter(episode => {
             const done = state.retained[episode.id] ?? 0;
             if (done === episode.messages.length) return false;
@@ -124,7 +132,7 @@ export class LongTermMemory {
         });
         if (pending.length === 0) return;
 
-        await this.#ensureBank(qq, names, state);
+        await this.#ensureBank(contact, names, state);
         for (const episode of pending) {
             await this.#options.api.retain(state.bankId, {
                 content: episodeTranscript(episode, names),
@@ -135,32 +143,32 @@ export class LongTermMemory {
                 metadata: { source: 'qq', episode: episode.id, messages: String(episode.messages.length) },
             });
             state.retained[episode.id] = episode.messages.length;
-            this.#save(qq, state);
-            this.#options.log(`[${qq}] 记忆：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
+            this.#save(contact, state);
+            this.#options.log(`[${contact.qq}] 记忆：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
         }
     }
 
-    async #ensureBank(qq: number, names: MacroNames, state: ContactState): Promise<void> {
+    async #ensureBank(contact: MemoryContact, names: MacroNames, state: ContactState): Promise<void> {
         const version = createHash('sha256').update(JSON.stringify(BANK_MISSIONS)).digest('hex').slice(0, 12);
         if (state.bankConfigured !== version) {
-            const config: BankConfig = { name: `${names.char} × ${names.user}`, ...BANK_MISSIONS };
+            const config: BankConfig = { name: `${names.char} × ${names.user}（${contact.tier}）`, ...BANK_MISSIONS };
             await this.#options.api.putBank(state.bankId, config);
             state.bankConfigured = version;
-            this.#save(qq, state);
-            this.#options.log(`[${qq}] 记忆：bank ${state.bankId} 已写入 mission`);
+            this.#save(contact, state);
+            this.#options.log(`[${contact.qq}] 记忆：bank ${state.bankId}（${contact.tier}）已写入 mission`);
         }
         if (!state.relationshipModel) {
             if (!(await this.#options.api.getMentalModel(state.bankId, RELATIONSHIP_MODEL_ID))) {
                 await this.#options.api.createMentalModel(state.bankId, RELATIONSHIP_MODEL);
             }
             state.relationshipModel = true;
-            this.#save(qq, state);
+            this.#save(contact, state);
         }
     }
 
     /** 召回和这次对话相关的旧事，整理成一段提示；没有就返回 undefined。出错只记日志 */
-    async recall(qq: number, chat: ChatMessage[], now: Date): Promise<string | undefined> {
-        const state = this.#load(qq);
+    async recall(contact: MemoryContact, chat: ChatMessage[], now: Date): Promise<string | undefined> {
+        const state = this.#load(contact);
         if (!state.bankConfigured) return undefined;
         const query = recallQuery(chat);
         if (!query) return undefined;
@@ -179,7 +187,7 @@ export class LongTermMemory {
         try {
             results = await this.#options.api.recall(state.bankId, request, this.#options.recallTimeoutMs);
         } catch (error) {
-            this.#options.log(`[${qq}] 记忆召回失败，这次不带记忆：${error instanceof Error ? error.message : String(error)}`);
+            this.#options.log(`[${contact.qq}] 记忆召回失败，这次不带记忆：${error instanceof Error ? error.message : String(error)}`);
             return undefined;
         }
         const current = currentEpisodeId(chat);
@@ -187,36 +195,41 @@ export class LongTermMemory {
     }
 
     /** 关系概况：返回缓存，过期了在后台重新读 */
-    relationship(qq: number): string | undefined {
-        const state = this.#load(qq);
+    relationship(contact: MemoryContact): string | undefined {
+        const state = this.#load(contact);
         if (!state.relationshipModel) return undefined;
-        const cached = this.#relationship.get(qq);
+        const key = this.#key(contact);
+        const cached = this.#relationship.get(key);
         if (!cached || (!cached.fetching && this.#now() - cached.fetchedAt >= RELATIONSHIP_REFRESH_MS)) {
             const entry = { content: cached?.content, fetchedAt: cached?.fetchedAt ?? 0, fetching: true };
-            this.#relationship.set(qq, entry);
+            this.#relationship.set(key, entry);
             this.#options.api.getMentalModel(state.bankId, RELATIONSHIP_MODEL_ID)
                 .then(model => { entry.content = model?.content?.trim() || undefined; })
-                .catch(error => this.#options.log(`[${qq}] 读取关系概况失败：${error instanceof Error ? error.message : String(error)}`))
+                .catch(error => this.#options.log(`[${contact.qq}] 读取关系概况失败：${error instanceof Error ? error.message : String(error)}`))
                 .finally(() => { entry.fetchedAt = this.#now(); entry.fetching = false; });
         }
-        const content = this.#relationship.get(qq)?.content;
+        const content = this.#relationship.get(key)?.content;
         return content ? `[你们关系的整体情况（从以前的聊天整理的，只作参考，不要原样说出来）]\n${content}` : undefined;
     }
 
-    #path(qq: number): string {
-        return join(this.#options.dir, `${qq}.json`);
+    #key(contact: MemoryContact): string {
+        return `${contact.qq}-${contact.tier}`;
     }
 
-    #load(qq: number): ContactState {
-        const path = this.#path(qq);
-        const fresh: ContactState = { bankId: this.bankId(qq), retained: {} };
+    #path(contact: MemoryContact): string {
+        return join(this.#options.dir, `${this.#key(contact)}.json`);
+    }
+
+    #load(contact: MemoryContact): ContactState {
+        const path = this.#path(contact);
+        const fresh: ContactState = { bankId: this.bankId(contact), retained: {} };
         if (!existsSync(path)) return fresh;
         const data = JSON.parse(readFileSync(path, 'utf8')) as Partial<ContactState>;
-        return { ...fresh, ...data, bankId: this.bankId(qq), retained: data.retained ?? {} };
+        return { ...fresh, ...data, bankId: this.bankId(contact), retained: data.retained ?? {} };
     }
 
-    #save(qq: number, state: ContactState): void {
-        writeFileSync(this.#path(qq), JSON.stringify(state, null, 2) + '\n');
+    #save(contact: MemoryContact, state: ContactState): void {
+        writeFileSync(this.#path(contact), JSON.stringify(state, null, 2) + '\n');
     }
 }
 
