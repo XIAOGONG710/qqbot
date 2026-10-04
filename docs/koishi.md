@@ -71,7 +71,7 @@ Koishi 路线验收、稳定跑一周后再决定删不删 `main.ts`（ADR 0008 
   - 插件的代码（Schema）改了要重启整个 Koishi 才生效：控制台和插件的模块都只在启动时读一次。
 - **`adapter-onebot` 和 `auth` 的表单不要在控制台改**：控制台保存时不做 `${{ env.X }}` 插值，适配器会拿模板原文当 token 去连 NapCat（被拒），
   管理员密码也会变成模板原文，直到整个 Koishi 重启。要改就停掉 Koishi 改 `koishi.yml`。插件发现 token 是模板原文时会在日志里提示。
-- 改人设：照旧改 `characters/<角色>/tiers.toml`，跑 `node packages/character-tools/src/cli.ts --force`。插件监听卡所在目录，文件变了 2 秒后自动重启插件重新读。
+- 改人设、世界书、作息：资料在 `characters/<角色>/source/` 下的 YAML（ADR 0010）。控制台的「林梦瑶」页面做好之前，直接改 YAML，再跑 `node packages/character-tools/src/cli.ts`。插件监听卡所在目录，文件变了 2 秒后自动重启插件重新读。
 
 ## 已知的上游问题（不改上游源码，插件里绕开）
 

@@ -3,6 +3,8 @@
 - 状态：已采纳（2026-10-04 与用户确认，见文末「确认记录」）
 - 日期：2026-10-04
 - 关联：[ADR 0002](0002-standalone-runtime.md) 决策 3（按对象分档由运行时实现，数据仍须能导入 SillyTavern 试聊）
+- 被修改：[ADR 0010](0010-character-editor-page.md)（2026-10-05）：数据来源从 `legacy/` + `tiers.toml` 改为 `characters/linmengyao/source/` 下的 YAML，
+  可见性用档位名写在每个字段上，改写存成各档的最终文字；分档和「不写进去」的原则不变。下文提到的 `tiers.toml` 是当时的做法
 
 ## 背景
 

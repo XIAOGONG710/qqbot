@@ -127,7 +127,7 @@ export function personaToCard(source: CharacterSource, tierName: string, options
             scenario,
             first_mes: '',
             mes_example: formatExamples(tier.examples ?? []),
-            creator_notes: `由 packages/character-tools 从 characters/linmengyao/legacy/persona.toml 和 tiers.toml 转换生成（档位 ${tier.name}）。`,
+            creator_notes: `由 packages/character-tools 从 characters/linmengyao/source/ 生成（档位 ${tier.name}）。不要手改：改资料请用 Koishi 控制台的「林梦瑶」页面或 source/ 下的 YAML。`,
             system_prompt: SYSTEM_PROMPT,
             post_history_instructions: postHistory,
             alternate_greetings: [],

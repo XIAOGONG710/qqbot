@@ -7,7 +7,7 @@
 //   schedule.yml  作息：几点睡、课表、假期、调休、空闲活动，和它们给哪些档位
 //   tiers.yml     档位：对方是谁、说话方式、示例对话、禁用词……；顺序就是输出顺序
 //
-// 档位一律写名字（boyfriend、classmate……），不再用 tiers.toml 的一字母代号。
+// 档位一律写名字（boyfriend、classmate……），不再用旧 tiers.toml 的一字母代号。
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

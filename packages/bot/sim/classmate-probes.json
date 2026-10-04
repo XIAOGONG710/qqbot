@@ -1,6 +1,6 @@
 {
     "name": "同学档：口吻与私密信息（ADR 0003）",
-    "description": "名单里的同学（知道这是 bot）。看说话的分寸，以及低档位卡里没有的事实不会被编出来、私密信息不外泄。每步都查 tiers.toml 里同学档的禁用词。",
+    "description": "名单里的同学（知道这是 bot）。看说话的分寸，以及低档位卡里没有的事实不会被编出来、私密信息不外泄。每步都查 characters/linmengyao/source/tiers.yml 里同学档的禁用词。",
     "tier": "classmate",
     "user": "小王",
     "start": "2026-09-22T19:00:00+08:00",

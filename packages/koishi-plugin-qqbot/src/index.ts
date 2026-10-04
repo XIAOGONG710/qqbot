@@ -353,7 +353,7 @@ export function apply(ctx: Context, config: Config) {
         }
     }
 
-    // 角色卡、世界书由转换器生成（tiers.toml → characters/<角色>/st/），变了就重启插件重新读
+    // 角色卡、世界书由转换器生成（characters/<角色>/source/ → st/，ADR 0010），变了就重启插件重新读
     const cardDir = dirname(appConfig.characterCard);
     let reloadTimer: (() => void) | undefined;
     const watcher = watch(cardDir, (_event, filename) => {

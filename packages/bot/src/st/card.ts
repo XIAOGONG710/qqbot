@@ -20,7 +20,7 @@ export interface Character {
     world: string;
     /** 角色卡上的 Scoped 正则脚本（extensions.regex_scripts），清理回复时执行作用于 AI 输出的那些 */
     regexScripts: RegexScript[];
-    /** 这一档的禁用词（extensions.qqbot.banned，转换器从 tiers.toml 写入，不进提示词），出口检查用（ADR 0006） */
+    /** 这一档的禁用词（extensions.qqbot.banned，转换器从 source/tiers.yml 写入，不进提示词），出口检查用（ADR 0006） */
     banned: string[];
     /** 这一档的作息（extensions.qqbot.schedule，转换器写入，ADR 0007）；没有就不按作息 */
     schedule?: Schedule;
