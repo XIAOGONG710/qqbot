@@ -7,5 +7,8 @@
     "sim": "node src/sim/run.ts",
     "typecheck": "tsc -p .",
     "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "undici": "7.30.0"
   }
 }

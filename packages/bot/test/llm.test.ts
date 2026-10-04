@@ -67,12 +67,13 @@ describe('模型请求', () => {
     });
 
     test('连接失败时按间隔重试，连上就返回', async () => {
-        const { fetch, calls } = fakeFetch([() => networkError('UND_ERR_CONNECT_TIMEOUT'), () => networkError('ECONNRESET'), ok]);
+        const failures = RETRY_DELAYS_MS.map((_, i) => () => networkError(i % 2 ? 'ECONNRESET' : 'UND_ERR_CONNECT_TIMEOUT'));
+        const { fetch, calls } = fakeFetch([...failures, ok]);
         const slept: number[] = [];
         const logs: string[] = [];
         const reply = await chatCompletion(options, messages, { fetch, sleep: async ms => { slept.push(ms); }, log: m => logs.push(m) });
         assert.equal(reply, '在呢');
-        assert.deepEqual(calls, ['https://llm.example/chat/completions', 'https://llm.example/chat/completions', 'https://llm.example/chat/completions']);
+        assert.deepEqual(calls, Array(RETRY_DELAYS_MS.length + 1).fill('https://llm.example/chat/completions'));
         assert.deepEqual(slept, RETRY_DELAYS_MS);
         assert.ok(logs[0]!.includes('UND_ERR_CONNECT_TIMEOUT'));
     });
