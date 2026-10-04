@@ -291,7 +291,7 @@ export function personaToCard(personaToml: Table, config: TierConfig, tierName: 
     };
 }
 
-function applyRewrite(rewrite: Rewrite, original: string): string {
+export function applyRewrite(rewrite: Rewrite, original: string): string {
     const where = `tiers.toml 对 ${rewrite.field} 的改写`;
     if (rewrite.original !== undefined && rewrite.original !== original) {
         throw new Error(`${where}：原文变了，请核对改写（现在是：${original}）`);
