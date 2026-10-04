@@ -61,8 +61,9 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             recall: async (_bank, request) => { calls.recall.push(request); return [{ id: '1', text: '阿明的组长外号叫铁锅', document_id: 'ep-old' }]; },
             getMentalModel: async () => (configured ? { id: 'relationship', content: '关系稳定' } : undefined),
             createMentalModel: async () => {},
-            countOperations: async () => 0,
-            refreshMentalModel: async () => { calls.refreshed++; },
+            activeOperations: async () => [],
+            operationStatus: async () => 'completed',
+            refreshMentalModel: async () => { calls.refreshed++; return 'op-1'; },
             deleteBank: async bank => { calls.deleted.push(bank); },
         };
         const prompts: OpenAIMessage[][] = [];
@@ -133,8 +134,9 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             recall: async () => [{ id: '1', text: '阿明的组长外号叫铁锅', document_id: 'ep-old' }],
             getMentalModel: async () => (configured ? { id: 'relationship', content: '' } : undefined),
             createMentalModel: async () => {},
-            countOperations: async () => 0,
-            refreshMentalModel: async () => {},
+            activeOperations: async () => [],
+            operationStatus: async () => 'completed',
+            refreshMentalModel: async () => 'op-1',
             deleteBank: async () => {},
         };
         const seen: OpenAIMessage[][] = [];

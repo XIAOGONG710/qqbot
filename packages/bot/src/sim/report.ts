@@ -9,7 +9,7 @@ const day = (t: number) => { const d = new Date(t); return `${d.getMonth() + 1}-
 const quote = (text: string) => text.split('\n').map(line => `> ${line}`).join('\n');
 
 /** 调度相关的日志（不含每次都有的「收到」「已回复」） */
-const SCHEDULING = /生成期间收到新消息|发送中途对方插话|插话没有触发|模型回复清理后为空|回复失败|召回失败|记忆写入失败|连接失败|Hindsight 后台任务|删除测试 bank/;
+const SCHEDULING = /生成期间收到新消息|发送中途对方插话|插话没有触发|模型回复清理后为空|回复失败|召回失败|记忆写入失败|连接失败|Hindsight 后台任务|关系概况刷新|删除测试 bank/;
 
 export function renderReport(result: RunResult): string {
     const { scenario } = result;

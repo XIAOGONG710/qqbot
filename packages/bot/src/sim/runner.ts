@@ -18,8 +18,9 @@ export const SIM_QQ = 10001;
 
 /** 模拟器要用到的 Hindsight 接口（HindsightClient 都有） */
 export interface SimHindsight extends HindsightApi {
-    countOperations(bankId: string, status: string): Promise<number>;
-    refreshMentalModel(bankId: string, id: string): Promise<void>;
+    activeOperations(bankId: string): Promise<string[]>;
+    operationStatus(bankId: string, operationId: string): Promise<string>;
+    refreshMentalModel(bankId: string, id: string): Promise<string>;
     deleteBank(bankId: string): Promise<void>;
 }
 
@@ -184,7 +185,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         while (quietPolls < 2) {
             let busy = 0;
             try {
-                busy = (await options.hindsight.countOperations(bankId, 'pending')) + (await options.hindsight.countOperations(bankId, 'processing'));
+                // 关系概况的自动刷新有 30 分钟（真实时间）的最短间隔，会一直排着，不等它；T23 用手动刷新
+                busy = (await options.hindsight.activeOperations(bankId)).filter(t => t !== 'refresh_mental_model').length;
             } catch {
                 return; // bank 还没建（没有结束了的片段）
             }
@@ -228,8 +230,14 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 await syncMemory();
             } else if ('refresh' in step) {
                 if (options.hindsight && bankId && !hindsightDown) {
-                    await options.hindsight.refreshMentalModel(bankId, RELATIONSHIP_MODEL.id);
-                    await syncMemory();
+                    const operation = await options.hindsight.refreshMentalModel(bankId, RELATIONSHIP_MODEL.id);
+                    const started = Date.now();
+                    let status = '';
+                    while (!['completed', 'failed', 'cancelled', 'not_found'].includes(status) && Date.now() - started < (options.hindsightWaitMs ?? 240_000)) {
+                        await sleep(1000);
+                        status = await options.hindsight.operationStatus(bankId, operation);
+                    }
+                    log(`关系概况刷新：${status || '没等到'}（${Math.round((Date.now() - started) / 1000)} 秒）`);
                     current.relationship = (await options.hindsight.getMentalModel(bankId, RELATIONSHIP_MODEL.id))?.content ?? '';
                 } else {
                     log('没有记忆，跳过刷新关系概况');
@@ -274,7 +282,8 @@ function switchable(api: SimHindsight, down: () => boolean): SimHindsight {
         recall: (...a) => guard(() => api.recall(...a)),
         getMentalModel: (...a) => guard(() => api.getMentalModel(...a)),
         createMentalModel: (...a) => guard(() => api.createMentalModel(...a)),
-        countOperations: (...a) => guard(() => api.countOperations(...a)),
+        activeOperations: (...a) => guard(() => api.activeOperations(...a)),
+        operationStatus: (...a) => guard(() => api.operationStatus(...a)),
         refreshMentalModel: (...a) => guard(() => api.refreshMentalModel(...a)),
         deleteBank: (...a) => api.deleteBank(...a),
     };

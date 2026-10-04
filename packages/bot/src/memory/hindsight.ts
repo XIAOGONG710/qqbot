@@ -5,7 +5,7 @@
 //   POST /v1/default/banks/{bank_id}/memories/recall              召回
 //   GET / POST /v1/default/banks/{bank_id}/mental-models[/{id}]   关系概况（Mental Model）
 // 只有模拟器（sim/，ADR 0005）用的：
-//   GET    /v1/default/banks/{bank_id}/operations?status=          后台任务（等抽取、整合做完）
+//   GET    /v1/default/banks/{bank_id}/operations[/{id}]           后台任务（等抽取、整合、刷新做完）
 //   POST   /v1/default/banks/{bank_id}/mental-models/{id}/refresh  手动刷新关系概况
 //   DELETE /v1/default/banks/{bank_id}                             删掉测试 bank
 // 出错（连不上、超时、非 2xx）一律抛 HindsightError，由调用方记日志，不在这里吞掉。
@@ -124,14 +124,26 @@ export class HindsightClient implements HindsightApi {
         await this.#request('POST', `${this.#bank(bankId)}/mental-models`, request);
     }
 
-    /** 某个状态（pending / processing / completed / failed / cancelled）的后台任务有几个 */
-    async countOperations(bankId: string, status: string): Promise<number> {
-        const data = await this.#request<{ total?: number }>('GET', `${this.#bank(bankId)}/operations?status=${encodeURIComponent(status)}&limit=1`);
-        return data.total ?? 0;
+    /** 还没做完（pending / processing）的后台任务的类型，例如 retain、consolidation、refresh_mental_model */
+    async activeOperations(bankId: string): Promise<string[]> {
+        const types: string[] = [];
+        for (const status of ['pending', 'processing']) {
+            const data = await this.#request<{ operations?: { task_type: string }[] }>('GET', `${this.#bank(bankId)}/operations?status=${status}&limit=100`);
+            types.push(...(data.operations ?? []).map(op => op.task_type));
+        }
+        return types;
     }
 
-    async refreshMentalModel(bankId: string, id: string): Promise<void> {
-        await this.#request('POST', `${this.#bank(bankId)}/mental-models/${encodeURIComponent(id)}/refresh`);
+    /** 某个后台任务的状态：pending / processing / completed / failed / cancelled / not_found */
+    async operationStatus(bankId: string, operationId: string): Promise<string> {
+        const data = await this.#request<{ status: string }>('GET', `${this.#bank(bankId)}/operations/${encodeURIComponent(operationId)}`);
+        return data.status;
+    }
+
+    /** 手动刷新关系概况，返回后台任务 id */
+    async refreshMentalModel(bankId: string, id: string): Promise<string> {
+        const data = await this.#request<{ operation_id: string }>('POST', `${this.#bank(bankId)}/mental-models/${encodeURIComponent(id)}/refresh`);
+        return data.operation_id;
     }
 
     async deleteBank(bankId: string): Promise<void> {
