@@ -19,7 +19,7 @@ export interface ScheduleConfig {
     /** 平时（上学期间）她在哪：按档位 */
     where: Map<string, string>;
     /** 假期名 → 她在哪（按档位）、他在哪 */
-    holidays: Map<string, { where: Map<string, string>; partner?: string }>;
+    holidays: Map<string, { where: Map<string, string>; partner?: string; partnerBack?: string }>;
     /** 上学期间他在哪 */
     partner?: string;
     /** 「他在哪」给哪些档位 */
@@ -69,6 +69,7 @@ export function parseScheduleConfig(toml: Table, decode: Decode, tierNames: stri
         return [name, {
             where: byTier(getTable(h, 'where', at), `${at}.where`),
             partner: h.partner === undefined ? undefined : getString(h, 'partner', at),
+            partnerBack: h.partner_back === undefined ? undefined : getString(h, 'partner_back', at),
         }];
     }));
     const makeupTable = s.makeup === undefined ? {} : getTable(s, 'makeup', where);
@@ -127,6 +128,7 @@ export function scheduleForTier(scheduleToml: Table, timetableToml: Table, confi
             end: date(getString(h, 'end', at)),
             ...(extra ? { where: extra.where.get(tier)! } : {}),
             ...(extra?.partner && config.partnerTiers.has(tier) ? { partner: extra.partner } : {}),
+            ...(extra?.partnerBack && config.partnerTiers.has(tier) ? { partnerBack: extra.partnerBack } : {}),
         };
     });
     for (const name of config.holidays.keys()) {

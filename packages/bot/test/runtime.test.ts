@@ -433,6 +433,8 @@ describe('配置', () => {
         assert.throws(() => withConfig({ ...valid, characterCard: 'characters/linmengyao/st/linmengyao.json' }, key), /\{tier\}/);
         assert.equal(withConfig(valid, key).unlistedFriends, true);
         assert.equal(withConfig({ ...valid, unlistedFriends: false }, key).unlistedFriends, false);
+        assert.equal(withConfig(valid, key).schedule, true);
+        assert.equal(withConfig({ ...valid, schedule: false }, key).schedule, false);
     });
 });
 

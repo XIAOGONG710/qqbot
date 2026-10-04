@@ -71,12 +71,12 @@ describe('用林梦瑶的角色卡拼提示词', () => {
             role: i % 2 === 0 ? 'user' : 'assistant',
             content: `第${i}条消息，凑一点长度凑一点长度凑一点长度`,
         }));
-        const { messages } = build(history, { settings: { ...settings, maxContext: 3000 } });
+        const { messages } = build(history, { settings: { ...settings, maxContext: 3500 } });
         const chat = messages.filter(m => m.role !== 'system');
         assert.ok(chat.length > 0 && chat.length < history.length);
         assert.equal(chat.at(-1)!.content, history.at(-1)!.content);
         const total = messages.reduce((sum, m) => sum + estimateTokens(m.role) + estimateTokens(m.content), 0);
-        assert.ok(total <= 3000 - 300 - 3);
+        assert.ok(total <= 3500 - 300 - 3);
     });
 });
 

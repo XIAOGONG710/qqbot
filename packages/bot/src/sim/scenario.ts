@@ -67,6 +67,8 @@ export interface Scenario {
     start: string;
     /** 默认 true：用 Hindsight（每次运行一个临时 bank） */
     memory: boolean;
+    /** 默认 true：按卡上的作息（ADR 0007） */
+    schedule: boolean;
     steps: Step[];
 }
 
@@ -92,6 +94,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         persona: typeof s.persona === 'string' ? s.persona : undefined,
         start: s.start as string,
         memory: s.memory !== false,
+        schedule: s.schedule !== false,
         steps: s.steps as Step[],
     };
 }

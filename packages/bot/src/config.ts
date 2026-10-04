@@ -37,6 +37,8 @@ export interface BotConfig {
     contacts: Contact[];
     /** 名单外的好友私聊时是否用 unlisted 档回复（ADR 0003 决策 2），默认是 */
     unlistedFriends: boolean;
+    /** 按角色卡上的作息（ADR 0007）：时间块里写她现在在干什么。默认是；深夜测试时关掉 */
+    schedule: boolean;
     /** 长期记忆（ADR 0004 决策 3，Hindsight 服务）；配置里没有 memory 就不用 */
     memory?: {
         /** Hindsight API 地址，例如 http://127.0.0.1:8888 */
@@ -159,6 +161,7 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
         characterCard,
         contacts,
         unlistedFriends: bool(file, 'unlistedFriends', '', true),
+        schedule: bool(file, 'schedule', '', true),
         ...(memory ? { memory } : {}),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : 'runtime/bot'),
     };

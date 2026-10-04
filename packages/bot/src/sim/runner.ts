@@ -132,6 +132,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         card: options.card,
         llm: options.llm,
         prompt: options.prompt,
+        schedule: scenario.schedule,
         history,
         memory,
         log,

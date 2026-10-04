@@ -40,6 +40,7 @@ for (const tier of tiersInUse) {
 }
 const whitelist = config.contacts.map(c => `${c.qq}（${c.name}，${c.tier}）`).join('、');
 log(`名单：${whitelist}；名单外的好友${config.unlistedFriends ? '按 unlisted 档回复' : '不回复'}`);
+log(`作息：${config.schedule ? '按角色卡，时间块里写她现在在干什么' : '关（配置 schedule: false）'}`);
 
 const chatHistory = new ChatHistory(config.dataDir);
 // 放在 ChatHistory 之后：它会建好数据目录
@@ -85,6 +86,7 @@ function createContactResponder(contact: Contact) {
         card: cardFor(contact.tier),
         llm: config.llm,
         prompt: config.prompt,
+        schedule: config.schedule,
         history,
         memory,
         send: (userId, text) => client.sendPrivateText(userId, text),

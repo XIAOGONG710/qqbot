@@ -14,6 +14,7 @@ import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from 
 import { loadCharacterCard, type Character } from './st/card.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
+import { describeState, stateAt } from './schedule.ts';
 import { describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 
@@ -49,6 +50,8 @@ export interface ContactPipelineOptions {
     generate?: (messages: OpenAIMessage[], log: Log) => Promise<string>;
     /** 连发合并的等待，默认 DEFAULT_SETTLE（测试用短的） */
     settle?: { quietMs: number; maxMs: number };
+    /** 按卡上的作息（ADR 0007）：时间块里加一行她现在在干什么。默认否；卡上没有作息时也不加 */
+    schedule?: boolean;
     /** 回复失败之后隔多久再试，默认 RETRY_AFTER_MS；模拟器传 []（它的时钟是虚拟的，真等几分钟会插进后面的步骤） */
     retryAfterMs?: readonly number[];
 }
@@ -60,6 +63,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const log: Log = message => options.log(`[${contact.qq}] ${message}`);
     const generate = options.generate ?? ((messages, log) => chatCompletion(llm, messages, { log }));
     const clean = (reply: string) => cleanUpReply(reply, names, character.regexScripts);
+    const schedule = options.schedule ? character.schedule : undefined;
     return createResponder({
         userId: contact.qq,
         history: options.history,
@@ -77,7 +81,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 userName: contact.name,
                 userPersona: contact.persona,
                 afterMain: relationship ? [relationship] : [],
-                afterHistory: [...(recalled ? [recalled] : []), describeTime(chat, time)],
+                afterHistory: [
+                    ...(recalled ? [recalled] : []),
+                    [describeTime(chat, time), ...(schedule ? [describeState(stateAt(schedule, time), schedule, { userName: contact.name })] : [])].join('\n'),
+                ],
                 now: time,
                 settings: {
                     maxContext: options.prompt.maxContext,

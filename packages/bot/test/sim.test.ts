@@ -29,6 +29,12 @@ describe('模拟器：场景文件', () => {
         assert.throws(() => parseDuration('1d x'), /时长写法不对/);
     });
 
+    test('场景默认按作息，可以关掉', () => {
+        const base = { name: 'x', tier: 'boyfriend', start: '2026-10-05T20:00:00+08:00', steps: [{ say: '在吗' }] };
+        assert.equal(parseScenario(base).schedule, true);
+        assert.equal(parseScenario({ ...base, schedule: false }).schedule, false);
+    });
+
     test('写错的场景说清楚是哪一步', () => {
         const base = { name: 'x', tier: 'boyfriend', start: '2026-10-05T20:00:00+08:00' };
         assert.throws(() => parseScenario({ ...base, tier: 'friend', steps: [{ say: 'a' }] }), /tier 应为/);
@@ -89,6 +95,7 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
                 { refresh: 'relationship' },
                 { say: '铁锅又找我茬' },
                 { check: { recall: ['铁锅'], timeBlock: '距上一条消息：1 天', replyAny: ['好'] } },
+                { check: { timeBlock: '\\[你现在：国庆节放假，没回青岛，留在学校；.+；阿明回青岛了\\]' } },
                 { check: { recall: ['不存在的词'] } },
             ],
         });

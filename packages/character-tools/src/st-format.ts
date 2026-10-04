@@ -39,8 +39,8 @@ export interface CardSchedule {
     periods: Record<string, { start: string; end: string }>;
     /** start 是第 1 周的周一 */
     semester: { start: string; weeks: number };
-    /** 含首尾两天；where：放假时她在哪，partner：他在哪 */
-    holidays: { name: string; start: string; end: string; where?: string; partner?: string }[];
+    /** 含首尾两天；where：放假时她在哪，partner：他在哪，partnerBack：放完假 PARTNER_BACK_DAYS 天内他在哪（{{user}} 由运行时换成称呼） */
+    holidays: { name: string; start: string; end: string; where?: string; partner?: string; partnerBack?: string }[];
     /** 调休补课：asDay 补星期几的课（1–7），0 = 没课 */
     makeups: { date: string; asDay: number }[];
     /** label：课型的叫法；seeAfterMin：上这种课时过多少分钟才看到消息；maxBubbles：最多回几条 */

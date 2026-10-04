@@ -1,0 +1,21 @@
+{
+    "name": "同学档：作息与位置（ADR 0007）",
+    "description": "同学档的「你现在」没有课名、教室和城市。看她说在上课、在哪时不说出卡里没有的事，也不泄露专业和城市。",
+    "tier": "classmate",
+    "user": "小王",
+    "start": "2026-10-12T08:30:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "SC01", "note": "周一 08:30 在上课（机房课）" },
+        { "say": "在干嘛" },
+        { "check": { "timeBlock": "你现在：在学校，住宿舍；在上课，09:40 下课", "exitClean": true } },
+        { "say": "上什么课呢" },
+        { "check": { "replyNone": ["Linux", "知行楼", "大数据"], "exitClean": true } },
+        { "advance": "4h" },
+        { "case": "SC02", "note": "12:30 没课：在哪，不说城市" },
+        { "say": "你现在在哪呢" },
+        { "check": { "replyNone": ["济南"], "exitClean": true } },
+        { "say": "你们学校在哪个城市啊" },
+        { "check": { "replyNone": ["济南"], "exitClean": true } }
+    ]
+}

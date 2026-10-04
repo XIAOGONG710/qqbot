@@ -22,7 +22,7 @@ export interface Schedule {
     wake: { early: string; lazy: string; earlySlot: string };
     periods: Record<string, { start: string; end: string }>;
     semester: { start: string; weeks: number };
-    holidays: { name: string; start: string; end: string; where?: string; partner?: string }[];
+    holidays: { name: string; start: string; end: string; where?: string; partner?: string; partnerBack?: string }[];
     makeups: { date: string; asDay: number }[];
     kinds: Record<CourseKind, { label?: string; seeAfterMin?: [number, number]; maxBubbles?: number }>;
     courses: Course[];
@@ -43,8 +43,8 @@ export interface ClassToday {
 export type Activity =
     | { kind: 'sleep'; until: Date }
     | { kind: 'class'; lesson: ClassToday }
-    /** 起床后到第一节课之前、两节课之间 */
-    | { kind: 'between'; next: ClassToday }
+    /** 起床后赶去上课（afterClass false）、课间（true） */
+    | { kind: 'between'; next: ClassToday; afterClass: boolean }
     | { kind: 'free'; text: string };
 
 export interface State {
@@ -62,6 +62,8 @@ export interface State {
 }
 
 const DAY_MS = 86_400_000;
+/** 放完假这么多天之内，他在哪用假期的 partnerBack（「放完假回学校了」）：聊天记录里还留着假期里他说的「我在青岛」 */
+export const PARTNER_BACK_DAYS = 7;
 /** 起床或下课到下一节课不超过这么久，算赶去上课 / 课间，不挑空闲活动 */
 const BETWEEN_MAX_MS = 45 * 60_000;
 
@@ -72,7 +74,9 @@ export function stateAt(schedule: Schedule, now: Date): State {
     const day = now < sleepStart ? new Date(date.getTime() - DAY_MS) : date;
     const holiday = holidayOn(schedule, day);
     const where = holiday ? [`${holiday.name}放假`, holiday.where].filter(Boolean).join('，') : schedule.where;
-    const partner = holiday ? holiday.partner : schedule.partner;
+    const justBack = holiday ? undefined : schedule.holidays.find(h => h.partnerBack && h.end < formatDate(day)
+        && day.getTime() - parseDate(h.end).getTime() <= PARTNER_BACK_DAYS * DAY_MS);
+    const partner = holiday ? holiday.partner : justBack?.partnerBack ?? schedule.partner;
     const { lessons, outsideSemester } = classesOn(schedule, day);
     const base = { holiday, where, ...(partner ? { partner } : {}), outsideSemester };
 
@@ -85,9 +89,9 @@ export function stateAt(schedule: Schedule, now: Date): State {
     const current = lessons.find(l => l.start <= now && now < l.end);
     if (current) return { ...withNext, activity: { kind: 'class', lesson: current } };
     // 起床或下课之后不到 45 分钟就有下一节：赶去上课、课间
-    const gapStart = lessons.findLast(l => l.end <= now)?.end ?? wake;
-    if (nextClass && nextClass.start.getTime() - gapStart.getTime() <= BETWEEN_MAX_MS) {
-        return { ...withNext, activity: { kind: 'between', next: nextClass } };
+    const previous = lessons.findLast(l => l.end <= now);
+    if (nextClass && nextClass.start.getTime() - (previous?.end ?? wake).getTime() <= BETWEEN_MAX_MS) {
+        return { ...withNext, activity: { kind: 'between', next: nextClass, afterClass: previous !== undefined } };
     }
     const window = now < at(day, schedule.free.afternoonFrom) ? 'morning' : now < at(day, schedule.free.eveningFrom) ? 'afternoon' : 'evening';
     return { ...withNext, activity: { kind: 'free', text: freeActivity(schedule, day, window) } };
@@ -174,6 +178,43 @@ export function formatDate(date: Date): string {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+// ---------- 状态行（ADR 0007 决策 3） ----------
+
+/**
+ * 时间块里的一行：她在哪、在干什么、他在哪。卡上没写的（低档位的课名、教室）就不说。
+ * woken：睡着时被消息吵醒（男朋友档，决策 6）；userName：他在哪的说法里的 {{user}} 换成称呼
+ */
+export function describeState(state: State, schedule: Schedule, options: { woken?: boolean; userName?: string } = {}): string {
+    const { activity } = state;
+    const course = (lesson: ClassToday) => lesson.name ?? '课';
+    let doing: string;
+    switch (activity.kind) {
+        case 'sleep':
+            doing = options.woken ? '在宿舍睡觉，被消息震醒了，迷迷糊糊的' : `在宿舍睡觉，${clock(activity.until)} 起`;
+            break;
+        case 'class': {
+            const { lesson } = activity;
+            const label = schedule.kinds[lesson.kind].label;
+            doing = `${lesson.room ? `在${lesson.room}` : '在'}上${course(lesson)}${label ? `（${label}）` : ''}，${clock(lesson.end)} 下课`;
+            if (lesson.kind === 'hard' || lesson.kind === 'machine') doing += '，偷偷看手机回消息，回得简短';
+            break;
+        }
+        case 'between':
+            doing = `${activity.afterClass ? '课间' : '刚起床'}，${clock(activity.next.start)} ${activity.afterClass ? '接着上' : '要上'}${course(activity.next)}`;
+            break;
+        case 'free':
+            doing = activity.text || '没课';
+            if (state.nextClass) doing += `，今天 ${clock(state.nextClass.start)} 还有${course(state.nextClass)}`;
+            break;
+    }
+    const partner = state.partner?.replaceAll('{{user}}', options.userName ?? '他');
+    return `[你现在：${[state.where, doing, partner].filter(Boolean).join('；')}]`;
+}
+
+function clock(date: Date): string {
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
 // ---------- 读卡 ----------
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -224,6 +265,7 @@ export function parseSchedule(json: unknown, source: string): Schedule {
                 end: str(o.end, `.holidays[${i}].end`, DATE),
                 ...(o.where !== undefined ? { where: str(o.where, `.holidays[${i}].where`) } : {}),
                 ...(o.partner !== undefined ? { partner: str(o.partner, `.holidays[${i}].partner`) } : {}),
+                ...(o.partnerBack !== undefined ? { partnerBack: str(o.partnerBack, `.holidays[${i}].partnerBack`) } : {}),
             };
         }),
         makeups: arr(s.makeups, '.makeups').map((m, i) => {

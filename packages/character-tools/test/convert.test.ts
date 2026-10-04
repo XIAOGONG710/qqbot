@@ -221,11 +221,12 @@ test('作息按档位裁剪：课名、教室、课型叫法只给 BFGK；拍照
         assert.equal(scheduleText(tier.name).includes('青岛'), tier.name === 'boyfriend' || detail, tier.name);
         assert.equal(s.partner !== undefined, tier.name === 'boyfriend', tier.name);
         assert.equal(s.holidays.some(h => h.partner !== undefined), tier.name === 'boyfriend', tier.name);
+        assert.equal(s.holidays.some(h => h.partnerBack !== undefined), tier.name === 'boyfriend', tier.name);
         // 上课多久才看到消息与档位无关
         assert.deepEqual(s.kinds.machine.seeAfterMin, [2, 6], tier.name);
     }
     assert.equal(scheduleOf('classmate').holidays[1]!.where, '没回家，留在学校');
-    assert.equal(scheduleOf('boyfriend').holidays[1]!.partner, '他回青岛了');
+    assert.equal(scheduleOf('boyfriend').holidays[1]!.partner, '{{user}}回青岛了');
 });
 
 test('作息里没有这一档的禁用词', () => {
