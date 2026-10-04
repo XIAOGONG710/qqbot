@@ -6,7 +6,8 @@ import { describe, test } from 'node:test';
 import { loadConfig, parseAppConfig } from '../src/config.ts';
 import { currentTierHistory, TierRecord } from '../src/tier-record.ts';
 import { ChatHistory, type StoredMessage } from '../src/history.ts';
-import { isPrivateFriendMessage, segmentsToText, senderName, type MessageEvent } from '../src/onebot.ts';
+import { isPrivateFriendMessage, segmentsToText, type MessageEvent } from '../src/onebot.ts';
+import { unlistedName } from '../src/app.ts';
 import type { PromptResult } from '../src/prompt.ts';
 import { cleanUpReply, splitReply } from '../src/reply.ts';
 import { createResponder, DEFAULT_SETTLE, PART_GAP_MS, RETRY_AFTER_MS, type ReplyTiming, type ResponderDeps } from '../src/responder.ts';
@@ -52,10 +53,9 @@ describe('OneBot 消息', () => {
         assert.equal(segmentsToText('纯文本'), '纯文本');
     });
     test('名单外的人用 QQ 昵称称呼，没有昵称叫「对方」', () => {
-        const event = (nickname?: string) => ({ sender: { user_id: 1, nickname } }) as MessageEvent;
-        assert.equal(senderName(event(' 小周 ')), '小周');
-        assert.equal(senderName(event('')), '对方');
-        assert.equal(senderName(event()), '对方');
+        assert.equal(unlistedName(' 小周 '), '小周');
+        assert.equal(unlistedName(''), '对方');
+        assert.equal(unlistedName(undefined), '对方');
     });
 
     test('只认直接私聊（sub_type friend），群临时会话和群消息不算', () => {
