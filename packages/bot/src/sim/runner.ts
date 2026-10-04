@@ -46,7 +46,7 @@ export interface RunOptions {
 
 export interface Bubble { time: number; text: string }
 export interface Input { time: number; text: string; interrupt?: boolean }
-export interface Generation { time: number; recall?: string; timeBlock?: string; relationship?: string; messages: number }
+export interface Generation { time: number; recall?: string; timeBlock?: string; relationship?: string; messages: number; /** 模型原文（清理之前） */ raw?: string }
 export interface CheckResult { ok: boolean; text: string }
 
 export interface StepRecord {
@@ -143,13 +143,16 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             return nextMessageId++;
         },
         generate: async (messages, log) => {
+            const generation = current.generations.at(-1);
             const reply = baseGenerate(messages, log);
             if (armed?.during === 'generation') {
                 const it = armed;
                 armed = undefined;
                 receive(it.say, true);
             }
-            return reply;
+            const raw = await reply;
+            if (generation) generation.raw = raw;
+            return raw;
         },
         onPrompt: prompt => {
             current.generations.push(dynamicParts(prompt, clock.now()));

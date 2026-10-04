@@ -67,6 +67,10 @@ function renderStep(step: StepRecord, dayPrefix: () => string): string[] {
             for (const e of events) out.push(`- \`${dayPrefix()}${clock(e.time)}\` ${e.text}`);
             const scheduling = step.logs.filter(l => SCHEDULING.test(l));
             out.push('', `生成 ${step.generations.length} 次${scheduling.length ? `；${scheduling.join('；')}` : ''}`, '');
+            // 被清理掉或者没发出去的模型原文（例如清理后为空、被插话丢掉的草稿）
+            const sent = step.bubbles.map(b => b.text).join('\n');
+            const unsent = step.generations.filter(g => g.raw !== undefined && !sent.includes(g.raw.trim().split('\n')[0]!.trim()));
+            for (const g of unsent) out.push('模型原文（没有原样发出）：', '', '```text', ...g.raw!.split('\n'), '```', '');
             const last = step.generations.at(-1);
             if (last) {
                 const parts = [last.timeBlock, last.recall, last.relationship].filter(Boolean) as string[];
