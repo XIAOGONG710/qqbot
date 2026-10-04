@@ -225,6 +225,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             } else if ('advance' in step) {
                 current.advance = step.advance;
                 clock.advance(parseDuration(step.advance));
+                current.time = clock.now();
                 await syncMemory();
             } else if ('memory' in step) {
                 await syncMemory();

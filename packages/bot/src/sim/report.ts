@@ -40,7 +40,7 @@ function renderStep(step: StepRecord, dayPrefix: () => string): string[] {
             out.push(`## ${step.caseId}${step.note ? ` ${step.note}` : ''}`, '');
             break;
         case 'advance':
-            out.push(`*（时间往后跳 ${step.advance}，现在 ${day(step.time)} ${clock(step.time)} 之后）*`, '');
+            out.push(`*（时间往后跳 ${step.advance}，到 ${day(step.time)} ${clock(step.time)}）*`, '');
             break;
         case 'memory':
             out.push('*（把结束了的片段写进记忆）*', '');
