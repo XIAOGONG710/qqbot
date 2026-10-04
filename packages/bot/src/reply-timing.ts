@@ -38,9 +38,23 @@ export interface TimingOptions {
     wakeable: boolean;
 }
 
+/** 判断附和、收尾只要角色和内容（聊天记录、提示词里的消息都行） */
+type Said = { role: 'user' | 'assistant'; content: string };
+
 /** 她上次回复之后对方发的消息（没回的） */
-export function pendingMessages(history: StoredMessage[]): StoredMessage[] {
+export function unansweredMessages<T extends Said>(history: T[]): T[] {
     return history.slice(history.findLastIndex(m => m.role === 'assistant') + 1).filter(m => m.role === 'user');
+}
+
+/**
+ * 这次要回的那一串：没回的消息去掉开头那几句收尾后的附和——那几句已经按「不回」处理过（决策 7），
+ * 对方隔了很久才说下一句时，这一串从那句算起（什么时候看到、冷场延迟、时间块都按它）。只有附和时为空。
+ */
+export function pendingMessages<T extends Said>(history: T[]): T[] {
+    const unanswered = unansweredMessages(history);
+    if (!closedByHer(history)) return unanswered;
+    const firstNew = unanswered.findIndex(m => !isAck(m.content));
+    return firstNew < 0 ? [] : unanswered.slice(firstNew);
 }
 
 /** 没回的这一串她什么时候看到；没有没回的消息返回 undefined */
@@ -107,16 +121,18 @@ const CLOSING = /晚安|睡吧|早点睡|去睡|先睡|去吧|去忙|先忙|忙�
 const ACK = /^(?:嗯+|恩+|好+|好的|好滴|好哒|哦+|噢+|喔+|ok+|行|收到|晚安+|安安|拜拜?|88|明天见)+$/i;
 
 /** 她已经收尾，之后对方发的全是附和（决策 7）：不回 */
-export function isAckAfterClosing(history: StoredMessage[]): boolean {
+export function isAckAfterClosing(history: Said[]): boolean {
+    return closedByHer(history) && unansweredMessages(history).length > 0 && pendingMessages(history).length === 0;
+}
+
+/** 她最后一次回复是收尾的话 */
+function closedByHer(history: Said[]): boolean {
     const lastReply = history.findLastIndex(m => m.role === 'assistant');
     if (lastReply < 0) return false;
     // 她最后一次回复可能拆成了几条
     let start = lastReply;
     while (start > 0 && history[start - 1]!.role === 'assistant') start--;
-    const closing = history.slice(start, lastReply + 1).map(m => m.content).join('\n');
-    if (!CLOSING.test(closing)) return false;
-    const pending = pendingMessages(history);
-    return pending.length > 0 && pending.every(m => isAck(m.content));
+    return CLOSING.test(history.slice(start, lastReply + 1).map(m => m.content).join('\n'));
 }
 
 export function isAck(text: string): boolean {

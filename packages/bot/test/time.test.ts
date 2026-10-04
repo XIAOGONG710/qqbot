@@ -5,8 +5,8 @@ import { humanize, timeMacros, type TimedMessage } from '../src/st/time-macros.t
 
 const at = (text: string) => new Date(text); // 不带时区，按本地时间
 const iso = (text: string) => at(text).toISOString();
-const user = (time: string): TimedMessage => ({ role: 'user', time: iso(time) });
-const her = (time: string): TimedMessage => ({ role: 'assistant', time: iso(time) });
+const user = (time: string, content = '在吗') => ({ role: 'user' as const, content, time: iso(time) }) satisfies TimedMessage & { content: string };
+const her = (time: string, content = '嗯') => ({ role: 'assistant' as const, content, time: iso(time) }) satisfies TimedMessage & { content: string };
 
 describe('ST 时间宏（中文界面）', () => {
     test('日期、星期、时间的格式', () => {
@@ -62,6 +62,19 @@ describe('运行时的时间提示', () => {
         const chat = [her('2026-10-04T18:00:00'), user('2026-10-04T19:02:00')];
         const lines = describeTime(chat, at('2026-10-04T21:15:00')).split('\n');
         assert.equal(lines[2], '[对方这次的消息是今天 19:02 发的，到现在过了 2 小时 13 分钟]');
+    });
+
+    test('她收尾后对方的附和没回，隔天才说下一句：这一组从那句算起，不是从附和算起（10-05 模拟器 boyfriend-time r3）', () => {
+        const chat = [
+            user('2026-09-21T22:10:30', '明天上午我要做项目汇报，好紧张'), her('2026-09-21T22:10:43', '行了早点睡，熬到半夜明天脑子一团浆糊'),
+            user('2026-09-21T22:10:43', '晚安'), user('2026-09-22T12:10:51', '过了！'),
+        ];
+        assert.equal(describeTime(chat, at('2026-09-22T12:10:52')), [
+            '[当前时间：2026-09-22 星期二 12:10]',
+            '[距上一条消息：14 小时（上一条在昨天 22:10）]',
+        ].join('\n'));
+        // 只有附和又要回（关掉作息时）：照旧按附和算
+        assert.equal(describeTime(chat.slice(0, 3), at('2026-09-21T22:10:45')).split('\n')[1], '[距上一条消息：不到 1 分钟（上一条在今天 22:10）]');
     });
 
     test('第一次聊天、或者对方还没有新消息时，只有当前时间', () => {

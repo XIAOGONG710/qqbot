@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
-import { arrivedWhileAsleep, isAck, isAckAfterClosing, typingMs, wakeUpTime, whenSeen } from '../src/reply-timing.ts';
+import { arrivedWhileAsleep, isAck, isAckAfterClosing, pendingMessages, typingMs, wakeUpTime, whenSeen } from '../src/reply-timing.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const schedule = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;
@@ -117,6 +117,22 @@ describe('回复时机：打字、附和、夜里的消息', () => {
         assert.equal(isAckAfterClosing([user(t(10, 5, 23)), her(t(10, 5, 23, 1), '行，去吧'), her(t(10, 5, 23, 1), '回来再说'), user(t(10, 5, 23, 2), '好')]), true);
         assert.equal(isAckAfterClosing([user(t(10, 5, 23)), her(t(10, 5, 23, 1), '在干嘛'), user(t(10, 5, 23, 2), '嗯')]), false);
         assert.equal(isAckAfterClosing([...closed]), false);
+    });
+
+    test('收尾后的附和没回，对方隔很久才说别的：这一串从那句算起（冷场延迟、夜里的消息都按它）', () => {
+        const closed = [user(t(10, 5, 22)), her(t(10, 5, 22, 1), '早点睡'), user(t(10, 5, 22, 2), '晚安')];
+        const next = user(t(10, 6, 14), '过了！');
+        assert.deepEqual(pendingMessages([...closed, next]), [next]);
+        assert.deepEqual(pendingMessages(closed), []);
+        assert.equal(isAckAfterClosing([...closed, next]), false);
+        // 她 10 月 5 日 22:01 之后没说过话：冷场，15–60 秒后才看到（按附和算的话，22:02 早就过了，马上回）
+        const seen = whenSeen([...closed, next], t(10, 6, 14), boyfriend)!;
+        assert.equal(seen.reason, '冷场，过一会儿才看到');
+        assert.ok(seen.at >= t(10, 6, 14, 0, 15), String(new Date(seen.at)));
+        // 附和之后夜里 3 点来的消息：起床后照样回
+        assert.equal(arrivedWhileAsleep([...closed, user(t(10, 6, 3), '睡不着')], t(10, 6, 10), schedule), true);
+        // 收尾后先附和、紧接着说别的：附和不算进这一串，说别的那句照常回
+        assert.deepEqual(pendingMessages([...closed, user(t(10, 5, 22, 2), '对了 明天几点起')]).map(m => m.content), ['对了 明天几点起']);
     });
 
     test('isAck', () => {
