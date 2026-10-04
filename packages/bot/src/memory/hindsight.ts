@@ -163,6 +163,11 @@ export class HindsightClient implements HindsightApi {
         await this.#request('DELETE', this.#bank(bankId));
     }
 
+    /** 服务在不在（GET /health，docs/hindsight.md）；不在就抛错 */
+    async health(timeoutMs = 3000): Promise<void> {
+        await this.#request('GET', '/health', undefined, timeoutMs);
+    }
+
     #bank(bankId: string): string {
         return `/v1/default/banks/${encodeURIComponent(bankId)}`;
     }

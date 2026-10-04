@@ -419,6 +419,35 @@ describe('回复调度', () => {
         assert.deepEqual(sent, ['好']);
     });
 
+    test('状态（控制台用，ADR 0010）：等着看到时是 waiting 和几点、为什么；回完回到 idle；失败后是 retry 和几点再试', async () => {
+        let t = 1_000_000;
+        const seeAt = t + 60_000;
+        const { waits, waitUntil } = manualWait();
+        const { responder } = setup({
+            now: () => t,
+            waitUntil,
+            timing: timingWith({ whenSeen: history => (history.at(-1)?.role === 'user' ? { at: seeAt, reason: '在上课' } : undefined) }),
+            generate: async () => '好',
+        });
+        assert.deepEqual(responder.status(), { phase: 'idle', failures: 0 });
+        responder.receive('在吗', 1, new Date(t));
+        await responder.whenQuiet();
+        assert.deepEqual(responder.status(), { phase: 'waiting', seenAt: seeAt, reason: '在上课', failures: 0 });
+        t = seeAt;
+        waits[0]!.release();
+        await responder.whenIdle();
+        assert.deepEqual(responder.status(), { phase: 'idle', failures: 0 });
+
+        const { waits: retries, sleep } = manualSleep();
+        const failing = setup({ now: () => t, retryAfterMs: RETRY_AFTER_MS, sleep, generate: async () => { throw new Error('断网'); } });
+        failing.responder.receive('在吗', 1, new Date(t));
+        await failing.responder.whenIdle();
+        assert.deepEqual(failing.responder.status(), { phase: 'retry', retryAt: t + 60_000, reason: '回复失败：断网', failures: 1 });
+        failing.responder.stop();
+        assert.equal(failing.responder.status().phase, 'idle');
+        assert.equal(retries.length, 1);
+    });
+
     test('她已经收尾、对方只回了附和：不生成；之后说了别的照常回，带上那句附和', async () => {
         const { responder, sent, prompts, logs } = setup({
             timing: timingWith({ skip: history => (history.at(-1)?.content === '嗯' ? '她已经收尾，对方只回了附和，不回' : undefined) }),

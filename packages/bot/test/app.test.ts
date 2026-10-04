@@ -126,6 +126,25 @@ describe('编排（app.ts）', () => {
         assert.equal(JSON.parse(readFileSync(join(cfg.dataDir, 'tiers.json'), 'utf8'))['99999'].tier, 'unlisted');
     });
 
+    test('状态（控制台用，ADR 0010）：每人的档位、回复器状态、最后一条是谁发的，名单外的好友也在；不含聊天内容；作息开着时有「她现在在干什么」', async () => {
+        const cfg = config({ unlistedFriends: true, schedule: true, contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }] });
+        const { app } = setup(cfg);
+        let status = app.status();
+        assert.deepEqual(status.contacts.map(c => [c.qq, c.tier, c.unlisted, c.responder.phase, c.last]), [[10001, 'classmate', false, 'idle', undefined]]);
+        assert.equal(typeof status.contacts[0]!.now, 'string');
+        assert.equal(status.schedule, true);
+        assert.equal(status.memory, undefined);
+
+        app.receive(event(99999, 1, '你好', '小周'));
+        await until(() => app.status().contacts.length === 2);
+        status = app.status();
+        const stranger = status.contacts[1]!;
+        assert.deepEqual([stranger.qq, stranger.name, stranger.tier, stranger.unlisted], [99999, '小周', 'unlisted', true]);
+        // 作息按现在的时间算，她可能已经回了，也可能在等
+        assert.ok(stranger.last && ['user', 'assistant'].includes(stranger.last.from));
+        assert.doesNotMatch(JSON.stringify(status), /你好/, '不含聊天内容');
+    });
+
     test('stop：释放锁；之后收到的消息、再连上都不处理', async () => {
         const cfg = config();
         const { app, sent, asked } = setup(cfg, { 10001: [historyMessage(1, 10001, '在吗', 10)] });

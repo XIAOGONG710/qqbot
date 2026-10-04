@@ -63,8 +63,24 @@ export interface ResponderDeps {
     waitUntil?: (at: number, signal: AbortSignal) => Promise<void>;
 }
 
+/**
+ * 回复器此刻在干什么（控制台「林梦瑶」页面的状态，ADR 0010）：
+ * idle 空闲；waiting 等到 seenAt 才看到（reason 是原因：在睡觉、在上课……）；settling 对方还在连发；
+ * generating 在生成；sending 在逐条发；retry 回复失败，retryAt 再试
+ */
+export interface ResponderStatus {
+    phase: 'idle' | 'waiting' | 'settling' | 'generating' | 'sending' | 'retry';
+    seenAt?: number;
+    reason?: string;
+    retryAt?: number;
+    /** 连着失败了几次 */
+    failures: number;
+}
+
 export interface Responder {
     receive(text: string, messageId: number, time: Date): void;
+    /** 此刻在干什么（只读） */
+    status(): ResponderStatus;
     /** 不记新消息，直接按现有聊天记录回复一次（补回漏掉的消息之后用） */
     catchUp(): void;
     /** 当前没有在生成时 resolve（测试用） */
@@ -114,6 +130,8 @@ export function createResponder(deps: ResponderDeps): Responder {
     /** 上次日志里写的「几点看到」，没变就不重复写 */
     let loggedSeenAt: number | undefined;
     let stopped = false;
+    let phase: Omit<ResponderStatus, 'failures'> = { phase: 'idle' };
+    const setPhase = (next: Omit<ResponderStatus, 'failures'>) => { phase = next; };
 
     /** 等到 at，期间来新消息就提前返回 */
     async function waitForSeen(at: number): Promise<void> {
@@ -146,6 +164,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             if (decision.at <= now()) return decision;
             if (decision.at !== loggedSeenAt) deps.log(`${decision.reason}，${clock(decision.at)} 看到`);
             loggedSeenAt = decision.at;
+            setPhase({ phase: 'waiting', seenAt: decision.at, reason: decision.reason });
             await waitForSeen(decision.at);
             if (stopped) return null;
         }
@@ -178,6 +197,7 @@ export function createResponder(deps: ResponderDeps): Responder {
                 decision = result;
                 if (decision.woken) deps.log(decision.reason);
             }
+            setPhase({ phase: 'settling' });
             await waitForQuiet();
             if (stopped) return;
             burstStart = undefined;
@@ -185,6 +205,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             input = stored.length;
             if (!stored.slice(seen).some(m => m.role === 'user')) return;
             seenAt = now();
+            setPhase({ phase: 'generating' });
 
             const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { woken: decision?.woken });
             deps.onPrompt?.(prompt);
@@ -209,6 +230,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         const parts = splitReply(reply, decision?.maxBubbles ?? MAX_BUBBLES);
         // 再生成还是空：算回复失败，按 retryAfterMs 过一会儿再试
         if (parts.length === 0) throw new Error('模型回复清理后为空');
+        setPhase({ phase: 'sending' });
         const { timing } = deps;
         // 第一条：生成花掉的时间算在打字时间里
         if (timing) {
@@ -239,6 +261,7 @@ export function createResponder(deps: ResponderDeps): Responder {
     async function loop(): Promise<void> {
         while (pending && !stopped) {
             pending = false;
+            setPhase({ phase: 'idle' });
             try {
                 await respondOnce();
                 failures = 0;
@@ -256,9 +279,11 @@ export function createResponder(deps: ResponderDeps): Responder {
                 failures++;
                 deps.log(`${reason}，${delay / 60_000} 分钟后再试`);
                 const token = ++retryToken;
+                setPhase({ phase: 'retry', retryAt: now() + delay, reason });
                 void sleep(delay).then(() => { if (token === retryToken) schedule(); });
             }
         }
+        if (phase.phase !== 'retry' || stopped) setPhase({ phase: 'idle' });
     }
 
     /** 新消息或补回：之前排定的再试作废，重新计次 */
@@ -291,12 +316,14 @@ export function createResponder(deps: ResponderDeps): Responder {
             restart();
             interruptWait?.();
         },
+        status: () => ({ ...phase, failures }),
         whenIdle: () => running ?? Promise.resolve(),
         whenQuiet: () => (running && !interruptWait ? new Promise<void>(resolve => { quietWaiters.push(resolve); }) : Promise.resolve()),
         stop() {
             stopped = true;
             pending = false;
             retryToken++;
+            setPhase({ phase: 'idle' });
             interruptWait?.();
         },
     };

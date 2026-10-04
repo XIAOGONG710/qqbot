@@ -95,6 +95,13 @@ interface ContactState {
     retained: Record<string, number>;
 }
 
+/** 一次写入或召回的结果 */
+export interface MemoryEvent {
+    at: number;
+    ok: boolean;
+    error?: string;
+}
+
 export interface LongTermMemoryOptions {
     api: HindsightApi;
     /** 状态文件目录（runtime/bot/memory） */
@@ -113,11 +120,19 @@ export class LongTermMemory {
     /** 每个联系人（按 #key）的写入排队，保证串行 */
     readonly #queues = new Map<string, Promise<void>>();
     readonly #relationship = new Map<string, { content?: string; fetchedAt: number; fetching?: boolean }>();
+    /** 最近一次写入、召回的结果（控制台的状态页，ADR 0010） */
+    #lastWrite?: MemoryEvent;
+    #lastRecall?: MemoryEvent;
 
     constructor(options: LongTermMemoryOptions) {
         this.#options = options;
         this.#now = options.now ?? Date.now;
         mkdirSync(options.dir, { recursive: true });
+    }
+
+    /** 这次启动以来最近一次写入、召回的结果；还没发生过就没有 */
+    status(): { lastWrite?: MemoryEvent; lastRecall?: MemoryEvent } {
+        return { lastWrite: this.#lastWrite, lastRecall: this.#lastRecall };
     }
 
     bankId(contact: MemoryContact): string {
@@ -129,7 +144,9 @@ export class LongTermMemory {
         const key = this.#key(contact);
         const previous = this.#queues.get(key) ?? Promise.resolve();
         const next = previous.then(() => this.#sync(contact, names, history)).catch(error => {
-            this.#options.log(`[${contact.qq}] 记忆写入失败：${error instanceof Error ? error.message : String(error)}`);
+            const message = error instanceof Error ? error.message : String(error);
+            this.#lastWrite = { at: this.#now(), ok: false, error: message };
+            this.#options.log(`[${contact.qq}] 记忆写入失败：${message}`);
         });
         this.#queues.set(key, next);
         return next;
@@ -157,6 +174,7 @@ export class LongTermMemory {
             });
             state.retained[episode.id] = episode.messages.length;
             this.#save(contact, state);
+            this.#lastWrite = { at: this.#now(), ok: true };
             this.#options.log(`[${contact.qq}] 记忆：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
         }
     }
@@ -205,8 +223,11 @@ export class LongTermMemory {
         let results: RecallResult[];
         try {
             results = await this.#options.api.recall(state.bankId, request, this.#options.recallTimeoutMs);
+            this.#lastRecall = { at: this.#now(), ok: true };
         } catch (error) {
-            this.#options.log(`[${contact.qq}] 记忆召回失败，这次不带记忆：${error instanceof Error ? error.message : String(error)}`);
+            const message = error instanceof Error ? error.message : String(error);
+            this.#lastRecall = { at: this.#now(), ok: false, error: message };
+            this.#options.log(`[${contact.qq}] 记忆召回失败，这次不带记忆：${message}`);
             return undefined;
         }
         const current = currentEpisodeId(chat);

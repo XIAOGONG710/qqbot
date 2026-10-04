@@ -11,12 +11,13 @@ import type { Log } from './log.ts';
 import { ChatHistory } from './history.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from './backfill.ts';
 import { segmentsToText, type MessageEvent } from './onebot.ts';
-import type { Responder } from './responder.ts';
+import type { Responder, ResponderStatus } from './responder.ts';
 import { createContactResponder as createPipeline, loadTierCard, type ContactPipelineOptions, type TierCard } from './contact.ts';
 import { currentTierHistory, TierRecord } from './tier-record.ts';
 import { HindsightClient } from './memory/hindsight.ts';
 import { arrivedWhileAsleep } from './reply-timing.ts';
-import { LongTermMemory } from './memory/long-term.ts';
+import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
+import { describeState, stateAt } from './schedule.ts';
 
 /** 写一次长期记忆的间隔 */
 export const MEMORY_SYNC_MS = 5 * 60_000;
@@ -36,7 +37,35 @@ export interface App {
     receive(event: MessageEvent): void;
     /** 停下：回复器都停掉，不再写记忆，释放锁（Koishi 插件停用或重启时） */
     stop(): void;
+    /** 此刻的状态（控制台「林梦瑶」页面，ADR 0010）；不含聊天内容 */
+    status(): AppStatus;
 }
+
+export interface ContactStatus {
+    qq: number;
+    name: string;
+    tier: Tier;
+    /** 名单外的好友（按 unlisted 档临时建的回复器） */
+    unlisted: boolean;
+    /** 从什么时候起是这一档（tiers.json）；没换过档就没有 */
+    tierSince?: string;
+    responder: ResponderStatus;
+    /** 最后一条消息的时间和谁发的，不含内容 */
+    last?: { time: string; from: 'user' | 'assistant' };
+    /** 作息开着时，这一档看到的「她现在在干什么」 */
+    now?: string;
+}
+
+export interface AppStatus {
+    contacts: ContactStatus[];
+    unlistedFriends: boolean;
+    schedule: boolean;
+    /** 长期记忆开着时：服务探测结果（每分钟最多探一次）、最近一次写入和召回 */
+    memory?: { baseUrl: string; health?: MemoryEvent; lastWrite?: MemoryEvent; lastRecall?: MemoryEvent };
+}
+
+/** Hindsight 健康检查的间隔 */
+const HEALTH_PROBE_MS = 60_000;
 
 export interface AppOptions {
     config: AppConfig;
@@ -86,9 +115,10 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     const history = currentTierHistory(chatHistory, tierRecord);
 
     // 长期记忆（Hindsight）：补回之后写一次，之后每隔一段时间把结束了的片段写进去
+    const hindsight = config.memory ? new HindsightClient(config.memory.baseUrl, config.memory.timeoutMs) : undefined;
     const memory = config.memory
         ? new LongTermMemory({
-            api: new HindsightClient(config.memory.baseUrl, config.memory.timeoutMs),
+            api: hindsight!,
             dir: join(config.dataDir, 'memory'),
             bankPrefix: config.memory.bankPrefix,
             recallTimeoutMs: config.memory.recallTimeoutMs,
@@ -107,6 +137,8 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
 
     // 每个联系人一个回复器：聊天记录、生成和重新生成都互不影响
     const responders = new Map<number, Responder>(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
+    /** 名单外临时建了回复器的好友（状态页要显示称呼和档位） */
+    const unlisted = new Map<number, Contact>();
 
     function createContactResponder(contact: Contact): Responder {
         return createPipeline({
@@ -129,6 +161,9 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     }
 
     let stopped = false;
+    /** Hindsight 健康检查的结果（状态页用到时才探，见 status()） */
+    let health: MemoryEvent | undefined;
+    let probing = false;
     // 补完之前到的新消息先攒着，补完再按顺序处理
     let syncing = false;
     const buffered: MessageEvent[] = [];
@@ -148,6 +183,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             log(`QQ ${contact.qq}（${contact.name}）不在名单，按 ${UNLISTED_TIER} 档回复`);
             responder = createContactResponder(contact);
             responders.set(contact.qq, responder);
+            unlisted.set(contact.qq, contact);
         }
         // 补回时可能已经从历史里拿到过这条
         if (history.load(event.user_id).some(m => m.messageId === event.message_id)) return;
@@ -217,6 +253,41 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             for (const responder of responders.values()) responder.stop();
             if (memoryTimer) clearInterval(memoryTimer);
             releaseLock();
+        },
+        status() {
+            const now = new Date();
+            const contactStatus = (contact: Contact, isUnlisted: boolean): ContactStatus => {
+                const last = history.load(contact.qq).at(-1);
+                const since = tierRecord.since(contact.qq);
+                const schedule = config.schedule ? cardFor(contact.tier).character.schedule : undefined;
+                return {
+                    qq: contact.qq,
+                    name: contact.name,
+                    tier: contact.tier,
+                    unlisted: isUnlisted,
+                    ...(since ? { tierSince: since.toISOString() } : {}),
+                    responder: responders.get(contact.qq)!.status(),
+                    ...(last ? { last: { time: last.time, from: last.role } } : {}),
+                    ...(schedule ? { now: describeState(stateAt(schedule, now), schedule, { userName: contact.name }) } : {}),
+                };
+            };
+            if (hindsight && !stopped && !probing && (!health || now.getTime() - health.at >= HEALTH_PROBE_MS)) {
+                probing = true;
+                hindsight.health()
+                    .then(() => { health = { at: Date.now(), ok: true }; }, error => {
+                        health = { at: Date.now(), ok: false, error: error instanceof Error ? error.message : String(error) };
+                    })
+                    .finally(() => { probing = false; });
+            }
+            return {
+                contacts: [
+                    ...config.contacts.map(contact => contactStatus(contact, false)),
+                    ...[...unlisted.values()].map(contact => contactStatus(contact, true)),
+                ],
+                unlistedFriends: config.unlistedFriends,
+                schedule: config.schedule,
+                ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
+            };
         },
     };
 }
