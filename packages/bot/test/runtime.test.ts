@@ -26,6 +26,16 @@ describe('回复清理（同 ST cleanUpMessage 默认设置）', () => {
         assert.deepEqual(splitReply('躺着呢 刷土豆的照片\n\n  怎么了嘛 \r\n这么晚'), ['躺着呢 刷土豆的照片', '怎么了嘛', '这么晚']);
         assert.deepEqual(splitReply('\n \n'), []);
     });
+    test('超过 5 行按顺序合并成 5 条，字数最多的那条尽量短；5 行以内不变（ADR 0006）', () => {
+        const five = ['一', '二', '三', '四', '五'];
+        assert.deepEqual(splitReply(five.join('\n')), five);
+        const lines = ['aaaa', 'b', 'c', 'dd', 'e', 'ffff', 'g', 'hh'];
+        const bubbles = splitReply(lines.join('\n'));
+        assert.equal(bubbles.length, 5);
+        assert.deepEqual(bubbles.join('\n').split('\n'), lines);
+        assert.equal(Math.max(...bubbles.map(b => b.replaceAll('\n', '').length)), 4);
+        assert.deepEqual(splitReply(lines.join('\n'), 3).length, 3);
+    });
 });
 
 describe('OneBot 消息', () => {

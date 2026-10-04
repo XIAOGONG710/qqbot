@@ -25,7 +25,43 @@ export function cleanUpReply(text: string, names: MacroNames, scripts: readonly 
     return reply.trim();
 }
 
-/** 按行拆成几条消息：模型用换行表示连发几条（同一气泡里换行在 QQ 上不像真人），空行跳过 */
-export function splitReply(text: string): string[] {
-    return text.split('\n').map(line => line.trim()).filter(Boolean);
+/** 一次回复最多几条气泡（ADR 0006 决策 4） */
+export const MAX_BUBBLES = 5;
+
+/**
+ * 按行拆成几条消息：模型用换行表示连发几条（同一气泡里换行在 QQ 上不像真人），空行跳过。
+ * 认真解释时一行一条会拆出十几条，超过 maxBubbles 行就按顺序合并成 maxBubbles 条，每条里面换行。
+ */
+export function splitReply(text: string, maxBubbles = MAX_BUBBLES): string[] {
+    const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+    return lines.length > maxBubbles ? packLines(lines, maxBubbles) : lines;
+}
+
+/** 按顺序把几行合成 count 条，让字数最多的那条尽量短（线性划分） */
+function packLines(lines: string[], count: number): string[] {
+    const n = lines.length;
+    const prefix = [0];
+    for (const line of lines) prefix.push(prefix.at(-1)! + [...line].length);
+    // best[k][j]：前 j 行合成 k 条时最长一条的最小字数；start[k][j]：这时最后一条从第几行开始
+    const best = Array.from({ length: count + 1 }, () => new Array<number>(n + 1).fill(Infinity));
+    const start = Array.from({ length: count + 1 }, () => new Array<number>(n + 1).fill(0));
+    best[0]![0] = 0;
+    for (let k = 1; k <= count; k++) {
+        for (let j = k; j <= n; j++) {
+            for (let i = k - 1; i < j; i++) {
+                const cost = Math.max(best[k - 1]![i]!, prefix[j]! - prefix[i]!);
+                if (cost < best[k]![j]!) {
+                    best[k]![j] = cost;
+                    start[k]![j] = i;
+                }
+            }
+        }
+    }
+    const bubbles: string[] = [];
+    for (let k = count, j = n; k > 0; k--) {
+        const i = start[k]![j]!;
+        bubbles.unshift(lines.slice(i, j).join('\n'));
+        j = i;
+    }
+    return bubbles;
 }
