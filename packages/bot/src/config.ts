@@ -37,6 +37,17 @@ export interface BotConfig {
     contacts: Contact[];
     /** 名单外的好友私聊时是否用 unlisted 档回复（ADR 0003 决策 2），默认是 */
     unlistedFriends: boolean;
+    /** 长期记忆（ADR 0004 决策 3，Hindsight 服务）；配置里没有 memory 就不用 */
+    memory?: {
+        /** Hindsight API 地址，例如 http://127.0.0.1:8888 */
+        baseUrl: string;
+        /** 写入、建库等请求的超时 */
+        timeoutMs: number;
+        /** 生成前召回的超时：超时就不带记忆，不拖住回复 */
+        recallTimeoutMs: number;
+        /** bank ID 前缀，后面接 QQ 号的哈希 */
+        bankPrefix: string;
+    };
     /** 运行数据目录（聊天记录等） */
     dataDir: string;
 }
@@ -116,6 +127,17 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
     const characterCard = resolvePath(repoRoot, str(file, 'characterCard', ''));
     if (!characterCard.includes('{tier}')) throw new Error('配置 characterCard 应包含 {tier}，例如 characters/linmengyao/st/linmengyao-{tier}.json');
 
+    let memory: BotConfig['memory'];
+    if (file.memory !== undefined) {
+        const m = section('memory');
+        memory = {
+            baseUrl: str(m, 'baseUrl', 'memory'),
+            timeoutMs: num(m, 'timeoutMs', 'memory', 30_000),
+            recallTimeoutMs: num(m, 'recallTimeoutMs', 'memory', 3000),
+            bankPrefix: typeof m.bankPrefix === 'string' && m.bankPrefix ? m.bankPrefix : 'linmengyao',
+        };
+    }
+
     return {
         onebot: { url: str(onebot, 'url', 'onebot'), token: env.QQBOT_ONEBOT_TOKEN ?? '' },
         llm: {
@@ -137,6 +159,7 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
         characterCard,
         contacts,
         unlistedFriends: bool(file, 'unlistedFriends', '', true),
+        ...(memory ? { memory } : {}),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : 'runtime/bot'),
     };
 }

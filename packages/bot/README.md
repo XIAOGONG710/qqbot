@@ -15,6 +15,8 @@ QQ 机器人服务：通过 OneBot 11 WebSocket 连 NapCat，按 SillyTavern 角
      可选的 `persona` 是一两句“他是谁”（例如「同专业，坐你后排」），放在 ST 人设描述（`personaDescription`）的位置，可以用 `{{user}}` `{{char}}`
    - `unlistedFriends`：名单外的好友私聊时是否用 `unlisted` 档回复（被认真问到时承认是 AI），默认 `true`；`{{user}}` 用对方的 QQ 昵称。
      任何人加小号好友就能让 bot 调用模型，没有频率限制
+   - `memory`：长期记忆（[docs/hindsight.md](../../docs/hindsight.md)），`baseUrl` 是 Hindsight 地址；`recallTimeoutMs`（默认 3000）是生成前召回的限时，
+     `timeoutMs`（默认 30000）是写入等请求的限时。删掉这一段就不用长期记忆
    - `prompt.maxContext`：上下文 token 上限（同 ST 的 Context Size），世界书预算和聊天记录截断都按它算
    - `prompt.pinExamples`：同 ST 的 Example Messages Behavior 选 Always include examples，示例对话先占预算、不会被聊天记录挤掉；
      默认 `false`（同 ST 默认的逐步挤出）。示例配置开着：示例对话是校正她语气的主要手段（调研方案 4.2 建议调试期常驻）
@@ -30,7 +32,8 @@ QQ 机器人服务：通过 OneBot 11 WebSocket 连 NapCat，按 SillyTavern 角
    [Environment]::SetEnvironmentVariable('QQBOT_LLM_API_KEY', '...', 'User')    # 必填
    [Environment]::SetEnvironmentVariable('QQBOT_ONEBOT_TOKEN', '...', 'User')   # NapCat 那边设了 token 就必填
    ```
-3. 先启动 NapCat（`scripts/start-napcat.ps1`），再在另一个终端里启动 bot，Ctrl+C 或关掉窗口就停：
+3. 先启动 NapCat（`scripts/start-napcat.ps1`）；用长期记忆时再在另一个终端启动 Hindsight（`scripts/start-hindsight.ps1`）；
+   最后在另一个终端里启动 bot，Ctrl+C 或关掉窗口就停：
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\scripts\start-bot.ps1
    ```
@@ -53,9 +56,15 @@ QQ 机器人服务：通过 OneBot 11 WebSocket 连 NapCat，按 SillyTavern 角
 （按 QQ 消息 id 去重；小号自己发的算她说的）。补完后，最后一条没回的消息在 3 小时内就回一次，更早的只补记录，等对方下一条消息时一起回。
 bot 运行期间小号在手机上手动发的消息不会推给 bot，聊天记录里没有它们。
 
+长期记忆（ADR 0004 决策 3，`src/memory/`）：名单里的每个联系人一个 Hindsight bank（ID 用 QQ 号的哈希）。
+聊天记录按片段（相邻两条隔 45 分钟以上就是新的一段）写入，一个片段一个 `document_id`：片段结束时写，进行中的片段每多 30 条整段重写一次；
+启动补回之后写一次，之后每 5 分钟检查一次。生成前用她上一句和对方这次发的几条去召回，限时，查不到或出错就不带；
+当前片段里的事不再注入（原文已经在上下文里）。召回内容放在聊天记录之后，「关系概况」（Mental Model）放在 main 之后。名单外的好友没有长期记忆。
+
 运行数据（都在 `runtime/bot/`）：
 
 - `chats/<QQ 号>.jsonl`：聊天记录，一行一条 QQ 消息（拆开发的回复每条一行），只追加
+- `memory/<QQ 号>.json`：这个人的 bank ID、每个片段写到了第几条（写入失败的下次再写）
 - `tiers.json`：每个联系人上次用的档位。启动时发现档位变了会提示；降档时提醒手动清理这个人的聊天记录（旧记录可能带着高档位才知道的内容），不自动删除
 - `last-prompt.json`：最近一次发给模型的完整提示词（是谁的、后处理之后的消息、命中的世界书条目），用来和 SillyTavern 试聊对照
 

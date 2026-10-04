@@ -64,6 +64,11 @@ export interface PromptInput {
     /** 联系人的人设描述（对应 ST dummyId 100001 的 personaDescription，可选） */
     userPersona?: string;
     /**
+     * 运行时自己加的、不常变的内容（长期记忆里的关系概况），每段一条 system 消息，紧跟在 main 之后
+     * （同 ST 摘要扩展的 After Main Prompt：openai.js 把 IN_PROMPT 的 summary 插在 main 之后）。
+     */
+    afterMain?: string[];
+    /**
      * 运行时自己加的内容（时间提示、召回的记忆），每段一条 system 消息，放在聊天记录之后、末尾指令之前。
      * ST 里没有固定对应（相当于作者注放在聊天中 depth 0）；放在后面是因为每次都变，不让前面的前缀缓存失效。
      */
@@ -117,6 +122,7 @@ export function buildPrompt(input: PromptInput): PromptResult {
     const system = (content: string): OpenAIMessage => ({ role: 'system', content });
     const head = [
         system(main),
+        ...(input.afterMain ?? []).map(text => system(text)),
         system(wi.before),
         system(personaDescription),
         system(sub(character.description)),

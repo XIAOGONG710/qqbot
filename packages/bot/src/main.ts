@@ -19,6 +19,8 @@ import type { MacroNames } from './st/macros.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { TierRecord } from './tier-record.ts';
+import { HindsightClient } from './memory/hindsight.ts';
+import { LongTermMemory } from './memory/long-term.ts';
 import { describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 
@@ -63,6 +65,26 @@ for (const contact of config.contacts) {
 
 const client = new OneBotClient({ url: config.onebot.url, token: config.onebot.token, onEvent, log });
 
+// 长期记忆（Hindsight）：补回之后写一次，之后每隔一段时间把结束了的片段写进去
+const memory = config.memory
+    ? new LongTermMemory({
+        api: new HindsightClient(config.memory.baseUrl, config.memory.timeoutMs),
+        dir: join(config.dataDir, 'memory'),
+        bankPrefix: config.memory.bankPrefix,
+        recallTimeoutMs: config.memory.recallTimeoutMs,
+        log,
+    })
+    : undefined;
+log(memory ? `长期记忆：Hindsight ${config.memory!.baseUrl}（名单里的联系人）` : '长期记忆：未启用（配置里没有 memory）');
+const MEMORY_SYNC_MS = 5 * 60_000;
+function syncMemory(): void {
+    if (!memory) return;
+    for (const contact of config.contacts) {
+        void memory.sync(contact.qq, { user: contact.name, char: cardFor(contact.tier).character.name }, history.load(contact.qq));
+    }
+}
+if (memory) setInterval(syncMemory, MEMORY_SYNC_MS).unref();
+
 // 每个联系人一个回复器：聊天记录、生成和重新生成都互不影响
 const responders = new Map<number, Responder>(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
 
@@ -74,15 +96,21 @@ function createContactResponder(contact: Contact) {
         userId: contact.qq,
         history,
         // last-prompt.json 记录的是后处理之后、实际发给模型的消息
-        buildPrompt: chat => {
+        buildPrompt: async chat => {
             const now = new Date();
+            // 长期记忆只给名单里的人
+            const remembers = memory && contact.tier !== UNLISTED_TIER;
+            const recalled = remembers ? await memory.recall(contact.qq, chat, now) : undefined;
+            const relationship = remembers ? memory.relationship(contact.qq) : undefined;
+            if (recalled) contactLog(`召回长期记忆 ${recalled.split('\n').length - 1} 条`);
             return withPostProcessing(buildPrompt({
                 character,
                 worldInfo,
                 history: chat,
                 userName: contact.name,
                 userPersona: contact.persona,
-                afterHistory: [describeTime(chat, now)],
+                afterMain: relationship ? [relationship] : [],
+                afterHistory: [...(recalled ? [recalled] : []), describeTime(chat, now)],
                 now,
                 settings: {
                     maxContext: config.prompt.maxContext,
@@ -121,6 +149,7 @@ function onEvent(event: OneBotEvent): void {
             syncing = false;
             for (const message of buffered.splice(0)) onMessage(message);
             catchUpAll();
+            syncMemory();
         });
         return;
     }

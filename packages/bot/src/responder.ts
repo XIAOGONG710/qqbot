@@ -20,7 +20,8 @@ import { splitReply } from './reply.ts';
 export interface ResponderDeps {
     userId: number;
     history: Pick<ChatHistory, 'load' | 'append'>;
-    buildPrompt: (history: ChatMessage[]) => PromptResult;
+    /** 可以是异步的（生成前要先召回长期记忆） */
+    buildPrompt: (history: ChatMessage[]) => PromptResult | Promise<PromptResult>;
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     clean: (reply: string) => string;
     send: (userId: number, text: string) => Promise<number>;
@@ -76,7 +77,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             input = stored.length;
             if (!stored.slice(seen).some(m => m.role === 'user')) return;
 
-            const prompt = deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })));
+            const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })));
             deps.onPrompt?.(prompt);
             const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
             deps.log(`生成回复：${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);
