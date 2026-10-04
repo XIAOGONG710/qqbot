@@ -16,6 +16,19 @@ export type ContactTier = (typeof CONTACT_TIERS)[number];
 export const UNLISTED_TIER = 'unlisted';
 export type Tier = ContactTier | typeof UNLISTED_TIER;
 
+/**
+ * 配置里留空的项用的值。parseAppConfig 和 Koishi 插件的表单（Schema 的 .default()，ADR 0009）共用这一份，
+ * 插件的测试保证两边一致。模型参数同 ST 默认预设（Default.json）。
+ */
+export const DEFAULTS = {
+    llm: { temperature: 1, maxTokens: 300, timeoutMs: 120_000, promptPostProcessing: '' as PromptPostProcessing },
+    prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
+    memory: { timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' },
+    unlistedFriends: true,
+    schedule: true,
+    dataDir: 'runtime/bot',
+} as const;
+
 /** 独立入口（main.ts）的配置：连 NapCat 的 onebot 一节 + 其余部分 */
 export interface BotConfig extends AppConfig {
     onebot: { url: string; token: string };
@@ -88,7 +101,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
 
     const llm = section(file, 'llm');
     const prompt = (file.prompt ?? {}) as Json;
-    const postProcessing = llm.promptPostProcessing ?? '';
+    const postProcessing = llm.promptPostProcessing ?? DEFAULTS.llm.promptPostProcessing;
     if (!PROMPT_POST_PROCESSING.includes(postProcessing as PromptPostProcessing)) {
         throw new Error(`配置 llm.promptPostProcessing 应为 ${PROMPT_POST_PROCESSING.map(v => JSON.stringify(v)).join(' / ')} 之一`);
     }
@@ -125,9 +138,9 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         const m = section(file, 'memory');
         memory = {
             baseUrl: str(m, 'baseUrl', 'memory'),
-            timeoutMs: num(m, 'timeoutMs', 'memory', 30_000),
-            recallTimeoutMs: num(m, 'recallTimeoutMs', 'memory', 3000),
-            bankPrefix: typeof m.bankPrefix === 'string' && m.bankPrefix ? m.bankPrefix : 'linmengyao',
+            timeoutMs: num(m, 'timeoutMs', 'memory', DEFAULTS.memory.timeoutMs),
+            recallTimeoutMs: num(m, 'recallTimeoutMs', 'memory', DEFAULTS.memory.recallTimeoutMs),
+            bankPrefix: typeof m.bankPrefix === 'string' && m.bankPrefix ? m.bankPrefix : DEFAULTS.memory.bankPrefix,
         };
     }
 
@@ -136,24 +149,23 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
             baseUrl: str(llm, 'baseUrl', 'llm'),
             model: str(llm, 'model', 'llm'),
             apiKey,
-            // 默认值同 ST 默认预设（Default.json）
-            temperature: num(llm, 'temperature', 'llm', 1),
-            maxTokens: num(llm, 'maxTokens', 'llm', 300),
-            timeoutMs: num(llm, 'timeoutMs', 'llm', 120_000),
+            temperature: num(llm, 'temperature', 'llm', DEFAULTS.llm.temperature),
+            maxTokens: num(llm, 'maxTokens', 'llm', DEFAULTS.llm.maxTokens),
+            timeoutMs: num(llm, 'timeoutMs', 'llm', DEFAULTS.llm.timeoutMs),
             promptPostProcessing: postProcessing as PromptPostProcessing,
             extraBody: extraBody as Record<string, unknown>,
         },
         prompt: {
-            maxContext: num(prompt, 'maxContext', 'prompt', 8192),
-            worldInfo: { ...DEFAULT_WORLD_INFO_SETTINGS, ...((prompt.worldInfo ?? {}) as Partial<WorldInfoSettings>) },
-            pinExamples: bool(prompt, 'pinExamples', 'prompt', false),
+            maxContext: num(prompt, 'maxContext', 'prompt', DEFAULTS.prompt.maxContext),
+            worldInfo: { ...DEFAULTS.prompt.worldInfo, ...((prompt.worldInfo ?? {}) as Partial<WorldInfoSettings>) },
+            pinExamples: bool(prompt, 'pinExamples', 'prompt', DEFAULTS.prompt.pinExamples),
         },
         characterCard,
         contacts,
-        unlistedFriends: bool(file, 'unlistedFriends', '', true),
-        schedule: bool(file, 'schedule', '', true),
+        unlistedFriends: bool(file, 'unlistedFriends', '', DEFAULTS.unlistedFriends),
+        schedule: bool(file, 'schedule', '', DEFAULTS.schedule),
         ...(memory ? { memory } : {}),
-        dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : 'runtime/bot'),
+        dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : DEFAULTS.dataDir),
     };
 }
 
