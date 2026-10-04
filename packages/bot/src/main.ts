@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, UNLISTED_TIER, type Contact, type Tier } from './config.ts';
 import { acquireLock } from './lock.ts';
+import { createLog } from './log.ts';
 import { ChatHistory } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from './backfill.ts';
@@ -24,10 +25,9 @@ import { LongTermMemory } from './memory/long-term.ts';
 import { describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 
-const log = (message: string) => console.log(`[${new Date().toLocaleString('zh-CN', { hour12: false })}] ${message}`);
-
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const config = loadConfig(repoRoot);
+const log = createLog(join(config.dataDir, 'logs'));
 
 // 每个档位一张角色卡和一本世界书，用到时读一次
 const cards = new Map<Tier, { character: Character; worldInfo: WorldInfoEntry[] }>();
