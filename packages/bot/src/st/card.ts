@@ -3,6 +3,7 @@
 // 与 public/script.js getCharacterCardFieldsLazy。
 
 import { readFileSync } from 'node:fs';
+import { parseSchedule, type Schedule } from '../schedule.ts';
 import { parseRegexScripts, type RegexScript } from './regex.ts';
 
 export interface Character {
@@ -21,6 +22,8 @@ export interface Character {
     regexScripts: RegexScript[];
     /** 这一档的禁用词（extensions.qqbot.banned，转换器从 tiers.toml 写入，不进提示词），出口检查用（ADR 0006） */
     banned: string[];
+    /** 这一档的作息（extensions.qqbot.schedule，转换器写入，ADR 0007）；没有就不按作息 */
+    schedule?: Schedule;
 }
 
 export function parseCharacterCard(json: unknown, source = '角色卡'): Character {
@@ -48,6 +51,7 @@ export function parseCharacterCard(json: unknown, source = '角色卡'): Charact
         world: typeof extensions.world === 'string' ? extensions.world : '',
         regexScripts: parseRegexScripts(extensions.regex_scripts, source),
         banned: parseBanned(extensions.qqbot, source),
+        ...readSchedule(extensions.qqbot, source),
     };
 }
 
@@ -56,6 +60,11 @@ function parseBanned(qqbot: unknown, source: string): string[] {
     if (banned === undefined) return [];
     if (!Array.isArray(banned) || !banned.every(w => typeof w === 'string' && w)) throw new Error(`${source}：extensions.qqbot.banned 应为字符串数组（每个词非空）`);
     return banned;
+}
+
+function readSchedule(qqbot: unknown, source: string): { schedule?: Schedule } {
+    const schedule = (qqbot as { schedule?: unknown } | undefined)?.schedule;
+    return schedule === undefined ? {} : { schedule: parseSchedule(schedule, source) };
 }
 
 export function loadCharacterCard(path: string): Character {

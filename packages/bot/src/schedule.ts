@@ -1,0 +1,267 @@
+// 作息（ADR 0007 决策 2）：按角色卡的 extensions.qqbot.schedule（转换器从 legacy 的作息、课表按档位裁剪写入）
+// 算出某个时刻她在干什么：睡觉 / 上课 / 课间 / 空闲，在哪，到几点。都按本机时区的本地时间算。
+// - 睡觉：sleep（02:00）到起床；这一天第一节有课就 wake.early，否则 wake.lazy。00:00 到 sleep 算前一天的晚上。
+// - 上课：这一天有课的节次。放假没有课；调休日按补的那天（0 = 没课）；第几周按学期第 1 周的周一算，转实训以后按机房课算。
+// - 空闲：上午（起床到 afternoonFrom）、下午（到 eveningFrom）、晚上（到睡觉）各从活动里按日期固定挑一条；
+//   起床或下课之后不到 45 分钟就有下一节的，算赶去上课 / 课间。
+
+export type CourseKind = 'hard' | 'machine' | 'water' | 'pe';
+
+export interface Course {
+    day: number;
+    slot: string;
+    weeks: string;
+    kind: CourseKind;
+    name?: string;
+    room?: string;
+    practice?: { fromWeek: number; room?: string };
+}
+
+export interface Schedule {
+    sleep: string;
+    wake: { early: string; lazy: string; earlySlot: string };
+    periods: Record<string, { start: string; end: string }>;
+    semester: { start: string; weeks: number };
+    holidays: { name: string; start: string; end: string; where?: string; partner?: string }[];
+    makeups: { date: string; asDay: number }[];
+    kinds: Record<CourseKind, { label?: string; seeAfterMin?: [number, number]; maxBubbles?: number }>;
+    courses: Course[];
+    free: { morning: string[]; afternoon: string[]; evening: string[]; afternoonFrom: string; eveningFrom: string };
+    where: string;
+    partner?: string;
+}
+
+/** 某一天的一节课：课型已按转实训换算，start / end 是当天的时刻 */
+export interface ClassToday {
+    kind: CourseKind;
+    name?: string;
+    room?: string;
+    start: Date;
+    end: Date;
+}
+
+export type Activity =
+    | { kind: 'sleep'; until: Date }
+    | { kind: 'class'; lesson: ClassToday }
+    /** 起床后到第一节课之前、两节课之间 */
+    | { kind: 'between'; next: ClassToday }
+    | { kind: 'free'; text: string };
+
+export interface State {
+    activity: Activity;
+    /** 这一天在放的假 */
+    holiday?: Schedule['holidays'][number];
+    /** 她在哪：放假时用假期的说法（没有就只说放假），否则用平时的 */
+    where: string;
+    /** 他在哪（只有知道他的档位有） */
+    partner?: string;
+    /** 今天接下来的下一节课（正在上的不算） */
+    nextClass?: ClassToday;
+    /** 学期外（第 1 周之前、最后一周之后）：没有课 */
+    outsideSemester: boolean;
+}
+
+const DAY_MS = 86_400_000;
+/** 起床或下课到下一节课不超过这么久，算赶去上课 / 课间，不挑空闲活动 */
+const BETWEEN_MAX_MS = 45 * 60_000;
+
+export function stateAt(schedule: Schedule, now: Date): State {
+    const date = startOfDay(now);
+    const sleepStart = at(date, schedule.sleep);
+    // 00:00 到 sleep：还是前一天的晚上
+    const day = now < sleepStart ? new Date(date.getTime() - DAY_MS) : date;
+    const holiday = holidayOn(schedule, day);
+    const where = holiday ? [`${holiday.name}放假`, holiday.where].filter(Boolean).join('，') : schedule.where;
+    const partner = holiday ? holiday.partner : schedule.partner;
+    const { lessons, outsideSemester } = classesOn(schedule, day);
+    const base = { holiday, where, ...(partner ? { partner } : {}), outsideSemester };
+
+    if (now < sleepStart) return { ...base, activity: { kind: 'free', text: freeActivity(schedule, day, 'evening') } };
+    const wake = wakeTime(schedule, day, lessons);
+    if (now < wake) return { ...base, activity: { kind: 'sleep', until: wake } };
+
+    const nextClass = lessons.find(l => l.start > now);
+    const withNext = { ...base, ...(nextClass ? { nextClass } : {}) };
+    const current = lessons.find(l => l.start <= now && now < l.end);
+    if (current) return { ...withNext, activity: { kind: 'class', lesson: current } };
+    // 起床或下课之后不到 45 分钟就有下一节：赶去上课、课间
+    const gapStart = lessons.findLast(l => l.end <= now)?.end ?? wake;
+    if (nextClass && nextClass.start.getTime() - gapStart.getTime() <= BETWEEN_MAX_MS) {
+        return { ...withNext, activity: { kind: 'between', next: nextClass } };
+    }
+    const window = now < at(day, schedule.free.afternoonFrom) ? 'morning' : now < at(day, schedule.free.eveningFrom) ? 'afternoon' : 'evening';
+    return { ...withNext, activity: { kind: 'free', text: freeActivity(schedule, day, window) } };
+}
+
+/** 某一天要上的课，按开始时间排好 */
+export function classesOn(schedule: Schedule, day: Date): { lessons: ClassToday[]; outsideSemester: boolean } {
+    const week = Math.floor((startOfDay(day).getTime() - parseDate(schedule.semester.start).getTime()) / (7 * DAY_MS)) + 1;
+    const outsideSemester = week < 1 || week > schedule.semester.weeks;
+    if (outsideSemester || holidayOn(schedule, day)) return { lessons: [], outsideSemester };
+    const makeup = schedule.makeups.find(m => m.date === formatDate(day));
+    const weekday = makeup ? makeup.asDay : (day.getDay() || 7);
+    const lessons = schedule.courses
+        .filter(c => c.day === weekday && inWeeks(c.weeks, week))
+        .map((c): ClassToday => {
+            const practice = c.practice && week >= c.practice.fromWeek;
+            const period = schedule.periods[c.slot]!;
+            return {
+                kind: practice ? 'machine' : c.kind,
+                ...(c.name ? { name: c.name } : {}),
+                ...((practice ? c.practice!.room : c.room) ? { room: (practice ? c.practice!.room : c.room)! } : {}),
+                start: at(day, period.start),
+                end: at(day, period.end),
+            };
+        })
+        .sort((a, b) => a.start.getTime() - b.start.getTime());
+    return { lessons, outsideSemester };
+}
+
+/** 这一天几点起：第一节有课就早起 */
+function wakeTime(schedule: Schedule, day: Date, lessons: ClassToday[]): Date {
+    const early = schedule.periods[schedule.wake.earlySlot];
+    const hasEarly = early !== undefined && lessons.some(l => l.start.getTime() === at(day, early.start).getTime());
+    return at(day, hasEarly ? schedule.wake.early : schedule.wake.lazy);
+}
+
+function holidayOn(schedule: Schedule, day: Date): Schedule['holidays'][number] | undefined {
+    const d = formatDate(day);
+    return schedule.holidays.find(h => h.start <= d && d <= h.end);
+}
+
+/** 同一天同一时段固定挑同一条（按日期 + 时段哈希） */
+function freeActivity(schedule: Schedule, day: Date, window: 'morning' | 'afternoon' | 'evening'): string {
+    const list = schedule.free[window];
+    if (list.length === 0) return '';
+    return list[hash(`${formatDate(day)} ${window}`) % list.length]!;
+}
+
+/** "1-16"、"1-2,4-16,18" */
+export function inWeeks(spec: string, week: number): boolean {
+    return spec.split(',').some(part => {
+        const [from, to = from] = part.split('-').map(s => Number(s.trim()));
+        return from !== undefined && week >= from && week <= to!;
+    });
+}
+
+/** FNV-1a */
+function hash(text: string): number {
+    let h = 0x811c9dc5;
+    for (const ch of text) {
+        h ^= ch.codePointAt(0)!;
+        h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h;
+}
+
+function startOfDay(date: Date): Date {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+/** 某天的 HH:MM */
+function at(day: Date, time: string): Date {
+    const [h, m] = time.split(':').map(Number);
+    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+}
+
+function parseDate(text: string): Date {
+    const [y, m, d] = text.split('-').map(Number);
+    return new Date(y!, m! - 1, d);
+}
+
+export function formatDate(date: Date): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// ---------- 读卡 ----------
+
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const KINDS: CourseKind[] = ['hard', 'machine', 'water', 'pe'];
+
+/** 校验角色卡 extensions.qqbot.schedule 的结构（转换器写的，手改坏了要早报错） */
+export function parseSchedule(json: unknown, source: string): Schedule {
+    const fail = (what: string): never => { throw new Error(`${source}：extensions.qqbot.schedule${what}`); };
+    const obj = (v: unknown, at: string): Record<string, unknown> => (typeof v === 'object' && v !== null && !Array.isArray(v) ? v as Record<string, unknown> : fail(`${at} 应为对象`));
+    const str = (v: unknown, at: string, re?: RegExp): string => (typeof v === 'string' && (!re || re.test(v)) ? v : fail(`${at} 格式不对：${String(v)}`));
+    const arr = (v: unknown, at: string): unknown[] => (Array.isArray(v) ? v : fail(`${at} 应为数组`));
+    const int = (v: unknown, at: string): number => (Number.isInteger(v) ? v as number : fail(`${at} 应为整数`));
+    const opt = <T>(v: unknown, read: (v: unknown) => T): T | undefined => (v === undefined ? undefined : read(v));
+
+    const s = obj(json, '');
+    const wake = obj(s.wake, '.wake');
+    const periods = Object.fromEntries(Object.entries(obj(s.periods, '.periods')).map(([slot, p]) => {
+        const period = obj(p, `.periods.${slot}`);
+        return [slot, { start: str(period.start, `.periods.${slot}.start`, TIME), end: str(period.end, `.periods.${slot}.end`, TIME) }];
+    }));
+    const semester = obj(s.semester, '.semester');
+    const kindsObj = obj(s.kinds, '.kinds');
+    const kinds = Object.fromEntries(KINDS.map(kind => {
+        const k = obj(kindsObj[kind], `.kinds.${kind}`);
+        const see = opt(k.seeAfterMin, v => {
+            const a = arr(v, `.kinds.${kind}.seeAfterMin`);
+            return (a.length === 2 && a.every(n => typeof n === 'number' && n >= 0) ? a : fail(`.kinds.${kind}.seeAfterMin 应为 [最少, 最多]`)) as [number, number];
+        });
+        return [kind, {
+            ...(k.label !== undefined ? { label: str(k.label, `.kinds.${kind}.label`) } : {}),
+            ...(see ? { seeAfterMin: see } : {}),
+            ...(k.maxBubbles !== undefined ? { maxBubbles: int(k.maxBubbles, `.kinds.${kind}.maxBubbles`) } : {}),
+        }];
+    })) as Schedule['kinds'];
+    const free = obj(s.free, '.free');
+    const texts = (v: unknown, at: string) => arr(v, at).map((t, i) => str(t, `${at}[${i}]`));
+    const schedule: Schedule = {
+        sleep: str(s.sleep, '.sleep', TIME),
+        wake: { early: str(wake.early, '.wake.early', TIME), lazy: str(wake.lazy, '.wake.lazy', TIME), earlySlot: str(wake.earlySlot, '.wake.earlySlot') },
+        periods,
+        semester: { start: str(semester.start, '.semester.start', DATE), weeks: int(semester.weeks, '.semester.weeks') },
+        holidays: arr(s.holidays, '.holidays').map((h, i) => {
+            const o = obj(h, `.holidays[${i}]`);
+            return {
+                name: str(o.name, `.holidays[${i}].name`),
+                start: str(o.start, `.holidays[${i}].start`, DATE),
+                end: str(o.end, `.holidays[${i}].end`, DATE),
+                ...(o.where !== undefined ? { where: str(o.where, `.holidays[${i}].where`) } : {}),
+                ...(o.partner !== undefined ? { partner: str(o.partner, `.holidays[${i}].partner`) } : {}),
+            };
+        }),
+        makeups: arr(s.makeups, '.makeups').map((m, i) => {
+            const o = obj(m, `.makeups[${i}]`);
+            return { date: str(o.date, `.makeups[${i}].date`, DATE), asDay: int(o.asDay, `.makeups[${i}].asDay`) };
+        }),
+        kinds,
+        courses: arr(s.courses, '.courses').map((c, i): Course => {
+            const o = obj(c, `.courses[${i}]`);
+            const at = `.courses[${i}]`;
+            const slot = str(o.slot, `${at}.slot`);
+            if (!(slot in periods)) fail(`${at}.slot ${slot} 不在 periods 里`);
+            const kind = str(o.kind, `${at}.kind`) as CourseKind;
+            if (!KINDS.includes(kind)) fail(`${at}.kind ${kind} 不是课型`);
+            const practice = opt(o.practice, v => {
+                const p = obj(v, `${at}.practice`);
+                return { fromWeek: int(p.fromWeek, `${at}.practice.fromWeek`), ...(p.room !== undefined ? { room: str(p.room, `${at}.practice.room`) } : {}) };
+            });
+            return {
+                day: int(o.day, `${at}.day`),
+                slot,
+                weeks: str(o.weeks, `${at}.weeks`, /^\d+(-\d+)?(,\d+(-\d+)?)*$/),
+                kind,
+                ...(o.name !== undefined ? { name: str(o.name, `${at}.name`) } : {}),
+                ...(o.room !== undefined ? { room: str(o.room, `${at}.room`) } : {}),
+                ...(practice ? { practice } : {}),
+            };
+        }),
+        free: {
+            morning: texts(free.morning, '.free.morning'),
+            afternoon: texts(free.afternoon, '.free.afternoon'),
+            evening: texts(free.evening, '.free.evening'),
+            afternoonFrom: str(free.afternoonFrom, '.free.afternoonFrom', TIME),
+            eveningFrom: str(free.eveningFrom, '.free.eveningFrom', TIME),
+        },
+        where: str(s.where, '.where'),
+        ...(s.partner !== undefined ? { partner: str(s.partner, '.partner') } : {}),
+    };
+    if (!(schedule.wake.earlySlot in periods)) fail(`.wake.earlySlot ${schedule.wake.earlySlot} 不在 periods 里`);
+    return schedule;
+}
