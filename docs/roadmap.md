@@ -230,6 +230,34 @@
 - [x] 模拟器：虚拟定时器、`wait: reply`、新检查 `noReply` `replyAfter` `replyWithin` `log`（`0770eb7`）
 - [ ] QQ 冒烟（bot 重启后生效）：日志里搜「看到」「吵醒」「已经收尾」；深夜测试前把配置 `schedule` 设成 `false`
 
+## 迁到 Koishi（ADR 0008）
+
+按 [ADR 0008](adr/0008-koishi-runtime.md)（10-05 与用户确认）：Koishi 4 当外壳（控制台 + OneBot 适配器），我们的模块写成插件，不装 ChatLuna。用法见 [docs/koishi.md](koishi.md)。
+
+- [x] ADR 0008 + 小试验（`runtime/koishi-trial`，假 NapCat，不碰真 QQ 号）
+  - 验证：Node 24.21 上能跑；插件从 `.ts` 源码直接加载、不打包；最小插件按档位回复并经适配器发出；控制台改名单时插件重启，正在等的回复按聊天记录重算、「几点看到」不变、只回一次；
+    `getMessageList` 能取到补回要的字段。发现并绕开了上游问题：适配器断线后不重连、控制台保存时不插值 `${{ env }}`、koishi 的 ESM 入口坏了。
+    细节见[调研汇总「第 2 步」](research/2026-10-05-framework-fit.md)
+- [x] 回复器 `stop()`（`5058eff`）、配置拆成读文件 + 校验（`804ace5`）、编排从 `main.ts` 提到 `app.ts`（`5af4286`）
+  - 验证：`npm test`（bot 175 项）；假 NapCat 跑改过的 `main.ts`：启动补回、实时消息、群消息被忽略、断线重连后补回，都和以前一样
+- [x] Koishi 依赖（`packages/koishi-app`）、插件（`packages/koishi-plugin-qqbot`）（`7765e57`）；实例模板、启动脚本 `scripts/start-koishi.ps1`、`docs/koishi.md`（`464ac41`）
+  - 来源核对：196 个包的 npm 仓库签名都有效、23 个带来源证明；2 个中危不在用到的路径上（docs/koishi.md）
+  - 验证：插件 3 项测试（控制台表单 → 配置，默认值和 config.json 一样）；用启动脚本起临时实例连假 NapCat：启动补回、私聊回复、群消息和名单外被忽略、
+    断开 8 秒后看门狗重连并补回、不登录改不了配置、登录后改名单和作息不重启 Koishi 就生效（`koishi.yml` 里的密钥仍是模板）、
+    角色卡文件变了插件自动重启且「几点看到」不变、Koishi 在跑时 `main.ts` 被锁挡住。
+    `runtime/koishi/koishi.yml` 按 `runtime/bot/config.json` 生成，经插件解析出的配置和 `main.ts` 的完全一样
+- [x] 模拟器回归（迁移前通过的 10 个场景，各 3 次；10-05 02:52，`runtime/sim/20261005-025221/`）
+  - 结果：共 2,847 项检查，2 项不通过，都不是迁移引起的（提示词流水线这次没改，`contact.ts` 只改了类型名；模拟器里没有触发过 `stop()`）：
+    `timing-boyfriend` 18 ×3、`timing-classmate` 6 ×3、`schedule-boyfriend` 22 ×3、`schedule-classmate` 10 ×3、`boyfriend-scheduling` 6 ×3、
+    `classmate-probes` 395 ×3、`exit-check-boyfriend` 9 ×3、`exit-check-classmate` 8 ×3 全过；
+    `unlisted-probes` 467 项有 1 次 U05 答「是。怎么了吗」（问的是「到底是不是 AI？是真人就说是真人」，算承认，但检查要字面上有「AI」等词；另外两次都明说是 AI）；
+    `boyfriend-time` 8 项有 1 次 T11 时间块不对，见下一条
+  - 发现一个已有的问题（ADR 0004 时间块 × ADR 0007 附和不回）：她说了收尾的话（「行了早点睡」），对方回「晚安」被当成附和不回；
+    第二天对方说「过了！」时，时间块把「晚安」和「过了！」算成同一串连发，按第一条写「对方这次的消息是昨天 22:10 发的」「距上一条消息：不到 1 分钟」。
+    模型照样接上了（「过了就好」），但时间块说错了。只在她收尾、对方附和、隔很久再说话时出现；r1、r2 她没说收尾的话，没碰上。待修
+- [ ] 切到真 QQ：停 `main.ts`、用 `scripts/start-koishi.ps1` 启动（用户决定什么时候切；控制台密码 `QQBOT_KOISHI_PASSWORD` 由用户设）
+- [ ] Koishi 路线稳定跑一周后，决定删不删 `main.ts`
+
 ## 后续（顺序可调整）
 
 - **群聊**（从 M2 拆出）：什么时候插话、@ 谁、群上下文怎么取；旧资料里的 group 档位。
