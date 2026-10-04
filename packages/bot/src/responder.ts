@@ -101,7 +101,7 @@ export function createResponder(deps: ResponderDeps): Responder {
                 }
             }
             const messageId = await deps.send(deps.userId, part);
-            deps.history.append(deps.userId, { time: new Date().toISOString(), role: 'assistant', content: part, messageId });
+            deps.history.append(deps.userId, { time: new Date(now()).toISOString(), role: 'assistant', content: part, messageId });
             sent.push(part);
         }
         seen = input;

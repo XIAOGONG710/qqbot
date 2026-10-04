@@ -9,21 +9,15 @@ import { loadConfig, UNLISTED_TIER, type Contact, type Tier } from './config.ts'
 import { acquireLock } from './lock.ts';
 import { createLog } from './log.ts';
 import { ChatHistory } from './history.ts';
-import { chatCompletion } from './llm.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from './backfill.ts';
 import { isPrivateFriendMessage, OneBotClient, segmentsToText, senderName, type MessageEvent, type OneBotEvent } from './onebot.ts';
-import { buildPrompt, type PromptResult } from './prompt.ts';
-import { cleanUpReply } from './reply.ts';
-import { createResponder, DEFAULT_SETTLE, type Responder } from './responder.ts';
+import type { Responder } from './responder.ts';
+import { createContactResponder as createPipeline } from './contact.ts';
 import { loadCharacterCard, type Character } from './st/card.ts';
-import type { MacroNames } from './st/macros.ts';
-import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { TierRecord } from './tier-record.ts';
 import { HindsightClient } from './memory/hindsight.ts';
 import { LongTermMemory } from './memory/long-term.ts';
-import { describeTime } from './time-context.ts';
-import { estimateTokens } from './tokens.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const config = loadConfig(repoRoot);
@@ -89,52 +83,21 @@ if (memory) setInterval(syncMemory, MEMORY_SYNC_MS).unref();
 const responders = new Map<number, Responder>(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
 
 function createContactResponder(contact: Contact) {
-    const { character, worldInfo } = cardFor(contact.tier);
-    const names = { user: contact.name, char: character.name };
-    const contactLog = (message: string) => log(`[${contact.qq}] ${message}`);
-    return createResponder({
-        userId: contact.qq,
+    return createPipeline({
+        contact,
+        card: cardFor(contact.tier),
+        llm: config.llm,
+        prompt: config.prompt,
         history,
-        // last-prompt.json 记录的是后处理之后、实际发给模型的消息
-        buildPrompt: async chat => {
-            const now = new Date();
-            // 长期记忆只给名单里的人
-            const remembers = memory && contact.tier !== UNLISTED_TIER;
-            const recalled = remembers ? await memory.recall(contact, chat, now) : undefined;
-            const relationship = remembers ? memory.relationship(contact) : undefined;
-            if (recalled) contactLog(`召回长期记忆 ${recalled.split('\n').length - 1} 条`);
-            return withPostProcessing(buildPrompt({
-                character,
-                worldInfo,
-                history: chat,
-                userName: contact.name,
-                userPersona: contact.persona,
-                afterMain: relationship ? [relationship] : [],
-                afterHistory: [...(recalled ? [recalled] : []), describeTime(chat, now)],
-                now,
-                settings: {
-                    maxContext: config.prompt.maxContext,
-                    maxTokens: config.llm.maxTokens,
-                    worldInfo: config.prompt.worldInfo,
-                    pinExamples: config.prompt.pinExamples,
-                },
-                countTokens: estimateTokens,
-            }), names);
-        },
-        generate: messages => chatCompletion(config.llm, messages, { log: contactLog }),
-        clean: reply => cleanUpReply(reply, names),
+        memory,
         send: (userId, text) => client.sendPrivateText(userId, text),
-        log: contactLog,
-        settle: DEFAULT_SETTLE,
+        log,
+        // last-prompt.json 记录的是后处理之后、实际发给模型的消息
         onPrompt: prompt => writeFileSync(
             join(config.dataDir, 'last-prompt.json'),
             JSON.stringify({ qq: contact.qq, ...prompt }, null, 2),
         ),
     });
-}
-
-function withPostProcessing(prompt: PromptResult, names: MacroNames): PromptResult {
-    return { ...prompt, messages: postProcessPrompt(prompt.messages, config.llm.promptPostProcessing, names) };
 }
 
 // 每次连上 NapCat 先补回漏掉的消息；补完之前到的新消息先攒着，补完再按顺序处理
