@@ -163,6 +163,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         let input = 0;
         let decision: Seen | undefined;
         let seenAt = 0;
+        let retriedEmpty = false;
         for (let attempt = 0; ; attempt++) {
             // 看到之前（重新生成时她已经在看手机了，不再等）
             if (deps.timing && attempt === 0) {
@@ -185,14 +186,18 @@ export function createResponder(deps: ResponderDeps): Responder {
 
             reply = deps.clean(await deps.generate(prompt.messages));
             if (deps.review) reply = await deps.review(reply, prompt.messages);
+            // 模型偶尔返回空串（10-05 模拟器 817 次生成里 2 次，原样重发 4 次都有正文）：当场再生成一次
+            if (splitReply(reply).length === 0 && !retriedEmpty) {
+                retriedEmpty = true;
+                deps.log('模型回复清理后为空，重新生成一次');
+                continue;
+            }
             if (deps.history.load(deps.userId).length === stored.length || attempt >= MAX_REGENERATE) break;
             deps.log('生成期间收到新消息，带上新消息重新生成');
         }
         const parts = splitReply(reply, decision?.maxBubbles ?? MAX_BUBBLES);
-        if (parts.length === 0) {
-            deps.log('模型回复清理后为空，不发送');
-            return;
-        }
+        // 再生成还是空：算回复失败，按 retryAfterMs 过一会儿再试
+        if (parts.length === 0) throw new Error('模型回复清理后为空');
         const { timing } = deps;
         // 第一条：生成花掉的时间算在打字时间里
         if (timing) {
