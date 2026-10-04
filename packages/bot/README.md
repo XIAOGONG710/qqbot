@@ -42,7 +42,10 @@ QQ 机器人服务：通过 OneBot 11 WebSocket 连 NapCat，按 SillyTavern 角
 同一个数据目录只能跑一个 bot（锁文件 `runtime/bot/bot.lock`，里面是 PID），第二个会拒绝启动，免得每条消息被回两遍。
 进程被强杀后留下的锁，PID 已经不在了，下次启动会直接接管。
 
-回复按行拆成多条依次发出，条与条之间隔 1 秒，空行跳过（模型用换行表示连发几条）。
+回复按行拆成多条依次发出，条与条之间隔 1 秒，空行跳过（模型用换行表示连发几条）；超过 5 行时按顺序合并成 5 条，每条里面换行。
+发出之前有出口检查（ADR 0006，`src/exit-check.ts`）：清理时先执行卡上作用于 AI 输出的 ST 正则（整行、行首括号里的动作删掉）；
+再查答应或假装发照片、语音、视频、打电话这类做不到的事，和这一档的禁用词（卡的 `extensions.qqbot.banned`）。命中就在提示词末尾加一句说明重写一次，
+仍命中的行删掉；重写请求失败时用第一版、删掉命中的行。日志里是「出口检查：……」。
 对方连发时，等对方停下 2 秒没有新消息再回，几条合在一起回；从这一串的第一条算起最多等 6 秒（调研方案 5.2 的起点）。
 生成期间又来消息，丢掉这次生成带上新消息重来（最多重来 2 次）；拆条发送的中途对方插话，剩下的几条不再发，接着回复新消息。
 模型接口连不上（连接超时、被拒、被重置、DNS 失败）时自动重试 2 次，间隔 1 秒、3 秒；HTTP 错误和整体超时不重试。
@@ -79,11 +82,13 @@ bot 运行期间小号在手机上手动发的消息不会推给 bot，聊天记
 | `src/st/macros.ts` | `{{user}}` `{{char}}` `{{original}}` `<USER>` `<BOT>` |
 | `src/st/time-macros.ts` | `public/scripts/macros/definitions/time-macros.js`：`{{time}}` `{{date}}` `{{weekday}}` `{{isotime}}` `{{isodate}}` `{{idleDuration}}`，按中文界面（moment zh-cn）格式化 |
 | `src/reply.ts` | `public/script.js` 的 `cleanUpMessage`（默认设置下生效的部分） |
+| `src/st/regex.ts` | `public/scripts/extensions/regex/engine.js` 的 `getRegexedString` / `runRegexScript`（角色卡上的 Scoped 脚本，只在 AI 输出位置）；`public/scripts/utils.js` 的 `regexFromString` |
 | `src/st/prompt-converters.ts` | `src/prompt-converters.js` 的 `postProcessPrompt` / `mergeMessages`（无工具、无多模态） |
 
 已知差异：
 
 - token 数用 ST 的兜底估算（UTF-8 字节数 / 3.35），不是模型的真实分词器。世界书预算和聊天记录截断的边界会和 ST 略有出入。
 - 世界书用到运行时未实现的功能（递归、包含组、sticky / cooldown / delay、@@ 装饰器、角色设定前 / 后以外的插入位置等）时，启动直接报错。
+- 出口检查（做不到的事、禁用词）和超过 5 行合并气泡是运行时自己的，ST 里没有；括号正则在 ST 里试聊时一样生效（导入时允许这张卡的正则）。
 - 一次回复拆成几条发出后，聊天记录里是几条 assistant 消息；ST 里是一条带换行的消息。
   用 `semi` 后处理时，相邻几条会用空行合并成一条再发给模型，和 ST 只差在分隔符（空行而不是换行）。
