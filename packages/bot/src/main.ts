@@ -13,7 +13,7 @@ import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type His
 import { isPrivateFriendMessage, OneBotClient, segmentsToText, senderName, type MessageEvent, type OneBotEvent } from './onebot.ts';
 import type { Responder } from './responder.ts';
 import { createContactResponder as createPipeline, loadTierCard, type TierCard } from './contact.ts';
-import { TierRecord } from './tier-record.ts';
+import { currentTierHistory, TierRecord } from './tier-record.ts';
 import { HindsightClient } from './memory/hindsight.ts';
 import { LongTermMemory } from './memory/long-term.ts';
 
@@ -41,7 +41,7 @@ for (const tier of tiersInUse) {
 const whitelist = config.contacts.map(c => `${c.qq}（${c.name}，${c.tier}）`).join('、');
 log(`名单：${whitelist}；名单外的好友${config.unlistedFriends ? '按 unlisted 档回复' : '不回复'}`);
 
-const history = new ChatHistory(config.dataDir);
+const chatHistory = new ChatHistory(config.dataDir);
 // 放在 ChatHistory 之后：它会建好数据目录
 const releaseLock = acquireLock(join(config.dataDir, 'bot.lock'));
 process.on('exit', releaseLock);
@@ -51,6 +51,8 @@ for (const contact of config.contacts) {
     const warning = tierRecord.update(contact.qq, contact.tier);
     if (warning) log(warning);
 }
+// 换过档的联系人只看换档之后的记录：提示词、长期记忆、补回都一样（ADR 0003 后果一节）
+const history = currentTierHistory(chatHistory, tierRecord);
 
 const client = new OneBotClient({ url: config.onebot.url, token: config.onebot.token, onEvent, log });
 

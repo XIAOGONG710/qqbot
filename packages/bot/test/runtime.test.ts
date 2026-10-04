@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { loadConfig } from '../src/config.ts';
-import { TierRecord } from '../src/tier-record.ts';
+import { currentTierHistory, TierRecord } from '../src/tier-record.ts';
 import { ChatHistory, type StoredMessage } from '../src/history.ts';
 import { isPrivateFriendMessage, segmentsToText, senderName, type MessageEvent } from '../src/onebot.ts';
 import type { PromptResult } from '../src/prompt.ts';
@@ -391,10 +391,19 @@ describe('档位记录', () => {
             const record = new TierRecord(path);
             assert.equal(record.since(1), undefined);
             assert.equal(record.update(1, 'boyfriend'), undefined, '旧格式也认得出档位没变');
-            assert.match(record.update(1, 'classmate', new Date('2026-10-04T14:00:00Z'))!, /只取现在之后的/);
+            assert.match(record.update(1, 'classmate', new Date('2026-10-04T14:00:00Z'))!, /不从 QQ 补回/);
             assert.equal(new TierRecord(path).since(1)?.toISOString(), '2026-10-04T14:00:00.000Z');
             new TierRecord(path).update(2, 'classmate');
             assert.equal(new TierRecord(path).since(2), undefined, '第一次记下的联系人照旧补回');
+
+            // 读聊天记录只看换档之后的
+            const stored = new Map<number, { time: string; role: 'user'; content: string }[]>([
+                [1, [{ time: '2026-10-04T13:00:00Z', role: 'user', content: '宝宝' }, { time: '2026-10-04T14:05:00Z', role: 'user', content: '同学你好' }]],
+                [2, [{ time: '2026-10-04T13:00:00Z', role: 'user', content: '第一次' }]],
+            ]);
+            const view = currentTierHistory({ load: qq => stored.get(qq) ?? [], append: () => {} }, new TierRecord(path));
+            assert.deepEqual(view.load(1).map(m => m.content), ['同学你好']);
+            assert.deepEqual(view.load(2).map(m => m.content), ['第一次']);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
