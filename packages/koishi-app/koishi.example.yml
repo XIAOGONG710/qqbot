@@ -35,7 +35,8 @@ plugins:
       model: deepseek-flash
       temperature: 1.3
       promptPostProcessing: semi
-      extraBody: '{"thinking":{"type":"disabled"}}'
+      # 思考：off / low / high / max（关 / 低 / 高 / 最高），不写 = 接口默认
+      thinking: 'off'
     prompt:
       maxContext: 8192
       pinExamples: true
