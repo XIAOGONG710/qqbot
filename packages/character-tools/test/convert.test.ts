@@ -34,17 +34,26 @@ test('角色卡是 ST 能导入的 V2 结构，名字相同，用标签区分档
     }
 });
 
-test('男朋友档：转换的章节里每一句原文都进了 description', () => {
+test('男朋友档：转换的章节里每一句原文都进了 description（男朋友档改写过的字段不再原样出现）', () => {
     const toml = loadPersona();
     const persona = toml.persona as Table;
     const { description } = card('boyfriend', toml).data;
+    const rewritten = new Set(tiers.rewrites.filter(r => r.tiers.has('boyfriend')).map(r => r.field));
     const sections = ['relation', 'family', 'dorm', 'study', 'friends', 'money', 'heart', 'speech', 'taboo',
         'identity_note', 'daily_extra', 'dates', 'growth'];
+    let checked = 0;
     for (const key of sections) {
         for (const [field, value] of Object.entries(persona[key] as Table)) {
-            assert.ok(description.includes(String(value).trim()), `persona.${key}.${field} 没有出现在 description 里`);
+            const original = String(value).trim();
+            if (rewritten.has(`${key}.${field}`)) {
+                assert.ok(!description.includes(original), `persona.${key}.${field} 改写过，原文不该原样出现`);
+                continue;
+            }
+            assert.ok(description.includes(original), `persona.${key}.${field} 没有出现在 description 里`);
+            checked++;
         }
     }
+    assert.ok(checked > 40, `只检查了 ${checked} 个字段`);
 });
 
 test('每个档位的卡里都没有这一档的禁用词（低档位看不到高档位的事实）', () => {
