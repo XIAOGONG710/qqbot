@@ -29,6 +29,11 @@ export interface Checks {
     regenerated?: boolean;
     /** 这一步有没有「发送中途对方插话，剩下的不发」 */
     dropped?: boolean;
+    /** 这一步她发出的字数上限 / 下限（所有气泡加起来，调研方案 13.3 日常长度） */
+    maxChars?: number;
+    minChars?: number;
+    /** 这一步她最多发几条 */
+    maxBubbles?: number;
 }
 
 export type Step =
@@ -42,7 +47,11 @@ export type Step =
     /** 手动刷新关系概况（Mental Model），等做完后记进报告（T23） */
     | { refresh: 'relationship' }
     /** 对上一个 say 步骤做自动检查 */
-    | { check: Checks };
+    | { check: Checks }
+    /** 把聊天记录挪走（记忆还在），之后的回复只能靠召回：模拟原文早就被挤出上下文 */
+    | { forget: 'chat' }
+    /** Hindsight 不可用 / 恢复（T20）：不可用时每个请求都报错 */
+    | { hindsight: 'down' | 'up' };
 
 export interface Scenario {
     name: string;
@@ -85,12 +94,14 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
     };
 }
 
+const STEP_KINDS = ['case', 'say', 'advance', 'memory', 'refresh', 'check', 'forget', 'hindsight'] as const;
+
 function checkStep(step: unknown, where: string): void {
     const fail = (message: string): never => { throw new Error(`${where}：${message}`); };
     if (typeof step !== 'object' || step === null) fail('应为对象');
     const s = step as Record<string, unknown>;
-    const kinds = ['case', 'say', 'advance', 'memory', 'refresh', 'check'].filter(k => k in s);
-    if (kinds.length !== 1) fail(`要有且只有 case / say / advance / memory / refresh / check 其中一个，现在是 ${kinds.join('、') || '都没有'}`);
+    const kinds = STEP_KINDS.filter(k => k in s);
+    if (kinds.length !== 1) fail(`要有且只有 ${STEP_KINDS.join(' / ')} 其中一个，现在是 ${kinds.join('、') || '都没有'}`);
     if ('say' in s) {
         const say = s.say;
         if (!(typeof say === 'string' && say) && !(Array.isArray(say) && say.length > 0 && say.every(t => typeof t === 'string' && t))) fail('say 应为非空字符串或字符串数组');
@@ -103,6 +114,8 @@ function checkStep(step: unknown, where: string): void {
     if ('advance' in s) parseDuration(String(s.advance));
     if ('memory' in s && s.memory !== 'sync') fail('memory 只能是 "sync"');
     if ('refresh' in s && s.refresh !== 'relationship') fail('refresh 只能是 "relationship"');
+    if ('forget' in s && s.forget !== 'chat') fail('forget 只能是 "chat"');
+    if ('hindsight' in s && s.hindsight !== 'down' && s.hindsight !== 'up') fail('hindsight 只能是 "down" 或 "up"');
 }
 
 /** "45m"、"1d"、"9h30m"、"90s" → 毫秒 */

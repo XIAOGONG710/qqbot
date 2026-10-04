@@ -1,7 +1,7 @@
 // 跑一个场景（ADR 0005）：和 bot 同一条流水线（contact.ts），只换掉收发、时钟和数据目录。
 // 对方的消息由场景给出，按虚拟时间记录；她发出的每一条、每次生成的提示词、调度日志都按步骤记下来，最后写成报告。
 
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BotConfig, Contact } from '../config.ts';
 import { createContactResponder, type TierCard } from '../contact.ts';
@@ -50,7 +50,7 @@ export interface Generation { time: number; recall?: string; timeBlock?: string;
 export interface CheckResult { ok: boolean; text: string }
 
 export interface StepRecord {
-    kind: 'case' | 'say' | 'advance' | 'memory' | 'refresh' | 'check';
+    kind: 'case' | 'say' | 'advance' | 'memory' | 'refresh' | 'check' | 'forget' | 'hindsight';
     /** 这一步开始时的虚拟时间 */
     time: number;
     caseId?: string;
@@ -93,9 +93,11 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         appendFileSync(join(dataDir, 'sim.log'), `[${new Date(clock.now()).toLocaleString('zh-CN', { hour12: false })}] ${message}\n`);
     };
 
-    const memory = scenario.memory && options.hindsight
+    let hindsightDown = false;
+    const hindsight = options.hindsight && switchable(options.hindsight, () => hindsightDown);
+    const memory = scenario.memory && hindsight
         ? new LongTermMemory({
-            api: options.hindsight,
+            api: hindsight,
             dir: join(dataDir, 'memory'),
             bankPrefix: `sim-${options.runId}`,
             recallTimeoutMs: options.recallTimeoutMs ?? 5000,
@@ -118,7 +120,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     };
     const baseGenerate = options.generate ?? ((messages: OpenAIMessage[], log: Log) => chatCompletion(options.llm, messages, { log }));
 
-    const responder = createContactResponder({
+    const createResponder = () => createContactResponder({
         contact,
         card: options.card,
         llm: options.llm,
@@ -154,6 +156,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             writeFileSync(join(dataDir, 'prompts', `${++generationCount}.json`), JSON.stringify(prompt, null, 2));
         },
     });
+    let responder = createResponder();
+    let forgotten = 0;
 
     /** 等她把这一轮（含插话之后的回复）都发完 */
     async function settle(): Promise<void> {
@@ -169,7 +173,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     }
 
     async function syncMemory(): Promise<void> {
-        if (!memory || !options.hindsight || !bankId) return;
+        if (!memory || !options.hindsight || !bankId || hindsightDown) return;
         await memory.sync(contact, names, history.load(contact.qq));
         const started = Date.now();
         const limit = options.hindsightWaitMs ?? 240_000;
@@ -220,13 +224,22 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             } else if ('memory' in step) {
                 await syncMemory();
             } else if ('refresh' in step) {
-                if (options.hindsight && bankId) {
+                if (options.hindsight && bankId && !hindsightDown) {
                     await options.hindsight.refreshMentalModel(bankId, RELATIONSHIP_MODEL.id);
                     await syncMemory();
                     current.relationship = (await options.hindsight.getMentalModel(bankId, RELATIONSHIP_MODEL.id))?.content ?? '';
                 } else {
                     log('没有记忆，跳过刷新关系概况');
                 }
+            } else if ('forget' in step) {
+                await settle();
+                const chats = join(dataDir, 'chats');
+                renameSync(join(chats, `${contact.qq}.jsonl`), join(chats, `${contact.qq}.forgotten-${++forgotten}.jsonl`));
+                responder = createResponder();
+                log('聊天记录挪走了，之后只能靠记忆');
+            } else if ('hindsight' in step) {
+                hindsightDown = step.hindsight === 'down';
+                log(hindsightDown ? 'Hindsight 停了' : 'Hindsight 恢复');
             } else if ('check' in step) {
                 current.checks = lastSay ? runChecks(step.check, lastSay) : [{ ok: false, text: '前面没有 say 步骤' }];
             }
@@ -245,6 +258,22 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         bankId,
         steps,
         checks: { passed: all.filter(c => c.ok).length, failed: all.filter(c => !c.ok).length },
+    };
+}
+
+/** 包一层：停了的时候每个请求都报错，和连不上一样 */
+function switchable(api: SimHindsight, down: () => boolean): SimHindsight {
+    const guard = <T>(call: () => Promise<T>): Promise<T> =>
+        (down() ? Promise.reject(new Error('fetch failed（模拟 Hindsight 停了）')) : call());
+    return {
+        putBank: (...a) => guard(() => api.putBank(...a)),
+        retain: (...a) => guard(() => api.retain(...a)),
+        recall: (...a) => guard(() => api.recall(...a)),
+        getMentalModel: (...a) => guard(() => api.getMentalModel(...a)),
+        createMentalModel: (...a) => guard(() => api.createMentalModel(...a)),
+        countOperations: (...a) => guard(() => api.countOperations(...a)),
+        refreshMentalModel: (...a) => guard(() => api.refreshMentalModel(...a)),
+        deleteBank: (...a) => api.deleteBank(...a),
     };
 }
 
@@ -292,6 +321,10 @@ export function runChecks(checks: Checks, step: StepRecord): CheckResult[] {
     if (checks.regenerated !== undefined) {
         results.push({ ok: has(/生成期间收到新消息/) === checks.regenerated, text: checks.regenerated ? '生成中来了新消息，丢掉草稿重新生成' : '没有重新生成' });
     }
+    const chars = step.bubbles.reduce((n, b) => n + [...b.text].length, 0);
+    if (checks.maxChars !== undefined) results.push({ ok: chars <= checks.maxChars, text: `她这一轮最多 ${checks.maxChars} 字（实际 ${chars}）` });
+    if (checks.minChars !== undefined) results.push({ ok: chars >= checks.minChars, text: `她这一轮至少 ${checks.minChars} 字（实际 ${chars}）` });
+    if (checks.maxBubbles !== undefined) results.push({ ok: step.bubbles.length <= checks.maxBubbles, text: `她这一轮最多 ${checks.maxBubbles} 条（实际 ${step.bubbles.length}）` });
     if (checks.dropped !== undefined) {
         results.push({ ok: has(/发送中途对方插话/) === checks.dropped, text: checks.dropped ? '发送中途插话，剩下的没发' : '没有丢弃剩下的' });
     }

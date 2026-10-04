@@ -123,4 +123,47 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    test('挪走聊天记录后只能靠召回；Hindsight 停了照常回复；字数检查', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-'));
+        let configured = false;
+        const hindsight: SimHindsight = {
+            putBank: async () => { configured = true; },
+            retain: async () => {},
+            recall: async () => [{ id: '1', text: '阿明的组长外号叫铁锅', document_id: 'ep-old' }],
+            getMentalModel: async () => (configured ? { id: 'relationship', content: '' } : undefined),
+            createMentalModel: async () => {},
+            countOperations: async () => 0,
+            refreshMentalModel: async () => {},
+            deleteBank: async () => {},
+        };
+        const seen: OpenAIMessage[][] = [];
+        const generate = async (messages: OpenAIMessage[]) => { seen.push(messages); return '嗯嗯'; };
+        const scenario = parseScenario({
+            name: '测试', tier: 'boyfriend', start: '2026-10-05T20:00:00+08:00',
+            steps: [
+                { say: '我们组长外号叫铁锅' },
+                { advance: '1h' },
+                { forget: 'chat' },
+                { hindsight: 'down' },
+                { say: '在吗' },
+                { check: { recall: ['铁锅'] } },
+                { hindsight: 'up' },
+                { say: '铁锅又找我茬' },
+                { check: { recall: ['铁锅'], maxChars: 2, minChars: 2, maxBubbles: 1 } },
+            ],
+        });
+        try {
+            const result = await runScenario(scenario, { runId: 'test', dataDir: dir, card, llm, prompt, hindsight, generate, settle: { quietMs: 100, maxMs: 500 } });
+            assert.deepEqual(result.steps.flatMap(s => s.checks).map(c => c.ok), [false, true, true, true, true], 'Hindsight 停了那次没有召回');
+            assert.deepEqual(result.steps[4]!.bubbles.map(b => b.text), ['嗯嗯'], '停了也照常回复');
+            assert.ok(result.steps[4]!.logs.some(l => l.includes('记忆召回失败')));
+            // 挪走之后的提示词里没有原文
+            const chat = (m: OpenAIMessage[]) => m.filter(x => x.role === 'user').map(x => x.content).join('|');
+            assert.equal(chat(seen[1]!), '在吗');
+            assert.equal(chat(seen[2]!), '在吗|铁锅又找我茬');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });

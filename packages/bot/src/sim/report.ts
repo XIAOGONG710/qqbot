@@ -48,6 +48,12 @@ function renderStep(step: StepRecord, dayPrefix: () => string): string[] {
         case 'refresh':
             out.push('**关系概况（手动刷新后）**', '', step.relationship ? quote(step.relationship) : '（空）', '');
             break;
+        case 'forget':
+            out.push('*（聊天记录挪走，之后只能靠记忆）*', '');
+            break;
+        case 'hindsight':
+            out.push(`*（Hindsight ${step.logs.some(l => l.includes('停了')) ? '停了' : '恢复'}）*`, '');
+            break;
         case 'check':
             for (const c of step.checks) out.push(`- ${c.ok ? '✅' : '❌'} ${c.text}`);
             out.push('');
