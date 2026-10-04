@@ -382,4 +382,21 @@ describe('档位记录', () => {
             rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    test('记下换档时间，补回漏掉的消息以它为下限；第一次记下的没有；读得懂只存档位名的旧文件', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-tiers-'));
+        try {
+            const path = join(dir, 'tiers.json');
+            writeFileSync(path, JSON.stringify({ 1: 'boyfriend' }));
+            const record = new TierRecord(path);
+            assert.equal(record.since(1), undefined);
+            assert.equal(record.update(1, 'boyfriend'), undefined, '旧格式也认得出档位没变');
+            assert.match(record.update(1, 'classmate', new Date('2026-10-04T14:00:00Z'))!, /只取现在之后的/);
+            assert.equal(new TierRecord(path).since(1)?.toISOString(), '2026-10-04T14:00:00.000Z');
+            new TierRecord(path).update(2, 'classmate');
+            assert.equal(new TierRecord(path).since(2), undefined, '第一次记下的联系人照旧补回');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });

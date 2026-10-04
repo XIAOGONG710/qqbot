@@ -25,13 +25,17 @@ export interface HistoryMessage {
     message: Segment[] | string;
 }
 
-/** NapCat 返回的记录里，本地还没有、且比本地最后一条新的，按时间从旧到新 */
-export function findMissed(stored: StoredMessage[], fetched: HistoryMessage[], selfId: number): StoredMessage[] {
+/**
+ * NapCat 返回的记录里，本地还没有、且比本地最后一条新的，按时间从旧到新。
+ * notBefore：换档的时间（tier-record.ts）。降档后旧记录归档了，本地是空的，不设下限会把 QQ 里换档前的消息又补回来。
+ */
+export function findMissed(stored: StoredMessage[], fetched: HistoryMessage[], selfId: number, notBefore?: Date): StoredMessage[] {
     const known = new Set(stored.map(m => m.messageId).filter(id => id !== undefined));
     const last = stored.at(-1);
     const since = last ? Date.parse(last.time) : -Infinity;
     return fetched
         .filter(m => !known.has(m.message_id) && m.time * 1000 >= Math.floor(since / 1000) * 1000)
+        .filter(m => !notBefore || m.time * 1000 >= notBefore.getTime())
         .sort((a, b) => a.time - b.time)
         .map((m): StoredMessage => ({
             time: new Date(m.time * 1000).toISOString(),

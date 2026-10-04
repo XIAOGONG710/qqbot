@@ -36,6 +36,12 @@ describe('补回漏掉的消息', () => {
         assert.deepEqual(findMissed(stored, [fromSelf(9, 50, '很早以前')], SELF), []);
     });
 
+    test('换过档：只补换档之后的，归档掉的旧记录不会从 QQ 里再拉回来', () => {
+        const fetched = [fromPeer(1, 10, '宝宝在吗'), fromSelf(2, 11, '在呀宝宝'), fromPeer(3, 30, '换档后的第一句')];
+        assert.deepEqual(findMissed([], fetched, SELF, new Date(20_000)).map(m => m.content), ['换档后的第一句']);
+        assert.deepEqual(findMissed([], fetched, SELF).map(m => m.content), ['宝宝在吗', '在呀宝宝', '换档后的第一句'], '没换过档照旧全补');
+    });
+
     test('本地还没有记录时全部补上；转不出文字的消息跳过；表情转成占位符', () => {
         const fetched = [fromPeer(1, 10, '你好'), { ...fromPeer(2, 11, ''), message: [{ type: 'face', data: {} }] }, fromPeer(3, 12, '  ')];
         assert.deepEqual(findMissed([], fetched, SELF).map(m => m.content), ['你好', '[表情]']);

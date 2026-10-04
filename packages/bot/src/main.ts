@@ -152,7 +152,7 @@ async function syncMissed(selfId: number): Promise<void> {
             log(`[${contact.qq}] 拉取历史消息失败，跳过补回：${error instanceof Error ? error.message : String(error)}`);
             continue;
         }
-        const missed = findMissed(history.load(contact.qq), fetched, selfId);
+        const missed = findMissed(history.load(contact.qq), fetched, selfId, tierRecord.since(contact.qq));
         for (const message of missed) history.append(contact.qq, message);
         if (missed.length) {
             const lines = missed.map(m => `${m.role === 'user' ? '对方' : '她'}：${m.content}`).join(' / ');
