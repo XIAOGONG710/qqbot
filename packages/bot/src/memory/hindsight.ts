@@ -3,10 +3,10 @@
 //   PUT  /v1/default/banks/{bank_id}                              建库或改配置（mission、disposition）
 //   POST /v1/default/banks/{bank_id}/memories                     写入（retain）
 //   POST /v1/default/banks/{bank_id}/memories/recall              召回
-//   GET / POST /v1/default/banks/{bank_id}/mental-models[/{id}]   关系概况（Mental Model）
+//   GET / POST / PATCH /v1/default/banks/{bank_id}/mental-models[/{id}]   关系概况（Mental Model）
+//   POST /v1/default/banks/{bank_id}/mental-models/{id}/refresh    设定改了之后手动刷新一次
 // 只有模拟器（sim/，ADR 0005）用的：
 //   GET    /v1/default/banks/{bank_id}/operations[/{id}]           后台任务（等抽取、整合、刷新做完）
-//   POST   /v1/default/banks/{bank_id}/mental-models/{id}/refresh  手动刷新关系概况
 //   DELETE /v1/default/banks/{bank_id}                             删掉测试 bank
 // 出错（连不上、超时、非 2xx）一律抛 HindsightError，由调用方记日志，不在这里吞掉。
 
@@ -82,11 +82,20 @@ export interface HindsightApi {
     recall(bankId: string, request: RecallRequest, timeoutMs?: number): Promise<RecallResult[]>;
     getMentalModel(bankId: string, id: string): Promise<MentalModel | undefined>;
     createMentalModel(bankId: string, request: MentalModelRequest): Promise<void>;
+    /** 改已有的 Mental Model 的设定（源查询、长度、触发条件）；内容要等下一次刷新才变 */
+    updateMentalModel(bankId: string, id: string, request: MentalModelRequest): Promise<void>;
+    /** 手动刷新，返回后台任务 id */
+    refreshMentalModel(bankId: string, id: string): Promise<string>;
 }
 
 /** 写入请求体：后台异步处理（async），一次一个片段 */
 export function retainBody(item: MemoryItem) {
     return { items: [item], async: true };
+}
+
+/** 改 Mental Model 的请求体：除了 id 都能改 */
+export function mentalModelUpdateBody({ id: _id, ...rest }: MentalModelRequest) {
+    return rest;
 }
 
 export class HindsightClient implements HindsightApi {
@@ -122,6 +131,10 @@ export class HindsightClient implements HindsightApi {
 
     async createMentalModel(bankId: string, request: MentalModelRequest): Promise<void> {
         await this.#request('POST', `${this.#bank(bankId)}/mental-models`, request);
+    }
+
+    async updateMentalModel(bankId: string, id: string, request: MentalModelRequest): Promise<void> {
+        await this.#request('PATCH', `${this.#bank(bankId)}/mental-models/${encodeURIComponent(id)}`, mentalModelUpdateBody(request));
     }
 
     /** 还没做完（pending / processing）的后台任务的类型，例如 retain、consolidation、refresh_mental_model */

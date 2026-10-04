@@ -20,7 +20,6 @@ export const SIM_QQ = 10001;
 export interface SimHindsight extends HindsightApi {
     activeOperations(bankId: string): Promise<string[]>;
     operationStatus(bankId: string, operationId: string): Promise<string>;
-    refreshMentalModel(bankId: string, id: string): Promise<string>;
     deleteBank(bankId: string): Promise<void>;
 }
 
@@ -283,6 +282,7 @@ function switchable(api: SimHindsight, down: () => boolean): SimHindsight {
         recall: (...a) => guard(() => api.recall(...a)),
         getMentalModel: (...a) => guard(() => api.getMentalModel(...a)),
         createMentalModel: (...a) => guard(() => api.createMentalModel(...a)),
+        updateMentalModel: (...a) => guard(() => api.updateMentalModel(...a)),
         activeOperations: (...a) => guard(() => api.activeOperations(...a)),
         operationStatus: (...a) => guard(() => api.operationStatus(...a)),
         refreshMentalModel: (...a) => guard(() => api.refreshMentalModel(...a)),

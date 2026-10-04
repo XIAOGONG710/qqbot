@@ -54,13 +54,14 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
     test('连发合并、生成中插话、发送中途插话、跳一天后的时间块和召回、自动检查、报告', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-'));
         const calls = { retain: [] as MemoryItem[], recall: [] as RecallRequest[], deleted: [] as string[], refreshed: 0 };
-        let configured = false;
+        let created = false;
         const hindsight: SimHindsight = {
-            putBank: async () => { configured = true; },
+            putBank: async () => {},
             retain: async (_bank, item) => { calls.retain.push(item); },
             recall: async (_bank, request) => { calls.recall.push(request); return [{ id: '1', text: '阿明的组长外号叫铁锅', document_id: 'ep-old' }]; },
-            getMentalModel: async () => (configured ? { id: 'relationship', content: '关系稳定' } : undefined),
-            createMentalModel: async () => {},
+            getMentalModel: async () => (created ? { id: 'relationship', content: '关系稳定' } : undefined),
+            createMentalModel: async () => { created = true; },
+            updateMentalModel: async () => {},
             activeOperations: async () => [],
             operationStatus: async () => 'completed',
             refreshMentalModel: async () => { calls.refreshed++; return 'op-1'; },
@@ -127,13 +128,14 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
 
     test('挪走聊天记录后只能靠召回；Hindsight 停了照常回复；字数检查', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-'));
-        let configured = false;
+        let created = false;
         const hindsight: SimHindsight = {
-            putBank: async () => { configured = true; },
+            putBank: async () => {},
             retain: async () => {},
             recall: async () => [{ id: '1', text: '阿明的组长外号叫铁锅', document_id: 'ep-old' }],
-            getMentalModel: async () => (configured ? { id: 'relationship', content: '' } : undefined),
-            createMentalModel: async () => {},
+            getMentalModel: async () => (created ? { id: 'relationship', content: '' } : undefined),
+            createMentalModel: async () => { created = true; },
+            updateMentalModel: async () => {},
             activeOperations: async () => [],
             operationStatus: async () => 'completed',
             refreshMentalModel: async () => 'op-1',

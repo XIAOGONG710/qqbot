@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes } from '../src/memory/episodes.ts';
-import { retainBody, type HindsightApi, type MemoryItem, type MentalModel, type RecallRequest, type RecallResult } from '../src/memory/hindsight.ts';
+import { mentalModelUpdateBody, retainBody, type HindsightApi, type MemoryItem, type MentalModel, type RecallRequest, type RecallResult } from '../src/memory/hindsight.ts';
 import { BANK_MISSIONS, formatRecalled, LongTermMemory, OPEN_EPISODE_STEP, recallQuery, RELATIONSHIP_MODEL } from '../src/memory/long-term.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
@@ -19,7 +19,7 @@ const msg = (minute: number, role: 'user' | 'assistant', content: string, messag
 
 type Schema = { $ref?: string; anyOf?: Schema[]; type?: string; enum?: unknown[]; properties?: Record<string, Schema>; required?: string[]; items?: Schema; additionalProperties?: unknown };
 const openapi = JSON.parse(readFileSync(resolve(import.meta.dirname, 'fixtures/hindsight-openapi-0.10.2.json'), 'utf8')) as {
-    roots: Record<'bank' | 'retain' | 'recall' | 'mentalModel', string>;
+    roots: Record<'bank' | 'retain' | 'recall' | 'mentalModel' | 'mentalModelUpdate', string>;
     schemas: Record<string, Schema>;
 };
 
@@ -55,7 +55,7 @@ const root = (name: keyof typeof openapi.roots): Schema => ({ $ref: `#/component
 
 /** 假的 Hindsight：记下请求，可以让某次调用失败 */
 function fakeApi(options: { failRetain?: number; recall?: RecallResult[] | Error; mentalModel?: MentalModel } = {}) {
-    const calls = { banks: [] as string[], putBank: [] as unknown[], retain: [] as MemoryItem[], recall: [] as RecallRequest[], createMentalModel: [] as unknown[], getMentalModel: 0 };
+    const calls = { banks: [] as string[], putBank: [] as unknown[], retain: [] as MemoryItem[], recall: [] as RecallRequest[], createMentalModel: [] as unknown[], updateMentalModel: [] as unknown[], refreshMentalModel: 0, getMentalModel: 0 };
     let retains = 0;
     const api: HindsightApi = {
         putBank: async (_bank, config) => { calls.putBank.push(config); },
@@ -73,6 +73,8 @@ function fakeApi(options: { failRetain?: number; recall?: RecallResult[] | Error
         },
         getMentalModel: async () => { calls.getMentalModel++; return options.mentalModel; },
         createMentalModel: async (_bank, request) => { calls.createMentalModel.push(request); },
+        updateMentalModel: async (_bank, _id, request) => { calls.updateMentalModel.push(request); },
+        refreshMentalModel: async () => { calls.refreshMentalModel++; return 'op-1'; },
     };
     return { api, calls };
 }
@@ -113,8 +115,11 @@ describe('长期记忆：请求体对照 Hindsight 0.10.2 的 OpenAPI', () => {
         }
     });
 
-    test('关系概况（Mental Model）', () => {
+    test('关系概况（Mental Model）：新建和改设定', () => {
         assert.deepEqual(check(RELATIONSHIP_MODEL, root('mentalModel')), []);
+        assert.deepEqual(check(mentalModelUpdateBody(RELATIONSHIP_MODEL), root('mentalModelUpdate')), []);
+        // 改设定的请求体里没有 id 这个字段
+        assert.notDeepEqual(check(RELATIONSHIP_MODEL, root('mentalModelUpdate')), []);
     });
 });
 
@@ -154,6 +159,25 @@ describe('长期记忆：写入', () => {
             await memory.sync(A, names, busy);
             assert.equal(calls.retain.at(-1)!.document_id, `ep-${T0 + 120 * MIN}`, '进行中的片段攒够条数，整段写一次');
             assert.equal(calls.retain.at(-1)!.metadata.messages, String(OPEN_EPISODE_STEP + 1));
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('关系概况的设定改了：已有的那个改设定、刷新一次，之后不再重复', async () => {
+        const { memory, calls, logs, dir, cleanup } = setup({ mentalModel: { id: 'relationship', content: '旧的长报告' } });
+        try {
+            // 旧版本的状态文件：relationshipModel 是 true
+            writeFileSync(join(dir, '1-boyfriend.json'), JSON.stringify({ bankId: memory.bankId(A), bankConfigured: 'x', relationshipModel: true, retained: {} }));
+            await memory.sync(A, names, [msg(0, 'user', '在吗')]);
+            assert.equal(calls.createMentalModel.length, 0, '已经有了，不再新建');
+            assert.deepEqual(calls.updateMentalModel, [RELATIONSHIP_MODEL]);
+            assert.equal(calls.refreshMentalModel, 1);
+            assert.ok(logs.some(l => l.includes('关系概况的设定改了')));
+
+            await memory.sync(A, names, [msg(0, 'user', '在吗'), msg(1, 'user', '人呢')]);
+            assert.equal(calls.updateMentalModel.length, 1, '版本记下了，不再改');
+            assert.equal(calls.refreshMentalModel, 1);
         } finally {
             cleanup();
         }

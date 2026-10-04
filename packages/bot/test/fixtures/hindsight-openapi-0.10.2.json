@@ -16,7 +16,8 @@
     "bank": "CreateBankRequest",
     "retain": "RetainRequest",
     "recall": "RecallRequest",
-    "mentalModel": "CreateMentalModelRequest"
+    "mentalModel": "CreateMentalModelRequest",
+    "mentalModelUpdate": "UpdateMentalModelRequest"
   },
   "schemas": {
     "CreateBankRequest": {
@@ -1479,6 +1480,89 @@
       "type": "object",
       "title": "MentalModelTrigger",
       "description": "Trigger settings for a mental model.\n\nA refresh is not an ad-hoc reflect with different arguments: it synthesizes a\nwhole document, so it wants its own retrieval and iteration settings. This\ntrigger is therefore the only source for them — a bank's\n``reflect_default_options`` deliberately does not reach a refresh. The\nper-bank default for these fields is ``knowledge_page_default_trigger``,\nwhich is merged over this same shape when a page is created."
+    },
+    "UpdateMentalModelRequest": {
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name",
+          "description": "New name for the mental model"
+        },
+        "source_query": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Query",
+          "description": "New source query for the mental model"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "maximum": 8192,
+              "minimum": 256
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Tokens",
+          "description": "Maximum tokens for generated content"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tags",
+          "description": "Tags for scoped visibility"
+        },
+        "trigger": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/MentalModelTrigger-Input"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Trigger settings"
+        }
+      },
+      "type": "object",
+      "title": "UpdateMentalModelRequest",
+      "description": "Request model for updating a mental model.",
+      "example": {
+        "max_tokens": 4096,
+        "name": "Updated Team Communication Preferences",
+        "source_query": "How does the team prefer to communicate?",
+        "tags": [
+          "team",
+          "communication"
+        ],
+        "trigger": {
+          "refresh_after_consolidation": true
+        }
+      }
     }
   }
 }

@@ -58,12 +58,20 @@ export const BANK_MISSIONS = {
     disposition_empathy: 3,
 };
 
+// 关系概况每次都放进她的提示词（main 之后），要短、要是她能直接用的话。
+// 10-04 模拟器里旧的源查询（「整理当前关系、未解决事项与修复进展，区分事实和看法」）每次刷新出 1,000–2,000 字的报告：
+// 证据范围说明、六七个小标题、一串「无证据」，结构每次都变，max_tokens 500 也没压住。
 export const RELATIONSHIP_MODEL: MentalModelRequest = {
     id: RELATIONSHIP_MODEL_ID,
     name: '关系概况',
-    source_query: '依据聊天证据整理当前关系、未解决事项与修复进展。区分事实和看法，不制造离线事件，不输出角色回复。用中文写。',
+    source_query: [
+        '用中文写一段 150 字以内的内部参考，给扮演林梦瑶的模型在聊天前看：',
+        '你们现在的关系怎么样；有什么事还没聊完或没解决；最近答应过、约好的事。',
+        '只写聊天里有证据的；没有的就不写，不要写「无证据」「未知」之类的说明。',
+        '一段话，不要标题、列表和来源说明；不制造离线事件，不输出角色回复。',
+    ].join(''),
     tags: TAGS,
-    max_tokens: 500,
+    max_tokens: 300,
     trigger: { refresh_after_consolidation: true, min_refresh_interval_seconds: 1800 },
 };
 
@@ -77,7 +85,8 @@ interface ContactState {
     bankId: string;
     /** 已写入的 mission 版本（mission 改了就重新 PUT） */
     bankConfigured?: string;
-    relationshipModel?: boolean;
+    /** 已建好的关系概况的设定版本（RELATIONSHIP_MODEL 改了就 PATCH 并刷新一次）；旧的状态文件里是 true */
+    relationshipModel?: string | boolean;
     /** 片段 id → 已写入的消息条数 */
     retained: Record<string, number>;
 }
@@ -157,11 +166,17 @@ export class LongTermMemory {
             this.#save(contact, state);
             this.#options.log(`[${contact.qq}] 记忆：bank ${state.bankId}（${contact.tier}）已写入 mission`);
         }
-        if (!state.relationshipModel) {
+        const modelVersion = createHash('sha256').update(JSON.stringify(RELATIONSHIP_MODEL)).digest('hex').slice(0, 12);
+        if (state.relationshipModel !== modelVersion) {
             if (!(await this.#options.api.getMentalModel(state.bankId, RELATIONSHIP_MODEL_ID))) {
                 await this.#options.api.createMentalModel(state.bankId, RELATIONSHIP_MODEL);
+            } else {
+                // 已经有了（旧设定建的）：改设定，再刷新一次让内容按新设定重写
+                await this.#options.api.updateMentalModel(state.bankId, RELATIONSHIP_MODEL_ID, RELATIONSHIP_MODEL);
+                await this.#options.api.refreshMentalModel(state.bankId, RELATIONSHIP_MODEL_ID);
+                this.#options.log(`[${contact.qq}] 记忆：关系概况的设定改了，已更新并重新整理`);
             }
-            state.relationshipModel = true;
+            state.relationshipModel = modelVersion;
             this.#save(contact, state);
         }
     }
