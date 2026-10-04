@@ -11,8 +11,12 @@ export interface ExitIssue {
 }
 
 // 做不到的事：bot 只能发文字（决策 3）。主动给人看 / 发照片、语音、视频、红包，打电话、开视频，或者说得像已经发了。
-// 紧挨着或隔一两个字前面是「不、没、别、懒得」的不算（「不给你看」「才不想给你看」「懒得翻给你看」），隔了标点的不管。
-const NOT_NEGATED = '(?<!(?:[不没别]|懒得)[^，。！？、,.!?\\s]{0,2})';
+// 拒绝的说法不算：前面三个字以内有「不、没、别、懒得」（「才不想给你看」「我又没开相册给你看」），
+// 或者紧跟着「不行、不了、不方便、没法、算了」（「打电话不行」）；隔了标点的不管。
+// 再往前就不算了：「等它好好坐着不动我再拍了发你」是承诺。
+const CLAUSE = '[^，。！？、,.!?\\s]';
+const NOT_NEGATED = `(?<!(?:[不没别]|懒得)${CLAUSE}{0,3})`;
+const NOT_REFUSED = `(?!${CLAUSE}{0,2}(?:不行|不了|不方便|没法|算了))`;
 const PROMISE = new RegExp(NOT_NEGATED + '(?:' + [
     '给你(?:看|发|拍|翻|传|寄)',
     '发(?:给)?你',
@@ -24,7 +28,7 @@ const PROMISE = new RegExp(NOT_NEGATED + '(?:' + [
     '发(?:个|条|段)?语音',
     '发个?红包',
     '(?:要|想)(?:不要)?看(?:不|吗|嘛)$',
-].join('|') + ')');
+].join('|') + ')' + NOT_REFUSED);
 
 export function inspectReply(reply: string, banned: readonly string[]): ExitIssue[] {
     const issues: ExitIssue[] = [];
