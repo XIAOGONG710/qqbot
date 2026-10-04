@@ -22,17 +22,22 @@
 
 ## VC++ 运行库
 
-这台机器的系统 `msvcp140.dll` 是 14.36（2023 年）。pg0 自带的 PostgreSQL 和 onnxruntime 1.30 都是用新版 MSVC 编译的，
-在 14.40 以前的 `msvcp140.dll` 上一用 `std::mutex` 就访问冲突（0xC0000005）：initdb 失败、hindsight-api 一启动就崩。
-Windows 事件日志里出错模块是 `C:\WINDOWS\SYSTEM32\MSVCP140.dll` 14.36.32532.0。
+pg0 自带的 PostgreSQL 和 onnxruntime 1.30 都是用新版 MSVC 编译的，在 14.40 以前的 `msvcp140.dll` 上一用 `std::mutex` 就访问冲突（0xC0000005）：
+initdb 失败、hindsight-api 一启动就崩。这台机器原来的系统 `msvcp140.dll` 是 14.36（2023 年），Windows 事件日志里出错模块是
+`C:\WINDOWS\SYSTEM32\MSVCP140.dll` 14.36.32532.0。
 
-现在的处理（不改系统）：从微软官方 `vc_redist.x64.exe`（`https://aka.ms/vs/17/release/vc_redist.x64.exe`，14.44.35211，Authenticode 签名为 Microsoft Corporation）
-里解出 14.44 的运行库（不安装），每个 DLL 都核对了微软签名：
+**现在（2026-10-04 起）**：用户装了最新的 VC++ 2015–2022 运行库。System32 里的 `msvcp140*.dll`、`vcruntime140*.dll`、`concrt140.dll` 都是 14.44.35211，
+Microsoft 签名有效，注册表 `HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64` 是 v14.44.35211.00。
+启动脚本先检查系统 `msvcp140.dll` 不低于 14.40，太旧就直接报错，不等 PostgreSQL 崩。
 
-- `msvcp140*.dll` 放在 `runtime/hindsight/vcruntime/`；venv 里的 `qqbot_vcruntime.pth` 在环境变量 `QQBOT_VCRUNTIME_DIR` 存在时（启动脚本会设）先加载它们。
-- `msvcp140.dll`、`vcruntime140.dll`、`vcruntime140_1.dll` 复制到 `%USERPROFILE%\.pg0\installation\18.1.0\bin\`，postgres.exe 优先用同目录的。
+**之前的权宜做法已撤掉**：当时不改系统，从微软官方 `vc_redist.x64.exe`（`https://aka.ms/vs/17/release/vc_redist.x64.exe`，14.44.35211，签名为 Microsoft Corporation）
+里解出运行库（不安装）：`msvcp140*.dll` 放在 `runtime/hindsight/vcruntime/`，由 venv 里的 `qqbot_vcruntime.pth` 在环境变量 `QQBOT_VCRUNTIME_DIR` 存在时
+（启动脚本会设）先加载；`msvcp140.dll`、`vcruntime140.dll`、`vcruntime140_1.dll` 复制到 `%USERPROFILE%\.pg0\installation\18.1.0\bin\`（postgres.exe 优先用同目录的）。
+这些 DLL 和 `.pth` 都挪到了 `runtime/hindsight/archive-vcruntime-20261004/`（没删，放回原处就能恢复），启动脚本也不再设这个环境变量。
 
-**更干净的做法是装最新的 VC++ 运行库**（需要管理员）：装好后上面两处复制的 DLL 都可以删掉。
+**验证（10-04 23:24 重启 Hindsight 后）**：PostgreSQL 的 15 个进程和加载了 onnxruntime 的 Python 进程，`msvcp140` / `vcruntime140` 都从 `C:\WINDOWS\SYSTEM32\` 加载
+（Python 发行版自带的 `vcruntime140*.dll`、numpy 自带的 `msvcp140-*.dll` 是它们自己的，不是这里复制的）；`/health` 正常；事件日志没有新的崩溃；
+模拟器 `boyfriend-memory`（临时 bank）4 项检查全过：抽取、中文绰号「铁锅」召回、偏好变化召回、Hindsight 停了照常回复。
 
 ## PGroonga（中文关键词检索）
 
@@ -122,8 +127,8 @@ uv venv runtime/hindsight/venv --python 3.12
 uv pip install --python runtime/hindsight/venv/Scripts/python.exe --require-hashes -r scripts/hindsight/requirements.txt
 ```
 
-然后按上一节处理 VC++ 运行库（或者装最新的 VC++ 运行库），再运行启动脚本。pg0 第一次 `start` 会把 PostgreSQL 解压到 `%USERPROFILE%\.pg0\installation\`
-并在 `runtime/hindsight/pgdata/` 建库；运行库没处理好时这一步的 initdb 会失败。
+先装最新的 VC++ 运行库（14.40 以上，需要管理员；启动脚本会检查），再运行启动脚本。pg0 第一次 `start` 会把 PostgreSQL 解压到 `%USERPROFILE%\.pg0\installation\`
+并在 `runtime/hindsight/pgdata/` 建库；运行库太旧时这一步的 initdb 会失败。
 
 ## 验证记录（2026-10-04）
 

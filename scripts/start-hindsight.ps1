@@ -6,8 +6,9 @@
 #   pgdata/     PostgreSQL data of the pg0 instance "qqbot-hindsight", listening on 127.0.0.1:5433 only
 #   hf/         Hugging Face cache for the embedding model (intfloat/multilingual-e5-small, ONNX)
 #   pgroonga/   the verified PGroonga 4.0.9 zip and its file list; the files themselves are unpacked into pg0's PostgreSQL
-#   vcruntime/  msvcp140*.dll 14.44 from Microsoft's VC++ redistributable; the system copy (14.36) is too old
-#               for onnxruntime and the bundled PostgreSQL. Not needed once the latest VC++ redistributable is installed.
+#
+# Needs the VC++ 2015-2022 redistributable 14.40 or newer installed system-wide: onnxruntime and the bundled
+# PostgreSQL crash (0xC0000005) on an older msvcp140.dll. The script checks this before starting anything.
 #
 # The API listens on 127.0.0.1:8888. Hindsight calls DeepSeek with the bot's key (QQBOT_LLM_API_KEY), thinking off.
 # Start this before the bot (scripts/start-bot.ps1) when runtime/bot/config.json has a "memory" section.
@@ -38,6 +39,13 @@ if (-not (Get-ChildItem "$env:USERPROFILE\.pg0\installation\*\share\extension\pg
     throw 'PGroonga is not installed in pg0''s PostgreSQL (see docs\hindsight.md, section PGroonga)'
 }
 
+# onnxruntime and pg0's PostgreSQL are built with a newer MSVC and crash on msvcp140.dll older than 14.40 (docs/hindsight.md).
+$msvcp = Join-Path $env:SystemRoot 'System32\msvcp140.dll'
+$msvcpVersion = if (Test-Path $msvcp) { [version](Get-Item $msvcp).VersionInfo.FileVersion } else { [version]'0.0' }
+if ($msvcpVersion -lt [version]'14.40') {
+    throw "System msvcp140.dll is $msvcpVersion; install the latest VC++ redistributable (14.40 or newer, see docs\hindsight.md)"
+}
+
 # With 'Stop', PowerShell 5.1 turns native stderr output into a terminating error.
 $ErrorActionPreference = 'Continue'
 
@@ -49,7 +57,6 @@ if ($info -notmatch 'is running') {
     if ($LASTEXITCODE -ne 0) { throw "pg0 start failed (exit $LASTEXITCODE)" }
 }
 
-$env:QQBOT_VCRUNTIME_DIR = Join-Path $root 'vcruntime'
 $env:HF_HOME = Join-Path $root 'hf'
 $env:PYTHONUTF8 = '1'
 $env:HINDSIGHT_API_HOST = '127.0.0.1'
