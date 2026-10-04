@@ -1,0 +1,19 @@
+{
+    "name": "男朋友档：消息调度（T07–T09）",
+    "description": "连发合并、生成中纠正、拆条发送中途插话。不用记忆。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-05T20:00:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "T07", "note": "2 秒内连发三条：理解整串，不分三次回答" },
+        { "say": ["我今天去超市了", "买了一堆零食", "结果袋子忘拿了"], "gapMs": 800 },
+        { "check": { "generations": 1, "regenerated": false } },
+        { "case": "T08", "note": "生成中纠正「是昨天」：最终正文不把事情说成今天" },
+        { "say": "我今天去面试了", "interrupt": { "during": "generation", "say": "不对，是昨天" } },
+        { "check": { "regenerated": true, "replyNone": ["今天面", "今天去面"] } },
+        { "case": "T09", "note": "她拆条发送时，第一条之后插话：剩下的不发，接着回插话" },
+        { "say": "你今天都干嘛了，跟我说说", "interrupt": { "afterBubbles": 1, "say": "等下 我妈叫我" } },
+        { "check": { "dropped": true } }
+    ]
+}
