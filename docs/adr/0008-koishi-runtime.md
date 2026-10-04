@@ -1,6 +1,6 @@
 # ADR 0008：运行时迁到 Koishi 4——Koishi 当外壳，我们的模块写成自己的插件
 
-- 状态：提议（方向和待定问题已与用户确认，见文末「确认记录」；按第 2 步试验结果改为已采纳或调整）
+- 状态：已采纳（2026-10-05：待定问题与用户确认，第 2 步试验后按「试验之后的调整」修改，调整第 1 条经用户确认）
 - 日期：2026-10-05
 - 修改：[ADR 0002](0002-standalone-runtime.md) 决策 1（独立服务 → Koishi 里的自有插件，仍是 Node / TypeScript，仍不 import SillyTavern）、
   决策 4（自写的 OneBot 客户端 → Koishi 官方的 `adapter-onebot`）
@@ -154,6 +154,27 @@ Koishi 4.18.11 + `koishi-plugin-adapter-onebot` 6.9.4（MIT）+ 控制台 `@kois
 - 控制台满足不了日常改配置的需要（例如档位多了以后表单不好用）。
 - 插件那层的接线开始变厚，绕框架的代码多过用框架的。
 
+## 试验之后的调整（2026-10-05）
+
+试验结果见[调研汇总「第 2 步」](../research/2026-10-05-framework-fit.md)。六项都能做到，对决策的改动：
+
+1. **决策 2（实例的依赖放哪）**：插件从 `.ts` 源码直接加载，不打包；但插件 `require('koishi')` 必须拿到 loader 用的同一份 koishi，
+   而 Node 按插件的真实路径找依赖。所以 Koishi 的 npm 依赖不再单独装在 `runtime/koishi`，改为仓库里一个只有依赖清单的工作区包
+   `packages/koishi-app`（版本写死，进根目录的 `package-lock.json`），和插件 `packages/koishi-plugin-qqbot` 一起由根目录 `npm install` 装好。
+   `runtime/koishi` 只放 `koishi.yml`、`data/`（sqlite、Koishi 自己的日志）和启动脚本写的一个占位 `package.json`（免得 loader 报 manifest 警告）；
+   启动时工作目录是 `runtime/koishi`（Koishi 的 `data/` 跟着工作目录走）。不选「`runtime/koishi` 单独装 + esbuild 每次启动把插件打成 CJS 放进去」：
+   要多一个带原生二进制的构建依赖，也没试验过。
+2. **插件里取 Koishi 的运行时对象**用 `createRequire(import.meta.url)('koishi')`（koishi 的 ESM 入口坏了），类型用 `import type`。
+3. **决策 3（连接）加看门狗**：adapter-onebot 6.9.4 断线后不重连（上游 PR #81 未合并）。插件在 OneBot 的 bot 离线后按 5 / 10 / 30 / 60 秒退避调 `bot.start()`，
+   每次按 `sid` 找当前的 bot。适配器也不检测悄悄断掉的连接（issue #57），和旧 `onebot.ts` 一样，先不做。
+4. **决策 4（密钥）加一条规矩**：控制台保存时不做 `${{ env.X }}` 插值，所以 adapter-onebot 和 auth 的配置不在控制台改，要改就改完重启 Koishi。
+   插件发现适配器的 token 还是 `${{` 开头时在日志里报错提示重启。
+5. **决策 8（改配置时正在等的回复）定为插件重启 + catchUp**，不用 `ctx.accept`：试验里重启前后「几点看到」不变，等待中途重启也只回一次。
+   回复器加 `stop()`：插件 dispose 时停掉正在等的、不再生成和发送，旧实例不会和新实例抢着回。
+6. 补回取数改用 `bot.getMessageList('private:QQ')`，收到的消息和补回的消息都从 Koishi 的 `elements` 转文字（同一个函数，规则和 `segmentsToText` 一样）；
+   `findMissed`、`shouldCatchUp` 原样用。
+7. 控制台管理员密码用 `${{ env.QQBOT_KOISHI_PASSWORD }}`（用户级环境变量，用户自己设）。
+
 ## 确认记录（2026-10-05）
 
 草案之后与用户一次问完，用户选定：
@@ -169,3 +190,5 @@ Koishi 4.18.11 + `koishi-plugin-adapter-onebot` 6.9.4（MIT）+ 控制台 `@kois
 9. 日志同时写 `ctx.logger` 和原来的按天文件（决策 6）。
 
 同时推送了调研的两次提交（`1775741`、`b8aff08`）。
+
+试验之后：用户同意 Koishi 的依赖放进仓库工作区（「试验之后的调整」第 1 条）；第 7 条按试验结果定为插件重启 + catchUp（第 5 条）。
