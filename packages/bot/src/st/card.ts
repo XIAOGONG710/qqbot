@@ -3,6 +3,7 @@
 // 与 public/script.js getCharacterCardFieldsLazy。
 
 import { readFileSync } from 'node:fs';
+import { parseRegexScripts, type RegexScript } from './regex.ts';
 
 export interface Character {
     name: string;
@@ -16,6 +17,8 @@ export interface Character {
     postHistoryInstructions: string;
     /** 关联的世界书名，对应同目录下的 <world>.json */
     world: string;
+    /** 角色卡上的 Scoped 正则脚本（extensions.regex_scripts），清理回复时执行作用于 AI 输出的那些 */
+    regexScripts: RegexScript[];
 }
 
 export function parseCharacterCard(json: unknown, source = '角色卡'): Character {
@@ -41,6 +44,7 @@ export function parseCharacterCard(json: unknown, source = '角色卡'): Charact
         systemPrompt: str('system_prompt'),
         postHistoryInstructions: str('post_history_instructions'),
         world: typeof extensions.world === 'string' ? extensions.world : '',
+        regexScripts: parseRegexScripts(extensions.regex_scripts, source),
     };
 }
 

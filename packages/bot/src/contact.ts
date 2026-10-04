@@ -86,7 +86,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return { ...prompt, messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names) };
         },
         generate: messages => generate(messages, log),
-        clean: reply => cleanUpReply(reply, names),
+        clean: reply => cleanUpReply(reply, names, character.regexScripts),
         send: options.send,
         log,
         now,

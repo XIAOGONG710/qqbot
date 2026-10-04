@@ -1,14 +1,18 @@
 // 模型回复的清理，取 SillyTavern cleanUpMessage（public/script.js）在默认设置下对 Chat Completion 生效的部分：
 // allow_name1_display / allow_name2_display = false，trim_spaces = true，collapse_newlines / trim_sentences = false。
 // 没有照搬 auto_fix_generated_markdown（补全未闭合的 * 和代码块，对 QQ 纯文本没有意义）。
+// 角色卡上作用于 AI 输出的正则脚本在最前面执行，和 ST 一样（st/regex.ts）。
 
 import type { MacroNames } from './st/macros.ts';
+import { applyAiOutputScripts, type RegexScript } from './st/regex.ts';
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-export function cleanUpReply(text: string, names: MacroNames): string {
+export function cleanUpReply(text: string, names: MacroNames, scripts: readonly RegexScript[] = []): string {
+    let reply = applyAiOutputScripts(text, scripts, names);
+
     // 每行行尾空白
-    let reply = text.replace(/[^\S\r\n]+$/gm, '');
+    reply = reply.replace(/[^\S\r\n]+$/gm, '');
 
     // 以对方名字开头：模型在替对方说话，整条作废；中途出现“\n对方:”则截断
     if (reply.indexOf(`${names.user}:`) === 0) reply = '';
