@@ -29,8 +29,9 @@
 
 1. 根目录 `npm install`。
 2. 复制 `packages/koishi-app/koishi.example.yml` 到 `runtime/koishi/koishi.yml`，填 `adapter-onebot.selfId`（小号 QQ 号）和 `qqbot` 一节。
-   `qqbot` 一节和 `runtime/bot/config.json` 同形（少了 `onebot`，连接归适配器），区别只有两处：`llm.extraBody` 写成 JSON 文本，长期记忆用 `memory.enabled` 开关。
-   留空的数值参数用 `packages/bot/src/config.ts` 里的默认值。
+   `qqbot` 一节和 `runtime/bot/config.json` 同形（少了 `onebot`，连接归适配器），区别有三处：思考用 `llm.thinking`（`off` / `low` / `high` / `max`），
+   其他额外参数 `llm.extraBody` 写成 JSON 文本，长期记忆用 `memory.enabled` 开关。
+   没写的项用 `packages/bot/src/config.ts` 的 `DEFAULTS`，控制台表单里显示的就是这些值。
 3. 控制台管理员密码放用户级环境变量（自己设，不进仓库、不写进 `koishi.yml`）。用下面两行，提示时输入密码，
    这样密码不会出现在命令里（Windows PowerShell 5.1 会把整行命令存进 PSReadLine 的历史文件）：
    ```powershell
@@ -61,7 +62,13 @@ Koishi 路线验收、稳定跑一周后再决定删不删 `main.ts`（ADR 0008 
 ## 控制台里改配置
 
 - **`qqbot` 插件的表单**（名单、档位、称呼、persona、名单外开关、作息开关、模型参数、记忆）：保存后只重启这个插件，不重启 Koishi、不断开 NapCat。
-  正在等的回复（她在睡觉、在上课）由新的插件按聊天记录重算，「几点看到」不变；保存时配置实际没变就不重启。
+  正在等的回复（她在睡觉、在上课）由新的插件按聊天记录重算，「几点看到」不变；保存时配置实际没变就不重启。表单的排法见 [ADR 0009](adr/0009-console-usability.md)：
+  - 名单每人一组；QQ 号从小号的好友列表里选（插件连上 NapCat 后拉，每分钟刷新一次；Koishi 启动后还没连上过时手填）；
+  - 「思考」选关 / 低 / 高 / 最高（DeepSeek 的 `thinking` / `reasoning_effort`），其他请求参数写在「其他参数（JSON）」里；
+  - 「高级」组里的提示词、世界书参数默认折叠；
+  - **侧栏的点变红 = 配置有误、插件没在回复**，原因在插件页「运行日志」里 `[E]` 那一行。改对再保存就恢复，这段时间来的消息由补回接上（最近 20 条）。
+  - 旧写法（思考写在其他参数的 JSON 里）插件第一次加载时自动搬到「思考」控件，写回 `koishi.yml`，请求体不变。
+  - 插件的代码（Schema）改了要重启整个 Koishi 才生效：控制台和插件的模块都只在启动时读一次。
 - **`adapter-onebot` 和 `auth` 的表单不要在控制台改**：控制台保存时不做 `${{ env.X }}` 插值，适配器会拿模板原文当 token 去连 NapCat（被拒），
   管理员密码也会变成模板原文，直到整个 Koishi 重启。要改就停掉 Koishi 改 `koishi.yml`。插件发现 token 是模板原文时会在日志里提示。
 - 改人设：照旧改 `characters/<角色>/tiers.toml`，跑 `node packages/character-tools/src/cli.ts --force`。插件监听卡所在目录，文件变了 2 秒后自动重启插件重新读。
@@ -75,6 +82,12 @@ Koishi 路线验收、稳定跑一周后再决定删不删 `main.ts`（ADR 0008 
 | 控制台保存时不做 `${{ env.X }}` 插值（`@koishijs/loader` 的 `reload` 直接 `fork.update(原始配置)`） | 适配器、auth 不在控制台改（上一节） |
 | koishi 的 ESM 入口坏了（`@koishijs/loader/lib/index.mjs` 默认导入了 CJS 文件） | 插件用 `createRequire` 取 CJS 版的 `koishi`，类型用 `import type` |
 | 连接悄悄断掉（没有 close 事件）时发现不了（issue #57） | 没处理；旧 `onebot.ts` 也没有心跳检测 |
+
+## 临时实例（测试用）
+
+`QQBOT_KOISHI_DIR` 指向另一个实例目录、`koishi.yml` 换一个端口和 `dataDir`，就能和真实例同时跑（锁按数据目录）。实例目录要放在仓库里（例如 `runtime/koishi-xxx`）：
+控制台只从实例目录往上找 `node_modules`，放在仓库外时插件页显示「此插件尚未安装」，表单打不开。
+两个实例的 Koishi 进程命令行一样，停临时实例时按它监听的端口找进程（worker 占着端口，它的父进程是 `koishi\bin.js`，先停父进程）。
 
 ## 回退
 
