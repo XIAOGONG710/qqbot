@@ -1,0 +1,19 @@
+{
+    "name": "同学档：睡着时来消息（ADR 0007）",
+    "description": "同学档凌晨连着发也不会被吵醒，起床后一次回完。",
+    "tier": "classmate",
+    "user": "小王",
+    "start": "2026-10-05T03:00:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "NC01", "note": "凌晨连着发：不回" },
+        { "say": ["在吗", "在吗", "人呢"] },
+        { "check": { "noReply": true, "log": "在睡觉" } },
+        { "advance": "3m" },
+        { "say": "急事，明天的作业是哪几题" },
+        { "check": { "noReply": true } },
+        { "case": "NC02", "note": "起床后一次回完" },
+        { "wait": "reply" },
+        { "check": { "replyAfter": "6h", "replyWithin": "7h30m", "exitClean": true } }
+    ]
+}

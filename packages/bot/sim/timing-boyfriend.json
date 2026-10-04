@@ -1,0 +1,31 @@
+{
+    "name": "男朋友档：什么时候回、多快回（ADR 0007）",
+    "description": "她道过晚安之后的「嗯嗯」不回；睡着不回、连着发被吵醒回一句（一晚一次）、起床后接上夜里的话；上硬课 5–20 分钟后只回一条。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-04T23:30:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "N00", "note": "国庆假期晚上：他说要睡了，她道晚安；之后的「嗯嗯」不回" },
+        { "say": "今天累死了，我先睡了，晚安" },
+        { "check": { "replyAny": ["晚安", "睡吧", "早点睡", "明天见"], "exitClean": true } },
+        { "say": "嗯嗯" },
+        { "check": { "noReply": true, "log": "已经收尾" } },
+        { "advance": "3h30m" },
+        { "case": "N01", "note": "凌晨 3 点：一条不回；隔 3 分钟又来一条被吵醒，迷迷糊糊回一句" },
+        { "say": "睡了吗" },
+        { "check": { "noReply": true, "log": "在睡觉" } },
+        { "advance": "3m" },
+        { "say": "醒醒，有事跟你说" },
+        { "check": { "log": "吵醒", "maxBubbles": 1, "replyWithin": "2m", "exitClean": true } },
+        { "case": "N02", "note": "回过一句接着睡：再来的消息起床后才回，接得上夜里说的事" },
+        { "say": "我明天要去面试，有点紧张" },
+        { "check": { "noReply": true } },
+        { "wait": "reply" },
+        { "check": { "replyAfter": "5h", "replyWithin": "7h30m", "exitClean": true } },
+        { "advance": "7d30m" },
+        { "case": "N03", "note": "10-12 周一上午上硬课（大数据应用技术）：5–20 分钟后才看到，只回一条" },
+        { "say": "在干嘛" },
+        { "check": { "replyAfter": "5m", "replyWithin": "21m", "maxBubbles": 1, "exitClean": true } }
+    ]
+}

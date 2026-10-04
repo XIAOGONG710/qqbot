@@ -15,6 +15,7 @@ import type { Responder } from './responder.ts';
 import { createContactResponder as createPipeline, loadTierCard, type TierCard } from './contact.ts';
 import { currentTierHistory, TierRecord } from './tier-record.ts';
 import { HindsightClient } from './memory/hindsight.ts';
+import { arrivedWhileAsleep } from './reply-timing.ts';
 import { LongTermMemory } from './memory/long-term.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -40,7 +41,7 @@ for (const tier of tiersInUse) {
 }
 const whitelist = config.contacts.map(c => `${c.qq}（${c.name}，${c.tier}）`).join('、');
 log(`名单：${whitelist}；名单外的好友${config.unlistedFriends ? '按 unlisted 档回复' : '不回复'}`);
-log(`作息：${config.schedule ? '按角色卡，时间块里写她现在在干什么' : '关（配置 schedule: false）'}`);
+log(`作息：${config.schedule ? '按角色卡（她现在在干什么、什么时候看到、打字多久）' : '关（配置 schedule: false），随时几秒内回'}`);
 
 const chatHistory = new ChatHistory(config.dataDir);
 // 放在 ChatHistory 之后：它会建好数据目录
@@ -170,7 +171,9 @@ function catchUpAll(): void {
     const now = new Date();
     for (const contact of config.contacts) {
         const stored = history.load(contact.qq);
-        if (shouldCatchUp(stored, now)) {
+        // 按作息时：她睡着时来的消息，起床后照样回（ADR 0007 决策 4）；还在睡就由回复器等到起床
+        const schedule = config.schedule ? cardFor(contact.tier).character.schedule : undefined;
+        if (shouldCatchUp(stored, now) || (schedule && arrivedWhileAsleep(stored, now.getTime(), schedule))) {
             log(`[${contact.qq}] 有没回的消息，回复`);
             responders.get(contact.qq)!.catchUp();
         } else if (stored.at(-1)?.role === 'user') {

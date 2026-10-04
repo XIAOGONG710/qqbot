@@ -177,4 +177,47 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    test('作息（ADR 0007）：睡着不回、连着发被吵醒一次、wait 等到起床、冷场的延迟按虚拟时间自动拨过去', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-'));
+        const states: string[] = [];
+        const generate = async (messages: OpenAIMessage[]) => {
+            states.push(messages.map(m => m.content).join('\n').match(/\[你现在：[^\]]*\]/)?.[0] ?? '');
+            return '嗯\n知道了';
+        };
+        const scenario = parseScenario({
+            name: '测试', tier: 'boyfriend', start: '2026-10-05T03:00:00+08:00', memory: false,
+            steps: [
+                { say: '在吗' },
+                { check: { noReply: true, log: '在睡觉' } },
+                { advance: '3m' },
+                { say: '醒醒' },
+                { check: { log: '吵醒', maxBubbles: 1, replyWithin: '1m' } },
+                { say: '你睡了吗' },
+                { check: { noReply: true } },
+                { wait: 'reply' },
+                { check: { replyAfter: '6h', replyWithin: '7h30m' } },
+                { advance: '2h' },
+                { say: '在干嘛' },
+                { check: { replyAfter: '15s', replyWithin: '2m', log: '冷场' } },
+            ],
+        });
+        try {
+            const result = await runScenario(scenario, { runId: 'test', dataDir: dir, card, llm, prompt, generate, settle: { quietMs: 100, maxMs: 500 } });
+            const failed = result.steps.flatMap(s => s.checks).filter(c => !c.ok).map(c => c.text);
+            assert.deepEqual(failed, []);
+            assert.match(states[0]!, /被消息震醒了，迷迷糊糊的/);
+            assert.doesNotMatch(states[1]!, /震醒/);
+            const woke = result.steps[3]!.bubbles;
+            assert.deepEqual(woke.map(b => b.text), ['嗯\n知道了'], '被吵醒最多 1 条，多行合在一起');
+            // 起床后的回复记在 wait 这一步，在 09:30–10:00
+            const morning = new Date(result.steps[7]!.bubbles[0]!.time);
+            assert.ok(morning.getHours() === 9 && morning.getMinutes() >= 30, morning.toString());
+            const report = renderReport(result);
+            assert.match(report, /时间往后走，等她回复/);
+            assert.match(report, /在睡觉，起床后看到，\d{2}:\d{2}:\d{2} 看到/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });

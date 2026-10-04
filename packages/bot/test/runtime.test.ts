@@ -9,7 +9,7 @@ import { ChatHistory, type StoredMessage } from '../src/history.ts';
 import { isPrivateFriendMessage, segmentsToText, senderName, type MessageEvent } from '../src/onebot.ts';
 import type { PromptResult } from '../src/prompt.ts';
 import { cleanUpReply, splitReply } from '../src/reply.ts';
-import { createResponder, DEFAULT_SETTLE, PART_GAP_MS, RETRY_AFTER_MS, type ResponderDeps } from '../src/responder.ts';
+import { createResponder, DEFAULT_SETTLE, PART_GAP_MS, RETRY_AFTER_MS, type ReplyTiming, type ResponderDeps } from '../src/responder.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
 
@@ -359,6 +359,99 @@ describe('回复调度', () => {
         await responder.whenIdle();
         assert.deepEqual(sent, []);
         assert.ok(logs.some(l => l.includes('为空')));
+    });
+
+    // ---------- 回复时机（ADR 0007） ----------
+
+    /** 等到点：由测试放行，或者被中止（来了新消息） */
+    function manualWait() {
+        const waits: { at: number; release: () => void }[] = [];
+        const waitUntil = (at: number, signal: AbortSignal) => new Promise<void>(resolve => {
+            waits.push({ at, release: resolve });
+            signal.addEventListener('abort', () => resolve());
+        });
+        return { waits, waitUntil };
+    }
+    const timingWith = (overrides: Partial<ReplyTiming>): ReplyTiming => ({
+        whenSeen: (history, at) => (history.at(-1)?.role === 'user' ? { at, reason: '正聊着' } : undefined),
+        typingMs: () => 0,
+        skip: () => undefined,
+        ...overrides,
+    });
+
+    test('到点才看到：等的时候来了新消息就重算（同一个时刻不重复写日志），看到之后一起生成一次', async () => {
+        let t = 1_000_000;
+        const seeAt = t + 60_000;
+        const { waits, waitUntil } = manualWait();
+        const { responder, sent, prompts, logs } = setup({
+            now: () => t,
+            waitUntil,
+            timing: timingWith({ whenSeen: history => (history.at(-1)?.role === 'user' ? { at: seeAt, reason: '冷场，过一会儿才看到' } : undefined) }),
+            generate: async () => '好',
+        });
+        responder.receive('在吗', 1, new Date(t));
+        await responder.whenQuiet();
+        assert.deepEqual(prompts, []);
+        assert.equal(waits.length, 1);
+        assert.equal(waits[0]!.at, seeAt);
+
+        responder.receive('人呢', 2, new Date(t));
+        await tick();
+        assert.equal(waits.length, 2, '新消息中止了等待，重算后接着等');
+        assert.equal(logs.filter(l => l.includes('看到')).length, 1);
+
+        t = seeAt;
+        waits[1]!.release();
+        await responder.whenIdle();
+        assert.deepEqual(prompts, [['user:在吗', 'user:人呢']]);
+        assert.deepEqual(sent, ['好']);
+    });
+
+    test('她已经收尾、对方只回了附和：不生成；之后说了别的照常回，带上那句附和', async () => {
+        const { responder, sent, prompts, logs } = setup({
+            timing: timingWith({ skip: history => (history.at(-1)?.content === '嗯' ? '她已经收尾，对方只回了附和，不回' : undefined) }),
+            generate: async () => '七点',
+        });
+        responder.receive('嗯', 1, new Date());
+        await responder.whenIdle();
+        assert.deepEqual(prompts, []);
+        assert.ok(logs.includes('她已经收尾，对方只回了附和，不回'));
+
+        responder.receive('你明天几点起', 2, new Date());
+        await responder.whenIdle();
+        assert.deepEqual(prompts, [['user:嗯', 'user:你明天几点起']]);
+        assert.deepEqual(sent, ['七点']);
+    });
+
+    test('被吵醒：生成时告诉提示词，最多回 1 条（多行合成一条）', async () => {
+        const contexts: { woken?: boolean }[] = [];
+        const { responder, sent, logs } = setup({
+            timing: timingWith({ whenSeen: (_h, at) => ({ at, reason: '睡着了，被连着来的消息吵醒', woken: true, maxBubbles: 1 }) }),
+            buildPrompt: (chat, context) => {
+                contexts.push(context);
+                return { messages: chat.map(m => ({ role: m.role, content: m.content })), activatedWorldInfo: [] };
+            },
+            generate: async () => '干嘛呀\n睡了',
+        });
+        responder.receive('醒醒', 1, new Date());
+        await responder.whenIdle();
+        assert.deepEqual(contexts, [{ woken: true }]);
+        assert.deepEqual(sent, ['干嘛呀\n睡了']);
+        assert.ok(logs.includes('睡着了，被连着来的消息吵醒'));
+    });
+
+    test('打字：第一条在「看到 + 打字时间」发出，生成花掉的时间算在里面；之后每条隔这一条的打字时间', async () => {
+        let t = 0;
+        const { responder, sent, gaps } = setup({
+            now: () => t,
+            sleep: async ms => { gaps.push(ms); t += ms; },
+            timing: timingWith({ typingMs: text => text.length * 1000 }),
+            generate: async () => { t += 1500; return 'abc\nde'; },
+        });
+        responder.receive('在吗', 1, new Date(0));
+        await responder.whenIdle();
+        assert.deepEqual(sent, ['abc', 'de']);
+        assert.deepEqual(gaps, [1500, 2000]);
     });
 });
 

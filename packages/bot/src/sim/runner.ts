@@ -16,6 +16,10 @@ import { parseDuration, VirtualClock, type Checks, type Scenario, type SayStep }
 
 /** 模拟的联系人用的 QQ 号（虚构） */
 export const SIM_QQ = 10001;
+/** say 之后，她要等这么久（虚拟时间）之内才看到的，自动把时钟拨过去（冷场、上课）；更久的（睡觉）要 advance 或 wait */
+export const AUTO_TIMER_MS = 60 * 60_000;
+/** wait: reply 最多等多久 */
+export const WAIT_REPLY_MS = 24 * 3_600_000;
 
 /** 模拟器要用到的 Hindsight 接口（HindsightClient 都有） */
 export interface SimHindsight extends HindsightApi {
@@ -57,9 +61,11 @@ export interface Generation {
 export interface CheckResult { ok: boolean; text: string }
 
 export interface StepRecord {
-    kind: 'case' | 'say' | 'advance' | 'memory' | 'refresh' | 'check' | 'forget' | 'hindsight';
+    kind: 'case' | 'say' | 'advance' | 'wait' | 'memory' | 'refresh' | 'check' | 'forget' | 'hindsight';
     /** 这一步开始时的虚拟时间 */
     time: number;
+    /** 到这一步为止对方最后一条消息的虚拟时间（replyAfter / replyWithin 从这里算） */
+    inputTime?: number;
     caseId?: string;
     note?: string;
     inputs: Input[];
@@ -119,9 +125,11 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     let bubblesThisStep = 0;
     let injecting = 0;
     let generationCount = 0;
+    let lastInputTime: number | undefined;
 
     const receive = (text: string, interrupt = false) => {
         const time = clock.now();
+        lastInputTime = time;
         current.inputs.push({ time, text, ...(interrupt ? { interrupt } : {}) });
         responder.receive(text, nextMessageId++, new Date(time));
     };
@@ -139,6 +147,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         now: clock.now,
         settle: options.settle,
         retryAfterMs: [],
+        waitUntil: clock.waitUntil,
         send: async (_userId, text) => {
             current.bubbles.push({ time: clock.now(), text });
             bubblesThisStep++;
@@ -175,16 +184,27 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     let responder = createResponder();
     let forgotten = 0;
 
-    /** 等她把这一轮（含插话之后的回复）都发完 */
+    /** 等她把这一轮（含插话之后的回复）都发完，或者停在「到点才看到」的等待上 */
     async function settle(): Promise<void> {
         for (;;) {
-            await responder.whenIdle();
+            await responder.whenQuiet();
             const before = history.load(contact.qq).length;
             await sleep(300);
             if (injecting === 0 && history.load(contact.qq).length === before) {
-                await responder.whenIdle();
+                await responder.whenQuiet();
                 if (history.load(contact.qq).length === before) return;
             }
+        }
+    }
+
+    /** 把虚拟时钟一个个拨到她等着的时刻（不超过 limit），每拨一次等她这一轮做完；stopOnReply：这一步她发了就停 */
+    async function runTimers(limit: number, stopOnReply = false): Promise<void> {
+        for (;;) {
+            await settle();
+            if (stopOnReply && current.bubbles.length > 0) return;
+            const next = clock.nextTimer();
+            if (next === undefined || next > limit) return;
+            clock.advanceTo(next);
         }
     }
 
@@ -229,16 +249,24 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                     if (i > 0) await sleep(step.gapMs ?? 800);
                     receive(text);
                 }
-                await settle();
+                current.inputTime = lastInputTime;
+                await runTimers(lastInputTime! + AUTO_TIMER_MS);
                 if (armed) {
                     log(`插话没有触发（这一轮她只发了 ${bubblesThisStep} 条）`);
                     armed = undefined;
                 }
             } else if ('advance' in step) {
                 current.advance = step.advance;
-                clock.advance(parseDuration(step.advance));
+                const target = clock.now() + parseDuration(step.advance);
+                await runTimers(target);
+                clock.advanceTo(target);
                 current.time = clock.now();
                 await syncMemory();
+            } else if ('wait' in step) {
+                lastSay = current;
+                current.inputTime = lastInputTime;
+                await runTimers(clock.now() + WAIT_REPLY_MS, true);
+                if (current.bubbles.length === 0) log('等了一天也没回');
             } else if ('memory' in step) {
                 await syncMemory();
             } else if ('refresh' in step) {
@@ -357,6 +385,17 @@ export function runChecks(checks: Checks, step: StepRecord, banned: readonly str
         const problems = [...(issues.length ? [summarizeIssues(issues)] : []), ...(stage ? [`${stage} 条有行首括号`] : [])];
         results.push({ ok: problems.length === 0, text: `出口检查干净${problems.length ? `（${problems.join('；')}）` : ''}` });
     }
+    const first = step.bubbles[0]?.time;
+    if (checks.noReply) results.push({ ok: step.bubbles.length === 0, text: `她没回（实际 ${step.bubbles.length} 条）` });
+    const delay = first !== undefined && step.inputTime !== undefined ? first - step.inputTime : undefined;
+    const minutes = (ms: number | undefined) => (ms === undefined ? '没回' : `${(ms / 60_000).toFixed(1)} 分钟`);
+    if (checks.replyAfter !== undefined) {
+        results.push({ ok: delay !== undefined && delay >= parseDuration(checks.replyAfter), text: `第一条在对方最后一条之后至少 ${checks.replyAfter}（实际 ${minutes(delay)}）` });
+    }
+    if (checks.replyWithin !== undefined) {
+        results.push({ ok: delay !== undefined && delay <= parseDuration(checks.replyWithin), text: `第一条在对方最后一条之后 ${checks.replyWithin} 之内（实际 ${minutes(delay)}）` });
+    }
+    if (checks.log !== undefined) results.push({ ok: has(new RegExp(checks.log)), text: `日志里有 /${checks.log}/` });
     if (checks.dropped !== undefined) {
         results.push({ ok: has(/发送中途对方插话/) === checks.dropped, text: checks.dropped ? '发送中途插话，剩下的没发' : '没有丢弃剩下的' });
     }

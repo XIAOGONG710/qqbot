@@ -36,14 +36,23 @@ export interface Checks {
     maxBubbles?: number;
     /** 她发出的每一行都过得了出口检查（做不到的事、这一档的禁用词，ADR 0006），也没有行首括号 */
     exitClean?: boolean;
+    /** 这一步她一条都没发（ADR 0007：睡着、收尾后的附和） */
+    noReply?: boolean;
+    /** 她第一条在对方最后一条之后至少 / 至多多久发出，如 "5m"、"20m"（虚拟时间） */
+    replyAfter?: string;
+    replyWithin?: string;
+    /** 这一步的调度日志里有一行匹配（正则），如 "吵醒"、"已经收尾" */
+    log?: string;
 }
 
 export type Step =
     /** 报告里的小标题：用例编号和说明 */
     | { case: string; note?: string }
     | SayStep
-    /** 虚拟时间往后跳，例如 "50m"、"1d"、"9h30m"；开了记忆就接着把结束了的片段写进去并等 Hindsight 做完 */
+    /** 虚拟时间往后跳，例如 "50m"、"1d"、"9h30m"；途中到点的事（她看到消息、回复）按时间顺序发生。开了记忆就接着把结束了的片段写进去并等 Hindsight 做完 */
     | { advance: string }
+    /** 虚拟时间一直往后走，直到她回复（最多 1 天）：睡着、上课时来的消息 */
+    | { wait: 'reply' }
     /** 不跳时间，把能写的片段写进记忆并等 Hindsight 做完 */
     | { memory: 'sync' }
     /** 手动刷新关系概况（Mental Model），等做完后记进报告（T23） */
@@ -99,7 +108,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
     };
 }
 
-const STEP_KINDS = ['case', 'say', 'advance', 'memory', 'refresh', 'check', 'forget', 'hindsight'] as const;
+const STEP_KINDS = ['case', 'say', 'advance', 'wait', 'memory', 'refresh', 'check', 'forget', 'hindsight'] as const;
 
 function checkStep(step: unknown, where: string): void {
     const fail = (message: string): never => { throw new Error(`${where}：${message}`); };
@@ -117,6 +126,11 @@ function checkStep(step: unknown, where: string): void {
         }
     }
     if ('advance' in s) parseDuration(String(s.advance));
+    if ('wait' in s && s.wait !== 'reply') fail('wait 只能是 "reply"');
+    if ('check' in s) {
+        const check = s.check as Record<string, unknown>;
+        for (const key of ['replyAfter', 'replyWithin'] as const) if (check[key] !== undefined) parseDuration(String(check[key]));
+    }
     if ('memory' in s && s.memory !== 'sync') fail('memory 只能是 "sync"');
     if ('refresh' in s && s.refresh !== 'relationship') fail('refresh 只能是 "relationship"');
     if ('forget' in s && s.forget !== 'chat') fail('forget 只能是 "chat"');
@@ -145,5 +159,34 @@ export class VirtualClock {
 
     advance(ms: number): void {
         this.#offset += ms;
+    }
+
+    /** 虚拟时钟上的等待（回复器看到消息之前的长等待，ADR 0007）：不按真实时间走，由 advanceTo 拨到点时触发 */
+    #timers: { at: number; fire: () => void }[] = [];
+
+    waitUntil = (at: number, signal: AbortSignal): Promise<void> => new Promise(resolve => {
+        if (at <= this.now() || signal.aborted) return resolve();
+        const timer = {
+            at,
+            fire: () => {
+                this.#timers = this.#timers.filter(t => t !== timer);
+                signal.removeEventListener('abort', timer.fire);
+                resolve();
+            },
+        };
+        this.#timers.push(timer);
+        signal.addEventListener('abort', timer.fire);
+    });
+
+    /** 最早到点的等待 */
+    nextTimer(): number | undefined {
+        return this.#timers.length ? Math.min(...this.#timers.map(t => t.at)) : undefined;
+    }
+
+    /** 拨到 at（不往回拨），到点的等待按时间顺序触发 */
+    advanceTo(at: number): void {
+        const now = this.now();
+        if (at > now) this.#offset += at - now;
+        for (const timer of [...this.#timers].sort((a, b) => a.at - b.at)) if (timer.at <= this.now()) timer.fire();
     }
 }

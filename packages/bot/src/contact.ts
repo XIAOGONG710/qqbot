@@ -14,6 +14,7 @@ import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from 
 import { loadCharacterCard, type Character } from './st/card.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
+import { isAckAfterClosing, typingMs, whenSeen } from './reply-timing.ts';
 import { describeState, stateAt } from './schedule.ts';
 import { describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
@@ -50,8 +51,10 @@ export interface ContactPipelineOptions {
     generate?: (messages: OpenAIMessage[], log: Log) => Promise<string>;
     /** 连发合并的等待，默认 DEFAULT_SETTLE（测试用短的） */
     settle?: { quietMs: number; maxMs: number };
-    /** 按卡上的作息（ADR 0007）：时间块里加一行她现在在干什么。默认否；卡上没有作息时也不加 */
+    /** 按卡上的作息（ADR 0007）：时间块里加一行她现在在干什么，按作息决定什么时候看到、打字多久，收尾后的附和不回。默认否；卡上没有作息时也不按 */
     schedule?: boolean;
+    /** 看到消息之前的等待（可能几个小时），默认真实定时器；模拟器换成虚拟时钟上的 */
+    waitUntil?: (at: number, signal: AbortSignal) => Promise<void>;
     /** 回复失败之后隔多久再试，默认 RETRY_AFTER_MS；模拟器传 []（它的时钟是虚拟的，真等几分钟会插进后面的步骤） */
     retryAfterMs?: readonly number[];
 }
@@ -67,7 +70,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     return createResponder({
         userId: contact.qq,
         history: options.history,
-        buildPrompt: async chat => {
+        buildPrompt: async (chat, { woken }) => {
             const time = new Date(now());
             // 长期记忆只给名单里的人
             const remembers = memory && contact.tier !== UNLISTED_TIER;
@@ -83,7 +86,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 afterMain: relationship ? [relationship] : [],
                 afterHistory: [
                     ...(recalled ? [recalled] : []),
-                    [describeTime(chat, time), ...(schedule ? [describeState(stateAt(schedule, time), schedule, { userName: contact.name })] : [])].join('\n'),
+                    [describeTime(chat, time), ...(schedule ? [describeState(stateAt(schedule, time), schedule, { userName: contact.name, woken })] : [])].join('\n'),
                 ],
                 now: time,
                 settings: {
@@ -113,6 +116,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         now,
         settle: options.settle ?? DEFAULT_SETTLE,
         retryAfterMs: options.retryAfterMs ?? RETRY_AFTER_MS,
+        // 睡着时连着发能把她吵醒的只有男朋友档（决策 6）
+        timing: schedule && {
+            whenSeen: (history, at) => whenSeen(history, at, { schedule, wakeable: contact.tier === 'boyfriend' }),
+            typingMs,
+            skip: history => (isAckAfterClosing(history) ? '她已经收尾，对方只回了附和，不回' : undefined),
+        },
+        waitUntil: options.waitUntil,
         onPrompt: options.onPrompt,
     });
 }
