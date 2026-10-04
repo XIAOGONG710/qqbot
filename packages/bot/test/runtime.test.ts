@@ -465,6 +465,54 @@ describe('回复调度', () => {
         assert.deepEqual(sent, ['abc', 'de']);
         assert.deepEqual(gaps, [1500, 2000]);
     });
+
+    // ---------- 停下（Koishi 插件停用、改配置重启，ADR 0008） ----------
+
+    test('stop：正等着到点看到时停下，不再生成；之后收到的不记、不回', async () => {
+        const { waits, waitUntil } = manualWait();
+        const { responder, stored, prompts, sent } = setup({
+            waitUntil,
+            timing: timingWith({ whenSeen: (history, at) => (history.at(-1)?.role === 'user' ? { at: at + 60_000, reason: '冷场' } : undefined) }),
+            generate: async () => '好',
+        });
+        responder.receive('在吗', 1, new Date());
+        await responder.whenQuiet();
+        assert.equal(waits.length, 1);
+        responder.stop();
+        await responder.whenIdle();
+        responder.receive('人呢', 2, new Date());
+        responder.catchUp();
+        await responder.whenIdle();
+        assert.deepEqual(prompts, []);
+        assert.deepEqual(sent, []);
+        assert.deepEqual(stored.map(m => m.content), ['在吗']);
+    });
+
+    test('stop：生成期间停下，生成完的回复不发，失败也不再试', async () => {
+        const { responder, sent, logs, release } = setup({ retryAfterMs: RETRY_AFTER_MS });
+        responder.receive('在吗', 1, new Date());
+        await tick();
+        responder.stop();
+        release();
+        await responder.whenIdle();
+        assert.deepEqual(sent, []);
+        assert.ok(logs.includes('已停止，这次生成的回复不发'));
+        assert.ok(!logs.some(l => l.includes('后再试')));
+    });
+
+    test('stop：拆条发送中途停下，剩下的不发，已发的照常记录', async () => {
+        let onGap: () => void = () => {};
+        const { responder, stored, sent, logs } = setup({
+            generate: async () => '一\n二\n三',
+            sleep: async () => { onGap(); },
+        });
+        onGap = () => { onGap = () => {}; responder.stop(); };
+        responder.receive('在吗', 1, new Date());
+        await responder.whenIdle();
+        assert.deepEqual(sent, ['一']);
+        assert.deepEqual(stored.map(m => `${m.role}:${m.content}`), ['user:在吗', 'assistant:一']);
+        assert.ok(logs.includes('已停止，剩下 2 条不发'));
+    });
 });
 
 describe('配置', () => {

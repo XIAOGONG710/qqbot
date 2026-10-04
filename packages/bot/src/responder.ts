@@ -11,6 +11,8 @@
 // 回复时机（ADR 0007，传了 timing 才有）：先看她什么时候看到（上课、睡觉、冷场要等，等的时候来新消息就重算），
 // 看到之后照上面等对方停下、生成；第一条最早在「看到 + 这条的打字时间」发出，之后每条隔这一条的打字时间；
 // 她已经收尾、对方只回了附和的，不回。
+// stop()（Koishi 插件停用或因改配置重启，ADR 0008）：正在等的不再等，生成完的不发，排定的再试作废，之后收到的不处理；
+// 没回的消息由新的回复器按聊天记录 catchUp（随机延迟按消息 id 取种子，「几点看到」不变）。
 
 const MAX_REGENERATE = 2;
 /** 拆开的几条之间隔多久 */
@@ -69,6 +71,8 @@ export interface Responder {
     whenIdle(): Promise<void>;
     /** 没在生成，或者正等着到点看到消息时 resolve（模拟器用：这时可以把虚拟时钟往前拨） */
     whenQuiet(): Promise<void>;
+    /** 停下，之后不再生成、不再发送（见文件开头） */
+    stop(): void;
 }
 
 /** 默认的等待：真实定时器 */
@@ -109,6 +113,7 @@ export function createResponder(deps: ResponderDeps): Responder {
     const quietWaiters: (() => void)[] = [];
     /** 上次日志里写的「几点看到」，没变就不重复写 */
     let loggedSeenAt: number | undefined;
+    let stopped = false;
 
     /** 等到 at，期间来新消息就提前返回 */
     async function waitForSeen(at: number): Promise<void> {
@@ -142,6 +147,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             if (decision.at !== loggedSeenAt) deps.log(`${decision.reason}，${clock(decision.at)} 看到`);
             loggedSeenAt = decision.at;
             await waitForSeen(decision.at);
+            if (stopped) return null;
         }
     }
 
@@ -173,6 +179,7 @@ export function createResponder(deps: ResponderDeps): Responder {
                 if (decision.woken) deps.log(decision.reason);
             }
             await waitForQuiet();
+            if (stopped) return;
             burstStart = undefined;
             const stored = deps.history.load(deps.userId);
             input = stored.length;
@@ -186,6 +193,10 @@ export function createResponder(deps: ResponderDeps): Responder {
 
             reply = deps.clean(await deps.generate(prompt.messages));
             if (deps.review) reply = await deps.review(reply, prompt.messages);
+            if (stopped) {
+                deps.log('已停止，这次生成的回复不发');
+                return;
+            }
             // 模型偶尔返回空串（10-05 模拟器 817 次生成里 2 次，原样重发 4 次都有正文）：当场再生成一次
             if (splitReply(reply).length === 0 && !retriedEmpty) {
                 retriedEmpty = true;
@@ -213,6 +224,10 @@ export function createResponder(deps: ResponderDeps): Responder {
                     break;
                 }
             }
+            if (stopped) {
+                deps.log(`已停止，剩下 ${parts.length - i} 条不发`);
+                break;
+            }
             const messageId = await deps.send(deps.userId, part);
             deps.history.append(deps.userId, { time: new Date(now()).toISOString(), role: 'assistant', content: part, messageId });
             sent.push(part);
@@ -222,13 +237,17 @@ export function createResponder(deps: ResponderDeps): Responder {
     }
 
     async function loop(): Promise<void> {
-        while (pending) {
+        while (pending && !stopped) {
             pending = false;
             try {
                 await respondOnce();
                 failures = 0;
             } catch (error) {
                 const reason = `回复失败：${error instanceof Error ? error.message : String(error)}`;
+                if (stopped) {
+                    deps.log(`${reason}（已停止，不再试）`);
+                    continue;
+                }
                 const delay = retryAfter[failures];
                 if (delay === undefined) {
                     deps.log(retryAfter.length ? `${reason}，等对方下一条消息再回` : reason);
@@ -250,6 +269,7 @@ export function createResponder(deps: ResponderDeps): Responder {
     }
 
     function schedule(): void {
+        if (stopped) return;
         pending = true;
         running ??= loop().finally(() => {
             running = null;
@@ -259,6 +279,7 @@ export function createResponder(deps: ResponderDeps): Responder {
 
     return {
         receive(text, messageId, time) {
+            if (stopped) return;
             deps.history.append(deps.userId, { time: time.toISOString(), role: 'user', content: text, messageId });
             deps.log(`收到：${text}`);
             lastReceived = now();
@@ -272,5 +293,11 @@ export function createResponder(deps: ResponderDeps): Responder {
         },
         whenIdle: () => running ?? Promise.resolve(),
         whenQuiet: () => (running && !interruptWait ? new Promise<void>(resolve => { quietWaiters.push(resolve); }) : Promise.resolve()),
+        stop() {
+            stopped = true;
+            pending = false;
+            retryToken++;
+            interruptWait?.();
+        },
     };
 }
