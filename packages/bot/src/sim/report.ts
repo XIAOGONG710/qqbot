@@ -9,7 +9,7 @@ const day = (t: number) => { const d = new Date(t); return `${d.getMonth() + 1}-
 const quote = (text: string) => text.split('\n').map(line => `> ${line}`).join('\n');
 
 /** 调度相关的日志（不含每次都有的「收到」「已回复」） */
-const SCHEDULING = /生成期间收到新消息|发送中途对方插话|插话没有触发|模型回复清理后为空|回复失败|召回失败|记忆写入失败|连接失败|Hindsight 后台任务|关系概况刷新|删除测试 bank/;
+const SCHEDULING = /出口检查|生成期间收到新消息|发送中途对方插话|插话没有触发|模型回复清理后为空|回复失败|召回失败|记忆写入失败|连接失败|Hindsight 后台任务|关系概况刷新|删除测试 bank/;
 
 export function renderReport(result: RunResult): string {
     const { scenario } = result;
@@ -71,6 +71,7 @@ function renderStep(step: StepRecord, dayPrefix: () => string): string[] {
             const sent = step.bubbles.map(b => b.text).join('\n');
             const unsent = step.generations.filter(g => g.raw !== undefined && !sent.includes(g.raw.trim().split('\n')[0]!.trim()));
             for (const g of unsent) out.push('模型原文（没有原样发出）：', '', '```text', ...g.raw!.split('\n'), '```', '');
+            for (const g of step.generations) for (const r of g.rewrites ?? []) out.push('出口检查重写的原文：', '', '```text', ...r.split('\n'), '```', '');
             const last = step.generations.at(-1);
             if (last) {
                 const parts = [last.timeBlock, last.recall, last.relationship].filter(Boolean) as string[];

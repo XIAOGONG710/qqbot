@@ -11,6 +11,7 @@ import type { Log } from '../log.ts';
 import type { HindsightApi } from '../memory/hindsight.ts';
 import { LongTermMemory, RELATIONSHIP_MODEL } from '../memory/long-term.ts';
 import type { OpenAIMessage, PromptResult } from '../prompt.ts';
+import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { parseDuration, VirtualClock, type Checks, type Scenario, type SayStep } from './scenario.ts';
 
 /** 模拟的联系人用的 QQ 号（虚构） */
@@ -46,7 +47,13 @@ export interface RunOptions {
 
 export interface Bubble { time: number; text: string }
 export interface Input { time: number; text: string; interrupt?: boolean }
-export interface Generation { time: number; recall?: string; timeBlock?: string; relationship?: string; messages: number; /** 模型原文（清理之前） */ raw?: string }
+export interface Generation {
+    time: number; recall?: string; timeBlock?: string; relationship?: string; messages: number;
+    /** 模型原文（清理之前） */
+    raw?: string;
+    /** 出口检查带说明重写的原文（ADR 0006） */
+    rewrites?: string[];
+}
 export interface CheckResult { ok: boolean; text: string }
 
 export interface StepRecord {
@@ -151,7 +158,11 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 receive(it.say, true);
             }
             const raw = await reply;
-            if (generation) generation.raw = raw;
+            // 出口检查的重写不经过 onPrompt，算在同一次生成里
+            if (generation) {
+                if (generation.raw === undefined) generation.raw = raw;
+                else (generation.rewrites ??= []).push(raw);
+            }
             return raw;
         },
         onPrompt: prompt => {
@@ -252,7 +263,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 hindsightDown = step.hindsight === 'down';
                 log(hindsightDown ? 'Hindsight 停了' : 'Hindsight 恢复');
             } else if ('check' in step) {
-                current.checks = lastSay ? runChecks(step.check, lastSay) : [{ ok: false, text: '前面没有 say 步骤' }];
+                current.checks = lastSay ? runChecks(step.check, lastSay, options.card.character.banned) : [{ ok: false, text: '前面没有 say 步骤' }];
             }
         }
     } finally {
@@ -312,7 +323,7 @@ export function dynamicParts(prompt: PromptResult, time: number): Generation {
     };
 }
 
-export function runChecks(checks: Checks, step: StepRecord): CheckResult[] {
+export function runChecks(checks: Checks, step: StepRecord, banned: readonly string[] = []): CheckResult[] {
     const results: CheckResult[] = [];
     const last = step.generations.at(-1);
     const recall = last?.recall ?? '';
@@ -338,6 +349,12 @@ export function runChecks(checks: Checks, step: StepRecord): CheckResult[] {
     if (checks.maxChars !== undefined) results.push({ ok: chars <= checks.maxChars, text: `她这一轮最多 ${checks.maxChars} 字（实际 ${chars}）` });
     if (checks.minChars !== undefined) results.push({ ok: chars >= checks.minChars, text: `她这一轮至少 ${checks.minChars} 字（实际 ${chars}）` });
     if (checks.maxBubbles !== undefined) results.push({ ok: step.bubbles.length <= checks.maxBubbles, text: `她这一轮最多 ${checks.maxBubbles} 条（实际 ${step.bubbles.length}）` });
+    if (checks.exitClean) {
+        const issues = inspectReply(replies, banned);
+        const stage = step.bubbles.filter(b => /^[ \t]*[（(][^（）()\n]*[）)]/m.test(b.text)).length;
+        const problems = [...(issues.length ? [summarizeIssues(issues)] : []), ...(stage ? [`${stage} 条有行首括号`] : [])];
+        results.push({ ok: problems.length === 0, text: `出口检查干净${problems.length ? `（${problems.join('；')}）` : ''}` });
+    }
     if (checks.dropped !== undefined) {
         results.push({ ok: has(/发送中途对方插话/) === checks.dropped, text: checks.dropped ? '发送中途插话，剩下的没发' : '没有丢弃剩下的' });
     }

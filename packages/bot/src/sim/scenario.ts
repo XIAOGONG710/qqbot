@@ -34,6 +34,8 @@ export interface Checks {
     minChars?: number;
     /** 这一步她最多发几条 */
     maxBubbles?: number;
+    /** 她发出的每一行都过得了出口检查（做不到的事、这一档的禁用词，ADR 0006），也没有行首括号 */
+    exitClean?: boolean;
 }
 
 export type Step =

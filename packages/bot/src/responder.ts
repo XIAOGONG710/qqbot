@@ -24,6 +24,8 @@ export interface ResponderDeps {
     buildPrompt: (history: ChatMessage[]) => PromptResult | Promise<PromptResult>;
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     clean: (reply: string) => string;
+    /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查 */
+    review?: (reply: string, messages: OpenAIMessage[]) => Promise<string>;
     send: (userId: number, text: string) => Promise<number>;
     log: (message: string) => void;
     sleep?: (ms: number) => Promise<void>;
@@ -83,6 +85,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             deps.log(`生成回复：${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);
 
             reply = deps.clean(await deps.generate(prompt.messages));
+            if (deps.review) reply = await deps.review(reply, prompt.messages);
             if (deps.history.load(deps.userId).length === stored.length || attempt >= MAX_REGENERATE) break;
             deps.log('生成期间收到新消息，带上新消息重新生成');
         }

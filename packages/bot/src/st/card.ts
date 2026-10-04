@@ -19,6 +19,8 @@ export interface Character {
     world: string;
     /** 角色卡上的 Scoped 正则脚本（extensions.regex_scripts），清理回复时执行作用于 AI 输出的那些 */
     regexScripts: RegexScript[];
+    /** 这一档的禁用词（extensions.qqbot.banned，转换器从 tiers.toml 写入，不进提示词），出口检查用（ADR 0006） */
+    banned: string[];
 }
 
 export function parseCharacterCard(json: unknown, source = '角色卡'): Character {
@@ -45,7 +47,15 @@ export function parseCharacterCard(json: unknown, source = '角色卡'): Charact
         postHistoryInstructions: str('post_history_instructions'),
         world: typeof extensions.world === 'string' ? extensions.world : '',
         regexScripts: parseRegexScripts(extensions.regex_scripts, source),
+        banned: parseBanned(extensions.qqbot, source),
     };
+}
+
+function parseBanned(qqbot: unknown, source: string): string[] {
+    const banned = (qqbot as { banned?: unknown } | undefined)?.banned;
+    if (banned === undefined) return [];
+    if (!Array.isArray(banned) || !banned.every(w => typeof w === 'string' && w)) throw new Error(`${source}：extensions.qqbot.banned 应为字符串数组（每个词非空）`);
+    return banned;
 }
 
 export function loadCharacterCard(path: string): Character {

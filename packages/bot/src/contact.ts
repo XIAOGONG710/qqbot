@@ -1,8 +1,9 @@
-// 一位联系人的回复流水线：召回长期记忆 → 按 ST 顺序拼提示词 → 后处理 → 生成 → 清理 → 拆条发送（responder.ts 调度）。
+// 一位联系人的回复流水线：召回长期记忆 → 按 ST 顺序拼提示词 → 后处理 → 生成 → 清理（含卡上的 ST 正则）→ 出口检查 → 拆条发送（responder.ts 调度）。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
 import { dirname, join } from 'node:path';
 import { UNLISTED_TIER, type BotConfig, type Contact, type Tier } from './config.ts';
+import { reviewReply } from './exit-check.ts';
 import type { ChatHistory } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
@@ -56,6 +57,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const now = options.now ?? Date.now;
     const log: Log = message => options.log(`[${contact.qq}] ${message}`);
     const generate = options.generate ?? ((messages, log) => chatCompletion(llm, messages, { log }));
+    const clean = (reply: string) => cleanUpReply(reply, names, character.regexScripts);
     return createResponder({
         userId: contact.qq,
         history: options.history,
@@ -86,7 +88,17 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return { ...prompt, messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names) };
         },
         generate: messages => generate(messages, log),
-        clean: reply => cleanUpReply(reply, names, character.regexScripts),
+        clean,
+        // 出口检查：重写时在后处理过的提示词末尾加一条说明，再按同样的方式后处理一次
+        review: (reply, messages) => reviewReply(reply, {
+            banned: character.banned,
+            userName: contact.name,
+            regenerate: async note => clean(await generate(
+                postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names),
+                log,
+            )),
+            log,
+        }),
         send: options.send,
         log,
         now,
