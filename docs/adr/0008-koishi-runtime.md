@@ -171,8 +171,10 @@ Koishi 4.18.11 + `koishi-plugin-adapter-onebot` 6.9.4（MIT）+ 控制台 `@kois
    插件发现适配器的 token 还是 `${{` 开头时在日志里报错提示重启。
 5. **决策 8（改配置时正在等的回复）定为插件重启 + catchUp**，不用 `ctx.accept`：试验里重启前后「几点看到」不变，等待中途重启也只回一次。
    回复器加 `stop()`：插件 dispose 时停掉正在等的、不再生成和发送，旧实例不会和新实例抢着回。
-6. 补回取数改用 `bot.getMessageList('private:QQ')`，收到的消息和补回的消息都从 Koishi 的 `elements` 转文字（同一个函数，规则和 `segmentsToText` 一样）；
-   `findMissed`、`shouldCatchUp` 原样用。
+6. 收发用适配器给的原始 OneBot 数据：收到的消息取 `session.onebot`（NapCat 的原始事件），补回调 `bot.internal.getFriendMsgHistory(QQ, undefined, 20)`，
+   发送调 `bot.internal.sendPrivateMsg`（和旧 `onebot.ts` 发的是同一个请求）。两个入口共用 `segmentsToText`、`findMissed`，转文字的规则只有一份。
+   试验证明 `bot.getMessageList('private:QQ')` 也能替代取数，但它不能指定条数、会为引用消息多调 `get_msg`，还要另写一个 elements 转文字的函数；
+   `bot.sendPrivateMessage` 会把字符串当消息元素解析（回复里的 `<`、`&` 要转义）。这次用不到 Koishi 的消息抽象，等看图、语音时再看。
 7. 控制台管理员密码用 `${{ env.QQBOT_KOISHI_PASSWORD }}`（用户级环境变量，用户自己设）。
 
 ## 确认记录（2026-10-05）
