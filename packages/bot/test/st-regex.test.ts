@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { cleanUpReply } from '../src/reply.ts';
-import { parseCharacterCard } from '../src/st/card.ts';
+import { loadCharacterCard, parseCharacterCard } from '../src/st/card.ts';
 import { AI_OUTPUT, applyAiOutputScripts, parseRegexScripts, regexFromString, runRegexScript, type RegexScript } from '../src/st/regex.ts';
 
 // 对照 vendor/SillyTavern public/scripts/extensions/regex/engine.js（runRegexScript / getRegexedString）与 utils.js regexFromString
@@ -82,5 +83,25 @@ describe('作用于 AI 输出的脚本（getRegexedString）', () => {
     test('cleanUpReply 先执行脚本，再做原来的清理', () => {
         const scripts = [script({ findRegex: '/^林梦瑶：/gm', replaceString: '林梦瑶: ' })];
         assert.equal(cleanUpReply('林梦瑶：在呢  ', names, scripts), '在呢');
+    });
+});
+
+describe('林梦瑶卡上的括号正则（ADR 0006 取证里的原句）', () => {
+    const { regexScripts } = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-classmate.json'));
+    const clean = (text: string) => cleanUpReply(text, names, regexScripts);
+    test('整行括号、行首括号里的动作和心理活动删掉', () => {
+        assert.equal(clean('土豆在楼下\n（拍的照片）'), '土豆在楼下');
+        assert.equal(clean('（先看看他找我干嘛，顺便说一句我正喂猫呢，别让他以为我故意不理人）\n喂猫呢'), '喂猫呢');
+        assert.equal(clean('（想拍张它的照片给你但拍不到）哦对，我发不了照片'), '哦对，我发不了照片');
+        assert.equal(clean('  (停顿一下) 明天吃什么'), '明天吃什么');
+        assert.equal(clean('（算了，随便你）'), '');
+    });
+    test('句中、句末的补充说明不动', () => {
+        const lines = [
+            '梯度就是那个最陡的方向（下降最快），你往反方向挪一小步',
+            '为什么不保证到全局最优（可能卡在局部最低或者鞍点）。',
+            '就那家（拍照的那家店）',
+        ];
+        for (const line of lines) assert.equal(clean(line), line);
     });
 });

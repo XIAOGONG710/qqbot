@@ -18,7 +18,29 @@
         "creator": "",
         "character_version": "",
         "extensions": {
-            "world": "linmengyao-scenes-boyfriend"
+            "world": "linmengyao-scenes-boyfriend",
+            "regex_scripts": [
+                {
+                    "id": "3f6c1e2a-7b4d-4c59-9e8a-5d2b0c7f1a64",
+                    "scriptName": "去掉行首括号里的动作",
+                    "findRegex": "/^[ \\t]*[（(][^（）()\\n]*[）)][ \\t]*/gm",
+                    "replaceString": "",
+                    "trimStrings": [],
+                    "placement": [
+                        2
+                    ],
+                    "disabled": false,
+                    "markdownOnly": false,
+                    "promptOnly": false,
+                    "runOnEdit": false,
+                    "substituteRegex": 0,
+                    "minDepth": null,
+                    "maxDepth": null
+                }
+            ],
+            "qqbot": {
+                "banned": []
+            }
         }
     }
 }

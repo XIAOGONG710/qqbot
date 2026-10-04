@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { isTable, readScenes, readToml, type Table } from '../src/legacy.ts';
-import { parseTierConfig, personaToCard, type TierConfig } from '../src/persona-to-card.ts';
+import { parseTierConfig, personaToCard, STAGE_DIRECTION_SCRIPT, type TierConfig } from '../src/persona-to-card.ts';
 import { scenesToLorebook } from '../src/scenes-to-lorebook.ts';
 import { WORLD_INFO_POSITION } from '../src/st-format.ts';
 
@@ -62,6 +62,16 @@ test('每个档位的卡里都没有这一档的禁用词（低档位看不到�
         const found = tier.banned.filter(word => text.includes(word));
         assert.deepEqual(found, [], `${tier.name} 的卡里出现了 ${found.join('、')}`);
     }
+});
+
+test('每张卡带去掉行首括号的正则和这一档的禁用词（只给运行时，不进提示词，ADR 0006）', () => {
+    for (const tier of tiers.tiers) {
+        const { extensions } = card(tier.name).data;
+        assert.deepEqual(extensions.regex_scripts, [STAGE_DIRECTION_SCRIPT], tier.name);
+        assert.deepEqual(extensions.qqbot, { banned: tier.banned }, tier.name);
+    }
+    const re = new RegExp('^[ \\t]*[（(][^（）()\\n]*[）)][ \\t]*', 'gm');
+    assert.equal(STAGE_DIRECTION_SCRIPT.findRegex, `/${re.source}/${re.flags}`);
 });
 
 test('只有男朋友和闺蜜档知道「他」是男朋友；其他档位没有「别提男朋友」这种提醒，只有中性的一句', () => {

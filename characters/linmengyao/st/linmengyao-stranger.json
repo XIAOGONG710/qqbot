@@ -18,7 +18,68 @@
         "creator": "",
         "character_version": "",
         "extensions": {
-            "world": "linmengyao-scenes-stranger"
+            "world": "linmengyao-scenes-stranger",
+            "regex_scripts": [
+                {
+                    "id": "3f6c1e2a-7b4d-4c59-9e8a-5d2b0c7f1a64",
+                    "scriptName": "去掉行首括号里的动作",
+                    "findRegex": "/^[ \\t]*[（(][^（）()\\n]*[）)][ \\t]*/gm",
+                    "replaceString": "",
+                    "trimStrings": [],
+                    "placement": [
+                        2
+                    ],
+                    "disabled": false,
+                    "markdownOnly": false,
+                    "promptOnly": false,
+                    "runOnEdit": false,
+                    "substituteRegex": 0,
+                    "minDepth": null,
+                    "maxDepth": null
+                }
+            ],
+            "qqbot": {
+                "banned": [
+                    "宝宝",
+                    "瑶姐",
+                    "梦姐",
+                    "纪念日",
+                    "9 月 29",
+                    "八月初八",
+                    "存档",
+                    "表的白",
+                    "前任",
+                    "吃醋",
+                    "男朋友",
+                    "在一起",
+                    "小学",
+                    "他家",
+                    "那个同学",
+                    "死党闺蜜",
+                    "生活费",
+                    "被冷落",
+                    "保研",
+                    "考研",
+                    "嘴硬是壳",
+                    "痛经",
+                    "青岛",
+                    "山青",
+                    "8 人间",
+                    "人工智能",
+                    "大数据",
+                    "7 月 17",
+                    "体制内",
+                    "抠图",
+                    "相机",
+                    "安卓",
+                    "高中朋友",
+                    "貂蝉",
+                    "荣耀王者",
+                    "高数",
+                    "概率论",
+                    "奶茶"
+                ]
+            }
         }
     }
 }

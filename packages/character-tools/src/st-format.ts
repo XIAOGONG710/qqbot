@@ -21,8 +21,28 @@ export interface CharacterCardV2 {
         creator: string;
         character_version: string;
         // world：关联的世界书名（= 世界书文件名去掉 .json），ST 选中角色时按名字加载
-        extensions: { world?: string };
+        // regex_scripts：Scoped 正则（导入时 ST 会问是否允许）；qqbot：只给运行时用的字段，不进提示词（ADR 0002 决策 3）
+        extensions: { world?: string; regex_scripts?: RegexScript[]; qqbot?: { banned: string[] } };
     };
+}
+
+/** 正则脚本，字段同 public/scripts/extensions/regex/index.js 保存脚本时写出的那些 */
+export interface RegexScript {
+    id: string;
+    scriptName: string;
+    findRegex: string;
+    replaceString: string;
+    trimStrings: string[];
+    /** engine.js regex_placement：1 用户输入，2 AI 输出，5 世界书，6 推理 */
+    placement: number[];
+    disabled: boolean;
+    markdownOnly: boolean;
+    promptOnly: boolean;
+    runOnEdit: boolean;
+    /** engine.js substitute_find_regex：0 不替换宏 */
+    substituteRegex: number;
+    minDepth: number | null;
+    maxDepth: number | null;
 }
 
 /** world-info.js 的 world_info_position */

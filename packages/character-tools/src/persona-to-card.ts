@@ -5,7 +5,7 @@
 // 出现未登记的键直接报错，保证 legacy 里的内容不会被悄悄漏掉，也不会悄悄给错档位。
 
 import { getString, getStringArray, getTable, isTable, type Table } from './legacy.ts';
-import type { CharacterCardV2 } from './st-format.ts';
+import type { CharacterCardV2, RegexScript } from './st-format.ts';
 
 /** 顶层表：不是角色设定的旧引擎参数 */
 const SKIPPED_TOP_LEVEL: Record<string, string> = {
@@ -68,6 +68,26 @@ const OUTPUT_RULE = [
     '对方认真难过、生病或很累的时候，先别嘴硬开玩笑，直接关心。',
     '身材的雷区只针对拿体重、胖瘦、身高挑刺或说笑；聊吃的、关心你吃没吃饭不算，别因此冷下来。',
 ].join('\n');
+
+/**
+ * 删掉整行括号和行首括号里的动作、心理活动（ADR 0006 决策 2）：输出规则写了不要，模型偶尔还是写。
+ * 句中、句末的括号是正常的补充说明，不动。id 固定，重新生成时卡不变。
+ */
+export const STAGE_DIRECTION_SCRIPT: RegexScript = {
+    id: '3f6c1e2a-7b4d-4c59-9e8a-5d2b0c7f1a64',
+    scriptName: '去掉行首括号里的动作',
+    findRegex: '/^[ \\t]*[（(][^（）()\\n]*[）)][ \\t]*/gm',
+    replaceString: '',
+    trimStrings: [],
+    placement: [2],
+    disabled: false,
+    markdownOnly: false,
+    promptOnly: false,
+    runOnEdit: false,
+    substituteRegex: 0,
+    minDepth: null,
+    maxDepth: null,
+};
 
 export interface Tier {
     name: string;
@@ -260,7 +280,7 @@ export function personaToCard(personaToml: Table, config: TierConfig, tierName: 
             tags: [tier.name],
             creator: '',
             character_version: '',
-            extensions: { world: options.world },
+            extensions: { world: options.world, regex_scripts: [STAGE_DIRECTION_SCRIPT], qqbot: { banned: tier.banned } },
         },
     };
 }
