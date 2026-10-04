@@ -6,7 +6,7 @@ import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes } from '../src/memory/episodes.ts';
 import { mentalModelUpdateBody, retainBody, type HindsightApi, type MemoryItem, type MentalModel, type RecallRequest, type RecallResult } from '../src/memory/hindsight.ts';
-import { BANK_MISSIONS, formatRecalled, LongTermMemory, OPEN_EPISODE_STEP, recallQuery, RELATIONSHIP_MODEL } from '../src/memory/long-term.ts';
+import { BANK_MISSIONS, formatRecalled, LongTermMemory, MAX_RECALLED, OPEN_EPISODE_STEP, recallQuery, RELATIONSHIP_MODEL } from '../src/memory/long-term.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
 const A = { qq: 1, tier: 'boyfriend' };
@@ -254,7 +254,7 @@ describe('长期记忆：召回与关系概况', () => {
         assert.equal(recallQuery(chat.slice(0, 2)), '');
     });
 
-    test('召回结果带日期、去掉当前片段的、最多 8 条；没有结果不注入', () => {
+    test('召回结果带日期、去掉当前片段的、最多 MAX_RECALLED 条；没有结果不注入', () => {
         const text = formatRecalled([
             { id: '1', text: '阿明说周五有面试', occurred_start: '2026-10-01T12:00:00Z', document_id: 'ep-1' },
             { id: '2', text: '没有日期的事 | Involving: 阿明' },
@@ -262,8 +262,8 @@ describe('长期记忆：召回与关系概况', () => {
         assert.match(text!, /^\[你们以前聊过的事/);
         assert.match(text!, /\n- 10月1日：阿明说周五有面试\n- 没有日期的事$/);
         assert.equal(formatRecalled([]), undefined);
-        const many = formatRecalled(Array.from({ length: 12 }, (_, i) => ({ id: String(i), text: `事${i}` })));
-        assert.equal(many!.split('\n').length - 1, 8);
+        const many = formatRecalled(Array.from({ length: MAX_RECALLED + 4 }, (_, i) => ({ id: String(i), text: `事${i}` })));
+        assert.equal(many!.split('\n').length - 1, MAX_RECALLED);
     });
 
     test('召回出错只记日志，不注入；还没写过记忆时不查', async () => {

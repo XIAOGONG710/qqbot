@@ -21,8 +21,12 @@ import type { BankConfig, HindsightApi, MentalModelRequest, RecallRequest, Recal
 export const OPEN_EPISODE_STEP = 30;
 /** 关系概况多久重新读一次 */
 export const RELATIONSHIP_REFRESH_MS = 10 * 60_000;
-/** 召回最多注入几条 */
-export const MAX_RECALLED = 8;
+/**
+ * 召回最多注入几条。召回本身由 max_tokens（600）限量，一般 11–14 条。原来取前 8 条；10-04 换成 PGroonga 之后，
+ * 埋在句子里的绰号（「铁锅今天又找我茬了」）能召回了，但关键词按命中的二字词计分，「今天」「找我」这类常见词也给别的记忆加分，
+ * 它常排在第 8–10 条，取 8 条会被截掉。12 条约 500 token，在调研方案 6.4「按需召回 300–800」之内。
+ */
+export const MAX_RECALLED = 12;
 
 const TAGS = ['qq-private'];
 const RELATIONSHIP_MODEL_ID = 'relationship';
