@@ -4,6 +4,10 @@
 //   POST /v1/default/banks/{bank_id}/memories                     写入（retain）
 //   POST /v1/default/banks/{bank_id}/memories/recall              召回
 //   GET / POST /v1/default/banks/{bank_id}/mental-models[/{id}]   关系概况（Mental Model）
+// 只有模拟器（sim/，ADR 0005）用的：
+//   GET    /v1/default/banks/{bank_id}/operations?status=          后台任务（等抽取、整合做完）
+//   POST   /v1/default/banks/{bank_id}/mental-models/{id}/refresh  手动刷新关系概况
+//   DELETE /v1/default/banks/{bank_id}                             删掉测试 bank
 // 出错（连不上、超时、非 2xx）一律抛 HindsightError，由调用方记日志，不在这里吞掉。
 
 export class HindsightError extends Error {
@@ -118,6 +122,20 @@ export class HindsightClient implements HindsightApi {
 
     async createMentalModel(bankId: string, request: MentalModelRequest): Promise<void> {
         await this.#request('POST', `${this.#bank(bankId)}/mental-models`, request);
+    }
+
+    /** 某个状态（pending / processing / completed / failed / cancelled）的后台任务有几个 */
+    async countOperations(bankId: string, status: string): Promise<number> {
+        const data = await this.#request<{ total?: number }>('GET', `${this.#bank(bankId)}/operations?status=${encodeURIComponent(status)}&limit=1`);
+        return data.total ?? 0;
+    }
+
+    async refreshMentalModel(bankId: string, id: string): Promise<void> {
+        await this.#request('POST', `${this.#bank(bankId)}/mental-models/${encodeURIComponent(id)}/refresh`);
+    }
+
+    async deleteBank(bankId: string): Promise<void> {
+        await this.#request('DELETE', this.#bank(bankId));
     }
 
     #bank(bankId: string): string {

@@ -12,9 +12,7 @@ import { ChatHistory } from './history.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from './backfill.ts';
 import { isPrivateFriendMessage, OneBotClient, segmentsToText, senderName, type MessageEvent, type OneBotEvent } from './onebot.ts';
 import type { Responder } from './responder.ts';
-import { createContactResponder as createPipeline } from './contact.ts';
-import { loadCharacterCard, type Character } from './st/card.ts';
-import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
+import { createContactResponder as createPipeline, loadTierCard, type TierCard } from './contact.ts';
 import { TierRecord } from './tier-record.ts';
 import { HindsightClient } from './memory/hindsight.ts';
 import { LongTermMemory } from './memory/long-term.ts';
@@ -24,14 +22,11 @@ const config = loadConfig(repoRoot);
 const log = createLog(join(config.dataDir, 'logs'));
 
 // 每个档位一张角色卡和一本世界书，用到时读一次
-const cards = new Map<Tier, { character: Character; worldInfo: WorldInfoEntry[] }>();
+const cards = new Map<Tier, TierCard>();
 function cardFor(tier: Tier) {
     let card = cards.get(tier);
     if (!card) {
-        const path = config.characterCard.replaceAll('{tier}', tier);
-        const character = loadCharacterCard(path);
-        const worldInfo = character.world ? loadWorldInfo(join(dirname(path), `${character.world}.json`), character.world) : [];
-        card = { character, worldInfo };
+        card = loadTierCard(config.characterCard, tier);
         cards.set(tier, card);
     }
     return card;

@@ -1,7 +1,8 @@
 // 一位联系人的回复流水线：召回长期记忆 → 按 ST 顺序拼提示词 → 后处理 → 生成 → 清理 → 拆条发送（responder.ts 调度）。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
-import { UNLISTED_TIER, type BotConfig, type Contact } from './config.ts';
+import { dirname, join } from 'node:path';
+import { UNLISTED_TIER, type BotConfig, type Contact, type Tier } from './config.ts';
 import type { ChatHistory } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
@@ -9,15 +10,28 @@ import type { LongTermMemory } from './memory/long-term.ts';
 import { buildPrompt, type OpenAIMessage, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
 import { createResponder, DEFAULT_SETTLE, type Responder } from './responder.ts';
-import type { Character } from './st/card.ts';
+import { loadCharacterCard, type Character } from './st/card.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
-import type { WorldInfoEntry } from './st/world-info.ts';
+import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 
+export interface TierCard {
+    character: Character;
+    worldInfo: WorldInfoEntry[];
+}
+
+/** 读一个档位的角色卡和它链接的世界书；pattern 是配置里的 characterCard（{tier} 换成档位名），世界书在同目录的 <world>.json */
+export function loadTierCard(pattern: string, tier: Tier): TierCard {
+    const path = pattern.replaceAll('{tier}', tier);
+    const character = loadCharacterCard(path);
+    const worldInfo = character.world ? loadWorldInfo(join(dirname(path), `${character.world}.json`), character.world) : [];
+    return { character, worldInfo };
+}
+
 export interface ContactPipelineOptions {
     contact: Contact;
-    card: { character: Character; worldInfo: WorldInfoEntry[] };
+    card: TierCard;
     llm: BotConfig['llm'];
     prompt: BotConfig['prompt'];
     history: Pick<ChatHistory, 'load' | 'append'>;
@@ -32,6 +46,8 @@ export interface ContactPipelineOptions {
     now?: () => number;
     /** 默认调模型接口（llm.ts）；模拟器包一层，在生成中插入对方的消息 */
     generate?: (messages: OpenAIMessage[], log: Log) => Promise<string>;
+    /** 连发合并的等待，默认 DEFAULT_SETTLE（测试用短的） */
+    settle?: { quietMs: number; maxMs: number };
 }
 
 export function createContactResponder(options: ContactPipelineOptions): Responder {
@@ -74,7 +90,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         send: options.send,
         log,
         now,
-        settle: DEFAULT_SETTLE,
+        settle: options.settle ?? DEFAULT_SETTLE,
         onPrompt: options.onPrompt,
     });
 }
