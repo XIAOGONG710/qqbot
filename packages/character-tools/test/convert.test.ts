@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { buildCharacter, checkReferences } from '../src/build.ts';
+import { buildCharacter, checkPrivacy, checkReferences } from '../src/build.ts';
 import { personaToCard, STAGE_DIRECTION_SCRIPT, textFor } from '../src/persona-to-card.ts';
 import { scenesToLorebook } from '../src/scenes-to-lorebook.ts';
 import { scheduleForTier } from '../src/schedule-to-card.ts';
@@ -72,6 +72,22 @@ test('字段只给 tiers 里的档位；改写按顺序取第一条含这一档�
     s.persona.sections.dorm = { pet: { text: '宿舍养了金鱼', tiers: ['bestie'], variants: [{ tiers: ['bestie'], text: '养了两条金鱼' }, { tiers: ['bestie'], text: '不会用到' }] } };
     assert.match(card('bestie', s).data.description, /【宿舍】\n养了两条金鱼/);
     assert.doesNotMatch(card('boyfriend', s).data.description, /金鱼/);
+});
+
+test('档位隐私检查：现在的资料没有问题；卡、作息、世界书正文里出现本档禁用词或占位符都会查出来，世界书触发词不查', () => {
+    assert.deepEqual(checkPrivacy(buildCharacter(source), source), []);
+
+    const s = copy();
+    const scene = s.scenes.find(x => x.tiers.includes('stranger') && !x.tiers.includes('boyfriend'))!;
+    const word = s.tiers.tiers.find(t => t.name === 'stranger')!.banned[0]!;
+    scene.avoid.push(`我${word}`);
+    scene.trigger.push(word);
+    s.schedule.where.by_tier = [{ tiers: s.tiers.tiers.map(t => t.name), text: '<HIS_NICKNAME_1>在学校' }];
+    const problems = checkPrivacy(buildCharacter(s), s);
+    const lore = problems.filter(p => p.where === `世界书 ${scene.id}`);
+    assert.deepEqual([...new Set(lore.map(p => p.tier))].sort(), ['stranger', 'unlisted'].filter(t => !(t === 'unlisted' && s.tiers.tiers.find(x => x.name === 'unlisted')!.drop_scenes?.includes(scene.id))));
+    assert.ok(lore.every(p => p.word === word), '触发词不查，只查正文');
+    assert.equal(problems.filter(p => p.where === '作息' && p.word === '<HIS_NICKNAME_1>').length, tiers.length);
 });
 
 test('每个档位的卡里都没有这一档的禁用词（低档位看不到高档位的事实）', () => {

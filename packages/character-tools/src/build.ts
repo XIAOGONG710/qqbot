@@ -1,6 +1,8 @@
 // source/ → st/ 下每个档位的角色卡和场景世界书（ADR 0003、0010）。CLI（cli.ts）和控制台的「林梦瑶」页面共用。
 // 生成之前先查资料之间的引用（档位名、说话方式、场景档），写错就报错，不生成。
 
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { personaToCard } from './persona-to-card.ts';
 import { scenesToLorebook } from './scenes-to-lorebook.ts';
 import { checkScheduleTiers, scheduleForTier } from './schedule-to-card.ts';
@@ -42,6 +44,68 @@ export function checkReferences(source: CharacterSource): void {
         }
     }
     checkScheduleTiers(source.schedule, names);
+}
+
+/** 检查出的一个问题：哪一档、在哪、命中了什么 */
+export interface Problem {
+    tier: string;
+    /** 卡的字段（description……）、「作息」、或「世界书 <场景 id>」 */
+    where: string;
+    /** 命中的词 */
+    word: string;
+    /** 命中处前后的一小段 */
+    excerpt: string;
+}
+
+const PLACEHOLDERS = /<BOYFRIEND_REAL_NAME>|<HIS_NICKNAME_\d+>/g;
+
+/**
+ * 档位隐私检查（ADR 0003、0010）：每一档会进提示词的文字里，不能有这一档的禁用词，也不能有脱敏占位符。
+ * 查卡里进提示词的字段、作息、世界书正文；世界书的触发词不进提示词，不查。
+ */
+export function checkPrivacy(built: Built, source: CharacterSource): Problem[] {
+    const problems: Problem[] = [];
+    const scan = (tier: string, where: string, text: string, words: string[]) => {
+        for (const word of words) {
+            let index = text.indexOf(word);
+            while (index >= 0) {
+                problems.push({ tier, where, word, excerpt: text.slice(Math.max(0, index - 12), index + word.length + 12).replace(/\n/g, ' ') });
+                index = text.indexOf(word, index + word.length);
+            }
+        }
+        for (const match of text.matchAll(PLACEHOLDERS)) problems.push({ tier, where, word: match[0], excerpt: match[0] });
+    };
+    for (const { tier, card, lorebook } of built.tiers) {
+        const banned = source.tiers.tiers.find(t => t.name === tier)!.banned;
+        const { data } = card;
+        for (const key of ['description', 'personality', 'scenario', 'post_history_instructions', 'mes_example', 'system_prompt'] as const) {
+            scan(tier, key, data[key], banned);
+        }
+        const schedule = data.extensions.qqbot?.schedule;
+        if (schedule) scan(tier, '作息', JSON.stringify(schedule), banned);
+        for (const entry of Object.values(lorebook.entries)) {
+            const id = /（([^（）]+)）$/.exec(entry.comment)?.[1] ?? entry.comment;
+            scan(tier, `世界书 ${id}`, entry.content, banned);
+        }
+    }
+    return problems;
+}
+
+/** 把生成结果写进 st/：内容没变的不写（插件监听 st/，没变就不该触发重启） */
+export function writeOutputs(outDir: string, built: Built): { written: string[]; unchanged: string[] } {
+    mkdirSync(outDir, { recursive: true });
+    const written: string[] = [];
+    const unchanged: string[] = [];
+    for (const [file, text] of built.files) {
+        const path = join(outDir, file);
+        if (existsSync(path) && readFileSync(path, 'utf8') === text) {
+            unchanged.push(file);
+            continue;
+        }
+        writeFileSync(path, text);
+        written.push(file);
+    }
+    return { written, unchanged };
 }
 
 export function buildCharacter(source: CharacterSource, prefix = 'linmengyao'): Built {

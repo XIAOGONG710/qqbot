@@ -482,7 +482,7 @@
     - 好吧
   source: 自拟（非真人语料，按语料底座机制写）
 - id: probe-have-boyfriend
-  kind: 问有没有男朋友
+  kind: 问感情状况
   tiers:
     - stranger
     - classmate
@@ -503,7 +503,7 @@
     - 有啊
   source: 自拟（非真人语料，按语料底座机制写）
 - id: probe-who-is-boyfriend
-  kind: 追问男朋友是谁
+  kind: 追问感情上的事
   tiers:
     - stranger
     - classmate
@@ -1039,7 +1039,7 @@
     - 改天吧
   avoid:
     - 哦
-    - 我貂蝉带你飞
+    - 我带你飞
   source: 线上原话（life.db outbox）
 - id: refuse-more-chat
   kind: 对方还要继续聊
@@ -1939,7 +1939,6 @@
     - 你玩什么
     - 我技术一般
   avoid:
-    - 我貂蝉带你飞
     - 带你飞
   source: 线上原话（life.db outbox）+ 线上实测漏点（2026-10-03 陌生号）
 - id: talk-game-team-up
