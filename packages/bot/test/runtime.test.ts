@@ -408,11 +408,13 @@ describe('档位记录', () => {
 
             // 读聊天记录只看换档之后的
             const stored = new Map<number, { time: string; role: 'user'; content: string }[]>([
-                [1, [{ time: '2026-10-04T13:00:00Z', role: 'user', content: '宝宝' }, { time: '2026-10-04T14:05:00Z', role: 'user', content: '同学你好' }]],
+                [1, [{ time: '2026-10-04T13:00:00Z', role: 'user', content: '宝宝' }, { time: '2026-10-04T14:00:00Z', role: 'user', content: '触发换档的那条' },
+                    { time: '2026-10-04T14:05:00Z', role: 'user', content: '同学你好' }]],
                 [2, [{ time: '2026-10-04T13:00:00Z', role: 'user', content: '第一次' }]],
             ]);
             const view = currentTierHistory({ load: qq => stored.get(qq) ?? [], append: () => {} }, new TierRecord(path));
-            assert.deepEqual(view.load(1).map(m => m.content), ['同学你好']);
+            // 名单外的人换档时，换档时间就是触发的那条消息的时间（main.ts），这条要留下
+            assert.deepEqual(view.load(1).map(m => m.content), ['触发换档的那条', '同学你好']);
             assert.deepEqual(view.load(2).map(m => m.content), ['第一次']);
         } finally {
             rmSync(dir, { recursive: true, force: true });

@@ -127,7 +127,8 @@ function onMessage(event: MessageEvent): void {
         }
         // 名单外的好友：{{user}} 用对方的 QQ 昵称
         const contact: Contact = { qq: event.user_id, name: senderName(event), tier: UNLISTED_TIER };
-        const warning = tierRecord.update(contact.qq, contact.tier);
+        // 换档时间取这条消息的 QQ 时间（秒）：取现在的话，这条消息的时间比换档时间早不到一秒，会被当成换档前的消息挡掉
+        const warning = tierRecord.update(contact.qq, contact.tier, new Date(event.time * 1000));
         if (warning) log(warning);
         log(`QQ ${contact.qq}（${contact.name}）不在名单，按 ${UNLISTED_TIER} 档回复`);
         responder = createContactResponder(contact);
