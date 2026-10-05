@@ -173,9 +173,12 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             bankPrefix: config.memory.bankPrefix,
             recallTimeoutMs: config.memory.recallTimeoutMs,
             log,
+            common: true,
         })
         : undefined;
-    log(memory ? `长期记忆：Hindsight ${config.memory!.baseUrl}（名单里的联系人）` : '长期记忆：未启用（配置里没有 memory）');
+    log(memory
+        ? `长期记忆：Hindsight ${config.memory!.baseUrl}（名单里的联系人；公共记忆库 ${memory.commonBankId()}，陌生人档不写不查）`
+        : '长期记忆：未启用（配置里没有 memory）');
     function syncMemory(): void {
         if (!memory) return;
         for (const contact of config.contacts) {

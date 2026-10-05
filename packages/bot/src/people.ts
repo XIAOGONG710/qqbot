@@ -14,7 +14,7 @@ export const MAX_MENTIONED = 2;
 const MIN_NAME_CHARS = 2;
 
 /** 这两档提起别人时不给介绍和记忆，也不用公共记忆（ADR 0016 决策 2、3） */
-export function knowsPeople(tier: Tier): boolean {
+export function knowsPeople(tier: Tier | string): boolean {
     return tier !== 'stranger' && tier !== UNLISTED_TIER;
 }
 

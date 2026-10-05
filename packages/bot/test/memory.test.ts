@@ -6,7 +6,10 @@ import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes } from '../src/memory/episodes.ts';
 import { mentalModelUpdateBody, retainBody, type HindsightApi, type MemoryItem, type MentalModel, type RecallRequest, type RecallResult } from '../src/memory/hindsight.ts';
-import { bankMissions, formatRecalled, initiateQuery, LongTermMemory, MAX_QUERY_CHARS, MAX_RECALLED, OPEN_EPISODE_STEP, recallQuery, RELATIONSHIP_MODEL } from '../src/memory/long-term.ts';
+import {
+    bankMissions, commonBankMissions, formatRecalled, initiateQuery, LongTermMemory, MAX_QUERY_CHARS, MAX_RECALLED, OPEN_EPISODE_STEP, recallQuery,
+    RELATIONSHIP_MODEL, SHARED_RECALLED,
+} from '../src/memory/long-term.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
 const A = { qq: 1, tier: 'boyfriend' };
@@ -365,6 +368,129 @@ describe('长期记忆：召回与关系概况', () => {
             await new Promise(r => setImmediate(r));
             assert.match(memory.relationship(A)!, /两人关系稳定/);
             assert.equal(calls.getMentalModel, 2, '建库时查过一次，后台读一次；没过期不再读');
+        } finally {
+            cleanup();
+        }
+    });
+});
+
+describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0016）', () => {
+    const B = { qq: 2, tier: 'classmate' };
+    const S = { qq: 3, tier: 'stranger' };
+    const gege = { user: '鸽鸽', char: '林梦瑶' };
+    const history = [msg(0, 'user', '今天加班'), msg(1, 'assistant', '辛苦')];
+    const now = T0 + 24 * 60 * MIN;
+
+    function setupCommon(options: Parameters<typeof fakeApi>[0] = {}, common = true, dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-'))) {
+        const logs: string[] = [];
+        const { api, calls } = fakeApi(options);
+        const memory = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: m => logs.push(m), now: () => now, common });
+        return { memory, calls, logs, dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+    }
+    const hashOf = (memory: LongTermMemory, contact: { qq: number; tier: string }) => memory.bankId(contact).slice('linmengyao-'.length);
+
+    test('写入：自己的 bank 之后再写一份进公共库；document_id 是哈希不带 QQ 号，原文开头写和谁的私聊；mission 只写一次', async () => {
+        const { memory, calls, logs, cleanup } = setupCommon();
+        try {
+            await memory.sync(B, gege, history);
+            assert.deepEqual(calls.banks, [`retain ${memory.bankId(B)}`, 'retain linmengyao-common']);
+            const item = calls.retain[1]!;
+            assert.equal(item.document_id, `${hashOf(memory, B)}:ep-${T0}`);
+            assert.match(item.content, /^和鸽鸽的私聊\n/);
+            assert.equal(item.context, 'QQ 私聊：林梦瑶（AI 扮演）和鸽鸽');
+            assert.deepEqual(check(retainBody(item), root('retain')), []);
+            assert.deepEqual(check(commonBankMissions('林梦瑶'), root('bank')), []);
+            assert.match((calls.putBank[1] as { retain_mission: string }).retain_mission, /每条写清是在和谁的私聊里/);
+            assert.ok(logs.some(l => l.includes('记忆：公共记忆库 linmengyao-common 已写入 mission')));
+            assert.ok(logs.some(l => l.includes(`记忆（公共）：片段 ep-${T0}`)));
+
+            await memory.sync(B, gege, history);
+            assert.equal(calls.retain.length, 2, '写过就不再写');
+            await memory.sync(A, names, history);
+            assert.equal(calls.retain.length, 4);
+            assert.equal(calls.putBank.length, 3, '公共库的 mission 只写一次，另两次是两人各自的 bank');
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('陌生人档、没开公共库：不写进公共库', async () => {
+        const on = setupCommon();
+        const off = setupCommon({}, false);
+        try {
+            await on.memory.sync(S, gege, history);
+            await off.memory.sync(B, gege, history);
+            assert.deepEqual([...on.calls.banks, ...off.calls.banks].filter(b => b.includes('common')), []);
+        } finally {
+            on.cleanup();
+            off.cleanup();
+        }
+    });
+
+    test('旧的进度文件（只写过自己的 bank）：补写进公共库，自己的不重写', async () => {
+        const before = setupCommon({}, false);
+        try {
+            await before.memory.sync(B, gege, history);
+            const after = setupCommon({}, true, before.dir);
+            await after.memory.sync(B, gege, history);
+            assert.deepEqual(after.calls.banks, ['retain linmengyao-common']);
+        } finally {
+            before.cleanup();
+        }
+    });
+
+    test('公共库写入失败：单独记日志，自己的 bank 照常记进度，下次只补公共库', async () => {
+        const { memory, calls, logs, dir, cleanup } = setupCommon({ failRetain: 2 });
+        try {
+            await memory.sync(B, gege, history);
+            assert.ok(logs.some(l => l.includes('[2] 记忆（公共）写入失败：Hindsight 返回 500')));
+            assert.equal(memory.status().lastWrite?.ok, false);
+            const again = setupCommon({}, true, dir);
+            await again.memory.sync(B, gege, history);
+            assert.deepEqual(again.calls.banks, ['retain linmengyao-common']);
+            assert.equal(calls.retain.length, 1);
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('公共记忆召回：去掉他自己的片段，只要事实，最多 SHARED_RECALLED 条，标题写不是和他聊的；陌生人档、还没建库不查', async () => {
+        const probe = setupCommon();
+        const own = `${hashOf(probe.memory, A)}:ep-1`;
+        const other = (i: number): RecallResult => ({ id: `b${i}`, text: `鸽鸽说的第${i}件事`, document_id: `${hashOf(probe.memory, B)}:ep-${i}` });
+        probe.cleanup();
+        const { memory, calls, cleanup } = setupCommon({ recall: [{ id: 'a', text: '阿明自己说的', document_id: own }, ...Array.from({ length: SHARED_RECALLED + 2 }, (_, i) => other(i))] });
+        try {
+            const chat = [{ role: 'user' as const, content: '鸽鸽最近忙啥', time: new Date(now).toISOString() }];
+            assert.equal(await memory.recallCommon(A, chat, new Date(now), '阿明'), undefined);
+            assert.equal(calls.recall.length, 0, '公共库还没建');
+
+            await memory.sync(B, gege, history);
+            const text = await memory.recallCommon(A, chat, new Date(now), '阿明');
+            assert.match(text!, /^\[你和名单里别的人聊天时说过、听过的事（[^\]]*不是和阿明聊的/);
+            assert.doesNotMatch(text!, /阿明自己说的/);
+            assert.equal(text!.split('\n').length - 1, SHARED_RECALLED);
+            assert.deepEqual(calls.recall[0]!.types, ['world', 'experience']);
+            assert.equal(calls.recall[0]!.prefer_observations, false);
+            assert.deepEqual(check(calls.recall[0], root('recall')), []);
+            assert.equal(calls.banks.at(-1), 'recall linmengyao-common');
+
+            assert.equal(await memory.recallCommon(S, chat, new Date(now), '路人'), undefined);
+            assert.equal(calls.recall.length, 1, '陌生人档不查');
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('提起别人时查他的 bank：标题和条数照传', async () => {
+        const results = Array.from({ length: 5 }, (_, i): RecallResult => ({ id: String(i), text: `鸽鸽说的第${i}件事` }));
+        const { memory, calls, cleanup } = setupCommon({ recall: results });
+        try {
+            await memory.sync(B, gege, history);
+            const chat = [{ role: 'user' as const, content: '鸽鸽最近忙啥', time: new Date(now).toISOString() }];
+            const text = await memory.recall(B, chat, new Date(now), { header: '[你和鸽鸽聊过的事]', limit: 2 });
+            assert.equal(text, '[你和鸽鸽聊过的事]\n- 鸽鸽说的第0件事\n- 鸽鸽说的第1件事');
+            assert.equal(calls.banks.at(-1), `recall ${memory.bankId(B)}`);
         } finally {
             cleanup();
         }

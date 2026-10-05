@@ -8,15 +8,19 @@
 //   结果里属于当前片段的去掉（那部分原文已经在上下文里）。
 // - 关系概况：bank 里的 Mental Model「relationship」，后台定期读取，放在 main 之后。
 // bank ID 不含原始 QQ 号（调研方案 9.3），用 QQ 号和档位的哈希。
+// - 公共记忆库（ADR 0016，选项 shared）：另一个 bank「<前缀>-shared」。名单里除陌生人档以外，每个人的片段写进自己的 bank 之后再写一份，
+//   document_id 前面带上是谁的；这些人每轮都从公共库召回，去掉自己的片段（自己的 bank 里已经有了）。写到第几条记在各人的进度文件里。
+// - 别人提起某个人时（people.ts），用这一轮的查询召回那个人自己的 bank（recall 的 header、limit）。
 
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { StoredMessage } from '../history.ts';
 import { readJsonOr, writeJsonAtomic } from '../json-file.ts';
+import { knowsPeople } from '../people.ts';
 import type { ChatMessage } from '../prompt.ts';
 import type { MacroNames } from '../st/macros.ts';
-import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes } from './episodes.ts';
+import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes, type Episode } from './episodes.ts';
 import type { BankConfig, HindsightApi, MentalModelRequest, RecallRequest, RecallResult } from './hindsight.ts';
 
 /** 进行中的片段每多这么多条就整段重写一次 */
@@ -29,6 +33,9 @@ export const RELATIONSHIP_REFRESH_MS = 10 * 60_000;
  * 它常排在第 8–10 条，取 8 条会被截掉。12 条约 500 token，在调研方案 6.4「按需召回 300–800」之内。
  */
 export const MAX_RECALLED = 12;
+/** 公共记忆、被提起的人的记忆各注入几条（ADR 0016：各约 250 token） */
+export const SHARED_RECALLED = 6;
+export const PERSON_RECALLED = 6;
 
 const TAGS = ['qq-private'];
 const RELATIONSHIP_MODEL_ID = 'relationship';
@@ -53,6 +60,28 @@ export function bankMissions(names: MacroNames) {
             '- 生病、心情不好、很累这类近几天的状态也记，带日期。',
             `- ${char}复述以前聊过的事，不算新事实；寒暄、表情、单纯的附和不记。`,
             `- 不推断沉默的动机，不诊断${user}的人格。`,
+        ].join('\n'),
+        ...SHARED_MISSIONS,
+    };
+}
+
+/**
+ * 公共记忆库（ADR 0016）的 mission：抽取规则和各人的 bank 同一套（不按档位收紧，用户定），只是聊天对象不止一个人，
+ * 每条要写清是在和谁的聊天里。每段原文开头有「和 X 的私聊」，context 也写了是谁。
+ */
+export function commonBankMissions(char: string) {
+    return {
+        retain_mission: [
+            `这是${char}和她 QQ 名单里几个人的私聊记录，汇在一起。${char}是 AI 扮演的虚拟角色（在读女大学生），聊天对象都是真人，每段开头写了是和谁的私聊。`,
+            '记录里都是真实发出去的消息，不是角色卡示例，也不是草稿。',
+            `提取明确出现的信息：聊天对象自己说的偏好、日程和计划、经历、身体和心情，${char}说的她自己的日常，双方的约定。`,
+            `- 每条写清是在和谁的私聊里、谁说的、关于谁，用名字（${char}和聊天对象的称呼），不写「用户」「对方」「助手」。`,
+            `- ${char}说的她自己的日常（上课、吃饭、宿舍、猫）照记，但写明是${char}说的、对谁说的。`,
+            '- 聊天对象说的之后要发生的事（考试、面试、出行、看病、约好的事），写成绝对日期，带上午 / 下午 / 晚上或几点；「明天」「下周三」按那一行所在的日期换算。',
+            '- 绰号、外号写成「绰号（谁的什么人）」。',
+            '- 否定（不吃香菜）、更正（之前说错了）各单独记一条，保留原话里的否定。',
+            `- ${char}复述以前聊过的事，不算新事实；寒暄、表情、单纯的附和不记。`,
+            '- 不推断沉默的动机，不诊断任何人的人格。',
         ].join('\n'),
         ...SHARED_MISSIONS,
     };
@@ -113,6 +142,14 @@ interface ContactState {
     relationshipModel?: string | boolean;
     /** 片段 id → 已写入的消息条数 */
     retained: Record<string, number>;
+    /** 同上，写进公共记忆库的（ADR 0016）；旧的状态文件里没有 */
+    common?: Record<string, number>;
+}
+
+/** 公共记忆库的状态（<dir>/common.json） */
+interface CommonState {
+    bankId: string;
+    bankConfigured?: string;
 }
 
 /** 一次写入或召回的结果 */
@@ -132,6 +169,8 @@ export interface LongTermMemoryOptions {
     recallTimeoutMs: number;
     log: (message: string) => void;
     now?: () => number;
+    /** 公共记忆库（ADR 0016）：名单里除陌生人档以外的人都写、都召回；默认否 */
+    common?: boolean;
 }
 
 export class LongTermMemory {
@@ -156,7 +195,12 @@ export class LongTermMemory {
     }
 
     bankId(contact: MemoryContact): string {
-        return `${this.#options.bankPrefix}-${createHash('sha256').update(`qqbot:${this.#key(contact)}`).digest('hex').slice(0, 16)}`;
+        return `${this.#options.bankPrefix}-${this.#hash(contact)}`;
+    }
+
+    /** 公共记忆库的 bank（ADR 0016）；没开也照样算出来（模拟器跑完要删） */
+    commonBankId(): string {
+        return `${this.#options.bankPrefix}-common`;
     }
 
     /** 把还没写入的片段写进 Hindsight；同一联系人排队执行，返回这一次排进去的任务 */
@@ -174,14 +218,62 @@ export class LongTermMemory {
 
     async #sync(contact: MemoryContact, names: MacroNames, history: StoredMessage[]): Promise<void> {
         const state = this.#load(contact);
-        const pending = splitEpisodes(history).filter(episode => {
-            const done = state.retained[episode.id] ?? 0;
+        const episodes = splitEpisodes(history);
+        const due = (written: Record<string, number> = {}) => episodes.filter(episode => {
+            const done = written[episode.id] ?? 0;
             if (done === episode.messages.length) return false;
             const closed = this.#now() - episode.end.getTime() >= EPISODE_GAP_MS;
             return closed || episode.messages.length - done >= OPEN_EPISODE_STEP;
         });
-        if (pending.length === 0) return;
+        const pending = due(state.retained);
+        if (pending.length) await this.#retainOwn(contact, names, state, pending);
+        if (!this.#options.common || !knowsPeople(contact.tier)) return;
+        const common = due(state.common);
+        if (common.length === 0) return;
+        try {
+            await this.#retainCommon(contact, names, state, common);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.#lastWrite = { at: this.#now(), ok: false, error: message };
+            this.#options.log(`[${contact.qq}] 记忆（公共）写入失败：${message}`);
+        }
+    }
 
+    /** 写进公共记忆库：document_id 带上是谁的（哈希，不带 QQ 号），原文开头写和谁的私聊 */
+    async #retainCommon(contact: MemoryContact, names: MacroNames, state: ContactState, episodes: Episode[]): Promise<void> {
+        const bankId = await this.#ensureCommonBank(names.char);
+        for (const episode of episodes) {
+            await this.#options.api.retain(bankId, {
+                content: `和${names.user}的私聊\n${episodeTranscript(episode, names)}`,
+                timestamp: localIso(episode.start),
+                context: `QQ 私聊：${names.char}（AI 扮演）和${names.user}`,
+                document_id: `${this.#hash(contact)}:${episode.id}`,
+                tags: TAGS,
+                metadata: { source: 'qq', episode: episode.id, messages: String(episode.messages.length) },
+            });
+            (state.common ??= {})[episode.id] = episode.messages.length;
+            this.#save(contact, state);
+            this.#lastWrite = { at: this.#now(), ok: true };
+            this.#options.log(`[${contact.qq}] 记忆（公共）：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
+        }
+    }
+
+    async #ensureCommonBank(char: string): Promise<string> {
+        const path = join(this.#options.dir, 'common.json');
+        const bankId = this.commonBankId();
+        const stored = readJsonOr<Partial<CommonState>>(path, {}, message => this.#options.log(message));
+        const state: CommonState = stored.bankId === bankId ? { bankId, ...(stored.bankConfigured ? { bankConfigured: stored.bankConfigured } : {}) } : { bankId };
+        const missions = commonBankMissions(char);
+        const version = createHash('sha256').update(JSON.stringify(missions)).digest('hex').slice(0, 12);
+        if (state.bankConfigured !== version) {
+            await this.#options.api.putBank(bankId, { name: `${char} 的公共记忆（名单里的人）`, ...missions });
+            writeJsonAtomic(path, { ...state, bankConfigured: version });
+            this.#options.log(`记忆：公共记忆库 ${bankId} 已写入 mission`);
+        }
+        return bankId;
+    }
+
+    async #retainOwn(contact: MemoryContact, names: MacroNames, state: ContactState, pending: Episode[]): Promise<void> {
         await this.#ensureBank(contact, names, state);
         for (const episode of pending) {
             await this.#options.api.retain(state.bankId, {
@@ -228,38 +320,54 @@ export class LongTermMemory {
 
     /**
      * 召回和这次对话相关的旧事，整理成一段提示；没有就返回 undefined。出错只记日志。
-     * query 不传就用 recallQuery；window：时间检索用的时间窗（只加权、不过滤），主动找他时用（ADR 0012 决策 1 第 7 条）
+     * query 不传就用 recallQuery；window：时间检索用的时间窗（只加权、不过滤），主动找他时用（ADR 0012 决策 1 第 7 条）。
+     * 别人提起这个人时（ADR 0016）也用这个查他的 bank，chat 是提起他的那段聊天，header、limit 换成那一段的
      */
-    async recall(contact: MemoryContact, chat: ChatMessage[], now: Date, options: { query?: string; window?: { start: Date; end: Date } } = {}): Promise<string | undefined> {
+    async recall(
+        contact: MemoryContact, chat: ChatMessage[], now: Date,
+        options: { query?: string; window?: { start: Date; end: Date }; header?: string; limit?: number } = {},
+    ): Promise<string | undefined> {
         const state = this.#load(contact);
         if (!state.bankConfigured) return undefined;
         const query = options.query ?? recallQuery(chat);
         if (!query) return undefined;
-        const request: RecallRequest = {
-            query,
-            types: ['world', 'experience', 'observation'],
-            prefer_observations: true,
-            budget: 'low',
-            max_tokens: 600,
-            // 带本机时区：「今天」「昨天」按本地的日历日算
-            query_timestamp: localIso(now),
-            tags: TAGS,
-            tags_match: 'all_strict',
-            include: { entities: null },
-            ...(options.window ? { temporal_window: { start: localIso(options.window.start), end: localIso(options.window.end) } } : {}),
-        };
-        let results: RecallResult[];
+        const results = await this.#recall(state.bankId, recallRequest(query, now, options.window), `[${contact.qq}] 记忆召回失败，这次不带记忆`);
+        if (!results) return undefined;
+        const current = currentEpisodeId(chat);
+        return formatRecalled(results.filter(r => !current || r.document_id !== current), { header: options.header, limit: options.limit });
+    }
+
+    /**
+     * 公共记忆（ADR 0016）：名单里除陌生人档以外的人每轮都查，去掉他自己的片段。只要事实（带 document_id 才分得出是谁的），
+     * 不要整合过的观察（可能混着他自己的事）
+     */
+    async recallCommon(contact: MemoryContact, chat: ChatMessage[], now: Date, userName: string): Promise<string | undefined> {
+        if (!this.#options.common || !knowsPeople(contact.tier)) return undefined;
+        const stored = readJsonOr<Partial<CommonState>>(join(this.#options.dir, 'common.json'), {}, message => this.#options.log(message));
+        if (stored.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
+        const query = recallQuery(chat);
+        if (!query) return undefined;
+        const request: RecallRequest = { ...recallRequest(query, now), types: ['world', 'experience'], prefer_observations: false };
+        const results = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
+        if (!results) return undefined;
+        const own = `${this.#hash(contact)}:`;
+        return formatRecalled(results.filter(r => !r.document_id?.startsWith(own)), {
+            header: `[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和${userName}聊的，用不上就别提）]`,
+            limit: SHARED_RECALLED,
+        });
+    }
+
+    async #recall(bankId: string, request: RecallRequest, failure: string): Promise<RecallResult[] | undefined> {
         try {
-            results = await this.#options.api.recall(state.bankId, request, this.#options.recallTimeoutMs);
+            const results = await this.#options.api.recall(bankId, request, this.#options.recallTimeoutMs);
             this.#lastRecall = { at: this.#now(), ok: true };
+            return results;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.#lastRecall = { at: this.#now(), ok: false, error: message };
-            this.#options.log(`[${contact.qq}] 记忆召回失败，这次不带记忆：${message}`);
+            this.#options.log(`${failure}：${message}`);
             return undefined;
         }
-        const current = currentEpisodeId(chat);
-        return formatRecalled(results.filter(r => !current || r.document_id !== current));
     }
 
     /** 关系概况：返回缓存，过期了在后台重新读 */
@@ -282,6 +390,11 @@ export class LongTermMemory {
 
     #key(contact: MemoryContact): string {
         return `${contact.qq}-${contact.tier}`;
+    }
+
+    /** bank ID、公共库的 document_id 用的：不含原始 QQ 号 */
+    #hash(contact: MemoryContact): string {
+        return createHash('sha256').update(`qqbot:${this.#key(contact)}`).digest('hex').slice(0, 16);
     }
 
     #path(contact: MemoryContact): string {
@@ -323,14 +436,34 @@ export function initiateQuery(chat: ChatMessage[], topic: string): string {
     return [topic, ...recent].join('\n').slice(0, MAX_QUERY_CHARS);
 }
 
+/** 召回请求：事实、经历、观察都要，有观察时不再单独返回它覆盖了的事实 */
+function recallRequest(query: string, now: Date, window?: { start: Date; end: Date }): RecallRequest {
+    return {
+        query,
+        types: ['world', 'experience', 'observation'],
+        prefer_observations: true,
+        budget: 'low',
+        max_tokens: 600,
+        // 带本机时区：「今天」「昨天」按本地的日历日算
+        query_timestamp: localIso(now),
+        tags: TAGS,
+        tags_match: 'all_strict',
+        include: { entities: null },
+        ...(window ? { temporal_window: { start: localIso(window.start), end: localIso(window.end) } } : {}),
+    };
+}
+
 /** 当前片段（最后一条消息所在的片段）的 id */
 function currentEpisodeId(chat: ChatMessage[]): string | undefined {
     const timed = chat.flatMap(m => (m.time ? [{ time: m.time, role: m.role, content: m.content }] : []));
     return splitEpisodes(timed).at(-1)?.id;
 }
 
-export function formatRecalled(results: RecallResult[]): string | undefined {
-    const lines = results.slice(0, MAX_RECALLED).map(r => {
+export const RECALLED_HEADER = '[你们以前聊过的事（从记忆里想起来的，只作参考；和最近的聊天对不上时以最近的为准，用不上就别提）]';
+
+/** 召回结果整理成一段：标题默认是自己的记忆（RECALLED_HEADER），最多 limit 条（默认 MAX_RECALLED） */
+export function formatRecalled(results: RecallResult[], options: { header?: string; limit?: number } = {}): string | undefined {
+    const lines = results.slice(0, options.limit ?? MAX_RECALLED).map(r => {
         // 观察（多条事实整合的）的 occurred_start 是来源里最早的日期，「现在戒糖了」会被标成最早那天：用最近一次被提到的时间
         const when = r.type === 'observation' ? r.mentioned_at ?? r.occurred_start : r.occurred_start ?? r.mentioned_at;
         const date = when ? new Date(when) : undefined;
@@ -340,5 +473,5 @@ export function formatRecalled(results: RecallResult[]): string | undefined {
         return `- ${prefix}${text.length > 200 ? `${text.slice(0, 200)}…` : text}`;
     });
     if (lines.length === 0) return undefined;
-    return `[你们以前聊过的事（从记忆里想起来的，只作参考；和最近的聊天对不上时以最近的为准，用不上就别提）]\n${lines.join('\n')}`;
+    return `${options.header ?? RECALLED_HEADER}\n${lines.join('\n')}`;
 }

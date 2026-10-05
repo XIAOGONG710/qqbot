@@ -10,7 +10,7 @@ import { reviewReply } from './exit-check.ts';
 import type { ChatHistory, StoredMessage } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
-import { initiateQuery, type LongTermMemory } from './memory/long-term.ts';
+import { initiateQuery, PERSON_RECALLED, type LongTermMemory } from './memory/long-term.ts';
 import { buildPrompt, type OpenAIMessage, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
 import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from './responder.ts';
@@ -26,6 +26,9 @@ import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 
 const DAY_MS = 86_400_000;
+
+/** 召回整理出来的一段有几条（第一行是标题） */
+const countLines = (text: string) => text.split('\n').length - 1;
 
 export interface TierCard {
     character: Character;
@@ -116,12 +119,24 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const recallOptions = initiate
                 ? { query: initiateQuery(chat, initiate.topic), window: { start: new Date(time.getTime() - 3 * DAY_MS), end: new Date(time.getTime() + 2 * DAY_MS) } }
                 : {};
-            const recalled = remembers ? await memory.recall(contact, chat, time, recallOptions) : undefined;
-            const relationship = remembers ? memory.relationship(contact) : undefined;
-            if (recalled) log(`召回长期记忆 ${recalled.split('\n').length - 1} 条`);
+            // 她认识的人（ADR 0016）：提到的人查他自己的 bank；公共记忆每轮都查（主动找他时不查，没有「他这次说的」）
             const people = mentionedPeople(chat, contact, options.contacts ?? []);
-            if (people.length) log(`提起了 ${people.map(person => person.name).join('、')}：介绍`);
-            const peopleText = people.map(person => describePerson(person));
+            const [recalled, common, ...aboutPeople] = await Promise.all([
+                remembers ? memory.recall(contact, chat, time, recallOptions) : undefined,
+                remembers && !initiate ? memory.recallCommon(contact, chat, time, contact.name) : undefined,
+                ...people.map(person => (remembers
+                    ? memory.recall(person, chat, time, {
+                        ...recallOptions, limit: PERSON_RECALLED, header: `[你和${person.name}聊过的事（从记忆里想起来的，只作参考）]`,
+                    })
+                    : undefined)),
+            ]);
+            const relationship = remembers ? memory.relationship(contact) : undefined;
+            if (recalled) log(`召回长期记忆 ${countLines(recalled)} 条`);
+            if (common) log(`召回公共记忆 ${countLines(common)} 条`);
+            if (people.length) {
+                log(`提起了 ${people.map((person, i) => `${person.name}：介绍${aboutPeople[i] ? ` + 召回 ${countLines(aboutPeople[i])} 条` : ''}`).join('；')}`);
+            }
+            const peopleText = people.map((person, i) => describePerson(person, aboutPeople[i]));
             const days = describeDays(character.dates, time);
             const state = schedule ? stateAt(schedule, time, extraFree) : undefined;
             if (herSchedule) options.onHerDay?.(time);
@@ -142,6 +157,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 afterMain: relationship ? [relationship] : [],
                 afterHistory: [
                     ...(recalled ? [recalled] : []),
+                    ...(common ? [common] : []),
                     ...peopleText,
                     [
                         describeTime(chat, time, { initiating: Boolean(initiate) }),
