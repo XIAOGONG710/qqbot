@@ -43,6 +43,23 @@ export interface Checks {
     replyWithin?: string;
     /** 这一步的调度日志里有一行匹配（正则），如 "吵醒"、"已经收尾" */
     log?: string;
+    /** 主动消息（ADR 0011）：从上一个带 proactive 的检查到这里，她主动发的那几次 */
+    proactive?: ProactiveChecks;
+}
+
+export interface ProactiveChecks {
+    /** 主动了几次（一次可能拆成两条气泡）：[最少, 最多] */
+    count?: [number, number];
+    /** 她的每一天最多主动几次（日子不算） */
+    perDayMax?: number;
+    /** 每次都不在睡觉、上课，也不在 00:30 到起床之间（日子的零点除外） */
+    allowedTimes?: boolean;
+    /** 这几种时机都出现过（日志里的说法：早安、下课、睡前、冷场、待跟进的事、重要的日子） */
+    occasions?: string[];
+    /** 主动发的话里至少有其中一个 */
+    replyAny?: string[];
+    /** 主动发的话都过得了出口检查 */
+    exitClean?: boolean;
 }
 
 export type Step =
@@ -51,8 +68,8 @@ export type Step =
     | SayStep
     /** 虚拟时间往后跳，例如 "50m"、"1d"、"9h30m"；途中到点的事（她看到消息、回复）按时间顺序发生。开了记忆就接着把结束了的片段写进去并等 Hindsight 做完 */
     | { advance: string }
-    /** 虚拟时间一直往后走，直到她回复（最多 1 天）：睡着、上课时来的消息 */
-    | { wait: 'reply' }
+    /** 虚拟时间一直往后走，直到她回复（最多 1 天）：睡着、上课时来的消息；proactive：直到她主动发一次（最多 1 天） */
+    | { wait: 'reply' | 'proactive' }
     /** 不跳时间，把能写的片段写进记忆并等 Hindsight 做完 */
     | { memory: 'sync' }
     /** 手动刷新关系概况（Mental Model），等做完后记进报告（T23） */
@@ -78,6 +95,8 @@ export interface Scenario {
     memory: boolean;
     /** 默认 true：按卡上的作息（ADR 0007） */
     schedule: boolean;
+    /** 默认 false：按卡上的主动设置主动找他（ADR 0011，真发，不是试运行）；已有的场景不受影响 */
+    proactive: boolean;
     steps: Step[];
 }
 
@@ -104,6 +123,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         start: s.start as string,
         memory: s.memory !== false,
         schedule: s.schedule !== false,
+        proactive: s.proactive === true,
         steps: s.steps as Step[],
     };
 }
@@ -126,7 +146,7 @@ function checkStep(step: unknown, where: string): void {
         }
     }
     if ('advance' in s) parseDuration(String(s.advance));
-    if ('wait' in s && s.wait !== 'reply') fail('wait 只能是 "reply"');
+    if ('wait' in s && s.wait !== 'reply' && s.wait !== 'proactive') fail('wait 只能是 "reply" 或 "proactive"');
     if ('check' in s) {
         const check = s.check as Record<string, unknown>;
         for (const key of ['replyAfter', 'replyWithin'] as const) if (check[key] !== undefined) parseDuration(String(check[key]));

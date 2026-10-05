@@ -220,4 +220,44 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    test('主动消息（ADR 0011）：虚拟时钟上的一天；他回了早安，下午记下的面试第二天问；检查条数、时间点；报告里标出主动的', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-'));
+        let extractions = 0;
+        const generate = async (messages: OpenAIMessage[]) => {
+            // 抽待跟进的事的请求（system 里写着「待跟进」）：第一次记下明天下午的面试
+            if (messages[0]!.content.includes('待跟进')) return extractions++ === 0 ? '{"add":[{"what":"面试","date":"2026-10-13","time":"afternoon"}],"resolved":[]}' : '{"add":[],"resolved":[]}';
+            const note = messages.map(m => m.content).join('\n').match(/\[这次是你主动找阿明：([^\]]*)\]/)?.[1];
+            return note ? `主动：${note.slice(0, 30)}` : '好';
+        };
+        const scenario = parseScenario({
+            name: '主动', tier: 'boyfriend', start: '2026-10-12T06:00:00+08:00', memory: false, proactive: true,
+            // 他每次都回：她主动发的没人回就会停（ADR 0011 确认记录第 2 条）
+            steps: [
+                { wait: 'proactive' },
+                { say: '早，刚醒' },
+                { say: '我明天下午有个面试' },
+                { wait: 'proactive' },
+                { say: '刚下班' },
+                { check: { proactive: { count: [2, 2], perDayMax: 2, allowedTimes: true, occasions: ['早安', '下课'], exitClean: true } } },
+                { wait: 'proactive' },
+                { say: '早' },
+                { wait: 'proactive' },
+                { check: { proactive: { count: [2, 2], occasions: ['早安', '待跟进的事'], replyAny: ['面试'], perDayMax: 2, allowedTimes: true } } },
+            ],
+        });
+        try {
+            const result = await runScenario(scenario, { runId: 'test', dataDir: dir, card, llm, prompt, generate, settle: { quietMs: 50, maxMs: 200 } });
+            const failed = result.steps.flatMap(s => s.checks).filter(c => !c.ok).map(c => c.text);
+            assert.deepEqual(failed, [], result.steps.flatMap(s => s.logs).filter(l => /主动|待跟进/.test(l)).join('\n'));
+            assert.equal(extractions >= 1, true);
+            const first = result.steps[0]!.bubbles[0]!;
+            assert.equal(first.proactive, '早安');
+            const report = renderReport(result);
+            assert.match(report, /她（主动：早安）：主动：/);
+            assert.match(report, /待跟进：记下「面试」/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });

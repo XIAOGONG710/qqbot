@@ -9,7 +9,7 @@ const day = (t: number) => { const d = new Date(t); return `${d.getMonth() + 1}-
 const quote = (text: string) => text.split('\n').map(line => `> ${line}`).join('\n');
 
 /** 调度相关的日志（不含每次都有的「收到」「已回复」） */
-const SCHEDULING = /\d{2}:\d{2}:\d{2} 看到|吵醒|已经收尾|等了一天|出口检查|生成期间收到新消息|发送中途对方插话|插话没有触发|模型回复清理后为空|回复失败|召回失败|记忆写入失败|连接失败|Hindsight 后台任务|关系概况刷新|删除测试 bank/;
+const SCHEDULING = /\d{2}:\d{2}:\d{2} 看到|吵醒|已经收尾|等了一天|出口检查|生成期间收到新消息|发送中途对方插话|插话没有触发|模型回复清理后为空|回复失败|召回失败|记忆写入失败|连接失败|Hindsight 后台任务|关系概况刷新|删除测试 bank|^主动|待跟进/;
 
 export function renderReport(result: RunResult): string {
     const { scenario } = result;
@@ -80,7 +80,7 @@ function renderExchange(step: StepRecord, dayPrefix: () => string): string[] {
     // 对方的消息和她的回复按时间排在一起
     const events = [
         ...step.inputs.map(i => ({ time: i.time, text: `**对方**${i.interrupt ? '（插话）' : ''}：${i.text}` })),
-        ...step.bubbles.map(b => ({ time: b.time, text: `她：${b.text}` })),
+        ...step.bubbles.map(b => ({ time: b.time, text: `她${b.proactive ? `（主动：${b.proactive}）` : ''}：${b.text}` })),
     ].sort((a, b) => a.time - b.time);
     for (const e of events) out.push(`- \`${dayPrefix()}${clock(e.time)}\` ${e.text}`);
     const scheduling = step.logs.filter(l => SCHEDULING.test(l));

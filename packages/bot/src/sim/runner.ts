@@ -12,7 +12,11 @@ import type { HindsightApi } from '../memory/hindsight.ts';
 import { LongTermMemory, RELATIONSHIP_MODEL } from '../memory/long-term.ts';
 import type { OpenAIMessage, PromptResult } from '../prompt.ts';
 import { inspectReply, summarizeIssues } from '../exit-check.ts';
-import { parseDuration, VirtualClock, type Checks, type Scenario, type SayStep } from './scenario.ts';
+import { EPISODE_GAP_MS } from '../memory/episodes.ts';
+import { herDay } from '../proactive.ts';
+import { createProactivePlanner, type Planner } from '../proactive-planner.ts';
+import { formatDate, stateAt } from '../schedule.ts';
+import { parseDuration, VirtualClock, type Checks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
 /** 模拟的联系人用的 QQ 号（虚构） */
 export const SIM_QQ = 10001;
@@ -49,7 +53,8 @@ export interface RunOptions {
     settle?: { quietMs: number; maxMs: number };
 }
 
-export interface Bubble { time: number; text: string }
+/** proactive：她主动发的（ADR 0011），是哪个时机（日志里的说法） */
+export interface Bubble { time: number; text: string; proactive?: string }
 export interface Input { time: number; text: string; interrupt?: boolean }
 export interface Generation {
     time: number; recall?: string; timeBlock?: string; relationship?: string; messages: number;
@@ -132,7 +137,10 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         lastInputTime = time;
         current.inputs.push({ time, text, ...(interrupt ? { interrupt } : {}) });
         responder.receive(text, nextMessageId++, new Date(time));
+        planner?.poke();
     };
+    /** 正在主动找他：这时发出的气泡标成主动的（时机的说法） */
+    let initiating: string | undefined;
     const baseGenerate = options.generate ?? ((messages: OpenAIMessage[], log: Log) => chatCompletion(options.llm, messages, { log }));
 
     const createResponder = () => createContactResponder({
@@ -149,7 +157,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         retryAfterMs: [],
         waitUntil: clock.waitUntil,
         send: async (_userId, text) => {
-            current.bubbles.push({ time: clock.now(), text });
+            current.bubbles.push({ time: clock.now(), text, ...(initiating ? { proactive: initiating } : {}) });
             bubblesThisStep++;
             if (armed?.afterBubbles !== undefined && bubblesThisStep >= armed.afterBubbles) {
                 const it = armed;
@@ -184,6 +192,37 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     let responder = createResponder();
     let forgotten = 0;
 
+    // 主动消息（ADR 0011）：场景开着、卡上有主动设置和作息时，计划器跑在虚拟时钟上（真发，记录在 dataDir/proactive）
+    const { character } = options.card;
+    const planner: Planner | undefined = scenario.proactive && scenario.schedule && character.proactive && character.schedule
+        ? createProactivePlanner({
+            contact,
+            schedule: character.schedule,
+            settings: character.proactive,
+            dates: character.dates,
+            mode: 'on',
+            history,
+            // 「forget」之后换了新的回复器：每次取当前的
+            responder: {
+                initiate: async request => {
+                    initiating = request.label.replace(/（.*$/, '');
+                    try {
+                        return await responder.initiate(request);
+                    } finally {
+                        initiating = undefined;
+                    }
+                },
+            },
+            dir: join(dataDir, 'proactive'),
+            log,
+            now: clock.now,
+            waitUntil: clock.waitUntil,
+            names,
+            extract: messages => baseGenerate(messages, log),
+        })
+        : undefined;
+    if (scenario.proactive && !planner) log('场景开了主动消息，但卡上没有主动设置或作息，不主动');
+
     /** 等她把这一轮（含插话之后的回复）都发完，或者停在「到点才看到」的等待上 */
     async function settle(): Promise<void> {
         for (;;) {
@@ -197,12 +236,24 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         }
     }
 
-    /** 把虚拟时钟一个个拨到她等着的时刻（不超过 limit），每拨一次等她这一轮做完；stopOnReply：这一步她发了就停 */
-    async function runTimers(limit: number, stopOnReply = false): Promise<void> {
+    /**
+     * 把虚拟时钟一个个拨到她等着的时刻（不超过 limit），每拨一次等她这一轮做完；stop：这一步满足了就停（她回了、她主动发了）。
+     * 开着主动消息时，途中聊天片段结束（安静 45 分钟）那一刻先停一下，抽待跟进的事（bot 里是每 5 分钟查一次）
+     */
+    async function runTimers(limit: number, stop?: () => boolean): Promise<void> {
         for (;;) {
             await settle();
-            if (stopOnReply && current.bubbles.length > 0) return;
+            if (stop?.()) return;
             const next = clock.nextTimer();
+            if (planner) {
+                const last = history.load(contact.qq).at(-1);
+                const closeAt = last ? Date.parse(last.time) + EPISODE_GAP_MS : undefined;
+                if (closeAt !== undefined && closeAt > clock.now() && closeAt <= Math.min(next ?? Infinity, limit)) {
+                    clock.advanceTo(closeAt);
+                    await planner.syncFollowUps();
+                    continue;
+                }
+            }
             if (next === undefined || next > limit) return;
             clock.advanceTo(next);
         }
@@ -233,6 +284,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     }
 
     let lastSay: StepRecord | undefined;
+    /** 上一个主动消息检查查到哪一步了 */
+    let proactiveCheckedUpTo = 0;
     try {
         for (const step of scenario.steps) {
             current = newStep(Object.keys(step)[0] as StepRecord['kind'], clock.now());
@@ -262,10 +315,13 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 clock.advanceTo(target);
                 current.time = clock.now();
                 await syncMemory();
+            } else if ('wait' in step && step.wait === 'proactive') {
+                await runTimers(clock.now() + WAIT_REPLY_MS, () => current.bubbles.some(b => b.proactive));
+                if (!current.bubbles.some(b => b.proactive)) log('等了一天她也没主动找');
             } else if ('wait' in step) {
                 lastSay = current;
                 current.inputTime = lastInputTime;
-                await runTimers(clock.now() + WAIT_REPLY_MS, true);
+                await runTimers(clock.now() + WAIT_REPLY_MS, () => current.bubbles.length > 0);
                 if (current.bubbles.length === 0) log('等了一天也没回');
             } else if ('memory' in step) {
                 await syncMemory();
@@ -293,10 +349,18 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 hindsightDown = step.hindsight === 'down';
                 log(hindsightDown ? 'Hindsight 停了' : 'Hindsight 恢复');
             } else if ('check' in step) {
-                current.checks = lastSay ? runChecks(step.check, lastSay, options.card.character.banned) : [{ ok: false, text: '前面没有 say 步骤' }];
+                const { proactive, ...rest } = step.check;
+                current.checks = Object.keys(rest).length === 0 ? []
+                    : lastSay ? runChecks(rest, lastSay, options.card.character.banned) : [{ ok: false, text: '前面没有 say 步骤' }];
+                if (proactive) {
+                    const since = steps.slice(proactiveCheckedUpTo, -1);
+                    proactiveCheckedUpTo = steps.length;
+                    current.checks.push(...proactiveChecks(proactive, since, options.card));
+                }
             }
         }
     } finally {
+        planner?.stop();
         if (memory && options.hindsight && bankId && !options.keepBank) {
             await options.hindsight.deleteBank(bankId).catch(error => log(`删除测试 bank 失败：${error instanceof Error ? error.message : String(error)}`));
         }
@@ -351,6 +415,59 @@ export function dynamicParts(prompt: PromptResult, time: number): Generation {
         relationship: block(RELATIONSHIP_HEADER),
         messages: prompt.messages.length,
     };
+}
+
+/** 主动消息的检查（ADR 0011）：这几步里她主动发的那几次。一次 = 同一个时机、隔不到 1 分钟的几条气泡 */
+export function proactiveChecks(checks: ProactiveChecks, steps: StepRecord[], card: TierCard): CheckResult[] {
+    const results: CheckResult[] = [];
+    const sends: { time: number; last: number; label: string; texts: string[] }[] = [];
+    for (const bubble of steps.flatMap(s => s.bubbles).filter(b => b.proactive)) {
+        const prev = sends.at(-1);
+        if (prev && prev.label === bubble.proactive && bubble.time - prev.last < 60_000) {
+            prev.texts.push(bubble.text);
+            prev.last = bubble.time;
+        } else {
+            sends.push({ time: bubble.time, last: bubble.time, label: bubble.proactive!, texts: [bubble.text] });
+        }
+    }
+    const fmt = (t: number) => new Date(t).toLocaleString('zh-CN', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const list = sends.map(s => `${fmt(s.time)} ${s.label}`).join('、') || '无';
+    const schedule = card.character.schedule;
+    if (checks.count) {
+        const [min, max] = checks.count;
+        results.push({ ok: sends.length >= min && sends.length <= max, text: `主动了 ${min}–${max} 次（实际 ${sends.length}：${list}）` });
+    }
+    if (checks.perDayMax !== undefined && schedule) {
+        const perDay = new Map<string, number>();
+        for (const s of sends.filter(s => s.label !== '重要的日子')) {
+            const day = formatDate(herDay(schedule, new Date(s.time)));
+            perDay.set(day, (perDay.get(day) ?? 0) + 1);
+        }
+        const most = Math.max(0, ...perDay.values());
+        results.push({ ok: most <= checks.perDayMax, text: `她的每一天最多主动 ${checks.perDayMax} 次（实际最多 ${most}）` });
+    }
+    if (checks.allowedTimes && schedule) {
+        const bad = sends.filter(s => {
+            const kind = stateAt(schedule, new Date(s.time)).activity.kind;
+            const day = herDay(schedule, new Date(s.time));
+            const night = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, 0, 30).getTime();
+            return kind === 'sleep' || kind === 'class' || (s.label !== '重要的日子' && s.time >= night);
+        });
+        results.push({ ok: bad.length === 0, text: `都不在睡觉、上课、夜里${bad.length ? `（${bad.map(s => `${fmt(s.time)} ${s.label}`).join('、')}）` : ''}` });
+    }
+    for (const occasion of checks.occasions ?? []) {
+        results.push({ ok: sends.some(s => s.label === occasion), text: `主动的时机里有「${occasion}」` });
+    }
+    const texts = sends.flatMap(s => s.texts).join('\n');
+    if (checks.replyAny) {
+        const hit = checks.replyAny.filter(w => texts.includes(w));
+        results.push({ ok: hit.length > 0, text: `主动发的话里有「${checks.replyAny.join('」「')}」之一${hit.length ? `（${hit.join('、')}）` : ''}` });
+    }
+    if (checks.exitClean) {
+        const issues = inspectReply(texts, card.character.banned);
+        results.push({ ok: issues.length === 0, text: `主动发的话过得了出口检查${issues.length ? `（${summarizeIssues(issues)}）` : ''}` });
+    }
+    return results;
 }
 
 export function runChecks(checks: Checks, step: StepRecord, banned: readonly string[] = []): CheckResult[] {
