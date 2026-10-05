@@ -7,7 +7,7 @@ import { reviewReply } from './exit-check.ts';
 import type { ChatHistory } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
-import { recentQuery, type LongTermMemory } from './memory/long-term.ts';
+import { initiateQuery, type LongTermMemory } from './memory/long-term.ts';
 import { buildPrompt, type OpenAIMessage, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
 import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from './responder.ts';
@@ -18,6 +18,8 @@ import { isAckAfterClosing, typingMs, whenSeen } from './reply-timing.ts';
 import { describeState, stateAt } from './schedule.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
+
+const DAY_MS = 86_400_000;
 
 export interface TierCard {
     character: Character;
@@ -72,9 +74,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         history: options.history,
         buildPrompt: async (chat, { woken, initiate }) => {
             const time = new Date(now());
-            // 长期记忆只给名单里的人；主动找他时没有「他这次说的」，用最近一段聊天去查（ADR 0011 决策 3）
+            // 长期记忆只给名单里的人；主动找他时没有「他这次说的」：查想知道的事 + 最后两句，带前 3 天到后 2 天的时间窗（ADR 0012 决策 1 第 7 条）
             const remembers = memory && contact.tier !== UNLISTED_TIER;
-            const recalled = remembers ? await memory.recall(contact, chat, time, initiate ? recentQuery(chat) : undefined) : undefined;
+            const recallOptions = initiate
+                ? { query: initiateQuery(chat, initiate.topic), window: { start: new Date(time.getTime() - 3 * DAY_MS), end: new Date(time.getTime() + 2 * DAY_MS) } }
+                : {};
+            const recalled = remembers ? await memory.recall(contact, chat, time, recallOptions) : undefined;
             const relationship = remembers ? memory.relationship(contact) : undefined;
             if (recalled) log(`召回长期记忆 ${recalled.split('\n').length - 1} 条`);
             const days = describeDays(character.dates, time);
@@ -91,7 +96,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         describeTime(chat, time, { initiating: Boolean(initiate) }),
                         ...(days ? [days] : []),
                         ...(schedule ? [describeState(stateAt(schedule, time), schedule, { userName: contact.name, woken })] : []),
-                        ...(initiate ? [initiate] : []),
+                        ...(initiate ? [initiate.note] : []),
                     ].join('\n'),
                 ],
                 now: time,

@@ -50,6 +50,8 @@ export interface RecallRequest {
     tags: string[];
     tags_match: 'all_strict';
     include: { entities: null };
+    /** 时间检索用的时间窗：代替从查询文字里解析日期，只加权、不过滤（ISO，带时区） */
+    temporal_window?: { start: string; end: string };
 }
 
 export interface RecallResult {
@@ -67,7 +69,8 @@ export interface MentalModelRequest {
     source_query: string;
     tags: string[];
     max_tokens: number;
-    trigger: { refresh_after_consolidation: boolean; min_refresh_interval_seconds: number };
+    /** budget：刷新时检索、迭代的预算（不写是 mid） */
+    trigger: { refresh_after_consolidation: boolean; min_refresh_interval_seconds: number; budget?: 'low' | 'mid' | 'high' };
 }
 
 export interface MentalModel {

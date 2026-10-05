@@ -44,9 +44,9 @@ export interface ResponderDeps {
     history: Pick<ChatHistory, 'load' | 'append'>;
     /**
      * 可以是异步的（生成前要先召回长期记忆）；woken：睡着时被消息吵醒（ADR 0007 决策 6）；
-     * initiate：她主动找他，这次为什么找（ADR 0011，写进时间块之后的说明）
+     * initiate：她主动找他（ADR 0011）：note 是这次为什么找（写进时间块之后），topic 是召回时想知道什么（ADR 0012）
      */
-    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: string }) => PromptResult | Promise<PromptResult>;
+    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string } }) => PromptResult | Promise<PromptResult>;
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     clean: (reply: string) => string;
     /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查 */
@@ -88,6 +88,8 @@ export interface InitiateRequest {
     label: string;
     /** 提示词里的说明：这次是你主动找他、为什么 */
     note: string;
+    /** 召回长期记忆时想知道什么（例如「他最近在忙什么、这几天的安排」） */
+    topic: string;
     /** 最多几条气泡 */
     maxBubbles: number;
     /** 试运行：生成、出口检查、commit，然后写日志，不发、不进聊天记录 */
@@ -321,7 +323,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         const input = stored.length;
         const startedAt = now();
         setPhase({ phase: 'initiating', reason: request.label });
-        const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { initiate: request.note });
+        const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { initiate: { note: request.note, topic: request.topic } });
         deps.onPrompt?.(prompt);
         const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
         deps.log(`主动找他（${request.label}）：生成，${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);

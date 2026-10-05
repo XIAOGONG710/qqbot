@@ -6,7 +6,7 @@ import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes } from '../src/memory/episodes.ts';
 import { mentalModelUpdateBody, retainBody, type HindsightApi, type MemoryItem, type MentalModel, type RecallRequest, type RecallResult } from '../src/memory/hindsight.ts';
-import { BANK_MISSIONS, formatRecalled, LongTermMemory, MAX_RECALLED, OPEN_EPISODE_STEP, recallQuery, RELATIONSHIP_MODEL } from '../src/memory/long-term.ts';
+import { bankMissions, formatRecalled, initiateQuery, LongTermMemory, MAX_QUERY_CHARS, MAX_RECALLED, OPEN_EPISODE_STEP, recallQuery, RELATIONSHIP_MODEL } from '../src/memory/long-term.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
 const A = { qq: 1, tier: 'boyfriend' };
@@ -90,7 +90,7 @@ function setup(options: Parameters<typeof fakeApi>[0] = {}, now = T0 + 24 * 60 *
 
 describe('长期记忆：请求体对照 Hindsight 0.10.2 的 OpenAPI', () => {
     test('建库（mission 与 disposition）', () => {
-        assert.deepEqual(check({ name: '林梦瑶 × 阿明', ...BANK_MISSIONS }, root('bank')), []);
+        assert.deepEqual(check({ name: '林梦瑶 × 阿明', ...bankMissions(names) }, root('bank')), []);
     });
 
     test('写入：一个片段一项，异步处理；字段名放错层级会被查出来', () => {
@@ -103,13 +103,19 @@ describe('长期记忆：请求体对照 Hindsight 0.10.2 的 OpenAPI', () => {
         assert.notDeepEqual(check({ items: [item], retain_async: true, tags: ['x'] }, root('retain')), []);
     });
 
-    test('召回', async () => {
+    test('召回（含主动找他时的时间窗）', async () => {
         const { memory, calls, cleanup } = setup();
         try {
             await memory.sync(A, names, [msg(0, 'user', '我明天下午面试')]);
             await memory.recall(A, [{ role: 'user', content: '过了！', time: new Date().toISOString() }], new Date());
-            assert.equal(calls.recall.length, 1);
+            await memory.recall(A, [], new Date(T0), { query: '阿明最近在忙什么', window: { start: new Date(T0 - 3 * 86_400_000), end: new Date(T0 + 2 * 86_400_000) } });
+            assert.equal(calls.recall.length, 2);
             assert.deepEqual(check(calls.recall[0], root('recall')), []);
+            assert.deepEqual(check(calls.recall[1], root('recall')), []);
+            assert.equal(calls.recall[0]!.temporal_window, undefined);
+            assert.deepEqual(calls.recall[1]!.temporal_window, { start: localIso(new Date(T0 - 3 * 86_400_000)), end: localIso(new Date(T0 + 2 * 86_400_000)) });
+            // 带本机时区（ADR 0012 决策 1 第 2 条）
+            assert.equal(calls.recall[1]!.query_timestamp, localIso(new Date(T0)));
         } finally {
             cleanup();
         }
@@ -132,11 +138,16 @@ describe('长期记忆：片段', () => {
         assert.equal(100 * MIN - 54 * MIN >= EPISODE_GAP_MS, true);
     });
 
-    test('原文带说话人、QQ 消息 id 和本地时区的时间', () => {
-        const [episode] = splitEpisodes([msg(0, 'user', '我明天下午面试', 101), msg(1, 'assistant', '好呀 等你消息', 102)]);
+    test('原文：开头和换天时一行日期，每行「名字 (HH:MM): 内容」，消息里的换行换成「／」，不带 QQ 消息 id（ADR 0012）', () => {
+        // T0 是 10-01 20:00（本地），片段跨过午夜
+        const [episode] = splitEpisodes([
+            msg(0, 'user', '我明天下午面试', 101), msg(1, 'assistant', '好呀\n 等你消息', 102), msg(40, 'user', '紧张'), msg(80, 'user', '睡不着', 103),
+            msg(120, 'assistant', '快睡'), msg(160, 'user', '嗯'), msg(200, 'user', '十二点了', 104), msg(240, 'assistant', '睡吧'),
+        ]);
         const lines = episodeTranscript(episode!, names).split('\n');
-        assert.equal(lines[0], `阿明 [message_id=101] (${localIso(new Date(T0))}): 我明天下午面试`);
-        assert.match(lines[1]!, /^林梦瑶 \[message_id=102\] \(2026-10-01T20:01:00[+-]\d\d:\d\d\): 好呀 等你消息$/);
+        assert.deepEqual(lines.slice(0, 3), ['—— 2026年10月1日 星期四 ——', '阿明 (20:00): 我明天下午面试', '林梦瑶 (20:01): 好呀／等你消息']);
+        assert.deepEqual(lines.slice(-3), ['阿明 (23:20): 十二点了', '—— 2026年10月2日 星期五 ——', '林梦瑶 (00:00): 睡吧']);
+        assert.ok(!lines.join('\n').includes('message_id'));
     });
 });
 
@@ -227,6 +238,39 @@ describe('长期记忆：写入', () => {
         }
     });
 
+    test('写入：context 只一句、时间带本机时区；mission 写着名字和抽取规则（ADR 0012）', async () => {
+        const { memory, calls, cleanup } = setup();
+        try {
+            await memory.sync(A, names, [msg(0, 'user', '在吗')]);
+            assert.equal(calls.retain[0]!.context, 'QQ 私聊：林梦瑶（AI 扮演）和阿明');
+            assert.equal(calls.retain[0]!.timestamp, localIso(new Date(T0)));
+            const mission = (calls.putBank[0] as { retain_mission: string }).retain_mission;
+            for (const rule of ['林梦瑶是 AI 扮演的虚拟角色', '不能记成阿明的事', '写成绝对日期', '铁锅（阿明的组长）', '否定', '不写「用户」']) {
+                assert.ok(mission.includes(rule), rule);
+            }
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('换了 bank 前缀：进度文件是旧 bank 的，新 bank 重新写 mission 和全部片段', async () => {
+        const { memory, calls, dir, cleanup } = setup();
+        try {
+            const history = [msg(0, 'user', '在吗'), msg(100, 'user', '人呢')];
+            await memory.sync(A, names, history);
+            const { api, calls: next } = fakeApi();
+            const fresh = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao-1006', recallTimeoutMs: 3000, log: () => {}, now: () => T0 + 24 * 60 * MIN });
+            assert.notEqual(fresh.bankId(A), memory.bankId(A));
+            await fresh.sync(A, names, history);
+            assert.equal(next.putBank.length, 1, '新 bank 写 mission');
+            assert.equal(next.retain.length, 2, '两个片段都重新写');
+            assert.equal(calls.retain.length, 2);
+            assert.equal(JSON.parse(readFileSync(join(dir, '1-boyfriend.json'), 'utf8')).bankId, fresh.bankId(A));
+        } finally {
+            cleanup();
+        }
+    });
+
     test('同一联系人的写入串行；bank ID 不含 QQ 号', async () => {
         const { memory, calls, cleanup } = setup();
         try {
@@ -252,6 +296,18 @@ describe('长期记忆：召回与关系概况', () => {
         ];
         assert.equal(recallQuery(chat), '她：加油 结束了告诉我\n对方：过了！\n对方：你猜是哪家');
         assert.equal(recallQuery(chat.slice(0, 2)), '');
+        assert.equal(recallQuery([{ role: 'user', content: '啊'.repeat(500) }]).length, MAX_QUERY_CHARS);
+    });
+
+    test('主动找他时的查询：先写想知道什么，再带最后两句；截到 MAX_QUERY_CHARS 字时留开头', () => {
+        const chat = [
+            { role: 'user' as const, content: '我明天下午面试' },
+            { role: 'assistant' as const, content: '加油' },
+            { role: 'user' as const, content: '晚安' },
+        ];
+        assert.equal(initiateQuery(chat, '阿明最近在忙什么'), '阿明最近在忙什么\n她：加油\n对方：晚安');
+        assert.equal(initiateQuery([], '阿明最近在忙什么'), '阿明最近在忙什么');
+        assert.ok(initiateQuery([{ role: 'user', content: '啊'.repeat(500) }], '想知道的').startsWith('想知道的\n'));
     });
 
     test('召回结果带日期、去掉当前片段的、最多 MAX_RECALLED 条；没有结果不注入', () => {
@@ -262,6 +318,8 @@ describe('长期记忆：召回与关系概况', () => {
         assert.match(text!, /^\[你们以前聊过的事/);
         assert.match(text!, /\n- 10月1日：阿明说周五有面试\n- 没有日期的事$/);
         assert.equal(formatRecalled([]), undefined);
+        // 观察的日期用最近一次被提到的（occurred_start 是来源里最早的）
+        assert.match(formatRecalled([{ id: '3', text: '阿明现在不吃甜的了', type: 'observation', occurred_start: '2026-09-01T12:00:00+08:00', mentioned_at: '2026-10-03T12:00:00+08:00' }])!, /- 10月3日：阿明现在不吃甜的了/);
         const many = formatRecalled(Array.from({ length: MAX_RECALLED + 4 }, (_, i) => ({ id: String(i), text: `事${i}` })));
         assert.equal(many!.split('\n').length - 1, MAX_RECALLED);
     });

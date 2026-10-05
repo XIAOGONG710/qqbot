@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import type { Contact } from './config.ts';
 import type { StoredMessage } from './history.ts';
 import {
-    blockReason, candidateLabel, herDay, MAX_PROACTIVE_BUBBLES, occasionNote, planFrom,
+    blockReason, candidateLabel, herDay, MAX_PROACTIVE_BUBBLES, occasionNote, planFrom, recallTopic,
     type Candidate, type ImportantDay, type ProactiveInput, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
 import type { InitiateOutcome, Responder } from './responder.ts';
@@ -131,6 +131,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         const outcome: InitiateOutcome = await deps.responder.initiate({
             label: candidateLabel(candidate),
             note: occasionNote(candidate, contact.name),
+            topic: recallTopic(candidate, contact.name),
             maxBubbles: MAX_PROACTIVE_BUBBLES,
             dryRun,
             // 先记后发

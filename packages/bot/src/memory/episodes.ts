@@ -30,13 +30,27 @@ export function splitEpisodes(history: StoredMessage[]): Episode[] {
     return episodes;
 }
 
-/** 写入 Hindsight 的原文：说话人、QQ 消息 id、带时区的时间（调研方案 9.5 的写法） */
+const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * 写入 Hindsight 的原文（ADR 0012 决策 1 第 3 条）：官方推荐的「名字 (时间): 内容」，时间只写 HH:MM，开头和换天时插一行日期；
+ * 消息里的换行换成「／」，每行都有说话人。不写 QQ 消息 id（片段 id 就能追溯），一块（默认 3000 字符）能装下的消息多一倍。
+ */
 export function episodeTranscript(episode: Episode, names: MacroNames): string {
-    return episode.messages.map(m => {
+    const lines: string[] = [];
+    let day = '';
+    for (const m of episode.messages) {
+        const time = new Date(m.time);
+        const date = `—— ${time.getFullYear()}年${time.getMonth() + 1}月${time.getDate()}日 ${WEEKDAYS[time.getDay()]} ——`;
+        if (date !== day) {
+            lines.push(date);
+            day = date;
+        }
         const speaker = m.role === 'user' ? names.user : names.char;
-        const id = m.messageId === undefined ? '' : ` [message_id=${m.messageId}]`;
-        return `${speaker}${id} (${localIso(new Date(m.time))}): ${m.content}`;
-    }).join('\n');
+        lines.push(`${speaker} (${pad2(time.getHours())}:${pad2(time.getMinutes())}): ${m.content.trim().replace(/\s*\n\s*/g, '／')}`);
+    }
+    return lines.join('\n');
 }
 
 /** 2026-10-01T20:00:00+08:00：本机时区 */

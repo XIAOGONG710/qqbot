@@ -546,11 +546,11 @@ describe('回复调度', () => {
     describe('主动找他（ADR 0011）', () => {
         const request = (patch: Partial<InitiateRequest> = {}): InitiateRequest & { committed: string[][] } => {
             const committed: string[][] = [];
-            return { label: '早安（起床后 12 分钟）', note: '[这次是你主动找他：早安]', maxBubbles: 2, dryRun: false, commit: parts => { committed.push(parts); }, committed, ...patch };
+            return { label: '早安（起床后 12 分钟）', note: '[这次是你主动找他：早安]', topic: '他最近在忙什么', maxBubbles: 2, dryRun: false, commit: parts => { committed.push(parts); }, committed, ...patch };
         };
 
         test('发出去、记进聊天记录；先 commit 再发；最多 2 条；提示词里带着说明', async () => {
-            const notes: (string | undefined)[] = [];
+            const notes: ({ note: string; topic: string } | undefined)[] = [];
             const order: string[] = [];
             const { responder, stored, sent } = setup({
                 generate: async () => '早\n醒了没\n今天好冷\n多穿点',
@@ -565,7 +565,7 @@ describe('回复调度', () => {
             // 4 行按顺序合并成 2 条（reply.ts）
             assert.deepEqual(outcome, { result: 'sent', parts: ['早\n醒了没', '今天好冷\n多穿点'], messageIds: [101, 102] });
             assert.deepEqual(order, ['commit:2', 'send:早\n醒了没', 'send:今天好冷\n多穿点']);
-            assert.deepEqual(notes, ['[这次是你主动找他：早安]']);
+            assert.deepEqual(notes, [{ note: '[这次是你主动找他：早安]', topic: '他最近在忙什么' }]);
             assert.deepEqual(stored.map(m => `${m.role}:${m.content}`), ['assistant:早\n醒了没', 'assistant:今天好冷\n多穿点']);
             assert.equal(responder.status().phase, 'idle');
         });

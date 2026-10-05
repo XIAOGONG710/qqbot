@@ -320,6 +320,14 @@ export function occasionNote(candidate: Candidate, userName: string): string {
     return `[这次是你主动找${userName}：${why[candidate.occasion]()}。只发一两句，像平时随手发的消息。]`;
 }
 
+/** 主动找他时召回长期记忆想知道什么（ADR 0012 决策 1 第 7 条） */
+export function recallTopic(candidate: Candidate, userName: string): string {
+    const recent = `${userName}最近在忙什么、身体和心情怎么样、这几天有什么安排或约好的事`;
+    if (candidate.occasion === 'dates') return `${candidate.importantDays!.map(d => d.name).join('、')}；${recent}`;
+    if (candidate.occasion === 'follow_up') return `${candidate.reason}；${recent}`;
+    return recent;
+}
+
 /** 日志、状态页里的说法：「早安（起床后 12 分钟）」 */
 export const OCCASION_LABELS: Record<Occasion, string> = {
     dates: '重要的日子', follow_up: '待跟进的事', morning: '早安', after_class: '下课', quiet: '冷场', bedtime: '睡前',

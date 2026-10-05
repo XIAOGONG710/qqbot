@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import type { StoredMessage } from '../history.ts';
 import type { ChatMessage } from '../prompt.ts';
 import type { MacroNames } from '../st/macros.ts';
-import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './episodes.ts';
+import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes } from './episodes.ts';
 import type { BankConfig, HindsightApi, MentalModelRequest, RecallRequest, RecallResult } from './hindsight.ts';
 
 /** 进行中的片段每多这么多条就整段重写一次 */
@@ -31,17 +31,32 @@ export const MAX_RECALLED = 12;
 const TAGS = ['qq-private'];
 const RELATIONSHIP_MODEL_ID = 'relationship';
 
-/** 调研方案 9.4 的三个 mission，dispositions 取中间值 */
-export const BANK_MISSIONS = {
-    retain_mission: [
-        '提取这条关系中真实对话里明确出现的信息：',
-        '用户自述的偏好和日程、双方约定、重要经历、明确的关系表达与修复行为。',
-        '区分用户陈述、角色陈述、引用和假设。',
-        '保留具体日期、说话者、否定和后续更正。',
-        '角色的虚拟日常不是用户的现实经历。',
-        '不要从角色卡示例、注入提示或未发送草稿生成事实。',
-        '不要推断沉默的动机，不诊断用户人格。',
-    ].join('\n'),
+/**
+ * 调研方案 9.4 的三个 mission，dispositions 取中间值。retain_mission 按 ADR 0012 决策 1 第 4 条逐条写清：
+ * mission 放在 Hindsight 内置抽取规则之前、优先级更高，也不进关键词索引（写入的 context 会进，所以角色说明放在这里）。
+ */
+export function bankMissions(names: MacroNames) {
+    const { char, user } = names;
+    return {
+        retain_mission: [
+            `这是${char}和${user}的 QQ 私聊记录。${char}是 AI 扮演的虚拟角色（在读女大学生），${user}是真人。`,
+            '记录里都是真实发出去的消息，不是角色卡示例，也不是草稿。',
+            `提取明确出现的信息：${user}自己说的偏好、日程和计划、经历、身体和心情，双方的约定，关系里的表达和修复。`,
+            `- 每条写清是谁说的、关于谁，用名字（${user}、${char}），不写「用户」「助手」。`,
+            // 不写「虚构」：召回的事实会放进她自己的提示词（10-05 dry-run 时抽出了「林梦瑶说的自己的虚构日常」）
+            `- ${char}说的她自己的日常（上课、吃饭、宿舍、猫）照记，但写明是${char}说的，不能记成${user}的事。`,
+            `- ${user}说的之后要发生的事（考试、面试、出行、看病、约好的事），写成绝对日期，带上午 / 下午 / 晚上或几点；「明天」「下周三」按那一行所在的日期换算。`,
+            `- 绰号、外号写成「绰号（${user}的什么人）」，例如「铁锅（${user}的组长）」。`,
+            '- 否定（不吃香菜）、更正（之前说错了）各单独记一条，保留原话里的否定。',
+            '- 生病、心情不好、很累这类近几天的状态也记，带日期。',
+            `- ${char}复述以前聊过的事，不算新事实；寒暄、表情、单纯的附和不记。`,
+            `- 不推断沉默的动机，不诊断${user}的人格。`,
+        ].join('\n'),
+        ...SHARED_MISSIONS,
+    };
+}
+
+const SHARED_MISSIONS = {
     observations_mission: [
         '只从有来源的事实整合可复用的理解。',
         '偏好和长期模式优先依据重复证据。',
@@ -65,6 +80,8 @@ export const BANK_MISSIONS = {
 // 关系概况每次都放进她的提示词（main 之后），要短、要是她能直接用的话。
 // 10-04 模拟器里旧的源查询（「整理当前关系、未解决事项与修复进展，区分事实和看法」）每次刷新出 1,000–2,000 字的报告：
 // 证据范围说明、六七个小标题、一串「无证据」，结构每次都变，max_tokens 500 也没压住。
+// ADR 0012 决策 1 第 6 条：max_tokens 会变成「写约 N token」的长度指令，取接口允许的最小值 256；刷新用 low 的预算；
+// 写具体日期、过去的事只写结果，免得概况里一直留着过期的「他明天面试」。
 export const RELATIONSHIP_MODEL: MentalModelRequest = {
     id: RELATIONSHIP_MODEL_ID,
     name: '关系概况',
@@ -72,11 +89,12 @@ export const RELATIONSHIP_MODEL: MentalModelRequest = {
         '用中文写一段 150 字以内的内部参考，给扮演林梦瑶的模型在聊天前看：',
         '你们现在的关系怎么样；有什么事还没聊完或没解决；最近答应过、约好的事。',
         '只写聊天里有证据的；没有的就不写，不要写「无证据」「未知」之类的说明。',
+        '写具体的几月几日，不写今天、明天、昨天；已经过去的事只写结果。',
         '一段话，不要标题、列表和来源说明；不制造离线事件，不输出角色回复。',
     ].join(''),
     tags: TAGS,
-    max_tokens: 300,
-    trigger: { refresh_after_consolidation: true, min_refresh_interval_seconds: 1800 },
+    max_tokens: 256,
+    trigger: { refresh_after_consolidation: true, min_refresh_interval_seconds: 1800, budget: 'low' },
 };
 
 /** 记忆按「联系人 + 档位」分开 */
@@ -166,8 +184,10 @@ export class LongTermMemory {
         for (const episode of pending) {
             await this.#options.api.retain(state.bankId, {
                 content: episodeTranscript(episode, names),
-                timestamp: episode.start.toISOString(),
-                context: `QQ 私聊记录。「${names.char}」是 AI 扮演的虚拟角色（在读女大学生），「${names.user}」是和她聊天的真实用户。都是真实发出去的消息，不是角色卡示例。`,
+                // 带本机时区：抽取时按这个时间的日期、星期换算「明天」（ADR 0012 决策 1 第 2 条）
+                timestamp: localIso(episode.start),
+                // context 会进每条事实和关键词索引，只写一句；角色说明在 retain_mission 里（ADR 0012 决策 1 第 1 条）
+                context: `QQ 私聊：${names.char}（AI 扮演）和${names.user}`,
                 document_id: episode.id,
                 tags: TAGS,
                 metadata: { source: 'qq', episode: episode.id, messages: String(episode.messages.length) },
@@ -180,9 +200,10 @@ export class LongTermMemory {
     }
 
     async #ensureBank(contact: MemoryContact, names: MacroNames, state: ContactState): Promise<void> {
-        const version = createHash('sha256').update(JSON.stringify(BANK_MISSIONS)).digest('hex').slice(0, 12);
+        const missions = bankMissions(names);
+        const version = createHash('sha256').update(JSON.stringify(missions)).digest('hex').slice(0, 12);
         if (state.bankConfigured !== version) {
-            const config: BankConfig = { name: `${names.char} × ${names.user}（${contact.tier}）`, ...BANK_MISSIONS };
+            const config: BankConfig = { name: `${names.char} × ${names.user}（${contact.tier}）`, ...missions };
             await this.#options.api.putBank(state.bankId, config);
             state.bankConfigured = version;
             this.#save(contact, state);
@@ -203,10 +224,14 @@ export class LongTermMemory {
         }
     }
 
-    /** 召回和这次对话相关的旧事，整理成一段提示；没有就返回 undefined。出错只记日志。query 不传就用 recallQuery */
-    async recall(contact: MemoryContact, chat: ChatMessage[], now: Date, query = recallQuery(chat)): Promise<string | undefined> {
+    /**
+     * 召回和这次对话相关的旧事，整理成一段提示；没有就返回 undefined。出错只记日志。
+     * query 不传就用 recallQuery；window：时间检索用的时间窗（只加权、不过滤），主动找他时用（ADR 0012 决策 1 第 7 条）
+     */
+    async recall(contact: MemoryContact, chat: ChatMessage[], now: Date, options: { query?: string; window?: { start: Date; end: Date } } = {}): Promise<string | undefined> {
         const state = this.#load(contact);
         if (!state.bankConfigured) return undefined;
+        const query = options.query ?? recallQuery(chat);
         if (!query) return undefined;
         const request: RecallRequest = {
             query,
@@ -214,10 +239,12 @@ export class LongTermMemory {
             prefer_observations: true,
             budget: 'low',
             max_tokens: 600,
-            query_timestamp: now.toISOString(),
+            // 带本机时区：「今天」「昨天」按本地的日历日算
+            query_timestamp: localIso(now),
             tags: TAGS,
             tags_match: 'all_strict',
             include: { entities: null },
+            ...(options.window ? { temporal_window: { start: localIso(options.window.start), end: localIso(options.window.end) } } : {}),
         };
         let results: RecallResult[];
         try {
@@ -264,7 +291,9 @@ export class LongTermMemory {
         const fresh: ContactState = { bankId: this.bankId(contact), retained: {} };
         if (!existsSync(path)) return fresh;
         const data = JSON.parse(readFileSync(path, 'utf8')) as Partial<ContactState>;
-        return { ...fresh, ...data, bankId: this.bankId(contact), retained: data.retained ?? {} };
+        // 换了 bank 前缀：进度是旧 bank 的，新 bank 从头写 mission 和片段（ADR 0012 决策 1 第 9 条）
+        if (data.bankId && data.bankId !== fresh.bankId) return fresh;
+        return { ...fresh, ...data, bankId: fresh.bankId, retained: data.retained ?? {} };
     }
 
     #save(contact: MemoryContact, state: ContactState): void {
@@ -272,18 +301,25 @@ export class LongTermMemory {
     }
 }
 
-/** 查询：她上一句 + 之后对方发的几条（调研方案 9.5：要带上这次的话题和指代），最多 400 字 */
+/** 查询最多多少字：超过 500 token 时 Hindsight 直接返回 400（ADR 0012 问题 8） */
+export const MAX_QUERY_CHARS = 300;
+
+/** 查询：她上一句 + 之后对方发的几条（调研方案 9.5：要带上这次的话题和指代），留最后 MAX_QUERY_CHARS 字 */
 export function recallQuery(chat: ChatMessage[]): string {
     const lastReply = chat.findLastIndex(m => m.role === 'assistant');
     const lines = chat.slice(lastReply + 1).filter(m => m.role === 'user').map(m => `对方：${m.content}`);
     if (lines.length === 0) return '';
     if (lastReply >= 0) lines.unshift(`她：${chat[lastReply]!.content}`);
-    return lines.join('\n').slice(-400);
+    return lines.join('\n').slice(-MAX_QUERY_CHARS);
 }
 
-/** 主动找他时的查询（ADR 0011 决策 3）：没有「他这次说的」，用最近几句（双方都算），最多 400 字 */
-export function recentQuery(chat: ChatMessage[], count = 6): string {
-    return chat.slice(-count).map(m => `${m.role === 'user' ? '对方' : '她'}：${m.content}`).join('\n').slice(-400);
+/**
+ * 主动找他时的查询（ADR 0012 决策 1 第 7 条）：没有「他这次说的」。最近几句常是「晚安」「明天见」，里面的「明天」会按现在去解析，
+ * 所以开头写想知道什么（topic：他最近在忙什么、这几天的安排，或者待跟进的那件事），再带最后两句当话题；日期交给时间窗
+ */
+export function initiateQuery(chat: ChatMessage[], topic: string): string {
+    const recent = chat.slice(-2).map(m => `${m.role === 'user' ? '对方' : '她'}：${m.content}`);
+    return [topic, ...recent].join('\n').slice(0, MAX_QUERY_CHARS);
 }
 
 /** 当前片段（最后一条消息所在的片段）的 id */
@@ -294,7 +330,8 @@ function currentEpisodeId(chat: ChatMessage[]): string | undefined {
 
 export function formatRecalled(results: RecallResult[]): string | undefined {
     const lines = results.slice(0, MAX_RECALLED).map(r => {
-        const when = r.occurred_start ?? r.mentioned_at;
+        // 观察（多条事实整合的）的 occurred_start 是来源里最早的日期，「现在戒糖了」会被标成最早那天：用最近一次被提到的时间
+        const when = r.type === 'observation' ? r.mentioned_at ?? r.occurred_start : r.occurred_start ?? r.mentioned_at;
         const date = when ? new Date(when) : undefined;
         const prefix = date && !Number.isNaN(date.getTime()) ? `${date.getMonth() + 1}月${date.getDate()}日：` : '';
         // 事实后面常带「 | When: … | Involving: …」，日期已经写在前面了
