@@ -29,6 +29,7 @@ export function booksForTier(source: CharacterSource, tier: string): CardBook[] 
             kind: book.kind,
             platform: book.platform,
             status: book.status,
+            ...(book.activity ? { activity: { ...book.activity } } : {}),
             ...(book.total ? { total: { amount: book.total.amount, unit: book.total.unit } } : {}),
             progress: {
                 startDay: book.progress.start_day,

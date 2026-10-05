@@ -57,6 +57,7 @@ export interface CardBook {
     kind: string;
     platform: string;
     status: string;
+    activity?: { window: 'morning' | 'afternoon' | 'evening'; text: string };
     total?: { amount: number; unit: string };
     progress: {
         startDay: string;

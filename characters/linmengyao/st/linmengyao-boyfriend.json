@@ -387,6 +387,10 @@
                         "kind": "日本轻小说（网络小说→实体书）",
                         "platform": "轻小说（成为小说家吧连载→主妇之友社实体书）",
                         "status": "连载中（动画两期已播）",
+                        "activity": {
+                            "window": "evening",
+                            "text": "窝在床上看《药屋少女的呢喃》"
+                        },
                         "progress": {
                             "startDay": "2026-10-03",
                             "start": 6,

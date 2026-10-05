@@ -173,6 +173,8 @@ export interface BookSource {
     kind: string;
     platform: string;
     status: string;
+    /** herDays 开着时并入作息的空闲活动；放在新文件里，旧 schedule.yml 不加键 */
+    activity?: { window: 'morning' | 'afternoon' | 'evening'; text: string };
     tiers: string[];
     /** 有可靠来源的总量；《药屋》没有可靠总卷数，所以不写 */
     total?: { amount: number; unit: string; source: string };
@@ -683,7 +685,7 @@ function checkBooks(raw: unknown): BooksSource {
     const books = root.at('books').array(o.books).map((value, i): BookSource => {
         const c = root.at(`books[${i}]`);
         const book = c.object(value);
-        c.keys(book, ['id', 'title', 'aliases', 'author', 'kind', 'platform', 'status', 'tiers', 'total', 'progress', 'attitude', 'unread_keywords', 'nodes', 'note']);
+        c.keys(book, ['id', 'title', 'aliases', 'author', 'kind', 'platform', 'status', 'activity', 'tiers', 'total', 'progress', 'attitude', 'unread_keywords', 'nodes', 'note']);
         const progressRaw = c.at('progress').object(book.progress);
         c.at('progress').keys(progressRaw, ['start_day', 'start', 'every_days', 'amount', 'unit', 'max', 'state']);
         const stateText = c.at('progress.state').optionalString(progressRaw.state) as BookState | undefined;
@@ -727,11 +729,19 @@ function checkBooks(raw: unknown): BooksSource {
             return withNote(n.at('note'), node.note, base);
         });
         if (new Set(nodes.map(node => node.id)).size !== nodes.length) c.at('nodes').fail('节点 id 重复');
+        let activity: BookSource['activity'];
+        if (book.activity !== undefined && book.activity !== null) {
+            const item = c.at('activity').object(book.activity);
+            c.at('activity').keys(item, ['window', 'text']);
+            const window = c.at('activity.window').string(item.window) as NonNullable<BookSource['activity']>['window'];
+            if (!['morning', 'afternoon', 'evening'].includes(window)) c.at('activity.window').fail('应为 morning / afternoon / evening');
+            activity = { window, text: c.at('activity.text').string(item.text) };
+        }
         const base: BookSource = {
             id: c.at('id').string(book.id), title: c.at('title').string(book.title),
             aliases: c.at('aliases').strings(book.aliases), author: c.at('author').string(book.author),
             kind: c.at('kind').string(book.kind), platform: c.at('platform').string(book.platform), status: c.at('status').string(book.status),
-            tiers: c.at('tiers').strings(book.tiers, { allowEmpty: false }), ...(total ? { total } : {}), progress,
+            ...(activity ? { activity } : {}), tiers: c.at('tiers').strings(book.tiers, { allowEmpty: false }), ...(total ? { total } : {}), progress,
             attitude: c.at('attitude').string(book.attitude), unread_keywords: c.at('unread_keywords').strings(book.unread_keywords), nodes,
         };
         return withNote(c.at('note'), book.note, base);
