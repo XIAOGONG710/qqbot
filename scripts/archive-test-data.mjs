@@ -29,7 +29,7 @@ if (args.length) {
 }
 
 // QQ 号只留尾号（输出可能贴进聊天或报告里）
-const rel = path => relative(repoRoot, path).replace(/\d{7,}/g, qq => `…${qq.slice(-2)}`);
+const rel = path => relative(repoRoot, path).replace(/(?<=[\\/])\d{5,}(?=[-.])/g, qq => `…${qq.slice(-2)}`);
 let result;
 try {
     result = archiveTestData({
