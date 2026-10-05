@@ -62,7 +62,7 @@ export interface Extracted {
 export function parseExtraction(text: string): Extracted {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
-    if (start < 0 || end < start) throw new Error(`待跟进：模型输出里没有 JSON：${text.slice(0, 80)}`);
+    if (start < 0 || end < start) throw new Error(`模型输出里没有 JSON：${text.slice(0, 80).replace(/\s*\n\s*/g, ' / ')}`);
     const data = JSON.parse(text.slice(start, end + 1)) as { add?: unknown; resolved?: unknown };
     const add = (Array.isArray(data.add) ? data.add : []).flatMap(item => {
         const o = item as Record<string, unknown>;
