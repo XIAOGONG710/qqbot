@@ -6,6 +6,7 @@
 // 每天的条数有上限：候选比剩下的条数多时按优先级留（日子 > 待跟进 > 早安 > 下课 > 冷场 > 睡前），日子不受上限和「没回就停」限制。
 // 错过的不补：到点时没在跑、或者过了 GRACE_MS 才算到的候选，这一天就不发了。
 
+import { expired, firstAsk, partText, whenText, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
 import { pendingMessages, pick } from './reply-timing.ts';
 import { classesOn, formatDate, stateAt, wakeOn, type Schedule } from './schedule.ts';
@@ -66,6 +67,10 @@ export interface Candidate {
     importantDays?: ImportantDay[];
     /** 下课：几点下的课（之后聊过就不发） */
     classEnd?: number;
+    /** 待跟进：问哪件事；when 是相对这一天的说法（「昨天下午」）；atMorning：并进了早安 */
+    followUp?: { item: FollowUp; when: string; atMorning: boolean };
+    /** 早安：他今天要经历的事（「下午 字节的面试」），说明里提一句 */
+    today?: string[];
 }
 
 export interface ProactiveInput {
@@ -77,6 +82,8 @@ export interface ProactiveInput {
     history: readonly StoredMessage[];
     records: readonly ProactiveRecord[];
     mode: 'dryRun' | 'on';
+    /** 还没问的待跟进的事 */
+    followUps?: readonly FollowUp[];
 }
 
 const MIN = 60_000;
@@ -101,6 +108,9 @@ const QUIET_AFTER_WAKE_MS = HOUR;
 const MIDNIGHT_MIN: [number, number] = [0, 5];
 /** 落在上课时间里的候选推到下课后这么多分钟 */
 const PUSHED_MIN: [number, number] = [5, 15];
+/** 待跟进：第一天问的时刻再往后抖这么多分钟；早安被日子占了时，中午 12:00 起这么多分钟 */
+const FOLLOW_UP_JITTER_MIN: [number, number] = [0, 30];
+const FOLLOW_UP_NOON_MIN: [number, number] = [0, 60];
 /** 道过晚安：她或他最后一句里有这些 */
 const GOODNIGHT = /晚安|睡了|去睡|先睡|睡吧|早点睡|明天见|明天聊/;
 
@@ -177,8 +187,32 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
         add('dates', addDays(day, 1).getTime() + pick(seed('dates midnight'), 'at', minutes(MIDNIGHT_MIN)),
             `今天是${names(midnight)}，零点`, { importantDays: midnight }, ':midnight');
     }
+
+    // 待跟进：每天最多问一件，挑最早该问的。第一天在那件事之后问；晚上的事和第一天没问到的，之后并进早安（早安被日子占了就中午）
+    let followUpAtMorning = false;
+    if (enabled.has('follow_up')) {
+        const due = (input.followUps ?? []).flatMap(item => {
+            if (expired(item, day)) return [];
+            const first = firstAsk(item);
+            if (item.date === dayText && first !== undefined) return [{ item, at: first + pick(seed(`follow_up ${item.id}`), 'at', minutes(FOLLOW_UP_JITTER_MIN)), atMorning: false }];
+            if (dayText <= item.date) return [];
+            if (!atMorning.length) return [{ item, at: morning, atMorning: true }];
+            return [{ item, at: at(day, '12:00').getTime() + pick(seed(`follow_up ${item.id} noon`), 'at', minutes(FOLLOW_UP_NOON_MIN)), atMorning: false }];
+        }).sort((a, b) => a.at - b.at);
+        const first = due[0];
+        if (first) {
+            const when = whenText(first.item, day);
+            add('follow_up', first.at, `问${when}的${first.item.what}`, { followUp: { item: first.item, when, atMorning: first.atMorning } });
+            followUpAtMorning = first.atMorning;
+        }
+    }
+
     if (atMorning.length) add('dates', morning, `今天是${names(atMorning)}，起床后`, { importantDays: atMorning });
-    else if (enabled.has('morning')) add('morning', morning, `起床后 ${Math.round((morning - wake) / MIN)} 分钟`);
+    else if (enabled.has('morning') && !followUpAtMorning) {
+        // 他今天要经历的事：早安里提一句
+        const today = (input.followUps ?? []).filter(f => f.date === dayText).map(f => `${partText(f.time)}${f.what}`);
+        add('morning', morning, `起床后 ${Math.round((morning - wake) / MIN)} 分钟`, today.length ? { today } : {});
+    }
 
     if (enabled.has('after_class')) {
         const last = classesOn(schedule, day).lessons.at(-1);
@@ -297,6 +331,9 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
         case 'quiet':
             if (lastTime === undefined || now - lastTime < QUIET_MS) return '没到 8 小时';
             break;
+        case 'follow_up':
+            if (!input.followUps?.some(f => f.id === candidate.followUp!.item.id)) return '那件事已经了结';
+            break;
     }
     return undefined;
 }
@@ -307,12 +344,13 @@ export const MAX_PROACTIVE_BUBBLES = 2;
 /** 提示词里的说明（ADR 0011 决策 3）：这次是你主动找他、为什么。userName 是称呼（{{user}}） */
 export function occasionNote(candidate: Candidate, userName: string): string {
     const names = candidate.importantDays?.map(d => d.name).join('、') ?? '';
+    const followUp = candidate.followUp;
     const why: Record<Occasion, () => string> = {
-        morning: () => `你起床没多久，跟${userName}说早安`,
+        morning: () => `你起床没多久，跟${userName}说早安${candidate.today ? `；${userName}今天${candidate.today.join('、')}，可以说句加油` : ''}`,
         after_class: () => `你今天的课上完了，跟${userName}说一声`,
         bedtime: () => `时间不早了，跟${userName}道个晚安`,
         quiet: () => `你们大半天没说话了，你想找${userName}说两句（对方可能在忙，别怪对方没找你）`,
-        follow_up: () => candidate.reason,
+        follow_up: () => `${followUp!.atMorning ? `你起床没多久，跟${userName}说早安，顺便` : ''}问问${userName}${followUp!.when}的${followUp!.item.what}怎么样了（${userName}之前跟你说过）`,
         dates: () => (candidate.id.endsWith(':midnight')
             ? `零点了，今天是${names}，你一直记着，第一时间跟${userName}说`
             : `今天是${names}。你起床没多久，跟${userName}说早安，也提一句这个日子`),
@@ -324,7 +362,7 @@ export function occasionNote(candidate: Candidate, userName: string): string {
 export function recallTopic(candidate: Candidate, userName: string): string {
     const recent = `${userName}最近在忙什么、身体和心情怎么样、这几天有什么安排或约好的事`;
     if (candidate.occasion === 'dates') return `${candidate.importantDays!.map(d => d.name).join('、')}；${recent}`;
-    if (candidate.occasion === 'follow_up') return `${candidate.reason}；${recent}`;
+    if (candidate.occasion === 'follow_up') return `${userName}${candidate.followUp!.when}的${candidate.followUp!.item.what}；${recent}`;
     return recent;
 }
 

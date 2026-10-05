@@ -4,11 +4,17 @@
 // - 错过的不补：启动、重新算的时候已经过了 GRACE_MS 的候选记成「错过了，不补」。
 // - 聊天记录变了（收到、补回）就 poke()：重新算（冷场的时刻跟着最后一条消息走）。
 // - 等待用可替换的 waitUntil（bot 用真实定时器，模拟器用虚拟时钟）。
+// - 待跟进的事（follow-ups.ts）也存在这个文件里：syncFollowUps() 从结束了的聊天片段里抽（调用方定时调），
+//   问过（发了或试运行）就删，过了 FOLLOW_UP_DAYS 天没问到也删。
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Contact } from './config.ts';
+import { expired, extractionPrompt, FOLLOW_UP_DAYS, parseExtraction, partText, type Extracted, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
+import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './memory/episodes.ts';
+import type { OpenAIMessage } from './prompt.ts';
+import type { MacroNames } from './st/macros.ts';
 import {
     blockReason, candidateLabel, herDay, MAX_PROACTIVE_BUBBLES, occasionNote, planFrom, recallTopic,
     type Candidate, type ImportantDay, type ProactiveInput, type ProactiveRecord, type ProactiveSettings,
@@ -35,6 +41,10 @@ export interface PlannerDeps {
     now?: () => number;
     /** 等到某个时刻；signal 中止时马上返回 */
     waitUntil?: (at: number, signal: AbortSignal) => Promise<void>;
+    /** 抽待跟进的事用的模型调用；不传就不抽 */
+    extract?: (messages: OpenAIMessage[]) => Promise<string>;
+    /** 转写和抽取提示词里的称呼 */
+    names: MacroNames;
 }
 
 export interface PlannerStatus {
@@ -50,6 +60,8 @@ export interface PlannerStatus {
 export interface Planner {
     /** 聊天记录变了：重新算下一次 */
     poke(): void;
+    /** 从结束了的聊天片段里抽待跟进的事（同一时间只跑一个） */
+    syncFollowUps(): Promise<void>;
     stop(): void;
     status(): PlannerStatus;
     /** 跑完当前这一轮（测试用） */
@@ -80,7 +92,12 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     mkdirSync(deps.dir, { recursive: true });
     const tag = deps.mode === 'dryRun' ? '（试运行）' : '';
 
-    let records = load();
+    const state = load();
+    let records = state.records;
+    let followUps = state.followUps;
+    /** 片段 id → 抽过了（true），或者抽失败了几次 */
+    const extracted = state.extracted;
+    let extracting: Promise<void> | undefined;
     const startedAt = now();
     let stopped = false;
     let wake: AbortController | undefined;
@@ -88,15 +105,72 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     let paused: string | undefined;
     let loggedNext: string | undefined;
 
-    function load(): ProactiveRecord[] {
-        if (!existsSync(path)) return [];
-        return (JSON.parse(readFileSync(path, 'utf8')) as { records?: ProactiveRecord[] }).records ?? [];
+    function load(): { records: ProactiveRecord[]; followUps: FollowUp[]; extracted: Record<string, true | number> } {
+        const data = existsSync(path)
+            ? JSON.parse(readFileSync(path, 'utf8')) as { records?: ProactiveRecord[]; followUps?: FollowUp[]; extracted?: Record<string, true | number> }
+            : {};
+        return { records: data.records ?? [], followUps: data.followUps ?? [], extracted: data.extracted ?? {} };
     }
 
     function save(): void {
         const keepFrom = now() - KEEP_DAYS * DAY_MS;
         records = records.filter(r => Date.parse(r.at) >= keepFrom);
-        writeFileSync(path, JSON.stringify({ records }, null, 2) + '\n');
+        // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
+        for (const id of Object.keys(extracted)) if (Number(id.slice(3)) < keepFrom) delete extracted[id];
+        writeFileSync(path, JSON.stringify({ records, followUps, extracted }, null, 2) + '\n');
+    }
+
+    /** 删掉一件待跟进的事 */
+    function forget(id: string, why: string): void {
+        const item = followUps.find(f => f.id === id);
+        if (!item) return;
+        followUps = followUps.filter(f => f.id !== id);
+        save();
+        deps.log(`待跟进：${why}，忘掉「${item.what}」（${item.date} ${partText(item.time)}）`);
+    }
+
+    async function extractNow(): Promise<void> {
+        if (!deps.extract) return;
+        const history = deps.history.load(contact.qq);
+        const closed = splitEpisodes(history).filter(e => now() - e.end.getTime() >= EPISODE_GAP_MS && extracted[e.id] !== true);
+        let changed = false;
+        for (const episode of closed) {
+            if (stopped) return;
+            // 只有她说话的片段（没人回的主动消息）不用抽
+            if (!episode.messages.some(m => m.role === 'user')) {
+                extracted[episode.id] = true;
+                save();
+                continue;
+            }
+            let result: Extracted;
+            try {
+                result = parseExtraction(await deps.extract(extractionPrompt(episodeTranscript(episode, deps.names), followUps, deps.names)));
+            } catch (error) {
+                const tries = (typeof extracted[episode.id] === 'number' ? extracted[episode.id] as number : 0) + 1;
+                // 连着失败 3 次就放弃这一段（别一直调模型）
+                extracted[episode.id] = tries >= 3 ? true : tries;
+                save();
+                deps.log(`待跟进：片段 ${episode.id} 抽取失败（第 ${tries} 次${tries >= 3 ? '，不再抽' : '，下次再抽'}）：${error instanceof Error ? error.message : String(error)}`);
+                continue;
+            }
+            for (const id of result.resolved) {
+                if (followUps.some(f => f.id === id)) {
+                    forget(id, '他已经说了结果');
+                    changed = true;
+                }
+            }
+            const today = herDay(deps.schedule, new Date(now()));
+            for (const [i, add] of result.add.entries()) {
+                const item: FollowUp = { id: `f-${episode.start.getTime()}-${i + 1}`, ...add, episode: episode.id };
+                if (expired(item, today) || followUps.some(f => f.what === item.what && f.date === item.date)) continue;
+                followUps = [...followUps, item];
+                changed = true;
+                deps.log(`待跟进：记下「${item.what}」（${item.date} ${partText(item.time)}）`);
+            }
+            extracted[episode.id] = true;
+            save();
+        }
+        if (changed) wake?.abort();
     }
 
     function record(candidate: Candidate, patch: Pick<ProactiveRecord, 'result'> & Partial<ProactiveRecord>): ProactiveRecord {
@@ -110,7 +184,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
 
     const input = (): ProactiveInput => ({
         qq: contact.qq, schedule: deps.schedule, settings: deps.settings, dates: deps.dates,
-        history: deps.history.load(contact.qq), records, mode: deps.mode,
+        history: deps.history.load(contact.qq), records, mode: deps.mode, followUps,
     });
 
     function describe(candidate: Candidate): string {
@@ -141,9 +215,11 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             case 'sent':
                 record(candidate, { result: 'sent', at: committed!.at, messageIds: outcome.messageIds });
                 deps.log(`主动找他（${candidateLabel(candidate)}）${outcome.parts.length > 1 ? `（${outcome.parts.length} 条）` : ''}：${outcome.parts.join(' / ')}`);
+                if (candidate.followUp) forget(candidate.followUp.item.id, '问过了');
                 break;
             case 'dryRun':
                 deps.log(`主动（试运行，没发）：${candidateLabel(candidate)}；今天第 ${usedToday()} 条；本来要说：${outcome.parts.join(' / ')}`);
+                if (candidate.followUp) forget(candidate.followUp.item.id, '试运行里问过了');
                 break;
             case 'skipped':
                 record(candidate, { result: 'skipped', reason: outcome.reason });
@@ -163,6 +239,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
 
     async function loop(): Promise<void> {
         while (!stopped) {
+            const today = herDay(deps.schedule, new Date(now()));
+            for (const item of followUps.filter(f => expired(f, today))) forget(item.id, `过了 ${FOLLOW_UP_DAYS} 天还没问到`);
             const plan = planFrom(now(), input());
             for (const candidate of plan.missed) {
                 // 计划器在跑的时候过去的：那时没排上（等他回、条数留给了优先级更高的）；启动之前过去的：bot 没在跑，错过了
@@ -199,6 +277,10 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     return {
         poke() {
             wake?.abort();
+        },
+        syncFollowUps() {
+            extracting ??= extractNow().finally(() => { extracting = undefined; });
+            return extracting;
         },
         stop() {
             stopped = true;

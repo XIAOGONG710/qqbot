@@ -8,6 +8,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { chatCompletion } from './llm.ts';
 import { acquireLock } from './lock.ts';
 import type { Log } from './log.ts';
 import { ChatHistory } from './history.ts';
@@ -193,10 +194,21 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 responder: responders.get(contact.qq)!,
                 dir: join(config.dataDir, 'proactive'),
                 log: message => log(`[${contact.qq}] ${message}`),
+                names: { user: contact.name, char: character.name },
+                // 待跟进的事：用同一个模型配置抽（测试替换的 generate 也用在这里）
+                extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(config.llm, messages, { log })),
                 ...(pipeline?.now ? { now: pipeline.now } : {}),
                 ...(pipeline?.waitUntil ? { waitUntil: pipeline.waitUntil } : {}),
             }));
         }
+        if (planners.size) {
+            followUpTimer = setInterval(syncFollowUps, MEMORY_SYNC_MS);
+            followUpTimer.unref();
+        }
+    }
+    let followUpTimer: ReturnType<typeof setInterval> | undefined;
+    function syncFollowUps(): void {
+        for (const planner of planners.values()) void planner.syncFollowUps();
     }
 
     let stopped = false;
@@ -281,6 +293,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                     syncMemory();
                     startPlanners();
                     for (const planner of planners.values()) planner.poke();
+                    syncFollowUps();
                 }
             }
         },
@@ -295,6 +308,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             for (const planner of planners.values()) planner.stop();
             for (const responder of responders.values()) responder.stop();
             if (memoryTimer) clearInterval(memoryTimer);
+            if (followUpTimer) clearInterval(followUpTimer);
             releaseLock();
         },
         status() {
