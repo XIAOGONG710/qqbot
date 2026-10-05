@@ -6,12 +6,15 @@
 // - 等待用可替换的 waitUntil（bot 用真实定时器，模拟器用虚拟时钟）。
 // - 待跟进的事（follow-ups.ts）也存在这个文件里：syncFollowUps() 从结束了的聊天片段里抽（调用方定时调），
 //   问过（发了或试运行）就删，过了 FOLLOW_UP_DAYS 天没问到也删。
+// - 记录文件先写临时文件再改名；读坏了挪开、从空记录开始（ADR 0013 决策 3）：过去超过 GRACE_MS 的候选记成「错过了，不补」，
+//   刚发过的有「一小时内聊过」挡着，计划器不会因为一个坏文件起不来。
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Contact } from './config.ts';
 import { expired, extractionPrompt, FOLLOW_UP_DAYS, parseExtraction, partText, type Extracted, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
+import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './memory/episodes.ts';
 import type { OpenAIMessage } from './prompt.ts';
 import type { MacroNames } from './st/macros.ts';
@@ -108,9 +111,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     let loggedNext: string | undefined;
 
     function load(): { records: ProactiveRecord[]; followUps: FollowUp[]; extracted: Record<string, true | number> } {
-        const data = existsSync(path)
-            ? JSON.parse(readFileSync(path, 'utf8')) as { records?: ProactiveRecord[]; followUps?: FollowUp[]; extracted?: Record<string, true | number> }
-            : {};
+        const data = readJsonOr<{ records?: ProactiveRecord[]; followUps?: FollowUp[]; extracted?: Record<string, true | number> }>(
+            path, {}, message => deps.log(`主动：${message}`));
         return { records: data.records ?? [], followUps: data.followUps ?? [], extracted: data.extracted ?? {} };
     }
 
@@ -119,7 +121,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         records = records.filter(r => Date.parse(r.at) >= keepFrom);
         // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
         for (const id of Object.keys(extracted)) if (Number(id.slice(3)) < keepFrom) delete extracted[id];
-        writeFileSync(path, JSON.stringify({ records, followUps, extracted }, null, 2) + '\n');
+        writeJsonAtomic(path, { records, followUps, extracted });
     }
 
     /** 删掉一件待跟进的事 */

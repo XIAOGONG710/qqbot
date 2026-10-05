@@ -3,10 +3,12 @@
 // 换档时还记下时间：之后读聊天记录只看这之后的（currentTierHistory），换档前的消息不进提示词、不写进新档位的记忆；
 // 启动时补回漏掉的消息也只取这之后的，否则归档掉的旧记录会从 QQ 的消息历史里又被拉回来。
 // 10-04 尾号 73 降档时，聊天记录还没归档 bot 就启动了一次，旧片段直接写进了同学档的 bank：只靠手动归档不够。
+// 写的时候先写临时文件再改名（ADR 0013 决策 3）；读坏了照样报错、不启动：丢了换档时间，换档前的消息会重新进提示词和新档位的记忆。
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { CONTACT_TIERS, UNLISTED_TIER, type Tier } from './config.ts';
 import type { ChatHistory } from './history.ts';
+import { writeJsonAtomic } from './json-file.ts';
 
 const ORDER: readonly string[] = [...CONTACT_TIERS, UNLISTED_TIER];
 
@@ -22,7 +24,13 @@ export class TierRecord {
 
     constructor(path: string) {
         this.#path = path;
-        const data = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) as Record<string, string | Entry> : {};
+        let data: Record<string, string | Entry> = {};
+        try {
+            if (existsSync(path)) data = JSON.parse(readFileSync(path, 'utf8')) as Record<string, string | Entry>;
+        } catch (error) {
+            throw new Error(`${path} 读不了（${error instanceof Error ? error.message : String(error)}）：它记着每个联系人换档的时间，` +
+                '当成空的会让换档前的消息重新进提示词和记忆，所以不启动；修好或删掉它（删掉 = 都当没换过档）再启动');
+        }
         // 旧格式只存档位名
         this.#tiers = Object.fromEntries(Object.entries(data).map(([qq, v]) => [qq, typeof v === 'string' ? { tier: v } : v]));
     }
@@ -32,7 +40,7 @@ export class TierRecord {
         const previous = this.#tiers[String(qq)]?.tier;
         if (previous === tier) return undefined;
         this.#tiers[String(qq)] = previous === undefined ? { tier } : { tier, since: now.toISOString() };
-        writeFileSync(this.#path, JSON.stringify(this.#tiers, null, 2) + '\n');
+        writeJsonAtomic(this.#path, this.#tiers);
         return previous === undefined ? undefined : tierChangeWarning(qq, previous, tier);
     }
 

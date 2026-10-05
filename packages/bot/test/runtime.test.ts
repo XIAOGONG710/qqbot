@@ -758,4 +758,15 @@ describe('档位记录', () => {
             rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    test('文件读坏了不当成空的：报错说明原因，不启动', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-tiers-'));
+        try {
+            const path = join(dir, 'tiers.json');
+            writeFileSync(path, '{"1": {"tier": "classmate", "since"');
+            assert.throws(() => new TierRecord(path), /tiers\.json 读不了.*换档前的消息重新进提示词/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });

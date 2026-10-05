@@ -3,15 +3,17 @@
 // - 写入：聊天记录按片段（episodes.ts）写入，一个片段一个 document_id。片段结束（安静 45 分钟）时写，
 //   还在进行的片段每多 OPEN_EPISODE_STEP 条也整段写一次，免得早先的话被挤出上下文后又还没进记忆。
 //   同一联系人的写入串行执行；每个片段写到第几条记在 runtime/bot/memory/<QQ>-<档位>.json，失败的下次再写。
+//   这个进度文件读坏了就从头写（同一个 document_id 再写一次是覆盖，不会重复，ADR 0013 决策 3）。
 // - 召回：生成前用这次对方发的几条（加上她上一句）去查，限时；查不到、超时、出错都不注入。
 //   结果里属于当前片段的去掉（那部分原文已经在上下文里）。
 // - 关系概况：bank 里的 Mental Model「relationship」，后台定期读取，放在 main 之后。
 // bank ID 不含原始 QQ 号（调研方案 9.3），用 QQ 号和档位的哈希。
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { StoredMessage } from '../history.ts';
+import { readJsonOr, writeJsonAtomic } from '../json-file.ts';
 import type { ChatMessage } from '../prompt.ts';
 import type { MacroNames } from '../st/macros.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes } from './episodes.ts';
@@ -289,15 +291,14 @@ export class LongTermMemory {
     #load(contact: MemoryContact): ContactState {
         const path = this.#path(contact);
         const fresh: ContactState = { bankId: this.bankId(contact), retained: {} };
-        if (!existsSync(path)) return fresh;
-        const data = JSON.parse(readFileSync(path, 'utf8')) as Partial<ContactState>;
+        const data = readJsonOr<Partial<ContactState>>(path, {}, message => this.#options.log(`[${contact.qq}] ${message}`));
         // 换了 bank 前缀：进度是旧 bank 的，新 bank 从头写 mission 和片段（ADR 0012 决策 1 第 9 条）
         if (data.bankId && data.bankId !== fresh.bankId) return fresh;
         return { ...fresh, ...data, bankId: fresh.bankId, retained: data.retained ?? {} };
     }
 
     #save(contact: MemoryContact, state: ContactState): void {
-        writeFileSync(this.#path(contact), JSON.stringify(state, null, 2) + '\n');
+        writeJsonAtomic(this.#path(contact), state);
     }
 }
 
