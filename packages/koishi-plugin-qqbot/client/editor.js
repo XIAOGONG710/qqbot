@@ -1,12 +1,16 @@
 // 编辑页的通用部分（ADR 0010）：角色资料整份读一次，各编辑页共用；每页一份草稿，「保存 / 检查 / 还原」；
 // 左边选一段，右边用控制台的 k-form 编辑（Schema 在前端用 @koishijs/client 导出的 Schema 搭）。
 // 保存时服务端先生成全部档位、做档位隐私检查，不过就不写，逐条返回问题（src/console.ts 的 saveCharacter）。
-import { computed, defineComponent, h, ref, watch } from 'vue';
+import { computed, defineComponent, effectScope, h, ref, watch } from 'vue';
 import { message, send, store } from '@koishijs/client';
 import { c, clone, firstLine, tierLabel } from './common.js';
 
 /** 整份角色资料（服务端 readSource 的结果）；保存成功后只换掉存的那一部分，别的页没保存的草稿不受影响 */
 export const character = { source: ref(null), error: ref(''), loading: false };
+
+// 控制台断线重连时会把页面重新挂载，组件里的状态全丢，但模块不会重新加载：
+// 草稿、选中的那一项放在模块里，侦听器挂在不随组件卸载的 effectScope 上，重连后接着用
+const detached = effectScope(true);
 
 async function loadCharacter() {
     if (character.loading) return;
@@ -27,16 +31,31 @@ let watching = false;
 function ensureLoaded() {
     if (watching) return;
     watching = true;
-    watch(() => store.qqbot, value => { if (value && !character.source.value) void loadCharacter(); }, { immediate: true });
+    detached.run(() => watch(() => store.qqbot, value => { if (value && !character.source.value) void loadCharacter(); }, { immediate: true }));
 }
 
-/** 一个部分（persona / scenes / schedule / tiers）的草稿和保存 */
+const parts = new Map();
+
+// 关掉或刷新浏览器页时还有没保存的修改：让浏览器先问一句
+window.addEventListener('beforeunload', event => {
+    if ([...parts.values()].some(state => state.dirty.value)) event.preventDefault();
+});
+
+/** 一个部分（persona / scenes / schedule / tiers）的草稿和保存；每部分只建一份，页面重新挂载时还是它 */
 export function usePart(part) {
     ensureLoaded();
+    if (!parts.has(part)) parts.set(part, detached.run(() => createPart(part)));
+    return parts.get(part);
+}
+
+function createPart(part) {
     const draft = ref(null);
     const initial = ref(null);
     const busy = ref(false);
     const result = ref(null);
+    // 页面上选中的那一项：人设、作息、档位是左边的段落 key，世界书是场景的下标
+    const selected = ref(null);
+    // 只在这一部分的资料换了（读到、保存后读回）时重置草稿；页面重新挂载不会
     watch(() => character.source.value?.[part], value => {
         if (!value) return;
         draft.value = clone(value);
@@ -64,14 +83,14 @@ export function usePart(part) {
     }
 
     return {
-        draft, initial, busy, result, dirty,
+        draft, initial, busy, result, dirty, selected,
         save: () => run(true),
         check: () => run(false),
         revert: () => { draft.value = clone(initial.value); result.value = null; },
     };
 }
 
-/** 保存 / 检查 / 还原 和结果 */
+/** 保存 / 检查 / 还原 和结果；返回两个节点而不包一层：按钮条要固定在顶上（sticky），只能在整页内容里固定 */
 export function toolbar(state) {
     const buttons = h('div', { class: 'qqbot-toolbar' }, [
         h(c('el-button'), { type: 'primary', disabled: !state.dirty.value || state.busy.value, onClick: state.save }, () => '保存'),
@@ -79,7 +98,7 @@ export function toolbar(state) {
         h(c('el-button'), { disabled: !state.dirty.value || state.busy.value, onClick: state.revert }, () => '还原'),
         h('span', { class: 'qqbot-muted' }, state.dirty.value ? '有没保存的修改' : '和存下的一样'),
     ]);
-    return h('div', null, [buttons, resultView(state.result.value)]);
+    return [buttons, resultView(state.result.value)];
 }
 
 function resultView(result) {
@@ -120,7 +139,7 @@ export const PartEditor = defineComponent({
     props: { part: { type: String, required: true }, sections: { type: Function, required: true }, intro: String },
     setup(props) {
         const state = usePart(props.part);
-        const selected = ref('');
+        const selected = state.selected;
         const sections = computed(() => (character.source.value ? props.sections(character.source.value) : []));
         watch(sections, list => { if (!list.some(s => s.key === selected.value)) selected.value = list[0]?.key ?? ''; }, { immediate: true });
         return () => {
@@ -143,7 +162,7 @@ export const PartEditor = defineComponent({
                 : null;
             return h('div', null, [
                 props.intro ? h('p', { class: 'qqbot-muted' }, props.intro) : null,
-                toolbar(state),
+                ...toolbar(state),
                 h('div', { class: 'qqbot-editor' }, [nav, h('div', { class: 'qqbot-form' }, [form])]),
             ]);
         };

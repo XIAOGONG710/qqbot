@@ -32,11 +32,22 @@
     color: var(--k-color-danger);
 }
 
+/* 表单很长，往下翻时「保存 / 检查 / 还原」留在顶上。Element Plus 的标签页内容是 overflow: hidden，会让 sticky 失效 */
+.qqbot-page .el-tabs__content {
+    overflow: visible;
+}
+
 .qqbot-toolbar {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-bottom: 8px;
+    padding: 8px 0;
+    position: sticky;
+    /* 贴到 .qqbot-page 内边距的上沿 */
+    top: -16px;
+    z-index: 10;
+    background: var(--k-main-bg);
 }
 
 .qqbot-result {
@@ -71,6 +82,12 @@
     min-width: 0;
 }
 
+/* 背景和鼠标悬停时一样，所以再加主题色的字和左边一条竖线 */
 .qqbot-row-selected td {
     background: var(--k-hover-bg) !important;
+    color: var(--k-color-active);
+}
+
+.qqbot-row-selected td:first-child {
+    box-shadow: inset 3px 0 0 var(--k-color-active);
 }

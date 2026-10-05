@@ -18,13 +18,16 @@ function sceneSchema(labels) {
     });
 }
 
+// 筛选条件和没建完的 id 放在模块里，控制台重连、页面重新挂载后还在（同 editor.js 的草稿）
+const filter = ref('');
+const label = ref('');
+const newId = ref('');
+
 export const ScenesTab = defineComponent({
     setup() {
         const state = usePart('scenes');
-        const filter = ref('');
-        const label = ref('');
-        const selected = ref(-1);
-        const newId = ref('');
+        const selected = state.selected;
+        if (selected.value === null) selected.value = -1;
         const labels = computed(() => [...new Set((character.source.value?.scenes ?? []).flatMap(s => s.tiers))]);
         const schema = computed(() => sceneSchema(labels.value));
         const rows = computed(() => (state.draft.value ?? [])
@@ -60,7 +63,7 @@ export const ScenesTab = defineComponent({
                 h('div', { class: 'qqbot-list-filters' }, [
                     h(c('el-select'), {
                         modelValue: label.value, 'onUpdate:modelValue': v => { label.value = v; },
-                        placeholder: '所有场景档', clearable: true, style: 'width: 140px',
+                        placeholder: '所有场景档', clearable: true, style: 'width: 150px; flex: none',
                     }, () => labels.value.map(l => h(c('el-option'), { value: l, label: tierLabel(l) }))),
                     h(c('el-input'), {
                         modelValue: filter.value, 'onUpdate:modelValue': v => { filter.value = v; },
@@ -94,7 +97,7 @@ export const ScenesTab = defineComponent({
                     h(c('el-button'), { type: 'danger', plain: true, onClick: remove }, () => '删掉这个场景'),
                 ])
                 : h('div', { class: 'qqbot-form' }, [h('p', { class: 'qqbot-muted' }, '左边选一个场景')]);
-            return h('div', null, [toolbar(state), h('div', { class: 'qqbot-editor' }, [left, right])]);
+            return h('div', null, [...toolbar(state), h('div', { class: 'qqbot-editor' }, [left, right])]);
         };
     },
 });
