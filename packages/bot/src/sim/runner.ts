@@ -458,6 +458,9 @@ export function proactiveChecks(checks: ProactiveChecks, steps: StepRecord[], ca
     for (const occasion of checks.occasions ?? []) {
         results.push({ ok: sends.some(s => s.label === occasion), text: `主动的时机里有「${occasion}」` });
     }
+    for (const occasion of checks.absent ?? []) {
+        results.push({ ok: !sends.some(s => s.label === occasion), text: `主动的时机里没有「${occasion}」` });
+    }
     const texts = sends.flatMap(s => s.texts).join('\n');
     if (checks.replyAny) {
         const hit = checks.replyAny.filter(w => texts.includes(w));

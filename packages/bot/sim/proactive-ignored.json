@@ -1,0 +1,17 @@
+{
+    "name": "男朋友档：他一直不回（ADR 0011）",
+    "description": "假期里，他三天都不回：她主动发的第一条没人回，就不再找，等他回。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-05T21:00:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "steps": [
+        { "case": "I01", "note": "前一晚聊过、道了晚安" },
+        { "say": "今天好累，我先睡了" },
+        { "say": "晚安" },
+        { "case": "I02", "note": "三天里只有第二天的早安一次" },
+        { "advance": "3d" },
+        { "check": { "proactive": { "count": [1, 1], "allowedTimes": true, "occasions": ["早安"], "exitClean": true } } }
+    ]
+}

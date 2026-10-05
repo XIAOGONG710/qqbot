@@ -1,0 +1,17 @@
+{
+    "name": "男朋友档：他的生日零点祝（ADR 0011 第 6 节）",
+    "description": "9-28 晚上还在聊，到 9-29 零点她主动祝生日（夜里唯一的例外，不受每天上限和「他没回」限制）。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-09-28T22:30:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "steps": [
+        { "case": "B01", "note": "前一晚：时间块里有「明天是他的生日」" },
+        { "say": "今天好累，躺着刷手机" },
+        { "check": { "timeBlock": "明天是他的生日" } },
+        { "case": "B02", "note": "零点：祝生日（之前可能先道了晚安，那也行）" },
+        { "advance": "1h40m" },
+        { "check": { "proactive": { "count": [1, 2], "occasions": ["重要的日子"], "replyAny": ["生日"], "allowedTimes": true, "exitClean": true } } }
+    ]
+}

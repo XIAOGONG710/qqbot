@@ -56,6 +56,8 @@ export interface ProactiveChecks {
     allowedTimes?: boolean;
     /** 这几种时机都出现过（日志里的说法：早安、下课、睡前、冷场、待跟进的事、重要的日子） */
     occasions?: string[];
+    /** 这几种时机都没出现 */
+    absent?: string[];
     /** 主动发的话里至少有其中一个 */
     replyAny?: string[];
     /** 主动发的话都过得了出口检查 */

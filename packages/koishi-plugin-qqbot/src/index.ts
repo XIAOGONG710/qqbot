@@ -17,6 +17,7 @@ import type { HistoryMessage } from '../../bot/src/backfill.ts';
 import { CONTACT_TIERS, DEFAULTS, parseAppConfig, type AppConfig, type ContactTier } from '../../bot/src/config.ts';
 import { createLog, type Log } from '../../bot/src/log.ts';
 import { isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
+import { PROACTIVE_MODES, type ProactiveMode } from '../../bot/src/proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '../../bot/src/st/prompt-converters.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 
@@ -49,6 +50,8 @@ export const THINKING = ['off', 'low', 'high', 'max'] as const;
 export type Thinking = (typeof THINKING)[number];
 const THINKING_LABELS: Record<Thinking, string> = { off: '关', low: '低', high: '高', max: '最高' };
 
+const PROACTIVE_LABELS: Record<ProactiveMode, string> = { off: '关', dryRun: '试运行（只写日志不发）', on: '开' };
+
 const POST_PROCESSING_LABELS: Record<PromptPostProcessing, string> = {
     '': '不处理',
     merge: 'merge：合并相邻的同角色消息',
@@ -69,6 +72,7 @@ export interface Config {
     contacts: { qq: number; name: string; tier: ContactTier; persona?: string }[];
     unlistedFriends: boolean;
     schedule: boolean;
+    proactive: ProactiveMode;
     llm: {
         baseUrl: string;
         model: string;
@@ -108,6 +112,9 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**名单外的好友**：私聊时也回复，按 unlisted 档（被认真问到时承认是 AI；任何人加小号好友就能调用模型）'),
         schedule: Schema.boolean().default(DEFAULTS.schedule)
             .description('**作息**：按角色卡上的作息，凌晨睡觉不回、上课晚回、打字有时间。深夜测试时关掉'),
+        proactive: Schema.union(PROACTIVE_MODES.map(mode => Schema.const(mode).description(PROACTIVE_LABELS[mode]))).default(DEFAULTS.proactive)
+            .description('**主动消息**（ADR 0011）：她在合适的时候先找人（早安、下课、睡前、冷场、他说过的事、重要的日子）。'
+                + '只对「林梦瑶」页面档位里开了主动的档位（现在只有男朋友档），要开着作息。试运行：照算照生成，只写日志不发'),
     }).description('联系人'),
     Schema.object({
         llm: Schema.object({
@@ -200,6 +207,8 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         contacts: config.contacts.map(contact => dropUndefined(contact)),
         unlistedFriends: config.unlistedFriends,
         schedule: config.schedule,
+        // 旧的 koishi.yml 没有这一项：parseAppConfig 按默认值（关）
+        ...(config.proactive !== undefined ? { proactive: config.proactive } : {}),
         ...(enabled ? { memory: dropUndefined(memory) } : {}),
         dataDir: config.dataDir,
     };

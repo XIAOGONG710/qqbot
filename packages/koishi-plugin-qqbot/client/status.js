@@ -10,8 +10,21 @@ function phaseText(r) {
         case 'generating': return '在生成回复';
         case 'sending': return '在发回复';
         case 'retry': return `回复失败，${clock(r.retryAt)} 再试（连续 ${r.failures} 次）`;
+        case 'initiating': return `在主动找对方（${r.reason}）`;
         default: return '空闲';
     }
+}
+
+const PROACTIVE_MODES = { off: ['关', 'info'], dryRun: ['试运行（只写日志不发）', 'warning'], on: ['开', 'success'] };
+
+/** 主动消息（ADR 0011）：下一次几点、什么时机；他没回时先不排；今天主动了几条。不显示内容 */
+function proactiveText(p) {
+    if (!p) return '—';
+    const parts = [];
+    if (p.paused) parts.push(p.paused);
+    parts.push(p.next ? `下一次 ${clock(p.next.at)} ${p.next.label}` : '今明两天没有要发的');
+    parts.push(`今天已主动 ${p.today} 条${p.mode === 'dryRun' ? '（试运行）' : ''}`);
+    return parts.join('；');
 }
 
 function memoryLine(memory) {
@@ -39,6 +52,7 @@ export const StatusTab = defineComponent({
                 ['长期记忆', status ? memoryLine(status.memory) : [tag('—', 'info')]],
                 ['作息', status ? [status.schedule ? tag('按作息', 'success') : tag('关（随时几秒内回）', 'warning')] : [tag('—', 'info')]],
                 ['名单外的好友', status ? [status.unlistedFriends ? tag('也回复', 'warning') : tag('不回复', 'info')] : [tag('—', 'info')]],
+                ['主动消息', status ? [tag(...(PROACTIVE_MODES[status.proactive ?? 'off'] ?? [status.proactive, 'info']))] : [tag('—', 'info')]],
             ];
             const summary = h('div', { class: 'qqbot-summary' }, rows.map(([label, value]) => h('div', { class: 'qqbot-summary-row' }, [
                 h('span', { class: 'qqbot-label' }, label), h('span', null, value),
@@ -48,9 +62,11 @@ export const StatusTab = defineComponent({
                 h(c('el-table-column'), { label: '称呼', prop: 'name', width: 120 }),
                 h(c('el-table-column'), { label: 'QQ', prop: 'qq', width: 120 }),
                 h(c('el-table-column'), { label: '档位', width: 130 }, {
-                    default: ({ row }) => [tierLabel(row.tier), row.tierSince ? h('div', { class: 'qqbot-muted' }, `${clock(row.tierSince)} 换档`) : null],
+                    // 换档或者归档测试数据（ADR 0011 第 10 节）时记下的起点：之前的聊天记录不再用
+                    default: ({ row }) => [tierLabel(row.tier), row.tierSince ? h('div', { class: 'qqbot-muted' }, `记录从 ${clock(row.tierSince)} 起`) : null],
                 }),
                 h(c('el-table-column'), { label: '现在', minWidth: 220 }, { default: ({ row }) => phaseText(row.responder) }),
+                h(c('el-table-column'), { label: '主动', minWidth: 240 }, { default: ({ row }) => proactiveText(row.proactive) }),
                 h(c('el-table-column'), { label: '最后一条', width: 150 }, {
                     default: ({ row }) => (row.last ? `${clock(row.last.time)} ${row.last.from === 'user' ? '对方' : '她'}` : '—'),
                 }),

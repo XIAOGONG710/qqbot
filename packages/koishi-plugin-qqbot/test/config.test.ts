@@ -61,6 +61,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.deepEqual(config.prompt.worldInfo, DEFAULTS.prompt.worldInfo);
         assert.equal(config.unlistedFriends, DEFAULTS.unlistedFriends);
         assert.equal(config.schedule, DEFAULTS.schedule);
+        assert.equal(config.proactive, DEFAULTS.proactive);
         assert.equal(config.dataDir, DEFAULTS.dataDir);
         assert.equal(config.memory.timeoutMs, DEFAULTS.memory.timeoutMs);
         assert.equal(config.memory.recallTimeoutMs, DEFAULTS.memory.recallTimeoutMs);
@@ -78,11 +79,22 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
             { ...before0009, llm: { ...before0009.llm, thinking: 'high', extraBody: '{"top_p":0.9}', timeoutMs: 60_000 } },
             { ...minimal, memory: { enabled: true, baseUrl: 'http://127.0.0.1:9999', recallTimeoutMs: 5000 }, prompt: { worldInfo: { depth: 4, caseSensitive: true } } },
             { ...minimal, memory: { enabled: false }, schedule: false, dataDir: 'runtime/bot-test' },
+            { ...minimal, proactive: 'dryRun' },
         ];
         for (const sample of samples) {
             const config = Config(sample as never);
             assert.deepEqual(Config(Config.simplify(config) as never), config, JSON.stringify(sample));
         }
+    });
+
+    test('主动消息（ADR 0011）：旧的配置没有这一项时是关；试运行、开照样传过去；写错报错', () => {
+        assert.equal(fromKoishi(minimal).proactive, 'off');
+        assert.equal(fromKoishi(before0009).proactive, 'off');
+        assert.equal(fromKoishi({ ...minimal, proactive: 'dryRun' }).proactive, 'dryRun');
+        assert.equal(fromKoishi({ ...minimal, proactive: 'on' }).proactive, 'on');
+        assert.throws(() => Config({ ...minimal, proactive: 'yes' } as never));
+        // 等于默认值时不写进 koishi.yml
+        assert.equal('proactive' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
     test('长期记忆打开时才有 memory；世界书只覆盖填了的项', () => {
