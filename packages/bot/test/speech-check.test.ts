@@ -6,13 +6,47 @@ import { describe, test } from 'node:test';
 import type { BotConfig } from '../src/config.ts';
 import { loadTierCard } from '../src/contact.ts';
 import type { StoredMessage } from '../src/history.ts';
+import { bookProgressOn } from '../src/her-days.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
-import { inspectSpeech, opener, speechContext, stripOpeners, type SpeechContext, type SpeechKind } from '../src/speech-check.ts';
+import { inspectBookProgress, inspectSpeech, opener, parseChineseNumber, speechContext, stripOpeners, type SpeechContext, type SpeechKind } from '../src/speech-check.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
 const none: SpeechContext = { recent: [], his: [] };
 const kinds = (text: string, kind: SpeechKind, context = none) => inspectSpeech(text, context).filter(i => i.kind === kind).map(i => i.match);
+
+describe('书的进度数字（ADR 0015）', () => {
+    const repoRoot = resolve(import.meta.dirname, '../../..');
+    const readingCard = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+    const day = new Date('2026-10-06T12:00:00+08:00');
+    const books = readingCard.character.books.map(book => ({ book, progress: bookProgressOn(book, day) }));
+
+    test('中文数字和阿拉伯数字', () => {
+        assert.equal(parseChineseNumber('八'), 8);
+        assert.equal(parseChineseNumber('五百零五'), 505);
+        assert.equal(parseChineseNumber('两千五百零五'), 2505);
+        assert.equal(parseChineseNumber('二〇二六'), 2026);
+        assert.equal(parseChineseNumber('550'), 550);
+    });
+
+    test('卷必须相同；章差不到 5% 不误伤，达到 5% 才命中', () => {
+        assert.deepEqual(inspectBookProgress('药屋看到第七卷\n惹金枝看到五百零五章\n恰似停在第300章', { books }), []);
+        assert.deepEqual(inspectBookProgress('惹金枝看到第529章', { books }).length, 0);
+        assert.deepEqual(inspectBookProgress('惹金枝看到第531章', { books }).map(issue => [issue.bookId, issue.said, issue.expected]), [['rejinzhi', 531, 505]]);
+        assert.deepEqual(inspectBookProgress('药屋第八卷', { books }).map(issue => [issue.bookId, issue.said, issue.expected]), [['yaowu', 8, 7]]);
+    });
+
+    test('总量也核对；情节门槛、第几集不算进度', () => {
+        assert.deepEqual(inspectBookProgress('惹金枝全书一共五百章', { books }).map(issue => [issue.kind, issue.said, issue.expected]), [['total', 500, 550]]);
+        assert.deepEqual(inspectBookProgress('恰似全书一共2505章\n第300章往后是权谋线\n最后第550章完结\n剧追到第八集', { books }), []);
+    });
+
+    test('没写书名时用最近明确在聊的书；没有焦点时按单位和最接近的合理值判断', () => {
+        assert.deepEqual(inspectBookProgress('看到第500章了', { books }).length, 0);
+        assert.deepEqual(inspectBookProgress('看到第500章了', { books, focusIds: ['jiasi'] }).map(issue => issue.bookId), ['jiasi']);
+        assert.deepEqual(inspectBookProgress('看到第400章了', { books }).map(issue => issue.bookId), ['rejinzhi']);
+    });
+});
 
 describe('说话的毛病：助手腔（ADR 0014 决策 2）', () => {
     test('客服式的收尾、套话、分点', () => {

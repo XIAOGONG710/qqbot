@@ -68,10 +68,8 @@ export const PARTNER_BACK_DAYS = 7;
 const BETWEEN_MAX_MS = 45 * 60_000;
 
 export function stateAt(schedule: Schedule, now: Date): State {
-    const date = startOfDay(now);
-    const sleepStart = at(date, schedule.sleep);
-    // 00:00 到 sleep：还是前一天的晚上
-    const day = now < sleepStart ? new Date(date.getTime() - DAY_MS) : date;
+    const day = herDay(schedule, now);
+    const sleepStart = at(startOfDay(now), schedule.sleep);
     const holiday = holidayOn(schedule, day);
     const where = holiday ? [`${holiday.name}放假`, holiday.where].filter(Boolean).join('，') : schedule.where;
     const justBack = holiday ? undefined : schedule.holidays.find(h => h.partnerBack && h.end < formatDate(day)
@@ -95,6 +93,12 @@ export function stateAt(schedule: Schedule, now: Date): State {
     }
     const window = now < at(day, schedule.free.afternoonFrom) ? 'morning' : now < at(day, schedule.free.eveningFrom) ? 'afternoon' : 'evening';
     return { ...withNext, activity: { kind: 'free', text: freeActivity(schedule, day, window) } };
+}
+
+/** 这一刻属于她的哪一天：睡觉时刻（02:00）之前算前一天。心情、读书进度、主动消息都用这一条。 */
+export function herDay(schedule: Schedule, now: Date): Date {
+    const date = startOfDay(now);
+    return now < at(date, schedule.sleep) ? new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1) : date;
 }
 
 /** 某一天要上的课，按开始时间排好 */

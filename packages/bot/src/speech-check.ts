@@ -6,6 +6,7 @@
 //   开头是「行」「哟」这类语气词的，直接去掉，不重写。
 
 import type { StoredMessage } from './history.ts';
+import type { BookProgress, ReadingBook } from './her-days.ts';
 
 export type SpeechKind = 'service' | 'ledger' | 'blame' | 'repeat';
 
@@ -27,6 +28,23 @@ export interface SpeechIssue {
 export interface SpeechContext {
     recent: readonly (readonly string[])[];
     his: readonly string[];
+}
+
+/** 这一轮放进提示词的书和它当天的进度；focusIds 是最近消息明确在聊的书 */
+export interface BookProgressContext {
+    books: readonly { book: ReadingBook; progress: BookProgress }[];
+    focusIds?: readonly string[];
+}
+
+export interface BookProgressIssue {
+    line: number;
+    bookId: string;
+    title: string;
+    raw: string;
+    said: number;
+    expected: number;
+    unit: string;
+    kind: 'progress' | 'total';
 }
 
 /** 和她最近几次回复比 */
@@ -167,6 +185,80 @@ export function inspectSpeech(reply: string, context: SpeechContext): SpeechIssu
         }
     }
     return issues;
+}
+
+const NUMBER_TEXT = '[0-9零〇一二两三四五六七八九十百千万]+';
+const BOOK_NUMBER = new RegExp(`(第\\s*)?(${NUMBER_TEXT})\\s*(章|卷)`, 'g');
+
+/** 中文数字（到万）和阿拉伯数字；只给进度规则用。 */
+export function parseChineseNumber(text: string): number | undefined {
+    if (/^\d+$/.test(text)) return Number(text);
+    const digit: Record<string, number> = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+    if (![...text].some(char => '十百千万'.includes(char))) {
+        if (![...text].every(char => char in digit)) return undefined;
+        return Number([...text].map(char => digit[char]).join(''));
+    }
+    const unit: Record<string, number> = { 十: 10, 百: 100, 千: 1000 };
+    let total = 0;
+    let section = 0;
+    let number = 0;
+    for (const char of text) {
+        if (char in digit) {
+            number = digit[char]!;
+        } else if (char === '万') {
+            section += number;
+            total += (section || 1) * 10_000;
+            section = 0;
+            number = 0;
+        } else if (char in unit) {
+            section += (number || 1) * unit[char]!;
+            number = 0;
+        } else {
+            return undefined;
+        }
+    }
+    return total + section + number;
+}
+
+/**
+ * 书的进度数字：章差 5% 以上、卷不相同就命中；「集」不看。
+ * 「第 300 章往后」是情节节点的门槛，不是她的阅读进度；「第 550 章完结」按总量看。
+ */
+export function inspectBookProgress(reply: string, context: BookProgressContext): BookProgressIssue[] {
+    const issues: BookProgressIssue[] = [];
+    const focus = new Set(context.focusIds ?? []);
+    for (const [line, text] of reply.split('\n').entries()) {
+        BOOK_NUMBER.lastIndex = 0;
+        for (const match of text.matchAll(BOOK_NUMBER)) {
+            const raw = match[0];
+            const said = parseChineseNumber(match[2]!);
+            if (said === undefined) continue;
+            const before = text.slice(Math.max(0, match.index! - 12), match.index!);
+            const after = text.slice(match.index! + raw.length, match.index! + raw.length + 6);
+            const total = /(?:一共|总共|全书|共)(?:有)?\s*$/.test(before) || /^(?:完结|全书)/.test(after);
+            const progressCue = /(?:看到|读到|追到|看了|读了|现在|目前|已经)\s*$/.test(before);
+            if (!match[1] && !total && !progressCue) continue;
+            if (!total && /^(?:往后|以后|开始|起|叫)/.test(after)) continue;
+            const unit = match[3]!;
+            const byUnit = context.books.filter(item => (total ? item.book.total?.unit : item.progress.unit) === unit && (!total || item.book.total));
+            if (!byUnit.length) continue;
+            const explicit = byUnit.filter(item => [item.book.title, ...item.book.aliases].some(name => name && text.includes(name)));
+            const focused = byUnit.filter(item => focus.has(item.book.id));
+            // 「第二章课后题」这类不是书；裸「第 N 章/卷」只有行里点了书名，或最近明确在聊这本书时才算。
+            if (match[1] && !total && !progressCue && !explicit.length && !focused.length) continue;
+            const candidates = explicit.length ? explicit : focused.length ? focused : byUnit;
+            const expectedOf = (item: (typeof candidates)[number]) => total ? item.book.total!.amount : item.progress.amount;
+            const candidate = candidates.length === 1 ? candidates[0]! : [...candidates].sort((a, b) => relative(said, expectedOf(a)) - relative(said, expectedOf(b)))[0]!;
+            const expected = expectedOf(candidate);
+            const wrong = unit === '卷' ? said !== expected : relative(said, expected) >= 0.05;
+            if (wrong) issues.push({ line, bookId: candidate.book.id, title: candidate.book.title, raw, said, expected, unit, kind: total ? 'total' : 'progress' });
+        }
+    }
+    return issues;
+}
+
+function relative(actual: number, expected: number): number {
+    return expected === 0 ? (actual === 0 ? 0 : Infinity) : Math.abs(actual - expected) / expected;
 }
 
 /** 从聊天记录取比较用的：她最近几次回复（连着的几条算一次）、对方最近几条 */

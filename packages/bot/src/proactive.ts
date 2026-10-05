@@ -9,7 +9,8 @@
 import { expired, firstAsk, partText, whenText, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
 import { pendingMessages, pick } from './reply-timing.ts';
-import { classesOn, formatDate, stateAt, wakeOn, type Schedule } from './schedule.ts';
+import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from './schedule.ts';
+export { herDay } from './schedule.ts';
 
 /** 时机，按优先级从高到低 */
 export const OCCASIONS = ['dates', 'follow_up', 'morning', 'after_class', 'quiet', 'bedtime'] as const;
@@ -131,12 +132,6 @@ function startOfDay(date: Date): Date {
 
 function addDays(day: Date, n: number): Date {
     return new Date(day.getFullYear(), day.getMonth(), day.getDate() + n);
-}
-
-/** 这一刻属于她的哪一天：睡觉时刻（02:00）之前算前一天 */
-export function herDay(schedule: Schedule, now: Date): Date {
-    const date = startOfDay(now);
-    return now < at(date, schedule.sleep) ? addDays(date, -1) : date;
 }
 
 const pad = (n: number | string) => String(n).padStart(2, '0');
@@ -420,4 +415,3 @@ export function parseProactive(json: unknown, source: string): ProactiveSettings
     const count = (key: 'dailyMax' | 'unansweredMax') => (Number.isInteger(o[key]) && (o[key] as number) >= 1 ? o[key] as number : fail(`.${key} 应为正整数`));
     return { occasions: o.occasions as Occasion[], dailyMax: count('dailyMax'), unansweredMax: count('unansweredMax') };
 }
-

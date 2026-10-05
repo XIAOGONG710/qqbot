@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { parseDates, parseProactive, type ImportantDay, type ProactiveSettings } from '../proactive.ts';
 import { PACE_RANGE } from '../reply-timing.ts';
 import { parseSchedule, type Schedule } from '../schedule.ts';
+import { parseBooks, parseMoods, type DailyMood, type ReadingBook } from '../her-days.ts';
 import { parseRegexScripts, type RegexScript } from './regex.ts';
 
 export interface Character {
@@ -32,6 +33,9 @@ export interface Character {
     proactive?: ProactiveSettings;
     /** 这一档的回复节奏系数（extensions.qqbot.pace，ADR 0013 决策 1）；没有就是 1 */
     pace: number;
+    /** 每日心情与在读的书（extensions.qqbot，ADR 0015）；旧卡没有就是空数组 */
+    moods: DailyMood[];
+    books: ReadingBook[];
 }
 
 export function parseCharacterCard(json: unknown, source = '角色卡'): Character {
@@ -63,6 +67,8 @@ export function parseCharacterCard(json: unknown, source = '角色卡'): Charact
         dates: parseDates((extensions.qqbot as { dates?: unknown } | undefined)?.dates, source),
         ...readProactive(extensions.qqbot, source),
         pace: parsePace(extensions.qqbot, source),
+        moods: parseMoods((extensions.qqbot as { moods?: unknown } | undefined)?.moods, source),
+        books: parseBooks((extensions.qqbot as { books?: unknown } | undefined)?.books, source),
     };
 }
 
