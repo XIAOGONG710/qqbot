@@ -24,10 +24,13 @@ import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import type { ProactiveMode } from './proactive.ts';
 import { createProactivePlanner, type Planner, type PlannerStatus } from './proactive-planner.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from './her-days.ts';
+import { DIARY_BACKFILL_DAYS, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt } from './schedule.ts';
 
 /** 写一次长期记忆的间隔 */
 export const MEMORY_SYNC_MS = 5 * 60_000;
+/** 写日记的温度（ADR 0017）：比聊天低，少编 */
+export const DIARY_TEMPERATURE = 0.8;
 
 /** 入口提供的收发 */
 export interface Transport {
@@ -179,11 +182,35 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     log(memory
         ? `长期记忆：Hindsight ${config.memory!.baseUrl}（名单里的联系人；公共记忆库 ${memory.commonBankId()}，陌生人档不写不查）`
         : '长期记忆：未启用（配置里没有 memory）');
+    // 她的日记（ADR 0017）：用名单里最亲的、卡上有作息的那一档；herDays 关着时不带心情和书。温度低一点，少编
+    const diaryCard = memory
+        ? (CONTACT_TIERS as readonly Tier[]).filter(tier => tiersInUse.has(tier)).map(tier => cardFor(tier).character).find(character => character.schedule)
+        : undefined;
+    const diaries = memory && diaryCard
+        ? diaryWriter({
+            sources: {
+                charName: diaryCard.name,
+                schedule: diaryCard.schedule!,
+                moods: config.herDays ? diaryCard.moods : [],
+                books: config.herDays ? diaryCard.books : [],
+            },
+            contacts: config.contacts,
+            history,
+            memory,
+            generate: messages => (pipeline?.generate
+                ? pipeline.generate(messages, log)
+                : chatCompletion({ ...config.llm, temperature: DIARY_TEMPERATURE }, messages, { log })),
+            dir: join(config.dataDir, 'memory'),
+            log,
+        })
+        : undefined;
+    if (memory) log(diaries ? `她的日记：她的每一天结束后写一篇存进公共记忆（没聊天的日子也写，停过的补最近 ${DIARY_BACKFILL_DAYS} 天）` : '她的日记：不写（用到的档位卡上都没有作息）');
     function syncMemory(): void {
         if (!memory) return;
         for (const contact of config.contacts) {
             void memory.sync(contact, { user: contact.name, char: cardFor(contact.tier).character.name }, history.load(contact.qq));
         }
+        void diaries?.catchUp(new Date(pipeline?.now?.() ?? Date.now()));
     }
     const memoryTimer = memory ? setInterval(syncMemory, MEMORY_SYNC_MS) : undefined;
     memoryTimer?.unref();

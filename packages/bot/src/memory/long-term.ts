@@ -76,6 +76,7 @@ export function commonBankMissions(char: string) {
         retain_mission: [
             `这是${char}和她 QQ 名单里几个人的私聊记录，汇在一起。${char}是 AI 扮演的虚拟角色（在读女大学生），聊天对象都是真人，每段开头写了是和谁的私聊。`,
             '记录里都是真实发出去的消息，不是角色卡示例，也不是草稿。',
+            `也有${char}自己写的日记（开头写着「${char}的日记」和日期）：里面的事是${char}那天做过的，记成${char}的经历，带上那天的日期。`,
             `提取明确出现的信息：聊天对象自己说的偏好、日程和计划、经历、身体和心情，${char}说的她自己的日常，双方的约定。`,
             `- 每条写清是在和谁的私聊里、谁说的、关于谁，用名字（${char}和聊天对象的称呼），不写「用户」「对方」「助手」。`,
             `- ${char}说的她自己的日常（上课、吃饭、宿舍、猫）照记，但写明是${char}说的、对谁说的。`,
@@ -291,6 +292,35 @@ export class LongTermMemory {
             this.#options.log(`[${contact.qq}] 记忆（公共）：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
             // 新片段可能带来新的人和事，下一轮重读实体名
             this.#entities.fetchedAt = undefined;
+        }
+    }
+
+    /**
+     * 她的日记（ADR 0017）写进公共库：document_id 是 diary:<日期>（同一天再写是覆盖），标签多一个 diary。
+     * 成功返回 true；失败记日志、返回 false（下次再写）
+     */
+    async retainDiary(date: string, day: Date, text: string, char: string): Promise<boolean> {
+        if (!this.#options.common) return false;
+        try {
+            const bankId = await this.#ensureCommonBank(char);
+            await this.#options.api.retain(bankId, {
+                content: `${char}的日记（${date}）\n${text}`,
+                // 日记是睡前写的：时间写那天晚上
+                timestamp: localIso(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 22)),
+                context: `${char}自己写的日记`,
+                document_id: `${DIARY_PREFIX}${date}`,
+                tags: [...TAGS, 'diary'],
+                metadata: { source: 'diary', date },
+                entities: [{ text: char, type: 'PERSON' }],
+            });
+            this.#lastWrite = { at: this.#now(), ok: true };
+            this.#entities.fetchedAt = undefined;
+            return true;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.#lastWrite = { at: this.#now(), ok: false, error: message };
+            this.#options.log(`她的日记：${date} 写进公共记忆失败，下次再写：${message}`);
+            return false;
         }
     }
 

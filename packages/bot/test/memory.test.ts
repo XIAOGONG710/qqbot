@@ -589,3 +589,30 @@ describe('长期记忆：她眼中的某个人（ADR 0017）', () => {
         }
     });
 });
+
+describe('长期记忆：日记写进公共库（ADR 0017）', () => {
+    test('document_id 是 diary:<日期>，标签多 diary，时间是那天晚上；没开公共库、写入失败返回 false', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-'));
+        const logs: string[] = [];
+        const ok = fakeApi();
+        const bad = fakeApi({ failRetain: 1 });
+        const make = (api: HindsightApi, common: boolean) => new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: m => logs.push(m), common });
+        try {
+            assert.equal(await make(ok.api, true).retainDiary('2026-10-06', new Date(2026, 9, 6), '今天去看了电影。', '林梦瑶'), true);
+            const item = ok.calls.retain[0]!;
+            assert.equal(ok.calls.banks[0], 'retain linmengyao-common');
+            assert.equal(item.document_id, 'diary:2026-10-06');
+            assert.deepEqual(item.tags, ['qq-private', 'diary']);
+            assert.equal(item.content, '林梦瑶的日记（2026-10-06）\n今天去看了电影。');
+            assert.match(item.timestamp, /^2026-10-06T22:00:00[+-]\d{2}:\d{2}$/);
+            assert.deepEqual(check(retainBody(item), root('retain')), []);
+            assert.match((ok.calls.putBank[0] as { retain_mission: string }).retain_mission, /也有林梦瑶自己写的日记/);
+
+            assert.equal(await make(ok.api, false).retainDiary('2026-10-06', new Date(2026, 9, 6), 'x', '林梦瑶'), false);
+            assert.equal(await make(bad.api, true).retainDiary('2026-10-07', new Date(2026, 9, 7), 'x', '林梦瑶'), false);
+            assert.ok(logs.some(l => l.startsWith('她的日记：2026-10-07 写进公共记忆失败，下次再写：Hindsight 返回 500')));
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+});
