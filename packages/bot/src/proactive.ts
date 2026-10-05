@@ -111,8 +111,9 @@ const PUSHED_MIN: [number, number] = [5, 15];
 /** 待跟进：第一天问的时刻再往后抖这么多分钟；早安被日子占了时，中午 12:00 起这么多分钟 */
 const FOLLOW_UP_JITTER_MIN: [number, number] = [0, 30];
 const FOLLOW_UP_NOON_MIN: [number, number] = [0, 60];
-/** 道过晚安：她或他最后一句里有这些 */
+/** 道过晚安：今晚（EVENING_FROM 起）她或他说过这些 */
 const GOODNIGHT = /晚安|睡了|去睡|先睡|睡吧|早点睡|明天见|明天聊/;
+const EVENING_FROM = '18:00';
 
 const minutes = ([a, b]: [number, number]): [number, number] => [a * MIN, b * MIN];
 
@@ -325,10 +326,13 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
         case 'after_class':
             if (lastTime !== undefined && lastTime >= candidate.classEnd!) return '下课后已经聊过';
             break;
-        case 'bedtime':
+        case 'bedtime': {
             if (!userSince(wake)) return '今天没聊过';
-            if (last && GOODNIGHT.test(last.content)) return '已经道过晚安';
+            // 今晚谁说过晚安都算（10-05 模拟器：他说了「我先睡了，晚安」，她回的话里没有这几个词，只看最后一句就又发了一条）
+            const evening = at(day, EVENING_FROM).getTime();
+            if (history.some(m => Date.parse(m.time) >= evening && GOODNIGHT.test(m.content))) return '已经道过晚安';
             break;
+        }
         case 'quiet':
             if (lastTime === undefined || now - lastTime < QUIET_MS) return '没到 8 小时';
             break;

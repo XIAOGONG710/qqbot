@@ -55,6 +55,12 @@ ws.on('open', async () => {
         }
         const pkg = Object.values(data.packages ?? {}).find(p => p.name === 'koishi-plugin-qqbot');
         console.log('实例状态', JSON.stringify(pkg?.runtime?.forks ?? pkg?.forks));
+        // 「林梦瑶」页面状态页用的数据（插件运行状态、每人的回复器和主动消息的计划；不含聊天内容）
+        const status = data.qqbot?.status;
+        if (status) {
+            console.log('主动消息', status.proactive);
+            for (const c of status.contacts) console.log(`  ${c.qq}（${c.tier}）回复器 ${c.responder.phase}；主动 ${JSON.stringify(c.proactive ?? null)}`);
+        }
     } catch (error) {
         console.error(error instanceof Error ? error.message : error);
         process.exitCode = 1;

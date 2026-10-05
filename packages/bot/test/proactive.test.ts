@@ -196,6 +196,8 @@ describe('主动消息：到点时能不能发', () => {
         assert.equal(blockReason(at('after_class', t(10, 12, 18), { classEnd: t(10, 12, 16, 35) }), t(10, 12, 18), input({ history: [user(t(10, 12, 16, 40)), her(t(10, 12, 16, 41))] })), '下课后已经聊过');
         assert.equal(blockReason(at('bedtime', t(10, 12, 23, 30)), t(10, 12, 23, 30), input({ history })), '今天没聊过');
         assert.equal(blockReason(at('bedtime', t(10, 12, 23, 30)), t(10, 12, 23, 30), input({ history: [user(t(10, 12, 21)), her(t(10, 12, 21, 1), '晚安，明天见')] })), '已经道过晚安');
+        // 他道了晚安、她回的话里没有这几个词：也算道过了
+        assert.equal(blockReason(at('bedtime', t(10, 12, 23, 30)), t(10, 12, 23, 30), input({ history: [user(t(10, 12, 21), '我先睡了，晚安'), her(t(10, 12, 21, 1), '好梦')] })), '已经道过晚安');
         assert.equal(blockReason(at('bedtime', t(10, 12, 23, 30)), t(10, 12, 23, 30), input({ history: [user(t(10, 12, 21)), her(t(10, 12, 21, 1), '去吧')] })), undefined);
         assert.equal(blockReason(at('quiet', t(10, 12, 18)), t(10, 12, 18), input({ history: [user(t(10, 12, 11)), her(t(10, 12, 11, 1))] })), '没到 8 小时');
     });
