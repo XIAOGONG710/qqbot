@@ -22,9 +22,29 @@ export interface CharacterCardV2 {
         character_version: string;
         // world：关联的世界书名（= 世界书文件名去掉 .json），ST 选中角色时按名字加载
         // regex_scripts：Scoped 正则（导入时 ST 会问是否允许）
-        // qqbot：只给运行时用的字段，ST 不读（ADR 0002 决策 3）。banned 不进提示词；schedule 由运行时算成一行状态放进时间块（ADR 0007）
-        extensions: { world?: string; regex_scripts?: RegexScript[]; qqbot?: { banned: string[]; schedule?: CardSchedule } };
+        // qqbot：只给运行时用的字段，ST 不读（ADR 0002 决策 3）。banned 不进提示词；schedule 由运行时算成一行状态放进时间块（ADR 0007）；
+        // dates、proactive：重要的日子和主动找人的设置（ADR 0011），没有就不写
+        extensions: {
+            world?: string;
+            regex_scripts?: RegexScript[];
+            qqbot?: { banned: string[]; schedule?: CardSchedule; dates?: CardDate[]; proactive?: CardProactive };
+        };
     };
+}
+
+/** 这一档知道的一个重要的日子（ADR 0011 决策 6）：date 公历、lunar 农历，MM-DD；midnight：当天零点主动发 */
+export interface CardDate {
+    name: string;
+    date?: string;
+    lunar?: string;
+    midnight?: boolean;
+}
+
+/** 这一档的主动设置（ADR 0011 决策 1）：哪几种时机、每天最多几条、连着几条没回就停 */
+export interface CardProactive {
+    occasions: string[];
+    dailyMax: number;
+    unansweredMax: number;
 }
 
 /** 课型：硬课、机房课、水课、体育（timetable.toml 的 tier） */

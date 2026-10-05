@@ -19,6 +19,33 @@ export interface TextField {
     text: string;
     tiers?: string[];
     variants?: { tiers: string[]; text: string; note?: string }[];
+    /** 只有「重要的日子」一段有：运行时用的日期（ADR 0011 决策 6），档位跟着这句文字 */
+    day?: DaySource;
+    note?: string;
+}
+
+/**
+ * 重要的日子：name 是时间块里的说法（「他的生日」）；date 公历、lunar 农历，都是 MM-DD，至少写一个。
+ * 两个都写时公历那天主动提、农历那天只在时间块里提一句；midnight：当天零点就主动发（否则并进当天的早安）
+ */
+export interface DaySource {
+    name: string;
+    date?: string;
+    lunar?: string;
+    midnight?: boolean;
+}
+
+/** 主动找人的时机（ADR 0011 决策 2）：早安、下课、睡前、冷场、待跟进的事、重要的日子 */
+export const OCCASIONS = ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates'] as const;
+export type Occasion = (typeof OCCASIONS)[number];
+
+/** 档位上的主动设置：没写的档位不主动 */
+export interface ProactiveSource {
+    occasions: Occasion[];
+    /** 每天最多几条 */
+    daily_max: number;
+    /** 她主动发的连着几条没回就停，等他回 */
+    unanswered_max: number;
     note?: string;
 }
 
@@ -73,6 +100,8 @@ export interface TierSource {
     examples?: string[][];
     /** 这一档的卡里不能出现的词（也是出口检查的词表） */
     banned: string[];
+    /** 会不会主动找这一档的人、怎么找（ADR 0011）；名单外（unlisted）不能有 */
+    proactive?: ProactiveSource;
     note?: string;
 }
 
@@ -207,9 +236,9 @@ class Checker {
     }
 }
 
-function textField(c: Checker, value: unknown, { gated }: { gated: boolean }): TextField {
+function textField(c: Checker, value: unknown, { gated, day = false }: { gated: boolean; day?: boolean }): TextField {
     const o = c.object(value);
-    c.keys(o, ['text', 'tiers', 'variants', 'note']);
+    c.keys(o, ['text', 'tiers', 'variants', ...(day ? ['day'] : []), 'note']);
     const field: TextField = { text: c.at('text').string(o.text) };
     if (gated) field.tiers = c.at('tiers').strings(o.tiers);
     else if (o.tiers !== undefined) c.at('tiers').fail('这个字段不按档位过滤，不要写 tiers');
@@ -222,14 +251,73 @@ function textField(c: Checker, value: unknown, { gated }: { gated: boolean }): T
             return { tiers: v.at('tiers').strings(variant.tiers, { allowEmpty: false }), text: v.at('text').string(variant.text), ...(note ? { note } : {}) };
         });
     }
+    if (day && !blankDay(o.day)) field.day = daySource(c.at('day'), o.day);
     const note = c.at('note').optionalString(o.note);
     if (note) field.note = note;
     return field;
 }
 
-function fieldMap(c: Checker, value: unknown, gated: boolean): Record<string, TextField> {
+const MONTH_DAY = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+/** 页面上把日期的几个框都清空时会留下空对象或空串：当作没写 */
+function blankDay(value: unknown): boolean {
+    if (value === undefined || value === null) return true;
+    if (typeof value !== 'object' || Array.isArray(value)) return false;
+    const o = value as Json;
+    const blank = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && !v.trim());
+    return Object.keys(o).every(key => ['name', 'date', 'lunar', 'midnight'].includes(key))
+        && blank(o.name) && blank(o.date) && blank(o.lunar) && o.midnight !== true;
+}
+
+function daySource(c: Checker, value: unknown): DaySource {
     const o = c.object(value);
-    return Object.fromEntries(Object.entries(o).map(([key, field]) => [key, textField(c.at(key), field, { gated })]));
+    c.keys(o, ['name', 'date', 'lunar', 'midnight']);
+    const monthDay = (key: 'date' | 'lunar') => {
+        const text = c.at(key).optionalString(o[key]);
+        if (text !== undefined && !MONTH_DAY.test(text)) c.at(key).fail(`应为 MM-DD：${text}`);
+        return text;
+    };
+    const day: DaySource = { name: c.at('name').string(o.name) };
+    const solar = monthDay('date');
+    const lunar = monthDay('lunar');
+    if (!solar && !lunar) c.fail('公历日期（date）和农历日期（lunar）至少写一个');
+    if (lunar && Number(lunar.slice(3)) > 30) c.at('lunar').fail(`农历一个月最多 30 天：${lunar}`);
+    if (solar) day.date = solar;
+    if (lunar) day.lunar = lunar;
+    if (o.midnight !== undefined && o.midnight !== null && typeof o.midnight !== 'boolean') c.at('midnight').fail('应为 true 或 false');
+    if (o.midnight === true) day.midnight = true;
+    return day;
+}
+
+/** 没写，或者页面上一个时机都没勾：不主动（和没写一样） */
+function noOccasions(value: unknown): boolean {
+    if (value === undefined || value === null) return true;
+    if (typeof value !== 'object' || Array.isArray(value)) return false;
+    const occasions = (value as Json).occasions;
+    return occasions === undefined || occasions === null || (Array.isArray(occasions) && occasions.length === 0);
+}
+
+function proactiveSource(c: Checker, value: unknown): ProactiveSource {
+    const o = c.object(value);
+    c.keys(o, ['occasions', 'daily_max', 'unanswered_max', 'note']);
+    const occasions = c.at('occasions').strings(o.occasions);
+    for (const occasion of occasions) {
+        if (!OCCASIONS.includes(occasion as Occasion)) c.at('occasions').fail(`${occasion} 不是时机（${OCCASIONS.join(' / ')}）`);
+    }
+    if (new Set(occasions).size !== occasions.length) c.at('occasions').fail('有重复的时机');
+    // 页面上只勾了时机、没填条数时用 ADR 0011 确认的值
+    const count = (key: 'daily_max' | 'unanswered_max', fallback: number) =>
+        (o[key] === undefined || o[key] === null ? fallback : c.at(key).integer(o[key], 1, 10));
+    return withNote(c.at('note'), o.note, {
+        occasions: occasions as Occasion[],
+        daily_max: count('daily_max', 2),
+        unanswered_max: count('unanswered_max', 1),
+    });
+}
+
+function fieldMap(c: Checker, value: unknown, gated: boolean, day = false): Record<string, TextField> {
+    const o = c.object(value);
+    return Object.fromEntries(Object.entries(o).map(([key, field]) => [key, textField(c.at(key), field, { gated, day })]));
 }
 
 function byTier(c: Checker, value: unknown): ByTier[] {
@@ -303,7 +391,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
     const tiers = t.at('tiers').array(tiersRaw.tiers).map((value, i): TierSource => {
         const c = t.at(`tiers[${i}]`);
         const o = c.object(value);
-        c.keys(o, ['name', 'user_is', 'knows_him', 'social', 'social_text', 'discreet', 'scenes', 'drop_scenes', 'demeanor', 'examples', 'banned', 'note']);
+        c.keys(o, ['name', 'user_is', 'knows_him', 'social', 'social_text', 'discreet', 'scenes', 'drop_scenes', 'demeanor', 'examples', 'banned', 'proactive', 'note']);
         const examples = o.examples ?? [];
         if (!Array.isArray(examples) || !examples.every(e => Array.isArray(e) && e.length >= 2 && e.every(x => typeof x === 'string' && x.trim()))) {
             c.at('examples').fail('应为 [对方, 她, ...] 的数组');
@@ -332,10 +420,15 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         const demeanor = c.at('demeanor').optionalString(o.demeanor);
         if (demeanor) tier.demeanor = demeanor;
         if ((examples as string[][]).length) tier.examples = (examples as string[][]).map(e => e.map(x => x.trim()));
+        if (!noOccasions(o.proactive)) {
+            // 名单外的人不知道这是 bot（ADR 0003 决策 2），不主动找
+            if (tier.name === 'unlisted') c.at('proactive').fail('名单外的好友不主动找，不要写');
+            tier.proactive = proactiveSource(c.at('proactive'), o.proactive);
+        }
         const note = c.at('note').optionalString(o.note);
         if (note) tier.note = note;
         // 字段顺序固定，写回 YAML 时稳定
-        return orderKeys(tier, ['name', 'user_is', 'knows_him', 'social', 'social_text', 'discreet', 'scenes', 'drop_scenes', 'demeanor', 'examples', 'banned', 'note']);
+        return orderKeys(tier, ['name', 'user_is', 'knows_him', 'social', 'social_text', 'discreet', 'scenes', 'drop_scenes', 'demeanor', 'examples', 'banned', 'proactive', 'note']);
     });
     const names = new Set<string>();
     for (const tier of tiers) {
@@ -447,7 +540,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
             reply_style: p.at('reply_style').string(persona.reply_style),
             redlines: { keywords: p.at('redlines.keywords').strings(redlines.keywords), note: p.at('redlines.note').string(redlines.note) },
             traits: fieldMap(p.at('traits'), persona.traits, true),
-            sections: Object.fromEntries(SECTION_KEYS.map(key => [key, fieldMap(p.at(`sections.${key}`), sections[key], true)])) as PersonaSource['sections'],
+            sections: Object.fromEntries(SECTION_KEYS.map(key => [key, fieldMap(p.at(`sections.${key}`), sections[key], true, key === 'dates')])) as PersonaSource['sections'],
             social: fieldMap(p.at('social'), persona.social, false),
         },
         scenes,

@@ -56,6 +56,17 @@ tiers:
         - 今天不行，下了课我还得去趟图书馆
         - 你先去吃，吃了啥回来跟我说
     banned: []
+    proactive:
+      occasions:
+        - morning
+        - after_class
+        - bedtime
+        - quiet
+        - follow_up
+        - dates
+      daily_max: 2
+      unanswered_max: 1
+      note: ADR 0011 确认记录：四种时机都开，每天最多 2 条，她主动发的有 1 条没回就停、等他回；待跟进的事问过一次就忘
     note: |-
       10-04 实测她对男朋友嘴硬过头、变成怼人；探索分支加了情感底色和示例之后好转，这里按同样的意思重写。
       最后一句和最后一条示例（ADR 0007）：状态行会写他在哪，开学后两人同校，他约见面她做不到。

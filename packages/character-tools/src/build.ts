@@ -83,6 +83,9 @@ export function checkPrivacy(built: Built, source: CharacterSource): Problem[] {
         }
         const schedule = data.extensions.qqbot?.schedule;
         if (schedule) scan(tier, '作息', JSON.stringify(schedule), banned);
+        // 日子的说法会进时间块（ADR 0011 决策 6）
+        const dates = data.extensions.qqbot?.dates;
+        if (dates) scan(tier, '重要的日子', JSON.stringify(dates), banned);
         for (const entry of Object.values(lorebook.entries)) {
             const id = /（([^（）]+)）$/.exec(entry.comment)?.[1] ?? entry.comment;
             scan(tier, `世界书 ${id}`, entry.content, banned);

@@ -15,7 +15,17 @@ const note = () => textarea().description('**说明**：为什么这样写，不
 const tierNames = source => source.tiers.tiers.map(t => t.name);
 const tierBoxes = names => Schema.array(Schema.union(names.map(name => Schema.const(name).description(tierLabel(name))))).role('checkbox');
 
-function field(names, gated) {
+const MONTH_DAY = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+/** 「重要的日子」每条的日期（ADR 0011 决策 6）：运行时用，档位跟着这一条的文字 */
+const daySchema = () => Schema.object({
+    name: Schema.string().description('**名字**：时间块里的说法，例如「他的生日」'),
+    date: Schema.string().pattern(MONTH_DAY).description('**公历**：MM-DD'),
+    lunar: Schema.string().pattern(MONTH_DAY).description('**农历**：MM-DD。公历、农历都写时，公历那天主动提，农历那天只在时间块里提一句'),
+    midnight: Schema.boolean().description('**零点就发**：当天 00:00 主动祝（夜里只有这种会发）；不勾就并进当天的早安'),
+}).description('**日期**：给运行时用（日子临近时提醒她、当天主动提）；都空着就只是卡里的一句话');
+
+function field(names, gated, withDay = false) {
     return Schema.object({
         text: textarea().description('**文字**'),
         ...(gated ? { tiers: tierBoxes(names).description('**给哪些档位**：没勾的档位的卡里没有这一句') } : {}),
@@ -24,13 +34,14 @@ function field(names, gated) {
             text: textarea().description('**改成**'),
             note: note(),
         })).description('**某几档用的改写版本**：按顺序取第一条含这一档的，其余档位用上面的文字'),
+        ...(withDay ? { day: daySchema() } : {}),
         note: note(),
     });
 }
 
 export function personaSections(source) {
     const names = tierNames(source);
-    const fields = (gated, description) => Schema.object({ fields: Schema.dict(field(names, gated)).description(description) });
+    const fields = (gated, description, withDay = false) => Schema.object({ fields: Schema.dict(field(names, gated, withDay)).description(description) });
     return [
         {
             key: 'basic', label: '身份和说话方式',
@@ -50,13 +61,22 @@ export function personaSections(source) {
         { key: 'traits', label: '性格', schema: fields(true, '**性格**：进 personality，按档位过滤'), get: d => ({ fields: d.traits }), set: (d, v) => { d.traits = v.fields; } },
         ...SECTIONS.map(([key, title]) => ({
             key, label: title,
-            schema: fields(true, `**${title}**：description 里的一段，按档位过滤；键名只是标识`),
+            schema: fields(true, `**${title}**：description 里的一段，按档位过滤；键名只是标识`, key === 'dates'),
             get: d => ({ fields: d.sections[key] }),
             set: (d, v) => { d.sections[key] = v.fields; },
         })),
         { key: 'social', label: '对各档的说话方式', schema: fields(false, '**对各档的说话方式**：档位页里的「说话方式」指向这里的键'), get: d => ({ fields: d.social }), set: (d, v) => { d.social = v.fields; } },
     ];
 }
+
+const OCCASION_LABELS = {
+    morning: '早安（起床后）',
+    after_class: '下课（当天最后一节）',
+    bedtime: '睡前（23:00–00:30）',
+    quiet: '冷场（双方 8 小时没说话）',
+    follow_up: '待跟进的事（他说过的面试、考试，过后问一次）',
+    dates: '重要的日子',
+};
 
 export function tierSections(source) {
     const socialKeys = Object.keys(source.persona.social);
@@ -73,6 +93,13 @@ export function tierSections(source) {
         demeanor: textarea().description('**分寸**：放进 post_history_instructions，离回复最近'),
         examples: Schema.array(Schema.array(Schema.string()).description('第一行是对方说的，后面是她的几行（每行发成一条 QQ 消息）')).description('**示例对话**'),
         banned: Schema.array(Schema.string()).description('**禁用词**：这一档的卡、作息、世界书正文里不能出现；也是出口检查的词表'),
+        proactive: Schema.object({
+            occasions: Schema.array(Schema.union(Object.entries(OCCASION_LABELS).map(([key, label]) => Schema.const(key).description(label)))).role('checkbox')
+                .description('**主动找对方的时机**：一个都不勾 = 不主动。名单外的好友不能勾'),
+            daily_max: Schema.natural().min(1).max(10).description('**每天最多几条**：空着按 2'),
+            unanswered_max: Schema.natural().min(1).max(10).description('**她主动发的连着几条没回就停**：等对方回了再说；空着按 1'),
+            note: note(),
+        }).description('**主动找人**（ADR 0011）：插件配置里的「主动消息」开关打开（或试运行）时才生效'),
         note: note(),
     });
     return [

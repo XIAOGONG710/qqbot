@@ -280,6 +280,34 @@
                     },
                     "where": "在学校（济南），住宿舍",
                     "partner": "{{user}}也在学校"
+                },
+                "dates": [
+                    {
+                        "name": "你的生日",
+                        "date": "07-17"
+                    },
+                    {
+                        "name": "你们在一起的纪念日",
+                        "date": "07-17"
+                    },
+                    {
+                        "name": "他的生日",
+                        "date": "09-29",
+                        "lunar": "08-08",
+                        "midnight": true
+                    }
+                ],
+                "proactive": {
+                    "occasions": [
+                        "morning",
+                        "after_class",
+                        "bedtime",
+                        "quiet",
+                        "follow_up",
+                        "dates"
+                    ],
+                    "dailyMax": 2,
+                    "unansweredMax": 1
                 }
             }
         }

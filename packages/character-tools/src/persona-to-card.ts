@@ -4,7 +4,7 @@
 // 段落标题、字段标签、输出规则、system_prompt、正则脚本是代码里的常量，不在资料里。
 
 import { SECTION_KEYS, type CharacterSource, type SectionKey, type TextField } from './source.ts';
-import type { CardSchedule, CharacterCardV2, RegexScript } from './st-format.ts';
+import type { CardDate, CardProactive, CardSchedule, CharacterCardV2, RegexScript } from './st-format.ts';
 
 /** description 各段的标题，顺序即 SECTION_KEYS 的顺序 */
 const SECTION_TITLES: Record<SectionKey, string> = {
@@ -117,6 +117,20 @@ export function personaToCard(source: CharacterSource, tierName: string, options
     // post_history_instructions：说话方式放在聊天记录之后，离回复最近
     const postHistory = [persona.reply_style, OUTPUT_RULE, tier.demeanor ?? ''].filter(Boolean).join('\n');
 
+    // 运行时用的日期和主动设置（ADR 0011）：日期跟着「重要的日子」那句文字的档位
+    const dates: CardDate[] = Object.values(persona.sections.dates).filter(field => field.day && sees(field)).map(field => ({ ...field.day! }));
+    const proactive: CardProactive | undefined = tier.proactive && {
+        occasions: [...tier.proactive.occasions],
+        dailyMax: tier.proactive.daily_max,
+        unansweredMax: tier.proactive.unanswered_max,
+    };
+    const qqbot = {
+        banned: tier.banned,
+        ...(options.schedule ? { schedule: options.schedule } : {}),
+        ...(dates.length ? { dates } : {}),
+        ...(proactive ? { proactive } : {}),
+    };
+
     return {
         spec: 'chara_card_v2',
         spec_version: '2.0',
@@ -134,7 +148,7 @@ export function personaToCard(source: CharacterSource, tierName: string, options
             tags: [tier.name],
             creator: '',
             character_version: '',
-            extensions: { world: options.world, regex_scripts: [STAGE_DIRECTION_SCRIPT], qqbot: { banned: tier.banned, ...(options.schedule ? { schedule: options.schedule } : {}) } },
+            extensions: { world: options.world, regex_scripts: [STAGE_DIRECTION_SCRIPT], qqbot },
         },
     };
 }

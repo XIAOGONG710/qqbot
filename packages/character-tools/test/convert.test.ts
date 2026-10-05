@@ -102,7 +102,7 @@ test('每张卡带去掉行首括号的正则和这一档的禁用词（只给�
     for (const tier of tiers) {
         const { extensions } = card(tier.name).data;
         assert.deepEqual(extensions.regex_scripts, [STAGE_DIRECTION_SCRIPT], tier.name);
-        assert.deepEqual(extensions.qqbot, { banned: tier.banned }, tier.name);
+        assert.deepEqual(extensions.qqbot?.banned, tier.banned, tier.name);
     }
     const re = new RegExp('^[ \\t]*[（(][^（）()\\n]*[）)][ \\t]*', 'gm');
     assert.equal(STAGE_DIRECTION_SCRIPT.findRegex, `/${re.source}/${re.flags}`);
@@ -168,6 +168,51 @@ test('资料写错时报错：不认识的键、缺段、字段没写给哪些�
     const s3 = copy();
     s3.tiers.tiers.push({ ...s3.tiers.tiers[0]! });
     assert.throws(() => checkSource({ ...s3 } as never), /档位 boyfriend 重复/);
+});
+
+test('重要的日子：日期跟着那句文字的档位写进卡的 extensions.qqbot.dates，不进 ST 读的字段；没有日子的档位不写这一项', () => {
+    const datesOf = (tier: string, from: CharacterSource = source) => card(tier, from).data.extensions.qqbot?.dates;
+    assert.deepEqual(datesOf('boyfriend')?.map(d => d.name), ['你的生日', '你们在一起的纪念日', '他的生日']);
+    assert.deepEqual(datesOf('boyfriend')?.find(d => d.name === '他的生日'), { name: '他的生日', date: '09-29', lunar: '08-08', midnight: true });
+    assert.deepEqual(datesOf('known')?.map(d => d.name), ['你的生日']);
+    for (const tier of ['classmate', 'stranger', 'unlisted']) assert.equal(datesOf(tier), undefined, tier);
+    assert.doesNotMatch(cardText('boyfriend'), /midnight|09-29/);
+
+    // 隐私检查也查日子的说法
+    const s = copy();
+    const word = s.tiers.tiers.find(t => t.name === 'known')!.banned[0]!;
+    s.persona.sections.dates.her_birthday!.day!.name = `${word}的生日`;
+    assert.ok(checkPrivacy(buildCharacter(s), s).some(p => p.tier === 'known' && p.where === '重要的日子' && p.word === word));
+});
+
+test('主动找人：只有写了 proactive 的档位（男朋友档）卡里有 extensions.qqbot.proactive', () => {
+    assert.deepEqual(card('boyfriend').data.extensions.qqbot?.proactive, {
+        occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates'], dailyMax: 2, unansweredMax: 1,
+    });
+    for (const tier of tiers.filter(t => t.name !== 'boyfriend')) assert.equal(card(tier.name).data.extensions.qqbot?.proactive, undefined, tier.name);
+});
+
+test('日子和主动设置写错时报错；页面上全清空的当作没写', () => {
+    const raw = () => ({ persona: copy().persona, scenes: copy().scenes, schedule: copy().schedule, tiers: copy().tiers }) as unknown as CharacterSource;
+    const check = (patch: (s: CharacterSource) => void) => {
+        const r = raw();
+        patch(r);
+        return checkSource(r as never);
+    };
+    const his = (s: CharacterSource) => s.persona.sections.dates.his_birthday!;
+    assert.throws(() => check(s => { his(s).day = { name: '他的生日' }; }), /至少写一个/);
+    assert.throws(() => check(s => { his(s).day!.date = '9-29'; }), /date 应为 MM-DD/);
+    assert.throws(() => check(s => { his(s).day!.lunar = '08-31'; }), /农历一个月最多 30 天/);
+    assert.throws(() => check(s => { s.persona.sections.dorm.room!.day = { name: 'x', date: '01-01' }; }), /有不认识的键：day/);
+    const boyfriend = (s: CharacterSource) => s.tiers.tiers[0]!;
+    assert.throws(() => check(s => { boyfriend(s).proactive!.occasions = ['morning', 'lunch' as never]; }), /lunch 不是时机/);
+    assert.throws(() => check(s => { boyfriend(s).proactive!.daily_max = 0; }), /daily_max 应为 1–10 的整数/);
+    assert.throws(() => check(s => { s.tiers.tiers.at(-1)!.proactive = { occasions: ['morning'], daily_max: 1, unanswered_max: 1 }; }), /名单外的好友不主动找/);
+    assert.equal(check(s => { boyfriend(s).proactive!.occasions = []; }).tiers.tiers[0]!.proactive, undefined);
+    assert.equal(check(s => { his(s).day = null as never; }).persona.sections.dates.his_birthday!.day, undefined);
+    assert.equal(check(s => { his(s).day = { name: ' ', date: '' } as never; }).persona.sections.dates.his_birthday!.day, undefined);
+    assert.deepEqual(check(s => { s.tiers.tiers[1]!.proactive = { occasions: ['morning'] } as never; }).tiers.tiers[1]!.proactive,
+        { occasions: ['morning'], daily_max: 2, unanswered_max: 1 });
 });
 
 test('男朋友档世界书只收场景档含 boyfriend 的场景', () => {
