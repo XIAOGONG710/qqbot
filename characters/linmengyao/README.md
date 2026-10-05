@@ -49,7 +49,7 @@
 | `persona.yml` | 人设：身份、性格、说话方式、不接的话题；`traits` 和 13 段（`sections`）里的每个字段写明给哪些档位（`tiers`），某几档用的改写版本写在 `variants`（按顺序取第一条含这一档的）；`social` 是对各档的说话方式 |
 | `scenes.yml` | 118 个场景（世界书）：触发词、例句、不要说的话、属于哪个场景档（`tiers`），出处 `source` 不进卡 |
 | `schedule.yml` | 作息（ADR 0007）：几点睡、起床、节次、学期、假期、调休、课、空闲活动；课名教室给哪些档（`course_detail`）、每档「她在哪」（`where`）、「他在哪」给哪些档（`partner`） |
-| `tiers.yml` | 档位，顺序就是输出顺序：`user_is`（scenario 第一句，正在聊天的是谁）、`knows_him`（description 开头说明「他」是男朋友）、`social` / `social_text`（说话方式：指向人设 `social` 的键，或直接写）、`discreet`（scenario 末尾加文件顶部那句）、`scenes` / `drop_scenes`（世界书用哪个场景档、去掉哪些场景）、`demeanor`（放进 post_history_instructions 的分寸）、`examples`（示例对话，[对方, 她的第一行, 她的后续几行…]）、`banned`（这一档的卡里不能出现的词，也是出口检查的词表）、`proactive`（主动找这一档的人：哪几种时机、每天最多几条、连着几条没回就停，ADR 0011；没写就不主动，名单外不能写） |
+| `tiers.yml` | 档位，顺序就是输出顺序：`user_is`（scenario 第一句，正在聊天的是谁）、`knows_him`（description 开头说明「他」是男朋友）、`social` / `social_text`（说话方式：指向人设 `social` 的键，或直接写）、`discreet`（scenario 末尾加文件顶部那句）、`scenes` / `drop_scenes`（世界书用哪个场景档、去掉哪些场景）、`demeanor`（放进 post_history_instructions 的分寸）、`examples`（示例对话，[对方, 她的第一行, 她的后续几行…]）、`banned`（这一档的卡里不能出现的词，也是出口检查的词表）、`pace`（回复节奏系数：冷场时多久看到、打字多久都乘它，ADR 0013；没写是 1）、`proactive`（主动找这一档的人：哪几种时机、每天最多几条、连着几条没回就停，ADR 0011；没写就不主动，名单外不能写） |
 
 - 原则（原 `tiers.toml` 开头）：私密信息靠「不写进去」保护。低档位的卡里只放这一档允许知道的事，也不放「别说你有男朋友」这种提醒——提醒本身就暴露了事实。
 - 档位一律写名字：`boyfriend` 男朋友、`bestie` 死党闺蜜、`girl_friend` 女生熟人、`known` 熟人、`classmate` 同学、`stranger` 陌生人、`unlisted` 名单外好友（除注明的以外与 `stranger` 相同）。
@@ -57,6 +57,7 @@
 - 作息：转换器按档位裁剪，写进卡的 `extensions.qqbot.schedule`；运行时按它算「她现在在干什么」放进时间块，也按它决定什么时候看到消息。
 - 重要的日子（ADR 0011）：`persona.yml` 的 `dates` 每条可以有 `day`（名字、公历 `date`、农历 `lunar`，都是 MM-DD；`midnight` 当天零点就主动祝），
   档位跟着那句文字的 `tiers`，转换器写进卡的 `extensions.qqbot.dates`。运行时提前 7 天起在时间块里提醒，当天主动提；公历、农历都写时，农历那天只在时间块里提一句。
+- 回复节奏（ADR 0013）：`tiers.yml` 档位上的 `pace`（0.5–3）写进卡的 `extensions.qqbot.pace`；越疏越慢，男朋友 1、同学 1.6、陌生人和名单外 2.2。
 - 主动设置（ADR 0011）：`tiers.yml` 档位上的 `proactive` 写进卡的 `extensions.qqbot.proactive`；真发不发由插件配置的「主动消息」开关（关 / 试运行 / 开）决定。
 - 没迁移的：转换器没用到的 `legacy/` 内容（书、兴趣、关注的 UP 主、每日心情、`him`、旧引擎参数、作息分段的权重、课的老师 / 简称 / 备注），要用再从 `legacy/` 迁。
 
