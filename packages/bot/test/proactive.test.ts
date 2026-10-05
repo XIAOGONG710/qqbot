@@ -171,6 +171,10 @@ describe('主动消息：到点时能不能发', () => {
     test('有没回的消息、一小时内聊过都不发', () => {
         assert.equal(blockReason(at('quiet', t(10, 12, 18)), t(10, 12, 18), input({ history: [...history, user(t(10, 12, 10))] })), '有没回的消息，回复就好');
         assert.equal(blockReason(at('after_class', t(10, 12, 17), { classEnd: t(10, 12, 16, 35) }), t(10, 12, 17), input({ history: [user(t(10, 12, 16, 10)), her(t(10, 12, 16, 20))] })), '一小时内聊过');
+        // 睡前只看 20 分钟（10-06：23:58 聊完，00:25 的睡前被一小时挡掉了）
+        const lateChat = [user(t(10, 12, 23, 48)), her(t(10, 12, 23, 58), '还没睡呢')];
+        assert.equal(blockReason(at('bedtime', t(10, 13, 0, 25)), t(10, 13, 0, 25), input({ history: lateChat })), undefined);
+        assert.equal(blockReason(at('bedtime', t(10, 13, 0, 10)), t(10, 13, 0, 10), input({ history: lateChat })), '20 分钟内聊过');
         // 回复器按「不回」处理了的那串（看心情没回的「哈哈」，ADR 0013）不算
         const laughed = [user(t(10, 12, 9, 50)), her(t(10, 12, 9, 51)), user(t(10, 12, 9, 52), '哈哈哈')];
         const skip = (h: { content: string }[]) => (h.at(-1)?.content === '哈哈哈' ? '看心情没回' : undefined);

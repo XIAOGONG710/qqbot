@@ -97,6 +97,11 @@ export const GRACE_MS = 10 * MIN;
 export const NIGHT_FROM = '00:30';
 /** 这么久之内双方说过话，就不主动（正聊着，或者刚聊完） */
 export const RECENT_MS = HOUR;
+/**
+ * 睡前用短一点的（10-06 用户定）：一小时会把「聊完停一会儿再说晚安」也挡掉——10-05 23:58 聊完，00:25 的睡前就没发。
+ * 正聊着时还是不插进来；道过晚安的另有一条挡着
+ */
+export const BEDTIME_RECENT_MS = 20 * MIN;
 /** 冷场：双方这么久没说话 */
 export const QUIET_MS = 8 * HOUR;
 const MORNING_MIN: [number, number] = [10, 40];
@@ -310,7 +315,11 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
     const last = history.at(-1);
     const lastTime = last ? Date.parse(last.time) : undefined;
     if (special) return undefined;
-    if (lastTime !== undefined && now - lastTime < RECENT_MS) return '一小时内聊过';
+    if (candidate.occasion === 'bedtime') {
+        if (lastTime !== undefined && now - lastTime < BEDTIME_RECENT_MS) return '20 分钟内聊过';
+    } else if (lastTime !== undefined && now - lastTime < RECENT_MS) {
+        return '一小时内聊过';
+    }
     const used = usedOn(candidate.day, input.records);
     if (used >= input.settings.dailyMax) return `今天已经主动了 ${used} 条`;
     if (unansweredCount(input) >= input.settings.unansweredMax) return '上一条主动消息他还没回';
