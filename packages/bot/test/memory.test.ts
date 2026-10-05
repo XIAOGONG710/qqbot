@@ -535,7 +535,7 @@ describe('长期记忆：公共库的实体名（ADR 0017 的线索）', () => {
         try {
             fail = Object.assign(new Error('GET … 返回 404：not found'), { status: 404 });
             assert.deepEqual(await memory.commonEntities(), []);
-            assert.deepEqual(logs, []);
+            assert.equal(logs.length, 0, "公共库还没建不记日志");
             fail = undefined;
             clock += 10 * MIN;
             assert.deepEqual(await memory.commonEntities(), ['鸽鸽', '杭州']);
