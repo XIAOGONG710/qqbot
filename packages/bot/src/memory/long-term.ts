@@ -36,6 +36,8 @@ export const MAX_RECALLED = 12;
 /** 公共记忆、被提起的人的记忆各注入几条（ADR 0016：各约 250 token） */
 export const SHARED_RECALLED = 6;
 export const PERSON_RECALLED = 6;
+/** 公共库的实体名（有线索才想起，ADR 0017）多久重读一次；公共库写入之后也重读 */
+export const ENTITIES_REFRESH_MS = 10 * 60_000;
 
 const TAGS = ['qq-private'];
 const RELATIONSHIP_MODEL_ID = 'relationship';
@@ -185,6 +187,7 @@ export class LongTermMemory {
     /** 每个联系人（按 #key）的写入排队，保证串行 */
     readonly #queues = new Map<string, Promise<void>>();
     readonly #relationship = new Map<string, { content?: string; fetchedAt: number; fetching?: boolean }>();
+    #entities: { names: string[]; fetchedAt?: number } = { names: [] };
     /** 最近一次写入、召回的结果（控制台的状态页，ADR 0010） */
     #lastWrite?: MemoryEvent;
     #lastRecall?: MemoryEvent;
@@ -262,6 +265,8 @@ export class LongTermMemory {
             this.#save(contact, state);
             this.#lastWrite = { at: this.#now(), ok: true };
             this.#options.log(`[${contact.qq}] 记忆（公共）：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
+            // 新片段可能带来新的人和事，下一轮重读实体名
+            this.#entities.fetchedAt = undefined;
         }
     }
 
@@ -386,6 +391,27 @@ export class LongTermMemory {
             this.#options.log(`${failure}：${message}`);
             return undefined;
         }
+    }
+
+    /**
+     * 公共库里的实体名（ADR 0017：他的话里出现了才去想公共记忆）。过期了就当场重读（本机，限时同召回），读不到用上一次的；
+     * 没开公共库、接口没有这个方法、公共库还没建都是空的
+     */
+    async commonEntities(): Promise<readonly string[]> {
+        const list = this.#options.api.listEntities;
+        if (!this.#options.common || !list) return [];
+        const cached = this.#entities;
+        if (cached.fetchedAt !== undefined && this.#now() - cached.fetchedAt < ENTITIES_REFRESH_MS) return cached.names;
+        try {
+            this.#entities = { names: await list.call(this.#options.api, this.commonBankId(), this.#options.recallTimeoutMs), fetchedAt: this.#now() };
+        } catch (error) {
+            // 公共库还没建是 404，不用记
+            if ((error as { status?: number }).status !== 404) {
+                this.#options.log(`读取公共记忆的实体失败，用上一次的：${error instanceof Error ? error.message : String(error)}`);
+            }
+            this.#entities = { names: cached.names, fetchedAt: this.#now() };
+        }
+        return this.#entities.names;
     }
 
     /** 关系概况：返回缓存，过期了在后台重新读 */

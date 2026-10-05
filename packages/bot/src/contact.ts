@@ -19,7 +19,7 @@ import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
-import { describePerson, mentionedPeople } from './people.ts';
+import { commonCue, describePerson, mentionedPeople } from './people.ts';
 import { describeState, stateAt } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
 import { describeDays, describeTime } from './time-context.ts';
@@ -119,11 +119,15 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const recallOptions = initiate
                 ? { query: initiateQuery(chat, initiate.topic), window: { start: new Date(time.getTime() - 3 * DAY_MS), end: new Date(time.getTime() + 2 * DAY_MS) } }
                 : {};
-            // 她认识的人（ADR 0016）：提到的人查他自己的 bank；公共记忆每轮都查（主动找他时不查，没有「他这次说的」）
+            // 她认识的人（ADR 0016）：提到的人查他自己的 bank。公共记忆有线索才查（ADR 0017）：提到了写了介绍的人、公共库里的人和事，
+            // 或者问她过去的事；主动找他时不查（没有「他这次说的」）
             const people = mentionedPeople(chat, contact, options.contacts ?? []);
+            const cue = !remembers || initiate ? undefined
+                : people.length ? people.map(person => person.name).join('、')
+                    : commonCue(chat, contact, await memory.commonEntities(), character.name);
             const [recalled, common, ...aboutPeople] = await Promise.all([
                 remembers ? memory.recall(contact, chat, time, recallOptions) : undefined,
-                remembers && !initiate ? memory.recallCommon(contact, chat, time, options.contacts ?? [contact]) : undefined,
+                remembers && cue ? memory.recallCommon(contact, chat, time, options.contacts ?? [contact]) : undefined,
                 ...people.map(person => (remembers
                     ? memory.recall(person, chat, time, {
                         ...recallOptions, limit: PERSON_RECALLED, header: `[你和${person.name}聊过的事（从记忆里想起来的，只作参考）]`,
@@ -132,7 +136,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             ]);
             const relationship = remembers ? memory.relationship(contact) : undefined;
             if (recalled) log(`召回长期记忆 ${countLines(recalled)} 条`);
-            if (common) log(`召回公共记忆 ${countLines(common)} 条`);
+            if (common) log(`召回公共记忆 ${countLines(common)} 条（线索：${cue}）`);
             if (people.length) {
                 log(`提起了 ${people.map((person, i) => `${person.name}：介绍${aboutPeople[i] ? ` + 召回 ${countLines(aboutPeople[i])} 条` : ''}`).join('；')}`);
             }

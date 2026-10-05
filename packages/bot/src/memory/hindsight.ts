@@ -91,6 +91,8 @@ export interface HindsightApi {
     updateMentalModel(bankId: string, id: string, request: MentalModelRequest): Promise<void>;
     /** 手动刷新，返回后台任务 id */
     refreshMentalModel(bankId: string, id: string): Promise<string>;
+    /** bank 里所有实体的名字（ADR 0017：公共记忆的线索）；没有这个方法就不按实体找线索 */
+    listEntities?(bankId: string, timeoutMs?: number): Promise<string[]>;
 }
 
 /** 写入请求体：后台异步处理（async），一次一个片段 */
@@ -162,6 +164,19 @@ export class HindsightClient implements HindsightApi {
     async refreshMentalModel(bankId: string, id: string): Promise<string> {
         const data = await this.#request<{ operation_id: string }>('POST', `${this.#bank(bankId)}/mental-models/${encodeURIComponent(id)}/refresh`);
         return data.operation_id;
+    }
+
+    async listEntities(bankId: string, timeoutMs = this.#timeoutMs): Promise<string[]> {
+        const names: string[] = [];
+        // 一页 100 个，最多读 10 页
+        for (let offset = 0; offset < 1000; offset += 100) {
+            const page = await this.#request<{ items: { canonical_name: string }[]; total: number }>(
+                'GET', `${this.#bank(bankId)}/entities?limit=100&offset=${offset}`, undefined, timeoutMs,
+            );
+            names.push(...page.items.map(item => item.canonical_name));
+            if (offset + 100 >= page.total || page.items.length === 0) break;
+        }
+        return names;
     }
 
     async deleteBank(bankId: string): Promise<void> {

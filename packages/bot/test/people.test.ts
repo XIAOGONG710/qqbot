@@ -6,7 +6,7 @@ import { describe, test } from 'node:test';
 import { parseAppConfig, type BotConfig, type Contact } from '../src/config.ts';
 import { loadTierCard } from '../src/contact.ts';
 import type { MemoryItem } from '../src/memory/hindsight.ts';
-import { describePerson, knowsPeople, MAX_MENTIONED, mentionedPeople } from '../src/people.ts';
+import { commonCue, describePerson, knowsPeople, MAX_MENTIONED, mentionedPeople } from '../src/people.ts';
 import type { OpenAIMessage } from '../src/prompt.ts';
 import { runScenario, type SimHindsight } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
@@ -119,7 +119,9 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
             assert.ok(recalled.includes(gegeBank), '查了鸽鸽的 bank');
             const say = result.steps.filter(step => step.kind === 'say')[1]!;
             assert.ok(say.logs.some(line => line === '提起了 鸽鸽：介绍 + 召回 1 条'));
-            assert.ok(say.logs.some(line => line === '召回公共记忆 1 条'));
+            assert.ok(say.logs.some(line => line === '召回公共记忆 1 条（线索：鸽鸽）'));
+            const first = result.steps.filter(step => step.kind === 'say')[0]!;
+            assert.ok(!first.logs.some(line => line.startsWith('召回公共记忆')), '「在干嘛」没有线索，不查公共记忆（ADR 0017）');
             assert.deepEqual(deleted.sort(), [result.bankId!, gegeBank, 'sim-t-common'].sort());
         } finally {
             rmSync(dir, { recursive: true, force: true });
@@ -131,5 +133,34 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         assert.throws(() => scenario({ others: [late] }), /要早于起点 45 分钟以上/);
         assert.throws(() => scenario({ others: [{ name: '鸽鸽', tier: 'unlisted' }] }), /others\[0\]\.tier/);
         assert.deepEqual(scenario({ others: undefined }).others, []);
+    });
+});
+
+describe('公共记忆的线索（ADR 0017）', () => {
+    const entities = ['鸽鸽', '林梦瑶', '宝宝', '流浪地球3', '杭州', '猫'];
+    const cue = (...said: string[]) => commonCue(said.map(he), me, entities, '林梦瑶');
+
+    test('他这次的话里有公共库里的人和事：最长的那个；她自己、他自己的名字和单字不算', () => {
+        assert.equal(cue('你看过流浪地球3吗'), '流浪地球3');
+        assert.equal(cue('杭州好玩吗'), '杭州');
+        assert.equal(cue('宝宝来了'), undefined, '他自己的称呼');
+        assert.equal(cue('林梦瑶在吗'), undefined);
+        assert.equal(cue('我家的猫'), undefined, '单字');
+        // 只看她上次回复之后的
+        assert.equal(commonCue([he('杭州好玩吗'), she('还行'), he('嗯')], me, entities, '林梦瑶'), undefined);
+    });
+
+    test('问她过去的事：时间 + 经历，问的是她', () => {
+        assert.equal(cue('你今天下午干嘛去了'), '问她过去的事');
+        assert.equal(cue('昨天干啥了'), '问她过去的事');
+        assert.equal(cue('最近在忙什么呢？'), '问她过去的事');
+        assert.equal(cue('我今天去爬山了'), undefined, '说的是他自己');
+        assert.equal(cue('在干嘛呢'), undefined, '没有时间');
+        assert.equal(cue('今天好累'), undefined, '没有经历');
+    });
+
+    test('陌生人档、名单外没有线索', () => {
+        assert.equal(commonCue([he('你今天干嘛了')], { qq: 9, name: '路人', tier: 'stranger' }, entities, '林梦瑶'), undefined);
+        assert.equal(commonCue([he('你今天干嘛了')], { qq: 9, name: '路人', tier: 'unlisted' }, entities, '林梦瑶'), undefined);
     });
 });

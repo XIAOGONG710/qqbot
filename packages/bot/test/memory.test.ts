@@ -516,3 +516,45 @@ describe('长期记忆：召回的写法（ADR 0017）', () => {
         assert.match(formatRecalled([{ id: '1', text: '周五面试', occurred_start: '2026-10-12T09:00:00+08:00' }])!, /\n- 10月12日：周五面试$/);
     });
 });
+
+describe('长期记忆：公共库的实体名（ADR 0017 的线索）', () => {
+    test('10 分钟内用缓存，公共库写入之后重读；公共库还没建（404）不记日志，别的错用上一次的', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-'));
+        const logs: string[] = [];
+        let clock = T0 + 24 * 60 * MIN;
+        let lists = 0;
+        let fail: Error | undefined;
+        const { api } = fakeApi();
+        api.listEntities = async bank => {
+            lists++;
+            if (fail) throw fail;
+            assert.equal(bank, 'linmengyao-common');
+            return ['鸽鸽', '杭州'];
+        };
+        const memory = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: m => logs.push(m), now: () => clock, common: true });
+        try {
+            fail = Object.assign(new Error('GET … 返回 404：not found'), { status: 404 });
+            assert.deepEqual(await memory.commonEntities(), []);
+            assert.deepEqual(logs, []);
+            fail = undefined;
+            clock += 10 * MIN;
+            assert.deepEqual(await memory.commonEntities(), ['鸽鸽', '杭州']);
+            assert.deepEqual(await memory.commonEntities(), ['鸽鸽', '杭州']);
+            assert.equal(lists, 2, '第二次用缓存');
+
+            await memory.sync({ qq: 2, tier: 'classmate' }, { user: '鸽鸽', char: '林梦瑶' }, [msg(0, 'user', '在吗')]);
+            await memory.commonEntities();
+            assert.equal(lists, 3, '公共库写入之后重读');
+
+            fail = new Error('超时（3000 ms）');
+            clock += 10 * MIN;
+            assert.deepEqual(await memory.commonEntities(), ['鸽鸽', '杭州'], '读不到用上一次的');
+            assert.ok(logs.some(l => l.includes('读取公共记忆的实体失败，用上一次的：超时')));
+
+            const off = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: () => {} });
+            assert.deepEqual(await off.commonEntities(), [], '没开公共库');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+});
