@@ -52,7 +52,8 @@ const SERVICE = new RegExp([
 const LEDGER = new RegExp([
     '才(?:想起|记起|舍得)(?:来)?(?:我|找我|回我|问我|理我|还有我)',
     `${NOT_ME}(?:这会儿|现在|这时候|这个点儿?|今天|到现在)才(?:来|想起|冒出来|回我|问|找|理)`,
-    '还知道(?:回来|想我|找我|回我|理我)',
+    '还知道(?:回来|想我|找我|回我|理我|有个?我)',
+    '(?<!别)把我(?:给)?忘了',
     `${NOT_ME}终于(?:想起|舍得)`,
     '想起(?:我|还有我)(?:来)?[了啦]',
     '把我晾|晾着?我|冷落我',
@@ -69,6 +70,8 @@ const BLAME = new RegExp([
     '背着我(?!的)',
     '把我(?:一个人)?(?:扔|丢|撂)',
     '也不(?:带|叫|喊|陪|来找)我',
+    '不(?:带上|叫上|喊上)我(?!也)',
+    '(?:怎么|之前|也|都|从来)没(?:听你|跟我)(?:说|提)(?:过|起)',
 ].join('|'));
 
 const PUNCT = '，,。.！!？?、~～…：:；;“”"\'（）()\\s';
@@ -98,6 +101,13 @@ export function opener(line: string): { key: string; stripped?: string } | undef
     return { key: first };
 }
 
+/** index 处在没合上的「」或“”里 */
+function insideQuote(text: string, index: number): boolean {
+    const before = text.slice(0, index);
+    const open = (o: string, c: string) => before.split(o).length - before.split(c).length > 0;
+    return open('「', '」') || open('“', '”');
+}
+
 /** 一段话里的 4 字片段（只算汉字，不跨标点） */
 function grams(text: string): Set<string> {
     const set = new Set<string>();
@@ -122,7 +132,8 @@ export function inspectSpeech(reply: string, context: SpeechContext): SpeechIssu
         if (!text) continue;
         for (const [kind, re] of [['service', SERVICE], ['ledger', LEDGER], ['blame', BLAME]] as const) {
             const hit = re.exec(text);
-            if (hit) issues.push({ line, kind, match: hit[0].trim() });
+            // 引号里是别人的话（「面试官问『你还有什么想问的』」），不算她说的
+            if (hit && !insideQuote(text, hit.index)) issues.push({ line, kind, match: hit[0].trim() });
         }
         const open = opener(text);
         if (open) {
