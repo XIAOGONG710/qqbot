@@ -203,11 +203,10 @@ export class LongTermMemory {
         }
     }
 
-    /** 召回和这次对话相关的旧事，整理成一段提示；没有就返回 undefined。出错只记日志 */
-    async recall(contact: MemoryContact, chat: ChatMessage[], now: Date): Promise<string | undefined> {
+    /** 召回和这次对话相关的旧事，整理成一段提示；没有就返回 undefined。出错只记日志。query 不传就用 recallQuery */
+    async recall(contact: MemoryContact, chat: ChatMessage[], now: Date, query = recallQuery(chat)): Promise<string | undefined> {
         const state = this.#load(contact);
         if (!state.bankConfigured) return undefined;
-        const query = recallQuery(chat);
         if (!query) return undefined;
         const request: RecallRequest = {
             query,
@@ -280,6 +279,11 @@ export function recallQuery(chat: ChatMessage[]): string {
     if (lines.length === 0) return '';
     if (lastReply >= 0) lines.unshift(`她：${chat[lastReply]!.content}`);
     return lines.join('\n').slice(-400);
+}
+
+/** 主动找他时的查询（ADR 0011 决策 3）：没有「他这次说的」，用最近几句（双方都算），最多 400 字 */
+export function recentQuery(chat: ChatMessage[], count = 6): string {
+    return chat.slice(-count).map(m => `${m.role === 'user' ? '对方' : '她'}：${m.content}`).join('\n').slice(-400);
 }
 
 /** 当前片段（最后一条消息所在的片段）的 id */

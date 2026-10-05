@@ -297,6 +297,34 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
     return undefined;
 }
 
+/** 主动发的最多几条气泡 */
+export const MAX_PROACTIVE_BUBBLES = 2;
+
+/** 提示词里的说明（ADR 0011 决策 3）：这次是你主动找他、为什么。userName 是称呼（{{user}}） */
+export function occasionNote(candidate: Candidate, userName: string): string {
+    const names = candidate.importantDays?.map(d => d.name).join('、') ?? '';
+    const why: Record<Occasion, () => string> = {
+        morning: () => `你起床没多久，跟${userName}说早安`,
+        after_class: () => `你今天的课上完了，跟${userName}说一声`,
+        bedtime: () => `时间不早了，跟${userName}道个晚安`,
+        quiet: () => `你们大半天没说话了，你想找${userName}说两句（对方可能在忙，别怪对方没找你）`,
+        follow_up: () => candidate.reason,
+        dates: () => (candidate.id.endsWith(':midnight')
+            ? `零点了，今天是${names}，你一直记着，第一时间跟${userName}说`
+            : `今天是${names}。你起床没多久，跟${userName}说早安，也提一句这个日子`),
+    };
+    return `[这次是你主动找${userName}：${why[candidate.occasion]()}。只发一两句，像平时随手发的消息。]`;
+}
+
+/** 日志、状态页里的说法：「早安（起床后 12 分钟）」 */
+export const OCCASION_LABELS: Record<Occasion, string> = {
+    dates: '重要的日子', follow_up: '待跟进的事', morning: '早安', after_class: '下课', quiet: '冷场', bedtime: '睡前',
+};
+
+export function candidateLabel(candidate: Candidate): string {
+    return `${OCCASION_LABELS[candidate.occasion]}（${candidate.reason}）`;
+}
+
 // ---------- 读卡 ----------
 
 const MONTH_DAY = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;

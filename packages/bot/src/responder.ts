@@ -13,6 +13,8 @@
 // 她已经收尾、对方只回了附和的，不回。
 // stop()（Koishi 插件停用或因改配置重启，ADR 0008）：正在等的不再等，生成完的不发，排定的再试作废，之后收到的不处理；
 // 没回的消息由新的回复器按聊天记录 catchUp（随机延迟按消息 id 取种子，「几点看到」不变）。
+// initiate()（主动找他，ADR 0011）：和回复共用「同一时间只生成一条」；正在回、有没回的消息就不主动。
+// 生成中他来了消息，草稿不发，照常回他；生成完、发之前先调 commit（先记后发，崩溃、断线后不重发）；试运行到 commit 为止。
 
 const MAX_REGENERATE = 2;
 /** 拆开的几条之间隔多久 */
@@ -24,7 +26,7 @@ export const RETRY_AFTER_MS = [60_000, 300_000];
 
 import type { ChatHistory, StoredMessage } from './history.ts';
 import type { ChatMessage, OpenAIMessage, PromptResult } from './prompt.ts';
-import type { Seen } from './reply-timing.ts';
+import { pendingMessages, type Seen } from './reply-timing.ts';
 import { MAX_BUBBLES, splitReply } from './reply.ts';
 
 /** 回复时机（reply-timing.ts 按作息算） */
@@ -40,8 +42,11 @@ export interface ReplyTiming {
 export interface ResponderDeps {
     userId: number;
     history: Pick<ChatHistory, 'load' | 'append'>;
-    /** 可以是异步的（生成前要先召回长期记忆）；woken：睡着时被消息吵醒（ADR 0007 决策 6） */
-    buildPrompt: (history: ChatMessage[], context: { woken?: boolean }) => PromptResult | Promise<PromptResult>;
+    /**
+     * 可以是异步的（生成前要先召回长期记忆）；woken：睡着时被消息吵醒（ADR 0007 决策 6）；
+     * initiate：她主动找他，这次为什么找（ADR 0011，写进时间块之后的说明）
+     */
+    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: string }) => PromptResult | Promise<PromptResult>;
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     clean: (reply: string) => string;
     /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查 */
@@ -66,10 +71,10 @@ export interface ResponderDeps {
 /**
  * 回复器此刻在干什么（控制台「林梦瑶」页面的状态，ADR 0010）：
  * idle 空闲；waiting 等到 seenAt 才看到（reason 是原因：在睡觉、在上课……）；settling 对方还在连发；
- * generating 在生成；sending 在逐条发；retry 回复失败，retryAt 再试
+ * generating 在生成；sending 在逐条发；retry 回复失败，retryAt 再试；initiating 在主动找他（生成或发送，reason 是时机）
  */
 export interface ResponderStatus {
-    phase: 'idle' | 'waiting' | 'settling' | 'generating' | 'sending' | 'retry';
+    phase: 'idle' | 'waiting' | 'settling' | 'generating' | 'sending' | 'retry' | 'initiating';
     seenAt?: number;
     reason?: string;
     retryAt?: number;
@@ -77,12 +82,36 @@ export interface ResponderStatus {
     failures: number;
 }
 
+/** 主动找他一次（ADR 0011） */
+export interface InitiateRequest {
+    /** 日志里的说法，例如「早安（起床后 12 分钟）」 */
+    label: string;
+    /** 提示词里的说明：这次是你主动找他、为什么 */
+    note: string;
+    /** 最多几条气泡 */
+    maxBubbles: number;
+    /** 试运行：生成、出口检查、commit，然后写日志，不发、不进聊天记录 */
+    dryRun: boolean;
+    /** 生成完、发之前调用（先记后发）；抛错就不发 */
+    commit: (parts: string[]) => void;
+}
+
+export type InitiateOutcome =
+    | { result: 'sent'; parts: string[]; messageIds: number[] }
+    | { result: 'dryRun'; parts: string[] }
+    /** 没发：正在回消息、有没回的消息、生成中他来了消息、生成的是空的、已停止 */
+    | { result: 'skipped'; reason: string }
+    /** 生成或发送出错（发送出错时可能已经发出了前几条） */
+    | { result: 'failed'; reason: string; messageIds?: number[] };
+
 export interface Responder {
     receive(text: string, messageId: number, time: Date): void;
     /** 此刻在干什么（只读） */
     status(): ResponderStatus;
     /** 不记新消息，直接按现有聊天记录回复一次（补回漏掉的消息之后用） */
     catchUp(): void;
+    /** 主动找他一次（见文件开头） */
+    initiate(request: InitiateRequest): Promise<InitiateOutcome>;
     /** 当前没有在生成时 resolve（测试用） */
     whenIdle(): Promise<void>;
     /** 没在生成，或者正等着到点看到消息时 resolve（模拟器用：这时可以把虚拟时钟往前拨） */
@@ -286,6 +315,60 @@ export function createResponder(deps: ResponderDeps): Responder {
         if (phase.phase !== 'retry' || stopped) setPhase({ phase: 'idle' });
     }
 
+    /** 主动找他一次（initiate 已确认此刻空闲、没有要回的消息） */
+    async function initiateOnce(request: InitiateRequest): Promise<InitiateOutcome> {
+        const stored = deps.history.load(deps.userId);
+        const input = stored.length;
+        const startedAt = now();
+        setPhase({ phase: 'initiating', reason: request.label });
+        const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { initiate: request.note });
+        deps.onPrompt?.(prompt);
+        const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
+        deps.log(`主动找他（${request.label}）：生成，${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);
+        let reply = deps.clean(await deps.generate(prompt.messages));
+        if (deps.review) reply = await deps.review(reply, prompt.messages);
+        if (stopped) return { result: 'skipped', reason: '已停止' };
+        if (deps.history.load(deps.userId).slice(input).some(m => m.role === 'user')) {
+            return { result: 'skipped', reason: '生成期间他来了消息，草稿不发，照常回他' };
+        }
+        // 空的不再生成（宁可少发）
+        const parts = splitReply(reply, request.maxBubbles);
+        if (parts.length === 0) return { result: 'skipped', reason: '生成的是空的' };
+        request.commit(parts);
+        if (request.dryRun) return { result: 'dryRun', parts };
+
+        const { timing } = deps;
+        if (timing) {
+            const due = startedAt + timing.typingMs(parts[0]!) - now();
+            if (due > 0) await sleep(due);
+        }
+        const messageIds: number[] = [];
+        const sent: string[] = [];
+        for (const [i, part] of parts.entries()) {
+            if (i > 0) {
+                await sleep(timing ? timing.typingMs(part) : PART_GAP_MS);
+                if (deps.history.load(deps.userId).slice(input).some(m => m.role === 'user')) {
+                    deps.log(`发送中途对方插话，剩下 ${parts.length - i} 条不发`);
+                    break;
+                }
+            }
+            if (stopped) {
+                deps.log(`已停止，剩下 ${parts.length - i} 条不发`);
+                break;
+            }
+            let messageId: number;
+            try {
+                messageId = await deps.send(deps.userId, part);
+            } catch (error) {
+                return { result: 'failed', reason: `发送失败：${error instanceof Error ? error.message : String(error)}`, ...(messageIds.length ? { messageIds } : {}) };
+            }
+            deps.history.append(deps.userId, { time: new Date(now()).toISOString(), role: 'assistant', content: part, messageId });
+            messageIds.push(messageId);
+            sent.push(part);
+        }
+        return sent.length ? { result: 'sent', parts: sent, messageIds } : { result: 'skipped', reason: '已停止' };
+    }
+
     /** 新消息或补回：之前排定的再试作废，重新计次 */
     function restart(): void {
         retryToken++;
@@ -315,6 +398,23 @@ export function createResponder(deps: ResponderDeps): Responder {
         catchUp() {
             restart();
             interruptWait?.();
+        },
+        initiate(request) {
+            const skip = (reason: string) => Promise.resolve<InitiateOutcome>({ result: 'skipped', reason });
+            if (stopped) return skip('已停止');
+            if (running) return skip('正在回消息');
+            if (pendingMessages(deps.history.load(deps.userId)).length) return skip('有没回的消息，回复就好');
+            const task = initiateOnce(request).catch((error): InitiateOutcome => ({
+                result: 'failed', reason: `生成失败：${error instanceof Error ? error.message : String(error)}`,
+            }));
+            running = task.then(() => {
+                running = null;
+                if (phase.phase === 'initiating') setPhase({ phase: 'idle' });
+                for (const resolve of quietWaiters.splice(0)) resolve();
+                // 主动的时候他来了消息：现在照常回
+                if (pending) schedule();
+            });
+            return task;
         },
         status: () => ({ ...phase, failures }),
         whenIdle: () => running ?? Promise.resolve(),

@@ -27,7 +27,7 @@ export function describeTime(chat: (TimedMessage & { content: string })[], now: 
         const last = chat.at(-1);
         if (last?.time) {
             const time = new Date(last.time);
-            lines.push(`[上一条消息：${when(time, now)}，${last.role === 'user' ? '他' : '你'}发的，到现在 ${duration(now.getTime() - time.getTime())}]`);
+            lines.push(`[上一条消息：${when(time, now)}，${last.role === 'user' ? '对方' : '你'}发的，到现在 ${duration(now.getTime() - time.getTime())}]`);
         }
         return lines.join('\n');
     }

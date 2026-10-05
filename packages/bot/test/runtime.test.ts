@@ -10,7 +10,7 @@ import { isPrivateFriendMessage, segmentsToText, type MessageEvent } from '../sr
 import { unlistedName } from '../src/app.ts';
 import type { PromptResult } from '../src/prompt.ts';
 import { cleanUpReply, splitReply } from '../src/reply.ts';
-import { createResponder, DEFAULT_SETTLE, PART_GAP_MS, RETRY_AFTER_MS, type ReplyTiming, type ResponderDeps } from '../src/responder.ts';
+import { createResponder, DEFAULT_SETTLE, PART_GAP_MS, RETRY_AFTER_MS, type InitiateRequest, type ReplyTiming, type ResponderDeps } from '../src/responder.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
 
@@ -541,6 +541,90 @@ describe('回复调度', () => {
         assert.deepEqual(sent, ['一']);
         assert.deepEqual(stored.map(m => `${m.role}:${m.content}`), ['user:在吗', 'assistant:一']);
         assert.ok(logs.includes('已停止，剩下 2 条不发'));
+    });
+
+    describe('主动找他（ADR 0011）', () => {
+        const request = (patch: Partial<InitiateRequest> = {}): InitiateRequest & { committed: string[][] } => {
+            const committed: string[][] = [];
+            return { label: '早安（起床后 12 分钟）', note: '[这次是你主动找他：早安]', maxBubbles: 2, dryRun: false, commit: parts => { committed.push(parts); }, committed, ...patch };
+        };
+
+        test('发出去、记进聊天记录；先 commit 再发；最多 2 条；提示词里带着说明', async () => {
+            const notes: (string | undefined)[] = [];
+            const order: string[] = [];
+            const { responder, stored, sent } = setup({
+                generate: async () => '早\n醒了没\n今天好冷\n多穿点',
+                buildPrompt: (chat, context) => {
+                    notes.push(context.initiate);
+                    return { messages: chat.map(m => ({ role: m.role, content: m.content })), activatedWorldInfo: [] };
+                },
+                send: async (_id, text) => { order.push(`send:${text}`); sent.push(text); return 100 + sent.length; },
+            });
+            const req = request({ commit: parts => { order.push(`commit:${parts.length}`); } });
+            const outcome = await responder.initiate(req);
+            // 4 行按顺序合并成 2 条（reply.ts）
+            assert.deepEqual(outcome, { result: 'sent', parts: ['早\n醒了没', '今天好冷\n多穿点'], messageIds: [101, 102] });
+            assert.deepEqual(order, ['commit:2', 'send:早\n醒了没', 'send:今天好冷\n多穿点']);
+            assert.deepEqual(notes, ['[这次是你主动找他：早安]']);
+            assert.deepEqual(stored.map(m => `${m.role}:${m.content}`), ['assistant:早\n醒了没', 'assistant:今天好冷\n多穿点']);
+            assert.equal(responder.status().phase, 'idle');
+        });
+
+        test('试运行：生成、commit，不发、不记', async () => {
+            const { responder, stored, sent } = setup({ generate: async () => '早' });
+            const req = request({ dryRun: true });
+            assert.deepEqual(await responder.initiate(req), { result: 'dryRun', parts: ['早'] });
+            assert.deepEqual(req.committed, [['早']]);
+            assert.deepEqual(sent, []);
+            assert.deepEqual(stored, []);
+        });
+
+        test('正在回消息、有没回的消息时不主动；生成的是空的也不发、不再生成', async () => {
+            const busy = setup();
+            busy.responder.receive('在吗', 1, new Date());
+            assert.deepEqual(await busy.responder.initiate(request()), { result: 'skipped', reason: '正在回消息' });
+            await tick();
+            busy.release();
+            await busy.responder.whenIdle();
+
+            const pending = setup();
+            pending.stored.push({ time: new Date().toISOString(), role: 'user', content: '在吗', messageId: 1 });
+            assert.deepEqual(await pending.responder.initiate(request()), { result: 'skipped', reason: '有没回的消息，回复就好' });
+
+            let calls = 0;
+            const empty = setup({ generate: async () => { calls++; return '  '; } });
+            const req = request();
+            assert.deepEqual(await empty.responder.initiate(req), { result: 'skipped', reason: '生成的是空的' });
+            assert.equal(calls, 1);
+            assert.deepEqual(req.committed, []);
+        });
+
+        test('生成中他来了消息：草稿不发、不 commit，接着照常回他', async () => {
+            const { responder, stored, sent, release } = setup();
+            const req = request();
+            const pendingOutcome = responder.initiate(req);
+            await tick();
+            responder.receive('早啊', 1, new Date());
+            release();
+            assert.deepEqual(await pendingOutcome, { result: 'skipped', reason: '生成期间他来了消息，草稿不发，照常回他' });
+            assert.deepEqual(req.committed, []);
+            await tick();
+            release();
+            await responder.whenIdle();
+            assert.equal(sent.length, 1);
+            assert.deepEqual(stored.map(m => m.role), ['user', 'assistant']);
+        });
+
+        test('生成出错、发送出错：failed，不再试', async () => {
+            const broken = setup({ generate: async () => { throw new Error('连接超时'); } });
+            assert.deepEqual(await broken.responder.initiate(request()), { result: 'failed', reason: '生成失败：连接超时' });
+
+            const offline = setup({ generate: async () => '早', send: async () => { throw new Error('NapCat 未连接'); } });
+            const req = request();
+            assert.deepEqual(await offline.responder.initiate(req), { result: 'failed', reason: '发送失败：NapCat 未连接' });
+            assert.deepEqual(req.committed, [['早']], '发之前已经记过：断线后不会重发');
+            assert.deepEqual(offline.stored, []);
+        });
     });
 });
 

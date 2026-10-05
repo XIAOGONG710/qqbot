@@ -7,7 +7,7 @@ import { reviewReply } from './exit-check.ts';
 import type { ChatHistory } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
-import type { LongTermMemory } from './memory/long-term.ts';
+import { recentQuery, type LongTermMemory } from './memory/long-term.ts';
 import { buildPrompt, type OpenAIMessage, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
 import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from './responder.ts';
@@ -70,11 +70,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     return createResponder({
         userId: contact.qq,
         history: options.history,
-        buildPrompt: async (chat, { woken }) => {
+        buildPrompt: async (chat, { woken, initiate }) => {
             const time = new Date(now());
-            // 长期记忆只给名单里的人
+            // 长期记忆只给名单里的人；主动找他时没有「他这次说的」，用最近一段聊天去查（ADR 0011 决策 3）
             const remembers = memory && contact.tier !== UNLISTED_TIER;
-            const recalled = remembers ? await memory.recall(contact, chat, time) : undefined;
+            const recalled = remembers ? await memory.recall(contact, chat, time, initiate ? recentQuery(chat) : undefined) : undefined;
             const relationship = remembers ? memory.relationship(contact) : undefined;
             if (recalled) log(`召回长期记忆 ${recalled.split('\n').length - 1} 条`);
             const days = describeDays(character.dates, time);
@@ -88,9 +88,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 afterHistory: [
                     ...(recalled ? [recalled] : []),
                     [
-                        describeTime(chat, time),
+                        describeTime(chat, time, { initiating: Boolean(initiate) }),
                         ...(days ? [days] : []),
                         ...(schedule ? [describeState(stateAt(schedule, time), schedule, { userName: contact.name, woken })] : []),
+                        ...(initiate ? [initiate] : []),
                     ].join('\n'),
                 ],
                 now: time,
