@@ -697,12 +697,12 @@ function checkBooks(raw: unknown): BooksSource {
             amount: c.at('progress.amount').integer(progressRaw.amount, 0, 1_000_000),
             unit: c.at('progress.unit').string(progressRaw.unit),
         };
-        if (progressRaw.max !== undefined && progressRaw.max !== null) progress.max = c.at('progress.max').integer(progressRaw.max, 0, 1_000_000);
+        if (progressRaw.max !== undefined && progressRaw.max !== null && progressRaw.max !== '') progress.max = c.at('progress.max').integer(progressRaw.max, 0, 1_000_000);
         if (stateText !== undefined) progress.state = stateText;
         if (progress.max !== undefined && progress.start > progress.max) c.at('progress').fail('start 不能大于 max');
 
         let total: BookSource['total'];
-        if (book.total !== undefined && book.total !== null) {
+        if (!blank(book.total)) {
             const totalRaw = c.at('total').object(book.total);
             c.at('total').keys(totalRaw, ['amount', 'unit', 'source']);
             total = {
@@ -717,7 +717,9 @@ function checkBooks(raw: unknown): BooksSource {
             const n = c.at(`nodes[${j}]`);
             const node = n.object(value);
             n.keys(node, ['id', 'topic', 'from', 'keywords', 'points', 'sources', 'tiers', 'note']);
-            const tiers = node.tiers === undefined || node.tiers === null ? undefined : n.at('tiers').strings(node.tiers, { allowEmpty: false });
+            // 页面上一个都不勾会留下空数组：和没写一样，跟着整本书
+            const tiers = node.tiers === undefined || node.tiers === null || (Array.isArray(node.tiers) && !node.tiers.length)
+                ? undefined : n.at('tiers').strings(node.tiers, { allowEmpty: false });
             const base = {
                 id: n.at('id').string(node.id), topic: n.at('topic').string(node.topic),
                 from: n.at('from').integer(node.from, 0, 1_000_000),
@@ -730,7 +732,7 @@ function checkBooks(raw: unknown): BooksSource {
         });
         if (new Set(nodes.map(node => node.id)).size !== nodes.length) c.at('nodes').fail('节点 id 重复');
         let activity: BookSource['activity'];
-        if (book.activity !== undefined && book.activity !== null) {
+        if (!blank(book.activity)) {
             const item = c.at('activity').object(book.activity);
             c.at('activity').keys(item, ['window', 'text']);
             const window = c.at('activity.window').string(item.window) as NonNullable<BookSource['activity']>['window'];
@@ -749,6 +751,13 @@ function checkBooks(raw: unknown): BooksSource {
     if (!books.length) root.at('books').fail('不能是空数组');
     if (new Set(books.map(book => book.id)).size !== books.length) root.at('books').fail('书的 id 重复');
     return withNote(root.at('note'), o.note, { books });
+}
+
+/** 可选的一组（总量、看书的空闲活动）：没写、null，或者页面上把每一项都清空了，都当作没写 */
+function blank(value: unknown): boolean {
+    if (value === undefined || value === null) return true;
+    if (typeof value !== 'object' || Array.isArray(value)) return false;
+    return Object.values(value).every(item => item === undefined || item === null || (typeof item === 'string' && !item.trim()));
 }
 
 function orderKeys<T extends object>(obj: T, order: string[]): T {

@@ -59,6 +59,34 @@ describe('控制台的角色资料（ADR 0010）', () => {
         assert.ok(!shape.ok && /schedule\.yml\.sleep 应为 HH:MM/.test(shape.error!));
     });
 
+    test('心情和在读的书（ADR 0015）：没变不写；改了重新生成带它们的卡；清空的可选项当作没写；书的内容也过档位隐私检查', () => {
+        const source = readSource(paths.sourceDir);
+        const before = mtimes();
+        assert.deepEqual(saveCharacter('moods', source.moods), { ok: true, written: [] });
+        assert.deepEqual(saveCharacter('books', source.books), { ok: true, written: [] });
+        assert.deepEqual(mtimes(), before);
+
+        const moods = structuredClone(source.moods)!;
+        moods.moods.find(mood => mood.name === '安静')!.style.text = '今天有点蔫，回得短（虚构的改写）';
+        const saved = saveCharacter('moods', moods);
+        assert.ok(saved.ok && saved.written.includes('linmengyao-classmate.json') && !saved.written.includes('linmengyao-stranger.json'));
+        assert.ok(readFileSync(join(dir, 'st', 'linmengyao-classmate.json'), 'utf8').includes('虚构的改写'));
+
+        const books = structuredClone(source.books)!;
+        (books.books[0] as { activity?: unknown }).activity = { window: '', text: '' };
+        (books.books[0] as { progress: { max?: unknown } }).progress.max = '';
+        assert.ok(saveCharacter('books', books).ok);
+        const reread = readSource(paths.sourceDir).books!.books[0]!;
+        assert.equal(reread.activity, undefined);
+        assert.equal(reread.progress.max, undefined);
+
+        const word = source.tiers.tiers.find(t => t.name === 'classmate')!.banned[0]!;
+        const leaky = structuredClone(source.books)!;
+        leaky.books[1]!.nodes[0]!.points.push(`虚构的一句${word}`);
+        const leak = saveCharacter('books', leaky);
+        assert.ok(!leak.ok && leak.problems?.some(p => p.tier === 'classmate' && p.word === word));
+    });
+
     test('页面的数据：插件没在跑时带上原因', () => {
         setConsoleState({ running: false, error: '配置有误，插件没有启动：x' });
         const data = consoleData();

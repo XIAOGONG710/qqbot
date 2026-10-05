@@ -34,7 +34,8 @@ export interface ConsoleData {
     updatedAt: number;
 }
 
-export type SourcePart = 'persona' | 'scenes' | 'schedule' | 'tiers';
+/** moods / books（ADR 0015）是后加的文件：资料里没有这两个文件时页面不显示它们的分页 */
+export type SourcePart = 'persona' | 'scenes' | 'schedule' | 'tiers' | 'moods' | 'books';
 
 export type SaveResult =
     | { ok: true; written: string[] }

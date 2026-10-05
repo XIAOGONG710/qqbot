@@ -1,4 +1,4 @@
-// 编辑页的表单（Schema）：人设、档位、作息（ADR 0010）。世界书在 scenes.js。
+// 编辑页的表单（Schema）：人设、档位、作息（ADR 0010），心情、在读的书（ADR 0015）。世界书在 scenes.js。
 // 形状和 characters/<角色>/source/ 的 YAML 一样（packages/character-tools/src/source.ts），服务端保存前再校验一遍。
 import { Schema } from '@koishijs/client';
 import { tierLabel } from './common.js';
@@ -126,6 +126,97 @@ export function tierSections(source) {
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const WINDOWS = () => Schema.union([Schema.const('morning').description('上午'), Schema.const('afternoon').description('下午'), Schema.const('evening').description('晚上')]);
+
+const MOOD_DAY_LABELS = { early: '有早八', busy: '课多（3 节以上）', no_class: '学期中没课', holiday: '放假' };
+
+/** 每日心情（ADR 0015）：一种心情一段（同档位页，页面上不加、不删心情，要加改 moods.yml） */
+export function moodsSections(source) {
+    const names = tierNames(source);
+    const moodSchema = Schema.object({
+        name: Schema.string().description('**名字**：心情行里的说法，例如「安静」；模拟器场景的 mood 也写这个名字'),
+        weight: Schema.number().min(0.01).max(100).description('**权重**：越大越常抽到'),
+        style: field(names, true).description('**怎么说**：放在时间块里状态行下面，每轮都在。只写今天说话的样子，不写「别……」；{{user}} 换成称呼'),
+        when: Schema.array(Schema.object({
+            day: Schema.union(Object.entries(MOOD_DAY_LABELS).map(([day, label]) => Schema.const(day).description(label))).description('**哪种日子**：按她当天的课表判断'),
+            factor: Schema.number().min(0.01).max(100).description('**权重乘几**'),
+            reason: Schema.string().description('**原因**：写进心情行，她被问「怎么了」时有真的原因可说'),
+        })).description('**什么日子更可能**：都没命中时原因写「说不上为什么，今天就是这样」'),
+        note: note(),
+    });
+    return [
+        ...source.moods.moods.map((mood, i) => ({
+            key: `mood-${i}`, label: mood.name, schema: moodSchema,
+            get: d => d.moods[i],
+            set: (d, v) => { d.moods[i] = v; },
+        })),
+        {
+            key: '__note', label: '说明',
+            schema: Schema.object({ note: note() }),
+            get: d => ({ note: d.note }),
+            set: (d, v) => { d.note = v.note; },
+        },
+    ];
+}
+
+/** 在读的书（ADR 0015）：一本书一段 */
+export function booksSections(source) {
+    const names = tierNames(source);
+    const bookSchema = Schema.object({
+        id: Schema.string().disabled().description('**id**：不能改'),
+        title: Schema.string().description('**书名**'),
+        aliases: Schema.array(Schema.string()).description('**别名、简称**：他这样说也算点到这本书'),
+        author: Schema.string().description('**作者**'),
+        kind: Schema.string().description('**类型**'),
+        platform: Schema.string().description('**在哪看**'),
+        status: Schema.string().description('**这本书的状态**：连载中、已完结（她自己放没放下写在「进度」里）'),
+        tiers: tierBoxes(names).description('**给哪些档位**：没勾的档位不知道她在看这本'),
+        activity: Schema.object({
+            window: WINDOWS().description('**时段**'),
+            text: Schema.string().description('**做什么**：状态行里的说法，例如「窝在床上看《药屋少女的呢喃》」'),
+        }).description('**看书的空闲活动**：插件开着「她自己的日子」时并进这个时段的空闲活动；两项都空着就没有'),
+        total: Schema.object({
+            amount: Schema.natural().description('**一共多少**'),
+            unit: Schema.string().description('**单位**：要和进度的单位一样'),
+            source: Schema.string().description('**来源**：不进卡'),
+        }).description('**全书总量**：有可靠来源才写；没写她就不说一共多少。三项都空着就是没写'),
+        progress: Schema.object({
+            start_day: Schema.string().pattern(DATE).description('**从哪天起算**：YYYY-MM-DD'),
+            start: Schema.natural().description('**那天看到第几**'),
+            every_days: Schema.natural().min(1).description('**每几天**'),
+            amount: Schema.natural().description('**往前几**'),
+            unit: Schema.string().description('**单位**：卷、章'),
+            max: Schema.natural().description('**停在**：到这里不再往前；等于全书总量时她说读完了。空着就一直往前'),
+            state: Schema.union([Schema.const('reading').description('在看'), Schema.const('put_down').description('放下了（进度不再往前）')]).description('**状态**：空着按在看'),
+        }).description('**进度**：按她的日子（02:00 才换天）往前走'),
+        attitude: textarea().description('**你的感受**：她自己对这本书的看法'),
+        unread_keywords: Schema.array(Schema.string()).description('**还没看到的问法**：他问到这些词（结局、后面……）时，提示她这部分还没看到'),
+        nodes: Schema.array(Schema.object({
+            id: Schema.string().description('**id**'),
+            topic: Schema.string().description('**讲什么**：例如「女主是谁」'),
+            from: Schema.natural().description('**看到第几起才知道**：用这本书进度的单位'),
+            keywords: Schema.array(Schema.string()).description('**关键词**：他问到这些词时放这一条；有「主角」「主线」的节点在泛问时也给一句'),
+            points: Schema.array(Schema.string()).description('**能说的内容**：一条一句，只写有来源的'),
+            sources: Schema.array(Schema.string()).description('**来源**：不进卡'),
+            tiers: tierBoxes(names).description('**只给这几档**：不勾就跟着整本书'),
+            note: note(),
+        })).description('**情节节点**：她看到哪就只知道到哪'),
+        note: note(),
+    });
+    return [
+        ...source.books.books.map((book, i) => ({
+            key: `book-${book.id}`, label: `《${book.title}》`, schema: bookSchema,
+            get: d => d.books[i],
+            set: (d, v) => { d.books[i] = v; },
+        })),
+        {
+            key: '__note', label: '说明',
+            schema: Schema.object({ note: note() }),
+            get: d => ({ note: d.note }),
+            set: (d, v) => { d.note = v.note; },
+        },
+    ];
+}
 const KIND_LABELS = { hard: '硬课', machine: '上机', water: '水课', pe: '体育' };
 const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
@@ -196,7 +287,7 @@ export function scheduleSections(source) {
             key: 'free', label: '空闲活动',
             schema: Schema.object({
                 free: Schema.array(Schema.object({
-                    window: Schema.union([Schema.const('morning').description('上午'), Schema.const('afternoon').description('下午'), Schema.const('evening').description('晚上')]).description('**时段**'),
+                    window: WINDOWS().description('**时段**'),
                     text: Schema.string().description('**做什么**'),
                     tiers: tierBoxes(names).description('**给哪些档位**：一个都不勾 = 所有档位都能看到'),
                     note: note(),

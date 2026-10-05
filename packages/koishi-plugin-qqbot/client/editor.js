@@ -28,7 +28,7 @@ async function loadCharacter() {
 
 // 登录完成、数据服务有了数据才去读（之前调会被拒，ADR 0010 试验结果第 2 条）
 let watching = false;
-function ensureLoaded() {
+export function ensureLoaded() {
     if (watching) return;
     watching = true;
     detached.run(() => watch(() => store.qqbot, value => { if (value && !character.source.value) void loadCharacter(); }, { immediate: true }));

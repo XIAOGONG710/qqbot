@@ -28,6 +28,20 @@ function proactiveText(p) {
     return parts.join('；');
 }
 
+/** 她自己的日子（ADR 0015）：今天的心情和原因、每本书的进度 */
+function todayLine(status) {
+    // 页面文件是从仓库直接读的：插件还是旧代码（没重启）时状态里没有这一项
+    if (status.herDays === undefined) return [tag('重启 Koishi 后才有', 'info')];
+    if (status.herDays === false) return [tag('关', 'info')];
+    const today = status.today;
+    if (!today) return [tag('卡上没有心情和书', 'info')];
+    const books = today.books.map(book => `《${book.title}》${book.finished ? '读完了' : `第 ${book.amount} ${book.unit}${book.putDown ? '（放下了）' : book.stopped ? '（先停在这）' : ''}`}`).join('、');
+    return [
+        today.mood ? tag(today.mood.name, 'success') : tag('没有心情', 'info'),
+        h('span', { class: 'qqbot-muted' }, ` ${today.mood ? today.mood.reason : ''}${books ? `；在读 ${books}` : ''}（${today.day.slice(5)}）`),
+    ];
+}
+
 function memoryLine(memory) {
     if (!memory) return [tag('没开', 'info')];
     const parts = [];
@@ -53,6 +67,7 @@ export const StatusTab = defineComponent({
                 ['长期记忆', status ? memoryLine(status.memory) : [tag('—', 'info')]],
                 ['作息', status ? [status.schedule ? tag('按作息', 'success') : tag('关（随时几秒内回）', 'warning')] : [tag('—', 'info')]],
                 ['看心情不回', status ? [status.moody && status.schedule ? tag('开（偶尔不回「哈哈」「嗯」）', 'success') : tag('关', 'info')] : [tag('—', 'info')]],
+                ['今天', status ? todayLine(status) : [tag('—', 'info')]],
                 ['说话的毛病', status ? [status.speechCheck === false ? tag('不查', 'info') : tag('查（助手腔、算账、怪对方没说、重复）', 'success')] : [tag('—', 'info')]],
                 ['名单外的好友', status ? [status.unlistedFriends ? tag('也回复', 'warning') : tag('不回复', 'info')] : [tag('—', 'info')]],
                 ['主动消息', status ? [tag(...(PROACTIVE_MODES[status.proactive ?? 'off'] ?? [status.proactive, 'info']))] : [tag('—', 'info')]],
