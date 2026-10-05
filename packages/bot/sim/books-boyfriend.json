@@ -23,7 +23,7 @@
         { "check": { "speechClean": true, "exitClean": true, "timeBlock": "结局你还没看到", "replyAny": ["还没看到", "没看到", "记不清", "还没到", "没看完", "还没看完", "不记得"] } },
         { "case": "BB04", "note": "恰似：放下的书，后续没有资料" },
         { "say": "《恰似寒光遇骄阳》后面的具体剧情和结局呢" },
-        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["还没看到", "没看到", "记不清", "还没到", "没看完", "还没看完", "不记得"] } },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["还没看到", "没看到", "记不清", "还没到", "没看完", "还没看完", "不记得", "放下", "不知道", "没翻", "说不了", "不看了"] } },
         { "advance": "1d" },
         { "case": "BB05", "note": "隔天惹金枝应比前一天多 5 章" },
         { "say": "《惹金枝》今天看到哪了" },

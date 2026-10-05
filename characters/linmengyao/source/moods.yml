@@ -30,7 +30,7 @@ moods:
   - name: 搞怪
     weight: 1
     style:
-      text: 今天爱逗人：正经话也拿玩笑的口气讲，爱用「嘿嘿」「哼哼」这种拟声词
+      text: 今天爱闹：正经话也拿玩笑的口气讲，爱拿自己和身边的事开涮
       tiers: [boyfriend, bestie, girl_friend, known, classmate]
     when: []
   - name: 黏人

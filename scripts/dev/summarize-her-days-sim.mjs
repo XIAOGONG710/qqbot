@@ -38,7 +38,8 @@ for (const file of files) {
     checksFailed += result.checks?.failed ?? 0;
     const history = [];
     for (const step of result.steps ?? []) {
-        modelFailures += (step.logs ?? []).filter(line => line.includes('回复失败：模型接口请求失败')).length;
+        // 任何「回复失败：」都算（断网、401 key 失效、清理后为空）：这样的批次检查会空过，不能拿来数
+        modelFailures += (step.logs ?? []).filter(line => line.includes('回复失败：')).length;
         if (step.kind !== 'say') continue;
         for (const input of step.inputs ?? []) history.push({ role: 'user', content: input.text, time: new Date(input.time).toISOString() });
         const context = speechContext(history);
