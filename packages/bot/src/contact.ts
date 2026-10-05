@@ -16,7 +16,7 @@ import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, typingMs, whenSeen } from './reply-timing.ts';
 import { describeState, stateAt } from './schedule.ts';
-import { describeTime } from './time-context.ts';
+import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 
 export interface TierCard {
@@ -77,6 +77,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const recalled = remembers ? await memory.recall(contact, chat, time) : undefined;
             const relationship = remembers ? memory.relationship(contact) : undefined;
             if (recalled) log(`召回长期记忆 ${recalled.split('\n').length - 1} 条`);
+            const days = describeDays(character.dates, time);
             const prompt = buildPrompt({
                 character,
                 worldInfo,
@@ -86,7 +87,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 afterMain: relationship ? [relationship] : [],
                 afterHistory: [
                     ...(recalled ? [recalled] : []),
-                    [describeTime(chat, time), ...(schedule ? [describeState(stateAt(schedule, time), schedule, { userName: contact.name, woken })] : [])].join('\n'),
+                    [
+                        describeTime(chat, time),
+                        ...(days ? [days] : []),
+                        ...(schedule ? [describeState(stateAt(schedule, time), schedule, { userName: contact.name, woken })] : []),
+                    ].join('\n'),
                 ],
                 now: time,
                 settings: {

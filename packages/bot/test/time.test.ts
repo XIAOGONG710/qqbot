@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { describeTime, duration, when } from '../src/time-context.ts';
+import { describeDays, describeTime, duration, lunarName, when } from '../src/time-context.ts';
 import { humanize, timeMacros, type TimedMessage } from '../src/st/time-macros.ts';
 
 const at = (text: string) => new Date(text); // 不带时区，按本地时间
@@ -77,11 +77,39 @@ describe('运行时的时间提示', () => {
         assert.equal(describeTime(chat.slice(0, 3), at('2026-09-21T22:10:45')).split('\n')[1], '[距上一条消息：不到 1 分钟（上一条在今天 22:10）]');
     });
 
-    test('第一次聊天、或者对方还没有新消息时，只有当前时间', () => {
+    test('第一次聊天时只有当前时间', () => {
         const now = at('2026-10-04T12:00:10');
         assert.equal(describeTime([user('2026-10-04T12:00:00')], now), '[当前时间：2026-10-04 星期日 12:00]');
-        assert.equal(describeTime([user('2026-10-04T08:00:00'), her('2026-10-04T08:01:00')], now), '[当前时间：2026-10-04 星期日 12:00]');
         assert.equal(describeTime([], now), '[当前时间：2026-10-04 星期日 12:00]');
+    });
+
+    test('对方还没有新消息（她主动找他，ADR 0011）：写上一条消息是谁发的、多久前', () => {
+        const now = at('2026-10-05T09:50:00');
+        assert.equal(describeTime([user('2026-10-04T23:00:00'), her('2026-10-04T23:10:00', '晚安')], now),
+            '[当前时间：2026-10-05 星期一 09:50]\n[上一条消息：昨天 23:10，你发的，到现在 10 小时 40 分钟]');
+        // 她收尾后他只回了附和（按「不回」处理过的）：主动时不当成「这次的消息」，只说上一条是他发的
+        const acked = [her('2026-10-04T23:10:00', '晚安'), user('2026-10-04T23:11:00', '晚安')];
+        assert.equal(describeTime(acked, now, { initiating: true }),
+            '[当前时间：2026-10-05 星期一 09:50]\n[上一条消息：昨天 23:11，他发的，到现在 10 小时 39 分钟]');
+        assert.match(describeTime(acked, now), /距上一条消息：1 分钟/);
+    });
+
+    test('重要的日子：提前 7 天起提醒，当天「今天是」；公历、农历两天都算时农历那天提一句；只写了农历的按农历', () => {
+        const his = { name: '他的生日', date: '09-29', lunar: '08-08', midnight: true };
+        const lunarOnly = { name: '外婆的生日', lunar: '08-08' };
+        assert.equal(describeDays([his], at('2026-09-21T12:00:00')), undefined);
+        assert.equal(describeDays([his], at('2026-09-22T12:00:00')), '[再过 7 天（9月29日）是他的生日]');
+        assert.equal(describeDays([his], at('2026-09-27T12:00:00')), '[后天是他的生日]');
+        assert.equal(describeDays([his], at('2026-09-28T23:59:00')), '[明天是他的生日]');
+        assert.equal(describeDays([his], at('2026-09-29T00:03:00')), '[今天是他的生日]');
+        assert.equal(describeDays([his], at('2026-09-18T12:00:00')), '[今天是农历八月初八，按农历也是他的生日]');
+        assert.equal(describeDays([lunarOnly], at('2026-09-18T12:00:00')), '[今天（农历八月初八）是外婆的生日]');
+        assert.equal(describeDays([lunarOnly], at('2026-09-15T12:00:00')), '[再过 3 天（9月18日）是外婆的生日]');
+        // 跨年
+        assert.equal(describeDays([{ name: '元旦', date: '01-01' }], at('2026-12-30T12:00:00')), '[后天是元旦]');
+        assert.equal(lunarName('12-30'), '腊月三十');
+        assert.equal(lunarName('01-15'), '正月十五');
+        assert.equal(lunarName('11-21'), '冬月廿一');
     });
 
     test('时间和时长的写法', () => {
