@@ -1,0 +1,27 @@
+{
+    "name": "男朋友档：公共记忆里她自己说过的事（ADR 0016）",
+    "description": "傍晚她跟鸽鸽说下午和室友去万达看了《流浪地球3》。晚上男朋友问她下午干嘛了，看和跟鸽鸽说的对不对得上。鸽鸽没写「别人提起时」，只靠公共记忆。名单和聊天是虚构的。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-06T21:30:00+08:00",
+    "others": [
+        {
+            "name": "鸽鸽",
+            "tier": "classmate",
+            "history": [
+                { "time": "2026-10-06T18:30:00+08:00", "role": "user", "content": "今天干啥了" },
+                { "time": "2026-10-06T18:31:00+08:00", "role": "assistant", "content": "下午跟室友去万达看了流浪地球3，刚回宿舍" },
+                { "time": "2026-10-06T18:32:00+08:00", "role": "user", "content": "好看吗" },
+                { "time": "2026-10-06T18:33:00+08:00", "role": "assistant", "content": "特效炸裂，就是有点长，看得我腰疼" }
+            ]
+        }
+    ],
+    "steps": [
+        { "case": "PC01", "note": "问她下午干嘛了：和跟鸽鸽说的对得上" },
+        { "say": "你今天下午干嘛去了" },
+        { "check": { "speechClean": true, "exitClean": true, "common": ["流浪地球"], "replyAny": ["电影", "流浪地球", "万达"] } },
+        { "case": "PC02", "note": "追问：说法前后一致" },
+        { "say": "好看吗" },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["特效", "长", "腰"] } }
+    ]
+}

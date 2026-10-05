@@ -18,6 +18,10 @@ export interface Checks {
     recall?: string[];
     /** 召回块里不能有这些词 */
     recallNot?: string[];
+    /** 这一步最后一次生成里「你认识的人」那一段（介绍 + 他的记忆，ADR 0016）要有这些词 */
+    people?: string[];
+    /** 这一步最后一次生成的公共记忆（ADR 0016）要有这些词 */
+    common?: string[];
     /** 这一步她发出的话里至少有其中一个 */
     replyAny?: string[];
     /** 这一步她发出的话里一个都不能有 */

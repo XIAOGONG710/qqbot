@@ -63,7 +63,7 @@ export interface RunOptions {
 export interface Bubble { time: number; text: string; proactive?: string }
 export interface Input { time: number; text: string; interrupt?: boolean }
 export interface Generation {
-    time: number; recall?: string; timeBlock?: string; relationship?: string; messages: number;
+    time: number; recall?: string; timeBlock?: string; relationship?: string; people?: string; common?: string; messages: number;
     /** 模型原文（清理之前） */
     raw?: string;
     /** 出口检查带说明重写的原文（ADR 0006） */
@@ -100,6 +100,9 @@ export interface RunResult {
 const RECALL_HEADER = '[你们以前聊过的事';
 const TIME_HEADER = '[当前时间：';
 const RELATIONSHIP_HEADER = '[你们关系的整体情况';
+/** ADR 0016：提起名单里的人时的那一段（第一个人；带他的记忆）、公共记忆 */
+const PEOPLE_HEADER = '[你认识的人：';
+const COMMON_HEADER = '[你和名单里别的人聊天时';
 
 export async function runScenario(scenario: Scenario, options: RunOptions): Promise<RunResult> {
     const { dataDir } = options;
@@ -461,6 +464,8 @@ export function dynamicParts(prompt: PromptResult, time: number): Generation {
         recall: block(RECALL_HEADER),
         timeBlock: block(TIME_HEADER),
         relationship: block(RELATIONSHIP_HEADER),
+        people: block(PEOPLE_HEADER),
+        common: block(COMMON_HEADER),
         messages: prompt.messages.length,
     };
 }
@@ -544,6 +549,8 @@ export function runChecks(checks: Checks, step: StepRecord, banned: readonly str
     const has = (pattern: RegExp) => step.logs.some(l => pattern.test(l));
     for (const word of checks.recall ?? []) results.push({ ok: recall.includes(word), text: `召回里有「${word}」` });
     for (const word of checks.recallNot ?? []) results.push({ ok: !recall.includes(word), text: `召回里没有「${word}」` });
+    for (const word of checks.people ?? []) results.push({ ok: (last?.people ?? '').includes(word), text: `「你认识的人」里有「${word}」` });
+    for (const word of checks.common ?? []) results.push({ ok: (last?.common ?? '').includes(word), text: `公共记忆里有「${word}」` });
     if (checks.replyAny) {
         const hit = checks.replyAny.filter(w => replies.includes(w));
         results.push({ ok: hit.length > 0, text: `回复里有「${checks.replyAny.join('」「')}」之一${hit.length ? `（${hit.join('、')}）` : ''}` });

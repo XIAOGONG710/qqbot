@@ -428,7 +428,7 @@
 - [x] 第 1 步：取证、ADR、路线图
 - [x] 第 2 步：配置 `intro`、插件表单「别人提起时」；提起名单里的人时的介绍（`people.ts`）；单元测试（bot 282、插件 23 项）
 - [x] 第 3 步：翻被提起的人的私人 bank；公共库（`<前缀>-common`）的写入和召回、旧片段补写；单元测试（假的 Hindsight，请求体对照 OpenAPI）
-- [ ] 第 4 步：模拟器 `others`、两个新场景各 3 次；回归 `classmate-probes`、`boyfriend-tone`
+- [x] 第 4 步：模拟器 `others`、检查 `people` / `common`；`people-mention`、`people-common` 各 3 次（`20261006-005035`：3 次都认识鸽鸽、用上他的记忆，3 次说的都和跟鸽鸽说的对得上）；回归 `classmate-probes` 全过、`boyfriend-tone` 2 处多 1 条气泡（噪声）
 - [ ] 第 5 步：真实例给鸽鸽填「别人提起时」、重启 Koishi（先问用户）、打码查日志
 
 ## 后续（顺序可调整）
