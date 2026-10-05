@@ -5,6 +5,7 @@
 
 import { SECTION_KEYS, type CharacterSource, type SectionKey, type TextField } from './source.ts';
 import type { CardDate, CardProactive, CardSchedule, CharacterCardV2, RegexScript } from './st-format.ts';
+import { booksForTier, moodsForTier } from './her-days-to-card.ts';
 
 /** description 各段的标题，顺序即 SECTION_KEYS 的顺序 */
 const SECTION_TITLES: Record<SectionKey, string> = {
@@ -125,12 +126,16 @@ export function personaToCard(source: CharacterSource, tierName: string, options
         dailyMax: tier.proactive.daily_max,
         unansweredMax: tier.proactive.unanswered_max,
     };
+    const moods = moodsForTier(source, tier.name);
+    const books = booksForTier(source, tier.name);
     const qqbot = {
         banned: tier.banned,
         ...(options.schedule ? { schedule: options.schedule } : {}),
         ...(dates.length ? { dates } : {}),
         ...(tier.pace !== undefined ? { pace: tier.pace } : {}),
         ...(proactive ? { proactive } : {}),
+        ...(moods ? { moods } : {}),
+        ...(books ? { books } : {}),
     };
 
     return {

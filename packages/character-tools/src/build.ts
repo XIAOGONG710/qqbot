@@ -38,6 +38,13 @@ export function checkReferences(source: CharacterSource): void {
     }
     for (const [name, field] of Object.entries(persona.social)) checkField(field, `persona.yml social.${name}`);
     checkField(source.tiers.discreet, 'tiers.yml discreet');
+    source.moods?.moods.forEach((mood, i) => checkField(mood.style, `moods.yml moods[${i}].style`));
+    source.books?.books.forEach((book, i) => {
+        known(book.tiers, `books.yml books[${i}].tiers`);
+        book.nodes.forEach((node, j) => {
+            if (node.tiers) known(node.tiers, `books.yml books[${i}].nodes[${j}].tiers`);
+        });
+    });
     for (const tier of source.tiers.tiers) {
         if (tier.social !== undefined && !persona.social[tier.social]) {
             throw new Error(`tiers.yml 档位 ${tier.name} 的 social「${tier.social}」在 persona.yml 的 social 里没有`);
@@ -86,6 +93,10 @@ export function checkPrivacy(built: Built, source: CharacterSource): Problem[] {
         // 日子的说法会进时间块（ADR 0011 决策 6）
         const dates = data.extensions.qqbot?.dates;
         if (dates) scan(tier, '重要的日子', JSON.stringify(dates), banned);
+        const moods = data.extensions.qqbot?.moods;
+        if (moods) scan(tier, '心情', JSON.stringify(moods), banned);
+        const books = data.extensions.qqbot?.books;
+        if (books) scan(tier, '在读的书', JSON.stringify(books), banned);
         for (const entry of Object.values(lorebook.entries)) {
             const id = /（([^（）]+)）$/.exec(entry.comment)?.[1] ?? entry.comment;
             scan(tier, `世界书 ${id}`, entry.content, banned);

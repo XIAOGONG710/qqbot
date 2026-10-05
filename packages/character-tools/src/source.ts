@@ -1,4 +1,4 @@
-// 可编辑的角色资料（ADR 0010）：characters/<角色>/source/ 下的 4 个 YAML 文件，转换器只读这里。
+// 可编辑的角色资料（ADR 0010、0015）：characters/<角色>/source/ 下的 YAML 文件，转换器只读这里。
 // 控制台的「林梦瑶」页面和人都可以改；legacy/ 是旧项目原件，只在迁移时读过一次
 // （一次性脚本 src/migrate-legacy.ts，见提交 a80b240；迁移前后生成的 st/ 逐字节相同）。
 //
@@ -6,10 +6,12 @@
 //   scenes.yml    场景（世界书）：触发词、例句、不要说的话、属于哪个场景档
 //   schedule.yml  作息：几点睡、课表、假期、调休、空闲活动，和它们给哪些档位
 //   tiers.yml     档位：对方是谁、说话方式、示例对话、禁用词……；顺序就是输出顺序
+//   moods.yml     每日心情：权重、按当天课表调权重的条件、各档怎么说
+//   books.yml     在读的书：资料、进度、情节节点、没读到的关键词
 //
 // 档位一律写名字（boyfriend、classmate……），不再用旧 tiers.toml 的一字母代号。
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CORE_SCHEMA, dump, load } from 'js-yaml';
 import type { CourseKind } from './st-format.ts';
@@ -117,6 +119,76 @@ export interface TiersSource {
     tiers: TierSource[];
 }
 
+/** 每日心情会参考的当天情况（ADR 0015 决策 1） */
+export const MOOD_DAYS = ['early', 'busy', 'no_class', 'holiday'] as const;
+export type MoodDay = (typeof MOOD_DAYS)[number];
+
+export interface MoodSource {
+    name: string;
+    weight: number;
+    /** 心情只写「怎么说」；tiers 决定哪些档位能看到，variants 给某些档位换说法 */
+    style: TextField;
+    /** 当天命中这些情况时调权重；reason 就是时间块里给她的真实原因 */
+    when: { day: MoodDay; factor: number; reason: string }[];
+    note?: string;
+}
+
+export interface MoodsSource {
+    moods: MoodSource[];
+    note?: string;
+}
+
+export type BookState = 'reading' | 'put_down';
+
+export interface BookProgressSource {
+    start_day: string;
+    start: number;
+    /** 每 every_days 天前进 amount；put_down 的书不再前进 */
+    every_days: number;
+    amount: number;
+    unit: string;
+    /** 到这里停；读到全书总量时运行时会写「读完了」 */
+    max?: number;
+    state?: BookState;
+}
+
+export interface BookNodeSource {
+    id: string;
+    topic: string;
+    /** 用这本书自己的进度单位 */
+    from: number;
+    keywords: string[];
+    points: string[];
+    sources: string[];
+    /** 没写就是跟着整本书的档位；写了就进一步裁剪 */
+    tiers?: string[];
+    note?: string;
+}
+
+export interface BookSource {
+    id: string;
+    title: string;
+    aliases: string[];
+    author: string;
+    kind: string;
+    platform: string;
+    status: string;
+    tiers: string[];
+    /** 有可靠来源的总量；《药屋》没有可靠总卷数，所以不写 */
+    total?: { amount: number; unit: string; source: string };
+    progress: BookProgressSource;
+    attitude: string;
+    /** 命中这些词时只说还没看到，不提供情节 */
+    unread_keywords: string[];
+    nodes: BookNodeSource[];
+    note?: string;
+}
+
+export interface BooksSource {
+    books: BookSource[];
+    note?: string;
+}
+
 /** 按档位写不同说法：每个档位恰好出现一次 */
 export interface ByTier {
     tiers: string[];
@@ -152,15 +224,22 @@ export interface CharacterSource {
     scenes: SceneSource[];
     schedule: ScheduleSource;
     tiers: TiersSource;
+    /** 新文件不存在时当作旧资料：不生成相应的卡片扩展 */
+    moods?: MoodsSource;
+    books?: BooksSource;
 }
 
-export const SOURCE_FILES = { persona: 'persona.yml', scenes: 'scenes.yml', schedule: 'schedule.yml', tiers: 'tiers.yml' } as const;
+export const SOURCE_FILES = {
+    persona: 'persona.yml', scenes: 'scenes.yml', schedule: 'schedule.yml', tiers: 'tiers.yml', moods: 'moods.yml', books: 'books.yml',
+} as const;
 
 const HEADERS: Record<keyof typeof SOURCE_FILES, string> = {
     persona: '# 林梦瑶的人设（ADR 0010）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：说明写在 note 里。\n',
     scenes: '# 林梦瑶的场景（世界书，ADR 0010）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留。\n',
     schedule: '# 林梦瑶的作息（ADR 0007、0010）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：说明写在 note 里。\n',
     tiers: '# 林梦瑶的档位（ADR 0003、0010）。顺序就是输出顺序。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留。\n',
+    moods: '# 林梦瑶的每日心情（ADR 0015）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：说明写在 note 里。\n',
+    books: '# 林梦瑶在读的书（ADR 0015）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：来源和取用规则写在字段或 note 里。\n',
 };
 
 /** YAML 只用核心 schema：日期、时间都按字符串读写（不变成 Date） */
@@ -174,13 +253,15 @@ export function fromYaml(text: string, filename: string): unknown {
 
 export function writeSource(dir: string, source: CharacterSource): void {
     for (const [key, file] of Object.entries(SOURCE_FILES) as [keyof typeof SOURCE_FILES, string][]) {
-        writeFileSync(join(dir, file), HEADERS[key] + toYaml(source[key]));
+        const value = source[key];
+        if (value !== undefined) writeFileSync(join(dir, file), HEADERS[key] + toYaml(value));
     }
 }
 
 export function readSource(dir: string): CharacterSource {
     const read = (key: keyof typeof SOURCE_FILES) => fromYaml(readFileSync(join(dir, SOURCE_FILES[key]), 'utf8'), SOURCE_FILES[key]);
-    return checkSource({ persona: read('persona'), scenes: read('scenes'), schedule: read('schedule'), tiers: read('tiers') });
+    const optional = (key: 'moods' | 'books') => existsSync(join(dir, SOURCE_FILES[key])) ? read(key) : undefined;
+    return checkSource({ persona: read('persona'), scenes: read('scenes'), schedule: read('schedule'), tiers: read('tiers'), moods: optional('moods'), books: optional('books') });
 }
 
 // ---------- 校验结构（档位之间的引用、内容的隐私检查在 build.ts） ----------
@@ -361,7 +442,7 @@ function withNote<T extends object>(c: Checker, value: unknown, base: T): T & { 
     return note ? { ...base, note } : base;
 }
 
-export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: unknown; tiers: unknown }): CharacterSource {
+export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: unknown; tiers: unknown; moods?: unknown; books?: unknown }): CharacterSource {
     // 人设
     const p = new Checker('persona.yml');
     const persona = p.object(raw.persona);
@@ -544,6 +625,9 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         } : {}),
     };
 
+    const moods = raw.moods === undefined ? undefined : checkMoods(raw.moods);
+    const books = raw.books === undefined ? undefined : checkBooks(raw.books);
+
     return {
         persona: {
             name: p.at('name').string(persona.name),
@@ -558,7 +642,103 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         scenes,
         schedule: checkedSchedule,
         tiers: { discreet: textField(t.at('discreet'), tiersRaw.discreet, { gated: false }), tiers },
+        ...(moods ? { moods } : {}),
+        ...(books ? { books } : {}),
     };
+}
+
+function checkMoods(raw: unknown): MoodsSource {
+    const root = new Checker('moods.yml');
+    const o = root.object(raw);
+    root.keys(o, ['moods', 'note']);
+    const moods = root.at('moods').array(o.moods).map((value, i): MoodSource => {
+        const c = root.at(`moods[${i}]`);
+        const mood = c.object(value);
+        c.keys(mood, ['name', 'weight', 'style', 'when', 'note']);
+        const when = c.at('when').array(mood.when).map((condition, j) => {
+            const w = c.at(`when[${j}]`);
+            const item = w.object(condition);
+            w.keys(item, ['day', 'factor', 'reason']);
+            const day = w.at('day').string(item.day) as MoodDay;
+            if (!MOOD_DAYS.includes(day)) w.at('day').fail(`${day} 不是日子条件（${MOOD_DAYS.join(' / ')}）`);
+            return { day, factor: w.at('factor').number(item.factor, 0.01, 100), reason: w.at('reason').string(item.reason) };
+        });
+        if (new Set(when.map(item => item.day)).size !== when.length) c.at('when').fail('有重复的日子条件');
+        return withNote(c.at('note'), mood.note, {
+            name: c.at('name').string(mood.name),
+            weight: c.at('weight').number(mood.weight, 0.01, 100),
+            style: textField(c.at('style'), mood.style, { gated: true }),
+            when,
+        });
+    });
+    if (!moods.length) root.at('moods').fail('不能是空数组');
+    if (new Set(moods.map(mood => mood.name)).size !== moods.length) root.at('moods').fail('心情名字重复');
+    return withNote(root.at('note'), o.note, { moods });
+}
+
+function checkBooks(raw: unknown): BooksSource {
+    const root = new Checker('books.yml');
+    const o = root.object(raw);
+    root.keys(o, ['books', 'note']);
+    const books = root.at('books').array(o.books).map((value, i): BookSource => {
+        const c = root.at(`books[${i}]`);
+        const book = c.object(value);
+        c.keys(book, ['id', 'title', 'aliases', 'author', 'kind', 'platform', 'status', 'tiers', 'total', 'progress', 'attitude', 'unread_keywords', 'nodes', 'note']);
+        const progressRaw = c.at('progress').object(book.progress);
+        c.at('progress').keys(progressRaw, ['start_day', 'start', 'every_days', 'amount', 'unit', 'max', 'state']);
+        const stateText = c.at('progress.state').optionalString(progressRaw.state) as BookState | undefined;
+        if (stateText !== undefined && !['reading', 'put_down'].includes(stateText)) c.at('progress.state').fail('应为 reading 或 put_down');
+        const progress: BookProgressSource = {
+            start_day: date(c.at('progress.start_day'), progressRaw.start_day),
+            start: c.at('progress.start').integer(progressRaw.start, 0, 1_000_000),
+            every_days: c.at('progress.every_days').integer(progressRaw.every_days, 1, 3650),
+            amount: c.at('progress.amount').integer(progressRaw.amount, 0, 1_000_000),
+            unit: c.at('progress.unit').string(progressRaw.unit),
+        };
+        if (progressRaw.max !== undefined && progressRaw.max !== null) progress.max = c.at('progress.max').integer(progressRaw.max, 0, 1_000_000);
+        if (stateText !== undefined) progress.state = stateText;
+        if (progress.max !== undefined && progress.start > progress.max) c.at('progress').fail('start 不能大于 max');
+
+        let total: BookSource['total'];
+        if (book.total !== undefined && book.total !== null) {
+            const totalRaw = c.at('total').object(book.total);
+            c.at('total').keys(totalRaw, ['amount', 'unit', 'source']);
+            total = {
+                amount: c.at('total.amount').integer(totalRaw.amount, 1, 1_000_000),
+                unit: c.at('total.unit').string(totalRaw.unit),
+                source: c.at('total.source').string(totalRaw.source),
+            };
+            if (total.unit !== progress.unit) c.at('total.unit').fail('要和 progress.unit 一样');
+        }
+
+        const nodes = c.at('nodes').array(book.nodes).map((value, j): BookNodeSource => {
+            const n = c.at(`nodes[${j}]`);
+            const node = n.object(value);
+            n.keys(node, ['id', 'topic', 'from', 'keywords', 'points', 'sources', 'tiers', 'note']);
+            const tiers = node.tiers === undefined || node.tiers === null ? undefined : n.at('tiers').strings(node.tiers, { allowEmpty: false });
+            const base = {
+                id: n.at('id').string(node.id), topic: n.at('topic').string(node.topic),
+                from: n.at('from').integer(node.from, 0, 1_000_000),
+                keywords: n.at('keywords').strings(node.keywords, { allowEmpty: false }),
+                points: n.at('points').strings(node.points, { allowEmpty: false }),
+                sources: n.at('sources').strings(node.sources, { allowEmpty: false }),
+                ...(tiers ? { tiers } : {}),
+            };
+            return withNote(n.at('note'), node.note, base);
+        });
+        if (new Set(nodes.map(node => node.id)).size !== nodes.length) c.at('nodes').fail('节点 id 重复');
+        const base: BookSource = {
+            id: c.at('id').string(book.id), title: c.at('title').string(book.title),
+            aliases: c.at('aliases').strings(book.aliases), author: c.at('author').string(book.author),
+            kind: c.at('kind').string(book.kind), platform: c.at('platform').string(book.platform), status: c.at('status').string(book.status),
+            tiers: c.at('tiers').strings(book.tiers, { allowEmpty: false }), ...(total ? { total } : {}), progress,
+            attitude: c.at('attitude').string(book.attitude), unread_keywords: c.at('unread_keywords').strings(book.unread_keywords), nodes,
+        };
+        return withNote(c.at('note'), book.note, base);
+    });
+    if (!books.length) root.at('books').fail('不能是空数组');
+    if (new Set(books.map(book => book.id)).size !== books.length) root.at('books').fail('书的 id 重复');
+    return withNote(root.at('note'), o.note, { books });
 }
 
 function orderKeys<T extends object>(obj: T, order: string[]): T {

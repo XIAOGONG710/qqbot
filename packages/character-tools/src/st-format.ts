@@ -23,13 +23,53 @@ export interface CharacterCardV2 {
         // world：关联的世界书名（= 世界书文件名去掉 .json），ST 选中角色时按名字加载
         // regex_scripts：Scoped 正则（导入时 ST 会问是否允许）
         // qqbot：只给运行时用的字段，ST 不读（ADR 0002 决策 3）。banned 不进提示词；schedule 由运行时算成一行状态放进时间块（ADR 0007）；
-        // dates、proactive：重要的日子和主动找人的设置（ADR 0011），没有就不写；pace：回复节奏系数（ADR 0013），没有就是 1
+        // dates、proactive：重要的日子和主动找人的设置（ADR 0011）；moods、books：她自己的日子（ADR 0015）；
+        // pace：回复节奏系数（ADR 0013）。可选字段没有资料时不写
         extensions: {
             world?: string;
             regex_scripts?: RegexScript[];
-            qqbot?: { banned: string[]; schedule?: CardSchedule; dates?: CardDate[]; pace?: number; proactive?: CardProactive };
+            qqbot?: {
+                banned: string[];
+                schedule?: CardSchedule;
+                dates?: CardDate[];
+                pace?: number;
+                proactive?: CardProactive;
+                moods?: CardMood[];
+                books?: CardBook[];
+            };
         };
     };
+}
+
+/** 每日心情：转换器已经按档位裁剪、把 TextField 变成最终写法 */
+export interface CardMood {
+    name: string;
+    weight: number;
+    style: string;
+    when: { day: 'early' | 'busy' | 'no_class' | 'holiday'; factor: number; reason: string }[];
+}
+
+export interface CardBook {
+    id: string;
+    title: string;
+    aliases: string[];
+    author: string;
+    kind: string;
+    platform: string;
+    status: string;
+    total?: { amount: number; unit: string };
+    progress: {
+        startDay: string;
+        start: number;
+        everyDays: number;
+        amount: number;
+        unit: string;
+        max?: number;
+        state: 'reading' | 'put_down';
+    };
+    attitude: string;
+    unreadKeywords: string[];
+    nodes: { id: string; topic: string; from: number; keywords: string[]; points: string[] }[];
 }
 
 /** 这一档知道的一个重要的日子（ADR 0011 决策 6）：date 公历、lunar 农历，MM-DD；midnight：当天零点主动发 */

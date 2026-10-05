@@ -6,6 +6,7 @@ import { buildCharacter, checkPrivacy, checkReferences } from '../src/build.ts';
 import { personaToCard, STAGE_DIRECTION_SCRIPT, textFor } from '../src/persona-to-card.ts';
 import { scenesToLorebook } from '../src/scenes-to-lorebook.ts';
 import { scheduleForTier } from '../src/schedule-to-card.ts';
+import { booksForTier, moodsForTier } from '../src/her-days-to-card.ts';
 import { checkSource, fromYaml, readSource, SECTION_KEYS, SOURCE_FILES, toYaml, type CharacterSource } from '../src/source.ts';
 import { WORLD_INFO_POSITION } from '../src/st-format.ts';
 
@@ -29,7 +30,7 @@ test('st/ 下的文件就是 source/ 生成的（改了资料要重新生成，s
 
 test('资料写成 YAML 再读回来不变（页面保存时就是这样写的）', () => {
     for (const key of Object.keys(SOURCE_FILES) as (keyof typeof SOURCE_FILES)[]) {
-        const raw = { persona: source.persona, scenes: source.scenes, schedule: source.schedule, tiers: source.tiers, [key]: fromYaml(toYaml(source[key]), key) };
+        const raw = { ...copy(), [key]: fromYaml(toYaml(source[key]), key) };
         assert.deepEqual(checkSource(raw as never), source, key);
     }
     // 日期、时间按字符串读，不变成 Date
@@ -106,6 +107,50 @@ test('每张卡带去掉行首括号的正则和这一档的禁用词（只给�
     }
     const re = new RegExp('^[ \\t]*[（(][^（）()\\n]*[）)][ \\t]*', 'gm');
     assert.equal(STAGE_DIRECTION_SCRIPT.findRegex, `/${re.source}/${re.flags}`);
+});
+
+test('每日心情和在读的书：只给五个熟悉档位，TextField 和情节节点都按档位裁剪', () => {
+    for (const tier of ['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate']) {
+        assert.equal(moodsForTier(source, tier)?.length, 5, tier);
+        assert.equal(booksForTier(source, tier)?.length, 3, tier);
+    }
+    for (const tier of ['stranger', 'unlisted']) {
+        assert.equal(moodsForTier(source, tier), undefined, tier);
+        assert.equal(booksForTier(source, tier), undefined, tier);
+        assert.equal(card(tier).data.extensions.qqbot?.moods, undefined, tier);
+        assert.equal(card(tier).data.extensions.qqbot?.books, undefined, tier);
+    }
+    assert.match(moodsForTier(source, 'boyfriend')!.find(m => m.name === '黏人')!.style, /\{\{user\}\}/);
+    assert.doesNotMatch(moodsForTier(source, 'classmate')!.find(m => m.name === '黏人')!.style, /\{\{user\}\}/);
+    assert.ok(booksForTier(source, 'boyfriend')!.find(b => b.id === 'jiasi')!.nodes.some(n => n.id === 'jiasi-publish'));
+    assert.ok(!booksForTier(source, 'classmate')!.find(b => b.id === 'jiasi')!.nodes.some(n => n.id === 'jiasi-publish'));
+    assert.equal(booksForTier(source, 'boyfriend')!.find(b => b.id === 'yaowu')!.total, undefined, '药屋没有可靠总卷数');
+});
+
+test('心情和书的资料写错会报错；两个新文件缺失时仍能读旧资料形状', () => {
+    const four = { persona: copy().persona, scenes: copy().scenes, schedule: copy().schedule, tiers: copy().tiers };
+    assert.deepEqual(Object.keys(checkSource(four)), ['persona', 'scenes', 'schedule', 'tiers']);
+    const s = copy();
+    s.moods!.moods[0]!.when[0]!.day = 'rainy' as never;
+    assert.throws(() => checkSource(s), /rainy 不是日子条件/);
+    const b = copy();
+    b.books!.books[0]!.total = { amount: 10, unit: '章', source: '来源' };
+    assert.throws(() => checkSource(b), /total\.unit 要和 progress\.unit 一样/);
+    const unknownTier = copy();
+    unknownTier.books!.books[0]!.nodes[0]!.tiers = ['teacher'];
+    assert.throws(() => checkReferences(unknownTier), /books\.yml .*没有档位 teacher/);
+});
+
+test('隐私检查覆盖心情和书；受限出版节点不漏进同学档', () => {
+    const word = source.tiers.tiers.find(t => t.name === 'classmate')!.banned.find(item => item === '青岛')!;
+    assert.ok(word);
+    assert.doesNotMatch(JSON.stringify(card('classmate').data.extensions.qqbot?.books), /青岛/);
+    const s = copy();
+    s.moods!.moods[0]!.style.text += word;
+    s.books!.books[0]!.nodes[0]!.points.push(`去了${word}`);
+    const problems = checkPrivacy(buildCharacter(s), s);
+    assert.ok(problems.some(p => p.tier === 'classmate' && p.where === '心情' && p.word === word));
+    assert.ok(problems.some(p => p.tier === 'classmate' && p.where === '在读的书' && p.word === word));
 });
 
 test('只有男朋友和闺蜜档知道「他」是男朋友；其他档位没有「别提男朋友」这种提醒，只有中性的一句', () => {
@@ -313,7 +358,13 @@ test('作息里没有这一档的禁用词', () => {
 test('作息写进卡的 extensions.qqbot.schedule，不进 ST 读的字段', () => {
     const schedule = scheduleOf('classmate');
     const { data } = personaToCard(source, 'classmate', { world: 'w', schedule });
-    assert.deepEqual(data.extensions.qqbot, { banned: tiers.find(t => t.name === 'classmate')!.banned, schedule, pace: 1.6 });
+    assert.deepEqual(data.extensions.qqbot, {
+        banned: tiers.find(t => t.name === 'classmate')!.banned,
+        schedule,
+        pace: 1.6,
+        moods: moodsForTier(source, 'classmate'),
+        books: booksForTier(source, 'classmate'),
+    });
     assert.equal(cardText('classmate'), [data.description, data.personality, data.scenario, data.post_history_instructions, data.mes_example, data.system_prompt].join('\n'));
 });
 
