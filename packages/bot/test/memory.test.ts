@@ -535,7 +535,7 @@ describe('长期记忆：公共库的实体名（ADR 0017 的线索）', () => {
         try {
             fail = Object.assign(new Error('GET … 返回 404：not found'), { status: 404 });
             assert.deepEqual(await memory.commonEntities(), []);
-            assert.equal(logs.length, 0, "公共库还没建不记日志");
+            assert.equal(logs.length, 0, '公共库还没建不记日志');
             fail = undefined;
             clock += 10 * MIN;
             assert.deepEqual(await memory.commonEntities(), ['鸽鸽', '杭州']);
@@ -553,6 +553,37 @@ describe('长期记忆：公共库的实体名（ADR 0017 的线索）', () => {
 
             const off = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: () => {} });
             assert.deepEqual(await off.commonEntities(), [], '没开公共库');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('长期记忆：她眼中的某个人（ADR 0017）', () => {
+    test('写进公共库时建「她眼中的鸽鸽」（只建一次，点名他）；读到之后放进印象，陌生人档、没建过的没有', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-'));
+        const { api, calls } = fakeApi();
+        const logs: string[] = [];
+        const memory = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: m => logs.push(m), now: () => T0 + 24 * 60 * MIN, common: true });
+        const B = { qq: 2, tier: 'classmate', name: '鸽鸽' };
+        try {
+            assert.equal(memory.impression(B), undefined, '还没建');
+            await memory.sync(B, { user: '鸽鸽', char: '林梦瑶' }, [msg(0, 'user', '在吗')]);
+            const models = calls.createMentalModel as { id: string; name: string; source_query: string }[];
+            const person = models.find(m => m.name === '她眼中的鸽鸽')!;
+            assert.match(person.id, /^person-[0-9a-f]{16}$/);
+            assert.match(person.source_query, /林梦瑶眼中的鸽鸽/);
+            assert.match(person.source_query, /各个聊天里提到鸽鸽的都算/);
+            assert.deepEqual(check(person, root('mentalModel')), []);
+            assert.ok(logs.some(l => l.includes('「她眼中的鸽鸽」已建好')));
+            await memory.sync(B, { user: '鸽鸽', char: '林梦瑶' }, [msg(0, 'user', '在吗'), msg(100, 'user', '在吗')]);
+            assert.equal(models.filter(m => m.name === '她眼中的鸽鸽').length, 1, '只建一次');
+
+            api.getMentalModel = async (bank, id) => (bank === 'linmengyao-common' && id === person.id ? { id, content: '鸽鸽是做网络运维的，10月中旬去杭州出差。' } : undefined);
+            assert.equal(memory.impression(B), undefined, '第一次在后台读');
+            await new Promise(r => setTimeout(r, 0));
+            assert.equal(memory.impression(B), '[你对鸽鸽的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）]\n鸽鸽是做网络运维的，10月中旬去杭州出差。');
+            assert.equal(memory.impression({ qq: 3, tier: 'stranger', name: '路人' }), undefined);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

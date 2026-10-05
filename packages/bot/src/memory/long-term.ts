@@ -130,6 +130,27 @@ export const RELATIONSHIP_MODEL: MentalModelRequest = {
     trigger: { refresh_after_consolidation: true, min_refresh_interval_seconds: 1800, budget: 'low' },
 };
 
+/**
+ * 她眼中的某个人（ADR 0017）：公共库里每人一个，按名字跨所有人的聊天整理（别人说起他的也算），整理之后自动刷新。
+ * 写了「别人提起时」的人被提起时放在介绍下面
+ */
+export function personModel(id: string, name: string, char: string): MentalModelRequest {
+    return {
+        id,
+        name: `她眼中的${name}`,
+        source_query: [
+            `用中文写一段 150 字以内的内部参考，给扮演${char}的模型在聊天前看：${char}眼中的${name}。`,
+            `${name}是谁、做什么的；最近在忙什么、有什么打算；${char}和${name}之间重要的事、还没聊完的事。各个聊天里提到${name}的都算。`,
+            '只写聊天里有证据的；没有的就不写，不要写「无证据」「未知」之类的说明。',
+            '写具体的几月几日，不写今天、明天、昨天；已经过去的事只写结果。',
+            '一段话，不要标题、列表和来源说明；不输出角色回复。',
+        ].join(''),
+        tags: TAGS,
+        max_tokens: 256,
+        trigger: { refresh_after_consolidation: true, min_refresh_interval_seconds: 1800, budget: 'low' },
+    };
+}
+
 /** 记忆按「联系人 + 档位」分开 */
 export interface MemoryContact {
     qq: number;
@@ -148,6 +169,8 @@ interface ContactState {
     bankConfigured?: string;
     /** 已建好的关系概况的设定版本（RELATIONSHIP_MODEL 改了就 PATCH 并刷新一次）；旧的状态文件里是 true */
     relationshipModel?: string | boolean;
+    /** 公共库里「她眼中的他」建好时的设定版本（ADR 0017；称呼改了设定就变） */
+    personModel?: string;
     /** 片段 id → 已写入的消息条数 */
     retained: Record<string, number>;
     /** 同上，写进公共记忆库的（ADR 0016）；旧的状态文件里没有 */
@@ -251,6 +274,7 @@ export class LongTermMemory {
     /** 写进公共记忆库：document_id 带上是谁的（哈希，不带 QQ 号），原文开头写和谁的私聊 */
     async #retainCommon(contact: MemoryContact, names: MacroNames, state: ContactState, episodes: Episode[]): Promise<void> {
         const bankId = await this.#ensureCommonBank(names.char);
+        await this.#ensurePersonModel(contact, names, state, bankId);
         for (const episode of episodes) {
             await this.#options.api.retain(bankId, {
                 content: `和${names.user}的私聊\n${episodeTranscript(episode, names)}`,
@@ -268,6 +292,22 @@ export class LongTermMemory {
             // 新片段可能带来新的人和事，下一轮重读实体名
             this.#entities.fetchedAt = undefined;
         }
+    }
+
+    /** 公共库里「她眼中的他」：没有就建，设定变了（称呼改了）就改设定、刷新一次 */
+    async #ensurePersonModel(contact: MemoryContact, names: MacroNames, state: ContactState, bankId: string): Promise<void> {
+        const model = personModel(this.#personModelId(contact), names.user, names.char);
+        const version = createHash('sha256').update(JSON.stringify(model)).digest('hex').slice(0, 12);
+        if (state.personModel === version) return;
+        if (!(await this.#options.api.getMentalModel(bankId, model.id))) {
+            await this.#options.api.createMentalModel(bankId, model);
+        } else {
+            await this.#options.api.updateMentalModel(bankId, model.id, model);
+            await this.#options.api.refreshMentalModel(bankId, model.id);
+        }
+        state.personModel = version;
+        this.#save(contact, state);
+        this.#options.log(`[${contact.qq}] 记忆（公共）：「${model.name}」已建好`);
     }
 
     async #ensureCommonBank(char: string): Promise<string> {
@@ -412,6 +452,29 @@ export class LongTermMemory {
             this.#entities = { names: cached.names, fetchedAt: this.#now() };
         }
         return this.#entities.names;
+    }
+
+    /**
+     * 她对这个人的印象（ADR 0017，公共库里的「她眼中的他」）：返回缓存，过期了在后台重新读；没开公共库、还没建、内容为空都是 undefined
+     */
+    impression(person: NamedContact): string | undefined {
+        if (!this.#options.common || !knowsPeople(person.tier) || !this.#load(person).personModel) return undefined;
+        const key = `person:${this.#key(person)}`;
+        const cached = this.#relationship.get(key);
+        if (!cached || (!cached.fetching && this.#now() - cached.fetchedAt >= RELATIONSHIP_REFRESH_MS)) {
+            const entry = { content: cached?.content, fetchedAt: cached?.fetchedAt ?? 0, fetching: true };
+            this.#relationship.set(key, entry);
+            this.#options.api.getMentalModel(this.commonBankId(), this.#personModelId(person))
+                .then(model => { entry.content = model?.content?.trim() || undefined; })
+                .catch(error => this.#options.log(`[${person.qq}] 读取「她眼中的${person.name}」失败：${error instanceof Error ? error.message : String(error)}`))
+                .finally(() => { entry.fetchedAt = this.#now(); entry.fetching = false; });
+        }
+        const content = this.#relationship.get(key)?.content;
+        return content ? `[你对${person.name}的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）]\n${content}` : undefined;
+    }
+
+    #personModelId(contact: MemoryContact): string {
+        return `person-${this.#hash(contact)}`;
     }
 
     /** 关系概况：返回缓存，过期了在后台重新读 */

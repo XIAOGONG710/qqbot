@@ -140,7 +140,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (people.length) {
                 log(`提起了 ${people.map((person, i) => `${person.name}：介绍${aboutPeople[i] ? ` + 召回 ${countLines(aboutPeople[i])} 条` : ''}`).join('；')}`);
             }
-            const peopleText = people.map((person, i) => describePerson(person, aboutPeople[i]));
+            // 她对他的印象（ADR 0017）放在介绍下面、他的私人记忆上面
+            const impressions = people.map(person => (remembers ? memory.impression(person) : undefined));
+            if (impressions.some(Boolean)) log(`有印象：${people.filter((_, i) => impressions[i]).map(person => person.name).join('、')}`);
+            const peopleText = people.map((person, i) => describePerson(person, impressions[i], aboutPeople[i]));
             const days = describeDays(character.dates, time);
             const state = schedule ? stateAt(schedule, time, extraFree) : undefined;
             if (herSchedule) options.onHerDay?.(time);

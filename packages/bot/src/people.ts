@@ -81,7 +81,7 @@ export function commonCue(history: readonly Said[], self: Contact, entities: rea
     return asksHer ? '问她过去的事' : undefined;
 }
 
-/** 介绍一个人：称呼和 intro，召回到的记忆（已整理成一段）接在后面 */
-export function describePerson(person: Contact, recalled?: string): string {
-    return [`[你认识的人：${person.name}]`, `${person.name}：${person.intro}`, ...(recalled ? [recalled] : [])].join('\n');
+/** 介绍一个人：称呼和 intro，后面接她对他的印象（ADR 0017）、召回到的记忆（都已整理成一段，没有的不写） */
+export function describePerson(person: Contact, ...more: (string | undefined)[]): string {
+    return [`[你认识的人：${person.name}]`, `${person.name}：${person.intro}`, ...more.filter(text => text)].join('\n');
 }
