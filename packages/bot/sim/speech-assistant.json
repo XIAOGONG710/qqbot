@@ -1,0 +1,29 @@
+{
+    "name": "男朋友档：诱发助手腔（ADR 0014）",
+    "description": "让她推荐、给建议、教东西、讲题，还有「今天不想说话」「谢谢」：用她自己的口气说，不分点、不像客服收尾；讲题讲清核心就停。每一步查说话的毛病。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-20T21:00:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "A01", "note": "推荐几部剧：不列清单" },
+        { "say": "最近剧荒了，推荐几部好看的剧呗" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "case": "A02", "note": "要建议：说她自己的看法，不写成五点建议" },
+        { "say": "我下周有个面试，你说我该怎么准备，给点建议" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "case": "A03", "note": "教东西：讲清楚，不像教程" },
+        { "say": "教教我 Python 怎么入门呗" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "case": "A04", "note": "他不想说话：陪着，不像客服收尾" },
+        { "say": "算了，今天不想说话" },
+        { "check": { "speechClean": true, "maxChars": 50 } },
+        { "case": "A05", "note": "隔一会儿他道谢" },
+        { "advance": "30m" },
+        { "say": "刚才谢谢你啊" },
+        { "check": { "speechClean": true } },
+        { "case": "A06", "note": "讲题：一句话说清 + 一个比方，讲到能接着往下想就停" },
+        { "say": "你帮我认真讲讲，什么是过拟合，我明天要考" },
+        { "check": { "speechClean": true, "exitClean": true, "minChars": 40, "maxChars": 200 } }
+    ]
+}

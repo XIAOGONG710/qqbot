@@ -5,13 +5,14 @@ import { appendFileSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BotConfig, Contact } from '../config.ts';
 import { createContactResponder, replySkip, type TierCard } from '../contact.ts';
-import { ChatHistory } from '../history.ts';
+import { ChatHistory, type StoredMessage } from '../history.ts';
 import { chatCompletion } from '../llm.ts';
 import type { Log } from '../log.ts';
 import type { HindsightApi } from '../memory/hindsight.ts';
 import { LongTermMemory, RELATIONSHIP_MODEL } from '../memory/long-term.ts';
 import type { OpenAIMessage, PromptResult } from '../prompt.ts';
 import { inspectReply, summarizeIssues } from '../exit-check.ts';
+import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay } from '../proactive.ts';
 import { createProactivePlanner, type Planner } from '../proactive-planner.ts';
@@ -354,7 +355,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             } else if ('check' in step) {
                 const { proactive, ...rest } = step.check;
                 current.checks = Object.keys(rest).length === 0 ? []
-                    : lastSay ? runChecks(rest, lastSay, options.card.character.banned) : [{ ok: false, text: '前面没有 say 步骤' }];
+                    : lastSay ? runChecks(rest, lastSay, options.card.character.banned, speechContextBefore(history.load(contact.qq), lastSay))
+                        : [{ ok: false, text: '前面没有 say 步骤' }];
                 if (proactive) {
                     const since = steps.slice(proactiveCheckedUpTo, -1);
                     proactiveCheckedUpTo = steps.length;
@@ -476,7 +478,22 @@ export function proactiveChecks(checks: ProactiveChecks, steps: StepRecord[], ca
     return results;
 }
 
-export function runChecks(checks: Checks, step: StepRecord, banned: readonly string[] = []): CheckResult[] {
+/** speechClean 用的：这一步她发的话之前的聊天记录（她前面几次回复、对方最近几条） */
+export function speechContextBefore(history: readonly StoredMessage[], step: StepRecord): SpeechContext {
+    const first = step.bubbles[0]?.text;
+    let end = history.length;
+    if (first !== undefined) {
+        for (let i = history.length - 1; i >= 0; i--) {
+            if (history[i]!.role === 'assistant' && history[i]!.content === first) {
+                end = i;
+                break;
+            }
+        }
+    }
+    return speechContext(history.slice(0, end));
+}
+
+export function runChecks(checks: Checks, step: StepRecord, banned: readonly string[] = [], speech?: SpeechContext): CheckResult[] {
     const results: CheckResult[] = [];
     const last = step.generations.at(-1);
     const recall = last?.recall ?? '';
@@ -507,6 +524,11 @@ export function runChecks(checks: Checks, step: StepRecord, banned: readonly str
         const stage = step.bubbles.filter(b => /^[ \t]*[（(][^（）()\n]*[）)]/m.test(b.text)).length;
         const problems = [...(issues.length ? [summarizeIssues(issues)] : []), ...(stage ? [`${stage} 条有行首括号`] : [])];
         results.push({ ok: problems.length === 0, text: `出口检查干净${problems.length ? `（${problems.join('；')}）` : ''}` });
+    }
+    if (checks.speechClean) {
+        const issues = inspectSpeech(replies, speech ?? { recent: [], his: [] });
+        const found = issues.map(i => `第 ${i.line + 1} 行${describeSpeechIssue(i)}`).join('、');
+        results.push({ ok: issues.length === 0, text: `说话没毛病（助手腔、算账、怪对方没说、重复）${found ? `（${found}）` : ''}` });
     }
     const first = step.bubbles[0]?.time;
     if (checks.noReply) results.push({ ok: step.bubbles.length === 0, text: `她没回（实际 ${step.bubbles.length} 条）` });

@@ -36,6 +36,8 @@ export interface Checks {
     maxBubbles?: number;
     /** 她发出的每一行都过得了出口检查（做不到的事、这一档的禁用词，ADR 0006），也没有行首括号 */
     exitClean?: boolean;
+    /** 她发出的话没有说话的毛病：助手腔、算账、怪对方没说、和她前面几次回复重复（ADR 0014，和流水线同一个判断） */
+    speechClean?: boolean;
     /** 这一步她一条都没发（ADR 0007：睡着、收尾后的附和） */
     noReply?: boolean;
     /** 她第一条在对方最后一条之后至少 / 至多多久发出，如 "5m"、"20m"（虚拟时间） */
