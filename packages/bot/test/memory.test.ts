@@ -398,6 +398,7 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             assert.equal(item.document_id, `${hashOf(memory, B)}:ep-${T0}`);
             assert.match(item.content, /^和鸽鸽的私聊\n/);
             assert.equal(item.context, 'QQ 私聊：林梦瑶（AI 扮演）和鸽鸽');
+            assert.deepEqual(item.entities, [{ text: '鸽鸽', type: 'PERSON' }, { text: '林梦瑶', type: 'PERSON' }], '聊天对象和她的名字钉成人（ADR 0017）');
             assert.deepEqual(check(retainBody(item), root('retain')), []);
             assert.deepEqual(check(commonBankMissions('林梦瑶'), root('bank')), []);
             assert.match((calls.putBank[1] as { retain_mission: string }).retain_mission, /每条写清是在和谁的私聊里/);
@@ -462,20 +463,21 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
         const { memory, calls, cleanup } = setupCommon({ recall: [{ id: 'a', text: '阿明自己说的', document_id: own }, ...Array.from({ length: SHARED_RECALLED + 2 }, (_, i) => other(i))] });
         try {
             const chat = [{ role: 'user' as const, content: '鸽鸽最近忙啥', time: new Date(now).toISOString() }];
-            assert.equal(await memory.recallCommon(A, chat, new Date(now), '阿明'), undefined);
+            assert.equal(await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [{ ...A, name: '阿明' }, { ...B, name: '鸽鸽' }]), undefined);
             assert.equal(calls.recall.length, 0, '公共库还没建');
 
             await memory.sync(B, gege, history);
-            const text = await memory.recallCommon(A, chat, new Date(now), '阿明');
+            const text = await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [{ ...A, name: '阿明' }, { ...B, name: '鸽鸽' }]);
             assert.match(text!, /^\[你和名单里别的人聊天时说过、听过的事（[^\]]*不是和阿明聊的/);
             assert.doesNotMatch(text!, /阿明自己说的/);
+            assert.match(text!, /\n- （和鸽鸽聊的）：鸽鸽说的第0件事\n/, '标出是和谁聊的（ADR 0017）');
             assert.equal(text!.split('\n').length - 1, SHARED_RECALLED);
             assert.deepEqual(calls.recall[0]!.types, ['world', 'experience']);
             assert.equal(calls.recall[0]!.prefer_observations, false);
             assert.deepEqual(check(calls.recall[0], root('recall')), []);
             assert.equal(calls.banks.at(-1), 'recall linmengyao-common');
 
-            assert.equal(await memory.recallCommon(S, chat, new Date(now), '路人'), undefined);
+            assert.equal(await memory.recallCommon({ ...S, name: '路人' }, chat, new Date(now), []), undefined);
             assert.equal(calls.recall.length, 1, '陌生人档不查');
         } finally {
             cleanup();
@@ -494,5 +496,23 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
         } finally {
             cleanup();
         }
+    });
+});
+
+describe('长期记忆：召回的写法（ADR 0017）', () => {
+    test('发生在现在之后的事标「打算」，日期写说起的那天；出处和计划写在同一个括号里', () => {
+        const now = new Date('2026-10-06T21:00:00+08:00');
+        const text = formatRecalled([
+            { id: '1', text: '鸽鸽下周要去杭州出差装设备', type: 'world', occurred_start: '2026-10-12T09:00:00+08:00', mentioned_at: '2026-10-05T22:05:00+08:00', document_id: 'h:ep-1' },
+            { id: '2', text: '鸽鸽在机房值夜班', type: 'world', occurred_start: '2026-10-05T22:00:00+08:00', document_id: 'h:ep-1' },
+            { id: '3', text: '没说起日期的计划', type: 'world', occurred_start: '2026-10-20T09:00:00+08:00', document_id: 'diary:2026-10-05' },
+        ], { now, source: r => (r.document_id?.startsWith('diary:') ? '你的日记' : '和鸽鸽聊的') });
+        assert.equal(text!.split('\n').slice(1).join('\n'), [
+            '- 10月5日（和鸽鸽聊的，打算 10月12日）：鸽鸽下周要去杭州出差装设备',
+            '- 10月5日（和鸽鸽聊的）：鸽鸽在机房值夜班',
+            '- （你的日记，打算 10月20日）：没说起日期的计划',
+        ].join('\n'));
+        // 不传 now 照旧（自己的记忆以前的写法）
+        assert.match(formatRecalled([{ id: '1', text: '周五面试', occurred_start: '2026-10-12T09:00:00+08:00' }])!, /\n- 10月12日：周五面试$/);
     });
 });

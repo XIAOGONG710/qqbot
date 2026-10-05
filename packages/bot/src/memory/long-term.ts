@@ -134,6 +134,12 @@ export interface MemoryContact {
     tier: string;
 }
 
+/** 带称呼的（公共记忆标出处、印象用） */
+export type NamedContact = MemoryContact & { name: string };
+
+/** 日记在公共库里的 document_id 前缀（ADR 0017） */
+export const DIARY_PREFIX = 'diary:';
+
 interface ContactState {
     bankId: string;
     /** 已写入的 mission 版本（mission 改了就重新 PUT） */
@@ -250,6 +256,7 @@ export class LongTermMemory {
                 document_id: `${this.#hash(contact)}:${episode.id}`,
                 tags: TAGS,
                 metadata: { source: 'qq', episode: episode.id, messages: String(episode.messages.length) },
+                entities: [{ text: names.user, type: 'PERSON' }, { text: names.char, type: 'PERSON' }],
             });
             (state.common ??= {})[episode.id] = episode.messages.length;
             this.#save(contact, state);
@@ -334,14 +341,17 @@ export class LongTermMemory {
         const results = await this.#recall(state.bankId, recallRequest(query, now, options.window), `[${contact.qq}] 记忆召回失败，这次不带记忆`);
         if (!results) return undefined;
         const current = currentEpisodeId(chat);
-        return formatRecalled(results.filter(r => !current || r.document_id !== current), { header: options.header, limit: options.limit });
+        return formatRecalled(results.filter(r => !current || r.document_id !== current), { header: options.header, limit: options.limit, now });
     }
 
     /**
-     * 公共记忆（ADR 0016）：名单里除陌生人档以外的人每轮都查，去掉他自己的片段。只要事实（带 document_id 才分得出是谁的），
-     * 不要整合过的观察（可能混着他自己的事）
+     * 公共记忆（ADR 0016）：名单里除陌生人档以外的人有线索时查（ADR 0017，线索由调用方判断），去掉他自己的片段。
+     * 只要事实（带 document_id 才分得出是谁的），不要整合过的观察（可能混着他自己的事）。
+     * 每条标出是和谁聊的（ADR 0017）：people 是整个名单，document_id 的哈希对回称呼；日记标「你的日记」
      */
-    async recallCommon(contact: MemoryContact, chat: ChatMessage[], now: Date, userName: string): Promise<string | undefined> {
+    async recallCommon(
+        contact: NamedContact, chat: ChatMessage[], now: Date, people: readonly NamedContact[],
+    ): Promise<string | undefined> {
         if (!this.#options.common || !knowsPeople(contact.tier)) return undefined;
         const stored = readJsonOr<Partial<CommonState>>(join(this.#options.dir, 'common.json'), {}, message => this.#options.log(message));
         if (stored.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
@@ -351,9 +361,17 @@ export class LongTermMemory {
         const results = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
         if (!results) return undefined;
         const own = `${this.#hash(contact)}:`;
+        const names = new Map(people.map(person => [this.#hash(person), person.name]));
         return formatRecalled(results.filter(r => !r.document_id?.startsWith(own)), {
-            header: `[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和${userName}聊的，用不上就别提）]`,
+            header: `[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和${contact.name}聊的，用不上就别提）]`,
             limit: SHARED_RECALLED,
+            now,
+            source: r => {
+                const id = r.document_id ?? '';
+                if (id.startsWith(DIARY_PREFIX)) return '你的日记';
+                const name = names.get(id.split(':')[0]!);
+                return name ? `和${name}聊的` : undefined;
+            },
         });
     }
 
@@ -462,15 +480,27 @@ function currentEpisodeId(chat: ChatMessage[]): string | undefined {
 export const RECALLED_HEADER = '[你们以前聊过的事（从记忆里想起来的，只作参考；和最近的聊天对不上时以最近的为准，用不上就别提）]';
 
 /** 召回结果整理成一段：标题默认是自己的记忆（RECALLED_HEADER），最多 limit 条（默认 MAX_RECALLED） */
-export function formatRecalled(results: RecallResult[], options: { header?: string; limit?: number } = {}): string | undefined {
+export function formatRecalled(
+    results: RecallResult[],
+    options: { header?: string; limit?: number; now?: Date; source?: (result: RecallResult) => string | undefined } = {},
+): string | undefined {
+    const valid = (iso: string | null | undefined) => {
+        const date = iso ? new Date(iso) : undefined;
+        return date && !Number.isNaN(date.getTime()) ? date : undefined;
+    };
+    const day = (date: Date) => `${date.getMonth() + 1}月${date.getDate()}日`;
     const lines = results.slice(0, options.limit ?? MAX_RECALLED).map(r => {
+        // 计划的事（ADR 0017）：发生在现在之后的，日期写说起的那天，括号里写「打算 几号」
+        const planned = r.type !== 'observation' && options.now ? valid(r.occurred_start) : undefined;
+        const future = planned && planned.getTime() > options.now!.getTime() ? planned : undefined;
         // 观察（多条事实整合的）的 occurred_start 是来源里最早的日期，「现在戒糖了」会被标成最早那天：用最近一次被提到的时间
-        const when = r.type === 'observation' ? r.mentioned_at ?? r.occurred_start : r.occurred_start ?? r.mentioned_at;
-        const date = when ? new Date(when) : undefined;
-        const prefix = date && !Number.isNaN(date.getTime()) ? `${date.getMonth() + 1}月${date.getDate()}日：` : '';
+        const when = future ? valid(r.mentioned_at)
+            : r.type === 'observation' ? valid(r.mentioned_at) ?? valid(r.occurred_start) : valid(r.occurred_start) ?? valid(r.mentioned_at);
+        const notes = [options.source?.(r), future ? `打算 ${day(future)}` : undefined].filter(Boolean);
+        const prefix = `${when ? day(when) : ''}${notes.length ? `（${notes.join('，')}）` : ''}`;
         // 事实后面常带「 | When: … | Involving: …」，日期已经写在前面了
         const text = r.text.split(' | ')[0]!.trim();
-        return `- ${prefix}${text.length > 200 ? `${text.slice(0, 200)}…` : text}`;
+        return `- ${prefix ? `${prefix}：` : ''}${text.length > 200 ? `${text.slice(0, 200)}…` : text}`;
     });
     if (lines.length === 0) return undefined;
     return `${options.header ?? RECALLED_HEADER}\n${lines.join('\n')}`;

@@ -37,6 +37,8 @@ export interface MemoryItem {
     document_id: string;
     tags: string[];
     metadata: Record<string, string>;
+    /** 和自动抽取的实体合在一起（ADR 0017：公共库写入时把聊天对象和她的名字钉成人） */
+    entities?: { text: string; type?: string }[];
 }
 
 export interface RecallRequest {

@@ -123,7 +123,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const people = mentionedPeople(chat, contact, options.contacts ?? []);
             const [recalled, common, ...aboutPeople] = await Promise.all([
                 remembers ? memory.recall(contact, chat, time, recallOptions) : undefined,
-                remembers && !initiate ? memory.recallCommon(contact, chat, time, contact.name) : undefined,
+                remembers && !initiate ? memory.recallCommon(contact, chat, time, options.contacts ?? [contact]) : undefined,
                 ...people.map(person => (remembers
                     ? memory.recall(person, chat, time, {
                         ...recallOptions, limit: PERSON_RECALLED, header: `[你和${person.name}聊过的事（从记忆里想起来的，只作参考）]`,
