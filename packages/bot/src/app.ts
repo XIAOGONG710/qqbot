@@ -2,12 +2,13 @@
 // 定时写长期记忆，记下换档，同一个数据目录只跑一个。群聊、群临时会话由入口过滤掉，不进这里。
 // 主动消息（ADR 0011）：配置 proactive 不是 off、作息开着、卡上写了 proactive 的名单联系人，各一个计划器（proactive-planner.ts）；
 // 第一次补回完才开始排（之前的聊天记录不全），聊天记录变了就让它重新算。
+// 她自己的日子（ADR 0015）：启动时、她的每一天第一次生成时写一行当天的心情和进度；状态页的「今天」也在这里算。
 // 收发由入口传进来（ADR 0008）：独立入口 main.ts 是自写的 OneBot 客户端（onebot.ts），Koishi 插件是 adapter-onebot；
 // 两边给的都是 NapCat 的原始 OneBot 数据，所以转文字（segmentsToText）、补回（findMissed）只有一份。
 
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { chatCompletion } from './llm.ts';
 import { acquireLock } from './lock.ts';
 import type { Log } from './log.ts';
@@ -22,7 +23,8 @@ import { arrivedWhileAsleep } from './reply-timing.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import type { ProactiveMode } from './proactive.ts';
 import { createProactivePlanner, type Planner, type PlannerStatus } from './proactive-planner.ts';
-import { describeState, stateAt } from './schedule.ts';
+import { bookProgressAt, herDayLogger, moodAt, readingActivities } from './her-days.ts';
+import { describeState, formatDate, herDay, stateAt } from './schedule.ts';
 
 /** 写一次长期记忆的间隔 */
 export const MEMORY_SYNC_MS = 5 * 60_000;
@@ -71,9 +73,21 @@ export interface AppStatus {
     moody: boolean;
     /** 出口检查里查不查说话的毛病（ADR 0014） */
     speechCheck: boolean;
+    /** 她自己的日子（ADR 0015）开没开 */
+    herDays: boolean;
+    /** 开着、用到的档位卡上有心情或书时：她今天的心情和在读的书 */
+    today?: HerDayStatus;
     proactive: ProactiveMode;
     /** 长期记忆开着时：服务探测结果（每分钟最多探一次）、最近一次写入和召回 */
     memory?: { baseUrl: string; health?: MemoryEvent; lastWrite?: MemoryEvent; lastRecall?: MemoryEvent };
+}
+
+/** 状态页的「今天」（ADR 0015） */
+export interface HerDayStatus {
+    /** 她的哪一天（02:00 之前算前一天） */
+    day: string;
+    mood?: { name: string; reason: string };
+    books: { title: string; amount: number; unit: string; finished: boolean; stopped: boolean; putDown: boolean }[];
 }
 
 /** Hindsight 健康检查的间隔 */
@@ -113,6 +127,15 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     const whitelist = config.contacts.map(c => `${c.qq}（${c.name}，${c.tier}）`).join('、');
     log(`名单：${whitelist}；名单外的好友${config.unlistedFriends ? '按 unlisted 档回复' : '不回复'}`);
     log(`出口检查：做不到的事、禁用词${config.speechCheck ? '、说话的毛病（助手腔、算账、怪对方没说、重复）' : '（说话的毛病不查，配置 speechCheck: false）'}`);
+    // 她自己的日子同一天对所有人一样；摘要和状态页用名单里最亲的、卡上有心情或书的那一档（书按档位裁过，这里只用书名和进度）
+    const herDaysCard = config.herDays
+        ? ([...CONTACT_TIERS, UNLISTED_TIER] as Tier[]).filter(tier => tiersInUse.has(tier)).map(tier => cardFor(tier).character)
+            .find(character => character.schedule && (character.moods.length || character.books.length))
+        : undefined;
+    log(`她自己的日子：${!config.herDays ? '关（配置 herDays: false）'
+        : herDaysCard ? `开（每日心情、在读的书${config.schedule ? '、看书的空闲活动' : ''}、进度数字的检查）` : '开，但用到的档位卡上都没有心情和书'}`);
+    const noteHerDay = herDaysCard ? herDayLogger(herDaysCard.schedule!, herDaysCard.moods, herDaysCard.books, log) : undefined;
+    noteHerDay?.(new Date(pipeline?.now?.() ?? Date.now()));
     log(`作息：${config.schedule ? '按角色卡（她现在在干什么、什么时候看到、打字多久）' : '关（配置 schedule: false），随时几秒内回'}`);
     if (config.schedule) {
         const paces = [...tiersInUse].map(tier => `${tier} ×${cardFor(tier).character.pace}`).join('、');
@@ -176,6 +199,8 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             schedule: config.schedule,
             moody: config.moody,
             speechCheck: config.speechCheck,
+            herDays: config.herDays,
+            ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
             history,
             memory,
             send: (userId, text) => transport.sendPrivateText(userId, text),
@@ -328,7 +353,9 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             const contactStatus = (contact: Contact, isUnlisted: boolean): ContactStatus => {
                 const last = history.load(contact.qq).at(-1);
                 const since = tierRecord.since(contact.qq);
-                const schedule = config.schedule ? cardFor(contact.tier).character.schedule : undefined;
+                const { character } = cardFor(contact.tier);
+                const schedule = config.schedule ? character.schedule : undefined;
+                const extraFree = config.herDays ? readingActivities(character.books) : [];
                 return {
                     qq: contact.qq,
                     name: contact.name,
@@ -337,7 +364,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                     ...(since ? { tierSince: since.toISOString() } : {}),
                     responder: responders.get(contact.qq)!.status(),
                     ...(last ? { last: { time: last.time, from: last.role } } : {}),
-                    ...(schedule ? { now: describeState(stateAt(schedule, now), schedule, { userName: contact.name }) } : {}),
+                    ...(schedule ? { now: describeState(stateAt(schedule, now, extraFree), schedule, { userName: contact.name }) } : {}),
                     ...(planners.has(contact.qq) ? { proactive: planners.get(contact.qq)!.status() } : {}),
                 };
             };
@@ -358,9 +385,26 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 schedule: config.schedule,
                 moody: config.moody,
                 speechCheck: config.speechCheck,
+                herDays: config.herDays,
+                ...(herDaysCard ? { today: herDayStatus(herDaysCard.schedule!, herDaysCard, now) } : {}),
                 proactive: config.proactive,
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
             };
         },
+    };
+}
+
+function herDayStatus(schedule: NonNullable<TierCard['character']['schedule']>, character: TierCard['character'], now: Date): HerDayStatus {
+    const mood = moodAt(schedule, character.moods, now);
+    return {
+        day: formatDate(herDay(schedule, now)),
+        ...(mood ? { mood: { name: mood.mood.name, reason: mood.reason } } : {}),
+        books: character.books.map(book => {
+            const progress = bookProgressAt(schedule, book, now);
+            return {
+                title: book.title, amount: progress.amount, unit: progress.unit,
+                finished: progress.finished, stopped: progress.stopped, putDown: book.progress.state === 'put_down',
+            };
+        }),
     };
 }

@@ -3,19 +3,25 @@
 // 括号里的动作不在这里：卡上的 ST 正则在清理时就删了（st/regex.ts，决策 2）。
 // 说话的毛病（ADR 0014，传了 speech 才查，规则在 speech-check.ts）：助手腔、算账、怪对方没说一起重写；
 // 重写后还在的删掉那一行（删完一行不剩就照发）。重复的语气词开头直接去掉、不重写；别的重复重写一次，还重复就照发。
+// 书的进度数字（ADR 0015，这一轮放了「在读的书」才传 books）：说的第几卷 / 章、一共几章和资料对不上，重写一次，还不对就照发。
 
-import { describeSpeechIssue, inspectSpeech, stripOpeners, strippable, type SpeechContext, type SpeechIssue } from './speech-check.ts';
+import {
+    describeSpeechIssue, inspectBookProgress, inspectSpeech, stripOpeners, strippable,
+    type BookProgressContext, type SpeechContext, type SpeechIssue,
+} from './speech-check.ts';
 
 export interface ExitIssue {
     /** 回复里的第几行（从 0 开始，按 \n 分） */
     line: number;
-    kind: 'promise' | 'banned' | SpeechIssue['kind'];
+    kind: 'promise' | 'banned' | SpeechIssue['kind'] | 'progress';
     /** 命中的片段 */
     match: string;
     /** 说话的毛病里的重复（speech-check.ts） */
     repeat?: SpeechIssue['repeat'];
     count?: number;
     stripped?: string;
+    /** 进度数字：哪本书、资料里是多少 */
+    book?: { title: string; expected: number; unit: string; total: boolean };
 }
 
 // 做不到的事：bot 只能发文字（决策 3）。主动给人看 / 发照片、语音、视频、红包，打电话、开视频，或者说得像已经发了。
@@ -38,7 +44,7 @@ const PROMISE = new RegExp(NOT_NEGATED + '(?:' + [
     '(?:要|想)(?:不要)?看(?:不|吗|嘛)$',
 ].join('|') + ')' + NOT_REFUSED);
 
-export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext): ExitIssue[] {
+export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext, books?: BookProgressContext): ExitIssue[] {
     const issues: ExitIssue[] = [];
     for (const [line, text] of reply.split('\n').entries()) {
         const promise = PROMISE.exec(text.trim());
@@ -46,6 +52,12 @@ export function inspectReply(reply: string, banned: readonly string[], speech?: 
         for (const word of banned) if (text.includes(word)) issues.push({ line, kind: 'banned', match: word });
     }
     if (speech) issues.push(...inspectSpeech(reply, speech));
+    if (books) {
+        issues.push(...inspectBookProgress(reply, books).map((issue): ExitIssue => ({
+            line: issue.line, kind: 'progress', match: issue.raw,
+            book: { title: issue.title, expected: issue.expected, unit: issue.unit, total: issue.kind === 'total' },
+        })));
+    }
     return issues.sort((a, b) => a.line - b.line);
 }
 
@@ -58,7 +70,13 @@ export function dropLines(reply: string, issues: readonly ExitIssue[]): string {
 /** 日志里的一句：第几行、哪一类、命中什么 */
 export function summarizeIssues(issues: readonly ExitIssue[]): string {
     return issues.map(i => `第 ${i.line + 1} 行${i.kind === 'promise' ? `做不到的事「${i.match}」`
-        : i.kind === 'banned' ? `禁用词「${i.match}」` : describeSpeechIssue(i as SpeechIssue)}`).join('、');
+        : i.kind === 'banned' ? `禁用词「${i.match}」`
+            : i.kind === 'progress' ? `进度数字「${i.match}」（《${i.book!.title}》${progressFact(i.book!)}）` : describeSpeechIssue(i as SpeechIssue)}`).join('、');
+}
+
+/** 资料里的进度：看到第 7 卷 / 全书 550 章 */
+function progressFact(book: NonNullable<ExitIssue['book']>): string {
+    return book.total ? `全书 ${book.expected} ${book.unit}` : `看到第 ${book.expected} ${book.unit}`;
 }
 
 /** 重写时加在提示词末尾的说明：哪一句不能发、为什么、要怎么说 */
@@ -75,11 +93,12 @@ export function rewriteNote(reply: string, issues: readonly ExitIssue[], userNam
                 case 'repeat': return i.repeat === 'opener'
                     ? `开头的「${i.match}」你最近几次回复已经用过 ${i.count} 次，换个开头`
                     : `里的「${i.match}」你最近几次回复已经说过 ${i.count} 次，换个说法`;
+                case 'progress': return `「${i.match}」和你的进度对不上：《${i.book!.title}》你${progressFact(i.book!)}`;
             }
         });
         return `「${lines[line]!.trim()}」${[...new Set(why)].join('；')}`;
     });
-    const changesMeaning = issues.some(i => i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'service');
+    const changesMeaning = issues.some(i => i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'service' || i.kind === 'progress');
     return `[上一版回复没有发出去：${reasons.join('；')}。${changesMeaning ? '别的意思' : '意思'}不变，重写这次的回复，只输出要发的消息。]`;
 }
 
@@ -88,6 +107,8 @@ export interface ReviewOptions {
     userName: string;
     /** 说话的毛病（ADR 0014）：和她最近几次回复、对方最近几条比；不传就不查 */
     speech?: SpeechContext;
+    /** 这一轮放进提示词的在读的书（ADR 0015）；不传就不查进度数字 */
+    books?: BookProgressContext;
     /** 在原来的提示词末尾加上这句说明重新生成，返回清理过的回复 */
     regenerate: (note: string) => Promise<string>;
     log: (message: string) => void;
@@ -99,7 +120,7 @@ const HARD = new Set<ExitIssue['kind']>(['promise', 'banned']);
 function strip(reply: string, options: ReviewOptions): { reply: string; issues: ExitIssue[] } {
     let text = reply;
     for (let round = 0; ; round++) {
-        const issues = inspectReply(text, options.banned, options.speech);
+        const issues = inspectReply(text, options.banned, options.speech, options.books);
         const removable = issues.filter(strippable);
         if (removable.length === 0 || round === 2) return { reply: text, issues: issues.filter(i => !strippable(i)) };
         const next = stripOpeners(text, removable);
@@ -109,7 +130,7 @@ function strip(reply: string, options: ReviewOptions): { reply: string; issues: 
     }
 }
 
-/** 重写之后（或重写失败时）还剩的问题：做不到的事、禁用词删行；助手腔、算账、怪对方没说也删，删完一行不剩就留着；重复照发 */
+/** 重写之后（或重写失败时）还剩的问题：做不到的事、禁用词删行；助手腔、算账、怪对方没说也删，删完一行不剩就留着；重复、进度数字照发 */
 function settle(reply: string, issues: readonly ExitIssue[]): { reply: string; dropped: boolean } {
     const hard = issues.filter(i => HARD.has(i.kind));
     const soft = issues.filter(i => i.kind === 'service' || i.kind === 'ledger' || i.kind === 'blame');

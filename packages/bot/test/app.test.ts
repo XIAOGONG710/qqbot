@@ -35,6 +35,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         schedule: false,
         moody: false,
         speechCheck: false,
+        herDays: false,
         proactive: 'off',
         dataDir,
         ...overrides,
@@ -151,6 +152,31 @@ describe('编排（app.ts）', () => {
         // 作息按现在的时间算，她可能已经回了，也可能在等
         assert.ok(stranger.last && ['user', 'assistant'].includes(stranger.last.from));
         assert.doesNotMatch(JSON.stringify(status), /你好/, '不含聊天内容');
+    });
+
+    test('她自己的日子（ADR 0015）：启动日志、当天摘要只写一次、时间块里的心情行、状态页的「今天」；关掉或卡上没有就都没有', async () => {
+        const cfg = config({ herDays: true, contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
+        const { app, sent, logs } = setup(cfg, { 10002: [historyMessage(1, 10002, '在吗', 5)] });
+        assert.ok(logs.includes('她自己的日子：开（每日心情、在读的书、进度数字的检查）'), '作息关着时没有看书的空闲活动');
+        assert.equal(logs.filter(l => /^她自己的日子：今天（\d\d-\d\d）：心情 .+（.+）；在读 药屋少女的呢喃 第 \d+ 卷、惹金枝 /.test(l)).length, 1);
+        await app.connected(SELF);
+        await until(() => sent.length > 0);
+        const prompt = JSON.parse(readFileSync(join(cfg.dataDir, 'last-prompt.json'), 'utf8')) as { messages: { content: string }[] };
+        assert.ok(prompt.messages.some(m => /^\[你今天的心情：/m.test(m.content)));
+        assert.ok(!prompt.messages.some(m => m.content.includes('{{user}}')));
+        assert.equal(logs.filter(l => l.startsWith('她自己的日子：今天')).length, 1, '同一天第一次生成不再重复写');
+        const today = app.status().today!;
+        assert.match(today.day, /^\d{4}-\d{2}-\d{2}$/);
+        assert.equal(typeof today.mood!.name, 'string');
+        assert.deepEqual(today.books.map(book => [book.title, book.unit, book.putDown]), [['药屋少女的呢喃', '卷', false], ['惹金枝', '章', false], ['恰似寒光遇骄阳', '章', true]]);
+        assert.equal(app.status().herDays, true);
+
+        const off = setup(config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] }));
+        assert.ok(off.logs.includes('她自己的日子：关（配置 herDays: false）'));
+        assert.equal(off.app.status().today, undefined);
+        const stranger = setup(config({ herDays: true, contacts: [{ qq: 10003, name: '路人', tier: 'stranger' }] }));
+        assert.ok(stranger.logs.includes('她自己的日子：开，但用到的档位卡上都没有心情和书'));
+        assert.equal(stranger.app.status().today, undefined);
     });
 
     test('stop：释放锁；之后收到的消息、再连上都不处理', async () => {

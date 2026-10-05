@@ -74,6 +74,7 @@ export interface Config {
     schedule: boolean;
     moody: boolean;
     speechCheck: boolean;
+    herDays: boolean;
     proactive: ProactiveMode;
     llm: {
         baseUrl: string;
@@ -120,6 +121,9 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         speechCheck: Schema.boolean().default(DEFAULTS.speechCheck)
             .description('**说话的毛病**（ADR 0014）：发出去之前查助手腔、算账（「这会儿才想起来找我」）、怪对方没说、和她最近几次回复重复。'
                 + '开头重复的「行，」这类语气词直接去掉；别的带说明重写一次，命中时这一轮晚几秒'),
+        herDays: Schema.boolean().default(DEFAULTS.herDays)
+            .description('**她自己的日子**（ADR 0015）：每日心情、在读的书。每天一个心情（按日期和当天课表，同一天对谁都一样），写进她说话的方式；'
+                + '聊到书或她正在看书时，提示词里加上在读的三本书和进度，说错第几卷 / 章就带说明重写一次。只对卡上有心情和书的档位（陌生人、名单外没有）'),
         proactive: Schema.union(PROACTIVE_MODES.map(mode => Schema.const(mode).description(PROACTIVE_LABELS[mode]))).default(DEFAULTS.proactive)
             .description('**主动消息**（ADR 0011）：她在合适的时候先找人（早安、下课、睡前、冷场、他说过的事、重要的日子）。'
                 + '只对「林梦瑶」页面档位里开了主动的档位（现在只有男朋友档），要开着作息。试运行：照算照生成，只写日志不发'),
@@ -215,9 +219,10 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         contacts: config.contacts.map(contact => dropUndefined(contact)),
         unlistedFriends: config.unlistedFriends,
         schedule: config.schedule,
-        // 旧的 koishi.yml 没有这几项：parseAppConfig 按默认值（看心情不回开、说话的毛病开、主动消息关）
+        // 旧的 koishi.yml 没有这几项：parseAppConfig 按默认值（看心情不回开、说话的毛病开、她自己的日子开、主动消息关）
         ...(config.moody !== undefined ? { moody: config.moody } : {}),
         ...(config.speechCheck !== undefined ? { speechCheck: config.speechCheck } : {}),
+        ...(config.herDays !== undefined ? { herDays: config.herDays } : {}),
         ...(config.proactive !== undefined ? { proactive: config.proactive } : {}),
         ...(enabled ? { memory: dropUndefined(memory) } : {}),
         dataDir: config.dataDir,

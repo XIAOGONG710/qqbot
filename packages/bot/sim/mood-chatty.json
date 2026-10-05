@@ -8,7 +8,7 @@
     "steps": [
         { "case": "MC01", "note": "晚饭和室友" },
         { "say": "在干嘛呢" },
-        { "check": { "speechClean": true, "exitClean": true } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "^(?![\\s\\S]*在读的书)[\\s\\S]*你今天的心情：话痨" } },
         { "say": "刚吃完饭，你吃的啥" },
         { "check": { "speechClean": true, "exitClean": true } },
         { "say": "食堂今天那个土豆还行" },

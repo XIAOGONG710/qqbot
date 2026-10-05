@@ -16,6 +16,7 @@ import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext }
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay } from '../proactive.ts';
 import { createProactivePlanner, type Planner } from '../proactive-planner.ts';
+import { herDayLogger } from '../her-days.ts';
 import { formatDate, stateAt } from '../schedule.ts';
 import { parseDuration, VirtualClock, type Checks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
@@ -54,6 +55,8 @@ export interface RunOptions {
     settle?: { quietMs: number; maxMs: number };
     /** 出口检查里查说话的毛病（ADR 0014），run.ts 照 bot 的配置传；默认否 */
     speechCheck?: boolean;
+    /** 她自己的日子（ADR 0015），run.ts 照 bot 的配置传；默认否 */
+    herDays?: boolean;
 }
 
 /** proactive：她主动发的（ADR 0011），是哪个时机（日志里的说法） */
@@ -146,6 +149,14 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     let initiating: string | undefined;
     const baseGenerate = options.generate ?? ((messages: OpenAIMessage[], log: Log) => chatCompletion(options.llm, messages, { log }));
 
+    const { character } = options.card;
+    if (scenario.mood !== undefined && !character.moods.some(mood => mood.name === scenario.mood)) {
+        throw new Error(`场景的 mood「${scenario.mood}」不是卡上的心情（${character.moods.map(mood => mood.name).join('、') || '这一档没有心情'}）`);
+    }
+    // 她自己的日子：和 bot 一样，她的每一天第一次生成时在 sim.log 里写一行当天的心情和进度
+    const noteHerDay = options.herDays && character.schedule
+        ? herDayLogger(character.schedule, character.moods, character.books, log, scenario.mood)
+        : undefined;
     const createResponder = () => createContactResponder({
         contact,
         card: options.card,
@@ -155,6 +166,9 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         moody: scenario.moody,
         ...(scenario.moodyChance !== undefined ? { moodyChance: scenario.moodyChance } : {}),
         speechCheck: options.speechCheck ?? false,
+        herDays: options.herDays ?? false,
+        ...(scenario.mood !== undefined ? { mood: scenario.mood } : {}),
+        ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
         history,
         memory,
         log,
@@ -199,7 +213,6 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     let forgotten = 0;
 
     // 主动消息（ADR 0011）：场景开着、卡上有主动设置和作息时，计划器跑在虚拟时钟上（真发，记录在 dataDir/proactive）
-    const { character } = options.card;
     const planner: Planner | undefined = scenario.proactive && scenario.schedule && character.proactive && character.schedule
         ? createProactivePlanner({
             contact,

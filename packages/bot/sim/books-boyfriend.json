@@ -8,25 +8,25 @@
     "steps": [
         { "case": "BB01", "note": "泛问在读书" },
         { "say": "你最近在看什么书" },
-        { "check": { "speechClean": true, "exitClean": true } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "在读的书", "replyAny": ["药屋", "惹金枝", "恰似"] } },
         { "case": "BB02", "note": "药屋：读到的节点和当前卷数" },
         { "say": "《药屋少女的呢喃》讲什么的" },
-        { "check": { "speechClean": true, "exitClean": true } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "在读的书", "replyAny": ["猫猫", "后宫", "药师"] } },
         { "say": "那你看到第几卷了" },
-        { "check": { "speechClean": true, "exitClean": true } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "看到第 7 卷", "replyAny": ["7", "七"] } },
         { "case": "BB03", "note": "惹金枝：已读节点、当前进度和未读结局" },
         { "say": "《惹金枝》你看到哪了" },
-        { "check": { "speechClean": true, "exitClean": true } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "看到第 505 章", "replyAny": ["505", "五百零五", "五百多"] } },
         { "say": "时不虞后来怎么样" },
         { "check": { "speechClean": true, "exitClean": true } },
         { "say": "那结局呢，最后怎么样" },
-        { "check": { "speechClean": true, "exitClean": true } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "结局你还没看到", "replyAny": ["还没看到", "没看到", "记不清", "还没到", "没看完", "还没看完", "不记得"] } },
         { "case": "BB04", "note": "恰似：放下的书，后续没有资料" },
         { "say": "《恰似寒光遇骄阳》后面的具体剧情和结局呢" },
-        { "check": { "speechClean": true, "exitClean": true } },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["还没看到", "没看到", "记不清", "还没到", "没看完", "还没看完", "不记得"] } },
         { "advance": "1d" },
         { "case": "BB05", "note": "隔天惹金枝应比前一天多 5 章" },
         { "say": "《惹金枝》今天看到哪了" },
-        { "check": { "speechClean": true, "exitClean": true } }
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "看到第 510 章", "replyAny": ["510", "五百一", "五百多"] } }
     ]
 }

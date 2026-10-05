@@ -105,6 +105,8 @@ export interface Scenario {
     moody: boolean;
     /** 看心情不回的概率（0–1），不写按档位算；写 1 时正聊着的「哈哈」一定不回，用来看不回之后的样子 */
     moodyChance?: number;
+    /** 指定今天的心情（ADR 0015，卡上心情的名字），比较不同心情时用；不写按虚拟日期抽 */
+    mood?: string;
     steps: Step[];
 }
 
@@ -135,6 +137,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         proactive: s.proactive === true,
         moody: s.moody === true,
         ...(s.moodyChance !== undefined ? { moodyChance: chance(s.moodyChance) } : {}),
+        ...(s.mood !== undefined ? { mood: typeof s.mood === 'string' && s.mood ? s.mood : fail('mood 应为心情的名字') } : {}),
         steps: s.steps as Step[],
     };
 }

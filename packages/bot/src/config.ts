@@ -29,6 +29,7 @@ export const DEFAULTS = {
     schedule: true,
     moody: true,
     speechCheck: true,
+    herDays: true,
     proactive: 'off' as ProactiveMode,
     dataDir: 'runtime/bot',
 } as const;
@@ -69,6 +70,11 @@ export interface AppConfig {
     moody: boolean;
     /** 出口检查里查说话的毛病（ADR 0014）：助手腔、算账、怪对方没说、和她最近几次回复重复。默认是 */
     speechCheck: boolean;
+    /**
+     * 她自己的日子（ADR 0015）：每日心情（时间块里一行）、在读的书（聊到书或她在看书时一段）、看书的空闲活动、进度数字的出口检查。
+     * 默认是；卡上没有心情和书（陌生人、名单外、旧卡）时没有
+     */
+    herDays: boolean;
     /**
      * 主动消息（ADR 0011）：off 关（默认）；dryRun 试运行，照算照生成，只写日志不发；on 开。
      * 只对卡上写了 proactive 的档位（现在只有男朋友档），要开着作息
@@ -182,6 +188,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         schedule: bool(file, 'schedule', '', DEFAULTS.schedule),
         moody: bool(file, 'moody', '', DEFAULTS.moody),
         speechCheck: bool(file, 'speechCheck', '', DEFAULTS.speechCheck),
+        herDays: bool(file, 'herDays', '', DEFAULTS.herDays),
         proactive: proactiveMode(file.proactive),
         ...(memory ? { memory } : {}),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : DEFAULTS.dataDir),

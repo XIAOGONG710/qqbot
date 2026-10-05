@@ -1,13 +1,20 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
+import type { BotConfig } from '../src/config.ts';
+import { loadTierCard } from '../src/contact.ts';
 import {
     availableBookNodes, bookMention, bookProgressAt, bookProgressOn, describeBooks, describeHerDaySummary, describeMood, herDayLogger,
     moodAt, moodDayConditions, parseBooks, parseMoods, readingActivities, readingActivity, readingSection, unreadBookTopics, type DailyMood,
 } from '../src/her-days.ts';
 import type { StoredMessage } from '../src/history.ts';
 import { describeState, formatDate, herDay, stateAt } from '../src/schedule.ts';
+import { runScenario } from '../src/sim/runner.ts';
+import { parseScenario } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
 const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
 const classmate = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-classmate.json'));
@@ -161,5 +168,53 @@ describe('在读的书（ADR 0015）', () => {
         assert.deepEqual(stranger.books, []);
         assert.throws(() => parseMoods([{ name: '坏', weight: 1, style: 'x', when: [{ day: 'rainy', factor: 1, reason: 'x' }] }], '卡'), /day 不认识/);
         assert.throws(() => parseBooks([{ id: '坏' }], '卡'), /progress 应为对象/);
+    });
+});
+
+describe('接进流水线（ADR 0015 第 5 步，假模型）', () => {
+    const repoRoot = resolve(import.meta.dirname, '../../..');
+    const tierCard = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+    const llm: BotConfig['llm'] = {
+        baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000,
+        promptPostProcessing: '', extraBody: {},
+    };
+    const prompt: BotConfig['prompt'] = { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true };
+    const run = async (herDays: boolean, replies: string[], extra: Record<string, unknown> = {}) => {
+        const dir = mkdtempSync(join(tmpdir(), 'her-days-'));
+        try {
+            const scenario = parseScenario({
+                name: 'x', tier: 'boyfriend', user: '宝宝', start: '2026-10-06T19:00:00+08:00', memory: false, schedule: false, ...extra,
+                steps: [{ say: '在干嘛' }, { say: '你最近在看什么书' }],
+            });
+            return await runScenario(scenario, {
+                runId: 't', dataDir: dir, card: tierCard, llm, prompt, settle: { quietMs: 10, maxMs: 50 }, herDays,
+                generate: async () => replies.shift()!,
+            });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    };
+
+    test('心情行每轮都在；聊到书才有那一段；说错卷数带说明重写一次', async () => {
+        const result = await run(true, ['在宿舍躺着', '在看药屋，就翻了前两卷', '在看药屋，看到第七卷了']);
+        const [chat, books] = result.steps.filter(step => step.kind === 'say');
+        assert.match(chat!.generations[0]!.timeBlock!, /\n\[你今天的心情：[^\]]+\]$/);
+        assert.doesNotMatch(chat!.generations[0]!.timeBlock!, /在读的书/);
+        assert.match(books!.generations[0]!.timeBlock!, /\[在读的书：\n- 《药屋少女的呢喃》[^\n]*看到第 7 卷/);
+        assert.equal(books!.generations[0]!.rewrites?.length, 1);
+        assert.ok(books!.logs.some(line => line.includes('进度数字「两卷」（《药屋少女的呢喃》看到第 7 卷）')));
+        assert.deepEqual(books!.bubbles.map(bubble => bubble.text), ['在看药屋，看到第七卷了']);
+        assert.ok(chat!.logs.some(line => /^她自己的日子：今天（10-06）/.test(line)));
+    });
+
+    test('关掉就什么都没有；场景指定的心情照用', async () => {
+        const off = await run(false, ['在宿舍躺着', '在看药屋，就翻了前两卷']);
+        const offBooks = off.steps.filter(step => step.kind === 'say')[1]!;
+        assert.doesNotMatch(offBooks.generations[0]!.timeBlock!, /心情|在读的书/);
+        assert.equal(offBooks.generations[0]!.rewrites, undefined);
+
+        const quiet = await run(true, ['嗯', '药屋'], { mood: '安静' });
+        assert.match(quiet.steps.find(step => step.kind === 'say')!.generations[0]!.timeBlock!, /\[你今天的心情：安静（/);
+        await assert.rejects(run(true, [], { mood: '暴躁' }), /不是卡上的心情/);
     });
 });

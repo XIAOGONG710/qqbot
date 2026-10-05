@@ -8,14 +8,14 @@
     "steps": [
         { "case": "MD01", "note": "安静的这天第一次问" },
         { "say": "你今天心情怎么样" },
-        { "check": { "speechClean": true, "exitClean": true } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "你今天的心情：安静" } },
         { "advance": "3h" },
         { "case": "MD02", "note": "同一天再问，心情和原因不能变" },
         { "say": "那你现在心情呢，还是刚才那样吗" },
-        { "check": { "speechClean": true, "exitClean": true } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "你今天的心情：安静" } },
         { "advance": "1d" },
         { "case": "MD03", "note": "隔天是话痨" },
         { "say": "今天感觉怎么样，心情好吗" },
-        { "check": { "speechClean": true, "exitClean": true } }
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "你今天的心情：话痨" } }
     ]
 }

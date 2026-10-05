@@ -64,7 +64,8 @@ for (const file of files) {
             const issues = inspectBookProgress(sent, { books, focusIds: mention.bookIds });
             if (issues.length) progress.sentReplies++;
             progress.sentIssues += issues.length;
-            const choice = moodAt(card.schedule, card.moods, when);
+            // 场景指定了心情的按指定的算（ADR 0015 决策 6），没指定按日期
+            const choice = moodAt(card.schedule, card.moods, when, result.scenario.mood);
             if (choice) {
                 const item = moods.get(choice.mood.name) ?? { replies: 0, bubbles: 0, chars: 0 };
                 item.replies++;

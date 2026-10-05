@@ -1,7 +1,10 @@
-// 她自己的日子（ADR 0015）：每日心情和在读的书。这里都是纯函数；拼提示词、日志和配置开关在接线步骤做。
+// 她自己的日子（ADR 0015）：每日心情和在读的书。这里都是纯函数；接进时间块和出口检查在 contact.ts，日志和开关在 app.ts。
 
 import type { StoredMessage } from './history.ts';
 import { classesOn, formatDate, herDay, type ExtraFreeActivity, type Schedule } from './schedule.ts';
+
+/** 判断聊没聊到书只看谁说的、说了什么 */
+type Said = Pick<StoredMessage, 'role' | 'content'>;
 
 export const MOOD_DAYS = ['early', 'busy', 'no_class', 'holiday'] as const;
 export type MoodDay = (typeof MOOD_DAYS)[number];
@@ -152,7 +155,7 @@ const COMMON_WORDS = new Set([
 ]);
 
 /** 最近：他的最后 3 条、她的最后 2 次回复。 */
-export function bookMention(history: readonly StoredMessage[], books: readonly ReadingBook[]): BookMention {
+export function bookMention(history: readonly Said[], books: readonly ReadingBook[]): BookMention {
     const his = history.map((message, index) => ({ message, index })).filter(item => item.message.role === 'user').slice(-3)
         .map(item => ({ index: item.index, text: item.message.content }));
     const replies: { index: number; texts: string[] }[] = [];
@@ -233,7 +236,7 @@ export function describeBooks(schedule: Schedule, books: readonly ReadingBook[],
  * activity：状态行里的空闲活动（没在空闲、作息关着时不传）。userText 取他在她上次回复之后发的几条
  */
 export function readingSection(schedule: Schedule, books: readonly ReadingBook[], now: Date,
-    options: { history: readonly StoredMessage[]; userName: string; activity?: string }): DescribedBooks | undefined {
+    options: { history: readonly Said[]; userName: string; activity?: string }): DescribedBooks | undefined {
     if (!books.length) return undefined;
     const mention = bookMention(options.history, books);
     let chosen = mention.mentioned ? books.filter(book => mention.bookIds.includes(book.id)) : [];
@@ -253,7 +256,7 @@ export function describeHerDaySummary(schedule: Schedule, moods: readonly DailyM
     if (!mood && !books.length) return undefined;
     const reading = books.map(book => {
         const progress = bookProgressAt(schedule, book, now);
-        return `${book.title}${progress.finished ? '读完了' : ` 第 ${progress.amount} ${progress.unit}${book.progress.state === 'put_down' ? '（放下了）' : ''}`}`;
+        return `${book.title}${progress.finished ? ' 读完了' : ` 第 ${progress.amount} ${progress.unit}${book.progress.state === 'put_down' ? '（放下了）' : ''}`}`;
     }).join('、');
     return `今天（${formatDate(herDay(schedule, now)).slice(5)}）：${mood ? `心情 ${mood.mood.name}（${mood.reason}）` : '没有心情资料'}${reading ? `；在读 ${reading}` : ''}`;
 }

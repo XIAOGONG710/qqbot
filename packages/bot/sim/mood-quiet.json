@@ -8,12 +8,12 @@
     "steps": [
         { "case": "MQ01", "note": "他来找她" },
         { "say": "在干嘛呢" },
-        { "check": { "speechClean": true, "exitClean": true } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "^(?![\\s\\S]*在读的书)[\\s\\S]*你今天的心情：安静" } },
         { "case": "MQ02", "note": "亲密的话照常接，不冷处理" },
         { "say": "我有点想你了" },
-        { "check": { "speechClean": true, "exitClean": true } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "^(?![\\s\\S]*在读的书)[\\s\\S]*你今天的心情：安静" } },
         { "case": "MQ03", "note": "原因只能来自当天，不怪他" },
         { "say": "你今天怎么了，感觉有点安静" },
-        { "check": { "speechClean": true, "exitClean": true } }
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "^(?![\\s\\S]*在读的书)[\\s\\S]*你今天的心情：安静" } }
     ]
 }

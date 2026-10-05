@@ -1,5 +1,6 @@
 // 一位联系人的回复流水线：召回长期记忆 → 按 ST 顺序拼提示词 → 后处理 → 生成 → 清理（含卡上的 ST 正则）→ 出口检查 → 拆条发送（responder.ts 调度）。
 // 出口检查带上聊天记录里她最近几次回复和对方最近几条，查说话的毛病（ADR 0014，配置 speechCheck）。
+// 她自己的日子（ADR 0015，配置 herDays）：时间块里状态行下面加今天的心情，聊到书或她正在看书时再加「在读的书」，那一轮出口检查顺带查进度数字。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
 import { dirname, join } from 'node:path';
@@ -16,8 +17,9 @@ import { loadCharacterCard, type Character } from './st/card.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
+import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
 import { describeState, stateAt } from './schedule.ts';
-import { speechContext } from './speech-check.ts';
+import { speechContext, type BookProgressContext } from './speech-check.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 
@@ -71,6 +73,15 @@ export interface ContactPipelineOptions {
     moody?: boolean;
     /** 出口检查里查说话的毛病（ADR 0014）；默认否 */
     speechCheck?: boolean;
+    /**
+     * 她自己的日子（ADR 0015）：心情行、「在读的书」、看书的空闲活动、进度数字的检查；默认否。
+     * 一天怎么算、课多不多按卡上的作息，所以卡上没有作息（或者没有心情、书）就没有；schedule 关着时心情和书照样有，只是没有看书的空闲活动
+     */
+    herDays?: boolean;
+    /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
+    mood?: string;
+    /** herDays 开着时每次生成前调一次（app 按她的一天去重，写当天的摘要） */
+    onHerDay?: (now: Date) => void;
     /** 看心情不回的概率，不传按档位算；模拟器用 */
     moodyChance?: number;
     /** 看到消息之前的等待（可能几个小时），默认真实定时器；模拟器换成虚拟时钟上的 */
@@ -87,6 +98,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const generate = options.generate ?? ((messages, log) => chatCompletion(llm, messages, { log }));
     const clean = (reply: string) => cleanUpReply(reply, names, character.regexScripts);
     const schedule = options.schedule ? character.schedule : undefined;
+    const herSchedule = options.herDays ? character.schedule : undefined;
+    const extraFree = herSchedule ? readingActivities(character.books) : [];
+    // 这一轮放了「在读的书」时，出口检查拿它核对进度数字。同一个回复器一次只生成一条，review 紧跟着这一轮的 buildPrompt
+    let reading: BookProgressContext | undefined;
     return createResponder({
         userId: contact.qq,
         history: options.history,
@@ -101,6 +116,16 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const relationship = remembers ? memory.relationship(contact) : undefined;
             if (recalled) log(`召回长期记忆 ${recalled.split('\n').length - 1} 条`);
             const days = describeDays(character.dates, time);
+            const state = schedule ? stateAt(schedule, time, extraFree) : undefined;
+            if (herSchedule) options.onHerDay?.(time);
+            const mood = herSchedule ? moodAt(herSchedule, character.moods, time, options.mood) : undefined;
+            const books = herSchedule
+                ? readingSection(herSchedule, character.books, time, {
+                    history: chat, userName: contact.name,
+                    ...(state?.activity.kind === 'free' ? { activity: state.activity.text } : {}),
+                })
+                : undefined;
+            reading = books?.context;
             const prompt = buildPrompt({
                 character,
                 worldInfo,
@@ -113,7 +138,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     [
                         describeTime(chat, time, { initiating: Boolean(initiate) }),
                         ...(days ? [days] : []),
-                        ...(schedule ? [describeState(stateAt(schedule, time), schedule, { userName: contact.name, woken })] : []),
+                        ...(state ? [describeState(state, schedule!, { userName: contact.name, woken })] : []),
+                        ...(mood ? [describeMood(mood, contact.name)] : []),
+                        ...(books ? [books.text] : []),
                         ...(initiate ? [initiate.note] : []),
                     ].join('\n'),
                 ],
@@ -135,6 +162,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             banned: character.banned,
             userName: contact.name,
             ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),
+            ...(reading ? { books: reading } : {}),
             regenerate: async note => clean(await generate(
                 postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names),
                 log,
