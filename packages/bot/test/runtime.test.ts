@@ -464,6 +464,24 @@ describe('回复调度', () => {
         assert.deepEqual(sent, ['七点']);
     });
 
+    test('没回的那串（看心情，ADR 0013）留在状态里；之后要回了就清掉', async () => {
+        const t = 1_000_000;
+        const { responder, sent, prompts } = setup({
+            now: () => t,
+            timing: timingWith({ skip: history => (history.at(-1)?.content === '哈哈' ? '看心情没回' : undefined) }),
+            generate: async () => '笑什么',
+        });
+        responder.receive('哈哈', 1, new Date(t));
+        await responder.whenIdle();
+        assert.deepEqual(prompts, []);
+        assert.deepEqual(responder.status(), { phase: 'idle', failures: 0, skipped: { at: t, reason: '看心情没回' } });
+        responder.receive('人呢', 2, new Date(t));
+        await responder.whenIdle();
+        assert.deepEqual(prompts, [['user:哈哈', 'user:人呢']]);
+        assert.deepEqual(sent, ['笑什么']);
+        assert.deepEqual(responder.status(), { phase: 'idle', failures: 0 });
+    });
+
     test('被吵醒：生成时告诉提示词，最多回 1 条（多行合成一条）', async () => {
         const contexts: { woken?: boolean }[] = [];
         const { responder, sent, logs } = setup({
@@ -590,6 +608,11 @@ describe('回复调度', () => {
             const pending = setup();
             pending.stored.push({ time: new Date().toISOString(), role: 'user', content: '在吗', messageId: 1 });
             assert.deepEqual(await pending.responder.initiate(request()), { result: 'skipped', reason: '有没回的消息，回复就好' });
+
+            // 按「不回」处理过的（看心情没回的「哈哈」，ADR 0013）不挡
+            const moody = setup({ generate: async () => '在干嘛', timing: timingWith({ skip: history => (history.at(-1)?.content === '哈哈' ? '看心情没回' : undefined) }) });
+            moody.stored.push({ time: new Date().toISOString(), role: 'user', content: '哈哈', messageId: 1 });
+            assert.equal((await moody.responder.initiate(request())).result, 'sent');
 
             let calls = 0;
             const empty = setup({ generate: async () => { calls++; return '  '; } });

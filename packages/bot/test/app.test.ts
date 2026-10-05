@@ -33,6 +33,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }],
         unlistedFriends: false,
         schedule: false,
+        moody: false,
         proactive: 'off',
         dataDir,
         ...overrides,

@@ -11,7 +11,8 @@ function phaseText(r) {
         case 'sending': return '在发回复';
         case 'retry': return `回复失败，${clock(r.retryAt)} 再试（连续 ${r.failures} 次）`;
         case 'initiating': return `在主动找对方（${r.reason}）`;
-        default: return '空闲';
+        // 收尾后的附和、看心情不回（ADR 0013）：对方再来一条就清掉
+        default: return r.skipped ? `空闲；${clock(r.skipped.at)} 那串没回：${r.skipped.reason}` : '空闲';
     }
 }
 
@@ -51,6 +52,7 @@ export const StatusTab = defineComponent({
                 ['NapCat', data.napcat?.online ? [tag('已连上', 'success'), h('span', { class: 'qqbot-muted' }, ` 小号 ${data.napcat.selfId ?? ''}`)] : [tag('没连上', 'danger')]],
                 ['长期记忆', status ? memoryLine(status.memory) : [tag('—', 'info')]],
                 ['作息', status ? [status.schedule ? tag('按作息', 'success') : tag('关（随时几秒内回）', 'warning')] : [tag('—', 'info')]],
+                ['看心情不回', status ? [status.moody && status.schedule ? tag('开（偶尔不回「哈哈」「嗯」）', 'success') : tag('关', 'info')] : [tag('—', 'info')]],
                 ['名单外的好友', status ? [status.unlistedFriends ? tag('也回复', 'warning') : tag('不回复', 'info')] : [tag('—', 'info')]],
                 ['主动消息', status ? [tag(...(PROACTIVE_MODES[status.proactive ?? 'off'] ?? [status.proactive, 'info']))] : [tag('—', 'info')]],
             ];

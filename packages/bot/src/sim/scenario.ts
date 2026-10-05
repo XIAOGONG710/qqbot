@@ -99,6 +99,10 @@ export interface Scenario {
     schedule: boolean;
     /** 默认 false：按卡上的主动设置主动找他（ADR 0011，真发，不是试运行）；已有的场景不受影响 */
     proactive: boolean;
+    /** 默认 false：看心情不回（ADR 0013 决策 4）；按消息 id 定，已有的场景不受影响 */
+    moody: boolean;
+    /** 看心情不回的概率（0–1），不写按档位算；写 1 时正聊着的「哈哈」一定不回，用来看不回之后的样子 */
+    moodyChance?: number;
     steps: Step[];
 }
 
@@ -116,6 +120,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
     if (typeof s.start !== 'string' || Number.isNaN(Date.parse(s.start))) fail('start 应为 ISO 时间');
     if (!Array.isArray(s.steps) || s.steps.length === 0) fail('steps 应为非空数组');
     (s.steps as unknown[]).forEach((step, i) => checkStep(step, `${where} 第 ${i + 1} 步`));
+    const chance = (value: unknown): number => (typeof value === 'number' && value >= 0 && value <= 1 ? value : fail('moodyChance 应为 0–1 的数'));
     return {
         name: s.name as string,
         description: typeof s.description === 'string' ? s.description : undefined,
@@ -126,6 +131,8 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         memory: s.memory !== false,
         schedule: s.schedule !== false,
         proactive: s.proactive === true,
+        moody: s.moody === true,
+        ...(s.moodyChance !== undefined ? { moodyChance: chance(s.moodyChance) } : {}),
         steps: s.steps as Step[],
     };
 }

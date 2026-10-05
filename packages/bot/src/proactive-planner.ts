@@ -48,6 +48,8 @@ export interface PlannerDeps {
     extract?: (messages: OpenAIMessage[]) => Promise<string>;
     /** 转写和抽取提示词里的称呼 */
     names: MacroNames;
+    /** 回复器的「这一串不回」（contact.ts 的 replySkip）：看心情没回的那串不挡主动消息 */
+    skip?: (history: StoredMessage[]) => string | undefined;
 }
 
 export interface PlannerStatus {
@@ -188,7 +190,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
 
     const input = (): ProactiveInput => ({
         qq: contact.qq, schedule: deps.schedule, settings: deps.settings, dates: deps.dates,
-        history: deps.history.load(contact.qq), records, mode: deps.mode, followUps,
+        history: deps.history.load(contact.qq), records, mode: deps.mode, followUps, ...(deps.skip ? { skip: deps.skip } : {}),
     });
 
     function describe(candidate: Candidate): string {

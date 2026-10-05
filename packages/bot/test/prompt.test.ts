@@ -163,6 +163,16 @@ describe('拼装规则', () => {
         assert.throws(() => parseCharacterCard({ entries: {} }), /不是角色卡/);
     });
 
+    test('回复节奏系数（extensions.qqbot.pace，ADR 0013）：没写是 1，超出 0.5–3 报错；生成的卡里同学档 1.6、名单外 2.2', () => {
+        const parse = (qqbot: object) => parseCharacterCard({ spec: 'chara_card_v2', data: { name: '小红', extensions: { qqbot } } });
+        assert.equal(parse({ banned: [] }).pace, 1);
+        assert.equal(parse({ banned: [], pace: 1.6 }).pace, 1.6);
+        assert.throws(() => parse({ banned: [], pace: 5 }), /pace 应为 0\.5–3 的数/);
+        assert.throws(() => parse({ banned: [], pace: '2' }), /pace/);
+        const pace = (tier: string) => loadCharacterCard(resolve(stDir, `linmengyao-${tier}.json`)).pace;
+        assert.deepEqual(['boyfriend', 'classmate', 'stranger', 'unlisted'].map(pace), [1, 1.6, 2.2, 2.2]);
+    });
+
     test('personaDescription（dummyId 100001）插在世界书 before 之后、角色描述之前，宏已替换', () => {
         const worldInfo = parseWorldInfo({ entries: { 0: { uid: 0, constant: true, position: 0, content: '世界观' } } }, 'w');
         const { messages } = build([], {

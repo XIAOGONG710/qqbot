@@ -84,6 +84,8 @@ export interface ProactiveInput {
     mode: 'dryRun' | 'on';
     /** 还没问的待跟进的事 */
     followUps?: readonly FollowUp[];
+    /** 没回的那串按「不回」处理了没有（看心情不回，ADR 0013）：处理了就不算「有没回的消息」；和回复器用同一个判断 */
+    skip?: (history: StoredMessage[]) => string | undefined;
 }
 
 const MIN = 60_000;
@@ -309,7 +311,7 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
     const special = candidate.occasion === 'dates';
     const day = herDay(schedule, new Date(now));
     if (!special && now >= at(addDays(day, 1), NIGHT_FROM).getTime()) return '夜里了，不打扰';
-    if (pendingMessages([...history]).length) return '有没回的消息，回复就好';
+    if (pendingMessages([...history]).length && !input.skip?.([...history])) return '有没回的消息，回复就好';
     const last = history.at(-1);
     const lastTime = last ? Date.parse(last.time) : undefined;
     if (special) return undefined;
@@ -354,7 +356,9 @@ export function occasionNote(candidate: Candidate, userName: string): string {
         morning: () => `你起床没多久，跟${userName}说早安${candidate.today ? `；${userName}今天${candidate.today.join('、')}，可以说句加油` : ''}`,
         after_class: () => `你今天的课上完了，跟${userName}说一声`,
         bedtime: () => `时间不早了，跟${userName}道个晚安`,
-        quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛，或者问问对方在忙什么（对方可能在忙）`,
+        // 旧项目的教训（ADR 0013 决策 2）：分享「刚看到的」会编出一个具体的视频、帖子，对方要链接时给不出来
+        quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
+            `对方要链接你给不出来），或者问问对方在忙什么（对方可能在忙）`,
         follow_up: () => `${followUp!.atMorning ? `你起床没多久，跟${userName}说早安，顺便` : ''}问问${userName}${followUp!.when}的${followUp!.item.what}怎么样了（${userName}之前跟你说过）`,
         dates: () => (candidate.id.endsWith(':midnight')
             ? `零点了，今天是${names}，你一直记着，第一时间跟${userName}说`

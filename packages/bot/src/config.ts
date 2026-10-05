@@ -27,6 +27,7 @@ export const DEFAULTS = {
     memory: { timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' },
     unlistedFriends: true,
     schedule: true,
+    moody: true,
     proactive: 'off' as ProactiveMode,
     dataDir: 'runtime/bot',
 } as const;
@@ -60,6 +61,11 @@ export interface AppConfig {
     unlistedFriends: boolean;
     /** 按角色卡上的作息（ADR 0007）：时间块里写她现在在干什么。默认是；深夜测试时关掉 */
     schedule: boolean;
+    /**
+     * 看心情不回（ADR 0013 决策 4）：正聊着、对方一串只回了「哈哈」「嗯」这类反应时，偶尔不回；隔一分钟以上再来一条一定回。
+     * 默认是；要开着作息
+     */
+    moody: boolean;
     /**
      * 主动消息（ADR 0011）：off 关（默认）；dryRun 试运行，照算照生成，只写日志不发；on 开。
      * 只对卡上写了 proactive 的档位（现在只有男朋友档），要开着作息
@@ -171,6 +177,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         contacts,
         unlistedFriends: bool(file, 'unlistedFriends', '', DEFAULTS.unlistedFriends),
         schedule: bool(file, 'schedule', '', DEFAULTS.schedule),
+        moody: bool(file, 'moody', '', DEFAULTS.moody),
         proactive: proactiveMode(file.proactive),
         ...(memory ? { memory } : {}),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : DEFAULTS.dataDir),

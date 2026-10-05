@@ -4,6 +4,7 @@
 
 import { readFileSync } from 'node:fs';
 import { parseDates, parseProactive, type ImportantDay, type ProactiveSettings } from '../proactive.ts';
+import { PACE_RANGE } from '../reply-timing.ts';
 import { parseSchedule, type Schedule } from '../schedule.ts';
 import { parseRegexScripts, type RegexScript } from './regex.ts';
 
@@ -29,6 +30,8 @@ export interface Character {
     dates: ImportantDay[];
     /** 会不会主动找这一档的人（extensions.qqbot.proactive，ADR 0011 决策 1）；没有就不主动 */
     proactive?: ProactiveSettings;
+    /** 这一档的回复节奏系数（extensions.qqbot.pace，ADR 0013 决策 1）；没有就是 1 */
+    pace: number;
 }
 
 export function parseCharacterCard(json: unknown, source = '角色卡'): Character {
@@ -59,7 +62,16 @@ export function parseCharacterCard(json: unknown, source = '角色卡'): Charact
         ...readSchedule(extensions.qqbot, source),
         dates: parseDates((extensions.qqbot as { dates?: unknown } | undefined)?.dates, source),
         ...readProactive(extensions.qqbot, source),
+        pace: parsePace(extensions.qqbot, source),
     };
+}
+
+function parsePace(qqbot: unknown, source: string): number {
+    const pace = (qqbot as { pace?: unknown } | undefined)?.pace;
+    if (pace === undefined) return 1;
+    const [min, max] = PACE_RANGE;
+    if (typeof pace !== 'number' || !(pace >= min && pace <= max)) throw new Error(`${source}：extensions.qqbot.pace 应为 ${min}–${max} 的数`);
+    return pace;
 }
 
 function readProactive(qqbot: unknown, source: string): { proactive?: ProactiveSettings } {

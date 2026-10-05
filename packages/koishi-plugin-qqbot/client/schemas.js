@@ -93,6 +93,8 @@ export function tierSections(source) {
         demeanor: textarea().description('**分寸**：放进 post_history_instructions，离回复最近'),
         examples: Schema.array(Schema.array(Schema.string()).description('第一行是对方说的，后面是她的几行（每行发成一条 QQ 消息）')).description('**示例对话**'),
         banned: Schema.array(Schema.string()).description('**禁用词**：这一档的卡、作息、世界书正文里不能出现；也是出口检查的词表'),
+        pace: Schema.number().min(0.5).max(3).step(0.1)
+            .description('**回复节奏**（ADR 0013）：冷场时多久看到、每条打字多久都乘这个数，越疏越慢；看心情不回的概率也跟着变。空着按 1'),
         proactive: Schema.object({
             occasions: Schema.array(Schema.union(Object.entries(OCCASION_LABELS).map(([key, label]) => Schema.const(key).description(label)))).role('checkbox')
                 .description('**主动找对方的时机**：一个都不勾 = 不主动。名单外的好友不能勾'),

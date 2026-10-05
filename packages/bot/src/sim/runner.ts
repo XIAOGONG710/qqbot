@@ -4,7 +4,7 @@
 import { appendFileSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BotConfig, Contact } from '../config.ts';
-import { createContactResponder, type TierCard } from '../contact.ts';
+import { createContactResponder, replySkip, type TierCard } from '../contact.ts';
 import { ChatHistory } from '../history.ts';
 import { chatCompletion } from '../llm.ts';
 import type { Log } from '../log.ts';
@@ -149,6 +149,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         llm: options.llm,
         prompt: options.prompt,
         schedule: scenario.schedule,
+        moody: scenario.moody,
+        ...(scenario.moodyChance !== undefined ? { moodyChance: scenario.moodyChance } : {}),
         history,
         memory,
         log,
@@ -215,6 +217,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             },
             dir: join(dataDir, 'proactive'),
             log,
+            skip: replySkip(character, scenario.moody, scenario.moodyChance),
             now: clock.now,
             waitUntil: clock.waitUntil,
             names,

@@ -56,6 +56,7 @@ tiers:
         - 今天不行，下了课我还得去趟图书馆
         - 你先去吃，吃了啥回来跟我说
     banned: []
+    pace: 1
     proactive:
       occasions:
         - morning
@@ -88,6 +89,7 @@ tiers:
       - 表的白
       - 前任
       - 吃醋
+    pace: 1.2
   - name: girl_friend
     user_is: 正在和你私聊的{{user}}是你认识的女生朋友。
     social: girl_friend
@@ -115,6 +117,7 @@ tiers:
       - 保研
       - 考研
       - 嘴硬是壳
+    pace: 1.3
   - name: known
     user_is: 正在和你私聊的{{user}}是你认识的熟人。
     social_text: 对熟人：友善、有来有往，会接话、会开玩笑，也会关心一句；不撒娇。
@@ -143,6 +146,7 @@ tiers:
       - 考研
       - 嘴硬是壳
       - 痛经
+    pace: 1.4
   - name: classmate
     user_is: 正在和你私聊的{{user}}是你的同学。
     social: classmate
@@ -182,6 +186,7 @@ tiers:
       - 相机
       - 安卓
       - 高中朋友
+    pace: 1.6
   - name: stranger
     user_is: 正在和你私聊的{{user}}是你不太熟的人。
     social: stranger
@@ -226,6 +231,7 @@ tiers:
       - 高数
       - 概率论
       - 奶茶
+    pace: 2.2
   - name: unlisted
     user_is: 正在和你私聊的{{user}}是你不太熟的人。
     social: stranger
@@ -274,3 +280,4 @@ tiers:
       - 概率论
       - 奶茶
       - 不承认
+    pace: 2.2

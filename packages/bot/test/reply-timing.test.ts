@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
-import { arrivedWhileAsleep, isAck, isAckAfterClosing, pendingMessages, typingMs, wakeUpTime, whenSeen } from '../src/reply-timing.ts';
+import {
+    arrivedWhileAsleep, isAck, isAckAfterClosing, isReaction, MOODY_CHANCE, MOODY_MAX_CHANCE, moodySkip, pendingMessages, typingMs, wakeUpTime, whenSeen,
+} from '../src/reply-timing.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const schedule = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;
@@ -145,5 +147,61 @@ describe('回复时机：打字、附和、夜里的消息', () => {
         assert.equal(arrivedWhileAsleep([user(t(10, 5, 1))], t(10, 5, 10), schedule), false);
         assert.equal(arrivedWhileAsleep([user(t(10, 5, 3))], t(10, 5, 15, 30), schedule), false);
         assert.equal(arrivedWhileAsleep([user(t(10, 5, 3)), her(t(10, 5, 9, 40))], t(10, 5, 10), schedule), false);
+    });
+});
+
+describe('档位节奏和看心情不回（ADR 0013）', () => {
+    /** 她 14:00 回过，对方 14:01 起发的一串（id 指定） */
+    const chat = (...messages: [id: number, minute: number, second: number, content: string][]): StoredMessage[] => [
+        her(t(10, 5, 14), '笑死我了'),
+        ...messages.map(([id, m, s, content]) => ({ time: new Date(t(10, 5, 14, m, s)).toISOString(), role: 'user' as const, content, messageId: id })),
+    ];
+    const ids = Array.from({ length: 2000 }, (_, i) => 10_000 + i);
+    const skippedIds = (pace: number) => ids.filter(id => moodySkip(chat([id, 1, 0, '哈哈哈']), pace));
+
+    test('节奏系数乘在冷场时多久看到和打字时间上；正聊着照样马上看到', () => {
+        const cold = [her(t(10, 5, 13, 40)), user(t(10, 5, 14))];
+        const base = whenSeen(cold, t(10, 5, 14), boyfriend)!.at - t(10, 5, 14);
+        const slow = whenSeen(cold, t(10, 5, 14), { ...classmate, pace: 2.2 })!.at - t(10, 5, 14);
+        assert.ok(Math.abs(slow - base * 2.2) <= 1, `${base} → ${slow}`);
+        const hot = [her(t(10, 5, 13, 55)), user(t(10, 5, 14))];
+        assert.deepEqual(whenSeen(hot, t(10, 5, 14), { ...classmate, pace: 2.2 }), { at: t(10, 5, 14), reason: '正聊着' });
+        assert.ok(Math.abs(typingMs('一二三四五六七八九十', 1.6) - typingMs('一二三四五六七八九十') * 1.6) <= 1);
+    });
+
+    test('反应：哈哈、嗯、确实、表情算；问句、图片、语音、戳一戳、晚安拜拜、带了别的话都不算', () => {
+        for (const text of ['哈哈哈', 'hhh', '嗯嗯', '笑死', '确实。', '好的～', '[表情]', '[动画表情]', '👍', '哈哈哈[表情]', '666', '草']) {
+            assert.equal(isReaction(text), true, text);
+        }
+        for (const text of ['哈哈哈？', '真的吗', '[图片]', '[语音]', '[视频]', '[poke]', '晚安', '拜拜', '哈哈你真逗', '今天好累', '']) {
+            assert.equal(isReaction(text), false, text);
+        }
+    });
+
+    test('正聊着、一串都是反应：按第一条的 id 定，男朋友档约 15%，系数越大越多，最多 35%', () => {
+        const rate = (pace: number) => skippedIds(pace).length / ids.length;
+        assert.ok(Math.abs(rate(1) - MOODY_CHANCE) < 0.03, String(rate(1)));
+        assert.ok(Math.abs(rate(2.2) - MOODY_CHANCE * 2.2) < 0.04, String(rate(2.2)));
+        assert.ok(Math.abs(rate(3) - MOODY_MAX_CHANCE) < 0.04, String(rate(3)));
+        // 同一串重算多少次都一样（重启后也一样）
+        const id = skippedIds(1)[0]!;
+        assert.match(moodySkip(chat([id, 1, 0, '哈哈哈']), 1)!, /看心情没回.*隔一分钟以上再来一条一定回/);
+        assert.equal(moodySkip(chat([id, 1, 0, '哈哈哈']), 1), moodySkip(chat([id, 1, 0, '哈哈哈']), 1));
+    });
+
+    test('同一个 id：不是反应、冷场、问句都照样回', () => {
+        const id = skippedIds(1)[0]!;
+        assert.equal(moodySkip(chat([id, 1, 0, '哈哈哈 你今天几点下课']), 1), undefined);
+        assert.equal(moodySkip(chat([id, 1, 0, '哈哈哈？']), 1), undefined);
+        assert.equal(moodySkip(chat([id, 1, 0, '[图片]']), 1), undefined);
+        assert.equal(moodySkip(chat([id, 11, 0, '哈哈哈']), 1), undefined, '离她上次回复超过 10 分钟：冷场，看到了就回');
+        assert.equal(moodySkip([user(t(10, 5, 14), '哈哈')]), undefined, '她还没说过话');
+    });
+
+    test('不回之后：一分钟内接着来的反应一起不回；隔一分钟以上再来一条（哪怕还是反应）一定回；一串里带了正事也回', () => {
+        const id = skippedIds(1)[0]!;
+        assert.ok(moodySkip(chat([id, 1, 0, '哈哈哈'], [id + 5000, 1, 40, '[表情]']), 1));
+        assert.equal(moodySkip(chat([id, 1, 0, '哈哈哈'], [id + 5000, 2, 30, '[表情]']), 1), undefined);
+        assert.equal(moodySkip(chat([id, 1, 0, '哈哈哈'], [id + 5000, 1, 10, '你吃饭了吗']), 1), undefined);
     });
 });

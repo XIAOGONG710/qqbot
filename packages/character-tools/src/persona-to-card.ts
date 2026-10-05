@@ -128,6 +128,7 @@ export function personaToCard(source: CharacterSource, tierName: string, options
         banned: tier.banned,
         ...(options.schedule ? { schedule: options.schedule } : {}),
         ...(dates.length ? { dates } : {}),
+        ...(tier.pace !== undefined ? { pace: tier.pace } : {}),
         ...(proactive ? { proactive } : {}),
     };
 

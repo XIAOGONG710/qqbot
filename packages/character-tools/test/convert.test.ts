@@ -215,6 +215,21 @@ test('日子和主动设置写错时报错；页面上全清空的当作没写',
         { occasions: ['morning'], daily_max: 2, unanswered_max: 1 });
 });
 
+test('回复节奏（ADR 0013）：每档的 pace 写进 extensions.qqbot.pace；超出 0.5–3 报错，页面上清空的当作没写', () => {
+    assert.deepEqual(tiers.map(t => [t.name, card(t.name).data.extensions.qqbot?.pace]), [
+        ['boyfriend', 1], ['bestie', 1.2], ['girl_friend', 1.3], ['known', 1.4], ['classmate', 1.6], ['stranger', 2.2], ['unlisted', 2.2],
+    ]);
+    const check = (pace: unknown) => {
+        const r = { persona: copy().persona, scenes: copy().scenes, schedule: copy().schedule, tiers: copy().tiers } as unknown as CharacterSource;
+        r.tiers.tiers[0]!.pace = pace as never;
+        return checkSource(r as never).tiers.tiers[0]!;
+    };
+    assert.throws(() => check(5), /pace 应为 0\.5–3 的数/);
+    assert.throws(() => check('1.5'), /pace 应为 0\.5–3 的数/);
+    assert.equal('pace' in check(null), false);
+    assert.equal(check(1.6).pace, 1.6);
+});
+
 test('男朋友档世界书只收场景档含 boyfriend 的场景', () => {
     const book = scenesToLorebook(source.scenes, 'boyfriend');
     const expected = source.scenes.filter(s => s.tiers.includes('boyfriend'));
@@ -296,7 +311,7 @@ test('作息里没有这一档的禁用词', () => {
 test('作息写进卡的 extensions.qqbot.schedule，不进 ST 读的字段', () => {
     const schedule = scheduleOf('classmate');
     const { data } = personaToCard(source, 'classmate', { world: 'w', schedule });
-    assert.deepEqual(data.extensions.qqbot, { banned: tiers.find(t => t.name === 'classmate')!.banned, schedule });
+    assert.deepEqual(data.extensions.qqbot, { banned: tiers.find(t => t.name === 'classmate')!.banned, schedule, pace: 1.6 });
     assert.equal(cardText('classmate'), [data.description, data.personality, data.scenario, data.post_history_instructions, data.mes_example, data.system_prompt].join('\n'));
 });
 

@@ -297,6 +297,7 @@
                         "midnight": true
                     }
                 ],
+                "pace": 1,
                 "proactive": {
                     "occasions": [
                         "morning",

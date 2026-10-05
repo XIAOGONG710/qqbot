@@ -10,7 +10,7 @@
 // 对方发了新消息就照常回复、重新计次。
 // 回复时机（ADR 0007，传了 timing 才有）：先看她什么时候看到（上课、睡觉、冷场要等，等的时候来新消息就重算），
 // 看到之后照上面等对方停下、生成；第一条最早在「看到 + 这条的打字时间」发出，之后每条隔这一条的打字时间；
-// 她已经收尾、对方只回了附和的，不回。
+// timing.skip 说不回的（她已经收尾、对方只回了附和；看心情不回，ADR 0013）不回，状态里留着最近一次的原因。
 // stop()（Koishi 插件停用或因改配置重启，ADR 0008）：正在等的不再等，生成完的不发，排定的再试作废，之后收到的不处理；
 // 没回的消息由新的回复器按聊天记录 catchUp（随机延迟按消息 id 取种子，「几点看到」不变）。
 // initiate()（主动找他，ADR 0011）：和回复共用「同一时间只生成一条」；正在回、有没回的消息就不主动。
@@ -80,6 +80,8 @@ export interface ResponderStatus {
     retryAt?: number;
     /** 连着失败了几次 */
     failures: number;
+    /** 最近一串没回（收尾后的附和、看心情）：什么时候、为什么；之后要回了就清掉 */
+    skipped?: { at: number; reason: string };
 }
 
 /** 主动找他一次（ADR 0011） */
@@ -161,8 +163,9 @@ export function createResponder(deps: ResponderDeps): Responder {
     /** 上次日志里写的「几点看到」，没变就不重复写 */
     let loggedSeenAt: number | undefined;
     let stopped = false;
-    let phase: Omit<ResponderStatus, 'failures'> = { phase: 'idle' };
-    const setPhase = (next: Omit<ResponderStatus, 'failures'>) => { phase = next; };
+    let phase: Omit<ResponderStatus, 'failures' | 'skipped'> = { phase: 'idle' };
+    const setPhase = (next: Omit<ResponderStatus, 'failures' | 'skipped'>) => { phase = next; };
+    let skipped: ResponderStatus['skipped'];
 
     /** 等到 at，期间来新消息就提前返回 */
     async function waitForSeen(at: number): Promise<void> {
@@ -187,9 +190,11 @@ export function createResponder(deps: ResponderDeps): Responder {
             const skip = timing.skip(stored);
             if (skip) {
                 deps.log(skip);
+                skipped = { at: now(), reason: skip };
                 seen = stored.length;
                 return null;
             }
+            skipped = undefined;
             const decision = timing.whenSeen(stored, now());
             if (!decision) return null;
             if (decision.at <= now()) return decision;
@@ -368,6 +373,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             messageIds.push(messageId);
             sent.push(part);
         }
+        if (sent.length) skipped = undefined;
         return sent.length ? { result: 'sent', parts: sent, messageIds } : { result: 'skipped', reason: '已停止' };
     }
 
@@ -405,7 +411,9 @@ export function createResponder(deps: ResponderDeps): Responder {
             const skip = (reason: string) => Promise.resolve<InitiateOutcome>({ result: 'skipped', reason });
             if (stopped) return skip('已停止');
             if (running) return skip('正在回消息');
-            if (pendingMessages(deps.history.load(deps.userId)).length) return skip('有没回的消息，回复就好');
+            // 按「不回」处理过的（看心情没回的「哈哈」）不挡主动消息
+            const stored = deps.history.load(deps.userId);
+            if (pendingMessages(stored).length && !deps.timing?.skip(stored)) return skip('有没回的消息，回复就好');
             const task = initiateOnce(request).catch((error): InitiateOutcome => ({
                 result: 'failed', reason: `生成失败：${error instanceof Error ? error.message : String(error)}`,
             }));
@@ -418,7 +426,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             });
             return task;
         },
-        status: () => ({ ...phase, failures }),
+        status: () => ({ ...phase, failures, ...(skipped ? { skipped } : {}) }),
         whenIdle: () => running ?? Promise.resolve(),
         whenQuiet: () => (running && !interruptWait ? new Promise<void>(resolve => { quietWaiters.push(resolve); }) : Promise.resolve()),
         stop() {

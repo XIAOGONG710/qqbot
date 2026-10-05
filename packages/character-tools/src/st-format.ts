@@ -23,11 +23,11 @@ export interface CharacterCardV2 {
         // world：关联的世界书名（= 世界书文件名去掉 .json），ST 选中角色时按名字加载
         // regex_scripts：Scoped 正则（导入时 ST 会问是否允许）
         // qqbot：只给运行时用的字段，ST 不读（ADR 0002 决策 3）。banned 不进提示词；schedule 由运行时算成一行状态放进时间块（ADR 0007）；
-        // dates、proactive：重要的日子和主动找人的设置（ADR 0011），没有就不写
+        // dates、proactive：重要的日子和主动找人的设置（ADR 0011），没有就不写；pace：回复节奏系数（ADR 0013），没有就是 1
         extensions: {
             world?: string;
             regex_scripts?: RegexScript[];
-            qqbot?: { banned: string[]; schedule?: CardSchedule; dates?: CardDate[]; proactive?: CardProactive };
+            qqbot?: { banned: string[]; schedule?: CardSchedule; dates?: CardDate[]; pace?: number; proactive?: CardProactive };
         };
     };
 }

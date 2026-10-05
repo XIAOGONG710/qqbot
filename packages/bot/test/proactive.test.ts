@@ -171,6 +171,11 @@ describe('主动消息：到点时能不能发', () => {
     test('有没回的消息、一小时内聊过都不发', () => {
         assert.equal(blockReason(at('quiet', t(10, 12, 18)), t(10, 12, 18), input({ history: [...history, user(t(10, 12, 10))] })), '有没回的消息，回复就好');
         assert.equal(blockReason(at('after_class', t(10, 12, 17), { classEnd: t(10, 12, 16, 35) }), t(10, 12, 17), input({ history: [user(t(10, 12, 16, 10)), her(t(10, 12, 16, 20))] })), '一小时内聊过');
+        // 回复器按「不回」处理了的那串（看心情没回的「哈哈」，ADR 0013）不算
+        const laughed = [user(t(10, 12, 9, 50)), her(t(10, 12, 9, 51)), user(t(10, 12, 9, 52), '哈哈哈')];
+        const skip = (h: { content: string }[]) => (h.at(-1)?.content === '哈哈哈' ? '看心情没回' : undefined);
+        assert.equal(blockReason(at('quiet', t(10, 12, 18)), t(10, 12, 18), input({ history: laughed, skip })), undefined);
+        assert.equal(blockReason(at('quiet', t(10, 12, 18)), t(10, 12, 18), input({ history: laughed })), '有没回的消息，回复就好');
     });
 
     test('每天上限；她主动发的 1 条他没回就停，他回了就接着来；试运行时算试运行的记录', () => {

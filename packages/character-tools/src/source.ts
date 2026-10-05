@@ -39,6 +39,10 @@ export interface DaySource {
 export const OCCASIONS = ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
+/** 档位的回复节奏系数能写多少（ADR 0013 决策 1） */
+export const PACE_MIN = 0.5;
+export const PACE_MAX = 3;
+
 /** 档位上的主动设置：没写的档位不主动 */
 export interface ProactiveSource {
     occasions: Occasion[];
@@ -100,6 +104,8 @@ export interface TierSource {
     examples?: string[][];
     /** 这一档的卡里不能出现的词（也是出口检查的词表） */
     banned: string[];
+    /** 回复节奏系数（ADR 0013 决策 1）：冷场时多久看到、打字多久都乘它，越疏越慢；没写是 1 */
+    pace?: number;
     /** 会不会主动找这一档的人、怎么找（ADR 0011）；名单外（unlisted）不能有 */
     proactive?: ProactiveSource;
     note?: string;
@@ -222,6 +228,11 @@ class Checker {
 
     integer(value: unknown, min: number, max: number): number {
         if (!Number.isInteger(value) || (value as number) < min || (value as number) > max) this.fail(`应为 ${min}–${max} 的整数`);
+        return value as number;
+    }
+
+    number(value: unknown, min: number, max: number): number {
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) this.fail(`应为 ${min}–${max} 的数`);
         return value as number;
     }
 
@@ -391,7 +402,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
     const tiers = t.at('tiers').array(tiersRaw.tiers).map((value, i): TierSource => {
         const c = t.at(`tiers[${i}]`);
         const o = c.object(value);
-        c.keys(o, ['name', 'user_is', 'knows_him', 'social', 'social_text', 'discreet', 'scenes', 'drop_scenes', 'demeanor', 'examples', 'banned', 'proactive', 'note']);
+        c.keys(o, ['name', 'user_is', 'knows_him', 'social', 'social_text', 'discreet', 'scenes', 'drop_scenes', 'demeanor', 'examples', 'banned', 'pace', 'proactive', 'note']);
         const examples = o.examples ?? [];
         if (!Array.isArray(examples) || !examples.every(e => Array.isArray(e) && e.length >= 2 && e.every(x => typeof x === 'string' && x.trim()))) {
             c.at('examples').fail('应为 [对方, 她, ...] 的数组');
@@ -420,6 +431,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         const demeanor = c.at('demeanor').optionalString(o.demeanor);
         if (demeanor) tier.demeanor = demeanor;
         if ((examples as string[][]).length) tier.examples = (examples as string[][]).map(e => e.map(x => x.trim()));
+        if (o.pace !== undefined && o.pace !== null) tier.pace = c.at('pace').number(o.pace, PACE_MIN, PACE_MAX);
         if (!noOccasions(o.proactive)) {
             // 名单外的人不知道这是 bot（ADR 0003 决策 2），不主动找
             if (tier.name === 'unlisted') c.at('proactive').fail('名单外的好友不主动找，不要写');
@@ -428,7 +440,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         const note = c.at('note').optionalString(o.note);
         if (note) tier.note = note;
         // 字段顺序固定，写回 YAML 时稳定
-        return orderKeys(tier, ['name', 'user_is', 'knows_him', 'social', 'social_text', 'discreet', 'scenes', 'drop_scenes', 'demeanor', 'examples', 'banned', 'proactive', 'note']);
+        return orderKeys(tier, ['name', 'user_is', 'knows_him', 'social', 'social_text', 'discreet', 'scenes', 'drop_scenes', 'demeanor', 'examples', 'banned', 'pace', 'proactive', 'note']);
     });
     const names = new Set<string>();
     for (const tier of tiers) {

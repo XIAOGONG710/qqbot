@@ -15,7 +15,7 @@ import { ChatHistory } from './history.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from './backfill.ts';
 import { segmentsToText, type MessageEvent } from './onebot.ts';
 import type { Responder, ResponderStatus } from './responder.ts';
-import { createContactResponder as createPipeline, loadTierCard, type ContactPipelineOptions, type TierCard } from './contact.ts';
+import { createContactResponder as createPipeline, loadTierCard, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
 import { currentTierHistory, TierRecord } from './tier-record.ts';
 import { HindsightClient } from './memory/hindsight.ts';
 import { arrivedWhileAsleep } from './reply-timing.ts';
@@ -67,6 +67,8 @@ export interface AppStatus {
     contacts: ContactStatus[];
     unlistedFriends: boolean;
     schedule: boolean;
+    /** 看心情不回（ADR 0013）开没开；作息关着时不起作用 */
+    moody: boolean;
     proactive: ProactiveMode;
     /** 长期记忆开着时：服务探测结果（每分钟最多探一次）、最近一次写入和召回 */
     memory?: { baseUrl: string; health?: MemoryEvent; lastWrite?: MemoryEvent; lastRecall?: MemoryEvent };
@@ -109,6 +111,10 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     const whitelist = config.contacts.map(c => `${c.qq}（${c.name}，${c.tier}）`).join('、');
     log(`名单：${whitelist}；名单外的好友${config.unlistedFriends ? '按 unlisted 档回复' : '不回复'}`);
     log(`作息：${config.schedule ? '按角色卡（她现在在干什么、什么时候看到、打字多久）' : '关（配置 schedule: false），随时几秒内回'}`);
+    if (config.schedule) {
+        const paces = [...tiersInUse].map(tier => `${tier} ×${cardFor(tier).character.pace}`).join('、');
+        log(`回复节奏：${paces}；看心情不回：${config.moody ? '开' : '关'}`);
+    }
     // 主动消息：卡上写了 proactive 的名单联系人（名单外的不主动）；要按作息算时机
     const proactiveContacts = config.proactive !== 'off' && config.schedule
         ? config.contacts.filter(c => cardFor(c.tier).character.proactive && cardFor(c.tier).character.schedule)
@@ -165,6 +171,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             llm: config.llm,
             prompt: config.prompt,
             schedule: config.schedule,
+            moody: config.moody,
             history,
             memory,
             send: (userId, text) => transport.sendPrivateText(userId, text),
@@ -195,6 +202,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 dir: join(config.dataDir, 'proactive'),
                 log: message => log(`[${contact.qq}] ${message}`),
                 names: { user: contact.name, char: character.name },
+                skip: replySkip(character, config.moody),
                 // 待跟进的事：用同一个模型配置抽（测试替换的 generate 也用在这里）
                 extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(config.llm, messages, { log })),
                 ...(pipeline?.now ? { now: pipeline.now } : {}),
@@ -344,6 +352,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 ],
                 unlistedFriends: config.unlistedFriends,
                 schedule: config.schedule,
+                moody: config.moody,
                 proactive: config.proactive,
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
             };

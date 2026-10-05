@@ -1,0 +1,16 @@
+{
+    "name": "陌生人档：回得更慢（ADR 0013）",
+    "description": "陌生人档的节奏系数 2.2：冷场时 33 秒到 2 分 12 秒后才看到（男朋友档 15–60 秒），打字也慢一倍多；正聊着照样马上看到。",
+    "tier": "stranger",
+    "user": "小李",
+    "start": "2026-10-06T15:00:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "P01", "note": "冷场时来消息：至少 33 秒后才回" },
+        { "say": "你好，请问是林梦瑶吗" },
+        { "check": { "replyAfter": "33s", "replyWithin": "3m", "log": "冷场", "exitClean": true } },
+        { "case": "P02", "note": "接着聊：马上看到，只多打字的时间" },
+        { "say": "我是隔壁班的，想问下这周的实验报告交到哪" },
+        { "check": { "replyWithin": "1m", "exitClean": true } }
+    ]
+}

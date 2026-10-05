@@ -4,7 +4,7 @@
 import { dirname, join } from 'node:path';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { reviewReply } from './exit-check.ts';
-import type { ChatHistory } from './history.ts';
+import type { ChatHistory, StoredMessage } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
 import { initiateQuery, type LongTermMemory } from './memory/long-term.ts';
@@ -14,7 +14,7 @@ import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from 
 import { loadCharacterCard, type Character } from './st/card.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
-import { isAckAfterClosing, typingMs, whenSeen } from './reply-timing.ts';
+import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeState, stateAt } from './schedule.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
@@ -32,6 +32,16 @@ export function loadTierCard(pattern: string, tier: Tier): TierCard {
     const character = loadCharacterCard(path);
     const worldInfo = character.world ? loadWorldInfo(join(dirname(path), `${character.world}.json`), character.world) : [];
     return { character, worldInfo };
+}
+
+/**
+ * 没回的这一串不回的原因（按作息时）：她已经收尾、对方只回了附和（ADR 0007 决策 7）；看心情不回（ADR 0013 决策 4）。要回就是 undefined。
+ * 回复器和主动消息的计划器用同一个（看心情没回的那串不算「有没回的消息」）。chance 只给模拟器用
+ */
+export function replySkip(character: Character, moody: boolean, chance?: number): (history: StoredMessage[]) => string | undefined {
+    return history => (isAckAfterClosing(history)
+        ? '她已经收尾，对方只回了附和，不回'
+        : moody ? moodySkip(history, character.pace, chance) : undefined);
 }
 
 export interface ContactPipelineOptions {
@@ -55,6 +65,10 @@ export interface ContactPipelineOptions {
     settle?: { quietMs: number; maxMs: number };
     /** 按卡上的作息（ADR 0007）：时间块里加一行她现在在干什么，按作息决定什么时候看到、打字多久，收尾后的附和不回。默认否；卡上没有作息时也不按 */
     schedule?: boolean;
+    /** 看心情不回（ADR 0013 决策 4），要按作息；默认否 */
+    moody?: boolean;
+    /** 看心情不回的概率，不传按档位算；模拟器用 */
+    moodyChance?: number;
     /** 看到消息之前的等待（可能几个小时），默认真实定时器；模拟器换成虚拟时钟上的 */
     waitUntil?: (at: number, signal: AbortSignal) => Promise<void>;
     /** 回复失败之后隔多久再试，默认 RETRY_AFTER_MS；模拟器传 []（它的时钟是虚拟的，真等几分钟会插进后面的步骤） */
@@ -127,11 +141,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         now,
         settle: options.settle ?? DEFAULT_SETTLE,
         retryAfterMs: options.retryAfterMs ?? RETRY_AFTER_MS,
-        // 睡着时连着发能把她吵醒的只有男朋友档（决策 6）
+        // 睡着时连着发能把她吵醒的只有男朋友档（决策 6）；冷场时多久看到、打字多久乘这一档的节奏系数（ADR 0013 决策 1）
         timing: schedule && {
-            whenSeen: (history, at) => whenSeen(history, at, { schedule, wakeable: contact.tier === 'boyfriend' }),
-            typingMs,
-            skip: history => (isAckAfterClosing(history) ? '她已经收尾，对方只回了附和，不回' : undefined),
+            whenSeen: (history, at) => whenSeen(history, at, { schedule, wakeable: contact.tier === 'boyfriend', pace: character.pace }),
+            typingMs: text => typingMs(text, character.pace),
+            skip: replySkip(character, options.moody ?? false, options.moodyChance),
         },
         waitUntil: options.waitUntil,
         onPrompt: options.onPrompt,
