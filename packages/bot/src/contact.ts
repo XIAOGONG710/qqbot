@@ -1,4 +1,5 @@
 // 一位联系人的回复流水线：召回长期记忆 → 按 ST 顺序拼提示词 → 后处理 → 生成 → 清理（含卡上的 ST 正则）→ 出口检查 → 拆条发送（responder.ts 调度）。
+// 出口检查带上聊天记录里她最近几次回复和对方最近几条，查说话的毛病（ADR 0014，配置 speechCheck）。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
 import { dirname, join } from 'node:path';
@@ -16,6 +17,7 @@ import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeState, stateAt } from './schedule.ts';
+import { speechContext } from './speech-check.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 
@@ -67,6 +69,8 @@ export interface ContactPipelineOptions {
     schedule?: boolean;
     /** 看心情不回（ADR 0013 决策 4），要按作息；默认否 */
     moody?: boolean;
+    /** 出口检查里查说话的毛病（ADR 0014）；默认否 */
+    speechCheck?: boolean;
     /** 看心情不回的概率，不传按档位算；模拟器用 */
     moodyChance?: number;
     /** 看到消息之前的等待（可能几个小时），默认真实定时器；模拟器换成虚拟时钟上的 */
@@ -130,6 +134,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         review: (reply, messages) => reviewReply(reply, {
             banned: character.banned,
             userName: contact.name,
+            ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),
             regenerate: async note => clean(await generate(
                 postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names),
                 log,

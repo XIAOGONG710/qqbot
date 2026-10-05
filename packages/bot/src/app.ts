@@ -69,6 +69,8 @@ export interface AppStatus {
     schedule: boolean;
     /** 看心情不回（ADR 0013）开没开；作息关着时不起作用 */
     moody: boolean;
+    /** 出口检查里查不查说话的毛病（ADR 0014） */
+    speechCheck: boolean;
     proactive: ProactiveMode;
     /** 长期记忆开着时：服务探测结果（每分钟最多探一次）、最近一次写入和召回 */
     memory?: { baseUrl: string; health?: MemoryEvent; lastWrite?: MemoryEvent; lastRecall?: MemoryEvent };
@@ -110,6 +112,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     }
     const whitelist = config.contacts.map(c => `${c.qq}（${c.name}，${c.tier}）`).join('、');
     log(`名单：${whitelist}；名单外的好友${config.unlistedFriends ? '按 unlisted 档回复' : '不回复'}`);
+    log(`出口检查：做不到的事、禁用词${config.speechCheck ? '、说话的毛病（助手腔、算账、怪对方没说、重复）' : '（说话的毛病不查，配置 speechCheck: false）'}`);
     log(`作息：${config.schedule ? '按角色卡（她现在在干什么、什么时候看到、打字多久）' : '关（配置 schedule: false），随时几秒内回'}`);
     if (config.schedule) {
         const paces = [...tiersInUse].map(tier => `${tier} ×${cardFor(tier).character.pace}`).join('、');
@@ -172,6 +175,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             prompt: config.prompt,
             schedule: config.schedule,
             moody: config.moody,
+            speechCheck: config.speechCheck,
             history,
             memory,
             send: (userId, text) => transport.sendPrivateText(userId, text),
@@ -353,6 +357,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 unlistedFriends: config.unlistedFriends,
                 schedule: config.schedule,
                 moody: config.moody,
+                speechCheck: config.speechCheck,
                 proactive: config.proactive,
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
             };

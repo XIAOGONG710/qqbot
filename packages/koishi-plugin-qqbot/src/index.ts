@@ -73,6 +73,7 @@ export interface Config {
     unlistedFriends: boolean;
     schedule: boolean;
     moody: boolean;
+    speechCheck: boolean;
     proactive: ProactiveMode;
     llm: {
         baseUrl: string;
@@ -116,6 +117,9 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         moody: Schema.boolean().default(DEFAULTS.moody)
             .description('**看心情不回**（ADR 0013）：正聊着、对方一串只回了「哈哈」「嗯」这类反应时，偶尔不回（男朋友档约 15%，越疏越多，最多 35%）。'
                 + '隔一分钟以上再来一条一定回；问句、图片、晚安都照样回。要开着作息'),
+        speechCheck: Schema.boolean().default(DEFAULTS.speechCheck)
+            .description('**说话的毛病**（ADR 0014）：发出去之前查助手腔、算账（「这会儿才想起来找我」）、怪对方没说、和她最近几次回复重复。'
+                + '开头重复的「行，」这类语气词直接去掉；别的带说明重写一次，命中时这一轮晚几秒'),
         proactive: Schema.union(PROACTIVE_MODES.map(mode => Schema.const(mode).description(PROACTIVE_LABELS[mode]))).default(DEFAULTS.proactive)
             .description('**主动消息**（ADR 0011）：她在合适的时候先找人（早安、下课、睡前、冷场、他说过的事、重要的日子）。'
                 + '只对「林梦瑶」页面档位里开了主动的档位（现在只有男朋友档），要开着作息。试运行：照算照生成，只写日志不发'),
@@ -211,8 +215,9 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         contacts: config.contacts.map(contact => dropUndefined(contact)),
         unlistedFriends: config.unlistedFriends,
         schedule: config.schedule,
-        // 旧的 koishi.yml 没有这两项：parseAppConfig 按默认值（看心情不回开、主动消息关）
+        // 旧的 koishi.yml 没有这几项：parseAppConfig 按默认值（看心情不回开、说话的毛病开、主动消息关）
         ...(config.moody !== undefined ? { moody: config.moody } : {}),
+        ...(config.speechCheck !== undefined ? { speechCheck: config.speechCheck } : {}),
         ...(config.proactive !== undefined ? { proactive: config.proactive } : {}),
         ...(enabled ? { memory: dropUndefined(memory) } : {}),
         dataDir: config.dataDir,

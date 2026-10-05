@@ -55,6 +55,7 @@ for (const [fileIndex, file] of files.entries()) {
             card,
             llm: config.llm,
             prompt: config.prompt,
+            speechCheck: config.speechCheck,
             hindsight,
             recallTimeoutMs: config.memory?.recallTimeoutMs,
             keepBank,

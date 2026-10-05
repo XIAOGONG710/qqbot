@@ -28,6 +28,7 @@ export const DEFAULTS = {
     unlistedFriends: true,
     schedule: true,
     moody: true,
+    speechCheck: true,
     proactive: 'off' as ProactiveMode,
     dataDir: 'runtime/bot',
 } as const;
@@ -66,6 +67,8 @@ export interface AppConfig {
      * 默认是；要开着作息
      */
     moody: boolean;
+    /** 出口检查里查说话的毛病（ADR 0014）：助手腔、算账、怪对方没说、和她最近几次回复重复。默认是 */
+    speechCheck: boolean;
     /**
      * 主动消息（ADR 0011）：off 关（默认）；dryRun 试运行，照算照生成，只写日志不发；on 开。
      * 只对卡上写了 proactive 的档位（现在只有男朋友档），要开着作息
@@ -178,6 +181,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         unlistedFriends: bool(file, 'unlistedFriends', '', DEFAULTS.unlistedFriends),
         schedule: bool(file, 'schedule', '', DEFAULTS.schedule),
         moody: bool(file, 'moody', '', DEFAULTS.moody),
+        speechCheck: bool(file, 'speechCheck', '', DEFAULTS.speechCheck),
         proactive: proactiveMode(file.proactive),
         ...(memory ? { memory } : {}),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : DEFAULTS.dataDir),

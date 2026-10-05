@@ -1,13 +1,21 @@
 // 出口检查（ADR 0006 决策 3）：清理之后、拆条发送之前，查做不到的事和低档位禁用词。
 // 命中就在提示词末尾加一句说明，意思不变重写一次；重写的结果仍命中的行删掉。重写失败就用第一版、删掉命中的行。
 // 括号里的动作不在这里：卡上的 ST 正则在清理时就删了（st/regex.ts，决策 2）。
+// 说话的毛病（ADR 0014，传了 speech 才查，规则在 speech-check.ts）：助手腔、算账、怪对方没说一起重写；
+// 重写后还在的删掉那一行（删完一行不剩就照发）。重复的语气词开头直接去掉、不重写；别的重复重写一次，还重复就照发。
+
+import { describeSpeechIssue, inspectSpeech, stripOpeners, strippable, type SpeechContext, type SpeechIssue } from './speech-check.ts';
 
 export interface ExitIssue {
     /** 回复里的第几行（从 0 开始，按 \n 分） */
     line: number;
-    kind: 'promise' | 'banned';
+    kind: 'promise' | 'banned' | SpeechIssue['kind'];
     /** 命中的片段 */
     match: string;
+    /** 说话的毛病里的重复（speech-check.ts） */
+    repeat?: SpeechIssue['repeat'];
+    count?: number;
+    stripped?: string;
 }
 
 // 做不到的事：bot 只能发文字（决策 3）。主动给人看 / 发照片、语音、视频、红包，打电话、开视频，或者说得像已经发了。
@@ -30,14 +38,15 @@ const PROMISE = new RegExp(NOT_NEGATED + '(?:' + [
     '(?:要|想)(?:不要)?看(?:不|吗|嘛)$',
 ].join('|') + ')' + NOT_REFUSED);
 
-export function inspectReply(reply: string, banned: readonly string[]): ExitIssue[] {
+export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext): ExitIssue[] {
     const issues: ExitIssue[] = [];
     for (const [line, text] of reply.split('\n').entries()) {
         const promise = PROMISE.exec(text.trim());
         if (promise) issues.push({ line, kind: 'promise', match: promise[0] });
         for (const word of banned) if (text.includes(word)) issues.push({ line, kind: 'banned', match: word });
     }
-    return issues;
+    if (speech) issues.push(...inspectSpeech(reply, speech));
+    return issues.sort((a, b) => a.line - b.line);
 }
 
 /** 删掉有问题的行 */
@@ -48,45 +57,84 @@ export function dropLines(reply: string, issues: readonly ExitIssue[]): string {
 
 /** 日志里的一句：第几行、哪一类、命中什么 */
 export function summarizeIssues(issues: readonly ExitIssue[]): string {
-    return issues.map(i => `第 ${i.line + 1} 行${i.kind === 'promise' ? '做不到的事' : '禁用词'}「${i.match}」`).join('、');
+    return issues.map(i => `第 ${i.line + 1} 行${i.kind === 'promise' ? `做不到的事「${i.match}」`
+        : i.kind === 'banned' ? `禁用词「${i.match}」` : describeSpeechIssue(i as SpeechIssue)}`).join('、');
 }
 
-/** 重写时加在提示词末尾的说明：哪一句不能发、为什么 */
+/** 重写时加在提示词末尾的说明：哪一句不能发、为什么、要怎么说 */
 export function rewriteNote(reply: string, issues: readonly ExitIssue[], userName: string): string {
     const lines = reply.split('\n');
     const reasons = [...new Set(issues.map(i => i.line))].map(line => {
-        const why = issues.filter(i => i.line === line).map(i => (i.kind === 'promise'
-            ? '答应或者像是已经给对方发照片、语音、视频，或者打电话，可你只能打字聊天'
-            : `提到了「${i.match}」，这是不该对${userName}说的`));
+        const why = issues.filter(i => i.line === line).map(i => {
+            switch (i.kind) {
+                case 'promise': return '答应或者像是已经给对方发照片、语音、视频，或者打电话，可你只能打字聊天';
+                case 'banned': return `提到了「${i.match}」，这是不该对${userName}说的`;
+                case 'service': return `像客服说的话，用你自己的口气跟${userName}说`;
+                case 'ledger': return `在说${userName}隔了这么久才来找你；${userName}来找你你是高兴的，直接接话`;
+                case 'blame': return `在怪${userName}没告诉你、没带上你；${userName}说起自己的事是在跟你分享，顺着问问、替对方高兴`;
+                case 'repeat': return i.repeat === 'opener'
+                    ? `开头的「${i.match}」你最近几次回复已经用过 ${i.count} 次，换个开头`
+                    : `里的「${i.match}」你最近几次回复已经说过 ${i.count} 次，换个说法`;
+            }
+        });
         return `「${lines[line]!.trim()}」${[...new Set(why)].join('；')}`;
     });
-    return `[上一版回复没有发出去：${reasons.join('；')}。意思不变，重写这次的回复，只输出要发的消息。]`;
+    const changesMeaning = issues.some(i => i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'service');
+    return `[上一版回复没有发出去：${reasons.join('；')}。${changesMeaning ? '别的意思' : '意思'}不变，重写这次的回复，只输出要发的消息。]`;
 }
 
 export interface ReviewOptions {
     banned: readonly string[];
     userName: string;
+    /** 说话的毛病（ADR 0014）：和她最近几次回复、对方最近几条比；不传就不查 */
+    speech?: SpeechContext;
     /** 在原来的提示词末尾加上这句说明重新生成，返回清理过的回复 */
     regenerate: (note: string) => Promise<string>;
     log: (message: string) => void;
 }
 
+const HARD = new Set<ExitIssue['kind']>(['promise', 'banned']);
+
+/** 去掉重复的语气词开头（可能连着几个，最多去两轮），返回去过之后的回复和剩下要重写的问题 */
+function strip(reply: string, options: ReviewOptions): { reply: string; issues: ExitIssue[] } {
+    let text = reply;
+    for (let round = 0; ; round++) {
+        const issues = inspectReply(text, options.banned, options.speech);
+        const removable = issues.filter(strippable);
+        if (removable.length === 0 || round === 2) return { reply: text, issues: issues.filter(i => !strippable(i)) };
+        const next = stripOpeners(text, removable);
+        if (next === text) return { reply: text, issues: issues.filter(i => !strippable(i)) };
+        options.log(`出口检查：${summarizeIssues(removable)}，去掉`);
+        text = next;
+    }
+}
+
+/** 重写之后（或重写失败时）还剩的问题：做不到的事、禁用词删行；助手腔、算账、怪对方没说也删，删完一行不剩就留着；重复照发 */
+function settle(reply: string, issues: readonly ExitIssue[]): { reply: string; dropped: boolean } {
+    const hard = issues.filter(i => HARD.has(i.kind));
+    const soft = issues.filter(i => i.kind === 'service' || i.kind === 'ledger' || i.kind === 'blame');
+    const withSoft = dropLines(reply, [...hard, ...soft]);
+    if (withSoft || soft.length === 0) return { reply: withSoft, dropped: hard.length + soft.length > 0 };
+    return { reply: dropLines(reply, hard), dropped: hard.length > 0 };
+}
+
 export async function reviewReply(reply: string, options: ReviewOptions): Promise<string> {
-    const issues = inspectReply(reply, options.banned);
-    if (issues.length === 0) return reply;
-    options.log(`出口检查：${summarizeIssues(issues)}，带说明重写一次`);
+    const first = strip(reply, options);
+    if (first.issues.length === 0) return first.reply;
+    options.log(`出口检查：${summarizeIssues(first.issues)}，带说明重写一次`);
     let rewritten: string;
     try {
-        rewritten = await options.regenerate(rewriteNote(reply, issues, options.userName));
+        rewritten = await options.regenerate(rewriteNote(first.reply, first.issues, options.userName));
     } catch (error) {
         options.log(`出口检查：重写失败（${error instanceof Error ? error.message : String(error)}），用第一版、删掉命中的行`);
-        return dropLines(reply, issues);
+        return settle(first.reply, first.issues).reply;
     }
-    const left = inspectReply(rewritten, options.banned);
-    if (left.length === 0) {
+    const second = strip(rewritten, options);
+    if (second.issues.length === 0) {
         options.log('出口检查：重写后通过');
-        return rewritten;
+        return second.reply;
     }
-    options.log(`出口检查：重写后仍有${summarizeIssues(left)}，删掉这几行`);
-    return dropLines(rewritten, left);
+    const { reply: settled, dropped } = settle(second.reply, second.issues);
+    options.log(`出口检查：重写后仍有${summarizeIssues(second.issues)}，${dropped ? '删掉这几行' : '照发'}`);
+    return settled;
 }

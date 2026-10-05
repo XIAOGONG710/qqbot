@@ -53,6 +53,7 @@ export const StatusTab = defineComponent({
                 ['长期记忆', status ? memoryLine(status.memory) : [tag('—', 'info')]],
                 ['作息', status ? [status.schedule ? tag('按作息', 'success') : tag('关（随时几秒内回）', 'warning')] : [tag('—', 'info')]],
                 ['看心情不回', status ? [status.moody && status.schedule ? tag('开（偶尔不回「哈哈」「嗯」）', 'success') : tag('关', 'info')] : [tag('—', 'info')]],
+                ['说话的毛病', status ? [status.speechCheck === false ? tag('不查', 'info') : tag('查（助手腔、算账、怪对方没说、重复）', 'success')] : [tag('—', 'info')]],
                 ['名单外的好友', status ? [status.unlistedFriends ? tag('也回复', 'warning') : tag('不回复', 'info')] : [tag('—', 'info')]],
                 ['主动消息', status ? [tag(...(PROACTIVE_MODES[status.proactive ?? 'off'] ?? [status.proactive, 'info']))] : [tag('—', 'info')]],
             ];

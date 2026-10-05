@@ -34,6 +34,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         unlistedFriends: false,
         schedule: false,
         moody: false,
+        speechCheck: false,
         proactive: 'off',
         dataDir,
         ...overrides,

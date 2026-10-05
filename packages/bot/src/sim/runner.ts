@@ -52,6 +52,8 @@ export interface RunOptions {
     sleep?: (ms: number) => Promise<void>;
     /** 连发合并的等待，默认和 bot 一样（测试用短的） */
     settle?: { quietMs: number; maxMs: number };
+    /** 出口检查里查说话的毛病（ADR 0014），run.ts 照 bot 的配置传；默认否 */
+    speechCheck?: boolean;
 }
 
 /** proactive：她主动发的（ADR 0011），是哪个时机（日志里的说法） */
@@ -152,6 +154,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         schedule: scenario.schedule,
         moody: scenario.moody,
         ...(scenario.moodyChance !== undefined ? { moodyChance: scenario.moodyChance } : {}),
+        speechCheck: options.speechCheck ?? false,
         history,
         memory,
         log,

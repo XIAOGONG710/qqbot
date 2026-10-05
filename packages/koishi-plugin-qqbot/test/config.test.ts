@@ -62,6 +62,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(config.unlistedFriends, DEFAULTS.unlistedFriends);
         assert.equal(config.schedule, DEFAULTS.schedule);
         assert.equal(config.moody, DEFAULTS.moody);
+        assert.equal(config.speechCheck, DEFAULTS.speechCheck);
         assert.equal(config.proactive, DEFAULTS.proactive);
         assert.equal(config.dataDir, DEFAULTS.dataDir);
         assert.equal(config.memory.timeoutMs, DEFAULTS.memory.timeoutMs);
@@ -82,6 +83,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
             { ...minimal, memory: { enabled: false }, schedule: false, dataDir: 'runtime/bot-test' },
             { ...minimal, proactive: 'dryRun' },
             { ...minimal, moody: false },
+            { ...minimal, speechCheck: false },
         ];
         for (const sample of samples) {
             const config = Config(sample as never);
@@ -104,6 +106,13 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(fromKoishi(before0009).moody, true);
         assert.equal(fromKoishi({ ...minimal, moody: false }).moody, false);
         assert.equal('moody' in (Config.simplify(Config(minimal as never)) as object), false);
+    });
+
+    test('说话的毛病（ADR 0014）：旧的配置没有这一项时是开；关了照样传过去；等于默认值时不写进 koishi.yml', () => {
+        assert.equal(fromKoishi(minimal).speechCheck, true);
+        assert.equal(fromKoishi(before0009).speechCheck, true);
+        assert.equal(fromKoishi({ ...minimal, speechCheck: false }).speechCheck, false);
+        assert.equal('speechCheck' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
     test('长期记忆打开时才有 memory；世界书只覆盖填了的项', () => {
