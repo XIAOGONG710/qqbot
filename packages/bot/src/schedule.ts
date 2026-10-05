@@ -67,7 +67,10 @@ export const PARTNER_BACK_DAYS = 7;
 /** 起床或下课到下一节课不超过这么久，算赶去上课 / 课间，不挑空闲活动 */
 const BETWEEN_MAX_MS = 45 * 60_000;
 
-export function stateAt(schedule: Schedule, now: Date): State {
+/** herDays 等可按开关临时并入的空闲活动，不改旧 schedule.yml。 */
+export interface ExtraFreeActivity { window: 'morning' | 'afternoon' | 'evening'; text: string }
+
+export function stateAt(schedule: Schedule, now: Date, extraFree: readonly ExtraFreeActivity[] = []): State {
     const day = herDay(schedule, now);
     const sleepStart = at(startOfDay(now), schedule.sleep);
     const holiday = holidayOn(schedule, day);
@@ -78,7 +81,7 @@ export function stateAt(schedule: Schedule, now: Date): State {
     const { lessons, outsideSemester } = classesOn(schedule, day);
     const base = { holiday, where, ...(partner ? { partner } : {}), outsideSemester };
 
-    if (now < sleepStart) return { ...base, activity: { kind: 'free', text: freeActivity(schedule, day, 'evening') } };
+    if (now < sleepStart) return { ...base, activity: { kind: 'free', text: freeActivity(schedule, day, 'evening', extraFree) } };
     const wake = wakeTime(schedule, day, lessons);
     if (now < wake) return { ...base, activity: { kind: 'sleep', until: wake } };
 
@@ -92,7 +95,7 @@ export function stateAt(schedule: Schedule, now: Date): State {
         return { ...withNext, activity: { kind: 'between', next: nextClass, afterClass: previous !== undefined } };
     }
     const window = now < at(day, schedule.free.afternoonFrom) ? 'morning' : now < at(day, schedule.free.eveningFrom) ? 'afternoon' : 'evening';
-    return { ...withNext, activity: { kind: 'free', text: freeActivity(schedule, day, window) } };
+    return { ...withNext, activity: { kind: 'free', text: freeActivity(schedule, day, window, extraFree) } };
 }
 
 /** 这一刻属于她的哪一天：睡觉时刻（02:00）之前算前一天。心情、读书进度、主动消息都用这一条。 */
@@ -143,8 +146,8 @@ function holidayOn(schedule: Schedule, day: Date): Schedule['holidays'][number] 
 }
 
 /** 同一天同一时段固定挑同一条（按日期 + 时段哈希） */
-function freeActivity(schedule: Schedule, day: Date, window: 'morning' | 'afternoon' | 'evening'): string {
-    const list = schedule.free[window];
+function freeActivity(schedule: Schedule, day: Date, window: 'morning' | 'afternoon' | 'evening', extra: readonly ExtraFreeActivity[]): string {
+    const list = [...schedule.free[window], ...extra.filter(item => item.window === window).map(item => item.text)];
     if (list.length === 0) return '';
     return list[hash(`${formatDate(day)} ${window}`) % list.length]!;
 }

@@ -236,7 +236,8 @@ export function inspectBookProgress(reply: string, context: BookProgressContext)
             const before = text.slice(Math.max(0, match.index! - 12), match.index!);
             const after = text.slice(match.index! + raw.length, match.index! + raw.length + 6);
             const total = /(?:一共|总共|全书|共)(?:有)?\s*$/.test(before) || /^(?:完结|全书)/.test(after);
-            const progressCue = /(?:看到|读到|追到|看了|读了|现在|目前|已经)\s*$/.test(before);
+            // 「看到 N 章」「翻了前两卷」是进度；「今天看了五章」是看了多少，不算（每天 5 章正是资料里的进度）
+            const progressCue = /(?:(?:看到|读到|追到|翻到)了?|(?:看|读|翻)(?:了|完了?)前|现在|目前|已经)\s*$/.test(before);
             if (!match[1] && !total && !progressCue) continue;
             if (!total && /^(?:往后|以后|开始|起|叫)/.test(after)) continue;
             const unit = match[3]!;

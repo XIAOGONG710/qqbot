@@ -46,6 +46,13 @@ describe('书的进度数字（ADR 0015）', () => {
         assert.deepEqual(inspectBookProgress('看到第500章了', { books, focusIds: ['jiasi'] }).map(issue => issue.bookId), ['jiasi']);
         assert.deepEqual(inspectBookProgress('看到第400章了', { books }).map(issue => issue.bookId), ['rejinzhi']);
     });
+
+    test('「翻了前两卷」是进度；「今天看了五章」是看了多少', () => {
+        assert.deepEqual(inspectBookProgress('没数，就翻了前两卷吧', { books, focusIds: ['yaowu'] }).map(issue => [issue.bookId, issue.said, issue.expected]), [['yaowu', 2, 7]]);
+        assert.deepEqual(inspectBookProgress('看完了前七卷', { books, focusIds: ['yaowu'] }), []);
+        assert.deepEqual(inspectBookProgress('今天看了五章就困了', { books, focusIds: ['rejinzhi'] }), []);
+        assert.deepEqual(inspectBookProgress('前两卷讲的是后宫的案子', { books, focusIds: ['yaowu'] }), []);
+    });
 });
 
 describe('说话的毛病：助手腔（ADR 0014 决策 2）', () => {
