@@ -3,6 +3,7 @@
 // 与 public/script.js getCharacterCardFieldsLazy。
 
 import { readFileSync } from 'node:fs';
+import { parseDates, parseProactive, type ImportantDay, type ProactiveSettings } from '../proactive.ts';
 import { parseSchedule, type Schedule } from '../schedule.ts';
 import { parseRegexScripts, type RegexScript } from './regex.ts';
 
@@ -24,6 +25,10 @@ export interface Character {
     banned: string[];
     /** 这一档的作息（extensions.qqbot.schedule，转换器写入，ADR 0007）；没有就不按作息 */
     schedule?: Schedule;
+    /** 这一档知道的重要的日子（extensions.qqbot.dates，ADR 0011 决策 6）；没有就是空数组 */
+    dates: ImportantDay[];
+    /** 会不会主动找这一档的人（extensions.qqbot.proactive，ADR 0011 决策 1）；没有就不主动 */
+    proactive?: ProactiveSettings;
 }
 
 export function parseCharacterCard(json: unknown, source = '角色卡'): Character {
@@ -52,7 +57,14 @@ export function parseCharacterCard(json: unknown, source = '角色卡'): Charact
         regexScripts: parseRegexScripts(extensions.regex_scripts, source),
         banned: parseBanned(extensions.qqbot, source),
         ...readSchedule(extensions.qqbot, source),
+        dates: parseDates((extensions.qqbot as { dates?: unknown } | undefined)?.dates, source),
+        ...readProactive(extensions.qqbot, source),
     };
+}
+
+function readProactive(qqbot: unknown, source: string): { proactive?: ProactiveSettings } {
+    const proactive = (qqbot as { proactive?: unknown } | undefined)?.proactive;
+    return proactive === undefined ? {} : { proactive: parseProactive(proactive, source) };
 }
 
 function parseBanned(qqbot: unknown, source: string): string[] {

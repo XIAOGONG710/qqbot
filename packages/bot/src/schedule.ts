@@ -121,6 +121,11 @@ export function classesOn(schedule: Schedule, day: Date): { lessons: ClassToday[
     return { lessons, outsideSemester };
 }
 
+/** 某一天几点起（主动消息的早安按它算，ADR 0011） */
+export function wakeOn(schedule: Schedule, day: Date): Date {
+    return wakeTime(schedule, startOfDay(day), classesOn(schedule, day).lessons);
+}
+
 /** 这一天几点起：第一节有课就早起 */
 function wakeTime(schedule: Schedule, day: Date, lessons: ClassToday[]): Date {
     const early = schedule.periods[schedule.wake.earlySlot];

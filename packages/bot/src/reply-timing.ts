@@ -156,8 +156,8 @@ function atTime(day: Date, time: string): number {
     return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m).getTime();
 }
 
-/** 按种子在范围里取一个值 */
-function pick(seed: string, purpose: string, [min, max]: Range): number {
+/** 按种子在范围里取一个值（主动消息的时刻也用它，ADR 0011） */
+export function pick(seed: string, purpose: string, [min, max]: Range): number {
     return Math.round(min + (max - min) * unit(`${seed} ${purpose}`));
 }
 
