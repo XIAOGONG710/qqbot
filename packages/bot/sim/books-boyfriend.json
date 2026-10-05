@@ -1,0 +1,32 @@
+{
+    "name": "男朋友档：在读的书与每日进度（ADR 0015）",
+    "description": "问她在看什么、已读节点、没读到或没有资料的情节和当前进度，隔天再问一次。改前用于记录现编书名、情节和数字的基线。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-06T19:00:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "BB01", "note": "泛问在读书" },
+        { "say": "你最近在看什么书" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "case": "BB02", "note": "药屋：读到的节点和当前卷数" },
+        { "say": "《药屋少女的呢喃》讲什么的" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "say": "那你看到第几卷了" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "case": "BB03", "note": "惹金枝：已读节点、当前进度和未读结局" },
+        { "say": "《惹金枝》你看到哪了" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "say": "时不虞后来怎么样" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "say": "那结局呢，最后怎么样" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "case": "BB04", "note": "恰似：放下的书，后续没有资料" },
+        { "say": "《恰似寒光遇骄阳》后面的具体剧情和结局呢" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "advance": "1d" },
+        { "case": "BB05", "note": "隔天惹金枝应比前一天多 5 章" },
+        { "say": "《惹金枝》今天看到哪了" },
+        { "check": { "speechClean": true, "exitClean": true } }
+    ]
+}

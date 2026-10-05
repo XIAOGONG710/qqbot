@@ -1,0 +1,21 @@
+{
+    "name": "男朋友档：同一天和隔天问心情（ADR 0015）",
+    "description": "10-14 确定抽到安静，10-15 确定抽到话痨。同一天问两次要前后一致，隔天可以变；改前也跑，作为对照。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-14T18:30:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "MD01", "note": "安静的这天第一次问" },
+        { "say": "你今天心情怎么样" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "advance": "3h" },
+        { "case": "MD02", "note": "同一天再问，心情和原因不能变" },
+        { "say": "那你现在心情呢，还是刚才那样吗" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "advance": "1d" },
+        { "case": "MD03", "note": "隔天是话痨" },
+        { "say": "今天感觉怎么样，心情好吗" },
+        { "check": { "speechClean": true, "exitClean": true } }
+    ]
+}

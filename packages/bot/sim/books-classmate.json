@@ -1,0 +1,16 @@
+{
+    "name": "同学档：问她在看什么书（ADR 0015）",
+    "description": "同学只拿这一档允许的书资料；问在看什么和推荐一本，不能漏出同学档禁用词，尤其《恰似》的出版城市。",
+    "tier": "classmate",
+    "user": "小王",
+    "start": "2026-10-06T19:00:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "BC01", "note": "泛问在读书" },
+        { "say": "你最近在看什么书啊" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "case": "BC02", "note": "推荐可以说这一档知道的书，不带高档位事实" },
+        { "say": "那给我推荐一本呗" },
+        { "check": { "speechClean": true, "exitClean": true } }
+    ]
+}
