@@ -235,6 +235,8 @@ export interface Plan {
     missed: Candidate[];
     /** 这一天让给优先级更高的（剩下的条数不够） */
     yielded: Candidate[];
+    /** 她主动发的他还没回、到了上限：除了日子都先不排，等他回 */
+    paused?: string;
 }
 
 /**
@@ -246,18 +248,20 @@ export function planFrom(now: number, input: ProactiveInput): Plan {
     const today = herDay(input.schedule, new Date(now));
     const missed: Candidate[] = [];
     const yielded: Candidate[] = [];
+    const paused = unansweredCount(input) >= input.settings.unansweredMax ? '上一条主动消息他还没回，等他回了再排' : undefined;
+    const result = (upcoming: Candidate[]): Plan => ({ upcoming, missed, yielded, ...(paused ? { paused } : {}) });
     for (const [offset, day] of [today, addDays(today, 1)].entries()) {
         const all = candidatesOn(day, input).filter(c => !recorded.has(c.id));
         if (offset === 0) missed.push(...all.filter(c => c.at < now - GRACE_MS));
         const open = all.filter(c => c.at >= now - GRACE_MS);
-        const left = Math.max(0, input.settings.dailyMax - usedOn(formatDate(day), input.records));
+        const left = paused ? 0 : Math.max(0, input.settings.dailyMax - usedOn(formatDate(day), input.records));
         const byPriority = open.filter(c => c.occasion !== 'dates').sort((a, b) => OCCASIONS.indexOf(a.occasion) - OCCASIONS.indexOf(b.occasion));
         const kept = new Set([...open.filter(c => c.occasion === 'dates'), ...byPriority.slice(0, left)]);
-        if (offset === 0) yielded.push(...byPriority.slice(left));
+        if (offset === 0 && !paused) yielded.push(...byPriority.slice(left));
         const upcoming = open.filter(c => kept.has(c));
-        if (upcoming.length) return { upcoming, missed, yielded };
+        if (upcoming.length) return result(upcoming);
     }
-    return { upcoming: [], missed, yielded };
+    return result([]);
 }
 
 /** 到点时还能不能发：不能就返回原因（记进记录和日志） */

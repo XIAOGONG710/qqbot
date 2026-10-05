@@ -6,6 +6,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
+import { PROACTIVE_MODES, type ProactiveMode } from './proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from './st/prompt-converters.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from './st/world-info.ts';
 
@@ -26,6 +27,7 @@ export const DEFAULTS = {
     memory: { timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' },
     unlistedFriends: true,
     schedule: true,
+    proactive: 'off' as ProactiveMode,
     dataDir: 'runtime/bot',
 } as const;
 
@@ -58,6 +60,11 @@ export interface AppConfig {
     unlistedFriends: boolean;
     /** 按角色卡上的作息（ADR 0007）：时间块里写她现在在干什么。默认是；深夜测试时关掉 */
     schedule: boolean;
+    /**
+     * 主动消息（ADR 0011）：off 关（默认）；dryRun 试运行，照算照生成，只写日志不发；on 开。
+     * 只对卡上写了 proactive 的档位（现在只有男朋友档），要开着作息
+     */
+    proactive: ProactiveMode;
     /** 长期记忆（ADR 0004 决策 3，Hindsight 服务）；配置里没有 memory 就不用 */
     memory?: {
         /** Hindsight API 地址，例如 http://127.0.0.1:8888 */
@@ -164,9 +171,16 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         contacts,
         unlistedFriends: bool(file, 'unlistedFriends', '', DEFAULTS.unlistedFriends),
         schedule: bool(file, 'schedule', '', DEFAULTS.schedule),
+        proactive: proactiveMode(file.proactive),
         ...(memory ? { memory } : {}),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : DEFAULTS.dataDir),
     };
+}
+
+function proactiveMode(value: unknown): ProactiveMode {
+    if (value === undefined) return DEFAULTS.proactive;
+    if (!PROACTIVE_MODES.includes(value as ProactiveMode)) throw new Error(`配置 proactive 应为 ${PROACTIVE_MODES.map(v => JSON.stringify(v)).join(' / ')} 之一`);
+    return value as ProactiveMode;
 }
 
 function section(file: Json, key: string): Json {

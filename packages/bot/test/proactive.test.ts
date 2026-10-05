@@ -130,8 +130,20 @@ describe('主动消息：计划（上限、优先级、错过不补）', () => {
         assert.deepEqual(early.yielded.map(c => c.occasion).sort(), ['bedtime', 'quiet']);
 
         const records = [record('2026-10-12:morning', t(10, 12, 8)), record('2026-10-12:after_class', t(10, 12, 16, 50))];
-        const done = planFrom(t(10, 12, 17), input({ history, records }));
+        const replied = [...history, her(t(10, 12, 8)), user(t(10, 12, 8, 30)), her(t(10, 12, 16, 50)), user(t(10, 12, 16, 55))];
+        const done = planFrom(t(10, 12, 17), input({ history: replied, records }));
         assert.ok(done.upcoming.length > 0 && done.upcoming.every(c => c.day === '2026-10-13'), done.upcoming.map(c => c.id).join());
+    });
+
+    test('她主动发的他还没回：除了日子先不排（状态里写原因）；他回了就接着排', () => {
+        const morning = [record('2026-10-12:morning', t(10, 12, 8))];
+        const ignored = [user(t(10, 11, 22)), her(t(10, 11, 22, 1)), her(t(10, 12, 8), '早')];
+        const paused = planFrom(t(10, 12, 9, 50), input({ history: ignored, records: morning }));
+        assert.equal(paused.paused, '上一条主动消息他还没回，等他回了再排');
+        assert.deepEqual(paused.upcoming, []);
+        const resumed = planFrom(t(10, 12, 12), input({ history: [...ignored, user(t(10, 12, 11, 30)), her(t(10, 12, 11, 31))], records: morning }));
+        assert.equal(resumed.paused, undefined);
+        assert.deepEqual(resumed.upcoming.map(c => c.occasion), ['after_class']);
     });
 
     test('记过的（发了、试运行、没发）不再排；日子不占条数', () => {

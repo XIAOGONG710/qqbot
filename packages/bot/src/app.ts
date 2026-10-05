@@ -1,5 +1,7 @@
 // 一个 bot 的编排：名单里每人一个回复器（contact.ts），名单外的好友按 unlisted 档（可关），连上 NapCat 时补回漏掉的消息再 catchUp，
 // 定时写长期记忆，记下换档，同一个数据目录只跑一个。群聊、群临时会话由入口过滤掉，不进这里。
+// 主动消息（ADR 0011）：配置 proactive 不是 off、作息开着、卡上写了 proactive 的名单联系人，各一个计划器（proactive-planner.ts）；
+// 第一次补回完才开始排（之前的聊天记录不全），聊天记录变了就让它重新算。
 // 收发由入口传进来（ADR 0008）：独立入口 main.ts 是自写的 OneBot 客户端（onebot.ts），Koishi 插件是 adapter-onebot；
 // 两边给的都是 NapCat 的原始 OneBot 数据，所以转文字（segmentsToText）、补回（findMissed）只有一份。
 
@@ -17,6 +19,8 @@ import { currentTierHistory, TierRecord } from './tier-record.ts';
 import { HindsightClient } from './memory/hindsight.ts';
 import { arrivedWhileAsleep } from './reply-timing.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
+import type { ProactiveMode } from './proactive.ts';
+import { createProactivePlanner, type Planner, type PlannerStatus } from './proactive-planner.ts';
 import { describeState, stateAt } from './schedule.ts';
 
 /** 写一次长期记忆的间隔 */
@@ -54,12 +58,15 @@ export interface ContactStatus {
     last?: { time: string; from: 'user' | 'assistant' };
     /** 作息开着时，这一档看到的「她现在在干什么」 */
     now?: string;
+    /** 主动消息的计划（开着、这一档会主动时） */
+    proactive?: PlannerStatus;
 }
 
 export interface AppStatus {
     contacts: ContactStatus[];
     unlistedFriends: boolean;
     schedule: boolean;
+    proactive: ProactiveMode;
     /** 长期记忆开着时：服务探测结果（每分钟最多探一次）、最近一次写入和召回 */
     memory?: { baseUrl: string; health?: MemoryEvent; lastWrite?: MemoryEvent; lastRecall?: MemoryEvent };
 }
@@ -72,7 +79,7 @@ export interface AppOptions {
     transport: Transport;
     log: Log;
     /** 测试用：替换每个回复器的生成、连发合并等待等 */
-    pipeline?: Partial<Pick<ContactPipelineOptions, 'generate' | 'settle'>>;
+    pipeline?: Partial<Pick<ContactPipelineOptions, 'generate' | 'settle' | 'now' | 'waitUntil'>>;
 }
 
 /** 名单外的人在提示词里的称呼（{{user}}）：QQ 昵称，没有就叫「对方」 */
@@ -101,6 +108,16 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     const whitelist = config.contacts.map(c => `${c.qq}（${c.name}，${c.tier}）`).join('、');
     log(`名单：${whitelist}；名单外的好友${config.unlistedFriends ? '按 unlisted 档回复' : '不回复'}`);
     log(`作息：${config.schedule ? '按角色卡（她现在在干什么、什么时候看到、打字多久）' : '关（配置 schedule: false），随时几秒内回'}`);
+    // 主动消息：卡上写了 proactive 的名单联系人（名单外的不主动）；要按作息算时机
+    const proactiveContacts = config.proactive !== 'off' && config.schedule
+        ? config.contacts.filter(c => cardFor(c.tier).character.proactive && cardFor(c.tier).character.schedule)
+        : [];
+    if (config.proactive === 'off') log('主动消息：关');
+    else if (!config.schedule) log('主动消息：作息关着，不主动（时机按作息算）');
+    else {
+        const who = proactiveContacts.map(c => `${c.qq}（${c.name}，${c.tier}）`).join('、') || '名单里没有会主动找的档位';
+        log(`主动消息：${config.proactive === 'dryRun' ? '试运行（只写日志，不发）' : '开'}：${who}`);
+    }
 
     const chatHistory = new ChatHistory(config.dataDir);
     // 放在 ChatHistory 之后：它会建好数据目录
@@ -160,6 +177,28 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
         });
     }
 
+    /** 主动消息的计划器：第一次补回完才建 */
+    const planners = new Map<number, Planner>();
+    function startPlanners(): void {
+        if (planners.size || config.proactive === 'off') return;
+        for (const contact of proactiveContacts) {
+            const { character } = cardFor(contact.tier);
+            planners.set(contact.qq, createProactivePlanner({
+                contact,
+                schedule: character.schedule!,
+                settings: character.proactive!,
+                dates: character.dates,
+                mode: config.proactive,
+                history,
+                responder: responders.get(contact.qq)!,
+                dir: join(config.dataDir, 'proactive'),
+                log: message => log(`[${contact.qq}] ${message}`),
+                ...(pipeline?.now ? { now: pipeline.now } : {}),
+                ...(pipeline?.waitUntil ? { waitUntil: pipeline.waitUntil } : {}),
+            }));
+        }
+    }
+
     let stopped = false;
     /** Hindsight 健康检查的结果（状态页用到时才探，见 status()） */
     let health: MemoryEvent | undefined;
@@ -190,6 +229,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
         const text = segmentsToText(event.message).trim();
         if (!text) return;
         responder.receive(text, event.message_id, new Date(event.time * 1000));
+        planners.get(event.user_id)?.poke();
     }
 
     async function syncMissed(selfId: number): Promise<void> {
@@ -239,6 +279,8 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                     for (const message of buffered.splice(0)) onMessage(message);
                     catchUpAll();
                     syncMemory();
+                    startPlanners();
+                    for (const planner of planners.values()) planner.poke();
                 }
             }
         },
@@ -250,6 +292,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
         stop() {
             if (stopped) return;
             stopped = true;
+            for (const planner of planners.values()) planner.stop();
             for (const responder of responders.values()) responder.stop();
             if (memoryTimer) clearInterval(memoryTimer);
             releaseLock();
@@ -269,6 +312,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                     responder: responders.get(contact.qq)!.status(),
                     ...(last ? { last: { time: last.time, from: last.role } } : {}),
                     ...(schedule ? { now: describeState(stateAt(schedule, now), schedule, { userName: contact.name }) } : {}),
+                    ...(planners.has(contact.qq) ? { proactive: planners.get(contact.qq)!.status() } : {}),
                 };
             };
             if (hindsight && !stopped && !probing && (!health || now.getTime() - health.at >= HEALTH_PROBE_MS)) {
@@ -286,6 +330,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 ],
                 unlistedFriends: config.unlistedFriends,
                 schedule: config.schedule,
+                proactive: config.proactive,
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
             };
         },

@@ -8,6 +8,8 @@ import type { HistoryMessage } from '../src/backfill.ts';
 import type { AppConfig } from '../src/config.ts';
 import { ChatHistory } from '../src/history.ts';
 import type { MessageEvent } from '../src/onebot.ts';
+import type { ProactiveRecord } from '../src/proactive.ts';
+import { VirtualClock } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
@@ -31,6 +33,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }],
         unlistedFriends: false,
         schedule: false,
+        proactive: 'off',
         dataDir,
         ...overrides,
     };
@@ -47,7 +50,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock } = {}) {
     const sent: string[] = [];
     const logs: string[] = [];
     const asked: number[] = [];
@@ -64,7 +67,10 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
     };
     const app = startApp({
         config: cfg, transport, log: message => logs.push(message),
-        pipeline: { generate: async () => '好', settle: { quietMs: 0, maxMs: 0 } },
+        pipeline: {
+            generate: async () => '好', settle: { quietMs: 0, maxMs: 0 },
+            ...(options.clock ? { now: options.clock.now, waitUntil: options.clock.waitUntil } : {}),
+        },
     });
     apps.push(app);
     return { app, sent, logs, asked };
@@ -157,5 +163,87 @@ describe('编排（app.ts）', () => {
         assert.deepEqual(sent, []);
         assert.deepEqual(asked, []);
         assert.deepEqual(chat(cfg, 10001), []);
+    });
+});
+
+describe('主动消息（ADR 0011）', () => {
+    // 男朋友档（卡上有主动设置）；10-05 国庆放假，09:30 起，早安在 09:40–10:10
+    const boyfriend = { qq: 10002, name: '宝宝', tier: 'boyfriend' as const };
+    const records = (cfg: AppConfig): ProactiveRecord[] =>
+        JSON.parse(readFileSync(join(cfg.dataDir, 'proactive', '10002-boyfriend.json'), 'utf8')).records;
+    /** 把虚拟时钟拨到计划器等着的那个时刻 */
+    const fireNext = (clock: VirtualClock) => clock.advanceTo(clock.nextTimer()!);
+
+    test('开关关着、作息关着、低档位：都不排', async () => {
+        const off = setup(config({ schedule: true, contacts: [boyfriend] }));
+        await off.app.connected(SELF);
+        assert.ok(off.logs.includes('主动消息：关'));
+        assert.equal(off.app.status().contacts[0]!.proactive, undefined);
+
+        const noSchedule = setup(config({ proactive: 'on', contacts: [boyfriend] }));
+        assert.ok(noSchedule.logs.includes('主动消息：作息关着，不主动（时机按作息算）'));
+
+        const classmate = setup(config({ proactive: 'on', schedule: true }));
+        await classmate.app.connected(SELF);
+        assert.ok(classmate.logs.includes('主动消息：开：名单里没有会主动找的档位'));
+        assert.equal(classmate.app.status().contacts[0]!.proactive, undefined);
+    });
+
+    test('试运行：补回完才排；状态里有下一次；到点只写日志不发、不进聊天记录，记成试运行', async () => {
+        const clock = new VirtualClock(new Date(2026, 9, 5, 9, 0));
+        const cfg = config({ proactive: 'dryRun', schedule: true, contacts: [boyfriend] });
+        const { app, sent, logs } = setup(cfg, { 10002: [] }, { clock });
+        assert.equal(clock.nextTimer(), undefined, '补回之前不排');
+        await app.connected(SELF);
+        await until(() => clock.nextTimer() !== undefined);
+        const next = app.status().contacts[0]!.proactive!;
+        assert.equal(next.mode, 'dryRun');
+        assert.match(next.next!.label, /^早安（起床后 \d+ 分钟）$/);
+        assert.ok(next.next!.at >= new Date(2026, 9, 5, 9, 40).getTime() && next.next!.at <= new Date(2026, 9, 5, 10, 10).getTime());
+        assert.ok(logs.some(l => /^\[10002\] 主动（试运行）：下一次 今天 09:\d\d 早安/.test(l) || /^\[10002\] 主动（试运行）：下一次 今天 10:\d\d 早安/.test(l)));
+
+        fireNext(clock);
+        await until(() => logs.some(l => l.includes('主动（试运行，没发）')));
+        assert.ok(logs.some(l => l.startsWith('[10002] 主动（试运行，没发）：早安（起床后') && l.endsWith('今天第 1 条；本来要说：好')));
+        assert.deepEqual(sent, []);
+        assert.deepEqual(chat(cfg, 10002), []);
+        assert.deepEqual(records(cfg).map(r => [r.id, r.result]), [['2026-10-05:morning', 'dryRun']]);
+        assert.equal(app.status().contacts[0]!.proactive!.today, 1);
+    });
+
+    test('打开：到点真的发出去、进聊天记录；重启（同一个数据目录）后不重复发', async () => {
+        const clock = new VirtualClock(new Date(2026, 9, 5, 9, 0));
+        const cfg = config({ proactive: 'on', schedule: true, contacts: [boyfriend] });
+        const first = setup(cfg, { 10002: [] }, { clock });
+        await first.app.connected(SELF);
+        await until(() => clock.nextTimer() !== undefined);
+        fireNext(clock);
+        await until(() => first.sent.length > 0, 8000);
+        assert.deepEqual(first.sent, ['10002:好']);
+        assert.deepEqual(chat(cfg, 10002), ['assistant:好']);
+        assert.deepEqual(records(cfg).map(r => [r.id, r.result, r.messageIds]), [['2026-10-05:morning', 'sent', [900]]]);
+        assert.ok(first.logs.some(l => /^\[10002\] 主动找他（早安（起床后 \d+ 分钟））：好$/.test(l)));
+        first.app.stop();
+
+        // 重启：同一时刻、同一个数据目录（补回拿到的是她刚发的那条）
+        const again = setup(cfg, { 10002: [{ message_id: 900, time: Math.floor(clock.now() / 1000), sender: { user_id: SELF }, message: [{ type: 'text', data: { text: '好' } }] }] }, { clock });
+        await again.app.connected(SELF);
+        // 他还没回早安：除了日子先不排
+        await until(() => again.logs.some(l => l.includes('等他回了再排')));
+        assert.ok(again.logs.includes('[10002] 主动：上一条主动消息他还没回，等他回了再排；今明两天没有要发的了'), again.logs.join('\n'));
+        assert.equal(again.app.status().contacts[0]!.proactive!.paused, '上一条主动消息他还没回，等他回了再排');
+        assert.deepEqual(again.sent, []);
+        assert.deepEqual(chat(cfg, 10002), ['assistant:好']);
+    });
+
+    test('错过的不补：12:00 才启动，早安记成「错过了，不补」', async () => {
+        const clock = new VirtualClock(new Date(2026, 9, 5, 12, 0));
+        const cfg = config({ proactive: 'on', schedule: true, contacts: [boyfriend] });
+        const { app, logs, sent } = setup(cfg, { 10002: [] }, { clock });
+        await app.connected(SELF);
+        await until(() => logs.some(l => l.includes('错过了，不补')));
+        assert.ok(logs.some(l => /^\[10002\] 主动：早安（起床后 \d+ 分钟）计划在 \d\d:\d\d，错过了，不补$/.test(l)));
+        assert.deepEqual(records(cfg).map(r => [r.id, r.result, r.reason]), [['2026-10-05:morning', 'skipped', '错过了，不补']]);
+        assert.deepEqual(sent, []);
     });
 });
