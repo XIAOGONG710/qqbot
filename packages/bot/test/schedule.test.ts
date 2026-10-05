@@ -19,8 +19,8 @@ describe('作息：某个时刻她在干什么', () => {
         const afternoon = stateAt(boyfriend, t(10, 5, 14));
         assert.equal(afternoon.activity.kind, 'free');
         assert.equal(afternoon.holiday?.name, '国庆节');
-        assert.equal(afternoon.where, '国庆节放假，没抢到回青岛的票，留在学校');
-        assert.equal(afternoon.partner, '{{user}}回青岛过国庆了（放假前就跟你说好的，以后放假你们一起走）');
+        assert.equal(afternoon.where, '国庆节放假，没抢到回青岛的票，留在学校，一个人待着也挺自在');
+        assert.equal(afternoon.partner, '{{user}}回青岛过国庆了（放假前就跟你说好的，以后放假你们一起走），他在家玩得开心，你也替他高兴');
         assert.equal(afternoon.nextClass, undefined);
         assert.equal(stateAt(classmate, t(10, 5, 14)).where, '国庆节放假，没回家，留在学校');
         assert.equal(stateAt(classmate, t(10, 5, 14)).partner, undefined);
@@ -119,9 +119,9 @@ describe('作息：某个时刻她在干什么', () => {
 
     test('状态行：在哪、在干什么、他在哪；低档位没有课名、教室、城市和他', () => {
         const line = (s: Schedule, date: Date, woken = false) => describeState(stateAt(s, date), s, { woken });
-        assert.match(line(boyfriend, t(10, 5, 14)), /^\[你现在：国庆节放假，没抢到回青岛的票，留在学校；[^；]+；他回青岛过国庆了（放假前就跟你说好的，以后放假你们一起走）\]$/);
-        assert.equal(line(boyfriend, t(10, 5, 3)), '[你现在：国庆节放假，没抢到回青岛的票，留在学校；在宿舍睡觉，09:30 起；他回青岛过国庆了（放假前就跟你说好的，以后放假你们一起走）]');
-        assert.equal(line(boyfriend, t(10, 5, 3), true), '[你现在：国庆节放假，没抢到回青岛的票，留在学校；在宿舍睡觉，被消息震醒了，迷迷糊糊的；他回青岛过国庆了（放假前就跟你说好的，以后放假你们一起走）]');
+        assert.match(line(boyfriend, t(10, 5, 14)), /^\[你现在：国庆节放假，没抢到回青岛的票，留在学校，一个人待着也挺自在；[^；]+；他回青岛过国庆了（放假前就跟你说好的，以后放假你们一起走），他在家玩得开心，你也替他高兴\]$/);
+        assert.equal(line(boyfriend, t(10, 5, 3)), '[你现在：国庆节放假，没抢到回青岛的票，留在学校，一个人待着也挺自在；在宿舍睡觉，09:30 起；他回青岛过国庆了（放假前就跟你说好的，以后放假你们一起走），他在家玩得开心，你也替他高兴]');
+        assert.equal(line(boyfriend, t(10, 5, 3), true), '[你现在：国庆节放假，没抢到回青岛的票，留在学校，一个人待着也挺自在；在宿舍睡觉，被消息震醒了，迷迷糊糊的；他回青岛过国庆了（放假前就跟你说好的，以后放假你们一起走），他在家玩得开心，你也替他高兴]');
         assert.equal(line(boyfriend, t(10, 12, 7, 50)), '[你现在：在学校（济南），住宿舍；刚起床，08:20 要上Linux操作系统；他国庆放完假，已经回学校了]');
         assert.equal(line(boyfriend, t(10, 12, 8, 30)),
             '[你现在：在学校（济南），住宿舍；在知行楼612上Linux操作系统（机房课，边敲代码边看手机），09:40 下课，偷偷看手机回消息，回得简短；他国庆放完假，已经回学校了]');
@@ -136,7 +136,7 @@ describe('作息：某个时刻她在干什么', () => {
         assert.equal(describeState(stateAt(boyfriend, t(10, 12, 9, 45)), boyfriend, { userName: '宝宝' }),
             '[你现在：在学校（济南），住宿舍；课间，09:55 接着上大数据应用技术；宝宝国庆放完假，已经回学校了]');
         assert.equal(describeState(stateAt(boyfriend, t(10, 5, 3)), boyfriend, { userName: '宝宝' }),
-            '[你现在：国庆节放假，没抢到回青岛的票，留在学校；在宿舍睡觉，09:30 起；宝宝回青岛过国庆了（放假前就跟你说好的，以后放假你们一起走）]');
+            '[你现在：国庆节放假，没抢到回青岛的票，留在学校，一个人待着也挺自在；在宿舍睡觉，09:30 起；宝宝回青岛过国庆了（放假前就跟你说好的，以后放假你们一起走），他在家玩得开心，你也替他高兴]');
     });
 
     test('周次写法', () => {
