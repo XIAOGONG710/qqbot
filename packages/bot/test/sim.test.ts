@@ -59,11 +59,11 @@ describe('模拟器：场景文件', () => {
 describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
     test('连发合并、生成中插话、发送中途插话、跳一天后的时间块和召回、自动检查、报告', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-'));
-        const calls = { retain: [] as MemoryItem[], recall: [] as RecallRequest[], deleted: [] as string[], refreshed: 0 };
+        const calls = { retain: [] as MemoryItem[], retainBanks: [] as string[], recall: [] as RecallRequest[], deleted: [] as string[], refreshed: 0 };
         let created = false;
         const hindsight: SimHindsight = {
             putBank: async () => {},
-            retain: async (_bank, item) => { calls.retain.push(item); },
+            retain: async (bank, item) => { calls.retain.push(item); calls.retainBanks.push(bank); },
             recall: async (_bank, request) => { calls.recall.push(request); return [{ id: '1', text: '阿明的组长外号叫铁锅', document_id: 'ep-old' }]; },
             getMentalModel: async () => (created ? { id: 'relationship', content: '关系稳定' } : undefined),
             createMentalModel: async () => { created = true; },
@@ -116,10 +116,10 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             assert.ok(order.indexOf('等下') === order.indexOf('第一条') + 1);
             assert.ok(chat.every(m => m.time.startsWith('2026-10-05') || m.time.startsWith('2026-10-06')));
 
-            assert.equal(calls.retain.length, 1, '跳一天后前一段结束，写进记忆');
+            assert.deepEqual(calls.retainBanks, [result.bankId, 'sim-test-common'], '跳一天后前一段结束，写进记忆（自己的 bank 和公共库，ADR 0016）');
             assert.equal(calls.refreshed, 1);
             assert.equal(result.steps[10]!.relationship, '关系稳定');
-            assert.deepEqual(calls.deleted, [result.bankId]);
+            assert.deepEqual(calls.deleted, [result.bankId, 'sim-test-common']);
             assert.match(result.bankId!, /^sim-test-[0-9a-f]{16}$/);
 
             const report = renderReport(result);

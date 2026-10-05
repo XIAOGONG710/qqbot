@@ -109,6 +109,13 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const contact: Contact = { qq: SIM_QQ, name: scenario.user, tier: scenario.tier, persona: scenario.persona };
     const names = { user: contact.name, char: options.card.character.name };
     const history = new ChatHistory(dataDir);
+    // 名单里的其他人（ADR 0016）：QQ 号接着往后排，事先的聊天先记进聊天记录
+    const others: Contact[] = scenario.others.map((other, i) => ({
+        qq: SIM_QQ + 1 + i, name: other.name, tier: other.tier, ...(other.intro ? { intro: other.intro } : {}),
+    }));
+    scenario.others.forEach((other, i) => {
+        for (const message of other.history) history.append(others[i]!.qq, message);
+    });
 
     const steps: StepRecord[] = [];
     let current = newStep('case', clock.now());
@@ -127,9 +134,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             recallTimeoutMs: options.recallTimeoutMs ?? 5000,
             log,
             now: clock.now,
+            common: true,
         })
         : undefined;
     const bankId = memory?.bankId(contact);
+    /** 跑完要删的：他自己的、名单里其他人的、公共库 */
+    const banks = memory ? [bankId!, ...others.map(other => memory.bankId(other)), memory.commonBankId()] : [];
 
     let nextMessageId = 1;
     let armed: SayStep['interrupt'];
@@ -171,6 +181,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
         history,
         memory,
+        contacts: [contact, ...others],
         log,
         now: clock.now,
         settle: options.settle,
@@ -279,20 +290,27 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         }
     }
 
-    async function syncMemory(): Promise<void> {
+    /** 把这几个人结束了的片段写进记忆（各自的 bank 和公共库），等 Hindsight 做完 */
+    async function syncMemory(who: Contact[] = [contact]): Promise<void> {
         if (!memory || !options.hindsight || !bankId || hindsightDown) return;
-        await memory.sync(contact, names, history.load(contact.qq));
+        for (const person of who) await memory.sync(person, { user: person.name, char: names.char }, history.load(person.qq));
+        const watched = [...who.map(person => memory.bankId(person)), memory.commonBankId()];
         const started = Date.now();
         const limit = options.hindsightWaitMs ?? 240_000;
         let quietPolls = 0;
         while (quietPolls < 2) {
             let busy = 0;
-            try {
-                // 关系概况的自动刷新有 30 分钟（真实时间）的最短间隔，会一直排着，不等它；T23 用手动刷新
-                busy = (await options.hindsight.activeOperations(bankId)).filter(t => t !== 'refresh_mental_model').length;
-            } catch {
-                return; // bank 还没建（没有结束了的片段）
+            let created = 0;
+            for (const bank of watched) {
+                try {
+                    // 关系概况的自动刷新有 30 分钟（真实时间）的最短间隔，会一直排着，不等它；T23 用手动刷新
+                    busy += (await options.hindsight.activeOperations(bank)).filter(t => t !== 'refresh_mental_model').length;
+                    created++;
+                } catch {
+                    // bank 还没建（没有结束了的片段）
+                }
             }
+            if (created === 0) return;
             quietPolls = busy === 0 ? quietPolls + 1 : 0;
             if (Date.now() - started > limit) {
                 log(`Hindsight 后台任务 ${Math.round(limit / 1000)} 秒还没做完，不再等`);
@@ -307,6 +325,10 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     /** 上一个主动消息检查查到哪一步了 */
     let proactiveCheckedUpTo = 0;
     try {
+        if (others.length) {
+            log(`名单里的其他人：${others.map(other => `${other.name}（${other.tier}${other.intro ? '，有介绍' : ''}）`).join('、')}`);
+            await syncMemory(others);
+        }
         for (const step of scenario.steps) {
             current = newStep(Object.keys(step)[0] as StepRecord['kind'], clock.now());
             steps.push(current);
@@ -382,8 +404,13 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         }
     } finally {
         planner?.stop();
-        if (memory && options.hindsight && bankId && !options.keepBank) {
-            await options.hindsight.deleteBank(bankId).catch(error => log(`删除测试 bank 失败：${error instanceof Error ? error.message : String(error)}`));
+        if (memory && options.hindsight && !options.keepBank) {
+            for (const bank of banks) {
+                await options.hindsight.deleteBank(bank).catch(error => {
+                    // 没建过的（没写过片段）是 404，不用记
+                    if ((error as { status?: number }).status !== 404) log(`删除测试 bank 失败：${error instanceof Error ? error.message : String(error)}`);
+                });
+            }
         }
     }
 

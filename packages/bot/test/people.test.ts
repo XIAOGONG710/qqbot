@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { parseAppConfig, type Contact } from '../src/config.ts';
+import { parseAppConfig, type BotConfig, type Contact } from '../src/config.ts';
+import { loadTierCard } from '../src/contact.ts';
+import type { MemoryItem } from '../src/memory/hindsight.ts';
 import { describePerson, knowsPeople, MAX_MENTIONED, mentionedPeople } from '../src/people.ts';
+import type { OpenAIMessage } from '../src/prompt.ts';
+import { runScenario, type SimHindsight } from '../src/sim/runner.ts';
+import { parseScenario } from '../src/sim/scenario.ts';
+import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
 // 名单是虚构的
 const me: Contact = { qq: 10001, name: '宝宝', tier: 'boyfriend' };
@@ -55,5 +63,73 @@ describe('她认识的人（ADR 0016）', () => {
         assert.equal(parsed.contacts[0]!.intro, '比较熟');
         assert.equal('intro' in parsed.contacts[1]!, false);
         assert.throws(() => parseAppConfig({ ...base, contacts: [{ qq: 1, name: 'x', tier: 'classmate', intro: 3 }] }, repoRoot, env), /contacts\[0\]\.intro 应为字符串/);
+    });
+});
+
+describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight）', () => {
+    const repoRoot = resolve(import.meta.dirname, '../../..');
+    const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+    const llm: BotConfig['llm'] = {
+        baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: '', extraBody: {},
+    };
+    const prompt: BotConfig['prompt'] = { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true };
+    const scenario = (extra: Record<string, unknown> = {}) => parseScenario({
+        name: 'x', tier: 'boyfriend', user: '宝宝', start: '2026-10-06T20:00:00+08:00', schedule: false,
+        others: [{
+            name: '鸽鸽', tier: 'classmate', intro: '网上认识的朋友，网络运维的大神，比较熟',
+            history: [
+                { time: '2026-10-05T21:00:00+08:00', role: 'user', content: '今晚机房值班' },
+                { time: '2026-10-05T21:01:00+08:00', role: 'assistant', content: '辛苦了' },
+            ],
+        }],
+        steps: [{ say: '在干嘛' }, { say: '鸽鸽最近在忙啥' }],
+        ...extra,
+    });
+
+    test('事先的聊天写进鸽鸽的 bank 和公共库；提起鸽鸽时有介绍和他的记忆，没提时没有；跑完删掉三个 bank', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
+        const retained: { bank: string; item: MemoryItem }[] = [];
+        const recalled: string[] = [];
+        const deleted: string[] = [];
+        const hindsight: SimHindsight = {
+            putBank: async () => {},
+            retain: async (bank, item) => { retained.push({ bank, item }); },
+            recall: async bank => { recalled.push(bank); return [{ id: '1', text: '鸽鸽说他 10 月 5 日晚上在机房值班', document_id: 'other:ep-1' }]; },
+            getMentalModel: async () => undefined,
+            createMentalModel: async () => {},
+            updateMentalModel: async () => {},
+            activeOperations: async () => [],
+            operationStatus: async () => 'completed',
+            refreshMentalModel: async () => 'op-1',
+            deleteBank: async bank => { deleted.push(bank); },
+        };
+        const prompts: OpenAIMessage[][] = [];
+        try {
+            const result = await runScenario(scenario(), {
+                runId: 't', dataDir: dir, card, llm, prompt, hindsight, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { prompts.push(messages); return '在呢'; },
+            });
+            const gegeBank = retained[0]!.bank;
+            assert.deepEqual(retained.map(r => r.bank), [gegeBank, 'sim-t-common']);
+            assert.match(retained[1]!.item.content, /^和鸽鸽的私聊\n/);
+
+            const text = (messages: OpenAIMessage[]) => messages.map(m => m.content).join('\n');
+            assert.doesNotMatch(text(prompts[0]!), /你认识的人/);
+            assert.match(text(prompts[1]!), /\[你认识的人：鸽鸽\]\n鸽鸽：网上认识的朋友，网络运维的大神，比较熟\n\[你和鸽鸽聊过的事（[^\]]*\]\n- 鸽鸽说他 10 月 5 日晚上在机房值班/);
+            assert.ok(recalled.includes(gegeBank), '查了鸽鸽的 bank');
+            const say = result.steps.filter(step => step.kind === 'say')[1]!;
+            assert.ok(say.logs.some(line => line === '提起了 鸽鸽：介绍 + 召回 1 条'));
+            assert.ok(say.logs.some(line => line === '召回公共记忆 1 条'));
+            assert.deepEqual(deleted.sort(), [result.bankId!, gegeBank, 'sim-t-common'].sort());
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('场景校验：事先的聊天要早于起点 45 分钟以上，档位要是名单里的', () => {
+        const late = { name: '鸽鸽', tier: 'classmate', history: [{ time: '2026-10-06T19:30:00+08:00', role: 'user', content: '在吗' }] };
+        assert.throws(() => scenario({ others: [late] }), /要早于起点 45 分钟以上/);
+        assert.throws(() => scenario({ others: [{ name: '鸽鸽', tier: 'unlisted' }] }), /others\[0\]\.tier/);
+        assert.deepEqual(scenario({ others: undefined }).others, []);
     });
 });

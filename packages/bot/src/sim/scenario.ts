@@ -2,7 +2,8 @@
 // 场景是 JSON：档位、称呼、起始时间，然后一串步骤，见 Step。示例在 packages/bot/sim/。
 
 import { readFileSync } from 'node:fs';
-import { CONTACT_TIERS, UNLISTED_TIER, type Tier } from '../config.ts';
+import { CONTACT_TIERS, UNLISTED_TIER, type ContactTier, type Tier } from '../config.ts';
+import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 
 /** 对方的一条或几条消息；几条时按 gapMs 的真实间隔依次发（默认 800 ms，算连发） */
 export interface SayStep {
@@ -107,7 +108,17 @@ export interface Scenario {
     moodyChance?: number;
     /** 指定今天的心情（ADR 0015，卡上心情的名字），比较不同心情时用；不写按虚拟日期抽 */
     mood?: string;
+    /** 名单里的其他人（ADR 0016）：她认识写了 intro 的；开了记忆时，事先的聊天先写进他们自己的 bank 和公共库 */
+    others: OtherContact[];
     steps: Step[];
+}
+
+export interface OtherContact {
+    name: string;
+    tier: ContactTier;
+    intro?: string;
+    /** 她和这个人事先的聊天，时间要早于起点 45 分钟以上（片段结束了才写进记忆） */
+    history: { time: string; role: 'user' | 'assistant'; content: string }[];
 }
 
 export function loadScenario(path: string): Scenario {
@@ -138,8 +149,34 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         moody: s.moody === true,
         ...(s.moodyChance !== undefined ? { moodyChance: chance(s.moodyChance) } : {}),
         ...(s.mood !== undefined ? { mood: typeof s.mood === 'string' && s.mood ? s.mood : fail('mood 应为心情的名字') } : {}),
+        others: parseOthers(s.others, Date.parse(s.start as string), fail),
         steps: s.steps as Step[],
     };
+}
+
+function parseOthers(value: unknown, start: number, fail: (message: string) => never): OtherContact[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value)) fail('others 应为数组');
+    return (value as unknown[]).map((item, i) => {
+        const where = `others[${i}]`;
+        if (typeof item !== 'object' || item === null) fail(`${where} 应为对象`);
+        const o = item as Record<string, unknown>;
+        if (typeof o.name !== 'string' || !o.name) fail(`${where}.name 应为称呼`);
+        if (!CONTACT_TIERS.includes(o.tier as ContactTier)) fail(`${where}.tier 应为 ${CONTACT_TIERS.join(' / ')} 之一`);
+        if (o.intro !== undefined && typeof o.intro !== 'string') fail(`${where}.intro 应为字符串`);
+        const history = o.history ?? [];
+        if (!Array.isArray(history)) fail(`${where}.history 应为数组`);
+        const messages = (history as unknown[]).map((m, j) => {
+            const message = m as Record<string, unknown>;
+            const time = typeof message?.time === 'string' ? Date.parse(message.time) : NaN;
+            if (Number.isNaN(time)) fail(`${where}.history[${j}].time 应为 ISO 时间`);
+            if (time > start - EPISODE_GAP_MS) fail(`${where}.history[${j}] 要早于起点 45 分钟以上（片段结束了才写进记忆）`);
+            if (message.role !== 'user' && message.role !== 'assistant') fail(`${where}.history[${j}].role 应为 user / assistant`);
+            if (typeof message.content !== 'string' || !message.content) fail(`${where}.history[${j}].content 应为非空字符串`);
+            return { time: new Date(time).toISOString(), role: message.role as 'user' | 'assistant', content: message.content as string };
+        });
+        return { name: o.name as string, tier: o.tier as ContactTier, ...(o.intro ? { intro: o.intro as string } : {}), history: messages };
+    });
 }
 
 const STEP_KINDS = ['case', 'say', 'advance', 'wait', 'memory', 'refresh', 'check', 'forget', 'hindsight'] as const;
