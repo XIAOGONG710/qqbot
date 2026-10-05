@@ -101,6 +101,8 @@ export interface Contact {
     tier: Tier;
     /** 一两句“他是谁”，放在 ST 人设描述（personaDescription）的位置 */
     persona?: string;
+    /** 别人提起他时她知道的（ADR 0016）：名单里别人的话里出现他的称呼时给她看；没写就是别人提起他时她不认识 */
+    intro?: string;
 }
 
 type Json = Record<string, unknown>;
@@ -146,6 +148,11 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         if (persona !== undefined) {
             if (typeof persona !== 'string') throw new Error(`配置 ${where}.persona 应为字符串`);
             if (persona) contact.persona = persona;
+        }
+        const intro = (value as Json).intro;
+        if (intro !== undefined) {
+            if (typeof intro !== 'string') throw new Error(`配置 ${where}.intro 应为字符串`);
+            if (intro.trim()) contact.intro = intro.trim();
         }
         return contact;
     });

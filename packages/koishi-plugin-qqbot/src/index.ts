@@ -69,7 +69,7 @@ const FRIENDS_SCHEMA = 'qqbot.friends';
 const QQ_DESCRIPTION = '**QQ 号**：从小号的好友里选';
 
 export interface Config {
-    contacts: { qq: number; name: string; tier: ContactTier; persona?: string }[];
+    contacts: { qq: number; name: string; tier: ContactTier; persona?: string; intro?: string }[];
     unlistedFriends: boolean;
     schedule: boolean;
     moody: boolean;
@@ -110,6 +110,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             tier: Schema.union(CONTACT_TIERS.map(tier => Schema.const(tier).description(TIER_LABELS[tier]))).required()
                 .description('**档位**：按这一档的角色卡回复（ADR 0003）。换档后，之前的聊天记录不再进提示词'),
             persona: Schema.string().role('textarea', { rows: [2, 8] }).description('**他是谁**：一两句，可选'),
+            intro: Schema.string().role('textarea', { rows: [1, 4] })
+                .description('**别人提起时**：她认识的这个人，一两句（例如「网上认识的朋友，比较熟」）。名单里别人说起他的称呼时给她看，留空就是不认识（ADR 0016）'),
         })).description('**回复名单**：每人按自己的档位回复'),
         unlistedFriends: Schema.boolean().default(DEFAULTS.unlistedFriends)
             .description('**名单外的好友**：私聊时也回复，按 unlisted 档（被认真问到时承认是 AI；任何人加小号好友就能调用模型）'),

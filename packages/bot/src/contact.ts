@@ -1,6 +1,7 @@
 // 一位联系人的回复流水线：召回长期记忆 → 按 ST 顺序拼提示词 → 后处理 → 生成 → 清理（含卡上的 ST 正则）→ 出口检查 → 拆条发送（responder.ts 调度）。
 // 出口检查带上聊天记录里她最近几次回复和对方最近几条，查说话的毛病（ADR 0014，配置 speechCheck）。
 // 她自己的日子（ADR 0015，配置 herDays）：时间块里状态行下面加今天的心情，聊到书或她正在看书时再加「在读的书」，那一轮出口检查顺带查进度数字。
+// 她认识的人（ADR 0016）：他或她最近的话里提到名单里另一个人的称呼（那人写了「别人提起时」），召回之后放一段介绍。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
 import { dirname, join } from 'node:path';
@@ -18,6 +19,7 @@ import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
+import { describePerson, mentionedPeople } from './people.ts';
 import { describeState, stateAt } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
 import { describeDays, describeTime } from './time-context.ts';
@@ -56,6 +58,8 @@ export interface ContactPipelineOptions {
     history: Pick<ChatHistory, 'load' | 'append'>;
     /** 长期记忆；名单外的好友（unlisted 档）不用 */
     memory?: LongTermMemory;
+    /** 整个名单（ADR 0016）：她认识名单里写了「别人提起时」的人；不传就谁都不认识 */
+    contacts?: readonly Contact[];
     send: (userId: number, text: string) => Promise<number>;
     /** 不带联系人前缀，这里会加上 [QQ 号] */
     log: Log;
@@ -115,6 +119,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const recalled = remembers ? await memory.recall(contact, chat, time, recallOptions) : undefined;
             const relationship = remembers ? memory.relationship(contact) : undefined;
             if (recalled) log(`召回长期记忆 ${recalled.split('\n').length - 1} 条`);
+            const people = mentionedPeople(chat, contact, options.contacts ?? []);
+            if (people.length) log(`提起了 ${people.map(person => person.name).join('、')}：介绍`);
+            const peopleText = people.map(person => describePerson(person));
             const days = describeDays(character.dates, time);
             const state = schedule ? stateAt(schedule, time, extraFree) : undefined;
             if (herSchedule) options.onHerDay?.(time);
@@ -135,6 +142,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 afterMain: relationship ? [relationship] : [],
                 afterHistory: [
                     ...(recalled ? [recalled] : []),
+                    ...peopleText,
                     [
                         describeTime(chat, time, { initiating: Boolean(initiate) }),
                         ...(days ? [days] : []),

@@ -19,7 +19,8 @@ QQ 机器人的核心：按 SillyTavern 角色卡 + 世界书拼提示词，调 
    - `characterCard`：角色卡路径，`{tier}` 换成档位名（`characters/linmengyao/st/linmengyao-{tier}.json`）；世界书按卡里关联的名字在同目录找
    - `contacts`：名单，每项是 `qq`（会回复的 QQ 号，须是小号的好友）、`name`（提示词里 `{{user}}` 的称呼）和 `tier`
      （`boyfriend` / `bestie` / `girl_friend` / `known` / `classmate` / `stranger`）；每个号的聊天记录分开存。
-     可选的 `persona` 是一两句“他是谁”（例如「同专业，坐你后排」），放在 ST 人设描述（`personaDescription`）的位置，可以用 `{{user}}` `{{char}}`
+     可选的 `persona` 是一两句“他是谁”（例如「同专业，坐你后排」），放在 ST 人设描述（`personaDescription`）的位置，可以用 `{{user}}` `{{char}}`。
+     可选的 `intro` 是别人提起他时她知道的一两句（[ADR 0016](../../docs/adr/0016-people-she-knows.md)）：名单里别人的话里出现他的称呼时给她看，没写就是不认识
    - `unlistedFriends`：名单外的好友私聊时是否用 `unlisted` 档回复（被认真问到时承认是 AI），默认 `true`；`{{user}}` 用对方的 QQ 昵称。
      任何人加小号好友就能让 bot 调用模型，没有频率限制
    - `schedule`：按角色卡上的作息（[ADR 0007](../../docs/adr/0007-schedule-and-reply-timing.md)）决定她现在在干什么、什么时候看到消息、打字多久，默认 `true`。

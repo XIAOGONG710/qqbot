@@ -41,6 +41,15 @@ const before0009AsJson = {
 };
 
 describe('插件配置（控制台表单 → config.json 的形状 → parseAppConfig）', () => {
+    test('名单的「别人提起时」（ADR 0016）照传；没填就没有', () => {
+        const parsed = fromKoishi({
+            ...minimal,
+            contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }, { qq: 10002, name: '鸽鸽', tier: 'classmate', intro: '网上认识的朋友' }],
+        });
+        assert.equal(parsed.contacts[1]!.intro, '网上认识的朋友');
+        assert.equal(parsed.contacts[0]!.intro, undefined);
+    });
+
     test('只填必填项：默认值和 config.json 留空时一样（默认值只有 config.ts 一份）', () => {
         const fromFile = parseAppConfig({ ...minimal, characterCard: 'characters/linmengyao/st/linmengyao-{tier}.json' }, repoRoot, env);
         assert.deepEqual(fromKoishi(minimal), fromFile);

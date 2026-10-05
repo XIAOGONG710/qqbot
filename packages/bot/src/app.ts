@@ -203,6 +203,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
             history,
             memory,
+            contacts: config.contacts,
             send: (userId, text) => transport.sendPrivateText(userId, text),
             log,
             // last-prompt.json 记录的是后处理之后、实际发给模型的消息
