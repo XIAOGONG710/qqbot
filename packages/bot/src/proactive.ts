@@ -222,7 +222,8 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
         }
     }
 
-    if (enabled.has('bedtime')) add('bedtime', at(day, BEDTIME_FROM).getTime() + pick(seed('bedtime'), 'at', minutes(BEDTIME_MIN)), '准备睡了');
+    // 零点要祝的那个晚上不另说睡前（10-05 模拟器：睡前先说了「生日快乐，提前说过了」，零点又祝一遍）
+    if (enabled.has('bedtime') && !midnight.length) add('bedtime', at(day, BEDTIME_FROM).getTime() + pick(seed('bedtime'), 'at', minutes(BEDTIME_MIN)), '准备睡了');
 
     const last = input.history.at(-1);
     if (enabled.has('quiet') && last) {
@@ -349,13 +350,15 @@ export function occasionNote(candidate: Candidate, userName: string): string {
         morning: () => `你起床没多久，跟${userName}说早安${candidate.today ? `；${userName}今天${candidate.today.join('、')}，可以说句加油` : ''}`,
         after_class: () => `你今天的课上完了，跟${userName}说一声`,
         bedtime: () => `时间不早了，跟${userName}道个晚安`,
-        quiet: () => `你们大半天没说话了，你想找${userName}说两句（对方可能在忙，别怪对方没找你）`,
+        quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛，或者问问对方在忙什么（对方可能在忙）`,
         follow_up: () => `${followUp!.atMorning ? `你起床没多久，跟${userName}说早安，顺便` : ''}问问${userName}${followUp!.when}的${followUp!.item.what}怎么样了（${userName}之前跟你说过）`,
         dates: () => (candidate.id.endsWith(':midnight')
             ? `零点了，今天是${names}，你一直记着，第一时间跟${userName}说`
             : `今天是${names}。你起床没多久，跟${userName}说早安，也提一句这个日子`),
     };
-    return `[这次是你主动找${userName}：${why[candidate.occasion]()}。只发一两句，像平时随手发的消息。]`;
+    // 10-05 模拟器：冷场 3 次有 1 次「都不带搭理我的」，早安 3 次有 2 次「我都起来了你还没消息」「都不吭声」。
+    // 人设早就去掉了算「不回消息」的账（persona.yml heart.fear 的说明），这里每种时机都说一遍
+    return `[这次是你主动找${userName}：${why[candidate.occasion]()}。只发一两句，像平时随手发的消息；不抱怨对方没找你、没回你。]`;
 }
 
 /** 主动找他时召回长期记忆想知道什么（ADR 0012 决策 1 第 7 条） */

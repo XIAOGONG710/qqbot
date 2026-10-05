@@ -98,7 +98,7 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
         for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
     });
 
-    function setup(start: Date, history: StoredMessage[], replies: string[]) {
+    function setup(start: Date, history: StoredMessage[], replies: string[], settings = { occasions: ['follow_up' as const], dailyMax: 2, unansweredMax: 1 }) {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-followups-'));
         dirs.push(dir);
         const clock = new VirtualClock(start);
@@ -108,7 +108,7 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
         // 只开待跟进：别的时机试运行发出去之后「他没回」，会先停（早安里提一句由上面的候选测试管）
         const planner = createProactivePlanner({
             contact: { qq: 10001, name: '阿明', tier: 'boyfriend' },
-            schedule, settings: { occasions: ['follow_up'], dailyMax: 2, unansweredMax: 1 }, dates: [], mode: 'dryRun',
+            schedule, settings, dates: [], mode: 'dryRun',
             history: { load: () => history },
             responder: { initiate: async request => { initiated.push(request); request.commit(['好']); return { result: 'dryRun', parts: ['好'] }; } },
             dir, log: m => logs.push(m), now: clock.now, waitUntil: clock.waitUntil,
@@ -148,6 +148,24 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
         assert.equal(initiated.length, 1);
         assert.deepEqual(state().followUps, []);
         assert.ok(logs.some(l => l.startsWith('待跟进：试运行里问过了，忘掉「字节的面试」')));
+    });
+
+    test('条数留给了待跟进：下课到点时没排上，记录和日志写的是这个原因（不是「他没回」）', async () => {
+        const history = [msg(t(10, 8, 21), 'user', '我明天下午两点有面试'), msg(t(10, 8, 21, 1), 'assistant', '加油')];
+        const { clock, planner, logs, initiated, state } = setup(new Date(t(10, 9, 6)), history,
+            ['{"add":[{"what":"面试","date":"2026-10-09","time":"14:00"}],"resolved":[]}'],
+            { occasions: ['morning', 'after_class', 'follow_up'] as never, dailyMax: 2, unansweredMax: 10 });
+        await planner.syncFollowUps();
+        for (let i = 0; i < 8 && initiated.length < 2; i++) {
+            await settled();
+            const next = clock.nextTimer();
+            if (next === undefined) break;
+            clock.advanceTo(next);
+        }
+        await settled();
+        assert.deepEqual(initiated.slice(0, 2).map(r => r.label.replace(/（.*$/, '')), ['早安', '待跟进的事']);
+        const skipped = state().records.find((r: { occasion: string }) => r.occasion === 'after_class');
+        assert.equal(skipped?.reason, '今天的条数留给了别的时机', logs.join('\n'));
     });
 
     test('他自己先说了结果：下一段抽的时候了结，删掉；过了 3 天没问到的也删', async () => {

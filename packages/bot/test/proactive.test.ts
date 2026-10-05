@@ -101,6 +101,7 @@ describe('主动消息：每一天的候选', () => {
         assert.equal(birthday.length, 1);
         assert.equal(birthday[0]!.id, '2026-09-28:dates:midnight');
         assert.ok(birthday[0]!.at >= t(9, 29, 0) && birthday[0]!.at <= t(9, 29, 0, 5), hm(birthday[0]!.at));
+        assert.equal(find(candidatesOn(day(9, 28), input()), 'bedtime'), undefined, '零点要祝的晚上不另说睡前');
         assert.equal(candidatesOn(day(9, 17), input()).filter(c => c.occasion === 'dates').length, 0, '农历八月初八的前一晚');
 
         const july = candidatesOn(day(7, 17, 2027), input());

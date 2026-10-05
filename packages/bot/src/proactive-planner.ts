@@ -16,7 +16,7 @@ import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './memory/episo
 import type { OpenAIMessage } from './prompt.ts';
 import type { MacroNames } from './st/macros.ts';
 import {
-    blockReason, candidateLabel, herDay, MAX_PROACTIVE_BUBBLES, occasionNote, planFrom, recallTopic,
+    blockReason, candidateLabel, candidatesOn, herDay, MAX_PROACTIVE_BUBBLES, occasionNote, planFrom, recallTopic,
     type Candidate, type ImportantDay, type ProactiveInput, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
 import type { InitiateOutcome, Responder } from './responder.ts';
@@ -103,6 +103,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     let wake: AbortController | undefined;
     let next: Candidate | undefined;
     let paused: string | undefined;
+    /** 还没到点的候选最近一次为什么没排上 */
+    const notPlanned = new Map<string, string>();
     let loggedNext: string | undefined;
 
     function load(): { records: ProactiveRecord[]; followUps: FollowUp[]; extracted: Record<string, true | number> } {
@@ -241,12 +243,21 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         while (!stopped) {
             const today = herDay(deps.schedule, new Date(now()));
             for (const item of followUps.filter(f => expired(f, today))) forget(item.id, `过了 ${FOLLOW_UP_DAYS} 天还没问到`);
-            const plan = planFrom(now(), input());
+            const current = input();
+            const plan = planFrom(now(), current);
             for (const candidate of plan.missed) {
-                // 计划器在跑的时候过去的：那时没排上（等他回、条数留给了优先级更高的）；启动之前过去的：bot 没在跑，错过了
-                const reason = candidate.at < startedAt ? '错过了，不补' : plan.paused ? '上一条主动消息他还没回' : '今天的条数留给了别的时机';
+                // 计划器在跑的时候过去的：用它过去之前最后一次没排上的原因；启动之前过去的：bot 没在跑，错过了
+                const reason = candidate.at < startedAt ? '错过了，不补' : notPlanned.get(candidate.id) ?? '没排上';
                 record(candidate, { result: 'skipped', reason });
                 deps.log(`主动${tag}：${candidateLabel(candidate)}计划在 ${clock(candidate.at)}，${reason}`);
+            }
+            // 还没到点的候选这一次为什么没排上（到点过去之后记进记录）
+            const upcomingIds = new Set(plan.upcoming.map(c => c.id));
+            for (const candidate of candidatesOn(today, current)) {
+                if (candidate.at <= now() || upcomingIds.has(candidate.id)) continue;
+                if (plan.yielded.some(c => c.id === candidate.id)) notPlanned.set(candidate.id, '今天的条数留给了别的时机');
+                else if (plan.paused) notPlanned.set(candidate.id, '上一条主动消息他还没回');
+                else notPlanned.delete(candidate.id);
             }
             next = plan.upcoming[0];
             paused = plan.paused;
