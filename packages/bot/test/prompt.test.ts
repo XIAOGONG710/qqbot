@@ -32,7 +32,7 @@ describe('用林梦瑶的角色卡拼提示词', () => {
         const { messages } = build([{ role: 'user', content: '宝宝在干嘛' }]);
         const scene = lorebook.find(e => e.key.includes('在干嘛'))!;
         assert.equal(messages[0]!.content, '你是林梦瑶，正在用 QQ 和阿明私聊。下面是你的设定。');
-        assert.ok(messages[1]!.content.startsWith('林梦瑶，在读学生。下文的「你」就是林梦瑶'));
+        assert.ok(messages[1]!.content.startsWith('林梦瑶，在读大学生。下文的「你」就是林梦瑶'));
         assert.equal(messages[2]!.content, card.personality);
         assert.ok(messages[3]!.content.startsWith('正在和你私聊的阿明就是你的男朋友'));
         assert.equal(messages[4]!.content, scene.content, '世界书 after 放在角色设定之后');

@@ -95,7 +95,7 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
                 { refresh: 'relationship' },
                 { say: '铁锅又找我茬' },
                 { check: { recall: ['铁锅'], timeBlock: '距上一条消息：1 天', replyAny: ['好'] } },
-                { check: { timeBlock: '\\[你现在：国庆节放假，没回青岛，留在学校；.+；阿明回青岛了\\]' } },
+                { check: { timeBlock: '\\[你现在：国庆节放假，没抢到回青岛的票，留在学校；.+；阿明回青岛过国庆了（放假前就跟你说好的，以后放假你们一起走）\\]' } },
                 { check: { recall: ['不存在的词'] } },
             ],
         });
