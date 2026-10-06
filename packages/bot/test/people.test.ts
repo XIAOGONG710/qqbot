@@ -129,6 +129,33 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         }
     });
 
+    test('公共库的实体名转发到模拟器：他说起杭州时想起公共记忆（ADR 0017）', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
+        const hindsight: SimHindsight = {
+            putBank: async () => {},
+            retain: async () => {},
+            recall: async () => [{ id: '1', text: '鸽鸽 10 月 13 日去杭州出差', document_id: 'other:ep-1' }],
+            getMentalModel: async () => undefined,
+            createMentalModel: async () => {},
+            updateMentalModel: async () => {},
+            activeOperations: async () => [],
+            operationStatus: async () => 'completed',
+            refreshMentalModel: async () => 'op-1',
+            listEntities: async () => ['杭州'],
+            deleteBank: async () => {},
+        };
+        try {
+            const result = await runScenario(scenario({ steps: [{ say: '我下周去杭州玩' }] }), {
+                runId: 't', dataDir: dir, card, llm, prompt, hindsight, settle: { quietMs: 10, maxMs: 50 },
+                generate: async () => '好呀',
+            });
+            const say = result.steps.find(step => step.kind === 'say')!;
+            assert.ok(say.logs.includes('召回公共记忆 1 条（线索：杭州）'));
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('场景校验：事先的聊天要早于起点 45 分钟以上，档位要是名单里的', () => {
         const late = { name: '鸽鸽', tier: 'classmate', history: [{ time: '2026-10-06T19:30:00+08:00', role: 'user', content: '在吗' }] };
         assert.throws(() => scenario({ others: [late] }), /要早于起点 45 分钟以上/);

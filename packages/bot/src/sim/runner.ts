@@ -464,6 +464,8 @@ function switchable(api: SimHindsight, down: () => boolean): SimHindsight {
         activeOperations: (...a) => guard(() => api.activeOperations(...a)),
         operationStatus: (...a) => guard(() => api.operationStatus(...a)),
         refreshMentalModel: (...a) => guard(() => api.refreshMentalModel(...a)),
+        // 公共库的实体名（ADR 0017 的线索）：没转发的话模拟器里永远是空的
+        ...(api.listEntities ? { listEntities: (...a: Parameters<NonNullable<SimHindsight['listEntities']>>) => guard(() => api.listEntities!(...a)) } : {}),
         deleteBank: (...a) => api.deleteBank(...a),
     };
 }
