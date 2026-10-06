@@ -3,7 +3,8 @@
 #
 # Set up once as described in docs/hindsight.md. Layout (all under runtime/hindsight/, not committed):
 #   venv/       Python 3.12 venv with scripts/hindsight/requirements.txt installed (hindsight-api-slim, pg0, onnxruntime)
-#   pgdata/     PostgreSQL data of the pg0 instance "qqbot-hindsight", listening on 127.0.0.1:5433 only
+#   pgdata/     NOT used when the repo path has non-ASCII characters - see $pgData below.
+#               PostgreSQL data of the pg0 instance "qqbot-hindsight", listening on 127.0.0.1:5433 only.
 #   hf/         Hugging Face cache for the embedding model (intfloat/multilingual-e5-small, ONNX)
 #   pgroonga/   the verified PGroonga 4.0.9 zip and its file list; the files themselves are unpacked into pg0's PostgreSQL
 #
@@ -50,10 +51,19 @@ if ($msvcpVersion -lt [version]'14.40') {
 $ErrorActionPreference = 'Continue'
 
 # PostgreSQL (pg0): start the instance unless it is already running.
+# The data directory must be on a pure-ASCII path: pg0 (Rust) reads a file back as UTF-8 and dies with
+# "Error: IO error: stream did not contain valid UTF-8" when the path contains non-ASCII characters.
+# Measured 2026-10-06: the same command succeeded with -d C:\hindsight-pgdata and failed with
+# -d <repo>\runtime\hindsight\pgdata on a repo under Desktop\astrbot创建\. Override with QQBOT_PGDATA.
 $instance = 'qqbot-hindsight'
+$pgData = if ($env:QQBOT_PGDATA) { $env:QQBOT_PGDATA } else { Join-Path $env:LOCALAPPDATA 'qqbot-hindsight\pgdata' }
+if ($pgData -match '[^\x00-\x7F]') {
+    throw "QQBOT_PGDATA ('$pgData') contains non-ASCII characters; pg0 fails with 'stream did not contain valid UTF-8' (docs\hindsight.md)"
+}
+New-Item -ItemType Directory -Force -Path $pgData | Out-Null
 $info = & $pg0 info --name $instance 2>&1 | Out-String
 if ($info -notmatch 'is running') {
-    & $pg0 start --name $instance --data-dir (Join-Path $root 'pgdata') --port $DbPort -u hindsight -P hindsight -n hindsight
+    & $pg0 start --name $instance --data-dir $pgData --port $DbPort -u hindsight -P hindsight -n hindsight
     if ($LASTEXITCODE -ne 0) { throw "pg0 start failed (exit $LASTEXITCODE)" }
 }
 

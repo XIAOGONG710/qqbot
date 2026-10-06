@@ -139,6 +139,73 @@ uv pip install --python runtime/hindsight/venv/Scripts/python.exe --require-hash
   都排在第一条。测试 bank 已删除。
 - 关系概况在建好时还没有记忆，内容为空；之后在新记忆整合完、且距上次刷新超过 30 分钟时刷新。
 
+## 本机安装记录（2026-10-06，Windows 换机重装）
+
+换一台机器重装时新增了四条坑，都在本机验证过。
+
+### 1. Windows 防火墙要放行两个程序（且需要管理员）
+
+Windows 防火墙对**没有允许规则的程序**是把入站连接**丢包**（不是拒绝），所以症状统一是「连接超时」：
+
+| 程序 | 症状 | 处理 |
+| --- | --- | --- |
+| `%USERPROFILE%\.pg0\installation\<版本>\bin\postgres.exe` | `pg0 start` 走到 `Creating user 'hindsight'` 时报 `psql: connection to server at "127.0.0.1", port 5433 failed: Connection timed out`，随后 pg0 把实例回滚（`pg0 info` 查不到） | 加一条入站允许规则 |
+| Hindsight 用的 Python 解释器（`%APPDATA%\uv\python\cpython-3.12*\python.exe`） | API 打出启动横幅后**不再输出、8888 不监听**；py-spy 栈停在 `asyncio` 的 `socket.py` → `_fallback_socketpair` → `accept()` | 同上，带版本号和不带版本号的目录各一条 |
+
+```powershell
+New-NetFirewallRule -DisplayName 'pg0 postgres (Hindsight)' -Direction Inbound `
+  -Program "$env:USERPROFILE\.pg0\installation\18.1.0\bin\postgres.exe" -Action Allow -Profile Any
+
+# 两条路径是因为 uv 装解释器时用了不带版本号的目录名
+foreach ($p in "$env:APPDATA\uv\python\cpython-3.12.14-windows-x86_64-none\python.exe",
+                "$env:APPDATA\uv\python\cpython-3.12-windows-x86_64-none\python.exe") {
+    if (Test-Path $p) { New-NetFirewallRule -DisplayName "Hindsight python $(Split-Path (Split-Path $p -Parent) -Leaf)" `
+      -Direction Inbound -Program $p -Action Allow -Profile Any }
+}
+```
+
+Python 那条的机理：Windows 没有真正的 `socketpair`，asyncio 用「本地监听一个端口 → 连自己 → `accept()`」模拟自管道；
+这一步的入站回环连接同样被丢包，`accept()` 永不返回，**uvicorn 连端口都还没绑上**，日志就停在启动横幅。
+
+**为什么原本没遇到**：手动在终端第一次跑 `start-hindsight.ps1` 时 Windows 会弹「是否允许访问网络」，点允许就自动建了规则；
+用计划任务、隐藏窗口等方式启动不会弹框，于是静默超时。`New-NetFirewallRule` 在非管理员下报 `Access is denied`。
+
+### 2. pg0 的数据目录不能用非 ASCII 路径
+
+仓库放在含中文的路径（如 `…\Desktop\astrbot创建\`）时，`pg0 start -d <仓库>\runtime\hindsight\pgdata` 报：
+
+```
+Error: IO error: stream did not contain valid UTF-8
+```
+
+对照实验（同日）：同一条命令，`-d C:\hindsight-pgdata`（纯 ASCII）一次成功，含中文的路径必失败。
+`scripts/start-hindsight.ps1` 因此把数据目录改到 `%LOCALAPPDATA%\qqbot-hindsight\pgdata`（纯 ASCII），可用 `QQBOT_PGDATA` 覆盖，
+并在脚本里对非 ASCII 路径直接报错说明原因。这是同一族问题的第三次（前两次：NapCat 从中文路径启动挂不上、PowerShell 5.1 按 ANSI 读无 BOM 脚本）。
+
+### 3. Hugging Face 走镜像
+
+`huggingface.co` 在某些网络下直接返回 502（连 API 也是）。设 `HF_ENDPOINT=https://hf-mirror.com` 即可。
+模型下完落在 `runtime/hindsight/hf/`，之后启动不再需要镜像。
+
+### 4. PyPI 也要镜像，否则 `uv pip install` 会拖到几十分钟
+
+官方源实测 25 分钟只下了 80.9 MB（仍未装完）；换清华源后**约 1.5 分钟**装完 195 个包：
+
+```powershell
+uv pip install --python runtime\hindsight\venv\Scripts\python.exe --require-hashes `
+  --default-index https://pypi.tuna.tsinghua.edu.cn/simple -r scripts\hindsight\requirements.txt
+```
+
+`--require-hashes` 照常生效（镜像与官方是同哈希的同名文件）。
+
+### 两处与本文档的出入
+
+- **嵌入模型不是 470 MB**：`snapshot_download('intfloat/multilingual-e5-small')` 会拉 43 个文件共 **2174.6 MB**
+  （`pytorch_model.bin` 448.9 MB + `model.safetensors` 448.8 MB + ONNX / OpenVINO 变体各一份）。
+  Hindsight 只用其中一部分，多下的不影响运行；磁盘紧时只保留 ONNX 那份即可。Windows 上 `huggingface_hub` 建不了符号链接，会用副本占更多空间（无害的警告）。
+- **`pg0 start` 在管道里不会返回**：它启动的 postgres 继承了 stdout 句柄，`pg0 start … | Select-Object` 这类管道永远等不到 EOF，看起来像卡死。
+  重定向到文件或不用管道就正常（启动脚本里本来就是直接调用）。
+
 ## 已知限制
 
 - 关键词检索按两个字一切（PGroonga `TokenBigram`），查询里的每个二字词都参与打分，「今天」「找我」这类常见词也会给别的记忆加分，
