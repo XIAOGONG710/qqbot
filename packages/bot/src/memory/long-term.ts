@@ -11,6 +11,8 @@
 // - 公共记忆库（ADR 0016，选项 shared）：另一个 bank「<前缀>-shared」。名单里除陌生人档以外，每个人的片段写进自己的 bank 之后再写一份，
 //   document_id 前面带上是谁的；这些人每轮都从公共库召回，去掉自己的片段（自己的 bank 里已经有了）。写到第几条记在各人的进度文件里。
 // - 别人提起某个人时（people.ts），用这一轮的查询召回那个人自己的 bank（recall 的 header、limit）。
+// - 记忆会变淡（ADR 0018，fading.ts）：三处召回整理前都按记得多清楚筛，想不起来的不放、记个大概的标出来，他一提实体名又想起；
+//   写入说明让 Hindsight 给重要的事标【重要】，召回带上观察背后的事实回查。
 
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -21,6 +23,7 @@ import { knowsPeople } from '../people.ts';
 import type { ChatMessage } from '../prompt.ts';
 import type { MacroNames } from '../st/macros.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes, type Episode } from './episodes.ts';
+import { clarity, IMPORTANT, withoutMark, type Clarity, type FadeStats } from './fading.ts';
 import type { BankConfig, HindsightApi, MentalModelRequest, RecallRequest, RecallResult } from './hindsight.ts';
 
 /** 进行中的片段每多这么多条就整段重写一次 */
@@ -31,11 +34,14 @@ export const RELATIONSHIP_REFRESH_MS = 10 * 60_000;
  * 召回最多注入几条。召回本身由 max_tokens（600）限量，一般 11–14 条。原来取前 8 条；10-04 换成 PGroonga 之后，
  * 埋在句子里的绰号（「铁锅今天又找我茬了」）能召回了，但关键词按命中的二字词计分，「今天」「找我」这类常见词也给别的记忆加分，
  * 它常排在第 8–10 条，取 8 条会被截掉。12 条约 500 token，在调研方案 6.4「按需召回 300–800」之内。
+ * ADR 0018 之后召回取 RECALL_TOKENS（1000），想不起来的筛掉之后仍最多放 12 条。
  */
 export const MAX_RECALLED = 12;
 /** 公共记忆、被提起的人的记忆各注入几条（ADR 0016：各约 250 token） */
 export const SHARED_RECALLED = 6;
 export const PERSON_RECALLED = 6;
+/** 召回取多少（ADR 0018：想不起来的筛掉之后还要够 MAX_RECALLED 条；以前是 600） */
+export const RECALL_TOKENS = 1000;
 /** 公共记忆问到某一天时多取一些（之后只留那天的） */
 export const DAY_RECALL_TOKENS = 2000;
 /** 公共库的实体名（有线索才想起，ADR 0017）多久重读一次；公共库写入之后也重读 */
@@ -61,6 +67,7 @@ export function bankMissions(names: MacroNames) {
             `- ${user}说的之后要发生的事（考试、面试、出行、看病、约好的事），写成绝对日期，带上午 / 下午 / 晚上或几点；「明天」「下周三」按那一行所在的日期换算。`,
             `- 绰号、外号写成「绰号（${user}的什么人）」，例如「铁锅（${user}的组长）」。`,
             '- 否定（不吃香菜）、更正（之前说错了）各单独记一条，保留原话里的否定。',
+            IMPORTANT_RULE,
             '- 生病、心情不好、很累这类近几天的状态也记，带日期。',
             `- ${char}复述以前聊过的事，不算新事实；寒暄、表情、单纯的附和不记。`,
             `- 不推断沉默的动机，不诊断${user}的人格。`,
@@ -85,12 +92,19 @@ export function commonBankMissions(char: string) {
             '- 聊天对象说的之后要发生的事（考试、面试、出行、看病、约好的事），写成绝对日期，带上午 / 下午 / 晚上或几点；「明天」「下周三」按那一行所在的日期换算。',
             '- 绰号、外号写成「绰号（谁的什么人）」。',
             '- 否定（不吃香菜）、更正（之前说错了）各单独记一条，保留原话里的否定。',
+            IMPORTANT_RULE,
             `- ${char}复述以前聊过的事，不算新事实；寒暄、表情、单纯的附和不记。`,
             '- 不推断沉默的动机，不诊断任何人的人格。',
         ].join('\n'),
         ...SHARED_MISSIONS,
     };
 }
+
+/**
+ * 重要度（ADR 0018 决策 1）：Hindsight 抽事实时顺带标，召回时看事实（观察看背后的事实）开头有没有这个记号，重要的不变淡。
+ * 10-06 临时库实验：一周年、面试标上了，午饭、天气没标；整合成观察后记号会丢
+ */
+const IMPORTANT_RULE = `- 重要的事（生日、纪念日、考试和面试、吵架与和好、第一次做的事）在这一条开头加「${IMPORTANT}」；吃饭、天气这类日常不加。`;
 
 const SHARED_MISSIONS = {
     observations_mission: [
@@ -158,6 +172,12 @@ export function personModel(id: string, name: string, char: string): MentalModel
 export interface MemoryContact {
     qq: number;
     tier: string;
+}
+
+/** 召回时记忆变淡的参数（ADR 0018）：不算「一提就想起」的名字，拿到各几条的回调 */
+export interface FadeOptions {
+    ignore?: readonly string[];
+    onFade?: (stats: FadeStats) => void;
 }
 
 /** 带称呼的（公共记忆标出处、印象用） */
@@ -405,11 +425,12 @@ export class LongTermMemory {
     /**
      * 召回和这次对话相关的旧事，整理成一段提示；没有就返回 undefined。出错只记日志。
      * query 不传就用 recallQuery；window：时间检索用的时间窗（只加权、不过滤），主动找他时用（ADR 0012 决策 1 第 7 条）。
-     * 别人提起这个人时（ADR 0016）也用这个查他的 bank，chat 是提起他的那段聊天，header、limit 换成那一段的
+     * 别人提起这个人时（ADR 0016）也用这个查他的 bank，chat 是提起他的那段聊天，header、limit 换成那一段的。
+     * 记忆会变淡（ADR 0018）：ignore 是不算「一提就想起」的名字（她的、名单里的称呼），onFade 拿到各几条
      */
     async recall(
         contact: MemoryContact, chat: ChatMessage[], now: Date,
-        options: { query?: string; window?: { start: Date; end: Date }; header?: string; limit?: number } = {},
+        options: { query?: string; window?: { start: Date; end: Date }; header?: string; limit?: number } & FadeOptions = {},
     ): Promise<string | undefined> {
         const state = this.#load(contact);
         if (!state.bankConfigured) return undefined;
@@ -418,17 +439,23 @@ export class LongTermMemory {
         const results = await this.#recall(state.bankId, recallRequest(query, now, options.window), `[${contact.qq}] 记忆召回失败，这次不带记忆`);
         if (!results) return undefined;
         const current = currentEpisodeId(chat);
-        return formatRecalled(results.filter(r => !current || r.document_id !== current), { header: options.header, limit: options.limit, now });
+        return formatRecalled(results.filter(r => !current || r.document_id !== current), {
+            header: options.header, limit: options.limit, now, fade: this.#fade(chat, options),
+        });
+    }
+
+    #fade(chat: ChatMessage[], options: FadeOptions): FadeRequest {
+        return { heard: heardSinceReply(chat), ignore: options.ignore ?? [], ...(options.onFade ? { onFade: options.onFade } : {}) };
     }
 
     /**
      * 公共记忆（ADR 0016）：名单里除陌生人档以外的人有线索时查（ADR 0017，线索由调用方判断），去掉他自己的片段。
      * 只要事实（带 document_id 才分得出是谁的），不要整合过的观察（可能混着他自己的事）。
      * 每条标出是和谁聊的（ADR 0017）：people 是整个名单，document_id 的哈希对回称呼；日记标「你的日记」。
-     * window：问的是某一天（people.ts 的 askedDay）
+     * window：问的是某一天（people.ts 的 askedDay）；fade 同 recall
      */
     async recallCommon(
-        contact: NamedContact, chat: ChatMessage[], now: Date, people: readonly NamedContact[], window?: { start: Date; end: Date },
+        contact: NamedContact, chat: ChatMessage[], now: Date, people: readonly NamedContact[], window?: { start: Date; end: Date }, fade: FadeOptions = {},
     ): Promise<string | undefined> {
         if (!this.#options.common || !knowsPeople(contact.tier)) return undefined;
         const stored = readJsonOr<Partial<CommonState>>(join(this.#options.dir, 'common.json'), {}, message => this.#options.log(message));
@@ -448,6 +475,7 @@ export class LongTermMemory {
             header: `[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和${contact.name}聊的，用不上就别提）]`,
             limit: SHARED_RECALLED,
             now,
+            fade: this.#fade(chat, fade),
             source: r => {
                 const id = r.document_id ?? '';
                 if (id.startsWith(DIARY_PREFIX)) return '你的日记';
@@ -502,7 +530,7 @@ export class LongTermMemory {
             const entry = { content: cached?.content, fetchedAt: cached?.fetchedAt ?? 0, fetching: true };
             this.#relationship.set(key, entry);
             this.#options.api.getMentalModel(this.commonBankId(), this.#personModelId(person))
-                .then(model => { entry.content = model?.content?.trim() || undefined; })
+                .then(model => { entry.content = withoutMark(model?.content ?? '') || undefined; })
                 .catch(error => this.#options.log(`[${person.qq}] 读取「她眼中的${person.name}」失败：${error instanceof Error ? error.message : String(error)}`))
                 .finally(() => { entry.fetchedAt = this.#now(); entry.fetching = false; });
         }
@@ -524,7 +552,7 @@ export class LongTermMemory {
             const entry = { content: cached?.content, fetchedAt: cached?.fetchedAt ?? 0, fetching: true };
             this.#relationship.set(key, entry);
             this.#options.api.getMentalModel(state.bankId, RELATIONSHIP_MODEL_ID)
-                .then(model => { entry.content = model?.content?.trim() || undefined; })
+                .then(model => { entry.content = withoutMark(model?.content ?? '') || undefined; })
                 .catch(error => this.#options.log(`[${contact.qq}] 读取关系概况失败：${error instanceof Error ? error.message : String(error)}`))
                 .finally(() => { entry.fetchedAt = this.#now(); entry.fetching = false; });
         }
@@ -586,19 +614,22 @@ function onDay(result: RecallResult, start: Date, end: Date): boolean {
     return !Number.isNaN(time) && time >= start.getTime() && time < end.getTime();
 }
 
-/** 召回请求：事实、经历、观察都要，有观察时不再单独返回它覆盖了的事实 */
+/**
+ * 召回请求：事实、经历、观察都要，有观察时不再单独返回它覆盖了的事实。
+ * 带上每条的实体名和观察背后的事实（ADR 0018：一提就想起、被提过几次、重要度）；想不起来的要筛掉，比以前多取一些
+ */
 function recallRequest(query: string, now: Date, window?: { start: Date; end: Date }): RecallRequest {
     return {
         query,
         types: ['world', 'experience', 'observation'],
         prefer_observations: true,
         budget: 'low',
-        max_tokens: 600,
+        max_tokens: RECALL_TOKENS,
         // 带本机时区：「今天」「昨天」按本地的日历日算
         query_timestamp: localIso(now),
         tags: TAGS,
         tags_match: 'all_strict',
-        include: { entities: null },
+        include: { entities: { max_tokens: 1 }, source_facts: { max_tokens: 4000 } },
         ...(window ? { temporal_window: { start: localIso(window.start), end: localIso(window.end) } } : {}),
     };
 }
@@ -619,29 +650,61 @@ export function secondPerson(text: string, char: string): string {
 
 export const RECALLED_HEADER ='[你们以前聊过的事（从记忆里想起来的，只作参考；和最近的聊天对不上时以最近的为准，用不上就别提）]';
 
-/** 召回结果整理成一段：标题默认是自己的记忆（RECALLED_HEADER），最多 limit 条（默认 MAX_RECALLED） */
+/** 标了「记不太清了」时标题里加的一句（ADR 0018 决策 1） */
+export const VAGUE_NOTE = '标了「记不太清了」的只记得个大概，说的时候可以说「好像」「记不太清了」，不要补细节';
+
+/** 记忆变淡（ADR 0018）：他这次说的话、不算线索的名字；onFade 拿到这一次各几条（日志用） */
+export interface FadeRequest {
+    heard: string;
+    ignore: readonly string[];
+    onFade?: (stats: FadeStats) => void;
+}
+
+/**
+ * 召回结果整理成一段：标题默认是自己的记忆（RECALLED_HEADER），最多 limit 条（默认 MAX_RECALLED）。
+ * 传了 fade 和 now 时先按记得多清楚筛（ADR 0018）：想不起来的不放，记个大概的标「记不太清了」，标题加一句 VAGUE_NOTE
+ */
 export function formatRecalled(
     results: RecallResult[],
-    options: { header?: string; limit?: number; now?: Date; source?: (result: RecallResult) => string | undefined } = {},
+    options: { header?: string; limit?: number; now?: Date; source?: (result: RecallResult) => string | undefined; fade?: FadeRequest } = {},
 ): string | undefined {
     const valid = (iso: string | null | undefined) => {
         const date = iso ? new Date(iso) : undefined;
         return date && !Number.isNaN(date.getTime()) ? date : undefined;
     };
     const day = (date: Date) => `${date.getMonth() + 1}月${date.getDate()}日`;
-    const lines = results.slice(0, options.limit ?? MAX_RECALLED).map(r => {
+    const { fade, now } = options;
+    const judged = results.map(r => ({ r, clarity: fade && now ? clarity(r, { now, heard: fade.heard, ignore: fade.ignore }) : 'lasting' as Clarity }));
+    const shown = judged.filter(item => item.clarity !== 'forgotten').slice(0, options.limit ?? MAX_RECALLED);
+    if (fade) {
+        fade.onFade?.({
+            vague: shown.filter(item => item.clarity === 'vague').length,
+            recognized: shown.filter(item => item.clarity === 'recognized').length,
+            forgotten: judged.length - judged.filter(item => item.clarity !== 'forgotten').length,
+        });
+    }
+    const lines = shown.map(({ r, clarity }) => {
         // 计划的事（ADR 0017）：发生在现在之后的，日期写说起的那天，括号里写「打算 几号」
-        const planned = r.type !== 'observation' && options.now ? valid(r.occurred_start) : undefined;
-        const future = planned && planned.getTime() > options.now!.getTime() ? planned : undefined;
+        const planned = r.type !== 'observation' && now ? valid(r.occurred_start) : undefined;
+        const future = planned && planned.getTime() > now!.getTime() ? planned : undefined;
         // 观察（多条事实整合的）的 occurred_start 是来源里最早的日期，「现在戒糖了」会被标成最早那天：用最近一次被提到的时间
         const when = future ? valid(r.mentioned_at)
             : r.type === 'observation' ? valid(r.mentioned_at) ?? valid(r.occurred_start) : valid(r.occurred_start) ?? valid(r.mentioned_at);
-        const notes = [options.source?.(r), future ? `打算 ${day(future)}` : undefined].filter(Boolean);
+        const faded = clarity === 'vague' ? '记不太清了' : clarity === 'recognized' ? '他一提才想起来，记不太清了' : undefined;
+        const notes = [options.source?.(r), future ? `打算 ${day(future)}` : undefined, faded].filter(Boolean);
         const prefix = `${when ? day(when) : ''}${notes.length ? `（${notes.join('，')}）` : ''}`;
-        // 事实后面常带「 | When: … | Involving: …」，日期已经写在前面了
-        const text = r.text.split(' | ')[0]!.trim();
+        // 事实后面常带「 | When: … | Involving: …」，日期已经写在前面了；【重要】是给我们看的记号
+        const text = withoutMark(r.text.split(' | ')[0]!);
         return `- ${prefix ? `${prefix}：` : ''}${text.length > 200 ? `${text.slice(0, 200)}…` : text}`;
     });
     if (lines.length === 0) return undefined;
-    return `${options.header ?? RECALLED_HEADER}\n${lines.join('\n')}`;
+    const header = options.header ?? RECALLED_HEADER;
+    const vague = shown.some(item => item.clarity === 'vague' || item.clarity === 'recognized');
+    return `${vague ? header.replace(/\]$/, `；${VAGUE_NOTE}]`) : header}\n${lines.join('\n')}`;
+}
+
+/** 他这次说的话：她上次回复之后他发的几条（一提就想起用） */
+export function heardSinceReply(chat: readonly Pick<ChatMessage, 'role' | 'content'>[]): string {
+    const lastReply = chat.findLastIndex(m => m.role === 'assistant');
+    return chat.slice(lastReply + 1).filter(m => m.role === 'user').map(m => m.content).join('\n');
 }

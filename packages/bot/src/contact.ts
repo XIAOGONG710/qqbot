@@ -2,6 +2,7 @@
 // 出口检查带上聊天记录里她最近几次回复和对方最近几条，查说话的毛病（ADR 0014，配置 speechCheck）。
 // 她自己的日子（ADR 0015，配置 herDays）：时间块里状态行下面加今天的心情，聊到书或她正在看书时再加「在读的书」，那一轮出口检查顺带查进度数字。
 // 她认识的人（ADR 0016）：他或她最近的话里提到名单里另一个人的称呼（那人写了「别人提起时」），召回之后放一段介绍。
+// 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
 import { dirname, join } from 'node:path';
@@ -10,6 +11,7 @@ import { reviewReply } from './exit-check.ts';
 import type { ChatHistory, StoredMessage } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
+import type { FadeStats } from './memory/fading.ts';
 import { initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from './memory/long-term.ts';
 import { buildPrompt, type OpenAIMessage, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
@@ -29,6 +31,12 @@ const DAY_MS = 86_400_000;
 
 /** 召回整理出来的一段有几条（第一行是标题） */
 const countLines = (text: string) => text.split('\n').length - 1;
+
+/** 记忆变淡（ADR 0018）各几条，写日志用：「记个大概 2，一提想起 1，想不起来 3」，都是 0 就是空的 */
+const fadeParts = (stats: FadeStats | undefined) => (stats
+    ? ([['记个大概', stats.vague], ['一提想起', stats.recognized], ['想不起来', stats.forgotten]] as const).filter(([, n]) => n).map(([label, n]) => `${label} ${n}`)
+    : []);
+const fadeNote = (stats: FadeStats | undefined) => (fadeParts(stats).length ? `（${fadeParts(stats).join('，')}）` : '');
 
 export interface TierCard {
     character: Character;
@@ -131,29 +139,34 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const day = cue === ASKS_PAST ? askedDay(chat, time, schedule ?? herSchedule) : undefined;
             // 记忆里她的名字换成「你」（ADR 0018 决策 4）
             const you = (text: string | undefined) => text && secondPerson(text, character.name);
+            // 记忆会变淡（ADR 0018）：她和名单里的称呼不算「一提就想起」的线索；各几条记下来写日志（0 是他的，1 是公共的，之后是提起的人）
+            const ignore = [character.name, contact.name, ...(options.contacts ?? []).map(c => c.name)];
+            const faded: (FadeStats | undefined)[] = [];
+            const fade = (i: number) => ({ ignore, onFade: (stats: FadeStats) => { faded[i] = stats; } });
             const [recalled, freshCommon, ...aboutPeople] = (await Promise.all([
-                remembers ? memory.recall(contact, chat, time, recallOptions) : undefined,
-                remembers && cue ? memory.recallCommon(contact, chat, time, options.contacts ?? [contact], day) : undefined,
-                ...people.map(person => (remembers
+                remembers ? memory.recall(contact, chat, time, { ...recallOptions, ...fade(0) }) : undefined,
+                remembers && cue ? memory.recallCommon(contact, chat, time, options.contacts ?? [contact], day, fade(1)) : undefined,
+                ...people.map((person, i) => (remembers
                     ? memory.recall(person, chat, time, {
-                        ...recallOptions, limit: PERSON_RECALLED, header: `[你和${person.name}聊过的事（从记忆里想起来的，只作参考）]`,
+                        ...recallOptions, ...fade(i + 2), limit: PERSON_RECALLED, header: `[你和${person.name}聊过的事（从记忆里想起来的，只作参考）]`,
                     })
                     : undefined)),
             ])).map(you);
             const relationship = remembers ? you(memory.relationship(contact)) : undefined;
-            if (recalled) log(`召回长期记忆 ${countLines(recalled)} 条`);
+            if (recalled || faded[0]?.forgotten) log(`召回长期记忆 ${recalled ? countLines(recalled) : 0} 条${fadeNote(faded[0])}`);
             let common = freshCommon;
+            const commonNote = [`线索：${cue}`, fadeParts(faded[1]).join('，')].filter(Boolean).join('；');
             if (common) {
                 lastCommon = { text: common, at: time.getTime() };
-                log(`召回公共记忆 ${countLines(common)} 条（线索：${cue}）`);
+                log(`召回公共记忆 ${countLines(common)} 条（${commonNote}）`);
             } else if (cue) {
-                log(`公共记忆没想起什么（线索：${cue}）`);
+                log(`公共记忆没想起什么（${commonNote}）`);
             } else if (remembers && !initiate && lastCommon && stillInMind(chat, lastCommon.at, time.getTime())) {
                 common = lastCommon.text;
                 log(`公共记忆沿用刚才想起的 ${countLines(common)} 条`);
             }
             if (people.length) {
-                log(`提起了 ${people.map((person, i) => `${person.name}：介绍${aboutPeople[i] ? ` + 召回 ${countLines(aboutPeople[i])} 条` : ''}`).join('；')}`);
+                log(`提起了 ${people.map((person, i) => `${person.name}：介绍${aboutPeople[i] ? ` + 召回 ${countLines(aboutPeople[i])} 条${fadeNote(faded[i + 2])}` : ''}`).join('；')}`);
             }
             // 她对他的印象（ADR 0017）放在介绍下面、他的私人记忆上面
             const impressions = people.map(person => (remembers ? you(memory.impression(person)) : undefined));

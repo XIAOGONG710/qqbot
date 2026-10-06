@@ -5,10 +5,10 @@ import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes } from '../src/memory/episodes.ts';
-import { mentalModelUpdateBody, retainBody, type HindsightApi, type MemoryItem, type MentalModel, type RecallRequest, type RecallResult } from '../src/memory/hindsight.ts';
+import { HindsightClient, mentalModelUpdateBody, retainBody, type HindsightApi, type MemoryItem, type MentalModel, type RecallRequest, type RecallResult } from '../src/memory/hindsight.ts';
 import {
     bankMissions, commonBankMissions, formatRecalled, initiateQuery, LongTermMemory, MAX_QUERY_CHARS, MAX_RECALLED, OPEN_EPISODE_STEP, recallQuery,
-    RELATIONSHIP_MODEL, SHARED_RECALLED, DAY_RECALL_TOKENS, secondPerson,
+    RELATIONSHIP_MODEL, SHARED_RECALLED, DAY_RECALL_TOKENS, RECALL_TOKENS, secondPerson,
 } from '../src/memory/long-term.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
@@ -248,7 +248,7 @@ describe('长期记忆：写入', () => {
             assert.equal(calls.retain[0]!.context, 'QQ 私聊：林梦瑶（AI 扮演）和阿明');
             assert.equal(calls.retain[0]!.timestamp, localIso(new Date(T0)));
             const mission = (calls.putBank[0] as { retain_mission: string }).retain_mission;
-            for (const rule of ['林梦瑶是 AI 扮演的虚拟角色', '不能记成阿明的事', '写成绝对日期', '铁锅（阿明的组长）', '否定', '不写「用户」']) {
+            for (const rule of ['林梦瑶是 AI 扮演的虚拟角色', '不能记成阿明的事', '写成绝对日期', '铁锅（阿明的组长）', '否定', '不写「用户」', '开头加「【重要】」']) {
                 assert.ok(mission.includes(rule), rule);
             }
         } finally {
@@ -359,6 +359,50 @@ describe('长期记忆：召回与关系概况', () => {
         }
     });
 
+    test('记忆变淡（ADR 0018）：请求带实体名和背后的事实、多取一些；他这次的话里有实体名就想起，名单里的称呼不算', async () => {
+        const now = T0 + 24 * 60 * MIN;
+        const old = new Date(now - 45 * 24 * 60 * MIN).toISOString();
+        const results: RecallResult[] = [
+            { id: '1', text: '阿明去了海底捞', occurred_start: old, entities: ['阿明', '海底捞'] },
+            { id: '2', text: '阿明感冒了', occurred_start: old, entities: ['阿明'] },
+        ];
+        const { memory, calls, cleanup } = setup({ recall: results }, now);
+        try {
+            await memory.sync(A, names, [msg(-200, 'user', '很久以前')]);
+            let stats;
+            const chat = [msg(0, 'assistant', '在呢'), msg(1, 'user', '阿明今天又想吃海底捞了')];
+            const text = await memory.recall(A, chat, new Date(now), { ignore: ['林梦瑶', '阿明'], onFade: s => { stats = s; } });
+            assert.match(text!, /（他一提才想起来，记不太清了）：阿明去了海底捞/);
+            assert.doesNotMatch(text!, /感冒/);
+            assert.deepEqual(stats, { vague: 0, recognized: 1, forgotten: 1 });
+            assert.deepEqual(calls.recall[0]!.include, { entities: { max_tokens: 1 }, source_facts: { max_tokens: 4000 } });
+            assert.equal(calls.recall[0]!.max_tokens, RECALL_TOKENS);
+            assert.deepEqual(check(calls.recall[0], root('recall')), []);
+            // 她上次回复之前说的不算
+            const before = [msg(0, 'user', '海底捞'), msg(1, 'assistant', '嗯'), msg(2, 'user', '在吗')];
+            assert.equal(await memory.recall(A, before, new Date(now), { ignore: [] }), undefined);
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('Hindsight 客户端：观察背后的事实按 id 对上原文', async () => {
+        const original = globalThis.fetch;
+        globalThis.fetch = (async () => new Response(JSON.stringify({
+            results: [
+                { id: 'o1', text: '阿明在准备面试', type: 'observation', source_fact_ids: ['f1', 'f2', 'f9'] },
+                { id: 'w1', text: '阿明不吃香菜', type: 'world' },
+            ],
+            source_facts: { f1: { id: 'f1', text: '【重要】阿明 10月9日面试字节' }, f2: { id: 'f2', text: '阿明在刷题' } },
+        }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+        try {
+            const results = await new HindsightClient('http://127.0.0.1:1', 1000).recall('b', {} as RecallRequest);
+            assert.deepEqual(results.map(r => r.sources), [['【重要】阿明 10月9日面试字节', '阿明在刷题'], undefined], '对不上的 id 跳过');
+        } finally {
+            globalThis.fetch = original;
+        }
+    });
+
     test('关系概况：第一次在后台读，读到之后放进提示；内容为空时不放', async () => {
         const { memory, calls, cleanup } = setup({ mentalModel: { id: 'relationship', content: '两人关系稳定，阿明在等面试结果。' } });
         try {
@@ -402,6 +446,7 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             assert.deepEqual(check(retainBody(item), root('retain')), []);
             assert.deepEqual(check(commonBankMissions('林梦瑶'), root('bank')), []);
             assert.match((calls.putBank[1] as { retain_mission: string }).retain_mission, /每条写清是在和谁的私聊里/);
+            assert.match((calls.putBank[1] as { retain_mission: string }).retain_mission, /开头加「【重要】」/, '重要度（ADR 0018）');
             assert.ok(logs.some(l => l.includes('记忆：公共记忆库 linmengyao-common 已写入 mission')));
             assert.ok(logs.some(l => l.includes(`记忆（公共）：片段 ep-${T0}`)));
 

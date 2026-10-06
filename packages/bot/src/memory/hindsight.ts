@@ -51,7 +51,11 @@ export interface RecallRequest {
     query_timestamp: string;
     tags: string[];
     tags_match: 'all_strict';
-    include: { entities: null };
+    /**
+     * entities：每条结果的实体名（ADR 0018 一提就想起），要开着才有；实体的总结不用，预算给最小。
+     * source_facts：观察背后的事实（ADR 0018 被提过几次、重要度）；只给总预算，按条限的话整条事实会被丢掉
+     */
+    include: { entities: { max_tokens: number } | null; source_facts?: { max_tokens: number } };
     /** 时间检索用的时间窗：代替从查询文字里解析日期，只加权、不过滤（ISO，带时区） */
     temporal_window?: { start: string; end: string };
 }
@@ -61,8 +65,15 @@ export interface RecallResult {
     text: string;
     type?: string | null;
     occurred_start?: string | null;
+    occurred_end?: string | null;
     mentioned_at?: string | null;
     document_id?: string | null;
+    /** 实体名（请求开了 include.entities 才有） */
+    entities?: string[] | null;
+    /** 观察背后的事实 id（请求开了 include.source_facts 才有） */
+    source_fact_ids?: string[] | null;
+    /** 观察背后事实的原文：客户端按 source_fact_ids 从响应的 source_facts 里对上的，不是 Hindsight 的字段 */
+    sources?: string[];
 }
 
 export interface MentalModelRequest {
@@ -123,8 +134,13 @@ export class HindsightClient implements HindsightApi {
     }
 
     async recall(bankId: string, request: RecallRequest, timeoutMs?: number): Promise<RecallResult[]> {
-        const data = await this.#request<{ results?: RecallResult[] }>('POST', `${this.#bank(bankId)}/memories/recall`, request, timeoutMs);
-        return data.results ?? [];
+        const data = await this.#request<{ results?: RecallResult[]; source_facts?: Record<string, { text?: string }> | null }>(
+            'POST', `${this.#bank(bankId)}/memories/recall`, request, timeoutMs,
+        );
+        const facts = data.source_facts ?? {};
+        return (data.results ?? []).map(result => (result.source_fact_ids?.length
+            ? { ...result, sources: result.source_fact_ids.flatMap(id => (facts[id]?.text ? [facts[id].text] : [])) }
+            : result));
     }
 
     async getMentalModel(bankId: string, id: string): Promise<MentalModel | undefined> {

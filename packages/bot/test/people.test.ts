@@ -187,6 +187,42 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         }
     });
 
+    test('公共记忆会变淡（ADR 0018）：日志写各几条，提示词里标「记不太清了」', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
+        const hindsight: SimHindsight = {
+            putBank: async () => {},
+            retain: async () => {},
+            recall: async () => [
+                { id: '1', text: '鸽鸽去杭州出差', document_id: 'other:ep-1', occurred_start: '2026-08-27T12:00:00+08:00', entities: ['鸽鸽', '杭州'] },
+                { id: '2', text: '鸽鸽换了工作', document_id: 'other:ep-2', occurred_start: '2026-08-20T12:00:00+08:00', entities: ['鸽鸽'] },
+                { id: '3', text: '鸽鸽去看了演唱会', document_id: 'other:ep-3', occurred_start: '2026-09-25T12:00:00+08:00' },
+            ],
+            getMentalModel: async () => undefined,
+            createMentalModel: async () => {},
+            updateMentalModel: async () => {},
+            activeOperations: async () => [],
+            operationStatus: async () => 'completed',
+            refreshMentalModel: async () => 'op-1',
+            listEntities: async () => ['杭州'],
+            deleteBank: async () => {},
+        };
+        const prompts: OpenAIMessage[][] = [];
+        try {
+            const result = await runScenario(scenario({ steps: [{ say: '我下周去杭州玩' }] }), {
+                runId: 't', dataDir: dir, card, llm, prompt, hindsight, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { prompts.push(messages); return '好呀'; },
+            });
+            const say = result.steps.find(step => step.kind === 'say')!;
+            assert.ok(say.logs.includes('召回公共记忆 2 条（线索：杭州；记个大概 1，一提想起 1，想不起来 1）'), say.logs.join('\n'));
+            const text = prompts[0]!.map(m => m.content).join('\n');
+            assert.match(text, /- 8月27日（他一提才想起来，记不太清了）：鸽鸽去杭州出差/);
+            assert.match(text, /- 9月25日（记不太清了）：鸽鸽去看了演唱会/);
+            assert.doesNotMatch(text, /换了工作/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('刚想起来的公共记忆，接下来两轮没有线索也沿用（ADR 0017）', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
         const hindsight: SimHindsight = {
