@@ -7,7 +7,9 @@ import { parseAppConfig, type BotConfig, type Contact } from '../src/config.ts';
 import type { Schedule } from '../src/schedule.ts';
 import { loadTierCard } from '../src/contact.ts';
 import type { MemoryItem } from '../src/memory/hindsight.ts';
-import { askedDay, COMMON_LINGER_MS, commonCue, describePerson, knowsPeople, MAX_MENTIONED, mentionedPeople, stillInMind } from '../src/people.ts';
+import {
+    askedDay, askedWindow, COMMON_LINGER_MS, commonCue, describePerson, holidayWords, knowsPeople, MAX_MENTIONED, mentionedPeople, stillInMind,
+} from '../src/people.ts';
 import type { OpenAIMessage } from '../src/prompt.ts';
 import { runChecks, runScenario, type SimHindsight } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
@@ -226,6 +228,35 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         }
     });
 
+    test('问「国庆过得怎么样」（ADR 0018）：卡上作息的假期名算线索，召回带那个假期的时间窗', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
+        const requests: { temporal_window?: { start: string; end: string } }[] = [];
+        const hindsight: SimHindsight = {
+            putBank: async () => {},
+            retain: async () => {},
+            recall: async (_bank, request) => { requests.push(request); return []; },
+            getMentalModel: async () => undefined,
+            createMentalModel: async () => {},
+            updateMentalModel: async () => {},
+            activeOperations: async () => [],
+            operationStatus: async () => 'completed',
+            refreshMentalModel: async () => 'op-1',
+            listEntities: async () => [],
+            deleteBank: async () => {},
+        };
+        try {
+            const result = await runScenario(scenario({ steps: [{ say: '国庆过得怎么样' }] }), {
+                runId: 't', dataDir: dir, card, llm, prompt, hindsight, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => (isPromises(messages) ? '{"add":[],"resolved":[]}' : '还行'),
+            });
+            const say = result.steps.find(step => step.kind === 'say')!;
+            assert.ok(say.logs.includes('公共记忆没想起什么（线索：问她过去的事）'), say.logs.join('\n'));
+            assert.deepEqual(requests.find(r => r.temporal_window)?.temporal_window, { start: '2026-10-01T00:00:00+08:00', end: '2026-10-08T02:00:00+08:00' });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('刚想起来的公共记忆，接下来两轮没有线索也沿用（ADR 0017）', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
         const hindsight: SimHindsight = {
@@ -317,6 +348,42 @@ describe('公共记忆的线索（ADR 0017）', () => {
         assert.deepEqual(askedDay([he('那昨天呢')], late, schedule), { start: new Date(2026, 9, 7), end: new Date(2026, 9, 8, 2) });
         // 过了 02:00 就是新的一天
         assert.deepEqual(askedDay([he('你今天干嘛了')], new Date(2026, 9, 9, 9), schedule), { start: new Date(2026, 9, 9), end: new Date(2026, 9, 10, 2) });
+    });
+
+    test('问的是哪段时间（ADR 0018 决策 3）：上周、这周、上个月、作息里的假期；某一天优先，将来的不算', () => {
+        const schedule = {
+            sleep: '02:00',
+            holidays: [{ name: '中秋节', start: '2026-09-25', end: '2026-09-27' }, { name: '国庆节', start: '2026-10-01', end: '2026-10-07' }],
+        } as Schedule;
+        const now = new Date(2026, 9, 14, 21); // 周三
+        const window = (...said: string[]) => {
+            const w = askedWindow(said.map(he), now, schedule);
+            return w && [w.start.toDateString(), w.end.toLocaleString('zh-CN'), w.period];
+        };
+        const end = (y: number, m: number, d: number) => new Date(y, m, d, 2).toLocaleString('zh-CN');
+        assert.deepEqual(window('你上周忙啥了'), [new Date(2026, 9, 5).toDateString(), end(2026, 9, 12), 'week']);
+        assert.deepEqual(window('这周过得怎么样'), [new Date(2026, 9, 12).toDateString(), end(2026, 9, 19), 'week']);
+        assert.deepEqual(window('上个月都干嘛了'), [new Date(2026, 8, 1).toDateString(), end(2026, 9, 1), 'month']);
+        assert.deepEqual(window('国庆过得怎么样'), [new Date(2026, 9, 1).toDateString(), end(2026, 9, 8), 'holiday']);
+        assert.deepEqual(window('中秋节干嘛了'), [new Date(2026, 8, 25).toDateString(), end(2026, 8, 28), 'holiday']);
+        assert.deepEqual(window('放假的时候你去哪了'), [new Date(2026, 9, 1).toDateString(), end(2026, 9, 8), 'holiday'], '只说放假：最近开始的那个');
+        assert.deepEqual(window('你昨天干嘛了'), [new Date(2026, 9, 13).toDateString(), end(2026, 9, 14), undefined]);
+        assert.equal(window('下周打算干嘛'), undefined);
+        assert.equal(window('最近在忙什么'), undefined);
+        assert.deepEqual(window('上周忙啥', '算了，昨天呢'), [new Date(2026, 9, 13).toDateString(), end(2026, 9, 14), undefined], '看最后一句');
+        // askedDay 只认某一天
+        assert.equal(askedDay([he('你上周忙啥了')], now, schedule), undefined);
+    });
+
+    test('假期的名字也算问她过去的事（ADR 0018 决策 3）', () => {
+        const schedule = { holidays: [{ name: '国庆节', start: '2026-10-01', end: '2026-10-07' }] } as unknown as Schedule;
+        assert.deepEqual(holidayWords(schedule), ['国庆节', '国庆']);
+        assert.deepEqual(holidayWords(undefined), []);
+        assert.equal(commonCue([he('国庆过得怎么样')], me, entities, '林梦瑶'), undefined, '没给假期名');
+        assert.equal(commonCue([he('国庆过得怎么样')], me, entities, '林梦瑶', holidayWords(schedule)), '问她过去的事');
+        assert.equal(commonCue([he('那国庆呢')], me, entities, '林梦瑶', holidayWords(schedule)), '问她过去的事');
+        assert.equal(commonCue([he('你上周忙啥了')], me, entities, '林梦瑶'), '问她过去的事');
+        assert.equal(commonCue([he('这周过得怎么样')], me, entities, '林梦瑶'), '问她过去的事');
     });
 
     test('刚想起来的还在不在：之后她回了两次以内（连发算一次）、10 分钟以内', () => {

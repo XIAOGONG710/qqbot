@@ -19,8 +19,9 @@ const llm: BotConfig['llm'] = {
     promptPostProcessing: '', extraBody: {},
 };
 const prompt: BotConfig['prompt'] = { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true };
-/** 写日记的请求（ADR 0017）：假模型单独回，不算进聊天的生成 */
-const isDiary = (messages: OpenAIMessage[]) => messages[0]?.role === 'system' && messages[0].content.includes('睡前在写今天');
+/** 写日记的请求（ADR 0017），也算上周记、阶段总结（ADR 0018）：假模型单独回，不算进聊天的生成 */
+const isDiary = (messages: OpenAIMessage[]) => messages[0]?.role === 'system'
+    && (messages[0].content.includes('睡前在写今天') || messages[0].content.includes('的日记，写一段小结'));
 /** 抽她答应的事的请求（ADR 0018）：同上 */
 const isPromises = (messages: OpenAIMessage[]) => messages[0]?.role === 'system' && messages[0].content.includes('答应过的事」');
 
@@ -124,12 +125,17 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             assert.ok(chat.every(m => m.time.startsWith('2026-10-05') || m.time.startsWith('2026-10-06')));
 
             const isDiaryItem = (item: MemoryItem) => item.metadata?.source === 'diary';
-            assert.deepEqual(calls.retainBanks.filter((_, i) => !isDiaryItem(calls.retain[i]!)), [result.bankId, 'sim-test-common'], '跳一天后前一段结束，写进记忆（自己的 bank 和公共库，ADR 0016）');
+            // 她自己写的：日记、周记、阶段总结（ADR 0018）
+            const isHers = (item: MemoryItem) => ['diary', 'week', 'phase'].includes(item.metadata?.source ?? '');
+            assert.deepEqual(calls.retainBanks.filter((_, i) => !isHers(calls.retain[i]!)), [result.bankId, 'sim-test-common'], '跳一天后前一段结束，写进记忆（自己的 bank 和公共库，ADR 0016）');
             // 日记（ADR 0017）：起点补写前 3 天，跳过 10-05 之后写 10-05 那篇，都进公共库；10-05 那篇的材料里有那天的聊天
             assert.deepEqual(calls.retain.filter(isDiaryItem).map(item => item.document_id), ['diary:2026-10-02', 'diary:2026-10-03', 'diary:2026-10-04', 'diary:2026-10-05']);
-            assert.ok(calls.retainBanks.every((bank, i) => !isDiaryItem(calls.retain[i]!) || bank === 'sim-test-common'));
-            assert.match(diaries[3]![1]!.content, /\[和阿明\]\n.*阿明：一/);
-            assert.match(diaries[0]![1]!.content, /今天没和名单里的人聊天/);
+            assert.ok(calls.retainBanks.every((bank, i) => !isHers(calls.retain[i]!) || bank === 'sim-test-common'));
+            // 跳到 10-06（周二）：上周 9-28 到 10-04 有 10-02 到 10-04 三篇日记，写周记
+            assert.deepEqual(calls.retain.filter(item => item.metadata?.source === 'week').map(item => item.document_id), ['week:2026-09-28']);
+            const daily = diaries.filter(messages => messages[0]!.content.includes('睡前在写今天'));
+            assert.match(daily[3]![1]!.content, /\[和阿明\]\n.*阿明：一/);
+            assert.match(daily[0]![1]!.content, /今天没和名单里的人聊天/);
             assert.equal(calls.refreshed, 1);
             assert.equal(result.steps[10]!.relationship, '关系稳定');
             assert.deepEqual(calls.deleted, [result.bankId, 'sim-test-common']);

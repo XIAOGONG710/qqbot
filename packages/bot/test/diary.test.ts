@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
@@ -53,7 +53,12 @@ describe('她的日记（ADR 0017）', () => {
     test('补写：她这一天之前的 3 天，从早到晚；写过的不再写；那天的聊天按她的一天（到 02:00）算；陌生人档不算', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-'));
         const retained: { date: string; text: string }[] = [];
-        const memory = { retainDiary: async (date: string, _day: Date, text: string) => { retained.push({ date, text }); return true; } } as unknown as LongTermMemory;
+        const summaries: { id: string; title: string; text: string }[] = [];
+        const memory = {
+            retainDiary: async (date: string, _day: Date, text: string) => { retained.push({ date, text }); return true; },
+            retainSummary: async (id: string, _day: Date, title: string, text: string) => { summaries.push({ id, title, text }); return true; },
+            readDiary: async () => undefined,
+        } as unknown as LongTermMemory;
         const materials: string[] = [];
         const logs: string[] = [];
         const contacts: Contact[] = [{ qq: 1, name: '宝宝', tier: 'boyfriend' }, { qq: 2, name: '路人', tier: 'stranger' }];
@@ -76,6 +81,9 @@ describe('她的日记（ADR 0017）', () => {
             assert.doesNotMatch(materials.join('\n'), /路人/);
             assert.ok(logs.some(l => l === '她的日记：2026-10-06 已写（3 字，聊过天的 1 人），存进公共记忆'));
             assert.equal(DIARY_BACKFILL_DAYS, 3);
+            // 上周（9-28 到 10-04）有 10-04 这一篇：写周记（ADR 0018），9-21 那周一篇都没有，不写
+            assert.deepEqual(summaries, [{ id: 'week:2026-09-28', title: '林梦瑶的周记（9月28日–10月4日）', text: '第4篇' }]);
+            assert.equal(materials[3], '[10月4日 周日]\n第1篇');
 
             await writer.catchUp(new Date('2026-10-08T03:00:00+08:00'));
             assert.deepEqual(retained.map(r => r.date).slice(3), ['2026-10-07'], '写过的不再写');
@@ -85,11 +93,63 @@ describe('她的日记（ADR 0017）', () => {
         }
     });
 
+    test('周记、阶段总结（ADR 0018）：本地没有原文的从公共记忆读回，读不到下次再写；国庆结束后写总结；原文本地存一份', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-'));
+        // 以前（ADR 0018 之前）写过 10-03、10-04，本地只记了字数
+        writeFileSync(join(dir, 'diary.json'), JSON.stringify({ written: { '2026-10-03': 3, '2026-10-04': 3, '2026-10-05': 3, '2026-10-06': 3 } }));
+        let readFails = true;
+        const read: string[] = [];
+        const summaries: { id: string; title: string }[] = [];
+        const memory = {
+            retainDiary: async () => true,
+            retainSummary: async (id: string, _day: Date, title: string) => { summaries.push({ id, title }); return true; },
+            readDiary: async (date: string) => {
+                read.push(date);
+                if (readFails) throw new Error('fetch failed');
+                return `${date} 的日记`;
+            },
+        } as unknown as LongTermMemory;
+        const prompts: string[] = [];
+        const logs: string[] = [];
+        const writer = diaryWriter({
+            sources, contacts: [], memory, dir, log: m => logs.push(m), history: { load: () => [] },
+            generate: async messages => { prompts.push(messages[1]!.content as string); return '写好了'; },
+        });
+        try {
+            // 10-08 中午：补写 10-07 的日记；上周（9-28 到 10-04）的周记要读回 10-03、10-04，读不到这次就停下
+            await writer.catchUp(new Date('2026-10-08T12:00:00+08:00'));
+            assert.ok(logs.some(l => l.includes('从公共记忆读 2026-10-03 的日记失败，周记下次再写')));
+            assert.deepEqual(summaries, []);
+            readFails = false;
+            await writer.catchUp(new Date('2026-10-08T12:00:00+08:00'));
+            assert.deepEqual(summaries, [
+                { id: 'week:2026-09-28', title: '林梦瑶的周记（9月28日–10月4日）' },
+                { id: 'phase:国庆节:2026-10-07', title: '林梦瑶的国庆节总结（10月1日–10月7日）' },
+            ]);
+            assert.equal(prompts.at(-2), '[10月3日 周六]\n2026-10-03 的日记\n\n[10月4日 周日]\n2026-10-04 的日记');
+            // 国庆总结：10-03、10-04 读回过，本地存着；10-05、10-06 也是以前写的，读回；10-07 是这次写的
+            assert.match(prompts.at(-1)!, /^\[10月3日 周六\]\n2026-10-03 的日记\n\n.*\n\n\[10月7日 周三\]\n写好了$/s);
+            const state = JSON.parse(readFileSync(join(dir, 'diary.json'), 'utf8'));
+            assert.deepEqual(state.weeks, { '2026-09-21': 0, '2026-09-28': 3 });
+            assert.deepEqual(state.phases, { '中秋节:2026-09-27': 0, '国庆节:2026-10-07': 3 }, '中秋那几天没有日记，不写');
+            assert.equal(state.texts['2026-10-07'], '写好了');
+            assert.ok(logs.includes('她的周记：2026-09-28 那周已写（3 字，用了 2 篇日记），存进公共记忆'));
+            assert.ok(logs.includes('她的国庆节总结已写（3 字，用了 5 篇日记），存进公共记忆'));
+            // 写过的不再写，也不再读
+            const before = read.length;
+            await writer.catchUp(new Date('2026-10-08T18:00:00+08:00'));
+            assert.equal(summaries.length, 2);
+            assert.equal(read.length, before);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('模型出错、回空的、写进记忆失败：这次停下，不记成写过，下次再写；同一时间只跑一次', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-'));
         let fail: 'model' | 'empty' | 'memory' | undefined = 'model';
         let calls = 0;
-        const memory = { retainDiary: async () => fail !== 'memory' } as unknown as LongTermMemory;
+        const memory = { retainDiary: async () => fail !== 'memory', retainSummary: async () => true, readDiary: async () => undefined } as unknown as LongTermMemory;
         const logs: string[] = [];
         const writer = diaryWriter({
             sources, contacts: [], memory, dir, log: m => logs.push(m), history: { load: () => [] },
@@ -112,7 +172,7 @@ describe('她的日记（ADR 0017）', () => {
             fail = undefined;
             calls = 0;
             await Promise.all([writer.catchUp(now), writer.catchUp(now)]);
-            assert.equal(calls, 3, '两次一起调只跑一次，补 3 天');
+            assert.equal(calls, 4, '两次一起调只跑一次：补 3 天日记，再写刚结束的国庆节总结（ADR 0018）');
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

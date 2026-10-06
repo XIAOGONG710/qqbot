@@ -716,4 +716,96 @@ describe('长期记忆：日记写进公共库（ADR 0017）', () => {
             rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    test('周记、阶段总结（ADR 0018）：document_id、标签、时间是最后那天晚上；mission 写了怎么记', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-'));
+        const { api, calls } = fakeApi();
+        const memory = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: () => {}, common: true });
+        try {
+            assert.equal(await memory.retainSummary('week:2026-09-28', new Date(2026, 9, 4), '林梦瑶的周记（9月28日–10月4日）', '这周……', '林梦瑶', 'week'), true);
+            assert.equal(await memory.retainSummary('phase:国庆节:2026-10-07', new Date(2026, 9, 7), '林梦瑶的国庆节总结（10月1日–10月7日）', '国庆……', '林梦瑶', 'phase'), true);
+            const [week, phase] = calls.retain;
+            assert.equal(week!.document_id, 'week:2026-09-28');
+            assert.deepEqual(week!.tags, ['qq-private', 'week']);
+            assert.equal(week!.content, '林梦瑶的周记（9月28日–10月4日）\n这周……');
+            assert.equal(week!.context, '林梦瑶自己写的周记');
+            assert.match(week!.timestamp, /^2026-10-04T22:00:00/);
+            assert.deepEqual(phase!.tags, ['qq-private', 'phase']);
+            assert.match(phase!.timestamp, /^2026-10-07T22:00:00/);
+            assert.deepEqual(check(retainBody(week!), root('retain')), []);
+            assert.match((calls.putBank[0] as { retain_mission: string }).retain_mission, /还有林梦瑶的周记、假期总结/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('读回以前的日记（ADR 0018 写周记用）：去掉标题行；没有这篇、没开公共库、接口没有这个方法是 undefined', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-'));
+        const { api } = fakeApi();
+        const asked: string[] = [];
+        const withDocs: HindsightApi = {
+            ...api,
+            getDocument: async (bank, id) => { asked.push(`${bank} ${id}`); return id === 'diary:2026-10-04' ? { original_text: '林梦瑶的日记（2026-10-04）\n今天去看了电影。' } : undefined; },
+        };
+        const make = (a: HindsightApi, common = true) => new LongTermMemory({ api: a, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: () => {}, common });
+        try {
+            assert.equal(await make(withDocs).readDiary('2026-10-04'), '今天去看了电影。');
+            assert.deepEqual(asked, ['linmengyao-common diary:2026-10-04']);
+            assert.equal(await make(withDocs).readDiary('2026-10-05'), undefined);
+            assert.equal(await make(withDocs, false).readDiary('2026-10-04'), undefined);
+            assert.equal(await make(api).readDiary('2026-10-04'), undefined);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('Hindsight 客户端读文档：404 是 undefined', async () => {
+        const original = globalThis.fetch;
+        const urls: string[] = [];
+        globalThis.fetch = (async (url: string) => {
+            urls.push(url);
+            return url.endsWith('diary%3A2026-10-04')
+                ? new Response(JSON.stringify({ id: 'diary:2026-10-04', original_text: '正文' }), { status: 200, headers: { 'content-type': 'application/json' } })
+                : new Response('{"detail":"not found"}', { status: 404, headers: { 'content-type': 'application/json' } });
+        }) as typeof fetch;
+        try {
+            const client = new HindsightClient('http://127.0.0.1:1', 1000);
+            assert.deepEqual(await client.getDocument('b', 'diary:2026-10-04'), { id: 'diary:2026-10-04', original_text: '正文' });
+            assert.equal(await client.getDocument('b', 'diary:2026-10-05'), undefined);
+            assert.equal(urls[0], 'http://127.0.0.1:1/v1/default/banks/b/documents/diary%3A2026-10-04');
+        } finally {
+            globalThis.fetch = original;
+        }
+    });
+});
+
+describe('长期记忆：问到某段时间（ADR 0018 决策 3）', () => {
+    test('周记、阶段总结排前面、标出来；按那篇的日子算在不在这段时间里', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-'));
+        const at = (iso: string) => new Date(`${iso}+08:00`).toISOString();
+        const now = Date.parse('2026-10-14T21:00:00+08:00');
+        const { api, calls } = fakeApi({
+            recall: [
+                { id: '1', text: '林梦瑶 10月3日去拍了银杏', document_id: 'diary:2026-10-03', occurred_start: at('2026-10-03T15:00:00') },
+                { id: '2', text: '林梦瑶国庆一个人在学校，挺自在', document_id: 'phase:国庆节:2026-10-07', occurred_start: at('2026-09-30T12:00:00') },
+                { id: '3', text: '林梦瑶这周追完了一部剧', document_id: 'week:2026-09-28', occurred_start: at('2026-10-04T22:00:00') },
+                { id: '4', text: '林梦瑶 10月9日上了机房课', document_id: 'diary:2026-10-09', occurred_start: at('2026-10-09T09:00:00') },
+            ],
+        });
+        const memory = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: () => {}, now: () => now, common: true });
+        try {
+            await memory.retainDiary('2026-10-03', new Date(2026, 9, 3), 'x', '林梦瑶');
+            const chat = [{ role: 'user' as const, content: '国庆过得怎么样', time: new Date(now).toISOString() }];
+            const text = await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [{ ...A, name: '阿明' }],
+                { start: new Date(2026, 9, 1), end: new Date(2026, 9, 8, 2) });
+            assert.deepEqual(text!.split('\n').slice(1).map(line => line.replace(/^- [^（]*（([^，）]*)[^：]*：/, '$1｜')), [
+                '你国庆节的总结｜林梦瑶国庆一个人在学校，挺自在',
+                '你的周记｜林梦瑶这周追完了一部剧',
+                '你的日记｜林梦瑶 10月3日去拍了银杏',
+            ], '阶段总结的事实标在 9-30，按那篇的日子（10-07）还算国庆');
+            assert.equal(calls.recall.length, 1);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });

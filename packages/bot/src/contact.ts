@@ -21,7 +21,7 @@ import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
-import { askedDay, ASKS_PAST, commonCue, describePerson, mentionedPeople, stillInMind } from './people.ts';
+import { askedWindow, ASKS_PAST, commonCue, describePerson, holidayWords, mentionedPeople, stillInMind } from './people.ts';
 import type { PromiseKeeper } from './promises.ts';
 import { describeState, stateAt } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
@@ -137,9 +137,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const people = mentionedPeople(chat, contact, options.contacts ?? []);
             const cue = !remembers || initiate ? undefined
                 : people.length ? people.map(person => person.name).join('、')
-                    : commonCue(chat, contact, await memory.commonEntities(), character.name);
-            // 问「今天」「昨天」按她的一天算（ADR 0018 决策 4）
-            const day = cue === ASKS_PAST ? askedDay(chat, time, schedule ?? herSchedule) : undefined;
+                    : commonCue(chat, contact, await memory.commonEntities(), character.name, holidayWords(character.schedule));
+            // 问「今天」「昨天」按她的一天算（ADR 0018 决策 4）；问「上周」「国庆」时是那一周、那个假期（决策 3）
+            const day = cue === ASKS_PAST ? askedWindow(chat, time, schedule ?? herSchedule ?? character.schedule) : undefined;
             // 记忆里她的名字换成「你」（ADR 0018 决策 4）
             const you = (text: string | undefined) => text && secondPerson(text, character.name);
             // 记忆会变淡（ADR 0018）：她和名单里的称呼不算「一提就想起」的线索；各几条记下来写日志（0 是他的，1 是公共的，之后是提起的人）

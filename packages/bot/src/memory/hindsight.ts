@@ -5,6 +5,8 @@
 //   POST /v1/default/banks/{bank_id}/memories/recall              召回
 //   GET / POST / PATCH /v1/default/banks/{bank_id}/mental-models[/{id}]   关系概况（Mental Model）
 //   POST /v1/default/banks/{bank_id}/mental-models/{id}/refresh    设定改了之后手动刷新一次
+//   GET  /v1/default/banks/{bank_id}/entities                     公共库的实体名（ADR 0017）
+//   GET  /v1/default/banks/{bank_id}/documents/{document_id}      读回以前的日记（ADR 0018 周记）
 // 只有模拟器（sim/，ADR 0005）用的：
 //   GET    /v1/default/banks/{bank_id}/operations[/{id}]           后台任务（等抽取、整合、刷新做完）
 //   DELETE /v1/default/banks/{bank_id}                             删掉测试 bank
@@ -104,6 +106,8 @@ export interface HindsightApi {
     refreshMentalModel(bankId: string, id: string): Promise<string>;
     /** bank 里所有实体的名字（ADR 0017：公共记忆的线索）；没有这个方法就不按实体找线索 */
     listEntities?(bankId: string, timeoutMs?: number): Promise<string[]>;
+    /** 读回一篇写进去的原文（ADR 0018：写周记时读以前的日记）；没有这篇是 undefined；没有这个方法就不读 */
+    getDocument?(bankId: string, documentId: string, timeoutMs?: number): Promise<{ original_text?: string | null } | undefined>;
 }
 
 /** 写入请求体：后台异步处理（async），一次一个片段 */
@@ -193,6 +197,15 @@ export class HindsightClient implements HindsightApi {
             if (offset + 100 >= page.total || page.items.length === 0) break;
         }
         return names;
+    }
+
+    async getDocument(bankId: string, documentId: string, timeoutMs = this.#timeoutMs): Promise<{ original_text?: string | null } | undefined> {
+        try {
+            return await this.#request<{ original_text?: string | null }>('GET', `${this.#bank(bankId)}/documents/${encodeURIComponent(documentId)}`, undefined, timeoutMs);
+        } catch (error) {
+            if (error instanceof HindsightError && error.status === 404) return undefined;
+            throw error;
+        }
     }
 
     async deleteBank(bankId: string): Promise<void> {

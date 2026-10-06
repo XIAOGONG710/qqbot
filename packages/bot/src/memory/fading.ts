@@ -2,8 +2,10 @@
 // - 长期知道的不变淡：没有发生日期的（偏好、习惯、他是做什么的）、重要的（Hindsight 写入时在事实开头标了【重要】，
 //   整合成观察后标记会丢，所以也看观察背后的事实）、还没到日子的计划。
 // - 某天的事按「最后一次沾到它」到今天过了几天：发生的日子和最后一次被提起的日子取晚的（他又说起一次就算重新记了一遍）；
-//   日记按那篇的日子。CLEAR_DAYS 以内清楚，VAGUE_DAYS 以内记个大概，再早的想不起来；提过 2 次以上（观察背后有 2 条以上事实）的期限翻倍。
-// - 想不起来的，他这次的话（她上次回复之后的）里出现了这条的某个实体名（至少 2 个字，不算她和名单里的称呼）就想起来，细节按记个大概说。
+//   日记按那篇的日子，周记、阶段总结按最后一天。CLEAR_DAYS 以内清楚，VAGUE_DAYS 以内记个大概，再早的想不起来；
+//   提过 2 次以上（观察背后有 2 条以上事实）的、周记和阶段总结（整段的大概记得更久）期限翻倍。
+// - 想不起来的，他这次的话（她上次回复之后的）里出现了这条的某个实体名（至少 2 个字，不算她和名单里的称呼）就想起来，细节按记个大概说；
+//   问到那一周、那个假期（window）时，那段时间的周记、阶段总结也算一提就想起。
 
 import type { RecallResult } from './hindsight.ts';
 
@@ -22,6 +24,8 @@ export interface FadeOptions {
     heard: string;
     /** 不算「一提就想起」的名字：她的、名单里的称呼（提到鸽鸽不等于想起鸽鸽的每件旧事） */
     ignore: readonly string[];
+    /** 他问的那段时间（people.ts 的 askedWindow）：这段时间里的周记、阶段总结算一提就想起 */
+    window?: { start: Date; end: Date };
 }
 
 /** 一次召回里记个大概、一提想起、想不起来各几条（日志用） */
@@ -33,8 +37,13 @@ export interface FadeStats {
 
 const DAY_MS = 86_400_000;
 const MIN_NAME_CHARS = 2;
-/** 按那篇的日子算的文档：日记 */
-const DATED_DOCUMENT = /^diary:(\d{4})-(\d{2})-(\d{2})$/;
+/** 按那篇的日子算的文档：日记（diary:<那天>）、周记（week:<周一>，算到周日）、阶段总结（phase:<假期名>:<最后一天>） */
+const DATED_DOCUMENT = /^(diary|week|phase:[^:]+):(\d{4})-(\d{2})-(\d{2})$/;
+
+/** 周记、阶段总结（ADR 0018 决策 3） */
+export function isSummary(result: RecallResult): boolean {
+    return /^(week|phase):/.test(result.document_id ?? '');
+}
 
 const time = (iso: string | null | undefined): number | undefined => {
     const t = iso ? Date.parse(iso) : Number.NaN;
@@ -54,11 +63,13 @@ export function withoutMark(text: string): string {
 /** 最后一次沾到它的时间：日记按那篇的日子；别的取发生、结束、最后一次被提起里最晚的。没有发生日期（长期知道的）返回 undefined */
 export function lastTouched(result: RecallResult): Date | undefined {
     const document = DATED_DOCUMENT.exec(result.document_id ?? '');
-    if (document) return new Date(Number(document[1]), Number(document[2]) - 1, Number(document[3]));
+    if (document) return new Date(Number(document[2]), Number(document[3]) - 1, Number(document[4]) + (document[1] === 'week' ? 6 : 0));
     const occurred = time(result.occurred_start);
     if (occurred === undefined) return undefined;
     return new Date(Math.max(occurred, time(result.occurred_end) ?? 0, time(result.mentioned_at) ?? 0));
 }
+
+const startOf = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
 /** 从 then 那天到 now 那天隔了几天（本地日历日） */
 function daysBetween(then: Date, now: Date): number {
@@ -80,8 +91,10 @@ export function clarity(result: RecallResult, options: FadeOptions): Clarity {
     const touched = lastTouched(result);
     if (!touched) return 'lasting';
     const days = daysBetween(touched, options.now);
-    const scale = (result.source_fact_ids?.length ?? 1) >= 2 ? 2 : 1;
+    const scale = (result.source_fact_ids?.length ?? 1) >= 2 || isSummary(result) ? 2 : 1;
     if (days <= CLEAR_DAYS * scale) return 'clear';
     if (days <= VAGUE_DAYS * scale) return 'vague';
-    return recognizes(result, options) ? 'recognized' : 'forgotten';
+    const { window } = options;
+    const asked = window && isSummary(result) && touched >= startOf(window.start) && touched < window.end;
+    return asked || recognizes(result, options) ? 'recognized' : 'forgotten';
 }

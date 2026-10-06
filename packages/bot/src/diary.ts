@@ -1,6 +1,9 @@
 // 她的日记（ADR 0017 决策 2）：她的每一天（到 02:00）结束后，写一段第一人称日记存进公共记忆库。
 // 材料：那天的作息（几点起、在哪、课、空闲活动）、心情和原因、在读的书，加上她那天和名单里每个人的聊天（每人截最后一段）。
 // 没聊天的日子也写（用户定），只按作息、心情、书。bot 停过的，下次补最近 DIARY_BACKFILL_DAYS 天；写过的记在 <memory>/diary.json。
+// 周记、阶段总结（ADR 0018 决策 3）：她的周一到了，用上周的日记写一段「这周」；作息里的假期结束后，用那几天的日记写一段总结。
+// 都存进公共库（week:<周一的日期>、phase:<假期名>:<最后一天>）。日记原文本地也存一份（写周记要用），以前的从 Hindsight 读回来。
+// 停过的补最近 WEEK_BACKFILL 周、最近 PHASE_BACKFILL_DAYS 天里结束的假期；一篇日记都没有的不写。
 
 import { join } from 'node:path';
 import type { Contact } from './config.ts';
@@ -18,6 +21,12 @@ export const DIARY_BACKFILL_DAYS = 3;
 export const DIARY_TEMPERATURE = 0.8;
 /** 每个人的聊天最多放多少字（留最后的） */
 export const DIARY_CHAT_CHARS = 1500;
+/** 周记往回补几周 */
+export const WEEK_BACKFILL = 2;
+/** 阶段总结：结束了几天以内的假期还补 */
+export const PHASE_BACKFILL_DAYS = 14;
+/** 日记原文本地留几天（长的假期也够写总结） */
+const KEEP_TEXT_DAYS = 120;
 
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 const hm = (date: Date) => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
@@ -101,6 +110,30 @@ export function diaryMessages(charName: string, day: Date, material: string): Op
     ];
 }
 
+const md = (day: Date) => `${day.getMonth() + 1}月${day.getDate()}日`;
+
+/**
+ * 周记、阶段总结的提示词（ADR 0018 决策 3）：period 是「这周（10月5日–10月11日）」「这个国庆节（10月1日–10月7日）」，
+ * diaries 是那几天的日记（日期 + 正文）
+ */
+export function summaryMessages(charName: string, period: string, diaries: readonly { date: Date; text: string }[]): OpenAIMessage[] {
+    return [
+        {
+            role: 'system',
+            content: [
+                `你是${charName}，在读的女大学生，翻着自己${period}的日记，写一段小结。`,
+                '用第一人称，像大学生随手写的，150–250 字，一段。怎么写：',
+                '- 只写日记里有的事，挑印象深的几件按时间串起来，每天的流水不用都写。',
+                '- 和谁聊了什么一句带过，写对方的名字。',
+                '- 写这段时间整体的心情。',
+                '- 有几天没写日记的，不用补。',
+                '只输出正文，不要标题和日期。',
+            ].join('\n'),
+        },
+        { role: 'user', content: diaries.map(d => `[${md(d.date)} ${WEEKDAYS[d.date.getDay()]}]\n${d.text}`).join('\n\n') },
+    ];
+}
+
 export interface DiaryWriterOptions {
     sources: DiarySources;
     /** 整个名单（陌生人档的聊天不进日记，同公共库） */
@@ -116,12 +149,29 @@ export interface DiaryWriterOptions {
     log: (message: string) => void;
 }
 
-/** 补写还没写的日记：她这一天之前的 DIARY_BACKFILL_DAYS 天，一天一篇，按日期从早到晚；同一时间只跑一次 */
+/** diary.json：写过的日记（日期 → 字数）、日记原文、写过的周记和阶段总结（id → 字数，0 是没有日记、不写） */
+interface DiaryState {
+    written: Record<string, number>;
+    texts: Record<string, string>;
+    weeks: Record<string, number>;
+    phases: Record<string, number>;
+}
+
+/**
+ * 补写还没写的日记：她这一天之前的 DIARY_BACKFILL_DAYS 天，一天一篇，按日期从早到晚；之后补周记、阶段总结（ADR 0018）。同一时间只跑一次
+ */
 export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): Promise<void> } {
     const path = join(options.dir, 'diary.json');
     let running: Promise<void> | undefined;
+    const save = (state: DiaryState, today: Date) => {
+        const keepFrom = formatDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - KEEP_TEXT_DAYS));
+        for (const date of Object.keys(state.texts)) if (date < keepFrom) delete state.texts[date];
+        writeJsonAtomic(path, state);
+    };
     const catchUp = async (now: Date) => {
-        const written = readJsonOr<{ written?: Record<string, number> }>(path, {}, options.log).written ?? {};
+        const stored = readJsonOr<Partial<DiaryState>>(path, {}, options.log);
+        const state: DiaryState = { written: stored.written ?? {}, texts: stored.texts ?? {}, weeks: stored.weeks ?? {}, phases: stored.phases ?? {} };
+        const { written } = state;
         const today = herDay(options.sources.schedule, now);
         for (let back = DIARY_BACKFILL_DAYS; back >= 1; back--) {
             const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() - back);
@@ -146,8 +196,99 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
             const ok = await options.memory.retainDiary(date, day, text, options.sources.charName);
             if (!ok) return;
             written[date] = [...text].length;
-            writeJsonAtomic(path, { written });
+            state.texts[date] = text;
+            save(state, today);
             options.log(`她的日记：${date} 已写（${[...text].length} 字，聊过天的 ${chats.filter(c => c.messages.length).length} 人），存进公共记忆`);
+        }
+        if (!(await catchUpWeeks(state, today))) return;
+        await catchUpPhases(state, today);
+    };
+
+    /** 那几天的日记原文：本地有就用本地的，写过但本地没有的（ADR 0018 之前写的）从 Hindsight 读回来；读不到返回 undefined（下次再写） */
+    const diariesOn = async (days: readonly Date[], state: DiaryState): Promise<{ date: Date; text: string }[] | undefined> => {
+        const found: { date: Date; text: string }[] = [];
+        for (const day of days) {
+            const date = formatDate(day);
+            if (state.written[date] === undefined) continue;
+            let text = state.texts[date];
+            if (text === undefined) {
+                try {
+                    text = await options.memory.readDiary(date);
+                } catch (error) {
+                    options.log(`她的日记：从公共记忆读 ${date} 的日记失败，周记下次再写：${error instanceof Error ? error.message : String(error)}`);
+                    return undefined;
+                }
+                if (text !== undefined) state.texts[date] = text;
+            }
+            if (text) found.push({ date: day, text });
+        }
+        return found;
+    };
+
+    /** 写一段周记或阶段总结；成功返回字数，失败记日志返回 undefined */
+    const summarize = async (label: string, period: string, diaries: { date: Date; text: string }[], retain: (text: string) => Promise<boolean>) => {
+        let text: string;
+        try {
+            text = (await options.generate(summaryMessages(options.sources.charName, period, diaries))).trim();
+        } catch (error) {
+            options.log(`她的${label}没写成（${error instanceof Error ? error.message : String(error)}），下次再写`);
+            return undefined;
+        }
+        if (!text) {
+            options.log(`她的${label}：模型回了空的，下次再写`);
+            return undefined;
+        }
+        return (await retain(text)) ? [...text].length : undefined;
+    };
+
+    /** 周记：她这一周之前的 WEEK_BACKFILL 周（周一到周日）；全都处理完返回 true */
+    const catchUpWeeks = async (state: DiaryState, today: Date): Promise<boolean> => {
+        const thisMonday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
+        for (let back = WEEK_BACKFILL; back >= 1; back--) {
+            const monday = new Date(thisMonday.getFullYear(), thisMonday.getMonth(), thisMonday.getDate() - 7 * back);
+            const id = formatDate(monday);
+            if (state.weeks[id] !== undefined) continue;
+            const days = Array.from({ length: 7 }, (_, i) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i));
+            const diaries = await diariesOn(days, state);
+            if (!diaries) return false;
+            if (diaries.length) {
+                const period = `这周（${md(days[0]!)}–${md(days[6]!)}）`;
+                const length = await summarize(`周记（${id} 那周）`, period, diaries,
+                    text => options.memory.retainSummary(`week:${id}`, days[6]!, `${options.sources.charName}的周记（${md(days[0]!)}–${md(days[6]!)}）`, text, options.sources.charName, 'week'));
+                if (length === undefined) return false;
+                state.weeks[id] = length;
+                options.log(`她的周记：${id} 那周已写（${length} 字，用了 ${diaries.length} 篇日记），存进公共记忆`);
+            } else {
+                state.weeks[id] = 0;
+            }
+            save(state, today);
+        }
+        return true;
+    };
+
+    /** 阶段总结：作息里结束了 PHASE_BACKFILL_DAYS 天以内的假期 */
+    const catchUpPhases = async (state: DiaryState, today: Date): Promise<void> => {
+        const todayText = formatDate(today);
+        const recent = formatDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - PHASE_BACKFILL_DAYS));
+        for (const holiday of options.sources.schedule.holidays.filter(h => h.end < todayText && h.end >= recent)) {
+            const id = `${holiday.name}:${holiday.end}`;
+            if (state.phases[id] !== undefined) continue;
+            const [start, end] = [holiday.start, holiday.end].map(date => { const [y, m, d] = date.split('-').map(Number); return new Date(y!, m! - 1, d); });
+            const days: Date[] = [];
+            for (let day = start!; day <= end!; day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1)) days.push(day);
+            const diaries = await diariesOn(days, state);
+            if (!diaries) return;
+            if (diaries.length) {
+                const span = `${md(start!)}–${md(end!)}`;
+                const length = await summarize(`${holiday.name}总结`, `这个${holiday.name}（${span}）`, diaries,
+                    text => options.memory.retainSummary(`phase:${id}`, end!, `${options.sources.charName}的${holiday.name}总结（${span}）`, text, options.sources.charName, 'phase'));
+                if (length === undefined) return;
+                state.phases[id] = length;
+                options.log(`她的${holiday.name}总结已写（${length} 字，用了 ${diaries.length} 篇日记），存进公共记忆`);
+            } else {
+                state.phases[id] = 0;
+            }
+            save(state, today);
         }
     };
     return {

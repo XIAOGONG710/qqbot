@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { clarity, isImportant, lastTouched, withoutMark, type FadeOptions } from '../src/memory/fading.ts';
+import { clarity, isImportant, isSummary, lastTouched, withoutMark, type FadeOptions } from '../src/memory/fading.ts';
 import type { RecallResult } from '../src/memory/hindsight.ts';
 import { formatRecalled, VAGUE_NOTE } from '../src/memory/long-term.ts';
 
@@ -49,6 +49,22 @@ describe('记忆变淡（ADR 0018 决策 1）', () => {
         assert.equal(clarity(old, options('宝宝想你了')), 'forgotten', '名单里的称呼不算');
         assert.equal(clarity(old, options('鸽鸽去杭州了')), 'forgotten', '单字、名单里的人都不算');
         assert.equal(clarity(fact('2', { occurred_start: ago(10), entities: ['海底捞'] }), options('海底捞')), 'vague', '没忘的照常是记个大概');
+    });
+
+    test('周记按周日、阶段总结按最后一天算，期限翻倍；问到那段时间时算一提就想起（ADR 0018 决策 3）', () => {
+        const week = fact('1', { document_id: 'week:2026-09-28' }); // 9-28 到 10-04，10-04 离 11-20 是 47 天
+        const phase = fact('2', { document_id: 'phase:国庆节:2026-10-07' });
+        assert.equal(lastTouched(week)!.getTime(), new Date(2026, 9, 4).getTime());
+        assert.equal(lastTouched(phase)!.getTime(), new Date(2026, 9, 7).getTime());
+        assert.ok(isSummary(week) && isSummary(phase) && !isSummary(fact('3', { document_id: 'diary:2026-10-04' })));
+        assert.equal(clarity(week, options()), 'vague', '翻倍之后 60 天以内');
+        const old = fact('4', { document_id: 'week:2026-08-31' }); // 到 9-06，75 天
+        assert.equal(clarity(old, options()), 'forgotten');
+        assert.equal(clarity(old, { ...options(), window: { start: new Date(2026, 7, 31), end: new Date(2026, 8, 7, 2) } }), 'recognized');
+        assert.equal(clarity(old, { ...options(), window: { start: new Date(2026, 9, 1), end: new Date(2026, 9, 8, 2) } }), 'forgotten', '问的不是那周');
+        // 时间窗只对周记、阶段总结算
+        const diary = fact('5', { document_id: 'diary:2026-09-01' });
+        assert.equal(clarity(diary, { ...options(), window: { start: new Date(2026, 8, 1), end: new Date(2026, 8, 2, 2) } }), 'forgotten');
     });
 
     test('去掉【重要】记号', () => {

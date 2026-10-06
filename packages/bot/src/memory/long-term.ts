@@ -23,7 +23,7 @@ import { knowsPeople } from '../people.ts';
 import type { ChatMessage } from '../prompt.ts';
 import type { MacroNames } from '../st/macros.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes, type Episode } from './episodes.ts';
-import { clarity, IMPORTANT, withoutMark, type Clarity, type FadeStats } from './fading.ts';
+import { clarity, IMPORTANT, isSummary, lastTouched, withoutMark, type Clarity, type FadeStats } from './fading.ts';
 import type { BankConfig, HindsightApi, MentalModelRequest, RecallRequest, RecallResult } from './hindsight.ts';
 
 /** 进行中的片段每多这么多条就整段重写一次 */
@@ -86,6 +86,7 @@ export function commonBankMissions(char: string) {
             `这是${char}和她 QQ 名单里几个人的私聊记录，汇在一起。${char}是 AI 扮演的虚拟角色（在读女大学生），聊天对象都是真人，每段开头写了是和谁的私聊。`,
             '记录里都是真实发出去的消息，不是角色卡示例，也不是草稿。',
             `也有${char}自己写的日记（开头写着「${char}的日记」和日期）：里面的事是${char}那天做过的，记成${char}的经历，带上那天的日期。`,
+            `还有${char}的周记、假期总结（开头写着「${char}的周记」「${char}的国庆节总结」这样的标题和日期范围）：是她对那段时间的回顾，记成${char}的经历，带上那段时间。`,
             `提取明确出现的信息：聊天对象自己说的偏好、日程和计划、经历、身体和心情，${char}说的她自己的日常，双方的约定。`,
             `- 每条写清是在和谁的私聊里、谁说的、关于谁，用名字（${char}和聊天对象的称呼），不写「用户」「对方」「助手」。`,
             `- ${char}说的她自己的日常（上课、吃饭、宿舍、猫）照记，但写明是${char}说的、对谁说的。`,
@@ -322,17 +323,30 @@ export class LongTermMemory {
      * 成功返回 true；失败记日志、返回 false（下次再写）
      */
     async retainDiary(date: string, day: Date, text: string, char: string): Promise<boolean> {
+        return this.#retainWritten(`${DIARY_PREFIX}${date}`, day, `${char}的日记（${date}）`, text, char, 'diary', `她的日记：${date}`);
+    }
+
+    /**
+     * 周记、阶段总结（ADR 0018 决策 3）写进公共库：document_id 是 week:<周一>、phase:<假期名>:<最后一天>，标签多一个 week / phase，
+     * 时间写最后那天晚上。title 是正文前面那一行（「林梦瑶的周记（10月5日–10月11日）」）
+     */
+    async retainSummary(documentId: string, lastDay: Date, title: string, text: string, char: string, tag: 'week' | 'phase'): Promise<boolean> {
+        return this.#retainWritten(documentId, lastDay, title, text, char, tag, `她的${tag === 'week' ? '周记' : '阶段总结'}：${documentId}`);
+    }
+
+    /** 她自己写的东西存进公共库；成功返回 true，失败记日志、返回 false（下次再写） */
+    async #retainWritten(documentId: string, day: Date, title: string, text: string, char: string, tag: string, what: string): Promise<boolean> {
         if (!this.#options.common) return false;
         try {
             const bankId = await this.#ensureCommonBank(char);
             await this.#options.api.retain(bankId, {
-                content: `${char}的日记（${date}）\n${text}`,
+                content: `${title}\n${text}`,
                 // 日记是睡前写的：时间写那天晚上
                 timestamp: localIso(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 22)),
-                context: `${char}自己写的日记`,
-                document_id: `${DIARY_PREFIX}${date}`,
-                tags: [...TAGS, 'diary'],
-                metadata: { source: 'diary', date },
+                context: `${char}自己写的${tag === 'diary' ? '日记' : tag === 'week' ? '周记' : '阶段总结'}`,
+                document_id: documentId,
+                tags: [...TAGS, tag],
+                metadata: { source: tag, ...(tag === 'diary' ? { date: documentId.slice(DIARY_PREFIX.length) } : { id: documentId }) },
                 entities: [{ text: char, type: 'PERSON' }],
             });
             this.#lastWrite = { at: this.#now(), ok: true };
@@ -341,9 +355,21 @@ export class LongTermMemory {
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.#lastWrite = { at: this.#now(), ok: false, error: message };
-            this.#options.log(`她的日记：${date} 写进公共记忆失败，下次再写：${message}`);
+            this.#options.log(`${what} 写进公共记忆失败，下次再写：${message}`);
             return false;
         }
+    }
+
+    /**
+     * 读回以前写的日记正文（ADR 0018：写周记要用，本地以前没存原文）。没有这篇、没开公共库、接口没有这个方法都是 undefined；连不上抛错
+     */
+    async readDiary(date: string): Promise<string | undefined> {
+        const get = this.#options.api.getDocument;
+        if (!this.#options.common || !get) return undefined;
+        const document = await get.call(this.#options.api, this.commonBankId(), `${DIARY_PREFIX}${date}`, this.#options.recallTimeoutMs);
+        const text = document?.original_text;
+        // 正文前面有一行「林梦瑶的日记（日期）」
+        return text ? text.slice(text.indexOf('\n') + 1).trim() || undefined : undefined;
     }
 
     /** 公共库里「她眼中的他」：没有就建，设定变了（称呼改了）就改设定、刷新一次 */
@@ -468,17 +494,22 @@ export class LongTermMemory {
         };
         const all = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
         if (!all) return undefined;
-        const results = window ? all.filter(r => onDay(r, window.start, window.end)) : all;
+        // 问到某段时间时，那段的周记、阶段总结排在前面（ADR 0018：「上周忙啥」「国庆过得怎样」整体答）
+        const results = window
+            ? all.filter(r => onDay(r, window.start, window.end) || summaryIn(r, window)).sort((a, b) => Number(isSummary(b)) - Number(isSummary(a)))
+            : all;
         const own = `${this.#hash(contact)}:`;
         const names = new Map(people.map(person => [this.#hash(person), person.name]));
         return formatRecalled(results.filter(r => !r.document_id?.startsWith(own)), {
             header: `[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和${contact.name}聊的，用不上就别提）]`,
             limit: SHARED_RECALLED,
             now,
-            fade: this.#fade(chat, fade),
+            fade: { ...this.#fade(chat, fade), ...(window ? { window } : {}) },
             source: r => {
                 const id = r.document_id ?? '';
                 if (id.startsWith(DIARY_PREFIX)) return '你的日记';
+                if (id.startsWith('week:')) return '你的周记';
+                if (id.startsWith('phase:')) return `你${id.split(':')[1]}的总结`;
                 const name = names.get(id.split(':')[0]!);
                 return name ? `和${name}聊的` : undefined;
             },
@@ -608,6 +639,12 @@ export function initiateQuery(chat: ChatMessage[], topic: string): string {
     return [topic, ...recent].join('\n').slice(0, MAX_QUERY_CHARS);
 }
 
+/** 周记、阶段总结按那篇的日子算在不在这段时间里（Hindsight 给抽出来的事实标的日子可能在外面） */
+function summaryIn(result: RecallResult, window: { start: Date; end: Date }): boolean {
+    const day = isSummary(result) ? lastTouched(result) : undefined;
+    return day !== undefined && day >= new Date(window.start.getFullYear(), window.start.getMonth(), window.start.getDate()) && day < window.end;
+}
+
 /** 召回结果是不是那天的事：发生的时间，没有就用说起的时间 */
 function onDay(result: RecallResult, start: Date, end: Date): boolean {
     const time = Date.parse(result.occurred_start ?? result.mentioned_at ?? '');
@@ -658,6 +695,8 @@ export interface FadeRequest {
     heard: string;
     ignore: readonly string[];
     onFade?: (stats: FadeStats) => void;
+    /** 他问的那段时间：那段的周记、阶段总结算一提就想起 */
+    window?: { start: Date; end: Date };
 }
 
 /**
@@ -674,7 +713,7 @@ export function formatRecalled(
     };
     const day = (date: Date) => `${date.getMonth() + 1}月${date.getDate()}日`;
     const { fade, now } = options;
-    const judged = results.map(r => ({ r, clarity: fade && now ? clarity(r, { now, heard: fade.heard, ignore: fade.ignore }) : 'lasting' as Clarity }));
+    const judged = results.map(r => ({ r, clarity: fade && now ? clarity(r, { now, heard: fade.heard, ignore: fade.ignore, ...(fade.window ? { window: fade.window } : {}) }) : 'lasting' as Clarity }));
     const shown = judged.filter(item => item.clarity !== 'forgotten').slice(0, options.limit ?? MAX_RECALLED);
     if (fade) {
         fade.onFade?.({
