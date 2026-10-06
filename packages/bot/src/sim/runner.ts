@@ -18,6 +18,7 @@ import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay } from '../proactive.ts';
 import { createProactivePlanner, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
+import { worldLogger } from '../world.ts';
 import { DIARY_TEMPERATURE, diaryWriter } from '../diary.ts';
 import { formatDate, stateAt } from '../schedule.ts';
 import { parseDuration, VirtualClock, type Checks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
@@ -207,9 +208,14 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         throw new Error(`场景的 mood「${scenario.mood}」不是卡上的心情（${character.moods.map(mood => mood.name).join('、') || '这一档没有心情'}）`);
     }
     // 她自己的日子：和 bot 一样，她的每一天第一次生成时在 sim.log 里写一行当天的心情和进度
-    const noteHerDay = options.herDays && character.schedule
+    const noteMoodAndBooks = options.herDays && character.schedule
         ? herDayLogger(character.schedule, character.moods, character.books, log, scenario.mood)
         : undefined;
+    // 她的世界（ADR 0021）：每天一行摘要，state.json 写在这次的数据目录
+    const noteWorld = options.herDays && character.schedule && character.herWorld
+        ? worldLogger(character.herWorld, character.schedule, log, join(options.dataDir, 'world'))
+        : undefined;
+    const noteHerDay = noteMoodAndBooks || noteWorld ? (now: Date) => { noteMoodAndBooks?.(now); noteWorld?.(now); } : undefined;
     const createResponder = () => createContactResponder({
         contact,
         card: options.card,

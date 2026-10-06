@@ -23,6 +23,7 @@ import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
 import { describeIntent } from './intent.ts';
+import { describeWorld, worldAt } from './world.ts';
 import { askedWindow, ASKS_PAST, commonCue, describePerson, holidayWords, mentionedPeople, stillInMind } from './people.ts';
 import type { PromiseKeeper } from './promises.ts';
 import { describeState, stateAt } from './schedule.ts';
@@ -198,6 +199,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 })
                 : undefined;
             reading = books?.context;
+            // 她那边（ADR 0021）：跟着「她自己的日子」开，卡上有世界才有
+            const around = herSchedule && character.herWorld ? worldAt(character.herWorld, herSchedule, time) : undefined;
+            const world = around ? describeWorld(around, time) : undefined;
             const promised = contact.tier !== UNLISTED_TIER ? options.promises?.describe(contact, chat, time) : undefined;
             if (promised) log('时间块里提醒了她答应的事');
             const intent = describeIntent({
@@ -231,6 +235,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(state ? [describeState(state, schedule!, { userName: contact.name, woken })] : []),
                         ...(mood ? [describeMood(mood, contact.name)] : []),
                         ...(books ? [books.text] : []),
+                        ...(world ? [world] : []),
                         ...(promised ? [promised] : []),
                         ...(intent ? [intent] : []),
                         ...(initiate ? [initiate.note] : []),

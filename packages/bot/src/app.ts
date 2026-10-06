@@ -25,6 +25,7 @@ import type { ProactiveMode } from './proactive.ts';
 import { createProactivePlanner, type Planner, type PlannerStatus } from './proactive-planner.ts';
 import { promiseKeeper } from './promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from './her-days.ts';
+import { worldLogger } from './world.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt } from './schedule.ts';
 
@@ -136,7 +137,13 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
         : undefined;
     log(`她自己的日子：${!config.herDays ? '关（配置 herDays: false）'
         : herDaysCard ? `开（每日心情、在读的书${config.schedule ? '、看书的空闲活动' : ''}、进度数字的检查）` : '开，但用到的档位卡上都没有心情和书'}`);
-    const noteHerDay = herDaysCard ? herDayLogger(herDaysCard.schedule!, herDaysCard.moods, herDaysCard.books, log) : undefined;
+    const noteMoodAndBooks = herDaysCard ? herDayLogger(herDaysCard.schedule!, herDaysCard.moods, herDaysCard.books, log) : undefined;
+    // 她的世界（ADR 0021）：用名单里最亲的、卡上有作息和世界的那一档（同一天对所有人一样，档位只决定看得到哪些块）
+    const worldCard = config.herDays
+        ? ([...CONTACT_TIERS, UNLISTED_TIER] as Tier[]).filter(tier => tiersInUse.has(tier)).map(tier => cardFor(tier).character).find(c => c.schedule && c.herWorld)
+        : undefined;
+    const noteWorld = worldCard ? worldLogger(worldCard.herWorld!, worldCard.schedule!, log, join(config.dataDir, 'world')) : undefined;
+    const noteHerDay = noteMoodAndBooks || noteWorld ? (now: Date) => { noteMoodAndBooks?.(now); noteWorld?.(now); } : undefined;
     noteHerDay?.(new Date(pipeline?.now?.() ?? Date.now()));
     log(`作息：${config.schedule ? '按角色卡（她现在在干什么、什么时候看到、打字多久）' : '关（配置 schedule: false），随时几秒内回'}`);
     if (config.schedule) {
