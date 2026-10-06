@@ -90,6 +90,7 @@ export function rewriteNote(reply: string, issues: readonly ExitIssue[], userNam
                 case 'service': return `像客服说的话，用你自己的口气跟${userName}说`;
                 case 'ledger': return `在说${userName}隔了这么久才来找你；${userName}来找你你是高兴的，直接接话`;
                 case 'blame': return `在怪${userName}没告诉你、没带上你；${userName}说起自己的事是在跟你分享，顺着问问、替对方高兴`;
+                case 'contrast': return `在拿${userName}和你自己比着说委屈；说你这边的事就说你这边的，${userName}那边的事顺着问问`;
                 case 'repeat': return i.repeat === 'opener'
                     ? `开头的「${i.match}」你最近几次回复已经用过 ${i.count} 次，换个开头`
                     : `里的「${i.match}」你最近几次回复已经说过 ${i.count} 次，换个说法`;
@@ -98,7 +99,7 @@ export function rewriteNote(reply: string, issues: readonly ExitIssue[], userNam
         });
         return `「${lines[line]!.trim()}」${[...new Set(why)].join('；')}`;
     });
-    const changesMeaning = issues.some(i => i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'service' || i.kind === 'progress');
+    const changesMeaning = issues.some(i => i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'contrast' || i.kind === 'service' || i.kind === 'progress');
     return `[上一版回复没有发出去：${reasons.join('；')}。${changesMeaning ? '别的意思' : '意思'}不变，重写这次的回复，只输出要发的消息。]`;
 }
 
@@ -133,7 +134,7 @@ function strip(reply: string, options: ReviewOptions): { reply: string; issues: 
 /** 重写之后（或重写失败时）还剩的问题：做不到的事、禁用词删行；助手腔、算账、怪对方没说也删，删完一行不剩就留着；重复、进度数字照发 */
 function settle(reply: string, issues: readonly ExitIssue[]): { reply: string; dropped: boolean } {
     const hard = issues.filter(i => HARD.has(i.kind));
-    const soft = issues.filter(i => i.kind === 'service' || i.kind === 'ledger' || i.kind === 'blame');
+    const soft = issues.filter(i => i.kind === 'service' || i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'contrast');
     const withSoft = dropLines(reply, [...hard, ...soft]);
     if (withSoft || soft.length === 0) return { reply: withSoft, dropped: hard.length + soft.length > 0 };
     return { reply: dropLines(reply, hard), dropped: hard.length > 0 };

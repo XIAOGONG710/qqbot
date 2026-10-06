@@ -2,13 +2,16 @@
 // - 助手腔：客服式的收尾和套话、分点列条理。
 // - 算账：说对方找她找得晚、隔了很久才来。前面是「我」的不算（「我这会儿才翻到」）。
 // - 怪他没说：怪对方没告诉她、没带上她（10-05 取证里全是状态行「他回青岛了」引出来的）。
+// - 对照的酸话（ADR 0019 决策 4，算账的一种）：拿他和自己比着说委屈（「你在家吃大餐，我在这边啃食堂」）。同一行里他那头（享福、在家、玩）
+//   和她这头（一个人、留守、啃食堂）都有才算，几个自带委屈的说法单独就算；他那头是问句的不算（「你那边下雨了吗，我这儿……」）。
+//   误报评估见 docs/research/2026-10-06-dsh/contrast-eval.md（F 组：模拟器原文 6,511 行命中 15 行，0 误报）。
 // - 重复：和她最近 8 次回复比。开头的短句已经用过 2 次，或者 4 个字的片段已经说过 2 次（对方最近 3 条说过的话题词不算）。
 //   开头是「行」「哟」这类语气词的，直接去掉，不重写。
 
 import type { StoredMessage } from './history.ts';
 import type { BookProgress, ReadingBook } from './her-days.ts';
 
-export type SpeechKind = 'service' | 'ledger' | 'blame' | 'repeat';
+export type SpeechKind = 'service' | 'ledger' | 'blame' | 'contrast' | 'repeat';
 
 export interface SpeechIssue {
     /** 回复里的第几行（从 0 开始，按 \n 分） */
@@ -106,6 +109,37 @@ const BLAME = new RegExp([
     '(?<!别)留我一个人',
 ].join('|'));
 
+/** 「你」开头的这一小句不是问句 */
+const NOT_QUESTION = '(?![^，,。！？!?]*(?:吗|呢|么|[?？]))';
+/** 对照的酸话（F 组）：反话的「你倒是…」、自带委屈的说法单独就算 */
+const CONTRAST_ALONE = new RegExp([
+    '你倒是(?:回(?:家|去|青岛|老家)|玩|在家|舒服|潇洒|爽|开心|过得|自在)',
+    '没(?:带|算|给|留)我(?:的)?(?:份儿?|一份)',
+    '(?:啃|吃)(?:食堂)?剩(?:菜|饭)',
+    '喝西北风',
+    `咱俩${CLAUSE}{0,8}(?:不一样|天差地别)`,
+].join('|'));
+/** 说他舒服（反话）：和她这头的强、弱说法都能配 */
+const HIS_EASE = new RegExp(`你${NOT_QUESTION}${CLAUSE}{0,8}(?:舒服|舒坦|爽|潇洒|逍遥|滋润|快活)`);
+/** 他那头（在家、回去、玩）：只和她这头的强说法配 */
+const HIS_SIDE = new RegExp(`你${NOT_QUESTION}${CLAUSE}{0,8}(?:回家|在家|家里|回青岛|那边|那头|那儿|玩|爬山|海边|吃香的|大餐|开心|乐呵|舒服|舒坦|爽|潇洒)`);
+/** 她这头，自带委屈 */
+const MY_SIDE_STRONG = /留我一个人|就剩我一个|就我一个人?|我一个人(?:在|蹲|守|留|待)|留守|啃食堂|发霉|苦哈哈/;
+/** 她这头，只是地点 */
+const MY_SIDE_WEAK = /我(?:在)?(?:这边|这头|这儿|这里)/;
+
+/** 这一行的对照酸话：命中的那一段（他那头），没有返回 null */
+export function contrastHit(text: string): RegExpExecArray | null {
+    const alone = CONTRAST_ALONE.exec(text);
+    if (alone) return alone;
+    const strong = MY_SIDE_STRONG.exec(text);
+    const ease = HIS_EASE.exec(text);
+    if (ease && (strong ?? MY_SIDE_WEAK.exec(text))) return ease;
+    const side = HIS_SIDE.exec(text);
+    if (side && strong) return side;
+    return null;
+}
+
 const PUNCT = '，,。.！!？?、~～…：:；;“”"\'（）()\\s';
 const SPLIT = new RegExp(`[${PUNCT}]`);
 /** 能直接去掉的语气词开头：两个字的直接认，单字的后面要跟标点（「行不行」「好看」不是） */
@@ -162,8 +196,10 @@ export function inspectSpeech(reply: string, context: SpeechContext): SpeechIssu
     for (const [line, raw] of lines.entries()) {
         const text = raw.trim();
         if (!text) continue;
-        for (const [kind, re] of [['service', SERVICE], ['ledger', LEDGER], ['blame', BLAME]] as const) {
-            const hit = re.exec(text);
+        for (const [kind, find] of [
+            ['service', (t: string) => SERVICE.exec(t)], ['ledger', (t: string) => LEDGER.exec(t)], ['blame', (t: string) => BLAME.exec(t)], ['contrast', contrastHit],
+        ] as const) {
+            const hit = find(text);
             // 引号里是别人的话（「面试官问『你还有什么想问的』」），不算她说的
             if (hit && !insideQuote(text, hit.index)) issues.push({ line, kind, match: hit[0].trim() });
         }
@@ -285,6 +321,7 @@ export function describeSpeechIssue(issue: SpeechIssue): string {
         case 'service': return `助手腔「${issue.match}」`;
         case 'ledger': return `算账「${issue.match}」`;
         case 'blame': return `怪对方没说「${issue.match}」`;
+        case 'contrast': return `对照的酸话「${issue.match}」`;
         case 'repeat': return issue.repeat === 'opener' ? `开头「${issue.match}」最近用过 ${issue.count} 次` : `「${issue.match}」最近说过 ${issue.count} 次`;
     }
 }
