@@ -316,7 +316,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         }
     });
 
-    test('问「国庆过得怎么样」（ADR 0018）：卡上作息的假期名算线索，召回带那个假期的时间窗', async () => {
+    for (const [entities, label] of [[[], '问她过去的事'], [['国庆'], '国庆']] as const) test(`问「国庆过得怎么样」（ADR 0018）：卡上作息的假期名算线索，召回带那个假期的时间窗（公共库的实体 ${JSON.stringify(entities)}）`, async () => {
         const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
         const requests: { temporal_window?: { start: string; end: string } }[] = [];
         const hindsight: SimHindsight = {
@@ -329,7 +329,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
             activeOperations: async () => [],
             operationStatus: async () => 'completed',
             refreshMentalModel: async () => 'op-1',
-            listEntities: async () => [],
+            listEntities: async () => [...entities],
             deleteBank: async () => {},
         };
         try {
@@ -338,8 +338,9 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
                 generate: async messages => (isPromises(messages) ? '{"add":[],"resolved":[]}' : '还行'),
             });
             const say = result.steps.find(step => step.kind === 'say')!;
-            assert.ok(say.logs.includes('公共记忆没想起什么（线索：问她过去的事）'), say.logs.join('\n'));
-            assert.deepEqual(requests.find(r => r.temporal_window)?.temporal_window, { start: '2026-10-01T00:00:00+08:00', end: '2026-10-08T02:00:00+08:00' });
+            assert.ok(say.logs.includes(`公共记忆没想起什么（线索：${label}）`), say.logs.join('\n'));
+            assert.deepEqual(requests.find(r => r.temporal_window)?.temporal_window, { start: '2026-10-01T00:00:00+08:00', end: '2026-10-08T02:00:00+08:00' },
+                '线索是假期名本身（「国庆」也是公共库的实体）时同样带假期的时间窗');
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
