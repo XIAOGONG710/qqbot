@@ -9,7 +9,7 @@ import type { MemoryItem, RecallRequest } from '../src/memory/hindsight.ts';
 import type { OpenAIMessage } from '../src/prompt.ts';
 import { renderReport } from '../src/sim/report.ts';
 import { runScenario, type SimHindsight } from '../src/sim/runner.ts';
-import { parseDuration, parseScenario, VirtualClock } from '../src/sim/scenario.ts';
+import { loadScenario, parseDuration, parseScenario, VirtualClock } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
@@ -26,6 +26,21 @@ const isDiary = (messages: OpenAIMessage[]) => messages[0]?.role === 'system'
 const isPromises = (messages: OpenAIMessage[]) => messages[0]?.role === 'system' && messages[0].content.includes('答应过的事」');
 
 describe('模拟器：场景文件', () => {
+    test('她和他事先的聊天（ADR 0018）：要早于起点 45 分钟以上；不写是空的', () => {
+        const base = { name: 'x', tier: 'boyfriend', start: '2026-10-09T21:00:00+08:00', steps: [{ say: '在吗' }] };
+        assert.deepEqual(parseScenario(base).history, []);
+        const ok = parseScenario({ ...base, history: [{ time: '2026-10-08T21:00:00+08:00', role: 'assistant', content: '下次给你讲' }] });
+        assert.deepEqual(ok.history, [{ time: new Date('2026-10-08T21:00:00+08:00').toISOString(), role: 'assistant', content: '下次给你讲' }]);
+        assert.throws(() => parseScenario({ ...base, history: [{ time: '2026-10-09T20:30:00+08:00', role: 'user', content: '在吗' }] }), /history\[0\] 要早于起点 45 分钟以上/);
+        assert.throws(() => parseScenario({ ...base, history: {} }), /history 应为数组/);
+    });
+
+    test('新场景文件都读得进来（ADR 0018）', () => {
+        for (const name of ['memory-fading', 'her-promises', 'memory-weeks']) {
+            assert.ok(loadScenario(join(repoRoot, `packages/bot/sim/${name}.json`)).steps.length > 0, name);
+        }
+    });
+
     test('时长写法', () => {
         assert.equal(parseDuration('9h30m'), 9.5 * 3_600_000);
         assert.equal(parseDuration('1d'), 86_400_000);

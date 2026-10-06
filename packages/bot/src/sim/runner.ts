@@ -121,6 +121,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     scenario.others.forEach((other, i) => {
         for (const message of other.history) history.append(others[i]!.qq, message);
     });
+    // 她和他事先的聊天（ADR 0018）
+    for (const message of scenario.history) history.append(contact.qq, message);
 
     const steps: StepRecord[] = [];
     let current = newStep('case', clock.now());
@@ -371,8 +373,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     let proactiveCheckedUpTo = 0;
     try {
         if (others.length) log(`名单里的其他人：${others.map(other => `${other.name}（${other.tier}${other.intro ? '，有介绍' : ''}）`).join('、')}`);
-        // 起点：其他人事先的聊天写进记忆，起点之前的几天补写日记（ADR 0017）
-        await syncMemory(others);
+        // 起点：事先的聊天写进记忆，起点之前的几天补写日记（ADR 0017）
+        await syncMemory([...(scenario.history.length ? [contact] : []), ...others]);
         for (const step of scenario.steps) {
             current = newStep(Object.keys(step)[0] as StepRecord['kind'], clock.now());
             steps.push(current);
@@ -603,6 +605,9 @@ export function runChecks(checks: Checks, step: StepRecord, banned: readonly str
     for (const word of checks.replyNone ?? []) results.push({ ok: !replies.includes(word), text: `回复里没有「${word}」` });
     if (checks.timeBlock !== undefined) {
         results.push({ ok: new RegExp(checks.timeBlock).test(last?.timeBlock ?? ''), text: `时间块匹配 /${checks.timeBlock}/` });
+    }
+    if (checks.timeBlockNot !== undefined) {
+        results.push({ ok: !new RegExp(checks.timeBlockNot).test(last?.timeBlock ?? ''), text: `时间块不匹配 /${checks.timeBlockNot}/` });
     }
     if (checks.generations !== undefined) {
         results.push({ ok: step.generations.length === checks.generations, text: `生成 ${checks.generations} 次（实际 ${step.generations.length} 次）` });

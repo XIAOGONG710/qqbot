@@ -30,6 +30,8 @@ export interface Checks {
     replyNone?: string[];
     /** 这一步最后一次生成的时间块要匹配（正则） */
     timeBlock?: string;
+    /** 这一步最后一次生成的时间块不能匹配（正则；ADR 0018：她答应的事提过几次之后不再放） */
+    timeBlockNot?: string;
     /** 这一步生成了几次（含重新生成） */
     generations?: number;
     /** 这一步有没有「生成期间收到新消息，重新生成」 */
@@ -116,7 +118,16 @@ export interface Scenario {
     mood?: string;
     /** 名单里的其他人（ADR 0016）：她认识写了 intro 的；开了记忆时，事先的聊天先写进他们自己的 bank 和公共库 */
     others: OtherContact[];
+    /** 她和他事先的聊天（ADR 0018：她答应过的事），时间要早于起点 45 分钟以上；开了记忆时先写进他的 bank */
+    history: ChatLine[];
     steps: Step[];
+}
+
+/** 事先的一条聊天 */
+export interface ChatLine {
+    time: string;
+    role: 'user' | 'assistant';
+    content: string;
 }
 
 export interface OtherContact {
@@ -124,7 +135,7 @@ export interface OtherContact {
     tier: ContactTier;
     intro?: string;
     /** 她和这个人事先的聊天，时间要早于起点 45 分钟以上（片段结束了才写进记忆） */
-    history: { time: string; role: 'user' | 'assistant'; content: string }[];
+    history: ChatLine[];
 }
 
 export function loadScenario(path: string): Scenario {
@@ -156,6 +167,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         ...(s.moodyChance !== undefined ? { moodyChance: chance(s.moodyChance) } : {}),
         ...(s.mood !== undefined ? { mood: typeof s.mood === 'string' && s.mood ? s.mood : fail('mood 应为心情的名字') } : {}),
         others: parseOthers(s.others, Date.parse(s.start as string), fail),
+        history: parseHistory(s.history, 'history', Date.parse(s.start as string), fail),
         steps: s.steps as Step[],
     };
 }
@@ -170,18 +182,23 @@ function parseOthers(value: unknown, start: number, fail: (message: string) => n
         if (typeof o.name !== 'string' || !o.name) fail(`${where}.name 应为称呼`);
         if (!CONTACT_TIERS.includes(o.tier as ContactTier)) fail(`${where}.tier 应为 ${CONTACT_TIERS.join(' / ')} 之一`);
         if (o.intro !== undefined && typeof o.intro !== 'string') fail(`${where}.intro 应为字符串`);
-        const history = o.history ?? [];
-        if (!Array.isArray(history)) fail(`${where}.history 应为数组`);
-        const messages = (history as unknown[]).map((m, j) => {
-            const message = m as Record<string, unknown>;
-            const time = typeof message?.time === 'string' ? Date.parse(message.time) : NaN;
-            if (Number.isNaN(time)) fail(`${where}.history[${j}].time 应为 ISO 时间`);
-            if (time > start - EPISODE_GAP_MS) fail(`${where}.history[${j}] 要早于起点 45 分钟以上（片段结束了才写进记忆）`);
-            if (message.role !== 'user' && message.role !== 'assistant') fail(`${where}.history[${j}].role 应为 user / assistant`);
-            if (typeof message.content !== 'string' || !message.content) fail(`${where}.history[${j}].content 应为非空字符串`);
-            return { time: new Date(time).toISOString(), role: message.role as 'user' | 'assistant', content: message.content as string };
-        });
+        const messages = parseHistory(o.history, `${where}.history`, start, fail);
         return { name: o.name as string, tier: o.tier as ContactTier, ...(o.intro ? { intro: o.intro as string } : {}), history: messages };
+    });
+}
+
+/** 事先的聊天：时间要早于起点 45 分钟以上（片段结束了才写进记忆） */
+function parseHistory(value: unknown, where: string, start: number, fail: (message: string) => never): ChatLine[] {
+    const history = value ?? [];
+    if (!Array.isArray(history)) fail(`${where} 应为数组`);
+    return (history as unknown[]).map((m, j) => {
+        const message = m as Record<string, unknown>;
+        const time = typeof message?.time === 'string' ? Date.parse(message.time) : NaN;
+        if (Number.isNaN(time)) fail(`${where}[${j}].time 应为 ISO 时间`);
+        if (time > start - EPISODE_GAP_MS) fail(`${where}[${j}] 要早于起点 45 分钟以上（片段结束了才写进记忆）`);
+        if (message.role !== 'user' && message.role !== 'assistant') fail(`${where}[${j}].role 应为 user / assistant`);
+        if (typeof message.content !== 'string' || !message.content) fail(`${where}[${j}].content 应为非空字符串`);
+        return { time: new Date(time).toISOString(), role: message.role as 'user' | 'assistant', content: message.content as string };
     });
 }
 

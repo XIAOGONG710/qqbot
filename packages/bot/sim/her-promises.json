@@ -1,0 +1,37 @@
+{
+    "name": "男朋友档：记得她答应过的事（ADR 0018）",
+    "description": "10-08 晚上她说周六打算去图书馆把《三体》第三部看完，答应看完下次给他讲结局。10-09 他来了：时间块里提醒「下次讲结局」，她回了 3 次之后这段聊天不再放；10-10（周六）提醒「打算今天看完」；他要结局、她讲了，聊天结束后划掉，10-11 不再提醒。不按作息，名字和聊天是虚构的。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-09T21:00:00+08:00",
+    "schedule": false,
+    "history": [
+        { "time": "2026-10-08T21:00:00+08:00", "role": "user", "content": "周末有啥安排" },
+        { "time": "2026-10-08T21:01:00+08:00", "role": "assistant", "content": "周六打算去图书馆把《三体》第三部看完" },
+        { "time": "2026-10-08T21:02:00+08:00", "role": "user", "content": "看完给我讲讲结局，我懒得看" },
+        { "time": "2026-10-08T21:03:00+08:00", "role": "assistant", "content": "行，看完下次给你讲" }
+    ],
+    "steps": [
+        { "case": "HP01", "note": "第二天他来了：时间块里提醒答应过的事" },
+        { "say": "在干嘛呢" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "答应过宝宝", "log": "提醒了她答应的事" } },
+        { "say": "嗯嗯" },
+        { "say": "今天上班好累" },
+        { "case": "HP01b", "note": "这段聊天她回了 3 次：不再放" },
+        { "say": "哈哈哈" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlockNot": "答应过" } },
+        { "advance": "1h" },
+        { "advance": "23h" },
+        { "case": "HP02", "note": "到了那天（周六）：提醒她打算今天看完" },
+        { "say": "今天干嘛了" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "看完.*打算今天", "replyAny": ["三体", "图书馆", "看完"] } },
+        { "case": "HP03", "note": "他要结局：她讲了" },
+        { "say": "那结局是啥，快讲讲" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "advance": "1h" },
+        { "advance": "1d" },
+        { "case": "HP04", "note": "讲过了：不再提醒讲结局" },
+        { "say": "在吗" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlockNot": "结局" } }
+    ]
+}
