@@ -7,6 +7,7 @@
 
 import { dirname, join } from 'node:path';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { disclosureRules, isClose, sourceLabel, startsConversation, todayStart } from './disclosure.ts';
 import { reviewReply } from './exit-check.ts';
 import type { ChatHistory, StoredMessage } from './history.ts';
 import { chatCompletion } from './llm.ts';
@@ -147,6 +148,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const ignore = [character.name, contact.name, ...(options.contacts ?? []).map(c => c.name)];
             const faded: (FadeStats | undefined)[] = [];
             const fade = (i: number) => ({ ignore, onFade: (stats: FadeStats) => { faded[i] = stats; } });
+            // 她今天跟别人聊过的也是她的生活（ADR 0020）：只在亲密联系人开启新一段对话、或她主动找他时想起。
+            // 本轮已有明确公共记忆线索时不另查，避免把同一件事放两遍。
+            const todayOthers = remembers && !cue && isClose(contact.tier) && (Boolean(initiate) || startsConversation(chat))
+                ? memory.othersToday(contact, time, options.contacts ?? [], todayStart(schedule ?? herSchedule ?? character.schedule, time))
+                : undefined;
             const [recalled, freshCommon, ...aboutPeople] = (await Promise.all([
                 remembers ? memory.recall(contact, chat, time, { ...recallOptions, ...fade(0) }) : undefined,
                 remembers && cue
@@ -154,7 +160,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     : undefined,
                 ...people.map((person, i) => (remembers
                     ? memory.recall(person, chat, time, {
-                        ...recallOptions, ...fade(i + 2), limit: PERSON_RECALLED, header: `[你和${person.name}聊过的事（从记忆里想起来的，只作参考）]`,
+                        ...recallOptions, ...fade(i + 2), limit: PERSON_RECALLED,
+                        header: `[关于${person.name}的旧事（${sourceLabel(person, contact)}；从记忆里想起来的，只作参考）]`,
                     })
                     : undefined)),
             ])).map(you);
@@ -178,6 +185,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const impressions = people.map(person => (remembers ? you(memory.impression(person)) : undefined));
             if (impressions.some(Boolean)) log(`有印象：${people.filter((_, i) => impressions[i]).map(person => person.name).join('、')}`);
             const peopleText = people.map((person, i) => describePerson(person, impressions[i], aboutPeople[i]));
+            const today = common ? undefined : you(await todayOthers);
+            if (today) log(`今天和别人聊过的 ${countLines(today)} 条（新一段对话，有由头可以含糊提一件）`);
             const days = describeDays(character.dates, time);
             const state = schedule ? stateAt(schedule, time, extraFree) : undefined;
             if (herSchedule) options.onHerDay?.(time);
@@ -213,7 +222,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 afterHistory: [
                     ...(recalled ? [recalled] : []),
                     ...(common ? [common] : []),
+                    ...(today ? [today] : []),
                     ...peopleText,
+                    ...(common || today || peopleText.length ? [disclosureRules(contact)] : []),
                     [
                         describeTime(chat, time, { initiating: Boolean(initiate) }),
                         ...(days ? [days] : []),

@@ -35,8 +35,8 @@ describe('模拟器：场景文件', () => {
         assert.throws(() => parseScenario({ ...base, history: {} }), /history 应为数组/);
     });
 
-    test('新场景文件都读得进来（ADR 0018）', () => {
-        for (const name of ['memory-fading', 'her-promises', 'memory-weeks']) {
+    test('新场景文件都读得进来（ADR 0018、0020）', () => {
+        for (const name of ['memory-fading', 'her-promises', 'memory-weeks', 'disclosure-boyfriend', 'disclosure-classmate']) {
             assert.ok(loadScenario(join(repoRoot, `packages/bot/sim/${name}.json`)).steps.length > 0, name);
         }
     });

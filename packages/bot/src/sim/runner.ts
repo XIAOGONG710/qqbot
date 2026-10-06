@@ -65,7 +65,7 @@ export interface RunOptions {
 export interface Bubble { time: number; text: string; proactive?: string }
 export interface Input { time: number; text: string; interrupt?: boolean }
 export interface Generation {
-    time: number; recall?: string; timeBlock?: string; relationship?: string; people?: string; common?: string; messages: number;
+    time: number; recall?: string; timeBlock?: string; relationship?: string; people?: string; common?: string; todayOthers?: string; messages: number;
     /** 模型原文（清理之前） */
     raw?: string;
     /** 出口检查带说明重写的原文（ADR 0006） */
@@ -105,6 +105,7 @@ const RELATIONSHIP_HEADER = '[你们关系的整体情况';
 /** ADR 0016：提起名单里的人时的那一段（第一个人；带他的记忆）、公共记忆 */
 const PEOPLE_HEADER = '[你认识的人：';
 const COMMON_HEADER = '[你和名单里别的人聊天时';
+const TODAY_OTHERS_HEADER = '[你今天和别人聊过的事';
 
 export async function runScenario(scenario: Scenario, options: RunOptions): Promise<RunResult> {
     const { dataDir } = options;
@@ -512,6 +513,7 @@ export function dynamicParts(prompt: PromptResult, time: number): Generation {
         relationship: block(RELATIONSHIP_HEADER),
         people: block(PEOPLE_HEADER),
         common: block(COMMON_HEADER),
+        todayOthers: block(TODAY_OTHERS_HEADER),
         messages: prompt.messages.length,
     };
 }
@@ -597,6 +599,8 @@ export function runChecks(checks: Checks, step: StepRecord, banned: readonly str
     for (const word of checks.recallNot ?? []) results.push({ ok: !recall.includes(word), text: `召回里没有「${word}」` });
     for (const word of checks.people ?? []) results.push({ ok: (last?.people ?? '').includes(word), text: `「你认识的人」里有「${word}」` });
     for (const word of checks.common ?? []) results.push({ ok: (last?.common ?? '').includes(word), text: `公共记忆里有「${word}」` });
+    for (const word of checks.todayOthers ?? []) results.push({ ok: (last?.todayOthers ?? '').includes(word), text: `今天和别人聊过的事里有「${word}」` });
+    for (const word of checks.todayOthersNot ?? []) results.push({ ok: !(last?.todayOthers ?? '').includes(word), text: `今天和别人聊过的事里没有「${word}」` });
     if (checks.noCommon) results.push({ ok: !last?.common, text: '没有线索，没想起公共记忆' });
     if (checks.replyAny) {
         const hit = checks.replyAny.filter(w => replies.includes(w));

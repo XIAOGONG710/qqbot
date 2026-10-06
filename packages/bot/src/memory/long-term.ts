@@ -17,6 +17,7 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { ownSourceLabel, sourceLabel } from '../disclosure.ts';
 import type { StoredMessage } from '../history.ts';
 import { readJsonOr, writeJsonAtomic } from '../json-file.ts';
 import { knowsPeople } from '../people.ts';
@@ -39,6 +40,8 @@ export const RELATIONSHIP_REFRESH_MS = 10 * 60_000;
 export const MAX_RECALLED = 12;
 /** 公共记忆、被提起的人的记忆各注入几条（ADR 0016：各约 250 token） */
 export const SHARED_RECALLED = 6;
+/** 一段新对话里给亲密联系人看的「今天跟别人聊过的」最多几条 */
+export const TODAY_OTHERS = 3;
 export const PERSON_RECALLED = 6;
 /** 召回取多少（ADR 0018：想不起来的筛掉之后还要够 MAX_RECALLED 条；以前是 600） */
 export const RECALL_TOKENS = 1000;
@@ -514,21 +517,57 @@ export class LongTermMemory {
         const about = (r: RecallResult) => focus.some(name => r.entities?.includes(name) || r.text.includes(name));
         const results = focus.length ? [...inWindow].sort((a, b) => Number(about(b)) - Number(about(a))) : inWindow;
         const own = `${this.#hash(contact)}:`;
-        const names = new Map(people.map(person => [this.#hash(person), person.name]));
         return formatRecalled(results.filter(r => !r.document_id?.startsWith(own)), {
             header: `[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和${contact.name}聊的，用不上就别提）]`,
             limit: SHARED_RECALLED,
             now,
             fade: { ...this.#fade(chat, fade), ...(window ? { window } : {}) },
-            source: r => {
-                const id = r.document_id ?? '';
-                if (id.startsWith(DIARY_PREFIX)) return '你的日记';
-                if (id.startsWith('week:')) return '你的周记';
-                if (id.startsWith('phase:')) return `你${id.split(':')[1]}的总结`;
-                const name = names.get(id.split(':')[0]!);
-                return name ? `和${name}聊的` : undefined;
-            },
+            source: this.#commonSource(contact, people),
         });
+    }
+
+    /**
+     * 今天和名单里别人聊过的（ADR 0020）。只取今天产生的其他联系人片段，不取日记/周记/总结，也不取眼前这个人的。
+     * contact.ts 只会在亲密联系人开启一段新对话或她主动找他时调用；这里仍保留通用的权限检查。
+     */
+    async othersToday(contact: NamedContact, now: Date, people: readonly NamedContact[], start: Date): Promise<string | undefined> {
+        if (!this.#options.common || !knowsPeople(contact.tier)) return undefined;
+        const stored = readJsonOr<Partial<CommonState>>(join(this.#options.dir, 'common.json'), {}, message => this.#options.log(message));
+        if (stored.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
+        const own = this.#hash(contact);
+        const owners = new Set(people.map(person => this.#hash(person)).filter(hash => hash !== own));
+        if (owners.size === 0) return undefined;
+        const end = new Date(now.getTime() + 60_000);
+        const otherNames = people.filter(person => owners.has(this.#hash(person))).map(person => person.name).join('、');
+        const all = await this.#recall(stored.bankId, {
+            ...recallRequest(`今天和${otherNames}聊了什么`, now, { start, end }),
+            types: ['world', 'experience'],
+            prefer_observations: false,
+        }, `[${contact.qq}] 今天和别人聊过的召回失败，这次不带`);
+        if (!all) return undefined;
+        const today = all.filter(result => {
+            const owner = (result.document_id ?? '').split(':')[0]!;
+            return owners.has(owner) && mentionedOnDay(result, start, end);
+        });
+        return formatRecalled(today, {
+            header: `[你今天和别人聊过的事（是你今天的一部分，不是和${contact.name}聊的；只挑大面上的一件，有自然由头时含糊地随口提，不要一上来汇报）]`,
+            limit: TODAY_OTHERS,
+            now,
+            source: this.#commonSource(contact, people),
+        });
+    }
+
+    /** 公共库每条事实的出处和披露上限（ADR 0020）。 */
+    #commonSource(listener: NamedContact, people: readonly NamedContact[]): (result: RecallResult) => string | undefined {
+        const owners = new Map(people.map(person => [this.#hash(person), person]));
+        return result => {
+            const id = result.document_id ?? '';
+            if (id.startsWith(DIARY_PREFIX)) return ownSourceLabel('你的日记', listener);
+            if (id.startsWith('week:')) return ownSourceLabel('你的周记', listener);
+            if (id.startsWith('phase:')) return ownSourceLabel(`你${id.split(':')[1]}的总结`, listener);
+            const owner = owners.get(id.split(':')[0]!);
+            return owner ? sourceLabel(owner, listener) : '不能说·来源不明';
+        };
     }
 
     async #recall(bankId: string, request: RecallRequest, failure: string): Promise<RecallResult[] | undefined> {
@@ -581,7 +620,9 @@ export class LongTermMemory {
                 .finally(() => { entry.fetchedAt = this.#now(); entry.fetching = false; });
         }
         const content = this.#relationship.get(key)?.content;
-        return content ? `[你对${person.name}的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）]\n${content}` : undefined;
+        return content
+            ? `[你心里对${person.name}的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）：里面的事实可以按披露规则使用；你对${person.name}的评价（喜欢、嫌弃、觉得他怎样）只放在心里，对谁都不说出口，对${person.name}本人也不说]\n${content}`
+            : undefined;
     }
 
     #personModelId(contact: MemoryContact): string {
@@ -669,6 +710,12 @@ function diaryIn(result: RecallResult, window: { start: Date; end: Date }): bool
 /** 召回结果是不是那天的事：发生的时间，没有就用说起的时间 */
 function onDay(result: RecallResult, start: Date, end: Date): boolean {
     const time = Date.parse(result.occurred_start ?? result.mentioned_at ?? '');
+    return !Number.isNaN(time) && time >= start.getTime() && time < end.getTime();
+}
+
+/** 「今天聊过」看说起这件事的时间；没有 mentioned_at 才退回事情发生的时间。 */
+function mentionedOnDay(result: RecallResult, start: Date, end: Date): boolean {
+    const time = Date.parse(result.mentioned_at ?? result.occurred_start ?? '');
     return !Number.isNaN(time) && time >= start.getTime() && time < end.getTime();
 }
 

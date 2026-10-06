@@ -8,7 +8,7 @@ import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes } from '../s
 import { HindsightClient, mentalModelUpdateBody, retainBody, type HindsightApi, type MemoryItem, type MentalModel, type RecallRequest, type RecallResult } from '../src/memory/hindsight.ts';
 import {
     bankMissions, commonBankMissions, formatRecalled, initiateQuery, LongTermMemory, MAX_QUERY_CHARS, MAX_RECALLED, OPEN_EPISODE_STEP, recallQuery,
-    RELATIONSHIP_MODEL, SHARED_RECALLED, DAY_RECALL_TOKENS, RECALL_TOKENS, secondPerson,
+    RELATIONSHIP_MODEL, SHARED_RECALLED, TODAY_OTHERS, DAY_RECALL_TOKENS, RECALL_TOKENS, secondPerson,
 } from '../src/memory/long-term.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
@@ -517,7 +517,7 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             const text = await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [{ ...A, name: '阿明' }, { ...B, name: '鸽鸽' }]);
             assert.match(text!, /^\[你和名单里别的人聊天时说过、听过的事（[^\]]*不是和阿明聊的/);
             assert.doesNotMatch(text!, /阿明自己说的/);
-            assert.match(text!, /\n- （和鸽鸽聊的）：鸽鸽说的第0件事\n/, '标出是和谁聊的（ADR 0017）');
+            assert.match(text!, /\n- （可明说·和鸽鸽聊的）：鸽鸽说的第0件事\n/, '标出出处和披露上限（ADR 0020）');
             assert.equal(text!.split('\n').length - 1, SHARED_RECALLED);
             assert.deepEqual(calls.recall[0]!.types, ['world', 'experience']);
             assert.equal(calls.recall[0]!.prefer_observations, false);
@@ -547,6 +547,66 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             assert.match(focused!.split('\n')[1]!, /鸽鸽 10月13日去出差装设备/, '实体对上的排第一');
             const plain = await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), people);
             assert.doesNotMatch(plain!, /出差/, '不给线索时照 Hindsight 的顺序，第 7 条排在外面');
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('低档位听众：普通来源只能含糊，亲密来源和未知来源都封口且不暴露是谁（ADR 0020）', async () => {
+        const known = { qq: 4, tier: 'known', name: '小李' };
+        const probe = setupCommon();
+        const closeDoc = `${hashOf(probe.memory, A)}:ep-1`;
+        const knownDoc = `${hashOf(probe.memory, known)}:ep-2`;
+        probe.cleanup();
+        const { memory, cleanup } = setupCommon({ recall: [
+            { id: 'close', text: '亲密来源的事', document_id: closeDoc },
+            { id: 'known', text: '普通来源的事', document_id: knownDoc },
+            { id: 'unknown', text: '来源对不上的事', document_id: 'legacy:ep-3' },
+        ] });
+        try {
+            await memory.sync(A, names, history);
+            const listener = { ...B, name: '同学' };
+            const text = await memory.recallCommon(listener, [{ role: 'user', content: '你听说什么了' }], new Date(now), [
+                { ...A, name: '宝宝' }, listener, known,
+            ]);
+            assert.match(text!, /（不能说·私下聊的）：亲密来源的事/);
+            assert.doesNotMatch(text!, /宝宝聊的/);
+            assert.match(text!, /（只能含糊·和小李聊的）：普通来源的事/);
+            assert.match(text!, /（不能说·来源不明）：来源对不上的事/);
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('今天和别人聊过的：只取今天产生的其他联系人片段、最多三条，并带披露标签', async () => {
+        const probe = setupCommon();
+        const self = hashOf(probe.memory, A);
+        const other = hashOf(probe.memory, B);
+        probe.cleanup();
+        const at = (iso: string) => new Date(`${iso}+08:00`).toISOString();
+        const results: RecallResult[] = [
+            { id: 'self', text: '阿明自己说的', document_id: `${self}:ep-1`, mentioned_at: at('2026-10-02T10:00:00') },
+            { id: 'old', text: '鸽鸽昨天说的', document_id: `${other}:ep-2`, mentioned_at: at('2026-10-01T23:00:00') },
+            { id: 'plan', text: '鸽鸽今天说下周要去杭州', document_id: `${other}:ep-3`, mentioned_at: at('2026-10-02T09:00:00'), occurred_start: at('2026-10-12T09:00:00') },
+            ...Array.from({ length: TODAY_OTHERS + 1 }, (_, i): RecallResult => ({
+                id: `today-${i}`, text: `鸽鸽今天说的第${i}件`, document_id: `${other}:ep-${4 + i}`, mentioned_at: at(`2026-10-02T1${i}:00:00`),
+            })),
+            { id: 'diary', text: '日记里的事', document_id: 'diary:2026-10-02', mentioned_at: at('2026-10-02T12:00:00') },
+        ];
+        const { memory, calls, cleanup } = setupCommon({ recall: results });
+        try {
+            await memory.sync(B, gege, history);
+            const listener = { ...A, name: '阿明' };
+            const people = [listener, { ...B, name: '鸽鸽' }];
+            const text = await memory.othersToday(listener, new Date(at('2026-10-02T20:00:00')), people, new Date('2026-10-02T02:00:00+08:00'));
+            assert.match(text!, /^\[你今天和别人聊过的事/);
+            assert.doesNotMatch(text!, /阿明自己|昨天|日记/);
+            assert.match(text!, /鸽鸽今天说下周要去杭州/, '按说起时间算今天，未来计划也能想起');
+            assert.match(text!, /（可明说·和鸽鸽聊的，打算 10月12日）/);
+            assert.equal(text!.split('\n').length - 1, TODAY_OTHERS);
+            assert.deepEqual(calls.recall.at(-1)!.types, ['world', 'experience']);
+            assert.equal(calls.recall.at(-1)!.prefer_observations, false);
+            assert.deepEqual(calls.recall.at(-1)!.temporal_window, { start: '2026-10-02T02:00:00+08:00', end: '2026-10-02T20:01:00+08:00' });
         } finally {
             cleanup();
         }
@@ -593,7 +653,7 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             const chat = [{ role: 'user' as const, content: '你昨天都干嘛了', time: new Date(now).toISOString() }];
             const text = await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [{ ...A, name: '阿明' }], { start: new Date(2026, 9, 7), end: new Date(2026, 9, 8, 2) });
             const lines = text!.split('\n').slice(1);
-            assert.match(lines[0]!, /（你的日记[^）]*）：和室友去后街吃了麻辣烫$/);
+            assert.match(lines[0]!, /（可明说·你的日记[^）]*）：和室友去后街吃了麻辣烫$/);
             assert.deepEqual(lines.slice(1).map(line => line.replace(/^- [^：]*：/, '')), ['总结里的第9件'], '总结里不是那天的不留');
         } finally {
             cleanup();
@@ -704,7 +764,8 @@ describe('长期记忆：她眼中的某个人（ADR 0017）', () => {
             api.getMentalModel = async (bank, id) => (bank === 'linmengyao-common' && id === person.id ? { id, content: '鸽鸽是做网络运维的，10月中旬去杭州出差。' } : undefined);
             assert.equal(memory.impression(B), undefined, '第一次在后台读');
             await new Promise(r => setTimeout(r, 0));
-            assert.equal(memory.impression(B), '[你对鸽鸽的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）]\n鸽鸽是做网络运维的，10月中旬去杭州出差。');
+            assert.equal(memory.impression(B), '[你心里对鸽鸽的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）：里面的事实可以按披露规则使用；'
+                + '你对鸽鸽的评价（喜欢、嫌弃、觉得他怎样）只放在心里，对谁都不说出口，对鸽鸽本人也不说]\n鸽鸽是做网络运维的，10月中旬去杭州出差。');
             assert.equal(memory.impression({ qq: 3, tier: 'stranger', name: '路人' }), undefined);
         } finally {
             rmSync(dir, { recursive: true, force: true });
@@ -844,9 +905,9 @@ describe('长期记忆：问到某段时间（ADR 0018 决策 3）', () => {
             const text = await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [{ ...A, name: '阿明' }],
                 { start: new Date(2026, 9, 1), end: new Date(2026, 9, 8, 2), period: 'holiday' });
             assert.deepEqual(text!.split('\n').slice(1).map(line => line.replace(/^- [^（]*（([^，）]*)[^：]*：/, '$1｜')), [
-                '你国庆节的总结｜林梦瑶国庆一个人在学校，挺自在',
-                '你的周记｜林梦瑶这周追完了一部剧',
-                '你的日记｜林梦瑶 10月3日去拍了银杏',
+                '可明说·你国庆节的总结｜林梦瑶国庆一个人在学校，挺自在',
+                '可明说·你的周记｜林梦瑶这周追完了一部剧',
+                '可明说·你的日记｜林梦瑶 10月3日去拍了银杏',
             ], '阶段总结的事实标在 9-30，按那篇的日子（10-07）还算国庆');
             assert.equal(calls.recall.length, 1);
         } finally {
