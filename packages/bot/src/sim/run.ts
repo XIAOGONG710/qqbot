@@ -1,11 +1,11 @@
-// 模拟器入口（ADR 0005）：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off]
+// 模拟器入口（ADR 0005）：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>]
 // 用 runtime/bot/config.json 的模型、提示词、记忆和角色卡配置（key 同 bot，从 QQBOT_LLM_API_KEY 读），
 // 每个场景跑 --runs 次（并行），每次的数据和报告在 runtime/sim/<时间>/<场景>/r<n>/，Hindsight 用临时 bank，跑完删掉。
 // 不碰 bot 的聊天记录、锁和 bank，bot 运行中也可以跑。
 // --card：用这个目录里的卡（文件名同配置里的，A/B 用临时目录；改 characters/*/st/ 等于直接上线，ADR 0019）；
 // --pin-examples：只对这次模拟改示例常驻（ADR 0019 决策 6），其余同配置。
 
-import { existsSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../config.ts';
@@ -25,8 +25,9 @@ const keepBank = flag('--keep-bank');
 const noMemory = flag('--no-memory');
 const cardDir = option('--card');
 const pinExamples = option('--pin-examples');
+const tag = option('--tag');
 if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))) {
-    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off]');
+    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>]');
     process.exit(2);
 }
 
@@ -48,8 +49,12 @@ if (cardDir || pinExamples) console.log(`卡：${config.characterCard}；示例�
 const hindsight = config.memory && !noMemory ? new HindsightClient(config.memory.baseUrl, config.memory.timeoutMs) : undefined;
 const now = new Date();
 const pad = (n: number) => String(n).padStart(2, '0');
-const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+// 批次目录：时间（到秒）加 --tag；同一秒起了几个批次（并行跑 A/B）时后面的加 -2、-3，不然会写进同一个目录、互相覆盖。
+const base = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}${tag ? `-${tag}` : ''}`;
+let stamp = base;
+for (let n = 2; existsSync(join(repoRoot, 'runtime', 'sim', stamp)); n++) stamp = `${base}-${n}`;
 const root = join(repoRoot, 'runtime', 'sim', stamp);
+mkdirSync(root, { recursive: true });
 
 let failed = 0;
 for (const [fileIndex, file] of files.entries()) {

@@ -19,8 +19,8 @@
 const MAX_REGENERATE = 2;
 /** 拆开的几条之间隔多久 */
 export const PART_GAP_MS = 1000;
-/** 连发合并的默认值：静默约 2 秒，最长约 6 秒（调研方案 5.2 的起点） */
-export const DEFAULT_SETTLE = { quietMs: 2000, maxMs: 6000 };
+/** 连发合并的默认值：热聊里多等一下，把 3 秒内的第二句并进同一轮；最长不超过 12 秒（ADR 0019 决策 5）。 */
+export const DEFAULT_SETTLE = { quietMs: 4000, maxMs: 12000 };
 /** 回复失败之后的再试间隔：1 分钟、5 分钟各一次（10-04 与用户确认，不无限重试） */
 export const RETRY_AFTER_MS = [60_000, 300_000];
 

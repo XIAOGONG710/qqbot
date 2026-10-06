@@ -21,6 +21,7 @@ import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
+import { describeIntent } from './intent.ts';
 import { askedWindow, ASKS_PAST, commonCue, describePerson, holidayWords, mentionedPeople, stillInMind } from './people.ts';
 import type { PromiseKeeper } from './promises.ts';
 import { describeState, stateAt } from './schedule.ts';
@@ -190,6 +191,16 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             reading = books?.context;
             const promised = contact.tier !== UNLISTED_TIER ? options.promises?.describe(contact, chat, time) : undefined;
             if (promised) log('时间块里提醒了她答应的事');
+            const intent = describeIntent({
+                history: chat,
+                state,
+                schedule: schedule ?? herSchedule,
+                now: time,
+                promised: Boolean(promised),
+                books: Boolean(books),
+                initiating: Boolean(initiate),
+            });
+            if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             const shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
             const prompt = buildPrompt({
@@ -210,6 +221,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(mood ? [describeMood(mood, contact.name)] : []),
                         ...(books ? [books.text] : []),
                         ...(promised ? [promised] : []),
+                        ...(intent ? [intent] : []),
                         ...(initiate ? [initiate.note] : []),
                     ].join('\n'),
                 ],

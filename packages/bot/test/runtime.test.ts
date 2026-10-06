@@ -291,7 +291,7 @@ describe('回复调度', () => {
         };
     }
 
-    test('连发合并：对方停下 2 秒才生成，几条一起回', async () => {
+    test('连发合并：对方停下 4 秒才生成，几条一起回', async () => {
         const c = clock();
         const { responder, prompts, sent } = setup({ now: c.now, sleep: c.sleep, settle: DEFAULT_SETTLE, generate: async () => '下楼干嘛' });
         responder.receive('刚才下楼', 1, new Date());
@@ -300,30 +300,30 @@ describe('回复调度', () => {
         responder.receive('看到一只猫', 2, new Date());
         c.set(1000);
         responder.receive('好像是土豆', 3, new Date());
-        await c.wakeAt(2000); // 离最后一条才 1 秒，再等 1 秒
+        await c.wakeAt(4000); // 离最后一条才 3 秒，再等 1 秒
         assert.deepEqual(prompts, []);
-        await c.wakeAt(3000);
+        await c.wakeAt(5000);
         await responder.whenIdle();
-        assert.deepEqual(c.asked, [2000, 1000]);
+        assert.deepEqual(c.asked, [4000, 1000]);
         assert.deepEqual(prompts, [['user:刚才下楼', 'user:看到一只猫', 'user:好像是土豆']]);
         assert.deepEqual(sent, ['下楼干嘛']);
     });
 
-    test('连发合并：对方一直在发，从第一条算起最多等 6 秒', async () => {
+    test('连发合并：对方一直在发，从第一条算起最多等 12 秒', async () => {
         const c = clock();
         const { responder, prompts } = setup({ now: c.now, sleep: c.sleep, settle: DEFAULT_SETTLE, generate: async () => '好' });
         responder.receive('0', 1, new Date());
         await tick();
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= 11; i++) {
             c.set(i * 1000);
             responder.receive(String(i), i + 1, new Date());
             await c.wakeAt(i * 1000 + 1); // 每次醒来都刚收到新消息，接着等
         }
-        c.set(5999);
-        await c.wakeAt(6000);
+        c.set(11999);
+        await c.wakeAt(12000);
         await responder.whenIdle();
         assert.equal(prompts.length, 1);
-        assert.deepEqual(prompts[0], ['user:0', 'user:1', 'user:2', 'user:3', 'user:4', 'user:5']);
+        assert.deepEqual(prompts[0], ['user:0', 'user:1', 'user:2', 'user:3', 'user:4', 'user:5', 'user:6', 'user:7', 'user:8', 'user:9', 'user:10', 'user:11']);
     });
 
     test('补回之后的 catchUp 不等待', async () => {

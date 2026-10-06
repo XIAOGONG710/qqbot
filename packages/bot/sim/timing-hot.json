@@ -1,0 +1,24 @@
+{
+    "name": "热聊连发：多等两秒合并同一轮（ADR 0019）",
+    "description": "正聊着时他连发两句：间隔 1.5 秒、3 秒要合并，5 秒仍分成两轮；观察生成次数和第一条气泡时间。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-06T20:00:00+08:00",
+    "memory": false,
+    "schedule": false,
+    "history": [
+        { "time": "2026-10-06T18:00:00+08:00", "role": "user", "content": "晚上聊" },
+        { "time": "2026-10-06T18:01:00+08:00", "role": "assistant", "content": "行啊" }
+    ],
+    "steps": [
+        { "case": "H01", "note": "间隔 1.5 秒：合在同一轮" },
+        { "say": ["刚才下楼了", "看到一只橘猫"], "gapMs": 1500 },
+        { "check": { "generations": 1, "exitClean": true } },
+        { "case": "H02", "note": "间隔 3 秒：改前会拆开，改后合在同一轮" },
+        { "say": ["它一直跟着我", "我给它买了根火腿肠"], "gapMs": 3000 },
+        { "check": { "generations": 1, "exitClean": true } },
+        { "case": "H03", "note": "间隔 5 秒：静默窗已过，仍分成两轮" },
+        { "say": ["后来它跑去花坛了", "我已经回宿舍了"], "gapMs": 5000 },
+        { "check": { "generations": 2, "exitClean": true } }
+    ]
+}
