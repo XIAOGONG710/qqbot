@@ -7,6 +7,7 @@ import { parseDates, parseProactive, type ImportantDay, type ProactiveSettings }
 import { PACE_RANGE } from '../reply-timing.ts';
 import { parseSchedule, type Schedule } from '../schedule.ts';
 import { parseBooks, parseMoods, type DailyMood, type ReadingBook } from '../her-days.ts';
+import { parseWorld, type World } from '../world.ts';
 import { parseRegexScripts, type RegexScript } from './regex.ts';
 
 export interface Character {
@@ -36,6 +37,8 @@ export interface Character {
     /** 每日心情与在读的书（extensions.qqbot，ADR 0015）；旧卡没有就是空数组 */
     moods: DailyMood[];
     books: ReadingBook[];
+    /** 她的世界（extensions.qqbot.world，ADR 0021）；旧卡没有。world 已经是世界书的名字 */
+    herWorld?: World;
 }
 
 export function parseCharacterCard(json: unknown, source = '角色卡'): Character {
@@ -69,6 +72,7 @@ export function parseCharacterCard(json: unknown, source = '角色卡'): Charact
         pace: parsePace(extensions.qqbot, source),
         moods: parseMoods((extensions.qqbot as { moods?: unknown } | undefined)?.moods, source),
         books: parseBooks((extensions.qqbot as { books?: unknown } | undefined)?.books, source),
+        ...readWorld(extensions.qqbot, source),
     };
 }
 
@@ -99,4 +103,9 @@ function readSchedule(qqbot: unknown, source: string): { schedule?: Schedule } {
 
 export function loadCharacterCard(path: string): Character {
     return parseCharacterCard(JSON.parse(readFileSync(path, 'utf8')), path);
+}
+
+function readWorld(qqbot: unknown, source: string): { herWorld?: World } {
+    const herWorld = parseWorld((qqbot as { world?: unknown } | undefined)?.world, source);
+    return herWorld ? { herWorld } : {};
 }
