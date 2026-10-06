@@ -106,3 +106,4 @@ DSH 侧每份文档开头都写了「不替代 ADR，要动手先写 ADR」，�
   本机仓库是纯 ASCII 路径，照旧用 `scripts/start-napcat.ps1`。再说一次：两台机器不能同时登这个 bot 号。
 - **`docs/hindsight.md`「本机安装记录」**：防火墙放行、pg0 数据目录不能是中文路径、Hugging Face 和 PyPI 走镜像、嵌入模型实际约 2.2 GB、`pg0 start` 不能接管道。
   都是实测出来的坑，保留。数据目录那一条按 `2ab139a` 改成了现在的选法。
+  那台机器的仓库在中文路径，照样落到 `%LOCALAPPDATA%`，行为不变；以后要是把仓库挪到纯 ASCII 路径，先设用户环境变量 `QQBOT_PGDATA` 指向现有的数据目录，不然会换成仓库里的空目录。
