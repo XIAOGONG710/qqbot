@@ -23,6 +23,7 @@ import { arrivedWhileAsleep } from './reply-timing.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import type { ProactiveMode } from './proactive.ts';
 import { createProactivePlanner, type Planner, type PlannerStatus } from './proactive-planner.ts';
+import { promiseKeeper } from './promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from './her-days.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt } from './schedule.ts';
@@ -184,6 +185,20 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     const diaryCard = memory
         ? (CONTACT_TIERS as readonly Tier[]).filter(tier => tiersInUse.has(tier)).map(tier => cardFor(tier).character).find(character => character.schedule)
         : undefined;
+    // 她答应过的事（ADR 0018 决策 2）：开了长期记忆时，名单里的人每段聊天结束后抽一次；到了日子在时间块里提醒，那天的打算写进日记
+    const promises = memory
+        ? promiseKeeper({
+            contacts: config.contacts,
+            history,
+            names: contact => ({ user: contact.name, char: cardFor(contact.tier).character.name }),
+            ...(diaryCard?.schedule ? { schedule: diaryCard.schedule } : {}),
+            extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(config.llm, messages, { log })),
+            dir: join(config.dataDir, 'promises'),
+            log,
+            ...(pipeline?.now ? { now: pipeline.now } : {}),
+        })
+        : undefined;
+    if (promises) log('她答应的事：名单里的人每段聊天结束后抽一次，到了日子在时间块里提醒');
     const diaries = memory && diaryCard
         ? diaryWriter({
             sources: {
@@ -195,6 +210,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             contacts: config.contacts,
             history,
             memory,
+            ...(promises ? { plans: promises.plansOn } : {}),
             generate: messages => (pipeline?.generate
                 ? pipeline.generate(messages, log)
                 : chatCompletion({ ...config.llm, temperature: DIARY_TEMPERATURE }, messages, { log })),
@@ -209,6 +225,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             void memory.sync(contact, { user: contact.name, char: cardFor(contact.tier).character.name }, history.load(contact.qq));
         }
         void diaries?.catchUp(new Date(pipeline?.now?.() ?? Date.now()));
+        void promises?.sync();
     }
     const memoryTimer = memory ? setInterval(syncMemory, MEMORY_SYNC_MS) : undefined;
     memoryTimer?.unref();
@@ -231,6 +248,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
             history,
             memory,
+            ...(promises ? { promises } : {}),
             contacts: config.contacts,
             send: (userId, text) => transport.sendPrivateText(userId, text),
             log,

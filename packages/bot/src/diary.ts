@@ -36,8 +36,10 @@ export interface DiarySources {
     mood?: string;
 }
 
-/** 她那一天的材料，一段给模型看的文字 */
-export function diaryMaterial(sources: DiarySources, day: Date, chats: readonly { name: string; messages: readonly StoredMessage[] }[]): string {
+/** 她那一天的材料，一段给模型看的文字；plans：她之前说过那天打算做的事（ADR 0018 决策 2） */
+export function diaryMaterial(
+    sources: DiarySources, day: Date, chats: readonly { name: string; messages: readonly StoredMessage[] }[], plans: readonly string[] = [],
+): string {
     const { schedule } = sources;
     const lines: string[] = [];
     const morning = stateAt(schedule, atTime(day, '10:00'));
@@ -63,6 +65,7 @@ export function diaryMaterial(sources: DiarySources, day: Date, chats: readonly 
         return `《${book.title}》${progress.finished ? '读完了' : `看到第 ${progress.amount} ${progress.unit}`}`;
     });
     if (reading.length) lines.push(`在读：${reading.join('、')}`);
+    if (plans.length) lines.push(`之前说过今天打算：${plans.join('；')}`);
     const talked = chats.filter(chat => chat.messages.length);
     if (talked.length === 0) {
         lines.push('今天没和名单里的人聊天。');
@@ -86,6 +89,7 @@ export function diaryMessages(charName: string, day: Date, material: string): Op
                 '用第一人称，像真的大学生写日记一样随意，150–300 字，一两段。怎么写：',
                 '- 作息里的课和活动是你今天做过的，挑几件写。',
                 '- 聊天里你说过自己做了什么、去了哪、吃了什么、看了什么，就是你今天做过的，照写，细节和说过的一致。',
+                '- 之前说过今天打算做的事，聊天里没说变卦，就写做了。',
                 '- 和谁聊了什么一句带过，写对方的名字。',
                 '- 写今天的心情。',
                 '- 在读的书最多一句。',
@@ -103,6 +107,8 @@ export interface DiaryWriterOptions {
     contacts: readonly Contact[];
     history: { load(qq: number): StoredMessage[] };
     memory: LongTermMemory;
+    /** 她之前说过那天打算做的事（ADR 0018 决策 2，promises.ts）；不传就没有 */
+    plans?: (date: string) => string[];
     /** 写日记的模型调用（温度用低一点的） */
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     /** 状态文件目录（runtime/bot/memory） */
@@ -125,7 +131,7 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
                 name: contact.name,
                 messages: options.history.load(contact.qq).filter(m => formatDate(herDay(options.sources.schedule, new Date(m.time))) === date),
             }));
-            const material = diaryMaterial(options.sources, day, chats);
+            const material = diaryMaterial(options.sources, day, chats, options.plans?.(date) ?? []);
             let text: string;
             try {
                 text = (await options.generate(diaryMessages(options.sources.charName, day, material))).trim();

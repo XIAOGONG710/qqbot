@@ -5,6 +5,7 @@ import { appendFileSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BotConfig, Contact } from '../config.ts';
 import { createContactResponder, replySkip, type TierCard } from '../contact.ts';
+import { promiseKeeper } from '../promises.ts';
 import { ChatHistory, type StoredMessage } from '../history.ts';
 import { chatCompletion } from '../llm.ts';
 import type { Log } from '../log.ts';
@@ -145,6 +146,19 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     /** 跑完要删的：他自己的、名单里其他人的、公共库 */
     const banks = memory ? [bankId!, ...others.map(other => memory.bankId(other)), memory.commonBankId()] : [];
     // 她的日记（ADR 0017）：和 bot 一样，跨过她的一天就补写，存进公共库；场景关了作息就没有她的一天，不写
+    // 她答应过的事（ADR 0018 决策 2）：和 bot 一样，开了记忆就抽（记忆同步时），到了日子在时间块里提醒，那天的打算写进日记
+    const promises = memory
+        ? promiseKeeper({
+            contacts: [contact, ...others],
+            history,
+            names: person => ({ user: person.name, char: names.char }),
+            ...(scenario.schedule && options.card.character.schedule ? { schedule: options.card.character.schedule } : {}),
+            extract: messages => (options.generate ? options.generate(messages, log) : chatCompletion(options.llm, messages, { log })),
+            dir: join(dataDir, 'promises'),
+            log,
+            now: clock.now,
+        })
+        : undefined;
     const diaryCard = options.card.character;
     const diaries = memory && scenario.schedule && diaryCard.schedule
         ? diaryWriter({
@@ -158,6 +172,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             contacts: [contact, ...others],
             history,
             memory,
+            ...(promises ? { plans: promises.plansOn } : {}),
             generate: messages => (options.generate
                 ? options.generate(messages, log)
                 : chatCompletion({ ...options.llm, temperature: DIARY_TEMPERATURE }, messages, { log })),
@@ -206,6 +221,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
         history,
         memory,
+        ...(promises ? { promises } : {}),
         contacts: [contact, ...others],
         log,
         now: clock.now,
@@ -322,6 +338,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         if (!memory || !options.hindsight || !bankId || hindsightDown) return;
         for (const person of who) await memory.sync(person, { user: person.name, char: names.char }, history.load(person.qq));
         await diaries?.catchUp(new Date(clock.now()));
+        await promises?.sync();
         const watched = [...who.map(person => memory.bankId(person)), memory.commonBankId()];
         const started = Date.now();
         const limit = options.hindsightWaitMs ?? 240_000;

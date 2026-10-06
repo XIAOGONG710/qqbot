@@ -37,6 +37,12 @@ describe('她的日记（ADR 0017）', () => {
         assert.doesNotMatch(text, /阿明|心情|在读/);
     });
 
+    test('材料：之前说过那天打算做的事（ADR 0018 决策 2）；提示词说没变卦就写做了', () => {
+        assert.match(diaryMaterial(sources, new Date(2026, 9, 10), [], ['去拍银杏', '看完那本书']), /\n之前说过今天打算：去拍银杏；看完那本书\n/);
+        assert.doesNotMatch(diaryMaterial(sources, new Date(2026, 9, 10), []), /打算/);
+        assert.match(diaryMessages('林梦瑶', new Date(2026, 9, 10), '材料')[0]!.content as string, /之前说过今天打算做的事，聊天里没说变卦，就写做了/);
+    });
+
     test('提示词只写怎么写，日期对', () => {
         const [system, user] = diaryMessages('林梦瑶', new Date(2026, 9, 6), '材料');
         assert.match(system!.content as string, /^你是林梦瑶，在读的女大学生，睡前在写今天（10月6日）的日记。/);

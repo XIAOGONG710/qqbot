@@ -22,6 +22,7 @@ import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
 import { askedDay, ASKS_PAST, commonCue, describePerson, mentionedPeople, stillInMind } from './people.ts';
+import type { PromiseKeeper } from './promises.ts';
 import { describeState, stateAt } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
 import { describeDays, describeTime } from './time-context.ts';
@@ -93,6 +94,8 @@ export interface ContactPipelineOptions {
      * 一天怎么算、课多不多按卡上的作息，所以卡上没有作息（或者没有心情、书）就没有；schedule 关着时心情和书照样有，只是没有看书的空闲活动
      */
     herDays?: boolean;
+    /** 她答应过的事（ADR 0018 决策 2）：到了日子在时间块里提醒一句；名单外的人不用 */
+    promises?: Pick<PromiseKeeper, 'describe'>;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
     mood?: string;
     /** herDays 开着时每次生成前调一次（app 按她的一天去重，写当天的摘要） */
@@ -183,6 +186,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 })
                 : undefined;
             reading = books?.context;
+            const promised = contact.tier !== UNLISTED_TIER ? options.promises?.describe(contact, chat, time) : undefined;
+            if (promised) log('时间块里提醒了她答应的事');
             const prompt = buildPrompt({
                 character,
                 worldInfo,
@@ -200,6 +205,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(state ? [describeState(state, schedule!, { userName: contact.name, woken })] : []),
                         ...(mood ? [describeMood(mood, contact.name)] : []),
                         ...(books ? [books.text] : []),
+                        ...(promised ? [promised] : []),
                         ...(initiate ? [initiate.note] : []),
                     ].join('\n'),
                 ],

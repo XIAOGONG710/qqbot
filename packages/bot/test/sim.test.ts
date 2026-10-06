@@ -21,6 +21,8 @@ const llm: BotConfig['llm'] = {
 const prompt: BotConfig['prompt'] = { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true };
 /** 写日记的请求（ADR 0017）：假模型单独回，不算进聊天的生成 */
 const isDiary = (messages: OpenAIMessage[]) => messages[0]?.role === 'system' && messages[0].content.includes('睡前在写今天');
+/** 抽她答应的事的请求（ADR 0018）：同上 */
+const isPromises = (messages: OpenAIMessage[]) => messages[0]?.role === 'system' && messages[0].content.includes('答应过的事」');
 
 describe('模拟器：场景文件', () => {
     test('时长写法', () => {
@@ -79,6 +81,7 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
         const diaries: OpenAIMessage[][] = [];
         const generate = async (messages: OpenAIMessage[]) => {
             if (isDiary(messages)) { diaries.push(messages); return '今天没什么事，看了会儿书。'; }
+            if (isPromises(messages)) return '{"add":[],"resolved":[]}';
             prompts.push(messages);
             await new Promise(r => setTimeout(r, 50));
             return prompts.length === 2 ? '第一条\n第二条\n第三条' : '好';
@@ -143,6 +146,48 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
         }
     });
 
+    test('她答应的事（ADR 0018）：那段聊天结束后抽出来，他下次来时时间块里提醒', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-'));
+        const hindsight: SimHindsight = {
+            putBank: async () => {},
+            retain: async () => {},
+            recall: async () => [],
+            getMentalModel: async () => undefined,
+            createMentalModel: async () => {},
+            updateMentalModel: async () => {},
+            activeOperations: async () => [],
+            operationStatus: async () => 'completed',
+            refreshMentalModel: async () => 'op-1',
+            deleteBank: async () => {},
+        };
+        const seen: OpenAIMessage[][] = [];
+        const extractions: OpenAIMessage[][] = [];
+        const generate = async (messages: OpenAIMessage[]) => {
+            if (isDiary(messages)) return '日记';
+            if (isPromises(messages)) {
+                extractions.push(messages);
+                return '{"add":[{"what":"给他讲那本书的结局","date":null}],"resolved":[]}';
+            }
+            seen.push(messages);
+            return seen.length === 1 ? '下次给你讲结局' : '在呢';
+        };
+        const scenario = parseScenario({
+            name: '测试', tier: 'boyfriend', start: '2026-10-05T20:00:00+08:00', schedule: false,
+            steps: [{ say: '那本书结局是啥' }, { advance: '1h' }, { say: '在吗' }],
+        });
+        try {
+            const result = await runScenario(scenario, { runId: 'test', dataDir: dir, card, llm, prompt, hindsight, generate, settle: { quietMs: 100, maxMs: 500 } });
+            assert.equal(extractions.length, 1);
+            assert.match(extractions[0]![1]!.content as string, /下次给你讲结局/);
+            const text = (messages: OpenAIMessage[]) => messages.map(m => m.content).join('\n');
+            assert.doesNotMatch(text(seen[0]!), /答应过/);
+            assert.match(text(seen[1]!), /你之前答应过阿明、还没做的事：给他讲那本书的结局（今天说的，说下次）/);
+            assert.ok(result.steps.at(-1)!.logs.includes('时间块里提醒了她答应的事'));
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('挪走聊天记录后只能靠召回；Hindsight 停了照常回复；字数检查', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-'));
         const created = new Set<string>();
@@ -159,7 +204,7 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             deleteBank: async () => {},
         };
         const seen: OpenAIMessage[][] = [];
-        const generate = async (messages: OpenAIMessage[]) => (isDiary(messages) ? '日记' : (seen.push(messages), '嗯嗯'));
+        const generate = async (messages: OpenAIMessage[]) => (isDiary(messages) ? '日记' : isPromises(messages) ? '{"add":[],"resolved":[]}' : (seen.push(messages), '嗯嗯'));
         const scenario = parseScenario({
             name: '测试', tier: 'boyfriend', start: '2026-10-05T20:00:00+08:00',
             steps: [

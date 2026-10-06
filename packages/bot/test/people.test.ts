@@ -13,6 +13,9 @@ import { runChecks, runScenario, type SimHindsight } from '../src/sim/runner.ts'
 import { parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
+/** 抽她答应的事的请求（ADR 0018）：假模型单独回，不算进聊天的生成 */
+const isPromises = (messages: OpenAIMessage[]) => messages[0]?.role === 'system' && messages[0].content.includes('答应过的事」');
+
 // 名单是虚构的
 const me: Contact = { qq: 10001, name: '宝宝', tier: 'boyfriend' };
 const gege: Contact = { qq: 10002, name: '鸽鸽', tier: 'classmate', intro: '网上认识的朋友，网络运维的大神，比较熟' };
@@ -108,7 +111,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         try {
             const result = await runScenario(scenario(), {
                 runId: 't', dataDir: dir, card, llm, prompt, hindsight, settle: { quietMs: 10, maxMs: 50 },
-                generate: async messages => { prompts.push(messages); return '在呢'; },
+                generate: async messages => { if (isPromises(messages)) return '{"add":[],"resolved":[]}'; prompts.push(messages); return '在呢'; },
             });
             const gegeBank = retained[0]!.bank;
             assert.deepEqual(retained.map(r => r.bank), [gegeBank, 'sim-t-common']);
@@ -148,7 +151,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         try {
             const result = await runScenario(scenario({ steps: [{ say: '我下周去杭州玩' }] }), {
                 runId: 't', dataDir: dir, card, llm, prompt, hindsight, settle: { quietMs: 10, maxMs: 50 },
-                generate: async () => '好呀',
+                generate: async messages => (isPromises(messages) ? '{"add":[],"resolved":[]}' : '好呀'),
             });
             const say = result.steps.find(step => step.kind === 'say')!;
             assert.ok(say.logs.includes('召回公共记忆 1 条（线索：杭州）'));
@@ -176,7 +179,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         try {
             await runScenario(scenario({ steps: [{ say: '鸽鸽下周去杭州' }] }), {
                 runId: 't', dataDir: dir, card, llm, prompt, hindsight, settle: { quietMs: 10, maxMs: 50 },
-                generate: async messages => { prompts.push(messages); return '好呀'; },
+                generate: async messages => { if (isPromises(messages)) return '{"add":[],"resolved":[]}'; prompts.push(messages); return '好呀'; },
             });
             const text = prompts[0]!.map(m => m.content).join('\n');
             // 公共记忆、鸽鸽的记忆两段都换了（他自己的 bank 还没写过，场景里没有他以前的聊天）
@@ -210,7 +213,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         try {
             const result = await runScenario(scenario({ steps: [{ say: '我下周去杭州玩' }] }), {
                 runId: 't', dataDir: dir, card, llm, prompt, hindsight, settle: { quietMs: 10, maxMs: 50 },
-                generate: async messages => { prompts.push(messages); return '好呀'; },
+                generate: async messages => { if (isPromises(messages)) return '{"add":[],"resolved":[]}'; prompts.push(messages); return '好呀'; },
             });
             const say = result.steps.find(step => step.kind === 'say')!;
             assert.ok(say.logs.includes('召回公共记忆 2 条（线索：杭州；记个大概 1，一提想起 1，想不起来 1）'), say.logs.join('\n'));
@@ -241,7 +244,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         try {
             const result = await runScenario(scenario({ steps: [{ say: '我下周去杭州玩' }, { say: '然后呢' }, { say: '真的假的' }, { say: '那你呢' }] }), {
                 runId: 't', dataDir: dir, card, llm, prompt, hindsight, settle: { quietMs: 10, maxMs: 50 },
-                generate: async () => '好呀\n你呢',
+                generate: async messages => (isPromises(messages) ? '{"add":[],"resolved":[]}' : '好呀\n你呢'),
             });
             const says = result.steps.filter(step => step.kind === 'say');
             assert.deepEqual(says.map(step => step.logs.find(line => line.includes('公共记忆'))), [
