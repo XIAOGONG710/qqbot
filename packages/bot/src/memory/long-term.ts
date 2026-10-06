@@ -23,7 +23,7 @@ import { knowsPeople } from '../people.ts';
 import type { ChatMessage } from '../prompt.ts';
 import type { MacroNames } from '../st/macros.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes, type Episode } from './episodes.ts';
-import { clarity, IMPORTANT, isSummary, lastTouched, withoutMark, type Clarity, type FadeStats } from './fading.ts';
+import { clarity, IMPORTANT, isSummary, LASTING, lastTouched, withoutMark, type Clarity, type FadeStats } from './fading.ts';
 import type { BankConfig, HindsightApi, MentalModelRequest, RecallRequest, RecallResult } from './hindsight.ts';
 
 /** 进行中的片段每多这么多条就整段重写一次 */
@@ -68,6 +68,7 @@ export function bankMissions(names: MacroNames) {
             `- 绰号、外号写成「绰号（${user}的什么人）」，例如「铁锅（${user}的组长）」。`,
             '- 否定（不吃香菜）、更正（之前说错了）各单独记一条，保留原话里的否定。',
             IMPORTANT_RULE,
+            LASTING_RULE,
             '- 生病、心情不好、很累这类近几天的状态也记，带日期。',
             `- ${char}复述以前聊过的事，不算新事实；寒暄、表情、单纯的附和不记。`,
             `- 不推断沉默的动机，不诊断${user}的人格。`,
@@ -87,6 +88,7 @@ export function commonBankMissions(char: string) {
             '记录里都是真实发出去的消息，不是角色卡示例，也不是草稿。',
             `也有${char}自己写的日记（开头写着「${char}的日记」和日期）：里面的事是${char}那天做过的，记成${char}的经历，带上那天的日期。`,
             `还有${char}的周记、假期总结（开头写着「${char}的周记」「${char}的国庆节总结」这样的标题和日期范围）：是她对那段时间的回顾，记成${char}的经历，带上那段时间。`,
+            `日记、周记、总结里的事都按那段时间记，不加「${LASTING}」。`,
             `提取明确出现的信息：聊天对象自己说的偏好、日程和计划、经历、身体和心情，${char}说的她自己的日常，双方的约定。`,
             `- 每条写清是在和谁的私聊里、谁说的、关于谁，用名字（${char}和聊天对象的称呼），不写「用户」「对方」「助手」。`,
             `- ${char}说的她自己的日常（上课、吃饭、宿舍、猫）照记，但写明是${char}说的、对谁说的。`,
@@ -94,6 +96,7 @@ export function commonBankMissions(char: string) {
             '- 绰号、外号写成「绰号（谁的什么人）」。',
             '- 否定（不吃香菜）、更正（之前说错了）各单独记一条，保留原话里的否定。',
             IMPORTANT_RULE,
+            LASTING_RULE,
             `- ${char}复述以前聊过的事，不算新事实；寒暄、表情、单纯的附和不记。`,
             '- 不推断沉默的动机，不诊断任何人的人格。',
         ].join('\n'),
@@ -106,6 +109,12 @@ export function commonBankMissions(char: string) {
  * 10-06 临时库实验：一周年、面试标上了，午饭、天气没标；整合成观察后记号会丢
  */
 const IMPORTANT_RULE = `- 重要的事（生日、纪念日、考试和面试、吵架与和好、第一次做的事）在这一条开头加「${IMPORTANT}」；吃饭、天气这类日常不加。`;
+
+/**
+ * 长期知道的（ADR 0018 实现时的调整 11）：Hindsight 只给原话里带时间词的事实写 occurred_start，没写的按哪天说的变淡；
+ * 一直成立的事让 Hindsight 在开头标【长期】，和【重要】一样不变淡（日记、周记、总结里的除外，按那段时间算）
+ */
+const LASTING_RULE = `- 一直成立、过几个月还该记得的事（偏好和忌口、习惯、身份和工作、家里人和身边的人、一直在做的事，例如在健身、在实习）在这一条开头加「${LASTING}」；某一天发生的事、某天的心情和身体、聊天里的调侃和玩笑不加。「${IMPORTANT}」和「${LASTING}」都该加时两个都加。`;
 
 const SHARED_MISSIONS = {
     observations_mission: [

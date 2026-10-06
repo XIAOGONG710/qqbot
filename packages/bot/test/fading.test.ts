@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { clarity, isImportant, isSummary, lastTouched, withoutMark, type FadeOptions } from '../src/memory/fading.ts';
+import { clarity, isImportant, isLasting, isSummary, lastTouched, withoutMark, type FadeOptions } from '../src/memory/fading.ts';
 import type { RecallResult } from '../src/memory/hindsight.ts';
 import { formatRecalled, VAGUE_NOTE } from '../src/memory/long-term.ts';
 
@@ -11,14 +11,24 @@ const options = (heard = ''): FadeOptions => ({ now, heard, ignore: ['林梦瑶'
 const fact = (id: string, extra: Partial<RecallResult> = {}): RecallResult => ({ id, text: `事${id}`, type: 'world', ...extra });
 
 describe('记忆变淡（ADR 0018 决策 1）', () => {
-    test('长期知道的不变淡：没有发生日期的、重要的（自己或背后的事实开头有【重要】）、还没到日子的计划', () => {
-        assert.equal(clarity(fact('1', { mentioned_at: ago(100) }), options()), 'lasting', '没有发生日期');
+    test('长期知道的不变淡：标了【长期】【重要】的（自己或背后的事实开头有）、还没到日子的计划', () => {
+        assert.equal(clarity(fact('1', { text: '【长期】宝宝不吃香菜', mentioned_at: ago(100) }), options()), 'lasting', '【长期】');
+        assert.equal(clarity(fact('1b', { type: 'observation', mentioned_at: ago(100), sources: ['【重要】【长期】宝宝在字节实习'] }), options()), 'lasting',
+            '两个记号都有，背后的事实');
         assert.equal(clarity(fact('2', { text: '【重要】10月10日是一周年', occurred_start: ago(100) }), options()), 'lasting');
         assert.equal(clarity(fact('3', { type: 'observation', occurred_start: ago(100), sources: ['【重要】宝宝 9月1日面试字节'] }), options()), 'lasting',
             '观察整合后记号没了，看背后的事实');
         assert.equal(clarity(fact('4', { occurred_start: new Date(2026, 10, 25).toISOString(), mentioned_at: ago(40) }), options()), 'lasting', '还没到日子');
         assert.ok(isImportant(fact('5', { text: ' 【重要】吵架和好了' })));
         assert.ok(!isImportant(fact('6', { text: '中午吃了面，【重要】不在开头' })));
+        assert.ok(isLasting(fact('7', { text: '【重要】【长期】宝宝的生日是 3 月 2 日' })));
+        assert.ok(!isLasting(fact('8', { text: '【长期】你在读药屋少女第 7 卷', document_id: 'diary:2026-10-10' })), '日记里的按那篇的日子');
+    });
+
+    test('没标【长期】、没有发生日期的（Hindsight 只给带时间词的写发生日期）：按哪天说的变淡（实现时的调整 11）', () => {
+        const said = (days: number) => clarity(fact('1', { text: '你说宝宝这二十天没影，是在偷偷练吉他', mentioned_at: ago(days) }), options());
+        assert.deepEqual([3, 20, 45].map(said), ['clear', 'vague', 'forgotten']);
+        assert.equal(clarity(fact('2'), options()), 'lasting', '一个时间都没有的照旧不变淡');
     });
 
     test('某天的事：7 天内清楚、30 天内记个大概、更早的想不起来', () => {
@@ -36,7 +46,8 @@ describe('记忆变淡（ADR 0018 决策 1）', () => {
         // 发生在 40 天前，3 天前他又说起
         assert.equal(clarity(fact('1', { occurred_start: ago(40), mentioned_at: ago(3) }), options()), 'clear');
         assert.equal(lastTouched(fact('2', { occurred_start: ago(40), occurred_end: ago(20), mentioned_at: ago(35) }))!.getTime(), Date.parse(ago(20)));
-        assert.equal(lastTouched(fact('3', { mentioned_at: ago(3) })), undefined, '没有发生日期');
+        assert.equal(lastTouched(fact('3', { mentioned_at: ago(3) }))!.getTime(), Date.parse(ago(3)), '没有发生日期的按哪天说的');
+        assert.equal(lastTouched(fact('3b')), undefined, '一个时间都没有');
         // 日记里的事按那篇的日子（哪怕抽出来的事实没有发生日期）
         const diary = fact('4', { document_id: 'diary:2026-10-10' });
         assert.equal(lastTouched(diary)!.getTime(), new Date(2026, 9, 10).getTime());
@@ -70,6 +81,7 @@ describe('记忆变淡（ADR 0018 决策 1）', () => {
     test('去掉【重要】记号', () => {
         assert.equal(withoutMark('【重要】10月10日是一周年'), '10月10日是一周年');
         assert.equal(withoutMark('一周年'), '一周年');
+        assert.equal(withoutMark('【重要】【长期】宝宝的生日是 3 月 2 日'), '宝宝的生日是 3 月 2 日');
     });
 });
 

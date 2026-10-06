@@ -248,7 +248,7 @@ describe('长期记忆：写入', () => {
             assert.equal(calls.retain[0]!.context, 'QQ 私聊：林梦瑶（AI 扮演）和阿明');
             assert.equal(calls.retain[0]!.timestamp, localIso(new Date(T0)));
             const mission = (calls.putBank[0] as { retain_mission: string }).retain_mission;
-            for (const rule of ['林梦瑶是 AI 扮演的虚拟角色', '不能记成阿明的事', '写成绝对日期', '铁锅（阿明的组长）', '否定', '不写「用户」', '开头加「【重要】」']) {
+            for (const rule of ['林梦瑶是 AI 扮演的虚拟角色', '不能记成阿明的事', '写成绝对日期', '铁锅（阿明的组长）', '否定', '不写「用户」', '开头加「【重要】」', '开头加「【长期】」']) {
                 assert.ok(mission.includes(rule), rule);
             }
         } finally {
@@ -447,6 +447,8 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             assert.deepEqual(check(commonBankMissions('林梦瑶'), root('bank')), []);
             assert.match((calls.putBank[1] as { retain_mission: string }).retain_mission, /每条写清是在和谁的私聊里/);
             assert.match((calls.putBank[1] as { retain_mission: string }).retain_mission, /开头加「【重要】」/, '重要度（ADR 0018）');
+            assert.match((calls.putBank[1] as { retain_mission: string }).retain_mission, /开头加「【长期】」.*日记、周记、总结里的事都按那段时间记|日记、周记、总结里的事都按那段时间记.*开头加「【长期】」/s,
+                '长期知道的，日记里的除外（ADR 0018 实现时的调整 11）');
             assert.ok(logs.some(l => l.includes('记忆：公共记忆库 linmengyao-common 已写入 mission')));
             assert.ok(logs.some(l => l.includes(`记忆（公共）：片段 ep-${T0}`)));
 
