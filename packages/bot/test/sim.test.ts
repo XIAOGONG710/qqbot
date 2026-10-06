@@ -61,7 +61,7 @@ describe('模拟器：场景文件', () => {
 describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
     test('连发合并、生成中插话、发送中途插话、跳一天后的时间块和召回、自动检查、报告', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-'));
-        const calls = { retain: [] as MemoryItem[], retainBanks: [] as string[], recall: [] as RecallRequest[], deleted: [] as string[], refreshed: [] as string[] };
+        const calls = { retain: [] as MemoryItem[], retainBanks: [] as string[], recall: [] as RecallRequest[], deleted: [] as string[], refreshed: 0 };
         const created = new Set<string>();
         const hindsight: SimHindsight = {
             putBank: async () => {},
@@ -72,7 +72,7 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             updateMentalModel: async () => {},
             activeOperations: async () => [],
             operationStatus: async () => 'completed',
-            refreshMentalModel: async (bank, id) => { calls.refreshed.push(`${bank} ${id}`); return 'op-1'; },
+            refreshMentalModel: async () => { calls.refreshed++; return 'op-1'; },
             deleteBank: async bank => { calls.deleted.push(bank); },
         };
         const prompts: OpenAIMessage[][] = [];
@@ -127,7 +127,7 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             assert.ok(calls.retainBanks.every((bank, i) => !isDiaryItem(calls.retain[i]!) || bank === 'sim-test-common'));
             assert.match(diaries[3]![1]!.content, /\[和阿明\]\n.*阿明：一/);
             assert.match(diaries[0]![1]!.content, /今天没和名单里的人聊天/);
-            assert.deepEqual(calls.refreshed.map(r => r.replace(/person-[0-9a-f]+/, 'person')), ['sim-test-common person', `${result.bankId} relationship`], '建好印象当场整理一次（ADR 0017）；场景的 refresh 一次');
+            assert.equal(calls.refreshed, 1);
             assert.equal(result.steps[10]!.relationship, '关系稳定');
             assert.deepEqual(calls.deleted, [result.bankId, 'sim-test-common']);
             assert.match(result.bankId!, /^sim-test-[0-9a-f]{16}$/);

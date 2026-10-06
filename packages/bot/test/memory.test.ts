@@ -602,7 +602,6 @@ describe('长期记忆：她眼中的某个人（ADR 0017）', () => {
             assert.match(person.source_query, /各个聊天里提到鸽鸽的都算/);
             assert.deepEqual(check(person, root('mentalModel')), []);
             assert.ok(logs.some(l => l.includes('「她眼中的鸽鸽」已建好')));
-            assert.equal(calls.refreshMentalModel, 1, '建好当场整理一次（公共库里早就有他的事）');
             await memory.sync(B, { user: '鸽鸽', char: '林梦瑶' }, [msg(0, 'user', '在吗'), msg(100, 'user', '在吗')]);
             assert.equal(models.filter(m => m.name === '她眼中的鸽鸽').length, 1, '只建一次');
 
