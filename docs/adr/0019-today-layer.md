@@ -320,3 +320,7 @@ C 落地为「没抢到回青岛的票，留在学校（你们说好以后放假
 - 普通开场、他说自己的事、答应的事、书和空闲活动继续按原优先级。
 
 修正后用同一临时最终卡、`pinExamples: false` 再跑：`boyfriend-tone` 3 / 3 次各 9 / 9 项通过，`timing-boyfriend` 3 / 3 次各 18 / 18 项通过。正式卡已离线生成；全量测试 bot 361 项、character-tools 28 项、Koishi 插件 23 项全部通过，完整类型检查通过。
+
+### 上线
+
+`c41e14c` 提交正式角色卡、意图边界、配置示例、测试和本 ADR；忽略的两份实际运行配置均切到 `pinExamples: false`。2026-10-06 23:22 干净重启 Koishi，新 worker PID 1992；启动日志确认 NapCat 账号就绪、Hindsight 和日记开启，`127.0.0.1:5140` 由该 worker 监听。
