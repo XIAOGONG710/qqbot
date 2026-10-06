@@ -30,6 +30,9 @@ import { PENDING_REASON } from './proactive.ts';
 import { pendingMessages, type Seen } from './reply-timing.ts';
 import { MAX_BUBBLES, splitReply } from './reply.ts';
 
+/** 拼好的提示词；note 是给日志的补充（例如聊天原文不放的条数） */
+export type BuiltPrompt = PromptResult & { note?: string };
+
 /** 回复时机（reply-timing.ts 按作息算） */
 export interface ReplyTiming {
     /** 没回的消息什么时候看到；没有没回的消息返回 undefined */
@@ -45,9 +48,10 @@ export interface ResponderDeps {
     history: Pick<ChatHistory, 'load' | 'append'>;
     /**
      * 可以是异步的（生成前要先召回长期记忆）；woken：睡着时被消息吵醒（ADR 0007 决策 6）；
-     * initiate：她主动找他（ADR 0011）：note 是这次为什么找（写进时间块之后），topic 是召回时想知道什么（ADR 0012）
+     * initiate：她主动找他（ADR 0011）：note 是这次为什么找（写进时间块之后），topic 是召回时想知道什么（ADR 0012）；
+     * 返回的 note 接在「生成回复」那行日志后面
      */
-    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string } }) => PromptResult | Promise<PromptResult>;
+    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string } }) => BuiltPrompt | Promise<BuiltPrompt>;
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     clean: (reply: string) => string;
     /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查 */
@@ -247,7 +251,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { woken: decision?.woken });
             deps.onPrompt?.(prompt);
             const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
-            deps.log(`生成回复：${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);
+            deps.log(`生成回复：${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}${prompt.note ? `，${prompt.note}` : ''}`);
 
             reply = deps.clean(await deps.generate(prompt.messages));
             if (deps.review) reply = await deps.review(reply, prompt.messages);

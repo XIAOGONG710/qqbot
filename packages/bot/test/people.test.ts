@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
@@ -187,6 +187,44 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
             // 公共记忆、鸽鸽的记忆两段都换了（他自己的 bank 还没写过，场景里没有他以前的聊天）
             assert.equal(text.match(/- 你说她也想去杭州/g)?.length, 2);
             assert.doesNotMatch(text, new RegExp(`${card.character.name}说她也想去杭州`));
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('聊天原文只放最近 7 天的（ADR 0018 实现时的调整 12）：隔了很久再来放上一次那段，更早的不放，日志写不放几条', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
+        const hindsight: SimHindsight = {
+            putBank: async () => {},
+            retain: async () => {},
+            recall: async () => [],
+            getMentalModel: async () => undefined,
+            createMentalModel: async () => {},
+            updateMentalModel: async () => {},
+            activeOperations: async () => [],
+            operationStatus: async () => 'completed',
+            refreshMentalModel: async () => 'op-1',
+            listEntities: async () => [],
+            deleteBank: async () => {},
+        };
+        const prompts: OpenAIMessage[][] = [];
+        try {
+            await runScenario(scenario({
+                others: [],
+                history: [
+                    { time: '2026-08-27T20:00:00+08:00', role: 'user', content: '后街那家老灶火锅巨好吃' },
+                    { time: '2026-08-27T20:01:00+08:00', role: 'assistant', content: '下次带我去' },
+                    { time: '2026-09-16T21:00:00+08:00', role: 'user', content: '最近在学吉他' },
+                ],
+                steps: [{ say: '在吗' }],
+            }), {
+                runId: 't', dataDir: dir, card, llm, prompt, hindsight, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { if (isPromises(messages)) return '{"add":[],"resolved":[]}'; prompts.push(messages); return '在呢'; },
+            });
+            const text = prompts[0]!.map(m => m.content).join('\n');
+            assert.match(text, /最近在学吉他/, '上一次那段（20 天前）还放');
+            assert.doesNotMatch(text, /老灶/, '更早的不放');
+            assert.match(readFileSync(join(dir, 'sim.log'), 'utf8'), /7 天前的聊天原文 2 条不放/);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

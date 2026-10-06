@@ -11,7 +11,7 @@ import { reviewReply } from './exit-check.ts';
 import type { ChatHistory, StoredMessage } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
-import type { FadeStats } from './memory/fading.ts';
+import { CLEAR_DAYS, recentChat, type FadeStats } from './memory/fading.ts';
 import { initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from './memory/long-term.ts';
 import { buildPrompt, type OpenAIMessage, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
@@ -188,10 +188,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             reading = books?.context;
             const promised = contact.tier !== UNLISTED_TIER ? options.promises?.describe(contact, chat, time) : undefined;
             if (promised) log('时间块里提醒了她答应的事');
+            // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
+            const shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
             const prompt = buildPrompt({
                 character,
                 worldInfo,
-                history: chat,
+                history: shown.chat,
                 userName: contact.name,
                 userPersona: contact.persona,
                 afterMain: relationship ? [relationship] : [],
@@ -218,7 +220,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 },
                 countTokens: estimateTokens,
             });
-            return { ...prompt, messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names) };
+            return {
+                ...prompt,
+                messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
+                ...(shown.omitted ? { note: `${CLEAR_DAYS} 天前的聊天原文 ${shown.omitted} 条不放` } : {}),
+            };
         },
         generate: messages => generate(messages, log),
         clean,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { clarity, isImportant, isLasting, isSummary, lastTouched, withoutMark, type FadeOptions } from '../src/memory/fading.ts';
+import { clarity, isImportant, isLasting, isSummary, lastTouched, recentChat, withoutMark, type FadeOptions } from '../src/memory/fading.ts';
 import type { RecallResult } from '../src/memory/hindsight.ts';
 import { formatRecalled, VAGUE_NOTE } from '../src/memory/long-term.ts';
 
@@ -113,5 +113,40 @@ describe('召回整理时按记得多清楚筛（ADR 0018 决策 1）', () => {
         assert.equal(formatRecalled([fact('1', { occurred_start: ago(40) })], { now, fade: { heard: '', ignore: [], onFade: s => { stats = s; } } }), undefined);
         assert.deepEqual(stats, { vague: 0, recognized: 0, forgotten: 1 });
         assert.match(formatRecalled([fact('1', { occurred_start: ago(40) })], { now })!, /事1$/);
+    });
+});
+
+describe('提示词里放的聊天原文（ADR 0018 实现时的调整 12）', () => {
+    // 消息：[几天前, 那天几点几分]
+    const at = (days: number, hm = '20:00') => {
+        const [h, m] = hm.split(':').map(Number);
+        return new Date(2026, 10, 20 - days, h, m).toISOString();
+    };
+    const msg = (time: string, content: string) => ({ role: 'user' as const, content, time });
+    const shown = (chat: ReturnType<typeof msg>[]) => recentChat(chat, now).chat.map(m => m.content);
+
+    test('最近 7 天的都放，更早的不放', () => {
+        const chat = [msg(at(9), '九天前'), msg(at(3), '三天前'), msg(at(0, '20:59'), '刚才')];
+        assert.deepEqual(shown(chat), ['三天前', '刚才']);
+        assert.equal(recentChat(chat, now).omitted, 1);
+    });
+
+    test('隔了很久再来：再放上一次那段聊天（整段），更早的不放', () => {
+        const chat = [
+            msg(at(40), '四十天前'),
+            msg(at(20, '21:00'), '二十天前 1'), msg(at(20, '21:10'), '二十天前 2'),
+            msg(at(0, '20:59'), '刚才'),
+        ];
+        assert.deepEqual(shown(chat), ['二十天前 1', '二十天前 2', '刚才']);
+    });
+
+    test('这段聊天本身超过 7 天（主动找他时最后一段就是上次的）：只放这一段', () => {
+        const chat = [msg(at(40), '四十天前'), msg(at(20, '21:00'), '二十天前 1'), msg(at(20, '21:10'), '二十天前 2')];
+        assert.deepEqual(shown(chat), ['二十天前 1', '二十天前 2']);
+    });
+
+    test('没有时间的、空的', () => {
+        assert.deepEqual(recentChat([{ role: 'user', content: '没时间' }], now).chat.map(m => m.content), ['没时间']);
+        assert.deepEqual(recentChat([], now), { chat: [], omitted: 0 });
     });
 });

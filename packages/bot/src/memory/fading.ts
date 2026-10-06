@@ -8,6 +8,7 @@
 // - 想不起来的，他这次的话（她上次回复之后的）里出现了这条的某个实体名（至少 2 个字，不算她和名单里的称呼）就想起来，细节按记个大概说；
 //   问到那一周、那个假期（window）时，那段时间的周记、阶段总结也算一提就想起。
 
+import { EPISODE_GAP_MS } from './episodes.ts';
 import type { RecallResult } from './hindsight.ts';
 
 /** 只提过一次的：几天以内清楚、几天以内记个大概 */
@@ -115,4 +116,28 @@ export function clarity(result: RecallResult, options: FadeOptions): Clarity {
     const { window } = options;
     const asked = window && isSummary(result) && touched >= startOf(window.start) && touched < window.end;
     return asked || recognizes(result, options) ? 'recognized' : 'forgotten';
+}
+
+/**
+ * 提示词里放的聊天原文（实现时的调整 12，用户 10-06 定）：最近 CLEAR_DAYS 天的；这之前到现在这段聊天中间没说过话（隔了很久再来）时，
+ * 再放上一次那段聊天，接得上话。更早的原话不放，只靠记忆（会变淡），免得几十天前的原话还一字不差地摆在她眼前。
+ * 没有时间的消息算最近的。返回放进去的和不放的条数。
+ */
+export function recentChat<T extends { time?: string }>(chat: readonly T[], now: Date): { chat: T[]; omitted: number } {
+    const at = (m: T) => (m.time ? Date.parse(m.time) : Number.NaN);
+    const cutoff = now.getTime() - CLEAR_DAYS * DAY_MS;
+    const recent = (m: T) => !(at(m) < cutoff);
+    const together = (i: number) => !(at(chat[i]!) - at(chat[i - 1]!) >= EPISODE_GAP_MS);
+    // 最后这段聊天从哪开始
+    let current = chat.length - 1;
+    while (current > 0 && together(current)) current--;
+    let start = chat.findIndex(recent);
+    if (start < 0) start = chat.length;
+    // 他这会儿在说话，这段之前最近的一条却超过 CLEAR_DAYS 天了：放上一次那段（主动找他时最后这段就是上一次的，不再往前）
+    if (current > 0 && start >= current && recent(chat.at(-1)!) && !recent(chat[current - 1]!)) {
+        start = current - 1;
+        while (start > 0 && together(start)) start--;
+    }
+    start = Math.min(start, Math.max(current, 0));
+    return { chat: chat.slice(start), omitted: start };
 }
