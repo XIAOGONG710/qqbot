@@ -58,6 +58,9 @@ export function mentionedPeople(history: readonly Said[], self: Contact, contact
     return found;
 }
 
+/** 线索是「问她过去的事」（commonCue 的返回值） */
+export const ASKS_PAST = '问她过去的事';
+
 // 问她过去的事（ADR 0017）：同一句里有时间和经历
 const PAST_TIME = /今天|昨天|前天|昨晚|今早|今晚|早上|上午|中午|下午|晚上|周末|上周|上星期|上个月|上次|那天|那次|最近|这几天|前几天|刚才|之前|以前/;
 const PAST_DOING = /干嘛|干啥|干了|干什么|做什么|做啥|做了|去哪|去了|在忙|忙啥|忙什么|忙了|过得|怎么过|玩了|吃了|吃的|看了|上了|上的|学了|买了|见了|聊了|遇到|碰到|发生|怎么样/;
@@ -81,7 +84,40 @@ export function commonCue(history: readonly Said[], self: Contact, entities: rea
     if (entity) return entity;
     const asksHer = said.some(line => PAST_FOLLOW_UP.test(line.trim())
         || (PAST_TIME.test(line) && PAST_DOING.test(line) && (/你/.test(line) || /[?？吗呢]\s*$/.test(line) || !/我/.test(line))));
-    return asksHer ? '问她过去的事' : undefined;
+    return asksHer ? ASKS_PAST : undefined;
+}
+
+const DAY_WORDS: readonly [RegExp, number][] = [[/前天/, -2], [/昨天|昨晚/, -1], [/今天|今早|今晚|早上|上午|中午|下午|晚上|刚才/, 0]];
+const FUTURE = /明天|后天|明早|明晚|待会|一会儿|下周|下次/;
+
+/**
+ * 问她过去的事时问的是哪一天（ADR 0017）：他这次的话里最后一句带「前天」「昨天」「今天下午」……的，返回那天 0 点；
+ * 「最近」「上次」不是某一天，返回 undefined。召回公共记忆时只留那天的，不然别的日子的日记会挤进来
+ */
+export function askedDay(history: readonly Said[], now: Date): Date | undefined {
+    const lastReply = history.findLastIndex(message => message.role === 'assistant');
+    const said = history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content);
+    for (const line of said.toReversed()) {
+        if (FUTURE.test(line)) continue;
+        const offset = DAY_WORDS.find(([pattern]) => pattern.test(line))?.[1];
+        if (offset !== undefined) return new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
+    }
+    return undefined;
+}
+
+/** 刚想起来的公共记忆还记得多久（ADR 0017）：她之后回了几次以内、多久以内 */
+export const COMMON_LINGER_REPLIES = 2;
+export const COMMON_LINGER_MS = 10 * 60_000;
+
+/**
+ * 刚想起来的公共记忆这一轮还在不在脑子里：想起之后她回了 COMMON_LINGER_REPLIES 次以内（连发的几条算一次）、COMMON_LINGER_MS 以内。
+ * 追问（「你不是不能吃辣吗」）本身没有线索，不沿用的话她会忘了刚说过的事
+ */
+export function stillInMind(chat: readonly { role: 'user' | 'assistant'; time?: string }[], recalledAt: number, now: number): boolean {
+    if (now - recalledAt >= COMMON_LINGER_MS) return false;
+    const replies = chat.filter((message, i) => message.role === 'assistant' && chat[i - 1]?.role !== 'assistant'
+        && message.time !== undefined && Date.parse(message.time) >= recalledAt).length;
+    return replies <= COMMON_LINGER_REPLIES;
 }
 
 /** 介绍一个人：称呼和 intro，后面接她对他的印象（ADR 0017）、召回到的记忆（都已整理成一段，没有的不写） */

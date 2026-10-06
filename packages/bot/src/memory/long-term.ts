@@ -36,6 +36,8 @@ export const MAX_RECALLED = 12;
 /** 公共记忆、被提起的人的记忆各注入几条（ADR 0016：各约 250 token） */
 export const SHARED_RECALLED = 6;
 export const PERSON_RECALLED = 6;
+/** 公共记忆问到某一天时多取一些（之后只留那天的） */
+export const DAY_RECALL_TOKENS = 2000;
 /** 公共库的实体名（有线索才想起，ADR 0017）多久重读一次；公共库写入之后也重读 */
 export const ENTITIES_REFRESH_MS = 10 * 60_000;
 
@@ -425,16 +427,21 @@ export class LongTermMemory {
      * 每条标出是和谁聊的（ADR 0017）：people 是整个名单，document_id 的哈希对回称呼；日记标「你的日记」
      */
     async recallCommon(
-        contact: NamedContact, chat: ChatMessage[], now: Date, people: readonly NamedContact[],
+        contact: NamedContact, chat: ChatMessage[], now: Date, people: readonly NamedContact[], day?: Date,
     ): Promise<string | undefined> {
         if (!this.#options.common || !knowsPeople(contact.tier)) return undefined;
         const stored = readJsonOr<Partial<CommonState>>(join(this.#options.dir, 'common.json'), {}, message => this.#options.log(message));
         if (stored.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
         const query = recallQuery(chat);
         if (!query) return undefined;
-        const request: RecallRequest = { ...recallRequest(query, now), types: ['world', 'experience'], prefer_observations: false };
-        const results = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
-        if (!results) return undefined;
+        // 问的是某一天（ADR 0017）：时间窗只加权，多取一些，只留那天的
+        const window = day ? { start: day, end: new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1) } : undefined;
+        const request: RecallRequest = {
+            ...recallRequest(query, now, window), types: ['world', 'experience'], prefer_observations: false, ...(window ? { max_tokens: DAY_RECALL_TOKENS } : {}),
+        };
+        const all = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
+        if (!all) return undefined;
+        const results = window ? all.filter(r => onDay(r, window.start, window.end)) : all;
         const own = `${this.#hash(contact)}:`;
         const names = new Map(people.map(person => [this.#hash(person), person.name]));
         return formatRecalled(results.filter(r => !r.document_id?.startsWith(own)), {
@@ -571,6 +578,12 @@ export function recallQuery(chat: ChatMessage[]): string {
 export function initiateQuery(chat: ChatMessage[], topic: string): string {
     const recent = chat.slice(-2).map(m => `${m.role === 'user' ? '对方' : '她'}：${m.content}`);
     return [topic, ...recent].join('\n').slice(0, MAX_QUERY_CHARS);
+}
+
+/** 召回结果是不是那天的事：发生的时间，没有就用说起的时间 */
+function onDay(result: RecallResult, start: Date, end: Date): boolean {
+    const time = Date.parse(result.occurred_start ?? result.mentioned_at ?? '');
+    return !Number.isNaN(time) && time >= start.getTime() && time < end.getTime();
 }
 
 /** 召回请求：事实、经历、观察都要，有观察时不再单独返回它覆盖了的事实 */

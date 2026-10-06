@@ -8,7 +8,7 @@ import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes } from '../s
 import { mentalModelUpdateBody, retainBody, type HindsightApi, type MemoryItem, type MentalModel, type RecallRequest, type RecallResult } from '../src/memory/hindsight.ts';
 import {
     bankMissions, commonBankMissions, formatRecalled, initiateQuery, LongTermMemory, MAX_QUERY_CHARS, MAX_RECALLED, OPEN_EPISODE_STEP, recallQuery,
-    RELATIONSHIP_MODEL, SHARED_RECALLED,
+    RELATIONSHIP_MODEL, SHARED_RECALLED, DAY_RECALL_TOKENS,
 } from '../src/memory/long-term.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
@@ -479,6 +479,32 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
 
             assert.equal(await memory.recallCommon({ ...S, name: '路人' }, chat, new Date(now), []), undefined);
             assert.equal(calls.recall.length, 1, '陌生人档不查');
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('公共记忆问到某一天：带那天的时间窗、多取一些，只留那天的（发生的时间，没有就用说起的时间）', async () => {
+        const at = (iso: string) => new Date(`${iso}+08:00`).toISOString();
+        const { memory, calls, cleanup } = setupCommon({
+            recall: [
+                { id: '1', text: '10-04 的日记', document_id: 'diary:2026-10-04', occurred_start: at('2026-10-04T22:00:00') },
+                { id: '2', text: '10-05 中午吃了麻辣烫', document_id: 'diary:2026-10-05', occurred_start: at('2026-10-05T12:00:00') },
+                { id: '3', text: '10-05 晚上说的', document_id: 'x:ep-1', mentioned_at: at('2026-10-05T23:59:00') },
+                { id: '4', text: '没有时间的', document_id: 'x:ep-2' },
+            ],
+        });
+        try {
+            await memory.sync(B, gege, history);
+            const chat = [{ role: 'user' as const, content: '你昨天干嘛了', time: new Date(now).toISOString() }];
+            const day = new Date(2026, 9, 5);
+            const text = await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [{ ...A, name: '阿明' }], day);
+            assert.deepEqual(text!.split('\n').slice(1).map(line => line.replace(/^- [^：]*：/, '')), ['10-05 中午吃了麻辣烫', '10-05 晚上说的']);
+            assert.deepEqual(calls.recall[0]!.temporal_window, { start: '2026-10-05T00:00:00+08:00', end: '2026-10-06T00:00:00+08:00' });
+            assert.equal(calls.recall[0]!.max_tokens, DAY_RECALL_TOKENS);
+            assert.deepEqual(check(calls.recall[0], root('recall')), []);
+            // 那天什么都没有：不带公共记忆
+            assert.equal(await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [], new Date(2026, 9, 1)), undefined);
         } finally {
             cleanup();
         }

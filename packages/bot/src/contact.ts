@@ -19,7 +19,7 @@ import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
-import { commonCue, describePerson, mentionedPeople } from './people.ts';
+import { askedDay, ASKS_PAST, commonCue, describePerson, mentionedPeople, stillInMind } from './people.ts';
 import { describeState, stateAt } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
 import { describeDays, describeTime } from './time-context.ts';
@@ -109,6 +109,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const extraFree = herSchedule ? readingActivities(character.books) : [];
     // 这一轮放了「在读的书」时，出口检查拿它核对进度数字。同一个回复器一次只生成一条，review 紧跟着这一轮的 buildPrompt
     let reading: BookProgressContext | undefined;
+    // 上一次想起来的公共记忆（ADR 0017）：接下来两轮没有新线索也沿用，追问时不忘
+    let lastCommon: { text: string; at: number } | undefined;
     return createResponder({
         userId: contact.qq,
         history: options.history,
@@ -125,9 +127,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const cue = !remembers || initiate ? undefined
                 : people.length ? people.map(person => person.name).join('、')
                     : commonCue(chat, contact, await memory.commonEntities(), character.name);
-            const [recalled, common, ...aboutPeople] = await Promise.all([
+            const [recalled, freshCommon, ...aboutPeople] = await Promise.all([
                 remembers ? memory.recall(contact, chat, time, recallOptions) : undefined,
-                remembers && cue ? memory.recallCommon(contact, chat, time, options.contacts ?? [contact]) : undefined,
+                remembers && cue
+                    ? memory.recallCommon(contact, chat, time, options.contacts ?? [contact], cue === ASKS_PAST ? askedDay(chat, time) : undefined)
+                    : undefined,
                 ...people.map(person => (remembers
                     ? memory.recall(person, chat, time, {
                         ...recallOptions, limit: PERSON_RECALLED, header: `[你和${person.name}聊过的事（从记忆里想起来的，只作参考）]`,
@@ -136,7 +140,16 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             ]);
             const relationship = remembers ? memory.relationship(contact) : undefined;
             if (recalled) log(`召回长期记忆 ${countLines(recalled)} 条`);
-            if (common) log(`召回公共记忆 ${countLines(common)} 条（线索：${cue}）`);
+            let common = freshCommon;
+            if (common) {
+                lastCommon = { text: common, at: time.getTime() };
+                log(`召回公共记忆 ${countLines(common)} 条（线索：${cue}）`);
+            } else if (cue) {
+                log(`公共记忆没想起什么（线索：${cue}）`);
+            } else if (remembers && !initiate && lastCommon && stillInMind(chat, lastCommon.at, time.getTime())) {
+                common = lastCommon.text;
+                log(`公共记忆沿用刚才想起的 ${countLines(common)} 条`);
+            }
             if (people.length) {
                 log(`提起了 ${people.map((person, i) => `${person.name}：介绍${aboutPeople[i] ? ` + 召回 ${countLines(aboutPeople[i])} 条` : ''}`).join('；')}`);
             }

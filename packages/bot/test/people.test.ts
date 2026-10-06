@@ -6,7 +6,7 @@ import { describe, test } from 'node:test';
 import { parseAppConfig, type BotConfig, type Contact } from '../src/config.ts';
 import { loadTierCard } from '../src/contact.ts';
 import type { MemoryItem } from '../src/memory/hindsight.ts';
-import { commonCue, describePerson, knowsPeople, MAX_MENTIONED, mentionedPeople } from '../src/people.ts';
+import { askedDay, COMMON_LINGER_MS, commonCue, describePerson, knowsPeople, MAX_MENTIONED, mentionedPeople, stillInMind } from '../src/people.ts';
 import type { OpenAIMessage } from '../src/prompt.ts';
 import { runChecks, runScenario, type SimHindsight } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
@@ -156,6 +156,36 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         }
     });
 
+    test('刚想起来的公共记忆，接下来两轮没有线索也沿用（ADR 0017）', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
+        const hindsight: SimHindsight = {
+            putBank: async () => {},
+            retain: async () => {},
+            recall: async () => [{ id: '1', text: '鸽鸽 10 月 13 日去杭州出差', document_id: 'other:ep-1' }],
+            getMentalModel: async () => undefined,
+            createMentalModel: async () => {},
+            updateMentalModel: async () => {},
+            activeOperations: async () => [],
+            operationStatus: async () => 'completed',
+            refreshMentalModel: async () => 'op-1',
+            listEntities: async () => ['杭州'],
+            deleteBank: async () => {},
+        };
+        try {
+            const result = await runScenario(scenario({ steps: [{ say: '我下周去杭州玩' }, { say: '然后呢' }, { say: '真的假的' }, { say: '那你呢' }] }), {
+                runId: 't', dataDir: dir, card, llm, prompt, hindsight, settle: { quietMs: 10, maxMs: 50 },
+                generate: async () => '好呀\n你呢',
+            });
+            const says = result.steps.filter(step => step.kind === 'say');
+            assert.deepEqual(says.map(step => step.logs.find(line => line.includes('公共记忆'))), [
+                '召回公共记忆 1 条（线索：杭州）', '公共记忆沿用刚才想起的 1 条', '公共记忆沿用刚才想起的 1 条', undefined,
+            ]);
+            assert.deepEqual(says.map(step => Boolean(step.generations.at(-1)?.common)), [true, true, true, false]);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('场景校验：事先的聊天要早于起点 45 分钟以上，档位要是名单里的', () => {
         const late = { name: '鸽鸽', tier: 'classmate', history: [{ time: '2026-10-06T19:30:00+08:00', role: 'user', content: '在吗' }] };
         assert.throws(() => scenario({ others: [late] }), /要早于起点 45 分钟以上/);
@@ -192,6 +222,33 @@ describe('公共记忆的线索（ADR 0017）', () => {
         assert.equal(cue('你昨天呢？'), '问她过去的事');
         assert.equal(cue('昨天呢我也是'), undefined);
         assert.equal(cue('明天呢'), undefined, '不是过去');
+    });
+
+    test('问的是哪一天：他这次最后一句带日子的；「最近」、将来的不算', () => {
+        const now = new Date(2026, 9, 8, 21, 0);
+        const day = (...said: string[]) => askedDay(said.map(he), now)?.toDateString();
+        assert.equal(day('你昨天都干嘛了'), new Date(2026, 9, 7).toDateString());
+        assert.equal(day('那前天呢'), new Date(2026, 9, 6).toDateString());
+        assert.equal(day('你今天下午干嘛去了'), new Date(2026, 9, 8).toDateString());
+        assert.equal(day('昨天晚上吃的啥'), new Date(2026, 9, 7).toDateString(), '「昨天」比「晚上」先');
+        assert.equal(day('最近在忙什么'), undefined);
+        assert.equal(day('明天早上干嘛'), undefined);
+        assert.equal(day('昨天干嘛了', '算了，今天呢'), new Date(2026, 9, 8).toDateString(), '看最后一句');
+        // 只看她上次回复之后的
+        assert.equal(askedDay([he('昨天干嘛了'), she('写作业'), he('哦')], now), undefined);
+    });
+
+    test('刚想起来的还在不在：之后她回了两次以内（连发算一次）、10 分钟以内', () => {
+        const t0 = Date.parse('2026-10-08T21:00:00+08:00');
+        const msg = (role: 'user' | 'assistant', minutes: number) => ({ role, time: new Date(t0 + minutes * 60_000).toISOString() });
+        const before = [msg('user', -1), msg('assistant', -0.5), msg('user', 0)];
+        const once = [...before, msg('assistant', 1), msg('assistant', 1), msg('user', 2)];
+        const twice = [...once, msg('assistant', 3), msg('user', 4)];
+        const thrice = [...twice, msg('assistant', 5), msg('user', 6)];
+        assert.equal(stillInMind(once, t0, t0 + 2 * 60_000), true);
+        assert.equal(stillInMind(twice, t0, t0 + 4 * 60_000), true);
+        assert.equal(stillInMind(thrice, t0, t0 + 6 * 60_000), false);
+        assert.equal(stillInMind(once, t0, t0 + COMMON_LINGER_MS), false, '过了 10 分钟');
     });
 
     test('陌生人档、名单外没有线索', () => {

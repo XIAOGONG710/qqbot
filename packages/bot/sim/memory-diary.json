@@ -23,9 +23,9 @@
         { "case": "DY02", "note": "问昨天：想起日记，和跟鸽鸽说的对得上" },
         { "say": "你昨天都干嘛了" },
         { "check": { "speechClean": true, "exitClean": true, "common": ["你的日记"], "log": "线索：问她过去的事", "replyAny": ["麻辣烫", "辣", "操场", "跑"] } },
-        { "case": "DY03", "note": "追问：说法前后一致" },
+        { "case": "DY03", "note": "追问：没有线索，沿用刚才想起的，说法前后一致" },
         { "say": "你不是不能吃辣吗" },
-        { "check": { "speechClean": true, "exitClean": true, "replyNone": ["没吃", "没去"] } },
+        { "check": { "speechClean": true, "exitClean": true, "log": "沿用刚才想起的", "replyNone": ["没吃", "没去"] } },
         { "case": "DY04", "note": "接着问前天：没聊天的那天，按作息" },
         { "say": "那前天呢" },
         { "check": { "speechClean": true, "exitClean": true, "common": ["你的日记"], "log": "线索：问她过去的事", "replyAny": ["作业", "图书馆", "剧"] } }

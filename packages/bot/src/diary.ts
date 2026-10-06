@@ -57,9 +57,10 @@ export function diaryMaterial(sources: DiarySources, day: Date, chats: readonly 
     if (free.length) lines.push(`空闲时：${free.join('；')}`);
     const mood = moodAt(schedule, sources.moods, atTime(day, '12:00'), sources.mood);
     if (mood) lines.push(`心情：${mood.mood.name}（${mood.reason}）`);
-    const reading = sources.books.map(book => {
+    // 放下的书不写：每篇日记都写一遍，召回时会挤掉别的事
+    const reading = sources.books.filter(book => book.progress.state !== 'put_down').map(book => {
         const progress = bookProgressOn(book, day);
-        return `《${book.title}》${progress.finished ? '读完了' : `看到第 ${progress.amount} ${progress.unit}`}${book.progress.state === 'put_down' ? '（放下了）' : ''}`;
+        return `《${book.title}》${progress.finished ? '读完了' : `看到第 ${progress.amount} ${progress.unit}`}`;
     });
     if (reading.length) lines.push(`在读：${reading.join('、')}`);
     const talked = chats.filter(chat => chat.messages.length);
@@ -87,6 +88,7 @@ export function diaryMessages(charName: string, day: Date, material: string): Op
                 '- 聊天里你说过自己做了什么、去了哪、吃了什么、看了什么，就是你今天做过的，照写，细节和说过的一致。',
                 '- 和谁聊了什么一句带过，写对方的名字。',
                 '- 写今天的心情。',
+                '- 在读的书最多一句。',
                 '- 只写材料里有的事；材料没写到的时候就按平常的日子写，一笔带过。',
                 '只输出日记正文，不要标题和日期。',
             ].join('\n'),
