@@ -1,0 +1,30 @@
+{
+    "name": "男朋友档：等他说结果（ADR 0023）",
+    "description": "10-07（周三）晚上他说明天（周四）下午去字节面试。10-08 下午他来了：面试还没到点，不问结果；晚上他再来：意图行「想知道面试后来怎么样了」，她随口问一句，只是想知道，不算账、不怪他没说；他说了结果，聊天结束后了结，10-09 不再挂着。不按作息，名字和聊天是虚构的。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-08T15:00:00+08:00",
+    "schedule": false,
+    "history": [
+        { "time": "2026-10-07T21:00:00+08:00", "role": "user", "content": "明天下午我要去字节面试，有点慌" },
+        { "time": "2026-10-07T21:01:00+08:00", "role": "assistant", "content": "慌啥，你准备那么久了" },
+        { "time": "2026-10-07T21:02:00+08:00", "role": "user", "content": "二面，听说那个面试官特别严" },
+        { "time": "2026-10-07T21:03:00+08:00", "role": "assistant", "content": "严就严呗，正常发挥就行，早点睡" }
+    ],
+    "steps": [
+        { "case": "OW01", "note": "10-08 下午：面试还没到点，不放「等结果」" },
+        { "say": "在吗，摸鱼中" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlockNot": "后来怎么样了" } },
+        { "advance": "6h" },
+        { "case": "OW02", "note": "10-08 晚上：意图行问面试结果，只表达想知道" },
+        { "say": "到家了" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "知道「[^」]*面试[^」]*」后来怎么样了", "log": "挂着的事：等结果 1", "replyAny": ["面试", "怎么样", "结果", "面得", "二面"] } },
+        { "say": "过了！下周三面" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "advance": "1h" },
+        { "advance": "1d" },
+        { "case": "OW03", "note": "10-09：他说了结果，了结，不再挂着" },
+        { "say": "在吗" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlockNot": "后来怎么样了" } }
+    ]
+}
