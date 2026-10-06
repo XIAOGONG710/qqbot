@@ -146,7 +146,8 @@ describe('提示词里放的聊天原文（ADR 0018 实现时的调整 12）', (
     });
 
     test('没有时间的、空的', () => {
-        assert.deepEqual(recentChat([{ role: 'user', content: '没时间' }], now).chat.map(m => m.content), ['没时间']);
+        const untimed: { content: string; time?: string }[] = [{ content: '没时间' }];
+        assert.deepEqual(recentChat(untimed, now).chat.map(m => m.content), ['没时间']);
         assert.deepEqual(recentChat([], now), { chat: [], omitted: 0 });
     });
 });
