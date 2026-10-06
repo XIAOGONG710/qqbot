@@ -135,11 +135,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她认识的人（ADR 0016）：提到的人查他自己的 bank。公共记忆有线索才查（ADR 0017）：提到了写了介绍的人、公共库里的人和事，
             // 或者问她过去的事；主动找他时不查（没有「他这次说的」）
             const people = mentionedPeople(chat, contact, options.contacts ?? []);
+            const holidays = holidayWords(character.schedule);
             const cue = !remembers || initiate ? undefined
                 : people.length ? people.map(person => person.name).join('、')
-                    : commonCue(chat, contact, await memory.commonEntities(), character.name, holidayWords(character.schedule));
-            // 问「今天」「昨天」按她的一天算（ADR 0018 决策 4）；问「上周」「国庆」时是那一周、那个假期（决策 3）
-            const day = cue === ASKS_PAST ? askedWindow(chat, time, schedule ?? herSchedule ?? character.schedule) : undefined;
+                    : commonCue(chat, contact, await memory.commonEntities(), character.name, holidays);
+            // 问「今天」「昨天」按她的一天算（ADR 0018 决策 4）；问「上周」「国庆」时是那一周、那个假期（决策 3）。
+            // 线索正好是假期的名字（「国庆」也是公共库里的实体）时同样带那个假期的时间窗（第三批：「那国庆呢」想起的是周记）
+            const day = cue === ASKS_PAST || (cue !== undefined && holidays.includes(cue))
+                ? askedWindow(chat, time, schedule ?? herSchedule ?? character.schedule) : undefined;
             // 记忆里她的名字换成「你」（ADR 0018 决策 4）
             const you = (text: string | undefined) => text && secondPerson(text, character.name);
             // 记忆会变淡（ADR 0018）：她和名单里的称呼不算「一提就想起」的线索；各几条记下来写日志（0 是他的，1 是公共的，之后是提起的人）
