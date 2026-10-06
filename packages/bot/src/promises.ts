@@ -6,6 +6,8 @@
 //   这段聊天里不再放（ADR 0014：说明里的话她会每句都照做，不能一直挂着）。
 // - 忘：有日子的过了 FORGET_DAYS 天、「下次」的过了 NEXT_TIME_DAYS 天还没做就忘了。
 // - 她自己那天的打算写进日记材料（diary.ts），日记和她说过的对得上。
+// - 同一次抽取还出「挂着的事」（ADR 0023，open-loops.ts）：他之后会发生、她想知道结果的；她问了他没答的；说好的没成的。
+//   存在同一个状态文件的 loops 里，生命周期和用法见 open-loops.ts。
 // 每个人一个状态文件 <数据目录>/promises/<QQ>-<档位>.json。
 
 import { mkdirSync } from 'node:fs';
@@ -14,6 +16,7 @@ import type { Contact } from './config.ts';
 import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './memory/episodes.ts';
+import { dueLoops, isFeeling, loopForgotten, type DueLoops, type LoopKind, type OpenLoop } from './open-loops.ts';
 import type { OpenAIMessage } from './prompt.ts';
 import { formatDate, herDay, type Schedule } from './schedule.ts';
 import type { MacroNames } from './st/macros.ts';
@@ -46,8 +49,11 @@ export const SHOWN_REPLIES = 3;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 86_400_000;
 
-/** 抽取的提示词：系统说明 + 还没做的事和这一段聊天（转写同长期记忆，带日期行） */
-export function promisePrompt(transcript: string, pending: readonly HerPromise[], names: MacroNames): OpenAIMessage[] {
+/** 挂着的事在给模型的列表里怎么写 */
+const LOOP_LABELS: Record<LoopKind, string> = { waiting: '等结果', unanswered: '没回答', unsettled: '没了结' };
+
+/** 抽取的提示词：系统说明 + 还没做的事、还挂着的事和这一段聊天（转写同长期记忆，带日期行） */
+export function promisePrompt(transcript: string, pending: readonly HerPromise[], names: MacroNames, loops: readonly OpenLoop[] = []): OpenAIMessage[] {
     const { char, user } = names;
     const system = [
         `你在帮一个聊天程序记「${char}答应过的事」。下面是${char}和${user}的一段 QQ 私聊记录，${char}是 AI 扮演的女大学生，${user}是真人。`,
@@ -57,19 +63,38 @@ export function promisePrompt(transcript: string, pending: readonly HerPromise[]
         '有日子的按那句话被说出时的日期换算（记录里每天开头有一行日期，「明天」就是那一天加一天，「周末」写那个周六），写成 YYYY-MM-DD；',
         '说「下次」「回头」「改天」没说哪天的，date 写 null。what 写一句话，不超过 20 个字。',
         `另外，「还没做的事」里如果有哪件在这段聊天里${char}已经做了、或者${user}说不用了，把它的 id 写进 resolved。`,
-        '只输出一个 JSON 对象，不要别的文字，例如：{"add":[{"what":"给他讲《三体》的结局","date":null},{"what":"去拍银杏","date":"2026-10-10"}],"resolved":["p-1"]}',
-        '没有就输出 {"add":[],"resolved":[]}。',
+        `再挑三类「挂着的事」，都只写发生了什么，不写谁什么感受、不写评价（不要「难过」「委屈」「介意」「失望」这类词）：`,
+        `- waiting：${user}说的、之后会发生、${char}会想知道结果的事（面试、考试、比赛、出行、看病、等通知），what 写「${user}…」，`,
+        '  date 写那件事哪天（换算同上），没说哪天写 null；',
+        `- unanswered：${char}问了${user}一个真问题（不是反问、不是玩笑），这段聊天里他没回答就岔开了，what 写她问的是什么；`,
+        `- unsettled：两个人说好的事最后没成、或者一件事没说完就断了，what 写发生了什么（例如「10月5日说好一起回青岛，最后没走成」），`,
+        '  不高兴、闹别扭也只写那件事本身。',
+        `下面「还挂着的事」（id 以 a-、q-、u- 开头）在这段聊天里有了结果、${user}回答了、或者那件事了结了，也把 id 写进 resolved。`,
+        '只输出一个 JSON 对象，不要别的文字，例如：',
+        '{"add":[{"what":"给他讲《三体》的结局","date":null},{"what":"去拍银杏","date":"2026-10-10"}],'
+            + '"waiting":[{"what":"他周四下午去字节面试","date":"2026-10-08"}],"unanswered":[{"what":"他国庆回不回家"}],'
+            + '"unsettled":[{"what":"10月6日说好一起看电影，他加班没去成"}],"resolved":["p-1"]}',
+        '没有就输出 {"add":[],"waiting":[],"unanswered":[],"unsettled":[],"resolved":[]}。',
     ].join('\n');
     const list = pending.length ? pending.map(p => `- ${p.id}：${p.date ?? '下次'} ${p.what}`).join('\n') : '（没有）';
+    const hanging = loops.length
+        ? loops.map(l => `- ${l.id}：${LOOP_LABELS[l.kind]}${l.date ? ` ${l.date}` : ''} ${l.what}`).join('\n')
+        : '（没有）';
     return [
         { role: 'system', content: system },
-        { role: 'user', content: `还没做的事：\n${list}\n\n聊天记录：\n${transcript}` },
+        { role: 'user', content: `还没做的事：\n${list}\n\n还挂着的事：\n${hanging}\n\n聊天记录：\n${transcript}` },
     ];
 }
 
 export interface ExtractedPromises {
     add: { what: string; date?: string }[];
+    /** ADR 0023：挂着的事（没写的按空的） */
+    waiting: { what: string; date?: string }[];
+    unanswered: { what: string }[];
+    unsettled: { what: string }[];
     resolved: string[];
+    /** 写成了情绪、没记的几条（日志用） */
+    feelings: string[];
 }
 
 /** 模型的输出 → 结构；不是要的格式就抛错（下次再抽） */
@@ -77,15 +102,25 @@ export function parsePromises(text: string): ExtractedPromises {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
     if (start < 0 || end < start) throw new Error(`模型输出里没有 JSON：${text.slice(0, 80).replace(/\s*\n\s*/g, ' / ')}`);
-    const data = JSON.parse(text.slice(start, end + 1)) as { add?: unknown; resolved?: unknown };
-    const add = (Array.isArray(data.add) ? data.add : []).flatMap(item => {
-        const o = item as Record<string, unknown>;
+    const data = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+    const items = (value: unknown) => (Array.isArray(value) ? value : []).flatMap(item => {
+        const o = (item ?? {}) as Record<string, unknown>;
         const what = typeof o.what === 'string' ? o.what.trim() : '';
         const date = typeof o.date === 'string' && DATE.test(o.date.trim()) ? o.date.trim() : undefined;
         return what ? [{ what: what.slice(0, 40), ...(date ? { date } : {}) }] : [];
     });
+    // 挂着的事只记事实：写成情绪的丢掉（ADR 0023）
+    const feelings: string[] = [];
+    const facts = <T extends { what: string }>(list: T[]) => list.filter(item => (isFeeling(item.what) ? (feelings.push(item.what), false) : true));
     const resolved = (Array.isArray(data.resolved) ? data.resolved : []).filter((id): id is string => typeof id === 'string');
-    return { add, resolved };
+    return {
+        add: items(data.add),
+        waiting: facts(items(data.waiting)),
+        unanswered: facts(items(data.unanswered).map(({ what }) => ({ what }))),
+        unsettled: facts(items(data.unsettled).map(({ what }) => ({ what }))),
+        resolved,
+        feelings,
+    };
 }
 
 function parseDay(date: string): Date {
@@ -148,15 +183,21 @@ export interface PromiseKeeperOptions {
 
 interface KeeperState {
     promises: HerPromise[];
+    /** 挂着的事（ADR 0023）；旧文件没有 */
+    loops: OpenLoop[];
     /** 片段 id → 抽过了（true），或者抽失败了几次 */
     extracted: Record<string, true | number>;
 }
+
+const LOOP_PREFIX: Record<LoopKind, string> = { waiting: 'a', unanswered: 'q', unsettled: 'u' };
 
 export interface PromiseKeeper {
     /** 把结束了、还没抽的片段抽一遍，过期的忘掉；同一时间只跑一次 */
     sync(): Promise<void>;
     /** 这一轮时间块里的那一行（没有就是 undefined） */
     describe(contact: Contact, chat: readonly TimedMessage[], now: Date): string | undefined;
+    /** 这一轮挂在心上的事（ADR 0023）：意图行、时间块用 */
+    openLoops(contact: Contact, chat: readonly TimedMessage[], now: Date): DueLoops;
     /** 她那天的打算（日记材料用）：名单里所有人那儿说过的、日子是那天的 */
     plansOn(date: string): string[];
 }
@@ -167,7 +208,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
     const path = (contact: Contact) => join(options.dir, `${contact.qq}-${contact.tier}.json`);
     const load = (contact: Contact): KeeperState => {
         const data = readJsonOr<Partial<KeeperState>>(path(contact), {}, message => options.log(`[${contact.qq}] 她答应的事：${message}`));
-        return { promises: data.promises ?? [], extracted: data.extracted ?? {} };
+        return { promises: data.promises ?? [], loops: data.loops ?? [], extracted: data.extracted ?? {} };
     };
     const save = (contact: Contact, state: KeeperState) => {
         // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
@@ -180,12 +221,16 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
     async function syncContact(contact: Contact): Promise<void> {
         const state = load(contact);
         const log = (message: string) => options.log(`[${contact.qq}] 她答应的事：${message}`);
+        const loopLog = (message: string) => options.log(`[${contact.qq}] 挂着的事：${message}`);
         const names = options.names(contact);
         const day = today(new Date(now()));
         const before = state.promises.length;
         for (const item of state.promises.filter(p => forgotten(p, day))) log(`过了日子没做，忘了「${item.what}」`);
         state.promises = state.promises.filter(p => !forgotten(p, day));
-        let changed = state.promises.length !== before;
+        const loopsBefore = state.loops.length;
+        for (const loop of state.loops.filter(l => loopForgotten(l, day))) loopLog(`过了几天，放下「${loop.what}」`);
+        state.loops = state.loops.filter(l => !loopForgotten(l, day));
+        let changed = state.promises.length !== before || state.loops.length !== loopsBefore;
         const closed = splitEpisodes(options.history.load(contact.qq))
             .filter(e => now() - e.end.getTime() >= EPISODE_GAP_MS && state.extracted[e.id] !== true);
         for (const episode of closed) {
@@ -198,7 +243,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
             }
             let result: ExtractedPromises;
             try {
-                result = parsePromises(await options.extract(promisePrompt(episodeTranscript(episode, names), state.promises, names)));
+                result = parsePromises(await options.extract(promisePrompt(episodeTranscript(episode, names), state.promises, names, state.loops)));
             } catch (error) {
                 const tries = (typeof state.extracted[episode.id] === 'number' ? state.extracted[episode.id] as number : 0) + 1;
                 // 连着失败 3 次就放弃这一段（别一直调模型）
@@ -209,9 +254,15 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
             }
             for (const id of result.resolved) {
                 const item = state.promises.find(p => p.id === id);
-                if (!item) continue;
-                state.promises = state.promises.filter(p => p.id !== id);
-                log(`划掉「${item.what}」（做了，或者他说不用了）`);
+                if (item) {
+                    state.promises = state.promises.filter(p => p.id !== id);
+                    log(`划掉「${item.what}」（做了，或者他说不用了）`);
+                }
+                const loop = state.loops.find(l => l.id === id);
+                if (loop) {
+                    state.loops = state.loops.filter(l => l.id !== id);
+                    loopLog(`了结「${loop.what}」`);
+                }
             }
             for (const [i, add] of result.add.entries()) {
                 const item: HerPromise = { id: `p-${episode.start.getTime()}-${i + 1}`, what: add.what, ...(add.date ? { date: add.date } : {}), said, episode: episode.id };
@@ -219,6 +270,18 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 state.promises.push(item);
                 log(`记下「${item.what}」（${item.date ?? '下次'}）`);
             }
+            const found: [LoopKind, { what: string; date?: string }[]][] = [['waiting', result.waiting], ['unanswered', result.unanswered], ['unsettled', result.unsettled]];
+            for (const [kind, list] of found) {
+                for (const [i, add] of list.entries()) {
+                    const loop: OpenLoop = {
+                        id: `${LOOP_PREFIX[kind]}-${episode.start.getTime()}-${i + 1}`, kind, what: add.what, ...(add.date ? { date: add.date } : {}), said, episode: episode.id,
+                    };
+                    if (loopForgotten(loop, day) || state.loops.some(l => l.kind === kind && l.what === loop.what)) continue;
+                    state.loops.push(loop);
+                    loopLog(`记下「${loop.what}」（${LOOP_LABELS[kind]}${loop.date ? `，${loop.date}` : ''}）`);
+                }
+            }
+            if (result.feelings.length) loopLog(`写成了情绪、没记 ${result.feelings.length} 条（只记发生了什么）`);
             state.extracted[episode.id] = true;
             save(contact, state);
             changed = false;
@@ -239,6 +302,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
             const items = duePromises(load(contact).promises.filter(p => !forgotten(p, day)), day, chat);
             return describePromises(items, day, contact.name);
         },
+        openLoops: (contact, chat, at) => dueLoops(load(contact).loops, today(at), at, chat),
         plansOn: date => options.contacts.flatMap(contact => load(contact).promises.filter(p => p.date === date).map(p => p.what)),
     };
 }
