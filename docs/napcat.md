@@ -57,3 +57,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-napcat.ps1
 ```
 
 首次启动会在控制台打印登录二维码（`workdir/cache/` 下也有图片），用小号的手机 QQ 扫码。
+
+**快速登录**（10-06 加）：用户环境变量 `QQBOT_NAPCAT_QQ` 设成 bot 的 QQ 号（和 Koishi 配置里的 `selfId` 一样）后，脚本带 `-q` 启动，
+用上次扫码保存的登录状态直接登录，NapCat 的工作进程自己重启时也一样，不用每次扫码；没有保存的登录状态时照旧出二维码。号码不进仓库。
+
+**同一个号只能在一处登录电脑端**：10-06 下午 bot 号在别处还有一个会自动回消息的实例（我们的 NapCat 断开期间，他发的消息 4 秒就被回了两条），
+我们这边每次登录几秒后就被挤下线、工作进程重启、重新出二维码。遇到「登上几秒就掉」先查手机 QQ 的「登录设备管理」，把别处的电脑端下线。
+`workdir/config/napcat_<号>.json` 的 `fileLog` 已打开，日志在 `workdir/logs/`（窗口里的输出在工作进程重启时会被清屏）。

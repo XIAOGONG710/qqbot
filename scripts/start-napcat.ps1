@@ -6,9 +6,13 @@
 #   runtime/napcat/workdir/                              NAPCAT_WORKDIR: config/ logs/ cache/
 # Upgrading = unpack the new release next to the old one and change $Version.
 # On first start NapCat prints a login QR code to the console (also saved under workdir/cache/).
+# Quick login: with the user environment variable QQBOT_NAPCAT_QQ set to the bot's QQ number (or -QuickLogin <number>),
+# NapCat logs in with the saved session (-q), also when its worker restarts; without a saved session it falls back
+# to the QR code. The number stays out of the repo.
 
 param(
-    [string]$Version = 'v4.18.28'
+    [string]$Version = 'v4.18.28',
+    [string]$QuickLogin = [Environment]::GetEnvironmentVariable('QQBOT_NAPCAT_QQ', 'User')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,7 +31,12 @@ Push-Location $appDir
 try {
     # Use the node.exe shipped in this release (as its napcat.bat does), not the system Node.
     $ErrorActionPreference = 'Continue'
-    .\node.exe .\index.js
+    if ($QuickLogin) {
+        Write-Host 'Quick login with the saved session (QQBOT_NAPCAT_QQ)'
+        .\node.exe .\index.js -q $QuickLogin
+    } else {
+        .\node.exe .\index.js
+    }
 } finally {
     Pop-Location
 }
