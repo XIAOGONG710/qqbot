@@ -266,6 +266,8 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
             }
             for (const [i, add] of result.add.entries()) {
                 const item: HerPromise = { id: `p-${episode.start.getTime()}-${i + 1}`, what: add.what, ...(add.date ? { date: add.date } : {}), said, episode: episode.id };
+                // 日子在今天之前的不记：晚了才抽到（刚上线补抽以前的片段），那天已经过去了，不该再提醒「打算那天」（10-07 线上日志）
+                if (item.date && daysFrom(item.date, day) > 0) continue;
                 if (forgotten(item, day) || state.promises.some(p => p.what === item.what && p.date === item.date)) continue;
                 state.promises.push(item);
                 log(`记下「${item.what}」（${item.date ?? '下次'}）`);

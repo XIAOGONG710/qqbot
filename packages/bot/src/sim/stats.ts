@@ -87,7 +87,8 @@ export function sceneStats(results: readonly RunResult[], examples: readonly str
                 for (const issue of inspectSpeech(raw, { recent: [], his: [] })) {
                     if (issue.kind === 'ledger' || issue.kind === 'blame' || issue.kind === 'contrast') {
                         stats[issue.kind]++;
-                        stats.samples.push(`${issue.kind}｜${lines[issue.line] ?? raw}`);
+                        // issue.line 是 inspectSpeech 按原文（不去空行）数的行号
+                        stats.samples.push(`${issue.kind}｜${raw.split('\n')[issue.line]?.trim() ?? raw}`);
                     }
                 }
                 const grams = stateGrams(generation.timeBlock);
