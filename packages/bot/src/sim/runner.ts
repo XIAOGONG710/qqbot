@@ -267,6 +267,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                         initiating = undefined;
                     }
                 },
+                catchUp: () => responder.catchUp(),
+                status: () => responder.status(),
             },
             dir: join(dataDir, 'proactive'),
             log,

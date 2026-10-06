@@ -311,7 +311,7 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
     const special = candidate.occasion === 'dates';
     const day = herDay(schedule, new Date(now));
     if (!special && now >= at(addDays(day, 1), NIGHT_FROM).getTime()) return '夜里了，不打扰';
-    if (pendingMessages([...history]).length && !input.skip?.([...history])) return '有没回的消息，回复就好';
+    if (pendingMessages([...history]).length && !input.skip?.([...history])) return PENDING_REASON;
     const last = history.at(-1);
     const lastTime = last ? Date.parse(last.time) : undefined;
     if (special) return undefined;
@@ -351,6 +351,8 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
 
 /** 主动发的最多几条气泡 */
 export const MAX_PROACTIVE_BUBBLES = 2;
+/** 有没回的消息时不主动的原因（计划器和回复器都用） */
+export const PENDING_REASON = '有没回的消息，回复就好';
 
 /** 提示词里的说明（ADR 0011 决策 3）：这次是你主动找他、为什么。userName 是称呼（{{user}}） */
 export function occasionNote(candidate: Candidate, userName: string): string {

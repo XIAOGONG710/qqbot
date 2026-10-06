@@ -7,7 +7,7 @@ import { expired, extractionPrompt, firstAsk, parseExtraction, whenText, type Fo
 import type { StoredMessage } from '../src/history.ts';
 import { blockReason, candidatesOn, occasionNote, type ProactiveInput } from '../src/proactive.ts';
 import { createProactivePlanner, type Planner } from '../src/proactive-planner.ts';
-import type { InitiateRequest } from '../src/responder.ts';
+import type { InitiateRequest, ResponderStatus } from '../src/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
@@ -181,5 +181,62 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
         assert.ok(logs.includes('待跟进：他已经说了结果，忘掉「字节的面试」（2026-10-09 14:00）'), logs.join('\n'));
         assert.equal(logs.some(l => l.includes('体检')), false, '已经过期的不记');
         assert.deepEqual(state().followUps, []);
+    });
+});
+
+describe('有没回的消息、回复器又闲着：到了主动的时机先再回一次', () => {
+    const dirs: string[] = [];
+    const planners: Planner[] = [];
+    afterEach(() => {
+        for (const p of planners.splice(0)) p.stop();
+        for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+    });
+
+    async function morning(phase: ResponderStatus['phase']) {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-pending-'));
+        dirs.push(dir);
+        const clock = new VirtualClock(new Date(t(10, 9, 6)));
+        const logs: string[] = [];
+        let caughtUp = 0;
+        // 昨晚的消息没回（断网时回复失败、放弃了）
+        const history: StoredMessage[] = [{ time: new Date(t(10, 8, 23, 50)).toISOString(), role: 'user', content: '在吗' }];
+        const planner = createProactivePlanner({
+            contact: { qq: 10001, name: '阿明', tier: 'boyfriend' },
+            schedule, settings: { occasions: ['morning'], dailyMax: 2, unansweredMax: 1 }, dates: [], mode: 'on',
+            history: { load: () => history },
+            responder: {
+                initiate: async () => ({ result: 'skipped', reason: '不该走到这里' }),
+                catchUp: () => { caughtUp++; },
+                status: () => ({ phase, failures: 2 }),
+            },
+            dir, log: m => logs.push(m), now: clock.now, waitUntil: clock.waitUntil,
+            names: { user: '阿明', char: '林梦瑶' },
+            extract: async () => '{"add":[],"resolved":[]}',
+        });
+        planners.push(planner);
+        for (let i = 0; i < 6; i++) {
+            await new Promise(r => setTimeout(r, 30));
+            if (logs.some(l => l.includes('不发'))) break;
+            const next = clock.nextTimer();
+            if (next === undefined) break;
+            clock.advanceTo(next);
+        }
+        await new Promise(r => setTimeout(r, 30));
+        return { logs, caughtUp: () => caughtUp };
+    }
+
+    test('回复器闲着：记下不发，再回一次', async () => {
+        const { logs, caughtUp } = await morning('idle');
+        assert.ok(logs.some(l => /^主动：早安.*不发：有没回的消息，回复就好$/.test(l)), logs.join('\n'));
+        assert.ok(logs.includes('主动：没回的消息还没回，先再回一次'));
+        assert.equal(caughtUp(), 1, logs.join('\n'));
+    });
+
+    test('回复器还在等着再试、在等她看到：不插手', async () => {
+        for (const phase of ['retry', 'waiting'] as const) {
+            const { logs, caughtUp } = await morning(phase);
+            assert.ok(logs.some(l => l.endsWith('不发：有没回的消息，回复就好')), logs.join('\n'));
+            assert.equal(caughtUp(), 0);
+        }
     });
 });

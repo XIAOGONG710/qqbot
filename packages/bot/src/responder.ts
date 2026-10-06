@@ -26,6 +26,7 @@ export const RETRY_AFTER_MS = [60_000, 300_000];
 
 import type { ChatHistory, StoredMessage } from './history.ts';
 import type { ChatMessage, OpenAIMessage, PromptResult } from './prompt.ts';
+import { PENDING_REASON } from './proactive.ts';
 import { pendingMessages, type Seen } from './reply-timing.ts';
 import { MAX_BUBBLES, splitReply } from './reply.ts';
 
@@ -413,7 +414,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             if (running) return skip('正在回消息');
             // 按「不回」处理过的（看心情没回的「哈哈」）不挡主动消息
             const stored = deps.history.load(deps.userId);
-            if (pendingMessages(stored).length && !deps.timing?.skip(stored)) return skip('有没回的消息，回复就好');
+            if (pendingMessages(stored).length && !deps.timing?.skip(stored)) return skip(PENDING_REASON);
             const task = initiateOnce(request).catch((error): InitiateOutcome => ({
                 result: 'failed', reason: `生成失败：${error instanceof Error ? error.message : String(error)}`,
             }));

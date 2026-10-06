@@ -186,13 +186,16 @@ describe('回复调度', () => {
         return { waits, sleep };
     }
 
-    test('回复失败：隔 1 分钟、5 分钟各再试一次，都失败就等对方下一条消息', async () => {
+    test('回复失败：隔 1 分钟、5 分钟各再试一次，都失败就等对方下一条消息；之后 catchUp（主动消息的时机）再回一次', async () => {
         let calls = 0;
         const { waits, sleep } = manualSleep();
         const { responder, sent, logs } = setup({
             retryAfterMs: RETRY_AFTER_MS,
             sleep,
-            generate: async () => { calls++; throw new Error('模型接口请求失败（UND_ERR_CONNECT_TIMEOUT）'); },
+            generate: async () => {
+                if (++calls <= 3) throw new Error('模型接口请求失败（UND_ERR_CONNECT_TIMEOUT）');
+                return '刚看到';
+            },
         });
         responder.receive('在吗', 1, new Date());
         await responder.whenIdle();
@@ -209,6 +212,11 @@ describe('回复调度', () => {
             logs.filter(l => l.startsWith('回复失败')).map(l => l.slice(l.lastIndexOf('，') + 1)),
             ['1 分钟后再试', '5 分钟后再试', '等对方下一条消息再回'],
         );
+        assert.equal(responder.status().phase, 'idle');
+        responder.catchUp();
+        await tick();
+        await responder.whenIdle();
+        assert.deepEqual(sent, ['刚看到']);
     });
 
     test('等着再试时对方发了新消息：照常回复、重新计次，之前排定的那次作废', async () => {

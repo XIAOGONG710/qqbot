@@ -19,7 +19,7 @@ import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './memory/episo
 import type { OpenAIMessage } from './prompt.ts';
 import type { MacroNames } from './st/macros.ts';
 import {
-    blockReason, candidateLabel, candidatesOn, herDay, MAX_PROACTIVE_BUBBLES, occasionNote, planFrom, recallTopic,
+    blockReason, candidateLabel, candidatesOn, herDay, MAX_PROACTIVE_BUBBLES, occasionNote, PENDING_REASON, planFrom, recallTopic,
     type Candidate, type ImportantDay, type ProactiveInput, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
 import type { InitiateOutcome, Responder } from './responder.ts';
@@ -37,7 +37,8 @@ export interface PlannerDeps {
     mode: 'dryRun' | 'on';
     /** 这一档的聊天记录（换档前的已经去掉） */
     history: { load(qq: number): StoredMessage[] };
-    responder: Pick<Responder, 'initiate'>;
+    /** catchUp、status：有没回的消息、回复器又闲着（回复失败后放弃了）时，到了主动的时机先再回一次 */
+    responder: Pick<Responder, 'initiate'> & Partial<Pick<Responder, 'catchUp' | 'status'>>;
     /** 记录文件所在的目录（<数据目录>/proactive） */
     dir: string;
     log: (message: string) => void;
@@ -204,6 +205,11 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         if (reason) {
             record(candidate, { result: 'skipped', reason });
             deps.log(`主动${tag}：${candidateLabel(candidate)}不发：${reason}`);
+            // 回复失败放弃了的（多半是断网）：不然她要等他下一条才说话，主动又一直被这条挡住
+            if (reason === PENDING_REASON && deps.responder.catchUp && deps.responder.status?.().phase === 'idle') {
+                deps.log(`主动${tag}：没回的消息还没回，先再回一次`);
+                deps.responder.catchUp();
+            }
             return;
         }
         let committed: ProactiveRecord | undefined;
