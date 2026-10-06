@@ -129,6 +129,23 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
         }
     });
 
+    test('晚了才抽（刚上线补抽以前的片段）：抽出来的日子已经过去的不记', async () => {
+        const history = [
+            msg('2026-10-05T20:00:00', 'user', '明天干嘛'),
+            msg('2026-10-05T20:01:00', 'assistant', '明天去图书馆，下次给你讲结局'),
+        ];
+        const { keeper, logs, cleanup } = setup(history, [
+            '{"add":[{"what":"去图书馆","date":"2026-10-06"},{"what":"给他讲结局","date":null}],"resolved":[]}',
+        ], at('2026-10-07T12:00:00'));
+        try {
+            await keeper.sync();
+            assert.ok(!logs.some(l => l.includes('去图书馆')), '10-06 的打算 10-07 才抽到，不记');
+            assert.ok(logs.includes('[1] 她答应的事：记下「给他讲结局」（下次）'));
+        } finally {
+            cleanup();
+        }
+    });
+
     test('划掉、过期忘掉、抽失败 3 次放弃；太早的、只有一方说话的片段不抽', async () => {
         const first = at('2026-10-08T20:00:00').getTime();
         const history = [
