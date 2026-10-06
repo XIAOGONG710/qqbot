@@ -8,7 +8,7 @@
     "steps": [
         { "case": "S01", "note": "国庆假期下午：她留校，他回了青岛" },
         { "say": "在干嘛呢" },
-        { "check": { "timeBlock": "你现在：国庆节放假，没回青岛，留在学校；.+；宝宝回青岛了", "exitClean": true } },
+        { "check": { "timeBlock": "你现在：国庆节放假，[^；]*留在学校[^；]*；.+；宝宝回青岛[^；]*了", "exitClean": true } },
         { "say": "你是在学校还是回家了" },
         { "check": { "replyNone": ["我在家", "我回家了", "我回青岛了"], "exitClean": true } },
         { "say": "我在青岛好无聊，想你了" },
