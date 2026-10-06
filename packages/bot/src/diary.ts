@@ -46,7 +46,8 @@ export function diaryMaterial(sources: DiarySources, day: Date, chats: readonly 
     lines.push(`几点起：${hm(wakeOn(schedule, day))}`);
     const { lessons } = classesOn(schedule, day);
     lines.push(lessons.length
-        ? `课：${lessons.map(l => `${hm(l.start)}–${hm(l.end)} ${l.name ?? schedule.kinds[l.kind]?.label ?? '课'}`).join('；')}`
+        // 课名也不写，只写课型（「专业课」「机房课」）：同学档的卡上没有课名，课名看得出专业
+        ? `课：${lessons.map(l => `${hm(l.start)}–${hm(l.end)} ${schedule.kinds[l.kind]?.label?.split('，')[0] || '课'}`).join('；')}`
         : '课：没有课');
     // 空闲时在干什么：作息按日期固定选，取上午、下午、晚上各一个时刻
     const free = ['10:30', '15:30', '20:30'].flatMap(time => {

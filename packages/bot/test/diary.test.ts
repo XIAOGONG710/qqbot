@@ -14,14 +14,14 @@ const sources: DiarySources = { charName: card.name, schedule: card.schedule!, m
 const at = (iso: string, role: 'user' | 'assistant', content: string): StoredMessage => ({ time: new Date(iso).toISOString(), role, content });
 
 describe('她的日记（ADR 0017）', () => {
-    test('材料：几点起、课（不写教室）、空闲活动、心情、书；不写在哪；没聊天的日子写明', () => {
+    test('材料：几点起、课（只写课型，不写课名和教室）、空闲活动、心情、书；不写在哪；没聊天的日子写明', () => {
         const text = diaryMaterial(sources, new Date(2026, 9, 9), []);
-        assert.match(text, /^日期：10月9日 周五\n几点起：07:40\n课：08:20–09:40 Python编程基础；/);
+        assert.match(text, /^日期：10月9日 周五\n几点起：07:40\n课：08:20–09:40 机房课；09:55–11:15 机房课；13:40–15:00 机房课\n/);
         assert.match(text, /\n空闲时：.*晚上/);
         assert.match(text, /\n心情：安静（今天有早八，起得太早了）/);
         assert.match(text, /\n在读：《药屋少女的呢喃》看到第 8 卷/);
         assert.match(text, /\n今天没和名单里的人聊天。$/);
-        assert.doesNotMatch(text, /在哪|知行楼|济南/);
+        assert.doesNotMatch(text, /在哪|知行楼|济南|Python|概率论/);
         assert.match(diaryMaterial(sources, new Date(2026, 9, 6), []), /^日期：10月6日 周二（国庆节放假）\n/);
     });
 

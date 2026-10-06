@@ -61,6 +61,8 @@ export function mentionedPeople(history: readonly Said[], self: Contact, contact
 // 问她过去的事（ADR 0017）：同一句里有时间和经历
 const PAST_TIME = /今天|昨天|前天|昨晚|今早|今晚|早上|上午|中午|下午|晚上|周末|上周|上星期|上个月|上次|那天|那次|最近|这几天|前几天|刚才|之前|以前/;
 const PAST_DOING = /干嘛|干啥|干了|干什么|做什么|做啥|做了|去哪|去了|在忙|忙啥|忙什么|忙了|过得|怎么过|玩了|吃了|吃的|看了|上了|上的|学了|买了|见了|聊了|遇到|碰到|发生|怎么样/;
+// 接着问另一天：「那前天呢」「你昨天呢？」，只有时间
+const PAST_FOLLOW_UP = new RegExp(`^(那|那你|你)?(${PAST_TIME.source})(呢|[?？])+$`);
 
 /**
  * 公共记忆的线索（ADR 0017，有线索才想起）：他这次的话（她上次回复之后的）里出现了公共库里的实体名，或者问她过去的事。
@@ -77,7 +79,8 @@ export function commonCue(history: readonly Said[], self: Contact, entities: rea
         .filter(name => [...name].length >= MIN_NAME_CHARS && name !== charName && name !== self.name && text.includes(name))
         .sort((a, b) => b.length - a.length)[0];
     if (entity) return entity;
-    const asksHer = said.some(line => PAST_TIME.test(line) && PAST_DOING.test(line) && (/你/.test(line) || /[?？吗呢]\s*$/.test(line) || !/我/.test(line)));
+    const asksHer = said.some(line => PAST_FOLLOW_UP.test(line.trim())
+        || (PAST_TIME.test(line) && PAST_DOING.test(line) && (/你/.test(line) || /[?？吗呢]\s*$/.test(line) || !/我/.test(line))));
     return asksHer ? '问她过去的事' : undefined;
 }
 

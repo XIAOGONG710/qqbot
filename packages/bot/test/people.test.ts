@@ -8,7 +8,7 @@ import { loadTierCard } from '../src/contact.ts';
 import type { MemoryItem } from '../src/memory/hindsight.ts';
 import { commonCue, describePerson, knowsPeople, MAX_MENTIONED, mentionedPeople } from '../src/people.ts';
 import type { OpenAIMessage } from '../src/prompt.ts';
-import { runScenario, type SimHindsight } from '../src/sim/runner.ts';
+import { runChecks, runScenario, type SimHindsight } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
@@ -122,6 +122,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
             assert.ok(say.logs.some(line => line === '召回公共记忆 1 条（线索：鸽鸽）'));
             const first = result.steps.filter(step => step.kind === 'say')[0]!;
             assert.ok(!first.logs.some(line => line.startsWith('召回公共记忆')), '「在干嘛」没有线索，不查公共记忆（ADR 0017）');
+            assert.deepEqual([first, say].map(step => runChecks({ noCommon: true }, step)[0]!.ok), [true, false], '检查项 noCommon');
             assert.deepEqual(deleted.sort(), [result.bankId!, gegeBank, 'sim-t-common'].sort());
         } finally {
             rmSync(dir, { recursive: true, force: true });
@@ -159,6 +160,11 @@ describe('公共记忆的线索（ADR 0017）', () => {
         assert.equal(cue('今天好累'), undefined, '没有经历');
         assert.equal(cue('你昨天都上了什么课'), '问她过去的事');
         assert.equal(cue('昨天考试怎么样'), '问她过去的事');
+        // 接着问另一天：只有时间
+        assert.equal(cue('那前天呢'), '问她过去的事');
+        assert.equal(cue('你昨天呢？'), '问她过去的事');
+        assert.equal(cue('昨天呢我也是'), undefined);
+        assert.equal(cue('明天呢'), undefined, '不是过去');
     });
 
     test('陌生人档、名单外没有线索', () => {

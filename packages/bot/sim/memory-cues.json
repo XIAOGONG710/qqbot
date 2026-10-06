@@ -1,0 +1,33 @@
+{
+    "name": "男朋友档：有线索才想起（ADR 0017）",
+    "description": "10-07 晚上鸽鸽（没写「别人提起时」）跟她说下周要去杭州出差装设备。男朋友闲聊时不想起公共记忆；他说起杭州（公共库里的实体）、问她今天吃了什么（问她过去的事）时才想起。名单和聊天是虚构的。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-08T21:00:00+08:00",
+    "others": [
+        {
+            "name": "鸽鸽",
+            "tier": "classmate",
+            "history": [
+                { "time": "2026-10-07T22:00:00+08:00", "role": "user", "content": "下周要去杭州出差，装一批新设备" },
+                { "time": "2026-10-07T22:01:00+08:00", "role": "assistant", "content": "大神又出差啊，去几天" },
+                { "time": "2026-10-07T22:02:00+08:00", "role": "user", "content": "一周吧，13号走" },
+                { "time": "2026-10-07T22:03:00+08:00", "role": "assistant", "content": "那记得去西湖逛逛，别光窝机房" }
+            ]
+        }
+    ],
+    "steps": [
+        { "case": "MC01", "note": "闲聊：没有线索" },
+        { "say": "在干嘛呢" },
+        { "check": { "speechClean": true, "exitClean": true, "noCommon": true } },
+        { "case": "MC02", "note": "说自己累：没有线索" },
+        { "say": "今天好累啊" },
+        { "check": { "speechClean": true, "exitClean": true, "noCommon": true } },
+        { "case": "MC03", "note": "说起杭州：公共库里的实体，想起鸽鸽要去杭州" },
+        { "say": "我下周可能要去杭州玩两天" },
+        { "check": { "speechClean": true, "exitClean": true, "common": ["杭州"], "log": "线索：杭州" } },
+        { "case": "MC04", "note": "问她今天吃了什么：问她过去的事" },
+        { "say": "你今天中午吃的啥" },
+        { "check": { "speechClean": true, "exitClean": true, "log": "线索：问她过去的事" } }
+    ]
+}

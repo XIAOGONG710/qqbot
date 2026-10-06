@@ -573,6 +573,7 @@ export function runChecks(checks: Checks, step: StepRecord, banned: readonly str
     for (const word of checks.recallNot ?? []) results.push({ ok: !recall.includes(word), text: `召回里没有「${word}」` });
     for (const word of checks.people ?? []) results.push({ ok: (last?.people ?? '').includes(word), text: `「你认识的人」里有「${word}」` });
     for (const word of checks.common ?? []) results.push({ ok: (last?.common ?? '').includes(word), text: `公共记忆里有「${word}」` });
+    if (checks.noCommon) results.push({ ok: !last?.common, text: '没有线索，没想起公共记忆' });
     if (checks.replyAny) {
         const hit = checks.replyAny.filter(w => replies.includes(w));
         results.push({ ok: hit.length > 0, text: `回复里有「${checks.replyAny.join('」「')}」之一${hit.length ? `（${hit.join('、')}）` : ''}` });

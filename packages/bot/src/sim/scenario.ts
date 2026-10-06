@@ -22,6 +22,8 @@ export interface Checks {
     people?: string[];
     /** 这一步最后一次生成的公共记忆（ADR 0016）要有这些词 */
     common?: string[];
+    /** 这一步最后一次生成没有公共记忆（ADR 0017：没有线索就不想起） */
+    noCommon?: boolean;
     /** 这一步她发出的话里至少有其中一个 */
     replyAny?: string[];
     /** 这一步她发出的话里一个都不能有 */
