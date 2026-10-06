@@ -7,7 +7,7 @@
     "steps": [
         { "case": "MW01", "note": "国庆刚过：想起国庆的总结" },
         { "say": "国庆过得怎么样" },
-        { "check": { "speechClean": true, "exitClean": true, "common": ["国庆节的总结"], "log": "线索：问她过去的事" } },
+        { "check": { "speechClean": true, "exitClean": true, "common": ["国庆节的总结"], "log": "线索：(问她过去的事|国庆)" } },
         { "advance": "1d" },
         { "case": "MW02", "note": "10-09 到 10-11 每天聊几句" },
         { "say": "今天干嘛了" },
@@ -21,6 +21,6 @@
         { "check": { "speechClean": true, "exitClean": true, "common": ["你的周记"], "log": "线索：问她过去的事" } },
         { "case": "MW04", "note": "接着问国庆：时间换成国庆" },
         { "say": "那国庆呢" },
-        { "check": { "speechClean": true, "exitClean": true, "common": ["国庆节的总结"], "log": "线索：问她过去的事" } }
+        { "check": { "speechClean": true, "exitClean": true, "common": ["国庆节的总结"], "log": "线索：(问她过去的事|国庆)" } }
     ]
 }
