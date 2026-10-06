@@ -335,8 +335,9 @@ export class LongTermMemory {
             await this.#options.api.createMentalModel(bankId, model);
         } else {
             await this.#options.api.updateMentalModel(bankId, model.id, model);
-            await this.#options.api.refreshMentalModel(bankId, model.id);
         }
+        // 建好时不带内容，要等下次整理（还至少隔 30 分钟）；公共库里早就有他的事了，当场整理一次
+        await this.#options.api.refreshMentalModel(bankId, model.id);
         state.personModel = version;
         this.#save(contact, state);
         this.#options.log(`[${contact.qq}] 记忆（公共）：「${model.name}」已建好`);
