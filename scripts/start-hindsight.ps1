@@ -3,7 +3,7 @@
 #
 # Set up once as described in docs/hindsight.md. Layout (all under runtime/hindsight/, not committed):
 #   venv/       Python 3.12 venv with scripts/hindsight/requirements.txt installed (hindsight-api-slim, pg0, onnxruntime)
-#   pgdata/     NOT used when the repo path has non-ASCII characters - see $pgData below.
+#   pgdata/     used only when the repo path is pure ASCII - otherwise %LOCALAPPDATA%\qqbot-hindsight\pgdata (see $pgData below).
 #               PostgreSQL data of the pg0 instance "qqbot-hindsight", listening on 127.0.0.1:5433 only.
 #   hf/         Hugging Face cache for the embedding model (intfloat/multilingual-e5-small, ONNX)
 #   pgroonga/   the verified PGroonga 4.0.9 zip and its file list; the files themselves are unpacked into pg0's PostgreSQL
@@ -54,11 +54,17 @@ $ErrorActionPreference = 'Continue'
 # The data directory must be on a pure-ASCII path: pg0 (Rust) reads a file back as UTF-8 and dies with
 # "Error: IO error: stream did not contain valid UTF-8" when the path contains non-ASCII characters.
 # Measured 2026-10-06: the same command succeeded with -d C:\hindsight-pgdata and failed with
-# -d <repo>\runtime\hindsight\pgdata on a repo under Desktop\astrbot创建\. Override with QQBOT_PGDATA.
+# -d <repo>\runtime\hindsight\pgdata on a repo under a folder with Chinese characters in its name.
+# So: QQBOT_PGDATA if set; else runtime\hindsight\pgdata when the repo path is pure ASCII (where the existing data lives -
+# switching an existing install to an empty directory would look like all memories were lost);
+# else %LOCALAPPDATA%\qqbot-hindsight\pgdata.
 $instance = 'qqbot-hindsight'
-$pgData = if ($env:QQBOT_PGDATA) { $env:QQBOT_PGDATA } else { Join-Path $env:LOCALAPPDATA 'qqbot-hindsight\pgdata' }
+$repoPgData = Join-Path $root 'pgdata'
+$pgData = if ($env:QQBOT_PGDATA) { $env:QQBOT_PGDATA }
+          elseif ($repoPgData -notmatch '[^\x00-\x7F]') { $repoPgData }
+          else { Join-Path $env:LOCALAPPDATA 'qqbot-hindsight\pgdata' }
 if ($pgData -match '[^\x00-\x7F]') {
-    throw "QQBOT_PGDATA ('$pgData') contains non-ASCII characters; pg0 fails with 'stream did not contain valid UTF-8' (docs\hindsight.md)"
+    throw "PostgreSQL data directory ('$pgData') contains non-ASCII characters; pg0 fails with 'stream did not contain valid UTF-8'. Set QQBOT_PGDATA to an ASCII path (docs\hindsight.md)"
 }
 New-Item -ItemType Directory -Force -Path $pgData | Out-Null
 $info = & $pg0 info --name $instance 2>&1 | Out-String

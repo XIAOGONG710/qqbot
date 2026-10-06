@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | Python | 3.12.15，`uv python install 3.12`（uv 自带下载校验） | `%APPDATA%\uv\python\` |
 | hindsight-api-slim | 0.10.2（PyPI），extras `embedded-db`、`local-onnx` | `runtime/hindsight/venv/` |
-| PostgreSQL | 18.1.0，pg0-embedded 0.15.2 自带（含 pgvector） | 程序在 `%USERPROFILE%\.pg0\installation\`，数据在 `runtime/hindsight/pgdata/` |
+| PostgreSQL | 18.1.0，pg0-embedded 0.15.2 自带（含 pgvector） | 程序在 `%USERPROFILE%\.pg0\installation\`，数据在 `runtime/hindsight/pgdata/`（仓库路径含中文时在 `%LOCALAPPDATA%\qqbot-hindsight\pgdata\`，见下文「本机安装记录」第 2 条） |
 | embedding | `intfloat/multilingual-e5-small`（多语言，384 维，ONNX，Hugging Face） | `runtime/hindsight/hf/` |
 | 抽取用的模型 | DeepSeek `deepseek-flash`，关思考，key 同 bot（`QQBOT_LLM_API_KEY`） | — |
 | 重排 | `rrf`（不用模型） | — |
@@ -128,7 +128,7 @@ uv pip install --python runtime/hindsight/venv/Scripts/python.exe --require-hash
 ```
 
 先装最新的 VC++ 运行库（14.40 以上，需要管理员；启动脚本会检查），再运行启动脚本。pg0 第一次 `start` 会把 PostgreSQL 解压到 `%USERPROFILE%\.pg0\installation\`
-并在 `runtime/hindsight/pgdata/` 建库；运行库太旧时这一步的 initdb 会失败。
+并在 `runtime/hindsight/pgdata/`（仓库路径含中文时是 `%LOCALAPPDATA%\qqbot-hindsight\pgdata\`）建库；运行库太旧时这一步的 initdb 会失败。
 
 ## 验证记录（2026-10-04）
 
@@ -179,8 +179,10 @@ Error: IO error: stream did not contain valid UTF-8
 ```
 
 对照实验（同日）：同一条命令，`-d C:\hindsight-pgdata`（纯 ASCII）一次成功，含中文的路径必失败。
-`scripts/start-hindsight.ps1` 因此把数据目录改到 `%LOCALAPPDATA%\qqbot-hindsight\pgdata`（纯 ASCII），可用 `QQBOT_PGDATA` 覆盖，
-并在脚本里对非 ASCII 路径直接报错说明原因。这是同一族问题的第三次（前两次：NapCat 从中文路径启动挂不上、PowerShell 5.1 按 ANSI 读无 BOM 脚本）。
+`scripts/start-hindsight.ps1` 因此按顺序选数据目录：设了 `QQBOT_PGDATA` 用它；仓库路径是纯 ASCII 时仍用 `runtime/hindsight/pgdata/`；
+否则用 `%LOCALAPPDATA%\qqbot-hindsight\pgdata`。选出的路径含非 ASCII 字符（比如 Windows 用户名是中文）就直接报错说明原因。
+（10-06 推上来的第一版不分情况一律改到 `%LOCALAPPDATA%`：仓库在纯 ASCII 路径、数据已经在 `runtime/hindsight/pgdata/` 的机器上，
+下次启动会连到一个空库，看起来像记忆全丢了；当晚改成上面的顺序。）这是同一族问题的第三次（前两次：NapCat 从中文路径启动挂不上、PowerShell 5.1 按 ANSI 读无 BOM 脚本）。
 
 ### 3. Hugging Face 走镜像
 
