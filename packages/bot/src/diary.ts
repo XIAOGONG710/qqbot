@@ -14,6 +14,8 @@ import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from '.
 
 /** bot 停过时往回补几天 */
 export const DIARY_BACKFILL_DAYS = 3;
+/** 写日记的温度：比聊天低，少编 */
+export const DIARY_TEMPERATURE = 0.8;
 /** 每个人的聊天最多放多少字（留最后的） */
 export const DIARY_CHAT_CHARS = 1500;
 
@@ -30,6 +32,8 @@ export interface DiarySources {
     /** herDays 关着时传空的 */
     moods: readonly DailyMood[];
     books: readonly ReadingBook[];
+    /** 模拟器指定的心情（场景的 mood），和聊天时一样 */
+    mood?: string;
 }
 
 /** 她那一天的材料，一段给模型看的文字 */
@@ -50,7 +54,7 @@ export function diaryMaterial(sources: DiarySources, day: Date, chats: readonly 
         return activity.kind === 'free' ? [`${time.startsWith('10') ? '上午' : time.startsWith('15') ? '下午' : '晚上'}${activity.text}`] : [];
     });
     if (free.length) lines.push(`空闲时：${free.join('；')}`);
-    const mood = moodAt(schedule, sources.moods, atTime(day, '12:00'));
+    const mood = moodAt(schedule, sources.moods, atTime(day, '12:00'), sources.mood);
     if (mood) lines.push(`心情：${mood.mood.name}（${mood.reason}）`);
     const reading = sources.books.map(book => {
         const progress = bookProgressOn(book, day);

@@ -19,6 +19,8 @@ const llm: BotConfig['llm'] = {
     promptPostProcessing: '', extraBody: {},
 };
 const prompt: BotConfig['prompt'] = { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true };
+/** 写日记的请求（ADR 0017）：假模型单独回，不算进聊天的生成 */
+const isDiary = (messages: OpenAIMessage[]) => messages[0]?.role === 'system' && messages[0].content.includes('睡前在写今天');
 
 describe('模拟器：场景文件', () => {
     test('时长写法', () => {
@@ -74,7 +76,9 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             deleteBank: async bank => { calls.deleted.push(bank); },
         };
         const prompts: OpenAIMessage[][] = [];
+        const diaries: OpenAIMessage[][] = [];
         const generate = async (messages: OpenAIMessage[]) => {
+            if (isDiary(messages)) { diaries.push(messages); return '今天没什么事，看了会儿书。'; }
             prompts.push(messages);
             await new Promise(r => setTimeout(r, 50));
             return prompts.length === 2 ? '第一条\n第二条\n第三条' : '好';
@@ -116,7 +120,13 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             assert.ok(order.indexOf('等下') === order.indexOf('第一条') + 1);
             assert.ok(chat.every(m => m.time.startsWith('2026-10-05') || m.time.startsWith('2026-10-06')));
 
-            assert.deepEqual(calls.retainBanks, [result.bankId, 'sim-test-common'], '跳一天后前一段结束，写进记忆（自己的 bank 和公共库，ADR 0016）');
+            const isDiaryItem = (item: MemoryItem) => item.metadata?.source === 'diary';
+            assert.deepEqual(calls.retainBanks.filter((_, i) => !isDiaryItem(calls.retain[i]!)), [result.bankId, 'sim-test-common'], '跳一天后前一段结束，写进记忆（自己的 bank 和公共库，ADR 0016）');
+            // 日记（ADR 0017）：起点补写前 3 天，跳过 10-05 之后写 10-05 那篇，都进公共库；10-05 那篇的材料里有那天的聊天
+            assert.deepEqual(calls.retain.filter(isDiaryItem).map(item => item.document_id), ['diary:2026-10-02', 'diary:2026-10-03', 'diary:2026-10-04', 'diary:2026-10-05']);
+            assert.ok(calls.retainBanks.every((bank, i) => !isDiaryItem(calls.retain[i]!) || bank === 'sim-test-common'));
+            assert.match(diaries[3]![1]!.content, /\[和阿明\]\n.*阿明：一/);
+            assert.match(diaries[0]![1]!.content, /今天没和名单里的人聊天/);
             assert.equal(calls.refreshed, 1);
             assert.equal(result.steps[10]!.relationship, '关系稳定');
             assert.deepEqual(calls.deleted, [result.bankId, 'sim-test-common']);
@@ -149,7 +159,7 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             deleteBank: async () => {},
         };
         const seen: OpenAIMessage[][] = [];
-        const generate = async (messages: OpenAIMessage[]) => { seen.push(messages); return '嗯嗯'; };
+        const generate = async (messages: OpenAIMessage[]) => (isDiary(messages) ? '日记' : (seen.push(messages), '嗯嗯'));
         const scenario = parseScenario({
             name: '测试', tier: 'boyfriend', start: '2026-10-05T20:00:00+08:00',
             steps: [

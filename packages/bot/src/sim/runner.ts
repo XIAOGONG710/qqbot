@@ -17,6 +17,7 @@ import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay } from '../proactive.ts';
 import { createProactivePlanner, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
+import { DIARY_TEMPERATURE, diaryWriter } from '../diary.ts';
 import { formatDate, stateAt } from '../schedule.ts';
 import { parseDuration, VirtualClock, type Checks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
@@ -143,6 +144,27 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const bankId = memory?.bankId(contact);
     /** 跑完要删的：他自己的、名单里其他人的、公共库 */
     const banks = memory ? [bankId!, ...others.map(other => memory.bankId(other)), memory.commonBankId()] : [];
+    // 她的日记（ADR 0017）：和 bot 一样，跨过她的一天就补写，存进公共库；场景关了作息就没有她的一天，不写
+    const diaryCard = options.card.character;
+    const diaries = memory && scenario.schedule && diaryCard.schedule
+        ? diaryWriter({
+            sources: {
+                charName: diaryCard.name,
+                schedule: diaryCard.schedule,
+                moods: options.herDays ? diaryCard.moods : [],
+                books: options.herDays ? diaryCard.books : [],
+                ...(scenario.mood !== undefined ? { mood: scenario.mood } : {}),
+            },
+            contacts: [contact, ...others],
+            history,
+            memory,
+            generate: messages => (options.generate
+                ? options.generate(messages, log)
+                : chatCompletion({ ...options.llm, temperature: DIARY_TEMPERATURE }, messages, { log })),
+            dir: join(dataDir, 'memory'),
+            log,
+        })
+        : undefined;
 
     let nextMessageId = 1;
     let armed: SayStep['interrupt'];
@@ -293,10 +315,11 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         }
     }
 
-    /** 把这几个人结束了的片段写进记忆（各自的 bank 和公共库），等 Hindsight 做完 */
+    /** 把这几个人结束了的片段写进记忆（各自的 bank 和公共库），补写日记，等 Hindsight 做完 */
     async function syncMemory(who: Contact[] = [contact]): Promise<void> {
         if (!memory || !options.hindsight || !bankId || hindsightDown) return;
         for (const person of who) await memory.sync(person, { user: person.name, char: names.char }, history.load(person.qq));
+        await diaries?.catchUp(new Date(clock.now()));
         const watched = [...who.map(person => memory.bankId(person)), memory.commonBankId()];
         const started = Date.now();
         const limit = options.hindsightWaitMs ?? 240_000;
@@ -328,10 +351,9 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     /** 上一个主动消息检查查到哪一步了 */
     let proactiveCheckedUpTo = 0;
     try {
-        if (others.length) {
-            log(`名单里的其他人：${others.map(other => `${other.name}（${other.tier}${other.intro ? '，有介绍' : ''}）`).join('、')}`);
-            await syncMemory(others);
-        }
+        if (others.length) log(`名单里的其他人：${others.map(other => `${other.name}（${other.tier}${other.intro ? '，有介绍' : ''}）`).join('、')}`);
+        // 起点：其他人事先的聊天写进记忆，起点之前的几天补写日记（ADR 0017）
+        await syncMemory(others);
         for (const step of scenario.steps) {
             current = newStep(Object.keys(step)[0] as StepRecord['kind'], clock.now());
             steps.push(current);

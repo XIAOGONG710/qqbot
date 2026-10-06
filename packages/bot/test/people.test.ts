@@ -157,6 +157,8 @@ describe('公共记忆的线索（ADR 0017）', () => {
         assert.equal(cue('我今天去爬山了'), undefined, '说的是他自己');
         assert.equal(cue('在干嘛呢'), undefined, '没有时间');
         assert.equal(cue('今天好累'), undefined, '没有经历');
+        assert.equal(cue('你昨天都上了什么课'), '问她过去的事');
+        assert.equal(cue('昨天考试怎么样'), '问她过去的事');
     });
 
     test('陌生人档、名单外没有线索', () => {

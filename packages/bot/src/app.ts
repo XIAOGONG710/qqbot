@@ -24,13 +24,11 @@ import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import type { ProactiveMode } from './proactive.ts';
 import { createProactivePlanner, type Planner, type PlannerStatus } from './proactive-planner.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from './her-days.ts';
-import { DIARY_BACKFILL_DAYS, diaryWriter } from './diary.ts';
+import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt } from './schedule.ts';
 
 /** 写一次长期记忆的间隔 */
 export const MEMORY_SYNC_MS = 5 * 60_000;
-/** 写日记的温度（ADR 0017）：比聊天低，少编 */
-export const DIARY_TEMPERATURE = 0.8;
 
 /** 入口提供的收发 */
 export interface Transport {
