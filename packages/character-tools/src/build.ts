@@ -7,6 +7,7 @@ import { personaToCard } from './persona-to-card.ts';
 import { scenesToLorebook } from './scenes-to-lorebook.ts';
 import { checkScheduleTiers, scheduleForTier } from './schedule-to-card.ts';
 import { SECTION_KEYS, type CharacterSource, type TextField } from './source.ts';
+import { worldTiers } from './world-source.ts';
 import type { CharacterCardV2, WorldInfoBook } from './st-format.ts';
 
 export interface BuiltTier {
@@ -45,6 +46,7 @@ export function checkReferences(source: CharacterSource): void {
             if (node.tiers) known(node.tiers, `books.yml books[${i}].nodes[${j}].tiers`);
         });
     });
+    if (source.world) for (const { at, tiers } of worldTiers(source.world)) known(tiers, `world.yml ${at}.tiers`);
     for (const tier of source.tiers.tiers) {
         if (tier.social !== undefined && !persona.social[tier.social]) {
             throw new Error(`tiers.yml 档位 ${tier.name} 的 social「${tier.social}」在 persona.yml 的 social 里没有`);
@@ -97,6 +99,8 @@ export function checkPrivacy(built: Built, source: CharacterSource): Problem[] {
         if (moods) scan(tier, '心情', JSON.stringify(moods), banned);
         const books = data.extensions.qqbot?.books;
         if (books) scan(tier, '在读的书', JSON.stringify(books), banned);
+        const world = data.extensions.qqbot?.world;
+        if (world) scan(tier, '她的世界', JSON.stringify(world), banned);
         for (const entry of Object.values(lorebook.entries)) {
             const id = /（([^（）]+)）$/.exec(entry.comment)?.[1] ?? entry.comment;
             scan(tier, `世界书 ${id}`, entry.content, banned);

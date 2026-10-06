@@ -276,7 +276,120 @@
                     },
                     "where": "在学校，住宿舍"
                 },
-                "pace": 2.2
+                "pace": 2.2,
+                "world": {
+                    "startDay": "2026-08-31",
+                    "awayHolidays": [],
+                    "weather": {
+                        "rainChance": 0.15,
+                        "temps": {
+                            "1": [
+                                -5,
+                                4
+                            ],
+                            "2": [
+                                -2,
+                                8
+                            ],
+                            "3": [
+                                3,
+                                15
+                            ],
+                            "4": [
+                                10,
+                                22
+                            ],
+                            "5": [
+                                16,
+                                28
+                            ],
+                            "6": [
+                                21,
+                                32
+                            ],
+                            "7": [
+                                24,
+                                32
+                            ],
+                            "8": [
+                                23,
+                                31
+                            ],
+                            "9": [
+                                18,
+                                27
+                            ],
+                            "10": [
+                                11,
+                                21
+                            ],
+                            "11": [
+                                3,
+                                13
+                            ],
+                            "12": [
+                                -3,
+                                6
+                            ]
+                        }
+                    },
+                    "cat": {
+                        "name": "土豆",
+                        "feed": [
+                            "18:30",
+                            "21:30"
+                        ],
+                        "seenChance": 0.85,
+                        "food": {
+                            "bagDays": 20,
+                            "left": 8,
+                            "reorderAt": 3
+                        }
+                    },
+                    "parcels": {
+                        "perWeek": 1.2,
+                        "arriveDays": [
+                            2,
+                            3
+                        ],
+                        "keepDays": 3,
+                        "items": [
+                            "零食",
+                            "洗面奶",
+                            "数据线",
+                            "发圈",
+                            "秋天的外套",
+                            "笔记本",
+                            "猫条",
+                            "宿舍用的小台灯"
+                        ]
+                    },
+                    "homework": {
+                        "kinds": [
+                            "hard",
+                            "machine"
+                        ],
+                        "chance": 0.5,
+                        "earlyChance": 0.2
+                    },
+                    "people": [],
+                    "events": [
+                        {
+                            "id": "canteen_queue",
+                            "text": "中午食堂二楼的窗口排了长队",
+                            "window": "afternoon",
+                            "chance": 0.2,
+                            "when": "school"
+                        },
+                        {
+                            "id": "library_seat",
+                            "text": "去图书馆没占到靠窗的座",
+                            "window": "afternoon",
+                            "chance": 0.1,
+                            "when": "school"
+                        }
+                    ]
+                }
             }
         }
     }
