@@ -61,6 +61,12 @@
 - 主动设置（ADR 0011）：`tiers.yml` 档位上的 `proactive` 写进卡的 `extensions.qqbot.proactive`；真发不发由插件配置的「主动消息」开关（关 / 试运行 / 开）决定。
 - 没迁移的：转换器没用到的 `legacy/` 内容（书、兴趣、关注的 UP 主、每日心情、`him`、旧引擎参数、作息分段的权重、课的老师 / 简称 / 备注），要用再从 `legacy/` 迁。
 
+## biography/：她的自传（还没接进程序）
+
+2026-10-06 由 DSH 侧和用户访谈写成：`autobiography-v1.md`（作者定稿，正文不改）和 `interview.md`（逐字访谈记录，自传的事实源）。
+**不要整篇进提示词**；接进来的方案（切块、有线索才召回）和它与 `source/persona.yml` 的对照见
+[docs/research/2026-10-06-dsh/README.md](../../docs/research/2026-10-06-dsh/README.md)「自传和资料的对照」。里面有具体住址和他的名字，进卡之前先过隐私检查。
+
 ## st/：SillyTavern 格式（运行时的输入）
 
 由 `packages/character-tools` 从 `source/` 生成，**不要手改**（会被覆盖；有测试要求 `st/` 和 `source/` 生成的一致）。
