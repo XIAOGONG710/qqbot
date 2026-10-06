@@ -148,7 +148,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const fade = (i: number) => ({ ignore, onFade: (stats: FadeStats) => { faded[i] = stats; } });
             const [recalled, freshCommon, ...aboutPeople] = (await Promise.all([
                 remembers ? memory.recall(contact, chat, time, { ...recallOptions, ...fade(0) }) : undefined,
-                remembers && cue ? memory.recallCommon(contact, chat, time, options.contacts ?? [contact], day, fade(1)) : undefined,
+                remembers && cue
+                    ? memory.recallCommon(contact, chat, time, options.contacts ?? [contact], day, fade(1), cue === ASKS_PAST ? [] : people.length ? people.map(p => p.name) : [cue])
+                    : undefined,
                 ...people.map((person, i) => (remembers
                     ? memory.recall(person, chat, time, {
                         ...recallOptions, ...fade(i + 2), limit: PERSON_RECALLED, header: `[你和${person.name}聊过的事（从记忆里想起来的，只作参考）]`,

@@ -531,6 +531,27 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
         }
     });
 
+    test('公共记忆的线索是人和事时：带着它的排在前面（ADR 0018 第一批，说起杭州）', async () => {
+        const probe = setupCommon();
+        const gegeDoc = `${hashOf(probe.memory, B)}:ep-9`;
+        probe.cleanup();
+        const diaries = Array.from({ length: SHARED_RECALLED }, (_, i): RecallResult => ({ id: `d${i}`, text: `第${i}篇日记里的事`, document_id: `diary:2026-10-0${i + 1}` }));
+        const { memory, cleanup } = setupCommon({
+            recall: [...diaries, { id: 'h', text: '鸽鸽 10月13日去出差装设备', document_id: gegeDoc, entities: ['鸽鸽', '杭州'] }],
+        });
+        try {
+            await memory.sync(B, gege, history);
+            const chat = [{ role: 'user' as const, content: '我下周可能要去杭州玩两天', time: new Date(now).toISOString() }];
+            const people = [{ ...A, name: '阿明' }, { ...B, name: '鸽鸽' }];
+            const focused = await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), people, undefined, {}, ['杭州']);
+            assert.match(focused!.split('\n')[1]!, /鸽鸽 10月13日去出差装设备/, '实体对上的排第一');
+            const plain = await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), people);
+            assert.doesNotMatch(plain!, /出差/, '不给线索时照 Hindsight 的顺序，第 7 条排在外面');
+        } finally {
+            cleanup();
+        }
+    });
+
     test('公共记忆问到某一天：带那天的时间窗、多取一些，只留那天的（发生的时间，没有就用说起的时间）', async () => {
         const at = (iso: string) => new Date(`${iso}+08:00`).toISOString();
         const { memory, calls, cleanup } = setupCommon({

@@ -491,6 +491,7 @@ export class LongTermMemory {
      */
     async recallCommon(
         contact: NamedContact, chat: ChatMessage[], now: Date, people: readonly NamedContact[], window?: { start: Date; end: Date }, fade: FadeOptions = {},
+        focus: readonly string[] = [],
     ): Promise<string | undefined> {
         if (!this.#options.common || !knowsPeople(contact.tier)) return undefined;
         const stored = readJsonOr<Partial<CommonState>>(join(this.#options.dir, 'common.json'), {}, message => this.#options.log(message));
@@ -504,9 +505,12 @@ export class LongTermMemory {
         const all = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
         if (!all) return undefined;
         // 问到某段时间时，那段的周记、阶段总结排在前面（ADR 0018：「上周忙啥」「国庆过得怎样」整体答）
-        const results = window
+        const inWindow = window
             ? all.filter(r => onDay(r, window.start, window.end) || summaryIn(r, window)).sort((a, b) => Number(isSummary(b)) - Number(isSummary(a)))
             : all;
+        // 他说起的人和事（focus，ADR 0017 的线索）：带着它的排在前面（ADR 0018 第一批：说起杭州，6 条名额被日记占满，鸽鸽去杭州那条排在外面）
+        const about = (r: RecallResult) => focus.some(name => r.entities?.includes(name) || r.text.includes(name));
+        const results = focus.length ? [...inWindow].sort((a, b) => Number(about(b)) - Number(about(a))) : inWindow;
         const own = `${this.#hash(contact)}:`;
         const names = new Map(people.map(person => [this.#hash(person), person.name]));
         return formatRecalled(results.filter(r => !r.document_id?.startsWith(own)), {
