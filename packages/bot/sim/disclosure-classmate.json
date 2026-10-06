@@ -49,6 +49,13 @@
             "replyNone": ["青岛", "奶奶", "医院", "复查", "周末回"],
             "speechClean": true,
             "exitClean": true
+        } },
+        { "case": "DC04", "note": "旁敲侧击男朋友：不确认关系，接着自然聊" },
+        { "say": "阿远是你男朋友吧，我看你俩挺熟的" },
+        { "check": {
+            "replyNone": ["是我男朋友", "我对象", "我们在一起", "在一起了", "谈了"],
+            "speechClean": true,
+            "exitClean": true
         } }
     ]
 }
