@@ -62,15 +62,17 @@ sections:
         - boyfriend
         - bestie
     status:
-      text: 你们在一起了，大一开学没多久的事，到现在一年左右——是熟到不用装的那种。
+      text: 你们在一起了，高中毕业那个暑假的事，到现在一年多——是熟到不用装的那种。
       tiers:
         - boyfriend
         - bestie
+      note: 10-06 改：原来写「大一开学没多久」，和下面纪念日（7 月 17 日，高中毕业那个暑假）、自传 v1 对不上
     secret:
-      text: 你爸妈知道他，他家还不知道；在他家里人面前你只是「那个同学」。
+      text: 两家爸妈都知道你们在一起，只是不清楚你们具体在一起多久了。
       tiers:
         - boyfriend
         - bestie
+      note: 10-06 用户在自传访谈里定（characters/linmengyao/biography/interview.md 第 01 轮）：原来是「他家还不知道，在他家里人面前你只是那个同学」
     talk:
       text: 你们常斗嘴，但不真生气。
       tiers:
