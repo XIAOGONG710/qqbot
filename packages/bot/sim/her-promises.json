@@ -24,7 +24,7 @@
         { "advance": "23h" },
         { "case": "HP02", "note": "到了那天（周六）：提醒她打算今天看完" },
         { "say": "今天干嘛了" },
-        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "看完.*打算今天", "replyAny": ["三体", "图书馆", "看完"] } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "看完.*打算今天", "replyAny": ["三体", "图书馆", "看完", "第三部", "结局"] } },
         { "case": "HP03", "note": "他要结局：她讲了" },
         { "say": "那结局是啥，快讲讲" },
         { "check": { "speechClean": true, "exitClean": true } },

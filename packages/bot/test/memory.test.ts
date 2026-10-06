@@ -578,6 +578,28 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
         }
     });
 
+    test('问某一天、那天正好是假期最后一天：那天的日记排前面，总结只留那天发生的（ADR 0018 第二批）', async () => {
+        const at = (iso: string) => new Date(`${iso}+08:00`).toISOString();
+        const summary = (i: number, day: string): RecallResult => ({ id: `s${i}`, text: `总结里的第${i}件`, document_id: 'phase:国庆节:2026-10-07', occurred_start: at(`${day}T12:00:00`) });
+        const { memory, cleanup } = setupCommon({
+            recall: [
+                ...Array.from({ length: SHARED_RECALLED }, (_, i) => summary(i, '2026-10-01')),
+                summary(9, '2026-10-07'),
+                { id: 'd', text: '和室友去后街吃了麻辣烫', document_id: 'diary:2026-10-07', occurred_start: at('2026-10-07T12:00:00') },
+            ],
+        });
+        try {
+            await memory.sync(B, gege, history);
+            const chat = [{ role: 'user' as const, content: '你昨天都干嘛了', time: new Date(now).toISOString() }];
+            const text = await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [{ ...A, name: '阿明' }], { start: new Date(2026, 9, 7), end: new Date(2026, 9, 8, 2) });
+            const lines = text!.split('\n').slice(1);
+            assert.match(lines[0]!, /（你的日记[^）]*）：和室友去后街吃了麻辣烫$/);
+            assert.deepEqual(lines.slice(1).map(line => line.replace(/^- [^：]*：/, '')), ['总结里的第9件'], '总结里不是那天的不留');
+        } finally {
+            cleanup();
+        }
+    });
+
     test('提起别人时查他的 bank：标题和条数照传', async () => {
         const results = Array.from({ length: 5 }, (_, i): RecallResult => ({ id: String(i), text: `鸽鸽说的第${i}件事` }));
         const { memory, calls, cleanup } = setupCommon({ recall: results });
@@ -820,7 +842,7 @@ describe('长期记忆：问到某段时间（ADR 0018 决策 3）', () => {
             await memory.retainDiary('2026-10-03', new Date(2026, 9, 3), 'x', '林梦瑶');
             const chat = [{ role: 'user' as const, content: '国庆过得怎么样', time: new Date(now).toISOString() }];
             const text = await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [{ ...A, name: '阿明' }],
-                { start: new Date(2026, 9, 1), end: new Date(2026, 9, 8, 2) });
+                { start: new Date(2026, 9, 1), end: new Date(2026, 9, 8, 2), period: 'holiday' });
             assert.deepEqual(text!.split('\n').slice(1).map(line => line.replace(/^- [^（]*（([^，）]*)[^：]*：/, '$1｜')), [
                 '你国庆节的总结｜林梦瑶国庆一个人在学校，挺自在',
                 '你的周记｜林梦瑶这周追完了一部剧',

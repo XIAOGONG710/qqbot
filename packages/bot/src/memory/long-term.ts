@@ -490,7 +490,7 @@ export class LongTermMemory {
      * window：问的是某一天（people.ts 的 askedDay）；fade 同 recall
      */
     async recallCommon(
-        contact: NamedContact, chat: ChatMessage[], now: Date, people: readonly NamedContact[], window?: { start: Date; end: Date }, fade: FadeOptions = {},
+        contact: NamedContact, chat: ChatMessage[], now: Date, people: readonly NamedContact[], window?: { start: Date; end: Date; period?: string }, fade: FadeOptions = {},
         focus: readonly string[] = [],
     ): Promise<string | undefined> {
         if (!this.#options.common || !knowsPeople(contact.tier)) return undefined;
@@ -505,9 +505,11 @@ export class LongTermMemory {
         const all = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
         if (!all) return undefined;
         // 问到某段时间时，那段的周记、阶段总结排在前面（ADR 0018：「上周忙啥」「国庆过得怎样」整体答）
-        const inWindow = window
-            ? all.filter(r => onDay(r, window.start, window.end) || summaryIn(r, window)).sort((a, b) => Number(isSummary(b)) - Number(isSummary(a)))
-            : all;
+        // 问的是某一天：只留那天的，那天的日记排前面（ADR 0018 第二批：「昨天」那天正好是国庆最后一天，总结里的几条占满名额，把那天的日记挤掉了）
+        const inWindow = !window ? all
+            : window.period
+                ? all.filter(r => onDay(r, window.start, window.end) || summaryIn(r, window)).sort((a, b) => Number(isSummary(b)) - Number(isSummary(a)))
+                : all.filter(r => onDay(r, window.start, window.end) || diaryIn(r, window)).sort((a, b) => Number(diaryIn(b, window)) - Number(diaryIn(a, window)));
         // 他说起的人和事（focus，ADR 0017 的线索）：带着它的排在前面（ADR 0018 第一批：说起杭州，6 条名额被日记占满，鸽鸽去杭州那条排在外面）
         const about = (r: RecallResult) => focus.some(name => r.entities?.includes(name) || r.text.includes(name));
         const results = focus.length ? [...inWindow].sort((a, b) => Number(about(b)) - Number(about(a))) : inWindow;
@@ -655,6 +657,12 @@ export function initiateQuery(chat: ChatMessage[], topic: string): string {
 /** 周记、阶段总结按那篇的日子算在不在这段时间里（Hindsight 给抽出来的事实标的日子可能在外面） */
 function summaryIn(result: RecallResult, window: { start: Date; end: Date }): boolean {
     const day = isSummary(result) ? lastTouched(result) : undefined;
+    return day !== undefined && day >= new Date(window.start.getFullYear(), window.start.getMonth(), window.start.getDate()) && day < window.end;
+}
+
+/** 那段时间里写的日记 */
+function diaryIn(result: RecallResult, window: { start: Date; end: Date }): boolean {
+    const day = result.document_id?.startsWith(DIARY_PREFIX) ? lastTouched(result) : undefined;
     return day !== undefined && day >= new Date(window.start.getFullYear(), window.start.getMonth(), window.start.getDate()) && day < window.end;
 }
 
