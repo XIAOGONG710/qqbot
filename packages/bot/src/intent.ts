@@ -2,6 +2,7 @@
 // 只按眼前已有线索给一个方向，不抽签、不额外调模型，也不把它写成能照抄的台词。
 
 import type { StoredMessage } from './history.ts';
+import { isAck, isReaction } from './reply-timing.ts';
 import type { Schedule, State } from './schedule.ts';
 
 type Said = Pick<StoredMessage, 'role' | 'content'>;
@@ -23,6 +24,21 @@ export interface IntentContext {
 function latestUserText(history: readonly Said[]): string {
     const lastReply = history.findLastIndex(message => message.role === 'assistant');
     return history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
+}
+
+// 对方已经在收尾，或者只回了一句附和时，不再塞「追问 / 分享进度」；
+// 这些意图会顶掉卡上的「道晚安、顺势收尾」，让本来该停的聊天又铺开（ADR 0019 改后回归）。
+const ENDING = /晚安|睡(?:了(?!吗)|觉|啦|咯|吧)|不想(?:说话|聊)|不聊了|先去忙|我去忙|回头聊|明天聊|拜拜/;
+const QUESTION = /[?？]|(?:吗|呢|么)$|你(?:是不是|有没有|要不要|能不能|可不可以|今天|现在)|怎么|为什么|咋|哪|几|多少|什么|谁|讲讲|告诉我|帮我/;
+
+export function isEndingTurn(history: readonly Said[]): boolean {
+    const text = latestUserText(history).trim();
+    return Boolean(text) && (isAck(text) || isReaction(text) || ENDING.test(text));
+}
+
+function asksQuestion(history: readonly Said[]): boolean {
+    const text = latestUserText(history).trim();
+    return !/^(?:在吗|在不在)[？?。！!\s]*$/.test(text) && QUESTION.test(text);
 }
 
 /** 他在说自己的经历、近况或心情；普通提问不算。 */
@@ -52,6 +68,8 @@ function busy(state: State | undefined, schedule: Schedule | undefined, now: Dat
 /** 时间块里的一行；没有当下线索就不返回。顺序与 ADR 0019 的决策表一致。 */
 export function describeIntent(context: IntentContext): string | undefined {
     if (context.initiating) return undefined;
+    if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句，不分享新进度、不另起话题]';
+    if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
     if (saysOwnThing(context.history)) return '[这一轮你想：问他刚说的那件事里的一个具体细节，不问“在干嘛”]';
     if (context.promised) return '[这一轮你想：先把上面你答应的那件事说了，不另起话题]';
     if (context.books) return '[这一轮你想：只说一件你手上这本书的新进度；没有新进度就不硬编]';

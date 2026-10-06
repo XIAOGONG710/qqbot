@@ -150,7 +150,7 @@ describe('在读的书（ADR 0015）', () => {
     test('心情行换称呼；日志摘要按她的一天只写一次；模拟器能指定心情', () => {
         const choice = moodAt(schedule, card.moods, at('2026-10-14T19:00:00'), '黏人')!;
         assert.equal(choice.mood.name, '黏人');
-        assert.match(describeMood(choice, '宝宝'), /^\[你今天的心情：黏人（说不上为什么，今天就是这样）。今天特别想宝宝：/);
+        assert.match(describeMood(choice, '宝宝'), /^\[你今天的心情：黏人（说不上为什么，今天就是这样）。今天有点想宝宝：/);
         assert.equal(moodAt(schedule, card.moods, at('2026-10-14T19:00:00'), '不存在'), undefined);
         assert.match(describeHerDaySummary(schedule, card.moods, card.books, at('2026-10-06T19:00:00'))!,
             /^今天（10-06）：心情 .+（.+）；在读 药屋少女的呢喃 第 7 卷、惹金枝 第 505 章、恰似寒光遇骄阳 第 300 章（放下了）$/);

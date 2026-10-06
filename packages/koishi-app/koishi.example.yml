@@ -39,6 +39,6 @@ plugins:
       thinking: 'off'
     prompt:
       maxContext: 8192
-      pinExamples: true
+      pinExamples: false
     memory:
       enabled: true

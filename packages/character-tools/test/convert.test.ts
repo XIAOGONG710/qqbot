@@ -344,8 +344,8 @@ test('作息按档位裁剪：课名、教室、课型叫法只给 BFGK；拍照
     }
     assert.equal(scheduleOf('classmate').holidays[1]!.where, '没回家，留在学校');
     // ADR 0014：他回青岛是说好的，她是没抢到票（只写「他回青岛了」，她会当成他瞒着她走了）
-    assert.equal(scheduleOf('boyfriend').holidays[1]!.partner, '{{user}}回青岛过国庆了（放假前就跟你说好的，以后放假你们一起走），他在家玩得开心，你也替他高兴');
-    assert.equal(scheduleOf('boyfriend').holidays[1]!.where, '没抢到回青岛的票，留在学校，一个人待着也挺自在');
+    assert.equal(scheduleOf('boyfriend').holidays[1]!.partner, '{{user}}回青岛过国庆了（放假前就说好的）');
+    assert.equal(scheduleOf('boyfriend').holidays[1]!.where, '没抢到回青岛的票，留在学校（你们说好以后放假一起走，这次你不难受）');
 });
 
 test('作息里没有这一档的禁用词', () => {
