@@ -6,6 +6,7 @@
 import { SECTION_KEYS, type CharacterSource, type SectionKey, type TextField } from './source.ts';
 import type { CardDate, CardProactive, CardSchedule, CharacterCardV2, RegexScript } from './st-format.ts';
 import { booksForTier, moodsForTier } from './her-days-to-card.ts';
+import { biographyForTier } from './biography-to-card.ts';
 
 /** description 各段的标题，顺序即 SECTION_KEYS 的顺序 */
 const SECTION_TITLES: Record<SectionKey, string> = {
@@ -128,6 +129,7 @@ export function personaToCard(source: CharacterSource, tierName: string, options
     };
     const moods = moodsForTier(source, tier.name);
     const books = booksForTier(source, tier.name);
+    const biography = biographyForTier(source.biography, tier.name);
     const qqbot = {
         banned: tier.banned,
         ...(options.schedule ? { schedule: options.schedule } : {}),
@@ -136,6 +138,7 @@ export function personaToCard(source: CharacterSource, tierName: string, options
         ...(proactive ? { proactive } : {}),
         ...(moods ? { moods } : {}),
         ...(books ? { books } : {}),
+        ...(biography ? { biography } : {}),
     };
 
     return {

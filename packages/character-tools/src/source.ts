@@ -14,6 +14,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CORE_SCHEMA, dump, load } from 'js-yaml';
+import { checkBiography, type BiographySource } from './biography-to-card.ts';
 import type { CourseKind } from './st-format.ts';
 
 /** 一段文字。人设各段的字段有 tiers（给哪些档位）；variants 是某几档用的改写版本，按顺序取第一条含这一档的 */
@@ -229,10 +230,13 @@ export interface CharacterSource {
     /** 新文件不存在时当作旧资料：不生成相应的卡片扩展 */
     moods?: MoodsSource;
     books?: BooksSource;
+    /** 她的过去（ADR 0022） */
+    biography?: BiographySource;
 }
 
 export const SOURCE_FILES = {
     persona: 'persona.yml', scenes: 'scenes.yml', schedule: 'schedule.yml', tiers: 'tiers.yml', moods: 'moods.yml', books: 'books.yml',
+    biography: 'biography.yml',
 } as const;
 
 const HEADERS: Record<keyof typeof SOURCE_FILES, string> = {
@@ -242,6 +246,7 @@ const HEADERS: Record<keyof typeof SOURCE_FILES, string> = {
     tiers: '# 林梦瑶的档位（ADR 0003、0010）。顺序就是输出顺序。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留。\n',
     moods: '# 林梦瑶的每日心情（ADR 0015）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：说明写在 note 里。\n',
     books: '# 林梦瑶在读的书（ADR 0015）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：来源和取用规则写在字段或 note 里。\n',
+    biography: '# 林梦瑶的过去（ADR 0022），素材出自 characters/linmengyao/biography/autobiography-v1.md（作者定稿）。packages/character-tools 会改写这个文件，注释不会保留：说明写在 note 里。\n',
 };
 
 /** YAML 只用核心 schema：日期、时间都按字符串读写（不变成 Date） */
@@ -262,8 +267,11 @@ export function writeSource(dir: string, source: CharacterSource): void {
 
 export function readSource(dir: string): CharacterSource {
     const read = (key: keyof typeof SOURCE_FILES) => fromYaml(readFileSync(join(dir, SOURCE_FILES[key]), 'utf8'), SOURCE_FILES[key]);
-    const optional = (key: 'moods' | 'books') => existsSync(join(dir, SOURCE_FILES[key])) ? read(key) : undefined;
-    return checkSource({ persona: read('persona'), scenes: read('scenes'), schedule: read('schedule'), tiers: read('tiers'), moods: optional('moods'), books: optional('books') });
+    const optional = (key: 'moods' | 'books' | 'biography') => existsSync(join(dir, SOURCE_FILES[key])) ? read(key) : undefined;
+    return checkSource({
+        persona: read('persona'), scenes: read('scenes'), schedule: read('schedule'), tiers: read('tiers'),
+        moods: optional('moods'), books: optional('books'), biography: optional('biography'),
+    });
 }
 
 // ---------- 校验结构（档位之间的引用、内容的隐私检查在 build.ts） ----------
@@ -444,7 +452,7 @@ function withNote<T extends object>(c: Checker, value: unknown, base: T): T & { 
     return note ? { ...base, note } : base;
 }
 
-export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: unknown; tiers: unknown; moods?: unknown; books?: unknown }): CharacterSource {
+export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: unknown; tiers: unknown; moods?: unknown; books?: unknown; biography?: unknown }): CharacterSource {
     // 人设
     const p = new Checker('persona.yml');
     const persona = p.object(raw.persona);
@@ -629,6 +637,8 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
 
     const moods = raw.moods === undefined ? undefined : checkMoods(raw.moods);
     const books = raw.books === undefined ? undefined : checkBooks(raw.books);
+    // 控制台存别的部分时整份资料也要过这里，她的过去不能丢（ADR 0022）
+    const biography = raw.biography === undefined ? undefined : checkBiography(raw.biography);
 
     return {
         persona: {
@@ -646,6 +656,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         tiers: { discreet: textField(t.at('discreet'), tiersRaw.discreet, { gated: false }), tiers },
         ...(moods ? { moods } : {}),
         ...(books ? { books } : {}),
+        ...(biography ? { biography } : {}),
     };
 }
 

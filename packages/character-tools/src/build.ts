@@ -3,6 +3,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { biographyTierRefs } from './biography-to-card.ts';
 import { personaToCard } from './persona-to-card.ts';
 import { scenesToLorebook } from './scenes-to-lorebook.ts';
 import { checkScheduleTiers, scheduleForTier } from './schedule-to-card.ts';
@@ -45,6 +46,7 @@ export function checkReferences(source: CharacterSource): void {
             if (node.tiers) known(node.tiers, `books.yml books[${i}].nodes[${j}].tiers`);
         });
     });
+    for (const ref of biographyTierRefs(source.biography)) known(ref.tiers, ref.at);
     for (const tier of source.tiers.tiers) {
         if (tier.social !== undefined && !persona.social[tier.social]) {
             throw new Error(`tiers.yml 档位 ${tier.name} 的 social「${tier.social}」在 persona.yml 的 social 里没有`);
@@ -97,6 +99,12 @@ export function checkPrivacy(built: Built, source: CharacterSource): Problem[] {
         if (moods) scan(tier, '心情', JSON.stringify(moods), banned);
         const books = data.extensions.qqbot?.books;
         if (books) scan(tier, '在读的书', JSON.stringify(books), banned);
+        // 她的过去（ADR 0022）：年表、素材块都会进提示词；触发词不进，不查
+        const biography = data.extensions.qqbot?.biography;
+        if (biography) {
+            scan(tier, '她的过去 年表', biography.timeline.join('\n'), banned);
+            for (const chunk of biography.chunks) scan(tier, `她的过去 ${chunk.id}`, `${chunk.title}\n${chunk.text}`, banned);
+        }
         for (const entry of Object.values(lorebook.entries)) {
             const id = /（([^（）]+)）$/.exec(entry.comment)?.[1] ?? entry.comment;
             scan(tier, `世界书 ${id}`, entry.content, banned);
