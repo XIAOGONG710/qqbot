@@ -424,10 +424,11 @@ export class LongTermMemory {
     /**
      * 公共记忆（ADR 0016）：名单里除陌生人档以外的人有线索时查（ADR 0017，线索由调用方判断），去掉他自己的片段。
      * 只要事实（带 document_id 才分得出是谁的），不要整合过的观察（可能混着他自己的事）。
-     * 每条标出是和谁聊的（ADR 0017）：people 是整个名单，document_id 的哈希对回称呼；日记标「你的日记」
+     * 每条标出是和谁聊的（ADR 0017）：people 是整个名单，document_id 的哈希对回称呼；日记标「你的日记」。
+     * window：问的是某一天（people.ts 的 askedDay）
      */
     async recallCommon(
-        contact: NamedContact, chat: ChatMessage[], now: Date, people: readonly NamedContact[], day?: Date,
+        contact: NamedContact, chat: ChatMessage[], now: Date, people: readonly NamedContact[], window?: { start: Date; end: Date },
     ): Promise<string | undefined> {
         if (!this.#options.common || !knowsPeople(contact.tier)) return undefined;
         const stored = readJsonOr<Partial<CommonState>>(join(this.#options.dir, 'common.json'), {}, message => this.#options.log(message));
@@ -435,7 +436,6 @@ export class LongTermMemory {
         const query = recallQuery(chat);
         if (!query) return undefined;
         // 问的是某一天（ADR 0017）：时间窗只加权，多取一些，只留那天的
-        const window = day ? { start: day, end: new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1) } : undefined;
         const request: RecallRequest = {
             ...recallRequest(query, now, window), types: ['world', 'experience'], prefer_observations: false, ...(window ? { max_tokens: DAY_RECALL_TOKENS } : {}),
         };
@@ -609,7 +609,15 @@ function currentEpisodeId(chat: ChatMessage[]): string | undefined {
     return splitEpisodes(timed).at(-1)?.id;
 }
 
-export const RECALLED_HEADER = '[你们以前聊过的事（从记忆里想起来的，只作参考；和最近的聊天对不上时以最近的为准，用不上就别提）]';
+/**
+ * 放进她提示词的记忆（召回、关系概况、印象）里她的名字换成「你」（ADR 0018 决策 4）：Hindsight 按名字写（「林梦瑶的日记」「林梦瑶说……」），
+ * 提示词里其他地方都是用「你」跟她说话
+ */
+export function secondPerson(text: string, char: string): string {
+    return char ? text.replaceAll(char, '你') : text;
+}
+
+export const RECALLED_HEADER ='[你们以前聊过的事（从记忆里想起来的，只作参考；和最近的聊天对不上时以最近的为准，用不上就别提）]';
 
 /** 召回结果整理成一段：标题默认是自己的记忆（RECALLED_HEADER），最多 limit 条（默认 MAX_RECALLED） */
 export function formatRecalled(

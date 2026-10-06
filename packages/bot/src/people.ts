@@ -4,6 +4,7 @@
 
 import { UNLISTED_TIER, type Contact, type Tier } from './config.ts';
 import type { StoredMessage } from './history.ts';
+import { herDay, type Schedule } from './schedule.ts';
 
 type Said = Pick<StoredMessage, 'role' | 'content'>;
 
@@ -91,16 +92,21 @@ const DAY_WORDS: readonly [RegExp, number][] = [[/前天/, -2], [/昨天|昨晚/
 const FUTURE = /明天|后天|明早|明晚|待会|一会儿|下周|下次/;
 
 /**
- * 问她过去的事时问的是哪一天（ADR 0017）：他这次的话里最后一句带「前天」「昨天」「今天下午」……的，返回那天 0 点；
- * 「最近」「上次」不是某一天，返回 undefined。召回公共记忆时只留那天的，不然别的日子的日记会挤进来
+ * 问她过去的事时问的是哪一天（ADR 0017）：他这次的话里最后一句带「前天」「昨天」「今天下午」……的，返回那天的时间窗；
+ * 「最近」「上次」不是某一天，返回 undefined。召回公共记忆时只留那天的，不然别的日子的日记会挤进来。
+ * 有作息时按她的一天算（ADR 0018 决策 4）：凌晨 1 点问「今天」问的是刚过去的那天，时间窗到第二天她睡觉（02:00）
  */
-export function askedDay(history: readonly Said[], now: Date): Date | undefined {
+export function askedDay(history: readonly Said[], now: Date, schedule?: Schedule): { start: Date; end: Date } | undefined {
     const lastReply = history.findLastIndex(message => message.role === 'assistant');
     const said = history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content);
+    const today = schedule ? herDay(schedule, now) : now;
     for (const line of said.toReversed()) {
         if (FUTURE.test(line)) continue;
         const offset = DAY_WORDS.find(([pattern]) => pattern.test(line))?.[1];
-        if (offset !== undefined) return new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
+        if (offset === undefined) continue;
+        const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+        const [h, m] = schedule ? schedule.sleep.split(':').map(Number) : [0, 0];
+        return { start, end: new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1, h, m) };
     }
     return undefined;
 }

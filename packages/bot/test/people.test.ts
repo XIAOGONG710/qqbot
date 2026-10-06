@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { parseAppConfig, type BotConfig, type Contact } from '../src/config.ts';
+import type { Schedule } from '../src/schedule.ts';
 import { loadTierCard } from '../src/contact.ts';
 import type { MemoryItem } from '../src/memory/hindsight.ts';
 import { askedDay, COMMON_LINGER_MS, commonCue, describePerson, knowsPeople, MAX_MENTIONED, mentionedPeople, stillInMind } from '../src/people.ts';
@@ -156,6 +157,36 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         }
     });
 
+    test('放进提示词的记忆里她的名字写成「你」（ADR 0018 决策 4）', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
+        const hindsight: SimHindsight = {
+            putBank: async () => {},
+            retain: async () => {},
+            recall: async () => [{ id: '1', text: `${card.character.name}说她也想去杭州`, document_id: 'other:ep-1' }],
+            getMentalModel: async () => undefined,
+            createMentalModel: async () => {},
+            updateMentalModel: async () => {},
+            activeOperations: async () => [],
+            operationStatus: async () => 'completed',
+            refreshMentalModel: async () => 'op-1',
+            listEntities: async () => ['杭州'],
+            deleteBank: async () => {},
+        };
+        const prompts: OpenAIMessage[][] = [];
+        try {
+            await runScenario(scenario({ steps: [{ say: '鸽鸽下周去杭州' }] }), {
+                runId: 't', dataDir: dir, card, llm, prompt, hindsight, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { prompts.push(messages); return '好呀'; },
+            });
+            const text = prompts[0]!.map(m => m.content).join('\n');
+            // 公共记忆、鸽鸽的记忆两段都换了（他自己的 bank 还没写过，场景里没有他以前的聊天）
+            assert.equal(text.match(/- 你说她也想去杭州/g)?.length, 2);
+            assert.doesNotMatch(text, new RegExp(`${card.character.name}说她也想去杭州`));
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('刚想起来的公共记忆，接下来两轮没有线索也沿用（ADR 0017）', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
         const hindsight: SimHindsight = {
@@ -226,7 +257,7 @@ describe('公共记忆的线索（ADR 0017）', () => {
 
     test('问的是哪一天：他这次最后一句带日子的；「最近」、将来的不算', () => {
         const now = new Date(2026, 9, 8, 21, 0);
-        const day = (...said: string[]) => askedDay(said.map(he), now)?.toDateString();
+        const day = (...said: string[]) => askedDay(said.map(he), now)?.start.toDateString();
         assert.equal(day('你昨天都干嘛了'), new Date(2026, 9, 7).toDateString());
         assert.equal(day('那前天呢'), new Date(2026, 9, 6).toDateString());
         assert.equal(day('你今天下午干嘛去了'), new Date(2026, 9, 8).toDateString());
@@ -236,6 +267,17 @@ describe('公共记忆的线索（ADR 0017）', () => {
         assert.equal(day('昨天干嘛了', '算了，今天呢'), new Date(2026, 9, 8).toDateString(), '看最后一句');
         // 只看她上次回复之后的
         assert.equal(askedDay([he('昨天干嘛了'), she('写作业'), he('哦')], now), undefined);
+        // 没有作息：时间窗是那个日历日
+        assert.deepEqual(askedDay([he('你昨天干嘛了')], now), { start: new Date(2026, 9, 7), end: new Date(2026, 9, 8) });
+    });
+
+    test('有作息时「今天」按她的一天算（ADR 0018 决策 4）：凌晨 2 点前问的是刚过去的那天，时间窗到第二天 02:00', () => {
+        const schedule = { sleep: '02:00' } as Schedule;
+        const late = new Date(2026, 9, 9, 1, 30);
+        assert.deepEqual(askedDay([he('你今天干嘛了')], late, schedule), { start: new Date(2026, 9, 8), end: new Date(2026, 9, 9, 2) });
+        assert.deepEqual(askedDay([he('那昨天呢')], late, schedule), { start: new Date(2026, 9, 7), end: new Date(2026, 9, 8, 2) });
+        // 过了 02:00 就是新的一天
+        assert.deepEqual(askedDay([he('你今天干嘛了')], new Date(2026, 9, 9, 9), schedule), { start: new Date(2026, 9, 9), end: new Date(2026, 9, 10, 2) });
     });
 
     test('刚想起来的还在不在：之后她回了两次以内（连发算一次）、10 分钟以内', () => {

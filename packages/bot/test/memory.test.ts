@@ -8,7 +8,7 @@ import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes } from '../s
 import { mentalModelUpdateBody, retainBody, type HindsightApi, type MemoryItem, type MentalModel, type RecallRequest, type RecallResult } from '../src/memory/hindsight.ts';
 import {
     bankMissions, commonBankMissions, formatRecalled, initiateQuery, LongTermMemory, MAX_QUERY_CHARS, MAX_RECALLED, OPEN_EPISODE_STEP, recallQuery,
-    RELATIONSHIP_MODEL, SHARED_RECALLED, DAY_RECALL_TOKENS,
+    RELATIONSHIP_MODEL, SHARED_RECALLED, DAY_RECALL_TOKENS, secondPerson,
 } from '../src/memory/long-term.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
@@ -497,14 +497,14 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
         try {
             await memory.sync(B, gege, history);
             const chat = [{ role: 'user' as const, content: '你昨天干嘛了', time: new Date(now).toISOString() }];
-            const day = new Date(2026, 9, 5);
+            const day = { start: new Date(2026, 9, 5), end: new Date(2026, 9, 6) };
             const text = await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [{ ...A, name: '阿明' }], day);
             assert.deepEqual(text!.split('\n').slice(1).map(line => line.replace(/^- [^：]*：/, '')), ['10-05 中午吃了麻辣烫', '10-05 晚上说的']);
             assert.deepEqual(calls.recall[0]!.temporal_window, { start: '2026-10-05T00:00:00+08:00', end: '2026-10-06T00:00:00+08:00' });
             assert.equal(calls.recall[0]!.max_tokens, DAY_RECALL_TOKENS);
             assert.deepEqual(check(calls.recall[0], root('recall')), []);
             // 那天什么都没有：不带公共记忆
-            assert.equal(await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [], new Date(2026, 9, 1)), undefined);
+            assert.equal(await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [], { start: new Date(2026, 9, 1), end: new Date(2026, 9, 2) }), undefined);
         } finally {
             cleanup();
         }
@@ -540,6 +540,12 @@ describe('长期记忆：召回的写法（ADR 0017）', () => {
         ].join('\n'));
         // 不传 now 照旧（自己的记忆以前的写法）
         assert.match(formatRecalled([{ id: '1', text: '周五面试', occurred_start: '2026-10-12T09:00:00+08:00' }])!, /\n- 10月12日：周五面试$/);
+    });
+
+    test('她的名字写成「你」（ADR 0018 决策 4）', () => {
+        assert.equal(secondPerson('- 10月5日：林梦瑶的日记里写林梦瑶和鸽鸽聊了杭州', '林梦瑶'), '- 10月5日：你的日记里写你和鸽鸽聊了杭州');
+        assert.equal(secondPerson('鸽鸽去杭州', '林梦瑶'), '鸽鸽去杭州');
+        assert.equal(secondPerson('林梦瑶', ''), '林梦瑶', '名字是空的不换');
     });
 });
 

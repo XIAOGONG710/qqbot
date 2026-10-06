@@ -10,7 +10,7 @@ import { reviewReply } from './exit-check.ts';
 import type { ChatHistory, StoredMessage } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
-import { initiateQuery, PERSON_RECALLED, type LongTermMemory } from './memory/long-term.ts';
+import { initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from './memory/long-term.ts';
 import { buildPrompt, type OpenAIMessage, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
 import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from './responder.ts';
@@ -127,18 +127,20 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const cue = !remembers || initiate ? undefined
                 : people.length ? people.map(person => person.name).join('、')
                     : commonCue(chat, contact, await memory.commonEntities(), character.name);
-            const [recalled, freshCommon, ...aboutPeople] = await Promise.all([
+            // 问「今天」「昨天」按她的一天算（ADR 0018 决策 4）
+            const day = cue === ASKS_PAST ? askedDay(chat, time, schedule ?? herSchedule) : undefined;
+            // 记忆里她的名字换成「你」（ADR 0018 决策 4）
+            const you = (text: string | undefined) => text && secondPerson(text, character.name);
+            const [recalled, freshCommon, ...aboutPeople] = (await Promise.all([
                 remembers ? memory.recall(contact, chat, time, recallOptions) : undefined,
-                remembers && cue
-                    ? memory.recallCommon(contact, chat, time, options.contacts ?? [contact], cue === ASKS_PAST ? askedDay(chat, time) : undefined)
-                    : undefined,
+                remembers && cue ? memory.recallCommon(contact, chat, time, options.contacts ?? [contact], day) : undefined,
                 ...people.map(person => (remembers
                     ? memory.recall(person, chat, time, {
                         ...recallOptions, limit: PERSON_RECALLED, header: `[你和${person.name}聊过的事（从记忆里想起来的，只作参考）]`,
                     })
                     : undefined)),
-            ]);
-            const relationship = remembers ? memory.relationship(contact) : undefined;
+            ])).map(you);
+            const relationship = remembers ? you(memory.relationship(contact)) : undefined;
             if (recalled) log(`召回长期记忆 ${countLines(recalled)} 条`);
             let common = freshCommon;
             if (common) {
@@ -154,7 +156,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 log(`提起了 ${people.map((person, i) => `${person.name}：介绍${aboutPeople[i] ? ` + 召回 ${countLines(aboutPeople[i])} 条` : ''}`).join('；')}`);
             }
             // 她对他的印象（ADR 0017）放在介绍下面、他的私人记忆上面
-            const impressions = people.map(person => (remembers ? memory.impression(person) : undefined));
+            const impressions = people.map(person => (remembers ? you(memory.impression(person)) : undefined));
             if (impressions.some(Boolean)) log(`有印象：${people.filter((_, i) => impressions[i]).map(person => person.name).join('、')}`);
             const peopleText = people.map((person, i) => describePerson(person, impressions[i], aboutPeople[i]));
             const days = describeDays(character.dates, time);
