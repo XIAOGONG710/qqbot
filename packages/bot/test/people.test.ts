@@ -316,7 +316,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         }
     });
 
-    test('问「国庆过得怎么样」（ADR 0018）：卡上作息的假期名算线索，召回带那个假期的时间窗', async () => {
+    for (const [entities, label] of [[[], '问她过去的事'], [['国庆'], '国庆']] as const) test(`问「国庆过得怎么样」（ADR 0018）：卡上作息的假期名算线索，召回带那个假期的时间窗（公共库的实体 ${JSON.stringify(entities)}）`, async () => {
         const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
         const requests: { temporal_window?: { start: string; end: string } }[] = [];
         const hindsight: SimHindsight = {
@@ -329,7 +329,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
             activeOperations: async () => [],
             operationStatus: async () => 'completed',
             refreshMentalModel: async () => 'op-1',
-            listEntities: async () => [],
+            listEntities: async () => [...entities],
             deleteBank: async () => {},
         };
         try {
