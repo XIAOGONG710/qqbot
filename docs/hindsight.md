@@ -117,6 +117,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-hindsight-ui.ps1       
 - 包里的图片处理库 sharp 只带 Linux 版，但面板的图片都是静态文件，没有用到它。
 - **不要在面板里改 mission**：bank 的 mission 由 bot 设定（`packages/bot/src/memory/long-term.ts`），只在代码里的 mission 变了时才重新写入，
   面板里的修改不会同步回代码。删记忆、删文档同样会让 bot 本地的写入记录（`runtime/bot/memory/<QQ>-<档位>.json`）对不上。
+- 要改她的记忆（改事实、作废、删一段、手动加，加的要带 `qq-private` 标签）见 [memory-editing.md](memory-editing.md)。
 - 升级：和 `requirements.txt` 里的 hindsight-api-slim 同步换版本，按上面的方法核对新 tarball 后改安装脚本里的版本和 SHA-256。
 
 ## 从头安装
