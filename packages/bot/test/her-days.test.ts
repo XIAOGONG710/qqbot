@@ -47,9 +47,9 @@ describe('她的一天与每日心情（ADR 0015）', () => {
         assert.equal(moodAt(schedule, plain, at('2026-10-05T12:00:00'))!.reason, '今天放假');
     });
 
-    test('熟悉的五档有心情；陌生人和名单外没有', () => {
-        assert.equal(card.moods.length, 5);
-        assert.equal(classmate.moods.length, 5);
+    test('熟悉的五档有心情（4 种：10-07 玩梗、搞怪合并成「爱笑」）；陌生人和名单外没有', () => {
+        assert.deepEqual(card.moods.map(mood => mood.name), ['话痨', '爱笑', '黏人', '安静']);
+        assert.equal(classmate.moods.length, 4);
         assert.deepEqual(stranger.moods, []);
     });
 });

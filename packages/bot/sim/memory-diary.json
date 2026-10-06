@@ -28,6 +28,6 @@
         { "check": { "speechClean": true, "exitClean": true, "log": "沿用刚才想起的", "replyNone": ["没吃", "没去"] } },
         { "case": "DY04", "note": "接着问前天：没聊天的那天，按作息" },
         { "say": "那前天呢" },
-        { "check": { "speechClean": true, "exitClean": true, "common": ["你的日记"], "log": "线索：问她过去的事", "replyAny": ["作业", "图书馆", "剧"] } }
+        { "check": { "speechClean": true, "exitClean": true, "common": ["你的日记"], "log": "线索：问她过去的事", "replyAny": ["作业", "图书馆", "剧", "书", "漫画", "药屋", "惹金枝"] } }
     ]
 }
