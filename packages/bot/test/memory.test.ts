@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
@@ -610,6 +610,30 @@ describe('长期记忆：她眼中的某个人（ADR 0017）', () => {
             await new Promise(r => setTimeout(r, 0));
             assert.equal(memory.impression(B), '[你对鸽鸽的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）]\n鸽鸽是做网络运维的，10月中旬去杭州出差。');
             assert.equal(memory.impression({ qq: 3, tier: 'stranger', name: '路人' }), undefined);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('聊天早就都写进公共库的人（ADR 0017 之前写的）：没有新片段也建「她眼中的他」', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-'));
+        const { api, calls } = fakeApi();
+        const memory = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: () => {}, now: () => T0 + 24 * 60 * MIN, common: true });
+        const B = { qq: 2, tier: 'classmate', name: '鸽鸽' };
+        const names = { user: '鸽鸽', char: '林梦瑶' };
+        try {
+            await memory.sync(B, names, [msg(0, 'user', '在吗')]);
+            // 当时还没有印象：去掉状态文件里建过的记号
+            const file = readdirSync(dir).find(name => name.endsWith('.json') && name !== 'common.json')!;
+            const state = JSON.parse(readFileSync(join(dir, file), 'utf8'));
+            delete state.personModel;
+            writeFileSync(join(dir, file), JSON.stringify(state));
+            const retained = calls.retain.length;
+
+            await memory.sync(B, names, [msg(0, 'user', '在吗')]);
+            assert.equal(calls.retain.length, retained, '没有新片段');
+            assert.equal((calls.createMentalModel as { name: string }[]).filter(m => m.name === '她眼中的鸽鸽').length, 2);
+            assert.ok(JSON.parse(readFileSync(join(dir, file), 'utf8')).personModel);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

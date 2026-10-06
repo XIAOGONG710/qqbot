@@ -264,9 +264,11 @@ export class LongTermMemory {
         if (pending.length) await this.#retainOwn(contact, names, state, pending);
         if (!this.#options.common || !knowsPeople(contact.tier)) return;
         const common = due(state.common);
-        if (common.length === 0) return;
         try {
-            await this.#retainCommon(contact, names, state, common);
+            // 印象（ADR 0017）不等新片段：聊天早就都写进公共库的人（10-06 的鸽鸽），不然一直建不起来
+            const bankId = await this.#ensureCommonBank(names.char);
+            await this.#ensurePersonModel(contact, names, state, bankId);
+            if (common.length) await this.#retainCommon(contact, names, state, common, bankId);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.#lastWrite = { at: this.#now(), ok: false, error: message };
@@ -275,9 +277,7 @@ export class LongTermMemory {
     }
 
     /** 写进公共记忆库：document_id 带上是谁的（哈希，不带 QQ 号），原文开头写和谁的私聊 */
-    async #retainCommon(contact: MemoryContact, names: MacroNames, state: ContactState, episodes: Episode[]): Promise<void> {
-        const bankId = await this.#ensureCommonBank(names.char);
-        await this.#ensurePersonModel(contact, names, state, bankId);
+    async #retainCommon(contact: MemoryContact, names: MacroNames, state: ContactState, episodes: Episode[], bankId: string): Promise<void> {
         for (const episode of episodes) {
             await this.#options.api.retain(bankId, {
                 content: `和${names.user}的私聊\n${episodeTranscript(episode, names)}`,
