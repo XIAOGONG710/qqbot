@@ -1,0 +1,33 @@
+{
+    "name": "男朋友档：提起名单里的人（ADR 0016）",
+    "description": "鸽鸽（同学档，写了「别人提起时」）前一晚跟她说过在机房值夜班、交换机挂了、下周去杭州出差。男朋友提起鸽鸽：认不认识，知不知道他最近在忙什么。名单和聊天是虚构的。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-06T21:00:00+08:00",
+    "others": [
+        {
+            "name": "鸽鸽",
+            "tier": "classmate",
+            "intro": "网上认识的朋友，网络运维的大神，比较熟",
+            "history": [
+                { "time": "2026-10-05T22:00:00+08:00", "role": "user", "content": "今晚又在机房值夜班" },
+                { "time": "2026-10-05T22:01:00+08:00", "role": "assistant", "content": "又值班啊，辛苦了" },
+                { "time": "2026-10-05T22:02:00+08:00", "role": "user", "content": "核心交换机挂了，折腾到现在" },
+                { "time": "2026-10-05T22:03:00+08:00", "role": "assistant", "content": "听着就头大，修好了没" },
+                { "time": "2026-10-05T22:05:00+08:00", "role": "user", "content": "修好了，下周还要去杭州出差装设备" },
+                { "time": "2026-10-05T22:06:00+08:00", "role": "assistant", "content": "大神就是忙，去杭州记得吃点好的" }
+            ]
+        }
+    ],
+    "steps": [
+        { "case": "PM01", "note": "没提别人：照常聊" },
+        { "say": "在干嘛呢" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "case": "PM02", "note": "认识鸽鸽：有介绍，不说不认识" },
+        { "say": "你认识鸽鸽吗" },
+        { "check": { "speechClean": true, "exitClean": true, "people": ["网络运维"], "replyNone": ["不认识", "谁啊"] } },
+        { "case": "PM03", "note": "知道他最近在忙什么：用上鸽鸽自己的记忆" },
+        { "say": "他最近在忙啥" },
+        { "check": { "speechClean": true, "exitClean": true, "people": ["杭州"], "replyAny": ["机房", "值班", "交换机", "杭州", "出差"] } }
+    ]
+}

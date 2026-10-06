@@ -1,0 +1,33 @@
+{
+    "name": "男朋友档：看心情不回（ADR 0013）",
+    "description": "正聊着，他只回了「哈哈哈」「[表情]」：不回（moodyChance 定成 1，看不回之后的样子；平时男朋友档约 15%）。隔几分钟他再说话一定回，接得上；问句、晚安照样回；第二天冷场时的「哈哈」照样回。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-06T20:00:00+08:00",
+    "memory": false,
+    "moody": true,
+    "moodyChance": 1,
+    "steps": [
+        { "case": "M01", "note": "正聊着，他只回了反应：这一串不回" },
+        { "say": "今天去爬山了，腿都要断了" },
+        { "check": { "exitClean": true } },
+        { "say": "哈哈哈" },
+        { "check": { "noReply": true, "log": "看心情没回" } },
+        { "say": "[表情]" },
+        { "check": { "noReply": true } },
+        { "case": "M02", "note": "隔了几分钟他又说话：一定回，前面那串一起看" },
+        { "advance": "3m" },
+        { "say": "你今天干嘛了" },
+        { "check": { "replyWithin": "1m", "exitClean": true } },
+        { "case": "M03", "note": "带问号的照样回" },
+        { "say": "哈哈哈真的假的？" },
+        { "check": { "replyWithin": "1m", "exitClean": true } },
+        { "case": "M04", "note": "晚安照样回" },
+        { "say": "我先睡了，晚安" },
+        { "check": { "replyWithin": "1m", "exitClean": true } },
+        { "case": "M05", "note": "第二天上午他发「哈哈哈」：不是正聊着，照样回" },
+        { "advance": "14h" },
+        { "say": "哈哈哈" },
+        { "check": { "replyWithin": "5m", "exitClean": true } }
+    ]
+}

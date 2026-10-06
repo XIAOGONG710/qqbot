@@ -1,0 +1,227 @@
+# 林梦瑶的作息（ADR 0007、0010）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：说明写在 note 里。
+sleep: "02:00"
+wakeup:
+  early: "07:40"
+  lazy: "09:30"
+periods:
+  1-2: 08:20-09:40
+  3-4: 09:55-11:15
+  6-7: 13:40-15:00
+  8-9: 15:15-16:35
+  10-11: 18:30-20:00
+semester:
+  start: 2026-08-31
+  weeks: 18
+holidays:
+  - name: 中秋节
+    start: 2026-09-25
+    end: 2026-09-27
+  - name: 国庆节
+    start: 2026-10-01
+    end: 2026-10-07
+    where:
+      - tiers:
+          - boyfriend
+          - bestie
+          - girl_friend
+          - known
+        text: 没抢到回青岛的票，留在学校，一个人待着也挺自在
+      - tiers:
+          - classmate
+          - stranger
+          - unlisted
+        text: 没回家，留在学校
+    partner: "{{user}}回青岛过国庆了（放假前就跟你说好的，以后放假你们一起走），他在家玩得开心，你也替他高兴"
+    partner_back: "{{user}}国庆放完假，已经回学校了"
+    note: |-
+      这次国庆她没回家、留在学校，他回青岛了（persona.toml 第 37–40 行注释，用户原话）。中秋的去向没有资料，只说放假
+      放完假 7 天内：聊天记录里还留着假期里他说的「我在青岛」，只写「也在学校」压不过（10-05 模拟器 3 次都以为他还在青岛）
+      ADR 0014：只写「他回青岛了」，她每轮都被告知、聊天记录里他又没说过，就当成他瞒着她走了（「也不说一声」「把我一个人扔学校」）。
+      用户 10-05：她是没抢到票，之后放假两人一起走
+      只写「没抢到票」，她就羡慕、抱怨他在家（「你倒好，在家吃香的喝辣的」，模拟器 6 次里 7 行），所以写上她留校的心情和她对他在家的心情
+makeups:
+  - date: 2026-09-20
+    as_day: 0
+    note: 调休补课补星期几（timetable.toml 的 as_day = 0 是没定，按没课）。10-10 用户没给；知道了在这里写，例如 "2026-10-10" = 4
+  - date: 2026-10-10
+    as_day: 0
+    note: 调休补课补星期几（timetable.toml 的 as_day = 0 是没定，按没课）。10-10 用户没给；知道了在这里写，例如 "2026-10-10" = 4
+courses:
+  - name: Linux操作系统
+    day: 1
+    slot: 1-2
+    room: 知行楼612
+    kind: machine
+    weeks: 1-16
+  - name: 大数据应用技术
+    day: 1
+    slot: 3-4
+    room: 知行楼303
+    kind: hard
+    weeks: 1-16
+    practice: 9
+    practice_room: 知行楼303（机房）
+  - name: MySQL数据库应用
+    day: 1
+    slot: 8-9
+    room: 知行楼509
+    kind: hard
+    weeks: 1-16
+    practice: 13
+    practice_room: 知行楼509（机房）
+  - name: 体育（羽毛球）
+    day: 2
+    slot: 3-4
+    room: 东体育馆
+    kind: pe
+    weeks: 1-16
+  - name: 计算机网络技术
+    day: 2
+    slot: 8-9
+    room: 知行楼503
+    kind: hard
+    weeks: 1-16
+    practice: 13
+    practice_room: 知行楼503（机房）
+  - name: 形势与政策Ⅲ
+    day: 3
+    slot: 1-2
+    room: 笃行楼305
+    kind: water
+    weeks: 9-12
+  - name: 高等数学
+    day: 3
+    slot: 3-4
+    room: 知行楼704
+    kind: water
+    weeks: 1-16
+  - name: 大学生创业基础
+    day: 3
+    slot: 6-7
+    room: 笃行楼414
+    kind: water
+    weeks: 1-2,4-16,18
+  - name: 习近平新时代中国特色社会主义思想概论
+    day: 3
+    slot: 8-9
+    room: 知行楼303
+    kind: water
+    weeks: 1-16
+  - name: 数据结构
+    day: 4
+    slot: 3-4
+    room: 知行楼305
+    kind: hard
+    weeks: 1-16
+    practice: 9
+    practice_room: 知行楼305（机房）
+  - name: Python编程基础
+    day: 5
+    slot: 1-2
+    room: 知行楼612
+    kind: machine
+    weeks: 1-6
+  - name: 概率论与数理统计
+    day: 5
+    slot: 3-4
+    room: 知行楼704
+    kind: machine
+    weeks: 1-16
+  - name: 数据采集与处理
+    day: 5
+    slot: 6-7
+    room: 知行楼303
+    kind: machine
+    weeks: 1-16
+    practice: 9
+    practice_room: 知行楼303（机房）
+  - name: Python数据分析
+    day: 4
+    slot: 10-11
+    room: 知行楼303
+    kind: water
+    weeks: 1-16
+free:
+  - window: morning
+    text: 窝在床上刷手机
+  - window: morning
+    text: 在宿舍写作业
+  - window: morning
+    text: 去图书馆占座
+  - window: afternoon
+    text: 在图书馆赶作业
+  - window: afternoon
+    text: 修昨天拍的片子
+    tiers:
+      - boyfriend
+      - bestie
+      - girl_friend
+      - known
+    note: 空闲活动默认所有档位都能看到；拍照修图会暴露爱好（同学以下的禁用词有「相机」）
+  - window: afternoon
+    text: 打独立游戏
+  - window: afternoon
+    text: 刷摄影区
+    tiers:
+      - boyfriend
+      - bestie
+      - girl_friend
+      - known
+    note: 空闲活动默认所有档位都能看到；拍照修图会暴露爱好（同学以下的禁用词有「相机」）
+  - window: evening
+    text: 在追一部剧
+  - window: evening
+    text: 打独立游戏
+  - window: evening
+    text: 在宿舍跟室友扯淡
+  - window: evening
+    text: 熬夜赶作业
+  - window: evening
+    text: 刷手机刷到忘了时间
+course_detail:
+  tiers:
+    - boyfriend
+    - bestie
+    - girl_friend
+    - known
+  note: 课名、教室、课型的叫法会暴露专业（study.major 只给 BFGK）；其他档位只知道「在上课」、几点下课
+kinds:
+  hard:
+    label: 专业课，认真听
+    see_after:
+      - 5
+      - 20
+    max_bubbles: 1
+  machine:
+    label: 机房课，边敲代码边看手机
+    see_after:
+      - 2
+      - 6
+    max_bubbles: 2
+  water:
+    label: 水课
+  pe:
+    label: 体育课
+kinds_note: 课型（timetable.toml 开头的 tier 说明）：上课时过多少分钟才看到消息（see_after，分钟）、最多回几条
+where:
+  by_tier:
+    - tiers:
+        - boyfriend
+        - bestie
+        - girl_friend
+        - known
+      text: 在学校（济南），住宿舍
+    - tiers:
+        - classmate
+        - stranger
+        - unlisted
+      text: 在学校，住宿舍
+  note: 上学期间她在哪：学校在济南，两家都在青岛（persona.toml 第 37–43 行注释）。同学以下不给城市
+partner:
+  text: "{{user}}也在学校"
+  tiers:
+    - boyfriend
+  note: |-
+    上学期间他在哪：两人同校（relation.how「一路到大学都在一个学校」）。见面她做不到，男朋友档的 demeanor 另有一句。
+    写 {{user}} 不写「他」：运行时换成称呼。10-05 模拟器里写「他也在学校」，7 天前聊天记录里他说过在青岛，3 次有 2 次她仍以为他在青岛；
+    写成「他也在学校，不在青岛」又有一次被她当成说自己（「我也在学校呢，没回青岛」）

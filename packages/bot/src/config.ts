@@ -1,0 +1,237 @@
+// 配置：非机密项放在 JSON 文件里（默认 runtime/bot/config.json，可用 QQBOT_CONFIG 指定），
+// 机密项只从环境变量读取：
+//   QQBOT_LLM_API_KEY   模型接口的 key（必填）
+//   QQBOT_ONEBOT_TOKEN  NapCat OneBot 网络配置里的 token（NapCat 没设 token 时可不填）
+// Koishi 插件（ADR 0008）没有 onebot 一节（连接归 adapter-onebot），其余部分和 config.json 同形，走同一个 parseAppConfig。
+
+import { existsSync, readFileSync } from 'node:fs';
+import { isAbsolute, resolve } from 'node:path';
+import { PROACTIVE_MODES, type ProactiveMode } from './proactive.ts';
+import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from './st/prompt-converters.ts';
+import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from './st/world-info.ts';
+
+/** 名单里能用的档位（ADR 0003），从亲到疏 */
+export const CONTACT_TIERS = ['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger'] as const;
+export type ContactTier = (typeof CONTACT_TIERS)[number];
+/** 名单外的好友用的档位 */
+export const UNLISTED_TIER = 'unlisted';
+export type Tier = ContactTier | typeof UNLISTED_TIER;
+
+/**
+ * 配置里留空的项用的值。parseAppConfig 和 Koishi 插件的表单（Schema 的 .default()，ADR 0009）共用这一份，
+ * 插件的测试保证两边一致。模型参数同 ST 默认预设（Default.json）。
+ */
+export const DEFAULTS = {
+    llm: { temperature: 1, maxTokens: 300, timeoutMs: 120_000, promptPostProcessing: '' as PromptPostProcessing },
+    prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
+    memory: { timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' },
+    unlistedFriends: true,
+    schedule: true,
+    moody: true,
+    speechCheck: true,
+    herDays: true,
+    proactive: 'off' as ProactiveMode,
+    dataDir: 'runtime/bot',
+} as const;
+
+/** 独立入口（main.ts）的配置：连 NapCat 的 onebot 一节 + 其余部分 */
+export interface BotConfig extends AppConfig {
+    onebot: { url: string; token: string };
+}
+
+/** 两个入口共用的部分 */
+export interface AppConfig {
+    llm: {
+        baseUrl: string;
+        model: string;
+        apiKey: string;
+        temperature: number;
+        maxTokens: number;
+        timeoutMs: number;
+        /** 同 ST 自定义接口的 Prompt Post-Processing；默认不处理 */
+        promptPostProcessing: PromptPostProcessing;
+        /** 同 ST 自定义接口的 Include Body Parameters */
+        extraBody: Record<string, unknown>;
+    };
+    /** pinExamples：同 ST 的 Example Messages Behavior 选 Always include examples，默认否（同 ST 默认的逐步挤出） */
+    prompt: { maxContext: number; worldInfo: WorldInfoSettings; pinExamples: boolean };
+    /** 角色卡路径，{tier} 换成档位名；世界书按卡里的 extensions.world 在同目录找 <world>.json */
+    characterCard: string;
+    /** 名单：按各自的档位回复这些人的私聊。name 是提示词里的 {{user}} */
+    contacts: Contact[];
+    /** 名单外的好友私聊时是否用 unlisted 档回复（ADR 0003 决策 2），默认是 */
+    unlistedFriends: boolean;
+    /** 按角色卡上的作息（ADR 0007）：时间块里写她现在在干什么。默认是；深夜测试时关掉 */
+    schedule: boolean;
+    /**
+     * 看心情不回（ADR 0013 决策 4）：正聊着、对方一串只回了「哈哈」「嗯」这类反应时，偶尔不回；隔一分钟以上再来一条一定回。
+     * 默认是；要开着作息
+     */
+    moody: boolean;
+    /** 出口检查里查说话的毛病（ADR 0014）：助手腔、算账、怪对方没说、和她最近几次回复重复。默认是 */
+    speechCheck: boolean;
+    /**
+     * 她自己的日子（ADR 0015）：每日心情（时间块里一行）、在读的书（聊到书或她在看书时一段）、看书的空闲活动、进度数字的出口检查。
+     * 默认是；卡上没有心情和书（陌生人、名单外、旧卡）时没有
+     */
+    herDays: boolean;
+    /**
+     * 主动消息（ADR 0011）：off 关（默认）；dryRun 试运行，照算照生成，只写日志不发；on 开。
+     * 只对卡上写了 proactive 的档位（现在只有男朋友档），要开着作息
+     */
+    proactive: ProactiveMode;
+    /** 长期记忆（ADR 0004 决策 3，Hindsight 服务）；配置里没有 memory 就不用 */
+    memory?: {
+        /** Hindsight API 地址，例如 http://127.0.0.1:8888 */
+        baseUrl: string;
+        /** 写入、建库等请求的超时 */
+        timeoutMs: number;
+        /** 生成前召回的超时：超时就不带记忆，不拖住回复 */
+        recallTimeoutMs: number;
+        /** bank ID 前缀，后面接 QQ 号的哈希 */
+        bankPrefix: string;
+    };
+    /** 运行数据目录（聊天记录等） */
+    dataDir: string;
+}
+
+export interface Contact {
+    qq: number;
+    name: string;
+    tier: Tier;
+    /** 一两句“他是谁”，放在 ST 人设描述（personaDescription）的位置 */
+    persona?: string;
+    /** 别人提起他时她知道的（ADR 0016）：名单里别人的话里出现他的称呼时给她看；没写就是别人提起他时她不认识 */
+    intro?: string;
+}
+
+type Json = Record<string, unknown>;
+
+export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.env): BotConfig {
+    const path = resolvePath(repoRoot, env.QQBOT_CONFIG || 'runtime/bot/config.json');
+    if (!existsSync(path)) {
+        throw new Error(`找不到配置文件 ${path}，参照 packages/bot/config.example.json 创建`);
+    }
+    const file = JSON.parse(readFileSync(path, 'utf8')) as Json;
+    const app = parseAppConfig(file, repoRoot, env);
+    const onebot = section(file, 'onebot');
+    return { onebot: { url: str(onebot, 'url', 'onebot'), token: env.QQBOT_ONEBOT_TOKEN ?? '' }, ...app };
+}
+
+/** config.json 里除 onebot 之外的部分（Koishi 插件的配置也是这个形状）：校验、补默认值，相对路径按仓库根目录解析 */
+export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.ProcessEnv = process.env): AppConfig {
+    const apiKey = env.QQBOT_LLM_API_KEY;
+    if (!apiKey) throw new Error('缺少环境变量 QQBOT_LLM_API_KEY');
+
+    const llm = section(file, 'llm');
+    const prompt = (file.prompt ?? {}) as Json;
+    const postProcessing = llm.promptPostProcessing ?? DEFAULTS.llm.promptPostProcessing;
+    if (!PROMPT_POST_PROCESSING.includes(postProcessing as PromptPostProcessing)) {
+        throw new Error(`配置 llm.promptPostProcessing 应为 ${PROMPT_POST_PROCESSING.map(v => JSON.stringify(v)).join(' / ')} 之一`);
+    }
+    const extraBody = llm.extraBody ?? {};
+    if (typeof extraBody !== 'object' || extraBody === null || Array.isArray(extraBody)) {
+        throw new Error('配置 llm.extraBody 应为对象');
+    }
+    if (!Array.isArray(file.contacts) || file.contacts.length === 0) throw new Error('配置 contacts 应为非空数组');
+    const contacts = (file.contacts as unknown[]).map((value, i): Contact => {
+        const where = `contacts[${i}]`;
+        if (typeof value !== 'object' || value === null) throw new Error(`配置 ${where} 应为对象`);
+        const qq = num(value as Json, 'qq', where);
+        if (!Number.isInteger(qq) || qq <= 0) throw new Error(`配置 ${where}.qq 应为 QQ 号`);
+        const tier = (value as Json).tier;
+        if (!CONTACT_TIERS.includes(tier as ContactTier)) {
+            throw new Error(`配置 ${where}.tier 应为 ${CONTACT_TIERS.join(' / ')} 之一`);
+        }
+        const contact: Contact = { qq, name: str(value as Json, 'name', where), tier: tier as ContactTier };
+        const persona = (value as Json).persona;
+        if (persona !== undefined) {
+            if (typeof persona !== 'string') throw new Error(`配置 ${where}.persona 应为字符串`);
+            if (persona) contact.persona = persona;
+        }
+        const intro = (value as Json).intro;
+        if (intro !== undefined) {
+            if (typeof intro !== 'string') throw new Error(`配置 ${where}.intro 应为字符串`);
+            if (intro.trim()) contact.intro = intro.trim();
+        }
+        return contact;
+    });
+    const duplicate = contacts.find((c, i) => contacts.findIndex(d => d.qq === c.qq) !== i);
+    if (duplicate) throw new Error(`配置 contacts 里 QQ ${duplicate.qq} 重复`);
+
+    const characterCard = resolvePath(repoRoot, str(file, 'characterCard', ''));
+    if (!characterCard.includes('{tier}')) throw new Error('配置 characterCard 应包含 {tier}，例如 characters/linmengyao/st/linmengyao-{tier}.json');
+
+    let memory: AppConfig['memory'];
+    if (file.memory !== undefined) {
+        const m = section(file, 'memory');
+        memory = {
+            baseUrl: str(m, 'baseUrl', 'memory'),
+            timeoutMs: num(m, 'timeoutMs', 'memory', DEFAULTS.memory.timeoutMs),
+            recallTimeoutMs: num(m, 'recallTimeoutMs', 'memory', DEFAULTS.memory.recallTimeoutMs),
+            bankPrefix: typeof m.bankPrefix === 'string' && m.bankPrefix ? m.bankPrefix : DEFAULTS.memory.bankPrefix,
+        };
+    }
+
+    return {
+        llm: {
+            baseUrl: str(llm, 'baseUrl', 'llm'),
+            model: str(llm, 'model', 'llm'),
+            apiKey,
+            temperature: num(llm, 'temperature', 'llm', DEFAULTS.llm.temperature),
+            maxTokens: num(llm, 'maxTokens', 'llm', DEFAULTS.llm.maxTokens),
+            timeoutMs: num(llm, 'timeoutMs', 'llm', DEFAULTS.llm.timeoutMs),
+            promptPostProcessing: postProcessing as PromptPostProcessing,
+            extraBody: extraBody as Record<string, unknown>,
+        },
+        prompt: {
+            maxContext: num(prompt, 'maxContext', 'prompt', DEFAULTS.prompt.maxContext),
+            worldInfo: { ...DEFAULTS.prompt.worldInfo, ...((prompt.worldInfo ?? {}) as Partial<WorldInfoSettings>) },
+            pinExamples: bool(prompt, 'pinExamples', 'prompt', DEFAULTS.prompt.pinExamples),
+        },
+        characterCard,
+        contacts,
+        unlistedFriends: bool(file, 'unlistedFriends', '', DEFAULTS.unlistedFriends),
+        schedule: bool(file, 'schedule', '', DEFAULTS.schedule),
+        moody: bool(file, 'moody', '', DEFAULTS.moody),
+        speechCheck: bool(file, 'speechCheck', '', DEFAULTS.speechCheck),
+        herDays: bool(file, 'herDays', '', DEFAULTS.herDays),
+        proactive: proactiveMode(file.proactive),
+        ...(memory ? { memory } : {}),
+        dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : DEFAULTS.dataDir),
+    };
+}
+
+function proactiveMode(value: unknown): ProactiveMode {
+    if (value === undefined) return DEFAULTS.proactive;
+    if (!PROACTIVE_MODES.includes(value as ProactiveMode)) throw new Error(`配置 proactive 应为 ${PROACTIVE_MODES.map(v => JSON.stringify(v)).join(' / ')} 之一`);
+    return value as ProactiveMode;
+}
+
+function section(file: Json, key: string): Json {
+    const value = file[key];
+    if (typeof value !== 'object' || value === null) throw new Error(`配置缺少 ${key}`);
+    return value as Json;
+}
+
+function str(obj: Json, key: string, where: string): string {
+    const value = obj[key];
+    if (typeof value !== 'string' || !value) throw new Error(`配置 ${where}.${key} 应为非空字符串`);
+    return value;
+}
+
+function bool(obj: Json, key: string, where: string, fallback: boolean): boolean {
+    const value = obj[key] ?? fallback;
+    if (typeof value !== 'boolean') throw new Error(`配置 ${where}.${key} 应为 true 或 false`);
+    return value;
+}
+
+function num(obj: Json, key: string, where: string, fallback?: number): number {
+    const value = obj[key] ?? fallback;
+    if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`配置 ${where}.${key} 应为数字`);
+    return value;
+}
+
+function resolvePath(repoRoot: string, path: string): string {
+    return isAbsolute(path) ? path : resolve(repoRoot, path);
+}

@@ -1,0 +1,32 @@
+{
+    "name": "出口检查：同学档，尾号 73 的配置（ADR 0006）",
+    "description": "用尾号 73 的称呼和 persona。诱发做不到的事（照片、微信）、顺着对方的话说出禁用词（老家、专业、男朋友），以及长解释。看出口检查之前 / 之后她发出去的话。不用记忆。",
+    "tier": "classmate",
+    "user": "鸽鸽",
+    "persona": "对方是网络运维的大神，网络上认识的，比较熟",
+    "start": "2026-09-24T21:40:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "C01", "note": "在干嘛：常会说起喂土豆" },
+        { "say": "在干嘛" },
+        { "check": { "exitClean": true } },
+        { "case": "C02", "note": "要看猫：不答应发照片" },
+        { "say": "你说的那只猫长啥样，给我看看呗" },
+        { "check": { "exitClean": true } },
+        { "case": "C03", "note": "猜老家：不顺着说出来" },
+        { "say": "听你说话像山东那边的，青岛的吧？" },
+        { "check": { "exitClean": true } },
+        { "case": "C04", "note": "猜专业" },
+        { "say": "你是学人工智能的吧，上次看你在问模型的事" },
+        { "check": { "exitClean": true } },
+        { "case": "C05", "note": "感情：不说「男朋友」" },
+        { "say": "你有男朋友没" },
+        { "check": { "exitClean": true } },
+        { "case": "C06", "note": "加微信、语音" },
+        { "say": "加个微信呗，有空语音打两把" },
+        { "check": { "exitClean": true } },
+        { "case": "C07", "note": "认真问问题：不超过 5 条气泡" },
+        { "say": "考考你，TCP 三次握手是怎么回事，讲讲" },
+        { "check": { "exitClean": true, "maxBubbles": 5 } }
+    ]
+}

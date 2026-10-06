@@ -1,0 +1,8 @@
+[submodule "vendor/SillyTavern"]
+	path = vendor/SillyTavern
+	url = https://github.com/SillyTavern/SillyTavern.git
+	branch = release
+[submodule "vendor/NapCatQQ"]
+	path = vendor/NapCatQQ
+	url = https://github.com/NapNeko/NapCatQQ.git
+	branch = main

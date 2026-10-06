@@ -1,0 +1,2214 @@
+# 林梦瑶「在读作品」结构化资料 —— 2026-10-03 用户裁决版
+#
+# 三本书 = 用户裁决（主 / 副 / 旧），**每一条事实都必须带 sources**。
+# 没有来源的东西一个字都不许写进这个文件：查不到就写「未获取」，绝不编。
+# 调研底稿：evidence/她的书单候选-2026-10-03.md
+# 原始数据：evidence/书单候选-原始数据-2026-10-03/（逐本公开资料核验-2026-10-03.json）
+# 本文件由 life_engine/books.py 读取，**不接进 reply/channel/persona**（本轮只做独立模块）。
+#
+# ── 字段口径 ────────────────────────────────────────────────
+# id          模块内的稳定键（英文，给 kv 用；别改，改了进度就丢）
+# role        main=主推 / side=副推 / old=旧爱（旧爱是设定里原本就有的那本）
+# mode        "chat_plot"=允许聊具体情节（节点级） / "feeling_only"=只许聊感受
+# chapters    公开资料上的**总章数**（必须与 sources 对得上）
+# words       公开资料上的总字数（未获取就省略这一行）
+# total_source 总章数/字数出自哪条来源（逐字指到上面某条 source）
+# progress    她的进度：start_day=起始日（默认 2026-10-03）/ start_chapter / finished_is_fact
+#   注意：**start_chapter 是设定，不是事实**；chapters 才是事实。进度会按天推进（见 books.py）。
+#
+# ── 情节节点口径（nodes）────────────────────────────────────
+# from     第几章起读者才知道这件事。她当前章数 < from → 她**没读到那儿**，
+#          只会说「我还没看到那呢」（这是本机制的核心：一句话解决所有穿帮）。
+# keywords 命中这些词才算「他在问这件事」
+# points   节点下**允许她说**的内容（每条都必须能在 sources 里查到）
+# 规则：nodes 里不许出现任何来源覆盖不到的具体情节——宁缺毋滥。
+
+version = "2026-10-03"
+state_key_prefix = "books:"
+config_note = "三本书由用户 2026-10-03 裁决；《纨绔郡主得宠日常》被明确排除（无CP·纯恶女·权谋，不能当甜宠聊）"
+
+
+# ══════════════════════════════════════════════════════════════
+# 主：《药屋少女的呢喃》—— 资料碾压级（百度百科 + 萌娘百科独立条目）
+# 她的人设里爱猫，而主角就叫「猫猫」→ 天然梗
+# ══════════════════════════════════════════════════════════════
+[[books]]
+id = "yaowu"
+title = "药屋少女的呢喃"
+title_alt = "薬屋のひとりごと"
+author = "日向夏"
+illustrator = "しのとうこ"
+role = "main"
+mode = "chat_plot"
+kind = "日本轻小说（网络小说→实体书）"
+platform = "轻小说（成为小说家吧连载 → 主妇之友社实体书）"
+chapters = 300
+chapters_note = "⚠️ 全书总章数**未获取**（原作是「成为小说家吧」网络连载 + HERO 文库实体书，跟中文网文的『章』不是一个口径）。这里的 300 只是 books.py 用来跑「还没读到」机制的**内部标尺**，不是事实——所以提示词里不许说「一共 300 章」；真正的进度单位是 progress.unit = 卷。"
+words_note = "未获取（同上，无中文网文式字数口径）"
+status = "连载中（动画两期已播）"
+total_source = "https://wapbaike.baidu.com/item/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83/22096878 + https://zh.moegirl.org.cn/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83"
+sources = [
+    "https://wapbaike.baidu.com/item/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83/22096878",
+    "https://zh.moegirl.org.cn/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83",
+    "https://baike.baidu.com/item/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83/22096878",
+]
+verified_on = "2026-10-03"
+verify_note = "萌娘百科 200（64.3 万字节，本次直连成功）；wapbaike 200（16.4 万字节，本次直连成功）；baike.baidu.com 桌面版本次 403（百度安全验证），所以上面的引文以 wapbaike 为准"
+why_her = "治愈 + 日常 + 轻喜剧 + 二次元全部命中；主角就叫「猫猫」而她人设里爱猫——这是天然梗"
+progress = { start_day = "2026-10-03", start_unit = 6, unit = "卷", unit_label = "卷", advance_per_day = 1, finished_is_fact = false }
+attitude = "猫猫嘴硬心软，一边嫌麻烦一边把事办了，太戳我"
+attitude_note = "**这是她自己的感受，不是书里的内容**（允许；不需要来源）"
+not_on = "番茄（番茄上没有这本）"
+
+[[books.nodes]]
+id = "yaowu-cat"
+topic = "主角是谁"
+from = 1
+keywords = ["猫猫", "女主", "主角", "谁"]
+points = [
+    "女主叫猫猫，原本在花街当药师",
+    "被绑走卖进后宫当下女",
+    "拿养父教的医药和推理本事解决宫里的案子",
+]
+sources = [
+    "https://wapbaike.baidu.com/item/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83/22096878",
+    "https://zh.moegirl.org.cn/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83",
+]
+
+[[books.nodes]]
+id = "yaowu-renshi"
+topic = "男主是谁"
+from = 1
+keywords = ["壬氏", "男主", "那个太监", "宦官", "男主谁"]
+points = [
+    "管后宫的宦官叫壬氏，长得特别好看",
+    "是他把宫里的案子交给猫猫去查",
+]
+sources = [
+    "https://wapbaike.baidu.com/item/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83/22096878",
+    "https://zh.moegirl.org.cn/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83",
+]
+
+[[books.nodes]]
+id = "yaowu-plot"
+topic = "主线是什么"
+from = 1
+keywords = ["剧情", "讲什么", "主线", "皇子", "皇女", "病重", "案子", "好看吗"]
+points = [
+    "一开始是查皇子皇女接连病重的谜团",
+    "她在这上头显出本事，后来被宠妃玉叶妃任命成尝膳官",
+]
+sources = [
+    "https://wapbaike.baidu.com/item/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83/22096878",
+]
+
+# ★ 这条就是「没读到就说没读到」的试金石（用户点名的那个问题：续作里那个皇子后来怎么了）。
+#   from = 300 是**刻意超出她当前进度**：这条命中时她只会说「我还没看到那呢」，
+#   一个字的具体剧情都不许编——因为公开资料里确实查不到逐段剧情（见本文件末尾 unknown_note）。
+[[books.nodes]]
+id = "yaowu-beyond"
+topic = "她还没读到的部分（试金石）"
+from = 300
+unknown = true
+keywords = ["死了没", "死了吗", "死没死", "结局", "结尾", "最后", "后面那个", "皇子", "皇女", "大结局", "真相是什么", "谁是凶手", "猫猫"]
+points = []
+sources = []
+source_note = "⚠️ points 故意留空、unknown = true：这条节点的唯一用途就是让 books.py 判出「她没读到」并回一句「我还没看到那呢」。往这里填任何剧情都是编。"
+
+[[books.nodes]]
+id = "yaowu-origin"
+topic = "原作与出版"
+from = 1
+keywords = ["原作", "作者", "谁写的", "出版", "小说", "轻小说", "哪来的"]
+points = [
+    "日向夏写的，しのとうこ画的插画",
+    "2011 年 10 月起在「成为小说家吧」连载，2012 年出实体书",
+    "实体书是主妇之友社出的，系列累计发行量突破 4000 万部",
+]
+sources = [
+    "https://zh.moegirl.org.cn/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83",
+    "https://wapbaike.baidu.com/item/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83/22096878",
+]
+
+[[books.nodes]]
+id = "yaowu-anime"
+topic = "动画"
+from = 1
+keywords = ["动画", "番", "b站", "第几集", "更新", "追番", "动画版", "看了吗"]
+points = [
+    "动画第一期 2023 年 10 月到 2024 年 3 月播出",
+    "第二期 2025 年 1 月开播，同年 4 月进第二季度",
+    "萌娘百科的分类里挂着恋爱喜剧、悬疑推理、宫廷这几类",
+]
+sources = [
+    "https://wapbaike.baidu.com/item/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83/22096878",
+    "https://zh.moegirl.org.cn/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83",
+]
+
+# ⚠️ 反面清单：这本的「具体集数剧情/结局/谁死没死」在本次公开资料里**没有**，
+# 所以不许写进 nodes。她只能回「我还没看到那」或「记不清了」。
+unknown_note = "逐集剧情、结局、角色生死：公开资料未获取 → 一律不许编（由 books.py 的兜底话术接住）"
+
+
+# ══════════════════════════════════════════════════════════════
+# 副：《惹金枝》（空留）—— 550 章完结，A 级资料
+# ══════════════════════════════════════════════════════════════
+[[books]]
+id = "rejinzhi"
+title = "惹金枝"
+author = "空留"
+role = "side"
+mode = "chat_plot"
+kind = "古代言情·权谋·大女主"
+platform = "番茄小说"
+chapters = 550
+words = 116.4
+status = "已完结（2024-08-03 更新至第 550 章完结）"
+total_source = "https://wapbaike.baidu.com/item/%E6%83%B9%E9%87%91%E6%9E%9D （第 550 章 终（完结）／全书共 116.4 万字）"
+sources = [
+    "https://wapbaike.baidu.com/item/%E6%83%B9%E9%87%91%E6%9E%9D",
+    "https://fanqienovel.com/page/7231424472606051384",
+    "https://book.douban.com/subject/38591353/",
+]
+verified_on = "2026-10-03"
+verify_note = "wapbaike 200（25.1 万字节，本次直连成功）；番茄详情页 200（番茄书目字段-2026-10-03.json）；豆瓣实体书条目 38591353（四川天地出版社 2026-7）"
+extra_sources = [
+    "中国作家网专评《〈惹金枝〉：探索权谋与大女主的爱情故事新讲法》（转引自 evidence/她的书单候选-2026-10-03.md §2.1）",
+    "番茄读者评分：44.3 万读者打出 9.7 分，古言阅读榜与高分榜 Top10；影视改编版权已售出（同 wapbaike）",
+]
+why_her = "A 级里资料最厚的一本：百科 + 豆瓣实体书 + 中国作家网专评 + 550 章完整目录 + 影视版权已售；已完结不用追更"
+progress = { start_day = "2026-09-20", start_unit = 425, unit = "章", unit_label = "章", advance_per_day = 5, finished_is_fact = false }
+attitude = "时不虞那种又冷又硬的劲儿我喜欢，复仇那段看得我拳头都攥紧了"
+attitude_note = "她自己的感受，不是书里的内容（允许，不需要来源）"
+
+[[books.nodes]]
+id = "rejinzhi-lead"
+topic = "女主是谁"
+from = 1
+keywords = ["女主", "时不虞", "主角", "谁", "那个女的"]
+points = [
+    "女主叫时不虞，一出生就被当成「灾星」",
+    "三岁那年假死，之后隐在世外",
+]
+sources = ["https://wapbaike.baidu.com/item/%E6%83%B9%E9%87%91%E6%9E%9D"]
+
+[[books.nodes]]
+id = "rejinzhi-revenge"
+topic = "主线：回京复仇"
+from = 1
+keywords = ["剧情", "讲什么", "主线", "复仇", "回京", "身世", "好看吗", "后来怎么样"]
+points = [
+    "十五年后时家因为忠勇侯叛国案满门获罪",
+    "她重返京城搅动风云，还坐实了「灾星」这个名",
+    "全篇是权谋线，不是重生也不是穿越",
+]
+sources = ["https://wapbaike.baidu.com/item/%E6%83%B9%E9%87%91%E6%9E%9D"]
+
+[[books.nodes]]
+id = "rejinzhi-publish"
+topic = "成绩与出版"
+from = 1
+keywords = ["成绩", "评分", "火吗", "出版", "实体书", "电视剧", "影视", "完结"]
+points = [
+    "入选 2024 年度中国网络文学影响力榜",
+    "44.3 万读者打出 9.7 分，进古言阅读榜和高分榜 Top10",
+    "影视改编版权已经卖出去了",
+    "实体书是四川天地出版社出的",
+]
+sources = [
+    "https://wapbaike.baidu.com/item/%E6%83%B9%E9%87%91%E6%9E%9D",
+    "https://book.douban.com/subject/38591353/",
+]
+
+[[books.nodes]]
+id = "rejinzhi-ending"
+topic = "结局"
+from = 550
+keywords = ["结局", "最后", "结尾", "第550章", "完结章"]
+points = [
+    "最后一章叫「终」，第 550 章完结",
+]
+sources = ["https://wapbaike.baidu.com/item/%E6%83%B9%E9%87%91%E6%9E%9D"]
+
+[[books.nodes]]
+id = "rejinzhi-mid"
+topic = "中段往后（她还没读到的地方）"
+from = 500
+keywords = ["后面讲什么", "后面在讲啥", "后面讲啥", "第三百章", "四百章"]
+points = [
+    "第 300 章往后是权谋线的深水区",
+]
+sources = ["https://wapbaike.baidu.com/item/%E6%83%B9%E9%87%91%E6%9E%9D"]
+source_note = "⚠️ 本节点**故意只写公开资料能兜住的那一句**（章节目录可从番茄详情页读到，具体桥段未获取）。它的 from = 500 超出她当前进度（第 425 章），所以正常情况下她只会说「还没看到那」；_nodes_for 仍然照常判定，用来保证判据本身没写反。"
+
+
+# ══════════════════════════════════════════════════════════════
+# 旧：《恰似寒光遇骄阳》（囧囧有妖）—— 保留，但平台改「七猫 / 实体书」
+# ⚠️ 番茄没有正版（番茄上只有仿名作）；人设里的「1/300 章」若指全书则错（2505 章）
+# ══════════════════════════════════════════════════════════════
+[[books]]
+id = "jiasi"
+title = "恰似寒光遇骄阳"
+author = "囧囧有妖"
+role = "old"
+mode = "chat_plot"
+kind = "现代言情·重生·马甲"
+platform = "七猫中文网（另：买了青岛出版社的实体书）"
+chapters = 2505
+words = 261.37
+status = "已完结"
+total_source = "https://www.qimao.com/shuku/1784936/ （9.7 分／已完结／261.37 万字／作品目录 2505 章）"
+sources = [
+    "https://www.qimao.com/shuku/1784936/",
+    "https://wapbaike.baidu.com/item/%E6%81%B0%E4%BC%BC%E5%AF%92%E5%85%89%E9%81%87%E9%AA%84%E9%98%B3",
+    "https://book.douban.com/subject/30458419/",
+    "https://www.qidian.com/book/1010304305/",
+]
+verified_on = "2026-10-03"
+verify_note = "七猫页面直读 2505 章；wapbaike 200（百科原文本次已核）；豆瓣 30458419（青岛出版社 2019-2，6.4 分 2245 人）。⚠️ 起点页本次返回 202 空响应（反爬），所以 2501 章那个数字**按未二次核实标记**，本文件只采用七猫的 2505。"
+not_on = "番茄（番茄只有仿名作《恰似寒光遇姣阳》《恰似寒冰遇骄阳》等，正版不在番茄）"
+platform_fix = "2026-10-03 用户裁决：保留这本书，平台从「番茄」改成「七猫 / 买了实体书」；青岛出版社 → 她是青岛人，这个巧合可以直接当闲聊梗"
+chapter_fix = "人设里的「1/300 章」若指全书 300 章 → 与事实（2505 章）不符，已修正为「她读到第 300 章左右」"
+why_her = "全部候选里可用性最高的之一；青岛出版社的实体书正好撞上她是青岛人"
+progress = { start_day = "2026-07-04", start_unit = 300, unit = "章", unit_label = "章", advance_per_day = 5, finished_is_fact = false }
+attitude = "叶绾绾那个马甲一层套一层的，我是真想看她什么时候全揭"
+attitude_note = "她自己的感受，不是书里的内容（允许，不需要来源）"
+
+[[books.nodes]]
+id = "jiasi-identity"
+topic = "女主身份"
+from = 1
+keywords = ["女主", "聂无忧", "叶绾绾", "主角", "谁", "马甲", "身份"]
+points = [
+    "女主叫聂无忧，重生之后顶着华国叶氏千金叶绾绾的身份活着",
+    "整篇就是重生复仇加豪门争斗、马甲逆袭",
+    "男主叫司夜寒，两人一起查身世的谜",
+]
+sources = ["https://wapbaike.baidu.com/item/%E6%81%B0%E4%BC%BC%E5%AF%92%E5%85%89%E9%81%87%E9%AA%84%E9%98%B3"]
+
+[[books.nodes]]
+id = "jiasi-publish"
+topic = "出版与平台"
+from = 1
+keywords = ["平台", "哪看", "在哪看", "番茄", "七猫", "实体书", "出版", "起点"]
+points = [
+    "全书 2505 章，261.37 万字，七猫上已经完结",
+    "2018 年起在阅文旗下云起书院连载，拿过橙瓜网络文学奖年度百强和 2018 超级 IP 影视改编价值奖",
+    "实体书是青岛出版社出的，后来的新版是江苏凤凰文艺",
+    "有漫画改编（腾讯动漫、动漫屋都上过）",
+]
+sources = [
+    "https://wapbaike.baidu.com/item/%E6%81%B0%E4%BC%BC%E5%AF%92%E5%85%89%E9%81%87%E9%AA%84%E9%98%B3",
+    "https://www.qimao.com/shuku/1784936/",
+    "https://book.douban.com/subject/30458419/",
+]
+
+[[books.nodes]]
+id = "jiasi-plot"
+topic = "主线走向"
+from = 1
+keywords = ["剧情", "讲什么", "主线", "讲啥", "讲的是什么", "好看吗", "好看不"]
+points = [
+    "主线是记忆的真相被一层层揭开，加上独立州的危机",
+    "她要在独立州的各方势力之间来回周旋",
+]
+sources = ["https://wapbaike.baidu.com/item/%E6%81%B0%E4%BC%BC%E5%AF%92%E5%85%89%E9%81%87%E9%AA%84%E9%98%B3"]
+
+unknown_note = "第 300 章以后的逐段剧情：本次公开资料未获取 → 她只能说「我还没看到那呢」，不许编"
+
+# >>> read_books ══ 这一段由生成器整段重写：手改会在下次重跑时丢掉 ══
+# ══════════════════════════════════════════════════════════════
+# 她「已经读完」的书（2026-10-03 用户追加）
+#
+# 跟在读三本（[[books]]）分开：这边没有「还没读到」这道闸门——她说读完了。
+# 字段口径：
+#   names    专有名词白名单（人名/称号/衍生名）——认书只看它，避免 2 字泛词串书
+#   basic/characters/relations/plot  可聊条目：points 每条都能在 sources 里对上
+#   scenes   名场面：summary 是事实；quote 只有能确证逐字才填，否则标「未获取」
+#   disputes 争议：sides 两派各带来源；her_take 是**她自己的立场**（不需要来源）
+#   adaptations 改编：watched=false 表示她没看过，她只能聊存在性与主创
+#   unknown  公开资料查不到 / 她没看过的那块：有 keywords、无内容，命中只说记不清
+#
+# ★ 本段由 tools/build_readbooks_toml.py 生成，来源只认 fetch-log.json 里真的 200 的页面。
+#   改内容请改生成器并重跑，不要手改这一段。
+# 『傲慢』用户还没裁决是哪一本（见 evidence/傲慢-候选清单-2026-10-03.md），故不建卡。
+# ══════════════════════════════════════════════════════════════
+
+[[read_books]]
+id = "pianpian"
+title = "偏偏宠爱"
+title_alt = "病态宠爱"
+author = "藤萝为枝"
+kind = "言情·重生·校园"
+platform = "晋江文学城"
+status = "已完结（2019-01-02 完结）"
+chapters = 92
+words = 33.67
+total_source = "https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732", "https://wapbaike.baidu.com/item/%E6%B1%9F%E5%BF%8D/53401508", "https://wapbaike.baidu.com/item/%E5%AD%9F%E5%90%AC/53401515", "https://wapbaike.baidu.com/item/%E8%B5%B5%E6%9A%96%E6%A9%99/63194341"]
+names = ["江忍", "孟听", "赵暖橙", "贺俊明", "闻睿", "舒兰", "忍哥", "小江爷"]
+why_her = "重生校园 + 偏执深情，是她自己会随手点开的那类"
+attitude = "江忍那种嘴硬到死、心里全是她的，我吃这套"
+avoid = ["电视剧版（2026-04-29 才官宣影视化）她没看过", "漫画版她没看过", "广播剧：目前找不到公开条目，她也不聊"]
+unresolved = ["第 93 章配角番外《赵暖橙番外》的逐段内容：未获取", "电视剧版的选角与剧情改动：未获取（只查到 2026-04-29 官宣、导演刘俊杰）", "广播剧：未获取"]
+verify_note = "wapbaike 作品页 200（含 94 章目录与提要）；江忍/孟听/赵暖橙三个人物页 200"
+verified_on = "2026-10-03"
+
+[[read_books.basic]]
+id = "pp-basic-1"
+topic = "基本档案"
+keywords = ["谁写的", "作者", "哪写的", "平台", "什么时候"]
+points = ["原名《病态宠爱》，藤萝为枝写，2018-10-24 到 2019-01-02 在晋江连载", "全书 92 章、约 33.67 万字，已完结", "2020 年 4 月由青岛出版社出实体书，收了新番外《仙女的青睐》"]
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+
+[[read_books.basic]]
+id = "pp-basic-2"
+topic = "内容简介"
+keywords = ["讲什么", "主线", "讲了什么", "简介", "剧情"]
+points = ["孟听重生回高二，想重拾跳舞的梦想、也不再招惹江忍", "结果在楼梯转角听见江忍说「我喜欢什么样？孟听那样的」", "一句话：霸王少年 × 国民初恋"]
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+
+[[read_books.basic]]
+id = "pp-basic-3"
+topic = "更新时间线"
+keywords = ["几章", "多少章", "多少字", "完结"]
+points = ["92 章正文，目录里另有两篇番外（赵暖橙番外、江忍孟听番外）"]
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+
+[[read_books.characters]]
+id = "pp-char-jiang"
+name = "江忍"
+role = "男主"
+topic = "江忍"
+keywords = ["江忍", "忍哥", "小江爷"]
+points = ["别称「忍哥」「小江爷」，银发戴黑色耳钻，187cm，后来是曦庭总裁", "就读利才职高，初遇孟听后开始追她，抢过她的草莓和学生证", "为孟听染黑银发、闯火场救人、放弃学业去创业"]
+sources = ["https://wapbaike.baidu.com/item/%E6%B1%9F%E5%BF%8D/53401508"]
+
+[[read_books.characters]]
+id = "pp-char-meng"
+name = "孟听"
+role = "女主"
+topic = "孟听"
+keywords = ["孟听", "听听", "国民初恋"]
+points = ["别称「听听」「国民初恋」，H市国立七中学生，后来是高考理科状元、律师", "前世车祸失明又失去母亲，为救继妹舒兰毁容，最后死于山体滑坡", "重生回高二，擅长钢琴、舞蹈和唱歌"]
+sources = ["https://wapbaike.baidu.com/item/%E5%AD%9F%E5%90%AC/53401515"]
+
+[[read_books.characters]]
+id = "pp-char-zhao"
+name = "赵暖橙"
+role = "配角"
+topic = "赵暖橙"
+keywords = ["赵暖橙", "暖橙"]
+points = ["高中时一百三十多斤、微胖，大学减肥后变漂亮，性格阳光快活", "高中喜欢贺俊明，为他织围巾、打伞；高考超常发挥考上X大英语专业", "名字来自她妈妈喜欢暖色调，尤其橙色"]
+sources = ["https://wapbaike.baidu.com/item/%E8%B5%B5%E6%9A%96%E6%A9%99/63194341"]
+
+[[read_books.characters]]
+id = "pp-char-he"
+name = "贺俊明"
+role = "配角"
+topic = "贺俊明"
+keywords = ["贺俊明"]
+points = ["赵暖橙喜欢的人，但他心里始终有卢月", "多年后为了卢月跟赵暖橙分手"]
+sources = ["https://wapbaike.baidu.com/item/%E8%B5%B5%E6%9A%96%E6%A9%99/63194341"]
+
+[[read_books.characters]]
+id = "pp-char-wen"
+name = "闻睿"
+role = "反派"
+topic = "闻睿"
+keywords = ["闻睿", "反派"]
+points = ["故事里的反派，最后被绳之以法", "孟听前世的车祸与失明跟他有关（人物页口径）"]
+sources = ["https://wapbaike.baidu.com/item/%E5%AD%9F%E5%90%AC/53401515"]
+
+[[read_books.relations]]
+id = "pp-rel-cp"
+topic = "官配：江忍 × 孟听"
+keywords = ["CP", "官配", "一对", "磕CP"]
+points = ["作品页把这对写成「霸王少年 × 国民初恋」", "两人结婚，育有儿子江一斐、女儿江一希"]
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732", "https://wapbaike.baidu.com/item/%E6%B1%9F%E5%BF%8D/53401508"]
+
+[[read_books.scenes]]
+id = "pp-scene-stair"
+topic = "名场面：楼梯转角那句「我喜欢什么样？孟听那样的」"
+keywords = ["楼梯", "转角", "我喜欢什么样", "告白", "那句"]
+summary = "孟听回教室拿英语书，在楼梯转角听见江忍笑得肆意张狂地说这句"
+quote = "我喜欢什么样？孟听那样的。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+
+[[read_books.scenes]]
+id = "pp-scene-straw"
+topic = "名场面：抢草莓和学生证"
+keywords = ["草莓", "学生证", "小草莓"]
+summary = "江忍抢走孟听的草莓和学生证——目录第 3 章的提要就写着「那盒他抢过来的小草莓」"
+quote = "那盒他抢过来的小草莓。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732", "https://wapbaike.baidu.com/item/%E6%B1%9F%E5%BF%8D/53401508"]
+
+[[read_books.scenes]]
+id = "pp-scene-kiss"
+topic = "名场面：第 25 章 初吻"
+keywords = ["初吻", "亲上去", "接吻"]
+summary = "第 25 章标题就是「初吻」，提要写的是江忍的心声"
+quote = "妈的要命，真甜真带感。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+
+[[read_books.scenes]]
+id = "pp-scene-owe"
+topic = "名场面：第 43 章 强吻「欠你一辈子」"
+keywords = ["强吻", "欠你一辈子", "欺负"]
+summary = "第 43 章「强吻」的提要，是刷屏率最高的一句"
+quote = "欺负你一次就够了，然后欠你一辈子。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+
+[[read_books.scenes]]
+id = "pp-scene-fire"
+topic = "名场面：火灾里救人、腿留了伤"
+keywords = ["火灾", "火场", "救人", "腿伤", "残疾"]
+summary = "江忍冲进火场救孟听，导致自己腿部残疾（人物页口径）"
+quote = "上帝十八年来唯一给他的恩赐。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732", "https://wapbaike.baidu.com/item/%E6%B1%9F%E5%BF%8D/53401508", "https://wapbaike.baidu.com/item/%E5%AD%9F%E5%90%AC/53401515"]
+
+[[read_books.scenes]]
+id = "pp-scene-best"
+topic = "名场面：第 69 章 和好「全世界你最好」"
+keywords = ["和好", "全世界你最好"]
+summary = "第 69 章标题「和好」，提要就这一句"
+quote = "全世界你最好。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+
+[[read_books.scenes]]
+id = "pp-scene-newyear"
+topic = "名场面：第 81 章 新年"
+keywords = ["新年", "好好爱他"]
+summary = "第 81 章「新年」的提要，是孟听视角的一句心里话"
+quote = "江忍很好，要好好爱他呀。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+
+[[read_books.scenes]]
+id = "pp-scene-guard"
+topic = "名场面：第 91 章 病态「他的监护人，孟听」"
+keywords = ["监护人", "病态", "小江爷"]
+summary = "第 91 章「病态」的提要，把两人的关系写得很直"
+quote = "他的监护人，孟听。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+
+[[read_books.scenes]]
+id = "pp-scene-young"
+topic = "名场面：第 33 章 痴狂「年少啊，该死热烈的动心啊」"
+keywords = ["年少", "动心", "痴狂"]
+summary = "第 33 章「痴狂」的提要，被读者当成整本书的注脚"
+quote = "年少啊，该死热烈的动心啊。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+
+[[read_books.scenes]]
+id = "pp-scene-end"
+topic = "名场面：第 92 章 结局"
+keywords = ["结局", "最后", "结尾", "逆了一个世界的光"]
+summary = "第 92 章标题就是「结局」，提要只有一句"
+quote = "逆了一个世界的光。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+
+[[read_books.plot]]
+id = "pp-plot-rebirth"
+topic = "主线一：重生回高二"
+keywords = ["重生", "前世", "为什么重生"]
+points = ["前世她车祸失明、失去母亲，为救继妹舒兰毁容，最后死于山体滑坡", "重生回高二后她只想好好活：重拾跳舞的梦想、护住自己的脸、不去招惹江忍"]
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732", "https://wapbaike.baidu.com/item/%E5%AD%9F%E5%90%AC/53401515"]
+
+[[read_books.plot]]
+id = "pp-plot-change"
+topic = "主线二：江忍为她改变"
+keywords = ["转折", "变化", "中间"]
+points = ["江忍为她戒烟、转班学习；火灾里救她，自己腿落下残疾", "孟听后来知道，他前世杀人其实是为了保护她"]
+sources = ["https://wapbaike.baidu.com/item/%E5%AD%9F%E5%90%AC/53401515", "https://wapbaike.baidu.com/item/%E6%B1%9F%E5%BF%8D/53401508"]
+
+[[read_books.plot]]
+id = "pp-plot-end"
+topic = "结局走向"
+keywords = ["结局", "最后怎么样", "HE", "BE"]
+points = ["两人经历磨难后结婚，江忍创业成功并治好了腿伤", "反派闻睿被绳之以法，孟听做律师，两人一起养孩子"]
+sources = ["https://wapbaike.baidu.com/item/%E5%AD%9F%E5%90%AC/53401515"]
+
+[[read_books.disputes]]
+id = "pp-disp-jiang"
+topic = "江忍到底是深情还是病态"
+keywords = ["病态", "偏执", "对不对", "过不过", "是不是太"]
+her_take = "我站深情那派，但他把人打进医院那种解决方式我不认"
+sources = ["https://wapbaike.baidu.com/item/%E6%B1%9F%E5%BF%8D/53401508", "https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+[[read_books.disputes.sides]]
+view = "一派站深情：他为孟听染黑银发、闯火场救人、放弃学业去创业，从叛逆少年变成企业家"
+sources = ["https://wapbaike.baidu.com/item/%E6%B1%9F%E5%BF%8D/53401508"]
+[[read_books.disputes.sides]]
+view = "一派说过火：他因为孟听受辱把陈烁打到昏迷，报复的时候差点涉命案"
+sources = ["https://wapbaike.baidu.com/item/%E6%B1%9F%E5%BF%8D/53401508"]
+
+[[read_books.disputes]]
+id = "pp-disp-zhao"
+topic = "赵暖橙这条副线值不值（贺俊明）"
+keywords = ["赵暖橙", "贺俊明", "值不值", "副CP", "配角"]
+her_take = "我更想看赵暖橙跟萧路那条线，贺俊明那段看得我血压高"
+sources = ["https://wapbaike.baidu.com/item/%E8%B5%B5%E6%9A%96%E6%A9%99/63194341"]
+[[read_books.disputes.sides]]
+view = "一派心疼她：高中给他织围巾、打伞，照顾受伤的他，多年后却因为他心里有卢月被分手"
+sources = ["https://wapbaike.baidu.com/item/%E8%B5%B5%E6%9A%96%E6%A9%99/63194341"]
+[[read_books.disputes.sides]]
+view = "一派觉得不算亏：她考上X大、减肥变漂亮，崴脚时被一直喜欢她的萧路抱起"
+sources = ["https://wapbaike.baidu.com/item/%E8%B5%B5%E6%9A%96%E6%A9%99/63194341"]
+
+[[read_books.adaptations]]
+id = "pp-adapt-tv"
+name = "电视剧版（2026-04-29 官宣影视化）"
+topic = "电视剧版（2026-04-29 官宣影视化）"
+diff = ["2026-04-29 官宣影视化，导演刘俊杰（作品页引爱奇艺报道）", "选角和剧情差异：未获取"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+
+[[read_books.adaptations]]
+id = "pp-adapt-manga"
+name = "漫画版《偏偏宠爱》（晋江漫画）"
+topic = "漫画版《偏偏宠爱》（晋江漫画）"
+diff = ["作品页的相关条目里列了晋江漫画《偏偏宠爱》", "漫画与原著差在哪：未获取"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E5%81%8F%E5%81%8F%E5%AE%A0%E7%88%B1/24214732"]
+
+[[read_books.unknown]]
+id = "pp-unknown-1"
+topic = "配角番外的逐段内容（未获取）"
+keywords = ["配角番外", "番外细节", "番外讲了什么", "赵暖橙番外"]
+note = "第 93 章《赵暖橙番外》只有标题，正文与逐段情节公开资料未获取"
+sources = []
+
+[[read_books.unknown]]
+id = "pp-unknown-2"
+topic = "剧版选角（未获取）"
+keywords = ["谁演的", "选角", "演员", "谁演"]
+note = "只查到官宣信息，演员表未获取"
+sources = []
+
+[[read_books]]
+id = "weizhuang"
+title = "伪装学渣"
+title_alt = "伪渣"
+author = "木瓜黄"
+kind = "校园·纯爱"
+platform = "晋江文学城"
+status = "已完结（2018-05-20 完结）"
+total_source = "https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921", "https://wapbaike.baidu.com/item/%E8%B0%A2%E4%BF%9E/23285828"]
+names = ["贺朝", "谢俞", "东楼贺朝", "西楼谢俞", "周大雷", "沈捷", "万达", "陈雄虎", "徐静", "许晴晴"]
+why_her = "校园 + 一本正经地搞笑，是她读得最快的一本"
+attitude = "「东楼贺朝，西楼谢俞」这八个字我到现在还会念"
+avoid = ["广播剧她没听过", "漫画/影视改编未获取，她也不聊"]
+unresolved = ["总章数：百科没给口径（只有完整目录），未获取", "总字数：未获取", "漫画改编：未获取", "广播剧具体删改：未获取"]
+verify_note = "wapbaike 作品页 200（含人物、经典语录 13 条、广播剧与出版信息）；谢俞人物页 200"
+verified_on = "2026-10-03"
+
+[[read_books.basic]]
+id = "wz-basic-1"
+topic = "基本档案"
+keywords = ["谁写的", "作者", "平台", "什么时候", "哪写的"]
+points = ["木瓜黄写的，2017-12-27 到 2018-05-20 在晋江连载，已完结", "别名「伪渣」；2019 年 6 月北京时代华文书局出实体书，288 页", "作者的专栏被收藏 67804，代表作还有《这题超纲了》《七芒星》"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.basic]]
+id = "wz-basic-2"
+topic = "内容简介"
+keywords = ["讲什么", "主线", "简介", "剧情", "讲啥"]
+points = ["分班后两个「问题少年」分进一个班还成了同桌", "明明都是学霸却装学渣，考试争倒数第一，背地里认真学习", "贺朝伪装是因为对朋友的愧疚，谢俞是为了母亲"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.basic]]
+id = "wz-basic-3"
+topic = "成绩与衍生"
+keywords = ["火吗", "成绩", "衍生", "主题曲", "广播剧"]
+points = ["广播剧第一季 15 期、第二季 13 期（含一期番外），猫耳FM 播出", "官方主题曲《俞木逢朝》2021-12-26 上线，刘瑞琦唱", "广播剧配音：谢俞-风袖，贺朝-谢添天，报幕/陈雄虎-夏磊"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.characters]]
+id = "wz-char-he"
+name = "贺朝"
+role = "主角"
+topic = "贺朝"
+keywords = ["贺朝", "朝哥", "东楼"]
+points = ["别称朝哥、贺朝夫斯基、背影哥、情歌王子；生日 8 月 6 日", "因愧对兄弟留级一年，伪装成学渣进立阳二中，被叫「东楼贺朝」", "高考成绩比谢俞低两分，考进清华经管系"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.characters]]
+id = "wz-char-xie"
+name = "谢俞"
+role = "主角"
+topic = "谢俞"
+keywords = ["谢俞", "西楼"]
+points = ["性格冷淡、脾气不太好，心思细腻；被称为「西楼谢俞」", "本来成绩很好，因为家庭原因伪装成学渣进立阳二中", "后来恢复水平，以省状元考进清华医学系"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921", "https://wapbaike.baidu.com/item/%E8%B0%A2%E4%BF%9E/23285828"]
+
+[[read_books.characters]]
+id = "wz-char-side"
+name = "三班那帮人（配角群）"
+role = "配角"
+topic = "三班那帮人（配角群）"
+keywords = ["配角", "周大雷", "沈捷", "万达", "刘存浩"]
+points = ["配角有周大雷、沈捷、万达、刘存浩、罗文强、徐静、许晴晴等", "沈捷与周大雷不是三班的同学"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.characters]]
+id = "wz-char-grade"
+name = "两人的成绩线"
+role = "主线"
+topic = "两人的成绩线"
+keywords = ["成绩", "省状元", "状元", "清华", "倒数第一"]
+points = ["开头两人争倒数第一，后面揭破伪装双双恢复水平", "谢俞是省状元，贺朝低他两分，两人一起进清华"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.relations]]
+id = "wz-rel-cp"
+topic = "官配：贺朝 × 谢俞"
+keywords = ["CP", "官配", "攻受", "一对"]
+points = ["作品页的写法是「注孤生戏精（贺朝）× 不服就干泯灭人性（谢俞）」", "经典语录里贺朝叫谢俞「男朋友」「我家小朋友」"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.scenes]]
+id = "wz-scene-east"
+topic = "名句：「东楼贺朝，西楼谢俞」"
+keywords = ["东楼", "西楼", "东楼贺朝"]
+summary = "作品页经典语录第 1 条，全书最有名的八个字"
+quote = "东楼贺朝，西楼谢俞。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.scenes]]
+id = "wz-scene-qinghua"
+topic = "名句：「清华双杰，谋财害命」"
+keywords = ["清华双杰", "谋财害命"]
+summary = "经典语录第 2 条，说的是两人后来的去向"
+quote = "清华双杰，谋财害命。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.scenes]]
+id = "wz-scene-cute"
+topic = "名场面：别人问谢俞脾气爆，贺朝说「可爱吧」"
+keywords = ["可爱吧", "脾气爆"]
+summary = "路人问「西楼谢俞每天脾气都这么爆？」，贺朝回「是啊，可爱吧」"
+quote = "是啊，可爱吧。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.scenes]]
+id = "wz-scene-far"
+topic = "名句：「一起去啊，更远的地方」"
+keywords = ["更远的地方", "一起去"]
+summary = "经典语录第 4 条，被当成两人一起往前走的注脚"
+quote = "一起去啊，更远的地方。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.scenes]]
+id = "wz-scene-fight"
+topic = "名场面：「朋友，过两招？」那一段"
+keywords = ["过两招", "珍惜生命", "找死"]
+summary = "贺朝问「朋友，过两招？」，谢俞说「劝你珍惜生命」，贺朝回「巧了，我就喜欢找死」"
+quote = "巧了，我就喜欢找死。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.scenes]]
+id = "wz-scene-toohigh"
+topic = "名句：「分数太高，不适合我」"
+keywords = ["分数太高", "不适合我"]
+summary = "经典语录第 6 条，谢俞不肯动手的理由"
+quote = "分数太高，不适合我。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.scenes]]
+id = "wz-scene-boyfriend"
+topic = "名场面：「以后多多关照啊，男朋友」"
+keywords = ["男朋友", "多多关照", "同桌"]
+summary = "贺朝说「熟悉一下同桌的名字」，接着就来了这句"
+quote = "以后多多关照啊，男朋友。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.scenes]]
+id = "wz-scene-search"
+topic = "名场面：在手机里打「男朋友不爱学习怎么办」"
+keywords = ["搜索", "浏览器", "不爱学习"]
+summary = "谢俞坐在沙发上等开饭，低头在手机浏览器里一个字一个字地打这句"
+quote = "男朋友不爱学习怎么办。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.scenes]]
+id = "wz-scene-addict"
+topic = "名场面：「喜欢你这件事好像会上瘾」"
+keywords = ["上瘾", "喜欢你"]
+summary = "贺朝即使在谢俞听不见的时候也低声说了这句"
+quote = "喜欢你这件事好像会上瘾啊。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.scenes]]
+id = "wz-scene-ring"
+topic = "名场面：送戒指那句"
+keywords = ["戒指", "无名指", "送戒指"]
+summary = "经典语录第 10 条，说的是要送戴无名指、一辈子不摘的那种"
+quote = "今年打算送戒指，戴无名指上，一辈子也不摘的那种。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.scenes]]
+id = "wz-scene-stand"
+topic = "名句：「被人拉起来，跟自己站起来是两码事」"
+keywords = ["两码事", "拉起来", "站起来"]
+summary = "经典语录最后一条，也是全书最常被引的一句"
+quote = "被人拉起来，跟自己站起来是两码事。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.plot]]
+id = "wz-plot-same"
+topic = "主线一：分班成了同桌"
+keywords = ["分班", "同桌", "开头"]
+points = ["分班后两个风靡校园的「问题少年」不但同班还同桌", "两人一开始互相不服，考试还要争倒数第一"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.plot]]
+id = "wz-plot-mask"
+topic = "主线二：为什么装学渣"
+keywords = ["为什么装", "装学渣", "原因"]
+points = ["贺朝是因为对朋友的愧疚（因此留级了一年）", "谢俞是因为家庭原因、为了母亲"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.plot]]
+id = "wz-plot-open"
+topic = "主线三：揭破伪装之后"
+keywords = ["后来", "结局", "揭破", "恢复"]
+points = ["两人的伪装先后被揭破，恢复原来的水平", "高考谢俞是省状元、贺朝低两分，一起考进清华"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.disputes]]
+id = "wz-disp-like"
+topic = "为什么有人爱、有人吐槽"
+keywords = ["吐槽", "争议", "好看吗", "有人不喜欢", "评价"]
+her_take = "我就是吃轻松甜的那派，非说它单薄我也认，但我看得开心"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921", "https://www.zhihu.com/question/450686806"]
+[[read_books.disputes.sides]]
+view = "喜欢的一派：校园青春甜文，文风诙谐幽默、行文流畅，讲的是成长那点小事"
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+[[read_books.disputes.sides]]
+view = "吐槽的一派：知乎上就有《为什么有那么多人吐槽《伪装学渣》》这种提问（正文未获取）"
+sources = ["https://www.zhihu.com/question/450686806"]
+
+[[read_books.adaptations]]
+id = "wz-adapt-audio"
+name = "广播剧（猫耳FM）"
+topic = "广播剧（猫耳FM）"
+diff = ["第一季 15 期，第二季 13 期（含一期番外），每期约 20 分钟", "配音：谢俞-风袖，贺朝-谢添天，报幕/陈雄虎-夏磊", "广播剧删改了原著哪些部分：未获取"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.adaptations]]
+id = "wz-adapt-song"
+name = "官方主题曲《俞木逢朝》"
+topic = "官方主题曲《俞木逢朝》"
+diff = ["2021-12-26 上线，刘瑞琦演唱（出处：网易云音乐）"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E4%BC%AA%E8%A3%85%E5%AD%A6%E6%B8%A3/23480921"]
+
+[[read_books.unknown]]
+id = "wz-unknown-1"
+topic = "具体章节的逐段内容（未获取）"
+keywords = ["第几章", "多少章", "几章", "逐段", "原文细节"]
+note = "百科只有目录与提要，逐章正文与逐段对话未获取"
+sources = []
+
+[[read_books.unknown]]
+id = "wz-unknown-2"
+topic = "漫画/影视改编（未获取）"
+keywords = ["漫画", "动画", "电视剧", "影视化"]
+note = "公开资料里没查到《伪装学渣》的漫画或影视改编 → 她不许顺着聊"
+sources = []
+
+[[read_books]]
+id = "saye"
+title = "撒野"
+author = "巫哲"
+kind = "纯爱·青春·校园·成长"
+platform = "晋江文学城"
+status = "已完结（正文 2017-04-30 完结，番外到 2017-05-07）"
+chapters = 145
+total_source = "https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396", "https://wapbaike.baidu.com/item/%E8%92%8B%E4%B8%9E/23632259", "https://wapbaike.baidu.com/item/%E5%B7%A6%E8%82%A9%E6%9C%89%E4%BD%A0"]
+names = ["蒋丞", "顾飞", "顾淼", "李保国", "丞哥", "左肩有你"]
+why_her = "现实向、烟火气重，读的时候心里堵得慌但是放不下"
+attitude = "「我想，左肩有你，右肩微笑」这句我记了很久"
+avoid = ["剧版《左肩有你》她没看过", "广播剧四季、有声书她都没听过"]
+unresolved = ["总字数：未获取", "结局的官方口径（是否有番外之后的后续）：未获取", "剧版《左肩有你》的播出情况与剧情改动：未获取（只查到 24 集、主演与导演）"]
+verify_note = "wapbaike 作品页 200（人物介绍 + 145 章正文 + 5 篇番外目录 + 衍生）；蒋丞页 200；《左肩有你》页 200"
+verified_on = "2026-10-03"
+
+[[read_books.basic]]
+id = "sy-basic-1"
+topic = "基本档案"
+keywords = ["谁写的", "作者", "平台", "什么时候"]
+points = ["巫哲写的（昵称球球），2016-10-30 到 2017-05-07 在晋江连载", "正文 145 章，后面还有 5 篇「三年后」的番外", "2018 年 10 月由北京联合出版公司出实体书"]
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.basic]]
+id = "sy-basic-2"
+topic = "内容简介"
+keywords = ["讲什么", "主线", "简介", "剧情"]
+points = ["重点学校的优等生蒋丞被寄养家庭「流放」到亲生父亲所在的钢厂", "在那儿遇到「钢厂小霸王」顾飞，两人互相扶持、一起往外走", "作品页的定位是现实向青春小说，巫哲「钢厂系列」的代表作"]
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.basic]]
+id = "sy-basic-3"
+topic = "成绩与出版"
+keywords = ["火吗", "成绩", "获奖", "出版"]
+points = ["2018 年拿过「金键盘」奖的优秀有声改编作品奖", "实体书 2018-10 北京联合出版公司；作者另有《狼行成双》《轻狂》等"]
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.characters]]
+id = "sy-char-jiang"
+name = "蒋丞"
+role = "主角"
+topic = "蒋丞"
+keywords = ["蒋丞", "丞哥", "男主角"]
+points = ["从小在养父母家，突然被告知退养，一夜之间生活翻天覆地", "从城市来到钢厂，这里有个酒鬼亲生父亲；他一心要走出去", "为了未来努力、为生活奔波，从不掩饰自己的闪光点"]
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396", "https://wapbaike.baidu.com/item/%E8%92%8B%E4%B8%9E/23632259"]
+
+[[read_books.characters]]
+id = "sy-char-gu"
+name = "顾飞"
+role = "主角"
+topic = "顾飞"
+keywords = ["顾飞", "钢厂小霸王", "离不开钢厂", "顾淼"]
+points = ["有专业摄影师的水准，打篮球满点，自己谱曲自己弹吉他", "家里有个爱喝酒爱家暴的父亲、渴望爱情的母亲，还有自闭症的妹妹顾淼", "所以他把天赋埋着，直到在蒋丞的帮助下慢慢找回自己"]
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.characters]]
+id = "sy-char-miao"
+name = "顾淼"
+role = "配角"
+topic = "顾淼"
+keywords = ["顾淼", "妹妹", "自闭症"]
+points = ["顾飞的妹妹，患有严重自闭症", "这也是顾飞离不开那个地方的重要原因"]
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.characters]]
+id = "sy-char-li"
+name = "李保国"
+role = "配角"
+topic = "李保国"
+keywords = ["李保国", "生父", "亲生父亲"]
+points = ["蒋丞的生父，视牌如命、拿烟当饭吃，自私市侩但不奸恶", "不知道怎么培养孩子，却为孩子自豪"]
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.characters]]
+id = "sy-char-pet"
+name = "那只叫「丞哥」的小母猫"
+role = "配角"
+topic = "那只叫「丞哥」的小母猫"
+keywords = ["小母猫", "叫丞哥", "宠物"]
+points = ["书里养了一只小母猫，名字就叫「丞哥」；顾飞说不叫咪咪"]
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.relations]]
+id = "sy-rel-cp"
+topic = "官配：蒋丞 × 顾飞"
+keywords = ["CP", "官配", "一对", "磕CP"]
+points = ["作品页写的是两人「相互扶持、共同成长的救赎故事」", "官方主题曲叫《撒野》，由林一卡、凯瑟喵演唱"]
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.scenes]]
+id = "sy-scene-open"
+topic = "名场面：第 1 章那句「晚了，已经撕票了」"
+keywords = ["撕票", "第1章", "开头"]
+summary = "第 1 章的提要，蒋丞接起电话说的第一句就是这么一句"
+quote = "晚了，已经撕票了。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.scenes]]
+id = "sy-scene-alone"
+topic = "名场面：第 6 章「这世界没有我」"
+keywords = ["这世界没有我", "第6章"]
+summary = "第 6 章的提要，整本书里最丧的一句之一"
+quote = "这世界没有我。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.scenes]]
+id = "sy-scene-sofa"
+topic = "名场面：「不要睡沙发」"
+keywords = ["沙发", "睡里边"]
+summary = "顾飞头也不抬地说「你睡里边儿吧，不要睡沙发」"
+quote = "你睡里边儿吧，不要睡沙发。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.scenes]]
+id = "sy-scene-sorry"
+topic = "名场面：「我错了丞哥」"
+keywords = ["我错了", "丞哥"]
+summary = "顾飞认怂的那一句，被读者做成了梗"
+quote = "不能，我错了丞哥。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.scenes]]
+id = "sy-scene-boyfriend"
+topic = "名场面：「辛苦了男朋友」"
+keywords = ["男朋友", "辛苦了", "亲上去"]
+summary = "蒋丞在顾飞唇上亲了一下，说的就是这句"
+quote = "辛苦了男朋友。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.scenes]]
+id = "sy-scene-cat"
+topic = "名场面：小母猫叫「丞哥」"
+keywords = ["小母猫", "叫丞哥", "咪咪"]
+summary = "书里那只小母猫叫「丞哥」；顾飞特意说「不叫咪咪」"
+quote = "一只小母猫，叫丞哥。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.scenes]]
+id = "sy-scene-love"
+topic = "名场面：第 139 章「蒋丞我爱你」"
+keywords = ["蒋丞我爱你", "表白", "第139章"]
+summary = "第 139 章的提要就这五个字"
+quote = "蒋丞我爱你。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.scenes]]
+id = "sy-scene-forward"
+topic = "番外 3：各自往前的那一句"
+keywords = ["番外", "三年后", "坚持", "前进"]
+summary = "番外 3《哦哟还是三年后》的提要，两人一个选择坚持、一个选择前进"
+quote = "他选择了坚持，顾飞选择了前进。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.scenes]]
+id = "sy-scene-birthday"
+topic = "番外 4：回钢厂过生日"
+keywords = ["生日", "回钢厂", "番外4"]
+summary = "番外 4《毕业》里顾飞说的那句"
+quote = "生日的时候跟我回趟钢厂吧。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.scenes]]
+id = "sy-scene-shoulder"
+topic = "名句：「我想，左肩有你，右肩微笑」"
+keywords = ["左肩有你", "右肩微笑", "简介"]
+summary = "作品页内容简介开头就是这三句"
+quote = "我想，左肩有你，右肩微笑。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.plot]]
+id = "sy-plot-start"
+topic = "主线一：被退养到钢厂"
+keywords = ["开头", "退养", "钢厂"]
+points = ["蒋丞从养父母家被退养，一夜之间生活翻天覆地", "他来到亲生父亲所在的钢厂，跟这里格格不入"]
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.plot]]
+id = "sy-plot-gu"
+topic = "主线二：顾飞的天赋与家庭"
+keywords = ["顾飞", "转折", "中间"]
+points = ["顾飞天赋极高却宁愿埋没：摄影、篮球、写歌弹吉他都会", "爱喝酒爱家暴的父亲、渴望爱情的母亲、自闭症的妹妹把他钉在那儿", "后来在蒋丞的帮助下，他逐渐找到了自我"]
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.plot]]
+id = "sy-plot-end"
+topic = "结局：正文与番外"
+keywords = ["结局", "最后", "结尾", "HE", "BE"]
+points = ["正文 145 章完结，之后是 5 篇「三年后」的番外", "番外 3 写「他选择了坚持，顾飞选择了前进」", "番外 5 叫《跟着光》，最后一句是「生日快乐丞哥」"]
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.disputes]]
+id = "sy-disp-be"
+topic = "结局到底算不算 BE"
+keywords = ["BE", "结局", "暗藏", "争议", "是不是悲剧"]
+her_take = "我算中间派：他们是往前走了，但那个地方太苦，我难受了两天"
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396", "https://www.zhihu.com/question/446594951"]
+[[read_books.disputes.sides]]
+view = "一派说是好结局：正文写完两人各自往前走，番外三年后还在一起、还回钢厂过生日"
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+[[read_books.disputes.sides]]
+view = "一派总觉得藏着 BE：知乎上就有《《撒野》是否暗藏 BE 结局？》这种提问（正文未获取）"
+sources = ["https://www.zhihu.com/question/446594951"]
+
+[[read_books.adaptations]]
+id = "sy-adapt-tv"
+name = "电视剧《左肩有你》"
+topic = "电视剧《左肩有你》"
+diff = ["24 集、每集 45 分钟，腾讯视频，范丞丞/王安宇/王圣迪主演", "导演程孝泽、牛超，编剧翦以玟，巫哲也挂名编剧", "剧照 2020 年发布后引起原书粉丝大量讨论；具体剧情改动未获取"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E5%B7%A6%E8%82%A9%E6%9C%89%E4%BD%A0", "https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.adaptations]]
+id = "sy-adapt-audio"
+name = "广播剧（猫耳FM）"
+topic = "广播剧（猫耳FM）"
+diff = ["猫耳FM 独播，玉苍红工作室出品，共四季，前两季各 10 期", "第三、四季由艺海佳音录制；具体删改未获取"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.adaptations]]
+id = "sy-adapt-book"
+name = "有声书（喜马拉雅）"
+topic = "有声书（喜马拉雅）"
+diff = ["喜马拉雅出品、8082audio 制作，共 324 集，已完结", "蒋丞/旁白-大鲲er，顾飞-钱文青，女性角色-朔小兔"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.adaptations]]
+id = "sy-adapt-song"
+name = "主题曲《撒野》"
+topic = "主题曲《撒野》"
+diff = ["小说官方主题曲，林一卡、凯瑟喵演唱"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E6%92%92%E9%87%8E/21860396"]
+
+[[read_books.unknown]]
+id = "sy-unknown-1"
+topic = "逐章细节（未获取）"
+keywords = ["第几章", "逐段", "原文细节", "具体章节"]
+note = "只有 145 章目录与提要，逐章正文与逐段对话未获取"
+sources = []
+
+[[read_books.unknown]]
+id = "sy-unknown-2"
+topic = "剧版播出与改动（未获取）"
+keywords = ["播出", "什么时候播", "剧版结局", "改了什么"]
+note = "只查到 24 集与主创；播出情况与剧情改动未获取"
+sources = []
+
+[[read_books]]
+id = "jiangjinjiu"
+title = "将进酒"
+author = "唐酒卿"
+kind = "古代·纯爱·权谋"
+platform = "晋江文学城"
+status = "已完结（2018 年创作、2019 年完结）"
+total_source = "https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4"
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4", "https://wapbaike.baidu.com/item/%E5%B0%86%E8%BF%9B%E9%85%92/63247956", "https://wapbaike.baidu.com/tashuo/browse/content?id=e0a309bf5f00057891c7b850", "https://wapbaike.baidu.com/tashuo/browse/content?id=d4666d642170568d293d8ca1"]
+names = ["沈泽川", "沈兰舟", "萧驰野", "萧策安", "姚元琢", "乔松月", "沈卫", "兰舟", "策安", "元琢", "松月"]
+why_her = "文风好看，权谋线能顺着往下聊；副线那对最要命"
+attitude = "策舟是糖，元琢松月是刀——我磕的是前者，哭的是后者"
+avoid = ["多人有声剧她没听过", "影视化还没成型，她也不聊"]
+unresolved = ["总章数：未获取", "总字数：未获取", "广播剧/漫画改编：未获取", "完整章节目录与卷目：未获取"]
+verify_note = "有声剧词条 200（角色介绍含沈泽川/萧驰野）；百科 TA 说两篇 200（创作与完结年份、出版、积分、副线）；知乎长文 403 未采用"
+verified_on = "2026-10-03"
+
+[[read_books.basic]]
+id = "jj-basic-1"
+topic = "基本档案"
+keywords = ["谁写的", "作者", "平台", "什么时候"]
+points = ["唐酒卿写的，2018 年起在晋江连载、2019 年完结", "2020 年 4 月由江苏凤凰文艺出版社出版，酷威文化出品", "TA 说里写它的积分成绩突破 88 亿"]
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4"]
+
+[[read_books.basic]]
+id = "jj-basic-2"
+topic = "内容简介"
+keywords = ["讲什么", "主线", "简介", "剧情"]
+points = ["背景是大周王朝咸德年间，建兴王沈卫在东北茶石河兵败", "中博六州几乎被外敌占领，其子沈泽川被押送京城", "沈泽川和萧驰野从针锋相对到惺惺相惜，最后共筑宏伟大业"]
+sources = ["https://wapbaike.baidu.com/item/%E5%B0%86%E8%BF%9B%E9%85%92/63247956"]
+
+[[read_books.basic]]
+id = "jj-basic-3"
+topic = "作品口碑"
+keywords = ["火吗", "评价", "口碑", "成绩"]
+points = ["它的文风稳而不失华彩，很多读者说治好了自己一目十行的毛病", "同一位作者的代表作还有《恣睢之臣》"]
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4", "https://wapbaike.baidu.com/item/%E5%B0%86%E8%BF%9B%E9%85%92/63247956"]
+
+[[read_books.characters]]
+id = "jj-char-shen"
+name = "沈泽川（字兰舟）"
+role = "主角"
+topic = "沈泽川（字兰舟）"
+keywords = ["沈泽川", "沈兰舟", "兰舟"]
+points = ["字兰舟，建兴王沈卫的庶出第八子，聪慧敏感、心思深沉", "母亲是端州舞伎白茶，他继承了母亲的容貌；右耳戴萧驰野送的耳坠", "有握扇的习惯，体质较弱"]
+sources = ["https://wapbaike.baidu.com/item/%E5%B0%86%E8%BF%9B%E9%85%92/63247956"]
+
+[[read_books.characters]]
+id = "jj-char-xiao"
+name = "萧驰野（字策安）"
+role = "主角"
+topic = "萧驰野（字策安）"
+keywords = ["萧驰野", "萧策安", "策安"]
+points = ["字策安，离北王萧方旭的小儿子，生性刚猛、聪慧敏锐，身材高大", "十四岁跟着大哥出战边沙，大哥被围时半夜带二十卫兵潜进敌方恭道蛰伏两日，放火烧粮"]
+sources = ["https://wapbaike.baidu.com/item/%E5%B0%86%E8%BF%9B%E9%85%92/63247956"]
+
+[[read_books.characters]]
+id = "jj-char-yuan"
+name = "姚元琢与乔松月"
+role = "副线（意难平）"
+topic = "姚元琢与乔松月"
+keywords = ["姚元琢", "元琢", "乔松月", "松月", "副CP"]
+points = ["元琢身残志坚，在中博辅佐兰舟；乔松月是他把温柔全给了的那个人", "书粉最大的遗憾是他们这一生只见过两次面：一次在阳春三月相遇，一次再无人赴的春三月"]
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4"]
+
+[[read_books.relations]]
+id = "jj-rel-cp"
+topic = "官配：沈泽川 × 萧驰野（策舟）"
+keywords = ["CP", "官配", "策舟", "一对", "磕CP"]
+points = ["书评把这对称作「策舟的双向奔赴」", "沈泽川右耳戴的是萧驰野送的耳坠"]
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4", "https://wapbaike.baidu.com/item/%E5%B0%86%E8%BF%9B%E9%85%92/63247956"]
+
+[[read_books.scenes]]
+id = "jj-scene-kick"
+topic = "名场面：开篇萧策安那一脚"
+keywords = ["那一脚", "开篇", "踹了一脚"]
+summary = "开篇萧策安那一脚不只踹在兰舟身上，「更是把书粉踹的心疼了」"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4"]
+
+[[read_books.scenes]]
+id = "jj-scene-home"
+topic = "名场面：城墙上那句「策安，回家吧」"
+keywords = ["策安回家吧", "回家吧", "城墙"]
+summary = "萧策安陷入困局时，站在城墙上的兰舟喊了这句；这句被书粉说「真的太催泪了」"
+quote = "策安，回家吧。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4"]
+
+[[read_books.scenes]]
+id = "jj-scene-lan"
+topic = "名场面：「轻解罗裳，独上兰舟」的一语双关"
+keywords = ["轻解罗裳", "独上兰舟", "兰舟名字"]
+summary = "「轻解罗裳，独上兰舟」这样一语双关写出了两人的双向奔赴"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4"]
+
+[[read_books.scenes]]
+id = "jj-scene-lost"
+topic = "意难平：元琢松月的两次见面"
+keywords = ["元琢松月", "两次见面", "意难平", "遗憾"]
+summary = "书粉说他们一生只见过两次面，所以「策安是糖，元琢松月就是刀」"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4"]
+
+[[read_books.scenes]]
+id = "jj-scene-earring"
+topic = "细节：右耳的耳坠和手里的扇子"
+keywords = ["耳坠", "扇子", "握扇"]
+summary = "沈泽川右耳戴萧驰野赠的耳坠，有握扇的习惯（有声剧词条的角色介绍）"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E5%B0%86%E8%BF%9B%E9%85%92/63247956"]
+
+[[read_books.scenes]]
+id = "jj-scene-shaonian"
+topic = "细节：萧驰野十四岁那一战"
+keywords = ["十四岁", "边沙", "烧粮", "恭道"]
+summary = "十四岁随大哥出战边沙，大哥被围时半夜带二十卫兵潜进敌方恭道蛰伏两日，然后放火烧粮"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E5%B0%86%E8%BF%9B%E9%85%92/63247956"]
+
+[[read_books.scenes]]
+id = "jj-scene-start"
+topic = "名场面：茶石河兵败与押送京城"
+keywords = ["茶石河", "兵败", "押送", "开篇"]
+summary = "建兴王沈卫在东北茶石河兵败，中博六州几乎失守，其子沈泽川被押送京城"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E5%B0%86%E8%BF%9B%E9%85%92/63247956"]
+
+[[read_books.scenes]]
+id = "jj-scene-manyu"
+topic = "题外话：兰舟这个称呼"
+keywords = ["兰舟", "名字", "为什么叫"]
+summary = "角色介绍里写明他字兰舟；有书评把它和李清照那句「独上兰舟」连起来讲"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E5%B0%86%E8%BF%9B%E9%85%92/63247956", "https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4"]
+
+[[read_books.plot]]
+id = "jj-plot-start"
+topic = "主线一：兵败与入京"
+keywords = ["开头", "背景", "主线"]
+points = ["大周咸德年间，建兴王沈卫在茶石河兵败，中博六州几乎被外敌占领", "沈泽川被押送到京城，成了众人唾弃的残余"]
+sources = ["https://wapbaike.baidu.com/item/%E5%B0%86%E8%BF%9B%E9%85%92/63247956"]
+
+[[read_books.plot]]
+id = "jj-plot-mid"
+topic = "主线二：从针锋相对到并肩"
+keywords = ["转折", "中间", "发展"]
+points = ["沈泽川与萧驰野从针锋相对，到惺惺相惜，再到共筑宏伟大业", "一路相携，成就天下共主"]
+sources = ["https://wapbaike.baidu.com/item/%E5%B0%86%E8%BF%9B%E9%85%92/63247956"]
+
+[[read_books.plot]]
+id = "jj-plot-side"
+topic = "主线三：中博与副线"
+keywords = ["副线", "中博", "元琢"]
+points = ["元琢身残志坚，在中博辅佐兰舟；兰舟后来成了天下共主，世间却没了元琢", "这也是书粉们的意难平"]
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4"]
+
+[[read_books.disputes]]
+id = "jj-disp-taste"
+topic = "策舟是糖、元琢松月是刀，你站哪边"
+keywords = ["意难平", "元琢", "松月", "哪对", "虐心"]
+her_take = "两边我都懂，但要我选，我更心疼元琢松月那对"
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4"]
+[[read_books.disputes.sides]]
+view = "一派吃主 CP：策舟是双向奔赴，城墙那句「策安，回家吧」是全书最催泪的地方之一"
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4"]
+[[read_books.disputes.sides]]
+view = "一派更放不下副线：元琢松月一生只见两次面，被书粉当成最大的遗憾"
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4"]
+
+[[read_books.adaptations]]
+id = "jj-adapt-audio"
+name = "多人有声剧（喜马拉雅）"
+topic = "多人有声剧（喜马拉雅）"
+diff = ["喜马拉雅出品、扶暖文化制作，共 472 集，已完结", "2021-07-26 起在喜马拉雅播出；截至 2025-02-17 累计播放量 1.65 亿", "沈泽川配音陈张太康，萧驰野配音孙晔，旁白刘垚"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E5%B0%86%E8%BF%9B%E9%85%92/63247956"]
+
+[[read_books.adaptations]]
+id = "jj-adapt-tv"
+name = "影视化（版权方信息）"
+topic = "影视化（版权方信息）"
+diff = ["同一作者词条的相关推荐里写着「小说《将进酒》影视化？版权在南派三叔手里」", "立项、选角与剧情：未获取"]
+watched = false
+sources = ["https://wapbaike.baidu.com/tashuo/browse/content?id=3401e8c254a7f2b3b6e8fad4"]
+
+[[read_books.unknown]]
+id = "jj-unknown-1"
+topic = "总章数/总字数（未获取）"
+keywords = ["多少章", "几章", "多少字", "章数"]
+note = "公开资料里没查到可靠的章数与字数口径 → 只说记不清，不许报数字"
+sources = []
+
+[[read_books.unknown]]
+id = "jj-unknown-2"
+topic = "广播剧/漫画（未获取）"
+keywords = ["广播剧", "漫画", "动漫"]
+note = "只查到多人有声剧；广播剧与漫画未获取"
+sources = []
+
+[[read_books]]
+id = "mozu"
+title = "魔道祖师"
+title_alt = "无羁"
+author = "墨香铜臭"
+kind = "耽美·玄幻"
+platform = "晋江文学城"
+status = "已完结（正文 2016-03-01 初版完结，2016-09-07 修文完成）"
+words = 69
+total_source = "https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127", "https://wapbaike.baidu.com/item/%E9%AD%8F%E6%97%A0%E7%BE%A1/19655392", "https://zh.moegirl.org.cn/%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88", "https://wapbaike.baidu.com/item/%E9%99%88%E6%83%85%E4%BB%A4"]
+names = ["魏无羡", "魏婴", "夷陵老祖", "蓝忘机", "蓝湛", "江澄", "江厌离", "金子轩", "金凌", "蓝曦臣", "金光瑶", "聂明玦", "薛洋", "晓星尘", "宋岚", "温宁", "温情", "莫玄羽", "蓝思追", "温苑", "忘羡", "陈情令"]
+why_her = "群像 + 悬疑线，配角个个有故事，重看还能捡到新东西"
+attitude = "「管它熙熙攘攘阳关道，我偏要一条独木桥走到黑」这句最像我认识的那个人"
+avoid = ["动画三季她没看过（只读了原著）", "剧版《陈情令》没看过", "广播剧和漫画没听过/没看过"]
+unresolved = ["总章数：未获取（百科只给字数 69 万与目录）", "《陈情令》具体改了哪些剧情：未获取（只查到 50 集、2019-06-27 上线）", "动画三季的具体改编差异：未获取"]
+verify_note = "wapbaike 作品页 200（含大事记、人物表、目录、名句引文与读者分析段）；魏无羡页 200；萌娘百科 200（动画/漫画/剧版条目）；《陈情令》页 200"
+verified_on = "2026-10-03"
+
+[[read_books.basic]]
+id = "mz-basic-1"
+topic = "基本档案"
+keywords = ["谁写的", "作者", "平台", "什么时候"]
+points = ["墨香铜臭写的原创耽美玄幻长篇，2015-10-31 在晋江开始连载", "正文 2016-03-01 初版完结、2016-09-07 修文完成，2018-01-01 更完四篇番外", "全书 69 万字；简体版第一卷《无羁》2018-11 由四川文艺出版社出版"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.basic]]
+id = "mz-basic-2"
+topic = "内容简介"
+keywords = ["讲什么", "主线", "简介", "剧情"]
+points = ["魏无羡修鬼道被反噬后重生，和蓝忘机以一只断手为线索，把前世的谜团一层层揭开", "叙述上是插叙，回忆线与现在交叉推进，中间还有义城副本", "结局要戳破金光瑶谋害仙门百家的阴谋，也揭开魏无羡十三年前被逼死的真相"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.basic]]
+id = "mz-basic-3"
+topic = "名句与评价"
+keywords = ["名句", "句子", "为什么好看", "评价"]
+points = ["作品页点名读者记得的句子：「管它熙熙攘攘阳关道，我偏要一条独木桥走到黑」", "还有「兄长，我想带一人回云深不知处，带回去，藏起来」", "作品页的评语是有糖有刀、文笔轻松有趣；人名地名与佩剑都跟角色性格呼应"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.characters]]
+id = "mz-char-wwx"
+name = "魏无羡"
+role = "主角"
+topic = "魏无羡"
+keywords = ["魏无羡", "魏婴", "夷陵老祖", "莫玄羽"]
+points = ["字无羡，佩剑「随便」、鬼笛「陈情」；幼年父母在夜猎中丧生，被江枫眠带回莲花坞", "把金丹剖给江澄之后被扔下乱葬岗，在里头待了三个月，出来参加射日之征", "十三年后被莫玄羽献舍重生，与蓝忘机一路追着被分尸者的身份"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127", "https://wapbaike.baidu.com/item/%E9%AD%8F%E6%97%A0%E7%BE%A1/19655392"]
+
+[[read_books.characters]]
+id = "mz-char-lwj"
+name = "蓝忘机"
+role = "主角"
+topic = "蓝忘机"
+keywords = ["蓝忘机", "蓝湛", "含光君"]
+points = ["姑苏蓝氏二公子，卷云纹抹额，品貌在世家公子中排第二，被称为「皎皎君子，泽世明珠」", "为救暴走的魏无羡打伤自家三十三位前辈，被罚三十三条戒鞭、禁足三年", "苦守十三年，十三年后认出被献舍重生的魏无羡，最后与魏无羡终成眷属"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.characters]]
+id = "mz-char-jc"
+name = "江澄"
+role = "配角"
+topic = "江澄"
+keywords = ["江澄", "云梦双杰"]
+points = ["江枫眠与虞紫鸢之子，现任江家家主，细眉杏目、毒舌、最讨厌被比下去", "为救魏无羡独自引开温家人被抓住，被温逐流化去金丹；魏无羡把金丹剖出来换给了他", "他原本不知道剖丹的事，是后来听温宁说的；与魏无羡见面必吵，其实关心他"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.characters]]
+id = "mz-char-jgy"
+name = "金光瑶"
+role = "反派"
+topic = "金光瑶"
+keywords = ["金光瑶", "孟瑶", "仙督"]
+points = ["原名孟瑶，金光善与娼妓孟诗的私生子，后来做了兰陵金氏家主、被尊为仙督", "到兰陵寻父时被父亲示意家仆踹下千级石阶；救过蓝曦臣，也与聂明玦、蓝曦臣义结金兰", "过目不忘、无师自通，也睚眦必报：亲手了结父亲，设计害死聂明玦"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.characters]]
+id = "mz-char-xy"
+name = "薛洋与晓星尘（义城篇）"
+role = "配角"
+topic = "薛洋与晓星尘（义城篇）"
+keywords = ["薛洋", "晓星尘", "义城", "宋岚", "阿箐"]
+points = ["薛洋小时候被常慈安哄骗失了左手小指，长大后灭了常氏满门；被晓星尘抓住后开始报复", "晓星尘为救好友宋岚把双眼给了他；眼盲后在义城阴差阳错救了重伤的薛洋", "薛洋骗他去屠杀村民、误杀宋岚，晓星尘绝望自尽，魂魄被薛洋收进锁灵囊"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.characters]]
+id = "mz-char-wn"
+name = "温宁与温情"
+role = "配角"
+topic = "温宁与温情"
+keywords = ["温宁", "鬼将军", "温情"]
+points = ["温宁是夷陵老祖座下的高阶凶尸「鬼将军」，思想行动与常人无异", "温情医术了得，江澄被化去金丹后应魏无羡之请剖丹换给江澄", "穷奇道截杀后姐弟俩为不连累魏无羡束手就缚，温情被挫骨扬灰而死"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.characters]]
+id = "mz-char-jyl"
+name = "江厌离与金子轩"
+role = "配角"
+topic = "江厌离与金子轩"
+keywords = ["江厌离", "师姐", "金子轩", "金凌"]
+points = ["江厌离是江澄的姐姐，金子轩是金光善嫡子、品貌榜第三，两人成婚", "金子轩后温宁失控时被误杀；江厌离不久后为救魏无羡而死", "他们的儿子金凌成了兰陵金氏家主，眉心点丹砂，被蓝景仪叫「大小姐」"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.characters]]
+id = "mz-char-lxc"
+name = "蓝曦臣与聂明玦"
+role = "配角"
+topic = "蓝曦臣与聂明玦"
+keywords = ["蓝曦臣", "泽芜君", "聂明玦", "赤锋尊", "三尊"]
+points = ["蓝曦臣是蓝忘机的兄长，与蓝忘机并称「蓝氏双璧」，清煦温雅", "他与聂明玦、金光瑶结义，排名第二，三人被尊为「三尊」", "聂明玦刚正不阿，察觉金光瑶的真面目后被设计杀害并分尸"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.relations]]
+id = "mz-rel-wangxian"
+topic = "官配：魏无羡 × 蓝忘机（忘羡）"
+keywords = ["忘羡", "CP", "官配", "一对"]
+points = ["云梦观音庙里两人互通心意，三个月后回云深不知处，蓝家长辈承认了他们的道侣身份", "蓝忘机苦守十三年；重逢后一路追着奇案，最后终成眷属"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.relations]]
+id = "mz-rel-yunmeng"
+topic = "云梦双杰：魏无羡 × 江澄"
+keywords = ["云梦双杰", "兄弟", "江澄和魏无羡"]
+points = ["两人一起在莲花坞长大，年少时定下「云梦双杰」的约定", "江澄为救魏无羡被化去金丹，魏无羡把金丹剖给了他，但江澄一直不知道"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.scenes]]
+id = "mz-scene-tianzi"
+topic = "名场面：云深不知处听学、翻墙带天子笑被抓"
+keywords = ["天子笑", "听学", "翻墙", "初遇"]
+summary = "魏无羡十五岁去姑苏蓝氏听学，夜半翻墙带天子笑，被巡夜的蓝忘机抓个正着"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E9%AD%8F%E6%97%A0%E7%BE%A1/19655392"]
+
+[[read_books.scenes]]
+id = "mz-scene-hide"
+topic = "名句：「带一人回云深不知处，带回去，藏起来」"
+keywords = ["藏起来", "云深不知处", "带一人"]
+summary = "作品页把它和另一句并列为读者即使忘了细节也记得的句子"
+quote = "兄长，我想带一人回云深不知处，带回去，藏起来。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.scenes]]
+id = "mz-scene-bridge"
+topic = "名句：「一条独木桥走到黑」"
+keywords = ["独木桥", "阳关道", "走到黑"]
+summary = "作品页点名的那句，常被拿来概括魏无羡这个人"
+quote = "管它熙熙攘攘阳关道，我偏要一条独木桥走到黑。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.scenes]]
+id = "mz-scene-shiyan"
+topic = "名场面：第 102 章「对不起。我食言了。」"
+keywords = ["食言", "对不起", "观音庙", "云梦双杰"]
+summary = "第 102 章的提要就这一句；背景是观音庙那段，江澄拿当年「云梦双杰」的约定质问他"
+quote = "对不起。我食言了。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.scenes]]
+id = "mz-scene-jindan"
+topic = "名场面：剖丹换给江澄"
+keywords = ["剖丹", "金丹", "换给他"]
+summary = "魏无羡修鬼道的原因之一：他让温氏最好的医师温情把他的金丹剖出来换给了江澄"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.scenes]]
+id = "mz-scene-whiplash"
+topic = "名场面：三十三条戒鞭与苦守十三年"
+keywords = ["戒鞭", "三十三", "十三年", "禁足"]
+summary = "蓝忘机为救暴走的魏无羡打伤自家三十三位前辈，被罚三十三条戒鞭、禁足三年"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.scenes]]
+id = "mz-scene-nightless"
+topic = "名场面：血洗不夜天"
+keywords = ["不夜天", "血洗", "围剿"]
+summary = "魏无羡血洗不夜天城之后昏迷，蓝忘机因救走他受罚；这是两人的分界点"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.scenes]]
+id = "mz-scene-yicheng"
+topic = "名场面：义城篇（薛洋与晓星尘）"
+keywords = ["义城", "锁灵囊", "霜华", "攥着糖"]
+summary = "薛洋骗眼盲的晓星尘屠杀村民、误杀宋岚，逼得晓星尘自尽；他疯狂收残魂只想复活晓星尘"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.scenes]]
+id = "mz-scene-luanzang"
+topic = "名场面：第二次乱葬岗围剿，魏无羡以己为饵"
+keywords = ["乱葬岗", "围剿", "召阴旗", "救众人"]
+summary = "金光瑶把玄门几千人引到乱葬岗；魏无羡以自己为召阴旗作饵，和蓝忘机一起解救了大家"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.scenes]]
+id = "mz-scene-guanyin"
+topic = "名场面：观音庙互通心意 → 结为道侣"
+keywords = ["观音庙", "表白", "道侣", "结局"]
+summary = "观音庙内两人互通心意，三个月后回云深不知处，家中长辈承认了道侣身份"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.plot]]
+id = "mz-plot-rebirth"
+topic = "主线一：献舍重生与断手案"
+keywords = ["重生", "献舍", "开头", "主线"]
+points = ["魏无羡被莫玄羽献舍重生，和蓝忘机以一只断手为线索办案", "一路追着被分尸者的身份，慢慢戳破金光瑶的阴谋"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.plot]]
+id = "mz-plot-past"
+topic = "主线二：前世（莲花坞—射日之征—不夜天）"
+keywords = ["前世", "回忆", "中间"]
+points = ["幼年被江枫眠带回莲花坞，与江澄、江厌离一起长大", "温氏灭莲花坞后他剖丹给江澄、被扔下乱葬岗，三个月后修成鬼道出山", "射日之征后脱离江氏，穷奇道事变后被百家讨伐，死于恶鬼反噬"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127", "https://wapbaike.baidu.com/item/%E9%AD%8F%E6%97%A0%E7%BE%A1/19655392"]
+
+[[read_books.plot]]
+id = "mz-plot-truth"
+topic = "主线三：真相如何揭开"
+keywords = ["真相", "揭秘", "转折"]
+points = ["观音庙揭开戒鞭与烙印的来历、苏涉是穷奇道截杀的元凶之一、金光瑶杀父杀兄杀妻杀子杀师杀友", "莲花坞又揭开金光瑶与秦愫的关系、金光善的死因，以及江澄金丹被修复的真相"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.plot]]
+id = "mz-plot-end"
+topic = "结局"
+keywords = ["结局", "最后", "结尾", "HE", "BE"]
+points = ["魏无羡与蓝忘机结为道侣；两人带着小苹果四方游猎，依旧「逢乱必出」", "三个月后回云深不知处参加蓝氏家宴，长辈承认了他们的道侣身份"]
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.disputes]]
+id = "mz-disp-jiangcheng"
+topic = "江澄该不该恨魏无羡"
+keywords = ["江澄", "该不该恨", "对不起", "谁对谁错", "主角粉"]
+her_take = "我不站谁，只觉得那句「对不起，我食言了」之后两个人都没赢"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127", "https://www.zhihu.com/question/8500984295"]
+[[read_books.disputes.sides]]
+view = "一派站江澄：魏无羡为江家招来灭顶之灾，又在穷奇道失控让温宁杀了金子轩，姐姐随后为救他而死；他当面吼的那句就是「我不该恨你吗？我不能恨你吗？！凭什么现在我好像反而还对不起你了？！」"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+[[read_books.disputes.sides]]
+view = "一派站魏无羡：灭门并非他招来（「无论他救与不救，温家都会吞并其余世家」），他把金丹剖给了江澄才去修鬼道，温宁也拼命救过江澄和金凌"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.disputes]]
+id = "mz-disp-xueyang"
+topic = "薛洋该不该被同情"
+keywords = ["薛洋", "同情", "洗白", "值不值"]
+her_take = "可以写他为什么变成这样，但不等于要我原谅他做过的事"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+[[read_books.disputes.sides]]
+view = "一派觉得他可怜：小时候被常慈安哄骗失了左手小指，曾经只是个爱吃糖、一笑露虎牙的孩子"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+[[read_books.disputes.sides]]
+view = "一派觉得他不可原谅：长大后灭了常氏满门，害死晓星尘与宋岚，临死断臂手里还攥着晓星尘给的糖"
+sources = ["https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.adaptations]]
+id = "mz-adapt-drama"
+name = "电视剧《陈情令》（50 集）"
+topic = "电视剧《陈情令》（50 集）"
+diff = ["2019-06-27 起在腾讯视频独家播出，共 50 集", "具体删改与原著的差异：未获取"]
+watched = false
+sources = ["https://zh.moegirl.org.cn/%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88", "https://wapbaike.baidu.com/item/%E9%99%88%E6%83%85%E4%BB%A4"]
+
+[[read_books.adaptations]]
+id = "mz-adapt-anime"
+name = "动画（腾讯视频，共三季）"
+topic = "动画（腾讯视频，共三季）"
+diff = ["2018-07-09 第一季上线，第二季 2019-08-03，第三季 2021-08-07", "动画由视美影业制作；具体改编差异未获取"]
+watched = false
+sources = ["https://zh.moegirl.org.cn/%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88", "https://wapbaike.baidu.com/item/%E3%80%8A%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88%E3%80%8B/19521127"]
+
+[[read_books.adaptations]]
+id = "mz-adapt-manga"
+name = "漫画（快看漫画）"
+topic = "漫画（快看漫画）"
+diff = ["2017-12-08 起在快看漫画独家连载，企鹅影视出品、浅夏动漫制作、视美影业监制"]
+watched = false
+sources = ["https://zh.moegirl.org.cn/%E9%AD%94%E9%81%93%E7%A5%96%E5%B8%88"]
+
+[[read_books.adaptations]]
+id = "mz-adapt-audio"
+name = "广播剧"
+topic = "广播剧"
+diff = ["《魔道祖师》广播剧 2018 年播出（作者作品表里的衍生广播剧）"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408"]
+
+[[read_books.unknown]]
+id = "mz-unknown-1"
+topic = "总章数与逐章细节（未获取）"
+keywords = ["多少章", "几章", "第几章", "逐段"]
+note = "百科只给 69 万字与目录，没有总章数口径；逐章正文与逐段对话未获取"
+sources = []
+
+[[read_books.unknown]]
+id = "mz-unknown-2"
+topic = "动画/剧版的具体删改（未获取）"
+keywords = ["改了哪里", "删了什么", "剧版结局", "动画结局"]
+note = "改编条目只查到集数与上线时间，具体删改未获取"
+sources = []
+
+[[read_books]]
+id = "tianguan"
+title = "天官赐福"
+title_alt = "纯情太子妖艳妃"
+author = "墨香铜臭"
+kind = "原创·纯爱·架空历史"
+platform = "晋江文学城"
+status = "已完结（正文及番外均已完结，2018-02-25 完结）"
+chapters = 252
+words = 114.47
+total_source = "https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872", "https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839", "https://zh.moegirl.org.cn/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F"]
+names = ["谢怜", "花城", "三郎", "红红儿", "血雨探花", "风信", "慕情", "君吾", "白无相", "贺玄", "师青玄", "雨师篁", "戚容", "半月", "郎千秋", "灵文", "裴宿"]
+why_her = "三世结构写得太狠，第二世那段是边哭边看的"
+attitude = "花城那句「最忠诚的信徒」，我到现在看一次鼻子酸一次"
+avoid = ["动画她没看过", "漫画没看过", "广播剧没听过", "剧版没看过（且立项情况未获取）"]
+unresolved = ["剧版《天官赐福》的开拍与播出情况：未获取（百科只写到 2021 年预计二季度开拍）", "动画/漫画与原著的具体差异：未获取", "广播剧情况：只查到 2022 年有衍生广播剧，细节未获取"]
+verify_note = "wapbaike 作品页 200（252 章目录 + 四卷结构 + 大事记 + 人物表）；花城页 200（血雨探花来历等）；萌娘百科 200"
+verified_on = "2026-10-03"
+
+[[read_books.basic]]
+id = "tg-basic-1"
+topic = "基本档案"
+keywords = ["谁写的", "作者", "平台", "什么时候", "多少字"]
+points = ["墨香铜臭写的，全文 252 章、114 万余字，2017-06-16 在晋江开始连载、2018-02-25 完结", "别名《纯情太子妖艳妃》；2021 年由平心出版社出实体书", "2018 年 6 月版权以超过 4000 万元成交，创下晋江单本作品版权交易最高记录"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.basic]]
+id = "tg-basic-2"
+topic = "内容简介"
+keywords = ["讲什么", "主线", "简介", "剧情"]
+points = ["讲谢怜和花城的三世奇缘：第一世谢怜是仙乐国太子，祭天游中救下一个乞讨的孩子", "第二世人面疫肆虐，谢怜下凡却众叛亲离，花城是陪在他身边的无名之卒", "第三世谢怜再次飞升，花城已是四大鬼王之一的血雨探花，两人并肩作战闯半月关、智斗君吾"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.basic]]
+id = "tg-basic-3"
+topic = "四卷结构"
+keywords = ["分卷", "第几卷", "结构", "章节目录"]
+points = ["目录分四卷：第一卷《血雨探花》、第二卷《太子悦神》、第三卷《百无禁忌》、第四卷《白衣祸世》", "最后一章是第 252 章《鬼王的生辰》"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.characters]]
+id = "tg-char-xl"
+name = "谢怜"
+role = "主角"
+topic = "谢怜"
+keywords = ["谢怜", "太子殿下", "花冠武神"]
+points = ["仙乐国太子，八百年间三次飞升：先被封「花冠武神」，再被贬成「瘟神」，最后被叫「破烂神」", "十七岁上元祭天游扮演悦神武者、救下坠楼孩童，面具掉落成了「太子悦神」这一名景", "仙乐国灭后被打落人间，靠卖艺捡破烂为生，多年后第三次飞升"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.characters]]
+id = "tg-char-hc"
+name = "花城"
+role = "主角"
+topic = "花城"
+keywords = ["花城", "三郎", "红红儿", "鬼王", "血雨探花"]
+points = ["别名血雨探花、三郎、红红儿；十岁在上元祭天游中坠楼被谢怜所救，从此成了他最忠诚的信徒", "死后化鬼仍追随谢怜，险遭魂消魄散后与谢怜分别，经过铜炉山历练成为绝境鬼王", "苦寻多年后在谢怜第三次飞升时于与君山重逢，最后两人心意相通"]
+sources = ["https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839"]
+
+[[read_books.characters]]
+id = "tg-char-jw"
+name = "君吾"
+role = "反派"
+topic = "君吾"
+keywords = ["君吾", "神武大帝", "白无相"]
+points = ["坐镇三界的第一武神，号神武大帝；他其实是上代仙乐太子，血洗天界后捏造新身份再次飞升", "他赏识谢怜，飞升后百般出题，想让谢怜成为他的传人", "与「白衣祸世」白无相的关系：白无相灭的第一个国就是仙乐国，后来被君吾亲自灭去"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.characters]]
+id = "tg-char-servant"
+name = "风信与慕情"
+role = "配角"
+topic = "风信与慕情"
+keywords = ["风信", "慕情", "南风", "扶摇"]
+points = ["风信是谢怜的侍卫、南阳真君；慕情是侍从、玄真将军，出身皇极观扫地杂役", "两人陪谢怜一起被贬，八百年里先后与他分道扬镳", "谢怜第三次飞升后，两人分别以「南风」「扶摇」的化名分身相助"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.characters]]
+id = "tg-char-fs"
+name = "师青玄与贺玄"
+role = "配角"
+topic = "师青玄与贺玄"
+keywords = ["师青玄", "风师", "贺玄", "地师"]
+points = ["师青玄是风师，神像被雕成女像，因此得了诨号「风师娘娘」，他本人也乐意以女相示人", "贺玄借地师明仪的身份混入天庭做卧底，真地师被杀，尸骨被他供在府内", "花城与贺玄后来有利益合作，贺玄欠花城一笔陈年老债"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872", "https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839"]
+
+[[read_books.characters]]
+id = "tg-char-qr"
+name = "戚容与郎千秋"
+role = "配角"
+topic = "戚容与郎千秋"
+keywords = ["戚容", "青鬼", "青灯夜游", "郎千秋"]
+points = ["戚容是仙乐国小镜王、谢怜表弟，后来成了「四大害」里的青鬼「青灯夜游」", "他主使血洗鎏金殿，最后为护住便宜儿子谷子而魂魄消散", "郎千秋是永安开国国主朗英的侄子，感染人面疫后成鬼，被谢怜收留"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.relations]]
+id = "tg-rel-cp"
+topic = "官配：谢怜 × 花城"
+keywords = ["CP", "官配", "一对", "磕CP", "信徒"]
+points = ["作品页写两人是「惺惺相惜，互为信仰」", "花城十岁被谢怜救下后成为他最忠诚的信徒，一鬼一神最后在民间有了被一同供奉的习俗"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872", "https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839"]
+
+[[read_books.scenes]]
+id = "tg-scene-yueshen"
+topic = "名场面：太子悦神"
+keywords = ["太子悦神", "悦神", "祭天游", "面具"]
+summary = "十七岁上元祭天游中，谢怜扮演悦神武者救了从城墙掉落的孩童，面具掉落，这一瞬成了名景"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.scenes]]
+id = "tg-scene-taoyuan"
+topic = "名句：「身在无间，心在桃源」"
+keywords = ["身在无间", "心在桃源", "一念桥"]
+summary = "同年他在一念桥上打败作祟的鬼魂、种下花树，遇到神武大帝时说出这句，当晚飞升"
+quote = "身在无间，心在桃源。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.scenes]]
+id = "tg-scene-three"
+topic = "名场面：三次飞升"
+keywords = ["三次飞升", "飞升", "三飞升", "花冠武神"]
+summary = "第一次是仙乐太子「花冠武神」，第二次与神武大帝大战后再被贬，第三次飞升成了笑柄里的「破烂神」"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.scenes]]
+id = "tg-scene-jump"
+topic = "名场面：花城跳城墙被谢怜接住"
+keywords = ["跳墙", "坠楼", "接住", "信徒"]
+summary = "花城小时候受尽虐待，挑祭天游期间爬城墙想拉整个国家陪葬，看见扮悦神武者的谢怜后忘了自杀，却因靠太近掉了下去，被谢怜接住"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872", "https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839"]
+
+[[read_books.scenes]]
+id = "tg-scene-bloodrain"
+topic = "名场面：血雨探花这个号怎么来的"
+keywords = ["血雨探花", "为什么叫", "血雨", "偏伞"]
+summary = "花城端了戚容的老巢，漫山下了血雨；他走的时候看到路边一朵花被血雨打得凄惨，就偏了偏伞挡了一下，因此得了「血雨探花」这个号"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839"]
+
+[[read_books.scenes]]
+id = "tg-scene-yujunshan"
+topic = "名场面：与君山重逢"
+keywords = ["与君山", "重逢", "新娘", "牵着"]
+summary = "谢怜第三次飞升后，花城终于在与君山找到扮成新娘引鬼新郎的他，破了迷阵后像迎亲一样牵着谢怜走了一路"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839"]
+
+[[read_books.scenes]]
+id = "tg-scene-ashes"
+topic = "名场面：把骨灰信物送给谢怜"
+keywords = ["骨灰", "信物", "护腕"]
+summary = "花城被谢怜识破绝境鬼王的身份后，把自己骨灰烧成的信物赠给了谢怜"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839"]
+
+[[read_books.scenes]]
+id = "tg-scene-fame"
+topic = "名场面：一战成名，三十三位神官跳天界"
+keywords = ["一战成名", "三十三位神官", "宫观", "烧宫观"]
+summary = "花城刚冒头就挑战风信、慕情与欺负过谢怜的三十三位神官，约定输者奉上骨灰或跳下天界；他大获全胜，神官毁诺，他就把他们人间的宫观一把火烧光"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839"]
+
+[[read_books.scenes]]
+id = "tg-scene-banyue"
+topic = "名场面：半月关"
+keywords = ["半月关", "半月", "裴宿", "半月国"]
+summary = "谢怜一行人探半月关变成「半命关」的真相，发现是裴宿所为，裴宿因此被流放下凡"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.plot]]
+id = "tg-plot-one"
+topic = "第一卷：血雨探花"
+keywords = ["第一卷", "开头", "这一卷"]
+points = ["谢怜第三次飞升后没有信徒也没有香火，某天收破烂回来把一个神秘少年捡回家", "这个少年就是三界谈之色变的鬼王花城；两人一起经历与君山、半月关"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872", "https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839"]
+
+[[read_books.plot]]
+id = "tg-plot-two"
+topic = "第二卷：太子悦神（谢怜的过去）"
+keywords = ["第二卷", "过去", "前世"]
+points = ["谢怜第一次飞升、仙乐大乱、下凡相助失败，仙乐国灭后被封禁法力打落人间", "第二次飞升与神武大帝大战，一炷香后再被贬，成了三界笑柄"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.plot]]
+id = "tg-plot-three"
+topic = "第三、四卷：百无禁忌 / 白衣祸世"
+keywords = ["第三卷", "第四卷", "君吾", "白无相"]
+points = ["后半段揭开君吾其实是上代仙乐太子，血洗天界后捏造新身份再飞升", "他赏识谢怜、百般出题；白无相「白衣祸世」被君吾亲自灭去"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.plot]]
+id = "tg-plot-end"
+topic = "结局"
+keywords = ["结局", "最后", "结尾", "HE", "BE"]
+points = ["最后一章是第 252 章《鬼王的生辰》", "花城与谢怜最后心意相通，一鬼一神在民间有了被一同供奉的习俗"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872", "https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839"]
+
+[[read_books.disputes]]
+id = "tg-disp-huacheng"
+topic = "花城这份付出值不值"
+keywords = ["花城", "值不值", "付出", "对不对", "四大害"]
+her_take = "值不值轮不到我算，但「最忠诚的信徒」这五个字我认了"
+sources = ["https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839", "https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+[[read_books.disputes.sides]]
+view = "一派觉得值：十岁被谢怜救下后他就成了最忠诚的信徒，战死、百剑穿心化为厉鬼，几百年只为找一个人"
+sources = ["https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839", "https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+[[read_books.disputes.sides]]
+view = "一派觉得代价太狠：他成了四大害之一「血雨探花」，还发动过人面疫、魂消魄散过一次"
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872", "https://wapbaike.baidu.com/item/%E8%8A%B1%E5%9F%8E/22186839"]
+
+[[read_books.adaptations]]
+id = "tg-adapt-anime"
+name = "动画（哔哩哔哩 × 绘梦）"
+topic = "动画（哔哩哔哩 × 绘梦）"
+diff = ["2020-10-31 起每周六在哔哩哔哩独家播出；特别篇 2021-02-16，第二季 2023-10-18", "动画与原著的具体差异未获取"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872", "https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408"]
+
+[[read_books.adaptations]]
+id = "tg-adapt-manga"
+name = "漫画（哔哩哔哩漫画）"
+topic = "漫画（哔哩哔哩漫画）"
+diff = ["2019-10-19 起由哔哩哔哩漫画与白梦社联合出品、在哔哩哔哩漫画独家上线"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.adaptations]]
+id = "tg-adapt-tv"
+name = "电视剧（立项信息）"
+topic = "电视剧（立项信息）"
+diff = ["词条里写着：剧版预计 2021 年第二季度开拍，陈家霖、任海涛、刘志军任导演，墨香铜臭任编剧", "实际开拍与播出情况：未获取"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E5%A4%A9%E5%AE%98%E8%B5%90%E7%A6%8F/22170872"]
+
+[[read_books.adaptations]]
+id = "tg-adapt-audio"
+name = "广播剧"
+topic = "广播剧"
+diff = ["作者的衍生广播剧表里，《天官赐福》广播剧 2022 年播出"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408"]
+
+[[read_books.unknown]]
+id = "tg-unknown-1"
+topic = "剧版进展（未获取）"
+keywords = ["电视剧开拍", "剧版播出", "播了吗", "剧版选角"]
+note = "只查到 2021 年预计开拍的立项信息，实际进展未获取"
+sources = []
+
+[[read_books.unknown]]
+id = "tg-unknown-2"
+topic = "番外与逐段细节（未获取）"
+keywords = ["番外讲了什么", "第几章细节", "逐段"]
+note = "目录只给章节标题，番外正文与逐段对话未获取"
+sources = []
+
+[[read_books]]
+id = "zafen"
+title = "人渣反派自救系统"
+title_alt = "渣反"
+author = "墨香铜臭"
+kind = "原创·纯爱·架空历史"
+platform = "晋江文学城"
+status = "已完结（初版 2014-11-30 完结，2015-09-09 修文完成）"
+chapters = 95
+total_source = "https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810", "https://zh.moegirl.org.cn/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F", "https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408"]
+names = ["沈清秋", "沈垣", "沈九", "洛冰河", "柳清歌", "岳清源", "尚清华", "天琅君", "竹枝郎", "漠北君", "柳溟烟", "宁婴婴", "苏夕颜"]
+why_her = "吐槽式的写法，作者的第一本，反而最对我胃口"
+attitude = "沈清秋那种一边吐槽一边替人挡刀的样子，太对味了"
+avoid = ["动画《穿书自救指南》她没看过", "广播剧未获取，她也不聊"]
+unresolved = ["总字数：未获取", "实体书的具体出版信息：未获取", "广播剧：未获取"]
+verify_note = "wapbaike 作品页 200（文案、95 章目录、人物与配角表）；萌娘百科 200；作者页 200（作品时间线）"
+verified_on = "2026-10-03"
+
+[[read_books.basic]]
+id = "zf-basic-1"
+topic = "基本档案"
+keywords = ["谁写的", "作者", "平台", "什么时候"]
+points = ["墨香铜臭的处女作，2014-09-21 在晋江开始连载", "初版 2014-11-30 完结，2015-09-09 修文完成、正式完结", "别名《渣反》《穿书自救指南》；公告里最后一章是第 95 章番外"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810", "https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408"]
+
+[[read_books.basic]]
+id = "zf-basic-2"
+topic = "内容简介"
+keywords = ["讲什么", "主线", "简介", "剧情"]
+points = ["书迷沈垣穿书，穿成了把少年男主虐到死去活来的人渣反派沈清秋", "原作里沈清秋最后被徒弟洛冰河削成人棍，所以他一边吐槽一边改命", "于是成了「师徒每天不务正业，打打怪、谈谈恋爱」的狗血故事"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.basic]]
+id = "zf-basic-3"
+topic = "主配角名单"
+keywords = ["配角", "人物", "都有谁"]
+points = ["主角是沈清秋、洛冰河；配角有柳清歌、岳清源、尚清华、天琅君、竹枝郎、漠北君、柳溟烟、宁婴婴", "文案把这对写成「前期忠犬小白花后期黑化少女攻 × 伪斯文败类反派吐槽狂魔受」"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.characters]]
+id = "zf-char-sqq"
+name = "沈清秋（沈垣 / 沈九）"
+role = "主角"
+topic = "沈清秋（沈垣 / 沈九）"
+keywords = ["沈清秋", "沈垣", "沈九", "师尊"]
+points = ["穿过来的这位本名沈垣，是个书迷；原来那个「人渣反派」本体是沈九", "原作里沈清秋的结局是被洛冰河削成人棍，所以他穿来第一件事就是改命", "他的办法是明着帮不了就暗着帮，一路替洛冰河挡刀"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.characters]]
+id = "zf-char-lbh"
+name = "洛冰河"
+role = "主角"
+topic = "洛冰河"
+keywords = ["洛冰河", "冰河", "冰妹"]
+points = ["原作男主，前期是忠犬小白花，后期黑化成「暗黑系、有仇必报千倍奉还」的类型", "身世：父亲是天琅君、母亲是幻花宫弟子苏夕颜，母亲临死前把他放在木盆里顺洛川送走", "后来成为魔界之主，与穿书后的沈清秋走到一起"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.characters]]
+id = "zf-char-side1"
+name = "尚清华与漠北君"
+role = "配角"
+topic = "尚清华与漠北君"
+keywords = ["尚清华", "漠北君"]
+points = ["尚清华是沈清秋的朋友、苍穹山安定峰峰主，原书里是被用完就扔的炮灰", "他被《狂傲仙魔途》的作者魂穿，因为最喜欢笔下的漠北君而屡次相助", "漠北君是北方魔君、纯血魔族，擅长操纵冰；最后两人成了伴侣"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.characters]]
+id = "zf-char-side2"
+name = "竹枝郎、天琅君与苏夕颜"
+role = "配角"
+topic = "竹枝郎、天琅君与苏夕颜"
+keywords = ["竹枝郎", "天琅君", "苏夕颜"]
+points = ["竹枝郎是天琅君之妹与南疆蛇族混血所生，天琅君受妹妹临终之托把他带回并助他化人形", "天琅君被镇压在白露山下，竹枝郎护主时被天劫咒术击中，半蜕回原形", "天琅君与幻花宫弟子苏夕颜相恋却被设计埋伏；苏夕颜拼死生下洛冰河"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.characters]]
+id = "zf-char-side3"
+name = "柳溟烟与宁婴婴"
+role = "配角"
+topic = "柳溟烟与宁婴婴"
+keywords = ["柳溟烟", "宁婴婴", "柳宿眠花"]
+points = ["柳溟烟是柳清歌的妹妹，常年戴面纱；在现世界线里是《春山恨》的作者，笔名「柳宿眠花」", "宁婴婴是沈清秋门下最小的女弟子、洛冰河的师姐，原作里是洛冰河早期后宫之一", "沈清秋假死时，是宁婴婴点破了洛冰河，让他明白沈清秋一直对他好"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.relations]]
+id = "zf-rel-cp"
+topic = "官配：洛冰河 × 沈清秋"
+keywords = ["CP", "官配", "攻受", "师徒", "一对"]
+points = ["文案写的是「前期忠犬小白花后期黑化少女攻 × 伪斯文败类反派吐槽狂魔受」", "两人是师徒关系，故事主线之一就是这段关系怎么变"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.scenes]]
+id = "zf-scene-transmigrate"
+topic = "名场面：沈垣穿书"
+keywords = ["穿书", "穿越", "开头"]
+summary = "书迷沈垣穿成了那个把少年男主虐到死去活来的人渣反派沈清秋"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.scenes]]
+id = "zf-scene-renzhu"
+topic = "名场面：原作里那个「削成人棍」的结局"
+keywords = ["人棍", "原作结局", "削成"]
+summary = "文案明写：原作沈清秋最后被徒弟男主洛冰河活生生削成了人棍"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.scenes]]
+id = "zf-scene-nonsense"
+topic = "名句：「还能不能好好看种马文了！」"
+keywords = ["种马文", "还能不能好好看"]
+summary = "作品页文案的第一句，整本书的调子就在这儿"
+quote = "还能不能好好看种马文了！"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.scenes]]
+id = "zf-scene-rescue"
+topic = "名句：「我觉得我还可以再抢救一下」"
+keywords = ["抢救一下", "再抢救"]
+summary = "沈清秋的内心话，也是全书被引用最多的一句"
+quote = "我觉得我还可以再抢救一下。"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.scenes]]
+id = "zf-scene-cover"
+topic = "名场面：一路替男主挡刀挡枪"
+keywords = ["挡刀", "舍己为人", "暗助"]
+summary = "文案吐槽的正是这个：作为一个人渣反派却要不断地为主角挡刀挡枪舍己为人"
+quote = "为什么作为一个人渣反派却要不断地为主角挡刀挡枪舍己为人！"
+quote_status = "sourced"
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.scenes]]
+id = "zf-scene-shang"
+topic = "副线：尚清华 × 漠北君"
+keywords = ["尚清华", "漠北君", "副CP"]
+summary = "尚清华被本书作者魂穿，因为最喜欢漠北君而在他受伤时屡次相助，最后被带回魔界成为伴侣"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.scenes]]
+id = "zf-scene-zhuzhi"
+topic = "副线：竹枝郎报恩"
+keywords = ["竹枝郎", "报恩", "白露林"]
+summary = "竹枝郎护主被天劫咒术击中半蜕回原形，藏在白露林里等救天琅君的机会；被穿书后的沈清秋无意中救了一命"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.scenes]]
+id = "zf-scene-chunshan"
+topic = "名梗：《春山恨》与「柳宿眠花」"
+keywords = ["春山恨", "柳宿眠花", "写文"]
+summary = "现世界线里柳溟烟成了《春山恨》的作者，笔名「柳宿眠花」"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.scenes]]
+id = "zf-scene-miaopo"
+topic = "名场面：宁婴婴点破洛冰河"
+keywords = ["宁婴婴", "点破", "假死"]
+summary = "沈清秋假死时，宁婴婴点破洛冰河，让他认识到沈清秋一直以来对他的好处"
+quote = ""
+quote_status = "未获取"
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.plot]]
+id = "zf-plot-change"
+topic = "主线一：改命"
+keywords = ["主线", "开头", "讲什么"]
+points = ["沈垣穿成沈清秋后，第一目标是别被洛冰河削成人棍", "他一边维持人渣反派人设、一边暗地里帮男主"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.plot]]
+id = "zf-plot-dark"
+topic = "主线二：男主的黑化"
+keywords = ["黑化", "转折", "中间"]
+points = ["文案概括整本书就是反派亲眼见证男主从一朵小绵羊白莲花变成黑霸王花", "洛冰河后期是暗黑系、有仇必报千倍奉还的类型"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.plot]]
+id = "zf-plot-end"
+topic = "结局走向"
+keywords = ["结局", "最后", "结尾", "HE", "BE"]
+points = ["书末是第 95 章番外《打飞机奇遇记》附后记", "一众人最后各自有了归宿：尚清华与漠北君、洛冰河与沈清秋"]
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.disputes]]
+id = "zf-disp-dark"
+topic = "洛冰河的黑化该不该被理解"
+keywords = ["黑化", "值不值", "该不该", "洛冰河"]
+her_take = "我更想看沈清秋怎么把人捞回来，黑化那段我看得挺揪心"
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+[[read_books.disputes.sides]]
+view = "一派觉得情有可原：原作里他前期是忠犬小白花，被那个「人渣反派」虐到死去活来才有后来"
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+[[read_books.disputes.sides]]
+view = "一派觉得过火：文案把他写成暗黑系、有仇必报千倍奉还，报复手段太狠"
+sources = ["https://wapbaike.baidu.com/item/%E4%BA%BA%E6%B8%A3%E5%8F%8D%E6%B4%BE%E8%87%AA%E6%95%91%E7%B3%BB%E7%BB%9F/19730810"]
+
+[[read_books.adaptations]]
+id = "zf-adapt-anime"
+name = "动画《穿书自救指南》第一季"
+topic = "动画《穿书自救指南》第一季"
+diff = ["2020-09-10 上线（作者作品表里的衍生动画条目）", "动画与原著的具体差异未获取"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408"]
+
+[[read_books.unknown]]
+id = "zf-unknown-1"
+topic = "总字数与出版（未获取）"
+keywords = ["多少字", "多少章", "几章", "实体书", "出版"]
+note = "作品页没给字数口径；实体书信息未获取"
+sources = []
+
+[[read_books.unknown]]
+id = "zf-unknown-2"
+topic = "广播剧（未获取）"
+keywords = ["广播剧", "配音"]
+note = "没查到《渣反》广播剧的公开条目 → 她不许顺着聊"
+sources = []
+
+[[read_books]]
+id = "moxiang"
+title = "墨香铜臭作品全集"
+author = "墨香铜臭"
+kind = "作者卡（全部作品）"
+platform = "晋江文学城"
+status = "三本完结 + 第四本已开文未发布"
+total_source = "https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408"
+sources = ["https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408", "https://wapbaike.baidu.com/item/%E6%AD%BB%E7%A5%9E%E6%B2%A1%E6%9C%89%E4%BC%91%E6%81%AF%E6%97%A5/22494453"]
+names = ["墨香铜臭", "秀秀", "袁依楣"]
+why_her = "三本都读过，连她的第四本文案都翻过"
+attitude = "她的书我是一本一本追着看的，可惜后来等的时间太长了"
+avoid = ["她的新作《死神没有休息日》只有文案预览，她没得看", "《苍穹山记》是什么她说不清"]
+unresolved = ["《死神没有休息日》什么时候正式开文：未获取（作品页写着已开文、未发布）", "《苍穹山记》的内容与体裁：未获取（只查到 2025-11 由广东旅游出版社出版）", "作者 2019 年之后的个人情况：只查到公开报道级别的信息，不做展开"]
+verify_note = "作者页 200（本名/笔名/作品年表/衍生改编表）；《死神没有休息日》词条 200（第四本、已开文未发布、双男主名）"
+verified_on = "2026-10-03"
+
+[[read_books.basic]]
+id = "mx-basic-1"
+topic = "作者是谁"
+keywords = ["是谁", "作者", "本名", "笔名"]
+points = ["墨香铜臭，别名秀秀，本名袁依楣，1994 年生，晋江文学城签约作者", "2014 年以这个笔名发表《人渣反派自救系统》，正式进入网文圈"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408"]
+
+[[read_books.basic]]
+id = "mx-basic-2"
+topic = "作品年表"
+keywords = ["作品", "几本", "都有哪些", "全作品"]
+points = ["《人渣反派自救系统》2014 年（初版 2014-11-30 完结、2015-09-09 修文完成）", "《魔道祖师》2015-10-31 连载、2016-09-07 完结", "《天官赐福》2017-06 连载、2018-02 完结"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408"]
+
+[[read_books.basic]]
+id = "mx-basic-3"
+topic = "第四本与新作"
+keywords = ["第四本", "新作", "死神没有休息日", "还会写吗"]
+points = ["第四本是《死神没有休息日》，晋江的原创纯爱，状态是「已签约、已开文、未发布」", "目前只开了文案预览，没有正式章节；主男主视角叫言说（读 yuè），次男主视角叫秋迟", "标签是灵异神怪、现代架空、悬疑推理；作者自己标注「此名暂定，正式文名会改」"]
+sources = ["https://wapbaike.baidu.com/item/%E6%AD%BB%E7%A5%9E%E6%B2%A1%E6%9C%89%E4%BC%91%E6%81%AF%E6%97%A5/22494453"]
+
+[[read_books.basic]]
+id = "mx-basic-4"
+topic = "后续与回归"
+keywords = ["封笔", "回归", "为什么不写了", "更新"]
+points = ["2024-03-25 她本人回应过网友关切，明确说没有封笔", "2024 年 10 月她的作品全部解锁，包括《魔道祖师》《人渣反派自救系统》《天官赐福》", "2025 年 11 月，她所著的《苍穹山记》由广东旅游出版社出版"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408"]
+
+[[read_books.basic]]
+id = "mx-basic-5"
+topic = "得的奖与影响力"
+keywords = ["获奖", "成绩", "影响力"]
+points = ["2017 年拿到晋江年度盛典最受欢迎作者，《天官赐福》也被评为年度佳作", "2018 年获晋江年度 IP 改编最有价值作者、纯爱系列最受欢迎作者", "2019 年在当当影响力作家评选的网文作家榜排第一"]
+sources = ["https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408"]
+
+[[read_books.disputes]]
+id = "mx-disp-fourth"
+topic = "第四本到底还开不开"
+keywords = ["第四本", "开不开", "死神", "还写吗"]
+her_take = "我站会开那派，但不敢催——等的人不止我一个"
+sources = ["https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408", "https://wapbaike.baidu.com/item/%E6%AD%BB%E7%A5%9E%E6%B2%A1%E6%9C%89%E4%BC%91%E6%81%AF%E6%97%A5/22494453"]
+[[read_books.disputes.sides]]
+view = "一派觉得会开：她 2024 年明确回应没有封笔，同年 10 月作品全部解锁"
+sources = ["https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408"]
+[[read_books.disputes.sides]]
+view = "一派觉得悬：第四本《死神没有休息日》从只开文案预览算起，到今天也只有文案，状态一直是未发布"
+sources = ["https://wapbaike.baidu.com/item/%E6%AD%BB%E7%A5%9E%E6%B2%A1%E6%9C%89%E4%BC%91%E6%81%AF%E6%97%A5/22494453"]
+
+[[read_books.adaptations]]
+id = "mx-adapt-all"
+name = "全作品改编一览"
+topic = "全作品改编一览"
+diff = ["动画：《穿书自救指南》第一季 2020-09-10；《魔道祖师》2018-07-09 / 第二季 2019-08-03 / 第三季 2021-08-07；《天官赐福》2020-10-31 / 特别篇 2021-02-16 / 第二季 2023-10-18", "影视：《陈情令》2019 年；《天官赐福》剧版立项 2021 年", "广播剧：《魔道祖师》2018 年、《天官赐福》2022 年；漫画：《魔道祖师》2017 年、《天官赐福》2019 年", "这些改编她一个都没看过，只看了原著"]
+watched = false
+sources = ["https://wapbaike.baidu.com/item/%E5%A2%A8%E9%A6%99%E9%93%9C%E8%87%AD/19698408"]
+
+[[read_books.unknown]]
+id = "mx-unknown-1"
+topic = "《苍穹山记》是什么（未获取）"
+keywords = ["苍穹山记", "新书是什么"]
+note = "只查到 2025-11 由广东旅游出版社出版，内容与体裁未获取"
+sources = []
+
+[[read_books.unknown]]
+id = "mx-unknown-2"
+topic = "作者个人近况（未获取）"
+keywords = ["近况", "怎么不更新", "出什么事了"]
+note = "只查到公开报道级别的「作品解锁/回应没有封笔」，个人近况不做展开"
+sources = []
+
+
+# <<< read_books end —— 这一段由生成器整段重写；它之后的追加内容会被原样保留

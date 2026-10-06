@@ -1,0 +1,13 @@
+{
+  "name": "@qqbot/character-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "convert": "node src/cli.ts",
+    "typecheck": "tsc -p .",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

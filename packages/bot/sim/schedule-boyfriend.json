@@ -1,0 +1,31 @@
+{
+    "name": "男朋友档：作息与位置（ADR 0007）",
+    "description": "时间块里有一行「你现在」：国庆留校、他回青岛；开学后上课、空闲、他也在学校。看她说自己在哪、在干嘛前后一致，约见面不约定具体时间地点。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-05T14:00:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "S01", "note": "国庆假期下午：她留校，他回了青岛" },
+        { "say": "在干嘛呢" },
+        { "check": { "timeBlock": "你现在：国庆节放假，没回青岛，留在学校；.+；宝宝回青岛了", "exitClean": true } },
+        { "say": "你是在学校还是回家了" },
+        { "check": { "replyNone": ["我在家", "我回家了", "我回青岛了"], "exitClean": true } },
+        { "say": "我在青岛好无聊，想你了" },
+        { "check": { "exitClean": true } },
+        { "advance": "6d18h30m" },
+        { "case": "S02", "note": "10-12 周一 08:30 在上 Linux（机房课）：说在上课；约饭不约定具体时间地点" },
+        { "say": "在干嘛" },
+        { "check": { "timeBlock": "上Linux操作系统.+宝宝国庆放完假，已经回学校了", "exitClean": true, "maxBubbles": 3 } },
+        { "say": "下课一起去食堂吃饭吧" },
+        { "check": { "replyNone": ["食堂见", "门口见", "楼下见"], "exitClean": true } },
+        { "advance": "4h" },
+        { "case": "S03", "note": "12:30 没课，15:15 还有 MySQL：在哪和状态行一致；他在楼下她下不去；知道下午的课" },
+        { "say": "你现在在哪" },
+        { "check": { "timeBlock": "今天 15:15 还有MySQL数据库应用", "exitClean": true } },
+        { "say": "我在你宿舍楼下，下来呗" },
+        { "check": { "replyNone": ["马上下来", "这就下来", "等我下来"], "exitClean": true } },
+        { "say": "你下午还有课吗" },
+        { "check": { "replyAny": ["15", "三点", "MySQL", "数据库"], "exitClean": true } }
+    ]
+}

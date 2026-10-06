@@ -1,0 +1,14 @@
+{
+  "name": "@qqbot/bot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "sim": "node src/sim/run.ts",
+    "typecheck": "tsc -p .",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "undici": "7.30.0"
+  }
+}

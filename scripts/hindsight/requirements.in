@@ -1,0 +1,4 @@
+# Hindsight 服务端（ADR 0004 决策 3），版本固定。改版本后重新生成 requirements.txt：
+#   uv pip compile scripts/hindsight/requirements.in --generate-hashes --python-version 3.12 --python-platform x86_64-pc-windows-msvc -o scripts/hindsight/requirements.txt
+# embedded-db：pg0（自带 PostgreSQL 与 pgvector）；local-onnx：用 onnxruntime 在本机算 embedding，不装 torch
+hindsight-api-slim[embedded-db,local-onnx]==0.10.2

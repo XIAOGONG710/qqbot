@@ -1,0 +1,174 @@
+# 林梦瑶在读的书（ADR 0015）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：来源和取用规则写在字段或 note 里。
+books:
+  - id: yaowu
+    title: 药屋少女的呢喃
+    aliases: [药屋, 薬屋のひとりごと]
+    author: 日向夏
+    kind: 日本轻小说（网络小说→实体书）
+    platform: 轻小说（成为小说家吧连载→主妇之友社实体书）
+    status: 连载中（动画两期已播）
+    activity:
+      window: evening
+      text: 窝在床上看《药屋少女的呢喃》
+    tiers: &reading_tiers [boyfriend, bestie, girl_friend, known, classmate]
+    progress:
+      start_day: 2026-10-03
+      start: 6
+      every_days: 3
+      amount: 1
+      unit: 卷
+      max: 10
+    attitude: 猫猫嘴硬心软，一边嫌麻烦一边把事办了，太戳我
+    unread_keywords: [结局, 结尾, 最后, 后面那个, 大结局, 真相是什么, 谁是凶手, 死了没, 死了吗, 死没死]
+    nodes:
+      - id: yaowu-cat
+        topic: 主角是谁
+        from: 1
+        keywords: [猫猫, 女主, 主角, 谁]
+        points: [女主叫猫猫，原本在花街当药师, 被绑走卖进后宫当下女, 拿养父教的医药和推理本事解决宫里的案子]
+        sources:
+          - https://wapbaike.baidu.com/item/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83/22096878
+          - https://zh.moegirl.org.cn/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83
+      - id: yaowu-renshi
+        topic: 男主是谁
+        from: 1
+        keywords: [壬氏, 男主, 那个太监, 宦官, 男主谁]
+        points: [管后宫的宦官叫壬氏，长得特别好看, 是他把宫里的案子交给猫猫去查]
+        sources:
+          - https://wapbaike.baidu.com/item/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83/22096878
+          - https://zh.moegirl.org.cn/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83
+      - id: yaowu-plot
+        topic: 主线是什么
+        from: 1
+        keywords: [剧情, 讲什么, 主线, 皇子, 皇女, 病重, 案子, 好看吗]
+        points: [一开始是查皇子皇女接连病重的谜团, 她在这上头显出本事，后来被宠妃玉叶妃任命成尝膳官]
+        sources:
+          - https://wapbaike.baidu.com/item/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83/22096878
+      - id: yaowu-origin
+        topic: 原作与出版
+        from: 1
+        keywords: [原作, 作者, 谁写的, 出版, 小说, 轻小说, 哪来的]
+        points: [日向夏写的，しのとうこ画的插画, 2011 年 10 月起在「成为小说家吧」连载，2012 年出实体书, 实体书是主妇之友社出的，系列累计发行量突破 4000 万部]
+        sources:
+          - https://zh.moegirl.org.cn/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83
+          - https://wapbaike.baidu.com/item/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83/22096878
+      - id: yaowu-anime
+        topic: 动画
+        from: 1
+        keywords: [动画, 番, b站, 第几集, 更新, 追番, 动画版, 看了吗]
+        points: [动画第一期 2023 年 10 月到 2024 年 3 月播出, 第二期 2025 年 1 月开播，同年 4 月进第二季度, 萌娘百科的分类里挂着恋爱喜剧、悬疑推理、宫廷这几类]
+        sources:
+          - https://wapbaike.baidu.com/item/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83/22096878
+          - https://zh.moegirl.org.cn/%E8%8D%AF%E5%B1%8B%E5%B0%91%E5%A5%B3%E7%9A%84%E5%91%A2%E5%96%83
+    note: |-
+      legacy/books.toml 的 300 章只是旧 books.py 的内部标尺，不是有来源的总量，所以不转 total，也不进卡。
+      进度按用户 2026-10-05 的决定改成 10-03 第 6 卷、每 3 天一卷，到第 10 卷停。
+      legacy 的 unknown 节点不转成情节节点，只取不能编的关键词；删掉和已读节点重叠的「猫猫」「皇子」「皇女」。
+  - id: rejinzhi
+    title: 惹金枝
+    aliases: []
+    author: 空留
+    kind: 古代言情·权谋·大女主
+    platform: 番茄小说
+    status: 已完结
+    tiers: *reading_tiers
+    total:
+      amount: 550
+      unit: 章
+      source: https://wapbaike.baidu.com/item/%E6%83%B9%E9%87%91%E6%9E%9D （第 550 章「终」；全书 116.4 万字）
+    progress:
+      start_day: 2026-09-20
+      start: 425
+      every_days: 1
+      amount: 5
+      unit: 章
+      max: 550
+    attitude: 时不虞那种又冷又硬的劲儿我喜欢，复仇那段看得我拳头都攥紧了
+    unread_keywords: []
+    nodes:
+      - id: rejinzhi-lead
+        topic: 女主是谁
+        from: 1
+        keywords: [女主, 时不虞, 主角, 谁, 那个女的]
+        points: [女主叫时不虞，一出生就被当成「灾星」, 三岁那年假死，之后隐在世外]
+        sources: [https://wapbaike.baidu.com/item/%E6%83%B9%E9%87%91%E6%9E%9D]
+      - id: rejinzhi-revenge
+        topic: 主线：回京复仇
+        from: 1
+        keywords: [剧情, 讲什么, 主线, 复仇, 回京, 身世, 好看吗, 后来怎么样]
+        points: [十五年后时家因为忠勇侯叛国案满门获罪, 她重返京城搅动风云，还坐实了「灾星」这个名, 全篇是权谋线，不是重生也不是穿越]
+        sources: [https://wapbaike.baidu.com/item/%E6%83%B9%E9%87%91%E6%9E%9D]
+      - id: rejinzhi-publish
+        topic: 成绩与出版
+        from: 1
+        keywords: [成绩, 评分, 火吗, 出版, 实体书, 电视剧, 影视, 完结]
+        points: [入选 2024 年度中国网络文学影响力榜, 44.3 万读者打出 9.7 分，进古言阅读榜和高分榜 Top10, 影视改编版权已经卖出去了, 实体书是四川天地出版社出的]
+        sources:
+          - https://wapbaike.baidu.com/item/%E6%83%B9%E9%87%91%E6%9E%9D
+          - https://book.douban.com/subject/38591353/
+      - id: rejinzhi-ending
+        topic: 结局
+        from: 550
+        keywords: [结局, 最后, 结尾, 第550章, 完结章]
+        points: [最后一章叫「终」，第 550 章完结]
+        sources: [https://wapbaike.baidu.com/item/%E6%83%B9%E9%87%91%E6%9E%9D]
+      - id: rejinzhi-mid
+        topic: 中段往后
+        from: 300
+        keywords: [后面讲什么, 后面在讲啥, 后面讲啥, 第三百章, 四百章]
+        points: [第 300 章往后是权谋线的深水区]
+        sources: [https://wapbaike.baidu.com/item/%E6%83%B9%E9%87%91%E6%9E%9D]
+        note: legacy 的 from=500 只是为了让当时第 425 章的进度挡住这句，却和内容写的「第 300 章往后」对不上；改成内容自己的门槛 300，具体桥段仍然没有资料、不写
+    note: 进度和总量照 legacy；10-05 是第 500 章，10-15 到第 550 章并读完。
+  - id: jiasi
+    title: 恰似寒光遇骄阳
+    aliases: [恰似]
+    author: 囧囧有妖
+    kind: 现代言情·重生·马甲
+    platform: 七猫中文网、实体书
+    status: 已完结
+    tiers: *reading_tiers
+    total:
+      amount: 2505
+      unit: 章
+      source: https://www.qimao.com/shuku/1784936/ （作品目录 2505 章；全书 261.37 万字）
+    progress:
+      start_day: 2026-07-04
+      start: 300
+      every_days: 1
+      amount: 0
+      unit: 章
+      max: 300
+      state: put_down
+    attitude: 叶绾绾那个马甲一层套一层的，我是真想看她什么时候全揭
+    unread_keywords: [第 300 章以后, 三百章以后, 后面的具体剧情, 结局, 大结局]
+    nodes:
+      - id: jiasi-identity
+        topic: 女主身份
+        from: 1
+        keywords: [女主, 聂无忧, 叶绾绾, 主角, 谁, 马甲, 身份]
+        points: [女主叫聂无忧，重生之后顶着华国叶氏千金叶绾绾的身份活着, 整篇就是重生复仇加豪门争斗、马甲逆袭, 男主叫司夜寒，两人一起查身世的谜]
+        sources: [https://wapbaike.baidu.com/item/%E6%81%B0%E4%BC%BC%E5%AF%92%E5%85%89%E9%81%87%E9%AA%84%E9%98%B3]
+      - id: jiasi-publish
+        topic: 出版与平台
+        from: 1
+        keywords: [平台, 哪看, 在哪看, 番茄, 七猫, 实体书, 出版, 起点]
+        points: [全书 2505 章，261.37 万字，七猫上已经完结, 2018 年起在阅文旗下云起书院连载，拿过橙瓜网络文学奖年度百强和 2018 超级 IP 影视改编价值奖, 实体书是青岛出版社出的，后来的新版是江苏凤凰文艺, 有漫画改编（腾讯动漫、动漫屋都上过）]
+        sources:
+          - https://wapbaike.baidu.com/item/%E6%81%B0%E4%BC%BC%E5%AF%92%E5%85%89%E9%81%87%E9%AA%84%E9%98%B3
+          - https://www.qimao.com/shuku/1784936/
+          - https://book.douban.com/subject/30458419/
+        tiers: [boyfriend, bestie, girl_friend, known]
+        note: 同学档的禁用词含「青岛」，所以整个出版节点按档位裁掉；不是把敏感词留在说明里让模型避开
+      - id: jiasi-plot
+        topic: 主线走向
+        from: 1
+        keywords: [剧情, 讲什么, 主线, 讲啥, 讲的是什么, 好看吗, 好看不]
+        points: [主线是记忆的真相被一层层揭开，加上独立州的危机, 她要在独立州的各方势力之间来回周旋]
+        sources: [https://wapbaike.baidu.com/item/%E6%81%B0%E4%BC%BC%E5%AF%92%E5%85%89%E9%81%87%E9%AA%84%E9%98%B3]
+    note: |-
+      按用户 2026-10-05 的决定：这是旧爱，停在第 300 章左右，算放下了，不再按 legacy 的每天 5 章推进。
+      legacy 明确写了第 300 章以后的逐段剧情没有资料，所以相关问法只说没看到或记不清。
+note: |-
+  只转换 legacy/books.toml 前三本在读资料；read_books 的 8 本已读完作品本阶段不转。
+  节点的 from 一律使用本书 progress.unit。source 和 note 不进角色卡提示词；运行时只拿有来源的 points。

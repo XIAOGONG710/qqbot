@@ -1,0 +1,26 @@
+# 本地运行时数据：SillyTavern 数据目录、NapCat 运行包、登录态、日志等，一律不入库
+/runtime/
+
+# 依赖与构建产物
+node_modules/
+dist/
+*.tsbuildinfo
+
+# 密钥与本地配置
+.env
+.env.*
+!.env.example
+secrets.json
+
+# 日志
+*.log
+logs/
+
+# 编辑器 / 系统
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db
+desktop.ini

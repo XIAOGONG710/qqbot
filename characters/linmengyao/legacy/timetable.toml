@@ -1,0 +1,272 @@
+# 林梦瑶的课表 —— 主题 1 的产物（2026-10-02）
+#
+# 依据：
+#   * 山东青年政治学院 真实作息（用户一手信息，网上那份 2015 年通知已过期）
+#   * 现代服务管理学院 <BOYFRIEND_REAL_NAME> 的真实课表（PDF）作为**时间骨架**（姓名已脱敏占位）
+#   * 她在**信息工程学院**，人工智能与大数据应用专业，大二上
+#   * 课表与她「大体一致，允许她有自己的课」：公共课不是同一教学班，老师全部不同
+#   * 周四下午是公休，不排课
+#
+# 节次时间（用户提供，每节 80 分钟、课间 15 分钟）：
+#   1-2   08:20-09:40
+#   3-4   09:55-11:15
+#   6-7   13:40-15:00
+#   8-9   15:15-16:35
+#   10-11 18:30-20:00
+#
+# tier（课型档位，主题 2 的产物）：
+#   hard    = 硬课：5~20 分钟才回，1 条 ≤10 字（专业课，交备用机也认真听）
+#   machine = 机房课：2~6 分钟，1~2 条（边敲代码边聊）
+#   water   = 水课：正常秒回，可能在底下刷手机
+#   pe      = 体育：正常回（刚打完球）
+#   free    = 没课 / 假期 / 公休
+#   sleep   = 睡觉
+
+[semester]
+# 第 1 周的周一。用户给定：「8月31开始第一周的课」，2026-08-31 正好是周一。
+start = "2026-08-31"
+weeks = 18
+
+[periods]
+"1-2" = "08:20-09:40"
+"3-4" = "09:55-11:15"
+"6-7" = "13:40-15:00"
+"8-9" = "15:15-16:35"
+"10-11" = "18:30-20:00"
+
+# 有早课的日子要爬起来：闹钟固定 07:40，比没课的日子早 1 小时 50 分。
+# 这是熬夜型学生的真实状态：睡到 2 点、7:40 爬去上 8:20 的课、下课补觉。
+[wakeup]
+early = "07:40"
+lazy = "09:30"
+
+# ── 假期（国务院 2026 年安排，用户已确认）────────────────────────
+[[holiday]]
+name = "中秋节"
+start = "2026-09-25"
+end = "2026-09-27"
+
+[[holiday]]
+name = "国庆节"
+start = "2026-10-01"
+end = "2026-10-07"
+
+# ── 调休补课（周末上课）───────────────────────────────────────
+# as_day：补哪一天的课（1=周一 … 7=周日）。0 = 待用户确认，先按「有课但说不准」处理。
+[[makeup]]
+date = "2026-09-20"
+note = "周日补课"
+as_day = 0
+
+[[makeup]]
+date = "2026-10-10"
+note = "周六补课"
+as_day = 0
+
+# ── 她的课表 ────────────────────────────────────────────────
+# day: 1=周一 … 7=周日
+# weeks: 上课周次，形如 "1-16" 或 "1-2,4-16,18"
+# practice: 从第几周起转实训（机房），转实训后标签与地点会变
+
+[[course]]
+name = "Linux操作系统"
+day = 1
+slot = "1-2"
+room = "知行楼612"
+teacher = "韩睿"
+tier = "machine"
+weeks = "1-16"
+
+[[course]]
+name = "大数据应用技术"
+day = 1
+slot = "3-4"
+room = "知行楼303"
+teacher = "李文博"
+tier = "hard"
+weeks = "1-16"
+practice = 9
+practice_room = "知行楼303（机房）"
+
+[[course]]
+name = "MySQL数据库应用"
+day = 1
+slot = "8-9"
+room = "知行楼509"
+teacher = "孙丽娜"
+tier = "hard"
+weeks = "1-16"
+practice = 13
+practice_room = "知行楼509（机房）"
+
+[[course]]
+name = "体育（羽毛球）"
+day = 2
+slot = "3-4"
+room = "东体育馆"
+teacher = "马强"
+tier = "pe"
+weeks = "1-16"
+
+[[course]]
+name = "计算机网络技术"
+day = 2
+slot = "8-9"
+room = "知行楼503"
+teacher = "吴建平"
+tier = "hard"
+weeks = "1-16"
+practice = 13
+practice_room = "知行楼503（机房）"
+
+[[course]]
+name = "形势与政策Ⅲ"
+day = 3
+slot = "1-2"
+room = "笃行楼305"
+teacher = "李慧敏"
+tier = "water"
+weeks = "9-12"
+
+[[course]]
+name = "高等数学"
+day = 3
+slot = "3-4"
+room = "知行楼704"
+teacher = "周敏"
+tier = "water"          # 用户拍板：允许她水，但用户会监督
+weeks = "1-16"
+
+[[course]]
+name = "大学生创业基础"
+day = 3
+slot = "6-7"
+room = "笃行楼414"
+teacher = "张伟东"
+tier = "water"
+weeks = "1-2,4-16,18"
+
+[[course]]
+name = "习近平新时代中国特色社会主义思想概论"
+short = "习概论"
+day = 3
+slot = "8-9"
+room = "知行楼303"
+teacher = "刘亚男"
+tier = "water"          # 用户拍板：水课
+weeks = "1-16"
+
+[[course]]
+name = "数据结构"
+day = 4
+slot = "3-4"
+room = "知行楼305"
+teacher = "郑海涛"
+tier = "hard"
+weeks = "1-16"
+practice = 9
+practice_room = "知行楼305（机房）"
+
+[[course]]
+name = "Python编程基础"
+day = 5
+slot = "1-2"
+room = "知行楼612"
+teacher = "林志远"
+tier = "machine"
+weeks = "1-6"
+
+[[course]]
+name = "概率论与数理统计"
+day = 5
+slot = "3-4"
+room = "知行楼704"
+teacher = "苏雅雯"
+tier = "machine"
+weeks = "1-16"
+
+[[course]]
+name = "数据采集与处理"
+day = 5
+slot = "6-7"
+room = "知行楼303"
+teacher = "林志远"
+tier = "machine"
+weeks = "1-16"
+practice = 9
+practice_room = "知行楼303（机房）"
+
+# 她自己加的（这几格用户是空的），也是「她不是你的影子」的落点
+[[course]]
+name = "Python数据分析"
+day = 4
+slot = "10-11"
+room = "知行楼303"
+teacher = "何俊"
+tier = "water"
+weeks = "1-16"
+note = "晚课，学校公选课时段是周二/周四"
+
+# ── 没课的时候她在干嘛 ───────────────────────────────────────
+# 同一个时间段内的选择是**确定性的**（按 日期+时段 哈希），所以跨心跳不会乱变。
+# 这是「连续活动」的关键：她现在在做的事，5 分钟后还是同一件。
+
+[[free]]
+window = "morning"      # 09:30-12:00
+text = "窝在床上刷手机"
+kind = "rest"
+
+[[free]]
+window = "morning"
+text = "在宿舍写作业"
+kind = "study"
+
+[[free]]
+window = "morning"
+text = "去图书馆占座"
+kind = "study"
+
+[[free]]
+window = "afternoon"    # 12:00-18:00
+text = "在图书馆赶作业"
+kind = "study"
+
+[[free]]
+window = "afternoon"
+text = "修昨天拍的片子"
+kind = "hobby"
+
+[[free]]
+window = "afternoon"
+text = "打独立游戏"
+kind = "hobby"
+
+[[free]]
+window = "afternoon"
+text = "刷摄影区"
+kind = "browse"
+
+[[free]]
+window = "evening"      # 18:00-02:00
+text = "在追一部剧"
+kind = "hobby"
+
+[[free]]
+window = "evening"
+text = "打独立游戏"
+kind = "hobby"
+
+[[free]]
+window = "evening"
+text = "在宿舍跟室友扯淡"
+kind = "social"
+
+[[free]]
+window = "evening"
+text = "熬夜赶作业"
+kind = "study"
+
+[[free]]
+window = "evening"
+text = "刷手机刷到忘了时间"
+kind = "browse"
