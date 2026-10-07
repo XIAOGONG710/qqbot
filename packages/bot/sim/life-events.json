@@ -1,0 +1,46 @@
+{
+  "name": "无人聊天的生活事件账",
+  "description": "ADR 0029：不发送任何用户消息，直接推进虚拟时间并记录成功、失败和中断的生活事件；同一 runId 重放不会重复。",
+  "tier": "boyfriend",
+  "user": "阿明",
+  "start": "2026-10-05T19:00:00+08:00",
+  "memory": false,
+  "schedule": true,
+  "proactive": false,
+  "moody": false,
+  "steps": [
+    {
+      "case": "L01",
+      "note": "没有聊天，她照样完成一件自己的事"
+    },
+    {
+      "life": {
+        "id": "read-the-outsider",
+        "kind": "read_book",
+        "subject": "局外人"
+      }
+    },
+    {
+      "advance": "30m"
+    },
+    {
+      "case": "L02",
+      "note": "失败和中断也进入人生，但不改变世界"
+    },
+    {
+      "life": {
+        "id": "parcel-not-there",
+        "kind": "pick_parcel",
+        "target": "not-existing-parcel"
+      }
+    },
+    {
+      "life": {
+        "id": "study-interrupted",
+        "kind": "study",
+        "subject": "数据结构",
+        "result": "interrupted"
+      }
+    }
+  ]
+}

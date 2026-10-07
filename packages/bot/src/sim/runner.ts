@@ -77,7 +77,7 @@ export interface Generation {
 export interface CheckResult { ok: boolean; text: string }
 
 export interface StepRecord {
-    kind: 'case' | 'say' | 'advance' | 'wait' | 'memory' | 'refresh' | 'check' | 'forget' | 'hindsight';
+    kind: 'case' | 'say' | 'life' | 'advance' | 'wait' | 'memory' | 'refresh' | 'check' | 'forget' | 'hindsight';
     /** 这一步开始时的虚拟时间 */
     time: number;
     /** 到这一步为止对方最后一条消息的虚拟时间（replyAfter / replyWithin 从这里算） */
@@ -91,6 +91,7 @@ export interface StepRecord {
     checks: CheckResult[];
     relationship?: string;
     advance?: string;
+    life?: string;
 }
 
 export interface RunResult {
@@ -412,6 +413,21 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                     log(`插话没有触发（这一轮她只发了 ${bubblesThisStep} 条）`);
                     armed = undefined;
                 }
+            } else if ('life' in step) {
+                if (!sharedWorld) throw new Error('life 步骤需要开启 herDays、schedule，并使用带世界的角色卡');
+                const at = new Date(clock.now()).toISOString();
+                sharedWorld.recordEvents([{
+                    id: `sim:${options.runId}:${step.life.id}`,
+                    kind: step.life.kind,
+                    at,
+                    source: 'simulation',
+                    result: step.life.result ?? 'succeeded',
+                    ...(step.life.subject ? { subject: step.life.subject } : {}),
+                    ...(step.life.target ? { target: step.life.target } : {}),
+                    ...(step.life.seen !== undefined ? { seen: step.life.seen } : {}),
+                }]);
+                const event = sharedWorld.events().find(item => item.id === `sim:${options.runId}:${step.life.id}`);
+                current.life = `${step.life.kind}：${event?.result ?? 'rejected'}`;
             } else if ('advance' in step) {
                 current.advance = step.advance;
                 const target = clock.now() + parseDuration(step.advance);

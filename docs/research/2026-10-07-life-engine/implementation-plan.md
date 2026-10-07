@@ -79,23 +79,22 @@
 
 ### 批次 A：生活内核——先让她真的能行动
 
-#### A1. 统一事件账本
+#### A1. 统一事件账本（已实现，ADR 0029）
 
-新增 append-only 的世界事件账。建议最小数据形状：
+新增 append-only 语义的世界事件账。首版实际数据形状：
 
 ```ts
 interface LifeEvent {
   id: string;
-  actor: string;
+  actor: 'linmengyao';
   kind: string;
   target?: string;
-  place?: string;
   startedAt: string;
   endedAt: string;
-  source: 'simulation' | 'spoken' | 'external';
+  source: 'simulation' | 'conversation' | 'external';
   result: 'succeeded' | 'failed' | 'interrupted';
-  effects: Record<string, unknown>;
-  visibleTo: string[];
+  subject?: string;
+  target?: string;
 }
 ```
 
@@ -202,11 +201,11 @@ LLM 只能从当前可用行动里选择意图；世界裁判拥有最终决定�
 
 首个增量不直接造一个庞大模拟器，而是：
 
-1. 把 ADR 0027 的四类动作映射为统一事件；
-2. 保持旧 `actions.json` 读取兼容；
-3. 让世界状态能从统一事件投影；
-4. 增加成功 / 失败 / 中断语义；
-5. 建一个无聊天也能注入并重放生活事件的模拟器场景；
-6. 通过后再接自主选择器。
+1. [x] 把 ADR 0027 的四类动作映射为统一事件；
+2. [x] 保持旧 `actions.json` 读取兼容和回滚投影；
+3. [x] 让世界状态能从统一事件投影；
+4. [x] 增加成功 / 失败 / 中断语义；
+5. [x] 建一个无聊天也能注入并重放生活事件的模拟器步骤；
+6. [ ] 接入带时间、资源和打断条件的类型化行动，再实现自主选择器。
 
 这样每一步都能上线、回滚、重放，不会把“更像人”做成不可测试的提示词堆叠。

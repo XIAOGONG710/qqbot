@@ -2,7 +2,7 @@
 // - 从 startDay（学期开始）一天一天推到今天：天气、楼下的猫（喂没喂、猫粮还剩几天、没了就网购）、快递（下单 → 到驿站 → 取 / 退回）、
 //   作业（上课时留、下次这门课之前交、多半拖到前一晚写）、相机基金（每周存一点）、和家里视频、学校和宿舍里的小事。
 // - 随机都按「日期 + 名目」取哈希，同一天对所有人一样（各档的卡只是看得到的块不同），重启、重放都一样，不存随机状态；
-//   每天的结果另写一份 <dataDir>/world/state.json 供查看；说出口的完成动作写在 actions.json，所有联系人和日记共用。
+//   每天的结果另写一份 <dataDir>/world/state.json 供查看；生活事件写在 events.json，actions.json 保留为旧版本兼容投影。
 // - 进提示词的只有事实和约束（describeWorld），不写能原样照抄的整句（DSH 原则 1）；到「现在」为止发生了的才写，没发生的不写。
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -12,6 +12,7 @@ import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import type { Episode } from './memory/episodes.ts';
 import { classesOn, formatDate, herDay, type ClassToday, type Schedule } from './schedule.ts';
 import { parseBody, type Body } from './body.ts';
+import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
 
 export type WorldWindow = 'morning' | 'afternoon' | 'evening';
 
@@ -437,15 +438,18 @@ export interface WorldState {
     note(now: Date): void;
     /** 一段对话抽完后，把她已经声称做完的动作落盘。 */
     record(contact: Contact, episode: Episode, drafts: readonly WorldActionDraft[]): void;
+    /** 聊天之外的模拟器 / 外部世界也从这里提交事件；成功、失败、中断都会入账。 */
+    recordEvents(drafts: readonly LifeEventDraft[]): void;
     /** 测试、状态页和诊断用。 */
     actions(): readonly WorldAction[];
+    events(): readonly LifeEvent[];
 }
 
 const ACTION_KINDS = new Set<WorldActionKind>(['feed_cat', 'pick_parcel', 'finish_homework', 'family_call']);
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const LOCAL_MINUTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
-/** 全局世界状态：<dataDir>/world/actions.json 是她已经说出口并做完的事。 */
+/** 全局世界状态：events.json 是事实源；actions.json 是旧版本可读的成功动作投影。 */
 export function worldState(
     world: World,
     schedule: Schedule,
@@ -455,9 +459,16 @@ export function worldState(
 ): WorldState {
     mkdirSync(dir, { recursive: true });
     const actionsPath = join(dir, 'actions.json');
+    const eventsPath = join(dir, 'events.json');
     const statePath = join(dir, 'state.json');
     const loaded = readJsonOr<Partial<WorldActionsFile>>(actionsPath, {}, message => log(`她的世界：${message}`));
-    let actions = (Array.isArray(loaded.actions) ? loaded.actions : []).filter(validAction);
+    const legacyActions = (Array.isArray(loaded.actions) ? loaded.actions : []).filter(validAction);
+    let events = readLifeEvents(eventsPath, message => log(`她的生活：${message}`));
+    const eventIds = new Set(events.map(event => event.id));
+    // 首次升级只在内存合并；下一次真正写事件时再迁移落盘，启动本身不改用户数据。
+    events = [...events, ...legacyActions.filter(action => !eventIds.has(action.id)).map(actionToLifeEvent)]
+        .sort(compareLifeEvents);
+    let actions = projectWorldActions(events);
     let logged: string | undefined;
 
     const persistState = (now: Date) => {
@@ -467,6 +478,70 @@ export function worldState(
     const safely = (work: () => void, what: string) => {
         try { work(); }
         catch (error) { log(`她的世界：${what}失败（${error instanceof Error ? error.message : String(error)}）`); }
+    };
+
+    const persist = (nextEvents: LifeEvent[]) => {
+        const nextActions = projectWorldActions(nextEvents);
+        // 事件先落盘；旧投影失败时抛出，让上层重试。重试由事件 id 幂等，不会重复执行。
+        writeLifeEvents(eventsPath, nextEvents);
+        writeJsonAtomic(actionsPath, { actions: nextActions });
+        events = nextEvents;
+        actions = nextActions;
+    };
+
+    const append = (drafts: readonly LifeEventDraft[]): LifeEvent[] => {
+        const added: LifeEvent[] = [];
+        for (const draft of drafts) {
+            const id = draft.id.trim();
+            const kind = draft.kind.trim();
+            const endedAt = new Date(draft.at);
+            const startedAt = new Date(draft.startedAt ?? draft.at);
+            if (!id || !kind || !['conversation', 'simulation', 'external'].includes(draft.source)
+                || !['succeeded', 'failed', 'interrupted'].includes(draft.result)
+                || !Number.isFinite(endedAt.getTime()) || !Number.isFinite(startedAt.getTime())
+                || startedAt > endedAt || endedAt.getTime() > nowFn()) continue;
+            if (events.some(event => event.id === id) || added.some(event => event.id === id)) continue;
+            const day = formatDate(herDay(schedule, endedAt));
+            if (day < world.startDay) continue;
+            const subject = draft.subject?.trim().slice(0, 40) || undefined;
+            let result = draft.result;
+            let target = draft.target?.trim() || undefined;
+            if (result === 'succeeded' && ACTION_KINDS.has(kind as WorldActionKind)) {
+                // 结算以事件发生前的现实为准；不满足前置条件时保留“尝试失败”，绝不硬改世界。
+                const before = projectWorldActions([...events, ...added]);
+                if (kind === 'feed_cat' && !world.cat) result = 'failed';
+                if (kind === 'family_call' && !world.familyCall) result = 'failed';
+                if (kind === 'pick_parcel' || kind === 'finish_homework') {
+                    const timeline = simulateWorld(world, schedule, endedAt, before);
+                    if (kind === 'pick_parcel') {
+                        const available = timeline.parcels.filter(parcel => !parcel.returned && parcel.arrive <= endedAt && (!parcel.picked || parcel.picked > endedAt));
+                        const matched = target ? available.find(parcel => parcel.id === target)
+                            : subject ? available.find(parcel => parcel.item.includes(subject) || subject.includes(parcel.item)) : available[0];
+                        if (matched) target = matched.id;
+                        else result = 'failed';
+                    } else {
+                        const available = timeline.homework.filter(item => item.assigned <= day && item.due > endedAt && item.done > endedAt);
+                        const matched = target ? available.find(item => item.id === target)
+                            : subject ? available.find(item => item.course.includes(subject) || subject.includes(item.course)) : available[0];
+                        if (matched) target = matched.id;
+                        else result = 'failed';
+                    }
+                }
+            }
+            added.push({
+                id, actor: 'linmengyao', kind, day,
+                startedAt: startedAt.toISOString(), endedAt: endedAt.toISOString(), source: draft.source, result,
+                ...(subject ? { subject } : {}), ...(target ? { target } : {}),
+                ...(draft.seen !== undefined ? { seen: draft.seen } : {}),
+                ...(draft.contact !== undefined ? { contact: draft.contact } : {}),
+                ...(draft.episode ? { episode: draft.episode } : {}),
+            });
+        }
+        if (!added.length) return [];
+        persist([...events, ...added].sort(compareLifeEvents));
+        for (const event of added) log(`她的生活：${event.result === 'succeeded' ? '完成' : event.result === 'failed' ? '失败' : '中断'} ${event.kind}（${event.source}）`);
+        safely(() => persistState(new Date(nowFn())), 'state.json 写入');
+        return added;
     };
 
     return {
@@ -536,15 +611,53 @@ export function worldState(
                 added.push(action);
             }
             if (!added.length) return;
-            const next = [...actions, ...added].sort((a, b) => a.at.localeCompare(b.at));
-            // actions.json 是事实来源：写不进去就抛给片段抽取器，下次同步重试；不能只让本进程假装成功。
-            writeJsonAtomic(actionsPath, { actions: next });
-            actions = next;
-            for (const action of added) log(`她的世界：[${contact.qq}] ${actionLabel(action, world)}`);
-            safely(() => persistState(new Date(nowFn())), 'state.json 写入');
+            const settled = append(added.map(action => ({
+                id: action.id, kind: action.kind, at: new Date(action.at).toISOString(), source: 'conversation' as const,
+                result: 'succeeded' as const, contact: action.contact, episode: action.episode,
+                ...(action.subject ? { subject: action.subject } : {}), ...(action.target ? { target: action.target } : {}),
+                ...(action.seen !== undefined ? { seen: action.seen } : {}),
+            })));
+            for (const event of settled.filter(event => event.result === 'succeeded')) {
+                const action = lifeEventToAction(event)!;
+                log(`她的世界：[${contact.qq}] ${actionLabel(action, world)}`);
+            }
         },
+        recordEvents: drafts => { append(drafts); },
         actions: () => actions,
+        events: () => events,
     };
+}
+
+function actionToLifeEvent(action: WorldAction): LifeEvent {
+    const at = new Date(action.at).toISOString();
+    return {
+        id: action.id, actor: 'linmengyao', kind: action.kind, day: action.day,
+        startedAt: at, endedAt: at, source: 'conversation', result: 'succeeded',
+        contact: action.contact, episode: action.episode,
+        ...(action.subject ? { subject: action.subject } : {}), ...(action.target ? { target: action.target } : {}),
+        ...(action.seen !== undefined ? { seen: action.seen } : {}),
+    };
+}
+
+function lifeEventToAction(event: LifeEvent): WorldAction | undefined {
+    if (event.result !== 'succeeded' || !ACTION_KINDS.has(event.kind as WorldActionKind)) return undefined;
+    return {
+        id: event.id, kind: event.kind as WorldActionKind, day: event.day, at: localMinute(new Date(event.endedAt)),
+        contact: event.contact ?? 0, episode: event.episode ?? event.id,
+        ...(event.subject ? { subject: event.subject } : {}), ...(event.target ? { target: event.target } : {}),
+        ...(event.seen !== undefined ? { seen: event.seen } : {}),
+    };
+}
+
+function projectWorldActions(events: readonly LifeEvent[]): WorldAction[] {
+    return events.flatMap(event => {
+        const action = lifeEventToAction(event);
+        return action ? [action] : [];
+    }).sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
+}
+
+function compareLifeEvents(a: LifeEvent, b: LifeEvent): number {
+    return a.endedAt.localeCompare(b.endedAt) || a.id.localeCompare(b.id);
 }
 
 function validAction(value: unknown): value is WorldAction {

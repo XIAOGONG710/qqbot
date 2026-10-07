@@ -36,7 +36,7 @@ describe('模拟器：场景文件', () => {
     });
 
     test('新场景文件都读得进来（ADR 0018、0020）', () => {
-        for (const name of ['memory-fading', 'her-promises', 'memory-weeks', 'disclosure-boyfriend', 'disclosure-classmate']) {
+        for (const name of ['memory-fading', 'her-promises', 'memory-weeks', 'disclosure-boyfriend', 'disclosure-classmate', 'life-events']) {
             assert.ok(loadScenario(join(repoRoot, `packages/bot/sim/${name}.json`)).steps.length > 0, name);
         }
     });
@@ -61,9 +61,33 @@ describe('模拟器：场景文件', () => {
         assert.throws(() => parseScenario({ ...base, steps: [{ say: 'a', advance: '1d' }] }), /第 1 步：要有且只有/);
         assert.throws(() => parseScenario({ ...base, steps: [{ say: 'a', interrupt: { say: 'b', during: 'generation', afterBubbles: 1 } }] }), /interrupt 要有且只有/);
         assert.throws(() => parseScenario({ ...base, steps: [{ advance: '一天' }] }), /时长写法不对/);
+        assert.throws(() => parseScenario({ ...base, steps: [{ life: { id: 'x', kind: 'feed_cat', result: 'maybe' } }] }), /life.result/);
         const s = parseScenario({ ...base, steps: [{ say: ['a', 'b'] }] });
         assert.equal(s.user, '阿明');
         assert.equal(s.memory, true);
+    });
+
+    test('生活事件不经过聊天也能发生、落账并幂等重放', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-life-sim-'));
+        const scenario = parseScenario({
+            name: '生活事件重放', tier: 'boyfriend', start: '2026-10-05T20:00:00+08:00', memory: false,
+            steps: [{ life: { id: 'feed-potato', kind: 'feed_cat', seen: true } }],
+        });
+        try {
+            const options = { runId: 'life-replay', dataDir: dir, card, llm, prompt, herDays: true };
+            const first = await runScenario(scenario, options);
+            const second = await runScenario(scenario, options);
+            const events = JSON.parse(readFileSync(join(dir, 'world', 'events.json'), 'utf8')).events;
+            const actions = JSON.parse(readFileSync(join(dir, 'world', 'actions.json'), 'utf8')).actions;
+            assert.equal(events.length, 1);
+            assert.equal(actions.length, 1);
+            assert.equal(first.steps[0]!.inputs.length, 0);
+            assert.equal(first.steps[0]!.life, 'feed_cat：succeeded');
+            assert.equal(second.steps[0]!.life, 'feed_cat：succeeded');
+            assert.match(renderReport(first), /生活事件 feed_cat：succeeded/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     test('虚拟时钟 = 真实时间 + 偏移', () => {

@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { CONTACT_TIERS, UNLISTED_TIER, type ContactTier, type Tier } from '../config.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
+import type { LifeEventResult } from '../life-events.ts';
 
 /** 对方的一条或几条消息；几条时按 gapMs 的真实间隔依次发（默认 800 ms，算连发） */
 export interface SayStep {
@@ -11,6 +12,19 @@ export interface SayStep {
     gapMs?: number;
     /** 在这次回复的过程中插一句：生成中（during: "generation"），或发出第 N 条之后（afterBubbles） */
     interrupt?: { say: string; during?: 'generation'; afterBubbles?: number };
+}
+
+/** 不经过聊天、由虚拟世界发生的一件事；发生时刻就是这一步的虚拟时间。 */
+export interface LifeStep {
+    life: {
+        /** 场景内稳定且唯一，用来保证重放幂等。 */
+        id: string;
+        kind: string;
+        result?: LifeEventResult;
+        subject?: string;
+        target?: string;
+        seen?: boolean;
+    };
 }
 
 export interface Checks {
@@ -85,6 +99,8 @@ export type Step =
     /** 报告里的小标题：用例编号和说明 */
     | { case: string; note?: string }
     | SayStep
+    /** 世界自己发生并结算的生活事件，不需要先让她在聊天里说出来。 */
+    | LifeStep
     /** 虚拟时间往后跳，例如 "50m"、"1d"、"9h30m"；途中到点的事（她看到消息、回复）按时间顺序发生。开了记忆就接着把结束了的片段写进去并等 Hindsight 做完 */
     | { advance: string }
     /** 虚拟时间一直往后走，直到她回复（最多 1 天）：睡着、上课时来的消息；proactive：直到她主动发一次（最多 1 天） */
@@ -208,7 +224,7 @@ function parseHistory(value: unknown, where: string, start: number, fail: (messa
     });
 }
 
-const STEP_KINDS = ['case', 'say', 'advance', 'wait', 'memory', 'refresh', 'check', 'forget', 'hindsight'] as const;
+const STEP_KINDS = ['case', 'say', 'life', 'advance', 'wait', 'memory', 'refresh', 'check', 'forget', 'hindsight'] as const;
 
 function checkStep(step: unknown, where: string): void {
     const fail = (message: string): never => { throw new Error(`${where}：${message}`); };
@@ -224,6 +240,16 @@ function checkStep(step: unknown, where: string): void {
             if (typeof it.say !== 'string' || !it.say) fail('interrupt.say 应为非空字符串');
             if ((it.during === 'generation') === (typeof it.afterBubbles === 'number')) fail('interrupt 要有且只有 during: "generation" 或 afterBubbles 其中一个');
         }
+    }
+    if ('life' in s) {
+        if (typeof s.life !== 'object' || s.life === null) fail('life 应为对象');
+        const life = s.life as Record<string, unknown>;
+        if (typeof life.id !== 'string' || !life.id) fail('life.id 应为非空字符串');
+        if (typeof life.kind !== 'string' || !life.kind) fail('life.kind 应为非空字符串');
+        if (life.result !== undefined && !['succeeded', 'failed', 'interrupted'].includes(String(life.result))) fail('life.result 应为 succeeded / failed / interrupted');
+        if (life.subject !== undefined && typeof life.subject !== 'string') fail('life.subject 应为字符串');
+        if (life.target !== undefined && typeof life.target !== 'string') fail('life.target 应为字符串');
+        if (life.seen !== undefined && typeof life.seen !== 'boolean') fail('life.seen 应为布尔值');
     }
     if ('advance' in s) parseDuration(String(s.advance));
     if ('wait' in s && s.wait !== 'reply' && s.wait !== 'proactive') fail('wait 只能是 "reply" 或 "proactive"');

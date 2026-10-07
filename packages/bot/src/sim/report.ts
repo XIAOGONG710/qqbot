@@ -45,6 +45,9 @@ function renderStep(step: StepRecord, dayPrefix: (time: number) => string): stri
             out.push(`*（时间往后跳 ${step.advance}，到 ${day(step.time)} ${clock(step.time)}）*`, '');
             if (exchange) out.push(...renderExchange(step, dayPrefix));
             break;
+        case 'life':
+            out.push(`*（生活事件 ${step.life ?? '未记录'}）*`, '');
+            break;
         case 'wait':
             out.push('*（时间往后走，等她回复）*', '');
             if (exchange) out.push(...renderExchange(step, dayPrefix));

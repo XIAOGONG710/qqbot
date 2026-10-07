@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
@@ -235,6 +235,73 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
             assert.equal(richDone.done.getTime(), now.getTime());
             assert.equal(lowDone.done.getTime(), now.getTime());
             assert.equal(lowDone.course, '');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('统一生活事件账本（ADR 0029）', () => {
+    test('旧 actions.json 可直接升级；第一次新增事件时写 events.json，并继续维护旧投影', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'world-events-'));
+        const legacy: WorldAction = {
+            id: 'legacy-feed', kind: 'feed_cat', day: '2026-09-15', at: '2026-09-15T19:00', contact: 1, episode: 'ep-old',
+        };
+        try {
+            writeFileSync(join(dir, 'actions.json'), JSON.stringify({ actions: [legacy] }));
+            const now = at('2026-09-15T22:00:00');
+            const state = worldState(world, schedule, () => undefined, dir, () => now.getTime());
+            assert.equal(state.events().length, 1);
+            assert.equal(state.events()[0]!.source, 'conversation');
+            state.recordEvents([{
+                id: 'sim:read-1', kind: 'read_book', at: at('2026-09-15T21:00:00').toISOString(),
+                source: 'simulation', result: 'succeeded', subject: '局外人',
+            }]);
+            const disk = JSON.parse(readFileSync(join(dir, 'events.json'), 'utf8'));
+            assert.equal(disk.version, 1);
+            assert.deepEqual(disk.events.map((event: { id: string }) => event.id), ['legacy-feed', 'sim:read-1']);
+            assert.deepEqual(JSON.parse(readFileSync(join(dir, 'actions.json'), 'utf8')).actions.map((action: WorldAction) => action.id), ['legacy-feed']);
+            const resumed = worldState(world, schedule, () => undefined, dir, () => now.getTime());
+            assert.equal(resumed.events().length, 2, 'events 与兼容 actions 同时存在时不重复迁移');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('成功事件才投影到世界；失败和中断留下经历，但不伪造成完成', () => {
+        const rainy = patch(w => { w.weather!.rainChance = 1; });
+        const dir = mkdtempSync(join(tmpdir(), 'world-events-'));
+        try {
+            const now = at('2026-09-15T22:00:00');
+            const state = worldState(rainy, schedule, () => undefined, dir, () => now.getTime());
+            state.recordEvents([
+                { id: 'failed', kind: 'feed_cat', at: at('2026-09-15T18:00:00').toISOString(), source: 'simulation', result: 'failed' },
+                { id: 'interrupted', kind: 'feed_cat', at: at('2026-09-15T18:30:00').toISOString(), source: 'simulation', result: 'interrupted' },
+            ]);
+            assert.deepEqual(state.at(rainy, schedule, at('2026-09-15T18:59:00'))!.cat!.today, { skipped: 'rain' });
+            state.recordEvents([
+                { id: 'succeeded', kind: 'feed_cat', at: at('2026-09-15T19:00:00').toISOString(), source: 'simulation', result: 'succeeded', seen: false },
+            ]);
+            assert.equal(state.events().length, 3);
+            assert.equal(state.actions().length, 1);
+            assert.deepEqual(state.at(rainy, schedule, at('2026-09-15T19:01:00'))!.cat!.today, { fed: at('2026-09-15T19:00:00'), seen: false });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('事件 id 幂等，且不满足现实前置条件的“成功”会结算为失败', () => {
+        const noParcels = patch(w => { w.parcels!.perWeek = 0; });
+        const dir = mkdtempSync(join(tmpdir(), 'world-events-'));
+        try {
+            const now = at('2026-09-15T22:00:00');
+            const state = worldState(noParcels, schedule, () => undefined, dir, () => now.getTime());
+            const draft = { id: 'pick-none', kind: 'pick_parcel', at: at('2026-09-15T19:00:00').toISOString(), source: 'external' as const, result: 'succeeded' as const };
+            state.recordEvents([draft]);
+            state.recordEvents([draft]);
+            assert.equal(state.events().length, 1);
+            assert.equal(state.events()[0]!.result, 'failed');
+            assert.equal(state.actions().length, 0);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
