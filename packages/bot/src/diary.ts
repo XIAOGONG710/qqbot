@@ -14,6 +14,8 @@ import type { LongTermMemory } from './memory/long-term.ts';
 import { knowsPeople } from './people.ts';
 import type { OpenAIMessage } from './prompt.ts';
 import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from './schedule.ts';
+import { diaryWorld, worldAt, type World } from './world.ts';
+import { bodyAt, diaryBody } from './body.ts';
 
 /** bot 停过时往回补几天 */
 export const DIARY_BACKFILL_DAYS = 3;
@@ -43,6 +45,8 @@ export interface DiarySources {
     books: readonly ReadingBook[];
     /** 模拟器指定的心情（场景的 mood），和聊天时一样 */
     mood?: string;
+    /** 她那边、她的身体（ADR 0026）：用同学档的卡（日记进公共库，同学档也会想起来），herDays 关着时不传 */
+    world?: World;
 }
 
 /** 她那一天的材料，一段给模型看的文字；plans：她之前说过那天打算做的事（ADR 0018 决策 2） */
@@ -68,6 +72,12 @@ export function diaryMaterial(
     if (free.length) lines.push(`空闲时：${free.join('；')}`);
     const mood = moodAt(schedule, sources.moods, atTime(day, '12:00'), sources.mood);
     if (mood) lines.push(`心情：${mood.mood.name}（${mood.reason}）`);
+    // 她那边今天发生的事、身上舒不舒服（ADR 0026）：一天结束时算（她的一天到 02:00，23:30 已经都发生了）
+    const around = sources.world ? worldAt(sources.world, schedule, atTime(day, '23:30')) : undefined;
+    const happened = around ? diaryWorld(around) : [];
+    if (happened.length) lines.push(`你那边今天：${happened.join('；')}`);
+    const body = sources.world?.body ? diaryBody(bodyAt(sources.world.body, schedule, atTime(day, '15:00'))) : undefined;
+    if (body) lines.push(`身体：${body}`);
     // 放下的书不写：每篇日记都写一遍，召回时会挤掉别的事
     const reading = sources.books.filter(book => book.progress.state !== 'put_down').map(book => {
         const progress = bookProgressOn(book, day);
@@ -97,6 +107,7 @@ export function diaryMessages(charName: string, day: Date, material: string): Op
                 `你是${charName}，在读的女大学生，睡前在写今天（${day.getMonth() + 1}月${day.getDate()}日）的日记。`,
                 '用第一人称，像真的大学生写日记一样随意，150–300 字，一两段。怎么写：',
                 '- 作息里的课和活动是你今天做过的，挑几件写。',
+                '- 「你那边今天」是今天真发生的事，最多挑一件，一句话带过，和材料一致；聊天里说过的事比它要紧，先写。身体不舒服的写一句。',
                 '- 聊天里你说过自己做了什么、去了哪、吃了什么、看了什么，就是你今天做过的，照写，细节和说过的一致。',
                 '- 之前说过今天打算做的事，聊天里没说变卦，就写做了。',
                 '- 和谁聊了什么一句带过，写对方的名字。',

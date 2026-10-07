@@ -18,7 +18,7 @@ import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay } from '../proactive.ts';
 import { createProactivePlanner, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
-import { worldLogger } from '../world.ts';
+import { worldLogger, type World } from '../world.ts';
 import { DIARY_TEMPERATURE, diaryWriter } from '../diary.ts';
 import { formatDate, stateAt } from '../schedule.ts';
 import { parseDuration, VirtualClock, type Checks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
@@ -60,6 +60,8 @@ export interface RunOptions {
     speechCheck?: boolean;
     /** 她自己的日子（ADR 0015），run.ts 照 bot 的配置传；默认否 */
     herDays?: boolean;
+    /** 日记里的世界（ADR 0026）：同学档的卡上的，run.ts 传 */
+    diaryWorld?: World;
 }
 
 /** proactive：她主动发的（ADR 0011），是哪个时机（日志里的说法） */
@@ -172,6 +174,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 schedule: diaryCard.schedule,
                 moods: options.herDays ? diaryCard.moods : [],
                 books: options.herDays ? diaryCard.books : [],
+                ...(options.herDays && options.diaryWorld ? { world: options.diaryWorld } : {}),
                 ...(scenario.mood !== undefined ? { mood: scenario.mood } : {}),
             },
             contacts: [contact, ...others],

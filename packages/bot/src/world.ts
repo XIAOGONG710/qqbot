@@ -62,7 +62,8 @@ export interface WorldNow {
     parcels: { item: string; status: 'station' | 'picked_today' | 'arriving'; when: Date; deadline?: string }[];
     cameraFund?: { saved: number; goal: number };
     /** 三天内要交的 */
-    homework: { course: string; due: Date; done: boolean }[];
+    /** doneAt：几点写完（还没到就是打算几点写），日记用 */
+    homework: { course: string; due: Date; done: boolean; doneAt: Date }[];
     familyCall?: { at: Date; done: boolean };
     /** 今天已经发生的小事（text 已换好人名） */
     events: { id: string; text: string; at: Date; person?: { name: string; relation: string } }[];
@@ -229,7 +230,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date): WorldNow |
     }
     for (const item of timeline.homework) {
         if (item.assigned > date || item.due <= now || item.due.getTime() - startOfDay(now).getTime() > 3 * DAY_MS) continue;
-        result.homework.push({ course: item.course, due: item.due, done: item.done <= now });
+        result.homework.push({ course: item.course, due: item.due, done: item.done <= now, doneAt: item.done });
     }
     if (record.call) result.familyCall = { at: record.call, done: record.call <= now };
     for (const event of record.events) {
@@ -287,6 +288,35 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
     }
     if (!parts.length) return undefined;
     return `[你那边（今天到现在的事实，用不用、怎么说你自己定，别照着念；这里没写的别编）：${parts.join('｜')}]`;
+}
+
+/**
+ * 写日记用（ADR 0026）：那一天里**值得记一笔**的事，一件一句。天天一样的（没下雨、照常喂了猫、还有几份作业没写）不写：
+ * 第一批日记把这些都写进去，召回时挤掉了那天真正的事（跟鸽鸽说过的麻辣烫）。
+ * 日记进公共库，所以调用方传的是同学档的卡算出来的世界（宿舍、室友、闺蜜、相机基金、课名这些同学档看不到的块本来就不在里面）
+ */
+export function diaryWorld(now: WorldNow): string[] {
+    const lines: string[] = [];
+    if (now.weather?.rain) lines.push('下雨了');
+    if (now.cat) {
+        const { today } = now.cat;
+        const cat = 'fed' in today ? (today.seen ? '' : `下楼喂${now.cat.name}没见着它`)
+            : 'skipped' in today ? (today.skipped === 'rain' ? `下雨没下楼喂${now.cat.name}` : today.skipped === 'no_food' ? '猫粮没了，没喂成' : today.skipped === 'class' ? '晚上有课，没下楼喂猫' : '')
+                : '';
+        if (cat) lines.push(cat);
+    }
+    for (const parcel of now.parcels) {
+        if (parcel.status === 'picked_today') lines.push(`去驿站取了快递（${parcel.item}）`);
+        else if (parcel.status === 'station') lines.push(`快递（${parcel.item}）到驿站了，还没去取`);
+    }
+    // 只算这一天写完的；晚上九点以后写完的是熬夜赶的（第二批：日记先写「写完两份」又写「一个字没动」，聊天里她 21:30 还没动笔）
+    const doneToday = now.homework.filter(h => h.done && formatDate(h.doneAt) === now.day);
+    const late = doneToday.filter(h => h.doneAt.getHours() >= 21).length;
+    if (late) lines.push(`熬夜写完了 ${late} 份作业`);
+    if (doneToday.length > late) lines.push(`写完了 ${doneToday.length - late} 份作业`);
+    if (now.familyCall?.done) lines.push('晚上和家里视频了');
+    for (const event of now.events) lines.push(event.text);
+    return lines;
 }
 
 /** 一天的摘要（日志、state.json 用，不含聊天内容） */
