@@ -25,6 +25,7 @@ import { describeMood, moodAt, readingActivities, readingSection } from './her-d
 import { describeIntent } from './intent.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, worldAt } from './world.ts';
+import { bodyAt, describeBody } from './body.ts';
 import { askedWindow, ASKS_PAST, commonCue, describePerson, holidayWords, mentionedPeople, stillInMind } from './people.ts';
 import type { PromiseKeeper } from './promises.ts';
 import { describeState, stateAt } from './schedule.ts';
@@ -206,6 +207,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她那边（ADR 0021）：跟着「她自己的日子」开，卡上有世界才有
             const around = herSchedule && character.herWorld ? worldAt(character.herWorld, herSchedule, time) : undefined;
             const world = around ? describeWorld(around, time) : undefined;
+            // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
+            const body = herSchedule && character.herWorld?.body ? describeBody(bodyAt(character.herWorld.body, herSchedule, time)) : undefined;
             const promised = contact.tier !== UNLISTED_TIER ? options.promises?.describe(contact, chat, time) : undefined;
             if (promised) log('时间块里提醒了她答应的事');
             // 挂着的事（ADR 0023）：等他说结果的、她问了他没答的进意图行；没了结的事实放在心情后面，只给事实
@@ -246,6 +249,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(days ? [days] : []),
                         ...(state ? [describeState(state, schedule!, { userName: contact.name, woken })] : []),
                         ...(mood ? [describeMood(mood, contact.name)] : []),
+                        ...(body ? [body] : []),
                         ...(unsettled ? [unsettled] : []),
                         ...(books ? [books.text] : []),
                         ...(world ? [world] : []),

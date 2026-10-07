@@ -876,7 +876,23 @@
                             "chance": 0.04,
                             "when": "school"
                         }
-                    ]
+                    ],
+                    "body": {
+                        "period": {
+                            "first": "2026-09-20",
+                            "cycle": [
+                                28,
+                                31
+                            ],
+                            "days": 5,
+                            "crampsChance": 0.7,
+                            "detail": true
+                        },
+                        "cold": {
+                            "perMonth": 0.5,
+                            "days": 4
+                        }
+                    }
                 }
             }
         }

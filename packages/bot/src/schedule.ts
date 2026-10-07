@@ -134,7 +134,8 @@ export function wakeOn(schedule: Schedule, day: Date): Date {
 }
 
 /** 这一天几点起：第一节有课就早起 */
-function wakeTime(schedule: Schedule, day: Date, lessons: ClassToday[]): Date {
+/** 那天几点起：第一节是早八就早起，否则睡到自然醒（ADR 0025 的困也用它） */
+export function wakeTime(schedule: Schedule, day: Date, lessons: ClassToday[]): Date {
     const early = schedule.periods[schedule.wake.earlySlot];
     const hasEarly = early !== undefined && lessons.some(l => l.start.getTime() === at(day, early.start).getTime());
     return at(day, hasEarly ? schedule.wake.early : schedule.wake.lazy);
