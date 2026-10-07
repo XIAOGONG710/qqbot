@@ -7,7 +7,7 @@ import type { BotConfig, Contact } from '../config.ts';
 import { createContactResponder, replySkip, type TierCard } from '../contact.ts';
 import { promiseKeeper } from '../promises.ts';
 import { ChatHistory, type StoredMessage } from '../history.ts';
-import { chatCompletion } from '../llm.ts';
+import { chatCompletion, forExtraction } from '../llm.ts';
 import type { Log } from '../log.ts';
 import type { HindsightApi } from '../memory/hindsight.ts';
 import { LongTermMemory, RELATIONSHIP_MODEL } from '../memory/long-term.ts';
@@ -156,7 +156,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             history,
             names: person => ({ user: person.name, char: names.char }),
             ...(scenario.schedule && options.card.character.schedule ? { schedule: options.card.character.schedule } : {}),
-            extract: messages => (options.generate ? options.generate(messages, log) : chatCompletion(options.llm, messages, { log })),
+            extract: messages => (options.generate ? options.generate(messages, log) : chatCompletion(forExtraction(options.llm), messages, { log })),
             dir: join(dataDir, 'promises'),
             log,
             now: clock.now,
@@ -295,7 +295,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             now: clock.now,
             waitUntil: clock.waitUntil,
             names,
-            extract: messages => baseGenerate(messages, log),
+            extract: messages => (options.generate ? options.generate(messages, log) : chatCompletion(forExtraction(options.llm), messages, { log })),
         })
         : undefined;
     if (scenario.proactive && !planner) log('场景开了主动消息，但卡上没有主动设置或作息，不主动');

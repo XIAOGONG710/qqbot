@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { describe, test } from 'node:test';
-import { chatCompletion, RETRY_DELAYS_MS, type LlmOptions } from '../src/llm.ts';
+import { chatCompletion, EXTRACT_MAX_TOKENS, forExtraction, RETRY_DELAYS_MS, type LlmOptions } from '../src/llm.ts';
 
 const options: LlmOptions = {
     baseUrl: 'https://llm.example/',
@@ -76,6 +76,22 @@ describe('模型请求', () => {
         assert.deepEqual(calls, Array(RETRY_DELAYS_MS.length + 1).fill('https://llm.example/chat/completions'));
         assert.deepEqual(slept, RETRY_DELAYS_MS);
         assert.ok(logs[0]!.includes('UND_ERR_CONNECT_TIMEOUT'));
+    });
+
+    test('思考用完 max_tokens、正文是空的：照样返回空文本，日志写明是被截断', async () => {
+        const truncated = () => new Response(JSON.stringify({ choices: [{ message: { content: '', reasoning_content: '想……' }, finish_reason: 'length' }] }));
+        const logs: string[] = [];
+        assert.equal(await chatCompletion(options, messages, { fetch: fakeFetch([truncated]).fetch, log: m => logs.push(m) }), '');
+        assert.deepEqual(logs, ['模型输出被截断：思考用完了 max_tokens，正文是空的']);
+        const quiet: string[] = [];
+        await chatCompletion(options, messages, { fetch: fakeFetch([ok]).fetch, log: m => quiet.push(m) });
+        assert.deepEqual(quiet, []);
+    });
+
+    test('后台抽取用的配置：同一个模型，输出上限放大到 8192（配得更大的不改）', () => {
+        assert.deepEqual(forExtraction(options), { ...options, maxTokens: EXTRACT_MAX_TOKENS });
+        assert.equal(EXTRACT_MAX_TOKENS, 8192);
+        assert.equal(forExtraction({ ...options, maxTokens: 16384 }).maxTokens, 16384);
     });
 
     test('重试用完后报错，错误里带上具体原因', async () => {

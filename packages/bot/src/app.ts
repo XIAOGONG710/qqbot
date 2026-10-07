@@ -9,7 +9,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
-import { chatCompletion } from './llm.ts';
+import { chatCompletion, forExtraction } from './llm.ts';
 import { acquireLock } from './lock.ts';
 import type { Log } from './log.ts';
 import { ChatHistory } from './history.ts';
@@ -192,7 +192,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             history,
             names: contact => ({ user: contact.name, char: cardFor(contact.tier).character.name }),
             ...(diaryCard?.schedule ? { schedule: diaryCard.schedule } : {}),
-            extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(config.llm, messages, { log })),
+            extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log })),
             dir: join(config.dataDir, 'promises'),
             log,
             ...(pipeline?.now ? { now: pipeline.now } : {}),
@@ -280,7 +280,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 names: { user: contact.name, char: character.name },
                 skip: replySkip(character, config.moody),
                 // 待跟进的事：用同一个模型配置抽（测试替换的 generate 也用在这里）
-                extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(config.llm, messages, { log })),
+                extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log })),
                 ...(pipeline?.now ? { now: pipeline.now } : {}),
                 ...(pipeline?.waitUntil ? { waitUntil: pipeline.waitUntil } : {}),
             }));

@@ -18,7 +18,7 @@
         { "advance": "6h" },
         { "case": "OW02", "note": "10-08 晚上：意图行问面试结果，只表达想知道" },
         { "say": "到家了" },
-        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "知道「[^」]*面试[^」]*」后来怎么样了", "log": "挂着的事：等结果 1", "replyAny": ["面试", "怎么样", "结果", "面得", "二面"] } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "知道「[^」]*(面试|二面)[^」]*」后来怎么样了", "log": "挂着的事：等结果 1", "replyAny": ["面试", "怎么样", "结果", "面得", "二面"] } },
         { "say": "过了！下周三面" },
         { "check": { "speechClean": true, "exitClean": true } },
         { "advance": "1h" },

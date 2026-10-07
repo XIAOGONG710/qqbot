@@ -65,10 +65,13 @@ export function promisePrompt(transcript: string, pending: readonly HerPromise[]
         `另外，「还没做的事」里如果有哪件在这段聊天里${char}已经做了、或者${user}说不用了，把它的 id 写进 resolved。`,
         `再挑三类「挂着的事」，都只写发生了什么，不写谁什么感受、不写评价（不要「难过」「委屈」「介意」「失望」这类词）：`,
         `- waiting：${user}说的、之后会发生、${char}会想知道结果的事（面试、考试、比赛、出行、看病、等通知），what 写「${user}…」，`,
+        '  不写「明天」「下周」这类相对的说法（第二天再看就错了，日子写在 date 里），',
         '  date 写那件事哪天（换算同上），没说哪天写 null；',
-        `- unanswered：${char}问了${user}一个真问题（不是反问、不是玩笑），这段聊天里他没回答就岔开了，what 写她问的是什么；`,
-        `- unsettled：两个人说好的事最后没成、或者一件事没说完就断了，what 写发生了什么（例如「10月5日说好一起回青岛，最后没走成」），`,
-        '  不高兴、闹别扭也只写那件事本身。',
+        `- unanswered：${char}问了${user}一件她真想知道答案、要他给个回答的事（约他做什么、问他的打算或决定、问一件对她要紧的事），`,
+        `  他接着说了别的，这段聊天里一直没回答，what 写她问的是什么。随口的关心和闲聊里的问句不算（在干嘛、吃了没、几点下班、今天干什么了、笑什么、`,
+        `  哪家店），反问、玩笑也不算；她约他、他没接茬的算这一类，不算 unsettled。一段聊天最多记一条，挑最要紧的那件；`,
+        `- unsettled：两个人已经说好的事最后没成（约好了又取消、说好的没做到）、或者一件正事说到一半就断了，what 写发生了什么`,
+        '  （例如「10月5日说好一起回青岛，最后没走成」）；她提了他还没答应的不算（那是 unanswered）。不高兴、闹别扭也只写那件事本身。',
         `下面「还挂着的事」（id 以 a-、q-、u- 开头）在这段聊天里有了结果、${user}回答了、或者那件事了结了，也把 id 写进 resolved。`,
         '只输出一个 JSON 对象，不要别的文字，例如：',
         '{"add":[{"what":"给他讲《三体》的结局","date":null},{"what":"去拍银杏","date":"2026-10-10"}],'
@@ -116,7 +119,8 @@ export function parsePromises(text: string): ExtractedPromises {
     return {
         add: items(data.add),
         waiting: facts(items(data.waiting)),
-        unanswered: facts(items(data.unanswered).map(({ what }) => ({ what }))),
+        // 一段聊天最多一条没回答的（第一批：随口的问句都挂上了，她第二天把「哪个窗口」也追着问）
+        unanswered: facts(items(data.unanswered).map(({ what }) => ({ what }))).slice(0, 1),
         unsettled: facts(items(data.unsettled).map(({ what }) => ({ what }))),
         resolved,
         feelings,

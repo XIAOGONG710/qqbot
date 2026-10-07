@@ -32,6 +32,10 @@ describe('她答应的事：抽取（ADR 0018 决策 2）', () => {
             { id: 'u-1', kind: 'unsettled', what: '10月6日说好一起看电影，他加班没去成', said: '2026-10-06', episode: 'ep-0' },
         ]);
         for (const rule of ['waiting', 'unanswered', 'unsettled', '不写谁什么感受', '不要「难过」']) assert.ok(system!.content.includes(rule), rule);
+        // 第一批：随口的问句都挂上了、她约他没接的进了「没了结」
+        for (const rule of ['随口的关心和闲聊里的问句不算', '她约他、他没接茬的算这一类', '一段聊天最多记一条', '她提了他还没答应的不算']) {
+            assert.ok(system!.content.includes(rule), rule);
+        }
         assert.match(user!.content, /还挂着的事：\n- a-1：等结果 2026-10-08 阿明周四下午字节面试\n- u-1：没了结 10月6日说好一起看电影，他加班没去成\n/);
     });
 
@@ -48,12 +52,12 @@ describe('她答应的事：抽取（ADR 0018 决策 2）', () => {
         const parsed = parsePromises(JSON.stringify({
             add: [],
             waiting: [{ what: '阿明周四下午字节面试', date: '2026-10-08' }, { what: '他下次体检', date: 'x' }],
-            unanswered: [{ what: '他国庆回不回家', date: '2026-10-01' }],
+            unanswered: [{ what: '他国庆回不回家', date: '2026-10-01' }, { what: '他吃了没' }],
             unsettled: [{ what: '说好一起看电影，他加班没去成' }, { what: '她对他放鸽子很失望' }],
             resolved: ['a-1'],
         }));
         assert.deepEqual(parsed.waiting, [{ what: '阿明周四下午字节面试', date: '2026-10-08' }, { what: '他下次体检' }]);
-        assert.deepEqual(parsed.unanswered, [{ what: '他国庆回不回家' }], '没回答的不带日子');
+        assert.deepEqual(parsed.unanswered, [{ what: '他国庆回不回家' }], '没回答的不带日子，一段最多一条');
         assert.deepEqual(parsed.unsettled, [{ what: '说好一起看电影，他加班没去成' }]);
         assert.deepEqual(parsed.feelings, ['她对他放鸽子很失望']);
     });
