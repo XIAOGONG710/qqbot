@@ -296,9 +296,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         generate: messages => generate(messages, log),
         clean,
         // 出口检查：重写时在后处理过的提示词末尾加一条说明，再按同样的方式后处理一次
-        // 打错字再改口（ADR 0024）：拆好条之后、发出去之前
+        // 打错字再改口（ADR 0024）：拆好条之后、发出去之前。种子只看是谁、说了什么，不看时间：同一句话结果固定
+        // （带时间时，假模型的测试里「哟，还知道回来啊」有时被打成「知到」，测试时过时不过）
         decorate: (parts, maxBubbles) => {
-            const typo = maybeTypo(parts, `${contact.qq} ${now()} ${parts.join('|')}`, maxBubbles);
+            const typo = maybeTypo(parts, `${contact.qq} ${parts.join('|')}`, maxBubbles);
             if (typo.note) log(`打错字：${typo.note}`);
             return typo.parts;
         },
