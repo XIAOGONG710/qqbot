@@ -94,6 +94,17 @@ export interface WorldEventSource {
     note?: string;
 }
 
+/**
+ * 她的身体（ADR 0025）：困、累、饿按作息推，tiers 里的档位都有；生理期按周期推（first 是某次的第一天，cycle 每个周期长短的范围），
+ * 头两天按 cramps_chance 痛经（persona.yml body：「你有痛经」），说得出口的只有 detail_tiers，别的档位那几天只说身上不太舒服；小感冒按 per_month 的概率，持续 days 天
+ */
+export interface BodySource {
+    tiers: string[];
+    period?: { first: string; cycle: [number, number]; days: number; cramps_chance: number; detail_tiers: string[] };
+    cold?: { per_month: number; days: number };
+    note?: string;
+}
+
 export interface WorldSource {
     /** 从哪天开始推（学期开始那天）；猫粮、相机基金这些数是那天的 */
     start_day: string;
@@ -107,6 +118,7 @@ export interface WorldSource {
     family_call: FamilyCallSource;
     people: WorldPersonSource[];
     events: WorldEventSource[];
+    body?: BodySource;
     note?: string;
 }
 
@@ -121,6 +133,7 @@ export function worldTiers(world: WorldSource): { at: string; tiers: string[] }[
         { at: 'family_call', tiers: world.family_call.tiers },
         ...world.people.flatMap((person, i) => [{ at: `people[${i}]`, tiers: person.tiers }, { at: `people[${i}].named_tiers`, tiers: person.named_tiers }]),
         ...world.events.map((event, i) => ({ at: `events[${i}]`, tiers: event.tiers })),
+        ...(world.body ? [{ at: 'body', tiers: world.body.tiers }, ...(world.body.period ? [{ at: 'body.period.detail_tiers', tiers: world.body.period.detail_tiers }] : [])] : []),
     ];
 }
 
@@ -151,6 +164,12 @@ export function worldForTier(world: WorldSource | undefined, tier: string): Card
             id: event.id, text: event.text, window: event.window, chance: event.chance, when: event.when,
             ...(event.person ? { person: event.person } : {}), ...(event.weekday ? { weekday: event.weekday } : {}),
         })),
+        ...(world.body && sees(world.body.tiers) ? {
+            body: {
+                ...(world.body.period ? { period: { first: world.body.period.first, cycle: [...world.body.period.cycle] as [number, number], days: world.body.period.days, crampsChance: world.body.period.cramps_chance, detail: sees(world.body.period.detail_tiers) } } : {}),
+                ...(world.body.cold ? { cold: { perMonth: world.body.cold.per_month, days: world.body.cold.days } } : {}),
+            },
+        } : {}),
     };
     return card;
 }
@@ -216,7 +235,7 @@ class At {
 export function checkWorld(raw: unknown): WorldSource {
     const root = new At('world.yml');
     const o = root.object(raw);
-    root.keys(o, ['start_day', 'away_holidays', 'weather', 'cat', 'parcels', 'camera_fund', 'homework', 'family_call', 'people', 'events', 'note']);
+    root.keys(o, ['start_day', 'away_holidays', 'weather', 'cat', 'parcels', 'camera_fund', 'homework', 'family_call', 'people', 'events', 'body', 'note']);
     const startDay = root.at('start_day').string(o.start_day);
     if (!DATE.test(startDay)) root.at('start_day').fail(`应为 YYYY-MM-DD：${startDay}`);
 
@@ -305,6 +324,7 @@ export function checkWorld(raw: unknown): WorldSource {
     });
     if (new Set(events.map(event => event.id)).size !== events.length) root.at('events').fail('id 重复');
 
+    const body = o.body === undefined || o.body === null ? undefined : checkBody(root.at('body'), o.body);
     const awayHolidays = o.away_holidays === undefined || o.away_holidays === null ? [] : root.at('away_holidays').strings(o.away_holidays);
     return {
         start_day: startDay,
@@ -353,6 +373,32 @@ export function checkWorld(raw: unknown): WorldSource {
         },
         people,
         events,
+        ...(body ? { body } : {}),
         ...root.at('note').note(o.note),
     };
+}
+
+function checkBody(b: At, value: unknown): BodySource {
+    const body = b.object(value);
+    b.keys(body, ['tiers', 'period', 'cold', 'note']);
+    const tiers = b.at('tiers').strings(body.tiers);
+    let period: BodySource['period'];
+    if (body.period !== undefined && body.period !== null) {
+        const p = b.at('period');
+        const raw = p.object(body.period);
+        p.keys(raw, ['first', 'cycle', 'days', 'cramps_chance', 'detail_tiers']);
+        const first = p.at('first').string(raw.first);
+        if (!DATE.test(first)) p.at('first').fail(`应为 YYYY-MM-DD：${first}`);
+        const detail = p.at('detail_tiers').strings(raw.detail_tiers);
+        for (const tier of detail) if (!tiers.includes(tier)) p.at('detail_tiers').fail(`${tier} 不在 body.tiers 里`);
+        period = { first, cycle: p.at('cycle').range(raw.cycle, 20, 45, true), days: p.at('days').integer(raw.days, 1, 10), cramps_chance: p.at('cramps_chance').number(raw.cramps_chance, 0, 1), detail_tiers: detail };
+    }
+    let cold: BodySource['cold'];
+    if (body.cold !== undefined && body.cold !== null) {
+        const c = b.at('cold');
+        const raw = c.object(body.cold);
+        c.keys(raw, ['per_month', 'days']);
+        cold = { per_month: c.at('per_month').number(raw.per_month, 0, 10), days: c.at('days').integer(raw.days, 1, 14) };
+    }
+    return { tiers, ...(period ? { period } : {}), ...(cold ? { cold } : {}), ...b.at('note').note(body.note) };
 }

@@ -25,6 +25,7 @@ import { describeMood, moodAt, readingActivities, readingSection } from './her-d
 import { describeIntent } from './intent.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, worldAt } from './world.ts';
+import { bodyAt, describeBody } from './body.ts';
 import { describePast, pastCue, type PastChunk } from './biography.ts';
 import { askedWindow, ASKS_PAST, commonCue, describePerson, holidayWords, mentionedPeople, stillInMind } from './people.ts';
 import type { PromiseKeeper } from './promises.ts';
@@ -209,6 +210,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她那边（ADR 0021）：跟着「她自己的日子」开，卡上有世界才有
             const around = herSchedule && character.herWorld ? worldAt(character.herWorld, herSchedule, time) : undefined;
             const world = around ? describeWorld(around, time) : undefined;
+            // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
+            const body = herSchedule && character.herWorld?.body ? describeBody(bodyAt(character.herWorld.body, herSchedule, time)) : undefined;
             // 她的过去（ADR 0022）：他说到卡上某块的线索才想起；主动找他时不想
             let pastChunks = character.biography && !initiate ? pastCue(chat, character.biography) : [];
             if (pastChunks.length) {
@@ -260,6 +263,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(days ? [days] : []),
                         ...(state ? [describeState(state, schedule!, { userName: contact.name, woken })] : []),
                         ...(mood ? [describeMood(mood, contact.name)] : []),
+                        ...(body ? [body] : []),
                         ...(unsettled ? [unsettled] : []),
                         ...(books ? [books.text] : []),
                         ...(world ? [world] : []),

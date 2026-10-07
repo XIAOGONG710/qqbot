@@ -1,0 +1,27 @@
+{
+    "name": "男朋友档：她的身体（ADR 0025）",
+    "description": "11-16 小感冒第一天、11-18 第三天；12-21 生理期第一天肚子疼。他问身体、问感冒好点没、觉得她蔫、约她开黑：她说的和身上的事实对得上，不舒服就不会同时疯玩。按卡上的身体逐日推出来（同一天每次一样）。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-16T21:30:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "BD01", "note": "感冒第一天：嗓子疼" },
+        { "say": "今天身体咋样" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "有点感冒，嗓子疼", "replyAny": ["感冒", "嗓子", "不舒服", "疼", "咳", "鼻"] } },
+        { "advance": "2d" },
+        { "case": "BD02", "note": "感冒第三天：鼻塞，还没好" },
+        { "say": "感冒好点没" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "感冒第 3 天，鼻塞", "replyAny": ["鼻塞", "好点", "还行", "没好", "闷", "鼻子", "差不多", "好多了"], "replyNone": ["早好了", "全好了", "没感冒", "哪有感冒"] } },
+        { "advance": "33d" },
+        { "case": "BD03", "note": "12-21 生理期第一天，疼得厉害：不会说自己在疯玩" },
+        { "say": "在干嘛呢" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "生理期第 1 天，肚子疼得厉害", "replyNone": ["出去玩", "蹦迪", "嗨", "在逛街", "跑步"] } },
+        { "case": "BD04", "note": "他觉得她蔫：说得出是肚子疼" },
+        { "say": "怎么感觉你今天蔫蔫的" },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["肚子", "疼", "姨妈", "来了", "不舒服", "躺", "例假", "生理期"] } },
+        { "case": "BD05", "note": "约她开黑：不想动" },
+        { "say": "晚上开黑打两把？" },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["不想", "躺", "不打", "算了", "改天", "疼", "没劲", "下次", "明天", "不了"] } }
+    ]
+}

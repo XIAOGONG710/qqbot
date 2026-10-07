@@ -236,4 +236,26 @@ events:
     window: evening
     chance: 0.04
     when: school
+body:
+  tiers:
+    - boyfriend
+    - bestie
+    - girl_friend
+    - known
+    - classmate
+    - stranger
+    - unlisted
+  period:
+    first: "2026-09-20"
+    cycle: [28, 31]
+    days: 5
+    cramps_chance: 0.7
+    detail_tiers:
+      - boyfriend
+      - bestie
+      - girl_friend
+  cold:
+    per_month: 0.5
+    days: 4
+  note: ADR 0025。困、累、饿按作息推（两点睡，早八那天七点四十起），谁都有；生理期按周期推，persona.yml body「你有痛经」——头两天按 cramps_chance 肚子疼，说得出口的只有 detail_tiers（和 persona.yml body 的可见性一样），别的档位那几天只说身上不太舒服；小感冒平均两个月一次，四天从嗓子疼到快好了。数字是可改的设定（用户 10-06 授权按推荐定）
 note: 每一块都从已有的资料长出来，不新发明大设定；只写事实和规则，不写台词（提示词里只给事实和约束，ADR 0021 决策 3）。运行时按日期推出每一天（packages/bot/src/world.ts），同一天对所有人一样。回家过的假期写进 away_holidays（那几天不喂猫、不取快递、不和家里视频）；国庆她留校
