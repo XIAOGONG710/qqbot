@@ -1,6 +1,6 @@
-// 模拟器入口（ADR 0005）：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>]
+// 模拟器入口（ADR 0005）：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N]
 // 用 runtime/bot/config.json 的模型、提示词、记忆和角色卡配置（key 同 bot，从 QQBOT_LLM_API_KEY 读），
-// 每个场景跑 --runs 次（并行），每次的数据和报告在 runtime/sim/<时间>/<场景>/r<n>/，Hindsight 用临时 bank，跑完删掉。
+// 每个场景跑 --runs 次（不带记忆的并行；带记忆的默认一次一个，免得挤爆和线上共用的 Postgres；--parallel 改），每次的数据和报告在 runtime/sim/<时间>/<场景>/r<n>/，Hindsight 用临时 bank，跑完删掉。
 // 不碰 bot 的聊天记录、锁和 bank，bot 运行中也可以跑。
 // --card：用这个目录里的卡（文件名同配置里的，A/B 用临时目录；改 characters/*/st/ 等于直接上线，ADR 0019）；
 // --pin-examples：只对这次模拟改示例常驻（ADR 0019 决策 6），其余同配置。
@@ -26,8 +26,12 @@ const noMemory = flag('--no-memory');
 const cardDir = option('--card');
 const pinExamples = option('--pin-examples');
 const tag = option('--tag');
-if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))) {
-    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>]');
+// 同时跑几次：不带记忆的默认全部并行；带记忆的默认一次一个——本机只有 6 GB 内存，3 次并行的带记忆场景两次把和线上共用的 Postgres 挤到
+// out of memory、崩溃恢复（10-07 18:17、19:51，各 2–3 秒自动恢复，线上的库没事）
+const parallelOption = option('--parallel');
+const parallel = parallelOption === undefined ? undefined : Number(parallelOption);
+if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))) {
+    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N]');
     process.exit(2);
 }
 
@@ -64,7 +68,8 @@ for (const [fileIndex, file] of files.entries()) {
     const diaryWorld = loadTierCard(config.characterCard, 'classmate').character.herWorld;
     const name = basename(file, '.json');
     console.log(`${name}：${scenario.tier} 档，跑 ${runs} 次${hindsight && scenario.memory ? '（带记忆）' : ''}……`);
-    const results = await Promise.all(Array.from({ length: runs }, async (_, i) => {
+    const width = parallel ?? (hindsight && scenario.memory ? 1 : runs);
+    const results = await inBatches(runs, width, async i => {
         const dataDir = join(root, name, `r${i + 1}`);
         const result = await runScenario(scenario, {
             runId: `${stamp}-s${fileIndex + 1}r${i + 1}`,
@@ -82,10 +87,19 @@ for (const [fileIndex, file] of files.entries()) {
         writeFileSync(join(dataDir, 'report.md'), renderReport(result));
         writeFileSync(join(dataDir, 'result.json'), JSON.stringify(result, null, 2));
         return result;
-    }));
+    });
     for (const [i, result] of results.entries()) {
         failed += result.checks.failed;
         console.log(`  r${i + 1}：检查 ${result.checks.passed} 通过 / ${result.checks.failed} 不通过 → ${join(result.dataDir, 'report.md')}`);
     }
 }
 process.exit(failed > 0 ? 1 : 0);
+
+/** 跑 count 次 job，同时最多 width 个；结果按次序返回 */
+async function inBatches<T>(count: number, width: number, job: (i: number) => Promise<T>): Promise<T[]> {
+    const results: T[] = new Array(count);
+    let next = 0;
+    const worker = async () => { while (next < count) { const i = next++; results[i] = await job(i); } };
+    await Promise.all(Array.from({ length: Math.min(width, count) }, worker));
+    return results;
+}
