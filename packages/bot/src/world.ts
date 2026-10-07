@@ -392,6 +392,24 @@ export function diaryWorld(now: WorldNow): string[] {
     return lines;
 }
 
+/** 有时长的事各占多久（分钟，ADR 0030）：喂猫、取完快递往回走、和家里视频、写完作业之前在赶的那一段 */
+export const OCCUPATION_MINUTES = { feed: 10, parcel: 15, call: 30, homework: 90 } as const;
+
+/**
+ * 此刻在做的事（ADR 0030，类型化行动的第一步）：世界里有时长的事，现在正好落在里面的那件；没有就是 undefined（照作息的空闲活动）。
+ * 原来空闲活动一个时段固定一件（整晚「打独立游戏」），和世界里 18:55 喂猫、20:30 和家里视频各说各的。now 用这一档的卡算，看不到的块本来就没有
+ */
+export function occupationAt(now: WorldNow, at: Date): string | undefined {
+    const within = (start: Date, minutes: number) => at.getTime() >= start.getTime() && at.getTime() < start.getTime() + minutes * 60_000;
+    if (now.familyCall?.done && within(now.familyCall.at, OCCUPATION_MINUTES.call)) return '在和家里视频';
+    if (now.cat && 'fed' in now.cat.today && within(now.cat.today.fed, OCCUPATION_MINUTES.feed)) return `在楼下喂${now.cat.name}`;
+    const parcel = now.parcels.find(p => p.status === 'picked_today' && within(p.when, OCCUPATION_MINUTES.parcel));
+    if (parcel) return `刚去驿站取了快递（${parcel.item}），在往回走`;
+    const homework = now.homework.find(h => !h.done && within(new Date(h.doneAt.getTime() - OCCUPATION_MINUTES.homework * 60_000), OCCUPATION_MINUTES.homework));
+    if (homework) return `在赶${homework.course ? `${homework.course}的` : ''}作业，${clock(homework.doneAt)} 左右能写完`;
+    return undefined;
+}
+
 /** 一天的摘要（日志、state.json 用，不含聊天内容） */
 export function summarizeWorld(now: WorldNow): string {
     const bits = [

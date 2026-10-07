@@ -25,7 +25,7 @@ import { describeMood, moodAt, readingActivities, readingSection } from './her-d
 import { describeIntent } from './intent.ts';
 import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
-import { describeWorld, worldAt, type WorldState } from './world.ts';
+import { describeWorld, occupationAt, worldAt, type WorldState } from './world.ts';
 import { bodyAt, describeBody, unwell } from './body.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
 import { describePast, pastCue, type PastChunk } from './biography.ts';
@@ -201,8 +201,19 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const today = common ? undefined : you(await todayOthers);
             if (today) log(`今天和别人聊过的 ${countLines(today)} 条（新一段对话，有由头可以含糊提一件）`);
             const days = describeDays(character.dates, time);
-            const state = schedule ? stateAt(schedule, time, extraFree) : undefined;
+            let state = schedule ? stateAt(schedule, time, extraFree) : undefined;
             if (herSchedule) options.onHerDay?.(time);
+            // 她那边（ADR 0021）：跟着「她自己的日子」开，卡上有世界才有
+            const around = herSchedule && character.herWorld
+                ? options.worldState?.at(character.herWorld, herSchedule, time) ?? worldAt(character.herWorld, herSchedule, time)
+                : undefined;
+            const world = around ? describeWorld(around, time) : undefined;
+            // 此刻在做的事接上世界（ADR 0030）：空闲时正好在喂猫、取快递、和家里视频、赶作业，状态行就写这件
+            const busy = state?.activity.kind === 'free' && around ? occupationAt(around, time) : undefined;
+            if (state && busy) {
+                state = { ...state, activity: { kind: 'free', text: busy } };
+                log(`此刻在做：${busy}`);
+            }
             const books = herSchedule
                 ? readingSection(herSchedule, character.books, time, {
                     history: chat, userName: contact.name,
@@ -210,11 +221,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 })
                 : undefined;
             reading = books?.context;
-            // 她那边（ADR 0021）：跟着「她自己的日子」开，卡上有世界才有
-            const around = herSchedule && character.herWorld
-                ? options.worldState?.at(character.herWorld, herSchedule, time) ?? worldAt(character.herWorld, herSchedule, time)
-                : undefined;
-            const world = around ? describeWorld(around, time) : undefined;
             // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
             const bodyNow = herSchedule && character.herWorld?.body ? bodyAt(character.herWorld.body, herSchedule, time) : undefined;
             const body = bodyNow ? describeBody(bodyNow) : undefined;

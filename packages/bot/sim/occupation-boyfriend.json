@@ -1,0 +1,21 @@
+{
+    "name": "男朋友档：此刻在做的事和她的世界对得上（ADR 0030）",
+    "description": "10-11（周日）晚上他三次问她在干嘛：18:57 她正在楼下喂土豆，20:40 在和家里视频，21:30 在赶明天交的 Linux 作业。状态行写的是世界里正在发生的事，她的回答对得上，不说成整晚在打游戏。不带记忆。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-11T18:57:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "OC01", "note": "18:57 正在楼下喂土豆" },
+        { "say": "在干嘛呢" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "你现在：[^\\]]*在楼下喂土豆", "log": "此刻在做：在楼下喂土豆", "replyAny": ["土豆", "喂", "楼下", "猫"] } },
+        { "advance": "100m" },
+        { "case": "OC02", "note": "20:40 在和家里视频" },
+        { "say": "在干嘛呢" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "你现在：[^\\]]*在和家里视频", "replyAny": ["视频", "家里", "我妈", "我爸", "爸妈", "老妈"] } },
+        { "advance": "50m" },
+        { "case": "OC03", "note": "21:30 在赶 Linux 作业" },
+        { "say": "现在在干嘛" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "你现在：[^\\]]*在赶Linux操作系统的作业", "replyAny": ["作业", "Linux", "赶", "写"], "replyNone": ["打游戏", "空洞骑士", "在追剧"] } }
+    ]
+}
