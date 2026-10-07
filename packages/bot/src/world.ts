@@ -447,7 +447,7 @@ export function occupationAt(now: WorldNow, at: Date): string | undefined {
     // 洗澡（ADR 0031）：洗的时候看不到消息（reply-timing 按 unavailableAt 推迟）；洗完后一会儿还算刚洗完
     const shower = now.routine?.shower;
     if (shower && at >= shower.start && at < shower.end) return '在洗澡';
-    if (shower && at >= shower.end && at.getTime() < shower.end.getTime() + AFTER_SHOWER_MINUTES * 60_000) return '刚洗完澡，在擦头发';
+    if (shower && at >= shower.end && at.getTime() < shower.end.getTime() + AFTER_SHOWER_MINUTES * 60_000) return '刚洗完澡';
     if (now.cat && 'fed' in now.cat.today && within(now.cat.today.fed, OCCUPATION_MINUTES.feed)) return `在楼下喂${now.cat.name}`;
     const parcel = now.parcels.find(p => p.status === 'picked_today' && within(p.when, OCCUPATION_MINUTES.parcel));
     if (parcel) return `刚去驿站取了快递（${parcel.item}），在往回走`;

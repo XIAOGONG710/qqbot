@@ -27,7 +27,7 @@ describe('此刻在做的事接上世界（ADR 0030）', () => {
         assert.equal(doing(boyfriend, '2026-10-12T22:50:00+08:00'), '在洗澡');
         const now = (time: string) => worldAt(boyfriend.herWorld!, boyfriend.schedule!, at(time))!;
         assert.deepEqual(unavailableAt(now('2026-10-12T22:50:00+08:00'), at('2026-10-12T22:50:00+08:00')), { until: at('2026-10-12T23:06:00+08:00'), reason: '在洗澡，洗完才看到' });
-        assert.equal(doing(boyfriend, '2026-10-12T23:20:00+08:00'), '刚洗完澡，在擦头发');
+        assert.equal(doing(boyfriend, '2026-10-12T23:20:00+08:00'), '刚洗完澡');
         assert.equal(unavailableAt(now('2026-10-12T23:20:00+08:00'), at('2026-10-12T23:20:00+08:00')), undefined);
         assert.equal(now('2026-10-11T22:50:00+08:00').routine!.shower, undefined, '10-11 不洗');
         assert.equal(doing(classmate, '2026-10-12T22:50:00+08:00'), '在洗澡', '同学档也一样');
