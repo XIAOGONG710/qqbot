@@ -23,6 +23,7 @@ import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
 import { describeIntent } from './intent.ts';
+import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, worldAt } from './world.ts';
 import { describePast, pastCue, type PastChunk } from './biography.ts';
@@ -239,6 +240,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 unanswered: loops?.unanswered.map(l => l.what),
             });
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
+            // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
+            const length = lengthHint({ history: chat, intent, initiating: Boolean(initiate), low: mood?.mood.name === '安静' });
+            if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             const shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
             const prompt = buildPrompt({
@@ -265,6 +269,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(world ? [world] : []),
                         ...(promised ? [promised] : []),
                         ...(intent ? [intent] : []),
+                        ...(length ? [describeLength(length)] : []),
                         ...(initiate ? [initiate.note] : []),
                     ].join('\n'),
                 ],
@@ -286,6 +291,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         generate: messages => generate(messages, log),
         clean,
         // 出口检查：重写时在后处理过的提示词末尾加一条说明，再按同样的方式后处理一次
+        // 打错字再改口（ADR 0024）：拆好条之后、发出去之前
+        decorate: parts => {
+            const typo = maybeTypo(parts, `${contact.qq} ${now()} ${parts.join('|')}`);
+            if (typo.note) log(`打错字：${typo.note}`);
+            return typo.parts;
+        },
         review: (reply, messages) => reviewReply(reply, {
             banned: character.banned,
             userName: contact.name,

@@ -257,6 +257,17 @@ describe('回复调度', () => {
         ]);
     });
 
+    test('decorate（ADR 0024 打错字再改口）：拆好条之后改，发出去和记下来的都是改过的', async () => {
+        const { responder, stored, sent } = setup({
+            generate: async () => '我应该明天去\n你早点睡',
+            decorate: parts => [parts[0]!.replace('应该', '因该'), '*应该', ...parts.slice(1)],
+        });
+        responder.receive('你哪天去', 1, new Date());
+        await responder.whenIdle();
+        assert.deepEqual(sent, ['我因该明天去', '*应该', '你早点睡']);
+        assert.deepEqual(stored.filter(m => m.role === 'assistant').map(m => m.content), sent);
+    });
+
     test('拆条发送中途对方插话：剩下的不发，已发的照常记录，接着回复新消息', async () => {
         let replies = 0;
         let onGap: () => void = () => {};
