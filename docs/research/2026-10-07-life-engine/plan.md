@@ -1,5 +1,8 @@
 # 主方案：剩下的六块，按什么顺序做（2026-10-07）
 
+> 历史说明：本文写于 ADR 0027/0028 完成之前，W3 状态和 ADR 0028/0029 编号已经过时。
+> 当前执行方案见 [`implementation-plan.md`](implementation-plan.md)，本文保留为设计取证。
+
 > 前置阅读：[highest-standard.md](../2026-10-06-dsh/highest-standard.md)（判据与 S0–S6）、
 > [world-subsystem.md](../2026-10-06-dsh/world-subsystem.md)（世界三层与 W0–W6）。
 > 本文是 0020–0026 上线之后的**增量**，不重复那两份。
