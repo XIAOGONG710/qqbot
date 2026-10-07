@@ -1,6 +1,8 @@
 // 她自己的日子（ADR 0015）：每日心情和在读的书。这里都是纯函数；接进时间块和出口检查在 contact.ts，日志和开关在 app.ts。
 
 import type { StoredMessage } from './history.ts';
+import type { BodyNow } from './body.ts';
+import type { WorldNow } from './world.ts';
 import { classesOn, formatDate, herDay, type ExtraFreeActivity, type Schedule } from './schedule.ts';
 
 /** 判断聊没聊到书只看谁说的、说了什么 */
@@ -47,6 +49,11 @@ export interface MoodChoice {
     conditions: MoodDay[];
 }
 
+export interface MoodContext {
+    body?: BodyNow;
+    world?: WorldNow;
+}
+
 const DAY_MS = 86_400_000;
 const FALLBACK_REASON = '说不上为什么，今天就是这样';
 
@@ -66,7 +73,7 @@ export function moodDayConditions(schedule: Schedule, day: Date): MoodDay[] {
 }
 
 /** 日期 → 心情：同一天对所有人相同，按当天情况调权重，不存状态。 */
-export function moodAt(schedule: Schedule, moods: readonly DailyMood[], now: Date, forcedName?: string): MoodChoice | undefined {
+export function moodAt(schedule: Schedule, moods: readonly DailyMood[], now: Date, forcedName?: string, context: MoodContext = {}): MoodChoice | undefined {
     if (!moods.length) return undefined;
     const day = herDay(schedule, now);
     const conditions = moodDayConditions(schedule, day);
@@ -80,12 +87,33 @@ export function moodAt(schedule: Schedule, moods: readonly DailyMood[], now: Dat
         ? weighted.find(item => (point -= item.weight) < 0) ?? weighted.at(-1)!
         : weighted.find(item => item.mood.name === forcedName);
     if (!selected) return undefined;
+    // 模拟器显式指定心情时保持场景可控；正常运行时，身体事实会把高能量的日常底色压低。
+    // 不把这个结果存起来：同一天的痛经/感冒是一整天的底色，困和累只影响当下。
+    const grounding = forcedName === undefined ? groundedMood(context, now) : undefined;
+    const grounded = grounding ? weighted.find(item => item.mood.name === '安静') ?? selected : selected;
     // 同时命中早八和课多时，取资料里排在前面的那条；原因仍然是真的，不拼成一长串。
     return {
-        day: formatDate(day), mood: selected.mood,
-        reason: selected.matched[0]?.reason ?? FALLBACK_REASON,
+        day: formatDate(day), mood: grounded.mood,
+        reason: grounding?.reason ?? grounded.matched[0]?.reason ?? FALLBACK_REASON,
         conditions,
     };
+}
+
+function groundedMood({ body, world }: MoodContext, now: Date): { reason: string } | undefined {
+    if (body?.period?.cramps === 'bad') return { reason: body.period.detail ? '今天肚子疼得厉害，没什么精神' : '今天身上不太舒服，没什么精神' };
+    if (body?.period?.cramps === 'mild') return { reason: body.period.detail ? '今天肚子隐隐地疼，不太想动' : '今天身上有点不舒服，不太想动' };
+    if (body?.cold) return { reason: body.cold.day === body.cold.of ? '感冒还没好利索，精神一般' : '今天有点感冒，没什么精神' };
+    if (body?.sleepy?.when === 'morning') return { reason: '昨晚睡得晚，今早又起得早，有点困' };
+    if (body?.sleepy?.when === 'late') return { reason: '已经很晚了，有点困' };
+    if (body?.tired) return { reason: '今天课多，这会儿有点累' };
+    // 事件只采用不需要猜情绪的明确压力源；普通下雨、小事和 NPC 互动不做正负脑补。
+    if (world?.cat && 'skipped' in world.cat.today && world.cat.today.skipped === 'no_food') {
+        return { reason: `${world.cat.name}的猫粮没了，今天没喂成，心里有点挂着` };
+    }
+    if (world?.homework.some(item => !item.done && item.due.getTime() - now.getTime() <= DAY_MS)) {
+        return { reason: '有份作业快到截止时间了，心里还挂着' };
+    }
+    return undefined;
 }
 
 /** 放在状态行下面的每日心情；只写今天怎么说，不写禁令。时间块不走宏替换，{{user}} 在这里换成称呼 */
@@ -251,8 +279,8 @@ export function readingSection(schedule: Schedule, books: readonly ReadingBook[]
 }
 
 /** 启动和每天第一次生成时的摘要：心情、原因和进度，不含聊天内容。 */
-export function describeHerDaySummary(schedule: Schedule, moods: readonly DailyMood[], books: readonly ReadingBook[], now: Date, forcedMood?: string): string | undefined {
-    const mood = moodAt(schedule, moods, now, forcedMood);
+export function describeHerDaySummary(schedule: Schedule, moods: readonly DailyMood[], books: readonly ReadingBook[], now: Date, forcedMood?: string, context: MoodContext = {}): string | undefined {
+    const mood = moodAt(schedule, moods, now, forcedMood, context);
     if (!mood && !books.length) return undefined;
     const reading = books.map(book => {
         const progress = bookProgressAt(schedule, book, now);
@@ -262,13 +290,14 @@ export function describeHerDaySummary(schedule: Schedule, moods: readonly DailyM
 }
 
 /** 按她的一天去重：这一天第一次调用时写一行摘要，同一天再调不写 */
-export function herDayLogger(schedule: Schedule, moods: readonly DailyMood[], books: readonly ReadingBook[], log: (message: string) => void, forcedMood?: string): (now: Date) => void {
+export function herDayLogger(schedule: Schedule, moods: readonly DailyMood[], books: readonly ReadingBook[], log: (message: string) => void,
+    forcedMood?: string, contextAt?: (now: Date) => MoodContext): (now: Date) => void {
     let logged: string | undefined;
     return now => {
         const day = formatDate(herDay(schedule, now));
         if (day === logged) return;
         logged = day;
-        const summary = describeHerDaySummary(schedule, moods, books, now, forcedMood);
+        const summary = describeHerDaySummary(schedule, moods, books, now, forcedMood, contextAt?.(now));
         if (summary) log(`她自己的日子：${summary}`);
     };
 }

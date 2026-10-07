@@ -47,6 +47,27 @@ describe('她的一天与每日心情（ADR 0015）', () => {
         assert.equal(moodAt(schedule, plain, at('2026-10-05T12:00:00'))!.reason, '今天放假');
     });
 
+    test('身体事实压低当下心境；显式模拟心情仍保持可控', () => {
+        const energetic: DailyMood[] = [
+            { name: '话痨', weight: 100, style: '话很多', when: [] },
+            { name: '安静', weight: 0, style: '没什么精神', when: [] },
+        ];
+        const bad = { period: { day: 1, cramps: 'bad' as const, detail: true } };
+        const grounded = moodAt(schedule, energetic, at('2026-12-21T21:30:00'), undefined, { body: bad })!;
+        assert.equal(grounded.mood.name, '安静');
+        assert.equal(grounded.reason, '今天肚子疼得厉害，没什么精神');
+        assert.equal(moodAt(schedule, energetic, at('2026-12-21T21:30:00'), '话痨', { body: bad })!.mood.name, '话痨');
+        assert.equal(moodAt(schedule, energetic, at('2026-10-12T09:30:00'), undefined,
+            { body: { sleepy: { when: 'morning', slept: '02:00', woke: '07:40' } } })!.reason,
+        '昨晚睡得晚，今早又起得早，有点困');
+        const deadline = moodAt(schedule, energetic, at('2026-10-13T20:00:00'), undefined, { world: {
+            day: '2026-10-13', atSchool: true, parcels: [], events: [],
+            homework: [{ course: 'course-1', due: at('2026-10-14T12:00:00'), done: false, doneAt: at('2026-10-13T23:00:00') }],
+        } })!;
+        assert.equal(deadline.mood.name, '安静');
+        assert.equal(deadline.reason, '有份作业快到截止时间了，心里还挂着');
+    });
+
     test('熟悉的五档有心情（4 种：10-07 玩梗、搞怪合并成「爱笑」）；陌生人和名单外没有', () => {
         assert.deepEqual(card.moods.map(mood => mood.name), ['话痨', '爱笑', '黏人', '安静']);
         assert.equal(classmate.moods.length, 4);

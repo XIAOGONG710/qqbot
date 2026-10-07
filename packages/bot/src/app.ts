@@ -25,7 +25,8 @@ import type { ProactiveMode } from './proactive.ts';
 import { createProactivePlanner, type Planner, type PlannerStatus } from './proactive-planner.ts';
 import { promiseKeeper } from './promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from './her-days.ts';
-import { worldState } from './world.ts';
+import { bodyAt } from './body.ts';
+import { worldState, type WorldNow } from './world.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt } from './schedule.ts';
 
@@ -137,7 +138,6 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
         : undefined;
     log(`她自己的日子：${!config.herDays ? '关（配置 herDays: false）'
         : herDaysCard ? `开（每日心情、在读的书${config.schedule ? '、看书的空闲活动' : ''}、进度数字的检查）` : '开，但用到的档位卡上都没有心情和书'}`);
-    const noteMoodAndBooks = herDaysCard ? herDayLogger(herDaysCard.schedule!, herDaysCard.moods, herDaysCard.books, log) : undefined;
     // 她的世界（ADR 0021）：用名单里最亲的、卡上有作息和世界的那一档（同一天对所有人一样，档位只决定看得到哪些块）
     const worldCard = config.herDays
         ? ([...CONTACT_TIERS, UNLISTED_TIER] as Tier[]).filter(tier => tiersInUse.has(tier)).map(tier => cardFor(tier).character).find(c => c.schedule && c.herWorld)
@@ -145,6 +145,13 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     const sharedWorld = worldCard
         ? worldState(worldCard.herWorld!, worldCard.schedule!, log, join(config.dataDir, 'world'), pipeline?.now ?? Date.now)
         : undefined;
+    const noteMoodAndBooks = herDaysCard ? herDayLogger(
+        herDaysCard.schedule!, herDaysCard.moods, herDaysCard.books, log, undefined,
+        now => ({
+            ...(herDaysCard.herWorld?.body ? { body: bodyAt(herDaysCard.herWorld.body, herDaysCard.schedule!, now) } : {}),
+            ...(herDaysCard.herWorld && sharedWorld ? { world: sharedWorld.at(herDaysCard.herWorld, herDaysCard.schedule!, now) } : {}),
+        }),
+    ) : undefined;
     const noteWorld = sharedWorld?.note;
     const noteHerDay = noteMoodAndBooks || noteWorld ? (now: Date) => { noteMoodAndBooks?.(now); noteWorld?.(now); } : undefined;
     noteHerDay?.(new Date(pipeline?.now?.() ?? Date.now()));
@@ -450,7 +457,8 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 moody: config.moody,
                 speechCheck: config.speechCheck,
                 herDays: config.herDays,
-                ...(herDaysCard ? { today: herDayStatus(herDaysCard.schedule!, herDaysCard, now) } : {}),
+                ...(herDaysCard ? { today: herDayStatus(herDaysCard.schedule!, herDaysCard, now,
+                    herDaysCard.herWorld && sharedWorld ? sharedWorld.at(herDaysCard.herWorld, herDaysCard.schedule!, now) : undefined) } : {}),
                 proactive: config.proactive,
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
             };
@@ -458,8 +466,9 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     };
 }
 
-function herDayStatus(schedule: NonNullable<TierCard['character']['schedule']>, character: TierCard['character'], now: Date): HerDayStatus {
-    const mood = moodAt(schedule, character.moods, now);
+function herDayStatus(schedule: NonNullable<TierCard['character']['schedule']>, character: TierCard['character'], now: Date, world?: WorldNow): HerDayStatus {
+    const body = character.herWorld?.body ? bodyAt(character.herWorld.body, schedule, now) : undefined;
+    const mood = moodAt(schedule, character.moods, now, undefined, { body, world });
     return {
         day: formatDate(herDay(schedule, now)),
         ...(mood ? { mood: { name: mood.mood.name, reason: mood.reason } } : {}),

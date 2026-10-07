@@ -4,7 +4,7 @@
 //   unanswered 她问了他一个真问题、他没回答（岔开了）；
 //   unsettled 两个人说好的事最后没成、一件事没说完就断了——写发生了什么，不写谁什么感觉。
 // - 用：waiting、unanswered 到了时候给意图行一条「这一轮你想」，只表达期待（想知道、再问一次），不表达介意（作者裁决二·3）；
-//   unsettled 放在时间块里心情后面一行「心里还记着、没了结的事」，只给事实和「不翻旧账」的约束，心情照旧每天重算，不存情绪。
+//   unsettled 放在时间块里心情后面一行「心里还记着、没了结的事」，只存事实；当前那一点余波每轮从事实重算，不存情绪，明确修补时先软下来。
 // - 写进去的必须是别人能听懂「发生了什么」的事实：抽出来带情绪词的（难过、委屈、介意……）直接丢掉，ADR 0018「不做带情绪的记忆」的边界不破。
 // - 忘：有日子的 waiting 过了那天 WAITING_DAYS 天、没日子的过了说的那天 NEXT_TIME_DAYS 天；unanswered、unsettled 过了说的那天
 //   UNANSWERED_DAYS、UNSETTLED_DAYS 天（之后它们还在长期记忆里，只是不再挂在当天这一层）。
@@ -99,8 +99,14 @@ export function dueLoops(loops: readonly OpenLoop[], today: Date, now: Date, cha
     return due;
 }
 
-/** 时间块里心情后面的一行：没了结的事，只给事实和约束（不写情绪、不叫她说出来） */
-export function describeUnsettled(loops: readonly OpenLoop[]): string | undefined {
+/**
+ * 时间块里心情后面的一行：跨天留下的仍只有事实；当下那一点余波每次从事实重算，不落盘。
+ * repairing 表示他刚刚在道歉/安慰，修补动作应当先于旧余波，不能让她机械地继续冷着。
+ */
+export function describeUnsettled(loops: readonly OpenLoop[], repairing = false): string | undefined {
     if (loops.length === 0) return undefined;
-    return `[你心里还记着、没了结的事（只是发生过的事，不是要你说的话）：${loops.map(l => l.what).join('；')}。不用特意提，也不翻旧账；他说到相关的事时你记得]`;
+    const effect = repairing
+        ? '他刚刚正在修补，所以别机械地继续绷着；先接住当下的好意'
+        : '这件事让此刻的语气留一点余波，不必装作完全没发生';
+    return `[你心里还记着、没了结的事（跨天只记客观事实，不保存情绪，也不是要你说的话）：${loops.map(l => l.what).join('；')}。${effect}；不用特意提，也不翻旧账]`;
 }

@@ -72,15 +72,16 @@ export function diaryMaterial(
         return activity.kind === 'free' ? [`${time.startsWith('10') ? '上午' : time.startsWith('15') ? '下午' : '晚上'}${activity.text}`] : [];
     });
     if (free.length) lines.push(`空闲时：${free.join('；')}`);
-    const mood = moodAt(schedule, sources.moods, atTime(day, '12:00'), sources.mood);
-    if (mood) lines.push(`心情：${mood.mood.name}（${mood.reason}）`);
     // 她那边今天发生的事、身上舒不舒服（ADR 0026）：一天结束时算（她的一天到 02:00，23:30 已经都发生了）
     const around = sources.world
         ? sources.resolveWorld?.(sources.world, schedule, atTime(day, '23:30')) ?? worldAt(sources.world, schedule, atTime(day, '23:30'))
         : undefined;
+    const moodBody = sources.world?.body ? bodyAt(sources.world.body, schedule, atTime(day, '15:00')) : undefined;
+    const mood = moodAt(schedule, sources.moods, atTime(day, '12:00'), sources.mood, { body: moodBody, world: around });
+    if (mood) lines.push(`心情：${mood.mood.name}（${mood.reason}）`);
     const happened = around ? diaryWorld(around) : [];
     if (happened.length) lines.push(`你那边今天：${happened.join('；')}`);
-    const body = sources.world?.body ? diaryBody(bodyAt(sources.world.body, schedule, atTime(day, '15:00'))) : undefined;
+    const body = moodBody ? diaryBody(moodBody) : undefined;
     if (body) lines.push(`身体：${body}`);
     // 放下的书不写：每篇日记都写一遍，召回时会挤掉别的事
     const reading = sources.books.filter(book => book.progress.state !== 'put_down').map(book => {

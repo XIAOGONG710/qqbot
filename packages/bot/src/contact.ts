@@ -27,6 +27,7 @@ import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, worldAt, type WorldState } from './world.ts';
 import { bodyAt, describeBody, unwell } from './body.ts';
+import { describeWarmAffect, warmAffect } from './affect.ts';
 import { describePast, pastCue, type PastChunk } from './biography.ts';
 import { askedWindow, ASKS_PAST, commonCue, describePerson, holidayWords, mentionedPeople, stillInMind } from './people.ts';
 import type { PromiseKeeper } from './promises.ts';
@@ -202,7 +203,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const days = describeDays(character.dates, time);
             const state = schedule ? stateAt(schedule, time, extraFree) : undefined;
             if (herSchedule) options.onHerDay?.(time);
-            const mood = herSchedule ? moodAt(herSchedule, character.moods, time, options.mood) : undefined;
             const books = herSchedule
                 ? readingSection(herSchedule, character.books, time, {
                     history: chat, userName: contact.name,
@@ -218,6 +218,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
             const bodyNow = herSchedule && character.herWorld?.body ? bodyAt(character.herWorld.body, herSchedule, time) : undefined;
             const body = bodyNow ? describeBody(bodyNow) : undefined;
+            const mood = herSchedule ? moodAt(herSchedule, character.moods, time, options.mood, { body: bodyNow, world: around }) : undefined;
             // 她的过去（ADR 0022）：他说到卡上某块的线索才想起；主动找他时不想
             let pastChunks = character.biography && !initiate ? pastCue(chat, character.biography) : [];
             if (pastChunks.length) {
@@ -232,10 +233,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (promised) log('时间块里提醒了她答应的事');
             // 挂着的事（ADR 0023）：等他说结果的、她问了他没答的进意图行；没了结的事实放在心情后面，只给事实
             const loops = contact.tier !== UNLISTED_TIER ? options.promises?.openLoops?.(contact, chat, time) : undefined;
-            const unsettled = loops ? describeUnsettled(loops.unsettled) : undefined;
+            // 陌生人 / 名单外档没有她自己的日子，也不会因为一句越界的「爱你」凭空亲近。
+            const affect = character.moods.length ? warmAffect(chat) : undefined;
+            const warm = describeWarmAffect(affect);
+            const unsettled = loops ? describeUnsettled(loops.unsettled, affect?.kind === 'repair' || affect?.kind === 'comfort') : undefined;
             if (loops && (loops.waiting.length || loops.unanswered.length || loops.unsettled.length)) {
                 log(`挂着的事：等结果 ${loops.waiting.length}、没回答 ${loops.unanswered.length}、没了结 ${loops.unsettled.length}`);
             }
+            if (affect) log(`情绪余温：${affect.kind}，还影响 ${affect.remaining} 轮`);
             const intent = describeIntent({
                 history: chat,
                 state,
@@ -274,6 +279,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(mood ? [describeMood(mood, contact.name)] : []),
                         ...(body ? [body] : []),
                         ...(unsettled ? [unsettled] : []),
+                        ...(warm ? [warm] : []),
                         ...(books ? [books.text] : []),
                         ...(world ? [world] : []),
                         ...(promised ? [promised] : []),

@@ -1,0 +1,32 @@
+{
+    "name": "男朋友档：身体底色和安慰的情绪惯性（ADR 0028）",
+    "description": "12-21 是痛经第一天。即使日期原本抽到高能量心情，身体也把当下心境压成安静；他明确安慰后，她随后三轮会自然变软，第四轮余温消退，但身体事实仍在。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-12-21T21:30:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "EI01", "note": "痛经成为当下心情的原因；一句安慰马上留下余温" },
+        { "say": "抱抱，肚子不舒服就好好躺着，我在呢" },
+        { "check": {
+            "speechClean": true,
+            "exitClean": true,
+            "timeBlock": "你今天的心情：安静（今天肚子疼得厉害，没什么精神）[\\s\\S]*这一刻的情绪余温：他刚刚在关心、安慰你",
+            "replyNone": ["不需要", "不用你管", "走开", "烦死了", "别烦我"]
+        } },
+        { "case": "EI02", "note": "第一轮之后仍有余温" },
+        { "say": "现在想干嘛" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "这一刻的情绪余温" } },
+        { "case": "EI03", "note": "第二轮之后仍有余温" },
+        { "say": "那你晚点准备做什么" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "这一刻的情绪余温" } },
+        { "case": "EI04", "note": "完整回满三轮后余温消退，身体底色还在" },
+        { "say": "窗外还下雨吗" },
+        { "check": {
+            "speechClean": true,
+            "exitClean": true,
+            "timeBlock": "你今天的心情：安静（今天肚子疼得厉害，没什么精神）",
+            "timeBlockNot": "这一刻的情绪余温"
+        } }
+    ]
+}
