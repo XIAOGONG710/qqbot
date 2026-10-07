@@ -1,6 +1,6 @@
 # ADR 0030：此刻在做的事和她的世界接上（类型化行动第一步）
 
-- 状态：实现，真模型验证通过，待上线（2026-10-07）
+- 状态：实现，真模型验证通过，2026-10-07 23:22 上线
 - 日期：2026-10-07
 - 关联：[ADR 0007](0007-schedule-and-reply-timing.md)（作息、状态行）、[ADR 0021](0021-her-world.md)（她的世界）、[ADR 0027](0027-world-writeback.md)（说的话回写世界）、
   [ADR 0029](0029-life-event-ledger.md)（生活事件账）、[实施方案](../research/2026-10-07-life-engine/implementation-plan.md) 批次 A2
