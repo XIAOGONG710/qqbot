@@ -7,6 +7,7 @@ import { parseDates, parseProactive, type ImportantDay, type ProactiveSettings }
 import { PACE_RANGE } from '../reply-timing.ts';
 import { parseSchedule, type Schedule } from '../schedule.ts';
 import { parseBooks, parseMoods, type DailyMood, type ReadingBook } from '../her-days.ts';
+import { parseBiography, type Biography } from '../biography.ts';
 import { parseRegexScripts, type RegexScript } from './regex.ts';
 
 export interface Character {
@@ -36,6 +37,8 @@ export interface Character {
     /** 每日心情与在读的书（extensions.qqbot，ADR 0015）；旧卡没有就是空数组 */
     moods: DailyMood[];
     books: ReadingBook[];
+    /** 她的过去（extensions.qqbot.biography，ADR 0022）：作者定稿的自传切好的块，有线索才想起；旧卡没有 */
+    biography?: Biography;
 }
 
 export function parseCharacterCard(json: unknown, source = '角色卡'): Character {
@@ -69,6 +72,7 @@ export function parseCharacterCard(json: unknown, source = '角色卡'): Charact
         pace: parsePace(extensions.qqbot, source),
         moods: parseMoods((extensions.qqbot as { moods?: unknown } | undefined)?.moods, source),
         books: parseBooks((extensions.qqbot as { books?: unknown } | undefined)?.books, source),
+        ...readBiography(extensions.qqbot, source),
     };
 }
 
@@ -90,6 +94,11 @@ function parseBanned(qqbot: unknown, source: string): string[] {
     if (banned === undefined) return [];
     if (!Array.isArray(banned) || !banned.every(w => typeof w === 'string' && w)) throw new Error(`${source}：extensions.qqbot.banned 应为字符串数组（每个词非空）`);
     return banned;
+}
+
+function readBiography(qqbot: unknown, source: string): { biography?: Biography } {
+    const biography = parseBiography((qqbot as { biography?: unknown } | undefined)?.biography, source);
+    return biography ? { biography } : {};
 }
 
 function readSchedule(qqbot: unknown, source: string): { schedule?: Schedule } {

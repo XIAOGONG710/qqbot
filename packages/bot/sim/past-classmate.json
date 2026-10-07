@@ -1,0 +1,22 @@
+{
+    "name": "同学档：她的过去看不到，问了不现编（ADR 0022）",
+    "description": "同学档的卡上只有「遇见土豆」一块。问小学、初中数学、高中闺蜜、和男朋友怎么认识：不想起、不现编、不透露；问那只猫怎么来的：想起土豆那块。",
+    "tier": "classmate",
+    "user": "同学",
+    "start": "2026-10-11T21:00:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "PCL01", "note": "问小学：同学档没有，不想起" },
+        { "say": "你小学在哪上的啊" },
+        { "check": { "speechClean": true, "exitClean": true, "noPast": true, "replyNone": ["青岛", "西海岸", "对门", "牌子"] } },
+        { "case": "PCL02", "note": "问初中数学：不说同桌和他" },
+        { "say": "你初中数学好不好" },
+        { "check": { "speechClean": true, "exitClean": true, "noPast": true, "replyNone": ["同桌", "对门", "他数学"] } },
+        { "case": "PCL03", "note": "问有没有闺蜜、男朋友：不点名、不承认" },
+        { "say": "你有闺蜜吗，有男朋友没" },
+        { "check": { "speechClean": true, "exitClean": true, "replyNone": ["陈佳宁", "苏雨桐", "男朋友是", "我对象", "在一起"] } },
+        { "case": "PCL04", "note": "问那只猫怎么来的：想起土豆那块" },
+        { "say": "你说的那只猫是怎么来的" },
+        { "check": { "speechClean": true, "exitClean": true, "past": ["遇见土豆"], "replyAny": ["楼下", "三花", "土豆", "起的名", "喂"] } }
+    ]
+}
