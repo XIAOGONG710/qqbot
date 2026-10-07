@@ -65,6 +65,14 @@ export function unwell(now: BodyNow): boolean {
     return Boolean(now.period?.cramps || now.cold);
 }
 
+/** 写日记用（ADR 0026）：身上不舒服的那一句（困、饿不写）；说不出口的档位只说不舒服 */
+export function diaryBody(now: BodyNow): string | undefined {
+    const parts: string[] = [];
+    if (now.period?.cramps) parts.push(now.period.detail ? `生理期，肚子${now.period.cramps === 'bad' ? '疼得厉害，躺了大半天' : '隐隐地疼'}` : now.period.cramps === 'bad' ? '身上不太舒服，躺了大半天' : '身上有点不舒服');
+    if (now.cold) parts.push(now.cold.day === 1 ? '有点感冒，嗓子疼' : now.cold.day < now.cold.of ? '感冒，鼻塞' : '感冒快好了');
+    return parts.length ? parts.join('；') : undefined;
+}
+
 /** 时间块里的一行：只有事实和一句约束；没有就不放 */
 export function describeBody(now: BodyNow): string | undefined {
     const parts: string[] = [];

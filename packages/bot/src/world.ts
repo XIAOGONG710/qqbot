@@ -289,6 +289,33 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
     return `[你那边（今天到现在的事实，用不用、怎么说你自己定，别照着念；这里没写的别编）：${parts.join('｜')}]`;
 }
 
+/**
+ * 写日记用（ADR 0026）：那一天里发生了的事，一件一句，不带「别照着念」这类约束。日记进公共库，所以调用方传的是同学档的卡算出来的世界
+ * （宿舍、室友、闺蜜、相机基金、课名这些同学档看不到的块本来就不在里面）
+ */
+export function diaryWorld(now: WorldNow): string[] {
+    const lines: string[] = [];
+    if (now.weather) lines.push(now.weather.rain ? `下雨，${now.weather.low}–${now.weather.high}℃` : `没下雨，${now.weather.low}–${now.weather.high}℃`);
+    if (now.cat) {
+        const { today } = now.cat;
+        const cat = 'fed' in today ? `下楼喂了${now.cat.name}${today.seen ? '' : '，没见着它'}`
+            : 'skipped' in today ? (today.skipped === 'rain' ? `下雨没下楼喂${now.cat.name}` : today.skipped === 'no_food' ? '猫粮没了，没喂成' : today.skipped === 'class' ? '晚上有课，没下楼喂猫' : '')
+                : '';
+        if (cat) lines.push(cat);
+    }
+    for (const parcel of now.parcels) {
+        if (parcel.status === 'picked_today') lines.push(`去驿站取了快递（${parcel.item}）`);
+        else if (parcel.status === 'station') lines.push(`快递（${parcel.item}）到驿站了，还没去取`);
+    }
+    const done = now.homework.filter(h => h.done).length;
+    const left = now.homework.filter(h => !h.done).length;
+    if (done) lines.push(`写完了 ${done} 份作业`);
+    if (left) lines.push(`还有 ${left} 份作业没写`);
+    if (now.familyCall?.done) lines.push('晚上和家里视频了');
+    for (const event of now.events) lines.push(event.text);
+    return lines;
+}
+
 /** 一天的摘要（日志、state.json 用，不含聊天内容） */
 export function summarizeWorld(now: WorldNow): string {
     const bits = [

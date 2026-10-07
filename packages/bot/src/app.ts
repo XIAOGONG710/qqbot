@@ -189,6 +189,8 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
         ? `长期记忆：Hindsight ${config.memory!.baseUrl}（名单里的联系人；公共记忆库 ${memory.commonBankId()}，陌生人档不写不查）`
         : '长期记忆：未启用（配置里没有 memory）');
     // 她的日记（ADR 0017）：用名单里最亲的、卡上有作息的那一档；herDays 关着时不带心情和书。温度低一点，少编
+    // 日记里的世界按同学档（会召回公共库的档位里最外面的一层，ADR 0026）
+    const diaryWorldCard = memory ? cardFor('classmate').character : undefined;
     const diaryCard = memory
         ? (CONTACT_TIERS as readonly Tier[]).filter(tier => tiersInUse.has(tier)).map(tier => cardFor(tier).character).find(character => character.schedule)
         : undefined;
@@ -213,6 +215,8 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 schedule: diaryCard.schedule!,
                 moods: config.herDays ? diaryCard.moods : [],
                 books: config.herDays ? diaryCard.books : [],
+                // 她那边、她的身体（ADR 0026）：日记进公共库，用同学档看得到的那部分
+                ...(config.herDays && diaryWorldCard?.herWorld ? { world: diaryWorldCard.herWorld } : {}),
             },
             contacts: config.contacts,
             history,

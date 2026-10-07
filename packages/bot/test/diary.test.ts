@@ -25,6 +25,21 @@ describe('她的日记（ADR 0017）', () => {
         assert.match(diaryMaterial(sources, new Date(2026, 9, 6), []), /^日期：10月6日 周二（国庆节放假）\n/);
     });
 
+    test('材料：她那边今天发生的事和身体（ADR 0026）——按同学档的卡，宿舍、闺蜜、相机、课名、生理期都不进；提示词要她挑一两件写', () => {
+        const classmate = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-classmate.json'));
+        const withWorld: DiarySources = { ...sources, world: classmate.herWorld! };
+        const text = diaryMaterial(withWorld, new Date(2026, 9, 11), []);
+        assert.match(text, /\n你那边今天：没下雨，13–23℃；下楼喂了土豆；/);
+        assert.match(text, /作业/);
+        assert.doesNotMatch(text, /宿舍|室友|陈佳宁|苏雨桐|相机|视频|Linux|MySQL/, '同学档看不到的不进公共库');
+        const cramps = diaryMaterial(withWorld, new Date(2026, 11, 21), []);
+        assert.match(cramps, /\n身体：身上不太舒服，躺了大半天/);
+        assert.doesNotMatch(cramps, /生理期|痛经/);
+        assert.match(diaryMaterial(withWorld, new Date(2026, 10, 16), []), /\n身体：有点感冒，嗓子疼/);
+        assert.doesNotMatch(diaryMaterial(sources, new Date(2026, 9, 11), []), /你那边今天|身体：/, '没传世界就没有');
+        assert.match(diaryMessages('林梦瑶', new Date(2026, 9, 11), text)[0]!.content, /「你那边今天」是今天真发生的事.*挑一两件写，和材料一致；身体不舒服的写一句/);
+    });
+
     test('材料：每个人那天的聊天，「我」是她；太长的留最后的', () => {
         const long = 'x'.repeat(DIARY_CHAT_CHARS);
         const text = diaryMaterial({ ...sources, moods: [], books: [] }, new Date(2026, 9, 6), [

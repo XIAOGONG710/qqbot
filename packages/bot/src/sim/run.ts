@@ -60,6 +60,8 @@ let failed = 0;
 for (const [fileIndex, file] of files.entries()) {
     const scenario = loadScenario(file);
     const card = loadTierCard(config.characterCard, scenario.tier);
+    // 日记里的世界按同学档（ADR 0026，和 bot 一样）
+    const diaryWorld = loadTierCard(config.characterCard, 'classmate').character.herWorld;
     const name = basename(file, '.json');
     console.log(`${name}：${scenario.tier} 档，跑 ${runs} 次${hindsight && scenario.memory ? '（带记忆）' : ''}……`);
     const results = await Promise.all(Array.from({ length: runs }, async (_, i) => {
@@ -72,6 +74,7 @@ for (const [fileIndex, file] of files.entries()) {
             prompt: config.prompt,
             speechCheck: config.speechCheck,
             herDays: config.herDays,
+            ...(diaryWorld ? { diaryWorld } : {}),
             hindsight,
             recallTimeoutMs: config.memory?.recallTimeoutMs,
             keepBank,
