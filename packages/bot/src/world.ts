@@ -250,11 +250,13 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
     if (now.weather) parts.push(`天气：${now.weather.rain ? '下雨' : '没下雨'}，${now.weather.low}–${now.weather.high}℃`);
     if (now.cat) {
         const { today } = now.cat;
-        const state = 'fed' in today ? `今天 ${clock(today.fed)} 下楼喂过，${today.seen ? '见到了' : '没见着'}`
-            : 'later' in today ? `今天还没下楼喂，晚上空了再去${now.cat.yesterdayFed ? '；昨天喂过' : ''}`
-                : today.skipped === 'rain' ? '今天下雨没下楼'
-                    : today.skipped === 'no_food' ? '猫粮没了，新的在路上，今天没喂'
-                        : today.skipped === 'class' ? '今天晚上有课，没下楼'
+        // 昨天的也写上（第一批：今天喂过时不写昨天，他问「昨天喂了吗」她编了个「昨天没去」）
+        const yesterday = now.cat.yesterdayFed ? '昨天喂过' : '昨天没喂';
+        const state = 'fed' in today ? `今天 ${clock(today.fed)} 下楼喂过，${today.seen ? '见到了' : '没见着'}；${yesterday}`
+            : 'later' in today ? `今天还没下楼喂，晚上空了再去；${yesterday}`
+                : today.skipped === 'rain' ? `今天下雨没下楼；${yesterday}`
+                    : today.skipped === 'no_food' ? `猫粮没了，新的在路上，今天没喂；${yesterday}`
+                        : today.skipped === 'class' ? `今天晚上有课，没下楼；${yesterday}`
                             : '';
         const food = now.cat.foodDays <= 3 && !('skipped' in today && today.skipped === 'no_food') ? `，猫粮只够 ${Math.max(0, now.cat.foodDays)} 天了` : '';
         if (state) parts.push(`${now.cat.name}（楼下的流浪猫）：${state}${food}`);
@@ -268,7 +270,8 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
         // 看不到课名的档位，几份一样的合成一条
         const lines = new Map<string, number>();
         for (const h of now.homework) {
-            const line = `${h.course ? `${h.course}的作业` : '作业'}${dueWord(h.due, at)}交，${h.done ? '写完了' : '还没写'}`;
+            // 先写写没写完、再写哪天交：问「作业写完没」时先看到的就是答案
+            const line = `${h.course ? `${h.course}的作业` : '作业'}${h.done ? '已经写完了' : '还没写'}（${dueWord(h.due, at)}交）`;
             lines.set(line, (lines.get(line) ?? 0) + 1);
         }
         parts.push(`作业：${[...lines].map(([line, n]) => (n > 1 ? `${n} 份${line}` : line)).join('；')}`);

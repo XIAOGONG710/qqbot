@@ -112,7 +112,8 @@ describe('「你那边」进时间块（ADR 0021 W2）', () => {
         const now = at('2026-10-11T21:30:00');
         const text = describeWorld(worldAt(world, schedule, now)!, now)!;
         assert.match(text, /^\[你那边（今天到现在的事实，用不用、怎么说你自己定，别照着念；这里没写的别编）：/);
-        assert.match(text, /土豆（楼下的流浪猫）/);
+        assert.match(text, /土豆（楼下的流浪猫）：[^｜]*；昨天(喂过|没喂)/, '昨天喂没喂总写上');
+        assert.match(text, /的作业(已经写完了|还没写)（(明天|后天|周.)交）/, '先写写没写完，再写哪天交');
         assert.match(text, /攒钱买相机：\d+ \/ 4500 元/);
         assert.doesNotMatch(text, /[我你]觉得|好开心|好烦|！/, '不写情绪和能照抄的句子');
         const friend = patch(w => { w.events = [{ id: 'x', text: '{person}在微信上跟你互损了几句', person: 'chen_jianing', window: 'morning', chance: 1, when: 'any' }]; });
@@ -126,8 +127,8 @@ describe('「你那边」进时间块（ADR 0021 W2）', () => {
         const schedulePlain: Schedule = { ...schedule, courses: schedule.courses.map(({ name: _name, ...c }) => c) };
         const now = at('2026-09-13T21:30:00');
         const text = describeWorld(worldAt(nameless, schedulePlain, now)!, now)!;
-        assert.doesNotMatch(text, /作业明天交，还没写；作业明天交/);
-        assert.match(text, /作业：\d 份作业明天交，还没写|作业：作业明天交，还没写/);
+        assert.doesNotMatch(text, /作业还没写（明天交）；作业还没写（明天交）/);
+        assert.match(text, /作业：\d 份作业还没写（明天交）|作业：作业还没写（明天交）/);
     });
 
     test('每天第一次写一行摘要和 state.json，同一天不重复', () => {
