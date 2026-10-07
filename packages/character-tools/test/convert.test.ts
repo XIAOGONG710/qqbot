@@ -8,6 +8,7 @@ import { scenesToLorebook } from '../src/scenes-to-lorebook.ts';
 import { scheduleForTier } from '../src/schedule-to-card.ts';
 import { booksForTier, moodsForTier } from '../src/her-days-to-card.ts';
 import { checkWorld, worldForTier } from '../src/world-source.ts';
+import { biographyForTier, checkBiography } from '../src/biography-to-card.ts';
 import { checkSource, fromYaml, readSource, SECTION_KEYS, SOURCE_FILES, toYaml, type CharacterSource } from '../src/source.ts';
 import { WORLD_INFO_POSITION } from '../src/st-format.ts';
 
@@ -366,6 +367,7 @@ test('作息写进卡的 extensions.qqbot.schedule，不进 ST 读的字段', ()
         moods: moodsForTier(source, 'classmate'),
         books: booksForTier(source, 'classmate'),
         world: worldForTier(source.world, 'classmate'),
+        biography: biographyForTier(source.biography, 'classmate'),
     });
     assert.equal(cardText('classmate'), [data.description, data.personality, data.scenario, data.post_history_instructions, data.mes_example, data.system_prompt].join('\n'));
 });
@@ -413,4 +415,28 @@ test('作息写错时报错：按档位的说法缺档位或重复、档位名�
     assert.throws(() => checkSource({ ...copy(), schedule: withSchedule(s => { s.sleep = '2:00'; }).schedule } as never), /应为 HH:MM/);
     const overridden = scheduleOf('boyfriend', withSchedule(s => { s.makeups[1]!.as_day = 4; }));
     assert.deepEqual(overridden.makeups[1], { date: '2026-10-10', asDay: 4 });
+});
+
+test('她的过去（ADR 0022）：按档位裁剪，低档位看不到他；陌生人、名单外没有；年表只给能看到的', () => {
+    const bio = (tier: string) => biographyForTier(source.biography, tier);
+    assert.ok(bio('boyfriend')!.chunks.some(c => c.id === 'lost'), '男朋友档有走丢那块');
+    assert.equal(bio('stranger'), undefined);
+    assert.equal(bio('unlisted'), undefined);
+    assert.deepEqual(bio('classmate')!.chunks.map(c => c.id), ['potato']);
+    for (const tier of ['girl_friend', 'known', 'classmate']) {
+        const text = JSON.stringify(bio(tier));
+        assert.doesNotMatch(text, /他(?!们)/, `${tier} 的过去里出现了「他」`);
+    }
+    // 初中同桌：男朋友档写他数学好，女生熟人档只说同桌
+    assert.match(bio('boyfriend')!.chunks.find(c => c.id === 'deskmate')!.text, /他数学好/);
+    assert.match(bio('girl_friend')!.chunks.find(c => c.id === 'deskmate')!.text, /同桌数学特别好/);
+    assert.ok(bio('boyfriend')!.timeline.length > bio('known')!.timeline.length);
+});
+
+test('biography.yml 写错时报错：缺字段、gap 写错、id 重复', () => {
+    const ok = { timeline: [{ when: '2007', text: '生', tiers: ['boyfriend'] }], chunks: [{ id: 'a', title: 't', keys: ['k'], text: 'x', tiers: ['boyfriend'] }] };
+    assert.doesNotThrow(() => checkBiography(ok));
+    assert.throws(() => checkBiography({ ...ok, chunks: [{ ...ok.chunks[0], gap: 'maybe' }] }), /gap/);
+    assert.throws(() => checkBiography({ ...ok, chunks: [ok.chunks[0], ok.chunks[0]] }), /重复/);
+    assert.throws(() => checkBiography({ ...ok, chunks: [{ ...ok.chunks[0], keys: [] }] }), /keys/);
 });

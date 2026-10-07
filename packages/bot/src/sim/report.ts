@@ -92,7 +92,9 @@ function renderExchange(step: StepRecord, dayPrefix: (time: number) => string): 
     for (const g of step.generations) for (const r of g.rewrites ?? []) out.push('出口检查重写的原文：', '', '```text', ...r.split('\n'), '```', '');
     const last = step.generations.at(-1);
     if (last) {
-        const parts = [last.timeBlock, last.recall, last.common, last.todayOthers, last.people, last.relationship].filter(Boolean) as string[];
+        // 想起的从前只写标题：年表和块里有真实住址（作者 10-07：住址不进模拟器报告）
+        const past = last.past ? `[你想起的从前：${[...last.past.matchAll(/^- ([^：\n]+)：/gm)].map(m => m[1]).join('、')}（正文和年表略）]` : undefined;
+        const parts = [last.timeBlock, last.recall, last.common, last.todayOthers, past, last.people, last.relationship].filter(Boolean) as string[];
         out.push('<details><summary>提示词里的动态部分（最后一次生成）</summary>', '', '```text', ...parts.join('\n\n').split('\n'), '```', '', '</details>', '');
     }
     return out;

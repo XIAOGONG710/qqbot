@@ -24,7 +24,7 @@ export interface CharacterCardV2 {
         // regex_scripts：Scoped 正则（导入时 ST 会问是否允许）
         // qqbot：只给运行时用的字段，ST 不读（ADR 0002 决策 3）。banned 不进提示词；schedule 由运行时算成一行状态放进时间块（ADR 0007）；
         // dates、proactive：重要的日子和主动找人的设置（ADR 0011）；moods、books：她自己的日子（ADR 0015）；
-        // pace：回复节奏系数（ADR 0013）。可选字段没有资料时不写
+        // pace：回复节奏系数（ADR 0013）；biography：她的过去（ADR 0022），有线索才放进提示词。可选字段没有资料时不写
         extensions: {
             world?: string;
             regex_scripts?: RegexScript[];
@@ -38,6 +38,7 @@ export interface CharacterCardV2 {
                 books?: CardBook[];
                 /** 她的世界（ADR 0021） */
                 world?: CardWorld;
+                biography?: CardBiography;
             };
         };
     };
@@ -61,6 +62,12 @@ export interface CardWorld {
     events: { id: string; text: string; person?: string; window: 'morning' | 'afternoon' | 'evening'; chance: number; when: 'school' | 'class_day' | 'any'; weekday?: number }[];
     /** 她的身体（ADR 0025）：period.detail 是这一档说得出口生理期 */
     body?: { period?: { first: string; cycle: [number, number]; days: number; crampsChance: number; detail: boolean }; cold?: { perMonth: number; days: number } };
+}
+
+/** 她的过去（ADR 0022）：这一档看得到的年表（「何时：何事」一行一件）和素材块；keys 不进提示词 */
+export interface CardBiography {
+    timeline: string[];
+    chunks: { id: string; title: string; keys: string[]; gap?: 'refuse' | 'vague' | 'unsaid'; text: string }[];
 }
 
 /** 每日心情：转换器已经按档位裁剪、把 TextField 变成最终写法 */
