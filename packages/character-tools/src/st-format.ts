@@ -36,9 +36,29 @@ export interface CharacterCardV2 {
                 proactive?: CardProactive;
                 moods?: CardMood[];
                 books?: CardBook[];
+                /** 她的世界（ADR 0021） */
+                world?: CardWorld;
             };
         };
     };
+}
+
+/**
+ * 她的世界（ADR 0021）：转换器按档位裁剪（这一档看不到的整块不写），字段名换成驼峰；
+ * 推进规则在 packages/bot/src/world.ts，同一天对所有人一样
+ */
+export interface CardWorld {
+    startDay: string;
+    awayHolidays: string[];
+    weather?: { rainChance: number; temps: Record<string, [number, number]> };
+    cat?: { name: string; feed: [string, string]; seenChance: number; food: { bagDays: number; left: number; reorderAt: number } };
+    parcels?: { perWeek: number; arriveDays: [number, number]; keepDays: number; items: string[] };
+    cameraFund?: { goal: number; saved: number; weekly: number; depositDay: number };
+    homework?: { kinds: string[]; chance: number; earlyChance: number };
+    familyCall?: { weekday: number; time: string };
+    /** 她世界里的人（NPC）：name 已按档位换成这一档的叫法 */
+    people: { id: string; name: string; relation: string }[];
+    events: { id: string; text: string; person?: string; window: 'morning' | 'afternoon' | 'evening'; chance: number; when: 'school' | 'class_day' | 'any'; weekday?: number }[];
 }
 
 /** 每日心情：转换器已经按档位裁剪、把 TextField 变成最终写法 */

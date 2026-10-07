@@ -705,7 +705,193 @@
                             }
                         ]
                     }
-                ]
+                ],
+                "world": {
+                    "startDay": "2026-08-31",
+                    "awayHolidays": [],
+                    "weather": {
+                        "rainChance": 0.15,
+                        "temps": {
+                            "1": [
+                                -5,
+                                4
+                            ],
+                            "2": [
+                                -2,
+                                8
+                            ],
+                            "3": [
+                                3,
+                                15
+                            ],
+                            "4": [
+                                10,
+                                22
+                            ],
+                            "5": [
+                                16,
+                                28
+                            ],
+                            "6": [
+                                21,
+                                32
+                            ],
+                            "7": [
+                                24,
+                                32
+                            ],
+                            "8": [
+                                23,
+                                31
+                            ],
+                            "9": [
+                                18,
+                                27
+                            ],
+                            "10": [
+                                11,
+                                21
+                            ],
+                            "11": [
+                                3,
+                                13
+                            ],
+                            "12": [
+                                -3,
+                                6
+                            ]
+                        }
+                    },
+                    "cat": {
+                        "name": "土豆",
+                        "feed": [
+                            "18:30",
+                            "21:30"
+                        ],
+                        "seenChance": 0.85,
+                        "food": {
+                            "bagDays": 20,
+                            "left": 8,
+                            "reorderAt": 3
+                        }
+                    },
+                    "parcels": {
+                        "perWeek": 1.2,
+                        "arriveDays": [
+                            2,
+                            3
+                        ],
+                        "keepDays": 3,
+                        "items": [
+                            "零食",
+                            "洗面奶",
+                            "数据线",
+                            "发圈",
+                            "秋天的外套",
+                            "笔记本",
+                            "猫条",
+                            "宿舍用的小台灯"
+                        ]
+                    },
+                    "cameraFund": {
+                        "goal": 4500,
+                        "saved": 1800,
+                        "weekly": 100,
+                        "depositDay": 7
+                    },
+                    "homework": {
+                        "kinds": [
+                            "hard",
+                            "machine"
+                        ],
+                        "chance": 0.5,
+                        "earlyChance": 0.2
+                    },
+                    "familyCall": {
+                        "weekday": 7,
+                        "time": "20:30"
+                    },
+                    "people": [
+                        {
+                            "id": "chen_jianing",
+                            "name": "陈佳宁",
+                            "relation": "高中同班，你的死党；考去了外地，平时在微信上互损"
+                        },
+                        {
+                            "id": "su_yutong",
+                            "name": "苏雨桐",
+                            "relation": "大学同专业，济南人，不是室友；一起上课、一起吃饭"
+                        }
+                    ],
+                    "events": [
+                        {
+                            "id": "bestie_wechat",
+                            "text": "{person}在微信上跟你互损了几句",
+                            "window": "evening",
+                            "chance": 0.2,
+                            "when": "any",
+                            "person": "chen_jianing"
+                        },
+                        {
+                            "id": "lunch_with_friend",
+                            "text": "下课和{person}一起去食堂吃饭",
+                            "window": "afternoon",
+                            "chance": 0.3,
+                            "when": "class_day",
+                            "person": "su_yutong"
+                        },
+                        {
+                            "id": "canteen_queue",
+                            "text": "中午食堂二楼的窗口排了长队",
+                            "window": "afternoon",
+                            "chance": 0.2,
+                            "when": "school"
+                        },
+                        {
+                            "id": "milk_tea",
+                            "text": "点了一杯奶茶外卖",
+                            "window": "afternoon",
+                            "chance": 0.25,
+                            "when": "any"
+                        },
+                        {
+                            "id": "library_seat",
+                            "text": "去图书馆没占到靠窗的座",
+                            "window": "afternoon",
+                            "chance": 0.1,
+                            "when": "school"
+                        },
+                        {
+                            "id": "dorm_check",
+                            "text": "宿舍查卫生，前一晚大家一起收拾了桌子",
+                            "window": "evening",
+                            "chance": 0.9,
+                            "when": "school",
+                            "weekday": 3
+                        },
+                        {
+                            "id": "roommate_video",
+                            "text": "室友晚上外放刷视频",
+                            "window": "evening",
+                            "chance": 0.15,
+                            "when": "school"
+                        },
+                        {
+                            "id": "bath_queue",
+                            "text": "澡堂排了半天队",
+                            "window": "evening",
+                            "chance": 0.12,
+                            "when": "school"
+                        },
+                        {
+                            "id": "water_off",
+                            "text": "宿舍楼停了半小时水",
+                            "window": "evening",
+                            "chance": 0.04,
+                            "when": "school"
+                        }
+                    ]
+                }
             }
         }
     }

@@ -7,6 +7,7 @@ import { personaToCard, STAGE_DIRECTION_SCRIPT, textFor } from '../src/persona-t
 import { scenesToLorebook } from '../src/scenes-to-lorebook.ts';
 import { scheduleForTier } from '../src/schedule-to-card.ts';
 import { booksForTier, moodsForTier } from '../src/her-days-to-card.ts';
+import { checkWorld, worldForTier } from '../src/world-source.ts';
 import { checkSource, fromYaml, readSource, SECTION_KEYS, SOURCE_FILES, toYaml, type CharacterSource } from '../src/source.ts';
 import { WORLD_INFO_POSITION } from '../src/st-format.ts';
 
@@ -364,8 +365,39 @@ test('作息写进卡的 extensions.qqbot.schedule，不进 ST 读的字段', ()
         pace: 1.6,
         moods: moodsForTier(source, 'classmate'),
         books: booksForTier(source, 'classmate'),
+        world: worldForTier(source.world, 'classmate'),
     });
     assert.equal(cardText('classmate'), [data.description, data.personality, data.scenario, data.post_history_instructions, data.mes_example, data.system_prompt].join('\n'));
+});
+
+test('她的世界（ADR 0021）：按档位裁剪整块；NPC 的名字只给 named_tiers，事件涉及的人看不到就不写', () => {
+    const world = source.world!;
+    const boyfriend = worldForTier(world, 'boyfriend')!;
+    assert.ok(boyfriend.cameraFund && boyfriend.familyCall && boyfriend.cat && boyfriend.weather);
+    assert.deepEqual(boyfriend.people.map(p => p.name), ['陈佳宁', '苏雨桐']);
+    assert.ok(boyfriend.events.some(e => e.person === 'chen_jianing' && e.text.includes('{person}')));
+    const classmate = worldForTier(world, 'classmate')!;
+    assert.equal(classmate.cameraFund, undefined, '相机基金只给 BFGK');
+    assert.equal(classmate.familyCall, undefined);
+    assert.deepEqual(classmate.people, [], '同学档不提闺蜜（ADR 0003：不透露学校、专业）');
+    assert.ok(classmate.events.every(e => !e.person && !/宿舍|室友/.test(e.text)), '同学档没有宿舍、室友的事');
+    // 名字只给一部分档位时，别的档位用 label
+    const patched = structuredClone(world);
+    patched.people[0]!.named_tiers = ['boyfriend'];
+    assert.equal(worldForTier(patched, 'known')!.people[0]!.name, '高中的闺蜜');
+    assert.equal(worldForTier(patched, 'boyfriend')!.people[0]!.name, '陈佳宁');
+});
+
+test('她的世界写错时报错：不认识的键、事件引用不存在的人、写了 person 没用 {person}、named_tiers 不在 tiers 里', () => {
+    const raw = () => fromYaml(readFileSync(join(characterDir, 'source', SOURCE_FILES.world), 'utf8'), 'world.yml') as Record<string, unknown> & {
+        people: Record<string, unknown>[]; events: Record<string, unknown>[];
+    };
+    const broken = (patch: (w: ReturnType<typeof raw>) => void) => { const w = raw(); patch(w); return w; };
+    assert.throws(() => checkWorld(broken(w => { (w as Record<string, unknown>).river = 1; })), /不认识的键：river/);
+    assert.throws(() => checkWorld(broken(w => { w.events[0]!.person = 'nobody'; })), /people 里没有 nobody/);
+    assert.throws(() => checkWorld(broken(w => { w.events.find(e => e.person)!.text = '互损了几句'; })), /\{person\}/);
+    assert.throws(() => checkWorld(broken(w => { w.people[0]!.named_tiers = ['classmate']; })), /classmate 不在 tiers 里/);
+    assert.doesNotThrow(() => checkWorld(raw()));
 });
 
 test('作息写错时报错：按档位的说法缺档位或重复、档位名写错、节次不存在、时间格式不对；调休补哪天直接改', () => {

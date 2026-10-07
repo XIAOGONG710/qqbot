@@ -8,6 +8,7 @@
 //   tiers.yml     档位：对方是谁、说话方式、示例对话、禁用词……；顺序就是输出顺序
 //   moods.yml     每日心情：权重、按当天课表调权重的条件、各档怎么说
 //   books.yml     在读的书：资料、进度、情节节点、没读到的关键词
+//   world.yml     她的世界（ADR 0021）：天气、楼下的猫、快递、作业、相机基金、和家里视频、学校里的小事（world-source.ts）
 //
 // 档位一律写名字（boyfriend、classmate……），不再用旧 tiers.toml 的一字母代号。
 
@@ -15,6 +16,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CORE_SCHEMA, dump, load } from 'js-yaml';
 import type { CourseKind } from './st-format.ts';
+import { checkWorld, type WorldSource } from './world-source.ts';
 
 /** 一段文字。人设各段的字段有 tiers（给哪些档位）；variants 是某几档用的改写版本，按顺序取第一条含这一档的 */
 export interface TextField {
@@ -229,10 +231,11 @@ export interface CharacterSource {
     /** 新文件不存在时当作旧资料：不生成相应的卡片扩展 */
     moods?: MoodsSource;
     books?: BooksSource;
+    world?: WorldSource;
 }
 
 export const SOURCE_FILES = {
-    persona: 'persona.yml', scenes: 'scenes.yml', schedule: 'schedule.yml', tiers: 'tiers.yml', moods: 'moods.yml', books: 'books.yml',
+    persona: 'persona.yml', scenes: 'scenes.yml', schedule: 'schedule.yml', tiers: 'tiers.yml', moods: 'moods.yml', books: 'books.yml', world: 'world.yml',
 } as const;
 
 const HEADERS: Record<keyof typeof SOURCE_FILES, string> = {
@@ -242,6 +245,7 @@ const HEADERS: Record<keyof typeof SOURCE_FILES, string> = {
     tiers: '# 林梦瑶的档位（ADR 0003、0010）。顺序就是输出顺序。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留。\n',
     moods: '# 林梦瑶的每日心情（ADR 0015）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：说明写在 note 里。\n',
     books: '# 林梦瑶在读的书（ADR 0015）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：来源和取用规则写在字段或 note 里。\n',
+    world: '# 林梦瑶的世界（ADR 0021）：会自己变的东西和推进规则。packages/character-tools 会改写这个文件，注释不会保留：说明写在 note 里。\n',
 };
 
 /** YAML 只用核心 schema：日期、时间都按字符串读写（不变成 Date） */
@@ -262,8 +266,10 @@ export function writeSource(dir: string, source: CharacterSource): void {
 
 export function readSource(dir: string): CharacterSource {
     const read = (key: keyof typeof SOURCE_FILES) => fromYaml(readFileSync(join(dir, SOURCE_FILES[key]), 'utf8'), SOURCE_FILES[key]);
-    const optional = (key: 'moods' | 'books') => existsSync(join(dir, SOURCE_FILES[key])) ? read(key) : undefined;
-    return checkSource({ persona: read('persona'), scenes: read('scenes'), schedule: read('schedule'), tiers: read('tiers'), moods: optional('moods'), books: optional('books') });
+    const optional = (key: 'moods' | 'books' | 'world') => existsSync(join(dir, SOURCE_FILES[key])) ? read(key) : undefined;
+    return checkSource({
+        persona: read('persona'), scenes: read('scenes'), schedule: read('schedule'), tiers: read('tiers'), moods: optional('moods'), books: optional('books'), world: optional('world'),
+    });
 }
 
 // ---------- 校验结构（档位之间的引用、内容的隐私检查在 build.ts） ----------
@@ -444,7 +450,7 @@ function withNote<T extends object>(c: Checker, value: unknown, base: T): T & { 
     return note ? { ...base, note } : base;
 }
 
-export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: unknown; tiers: unknown; moods?: unknown; books?: unknown }): CharacterSource {
+export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: unknown; tiers: unknown; moods?: unknown; books?: unknown; world?: unknown }): CharacterSource {
     // 人设
     const p = new Checker('persona.yml');
     const persona = p.object(raw.persona);
@@ -629,6 +635,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
 
     const moods = raw.moods === undefined ? undefined : checkMoods(raw.moods);
     const books = raw.books === undefined ? undefined : checkBooks(raw.books);
+    const world = raw.world === undefined ? undefined : checkWorld(raw.world);
 
     return {
         persona: {
@@ -646,6 +653,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         tiers: { discreet: textField(t.at('discreet'), tiersRaw.discreet, { gated: false }), tiers },
         ...(moods ? { moods } : {}),
         ...(books ? { books } : {}),
+        ...(world ? { world } : {}),
     };
 }
 
