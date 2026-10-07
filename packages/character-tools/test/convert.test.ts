@@ -402,6 +402,21 @@ test('她的世界写错时报错：不认识的键、事件引用不存在的�
     assert.doesNotThrow(() => checkWorld(raw()));
 });
 
+test('她的身体（ADR 0025）：每档都有困、饿和小感冒；生理期细节只给男朋友、闺蜜、女生朋友档（和 persona.yml body 一样）；写错时报错', () => {
+    const world = source.world!;
+    const detail = (tier: string) => worldForTier(world, tier)!.body!.period!.detail;
+    assert.deepEqual(['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger', 'unlisted'].map(detail), [true, true, true, false, false, false, false]);
+    assert.deepEqual(worldForTier(world, 'classmate')!.body!.cold, { perMonth: world.body!.cold!.per_month, days: world.body!.cold!.days });
+    const raw = () => fromYaml(readFileSync(join(characterDir, 'source', SOURCE_FILES.world), 'utf8'), 'world.yml') as Record<string, unknown> & {
+        body: { tiers: string[]; period: Record<string, unknown>; cold: Record<string, unknown> };
+    };
+    const broken = (patch: (w: ReturnType<typeof raw>) => void) => { const w = raw(); patch(w); return w; };
+    assert.throws(() => checkWorld(broken(w => { w.body.period.detail_tiers = ['boyfriend', 'teacher']; w.body.tiers = ['boyfriend']; })), /teacher 不在 body.tiers 里/);
+    assert.throws(() => checkWorld(broken(w => { w.body.period.cycle = [31, 28]; })), /前一个不能比后一个大/);
+    assert.throws(() => checkWorld(broken(w => { w.body.period.first = '9-20'; })), /YYYY-MM-DD/);
+    assert.throws(() => checkWorld(broken(w => { w.body.cold.fever = true; })), /不认识的键：fever/);
+});
+
 test('作息写错时报错：按档位的说法缺档位或重复、档位名写错、节次不存在、时间格式不对；调休补哪天直接改', () => {
     const withSchedule = (patch: (s: CharacterSource['schedule']) => void) => {
         const s = copy();
