@@ -209,6 +209,49 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
         }
     });
 
+    test('挂着的事（ADR 0023）：同一次抽取记下；第二天晚上意图行问结果，心情后面一行只给没了结的事实', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-'));
+        const hindsight: SimHindsight = {
+            putBank: async () => {},
+            retain: async () => {},
+            recall: async () => [],
+            getMentalModel: async () => undefined,
+            createMentalModel: async () => {},
+            updateMentalModel: async () => {},
+            activeOperations: async () => [],
+            operationStatus: async () => 'completed',
+            refreshMentalModel: async () => 'op-1',
+            deleteBank: async () => {},
+        };
+        const seen: OpenAIMessage[][] = [];
+        let extracted = 0;
+        const generate = async (messages: OpenAIMessage[]) => {
+            if (isDiary(messages)) return '日记';
+            if (isPromises(messages)) {
+                extracted++;
+                return extracted === 1
+                    ? JSON.stringify({ add: [], waiting: [{ what: '阿明周二下午字节面试', date: '2026-10-06' }], unsettled: [{ what: '10月5日说好一起看电影，他加班没去成' }], resolved: [] })
+                    : '{"add":[],"resolved":[]}';
+            }
+            seen.push(messages);
+            return '在呢';
+        };
+        const scenario = parseScenario({
+            name: '测试', tier: 'boyfriend', start: '2026-10-05T20:00:00+08:00', schedule: false,
+            steps: [{ say: '明天下午我去字节面试' }, { advance: '1h' }, { advance: '1d' }, { say: '在吗' }],
+        });
+        try {
+            const result = await runScenario(scenario, { runId: 'test', dataDir: dir, card, llm, prompt, hindsight, generate, settle: { quietMs: 100, maxMs: 500 } });
+            const text = (messages: OpenAIMessage[]) => messages.map(m => m.content).join('\n');
+            assert.doesNotMatch(text(seen[0]!), /这一轮你想：知道/);
+            assert.match(text(seen[1]!), /\[这一轮你想：知道「阿明周二下午字节面试」后来怎么样了，随口问一句；他不想说就算了，不追问\]/);
+            assert.match(text(seen[1]!), /\[你心里还记着、没了结的事（只是发生过的事，不是要你说的话）：10月5日说好一起看电影，他加班没去成。不用特意提，也不翻旧账/);
+            assert.ok(result.steps.at(-1)!.logs.includes('挂着的事：等结果 1、没回答 0、没了结 1'));
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('挪走聊天记录后只能靠召回；Hindsight 停了照常回复；字数检查', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-'));
         const created = new Set<string>();

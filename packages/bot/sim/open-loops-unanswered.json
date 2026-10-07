@@ -1,0 +1,26 @@
+{
+    "name": "男朋友档：她问了他没答（ADR 0023）",
+    "description": "10-07 晚上她问他周末要不要一起去拍银杏，他岔开说食堂的菜太咸。10-08 他来了：意图行「上次问他…他没顾上回，轻轻再问一次」，她再问一次，不追究他上次没回、不算账；他回答了，聊天结束后了结，10-09 不再挂着。不按作息，名字和聊天是虚构的。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-08T21:00:00+08:00",
+    "schedule": false,
+    "history": [
+        { "time": "2026-10-07T21:00:00+08:00", "role": "user", "content": "今天好累" },
+        { "time": "2026-10-07T21:01:00+08:00", "role": "assistant", "content": "早点歇着。对了，周末要不要一起去拍银杏" },
+        { "time": "2026-10-07T21:02:00+08:00", "role": "user", "content": "今天食堂的菜咸死了，齁得我喝了三瓶水" },
+        { "time": "2026-10-07T21:03:00+08:00", "role": "assistant", "content": "哈哈哈哪个窗口，我避个雷" }
+    ],
+    "steps": [
+        { "case": "OU01", "note": "10-08：意图行轻轻再问一次周末拍银杏，不追究" },
+        { "say": "在吗" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "上次问他「[^」]*」他没顾上回", "log": "挂着的事：等结果 0、没回答 1", "replyAny": ["银杏", "周末", "拍"] } },
+        { "say": "去啊，周六下午？" },
+        { "check": { "speechClean": true, "exitClean": true } },
+        { "advance": "1h" },
+        { "advance": "1d" },
+        { "case": "OU02", "note": "10-09：他回答了，了结" },
+        { "say": "在吗" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlockNot": "没顾上回" } }
+    ]
+}

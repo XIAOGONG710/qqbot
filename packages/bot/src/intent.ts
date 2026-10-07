@@ -18,6 +18,9 @@ export interface IntentContext {
     books?: boolean;
     /** 主动找他时 initiate.note 已经是这一轮的意图 */
     initiating?: boolean;
+    /** 挂着的事（ADR 0023）：在等他说结果的事、她问了他没答的 */
+    waiting?: readonly string[];
+    unanswered?: readonly string[];
 }
 
 /** 她上一次回复以后，他这次说的内容。 */
@@ -65,13 +68,20 @@ function busy(state: State | undefined, schedule: Schedule | undefined, now: Dat
     return Boolean(schedule && nearSleep(now, schedule.sleep));
 }
 
-/** 时间块里的一行；没有当下线索就不返回。顺序与 ADR 0019 的决策表一致。 */
+/**
+ * 时间块里的一行；没有当下线索就不返回。顺序与 ADR 0019 的决策表一致，ADR 0023 插了两类「在等的」：
+ * 等他说结果的事排在他说自己的事之前（最自然的开口），她问了他没答的排在她答应的事之后。两类都只表达期待（作者裁决二·3），不写介意。
+ */
 export function describeIntent(context: IntentContext): string | undefined {
     if (context.initiating) return undefined;
     if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句，不分享新进度、不另起话题]';
     if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
+    const waiting = context.waiting?.[0];
+    if (waiting) return `[这一轮你想：知道「${waiting}」后来怎么样了，随口问一句；他不想说就算了，不追问]`;
     if (saysOwnThing(context.history)) return '[这一轮你想：问他刚说的那件事里的一个具体细节，不问“在干嘛”]';
     if (context.promised) return '[这一轮你想：先把上面你答应的那件事说了，不另起话题]';
+    const unanswered = context.unanswered?.[0];
+    if (unanswered) return `[这一轮你想：上次问他「${unanswered}」他没顾上回，轻轻再问一次；他不接就算了，不追究]`;
     if (context.books) return '[这一轮你想：只说一件你手上这本书的新进度；没有新进度就不硬编]';
     if (!busy(context.state, context.schedule, context.now) && context.state?.activity.kind === 'free' && context.state.activity.text) {
         return `[这一轮你想：只说一件你手上正在做的事的新进度（${context.state.activity.text}）；没有新进度就不硬编]`;

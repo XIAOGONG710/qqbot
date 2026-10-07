@@ -21,6 +21,14 @@ export interface LlmOptions {
     extraBody: Record<string, unknown>;
 }
 
+/** 后台抽取（她答应的事、挂着的事、待跟进的事）的输出上限：开思考时思考也算在 max_tokens 里，4096 偶尔不够，正文就是空的（10-07 线上和模拟器里都有） */
+export const EXTRACT_MAX_TOKENS = 8192;
+
+/** 后台抽取用的模型配置：同一个模型，输出上限放到 EXTRACT_MAX_TOKENS */
+export function forExtraction(options: LlmOptions): LlmOptions {
+    return { ...options, maxTokens: Math.max(options.maxTokens, EXTRACT_MAX_TOKENS) };
+}
+
 /** 用到的 fetch 的那一部分（测试注入假的） */
 export type Fetch = (
     url: string,
@@ -104,6 +112,8 @@ export async function chatCompletion(
     const json = JSON.parse(body) as { choices?: { message?: { content?: unknown }; finish_reason?: string }[] };
     const content = json.choices?.[0]?.message?.content;
     if (typeof content !== 'string') throw new Error(`模型接口返回里没有文本：${body.slice(0, 500)}`);
+    // 开思考时思考也算在 max_tokens 里：偶尔想太久，正文就是空的（10-07 线上抽「她答应的事」两次「没有 JSON」）
+    if (!content.trim() && json.choices?.[0]?.finish_reason === 'length') log('模型输出被截断：思考用完了 max_tokens，正文是空的');
     return content;
 }
 

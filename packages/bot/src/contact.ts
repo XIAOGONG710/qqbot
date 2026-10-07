@@ -23,6 +23,7 @@ import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
 import { describeIntent } from './intent.ts';
+import { describeUnsettled } from './open-loops.ts';
 import { askedWindow, ASKS_PAST, commonCue, describePerson, holidayWords, mentionedPeople, stillInMind } from './people.ts';
 import type { PromiseKeeper } from './promises.ts';
 import { describeState, stateAt } from './schedule.ts';
@@ -97,7 +98,7 @@ export interface ContactPipelineOptions {
      */
     herDays?: boolean;
     /** 她答应过的事（ADR 0018 决策 2）：到了日子在时间块里提醒一句；名单外的人不用 */
-    promises?: Pick<PromiseKeeper, 'describe'>;
+    promises?: Pick<PromiseKeeper, 'describe'> & Partial<Pick<PromiseKeeper, 'openLoops'>>;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
     mood?: string;
     /** herDays 开着时每次生成前调一次（app 按她的一天去重，写当天的摘要） */
@@ -203,6 +204,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             reading = books?.context;
             const promised = contact.tier !== UNLISTED_TIER ? options.promises?.describe(contact, chat, time) : undefined;
             if (promised) log('时间块里提醒了她答应的事');
+            // 挂着的事（ADR 0023）：等他说结果的、她问了他没答的进意图行；没了结的事实放在心情后面，只给事实
+            const loops = contact.tier !== UNLISTED_TIER ? options.promises?.openLoops?.(contact, chat, time) : undefined;
+            const unsettled = loops ? describeUnsettled(loops.unsettled) : undefined;
+            if (loops && (loops.waiting.length || loops.unanswered.length || loops.unsettled.length)) {
+                log(`挂着的事：等结果 ${loops.waiting.length}、没回答 ${loops.unanswered.length}、没了结 ${loops.unsettled.length}`);
+            }
             const intent = describeIntent({
                 history: chat,
                 state,
@@ -211,6 +218,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 promised: Boolean(promised),
                 books: Boolean(books),
                 initiating: Boolean(initiate),
+                waiting: loops?.waiting.map(l => l.what),
+                unanswered: loops?.unanswered.map(l => l.what),
             });
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
@@ -233,6 +242,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(days ? [days] : []),
                         ...(state ? [describeState(state, schedule!, { userName: contact.name, woken })] : []),
                         ...(mood ? [describeMood(mood, contact.name)] : []),
+                        ...(unsettled ? [unsettled] : []),
                         ...(books ? [books.text] : []),
                         ...(promised ? [promised] : []),
                         ...(intent ? [intent] : []),

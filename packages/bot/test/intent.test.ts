@@ -45,3 +45,24 @@ describe('这一轮你想（ADR 0019）', () => {
         assert.equal(isEndingTurn([user('你睡了吗')]), false);
     });
 });
+
+describe('挂着的事进意图行（ADR 0023）', () => {
+    const waiting = ['阿明周四下午字节面试'];
+    const unanswered = ['他国庆回不回家'];
+
+    test('等他说结果的：开口时最先问，只表达想知道，不写介意；收尾、他直接问时让路', () => {
+        const line = describeIntent({ history: [user('在吗')], now, waiting, unanswered, promised: true })!;
+        assert.match(line, /知道「阿明周四下午字节面试」后来怎么样了/);
+        assert.doesNotMatch(line, /介意|委屈|失望|怪他|生气/);
+        assert.match(describeIntent({ history: [user('我刚下班，累死了')], now, waiting })!, /字节面试/, '他说自己的事时也先问这件');
+        assert.match(describeIntent({ history: [user('晚安')], now, waiting })!, /收尾/);
+        assert.match(describeIntent({ history: [user('你今天吃的啥')], now, waiting })!, /直接回答/);
+        assert.equal(describeIntent({ history: [user('在吗')], now, waiting, initiating: true }), undefined);
+    });
+
+    test('她问了他没答的：排在答应的事之后，轻轻再问，不追究', () => {
+        assert.match(describeIntent({ history: [user('在吗')], now, unanswered, promised: true })!, /答应/);
+        const line = describeIntent({ history: [user('在吗')], now, unanswered, books: true })!;
+        assert.match(line, /上次问他「他国庆回不回家」他没顾上回，轻轻再问一次；他不接就算了，不追究/);
+    });
+});
