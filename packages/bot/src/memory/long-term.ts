@@ -505,8 +505,14 @@ export class LongTermMemory {
         const request: RecallRequest = {
             ...recallRequest(query, now, window), types: ['world', 'experience'], prefer_observations: false, ...(window ? { max_tokens: DAY_RECALL_TOKENS } : {}),
         };
-        const all = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
-        if (!all) return undefined;
+        const found = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
+        if (!found) return undefined;
+        // 问上周、问假期时，周记、阶段总结单独按标签再召回一次（ADR 0026：日记里的事多了以后，周记的条目有时排不进上面那次的名额，3/9 次问上周没想起周记）
+        const summaryTag = window?.period === 'week' ? 'week' : window?.period === 'holiday' ? 'phase' : undefined;
+        const summaries = summaryTag
+            ? await this.#recall(stored.bankId, { ...request, tags: [...request.tags, summaryTag] }, `[${contact.qq}] ${summaryTag === 'week' ? '周记' : '阶段总结'}召回失败，这次只用上面的`)
+            : undefined;
+        const all = summaries?.length ? [...summaries, ...found.filter(r => !summaries.some(s => s.id === r.id))] : found;
         // 问到某段时间时，那段的周记、阶段总结排在前面（ADR 0018：「上周忙啥」「国庆过得怎样」整体答）
         // 问的是某一天：只留那天的，那天的日记排前面（ADR 0018 第二批：「昨天」那天正好是国庆最后一天，总结里的几条占满名额，把那天的日记挤掉了）
         const inWindow = !window ? all

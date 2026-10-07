@@ -909,7 +909,10 @@ describe('长期记忆：问到某段时间（ADR 0018 决策 3）', () => {
                 '可明说·你的周记｜林梦瑶这周追完了一部剧',
                 '可明说·你的日记｜林梦瑶 10月3日去拍了银杏',
             ], '阶段总结的事实标在 9-30，按那篇的日子（10-07）还算国庆');
-            assert.equal(calls.recall.length, 1);
+            // 问假期：阶段总结按标签单独再召回一次（ADR 0026），合并时去重
+            assert.equal(calls.recall.length, 2);
+            assert.deepEqual(calls.recall[1]!.tags, [...calls.recall[0]!.tags, 'phase']);
+            assert.equal(calls.recall[1]!.tags_match, 'all_strict');
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
