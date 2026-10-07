@@ -11,7 +11,7 @@
         { "check": { "speechClean": true, "exitClean": true, "common": ["你的日记"], "log": "线索：问她过去的事" } },
         { "case": "LF02", "note": "昨天（10-14）下雨了" },
         { "say": "昨天下雨了吗" },
-        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["下了", "下雨", "雨"], "replyNone": ["没下雨", "没下呢", "没雨", "晴"] } },
+        { "check": { "speechClean": true, "exitClean": true, "log": "想起那天：10月14日", "replyAny": ["下了", "下雨", "雨"], "replyNone": ["没下雨", "没下呢", "没雨", "晴", "昨天没下", "昨天倒没"] } },
         { "case": "LF03", "note": "下雨那两天没下楼喂土豆" },
         { "say": "下雨那两天土豆你还喂了吗" },
         { "check": { "speechClean": true, "exitClean": true, "replyAny": ["没去", "没喂", "没下楼", "下雨", "没下去"], "replyNone": ["都喂了", "照样喂", "冒雨"] } },
@@ -20,6 +20,6 @@
         { "check": { "speechClean": true, "exitClean": true, "common": ["你的日记"], "log": "线索：问她过去的事" } },
         { "case": "LF05", "note": "周一（10-12）取了洗面奶的快递：「周一」算不算问过去的线索" },
         { "say": "周一你那快递拿了没" },
-        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["洗面奶", "拿了", "取了", "拿回来"] } }
+        { "check": { "speechClean": true, "exitClean": true, "log": "想起那天：10月12日", "replyAny": ["洗面奶", "拿了", "取了", "拿回来"], "replyNone": ["还没拿", "还没取"] } }
     ]
 }

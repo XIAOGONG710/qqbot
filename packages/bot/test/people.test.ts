@@ -423,6 +423,7 @@ describe('公共记忆的线索（ADR 0017）', () => {
         assert.equal(cue('礼拜三你干嘛去了'), '问她过去的事');
         assert.equal(cue('12号你做了什么'), '问她过去的事');
         assert.equal(cue('我周一拿了快递'), undefined, '说的是他自己');
+        assert.equal(cue('昨天下雨了吗'), '问她过去的事', '问那天的天气也算（ADR 0032）');
         const thursday = new Date(2026, 9, 15, 21, 0);
         const day = (said: string) => askedDay([he(said)], thursday)?.start.toDateString();
         assert.equal(day('周一你那快递拿了没'), new Date(2026, 9, 12).toDateString());

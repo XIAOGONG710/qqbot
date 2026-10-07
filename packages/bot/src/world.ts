@@ -459,6 +459,32 @@ export function occupationAt(now: WorldNow, at: Date): string | undefined {
     return undefined;
 }
 
+/**
+ * 过去某一天她那边的事（ADR 0032）：他问到这一天时放进提示词。now 是那天快结束时（23:30）按这一档的卡算的世界；
+ * 和日记（ADR 0026，只挑值得记的、按同学档）不同，这里那天的事都写，用这一档看得到的说法
+ */
+export function recapDay(now: WorldNow): string[] {
+    const lines: string[] = [];
+    if (now.weather) lines.push(`${now.weather.rain ? '下雨' : '没下雨'}，${now.weather.low}–${now.weather.high}℃`);
+    if (now.cat) {
+        const { today } = now.cat;
+        lines.push('fed' in today ? `${clock(today.fed)} 下楼喂了${now.cat.name}${today.seen === false ? '，没见着它' : ''}`
+            : 'skipped' in today ? (today.skipped === 'rain' ? `下雨，没下楼喂${now.cat.name}` : today.skipped === 'no_food' ? `猫粮没了，没喂成${now.cat.name}` : today.skipped === 'class' ? `晚上有课，没下楼喂${now.cat.name}` : `不在学校，没喂${now.cat.name}`)
+                : `没下楼喂${now.cat.name}`);
+    }
+    for (const parcel of now.parcels) {
+        if (parcel.status === 'picked_today') lines.push(`${clock(parcel.when)} 去驿站取了快递（${parcel.item}）`);
+        else if (parcel.status === 'station') lines.push(`快递（${parcel.item}）在驿站，还没去取`);
+    }
+    for (const h of now.homework.filter(h => h.done && formatDate(h.doneAt) === now.day)) {
+        lines.push(`${h.doneAt.getHours() >= 21 ? '熬夜' : ''}写完了${h.course ? `${h.course}的` : ''}作业`);
+    }
+    if (now.familyCall?.done) lines.push(`${clock(now.familyCall.at)} 和家里视频了`);
+    for (const event of now.events) lines.push(event.text);
+    if (now.routine?.shower) lines.push(`${clock(now.routine.shower.start)} 去洗了澡`);
+    return lines;
+}
+
 /** 一天的摘要（日志、state.json 用，不含聊天内容） */
 export function summarizeWorld(now: WorldNow): string {
     const bits = [

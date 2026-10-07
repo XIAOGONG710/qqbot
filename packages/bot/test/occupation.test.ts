@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { describeState, stateAt } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { describeWorld, occupationAt, unavailableAt, worldAt } from '../src/world.ts';
+import { describeWorld, occupationAt, recapDay, unavailableAt, worldAt } from '../src/world.ts';
 
 const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
 const boyfriend = card('boyfriend');
@@ -31,6 +31,13 @@ describe('此刻在做的事接上世界（ADR 0030）', () => {
         assert.equal(unavailableAt(now('2026-10-12T23:20:00+08:00'), at('2026-10-12T23:20:00+08:00')), undefined);
         assert.equal(now('2026-10-11T22:50:00+08:00').routine!.shower, undefined, '10-11 不洗');
         assert.equal(doing(classmate, '2026-10-12T22:50:00+08:00'), '在洗澡', '同学档也一样');
+    });
+
+    test('过去某一天她那边的事（ADR 0032）：天气、喂没喂猫、快递、写完的作业、小事、洗澡；按这一档的卡', () => {
+        const recap = (c: ReturnType<typeof card>, d: number) => recapDay(worldAt(c.herWorld!, c.schedule!, new Date(2026, 9, d, 23, 30))!).join('；');
+        assert.equal(recap(boyfriend, 12), '没下雨，12–22℃；19:16 下楼喂了土豆；12:20 去驿站取了快递（洗面奶）；熬夜写完了计算机网络技术的作业；22:35 去洗了澡');
+        assert.match(recap(boyfriend, 14), /^下雨，10–17℃；下雨，没下楼喂土豆；熬夜写完了数据结构的作业；下课和苏雨桐一起去食堂吃饭/);
+        assert.doesNotMatch(recap(classmate, 14), /苏雨桐|宿舍|数据结构/, '同学档看不到的不写');
     });
 
     test('「你那边」里的视频：那半小时写「还在视频」，之后写「视频过了」', () => {

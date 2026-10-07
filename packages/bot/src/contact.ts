@@ -25,13 +25,13 @@ import { describeMood, moodAt, readingActivities, readingSection } from './her-d
 import { describeIntent } from './intent.ts';
 import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
-import { describeWorld, occupationAt, unavailableAt, worldAt, type WorldState } from './world.ts';
-import { bodyAt, describeBody, unwell } from './body.ts';
+import { describeWorld, occupationAt, recapDay, unavailableAt, worldAt, type WorldState } from './world.ts';
+import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
 import { describePast, pastCue, type PastChunk } from './biography.ts';
 import { askedWindow, ASKS_PAST, commonCue, describePerson, holidayWords, mentionedPeople, stillInMind } from './people.ts';
 import type { PromiseKeeper } from './promises.ts';
-import { describeState, stateAt } from './schedule.ts';
+import { describeState, herDay, stateAt } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
@@ -118,6 +118,9 @@ export interface ContactPipelineOptions {
     retryAfterMs?: readonly number[];
 }
 
+/** 问到过去的某一天时，几天以内她那边的事还记得清楚（ADR 0032，同 ADR 0018 的 7 天） */
+export const RECAP_DAYS = 7;
+
 export function createContactResponder(options: ContactPipelineOptions): Responder {
     const { contact, card: { character, worldInfo }, llm, memory } = options;
     const names = { user: contact.name, char: character.name };
@@ -134,6 +137,22 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let lastCommon: { text: string; at: number } | undefined;
     // 刚想起的从前（ADR 0022）：接下来没有新线索也沿用一会儿，追问时不忘
     let lastPast: { chunks: PastChunk[]; at: number } | undefined;
+    // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
+    const recapOf = (dayStart: Date, time: Date): { day: string; lines: string[]; text: string } | undefined => {
+        if (!herSchedule || !character.herWorld) return undefined;
+        const today = herDay(herSchedule, time);
+        const back = Math.round((today.getTime() - dayStart.getTime()) / 86_400_000);
+        if (back < 1 || back > RECAP_DAYS) return undefined;
+        const at = (h: number, m: number) => new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), h, m);
+        const then = options.worldState?.at(character.herWorld, herSchedule, at(23, 30)) ?? worldAt(character.herWorld, herSchedule, at(23, 30));
+        if (!then) return undefined;
+        const lines = recapDay(then);
+        const body = character.herWorld.body ? diaryBody(bodyAt(character.herWorld.body, herSchedule, at(15, 0))) : undefined;
+        if (body) lines.push(body);
+        if (!lines.length) return undefined;
+        const day = `${dayStart.getMonth() + 1}月${dayStart.getDate()}日 ${'日一二三四五六'.split('').map(d => `周${d}`)[dayStart.getDay()]}`;
+        return { day, lines, text: `[那天（${day}）你那边的事（你自己过的这一天，记得；他问到了照实说，用不上就别提）：${lines.join('；')}]` };
+    };
     return createResponder({
         userId: contact.qq,
         history: options.history,
@@ -208,6 +227,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ? options.worldState?.at(character.herWorld, herSchedule, time) ?? worldAt(character.herWorld, herSchedule, time)
                 : undefined;
             const world = around ? describeWorld(around, time) : undefined;
+            // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）
+            const recap = day && !day.period ? recapOf(day.start, time) : undefined;
+            if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
             // 此刻在做的事接上世界（ADR 0030）：空闲时正好在喂猫、取快递、和家里视频、赶作业，状态行就写这件
             const busy = state?.activity.kind === 'free' && around ? occupationAt(around, time) : undefined;
             if (state && busy) {
@@ -273,6 +295,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 afterMain: relationship ? [relationship] : [],
                 afterHistory: [
                     ...(recalled ? [recalled] : []),
+                    ...(recap ? [recap.text] : []),
                     ...(common ? [common] : []),
                     ...(today ? [today] : []),
                     ...(past ? [past] : []),
