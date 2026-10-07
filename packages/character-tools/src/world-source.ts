@@ -105,6 +105,19 @@ export interface BodySource {
     note?: string;
 }
 
+/**
+ * 她的日常（ADR 0031）：一日三餐里的午饭、晚饭（from 起往后 spread 分钟内开吃，吃 minutes 分钟；周末、放假按 takeout_chance 点外卖），
+ * 洗澡（chance 的日子在 from 之后 spread 分钟内去，洗 minutes 分钟；洗澡时看不到消息）。谁都看得到：吃饭、洗澡不暴露学校和宿舍
+ */
+export interface RoutineSource {
+    tiers: string[];
+    lunch: { from: string; spread: number; minutes: number };
+    dinner: { from: string; spread: number; minutes: number };
+    takeout_chance: number;
+    shower: { from: string; spread: number; minutes: [number, number]; chance: number };
+    note?: string;
+}
+
 export interface WorldSource {
     /** 从哪天开始推（学期开始那天）；猫粮、相机基金这些数是那天的 */
     start_day: string;
@@ -119,6 +132,7 @@ export interface WorldSource {
     people: WorldPersonSource[];
     events: WorldEventSource[];
     body?: BodySource;
+    routine?: RoutineSource;
     note?: string;
 }
 
@@ -133,6 +147,7 @@ export function worldTiers(world: WorldSource): { at: string; tiers: string[] }[
         { at: 'family_call', tiers: world.family_call.tiers },
         ...world.people.flatMap((person, i) => [{ at: `people[${i}]`, tiers: person.tiers }, { at: `people[${i}].named_tiers`, tiers: person.named_tiers }]),
         ...world.events.map((event, i) => ({ at: `events[${i}]`, tiers: event.tiers })),
+        ...(world.routine ? [{ at: 'routine', tiers: world.routine.tiers }] : []),
         ...(world.body ? [{ at: 'body', tiers: world.body.tiers }, ...(world.body.period ? [{ at: 'body.period.detail_tiers', tiers: world.body.period.detail_tiers }] : [])] : []),
     ];
 }
@@ -164,6 +179,12 @@ export function worldForTier(world: WorldSource | undefined, tier: string): Card
             id: event.id, text: event.text, window: event.window, chance: event.chance, when: event.when,
             ...(event.person ? { person: event.person } : {}), ...(event.weekday ? { weekday: event.weekday } : {}),
         })),
+        ...(world.routine && sees(world.routine.tiers) ? {
+            routine: {
+                lunch: { ...world.routine.lunch }, dinner: { ...world.routine.dinner }, takeoutChance: world.routine.takeout_chance,
+                shower: { from: world.routine.shower.from, spread: world.routine.shower.spread, minutes: [...world.routine.shower.minutes] as [number, number], chance: world.routine.shower.chance },
+            },
+        } : {}),
         ...(world.body && sees(world.body.tiers) ? {
             body: {
                 ...(world.body.period ? { period: { first: world.body.period.first, cycle: [...world.body.period.cycle] as [number, number], days: world.body.period.days, crampsChance: world.body.period.cramps_chance, detail: sees(world.body.period.detail_tiers) } } : {}),
@@ -235,7 +256,7 @@ class At {
 export function checkWorld(raw: unknown): WorldSource {
     const root = new At('world.yml');
     const o = root.object(raw);
-    root.keys(o, ['start_day', 'away_holidays', 'weather', 'cat', 'parcels', 'camera_fund', 'homework', 'family_call', 'people', 'events', 'body', 'note']);
+    root.keys(o, ['start_day', 'away_holidays', 'weather', 'cat', 'parcels', 'camera_fund', 'homework', 'family_call', 'people', 'events', 'body', 'routine', 'note']);
     const startDay = root.at('start_day').string(o.start_day);
     if (!DATE.test(startDay)) root.at('start_day').fail(`应为 YYYY-MM-DD：${startDay}`);
 
@@ -325,6 +346,7 @@ export function checkWorld(raw: unknown): WorldSource {
     if (new Set(events.map(event => event.id)).size !== events.length) root.at('events').fail('id 重复');
 
     const body = o.body === undefined || o.body === null ? undefined : checkBody(root.at('body'), o.body);
+    const routine = o.routine === undefined || o.routine === null ? undefined : checkRoutine(root.at('routine'), o.routine);
     const awayHolidays = o.away_holidays === undefined || o.away_holidays === null ? [] : root.at('away_holidays').strings(o.away_holidays);
     return {
         start_day: startDay,
@@ -374,7 +396,29 @@ export function checkWorld(raw: unknown): WorldSource {
         people,
         events,
         ...(body ? { body } : {}),
+        ...(routine ? { routine } : {}),
         ...root.at('note').note(o.note),
+    };
+}
+
+function checkRoutine(r: At, value: unknown): RoutineSource {
+    const raw = r.object(value);
+    r.keys(raw, ['tiers', 'lunch', 'dinner', 'takeout_chance', 'shower', 'note']);
+    const meal = (m: At, v: unknown) => {
+        const o = m.object(v);
+        m.keys(o, ['from', 'spread', 'minutes']);
+        return { from: m.at('from').time(o.from), spread: m.at('spread').integer(o.spread, 0, 180), minutes: m.at('minutes').integer(o.minutes, 5, 120) };
+    };
+    const s = r.at('shower');
+    const shower = s.object(raw.shower);
+    s.keys(shower, ['from', 'spread', 'minutes', 'chance']);
+    return {
+        tiers: r.at('tiers').strings(raw.tiers),
+        lunch: meal(r.at('lunch'), raw.lunch),
+        dinner: meal(r.at('dinner'), raw.dinner),
+        takeout_chance: r.at('takeout_chance').number(raw.takeout_chance, 0, 1),
+        shower: { from: s.at('from').time(shower.from), spread: s.at('spread').integer(shower.spread, 0, 240), minutes: s.at('minutes').range(shower.minutes, 5, 120, true), chance: s.at('chance').number(shower.chance, 0, 1) },
+        ...r.at('note').note(raw.note),
     };
 }
 

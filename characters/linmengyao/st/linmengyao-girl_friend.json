@@ -893,6 +893,28 @@
                             "when": "school"
                         }
                     ],
+                    "routine": {
+                        "lunch": {
+                            "from": "11:45",
+                            "spread": 20,
+                            "minutes": 35
+                        },
+                        "dinner": {
+                            "from": "17:30",
+                            "spread": 20,
+                            "minutes": 35
+                        },
+                        "takeoutChance": 0.3,
+                        "shower": {
+                            "from": "22:30",
+                            "spread": 60,
+                            "minutes": [
+                                25,
+                                35
+                            ],
+                            "chance": 0.7
+                        }
+                    },
                     "body": {
                         "period": {
                             "first": "2026-09-20",

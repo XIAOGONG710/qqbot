@@ -402,6 +402,23 @@ test('她的世界写错时报错：不认识的键、事件引用不存在的�
     assert.doesNotThrow(() => checkWorld(raw()));
 });
 
+test('她的日常（ADR 0031）：每档都有午饭、晚饭、洗澡；写错时报错', () => {
+    const world = source.world!;
+    for (const tier of ['boyfriend', 'classmate', 'unlisted']) {
+        const routine = worldForTier(world, tier)!.routine!;
+        assert.equal(routine.shower.chance, world.routine!.shower.chance);
+        assert.deepEqual(routine.lunch, world.routine!.lunch);
+    }
+    const raw = () => fromYaml(readFileSync(join(characterDir, 'source', SOURCE_FILES.world), 'utf8'), 'world.yml') as Record<string, unknown> & {
+        routine: { lunch: Record<string, unknown>; shower: Record<string, unknown> };
+    };
+    const broken = (patch: (w: ReturnType<typeof raw>) => void) => { const w = raw(); patch(w); return w; };
+    assert.throws(() => checkWorld(broken(w => { w.routine.lunch.from = '1145'; })), /HH:MM/);
+    assert.throws(() => checkWorld(broken(w => { w.routine.shower.minutes = [40, 20]; })), /前一个不能比后一个大/);
+    assert.throws(() => checkWorld(broken(w => { w.routine.shower.where = '澡堂'; })), /不认识的键：where/);
+    assert.doesNotThrow(() => checkWorld(raw()));
+});
+
 test('她的身体（ADR 0025）：每档都有困、饿和小感冒；生理期细节只给男朋友、闺蜜、女生朋友档（和 persona.yml body 一样）；写错时报错', () => {
     const world = source.world!;
     const detail = (tier: string) => worldForTier(world, tier)!.body!.period!.detail;

@@ -36,6 +36,16 @@ describe('回复时机：什么时候看到', () => {
         assert.ok(whenSeen([user(t(10, 5, 14))], t(10, 5, 14), boyfriend)!.at > t(10, 5, 14));
     });
 
+    test('在忙得看不了手机（ADR 0031：洗澡）：忙完 1–3 分钟后才看到，正聊着也一样；不忙照常', () => {
+        const until = t(10, 12, 23, 10);
+        const busy = { ...boyfriend, busy: (now: number) => (now < until ? { until, reason: '在洗澡，洗完才看到' } : undefined) };
+        const hot = [her(t(10, 12, 22, 38)), user(t(10, 12, 22, 40))];
+        const seen = whenSeen(hot, t(10, 12, 22, 40), busy)!;
+        assert.equal(seen.reason, '在洗澡，洗完才看到');
+        assert.ok(seen.at >= until + MIN && seen.at <= until + 3 * MIN, String(new Date(seen.at)));
+        assert.deepEqual(whenSeen(hot, t(10, 12, 23, 20), busy), { at: t(10, 12, 22, 40), reason: '正聊着' }, '洗完以后照常');
+    });
+
     test('上硬课：5–20 分钟后看到，最多回 1 条；上机房课 2–6 分钟、最多 2 条；水课照常', () => {
         const hard = whenSeen([user(t(10, 12, 10))], t(10, 12, 10), boyfriend)!;
         assert.ok(hard.at >= t(10, 12, 10, 5) && hard.at <= t(10, 12, 10, 20));

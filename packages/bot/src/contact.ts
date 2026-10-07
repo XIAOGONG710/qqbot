@@ -25,7 +25,7 @@ import { describeMood, moodAt, readingActivities, readingSection } from './her-d
 import { describeIntent } from './intent.ts';
 import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
-import { describeWorld, occupationAt, worldAt, type WorldState } from './world.ts';
+import { describeWorld, occupationAt, unavailableAt, worldAt, type WorldState } from './world.ts';
 import { bodyAt, describeBody, unwell } from './body.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
 import { describePast, pastCue, type PastChunk } from './biography.ts';
@@ -337,7 +337,17 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         retryAfterMs: options.retryAfterMs ?? RETRY_AFTER_MS,
         // 睡着时连着发能把她吵醒的只有男朋友档（决策 6）；冷场时多久看到、打字多久乘这一档的节奏系数（ADR 0013 决策 1）
         timing: schedule && {
-            whenSeen: (history, at) => whenSeen(history, at, { schedule, wakeable: contact.tier === 'boyfriend', pace: character.pace }),
+            whenSeen: (history, at) => whenSeen(history, at, {
+                schedule, wakeable: contact.tier === 'boyfriend', pace: character.pace,
+                // 洗澡时看不到消息（ADR 0031），按她这一档的世界算
+                busy: moment => {
+                    if (!herSchedule || !character.herWorld) return undefined;
+                    const when = new Date(moment);
+                    const around = options.worldState?.at(character.herWorld, herSchedule, when) ?? worldAt(character.herWorld, herSchedule, when);
+                    const busy = around ? unavailableAt(around, when) : undefined;
+                    return busy ? { until: busy.until.getTime(), reason: busy.reason } : undefined;
+                },
+            }),
             typingMs: text => typingMs(text, character.pace),
             skip: replySkip(character, options.moody ?? false, options.moodyChance),
         },

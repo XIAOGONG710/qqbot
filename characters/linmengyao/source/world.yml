@@ -236,6 +236,30 @@ events:
     window: evening
     chance: 0.04
     when: school
+routine:
+  tiers:
+    - boyfriend
+    - bestie
+    - girl_friend
+    - known
+    - classmate
+    - stranger
+    - unlisted
+  lunch:
+    from: "11:45"
+    spread: 20
+    minutes: 35
+  dinner:
+    from: "17:30"
+    spread: 20
+    minutes: 35
+  takeout_chance: 0.3
+  shower:
+    from: "22:30"
+    spread: 60
+    minutes: [25, 35]
+    chance: 0.7
+  note: ADR 0031。午饭、晚饭按节次的空档（11:15 下课、13:40 上课；16:35 下课、18:30 晚课），没课的日子三成点外卖（persona.yml「食堂和奶茶外卖」），不在学校在家吃；七成的日子 22:30–23:30 去洗澡，洗 25–35 分钟，洗的时候看不到消息。避开他常找她的 21–22 点。谁都看得到：吃饭、洗澡不暴露学校和宿舍。数字是可改的设定（用户 10-06 授权按推荐定）
 body:
   tiers:
     - boyfriend

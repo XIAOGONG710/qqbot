@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { describeState, stateAt } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { describeWorld, occupationAt, worldAt } from '../src/world.ts';
+import { describeWorld, occupationAt, unavailableAt, worldAt } from '../src/world.ts';
 
 const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
 const boyfriend = card('boyfriend');
@@ -19,6 +19,18 @@ describe('此刻在做的事接上世界（ADR 0030）', () => {
         assert.equal(doing(boyfriend, '2026-10-11T21:30:00+08:00'), '在赶Linux操作系统的作业，22:00 左右能写完');
         assert.equal(doing(boyfriend, '2026-10-11T22:10:00+08:00'), undefined, '写完了');
         assert.equal(doing(boyfriend, '2026-10-11T17:30:00+08:00'), undefined);
+    });
+
+    test('日常（ADR 0031）：午饭、晚饭在食堂；洗澡的那段看不到消息，洗完一会儿是「刚洗完澡」；不洗的日子没有', () => {
+        assert.equal(doing(boyfriend, '2026-10-12T12:10:00+08:00'), '在食堂吃午饭');
+        assert.equal(doing(boyfriend, '2026-10-12T17:50:00+08:00'), '在食堂吃晚饭');
+        assert.equal(doing(boyfriend, '2026-10-12T22:50:00+08:00'), '在洗澡');
+        const now = (time: string) => worldAt(boyfriend.herWorld!, boyfriend.schedule!, at(time))!;
+        assert.deepEqual(unavailableAt(now('2026-10-12T22:50:00+08:00'), at('2026-10-12T22:50:00+08:00')), { until: at('2026-10-12T23:06:00+08:00'), reason: '在洗澡，洗完才看到' });
+        assert.equal(doing(boyfriend, '2026-10-12T23:20:00+08:00'), '刚洗完澡，在擦头发');
+        assert.equal(unavailableAt(now('2026-10-12T23:20:00+08:00'), at('2026-10-12T23:20:00+08:00')), undefined);
+        assert.equal(now('2026-10-11T22:50:00+08:00').routine!.shower, undefined, '10-11 不洗');
+        assert.equal(doing(classmate, '2026-10-12T22:50:00+08:00'), '在洗澡', '同学档也一样');
     });
 
     test('「你那边」里的视频：那半小时写「还在视频」，之后写「视频过了」', () => {

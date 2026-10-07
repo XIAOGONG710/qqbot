@@ -29,6 +29,8 @@ export interface World {
     events: { id: string; text: string; person?: string; window: WorldWindow; chance: number; when: 'school' | 'class_day' | 'any'; weekday?: number }[];
     /** 她的身体（ADR 0025，body.ts） */
     body?: Body;
+    /** 她的日常（ADR 0031）：午饭、晚饭、洗澡 */
+    routine?: { lunch: { from: string; spread: number; minutes: number }; dinner: { from: string; spread: number; minutes: number }; takeoutChance: number; shower: { from: string; spread: number; minutes: [number, number]; chance: number } };
 }
 
 export interface Parcel {
@@ -98,6 +100,8 @@ export interface WorldNow {
     /** doneAt：几点写完（还没到就是打算几点写），日记用 */
     homework: { course: string; due: Date; done: boolean; doneAt: Date }[];
     familyCall?: { at: Date; done: boolean };
+    /** 她这一天的日常（ADR 0031）：午饭、晚饭在哪吃、几点到几点；洗澡几点到几点（不洗的日子没有） */
+    routine?: { meals: { kind: 'lunch' | 'dinner'; start: Date; end: Date; where: 'canteen' | 'takeout' | 'home' }[]; shower?: { start: Date; end: Date } };
     /** 今天已经发生的小事（text 已换好人名） */
     events: { id: string; text: string; at: Date; person?: { name: string; relation: string } }[];
 }
@@ -305,6 +309,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
         result.homework.push({ course: item.course, due: item.due, done: item.done <= now, doneAt: item.done });
     }
     if (record.call) result.familyCall = { at: record.call, done: record.call <= now };
+    if (world.routine) result.routine = routineOn(world.routine, schedule, day, record.atSchool);
     for (const event of record.events) {
         if (event.at > now) continue;
         const person = event.person ? world.people.find(p => p.id === event.person) : undefined;
@@ -397,6 +402,38 @@ export function diaryWorld(now: WorldNow): string[] {
     return lines;
 }
 
+/**
+ * 她这一天的日常（ADR 0031）：按日期取哈希，同一天对所有人一样。和课撞上的那顿不吃（节次里午饭、晚饭的点本来不上课）；
+ * 周末、放假按概率点外卖，不在学校就在家吃；洗澡按概率，洗的那天在 from 之后 spread 分钟内去
+ */
+function routineOn(routine: NonNullable<World['routine']>, schedule: Schedule, day: Date, atSchool: boolean): NonNullable<WorldNow['routine']> {
+    const date = formatDate(day);
+    const { lessons } = classesOn(schedule, day);
+    const off = lessons.length === 0;
+    const meals = (['lunch', 'dinner'] as const).flatMap(kind => {
+        const plan = routine[kind];
+        const start = new Date(at(day, plan.from).getTime() + Math.floor(unit(`${date} ${kind}`) * (plan.spread + 1)) * 60_000);
+        const end = new Date(start.getTime() + plan.minutes * 60_000);
+        if (lessons.some(l => l.start < end && start < l.end)) return [];
+        const where = !atSchool ? 'home' as const : off && unit(`${date} ${kind} takeout`) < routine.takeoutChance ? 'takeout' as const : 'canteen' as const;
+        return [{ kind, start, end, where }];
+    });
+    if (unit(`${date} shower`) >= routine.shower.chance) return { meals };
+    const [min, max] = routine.shower.minutes;
+    const start = new Date(at(day, routine.shower.from).getTime() + Math.floor(unit(`${date} shower at`) * (routine.shower.spread + 1)) * 60_000);
+    const end = new Date(start.getTime() + (min + Math.floor(unit(`${date} shower long`) * (max - min + 1))) * 60_000);
+    return { meals, shower: { start, end } };
+}
+
+/** 洗完澡后多久还算「刚洗完澡」（分钟，ADR 0031） */
+export const AFTER_SHOWER_MINUTES = 20;
+
+/** 这一刻看不到消息（ADR 0031）：在洗澡，洗完才看到 */
+export function unavailableAt(now: WorldNow, at: Date): { until: Date; reason: string } | undefined {
+    const shower = now.routine?.shower;
+    return shower && at >= shower.start && at < shower.end ? { until: shower.end, reason: '在洗澡，洗完才看到' } : undefined;
+}
+
 /** 有时长的事各占多久（分钟，ADR 0030）：喂猫、取完快递往回走、和家里视频、写完作业之前在赶的那一段 */
 export const OCCUPATION_MINUTES = { feed: 10, parcel: 15, call: 30, homework: 90 } as const;
 
@@ -407,11 +444,18 @@ export const OCCUPATION_MINUTES = { feed: 10, parcel: 15, call: 30, homework: 90
 export function occupationAt(now: WorldNow, at: Date): string | undefined {
     const within = (start: Date, minutes: number) => at.getTime() >= start.getTime() && at.getTime() < start.getTime() + minutes * 60_000;
     if (now.familyCall?.done && within(now.familyCall.at, OCCUPATION_MINUTES.call)) return '在和家里视频';
+    // 洗澡（ADR 0031）：洗的时候看不到消息（reply-timing 按 unavailableAt 推迟）；洗完后一会儿还算刚洗完
+    const shower = now.routine?.shower;
+    if (shower && at >= shower.start && at < shower.end) return '在洗澡';
+    if (shower && at >= shower.end && at.getTime() < shower.end.getTime() + AFTER_SHOWER_MINUTES * 60_000) return '刚洗完澡，在擦头发';
     if (now.cat && 'fed' in now.cat.today && within(now.cat.today.fed, OCCUPATION_MINUTES.feed)) return `在楼下喂${now.cat.name}`;
     const parcel = now.parcels.find(p => p.status === 'picked_today' && within(p.when, OCCUPATION_MINUTES.parcel));
     if (parcel) return `刚去驿站取了快递（${parcel.item}），在往回走`;
     const homework = now.homework.find(h => !h.done && within(new Date(h.doneAt.getTime() - OCCUPATION_MINUTES.homework * 60_000), OCCUPATION_MINUTES.homework));
     if (homework) return `在赶${homework.course ? `${homework.course}的` : ''}作业，${clock(homework.doneAt)} 左右能写完`;
+    // 吃饭（ADR 0031）
+    const meal = now.routine?.meals.find(m => at >= m.start && at < m.end);
+    if (meal) return `${meal.where === 'canteen' ? '在食堂' : meal.where === 'takeout' ? '点了外卖，在' : '在家'}吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}`;
     return undefined;
 }
 

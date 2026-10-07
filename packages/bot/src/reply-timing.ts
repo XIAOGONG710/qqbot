@@ -14,6 +14,8 @@ export const COLD_DELAY_MS: Range = [15_000, 60_000];
 export const AFTER_WAKE_MS: Range = [0, 30 * 60_000];
 /** 上课时还没到看手机的时候先下课了：下课后过多久看到 */
 export const AFTER_CLASS_MS: Range = [30_000, 120_000];
+/** 忙完（洗完澡）之后过多久看到手机（ADR 0031） */
+export const AFTER_BUSY_MS: Range = [60_000, 180_000];
 /** 男朋友档睡着时被吵醒：15 分钟内到了第 3 条，或者隔了 2 分钟以上又来一条（都在 15 分钟内） */
 export const WAKE_UP_WINDOW_MS = 15 * 60_000;
 export const WAKE_UP_COUNT = 3;
@@ -47,6 +49,8 @@ export interface TimingOptions {
     wakeable: boolean;
     /** 档位的节奏系数，默认 1 */
     pace?: number;
+    /** 这一刻在忙、看不了手机（ADR 0031：洗澡），忙到什么时候；不传就没有 */
+    busy?: (now: number) => { until: number; reason: string } | undefined;
 }
 
 /** 判断附和、收尾只要角色和内容（聊天记录、提示词里的消息都行） */
@@ -103,6 +107,10 @@ export function whenSeen(history: StoredMessage[], now: number, options: TimingO
             };
         }
     }
+
+    // 在忙得看不了手机（ADR 0031：洗澡）：忙完一两分钟才看到，正聊着也一样
+    const busy = options.busy?.(now);
+    if (busy) return { at: Math.max(first, busy.until) + pick(seed, 'busy', AFTER_BUSY_MS), reason: busy.reason };
 
     // 空闲、课间、水课、体育：正聊着马上看到，冷场过一会儿
     const lastReply = history.findLast(m => m.role === 'assistant');
