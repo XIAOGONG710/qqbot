@@ -62,7 +62,8 @@ export interface WorldNow {
     parcels: { item: string; status: 'station' | 'picked_today' | 'arriving'; when: Date; deadline?: string }[];
     cameraFund?: { saved: number; goal: number };
     /** 三天内要交的 */
-    homework: { course: string; due: Date; done: boolean }[];
+    /** doneAt：几点写完（还没到就是打算几点写），日记用 */
+    homework: { course: string; due: Date; done: boolean; doneAt: Date }[];
     familyCall?: { at: Date; done: boolean };
     /** 今天已经发生的小事（text 已换好人名） */
     events: { id: string; text: string; at: Date; person?: { name: string; relation: string } }[];
@@ -229,7 +230,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date): WorldNow |
     }
     for (const item of timeline.homework) {
         if (item.assigned > date || item.due <= now || item.due.getTime() - startOfDay(now).getTime() > 3 * DAY_MS) continue;
-        result.homework.push({ course: item.course, due: item.due, done: item.done <= now });
+        result.homework.push({ course: item.course, due: item.due, done: item.done <= now, doneAt: item.done });
     }
     if (record.call) result.familyCall = { at: record.call, done: record.call <= now };
     for (const event of record.events) {
@@ -308,8 +309,11 @@ export function diaryWorld(now: WorldNow): string[] {
         if (parcel.status === 'picked_today') lines.push(`去驿站取了快递（${parcel.item}）`);
         else if (parcel.status === 'station') lines.push(`快递（${parcel.item}）到驿站了，还没去取`);
     }
-    const done = now.homework.filter(h => h.done).length;
-    if (done) lines.push(`写完了 ${done} 份作业`);
+    // 只算这一天写完的；晚上九点以后写完的是熬夜赶的（第二批：日记先写「写完两份」又写「一个字没动」，聊天里她 21:30 还没动笔）
+    const doneToday = now.homework.filter(h => h.done && formatDate(h.doneAt) === now.day);
+    const late = doneToday.filter(h => h.doneAt.getHours() >= 21).length;
+    if (late) lines.push(`熬夜写完了 ${late} 份作业`);
+    if (doneToday.length > late) lines.push(`写完了 ${doneToday.length - late} 份作业`);
     if (now.familyCall?.done) lines.push('晚上和家里视频了');
     for (const event of now.events) lines.push(event.text);
     return lines;
