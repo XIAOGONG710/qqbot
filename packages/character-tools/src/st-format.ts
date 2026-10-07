@@ -60,6 +60,8 @@ export interface CardWorld {
     /** 她世界里的人（NPC）：name 已按档位换成这一档的叫法 */
     people: { id: string; name: string; relation: string }[];
     events: { id: string; text: string; person?: string; window: 'morning' | 'afternoon' | 'evening'; chance: number; when: 'school' | 'class_day' | 'any'; weekday?: number }[];
+    /** 她的身体（ADR 0025）：period.detail 是这一档说得出口生理期 */
+    body?: { period?: { first: string; cycle: [number, number]; days: number; crampsChance: number; detail: boolean }; cold?: { perMonth: number; days: number } };
 }
 
 /** 她的过去（ADR 0022）：这一档看得到的年表（「何时：何事」一行一件）和素材块；keys 不进提示词 */

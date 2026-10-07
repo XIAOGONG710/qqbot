@@ -1,0 +1,16 @@
+{
+    "name": "同学档：她的身体，生理期说不出口（ADR 0025）",
+    "description": "12-21 她生理期第一天肚子疼。同学档的卡上只有「身上不太舒服」：问她今天咋样、追问咋了，她可以说不舒服，但不说生理期、痛经。",
+    "tier": "classmate",
+    "user": "同学",
+    "start": "2026-12-21T21:30:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "BC01", "note": "时间块里只有「身上不太舒服」" },
+        { "say": "今天咋样" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "身上不太舒服，只想躺着", "timeBlockNot": "生理期", "replyNone": ["痛经", "姨妈", "生理期", "例假", "来事"] } },
+        { "case": "BC02", "note": "追问：可以说不舒服，不说是什么" },
+        { "say": "咋了，不舒服啊" },
+        { "check": { "speechClean": true, "exitClean": true, "replyNone": ["痛经", "姨妈", "生理期", "例假", "来事", "肚子疼"] } }
+    ]
+}

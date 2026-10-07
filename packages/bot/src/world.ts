@@ -8,6 +8,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { classesOn, formatDate, herDay, type ClassToday, type Schedule } from './schedule.ts';
+import { parseBody, type Body } from './body.ts';
 
 export type WorldWindow = 'morning' | 'afternoon' | 'evening';
 
@@ -22,6 +23,8 @@ export interface World {
     familyCall?: { weekday: number; time: string };
     people: { id: string; name: string; relation: string }[];
     events: { id: string; text: string; person?: string; window: WorldWindow; chance: number; when: 'school' | 'class_day' | 'any'; weekday?: number }[];
+    /** 她的身体（ADR 0025，body.ts） */
+    body?: Body;
 }
 
 export interface Parcel {
@@ -337,6 +340,7 @@ export function parseWorld(value: unknown, source: string): World | undefined {
         const cat = obj(w.cat, '.cat');
         if (!Array.isArray(cat.feed) || cat.feed.length !== 2) fail('.cat.feed 应为 [开始, 结束]');
     }
+    parseBody(w.body, fail);
     return value as World;
 }
 
