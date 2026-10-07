@@ -25,7 +25,7 @@ import type { ProactiveMode } from './proactive.ts';
 import { createProactivePlanner, type Planner, type PlannerStatus } from './proactive-planner.ts';
 import { promiseKeeper } from './promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from './her-days.ts';
-import { worldLogger } from './world.ts';
+import { worldState } from './world.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt } from './schedule.ts';
 
@@ -142,7 +142,10 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     const worldCard = config.herDays
         ? ([...CONTACT_TIERS, UNLISTED_TIER] as Tier[]).filter(tier => tiersInUse.has(tier)).map(tier => cardFor(tier).character).find(c => c.schedule && c.herWorld)
         : undefined;
-    const noteWorld = worldCard ? worldLogger(worldCard.herWorld!, worldCard.schedule!, log, join(config.dataDir, 'world')) : undefined;
+    const sharedWorld = worldCard
+        ? worldState(worldCard.herWorld!, worldCard.schedule!, log, join(config.dataDir, 'world'), pipeline?.now ?? Date.now)
+        : undefined;
+    const noteWorld = sharedWorld?.note;
     const noteHerDay = noteMoodAndBooks || noteWorld ? (now: Date) => { noteMoodAndBooks?.(now); noteWorld?.(now); } : undefined;
     noteHerDay?.(new Date(pipeline?.now?.() ?? Date.now()));
     log(`作息：${config.schedule ? '按角色卡（她现在在干什么、什么时候看到、打字多久）' : '关（配置 schedule: false），随时几秒内回'}`);
@@ -205,6 +208,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             dir: join(config.dataDir, 'promises'),
             log,
             ...(pipeline?.now ? { now: pipeline.now } : {}),
+            ...(sharedWorld ? { onWorldActions: sharedWorld.record } : {}),
         })
         : undefined;
     if (promises) log('她答应的事：名单里的人每段聊天结束后抽一次，到了日子在时间块里提醒');
@@ -217,6 +221,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 books: config.herDays ? diaryCard.books : [],
                 // 她那边、她的身体（ADR 0026）：日记进公共库，用同学档看得到的那部分
                 ...(config.herDays && diaryWorldCard?.herWorld ? { world: diaryWorldCard.herWorld } : {}),
+                ...(sharedWorld ? { resolveWorld: sharedWorld.at } : {}),
             },
             contacts: config.contacts,
             history,
@@ -260,6 +265,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             history,
             memory,
             ...(promises ? { promises } : {}),
+            ...(sharedWorld ? { worldState: sharedWorld } : {}),
             contacts: config.contacts,
             send: (userId, text) => transport.sendPrivateText(userId, text),
             log,

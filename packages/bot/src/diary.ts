@@ -14,7 +14,7 @@ import type { LongTermMemory } from './memory/long-term.ts';
 import { knowsPeople } from './people.ts';
 import type { OpenAIMessage } from './prompt.ts';
 import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from './schedule.ts';
-import { diaryWorld, worldAt, type World } from './world.ts';
+import { diaryWorld, worldAt, type World, type WorldNow } from './world.ts';
 import { bodyAt, diaryBody } from './body.ts';
 
 /** bot 停过时往回补几天 */
@@ -47,6 +47,8 @@ export interface DiarySources {
     mood?: string;
     /** 她那边、她的身体（ADR 0026）：用同学档的卡（日记进公共库，同学档也会想起来），herDays 关着时不传 */
     world?: World;
+    /** W3：让日记看到聊天里已经发生、写回全局世界的动作。 */
+    resolveWorld?: (world: World, schedule: Schedule, now: Date) => WorldNow | undefined;
 }
 
 /** 她那一天的材料，一段给模型看的文字；plans：她之前说过那天打算做的事（ADR 0018 决策 2） */
@@ -73,7 +75,9 @@ export function diaryMaterial(
     const mood = moodAt(schedule, sources.moods, atTime(day, '12:00'), sources.mood);
     if (mood) lines.push(`心情：${mood.mood.name}（${mood.reason}）`);
     // 她那边今天发生的事、身上舒不舒服（ADR 0026）：一天结束时算（她的一天到 02:00，23:30 已经都发生了）
-    const around = sources.world ? worldAt(sources.world, schedule, atTime(day, '23:30')) : undefined;
+    const around = sources.world
+        ? sources.resolveWorld?.(sources.world, schedule, atTime(day, '23:30')) ?? worldAt(sources.world, schedule, atTime(day, '23:30'))
+        : undefined;
     const happened = around ? diaryWorld(around) : [];
     if (happened.length) lines.push(`你那边今天：${happened.join('；')}`);
     const body = sources.world?.body ? diaryBody(bodyAt(sources.world.body, schedule, atTime(day, '15:00'))) : undefined;

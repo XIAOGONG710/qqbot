@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { Schedule } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { describeWorld, parseWorld, simulateWorld, worldAt, worldLogger, type World } from '../src/world.ts';
+import { describeWorld, parseWorld, simulateWorld, worldAt, worldLogger, worldState, type World, type WorldAction } from '../src/world.ts';
 
 const cards = resolve(import.meta.dirname, '../../../characters/linmengyao/st');
 const boyfriend = loadCharacterCard(join(cards, 'linmengyao-boyfriend.json'));
@@ -145,6 +145,96 @@ describe('「你那边」进时间块（ADR 0021 W2）', () => {
             assert.equal(state.day, '2026-10-11');
             note(at('2026-10-12T09:00:00'));
             assert.equal(logs.length, 2);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('说出口的行为回写世界（ADR 0027 W3）', () => {
+    test('动作只在说出后生效：雨天原本没喂，她说喂过后所有档位都变成喂过；没说见没见到就不乱补', () => {
+        const rainy = patch(w => { w.weather!.rainChance = 1; });
+        const action: WorldAction = {
+            id: '1:ep-1:1:feed_cat', kind: 'feed_cat', day: '2026-09-15', at: '2026-09-15T19:00', contact: 1, episode: 'ep-1',
+        };
+        assert.deepEqual(worldAt(rainy, schedule, at('2026-09-15T18:59:00'), [action])!.cat!.today, { skipped: 'rain' });
+        const rich = worldAt(rainy, schedule, at('2026-09-15T19:01:00'), [action])!;
+        const low = worldAt({ ...classmate.herWorld!, weather: rainy.weather }, classmate.schedule!, at('2026-09-15T19:01:00'), [action])!;
+        assert.deepEqual(rich.cat!.today, { fed: at('2026-09-15T19:00:00') });
+        assert.deepEqual(low.cat!.today, rich.cat!.today);
+        assert.match(describeWorld(rich, at('2026-09-15T19:01:00'))!, /今天 19:00 下楼喂过；/);
+        assert.doesNotMatch(describeWorld(rich, at('2026-09-15T19:01:00'))!, /见到了|没见着/);
+    });
+
+    test('状态层原子落盘、重启恢复；同一天向不同人重复说同一动作不重复执行', () => {
+        const rainy = patch(w => { w.weather!.rainChance = 1; });
+        const dir = mkdtempSync(join(tmpdir(), 'world-actions-'));
+        const logs: string[] = [];
+        const now = at('2026-09-15T22:00:00');
+        const contact = { qq: 1, name: '阿明', tier: 'boyfriend' as const };
+        const episode = {
+            id: `ep-${at('2026-09-15T18:00:00').getTime()}`,
+            start: at('2026-09-15T18:00:00'), end: at('2026-09-15T19:00:00'),
+            messages: [
+                { role: 'user' as const, content: '土豆呢', time: at('2026-09-15T18:00:00').toISOString() },
+                { role: 'assistant' as const, content: '刚喂完', time: at('2026-09-15T19:00:00').toISOString() },
+            ],
+        };
+        try {
+            const state = worldState(rainy, schedule, message => logs.push(message), dir, () => now.getTime());
+            state.record(contact, episode, [{ kind: 'feed_cat', at: '2026-09-15T19:00' }]);
+            state.record({ ...contact, qq: 2 }, { ...episode, id: `${episode.id}-other` }, [{ kind: 'feed_cat', at: '2026-09-15T19:00' }]);
+            assert.equal(state.actions().length, 1);
+            assert.ok('fed' in state.at(rainy, schedule, now)!.cat!.today);
+            assert.equal(JSON.parse(readFileSync(join(dir, 'actions.json'), 'utf8')).actions.length, 1);
+            assert.equal(JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8')).cat.today.fed, at('2026-09-15T19:00:00').toISOString());
+
+            const resumed = worldState(rainy, schedule, () => undefined, dir, () => now.getTime());
+            assert.equal(resumed.actions().length, 1);
+            assert.ok('fed' in resumed.at(rainy, schedule, now)!.cat!.today);
+            assert.ok(logs.some(line => line.includes('喂了土豆')));
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('模型给的时刻必须能对上她在片段里的一句话，不能凭空造动作时间', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'world-actions-'));
+        try {
+            const now = at('2026-09-15T22:00:00');
+            const state = worldState(world, schedule, () => undefined, dir, () => now.getTime());
+            state.record({ qq: 1, name: '阿明', tier: 'boyfriend' }, {
+                id: 'ep-1', start: at('2026-09-15T18:00:00'), end: at('2026-09-15T19:00:00'),
+                messages: [{ role: 'assistant', content: '还没去', time: at('2026-09-15T19:00:00').toISOString() }],
+            }, [{ kind: 'feed_cat', at: '2026-09-15T19:01' }]);
+            assert.equal(state.actions().length, 0);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('作业用稳定目标跨档回写：低档看不到课名，仍完成和男朋友档同一份', () => {
+        const richWorld = patch(w => { w.homework!.chance = 1; w.homework!.earlyChance = 0; });
+        const lowWorld = structuredClone(classmate.herWorld!);
+        lowWorld.homework!.chance = 1;
+        lowWorld.homework!.earlyChance = 0;
+        const now = at('2026-09-13T21:30:00');
+        const pending = simulateWorld(richWorld, schedule, now).homework.find(item => item.done > now && item.due > now)!;
+        assert.ok(pending?.course);
+        const dir = mkdtempSync(join(tmpdir(), 'world-actions-'));
+        try {
+            const state = worldState(richWorld, schedule, () => undefined, dir, () => now.getTime());
+            state.record({ qq: 1, name: '阿明', tier: 'boyfriend' }, {
+                id: 'ep-homework', start: now, end: now,
+                messages: [{ role: 'assistant', content: `${pending.course}作业写完了`, time: now.toISOString() }],
+            }, [{ kind: 'finish_homework', at: '2026-09-13T21:30', subject: pending.course }]);
+            const action = state.actions()[0]!;
+            assert.equal(action.target, pending.id);
+            const richDone = simulateWorld(richWorld, schedule, now, state.actions()).homework.find(item => item.id === action.target)!;
+            const lowDone = simulateWorld(lowWorld, classmate.schedule!, now, state.actions()).homework.find(item => item.id === action.target)!;
+            assert.equal(richDone.done.getTime(), now.getTime());
+            assert.equal(lowDone.done.getTime(), now.getTime());
+            assert.equal(lowDone.course, '');
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

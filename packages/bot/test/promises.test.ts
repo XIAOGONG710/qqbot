@@ -42,7 +42,7 @@ describe('她答应的事：抽取（ADR 0018 决策 2）', () => {
     test('解析：有日子的、「下次」的（null 或写错的日期都当下次），没写什么的不要；没有 JSON 抛错', () => {
         assert.deepEqual(parsePromises('好的\n{"add":[{"what":"去拍银杏","date":"2026-10-10"},{"what":"给他讲结局","date":null},{"what":"推荐歌","date":"周末"},{"date":"2026-10-11"}],"resolved":["p-1",3]}'), {
             add: [{ what: '去拍银杏', date: '2026-10-10' }, { what: '给他讲结局' }, { what: '推荐歌' }],
-            waiting: [], unanswered: [], unsettled: [], feelings: [],
+            waiting: [], unanswered: [], unsettled: [], world: [], feelings: [],
             resolved: ['p-1'],
         });
         assert.throws(() => parsePromises('没有'), /没有 JSON/);
@@ -60,6 +60,25 @@ describe('她答应的事：抽取（ADR 0018 决策 2）', () => {
         assert.deepEqual(parsed.unanswered, [{ what: '他国庆回不回家' }], '没回答的不带日子，一段最多一条');
         assert.deepEqual(parsed.unsettled, [{ what: '说好一起看电影，他加班没去成' }]);
         assert.deepEqual(parsed.feelings, ['她对他放鸽子很失望']);
+    });
+
+    test('同一次抽取带回已完成的世界动作；未知动作和坏时间丢掉，seen/subject 只收正确类型', () => {
+        const [system] = promisePrompt('x', [], names);
+        for (const rule of ['world', '已经做完', '计划、将来时、猜测、玩笑、否定句', 'feed_cat', 'pick_parcel', 'finish_homework', 'family_call']) {
+            assert.ok(system!.content.includes(rule), rule);
+        }
+        const parsed = parsePromises(JSON.stringify({
+            world: [
+                { kind: 'feed_cat', at: '2026-10-07T20:31', seen: false },
+                { kind: 'pick_parcel', at: '坏时间', subject: ' 发圈 ' },
+                { kind: 'invent_money', at: '2026-10-07T20:32' },
+                { kind: 'finish_homework', at: '2026-10-07T21:00', subject: 3, seen: 'yes' },
+            ],
+        }));
+        assert.deepEqual(parsed.world, [
+            { kind: 'feed_cat', at: '2026-10-07T20:31', seen: false },
+            { kind: 'finish_homework', at: '2026-10-07T21:00' },
+        ]);
     });
 });
 
@@ -109,6 +128,7 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-promises-'));
         const logs: string[] = [];
         const asked: OpenAIMessage[][] = [];
+        const world: { qq: number; episode: string; kind?: string }[] = [];
         let clock = now.getTime();
         const keeper = promiseKeeper({
             contacts: [amin],
@@ -124,9 +144,62 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
             dir,
             log: m => logs.push(m),
             now: () => clock,
+            onWorldActions: (contact, episode, actions) => world.push({ qq: contact.qq, episode: episode.id, kind: actions[0]?.kind }),
         });
-        return { keeper, logs, asked, setNow: (d: Date) => { clock = d.getTime(); }, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+        return { keeper, logs, asked, world, setNow: (d: Date) => { clock = d.getTime(); }, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
     }
+
+    test('世界动作复用同一次片段抽取，回调一次；片段标成已抽后不重复回写', async () => {
+        const history = [
+            msg('2026-10-08T20:00:00', 'user', '土豆呢'),
+            msg('2026-10-08T20:01:00', 'assistant', '刚下楼喂完，今天见着它了'),
+        ];
+        const { keeper, asked, world, cleanup } = setup(history, [JSON.stringify({
+            add: [], resolved: [], world: [{ kind: 'feed_cat', at: '2026-10-08T20:01', seen: true }],
+        })], at('2026-10-08T22:00:00'));
+        try {
+            await keeper.sync();
+            await keeper.sync();
+            assert.equal(asked.length, 1);
+            assert.deepEqual(world, [{ qq: 1, episode: `ep-${at('2026-10-08T20:00:00').getTime()}`, kind: 'feed_cat' }]);
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('世界动作落盘失败时不标已抽，下一次同步会重新抽并回写', async () => {
+        const history = [
+            msg('2026-10-08T20:00:00', 'user', '土豆呢'),
+            msg('2026-10-08T20:01:00', 'assistant', '刚喂完'),
+        ];
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-promises-world-retry-'));
+        let extracts = 0;
+        let writes = 0;
+        const logs: string[] = [];
+        const keeper = promiseKeeper({
+            contacts: [amin], history: { load: () => history }, names: () => names, schedule,
+            extract: async () => {
+                extracts++;
+                return JSON.stringify({ add: [], resolved: [], world: [{ kind: 'feed_cat', at: '2026-10-08T20:01' }] });
+            },
+            onWorldActions: () => {
+                writes++;
+                if (writes === 1) throw new Error('disk full');
+            },
+            dir, log: message => logs.push(message), now: () => at('2026-10-08T22:00:00').getTime(),
+        });
+        try {
+            await keeper.sync();
+            assert.equal(extracts, 1);
+            assert.ok(logs.some(line => /世界动作写入失败.*下次再试.*disk full/.test(line)));
+            await keeper.sync();
+            await keeper.sync();
+            assert.equal(extracts, 2, '第二次成功后标成已抽，第三次不再抽');
+            assert.equal(writes, 2);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
 
     test('结束了的片段抽一次：记下、到日子提醒（按她的一天）、那天的打算', async () => {
         const history = [

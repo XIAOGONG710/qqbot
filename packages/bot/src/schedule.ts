@@ -33,6 +33,8 @@ export interface Schedule {
 
 /** 某一天的一节课：课型已按转实训换算，start / end 是当天的时刻 */
 export interface ClassToday {
+    /** 课表数组里的稳定位置；各档即使看不到课名也一致。 */
+    id?: string;
     kind: CourseKind;
     name?: string;
     room?: string;
@@ -112,17 +114,21 @@ export function classesOn(schedule: Schedule, day: Date): { lessons: ClassToday[
     const makeup = schedule.makeups.find(m => m.date === formatDate(day));
     const weekday = makeup ? makeup.asDay : (day.getDay() || 7);
     const lessons = schedule.courses
-        .filter(c => c.day === weekday && inWeeks(c.weeks, week))
-        .map((c): ClassToday => {
+        .map((course, index) => ({ course, index }))
+        .filter(({ course }) => course.day === weekday && inWeeks(course.weeks, week))
+        .map(({ course: c, index }): ClassToday => {
             const practice = c.practice && week >= c.practice.fromWeek;
             const period = schedule.periods[c.slot]!;
-            return {
+            const lesson: ClassToday = {
                 kind: practice ? 'machine' : c.kind,
                 ...(c.name ? { name: c.name } : {}),
                 ...((practice ? c.practice!.room : c.room) ? { room: (practice ? c.practice!.room : c.room)! } : {}),
                 start: at(day, period.start),
                 end: at(day, period.end),
             };
+            // 内部稳定标识不进日志、提示词或测试快照；各档课表数组顺序相同。
+            Object.defineProperty(lesson, 'id', { value: `course-${index + 1}`, enumerable: false });
+            return lesson;
         })
         .sort((a, b) => a.start.getTime() - b.start.getTime());
     return { lessons, outsideSemester };

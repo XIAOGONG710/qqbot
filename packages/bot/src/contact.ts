@@ -25,7 +25,7 @@ import { describeMood, moodAt, readingActivities, readingSection } from './her-d
 import { describeIntent } from './intent.ts';
 import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
-import { describeWorld, worldAt } from './world.ts';
+import { describeWorld, worldAt, type WorldState } from './world.ts';
 import { bodyAt, describeBody, unwell } from './body.ts';
 import { describePast, pastCue, type PastChunk } from './biography.ts';
 import { askedWindow, ASKS_PAST, commonCue, describePerson, holidayWords, mentionedPeople, stillInMind } from './people.ts';
@@ -103,6 +103,8 @@ export interface ContactPipelineOptions {
     herDays?: boolean;
     /** 她答应过的事（ADR 0018 决策 2）：到了日子在时间块里提醒一句；名单外的人不用 */
     promises?: Pick<PromiseKeeper, 'describe'> & Partial<Pick<PromiseKeeper, 'openLoops'>>;
+    /** W3：所有联系人、日记和主动消息共用的一份世界动作。 */
+    worldState?: Pick<WorldState, 'at'>;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
     mood?: string;
     /** herDays 开着时每次生成前调一次（app 按她的一天去重，写当天的摘要） */
@@ -209,7 +211,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 : undefined;
             reading = books?.context;
             // 她那边（ADR 0021）：跟着「她自己的日子」开，卡上有世界才有
-            const around = herSchedule && character.herWorld ? worldAt(character.herWorld, herSchedule, time) : undefined;
+            const around = herSchedule && character.herWorld
+                ? options.worldState?.at(character.herWorld, herSchedule, time) ?? worldAt(character.herWorld, herSchedule, time)
+                : undefined;
             const world = around ? describeWorld(around, time) : undefined;
             // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
             const bodyNow = herSchedule && character.herWorld?.body ? bodyAt(character.herWorld.body, herSchedule, time) : undefined;

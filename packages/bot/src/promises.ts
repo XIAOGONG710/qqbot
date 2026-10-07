@@ -15,11 +15,12 @@ import { join } from 'node:path';
 import type { Contact } from './config.ts';
 import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
-import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './memory/episodes.ts';
+import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes, type Episode } from './memory/episodes.ts';
 import { dueLoops, isFeeling, loopForgotten, type DueLoops, type LoopKind, type OpenLoop } from './open-loops.ts';
 import type { OpenAIMessage } from './prompt.ts';
 import { formatDate, herDay, type Schedule } from './schedule.ts';
 import type { MacroNames } from './st/macros.ts';
+import type { WorldActionDraft, WorldActionKind } from './world.ts';
 
 /** 她答应的一件事 */
 export interface HerPromise {
@@ -73,11 +74,16 @@ export function promisePrompt(transcript: string, pending: readonly HerPromise[]
         `- unsettled：两个人已经说好的事最后没成（约好了又取消、说好的没做到）、或者一件正事说到一半就断了，what 写发生了什么`,
         '  （例如「10月5日说好一起回青岛，最后没走成」）；她提了他还没答应的不算（那是 unanswered）。不高兴、闹别扭也只写那件事本身。',
         `下面「还挂着的事」（id 以 a-、q-、u- 开头）在这段聊天里有了结果、${user}回答了、或者那件事了结了，也把 id 写进 resolved。`,
+        `最后抽取${char}在聊天里明确说自己已经做完、并会改变她身边现实的动作，写进 world：`,
+        `- feed_cat：已经下楼喂猫；pick_parcel：已经取快递；finish_homework：已经写完作业；family_call：已经和家里视频。`,
+        `只看${char}的已完成事实陈述；计划、将来时、猜测、玩笑、否定句、${user}做的事都不要。at 必须是那句${char}消息的本地分钟 YYYY-MM-DDTHH:mm；`,
+        '取快递可把物品、写作业可把课程写进 subject，没说清不填；喂猫只有明确说见到或没见到时才写 seen。',
         '只输出一个 JSON 对象，不要别的文字，例如：',
         '{"add":[{"what":"给他讲《三体》的结局","date":null},{"what":"去拍银杏","date":"2026-10-10"}],'
             + '"waiting":[{"what":"他周四下午去字节面试","date":"2026-10-08"}],"unanswered":[{"what":"他国庆回不回家"}],'
-            + '"unsettled":[{"what":"10月6日说好一起看电影，他加班没去成"}],"resolved":["p-1"]}',
-        '没有就输出 {"add":[],"waiting":[],"unanswered":[],"unsettled":[],"resolved":[]}。',
+            + '"unsettled":[{"what":"10月6日说好一起看电影，他加班没去成"}],"resolved":["p-1"],'
+            + '"world":[{"kind":"feed_cat","at":"2026-10-07T20:31","seen":true}]}',
+        '没有就输出 {"add":[],"waiting":[],"unanswered":[],"unsettled":[],"resolved":[],"world":[]}。',
     ].join('\n');
     const list = pending.length ? pending.map(p => `- ${p.id}：${p.date ?? '下次'} ${p.what}`).join('\n') : '（没有）';
     const hanging = loops.length
@@ -96,6 +102,8 @@ export interface ExtractedPromises {
     unanswered: { what: string }[];
     unsettled: { what: string }[];
     resolved: string[];
+    /** ADR 0027 / W3：她说自己已经做完、会改变身边现实的动作。 */
+    world: WorldActionDraft[];
     /** 写成了情绪、没记的几条（日志用） */
     feelings: string[];
 }
@@ -116,6 +124,22 @@ export function parsePromises(text: string): ExtractedPromises {
     const feelings: string[] = [];
     const facts = <T extends { what: string }>(list: T[]) => list.filter(item => (isFeeling(item.what) ? (feelings.push(item.what), false) : true));
     const resolved = (Array.isArray(data.resolved) ? data.resolved : []).filter((id): id is string => typeof id === 'string');
+    const kinds = new Set<WorldActionKind>(['feed_cat', 'pick_parcel', 'finish_homework', 'family_call']);
+    const world = (Array.isArray(data.world) ? data.world : []).flatMap(item => {
+        if (!item || typeof item !== 'object') return [];
+        const action = item as Record<string, unknown>;
+        if (typeof action.kind !== 'string' || !kinds.has(action.kind as WorldActionKind)) return [];
+        const at = typeof action.at === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(action.at.trim()) ? action.at.trim() : undefined;
+        // at 是把动作钉回她原话的证据；缺了或格式错了宁可不回写，不能猜到片段最后一句。
+        if (!at) return [];
+        const subject = typeof action.subject === 'string' ? action.subject.trim().slice(0, 40) : undefined;
+        return [{
+            kind: action.kind as WorldActionKind,
+            at,
+            ...(subject ? { subject } : {}),
+            ...(typeof action.seen === 'boolean' ? { seen: action.seen } : {}),
+        }];
+    });
     return {
         add: items(data.add),
         waiting: facts(items(data.waiting)),
@@ -123,6 +147,7 @@ export function parsePromises(text: string): ExtractedPromises {
         unanswered: facts(items(data.unanswered).map(({ what }) => ({ what }))).slice(0, 1),
         unsettled: facts(items(data.unsettled).map(({ what }) => ({ what }))),
         resolved,
+        world,
         feelings,
     };
 }
@@ -183,6 +208,8 @@ export interface PromiseKeeperOptions {
     dir: string;
     log: (message: string) => void;
     now?: () => number;
+    /** W3：复用这次抽取，不增加模型调用；成功落地后片段才标成已抽。 */
+    onWorldActions?: (contact: Contact, episode: Episode, actions: readonly WorldActionDraft[]) => void;
 }
 
 interface KeeperState {
@@ -254,6 +281,13 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 state.extracted[episode.id] = tries >= 3 ? true : tries;
                 save(contact, state);
                 log(`片段 ${episode.id} 抽取失败（第 ${tries} 次${tries >= 3 ? '，不再抽' : '，下次再抽'}）：${error instanceof Error ? error.message : String(error)}`);
+                continue;
+            }
+            try {
+                options.onWorldActions?.(contact, episode, result.world);
+            } catch (error) {
+                // 模型结果是好的，但事实文件没写成：不标已抽，下次重试同一片段，不能只在内存里生效。
+                log(`片段 ${episode.id} 的世界动作写入失败（下次再试）：${error instanceof Error ? error.message : String(error)}`);
                 continue;
             }
             for (const id of result.resolved) {

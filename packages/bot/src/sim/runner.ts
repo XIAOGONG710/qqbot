@@ -18,7 +18,7 @@ import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay } from '../proactive.ts';
 import { createProactivePlanner, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
-import { worldLogger, type World } from '../world.ts';
+import { worldState, type World } from '../world.ts';
 import { DIARY_TEMPERATURE, diaryWriter } from '../diary.ts';
 import { formatDate, stateAt } from '../schedule.ts';
 import { parseDuration, VirtualClock, type Checks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
@@ -152,6 +152,11 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const bankId = memory?.bankId(contact);
     /** 跑完要删的：他自己的、名单里其他人的、公共库 */
     const banks = memory ? [bankId!, ...others.map(other => memory.bankId(other)), memory.commonBankId()] : [];
+    const { character } = options.card;
+    // W3：模拟器和线上共用同一状态层，抽取后的动作立即影响后续提示词和日记。
+    const sharedWorld = options.herDays && scenario.schedule && character.schedule && character.herWorld
+        ? worldState(character.herWorld, character.schedule, log, join(options.dataDir, 'world'), clock.now)
+        : undefined;
     // 她的日记（ADR 0017）：和 bot 一样，跨过她的一天就补写，存进公共库；场景关了作息就没有她的一天，不写
     // 她答应过的事（ADR 0018 决策 2）：和 bot 一样，开了记忆就抽（记忆同步时），到了日子在时间块里提醒，那天的打算写进日记
     const promises = memory
@@ -164,6 +169,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             dir: join(dataDir, 'promises'),
             log,
             now: clock.now,
+            ...(sharedWorld ? { onWorldActions: sharedWorld.record } : {}),
         })
         : undefined;
     const diaryCard = options.card.character;
@@ -175,6 +181,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 moods: options.herDays ? diaryCard.moods : [],
                 books: options.herDays ? diaryCard.books : [],
                 ...(options.herDays && options.diaryWorld ? { world: options.diaryWorld } : {}),
+                ...(sharedWorld ? { resolveWorld: sharedWorld.at } : {}),
                 ...(scenario.mood !== undefined ? { mood: scenario.mood } : {}),
             },
             contacts: [contact, ...others],
@@ -207,7 +214,6 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     let initiating: string | undefined;
     const baseGenerate = options.generate ?? ((messages: OpenAIMessage[], log: Log) => chatCompletion(options.llm, messages, { log }));
 
-    const { character } = options.card;
     if (scenario.mood !== undefined && !character.moods.some(mood => mood.name === scenario.mood)) {
         throw new Error(`场景的 mood「${scenario.mood}」不是卡上的心情（${character.moods.map(mood => mood.name).join('、') || '这一档没有心情'}）`);
     }
@@ -216,9 +222,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ? herDayLogger(character.schedule, character.moods, character.books, log, scenario.mood)
         : undefined;
     // 她的世界（ADR 0021）：每天一行摘要，state.json 写在这次的数据目录
-    const noteWorld = options.herDays && character.schedule && character.herWorld
-        ? worldLogger(character.herWorld, character.schedule, log, join(options.dataDir, 'world'))
-        : undefined;
+    const noteWorld = sharedWorld?.note;
     const noteHerDay = noteMoodAndBooks || noteWorld ? (now: Date) => { noteMoodAndBooks?.(now); noteWorld?.(now); } : undefined;
     const createResponder = () => createContactResponder({
         contact,
@@ -235,6 +239,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         history,
         memory,
         ...(promises ? { promises } : {}),
+        ...(sharedWorld ? { worldState: sharedWorld } : {}),
         contacts: [contact, ...others],
         log,
         now: clock.now,
