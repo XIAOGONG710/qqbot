@@ -64,8 +64,10 @@ export const ASKS_PAST = '问她过去的事';
 
 // 问她过去的事（ADR 0017）：同一句里有时间和经历。ADR 0018 加了这周、假期和作息里假期的名字（「国庆过得怎样」）
 const PAST_TIME = '今天|昨天|前天|昨晚|今早|今晚|早上|上午|中午|下午|晚上|周末|上周|上星期|上个星期|上礼拜|这周|这星期|这礼拜|本周|上个月|'
-    + '上次|那天|那次|最近|这几天|前几天|刚才|之前|以前|假期|放假|寒假|暑假';
-const PAST_DOING = /干嘛|干啥|干了|干什么|做什么|做啥|做了|去哪|去了|在忙|忙啥|忙什么|忙了|过得|怎么过|玩了|吃了|吃的|看了|上了|上的|学了|买了|见了|聊了|聊天|聊的|跟谁|和谁|遇到|碰到|发生|怎么样/;
+    + '上次|那天|那次|最近|这几天|前几天|刚才|之前|以前|假期|放假|寒假|暑假|'
+    // 周几、几号（72 小时基线：「周一你那快递拿了没」不算线索，她想不起那天的日记）
+    + '(?:周|星期|礼拜)[一二三四五六日天]|\\d{1,2}[号日]';
+const PAST_DOING = /干嘛|干啥|干了|干什么|做什么|做啥|做了|去哪|去了|在忙|忙啥|忙什么|忙了|过得|怎么过|玩了|吃了|吃的|看了|上了|上的|学了|买了|见了|聊了|聊天|聊的|跟谁|和谁|遇到|碰到|发生|怎么样|拿了|取了|收到|喂了|写完|做完/;
 
 /** 时间词（加上假期的名字）和「接着问另一天」（「那前天呢」「你昨天呢？」「那国庆呢」，只有时间）；按假期名缓存 */
 const pastPatterns = (() => {
@@ -115,6 +117,30 @@ const DAY_WORDS: readonly [RegExp, number][] = [[/前天/, -2], [/昨天|昨晚/
 const FUTURE = /明天|后天|明早|明晚|待会|一会儿|下周|下星期|下个星期|下礼拜|下个月|下次|明年/;
 const WEEK_WORDS: readonly [RegExp, number][] = [[/上周|上星期|上个星期|上礼拜|上个礼拜/, -1], [/这周|这星期|这个星期|这礼拜|本周/, 0]];
 const LAST_MONTH = /上个月/;
+/** 周几：「周一」「上周三」「礼拜天」；几号：「12号」「3日」 */
+const WEEKDAY = /(上个?)?(?:周|星期|礼拜)([一二三四五六日天])/;
+const DATE_OF_MONTH = /(\d{1,2})[号日]/;
+const WEEKDAY_INDEX = '一二三四五六日';
+
+/** 问的是周几、几号：最近过去的那一天（今天就是周一，问「周一」就是今天；「上周一」是上周的）；几号没到就是上个月的 */
+function askedDate(line: string, today: Date): Date | undefined {
+    const weekday = line.match(WEEKDAY);
+    if (weekday) {
+        const target = weekday[2] === '天' ? 7 : WEEKDAY_INDEX.indexOf(weekday[2]!) + 1;
+        const index = (today.getDay() + 6) % 7 + 1;
+        const back = weekday[1] ? index - target + 7 : (index - target + 7) % 7;
+        return new Date(today.getFullYear(), today.getMonth(), today.getDate() - back);
+    }
+    const date = line.match(DATE_OF_MONTH);
+    if (date) {
+        const d = Number(date[1]);
+        if (d < 1 || d > 31) return undefined;
+        const month = d <= today.getDate() ? today.getMonth() : today.getMonth() - 1;
+        const result = new Date(today.getFullYear(), month, d);
+        return result.getDate() === d ? result : undefined;
+    }
+    return undefined;
+}
 const ANY_HOLIDAY = /假期|放假|寒假|暑假/;
 
 /** 问的那段时间（ADR 0018 决策 3）；period：是一周、一个月、一个假期，不是某一天 */
@@ -154,6 +180,9 @@ function asked(history: readonly Said[], now: Date, schedule: Schedule | undefin
     });
     for (const line of said.toReversed()) {
         if (FUTURE.test(line)) continue;
+        // 周几、几号先于「早上」「晚上」：「周一晚上」问的是周一
+        const dated = askedDate(line, today);
+        if (dated) return span(dated, dated);
         const offset = DAY_WORDS.find(([pattern]) => pattern.test(line))?.[1];
         if (offset !== undefined) return span(day(today, offset), day(today, offset));
         if (!periods) continue;

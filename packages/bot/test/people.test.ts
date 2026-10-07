@@ -418,6 +418,23 @@ describe('公共记忆的线索（ADR 0017）', () => {
         assert.equal(cue('明天呢'), undefined, '不是过去');
     });
 
+    test('问周几、几号（72 小时基线）：算问她过去的事，时间窗是最近过去的那一天', () => {
+        assert.equal(cue('周一你那快递拿了没'), '问她过去的事');
+        assert.equal(cue('礼拜三你干嘛去了'), '问她过去的事');
+        assert.equal(cue('12号你做了什么'), '问她过去的事');
+        assert.equal(cue('我周一拿了快递'), undefined, '说的是他自己');
+        const thursday = new Date(2026, 9, 15, 21, 0);
+        const day = (said: string) => askedDay([he(said)], thursday)?.start.toDateString();
+        assert.equal(day('周一你那快递拿了没'), new Date(2026, 9, 12).toDateString());
+        assert.equal(day('星期四你干嘛了'), new Date(2026, 9, 15).toDateString(), '今天就是周四');
+        assert.equal(day('上周三干嘛了'), new Date(2026, 9, 7).toDateString());
+        assert.equal(day('礼拜天呢'), new Date(2026, 9, 11).toDateString());
+        assert.equal(day('周一晚上干嘛了'), new Date(2026, 9, 12).toDateString(), '「晚上」不把它变成今天');
+        assert.equal(day('12号你在干嘛'), new Date(2026, 9, 12).toDateString());
+        assert.equal(day('20号你干嘛了'), new Date(2026, 8, 20).toDateString(), '还没到就是上个月的');
+        assert.equal(day('周五要考试'), new Date(2026, 9, 9).toDateString(), '这里不判断将来（commonCue 要有经历词才算问过去）');
+    });
+
     test('问的是哪一天：他这次最后一句带日子的；「最近」、将来的不算', () => {
         const now = new Date(2026, 9, 8, 21, 0);
         const day = (...said: string[]) => askedDay(said.map(he), now)?.start.toDateString();
