@@ -20,7 +20,7 @@
         { "check": { "speechClean": true, "exitClean": true, "replyAny": ["2400", "两千四", "2千4", "二千四", "一半"], "replyNone": ["1800", "3000", "攒够了"] } },
         { "case": "WD05", "note": "今晚 20:30 和家里视频过了" },
         { "say": "今天跟家里视频了没" },
-        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["视频了", "打了", "视频过", "刚跟", "八点", "8点", "聊了", "挂了"], "replyNone": ["还没视频", "没视频", "没打"] } },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["视频了", "视频完", "视频啦", "打了", "视频过", "刚跟", "八点", "8点", "聊了", "挂了"], "replyNone": ["还没视频", "没视频", "没打"] } },
         { "advance": "1d" },
         { "case": "WD06", "note": "10-12：没下雨" },
         { "say": "今天下雨没" },

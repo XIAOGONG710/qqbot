@@ -32,7 +32,7 @@ function latestUserText(history: readonly Said[]): string {
 // 对方已经在收尾，或者只回了一句附和时，不再塞「追问 / 分享进度」；
 // 这些意图会顶掉卡上的「道晚安、顺势收尾」，让本来该停的聊天又铺开（ADR 0019 改后回归）。
 const ENDING = /晚安|睡(?:了(?!吗)|觉|啦|咯|吧)|不想(?:说话|聊)|不聊了|先去忙|我去忙|回头聊|明天聊|拜拜/;
-const QUESTION = /[?？]|(?:吗|呢|么)$|你(?:是不是|有没有|要不要|能不能|可不可以|今天|现在)|怎么|为什么|咋|哪|几|多少|什么|谁|讲讲|告诉我|帮我/;
+const QUESTION = /[?？]|(?:吗|呢|么)$|你(?:是不是|有没有|要不要|能不能|可不可以|今天|现在)|怎么|为什么|咋|哪|几|多少|什么|谁|讲讲|告诉我|帮我|[了完过好到]没有?$|([\u4e00-\u9fff])不\1/;
 
 export function isEndingTurn(history: readonly Said[]): boolean {
     const text = latestUserText(history).trim();

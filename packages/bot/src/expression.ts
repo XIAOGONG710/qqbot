@@ -27,17 +27,26 @@ export function lengthHint(context: LengthContext): LengthHint | undefined {
     if (!last) return undefined;
     const roll = unit(`${last.time ?? ''} ${last.content} length`);
     if (roll < SHORT_CHANCE) return 'short';
-    if (roll < SHORT_CHANCE + LONG_CHANCE && !context.low) return 'long';
+    // 话多要有由头：他这次说的太短（「到家了」）就不加（第一批：一句「到家了」她一口气说了 4 条 77 个字）
+    if (roll < SHORT_CHANCE + LONG_CHANCE && !context.low && [...saidSinceReply(context.history)].length >= LONG_MIN_CHARS) return 'long';
     return undefined;
+}
+
+/** 他这次说的不到这么多字，不加「话多一点」 */
+export const LONG_MIN_CHARS = 8;
+
+function saidSinceReply(history: LengthContext['history']): string {
+    const lastReply = history.findLastIndex(message => message.role === 'assistant');
+    return history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content).join('');
 }
 
 export function describeLength(hint: LengthHint): string {
     return hint === 'short'
-        ? '[这一轮说话：回句短的就行，一句话，几个字也可以，不展开]'
+        ? '[这一轮说话：只回一句短的，几个字也行；不展开，不另起话题]'
         : '[这一轮说话：话多一点，想说的可以多说几句、说完整，不用一两句就停]';
 }
 
-/** 常见的同音错词：[正确的, 打错的]（拼音输入法选错词） */
+/** 常见的同音错词：[正确的, 打错的]（拼音输入法选错词）。第一批 348 次回复里原来那 10 个只出现在 2.6% 的回复里，补了几个常用的；「在宿舍」「在床上」她天天说，同一种错反复出现反而假，不放 */
 export const TYPOS: readonly [string, string][] = [
     ['应该', '因该'],
     ['因为', '应为'],
@@ -49,10 +58,16 @@ export const TYPOS: readonly [string, string][] = [
     ['知道', '知到'],
     ['那里', '哪里'],
     ['再见', '在见'],
+    ['觉得', '觉的'],
+    ['反正', '反证'],
+    ['以后', '已后'],
+    ['在家', '再家'],
+    ['还在', '还再'],
+    ['再来', '在来'],
 ];
 
 /** 有能打错的词时打错的概率；打错了改口的概率 */
-export const TYPO_CHANCE = 0.25;
+export const TYPO_CHANCE = 0.2;
 export const CORRECT_CHANCE = 0.7;
 
 export interface Typo {
@@ -61,8 +76,11 @@ export interface Typo {
     note?: string;
 }
 
-/** 发出去之前：可能把一条里的一个词打错，后面跟一条改口。seed 让同一次回复的结果固定（测试、重放） */
-export function maybeTypo(parts: readonly string[], seed: string): Typo {
+/**
+ * 发出去之前：可能把一条里的一个词打错，后面跟一条改口。seed 让同一次回复的结果固定（测试、重放）。
+ * 改口那条会超过这一轮的条数上限（上课只回一条）就不改（第二批：上课时多出一条「*在干嘛」）
+ */
+export function maybeTypo(parts: readonly string[], seed: string, maxBubbles = Infinity): Typo {
     const roll = unit(`${seed} typo`);
     if (roll >= TYPO_CHANCE) return { parts: [...parts] };
     for (const [i, part] of parts.entries()) {
@@ -70,7 +88,7 @@ export function maybeTypo(parts: readonly string[], seed: string): Typo {
         if (!found) continue;
         const [right, wrong] = found;
         const typed = part.replace(right, wrong);
-        const correct = unit(`${seed} correct`) < CORRECT_CHANCE;
+        const correct = unit(`${seed} correct`) < CORRECT_CHANCE && parts.length < maxBubbles;
         const out = [...parts];
         out[i] = typed;
         if (correct) out.splice(i + 1, 0, `*${right}`);

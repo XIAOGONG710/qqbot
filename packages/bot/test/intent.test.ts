@@ -14,6 +14,11 @@ describe('这一轮你想（ADR 0019）', () => {
         assert.equal(saysOwnThing([assistant('嗯'), user('你今天干嘛')]), false);
         assert.match(describeIntent({ history: [user('昨晚去看电影了')], now })!, /具体细节/);
         assert.match(describeIntent({ history: [user('你帮我讲讲梯度下降是怎么回事')], now, state: free('打独立游戏') })!, /直接回答/);
+        // 「到了没」「写完没」「去不去」也是问句（10-07：「你那快递到了没」被当成闲聊，意图行让她讲起了打游戏的进度）
+        for (const asked of ['你那快递到了没', '作业写完没有', '周末去不去', '这样行不行']) {
+            assert.match(describeIntent({ history: [user(asked)], now, state: free('打独立游戏') })!, /直接回答/, asked);
+        }
+        assert.doesNotMatch(describeIntent({ history: [user('我今天没')], now, state: free('打独立游戏') }) ?? '', /直接回答/, '只是没说完');
     });
 
     test('按线索顺序只给一个：他的事优先于答应的事，答应的事优先于手上的事', () => {

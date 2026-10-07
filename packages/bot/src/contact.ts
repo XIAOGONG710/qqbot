@@ -297,8 +297,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         clean,
         // 出口检查：重写时在后处理过的提示词末尾加一条说明，再按同样的方式后处理一次
         // 打错字再改口（ADR 0024）：拆好条之后、发出去之前
-        decorate: parts => {
-            const typo = maybeTypo(parts, `${contact.qq} ${now()} ${parts.join('|')}`);
+        decorate: (parts, maxBubbles) => {
+            const typo = maybeTypo(parts, `${contact.qq} ${now()} ${parts.join('|')}`, maxBubbles);
             if (typo.note) log(`打错字：${typo.note}`);
             return typo.parts;
         },

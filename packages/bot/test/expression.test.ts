@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CORRECT_CHANCE, describeLength, LONG_CHANCE, lengthHint, maybeTypo, SHORT_CHANCE, TYPO_CHANCE, TYPOS } from '../src/expression.ts';
+import { CORRECT_CHANCE, describeLength, LONG_CHANCE, LONG_MIN_CHARS, lengthHint, maybeTypo, SHORT_CHANCE, TYPO_CHANCE, TYPOS } from '../src/expression.ts';
 
-const said = (i: number) => [{ role: 'user' as const, content: `第 ${i} 句`, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
+const said = (i: number) => [{ role: 'user' as const, content: `第 ${i} 句，今天上班被老板说了一顿`, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
 
 describe('表达层（ADR 0024）', () => {
     test(`长短：约 ${SHORT_CHANCE * 100}% 的轮次回句短的、约 ${LONG_CHANCE * 100}% 话多一点；同一句每次一样`, () => {
@@ -22,10 +22,15 @@ describe('表达层（ADR 0024）', () => {
         assert.equal(lengthHint({ history: said(longOne), low: true }), undefined);
         assert.equal(lengthHint({ history: said(shortOne), low: true }), 'short', '安静的日子照样可以回句短的');
         assert.equal(lengthHint({ history: [] }), undefined);
+        // 他这次说得太短（「到家了」）不加话多；回句短的照样可以
+        const brief = (i: number) => [{ role: 'user' as const, content: '到家了', time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
+        const hints = Array.from({ length: 500 }, (_, i) => lengthHint({ history: brief(i) }));
+        assert.ok(!hints.includes('long'), `不到 ${LONG_MIN_CHARS} 个字不加话多`);
+        assert.ok(hints.includes('short'));
     });
 
     test('提示词只给一句约束，不给台词', () => {
-        assert.equal(describeLength('short'), '[这一轮说话：回句短的就行，一句话，几个字也可以，不展开]');
+        assert.equal(describeLength('short'), '[这一轮说话：只回一句短的，几个字也行；不展开，不另起话题]');
         assert.match(describeLength('long'), /^\[这一轮说话：话多一点/);
     });
 
@@ -44,6 +49,9 @@ describe('表达层（ADR 0024）', () => {
         assert.equal(lazy.note, '应该 → 因该（没改）');
         assert.ok(results.filter(r => !r.note).every(r => r.parts.join() === parts.join()));
         assert.deepEqual(maybeTypo(['在呢', '刚洗完澡'], 'seed 1'), { parts: ['在呢', '刚洗完澡'] });
+        // 这一轮只能发一条（上课）：打错了也不改口
+        const seed = Array.from({ length: 4000 }, (_, i) => `seed ${i}`).find(s => maybeTypo(parts, s).parts.length === 3)!;
+        assert.deepEqual(maybeTypo(['我应该明天去'], seed, 1), { parts: ['我因该明天去'], note: '应该 → 因该（没改）' });
     });
 
     test('错词表：打错的和正确的读音一样、不是同一个词', () => {

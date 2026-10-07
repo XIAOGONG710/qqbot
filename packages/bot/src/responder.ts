@@ -56,8 +56,8 @@ export interface ResponderDeps {
     clean: (reply: string) => string;
     /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查 */
     review?: (reply: string, messages: OpenAIMessage[]) => Promise<string>;
-    /** 拆好条、发出去之前最后改一下（ADR 0024：打错字再改口）；不传就原样发 */
-    decorate?: (parts: string[]) => string[];
+    /** 拆好条、发出去之前最后改一下（ADR 0024：打错字再改口）；maxBubbles 是这一轮最多几条；不传就原样发 */
+    decorate?: (parts: string[], maxBubbles: number) => string[];
     send: (userId: number, text: string) => Promise<number>;
     log: (message: string) => void;
     sleep?: (ms: number) => Promise<void>;
@@ -270,10 +270,11 @@ export function createResponder(deps: ResponderDeps): Responder {
             if (deps.history.load(deps.userId).length === stored.length || attempt >= MAX_REGENERATE) break;
             deps.log('生成期间收到新消息，带上新消息重新生成');
         }
-        const split = splitReply(reply, decision?.maxBubbles ?? MAX_BUBBLES);
+        const maxBubbles = decision?.maxBubbles ?? MAX_BUBBLES;
+        const split = splitReply(reply, maxBubbles);
         // 再生成还是空：算回复失败，按 retryAfterMs 过一会儿再试
         if (split.length === 0) throw new Error('模型回复清理后为空');
-        const parts = deps.decorate ? deps.decorate(split) : split;
+        const parts = deps.decorate ? deps.decorate(split, maxBubbles) : split;
         setPhase({ phase: 'sending' });
         const { timing } = deps;
         // 第一条：生成花掉的时间算在打字时间里
@@ -349,7 +350,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         // 空的不再生成（宁可少发）
         const split = splitReply(reply, request.maxBubbles);
         if (split.length === 0) return { result: 'skipped', reason: '生成的是空的' };
-        const parts = deps.decorate ? deps.decorate(split) : split;
+        const parts = deps.decorate ? deps.decorate(split, request.maxBubbles) : split;
         request.commit(parts);
         if (request.dryRun) return { result: 'dryRun', parts };
 
