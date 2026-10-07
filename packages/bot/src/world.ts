@@ -354,7 +354,12 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
         parts.push(`作业：${[...lines].map(([line, n]) => (n > 1 ? `${n} 份${line}` : line)).join('；')}`);
     }
     if (now.cameraFund) parts.push(`攒钱买相机：${now.cameraFund.saved} / ${now.cameraFund.goal} 元`);
-    if (now.familyCall) parts.push(now.familyCall.done ? `今晚 ${clock(now.familyCall.at)} 和家里视频过了` : `今晚 ${clock(now.familyCall.at)} 要和家里视频`);
+    if (now.familyCall) {
+        // 视频的那半小时里写「还在视频」（ADR 0030：写成「视频过了」时，她 3/3 在视频中途说「刚跟我妈视频完」）
+        const calling = now.familyCall.done && at.getTime() < now.familyCall.at.getTime() + OCCUPATION_MINUTES.call * 60_000;
+        parts.push(calling ? `今晚 ${clock(now.familyCall.at)} 开始和家里视频，这会儿还在视频`
+            : now.familyCall.done ? `今晚 ${clock(now.familyCall.at)} 和家里视频过了` : `今晚 ${clock(now.familyCall.at)} 要和家里视频`);
+    }
     if (now.events.length) {
         const people = [...new Map(now.events.flatMap(e => (e.person ? [[e.person.name, e.person.relation] as const] : []))).entries()];
         parts.push(`今天的小事：${now.events.map(e => e.text).join('；')}${people.length ? `（${people.map(([name, relation]) => `${name}：${relation}`).join('；')}）` : ''}`);

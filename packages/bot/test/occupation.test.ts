@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { describeState, stateAt } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { occupationAt, worldAt } from '../src/world.ts';
+import { describeWorld, occupationAt, worldAt } from '../src/world.ts';
 
 const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
 const boyfriend = card('boyfriend');
@@ -19,6 +19,13 @@ describe('此刻在做的事接上世界（ADR 0030）', () => {
         assert.equal(doing(boyfriend, '2026-10-11T21:30:00+08:00'), '在赶Linux操作系统的作业，22:00 左右能写完');
         assert.equal(doing(boyfriend, '2026-10-11T22:10:00+08:00'), undefined, '写完了');
         assert.equal(doing(boyfriend, '2026-10-11T17:30:00+08:00'), undefined);
+    });
+
+    test('「你那边」里的视频：那半小时写「还在视频」，之后写「视频过了」', () => {
+        const line = (time: string) => describeWorld(worldAt(boyfriend.herWorld!, boyfriend.schedule!, at(time))!, at(time))!;
+        assert.match(line('2026-10-11T20:40:00+08:00'), /今晚 20:30 开始和家里视频，这会儿还在视频/);
+        assert.match(line('2026-10-11T21:10:00+08:00'), /今晚 20:30 和家里视频过了/);
+        assert.match(line('2026-10-11T20:00:00+08:00'), /今晚 20:30 要和家里视频/);
     });
 
     test('按这一档的卡：同学档看不到和家里视频、课名', () => {
