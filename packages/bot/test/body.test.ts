@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { bodyAt, describeBody, type Body } from '../src/body.ts';
+import { bodyAt, describeBody, unwell, type Body } from '../src/body.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
@@ -56,6 +56,15 @@ describe('她的身体（ADR 0025）', () => {
         assert.ok(!(line(none, '2026-10-12T00:10:00+08:00') ?? '').includes('困了'), '零点半以前不写');
         assert.match(line(none, '2026-10-11T11:40:00+08:00')!, /快到饭点了，有点饿/);
         assert.match(line(none, '2026-10-11T17:30:00+08:00')!, /快到饭点了，有点饿/);
+    });
+
+    test('身上不舒服：痛经、感冒算，困、饿、没疼的生理期不算（表达层不加「话多」）', () => {
+        const body = boyfriend.herWorld!.body!;
+        const now = (time: string) => bodyAt(body, schedule, at(time));
+        assert.equal(unwell(now('2026-12-21T21:30:00+08:00')), true);
+        assert.equal(unwell(now('2026-11-17T21:30:00+08:00')), true);
+        assert.equal(unwell(now('2026-10-22T21:30:00+08:00')), false);
+        assert.equal(unwell(now('2026-10-12T09:30:00+08:00')), false);
     });
 
     test('提示词：只有事实和一句约束；什么都没有就不放', () => {

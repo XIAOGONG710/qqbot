@@ -26,7 +26,7 @@ import { describeIntent } from './intent.ts';
 import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, worldAt } from './world.ts';
-import { bodyAt, describeBody } from './body.ts';
+import { bodyAt, describeBody, unwell } from './body.ts';
 import { describePast, pastCue, type PastChunk } from './biography.ts';
 import { askedWindow, ASKS_PAST, commonCue, describePerson, holidayWords, mentionedPeople, stillInMind } from './people.ts';
 import type { PromiseKeeper } from './promises.ts';
@@ -212,7 +212,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const around = herSchedule && character.herWorld ? worldAt(character.herWorld, herSchedule, time) : undefined;
             const world = around ? describeWorld(around, time) : undefined;
             // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
-            const body = herSchedule && character.herWorld?.body ? describeBody(bodyAt(character.herWorld.body, herSchedule, time)) : undefined;
+            const bodyNow = herSchedule && character.herWorld?.body ? bodyAt(character.herWorld.body, herSchedule, time) : undefined;
+            const body = bodyNow ? describeBody(bodyNow) : undefined;
             // 她的过去（ADR 0022）：他说到卡上某块的线索才想起；主动找他时不想
             let pastChunks = character.biography && !initiate ? pastCue(chat, character.biography) : [];
             if (pastChunks.length) {
@@ -244,7 +245,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             });
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
             // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
-            const length = lengthHint({ history: chat, intent, initiating: Boolean(initiate), low: mood?.mood.name === '安静' });
+            const length = lengthHint({ history: chat, intent, initiating: Boolean(initiate), low: mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             const shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };

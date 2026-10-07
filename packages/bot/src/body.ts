@@ -60,6 +60,11 @@ export function bodyAt(body: Body, schedule: Schedule, now: Date): BodyNow {
     return result;
 }
 
+/** 身上不舒服（痛经、感冒）：表达层不加「话多一点」（ADR 0024） */
+export function unwell(now: BodyNow): boolean {
+    return Boolean(now.period?.cramps || now.cold);
+}
+
 /** 时间块里的一行：只有事实和一句约束；没有就不放 */
 export function describeBody(now: BodyNow): string | undefined {
     const parts: string[] = [];
