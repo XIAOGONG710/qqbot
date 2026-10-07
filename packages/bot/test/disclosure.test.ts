@@ -27,10 +27,12 @@ describe('披露分级（ADR 0020）', () => {
 
     test('规则说明三档、永久边界和主动提及时再收紧一级', () => {
         const close = disclosureRules({ name: '阿明', tier: 'boyfriend' });
-        for (const phrase of ['可明说', '只能含糊', '不能说', '主动', '再保守一级', '私事', '只跟那个人说', '评价']) {
+        for (const phrase of ['可明说', '只能含糊', '不能说', '主动', '再保守一级', '私事', '只跟那个人说', '看法', '不主动说', '说句实在的']) {
             assert.ok(close.includes(phrase), phrase);
         }
         const distant = disclosureRules({ name: '同学', tier: 'classmate' });
+        assert.match(distant, /看法.*不主动说；被问起某人怎么样，只说当着他的面也能说的客气话.*不背后议论/);
+        assert.ok(!distant.includes('说句实在的'), '普通听众问起只说客气话');
         assert.match(distant, /不要主动向同学提任何别人的事/);
         assert.match(distant, /不能因为不能说就突然截断整句/);
     });

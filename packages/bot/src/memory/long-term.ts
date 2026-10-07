@@ -621,7 +621,7 @@ export class LongTermMemory {
         }
         const content = this.#relationship.get(key)?.content;
         return content
-            ? `[你心里对${person.name}的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）：里面的事实可以按披露规则使用；你对${person.name}的评价（喜欢、嫌弃、觉得他怎样）只放在心里，对谁都不说出口，对${person.name}本人也不说]\n${content}`
+            ? `[你心里对${person.name}的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）：里面的事实可以按披露规则使用；你对${person.name}的看法是你自己的念头，不主动说，被问起时按说别人的事的分寸]\n${content}`
             : undefined;
     }
 

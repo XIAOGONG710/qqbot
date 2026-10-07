@@ -407,6 +407,10 @@ describe('公共记忆的线索（ADR 0017）', () => {
         assert.equal(cue('今天好累'), undefined, '没有经历');
         assert.equal(cue('你昨天都上了什么课'), '问她过去的事');
         assert.equal(cue('昨天考试怎么样'), '问她过去的事');
+        // 问她今天跟谁聊了（ADR 0020 第二批：开场之外他问起时，今天和别人聊过的也要想得起来）
+        assert.equal(cue('你今天都跟谁聊天了'), '问她过去的事');
+        assert.equal(cue('今天和谁出去的'), '问她过去的事');
+        assert.equal(cue('我今天跟同事聊天了'), undefined, '说的是他自己');
         // 接着问另一天：只有时间
         assert.equal(cue('那前天呢'), '问她过去的事');
         assert.equal(cue('你昨天呢？'), '问她过去的事');

@@ -63,10 +63,10 @@
             "speechClean": true,
             "exitClean": true
         } },
-        { "case": "DB04", "note": "问她觉得鸽鸽这人怎样：心里的评价（轴）不说出口，可以说大面上的" },
+        { "case": "DB04", "note": "男朋友直接问她觉得鸽鸽这人怎样：可以说句实在的（第二批：被最亲的人问起时说看法才像人），但不借机说鸽鸽家里的事" },
         { "say": "你觉得鸽鸽这人咋样" },
         { "check": {
-            "replyNone": ["轴", "不听劝", "说了三遍"],
+            "replyNone": ["肿瘤", "市立医院", "手术", "他爸"],
             "speechClean": true,
             "exitClean": true
         } }

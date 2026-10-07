@@ -765,7 +765,7 @@ describe('长期记忆：她眼中的某个人（ADR 0017）', () => {
             assert.equal(memory.impression(B), undefined, '第一次在后台读');
             await new Promise(r => setTimeout(r, 0));
             assert.equal(memory.impression(B), '[你心里对鸽鸽的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）：里面的事实可以按披露规则使用；'
-                + '你对鸽鸽的评价（喜欢、嫌弃、觉得他怎样）只放在心里，对谁都不说出口，对鸽鸽本人也不说]\n鸽鸽是做网络运维的，10月中旬去杭州出差。');
+                + '你对鸽鸽的看法是你自己的念头，不主动说，被问起时按说别人的事的分寸]\n鸽鸽是做网络运维的，10月中旬去杭州出差。');
             assert.equal(memory.impression({ qq: 3, tier: 'stranger', name: '路人' }), undefined);
         } finally {
             rmSync(dir, { recursive: true, force: true });

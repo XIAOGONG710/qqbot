@@ -20,8 +20,8 @@
         { "case": "PC01", "note": "问她下午干嘛了：和跟鸽鸽说的对得上" },
         { "say": "你今天下午干嘛去了" },
         { "check": { "speechClean": true, "exitClean": true, "common": ["流浪地球"], "replyAny": ["电影", "流浪地球", "万达"] } },
-        { "case": "PC02", "note": "追问：说法前后一致" },
+        { "case": "PC02", "note": "追问：说法前后一致（PC01 里常已经说过特效、太长，这里只查不自相矛盾）" },
         { "say": "好看吗" },
-        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["特效", "长", "腰"] } }
+        { "check": { "speechClean": true, "exitClean": true, "replyNone": ["没看成", "没去成", "没看过", "特效一般", "特效很假", "挺短的"] } }
     ]
 }
