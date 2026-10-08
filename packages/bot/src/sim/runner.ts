@@ -77,7 +77,12 @@ export interface Generation {
     /** 出口检查带说明重写的原文（ADR 0006） */
     rewrites?: string[];
 }
-export interface CheckResult { ok: boolean; text: string }
+/**
+ * pipeline：管线自检（提示词里有没有那一行、召回了什么、日志、生成了几次），查的不是她说了什么。
+ * 代码就位后多半恒真（DSH 复核 ADR 0036：42 项里 12 项时间块检查不可能失败），通过率分开算
+ */
+export interface CheckResult { ok: boolean; text: string; pipeline?: boolean }
+export interface CheckCount { passed: number; failed: number }
 
 export interface StepRecord {
     kind: 'case' | 'say' | 'life' | 'action' | 'advance' | 'wait' | 'memory' | 'refresh' | 'check' | 'forget' | 'hindsight';
@@ -104,7 +109,8 @@ export interface RunResult {
     dataDir: string;
     bankId?: string;
     steps: StepRecord[];
-    checks: { passed: number; failed: number };
+    /** 全部检查；reply 是查她说了什么、怎么回的，pipeline 是管线自检（CheckResult.pipeline） */
+    checks: CheckCount & { reply: CheckCount; pipeline: CheckCount };
 }
 
 const RECALL_HEADER = '[你们以前聊过的事';
@@ -521,13 +527,14 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     }
 
     const all = steps.flatMap(s => s.checks);
+    const count = (list: CheckResult[]): CheckCount => ({ passed: list.filter(c => c.ok).length, failed: list.filter(c => !c.ok).length });
     return {
         scenario,
         runId: options.runId,
         dataDir,
         bankId,
         steps,
-        checks: { passed: all.filter(c => c.ok).length, failed: all.filter(c => !c.ok).length },
+        checks: { ...count(all), reply: count(all.filter(c => !c.pipeline)), pipeline: count(all.filter(c => c.pipeline)) },
     };
 }
 
@@ -655,36 +662,52 @@ export function runChecks(checks: Checks, step: StepRecord, banned: readonly str
     const recall = last?.recall ?? '';
     const replies = step.bubbles.map(b => b.text).join('\n');
     const has = (pattern: RegExp) => step.logs.some(l => pattern.test(l));
-    for (const word of checks.recall ?? []) results.push({ ok: recall.includes(word), text: `召回里有「${word}」` });
-    for (const word of checks.recallNot ?? []) results.push({ ok: !recall.includes(word), text: `召回里没有「${word}」` });
-    for (const word of checks.people ?? []) results.push({ ok: (last?.people ?? '').includes(word), text: `「你认识的人」里有「${word}」` });
-    for (const word of checks.common ?? []) results.push({ ok: (last?.common ?? '').includes(word), text: `公共记忆里有「${word}」` });
-    for (const word of checks.todayOthers ?? []) results.push({ ok: (last?.todayOthers ?? '').includes(word), text: `今天和别人聊过的事里有「${word}」` });
-    for (const word of checks.todayOthersNot ?? []) results.push({ ok: !(last?.todayOthers ?? '').includes(word), text: `今天和别人聊过的事里没有「${word}」` });
-    if (checks.noCommon) results.push({ ok: !last?.common, text: '没有线索，没想起公共记忆' });
-    for (const title of checks.past ?? []) results.push({ ok: (last?.past ?? '').includes(`- ${title}：`), text: `想起的从前里有「${title}」` });
-    if (checks.noPast) results.push({ ok: !last?.past, text: '没有线索，没想起从前' });
+    for (const word of checks.recall ?? []) results.push({ ok: recall.includes(word), text: `召回里有「${word}」`, pipeline: true });
+    for (const word of checks.recallNot ?? []) results.push({ ok: !recall.includes(word), text: `召回里没有「${word}」`, pipeline: true });
+    for (const word of checks.people ?? []) results.push({ ok: (last?.people ?? '').includes(word), text: `「你认识的人」里有「${word}」`, pipeline: true });
+    for (const word of checks.common ?? []) results.push({ ok: (last?.common ?? '').includes(word), text: `公共记忆里有「${word}」`, pipeline: true });
+    for (const word of checks.todayOthers ?? []) results.push({ ok: (last?.todayOthers ?? '').includes(word), text: `今天和别人聊过的事里有「${word}」`, pipeline: true });
+    for (const word of checks.todayOthersNot ?? []) results.push({ ok: !(last?.todayOthers ?? '').includes(word), text: `今天和别人聊过的事里没有「${word}」`, pipeline: true });
+    if (checks.noCommon) results.push({ ok: !last?.common, text: '没有线索，没想起公共记忆', pipeline: true });
+    for (const title of checks.past ?? []) results.push({ ok: (last?.past ?? '').includes(`- ${title}：`), text: `想起的从前里有「${title}」`, pipeline: true });
+    if (checks.noPast) results.push({ ok: !last?.past, text: '没有线索，没想起从前', pipeline: true });
     if (checks.replyAny) {
         const hit = checks.replyAny.filter(w => replies.includes(w));
         results.push({ ok: hit.length > 0, text: `回复里有「${checks.replyAny.join('」「')}」之一${hit.length ? `（${hit.join('、')}）` : ''}` });
     }
     for (const word of checks.replyNone ?? []) results.push({ ok: !replies.includes(word), text: `回复里没有「${word}」` });
+    for (const pattern of checks.replyNotMatch ?? []) {
+        const hit = replies.match(new RegExp(pattern));
+        results.push({ ok: !hit, text: `回复里没有 /${pattern}/${hit ? `（「${hit[0]}」）` : ''}` });
+    }
+    // 她说的第一句（发出去的第一行）：先接他这句话，不先说别的
+    const firstLine = replies.split('\n').find(line => line.trim()) ?? '';
+    if (checks.firstAny) {
+        const hit = checks.firstAny.filter(w => firstLine.includes(w));
+        results.push({ ok: hit.length > 0, text: `第一句里有「${checks.firstAny.join('」「')}」之一（「${firstLine}」）` });
+    }
+    for (const word of checks.firstNone ?? []) results.push({ ok: !firstLine.includes(word), text: `第一句里没有「${word}」（「${firstLine}」）` });
     if (checks.timeBlock !== undefined) {
-        results.push({ ok: new RegExp(checks.timeBlock).test(last?.timeBlock ?? ''), text: `时间块匹配 /${checks.timeBlock}/` });
+        results.push({ ok: new RegExp(checks.timeBlock).test(last?.timeBlock ?? ''), text: `时间块匹配 /${checks.timeBlock}/`, pipeline: true });
     }
     if (checks.timeBlockNot !== undefined) {
-        results.push({ ok: !new RegExp(checks.timeBlockNot).test(last?.timeBlock ?? ''), text: `时间块不匹配 /${checks.timeBlockNot}/` });
+        results.push({ ok: !new RegExp(checks.timeBlockNot).test(last?.timeBlock ?? ''), text: `时间块不匹配 /${checks.timeBlockNot}/`, pipeline: true });
     }
     if (checks.generations !== undefined) {
-        results.push({ ok: step.generations.length === checks.generations, text: `生成 ${checks.generations} 次（实际 ${step.generations.length} 次）` });
+        results.push({ ok: step.generations.length === checks.generations, text: `生成 ${checks.generations} 次（实际 ${step.generations.length} 次）`, pipeline: true });
     }
     if (checks.regenerated !== undefined) {
-        results.push({ ok: has(/生成期间收到新消息/) === checks.regenerated, text: checks.regenerated ? '生成中来了新消息，丢掉草稿重新生成' : '没有重新生成' });
+        results.push({ ok: has(/生成期间收到新消息/) === checks.regenerated, text: checks.regenerated ? '生成中来了新消息，丢掉草稿重新生成' : '没有重新生成', pipeline: true });
     }
     const chars = step.bubbles.reduce((n, b) => n + [...b.text].length, 0);
     if (checks.maxChars !== undefined) results.push({ ok: chars <= checks.maxChars, text: `她这一轮最多 ${checks.maxChars} 字（实际 ${chars}）` });
     if (checks.minChars !== undefined) results.push({ ok: chars >= checks.minChars, text: `她这一轮至少 ${checks.minChars} 字（实际 ${chars}）` });
     if (checks.maxBubbles !== undefined) results.push({ ok: step.bubbles.length <= checks.maxBubbles, text: `她这一轮最多 ${checks.maxBubbles} 条（实际 ${step.bubbles.length}）` });
+    if (checks.maxLines !== undefined) {
+        // 数她说了几句：超过气泡上限的行会按顺序合并进最后一条（reply.ts packLines），只数条数看不出她说了一大串（DSH 复核 ADR 0036）
+        const said = replies.split('\n').filter(line => line.trim()).length;
+        results.push({ ok: said <= checks.maxLines, text: `她这一轮最多说 ${checks.maxLines} 句（实际 ${said} 句，发成 ${step.bubbles.length} 条）` });
+    }
     if (checks.exitClean) {
         const issues = inspectReply(replies, banned);
         const stage = step.bubbles.filter(b => /^[ \t]*[（(][^（）()\n]*[）)]/m.test(b.text)).length;
@@ -706,9 +729,9 @@ export function runChecks(checks: Checks, step: StepRecord, banned: readonly str
     if (checks.replyWithin !== undefined) {
         results.push({ ok: delay !== undefined && delay <= parseDuration(checks.replyWithin), text: `第一条在对方最后一条之后 ${checks.replyWithin} 之内（实际 ${minutes(delay)}）` });
     }
-    if (checks.log !== undefined) results.push({ ok: has(new RegExp(checks.log)), text: `日志里有 /${checks.log}/` });
+    if (checks.log !== undefined) results.push({ ok: has(new RegExp(checks.log)), text: `日志里有 /${checks.log}/`, pipeline: true });
     if (checks.dropped !== undefined) {
-        results.push({ ok: has(/发送中途对方插话/) === checks.dropped, text: checks.dropped ? '发送中途插话，剩下的没发' : '没有丢弃剩下的' });
+        results.push({ ok: has(/发送中途对方插话/) === checks.dropped, text: checks.dropped ? '发送中途插话，剩下的没发' : '没有丢弃剩下的', pipeline: true });
     }
     return results;
 }

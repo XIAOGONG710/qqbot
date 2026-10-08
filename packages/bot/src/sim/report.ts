@@ -11,6 +11,13 @@ const quote = (text: string) => text.split('\n').map(line => `> ${line}`).join('
 /** 调度相关的日志（不含每次都有的「收到」「已回复」） */
 const SCHEDULING = /\d{2}:\d{2}:\d{2} 看到|吵醒|已经收尾|等了一天|出口检查|生成期间收到新消息|发送中途对方插话|插话没有触发|模型回复清理后为空|回复失败|召回失败|记忆写入失败|连接失败|Hindsight 后台任务|关系概况刷新|删除测试 bank|^主动|待跟进/;
 
+/** 「回复 39 通过 / 2 不通过 · 管线自检 12 / 12」：管线自检（提示词里有没有那一行）不算进回复的通过率 */
+export function checkSummary(checks: RunResult['checks']): string {
+    const reply = `${checks.reply.passed} 通过 / ${checks.reply.failed} 不通过`;
+    const pipeline = checks.pipeline.passed + checks.pipeline.failed;
+    return pipeline ? `回复 ${reply} · 管线自检 ${checks.pipeline.passed} / ${pipeline}` : reply;
+}
+
 export function renderReport(result: RunResult): string {
     const { scenario } = result;
     const lines: string[] = [
@@ -18,7 +25,7 @@ export function renderReport(result: RunResult): string {
         '',
         ...(scenario.description ? [scenario.description, ''] : []),
         `档位 ${scenario.tier} · 称呼 ${scenario.user} · 起点 ${day(Date.parse(scenario.start))} ${clock(Date.parse(scenario.start))}` +
-            ` · 记忆 ${result.bankId ?? '未用'} · 检查 ${result.checks.passed} 通过 / ${result.checks.failed} 不通过`,
+            ` · 记忆 ${result.bankId ?? '未用'} · 检查 ${checkSummary(result.checks)}`,
         '',
     ];
     let lastDay = '';
@@ -68,7 +75,7 @@ function renderStep(step: StepRecord, dayPrefix: (time: number) => string): stri
             out.push(`*（Hindsight ${step.logs.some(l => l.includes('停了')) ? '停了' : '恢复'}）*`, '');
             break;
         case 'check':
-            for (const c of step.checks) out.push(`- ${c.ok ? '✅' : '❌'} ${c.text}`);
+            for (const c of step.checks) out.push(`- ${c.ok ? '✅' : '❌'} ${c.pipeline ? '〔管线〕' : ''}${c.text}`);
             out.push('');
             return out;
         case 'say':

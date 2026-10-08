@@ -8,7 +8,7 @@ import { loadTierCard } from '../src/contact.ts';
 import type { MemoryItem, RecallRequest } from '../src/memory/hindsight.ts';
 import type { OpenAIMessage } from '../src/prompt.ts';
 import { renderReport } from '../src/sim/report.ts';
-import { runScenario, type SimHindsight } from '../src/sim/runner.ts';
+import { runChecks, runScenario, type SimHindsight, type StepRecord } from '../src/sim/runner.ts';
 import { loadScenario, parseDuration, parseScenario, VirtualClock } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
@@ -36,7 +36,7 @@ describe('模拟器：场景文件', () => {
     });
 
     test('新场景文件都读得进来（ADR 0018、0020）', () => {
-        for (const name of ['memory-fading', 'her-promises', 'memory-weeks', 'disclosure-boyfriend', 'disclosure-classmate', 'life-events', 'conversation-naturalness']) {
+        for (const name of ['memory-fading', 'her-promises', 'memory-weeks', 'disclosure-boyfriend', 'disclosure-classmate', 'life-events', 'conversation-naturalness', 'promise-vs-topic']) {
             assert.ok(loadScenario(join(repoRoot, `packages/bot/sim/${name}.json`)).steps.length > 0, name);
         }
     });
@@ -116,6 +116,19 @@ describe('模拟器：场景文件', () => {
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
+    });
+
+    test('检查项：句式、第一句、说了几句；管线自检单独算（DSH 复核 ADR 0036）', () => {
+        const step: StepRecord = {
+            kind: 'check', time: 0, inputs: [], generations: [{ time: 0, messages: 1, timeBlock: '[这一轮你想：顺着他的话收尾]' }], logs: [], checks: [],
+            bubbles: [{ time: 0, text: '去吧去吧' }, { time: 0, text: '写完跟我说一声\n早点睡' }],
+        };
+        const results = runChecks({
+            replyNotMatch: ['(写完|忙完).{0,4}(跟我说|找我)', '记得吃饭'], firstNone: ['土豆'], firstAny: ['去吧'], maxBubbles: 2, maxLines: 2, timeBlock: '收尾',
+        }, step);
+        assert.deepEqual(results.map(r => [r.ok, Boolean(r.pipeline)]), [[false, false], [true, false], [true, false], [true, false], [true, true], [true, false], [false, false]]);
+        assert.match(results[0]!.text, /「写完跟我说」/);
+        assert.match(results.at(-1)!.text, /实际 3 句，发成 2 条/);
     });
 
     test('虚拟时钟 = 真实时间 + 偏移', () => {
@@ -212,7 +225,7 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             assert.match(report, /## T09/);
             assert.match(report, /\*\*对方\*\*（插话）：等下/);
             assert.match(report, /发送中途对方插话，剩下 2 条不发/);
-            assert.match(report, /❌ 召回里有「不存在的词」/);
+            assert.match(report, /❌ 〔管线〕召回里有「不存在的词」/);
             assert.match(report, /10-06 周二/);
         } finally {
             rmSync(dir, { recursive: true, force: true });

@@ -59,6 +59,11 @@ export interface Checks {
     replyAny?: string[];
     /** 这一步她发出的话里一个都不能有 */
     replyNone?: string[];
+    /** 这一步她发出的话不能匹配（正则，查句式：「写完跟我说一声」这类客服式约定换个说法词表就漏了） */
+    replyNotMatch?: string[];
+    /** 她发出的第一句（第一行）里至少有其中一个 / 一个都不能有：先接他这句话 */
+    firstAny?: string[];
+    firstNone?: string[];
     /** 这一步最后一次生成的时间块要匹配（正则） */
     timeBlock?: string;
     /** 这一步最后一次生成的时间块不能匹配（正则；ADR 0018：她答应的事提过几次之后不再放） */
@@ -72,8 +77,10 @@ export interface Checks {
     /** 这一步她发出的字数上限 / 下限（所有气泡加起来，调研方案 13.3 日常长度） */
     maxChars?: number;
     minChars?: number;
-    /** 这一步她最多发几条 */
+    /** 这一步她最多发几条（气泡数：被吵醒只发一条这类） */
     maxBubbles?: number;
+    /** 这一步她最多说几句（发出去的行数；超过气泡上限合并进一条的也按行数数） */
+    maxLines?: number;
     /** 她发出的每一行都过得了出口检查（做不到的事、这一档的禁用词，ADR 0006），也没有行首括号 */
     exitClean?: boolean;
     /** 她发出的话没有说话的毛病：助手腔、算账、怪对方没说、和她前面几次回复重复（ADR 0014，和流水线同一个判断） */
