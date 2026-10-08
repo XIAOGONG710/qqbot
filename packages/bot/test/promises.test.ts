@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import type { Contact } from '../src/config.ts';
 import type { StoredMessage } from '../src/history.ts';
+import { ModelUnreachable } from '../src/llm.ts';
 import type { OpenAIMessage } from '../src/prompt.ts';
 import {
     describePromises, duePromises, forgotten, parsePromises, promiseKeeper, promisePrompt, SHOWN_REPLIES, type HerPromise,
@@ -281,6 +282,19 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
             assert.ok(failing.logs.some(l => l.includes('抽取失败（第 3 次，不再抽）')));
         } finally {
             failing.cleanup();
+        }
+
+        // 断网（10-08 上午 40 分钟）：没连上模型不算失败次数，后面的片段这一轮也不试；网络好了照常抽，答应的事不丢
+        const offline = new ModelUnreachable('模型接口请求失败（ENOTFOUND：getaddrinfo ENOTFOUND api.deepseek.com）');
+        const outage = setup(history.slice(3, 7), [offline, offline, offline, offline, '{"add":[{"what":"给他讲结局","date":null}],"resolved":[]}'], at('2026-10-09T22:00:00'));
+        try {
+            for (let i = 0; i < 5; i++) await outage.keeper.sync();
+            assert.equal(outage.asked.length, 6, '断网的 4 轮各试 1 次，第 5 轮两段都抽了');
+            assert.equal(outage.logs.filter(l => l.includes('没连上模型，等网络好了再抽')).length, 4);
+            assert.ok(!outage.logs.some(l => l.includes('抽取失败')));
+            assert.ok(outage.logs.includes('[1] 她答应的事：记下「给他讲结局」（下次）'));
+        } finally {
+            outage.cleanup();
         }
     });
 

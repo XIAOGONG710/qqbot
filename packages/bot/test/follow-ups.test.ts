@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { expired, extractionPrompt, firstAsk, parseExtraction, whenText, type FollowUp } from '../src/follow-ups.ts';
 import type { StoredMessage } from '../src/history.ts';
+import { ModelUnreachable } from '../src/llm.ts';
 import { blockReason, candidatesOn, occasionNote, type ProactiveInput } from '../src/proactive.ts';
 import { createProactivePlanner, type Planner } from '../src/proactive-planner.ts';
 import type { InitiateRequest, ResponderStatus } from '../src/responder.ts';
@@ -98,7 +99,7 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
         for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
     });
 
-    function setup(start: Date, history: StoredMessage[], replies: string[], settings = { occasions: ['follow_up' as const], dailyMax: 2, unansweredMax: 1 }) {
+    function setup(start: Date, history: StoredMessage[], replies: (string | Error)[], settings = { occasions: ['follow_up' as const], dailyMax: 2, unansweredMax: 1 }) {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-followups-'));
         dirs.push(dir);
         const clock = new VirtualClock(start);
@@ -113,7 +114,12 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
             responder: { initiate: async request => { initiated.push(request); request.commit(['好']); return { result: 'dryRun', parts: ['好'] }; } },
             dir, log: m => logs.push(m), now: clock.now, waitUntil: clock.waitUntil,
             names: { user: '阿明', char: '林梦瑶' },
-            extract: async messages => { prompts.push(messages.at(-1)!.content); return replies.shift() ?? '{"add":[],"resolved":[]}'; },
+            extract: async messages => {
+                prompts.push(messages.at(-1)!.content);
+                const reply = replies.shift() ?? '{"add":[],"resolved":[]}';
+                if (reply instanceof Error) throw reply;
+                return reply;
+            },
         });
         planners.push(planner);
         const state = () => JSON.parse(readFileSync(join(dir, '10001-boyfriend.json'), 'utf8'));
@@ -121,6 +127,17 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
     }
     const msg = (time: number, role: 'user' | 'assistant', content: string): StoredMessage => ({ time: new Date(time).toISOString(), role, content });
     const settled = () => new Promise(r => setTimeout(r, 30));
+
+    test('断网时没连上模型不算失败次数，网络好了照样抽（10-08 上午断网 40 分钟丢过一段）', async () => {
+        const history = [msg(t(10, 8, 21), 'user', '我明天下午两点有面试'), msg(t(10, 8, 21, 1), 'assistant', '加油')];
+        const offline = new ModelUnreachable('模型接口请求失败（ENOTFOUND：getaddrinfo ENOTFOUND api.deepseek.com）');
+        const { planner, logs, prompts, state } = setup(new Date(t(10, 8, 22)), history, [offline, offline, offline, offline, '{"add":[{"what":"字节的面试","date":"2026-10-09","time":"14:00"}],"resolved":[]}']);
+        for (let i = 0; i < 5; i++) await planner.syncFollowUps();
+        assert.equal(prompts.length, 5);
+        assert.equal(logs.filter(l => l.includes('没连上模型，等网络好了再抽')).length, 4);
+        assert.ok(!logs.some(l => l.includes('抽取失败')));
+        assert.equal(state().followUps.length, 1);
+    });
 
     test('片段结束后抽一次；到时候问（试运行），问过就忘', async () => {
         const history = [msg(t(10, 8, 21), 'user', '我明天下午两点有面试'), msg(t(10, 8, 21, 1), 'assistant', '加油')];

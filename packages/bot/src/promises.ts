@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import type { Contact } from './config.ts';
 import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { ModelUnreachable } from './llm.ts';
 import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes, type Episode } from './memory/episodes.ts';
 import { dueLoops, isFeeling, loopForgotten, type DueLoops, type LoopKind, type OpenLoop } from './open-loops.ts';
 import type { OpenAIMessage } from './prompt.ts';
@@ -276,8 +277,13 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
             try {
                 result = parsePromises(await options.extract(promisePrompt(episodeTranscript(episode, names), state.promises, names, state.loops)));
             } catch (error) {
+                if (error instanceof ModelUnreachable) {
+                    // 没连上模型（断网、DNS）不算这一段的失败次数，不然断网一会儿她答应的事就丢了；后面的片段也连不上，这一轮先停
+                    log(`片段 ${episode.id} 没连上模型，等网络好了再抽：${error.message}`);
+                    break;
+                }
                 const tries = (typeof state.extracted[episode.id] === 'number' ? state.extracted[episode.id] as number : 0) + 1;
-                // 连着失败 3 次就放弃这一段（别一直调模型）
+                // 模型回了、但连着 3 次都不对就放弃这一段（别一直调模型）
                 state.extracted[episode.id] = tries >= 3 ? true : tries;
                 save(contact, state);
                 log(`片段 ${episode.id} 抽取失败（第 ${tries} 次${tries >= 3 ? '，不再抽' : '，下次再抽'}）：${error instanceof Error ? error.message : String(error)}`);

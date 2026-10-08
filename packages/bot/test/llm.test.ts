@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { describe, test } from 'node:test';
-import { chatCompletion, EXTRACT_MAX_TOKENS, forExtraction, RETRY_DELAYS_MS, type LlmOptions } from '../src/llm.ts';
+import { chatCompletion, EXTRACT_MAX_TOKENS, forExtraction, ModelUnreachable, RETRY_DELAYS_MS, type LlmOptions } from '../src/llm.ts';
 
 const options: LlmOptions = {
     baseUrl: 'https://llm.example/',
@@ -115,5 +115,19 @@ describe('模型请求', () => {
         const other = fakeFetch([() => networkError('UND_ERR_HEADERS_TIMEOUT')]);
         await assert.rejects(chatCompletion(options, messages, { fetch: other.fetch, sleep: async () => {} }), /UND_ERR_HEADERS_TIMEOUT/);
         assert.equal(other.calls.length, 1);
+    });
+
+    test('没连上模型（网络、DNS、超时、429、5xx）和别的错误分开：后台抽取遇到前一种不算失败次数', async () => {
+        const unreachable = async (result: () => Response | Error, retries = 0) => {
+            const { fetch } = fakeFetch(Array(retries + 1).fill(result));
+            return chatCompletion(options, messages, { fetch, sleep: async () => {} }).then(() => undefined, (error: unknown) => error instanceof ModelUnreachable);
+        };
+        assert.equal(await unreachable(() => networkError('ENOTFOUND'), RETRY_DELAYS_MS.length), true);
+        assert.equal(await unreachable(() => networkError('UND_ERR_HEADERS_TIMEOUT')), true);
+        assert.equal(await unreachable(() => new DOMException('The operation was aborted due to timeout', 'TimeoutError')), true);
+        assert.equal(await unreachable(() => new Response('busy', { status: 503 })), true);
+        assert.equal(await unreachable(() => new Response('slow down', { status: 429 })), true);
+        assert.equal(await unreachable(() => new Response('{"error":"bad key"}', { status: 401 })), false);
+        assert.equal(await unreachable(() => new Response('{}')), false, '回了但没有文本');
     });
 });

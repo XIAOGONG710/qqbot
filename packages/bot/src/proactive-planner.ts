@@ -15,6 +15,7 @@ import type { Contact } from './config.ts';
 import { expired, extractionPrompt, FOLLOW_UP_DAYS, parseExtraction, partText, type Extracted, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { ModelUnreachable } from './llm.ts';
 import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './memory/episodes.ts';
 import type { OpenAIMessage } from './prompt.ts';
 import type { MacroNames } from './st/macros.ts';
@@ -153,8 +154,13 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             try {
                 result = parseExtraction(await deps.extract(extractionPrompt(episodeTranscript(episode, deps.names), followUps, deps.names)));
             } catch (error) {
+                if (error instanceof ModelUnreachable) {
+                    // 没连上模型（断网、DNS）不算这一段的失败次数；后面的片段也连不上，这一轮先停
+                    deps.log(`待跟进：片段 ${episode.id} 没连上模型，等网络好了再抽：${error.message}`);
+                    break;
+                }
                 const tries = (typeof extracted[episode.id] === 'number' ? extracted[episode.id] as number : 0) + 1;
-                // 连着失败 3 次就放弃这一段（别一直调模型）
+                // 模型回了、但连着 3 次都不对就放弃这一段（别一直调模型）
                 extracted[episode.id] = tries >= 3 ? true : tries;
                 save();
                 deps.log(`待跟进：片段 ${episode.id} 抽取失败（第 ${tries} 次${tries >= 3 ? '，不再抽' : '，下次再抽'}）：${error instanceof Error ? error.message : String(error)}`);

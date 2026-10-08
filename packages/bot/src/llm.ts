@@ -61,6 +61,12 @@ const RETRYABLE_CODES = new Set([
     'EHOSTUNREACH',
 ]);
 
+/**
+ * 这一次没连上模型：网络断了、DNS 解析不了（重试完了还不行）、别的网络错误、整体超时、对面过载（429、5xx）。
+ * 和「模型回了、但回的不对」分开：后台抽取遇到这个不算失败次数，等网络好了再抽（10-08 上午断网 40 分钟，一段「待跟进」三次都没连上就不再抽了）
+ */
+export class ModelUnreachable extends Error {}
+
 const defaultDeps: LlmDeps = {
     fetch: (url, init) => undiciFetch(url, { ...init, dispatcher }),
     sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
@@ -99,7 +105,8 @@ export async function chatCompletion(
             const code = networkErrorCode(error);
             const reason = code ? `${code}：${errorCause(error)}` : String(error);
             if (!code || !RETRYABLE_CODES.has(code) || attempt >= RETRY_DELAYS_MS.length) {
-                throw new Error(`模型接口请求失败（${reason}）`, { cause: error });
+                const Failure = code || isTimeout(error) ? ModelUnreachable : Error;
+                throw new Failure(`模型接口请求失败（${reason}）`, { cause: error });
             }
             log(`模型接口连接失败（${code}），${RETRY_DELAYS_MS[attempt]! / 1000} 秒后重试`);
             await sleep(RETRY_DELAYS_MS[attempt]!);
@@ -107,7 +114,10 @@ export async function chatCompletion(
     }
 
     const body = await response.text();
-    if (!response.ok) throw new Error(`模型接口返回 ${response.status}：${body.slice(0, 500)}`);
+    if (!response.ok) {
+        const Failure = response.status === 429 || response.status >= 500 ? ModelUnreachable : Error;
+        throw new Failure(`模型接口返回 ${response.status}：${body.slice(0, 500)}`);
+    }
 
     const json = JSON.parse(body) as { choices?: { message?: { content?: unknown }; finish_reason?: string }[] };
     const content = json.choices?.[0]?.message?.content;
@@ -121,6 +131,11 @@ function networkErrorCode(error: unknown): string | undefined {
     if (!(error instanceof TypeError)) return undefined;
     const code = (error.cause as { code?: unknown } | undefined)?.code;
     return typeof code === 'string' ? code : undefined;
+}
+
+/** 整体超时（AbortSignal.timeout）抛的是 TimeoutError */
+function isTimeout(error: unknown): boolean {
+    return error instanceof Error && error.name === 'TimeoutError';
 }
 
 function errorCause(error: unknown): string {
