@@ -27,8 +27,13 @@ import { promiseKeeper } from './promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from './her-days.ts';
 import { bodyAt } from './body.ts';
 import { worldState, type WorldNow } from './world.ts';
+import { actionQueue, settlingWorld } from './action-queue.ts';
+import { lifeExecutor } from './life-selector.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt } from './schedule.ts';
+
+/** 自己过日子的执行器多久推一次（ADR 0040） */
+const LIFE_TICK_MS = 10 * 60_000;
 
 /** 写一次长期记忆的间隔 */
 export const MEMORY_SYNC_MS = 5 * 60_000;
@@ -142,9 +147,25 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     const worldCard = config.herDays
         ? ([...CONTACT_TIERS, UNLISTED_TIER] as Tier[]).filter(tier => tiersInUse.has(tier)).map(tier => cardFor(tier).character).find(c => c.schedule && c.herWorld)
         : undefined;
-    const sharedWorld = worldCard
-        ? worldState(worldCard.herWorld!, worldCard.schedule!, log, join(config.dataDir, 'world'), pipeline?.now ?? Date.now)
+    const worldNow = pipeline?.now ?? Date.now;
+    const ledgerWorld = worldCard
+        ? worldState(worldCard.herWorld!, worldCard.schedule!, log, join(config.dataDir, 'world'), worldNow)
         : undefined;
+    // 没人聊天时她一件件过日子（ADR 0040，影子模式）：读世界之前先排到现在、结算到期的；从这次启动排起，以前排过的从事件账接着排
+    const lifeQueue = config.autonomousLife && ledgerWorld ? actionQueue(join(config.dataDir, 'world', 'action-queue.json'), log) : undefined;
+    const lifeRunner = lifeQueue && worldCard && ledgerWorld
+        ? lifeExecutor({
+            schedule: worldCard.schedule!, books: worldCard.books, ...(worldCard.herWorld!.plans ? { plans: worldCard.herWorld!.plans } : {}),
+            worldAt: time => ledgerWorld.at(worldCard.herWorld!, worldCard.schedule!, time), events: () => ledgerWorld.events(),
+            ...(worldCard.herWorld!.body ? { bodyAt: (time: Date) => bodyAt(worldCard.herWorld!.body!, worldCard.schedule!, time) } : {}),
+        }, lifeQueue, { since: new Date(worldNow()), log })
+        : undefined;
+    const sharedWorld = ledgerWorld && lifeQueue
+        ? settlingWorld(ledgerWorld, lifeQueue, worldNow, lifeRunner ? now => { lifeRunner.fill(now); } : undefined)
+        : ledgerWorld;
+    if (config.autonomousLife) log(`没人聊天时她一件件过日子：${lifeRunner ? '开（ADR 0040，影子模式：只记账，不进提示词）' : '配置开了，但没有带作息和世界的卡，不开'}`);
+    // 没人找她的时候也每 ${LIFE_TICK_MS / 60_000} 分钟推一次，过完的时段尽快落账
+    const lifeTimer = lifeRunner ? setInterval(() => { sharedWorld?.events(); }, LIFE_TICK_MS) : undefined;
     const noteMoodAndBooks = herDaysCard ? herDayLogger(
         herDaysCard.schedule!, herDaysCard.moods, herDaysCard.books, log, undefined,
         now => ({
@@ -417,6 +438,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             for (const responder of responders.values()) responder.stop();
             if (memoryTimer) clearInterval(memoryTimer);
             if (followUpTimer) clearInterval(followUpTimer);
+            if (lifeTimer) clearInterval(lifeTimer);
             releaseLock();
         },
         status() {

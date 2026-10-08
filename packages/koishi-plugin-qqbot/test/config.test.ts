@@ -133,6 +133,12 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal('herDays' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
+    test('没人聊天时她一件件过日子（ADR 0040）：旧配置没有这一项时是关；开了照样传过去', () => {
+        assert.equal(fromKoishi(minimal).autonomousLife, false);
+        assert.equal(fromKoishi({ ...minimal, autonomousLife: true }).autonomousLife, true);
+        assert.equal('autonomousLife' in (Config.simplify(Config(minimal as never)) as object), false);
+    });
+
     test('长期记忆打开时才有 memory；世界书只覆盖填了的项', () => {
         const parsed = fromKoishi({ ...minimal, prompt: { worldInfo: { depth: 4 } }, memory: { enabled: true } });
         assert.deepEqual(parsed.memory, { baseUrl: 'http://127.0.0.1:8888', timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' });

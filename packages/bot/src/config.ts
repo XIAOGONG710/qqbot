@@ -30,6 +30,7 @@ export const DEFAULTS = {
     moody: true,
     speechCheck: true,
     herDays: true,
+    autonomousLife: false,
     proactive: 'off' as ProactiveMode,
     dataDir: 'runtime/bot',
 } as const;
@@ -75,6 +76,11 @@ export interface AppConfig {
      * 默认是；卡上没有心情和书（陌生人、名单外、旧卡）时没有
      */
     herDays: boolean;
+    /**
+     * 没人聊天时她一件件过日子（ADR 0040 规则自主选择器）：按作息、课表、饭点、世界里的事、一天的打算排行动，过完落进事件账（world/events.json）。
+     * 默认关；开了以后从开的那一刻排起，行动还不进提示词（影子模式）。要开着她自己的日子，卡上要有作息和世界
+     */
+    autonomousLife: boolean;
     /**
      * 主动消息（ADR 0011）：off 关（默认）；dryRun 试运行，照算照生成，只写日志不发；on 开。
      * 只对卡上写了 proactive 的档位（现在只有男朋友档），要开着作息
@@ -196,6 +202,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         moody: bool(file, 'moody', '', DEFAULTS.moody),
         speechCheck: bool(file, 'speechCheck', '', DEFAULTS.speechCheck),
         herDays: bool(file, 'herDays', '', DEFAULTS.herDays),
+        autonomousLife: bool(file, 'autonomousLife', '', DEFAULTS.autonomousLife),
         proactive: proactiveMode(file.proactive),
         ...(memory ? { memory } : {}),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : DEFAULTS.dataDir),

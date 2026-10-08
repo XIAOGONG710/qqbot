@@ -75,6 +75,7 @@ export interface Config {
     moody: boolean;
     speechCheck: boolean;
     herDays: boolean;
+    autonomousLife: boolean;
     proactive: ProactiveMode;
     llm: {
         baseUrl: string;
@@ -126,6 +127,9 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         herDays: Schema.boolean().default(DEFAULTS.herDays)
             .description('**她自己的日子**（ADR 0015）：每日心情、在读的书。每天一个心情（按日期和当天课表，同一天对谁都一样），写进她说话的方式；'
                 + '聊到书或她正在看书时，提示词里加上在读的三本书和进度，说错第几卷 / 章就带说明重写一次。只对卡上有心情和书的档位（陌生人、名单外没有）'),
+        autonomousLife: Schema.boolean().default(DEFAULTS.autonomousLife)
+            .description('**没人聊天时她一件件过日子**（ADR 0040）：按作息、课表、饭点、世界里的事和一天的打算排行动，过完记进事件账。'
+                + '现在是影子模式：只记账，还不进提示词。要开着她自己的日子'),
         proactive: Schema.union(PROACTIVE_MODES.map(mode => Schema.const(mode).description(PROACTIVE_LABELS[mode]))).default(DEFAULTS.proactive)
             .description('**主动消息**（ADR 0011）：她在合适的时候先找人（早安、下课、睡前、冷场、他说过的事、重要的日子）。'
                 + '只对「林梦瑶」页面档位里开了主动的档位（现在只有男朋友档），要开着作息。试运行：照算照生成，只写日志不发'),
@@ -225,6 +229,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.moody !== undefined ? { moody: config.moody } : {}),
         ...(config.speechCheck !== undefined ? { speechCheck: config.speechCheck } : {}),
         ...(config.herDays !== undefined ? { herDays: config.herDays } : {}),
+        ...(config.autonomousLife !== undefined ? { autonomousLife: config.autonomousLife } : {}),
         ...(config.proactive !== undefined ? { proactive: config.proactive } : {}),
         ...(enabled ? { memory: dropUndefined(memory) } : {}),
         dataDir: config.dataDir,
