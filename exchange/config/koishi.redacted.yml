@@ -1,0 +1,45 @@
+plugins:
+  server:f68fwl:
+    host: 127.0.0.1
+    port: 5140
+  http:1ln7zx: {}
+  proxy-agent:em56vv: {}
+  database-sqlite:dt7n78:
+    path: data/koishi.db
+  console:38guuy:
+    open: false
+  config:ywddzg: {}
+  logger:ipi45t: {}
+  auth:sz83ng:
+    admin:
+      username: admin
+      password: <REDACTED>
+  adapter-onebot:vjaf0o:
+    protocol: ws
+    endpoint: ws://127.0.0.1:3001
+    selfId: '2561299676'
+    token: <REDACTED>
+  qqbot:8apu26:
+    contacts:
+      - qq: 2306669773
+        name: 鸽鸽
+        tier: classmate
+        persona: 对方是网络运维的大神，网络上认识的，比较熟
+        intro: 网上认识的朋友，网络运维的大神，比较熟
+      - qq: 2260168937
+        name: 宝宝
+        tier: boyfriend
+    unlistedFriends: false
+    llm:
+      baseUrl: https://api.deepseek.com
+      model: deepseek-flash
+      temperature: 0.7
+      maxTokens: 4096
+      thinking: high
+    memory:
+      enabled: true
+      bankPrefix: linmengyao-1006
+    prompt:
+      maxContext: 16384
+      pinExamples: false
+    proactive: 'on'

@@ -1,0 +1,146 @@
+{
+  "records": [
+    {
+      "id": "2026-10-05:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-05T01:59:09.070Z",
+      "at": "2026-10-05T07:48:34.092Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-05:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-05T16:25:00.044Z",
+      "at": "2026-10-05T16:25:00.052Z",
+      "result": "skipped",
+      "reason": "一小时内聊过"
+    },
+    {
+      "id": "2026-10-06:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-06T01:41:02.791Z",
+      "at": "2026-10-06T01:41:02.804Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-06:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-06T02:52:52.537Z",
+      "at": "2026-10-06T02:52:52.553Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-06:follow_up",
+      "occasion": "follow_up",
+      "plannedAt": "2026-10-06T10:11:51.489Z",
+      "at": "2026-10-06T10:11:51.501Z",
+      "result": "skipped",
+      "reason": "一小时内聊过"
+    },
+    {
+      "id": "2026-10-06:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-06T15:14:11.461Z",
+      "at": "2026-10-06T15:14:12.738Z",
+      "result": "sent",
+      "messageIds": [
+        245553580,
+        1597510323
+      ]
+    },
+    {
+      "id": "2026-10-07:follow_up",
+      "occasion": "follow_up",
+      "plannedAt": "2026-10-07T02:01:09.510Z",
+      "at": "2026-10-07T02:01:11.175Z",
+      "result": "sent",
+      "messageIds": [
+        1424592372,
+        1179981097
+      ]
+    },
+    {
+      "id": "2026-10-07:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-07T02:01:09.510Z",
+      "at": "2026-10-07T04:42:19.600Z",
+      "result": "skipped",
+      "reason": "没排上"
+    },
+    {
+      "id": "2026-10-07:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-07T16:11:33.958Z",
+      "at": "2026-10-07T16:11:35.605Z",
+      "result": "sent",
+      "messageIds": [
+        1603524567,
+        751928802
+      ]
+    },
+    {
+      "id": "2026-10-08:follow_up",
+      "occasion": "follow_up",
+      "plannedAt": "2026-10-08T01:41:10.981Z",
+      "at": "2026-10-08T01:41:10.997Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-08:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-08T09:33:20.808Z",
+      "at": "2026-10-08T09:33:26.983Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-08:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-08T12:09:06.255Z",
+      "at": "2026-10-08T12:09:08.872Z",
+      "result": "sent",
+      "messageIds": [
+        141638977,
+        2122299840
+      ]
+    }
+  ],
+  "followUps": [
+    {
+      "id": "f-1791267790000-1",
+      "what": "回去陪林梦瑶",
+      "date": "2026-10-07",
+      "time": "afternoon",
+      "episode": "ep-1791267790000"
+    },
+    {
+      "id": "f-1791348139000-1",
+      "what": "到济南",
+      "date": "2026-10-07",
+      "time": "17:44",
+      "episode": "ep-1791348139000"
+    }
+  ],
+  "extracted": {
+    "ep-1791187259000": true,
+    "ep-1791205340000": true,
+    "ep-1791215287000": true,
+    "ep-1791223920000": true,
+    "ep-1791267790000": true,
+    "ep-1791278197000": true,
+    "ep-1791299653347": true,
+    "ep-1791303269000": true,
+    "ep-1791338471537": true,
+    "ep-1791348139000": true,
+    "ep-1791352264000": true,
+    "ep-1791357895000": true,
+    "ep-1791362541000": true,
+    "ep-1791389496044": true,
+    "ep-1791422585000": true,
+    "ep-1791452009374": true
+  }
+}
