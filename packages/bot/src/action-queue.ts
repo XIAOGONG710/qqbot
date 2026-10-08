@@ -149,8 +149,13 @@ export function actionQueue(path: string, log: (message: string) => void = () =>
  * 读世界之前先结算到期的行动（DSH 行动复核 3·4）：时间块、状态行、日记、事件账读到的都已经算上做完的事。
  * 用世界自己的时钟（nowFn 和 worldState 的同一个），不另起一个时钟
  */
-export function settlingWorld(world: WorldState, queue: ActionQueue, nowFn: () => number): WorldState {
-    const settle = () => { queue.settleDue(new Date(nowFn()), world); };
+export function settlingWorld(world: WorldState, queue: ActionQueue, nowFn: () => number, plan?: (now: Date) => void): WorldState {
+    // plan：结算之前先把到现在为止该做的排进队列（ADR 0040 的执行器）；它只读不带结算的那一层世界，不会绕回来
+    const settle = () => {
+        const now = new Date(nowFn());
+        plan?.(now);
+        queue.settleDue(now, world);
+    };
     return {
         at: (herWorld, schedule, now) => { settle(); return world.at(herWorld, schedule, now); },
         note: now => { settle(); world.note(now); },
@@ -177,7 +182,7 @@ function verdictOf(item: QueuedAction): ActionVerdict {
     };
 }
 
-const KINDS = new Set<TypedActionKind>(['sleep', 'eat', 'attend_class', 'study', 'rest', 'read_book']);
+const KINDS = new Set<TypedActionKind>(['sleep', 'eat', 'attend_class', 'study', 'rest', 'read_book', 'leisure']);
 function validQueuedAction(value: unknown): value is QueuedAction {
     if (!value || typeof value !== 'object') return false;
     const item = value as Partial<QueuedAction>;

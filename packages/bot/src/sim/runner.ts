@@ -22,7 +22,10 @@ import { worldState, type World } from '../world.ts';
 import { DIARY_TEMPERATURE, diaryWriter } from '../diary.ts';
 import { formatDate, stateAt, type Schedule } from '../schedule.ts';
 import { actionQueue, settlingWorld } from '../action-queue.ts';
-import { parseDuration, VirtualClock, type Checks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
+import { bodyAt } from '../body.ts';
+import type { LifeEvent } from '../life-events.ts';
+import { lifeExecutor } from '../life-selector.ts';
+import { parseDuration, VirtualClock, type Checks, type LifeChecks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
 /** 模拟的联系人用的 QQ 号（虚构） */
 export const SIM_QQ = 10001;
@@ -174,8 +177,19 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             ? worldState(character.herWorld, character.schedule, log, join(options.dataDir, 'world'), clock.now)
             : undefined;
         const queue = ledger ? actionQueue(join(options.dataDir, 'world', 'action-queue.json'), log) : undefined;
+        // 没人聊天时她也过日子（ADR 0040）：执行器从场景开始那一刻排起，读的是不带结算的那一层世界
+        const herWorld = character.herWorld;
+        const executor = scenario.autonomous && ledger && queue && character.schedule && herWorld
+            ? lifeExecutor({
+                schedule: character.schedule, books: character.books, ...(herWorld.plans ? { plans: herWorld.plans } : {}),
+                worldAt: time => ledger.at(herWorld, character.schedule!, time), events: () => ledger.events(),
+                ...(herWorld.body ? { bodyAt: (time: Date) => bodyAt(herWorld.body!, character.schedule!, time) } : {}),
+            }, queue, { since: new Date(scenario.start), log })
+            : undefined;
+        if (scenario.autonomous && !executor) throw new Error('autonomous 要开着作息、她自己的日子，卡上要有世界');
         // 读世界之前先结算到期的行动（ADR 0038 调整）：聊天、时间块、日记看到的都算上已经做完的
-        return { ledger, queue, world: ledger && queue ? settlingWorld(ledger, queue, clock.now) : undefined };
+        const plan = executor ? (now: Date) => { executor.fill(now); } : undefined;
+        return { ledger, queue, world: ledger && queue ? settlingWorld(ledger, queue, clock.now, plan) : undefined };
     };
     // restart 步骤里丢掉重建：行动队列也从 action-queue.json 读回来（ADR 0038 的重启恢复）
     let { ledger: ledgerWorld, queue: queuedActions, world: sharedWorld } = openWorld();
@@ -534,10 +548,11 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 hindsightDown = step.hindsight === 'down';
                 log(hindsightDown ? 'Hindsight 停了' : 'Hindsight 恢复');
             } else if ('check' in step) {
-                const { proactive, ...rest } = step.check;
+                const { proactive, life, ...rest } = step.check;
                 current.checks = Object.keys(rest).length === 0 ? []
                     : lastSay ? runChecks(rest, lastSay, options.card.character.banned, speechContextBefore(history.load(contact.qq), lastSay))
                         : [{ ok: false, text: '前面没有 say 步骤' }];
+                if (life) current.checks.push(...lifeChecks(life, (sharedWorld?.events() ?? []).filter(event => event.id.startsWith('life:'))));
                 if (proactive) {
                     const since = steps.slice(proactiveCheckedUpTo, -1);
                     proactiveCheckedUpTo = steps.length;
@@ -614,6 +629,21 @@ export function dynamicParts(prompt: PromptResult, time: number): Generation {
         past: block(PAST_HEADER),
         messages: prompt.messages.length,
     };
+}
+
+/** 她自己过的日子（ADR 0040）：事件账里她的行动，各类够不够、有没有两件重叠。查的是她的生活，不是她说了什么，算管线自检 */
+export function lifeChecks(checks: LifeChecks, events: readonly LifeEvent[]): CheckResult[] {
+    const results: CheckResult[] = [];
+    for (const [kind, count] of Object.entries(checks.atLeast ?? {})) {
+        const n = events.filter(event => event.kind === kind && event.result !== 'failed').length;
+        results.push({ ok: n >= count!, text: `她过的日子里「${kind}」至少 ${count} 件（实际 ${n}）`, pipeline: true });
+    }
+    if (checks.noOverlap) {
+        const done = events.filter(event => event.result !== 'failed').sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
+        const clash = done.slice(1).find((event, i) => Date.parse(event.startedAt) < Date.parse(done[i]!.endedAt));
+        results.push({ ok: !clash, text: `她过的日子一件接一件、不重叠${clash ? `（${clash.id} 和前一件撞了）` : `（${done.length} 件）`}`, pipeline: true });
+    }
+    return results;
 }
 
 /** 主动消息的检查（ADR 0011）：这几步里她主动发的那几次。一次 = 同一个时机、隔不到 1 分钟的几条气泡 */

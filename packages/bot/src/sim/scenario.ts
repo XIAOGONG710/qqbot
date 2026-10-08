@@ -94,6 +94,15 @@ export interface Checks {
     log?: string;
     /** 主动消息（ADR 0011）：从上一个带 proactive 的检查到这里，她主动发的那几次 */
     proactive?: ProactiveChecks;
+    /** 她自己过的日子（ADR 0040）：到这一步为止事件账里她的行动（life: 开头的） */
+    life?: LifeChecks;
+}
+
+export interface LifeChecks {
+    /** 每一类至少几件，如 { "attend_class": 7, "eat": 6, "sleep": 3 } */
+    atLeast?: Partial<Record<TypedActionKind, number>>;
+    /** 一件接一件，没有两件时间重叠 */
+    noOverlap?: boolean;
 }
 
 export interface ProactiveChecks {
@@ -156,6 +165,8 @@ export interface Scenario {
     proactive: boolean;
     /** 默认 false：看心情不回（ADR 0013 决策 4）；按消息 id 定，已有的场景不受影响 */
     moody: boolean;
+    /** 默认 false：没人聊天时她也一件件过日子（ADR 0040 规则自主选择器），要开着作息、她自己的日子、卡上有世界 */
+    autonomous: boolean;
     /** 看心情不回的概率（0–1），不写按档位算；写 1 时正聊着的「哈哈」一定不回，用来看不回之后的样子 */
     moodyChance?: number;
     /** 指定今天的心情（ADR 0015，卡上心情的名字），比较不同心情时用；不写按虚拟日期抽 */
@@ -208,6 +219,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         schedule: s.schedule !== false,
         proactive: s.proactive === true,
         moody: s.moody === true,
+        autonomous: s.autonomous === true,
         ...(s.moodyChance !== undefined ? { moodyChance: chance(s.moodyChance) } : {}),
         ...(s.mood !== undefined ? { mood: typeof s.mood === 'string' && s.mood ? s.mood : fail('mood 应为心情的名字') } : {}),
         others: parseOthers(s.others, Date.parse(s.start as string), fail),
@@ -277,7 +289,7 @@ function checkStep(step: unknown, where: string): void {
         if (typeof s.action !== 'object' || s.action === null) fail('action 应为对象');
         const action = s.action as Record<string, unknown>;
         if (typeof action.id !== 'string' || !action.id) fail('action.id 应为非空字符串');
-        if (!['sleep', 'eat', 'attend_class', 'study', 'rest', 'read_book'].includes(String(action.kind))) fail('action.kind 不认识');
+        if (!['sleep', 'eat', 'attend_class', 'study', 'rest', 'read_book', 'leisure'].includes(String(action.kind))) fail('action.kind 不认识');
         if (action.subject !== undefined && typeof action.subject !== 'string') fail('action.subject 应为字符串');
         if (action.durationMinutes !== undefined && (!Number.isInteger(action.durationMinutes) || Number(action.durationMinutes) <= 0)) fail('action.durationMinutes 应为正整数');
     }

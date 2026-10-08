@@ -36,7 +36,7 @@ describe('模拟器：场景文件', () => {
     });
 
     test('新场景文件都读得进来（ADR 0018、0020）', () => {
-        for (const name of ['memory-fading', 'her-promises', 'memory-weeks', 'disclosure-boyfriend', 'disclosure-classmate', 'life-events', 'conversation-naturalness', 'promise-vs-topic']) {
+        for (const name of ['memory-fading', 'her-promises', 'memory-weeks', 'disclosure-boyfriend', 'disclosure-classmate', 'life-events', 'conversation-naturalness', 'promise-vs-topic', 'life-72h-auto']) {
             assert.ok(loadScenario(join(repoRoot, `packages/bot/sim/${name}.json`)).steps.length > 0, name);
         }
     });
@@ -115,6 +115,35 @@ describe('模拟器：场景文件', () => {
             assert.equal(replayed.filter((event: { kind: string }) => event.kind === 'rest').length, 1);
         } finally {
             rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('autonomous：没人聊天她也一件件过日子，落进事件账；中途重启接着过，和不重启的一样（ADR 0040）', async () => {
+        const steps = (restart: boolean) => [
+            { advance: '11h' },
+            ...(restart ? [{ restart: true as const }] : []),
+            // 到第二天 10:00：02:00 睡到 9:30 那一觉已经睡完、落账
+            { advance: '15h' },
+            { check: { life: { atLeast: { sleep: 1, eat: 2, attend_class: 1 }, noOverlap: true } } },
+        ];
+        const scenario = (restart: boolean) => parseScenario({
+            name: '自己过日子', tier: 'boyfriend', start: '2026-10-12T08:00:00+08:00', memory: false, autonomous: true, steps: steps(restart),
+        });
+        const plain = mkdtempSync(join(tmpdir(), 'qqbot-auto-a-'));
+        const restarted = mkdtempSync(join(tmpdir(), 'qqbot-auto-b-'));
+        try {
+            const generate = async () => '嗯';
+            const a = await runScenario(scenario(false), { runId: 'auto', dataDir: plain, card, llm, prompt, herDays: true, generate });
+            const b = await runScenario(scenario(true), { runId: 'auto', dataDir: restarted, card, llm, prompt, herDays: true, generate });
+            assert.deepEqual(a.steps.flatMap(s => s.checks).filter(c => !c.ok), []);
+            assert.deepEqual(b.steps.flatMap(s => s.checks).filter(c => !c.ok), []);
+            const life = (dir: string) => JSON.parse(readFileSync(join(dir, 'world', 'events.json'), 'utf8')).events
+                .filter((event: { id: string }) => event.id.startsWith('life:')).map((event: { id: string; endedAt: string }) => [event.id, event.endedAt]);
+            assert.deepEqual(life(restarted), life(plain));
+            assert.ok(life(plain).length >= 8);
+        } finally {
+            rmSync(plain, { recursive: true, force: true });
+            rmSync(restarted, { recursive: true, force: true });
         }
     });
 

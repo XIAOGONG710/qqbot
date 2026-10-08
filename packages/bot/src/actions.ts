@@ -7,7 +7,7 @@ import type { LifeEvent, LifeEventDraft, LifeEventSource } from './life-events.t
 import { classesOn, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import type { WorldNow } from './world.ts';
 
-export type TypedActionKind = 'sleep' | 'eat' | 'attend_class' | 'study' | 'rest' | 'read_book';
+export type TypedActionKind = 'sleep' | 'eat' | 'attend_class' | 'study' | 'rest' | 'read_book' | 'leisure';
 export type ActionFailure = 'invalid_time' | 'unavailable' | 'conflict' | 'no_time' | 'missing_target' | 'already_done';
 
 export interface ActionIntent {
@@ -24,6 +24,8 @@ export interface ActionContext {
     world?: WorldNow;
     books?: readonly ReadingBook[];
     events?: readonly LifeEvent[];
+    /** 世界里别的有时长的事（洗澡、喂猫、取快递、和家里视频，ADR 0030、0031）：不记成行动，但占着时间，灵活的行动撞上就停（ADR 0040） */
+    busy?: readonly { start: Date; end: Date }[];
 }
 
 export type ActionVerdict = {
@@ -40,10 +42,12 @@ export type ActionVerdict = {
 
 interface FlexibleDefinition { defaultMinutes: number; minMinutes: number; maxMinutes: number }
 
-const FLEXIBLE: Record<'study' | 'rest' | 'read_book', FlexibleDefinition> = {
+const FLEXIBLE: Record<'study' | 'rest' | 'read_book' | 'leisure', FlexibleDefinition> = {
     study: { defaultMinutes: 60, minMinutes: 25, maxMinutes: 120 },
     rest: { defaultMinutes: 30, minMinutes: 15, maxMinutes: 120 },
     read_book: { defaultMinutes: 30, minMinutes: 15, maxMinutes: 90 },
+    // 休闲（ADR 0040）：追剧、打游戏、刷手机、修片子……做什么写在 subject 里，就是状态行那几个字
+    leisure: { defaultMinutes: 60, minMinutes: 10, maxMinutes: 240 },
 };
 
 /** 同一输入得到同一裁决。事件只应在 endedAt 已经过后再交给 WorldState.recordEvents。 */
@@ -75,7 +79,8 @@ export function judgeAction(intent: ActionIntent, context: ActionContext): Actio
     if (stateAt(context.schedule, start).activity.kind !== 'free') return failed(intent, 'unavailable');
 
     let subject = intent.subject?.trim() || undefined;
-    let occupation = intent.kind === 'study' ? `在学习${subject ? `（${subject}）` : ''}` : intent.kind === 'rest' ? '在休息' : '';
+    if (intent.kind === 'leisure' && !subject) return failed(intent, 'missing_target');
+    let occupation = intent.kind === 'study' ? `在学习${subject ? `（${subject}）` : ''}` : intent.kind === 'rest' ? '在休息' : intent.kind === 'leisure' ? subject! : '';
     if (intent.kind === 'read_book') {
         const book = findBook(context.books ?? [], subject);
         if (!book) return failed(intent, 'missing_target');
@@ -119,6 +124,7 @@ export function typedOccupation(event: LifeEvent, at: Date, books: readonly Read
         case 'attend_class': return `在上${event.subject ?? '课'}`;
         case 'study': return `在学习${event.subject ? `（${event.subject}）` : ''}`;
         case 'rest': return '在休息';
+        case 'leisure': return event.subject;
         case 'read_book': {
             const book = books.find(item => item.id === event.subject);
             return `在看${book ? `《${book.title}》` : '书'}`;
@@ -182,6 +188,7 @@ function firstCollision(start: Date, end: Date, context: ActionContext): { start
     const fixed: { start: Date; end: Date }[] = [];
     fixed.push(...classesOn(context.schedule, start).lessons);
     fixed.push(...(context.world?.routine?.meals ?? []));
+    fixed.push(...(context.busy ?? []));
     const [sleepHour, sleepMinute] = context.schedule.sleep.split(':').map(Number);
     const sleep = new Date(start.getFullYear(), start.getMonth(), start.getDate(), sleepHour, sleepMinute);
     if (sleep <= start) sleep.setDate(sleep.getDate() + 1);
