@@ -46,3 +46,9 @@ DSH 侧没有 `runtime/bot`，全部结论都是**静态推演 + 证据比对**�
 | `evidence/20261008-223958-p1008a/`、`-225246-p1008b/`、`-232636-p1008c/` | 改完之后的三批真模型回归，每次都有 `report.md` 和 `result.json` |
 | `handoff/2026-10-08-2355.md` | 活状态：`integration` 比 `main` 多 11 个提交，都没上线 |
 
+## 给 DSH 的任务
+
+| 文件 | 内容 | 交付到 |
+| --- | --- | --- |
+| `tasks/2026-10-09-dsh-real-chat-research.md` | 小红书真人聊天调研（T1）、盲评题库 v1（T2）、改动建议书（T3）；先推 30 段小样 | `research/2026-10-real-chat/`，审核写进 `reviews/` |
+
