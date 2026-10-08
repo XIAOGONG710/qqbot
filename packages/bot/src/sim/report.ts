@@ -18,6 +18,19 @@ export function checkSummary(checks: RunResult['checks']): string {
     return pipeline ? `回复 ${reply} · 管线自检 ${checks.pipeline.passed} / ${pipeline}` : reply;
 }
 
+/**
+ * 出口检查介入了几次（DSH 复核 ADR 0036 P1-4）：发出去的话是清理过的，「出口检查干净」近似自证；
+ * 重写、删行的次数单列，变多就是模型原文在变差
+ */
+export function exitStats(result: RunResult): { generations: number; rewrites: number; removed: number } {
+    const logs = result.steps.flatMap(step => step.logs);
+    return {
+        generations: result.steps.reduce((n, step) => n + step.generations.length, 0),
+        rewrites: logs.filter(line => /出口检查：.*带说明重写一次/.test(line)).length,
+        removed: logs.filter(line => /出口检查：.*(，去掉|删掉这几行|删掉命中的行)/.test(line)).length,
+    };
+}
+
 export function renderReport(result: RunResult): string {
     const { scenario } = result;
     const lines: string[] = [
@@ -25,7 +38,8 @@ export function renderReport(result: RunResult): string {
         '',
         ...(scenario.description ? [scenario.description, ''] : []),
         `档位 ${scenario.tier} · 称呼 ${scenario.user} · 起点 ${day(Date.parse(scenario.start))} ${clock(Date.parse(scenario.start))}` +
-            ` · 记忆 ${result.bankId ?? '未用'} · 检查 ${checkSummary(result.checks)}`,
+            ` · 记忆 ${result.bankId ?? '未用'} · 检查 ${checkSummary(result.checks)}` +
+            (({ generations, rewrites, removed }) => ` · 生成 ${generations} 次，出口检查重写 ${rewrites}、删行 ${removed}`)(exitStats(result)),
         '',
     ];
     let lastDay = '';

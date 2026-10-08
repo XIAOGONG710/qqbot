@@ -775,6 +775,11 @@ export function runChecks(checks: Checks, step: StepRecord, banned: readonly str
         const problems = [...(issues.length ? [summarizeIssues(issues)] : []), ...(stage ? [`${stage} 条有行首括号`] : [])];
         results.push({ ok: problems.length === 0, text: `出口检查干净${problems.length ? `（${problems.join('；')}）` : ''}` });
     }
+    if (checks.rawClean) {
+        const raw = last?.raw ?? '';
+        const issues = inspectReply(raw, banned);
+        results.push({ ok: issues.length === 0, text: `模型原文就干净（出口检查之前）${issues.length ? `（${summarizeIssues(issues)}）` : ''}` });
+    }
     if (checks.speechClean) {
         const issues = inspectSpeech(replies, speech ?? { recent: [], his: [] });
         const found = issues.map(i => `第 ${i.line + 1} 行${describeSpeechIssue(i)}`).join('、');

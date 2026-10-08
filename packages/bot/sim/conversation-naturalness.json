@@ -37,7 +37,8 @@
           "(记得|别忘了).{0,6}(找我|跟我说)"
         ],
         "speechClean": true,
-        "exitClean": true
+        "exitClean": true,
+        "rawClean": true
       }
     },
     {
@@ -79,7 +80,8 @@
           "早点睡|别熬夜|别熬太晚|记得吃|吃早饭|多穿|记得带水|早睡|多喝水"
         ],
         "speechClean": true,
-        "exitClean": true
+        "exitClean": true,
+        "rawClean": true
       }
     },
     {
@@ -108,7 +110,8 @@
           "(记得|别忘了).{0,6}(找我|跟我说)"
         ],
         "speechClean": true,
-        "exitClean": true
+        "exitClean": true,
+        "rawClean": true
       }
     },
     {
@@ -136,7 +139,8 @@
           "(记得|别忘了).{0,6}(找我|跟我说)"
         ],
         "speechClean": true,
-        "exitClean": true
+        "exitClean": true,
+        "rawClean": true
       }
     }
   ]
