@@ -14,6 +14,7 @@ import { classesOn, formatDate, herDay, type ClassToday, type Schedule } from '.
 import { parseBody, type Body } from './body.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
 import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
+import type { Plans } from './day-plan.ts';
 
 export type WorldWindow = 'morning' | 'afternoon' | 'evening';
 
@@ -34,6 +35,8 @@ export interface World {
     body?: Body;
     /** 她的日常（ADR 0031）：午饭、晚饭、洗澡 */
     routine?: { lunch: { from: string; spread: number; minutes: number }; dinner: { from: string; spread: number; minutes: number }; takeoutChance: number; shower: { from: string; spread: number; minutes: [number, number]; chance: number } };
+    /** 她一天的打算会改（ADR 0034，day-plan.ts） */
+    plans?: Plans;
 }
 
 export interface Parcel {

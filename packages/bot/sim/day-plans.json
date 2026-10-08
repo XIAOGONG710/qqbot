@@ -1,0 +1,30 @@
+{
+    "name": "男朋友档：她一天的打算会改（ADR 0034）",
+    "description": "按卡上的作息和世界：10-12（周一）晚上本来打算打独立游戏，计算机网络技术的作业明天要交，先赶作业；10-20（周二）下雨，下午本来打算在图书馆赶作业，改在宿舍赶；12-21（周一）生理期第一天肚子疼得厉害，下午本来打算修片子，躺在床上。问她在干嘛、「不是说……吗」，她说的要和改了的打算对得上。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-12T19:30:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "DP01", "note": "10-12 19:30：本来打算打游戏，作业明天要交，先赶作业" },
+        { "say": "在干嘛呢" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "本来打算打独立游戏，计算机网络技术的作业明天要交，先赶作业", "log": "改了打算", "replyAny": ["作业", "计网", "计算机网络"], "replyNone": ["在打游戏", "打游戏呢", "玩游戏呢"] } },
+        { "case": "DP02", "note": "追问原来的打算" },
+        { "say": "不是说今晚要打游戏吗" },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["作业", "明天要交", "明天交", "写完", "ddl"], "replyNone": ["在打了", "正在打"] } },
+        { "advance": "7d19h28m" },
+        { "case": "DP03", "note": "10-20 15:00：下雨，本来打算在图书馆赶作业，改在宿舍赶" },
+        { "say": "在干嘛" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "本来打算在图书馆赶作业，下雨了，在宿舍赶作业", "replyAny": ["宿舍", "下雨", "雨"], "replyNone": ["在图书馆呢", "在图书馆赶", "图书馆里"] } },
+        { "case": "DP04", "note": "「不是说去图书馆吗」" },
+        { "say": "你不是说今天去图书馆吗" },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["下雨", "雨"], "replyNone": ["去了图书馆", "在图书馆呢", "刚从图书馆"] } },
+        { "advance": "61d23h58m" },
+        { "case": "DP05", "note": "12-21 15:00：生理期第一天，肚子疼得厉害，本来打算修片子，躺着" },
+        { "say": "下午干嘛呢" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "肚子疼得厉害，躺在床上刷手机", "replyAny": ["疼", "躺", "不舒服", "难受", "姨妈", "生理期"], "replyNone": ["在修片", "修图呢", "修片子呢"] } },
+        { "case": "DP06", "note": "今天的打算：上午本来想去图书馆" },
+        { "say": "上午去图书馆了吗" },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["没去", "没", "疼", "躺"], "replyNone": ["去了图书馆", "在图书馆待了"] } }
+    ]
+}

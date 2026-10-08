@@ -336,6 +336,10 @@ test('作息按档位裁剪：课名、教室、课型叫法只给 BFGK；拍照
         assert.equal(s.courses.some(c => c.name !== undefined || c.room !== undefined || c.practice?.room !== undefined), detail, tier.name);
         assert.equal(Object.values(s.kinds).some(k => k.label !== undefined), detail, tier.name);
         assert.equal(s.free.afternoon.includes('修昨天拍的片子'), detail, tier.name);
+        // 看不到的那条换成 cover，列表一样长：同一时刻各档挑到同一格（ADR 0034）
+        const full = scheduleOf('boyfriend').free;
+        assert.deepEqual([s.free.morning.length, s.free.afternoon.length, s.free.evening.length], [full.morning.length, full.afternoon.length, full.evening.length], tier.name);
+        assert.equal(s.free.afternoon.includes('窝着刷手机'), !detail, tier.name);
         assert.equal(scheduleText(tier.name).includes('济南'), detail, tier.name);
         assert.equal(scheduleText(tier.name).includes('青岛'), tier.name === 'boyfriend' || detail, tier.name);
         assert.equal(s.partner !== undefined, tier.name === 'boyfriend', tier.name);
@@ -400,6 +404,22 @@ test('她的世界写错时报错：不认识的键、事件引用不存在的�
     assert.throws(() => checkWorld(broken(w => { w.events.find(e => e.person)!.text = '互损了几句'; })), /\{person\}/);
     assert.throws(() => checkWorld(broken(w => { w.people[0]!.named_tiers = ['classmate']; })), /classmate 不在 tiers 里/);
     assert.doesNotThrow(() => checkWorld(raw()));
+});
+
+test('她一天的打算会改（ADR 0034）：plans 每档都有；写错时报错；说到的空闲活动要在作息里', () => {
+    for (const tier of ['boyfriend', 'classmate', 'unlisted']) assert.deepEqual(worldForTier(source.world, tier)!.plans!.study, source.world!.plans!.study, tier);
+    const raw = () => fromYaml(readFileSync(join(characterDir, 'source', SOURCE_FILES.world), 'utf8'), 'world.yml') as Record<string, unknown> & {
+        plans: { outings: Record<string, unknown>[]; rest?: unknown };
+    };
+    const broken = (patch: (w: ReturnType<typeof raw>) => void) => { const w = raw(); patch(w); return w; };
+    assert.throws(() => checkWorld(broken(w => { w.plans.outings[0]!.outdoors = '操场'; })), /不认识的键：outdoors/);
+    assert.throws(() => checkWorld(broken(w => { delete w.plans.rest; })), /rest 应为非空字符串/);
+    const s = structuredClone(source);
+    s.world!.plans!.outings[0]!.text = '去操场跑步';
+    assert.throws(() => checkReferences(s), /「去操场跑步」不在 schedule.yml 的 free 里/);
+    const c = structuredClone(source);
+    c.schedule.free[0]!.cover = '发呆';
+    assert.throws(() => checkSource(fromYaml(toYaml(c), 'x') as never), /只有写了 tiers 的才要 cover/);
 });
 
 test('两位闺蜜自己的日子（ADR 0033）：life 跟着人进看得到她的档位；skip_when / only_when 只认 sick / busy / home、要写 person', () => {

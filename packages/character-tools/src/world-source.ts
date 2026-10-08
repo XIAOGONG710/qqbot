@@ -137,6 +137,18 @@ export interface RoutineSource {
     note?: string;
 }
 
+/**
+ * 她一天的打算会改（ADR 0034，packages/bot/src/day-plan.ts）：schedule.yml 的空闲活动是她早上起来的打算，到时候按事实改——
+ * outings 是要出门的（下雨、不舒服时换成 indoors），study 是本来就在写作业的（作业压着也不用改），rest 是身上疼得厉害时的样子
+ */
+export interface PlansSource {
+    tiers: string[];
+    outings: { text: string; indoors: string }[];
+    study: string[];
+    rest: string;
+    note?: string;
+}
+
 export interface WorldSource {
     /** 从哪天开始推（学期开始那天）；猫粮、相机基金这些数是那天的 */
     start_day: string;
@@ -152,6 +164,7 @@ export interface WorldSource {
     events: WorldEventSource[];
     body?: BodySource;
     routine?: RoutineSource;
+    plans?: PlansSource;
     note?: string;
 }
 
@@ -167,6 +180,7 @@ export function worldTiers(world: WorldSource): { at: string; tiers: string[] }[
         ...world.people.flatMap((person, i) => [{ at: `people[${i}]`, tiers: person.tiers }, { at: `people[${i}].named_tiers`, tiers: person.named_tiers }]),
         ...world.events.map((event, i) => ({ at: `events[${i}]`, tiers: event.tiers })),
         ...(world.routine ? [{ at: 'routine', tiers: world.routine.tiers }] : []),
+        ...(world.plans ? [{ at: 'plans', tiers: world.plans.tiers }] : []),
         ...(world.body ? [{ at: 'body', tiers: world.body.tiers }, ...(world.body.period ? [{ at: 'body.period.detail_tiers', tiers: world.body.period.detail_tiers }] : [])] : []),
     ];
 }
@@ -205,6 +219,9 @@ export function worldForTier(world: WorldSource | undefined, tier: string): Card
                 lunch: { ...world.routine.lunch }, dinner: { ...world.routine.dinner }, takeoutChance: world.routine.takeout_chance,
                 shower: { from: world.routine.shower.from, spread: world.routine.shower.spread, minutes: [...world.routine.shower.minutes] as [number, number], chance: world.routine.shower.chance },
             },
+        } : {}),
+        ...(world.plans && sees(world.plans.tiers) ? {
+            plans: { outings: world.plans.outings.map(o => ({ ...o })), study: [...world.plans.study], rest: world.plans.rest },
         } : {}),
         ...(world.body && sees(world.body.tiers) ? {
             body: {
@@ -285,7 +302,7 @@ class At {
 export function checkWorld(raw: unknown): WorldSource {
     const root = new At('world.yml');
     const o = root.object(raw);
-    root.keys(o, ['start_day', 'away_holidays', 'weather', 'cat', 'parcels', 'camera_fund', 'homework', 'family_call', 'people', 'events', 'body', 'routine', 'note']);
+    root.keys(o, ['start_day', 'away_holidays', 'weather', 'cat', 'parcels', 'camera_fund', 'homework', 'family_call', 'people', 'events', 'body', 'routine', 'plans', 'note']);
     const startDay = root.at('start_day').string(o.start_day);
     if (!DATE.test(startDay)) root.at('start_day').fail(`应为 YYYY-MM-DD：${startDay}`);
 
@@ -388,6 +405,7 @@ export function checkWorld(raw: unknown): WorldSource {
 
     const body = o.body === undefined || o.body === null ? undefined : checkBody(root.at('body'), o.body);
     const routine = o.routine === undefined || o.routine === null ? undefined : checkRoutine(root.at('routine'), o.routine);
+    const plans = o.plans === undefined || o.plans === null ? undefined : checkPlans(root.at('plans'), o.plans);
     const awayHolidays = o.away_holidays === undefined || o.away_holidays === null ? [] : root.at('away_holidays').strings(o.away_holidays);
     return {
         start_day: startDay,
@@ -438,6 +456,7 @@ export function checkWorld(raw: unknown): WorldSource {
         events,
         ...(body ? { body } : {}),
         ...(routine ? { routine } : {}),
+        ...(plans ? { plans } : {}),
         ...root.at('note').note(o.note),
     };
 }
@@ -461,6 +480,33 @@ function checkNpcLife(l: At, value: unknown): NpcLifeSource {
         ...(home ? { home: { weekend_chance: l.at('home.weekend_chance').number(home.weekend_chance, 0, 1), holidays: home.holidays as boolean } } : {}),
         ...l.at('note').note(raw.note),
     };
+}
+
+function checkPlans(p: At, value: unknown): PlansSource {
+    const raw = p.object(value);
+    p.keys(raw, ['tiers', 'outings', 'study', 'rest', 'note']);
+    if (!Array.isArray(raw.outings)) p.at('outings').fail('应为数组');
+    const outings = (raw.outings as unknown[]).map((v, i) => {
+        const o = p.at(`outings[${i}]`).object(v);
+        p.at(`outings[${i}]`).keys(o, ['text', 'indoors']);
+        return { text: p.at(`outings[${i}].text`).string(o.text), indoors: p.at(`outings[${i}].indoors`).string(o.indoors) };
+    });
+    return {
+        tiers: p.at('tiers').strings(raw.tiers),
+        outings,
+        study: p.at('study').strings(raw.study),
+        rest: p.at('rest').string(raw.rest),
+        ...p.at('note').note(raw.note),
+    };
+}
+
+/** 打算里说到的空闲活动（outings.text、study）要在 schedule.yml 的 free 里（ADR 0034）：不然那条规则永远用不上 */
+export function checkPlansAgainstFree(plans: PlansSource | undefined, free: readonly { text: string }[]): void {
+    if (!plans) return;
+    const texts = new Set(free.map(item => item.text));
+    for (const text of [...plans.outings.map(o => o.text), ...plans.study]) {
+        if (!texts.has(text)) throw new Error(`world.yml plans 里的「${text}」不在 schedule.yml 的 free 里`);
+    }
 }
 
 function checkRoutine(r: At, value: unknown): RoutineSource {

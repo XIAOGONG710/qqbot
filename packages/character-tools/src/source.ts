@@ -212,7 +212,8 @@ export interface ScheduleSource {
     makeups: { date: string; as_day: number; note?: string }[];
     courses: { name: string; day: number; slot: string; room: string; kind: CourseKind; weeks: string; practice?: number; practice_room?: string }[];
     /** 空闲时做什么；tiers 没写 = 所有档位都能看到 */
-    free: { window: 'morning' | 'afternoon' | 'evening'; text: string; tiers?: string[]; note?: string }[];
+    /** cover：看不到这条的档位换成这句（ADR 0034：各档的列表一样长，同一时刻挑到同一格，不会男朋友看到「修片」、同学看到「打游戏」） */
+    free: { window: 'morning' | 'afternoon' | 'evening'; text: string; tiers?: string[]; cover?: string; note?: string }[];
     /** 课名、教室、课型叫法给哪些档位 */
     course_detail: { tiers: string[]; note?: string };
     /** 课型：上课时过多少分钟才看到消息、最多回几条 */
@@ -606,7 +607,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         free: h.at('free').array(schedule.free).map((value, i) => {
             const c = h.at(`free[${i}]`);
             const o = c.object(value);
-            c.keys(o, ['window', 'text', 'tiers', 'note']);
+            c.keys(o, ['window', 'text', 'tiers', 'cover', 'note']);
             const window = c.at('window').string(o.window) as ScheduleSource['free'][number]['window'];
             if (!['morning', 'afternoon', 'evening'].includes(window)) c.at('window').fail(`${window} 不是 morning / afternoon / evening`);
             const item: ScheduleSource['free'][number] = { window, text: c.at('text').string(o.text) };
@@ -614,6 +615,10 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
             if (o.tiers !== undefined && o.tiers !== null) {
                 const tiers = c.at('tiers').strings(o.tiers);
                 if (tiers.length) item.tiers = tiers;
+            }
+            if (o.cover !== undefined && o.cover !== null) {
+                if (!item.tiers) c.at('cover').fail('只有写了 tiers 的才要 cover');
+                item.cover = c.at('cover').string(o.cover);
             }
             return withNote(c.at('note'), o.note, item);
         }),

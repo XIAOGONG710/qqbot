@@ -8,7 +8,7 @@ import { personaToCard } from './persona-to-card.ts';
 import { scenesToLorebook } from './scenes-to-lorebook.ts';
 import { checkScheduleTiers, scheduleForTier } from './schedule-to-card.ts';
 import { SECTION_KEYS, type CharacterSource, type TextField } from './source.ts';
-import { worldTiers } from './world-source.ts';
+import { checkPlansAgainstFree, worldTiers } from './world-source.ts';
 import type { CharacterCardV2, WorldInfoBook } from './st-format.ts';
 
 export interface BuiltTier {
@@ -48,6 +48,7 @@ export function checkReferences(source: CharacterSource): void {
         });
     });
     if (source.world) for (const { at, tiers } of worldTiers(source.world)) known(tiers, `world.yml ${at}.tiers`);
+    checkPlansAgainstFree(source.world?.plans, source.schedule.free);
     for (const ref of biographyTierRefs(source.biography)) known(ref.tiers, ref.at);
     for (const tier of source.tiers.tiers) {
         if (tier.social !== undefined && !persona.social[tier.social]) {

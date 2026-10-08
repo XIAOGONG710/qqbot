@@ -12,6 +12,9 @@ function forTier(list: ByTier[], tier: string): string {
     return list.find(item => item.tiers.includes(tier))!.text;
 }
 
+/** 看不到的空闲活动没写 cover 时的说法（ADR 0034） */
+const FREE_COVER = '窝着刷手机';
+
 /** 作息里引用的档位都要存在；按档位写的说法每个档位恰好一句 */
 export function checkScheduleTiers(schedule: ScheduleSource, tierNames: string[]): void {
     const known = (tiers: string[], at: string) => {
@@ -75,8 +78,9 @@ export function scheduleForTier(schedule: ScheduleSource, tier: string): CardSch
     });
 
     const free = { morning: [] as string[], afternoon: [] as string[], evening: [] as string[] };
+    // 看不到的那条换成 cover，不删（ADR 0034）：空闲活动按「日期 + 时段」哈希挑格子，各档列表一样长才挑到同一件事
     for (const item of schedule.free) {
-        if (!item.tiers || item.tiers.includes(tier)) free[item.window].push(item.text);
+        free[item.window].push(!item.tiers || item.tiers.includes(tier) ? item.text : item.cover ?? FREE_COVER);
     }
 
     const kinds = Object.fromEntries(KINDS.map(kind => {

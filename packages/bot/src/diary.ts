@@ -7,7 +7,7 @@
 
 import { join } from 'node:path';
 import type { Contact } from './config.ts';
-import { bookProgressOn, moodAt, type DailyMood, type ReadingBook } from './her-days.ts';
+import { bookProgressOn, moodAt, readingActivities, type DailyMood, type ReadingBook } from './her-days.ts';
 import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import type { LongTermMemory } from './memory/long-term.ts';
@@ -16,6 +16,7 @@ import type { OpenAIMessage } from './prompt.ts';
 import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from './schedule.ts';
 import { diaryWorld, worldAt, type World, type WorldNow } from './world.ts';
 import { bodyAt, diaryBody } from './body.ts';
+import { dayPlan, describeSlot } from './day-plan.ts';
 
 /** bot 停过时往回补几天 */
 export const DIARY_BACKFILL_DAYS = 3;
@@ -66,17 +67,16 @@ export function diaryMaterial(
         // 课名也不写，只写课型（「专业课」「机房课」）：同学档的卡上没有课名，课名看得出专业
         ? `课：${lessons.map(l => `${hm(l.start)}–${hm(l.end)} ${schedule.kinds[l.kind]?.label?.split('，')[0] || '课'}`).join('；')}`
         : '课：没有课');
-    // 空闲时在干什么：作息按日期固定选，取上午、下午、晚上各一个时刻
-    const free = ['10:30', '15:30', '20:30'].flatMap(time => {
-        const activity = stateAt(schedule, atTime(day, time)).activity;
-        return activity.kind === 'free' ? [`${time.startsWith('10') ? '上午' : time.startsWith('15') ? '下午' : '晚上'}${activity.text}`] : [];
-    });
-    if (free.length) lines.push(`空闲时：${free.join('；')}`);
     // 她那边今天发生的事、身上舒不舒服（ADR 0026）：一天结束时算（她的一天到 02:00，23:30 已经都发生了）
     const around = sources.world
         ? sources.resolveWorld?.(sources.world, schedule, atTime(day, '23:30')) ?? worldAt(sources.world, schedule, atTime(day, '23:30'))
         : undefined;
     const moodBody = sources.world?.body ? bodyAt(sources.world.body, schedule, atTime(day, '15:00')) : undefined;
+    // 空闲时在干什么（ADR 0034）：和聊天时的状态行同一份打算——同样并上在读的书，下雨、不舒服、作业压着时改了的照实写
+    // （以前这里不并书，日记写「晚上在追剧」，聊天里那晚说的是在看书）
+    const free = dayPlan(schedule, sources.world?.plans, day, { rain: around?.weather?.rain, body: moodBody, homework: around?.homework }, readingActivities(sources.books))
+        .map(describeSlot);
+    if (free.length) lines.push(`空闲时：${free.join('；')}`);
     const mood = moodAt(schedule, sources.moods, atTime(day, '12:00'), sources.mood, { body: moodBody, world: around });
     if (mood) lines.push(`心情：${mood.mood.name}（${mood.reason}）`);
     const happened = around ? diaryWorld(around) : [];

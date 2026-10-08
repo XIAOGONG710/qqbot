@@ -27,6 +27,7 @@ import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, occupationAt, recapDay, recentWith, unavailableAt, worldAt, type WorldState } from './world.ts';
 import { npcMentioned } from './npc.ts';
+import { dayPlan, describePlans, describeSlot, planNow } from './day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
 import { describePast, pastCue, type PastChunk } from './biography.ts';
@@ -150,8 +151,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         const then = options.worldState?.at(character.herWorld, herSchedule, at(23, 30)) ?? worldAt(character.herWorld, herSchedule, at(23, 30));
         if (!then) return undefined;
         const lines = recapDay(then);
-        const body = character.herWorld.body ? diaryBody(bodyAt(character.herWorld.body, herSchedule, at(15, 0))) : undefined;
+        const bodyThen = character.herWorld.body ? bodyAt(character.herWorld.body, herSchedule, at(15, 0)) : undefined;
+        const body = bodyThen ? diaryBody(bodyThen) : undefined;
         if (body) lines.push(body);
+        // 那天各时段的打算、改了的（ADR 0034）
+        lines.push(...dayPlan(herSchedule, character.herWorld.plans, dayStart, { rain: then.weather?.rain, body: bodyThen, homework: then.homework }, extraFree).map(describeSlot));
         if (!lines.length) return undefined;
         const day = `${dayStart.getMonth() + 1}月${dayStart.getDate()}日 ${'日一二三四五六'.split('').map(d => `周${d}`)[dayStart.getDay()]}`;
         return { day, lines, text: `[那天（${day}）你那边的流水账（你自己过的，都是真的：他问到具体的事——下没下雨、喂没喂猫、快递拿没拿——照这个说，别说错；泛泛问那天干了什么时，先说上面记得住的事，这里的不用一件件报）：${lines.join('；')}]` };
@@ -234,12 +238,24 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）
             const recap = day && !day.period ? recapOf(day.start, time) : undefined;
             if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
+            // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
+            const bodyNow = herSchedule && character.herWorld?.body ? bodyAt(character.herWorld.body, herSchedule, time) : undefined;
             // 此刻在做的事接上世界（ADR 0030）：空闲时正好在喂猫、取快递、和家里视频、赶作业，状态行就写这件
             const busy = state?.activity.kind === 'free' && around ? occupationAt(around, time) : undefined;
             if (state && busy) {
                 state = { ...state, activity: { kind: 'free', text: busy } };
                 log(`此刻在做：${busy}`);
             }
+            // 她一天的打算会改（ADR 0034）：醒着时给今天的打算；空闲又没有别的事时，状态行写「本来打算 X，Y，Z」
+            const slots = herSchedule && around && state && state.activity.kind !== 'sleep'
+                ? dayPlan(herSchedule, character.herWorld?.plans, herDay(herSchedule, time), { rain: around.weather?.rain, body: bodyNow, homework: around.homework }, extraFree)
+                : [];
+            const revised = state?.activity.kind === 'free' && !busy && herSchedule ? planNow(herSchedule, slots, time) : undefined;
+            if (state && revised) {
+                state = { ...state, activity: { kind: 'free', text: revised } };
+                log(`改了打算：${revised}`);
+            }
+            const plansLine = describePlans(slots);
             const books = herSchedule
                 ? readingSection(herSchedule, character.books, time, {
                     history: chat, userName: contact.name,
@@ -247,8 +263,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 })
                 : undefined;
             reading = books?.context;
-            // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
-            const bodyNow = herSchedule && character.herWorld?.body ? bodyAt(character.herWorld.body, herSchedule, time) : undefined;
             const body = bodyNow ? describeBody(bodyNow) : undefined;
             const mood = herSchedule ? moodAt(herSchedule, character.moods, time, options.mood, { body: bodyNow, world: around }) : undefined;
             // 她的过去（ADR 0022）：他说到卡上某块的线索才想起；主动找他时不想
@@ -326,6 +340,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(warm ? [warm] : []),
                         ...(books ? [books.text] : []),
                         ...(world ? [world] : []),
+                        ...(plansLine ? [plansLine] : []),
                         ...(promised ? [promised] : []),
                         ...(intent ? [intent] : []),
                         ...(length ? [describeLength(length)] : []),

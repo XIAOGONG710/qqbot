@@ -159,7 +159,8 @@ free:
       - bestie
       - girl_friend
       - known
-    note: 空闲活动默认所有档位都能看到；拍照修图会暴露爱好（同学以下的禁用词有「相机」）
+    cover: 窝着刷手机
+    note: 空闲活动默认所有档位都能看到；拍照修图会暴露爱好（同学以下的禁用词有「相机」）。看不到的档位那一格是 cover（ADR 0034：同一时刻各档是同一件事）
   - window: afternoon
     text: 打独立游戏
   - window: afternoon
@@ -169,7 +170,8 @@ free:
       - bestie
       - girl_friend
       - known
-    note: 空闲活动默认所有档位都能看到；拍照修图会暴露爱好（同学以下的禁用词有「相机」）
+    cover: 窝着刷手机
+    note: 空闲活动默认所有档位都能看到；拍照修图会暴露爱好（同学以下的禁用词有「相机」）。看不到的档位那一格是 cover（ADR 0034：同一时刻各档是同一件事）
   - window: evening
     text: 在追一部剧
   - window: evening
