@@ -17,6 +17,6 @@
         { "check": { "speechClean": true, "exitClean": true, "timeBlock": "你心里还记着、没了结的事[^\\]]*(电影|加班)", "log": "没了结 1" } },
         { "case": "OS02", "note": "他提起电影：她记得，不翻旧账" },
         { "say": "昨天那个电影咱们啥时候补上" },
-        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["电影", "流浪地球", "周末", "今晚", "明天", "改天", "补"] } }
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["电影", "流浪地球", "周末", "今晚", "明天", "改天", "补", "哪天"] } }
     ]
 }

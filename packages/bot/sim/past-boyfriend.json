@@ -14,7 +14,7 @@
         { "check": { "speechClean": true, "exitClean": true, "past": ["小时候走丢那天、那块牌子"], "replyAny": ["窗台", "还在", "家里", "没动", "没挪"] } },
         { "case": "PB03", "note": "初中数学：同桌、要答案、嫌他装" },
         { "say": "初中那会儿你是不是天天抄我数学作业" },
-        { "check": { "speechClean": true, "exitClean": true, "past": ["初中同桌"], "replyAny": ["数学", "答案", "讲题", "装", "同桌", "听不懂", "抄"] } },
+        { "check": { "speechClean": true, "exitClean": true, "past": ["初中同桌"], "replyAny": ["数学", "答案", "讲题", "讲得", "装", "同桌", "听不懂", "抄"] } },
         { "case": "PB04", "note": "高三那年：不想讲，含糊过去，不编细节" },
         { "say": "高三那年你到底怎么了，我一直没敢问" },
         { "check": { "speechClean": true, "exitClean": true, "past": ["高三那一年"], "replyAny": ["不想", "不提", "过去了", "别问", "没什么", "不说", "算了"] } },
