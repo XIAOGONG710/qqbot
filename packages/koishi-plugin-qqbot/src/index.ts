@@ -76,6 +76,7 @@ export interface Config {
     speechCheck: boolean;
     herDays: boolean;
     autonomousLife: boolean;
+    candidates: number;
     proactive: ProactiveMode;
     llm: {
         baseUrl: string;
@@ -130,6 +131,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         autonomousLife: Schema.boolean().default(DEFAULTS.autonomousLife)
             .description('**没人聊天时她一件件过日子**（ADR 0040）：按作息、课表、饭点、世界里的事和一天的打算排行动，过完记进事件账。'
                 + '现在是影子模式：只记账，还不进提示词。要开着她自己的日子'),
+        candidates: Schema.natural().min(1).max(5).default(DEFAULTS.candidates)
+            .description('**挑候选**（ADR 0041）：他难过、说亲密话、收尾时一次生成几个回复、按规则挑一个（少说几句、不扯自己的事、不约「写完跟我说」）。1 是不挑；3 是这几种时候三倍的模型调用'),
         proactive: Schema.union(PROACTIVE_MODES.map(mode => Schema.const(mode).description(PROACTIVE_LABELS[mode]))).default(DEFAULTS.proactive)
             .description('**主动消息**（ADR 0011）：她在合适的时候先找人（早安、下课、睡前、冷场、他说过的事、重要的日子）。'
                 + '只对「林梦瑶」页面档位里开了主动的档位（现在只有男朋友档），要开着作息。试运行：照算照生成，只写日志不发'),
@@ -230,6 +233,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.speechCheck !== undefined ? { speechCheck: config.speechCheck } : {}),
         ...(config.herDays !== undefined ? { herDays: config.herDays } : {}),
         ...(config.autonomousLife !== undefined ? { autonomousLife: config.autonomousLife } : {}),
+        ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
         ...(config.proactive !== undefined ? { proactive: config.proactive } : {}),
         ...(enabled ? { memory: dropUndefined(memory) } : {}),
         dataDir: config.dataDir,

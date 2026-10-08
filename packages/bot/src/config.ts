@@ -31,6 +31,7 @@ export const DEFAULTS = {
     speechCheck: true,
     herDays: true,
     autonomousLife: false,
+    candidates: 1,
     proactive: 'off' as ProactiveMode,
     dataDir: 'runtime/bot',
 } as const;
@@ -81,6 +82,8 @@ export interface AppConfig {
      * 默认关；开了以后从开的那一刻排起，行动还不进提示词（影子模式）。要开着她自己的日子，卡上要有作息和世界
      */
     autonomousLife: boolean;
+    /** 他难过、说亲密话、收尾时一次生成几个候选、按规则挑一个（ADR 0041）。默认 1（不挑）；3 是三倍的模型调用（并行，不加时间） */
+    candidates: number;
     /**
      * 主动消息（ADR 0011）：off 关（默认）；dryRun 试运行，照算照生成，只写日志不发；on 开。
      * 只对卡上写了 proactive 的档位（现在只有男朋友档），要开着作息
@@ -203,10 +206,17 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         speechCheck: bool(file, 'speechCheck', '', DEFAULTS.speechCheck),
         herDays: bool(file, 'herDays', '', DEFAULTS.herDays),
         autonomousLife: bool(file, 'autonomousLife', '', DEFAULTS.autonomousLife),
+        candidates: candidateCount(file.candidates),
         proactive: proactiveMode(file.proactive),
         ...(memory ? { memory } : {}),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : DEFAULTS.dataDir),
     };
+}
+
+function candidateCount(value: unknown): number {
+    if (value === undefined) return DEFAULTS.candidates;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 5) throw new Error('配置 candidates 应为 1–5 的整数');
+    return value;
 }
 
 function proactiveMode(value: unknown): ProactiveMode {

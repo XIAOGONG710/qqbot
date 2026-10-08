@@ -26,12 +26,14 @@ const noMemory = flag('--no-memory');
 const cardDir = option('--card');
 const pinExamples = option('--pin-examples');
 const tag = option('--tag');
+// 挑候选（ADR 0041）：不写照 bot 的配置，A/B 时写 --candidates 1 / 3
+const candidatesOption = option('--candidates');
 // 同时跑几次：不带记忆的默认全部并行；带记忆的默认一次一个——本机只有 6 GB 内存，3 次并行的带记忆场景两次把和线上共用的 Postgres 挤到
 // out of memory、崩溃恢复（10-07 18:17、19:51，各 2–3 秒自动恢复，线上的库没事）
 const parallelOption = option('--parallel');
 const parallel = parallelOption === undefined ? undefined : Number(parallelOption);
 if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))) {
-    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N]');
+    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N]');
     process.exit(2);
 }
 
@@ -81,6 +83,7 @@ for (const [fileIndex, file] of files.entries()) {
             prompt: config.prompt,
             speechCheck: config.speechCheck,
             herDays: config.herDays,
+            candidates: candidatesOption === undefined ? config.candidates : Number(candidatesOption),
             ...(diaryWorld ? { diaryWorld } : {}),
             ...(diaryWorldSchedule ? { diaryWorldSchedule } : {}),
             hindsight,

@@ -64,6 +64,8 @@ export interface RunOptions {
     speechCheck?: boolean;
     /** 她自己的日子（ADR 0015），run.ts 照 bot 的配置传；默认否 */
     herDays?: boolean;
+    /** 他难过、亲密话、收尾时挑候选（ADR 0041），run.ts 照 bot 的配置或 --candidates 传；默认不挑 */
+    candidates?: number;
     /** 日记里的世界（ADR 0026）：同学档的卡上的，run.ts 传 */
     diaryWorld?: World;
     /** 和 diaryWorld 同一档的作息（ADR 0034） */
@@ -272,6 +274,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.moodyChance !== undefined ? { moodyChance: scenario.moodyChance } : {}),
         speechCheck: options.speechCheck ?? false,
         herDays: options.herDays ?? false,
+        ...(options.candidates ? { candidates: options.candidates } : {}),
         ...(scenario.mood !== undefined ? { mood: scenario.mood } : {}),
         ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
         history,

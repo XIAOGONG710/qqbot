@@ -13,7 +13,7 @@ import type { ChatHistory, StoredMessage } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
 import { CLEAR_DAYS, recentChat, type FadeStats } from './memory/fading.ts';
-import { initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from './memory/long-term.ts';
+import { heardSinceReply, initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from './memory/long-term.ts';
 import { buildPrompt, type OpenAIMessage, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
 import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from './responder.ts';
@@ -35,6 +35,7 @@ import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWor
 import type { PromiseKeeper } from './promises.ts';
 import { describeState, herDay, stateAt } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
+import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candidates.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 
@@ -102,6 +103,8 @@ export interface ContactPipelineOptions {
     moody?: boolean;
     /** 出口检查里查说话的毛病（ADR 0014）；默认否 */
     speechCheck?: boolean;
+    /** 他难过、说亲密话、收尾时一次生成几个候选、按规则挑一个（ADR 0041）；不写或 1 是不挑 */
+    candidates?: number;
     /**
      * 她自己的日子（ADR 0015）：心情行、「在读的书」、看书的空闲活动、进度数字的检查；默认否。
      * 一天怎么算、课多不多按卡上的作息，所以卡上没有作息（或者没有心情、书）就没有；schedule 关着时心情和书照样有，只是没有看书的空闲活动
@@ -138,6 +141,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const extraFree = herSchedule ? readingActivities(character.books) : [];
     // 这一轮放了「在读的书」时，出口检查拿它核对进度数字。同一个回复器一次只生成一条，review 紧跟着这一轮的 buildPrompt
     let reading: BookProgressContext | undefined;
+    // 这一轮要不要挑候选（ADR 0041）：buildPrompt 按意图行定，紧跟着的 generate 用
+    let pick: PickRules | undefined;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -322,6 +327,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 unanswered: loops?.unanswered.map(l => l.what),
             });
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
+            const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
+            pick = picked ? {
+                kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: character.banned,
+                // 她自己生活里的东西：猫、相机、在读的书、手上的爱好（DSH 诊断 1.2、ADR 0036 的四类）
+                own: [...(around?.cat ? [around.cat.name] : []), '相机', ...character.books.map(book => book.title), '追剧', '调色', '构图', '修片', '摄影区'],
+                ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),
+            } : undefined;
             // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
             const length = lengthHint({ history: chat, intent, initiating: Boolean(initiate), low: mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
@@ -377,7 +389,15 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆）` } : {}),
             };
         },
-        generate: messages => generate(messages, log),
+        generate: async messages => {
+            const rules = pick;
+            if (!rules) return generate(messages, log);
+            // 同一份提示词生成几个，挑扣分最少的（ADR 0041）；返回原文，清理照常在回复器里做
+            const all = await Promise.all(Array.from({ length: options.candidates! }, () => generate(messages, log)));
+            const { index, scored } = pickBest(all, rules, clean);
+            log(describePick(index, scored));
+            return all[index]!;
+        },
         clean,
         // 出口检查：重写时在后处理过的提示词末尾加一条说明，再按同样的方式后处理一次
         // 打错字再改口（ADR 0024）：拆好条之后、发出去之前。种子只看是谁、说了什么，不看时间：同一句话结果固定

@@ -163,6 +163,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     const sharedWorld = ledgerWorld && lifeQueue
         ? settlingWorld(ledgerWorld, lifeQueue, worldNow, lifeRunner ? now => { lifeRunner.fill(now); } : undefined)
         : ledgerWorld;
+    if (config.candidates > 1) log(`挑候选：他难过、说亲密话、收尾时一次生成 ${config.candidates} 个，按规则挑一个（ADR 0041）`);
     if (config.autonomousLife) log(`没人聊天时她一件件过日子：${lifeRunner ? '开（ADR 0040，影子模式：只记账，不进提示词）' : '配置开了，但没有带作息和世界的卡，不开'}`);
     // 没人找她的时候也每 ${LIFE_TICK_MS / 60_000} 分钟推一次，过完的时段尽快落账
     const lifeTimer = lifeRunner ? setInterval(() => { sharedWorld?.events(); }, LIFE_TICK_MS) : undefined;
@@ -289,6 +290,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             moody: config.moody,
             speechCheck: config.speechCheck,
             herDays: config.herDays,
+            candidates: config.candidates,
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
             history,
             memory,
