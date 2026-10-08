@@ -35,9 +35,10 @@ describe('此刻在做的事接上世界（ADR 0030）', () => {
 
     test('过去某一天她那边的事（ADR 0032）：天气、喂没喂猫、快递、写完的作业、小事、洗澡；按这一档的卡', () => {
         const recap = (c: ReturnType<typeof card>, d: number) => recapDay(worldAt(c.herWorld!, c.schedule!, new Date(2026, 9, d, 23, 30))!).join('；');
-        assert.equal(recap(boyfriend, 12), '没下雨，12–22℃；19:16 下楼喂了土豆；12:20 去驿站取了快递（洗面奶）；熬夜写完了计算机网络技术的作业；22:35 去洗了澡');
+        // 男朋友档还有那天花了多少（ADR 0035）
+        assert.equal(recap(boyfriend, 12), '没下雨，12–22℃；19:16 下楼喂了土豆；12:20 去驿站取了快递（洗面奶）；熬夜写完了计算机网络技术的作业；花了 41 元（午饭 15、晚饭 14、零碎 12）；22:35 去洗了澡');
         assert.match(recap(boyfriend, 14), /^下雨，10–17℃；下雨，没下楼喂土豆；熬夜写完了数据结构的作业；下课和苏雨桐一起去食堂吃饭/);
-        assert.doesNotMatch(recap(classmate, 14), /苏雨桐|宿舍|数据结构/, '同学档看不到的不写');
+        assert.doesNotMatch(recap(classmate, 14), /苏雨桐|宿舍|数据结构|花了/, '同学档看不到的不写');
     });
 
     test('「你那边」里的视频：那半小时写「还在视频」，之后写「视频过了」', () => {

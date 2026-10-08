@@ -66,6 +66,8 @@ export interface CardWorld {
     events: {
         id: string; text: string; person?: string; window: 'morning' | 'afternoon' | 'evening'; chance: number; when: 'school' | 'class_day' | 'any'; weekday?: number;
         skipWhen?: ('sick' | 'busy' | 'home')[]; onlyWhen?: ('sick' | 'busy' | 'home')[];
+        /** 花了钱（ADR 0035） */
+        cost?: { amount: [number, number]; what: string };
     }[];
     /** 她的身体（ADR 0025）：period.detail 是这一档说得出口生理期 */
     body?: { period?: { first: string; cycle: [number, number]; days: number; crampsChance: number; detail: boolean }; cold?: { perMonth: number; days: number } };
@@ -73,6 +75,14 @@ export interface CardWorld {
     routine?: { lunch: { from: string; spread: number; minutes: number }; dinner: { from: string; spread: number; minutes: number }; takeoutChance: number; shower: { from: string; spread: number; minutes: [number, number]; chance: number } };
     /** 她一天的打算会改（ADR 0034） */
     plans?: { outings: { text: string; indoors: string }[]; study: string[]; rest: string };
+    /** 她的钱（ADR 0035）：detail 是这一档说得出口余额、花了多少 */
+    money?: {
+        allowance: number; payday: number; start: number; askHome: number;
+        prices: { canteen: [number, number]; takeout: [number, number]; misc: [number, number]; catFood: number; parcels: Record<string, number> };
+        sideJobs?: { perMonth: number; pay: [number, number]; kinds: string[] };
+        saving: { keepPerDay: number; step: number; max: number };
+        detail: boolean;
+    };
 }
 
 /** 她的过去（ADR 0022）：这一档看得到的年表（「何时：何事」一行一件）和素材块；keys 不进提示词 */

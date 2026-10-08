@@ -110,6 +110,8 @@ export interface WorldEventSource {
     /** person 那天是这些状态时不发生 / 只在这些状态时发生（ADR 0033） */
     skip_when?: NpcStateKind[];
     only_when?: NpcStateKind[];
+    /** 这件事花了钱（ADR 0035）：多少（范围里按哈希取）、记账时叫什么（「奶茶」） */
+    cost?: { amount: [number, number]; what: string };
     note?: string;
 }
 
@@ -149,6 +151,26 @@ export interface PlansSource {
     note?: string;
 }
 
+/**
+ * 她的钱（ADR 0035，packages/bot/src/world.ts 推进）：每月 payday 号到账 allowance，开始那天手上有 start；三餐、带 cost 的小事、网购按 prices 花；
+ * 线上接单平均每月 side_jobs.per_month 个；相机基金每周存「留够到下次到账每天 keep_per_day 以后剩下的」，按 step 取整，最多 max。
+ * 规则给 tiers（要和看得到相机基金的档位一致，存多少才一样）；余额、花了多少只给 detail_tiers
+ */
+export interface MoneySource {
+    tiers: string[];
+    detail_tiers: string[];
+    allowance: number;
+    payday: number;
+    start: number;
+    /** 钱快花完、离到账还有几天时跟家里要多少 */
+    ask_home: number;
+    /** misc：在学校每天的零碎（零食饮料、日用品） */
+    prices: { canteen: [number, number]; takeout: [number, number]; misc: [number, number]; cat_food: number; parcels: Record<string, number> };
+    side_jobs?: { per_month: number; pay: [number, number]; kinds: string[] };
+    saving: { keep_per_day: number; step: number; max: number };
+    note?: string;
+}
+
 export interface WorldSource {
     /** 从哪天开始推（学期开始那天）；猫粮、相机基金这些数是那天的 */
     start_day: string;
@@ -165,6 +187,7 @@ export interface WorldSource {
     body?: BodySource;
     routine?: RoutineSource;
     plans?: PlansSource;
+    money?: MoneySource;
     note?: string;
 }
 
@@ -181,6 +204,7 @@ export function worldTiers(world: WorldSource): { at: string; tiers: string[] }[
         ...world.events.map((event, i) => ({ at: `events[${i}]`, tiers: event.tiers })),
         ...(world.routine ? [{ at: 'routine', tiers: world.routine.tiers }] : []),
         ...(world.plans ? [{ at: 'plans', tiers: world.plans.tiers }] : []),
+        ...(world.money ? [{ at: 'money', tiers: world.money.tiers }, { at: 'money.detail_tiers', tiers: world.money.detail_tiers }] : []),
         ...(world.body ? [{ at: 'body', tiers: world.body.tiers }, ...(world.body.period ? [{ at: 'body.period.detail_tiers', tiers: world.body.period.detail_tiers }] : [])] : []),
     ];
 }
@@ -213,11 +237,24 @@ export function worldForTier(world: WorldSource | undefined, tier: string): Card
             id: event.id, text: event.text, window: event.window, chance: event.chance, when: event.when,
             ...(event.person ? { person: event.person } : {}), ...(event.weekday ? { weekday: event.weekday } : {}),
             ...(event.skip_when ? { skipWhen: [...event.skip_when] } : {}), ...(event.only_when ? { onlyWhen: [...event.only_when] } : {}),
+            ...(event.cost ? { cost: { amount: [...event.cost.amount] as [number, number], what: event.cost.what } } : {}),
         })),
         ...(world.routine && sees(world.routine.tiers) ? {
             routine: {
                 lunch: { ...world.routine.lunch }, dinner: { ...world.routine.dinner }, takeoutChance: world.routine.takeout_chance,
                 shower: { from: world.routine.shower.from, spread: world.routine.shower.spread, minutes: [...world.routine.shower.minutes] as [number, number], chance: world.routine.shower.chance },
+            },
+        } : {}),
+        ...(world.money && sees(world.money.tiers) ? {
+            money: {
+                allowance: world.money.allowance, payday: world.money.payday, start: world.money.start, askHome: world.money.ask_home,
+                prices: {
+                    canteen: [...world.money.prices.canteen] as [number, number], takeout: [...world.money.prices.takeout] as [number, number], misc: [...world.money.prices.misc] as [number, number],
+                    catFood: world.money.prices.cat_food, parcels: { ...world.money.prices.parcels },
+                },
+                ...(world.money.side_jobs ? { sideJobs: { perMonth: world.money.side_jobs.per_month, pay: [...world.money.side_jobs.pay] as [number, number], kinds: [...world.money.side_jobs.kinds] } } : {}),
+                saving: { keepPerDay: world.money.saving.keep_per_day, step: world.money.saving.step, max: world.money.saving.max },
+                detail: sees(world.money.detail_tiers),
             },
         } : {}),
         ...(world.plans && sees(world.plans.tiers) ? {
@@ -302,7 +339,7 @@ class At {
 export function checkWorld(raw: unknown): WorldSource {
     const root = new At('world.yml');
     const o = root.object(raw);
-    root.keys(o, ['start_day', 'away_holidays', 'weather', 'cat', 'parcels', 'camera_fund', 'homework', 'family_call', 'people', 'events', 'body', 'routine', 'plans', 'note']);
+    root.keys(o, ['start_day', 'away_holidays', 'weather', 'cat', 'parcels', 'camera_fund', 'homework', 'family_call', 'people', 'events', 'body', 'routine', 'plans', 'money', 'note']);
     const startDay = root.at('start_day').string(o.start_day);
     if (!DATE.test(startDay)) root.at('start_day').fail(`应为 YYYY-MM-DD：${startDay}`);
 
@@ -369,7 +406,7 @@ export function checkWorld(raw: unknown): WorldSource {
     const events = eventsRaw.map((value, i): WorldEventSource => {
         const e = root.at(`events[${i}]`);
         const event = e.object(value);
-        e.keys(event, ['id', 'text', 'person', 'tiers', 'window', 'chance', 'when', 'weekday', 'skip_when', 'only_when', 'note']);
+        e.keys(event, ['id', 'text', 'person', 'tiers', 'window', 'chance', 'when', 'weekday', 'skip_when', 'only_when', 'cost', 'note']);
         const person = event.person === undefined || event.person === null ? undefined : e.at('person').string(event.person);
         if (person && !people.some(p => p.id === person)) e.at('person').fail(`people 里没有 ${person}`);
         if (person && !String(event.text).includes('{person}')) e.at('text').fail('写了 person 就要在 text 里用 {person}');
@@ -387,6 +424,9 @@ export function checkWorld(raw: unknown): WorldSource {
         };
         const skipWhen = states('skip_when');
         const onlyWhen = states('only_when');
+        const costRaw = event.cost === undefined || event.cost === null ? undefined : e.at('cost').object(event.cost);
+        if (costRaw) e.at('cost').keys(costRaw, ['amount', 'what']);
+        const cost = costRaw ? { amount: e.at('cost.amount').range(costRaw.amount, 0, 10_000, true), what: e.at('cost.what').string(costRaw.what) } : undefined;
         return {
             id: e.at('id').string(event.id),
             text: e.at('text').string(event.text),
@@ -398,6 +438,7 @@ export function checkWorld(raw: unknown): WorldSource {
             ...(weekday ? { weekday } : {}),
             ...(skipWhen ? { skip_when: skipWhen } : {}),
             ...(onlyWhen ? { only_when: onlyWhen } : {}),
+            ...(cost ? { cost } : {}),
             ...e.at('note').note(event.note),
         };
     });
@@ -406,8 +447,9 @@ export function checkWorld(raw: unknown): WorldSource {
     const body = o.body === undefined || o.body === null ? undefined : checkBody(root.at('body'), o.body);
     const routine = o.routine === undefined || o.routine === null ? undefined : checkRoutine(root.at('routine'), o.routine);
     const plans = o.plans === undefined || o.plans === null ? undefined : checkPlans(root.at('plans'), o.plans);
+    const money = o.money === undefined || o.money === null ? undefined : checkMoney(root.at('money'), o.money);
     const awayHolidays = o.away_holidays === undefined || o.away_holidays === null ? [] : root.at('away_holidays').strings(o.away_holidays);
-    return {
+    const result: WorldSource = {
         start_day: startDay,
         away_holidays: awayHolidays,
         weather: { tiers: w.at('tiers').strings(weather.tiers), rain_chance: w.at('rain_chance').number(weather.rain_chance, 0, 1), temps, ...w.at('note').note(weather.note) },
@@ -457,8 +499,15 @@ export function checkWorld(raw: unknown): WorldSource {
         ...(body ? { body } : {}),
         ...(routine ? { routine } : {}),
         ...(plans ? { plans } : {}),
+        ...(money ? { money } : {}),
         ...root.at('note').note(o.note),
     };
+    if (result.money) {
+        // 网购的东西都要有价钱；看得到相机基金的档位都要有钱的规则（不然存多少各档不一样）
+        for (const item of result.parcels.items) if (!(item in result.money.prices.parcels)) root.at('money.prices.parcels').fail(`缺「${item}」的价钱`);
+        for (const tier of result.camera_fund.tiers) if (!result.money.tiers.includes(tier)) root.at('money.tiers').fail(`看得到相机基金的 ${tier} 也要有（存多少要一样）`);
+    }
+    return result;
 }
 
 function checkNpcLife(l: At, value: unknown): NpcLifeSource {
@@ -479,6 +528,45 @@ function checkNpcLife(l: At, value: unknown): NpcLifeSource {
         ...(busy ? { busy: { per_month: busy.per_month, days: busy.days, labels: l.at('busy.labels').strings(busy.o.labels, false) } } : {}),
         ...(home ? { home: { weekend_chance: l.at('home.weekend_chance').number(home.weekend_chance, 0, 1), holidays: home.holidays as boolean } } : {}),
         ...l.at('note').note(raw.note),
+    };
+}
+
+function checkMoney(m: At, value: unknown): MoneySource {
+    const raw = m.object(value);
+    m.keys(raw, ['tiers', 'detail_tiers', 'allowance', 'payday', 'start', 'ask_home', 'prices', 'side_jobs', 'saving', 'note']);
+    const tiers = m.at('tiers').strings(raw.tiers);
+    const detail = m.at('detail_tiers').strings(raw.detail_tiers);
+    for (const tier of detail) if (!tiers.includes(tier)) m.at('detail_tiers').fail(`${tier} 不在 money.tiers 里`);
+    const prices = m.at('prices').object(raw.prices);
+    m.at('prices').keys(prices, ['canteen', 'takeout', 'misc', 'cat_food', 'parcels']);
+    const parcelsRaw = m.at('prices.parcels').object(prices.parcels);
+    const parcels: Record<string, number> = {};
+    for (const [item, price] of Object.entries(parcelsRaw)) parcels[item] = m.at(`prices.parcels.${item}`).integer(price, 0, 100_000);
+    const side = raw.side_jobs === undefined || raw.side_jobs === null ? undefined : m.at('side_jobs').object(raw.side_jobs);
+    if (side) m.at('side_jobs').keys(side, ['per_month', 'pay', 'kinds']);
+    const saving = m.at('saving').object(raw.saving);
+    m.at('saving').keys(saving, ['keep_per_day', 'step', 'max']);
+    return {
+        tiers,
+        detail_tiers: detail,
+        allowance: m.at('allowance').integer(raw.allowance, 0, 1_000_000),
+        payday: m.at('payday').integer(raw.payday, 1, 28),
+        start: m.at('start').integer(raw.start, 0, 1_000_000),
+        ask_home: m.at('ask_home').integer(raw.ask_home, 0, 1_000_000),
+        prices: {
+            canteen: m.at('prices.canteen').range(prices.canteen, 0, 1000, true),
+            takeout: m.at('prices.takeout').range(prices.takeout, 0, 1000, true),
+            misc: m.at('prices.misc').range(prices.misc, 0, 1000, true),
+            cat_food: m.at('prices.cat_food').integer(prices.cat_food, 0, 10_000),
+            parcels,
+        },
+        ...(side ? { side_jobs: { per_month: m.at('side_jobs.per_month').number(side.per_month, 0, 30), pay: m.at('side_jobs.pay').range(side.pay, 0, 100_000, true), kinds: m.at('side_jobs.kinds').strings(side.kinds, false) } } : {}),
+        saving: {
+            keep_per_day: m.at('saving.keep_per_day').integer(saving.keep_per_day, 0, 10_000),
+            step: m.at('saving.step').integer(saving.step, 1, 10_000),
+            max: m.at('saving.max').integer(saving.max, 0, 100_000),
+        },
+        ...m.at('note').note(raw.note),
     };
 }
 

@@ -15,6 +15,7 @@ import { parseBody, type Body } from './body.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
 import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
 import type { Plans } from './day-plan.ts';
+import { ASK_HOME_TIME, depositFor, lastPayday, MISC_TIME, nextPayday, ORDER_TIME, PAY_TIME, parcelPrice, priceIn, sideJobOn, spendItems, type Money, type MoneyEntry } from './money.ts';
 
 export type WorldWindow = 'morning' | 'afternoon' | 'evening';
 
@@ -30,13 +31,19 @@ export interface World {
     /** life：她们自己的日子（ADR 0033，npc.ts） */
     people: { id: string; name: string; relation: string; life?: NpcLife }[];
     /** skipWhen / onlyWhen：person 那天的状态（ADR 0033）：她感冒了就不一起吃饭，感冒了才有「帮她拍板书」 */
-    events: { id: string; text: string; person?: string; window: WorldWindow; chance: number; when: 'school' | 'class_day' | 'any'; weekday?: number; skipWhen?: NpcStateKind[]; onlyWhen?: NpcStateKind[] }[];
+    events: {
+        id: string; text: string; person?: string; window: WorldWindow; chance: number; when: 'school' | 'class_day' | 'any'; weekday?: number; skipWhen?: NpcStateKind[]; onlyWhen?: NpcStateKind[];
+        /** 花了钱（ADR 0035） */
+        cost?: { amount: [number, number]; what: string };
+    }[];
     /** 她的身体（ADR 0025，body.ts） */
     body?: Body;
     /** 她的日常（ADR 0031）：午饭、晚饭、洗澡 */
     routine?: { lunch: { from: string; spread: number; minutes: number }; dinner: { from: string; spread: number; minutes: number }; takeoutChance: number; shower: { from: string; spread: number; minutes: [number, number]; chance: number } };
     /** 她一天的打算会改（ADR 0034，day-plan.ts） */
     plans?: Plans;
+    /** 她的钱（ADR 0035，money.ts） */
+    money?: Money;
 }
 
 export interface Parcel {
@@ -101,7 +108,8 @@ export interface WorldNow {
     };
     /** 在驿站的、今天取了的、今明两天到的 */
     parcels: { item: string; status: 'station' | 'picked_today' | 'arriving'; when: Date; deadline?: string }[];
-    cameraFund?: { saved: number; goal: number };
+    /** lastDeposit：最近一次存（7 天内；存 0 也算，那周钱要留着花）——有钱的规则时才有（ADR 0035） */
+    cameraFund?: { saved: number; goal: number; lastDeposit?: { at: Date; amount: number } };
     /** 三天内要交的 */
     /** doneAt：几点写完（还没到就是打算几点写），日记用 */
     homework: { course: string; due: Date; done: boolean; doneAt: Date }[];
@@ -112,6 +120,9 @@ export interface WorldNow {
     events: { id: string; text: string; at: Date; person?: { name: string; relation: string } }[];
     /** 她身边的人今天怎么样（ADR 0033）：只有有事的（病了、忙、回家了） */
     people?: { name: string; relation: string; states: NpcState[] }[];
+    /** 她的钱（ADR 0035）：手上还有多少、下次几号到账、今天到现在花的；detail 是这一档说得出口 */
+    /** askedHome：这个月（上次到账以后）跟家里多要了多少 */
+    money?: { balance: number; nextPay: Date; today: { what: string; amount: number }[]; askedHome: number; detail: boolean };
 }
 
 const DAY_MS = 86_400_000;
@@ -138,8 +149,10 @@ interface Timeline {
     days: Map<string, DayRecord>;
     parcels: Parcel[];
     homework: Homework[];
-    /** 每次存钱的时刻和存完的金额 */
-    deposits: { at: Date; saved: number }[];
+    /** 每次存钱的时刻、存了多少、存完的金额 */
+    deposits: { at: Date; saved: number; amount: number }[];
+    /** 她的账（ADR 0035）：卡上有钱的规则时才有 */
+    ledger: MoneyEntry[];
 }
 
 /** 从 startDay 推到 until（含），按天记下发生的事；纯函数，同样的输入同样的输出 */
@@ -147,7 +160,15 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
     const days = new Map<string, DayRecord>();
     const parcels: Parcel[] = [];
     const homework: Homework[] = [];
-    const deposits: { at: Date; saved: number }[] = [];
+    const deposits: { at: Date; saved: number; amount: number }[] = [];
+    const ledger: MoneyEntry[] = [];
+    const money = world.money;
+    let balance = money?.start ?? 0;
+    const book = (time: Date, amount: number, what: string, kind: MoneyEntry['kind']) => {
+        if (!money) return;
+        ledger.push({ at: time, amount, what, kind });
+        balance += amount;
+    };
     let food = world.cat?.food.left ?? 0;
     let saved = world.cameraFund?.saved ?? 0;
     const start = parseDate(world.startDay);
@@ -243,12 +264,6 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             }
         }
 
-        // 相机基金：每周那天晚上存一笔，到目标就停
-        if (world.cameraFund && (day.getDay() || 7) === world.cameraFund.depositDay && saved < world.cameraFund.goal) {
-            saved = Math.min(world.cameraFund.goal, saved + world.cameraFund.weekly);
-            deposits.push({ at: at(day, DEPOSIT_TIME), saved });
-        }
-
         // 和家里视频
         if (world.familyCall && atSchool && (day.getDay() || 7) === world.familyCall.weekday) record.call = at(day, world.familyCall.time);
         const called = todayActions.filter(a => a.kind === 'family_call').at(-1);
@@ -275,10 +290,45 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             const [from, to] = WINDOWS[event.window];
             const time = new Date(at(day, from).getTime() + Math.floor(unit(`${date} ${event.id} time`) * (minutes(to) - minutes(from))) * 60_000);
             record.events.push({ id: event.id, text: event.text, at: time, ...(event.person ? { person: event.person } : {}) });
+            if (event.cost) book(time, -priceIn(event.cost.amount, `${date} ${event.id} cost`), event.cost.what, 'spend');
+        }
+        // 她的钱（ADR 0035）：到账、三餐、网购、线上单
+        if (money) {
+            if (day.getDate() === money.payday) book(at(day, PAY_TIME), money.allowance, '生活费到账', 'income');
+            for (const meal of world.routine ? routineOn(world.routine, schedule, day, atSchool).meals : []) {
+                if (meal.where === 'home') continue;
+                const price = priceIn(meal.where === 'takeout' ? money.prices.takeout : money.prices.canteen, `${date} ${meal.kind} price`);
+                book(meal.start, -price, `${meal.kind === 'lunch' ? '午饭' : '晚饭'}${meal.where === 'takeout' ? '外卖' : ''}`, 'spend');
+            }
+            // 在学校每天的零碎（零食饮料、日用品）；在家爸妈管
+            if (atSchool) book(at(day, MISC_TIME), -priceIn(money.prices.misc, `${date} misc`), '零碎', 'spend');
+            for (const parcel of parcels.filter(p => p.ordered === date)) book(at(day, ORDER_TIME), -parcelPrice(money, parcel.item, Boolean(parcel.food)), `网购${parcel.item}`, 'spend');
+            const job = sideJobOn(money, day);
+            if (job) {
+                const time = new Date(at(day, WINDOWS.evening[0]).getTime() + Math.floor(unit(`${date} side job time`) * 120) * 60_000);
+                record.events.push({ id: 'side_job', text: `接了个${job.kind}的单，收了 ${job.pay} 元`, at: time });
+                book(time, job.pay, `${job.kind}的单`, 'income');
+            }
+        }
+        // 相机基金：每周那天晚上存一笔，到目标就停；有钱的规则时存多少跟着手上的钱走（ADR 0035），没有时每周固定
+        if (world.cameraFund && (day.getDay() || 7) === world.cameraFund.depositDay && saved < world.cameraFund.goal) {
+            const time = at(day, DEPOSIT_TIME);
+            const amount = money
+                ? depositFor(money, ledger.filter(e => e.at <= time).reduce((sum, e) => sum + e.amount, money.start), day, world.cameraFund.goal - saved)
+                : Math.min(world.cameraFund.goal - saved, world.cameraFund.weekly);
+            saved += amount;
+            if (amount) book(time, -amount, '存进相机基金', 'deposit');
+            deposits.push({ at: time, saved, amount });
+        }
+        // 花得只剩不到一天的钱、离到账还有几天：跟家里要（ADR 0035）；说得出口的档位才知道这件事
+        if (money && balance < money.saving.keepPerDay && nextPayday(money, day) > addDays(day, 1)) {
+            const time = at(day, ASK_HOME_TIME);
+            book(time, money.askHome, '跟家里要的', 'income');
+            if (money.detail) record.events.push({ id: 'ask_home', text: `钱快花完了，跟家里要了 ${money.askHome} 元`, at: time });
         }
         record.events.sort((a, b) => a.at.getTime() - b.at.getTime());
     }
-    return { days, parcels, homework, deposits };
+    return { days, parcels, homework, deposits, ledger };
 }
 
 /** 某一刻她身边的事实（按她的一天：凌晨 2 点前算前一天） */
@@ -313,7 +363,10 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     }
     if (world.cameraFund) {
         const last = timeline.deposits.filter(d => d.at <= now).at(-1);
-        result.cameraFund = { saved: last?.saved ?? world.cameraFund.saved, goal: world.cameraFund.goal };
+        result.cameraFund = {
+            saved: last?.saved ?? world.cameraFund.saved, goal: world.cameraFund.goal,
+            ...(world.money && last && now.getTime() - last.at.getTime() < 7 * DAY_MS ? { lastDeposit: { at: last.at, amount: last.amount } } : {}),
+        };
     }
     for (const item of timeline.homework) {
         if (item.assigned > date || item.due <= now || item.due.getTime() - startOfDay(now).getTime() > 3 * DAY_MS) continue;
@@ -328,6 +381,17 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     }
     const people = world.people.map(p => ({ name: p.name, relation: p.relation, states: npcStates(p.id, p.life, schedule, day) })).filter(p => p.states.length);
     if (people.length) result.people = people;
+    if (world.money) {
+        const past = timeline.ledger.filter(e => e.at <= now);
+        const paid = lastPayday(world.money, day);
+        result.money = {
+            balance: past.reduce((sum, e) => sum + e.amount, world.money.start),
+            nextPay: nextPayday(world.money, day),
+            today: past.filter(e => e.kind === 'spend' && formatDate(herDay(schedule, e.at)) === date).map(e => ({ what: e.what, amount: -e.amount })),
+            askedHome: past.filter(e => e.what === '跟家里要的' && e.at >= paid).reduce((sum, e) => sum + e.amount, 0),
+            detail: world.money.detail,
+        };
+    }
     return result;
 }
 
@@ -371,7 +435,19 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
         }
         parts.push(`作业：${[...lines].map(([line, n]) => (n > 1 ? `${n} 份${line}` : line)).join('；')}`);
     }
-    if (now.cameraFund) parts.push(`攒钱买相机：${now.cameraFund.saved} / ${now.cameraFund.goal} 元`);
+    if (now.cameraFund) {
+        const last = now.cameraFund.lastDeposit;
+        // 周日 21:00 前看到的是上个周日存的
+        const when = last && (sameDay(last.at, at) ? '今天' : `${last.at.getDay() === at.getDay() ? '上' : ''}${WEEKDAYS[last.at.getDay()]}`);
+        const note = !last ? '' : last.amount ? `（${when}存了 ${last.amount}）` : `（${when}没存，手上的钱留着花到月底）`;
+        parts.push(`攒钱买相机：${now.cameraFund.saved} / ${now.cameraFund.goal} 元${note}`);
+    }
+    // 手上的钱（ADR 0035）：只给说得出口的档位
+    if (now.money?.detail) {
+        const days = Math.round((now.money.nextPay.getTime() - startOfDay(at).getTime()) / DAY_MS);
+        const spent = now.money.today.reduce((sum, e) => sum + e.amount, 0);
+        parts.push(`钱：手上还有 ${now.money.balance} 元（生活费 ${days} 天后到账${now.money.askedHome ? `；这个月跟家里多要了 ${now.money.askedHome}` : ''}）；${spent ? `今天花了 ${spent} 元（${spendItems(now.money.today)}）` : '今天还没花钱'}`);
+    }
     if (now.familyCall) {
         // 视频的那半小时里写「还在视频」（ADR 0030：写成「视频过了」时，她 3/3 在视频中途说「刚跟我妈视频完」）
         const calling = now.familyCall.done && at.getTime() < now.familyCall.at.getTime() + OCCUPATION_MINUTES.call * 60_000;
@@ -501,6 +577,9 @@ export function recapDay(now: WorldNow): string[] {
     if (now.familyCall?.done) lines.push(`${clock(now.familyCall.at)} 和家里视频了`);
     for (const event of now.events) lines.push(event.text);
     for (const person of now.people ?? []) lines.push(describeNpc(person.name, person.states)!);
+    // 那天花了多少（ADR 0035）：说得出口的档位才有
+    if (now.money?.detail && now.money.today.length) lines.push(`花了 ${now.money.today.reduce((sum, e) => sum + e.amount, 0)} 元（${spendItems(now.money.today)}）`);
+    if (now.cameraFund?.lastDeposit && formatDate(now.cameraFund.lastDeposit.at) === now.day) lines.push(now.cameraFund.lastDeposit.amount ? `相机基金存了 ${now.cameraFund.lastDeposit.amount}` : '相机基金这周没存');
     if (now.routine?.shower) lines.push(`${clock(now.routine.shower.start)} 去洗了澡`);
     return lines;
 }

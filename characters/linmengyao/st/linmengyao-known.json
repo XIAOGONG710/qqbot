@@ -915,7 +915,14 @@
                             "skipWhen": [
                                 "sick",
                                 "home"
-                            ]
+                            ],
+                            "cost": {
+                                "amount": [
+                                    16,
+                                    24
+                                ],
+                                "what": "米线"
+                            }
                         },
                         {
                             "id": "canteen_queue",
@@ -929,7 +936,14 @@
                             "text": "点了一杯奶茶外卖",
                             "window": "afternoon",
                             "chance": 0.25,
-                            "when": "any"
+                            "when": "any",
+                            "cost": {
+                                "amount": [
+                                    13,
+                                    20
+                                ],
+                                "what": "奶茶"
+                            }
                         },
                         {
                             "id": "library_seat",
@@ -989,6 +1003,54 @@
                             ],
                             "chance": 0.7
                         }
+                    },
+                    "money": {
+                        "allowance": 2200,
+                        "payday": 1,
+                        "start": 300,
+                        "askHome": 200,
+                        "prices": {
+                            "canteen": [
+                                10,
+                                18
+                            ],
+                            "takeout": [
+                                22,
+                                35
+                            ],
+                            "misc": [
+                                3,
+                                20
+                            ],
+                            "catFood": 45,
+                            "parcels": {
+                                "零食": 35,
+                                "洗面奶": 59,
+                                "数据线": 25,
+                                "发圈": 15,
+                                "秋天的外套": 189,
+                                "笔记本": 18,
+                                "猫条": 22,
+                                "宿舍用的小台灯": 69
+                            }
+                        },
+                        "sideJobs": {
+                            "perMonth": 1.5,
+                            "pay": [
+                                50,
+                                150
+                            ],
+                            "kinds": [
+                                "抠图",
+                                "剪视频"
+                            ]
+                        },
+                        "saving": {
+                            "keepPerDay": 70,
+                            "step": 50,
+                            "max": 200
+                        },
+                        "detail": false
                     },
                     "plans": {
                         "outings": [

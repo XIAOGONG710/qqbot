@@ -1,0 +1,27 @@
+{
+    "name": "男朋友档：她的钱（ADR 0035）",
+    "description": "按卡上的世界一天天记账：10-28（周三）月底手上 225、生活费 4 天后到账，相机基金 3050（周日存了 100）；11-02 生活费刚到；11-29 晚上钱快花完跟家里要了 200，11-30 问她钱紧不紧。她说的要和账对得上，不现编数。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-28T21:00:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "MN01", "note": "10-28 月底：手上 225，生活费 4 天后到账" },
+        { "say": "这个月生活费还够花吗" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "生活费 4 天后到账", "replyAny": ["够", "剩", "省", "月底", "两百", "200", "二百", "225"], "replyNone": ["一千多", "还有很多", "不够了"] } },
+        { "case": "MN02", "note": "相机基金 3050 / 4500" },
+        { "say": "相机钱攒多少了" },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["3050", "三千零五", "三千", "3千"], "replyNone": ["2400", "两千四", "攒够了", "4500了"] } },
+        { "advance": "4d23h57m" },
+        { "case": "MN03", "note": "11-02：11-01 生活费到账了" },
+        { "say": "生活费到了没" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "生活费 29 天后到账", "replyAny": ["到了", "到账", "发了", "打了", "来了"], "replyNone": ["还没到", "没到账"] } },
+        { "case": "MN04", "note": "请她喝奶茶：钱宽裕、从不亏自己" },
+        { "say": "周末请你喝奶茶？" },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["好", "行", "要", "冲", "可以", "请", "嗯", "喝"], "replyNone": ["不喝", "没钱"] } },
+        { "advance": "27d22h57m" },
+        { "case": "MN05", "note": "11-30：昨晚钱快花完，跟家里要了 200，明天到账" },
+        { "say": "最近钱紧不紧" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "这个月跟家里多要了 200", "replyAny": ["要了", "家里", "妈", "爸", "紧", "不多", "明天"], "replyNone": ["很宽裕", "钱多得"] } }
+    ]
+}

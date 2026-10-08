@@ -94,8 +94,12 @@ describe('她的世界（ADR 0021 W1）', () => {
     test('相机基金：每周那天晚上存一笔，到目标停；存之前还是上周的数', () => {
         const fund = world.cameraFund!;
         const sunday = at('2026-09-06T20:00:00');
-        assert.equal(worldAt(world, schedule, sunday)!.cameraFund!.saved, fund.saved, '21:00 存之前');
-        assert.equal(worldAt(world, schedule, at('2026-09-06T22:00:00'))!.cameraFund!.saved, fund.saved + fund.weekly);
+        // 卡上没有钱的规则：每周固定存 weekly
+        const fixed = patch(w => { delete w.money; });
+        assert.equal(worldAt(fixed, schedule, sunday)!.cameraFund!.saved, fund.saved, '21:00 存之前');
+        assert.equal(worldAt(fixed, schedule, at('2026-09-06T22:00:00'))!.cameraFund!.saved, fund.saved + fund.weekly);
+        // 有钱的规则（ADR 0035）：9 月头一个周日手上宽裕，存满 200
+        assert.equal(worldAt(world, schedule, at('2026-09-06T22:00:00'))!.cameraFund!.saved, fund.saved + world.money!.saving.max);
         const rich = patch(w => { w.cameraFund!.saved = w.cameraFund!.goal - 50; });
         assert.equal(worldAt(rich, schedule, at('2026-10-30T22:00:00'))!.cameraFund!.saved, rich.cameraFund!.goal);
     });

@@ -211,6 +211,9 @@ events:
     note: ADR 0033：她感冒没来上课；同专业一起上课（自传 v1 附三）
   - id: spicy_noodles
     text: 下课{person}拉你去学校旁边那家特别辣的米线
+    cost:
+      amount: [16, 24]
+      what: 米线
     person: su_yutong
     tiers:
       - boyfriend
@@ -239,6 +242,9 @@ events:
     when: school
   - id: milk_tea
     text: 点了一杯奶茶外卖
+    cost:
+      amount: [13, 20]
+      what: 奶茶
     tiers:
       - boyfriend
       - bestie
@@ -371,4 +377,42 @@ plans:
     - 熬夜赶作业
   rest: 躺在床上刷手机
   note: ADR 0034。schedule.yml 的空闲活动是她早上起来的大致打算；到时候按当时的事实改：下雨、感冒、身上不舒服就不出门（outings 换成 indoors），肚子疼得厉害就躺着（rest），作业明天要交、晚上打算的又不是写作业就先赶作业（study 里的不用改）。谁都看得到：都是空闲活动里本来就有的说法
+money:
+  tiers:
+    - boyfriend
+    - bestie
+    - girl_friend
+    - known
+  detail_tiers:
+    - boyfriend
+    - bestie
+  allowance: 2200
+  payday: 1
+  start: 300
+  ask_home: 200
+  prices:
+    canteen: [10, 18]
+    takeout: [22, 35]
+    cat_food: 45
+    misc: [3, 20]
+    parcels:
+      零食: 35
+      洗面奶: 59
+      数据线: 25
+      发圈: 15
+      秋天的外套: 189
+      笔记本: 18
+      猫条: 22
+      宿舍用的小台灯: 69
+  side_jobs:
+    per_month: 1.5
+    pay: [50, 150]
+    kinds:
+      - 抠图
+      - 剪视频
+  saving:
+    keep_per_day: 70
+    step: 50
+    max: 200
+  note: ADR 0035。persona.yml family.money「生活费两千多，宽裕」、money.spend「钱主要花在吃上：奶茶外卖零食，从不亏自己」、money.part_time「偶尔接点线上单（抠图、剪视频）」、money.saving「在攒钱买相机」。每月 payday 号到账 allowance；三餐（ADR 0031：食堂、外卖，在家不花）、带 cost 的小事（奶茶、米线）、网购的快递和猫粮按价钱花，在学校每天还有零碎（零食饮料、日用品，misc）；线上单平均每月 per_month 个。相机基金每周那天存的不再是固定数：手上的钱留够到下次到账每天 keep_per_day，剩下的按 step 取整存，最多 max。不因为钱少了就少吃少喝（「从不亏自己」，又宽裕）；哪天花得只剩不到一天的钱、离到账还有几天，就跟家里要 ask_home（persona.yml family.secret「爸妈宠你」，这件事只有 detail_tiers 看得到）。规则给看得到相机基金的档位（存多少要一样）；余额、花了多少只给 detail_tiers（和 family.money 一样）。数字是可改的设定（用户 10-06 授权按推荐定）
 note: 每一块都从已有的资料长出来，不新发明大设定；只写事实和规则，不写台词（提示词里只给事实和约束，ADR 0021 决策 3）。运行时按日期推出每一天（packages/bot/src/world.ts），同一天对所有人一样。回家过的假期写进 away_holidays（那几天不喂猫、不取快递、不和家里视频）；国庆她留校

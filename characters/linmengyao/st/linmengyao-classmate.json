@@ -763,7 +763,14 @@
                             "text": "点了一杯奶茶外卖",
                             "window": "afternoon",
                             "chance": 0.25,
-                            "when": "any"
+                            "when": "any",
+                            "cost": {
+                                "amount": [
+                                    13,
+                                    20
+                                ],
+                                "what": "奶茶"
+                            }
                         },
                         {
                             "id": "library_seat",

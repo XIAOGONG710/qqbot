@@ -406,6 +406,22 @@ test('她的世界写错时报错：不认识的键、事件引用不存在的�
     assert.doesNotThrow(() => checkWorld(raw()));
 });
 
+test('她的钱（ADR 0035）：规则给看得到相机基金的档位，余额只给男朋友、闺蜜；网购的东西都要有价钱；小事的 cost 进卡', () => {
+    const world = source.world!;
+    const money = (tier: string) => worldForTier(world, tier)!.money;
+    assert.deepEqual(['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger'].map(t => money(t)?.detail), [true, true, false, false, undefined, undefined]);
+    assert.deepEqual(money('known')!.prices.misc, world.money!.prices.misc);
+    assert.deepEqual(worldForTier(world, 'boyfriend')!.events.find(e => e.id === 'milk_tea')!.cost, { amount: [13, 20], what: '奶茶' });
+    const raw = () => fromYaml(readFileSync(join(characterDir, 'source', SOURCE_FILES.world), 'utf8'), 'world.yml') as Record<string, unknown> & {
+        money: { tiers: string[]; detail_tiers: string[]; prices: { parcels: Record<string, number> } }; events: Record<string, unknown>[];
+    };
+    const broken = (patch: (w: ReturnType<typeof raw>) => void) => { const w = raw(); patch(w); return w; };
+    assert.throws(() => checkWorld(broken(w => { delete w.money.prices.parcels['洗面奶']; })), /缺「洗面奶」的价钱/);
+    assert.throws(() => checkWorld(broken(w => { w.money.tiers = ['boyfriend', 'bestie']; w.money.detail_tiers = ['boyfriend']; })), /看得到相机基金的 girl_friend 也要有/);
+    assert.throws(() => checkWorld(broken(w => { w.money.detail_tiers = ['classmate']; })), /classmate 不在 money.tiers 里/);
+    assert.throws(() => checkWorld(broken(w => { w.events.find(e => e.id === 'milk_tea')!.cost = { amount: [20, 13], what: '奶茶' }; })), /前一个不能比后一个大/);
+});
+
 test('她一天的打算会改（ADR 0034）：plans 每档都有；写错时报错；说到的空闲活动要在作息里', () => {
     for (const tier of ['boyfriend', 'classmate', 'unlisted']) assert.deepEqual(worldForTier(source.world, tier)!.plans!.study, source.world!.plans!.study, tier);
     const raw = () => fromYaml(readFileSync(join(characterDir, 'source', SOURCE_FILES.world), 'utf8'), 'world.yml') as Record<string, unknown> & {
