@@ -4,6 +4,8 @@
 // 说话的毛病（ADR 0014，传了 speech 才查，规则在 speech-check.ts）：助手腔、算账、怪对方没说一起重写；
 // 重写后还在的删掉那一行（删完一行不剩就照发）。重复的语气词开头直接去掉、不重写；别的重复重写一次，还重复就照发。
 // 书的进度数字（ADR 0015，这一轮放了「在读的书」才传 books）：说的第几卷 / 章、一共几章和资料对不上，重写一次，还不对就照发。
+// 编出一整段聊天（ADR 0033 模拟器里见到）：回复里出现提示词的结构（「[Start a new Chat]」、行首「[当前时间」「[你现在」……），是在替两个人写对话；
+// 重写一次，还在就从那一行起全删。
 
 import {
     describeSpeechIssue, inspectBookProgress, inspectSpeech, stripOpeners, strippable,
@@ -13,7 +15,7 @@ import {
 export interface ExitIssue {
     /** 回复里的第几行（从 0 开始，按 \n 分） */
     line: number;
-    kind: 'promise' | 'banned' | SpeechIssue['kind'] | 'progress';
+    kind: 'promise' | 'banned' | 'script' | SpeechIssue['kind'] | 'progress';
     /** 命中的片段 */
     match: string;
     /** 说话的毛病里的重复（speech-check.ts） */
@@ -44,9 +46,14 @@ const PROMISE = new RegExp(NOT_NEGATED + '(?:' + [
     '(?:要|想)(?:不要)?看(?:不|吗|嘛)$',
 ].join('|') + ')' + NOT_REFUSED);
 
+/** 提示词的结构：新对话的分隔、时间块里各行的开头 */
+const SCRIPT = /\[Start a new Chat\]|^\s*\[(?:当前时间|距上一条消息|你现在|你今天的|你那边|这一轮|你的身体|你今天的打算)/;
+
 export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext, books?: BookProgressContext): ExitIssue[] {
     const issues: ExitIssue[] = [];
     for (const [line, text] of reply.split('\n').entries()) {
+        const script = SCRIPT.exec(text);
+        if (script) issues.push({ line, kind: 'script', match: script[0].trim() });
         const promise = PROMISE.exec(text.trim());
         if (promise) issues.push({ line, kind: 'promise', match: promise[0] });
         for (const word of banned) if (text.includes(word)) issues.push({ line, kind: 'banned', match: word });
@@ -69,7 +76,7 @@ export function dropLines(reply: string, issues: readonly ExitIssue[]): string {
 
 /** 日志里的一句：第几行、哪一类、命中什么 */
 export function summarizeIssues(issues: readonly ExitIssue[]): string {
-    return issues.map(i => `第 ${i.line + 1} 行${i.kind === 'promise' ? `做不到的事「${i.match}」`
+    return issues.map(i => `第 ${i.line + 1} 行${i.kind === 'script' ? `编了一段对话「${i.match}」` : i.kind === 'promise' ? `做不到的事「${i.match}」`
         : i.kind === 'banned' ? `禁用词「${i.match}」`
             : i.kind === 'progress' ? `进度数字「${i.match}」（《${i.book!.title}》${progressFact(i.book!)}）` : describeSpeechIssue(i as SpeechIssue)}`).join('、');
 }
@@ -85,6 +92,7 @@ export function rewriteNote(reply: string, issues: readonly ExitIssue[], userNam
     const reasons = [...new Set(issues.map(i => i.line))].map(line => {
         const why = issues.filter(i => i.line === line).map(i => {
             switch (i.kind) {
+                case 'script': return `从这里开始你在替你和${userName}两个人写一段聊天记录；只写你这一次要发给${userName}的话`;
                 case 'promise': return '答应或者像是已经给对方发照片、语音、视频，或者打电话，可你只能打字聊天';
                 case 'banned': return `提到了「${i.match}」，这是不该对${userName}说的`;
                 case 'service': return `像客服说的话，用你自己的口气跟${userName}说`;
@@ -131,8 +139,13 @@ function strip(reply: string, options: ReviewOptions): { reply: string; issues: 
     }
 }
 
-/** 重写之后（或重写失败时）还剩的问题：做不到的事、禁用词删行；助手腔、算账、怪对方没说也删，删完一行不剩就留着；重复、进度数字照发 */
+/** 重写之后（或重写失败时）还剩的问题：编的对话从那一行起全删；做不到的事、禁用词删行；助手腔、算账、怪对方没说也删，删完一行不剩就留着；重复、进度数字照发 */
 function settle(reply: string, issues: readonly ExitIssue[]): { reply: string; dropped: boolean } {
+    const script = issues.find(i => i.kind === 'script');
+    if (script) {
+        const kept = reply.split('\n').slice(0, script.line).join('\n');
+        return { reply: settle(kept, issues.filter(i => i.line < script.line)).reply, dropped: true };
+    }
     const hard = issues.filter(i => HARD.has(i.kind));
     const soft = issues.filter(i => i.kind === 'service' || i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'contrast');
     const withSoft = dropLines(reply, [...hard, ...soft]);

@@ -88,6 +88,16 @@ describe('出口检查：重写一次，还不行删掉那几行', () => {
         assert.equal(r.reply, '');
         assert.match(r.logs[1]!, /重写后仍有第 1 行禁用词「青岛」，删掉这几行/);
     });
+    test('编了一整段对话（回复里有「[Start a new Chat]」、时间块的行）：重写；还在就从那一行起全删', async () => {
+        const script = '就知道贫\n你上课累不累\n[Start a new Chat]还行\n宝宝我肚子有点疼';
+        const r = await run(script, ['好了，她昨天就回来上课了']);
+        assert.equal(r.reply, '好了，她昨天就回来上课了');
+        assert.match(r.notes[0]!, /「\[Start a new Chat\]还行」从这里开始你在替你和阿明两个人写一段聊天记录；只写你这一次要发给阿明的话/);
+        assert.equal((await run(script, [script])).reply, '就知道贫\n你上课累不累');
+        assert.equal((await run('嗯\n[当前时间：2026-10-22 21:00]', [new Error('超时')])).reply, '嗯');
+        assert.equal((await run('[你现在：在宿舍]', ['[你现在：在宿舍]'])).reply, '');
+        assert.equal((await run('我说的是「你现在在干嘛」', [])).reply, '我说的是「你现在在干嘛」', '不在行首、没有方括号的不算');
+    });
     test('重写请求失败，用第一版、删掉命中的行', async () => {
         const r = await run('在呢\n晚上给你打个电话', [new Error('连接超时')]);
         assert.equal(r.reply, '在呢');
