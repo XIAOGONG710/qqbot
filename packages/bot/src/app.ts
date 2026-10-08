@@ -227,7 +227,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 moods: config.herDays ? diaryCard.moods : [],
                 books: config.herDays ? diaryCard.books : [],
                 // 她那边、她的身体（ADR 0026）：日记进公共库，用同学档看得到的那部分
-                ...(config.herDays && diaryWorldCard?.herWorld ? { world: diaryWorldCard.herWorld } : {}),
+                ...(config.herDays && diaryWorldCard?.herWorld ? { world: diaryWorldCard.herWorld, ...(diaryWorldCard.schedule ? { worldSchedule: diaryWorldCard.schedule } : {}) } : {}),
                 ...(sharedWorld ? { resolveWorld: sharedWorld.at } : {}),
             },
             contacts: config.contacts,

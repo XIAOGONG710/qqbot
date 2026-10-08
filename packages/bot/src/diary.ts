@@ -48,6 +48,8 @@ export interface DiarySources {
     mood?: string;
     /** 她那边、她的身体（ADR 0026）：用同学档的卡（日记进公共库，同学档也会想起来），herDays 关着时不传 */
     world?: World;
+    /** 和 world 同一档（同学档）的作息：她那边和空闲时按它算——没有课名，拍照修图换成 cover（ADR 0034）。不传就用 schedule */
+    worldSchedule?: Schedule;
     /** W3：让日记看到聊天里已经发生、写回全局世界的动作。 */
     resolveWorld?: (world: World, schedule: Schedule, now: Date) => WorldNow | undefined;
 }
@@ -68,13 +70,16 @@ export function diaryMaterial(
         ? `课：${lessons.map(l => `${hm(l.start)}–${hm(l.end)} ${schedule.kinds[l.kind]?.label?.split('，')[0] || '课'}`).join('；')}`
         : '课：没有课');
     // 她那边今天发生的事、身上舒不舒服（ADR 0026）：一天结束时算（她的一天到 02:00，23:30 已经都发生了）
+    const shown = sources.worldSchedule ?? schedule;
     const around = sources.world
-        ? sources.resolveWorld?.(sources.world, schedule, atTime(day, '23:30')) ?? worldAt(sources.world, schedule, atTime(day, '23:30'))
+        ? sources.resolveWorld?.(sources.world, shown, atTime(day, '23:30')) ?? worldAt(sources.world, shown, atTime(day, '23:30'))
         : undefined;
-    const moodBody = sources.world?.body ? bodyAt(sources.world.body, schedule, atTime(day, '15:00')) : undefined;
+    const moodBody = sources.world?.body ? bodyAt(sources.world.body, shown, atTime(day, '15:00')) : undefined;
     // 空闲时在干什么（ADR 0034）：和聊天时的状态行同一份打算——同样并上在读的书，下雨、不舒服、作业压着时改了的照实写
     // （以前这里不并书，日记写「晚上在追剧」，聊天里那晚说的是在看书）
-    const free = dayPlan(schedule, sources.world?.plans, day, { rain: around?.weather?.rain, body: moodBody, homework: around?.homework }, readingActivities(sources.books))
+    // 按同学档的作息（worldSchedule）：没有课名、修片和刷摄影区是 cover；没传时（旧调用）作业也去掉课名
+    const homework = around?.homework.map(h => (sources.worldSchedule ? h : { ...h, course: '' }));
+    const free = dayPlan(shown, sources.world?.plans, day, { rain: around?.weather?.rain, body: moodBody, homework }, readingActivities(sources.books))
         .map(describeSlot);
     if (free.length) lines.push(`空闲时：${free.join('；')}`);
     const mood = moodAt(schedule, sources.moods, atTime(day, '12:00'), sources.mood, { body: moodBody, world: around });

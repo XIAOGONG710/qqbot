@@ -37,6 +37,12 @@ describe('她的日记（ADR 0017）', () => {
         assert.doesNotMatch(cramps, /生理期|痛经/);
         assert.match(diaryMaterial(withWorld, new Date(2026, 10, 16), []), /\n身体：有点感冒，嗓子疼/);
         assert.doesNotMatch(diaryMaterial(sources, new Date(2026, 9, 11), []), /你那边今天|身体：/, '没传世界就没有');
+        // 空闲时按同学档的作息（ADR 0034）：修片是 cover，改了的打算里没有课名
+        const shown: DiarySources = { ...withWorld, worldSchedule: classmate.schedule! };
+        assert.match(diaryMaterial(withWorld, new Date(2026, 9, 12), []), /下午修昨天拍的片子/, '最亲那一档的作息里有');
+        const oct12 = diaryMaterial(shown, new Date(2026, 9, 12), []);
+        assert.match(oct12, /\n空闲时：上午去图书馆占座；下午窝着刷手机；晚上本来打算打独立游戏，作业明天要交，先赶作业\n/);
+        assert.doesNotMatch(oct12, /拍的片子|摄影|计算机网络/);
         assert.match(diaryMessages('林梦瑶', new Date(2026, 9, 11), text)[0]!.content, /「你那边今天」是今天真发生的事，最多挑一件，一句话带过，和材料一致；聊天里说过的事比它要紧，先写。身体不舒服的写一句/);
     });
 

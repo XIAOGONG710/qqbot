@@ -20,7 +20,7 @@ import { createProactivePlanner, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
 import { worldState, type World } from '../world.ts';
 import { DIARY_TEMPERATURE, diaryWriter } from '../diary.ts';
-import { formatDate, stateAt } from '../schedule.ts';
+import { formatDate, stateAt, type Schedule } from '../schedule.ts';
 import { parseDuration, VirtualClock, type Checks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
 /** 模拟的联系人用的 QQ 号（虚构） */
@@ -62,6 +62,8 @@ export interface RunOptions {
     herDays?: boolean;
     /** 日记里的世界（ADR 0026）：同学档的卡上的，run.ts 传 */
     diaryWorld?: World;
+    /** 和 diaryWorld 同一档的作息（ADR 0034） */
+    diaryWorldSchedule?: Schedule;
 }
 
 /** proactive：她主动发的（ADR 0011），是哪个时机（日志里的说法） */
@@ -181,7 +183,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 schedule: diaryCard.schedule,
                 moods: options.herDays ? diaryCard.moods : [],
                 books: options.herDays ? diaryCard.books : [],
-                ...(options.herDays && options.diaryWorld ? { world: options.diaryWorld } : {}),
+                ...(options.herDays && options.diaryWorld ? { world: options.diaryWorld, ...(options.diaryWorldSchedule ? { worldSchedule: options.diaryWorldSchedule } : {}) } : {}),
                 ...(sharedWorld ? { resolveWorld: sharedWorld.at } : {}),
                 ...(scenario.mood !== undefined ? { mood: scenario.mood } : {}),
             },
