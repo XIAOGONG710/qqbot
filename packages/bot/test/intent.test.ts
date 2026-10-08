@@ -19,6 +19,11 @@ describe('这一轮你想（ADR 0019）', () => {
             assert.match(describeIntent({ history: [user(asked)], now, state: free('打独立游戏') })!, /直接回答/, asked);
         }
         assert.doesNotMatch(describeIntent({ history: [user('我今天没')], now, state: free('打独立游戏') }) ?? '', /直接回答/, '只是没说完');
+        // 「干嘛」「啥」也是问句（10-08：「你昨天都干嘛了」被当成闲聊，意图行让她讲手上追剧的进度，问昨天常常想不起那天的麻辣烫）
+        for (const asked of ['你昨天都干嘛了', '在干嘛', '你晚饭吃的啥', '你上周都忙啥了', '那前天呢，前天干嘛了']) {
+            assert.match(describeIntent({ history: [user(asked)], now, state: free('在追一部剧') })!, /直接回答/, asked);
+        }
+        assert.doesNotMatch(describeIntent({ history: [user('没啥，就是有点累')], now, state: free('在追一部剧') }) ?? '', /直接回答/, '「没啥」不是问');
     });
 
     test('按线索顺序只给一个：他的事优先于答应的事，答应的事优先于手上的事', () => {
