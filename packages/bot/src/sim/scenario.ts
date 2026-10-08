@@ -134,7 +134,9 @@ export type Step =
     /** 把聊天记录挪走（记忆还在），之后的回复只能靠召回：模拟原文早就被挤出上下文 */
     | { forget: 'chat' }
     /** Hindsight 不可用 / 恢复（T20）：不可用时每个请求都报错 */
-    | { hindsight: 'down' | 'up' };
+    | { hindsight: 'down' | 'up' }
+    /** bot 重启（ADR 0039）：聊天记录、记忆、世界、答应的事、日记、回复器、主动消息都丢掉，照 app.ts 启动时从数据目录重新读起 */
+    | { restart: true };
 
 export interface Scenario {
     name: string;
@@ -244,7 +246,7 @@ function parseHistory(value: unknown, where: string, start: number, fail: (messa
     });
 }
 
-const STEP_KINDS = ['case', 'say', 'life', 'action', 'advance', 'wait', 'memory', 'refresh', 'check', 'forget', 'hindsight'] as const;
+const STEP_KINDS = ['case', 'say', 'life', 'action', 'advance', 'wait', 'memory', 'refresh', 'check', 'forget', 'hindsight', 'restart'] as const;
 
 function checkStep(step: unknown, where: string): void {
     const fail = (message: string): never => { throw new Error(`${where}：${message}`); };
@@ -289,6 +291,7 @@ function checkStep(step: unknown, where: string): void {
     if ('refresh' in s && s.refresh !== 'relationship') fail('refresh 只能是 "relationship"');
     if ('forget' in s && s.forget !== 'chat') fail('forget 只能是 "chat"');
     if ('hindsight' in s && s.hindsight !== 'down' && s.hindsight !== 'up') fail('hindsight 只能是 "down" 或 "up"');
+    if ('restart' in s && s.restart !== true) fail('restart 只能是 true');
 }
 
 /** "45m"、"1d"、"9h30m"、"90s" → 毫秒 */

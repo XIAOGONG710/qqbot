@@ -230,6 +230,26 @@ export function stillInMind(chat: readonly { role: 'user' | 'assistant'; time?: 
     return replies <= COMMON_LINGER_REPLIES;
 }
 
+/**
+ * 往回找最近一轮有线索、现在还在脑子里的（ADR 0039）：「刚想起的」不记在内存里，每轮从聊天记录推，重启以后追问也接得上。
+ * detect 看的是那一轮他说的话（和这一轮一样，只看最后一次她回之后他说的）；还在不在脑子里按 stillInMind，从她那一轮开口回的时刻算。
+ * upTo：到那一轮他说完为止的聊天；at：她那一轮开口回的时刻。
+ */
+export function lingering<M extends { role: 'user' | 'assistant'; content: string; time?: string }, T>(
+    chat: readonly M[], now: number, detect: (upTo: readonly M[]) => T | undefined,
+): { found: T; upTo: readonly M[]; at: number } | undefined {
+    for (let i = chat.length - 1; i > 0; i--) {
+        // 她回的那一串的第一条（前面一条是他说的）
+        if (chat[i]!.role !== 'assistant' || chat[i - 1]!.role !== 'user') continue;
+        const at = Date.parse(chat[i]!.time ?? '');
+        if (!Number.isFinite(at) || !stillInMind(chat, at, now)) return undefined;
+        const upTo = chat.slice(0, i);
+        const found = detect(upTo);
+        if (found !== undefined) return { found, upTo, at };
+    }
+    return undefined;
+}
+
 /** 介绍一个人：称呼和 intro，后面接她对他的印象（ADR 0017）、召回到的记忆（都已整理成一段，没有的不写） */
 export function describePerson(person: Contact, ...more: (string | undefined)[]): string {
     return [`[你认识的人：${person.name}]`, `${person.name}：${person.intro}`, ...more.filter(text => text)].join('\n');

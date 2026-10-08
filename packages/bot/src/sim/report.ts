@@ -74,6 +74,10 @@ function renderStep(step: StepRecord, dayPrefix: (time: number) => string): stri
         case 'hindsight':
             out.push(`*（Hindsight ${step.logs.some(l => l.includes('停了')) ? '停了' : '恢复'}）*`, '');
             break;
+        case 'restart':
+            out.push('*（bot 重启，从数据目录重新读起）*', '');
+            if (exchange) out.push(...renderExchange(step, dayPrefix));
+            break;
         case 'check':
             for (const c of step.checks) out.push(`- ${c.ok ? '✅' : '❌'} ${c.pipeline ? '〔管线〕' : ''}${c.text}`);
             out.push('');

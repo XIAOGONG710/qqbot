@@ -65,6 +65,8 @@ export interface RunOptions {
     diaryWorld?: World;
     /** 和 diaryWorld 同一档的作息（ADR 0034） */
     diaryWorldSchedule?: Schedule;
+    /** 虚拟时钟底下的真实时间，默认 Date.now；测试传一个不动的，虚拟时间只靠 advance 走，两遍跑出来的时刻一样（ADR 0039） */
+    realNow?: () => number;
 }
 
 /** proactive：她主动发的（ADR 0011），是哪个时机（日志里的说法） */
@@ -85,7 +87,7 @@ export interface CheckResult { ok: boolean; text: string; pipeline?: boolean }
 export interface CheckCount { passed: number; failed: number }
 
 export interface StepRecord {
-    kind: 'case' | 'say' | 'life' | 'action' | 'advance' | 'wait' | 'memory' | 'refresh' | 'check' | 'forget' | 'hindsight';
+    kind: 'case' | 'say' | 'life' | 'action' | 'advance' | 'wait' | 'memory' | 'refresh' | 'check' | 'forget' | 'hindsight' | 'restart';
     /** 这一步开始时的虚拟时间 */
     time: number;
     /** 到这一步为止对方最后一条消息的虚拟时间（replyAfter / replyWithin 从这里算） */
@@ -126,10 +128,11 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const { dataDir } = options;
     const sleep = options.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)));
     mkdirSync(join(dataDir, 'prompts'), { recursive: true });
-    const clock = new VirtualClock(new Date(scenario.start));
+    const clock = new VirtualClock(new Date(scenario.start), options.realNow);
     const contact: Contact = { qq: SIM_QQ, name: scenario.user, tier: scenario.tier, persona: scenario.persona };
     const names = { user: contact.name, char: options.card.character.name };
-    const history = new ChatHistory(dataDir);
+    // 下面从数据目录建的几样（聊天记录、记忆、世界、答应的事、日记、回复器、主动消息）在 restart 步骤里丢掉重建（ADR 0039）
+    let history = new ChatHistory(dataDir);
     // 名单里的其他人（ADR 0016）：QQ 号接着往后排，事先的聊天先记进聊天记录
     const others: Contact[] = scenario.others.map((other, i) => ({
         qq: SIM_QQ + 1 + i, name: other.name, tier: other.tier, ...(other.intro ? { intro: other.intro } : {}),
@@ -149,7 +152,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
 
     let hindsightDown = false;
     const hindsight = options.hindsight && switchable(options.hindsight, () => hindsightDown);
-    const memory = scenario.memory && hindsight
+    const openMemory = () => (scenario.memory && hindsight
         ? new LongTermMemory({
             api: hindsight,
             dir: join(dataDir, 'memory'),
@@ -159,21 +162,26 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             now: clock.now,
             common: true,
         })
-        : undefined;
+        : undefined);
+    let memory = openMemory();
     const bankId = memory?.bankId(contact);
     /** 跑完要删的：他自己的、名单里其他人的、公共库 */
-    const banks = memory ? [bankId!, ...others.map(other => memory.bankId(other)), memory.commonBankId()] : [];
+    const banks = memory ? [bankId!, ...others.map(other => memory!.bankId(other)), memory.commonBankId()] : [];
     const { character } = options.card;
     // W3：模拟器和线上共用同一状态层，抽取后的动作立即影响后续提示词和日记。
-    const ledgerWorld = options.herDays && scenario.schedule && character.schedule && character.herWorld
-        ? worldState(character.herWorld, character.schedule, log, join(options.dataDir, 'world'), clock.now)
-        : undefined;
-    const queuedActions = ledgerWorld ? actionQueue(join(options.dataDir, 'world', 'action-queue.json'), log) : undefined;
-    // 读世界之前先结算到期的行动（ADR 0038 调整）：聊天、时间块、日记看到的都算上已经做完的
-    const sharedWorld = ledgerWorld && queuedActions ? settlingWorld(ledgerWorld, queuedActions, clock.now) : undefined;
+    const openWorld = () => {
+        const ledger = options.herDays && scenario.schedule && character.schedule && character.herWorld
+            ? worldState(character.herWorld, character.schedule, log, join(options.dataDir, 'world'), clock.now)
+            : undefined;
+        const queue = ledger ? actionQueue(join(options.dataDir, 'world', 'action-queue.json'), log) : undefined;
+        // 读世界之前先结算到期的行动（ADR 0038 调整）：聊天、时间块、日记看到的都算上已经做完的
+        return { ledger, queue, world: ledger && queue ? settlingWorld(ledger, queue, clock.now) : undefined };
+    };
+    // restart 步骤里丢掉重建：行动队列也从 action-queue.json 读回来（ADR 0038 的重启恢复）
+    let { ledger: ledgerWorld, queue: queuedActions, world: sharedWorld } = openWorld();
     // 她的日记（ADR 0017）：和 bot 一样，跨过她的一天就补写，存进公共库；场景关了作息就没有她的一天，不写
     // 她答应过的事（ADR 0018 决策 2）：和 bot 一样，开了记忆就抽（记忆同步时），到了日子在时间块里提醒，那天的打算写进日记
-    const promises = memory
+    const openPromises = () => (memory
         ? promiseKeeper({
             contacts: [contact, ...others],
             history,
@@ -185,9 +193,10 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             now: clock.now,
             ...(sharedWorld ? { onWorldActions: sharedWorld.record } : {}),
         })
-        : undefined;
+        : undefined);
+    let promises = openPromises();
     const diaryCard = options.card.character;
-    const diaries = memory && scenario.schedule && diaryCard.schedule
+    const openDiaries = () => (memory && scenario.schedule && diaryCard.schedule
         ? diaryWriter({
             sources: {
                 charName: diaryCard.name,
@@ -208,7 +217,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             dir: join(dataDir, 'memory'),
             log,
         })
-        : undefined;
+        : undefined);
+    let diaries = openDiaries();
 
     let nextMessageId = 1;
     let armed: SayStep['interrupt'];
@@ -232,12 +242,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         throw new Error(`场景的 mood「${scenario.mood}」不是卡上的心情（${character.moods.map(mood => mood.name).join('、') || '这一档没有心情'}）`);
     }
     // 她自己的日子：和 bot 一样，她的每一天第一次生成时在 sim.log 里写一行当天的心情和进度
-    const noteMoodAndBooks = options.herDays && character.schedule
+    const openHerDayLogger = () => (options.herDays && character.schedule
         ? herDayLogger(character.schedule, character.moods, character.books, log, scenario.mood)
-        : undefined;
+        : undefined);
+    let noteMoodAndBooks = openHerDayLogger();
     // 她的世界（ADR 0021）：每天一行摘要，state.json 写在这次的数据目录
-    const noteWorld = sharedWorld?.note;
-    const noteHerDay = noteMoodAndBooks || noteWorld ? (now: Date) => { noteMoodAndBooks?.(now); noteWorld?.(now); } : undefined;
+    const noteHerDay = noteMoodAndBooks || sharedWorld ? (now: Date) => { noteMoodAndBooks?.(now); sharedWorld?.note(now); } : undefined;
     const createResponder = () => createContactResponder({
         contact,
         card: options.card,
@@ -297,7 +307,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     let forgotten = 0;
 
     // 主动消息（ADR 0011）：场景开着、卡上有主动设置和作息时，计划器跑在虚拟时钟上（真发，记录在 dataDir/proactive）
-    const planner: Planner | undefined = scenario.proactive && scenario.schedule && character.proactive && character.schedule
+    const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && character.proactive && character.schedule
         ? createProactivePlanner({
             contact,
             schedule: character.schedule,
@@ -326,7 +336,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             names,
             extract: messages => (options.generate ? options.generate(messages, log) : chatCompletion(forExtraction(options.llm), messages, { log })),
         })
-        : undefined;
+        : undefined);
+    let planner = openPlanner();
     if (scenario.proactive && !planner) log('场景开了主动消息，但卡上没有主动设置或作息，不主动');
 
     /** 等她把这一轮（含插话之后的回复）都发完，或者停在「到点才看到」的等待上 */
@@ -367,11 +378,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
 
     /** 把这几个人结束了的片段写进记忆（各自的 bank 和公共库），补写日记，等 Hindsight 做完 */
     async function syncMemory(who: Contact[] = [contact]): Promise<void> {
-        if (!memory || !options.hindsight || !bankId || hindsightDown) return;
-        for (const person of who) await memory.sync(person, { user: person.name, char: names.char }, history.load(person.qq));
+        const mind = memory;
+        if (!mind || !options.hindsight || !bankId || hindsightDown) return;
+        for (const person of who) await mind.sync(person, { user: person.name, char: names.char }, history.load(person.qq));
         await diaries?.catchUp(new Date(clock.now()));
         await promises?.sync();
-        const watched = [...who.map(person => memory.bankId(person)), memory.commonBankId()];
+        const watched = [...who.map(person => mind.bankId(person)), mind.commonBankId()];
         const started = Date.now();
         const limit = options.hindsightWaitMs ?? 240_000;
         let quietPolls = 0;
@@ -501,6 +513,23 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 renameSync(join(chats, `${contact.qq}.jsonl`), join(chats, `${contact.qq}.forgotten-${++forgotten}.jsonl`));
                 responder = createResponder();
                 log('聊天记录挪走了，之后只能靠记忆');
+            } else if ('restart' in step) {
+                // bot 重启（ADR 0039）：照 app.ts 启动，从数据目录重新读起；之后和连上 NapCat 时一样，补写停了的那几天的日记、回没回的消息
+                await settle();
+                planner?.stop();
+                responder.stop();
+                history = new ChatHistory(dataDir);
+                memory = openMemory();
+                ({ ledger: ledgerWorld, queue: queuedActions, world: sharedWorld } = openWorld());
+                promises = openPromises();
+                diaries = openDiaries();
+                noteMoodAndBooks = openHerDayLogger();
+                responder = createResponder();
+                planner = openPlanner();
+                log('重启：聊天记录、记忆、世界、行动队列、答应的事、日记、回复器、主动消息从数据目录重新读起');
+                await diaries?.catchUp(new Date(clock.now()));
+                responder.catchUp();
+                await runTimers(clock.now() + AUTO_TIMER_MS);
             } else if ('hindsight' in step) {
                 hindsightDown = step.hindsight === 'down';
                 log(hindsightDown ? 'Hindsight 停了' : 'Hindsight 恢复');

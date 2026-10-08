@@ -496,7 +496,7 @@ export class LongTermMemory {
         });
     }
 
-    #fade(chat: ChatMessage[], options: FadeOptions): FadeRequest {
+    #fade(chat: readonly ChatMessage[], options: FadeOptions): FadeRequest {
         return { heard: heardSinceReply(chat), ignore: options.ignore ?? [], ...(options.onFade ? { onFade: options.onFade } : {}) };
     }
 
@@ -507,7 +507,7 @@ export class LongTermMemory {
      * window：问的是某一天（people.ts 的 askedDay）；fade 同 recall
      */
     async recallCommon(
-        contact: NamedContact, chat: ChatMessage[], now: Date, people: readonly NamedContact[], window?: { start: Date; end: Date; period?: string }, fade: FadeOptions = {},
+        contact: NamedContact, chat: readonly ChatMessage[], now: Date, people: readonly NamedContact[], window?: { start: Date; end: Date; period?: string }, fade: FadeOptions = {},
         focus: readonly string[] = [],
     ): Promise<string | undefined> {
         if (!this.#options.common || !knowsPeople(contact.tier)) return undefined;
@@ -698,7 +698,7 @@ export class LongTermMemory {
 export const MAX_QUERY_CHARS = 300;
 
 /** 查询：她上一句 + 之后对方发的几条（调研方案 9.5：要带上这次的话题和指代），留最后 MAX_QUERY_CHARS 字 */
-export function recallQuery(chat: ChatMessage[]): string {
+export function recallQuery(chat: readonly ChatMessage[]): string {
     const lastReply = chat.findLastIndex(m => m.role === 'assistant');
     const lines = chat.slice(lastReply + 1).filter(m => m.role === 'user').map(m => `对方：${m.content}`);
     if (lines.length === 0) return '';
@@ -760,7 +760,7 @@ function recallRequest(query: string, now: Date, window?: { start: Date; end: Da
 }
 
 /** 当前片段（最后一条消息所在的片段）的 id */
-function currentEpisodeId(chat: ChatMessage[]): string | undefined {
+function currentEpisodeId(chat: readonly ChatMessage[]): string | undefined {
     const timed = chat.flatMap(m => (m.time ? [{ time: m.time, role: m.role, content: m.content }] : []));
     return splitEpisodes(timed).at(-1)?.id;
 }

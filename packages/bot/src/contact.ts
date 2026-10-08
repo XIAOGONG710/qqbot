@@ -30,8 +30,8 @@ import { npcMentioned } from './npc.ts';
 import { dayPlan, describePlans, describeSlot, planNow } from './day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
-import { describePast, pastCue, type PastChunk } from './biography.ts';
-import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, mentionedPeople, stillInMind } from './people.ts';
+import { describePast, pastCue } from './biography.ts';
+import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from './people.ts';
 import type { PromiseKeeper } from './promises.ts';
 import { describeState, herDay, stateAt } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
@@ -48,6 +48,9 @@ const fadeParts = (stats: FadeStats | undefined) => (stats
     ? ([['记个大概', stats.vague], ['一提想起', stats.recognized], ['想不起来', stats.forgotten], ['同一件事多的', stats.repeated ?? 0]] as const).filter(([, n]) => n).map(([label, n]) => `${label} ${n}`)
     : []);
 const fadeNote = (stats: FadeStats | undefined) => (fadeParts(stats).length ? `（${fadeParts(stats).join('，')}）` : '');
+
+/** 线索认出来的是空列表时算没有（lingering 接着往前找） */
+const nonEmpty = <T>(list: T[]) => (list.length ? list : undefined);
 
 export interface TierCard {
     character: Character;
@@ -135,12 +138,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const extraFree = herSchedule ? readingActivities(character.books) : [];
     // 这一轮放了「在读的书」时，出口检查拿它核对进度数字。同一个回复器一次只生成一条，review 紧跟着这一轮的 buildPrompt
     let reading: BookProgressContext | undefined;
-    // 上一次想起来的公共记忆（ADR 0017）：接下来两轮没有新线索也沿用，追问时不忘
-    let lastCommon: { text: string; at: number } | undefined;
-    // 刚想起的从前（ADR 0022）：接下来没有新线索也沿用一会儿，追问时不忘
-    let lastPast: { chunks: PastChunk[]; at: number } | undefined;
-    // 刚说起的她身边的人（ADR 0033）：接着问「她好了没」时不忘
-    let lastNpcs: { people: { id: string; name: string; relation: string }[]; at: number } | undefined;
+    // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
+    // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
     const recapOf = (dayStart: Date, time: Date): { day: string; lines: string[]; text: string } | undefined => {
         if (!herSchedule || !character.herWorld) return undefined;
@@ -175,14 +174,19 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 或者问她过去的事；主动找他时不查（没有「他这次说的」）
             const people = mentionedPeople(chat, contact, options.contacts ?? []);
             const holidays = holidayWords(character.schedule);
-            const cue = !remembers || initiate ? undefined
-                : people.length ? people.map(person => person.name).join('、')
-                    : commonCue(chat, contact, await memory.commonEntities(), character.name, holidays);
+            const entities = remembers && !initiate ? await memory.commonEntities() : [];
+            const cueIn = (said: Readonly<typeof chat>) => {
+                const named = mentionedPeople(said, contact, options.contacts ?? []);
+                return named.length ? named.map(person => person.name).join('、') : commonCue(said, contact, entities, character.name, holidays);
+            };
+            const cue = !remembers || initiate ? undefined : cueIn(chat);
             // 问「今天」「昨天」按她的一天算（ADR 0018 决策 4）；问「上周」「国庆」时是那一周、那个假期（决策 3）。
             // 线索正好是假期的名字（「国庆」也是公共库里的实体）时同样带那个假期的时间窗（第三批：「那国庆呢」想起的是周记）
             // 线索是公共库里的人和事、同时又在问她过去的某天（「周一你那快递拿了没」）时也带那天的时间窗（ADR 0032）
-            const day = cue === ASKS_PAST || (cue !== undefined && (holidays.includes(cue) || asksPast(chat, holidays)))
-                ? askedWindow(chat, time, schedule ?? herSchedule ?? character.schedule) : undefined;
+            const windowOf = (said: Readonly<typeof chat>, cue: string | undefined, at: Date) =>
+                (cue === ASKS_PAST || (cue !== undefined && (holidays.includes(cue) || asksPast(said, holidays)))
+                    ? askedWindow(said, at, schedule ?? herSchedule ?? character.schedule) : undefined);
+            const day = windowOf(chat, cue, time);
             // 记忆里她的名字换成「你」（ADR 0018 决策 4）；那一行里的「她」也是她，除非还提到别的女生（她的朋友、名单里的闺蜜和女生朋友）
             const women = [
                 ...(character.herWorld?.people ?? []).map(person => person.name),
@@ -198,11 +202,15 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const todayOthers = remembers && !cue && isClose(contact.tier) && (Boolean(initiate) || startsConversation(chat))
                 ? memory.othersToday(contact, time, options.contacts ?? [], todayStart(schedule ?? herSchedule ?? character.schedule, time))
                 : undefined;
+            // 按那一轮他说的话想公共记忆：线索是问她过去的事时不限人和事，提到名单里的人时是这几个人，否则是那个人和事
+            const recallCommon = (said: Readonly<typeof chat>, cue: string, at: Date) => {
+                const named = mentionedPeople(said, contact, options.contacts ?? []);
+                return memory!.recallCommon(contact, said, at, options.contacts ?? [contact], windowOf(said, cue, at), fade(1),
+                    cue === ASKS_PAST ? [] : named.length ? named.map(p => p.name) : [cue]);
+            };
             const [recalled, freshCommon, ...aboutPeople] = (await Promise.all([
                 remembers ? memory.recall(contact, chat, time, { ...recallOptions, ...fade(0) }) : undefined,
-                remembers && cue
-                    ? memory.recallCommon(contact, chat, time, options.contacts ?? [contact], day, fade(1), cue === ASKS_PAST ? [] : people.length ? people.map(p => p.name) : [cue])
-                    : undefined,
+                remembers && cue ? recallCommon(chat, cue, time) : undefined,
                 ...people.map((person, i) => (remembers
                     ? memory.recall(person, chat, time, {
                         ...recallOptions, ...fade(i + 2), limit: PERSON_RECALLED,
@@ -215,13 +223,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             let common = freshCommon;
             const commonNote = [`线索：${cue}`, fadeParts(faded[1]).join('，')].filter(Boolean).join('；');
             if (common) {
-                lastCommon = { text: common, at: time.getTime() };
                 log(`召回公共记忆 ${countLines(common)} 条（${commonNote}）`);
             } else if (cue) {
                 log(`公共记忆没想起什么（${commonNote}）`);
-            } else if (remembers && !initiate && lastCommon && stillInMind(chat, lastCommon.at, time.getTime())) {
-                common = lastCommon.text;
-                log(`公共记忆沿用刚才想起的 ${countLines(common)} 条`);
+            } else if (remembers && !initiate) {
+                // 刚才那一轮想起过、还在脑子里：照那一轮的话、那一轮的时刻再想一次，和当时想起的一样
+                const earlier = lingering(chat, time.getTime(), cueIn);
+                common = earlier ? you(await recallCommon(earlier.upTo, earlier.found, new Date(earlier.at))) : undefined;
+                if (common) log(`公共记忆沿用刚才想起的 ${countLines(common)} 条`);
             }
             if (people.length) {
                 log(`提起了 ${people.map((person, i) => `${person.name}：介绍${aboutPeople[i] ? ` + 召回 ${countLines(aboutPeople[i])} 条${fadeNote(faded[i + 2])}` : ''}`).join('；')}`);
@@ -271,19 +280,19 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const body = bodyNow ? describeBody(bodyNow) : undefined;
             const mood = herSchedule ? moodAt(herSchedule, character.moods, time, options.mood, { body: bodyNow, world: around }) : undefined;
             // 她的过去（ADR 0022）：他说到卡上某块的线索才想起；主动找他时不想
-            let pastChunks = character.biography && !initiate ? pastCue(chat, character.biography) : [];
+            const biography = character.biography;
+            let pastChunks = biography && !initiate ? pastCue(chat, biography) : [];
             if (pastChunks.length) {
-                lastPast = { chunks: pastChunks, at: time.getTime() };
                 log(`想起从前：${pastChunks.map(chunk => chunk.title).join('、')}`);
-            } else if (character.biography && !initiate && lastPast && stillInMind(chat, lastPast.at, time.getTime())) {
-                pastChunks = lastPast.chunks;
-                log(`从前沿用刚才想起的：${pastChunks.map(chunk => chunk.title).join('、')}`);
+            } else if (biography && !initiate) {
+                pastChunks = lingering(chat, time.getTime(), upTo => nonEmpty(pastCue(upTo, biography)))?.found ?? [];
+                if (pastChunks.length) log(`从前沿用刚才想起的：${pastChunks.map(chunk => chunk.title).join('、')}`);
             }
-            const past = character.biography ? describePast(pastChunks, character.biography) : undefined;
+            const past = biography ? describePast(pastChunks, biography) : undefined;
             // 他说起她身边的人（ADR 0033）：那人最近两周怎么样，她知道的；主动找他时不想
-            let npcs = character.herWorld && herSchedule && !initiate ? npcMentioned(chat, character.herWorld.people) : [];
-            if (npcs.length) lastNpcs = { people: npcs, at: time.getTime() };
-            else if (character.herWorld && herSchedule && !initiate && lastNpcs && stillInMind(chat, lastNpcs.at, time.getTime())) npcs = lastNpcs.people;
+            const herPeople = character.herWorld && herSchedule && !initiate ? character.herWorld.people : undefined;
+            let npcs = herPeople ? npcMentioned(chat, herPeople) : [];
+            if (!npcs.length && herPeople) npcs = lingering(chat, time.getTime(), upTo => nonEmpty(npcMentioned(upTo, herPeople)))?.found ?? [];
             const aboutNpcs = npcs.flatMap(person => {
                 const lines = recentWith(character.herWorld!, herSchedule!, time, person.id);
                 return lines ? [`[${person.name}最近两周（${person.relation}；你知道的事，他问到了照实说，没写到的别编）：${lines.length ? lines.join('；') : '没病没忙，照常'}]`] : [];
