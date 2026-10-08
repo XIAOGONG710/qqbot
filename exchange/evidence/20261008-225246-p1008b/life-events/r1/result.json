@@ -1,0 +1,134 @@
+{
+  "scenario": {
+    "name": "无人聊天的生活事件账",
+    "description": "ADR 0029：不发送任何用户消息，直接推进虚拟时间并记录成功、失败和中断的生活事件；同一 runId 重放不会重复。",
+    "tier": "boyfriend",
+    "user": "阿明",
+    "start": "2026-10-05T19:00:00+08:00",
+    "memory": false,
+    "schedule": true,
+    "proactive": false,
+    "moody": false,
+    "others": [],
+    "history": [],
+    "steps": [
+      {
+        "case": "L01",
+        "note": "没有聊天，她照样完成一件自己的事"
+      },
+      {
+        "life": {
+          "id": "read-the-outsider",
+          "kind": "read_book",
+          "subject": "局外人"
+        }
+      },
+      {
+        "advance": "30m"
+      },
+      {
+        "case": "L02",
+        "note": "失败和中断也进入人生，但不改变世界"
+      },
+      {
+        "life": {
+          "id": "parcel-not-there",
+          "kind": "pick_parcel",
+          "target": "not-existing-parcel"
+        }
+      },
+      {
+        "life": {
+          "id": "study-interrupted",
+          "kind": "study",
+          "subject": "数据结构",
+          "result": "interrupted"
+        }
+      }
+    ]
+  },
+  "runId": "20261008-225246-p1008b-s3r1",
+  "dataDir": "runtime\\sim\\20261008-225246-p1008b\\life-events\\r1",
+  "steps": [
+    {
+      "kind": "case",
+      "time": 1791198000007,
+      "inputs": [],
+      "bubbles": [],
+      "generations": [],
+      "logs": [],
+      "checks": [],
+      "caseId": "L01",
+      "note": "没有聊天，她照样完成一件自己的事"
+    },
+    {
+      "kind": "life",
+      "time": 1791198000007,
+      "inputs": [],
+      "bubbles": [],
+      "generations": [],
+      "logs": [
+        "她的生活：完成 read_book（simulation）"
+      ],
+      "checks": [],
+      "life": "read_book：succeeded"
+    },
+    {
+      "kind": "advance",
+      "time": 1791199800019,
+      "inputs": [],
+      "bubbles": [],
+      "generations": [],
+      "logs": [],
+      "checks": [],
+      "advance": "30m"
+    },
+    {
+      "kind": "case",
+      "time": 1791199800019,
+      "inputs": [],
+      "bubbles": [],
+      "generations": [],
+      "logs": [],
+      "checks": [],
+      "caseId": "L02",
+      "note": "失败和中断也进入人生，但不改变世界"
+    },
+    {
+      "kind": "life",
+      "time": 1791199800019,
+      "inputs": [],
+      "bubbles": [],
+      "generations": [],
+      "logs": [
+        "她的生活：失败 pick_parcel（simulation）"
+      ],
+      "checks": [],
+      "life": "pick_parcel：failed"
+    },
+    {
+      "kind": "life",
+      "time": 1791199800037,
+      "inputs": [],
+      "bubbles": [],
+      "generations": [],
+      "logs": [
+        "她的生活：中断 study（simulation）"
+      ],
+      "checks": [],
+      "life": "study：interrupted"
+    }
+  ],
+  "checks": {
+    "passed": 0,
+    "failed": 0,
+    "reply": {
+      "passed": 0,
+      "failed": 0
+    },
+    "pipeline": {
+      "passed": 0,
+      "failed": 0
+    }
+  }
+}
