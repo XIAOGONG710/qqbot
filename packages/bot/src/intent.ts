@@ -31,9 +31,9 @@ function latestUserText(history: readonly Said[]): string {
 
 // 对方已经在收尾，或者只回了一句附和时，不再塞「追问 / 分享进度」；
 // 这些意图会顶掉卡上的「道晚安、顺势收尾」，让本来该停的聊天又铺开（ADR 0019 改后回归）。
-const ENDING = /晚安|睡(?:了(?!吗)|觉|啦|咯|吧)|不想(?:说话|聊)|不聊了|先去忙|我去忙|回头聊|明天聊|拜拜/;
+const ENDING = /晚安|睡(?:了(?!吗)|觉|啦|咯|吧)|不想(?:说话|聊)|不聊了|先去忙|我去忙|回头聊|明天聊|拜拜|我(?:先)?去(?:写|改|敲|学习|上课|开会|洗澡|吃饭|干活)|你(?:先忙|慢慢(?:看|玩|吃|忙))/;
 // 「干嘛」「啥」也是问（「你昨天都干嘛了」「在干嘛」「吃的啥」）；「没啥」不是
-const QUESTION = /[?？]|(?:吗|呢|么)$|你(?:是不是|有没有|要不要|能不能|可不可以|今天|现在)|怎么|为什么|咋|哪|几|多少|什么|谁|讲讲|告诉我|帮我|干嘛|(?<!没)啥|[了完过好到]没有?$|([\u4e00-\u9fff])不\1/;
+const QUESTION = /[?？]|(?:吗|么)$|你呢[。！!\s]*$|你(?:是不是|有没有|要不要|能不能|可不可以|今天|现在)|怎么|为什么|咋|哪|几|多少|什么|谁|讲讲|告诉我|帮我|干嘛|(?<!没)啥|[了完过好到]没有?$|([\u4e00-\u9fff])不\1/;
 
 export function isEndingTurn(history: readonly Said[]): boolean {
     const text = latestUserText(history).trim();
@@ -43,6 +43,24 @@ export function isEndingTurn(history: readonly Said[]): boolean {
 function asksQuestion(history: readonly Said[]): boolean {
     const text = latestUserText(history).trim();
     return !/^(?:在吗|在不在)[？?。！!\s]*$/.test(text) && QUESTION.test(text);
+}
+
+/** 对方此刻在递情绪，不拿她自己的生活进度把这句话顶掉。只认明确说法，不从普通短句猜心情。 */
+function needsCare(history: readonly Said[]): boolean {
+    const text = latestUserText(history);
+    return /(?:我)?(?:哭|难过|伤心|委屈|崩溃|焦虑|害怕|紧张|emo)|累死|难受|不舒服|疼死|(?:^|\n)悲[了伤惨啊呀…~～\s]*$/i.test(text.trim());
+}
+
+/** 想念、喜欢、纪念日或认识多久，是两个人之间的话；不能答完又机械切回猫、书和手头进度。 */
+function isRelationshipBid(history: readonly Said[]): boolean {
+    const text = latestUserText(history);
+    return /想你|喜欢你|爱你|亲亲|抱抱|纪念日|(?:认识|见面|在一起).{0,8}(?:天|年)|\d{3,}\s*天/.test(text);
+}
+
+/** 只有这种没有实质话题的开场，才适合捡起待跟进的事；不能在对方正说别的时抢话。 */
+function isOpeningPing(history: readonly Said[]): boolean {
+    const text = latestUserText(history).trim().replace(/[！!。？?～~\s]/g, '');
+    return /^(?:在吗|在不在|人呢|滴滴滴|嗨|hi|hello)$/i.test(text);
 }
 
 /** 他在说自己的经历、近况或心情；普通提问不算。 */
@@ -75,18 +93,17 @@ function busy(state: State | undefined, schedule: Schedule | undefined, now: Dat
  */
 export function describeIntent(context: IntentContext): string | undefined {
     if (context.initiating) return undefined;
-    if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句，不分享新进度、不另起话题]';
+    if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句；不分享新进度，不说你接下来做什么，不另起话题]';
     if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
+    if (needsCare(context.history)) return '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够；不转去讲你自己的事，不硬开新话题]';
+    if (isRelationshipBid(context.history)) return '[这一轮你想：只接他刚说的你们两个人的事，一两句就够；不转去讲猫、书或手头的进度]';
+    if (saysOwnThing(context.history)) return '[这一轮你想：回应他刚说的那件事；真有想知道的细节再随口问，不必每次都追问]';
+    if (!isOpeningPing(context.history)) return undefined;
     const waiting = context.waiting?.[0];
     if (waiting) return `[这一轮你想：知道「${waiting}」后来怎么样了，随口问一句；他不想说就算了，不追问]`;
-    if (saysOwnThing(context.history)) return '[这一轮你想：问他刚说的那件事里的一个具体细节，不问“在干嘛”]';
     if (context.promised) return '[这一轮你想：先把上面你答应的那件事说了，不另起话题]';
     const unanswered = context.unanswered?.[0];
     if (unanswered) return `[这一轮你想：上次问他「${unanswered}」他没顾上回，轻轻再问一次；他不接就算了，不追究]`;
-    if (context.books) return '[这一轮你想：只说一件你手上这本书的新进度；没有新进度就不硬编]';
-    if (!busy(context.state, context.schedule, context.now) && context.state?.activity.kind === 'free' && context.state.activity.text) {
-        return `[这一轮你想：只说一件你手上正在做的事的新进度（${context.state.activity.text}）；没有新进度就不硬编]`;
-    }
     if (busy(context.state, context.schedule, context.now)) return '[这一轮你想：回两句就去忙，不铺开新话题]';
     return undefined;
 }

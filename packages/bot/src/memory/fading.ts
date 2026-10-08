@@ -139,5 +139,8 @@ export function recentChat<T extends { time?: string }>(chat: readonly T[], now:
         while (start > 0 && together(start)) start--;
     }
     start = Math.min(start, Math.max(current, 0));
+    // 原始聊天只留最近 80 条：更早的事实由召回提供，不能让几百条模型旧回复变成越来越强的自我模仿语料。
+    // 80 条足够覆盖一段长对话；提示词预算仍会在单条特别长时继续裁剪。
+    start = Math.max(start, chat.length - 80);
     return { chat: chat.slice(start), omitted: start };
 }

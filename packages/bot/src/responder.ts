@@ -30,8 +30,8 @@ import { PENDING_REASON } from './proactive.ts';
 import { pendingMessages, type Seen } from './reply-timing.ts';
 import { MAX_BUBBLES, splitReply } from './reply.ts';
 
-/** 拼好的提示词；note 是给日志的补充（例如聊天原文不放的条数） */
-export type BuiltPrompt = PromptResult & { note?: string };
+/** 拼好的提示词；note 是给日志的补充；maxBubbles 可让当前对话动作比作息上限更短。 */
+export type BuiltPrompt = PromptResult & { note?: string; maxBubbles?: number };
 
 /** 回复时机（reply-timing.ts 按作息算） */
 export interface ReplyTiming {
@@ -230,6 +230,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         let reply = '';
         let input = 0;
         let decision: Seen | undefined;
+        let promptMaxBubbles: number | undefined;
         let seenAt = 0;
         let retriedEmpty = false;
         for (let attempt = 0; ; attempt++) {
@@ -251,6 +252,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             setPhase({ phase: 'generating' });
 
             const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { woken: decision?.woken });
+            promptMaxBubbles = prompt.maxBubbles;
             deps.onPrompt?.(prompt);
             const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
             deps.log(`生成回复：${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}${prompt.note ? `，${prompt.note}` : ''}`);
@@ -270,7 +272,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             if (deps.history.load(deps.userId).length === stored.length || attempt >= MAX_REGENERATE) break;
             deps.log('生成期间收到新消息，带上新消息重新生成');
         }
-        const maxBubbles = decision?.maxBubbles ?? MAX_BUBBLES;
+        const maxBubbles = Math.min(decision?.maxBubbles ?? MAX_BUBBLES, promptMaxBubbles ?? MAX_BUBBLES);
         const split = splitReply(reply, maxBubbles);
         // 再生成还是空：算回复失败，按 retryAfterMs 过一会儿再试
         if (split.length === 0) throw new Error('模型回复清理后为空');

@@ -150,4 +150,13 @@ describe('提示词里放的聊天原文（ADR 0018 实现时的调整 12）', (
         assert.deepEqual(recentChat(untimed, now).chat.map(m => m.content), ['没时间']);
         assert.deepEqual(recentChat([], now), { chat: [], omitted: 0 });
     });
+
+    test('最近几天聊得再多也只放最后 80 条，旧模型回复不在提示词里无限自我强化', () => {
+        const chat = Array.from({ length: 100 }, (_, i) => msg(at(0, '20:00'), `第 ${i + 1} 条`));
+        const result = recentChat(chat, now);
+        assert.equal(result.chat.length, 80);
+        assert.equal(result.chat[0]!.content, '第 21 条');
+        assert.equal(result.chat.at(-1)!.content, '第 100 条');
+        assert.equal(result.omitted, 20);
+    });
 });

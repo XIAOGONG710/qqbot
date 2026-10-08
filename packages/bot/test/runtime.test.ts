@@ -257,6 +257,26 @@ describe('回复调度', () => {
         ]);
     });
 
+    test('当前对话动作可以把这一轮压成两条，和作息的一条上限取更小的', async () => {
+        const reply = '第一条\n第二条\n第三条\n第四条';
+        const first = setup({
+            buildPrompt: chat => ({ messages: chat.map(m => ({ role: m.role, content: m.content })), activatedWorldInfo: [], maxBubbles: 2 }),
+            generate: async () => reply,
+        });
+        first.responder.receive('难过', 1, new Date());
+        await first.responder.whenIdle();
+        assert.equal(first.sent.length, 2);
+
+        const second = setup({
+            timing: { whenSeen: (_history, at) => ({ at, reason: '上课', maxBubbles: 1 }), typingMs: () => 0, skip: () => undefined },
+            buildPrompt: chat => ({ messages: chat.map(m => ({ role: m.role, content: m.content })), activatedWorldInfo: [], maxBubbles: 2 }),
+            generate: async () => reply,
+        });
+        second.responder.receive('难过', 1, new Date());
+        await second.responder.whenIdle();
+        assert.equal(second.sent.length, 1);
+    });
+
     test('decorate（ADR 0024 打错字再改口）：拆好条之后改，发出去和记下来的都是改过的', async () => {
         const { responder, stored, sent } = setup({
             generate: async () => '我应该明天去\n你早点睡',

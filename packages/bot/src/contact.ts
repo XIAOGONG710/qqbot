@@ -360,7 +360,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return {
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
-                ...(shown.omitted ? { note: `${CLEAR_DAYS} 天前的聊天原文 ${shown.omitted} 条不放` } : {}),
+                ...((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) ? { maxBubbles: 2 } : {}),
+                ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆）` } : {}),
             };
         },
         generate: messages => generate(messages, log),

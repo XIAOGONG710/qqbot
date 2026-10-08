@@ -12,7 +12,7 @@ describe('这一轮你想（ADR 0019）', () => {
     test('他刚说了自己的事：问一个具体细节；普通提问不算', () => {
         assert.equal(saysOwnThing([assistant('嗯'), user('我刚下课，累死了')]), true);
         assert.equal(saysOwnThing([assistant('嗯'), user('你今天干嘛')]), false);
-        assert.match(describeIntent({ history: [user('昨晚去看电影了')], now })!, /具体细节/);
+        assert.match(describeIntent({ history: [user('昨晚去看电影了')], now })!, /回应他刚说的/);
         assert.match(describeIntent({ history: [user('你帮我讲讲梯度下降是怎么回事')], now, state: free('打独立游戏') })!, /直接回答/);
         // 「到了没」「写完没」「去不去」也是问句（10-07：「你那快递到了没」被当成闲聊，意图行让她讲起了打游戏的进度）
         for (const asked of ['你那快递到了没', '作业写完没有', '周末去不去', '这样行不行']) {
@@ -27,13 +27,13 @@ describe('这一轮你想（ADR 0019）', () => {
     });
 
     test('按线索顺序只给一个：他的事优先于答应的事，答应的事优先于手上的事', () => {
-        assert.match(describeIntent({ history: [user('我今天去面试了')], now, promised: true, books: true })!, /具体细节/);
+        assert.match(describeIntent({ history: [user('我今天去面试了')], now, promised: true, books: true })!, /回应他刚说的/);
         assert.match(describeIntent({ history: [user('在吗')], now, promised: true, books: true })!, /答应/);
-        assert.match(describeIntent({ history: [user('在吗')], now, books: true })!, /这本书/);
+        assert.equal(describeIntent({ history: [user('在吗')], now, books: true }), undefined);
     });
 
-    test('空闲活动给一件进度；忙、上硬课、快睡时只回两句；没线索就没有', () => {
-        assert.match(describeIntent({ history: [user('在吗')], now, state: free('在图书馆看《长安的荔枝》') })!, /正在做的事/);
+    test('不强塞空闲活动；开场时忙、上硬课、快睡才限制长度；没线索就没有', () => {
+        assert.equal(describeIntent({ history: [user('在吗')], now, state: free('在图书馆看《长安的荔枝》') }), undefined);
         assert.match(describeIntent({ history: [user('在吗')], now, state: free('在图书馆赶作业') })!, /回两句/);
         const hard: State = { activity: { kind: 'class', lesson: { kind: 'hard', start: now, end: new Date(now.getTime() + 3_600_000) } }, where: '学校', outsideSemester: false };
         assert.match(describeIntent({ history: [user('在吗')], now, state: hard })!, /回两句/);
@@ -47,12 +47,19 @@ describe('这一轮你想（ADR 0019）', () => {
     });
 
     test('他说晚安、不想聊或只附和时只给收尾意图，不再追问或分享进度', () => {
-        for (const text of ['今天累死了，我先睡了，晚安', '今天不想说话', '嗯', '哈哈']) {
+        for (const text of ['今天累死了，我先睡了，晚安', '今天不想说话', '嗯', '哈哈', '那我去写代码了，你慢慢看']) {
             const history = [assistant('前一句'), user(text)];
             assert.equal(isEndingTurn(history), true, text);
             assert.match(describeIntent({ history, now, state: free('打独立游戏'), promised: true })!, /收尾/, text);
         }
         assert.equal(isEndingTurn([user('你睡了吗')]), false);
+    });
+
+    test('明确难过时只接住，不转去讲自己的猫、书或进度；普通短句不脑补', () => {
+        for (const text of ['悲', '我哭得很伤心', '今天累死了', '有点难受']) {
+            assert.match(describeIntent({ history: [user(text)], now, state: free('在追一部剧'), books: true })!, /先接住他此刻的情绪/, text);
+        }
+        assert.match(describeIntent({ history: [user('已经见面5150天了呢')], now, state: free('刷摄影区'), books: true })!, /只接他刚说的你们两个人的事/);
     });
 });
 
@@ -64,7 +71,7 @@ describe('挂着的事进意图行（ADR 0023）', () => {
         const line = describeIntent({ history: [user('在吗')], now, waiting, unanswered, promised: true })!;
         assert.match(line, /知道「阿明周四下午字节面试」后来怎么样了/);
         assert.doesNotMatch(line, /介意|委屈|失望|怪他|生气/);
-        assert.match(describeIntent({ history: [user('我刚下班，累死了')], now, waiting })!, /字节面试/, '他说自己的事时也先问这件');
+        assert.match(describeIntent({ history: [user('我刚下班，累死了')], now, waiting })!, /接住他此刻的情绪/, '他说自己的事时不拿旧事抢话');
         assert.match(describeIntent({ history: [user('晚安')], now, waiting })!, /收尾/);
         assert.match(describeIntent({ history: [user('你今天吃的啥')], now, waiting })!, /直接回答/);
         assert.equal(describeIntent({ history: [user('在吗')], now, waiting, initiating: true }), undefined);

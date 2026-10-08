@@ -274,7 +274,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
             const text = prompts[0]!.map(m => m.content).join('\n');
             assert.match(text, /最近在学吉他/, '上一次那段（20 天前）还放');
             assert.doesNotMatch(text, /老灶/, '更早的不放');
-            assert.match(readFileSync(join(dir, 'sim.log'), 'utf8'), /7 天前的聊天原文 2 条不放/);
+            assert.match(readFileSync(join(dir, 'sim.log'), 'utf8'), /较早的聊天原文 2 条不放（事实靠长期记忆）/);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
