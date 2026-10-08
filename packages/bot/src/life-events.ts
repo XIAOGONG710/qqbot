@@ -19,6 +19,8 @@ export interface LifeEvent {
     endedAt: string;
     source: LifeEventSource;
     result: LifeEventResult;
+    /** 世界裁判给出的可审计原因；成功时通常没有。 */
+    reason?: string;
     subject?: string;
     target?: string;
     seen?: boolean;
@@ -34,6 +36,7 @@ export interface LifeEventDraft {
     startedAt?: string;
     source: LifeEventSource;
     result: LifeEventResult;
+    reason?: string;
     subject?: string;
     target?: string;
     seen?: boolean;
@@ -71,6 +74,7 @@ export function validLifeEvent(value: unknown): value is LifeEvent {
         && Number.isFinite(start) && Number.isFinite(end) && start <= end
         && typeof event.source === 'string' && SOURCES.has(event.source as LifeEventSource)
         && typeof event.result === 'string' && RESULTS.has(event.result as LifeEventResult)
+        && (event.reason === undefined || typeof event.reason === 'string')
         && (event.subject === undefined || typeof event.subject === 'string')
         && (event.target === undefined || typeof event.target === 'string')
         && (event.seen === undefined || typeof event.seen === 'boolean')

@@ -733,6 +733,7 @@ export function worldState(
             const day = formatDate(herDay(schedule, endedAt));
             if (day < world.startDay) continue;
             const subject = draft.subject?.trim().slice(0, 40) || undefined;
+            const reason = draft.reason?.trim().slice(0, 80) || undefined;
             let result = draft.result;
             let target = draft.target?.trim() || undefined;
             if (result === 'succeeded' && ACTION_KINDS.has(kind as WorldActionKind)) {
@@ -760,6 +761,7 @@ export function worldState(
             added.push({
                 id, actor: 'linmengyao', kind, day,
                 startedAt: startedAt.toISOString(), endedAt: endedAt.toISOString(), source: draft.source, result,
+                ...(reason ? { reason } : {}),
                 ...(subject ? { subject } : {}), ...(target ? { target } : {}),
                 ...(draft.seen !== undefined ? { seen: draft.seen } : {}),
                 ...(draft.contact !== undefined ? { contact: draft.contact } : {}),

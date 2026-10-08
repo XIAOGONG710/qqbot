@@ -279,7 +279,7 @@ describe('统一生活事件账本（ADR 0029）', () => {
             const now = at('2026-09-15T22:00:00');
             const state = worldState(rainy, schedule, () => undefined, dir, () => now.getTime());
             state.recordEvents([
-                { id: 'failed', kind: 'feed_cat', at: at('2026-09-15T18:00:00').toISOString(), source: 'simulation', result: 'failed' },
+                { id: 'failed', kind: 'feed_cat', at: at('2026-09-15T18:00:00').toISOString(), source: 'simulation', result: 'failed', reason: '下雨，没见到猫' },
                 { id: 'interrupted', kind: 'feed_cat', at: at('2026-09-15T18:30:00').toISOString(), source: 'simulation', result: 'interrupted' },
             ]);
             assert.deepEqual(state.at(rainy, schedule, at('2026-09-15T18:59:00'))!.cat!.today, { skipped: 'rain' });
@@ -287,8 +287,11 @@ describe('统一生活事件账本（ADR 0029）', () => {
                 { id: 'succeeded', kind: 'feed_cat', at: at('2026-09-15T19:00:00').toISOString(), source: 'simulation', result: 'succeeded', seen: false },
             ]);
             assert.equal(state.events().length, 3);
+            assert.equal(state.events()[0]!.reason, '下雨，没见到猫');
             assert.equal(state.actions().length, 1);
             assert.deepEqual(state.at(rainy, schedule, at('2026-09-15T19:01:00'))!.cat!.today, { fed: at('2026-09-15T19:00:00'), seen: false });
+            const resumed = worldState(rainy, schedule, () => undefined, dir, () => now.getTime());
+            assert.equal(resumed.events()[0]!.reason, '下雨，没见到猫', '裁判原因重启后仍在');
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
