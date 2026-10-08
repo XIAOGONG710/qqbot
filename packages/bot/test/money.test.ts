@@ -56,7 +56,7 @@ describe('她的钱（ADR 0035）', () => {
         const t = at(10, 11, 21, 30);
         const bf = describeWorld(worldAt(world, schedule, t)!, t)!;
         assert.match(bf, /钱：手上还有 \d+ 元（生活费每月 1 号到，这个月的到了，离下次还有 21 天）；今天花了 \d+ 元（.*午饭 \d+/);
-        assert.match(bf, /攒钱买相机：\d+ \/ 4500 元（今天(存了 \d+|没存，手上的钱留着花到月底)）/);
+        assert.match(bf, /攒钱买相机：\d+ \/ 4500 元，还差 \d+（今天(存了 \d+|没存，手上的钱留着花到月底)）/);
         const kn = describeWorld(worldAt(known.herWorld!, known.schedule!, t)!, t)!;
         assert.doesNotMatch(kn, /手上还有|今天花了/);
         assert.match(kn, /攒钱买相机/);

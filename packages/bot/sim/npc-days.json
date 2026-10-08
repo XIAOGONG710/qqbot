@@ -15,7 +15,7 @@
         { "advance": "3d" },
         { "case": "ND03", "note": "10-22 苏雨桐 10-18 到 10-21 感冒，已经好了" },
         { "say": "雨桐感冒好了没" },
-        { "check": { "speechClean": true, "exitClean": true, "log": "想起苏雨桐最近的事", "replyAny": ["好了", "好啦", "回来", "来上课", "没事了", "差不多"], "replyNone": ["还没好", "还病着", "还在感冒", "还没来"] } },
+        { "check": { "speechClean": true, "exitClean": true, "log": "想起苏雨桐最近的事", "replyAny": ["好了", "好啦", "好多了", "回来", "来上课", "没事了", "差不多"], "replyNone": ["还没好", "还病着", "还在感冒", "还没来"] } },
         { "advance": "26d" },
         { "case": "ND04", "note": "11-17 陈佳宁 11-16 起赶作业，忙" },
         { "say": "佳宁最近咋样" },

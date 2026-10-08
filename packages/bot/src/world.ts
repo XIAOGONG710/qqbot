@@ -440,7 +440,9 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
         // 周日 21:00 前看到的是上个周日存的
         const when = last && (sameDay(last.at, at) ? '今天' : `${last.at.getDay() === at.getDay() ? '上' : ''}${WEEKDAYS[last.at.getDay()]}`);
         const note = !last ? '' : last.amount ? `（${when}存了 ${last.amount}）` : `（${when}没存，手上的钱留着花到月底）`;
-        parts.push(`攒钱买相机：${now.cameraFund.saved} / ${now.cameraFund.goal} 元${note}`);
+        // 还差多少直接写上（ADR 0035 第二批：2750 / 4500 她说「还没到一半」）
+        const left = now.cameraFund.goal - now.cameraFund.saved;
+        parts.push(`攒钱买相机：${now.cameraFund.saved} / ${now.cameraFund.goal} 元${left > 0 ? `，还差 ${left}` : '，攒够了'}${note}`);
     }
     // 手上的钱（ADR 0035）：只给说得出口的档位
     if (now.money?.detail) {
