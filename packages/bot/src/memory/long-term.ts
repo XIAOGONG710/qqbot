@@ -43,6 +43,11 @@ export const SHARED_RECALLED = 6;
 /** 一段新对话里给亲密联系人看的「今天跟别人聊过的」最多几条 */
 export const TODAY_OTHERS = 3;
 export const PERSON_RECALLED = 6;
+/**
+ * 同一个人和事（召回结果的实体）一次最多放几条（DSH 诊断 1.2）：同学档 10-08 召回 8 条里 3 条是土豆（10-05 一条、10-07 两条，说的是一件事），
+ * 他前一天刚嫌过「你怎么总说它的事」，她还是接着说猫。他这次说到的不限
+ */
+export const SAME_THING_RECALLED = 2;
 /** 召回取多少（ADR 0018：想不起来的筛掉之后还要够 MAX_RECALLED 条；以前是 600） */
 export const RECALL_TOKENS = 1000;
 /** 公共记忆问到某一天时多取一些（之后只留那天的） */
@@ -73,6 +78,7 @@ export function bankMissions(names: MacroNames) {
             IMPORTANT_RULE,
             LASTING_RULE,
             '- 生病、心情不好、很累这类近几天的状态也记，带日期。',
+            REACTION_RULE(user, char),
             `- ${char}复述以前聊过的事，不算新事实；寒暄、表情、单纯的附和不记。`,
             `- 不推断沉默的动机，不诊断${user}的人格。`,
         ].join('\n'),
@@ -100,6 +106,7 @@ export function commonBankMissions(char: string) {
             '- 否定（不吃香菜）、更正（之前说错了）各单独记一条，保留原话里的否定。',
             IMPORTANT_RULE,
             LASTING_RULE,
+            REACTION_RULE('聊天对象', char),
             `- ${char}复述以前聊过的事，不算新事实；寒暄、表情、单纯的附和不记。`,
             '- 不推断沉默的动机，不诊断任何人的人格。',
         ].join('\n'),
@@ -118,6 +125,13 @@ const IMPORTANT_RULE = `- 重要的事（生日、纪念日、考试和面试、
  * 一直成立的事让 Hindsight 在开头标【长期】，和【重要】一样不变淡（日记、周记、总结里的除外，按那段时间算）
  */
 const LASTING_RULE = `- 一直成立、过几个月还该记得的事（偏好和忌口、习惯、身份和工作、家里人和身边的人、一直在做的事，例如在健身、在实习）在这一条开头加「${LASTING}」；某一天发生的事、某天的心情和身体、聊天里的调侃和玩笑不加。「${IMPORTANT}」和「${LASTING}」都该加时两个都加。`;
+
+/**
+ * 对方对聊天本身的反应（DSH 诊断 1.2）：10-07 鸽鸽说「你怎么总说它的事」，被记成了「林梦瑶说喂出感情了」，召回里猫更多，她更常说猫。
+ * 嫌她老说什么要单独记成他嫌的，召回时她才知道收着点
+ */
+const REACTION_RULE = (who: string, char: string) =>
+    `- ${who}对聊天本身的反应（嫌${char}老说某件事、不想聊某个话题、听腻了、不喜欢她这样说话）单独记一条，写清是谁嫌、嫌的是什么，例如「${who}嫌${char}老说那只猫」；不要记成那件事本身（嫌她老说猫，不是「${char}和猫有感情」）。`;
 
 const SHARED_MISSIONS = {
     observations_mission: [
@@ -753,10 +767,17 @@ function currentEpisodeId(chat: ChatMessage[]): string | undefined {
 
 /**
  * 放进她提示词的记忆（召回、关系概况、印象）里她的名字换成「你」（ADR 0018 决策 4）：Hindsight 按名字写（「林梦瑶的日记」「林梦瑶说……」），
- * 提示词里其他地方都是用「你」跟她说话
+ * 提示词里其他地方都是用「你」跟她说话。
+ * 带她名字的那一行里的「她」也是说她（「林梦瑶养了一只叫土豆的宠物，她说自己还没喂它」，DSH 诊断 1.2），一起换；
+ * 那一行还提到别的女生（women：苏雨桐、闺蜜……）时分不清是谁，「她」不换
  */
-export function secondPerson(text: string, char: string): string {
-    return char ? text.replaceAll(char, '你') : text;
+export function secondPerson(text: string, char: string, women: readonly string[] = []): string {
+    if (!char) return text;
+    return text.split('\n').map(line => {
+        if (!line.includes(char)) return line;
+        const you = line.replaceAll(char, '你');
+        return women.some(name => name && line.includes(name)) ? you : you.replaceAll('她', '你');
+    }).join('\n');
 }
 
 export const RECALLED_HEADER ='[你们以前聊过的事（从记忆里想起来的，只作参考；和最近的聊天对不上时以最近的为准，用不上就别提）]';
@@ -788,12 +809,15 @@ export function formatRecalled(
     const day = (date: Date) => `${date.getMonth() + 1}月${date.getDate()}日`;
     const { fade, now } = options;
     const judged = results.map(r => ({ r, clarity: fade && now ? clarity(r, { now, heard: fade.heard, ignore: fade.ignore, ...(fade.window ? { window: fade.window } : {}) }) : 'lasting' as Clarity }));
-    const shown = judged.filter(item => item.clarity !== 'forgotten').slice(0, options.limit ?? MAX_RECALLED);
+    const remembered = judged.filter(item => item.clarity !== 'forgotten');
+    const varied = fade ? notCrowded(remembered, fade) : remembered;
+    const shown = varied.slice(0, options.limit ?? MAX_RECALLED);
     if (fade) {
         fade.onFade?.({
             vague: shown.filter(item => item.clarity === 'vague').length,
             recognized: shown.filter(item => item.clarity === 'recognized').length,
-            forgotten: judged.length - judged.filter(item => item.clarity !== 'forgotten').length,
+            forgotten: judged.length - remembered.length,
+            repeated: remembered.length - varied.length,
         });
     }
     const lines = shown.map(({ r, clarity }) => {
@@ -814,6 +838,20 @@ export function formatRecalled(
     const header = options.header ?? RECALLED_HEADER;
     const vague = shown.some(item => item.clarity === 'vague' || item.clarity === 'recognized');
     return `${vague ? header.replace(/\]$/, `；${VAGUE_NOTE}]`) : header}\n${lines.join('\n')}`;
+}
+
+/**
+ * 按排名往下放，同一个人和事已经放了 SAME_THING_RECALLED 条的不再放（DSH 诊断 1.2）。
+ * 不算的实体：她和名单里的称呼（fade.ignore，每条都带）、他这次说到的（问的就是它，多给几条）
+ */
+function notCrowded<T extends { r: RecallResult }>(items: readonly T[], fade: FadeRequest): T[] {
+    const told = new Map<string, number>();
+    return items.filter(({ r }) => {
+        const things = [...new Set(r.entities ?? [])].filter(name => !fade.ignore.includes(name) && !fade.heard.includes(name));
+        if (things.some(name => (told.get(name) ?? 0) >= SAME_THING_RECALLED)) return false;
+        for (const name of things) told.set(name, (told.get(name) ?? 0) + 1);
+        return true;
+    });
 }
 
 /** 他这次说的话：她上次回复之后他发的几条（一提就想起用） */

@@ -45,7 +45,7 @@ const countLines = (text: string) => text.split('\n').length - 1;
 
 /** 记忆变淡（ADR 0018）各几条，写日志用：「记个大概 2，一提想起 1，想不起来 3」，都是 0 就是空的 */
 const fadeParts = (stats: FadeStats | undefined) => (stats
-    ? ([['记个大概', stats.vague], ['一提想起', stats.recognized], ['想不起来', stats.forgotten]] as const).filter(([, n]) => n).map(([label, n]) => `${label} ${n}`)
+    ? ([['记个大概', stats.vague], ['一提想起', stats.recognized], ['想不起来', stats.forgotten], ['同一件事多的', stats.repeated ?? 0]] as const).filter(([, n]) => n).map(([label, n]) => `${label} ${n}`)
     : []);
 const fadeNote = (stats: FadeStats | undefined) => (fadeParts(stats).length ? `（${fadeParts(stats).join('，')}）` : '');
 
@@ -183,8 +183,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 线索是公共库里的人和事、同时又在问她过去的某天（「周一你那快递拿了没」）时也带那天的时间窗（ADR 0032）
             const day = cue === ASKS_PAST || (cue !== undefined && (holidays.includes(cue) || asksPast(chat, holidays)))
                 ? askedWindow(chat, time, schedule ?? herSchedule ?? character.schedule) : undefined;
-            // 记忆里她的名字换成「你」（ADR 0018 决策 4）
-            const you = (text: string | undefined) => text && secondPerson(text, character.name);
+            // 记忆里她的名字换成「你」（ADR 0018 决策 4）；那一行里的「她」也是她，除非还提到别的女生（她的朋友、名单里的闺蜜和女生朋友）
+            const women = [
+                ...(character.herWorld?.people ?? []).map(person => person.name),
+                ...(options.contacts ?? []).filter(c => c.tier === 'bestie' || c.tier === 'girl_friend').map(c => c.name),
+            ];
+            const you = (text: string | undefined) => text && secondPerson(text, character.name, women);
             // 记忆会变淡（ADR 0018）：她和名单里的称呼不算「一提就想起」的线索；各几条记下来写日志（0 是他的，1 是公共的，之后是提起的人）
             const ignore = [character.name, contact.name, ...(options.contacts ?? []).map(c => c.name)];
             const faded: (FadeStats | undefined)[] = [];

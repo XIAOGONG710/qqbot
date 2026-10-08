@@ -37,6 +37,8 @@ export interface FadeStats {
     vague: number;
     recognized: number;
     forgotten: number;
+    /** 同一个人和事放够了、没放的（long-term.ts SAME_THING_RECALLED） */
+    repeated?: number;
 }
 
 const DAY_MS = 86_400_000;

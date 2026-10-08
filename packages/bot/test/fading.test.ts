@@ -103,7 +103,7 @@ describe('召回整理时按记得多清楚筛（ADR 0018 决策 1）', () => {
             '- 10月6日（他一提才想起来，记不太清了）：宝宝去了海底捞',
             '- 11月8日（记不太清了）：宝宝去爬山',
         ]);
-        assert.deepEqual(stats, { vague: 1, recognized: 1, forgotten: 1 });
+        assert.deepEqual(stats, { vague: 1, recognized: 1, forgotten: 1, repeated: 0 });
     });
 
     test('都清楚时标题不变；全都想不起来就没有这一段；不传 fade 照旧', () => {
@@ -111,7 +111,7 @@ describe('召回整理时按记得多清楚筛（ADR 0018 决策 1）', () => {
         const header = formatRecalled([fact('1', { occurred_start: ago(1) })], { now, header: '[记忆]', fade: { heard: '', ignore: [] } })!.split('\n')[0];
         assert.equal(header, '[记忆]');
         assert.equal(formatRecalled([fact('1', { occurred_start: ago(40) })], { now, fade: { heard: '', ignore: [], onFade: s => { stats = s; } } }), undefined);
-        assert.deepEqual(stats, { vague: 0, recognized: 0, forgotten: 1 });
+        assert.deepEqual(stats, { vague: 0, recognized: 0, forgotten: 1, repeated: 0 });
         assert.match(formatRecalled([fact('1', { occurred_start: ago(40) })], { now })!, /事1$/);
     });
 });
