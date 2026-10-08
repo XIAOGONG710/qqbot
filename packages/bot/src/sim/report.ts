@@ -91,9 +91,10 @@ function renderStep(step: StepRecord, dayPrefix: (time: number) => string): stri
 function renderExchange(step: StepRecord, dayPrefix: (time: number) => string): string[] {
     const out: string[] = [];
     // 对方的消息和她的回复按时间排在一起
+    // 一条气泡里合并了几行（reply.ts packLines）时用 ⏎ 标出来，不然 Markdown 把第二行接在上一行后面，看不出她说了几句
     const events = [
         ...step.inputs.map(i => ({ time: i.time, text: `**对方**${i.interrupt ? '（插话）' : ''}：${i.text}` })),
-        ...step.bubbles.map(b => ({ time: b.time, text: `她${b.proactive ? `（主动：${b.proactive}）` : ''}：${b.text}` })),
+        ...step.bubbles.map(b => ({ time: b.time, text: `她${b.proactive ? `（主动：${b.proactive}）` : ''}：${b.text.replaceAll('\n', ' ⏎ ')}` })),
     ].sort((a, b) => a.time - b.time);
     for (const e of events) out.push(`- \`${dayPrefix(e.time)}${clock(e.time)}\` ${e.text}`);
     const scheduling = step.logs.filter(l => SCHEDULING.test(l));
