@@ -1,6 +1,6 @@
 # ADR 0039：重启前后她是同一个人
 
-- 状态：已实现，单元测试通过，真模型回归见下（2026-10-08）
+- 状态：已实现、真模型回归通过，2026-10-08 23:55 上线（用户选「现在上线」，`main` 快进到 `9a2bf9e`，重启 Koishi，启动日志无错误）
 - 日期：2026-10-08
 - 关联：[ADR 0017](0017-long-term-memory-like-a-person.md)（公共记忆的线索）、[ADR 0022](0022-her-past.md)（她的过去）、[ADR 0033](0033-npc-days.md)（她身边的人）、
   [ADR 0038](0038-replayable-action-queue.md)（行动队列的重启恢复）、[实施方案](../research/2026-10-07-life-engine/implementation-plan.md) 第 6 节 72 小时验收「重启对照」
