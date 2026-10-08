@@ -34,6 +34,14 @@ describe('她的钱（ADR 0035）', () => {
         assert.equal(spendItems([{ what: '午饭', amount: 12 }, { what: '零碎', amount: 5 }, { what: '午饭', amount: 3 }]), '午饭 15、零碎 5');
     });
 
+    test('她说出口的数以后不能变：10-08 晚上她跟他说过两次「还差1750」（ADR 0035 调整 7）', () => {
+        // 钱是从开学那天按规则一天天推的，改规则（新的花销、行动花钱……）会把过去的数一起改掉。
+        // 这里不过：要么改法不该动过去，要么在世界设定里给那天之前的数立锚点，别让她记得的数凭空变
+        const now = worldAt(world, schedule, at(10, 8, 21, 7))!;
+        assert.equal(now.cameraFund!.saved, 2750);
+        assert.equal(now.cameraFund!.goal - now.cameraFund!.saved, 1750);
+    });
+
     test('四个月推下来：钱不会花成负的；每月花一千多到两千；相机基金每月都在涨，存多存少跟着手上的钱走', () => {
         const timeline = simulateWorld(world, schedule, at(12, 31, 23, 59));
         // 一天之内可能先花后进账（跟家里要的在晚上），按天末看
