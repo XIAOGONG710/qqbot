@@ -151,7 +151,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         if (body) lines.push(body);
         if (!lines.length) return undefined;
         const day = `${dayStart.getMonth() + 1}月${dayStart.getDate()}日 ${'日一二三四五六'.split('').map(d => `周${d}`)[dayStart.getDay()]}`;
-        return { day, lines, text: `[那天（${day}）你那边的事（你自己过的这一天，记得；他问到了照实说，用不上就别提）：${lines.join('；')}]` };
+        return { day, lines, text: `[那天（${day}）你那边的流水账（你自己过的，都是真的：他问到具体的事——下没下雨、喂没喂猫、快递拿没拿——照这个说，别说错；泛泛问那天干了什么时，先说上面记得住的事，这里的不用一件件报）：${lines.join('；')}]` };
     };
     return createResponder({
         userId: contact.qq,
@@ -296,8 +296,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 afterMain: relationship ? [relationship] : [],
                 afterHistory: [
                     ...(recalled ? [recalled] : []),
-                    ...(recap ? [recap.text] : []),
+                    // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3：放在前面时问「昨天都干嘛了」她照着报喂猫、取快递，想不起那天记得住的麻辣烫，1/3）
                     ...(common ? [common] : []),
+                    ...(recap ? [recap.text] : []),
                     ...(today ? [today] : []),
                     ...(past ? [past] : []),
                     ...peopleText,
