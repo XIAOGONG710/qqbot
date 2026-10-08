@@ -11,7 +11,7 @@
         { "check": { "speechClean": true, "exitClean": true, "timeBlock": "离下次还有 4 天", "replyAny": ["够", "剩", "省", "月底", "两百", "200", "二百", "225"], "replyNone": ["一千多", "还有很多", "不够了"] } },
         { "case": "MN02", "note": "相机基金 3050 / 4500" },
         { "say": "相机钱攒多少了" },
-        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["3050", "三千零五", "三千", "3千"], "replyNone": ["2400", "两千四", "攒够了", "4500了"] } },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["3050", "三千零五", "三千", "3千", "1450", "一千四百五", "差一千四"], "replyNone": ["2400", "两千四", "攒够了", "4500了"] } },
         { "advance": "4d23h57m" },
         { "case": "MN03", "note": "11-02：11-01 生活费到账了" },
         { "say": "生活费到了没" },

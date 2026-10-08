@@ -154,8 +154,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         const bodyThen = character.herWorld.body ? bodyAt(character.herWorld.body, herSchedule, at(15, 0)) : undefined;
         const body = bodyThen ? diaryBody(bodyThen) : undefined;
         if (body) lines.push(body);
-        // 那天各时段的打算、改了的（ADR 0034）
-        lines.push(...dayPlan(herSchedule, character.herWorld.plans, dayStart, { rain: then.weather?.rain, body: bodyThen, homework: then.homework }, extraFree).map(describeSlot));
+        // 那天改了的打算（ADR 0034）：照打算做的不写——天天一样的空闲活动排成一列，问「昨天干嘛了」她就照着报，想不起那天记得住的事（调整 3）
+        lines.push(...dayPlan(herSchedule, character.herWorld.plans, dayStart, { rain: then.weather?.rain, body: bodyThen, homework: then.homework }, extraFree)
+            .filter(slot => slot.done !== slot.planned).map(describeSlot));
         if (!lines.length) return undefined;
         const day = `${dayStart.getMonth() + 1}月${dayStart.getDate()}日 ${'日一二三四五六'.split('').map(d => `周${d}`)[dayStart.getDay()]}`;
         return { day, lines, text: `[那天（${day}）你那边的流水账（你自己过的，都是真的：他问到具体的事——下没下雨、喂没喂猫、快递拿没拿——照这个说，别说错；泛泛问那天干了什么时，先说上面记得住的事，这里的不用一件件报）：${lines.join('；')}]` };
