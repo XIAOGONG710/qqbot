@@ -62,12 +62,37 @@ test('男朋友档：给男朋友档的字段都进了 description，有改写�
         for (const [name, field] of Object.entries(source.persona.sections[key])) {
             if (!field.tiers!.includes('boyfriend')) continue;
             const shown = textFor(field, 'boyfriend');
+            // 带触发词的说到才想起，在世界书里（下一条测试）
+            if (field.keys) {
+                assert.ok(!description.includes(shown), `sections.${key}.${name} 带触发词，不该在 description 里`);
+                continue;
+            }
             assert.ok(description.includes(shown), `sections.${key}.${name} 没有出现在 description 里`);
             if (shown !== field.text) assert.ok(!description.includes(field.text), `sections.${key}.${name} 改写过，原文不该出现`);
             checked++;
         }
     }
     assert.ok(checked > 40, `只检查了 ${checked} 个字段`);
+});
+
+test('带触发词的设定（王者荣耀那段）不进卡，进这一档的世界书，按这一档的说法；陌生人档看不到的不进（DSH 诊断 2.4）', () => {
+    const built = buildCharacter(source);
+    const entry = (tier: string) => Object.values(built.tiers.find(t => t.tier === tier)!.lorebook.entries).find(e => e.comment.includes('persona-honor'));
+    const boyfriend = entry('boyfriend')!;
+    const classmate = entry('classmate')!;
+    assert.ok(boyfriend.key.includes('王者') && boyfriend.key.includes('空洞骑士'));
+    assert.match(boyfriend.content, /双排是你带他/);
+    assert.doesNotMatch(classmate.content, /双排是你带他/, '同学档用改写的');
+    assert.equal(classmate.position, WORLD_INFO_POSITION.after);
+    assert.equal(entry('stranger'), undefined);
+    for (const tier of ['boyfriend', 'classmate']) {
+        const { data } = built.tiers.find(t => t.tier === tier)!.card;
+        assert.doesNotMatch(`${data.description}\n${data.personality}`, /本命英雄是貂蝉/, tier);
+    }
+    // 只有性格和各段能写触发词
+    const s = copy();
+    (s.persona.social as Record<string, unknown>)[Object.keys(s.persona.social)[0]!] = { ...Object.values(s.persona.social)[0], keys: ['x'] };
+    assert.throws(() => checkSource(JSON.parse(JSON.stringify({ ...s, persona: s.persona }))), /不认识的键：keys/);
 });
 
 test('字段只给 tiers 里的档位；改写按顺序取第一条含这一档的', () => {

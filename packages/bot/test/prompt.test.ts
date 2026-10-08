@@ -80,13 +80,25 @@ describe('用林梦瑶的角色卡拼提示词', () => {
     });
 });
 
+describe('说到才想起的设定（DSH 诊断 2.4）', () => {
+    test('同学档：王者荣耀那段不在卡里，说到王者、空洞骑士时才从世界书进来', () => {
+        const classmate = loadCharacterCard(resolve(stDir, 'linmengyao-classmate.json'));
+        const book = loadWorldInfo(resolve(stDir, `${classmate.world}.json`), classmate.world);
+        const prompt = (content: string) => build([{ role: 'user', content }], { character: classmate, worldInfo: book });
+        const text = (content: string) => prompt(content).messages.map(m => m.content).join('\n');
+        assert.doesNotMatch(text('孩子你无敌了'), /本命英雄是貂蝉/);
+        assert.match(text('今晚打王者吗'), /本命英雄是貂蝉/);
+        assert.match(text('空洞骑士那个boss过了没'), /菜猫/);
+    });
+});
+
 describe('拼装规则', () => {
     test('角色卡没有 system_prompt 时用预设的 main', () => {
         const { messages } = build([{ role: 'user', content: '嗨' }], { character: minimalCard({ description: 'd' }), worldInfo: [] });
         assert.deepEqual(messages.map(m => m.content), [
             'Write 小红\'s next reply in a fictional chat between 小红 and 阿明.',
             'd',
-            '[Start a new Chat]',
+            // 没有示例对话：不插 [Start a new Chat]（DSH 诊断 2.3）
             '嗨',
         ]);
     });
@@ -156,7 +168,7 @@ describe('拼装规则', () => {
             afterHistory: ['[当前时间：…]', ''],
             now: new Date('2026-10-04T12:00:00'),
         });
-        assert.deepEqual(messages.slice(1).map(m => m.content), ['今天是星期日', '[Start a new Chat]', '嗨', '[当前时间：…]', 'phi']);
+        assert.deepEqual(messages.slice(1).map(m => m.content), ['今天是星期日', '嗨', '[当前时间：…]', 'phi']);
     });
 
     test('不是角色卡的 JSON 报错', () => {

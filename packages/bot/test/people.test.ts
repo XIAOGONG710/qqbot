@@ -235,7 +235,8 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
             });
             const text = prompts[0]!.map(m => m.content).join('\n');
             // 公共记忆、鸽鸽的记忆两段都换了（他自己的 bank 还没写过，场景里没有他以前的聊天）
-            assert.equal(text.match(/- (?:（[^）]+）：)?你说她也想去杭州/g)?.length, 2);
+            // 带她名字的那一行里的「她」也是她（ADR 0018 调整 16）
+            assert.equal(text.match(/- (?:（[^）]+）：)?你说你也想去杭州/g)?.length, 2);
             assert.doesNotMatch(text, new RegExp(`${card.character.name}说她也想去杭州`));
         } finally {
             rmSync(dir, { recursive: true, force: true });

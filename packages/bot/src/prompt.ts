@@ -6,7 +6,7 @@
 //     → scenario → nsfw → worldInfoAfter → dialogueExamples → chatHistory → jailbreak
 //   内容：public/scripts/openai.js preparePromptsForChatCompletion / populateChatCompletion / populateChatHistory
 //     - 角色卡的 system_prompt 覆盖 main，post_history_instructions 覆盖 jailbreak，{{original}} 是被覆盖的原文
-//     - 聊天记录前插一条系统消息 “[Start a new Chat]”；从最新往前放，放不下就停
+//     - 聊天记录前插一条系统消息 “[Start a new Chat]”；从最新往前放，放不下就停（和 ST 不同：没有示例对话时不插，那时它只是噪音，DSH 诊断 2.3）
 //     - 示例对话（populateDialogueExamples）：每块前插一条 “[Example Chat]”，整块放得下才放，放不下就停；
 //       默认先放聊天记录、剩下的预算给示例，pinExamples（ST 的 Always include examples）时反过来
 //     - 每段一条 system 消息，空内容的消息丢弃
@@ -172,6 +172,7 @@ export function buildPrompt(input: PromptInput): PromptResult {
         addExamples();
     }
 
-    const messages = [...head, ...examples, newChat, ...chat, ...afterHistory, ...tail].filter(m => m.content);
+    // [Start a new Chat] 是隔开示例对话和真聊天的；没有示例时（同学档没写示例）只是一行噪音，像提示词（DSH 诊断 2.3），不放。和 ST 不同
+    const messages = [...head, ...examples, ...(examples.length ? [newChat] : []), ...chat, ...afterHistory, ...tail].filter(m => m.content);
     return { messages, activatedWorldInfo: wi.activated };
 }

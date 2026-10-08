@@ -3,7 +3,8 @@
 // 场景按场景档（tiers）区分，陌生人档的话绝不能出现在对男朋友的回复里。
 // ST 的世界书没有“按聊天对象过滤”，所以每个档位单独生成一本世界书，只收它的场景档里的场景。
 
-import type { SceneSource } from './source.ts';
+import { textFor } from './persona-to-card.ts';
+import { SECTION_KEYS, type PersonaSource, type SceneSource, type TextField } from './source.ts';
 import { newWorldInfoEntry, WORLD_INFO_POSITION, type WorldInfoBook } from './st-format.ts';
 
 export function sceneContent(scene: SceneSource): string {
@@ -33,5 +34,30 @@ export function scenesToLorebook(scenes: SceneSource[], label: string, drop: str
             matchWholeWords: false,
         });
     });
+    return { entries };
+}
+
+/**
+ * 带触发词的设定（persona.yml 的 traits、sections 里写了 keys）：这一档看得到的接在场景后面，最近的消息说到这些词时才进提示词（DSH 诊断 2.4）。
+ * 文字照这一档的说法（variants）
+ */
+export function withKeyedTraits(book: WorldInfoBook, persona: PersonaSource, tier: string): WorldInfoBook {
+    const entries = { ...book.entries };
+    let uid = Object.keys(entries).length;
+    const fields: [string, TextField][] = [
+        ...Object.entries(persona.traits),
+        ...SECTION_KEYS.flatMap(key => Object.entries(persona.sections[key])),
+    ];
+    for (const [name, field] of fields) {
+        if (!field.keys || !(field.tiers?.includes(tier) ?? true)) continue;
+        entries[String(uid)] = newWorldInfoEntry(uid, {
+            key: field.keys,
+            comment: `设定·说到才想起（persona-${name}）`,
+            content: textFor(field, tier),
+            position: WORLD_INFO_POSITION.after,
+            matchWholeWords: false,
+        });
+        uid++;
+    }
     return { entries };
 }

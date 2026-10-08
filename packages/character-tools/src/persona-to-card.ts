@@ -95,8 +95,9 @@ export function personaToCard(source: CharacterSource, tierName: string, options
     const intro = `{{char}}，${persona.identity}。下文的「你」就是{{char}}${tier.knows_him ? '，「他」是你的男朋友' : ''}。`;
     const parts = [intro];
     for (const key of SECTION_KEYS) {
+        // 带触发词的（keys）不在这里，说到才想起，进这一档的世界书（scenes-to-lorebook.ts withKeyedTraits）
         const lines = Object.entries(persona.sections[key])
-            .filter(([, field]) => sees(field))
+            .filter(([, field]) => sees(field) && !field.keys)
             .map(([name, field]) => {
                 const label = FIELD_LABELS[`${key}.${name}`];
                 return label ? `${label}：${textFor(field, tier.name)}` : textFor(field, tier.name);
@@ -106,7 +107,8 @@ export function personaToCard(source: CharacterSource, tierName: string, options
     parts.push(`【不接的话题】\n${persona.redlines.keywords.join('、')}。${persona.redlines.note}`);
 
     // personality：自我定位 + 这一档能看到的性格
-    const traitLines = Object.values(persona.traits).filter(sees).map(field => textFor(field, tier.name));
+    // 带触发词的同上
+    const traitLines = Object.values(persona.traits).filter(field => sees(field) && !field.keys).map(field => textFor(field, tier.name));
     const personality = [persona.personality, ...traitLines].join('\n');
 
     // scenario：正在聊天的人是谁 + 对这一档的说话方式

@@ -26,6 +26,11 @@ export interface TextField {
     variants?: { tiers: string[]; text: string; note?: string }[];
     /** 只有「重要的日子」一段有：运行时用的日期（ADR 0011 决策 6），档位跟着这句文字 */
     day?: DaySource;
+    /**
+     * 只有性格（traits）和各段（sections，日子那段除外）里能写：他说到这些词时才想起——不进卡的性格，进这一档的世界书（DSH 诊断 2.4：王者荣耀一大段每轮都在提示词里，
+     * 同学档那一轮聊的是空洞骑士和追剧）
+     */
+    keys?: string[];
     note?: string;
 }
 
@@ -343,10 +348,11 @@ class Checker {
     }
 }
 
-function textField(c: Checker, value: unknown, { gated, day = false }: { gated: boolean; day?: boolean }): TextField {
+function textField(c: Checker, value: unknown, { gated, day = false, keyed = false }: { gated: boolean; day?: boolean; keyed?: boolean }): TextField {
     const o = c.object(value);
-    c.keys(o, ['text', 'tiers', 'variants', ...(day ? ['day'] : []), 'note']);
+    c.keys(o, ['text', 'tiers', 'variants', ...(day ? ['day'] : []), ...(keyed ? ['keys'] : []), 'note']);
     const field: TextField = { text: c.at('text').string(o.text) };
+    if (keyed && o.keys !== undefined) field.keys = c.at('keys').strings(o.keys, { allowEmpty: false });
     if (gated) field.tiers = c.at('tiers').strings(o.tiers);
     else if (o.tiers !== undefined) c.at('tiers').fail('这个字段不按档位过滤，不要写 tiers');
     if (o.variants !== undefined && o.variants !== null && !(Array.isArray(o.variants) && o.variants.length === 0)) {
@@ -422,9 +428,9 @@ function proactiveSource(c: Checker, value: unknown): ProactiveSource {
     });
 }
 
-function fieldMap(c: Checker, value: unknown, gated: boolean, day = false): Record<string, TextField> {
+function fieldMap(c: Checker, value: unknown, gated: boolean, day = false, keyed = false): Record<string, TextField> {
     const o = c.object(value);
-    return Object.fromEntries(Object.entries(o).map(([key, field]) => [key, textField(c.at(key), field, { gated, day })]));
+    return Object.fromEntries(Object.entries(o).map(([key, field]) => [key, textField(c.at(key), field, { gated, day, keyed })]));
 }
 
 function byTier(c: Checker, value: unknown): ByTier[] {
@@ -657,8 +663,8 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
             personality: p.at('personality').string(persona.personality),
             reply_style: p.at('reply_style').string(persona.reply_style),
             redlines: { keywords: p.at('redlines.keywords').strings(redlines.keywords), note: p.at('redlines.note').string(redlines.note) },
-            traits: fieldMap(p.at('traits'), persona.traits, true),
-            sections: Object.fromEntries(SECTION_KEYS.map(key => [key, fieldMap(p.at(`sections.${key}`), sections[key], true, key === 'dates')])) as PersonaSource['sections'],
+            traits: fieldMap(p.at('traits'), persona.traits, true, false, true),
+            sections: Object.fromEntries(SECTION_KEYS.map(key => [key, fieldMap(p.at(`sections.${key}`), sections[key], true, key === 'dates', key !== 'dates')])) as PersonaSource['sections'],
             social: fieldMap(p.at('social'), persona.social, false),
         },
         scenes,

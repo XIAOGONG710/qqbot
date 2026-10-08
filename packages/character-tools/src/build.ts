@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { biographyTierRefs } from './biography-to-card.ts';
 import { personaToCard } from './persona-to-card.ts';
-import { scenesToLorebook } from './scenes-to-lorebook.ts';
+import { scenesToLorebook, withKeyedTraits } from './scenes-to-lorebook.ts';
 import { checkScheduleTiers, scheduleForTier } from './schedule-to-card.ts';
 import { SECTION_KEYS, type CharacterSource, type TextField } from './source.ts';
 import { checkPlansAgainstFree, worldTiers } from './world-source.ts';
@@ -141,7 +141,7 @@ export function buildCharacter(source: CharacterSource, prefix = 'linmengyao'): 
     const files = new Map<string, string>();
     for (const tier of source.tiers.tiers) {
         const world = `${prefix}-scenes-${tier.name}`;
-        const lorebook = scenesToLorebook(source.scenes, tier.scenes, tier.drop_scenes ?? []);
+        const lorebook = withKeyedTraits(scenesToLorebook(source.scenes, tier.scenes, tier.drop_scenes ?? []), source.persona, tier.name);
         const schedule = scheduleForTier(source.schedule, tier.name);
         const card = personaToCard(source, tier.name, { world, schedule });
         tiers.push({ tier: tier.name, card, lorebook });
