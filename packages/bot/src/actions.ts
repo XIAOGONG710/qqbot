@@ -4,7 +4,7 @@
 
 import { bookProgressAt, type ReadingBook } from './her-days.ts';
 import type { LifeEvent, LifeEventDraft, LifeEventSource } from './life-events.ts';
-import { classesOn, formatDate, stateAt, type Schedule } from './schedule.ts';
+import { classesOn, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import type { WorldNow } from './world.ts';
 
 export type TypedActionKind = 'sleep' | 'eat' | 'attend_class' | 'study' | 'rest' | 'read_book';
@@ -57,7 +57,7 @@ export function judgeAction(intent: ActionIntent, context: ActionContext): Actio
         const meal = context.world?.routine?.meals.find(item => sameInstant(item.start, start));
         const subject = meal?.kind;
         if (!meal) return failed(intent, 'unavailable');
-        if (alreadyDid(context.events, intent.kind, start, subject)) return failed(intent, 'already_done');
+        if (alreadyDid(context, intent.kind, start, subject)) return failed(intent, 'already_done');
         const where = meal.where === 'canteen' ? '在食堂' : meal.where === 'takeout' ? '点了外卖，在' : '在家';
         return fixedAction({ ...intent, subject }, { start: meal.start, end: meal.end }, `${where}吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}`, context);
     }
@@ -65,7 +65,7 @@ export function judgeAction(intent: ActionIntent, context: ActionContext): Actio
         const lesson = classesOn(context.schedule, start).lessons.find(item => sameInstant(item.start, start));
         if (!lesson) return failed(intent, 'missing_target');
         const subject = lesson.id ?? lesson.name;
-        if (alreadyDid(context.events, intent.kind, start, subject)) return failed(intent, 'already_done');
+        if (alreadyDid(context, intent.kind, start, subject)) return failed(intent, 'already_done');
         return fixedAction({ ...intent, subject }, { start: lesson.start, end: lesson.end }, `在上${lesson.name ?? '课'}`, context, true);
     }
 
@@ -163,11 +163,19 @@ function failed(intent: ActionIntent, reason: ActionFailure): ActionVerdict {
     };
 }
 
+/** 作息上的入睡时刻之前多久以内可以去睡：她 02:00 睡，22:30 以后早点睡、熬到一两点都行（DSH 行动复核 1.5：原来只能正好 02:00 睡） */
+export const EARLY_BED_MINUTES = 210;
+
 function sleepSpan(start: Date, schedule: Schedule): { start: Date; end: Date } | undefined {
     const state = stateAt(schedule, start);
-    if (state.activity.kind !== 'sleep') return undefined;
+    // 过了入睡时刻、还没到起床（醒了又睡）：睡到该起的时候
+    if (state.activity.kind === 'sleep') return { start, end: state.activity.until };
     const [hour, minute] = schedule.sleep.split(':').map(Number);
-    return { start: new Date(start.getFullYear(), start.getMonth(), start.getDate(), hour, minute), end: state.activity.until };
+    const bedtime = new Date(start.getFullYear(), start.getMonth(), start.getDate(), hour, minute);
+    if (bedtime <= start) bedtime.setDate(bedtime.getDate() + 1);
+    if (minutesBetween(start, bedtime) > EARLY_BED_MINUTES) return undefined;
+    const night = stateAt(schedule, bedtime);
+    return night.activity.kind === 'sleep' ? { start, end: night.activity.until } : undefined;
 }
 
 function firstCollision(start: Date, end: Date, context: ActionContext): { start: Date; end: Date } | undefined {
@@ -188,9 +196,10 @@ function firstExistingCollision(start: Date, end: Date, events: readonly LifeEve
     return events?.find(event => event.result !== 'failed' && new Date(event.startedAt) < end && new Date(event.endedAt) > start);
 }
 
-function alreadyDid(events: readonly LifeEvent[] | undefined, kind: TypedActionKind, at: Date, subject?: string): boolean {
-    const day = formatDate(at);
-    return Boolean(events?.some(event => event.result === 'succeeded' && event.kind === kind && event.day === day
+/** 同一天做过了：按她的一天算（和事件账的 day 一样，02:00 前算前一天），不按日历日 */
+function alreadyDid(context: ActionContext, kind: TypedActionKind, at: Date, subject?: string): boolean {
+    const day = formatDate(herDay(context.schedule, at));
+    return Boolean(context.events?.some(event => event.result === 'succeeded' && event.kind === kind && event.day === day
         && (!subject || !event.subject || event.subject === subject)));
 }
 

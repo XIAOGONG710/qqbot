@@ -21,7 +21,7 @@ import { herDayLogger } from '../her-days.ts';
 import { worldState, type World } from '../world.ts';
 import { DIARY_TEMPERATURE, diaryWriter } from '../diary.ts';
 import { formatDate, stateAt, type Schedule } from '../schedule.ts';
-import { actionQueue } from '../action-queue.ts';
+import { actionQueue, settlingWorld } from '../action-queue.ts';
 import { parseDuration, VirtualClock, type Checks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
 /** 模拟的联系人用的 QQ 号（虚构） */
@@ -165,10 +165,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const banks = memory ? [bankId!, ...others.map(other => memory.bankId(other)), memory.commonBankId()] : [];
     const { character } = options.card;
     // W3：模拟器和线上共用同一状态层，抽取后的动作立即影响后续提示词和日记。
-    const sharedWorld = options.herDays && scenario.schedule && character.schedule && character.herWorld
+    const ledgerWorld = options.herDays && scenario.schedule && character.schedule && character.herWorld
         ? worldState(character.herWorld, character.schedule, log, join(options.dataDir, 'world'), clock.now)
         : undefined;
-    const queuedActions = sharedWorld ? actionQueue(join(options.dataDir, 'world', 'action-queue.json'), log) : undefined;
+    const queuedActions = ledgerWorld ? actionQueue(join(options.dataDir, 'world', 'action-queue.json'), log) : undefined;
+    // 读世界之前先结算到期的行动（ADR 0038 调整）：聊天、时间块、日记看到的都算上已经做完的
+    const sharedWorld = ledgerWorld && queuedActions ? settlingWorld(ledgerWorld, queuedActions, clock.now) : undefined;
     // 她的日记（ADR 0017）：和 bot 一样，跨过她的一天就补写，存进公共库；场景关了作息就没有她的一天，不写
     // 她答应过的事（ADR 0018 决策 2）：和 bot 一样，开了记忆就抽（记忆同步时），到了日子在时间块里提醒，那天的打算写进日记
     const promises = memory
@@ -466,7 +468,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 const target = clock.now() + parseDuration(step.advance);
                 await runTimers(target);
                 clock.advanceTo(target);
-                if (queuedActions && sharedWorld) queuedActions.settleDue(new Date(clock.now()), sharedWorld);
+                if (queuedActions && ledgerWorld) queuedActions.settleDue(new Date(clock.now()), ledgerWorld);
                 current.time = clock.now();
                 await syncMemory();
             } else if ('wait' in step && step.wait === 'proactive') {

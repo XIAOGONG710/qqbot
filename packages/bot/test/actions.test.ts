@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import { availableActions, judgeAction, typedOccupation } from '../src/actions.ts';
 import type { LifeEvent } from '../src/life-events.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { formatDate, herDay } from '../src/schedule.ts';
 import { worldAt } from '../src/world.ts';
 
 const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
@@ -13,15 +14,22 @@ const at = (text: string) => new Date(`${text}+08:00`);
 const context = (time: Date, events: LifeEvent[] = []) => ({ schedule, books, world: worldAt(card.herWorld!, schedule, time), events });
 
 describe('类型化行动与世界裁判（ADR 0037）', () => {
-    test('睡觉严格对上睡眠段，上课严格对上真实课程', () => {
+    test('睡觉：入睡时刻（02:00）前三个半钟头内都能去睡，睡到那一晚该起的时候；上课严格对上真实课程', () => {
         const sleep = judgeAction({ id: 'sleep', kind: 'sleep', startedAt: at('2026-10-09T02:00:00') }, context(at('2026-10-09T02:00:00')));
         assert.equal(sleep.ok, true);
         if (sleep.ok) assert.equal(sleep.event.at, at('2026-10-09T07:40:00').toISOString());
-        assert.deepEqual(judgeAction({ id: 'late', kind: 'sleep', startedAt: at('2026-10-09T03:00:00') }, context(at('2026-10-09T03:00:00'))), {
+        // 早点睡（00:30、头一天 22:30）、熬到三点：都睡到同一个起床时刻（DSH 行动复核 1.5）
+        for (const start of ['2026-10-09T00:30:00', '2026-10-08T22:30:00', '2026-10-09T03:00:00']) {
+            const verdict = judgeAction({ id: `sleep-${start}`, kind: 'sleep', startedAt: at(start) }, context(at(start)));
+            assert.equal(verdict.ok, true, start);
+            if (verdict.ok) assert.equal(verdict.event.at, at('2026-10-09T07:40:00').toISOString(), start);
+        }
+        assert.deepEqual(judgeAction({ id: 'early', kind: 'sleep', startedAt: at('2026-10-08T22:00:00') }, context(at('2026-10-08T22:00:00'))), {
             ok: false,
-            event: { id: 'late', kind: 'sleep', startedAt: at('2026-10-09T03:00:00').toISOString(), at: at('2026-10-09T03:00:00').toISOString(), source: 'simulation', result: 'failed', reason: 'unavailable' },
+            event: { id: 'early', kind: 'sleep', startedAt: at('2026-10-08T22:00:00').toISOString(), at: at('2026-10-08T22:00:00').toISOString(), source: 'simulation', result: 'failed', reason: 'unavailable' },
             reason: 'unavailable',
         });
+        assert.equal(judgeAction({ id: 'nap', kind: 'sleep', startedAt: at('2026-10-09T15:00:00') }, context(at('2026-10-09T15:00:00'))).ok, false, '白天的睡是 rest');
 
         const lesson = judgeAction({ id: 'class', kind: 'attend_class', startedAt: at('2026-10-09T08:20:00') }, context(at('2026-10-09T08:20:00')));
         assert.equal(lesson.ok, true);
@@ -39,6 +47,22 @@ describe('类型化行动与世界裁判（ADR 0037）', () => {
         const repeated = judgeAction({ id: 'lunch-2', kind: 'eat', startedAt: meal.start }, context(meal.start, [stored]));
         assert.equal(repeated.ok, false);
         if (!repeated.ok) assert.equal(repeated.reason, 'already_done');
+    });
+
+    test('做没做过按她的一天算：00:30 还是前一天（DSH 行动复核 2.3）', () => {
+        // 10-12 那天的晚饭记在 10-12；10-13 00:30 问的是她的 10-12，还算同一天
+        const dinner: LifeEvent = {
+            id: 'dinner', actor: 'linmengyao', kind: 'eat', day: '2026-10-12', subject: 'dinner',
+            startedAt: at('2026-10-12T17:30:00').toISOString(), endedAt: at('2026-10-12T18:00:00').toISOString(), source: 'simulation', result: 'succeeded',
+        };
+        const lateNight = at('2026-10-13T00:30:00');
+        const meals = worldAt(card.herWorld!, schedule, at('2026-10-12T20:00:00'))!.routine!.meals;
+        const evening = meals.find(item => item.kind === 'dinner')!;
+        // 晚饭这一顿本身已经吃过：同一天、同一顿不再算
+        const again = judgeAction({ id: 'dinner-2', kind: 'eat', startedAt: evening.start }, context(evening.start, [dinner]));
+        assert.equal(again.ok, false);
+        if (!again.ok) assert.equal(again.reason, 'already_done');
+        assert.equal(formatDate(herDay(schedule, lateNight)), '2026-10-12');
     });
 
     test('学习撞上硬边界会中断；短到不足最低时长就不开始', () => {
