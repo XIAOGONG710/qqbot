@@ -801,12 +801,45 @@
                         {
                             "id": "chen_jianing",
                             "name": "陈佳宁",
-                            "relation": "高中同班，你的死党；考去了外地，平时在微信上互损"
+                            "relation": "高中同班，你的死党；考去了外地，平时在微信上互损",
+                            "life": {
+                                "sick": {
+                                    "perMonth": 0.5,
+                                    "days": [
+                                        2,
+                                        4
+                                    ]
+                                },
+                                "busy": {
+                                    "perMonth": 0.8,
+                                    "days": [
+                                        3,
+                                        5
+                                    ],
+                                    "labels": [
+                                        "有考试",
+                                        "赶作业"
+                                    ]
+                                }
+                            }
                         },
                         {
                             "id": "su_yutong",
                             "name": "苏雨桐",
-                            "relation": "大学同专业，济南人，不是室友；一起上课、一起吃饭"
+                            "relation": "大学同专业，济南人，不是室友；一起上课、一起吃饭",
+                            "life": {
+                                "sick": {
+                                    "perMonth": 0.5,
+                                    "days": [
+                                        2,
+                                        4
+                                    ]
+                                },
+                                "home": {
+                                    "weekendChance": 0.4,
+                                    "holidays": true
+                                }
+                            }
                         }
                     ],
                     "events": [
@@ -816,7 +849,21 @@
                             "window": "evening",
                             "chance": 0.2,
                             "when": "any",
-                            "person": "chen_jianing"
+                            "person": "chen_jianing",
+                            "skipWhen": [
+                                "busy"
+                            ]
+                        },
+                        {
+                            "id": "bestie_sick",
+                            "text": "{person}感冒了，在微信上跟你抱怨",
+                            "window": "evening",
+                            "chance": 0.6,
+                            "when": "any",
+                            "person": "chen_jianing",
+                            "onlyWhen": [
+                                "sick"
+                            ]
                         },
                         {
                             "id": "lunch_with_friend",
@@ -824,7 +871,34 @@
                             "window": "afternoon",
                             "chance": 0.3,
                             "when": "class_day",
-                            "person": "su_yutong"
+                            "person": "su_yutong",
+                            "skipWhen": [
+                                "sick",
+                                "home"
+                            ]
+                        },
+                        {
+                            "id": "notes_for_friend",
+                            "text": "上课帮{person}拍了板书发过去",
+                            "window": "afternoon",
+                            "chance": 0.6,
+                            "when": "class_day",
+                            "person": "su_yutong",
+                            "onlyWhen": [
+                                "sick"
+                            ]
+                        },
+                        {
+                            "id": "spicy_noodles",
+                            "text": "下课{person}拉你去学校旁边那家特别辣的米线",
+                            "window": "afternoon",
+                            "chance": 0.04,
+                            "when": "class_day",
+                            "person": "su_yutong",
+                            "skipWhen": [
+                                "sick",
+                                "home"
+                            ]
                         },
                         {
                             "id": "canteen_queue",

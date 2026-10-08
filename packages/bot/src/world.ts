@@ -13,6 +13,7 @@ import type { Episode } from './memory/episodes.ts';
 import { classesOn, formatDate, herDay, type ClassToday, type Schedule } from './schedule.ts';
 import { parseBody, type Body } from './body.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
+import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
 
 export type WorldWindow = 'morning' | 'afternoon' | 'evening';
 
@@ -25,8 +26,10 @@ export interface World {
     cameraFund?: { goal: number; saved: number; weekly: number; depositDay: number };
     homework?: { kinds: string[]; chance: number; earlyChance: number };
     familyCall?: { weekday: number; time: string };
-    people: { id: string; name: string; relation: string }[];
-    events: { id: string; text: string; person?: string; window: WorldWindow; chance: number; when: 'school' | 'class_day' | 'any'; weekday?: number }[];
+    /** life：她们自己的日子（ADR 0033，npc.ts） */
+    people: { id: string; name: string; relation: string; life?: NpcLife }[];
+    /** skipWhen / onlyWhen：person 那天的状态（ADR 0033）：她感冒了就不一起吃饭，感冒了才有「帮她拍板书」 */
+    events: { id: string; text: string; person?: string; window: WorldWindow; chance: number; when: 'school' | 'class_day' | 'any'; weekday?: number; skipWhen?: NpcStateKind[]; onlyWhen?: NpcStateKind[] }[];
     /** 她的身体（ADR 0025，body.ts） */
     body?: Body;
     /** 她的日常（ADR 0031）：午饭、晚饭、洗澡 */
@@ -104,6 +107,8 @@ export interface WorldNow {
     routine?: { meals: { kind: 'lunch' | 'dinner'; start: Date; end: Date; where: 'canteen' | 'takeout' | 'home' }[]; shower?: { start: Date; end: Date } };
     /** 今天已经发生的小事（text 已换好人名） */
     events: { id: string; text: string; at: Date; person?: { name: string; relation: string } }[];
+    /** 她身边的人今天怎么样（ADR 0033）：只有有事的（病了、忙、回家了） */
+    people?: { name: string; relation: string; states: NpcState[] }[];
 }
 
 const DAY_MS = 86_400_000;
@@ -261,6 +266,9 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             if (event.weekday && (day.getDay() || 7) !== event.weekday) continue;
             const ok = event.when === 'any' || (event.when === 'school' ? atSchool : atSchool && lessons.length > 0);
             if (!ok || unit(`${date} ${event.id}`) >= event.chance) continue;
+            // 和谁的事看那人那天怎么样（ADR 0033）
+            const person = event.person ? world.people.find(p => p.id === event.person) : undefined;
+            if (person && !npcAllows(npcStates(person.id, person.life, schedule, day), event.skipWhen, event.onlyWhen)) continue;
             const [from, to] = WINDOWS[event.window];
             const time = new Date(at(day, from).getTime() + Math.floor(unit(`${date} ${event.id} time`) * (minutes(to) - minutes(from))) * 60_000);
             record.events.push({ id: event.id, text: event.text, at: time, ...(event.person ? { person: event.person } : {}) });
@@ -315,6 +323,8 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
         const person = event.person ? world.people.find(p => p.id === event.person) : undefined;
         result.events.push({ id: event.id, text: event.text.replaceAll('{person}', person?.name ?? '朋友'), at: event.at, ...(person ? { person: { name: person.name, relation: person.relation } } : {}) });
     }
+    const people = world.people.map(p => ({ name: p.name, relation: p.relation, states: npcStates(p.id, p.life, schedule, day) })).filter(p => p.states.length);
+    if (people.length) result.people = people;
     return result;
 }
 
@@ -365,8 +375,14 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
         parts.push(calling ? `今晚 ${clock(now.familyCall.at)} 开始和家里视频，这会儿还在视频`
             : now.familyCall.done ? `今晚 ${clock(now.familyCall.at)} 和家里视频过了` : `今晚 ${clock(now.familyCall.at)} 要和家里视频`);
     }
+    // 朋友今天怎么样（ADR 0033）：谁是谁写一次，小事里再出现就不重复
+    const introduced = new Set<string>();
+    if (now.people?.length) {
+        parts.push(`朋友：${now.people.map(p => describeNpc(p.name, p.states)).join('；')}（${now.people.map(p => `${p.name}：${p.relation}`).join('；')}）`);
+        for (const p of now.people) introduced.add(p.name);
+    }
     if (now.events.length) {
-        const people = [...new Map(now.events.flatMap(e => (e.person ? [[e.person.name, e.person.relation] as const] : []))).entries()];
+        const people = [...new Map(now.events.flatMap(e => (e.person && !introduced.has(e.person.name) ? [[e.person.name, e.person.relation] as const] : []))).entries()];
         parts.push(`今天的小事：${now.events.map(e => e.text).join('；')}${people.length ? `（${people.map(([name, relation]) => `${name}：${relation}`).join('；')}）` : ''}`);
     }
     if (!parts.length) return undefined;
@@ -481,8 +497,44 @@ export function recapDay(now: WorldNow): string[] {
     }
     if (now.familyCall?.done) lines.push(`${clock(now.familyCall.at)} 和家里视频了`);
     for (const event of now.events) lines.push(event.text);
+    for (const person of now.people ?? []) lines.push(describeNpc(person.name, person.states)!);
     if (now.routine?.shower) lines.push(`${clock(now.routine.shower.start)} 去洗了澡`);
     return lines;
+}
+
+/** 说起她身边的人时往回看几天（ADR 0033） */
+export const RECENT_DAYS = 14;
+
+/**
+ * 他说起她身边的某个人时（ADR 0033）：那人最近 days 天怎么样（病过、忙过、回过家，连着的并成一段）、和她一起的事（每件只留最近一次），到 now 为止。
+ * 都是她知道的（同专业天天见，和死党天天微信）；这一档看不到这个人就没有
+ */
+export function recentWith(world: World, schedule: Schedule, now: Date, id: string, days = RECENT_DAYS): string[] | undefined {
+    const person = world.people.find(p => p.id === id);
+    if (!person) return undefined;
+    const today = herDay(schedule, now);
+    const from = addDays(today, -(days - 1));
+    const daily: { day: Date; states: NpcState[] }[] = [];
+    for (let day = from; day <= today; day = addDays(day, 1)) daily.push({ day, states: npcStates(id, person.life, schedule, day) });
+    const date = (d: Date) => `${d.getMonth() + 1}月${d.getDate()}日`;
+    // 往回看的头一天之前就开始、已经过去的那段不写（只看得到尾巴，「10月7日回家了」其实是国庆回家的最后一天）
+    const before = npcStates(id, person.life, schedule, addDays(from, -1));
+    const clipped = (span: ReturnType<typeof npcSpans>[number]) => sameDay(span.from, from) && !span.ongoing && before.some(s => s.kind === span.kind);
+    const lines = npcSpans(daily).filter(span => !clipped(span)).map(span => {
+        const what = span.kind === 'sick' ? '感冒' : span.kind === 'busy' ? `${span.label}，忙` : '回家了';
+        if (span.ongoing) return sameDay(span.from, today) ? `今天${what}` : `${date(span.from)}起${what}${span.kind === 'sick' ? '，还没好' : span.kind === 'busy' ? '，还没忙完' : ''}`;
+        return `${sameDay(span.from, span.to) ? date(span.from) : `${date(span.from)}–${date(span.to)}`}${what}`;
+    });
+    // 和她一起的事：每件只留最近一次（「下课一起去食堂」天天有，只说最近那回）
+    const timeline = simulateWorld(world, schedule, now);
+    const latest = new Map<string, string>();
+    for (let day = from; day <= today; day = addDays(day, 1)) {
+        for (const event of timeline.days.get(formatDate(day))?.events ?? []) {
+            if (event.person !== id || event.at > now) continue;
+            latest.set(event.id, `${sameDay(day, today) ? '今天' : date(day)}${event.text.replaceAll('{person}', person.name)}`);
+        }
+    }
+    return [...lines, ...latest.values()];
 }
 
 /** 一天的摘要（日志、state.json 用，不含聊天内容） */

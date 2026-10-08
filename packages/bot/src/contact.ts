@@ -25,7 +25,8 @@ import { describeMood, moodAt, readingActivities, readingSection } from './her-d
 import { describeIntent } from './intent.ts';
 import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
-import { describeWorld, occupationAt, recapDay, unavailableAt, worldAt, type WorldState } from './world.ts';
+import { describeWorld, occupationAt, recapDay, recentWith, unavailableAt, worldAt, type WorldState } from './world.ts';
+import { npcMentioned } from './npc.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
 import { describePast, pastCue, type PastChunk } from './biography.ts';
@@ -137,6 +138,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let lastCommon: { text: string; at: number } | undefined;
     // 刚想起的从前（ADR 0022）：接下来没有新线索也沿用一会儿，追问时不忘
     let lastPast: { chunks: PastChunk[]; at: number } | undefined;
+    // 刚说起的她身边的人（ADR 0033）：接着问「她好了没」时不忘
+    let lastNpcs: { people: { id: string; name: string; relation: string }[]; at: number } | undefined;
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
     const recapOf = (dayStart: Date, time: Date): { day: string; lines: string[]; text: string } | undefined => {
         if (!herSchedule || !character.herWorld) return undefined;
@@ -258,6 +261,15 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 log(`从前沿用刚才想起的：${pastChunks.map(chunk => chunk.title).join('、')}`);
             }
             const past = character.biography ? describePast(pastChunks, character.biography) : undefined;
+            // 他说起她身边的人（ADR 0033）：那人最近两周怎么样，她知道的；主动找他时不想
+            let npcs = character.herWorld && herSchedule && !initiate ? npcMentioned(chat, character.herWorld.people) : [];
+            if (npcs.length) lastNpcs = { people: npcs, at: time.getTime() };
+            else if (character.herWorld && herSchedule && !initiate && lastNpcs && stillInMind(chat, lastNpcs.at, time.getTime())) npcs = lastNpcs.people;
+            const aboutNpcs = npcs.flatMap(person => {
+                const lines = recentWith(character.herWorld!, herSchedule!, time, person.id);
+                return lines ? [`[${person.name}最近两周（${person.relation}；你知道的事，他问到了照实说，没写到的别编）：${lines.length ? lines.join('；') : '没病没忙，照常'}]`] : [];
+            });
+            if (aboutNpcs.length) log(`想起${npcs.map(person => person.name).join('、')}最近的事`);
             const promised = contact.tier !== UNLISTED_TIER ? options.promises?.describe(contact, chat, time) : undefined;
             if (promised) log('时间块里提醒了她答应的事');
             // 挂着的事（ADR 0023）：等他说结果的、她问了他没答的进意图行；没了结的事实放在心情后面，只给事实
@@ -301,6 +313,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     ...(recap ? [recap.text] : []),
                     ...(today ? [today] : []),
                     ...(past ? [past] : []),
+                    ...aboutNpcs,
                     ...peopleText,
                     ...(common || today || peopleText.length ? [disclosureRules(contact)] : []),
                     [

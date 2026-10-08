@@ -76,8 +76,24 @@ export interface WorldPersonSource {
     relation: string;
     tiers: string[];
     named_tiers: string[];
+    /** 她自己的日子（ADR 0033）：生病、忙、回家，按日期推 */
+    life?: NpcLifeSource;
     note?: string;
 }
+
+/**
+ * 她们自己的日子（ADR 0033，packages/bot/src/npc.ts）：sick 平均每月几次、每次几天；busy 同上，labels 是忙什么（有考试、赶作业）；
+ * home：每个周末回家的概率，holidays 放假都回家（本地人）
+ */
+export interface NpcLifeSource {
+    sick?: { per_month: number; days: [number, number] };
+    busy?: { per_month: number; days: [number, number]; labels: string[] };
+    home?: { weekend_chance: number; holidays: boolean };
+    note?: string;
+}
+
+export type NpcStateKind = 'sick' | 'busy' | 'home';
+const NPC_STATES: NpcStateKind[] = ['sick', 'busy', 'home'];
 
 /** 学校和宿舍里的小事：符合条件的日子按概率发生在那个时段里；text 写事实，不写台词；{person} 换成 person 那个人这一档的叫法 */
 export interface WorldEventSource {
@@ -91,6 +107,9 @@ export interface WorldEventSource {
     when: 'school' | 'class_day' | 'any';
     /** 只在星期几（1–7） */
     weekday?: number;
+    /** person 那天是这些状态时不发生 / 只在这些状态时发生（ADR 0033） */
+    skip_when?: NpcStateKind[];
+    only_when?: NpcStateKind[];
     note?: string;
 }
 
@@ -173,11 +192,13 @@ export function worldForTier(world: WorldSource | undefined, tier: string): Card
         ...(sees(world.family_call.tiers) ? { familyCall: { weekday: world.family_call.weekday, time: world.family_call.time } } : {}),
         people: world.people.filter(person => sees(person.tiers)).map(person => ({
             id: person.id, name: sees(person.named_tiers) ? person.name : person.label, relation: person.relation,
+            ...(person.life ? { life: npcLifeCard(person.life) } : {}),
         })),
         // 涉及的人这一档看不到的事件不写
         events: world.events.filter(event => sees(event.tiers) && (!event.person || sees(world.people.find(p => p.id === event.person)!.tiers))).map(event => ({
             id: event.id, text: event.text, window: event.window, chance: event.chance, when: event.when,
             ...(event.person ? { person: event.person } : {}), ...(event.weekday ? { weekday: event.weekday } : {}),
+            ...(event.skip_when ? { skipWhen: [...event.skip_when] } : {}), ...(event.only_when ? { onlyWhen: [...event.only_when] } : {}),
         })),
         ...(world.routine && sees(world.routine.tiers) ? {
             routine: {
@@ -193,6 +214,14 @@ export function worldForTier(world: WorldSource | undefined, tier: string): Card
         } : {}),
     };
     return card;
+}
+
+function npcLifeCard(life: NpcLifeSource): NonNullable<CardWorld['people'][number]['life']> {
+    return {
+        ...(life.sick ? { sick: { perMonth: life.sick.per_month, days: [...life.sick.days] as [number, number] } } : {}),
+        ...(life.busy ? { busy: { perMonth: life.busy.per_month, days: [...life.busy.days] as [number, number], labels: [...life.busy.labels] } } : {}),
+        ...(life.home ? { home: { weekendChance: life.home.weekend_chance, holidays: life.home.holidays } } : {}),
+    };
 }
 
 // ---------- 校验（结构；档位引用在 build.ts，隐私检查扫卡上的 world） ----------
@@ -302,7 +331,7 @@ export function checkWorld(raw: unknown): WorldSource {
     const people = peopleRaw.map((value, i): WorldPersonSource => {
         const e = root.at(`people[${i}]`);
         const person = e.object(value);
-        e.keys(person, ['id', 'name', 'label', 'relation', 'tiers', 'named_tiers', 'note']);
+        e.keys(person, ['id', 'name', 'label', 'relation', 'tiers', 'named_tiers', 'life', 'note']);
         const tiers = e.at('tiers').strings(person.tiers);
         const named = e.at('named_tiers').strings(person.named_tiers);
         for (const tier of named) if (!tiers.includes(tier)) e.at('named_tiers').fail(`${tier} 不在 tiers 里`);
@@ -313,6 +342,7 @@ export function checkWorld(raw: unknown): WorldSource {
             relation: e.at('relation').string(person.relation),
             tiers,
             named_tiers: named,
+            ...(person.life === undefined || person.life === null ? {} : { life: checkNpcLife(e.at('life'), person.life) }),
             ...e.at('note').note(person.note),
         };
     });
@@ -322,7 +352,7 @@ export function checkWorld(raw: unknown): WorldSource {
     const events = eventsRaw.map((value, i): WorldEventSource => {
         const e = root.at(`events[${i}]`);
         const event = e.object(value);
-        e.keys(event, ['id', 'text', 'person', 'tiers', 'window', 'chance', 'when', 'weekday', 'note']);
+        e.keys(event, ['id', 'text', 'person', 'tiers', 'window', 'chance', 'when', 'weekday', 'skip_when', 'only_when', 'note']);
         const person = event.person === undefined || event.person === null ? undefined : e.at('person').string(event.person);
         if (person && !people.some(p => p.id === person)) e.at('person').fail(`people 里没有 ${person}`);
         if (person && !String(event.text).includes('{person}')) e.at('text').fail('写了 person 就要在 text 里用 {person}');
@@ -331,6 +361,15 @@ export function checkWorld(raw: unknown): WorldSource {
         const when = e.at('when').string(event.when) as WorldEventSource['when'];
         if (!WHEN.includes(when)) e.at('when').fail(`应为 ${WHEN.join(' / ')}`);
         const weekday = event.weekday === undefined || event.weekday === null ? undefined : e.at('weekday').integer(event.weekday, 1, 7);
+        const states = (key: 'skip_when' | 'only_when'): NpcStateKind[] | undefined => {
+            if (event[key] === undefined || event[key] === null) return undefined;
+            if (!person) e.at(key).fail('要写 person');
+            const list = e.at(key).strings(event[key], false) as NpcStateKind[];
+            for (const state of list) if (!NPC_STATES.includes(state)) e.at(key).fail(`${state} 不是状态（${NPC_STATES.join(' / ')}）`);
+            return list;
+        };
+        const skipWhen = states('skip_when');
+        const onlyWhen = states('only_when');
         return {
             id: e.at('id').string(event.id),
             text: e.at('text').string(event.text),
@@ -340,6 +379,8 @@ export function checkWorld(raw: unknown): WorldSource {
             chance: e.at('chance').number(event.chance, 0, 1),
             when,
             ...(weekday ? { weekday } : {}),
+            ...(skipWhen ? { skip_when: skipWhen } : {}),
+            ...(onlyWhen ? { only_when: onlyWhen } : {}),
             ...e.at('note').note(event.note),
         };
     });
@@ -398,6 +439,27 @@ export function checkWorld(raw: unknown): WorldSource {
         ...(body ? { body } : {}),
         ...(routine ? { routine } : {}),
         ...root.at('note').note(o.note),
+    };
+}
+
+function checkNpcLife(l: At, value: unknown): NpcLifeSource {
+    const raw = l.object(value);
+    l.keys(raw, ['sick', 'busy', 'home', 'note']);
+    const span = (a: At, v: unknown, extra: string[] = []) => {
+        const o = a.object(v);
+        a.keys(o, ['per_month', 'days', ...extra]);
+        return { o, per_month: a.at('per_month').number(o.per_month, 0, 30), days: a.at('days').range(o.days, 1, 14, true) };
+    };
+    const sick = raw.sick === undefined || raw.sick === null ? undefined : span(l.at('sick'), raw.sick);
+    const busy = raw.busy === undefined || raw.busy === null ? undefined : span(l.at('busy'), raw.busy, ['labels']);
+    const home = raw.home === undefined || raw.home === null ? undefined : l.at('home').object(raw.home);
+    if (home) l.at('home').keys(home, ['weekend_chance', 'holidays']);
+    if (home && typeof home.holidays !== 'boolean') l.at('home.holidays').fail('应为 true / false');
+    return {
+        ...(sick ? { sick: { per_month: sick.per_month, days: sick.days } } : {}),
+        ...(busy ? { busy: { per_month: busy.per_month, days: busy.days, labels: l.at('busy.labels').strings(busy.o.labels, false) } } : {}),
+        ...(home ? { home: { weekend_chance: l.at('home.weekend_chance').number(home.weekend_chance, 0, 1), holidays: home.holidays as boolean } } : {}),
+        ...l.at('note').note(raw.note),
     };
 }
 

@@ -58,8 +58,15 @@ export interface CardWorld {
     homework?: { kinds: string[]; chance: number; earlyChance: number };
     familyCall?: { weekday: number; time: string };
     /** 她世界里的人（NPC）：name 已按档位换成这一档的叫法 */
-    people: { id: string; name: string; relation: string }[];
-    events: { id: string; text: string; person?: string; window: 'morning' | 'afternoon' | 'evening'; chance: number; when: 'school' | 'class_day' | 'any'; weekday?: number }[];
+    people: {
+        id: string; name: string; relation: string;
+        /** 她们自己的日子（ADR 0033） */
+        life?: { sick?: { perMonth: number; days: [number, number] }; busy?: { perMonth: number; days: [number, number]; labels: string[] }; home?: { weekendChance: number; holidays: boolean } };
+    }[];
+    events: {
+        id: string; text: string; person?: string; window: 'morning' | 'afternoon' | 'evening'; chance: number; when: 'school' | 'class_day' | 'any'; weekday?: number;
+        skipWhen?: ('sick' | 'busy' | 'home')[]; onlyWhen?: ('sick' | 'busy' | 'home')[];
+    }[];
     /** 她的身体（ADR 0025）：period.detail 是这一档说得出口生理期 */
     body?: { period?: { first: string; cycle: [number, number]; days: number; crampsChance: number; detail: boolean }; cold?: { perMonth: number; days: number } };
     /** 她的日常（ADR 0031）：午饭、晚饭、洗澡 */

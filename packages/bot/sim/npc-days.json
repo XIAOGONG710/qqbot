@@ -1,0 +1,24 @@
+{
+    "name": "男朋友档：两位闺蜜有自己的日子（ADR 0033）",
+    "description": "卡上苏雨桐 10-18（周日）起感冒 4 天，陈佳宁 11-16 起赶作业 3 天。10-19 晚上问她今天和苏雨桐吃饭没、苏雨桐怎么了；10-22 问苏雨桐好了没；11-17 问陈佳宁最近怎么样。她说的要和她们那几天的事对得上，没写的不现编。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-19T21:00:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "ND01", "note": "10-19 苏雨桐感冒第 2 天，没一起吃饭" },
+        { "say": "今天跟苏雨桐一起吃饭了吗" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "朋友：苏雨桐感冒第 2 天", "log": "想起苏雨桐最近的事", "replyAny": ["感冒", "病", "没来", "请假", "不舒服"], "replyNone": ["一起吃了", "跟她吃了", "和她吃了", "吃了米线"] } },
+        { "case": "ND02", "note": "接着问，没再说名字：沿用刚才想起的" },
+        { "say": "她严重不" },
+        { "check": { "speechClean": true, "exitClean": true, "log": "想起苏雨桐最近的事", "replyNone": ["住院", "进医院", "好了"] } },
+        { "advance": "3d" },
+        { "case": "ND03", "note": "10-22 苏雨桐 10-18 到 10-21 感冒，已经好了" },
+        { "say": "雨桐感冒好了没" },
+        { "check": { "speechClean": true, "exitClean": true, "log": "想起苏雨桐最近的事", "replyAny": ["好了", "好啦", "回来", "来上课", "没事了", "差不多"], "replyNone": ["还没好", "还病着", "还在感冒", "还没来"] } },
+        { "advance": "26d" },
+        { "case": "ND04", "note": "11-17 陈佳宁 11-16 起赶作业，忙" },
+        { "say": "佳宁最近咋样" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "陈佳宁这几天赶作业，忙", "log": "想起陈佳宁最近的事", "replyAny": ["作业", "忙", "ddl", "赶"], "replyNone": ["考试", "感冒", "生病"] } }
+    ]
+}

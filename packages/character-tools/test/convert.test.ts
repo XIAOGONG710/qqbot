@@ -402,6 +402,25 @@ test('她的世界写错时报错：不认识的键、事件引用不存在的�
     assert.doesNotThrow(() => checkWorld(raw()));
 });
 
+test('两位闺蜜自己的日子（ADR 0033）：life 跟着人进看得到她的档位；skip_when / only_when 只认 sick / busy / home、要写 person', () => {
+    const world = source.world!;
+    const boyfriend = worldForTier(world, 'boyfriend')!;
+    const chen = boyfriend.people.find(p => p.id === 'chen_jianing')!;
+    assert.deepEqual(chen.life?.busy?.labels, ['有考试', '赶作业']);
+    assert.deepEqual(boyfriend.people.find(p => p.id === 'su_yutong')!.life?.home, { weekendChance: 0.4, holidays: true });
+    assert.deepEqual(boyfriend.events.find(e => e.id === 'lunch_with_friend')!.skipWhen, ['sick', 'home']);
+    assert.deepEqual(boyfriend.events.find(e => e.id === 'notes_for_friend')!.onlyWhen, ['sick']);
+    assert.ok(worldForTier(world, 'classmate')!.events.every(e => !e.skipWhen && !e.onlyWhen), '同学档没有和闺蜜的事');
+    const raw = () => fromYaml(readFileSync(join(characterDir, 'source', SOURCE_FILES.world), 'utf8'), 'world.yml') as Record<string, unknown> & {
+        people: Record<string, unknown>[]; events: Record<string, unknown>[];
+    };
+    const broken = (patch: (w: ReturnType<typeof raw>) => void) => { const w = raw(); patch(w); return w; };
+    assert.throws(() => checkWorld(broken(w => { w.events.find(e => e.id === 'canteen_queue')!.skip_when = ['sick']; })), /skip_when 要写 person/);
+    assert.throws(() => checkWorld(broken(w => { w.events.find(e => e.id === 'lunch_with_friend')!.only_when = ['angry']; })), /angry 不是状态/);
+    assert.throws(() => checkWorld(broken(w => { (w.people[0]!.life as Record<string, unknown>).moody = 1; })), /不认识的键：moody/);
+    assert.throws(() => checkWorld(broken(w => { (w.people[1]!.life as { home: Record<string, unknown> }).home.holidays = 'yes'; })), /true \/ false/);
+});
+
 test('她的日常（ADR 0031）：每档都有午饭、晚饭、洗澡；写错时报错', () => {
     const world = source.world!;
     for (const tier of ['boyfriend', 'classmate', 'unlisted']) {
