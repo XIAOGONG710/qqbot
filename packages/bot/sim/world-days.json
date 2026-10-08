@@ -17,7 +17,7 @@
         { "check": { "speechClean": true, "exitClean": true, "timeBlock": "Linux操作系统的作业还没写（明天交）", "replyAny": ["没写", "没动", "还没", "明天", "没开始", "没呢", "一半", "在写", "在赶"], "replyNone": ["都写完了", "全写完了", "全搞定", "早写完了"] } },
         { "case": "WD04", "note": "相机基金 2750 / 4500（ADR 0035：存多少跟着手上的钱走，10-11 这周没存）" },
         { "say": "你那相机钱攒多少了" },
-        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["2750", "两千七百五", "两千七", "2千7", "二千七", "2700多"], "replyNone": ["1800", "2400", "两千四", "攒够了"] } },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["2750", "两千七百五", "两千七", "2千7", "二千七", "2700多", "差一千多", "差一千七", "差1750"], "replyNone": ["1800", "2400", "两千四", "攒够了"] } },
         { "case": "WD05", "note": "今晚 20:30 和家里视频过了" },
         { "say": "今天跟家里视频了没" },
         { "check": { "speechClean": true, "exitClean": true, "replyAny": ["视频了", "视频完", "视频啦", "打了", "视频过", "刚跟", "八点", "8点", "聊了", "挂了"], "replyNone": ["还没视频", "没视频", "没打"] } },

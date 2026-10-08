@@ -446,7 +446,7 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
     if (now.money?.detail) {
         const days = Math.round((now.money.nextPay.getTime() - startOfDay(at).getTime()) / DAY_MS);
         const spent = now.money.today.reduce((sum, e) => sum + e.amount, 0);
-        parts.push(`钱：手上还有 ${now.money.balance} 元（生活费 ${days} 天后到账${now.money.askedHome ? `；这个月跟家里多要了 ${now.money.askedHome}` : ''}）；${spent ? `今天花了 ${spent} 元（${spendItems(now.money.today)}）` : '今天还没花钱'}`);
+        parts.push(`钱：手上还有 ${now.money.balance} 元（生活费每月 ${now.money.nextPay.getDate()} 号到，这个月的到了，离下次还有 ${days} 天${now.money.askedHome ? `；这个月跟家里多要了 ${now.money.askedHome}` : ''}）；${spent ? `今天花了 ${spent} 元（${spendItems(now.money.today)}）` : '今天还没花钱'}`);
     }
     if (now.familyCall) {
         // 视频的那半小时里写「还在视频」（ADR 0030：写成「视频过了」时，她 3/3 在视频中途说「刚跟我妈视频完」）

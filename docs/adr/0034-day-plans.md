@@ -43,7 +43,8 @@
 | --- | --- |
 | `packages/bot/src/day-plan.ts` | 新：`dayPlan`、`planNow`、`describeSlot`、`describePlans` |
 | `packages/bot/src/contact.ts` | 身体提前算；状态行「本来打算……」；时间块「你今天的打算」；问到那天时带上那天的打算 |
-| `packages/bot/src/diary.ts` | 日记的「空闲时」用 `dayPlan`，并上在读的书 |
+| `packages/bot/src/diary.ts` | 日记的「空闲时」用 `dayPlan`，并上在读的书；她那边和空闲时按同学档的作息算（`worldSchedule`，调整 2） |
+| `packages/bot/src/app.ts`、`sim/run.ts`、`sim/runner.ts` | 日记传同学档的作息 |
 | `packages/bot/src/world.ts` | `World.plans` |
 | `characters/linmengyao/source/world.yml` | 新块 `plans` |
 | `characters/linmengyao/source/schedule.yml` | 两条只给 BFGK 的空闲活动加 `cover` |
@@ -54,6 +55,9 @@
 ## 实现时的调整
 
 1. `study` 加「熬夜赶作业」：晚上的空闲活动里本来就有这条，没算进去时出了「本来打算熬夜赶作业，……作业明天要交，先赶作业」。
+2. **日记按同学档的作息算**：日记进公共库，同学档也会想起来。它的世界本来就用同学档的卡，作息却是最亲那一档的——`worldAt` 按它算出来的作业带课名，
+   新加的「晚上本来打算……，Linux操作系统、MySQL数据库应用的作业明天要交」把课名写进了日记（`diary.test.ts` 抓到）；
+   「空闲时」也一直按男朋友档挑，可能写进「修昨天拍的片子」（同学档以下不该知道她拍照）。有了 cover 以后同学档挑到的是同一格，日记改用同学档的作息（`worldSchedule`）。
 
 ## 验证
 
