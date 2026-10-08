@@ -27,3 +27,15 @@
 5. `config/koishi.redacted.yml`
 6. `live/2026-10-08/world-state.json`、`promises/`、`proactive/`
 
+## DSH 侧回写（2026-10-08）
+
+| 文件 | 对应 handoff 第 40 节的哪一项 |
+| --- | --- |
+| `reviews/2026-10-08-dsh-diagnosis.md` | 第 1 项：她「仍不像真人」的具体来源（含逐条证据、行号、修复优先级） |
+| `reviews/2026-10-08-action-engine-review.md` | 第 3 项：静态检查 `d03b057` / `b5f2a6f`，判定**不足以支撑执行器**，附 5 条必须先补的能力 |
+| （待出）ADR 0036 四批报告复核 | 第 2 项：验证标准是否过宽、未覆盖的反例 |
+
+DSH 侧没有 `runtime/bot`，全部结论都是**静态推演 + 证据比对**，不是实跑验证；
+每份报告末尾都写了方法与边界，未复核的条目单独标注。
+
+
