@@ -29,7 +29,7 @@ import { describeWorld, occupationAt, recapDay, unavailableAt, worldAt, type Wor
 import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
 import { describePast, pastCue, type PastChunk } from './biography.ts';
-import { askedWindow, ASKS_PAST, commonCue, describePerson, holidayWords, mentionedPeople, stillInMind } from './people.ts';
+import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, mentionedPeople, stillInMind } from './people.ts';
 import type { PromiseKeeper } from './promises.ts';
 import { describeState, herDay, stateAt } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
@@ -172,7 +172,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     : commonCue(chat, contact, await memory.commonEntities(), character.name, holidays);
             // 问「今天」「昨天」按她的一天算（ADR 0018 决策 4）；问「上周」「国庆」时是那一周、那个假期（决策 3）。
             // 线索正好是假期的名字（「国庆」也是公共库里的实体）时同样带那个假期的时间窗（第三批：「那国庆呢」想起的是周记）
-            const day = cue === ASKS_PAST || (cue !== undefined && holidays.includes(cue))
+            // 线索是公共库里的人和事、同时又在问她过去的某天（「周一你那快递拿了没」）时也带那天的时间窗（ADR 0032）
+            const day = cue === ASKS_PAST || (cue !== undefined && (holidays.includes(cue) || asksPast(chat, holidays)))
                 ? askedWindow(chat, time, schedule ?? herSchedule ?? character.schedule) : undefined;
             // 记忆里她的名字换成「你」（ADR 0018 决策 4）
             const you = (text: string | undefined) => text && secondPerson(text, character.name);

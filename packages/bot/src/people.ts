@@ -107,10 +107,19 @@ export function commonCue(
         .filter(name => [...name].length >= MIN_NAME_CHARS && name !== charName && name !== self.name && text.includes(name))
         .sort((a, b) => b.length - a.length)[0];
     if (entity) return entity;
+    return asksPast(history, holidays) ? ASKS_PAST : undefined;
+}
+
+/**
+ * 他这次的话是在问她过去的事（ADR 0017）：同一句里有时间和经历，或者「那前天呢」这样接着问另一天。
+ * 线索是公共库里的人和事时也要看这个（ADR 0032：「周一你那快递拿了没」「昨天下雨了吗」的线索是「快递」「下雨」，问的那天没算出来）
+ */
+export function asksPast(history: readonly Said[], holidays: readonly string[] = []): boolean {
+    const lastReply = history.findLastIndex(message => message.role === 'assistant');
+    const said = history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content);
     const { time, followUp } = pastPatterns(holidays);
-    const asksHer = said.some(line => followUp.test(line.trim())
+    return said.some(line => followUp.test(line.trim())
         || (time.test(line) && PAST_DOING.test(line) && (/你/.test(line) || /[?？吗呢]\s*$/.test(line) || !/我/.test(line))));
-    return asksHer ? ASKS_PAST : undefined;
 }
 
 const DAY_WORDS: readonly [RegExp, number][] = [[/前天/, -2], [/昨天|昨晚/, -1], [/今天|今早|今晚|早上|上午|中午|下午|晚上|刚才/, 0]];

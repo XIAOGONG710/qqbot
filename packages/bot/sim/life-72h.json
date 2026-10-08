@@ -14,7 +14,7 @@
         { "check": { "speechClean": true, "exitClean": true, "log": "想起那天：10月14日", "replyAny": ["下了", "下雨", "雨"], "replyNone": ["没下雨", "没下呢", "没雨", "晴", "昨天没下", "昨天倒没"] } },
         { "case": "LF03", "note": "下雨那两天没下楼喂土豆" },
         { "say": "下雨那两天土豆你还喂了吗" },
-        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["没去", "没喂", "没下楼", "下雨", "没下去"], "replyNone": ["都喂了", "照样喂", "冒雨"] } },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["没去", "没喂", "没下楼", "下雨", "没下去", "楼都没下"], "replyNone": ["都喂了", "照样喂", "冒雨"] } },
         { "case": "LF04", "note": "前天（10-13）：按那天的日记" },
         { "say": "那前天呢，前天干嘛了" },
         { "check": { "speechClean": true, "exitClean": true, "common": ["你的日记"], "log": "线索：问她过去的事" } },

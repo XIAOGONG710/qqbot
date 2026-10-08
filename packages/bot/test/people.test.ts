@@ -8,7 +8,7 @@ import type { Schedule } from '../src/schedule.ts';
 import { loadTierCard } from '../src/contact.ts';
 import type { MemoryItem } from '../src/memory/hindsight.ts';
 import {
-    askedDay, askedWindow, COMMON_LINGER_MS, commonCue, describePerson, holidayWords, knowsPeople, MAX_MENTIONED, mentionedPeople, stillInMind,
+    askedDay, askedWindow, asksPast, COMMON_LINGER_MS, commonCue, describePerson, holidayWords, knowsPeople, MAX_MENTIONED, mentionedPeople, stillInMind,
 } from '../src/people.ts';
 import type { OpenAIMessage } from '../src/prompt.ts';
 import { runChecks, runScenario, type SimHindsight } from '../src/sim/runner.ts';
@@ -396,6 +396,15 @@ describe('公共记忆的线索（ADR 0017）', () => {
         assert.equal(cue('我家的猫'), undefined, '单字');
         // 只看她上次回复之后的
         assert.equal(commonCue([he('杭州好玩吗'), she('还行'), he('嗯')], me, entities, '林梦瑶'), undefined);
+    });
+
+    test('线索是公共库里的事、同时在问她过去的某天：asksPast 也认（ADR 0032：「周一你那快递拿了没」的线索是「快递」）', () => {
+        const withParcel = [...entities, '快递', '下雨'];
+        assert.equal(commonCue([he('周一你那快递拿了没')], me, withParcel, '林梦瑶'), '快递');
+        assert.equal(asksPast([he('周一你那快递拿了没')]), true);
+        assert.equal(asksPast([he('昨天下雨了吗')]), true);
+        assert.equal(asksPast([he('快递到了吗')]), false, '没有时间词');
+        assert.equal(asksPast([he('我昨天去杭州了')]), false, '说的是他自己');
     });
 
     test('问她过去的事：时间 + 经历，问的是她', () => {
