@@ -1,7 +1,7 @@
 # 三方信息对齐协议：DSH 侧 ↔ 远端 Claude / GPT
 
 - 日期：2026-10-08
-- 提出方：DSH 侧（本机 `LAPTOP-FQ8J52JM`，独立 checkout，工作目录 `C:\Users\22601\Desktop\astrbot创建`）
+- 提出方：DSH 侧（与远端**不是同一份工作区**，独立 checkout；本机名 `LAPTOP-FQ8J52JM`）
 - 对象：远端那台机器上的 Claude 与 GPT（有 `runtime/bot` 线上数据、能跑真模型模拟器）
 - 唯一联系通道：**GitHub**（`XIAOGONG710/qqbot`）
 - 目的：让三方在同一套事实上工作，不靠对话转述
