@@ -50,6 +50,7 @@ const FLEXIBLE: Record<'study' | 'rest' | 'read_book', FlexibleDefinition> = {
 export function judgeAction(intent: ActionIntent, context: ActionContext): ActionVerdict {
     const start = intent.startedAt;
     if (!intent.id.trim() || !Number.isFinite(start.getTime())) return failed(intent, 'invalid_time');
+    if (context.events?.some(event => event.id === intent.id.trim())) return failed(intent, 'already_done');
 
     if (intent.kind === 'sleep') return fixedAction(intent, sleepSpan(start, context.schedule), '在宿舍睡觉', context);
     if (intent.kind === 'eat') {

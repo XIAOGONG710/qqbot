@@ -21,6 +21,7 @@ import { herDayLogger } from '../her-days.ts';
 import { worldState, type World } from '../world.ts';
 import { DIARY_TEMPERATURE, diaryWriter } from '../diary.ts';
 import { formatDate, stateAt, type Schedule } from '../schedule.ts';
+import { actionQueue } from '../action-queue.ts';
 import { parseDuration, VirtualClock, type Checks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
 /** 模拟的联系人用的 QQ 号（虚构） */
@@ -79,7 +80,7 @@ export interface Generation {
 export interface CheckResult { ok: boolean; text: string }
 
 export interface StepRecord {
-    kind: 'case' | 'say' | 'life' | 'advance' | 'wait' | 'memory' | 'refresh' | 'check' | 'forget' | 'hindsight';
+    kind: 'case' | 'say' | 'life' | 'action' | 'advance' | 'wait' | 'memory' | 'refresh' | 'check' | 'forget' | 'hindsight';
     /** 这一步开始时的虚拟时间 */
     time: number;
     /** 到这一步为止对方最后一条消息的虚拟时间（replyAfter / replyWithin 从这里算） */
@@ -94,6 +95,7 @@ export interface StepRecord {
     relationship?: string;
     advance?: string;
     life?: string;
+    action?: string;
 }
 
 export interface RunResult {
@@ -160,6 +162,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const sharedWorld = options.herDays && scenario.schedule && character.schedule && character.herWorld
         ? worldState(character.herWorld, character.schedule, log, join(options.dataDir, 'world'), clock.now)
         : undefined;
+    const queuedActions = sharedWorld ? actionQueue(join(options.dataDir, 'world', 'action-queue.json'), log) : undefined;
     // 她的日记（ADR 0017）：和 bot 一样，跨过她的一天就补写，存进公共库；场景关了作息就没有她的一天，不写
     // 她答应过的事（ADR 0018 决策 2）：和 bot 一样，开了记忆就抽（记忆同步时），到了日子在时间块里提醒，那天的打算写进日记
     const promises = memory
@@ -430,11 +433,34 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 }]);
                 const event = sharedWorld.events().find(item => item.id === `sim:${options.runId}:${step.life.id}`);
                 current.life = `${step.life.kind}：${event?.result ?? 'rejected'}`;
+            } else if ('action' in step) {
+                if (!sharedWorld || !queuedActions || !character.schedule || !character.herWorld) {
+                    throw new Error('action 步骤需要开启 herDays、schedule，并使用带世界的角色卡');
+                }
+                const startedAt = new Date(clock.now());
+                const id = `sim:${options.runId}:action:${step.action.id}`;
+                const verdict = queuedActions.schedule({
+                    id, kind: step.action.kind, startedAt, source: 'simulation',
+                    ...(step.action.subject ? { subject: step.action.subject } : {}),
+                    ...(step.action.durationMinutes !== undefined ? { durationMinutes: step.action.durationMinutes } : {}),
+                }, {
+                    schedule: character.schedule,
+                    world: sharedWorld.at(character.herWorld, character.schedule, startedAt),
+                    books: character.books,
+                    events: sharedWorld.events(),
+                });
+                if (!verdict.ok) {
+                    sharedWorld.recordEvents([verdict.event]);
+                    current.action = `${step.action.kind}：failed（${verdict.reason}）`;
+                } else {
+                    current.action = `${step.action.kind}：planned → ${new Date(verdict.event.at).toLocaleString('zh-CN', { hour12: false })}`;
+                }
             } else if ('advance' in step) {
                 current.advance = step.advance;
                 const target = clock.now() + parseDuration(step.advance);
                 await runTimers(target);
                 clock.advanceTo(target);
+                if (queuedActions && sharedWorld) queuedActions.settleDue(new Date(clock.now()), sharedWorld);
                 current.time = clock.now();
                 await syncMemory();
             } else if ('wait' in step && step.wait === 'proactive') {

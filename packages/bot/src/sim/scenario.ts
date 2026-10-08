@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { CONTACT_TIERS, UNLISTED_TIER, type ContactTier, type Tier } from '../config.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import type { LifeEventResult } from '../life-events.ts';
+import type { TypedActionKind } from '../actions.ts';
 
 /** 对方的一条或几条消息；几条时按 gapMs 的真实间隔依次发（默认 800 ms，算连发） */
 export interface SayStep {
@@ -24,6 +25,16 @@ export interface LifeStep {
         subject?: string;
         target?: string;
         seen?: boolean;
+    };
+}
+
+/** 让世界裁判安排一个类型化行动；场景不能直接填写 succeeded。 */
+export interface ActionStep {
+    action: {
+        id: string;
+        kind: TypedActionKind;
+        subject?: string;
+        durationMinutes?: number;
     };
 }
 
@@ -101,6 +112,8 @@ export type Step =
     | SayStep
     /** 世界自己发生并结算的生活事件，不需要先让她在聊天里说出来。 */
     | LifeStep
+    /** 类型化行动先由世界裁判检查，结束后才写入事件账。 */
+    | ActionStep
     /** 虚拟时间往后跳，例如 "50m"、"1d"、"9h30m"；途中到点的事（她看到消息、回复）按时间顺序发生。开了记忆就接着把结束了的片段写进去并等 Hindsight 做完 */
     | { advance: string }
     /** 虚拟时间一直往后走，直到她回复（最多 1 天）：睡着、上课时来的消息；proactive：直到她主动发一次（最多 1 天） */
@@ -224,7 +237,7 @@ function parseHistory(value: unknown, where: string, start: number, fail: (messa
     });
 }
 
-const STEP_KINDS = ['case', 'say', 'life', 'advance', 'wait', 'memory', 'refresh', 'check', 'forget', 'hindsight'] as const;
+const STEP_KINDS = ['case', 'say', 'life', 'action', 'advance', 'wait', 'memory', 'refresh', 'check', 'forget', 'hindsight'] as const;
 
 function checkStep(step: unknown, where: string): void {
     const fail = (message: string): never => { throw new Error(`${where}：${message}`); };
@@ -250,6 +263,14 @@ function checkStep(step: unknown, where: string): void {
         if (life.subject !== undefined && typeof life.subject !== 'string') fail('life.subject 应为字符串');
         if (life.target !== undefined && typeof life.target !== 'string') fail('life.target 应为字符串');
         if (life.seen !== undefined && typeof life.seen !== 'boolean') fail('life.seen 应为布尔值');
+    }
+    if ('action' in s) {
+        if (typeof s.action !== 'object' || s.action === null) fail('action 应为对象');
+        const action = s.action as Record<string, unknown>;
+        if (typeof action.id !== 'string' || !action.id) fail('action.id 应为非空字符串');
+        if (!['sleep', 'eat', 'attend_class', 'study', 'rest', 'read_book'].includes(String(action.kind))) fail('action.kind 不认识');
+        if (action.subject !== undefined && typeof action.subject !== 'string') fail('action.subject 应为字符串');
+        if (action.durationMinutes !== undefined && (!Number.isInteger(action.durationMinutes) || Number(action.durationMinutes) <= 0)) fail('action.durationMinutes 应为正整数');
     }
     if ('advance' in s) parseDuration(String(s.advance));
     if ('wait' in s && s.wait !== 'reply' && s.wait !== 'proactive') fail('wait 只能是 "reply" 或 "proactive"');

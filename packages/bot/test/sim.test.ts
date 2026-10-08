@@ -62,6 +62,7 @@ describe('模拟器：场景文件', () => {
         assert.throws(() => parseScenario({ ...base, steps: [{ say: 'a', interrupt: { say: 'b', during: 'generation', afterBubbles: 1 } }] }), /interrupt 要有且只有/);
         assert.throws(() => parseScenario({ ...base, steps: [{ advance: '一天' }] }), /时长写法不对/);
         assert.throws(() => parseScenario({ ...base, steps: [{ life: { id: 'x', kind: 'feed_cat', result: 'maybe' } }] }), /life.result/);
+        assert.throws(() => parseScenario({ ...base, steps: [{ action: { id: 'x', kind: 'teleport' } }] }), /action.kind/);
         const s = parseScenario({ ...base, steps: [{ say: ['a', 'b'] }] });
         assert.equal(s.user, '阿明');
         assert.equal(s.memory, true);
@@ -85,6 +86,33 @@ describe('模拟器：场景文件', () => {
             assert.equal(first.steps[0]!.life, 'feed_cat：succeeded');
             assert.equal(second.steps[0]!.life, 'feed_cat：succeeded');
             assert.match(renderReport(first), /生活事件 feed_cat：succeeded/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('类型化行动先排队，结束以后才落进事件账；同一场景重放不重复', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-action-sim-'));
+        const scenario = parseScenario({
+            name: '行动队列重放', tier: 'boyfriend', start: '2026-10-12T14:00:00+08:00', memory: false,
+            steps: [
+                { action: { id: 'rest', kind: 'rest', durationMinutes: 30 } },
+                { advance: '29m' },
+                { advance: '1m' },
+            ],
+        });
+        try {
+            const options = { runId: 'action-replay', dataDir: dir, card, llm, prompt, herDays: true };
+            const first = await runScenario(scenario, options);
+            assert.equal(first.steps[1]!.advance, '29m');
+            const events = JSON.parse(readFileSync(join(dir, 'world', 'events.json'), 'utf8')).events;
+            assert.equal(events.filter((event: { kind: string }) => event.kind === 'rest').length, 1);
+            assert.deepEqual(JSON.parse(readFileSync(join(dir, 'world', 'action-queue.json'), 'utf8')).items, []);
+            assert.match(renderReport(first), /类型化行动 rest：planned/);
+
+            await runScenario(scenario, options);
+            const replayed = JSON.parse(readFileSync(join(dir, 'world', 'events.json'), 'utf8')).events;
+            assert.equal(replayed.filter((event: { kind: string }) => event.kind === 'rest').length, 1);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
