@@ -256,7 +256,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 state = { ...state, activity: { kind: 'free', text: revised } };
                 log(`改了打算：${revised}`);
             }
-            const plansLine = describePlans(slots);
+            const plansLine = herSchedule ? describePlans(herSchedule, slots, time) : undefined;
             const books = herSchedule
                 ? readingSection(herSchedule, character.books, time, {
                     history: chat, userName: contact.name,

@@ -67,11 +67,17 @@ export function describeSlot(slot: PlanSlot): string {
     return slot.done === slot.planned ? `${name}${slot.planned}` : `${name}本来打算${slot.planned}，${slot.because}，${slot.done}`;
 }
 
-/** 时间块里的一行：她今天的打算（醒着的时候才有） */
-export function describePlans(slots: readonly PlanSlot[]): string | undefined {
-    if (!slots.length) return undefined;
+/**
+ * 时间块里的一行：她今天的打算（醒着的时候才有）。过去了的时段只写改了的——照打算做完的天天差不多，排成一列她就照着报（调整 4）；
+ * 现在和之后的照写（打算本来就是往前看的）
+ */
+export function describePlans(schedule: Schedule, slots: readonly PlanSlot[], now: Date): string | undefined {
+    const day = herDay(schedule, now);
+    const ended = new Set(windowsOf(schedule, day).filter(([, , to]) => to <= now).map(([window]) => window));
+    const shown = slots.filter(slot => !ended.has(slot.window) || slot.done !== slot.planned);
+    if (!shown.length) return undefined;
     // 和人聊天时说过实际干了别的（下午去看了电影），以说过的为准：说出口的才是她过的（ADR 0027 的原则）
-    return `[你今天的打算（早上起来想的；改了的写了怎么改的，他问起照这个说，不用特意提；跟谁说过实际干了别的，以说过的为准）：${slots.map(describeSlot).join('；')}]`;
+    return `[你今天的打算（早上起来想的；改了的写了怎么改的，他问起照这个说，不用特意提；跟谁说过实际干了别的，以说过的为准）：${shown.map(describeSlot).join('；')}]`;
 }
 
 /** 照打算做，还是改：肚子疼得厉害 > 不出门（下雨、感冒、不舒服）> 作业明天要交（晚上） */

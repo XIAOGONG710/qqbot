@@ -40,7 +40,10 @@ describe('她一天的打算会改（ADR 0034）', () => {
         assert.equal(describeSlot(slots[0]!), '上午本来打算去图书馆占座，下雨了，在宿舍写作业');
         assert.equal(describeSlot(slots[1]!), '下午本来打算在图书馆赶作业，下雨了，在宿舍赶作业');
         assert.equal(planNow(schedule, slots, at(10, 20, 15)), '本来打算在图书馆赶作业，下雨了，在宿舍赶作业');
-        assert.match(describePlans(slots)!, /^\[你今天的打算（早上起来想的/);
+        assert.match(describePlans(schedule, slots, at(10, 20, 15))!, /^\[你今天的打算（早上起来想的.*：上午本来打算去图书馆占座，下雨了，在宿舍写作业；下午本来打算/);
+        // 过去了的时段只写改了的：10-08 晚上，上午、下午照打算做完了，不写
+        const plain = planOn(boyfriend, 10, 8);
+        assert.equal(describePlans(schedule, plain, at(10, 8, 21)), `[你今天的打算（早上起来想的；改了的写了怎么改的，他问起照这个说，不用特意提；跟谁说过实际干了别的，以说过的为准）：${describeSlot(plain[2]!)}]`);
     });
 
     test('作业明天要交：晚上打算玩的先赶作业，写完回到原来的打算', () => {

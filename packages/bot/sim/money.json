@@ -15,7 +15,7 @@
         { "advance": "4d23h57m" },
         { "case": "MN03", "note": "11-02：11-01 生活费到账了" },
         { "say": "生活费到了没" },
-        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "这个月的到了，离下次还有 29 天", "replyAny": ["到了", "到账", "发了", "打了", "来了"], "replyNone": ["还没到", "没到账"] } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "这个月的到了，离下次还有 29 天", "replyAny": ["到了", "到账", "发了", "打了", "来了"], "replyNone": ["还没到", "没到账", "还没呢", "下个月才", "没到，"] } },
         { "case": "MN04", "note": "请她喝奶茶：钱宽裕、从不亏自己" },
         { "say": "周末请你喝奶茶？" },
         { "check": { "speechClean": true, "exitClean": true, "replyAny": ["好", "行", "要", "冲", "可以", "请", "嗯", "喝"], "replyNone": ["不喝", "没钱"] } },
