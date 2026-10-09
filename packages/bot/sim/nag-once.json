@@ -1,0 +1,28 @@
+{
+    "name": "男朋友档：一段聊天里只叮嘱一次（ADR 0014 2026-10-09 调整）",
+    "description": "晚上他说去写代码，她多半会叮嘱一句别熬太晚；40 分钟后他回来歇会儿，又说再去写一会儿——这段聊天里已经叮嘱过了，不该再说一遍「早点睡」「别熬」（说了会被出口检查拦下重写）。最后他自己说今晚要通宵，这时她再说一句熬夜是自然的，不算。名字是虚构的。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-09T21:30:00+08:00",
+    "memory": false,
+    "history": [
+        { "time": "2026-10-09T18:10:00+08:00", "role": "user", "content": "下课了，饿死" },
+        { "time": "2026-10-09T18:10:30+08:00", "role": "assistant", "content": "快去吃饭" }
+    ],
+    "steps": [
+        { "case": "NO01", "note": "他去写代码：叮嘱一句是她的性格（不查）" },
+        { "say": "我去写代码了，今晚得把实验报告弄完" },
+        { "check": { "maxLines": 3, "exitClean": true } },
+        { "advance": "40m" },
+        { "case": "NO02", "note": "他回来歇会儿：接他的话，不再叮嘱作息" },
+        { "say": "写完一块了，歇会儿" },
+        { "check": { "replyNotMatch": ["早点睡|早些睡|早睡|别熬|少熬|熬太晚|快去睡|赶紧睡|去睡吧|快睡吧"], "maxLines": 3, "speechClean": true, "exitClean": true } },
+        { "case": "NO03", "note": "他又去写：顺着收，还是不再叮嘱" },
+        { "say": "那我再去写一会儿" },
+        { "check": { "replyNotMatch": ["早点睡|早些睡|早睡|别熬|少熬|熬太晚|快去睡|赶紧睡|去睡吧|快睡吧"], "maxLines": 2, "speechClean": true, "exitClean": true } },
+        { "advance": "30m" },
+        { "case": "NO04", "note": "他自己说要通宵：这时说一句熬夜是自然的，不拦" },
+        { "say": "完了，今晚估计得通宵" },
+        { "check": { "maxLines": 3, "speechClean": true, "exitClean": true } }
+    ]
+}

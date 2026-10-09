@@ -911,7 +911,7 @@ export function runChecks(
     if (checks.speechClean) {
         const issues = inspectSpeech(replies, speech ?? { recent: [], his: [] });
         const found = issues.map(i => `第 ${i.line + 1} 行${describeSpeechIssue(i)}`).join('、');
-        results.push({ ok: issues.length === 0, text: `说话没毛病（助手腔、算账、怪对方没说、重复）${found ? `（${found}）` : ''}` });
+        results.push({ ok: issues.length === 0, text: `说话没毛病（助手腔、算账、怪对方没说、重复、一段里叮嘱两遍）${found ? `（${found}）` : ''}` });
     }
     if (checks.noRepeat) {
         const hits = repeatedSentences(replies, earlier);

@@ -264,6 +264,15 @@ describe('说话的毛病：叮嘱重复（10-09，一段聊天念叨一次是�
         assert.deepEqual(inspectSpeech('记得吃点东西', speechContext(eat)), [], '叮嘱过睡觉，现在叮嘱吃饭是另一件事');
     });
 
+    test('「别弄太晚」「别又搞到后半夜」也算叮嘱（10-09 nag-once 模拟）；「明天别又拖到最后一刻」不算', () => {
+        for (const first of ['去吧，别弄太晚', '去吧 / 别又弄到两三点', '别又搞到后半夜']) {
+            const history = msgs(['21:30', 'user', '我去写代码了'], ['21:31', 'assistant', first], ['22:10', 'user', '那我再去写一会儿']);
+            assert.deepEqual(inspectSpeech('去吧，弄完早点睡', speechContext(history)).map(i => i.kind), ['nag'], first);
+        }
+        const history = msgs(['21:30', 'user', '我去写代码了'], ['21:31', 'assistant', '明天别又拖到最后一刻'], ['22:10', 'user', '那我再去写一会儿']);
+        assert.deepEqual(inspectSpeech('去吧，弄完早点睡', speechContext(history)), []);
+    });
+
     test('没有分段信息（旧的调用方）就不查', () => {
         assert.deepEqual(inspectSpeech('早点睡', { recent: [['别熬太晚']], his: ['嗯'] }), []);
     });
