@@ -19,6 +19,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { ownSourceLabel, sourceLabel } from '../disclosure.ts';
 import type { StoredMessage } from '../history.ts';
+import { MIDNIGHT_RULE } from '../follow-ups.ts';
 import { readJsonOr, writeJsonAtomic } from '../json-file.ts';
 import { knowsPeople } from '../people.ts';
 import type { ChatMessage } from '../prompt.ts';
@@ -59,6 +60,12 @@ const TAGS = ['qq-private'];
 const RELATIONSHIP_MODEL_ID = 'relationship';
 
 /**
+ * 日期换算的两处坑：凌晨说的「明天」（ADR 0011 调整 12）；「这周日」数错一天——10-09 模拟里周四说的「这周日」被记成「10月12日（周日）」，
+ * 12 日是周一，她照着说了「周日，10月12号」（ADR 0043 摘要事实审计）。
+ */
+const DATE_RULE = `- ${MIDNIGHT_RULE.replace(/；$/, '。')}换算时先看那一行的日期是星期几再往后数（周四说「这周日」是三天后）；写了星期的，日期和星期要对得上。`;
+
+/**
  * 调研方案 9.4 的三个 mission，dispositions 取中间值。retain_mission 按 ADR 0012 决策 1 第 4 条逐条写清：
  * mission 放在 Hindsight 内置抽取规则之前、优先级更高，也不进关键词索引（写入的 context 会进，所以角色说明放在这里）。
  */
@@ -73,6 +80,7 @@ export function bankMissions(names: MacroNames) {
             // 不写「虚构」：召回的事实会放进她自己的提示词（10-05 dry-run 时抽出了「林梦瑶说的自己的虚构日常」）
             `- ${char}说的她自己的日常（上课、吃饭、宿舍、猫）照记，但写明是${char}说的，不能记成${user}的事。`,
             `- ${user}说的之后要发生的事（考试、面试、出行、看病、约好的事），写成绝对日期，带上午 / 下午 / 晚上或几点；「明天」「下周三」按那一行所在的日期换算。`,
+            DATE_RULE,
             `- 绰号、外号写成「绰号（${user}的什么人）」，例如「铁锅（${user}的组长）」。`,
             '- 否定（不吃香菜）、更正（之前说错了）各单独记一条，保留原话里的否定。',
             IMPORTANT_RULE,
@@ -102,6 +110,7 @@ export function commonBankMissions(char: string) {
             `- 每条写清是在和谁的私聊里、谁说的、关于谁，用名字（${char}和聊天对象的称呼），不写「用户」「对方」「助手」。`,
             `- ${char}说的她自己的日常（上课、吃饭、宿舍、猫）照记，但写明是${char}说的、对谁说的。`,
             '- 聊天对象说的之后要发生的事（考试、面试、出行、看病、约好的事），写成绝对日期，带上午 / 下午 / 晚上或几点；「明天」「下周三」按那一行所在的日期换算。',
+            DATE_RULE,
             '- 绰号、外号写成「绰号（谁的什么人）」。',
             '- 否定（不吃香菜）、更正（之前说错了）各单独记一条，保留原话里的否定。',
             IMPORTANT_RULE,
