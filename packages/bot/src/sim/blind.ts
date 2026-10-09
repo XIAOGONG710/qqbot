@@ -197,8 +197,9 @@ export function pack(questions: BlindQuestion[], sets: AnswerSet[], options: { b
                 answers[letter] = label;
                 const answer = byLabel.get(label)!.get(q.id)!;
                 out.push(`**q${n}-${letter}**`, '');
+                // 一条一段；一条里的换行（她在一条里打了两行）标成 ⏎，不和下一条混在一起
                 if (answer.bubbles.length === 0) out.push('> （没有回复）');
-                else for (const bubble of answer.bubbles) out.push(`> ${bubble.text}`);
+                else out.push(answer.bubbles.map(bubble => `> ${bubble.text.replace(/\n/g, ' ⏎ ')}`).join('\n>\n'));
                 out.push('', '真人 _ ｜ 她 _ ｜ 接住 _ ｜ 想聊 _ ｜ 跑题 _ ｜ 编事 _ ｜ 理由： ｜ 最假：', '');
             }
             key.items.push({ q: `q${n}`, id: q.id, batch: b + 1, answers });
