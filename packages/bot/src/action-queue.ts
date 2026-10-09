@@ -45,6 +45,16 @@ export interface ActionQueue {
      * 都留在队列里，到 settleDue 再落账；已经做完的返回 undefined
      */
     cancel(id: string, at: Date, reason: string): QueuedAction | undefined;
+    /**
+     * 提前停（ADR 0042）：开始了的计划在 at 这一刻做完（succeeded，做了的那段算数）——聊天里说她去睡了、下楼喂猫了、作业写完了，世界变了。
+     * 和选择器事先知道时一样（到那一刻自然地停），所以不是 interrupted；at 不在开始和结束之间、取消了的返回 undefined
+     */
+    shorten(id: string, at: Date, why: string): QueuedAction | undefined;
+    /**
+     * 去掉还没落账的计划（ADR 0042）：聊天里说过的事表明那一段她在干别的（说了睡了以后排的休闲），这条计划从来没发生，
+     * 不进事件账（和 cancel 不同：cancel 是她本来要做、没做成，她记得）
+     */
+    drop(id: string, why: string): QueuedAction | undefined;
     /** 依 endedAt 顺序提交到期事件；写账抛错时保留当前及后续项目，下次再试；账本不收的挪到死信区。不抛错。 */
     settleDue(now: Date, ledger: Ledger): number;
     pending(): readonly QueuedAction[];
@@ -114,6 +124,27 @@ export function actionQueue(path: string, log: (message: string) => void = () =>
             replace(cancelled);
             log(`她的行动队列：${item.kind}${cancelled.event.result === 'failed' ? '取消' : '打断'}（${why}）`);
             return cancelled;
+        },
+        shorten: (id, at, why) => {
+            const item = items.find(other => other.id === id);
+            if (!item || item.event.result === 'failed') return undefined;
+            const start = Date.parse(item.event.startedAt ?? item.event.at);
+            if (at.getTime() <= start || at.getTime() >= Date.parse(item.event.at)) return undefined;
+            // 原来被课打断的（interrupted_by_class）提前停了，就不是被课打断的：原因去掉
+            const event: LifeEventDraft = { ...item.event, at: at.toISOString(), result: 'succeeded' };
+            delete event.reason;
+            const shortened: QueuedAction = { ...item, event, actualMinutes: (at.getTime() - start) / 60_000 };
+            replace(shortened);
+            log(`她的行动队列：${item.kind} 提前到 ${at.toISOString()} 停（${why}）`);
+            return shortened;
+        },
+        drop: (id, why) => {
+            const item = items.find(other => other.id === id);
+            if (!item) return undefined;
+            items = items.filter(other => other.id !== id);
+            persist();
+            log(`她的行动队列：去掉 ${item.kind}（${item.id}）：${why}`);
+            return item;
         },
         settleDue: (now, ledger) => {
             let settled = 0;

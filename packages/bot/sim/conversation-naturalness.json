@@ -38,7 +38,9 @@
         ],
         "speechClean": true,
         "exitClean": true,
-        "rawClean": true
+        "rawClean": true,
+        "emptied": false,
+        "noRepeat": true
       }
     },
     {
@@ -81,7 +83,9 @@
         ],
         "speechClean": true,
         "exitClean": true,
-        "rawClean": true
+        "rawClean": true,
+        "emptied": false,
+        "noRepeat": true
       }
     },
     {
@@ -111,7 +115,9 @@
         ],
         "speechClean": true,
         "exitClean": true,
-        "rawClean": true
+        "rawClean": true,
+        "emptied": false,
+        "noRepeat": true
       }
     },
     {
@@ -140,7 +146,9 @@
         ],
         "speechClean": true,
         "exitClean": true,
-        "rawClean": true
+        "rawClean": true,
+        "emptied": false,
+        "noRepeat": true
       }
     }
   ]

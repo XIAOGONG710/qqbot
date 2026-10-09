@@ -3,13 +3,16 @@
 // 判断和状态行（contact.ts）用同一套规则：作息和课表（schedule.ts）、饭点和洗澡（ADR 0031）、世界里有时长的事（ADR 0030）、一天的打算（ADR 0034）。
 // 过完的日子落进事件账就不再变（相机基金 2300 → 2750 那次：按规则从开学推到现在，改了规则就把过去也改了）。
 // 不调模型、不掷随机数：同一份事件账和同一个时刻推出来的一样，重启不重复（行动 id 由开始时刻和种类定）。
+// 聊天里说过的事改写还没过的（ADR 0042）：她说「睡了」、说喂过猫、取了快递、写完作业、和家里视频过了，排着的那件停在那一刻，之后按新的世界接着排；
+// 已经落账的不改。
 
-import type { ActionContext, ActionIntent, TypedActionKind } from './actions.ts';
-import type { ActionQueue } from './action-queue.ts';
+import { homeworkSprints, type ActionContext, type ActionIntent, type TypedActionKind } from './actions.ts';
+import type { ActionQueue, QueuedAction } from './action-queue.ts';
+import { asleepSince } from './bedtime.ts';
 import type { BodyNow } from './body.ts';
 import { dayPlan, type Plans } from './day-plan.ts';
 import type { ReadingBook } from './her-days.ts';
-import { readingActivities } from './her-days.ts';
+import { bookProgressAt, readingActivities } from './her-days.ts';
 import type { LifeEvent } from './life-events.ts';
 import { herDay, stateAt, type ExtraFreeActivity, type Schedule } from './schedule.ts';
 import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
@@ -24,6 +27,8 @@ export interface LifeSources {
     events: () => readonly LifeEvent[];
     /** 那一刻她身上怎么样（ADR 0025）：一天的打算按它改（肚子疼躺着、感冒不出门），和 contact.ts 一样 */
     bodyAt?: (at: Date) => BodyNow | undefined;
+    /** 她在聊天里说「睡了」的时刻（ADR 0042，bedtime.ts 的 saidBedtimes，对谁说的都算）：从那一刻起在睡，到那一晚该起的时候 */
+    bedtimes?: () => readonly number[];
 }
 
 /** 这一刻：要排的行动，或者跳到哪（赶去上课、洗澡、喂猫这类不记成行动的，和短得排不下的空当） */
@@ -61,10 +66,7 @@ function herDayEvening(schedule: Schedule, at: Date): Date {
 
 /** 那一天要赶的作业：写完之前那一段在赶（ADR 0030 的 OCCUPATION_MINUTES.homework） */
 function homeworkSprint(now: WorldNow | undefined, at: Date): { start: Date; end: Date; course: string } | undefined {
-    const minutes = OCCUPATION_MINUTES.homework * 60_000;
-    return now?.homework
-        .map(h => ({ start: new Date(h.doneAt.getTime() - minutes), end: h.doneAt, course: h.course }))
-        .find(h => at >= h.start && at < h.end);
+    return homeworkSprints(now).find(h => at >= h.start && at < h.end);
 }
 
 /** 空闲时段做的事归哪一类：在读的书 → 读书；作业 → 学习；躺着 → 休息；别的（追剧、打游戏、修片子……）→ 休闲 */
@@ -93,6 +95,10 @@ const MIN_FREE_MINUTES = 10;
 
 /** 这一刻她该做什么（ADR 0040）：先看作息（睡觉、上课、赶去上课），再看饭点和世界里的事，最后看一天的打算 */
 export function chooseAt(at: Date, sources: LifeSources): Choice {
+    // 聊天里说了「睡了」（ADR 0042）：从那一刻起在睡，不等作息上的 02:00
+    if (asleepSince(sources.schedule, sources.bedtimes?.() ?? [], at)) {
+        return { intent: { id: lifeActionId(at, 'sleep'), kind: 'sleep', startedAt: at }, why: '说了睡了' };
+    }
     const reading = readingActivities(sources.books);
     const state = stateAt(sources.schedule, at, reading);
     if (state.activity.kind === 'sleep') return { intent: { id: lifeActionId(at, 'sleep'), kind: 'sleep', startedAt: at }, why: '睡觉' };
@@ -115,24 +121,30 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     const busy = blocks.find(s => at >= s.start && at < s.end);
     if (busy) return { skipTo: busy.end, why: busy.text };
 
-    // 能做到哪：这一段结束、下一顿饭、下一件世界里的事、下一节课，哪个先到（裁判还会再截一次）
+    const sprint = homeworkSprint(world, at);
+    const { kind, subject } = sprint
+        ? { kind: 'study' as const, subject: sprint.course ? `${sprint.course}的作业` : '作业' }
+        : planned(at, sources, world, reading, state.activity.text);
+    // 打算做到哪（自然地停）：这一段结束、下一顿饭、下一件世界里的事（吃饭去、下楼喂猫），赶作业的写完为止。
+    // 下一节课、赶作业那一段是硬事件（ADR 0042）：不在这里截，交给裁判在那一刻打断（interrupted_by_class / _deadline），
+    // 事件账里看得出「打游戏打到一半去上课了」；原来这里先截到下一节课，事件账里一次打断都没有，赶作业那一段也没截（10-26 刷手机 19:19–22:49 盖住了 20:00–21:30 在赶的作业）
     const nextMeal = world?.routine?.meals.find(m => m.start > at)?.start;
     const nextBusy = blocks.find(s => s.start > at)?.start;
-    const nextClass = state.nextClass?.start;
-    const until = [windowEnd(sources.schedule, at), nextMeal, nextBusy, nextClass].filter((d): d is Date => Boolean(d))
-        .reduce((a, b) => (b < a ? b : a));
-
-    const sprint = homeworkSprint(world, at);
-    const plan = sprint ? undefined : planned(at, sources, world, reading, state.activity.text);
-    const end = sprint && sprint.end < until ? sprint.end : until;
-    const minutes = minutesBetween(at, end);
-    if (minutes < MIN_FREE_MINUTES) return { skipTo: end > at ? end : new Date(at.getTime() + 60_000), why: '空当太短' };
-    const { kind, subject } = sprint ? { kind: 'study' as const, subject: sprint.course ? `${sprint.course}的作业` : '作业' } : plan!;
+    const soft = earliest([windowEnd(sources.schedule, at), nextMeal, nextBusy, sprint?.end]);
+    const nextSprint = DEADLINE_KINDS.has(kind) ? homeworkSprints(world).map(h => h.start).filter(start => start > at) : [];
+    const hard = earliest([soft, state.nextClass?.start, ...nextSprint]);
+    // 到硬事件之前短得做不成这一类（学习至少 25 分钟、休闲 10 分钟）的空当不记（算在路上、发呆），不交给裁判判 no_time
+    const floor = Math.max(MIN_FREE_MINUTES, LIMITS[kind]?.[0] ?? 0);
+    if (minutesBetween(at, hard) < floor) return { skipTo: hard > at ? hard : new Date(at.getTime() + 60_000), why: '空当太短' };
     return {
-        intent: { id: lifeActionId(at, kind), kind, startedAt: at, subject, durationMinutes: clampMinutes(kind, minutes) },
+        intent: { id: lifeActionId(at, kind), kind, startedAt: at, subject, durationMinutes: clampMinutes(kind, minutesBetween(at, soft)) },
         why: sprint ? '赶作业' : subject,
     };
 }
+
+/** 赶作业抢得走的（和 actions.ts 一样）：休闲、躺着、看闲书 */
+const DEADLINE_KINDS = new Set<TypedActionKind>(['leisure', 'rest', 'read_book']);
+const earliest = (dates: readonly (Date | undefined)[]) => dates.filter((d): d is Date => Boolean(d)).reduce((a, b) => (b < a ? b : a));
 
 /** 一天的打算这一段实际做的（改了的用改了的；作业压着改的写完就回到原来的打算） */
 function planned(at: Date, sources: LifeSources, world: WorldNow | undefined, reading: readonly ExtraFreeActivity[], text: string) {
@@ -141,7 +153,22 @@ function planned(at: Date, sources: LifeSources, world: WorldNow | undefined, re
     const slots = dayPlan(sources.schedule, sources.plans, day, { rain: world?.weather?.rain, ...(body ? { body } : {}), homework: world?.homework }, reading);
     const slot = slots.find(s => s.planned === text);
     const done = slot && slot.done !== slot.planned && !(slot.until && at >= slot.until) ? slot.done : text;
-    return done === '先赶作业' ? { kind: 'study' as const, subject: '作业' } : freeKind(done, sources, reading);
+    return freeAction(done, at, sources, reading);
+}
+
+/** 把状态行上的空闲活动映射成生活事件类型；状态行影子审计和执行器共用。 */
+export function freeAction(text: string, at: Date, sources: Pick<LifeSources, 'schedule' | 'plans' | 'books'>, reading: readonly ExtraFreeActivity[]):
+    { kind: TypedActionKind; subject: string } {
+    if (text === '先赶作业') return { kind: 'study', subject: '作业' };
+    const free = freeKind(text, sources, reading);
+    // 在读的书停了（读到最新一卷）或读完了，状态行还写在看（readingActivities 不看进度）：记成休闲（翻翻、重温），
+    // 不交给裁判判 unavailable——原来 10-16 晚上《药屋》停在第 10 卷，整晚排不上，事件账空了一晚（ADR 0042）
+    const book = free.kind === 'read_book' ? sources.books.find(b => b.id === free.subject) : undefined;
+    if (book) {
+        const progress = bookProgressAt(sources.schedule, book, at);
+        if (progress.stopped || progress.finished) return { kind: 'leisure', subject: text };
+    }
+    return free;
 }
 
 const LIMITS: Partial<Record<TypedActionKind, [number, number]>> = { study: [25, 120], rest: [15, 120], read_book: [15, 90], leisure: [10, 240] };
@@ -168,10 +195,15 @@ export function lifeExecutor(sources: LifeSources, queue: ActionQueue, options: 
     ];
     return {
         fill(now) {
+            // 聊天记录这一轮只读一次（她说「睡了」的时刻），选择器一步步排的时候都用这一份
+            const said = sources.bedtimes?.();
+            const fixed: LifeSources = said ? { ...sources, bedtimes: () => said } : sources;
+            // 先看排着的：聊天里说过的事改了世界的，停在那一刻或去掉（ADR 0042）
+            for (const item of queue.pending()) revise(item, fixed, queue);
             let cursor = new Date(Math.max(options.since.getTime(), ...ends()));
             let scheduled = 0;
             for (let guard = 0; cursor < now && guard < 2000; guard++) {
-                const choice = chooseAt(cursor, sources);
+                const choice = chooseAt(cursor, fixed);
                 if ('skipTo' in choice) {
                     cursor = choice.skipTo > cursor ? choice.skipTo : new Date(cursor.getTime() + 60_000);
                     continue;
@@ -184,7 +216,11 @@ export function lifeExecutor(sources: LifeSources, queue: ActionQueue, options: 
                 const verdict = queue.schedule(choice.intent, context);
                 if (verdict.ok) {
                     scheduled++;
-                    cursor = new Date(verdict.event.at);
+                    // 刚排的这件也看一眼：已经知道她中途说了「睡了」、下楼喂了猫（重启后补排时），停在那一刻——和排着时才知道的结果一样
+                    const item = queue.pending().find(other => other.id === verdict.event.id);
+                    if (item) revise(item, fixed, queue);
+                    const end = new Date(queue.pending().find(other => other.id === verdict.event.id)?.event.at ?? verdict.event.at);
+                    cursor = end > cursor ? end : new Date(cursor.getTime() + 60_000);
                 } else {
                     log(`她的生活：${choice.why}（${choice.intent.kind}）排不上：${verdict.reason}，往后挪 5 分钟`);
                     cursor = new Date(cursor.getTime() + 5 * 60_000);
@@ -193,4 +229,46 @@ export function lifeExecutor(sources: LifeSources, queue: ActionQueue, options: 
             return scheduled;
         },
     };
+}
+
+/** 灵活的行动：聊天里说过的事能让它提前停；睡觉、吃饭、上课不动 */
+const REVISABLE = new Set<TypedActionKind>(['leisure', 'rest', 'read_book', 'study']);
+
+/** 排着的这件在那一刻还在接着做吗：同一类；休闲、看闲书、躺着还要是同一件（学习换一份作业也是在学） */
+function continues(item: QueuedAction, choice: Choice): boolean {
+    return 'intent' in choice && choice.intent.kind === item.kind && (item.kind === 'study' || choice.intent.subject === item.event.subject);
+}
+
+/**
+ * 世界变了的时刻（start, end 之间）：她说「睡了」、聊天里说过做了的事（事件账里 conversation 来的）、世界里有时长的事开始。
+ * 只有这些时刻选择器的答案可能变；没变的话一个都不会停
+ */
+function changePoints(sources: LifeSources, start: Date, end: Date): Date[] {
+    const inside = (t: number) => t > start.getTime() && t < end.getTime();
+    const times = [
+        ...(sources.bedtimes?.() ?? []),
+        ...sources.events().filter(event => event.source === 'conversation').map(event => Date.parse(event.endedAt)),
+        ...dayBusy(sources, start).map(span => span.start.getTime()),
+    ].filter(inside);
+    return [...new Set(times)].sort((a, b) => a - b).map(t => new Date(t));
+}
+
+/**
+ * 排着的一件按现在的世界再看一遍（ADR 0042）：开始那一刻就不该是它（说了睡了以后排的休闲）——去掉，从来没发生；
+ * 做到一半世界变了（说了睡了、下楼喂猫了、作业写完了）——停在那一刻，算做了的那段，之后按新的世界排。已经落账的不在队列里，不动
+ */
+function revise(item: QueuedAction, sources: LifeSources, queue: ActionQueue): void {
+    if (!item.id.startsWith('life:') || !REVISABLE.has(item.kind) || item.event.result === 'failed') return;
+    const start = new Date(item.event.startedAt ?? item.event.at);
+    const first = chooseAt(start, sources);
+    if (!continues(item, first)) {
+        queue.drop(item.id, `那一刻她在${'intent' in first ? `做别的（${first.why}）` : first.why}，聊天里说过的事改了这一段`);
+        return;
+    }
+    for (const at of changePoints(sources, start, new Date(item.event.at))) {
+        const choice = chooseAt(at, sources);
+        if (continues(item, choice)) continue;
+        queue.shorten(item.id, at, choice.why);
+        return;
+    }
 }

@@ -25,17 +25,20 @@ import { describeMood, moodAt, readingActivities, readingSection } from './her-d
 import { describeIntent } from './intent.ts';
 import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
-import { describeWorld, occupationAt, recapDay, recentWith, unavailableAt, worldAt, type WorldState } from './world.ts';
+import { describeWorld, recapDay, recentWith, unavailableAt, worldAt, type WorldState } from './world.ts';
 import { npcMentioned } from './npc.ts';
-import { dayPlan, describePlans, describeSlot, planNow } from './day-plan.ts';
+import { dayPlan, describePlans, describeSlot } from './day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
+import { asleepSince, saidBedtimes } from './bedtime.ts';
+import { herStatus } from './status-line.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
 import { describePast, pastCue } from './biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from './people.ts';
 import type { PromiseKeeper } from './promises.ts';
-import { describeState, herDay, stateAt } from './schedule.ts';
+import { describeState, herDay } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candidates.ts';
+import { turnCut, type Summarizer, type TurnWindow } from './context-window.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 
@@ -124,6 +127,11 @@ export interface ContactPipelineOptions {
     waitUntil?: (at: number, signal: AbortSignal) => Promise<void>;
     /** 回复失败之后隔多久再试，默认 RETRY_AFTER_MS；模拟器传 []（它的时钟是虚拟的，真等几分钟会插进后面的步骤） */
     retryAfterMs?: readonly number[];
+    /**
+     * 开了长期记忆时原始聊天只放最近几轮、更早的整理成要点（ADR 0043 离线实验，只有模拟器传）。
+     * 不传是最近 80 条（ADR 0036 决策 3），线上不传
+     */
+    contextWindow?: TurnWindow & { summarize: Summarizer };
 }
 
 /** 问到过去的某一天时，几天以内她那边的事还记得清楚（ADR 0032，同 ADR 0018 的 7 天） */
@@ -138,6 +146,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const clean = (reply: string) => cleanUpReply(reply, names, character.regexScripts);
     const schedule = options.schedule ? character.schedule : undefined;
     const herSchedule = options.herDays ? character.schedule : undefined;
+    // 她说过「睡了」（ADR 0042）：对名单里谁说的都算，从说完那一刻起在睡——各个联系人看到的是同一个她（状态行、什么时候看到消息）
+    const everyone = [contact.qq, ...(options.contacts ?? []).map(other => other.qq).filter(qq => qq !== contact.qq)];
+    const asleepAt = (time: Date) => (schedule
+        ? asleepSince(schedule, saidBedtimes(everyone.map(qq => options.history.load(qq)), schedule, time.getTime() - DAY_MS), time)
+        : undefined);
     const extraFree = herSchedule ? readingActivities(character.books) : [];
     // 这一轮放了「在读的书」时，出口检查拿它核对进度数字。同一个回复器一次只生成一条，review 紧跟着这一轮的 buildPrompt
     let reading: BookProgressContext | undefined;
@@ -247,7 +260,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const today = common ? undefined : you(await todayOthers);
             if (today) log(`今天和别人聊过的 ${countLines(today)} 条（新一段对话，有由头可以含糊提一件）`);
             const days = describeDays(character.dates, time);
-            let state = schedule ? stateAt(schedule, time, extraFree) : undefined;
             if (herSchedule) options.onHerDay?.(time);
             // 她那边（ADR 0021）：跟着「她自己的日子」开，卡上有世界才有
             const around = herSchedule && character.herWorld
@@ -259,22 +271,18 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
             // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
             const bodyNow = herSchedule && character.herWorld?.body ? bodyAt(character.herWorld.body, herSchedule, time) : undefined;
-            // 此刻在做的事接上世界（ADR 0030）：空闲时正好在喂猫、取快递、和家里视频、赶作业，状态行就写这件
-            const busy = state?.activity.kind === 'free' && around ? occupationAt(around, time) : undefined;
-            if (state && busy) {
-                state = { ...state, activity: { kind: 'free', text: busy } };
-                log(`此刻在做：${busy}`);
-            }
-            // 她一天的打算会改（ADR 0034）：醒着时给今天的打算；空闲又没有别的事时，状态行写「本来打算 X，Y，Z」
-            const slots = herSchedule && around && state && state.activity.kind !== 'sleep'
-                ? dayPlan(herSchedule, character.herWorld?.plans, herDay(herSchedule, time), { rain: around.weather?.rain, body: bodyNow, homework: around.homework }, extraFree)
-                : [];
-            const revised = state?.activity.kind === 'free' && !busy && herSchedule ? planNow(herSchedule, slots, time) : undefined;
-            if (state && revised) {
-                state = { ...state, activity: { kind: 'free', text: revised } };
-                log(`改了打算：${revised}`);
-            }
-            const plansLine = herSchedule ? describePlans(herSchedule, slots, time) : undefined;
+            // 状态行（status-line.ts，模拟器的状态行影子比对用同一个函数，ADR 0042）：作息 → 说过「睡了」就在睡 →
+            // 空闲时世界里有时长的事（ADR 0030）→ 一天的打算改了的写「本来打算 X，Y，Z」（ADR 0034）
+            const asleep = schedule ? asleepAt(time) : undefined;
+            const status = schedule ? herStatus(schedule, time, {
+                extraFree, ...(around ? { world: around } : {}), ...(asleep ? { asleep } : {}),
+                ...(herSchedule ? { plans: { plans: character.herWorld?.plans, ...(bodyNow ? { body: bodyNow } : {}) } } : {}),
+            }) : undefined;
+            if (status?.saidAsleep) log(`她 ${status.saidAsleep.since.toTimeString().slice(0, 5)} 说过睡了：状态行按在睡觉`);
+            if (status?.busy) log(`此刻在做：${status.busy}`);
+            if (status?.revised) log(`改了打算：${status.revised}`);
+            const state = status?.state;
+            const plansLine = herSchedule ? describePlans(herSchedule, status?.slots ?? [], time) : undefined;
             const books = herSchedule
                 ? readingSection(herSchedule, character.books, time, {
                     history: chat, userName: contact.name,
@@ -338,7 +346,16 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const length = lengthHint({ history: chat, intent, initiating: Boolean(initiate), low: mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
-            const shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
+            let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
+            // 实验（ADR 0043）：最近几轮原文 + 更早的要点，代替最近 80 条
+            let summary: string | undefined;
+            if (remembers && options.contextWindow) {
+                const lastDays = recentChat(chat, time, Infinity);
+                const cut = turnCut(lastDays.chat, options.contextWindow);
+                // 要点里她的名字换成「你」，和记忆一样（ADR 0018 决策 4）
+                summary = cut > 0 ? you(await options.contextWindow.summarize(lastDays.chat.slice(0, cut))) : undefined;
+                shown = { chat: lastDays.chat.slice(cut), omitted: lastDays.omitted + cut };
+            }
             const prompt = buildPrompt({
                 character,
                 worldInfo,
@@ -347,6 +364,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 userPersona: contact.persona,
                 afterMain: relationship ? [relationship] : [],
                 afterHistory: [
+                    ...(summary ? [summary] : []),
                     ...(recalled ? [recalled] : []),
                     // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3：放在前面时问「昨天都干嘛了」她照着报喂猫、取快递，想不起那天记得住的麻辣烫，1/3）
                     ...(common ? [common] : []),
@@ -386,7 +404,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
                 ...((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) ? { maxBubbles: 2 } : {}),
-                ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆）` } : {}),
+                ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆${summary ? '和前面的要点' : ''}）` } : {}),
             };
         },
         generate: async messages => {
@@ -434,6 +452,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     const around = options.worldState?.at(character.herWorld, herSchedule, when) ?? worldAt(character.herWorld, herSchedule, when);
                     const busy = around ? unavailableAt(around, when) : undefined;
                     return busy ? { until: busy.until.getTime(), reason: busy.reason } : undefined;
+                },
+                asleep: moment => {
+                    const asleep = asleepAt(new Date(moment));
+                    return asleep ? { since: asleep.since.getTime(), until: asleep.until.getTime() } : undefined;
                 },
             }),
             typingMs: text => typingMs(text, character.pace),

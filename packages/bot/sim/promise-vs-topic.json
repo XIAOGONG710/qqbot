@@ -19,14 +19,18 @@
             "timeBlockNot": "先把上面你答应的那件事说了",
             "firstNone": ["土豆", "猫", "喂", "说到做到", "答应"],
             "speechClean": true,
-            "exitClean": true
+            "exitClean": true,
+            "emptied": false,
+            "noRepeat": true
         } },
         { "case": "PT02", "note": "他接着问她在干嘛：答他问的，可以顺带说喂猫的事，不算跑题" },
         { "say": "你在干嘛" },
         { "check": {
             "timeBlock": "先直接回答他刚问的",
             "speechClean": true,
-            "exitClean": true
+            "exitClean": true,
+            "emptied": false,
+            "noRepeat": true
         } }
     ]
 }

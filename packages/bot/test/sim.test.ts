@@ -36,7 +36,7 @@ describe('模拟器：场景文件', () => {
     });
 
     test('新场景文件都读得进来（ADR 0018、0020）', () => {
-        for (const name of ['memory-fading', 'her-promises', 'memory-weeks', 'disclosure-boyfriend', 'disclosure-classmate', 'life-events', 'conversation-naturalness', 'promise-vs-topic', 'life-72h-auto']) {
+        for (const name of ['memory-fading', 'her-promises', 'memory-weeks', 'disclosure-boyfriend', 'disclosure-classmate', 'life-events', 'conversation-naturalness', 'promise-vs-topic', 'life-72h-auto', 'long-context-memory']) {
             assert.ok(loadScenario(join(repoRoot, `packages/bot/sim/${name}.json`)).steps.length > 0, name);
         }
     });
@@ -124,7 +124,11 @@ describe('模拟器：场景文件', () => {
             ...(restart ? [{ restart: true as const }] : []),
             // 到第二天 10:00：02:00 睡到 9:30 那一觉已经睡完、落账
             { advance: '15h' },
-            { check: { life: { atLeast: { sleep: 1, eat: 2, attend_class: 1 }, noOverlap: true } } },
+            { check: { life: {
+                atLeast: { sleep: 1, eat: 2, attend_class: 1 }, noOverlap: true, noFailed: true,
+                nonRoutinePerDay: { days: ['2026-10-12'], min: 3, max: 8 },
+                interruptedAtLeast: { interrupted_by_class: 1 }, statusConsistent: true,
+            } } },
         ];
         const scenario = (restart: boolean) => parseScenario({
             name: '自己过日子', tier: 'boyfriend', start: '2026-10-12T08:00:00+08:00', memory: false, autonomous: true, steps: steps(restart),
@@ -158,6 +162,28 @@ describe('模拟器：场景文件', () => {
         assert.deepEqual(results.map(r => [r.ok, Boolean(r.pipeline)]), [[false, false], [true, false], [true, false], [true, false], [true, true], [true, false], [false, false]]);
         assert.match(results[0]!.text, /「写完跟我说」/);
         assert.match(results.at(-1)!.text, /实际 3 句，发成 2 条/);
+    });
+
+    test('清理后为空、重新生成算回复检查不过，报告头单列次数（DSH 复核 ADR 0036 P1-5）', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-empty-'));
+        let calls = 0;
+        // 第一次回的全是行首括号里的动作（卡上的正则清掉），清理后为空；第二次正常
+        const generate = async () => (++calls === 1 ? '（揉了揉眼睛）' : '好');
+        const scenario = parseScenario({
+            name: '清理后为空', tier: 'boyfriend', start: '2026-10-05T20:00:00+08:00', memory: false, schedule: false,
+            steps: [{ say: '在吗' }, { check: { emptied: false, generations: 1 } }, { say: '睡了没' }, { check: { emptied: false } }],
+        });
+        try {
+            const result = await runScenario(scenario, { runId: 'empty', dataDir: dir, card, llm, prompt, generate, settle: { quietMs: 50, maxMs: 200 } });
+            const [first, second] = [result.steps[1]!.checks, result.steps[3]!.checks];
+            assert.deepEqual(first.map(c => [c.ok, Boolean(c.pipeline)]), [[false, true], [false, false]]);
+            assert.match(first[1]!.text, /实际 1 次/);
+            assert.deepEqual(second.map(c => c.ok), [true]);
+            assert.deepEqual(result.checks.reply, { passed: 1, failed: 1 });
+            assert.match(renderReport(result), /生成 3 次，出口检查重写 0、删行 0，清理后为空 1/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     test('虚拟时钟 = 真实时间 + 偏移', () => {
@@ -386,6 +412,33 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             const chat = (m: OpenAIMessage[]) => m.filter(x => x.role === 'user').map(x => x.content).join('|');
             assert.equal(chat(seen[1]!), '在吗');
             assert.equal(chat(seen[2]!), '在吗|铁锅又找我茬');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('长上下文场景（DSH 复核 ADR 0036 P2-8）：开场就超过 80 条；她照抄事先聊天里的收尾，每一轮 noRepeat 都不过', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-long-'));
+        const hindsight: SimHindsight = {
+            putBank: async () => {}, retain: async () => {}, recall: async () => [],
+            getMentalModel: async () => undefined, createMentalModel: async () => {}, updateMentalModel: async () => {},
+            activeOperations: async () => [], operationStatus: async () => 'completed', refreshMentalModel: async () => 'op-1', deleteBank: async () => {},
+        };
+        const prompts: OpenAIMessage[][] = [];
+        // 每次都回事先聊天里她说过的那句收尾
+        const generate = async (messages: OpenAIMessage[]) => (isDiary(messages) ? '日记' : isPromises(messages) ? '{"add":[],"resolved":[]}' : (prompts.push(messages), '去吧去吧，别熬太晚了啊'));
+        try {
+            const scenario = loadScenario(join(repoRoot, 'packages/bot/sim/long-context-memory.json'));
+            const result = await runScenario(scenario, { runId: 'long', dataDir: dir, card, llm, prompt, hindsight, generate, settle: { quietMs: 50, maxMs: 200 } });
+            const all = result.steps.flatMap(s => s.checks);
+            assert.ok(all.some(c => c.pipeline && c.ok && c.text.includes('较早的聊天原文')), '开场就有原文不放');
+            const repeats = all.filter(c => c.text.startsWith('没把这次运行里说过的话再说一遍'));
+            assert.equal(repeats.length, 9);
+            assert.ok(repeats.every(c => !c.ok && c.text.includes('前面的「别熬太晚」')));
+            // 放进提示词的原文最多 80 条（ADR 0036 决策 3）：10-07 说的面试不在里面
+            const said = (m: OpenAIMessage[]) => m.map(x => x.content).join('\n');
+            assert.ok(!said(prompts[0]!).includes('下周三下午两点有个面试'));
+            assert.ok(said(prompts[0]!).includes('电饭锅煮糊了'));
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

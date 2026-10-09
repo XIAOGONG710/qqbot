@@ -35,6 +35,11 @@ export interface ParcelsSource {
     arrive_days: [number, number];
     keep_days: number;
     items: string[];
+    /**
+     * 从这天起（YYYY-MM-DD）取快递的时刻撞上饭点就吃完再去（ADR 0042）；这天之前照旧（12:20 落在午饭里也是 12:20），过完的日子不被新规则改写。
+     * 不早于这条规则上线的那天
+     */
+    after_meal_from?: string;
     note?: string;
 }
 
@@ -221,7 +226,10 @@ export function worldForTier(world: WorldSource | undefined, tier: string): Card
             cat: { name: world.cat.name, feed: [...world.cat.feed] as [string, string], seenChance: world.cat.seen_chance, food: { bagDays: world.cat.food.bag_days, left: world.cat.food.left, reorderAt: world.cat.food.reorder_at } },
         } : {}),
         ...(sees(world.parcels.tiers) ? {
-            parcels: { perWeek: world.parcels.per_week, arriveDays: [...world.parcels.arrive_days] as [number, number], keepDays: world.parcels.keep_days, items: [...world.parcels.items] },
+            parcels: {
+                perWeek: world.parcels.per_week, arriveDays: [...world.parcels.arrive_days] as [number, number], keepDays: world.parcels.keep_days, items: [...world.parcels.items],
+                ...(world.parcels.after_meal_from ? { afterMealFrom: world.parcels.after_meal_from } : {}),
+            },
         } : {}),
         ...(sees(world.camera_fund.tiers) ? {
             cameraFund: { goal: world.camera_fund.goal, saved: world.camera_fund.saved, weekly: world.camera_fund.weekly, depositDay: world.camera_fund.deposit_day },
@@ -365,7 +373,9 @@ export function checkWorld(raw: unknown): WorldSource {
 
     const p = root.at('parcels');
     const parcels = p.object(o.parcels);
-    p.keys(parcels, ['tiers', 'per_week', 'arrive_days', 'keep_days', 'items', 'note']);
+    p.keys(parcels, ['tiers', 'per_week', 'arrive_days', 'keep_days', 'items', 'after_meal_from', 'note']);
+    const afterMealFrom = parcels.after_meal_from === undefined ? undefined : p.at('after_meal_from').string(parcels.after_meal_from);
+    if (afterMealFrom !== undefined && !DATE.test(afterMealFrom)) p.at('after_meal_from').fail(`应为 YYYY-MM-DD：${afterMealFrom}`);
 
     const f = root.at('camera_fund');
     const fund = f.object(o.camera_fund);
@@ -471,6 +481,7 @@ export function checkWorld(raw: unknown): WorldSource {
             arrive_days: p.at('arrive_days').range(parcels.arrive_days, 1, 14, true),
             keep_days: p.at('keep_days').integer(parcels.keep_days, 1, 14),
             items: p.at('items').strings(parcels.items, false),
+            ...(afterMealFrom ? { after_meal_from: afterMealFrom } : {}),
             ...p.at('note').note(parcels.note),
         },
         camera_fund: {
@@ -502,6 +513,10 @@ export function checkWorld(raw: unknown): WorldSource {
         ...(money ? { money } : {}),
         ...root.at('note').note(o.note),
     };
+    // 吃完饭再取快递（ADR 0042）：看得到快递的档位都要看得到饭点，不然各档取件的时刻不一样
+    if (result.parcels.after_meal_from) {
+        for (const tier of result.parcels.tiers) if (!result.routine?.tiers.includes(tier)) root.at('parcels.after_meal_from').fail(`看得到快递的 ${tier} 也要看得到 routine（取件的时刻要一样）`);
+    }
     if (result.money) {
         // 网购的东西都要有价钱；看得到相机基金的档位都要有钱的规则（不然存多少各档不一样）
         for (const item of result.parcels.items) if (!(item in result.money.prices.parcels)) root.at('money.prices.parcels').fail(`缺「${item}」的价钱`);

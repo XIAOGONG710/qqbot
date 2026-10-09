@@ -25,6 +25,11 @@ import { actionQueue, settlingWorld } from '../action-queue.ts';
 import { bodyAt } from '../body.ts';
 import type { LifeEvent } from '../life-events.ts';
 import { lifeExecutor } from '../life-selector.ts';
+import { asleepSince, saidBedtimes } from '../bedtime.ts';
+import { contextSummarizer, SUMMARY_HEADER, type TurnWindow } from '../context-window.ts';
+import { estimateTokens } from '../tokens.ts';
+import { auditLifeStatus, type LifeStatusMismatch } from './life-audit.ts';
+import { repeatedSentences } from './repeats.ts';
 import { parseDuration, VirtualClock, type Checks, type LifeChecks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
 /** 模拟的联系人用的 QQ 号（虚构） */
@@ -72,6 +77,8 @@ export interface RunOptions {
     diaryWorldSchedule?: Schedule;
     /** 虚拟时钟底下的真实时间，默认 Date.now；测试传一个不动的，虚拟时间只靠 advance 走，两遍跑出来的时刻一样（ADR 0039） */
     realNow?: () => number;
+    /** 原始聊天只放最近几轮、更早的整理成要点（ADR 0043 离线实验，run.ts 的 --context-turns）；不传是线上的最近 80 条 */
+    contextTurns?: TurnWindow;
 }
 
 /** proactive：她主动发的（ADR 0011），是哪个时机（日志里的说法） */
@@ -79,6 +86,10 @@ export interface Bubble { time: number; text: string; proactive?: string }
 export interface Input { time: number; text: string; interrupt?: boolean }
 export interface Generation {
     time: number; recall?: string; timeBlock?: string; relationship?: string; people?: string; common?: string; todayOthers?: string; past?: string; messages: number;
+    /** 较早聊天的要点（ADR 0043 实验） */
+    summary?: string;
+    /** 提示词估算多少 token（tokens.ts，和截断用的同一个估法）：比较上下文放法的成本 */
+    tokens?: number;
     /** 模型原文（清理之前） */
     raw?: string;
     /** 出口检查带说明重写的原文（ADR 0006） */
@@ -115,6 +126,8 @@ export interface RunResult {
     runId: string;
     dataDir: string;
     bankId?: string;
+    /** 原始聊天只放最近几轮 + 要点（ADR 0043 实验）；没有就是线上的最近 80 条 */
+    contextTurns?: TurnWindow;
     steps: StepRecord[];
     /** 全部检查；reply 是查她说了什么、怎么回的，pipeline 是管线自检（CheckResult.pipeline） */
     checks: CheckCount & { reply: CheckCount; pipeline: CheckCount };
@@ -128,6 +141,8 @@ const PEOPLE_HEADER = '[你认识的人：';
 const COMMON_HEADER = '[你和名单里别的人聊天时';
 const TODAY_OTHERS_HEADER = '[你今天和别人聊过的事';
 const PAST_HEADER = '[你想起的从前';
+/** responder.ts 的两句日志：清理后为空当场再生成一次、再空算回复失败 */
+export const EMPTIED = /模型回复清理后为空/;
 
 export async function runScenario(scenario: Scenario, options: RunOptions): Promise<RunResult> {
     const { dataDir } = options;
@@ -186,6 +201,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 schedule: character.schedule, books: character.books, ...(herWorld.plans ? { plans: herWorld.plans } : {}),
                 worldAt: time => ledger.at(herWorld, character.schedule!, time), events: () => ledger.events(),
                 ...(herWorld.body ? { bodyAt: (time: Date) => bodyAt(herWorld.body!, character.schedule!, time) } : {}),
+                // 她跟谁说过「睡了」（ADR 0042）：和 app.ts 一样看名单里所有人的聊天记录（restart 之后 history 是新读的那一份）
+                bedtimes: () => saidBedtimes([contact, ...others].map(person => history.load(person.qq)), character.schedule!, clock.now() - 86_400_000),
             }, queue, { since: new Date(scenario.start), log })
             : undefined;
         if (scenario.autonomous && !executor) throw new Error('autonomous 要开着作息、她自己的日子，卡上要有世界');
@@ -257,6 +274,17 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     if (scenario.mood !== undefined && !character.moods.some(mood => mood.name === scenario.mood)) {
         throw new Error(`场景的 mood「${scenario.mood}」不是卡上的心情（${character.moods.map(mood => mood.name).join('、') || '这一档没有心情'}）`);
     }
+    // 最近几轮 + 要点（ADR 0043）：整理要点和抽答应的事一样用抽取的参数；重建回复器（forget、restart）时沿用同一个，整理过的不再整理
+    const contextWindow = options.contextTurns
+        ? {
+            ...options.contextTurns,
+            summarize: contextSummarizer({
+                names,
+                generate: messages => (options.generate ? options.generate(messages, log) : chatCompletion(forExtraction(options.llm), messages, { log })),
+                log,
+            }),
+        }
+        : undefined;
     // 她自己的日子：和 bot 一样，她的每一天第一次生成时在 sim.log 里写一行当天的心情和进度
     const openHerDayLogger = () => (options.herDays && character.schedule
         ? herDayLogger(character.schedule, character.moods, character.books, log, scenario.mood)
@@ -277,6 +305,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(options.candidates ? { candidates: options.candidates } : {}),
         ...(scenario.mood !== undefined ? { mood: scenario.mood } : {}),
         ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
+        ...(contextWindow ? { contextWindow } : {}),
         history,
         memory,
         ...(promises ? { promises } : {}),
@@ -348,6 +377,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             dir: join(dataDir, 'proactive'),
             log,
             skip: replySkip(character, scenario.moody, scenario.moodyChance),
+            asleep: now => Boolean(asleepSince(character.schedule!, saidBedtimes([contact, ...others].map(person => history.load(person.qq)), character.schedule!, now - 86_400_000), new Date(now))),
             now: clock.now,
             waitUntil: clock.waitUntil,
             names,
@@ -552,10 +582,28 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 log(hindsightDown ? 'Hindsight 停了' : 'Hindsight 恢复');
             } else if ('check' in step) {
                 const { proactive, life, ...rest } = step.check;
+                const before = lastSay ? historyBefore(history.load(contact.qq), lastSay) : [];
                 current.checks = Object.keys(rest).length === 0 ? []
-                    : lastSay ? runChecks(rest, lastSay, options.card.character.banned, speechContextBefore(history.load(contact.qq), lastSay))
+                    : lastSay ? runChecks(rest, lastSay, options.card.character.banned, speechContext(before), before)
                         : [{ ok: false, text: '前面没有 say 步骤' }];
-                if (life) current.checks.push(...lifeChecks(life, (sharedWorld?.events() ?? []).filter(event => event.id.startsWith('life:'))));
+                if (life) {
+                    const events = (sharedWorld?.events() ?? []).filter(event => event.id.startsWith('life:'));
+                    let mismatches: LifeStatusMismatch[] | undefined;
+                    if (life.statusConsistent && ledgerWorld && character.schedule && character.herWorld) {
+                        const schedule = character.schedule;
+                        const herWorld = character.herWorld;
+                        mismatches = auditLifeStatus(events, {
+                            schedule,
+                            books: character.books,
+                            ...(herWorld.plans ? { plans: herWorld.plans } : {}),
+                            worldAt: at => ledgerWorld!.at(herWorld, schedule, at),
+                            events: () => ledgerWorld!.events(),
+                            ...(herWorld.body ? { bodyAt: (at: Date) => bodyAt(herWorld.body!, schedule, at) } : {}),
+                            bedtimes: () => saidBedtimes([contact, ...others].map(person => history.load(person.qq)), schedule, clock.now() - 86_400_000),
+                        });
+                    }
+                    current.checks.push(...lifeChecks(life, events, mismatches));
+                }
                 if (proactive) {
                     const since = steps.slice(proactiveCheckedUpTo, -1);
                     proactiveCheckedUpTo = steps.length;
@@ -580,6 +628,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     return {
         scenario,
         runId: options.runId,
+        ...(options.contextTurns ? { contextTurns: options.contextTurns } : {}),
         dataDir,
         bankId,
         steps,
@@ -630,12 +679,14 @@ export function dynamicParts(prompt: PromptResult, time: number): Generation {
         common: block(COMMON_HEADER),
         todayOthers: block(TODAY_OTHERS_HEADER),
         past: block(PAST_HEADER),
+        summary: block(SUMMARY_HEADER),
         messages: prompt.messages.length,
+        tokens: prompt.messages.reduce((n, m) => n + estimateTokens(m.content ?? ''), 0),
     };
 }
 
 /** 她自己过的日子（ADR 0040）：事件账里她的行动，各类够不够、有没有两件重叠。查的是她的生活，不是她说了什么，算管线自检 */
-export function lifeChecks(checks: LifeChecks, events: readonly LifeEvent[]): CheckResult[] {
+export function lifeChecks(checks: LifeChecks, events: readonly LifeEvent[], statusMismatches?: readonly LifeStatusMismatch[]): CheckResult[] {
     const results: CheckResult[] = [];
     for (const [kind, count] of Object.entries(checks.atLeast ?? {})) {
         const n = events.filter(event => event.kind === kind && event.result !== 'failed').length;
@@ -645,6 +696,36 @@ export function lifeChecks(checks: LifeChecks, events: readonly LifeEvent[]): Ch
         const done = events.filter(event => event.result !== 'failed').sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
         const clash = done.slice(1).find((event, i) => Date.parse(event.startedAt) < Date.parse(done[i]!.endedAt));
         results.push({ ok: !clash, text: `她过的日子一件接一件、不重叠${clash ? `（${clash.id} 和前一件撞了）` : `（${done.length} 件）`}`, pipeline: true });
+    }
+    if (checks.noFailed) {
+        const failed = events.filter(event => event.result === 'failed');
+        results.push({ ok: failed.length === 0, text: `事件账没有把排不上的候选记成经历${failed.length ? `（实际 ${failed.length} 件）` : ''}`, pipeline: true });
+    }
+    if (checks.nonRoutinePerDay) {
+        const routine = new Set(['sleep', 'eat', 'attend_class']);
+        const { days, min, max } = checks.nonRoutinePerDay;
+        for (const day of days) {
+            const dayEvents = events.filter(event => event.day === day && event.result !== 'failed' && !routine.has(event.kind));
+            const kinds = [...new Set(dayEvents.map(event => event.kind))].map(kind => `${kind} ${dayEvents.filter(event => event.kind === kind).length}`).join('、');
+            results.push({
+                ok: dayEvents.length >= min && dayEvents.length <= max,
+                text: `${day} 有 ${min}–${max} 件非例行动作（实际 ${dayEvents.length}${kinds ? `：${kinds}` : ''}）`,
+                pipeline: true,
+            });
+        }
+    }
+    for (const [reason, count] of Object.entries(checks.interruptedAtLeast ?? {})) {
+        const n = events.filter(event => event.result === 'interrupted' && event.reason === reason).length;
+        results.push({ ok: n >= count!, text: `硬事件「${reason}」至少打断 ${count} 次（实际 ${n}）`, pipeline: true });
+    }
+    if (checks.statusConsistent) {
+        const mismatches = statusMismatches ?? [];
+        const detail = mismatches.slice(0, 3).map(item => `${item.eventKind}→${item.expectedKind ?? '空'}@${item.at}`).join('、');
+        results.push({
+            ok: statusMismatches !== undefined && mismatches.length === 0,
+            text: `事件账与同一时刻的对外状态一致${statusMismatches === undefined ? '（没有可用的状态审计源）' : mismatches.length ? `（${detail}）` : '（0 分叉）'}`,
+            pipeline: true,
+        });
     }
     return results;
 }
@@ -705,8 +786,8 @@ export function proactiveChecks(checks: ProactiveChecks, steps: StepRecord[], ca
     return results;
 }
 
-/** speechClean 用的：这一步她发的话之前的聊天记录（她前面几次回复、对方最近几条） */
-export function speechContextBefore(history: readonly StoredMessage[], step: StepRecord): SpeechContext {
+/** 这一步她发的话之前的聊天记录（speechClean 取其中最近几次，noRepeat 用全部；这一步她没发就是全部） */
+export function historyBefore(history: readonly StoredMessage[], step: StepRecord): StoredMessage[] {
     const first = step.bubbles[0]?.text;
     let end = history.length;
     if (first !== undefined) {
@@ -717,10 +798,13 @@ export function speechContextBefore(history: readonly StoredMessage[], step: Ste
             }
         }
     }
-    return speechContext(history.slice(0, end));
+    return history.slice(0, end);
 }
 
-export function runChecks(checks: Checks, step: StepRecord, banned: readonly string[] = [], speech?: SpeechContext): CheckResult[] {
+/** speech：speechClean 比的她最近几次回复、对方最近几条；earlier：这一步她发的话之前的全部聊天（noRepeat），都从 historyBefore 来 */
+export function runChecks(
+    checks: Checks, step: StepRecord, banned: readonly string[] = [], speech?: SpeechContext, earlier: readonly Pick<StoredMessage, 'role' | 'content'>[] = [],
+): CheckResult[] {
     const results: CheckResult[] = [];
     const last = step.generations.at(-1);
     const recall = last?.recall ?? '';
@@ -763,6 +847,14 @@ export function runChecks(checks: Checks, step: StepRecord, banned: readonly str
     if (checks.regenerated !== undefined) {
         results.push({ ok: has(/生成期间收到新消息/) === checks.regenerated, text: checks.regenerated ? '生成中来了新消息，丢掉草稿重新生成' : '没有重新生成', pipeline: true });
     }
+    if (checks.emptied !== undefined) {
+        // 第一次清理后为空当场再生成；再空就是回复失败（responder.ts），两种都算
+        const emptied = step.logs.filter(l => EMPTIED.test(l)).length;
+        results.push({
+            ok: (emptied > 0) === checks.emptied,
+            text: checks.emptied ? `模型回复清理后为空、重新生成（实际 ${emptied} 次）` : `模型回复清理后没变空、不用重新生成${emptied ? `（实际 ${emptied} 次）` : ''}`,
+        });
+    }
     const chars = step.bubbles.reduce((n, b) => n + [...b.text].length, 0);
     if (checks.maxChars !== undefined) results.push({ ok: chars <= checks.maxChars, text: `她这一轮最多 ${checks.maxChars} 字（实际 ${chars}）` });
     if (checks.minChars !== undefined) results.push({ ok: chars >= checks.minChars, text: `她这一轮至少 ${checks.minChars} 字（实际 ${chars}）` });
@@ -787,6 +879,11 @@ export function runChecks(checks: Checks, step: StepRecord, banned: readonly str
         const issues = inspectSpeech(replies, speech ?? { recent: [], his: [] });
         const found = issues.map(i => `第 ${i.line + 1} 行${describeSpeechIssue(i)}`).join('、');
         results.push({ ok: issues.length === 0, text: `说话没毛病（助手腔、算账、怪对方没说、重复）${found ? `（${found}）` : ''}` });
+    }
+    if (checks.noRepeat) {
+        const hits = repeatedSentences(replies, earlier);
+        const found = hits.map(hit => `「${hit.said}」≈ 前面的「${hit.before}」`).join('、');
+        results.push({ ok: hits.length === 0, text: `没把这次运行里说过的话再说一遍${found ? `（${found}）` : ''}` });
     }
     const first = step.bubbles[0]?.time;
     if (checks.noReply) results.push({ ok: step.bubbles.length === 0, text: `她没回（实际 ${step.bubbles.length} 条）` });

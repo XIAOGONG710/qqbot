@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { CONTACT_TIERS, UNLISTED_TIER, type ContactTier, type Tier } from '../config.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import type { LifeEventResult } from '../life-events.ts';
-import type { TypedActionKind } from '../actions.ts';
+import type { Interruption, TypedActionKind } from '../actions.ts';
 
 /** 对方的一条或几条消息；几条时按 gapMs 的真实间隔依次发（默认 800 ms，算连发） */
 export interface SayStep {
@@ -74,6 +74,11 @@ export interface Checks {
     regenerated?: boolean;
     /** 这一步有没有「发送中途对方插话，剩下的不发」 */
     dropped?: boolean;
+    /**
+     * 这一步有没有「模型回复清理后为空，重新生成」：模型回了空串，或者出口检查把整条删光了（DSH 复核 ADR 0036 P1-5）。
+     * 写 false，出现一次就不过；查的是模型原文能不能用，算回复检查，不算管线
+     */
+    emptied?: boolean;
     /** 这一步她发出的字数上限 / 下限（所有气泡加起来，调研方案 13.3 日常长度） */
     maxChars?: number;
     minChars?: number;
@@ -87,6 +92,12 @@ export interface Checks {
     rawClean?: boolean;
     /** 她发出的话没有说话的毛病：助手腔、算账、怪对方没说、和她前面几次回复重复（ADR 0014，和流水线同一个判断） */
     speechClean?: boolean;
+    /**
+     * 跨轮重复（DSH 复核 ADR 0036 P2-6）：她这一步说的每个短句都没在这次运行里说过（含场景事先的聊天），第二遍就不过。
+     * 去掉标点、语气词，数字算一样；归一后不到 4 个字的短应答、他说过的话不算（sim/repeats.ts）。
+     * 他把同一个问题问了两遍、她照答一遍是对的，这种步骤别开
+     */
+    noRepeat?: boolean;
     /** 这一步她一条都没发（ADR 0007：睡着、收尾后的附和） */
     noReply?: boolean;
     /** 她第一条在对方最后一条之后至少 / 至多多久发出，如 "5m"、"20m"（虚拟时间） */
@@ -105,6 +116,14 @@ export interface LifeChecks {
     atLeast?: Partial<Record<TypedActionKind, number>>;
     /** 一件接一件，没有两件时间重叠 */
     noOverlap?: boolean;
+    /** 账里没有 failed；排不上的候选不该冒充她经历过的事 */
+    noFailed?: boolean;
+    /** 指定的完整日里，剔除睡觉、吃饭、上课后每天有几件非例行动作 */
+    nonRoutinePerDay?: { days: string[]; min: number; max: number };
+    /** 硬事件至少打断了几次普通行动 */
+    interruptedAtLeast?: Partial<Record<Interruption, number>>;
+    /** 事件中点按对外状态行的同一套规则重算，行动类型必须一致（ADR 0042 影子审计） */
+    statusConsistent?: boolean;
 }
 
 export interface ProactiveChecks {

@@ -149,6 +149,26 @@ describe('可重放行动队列（ADR 0037、0038）', () => {
         assert.equal(queue.cancel('late', at('2026-10-12T20:30:00'), '晚了'), undefined);
     }));
 
+    test('提前停、去掉（ADR 0042）：开始了的停在那一刻算做完，原来被课打断的原因去掉；去掉的不进事件账；重启后照样', () => withDir(dir => {
+        const path = join(dir, 'queue.json');
+        const queue = actionQueue(path);
+        const start = at('2026-10-12T12:35:00');
+        const game = queue.schedule({ id: 'game', kind: 'leisure', startedAt: start, subject: '打独立游戏', durationMinutes: 240 }, context(start));
+        assert.ok(game.ok && game.event.reason === 'interrupted_by_class');
+        assert.equal(queue.shorten('game', start, 'x'), undefined, '还没开始的不能提前停');
+        assert.equal(queue.shorten('game', at('2026-10-12T15:15:00'), 'x'), undefined, '结束了的不能');
+        const short = queue.shorten('game', at('2026-10-12T13:05:00'), '下楼喂土豆');
+        assert.deepEqual([short?.event.at, short?.event.result, short?.event.reason, short?.actualMinutes], [at('2026-10-12T13:05:00').toISOString(), 'succeeded', undefined, 30]);
+        queue.schedule({ id: 'rest', kind: 'rest', startedAt: at('2026-10-12T13:10:00'), durationMinutes: 30 }, context(start));
+        assert.equal(queue.drop('rest', '那一刻她在睡')?.id, 'rest');
+        assert.equal(queue.drop('rest', 'x'), undefined);
+        const resumed = actionQueue(path);
+        assert.deepEqual(resumed.pending().map(item => [item.id, item.event.at]), [['game', at('2026-10-12T13:05:00').toISOString()]]);
+        const committed: LifeEventDraft[] = [];
+        assert.equal(resumed.settleDue(at('2026-10-12T14:00:00'), fakeLedger(committed)), 1);
+        assert.deepEqual(committed.map(event => [event.id, event.result]), [['game', 'succeeded']]);
+    }));
+
     test('改时间：没开始的按新时间重新裁判，同一 id；新时间不行就照原计划；开始了的改不了', () => withDir(dir => {
         const queue = actionQueue(join(dir, 'queue.json'));
         const start = at('2026-10-12T14:00:00');

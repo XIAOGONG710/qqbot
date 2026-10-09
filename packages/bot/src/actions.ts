@@ -5,10 +5,17 @@
 import { bookProgressAt, type ReadingBook } from './her-days.ts';
 import type { LifeEvent, LifeEventDraft, LifeEventSource } from './life-events.ts';
 import { classesOn, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
-import type { WorldNow } from './world.ts';
+import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
 
 export type TypedActionKind = 'sleep' | 'eat' | 'attend_class' | 'study' | 'rest' | 'read_book' | 'leisure';
 export type ActionFailure = 'invalid_time' | 'unavailable' | 'conflict' | 'no_time' | 'missing_target' | 'already_done';
+/**
+ * 灵活的行动做到一半停下的原因（ADR 0042）：硬事件打断——要去上课了、得赶作业了（写完之前那一段）；
+ * 别的（饭点、世界里的事、睡觉、已经排了的事）照旧是 interrupted_by_commitment（ADR 0037，旧数据里就是这个）
+ */
+export type Interruption = 'interrupted_by_class' | 'interrupted_by_deadline' | 'interrupted_by_commitment';
+/** 赶作业抢得走的：休闲、躺着、看闲书；本来就在学习的接着学 */
+const DEADLINE_PREEMPTS = new Set<TypedActionKind>(['leisure', 'rest', 'read_book']);
 
 export interface ActionIntent {
     id: string;
@@ -91,12 +98,17 @@ export function judgeAction(intent: ActionIntent, context: ActionContext): Actio
     }
 
     const nominalEnd = addMinutes(start, requested);
-    const collision = firstCollision(start, nominalEnd, context);
+    const collision = firstCollision(start, nominalEnd, context, DEADLINE_PREEMPTS.has(intent.kind));
     if (collision && collision.start <= start) return failed(intent, 'conflict');
     const end = collision?.start ?? nominalEnd;
     const actual = minutesBetween(start, end);
     if (actual < definition.minMinutes) return failed(intent, 'no_time');
-    return succeeded({ ...intent, subject }, end, occupation, requested, actual, collision ? 'interrupted' : 'succeeded', collision ? 'interrupted_by_commitment' : undefined);
+    return succeeded({ ...intent, subject }, end, occupation, requested, actual, collision ? 'interrupted' : 'succeeded', collision?.why);
+}
+
+/** 写完作业之前在赶的那一段（ADR 0030 的 OCCUPATION_MINUTES.homework）：截止时间是硬事件，休闲撞上就停（ADR 0042） */
+export function homeworkSprints(world: WorldNow | undefined): { start: Date; end: Date; course: string }[] {
+    return (world?.homework ?? []).map(h => ({ start: addMinutes(h.doneAt, -OCCUPATION_MINUTES.homework), end: h.doneAt, course: h.course }));
 }
 
 /** 未来选择器只能从这里拿动作；需要目标的动作会选择当前真实课程、饭或第一本仍在读的书。 */
@@ -184,19 +196,22 @@ function sleepSpan(start: Date, schedule: Schedule): { start: Date; end: Date } 
     return night.activity.kind === 'sleep' ? { start, end: night.activity.until } : undefined;
 }
 
-function firstCollision(start: Date, end: Date, context: ActionContext): { start: Date; end: Date } | undefined {
-    const fixed: { start: Date; end: Date }[] = [];
-    fixed.push(...classesOn(context.schedule, start).lessons);
-    fixed.push(...(context.world?.routine?.meals ?? []));
-    fixed.push(...(context.busy ?? []));
+/** 先撞上的那件；同一刻开始的，上课、赶作业排在前面（原因写硬事件） */
+function firstCollision(start: Date, end: Date, context: ActionContext, deadlines: boolean): { start: Date; end: Date; why: Interruption } | undefined {
+    const fixed: { start: Date; end: Date; why: Interruption }[] = [];
+    const add = (spans: readonly { start: Date; end: Date }[], why: Interruption) => fixed.push(...spans.map(span => ({ start: span.start, end: span.end, why })));
+    add(classesOn(context.schedule, start).lessons, 'interrupted_by_class');
+    if (deadlines) add(homeworkSprints(context.world), 'interrupted_by_deadline');
+    add(context.world?.routine?.meals ?? [], 'interrupted_by_commitment');
+    add(context.busy ?? [], 'interrupted_by_commitment');
     const [sleepHour, sleepMinute] = context.schedule.sleep.split(':').map(Number);
     const sleep = new Date(start.getFullYear(), start.getMonth(), start.getDate(), sleepHour, sleepMinute);
     if (sleep <= start) sleep.setDate(sleep.getDate() + 1);
-    fixed.push({ start: sleep, end: addMinutes(sleep, 12 * 60) });
-    for (const event of context.events ?? []) {
-        if (event.result !== 'failed') fixed.push({ start: new Date(event.startedAt), end: new Date(event.endedAt) });
-    }
-    return fixed.filter(item => item.start < end && item.end > start).sort((a, b) => a.start.getTime() - b.start.getTime())[0];
+    add([{ start: sleep, end: addMinutes(sleep, 12 * 60) }], 'interrupted_by_commitment');
+    add((context.events ?? []).filter(event => event.result !== 'failed').map(event => ({ start: new Date(event.startedAt), end: new Date(event.endedAt) })), 'interrupted_by_commitment');
+    const hard = (why: Interruption) => (why === 'interrupted_by_commitment' ? 1 : 0);
+    return fixed.filter(item => item.start < end && item.end > start)
+        .sort((a, b) => a.start.getTime() - b.start.getTime() || hard(a.why) - hard(b.why))[0];
 }
 
 function firstExistingCollision(start: Date, end: Date, events: readonly LifeEvent[] | undefined): LifeEvent | undefined {
