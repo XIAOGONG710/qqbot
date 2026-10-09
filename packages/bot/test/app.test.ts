@@ -37,6 +37,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         speechCheck: false,
         herDays: false,
         autonomousLife: false,
+        realWeather: false,
         candidates: 1,
         contextTurns: 0,
         contextContacts: [],

@@ -31,6 +31,7 @@ export const DEFAULTS = {
     speechCheck: true,
     herDays: true,
     autonomousLife: false,
+    realWeather: true,
     candidates: 1,
     contextTurns: 0,
     contextContacts: [] as readonly number[],
@@ -84,6 +85,8 @@ export interface AppConfig {
      * 默认关；开了以后从开的那一刻排起，行动还不进提示词（影子模式）。要开着她自己的日子，卡上要有作息和世界
      */
     autonomousLife: boolean;
+    /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
+    realWeather: boolean;
     /** 他难过、说亲密话、收尾时一次生成几个候选、按规则挑一个（ADR 0041）。默认 1（不挑）；3 是三倍的模型调用（并行，不加时间） */
     candidates: number;
     /**
@@ -215,6 +218,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         speechCheck: bool(file, 'speechCheck', '', DEFAULTS.speechCheck),
         herDays: bool(file, 'herDays', '', DEFAULTS.herDays),
         autonomousLife: bool(file, 'autonomousLife', '', DEFAULTS.autonomousLife),
+        realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         candidates: candidateCount(file.candidates),
         contextTurns: contextTurnCount(file.contextTurns),
         contextContacts: qqList(file.contextContacts, 'contextContacts'),

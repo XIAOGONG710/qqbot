@@ -19,6 +19,8 @@ export interface Plans {
 /** 结算要看的事实：那天下没下雨、身上怎么样（按那天 15:00 算）、三天内要交的作业（world.ts 的 WorldNow.homework） */
 export interface PlanFacts {
     rain?: boolean;
+    /** 真实天气下过雨的钟头（ADR 0048）：有就按那个时段里下没下，不按一整天 */
+    rainHours?: readonly number[];
     body?: BodyNow;
     homework?: readonly { course: string; due: Date; doneAt: Date }[];
 }
@@ -46,7 +48,7 @@ export function dayPlan(schedule: Schedule, plans: Plans | undefined, day: Date,
             if (activity.kind === 'free' && activity.text) planned = activity.text;
         }
         if (planned === undefined) continue;
-        slots.push({ window, planned, ...settle(plans, window, planned, day, from, facts) });
+        slots.push({ window, planned, ...settle(plans, window, planned, day, from, to, facts) });
     }
     return slots;
 }
@@ -87,13 +89,19 @@ export function describePlans(schedule: Schedule, slots: readonly PlanSlot[], no
 }
 
 /** 照打算做，还是改：肚子疼得厉害 > 不出门（下雨、感冒、不舒服）> 作业明天要交（晚上） */
-function settle(plans: Plans | undefined, window: FreeWindow, planned: string, day: Date, from: Date, facts: PlanFacts): Omit<PlanSlot, 'window' | 'planned'> {
+function settle(plans: Plans | undefined, window: FreeWindow, planned: string, day: Date, from: Date, to: Date, facts: PlanFacts): Omit<PlanSlot, 'window' | 'planned'> {
     if (!plans) return { done: planned };
     const period = facts.body?.period;
     const unwellWord = period?.detail ? '肚子疼' : '身上不太舒服';
     if (period?.cramps === 'bad' && planned !== plans.rest) return { done: plans.rest, because: period.detail ? '肚子疼得厉害' : '身上不太舒服' };
     const outing = plans.outings.find(o => o.text === planned);
-    if (outing && facts.rain) return { done: outing.indoors, because: '下雨了' };
+    // 真实天气（ADR 0048）：那个时段里（从开始前一个钟头起）下过才改；下午才下的雨不改上午的打算，还没到的时段不知道
+    // 钟头从那天零点算：晚上那段到第二天凌晨 2 点，按 to.getHours() 算会只剩一两个钟头（审查第 3 条）
+    const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+    const fromHour = Math.floor((from.getTime() - dayStart) / 3_600_000);
+    const endHour = Math.min(24, Math.ceil((to.getTime() - dayStart) / 3_600_000));
+    const rained = facts.rainHours ? facts.rainHours.some(h => h >= fromHour - 1 && h < Math.max(endHour, fromHour + 1)) : facts.rain;
+    if (outing && rained) return { done: outing.indoors, because: '下雨了' };
     if (outing && facts.body?.cold) return { done: outing.indoors, because: '感冒了，不想出门' };
     if (outing && period?.cramps) return { done: outing.indoors, because: unwellWord };
     if (window === 'evening' && !plans.study.includes(planned)) {

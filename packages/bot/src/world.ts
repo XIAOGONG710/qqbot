@@ -11,6 +11,7 @@ import type { Contact } from './config.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import type { Episode } from './memory/episodes.ts';
 import { classesOn, formatDate, herDay, type ClassToday, type Schedule } from './schedule.ts';
+import { realWeather, type DayWeather } from './weather.ts';
 import { parseBody, type Body } from './body.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
 import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
@@ -99,7 +100,8 @@ export interface WorldAction extends WorldActionDraft {
 export interface WorldNow {
     day: string;
     atSchool: boolean;
-    weather?: { rain: boolean; low: number; high: number };
+    /** 真实天气有数据的日子带 real、这一刻的天况、下过雨的钟头（ADR 0048）；没有的按日期生成 */
+    weather?: DayWeather;
     cat?: {
         name: string;
         /** 今天：喂了（几点、见没见到）/ 还没去（几点以后）/ 不去（为什么） */
@@ -140,7 +142,7 @@ const DEPOSIT_TIME = '21:00';
 interface DayRecord {
     date: string;
     atSchool: boolean;
-    weather?: { rain: boolean; low: number; high: number };
+    weather?: DayWeather;
     cat?: { fed?: Date; seen?: boolean; planned?: string; skipped?: 'rain' | 'away' | 'no_food' | 'class'; foodAfter: number };
     events: { id: string; text: string; at: Date; person?: string }[];
     call?: Date;
@@ -182,7 +184,8 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         const atSchool = !(holiday && world.awayHolidays.includes(holiday.name)) && !(outsideSemester && day > start);
         const record: DayRecord = { date, atSchool, events: [] };
         days.set(date, record);
-        if (world.weather) record.weather = weatherOn(world.weather, day);
+        // 真实天气（ADR 0048）：在学校按济南、放假在家按青岛；没有数据的日子照旧按日期生成
+        if (world.weather) record.weather = realWeather()?.day(atSchool ? 'jinan' : 'qingdao', date, until) ?? weatherOn(world.weather, day);
 
         // 快递：到了驿站的，在学校、不上课时取；有时拖一天；过了最后一天没取就退回
         // 取件的时刻撞上饭点（12:20 总落在午饭里，ADR 0040 验证一节）：从 afterMealFrom 那天起吃完饭再去（ADR 0042）；之前的日子照旧，过完的日子不被新规则改写
@@ -219,7 +222,9 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             let time = new Date(planned);
             const blocking = lessons.find(l => l.start <= time && time < l.end);
             if (blocking) time = new Date(blocking.end.getTime() + 10 * 60_000);
-            const skipped = !atSchool ? 'away' : record.weather?.rain ? 'rain' : food <= 0 ? 'no_food' : time > at(day, to) ? 'class' : undefined;
+            // 真实天气按喂猫那个钟头和前一个钟头下没下（ADR 0048）：还没到点不知道，过了点照实际；生成的天气照旧按一整天
+            const rainy = record.weather?.rainHours ? record.weather.rainHours.some(h => h >= time.getHours() - 1 && h <= time.getHours()) : record.weather?.rain;
+            const skipped = !atSchool ? 'away' : rainy ? 'rain' : food <= 0 ? 'no_food' : time > at(day, to) ? 'class' : undefined;
             if (skipped) record.cat = { skipped, foodAfter: food };
             else {
                 food -= 1;
@@ -412,7 +417,7 @@ const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '�
  */
 export function describeWorld(now: WorldNow, at: Date): string | undefined {
     const parts: string[] = [];
-    if (now.weather) parts.push(`天气：${now.weather.rain ? '下雨' : '没下雨'}，${now.weather.low}–${now.weather.high}℃`);
+    if (now.weather) parts.push(describeWeather(now.weather));
     if (now.cat) {
         const { today } = now.cat;
         // 昨天的也写上（第一批：今天喂过时不写昨天，他问「昨天喂了吗」她编了个「昨天没去」）
@@ -947,7 +952,24 @@ export function parseWorld(value: unknown, source: string): World | undefined {
 
 // ---------- 小工具 ----------
 
-function weatherOn(weather: NonNullable<World['weather']>, day: Date): { rain: boolean; low: number; high: number } {
+/**
+ * 时间块里的天气（ADR 0048）。真实的：这一刻的天况和气温、今天的范围、下过没有、还没下时预报之后有没有；生成的照旧一句「下雨 / 没下雨」
+ */
+export function describeWeather(weather: DayWeather): string {
+    if (!weather.real) return `天气：${weather.rain ? '下雨' : '没下雨'}，${weather.low}–${weather.high}℃`;
+    const range = `今天 ${weather.low}–${weather.high}℃`;
+    const parts = [weather.now ? `现在${weather.now.text}，${weather.now.temp}℃（${range}）` : range];
+    const raining = weather.now !== undefined && /雨|雪/.test(weather.now.text);
+    if (!raining) parts.push(weather.rain ? `今天${partOfDay(weather.rainHours?.[0] ?? 12)}下过雨` : '今天还没下过雨');
+    if (weather.later) parts.push(weather.later);
+    return `天气：${parts.join('；')}`;
+}
+
+function partOfDay(hour: number): string {
+    return hour < 6 ? '凌晨' : hour < 11 ? '上午' : hour < 13 ? '中午' : hour < 18 ? '下午' : '晚上';
+}
+
+function weatherOn(weather: NonNullable<World['weather']>, day: Date): DayWeather {
     const date = formatDate(day);
     const [low, high] = weather.temps[String(day.getMonth() + 1)]!;
     const shift = Math.floor(unit(`${date} temp`) * 5) - 2;
