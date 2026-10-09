@@ -136,6 +136,15 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         assert.ok('intent' in attend && attend.intent.kind === 'attend_class');
     });
 
+    test('首次启用时复核锚点之前的旧队列，沿用旧选择器而不是向过去投影需要', () => {
+        const beforeAnchor = at('2026-10-12T13:00:00');
+        const withLaterAnchor: LifeSources = {
+            ...plain,
+            needsAnchor: { at: at('2026-10-12T17:00:00').toISOString(), energy: 5, hunger: 95, stress: 95 },
+        };
+        assert.deepEqual(chooseAt(beforeAnchor, withLaterAnchor), chooseAt(beforeAnchor, plain));
+    });
+
     test('NPC 事实不是提示词装饰：一起吃饭附在午饭行动，微信来往成为独立的类型化行动', () => {
         const lunch = worldAt(herWorld, schedule, at('2026-10-13T12:00:00'))!.routine!.meals.find(m => m.kind === 'lunch')!;
         const together = chooseAt(lunch.start, plain);

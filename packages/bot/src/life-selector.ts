@@ -170,8 +170,12 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     const plannedAction = sprint
         ? { kind: 'study' as const, subject: sprint.course ? `${sprint.course}的作业` : '作业' }
         : planned(at, sources, world, reading, state.activity.text);
+    // 第一次上线时队列里可能还有锚点之前开始的旧行动；复核旧行动仍按旧规则，不能向锚点之前反推需要。
+    const needs = sources.needsAnchor && at.getTime() >= Date.parse(sources.needsAnchor.at)
+        ? needsAt(sources.needsAnchor, sources.events(), at)
+        : undefined;
     const motivated = sprint ? { action: plannedAction, why: '赶作业' }
-        : motivate(plannedAction, sources.needsAnchor ? needsAt(sources.needsAnchor, sources.events(), at) : undefined, sources.plans?.rest);
+        : motivate(plannedAction, needs, sources.plans?.rest);
     const { kind, subject, target } = motivated.action;
     // 打算做到哪（自然地停）：这一段结束、下一顿饭、下一件世界里的事（吃饭去、下楼喂猫），赶作业的写完为止。
     // 下一节课、赶作业那一段是硬事件（ADR 0042）：不在这里截，交给裁判在那一刻打断（interrupted_by_class / _deadline），
