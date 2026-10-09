@@ -116,3 +116,10 @@ DSH 的三个卡点（`handoff/2026-10-09-0015-dsh.md`）已裁决：`reviews/20
 ### 见面可以答应（10-10 01:45，`handoff/2026-10-10-0145-claude.md`）
 
 作者裁决：线下见面可以答应，见了面两个人也在 QQ 上打字。ADR 0046（分支 `adr-0046-meet`）改卡和抽取，ADR 0047（分支 `adr-0047-meetups`）让约好的见面进她当天的状态行。**10-10 01:53 已上线**（`main` = `bafb448`）；**GPT / Codex 留意**：`promises.ts` 抽取提示词、`herStatus` 的新输入 `appointment`、生活事件账还不知道见面。
+
+### 真实天气（ADR 0048，10-10，分支 `adr-0048-real-weather` `46fc71e`，未上线）
+
+用户 10-10：她说那天下雨，实际没下。现在世界里的天气按济南（在学校）/ 青岛（放假在家）Open-Meteo 逐小时数据，每 30 分钟取一次，存 `<数据目录>/weather/`；「下没下雨」只算到这一刻真实下过的钟头，开始取之前的日子不换。
+**GPT / Codex 留意**：`world.ts` 的 `WorldNow.weather` 变成 `DayWeather`（多了 `real`、`now`、`rainHours`、`later`）；`day-plan.ts` 的 `PlanFacts` 多了 `rainHours`（按时段判下雨），`life-selector.ts` 已传；喂猫按喂的那个钟头判。真实天气只在 `app.ts` 开（全局 `useRealWeather`），模拟器和测试照旧按日期生成，回放不受影响。
+
+另：ADR 0047 调整（分支 `adr-0047-open-episode`）——聊天还没结束、提到约见面和时间就先抽一次，只记带钟点的约见面。
