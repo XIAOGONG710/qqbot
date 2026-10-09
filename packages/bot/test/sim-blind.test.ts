@@ -63,6 +63,20 @@ describe('盲评生成器（T2）', () => {
         assert.deepEqual(scenario.steps, [{ say: '哈哈哈哈' }]);
     });
 
+    test('同一分钟的几句：从后往前每句早 15 秒，最后一句不动', () => {
+        const sameMinute: BlindQuestion = {
+            ...question,
+            lines: [
+                { who: '她', at: '2026-10-13T20:04:00+08:00', text: '结果钥匙落自习室了' },
+                { who: '他', at: '2026-10-13T20:05:00+08:00', text: '哈哈哈哈' },
+                { who: '他', at: '2026-10-13T20:05:00+08:00', text: '那你咋进的门' },
+            ],
+        };
+        const scenario = toScenario(sameMinute);
+        assert.equal(scenario.start, '2026-10-13T20:05:00+08:00');
+        assert.deepEqual(scenario.history.map(m => m.time), [new Date('2026-10-13T20:04:00+08:00').toISOString(), new Date('2026-10-13T20:04:45+08:00').toISOString()]);
+    });
+
     test('重放：她说过的话原样在提示词里，只生成她这一轮；记下时间块', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'blind-run-'));
         try {

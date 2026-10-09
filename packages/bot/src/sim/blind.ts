@@ -79,16 +79,21 @@ export function loadQuestions(path: string): BlindQuestion[] {
     return questions;
 }
 
+/** 题目只写到分钟：同一分钟的几句从后往前每句早 15 秒，最后一句还在原来的时刻 */
+const SAME_MINUTE_STEP_MS = 15_000;
+
 /** 一道题 → 一个场景：他最后一句之前的都进事先的聊天，最后一句在那一刻发出 */
 export function toScenario(q: BlindQuestion): Scenario {
     const last = q.lines.at(-1)!;
+    const times = q.lines.map(line => Date.parse(line.at));
+    for (let i = times.length - 2; i >= 0; i--) times[i] = Math.min(times[i]!, times[i + 1]! - SAME_MINUTE_STEP_MS);
     return parseScenario({
         name: q.id,
         tier: q.tier,
         user: q.user,
         start: last.at,
         memory: false,
-        history: q.lines.slice(0, -1).map(line => ({ time: line.at, role: line.who === '他' ? 'user' : 'assistant', content: line.text })),
+        history: q.lines.slice(0, -1).map((line, i) => ({ time: new Date(times[i]!).toISOString(), role: line.who === '他' ? 'user' : 'assistant', content: line.text })),
         steps: [{ say: last.text }],
     }, q.id);
 }
