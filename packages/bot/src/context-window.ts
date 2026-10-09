@@ -85,7 +85,7 @@ export function contextSummarizer(options: {
         let text: string | undefined;
         try {
             const points = (await options.generate(request)).split('\n').map(line => line.trim()).filter(line => /^[-•]\s*\S/.test(line) && !/^[-•]\s*无$/.test(line));
-            text = points.length ? `${SUMMARY_HEADER}（更早的聊天原文没放进来，这是要点，只作参考）：\n${points.join('\n')}]` : undefined;
+            text = points.length ? `${SUMMARY_HEADER}（更早的聊天原文没放进来，这是要点，只作参考；和下面从记忆里想起来的对不上时，以这里为准）：\n${points.join('\n')}]` : undefined;
             options.log(`上下文要点：较早的 ${older.length} 条整理成 ${points.length} 条（请求约 ${tokens} token）`);
         } catch (error) {
             // 整理失败就不放要点，原文照样只放最近几轮；下一轮再试

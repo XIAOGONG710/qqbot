@@ -56,7 +56,7 @@ describe('最近几轮 + 要点（ADR 0043 离线实验）', () => {
             log: line => logs.push(line),
         });
         const text = await summarize(older);
-        assert.equal(text, '[你们前面聊过的事（更早的聊天原文没放进来，这是要点，只作参考）：\n- 宝宝 10月14日（周三）下午两点面试]');
+        assert.equal(text, '[你们前面聊过的事（更早的聊天原文没放进来，这是要点，只作参考；和下面从记忆里想起来的对不上时，以这里为准）：\n- 宝宝 10月14日（周三）下午两点面试]');
         assert.equal(await summarize([...older]), text);
         assert.equal(calls, 1, '同一段不再整理');
         assert.match(logs[0]!, /^上下文要点：较早的 2 条整理成 1 条（请求约 \d+ token）$/);
@@ -115,7 +115,7 @@ describe('最近几轮 + 要点（ADR 0043 离线实验）', () => {
         assert.ok(!chatOf(turns.prompts[0]!).includes('我下周三下午两点面试'));
         assert.deepEqual(chatOf(turns.prompts[0]!).filter(c => c.startsWith('闲聊')), ['闲聊4', '闲聊5']);
         const all = turns.prompts[0]!.map(m => m.content).join('\n');
-        assert.match(all, /\[你们前面聊过的事（更早的聊天原文没放进来，这是要点，只作参考）：\n- 宝宝 10月14日（周三）下午两点面试\]/);
+        assert.match(all, /\[你们前面聊过的事（更早的聊天原文没放进来，这是要点，只作参考；和下面从记忆里想起来的对不上时，以这里为准）：\n- 宝宝 10月14日（周三）下午两点面试\]/);
         assert.match(turns.summaries[0]![1]!.content, /阿明：我下周三下午两点面试/);
         // 第二轮：8 轮，切口没挪，同一段要点不再整理
         assert.equal(turns.summaries.length, 1);
