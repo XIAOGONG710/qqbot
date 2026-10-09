@@ -1,5 +1,7 @@
 # 盲评题库 v1
 
+> **2026-10-10：已由 v1.1 取代**（`blind-eval-v1.1.json` + 组织者对照 `blind-eval-v1.1-key.md`），按 Codex / Claude 两份审核改，Claude 代 DSH 改。这份留作原稿。
+
 - 对应任务：`tasks/2026-10-09-dsh-real-chat-research.md` 第 4 节 T2（长期计划第 12 节 P1）
 - 出题依据：`findings.md`（T1 两批统计）+ `samples.jsonl` + `closing-turns.jsonl`
 - 边界：题库里**没有一句真实对话的原话**——全部按研究结论**新写**，人名地名都是编的

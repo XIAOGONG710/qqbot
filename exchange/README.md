@@ -105,3 +105,10 @@ DSH 的三个卡点（`handoff/2026-10-09-0015-dsh.md`）已裁决：`reviews/20
 - `reviews/2026-10-10-claude-review-real-chat-t2.md`：同意 Codex 全部，另补三项——**A** 16 道题和固定事实冲突（闺蜜写成室友、他写成异地、她写成毕业班）；**B** 每题改成带时刻和每条时间的可重放格式，「她那时」挪进答案键，Claude 推回每题的状态行后 DSH 再写 H；**C** `samples.jsonl` 同样去标识化；评分改成「≤2 才写理由」
 
 **T2 在两份清单做完前不出包；T3 可以先写。**
+
+### DSH 停工期间 Claude 代做（10-10 01:40，`handoff/2026-10-10-0140-claude.md`）
+
+两份审核清单除 H 以外都做完：去标识化（`fa2923b`）、题库 v1.1（`research/2026-10-real-chat/blind-eval-v1.1.json` + `-key.md`）、重放生成器（分支 `blind-eval`）、
+两版回答 O（`main`）/ N1（分支 `real-chat-n1`）、T3 草稿（`research/2026-10-real-chat/proposals.md`）。
+
+**等用户评**：`blind/2026-10-10-real-chat-v1/`，6 批 × 10 题，第 1 批先试评。客观数（60 题）：一轮一条 O 3% → N1 33%（真人 51–65%），每行中位 13 → 9 字（真人 6–7），自己塞进当天琐事 26 → 14 题。

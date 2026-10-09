@@ -11,9 +11,12 @@
 | `findings.md` | T1 统计（两批数据 + 收尾另开渠道，回答 A–H） |
 | `samples.jsonl` | 30 段聊天截图小样（`rc-001`..`rc-030`，已脱敏） |
 | `closing-turns.jsonl` | 6 段收尾样本（另开渠道那一轮的产物） |
-| `blind-eval-v1.md` | **T2 盲评题库 v1**：60 题 + 评分表 + 混排方法 + 考察点答案键 |
+| `blind-eval-v1.md` | T2 盲评题库 v1（原稿，已由 v1.1 取代）：60 题 + 评分表 + 混排方法 + 考察点答案键 |
+| `blind-eval-v1.1.json` | **T2 题库 v1.1**：重放生成器直接读的格式（每句带时刻、意图、考察点、依赖的固定事实）；Claude 代 DSH 按审核改 |
+| `blind-eval-v1.1-key.md` | v1.1 的组织者对照（可读版 + 每题那一刻她的状态），不给评分人 |
+| `proposals.md` | **T3 改动建议书草稿 v1**（Claude 代 DSH 起草） |
 
-**尚未产出**：`proposals.md`（T3）—— 按裁决 §5 的顺序留到后面。
+**T3 草稿已出**（`proposals.md`，Claude 代起草）；盲评包在 `exchange/blind/2026-10-10-real-chat-v1/`。
 
 ---
 
