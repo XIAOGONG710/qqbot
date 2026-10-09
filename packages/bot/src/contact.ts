@@ -347,14 +347,18 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
-            // 实验（ADR 0043）：最近几轮原文 + 更早的要点，代替最近 80 条
+            // ADR 0043（配置 contextTurns，默认关）：最近几轮原文 + 更早的要点，代替最近 80 条
             let summary: string | undefined;
             if (remembers && options.contextWindow) {
                 const lastDays = recentChat(chat, time, Infinity);
                 const cut = turnCut(lastDays.chat, options.contextWindow);
-                // 要点里她的名字换成「你」，和记忆一样（ADR 0018 决策 4）
-                summary = cut > 0 ? you(await options.contextWindow.summarize(lastDays.chat.slice(0, cut))) : undefined;
-                shown = { chat: lastDays.chat.slice(cut), omitted: lastDays.omitted + cut };
+                const state = cut > 0 ? options.contextWindow.summarize(lastDays.chat.slice(0, cut)) : { ready: true as const, text: undefined };
+                // 要点还在后台整理（或整理失败）：不等它，这一轮照旧最近 80 条，什么都不丢
+                if (state.ready) {
+                    // 要点里她的名字换成「你」，和记忆一样（ADR 0018 决策 4）
+                    summary = you(state.text);
+                    shown = { chat: lastDays.chat.slice(cut), omitted: lastDays.omitted + cut };
+                }
             }
             const prompt = buildPrompt({
                 character,
