@@ -447,6 +447,19 @@ test('她的钱（ADR 0035）：规则给看得到相机基金的档位，余额
     assert.throws(() => checkWorld(broken(w => { w.events.find(e => e.id === 'milk_tea')!.cost = { amount: [20, 13], what: '奶茶' }; })), /前一个不能比后一个大/);
 });
 
+test('取快递吃完饭再去（ADR 0042）：after_meal_from 进看得到快递的每一档；日期写错、看得到快递的档位看不到饭点时报错', () => {
+    const world = source.world!;
+    assert.equal(world.parcels.after_meal_from, '2026-10-12');
+    for (const tier of world.parcels.tiers) assert.equal(worldForTier(world, tier)!.parcels!.afterMealFrom, '2026-10-12', tier);
+    const raw = () => fromYaml(readFileSync(join(characterDir, 'source', SOURCE_FILES.world), 'utf8'), 'world.yml') as Record<string, unknown> & {
+        parcels: { after_meal_from?: string }; routine: { tiers: string[] };
+    };
+    const broken = (patch: (w: ReturnType<typeof raw>) => void) => { const w = raw(); patch(w); return w; };
+    assert.throws(() => checkWorld(broken(w => { w.parcels.after_meal_from = '10-12'; })), /after_meal_from.*YYYY-MM-DD/);
+    assert.throws(() => checkWorld(broken(w => { w.routine.tiers = ['boyfriend']; })), /看得到快递的 bestie 也要看得到 routine/);
+    assert.doesNotThrow(() => checkWorld(broken(w => { delete w.parcels.after_meal_from; w.routine.tiers = ['boyfriend']; })));
+});
+
 test('她一天的打算会改（ADR 0034）：plans 每档都有；写错时报错；说到的空闲活动要在作息里', () => {
     for (const tier of ['boyfriend', 'classmate', 'unlisted']) assert.deepEqual(worldForTier(source.world, tier)!.plans!.study, source.world!.plans!.study, tier);
     const raw = () => fromYaml(readFileSync(join(characterDir, 'source', SOURCE_FILES.world), 'utf8'), 'world.yml') as Record<string, unknown> & {

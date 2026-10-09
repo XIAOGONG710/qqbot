@@ -36,7 +36,8 @@ describe('此刻在做的事接上世界（ADR 0030）', () => {
     test('过去某一天她那边的事（ADR 0032）：天气、喂没喂猫、快递、写完的作业、小事、洗澡；按这一档的卡', () => {
         const recap = (c: ReturnType<typeof card>, d: number) => recapDay(worldAt(c.herWorld!, c.schedule!, new Date(2026, 9, d, 23, 30))!).join('；');
         // 男朋友档还有那天花了多少（ADR 0035）
-        assert.equal(recap(boyfriend, 12), '没下雨，12–22℃；19:16 下楼喂了土豆；12:20 去驿站取了快递（洗面奶）；熬夜写完了计算机网络技术的作业；花了 41 元（午饭 15、晚饭 14、零碎 12）；22:35 去洗了澡');
+        // 取快递（ADR 0042）：12:20 落在午饭（11:56–12:31）里，10-12 起吃完饭再去
+        assert.equal(recap(boyfriend, 12), '没下雨，12–22℃；19:16 下楼喂了土豆；12:31 去驿站取了快递（洗面奶）；熬夜写完了计算机网络技术的作业；花了 41 元（午饭 15、晚饭 14、零碎 12）；22:35 去洗了澡');
         assert.match(recap(boyfriend, 14), /^下雨，10–17℃；下雨，没下楼喂土豆；熬夜写完了数据结构的作业；下课和苏雨桐一起去食堂吃饭/);
         assert.doesNotMatch(recap(classmate, 14), /苏雨桐|宿舍|数据结构|花了/, '同学档看不到的不写');
     });
@@ -51,6 +52,26 @@ describe('此刻在做的事接上世界（ADR 0030）', () => {
     test('按这一档的卡：同学档看不到和家里视频、课名', () => {
         assert.equal(doing(classmate, '2026-10-11T20:40:00+08:00'), '在赶作业，22:00 左右能写完');
         assert.doesNotMatch(doing(classmate, '2026-10-11T21:30:00+08:00')!, /Linux/);
+    });
+
+    test('取快递撞上饭点（ADR 0042）：卡上 after_meal_from（10-12）起吃完饭再去；那天之前的照旧，过完的日子不改；各档一样', () => {
+        assert.equal(boyfriend.herWorld!.parcels!.afterMealFrom, '2026-10-12');
+        const pickups = (c: ReturnType<typeof card>, from: number, to: number) => {
+            const found: { day: number; when: Date; meals: { start: Date; end: Date }[] }[] = [];
+            for (let d = from; d <= to; d++) {
+                const now = worldAt(c.herWorld!, c.schedule!, new Date(2026, 9, d, 23, 30));
+                for (const p of now?.parcels.filter(p => p.status === 'picked_today') ?? []) found.push({ day: d, when: p.when, meals: now!.routine!.meals });
+            }
+            return found;
+        };
+        const clash = (p: { when: Date; meals: { start: Date; end: Date }[] }) =>
+            p.meals.some(m => m.start.getTime() < p.when.getTime() + 15 * 60_000 && p.when < m.end);
+        const before = pickups(boyfriend, 1, 11);
+        assert.ok(before.some(clash), '10-12 之前有边吃午饭边取的（照旧，不改）');
+        const after = pickups(boyfriend, 12, 31);
+        assert.ok(after.length >= 3);
+        assert.deepEqual(after.filter(clash).map(p => `${p.day} ${p.when.toTimeString().slice(0, 5)}`), []);
+        assert.deepEqual(pickups(classmate, 1, 31).map(p => p.when.getTime()), [...before, ...after].map(p => p.when.getTime()), '同学档一样');
     });
 
     test('取了快递之后十五分钟在往回走', () => {

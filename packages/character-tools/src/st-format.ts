@@ -53,7 +53,8 @@ export interface CardWorld {
     awayHolidays: string[];
     weather?: { rainChance: number; temps: Record<string, [number, number]> };
     cat?: { name: string; feed: [string, string]; seenChance: number; food: { bagDays: number; left: number; reorderAt: number } };
-    parcels?: { perWeek: number; arriveDays: [number, number]; keepDays: number; items: string[] };
+    /** afterMealFrom：从这天起取快递撞上饭点就吃完再去（ADR 0042） */
+    parcels?: { perWeek: number; arriveDays: [number, number]; keepDays: number; items: string[]; afterMealFrom?: string };
     cameraFund?: { goal: number; saved: number; weekly: number; depositDay: number };
     homework?: { kinds: string[]; chance: number; earlyChance: number };
     familyCall?: { weekday: number; time: string };

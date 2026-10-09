@@ -24,7 +24,8 @@ export interface World {
     awayHolidays: string[];
     weather?: { rainChance: number; temps: Record<string, [number, number]> };
     cat?: { name: string; feed: [string, string]; seenChance: number; food: { bagDays: number; left: number; reorderAt: number } };
-    parcels?: { perWeek: number; arriveDays: [number, number]; keepDays: number; items: string[] };
+    /** afterMealFrom：从这天起取件的时刻撞上饭点就吃完再去（ADR 0042）；之前的日子照旧 */
+    parcels?: { perWeek: number; arriveDays: [number, number]; keepDays: number; items: string[]; afterMealFrom?: string };
     cameraFund?: { goal: number; saved: number; weekly: number; depositDay: number };
     homework?: { kinds: string[]; chance: number; earlyChance: number };
     familyCall?: { weekday: number; time: string };
@@ -184,12 +185,18 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         if (world.weather) record.weather = weatherOn(world.weather, day);
 
         // 快递：到了驿站的，在学校、不上课时取；有时拖一天；过了最后一天没取就退回
+        // 取件的时刻撞上饭点（12:20 总落在午饭里，ADR 0040 验证一节）：从 afterMealFrom 那天起吃完饭再去（ADR 0042）；之前的日子照旧，过完的日子不被新规则改写
+        const meals = world.parcels?.afterMealFrom && date >= world.parcels.afterMealFrom && world.routine ? routineOn(world.routine, schedule, day, atSchool).meals : [];
+        const afterMeal = (time: Date) => {
+            const walk = new Date(time.getTime() + OCCUPATION_MINUTES.parcel * 60_000);
+            return meals.find(meal => meal.start < walk && time < meal.end)?.end ?? time;
+        };
         for (const parcel of parcels) {
             if (parcel.picked || parcel.returned || parcel.arrive > endOfDay(day)) continue;
             if (date > parcel.deadline) { parcel.returned = true; continue; }
             const late = !parcel.food && unit(`${parcel.ordered} ${parcel.item} late`) < 0.4 && formatDate(parcel.arrive) === date && date < parcel.deadline;
             if (!atSchool || late) continue;
-            const time = PICKUP_TIMES.map(t => at(day, t)).find(t => t >= parcel.arrive && !inLesson(lessons, t));
+            const time = PICKUP_TIMES.map(t => afterMeal(at(day, t))).find(t => t >= parcel.arrive && !inLesson(lessons, t));
             if (!time) continue;
             parcel.picked = time;
             if (parcel.food && world.cat) food += world.cat.food.bagDays;
