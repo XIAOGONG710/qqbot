@@ -25,16 +25,17 @@ import { describeMood, moodAt, readingActivities, readingSection } from './her-d
 import { describeIntent } from './intent.ts';
 import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
-import { describeWorld, occupationAt, recapDay, recentWith, unavailableAt, worldAt, type WorldState } from './world.ts';
+import { describeWorld, recapDay, recentWith, unavailableAt, worldAt, type WorldState } from './world.ts';
 import { npcMentioned } from './npc.ts';
-import { dayPlan, describePlans, describeSlot, planNow } from './day-plan.ts';
+import { dayPlan, describePlans, describeSlot } from './day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
 import { asleepSince, saidBedtimes } from './bedtime.ts';
+import { herStatus } from './status-line.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
 import { describePast, pastCue } from './biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from './people.ts';
 import type { PromiseKeeper } from './promises.ts';
-import { describeState, herDay, stateAt } from './schedule.ts';
+import { describeState, herDay } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candidates.ts';
 import { describeDays, describeTime } from './time-context.ts';
@@ -253,12 +254,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const today = common ? undefined : you(await todayOthers);
             if (today) log(`今天和别人聊过的 ${countLines(today)} 条（新一段对话，有由头可以含糊提一件）`);
             const days = describeDays(character.dates, time);
-            let state = schedule ? stateAt(schedule, time, extraFree) : undefined;
-            const saidAsleep = state && state.activity.kind !== 'sleep' ? asleepAt(time) : undefined;
-            if (state && saidAsleep) {
-                state = { ...state, activity: { kind: 'sleep', until: saidAsleep.until } };
-                log(`她 ${saidAsleep.since.toTimeString().slice(0, 5)} 说过睡了：状态行按在睡觉`);
-            }
             if (herSchedule) options.onHerDay?.(time);
             // 她那边（ADR 0021）：跟着「她自己的日子」开，卡上有世界才有
             const around = herSchedule && character.herWorld
@@ -270,22 +265,18 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
             // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
             const bodyNow = herSchedule && character.herWorld?.body ? bodyAt(character.herWorld.body, herSchedule, time) : undefined;
-            // 此刻在做的事接上世界（ADR 0030）：空闲时正好在喂猫、取快递、和家里视频、赶作业，状态行就写这件
-            const busy = state?.activity.kind === 'free' && around ? occupationAt(around, time) : undefined;
-            if (state && busy) {
-                state = { ...state, activity: { kind: 'free', text: busy } };
-                log(`此刻在做：${busy}`);
-            }
-            // 她一天的打算会改（ADR 0034）：醒着时给今天的打算；空闲又没有别的事时，状态行写「本来打算 X，Y，Z」
-            const slots = herSchedule && around && state && state.activity.kind !== 'sleep'
-                ? dayPlan(herSchedule, character.herWorld?.plans, herDay(herSchedule, time), { rain: around.weather?.rain, body: bodyNow, homework: around.homework }, extraFree)
-                : [];
-            const revised = state?.activity.kind === 'free' && !busy && herSchedule ? planNow(herSchedule, slots, time) : undefined;
-            if (state && revised) {
-                state = { ...state, activity: { kind: 'free', text: revised } };
-                log(`改了打算：${revised}`);
-            }
-            const plansLine = herSchedule ? describePlans(herSchedule, slots, time) : undefined;
+            // 状态行（status-line.ts，模拟器的状态行影子比对用同一个函数，ADR 0042）：作息 → 说过「睡了」就在睡 →
+            // 空闲时世界里有时长的事（ADR 0030）→ 一天的打算改了的写「本来打算 X，Y，Z」（ADR 0034）
+            const asleep = schedule ? asleepAt(time) : undefined;
+            const status = schedule ? herStatus(schedule, time, {
+                extraFree, ...(around ? { world: around } : {}), ...(asleep ? { asleep } : {}),
+                ...(herSchedule ? { plans: { plans: character.herWorld?.plans, ...(bodyNow ? { body: bodyNow } : {}) } } : {}),
+            }) : undefined;
+            if (status?.saidAsleep) log(`她 ${status.saidAsleep.since.toTimeString().slice(0, 5)} 说过睡了：状态行按在睡觉`);
+            if (status?.busy) log(`此刻在做：${status.busy}`);
+            if (status?.revised) log(`改了打算：${status.revised}`);
+            const state = status?.state;
+            const plansLine = herSchedule ? describePlans(herSchedule, status?.slots ?? [], time) : undefined;
             const books = herSchedule
                 ? readingSection(herSchedule, character.books, time, {
                     history: chat, userName: contact.name,

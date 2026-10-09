@@ -53,12 +53,18 @@ export function dayPlan(schedule: Schedule, plans: Plans | undefined, day: Date,
 
 /** 此刻那一段（她醒着、有空时）：改了的话「本来打算 X，Y，Z」；作业写完以后回到原来的打算 */
 export function planNow(schedule: Schedule, slots: readonly PlanSlot[], now: Date): string | undefined {
+    const slot = revisedSlot(schedule, slots, now);
+    return slot ? `本来打算${slot.planned}，${slot.because}，${slot.done}` : undefined;
+}
+
+/** 此刻那一段改了的打算（没改、作业写完回到原来的打算了就没有） */
+export function revisedSlot(schedule: Schedule, slots: readonly PlanSlot[], now: Date): PlanSlot | undefined {
     const day = herDay(schedule, now);
     const window = windowsOf(schedule, day).find(([, from, to]) => from <= now && now < to)?.[0];
     const slot = slots.find(s => s.window === window);
     if (!slot || slot.done === slot.planned) return undefined;
     if (slot.until && now >= slot.until) return undefined;
-    return `本来打算${slot.planned}，${slot.because}，${slot.done}`;
+    return slot;
 }
 
 /** 一段的说法：改了的「下午本来打算去图书馆占座，下雨了，在宿舍写作业」，没改的「晚上在追一部剧」 */

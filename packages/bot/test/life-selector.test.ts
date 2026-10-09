@@ -10,6 +10,7 @@ import { readingActivities } from '../src/her-days.ts';
 import { chooseAt, dayBusy, freeKind, lifeExecutor, type LifeSources } from '../src/life-selector.ts';
 import type { LifeEvent, LifeEventDraft } from '../src/life-events.ts';
 import { classesOn, formatDate, herDay } from '../src/schedule.ts';
+import { auditLifeStatus } from '../src/sim/life-audit.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { worldAt, worldState } from '../src/world.ts';
 
@@ -142,6 +143,7 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
             for (const e of byClass) {
                 assert.ok(events.some(other => other.kind === 'attend_class' && other.startedAt === e.endedAt), `${e.id} 停下的时候没有课`);
             }
+            assert.deepEqual(auditLifeStatus(events, { ...plain, events: () => events }), [], '事件账里的行动和同一时刻状态行规则一致');
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

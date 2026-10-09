@@ -153,14 +153,20 @@ function planned(at: Date, sources: LifeSources, world: WorldNow | undefined, re
     const slots = dayPlan(sources.schedule, sources.plans, day, { rain: world?.weather?.rain, ...(body ? { body } : {}), homework: world?.homework }, reading);
     const slot = slots.find(s => s.planned === text);
     const done = slot && slot.done !== slot.planned && !(slot.until && at >= slot.until) ? slot.done : text;
-    if (done === '先赶作业') return { kind: 'study' as const, subject: '作业' };
-    const free = freeKind(done, sources, reading);
+    return freeAction(done, at, sources, reading);
+}
+
+/** 把状态行上的空闲活动映射成生活事件类型；状态行影子审计和执行器共用。 */
+export function freeAction(text: string, at: Date, sources: Pick<LifeSources, 'schedule' | 'plans' | 'books'>, reading: readonly ExtraFreeActivity[]):
+    { kind: TypedActionKind; subject: string } {
+    if (text === '先赶作业') return { kind: 'study', subject: '作业' };
+    const free = freeKind(text, sources, reading);
     // 在读的书停了（读到最新一卷）或读完了，状态行还写在看（readingActivities 不看进度）：记成休闲（翻翻、重温），
     // 不交给裁判判 unavailable——原来 10-16 晚上《药屋》停在第 10 卷，整晚排不上，事件账空了一晚（ADR 0042）
     const book = free.kind === 'read_book' ? sources.books.find(b => b.id === free.subject) : undefined;
     if (book) {
         const progress = bookProgressAt(sources.schedule, book, at);
-        if (progress.stopped || progress.finished) return { kind: 'leisure' as const, subject: done };
+        if (progress.stopped || progress.finished) return { kind: 'leisure', subject: text };
     }
     return free;
 }
