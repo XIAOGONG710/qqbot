@@ -7,7 +7,7 @@ import type { LifeEvent, LifeEventDraft, LifeEventSource } from './life-events.t
 import { classesOn, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
 
-export type TypedActionKind = 'sleep' | 'eat' | 'attend_class' | 'study' | 'rest' | 'read_book' | 'leisure';
+export type TypedActionKind = 'sleep' | 'eat' | 'attend_class' | 'study' | 'rest' | 'read_book' | 'leisure' | 'work_on_project' | 'interact_npc';
 export type ActionFailure = 'invalid_time' | 'unavailable' | 'conflict' | 'no_time' | 'missing_target' | 'already_done';
 /**
  * 灵活的行动做到一半停下的原因（ADR 0042）：硬事件打断——要去上课了、得赶作业了（写完之前那一段）；
@@ -15,7 +15,7 @@ export type ActionFailure = 'invalid_time' | 'unavailable' | 'conflict' | 'no_ti
  */
 export type Interruption = 'interrupted_by_class' | 'interrupted_by_deadline' | 'interrupted_by_commitment';
 /** 赶作业抢得走的：休闲、躺着、看闲书；本来就在学习的接着学 */
-const DEADLINE_PREEMPTS = new Set<TypedActionKind>(['leisure', 'rest', 'read_book']);
+const DEADLINE_PREEMPTS = new Set<TypedActionKind>(['leisure', 'rest', 'read_book', 'work_on_project']);
 
 export interface ActionIntent {
     id: string;
@@ -23,6 +23,8 @@ export interface ActionIntent {
     startedAt: Date;
     source?: LifeEventSource;
     subject?: string;
+    /** 长期项目 ID 或 NPC ID；不把显示名当稳定标识。 */
+    target?: string;
     durationMinutes?: number;
 }
 
@@ -49,12 +51,14 @@ export type ActionVerdict = {
 
 interface FlexibleDefinition { defaultMinutes: number; minMinutes: number; maxMinutes: number }
 
-const FLEXIBLE: Record<'study' | 'rest' | 'read_book' | 'leisure', FlexibleDefinition> = {
+const FLEXIBLE: Record<'study' | 'rest' | 'read_book' | 'leisure' | 'work_on_project' | 'interact_npc', FlexibleDefinition> = {
     study: { defaultMinutes: 60, minMinutes: 25, maxMinutes: 120 },
     rest: { defaultMinutes: 30, minMinutes: 15, maxMinutes: 120 },
     read_book: { defaultMinutes: 30, minMinutes: 15, maxMinutes: 90 },
     // 休闲（ADR 0040）：追剧、打游戏、刷手机、修片子……做什么写在 subject 里，就是状态行那几个字
     leisure: { defaultMinutes: 60, minMinutes: 10, maxMinutes: 240 },
+    work_on_project: { defaultMinutes: 60, minMinutes: 15, maxMinutes: 240 },
+    interact_npc: { defaultMinutes: 15, minMinutes: 5, maxMinutes: 60 },
 };
 
 /** 同一输入得到同一裁决。事件只应在 endedAt 已经过后再交给 WorldState.recordEvents。 */
@@ -86,8 +90,11 @@ export function judgeAction(intent: ActionIntent, context: ActionContext): Actio
     if (stateAt(context.schedule, start).activity.kind !== 'free') return failed(intent, 'unavailable');
 
     let subject = intent.subject?.trim() || undefined;
-    if (intent.kind === 'leisure' && !subject) return failed(intent, 'missing_target');
-    let occupation = intent.kind === 'study' ? `在学习${subject ? `（${subject}）` : ''}` : intent.kind === 'rest' ? '在休息' : intent.kind === 'leisure' ? subject! : '';
+    const target = intent.target?.trim() || undefined;
+    if (['leisure', 'work_on_project', 'interact_npc'].includes(intent.kind) && !subject) return failed(intent, 'missing_target');
+    if (['work_on_project', 'interact_npc'].includes(intent.kind) && !target) return failed(intent, 'missing_target');
+    let occupation = intent.kind === 'study' ? `在学习${subject ? `（${subject}）` : ''}` : intent.kind === 'rest' ? '在休息'
+        : ['leisure', 'work_on_project', 'interact_npc'].includes(intent.kind) ? subject! : '';
     if (intent.kind === 'read_book') {
         const book = findBook(context.books ?? [], subject);
         if (!book) return failed(intent, 'missing_target');
@@ -103,7 +110,7 @@ export function judgeAction(intent: ActionIntent, context: ActionContext): Actio
     const end = collision?.start ?? nominalEnd;
     const actual = minutesBetween(start, end);
     if (actual < definition.minMinutes) return failed(intent, 'no_time');
-    return succeeded({ ...intent, subject }, end, occupation, requested, actual, collision ? 'interrupted' : 'succeeded', collision?.why);
+    return succeeded({ ...intent, subject, target }, end, occupation, requested, actual, collision ? 'interrupted' : 'succeeded', collision?.why);
 }
 
 /** 写完作业之前在赶的那一段（ADR 0030 的 OCCUPATION_MINUTES.homework）：截止时间是硬事件，休闲撞上就停（ADR 0042） */
@@ -137,6 +144,8 @@ export function typedOccupation(event: LifeEvent, at: Date, books: readonly Read
         case 'study': return `在学习${event.subject ? `（${event.subject}）` : ''}`;
         case 'rest': return '在休息';
         case 'leisure': return event.subject;
+        case 'work_on_project': return event.subject;
+        case 'interact_npc': return event.subject;
         case 'read_book': {
             const book = books.find(item => item.id === event.subject);
             return `在看${book ? `《${book.title}》` : '书'}`;
@@ -156,12 +165,13 @@ function fixedAction(intent: ActionIntent, span: { start: Date; end: Date } | un
 function succeeded(intent: ActionIntent, end: Date, occupation: string, requestedMinutes: number, actualMinutes: number,
     result: 'succeeded' | 'interrupted', reason?: string): ActionVerdict {
     const subject = intent.subject?.trim() || undefined;
+    const target = intent.target?.trim() || undefined;
     return {
         ok: true,
         event: {
             id: intent.id.trim(), kind: intent.kind, startedAt: intent.startedAt.toISOString(), at: end.toISOString(),
             source: intent.source ?? 'simulation', result,
-            ...(subject ? { subject } : {}), ...(reason ? { reason } : {}),
+            ...(subject ? { subject } : {}), ...(target ? { target } : {}), ...(reason ? { reason } : {}),
         },
         occupation, requestedMinutes, actualMinutes,
     };
@@ -176,6 +186,7 @@ function failed(intent: ActionIntent, reason: ActionFailure): ActionVerdict {
             id: intent.id.trim() || 'invalid-action', kind: intent.kind, startedAt: at, at,
             source: intent.source ?? 'simulation', result: 'failed', reason,
             ...(intent.subject?.trim() ? { subject: intent.subject.trim() } : {}),
+            ...(intent.target?.trim() ? { target: intent.target.trim() } : {}),
         },
         reason,
     };

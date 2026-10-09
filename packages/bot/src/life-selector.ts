@@ -14,6 +14,7 @@ import { dayPlan, type Plans } from './day-plan.ts';
 import type { ReadingBook } from './her-days.ts';
 import { bookProgressAt, readingActivities } from './her-days.ts';
 import type { LifeEvent } from './life-events.ts';
+import { projectActivity } from './projects.ts';
 import { herDay, stateAt, type ExtraFreeActivity, type Schedule } from './schedule.ts';
 import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
 
@@ -37,6 +38,11 @@ export type Choice = { intent: ActionIntent; why: string } | { skipTo: Date; why
 /** 行动 id：开始时刻 + 种类，同一刻同一件事重放、重启都是同一个 id */
 export const lifeActionId = (at: Date, kind: TypedActionKind) => `life:${at.toISOString()}:${kind}`;
 
+/** 那一天快结束时的确定性世界；和 dayBusy 共用，才能看见稍后会发生、需要预留时间的事。 */
+function dayWorld(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date): WorldNow | undefined {
+    return sources.worldAt(new Date(windowEnd(sources.schedule, herDayEvening(sources.schedule, at)).getTime() - 60_000));
+}
+
 /** 世界里不记成行动、但占着时间的事（洗澡、喂猫、取快递往回走、和家里视频）：灵活的行动撞上就停，排的时候跳过 */
 export function busySpans(now: WorldNow | undefined): { start: Date; end: Date; text: string }[] {
     if (!now) return [];
@@ -54,7 +60,27 @@ export function busySpans(now: WorldNow | undefined): { start: Date; end: Date; 
  * 排一长段追剧时要知道 20:10 得下楼
  */
 export function dayBusy(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date): { start: Date; end: Date; text: string }[] {
-    return busySpans(sources.worldAt(new Date(windowEnd(sources.schedule, herDayEvening(sources.schedule, at)).getTime() - 60_000)));
+    return busySpans(dayWorld(sources, at));
+}
+
+const MEAL_SOCIAL = new Set(['lunch_with_friend', 'spicy_noodles']);
+const CLASS_SOCIAL = new Set(['notes_for_friend']);
+
+/** 世界里已有的 NPC 事实进入类型化行动：一起吃饭 / 帮拍板书附在那件硬行动上，微信来往单独占一小段时间。 */
+function npcFacts(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date) {
+    return (dayWorld(sources, at)?.events ?? []).filter(event => event.person);
+}
+
+function targetForMeal(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date): string | undefined {
+    return npcFacts(sources, at).find(event => MEAL_SOCIAL.has(event.id))?.person?.id;
+}
+
+function targetForClass(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date, end: Date): string | undefined {
+    return npcFacts(sources, at).find(event => CLASS_SOCIAL.has(event.id) && event.at >= at && event.at < end)?.person?.id;
+}
+
+function directNpcFacts(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date) {
+    return npcFacts(sources, at).filter(event => !MEAL_SOCIAL.has(event.id) && !CLASS_SOCIAL.has(event.id));
 }
 
 /** 她这一天晚上那一段里的某一刻（windowEnd 取到的就是第二天入睡） */
@@ -71,11 +97,13 @@ function homeworkSprint(now: WorldNow | undefined, at: Date): { start: Date; end
 
 /** 空闲时段做的事归哪一类：在读的书 → 读书；作业 → 学习；躺着 → 休息；别的（追剧、打游戏、修片子……）→ 休闲 */
 export function freeKind(text: string, sources: Pick<LifeSources, 'plans' | 'books'>, reading: readonly ExtraFreeActivity[]):
-    { kind: TypedActionKind; subject: string } {
+    { kind: TypedActionKind; subject: string; target?: string } {
     const book = sources.books.find(b => b.activity && reading.some(r => r.text === text) && b.activity.text === text);
     if (book) return { kind: 'read_book', subject: book.id };
     if (sources.plans?.study.includes(text) || /作业|复习|学习|预习/.test(text)) return { kind: 'study', subject: text };
     if (sources.plans?.rest === text || /^(?:躺|休息|睡)/.test(text)) return { kind: 'rest', subject: text };
+    const project = projectActivity(text);
+    if (project) return { kind: 'work_on_project', subject: project.step, target: project.id };
     return { kind: 'leisure', subject: text };
 }
 
@@ -104,8 +132,9 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     if (state.activity.kind === 'sleep') return { intent: { id: lifeActionId(at, 'sleep'), kind: 'sleep', startedAt: at }, why: '睡觉' };
     if (state.activity.kind === 'class') {
         const lesson = state.activity.lesson;
+        const target = targetForClass(sources, lesson.start, lesson.end);
         return lesson.start.getTime() === at.getTime()
-            ? { intent: { id: lifeActionId(at, 'attend_class'), kind: 'attend_class', startedAt: at }, why: `上${lesson.name ?? '课'}` }
+            ? { intent: { id: lifeActionId(at, 'attend_class'), kind: 'attend_class', startedAt: at, ...(target ? { target } : {}) }, why: `上${lesson.name ?? '课'}` }
             : { skipTo: lesson.end, why: '课上到一半' };
     }
     if (state.activity.kind === 'between') return { skipTo: state.activity.next.start, why: '赶去上课 / 课间' };
@@ -113,16 +142,26 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     const world = sources.worldAt(at);
     const meal = world?.routine?.meals.find(m => at >= m.start && at < m.end);
     if (meal) {
+        const target = meal.kind === 'lunch' ? targetForMeal(sources, at) : undefined;
         return meal.start.getTime() === at.getTime()
-            ? { intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at }, why: meal.kind === 'lunch' ? '午饭' : '晚饭' }
+            ? { intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at, ...(target ? { target } : {}) }, why: meal.kind === 'lunch' ? '和朋友吃午饭' : '晚饭' }
             : { skipTo: meal.end, why: '饭吃到一半' };
     }
     const blocks = dayBusy(sources, at);
     const busy = blocks.find(s => at >= s.start && at < s.end);
     if (busy) return { skipTo: busy.end, why: busy.text };
 
+    const social = directNpcFacts(sources, at).find(event => event.at.getTime() === at.getTime());
+    if (social?.person) {
+        const subject = `在微信上跟${social.person.name}聊了会儿`;
+        return {
+            intent: { id: lifeActionId(at, 'interact_npc'), kind: 'interact_npc', startedAt: at, subject, target: social.person.id, durationMinutes: 15 },
+            why: subject,
+        };
+    }
+
     const sprint = homeworkSprint(world, at);
-    const { kind, subject } = sprint
+    const { kind, subject, target } = sprint
         ? { kind: 'study' as const, subject: sprint.course ? `${sprint.course}的作业` : '作业' }
         : planned(at, sources, world, reading, state.activity.text);
     // 打算做到哪（自然地停）：这一段结束、下一顿饭、下一件世界里的事（吃饭去、下楼喂猫），赶作业的写完为止。
@@ -130,20 +169,21 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     // 事件账里看得出「打游戏打到一半去上课了」；原来这里先截到下一节课，事件账里一次打断都没有，赶作业那一段也没截（10-26 刷手机 19:19–22:49 盖住了 20:00–21:30 在赶的作业）
     const nextMeal = world?.routine?.meals.find(m => m.start > at)?.start;
     const nextBusy = blocks.find(s => s.start > at)?.start;
-    const soft = earliest([windowEnd(sources.schedule, at), nextMeal, nextBusy, sprint?.end]);
+    const nextSocial = directNpcFacts(sources, at).map(event => event.at).find(start => start > at);
+    const soft = earliest([windowEnd(sources.schedule, at), nextMeal, nextBusy, nextSocial, sprint?.end]);
     const nextSprint = DEADLINE_KINDS.has(kind) ? homeworkSprints(world).map(h => h.start).filter(start => start > at) : [];
     const hard = earliest([soft, state.nextClass?.start, ...nextSprint]);
     // 到硬事件之前短得做不成这一类（学习至少 25 分钟、休闲 10 分钟）的空当不记（算在路上、发呆），不交给裁判判 no_time
     const floor = Math.max(MIN_FREE_MINUTES, LIMITS[kind]?.[0] ?? 0);
     if (minutesBetween(at, hard) < floor) return { skipTo: hard > at ? hard : new Date(at.getTime() + 60_000), why: '空当太短' };
     return {
-        intent: { id: lifeActionId(at, kind), kind, startedAt: at, subject, durationMinutes: clampMinutes(kind, minutesBetween(at, soft)) },
+        intent: { id: lifeActionId(at, kind), kind, startedAt: at, subject, ...(target ? { target } : {}), durationMinutes: clampMinutes(kind, minutesBetween(at, soft)) },
         why: sprint ? '赶作业' : subject,
     };
 }
 
 /** 赶作业抢得走的（和 actions.ts 一样）：休闲、躺着、看闲书 */
-const DEADLINE_KINDS = new Set<TypedActionKind>(['leisure', 'rest', 'read_book']);
+const DEADLINE_KINDS = new Set<TypedActionKind>(['leisure', 'rest', 'read_book', 'work_on_project']);
 const earliest = (dates: readonly (Date | undefined)[]) => dates.filter((d): d is Date => Boolean(d)).reduce((a, b) => (b < a ? b : a));
 
 /** 一天的打算这一段实际做的（改了的用改了的；作业压着改的写完就回到原来的打算） */
@@ -158,7 +198,7 @@ function planned(at: Date, sources: LifeSources, world: WorldNow | undefined, re
 
 /** 把状态行上的空闲活动映射成生活事件类型；状态行影子审计和执行器共用。 */
 export function freeAction(text: string, at: Date, sources: Pick<LifeSources, 'schedule' | 'plans' | 'books'>, reading: readonly ExtraFreeActivity[]):
-    { kind: TypedActionKind; subject: string } {
+    { kind: TypedActionKind; subject: string; target?: string } {
     if (text === '先赶作业') return { kind: 'study', subject: '作业' };
     const free = freeKind(text, sources, reading);
     // 在读的书停了（读到最新一卷）或读完了，状态行还写在看（readingActivities 不看进度）：记成休闲（翻翻、重温），
@@ -171,7 +211,9 @@ export function freeAction(text: string, at: Date, sources: Pick<LifeSources, 's
     return free;
 }
 
-const LIMITS: Partial<Record<TypedActionKind, [number, number]>> = { study: [25, 120], rest: [15, 120], read_book: [15, 90], leisure: [10, 240] };
+const LIMITS: Partial<Record<TypedActionKind, [number, number]>> = {
+    study: [25, 120], rest: [15, 120], read_book: [15, 90], leisure: [10, 240], work_on_project: [15, 240], interact_npc: [5, 60],
+};
 /** 请求的时长卡在这一类的上下限里（短于下限的交给裁判判 no_time 之前就跳过了） */
 function clampMinutes(kind: TypedActionKind, minutes: number): number {
     const [min, max] = LIMITS[kind] ?? [1, minutes];
@@ -232,7 +274,7 @@ export function lifeExecutor(sources: LifeSources, queue: ActionQueue, options: 
 }
 
 /** 灵活的行动：聊天里说过的事能让它提前停；睡觉、吃饭、上课不动 */
-const REVISABLE = new Set<TypedActionKind>(['leisure', 'rest', 'read_book', 'study']);
+const REVISABLE = new Set<TypedActionKind>(['leisure', 'rest', 'read_book', 'study', 'work_on_project']);
 
 /** 排着的这件在那一刻还在接着做吗：同一类；休闲、看闲书、躺着还要是同一件（学习换一份作业也是在学） */
 function continues(item: QueuedAction, choice: Choice): boolean {

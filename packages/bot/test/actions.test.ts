@@ -130,6 +130,27 @@ describe('类型化行动与世界裁判（ADR 0037）', () => {
         assert.equal(typedOccupation(event, at('2026-10-12T14:31:00'), books), undefined);
     });
 
+    test('长期项目和 NPC 来往必须带稳定 target，投入时间和占用都落进类型化事件', () => {
+        const start = at('2026-10-12T14:00:00');
+        const missingProject = judgeAction({ id: 'project-missing', kind: 'work_on_project', startedAt: start, subject: '修片' }, context(start));
+        assert.equal(missingProject.ok, false);
+        const project = judgeAction({
+            id: 'project', kind: 'work_on_project', startedAt: start, subject: '修昨天拍的片子', target: 'photography_growth', durationMinutes: 45,
+        }, context(start));
+        assert.equal(project.ok, true);
+        if (project.ok) {
+            assert.equal(project.event.target, 'photography_growth');
+            const event: LifeEvent = { ...project.event, actor: 'linmengyao', day: '2026-10-12', startedAt: project.event.startedAt!, endedAt: project.event.at };
+            assert.equal(typedOccupation(event, at('2026-10-12T14:10:00'), books), '修昨天拍的片子');
+        }
+
+        const social = judgeAction({
+            id: 'social', kind: 'interact_npc', startedAt: start, subject: '在微信上跟陈佳宁聊了会儿', target: 'chen_jianing', durationMinutes: 15,
+        }, context(start));
+        assert.equal(social.ok, true);
+        if (social.ok) assert.equal(social.event.target, 'chen_jianing');
+    });
+
     test('选择器只给这一刻现实中能做的动作，同一输入结果一致', () => {
         const now = at('2026-10-12T14:00:00');
         const first = availableActions(now, context(now));

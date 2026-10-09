@@ -34,6 +34,7 @@ export interface ActionStep {
         id: string;
         kind: TypedActionKind;
         subject?: string;
+        target?: string;
         durationMinutes?: number;
     };
 }
@@ -122,6 +123,10 @@ export interface LifeChecks {
     nonRoutinePerDay?: { days: string[]; min: number; max: number };
     /** 硬事件至少打断了几次普通行动 */
     interruptedAtLeast?: Partial<Record<Interruption, number>>;
+    /** 带稳定 NPC target 的吃饭、上课或单独来往至少几次。 */
+    npcInteractionsAtLeast?: number;
+    /** 某个长期项目从事件账派生的真实投入时间至少多少分钟。 */
+    projectProgressAtLeast?: { target: string; minutes: number };
     /** 事件中点按对外状态行的同一套规则重算，行动类型必须一致（ADR 0042 影子审计） */
     statusConsistent?: boolean;
 }
@@ -310,8 +315,9 @@ function checkStep(step: unknown, where: string): void {
         if (typeof s.action !== 'object' || s.action === null) fail('action 应为对象');
         const action = s.action as Record<string, unknown>;
         if (typeof action.id !== 'string' || !action.id) fail('action.id 应为非空字符串');
-        if (!['sleep', 'eat', 'attend_class', 'study', 'rest', 'read_book', 'leisure'].includes(String(action.kind))) fail('action.kind 不认识');
+        if (!['sleep', 'eat', 'attend_class', 'study', 'rest', 'read_book', 'leisure', 'work_on_project', 'interact_npc'].includes(String(action.kind))) fail('action.kind 不认识');
         if (action.subject !== undefined && typeof action.subject !== 'string') fail('action.subject 应为字符串');
+        if (action.target !== undefined && typeof action.target !== 'string') fail('action.target 应为字符串');
         if (action.durationMinutes !== undefined && (!Number.isInteger(action.durationMinutes) || Number(action.durationMinutes) <= 0)) fail('action.durationMinutes 应为正整数');
     }
     if ('advance' in s) parseDuration(String(s.advance));
