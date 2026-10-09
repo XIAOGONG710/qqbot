@@ -86,9 +86,14 @@ export function parseExtraction(text: string): Extracted {
     return { add, resolved };
 }
 
-/** 抽出来的事里写着她的名字：是冲着她的事（10-08 抽出过「回去陪林梦瑶」，第二天早安里让她问「回去陪林梦瑶怎么样了」），不记 */
+/**
+ * 冲着她本人的事（陪她、找她、跟她……）不记：10-08 抽出过「回去陪林梦瑶」，第二天早安里让她问「回去陪林梦瑶怎么样了」。
+ * 只提到她的东西、她家的不算（「去林梦瑶家找小皮鞋」她不在场，第二天问「找到了没」是对的）。
+ */
 export function aboutHer(what: string, char: string): boolean {
-    return Boolean(char) && what.includes(char);
+    if (!char) return false;
+    const name = char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(陪|找|见|和|跟|与|给|接|送|带|哄|看)${name}(?![家的])`).test(what);
 }
 
 /** 判断问没问到时不算的字：虚词、代词、时间词（「回去」「明天」「的」对上了不算问到） */
