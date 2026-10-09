@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import type { LifeEvent } from '../src/life-events.ts';
-import { needsAt, type NeedsSnapshot } from '../src/needs.ts';
+import { loadNeedsAnchor, needsAt, NEEDS_RULES_VERSION, type NeedsSnapshot } from '../src/needs.ts';
 
 const anchor: NeedsSnapshot = { at: '2026-10-01T00:00:00.000Z', energy: 68, hunger: 35, stress: 24 };
 
@@ -76,6 +79,23 @@ describe('连续需要投影（ADR 0045）', () => {
 
     test('只允许从锚点向未来投影', () => {
         assert.throws(() => needsAt(anchor, [], new Date('2026-09-30T23:59:59.000Z')), /不能早于锚点/);
+    });
+
+    test('锚点落盘并跨重启复用；规则版本变化时不偷偷重算历史', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'needs-anchor-'));
+        const path = join(dir, 'needs-anchor.json');
+        try {
+            const firstAt = new Date('2026-10-01T00:00:00.000Z');
+            const first = loadNeedsAnchor(path, firstAt);
+            assert.equal(first.at, firstAt.toISOString());
+            assert.equal(JSON.parse(readFileSync(path, 'utf8')).rulesVersion, NEEDS_RULES_VERSION);
+            assert.deepEqual(loadNeedsAnchor(path, new Date('2026-10-08T00:00:00.000Z')), first);
+
+            writeFileSync(path, JSON.stringify({ version: 1, rulesVersion: 'needs-v0', anchor: first }));
+            assert.throws(() => loadNeedsAnchor(path, new Date('2026-10-08T00:00:00.000Z')), /必须先迁移锚点/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 });
 

@@ -14,6 +14,7 @@ import { dayPlan, type Plans } from './day-plan.ts';
 import type { ReadingBook } from './her-days.ts';
 import { bookProgressAt, readingActivities } from './her-days.ts';
 import type { LifeEvent } from './life-events.ts';
+import { needsAt, type NeedsSnapshot } from './needs.ts';
 import { projectActivity } from './projects.ts';
 import { herDay, stateAt, type ExtraFreeActivity, type Schedule } from './schedule.ts';
 import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
@@ -30,6 +31,11 @@ export interface LifeSources {
     bodyAt?: (at: Date) => BodyNow | undefined;
     /** 她在聊天里说「睡了」的时刻（ADR 0042，bedtime.ts 的 saidBedtimes，对谁说的都算）：从那一刻起在睡，到那一晚该起的时候 */
     bedtimes?: () => readonly number[];
+    /**
+     * 连续需要的版本化起点（ADR 0045）。没有锚点时完全沿用旧选择器；有锚点时只调整空闲行动，
+     * 上课、饭点、明确约定和截止时间仍按原来的硬规则优先。
+     */
+    needsAnchor?: NeedsSnapshot;
 }
 
 /** 这一刻：要排的行动，或者跳到哪（赶去上课、洗澡、喂猫这类不记成行动的，和短得排不下的空当） */
@@ -161,9 +167,12 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     }
 
     const sprint = homeworkSprint(world, at);
-    const { kind, subject, target } = sprint
+    const plannedAction = sprint
         ? { kind: 'study' as const, subject: sprint.course ? `${sprint.course}的作业` : '作业' }
         : planned(at, sources, world, reading, state.activity.text);
+    const motivated = sprint ? { action: plannedAction, why: '赶作业' }
+        : motivate(plannedAction, sources.needsAnchor ? needsAt(sources.needsAnchor, sources.events(), at) : undefined, sources.plans?.rest);
+    const { kind, subject, target } = motivated.action;
     // 打算做到哪（自然地停）：这一段结束、下一顿饭、下一件世界里的事（吃饭去、下楼喂猫），赶作业的写完为止。
     // 下一节课、赶作业那一段是硬事件（ADR 0042）：不在这里截，交给裁判在那一刻打断（interrupted_by_class / _deadline），
     // 事件账里看得出「打游戏打到一半去上课了」；原来这里先截到下一节课，事件账里一次打断都没有，赶作业那一段也没截（10-26 刷手机 19:19–22:49 盖住了 20:00–21:30 在赶的作业）
@@ -178,8 +187,27 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     if (minutesBetween(at, hard) < floor) return { skipTo: hard > at ? hard : new Date(at.getTime() + 60_000), why: '空当太短' };
     return {
         intent: { id: lifeActionId(at, kind), kind, startedAt: at, subject, ...(target ? { target } : {}), durationMinutes: clampMinutes(kind, minutesBetween(at, soft)) },
-        why: sprint ? '赶作业' : subject,
+        why: motivated.why ?? subject,
     };
+}
+
+/**
+ * 宽阈值只改变可以改天再做的空闲行动。低精力先休息；压力很高时暂缓高负荷项目。
+ * 饭点在 chooseAt 更前面已经无条件优先，因此很饿也不会被休息或项目盖住。
+ */
+export function motivate(
+    action: { kind: TypedActionKind; subject: string; target?: string },
+    needs: NeedsSnapshot | undefined,
+    restSubject = '躺会儿',
+): { action: { kind: TypedActionKind; subject: string; target?: string }; why?: string } {
+    if (!needs) return { action };
+    if (needs.energy <= 25 && action.kind !== 'rest') {
+        return { action: { kind: 'rest', subject: restSubject }, why: `精力低（${needs.energy}）` };
+    }
+    if (needs.stress >= 75 && action.kind === 'work_on_project') {
+        return { action: { kind: 'rest', subject: restSubject }, why: `压力高（${needs.stress}），项目先缓一缓` };
+    }
+    return { action };
 }
 
 /** 赶作业抢得走的（和 actions.ts 一样）：休闲、躺着、看闲书 */

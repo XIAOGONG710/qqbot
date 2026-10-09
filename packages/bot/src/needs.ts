@@ -1,6 +1,8 @@
 // 连续需要的事实投影（ADR 0045，B 阶段第一步）。
 // 精力、饥饿和压力只由一个锚点、时间流逝与已经落账的行动推出来；不另写一份会和事件账漂移的当前值。
 
+import { existsSync } from 'node:fs';
+import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import type { LifeEvent } from './life-events.ts';
 
 export interface NeedsSnapshot {
@@ -12,6 +14,16 @@ export interface NeedsSnapshot {
     /** 0 是放松，100 是压力很大。 */
     stress: number;
 }
+
+interface NeedsAnchorFile {
+    version: 1;
+    /** 改速率或离散后果时必须换版本并显式迁移锚点，不能拿新规则重算旧历史。 */
+    rulesVersion: typeof NEEDS_RULES_VERSION;
+    anchor: NeedsSnapshot;
+}
+
+export const NEEDS_RULES_VERSION = 'needs-v1' as const;
+export const DEFAULT_NEEDS = { energy: 68, hunger: 35, stress: 24 } as const;
 
 interface Rates {
     energy: number;
@@ -33,6 +45,24 @@ const RATES: Record<string, Rates> = {
 
 /** 吃完一顿才结算饱腹；做到一半被打断的饭不算吃完。 */
 const MEAL_HUNGER_RELIEF = 55;
+
+/**
+ * 第一次启用时把需要起点写进运行目录；之后只读同一个起点。规则版本不一致时拒绝偷偷重算，
+ * 由升级代码先把旧规则投影到切换时刻，再写入新版本锚点。
+ */
+export function loadNeedsAnchor(path: string, at: Date, log: (message: string) => void = () => undefined): NeedsSnapshot {
+    const existed = existsSync(path);
+    const loaded = readJsonOr<Partial<NeedsAnchorFile>>(path, {}, message => log(`她的需要：${message}`));
+    if (loaded.rulesVersion && loaded.rulesVersion !== NEEDS_RULES_VERSION) {
+        throw new Error(`需要规则版本不兼容：${loaded.rulesVersion} → ${NEEDS_RULES_VERSION}，必须先迁移锚点`);
+    }
+    if (loaded.version === 1 && loaded.rulesVersion === NEEDS_RULES_VERSION && validSnapshot(loaded.anchor, at)) return loaded.anchor!;
+    if (existed) log('她的需要：锚点格式不对，改用当前时刻的新锚点');
+    const anchor = snapshot(at, DEFAULT_NEEDS);
+    writeJsonAtomic(path, { version: 1, rulesVersion: NEEDS_RULES_VERSION, anchor } satisfies NeedsAnchorFile);
+    log(`她的需要：建立 ${NEEDS_RULES_VERSION} 锚点（${anchor.at}）`);
+    return anchor;
+}
 
 /**
  * 把需要从 anchor 推到 at。同一锚点、事件账和时刻永远得到同一个结果；失败事件不产生身体后果。
@@ -93,6 +123,14 @@ function snapshot(at: Date, values: Pick<NeedsSnapshot, 'energy' | 'hunger' | 's
         hunger: rounded(clamp(values.hunger)),
         stress: rounded(clamp(values.stress)),
     };
+}
+
+function validSnapshot(value: unknown, notAfter: Date): value is NeedsSnapshot {
+    if (!value || typeof value !== 'object') return false;
+    const item = value as Partial<NeedsSnapshot>;
+    const at = typeof item.at === 'string' ? Date.parse(item.at) : NaN;
+    return Number.isFinite(at) && at <= notAfter.getTime()
+        && [item.energy, item.hunger, item.stress].every(number => typeof number === 'number' && Number.isFinite(number) && number >= 0 && number <= 100);
 }
 
 function clamp(value: number): number { return Math.max(0, Math.min(100, value)); }

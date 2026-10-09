@@ -7,8 +7,9 @@ import { homeworkSprints } from '../src/actions.ts';
 import { actionQueue, settlingWorld } from '../src/action-queue.ts';
 import { bodyAt } from '../src/body.ts';
 import { readingActivities } from '../src/her-days.ts';
-import { chooseAt, dayBusy, freeKind, lifeExecutor, type LifeSources } from '../src/life-selector.ts';
+import { chooseAt, dayBusy, freeKind, lifeExecutor, motivate, type LifeSources } from '../src/life-selector.ts';
 import type { LifeEvent, LifeEventDraft } from '../src/life-events.ts';
+import { needsAt, type NeedsSnapshot } from '../src/needs.ts';
 import { classesOn, formatDate, herDay } from '../src/schedule.ts';
 import { auditLedgerCoverage, auditLifeStatus } from '../src/sim/life-audit.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
@@ -110,6 +111,31 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         assert.deepEqual(freeKind('打独立游戏', plain, reading), { kind: 'leisure', subject: '打独立游戏' });
     });
 
+    test('连续需要只改柔性行动：低精力休息、高压力暂缓项目；普通状态不动', () => {
+        const project = { kind: 'work_on_project' as const, subject: '修昨天拍的片子', target: 'photography_growth' };
+        assert.deepEqual(motivate(project, { at: new Date().toISOString(), energy: 24, hunger: 30, stress: 20 }, '躺着歇会儿').action,
+            { kind: 'rest', subject: '躺着歇会儿' });
+        assert.deepEqual(motivate(project, { at: new Date().toISOString(), energy: 60, hunger: 30, stress: 76 }, '躺着歇会儿').action,
+            { kind: 'rest', subject: '躺着歇会儿' });
+        assert.deepEqual(motivate(project, { at: new Date().toISOString(), energy: 60, hunger: 30, stress: 50 }).action, project);
+        const study = { kind: 'study' as const, subject: '计算机网络技术的作业' };
+        assert.deepEqual(motivate(study, { at: new Date().toISOString(), energy: 60, hunger: 30, stress: 90 }).action, study,
+            '压力高只降低项目效用，不能盖掉学习和截止时间');
+    });
+
+    test('硬事件仍优先：即使又累又饿又有压力，饭点先吃饭、上课先上课', () => {
+        const exhausted: LifeSources = {
+            ...plain,
+            needsAnchor: { at: at('2026-10-12T08:00:00').toISOString(), energy: 5, hunger: 95, stress: 95 },
+        };
+        const lunch = worldAt(herWorld, schedule, at('2026-10-12T12:00:00'))!.routine!.meals.find(m => m.kind === 'lunch')!;
+        const eat = chooseAt(lunch.start, exhausted);
+        assert.ok('intent' in eat && eat.intent.kind === 'eat');
+        const lesson = classesOn(schedule, at('2026-10-12T12:00:00')).lessons[0]!;
+        const attend = chooseAt(lesson.start, exhausted);
+        assert.ok('intent' in attend && attend.intent.kind === 'attend_class');
+    });
+
     test('NPC 事实不是提示词装饰：一起吃饭附在午饭行动，微信来往成为独立的类型化行动', () => {
         const lunch = worldAt(herWorld, schedule, at('2026-10-13T12:00:00'))!.routine!.meals.find(m => m.kind === 'lunch')!;
         const together = chooseAt(lunch.start, plain);
@@ -175,6 +201,38 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
             assert.ok(Date.parse(holes[0]!.from) <= Date.parse(dropped.startedAt) && Date.parse(holes[0]!.to) >= Date.parse(dropped.endedAt));
         } finally {
             rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('真实选择器跑 14 天：需要轨迹有界、有日内变化，重启不改结果', () => {
+        const a = mkdtempSync(join(tmpdir(), 'life-needs-a-'));
+        const b = mkdtempSync(join(tmpdir(), 'life-needs-b-'));
+        try {
+            const start = at('2026-10-12T08:00:00');
+            const end = at('2026-10-26T08:00:00');
+            const anchor: NeedsSnapshot = { at: start.toISOString(), energy: 68, hunger: 35, stress: 24 };
+            const sources: LifeSources = { ...plain, needsAnchor: anchor };
+            const direct = live(a, start, end, undefined, sources).events;
+            const restarted = live(b, start, end, at('2026-10-19T08:00:00'), sources).events;
+            const shape = (events: readonly LifeEvent[]) => events.map(e => [e.id, e.endedAt, e.result, e.subject, e.target]);
+            assert.deepEqual(shape(restarted), shape(direct));
+
+            const samples: NeedsSnapshot[] = [];
+            for (let time = start.getTime(); time <= end.getTime(); time += 30 * 60_000) {
+                samples.push(needsAt(anchor, direct, new Date(time)));
+            }
+            for (const sample of samples) {
+                for (const value of [sample.energy, sample.hunger, sample.stress]) assert.ok(value >= 0 && value <= 100, JSON.stringify(sample));
+            }
+            for (const key of ['energy', 'hunger', 'stress'] as const) {
+                const values = samples.map(sample => sample[key]);
+                assert.ok(new Set(values).size > 12, `${key} 缺少日内变化`);
+                const pinned = values.filter(value => value === 0 || value === 100).length;
+                assert.ok(pinned < samples.length * 0.45, `${key} 长时间钉在边界：${pinned}/${samples.length}`);
+            }
+        } finally {
+            rmSync(a, { recursive: true, force: true });
+            rmSync(b, { recursive: true, force: true });
         }
     });
 

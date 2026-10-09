@@ -31,6 +31,7 @@ import { bodyAt } from './body.ts';
 import { worldState, type WorldNow } from './world.ts';
 import { actionQueue, settlingWorld } from './action-queue.ts';
 import { lifeExecutor } from './life-selector.ts';
+import { loadNeedsAnchor } from './needs.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 
@@ -155,6 +156,8 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
         : undefined;
     // 没人聊天时她一件件过日子（ADR 0040，影子模式）：读世界之前先排到现在、结算到期的；从这次启动排起，以前排过的从事件账接着排
     const lifeQueue = config.autonomousLife && ledgerWorld ? actionQueue(join(config.dataDir, 'world', 'action-queue.json'), log) : undefined;
+    const lifeStartedAt = new Date(worldNow());
+    const needsAnchor = lifeQueue ? loadNeedsAnchor(join(config.dataDir, 'world', 'needs-anchor.json'), lifeStartedAt, log) : undefined;
     // 她在聊天里跟名单里谁说过「睡了」（ADR 0042）：聊天记录在下面才打开，打开之前当没说过（之后读世界时排着的会按它改）
     let loadChat: ((qq: number) => StoredMessage[]) | undefined;
     const bedtimes = (schedule: Schedule, now: number) => (loadChat ? saidBedtimes(config.contacts.map(c => loadChat!(c.qq)), schedule, now - 86_400_000) : []);
@@ -164,14 +167,15 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             worldAt: time => ledgerWorld.at(worldCard.herWorld!, worldCard.schedule!, time), events: () => ledgerWorld.events(),
             ...(worldCard.herWorld!.body ? { bodyAt: (time: Date) => bodyAt(worldCard.herWorld!.body!, worldCard.schedule!, time) } : {}),
             bedtimes: () => bedtimes(worldCard.schedule!, worldNow()),
-        }, lifeQueue, { since: new Date(worldNow()), log })
+            ...(needsAnchor ? { needsAnchor } : {}),
+        }, lifeQueue, { since: lifeStartedAt, log })
         : undefined;
     const sharedWorld = ledgerWorld && lifeQueue
         ? settlingWorld(ledgerWorld, lifeQueue, worldNow, lifeRunner ? now => { lifeRunner.fill(now); } : undefined)
         : ledgerWorld;
     if (config.contextTurns) log(`最近几轮 + 要点（ADR 0043）：${config.memory ? `开：原文只放最近 ${config.contextTurns} 轮，更早的在后台整理成要点，没整理好的那一轮照旧最近 80 条；${config.contextContacts.length ? `只对 ${config.contextContacts.join("、")}` : "名单里开了记忆的都开"}` : "配置开了，但长期记忆没开，不开"}`);
     if (config.candidates > 1) log(`挑候选：他难过、说亲密话、收尾时一次生成 ${config.candidates} 个，按规则挑一个（ADR 0041）`);
-    if (config.autonomousLife) log(`没人聊天时她一件件过日子：${lifeRunner ? '开（ADR 0040，影子模式：只记账，不进提示词）' : '配置开了，但没有带作息和世界的卡，不开'}`);
+    if (config.autonomousLife) log(`没人聊天时她一件件过日子：${lifeRunner ? '开（ADR 0040/0045，影子模式：需要值只改行动账，不进提示词）' : '配置开了，但没有带作息和世界的卡，不开'}`);
     // 没人找她的时候也每 ${LIFE_TICK_MS / 60_000} 分钟推一次，过完的时段尽快落账
     const lifeTimer = lifeRunner ? setInterval(() => { sharedWorld?.events(); }, LIFE_TICK_MS) : undefined;
     const noteMoodAndBooks = herDaysCard ? herDayLogger(
