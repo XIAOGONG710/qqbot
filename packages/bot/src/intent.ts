@@ -57,7 +57,8 @@ function asksQuestion(history: readonly Said[]): boolean {
 /** 对方此刻在递情绪，不拿她自己的生活进度把这句话顶掉。只认明确说法，不从普通短句猜心情。 */
 function needsCare(history: readonly Said[]): boolean {
     const text = latestUserText(history);
-    return /(?:我)?(?:哭|难过|伤心|委屈|崩溃|焦虑|害怕|紧张|emo)|累死|难受|不舒服|疼死|(?:^|\n)悲[了伤惨啊呀…~～\s]*$/i.test(text.trim());
+    // 烦死、被骂（10-09 写长上下文场景时补）：「今天被导师骂了，烦死」原来不算
+    return /(?:我)?(?:哭|难过|伤心|委屈|崩溃|焦虑|害怕|紧张|emo)|累死|烦死|好烦|烦躁|郁闷|心累|被(?:导师|老师|老板|领导|我妈|我爸)?骂|难受|不舒服|疼死|(?:^|\n)悲[了伤惨啊呀…~～\s]*$/i.test(text.trim());
 }
 
 /** 想念、喜欢、纪念日或认识多久，是两个人之间的话；不能答完又机械切回猫、书和手头进度。 */
