@@ -51,6 +51,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-koishi.ps1
 
 Ctrl+C 或关窗口就停。控制台在 <http://127.0.0.1:5140>（只监听本机），用 `admin` 和上面的密码登录。
 日志：我们的日志照旧按天写到 `runtime/bot/logs/<日期>.log`（核对时 grep、打码的做法不变），控制台的「日志」页和 `runtime/koishi/data/logs/` 是 Koishi 自己的。
+一天的数字：`node scripts/live-digest.mjs [YYYY-MM-DD]` 读 `runtime/koishi/data/logs/` 出线上日报（每个联系人的收到 / 回复 / 气泡数 / 收到→看到→回复的延迟、意图行、出口检查介入、
+世界书命中、记忆召回和写入失败、主动消息发出和不发的原因、后台抽取），只有数字和类别，没有聊天原文和 QQ 号，可以直接贴进交接和 `exchange/`。
 
 ### 和独立入口切换
 
