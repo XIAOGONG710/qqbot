@@ -1,6 +1,6 @@
 // 把一次运行写成 Markdown 报告：每一步的虚拟时间、对方说的、她发的、调度事件、提示词里的动态部分、检查结果。
 
-import type { RunResult, StepRecord } from './runner.ts';
+import { EMPTIED, type RunResult, type StepRecord } from './runner.ts';
 
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -20,15 +20,22 @@ export function checkSummary(checks: RunResult['checks']): string {
 
 /**
  * 出口检查介入了几次（DSH 复核 ADR 0036 P1-4）：发出去的话是清理过的，「出口检查干净」近似自证；
- * 重写、删行的次数单列，变多就是模型原文在变差
+ * 重写、删行的次数单列，变多就是模型原文在变差。清理后为空、重新生成的（P1-5）也单列
  */
-export function exitStats(result: RunResult): { generations: number; rewrites: number; removed: number } {
+export function exitStats(result: RunResult): { generations: number; rewrites: number; removed: number; emptied: number } {
     const logs = result.steps.flatMap(step => step.logs);
     return {
         generations: result.steps.reduce((n, step) => n + step.generations.length, 0),
         rewrites: logs.filter(line => /出口检查：.*带说明重写一次/.test(line)).length,
         removed: logs.filter(line => /出口检查：.*(，去掉|删掉这几行|删掉命中的行)/.test(line)).length,
+        emptied: logs.filter(line => EMPTIED.test(line)).length,
     };
+}
+
+/** 「生成 12 次，出口检查重写 1、删行 0，清理后为空 0」 */
+export function exitSummary(result: RunResult): string {
+    const { generations, rewrites, removed, emptied } = exitStats(result);
+    return `生成 ${generations} 次，出口检查重写 ${rewrites}、删行 ${removed}，清理后为空 ${emptied}`;
 }
 
 export function renderReport(result: RunResult): string {
@@ -38,8 +45,7 @@ export function renderReport(result: RunResult): string {
         '',
         ...(scenario.description ? [scenario.description, ''] : []),
         `档位 ${scenario.tier} · 称呼 ${scenario.user} · 起点 ${day(Date.parse(scenario.start))} ${clock(Date.parse(scenario.start))}` +
-            ` · 记忆 ${result.bankId ?? '未用'} · 检查 ${checkSummary(result.checks)}` +
-            (({ generations, rewrites, removed }) => ` · 生成 ${generations} 次，出口检查重写 ${rewrites}、删行 ${removed}`)(exitStats(result)),
+            ` · 记忆 ${result.bankId ?? '未用'} · 检查 ${checkSummary(result.checks)} · ${exitSummary(result)}`,
         '',
     ];
     let lastDay = '';

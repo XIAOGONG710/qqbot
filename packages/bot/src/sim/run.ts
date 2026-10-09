@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../config.ts';
 import { loadTierCard } from '../contact.ts';
 import { HindsightClient } from '../memory/hindsight.ts';
-import { checkSummary, renderReport } from './report.ts';
+import { checkSummary, exitSummary, renderReport } from './report.ts';
 import { runScenario } from './runner.ts';
 import { loadScenario } from './scenario.ts';
 
@@ -96,7 +96,7 @@ for (const [fileIndex, file] of files.entries()) {
     });
     for (const [i, result] of results.entries()) {
         failed += result.checks.failed;
-        console.log(`  r${i + 1}：检查 ${checkSummary(result.checks)} → ${join(result.dataDir, 'report.md')}`);
+        console.log(`  r${i + 1}：检查 ${checkSummary(result.checks)} · ${exitSummary(result)} → ${join(result.dataDir, 'report.md')}`);
     }
 }
 process.exit(failed > 0 ? 1 : 0);

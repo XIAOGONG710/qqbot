@@ -38,7 +38,8 @@
         ],
         "speechClean": true,
         "exitClean": true,
-        "rawClean": true
+        "rawClean": true,
+        "emptied": false
       }
     },
     {
@@ -81,7 +82,8 @@
         ],
         "speechClean": true,
         "exitClean": true,
-        "rawClean": true
+        "rawClean": true,
+        "emptied": false
       }
     },
     {
@@ -111,7 +113,8 @@
         ],
         "speechClean": true,
         "exitClean": true,
-        "rawClean": true
+        "rawClean": true,
+        "emptied": false
       }
     },
     {
@@ -140,7 +143,8 @@
         ],
         "speechClean": true,
         "exitClean": true,
-        "rawClean": true
+        "rawClean": true,
+        "emptied": false
       }
     }
   ]

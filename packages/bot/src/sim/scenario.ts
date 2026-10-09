@@ -74,6 +74,11 @@ export interface Checks {
     regenerated?: boolean;
     /** 这一步有没有「发送中途对方插话，剩下的不发」 */
     dropped?: boolean;
+    /**
+     * 这一步有没有「模型回复清理后为空，重新生成」：模型回了空串，或者出口检查把整条删光了（DSH 复核 ADR 0036 P1-5）。
+     * 写 false，出现一次就不过；查的是模型原文能不能用，算回复检查，不算管线
+     */
+    emptied?: boolean;
     /** 这一步她发出的字数上限 / 下限（所有气泡加起来，调研方案 13.3 日常长度） */
     maxChars?: number;
     minChars?: number;

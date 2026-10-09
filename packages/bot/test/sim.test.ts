@@ -160,6 +160,28 @@ describe('模拟器：场景文件', () => {
         assert.match(results.at(-1)!.text, /实际 3 句，发成 2 条/);
     });
 
+    test('清理后为空、重新生成算回复检查不过，报告头单列次数（DSH 复核 ADR 0036 P1-5）', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-empty-'));
+        let calls = 0;
+        // 第一次回的全是行首括号里的动作（卡上的正则清掉），清理后为空；第二次正常
+        const generate = async () => (++calls === 1 ? '（揉了揉眼睛）' : '好');
+        const scenario = parseScenario({
+            name: '清理后为空', tier: 'boyfriend', start: '2026-10-05T20:00:00+08:00', memory: false, schedule: false,
+            steps: [{ say: '在吗' }, { check: { emptied: false, generations: 1 } }, { say: '睡了没' }, { check: { emptied: false } }],
+        });
+        try {
+            const result = await runScenario(scenario, { runId: 'empty', dataDir: dir, card, llm, prompt, generate, settle: { quietMs: 50, maxMs: 200 } });
+            const [first, second] = [result.steps[1]!.checks, result.steps[3]!.checks];
+            assert.deepEqual(first.map(c => [c.ok, Boolean(c.pipeline)]), [[false, true], [false, false]]);
+            assert.match(first[1]!.text, /实际 1 次/);
+            assert.deepEqual(second.map(c => c.ok), [true]);
+            assert.deepEqual(result.checks.reply, { passed: 1, failed: 1 });
+            assert.match(renderReport(result), /生成 3 次，出口检查重写 0、删行 0，清理后为空 1/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('虚拟时钟 = 真实时间 + 偏移', () => {
         let real = 1000;
         const clock = new VirtualClock(new Date('2026-10-05T20:00:00+08:00'), () => real);

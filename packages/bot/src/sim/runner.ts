@@ -129,6 +129,8 @@ const PEOPLE_HEADER = '[你认识的人：';
 const COMMON_HEADER = '[你和名单里别的人聊天时';
 const TODAY_OTHERS_HEADER = '[你今天和别人聊过的事';
 const PAST_HEADER = '[你想起的从前';
+/** responder.ts 的两句日志：清理后为空当场再生成一次、再空算回复失败 */
+export const EMPTIED = /模型回复清理后为空/;
 
 export async function runScenario(scenario: Scenario, options: RunOptions): Promise<RunResult> {
     const { dataDir } = options;
@@ -766,6 +768,14 @@ export function runChecks(checks: Checks, step: StepRecord, banned: readonly str
     }
     if (checks.regenerated !== undefined) {
         results.push({ ok: has(/生成期间收到新消息/) === checks.regenerated, text: checks.regenerated ? '生成中来了新消息，丢掉草稿重新生成' : '没有重新生成', pipeline: true });
+    }
+    if (checks.emptied !== undefined) {
+        // 第一次清理后为空当场再生成；再空就是回复失败（responder.ts），两种都算
+        const emptied = step.logs.filter(l => EMPTIED.test(l)).length;
+        results.push({
+            ok: (emptied > 0) === checks.emptied,
+            text: checks.emptied ? `模型回复清理后为空、重新生成（实际 ${emptied} 次）` : `模型回复清理后没变空、不用重新生成${emptied ? `（实际 ${emptied} 次）` : ''}`,
+        });
     }
     const chars = step.bubbles.reduce((n, b) => n + [...b.text].length, 0);
     if (checks.maxChars !== undefined) results.push({ ok: chars <= checks.maxChars, text: `她这一轮最多 ${checks.maxChars} 字（实际 ${chars}）` });
