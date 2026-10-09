@@ -77,6 +77,8 @@ export interface Config {
     herDays: boolean;
     autonomousLife: boolean;
     candidates: number;
+    contextTurns: number;
+    contextContacts: number[];
     proactive: ProactiveMode;
     llm: {
         baseUrl: string;
@@ -133,6 +135,11 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
                 + '现在是影子模式：只记账，还不进提示词。要开着她自己的日子'),
         candidates: Schema.natural().min(1).max(5).default(DEFAULTS.candidates)
             .description('**挑候选**（ADR 0041）：他难过、说亲密话、收尾时一次生成几个回复、按规则挑一个（少说几句、不扯自己的事、不约「写完跟我说」）。1 是不挑；3 是这几种时候三倍的模型调用'),
+        contextTurns: Schema.natural().max(40).default(DEFAULTS.contextTurns)
+            .description('**最近几轮 + 要点**（ADR 0043）：0 是关（照旧放最近 80 条聊天原文）；开了是原文只放最近这么多轮（实验用 10），更早的在后台整理成几条要点。'
+                + '要点没整理好的那一轮照旧放最近 80 条，不等它。只对开了长期记忆的联系人'),
+        contextContacts: Schema.array(Schema.natural()).default([...DEFAULTS.contextContacts])
+            .description('上面那项只对这几个 QQ 开（灰度）；空着就是名单里开了记忆的都开'),
         proactive: Schema.union(PROACTIVE_MODES.map(mode => Schema.const(mode).description(PROACTIVE_LABELS[mode]))).default(DEFAULTS.proactive)
             .description('**主动消息**（ADR 0011）：她在合适的时候先找人（早安、下课、睡前、冷场、他说过的事、重要的日子）。'
                 + '只对「林梦瑶」页面档位里开了主动的档位（现在只有男朋友档），要开着作息。试运行：照算照生成，只写日志不发'),
@@ -234,6 +241,8 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.herDays !== undefined ? { herDays: config.herDays } : {}),
         ...(config.autonomousLife !== undefined ? { autonomousLife: config.autonomousLife } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
+        ...(config.contextTurns !== undefined ? { contextTurns: config.contextTurns } : {}),
+        ...(config.contextContacts !== undefined ? { contextContacts: config.contextContacts } : {}),
         ...(config.proactive !== undefined ? { proactive: config.proactive } : {}),
         ...(enabled ? { memory: dropUndefined(memory) } : {}),
         dataDir: config.dataDir,

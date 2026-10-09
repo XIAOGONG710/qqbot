@@ -38,6 +38,8 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         candidates: 1,
+        contextTurns: 0,
+        contextContacts: [],
         proactive: 'off',
         dataDir,
         ...overrides,

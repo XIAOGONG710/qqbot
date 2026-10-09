@@ -32,6 +32,8 @@ export const DEFAULTS = {
     herDays: true,
     autonomousLife: false,
     candidates: 1,
+    contextTurns: 0,
+    contextContacts: [] as readonly number[],
     proactive: 'off' as ProactiveMode,
     dataDir: 'runtime/bot',
 } as const;
@@ -84,6 +86,13 @@ export interface AppConfig {
     autonomousLife: boolean;
     /** 他难过、说亲密话、收尾时一次生成几个候选、按规则挑一个（ADR 0041）。默认 1（不挑）；3 是三倍的模型调用（并行，不加时间） */
     candidates: number;
+    /**
+     * 原文只放最近几轮、更早的整理成要点（ADR 0043）：0 关（默认，最近 80 条）；开了是至少留几轮原文（实验用 10），切口每 4 轮挪一次。
+     * 要点在后台整理，没整理好的那一轮照旧最近 80 条。只对开了长期记忆的联系人
+     */
+    contextTurns: number;
+    /** contextTurns 只对这几个 QQ 开（灰度）；空 = 名单里开了记忆的都开 */
+    contextContacts: readonly number[];
     /**
      * 主动消息（ADR 0011）：off 关（默认）；dryRun 试运行，照算照生成，只写日志不发；on 开。
      * 只对卡上写了 proactive 的档位（现在只有男朋友档），要开着作息
@@ -207,6 +216,8 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         herDays: bool(file, 'herDays', '', DEFAULTS.herDays),
         autonomousLife: bool(file, 'autonomousLife', '', DEFAULTS.autonomousLife),
         candidates: candidateCount(file.candidates),
+        contextTurns: contextTurnCount(file.contextTurns),
+        contextContacts: qqList(file.contextContacts, 'contextContacts'),
         proactive: proactiveMode(file.proactive),
         ...(memory ? { memory } : {}),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : DEFAULTS.dataDir),
@@ -216,6 +227,18 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
 function candidateCount(value: unknown): number {
     if (value === undefined) return DEFAULTS.candidates;
     if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 5) throw new Error('配置 candidates 应为 1–5 的整数');
+    return value;
+}
+
+function contextTurnCount(value: unknown): number {
+    if (value === undefined) return DEFAULTS.contextTurns;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 40) throw new Error('配置 contextTurns 应为 0–40 的整数（0 是关）');
+    return value;
+}
+
+function qqList(value: unknown, key: string): readonly number[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || !value.every(qq => typeof qq === 'number' && Number.isInteger(qq) && qq > 0)) throw new Error(`配置 ${key} 应为 QQ 号（数字）的数组`);
     return value;
 }
 
