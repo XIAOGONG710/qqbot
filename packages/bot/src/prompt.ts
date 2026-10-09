@@ -104,6 +104,13 @@ export function currentConversation(history: readonly ChatMessage[], now: Date):
     return history.slice(start);
 }
 
+const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+
+/** 聊天记录里隔天的那一行（ADR 0049）：「10月5日 星期日」，不是今年的带年份 */
+export function chatDayLabel(date: Date, nowYear: number): string {
+    return `${date.getFullYear() !== nowYear ? `${date.getFullYear()}年` : ''}${date.getMonth() + 1}月${date.getDate()}日 ${WEEKDAYS[date.getDay()]}`;
+}
+
 export function buildPrompt(input: PromptInput): PromptResult {
     const { character, history, settings, countTokens } = input;
     const names = { user: input.userName, char: character.name };
@@ -160,15 +167,31 @@ export function buildPrompt(input: PromptInput): PromptResult {
     let remaining = settings.maxContext - settings.maxTokens - 3
         - [...head, newChat, ...afterHistory, ...tail].reduce((sum, m) => sum + cost(m), 0);
 
+    // 聊天记录隔了一天就插一行日期（ADR 0049，像 QQ 隔天显示时间）：分得清哪句是哪天说的（放完假还以为他在青岛，ADR 0007 调整 2026-10-10）。
+    // 绝对日期，旧消息前面那一行不会变，不影响缓存；放进去的最早一条前面也有一行
+    const nowYear = (input.now ?? new Date()).getFullYear();
+    const dayOf = (m: ChatMessage | undefined) => (m?.time ? chatDayLabel(new Date(m.time), nowYear) : undefined);
+    const marker = (label: string) => system(`[${label}]`);
     const chat: OpenAIMessage[] = [];
     const addHistory = () => {
+        // 最早那一条前面的日期行先留出来
+        const firstDay = dayOf(history.at(-1));
+        if (firstDay) remaining -= cost(marker(firstDay));
+        let oldestDay: string | undefined;
         for (let i = history.length - 1; i >= 0; i--) {
             const m = history[i]!;
             const message: OpenAIMessage = { role: m.role, content: m.content.replace(/\r/g, '') };
-            if (cost(message) > remaining) break;
-            remaining -= cost(message);
+            const day = dayOf(m);
+            // 这一条和更新的那一条不是同一天：更新的那一条前面插一行它的日期
+            const boundary = oldestDay !== undefined && day !== oldestDay ? marker(oldestDay) : undefined;
+            const total = cost(message) + (boundary ? cost(boundary) : 0);
+            if (total > remaining) break;
+            remaining -= total;
+            if (boundary) chat.unshift(boundary);
             chat.unshift(message);
+            oldestDay = day;
         }
+        if (oldestDay) chat.unshift(marker(oldestDay));
     };
 
     const examples: OpenAIMessage[] = [];

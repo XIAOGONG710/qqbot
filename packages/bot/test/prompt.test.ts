@@ -228,3 +228,48 @@ describe('拼装规则', () => {
         assert.equal(messages[3]!.content, '角色描述');
     });
 });
+
+describe('聊天记录隔天插日期（ADR 0049）', () => {
+    const at = (iso: string) => new Date(`${iso}+08:00`).toISOString();
+    const chatPart = (messages: OpenAIMessage[]) => {
+        const start = messages.findIndex(m => m.role !== 'system' || /^\[\d/.test(m.content));
+        return messages.slice(start, -1).map(m => (m.role === 'system' ? m.content : `${m.role}:${m.content}`));
+    };
+
+    test('隔天的那一条前面一行日期，最早那一条前面也有；同一天的不插；不是今年的带年份', () => {
+        const history: ChatMessage[] = [
+            { role: 'user', content: '我在青岛好无聊', time: at('2026-10-05T14:00:00') },
+            { role: 'assistant', content: '想我了就早点回来', time: at('2026-10-05T14:01:00') },
+            { role: 'user', content: '在干嘛', time: at('2026-10-12T08:30:00') },
+            { role: 'assistant', content: '上课呢', time: at('2026-10-12T08:31:00') },
+            { role: 'user', content: '我在你宿舍楼下', time: at('2026-10-12T12:30:00') },
+        ];
+        const { messages } = build(history, { now: new Date(at('2026-10-12T12:30:00')) });
+        const part = chatPart(messages);
+        assert.deepEqual(part.slice(0, 7), [
+            '[10月5日 星期一]', 'user:我在青岛好无聊', 'assistant:想我了就早点回来',
+            '[10月12日 星期一]', 'user:在干嘛', 'assistant:上课呢', 'user:我在你宿舍楼下',
+        ]);
+        const old = build([{ role: 'user', content: '新年快乐', time: at('2025-12-31T23:59:00') }], { now: new Date(at('2026-01-01T00:10:00')) });
+        assert.ok(chatPart(old.messages).includes('[2025年12月31日 星期三]'));
+    });
+
+    test('没有时间的聊天记录不插（旧数据、测试）', () => {
+        const { messages } = build([{ role: 'user', content: '在吗' }, { role: 'assistant', content: '在' }, { role: 'user', content: '干嘛呢' }]);
+        assert.ok(!messages.some(m => /^\[\d{1,2}月\d{1,2}日/.test(m.content)));
+    });
+
+    test('预算截断后，留下的最早一条前面也有日期；日期行算在预算里', () => {
+        const history: ChatMessage[] = Array.from({ length: 400 }, (_, i) => ({
+            role: (i % 2 ? 'assistant' : 'user') as 'user' | 'assistant',
+            content: `第 ${i} 句，${'随便说点什么'.repeat(6)}`,
+            time: at(`2026-10-${String(1 + Math.floor(i / 40)).padStart(2, '0')}T20:00:00`),
+        }));
+        const { messages } = build(history, { now: new Date(at('2026-10-10T21:00:00')) });
+        const part = chatPart(messages);
+        assert.match(part[0]!, /^\[10月\d+日 星期.\]$/, '最早一条前面是日期');
+        assert.ok(!part.includes('user:第 0 句，' + '随便说点什么'.repeat(6)), '确实截断了');
+        const total = messages.reduce((n, m) => n + estimateTokens(m.role) + estimateTokens(m.content), 0);
+        assert.ok(total <= settings.maxContext - settings.maxTokens, `总量 ${total} 不超预算`);
+    });
+});

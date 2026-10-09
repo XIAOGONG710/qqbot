@@ -102,6 +102,8 @@ describe('出口检查：重写一次，还不行删掉那几行', () => {
         assert.equal((await run('嗯\n[当前时间：2026-10-22 21:00]', [new Error('超时')])).reply, '嗯');
         // 放完假那几天单独一行的「他回来了」（ADR 0007 调整）也是时间块
         assert.equal((await run('来了来了\n[宝宝国庆放完假，已经回学校了，你知道他回来了]', [new Error('超时')])).reply, '来了来了');
+        // 聊天记录里隔天的日期行（ADR 0049）也是提示词的结构
+        assert.equal((await run('嗯呢\n[10月12日 星期一]\n宝宝你在干嘛', [new Error('超时')])).reply, '嗯呢');
         assert.equal((await run('[你现在：在宿舍]', ['[你现在：在宿舍]'])).reply, '');
         assert.equal((await run('我说的是「你现在在干嘛」', [])).reply, '我说的是「你现在在干嘛」', '不在行首、没有方括号的不算');
     });
