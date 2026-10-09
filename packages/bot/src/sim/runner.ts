@@ -24,11 +24,11 @@ import { formatDate, stateAt, type Schedule } from '../schedule.ts';
 import { actionQueue, settlingWorld } from '../action-queue.ts';
 import { bodyAt } from '../body.ts';
 import type { LifeEvent } from '../life-events.ts';
-import { lifeExecutor } from '../life-selector.ts';
+import { lifeExecutor, type LifeSources } from '../life-selector.ts';
 import { asleepSince, saidBedtimes } from '../bedtime.ts';
 import { contextSummarizer, SUMMARY_HEADER, type TurnWindow } from '../context-window.ts';
 import { estimateTokens } from '../tokens.ts';
-import { auditLifeStatus, type LifeStatusMismatch } from './life-audit.ts';
+import { auditLedgerCoverage, auditLifeStatus, type LedgerGap, type LifeStatusMismatch } from './life-audit.ts';
 import { repeatedSentences } from './repeats.ts';
 import { parseDuration, VirtualClock, type Checks, type LifeChecks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
@@ -590,10 +590,11 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 if (life) {
                     const events = (sharedWorld?.events() ?? []).filter(event => event.id.startsWith('life:'));
                     let mismatches: LifeStatusMismatch[] | undefined;
+                    let gaps: LedgerGap[] | undefined;
                     if (life.statusConsistent && ledgerWorld && character.schedule && character.herWorld) {
                         const schedule = character.schedule;
                         const herWorld = character.herWorld;
-                        mismatches = auditLifeStatus(events, {
+                        const sources: LifeSources = {
                             schedule,
                             books: character.books,
                             ...(herWorld.plans ? { plans: herWorld.plans } : {}),
@@ -601,9 +602,11 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                             events: () => ledgerWorld!.events(),
                             ...(herWorld.body ? { bodyAt: (at: Date) => bodyAt(herWorld.body!, schedule, at) } : {}),
                             bedtimes: () => saidBedtimes([contact, ...others].map(person => history.load(person.qq)), schedule, clock.now() - 86_400_000),
-                        });
+                        };
+                        mismatches = auditLifeStatus(events, sources);
+                        gaps = auditLedgerCoverage(events, sources);
                     }
-                    current.checks.push(...lifeChecks(life, events, mismatches));
+                    current.checks.push(...lifeChecks(life, events, mismatches, gaps));
                 }
                 if (proactive) {
                     const since = steps.slice(proactiveCheckedUpTo, -1);
@@ -687,7 +690,7 @@ export function dynamicParts(prompt: PromptResult, time: number): Generation {
 }
 
 /** 她自己过的日子（ADR 0040）：事件账里她的行动，各类够不够、有没有两件重叠。查的是她的生活，不是她说了什么，算管线自检 */
-export function lifeChecks(checks: LifeChecks, events: readonly LifeEvent[], statusMismatches?: readonly LifeStatusMismatch[]): CheckResult[] {
+export function lifeChecks(checks: LifeChecks, events: readonly LifeEvent[], statusMismatches?: readonly LifeStatusMismatch[], ledgerGaps?: readonly LedgerGap[]): CheckResult[] {
     const results: CheckResult[] = [];
     for (const [kind, count] of Object.entries(checks.atLeast ?? {})) {
         const n = events.filter(event => event.kind === kind && event.result !== 'failed').length;
@@ -744,6 +747,14 @@ export function lifeChecks(checks: LifeChecks, events: readonly LifeEvent[], sta
         results.push({
             ok: statusMismatches !== undefined && mismatches.length === 0,
             text: `事件账与同一时刻的对外状态一致${statusMismatches === undefined ? '（没有可用的状态审计源）' : mismatches.length ? `（${detail}）` : '（0 分叉）'}`,
+            pipeline: true,
+        });
+        // 反方向（10-09 复核）：状态行说她在做的，账上那一刻要有行动
+        const gaps = ledgerGaps ?? [];
+        const holes = gaps.slice(0, 3).map(gap => `${gap.expectedKind}@${gap.from}–${gap.to}`).join('、');
+        results.push({
+            ok: ledgerGaps !== undefined && gaps.length === 0,
+            text: `状态行说她在做的，账上都有${ledgerGaps === undefined ? '（没有可用的状态审计源）' : gaps.length ? `（账上缺 ${gaps.length} 段：${holes}）` : '（账上缺 0）'}`,
             pipeline: true,
         });
     }

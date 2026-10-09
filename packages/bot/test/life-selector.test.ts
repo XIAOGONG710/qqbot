@@ -10,7 +10,7 @@ import { readingActivities } from '../src/her-days.ts';
 import { chooseAt, dayBusy, freeKind, lifeExecutor, type LifeSources } from '../src/life-selector.ts';
 import type { LifeEvent, LifeEventDraft } from '../src/life-events.ts';
 import { classesOn, formatDate, herDay } from '../src/schedule.ts';
-import { auditLifeStatus } from '../src/sim/life-audit.ts';
+import { auditLedgerCoverage, auditLifeStatus } from '../src/sim/life-audit.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { worldAt, worldState } from '../src/world.ts';
 
@@ -166,6 +166,13 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
             const projectMinutes = project.reduce((sum, e) => sum + (Date.parse(e.endedAt) - Date.parse(e.startedAt)) / 60_000, 0);
             assert.ok(projectMinutes >= 120, `摄影项目只推进了 ${projectMinutes} 分钟`);
             assert.deepEqual(auditLifeStatus(events, { ...plain, events: () => events }), [], '事件账里的行动和同一时刻状态行规则一致');
+            assert.deepEqual(auditLedgerCoverage(events, { ...plain, events: () => events }), [], '反方向：状态行说她在做的，账上那一刻都有行动');
+            // 反例：拿掉一段摄影项目，状态行那段还说她在修片，审计要报出来
+            const dropped = project.find(e => Date.parse(e.endedAt) - Date.parse(e.startedAt) >= 30 * 60_000)!;
+            const holes = auditLedgerCoverage(events.filter(e => e.id !== dropped.id), plain);
+            assert.equal(holes.length, 1, JSON.stringify(holes));
+            assert.equal(holes[0]!.expectedKind, 'work_on_project');
+            assert.ok(Date.parse(holes[0]!.from) <= Date.parse(dropped.startedAt) && Date.parse(holes[0]!.to) >= Date.parse(dropped.endedAt));
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
