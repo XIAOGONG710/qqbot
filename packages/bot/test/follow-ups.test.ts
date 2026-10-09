@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { aboutHer, expired, extractionPrompt, firstAsk, mentions, parseExtraction, whenText, type FollowUp } from '../src/follow-ups.ts';
+import { aboutHer, expired, extractionPrompt, firstAsk, mentions, parseExtraction, tripAlreadyOver, whenText, type FollowUp } from '../src/follow-ups.ts';
 import type { StoredMessage } from '../src/history.ts';
 import { ModelUnreachable } from '../src/llm.ts';
 import { blockReason, candidatesOn, occasionNote, type ProactiveInput } from '../src/proactive.ts';
@@ -185,6 +185,17 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
         assert.deepEqual(initiated.slice(0, 2).map(r => r.label.replace(/（.*$/, '')), ['早安', '待跟进的事']);
         const skipped = state().records.find((r: { occasion: string }) => r.occasion === 'after_class');
         assert.equal(skipped?.reason, '今天的条数留给了别的时机', logs.join('\n'));
+    });
+
+    test('行程过去了、他后来又来聊过：不用再问；有结果的事、他还没来过的照旧（10-09 线上「到济南」）', () => {
+        const trip = { what: '到济南', date: '2026-10-07', time: '17:44' };
+        assert.ok(tripAlreadyOver(trip, [{ time: '2026-10-08T20:14:00+08:00' }]), '8 号晚上聊过了');
+        assert.ok(!tripAlreadyOver(trip, [{ time: '2026-10-07T18:00:00+08:00' }]), '到了才 16 分钟，还没算');
+        assert.ok(!tripAlreadyOver(trip, []));
+        assert.ok(tripAlreadyOver({ what: '坐高铁回青岛', date: '2026-10-07', time: 'afternoon' }, [{ time: '2026-10-08T09:00:00+08:00' }]));
+        assert.ok(!tripAlreadyOver({ what: '字节的面试', date: '2026-10-07', time: '14:00' }, [{ time: '2026-10-08T09:00:00+08:00' }]), '面试有结果可问');
+        assert.ok(!tripAlreadyOver({ what: '收到offer的消息', date: '2026-10-07', time: '14:00' }, [{ time: '2026-10-08T09:00:00+08:00' }]));
+        assert.ok(!tripAlreadyOver({ what: '去图书馆前面集合，上一整个上午', date: '2026-10-09', time: '09:25' }, [{ time: '2026-10-09T13:10:00+08:00' }]));
     });
 
     test('冲着她的事不记；到时候她没问出口的留着下次再问，第二次还没问出口才忘（10-09 线上「回去陪林梦瑶」）', async () => {

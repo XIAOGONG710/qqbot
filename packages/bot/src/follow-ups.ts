@@ -112,6 +112,22 @@ export function mentions(item: Pick<FollowUp, 'what'>, said: readonly string[]):
     return words.some(w => text.includes(w)) || chars.some(c => text.includes(c));
 }
 
+/** 行程类的事（到哪、出发、回家、坐车）：到了就是到了，没有「结果」可问 */
+const TRIP = /^(?:到|回到|抵达)|到达|落地|出发|回家|返校|高铁|火车|动车|飞机|航班/;
+
+/**
+ * 行程过去了、他后来又来聊过天：她知道他到了，不用再问（10-09 线上：10-07 17:44「到济南」，中间 8 号、9 号聊了很多，
+ * 计划到 10-10 早上才问「到济南顺利吗」）。面试、考试这类有结果的事不管，过几天问「结果出来没」是自然的。
+ * 「他后来来聊过」= 那件事的时间过了 1 小时以后，他发过消息。
+ */
+export function tripAlreadyOver(item: Pick<FollowUp, 'what' | 'date' | 'time'>, his: readonly { time: string }[]): boolean {
+    if (!TRIP.test(item.what)) return false;
+    const day = parseDay(item.date);
+    const [h, m] = TIME.test(item.time) ? item.time.split(':').map(Number) : [item.time === 'morning' ? 12 : item.time === 'afternoon' ? 18 : 23, 0];
+    const after = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h!, m!).getTime() + 3_600_000;
+    return his.some(message => Date.parse(message.time) > after);
+}
+
 /** 本地的某天 */
 export function parseDay(date: string): Date {
     const [y, m, d] = date.split('-').map(Number);

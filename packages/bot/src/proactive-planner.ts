@@ -12,7 +12,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Contact } from './config.ts';
-import { aboutHer, expired, extractionPrompt, FOLLOW_UP_DAYS, mentions, parseExtraction, partText, type Extracted, type FollowUp } from './follow-ups.ts';
+import { aboutHer, expired, extractionPrompt, FOLLOW_UP_DAYS, mentions, parseExtraction, partText, tripAlreadyOver, type Extracted, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { ModelUnreachable } from './llm.ts';
@@ -277,6 +277,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         while (!stopped) {
             const today = herDay(deps.schedule, new Date(now()));
             for (const item of followUps.filter(f => expired(f, today))) forget(item.id, `过了 ${FOLLOW_UP_DAYS} 天还没问到`);
+            const his = deps.history.load(contact.qq).filter(m => m.role === 'user');
+            for (const item of followUps.filter(f => tripAlreadyOver(f, his))) forget(item.id, '行程过去了，他后来又来聊过，不用再问');
             const current = input();
             const plan = planFrom(now(), current);
             for (const candidate of plan.missed) {
