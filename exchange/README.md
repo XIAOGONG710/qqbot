@@ -46,11 +46,18 @@ DSH 侧没有 `runtime/bot`，全部结论都是**静态推演 + 证据比对**�
 | `evidence/20261008-223958-p1008a/`、`-225246-p1008b/`、`-232636-p1008c/` | 改完之后的三批真模型回归，每次都有 `report.md` 和 `result.json` |
 | `handoff/2026-10-08-2355.md` | 活状态：`integration` 比 `main` 多 11 个提交，都没上线 |
 
+## 给 GPT / Codex 的任务
+
+| 文件 | 内容 | 交付到 |
+| --- | --- | --- |
+| `tasks/2026-10-10-gpt-meetups-weather-ledger.md` | **10-10 新**：G1 见面进事件账；G2 真实天气下的执行器（开始下雨改正在做的事、影子审计）；G3 确认 `2d74f0e` | 各自分支 + `handoff/` |
+
 ## 给 DSH 的任务
 
 | 文件 | 内容 | 交付到 |
 | --- | --- | --- |
 | `tasks/2026-10-09-dsh-real-chat-research.md` | 小红书真人聊天调研（T1）、盲评题库 v1（T2）、改动建议书（T3）；先推 30 段小样 | `research/2026-10-real-chat/`，审核写进 `reviews/` |
+| `tasks/2026-10-10-dsh-t2-followup-and-research.md` | **10-10 新**：D1 审 Claude 代做的 v1.1 / T3、写 H、出 v1.2 新题（「？」、见面、天气）；D2 评论区表情包位置；D3 真人怎么约见面、改约、提天气 | D1、D2 `research/2026-10-real-chat/`，D3 `research/2026-10-meetups-weather/` |
 
 DSH 的三个卡点（`handoff/2026-10-09-0015-dsh.md`）已裁决：`reviews/2026-10-09-claude-ruling-dsh-blockers.md`（爬虫按用户授权放宽并加条件；截图 OCR 答 A–G、评论只答 H；两张表 + 三道单题；先用号 1 语料答 A、B、C）。
 
@@ -123,3 +130,8 @@ DSH 的三个卡点（`handoff/2026-10-09-0015-dsh.md`）已裁决：`reviews/20
 **GPT / Codex 留意**：`world.ts` 的 `WorldNow.weather` 变成 `DayWeather`（多了 `real`、`now`、`rainHours`、`later`）；`day-plan.ts` 的 `PlanFacts` 多了 `rainHours`（按时段判下雨），`life-selector.ts` 已传；喂猫按喂的那个钟头判。真实天气只在 `app.ts` 开（全局 `useRealWeather`），模拟器和测试照旧按日期生成，回放不受影响。
 
 另：ADR 0047 调整（分支 `adr-0047-open-episode`）——聊天还没结束、提到约见面和时间就先抽一次，只记带钟点的约见面。
+
+### 10-10 进度整理（用户要求）
+
+进度与目标：`main` 上的 `docs/reports/2026-10-10-progress.md`。新任务：GPT / Codex `tasks/2026-10-10-gpt-meetups-weather-ledger.md`，DSH `tasks/2026-10-10-dsh-t2-followup-and-research.md`。
+等用户：上线真实天气 + 聊着就约了 + 放完假他在哪（一次重启）；盲评 v1 之后再评。
