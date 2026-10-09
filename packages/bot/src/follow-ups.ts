@@ -19,6 +19,8 @@ export interface FollowUp {
     time: string;
     /** 从哪个聊天片段抽出来的 */
     episode: string;
+    /** 到了该问的时候发了主动消息、她却没问出口的次数（再没问出口就忘了） */
+    missed?: number;
 }
 
 /** 过了那天这么多天还没问到就忘了 */
@@ -39,7 +41,7 @@ export function extractionPrompt(transcript: string, pending: readonly FollowUp[
     const system = [
         `你在帮一个聊天程序记「待跟进的事」。下面是${char}和${user}的一段 QQ 私聊记录，${char}是 AI 扮演的女大学生，${user}是真人。`,
         `挑出${user}提到的、${user}自己之后要经历、过后值得问一句结果的事：考试、面试、比赛、看病、出行、重要的活动或约会等。`,
-        `不要：${char}自己的事；已经发生完的事；吃饭、睡觉、上下班这类日常小事；没说是哪天的事。`,
+        `不要：${char}自己的事；和${char}一起的、冲着${char}的事（回来陪${char}、找${char}、跟${char}见面，她自己就知道结果）；已经发生完的事；吃饭、睡觉、上下班这类日常小事；没说是哪天的事。`,
         '日期按那件事被提到时的日期换算（记录里每天开头有一行日期，「明天」就是那一天加一天），写成 YYYY-MM-DD；',
         'time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH:MM（说了几点），只说了哪天没说几点就写 afternoon。',
         `另外，「还没问的事」里如果有哪件在这段聊天里${user}已经说了结果、或者说取消了，把它的 id 写进 resolved。`,
@@ -75,6 +77,27 @@ export function parseExtraction(text: string): Extracted {
     });
     const resolved = (Array.isArray(data.resolved) ? data.resolved : []).filter((id): id is string => typeof id === 'string');
     return { add, resolved };
+}
+
+/** 抽出来的事里写着她的名字：是冲着她的事（10-08 抽出过「回去陪林梦瑶」，第二天早安里让她问「回去陪林梦瑶怎么样了」），不记 */
+export function aboutHer(what: string, char: string): boolean {
+    return Boolean(char) && what.includes(char);
+}
+
+/** 判断问没问到时不算的字：虚词、代词、时间词（「回去」「明天」「的」对上了不算问到） */
+const PLAIN = new Set([...'的了着过去来回在和跟与同个一是有没我你他她它们咱要会能说做事情下上午晚早今明昨天点时候吧呢吗啊呀嘛哦']);
+
+/**
+ * 她这次主动说的话碰没碰到这件事：那件事里的字（去掉虚词、代词、时间词）或英文词，她说的话里有一个就算。
+ * 宽一点：只有一个字都对不上才算没问出口（10-09 早安里本该问那件事，她只说了「早呀 / 还困着……」，却被记成问过了）。
+ * 那件事的字全是虚词的，算问到了（判断不了，照旧忘掉）。
+ */
+export function mentions(item: Pick<FollowUp, 'what'>, said: readonly string[]): boolean {
+    const text = said.join('\n').toLowerCase();
+    const words = item.what.toLowerCase().match(/[a-z0-9]{2,}/g) ?? [];
+    const chars = [...item.what].filter(c => /\p{Script=Han}/u.test(c) && !PLAIN.has(c));
+    if (words.length === 0 && chars.length === 0) return true;
+    return words.some(w => text.includes(w)) || chars.some(c => text.includes(c));
 }
 
 /** 本地的某天 */

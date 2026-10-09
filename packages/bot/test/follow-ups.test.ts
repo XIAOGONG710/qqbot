@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { expired, extractionPrompt, firstAsk, parseExtraction, whenText, type FollowUp } from '../src/follow-ups.ts';
+import { aboutHer, expired, extractionPrompt, firstAsk, mentions, parseExtraction, whenText, type FollowUp } from '../src/follow-ups.ts';
 import type { StoredMessage } from '../src/history.ts';
 import { ModelUnreachable } from '../src/llm.ts';
 import { blockReason, candidatesOn, occasionNote, type ProactiveInput } from '../src/proactive.ts';
@@ -99,7 +99,7 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
         for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
     });
 
-    function setup(start: Date, history: StoredMessage[], replies: (string | Error)[], settings = { occasions: ['follow_up' as const], dailyMax: 2, unansweredMax: 1 }) {
+    function setup(start: Date, history: StoredMessage[], replies: (string | Error)[], settings = { occasions: ['follow_up' as const], dailyMax: 2, unansweredMax: 1 }, said = ['面试咋样了']) {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-followups-'));
         dirs.push(dir);
         const clock = new VirtualClock(start);
@@ -111,7 +111,7 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
             contact: { qq: 10001, name: '阿明', tier: 'boyfriend' },
             schedule, settings, dates: [], mode: 'dryRun',
             history: { load: () => history },
-            responder: { initiate: async request => { initiated.push(request); request.commit(['好']); return { result: 'dryRun', parts: ['好'] }; } },
+            responder: { initiate: async request => { initiated.push(request); request.commit(said); return { result: 'dryRun', parts: said }; } },
             dir, log: m => logs.push(m), now: clock.now, waitUntil: clock.waitUntil,
             names: { user: '阿明', char: '林梦瑶' },
             extract: async messages => {
@@ -183,6 +183,43 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
         assert.deepEqual(initiated.slice(0, 2).map(r => r.label.replace(/（.*$/, '')), ['早安', '待跟进的事']);
         const skipped = state().records.find((r: { occasion: string }) => r.occasion === 'after_class');
         assert.equal(skipped?.reason, '今天的条数留给了别的时机', logs.join('\n'));
+    });
+
+    test('冲着她的事不记；到时候她没问出口的留着下次再问，第二次还没问出口才忘（10-09 线上「回去陪林梦瑶」）', async () => {
+        assert.ok(aboutHer('回去陪林梦瑶', '林梦瑶'));
+        assert.ok(!aboutHer('字节的面试', '林梦瑶'));
+        assert.ok(!mentions({ what: '回去陪林梦瑶' }, ['早呀', '还困着，今天下雨，懒得去图书馆了']));
+        assert.ok(mentions({ what: '高数期中考试' }, ['考得咋样']));
+        assert.ok(mentions({ what: 'CET4 成绩' }, ['cet4出了没']));
+        assert.ok(!mentions({ what: '明天去医院复查' }, ['早，今天去哪']), '只对上「去」「今天」不算');
+        assert.ok(mentions({ what: '去了' }, ['嗯']), '全是虚词的判断不了，算问到');
+
+        const history = [msg(t(10, 8, 21), 'user', '我明天下午两点有面试，晚上回去陪林梦瑶'), msg(t(10, 8, 21, 1), 'assistant', '加油')];
+        const { clock, planner, logs, initiated, state } = setup(new Date(t(10, 8, 22)), history,
+            ['{"add":[{"what":"字节的面试","date":"2026-10-09","time":"14:00"},{"what":"回去陪林梦瑶","date":"2026-10-09","time":"evening"}],"resolved":[]}'],
+            // 他一直没回也接着排（真的线上是他回了才排下一条）
+            { occasions: ['follow_up' as const], dailyMax: 2, unansweredMax: 10 }, ['在吗', '今天好困']);
+        await planner.syncFollowUps();
+        assert.ok(logs.includes('待跟进：「回去陪林梦瑶」是冲着她的事，不记'), logs.join('\n'));
+        assert.deepEqual(state().followUps.map((f: FollowUp) => f.what), ['字节的面试']);
+        const askedTimes = async (n: number) => {
+            for (let i = 0; i < 12; i++) {
+                await settled();
+                if (initiated.filter(r => r.label.startsWith('待跟进')).length >= n) break;
+                const next = clock.nextTimer();
+                if (next === undefined) break;
+                clock.advanceTo(next);
+            }
+            await settled();
+        };
+        await askedTimes(1);
+        assert.ok(logs.includes('待跟进：她没问出口「字节的面试」，留着下次再问'), logs.join('\n'));
+        assert.equal(state().followUps[0]?.missed, 1, logs.join('\n'));
+        // 第二天早安里再问一次，还是没问出口：忘了
+        await askedTimes(2);
+        assert.equal(initiated.filter(r => r.label.startsWith('待跟进')).length, 2);
+        assert.ok(logs.some(l => l.startsWith('待跟进：又没问出口，忘掉「字节的面试」')), logs.join('\n'));
+        assert.deepEqual(state().followUps, []);
     });
 
     test('他自己先说了结果：下一段抽的时候了结，删掉；过了 3 天没问到的也删', async () => {

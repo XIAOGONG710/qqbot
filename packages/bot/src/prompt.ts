@@ -13,6 +13,7 @@
 //   宏：st/macros.ts（{{user}} {{char}} 等）和 st/time-macros.ts（时间宏）
 //   世界书扫描文本：public/script.js 里的 chatForWI（“名字: 内容”，最新在前）
 
+import { EPISODE_GAP_MS } from './memory/episodes.ts';
 import type { Character } from './st/card.ts';
 import { parseExampleIntoIndividual, parseMesExamples } from './st/examples.ts';
 import { substituteMacros } from './st/macros.ts';
@@ -85,6 +86,24 @@ export interface PromptResult {
     activatedWorldInfo: WorldInfoEntry[];
 }
 
+/**
+ * 世界书只按这一段聊天匹配：从现在往回，隔了 EPISODE_GAP_MS 以上的上一段不算（没带时间的消息照旧算）。
+ * ST 没有这一层（它只看最近几条）：10-09 08:08 她主动找他道早安，最近两条是前一晚 00:32 的「晚安」，命中了「深夜道晚安」。
+ */
+export function currentConversation(history: readonly ChatMessage[], now: Date): ChatMessage[] {
+    let later = now.getTime();
+    let start = history.length;
+    while (start > 0) {
+        const at = Date.parse(history[start - 1]!.time ?? '');
+        if (!Number.isNaN(at)) {
+            if (later - at >= EPISODE_GAP_MS) break;
+            later = at;
+        }
+        start--;
+    }
+    return history.slice(start);
+}
+
 export function buildPrompt(input: PromptInput): PromptResult {
     const { character, history, settings, countTokens } = input;
     const names = { user: input.userName, char: character.name };
@@ -92,7 +111,7 @@ export function buildPrompt(input: PromptInput): PromptResult {
     const sub = (text: string, extra?: Record<string, string>) =>
         substituteMacros(text, names, { ...time, ...extra }).replace(/\r/g, '');
 
-    const chatForWI = history
+    const chatForWI = currentConversation(history, input.now ?? new Date())
         .map(m => (settings.worldInfo.includeNames ? `${m.role === 'user' ? names.user : names.char}: ${m.content}` : m.content))
         .reverse();
     const wi = checkWorldInfo({

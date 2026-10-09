@@ -66,6 +66,25 @@ describe('用林梦瑶的角色卡拼提示词', () => {
         assert.ok(recent.activatedWorldInfo.some(e => e.key.includes('干嘛呢')));
     });
 
+    test('上一段聊天不算：隔了一夜她主动道早安，不因昨晚的「晚安」命中「深夜道晚安」（10-09 线上）', () => {
+        const lastNight: ChatMessage[] = [
+            { role: 'assistant', content: '睡了，晚安', time: '2026-10-09T00:32:39+08:00' },
+            { role: 'user', content: '晚安', time: '2026-10-09T00:32:50+08:00' },
+        ];
+        const goodnight = (r: ReturnType<typeof build>) => r.activatedWorldInfo.some(e => e.key.includes('晚安'));
+        assert.ok(goodnight(build(lastNight, { now: new Date('2026-10-09T00:33:00+08:00') })), '同一段里照旧命中');
+        assert.ok(!goodnight(build(lastNight, { now: new Date('2026-10-09T08:08:56+08:00') })), '第二天早上主动找他');
+        // 隔了一段又来：只看新的这段
+        const again = build([...lastNight, { role: 'user', content: '在吗', time: '2026-10-09T08:30:00+08:00' }], { now: new Date('2026-10-09T08:30:05+08:00') });
+        assert.ok(!goodnight(again));
+        // 一段里隔得再近也连着：40 分钟一条，往回都算这一段
+        const slow = build([
+            { role: 'user', content: '我先睡啦', time: '2026-10-09T00:00:00+08:00' },
+            { role: 'assistant', content: '嗯', time: '2026-10-09T00:40:00+08:00' },
+        ], { now: new Date('2026-10-09T01:20:00+08:00') });
+        assert.ok(goodnight(slow));
+    });
+
     test('聊天记录超出预算时丢最早的，保留最新的', () => {
         const history: ChatMessage[] = Array.from({ length: 200 }, (_, i) => ({
             role: i % 2 === 0 ? 'user' : 'assistant',

@@ -12,7 +12,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Contact } from './config.ts';
-import { expired, extractionPrompt, FOLLOW_UP_DAYS, parseExtraction, partText, type Extracted, type FollowUp } from './follow-ups.ts';
+import { aboutHer, expired, extractionPrompt, FOLLOW_UP_DAYS, mentions, parseExtraction, partText, type Extracted, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { ModelUnreachable } from './llm.ts';
@@ -137,6 +137,17 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         deps.log(`待跟进：${why}，忘掉「${item.what}」（${item.date} ${partText(item.time)}）`);
     }
 
+    /** 问这件事的主动消息发出去了：问到了就忘；没问出口的留着下次再问，第二次还没问出口也忘了 */
+    function asked(id: string, said: readonly string[], dryRun: boolean): void {
+        const item = followUps.find(f => f.id === id);
+        if (!item) return;
+        if (mentions(item, said)) return forget(id, dryRun ? '试运行里问过了' : '问过了');
+        if ((item.missed ?? 0) >= 1) return forget(id, '又没问出口');
+        followUps = followUps.map(f => (f.id === id ? { ...f, missed: (f.missed ?? 0) + 1 } : f));
+        save();
+        deps.log(`待跟进：她没问出口「${item.what}」，留着下次再问`);
+    }
+
     async function extractNow(): Promise<void> {
         if (!deps.extract) return;
         const history = deps.history.load(contact.qq);
@@ -175,6 +186,10 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             const today = herDay(deps.schedule, new Date(now()));
             for (const [i, add] of result.add.entries()) {
                 const item: FollowUp = { id: `f-${episode.start.getTime()}-${i + 1}`, ...add, episode: episode.id };
+                if (aboutHer(item.what, deps.names.char)) {
+                    deps.log(`待跟进：「${item.what}」是冲着她的事，不记`);
+                    continue;
+                }
                 if (expired(item, today) || followUps.some(f => f.what === item.what && f.date === item.date)) continue;
                 followUps = [...followUps, item];
                 changed = true;
@@ -233,11 +248,11 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             case 'sent':
                 record(candidate, { result: 'sent', at: committed!.at, messageIds: outcome.messageIds });
                 deps.log(`主动找他（${candidateLabel(candidate)}）${outcome.parts.length > 1 ? `（${outcome.parts.length} 条）` : ''}：${outcome.parts.join(' / ')}`);
-                if (candidate.followUp) forget(candidate.followUp.item.id, '问过了');
+                if (candidate.followUp) asked(candidate.followUp.item.id, outcome.parts, false);
                 break;
             case 'dryRun':
                 deps.log(`主动（试运行，没发）：${candidateLabel(candidate)}；今天第 ${usedToday()} 条；本来要说：${outcome.parts.join(' / ')}`);
-                if (candidate.followUp) forget(candidate.followUp.item.id, '试运行里问过了');
+                if (candidate.followUp) asked(candidate.followUp.item.id, outcome.parts, true);
                 break;
             case 'skipped':
                 record(candidate, { result: 'skipped', reason: outcome.reason });
