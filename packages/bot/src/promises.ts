@@ -214,6 +214,19 @@ export function describeAppointment(meeting: Appointment, viewer: Contact, at: D
         : `在外面，约了人（${time} 起）`;
 }
 
+/** 同一天同一钟点的约见面算同一件（先抽的和整段抽的说法可能不一样） */
+function sameMeetup(a: HerPromise, b: HerPromise): boolean {
+    return Boolean(a.meet && b.meet && a.date === b.date && a.meet.time === b.meet.time);
+}
+
+/** 最近几句里有约见面、也有时间的字眼（ADR 0047 调整）：只用来决定要不要先抽，抽不抽得出来看模型 */
+const MEET_WORDS = /见面|见个面|一起(?:去|吃|看|逛)|约(?:你|好|了)|门口|楼下|吃饭|电影|演唱会|找你|接你|等你/;
+const MEET_TIME = /\d{1,2}\s*[:：点]|[一二两三四五六七八九十]+点|今晚|晚上|中午|下午|明天|后天|周[一二三四五六日天]|礼拜/;
+export function mentionsMeetup(messages: readonly { content: string }[]): boolean {
+    const text = messages.slice(-8).map(m => m.content).join('\n');
+    return MEET_WORDS.test(text) && MEET_TIME.test(text);
+}
+
 function parseDay(date: string): Date {
     const [y, m, d] = date.split('-').map(Number);
     return new Date(y!, m! - 1, d);
@@ -280,6 +293,8 @@ interface KeeperState {
     loops: OpenLoop[];
     /** 片段 id → 抽过了（true），或者抽失败了几次 */
     extracted: Record<string, true | number>;
+    /** 还没结束的片段 id → 先抽约见面时有几条消息（ADR 0047 调整）；旧文件没有 */
+    early: Record<string, number>;
 }
 
 const LOOP_PREFIX: Record<LoopKind, string> = { waiting: 'a', unanswered: 'q', unsettled: 'u' };
@@ -303,12 +318,13 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
     const path = (contact: Contact) => join(options.dir, `${contact.qq}-${contact.tier}.json`);
     const load = (contact: Contact): KeeperState => {
         const data = readJsonOr<Partial<KeeperState>>(path(contact), {}, message => options.log(`[${contact.qq}] 她答应的事：${message}`));
-        return { promises: data.promises ?? [], loops: data.loops ?? [], extracted: data.extracted ?? {} };
+        return { promises: data.promises ?? [], loops: data.loops ?? [], extracted: data.extracted ?? {}, early: data.early ?? {} };
     };
     const save = (contact: Contact, state: KeeperState) => {
         // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
         const keepFrom = now() - 30 * DAY_MS;
         for (const id of Object.keys(state.extracted)) if (Number(id.slice(3)) < keepFrom) delete state.extracted[id];
+        for (const id of Object.keys(state.early)) if (Number(id.slice(3)) < keepFrom || state.extracted[id] === true) delete state.early[id];
         writeJsonAtomic(path(contact), state);
     };
     const today = (at: Date) => (options.schedule ? herDay(options.schedule, at) : new Date(at.getFullYear(), at.getMonth(), at.getDate()));
@@ -378,6 +394,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 // 日子在今天之前的不记：晚了才抽到（刚上线补抽以前的片段），那天已经过去了，不该再提醒「打算那天」（10-07 线上日志）
                 if (item.date && daysFrom(item.date, day) > 0) continue;
                 if (forgotten(item, day) || state.promises.some(p => p.what === item.what && p.date === item.date)) continue;
+                if (item.meet && state.promises.some(p => sameMeetup(p, item))) continue;
                 state.promises.push(item);
                 log(`记下「${item.what}」（${item.date ?? '下次'}${item.meet ? ` ${item.meet.time}${item.meet.where ? ` ${item.meet.where}` : ''}` : ''}）`);
             }
@@ -396,6 +413,29 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
             state.extracted[episode.id] = true;
             save(contact, state);
             changed = false;
+        }
+        // 还没结束的这一段（ADR 0047 调整）：聊着聊着约了见面、马上就见，等不到片段结束（安静 45 分钟）再抽；
+        // 最近几句里有约见面和时间的字眼、又多了新消息，就先抽一次，只记约好的见面。片段结束后照常整段抽（同一天同一钟点的不重复记）
+        const open = splitEpisodes(options.history.load(contact.qq)).at(-1);
+        if (open && now() - open.end.getTime() < EPISODE_GAP_MS && state.extracted[open.id] !== true
+            && (state.early[open.id] ?? 0) < open.messages.length && open.messages.some(m => m.role === 'assistant') && mentionsMeetup(open.messages)) {
+            try {
+                const result = parsePromises(await options.extract(promisePrompt(episodeTranscript(open, names), state.promises, names, state.loops)));
+                const said = formatDate(today(open.end));
+                for (const [i, add] of result.add.entries()) {
+                    if (!add.meet || !add.date || daysFrom(add.date, day) > 0) continue;
+                    const item: HerPromise = { id: `p-${open.start.getTime()}-m${i + 1}`, what: add.what, date: add.date, said, episode: open.id, meet: add.meet };
+                    if (state.promises.some(p => sameMeetup(p, item))) continue;
+                    state.promises.push(item);
+                    log(`聊着就约了，先记下「${item.what}」（${item.date} ${add.meet.time}${add.meet.where ? ` ${add.meet.where}` : ''}）`);
+                }
+                state.early[open.id] = open.messages.length;
+            } catch (error) {
+                // 没连上模型下一轮再试；别的错这几条消息不再试，片段结束后照常整段抽
+                if (!(error instanceof ModelUnreachable)) state.early[open.id] = open.messages.length;
+                log(`还没结束的片段 ${open.id} 先抽约见面没抽成：${error instanceof Error ? error.message : String(error)}`);
+            }
+            changed = true;
         }
         if (changed) save(contact, state);
     }
