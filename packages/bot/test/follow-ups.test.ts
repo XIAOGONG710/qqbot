@@ -190,6 +190,8 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
     test('冲着她的事不记；到时候她没问出口的留着下次再问，第二次还没问出口才忘（10-09 线上「回去陪林梦瑶」）', async () => {
         assert.ok(aboutHer('回去陪林梦瑶', '林梦瑶'));
         assert.ok(!aboutHer('字节的面试', '林梦瑶'));
+        assert.ok(aboutHer('跟林梦瑶视频', '林梦瑶'));
+        assert.ok(!aboutHer('去林梦瑶家找小皮鞋', '林梦瑶'), '她不在场的事照记（10-07 线上问过「找到了没」）');
         assert.ok(!mentions({ what: '回去陪林梦瑶' }, ['早呀', '还困着，今天下雨，懒得去图书馆了']));
         assert.ok(mentions({ what: '高数期中考试' }, ['考得咋样']));
         assert.ok(mentions({ what: 'CET4 成绩' }, ['cet4出了没']));
