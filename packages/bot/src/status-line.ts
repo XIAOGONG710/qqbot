@@ -45,6 +45,7 @@ export function herStatus(schedule: Schedule, at: Date, options: StatusOptions =
     const slots = options.plans && options.world && state.activity.kind !== 'sleep'
         ? dayPlan(schedule, options.plans.plans, herDay(schedule, at), {
             rain: options.world.weather?.rain,
+            ...(options.world.weather?.rainHours ? { rainHours: options.world.weather.rainHours } : {}),
             body: options.plans.body,
             homework: options.world.homework,
         }, options.extraFree ?? [])

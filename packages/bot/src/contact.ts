@@ -172,7 +172,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         const body = bodyThen ? diaryBody(bodyThen) : undefined;
         if (body) lines.push(body);
         // 那天改了的打算（ADR 0034）：照打算做的不写——天天一样的空闲活动排成一列，问「昨天干嘛了」她就照着报，想不起那天记得住的事（调整 3）
-        lines.push(...dayPlan(herSchedule, character.herWorld.plans, dayStart, { rain: then.weather?.rain, body: bodyThen, homework: then.homework }, extraFree)
+        lines.push(...dayPlan(herSchedule, character.herWorld.plans, dayStart, { rain: then.weather?.rain, ...(then.weather?.rainHours ? { rainHours: then.weather.rainHours } : {}), body: bodyThen, homework: then.homework }, extraFree)
             .filter(slot => slot.done !== slot.planned).map(describeSlot));
         if (!lines.length) return undefined;
         const day = `${dayStart.getMonth() + 1}月${dayStart.getDate()}日 ${'日一二三四五六'.split('').map(d => `周${d}`)[dayStart.getDay()]}`;
