@@ -81,6 +81,31 @@ describe('类型化行动与世界裁判（ADR 0037）', () => {
         if (!noTime.ok) assert.equal(noTime.reason, 'no_time');
     });
 
+    test('硬事件打断（ADR 0042）：上课打断休闲；赶作业那一段抢走休闲，本来在学习的接着学，那一段里不能开始休闲', () => {
+        // 10-12 15:15 有课：12:35 开始打游戏，打到 15:15 去上课
+        const noon = at('2026-10-12T12:35:00');
+        const game = judgeAction({ id: 'game', kind: 'leisure', startedAt: noon, subject: '打独立游戏', durationMinutes: 240 }, context(noon));
+        assert.ok(game.ok);
+        if (game.ok) {
+            assert.deepEqual([game.event.at, game.event.result, game.event.reason], [at('2026-10-12T15:15:00').toISOString(), 'interrupted', 'interrupted_by_class']);
+        }
+        // 10-12 晚上：计算机网络技术 10-13 交，22:00 写完，20:30 起在赶
+        const evening = at('2026-10-12T19:30:00');
+        assert.ok(context(evening).world!.homework.some(h => h.doneAt.getTime() === at('2026-10-12T22:00:00').getTime()));
+        const scroll = judgeAction({ id: 'scroll', kind: 'leisure', startedAt: evening, subject: '刷手机', durationMinutes: 120 }, context(evening));
+        assert.ok(scroll.ok);
+        if (scroll.ok) assert.deepEqual([scroll.event.at, scroll.event.reason], [at('2026-10-12T20:30:00').toISOString(), 'interrupted_by_deadline']);
+        const lying = judgeAction({ id: 'lying', kind: 'rest', startedAt: evening, durationMinutes: 120 }, context(evening));
+        assert.ok(lying.ok && lying.event.reason === 'interrupted_by_deadline');
+        const study = judgeAction({ id: 'study', kind: 'study', startedAt: evening, subject: '作业', durationMinutes: 120 }, context(evening));
+        assert.ok(study.ok);
+        if (study.ok) assert.deepEqual([study.event.at, study.event.result], [at('2026-10-12T21:30:00').toISOString(), 'succeeded']);
+        const late = at('2026-10-12T20:45:00');
+        const during = judgeAction({ id: 'during', kind: 'leisure', startedAt: late, subject: '刷手机', durationMinutes: 30 }, context(late));
+        assert.equal(during.ok, false);
+        if (!during.ok) assert.equal(during.reason, 'conflict');
+    });
+
     test('已有自由动作占用同一时间，后来的动作失败', () => {
         const start = at('2026-10-12T14:00:00');
         const existing: LifeEvent = {

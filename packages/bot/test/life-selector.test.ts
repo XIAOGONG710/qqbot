@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
+import { homeworkSprints } from '../src/actions.ts';
 import { actionQueue, settlingWorld } from '../src/action-queue.ts';
 import { bodyAt } from '../src/body.ts';
 import { readingActivities } from '../src/her-days.ts';
@@ -23,14 +24,14 @@ const plain: LifeSources = {
 };
 
 /** 从 start 起每小时推一次到 end，返回她自己的行动（事件账里 life: 开头的）和日志 */
-function live(dir: string, start: Date, end: Date, restartAt?: Date) {
+function live(dir: string, start: Date, end: Date, restartAt?: Date, sources: LifeSources = plain) {
     let clock = start.getTime();
     const logs: string[] = [];
     const open = () => {
         const ledger = worldState(herWorld, schedule, message => logs.push(message), join(dir, 'world'), () => clock);
         const queue = actionQueue(join(dir, 'world', 'action-queue.json'), message => logs.push(message));
         const world = settlingWorld(ledger, queue, () => clock);
-        const executor = lifeExecutor({ ...plain, worldAt: time => world.at(herWorld, schedule, time), events: () => ledger.events() }, queue, { since: start, log: message => logs.push(message) });
+        const executor = lifeExecutor({ ...sources, worldAt: time => world.at(herWorld, schedule, time), events: () => ledger.events() }, queue, { since: start, log: message => logs.push(message) });
         return { world, executor };
     };
     let { world, executor } = open();
@@ -96,7 +97,48 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
                     const clash = events.find(e => e.kind !== 'eat' && Date.parse(e.startedAt) < span.end.getTime() && Date.parse(e.endedAt) > span.start.getTime());
                     assert.equal(clash, undefined, `${day} ${span.text} 和 ${clash?.id} 撞了`);
                 }
+                // 赶作业那一段（ADR 0042）：只有学习
+                for (const sprint of homeworkSprints(worldAt(herWorld, schedule, new Date(`${day}T19:00:00+08:00`)))) {
+                    const clash = events.find(e => e.kind !== 'study' && Date.parse(e.startedAt) < sprint.end.getTime() && Date.parse(e.endedAt) > sprint.start.getTime());
+                    assert.equal(clash, undefined, `${day} 赶${sprint.course}作业的时候在 ${clash?.id}`);
+                }
             }
+            // 上课打断休闲（ADR 0042）：做到一半去上课的都停在上课那一刻
+            const byClass = events.filter(e => e.reason === 'interrupted_by_class');
+            assert.ok(byClass.length >= 3, `上课打断的 ${byClass.length} 件`);
+            for (const e of byClass) {
+                assert.ok(events.some(other => other.kind === 'attend_class' && other.startedAt === e.endedAt), `${e.id} 停下的时候没有课`);
+            }
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('赶作业抢走休闲（ADR 0042）：没有「先赶作业」的打算时，晚上打游戏打到开始赶作业那一刻，接着赶作业', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'life-selector-deadline-'));
+        try {
+            // 不带一天的打算（plans）：晚上照作息的空闲活动，作业明天交也不先赶；20:30 起在赶计算机网络技术（22:00 写完）
+            const { events } = live(dir, at('2026-10-12T18:00:00'), at('2026-10-12T23:00:00'), undefined, { ...plain, plans: undefined });
+            const cut = events.find(e => e.reason === 'interrupted_by_deadline');
+            assert.ok(cut, '没有被赶作业打断的');
+            assert.equal(cut.endedAt, at('2026-10-12T20:30:00').toISOString());
+            assert.notEqual(cut.kind, 'study');
+            const sprint = events.find(e => e.startedAt === cut.endedAt);
+            assert.deepEqual([sprint?.kind, sprint?.subject, sprint?.endedAt], ['study', '计算机网络技术的作业', at('2026-10-12T22:00:00').toISOString()]);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('在读的书停了（读到最新一卷），那一段记成休闲，不再整晚排不上（ADR 0042）', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'life-selector-book-'));
+        try {
+            const { events, logs } = live(dir, at('2026-10-16T17:00:00'), at('2026-10-17T10:00:00'));
+            assert.deepEqual(logs.filter(line => line.includes('排不上')), []);
+            const evening = events.filter(e => Date.parse(e.startedAt) >= at('2026-10-16T18:00:00').getTime() && e.kind !== 'sleep');
+            assert.ok(evening.length >= 2);
+            assert.ok(evening.every(e => e.kind !== 'read_book'));
+            assert.ok(events.some(e => e.kind === 'sleep' && e.startedAt === at('2026-10-17T02:00:00').toISOString()));
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

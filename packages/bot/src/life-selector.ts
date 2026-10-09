@@ -4,12 +4,12 @@
 // 过完的日子落进事件账就不再变（相机基金 2300 → 2750 那次：按规则从开学推到现在，改了规则就把过去也改了）。
 // 不调模型、不掷随机数：同一份事件账和同一个时刻推出来的一样，重启不重复（行动 id 由开始时刻和种类定）。
 
-import type { ActionContext, ActionIntent, TypedActionKind } from './actions.ts';
+import { homeworkSprints, type ActionContext, type ActionIntent, type TypedActionKind } from './actions.ts';
 import type { ActionQueue } from './action-queue.ts';
 import type { BodyNow } from './body.ts';
 import { dayPlan, type Plans } from './day-plan.ts';
 import type { ReadingBook } from './her-days.ts';
-import { readingActivities } from './her-days.ts';
+import { bookProgressAt, readingActivities } from './her-days.ts';
 import type { LifeEvent } from './life-events.ts';
 import { herDay, stateAt, type ExtraFreeActivity, type Schedule } from './schedule.ts';
 import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
@@ -61,10 +61,7 @@ function herDayEvening(schedule: Schedule, at: Date): Date {
 
 /** 那一天要赶的作业：写完之前那一段在赶（ADR 0030 的 OCCUPATION_MINUTES.homework） */
 function homeworkSprint(now: WorldNow | undefined, at: Date): { start: Date; end: Date; course: string } | undefined {
-    const minutes = OCCUPATION_MINUTES.homework * 60_000;
-    return now?.homework
-        .map(h => ({ start: new Date(h.doneAt.getTime() - minutes), end: h.doneAt, course: h.course }))
-        .find(h => at >= h.start && at < h.end);
+    return homeworkSprints(now).find(h => at >= h.start && at < h.end);
 }
 
 /** 空闲时段做的事归哪一类：在读的书 → 读书；作业 → 学习；躺着 → 休息；别的（追剧、打游戏、修片子……）→ 休闲 */
@@ -115,24 +112,30 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     const busy = blocks.find(s => at >= s.start && at < s.end);
     if (busy) return { skipTo: busy.end, why: busy.text };
 
-    // 能做到哪：这一段结束、下一顿饭、下一件世界里的事、下一节课，哪个先到（裁判还会再截一次）
+    const sprint = homeworkSprint(world, at);
+    const { kind, subject } = sprint
+        ? { kind: 'study' as const, subject: sprint.course ? `${sprint.course}的作业` : '作业' }
+        : planned(at, sources, world, reading, state.activity.text);
+    // 打算做到哪（自然地停）：这一段结束、下一顿饭、下一件世界里的事（吃饭去、下楼喂猫），赶作业的写完为止。
+    // 下一节课、赶作业那一段是硬事件（ADR 0042）：不在这里截，交给裁判在那一刻打断（interrupted_by_class / _deadline），
+    // 事件账里看得出「打游戏打到一半去上课了」；原来这里先截到下一节课，事件账里一次打断都没有，赶作业那一段也没截（10-26 刷手机 19:19–22:49 盖住了 20:00–21:30 在赶的作业）
     const nextMeal = world?.routine?.meals.find(m => m.start > at)?.start;
     const nextBusy = blocks.find(s => s.start > at)?.start;
-    const nextClass = state.nextClass?.start;
-    const until = [windowEnd(sources.schedule, at), nextMeal, nextBusy, nextClass].filter((d): d is Date => Boolean(d))
-        .reduce((a, b) => (b < a ? b : a));
-
-    const sprint = homeworkSprint(world, at);
-    const plan = sprint ? undefined : planned(at, sources, world, reading, state.activity.text);
-    const end = sprint && sprint.end < until ? sprint.end : until;
-    const minutes = minutesBetween(at, end);
-    if (minutes < MIN_FREE_MINUTES) return { skipTo: end > at ? end : new Date(at.getTime() + 60_000), why: '空当太短' };
-    const { kind, subject } = sprint ? { kind: 'study' as const, subject: sprint.course ? `${sprint.course}的作业` : '作业' } : plan!;
+    const soft = earliest([windowEnd(sources.schedule, at), nextMeal, nextBusy, sprint?.end]);
+    const nextSprint = DEADLINE_KINDS.has(kind) ? homeworkSprints(world).map(h => h.start).filter(start => start > at) : [];
+    const hard = earliest([soft, state.nextClass?.start, ...nextSprint]);
+    // 到硬事件之前短得做不成这一类（学习至少 25 分钟、休闲 10 分钟）的空当不记（算在路上、发呆），不交给裁判判 no_time
+    const floor = Math.max(MIN_FREE_MINUTES, LIMITS[kind]?.[0] ?? 0);
+    if (minutesBetween(at, hard) < floor) return { skipTo: hard > at ? hard : new Date(at.getTime() + 60_000), why: '空当太短' };
     return {
-        intent: { id: lifeActionId(at, kind), kind, startedAt: at, subject, durationMinutes: clampMinutes(kind, minutes) },
+        intent: { id: lifeActionId(at, kind), kind, startedAt: at, subject, durationMinutes: clampMinutes(kind, minutesBetween(at, soft)) },
         why: sprint ? '赶作业' : subject,
     };
 }
+
+/** 赶作业抢得走的（和 actions.ts 一样）：休闲、躺着、看闲书 */
+const DEADLINE_KINDS = new Set<TypedActionKind>(['leisure', 'rest', 'read_book']);
+const earliest = (dates: readonly (Date | undefined)[]) => dates.filter((d): d is Date => Boolean(d)).reduce((a, b) => (b < a ? b : a));
 
 /** 一天的打算这一段实际做的（改了的用改了的；作业压着改的写完就回到原来的打算） */
 function planned(at: Date, sources: LifeSources, world: WorldNow | undefined, reading: readonly ExtraFreeActivity[], text: string) {
@@ -141,7 +144,16 @@ function planned(at: Date, sources: LifeSources, world: WorldNow | undefined, re
     const slots = dayPlan(sources.schedule, sources.plans, day, { rain: world?.weather?.rain, ...(body ? { body } : {}), homework: world?.homework }, reading);
     const slot = slots.find(s => s.planned === text);
     const done = slot && slot.done !== slot.planned && !(slot.until && at >= slot.until) ? slot.done : text;
-    return done === '先赶作业' ? { kind: 'study' as const, subject: '作业' } : freeKind(done, sources, reading);
+    if (done === '先赶作业') return { kind: 'study' as const, subject: '作业' };
+    const free = freeKind(done, sources, reading);
+    // 在读的书停了（读到最新一卷）或读完了，状态行还写在看（readingActivities 不看进度）：记成休闲（翻翻、重温），
+    // 不交给裁判判 unavailable——原来 10-16 晚上《药屋》停在第 10 卷，整晚排不上，事件账空了一晚（ADR 0042）
+    const book = free.kind === 'read_book' ? sources.books.find(b => b.id === free.subject) : undefined;
+    if (book) {
+        const progress = bookProgressAt(sources.schedule, book, at);
+        if (progress.stopped || progress.finished) return { kind: 'leisure' as const, subject: done };
+    }
+    return free;
 }
 
 const LIMITS: Partial<Record<TypedActionKind, [number, number]>> = { study: [25, 120], rest: [15, 120], read_book: [15, 90], leisure: [10, 240] };
