@@ -43,6 +43,10 @@ describe('最近几轮 + 要点（ADR 0043 离线实验）', () => {
         const older = [u('我下周三下午两点面试', '2026-10-07T13:01:00.000Z'), a('可以啊你', '2026-10-07T13:02:00.000Z')];
         const request = summaryRequest(older, { user: '宝宝', char: '林梦瑶' });
         assert.match(request[0]!.content, /只写事实，不写语气/);
+        // 摘要事实审计（ADR 0043，10-09 探针）：凌晨的「明天」、改口只写最后结果、谁的事
+        assert.match(request[0]!.content, /凌晨（0 点到 5 点）还没睡时说的「明天」/);
+        assert.match(request[0]!.content, /合成一条只写最后的结果/);
+        assert.match(request[0]!.content, /每条写清楚是谁的事：宝宝的室友/);
         assert.equal(request[1]!.content, '[10月7日 周三 21:01] 宝宝：我下周三下午两点面试\n[10月7日 周三 21:02] 林梦瑶：可以啊你');
         const logs: string[] = [];
         let calls = 0;
