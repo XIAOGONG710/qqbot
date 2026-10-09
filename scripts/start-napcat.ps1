@@ -32,8 +32,23 @@ try {
     # Use the node.exe shipped in this release (as its napcat.bat does), not the system Node.
     $ErrorActionPreference = 'Continue'
     if ($QuickLogin) {
-        Write-Host 'Quick login with the saved session (QQBOT_NAPCAT_QQ)'
-        .\node.exe .\index.js -q $QuickLogin
+        # Restart it when it exits: on 2026-10-09 21:29 it vanished without a log line while memory was full, and the bot
+        # was cut off from QQ for 18 minutes. Five exits within ten minutes means something else is wrong (the account is
+        # logged in elsewhere, the saved session expired): stop and leave it to a person. To stop NapCat for maintenance,
+        # close this window (or Ctrl+C), not just its node process.
+        $exits = @()
+        while ($true) {
+            Write-Host 'Quick login with the saved session (QQBOT_NAPCAT_QQ)'
+            .\node.exe .\index.js -q $QuickLogin
+            $code = $LASTEXITCODE
+            $exits = @($exits | Where-Object { $_ -gt (Get-Date).AddMinutes(-10) }) + (Get-Date)
+            if ($exits.Count -ge 5) {
+                Write-Host 'NapCat exited 5 times within 10 minutes; not restarting (logged in elsewhere? session expired?)'
+                break
+            }
+            Write-Host "NapCat exited (code $code) at $(Get-Date -Format HH:mm:ss); restarting in 10 s"
+            Start-Sleep -Seconds 10
+        }
     } else {
         .\node.exe .\index.js
     }
