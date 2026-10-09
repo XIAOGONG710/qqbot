@@ -10,6 +10,8 @@ const boyfriend = loadCharacterCard(cardPath('boyfriend')).schedule!;
 const classmate = loadCharacterCard(cardPath('classmate')).schedule!;
 /** 本地时间 2026 年 */
 const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m);
+/** 放完国庆 7 天内他在哪（卡上国庆的 partner_back，{{user}} 之后的部分） */
+const BACK = '国庆放完假，已经回学校了，你知道他回来了；聊天记录里他说在青岛，是放假那几天的事，现在他人就在学校';
 const hm = (date: Date) => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 
 describe('作息：某个时刻她在干什么', () => {
@@ -50,9 +52,11 @@ describe('作息：某个时刻她在干什么', () => {
         assert.equal(linux.nextClass?.name, '大数据应用技术');
         assert.equal(linux.where, '在学校（济南），住宿舍');
         // 放完国庆 7 天内说他回来了，之后是平时的说法
-        assert.equal(linux.partner, '{{user}}国庆放完假，已经回学校了');
-        assert.equal(stateAt(boyfriend, t(10, 14, 20)).partner, '{{user}}国庆放完假，已经回学校了');
+        assert.equal(linux.partner, `{{user}}${BACK}`);
+        assert.equal(linux.partnerJustBack, true);
+        assert.equal(stateAt(boyfriend, t(10, 14, 20)).partner, `{{user}}${BACK}`);
         assert.equal(stateAt(boyfriend, t(10, 15, 20)).partner, '{{user}}也在学校');
+        assert.equal(stateAt(boyfriend, t(10, 15, 20)).partnerJustBack, undefined);
         assert.equal(stateAt(classmate, t(10, 12, 20)).partner, undefined);
 
         assert.equal(stateAt(boyfriend, t(10, 12, 9, 45)).activity.kind, 'between');
@@ -122,11 +126,13 @@ describe('作息：某个时刻她在干什么', () => {
         assert.match(line(boyfriend, t(10, 5, 14)), /^\[你现在：国庆节放假，没抢到回青岛的票，留在学校（你们说好以后放假一起走，这次你不难受）；[^；]+；他回青岛过国庆了（放假前就说好的）\]$/);
         assert.equal(line(boyfriend, t(10, 5, 3)), '[你现在：国庆节放假，没抢到回青岛的票，留在学校（你们说好以后放假一起走，这次你不难受）；在宿舍睡觉，09:30 起；他回青岛过国庆了（放假前就说好的）]');
         assert.equal(line(boyfriend, t(10, 5, 3), true), '[你现在：国庆节放假，没抢到回青岛的票，留在学校（你们说好以后放假一起走，这次你不难受）；在宿舍睡觉，被消息震醒了，迷迷糊糊的；他回青岛过国庆了（放假前就说好的）]');
-        assert.equal(line(boyfriend, t(10, 12, 7, 50)), '[你现在：在学校（济南），住宿舍；刚起床，08:20 要上Linux操作系统；他国庆放完假，已经回学校了]');
+        // 放完国庆 7 天内他在哪单独一行（ADR 0007 调整 2026-10-10）
+        assert.equal(line(boyfriend, t(10, 12, 7, 50)), `[你现在：在学校（济南），住宿舍；刚起床，08:20 要上Linux操作系统]\n[他${BACK}]`);
         assert.equal(line(boyfriend, t(10, 12, 8, 30)),
-            '[你现在：在学校（济南），住宿舍；在知行楼612上Linux操作系统（机房课，边敲代码边看手机），09:40 下课，偷偷看手机回消息，回得简短；他国庆放完假，已经回学校了]');
-        assert.equal(line(boyfriend, t(10, 12, 9, 45)), '[你现在：在学校（济南），住宿舍；课间，09:55 接着上大数据应用技术；他国庆放完假，已经回学校了]');
-        assert.match(line(boyfriend, t(10, 12, 12, 30)), /；[^；]+，今天 15:15 还有MySQL数据库应用；他国庆放完假，已经回学校了\]$/);
+            `[你现在：在学校（济南），住宿舍；在知行楼612上Linux操作系统（机房课，边敲代码边看手机），09:40 下课，偷偷看手机回消息，回得简短]\n[他${BACK}]`);
+        assert.equal(line(boyfriend, t(10, 12, 9, 45)), `[你现在：在学校（济南），住宿舍；课间，09:55 接着上大数据应用技术]\n[他${BACK}]`);
+        assert.ok(line(boyfriend, t(10, 12, 12, 30)).endsWith(`，今天 15:15 还有MySQL数据库应用]\n[他${BACK}]`));
+        assert.equal(line(boyfriend, t(10, 15, 12, 30)).split('\n').length, 1);
         // 水课、体育不提偷偷回
         assert.equal(line(boyfriend, t(9, 24, 19, 40)), '[你现在：在学校（济南），住宿舍；在知行楼303上Python数据分析（水课），20:00 下课；他也在学校]');
         assert.equal(line(classmate, t(10, 12, 8, 30)), '[你现在：在学校，住宿舍；在上课，09:40 下课，偷偷看手机回消息，回得简短]');
@@ -134,7 +140,7 @@ describe('作息：某个时刻她在干什么', () => {
         assert.equal(line(classmate, t(10, 12, 9, 45)), '[你现在：在学校，住宿舍；课间，09:55 接着上课]');
         // 他在哪写称呼，不写「他」
         assert.equal(describeState(stateAt(boyfriend, t(10, 12, 9, 45)), boyfriend, { userName: '宝宝' }),
-            '[你现在：在学校（济南），住宿舍；课间，09:55 接着上大数据应用技术；宝宝国庆放完假，已经回学校了]');
+            `[你现在：在学校（济南），住宿舍；课间，09:55 接着上大数据应用技术]\n[宝宝${BACK}]`);
         assert.equal(describeState(stateAt(boyfriend, t(10, 5, 3)), boyfriend, { userName: '宝宝' }),
             '[你现在：国庆节放假，没抢到回青岛的票，留在学校（你们说好以后放假一起走，这次你不难受）；在宿舍睡觉，09:30 起；宝宝回青岛过国庆了（放假前就说好的）]');
     });
