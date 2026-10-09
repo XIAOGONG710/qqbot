@@ -199,7 +199,7 @@ export interface Scenario {
     mood?: string;
     /** 名单里的其他人（ADR 0016）：她认识写了 intro 的；开了记忆时，事先的聊天先写进他们自己的 bank 和公共库 */
     others: OtherContact[];
-    /** 她和他事先的聊天（ADR 0018：她答应过的事），时间要早于起点 45 分钟以上；开了记忆时先写进他的 bank */
+    /** 她和他事先的聊天（ADR 0018：她答应过的事），时间要早于起点 45 分钟以上；开了记忆时先写进他的 bank。不开记忆时只要早于起点（盲评按固定上文重放） */
     history: ChatLine[];
     steps: Step[];
 }
@@ -249,7 +249,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         ...(s.moodyChance !== undefined ? { moodyChance: chance(s.moodyChance) } : {}),
         ...(s.mood !== undefined ? { mood: typeof s.mood === 'string' && s.mood ? s.mood : fail('mood 应为心情的名字') } : {}),
         others: parseOthers(s.others, Date.parse(s.start as string), fail),
-        history: parseHistory(s.history, 'history', Date.parse(s.start as string), fail),
+        history: parseHistory(s.history, 'history', Date.parse(s.start as string), fail, s.memory !== false),
         steps: s.steps as Step[],
     };
 }
@@ -269,15 +269,16 @@ function parseOthers(value: unknown, start: number, fail: (message: string) => n
     });
 }
 
-/** 事先的聊天：时间要早于起点 45 分钟以上（片段结束了才写进记忆） */
-function parseHistory(value: unknown, where: string, start: number, fail: (message: string) => never): ChatLine[] {
+/** 事先的聊天：时间要早于起点 45 分钟以上（片段结束了才写进记忆）；不开记忆（withMemory 为否）时只要早于起点 */
+function parseHistory(value: unknown, where: string, start: number, fail: (message: string) => never, withMemory = true): ChatLine[] {
     const history = value ?? [];
     if (!Array.isArray(history)) fail(`${where} 应为数组`);
     return (history as unknown[]).map((m, j) => {
         const message = m as Record<string, unknown>;
         const time = typeof message?.time === 'string' ? Date.parse(message.time) : NaN;
         if (Number.isNaN(time)) fail(`${where}[${j}].time 应为 ISO 时间`);
-        if (time > start - EPISODE_GAP_MS) fail(`${where}[${j}] 要早于起点 45 分钟以上（片段结束了才写进记忆）`);
+        if (withMemory && time > start - EPISODE_GAP_MS) fail(`${where}[${j}] 要早于起点 45 分钟以上（片段结束了才写进记忆）`);
+        if (time >= start) fail(`${where}[${j}] 要早于起点`);
         if (message.role !== 'user' && message.role !== 'assistant') fail(`${where}[${j}].role 应为 user / assistant`);
         if (typeof message.content !== 'string' || !message.content) fail(`${where}[${j}].content 应为非空字符串`);
         return { time: new Date(time).toISOString(), role: message.role as 'user' | 'assistant', content: message.content as string };
