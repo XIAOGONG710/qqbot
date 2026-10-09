@@ -57,6 +57,8 @@ export interface State {
     where: string;
     /** 他在哪（只有知道他的档位有） */
     partner?: string;
+    /** partner 是放完假几天里的说法（partnerBack）：状态行里单独一行，不跟在「你现在」最后（ADR 0007 调整 2026-10-10） */
+    partnerJustBack?: boolean;
     /** 今天接下来的下一节课（正在上的不算） */
     nextClass?: ClassToday;
     /** 学期外（第 1 周之前、最后一周之后）：没有课 */
@@ -81,7 +83,7 @@ export function stateAt(schedule: Schedule, now: Date, extraFree: readonly Extra
         && day.getTime() - parseDate(h.end).getTime() <= PARTNER_BACK_DAYS * DAY_MS);
     const partner = holiday ? holiday.partner : justBack?.partnerBack ?? schedule.partner;
     const { lessons, outsideSemester } = classesOn(schedule, day);
-    const base = { holiday, where, ...(partner ? { partner } : {}), outsideSemester };
+    const base = { holiday, where, ...(partner ? { partner } : {}), ...(justBack ? { partnerJustBack: true } : {}), outsideSemester };
 
     if (now < sleepStart) return { ...base, activity: { kind: 'free', text: freeActivity(schedule, day, 'evening', extraFree) } };
     const wake = wakeTime(schedule, day, lessons);
@@ -227,6 +229,8 @@ export function describeState(state: State, schedule: Schedule, options: { woken
             break;
     }
     const partner = state.partner?.replaceAll('{{user}}', options.userName ?? '他');
+    // 放完假那几天他在哪单独一行：跟在「你现在」最后时，她仍信聊天记录里假期中他说的「我在青岛」（ADR 0007 调整 2026-10-10）
+    if (state.partnerJustBack && partner) return `[你现在：${[state.where, doing].filter(Boolean).join('；')}]\n[${partner}]`;
     return `[你现在：${[state.where, doing, partner].filter(Boolean).join('；')}]`;
 }
 
