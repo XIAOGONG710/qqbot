@@ -6,7 +6,7 @@
 //   不靠模型：模型很少自己打错，让它「偶尔打错」会写成刻意的错。聊天记录里存的是发出去的样子（他看到的就是这样）。
 
 /** 回句短的、话多一点的概率（按轮） */
-export const SHORT_CHANCE = 0.15;
+export const SHORT_CHANCE = 0.35;
 export const LONG_CHANCE = 0.1;
 
 export type LengthHint = 'short' | 'long';

@@ -69,7 +69,9 @@ describe('这一轮你想（ADR 0019）', () => {
 
     test('明确难过时只接住，不转去讲自己的猫、书或进度；普通短句不脑补', () => {
         for (const text of ['悲', '我哭得很伤心', '今天累死了', '有点难受', '今天被导师骂了，烦死', '好烦啊', '心累']) {
-            assert.match(describeIntent({ history: [user(text)], now, state: free('在追一部剧'), books: true })!, /先接住他此刻的情绪/, text);
+            const line = describeIntent({ history: [user(text)], now, state: free('在追一部剧'), books: true })!;
+            assert.match(line, /先接住他此刻的情绪/, text);
+            assert.match(line, /第一句先安慰或问怎么了，不先损他/, text);
         }
         assert.equal(describeIntent({ history: [user('烦人精')], now, state: free('在追一部剧') }), undefined, '烦人精是叫他，不是心情');
         assert.match(describeIntent({ history: [user('已经见面5150天了呢')], now, state: free('刷摄影区'), books: true })!, /只接他刚说的你们两个人的事/);
