@@ -26,6 +26,8 @@ import { bodyAt } from '../body.ts';
 import type { LifeEvent } from '../life-events.ts';
 import { lifeExecutor } from '../life-selector.ts';
 import { asleepSince, saidBedtimes } from '../bedtime.ts';
+import { contextSummarizer, SUMMARY_HEADER, type TurnWindow } from '../context-window.ts';
+import { estimateTokens } from '../tokens.ts';
 import { repeatedSentences } from './repeats.ts';
 import { parseDuration, VirtualClock, type Checks, type LifeChecks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
@@ -74,6 +76,8 @@ export interface RunOptions {
     diaryWorldSchedule?: Schedule;
     /** 虚拟时钟底下的真实时间，默认 Date.now；测试传一个不动的，虚拟时间只靠 advance 走，两遍跑出来的时刻一样（ADR 0039） */
     realNow?: () => number;
+    /** 原始聊天只放最近几轮、更早的整理成要点（ADR 0043 离线实验，run.ts 的 --context-turns）；不传是线上的最近 80 条 */
+    contextTurns?: TurnWindow;
 }
 
 /** proactive：她主动发的（ADR 0011），是哪个时机（日志里的说法） */
@@ -81,6 +85,10 @@ export interface Bubble { time: number; text: string; proactive?: string }
 export interface Input { time: number; text: string; interrupt?: boolean }
 export interface Generation {
     time: number; recall?: string; timeBlock?: string; relationship?: string; people?: string; common?: string; todayOthers?: string; past?: string; messages: number;
+    /** 较早聊天的要点（ADR 0043 实验） */
+    summary?: string;
+    /** 提示词估算多少 token（tokens.ts，和截断用的同一个估法）：比较上下文放法的成本 */
+    tokens?: number;
     /** 模型原文（清理之前） */
     raw?: string;
     /** 出口检查带说明重写的原文（ADR 0006） */
@@ -117,6 +125,8 @@ export interface RunResult {
     runId: string;
     dataDir: string;
     bankId?: string;
+    /** 原始聊天只放最近几轮 + 要点（ADR 0043 实验）；没有就是线上的最近 80 条 */
+    contextTurns?: TurnWindow;
     steps: StepRecord[];
     /** 全部检查；reply 是查她说了什么、怎么回的，pipeline 是管线自检（CheckResult.pipeline） */
     checks: CheckCount & { reply: CheckCount; pipeline: CheckCount };
@@ -263,6 +273,17 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     if (scenario.mood !== undefined && !character.moods.some(mood => mood.name === scenario.mood)) {
         throw new Error(`场景的 mood「${scenario.mood}」不是卡上的心情（${character.moods.map(mood => mood.name).join('、') || '这一档没有心情'}）`);
     }
+    // 最近几轮 + 要点（ADR 0043）：整理要点和抽答应的事一样用抽取的参数；重建回复器（forget、restart）时沿用同一个，整理过的不再整理
+    const contextWindow = options.contextTurns
+        ? {
+            ...options.contextTurns,
+            summarize: contextSummarizer({
+                names,
+                generate: messages => (options.generate ? options.generate(messages, log) : chatCompletion(forExtraction(options.llm), messages, { log })),
+                log,
+            }),
+        }
+        : undefined;
     // 她自己的日子：和 bot 一样，她的每一天第一次生成时在 sim.log 里写一行当天的心情和进度
     const openHerDayLogger = () => (options.herDays && character.schedule
         ? herDayLogger(character.schedule, character.moods, character.books, log, scenario.mood)
@@ -283,6 +304,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(options.candidates ? { candidates: options.candidates } : {}),
         ...(scenario.mood !== undefined ? { mood: scenario.mood } : {}),
         ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
+        ...(contextWindow ? { contextWindow } : {}),
         history,
         memory,
         ...(promises ? { promises } : {}),
@@ -588,6 +610,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     return {
         scenario,
         runId: options.runId,
+        ...(options.contextTurns ? { contextTurns: options.contextTurns } : {}),
         dataDir,
         bankId,
         steps,
@@ -638,7 +661,9 @@ export function dynamicParts(prompt: PromptResult, time: number): Generation {
         common: block(COMMON_HEADER),
         todayOthers: block(TODAY_OTHERS_HEADER),
         past: block(PAST_HEADER),
+        summary: block(SUMMARY_HEADER),
         messages: prompt.messages.length,
+        tokens: prompt.messages.reduce((n, m) => n + estimateTokens(m.content ?? ''), 0),
     };
 }
 

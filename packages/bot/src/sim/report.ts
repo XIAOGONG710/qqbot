@@ -9,7 +9,7 @@ const day = (t: number) => { const d = new Date(t); return `${d.getMonth() + 1}-
 const quote = (text: string) => text.split('\n').map(line => `> ${line}`).join('\n');
 
 /** 调度相关的日志（不含每次都有的「收到」「已回复」） */
-const SCHEDULING = /\d{2}:\d{2}:\d{2} 看到|吵醒|已经收尾|等了一天|出口检查|生成期间收到新消息|发送中途对方插话|插话没有触发|模型回复清理后为空|回复失败|召回失败|记忆写入失败|连接失败|Hindsight 后台任务|关系概况刷新|删除测试 bank|^主动|待跟进/;
+const SCHEDULING = /\d{2}:\d{2}:\d{2} 看到|吵醒|已经收尾|等了一天|出口检查|生成期间收到新消息|发送中途对方插话|插话没有触发|模型回复清理后为空|回复失败|召回失败|记忆写入失败|连接失败|Hindsight 后台任务|关系概况刷新|删除测试 bank|^主动|待跟进|上下文要点/;
 
 /** 「回复 39 通过 / 2 不通过 · 管线自检 12 / 12」：管线自检（提示词里有没有那一行）不算进回复的通过率 */
 export function checkSummary(checks: RunResult['checks']): string {
@@ -45,7 +45,7 @@ export function renderReport(result: RunResult): string {
         '',
         ...(scenario.description ? [scenario.description, ''] : []),
         `档位 ${scenario.tier} · 称呼 ${scenario.user} · 起点 ${day(Date.parse(scenario.start))} ${clock(Date.parse(scenario.start))}` +
-            ` · 记忆 ${result.bankId ?? '未用'} · 检查 ${checkSummary(result.checks)} · ${exitSummary(result)}`,
+            ` · 记忆 ${result.bankId ?? '未用'}${result.contextTurns ? `（原文最近 ${result.contextTurns.turns} 轮 + 要点）` : ''} · 检查 ${checkSummary(result.checks)} · ${exitSummary(result)}`,
         '',
     ];
     let lastDay = '';
@@ -122,7 +122,8 @@ function renderExchange(step: StepRecord, dayPrefix: (time: number) => string): 
     ].sort((a, b) => a.time - b.time);
     for (const e of events) out.push(`- \`${dayPrefix(e.time)}${clock(e.time)}\` ${e.text}`);
     const scheduling = step.logs.filter(l => SCHEDULING.test(l));
-    out.push('', `生成 ${step.generations.length} 次${scheduling.length ? `；${scheduling.join('；')}` : ''}`, '');
+    const size = step.generations.at(-1)?.tokens;
+    out.push('', `生成 ${step.generations.length} 次${size ? `（提示词约 ${size} token）` : ''}${scheduling.length ? `；${scheduling.join('；')}` : ''}`, '');
     // 被清理掉或者没发出去的模型原文（例如清理后为空、被插话丢掉的草稿）
     const sent = step.bubbles.map(b => b.text).join('\n');
     const unsent = step.generations.filter(g => g.raw !== undefined && !sent.includes(g.raw.trim().split('\n')[0]!.trim()));
@@ -132,7 +133,7 @@ function renderExchange(step: StepRecord, dayPrefix: (time: number) => string): 
     if (last) {
         // 想起的从前只写标题：年表和块里有真实住址（作者 10-07：住址不进模拟器报告）
         const past = last.past ? `[你想起的从前：${[...last.past.matchAll(/^- ([^：\n]+)：/gm)].map(m => m[1]).join('、')}（正文和年表略）]` : undefined;
-        const parts = [last.timeBlock, last.recall, last.common, last.todayOthers, past, last.people, last.relationship].filter(Boolean) as string[];
+        const parts = [last.timeBlock, last.summary, last.recall, last.common, last.todayOthers, past, last.people, last.relationship].filter(Boolean) as string[];
         out.push('<details><summary>提示词里的动态部分（最后一次生成）</summary>', '', '```text', ...parts.join('\n\n').split('\n'), '```', '', '</details>', '');
     }
     return out;

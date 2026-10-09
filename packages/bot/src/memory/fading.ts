@@ -14,6 +14,8 @@ import type { RecallResult } from './hindsight.ts';
 /** 只提过一次的：几天以内清楚、几天以内记个大概 */
 export const CLEAR_DAYS = 7;
 export const VAGUE_DAYS = 30;
+/** 提示词里的原始聊天最多几条（ADR 0036 决策 3） */
+export const RAW_MESSAGES = 80;
 /** Hindsight 写入时给重要的事标的记号（写入说明里的规则，见 long-term.ts 的 missions） */
 export const IMPORTANT = '【重要】';
 /** 一直成立的事（偏好、习惯、身份、一直在做的事）的记号，同上 */
@@ -124,8 +126,9 @@ export function clarity(result: RecallResult, options: FadeOptions): Clarity {
  * 提示词里放的聊天原文（实现时的调整 12，用户 10-06 定）：最近 CLEAR_DAYS 天的；这之前到现在这段聊天中间没说过话（隔了很久再来）时，
  * 再放上一次那段聊天，接得上话。更早的原话不放，只靠记忆（会变淡），免得几十天前的原话还一字不差地摆在她眼前。
  * 没有时间的消息算最近的。返回放进去的和不放的条数。
+ * limit：最多几条（ADR 0036 决策 3），线上不传；「最近几轮 + 要点」的实验（ADR 0043）传 Infinity，自己按轮切
  */
-export function recentChat<T extends { time?: string }>(chat: readonly T[], now: Date): { chat: T[]; omitted: number } {
+export function recentChat<T extends { time?: string }>(chat: readonly T[], now: Date, limit = RAW_MESSAGES): { chat: T[]; omitted: number } {
     const at = (m: T) => (m.time ? Date.parse(m.time) : Number.NaN);
     const cutoff = now.getTime() - CLEAR_DAYS * DAY_MS;
     const recent = (m: T) => !(at(m) < cutoff);
@@ -143,6 +146,6 @@ export function recentChat<T extends { time?: string }>(chat: readonly T[], now:
     start = Math.min(start, Math.max(current, 0));
     // 原始聊天只留最近 80 条：更早的事实由召回提供，不能让几百条模型旧回复变成越来越强的自我模仿语料。
     // 80 条足够覆盖一段长对话；提示词预算仍会在单条特别长时继续裁剪。
-    start = Math.max(start, chat.length - 80);
+    start = Math.max(start, chat.length - limit);
     return { chat: chat.slice(start), omitted: start };
 }

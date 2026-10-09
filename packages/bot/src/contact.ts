@@ -38,6 +38,7 @@ import type { PromiseKeeper } from './promises.ts';
 import { describeState, herDay } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candidates.ts';
+import { turnCut, type Summarizer, type TurnWindow } from './context-window.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 
@@ -126,6 +127,11 @@ export interface ContactPipelineOptions {
     waitUntil?: (at: number, signal: AbortSignal) => Promise<void>;
     /** 回复失败之后隔多久再试，默认 RETRY_AFTER_MS；模拟器传 []（它的时钟是虚拟的，真等几分钟会插进后面的步骤） */
     retryAfterMs?: readonly number[];
+    /**
+     * 开了长期记忆时原始聊天只放最近几轮、更早的整理成要点（ADR 0043 离线实验，只有模拟器传）。
+     * 不传是最近 80 条（ADR 0036 决策 3），线上不传
+     */
+    contextWindow?: TurnWindow & { summarize: Summarizer };
 }
 
 /** 问到过去的某一天时，几天以内她那边的事还记得清楚（ADR 0032，同 ADR 0018 的 7 天） */
@@ -340,7 +346,16 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const length = lengthHint({ history: chat, intent, initiating: Boolean(initiate), low: mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
-            const shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
+            let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
+            // 实验（ADR 0043）：最近几轮原文 + 更早的要点，代替最近 80 条
+            let summary: string | undefined;
+            if (remembers && options.contextWindow) {
+                const lastDays = recentChat(chat, time, Infinity);
+                const cut = turnCut(lastDays.chat, options.contextWindow);
+                // 要点里她的名字换成「你」，和记忆一样（ADR 0018 决策 4）
+                summary = cut > 0 ? you(await options.contextWindow.summarize(lastDays.chat.slice(0, cut))) : undefined;
+                shown = { chat: lastDays.chat.slice(cut), omitted: lastDays.omitted + cut };
+            }
             const prompt = buildPrompt({
                 character,
                 worldInfo,
@@ -349,6 +364,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 userPersona: contact.persona,
                 afterMain: relationship ? [relationship] : [],
                 afterHistory: [
+                    ...(summary ? [summary] : []),
                     ...(recalled ? [recalled] : []),
                     // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3：放在前面时问「昨天都干嘛了」她照着报喂猫、取快递，想不起那天记得住的麻辣烫，1/3）
                     ...(common ? [common] : []),
@@ -388,7 +404,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
                 ...((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) ? { maxBubbles: 2 } : {}),
-                ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆）` } : {}),
+                ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆${summary ? '和前面的要点' : ''}）` } : {}),
             };
         },
         generate: async messages => {

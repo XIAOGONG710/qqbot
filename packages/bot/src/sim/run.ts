@@ -4,6 +4,7 @@
 // 不碰 bot 的聊天记录、锁和 bank，bot 运行中也可以跑。
 // --card：用这个目录里的卡（文件名同配置里的，A/B 用临时目录；改 characters/*/st/ 等于直接上线，ADR 0019）；
 // --pin-examples：只对这次模拟改示例常驻（ADR 0019 决策 6），其余同配置。
+// --context-turns N：开了记忆时原始聊天只放最近 N 轮、更早的整理成要点，代替最近 80 条（ADR 0043 离线实验，线上没有这个开关）；--context-step K：切口每 K 轮挪一次，默认 4。
 
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -31,9 +32,13 @@ const candidatesOption = option('--candidates');
 // 同时跑几次：不带记忆的默认全部并行；带记忆的默认一次一个——本机只有 6 GB 内存，3 次并行的带记忆场景两次把和线上共用的 Postgres 挤到
 // out of memory、崩溃恢复（10-07 18:17、19:51，各 2–3 秒自动恢复，线上的库没事）
 const parallelOption = option('--parallel');
+const contextTurnsOption = option('--context-turns');
+const contextStepOption = option('--context-step');
+const contextTurns = contextTurnsOption === undefined ? undefined : { turns: Number(contextTurnsOption), step: Number(contextStepOption ?? 4) };
 const parallel = parallelOption === undefined ? undefined : Number(parallelOption);
-if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))) {
-    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N]');
+if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))
+    || (contextTurns && ![contextTurns.turns, contextTurns.step].every(n => Number.isInteger(n) && n >= 1))) {
+    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--context-turns N [--context-step K]]');
     process.exit(2);
 }
 
@@ -51,6 +56,7 @@ const config = {
     ...(cardDir ? { characterCard: join(resolve(process.env.INIT_CWD ?? process.cwd(), cardDir), basename(loaded.characterCard)) } : {}),
     ...(pinExamples ? { prompt: { ...loaded.prompt, pinExamples: pinExamples === 'on' } } : {}),
 };
+if (contextTurns) console.log(`上下文：最近 ${contextTurns.turns} 轮原文 + 更早的要点（切口每 ${contextTurns.step} 轮挪一次）`);
 if (cardDir || pinExamples) console.log(`卡：${config.characterCard}；示例常驻：${config.prompt.pinExamples ? '开' : '关'}`);
 const hindsight = config.memory && !noMemory ? new HindsightClient(config.memory.baseUrl, config.memory.timeoutMs) : undefined;
 const now = new Date();
@@ -89,6 +95,7 @@ for (const [fileIndex, file] of files.entries()) {
             hindsight,
             recallTimeoutMs: config.memory?.recallTimeoutMs,
             keepBank,
+            ...(contextTurns ? { contextTurns } : {}),
         });
         writeFileSync(join(dataDir, 'report.md'), renderReport(result));
         writeFileSync(join(dataDir, 'result.json'), JSON.stringify(result, null, 2));
