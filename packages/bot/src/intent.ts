@@ -37,7 +37,16 @@ const QUESTION = /[?？]|(?:吗|么)$|你呢[。！!\s]*$|你(?:是不是|有没
 
 export function isEndingTurn(history: readonly Said[]): boolean {
     const text = latestUserText(history).trim();
-    return Boolean(text) && (isAck(text) || isReaction(text) || ENDING.test(text));
+    return Boolean(text) && !ASKS_FOR_HER.test(text) && (isAck(text) || isReaction(text) || ENDING.test(text));
+}
+
+/**
+ * 撒娇要她哄、陪（「哄我睡觉呗」「陪我聊会儿」「给我讲个故事」）：是冲她提的要求，不是他要走，带「睡觉」也不算收尾。
+ * 10-09 13:11 线上：「哄我睡觉呗」被「睡觉」判成收尾，她回「那你睡吧 / 睡醒了再找我」。
+ */
+const ASKS_FOR_HER = /哄(?:哄)?我|陪(?:陪)?我|给我(?:讲|唱|念)|讲个(?:睡前)?故事|唱(?:首)?歌给我|摸摸(?:我的?)?头/;
+function asksForHer(history: readonly Said[]): boolean {
+    return ASKS_FOR_HER.test(latestUserText(history));
 }
 
 function asksQuestion(history: readonly Said[]): boolean {
@@ -93,6 +102,8 @@ function busy(state: State | undefined, schedule: Schedule | undefined, now: Dat
  */
 export function describeIntent(context: IntentContext): string | undefined {
     if (context.initiating) return undefined;
+    // 「只接他刚说的你们两个人的事」这几个字让候选挑选（ADR 0041）和两条气泡的上限照亲密话算
+    if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行；他要睡就哄他睡，不另起话题，也不用约他睡醒再找你]';
     if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句；不分享新进度，不说你接下来做什么，不另起话题，也不用约他忙完回来找你]';
     if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
     if (needsCare(context.history)) return '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够；不转去讲你自己的事，不硬开新话题]';

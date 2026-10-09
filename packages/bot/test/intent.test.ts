@@ -55,6 +55,18 @@ describe('这一轮你想（ADR 0019）', () => {
         assert.equal(isEndingTurn([user('你睡了吗')]), false);
     });
 
+    test('撒娇要她哄、陪不是收尾：带「睡觉」也照亲密话接（10-09 13:11 线上「哄我睡觉呗」）', () => {
+        for (const text of ['哄我睡觉呗', '陪我聊会儿嘛', '给我讲个睡前故事', '摸摸头']) {
+            const history = [assistant('那睡吧，我下午还有节课'), user(text)];
+            assert.equal(isEndingTurn(history), false, text);
+            const line = describeIntent({ history, now, state: free('打独立游戏'), promised: true })!;
+            assert.match(line, /撒娇要你哄他、陪他/, text);
+            assert.match(line, /只接他刚说的你们两个人的事/, '候选挑选和气泡上限照亲密话算');
+            assert.doesNotMatch(line, /收尾/);
+        }
+        assert.equal(isEndingTurn([user('想睡觉了')]), true, '他自己说要睡还是收尾');
+    });
+
     test('明确难过时只接住，不转去讲自己的猫、书或进度；普通短句不脑补', () => {
         for (const text of ['悲', '我哭得很伤心', '今天累死了', '有点难受']) {
             assert.match(describeIntent({ history: [user(text)], now, state: free('在追一部剧'), books: true })!, /先接住他此刻的情绪/, text);
