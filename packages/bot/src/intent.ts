@@ -107,7 +107,7 @@ export function describeIntent(context: IntentContext): string | undefined {
     if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行；他要睡就哄他睡，不另起话题，也不用约他睡醒再找你]';
     if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句；不分享新进度，不说你接下来做什么，不另起话题，也不用约他忙完回来找你]';
     if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
-    if (needsCare(context.history)) return '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够；不转去讲你自己的事，不硬开新话题]';
+    if (needsCare(context.history)) return '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够；他认真难过、生病或很累时，第一句先安慰或问怎么了，不先损他；不转去讲你自己的事，不硬开新话题]';
     if (isRelationshipBid(context.history)) return '[这一轮你想：只接他刚说的你们两个人的事，一两句就够；不转去讲猫、书或手头的进度]';
     if (saysOwnThing(context.history)) return '[这一轮你想：回应他刚说的那件事；真有想知道的细节再随口问，不必每次都追问]';
     if (!isOpeningPing(context.history)) return undefined;
