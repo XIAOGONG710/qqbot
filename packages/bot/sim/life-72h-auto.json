@@ -25,7 +25,8 @@
                         "sleep": 3,
                         "eat": 8,
                         "attend_class": 10,
-                        "study": 1
+                        "study": 1,
+                        "work_on_project": 1
                     },
                     "noOverlap": true,
                     "noFailed": true,
@@ -36,6 +37,11 @@
                     },
                     "interruptedAtLeast": {
                         "interrupted_by_class": 3
+                    },
+                    "npcInteractionsAtLeast": 1,
+                    "projectProgressAtLeast": {
+                        "target": "photography_growth",
+                        "minutes": 120
                     },
                     "statusConsistent": true
                 }

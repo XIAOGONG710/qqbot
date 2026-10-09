@@ -118,7 +118,7 @@ export interface WorldNow {
     /** 她这一天的日常（ADR 0031）：午饭、晚饭在哪吃、几点到几点；洗澡几点到几点（不洗的日子没有） */
     routine?: { meals: { kind: 'lunch' | 'dinner'; start: Date; end: Date; where: 'canteen' | 'takeout' | 'home' }[]; shower?: { start: Date; end: Date } };
     /** 今天已经发生的小事（text 已换好人名） */
-    events: { id: string; text: string; at: Date; person?: { name: string; relation: string } }[];
+    events: { id: string; text: string; at: Date; person?: { id: string; name: string; relation: string } }[];
     /** 她身边的人今天怎么样（ADR 0033）：只有有事的（病了、忙、回家了） */
     people?: { name: string; relation: string; states: NpcState[] }[];
     /** 她的钱（ADR 0035）：手上还有多少、下次几号到账、今天到现在花的；detail 是这一档说得出口 */
@@ -384,7 +384,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     for (const event of record.events) {
         if (event.at > now) continue;
         const person = event.person ? world.people.find(p => p.id === event.person) : undefined;
-        result.events.push({ id: event.id, text: event.text.replaceAll('{person}', person?.name ?? '朋友'), at: event.at, ...(person ? { person: { name: person.name, relation: person.relation } } : {}) });
+        result.events.push({ id: event.id, text: event.text.replaceAll('{person}', person?.name ?? '朋友'), at: event.at, ...(person ? { person: { id: person.id, name: person.name, relation: person.relation } } : {}) });
     }
     const people = world.people.map(p => ({ name: p.name, relation: p.relation, states: npcStates(p.id, p.life, schedule, day) })).filter(p => p.states.length);
     if (people.length) result.people = people;

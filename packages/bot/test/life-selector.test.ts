@@ -95,7 +95,7 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
             assert.ok('skipTo' in showering && showering.skipTo.getTime() === shower.end.getTime());
         }
         const free = chooseAt(at('2026-10-13T13:00:00'), plain);
-        assert.ok('intent' in free && ['leisure', 'study', 'rest', 'read_book'].includes(free.intent.kind));
+        assert.ok('intent' in free && ['leisure', 'study', 'rest', 'read_book', 'work_on_project'].includes(free.intent.kind));
     });
 
     test('空闲的事归类：在读的书 → 读书，作业 → 学习，躺着 → 休息，别的 → 休闲', () => {
@@ -104,7 +104,24 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         assert.deepEqual(freeKind(book.activity!.text, plain, reading), { kind: 'read_book', subject: book.id });
         assert.equal(freeKind('在宿舍写作业', plain, reading).kind, 'study');
         assert.equal(freeKind(herWorld.plans!.rest, plain, reading).kind, 'rest');
+        assert.deepEqual(freeKind('修昨天拍的片子', plain, reading), {
+            kind: 'work_on_project', subject: '修昨天拍的片子', target: 'photography_growth',
+        });
         assert.deepEqual(freeKind('打独立游戏', plain, reading), { kind: 'leisure', subject: '打独立游戏' });
+    });
+
+    test('NPC 事实不是提示词装饰：一起吃饭附在午饭行动，微信来往成为独立的类型化行动', () => {
+        const lunch = worldAt(herWorld, schedule, at('2026-10-13T12:00:00'))!.routine!.meals.find(m => m.kind === 'lunch')!;
+        const together = chooseAt(lunch.start, plain);
+        assert.ok('intent' in together);
+        if ('intent' in together) assert.deepEqual([together.intent.kind, together.intent.target], ['eat', 'su_yutong']);
+
+        const chat = chooseAt(at('2026-10-07T22:35:00'), plain);
+        assert.ok('intent' in chat);
+        if ('intent' in chat) assert.deepEqual(
+            [chat.intent.kind, chat.intent.target, chat.intent.subject],
+            ['interact_npc', 'chen_jianing', '在微信上跟陈佳宁聊了会儿'],
+        );
     });
 
     test('三天半没人聊天：一件接一件、不重叠；每天睡觉、两顿饭、课都在；喂猫、洗澡的时候不记别的', () => {
@@ -143,6 +160,11 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
             for (const e of byClass) {
                 assert.ok(events.some(other => other.kind === 'attend_class' && other.startedAt === e.endedAt), `${e.id} 停下的时候没有课`);
             }
+            const social = events.filter(e => ['eat', 'attend_class', 'interact_npc'].includes(e.kind) && e.target);
+            assert.ok(social.some(e => e.target === 'su_yutong'), '72 小时里和苏雨桐的来往进入类型化行动账');
+            const project = events.filter(e => e.kind === 'work_on_project' && e.target === 'photography_growth');
+            const projectMinutes = project.reduce((sum, e) => sum + (Date.parse(e.endedAt) - Date.parse(e.startedAt)) / 60_000, 0);
+            assert.ok(projectMinutes >= 120, `摄影项目只推进了 ${projectMinutes} 分钟`);
             assert.deepEqual(auditLifeStatus(events, { ...plain, events: () => events }), [], '事件账里的行动和同一时刻状态行规则一致');
         } finally {
             rmSync(dir, { recursive: true, force: true });
@@ -187,7 +209,7 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
             const end = at('2026-10-13T23:00:00');
             const plainRun = live(a, start, end).events;
             const restarted = live(b, start, end, at('2026-10-12T19:00:00')).events;
-            const shape = (events: readonly LifeEvent[]) => events.map(e => [e.id, e.endedAt, e.result, e.subject]);
+            const shape = (events: readonly LifeEvent[]) => events.map(e => [e.id, e.endedAt, e.result, e.subject, e.target]);
             assert.deepEqual(shape(restarted), shape(plainRun));
             assert.ok(plainRun.length > 15);
         } finally {
@@ -205,7 +227,7 @@ describe('聊天里说过的事改写还没过的（ADR 0042）', () => {
     };
     const overlapping = (events: readonly LifeEvent[], from: string, to: string) =>
         events.filter(e => Date.parse(e.startedAt) < at(to).getTime() && Date.parse(e.endedAt) > at(from).getTime());
-    const shape = (events: readonly LifeEvent[]) => events.map(e => [e.id, e.endedAt, e.result, e.subject]);
+    const shape = (events: readonly LifeEvent[]) => events.map(e => [e.id, e.endedAt, e.result, e.subject, e.target]);
 
     test('她 00:32 说「睡了」：正打着的游戏停在 00:32，从 00:32 睡到起床；没说的话照旧 02:00 睡', () => withDir(dir => {
         const { events } = liveChat(dir, at('2026-10-12T21:00:00'), at('2026-10-13T10:00:00'), { bedtime: at('2026-10-13T00:32:00') });

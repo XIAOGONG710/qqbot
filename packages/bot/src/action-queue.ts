@@ -100,6 +100,7 @@ export function actionQueue(path: string, log: (message: string) => void = () =>
             const verdict = judgeAction({
                 id, kind: item.kind, startedAt: change.startedAt, source: item.event.source,
                 ...(item.event.subject ? { subject: item.event.subject } : {}),
+                ...(item.event.target ? { target: item.event.target } : {}),
                 ...(change.durationMinutes !== undefined ? { durationMinutes: change.durationMinutes } : {}),
             }, withPlans(context, id));
             if (!verdict.ok) {
@@ -203,6 +204,7 @@ function planned(item: QueuedAction, schedule: Schedule): LifeEvent {
         id: item.id, actor: 'linmengyao', kind: item.kind, day: formatDate(herDay(schedule, new Date(item.event.at))),
         startedAt: item.event.startedAt ?? item.event.at, endedAt: item.event.at, source: item.event.source, result: item.event.result,
         ...(item.event.subject ? { subject: item.event.subject } : {}),
+        ...(item.event.target ? { target: item.event.target } : {}),
     };
 }
 
@@ -213,7 +215,7 @@ function verdictOf(item: QueuedAction): ActionVerdict {
     };
 }
 
-const KINDS = new Set<TypedActionKind>(['sleep', 'eat', 'attend_class', 'study', 'rest', 'read_book', 'leisure']);
+const KINDS = new Set<TypedActionKind>(['sleep', 'eat', 'attend_class', 'study', 'rest', 'read_book', 'leisure', 'work_on_project', 'interact_npc']);
 function validQueuedAction(value: unknown): value is QueuedAction {
     if (!value || typeof value !== 'object') return false;
     const item = value as Partial<QueuedAction>;
@@ -230,6 +232,8 @@ function validQueuedAction(value: unknown): value is QueuedAction {
         && typeof event!.at === 'string' && Number.isFinite(Date.parse(event!.at))
         && Date.parse(event!.startedAt) <= Date.parse(event!.at)
         && (event!.result === 'succeeded' || event!.result === 'interrupted' || cancelled)
+        && (event!.subject === undefined || typeof event!.subject === 'string')
+        && (event!.target === undefined || typeof event!.target === 'string')
         && (event!.source === 'simulation' || event!.source === 'conversation' || event!.source === 'external');
 }
 

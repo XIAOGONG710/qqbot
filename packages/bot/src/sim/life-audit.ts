@@ -40,7 +40,10 @@ export function auditLifeStatus(events: readonly LifeEvent[], sources: LifeSourc
                 ...(sources.bodyAt ? { body: sources.bodyAt(at) } : {}),
             },
         });
-        const expectedKind = statusKind(status, at, sources, reading);
+        // 微信来往是世界里带 person 的确定性小事，不是作息文本；在事件发生后能从同一天世界事实核回对象即可。
+        const social = event.kind === 'interact_npc' && world?.events.some(item => item.person?.id === event.target
+            && item.at >= new Date(event.startedAt) && item.at <= at);
+        const expectedKind = social ? 'interact_npc' : statusKind(status, at, sources, reading);
         if (expectedKind !== event.kind) {
             mismatches.push({
                 at: at.toISOString(),

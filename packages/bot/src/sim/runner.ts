@@ -509,6 +509,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 const verdict = queuedActions.schedule({
                     id, kind: step.action.kind, startedAt, source: 'simulation',
                     ...(step.action.subject ? { subject: step.action.subject } : {}),
+                    ...(step.action.target ? { target: step.action.target } : {}),
                     ...(step.action.durationMinutes !== undefined ? { durationMinutes: step.action.durationMinutes } : {}),
                 }, {
                     schedule: character.schedule,
@@ -717,6 +718,25 @@ export function lifeChecks(checks: LifeChecks, events: readonly LifeEvent[], sta
     for (const [reason, count] of Object.entries(checks.interruptedAtLeast ?? {})) {
         const n = events.filter(event => event.result === 'interrupted' && event.reason === reason).length;
         results.push({ ok: n >= count!, text: `硬事件「${reason}」至少打断 ${count} 次（实际 ${n}）`, pipeline: true });
+    }
+    if (checks.npcInteractionsAtLeast !== undefined) {
+        const socialKinds = new Set(['eat', 'attend_class', 'interact_npc']);
+        const n = events.filter(event => event.result !== 'failed' && socialKinds.has(event.kind) && Boolean(event.target)).length;
+        results.push({
+            ok: n >= checks.npcInteractionsAtLeast,
+            text: `NPC 独立互动至少 ${checks.npcInteractionsAtLeast} 次（实际 ${n}）`,
+            pipeline: true,
+        });
+    }
+    if (checks.projectProgressAtLeast) {
+        const { target, minutes } = checks.projectProgressAtLeast;
+        const actual = events.filter(event => event.kind === 'work_on_project' && event.target === target && event.result !== 'failed')
+            .reduce((sum, event) => sum + Math.max(0, Math.round((Date.parse(event.endedAt) - Date.parse(event.startedAt)) / 60_000)), 0);
+        results.push({
+            ok: actual >= minutes,
+            text: `长期项目「${target}」至少推进 ${minutes} 分钟（实际 ${actual} 分钟）`,
+            pipeline: true,
+        });
     }
     if (checks.statusConsistent) {
         const mismatches = statusMismatches ?? [];
