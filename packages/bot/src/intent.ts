@@ -49,6 +49,18 @@ function asksForHer(history: readonly Said[]): boolean {
     return ASKS_FOR_HER.test(latestUserText(history));
 }
 
+/**
+ * 他这几句里有一句带感叹号的好消息（面试过了、考上了、抢到了）：先替他高兴，别让后面顺口一问顶掉。
+ * 盲评 v1.1 be-056：「出来了 过了！！」「你吃了没」被判成直接提问，她只答了吃没吃，还把他那句「我刚睡醒」说成了自己的。
+ * 「过了」前面是难、错、没、吃、看这类字的不算（「难过了！」「吃过了！」）；问句里的不算。
+ */
+const GOOD_NEWS = /(?:面试|笔试|复试|初试|考试|四级|六级|驾照|科目?[一二三四]|答辩|审核|申请)?(?<![难错没不经路度吃看去来做用玩])过了|通过了|考上了|上岸|录取了|拿到(?:了|offer)|中奖|成功了|搞定了|抢到了|赢了|评上了|选上了/i;
+function sharesGoodNews(history: readonly Said[]): boolean {
+    const lastReply = history.findLastIndex(message => message.role === 'assistant');
+    return history.slice(lastReply + 1).some(message => message.role === 'user'
+        && GOOD_NEWS.test(message.content) && /[！!]/.test(message.content) && !/[?？]/.test(message.content));
+}
+
 function asksQuestion(history: readonly Said[]): boolean {
     const text = latestUserText(history).trim();
     return !/^(?:在吗|在不在)[？?。！!\s]*$/.test(text) && QUESTION.test(text);
@@ -106,6 +118,7 @@ export function describeIntent(context: IntentContext): string | undefined {
     // 「只接他刚说的你们两个人的事」这几个字让候选挑选（ADR 0041）和两条气泡的上限照亲密话算
     if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行；他要睡就哄他睡，不另起话题，也不用约他睡醒再找你]';
     if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句；不分享新进度，不说你接下来做什么，不另起话题，也不用约他忙完回来找你]';
+    if (sharesGoodNews(context.history)) return '[这一轮你想：他刚说了件好事，先替他高兴、接住这件事；他顺口问的再顺口答，不另起话题]';
     if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
     if (needsCare(context.history)) return '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够；他认真难过、生病或很累时，第一句先安慰或问怎么了，不先损他；不转去讲你自己的事，不硬开新话题]';
     if (isRelationshipBid(context.history)) return '[这一轮你想：只接他刚说的你们两个人的事，一两句就够；不转去讲猫、书或手头的进度]';
