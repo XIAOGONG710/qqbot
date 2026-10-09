@@ -720,6 +720,17 @@ describe('配置', () => {
         assert.deepEqual(config.llm.extraBody, {});
     });
 
+    test('最近几轮 + 要点（ADR 0043）：默认关；轮数 0–40、灰度名单是 QQ 号数组', () => {
+        const env = { QQBOT_LLM_API_KEY: 'k' };
+        assert.equal(withConfig(valid, env).contextTurns, 0);
+        assert.deepEqual(withConfig(valid, env).contextContacts, []);
+        const on = withConfig({ ...valid, contextTurns: 10, contextContacts: [123] }, env);
+        assert.equal(on.contextTurns, 10);
+        assert.deepEqual(on.contextContacts, [123]);
+        assert.throws(() => withConfig({ ...valid, contextTurns: 41 }, env), /contextTurns/);
+        assert.throws(() => withConfig({ ...valid, contextContacts: ['123'] }, env), /contextContacts/);
+    });
+
     test('后处理方式和额外请求参数要合法', () => {
         const withLlm = (llm: object) => withConfig({ ...valid, llm: { ...valid.llm, ...llm } }, { QQBOT_LLM_API_KEY: 'k' });
         const config = withLlm({ promptPostProcessing: 'semi', extraBody: { thinking: { type: 'disabled' } } });

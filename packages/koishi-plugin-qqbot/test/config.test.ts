@@ -139,6 +139,15 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal('autonomousLife' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
+    test('最近几轮 + 要点（ADR 0043）：旧配置没有这两项时是关、全名单；开了照样传过去', () => {
+        assert.equal(fromKoishi(minimal).contextTurns, 0);
+        assert.deepEqual(fromKoishi(minimal).contextContacts, []);
+        const on = fromKoishi({ ...minimal, contextTurns: 10, contextContacts: [10001] });
+        assert.equal(on.contextTurns, 10);
+        assert.deepEqual(on.contextContacts, [10001]);
+        assert.equal('contextTurns' in (Config.simplify(Config(minimal as never)) as object), false);
+    });
+
     test('长期记忆打开时才有 memory；世界书只覆盖填了的项', () => {
         const parsed = fromKoishi({ ...minimal, prompt: { worldInfo: { depth: 4 } }, memory: { enabled: true } });
         assert.deepEqual(parsed.memory, { baseUrl: 'http://127.0.0.1:8888', timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' });

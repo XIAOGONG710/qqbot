@@ -1,11 +1,12 @@
-// 原始聊天的另一种放法（ADR 0043，离线实验，只有模拟器传 contextWindow）：最近 N 轮原文，更早的整理成几条要点。
-// 线上还是 fading.ts 的最近 80 条（ADR 0036 决策 3）；实验是看「最近若干轮 + 要点」能不能少一点自我模仿、又不忘事。
+// 原始聊天的另一种放法（ADR 0043）：最近 N 轮原文，更早的整理成几条要点。默认关（配置 contextTurns = 0），线上还是 fading.ts 的最近 80 条（ADR 0036 决策 3）；
+// 实验是看「最近若干轮 + 要点」能不能少一点自我模仿、又不忘事。
 // - 一轮 = 他的一条或连着几条，加上她接着的回复；
 // - 切口每 step 轮才往后挪一次：原文在 N 到 N + step - 1 轮之间，要点不用每轮重写；
 // - 要点只写事实（安排、发生的事、东西和人、约好的事），不写语气、不照抄原话——照抄了等于把旧回复又放回去；
 // - 7 天以前的照旧不放（fading.ts recentChat），靠长期记忆。
 
 import { MIDNIGHT_RULE } from './follow-ups.ts';
+import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import type { Log } from './log.ts';
 import type { ChatMessage, OpenAIMessage } from './prompt.ts';
 import { estimateTokens } from './tokens.ts';
@@ -65,34 +66,81 @@ export function summaryRequest(older: readonly ChatMessage[], names: { user: str
     ];
 }
 
+/** 这段较早聊天的要点：整理好了（text 可以是 undefined：没有值得记的），或者还在整理 / 整理失败（调用方这一轮照旧放原文，不等它） */
+export type SummaryState = { ready: true; text: string | undefined } | { ready: false };
+
 export interface Summarizer {
-    /** 较早的那部分整理成提示词里的一段；没有要点返回 undefined */
-    (older: readonly ChatMessage[]): Promise<string | undefined>;
+    /** 立即返回、不等模型：同一段已经整理好就给要点；没整理好就在后台开始整理（同一时间只整理一段），这一轮返回 ready: false */
+    (older: readonly ChatMessage[]): SummaryState;
+    /** 后台的整理做完（模拟器每轮等它，结果可复现；线上不等） */
+    idle(): Promise<void>;
 }
 
-/** 整理要点：同一段较早的聊天只整理一次（切口不动时每轮都是同一段） */
+/** 整理一次最多等这么久，超时算失败（ADR 0043 上线门槛：摘要不能拖住回复，也不能一直挂着） */
+export const SUMMARY_TIMEOUT_MS = 60_000;
+/** 整理失败以后，同一段隔这么久再试 */
+export const SUMMARY_RETRY_MS = 5 * 60_000;
+
+const summaryKey = (older: readonly ChatMessage[]) => `${older.length}|${older.at(-1)?.time ?? ''}|${older.at(-1)?.content ?? ''}`;
+
+/**
+ * 整理要点（ADR 0043）：同一段较早的聊天只整理一次（切口不动时每轮都是同一段）。
+ * 不在回复路径上等模型：切口刚挪的那一轮返回 ready: false，调用方照旧放最近 80 条；后台整理好了，下一轮起用要点。
+ * file：整理好的那一段存盘，重启以后不用再整理一遍（ADR 0039：重启前后提示词一样）。
+ */
 export function contextSummarizer(options: {
     names: { user: string; char: string };
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     log: Log;
+    file?: string;
+    now?: () => number;
+    timeoutMs?: number;
 }): Summarizer {
-    let cached: { key: string; text: string | undefined } | undefined;
-    return async older => {
-        const key = `${older.length}|${older.at(-1)?.time ?? ''}|${older.at(-1)?.content ?? ''}`;
-        if (cached?.key === key) return cached.text;
+    const now = options.now ?? Date.now;
+    const saved = options.file ? readJsonOr<{ key?: unknown; text?: unknown } | undefined>(options.file, undefined, options.log) : undefined;
+    let cached: { key: string; text: string | undefined } | undefined = typeof saved?.key === 'string'
+        ? { key: saved.key, text: typeof saved.text === 'string' ? saved.text : undefined }
+        : undefined;
+    let running: { key: string; done: Promise<void> } | undefined;
+    const failedAt = new Map<string, number>();
+
+    function start(key: string, older: readonly ChatMessage[]): void {
         const request = summaryRequest(older, options.names);
         const tokens = request.reduce((n, m) => n + estimateTokens(m.content), 0);
-        let text: string | undefined;
-        try {
-            const points = (await options.generate(request)).split('\n').map(line => line.trim()).filter(line => /^[-•]\s*\S/.test(line) && !/^[-•]\s*无$/.test(line));
-            text = points.length ? `${SUMMARY_HEADER}（更早的聊天原文没放进来，这是要点，只作参考；和下面从记忆里想起来的对不上时，以这里为准）：\n${points.join('\n')}]` : undefined;
-            options.log(`上下文要点：较早的 ${older.length} 条整理成 ${points.length} 条（请求约 ${tokens} token）`);
-        } catch (error) {
-            // 整理失败就不放要点，原文照样只放最近几轮；下一轮再试
-            options.log(`上下文要点整理失败：${error instanceof Error ? error.message : String(error)}`);
-            return undefined;
+        const began = now();
+        const timeoutMs = options.timeoutMs ?? SUMMARY_TIMEOUT_MS;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`超过 ${Math.round(timeoutMs / 1000)} 秒`)), timeoutMs); });
+        const done = Promise.race([options.generate(request), timeout]).then(output => {
+            const points = output.split('\n').map(line => line.trim()).filter(line => /^[-•]\s*\S/.test(line) && !/^[-•]\s*无$/.test(line));
+            const text = points.length ? `${SUMMARY_HEADER}（更早的聊天原文没放进来，这是要点，只作参考；和下面从记忆里想起来的对不上时，以这里为准）：\n${points.join('\n')}]` : undefined;
+            cached = { key, text };
+            if (options.file) writeJsonAtomic(options.file, text === undefined ? { key } : { key, text });
+            failedAt.delete(key);
+            options.log(`上下文要点：较早的 ${older.length} 条整理成 ${points.length} 条（请求约 ${tokens} token，用了 ${((now() - began) / 1000).toFixed(1)} 秒）`);
+        }, error => {
+            // 整理失败：这一段过一会儿再试；在那之前照旧放原文
+            failedAt.set(key, now());
+            options.log(`上下文要点整理失败（${SUMMARY_RETRY_MS / 60_000} 分钟后再试，这期间照旧放最近 80 条）：${error instanceof Error ? error.message : String(error)}`);
+        }).finally(() => {
+            clearTimeout(timer);
+            if (running?.key === key) running = undefined;
+        });
+        running = { key, done };
+    }
+
+    const summarize = ((older: readonly ChatMessage[]): SummaryState => {
+        const key = summaryKey(older);
+        if (cached?.key === key) return { ready: true, text: cached.text };
+        const failed = failedAt.get(key);
+        if (!running && (failed === undefined || now() - failed >= SUMMARY_RETRY_MS)) {
+            start(key, older);
+            options.log('上下文要点：切口挪了，后台在整理，这一轮照旧放最近 80 条');
         }
-        cached = { key, text };
-        return text;
+        return { ready: false };
+    }) as Summarizer;
+    summarize.idle = async () => {
+        while (running) await running.done;
     };
+    return summarize;
 }

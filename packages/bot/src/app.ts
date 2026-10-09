@@ -6,7 +6,7 @@
 // 收发由入口传进来（ADR 0008）：独立入口 main.ts 是自写的 OneBot 客户端（onebot.ts），Koishi 插件是 adapter-onebot；
 // 两边给的都是 NapCat 的原始 OneBot 数据，所以转文字（segmentsToText）、补回（findMissed）只有一份。
 
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { chatCompletion, forExtraction } from './llm.ts';
@@ -17,6 +17,7 @@ import { asleepSince, saidBedtimes } from './bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from './backfill.ts';
 import { segmentsToText, type MessageEvent } from './onebot.ts';
 import type { Responder, ResponderStatus } from './responder.ts';
+import { contextSummarizer } from './context-window.ts';
 import { createContactResponder as createPipeline, loadTierCard, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
 import { currentTierHistory, TierRecord } from './tier-record.ts';
 import { HindsightClient } from './memory/hindsight.ts';
@@ -168,6 +169,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     const sharedWorld = ledgerWorld && lifeQueue
         ? settlingWorld(ledgerWorld, lifeQueue, worldNow, lifeRunner ? now => { lifeRunner.fill(now); } : undefined)
         : ledgerWorld;
+    if (config.contextTurns) log(`最近几轮 + 要点（ADR 0043）：${config.memory ? `开：原文只放最近 ${config.contextTurns} 轮，更早的在后台整理成要点，没整理好的那一轮照旧最近 80 条；${config.contextContacts.length ? `只对 ${config.contextContacts.join("、")}` : "名单里开了记忆的都开"}` : "配置开了，但长期记忆没开，不开"}`);
     if (config.candidates > 1) log(`挑候选：他难过、说亲密话、收尾时一次生成 ${config.candidates} 个，按规则挑一个（ADR 0041）`);
     if (config.autonomousLife) log(`没人聊天时她一件件过日子：${lifeRunner ? '开（ADR 0040，影子模式：只记账，不进提示词）' : '配置开了，但没有带作息和世界的卡，不开'}`);
     // 没人找她的时候也每 ${LIFE_TICK_MS / 60_000} 分钟推一次，过完的时段尽快落账
@@ -286,6 +288,25 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     /** 名单外临时建了回复器的好友（状态页要显示称呼和档位） */
     const unlisted = new Map<number, Contact>();
 
+    /** 最近几轮 + 要点（ADR 0043）：开了 contextTurns、这个人开了记忆、在灰度名单里（空 = 都开）才给；整理好的要点存在 context/<QQ>.json */
+    function contextWindowFor(contact: Contact): Pick<ContactPipelineOptions, 'contextWindow'> {
+        if (!config.contextTurns || !memory || (config.contextContacts.length && !config.contextContacts.includes(contact.qq))) return {};
+        const dir = join(config.dataDir, 'context');
+        mkdirSync(dir, { recursive: true });
+        return {
+            contextWindow: {
+                turns: config.contextTurns,
+                step: 4,
+                summarize: contextSummarizer({
+                    names: { user: contact.name, char: cardFor(contact.tier).character.name },
+                    generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log })),
+                    log: message => log(`[${contact.qq}] ${message}`),
+                    file: join(dir, `${contact.qq}.json`),
+                }),
+            },
+        };
+    }
+
     function createContactResponder(contact: Contact): Responder {
         return createPipeline({
             contact,
@@ -297,6 +318,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             speechCheck: config.speechCheck,
             herDays: config.herDays,
             candidates: config.candidates,
+            ...contextWindowFor(contact),
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
             history,
             memory,

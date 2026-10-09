@@ -390,6 +390,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     /** 等她把这一轮（含插话之后的回复）都发完，或者停在「到点才看到」的等待上 */
     async function settle(): Promise<void> {
         for (;;) {
+            // 要点在后台整理（ADR 0043）：线上不等，模拟器每轮等它做完，结果可复现（切口刚挪的那一轮照旧放最近 80 条，下一轮起用要点）
+            await contextWindow?.summarize.idle();
             await responder.whenQuiet();
             const before = history.load(contact.qq).length;
             await sleep(300);

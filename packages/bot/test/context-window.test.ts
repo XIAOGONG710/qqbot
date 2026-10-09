@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { BotConfig } from '../src/config.ts';
 import { loadTierCard } from '../src/contact.ts';
-import { contextSummarizer, summaryRequest, turnCut, turnStarts } from '../src/context-window.ts';
+import { contextSummarizer, SUMMARY_RETRY_MS, summaryRequest, turnCut, turnStarts } from '../src/context-window.ts';
 import { recentChat } from '../src/memory/fading.ts';
 import type { ChatMessage, OpenAIMessage } from '../src/prompt.ts';
 import { renderReport } from '../src/sim/report.ts';
@@ -39,7 +39,7 @@ describe('最近几轮 + 要点（ADR 0043 离线实验）', () => {
         assert.equal(recentChat(chat, now, Infinity).chat.length, 100);
     });
 
-    test('整理要点的请求带日期和星期、只要事实；同一段只整理一次，失败不放', async () => {
+    test('整理要点的请求带日期和星期、只要事实；后台整理、回复不等，同一段只整理一次；失败过一会儿再试、超时算失败、整理好的存盘', async () => {
         const older = [u('我下周三下午两点面试', '2026-10-07T13:01:00.000Z'), a('可以啊你', '2026-10-07T13:02:00.000Z')];
         const request = summaryRequest(older, { user: '宝宝', char: '林梦瑶' });
         assert.match(request[0]!.content, /只写事实，不写语气/);
@@ -55,14 +55,54 @@ describe('最近几轮 + 要点（ADR 0043 离线实验）', () => {
             generate: async () => { calls++; return '好的，要点如下：\n- 宝宝 10月14日（周三）下午两点面试\n- 无'; },
             log: line => logs.push(line),
         });
-        const text = await summarize(older);
-        assert.equal(text, '[你们前面聊过的事（更早的聊天原文没放进来，这是要点，只作参考；和下面从记忆里想起来的对不上时，以这里为准）：\n- 宝宝 10月14日（周三）下午两点面试]');
-        assert.equal(await summarize([...older]), text);
-        assert.equal(calls, 1, '同一段不再整理');
-        assert.match(logs[0]!, /^上下文要点：较早的 2 条整理成 1 条（请求约 \d+ token）$/);
-        const failing = contextSummarizer({ names: { user: '宝宝', char: '林梦瑶' }, generate: async () => { throw new Error('超时'); }, log: line => logs.push(line) });
-        assert.equal(await failing(older), undefined);
-        assert.match(logs.at(-1)!, /上下文要点整理失败：超时/);
+        // 切口刚挪：不等模型，这一轮返回还没好，后台开始整理
+        assert.deepEqual(summarize(older), { ready: false });
+        assert.match(logs[0]!, /后台在整理，这一轮照旧放最近 80 条/);
+        assert.deepEqual(summarize(older), { ready: false }, '还在整理时不再开一次');
+        await summarize.idle();
+        const text = '[你们前面聊过的事（更早的聊天原文没放进来，这是要点，只作参考；和下面从记忆里想起来的对不上时，以这里为准）：\n- 宝宝 10月14日（周三）下午两点面试]';
+        assert.deepEqual(summarize(older), { ready: true, text });
+        assert.deepEqual(summarize([...older]), { ready: true, text });
+        assert.equal(calls, 1, '同一段只整理一次');
+        assert.match(logs.at(-1)!, /^上下文要点：较早的 2 条整理成 1 条（请求约 \d+ token，用了 [\d.]+ 秒）$/);
+
+        // 失败：这一段过 5 分钟再试，在那之前照旧放原文
+        let clock = 0;
+        let failures = 0;
+        const failing = contextSummarizer({
+            names: { user: '宝宝', char: '林梦瑶' }, now: () => clock,
+            generate: async () => { failures++; throw new Error('超时'); }, log: line => logs.push(line),
+        });
+        assert.deepEqual(failing(older), { ready: false });
+        await failing.idle();
+        assert.match(logs.at(-1)!, /上下文要点整理失败（5 分钟后再试，这期间照旧放最近 80 条）：超时/);
+        assert.deepEqual(failing(older), { ready: false });
+        assert.equal(failures, 1, '没到时间不再试');
+        clock += SUMMARY_RETRY_MS;
+        failing(older);
+        await failing.idle();
+        assert.equal(failures, 2, '过了 5 分钟再试');
+
+        // 模型一直不回：超时算失败，不一直挂着
+        const hanging = contextSummarizer({ names: { user: '宝宝', char: '林梦瑶' }, timeoutMs: 20, generate: () => new Promise(() => {}), log: line => logs.push(line) });
+        hanging(older);
+        await hanging.idle();
+        assert.match(logs.at(-1)!, /上下文要点整理失败.*超过 0 秒/);
+
+        // 整理好的存盘：重启以后同一段直接用，不再调模型（ADR 0039）
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-ctx-file-'));
+        try {
+            const file = join(dir, 'summary.json');
+            let saved = 0;
+            const first = contextSummarizer({ names: { user: '宝宝', char: '林梦瑶' }, file, generate: async () => { saved++; return '- 宝宝 10月14日（周三）下午两点面试'; }, log: () => {} });
+            first(older);
+            await first.idle();
+            const restarted = contextSummarizer({ names: { user: '宝宝', char: '林梦瑶' }, file, generate: async () => { saved++; return '- 不该再调'; }, log: () => {} });
+            assert.deepEqual(restarted(older), { ready: true, text });
+            assert.equal(saved, 1);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     test('模拟器 contextTurns：原文只放最近几轮，更早的要点放进提示词，报告里看得到；不传照旧最近 80 条', async () => {
@@ -111,15 +151,18 @@ describe('最近几轮 + 要点（ADR 0043 离线实验）', () => {
         assert.equal(plain.summaries.length, 0);
 
         const turns = await run({ turns: 3, step: 2 });
-        // 第一轮：事先 6 轮 + 这一轮 = 7 轮，留 3 轮、切口按 2 轮挪 → 切掉 4 轮
-        assert.ok(!chatOf(turns.prompts[0]!).includes('我下周三下午两点面试'));
-        assert.deepEqual(chatOf(turns.prompts[0]!).filter(c => c.startsWith('闲聊')), ['闲聊4', '闲聊5']);
-        const all = turns.prompts[0]!.map(m => m.content).join('\n');
+        // 第一轮：事先 6 轮 + 这一轮 = 7 轮，留 3 轮、切口按 2 轮挪 → 切掉 4 轮；但要点还在后台整理，这一轮不等，照旧放全部原文
+        assert.ok(chatOf(turns.prompts[0]!).includes('我下周三下午两点面试'), '切口刚挪的那一轮照旧放原文');
+        assert.ok(!turns.prompts[0]!.some(m => m.content.startsWith('[你们前面聊过的事')));
+        // 第二轮：8 轮，切口还在第 4 轮，要点已经整理好 → 原文只放最近几轮 + 要点
+        assert.ok(!chatOf(turns.prompts[1]!).includes('我下周三下午两点面试'));
+        assert.deepEqual(chatOf(turns.prompts[1]!).filter(c => c.startsWith('闲聊')), ['闲聊4', '闲聊5']);
+        const all = turns.prompts[1]!.map(m => m.content).join('\n');
         assert.match(all, /\[你们前面聊过的事（更早的聊天原文没放进来，这是要点，只作参考；和下面从记忆里想起来的对不上时，以这里为准）：\n- 宝宝 10月14日（周三）下午两点面试\]/);
         assert.match(turns.summaries[0]![1]!.content, /阿明：我下周三下午两点面试/);
-        // 第二轮：8 轮，切口没挪，同一段要点不再整理
+        // 同一段要点只整理一次
         assert.equal(turns.summaries.length, 1);
-        const say = turns.result.steps.find(s => s.kind === 'say')!;
+        const say = turns.result.steps.filter(s => s.kind === 'say')[1]!;
         assert.match(say.generations[0]!.summary!, /下午两点面试/);
         assert.ok(say.generations[0]!.tokens! > 0);
         assert.ok(say.logs.some(l => /较早的聊天原文 8 条不放（事实靠长期记忆和前面的要点）/.test(l)));
