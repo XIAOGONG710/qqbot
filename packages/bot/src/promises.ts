@@ -38,6 +38,8 @@ export interface HerPromise {
     episode: string;
     /** 约好的见面（ADR 0047）：几点、在哪；没说几点的没有 */
     meet?: Meetup;
+    /** 片段还没结束时先抽出来的约见面（ADR 0047 调整）：再先抽、整段抽时都被这一段的新结果整个替换（改时间、不去了跟着变） */
+    early?: true;
 }
 
 /** 约好的见面：time 是 HH:MM（她的一天里，凌晨的算第二天的日历日），minutes 是大概多久 */
@@ -219,8 +221,14 @@ function sameMeetup(a: HerPromise, b: HerPromise): boolean {
     return Boolean(a.meet && b.meet && a.date === b.date && a.meet.time === b.meet.time);
 }
 
-/** 最近几句里有约见面、也有时间的字眼（ADR 0047 调整）：只用来决定要不要先抽，抽不抽得出来看模型 */
-const MEET_WORDS = /见面|见个面|一起(?:去|吃|看|逛)|约(?:你|好|了)|门口|楼下|吃饭|电影|演唱会|找你|接你|等你/;
+/** 这一段先抽出来的约见面 */
+const earlyIn = (episode: string) => (p: HerPromise) => Boolean(p.early && p.episode === episode);
+
+/**
+ * 最近几句里有约见面、也有时间的字眼（ADR 0047 调整）：只用来决定要不要先抽，抽不抽得出来看模型。
+ * 光说「吃饭」「等你」不算（聊吃什么、「等你回来」太常见，每 5 分钟多调一次模型不值）
+ */
+const MEET_WORDS = /见面|见个面|一起(?:去|吃|看|逛)|约(?:你|好|了)|门口|楼下|吃个饭|吃顿|请你吃|电影|演唱会|找你|接你/;
 const MEET_TIME = /\d{1,2}\s*[:：点]|[一二两三四五六七八九十]+点|今晚|晚上|中午|下午|明天|后天|周[一二三四五六日天]|礼拜/;
 export function mentionsMeetup(messages: readonly { content: string }[]): boolean {
     const text = messages.slice(-8).map(m => m.content).join('\n');
@@ -241,15 +249,16 @@ export function forgotten(item: HerPromise, today: Date): boolean {
 
 /**
  * 这一轮要不要提醒：有日子的在那天到之后 DUE_DAYS 天，「下次」的在说的那段聊天之后；
- * 这一段聊天（最后一个片段）里她已经回了 SHOWN_REPLIES 次的，都不放了
+ * 这一段聊天（最后一个片段）里她已经回了 SHOWN_REPLIES 次的，都不放了。
+ * 这一段聊天里说的（含片段还没结束时先抽出来的约见面，ADR 0047 调整）都不放：刚说完的事不用再提醒她，免得把「六点东门见」再说一遍
  */
 export function duePromises(items: readonly HerPromise[], today: Date, chat: readonly TimedMessage[]): HerPromise[] {
     const current = splitEpisodes(chat.flatMap(m => (m.time ? [{ role: m.role, content: '', time: m.time }] : []))).at(-1);
     const replies = current ? current.messages.filter((m, i) => m.role === 'assistant' && current.messages[i - 1]?.role !== 'assistant').length : 0;
     if (replies >= SHOWN_REPLIES) return [];
-    return items.filter(item => (item.date
+    return items.filter(item => item.episode !== current?.id && (item.date
         ? daysFrom(item.date, today) >= 0 && daysFrom(item.date, today) <= DUE_DAYS
-        : item.episode !== current?.id));
+        : true));
 }
 
 /** 「10月5日」「今天」「昨天」（相对她的一天） */
@@ -344,6 +353,8 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         let changed = state.promises.length !== before || state.loops.length !== loopsBefore;
         const closed = splitEpisodes(options.history.load(contact.qq))
             .filter(e => now() - e.end.getTime() >= EPISODE_GAP_MS && state.extracted[e.id] !== true);
+        /** 这一轮没连上模型：后面的片段、还没结束的那段都不再抽 */
+        let offline = false;
         for (const episode of closed) {
             // 只有一方说话的片段、太早的片段（刚上线时）不用抽
             const said = formatDate(today(episode.end));
@@ -353,12 +364,15 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 continue;
             }
             let result: ExtractedPromises;
+            // 这一段先抽出来的约见面不给模型（整段抽是这一段的定论，抽完整个替换）
+            const pending = state.promises.filter(p => !earlyIn(episode.id)(p));
             try {
-                result = parsePromises(await options.extract(promisePrompt(episodeTranscript(episode, names), state.promises, names, state.loops)));
+                result = parsePromises(await options.extract(promisePrompt(episodeTranscript(episode, names), pending, names, state.loops)));
             } catch (error) {
                 if (error instanceof ModelUnreachable) {
                     // 没连上模型（断网、DNS）不算这一段的失败次数，不然断网一会儿她答应的事就丢了；后面的片段也连不上，这一轮先停
                     log(`片段 ${episode.id} 没连上模型，等网络好了再抽：${error.message}`);
+                    offline = true;
                     break;
                 }
                 const tries = (typeof state.extracted[episode.id] === 'number' ? state.extracted[episode.id] as number : 0) + 1;
@@ -387,6 +401,8 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                     loopLog(`了结「${loop.what}」`);
                 }
             }
+            const earlier = state.promises.filter(earlyIn(episode.id));
+            state.promises = state.promises.filter(p => !earlyIn(episode.id)(p));
             for (const [i, add] of result.add.entries()) {
                 const item: HerPromise = {
                     id: `p-${episode.start.getTime()}-${i + 1}`, what: add.what, ...(add.date ? { date: add.date } : {}), said, episode: episode.id, ...(add.meet ? { meet: add.meet } : {}),
@@ -397,6 +413,9 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 if (item.meet && state.promises.some(p => sameMeetup(p, item))) continue;
                 state.promises.push(item);
                 log(`记下「${item.what}」（${item.date ?? '下次'}${item.meet ? ` ${item.meet.time}${item.meet.where ? ` ${item.meet.where}` : ''}` : ''}）`);
+            }
+            for (const item of earlier) {
+                if (!state.promises.some(p => sameMeetup(p, item))) log(`划掉先记下的「${item.what}」（${item.date} ${item.meet!.time}；整段看下来改了或者不去了）`);
             }
             const found: [LoopKind, { what: string; date?: string }[]][] = [['waiting', result.waiting], ['unanswered', result.unanswered], ['unsettled', result.unsettled]];
             for (const [kind, list] of found) {
@@ -415,20 +434,31 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
             changed = false;
         }
         // 还没结束的这一段（ADR 0047 调整）：聊着聊着约了见面、马上就见，等不到片段结束（安静 45 分钟）再抽；
-        // 最近几句里有约见面和时间的字眼、又多了新消息，就先抽一次，只记约好的见面。片段结束后照常整段抽（同一天同一钟点的不重复记）
+        // 两个人都说过话、最近几句里有约见面和时间的字眼、又多了新消息，就先抽一次，只记约好的见面。
+        // 每次先抽都用新结果整个替换这一段先记下的（改时间、不去了跟着变）；片段结束后整段抽是定论，同样整个替换
         const open = splitEpisodes(options.history.load(contact.qq)).at(-1);
-        if (open && now() - open.end.getTime() < EPISODE_GAP_MS && state.extracted[open.id] !== true
-            && (state.early[open.id] ?? 0) < open.messages.length && open.messages.some(m => m.role === 'assistant') && mentionsMeetup(open.messages)) {
+        if (!offline && open && now() - open.end.getTime() < EPISODE_GAP_MS && state.extracted[open.id] !== true
+            && (state.early[open.id] ?? 0) < open.messages.length
+            && open.messages.some(m => m.role === 'assistant') && open.messages.some(m => m.role === 'user') && mentionsMeetup(open.messages)) {
             try {
-                const result = parsePromises(await options.extract(promisePrompt(episodeTranscript(open, names), state.promises, names, state.loops)));
+                const pending = state.promises.filter(p => !earlyIn(open.id)(p));
+                const result = parsePromises(await options.extract(promisePrompt(episodeTranscript(open, names), pending, names, state.loops)));
                 const said = formatDate(today(open.end));
+                const earlier = state.promises.filter(earlyIn(open.id));
+                const next: HerPromise[] = [];
                 for (const [i, add] of result.add.entries()) {
                     if (!add.meet || !add.date || daysFrom(add.date, day) > 0) continue;
-                    const item: HerPromise = { id: `p-${open.start.getTime()}-m${i + 1}`, what: add.what, date: add.date, said, episode: open.id, meet: add.meet };
-                    if (state.promises.some(p => sameMeetup(p, item))) continue;
-                    state.promises.push(item);
-                    log(`聊着就约了，先记下「${item.what}」（${item.date} ${add.meet.time}${add.meet.where ? ` ${add.meet.where}` : ''}）`);
+                    // id 带上这次先抽时的消息数：同一段第二次先抽不会和第一次撞
+                    const item: HerPromise = { id: `p-${open.start.getTime()}-m${open.messages.length}-${i + 1}`, what: add.what, date: add.date, said, episode: open.id, meet: add.meet, early: true };
+                    if (pending.some(p => sameMeetup(p, item)) || next.some(p => sameMeetup(p, item))) continue;
+                    // 和上次先记下的是同一个约就留着原来那条（id 不变）
+                    next.push(earlier.find(p => sameMeetup(p, item)) ?? item);
                 }
+                for (const item of earlier.filter(p => !next.includes(p))) log(`划掉先记下的「${item.what}」（${item.date} ${item.meet!.time}；改了或者不去了）`);
+                for (const item of next.filter(p => !earlier.includes(p))) {
+                    log(`聊着就约了，先记下「${item.what}」（${item.date} ${item.meet!.time}${item.meet!.where ? ` ${item.meet!.where}` : ''}）`);
+                }
+                state.promises = [...pending, ...next];
                 state.early[open.id] = open.messages.length;
             } catch (error) {
                 // 没连上模型下一轮再试；别的错这几条消息不再试，片段结束后照常整段抽
