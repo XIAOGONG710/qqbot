@@ -9,8 +9,11 @@
 
 import {
     describeSpeechIssue, inspectBookProgress, inspectSpeech, stripOpeners, strippable,
-    type BookProgressContext, type SpeechContext, type SpeechIssue,
+    type BookProgressContext, type NagKind, type SpeechContext, type SpeechIssue,
 } from './speech-check.ts';
+
+/** 叮嘱重复时重写说明里的说法 */
+const NAG_TOPIC: Record<NagKind, string> = { sleep: '早点睡', eat: '吃饭', warm: '穿衣喝水' };
 
 export interface ExitIssue {
     /** 回复里的第几行（从 0 开始，按 \n 分） */
@@ -22,6 +25,8 @@ export interface ExitIssue {
     repeat?: SpeechIssue['repeat'];
     count?: number;
     stripped?: string;
+    /** 叮嘱重复（speech-check.ts）：叮嘱的是哪一类 */
+    nag?: SpeechIssue['nag'];
     /** 进度数字：哪本书、资料里是多少 */
     book?: { title: string; expected: number; unit: string; total: boolean };
 }
@@ -102,12 +107,13 @@ export function rewriteNote(reply: string, issues: readonly ExitIssue[], userNam
                 case 'repeat': return i.repeat === 'opener'
                     ? `开头的「${i.match}」你最近几次回复已经用过 ${i.count} 次，换个开头`
                     : `里的「${i.match}」你最近几次回复已经说过 ${i.count} 次，换个说法`;
+                case 'nag': return `又在叮嘱${userName}${NAG_TOPIC[i.nag ?? 'sleep']}；这段聊天里你已经叮嘱过了，别再说一遍，接${userName}刚说的就行`;
                 case 'progress': return `「${i.match}」和你的进度对不上：《${i.book!.title}》你${progressFact(i.book!)}`;
             }
         });
         return `「${lines[line]!.trim()}」${[...new Set(why)].join('；')}`;
     });
-    const changesMeaning = issues.some(i => i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'contrast' || i.kind === 'service' || i.kind === 'progress');
+    const changesMeaning = issues.some(i => i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'contrast' || i.kind === 'service' || i.kind === 'progress' || i.kind === 'nag');
     return `[上一版回复没有发出去：${reasons.join('；')}。${changesMeaning ? '别的意思' : '意思'}不变，重写这次的回复，只输出要发的消息。]`;
 }
 

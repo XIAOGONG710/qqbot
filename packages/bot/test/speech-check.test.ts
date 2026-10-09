@@ -238,6 +238,37 @@ describe('说话的毛病：重复（和她最近几次回复比）', () => {
     });
 });
 
+describe('说话的毛病：叮嘱重复（10-09，一段聊天念叨一次是她，两次是复读机）', () => {
+    const at = (hm: string) => `2026-10-09T${hm}:00+08:00`;
+    const msgs = (...items: [string, 'user' | 'assistant', string][]): StoredMessage[] => items.map(([hm, role, content]) => ({ time: at(hm), role, content }));
+
+    test('这一段已经叮嘱过早点睡，这句又叮嘱：算；隔了 45 分钟以上的上一段不算', () => {
+        const history = msgs(
+            ['20:00', 'user', '我去写代码了'], ['20:01', 'assistant', '去吧，别熬太晚'],
+            ['20:40', 'user', '写完一块了，歇会儿'],
+        );
+        const issues = inspectSpeech('歇会儿吧\n早点睡啊', speechContext(history));
+        assert.deepEqual(issues.map(i => [i.kind, i.match, i.line]), [['nag', '早点睡', 1]]);
+        // 上一段（隔了一个多小时）叮嘱过，这一段第一次说：不算
+        const later = msgs(
+            ['20:00', 'user', '我去写代码了'], ['20:01', 'assistant', '去吧，别熬太晚'],
+            ['22:30', 'user', '写完了'],
+        );
+        assert.deepEqual(inspectSpeech('辛苦了\n早点睡啊', speechContext(later)), []);
+    });
+
+    test('他自己说要熬夜、说饿：再接一句是自然的，不算；不同类的叮嘱也不算', () => {
+        const history = msgs(['20:00', 'user', '我去写代码了'], ['20:01', 'assistant', '去吧，别熬太晚'], ['20:30', 'user', '今晚不睡了，通宵']);
+        assert.deepEqual(inspectSpeech('你疯了吧\n早点睡', speechContext(history)), []);
+        const eat = msgs(['20:00', 'user', '我去写代码了'], ['20:01', 'assistant', '去吧，别熬太晚'], ['20:30', 'user', '写完一块了']);
+        assert.deepEqual(inspectSpeech('记得吃点东西', speechContext(eat)), [], '叮嘱过睡觉，现在叮嘱吃饭是另一件事');
+    });
+
+    test('没有分段信息（旧的调用方）就不查', () => {
+        assert.deepEqual(inspectSpeech('早点睡', { recent: [['别熬太晚']], his: ['嗯'] }), []);
+    });
+});
+
 describe('模拟器的 speechClean 检查（假模型）', () => {
     const repoRoot = resolve(import.meta.dirname, '../../..');
     const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');

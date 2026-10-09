@@ -7,11 +7,13 @@
 //   误报评估见 docs/research/2026-10-06-dsh/contrast-eval.md（F 组：模拟器原文 6,511 行命中 15 行，0 误报）。
 // - 重复：和她最近 8 次回复比。开头的短句已经用过 2 次，或者 4 个字的片段已经说过 2 次（对方最近 3 条说过的话题词不算）。
 //   开头是「行」「哟」这类语气词的，直接去掉，不重写。
+// - 叮嘱重复（10-09）：同一段聊天（隔 45 分钟以上算新的一段）里已经叮嘱过他早点睡 / 吃饭 / 穿衣，这句又叮嘱同一类；他最近一句自己提到这件事的不算。
 
 import type { StoredMessage } from './history.ts';
+import { EPISODE_GAP_MS } from './memory/episodes.ts';
 import type { BookProgress, ReadingBook } from './her-days.ts';
 
-export type SpeechKind = 'service' | 'ledger' | 'blame' | 'contrast' | 'repeat';
+export type SpeechKind = 'service' | 'ledger' | 'blame' | 'contrast' | 'repeat' | 'nag';
 
 export interface SpeechIssue {
     /** 回复里的第几行（从 0 开始，按 \n 分） */
@@ -25,13 +27,51 @@ export interface SpeechIssue {
     count?: number;
     /** 重复的开头是语气词：去掉它之后的这一行（只剩语气词时是空串） */
     stripped?: string;
+    /** 叮嘱重复：叮嘱的是哪一类 */
+    nag?: NagKind;
 }
 
 /** 和哪些话比：她最近几次回复（旧到新，每次是发出去的几行），对方最近几条 */
 export interface SpeechContext {
     recent: readonly (readonly string[])[];
     his: readonly string[];
+    /** 这一段聊天里她已经说过的话（隔 45 分钟以上算新的一段）；不传就不查叮嘱重复 */
+    segment?: readonly string[];
 }
+
+export type NagKind = 'sleep' | 'eat' | 'warm';
+
+/** 叮嘱的几类说法（她的性格是爱念叨，一段聊天里念叨一次是她，念叨两次就是复读机） */
+const NAGS: Record<NagKind, { said: RegExp; his: RegExp }> = {
+    sleep: { said: /早点睡|早些睡|早睡|别熬|少熬|熬太晚|快去睡|赶紧睡|去睡吧|快睡吧/, his: /睡|熬|通宵|困|晚安/ },
+    eat: { said: /记得吃|按时吃|好好吃饭|别饿着|吃早饭|吃点东西|先吃饭/, his: /吃|饿|饭/ },
+    warm: { said: /多穿|别着凉|多喝点?热?水|注意保暖/, his: /冷|凉|感冒|降温|风大/ },
+};
+
+/** 这一行又叮嘱了这段聊天里已经叮嘱过的那一类？他最近一句自己提到这件事（「今晚不睡了」「好饿」）的不算 */
+function nagRepeat(text: string, context: SpeechContext): { kind: NagKind; match: string } | undefined {
+    if (!context.segment?.length) return undefined;
+    const latestHis = context.his.at(-1) ?? '';
+    for (const [kind, { said, his }] of Object.entries(NAGS) as [NagKind, typeof NAGS[NagKind]][]) {
+        const hit = said.exec(text);
+        if (!hit || his.test(latestHis)) continue;
+        if (context.segment.some(line => said.test(line))) return { kind, match: hit[0] };
+    }
+    return undefined;
+}
+
+/** 这一段聊天里她说过的话：从最后一条往回，隔了 EPISODE_GAP_MS 以上就停（和记忆切片段同一个数） */
+function segmentReplies(history: readonly StoredMessage[]): string[] {
+    let start = history.length;
+    while (start > 0) {
+        const here = Date.parse(history[start - 1]!.time);
+        const before = start > 1 ? Date.parse(history[start - 2]!.time) : NaN;
+        start--;
+        if (!Number.isNaN(here) && !Number.isNaN(before) && here - before >= EPISODE_GAP_MS) break;
+    }
+    return history.slice(start).filter(m => m.role === 'assistant').map(m => m.content);
+}
+
 
 /** 这一轮放进提示词的书和它当天的进度；focusIds 是最近消息明确在聊的书 */
 export interface BookProgressContext {
@@ -203,6 +243,11 @@ export function inspectSpeech(reply: string, context: SpeechContext, { repeatAt 
             // 引号里是别人的话（「面试官问『你还有什么想问的』」），不算她说的
             if (hit && !insideQuote(text, hit.index)) issues.push({ line, kind, match: hit[0].trim() });
         }
+        const nag = nagRepeat(text, context);
+        if (nag) {
+            issues.push({ line, kind: 'nag', match: nag.match, nag: nag.kind });
+            continue;
+        }
         const open = opener(text);
         if (open) {
             const count = recentOpeners.filter(s => s.has(open.key)).length;
@@ -312,7 +357,7 @@ export function speechContext(history: readonly StoredMessage[]): SpeechContext 
         }
     }
     const his = history.filter(m => m.role === 'user').slice(-HIS_MESSAGES).map(m => m.content);
-    return { recent: replies.slice(-RECENT_REPLIES), his };
+    return { recent: replies.slice(-RECENT_REPLIES), his, segment: segmentReplies(history) };
 }
 
 /** 日志里的说法（不带行号） */
@@ -323,6 +368,7 @@ export function describeSpeechIssue(issue: SpeechIssue): string {
         case 'blame': return `怪对方没说「${issue.match}」`;
         case 'contrast': return `对照的酸话「${issue.match}」`;
         case 'repeat': return issue.repeat === 'opener' ? `开头「${issue.match}」最近用过 ${issue.count} 次` : `「${issue.match}」最近说过 ${issue.count} 次`;
+        case 'nag': return `又叮嘱「${issue.match}」（这段已经叮嘱过）`;
     }
 }
 
