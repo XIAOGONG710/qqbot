@@ -1,9 +1,10 @@
 // 真实天气（ADR 0048，ADR 0021 的 W5）：定时从 Open-Meteo 取济南（在学校）、青岛（放假在家）逐小时的气温、降水、天况，存在数据目录。
 // 世界（world.ts）某一天有真实数据就用真实的，没有的（断网、模拟器、测试、开始取之前的日子）照旧按日期生成。
 // - 「下没下雨」只算到这一刻为止真实下过的钟头，不把预报里晚上的雨提前当成「下雨了」；预报只写成「预报几点后有雨」。
-// - 已经过去 FREEZE_HOURS 小时以上的钟头存下来就不再改：过去的事实不被后来取到的数据改写。
-// - 开始取的那天之前的日子不换（日记、记忆里已经按生成的天气写过）。
+// - 取的时候已经到了的钟头记成实况，存下就不再改；预报的永远不算「下过」：过去的事实不被后来取到的数据改写。
+// - 开始用的那天（第一次取到时还没过凌晨 5 点就是当天，否则第二天）之前的日子不换；断网整天没数据的过去日子事后也不补。
 
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 
@@ -14,8 +15,8 @@ export const PLACES: Record<Place, { name: string; latitude: number; longitude: 
     qingdao: { name: '青岛西海岸', latitude: 35.96, longitude: 120.19 },
 };
 
-/** 一个钟头：气温（℃）、降水（mm）、天况（WMO 代码） */
-export interface HourWeather { t: number; p: number; c: number }
+/** 一个钟头：气温（℃）、降水（mm，前一小时累计）、天况（WMO 代码）；o：取的时候这个钟头已经到了（实况） */
+export interface HourWeather { t: number; p: number; c: number; o?: 1 }
 
 interface Store {
     /** 第一次取到的日子（她的一天，YYYY-MM-DD）：之前的日子不换 */
@@ -54,12 +55,10 @@ export function realWeather(): RealWeather | undefined {
     return current;
 }
 
-/** 过去多少小时以上的钟头不再改 */
-export const FREEZE_HOURS = 3;
-/** 存多少天 */
-const KEEP_DAYS = 40;
 /** 降水到这么多（mm/小时）算下雨 */
 const RAIN_MM = 0.2;
+/** 一天至少有这么多个钟头的数据才按真实的 */
+const MIN_HOURS = 12;
 
 /** WMO 天况代码 → 说法 */
 export function weatherText(code: number): string {
@@ -81,28 +80,42 @@ export function weatherText(code: number): string {
     return '阴';
 }
 
-const wet = (hour: HourWeather) => hour.p >= RAIN_MM || (hour.c >= 51 && hour.c <= 99 && hour.c !== 45 && hour.c !== 48);
+const rainCode = (code: number) => code >= 51 && code <= 99;
 const pad = (n: number) => String(n).padStart(2, '0');
 /** 本地时间的 'YYYY-MM-DDTHH' */
 const hourKey = (time: Date) => `${time.getFullYear()}-${pad(time.getMonth() + 1)}-${pad(time.getDate())}T${pad(time.getHours())}`;
 const dateOf = (time: Date) => hourKey(time).slice(0, 10);
+const dayAfter = (date: string) => dateOf(new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)) + 1));
 
-/** 存下来的钟头 → 那天到 until 为止的天气（纯函数，测试直接用） */
+/**
+ * 第 slot 个钟头（slot 点到 slot+1 点）下没下雨。Open-Meteo 逐小时的降水是「前一小时累计」，所以看 slot+1 那个 key 的降水；天况看 slot 那个 key。
+ * observed：只看实况（o），预报的不算「下过」
+ */
+function wetSlot(hours: Readonly<Record<string, HourWeather>>, date: string, slot: number, observed: boolean): boolean {
+    const precip = hours[slot === 23 ? `${dayAfter(date)}T00` : `${date}T${pad(slot + 1)}`];
+    const code = hours[`${date}T${pad(slot)}`];
+    return Boolean((precip && (!observed || precip.o) && precip.p >= RAIN_MM) || (code && (!observed || code.o) && rainCode(code.c)));
+}
+
+/**
+ * 存下来的钟头 → 那天到 until 为止的天气（纯函数，测试直接用）。
+ * 下过雨的钟头只算实况、而且不晚于 until：预报的雨哪怕 until 在后面也不算下过（生活执行器会拿未来的时刻来看）
+ */
 export function dayFrom(hours: Readonly<Record<string, HourWeather>>, date: string, until: Date): DayWeather | undefined {
     const day = Array.from({ length: 24 }, (_, h) => hours[`${date}T${pad(h)}`]);
     const known = day.filter((hour): hour is HourWeather => Boolean(hour));
-    if (known.length < 12) return undefined;
+    if (known.length < MIN_HOURS) return undefined;
     const temps = known.map(hour => hour.t);
     const untilDate = dateOf(until);
     const nowHour = untilDate === date ? until.getHours() : date < untilDate ? 23 : -1;
-    const rainHours = day.flatMap((hour, h) => (hour && h <= nowHour && wet(hour) ? [h] : []));
+    const rainHours = Array.from({ length: nowHour + 1 }, (_, slot) => slot).filter(slot => wetSlot(hours, date, slot, true));
     // 「现在」取 until 那个钟头；她的一天过了零点还算这一天（凌晨 5 点前），那时的「现在」在第二天的数据里
-    const next = new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)) + 1);
-    const sameDay = untilDate === date || (untilDate === dateOf(next) && until.getHours() < 5);
+    const sameDay = untilDate === date || (untilDate === dayAfter(date) && until.getHours() < 5);
     const current = sameDay ? hours[hourKey(until)] : undefined;
-    const ahead = untilDate === date && nowHour < 23 && rainHours.length === 0
-        ? day.findIndex((hour, h) => h > nowHour && h <= 22 && hour !== undefined && wet(hour))
-        : -1;
+    let ahead = -1;
+    if (untilDate === date && rainHours.length === 0) {
+        for (let slot = nowHour + 1; slot <= 22 && ahead < 0; slot++) if (wetSlot(hours, date, slot, false)) ahead = slot;
+    }
     return {
         rain: rainHours.length > 0,
         low: Math.round(Math.min(...temps)),
@@ -110,22 +123,34 @@ export function dayFrom(hours: Readonly<Record<string, HourWeather>>, date: stri
         real: true,
         ...(current ? { now: { text: weatherText(current.c), temp: Math.round(current.t) } } : {}),
         rainHours,
-        ...(ahead > 0 ? { later: `预报 ${ahead} 点后有雨` } : {}),
+        ...(ahead >= 0 ? { later: `预报 ${ahead} 点后有雨` } : {}),
     };
 }
 
-/** 把新取到的钟头并进存着的：过去 FREEZE_HOURS 小时以上、已经存过的不改；太久的丢掉 */
+/**
+ * 把新取到的钟头并进存着的（ADR 0048 审查后）：
+ * - 取的时候已经到了的钟头记成实况（o）；存过的实况不再改，预报的可以被后来的覆盖；
+ * - 过去的日子（今天之前）如果存着的不到半天，说明那天断网、按生成的天气过了，不补（补了就是改写过去）；
+ * - 不删：世界每次从卡上的起始日重放到现在，删了的日子会退回生成的天气，把之后的猫粮、钱连锁改掉
+ */
 export function mergeHours(stored: Readonly<Record<string, HourWeather>>, fetched: Readonly<Record<string, HourWeather>>, fetchedAt: Date): Record<string, HourWeather> {
-    const freeze = hourKey(new Date(fetchedAt.getTime() - FREEZE_HOURS * 3_600_000));
-    const oldest = dateOf(new Date(fetchedAt.getTime() - KEEP_DAYS * 86_400_000));
-    const merged: Record<string, HourWeather> = {};
-    for (const [key, hour] of Object.entries(stored)) if (key.slice(0, 10) >= oldest) merged[key] = hour;
+    const nowKey = hourKey(fetchedAt);
+    const today = dateOf(fetchedAt);
+    const merged: Record<string, HourWeather> = { ...stored };
+    const storedPerDay = new Map<string, number>();
+    for (const key of Object.keys(stored)) storedPerDay.set(key.slice(0, 10), (storedPerDay.get(key.slice(0, 10)) ?? 0) + 1);
     for (const [key, hour] of Object.entries(fetched)) {
-        if (key.slice(0, 10) < oldest) continue;
-        if (merged[key] && key <= freeze) continue;
-        merged[key] = hour;
+        if (merged[key]?.o) continue;
+        const date = key.slice(0, 10);
+        if (date < today && (storedPerDay.get(date) ?? 0) < MIN_HOURS) continue;
+        merged[key] = key <= nowKey ? { t: hour.t, p: hour.p, c: hour.c, o: 1 } : { t: hour.t, p: hour.p, c: hour.c };
     }
     return merged;
+}
+
+/** 第一次取到数据时从哪天开始用真实的：凌晨 5 点前取到就是今天（她还没起床），之后取到就从明天起，免得今天一半生成一半真实 */
+export function firstRealDay(fetchedAt: Date): string {
+    return fetchedAt.getHours() < 5 ? dateOf(fetchedAt) : dayAfter(dateOf(fetchedAt));
 }
 
 /** Open-Meteo 的回复 → 钟头（它按 timezone=Asia/Shanghai 给本地时间 'YYYY-MM-DDTHH:00'） */
@@ -165,6 +190,8 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
     });
+    // 数据目录第一次用时还没有（审查第 1 条：没建目录时每次写盘都失败，真实天气一次都不生效）
+    mkdirSync(options.dir, { recursive: true });
     const path = (place: Place) => join(options.dir, `${place}.json`);
     const stores = new Map<Place, Store | undefined>();
     const load = (place: Place): Store | undefined => {
@@ -188,7 +215,7 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
                     const fetched = parseOpenMeteo(await fetchJson(url));
                     const at = new Date(now());
                     const old = load(place);
-                    const store: Store = { since: old?.since ?? dateOf(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
+                    const store: Store = { since: old?.since ?? firstRealDay(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
                     writeJsonAtomic(path(place), store);
                     stores.set(place, store);
                 } catch (error) {

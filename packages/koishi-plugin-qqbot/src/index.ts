@@ -76,6 +76,7 @@ export interface Config {
     speechCheck: boolean;
     herDays: boolean;
     autonomousLife: boolean;
+    realWeather: boolean;
     candidates: number;
     contextTurns: number;
     contextContacts: number[];
@@ -133,6 +134,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         autonomousLife: Schema.boolean().default(DEFAULTS.autonomousLife)
             .description('**没人聊天时她一件件过日子**（ADR 0040）：按作息、课表、饭点、世界里的事和一天的打算排行动，过完记进事件账。'
                 + '现在是影子模式：只记账，还不进提示词。要开着她自己的日子'),
+        realWeather: Schema.boolean().default(DEFAULTS.realWeather)
+            .description('**真实天气**（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成'),
         candidates: Schema.natural().min(1).max(5).default(DEFAULTS.candidates)
             .description('**挑候选**（ADR 0041）：他难过、说亲密话、收尾时一次生成几个回复、按规则挑一个（少说几句、不扯自己的事、不约「写完跟我说」）。1 是不挑；3 是这几种时候三倍的模型调用'),
         contextTurns: Schema.natural().max(40).default(DEFAULTS.contextTurns)
@@ -240,6 +243,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.speechCheck !== undefined ? { speechCheck: config.speechCheck } : {}),
         ...(config.herDays !== undefined ? { herDays: config.herDays } : {}),
         ...(config.autonomousLife !== undefined ? { autonomousLife: config.autonomousLife } : {}),
+        ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
         ...(config.contextTurns !== undefined ? { contextTurns: config.contextTurns } : {}),
         ...(config.contextContacts !== undefined ? { contextContacts: config.contextContacts } : {}),

@@ -96,7 +96,11 @@ function settle(plans: Plans | undefined, window: FreeWindow, planned: string, d
     if (period?.cramps === 'bad' && planned !== plans.rest) return { done: plans.rest, because: period.detail ? '肚子疼得厉害' : '身上不太舒服' };
     const outing = plans.outings.find(o => o.text === planned);
     // 真实天气（ADR 0048）：那个时段里（从开始前一个钟头起）下过才改；下午才下的雨不改上午的打算，还没到的时段不知道
-    const rained = facts.rainHours ? facts.rainHours.some(h => h >= from.getHours() - 1 && h < Math.max(to.getHours(), from.getHours() + 1)) : facts.rain;
+    // 钟头从那天零点算：晚上那段到第二天凌晨 2 点，按 to.getHours() 算会只剩一两个钟头（审查第 3 条）
+    const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+    const fromHour = Math.floor((from.getTime() - dayStart) / 3_600_000);
+    const endHour = Math.min(24, Math.ceil((to.getTime() - dayStart) / 3_600_000));
+    const rained = facts.rainHours ? facts.rainHours.some(h => h >= fromHour - 1 && h < Math.max(endHour, fromHour + 1)) : facts.rain;
     if (outing && rained) return { done: outing.indoors, because: '下雨了' };
     if (outing && facts.body?.cold) return { done: outing.indoors, because: '感冒了，不想出门' };
     if (outing && period?.cramps) return { done: outing.indoors, because: unwellWord };
