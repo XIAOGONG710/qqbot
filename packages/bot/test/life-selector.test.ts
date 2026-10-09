@@ -8,7 +8,7 @@ import { actionQueue, settlingWorld } from '../src/action-queue.ts';
 import { bodyAt } from '../src/body.ts';
 import { readingActivities } from '../src/her-days.ts';
 import { chooseAt, dayBusy, freeKind, lifeExecutor, type LifeSources } from '../src/life-selector.ts';
-import type { LifeEvent } from '../src/life-events.ts';
+import type { LifeEvent, LifeEventDraft } from '../src/life-events.ts';
 import { classesOn, formatDate, herDay } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { worldAt, worldState } from '../src/world.ts';
@@ -41,6 +41,39 @@ function live(dir: string, start: Date, end: Date, restartAt?: Date, sources: Li
         world.events();
     }
     return { events: world.events().filter(event => event.id.startsWith('life:')), logs };
+}
+
+/**
+ * 每 10 分钟推一次（和线上的 LIFE_TICK_MS 一样），途中：她说「睡了」（bedtime，说完就知道）、聊天里抽出来的事（chat，记账的时刻是 recordAt，
+ * 线上是聊天片段结束 45 分钟以后才抽）。返回她自己的行动、全部事件和日志
+ */
+function liveChat(dir: string, start: Date, end: Date, options: { restartAt?: Date; bedtime?: Date; chat?: { recordAt: Date; event: LifeEventDraft }[] } = {}) {
+    let clock = start.getTime();
+    const logs: string[] = [];
+    const recorded = new Set<string>();
+    const open = () => {
+        const ledger = worldState(herWorld, schedule, message => logs.push(message), join(dir, 'world'), () => clock);
+        const queue = actionQueue(join(dir, 'world', 'action-queue.json'), message => logs.push(message));
+        const world = settlingWorld(ledger, queue, () => clock);
+        const executor = lifeExecutor({
+            ...plain, worldAt: time => world.at(herWorld, schedule, time), events: () => ledger.events(),
+            bedtimes: () => (options.bedtime && clock >= options.bedtime.getTime() ? [options.bedtime.getTime()] : []),
+        }, queue, { since: start, log: message => logs.push(message) });
+        return { ledger, world, executor };
+    };
+    let { ledger, world, executor } = open();
+    for (; clock <= end.getTime(); clock += 600_000) {
+        if (options.restartAt && clock === options.restartAt.getTime()) ({ ledger, world, executor } = open());
+        for (const chat of options.chat ?? []) {
+            if (chat.recordAt.getTime() <= clock && !recorded.has(chat.event.id)) {
+                recorded.add(chat.event.id);
+                ledger.recordEvents([chat.event]);
+            }
+        }
+        executor.fill(new Date(clock));
+        world.events();
+    }
+    return { events: world.events().filter(event => event.id.startsWith('life:')), all: world.events(), logs };
 }
 
 describe('规则自主选择器 v1（ADR 0040）', () => {
@@ -160,4 +193,73 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
             rmSync(b, { recursive: true, force: true });
         }
     });
+});
+
+describe('聊天里说过的事改写还没过的（ADR 0042）', () => {
+    const iso = (text: string) => at(text).toISOString();
+    const withDir = (run: (dir: string) => void) => {
+        const dir = mkdtempSync(join(tmpdir(), 'life-chat-'));
+        try { run(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
+    };
+    const overlapping = (events: readonly LifeEvent[], from: string, to: string) =>
+        events.filter(e => Date.parse(e.startedAt) < at(to).getTime() && Date.parse(e.endedAt) > at(from).getTime());
+    const shape = (events: readonly LifeEvent[]) => events.map(e => [e.id, e.endedAt, e.result, e.subject]);
+
+    test('她 00:32 说「睡了」：正打着的游戏停在 00:32，从 00:32 睡到起床；没说的话照旧 02:00 睡', () => withDir(dir => {
+        const { events } = liveChat(dir, at('2026-10-12T21:00:00'), at('2026-10-13T10:00:00'), { bedtime: at('2026-10-13T00:32:00') });
+        const game = events.find(e => e.endedAt === iso('2026-10-13T00:32:00'));
+        assert.deepEqual([game?.kind, game?.result], ['leisure', 'succeeded']);
+        const sleep = events.filter(e => e.kind === 'sleep');
+        assert.deepEqual(sleep.map(e => [e.startedAt, e.endedAt]), [[iso('2026-10-13T00:32:00'), iso('2026-10-13T09:30:00')]]);
+        assert.deepEqual(overlapping(events, '2026-10-13T00:32:00', '2026-10-13T09:30:00').map(e => e.kind), ['sleep']);
+    }));
+
+    test('聊天里说 20:40 下楼喂了土豆（21:25 才抽出来）：正刷着的手机停在 20:40，喂完 20:50 接着刷；那十分钟不记别的', () => withDir(dir => {
+        const feed: LifeEventDraft = { id: 'chat:feed', kind: 'feed_cat', at: iso('2026-10-13T20:40:00'), source: 'conversation', result: 'succeeded' };
+        const { events, all } = liveChat(dir, at('2026-10-13T17:00:00'), at('2026-10-13T23:30:00'), { chat: [{ recordAt: at('2026-10-13T21:25:00'), event: feed }] });
+        assert.equal(all.find(e => e.id === 'chat:feed')?.result, 'succeeded');
+        const before = events.find(e => e.endedAt === iso('2026-10-13T20:40:00'));
+        assert.deepEqual([before?.kind, before?.result], ['leisure', 'succeeded']);
+        assert.ok(events.some(e => e.kind === 'leisure' && e.startedAt === iso('2026-10-13T20:50:00')), '喂完接着刷');
+        assert.deepEqual(overlapping(events, '2026-10-13T20:40:00', '2026-10-13T20:50:00'), []);
+    }));
+
+    test('聊天里说 21:40 作业写完了：正赶着的作业停在 21:40（做完了），之后回到原来的打算', () => withDir(dir => {
+        const done: LifeEventDraft = { id: 'chat:homework', kind: 'finish_homework', at: iso('2026-10-12T21:40:00'), source: 'conversation', result: 'succeeded' };
+        const { events, all } = liveChat(dir, at('2026-10-12T17:00:00'), at('2026-10-12T23:00:00'), { chat: [{ recordAt: at('2026-10-12T21:50:00'), event: done }] });
+        assert.equal(all.find(e => e.id === 'chat:homework')?.result, 'succeeded');
+        const study = events.find(e => e.endedAt === iso('2026-10-12T21:40:00'));
+        assert.deepEqual([study?.kind, study?.result], ['study', 'succeeded']);
+        const next = events.find(e => e.startedAt === iso('2026-10-12T21:40:00'));
+        assert.equal(next?.kind, 'leisure');
+        assert.deepEqual(overlapping(events, '2026-10-12T21:40:00', '2026-10-12T22:00:00').filter(e => e.kind === 'study'), []);
+    }));
+
+    test('聊天里说 21:00 作业写完了（21:50 才抽出来）：21:26 排上的赶作业从来没发生，去掉；21:26 起回到原来的打算', () => withDir(dir => {
+        const done: LifeEventDraft = { id: 'chat:homework', kind: 'finish_homework', at: iso('2026-10-12T21:00:00'), source: 'conversation', result: 'succeeded' };
+        const { events, logs } = liveChat(dir, at('2026-10-12T17:00:00'), at('2026-10-12T23:00:00'), { chat: [{ recordAt: at('2026-10-12T21:50:00'), event: done }] });
+        assert.ok(logs.some(line => line.includes('去掉 study')), '排着的赶作业去掉了');
+        assert.equal(events.find(e => e.startedAt === iso('2026-10-12T21:26:00'))?.kind, 'leisure');
+        assert.deepEqual(events.filter(e => e.kind === 'study' && Date.parse(e.startedAt) >= at('2026-10-12T21:26:00').getTime()), []);
+    }));
+
+    test('抽出来时那段已经落账了：过去的不改，两件并存', () => withDir(dir => {
+        const plainDir = join(dir, 'plain');
+        const lateDir = join(dir, 'late');
+        const feed: LifeEventDraft = { id: 'chat:feed', kind: 'feed_cat', at: iso('2026-10-13T20:40:00'), source: 'conversation', result: 'succeeded' };
+        const plainRun = liveChat(plainDir, at('2026-10-13T17:00:00'), at('2026-10-13T23:30:00')).events;
+        const late = liveChat(lateDir, at('2026-10-13T17:00:00'), at('2026-10-13T23:30:00'), { chat: [{ recordAt: at('2026-10-13T23:00:00'), event: feed }] }).events;
+        const settled = (events: readonly LifeEvent[]) => shape(events.filter(e => Date.parse(e.endedAt) <= at('2026-10-13T22:40:00').getTime()));
+        assert.deepEqual(settled(late), settled(plainRun));
+        assert.equal(overlapping(late, '2026-10-13T20:40:00', '2026-10-13T20:50:00').length, 1, '刷手机那一段早落账了，和喂猫并存');
+    }));
+
+    test('重启一致：说了「睡了」、聊天里说过喂猫，中途重启和不重启得到一样的事件账', () => withDir(dir => {
+        const feed: LifeEventDraft = { id: 'chat:feed', kind: 'feed_cat', at: iso('2026-10-12T20:20:00'), source: 'conversation', result: 'succeeded' };
+        const options = { bedtime: at('2026-10-13T00:32:00'), chat: [{ recordAt: at('2026-10-12T21:05:00'), event: feed }] };
+        const a = liveChat(join(dir, 'a'), at('2026-10-12T17:00:00'), at('2026-10-13T10:00:00'), options).events;
+        const b = liveChat(join(dir, 'b'), at('2026-10-12T17:00:00'), at('2026-10-13T10:00:00'), { ...options, restartAt: at('2026-10-13T00:40:00') }).events;
+        assert.deepEqual(shape(b), shape(a));
+        assert.ok(a.some(e => e.kind === 'sleep' && e.startedAt === iso('2026-10-13T00:32:00')));
+    }));
 });

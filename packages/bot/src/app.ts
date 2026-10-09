@@ -12,7 +12,8 @@ import { CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier }
 import { chatCompletion, forExtraction } from './llm.ts';
 import { acquireLock } from './lock.ts';
 import type { Log } from './log.ts';
-import { ChatHistory } from './history.ts';
+import { ChatHistory, type StoredMessage } from './history.ts';
+import { asleepSince, saidBedtimes } from './bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from './backfill.ts';
 import { segmentsToText, type MessageEvent } from './onebot.ts';
 import type { Responder, ResponderStatus } from './responder.ts';
@@ -30,7 +31,7 @@ import { worldState, type WorldNow } from './world.ts';
 import { actionQueue, settlingWorld } from './action-queue.ts';
 import { lifeExecutor } from './life-selector.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
-import { describeState, formatDate, herDay, stateAt } from './schedule.ts';
+import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -153,11 +154,15 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
         : undefined;
     // 没人聊天时她一件件过日子（ADR 0040，影子模式）：读世界之前先排到现在、结算到期的；从这次启动排起，以前排过的从事件账接着排
     const lifeQueue = config.autonomousLife && ledgerWorld ? actionQueue(join(config.dataDir, 'world', 'action-queue.json'), log) : undefined;
+    // 她在聊天里跟名单里谁说过「睡了」（ADR 0042）：聊天记录在下面才打开，打开之前当没说过（之后读世界时排着的会按它改）
+    let loadChat: ((qq: number) => StoredMessage[]) | undefined;
+    const bedtimes = (schedule: Schedule, now: number) => (loadChat ? saidBedtimes(config.contacts.map(c => loadChat!(c.qq)), schedule, now - 86_400_000) : []);
     const lifeRunner = lifeQueue && worldCard && ledgerWorld
         ? lifeExecutor({
             schedule: worldCard.schedule!, books: worldCard.books, ...(worldCard.herWorld!.plans ? { plans: worldCard.herWorld!.plans } : {}),
             worldAt: time => ledgerWorld.at(worldCard.herWorld!, worldCard.schedule!, time), events: () => ledgerWorld.events(),
             ...(worldCard.herWorld!.body ? { bodyAt: (time: Date) => bodyAt(worldCard.herWorld!.body!, worldCard.schedule!, time) } : {}),
+            bedtimes: () => bedtimes(worldCard.schedule!, worldNow()),
         }, lifeQueue, { since: new Date(worldNow()), log })
         : undefined;
     const sharedWorld = ledgerWorld && lifeQueue
@@ -204,6 +209,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     }
     // 换过档的联系人只看换档之后的记录：提示词、长期记忆、补回都一样（ADR 0003 后果一节）
     const history = currentTierHistory(chatHistory, tierRecord);
+    loadChat = qq => history.load(qq);
 
     // 长期记忆（Hindsight）：补回之后写一次，之后每隔一段时间把结束了的片段写进去
     const hindsight = config.memory ? new HindsightClient(config.memory.baseUrl, config.memory.timeoutMs) : undefined;
@@ -326,6 +332,8 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 log: message => log(`[${contact.qq}] ${message}`),
                 names: { user: contact.name, char: character.name },
                 skip: replySkip(character, config.moody),
+                // 她跟谁说过「睡了」就不主动找人了（ADR 0042）
+                asleep: now => Boolean(asleepSince(character.schedule!, bedtimes(character.schedule!, now), new Date(now))),
                 // 待跟进的事：用同一个模型配置抽（测试替换的 generate 也用在这里）
                 extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log })),
                 ...(pipeline?.now ? { now: pipeline.now } : {}),

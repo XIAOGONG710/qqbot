@@ -29,6 +29,7 @@ import { describeWorld, occupationAt, recapDay, recentWith, unavailableAt, world
 import { npcMentioned } from './npc.ts';
 import { dayPlan, describePlans, describeSlot, planNow } from './day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
+import { asleepSince, saidBedtimes } from './bedtime.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
 import { describePast, pastCue } from './biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from './people.ts';
@@ -138,6 +139,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const clean = (reply: string) => cleanUpReply(reply, names, character.regexScripts);
     const schedule = options.schedule ? character.schedule : undefined;
     const herSchedule = options.herDays ? character.schedule : undefined;
+    // 她说过「睡了」（ADR 0042）：对名单里谁说的都算，从说完那一刻起在睡——各个联系人看到的是同一个她（状态行、什么时候看到消息）
+    const everyone = [contact.qq, ...(options.contacts ?? []).map(other => other.qq).filter(qq => qq !== contact.qq)];
+    const asleepAt = (time: Date) => (schedule
+        ? asleepSince(schedule, saidBedtimes(everyone.map(qq => options.history.load(qq)), schedule, time.getTime() - DAY_MS), time)
+        : undefined);
     const extraFree = herSchedule ? readingActivities(character.books) : [];
     // 这一轮放了「在读的书」时，出口检查拿它核对进度数字。同一个回复器一次只生成一条，review 紧跟着这一轮的 buildPrompt
     let reading: BookProgressContext | undefined;
@@ -248,6 +254,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (today) log(`今天和别人聊过的 ${countLines(today)} 条（新一段对话，有由头可以含糊提一件）`);
             const days = describeDays(character.dates, time);
             let state = schedule ? stateAt(schedule, time, extraFree) : undefined;
+            const saidAsleep = state && state.activity.kind !== 'sleep' ? asleepAt(time) : undefined;
+            if (state && saidAsleep) {
+                state = { ...state, activity: { kind: 'sleep', until: saidAsleep.until } };
+                log(`她 ${saidAsleep.since.toTimeString().slice(0, 5)} 说过睡了：状态行按在睡觉`);
+            }
             if (herSchedule) options.onHerDay?.(time);
             // 她那边（ADR 0021）：跟着「她自己的日子」开，卡上有世界才有
             const around = herSchedule && character.herWorld
@@ -434,6 +445,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     const around = options.worldState?.at(character.herWorld, herSchedule, when) ?? worldAt(character.herWorld, herSchedule, when);
                     const busy = around ? unavailableAt(around, when) : undefined;
                     return busy ? { until: busy.until.getTime(), reason: busy.reason } : undefined;
+                },
+                asleep: moment => {
+                    const asleep = asleepAt(new Date(moment));
+                    return asleep ? { since: asleep.since.getTime(), until: asleep.until.getTime() } : undefined;
                 },
             }),
             typingMs: text => typingMs(text, character.pace),

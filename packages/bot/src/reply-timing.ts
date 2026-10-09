@@ -51,6 +51,11 @@ export interface TimingOptions {
     pace?: number;
     /** 这一刻在忙、看不了手机（ADR 0031：洗澡），忙到什么时候；不传就没有 */
     busy?: (now: number) => { until: number; reason: string } | undefined;
+    /**
+     * 她在聊天里说过「睡了」（ADR 0042，对谁说的都算）：从那一刻（since）起在睡，睡到 until；不传或没说过就按作息。
+     * 吵醒的规则照旧（男朋友连着发），一晚从她说完那一刻算起
+     */
+    asleep?: (now: number) => { since: number; until: number } | undefined;
 }
 
 /** 判断附和、收尾只要角色和内容（聊天记录、提示词里的消息都行） */
@@ -81,15 +86,19 @@ export function whenSeen(history: StoredMessage[], now: number, options: TimingO
     const seed = String(pending[0]!.messageId ?? pending[0]!.time);
     const state = stateAt(schedule, new Date(now));
     const { activity } = state;
+    // 她说过「睡了」（ADR 0042）：从说完那一刻起算睡着，不等作息上的入睡时刻
+    const said = options.asleep?.(now);
 
-    if (activity.kind === 'sleep') {
-        const sleepStart = atTime(new Date(now), schedule.sleep);
+    if (activity.kind === 'sleep' || said) {
+        // 说完「睡了」的那几条本身不算她醒着回过（since 之后才算）
+        const sleepStart = said ? said.since + 1 : atTime(new Date(now), schedule.sleep);
+        const until = activity.kind === 'sleep' ? activity.until.getTime() : said!.until;
         if (options.wakeable && !history.some(m => m.role === 'assistant' && Date.parse(m.time) >= sleepStart)) {
             const nightly = pending.map(m => Date.parse(m.time)).filter(t => t >= sleepStart);
             const woke = wakeUpTime(nightly);
             if (woke !== undefined) return { at: woke, reason: '睡着了，被连着来的消息吵醒', woken: true, maxBubbles: 1 };
         }
-        return { at: activity.until.getTime() + pick(seed, 'wake', AFTER_WAKE_MS), reason: '在睡觉，起床后看到' };
+        return { at: until + pick(seed, 'wake', AFTER_WAKE_MS), reason: said && activity.kind !== 'sleep' ? '说了睡了，在睡觉，起床后看到' : '在睡觉，起床后看到' };
     }
 
     if (activity.kind === 'class') {

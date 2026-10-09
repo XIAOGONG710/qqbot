@@ -25,6 +25,7 @@ import { actionQueue, settlingWorld } from '../action-queue.ts';
 import { bodyAt } from '../body.ts';
 import type { LifeEvent } from '../life-events.ts';
 import { lifeExecutor } from '../life-selector.ts';
+import { asleepSince, saidBedtimes } from '../bedtime.ts';
 import { parseDuration, VirtualClock, type Checks, type LifeChecks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
 /** 模拟的联系人用的 QQ 号（虚构） */
@@ -186,6 +187,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 schedule: character.schedule, books: character.books, ...(herWorld.plans ? { plans: herWorld.plans } : {}),
                 worldAt: time => ledger.at(herWorld, character.schedule!, time), events: () => ledger.events(),
                 ...(herWorld.body ? { bodyAt: (time: Date) => bodyAt(herWorld.body!, character.schedule!, time) } : {}),
+                // 她跟谁说过「睡了」（ADR 0042）：和 app.ts 一样看名单里所有人的聊天记录（restart 之后 history 是新读的那一份）
+                bedtimes: () => saidBedtimes([contact, ...others].map(person => history.load(person.qq)), character.schedule!, clock.now() - 86_400_000),
             }, queue, { since: new Date(scenario.start), log })
             : undefined;
         if (scenario.autonomous && !executor) throw new Error('autonomous 要开着作息、她自己的日子，卡上要有世界');
@@ -348,6 +351,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             dir: join(dataDir, 'proactive'),
             log,
             skip: replySkip(character, scenario.moody, scenario.moodyChance),
+            asleep: now => Boolean(asleepSince(character.schedule!, saidBedtimes([contact, ...others].map(person => history.load(person.qq)), character.schedule!, now - 86_400_000), new Date(now))),
             now: clock.now,
             waitUntil: clock.waitUntil,
             names,

@@ -52,6 +52,8 @@ export interface PlannerDeps {
     names: MacroNames;
     /** 回复器的「这一串不回」（contact.ts 的 replySkip）：看心情没回的那串不挡主动消息 */
     skip?: (history: StoredMessage[]) => string | undefined;
+    /** 她在聊天里跟谁说过「睡了」、还没到起床（ADR 0042）：不主动 */
+    asleep?: (now: number) => boolean;
 }
 
 export interface PlannerStatus {
@@ -213,6 +215,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     const input = (): ProactiveInput => ({
         qq: contact.qq, schedule: deps.schedule, settings: deps.settings, dates: deps.dates,
         history: deps.history.load(contact.qq), records, mode: deps.mode, followUps, ...(deps.skip ? { skip: deps.skip } : {}),
+        ...(deps.asleep ? { asleep: deps.asleep } : {}),
     });
 
     function describe(candidate: Candidate): string {

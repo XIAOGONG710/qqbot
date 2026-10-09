@@ -87,6 +87,8 @@ export interface ProactiveInput {
     followUps?: readonly FollowUp[];
     /** 没回的那串按「不回」处理了没有（看心情不回，ADR 0013）：处理了就不算「有没回的消息」；和回复器用同一个判断 */
     skip?: (history: StoredMessage[]) => string | undefined;
+    /** 她在聊天里跟谁说过「睡了」、这会儿还没到起床（ADR 0042）：和作息上在睡一样，不主动 */
+    asleep?: (now: number) => boolean;
 }
 
 const MIN = 60_000;
@@ -307,6 +309,7 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
     const { schedule, history } = input;
     const state = stateAt(schedule, new Date(now));
     if (state.activity.kind === 'sleep') return '她在睡觉';
+    if (input.asleep?.(now)) return '她说过睡了';
     if (state.activity.kind === 'class') return '她在上课';
     const special = candidate.occasion === 'dates';
     const day = herDay(schedule, new Date(now));
