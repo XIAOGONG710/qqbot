@@ -36,7 +36,7 @@ describe('模拟器：场景文件', () => {
     });
 
     test('新场景文件都读得进来（ADR 0018、0020）', () => {
-        for (const name of ['memory-fading', 'her-promises', 'memory-weeks', 'disclosure-boyfriend', 'disclosure-classmate', 'life-events', 'conversation-naturalness', 'promise-vs-topic', 'life-72h-auto']) {
+        for (const name of ['memory-fading', 'her-promises', 'memory-weeks', 'disclosure-boyfriend', 'disclosure-classmate', 'life-events', 'conversation-naturalness', 'promise-vs-topic', 'life-72h-auto', 'long-context-memory']) {
             assert.ok(loadScenario(join(repoRoot, `packages/bot/sim/${name}.json`)).steps.length > 0, name);
         }
     });
@@ -408,6 +408,33 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             const chat = (m: OpenAIMessage[]) => m.filter(x => x.role === 'user').map(x => x.content).join('|');
             assert.equal(chat(seen[1]!), '在吗');
             assert.equal(chat(seen[2]!), '在吗|铁锅又找我茬');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('长上下文场景（DSH 复核 ADR 0036 P2-8）：开场就超过 80 条；她照抄事先聊天里的收尾，每一轮 noRepeat 都不过', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-long-'));
+        const hindsight: SimHindsight = {
+            putBank: async () => {}, retain: async () => {}, recall: async () => [],
+            getMentalModel: async () => undefined, createMentalModel: async () => {}, updateMentalModel: async () => {},
+            activeOperations: async () => [], operationStatus: async () => 'completed', refreshMentalModel: async () => 'op-1', deleteBank: async () => {},
+        };
+        const prompts: OpenAIMessage[][] = [];
+        // 每次都回事先聊天里她说过的那句收尾
+        const generate = async (messages: OpenAIMessage[]) => (isDiary(messages) ? '日记' : isPromises(messages) ? '{"add":[],"resolved":[]}' : (prompts.push(messages), '去吧去吧，别熬太晚了啊'));
+        try {
+            const scenario = loadScenario(join(repoRoot, 'packages/bot/sim/long-context-memory.json'));
+            const result = await runScenario(scenario, { runId: 'long', dataDir: dir, card, llm, prompt, hindsight, generate, settle: { quietMs: 50, maxMs: 200 } });
+            const all = result.steps.flatMap(s => s.checks);
+            assert.ok(all.some(c => c.pipeline && c.ok && c.text.includes('较早的聊天原文')), '开场就有原文不放');
+            const repeats = all.filter(c => c.text.startsWith('没把这次运行里说过的话再说一遍'));
+            assert.equal(repeats.length, 9);
+            assert.ok(repeats.every(c => !c.ok && c.text.includes('前面的「别熬太晚」')));
+            // 放进提示词的原文最多 80 条（ADR 0036 决策 3）：10-07 说的面试不在里面
+            const said = (m: OpenAIMessage[]) => m.map(x => x.content).join('\n');
+            assert.ok(!said(prompts[0]!).includes('下周三下午两点有个面试'));
+            assert.ok(said(prompts[0]!).includes('电饭锅煮糊了'));
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
