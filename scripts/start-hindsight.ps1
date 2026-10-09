@@ -89,8 +89,14 @@ $env:HINDSIGHT_API_RERANKER_PROVIDER = 'rrf'
 $env:HINDSIGHT_API_TEXT_SEARCH_EXTENSION = 'pgroonga'
 # Cap the connection pools (default 100): memory sims opened dozens of connections at once, and on this 6 GB machine
 # PGroonga then failed to map memory inside one of them, which kept failing for two hours (docs/hindsight.md, "坏连接").
-if (-not $env:HINDSIGHT_API_DB_POOL_MAX_SIZE) { $env:HINDSIGHT_API_DB_POOL_MAX_SIZE = '16' }
-if (-not $env:HINDSIGHT_API_READ_DB_POOL_MAX_SIZE) { $env:HINDSIGHT_API_READ_DB_POOL_MAX_SIZE = '16' }
+# 16 was still too many: every PGroonga connection holds about 200 MB, and on 10-09 20:44 one memory sim filled the
+# pool to 16 idle connections (Postgres 4.2 GB, 125 MB commit headroom left). 6 is plenty for the bot plus one sim batch;
+# requests queue for a connection instead of opening more. No parallel query workers either: each one is another backend.
+if (-not $env:HINDSIGHT_API_DB_POOL_MIN_SIZE) { $env:HINDSIGHT_API_DB_POOL_MIN_SIZE = '2' }
+if (-not $env:HINDSIGHT_API_DB_POOL_MAX_SIZE) { $env:HINDSIGHT_API_DB_POOL_MAX_SIZE = '6' }
+if (-not $env:HINDSIGHT_API_READ_DB_POOL_MIN_SIZE) { $env:HINDSIGHT_API_READ_DB_POOL_MIN_SIZE = '1' }
+if (-not $env:HINDSIGHT_API_READ_DB_POOL_MAX_SIZE) { $env:HINDSIGHT_API_READ_DB_POOL_MAX_SIZE = '4' }
+if (-not $env:HINDSIGHT_API_DB_MAX_PARALLEL_WORKERS_PER_GATHER) { $env:HINDSIGHT_API_DB_MAX_PARALLEL_WORKERS_PER_GATHER = '0' }
 
 # The watchdog drops connections whose PGroonga failed to initialize; the pool reconnects (scripts/hindsight-watchdog.mjs).
 $watchdogLog = Join-Path $root 'watchdog.log'

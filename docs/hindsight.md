@@ -217,7 +217,8 @@ uv pip install --python runtime\hindsight\venv\Scripts\python.exe --require-hash
 - **坏连接**（2026-10-08 00:25–02:10 线上）：内存吃紧时（当时在跑带记忆的模拟批次和全量测试，6 GB 的机器提交内存到顶），某个 Postgres 连接里 PGroonga 初始化失败
   （`failed to mmap` / `[alloc][calloc] failed`），这个连接以后每次查询都报 `pgroonga: already tried to initialize and failed`。Hindsight 的连接池一直复用它，
   线上的召回、写入、日记时好时坏将近两小时，直到那个连接被回收。两处应对（`scripts/start-hindsight.ps1`）：
-  - 连接池上限从默认 100 降到 16（`HINDSIGHT_API_DB_POOL_MAX_SIZE`、`HINDSIGHT_API_READ_DB_POOL_MAX_SIZE`，环境变量里设了就用设的）；
+  - 连接池上限从默认 100 降到 6（读池 4），最少 2（读池 1），不开并行查询进程（`HINDSIGHT_API_DB_POOL_MAX_SIZE` / `_MIN_SIZE`、`HINDSIGHT_API_READ_DB_POOL_*`、`HINDSIGHT_API_DB_MAX_PARALLEL_WORKERS_PER_GATHER=0`，环境变量里设了就用设的）。
+    10-09 先降到 16，晚上 20:44 一批带记忆的模拟就把池子开满到 16 个空闲连接：每个 PGroonga 连接约 200 MB，Postgres 涨到 4.2 GB，提交内存只剩 125 MB；
   - 守护 `scripts/hindsight-watchdog.mjs` 随 Hindsight 一起起、一起停：每 30 秒读 Postgres 日志的新内容，报过这个错的连接用 `pg_terminate_backend` 断开，连接池会重连好的。
     只断报过错的连接；输出在 `runtime/hindsight/watchdog.log`。单独跑：`node scripts/hindsight-watchdog.mjs [Postgres 日志目录]`。
   模拟器批次仍然一次只跑一批（锁 `%TEMP%\qqbot-hindsight-sim.lock`）。
