@@ -54,8 +54,8 @@ export interface BookProgressIssue {
 export const RECENT_REPLIES = 8;
 /** 对方最近几条里说过的片段不算重复 */
 const HIS_MESSAGES = 3;
-/** 用过几次算重复（这次是第三次） */
-const REPEAT_AT = 2;
+/** 用过几次算重复（这次是第三次）；出口检查用这个，模拟器评估时可以传别的（inspectSpeech 的 repeatAt） */
+export const REPEAT_AT = 2;
 
 const CLAUSE = '[^，。！？、,.!?\\s]';
 const NOT_ME = '(?<![我俺])';
@@ -187,7 +187,7 @@ function grams(text: string): Set<string> {
     return set;
 }
 
-export function inspectSpeech(reply: string, context: SpeechContext): SpeechIssue[] {
+export function inspectSpeech(reply: string, context: SpeechContext, { repeatAt = REPEAT_AT }: { repeatAt?: number } = {}): SpeechIssue[] {
     const issues: SpeechIssue[] = [];
     const lines = reply.split('\n');
     const recentOpeners = context.recent.map(r => new Set(r.map(l => opener(l)?.key).filter(Boolean)));
@@ -206,7 +206,7 @@ export function inspectSpeech(reply: string, context: SpeechContext): SpeechIssu
         const open = opener(text);
         if (open) {
             const count = recentOpeners.filter(s => s.has(open.key)).length;
-            if (count >= REPEAT_AT) {
+            if (count >= repeatAt) {
                 issues.push({ line, kind: 'repeat', repeat: 'opener', match: open.key, count, ...(open.stripped !== undefined ? { stripped: open.stripped } : {}) });
                 continue;
             }
@@ -214,7 +214,7 @@ export function inspectSpeech(reply: string, context: SpeechContext): SpeechIssu
         for (const gram of grams(text)) {
             if (hisGrams.has(gram)) continue;
             const count = recentGrams.filter(s => s.has(gram)).length;
-            if (count >= REPEAT_AT) {
+            if (count >= repeatAt) {
                 issues.push({ line, kind: 'repeat', repeat: 'phrase', match: gram, count });
                 break;
             }

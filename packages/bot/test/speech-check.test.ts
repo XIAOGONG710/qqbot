@@ -193,6 +193,8 @@ describe('说话的毛病：重复（和她最近几次回复比）', () => {
     });
     test('只用过 1 次不算；「行不行」「好看」不是语气词', () => {
         assert.deepEqual(inspectSpeech('行，你喝', { recent: recent('行吧你待着', '你喝吧'), his: [] }), []);
+        // 模拟器评估用的门槛（DSH 复核 ADR 0036 P2-6）：降到 1 次时这一句就算，出口检查还是 2 次
+        assert.deepEqual(inspectSpeech('行，你喝', { recent: recent('行吧你待着', '你喝吧'), his: [] }, { repeatAt: 1 }).map(i => [i.match, i.count]), [['行', 1]]);
         assert.equal(opener('行不行啊你'), undefined);
         assert.equal(opener('好看吗'), undefined);
         assert.deepEqual(opener('行吧'), { key: '行', stripped: '' });

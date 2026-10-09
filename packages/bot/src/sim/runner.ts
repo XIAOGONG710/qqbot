@@ -26,6 +26,7 @@ import { bodyAt } from '../body.ts';
 import type { LifeEvent } from '../life-events.ts';
 import { lifeExecutor } from '../life-selector.ts';
 import { asleepSince, saidBedtimes } from '../bedtime.ts';
+import { repeatedSentences } from './repeats.ts';
 import { parseDuration, VirtualClock, type Checks, type LifeChecks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
 /** 模拟的联系人用的 QQ 号（虚构） */
@@ -558,8 +559,9 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 log(hindsightDown ? 'Hindsight 停了' : 'Hindsight 恢复');
             } else if ('check' in step) {
                 const { proactive, life, ...rest } = step.check;
+                const before = lastSay ? historyBefore(history.load(contact.qq), lastSay) : [];
                 current.checks = Object.keys(rest).length === 0 ? []
-                    : lastSay ? runChecks(rest, lastSay, options.card.character.banned, speechContextBefore(history.load(contact.qq), lastSay))
+                    : lastSay ? runChecks(rest, lastSay, options.card.character.banned, speechContext(before), before)
                         : [{ ok: false, text: '前面没有 say 步骤' }];
                 if (life) current.checks.push(...lifeChecks(life, (sharedWorld?.events() ?? []).filter(event => event.id.startsWith('life:'))));
                 if (proactive) {
@@ -711,8 +713,8 @@ export function proactiveChecks(checks: ProactiveChecks, steps: StepRecord[], ca
     return results;
 }
 
-/** speechClean 用的：这一步她发的话之前的聊天记录（她前面几次回复、对方最近几条） */
-export function speechContextBefore(history: readonly StoredMessage[], step: StepRecord): SpeechContext {
+/** 这一步她发的话之前的聊天记录（speechClean 取其中最近几次，noRepeat 用全部；这一步她没发就是全部） */
+export function historyBefore(history: readonly StoredMessage[], step: StepRecord): StoredMessage[] {
     const first = step.bubbles[0]?.text;
     let end = history.length;
     if (first !== undefined) {
@@ -723,10 +725,13 @@ export function speechContextBefore(history: readonly StoredMessage[], step: Ste
             }
         }
     }
-    return speechContext(history.slice(0, end));
+    return history.slice(0, end);
 }
 
-export function runChecks(checks: Checks, step: StepRecord, banned: readonly string[] = [], speech?: SpeechContext): CheckResult[] {
+/** speech：speechClean 比的她最近几次回复、对方最近几条；earlier：这一步她发的话之前的全部聊天（noRepeat），都从 historyBefore 来 */
+export function runChecks(
+    checks: Checks, step: StepRecord, banned: readonly string[] = [], speech?: SpeechContext, earlier: readonly Pick<StoredMessage, 'role' | 'content'>[] = [],
+): CheckResult[] {
     const results: CheckResult[] = [];
     const last = step.generations.at(-1);
     const recall = last?.recall ?? '';
@@ -801,6 +806,11 @@ export function runChecks(checks: Checks, step: StepRecord, banned: readonly str
         const issues = inspectSpeech(replies, speech ?? { recent: [], his: [] });
         const found = issues.map(i => `第 ${i.line + 1} 行${describeSpeechIssue(i)}`).join('、');
         results.push({ ok: issues.length === 0, text: `说话没毛病（助手腔、算账、怪对方没说、重复）${found ? `（${found}）` : ''}` });
+    }
+    if (checks.noRepeat) {
+        const hits = repeatedSentences(replies, earlier);
+        const found = hits.map(hit => `「${hit.said}」≈ 前面的「${hit.before}」`).join('、');
+        results.push({ ok: hits.length === 0, text: `没把这次运行里说过的话再说一遍${found ? `（${found}）` : ''}` });
     }
     const first = step.bubbles[0]?.time;
     if (checks.noReply) results.push({ ok: step.bubbles.length === 0, text: `她没回（实际 ${step.bubbles.length} 条）` });
