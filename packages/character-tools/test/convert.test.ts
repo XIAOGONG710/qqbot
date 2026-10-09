@@ -154,6 +154,26 @@ test('每日心情和在读的书：只给五个熟悉档位，TextField 和情�
     assert.equal(booksForTier(source, 'boyfriend')!.find(b => b.id === 'yaowu')!.total, undefined, '药屋没有可靠总卷数');
 });
 
+test('已读书库只进熟人档世界书，每本只用书名和别名触发', () => {
+    const built = buildCharacter(source);
+    const entries = (tier: string) => Object.values(built.tiers.find(t => t.tier === tier)!.lorebook.entries)
+        .filter(entry => entry.comment.includes('read-book-'));
+    for (const tier of ['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate']) {
+        const read = entries(tier);
+        assert.equal(read.length, 8, tier);
+        const saye = read.find(entry => entry.comment.includes('read-book-saye'))!;
+        assert.deepEqual(saye.key, ['撒野']);
+        assert.match(saye.content, /你读过的书·《撒野》/);
+        assert.match(saye.content, /没有写的细节就说记不清了/);
+        const weizhuang = read.find(entry => entry.comment.includes('read-book-weizhuang'))!;
+        assert.deepEqual(weizhuang.key, ['伪装学渣', '伪渣']);
+        assert.ok(!weizhuang.key.includes('贺朝'), '人物名不能触发整本书');
+    }
+    assert.equal(entries('stranger').length, 0);
+    assert.equal(entries('unlisted').length, 0);
+    assert.ok(!JSON.stringify(card('boyfriend').data.extensions.qqbot?.books).includes('偏偏宠爱'), '已读书库不常驻卡片');
+});
+
 test('心情和书的资料写错会报错；两个新文件缺失时仍能读旧资料形状', () => {
     const four = { persona: copy().persona, scenes: copy().scenes, schedule: copy().schedule, tiers: copy().tiers };
     assert.deepEqual(Object.keys(checkSource(four)), ['persona', 'scenes', 'schedule', 'tiers']);
@@ -166,6 +186,9 @@ test('心情和书的资料写错会报错；两个新文件缺失时仍能读�
     const unknownTier = copy();
     unknownTier.books!.books[0]!.nodes[0]!.tiers = ['teacher'];
     assert.throws(() => checkReferences(unknownTier), /books\.yml .*没有档位 teacher/);
+    const unknownReadTier = copy();
+    unknownReadTier.books!.read_books![0]!.tiers = ['teacher'];
+    assert.throws(() => checkReferences(unknownReadTier), /read_books.*没有档位 teacher/);
 });
 
 test('隐私检查覆盖心情和书；受限出版节点不漏进同学档', () => {

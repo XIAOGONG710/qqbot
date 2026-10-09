@@ -7,7 +7,7 @@
 //   schedule.yml  作息：几点睡、课表、假期、调休、空闲活动，和它们给哪些档位
 //   tiers.yml     档位：对方是谁、说话方式、示例对话、禁用词……；顺序就是输出顺序
 //   moods.yml     每日心情：权重、按当天课表调权重的条件、各档怎么说
-//   books.yml     在读的书：资料、进度、情节节点、没读到的关键词
+//   books.yml     在读的书 + 已读书库：前者算进度，后者只在说到书名时进世界书
 //   world.yml     她的世界（ADR 0021）：天气、楼下的猫、快递、作业、相机基金、和家里视频、学校里的小事（world-source.ts）
 //
 // 档位一律写名字（boyfriend、classmate……），不再用旧 tiers.toml 的一字母代号。
@@ -194,8 +194,29 @@ export interface BookSource {
     note?: string;
 }
 
+/** 已经读完的书：不算进度，只有书名或别名命中时才作为世界书资料进入提示词。 */
+export interface ReadBookSource {
+    id: string;
+    title: string;
+    aliases: string[];
+    author: string;
+    kind: string;
+    platform: string;
+    status: string;
+    tiers: string[];
+    attitude: string;
+    /** 她确实记得、可以聊的要点。 */
+    points: string[];
+    /** 明确没看过或没有资料的边界。 */
+    avoid: string[];
+    /** 审核来源，不进提示词。 */
+    sources: string[];
+    note?: string;
+}
+
 export interface BooksSource {
     books: BookSource[];
+    read_books?: ReadBookSource[];
     note?: string;
 }
 
@@ -254,7 +275,7 @@ const HEADERS: Record<keyof typeof SOURCE_FILES, string> = {
     schedule: '# 林梦瑶的作息（ADR 0007、0010）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：说明写在 note 里。\n',
     tiers: '# 林梦瑶的档位（ADR 0003、0010）。顺序就是输出顺序。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留。\n',
     moods: '# 林梦瑶的每日心情（ADR 0015）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：说明写在 note 里。\n',
-    books: '# 林梦瑶在读的书（ADR 0015）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：来源和取用规则写在字段或 note 里。\n',
+    books: '# 林梦瑶的书籍资料（ADR 0015）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：来源和取用规则写在字段或 note 里。\n',
     world: '# 林梦瑶的世界（ADR 0021）：会自己变的东西和推进规则。packages/character-tools 会改写这个文件，注释不会保留：说明写在 note 里。\n',
     biography: '# 林梦瑶的过去（ADR 0022），素材出自 characters/linmengyao/biography/autobiography-v1.md（作者定稿）。packages/character-tools 会改写这个文件，注释不会保留：说明写在 note 里。\n',
 };
@@ -709,7 +730,7 @@ function checkMoods(raw: unknown): MoodsSource {
 function checkBooks(raw: unknown): BooksSource {
     const root = new Checker('books.yml');
     const o = root.object(raw);
-    root.keys(o, ['books', 'note']);
+    root.keys(o, ['books', 'read_books', 'note']);
     const books = root.at('books').array(o.books).map((value, i): BookSource => {
         const c = root.at(`books[${i}]`);
         const book = c.object(value);
@@ -778,7 +799,21 @@ function checkBooks(raw: unknown): BooksSource {
     });
     if (!books.length) root.at('books').fail('不能是空数组');
     if (new Set(books.map(book => book.id)).size !== books.length) root.at('books').fail('书的 id 重复');
-    return withNote(root.at('note'), o.note, { books });
+    const readBooks = o.read_books === undefined || o.read_books === null ? [] : root.at('read_books').array(o.read_books).map((value, i): ReadBookSource => {
+        const c = root.at(`read_books[${i}]`);
+        const book = c.object(value);
+        c.keys(book, ['id', 'title', 'aliases', 'author', 'kind', 'platform', 'status', 'tiers', 'attitude', 'points', 'avoid', 'sources', 'note']);
+        const base: ReadBookSource = {
+            id: c.at('id').string(book.id), title: c.at('title').string(book.title), aliases: c.at('aliases').strings(book.aliases),
+            author: c.at('author').string(book.author), kind: c.at('kind').string(book.kind), platform: c.at('platform').string(book.platform),
+            status: c.at('status').string(book.status), tiers: c.at('tiers').strings(book.tiers, { allowEmpty: false }),
+            attitude: c.at('attitude').string(book.attitude), points: c.at('points').strings(book.points, { allowEmpty: false }),
+            avoid: c.at('avoid').strings(book.avoid), sources: c.at('sources').strings(book.sources, { allowEmpty: false }),
+        };
+        return withNote(c.at('note'), book.note, base);
+    });
+    if (new Set(readBooks.map(book => book.id)).size !== readBooks.length) root.at('read_books').fail('书的 id 重复');
+    return withNote(root.at('note'), o.note, { books, ...(readBooks.length ? { read_books: readBooks } : {}) });
 }
 
 /** 可选的一组（总量、看书的空闲活动）：没写、null，或者页面上把每一项都清空了，都当作没写 */

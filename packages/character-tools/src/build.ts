@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { biographyTierRefs } from './biography-to-card.ts';
 import { personaToCard } from './persona-to-card.ts';
+import { withReadBooks } from './read-books-to-lorebook.ts';
 import { scenesToLorebook, withKeyedTraits } from './scenes-to-lorebook.ts';
 import { checkScheduleTiers, scheduleForTier } from './schedule-to-card.ts';
 import { SECTION_KEYS, type CharacterSource, type TextField } from './source.ts';
@@ -47,6 +48,7 @@ export function checkReferences(source: CharacterSource): void {
             if (node.tiers) known(node.tiers, `books.yml books[${i}].nodes[${j}].tiers`);
         });
     });
+    source.books?.read_books?.forEach((book, i) => known(book.tiers, `books.yml read_books[${i}].tiers`));
     if (source.world) for (const { at, tiers } of worldTiers(source.world)) known(tiers, `world.yml ${at}.tiers`);
     checkPlansAgainstFree(source.world?.plans, source.schedule.free);
     for (const ref of biographyTierRefs(source.biography)) known(ref.tiers, ref.at);
@@ -141,7 +143,11 @@ export function buildCharacter(source: CharacterSource, prefix = 'linmengyao'): 
     const files = new Map<string, string>();
     for (const tier of source.tiers.tiers) {
         const world = `${prefix}-scenes-${tier.name}`;
-        const lorebook = withKeyedTraits(scenesToLorebook(source.scenes, tier.scenes, tier.drop_scenes ?? []), source.persona, tier.name);
+        const lorebook = withReadBooks(
+            withKeyedTraits(scenesToLorebook(source.scenes, tier.scenes, tier.drop_scenes ?? []), source.persona, tier.name),
+            source.books,
+            tier.name,
+        );
         const schedule = scheduleForTier(source.schedule, tier.name);
         const card = personaToCard(source, tier.name, { world, schedule });
         tiers.push({ tier: tier.name, card, lorebook });

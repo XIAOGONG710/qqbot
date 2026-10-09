@@ -32,5 +32,5 @@ console.log('档位：');
 for (const tier of source.tiers.tiers) {
     const { lorebook } = built.tiers.find(t => t.tier === tier.name)!;
     const drop = tier.drop_scenes?.length ? `，去掉 ${tier.drop_scenes.join('、')}` : '';
-    console.log(`  ${tier.name}：世界书 ${Object.keys(lorebook.entries).length} 条场景（取场景档 ${tier.scenes}${drop}）`);
+    console.log(`  ${tier.name}：世界书 ${Object.keys(lorebook.entries).length} 条（场景档 ${tier.scenes}${drop}，另含按词触发的设定与已读书库）`);
 }

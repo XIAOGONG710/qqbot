@@ -109,6 +109,17 @@ describe('说到才想起的设定（DSH 诊断 2.4）', () => {
         assert.match(text('今晚打王者吗'), /本命英雄是貂蝉/);
         assert.match(text('空洞骑士那个boss过了没'), /菜猫/);
     });
+
+    test('已读书库：说书名才加载，人物名和泛问看书不加载', () => {
+        const readEntry = (content: string) => build([{ role: 'user', content }]).activatedWorldInfo
+            .filter(entry => entry.comment.includes('read-book-'));
+        const byTitle = readEntry('你看过《撒野》吗');
+        assert.equal(byTitle.length, 1);
+        assert.match(byTitle[0]!.content, /你读过的书·《撒野》/);
+        assert.equal(readEntry('你觉得蒋丞这个人怎么样').length, 0, '人物名不加载整本书');
+        assert.equal(readEntry('你最近看什么书').length, 0, '泛问不加载八本已读书');
+        assert.match(readEntry('伪渣讲什么')[0]!.content, /《伪装学渣》/);
+    });
 });
 
 describe('拼装规则', () => {
@@ -217,4 +228,3 @@ describe('拼装规则', () => {
         assert.equal(messages[3]!.content, '角色描述');
     });
 });
-
