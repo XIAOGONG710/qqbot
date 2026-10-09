@@ -279,6 +279,116 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
         }
     });
 
+    test('聊着就约了（ADR 0047 调整）：还没结束的片段里有约见面的字眼就先抽，只记约好的见面；片段结束后整段抽不重复记', async () => {
+        const history = [
+            msg('2026-10-16T17:30:00', 'user', '饿了 一会儿一起吃饭不'),
+            msg('2026-10-16T17:31:00', 'assistant', '行啊 六点东门口'),
+        ];
+        const { keeper, logs, asked, setNow, cleanup } = setup(history, [
+            // 先抽：约见面 + 一件不是见面的（不记，留给整段抽）
+            '{"add":[{"what":"和他去东门吃饭","date":"2026-10-16","meet":{"time":"18:00","where":"东门口"}},{"what":"给他讲结局","date":null}],"resolved":[]}',
+            // 整段抽：同一个约换了说法，外加那件不是见面的
+            '{"add":[{"what":"和阿明在东门吃晚饭","date":"2026-10-16","meet":{"time":"18:00"}},{"what":"给他讲结局","date":null}],"resolved":[]}',
+        ], at('2026-10-16T17:35:00'));
+        try {
+            await keeper.sync();
+            assert.equal(asked.length, 1, '片段还没结束也先抽了一次');
+            assert.ok(logs.includes('[1] 她答应的事：聊着就约了，先记下「和他去东门吃饭」（2026-10-16 18:00 东门口）'));
+            assert.equal(keeper.appointmentsAt(at('2026-10-16T17:50:00')).length, 1, '18:00 前一刻钟状态行就知道');
+            assert.deepEqual(keeper.plansOn('2026-10-16'), ['和他去东门吃饭'], '不是见面的那件先不记');
+            await keeper.sync();
+            assert.equal(asked.length, 1, '没有新消息不再抽');
+
+            // 片段结束（安静 45 分钟）后整段抽是定论：先记下的整个换成整段的结果，只剩一条约，别的照常记
+            setNow(at('2026-10-16T18:30:00'));
+            await keeper.sync();
+            assert.equal(asked.length, 2);
+            assert.doesNotMatch(asked[1]![1]!.content, /和他去东门吃饭/, '先记下的不给整段抽的模型');
+            assert.deepEqual(keeper.plansOn('2026-10-16'), ['和阿明在东门吃晚饭']);
+            assert.ok(!logs.some(line => line.includes('划掉先记下的')), '同一个约不算划掉');
+            assert.ok(logs.some(line => line.includes('记下「给他讲结局」')));
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('聊着就约了（审查后修正）：同一段再先抽时改了时间就换成新的、id 不撞；不去了就划掉；这一段先记下的不在时间块里提醒', async () => {
+        const history = [
+            msg('2026-10-16T17:30:00', 'user', '一会儿一起吃个饭不'),
+            msg('2026-10-16T17:31:00', 'assistant', '行啊 六点东门口'),
+        ];
+        const { keeper, logs, asked, setNow, cleanup } = setup(history, [
+            '{"add":[{"what":"和他去东门吃饭","date":"2026-10-16","meet":{"time":"18:00","where":"东门口"}}],"resolved":[]}',
+            '{"add":[{"what":"和他去东门吃饭","date":"2026-10-16","meet":{"time":"18:30","where":"东门口"}}],"resolved":[]}',
+            '{"add":[],"resolved":[]}',
+        ], at('2026-10-16T17:35:00'));
+        try {
+            await keeper.sync();
+            const first = keeper.appointmentsAt(at('2026-10-16T17:50:00'))[0]!.promise;
+            // 这一段还在聊：先记下的不当「还没做的事」提醒（刚说完）
+            assert.equal(keeper.describe(amin, history, at('2026-10-16T17:36:00')), undefined);
+
+            history.push(msg('2026-10-16T17:38:00', 'user', '改六点半吧 我下课晚'), msg('2026-10-16T17:38:30', 'assistant', '行 六点半'));
+            setNow(at('2026-10-16T17:40:00'));
+            await keeper.sync();
+            assert.equal(asked.length, 2);
+            assert.doesNotMatch(asked[1]![1]!.content, /p-\d+-m/, '先记下的不给模型当还没做的事');
+            assert.deepEqual(keeper.appointmentsAt(at('2026-10-16T17:50:00')), [], '18:00 那个划掉了');
+            const [moved] = keeper.appointmentsAt(at('2026-10-16T18:20:00'));
+            assert.equal(moved!.promise.meet!.time, '18:30');
+            assert.notEqual(moved!.promise.id, first.id);
+            assert.ok(logs.some(line => line.includes('划掉先记下的「和他去东门吃饭」（2026-10-16 18:00')));
+
+            history.push(msg('2026-10-16T17:42:00', 'user', '算了今天不去了 下雨'), msg('2026-10-16T17:42:30', 'assistant', '好吧 改天'));
+            setNow(at('2026-10-16T17:45:00'));
+            await keeper.sync();
+            assert.equal(asked.length, 3);
+            assert.deepEqual(keeper.appointmentsAt(at('2026-10-16T18:20:00')), [], '不去了就全划掉');
+            assert.deepEqual(keeper.plansOn('2026-10-16'), []);
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('还没结束的片段只有她一方说话不先抽', async () => {
+        const history = [msg('2026-10-16T17:30:00', 'assistant', '今晚七点一起去看电影吗')];
+        const { keeper, asked, cleanup } = setup(history, [], at('2026-10-16T17:35:00'));
+        try {
+            await keeper.sync();
+            assert.equal(asked.length, 0);
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('这一轮没连上模型：整段抽停了，也不再先抽还没结束的那段', async () => {
+        const history = [
+            msg('2026-10-16T14:00:00', 'user', '下午干嘛'),
+            msg('2026-10-16T14:01:00', 'assistant', '写作业'),
+            msg('2026-10-16T17:30:00', 'user', '一会儿一起吃个饭不'),
+            msg('2026-10-16T17:31:00', 'assistant', '行啊 六点东门口'),
+        ];
+        const offline = new ModelUnreachable('模型接口请求失败（ENOTFOUND）');
+        const { keeper, asked, cleanup } = setup(history, [offline], at('2026-10-16T17:35:00'));
+        try {
+            await keeper.sync();
+            assert.equal(asked.length, 1, '只试了已经结束的那段');
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('还没结束的片段没有约见面的字眼就不先抽', async () => {
+        const history = [msg('2026-10-16T17:30:00', 'user', '在干嘛'), msg('2026-10-16T17:31:00', 'assistant', '刚下课 饿死了')];
+        const { keeper, asked, cleanup } = setup(history, [], at('2026-10-16T17:35:00'));
+        try {
+            await keeper.sync();
+            assert.equal(asked.length, 0);
+        } finally {
+            cleanup();
+        }
+    });
+
     test('晚了才抽（刚上线补抽以前的片段）：抽出来的日子已经过去的不记', async () => {
         const history = [
             msg('2026-10-05T20:00:00', 'user', '明天干嘛'),
