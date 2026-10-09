@@ -20,10 +20,13 @@ export interface ProjectProgress {
     recentSteps: string[];
 }
 
-/** 现有作息里真正服务于摄影成长的活动；普通刷手机、打游戏仍是 leisure。 */
+/**
+ * 现有作息里真正服务于摄影成长的活动；普通刷手机、打游戏仍是 leisure。
+ * 「刷摄影区」也是 leisure（10-09 Claude 改）：刷着看别人的片子是休闲，修片、出去拍才算在练；算成进展会把她的进度吹大。
+ */
 export function projectActivity(text: string): ProjectActivity | undefined {
     const step = text.trim();
-    if (!/修.*片|摄影/.test(step)) return undefined;
+    if (!/修.*片|摄影/.test(step) || /刷/.test(step)) return undefined;
     return { id: PHOTOGRAPHY_PROJECT_ID, title: '摄影成长', step };
 }
 

@@ -13,7 +13,8 @@ describe('长期项目从事实账派生（ADR 0044）', () => {
     test('只把摄影成长活动映射成项目，普通娱乐不伪装成进展', () => {
         assert.equal(projectActivity('打独立游戏'), undefined);
         assert.equal(projectActivity('刷手机刷到忘了时间'), undefined);
-        assert.deepEqual(projectActivity('刷摄影区'), { id: 'photography_growth', title: '摄影成长', step: '刷摄影区' });
+        assert.equal(projectActivity('刷摄影区'), undefined, '刷着看是休闲，不算在练');
+        assert.deepEqual(projectActivity('修昨天拍的片子'), { id: 'photography_growth', title: '摄影成长', step: '修昨天拍的片子' });
     });
 
     test('成功和被打断前的真实投入都算，失败候选不算；重算不另造状态', () => {
