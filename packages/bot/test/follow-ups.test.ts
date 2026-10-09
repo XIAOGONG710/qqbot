@@ -27,6 +27,8 @@ describe('待跟进：抽取的输入输出', () => {
         const [system, user] = extractionPrompt('—— 2026年10月8日 星期四 ——\n阿明 (07:32): 我明天下午面试', [item()], { user: '阿明', char: '林梦瑶' });
         assert.match(system!.content, /阿明自己之后要经历/);
         assert.match(system!.content, /resolved/);
+        assert.match(system!.content, /凌晨（0 点到 5 点）还没睡时说的「明天」/);
+        assert.match(system!.content, /冲着林梦瑶的事/);
         assert.equal(user!.content, '还没问的事：\n- f-1：2026-10-09 下午 字节的面试\n\n聊天记录：\n—— 2026年10月8日 星期四 ——\n阿明 (07:32): 我明天下午面试');
     });
 

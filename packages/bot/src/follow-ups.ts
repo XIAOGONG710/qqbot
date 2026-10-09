@@ -35,6 +35,12 @@ export function partText(time: string): string {
     return PARTS[time] ?? time;
 }
 
+/**
+ * 凌晨还没睡时说的「明天」是睡醒以后那天：10-09 00:12 她说「明天早饭多吃点」，按日期行加一天记成了 10-10。
+ * 她答应的事（promises.ts）也用这一句。
+ */
+export const MIDNIGHT_RULE = '凌晨（0 点到 5 点）还没睡时说的「明天」「明早」「明天下午」，指睡醒以后的那天，也就是那一行日期当天，不再加一天；';
+
 /** 抽取的提示词：系统说明 + 还没问的事和这一段聊天（转写同长期记忆，带日期行） */
 export function extractionPrompt(transcript: string, pending: readonly FollowUp[], names: MacroNames): OpenAIMessage[] {
     const { char, user } = names;
@@ -43,6 +49,7 @@ export function extractionPrompt(transcript: string, pending: readonly FollowUp[
         `挑出${user}提到的、${user}自己之后要经历、过后值得问一句结果的事：考试、面试、比赛、看病、出行、重要的活动或约会等。`,
         `不要：${char}自己的事；和${char}一起的、冲着${char}的事（回来陪${char}、找${char}、跟${char}见面，她自己就知道结果）；已经发生完的事；吃饭、睡觉、上下班这类日常小事；没说是哪天的事。`,
         '日期按那件事被提到时的日期换算（记录里每天开头有一行日期，「明天」就是那一天加一天），写成 YYYY-MM-DD；',
+        MIDNIGHT_RULE,
         'time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH:MM（说了几点），只说了哪天没说几点就写 afternoon。',
         `另外，「还没问的事」里如果有哪件在这段聊天里${user}已经说了结果、或者说取消了，把它的 id 写进 resolved。`,
         '只输出一个 JSON 对象，不要别的文字，例如：{"add":[{"what":"字节的面试","date":"2026-10-09","time":"14:00"}],"resolved":["f-1"]}',

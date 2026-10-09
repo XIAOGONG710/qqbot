@@ -13,6 +13,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Contact } from './config.ts';
+import { MIDNIGHT_RULE } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { ModelUnreachable } from './llm.ts';
@@ -63,6 +64,7 @@ export function promisePrompt(transcript: string, pending: readonly HerPromise[]
         `不要：做不到的事（见面、一起吃饭、发照片、发语音、发视频、打电话、开视频、寄东西或送东西）；玩笑和客套；${user}已经说了不用的；`,
         `这段聊天里已经做完的；${user}自己的事。`,
         '有日子的按那句话被说出时的日期换算（记录里每天开头有一行日期，「明天」就是那一天加一天，「周末」写那个周六），写成 YYYY-MM-DD；',
+        MIDNIGHT_RULE,
         '说「下次」「回头」「改天」没说哪天的，date 写 null。what 写一句话，不超过 20 个字。',
         `另外，「还没做的事」里如果有哪件在这段聊天里${char}已经做了、或者${user}说不用了，把它的 id 写进 resolved。`,
         `再挑三类「挂着的事」，都只写发生了什么，不写谁什么感受、不写评价（不要「难过」「委屈」「介意」「失望」这类词）：`,

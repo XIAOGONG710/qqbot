@@ -20,7 +20,7 @@ const promise = (extra: Partial<HerPromise>): HerPromise => ({ id: 'p-1', what: 
 describe('她答应的事：抽取（ADR 0018 决策 2）', () => {
     test('提示词：她要做的事、做不到的不抽、日期换算、还没做的给 id', () => {
         const [system, user] = promisePrompt('—— 2026年10月5日 ——\n林梦瑶 (20:00): 下次给你讲', [promise({ date: '2026-10-10', what: '去拍银杏' })], names);
-        for (const rule of ['林梦瑶自己说的、她之后要做的事', '发照片', '打电话', '寄东西', 'YYYY-MM-DD', 'date 写 null', 'resolved']) {
+        for (const rule of ['林梦瑶自己说的、她之后要做的事', '发照片', '打电话', '寄东西', 'YYYY-MM-DD', 'date 写 null', 'resolved', '凌晨（0 点到 5 点）还没睡时说的「明天」']) {
             assert.ok(system!.content.includes(rule), rule);
         }
         assert.match(user!.content, /^还没做的事：\n- p-1：2026-10-10 去拍银杏\n\n还挂着的事：\n（没有）\n\n聊天记录：\n/);
