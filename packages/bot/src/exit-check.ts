@@ -51,8 +51,8 @@ const PROMISE = new RegExp(NOT_NEGATED + '(?:' + [
     '(?:要|想)(?:不要)?看(?:不|吗|嘛)$',
 ].join('|') + ')' + NOT_REFUSED);
 
-/** 提示词的结构：新对话的分隔、时间块里各行的开头 */
-const SCRIPT = /\[Start a new Chat\]|^\s*\[(?:当前时间|距上一条消息|你现在|你今天的|你那边|这一轮|你的身体|你今天的打算)/;
+/** 提示词的结构：新对话的分隔、时间块里各行的开头；放完假那几天「[宝宝国庆放完假……]」那一行以称呼开头（ADR 0007 调整 2026-10-10） */
+const SCRIPT = /\[Start a new Chat\]|^\s*\[(?:当前时间|距上一条消息|你现在|你今天的|你那边|这一轮|你的身体|你今天的打算)|^\s*\[[^\]\n]{1,16}放完假/;
 
 export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext, books?: BookProgressContext): ExitIssue[] {
     const issues: ExitIssue[] = [];
