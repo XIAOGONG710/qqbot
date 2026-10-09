@@ -214,4 +214,11 @@ uv pip install --python runtime\hindsight\venv\Scripts\python.exe --require-hash
 - 关键词检索按两个字一切（PGroonga `TokenBigram`），查询里的每个二字词都参与打分，「今天」「找我」这类常见词也会给别的记忆加分，
   所以夹在句子里的绰号虽然能召回，常排在第 8–10 条；bot 注入召回结果的上限因此从 8 条放宽到 12 条（`MAX_RECALLED`）。
 - 聊天记录里删掉的片段，Hindsight 里对应的文档不会自动删（调研方案 T17）；要删时用 `DELETE /v1/default/banks/{bank_id}/documents/{document_id}`。
+- **坏连接**（2026-10-08 00:25–02:10 线上）：内存吃紧时（当时在跑带记忆的模拟批次和全量测试，6 GB 的机器提交内存到顶），某个 Postgres 连接里 PGroonga 初始化失败
+  （`failed to mmap` / `[alloc][calloc] failed`），这个连接以后每次查询都报 `pgroonga: already tried to initialize and failed`。Hindsight 的连接池一直复用它，
+  线上的召回、写入、日记时好时坏将近两小时，直到那个连接被回收。两处应对（`scripts/start-hindsight.ps1`）：
+  - 连接池上限从默认 100 降到 16（`HINDSIGHT_API_DB_POOL_MAX_SIZE`、`HINDSIGHT_API_READ_DB_POOL_MAX_SIZE`，环境变量里设了就用设的）；
+  - 守护 `scripts/hindsight-watchdog.mjs` 随 Hindsight 一起起、一起停：每 30 秒读 Postgres 日志的新内容，报过这个错的连接用 `pg_terminate_backend` 断开，连接池会重连好的。
+    只断报过错的连接；输出在 `runtime/hindsight/watchdog.log`。单独跑：`node scripts/hindsight-watchdog.mjs [Postgres 日志目录]`。
+  模拟器批次仍然一次只跑一批（锁 `%TEMP%\qqbot-hindsight-sim.lock`）。
 - 每个片段写入时 Hindsight 调一次 DeepSeek 抽取，进行中的片段每多 30 条整段重写一次。
