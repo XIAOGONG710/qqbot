@@ -28,6 +28,7 @@ import { lifeExecutor } from '../life-selector.ts';
 import { asleepSince, saidBedtimes } from '../bedtime.ts';
 import { contextSummarizer, SUMMARY_HEADER, type TurnWindow } from '../context-window.ts';
 import { estimateTokens } from '../tokens.ts';
+import { auditLifeStatus, type LifeStatusMismatch } from './life-audit.ts';
 import { repeatedSentences } from './repeats.ts';
 import { parseDuration, VirtualClock, type Checks, type LifeChecks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
@@ -585,7 +586,24 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 current.checks = Object.keys(rest).length === 0 ? []
                     : lastSay ? runChecks(rest, lastSay, options.card.character.banned, speechContext(before), before)
                         : [{ ok: false, text: '前面没有 say 步骤' }];
-                if (life) current.checks.push(...lifeChecks(life, (sharedWorld?.events() ?? []).filter(event => event.id.startsWith('life:'))));
+                if (life) {
+                    const events = (sharedWorld?.events() ?? []).filter(event => event.id.startsWith('life:'));
+                    let mismatches: LifeStatusMismatch[] | undefined;
+                    if (life.statusConsistent && ledgerWorld && character.schedule && character.herWorld) {
+                        const schedule = character.schedule;
+                        const herWorld = character.herWorld;
+                        mismatches = auditLifeStatus(events, {
+                            schedule,
+                            books: character.books,
+                            ...(herWorld.plans ? { plans: herWorld.plans } : {}),
+                            worldAt: at => ledgerWorld!.at(herWorld, schedule, at),
+                            events: () => ledgerWorld!.events(),
+                            ...(herWorld.body ? { bodyAt: (at: Date) => bodyAt(herWorld.body!, schedule, at) } : {}),
+                            bedtimes: () => saidBedtimes([contact, ...others].map(person => history.load(person.qq)), schedule, clock.now() - 86_400_000),
+                        });
+                    }
+                    current.checks.push(...lifeChecks(life, events, mismatches));
+                }
                 if (proactive) {
                     const since = steps.slice(proactiveCheckedUpTo, -1);
                     proactiveCheckedUpTo = steps.length;
@@ -668,7 +686,7 @@ export function dynamicParts(prompt: PromptResult, time: number): Generation {
 }
 
 /** 她自己过的日子（ADR 0040）：事件账里她的行动，各类够不够、有没有两件重叠。查的是她的生活，不是她说了什么，算管线自检 */
-export function lifeChecks(checks: LifeChecks, events: readonly LifeEvent[]): CheckResult[] {
+export function lifeChecks(checks: LifeChecks, events: readonly LifeEvent[], statusMismatches?: readonly LifeStatusMismatch[]): CheckResult[] {
     const results: CheckResult[] = [];
     for (const [kind, count] of Object.entries(checks.atLeast ?? {})) {
         const n = events.filter(event => event.kind === kind && event.result !== 'failed').length;
@@ -678,6 +696,36 @@ export function lifeChecks(checks: LifeChecks, events: readonly LifeEvent[]): Ch
         const done = events.filter(event => event.result !== 'failed').sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
         const clash = done.slice(1).find((event, i) => Date.parse(event.startedAt) < Date.parse(done[i]!.endedAt));
         results.push({ ok: !clash, text: `她过的日子一件接一件、不重叠${clash ? `（${clash.id} 和前一件撞了）` : `（${done.length} 件）`}`, pipeline: true });
+    }
+    if (checks.noFailed) {
+        const failed = events.filter(event => event.result === 'failed');
+        results.push({ ok: failed.length === 0, text: `事件账没有把排不上的候选记成经历${failed.length ? `（实际 ${failed.length} 件）` : ''}`, pipeline: true });
+    }
+    if (checks.nonRoutinePerDay) {
+        const routine = new Set(['sleep', 'eat', 'attend_class']);
+        const { days, min, max } = checks.nonRoutinePerDay;
+        for (const day of days) {
+            const dayEvents = events.filter(event => event.day === day && event.result !== 'failed' && !routine.has(event.kind));
+            const kinds = [...new Set(dayEvents.map(event => event.kind))].map(kind => `${kind} ${dayEvents.filter(event => event.kind === kind).length}`).join('、');
+            results.push({
+                ok: dayEvents.length >= min && dayEvents.length <= max,
+                text: `${day} 有 ${min}–${max} 件非例行动作（实际 ${dayEvents.length}${kinds ? `：${kinds}` : ''}）`,
+                pipeline: true,
+            });
+        }
+    }
+    for (const [reason, count] of Object.entries(checks.interruptedAtLeast ?? {})) {
+        const n = events.filter(event => event.result === 'interrupted' && event.reason === reason).length;
+        results.push({ ok: n >= count!, text: `硬事件「${reason}」至少打断 ${count} 次（实际 ${n}）`, pipeline: true });
+    }
+    if (checks.statusConsistent) {
+        const mismatches = statusMismatches ?? [];
+        const detail = mismatches.slice(0, 3).map(item => `${item.eventKind}→${item.expectedKind ?? '空'}@${item.at}`).join('、');
+        results.push({
+            ok: statusMismatches !== undefined && mismatches.length === 0,
+            text: `事件账与同一时刻的对外状态一致${statusMismatches === undefined ? '（没有可用的状态审计源）' : mismatches.length ? `（${detail}）` : '（0 分叉）'}`,
+            pipeline: true,
+        });
     }
     return results;
 }

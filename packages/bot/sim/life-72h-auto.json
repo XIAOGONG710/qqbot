@@ -6,7 +6,13 @@
     "start": "2026-10-12T08:00:00+08:00",
     "steps": [
         {
-            "advance": "3d13h"
+            "advance": "1d13h"
+        },
+        {
+            "restart": true
+        },
+        {
+            "advance": "2d"
         },
         {
             "case": "LA00",
@@ -21,7 +27,17 @@
                         "attend_class": 10,
                         "study": 1
                     },
-                    "noOverlap": true
+                    "noOverlap": true,
+                    "noFailed": true,
+                    "nonRoutinePerDay": {
+                        "days": ["2026-10-12", "2026-10-13", "2026-10-14"],
+                        "min": 3,
+                        "max": 8
+                    },
+                    "interruptedAtLeast": {
+                        "interrupted_by_class": 3
+                    },
+                    "statusConsistent": true
                 }
             }
         },

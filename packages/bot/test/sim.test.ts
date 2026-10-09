@@ -124,7 +124,11 @@ describe('模拟器：场景文件', () => {
             ...(restart ? [{ restart: true as const }] : []),
             // 到第二天 10:00：02:00 睡到 9:30 那一觉已经睡完、落账
             { advance: '15h' },
-            { check: { life: { atLeast: { sleep: 1, eat: 2, attend_class: 1 }, noOverlap: true } } },
+            { check: { life: {
+                atLeast: { sleep: 1, eat: 2, attend_class: 1 }, noOverlap: true, noFailed: true,
+                nonRoutinePerDay: { days: ['2026-10-12'], min: 3, max: 8 },
+                interruptedAtLeast: { interrupted_by_class: 1 }, statusConsistent: true,
+            } } },
         ];
         const scenario = (restart: boolean) => parseScenario({
             name: '自己过日子', tier: 'boyfriend', start: '2026-10-12T08:00:00+08:00', memory: false, autonomous: true, steps: steps(restart),

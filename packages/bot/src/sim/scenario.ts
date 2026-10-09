@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { CONTACT_TIERS, UNLISTED_TIER, type ContactTier, type Tier } from '../config.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import type { LifeEventResult } from '../life-events.ts';
-import type { TypedActionKind } from '../actions.ts';
+import type { Interruption, TypedActionKind } from '../actions.ts';
 
 /** 对方的一条或几条消息；几条时按 gapMs 的真实间隔依次发（默认 800 ms，算连发） */
 export interface SayStep {
@@ -116,6 +116,14 @@ export interface LifeChecks {
     atLeast?: Partial<Record<TypedActionKind, number>>;
     /** 一件接一件，没有两件时间重叠 */
     noOverlap?: boolean;
+    /** 账里没有 failed；排不上的候选不该冒充她经历过的事 */
+    noFailed?: boolean;
+    /** 指定的完整日里，剔除睡觉、吃饭、上课后每天有几件非例行动作 */
+    nonRoutinePerDay?: { days: string[]; min: number; max: number };
+    /** 硬事件至少打断了几次普通行动 */
+    interruptedAtLeast?: Partial<Record<Interruption, number>>;
+    /** 事件中点按对外状态行的同一套规则重算，行动类型必须一致（ADR 0042 影子审计） */
+    statusConsistent?: boolean;
 }
 
 export interface ProactiveChecks {
