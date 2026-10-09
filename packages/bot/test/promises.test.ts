@@ -8,7 +8,7 @@ import type { StoredMessage } from '../src/history.ts';
 import { ModelUnreachable } from '../src/llm.ts';
 import type { OpenAIMessage } from '../src/prompt.ts';
 import {
-    describePromises, duePromises, forgotten, parsePromises, promiseKeeper, promisePrompt, SHOWN_REPLIES, type HerPromise,
+    describeAppointment, describePromises, duePromises, forgotten, meetWindow, parsePromises, promiseKeeper, promisePrompt, SHOWN_REPLIES, type HerPromise,
 } from '../src/promises.ts';
 import type { Schedule } from '../src/schedule.ts';
 
@@ -47,6 +47,20 @@ describe('她答应的事：抽取（ADR 0018 决策 2）', () => {
             resolved: ['p-1'],
         });
         assert.throws(() => parsePromises('没有'), /没有 JSON/);
+    });
+
+    test('解析约好的见面（ADR 0047）：要有日子和几点；凌晨的算第二天的日历日', () => {
+        const parsed = parsePromises(JSON.stringify({ add: [
+            { what: '去东门吃麻辣烫', date: '2026-10-16', meet: { time: '18:00', where: ' 东门口 ' } },
+            { what: '看电影', date: '2026-10-17', meet: { time: '25:00' } },
+            { what: '下次一起吃饭', date: null, meet: { time: '18:00' } },
+            { what: '看跨年烟花', date: '2026-12-31', meet: { time: '00:30' } },
+        ] }));
+        assert.deepEqual(parsed.add.map(a => a.meet), [{ time: '18:00', where: '东门口', minutes: 90 }, undefined, undefined, { time: '00:30', minutes: 90 }]);
+        const late = promise({ date: '2026-12-31', meet: { time: '00:30', minutes: 90 } });
+        assert.equal(meetWindow(late)!.start.getTime(), at('2027-01-01T00:30:00').getTime());
+        assert.equal(meetWindow(promise({ date: '2026-10-16' })), undefined);
+        assert.ok(promisePrompt('x', [], names)[0]!.content.includes('再加 meet'));
     });
 
     test('解析挂着的事：写成情绪的不记（ADR 0023，「不做带情绪的记忆」）', () => {
@@ -226,6 +240,40 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
             assert.doesNotMatch(keeper.describe(amin, chat, at('2026-10-10T01:00:00'))!, /银杏/);
             assert.match(keeper.describe(amin, chat, at('2026-10-10T09:00:00'))!, /去拍银杏（前天说的，打算今天）/);
             assert.deepEqual(keeper.plansOn('2026-10-10'), ['去拍银杏']);
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('约好的见面（ADR 0047）：记下几点在哪；快出门前时间块提醒，之后状态行接手，见完不再提', async () => {
+        const history = [
+            msg('2026-10-16T16:00:00', 'user', '晚上一起去吃东门那家麻辣烫吧'),
+            msg('2026-10-16T16:01:00', 'assistant', '行啊，六点东门口'),
+        ];
+        const { keeper, logs, cleanup } = setup(history, [
+            '{"add":[{"what":"和他去东门吃麻辣烫","date":"2026-10-16","meet":{"time":"18:00","where":"东门口"}}],"resolved":[]}',
+        ], at('2026-10-16T17:00:00'));
+        try {
+            await keeper.sync();
+            assert.ok(logs.includes('[1] 她答应的事：记下「和他去东门吃麻辣烫」（2026-10-16 18:00 东门口）'));
+            const chat = [...history, msg('2026-10-16T17:30:00', 'user', '在干嘛')];
+            assert.match(keeper.describe(amin, chat, at('2026-10-16T17:30:00'))!, /和他去东门吃麻辣烫（今天说的，打算今天）/);
+            assert.deepEqual(keeper.appointmentsAt(at('2026-10-16T17:30:00')), []);
+            // 17:45 起快出门：时间块不再提醒，状态行接手
+            assert.equal(keeper.describe(amin, chat, at('2026-10-16T17:45:00')), undefined);
+            const [soon] = keeper.appointmentsAt(at('2026-10-16T17:45:00'));
+            assert.equal(soon!.start.getTime(), at('2026-10-16T18:00:00').getTime());
+            assert.equal(describeAppointment(soon!, amin, at('2026-10-16T17:45:00')), '快出门了，18:00 约好的：和他去东门吃麻辣烫');
+            const [during] = keeper.appointmentsAt(at('2026-10-16T18:30:00'));
+            assert.equal(describeAppointment(during!, amin, at('2026-10-16T18:30:00')),
+                '约好的：和他去东门吃麻辣烫（18:00，东门口），正在赴约；见了面你们也在 QQ 上打字说话');
+            // 别人来问：只说在外面、约了人
+            const other: Contact = { qq: 2, name: '老周', tier: 'classmate' };
+            assert.equal(describeAppointment(during!, other, at('2026-10-16T18:30:00')), '在外面，约了人（18:00 起）');
+            // 19:30 见完了
+            assert.deepEqual(keeper.appointmentsAt(at('2026-10-16T19:30:00')), []);
+            assert.equal(keeper.describe(amin, chat, at('2026-10-16T19:30:00')), undefined);
+            assert.deepEqual(keeper.plansOn('2026-10-16'), ['和他去东门吃麻辣烫'], '日记里还有这件');
         } finally {
             cleanup();
         }

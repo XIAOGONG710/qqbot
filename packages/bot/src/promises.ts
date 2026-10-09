@@ -6,6 +6,7 @@
 //   这段聊天里不再放（ADR 0014：说明里的话她会每句都照做，不能一直挂着）。
 // - 忘：有日子的过了 FORGET_DAYS 天、「下次」的过了 NEXT_TIME_DAYS 天还没做就忘了。
 // - 她自己那天的打算写进日记材料（diary.ts），日记和她说过的对得上。
+// - 约好的见面（ADR 0047）：抽的时候多记几点、在哪；到点前一刻钟到见完，状态行写她在赴约（appointmentsAt / describeAppointment），见完不再提醒。
 // - 同一次抽取还出「挂着的事」（ADR 0023，open-loops.ts）：他之后会发生、她想知道结果的；她问了他没答的；说好的没成的。
 //   存在同一个状态文件的 loops 里，生命周期和用法见 open-loops.ts。
 // 每个人一个状态文件 <数据目录>/promises/<QQ>-<档位>.json。
@@ -35,7 +36,20 @@ export interface HerPromise {
     said: string;
     /** 从哪个聊天片段抽出来的 */
     episode: string;
+    /** 约好的见面（ADR 0047）：几点、在哪；没说几点的没有 */
+    meet?: Meetup;
 }
+
+/** 约好的见面：time 是 HH:MM（她的一天里，凌晨的算第二天的日历日），minutes 是大概多久 */
+export interface Meetup { time: string; where?: string; minutes: number }
+
+/** 见面默认多久（分钟）：一顿饭、一场电影 */
+export const MEET_MINUTES = 90;
+/** 见面前多久算「快出门了」 */
+export const MEET_LEAD_MINUTES = 15;
+
+/** 这一刻在赴约或快出门的那一件（ADR 0047）：和谁约的、哪件、几点开始、几点完 */
+export interface Appointment { contact: Contact; promise: HerPromise; start: Date; end: Date }
 
 /** 聊天记录里的一条（只看谁说的、什么时候） */
 type TimedMessage = { role: 'user' | 'assistant'; time?: string };
@@ -66,6 +80,7 @@ export function promisePrompt(transcript: string, pending: readonly HerPromise[]
         '有日子的按那句话被说出时的日期换算（记录里每天开头有一行日期，「明天」就是那一天加一天，「周末」写那个周六），写成 YYYY-MM-DD；',
         MIDNIGHT_RULE,
         '说「下次」「回头」「改天」没说哪天的，date 写 null。what 写一句话，不超过 20 个字。',
+        `和${user}约好见面、一起吃饭、去看演出的，再加 meet：{"time":"HH:MM","where":"在哪"}，time 是约的几点（24 小时制），where 没说就不写；没说几点、没有日子的不写 meet。`,
         `另外，「还没做的事」里如果有哪件在这段聊天里${char}已经做了、或者${user}说不用了，把它的 id 写进 resolved。`,
         `再挑三类「挂着的事」，都只写发生了什么，不写谁什么感受、不写评价（不要「难过」「委屈」「介意」「失望」这类词）：`,
         `- waiting：${user}说的、之后会发生、${char}会想知道结果的事（面试、考试、比赛、出行、看病、等通知），what 写「${user}…」，`,
@@ -82,7 +97,8 @@ export function promisePrompt(transcript: string, pending: readonly HerPromise[]
         `只看${char}的已完成事实陈述；计划、将来时、猜测、玩笑、否定句、${user}做的事都不要。at 必须是那句${char}消息的本地分钟 YYYY-MM-DDTHH:mm；`,
         '取快递可把物品、写作业可把课程写进 subject，没说清不填；喂猫只有明确说见到或没见到时才写 seen。',
         '只输出一个 JSON 对象，不要别的文字，例如：',
-        '{"add":[{"what":"给他讲《三体》的结局","date":null},{"what":"去拍银杏","date":"2026-10-10"}],'
+        '{"add":[{"what":"给他讲《三体》的结局","date":null},{"what":"去拍银杏","date":"2026-10-10"},'
+            + '{"what":"和他去东门吃麻辣烫","date":"2026-10-16","meet":{"time":"18:00","where":"东门口"}}],'
             + '"waiting":[{"what":"他周四下午去字节面试","date":"2026-10-08"}],"unanswered":[{"what":"他国庆回不回家"}],'
             + '"unsettled":[{"what":"10月6日说好一起看电影，他加班没去成"}],"resolved":["p-1"],'
             + '"world":[{"kind":"feed_cat","at":"2026-10-07T20:31","seen":true}]}',
@@ -99,7 +115,7 @@ export function promisePrompt(transcript: string, pending: readonly HerPromise[]
 }
 
 export interface ExtractedPromises {
-    add: { what: string; date?: string }[];
+    add: { what: string; date?: string; meet?: Meetup }[];
     /** ADR 0023：挂着的事（没写的按空的） */
     waiting: { what: string; date?: string }[];
     unanswered: { what: string }[];
@@ -143,8 +159,15 @@ export function parsePromises(text: string): ExtractedPromises {
             ...(typeof action.seen === 'boolean' ? { seen: action.seen } : {}),
         }];
     });
+    // 约好的见面（ADR 0047）：要有日子和几点才算
+    const add = (Array.isArray(data.add) ? data.add : []).flatMap(item => {
+        const [base] = items([item]);
+        if (!base) return [];
+        const meet = base.date ? meetOf((item as Record<string, unknown> | null)?.meet) : undefined;
+        return [{ ...base, ...(meet ? { meet } : {}) }];
+    });
     return {
-        add: items(data.add),
+        add,
         waiting: facts(items(data.waiting)),
         // 一段聊天最多一条没回答的（第一批：随口的问句都挂上了，她第二天把「哪个窗口」也追着问）
         unanswered: facts(items(data.unanswered).map(({ what }) => ({ what }))).slice(0, 1),
@@ -153,6 +176,42 @@ export function parsePromises(text: string): ExtractedPromises {
         world,
         feelings,
     };
+}
+
+function meetOf(value: unknown): Meetup | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const o = value as Record<string, unknown>;
+    const time = typeof o.time === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(o.time.trim()) ? o.time.trim() : undefined;
+    if (!time) return undefined;
+    const where = typeof o.where === 'string' && o.where.trim() ? o.where.trim().slice(0, 20) : undefined;
+    return { time, ...(where ? { where } : {}), minutes: MEET_MINUTES };
+}
+
+/** 约好的见面从几点到几点（ADR 0047）；凌晨 5 点前的算她这一天之后的日历日 */
+export function meetWindow(item: HerPromise): { start: Date; end: Date } | undefined {
+    if (!item.meet || !item.date) return undefined;
+    const [hour, minute] = item.meet.time.split(':').map(Number);
+    const day = parseDay(item.date);
+    const start = new Date(day.getFullYear(), day.getMonth(), day.getDate() + (hour! < 5 ? 1 : 0), hour, minute);
+    return { start, end: new Date(start.getTime() + item.meet.minutes * 60_000) };
+}
+
+/** 到了「快出门」的时候：从这一刻起时间块不再提醒这件，状态行接手 */
+function meetStarted(item: HerPromise, at: Date): boolean {
+    const window = meetWindow(item);
+    return Boolean(window && at.getTime() >= window.start.getTime() - MEET_LEAD_MINUTES * 60_000);
+}
+
+/**
+ * 状态行里赴约的那一句（ADR 0047）。和这个人约的写约了什么、见了面也在 QQ 上说；和别人约的只说在外面、约了人（不说和谁、做什么）
+ */
+export function describeAppointment(meeting: Appointment, viewer: Contact, at: Date): string {
+    const { time, where } = meeting.promise.meet!;
+    const mine = meeting.contact.qq === viewer.qq;
+    if (at.getTime() < meeting.start.getTime()) return mine ? `快出门了，${time} 约好的：${meeting.promise.what}` : `快出门了，${time} 约了人`;
+    return mine
+        ? `约好的：${meeting.promise.what}（${time}${where ? `，${where}` : ''}），正在赴约；见了面你们也在 QQ 上打字说话`
+        : `在外面，约了人（${time} 起）`;
 }
 
 function parseDay(date: string): Date {
@@ -234,6 +293,8 @@ export interface PromiseKeeper {
     openLoops(contact: Contact, chat: readonly TimedMessage[], now: Date): DueLoops;
     /** 她那天的打算（日记材料用）：名单里所有人那儿说过的、日子是那天的 */
     plansOn(date: string): string[];
+    /** 这一刻在赴约或快出门的（ADR 0047）：名单里所有人那儿约的 */
+    appointmentsAt(at: Date): Appointment[];
 }
 
 export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
@@ -311,12 +372,14 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 }
             }
             for (const [i, add] of result.add.entries()) {
-                const item: HerPromise = { id: `p-${episode.start.getTime()}-${i + 1}`, what: add.what, ...(add.date ? { date: add.date } : {}), said, episode: episode.id };
+                const item: HerPromise = {
+                    id: `p-${episode.start.getTime()}-${i + 1}`, what: add.what, ...(add.date ? { date: add.date } : {}), said, episode: episode.id, ...(add.meet ? { meet: add.meet } : {}),
+                };
                 // 日子在今天之前的不记：晚了才抽到（刚上线补抽以前的片段），那天已经过去了，不该再提醒「打算那天」（10-07 线上日志）
                 if (item.date && daysFrom(item.date, day) > 0) continue;
                 if (forgotten(item, day) || state.promises.some(p => p.what === item.what && p.date === item.date)) continue;
                 state.promises.push(item);
-                log(`记下「${item.what}」（${item.date ?? '下次'}）`);
+                log(`记下「${item.what}」（${item.date ?? '下次'}${item.meet ? ` ${item.meet.time}${item.meet.where ? ` ${item.meet.where}` : ''}` : ''}）`);
             }
             const found: [LoopKind, { what: string; date?: string }[]][] = [['waiting', result.waiting], ['unanswered', result.unanswered], ['unsettled', result.unsettled]];
             for (const [kind, list] of found) {
@@ -347,10 +410,16 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         },
         describe: (contact, chat, at) => {
             const day = today(at);
-            const items = duePromises(load(contact).promises.filter(p => !forgotten(p, day)), day, chat);
+            // 约好的见面到了快出门的时候就不在这里提醒了，状态行接手（ADR 0047）
+            const items = duePromises(load(contact).promises.filter(p => !forgotten(p, day) && !meetStarted(p, at)), day, chat);
             return describePromises(items, day, contact.name);
         },
         openLoops: (contact, chat, at) => dueLoops(load(contact).loops, today(at), at, chat),
         plansOn: date => options.contacts.flatMap(contact => load(contact).promises.filter(p => p.date === date).map(p => p.what)),
+        appointmentsAt: at => options.contacts.flatMap(contact => load(contact).promises.flatMap(promise => {
+            const window = meetWindow(promise);
+            if (!window || !meetStarted(promise, at) || at.getTime() >= window.end.getTime()) return [];
+            return [{ contact, promise, ...window }];
+        })),
     };
 }

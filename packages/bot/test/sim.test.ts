@@ -287,6 +287,43 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
         }
     });
 
+    test('约好的见面（ADR 0047）：片段结束后抽出几点在哪，到点时状态行写她在赴约，不再是作息里的事', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-'));
+        const hindsight: SimHindsight = {
+            putBank: async () => {},
+            retain: async () => {},
+            recall: async () => [],
+            getMentalModel: async () => undefined,
+            createMentalModel: async () => {},
+            updateMentalModel: async () => {},
+            activeOperations: async () => [],
+            operationStatus: async () => 'completed',
+            refreshMentalModel: async () => 'op-1',
+            deleteBank: async () => {},
+        };
+        const seen: OpenAIMessage[][] = [];
+        const generate = async (messages: OpenAIMessage[]) => {
+            if (isDiary(messages)) return '日记';
+            if (isPromises(messages)) return '{"add":[{"what":"和他去东门吃麻辣烫","date":"2026-10-16","meet":{"time":"18:00","where":"东门口"}}],"resolved":[]}';
+            seen.push(messages);
+            return seen.length === 1 ? '行啊 六点东门口' : '谁让你点特辣的';
+        };
+        const scenario = parseScenario({
+            name: '测试', tier: 'boyfriend', user: '宝宝', start: '2026-10-16T16:00:00+08:00',
+            steps: [{ say: '晚上一起去吃东门那家麻辣烫吧' }, { advance: '2h20m' }, { say: '这家辣椒放得也太狠了吧' }],
+        });
+        try {
+            const result = await runScenario(scenario, { runId: 'test', dataDir: dir, card, llm, prompt, hindsight, generate, settle: { quietMs: 100, maxMs: 500 } });
+            const text = (messages: OpenAIMessage[]) => messages.map(m => m.content).join('\n');
+            assert.doesNotMatch(text(seen[0]!), /\[你现在：[^\]]*约好的/);
+            assert.match(text(seen[1]!), /\[你现在：[^\]]*约好的：和他去东门吃麻辣烫（18:00，东门口），正在赴约；见了面你们也在 QQ 上打字说话/);
+            assert.doesNotMatch(text(seen[1]!), /还没做的事：和他去东门吃麻辣烫/, '赴约时不再当成还没做的事提醒');
+            assert.match(result.steps.at(-1)!.logs.join('\n'), /此刻在做：约好的/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('她答应的事（ADR 0018）：那段聊天结束后抽出来，他下次来时时间块里提醒', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-sim-'));
         const hindsight: SimHindsight = {

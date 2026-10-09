@@ -34,7 +34,7 @@ import { herStatus } from './status-line.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
 import { describePast, pastCue } from './biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from './people.ts';
-import type { PromiseKeeper } from './promises.ts';
+import { describeAppointment, type PromiseKeeper } from './promises.ts';
 import { describeState, herDay } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candidates.ts';
@@ -114,7 +114,7 @@ export interface ContactPipelineOptions {
      */
     herDays?: boolean;
     /** 她答应过的事（ADR 0018 决策 2）：到了日子在时间块里提醒一句；名单外的人不用 */
-    promises?: Pick<PromiseKeeper, 'describe'> & Partial<Pick<PromiseKeeper, 'openLoops'>>;
+    promises?: Pick<PromiseKeeper, 'describe'> & Partial<Pick<PromiseKeeper, 'openLoops' | 'appointmentsAt'>>;
     /** W3：所有联系人、日记和主动消息共用的一份世界动作。 */
     worldState?: Pick<WorldState, 'at'>;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
@@ -274,8 +274,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 状态行（status-line.ts，模拟器的状态行影子比对用同一个函数，ADR 0042）：作息 → 说过「睡了」就在睡 →
             // 空闲时世界里有时长的事（ADR 0030）→ 一天的打算改了的写「本来打算 X，Y，Z」（ADR 0034）
             const asleep = schedule ? asleepAt(time) : undefined;
+            // 约好的见面（ADR 0047）：和这个人约的优先；和别人约的只说在外面、约了人
+            const meetings = contact.tier !== UNLISTED_TIER ? options.promises?.appointmentsAt?.(time) ?? [] : [];
+            const meeting = meetings.find(m => m.contact.qq === contact.qq) ?? meetings[0];
+            const appointment = meeting ? describeAppointment(meeting, contact, time) : undefined;
             const status = schedule ? herStatus(schedule, time, {
-                extraFree, ...(around ? { world: around } : {}), ...(asleep ? { asleep } : {}),
+                extraFree, ...(around ? { world: around } : {}), ...(asleep ? { asleep } : {}), ...(appointment ? { appointment } : {}),
                 ...(herSchedule ? { plans: { plans: character.herWorld?.plans, ...(bodyNow ? { body: bodyNow } : {}) } } : {}),
             }) : undefined;
             if (status?.saidAsleep) log(`她 ${status.saidAsleep.since.toTimeString().slice(0, 5)} 说过睡了：状态行按在睡觉`);

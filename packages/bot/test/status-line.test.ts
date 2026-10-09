@@ -12,13 +12,14 @@ const schedule = card.schedule!;
 const herWorld = card.herWorld!;
 const extraFree = readingActivities(card.books);
 const at = (text: string) => new Date(`${text}+08:00`);
-const status = (text: string, asleep?: { since: Date; until: Date }) => {
+const status = (text: string, asleep?: { since: Date; until: Date }, appointment?: string) => {
     const time = at(text);
     const world = worldAt(herWorld, schedule, time)!;
     return herStatus(schedule, time, {
         extraFree,
         world,
         ...(asleep ? { asleep } : {}),
+        ...(appointment ? { appointment } : {}),
         plans: { plans: herWorld.plans, body: bodyAt(herWorld.body!, schedule, time) },
     });
 };
@@ -33,6 +34,15 @@ describe('统一状态行（ADR 0042）', () => {
         const inClass = status('2026-10-12T10:00:00');
         assert.equal(inClass.state.activity.kind, 'class');
         assert.equal(inClass.busy, undefined);
+    });
+
+    test('约好的见面（ADR 0047）覆盖空闲时世界里的事；上课不覆盖', () => {
+        const meeting = '约好的：去东门吃麻辣烫（18:00），正在赴约';
+        const video = status('2026-10-11T20:40:00', undefined, meeting);
+        assert.equal(video.busy, meeting, '原来在和家里视频，约了人就是赴约');
+        assert.deepEqual(video.state.activity, { kind: 'free', text: meeting });
+        const inClass = status('2026-10-12T10:00:00', undefined, meeting);
+        assert.equal(inClass.state.activity.kind, 'class');
     });
 
     test('改了打算：对外保留原因，生活执行器拿到实际在做的事', () => {

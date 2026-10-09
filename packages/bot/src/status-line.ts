@@ -13,6 +13,8 @@ export interface StatusOptions {
     world?: WorldNow;
     /** 她说过「睡了」（ADR 0042）：睡到 until。 */
     asleep?: { since: Date; until: Date };
+    /** 约好的见面（ADR 0047）：赴约或快出门时那一句，空闲时覆盖世界里的事和打算。 */
+    appointment?: string;
     /** 一天的打算（ADR 0034）；不传就没有「本来打算……」。 */
     plans?: { plans: Plans | undefined; body?: BodyNow };
 }
@@ -34,7 +36,10 @@ export function herStatus(schedule: Schedule, at: Date, options: StatusOptions =
     const saidAsleep = state.activity.kind !== 'sleep' ? options.asleep : undefined;
     if (saidAsleep) state = { ...state, activity: { kind: 'sleep', until: saidAsleep.until } };
 
-    const busy = state.activity.kind === 'free' && options.world ? occupationAt(options.world, at) : undefined;
+    // 约好的见面排在世界里的事前面（ADR 0047）：约了晚饭就不是「在食堂吃晚饭」；上课、睡觉不覆盖
+    const busy = state.activity.kind === 'free'
+        ? options.appointment ?? (options.world ? occupationAt(options.world, at) : undefined)
+        : undefined;
     if (busy) state = { ...state, activity: { kind: 'free', text: busy } };
 
     const slots = options.plans && options.world && state.activity.kind !== 'sleep'
