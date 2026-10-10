@@ -200,6 +200,8 @@ export interface Scenario {
     moody: boolean;
     /** 默认 false：没人聊天时她也一件件过日子（ADR 0040 规则自主选择器），要开着作息、她自己的日子、卡上有世界 */
     autonomous: boolean;
+    /** 默认 false：紧急课程项目接管空闲安排（ADR 0056）；要开着 autonomous */
+    projectChoice: boolean;
     /** 默认 false：生活账接进提示词（ADR 0054，配置 lifeInPrompt）；要开着 autonomous */
     lifeInPrompt: boolean;
     /** 开场先记进账的、他给的钱（ADR 0027 调整的 receive_money）：at 是本地时刻，forCamera 存进相机基金。让场景里的世界和线上一致（10-10 他转了 2000，10-11 买了相机） */
@@ -265,6 +267,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         proactive: s.proactive === true,
         moody: s.moody === true,
         autonomous: s.autonomous === true,
+        projectChoice: s.projectChoice === true,
         lifeInPrompt: s.lifeInPrompt === true,
         ...(s.gifts !== undefined ? { gifts: (Array.isArray(s.gifts) ? s.gifts : fail('gifts 应为数组')).map((g: unknown, i: number) => {
             const o = g as Record<string, unknown>;

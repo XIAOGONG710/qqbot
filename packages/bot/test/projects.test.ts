@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import type { ReadingBook } from '../src/her-days.ts';
 import type { LifeEvent } from '../src/life-events.ts';
-import { describeRecentPhotography, photographyProgress, projectActivity, recentPhotography } from '../src/projects.ts';
+import { activeProjects, chooseProject, describeRecentPhotography, photographyProgress, projectActivity, projectPortfolio, recentPhotography } from '../src/projects.ts';
+import type { Schedule } from '../src/schedule.ts';
+import type { WorldNow } from '../src/world.ts';
 
 const event = (id: string, start: string, end: string, result: LifeEvent['result'] = 'succeeded'): LifeEvent => ({
     id, actor: 'linmengyao', kind: 'work_on_project', day: '2026-10-12',
@@ -22,8 +25,8 @@ describe('长期项目从事实账派生（ADR 0044）', () => {
 
     test('成功和被打断前的真实投入都算，失败候选不算；重算不另造状态', () => {
         const events = [
-            event('a', '2026-10-12T06:00:00.000Z', '2026-10-12T07:00:00.000Z'),
             event('b', '2026-10-12T08:00:00.000Z', '2026-10-12T08:30:00.000Z', 'interrupted'),
+            event('a', '2026-10-12T06:00:00.000Z', '2026-10-12T07:00:00.000Z'),
             event('c', '2026-10-12T09:00:00.000Z', '2026-10-12T09:00:00.000Z', 'failed'),
         ];
         assert.deepEqual(photographyProgress(events), {
@@ -31,6 +34,69 @@ describe('长期项目从事实账派生（ADR 0044）', () => {
             lastAt: '2026-10-12T08:30:00.000Z', recentSteps: ['修昨天拍的片子'],
         });
         assert.deepEqual(photographyProgress(events), photographyProgress(events));
+    });
+});
+
+describe('B 阶段项目组合（期限、资源、阻碍和暂停）', () => {
+    const schedule: Schedule = {
+        sleep: '02:00', wake: { early: '07:00', lazy: '09:00', earlySlot: '1' },
+        periods: { '1': { start: '08:00', end: '09:40' } }, semester: { start: '2026-09-07', weeks: 20 },
+        holidays: [], makeups: [], kinds: { hard: {}, machine: {}, water: {}, pe: {} }, courses: [],
+        free: { morning: ['刷手机'], afternoon: ['修片'], evening: ['看书'], afternoonFrom: '12:00', eveningFrom: '18:00' },
+        where: '在学校',
+    };
+    const book = (id: string, state: ReadingBook['progress']['state'], max?: number): ReadingBook => ({
+        id, title: id, aliases: [], author: '作者', kind: '小说', platform: '电子书', status: '连载中',
+        progress: { startDay: '2026-10-01', start: 1, everyDays: 1, amount: 1, unit: '章', ...(max === undefined ? {} : { max }), state },
+        attitude: '', unreadKeywords: [], nodes: [],
+    });
+    const now = new Date(2026, 9, 12, 12, 0);
+    const world: WorldNow = {
+        day: '2026-10-12', atSchool: true, parcels: [], events: [],
+        homework: [
+            { course: '数据库', due: new Date(2026, 9, 13, 8, 0), done: false, doneAt: new Date(2026, 9, 12, 22, 0) },
+            { course: '英语', due: new Date(2026, 9, 15, 8, 0), done: true, doneAt: new Date(2026, 9, 12, 10, 30) },
+        ],
+        cameraFund: {
+            saved: 4500, goal: 4500,
+            camera: { start: new Date(2026, 9, 11, 14), end: new Date(2026, 9, 11, 16, 30), where: '科技市场', what: '索尼 a6100', price: 4280, state: 'bought' },
+        },
+    };
+
+    test('三种项目只从现有事实投影；相机基金买完后不再冒充活跃项目', () => {
+        const items = projectPortfolio({
+            events: [event('photo', '2026-10-11T08:00:00.000Z', '2026-10-11T09:00:00.000Z')],
+            world, schedule, books: [book('在读', 'reading'), book('放下', 'put_down')], now,
+        });
+        assert.equal(items.some(item => /相机基金/.test(item.title)), false);
+        assert.deepEqual(items.map(item => [item.kind, item.status]), [
+            ['course', 'active'], ['photography', 'active'], ['reading', 'active'], ['course', 'completed'], ['reading', 'paused'],
+        ]);
+        const photography = items.find(item => item.kind === 'photography')!;
+        assert.deepEqual(photography.resources, ['索尼 a6100']);
+        assert.match(photography.nextStep!, /拿相机出去拍|整理/);
+        assert.equal(items.find(item => item.id === 'reading:放下')?.obstacle, '自己放下了，暂时不继续');
+    });
+
+    test('截止时间压过柔性成长；排序相同输入可重放，暂停和完成的不参与候选', () => {
+        const portfolio = projectPortfolio({ events: [], world, schedule, books: [book('在读', 'reading'), book('放下', 'put_down')], now });
+        const active = activeProjects(portfolio);
+        assert.equal(active[0]!.title, '数据库作业');
+        assert.deepEqual(active.map(item => item.status), active.map(() => 'active'));
+        assert.deepEqual(activeProjects(portfolio).map(item => item.id), active.map(item => item.id));
+        assert.equal(active.some(item => item.title === '英语作业' || item.id === 'reading:放下'), false);
+    });
+
+    test('共享项目决策只让三天内课程作业抢占空闲，输出同时供状态行和执行器使用', () => {
+        const choice = chooseProject({ events: [], world, schedule, books: [book('在读', 'reading')], now })!;
+        assert.equal(choice.project.title, '数据库作业');
+        assert.equal(choice.text, '在赶数据库作业');
+        assert.deepEqual(choice.action, { kind: 'study', subject: '数据库作业' });
+        assert.equal(choice.until?.getTime(), world.homework[0]!.doneAt.getTime());
+
+        const later = { ...world, homework: [{ ...world.homework[0]!, due: new Date(2026, 9, 20, 8, 0) }] };
+        assert.equal(chooseProject({ events: [], world: later, schedule, books: [book('在读', 'reading')], now }), undefined,
+            '较远的作业、摄影和阅读仍由原计划决定，不能吞掉全部空闲');
     });
 });
 

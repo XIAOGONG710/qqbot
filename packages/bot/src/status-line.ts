@@ -3,6 +3,9 @@
 
 import type { BodyNow } from './body.ts';
 import { dayPlan, planNow, revisedSlot, type PlanSlot, type Plans } from './day-plan.ts';
+import type { ReadingBook } from './her-days.ts';
+import type { LifeEvent } from './life-events.ts';
+import { chooseProject, type ProjectChoice } from './projects.ts';
 import { herDay, stateAt, type ExtraFreeActivity, type Schedule, type State } from './schedule.ts';
 import { occupationAt, type WorldNow } from './world.ts';
 
@@ -17,6 +20,8 @@ export interface StatusOptions {
     appointment?: string;
     /** 一天的打算（ADR 0034）；不传就没有「本来打算……」。 */
     plans?: { plans: Plans | undefined; body?: BodyNow };
+    /** 实验项目选择（ADR 0056）：只读事实账，默认不传。 */
+    projectChoice?: { events: readonly LifeEvent[]; books: readonly ReadingBook[] };
 }
 
 export interface HerStatus {
@@ -28,6 +33,8 @@ export interface HerStatus {
     revised?: string;
     /** 空闲又没有世界里的事时实际在做的那件。 */
     doing?: string;
+    /** 项目抢占了原来的空闲安排。 */
+    project?: ProjectChoice;
     slots: PlanSlot[];
 }
 
@@ -37,10 +44,15 @@ export function herStatus(schedule: Schedule, at: Date, options: StatusOptions =
     if (saidAsleep) state = { ...state, activity: { kind: 'sleep', until: saidAsleep.until } };
 
     // 约好的见面排在世界里的事前面（ADR 0047）：约了晚饭就不是「在食堂吃晚饭」；上课、睡觉不覆盖
-    const busy = state.activity.kind === 'free'
+    const freeActivity = state.activity.kind === 'free' ? state.activity : undefined;
+    const free = Boolean(freeActivity);
+    const plannedText = freeActivity?.text;
+    const busy = free
         ? options.appointment ?? (options.world ? occupationAt(options.world, at) : undefined)
         : undefined;
     if (busy) state = { ...state, activity: { kind: 'free', text: busy } };
+    // 「刚洗完澡」是对外状态备注，不占时间；底层仍可能已经在看书、修片或赶作业，审计要能看见。
+    const canPlan = free && (!busy || busy === '刚洗完澡');
 
     const slots = options.plans && options.world && state.activity.kind !== 'sleep'
         ? dayPlan(schedule, options.plans.plans, herDay(schedule, at), {
@@ -50,10 +62,14 @@ export function herStatus(schedule: Schedule, at: Date, options: StatusOptions =
             homework: options.world.homework,
         }, options.extraFree ?? [])
         : [];
-    const slot = state.activity.kind === 'free' && !busy && options.plans ? revisedSlot(schedule, slots, at) : undefined;
+    const project = canPlan && options.world && options.projectChoice
+        ? chooseProject({ ...options.projectChoice, world: options.world, schedule, now: at })
+        : undefined;
+    const slot = canPlan && !project && options.plans ? revisedSlot(schedule, slots, at) : undefined;
     const revised = slot ? planNow(schedule, slots, at) : undefined;
-    const doing = state.activity.kind === 'free' && !busy ? slot?.done ?? state.activity.text : undefined;
-    if (revised) state = { ...state, activity: { kind: 'free', text: revised } };
+    const doing = canPlan ? project?.text ?? slot?.done ?? plannedText : undefined;
+    if (!busy && project) state = { ...state, activity: { kind: 'free', text: project.text } };
+    else if (!busy && revised) state = { ...state, activity: { kind: 'free', text: revised } };
 
     return {
         state,
@@ -62,5 +78,6 @@ export function herStatus(schedule: Schedule, at: Date, options: StatusOptions =
         ...(busy ? { busy } : {}),
         ...(revised ? { revised } : {}),
         ...(doing !== undefined ? { doing } : {}),
+        ...(project ? { project } : {}),
     };
 }

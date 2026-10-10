@@ -16,7 +16,7 @@ import { bookProgressAt, readingActivities } from './her-days.ts';
 import type { LifeEvent } from './life-events.ts';
 import { needsAt, type NeedsSnapshot } from './needs.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from './promises.ts';
-import { projectActivity } from './projects.ts';
+import { chooseProject, projectActivity } from './projects.ts';
 import { formatDate, herDay, stateAt, type ExtraFreeActivity, type Schedule } from './schedule.ts';
 import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
 
@@ -24,6 +24,8 @@ export interface LifeSources {
     schedule: Schedule;
     plans?: Plans;
     books: readonly ReadingBook[];
+    /** ADR 0056：让紧急课程项目接管空闲安排；默认不传 / 关。 */
+    projectChoice?: boolean;
     /** 那一刻的世界：带上聊天里说过做了的事（WorldState.at）；卡上没有世界时返回 undefined */
     worldAt: (at: Date) => WorldNow | undefined;
     /** 已经落账的事（事件账） */
@@ -255,14 +257,18 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     }
 
     const sprint = homeworkSprint(world, at);
+    const project = !sprint && sources.projectChoice
+        ? chooseProject({ events: sources.events(), world, schedule: sources.schedule, books: sources.books, now: at })
+        : undefined;
     const plannedAction = sprint
         ? { kind: 'study' as const, subject: sprint.course ? `${sprint.course}的作业` : '作业' }
-        : planned(at, sources, world, reading, state.activity.text);
+        : project?.action ?? planned(at, sources, world, reading, state.activity.text);
     // 第一次上线时队列里可能还有锚点之前开始的旧行动；复核旧行动仍按旧规则，不能向锚点之前反推需要。
     const needs = sources.needsAnchor && at.getTime() >= Date.parse(sources.needsAnchor.at)
         ? needsAt(sources.needsAnchor, sources.events(), at)
         : undefined;
     const motivated = sprint ? { action: plannedAction, why: '赶作业' }
+        : project ? { action: project.action, why: project.why }
         : motivate(plannedAction, needs, sources.plans?.rest);
     const { kind, subject, target } = motivated.action;
     // 打算做到哪（自然地停）：这一段结束、下一顿饭、下一件世界里的事（吃饭去、下楼喂猫），赶作业的写完为止。
@@ -272,7 +278,8 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     const nextBusy = blocks.find(s => s.start > at)?.start;
     const nextSocial = directNpcFacts(sources, at).map(event => event.at).find(start => start > at);
     const nextAppointment = appointmentActions(sources, at, windowEnd(sources.schedule, at)).find(item => item.start > at)?.start;
-    const soft = earliest([windowEnd(sources.schedule, at), nextMeal, nextBusy, nextSocial, nextAppointment, sprint?.end]);
+    const nextProject = DEADLINE_KINDS.has(kind) ? projectBoundaries(at, sources, world) : [];
+    const soft = earliest([windowEnd(sources.schedule, at), nextMeal, nextBusy, nextSocial, nextAppointment, sprint?.end, project?.until, ...nextProject]);
     const nextSprint = DEADLINE_KINDS.has(kind) ? homeworkSprints(world).map(h => h.start).filter(start => start > at) : [];
     const hard = earliest([soft, state.nextClass?.start, ...nextSprint]);
     // 到硬事件之前短得做不成这一类（学习至少 25 分钟、休闲 10 分钟）的空当不记（算在路上、发呆），不交给裁判判 no_time
@@ -306,6 +313,23 @@ export function motivate(
 /** 赶作业抢得走的（和 actions.ts 一样）：休闲、躺着、看闲书 */
 const DEADLINE_KINDS = new Set<TypedActionKind>(['leisure', 'rest', 'read_book', 'work_on_project']);
 const earliest = (dates: readonly (Date | undefined)[]) => dates.filter((d): d is Date => Boolean(d)).reduce((a, b) => (b < a ? b : a));
+
+/**
+ * 项目答案会随时间变的点：零点可能让新的三日内作业进入 WorldNow；已有作业在 due - 72h 变成紧急、在 doneAt 完成。
+ * 柔性行动不能跨过这些点，否则状态行已经切到项目，账上还在延续旧行动。
+ */
+function projectBoundaries(at: Date, sources: Pick<LifeSources, 'projectChoice'>, world: WorldNow | undefined): Date[] {
+    if (!sources.projectChoice) return [];
+    const midnight = new Date(at);
+    midnight.setHours(24, 0, 0, 0);
+    return [
+        midnight,
+        ...(world?.homework.flatMap(homework => [
+            new Date(homework.due.getTime() - 72 * 3_600_000),
+            homework.doneAt,
+        ]) ?? []),
+    ].filter(boundary => boundary > at);
+}
 
 /** 一天的打算这一段实际做的（改了的用改了的；作业压着改的写完就回到原来的打算） */
 function planned(at: Date, sources: LifeSources, world: WorldNow | undefined, reading: readonly ExtraFreeActivity[], text: string) {

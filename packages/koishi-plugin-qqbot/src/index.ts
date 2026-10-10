@@ -81,6 +81,7 @@ export interface Config {
     speechCheck: boolean;
     herDays: boolean;
     autonomousLife: boolean;
+    projectChoice: boolean;
     lifeInPrompt: boolean;
     realWeather: boolean;
     candidates: number;
@@ -155,6 +156,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         autonomousLife: Schema.boolean().default(DEFAULTS.autonomousLife)
             .description('**没人聊天时她一件件过日子**（ADR 0040）：按作息、课表、饭点、世界里的事和一天的打算排行动，过完记进事件账。'
                 + '现在是影子模式：只记账，还不进提示词。要开着她自己的日子'),
+        projectChoice: Schema.boolean().default(DEFAULTS.projectChoice)
+            .description('**项目选择接管空闲安排**（ADR 0056，实验）：三天内未完成的课程作业优先于刷手机、休息、阅读和摄影；上课、吃饭、赴约等硬事件照旧优先。状态行和行动账共用同一决策。要开着上面那一项'),
         lifeInPrompt: Schema.boolean().default(DEFAULTS.lifeInPrompt)
             .description('**生活账进提示词（第一步）**：她最近三天里有几天练拍照修图、上一回是什么时候，按账上记着的写一行进时间块；只给看得到她爱好的档位。要开着上面那一项'),
         realWeather: Schema.boolean().default(DEFAULTS.realWeather)
@@ -267,6 +270,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.speechCheck !== undefined ? { speechCheck: config.speechCheck } : {}),
         ...(config.herDays !== undefined ? { herDays: config.herDays } : {}),
         ...(config.autonomousLife !== undefined ? { autonomousLife: config.autonomousLife } : {}),
+        ...(config.projectChoice !== undefined ? { projectChoice: config.projectChoice } : {}),
         ...(config.lifeInPrompt !== undefined ? { lifeInPrompt: config.lifeInPrompt } : {}),
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
