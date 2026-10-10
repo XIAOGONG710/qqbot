@@ -188,6 +188,26 @@ free:
     text: 熬夜赶作业
   - window: evening
     text: 刷手机刷到忘了时间
+  - window: afternoon
+    text: 拿新相机去校园里拍
+    tiers:
+      - boyfriend
+      - bestie
+      - girl_friend
+      - known
+    cover: 出去转转
+    from: "2026-10-12"
+    note: ADR 0053 之后：10-11 下午买了相机，从第二天起下午有时候拿着出去拍（下雨就在宿舍研究设置，world.yml plans.outings）。from 那天以前的抽签列表不变，过去的日子不被改写
+  - window: evening
+    text: 研究新相机的设置
+    tiers:
+      - boyfriend
+      - bestie
+      - girl_friend
+      - known
+    cover: 窝着刷手机
+    from: "2026-10-11"
+    note: ADR 0053 之后：买回来那天晚上起，晚上有时候在琢磨新相机
 course_detail:
   tiers:
     - boyfriend

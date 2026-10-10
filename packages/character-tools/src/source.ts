@@ -239,7 +239,8 @@ export interface ScheduleSource {
     courses: { name: string; day: number; slot: string; room: string; kind: CourseKind; weeks: string; practice?: number; practice_room?: string }[];
     /** 空闲时做什么；tiers 没写 = 所有档位都能看到 */
     /** cover：看不到这条的档位换成这句（ADR 0034：各档的列表一样长，同一时刻挑到同一格，不会男朋友看到「修片」、同学看到「打游戏」） */
-    free: { window: 'morning' | 'afternoon' | 'evening'; text: string; tiers?: string[]; cover?: string; note?: string }[];
+    /** from：从这一天起才有（ADR 0053 之后：买了相机才有的活动；那天以前的抽签列表不变，过去的日子不被改写） */
+    free: { window: 'morning' | 'afternoon' | 'evening'; text: string; tiers?: string[]; cover?: string; from?: string; note?: string }[];
     /** 课名、教室、课型叫法给哪些档位 */
     course_detail: { tiers: string[]; note?: string };
     /** 课型：上课时过多少分钟才看到消息、最多回几条 */
@@ -634,7 +635,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         free: h.at('free').array(schedule.free).map((value, i) => {
             const c = h.at(`free[${i}]`);
             const o = c.object(value);
-            c.keys(o, ['window', 'text', 'tiers', 'cover', 'note']);
+            c.keys(o, ['window', 'text', 'tiers', 'cover', 'from', 'note']);
             const window = c.at('window').string(o.window) as ScheduleSource['free'][number]['window'];
             if (!['morning', 'afternoon', 'evening'].includes(window)) c.at('window').fail(`${window} 不是 morning / afternoon / evening`);
             const item: ScheduleSource['free'][number] = { window, text: c.at('text').string(o.text) };
@@ -647,6 +648,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
                 if (!item.tiers) c.at('cover').fail('只有写了 tiers 的才要 cover');
                 item.cover = c.at('cover').string(o.cover);
             }
+            if (o.from !== undefined && o.from !== null) item.from = date(c.at('from'), o.from);
             return withNote(c.at('note'), o.note, item);
         }),
         course_detail: withNote(h.at('course_detail.note'), courseDetail.note, { tiers: h.at('course_detail.tiers').strings(courseDetail.tiers) }),

@@ -301,7 +301,19 @@
                             "刷手机刷到忘了时间"
                         ],
                         "afternoonFrom": "12:00",
-                        "eveningFrom": "18:00"
+                        "eveningFrom": "18:00",
+                        "later": [
+                            {
+                                "window": "afternoon",
+                                "text": "拿新相机去校园里拍",
+                                "from": "2026-10-12"
+                            },
+                            {
+                                "window": "evening",
+                                "text": "研究新相机的设置",
+                                "from": "2026-10-11"
+                            }
+                        ]
                     },
                     "where": "在学校（济南），住宿舍"
                 },
@@ -1069,6 +1081,14 @@
                             {
                                 "text": "在图书馆赶作业",
                                 "indoors": "在宿舍赶作业"
+                            },
+                            {
+                                "text": "拿新相机去校园里拍",
+                                "indoors": "在宿舍研究新相机的设置"
+                            },
+                            {
+                                "text": "出去转转",
+                                "indoors": "在宿舍窝着"
                             }
                         ],
                         "study": [

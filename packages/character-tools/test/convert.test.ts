@@ -375,7 +375,9 @@ test('作息：几点睡、几点起、节次、学期、假期、调休、课�
         day: 1, slot: '3-4', weeks: '1-16', kind: 'hard', name: '大数据应用技术', room: '知行楼303', practice: { fromWeek: 9, room: '知行楼303（机房）' },
     });
     assert.deepEqual(s.kinds.hard, { label: '专业课，认真听', seeAfterMin: [5, 20], maxBubbles: 1 });
-    assert.equal(s.free.morning.length + s.free.afternoon.length + s.free.evening.length, source.schedule.free.length);
+    // 有 from 的进 later（那天起才进抽签列表，ADR 0053 之后）
+    assert.equal(s.free.morning.length + s.free.afternoon.length + s.free.evening.length + (s.free.later?.length ?? 0), source.schedule.free.length);
+    assert.deepEqual(s.free.later?.map(item => item.from), source.schedule.free.filter(item => item.from).map(item => item.from));
 });
 
 test('作息按档位裁剪：课名、教室、课型叫法只给 BFGK；拍照的活动只给 BFGK；城市同学以下不给；他在哪只给男朋友档', () => {

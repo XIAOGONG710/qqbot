@@ -152,7 +152,8 @@ export interface RoutineSource {
  */
 export interface PlansSource {
     tiers: string[];
-    outings: { text: string; indoors: string }[];
+    /** tiers：只给这几档（不写就是都给）；说到她爱好的（「相机」是同学档以下的禁用词）只给看得到的档位 */
+    outings: { text: string; indoors: string; tiers?: string[] }[];
     study: string[];
     rest: string;
     note?: string;
@@ -271,7 +272,7 @@ export function worldForTier(world: WorldSource | undefined, tier: string): Card
             },
         } : {}),
         ...(world.plans && sees(world.plans.tiers) ? {
-            plans: { outings: world.plans.outings.map(o => ({ ...o })), study: [...world.plans.study], rest: world.plans.rest },
+            plans: { outings: world.plans.outings.filter(o => !o.tiers || sees(o.tiers)).map(o => ({ text: o.text, indoors: o.indoors })), study: [...world.plans.study], rest: world.plans.rest },
         } : {}),
         ...(world.body && sees(world.body.tiers) ? {
             body: {
@@ -608,8 +609,9 @@ function checkPlans(p: At, value: unknown): PlansSource {
     if (!Array.isArray(raw.outings)) p.at('outings').fail('应为数组');
     const outings = (raw.outings as unknown[]).map((v, i) => {
         const o = p.at(`outings[${i}]`).object(v);
-        p.at(`outings[${i}]`).keys(o, ['text', 'indoors']);
-        return { text: p.at(`outings[${i}].text`).string(o.text), indoors: p.at(`outings[${i}].indoors`).string(o.indoors) };
+        p.at(`outings[${i}]`).keys(o, ['text', 'indoors', 'tiers']);
+        const tiers = o.tiers === undefined || o.tiers === null ? undefined : p.at(`outings[${i}].tiers`).strings(o.tiers);
+        return { text: p.at(`outings[${i}].text`).string(o.text), indoors: p.at(`outings[${i}].indoors`).string(o.indoors), ...(tiers?.length ? { tiers } : {}) };
     });
     return {
         tiers: p.at('tiers').strings(raw.tiers),
@@ -621,9 +623,10 @@ function checkPlans(p: At, value: unknown): PlansSource {
 }
 
 /** 打算里说到的空闲活动（outings.text、study）要在 schedule.yml 的 free 里（ADR 0034）：不然那条规则永远用不上 */
-export function checkPlansAgainstFree(plans: PlansSource | undefined, free: readonly { text: string }[]): void {
+export function checkPlansAgainstFree(plans: PlansSource | undefined, free: readonly { text: string; cover?: string }[]): void {
     if (!plans) return;
-    const texts = new Set(free.map(item => item.text));
+    // cover 也算（看不到的档位那一格；出门的活动 cover 也是出门的，下雨一起改，ADR 0034 同一时刻各档同一件事）
+    const texts = new Set(free.flatMap(item => (item.cover ? [item.text, item.cover] : [item.text])));
     for (const text of [...plans.outings.map(o => o.text), ...plans.study]) {
         if (!texts.has(text)) throw new Error(`world.yml plans 里的「${text}」不在 schedule.yml 的 free 里`);
     }

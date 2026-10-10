@@ -15,6 +15,9 @@ describe('长期项目从事实账派生（ADR 0044）', () => {
         assert.equal(projectActivity('刷手机刷到忘了时间'), undefined);
         assert.equal(projectActivity('刷摄影区'), undefined, '刷着看是休闲，不算在练');
         assert.deepEqual(projectActivity('修昨天拍的片子'), { id: 'photography_growth', title: '摄影成长', step: '修昨天拍的片子' });
+        // 买了相机以后（ADR 0053）
+        for (const text of ['拿新相机去校园里拍', '研究新相机的设置', '在宿舍研究新相机的设置']) assert.equal(projectActivity(text)?.id, 'photography_growth', text);
+        assert.equal(projectActivity('攒钱买相机'), undefined);
     });
 
     test('成功和被打断前的真实投入都算，失败候选不算；重算不另造状态', () => {

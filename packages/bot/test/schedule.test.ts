@@ -121,6 +121,30 @@ describe('作息：某个时刻她在干什么', () => {
         assert.ok(a.activity.kind === 'free' && boyfriend.free.afternoon.includes(a.activity.text));
     });
 
+    test('从某一天起才有的空闲活动（ADR 0053 之后，买了相机）：那天以前每天抽到的不变；那天起才可能抽到', () => {
+        const without: Schedule = { ...boyfriend, free: { ...boyfriend.free, later: [] } };
+        const free = (schedule: Schedule, date: Date) => {
+            const state = stateAt(schedule, date);
+            return state.activity.kind === 'free' ? state.activity.text : undefined;
+        };
+        // 9-01 到 10-10 的下午、晚上：有没有 later 都一样（过去的日子不被改写）
+        for (let day = new Date(2026, 8, 1); day <= new Date(2026, 9, 10); day.setDate(day.getDate() + 1)) {
+            for (const h of [15, 21]) {
+                const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h);
+                assert.equal(free(boyfriend, at), free(without, at), at.toDateString());
+            }
+        }
+        const later = boyfriend.free.later!;
+        assert.deepEqual(later.map(item => [item.window, item.text, item.from]), [
+            ['afternoon', '拿新相机去校园里拍', '2026-10-12'], ['evening', '研究新相机的设置', '2026-10-11'],
+        ]);
+        // 之后一个月里抽得到；10-11 下午（正在买）抽不到「拿新相机去校园里拍」
+        const seen = new Set<string>();
+        for (let d = 11; d <= 40; d++) for (const h of [15, 21]) seen.add(free(boyfriend, new Date(2026, 9, d, h)) ?? '');
+        assert.ok(seen.has('拿新相机去校园里拍') && seen.has('研究新相机的设置'));
+        assert.notEqual(free(boyfriend, t(10, 11, 15)), '拿新相机去校园里拍');
+    });
+
     test('状态行：在哪、在干什么、他在哪；低档位没有课名、教室、城市和他', () => {
         const line = (s: Schedule, date: Date, woken = false) => describeState(stateAt(s, date), s, { woken });
         assert.match(line(boyfriend, t(10, 5, 14)), /^\[你现在：国庆节放假，没抢到回青岛的票，留在学校（你们说好以后放假一起走，这次你不难受）；[^；]+；他回青岛过国庆了（放假前就说好的）\]$/);

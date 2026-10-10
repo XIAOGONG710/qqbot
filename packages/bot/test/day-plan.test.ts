@@ -35,11 +35,13 @@ describe('她一天的打算会改（ADR 0034）', () => {
     });
 
     test('下雨：要出门的换成在宿舍；状态行写「本来打算……，下雨了，……」', () => {
-        // 10-20（周二）下雨，上午打算去图书馆占座、下午在图书馆赶作业
+        // 10-20（周二）下雨，上午打算去图书馆占座、下午拿新相机出去拍（10-11 买了相机以后才有，ADR 0053；原来是在图书馆赶作业）
         const slots = planOn(boyfriend, 10, 20);
         assert.equal(describeSlot(slots[0]!), '上午本来打算去图书馆占座，下雨了，在宿舍写作业');
-        assert.equal(describeSlot(slots[1]!), '下午本来打算在图书馆赶作业，下雨了，在宿舍赶作业');
-        assert.equal(planNow(schedule, slots, at(10, 20, 15)), '本来打算在图书馆赶作业，下雨了，在宿舍赶作业');
+        assert.equal(describeSlot(slots[1]!), '下午本来打算拿新相机去校园里拍，下雨了，在宿舍研究新相机的设置');
+        assert.equal(planNow(schedule, slots, at(10, 20, 15)), '本来打算拿新相机去校园里拍，下雨了，在宿舍研究新相机的设置');
+        // 同学档看到的是 cover「出去转转」，下雨一样改（ADR 0034：同一时刻各档同一件事）
+        assert.equal(describeSlot(planOn(classmate, 10, 20)[1]!), '下午本来打算出去转转，下雨了，在宿舍窝着');
         assert.match(describePlans(schedule, slots, at(10, 20, 15))!, /^\[你今天的打算（早上起来想的.*：上午本来打算去图书馆占座，下雨了，在宿舍写作业；下午本来打算/);
         // 过去了的时段只写改了的：10-08 晚上，上午、下午照打算做完了，不写
         const plain = planOn(boyfriend, 10, 8);
@@ -80,7 +82,8 @@ describe('她一天的打算会改（ADR 0034）', () => {
             const b = planOn(classmate, 10, d);
             assert.equal(a.length, b.length, `10-${d}`);
             a.forEach((slot, i) => {
-                assert.ok(slot.planned === b[i]!.planned || b[i]!.planned === '窝着刷手机', `10-${d} ${slot.window}：${slot.planned} / ${b[i]!.planned}`);
+                // cover：看不到的档位那一格（出去拍照的 cover 是「出去转转」，也是出门的，下雨一起改）
+                assert.ok(slot.planned === b[i]!.planned || ['窝着刷手机', '出去转转'].includes(b[i]!.planned), `10-${d} ${slot.window}：${slot.planned} / ${b[i]!.planned}`);
                 assert.equal(slot.done === slot.planned, b[i]!.done === b[i]!.planned, `10-${d} ${slot.window} 改没改`);
             });
             changed += a.filter(s => s.done !== s.planned).length;

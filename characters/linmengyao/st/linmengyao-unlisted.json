@@ -280,7 +280,19 @@
                             "刷手机刷到忘了时间"
                         ],
                         "afternoonFrom": "12:00",
-                        "eveningFrom": "18:00"
+                        "eveningFrom": "18:00",
+                        "later": [
+                            {
+                                "window": "afternoon",
+                                "text": "出去转转",
+                                "from": "2026-10-12"
+                            },
+                            {
+                                "window": "evening",
+                                "text": "窝着刷手机",
+                                "from": "2026-10-11"
+                            }
+                        ]
                     },
                     "where": "在学校，住宿舍"
                 },
@@ -429,6 +441,10 @@
                             {
                                 "text": "在图书馆赶作业",
                                 "indoors": "在宿舍赶作业"
+                            },
+                            {
+                                "text": "出去转转",
+                                "indoors": "在宿舍窝着"
                             }
                         ],
                         "study": [

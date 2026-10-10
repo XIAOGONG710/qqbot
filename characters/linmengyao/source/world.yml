@@ -379,6 +379,15 @@ plans:
       indoors: 在宿舍写作业
     - text: 在图书馆赶作业
       indoors: 在宿舍赶作业
+    - text: 拿新相机去校园里拍
+      indoors: 在宿舍研究新相机的设置
+      tiers:
+        - boyfriend
+        - bestie
+        - girl_friend
+        - known
+    - text: 出去转转
+      indoors: 在宿舍窝着
   study:
     - 在宿舍写作业
     - 在图书馆赶作业
