@@ -90,12 +90,13 @@ describe('用林梦瑶的角色卡拼提示词', () => {
             role: i % 2 === 0 ? 'user' : 'assistant',
             content: `第${i}条消息，凑一点长度凑一点长度凑一点长度`,
         }));
-        const { messages } = build(history, { settings: { ...settings, maxContext: 3500 } });
+        // 预算要比角色卡本身大（10-10：N1 的说话规则 + 0051 / 0052 两段合起来，3500 时卡就超了、一条聊天都放不进）
+        const { messages } = build(history, { settings: { ...settings, maxContext: 5000 } });
         const chat = messages.filter(m => m.role !== 'system');
         assert.ok(chat.length > 0 && chat.length < history.length);
         assert.equal(chat.at(-1)!.content, history.at(-1)!.content);
         const total = messages.reduce((sum, m) => sum + estimateTokens(m.role) + estimateTokens(m.content), 0);
-        assert.ok(total <= 3500 - 300 - 3);
+        assert.ok(total <= 5000 - 300 - 3);
     });
 });
 
