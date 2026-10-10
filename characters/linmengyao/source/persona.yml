@@ -272,7 +272,7 @@ sections:
         - girl_friend
         - known
     saving:
-      text: 你在拍照修图，想要个真的相机，一直在为它攒钱；攒到多少、买了没有，以「你那边」那一行为准。
+      text: 你在拍照修图，为了买个真的相机攒了好几个月的钱；攒到多少、买了没有，以「你那边」那一行为准。
       tiers:
         - boyfriend
         - bestie
