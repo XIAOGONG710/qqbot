@@ -187,6 +187,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
         ? lifeExecutor({
             schedule: worldCard.schedule!, books: worldCard.books, ...(worldCard.herWorld!.plans ? { plans: worldCard.herWorld!.plans } : {}),
             worldAt: time => ledgerWorld.at(worldCard.herWorld!, worldCard.schedule!, time), events: () => ledgerWorld.events(),
+            ...(config.projectChoice ? { projectChoice: true } : {}),
             ...(worldCard.herWorld!.body ? { bodyAt: (time: Date) => bodyAt(worldCard.herWorld!.body!, worldCard.schedule!, time) } : {}),
             bedtimes: () => bedtimes(worldCard.schedule!, worldNow()),
             appointmentsBetween: (from, to) => loadAppointments?.(from, to) ?? [],
@@ -199,6 +200,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
     if (config.contextTurns) log(`最近几轮 + 要点（ADR 0043）：${config.memory ? `开：原文只放最近 ${config.contextTurns} 轮，更早的在后台整理成要点，没整理好的那一轮照旧最近 80 条；${config.contextContacts.length ? `只对 ${config.contextContacts.join("、")}` : "名单里开了记忆的都开"}` : "配置开了，但长期记忆没开，不开"}`);
     if (config.candidates > 1) log(`挑候选：他难过、说亲密话、收尾时一次生成 ${config.candidates} 个，按规则挑一个（ADR 0041）`);
     if (config.autonomousLife) log(`没人聊天时她一件件过日子：${lifeRunner ? '开（ADR 0040/0045，影子模式：需要值只改行动账，不进提示词）' : '配置开了，但没有带作息和世界的卡，不开'}`);
+    if (config.projectChoice) log(`项目选择：${lifeRunner ? '开（ADR 0056：三天内作业可接管空闲安排，状态行与行动账共用）' : '配置开了，但生活执行器没开，不生效'}`);
     // 没人找她的时候也每 ${LIFE_TICK_MS / 60_000} 分钟推一次，过完的时段尽快落账
     const lifeTimer = lifeRunner ? setInterval(() => { sharedWorld?.events(); }, LIFE_TICK_MS) : undefined;
     const noteMoodAndBooks = herDaysCard ? herDayLogger(
@@ -359,6 +361,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
             memory,
             ...(promises ? { promises } : {}),
             ...(sharedWorld ? { worldState: sharedWorld } : {}),
+            ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
             ...(config.lifeInPrompt && lifeRunner ? { lifeInPrompt: true } : {}),
             contacts: config.contacts,
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；

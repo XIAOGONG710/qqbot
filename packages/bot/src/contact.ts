@@ -118,6 +118,8 @@ export interface ContactPipelineOptions {
     promises?: Pick<PromiseKeeper, 'describe'> & Partial<Pick<PromiseKeeper, 'openLoops' | 'appointmentsAt'>>;
     /** W3：所有联系人、日记和主动消息共用的一份世界动作。 */
     worldState?: Pick<WorldState, 'at'> & Partial<Pick<WorldState, 'events'>>;
+    /** ADR 0056：三天内课程作业可以接管空闲安排；执行器与状态行共用。 */
+    projectChoice?: boolean;
     /** 生活账接进提示词的第一步（配置 lifeInPrompt）：她这几天练拍照修图，只给看得到她爱好的档位（卡上有相机基金的） */
     lifeInPrompt?: boolean;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
@@ -286,6 +288,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const status = schedule ? herStatus(schedule, time, {
                 extraFree, ...(around ? { world: around } : {}), ...(asleep ? { asleep } : {}), ...(appointment ? { appointment } : {}),
                 ...(herSchedule ? { plans: { plans: character.herWorld?.plans, ...(bodyNow ? { body: bodyNow } : {}) } } : {}),
+                ...(options.projectChoice && options.worldState?.events
+                    ? { projectChoice: { events: options.worldState.events(), books: character.books } }
+                    : {}),
             }) : undefined;
             if (status?.saidAsleep) log(`她 ${status.saidAsleep.since.toTimeString().slice(0, 5)} 说过睡了：状态行按在睡觉`);
             if (status?.busy) log(`此刻在做：${status.busy}`);

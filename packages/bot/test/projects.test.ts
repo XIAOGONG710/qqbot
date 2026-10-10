@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { ReadingBook } from '../src/her-days.ts';
 import type { LifeEvent } from '../src/life-events.ts';
-import { activeProjects, describeRecentPhotography, photographyProgress, projectActivity, projectPortfolio, recentPhotography } from '../src/projects.ts';
+import { activeProjects, chooseProject, describeRecentPhotography, photographyProgress, projectActivity, projectPortfolio, recentPhotography } from '../src/projects.ts';
 import type { Schedule } from '../src/schedule.ts';
 import type { WorldNow } from '../src/world.ts';
 
@@ -85,6 +85,18 @@ describe('B 阶段项目组合（期限、资源、阻碍和暂停）', () => {
         assert.deepEqual(active.map(item => item.status), active.map(() => 'active'));
         assert.deepEqual(activeProjects(portfolio).map(item => item.id), active.map(item => item.id));
         assert.equal(active.some(item => item.title === '英语作业' || item.id === 'reading:放下'), false);
+    });
+
+    test('共享项目决策只让三天内课程作业抢占空闲，输出同时供状态行和执行器使用', () => {
+        const choice = chooseProject({ events: [], world, schedule, books: [book('在读', 'reading')], now })!;
+        assert.equal(choice.project.title, '数据库作业');
+        assert.equal(choice.text, '在赶数据库作业');
+        assert.deepEqual(choice.action, { kind: 'study', subject: '数据库作业' });
+        assert.equal(choice.until?.getTime(), world.homework[0]!.doneAt.getTime());
+
+        const later = { ...world, homework: [{ ...world.homework[0]!, due: new Date(2026, 9, 20, 8, 0) }] };
+        assert.equal(chooseProject({ events: [], world: later, schedule, books: [book('在读', 'reading')], now }), undefined,
+            '较远的作业、摄影和阅读仍由原计划决定，不能吞掉全部空闲');
     });
 });
 

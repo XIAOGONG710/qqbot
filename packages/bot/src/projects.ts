@@ -55,6 +55,16 @@ export interface ProjectPortfolioInput {
     now: Date;
 }
 
+export interface ProjectChoice {
+    project: LongTermProject;
+    /** 状态行和行动账共同使用的自然语言，不各自重新拼一遍。 */
+    text: string;
+    action: { kind: 'study'; subject: string; target?: string };
+    why: string;
+    /** 这次项目行动最晚做到什么时候；课程作业用世界里原有的预计写完时刻。 */
+    until?: Date;
+}
+
 /**
  * 现有作息里真正服务于摄影成长的活动；普通刷手机、打游戏仍是 leisure。
  * 「刷摄影区」也是 leisure（10-09 Claude 改）：刷着看别人的片子是休闲，修片、出去拍才算在练；算成进展会把她的进度吹大。
@@ -145,6 +155,25 @@ export function projectPortfolio({ events, world, schedule, books, now }: Projec
 /** 活跃项目按确定性优先级排序；期限相同再按 id，重启和重放不会换顺序。 */
 export function activeProjects(projects: readonly LongTermProject[]): LongTermProject[] {
     return projects.filter(project => project.status === 'active').sort(compareProjects);
+}
+
+/**
+ * 当前唯一会主动抢占原空闲安排的项目决策：三天内未完成的课程作业。
+ * 摄影和阅读仍只在原作息选到对应活动时推进，避免一个“最高优先级”把整天所有空闲时间吞掉。
+ */
+export function chooseProject(input: ProjectPortfolioInput): ProjectChoice | undefined {
+    const project = activeProjects(projectPortfolio(input))
+        .find(candidate => candidate.kind === 'course' && candidate.priority >= 80);
+    if (!project) return;
+    const homework = input.world?.homework.find(item => !item.done
+        && project.id === `course:${item.course || 'unknown'}:${item.due.toISOString()}`);
+    return {
+        project,
+        text: `在赶${project.title}`,
+        action: { kind: 'study', subject: project.title },
+        why: `${project.title}三天内截止`,
+        ...(homework ? { until: homework.doneAt } : {}),
+    };
 }
 
 function deadlinePriority(hours: number): number {

@@ -213,6 +213,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             ? lifeExecutor({
                 schedule: character.schedule, books: character.books, ...(herWorld.plans ? { plans: herWorld.plans } : {}),
                 worldAt: time => ledger.at(herWorld, character.schedule!, time), events: () => ledger.events(),
+                ...(scenario.projectChoice ? { projectChoice: true } : {}),
                 ...(herWorld.body ? { bodyAt: (time: Date) => bodyAt(herWorld.body!, character.schedule!, time) } : {}),
                 // 她跟谁说过「睡了」（ADR 0042）：和 app.ts 一样看名单里所有人的聊天记录（restart 之后 history 是新读的那一份）
                 bedtimes: () => saidBedtimes([contact, ...others].map(person => history.load(person.qq)), character.schedule!, clock.now() - 86_400_000),
@@ -331,6 +332,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         memory,
         ...(promises ? { promises } : {}),
         ...(sharedWorld ? { worldState: sharedWorld } : {}),
+        ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}),
         ...(scenario.lifeInPrompt && scenario.autonomous ? { lifeInPrompt: true } : {}),
         contacts: [contact, ...others],
         log,
@@ -631,6 +633,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                             ...(herWorld.plans ? { plans: herWorld.plans } : {}),
                             worldAt: at => ledgerWorld!.at(herWorld, schedule, at),
                             events: () => ledgerWorld!.events(),
+                            ...(scenario.projectChoice ? { projectChoice: true } : {}),
                             ...(herWorld.body ? { bodyAt: (at: Date) => bodyAt(herWorld.body!, schedule, at) } : {}),
                             bedtimes: () => saidBedtimes([contact, ...others].map(person => history.load(person.qq)), schedule, clock.now() - 86_400_000),
                         };

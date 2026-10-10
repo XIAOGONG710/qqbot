@@ -14,6 +14,7 @@ import type { Appointment } from '../src/promises.ts';
 import { classesOn, formatDate, herDay } from '../src/schedule.ts';
 import { auditLedgerCoverage, auditLifeStatus } from '../src/sim/life-audit.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { herStatus } from '../src/status-line.ts';
 import { worldAt, worldState } from '../src/world.ts';
 import { dayFrom, useRealWeather, type HourWeather } from '../src/weather.ts';
 
@@ -136,6 +137,40 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         const lesson = classesOn(schedule, at('2026-10-12T12:00:00')).lessons[0]!;
         const attend = chooseAt(lesson.start, exhausted);
         assert.ok('intent' in attend && attend.intent.kind === 'attend_class');
+    });
+
+    test('项目选择开关默认不改变行为；打开后状态行和执行器共用三天内作业，硬事件仍优先', () => {
+        const time = at('2026-10-13T13:00:00');
+        const base = worldAt(herWorld, schedule, time)!;
+        const urgent = {
+            ...base,
+            homework: [{ course: '数据库', due: at('2026-10-15T12:00:00'), done: false, doneAt: at('2026-10-14T22:00:00') }],
+        };
+        const enabled: LifeSources = { ...plain, projectChoice: true, worldAt: () => urgent };
+        const picked = chooseAt(time, enabled);
+        assert.ok('intent' in picked);
+        if (!('intent' in picked)) return;
+        assert.deepEqual([picked.intent.kind, picked.intent.subject], ['study', '数据库作业']);
+
+        const status = herStatus(schedule, time, {
+            extraFree: readingActivities(card.books), world: urgent,
+            plans: { plans: herWorld.plans, body: bodyAt(herWorld.body!, schedule, time) },
+            projectChoice: { events: [], books: card.books },
+        });
+        assert.equal(status.project?.action.subject, picked.intent.subject);
+        assert.equal(status.doing, '在赶数据库作业');
+        const audited: LifeEvent = {
+            id: lifeActionIdFor(time, 'study'), actor: 'linmengyao', kind: 'study', day: '2026-10-13',
+            startedAt: time.toISOString(), endedAt: new Date(time.getTime() + 30 * 60_000).toISOString(),
+            source: 'simulation', result: 'succeeded', subject: '数据库作业',
+        };
+        assert.deepEqual(auditLifeStatus([audited], { ...enabled, events: () => [audited] }), []);
+
+        const disabled = chooseAt(time, { ...plain, worldAt: () => urgent });
+        assert.ok(!('intent' in disabled) || disabled.intent.subject !== '数据库作业', '默认关闭时沿用原选择器');
+        const lesson = classesOn(schedule, at('2026-10-12T12:00:00')).lessons[0]!;
+        const hard = chooseAt(lesson.start, enabled);
+        assert.ok('intent' in hard && hard.intent.kind === 'attend_class');
     });
 
     test('首次启用时复核锚点之前的旧队列，沿用旧选择器而不是向过去投影需要', () => {
@@ -454,6 +489,24 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         } finally {
             rmSync(a, { recursive: true, force: true });
             rmSync(b, { recursive: true, force: true });
+        }
+    });
+
+    test('项目选择跑 14 天：紧急作业接管空闲，但摄影和阅读仍有进展，状态账双向一致', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'life-project-choice-'));
+        try {
+            const start = at('2026-10-12T08:00:00');
+            const end = at('2026-10-26T08:00:00');
+            const sources: LifeSources = { ...plain, projectChoice: true };
+            const events = live(dir, start, end, undefined, sources).events;
+            assert.ok(events.some(event => event.kind === 'study' && /作业/.test(event.subject ?? '')), '紧急课程项目进入学习行动');
+            assert.ok(events.some(event => event.kind === 'work_on_project'), '摄影项目没有被作业饿死');
+            assert.ok(events.some(event => event.kind === 'read_book'), '阅读项目没有被作业饿死');
+            const audited = { ...sources, events: () => events };
+            assert.deepEqual(auditLifeStatus(events, audited), []);
+            assert.deepEqual(auditLedgerCoverage(events, audited), []);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
         }
     });
 

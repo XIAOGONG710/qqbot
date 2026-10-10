@@ -54,6 +54,13 @@ describe('统一状态行（ADR 0042）', () => {
         assert.ok(rainy.slots.some(slot => slot.done !== slot.planned));
     });
 
+    test('刚洗完澡是对外状态备注，不吞掉底层正在做的柔性行动', () => {
+        const showered = status('2026-10-12T23:20:00');
+        assert.equal(showered.busy, '刚洗完澡');
+        assert.deepEqual(showered.state.activity, { kind: 'free', text: '刚洗完澡' });
+        assert.ok(showered.doing && showered.doing !== '刚洗完澡');
+    });
+
     test('她说过睡了以后，所有联系人看到同一个睡眠状态', () => {
         const since = at('2026-10-13T00:32:00');
         const until = at('2026-10-13T09:30:00');

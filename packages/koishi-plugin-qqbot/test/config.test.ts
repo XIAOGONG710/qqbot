@@ -75,6 +75,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(config.moody, DEFAULTS.moody);
         assert.equal(config.speechCheck, DEFAULTS.speechCheck);
         assert.equal(config.herDays, DEFAULTS.herDays);
+        assert.equal(config.projectChoice, DEFAULTS.projectChoice);
         assert.equal(config.proactive, DEFAULTS.proactive);
         assert.equal(config.dataDir, DEFAULTS.dataDir);
         assert.equal(config.memory.timeoutMs, DEFAULTS.memory.timeoutMs);
@@ -161,6 +162,12 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(fromKoishi(minimal).autonomousLife, false);
         assert.equal(fromKoishi({ ...minimal, autonomousLife: true }).autonomousLife, true);
         assert.equal('autonomousLife' in (Config.simplify(Config(minimal as never)) as object), false);
+    });
+
+    test('项目选择（ADR 0056）：默认关闭；打开后传给核心，默认值不写回 yml', () => {
+        assert.equal(fromKoishi(minimal).projectChoice, false);
+        assert.equal(fromKoishi({ ...minimal, projectChoice: true }).projectChoice, true);
+        assert.equal('projectChoice' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
     test('最近几轮 + 要点（ADR 0043）：旧配置没有这两项时是关、全名单；开了照样传过去', () => {

@@ -38,6 +38,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         speechCheck: false,
         herDays: false,
         autonomousLife: false,
+        projectChoice: false,
         lifeInPrompt: false,
         realWeather: false,
         media: true,

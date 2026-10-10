@@ -3,7 +3,7 @@
 
 import { asleepSince } from '../bedtime.ts';
 import { readingActivities } from '../her-days.ts';
-import { freeAction, type LifeSources } from '../life-selector.ts';
+import { chooseAt, freeAction, type LifeSources } from '../life-selector.ts';
 import type { LifeEvent } from '../life-events.ts';
 import { herStatus } from '../status-line.ts';
 import { describeAppointment } from '../promises.ts';
@@ -64,6 +64,7 @@ const MIN_GAP_MS = 10 * 60_000;
 /**
  * 反方向（2026-10-09 Claude 复核 Codex 接管）：每 stepMinutes 取一次状态行，状态行说她在做某件事（睡觉、上课、吃饭、学习、空闲里实际在做的），
  * 账上那一刻却没有任何行动的，记一条「账上缺」——不然状态行对外说她在修片，账上那两个小时是空的，查不出来。
+ * 选择器明确判为“空当太短”或硬事件中的时刻不报：不同类型有各自最短时长，不能只拿状态文字强行要求一条行动。
  * 只看第一件行动开始到最后一件结束之间（执行器还没排到的尾巴不算）；短于 10 分钟的空当不算；同一段空当只记一条。
  */
 export function auditLedgerCoverage(events: readonly LifeEvent[], sources: LifeSources, stepMinutes = 15): LedgerGap[] {
@@ -87,7 +88,8 @@ export function auditLedgerCoverage(events: readonly LifeEvent[], sources: LifeS
         if (gaps.at(-1)?.from === from) continue;
         const at = new Date(t);
         const status = statusAt(at, sources, reading, sources.worldAt(at));
-        const expectedKind = statusKind(status, at, sources, reading);
+        const choice = chooseAt(at, sources);
+        const expectedKind = 'intent' in choice ? choice.intent.kind : undefined;
         if (expectedKind) gaps.push({ from, to: new Date(after).toISOString(), expectedKind, status: describeActivity(status.state.activity) });
     }
     return gaps;
@@ -107,6 +109,7 @@ function statusAt(at: Date, sources: LifeSources, reading: ReturnType<typeof rea
             plans: sources.plans,
             ...(sources.bodyAt ? { body: sources.bodyAt(at) } : {}),
         },
+        ...(sources.projectChoice ? { projectChoice: { events: sources.events(), books: sources.books } } : {}),
     });
 }
 
@@ -118,6 +121,7 @@ function statusKind(status: ReturnType<typeof herStatus>, at: Date, sources: Lif
         case 'between': return undefined;
         case 'free': {
             if (status.busy) {
+                if (status.busy === '刚洗完澡' && status.doing) return freeAction(status.doing, at, sources, reading).kind;
                 if (/赴约|快出门了|约了人/.test(status.busy)) return 'meet';
                 if (/吃午饭|吃晚饭/.test(status.busy)) return 'eat';
                 if (/赶.*作业/.test(status.busy)) return 'study';

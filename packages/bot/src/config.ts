@@ -36,6 +36,7 @@ export const DEFAULTS = {
     speechCheck: true,
     herDays: true,
     autonomousLife: false,
+    projectChoice: false,
     lifeInPrompt: false,
     realWeather: true,
     media: true,
@@ -92,6 +93,11 @@ export interface AppConfig {
      * 默认关；开了以后从开的那一刻排起，行动还不进提示词（影子模式）。要开着她自己的日子，卡上要有作息和世界
      */
     autonomousLife: boolean;
+    /**
+     * 项目组合接管空闲安排（ADR 0056）：三天内未完成的课程作业优先于原来的柔性计划，状态行和生活执行器共用同一次决策。
+     * 默认关；要开着 autonomousLife，先以影子账验证。
+     */
+    projectChoice: boolean;
     /**
      * 生活账接进提示词的第一步（ADR 0040 之后）：她这几天有几天练拍照修图、上一回是什么时候，按账上已经落账的写一行，只给看得到她爱好的档位。
      * 默认关；要开着 autonomousLife（账是它记的）
@@ -252,6 +258,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         speechCheck: bool(file, 'speechCheck', '', DEFAULTS.speechCheck),
         herDays: bool(file, 'herDays', '', DEFAULTS.herDays),
         autonomousLife: bool(file, 'autonomousLife', '', DEFAULTS.autonomousLife),
+        projectChoice: bool(file, 'projectChoice', '', DEFAULTS.projectChoice),
         lifeInPrompt: bool(file, 'lifeInPrompt', '', DEFAULTS.lifeInPrompt),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         media: bool(file, 'media', '', DEFAULTS.media),
