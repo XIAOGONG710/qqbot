@@ -47,15 +47,14 @@ describe('最近几天的摄影练习进提示词（lifeInPrompt）', () => {
     test('只数三天里落了账的；没练就没有这一行', () => {
         assert.equal(recentPhotography([work('2026-10-10T15:00:00', 120)], now), undefined, '四天前的不算');
         const practice = recentPhotography([work('2026-10-12T15:00:00', 40, '拿新相机去校园里拍'), work('2026-10-13T20:30:00', 80, '研究新相机的设置'), work('2026-10-15T09:00:00', 60)], now)!;
-        assert.deepEqual([practice.sessions, practice.minutes, practice.steps], [2, 120, ['拿新相机去校园里拍', '研究新相机的设置']], '还没到的不算');
-        assert.equal(describeRecentPhotography(practice, now), '[你这几天拍照修图（你自己过的日子，账上记着的；用不用、怎么说你自己定，没写的别编）：3 天里练了 2 回，加起来 2 个小时（拿新相机去校园里拍、研究新相机的设置）；上一回是昨天晚上]');
+        assert.deepEqual([practice.sessions, practice.days, practice.minutes, practice.steps], [2, 2, 120, ['拿新相机去校园里拍', '研究新相机的设置']], '还没到的不算');
+        assert.equal(describeRecentPhotography(practice, now), '[你这几天拍照修图（你自己过的日子，账上记着的；用不用、怎么说你自己定，没写的别编）：3 天里有 2 天在弄（拿新相机去校园里拍、研究新相机的设置）；上一回是昨天晚上]');
     });
-    test('时长说成人话', () => {
-        const line = (minutes: number) => describeRecentPhotography(recentPhotography([work('2026-10-14T13:00:00', minutes)], now)!, now);
-        assert.match(line(45), /加起来 45 分钟/);
-        assert.match(line(70), /加起来一个多小时/);
-        assert.match(line(100), /加起来 1 个半小时/);
-        assert.match(line(185), /加起来 3 个小时/);
-        assert.match(line(45), /上一回是今天下午\]$/);
+    test('按天说，不报总时长；同一天几回算一天', () => {
+        const practice = recentPhotography([work('2026-10-14T13:00:00', 240), work('2026-10-14T18:00:00', 90, '研究新相机的设置')], now)!;
+        assert.equal(practice.days, 1);
+        const line = describeRecentPhotography(practice, now);
+        assert.match(line, /3 天里有 1 天在弄（修昨天拍的片子、研究新相机的设置）；上一回是今天/);
+        assert.doesNotMatch(line, /小时|分钟/);
     });
 });

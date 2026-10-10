@@ -47,7 +47,8 @@ export function photographyProgress(events: readonly LifeEvent[]): ProjectProgre
 }
 
 /** 最近几天的摄影练习（生活账接进提示词的第一步，配置 lifeInPrompt）：只数已经落账的 */
-export interface RecentPractice { sessions: number; minutes: number; steps: string[]; last: Date }
+/** days：这几天里有几天弄过（按开始那天的日历日）；minutes 留着给以后用，不进提示词（账上一段空闲活动占满整个下午 / 晚上，加起来的时长夸张） */
+export interface RecentPractice { sessions: number; days: number; minutes: number; steps: string[]; last: Date }
 
 export function recentPhotography(events: readonly LifeEvent[], now: Date, days = 3): RecentPractice | undefined {
     const from = now.getTime() - days * 86_400_000;
@@ -58,7 +59,8 @@ export function recentPhotography(events: readonly LifeEvent[], now: Date, days 
     if (!work.length) return undefined;
     const minutes = work.reduce((sum, event) => sum + Math.max(0, Math.round((Date.parse(event.endedAt) - Date.parse(event.startedAt)) / 60_000)), 0);
     const steps = [...new Set(work.map(event => event.subject).filter((step): step is string => Boolean(step)))].slice(-3);
-    return { sessions: work.length, minutes, steps, last: new Date(work.at(-1)!.endedAt) };
+    const dayKeys = new Set(work.map(event => { const d = new Date(event.startedAt); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }));
+    return { sessions: work.length, days: dayKeys.size, minutes, steps, last: new Date(work.at(-1)!.endedAt) };
 }
 
 /**
@@ -66,12 +68,10 @@ export function recentPhotography(events: readonly LifeEvent[], now: Date, days 
  * 「上一回」按她的作息说今天 / 昨天 / 前天，再往前写几号
  */
 export function describeRecentPhotography(practice: RecentPractice, now: Date, days = 3): string {
-    // 说成人话：不到一小时说分钟，一小时出头说「一个多小时」，再长按半小时取整（「1 个半小时」「3 个小时」）
-    const half = Math.round(practice.minutes / 30) / 2;
-    const hours = practice.minutes < 60 ? `${practice.minutes} 分钟` : practice.minutes < 90 ? '一个多小时' : half % 1 ? `${Math.floor(half)} 个半小时` : `${half} 个小时`;
+    // 按天说，不报总时长：账上一段空闲活动占满整个下午或晚上，加起来是「3 天 17 个半小时」，真人不这么算，她会跟着说夸张（10-10 场景 life-in-prompt）
     const dayOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     const ago = Math.round((dayOf(now) - dayOf(practice.last)) / 86_400_000);
     const part = practice.last.getHours() < 12 ? '上午' : practice.last.getHours() < 18 ? '下午' : '晚上';
     const when = ago === 0 ? `今天${part}` : ago === 1 ? `昨天${part}` : ago === 2 ? `前天${part}` : `${practice.last.getMonth() + 1} 月 ${practice.last.getDate()} 日`;
-    return `[你这几天拍照修图（你自己过的日子，账上记着的；用不用、怎么说你自己定，没写的别编）：${days} 天里练了 ${practice.sessions} 回，加起来${/^[0-9]/.test(hours) ? ' ' : ''}${hours}（${practice.steps.join('、')}）；上一回是${when}]`;
+    return `[你这几天拍照修图（你自己过的日子，账上记着的；用不用、怎么说你自己定，没写的别编）：${days} 天里有 ${practice.days} 天在弄（${practice.steps.join('、')}）；上一回是${when}]`;
 }

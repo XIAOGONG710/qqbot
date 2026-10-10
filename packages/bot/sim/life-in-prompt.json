@@ -15,7 +15,7 @@
         { "advance": "3d13h30m" },
         { "case": "LP02", "note": "10-17 21:30：账上有这几天导片子、研究设置、出去拍；问新相机" },
         { "say": "新相机用得怎么样了" },
-        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "你这几天拍照修图（[^\\n]*）：3 天里练了 \\d+ 回", "replyNone": ["还没买", "还在攒", "还差", "攒够了就"] } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "你这几天拍照修图（[^\\n]*）：3 天里有 \\d 天在弄", "replyNone": ["还没买", "还在攒", "还差", "攒够了就"] } },
         { "case": "LP03", "note": "追问这几天拍了啥：照账上的说（校园里、导出来修），不编具体去了哪个景点" },
         { "say": "这几天都拍了啥" },
         { "check": { "speechClean": true, "exitClean": true, "replyNone": ["趵突泉", "大明湖", "千佛山", "泉城广场"] } }

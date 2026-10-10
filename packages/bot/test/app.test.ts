@@ -224,7 +224,7 @@ describe('编排（app.ts）', () => {
             return prompt.messages.map(m => m.content).join('\n');
         };
         const on = await promptOf(config({ herDays: true, schedule: false, autonomousLife: true, lifeInPrompt: true, contacts: bf }));
-        assert.match(on, /\[你这几天拍照修图（你自己过的日子，账上记着的；用不用、怎么说你自己定，没写的别编）：3 天里练了 1 回，加起来 1 个半小时（修昨天拍的片子）；上一回是今天/);
+        assert.match(on, /\[你这几天拍照修图（你自己过的日子，账上记着的；用不用、怎么说你自己定，没写的别编）：3 天里有 1 天在弄（修昨天拍的片子）；上一回是今天/);
         const off = await promptOf(config({ herDays: true, schedule: false, autonomousLife: true, contacts: bf }));
         assert.doesNotMatch(off, /你这几天拍照修图/, '默认关');
     });
