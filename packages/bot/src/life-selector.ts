@@ -408,8 +408,30 @@ function reviseMeet(item: QueuedAction, sources: LifeSources, queue: ActionQueue
 const REVISABLE = new Set<TypedActionKind>(['leisure', 'rest', 'read_book', 'study', 'work_on_project']);
 
 /** 排着的这件在那一刻还在接着做吗：同一类；休闲、看闲书、躺着还要是同一件（学习换一份作业也是在学） */
-function continues(item: QueuedAction, choice: Choice): boolean {
-    return 'intent' in choice && choice.intent.kind === item.kind && (item.kind === 'study' || choice.intent.subject === item.event.subject);
+function continues(item: QueuedAction, choice: Choice, sources: Pick<LifeSources, 'plans'>): boolean {
+    if (!('intent' in choice) || choice.intent.kind !== item.kind) return false;
+    if (item.kind !== 'study') return choice.intent.subject === item.event.subject;
+    // 学习换一份作业也是在学；但从图书馆换到宿舍（出门的打算下雨改了，G2）就不是同一件了
+    const out = (subject: string | undefined) => Boolean(subject && sources.plans?.outings.some(o => o.text === subject));
+    return out(choice.intent.subject) === out(item.event.subject);
+}
+
+/**
+ * 真实天气（ADR 0048）开始下雨的整点，start 和 end 之间：那一刻的世界里这个钟头在下、上个钟头没下。
+ * 每个时刻的世界只知道到那一刻为止下过的钟头，所以开始下雨以前的那段不会被倒着改（G2）；生成的天气没有钟头，不算
+ */
+function rainOnsets(sources: Pick<LifeSources, 'worldAt'>, start: Date, end: Date): number[] {
+    const onsets: number[] = [];
+    const first = new Date(start);
+    first.setMinutes(0, 0, 0);
+    for (let t = first.getTime() + 3_600_000; t < end.getTime(); t += 3_600_000) {
+        const at = new Date(t);
+        const weather = sources.worldAt(at)?.weather;
+        if (!weather?.real || !weather.rainHours) continue;
+        const hour = at.getHours();
+        if (weather.rainHours.includes(hour) && !weather.rainHours.includes(hour - 1)) onsets.push(t);
+    }
+    return onsets;
 }
 
 /**
@@ -423,6 +445,7 @@ function changePoints(sources: LifeSources, start: Date, end: Date): Date[] {
         ...sources.events().filter(event => event.source === 'conversation').map(event => Date.parse(event.endedAt)),
         ...dayBusy(sources, start).map(span => span.start.getTime()),
         ...appointmentActions(sources, start, end).map(item => item.start.getTime()),
+        ...rainOnsets(sources, start, end),
     ].filter(inside);
     return [...new Set(times)].sort((a, b) => a - b).map(t => new Date(t));
 }
@@ -436,13 +459,13 @@ function revise(item: QueuedAction, sources: LifeSources, queue: ActionQueue, no
     if (!item.id.startsWith('life:') || !REVISABLE.has(item.kind) || item.event.result === 'failed') return;
     const start = new Date(item.event.startedAt ?? item.event.at);
     const first = chooseAt(start, sources);
-    if (!continues(item, first)) {
+    if (!continues(item, first, sources)) {
         queue.drop(item.id, `那一刻她在${'intent' in first ? `做别的（${first.why}）` : first.why}，聊天里说过的事改了这一段`);
         return;
     }
     for (const at of changePoints(sources, start, new Date(item.event.at))) {
         const choice = chooseAt(at, sources);
-        if (continues(item, choice)) continue;
+        if (continues(item, choice, sources)) continue;
         queue.shorten(item.id, at, choice.why);
         return;
     }

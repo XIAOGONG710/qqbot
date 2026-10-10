@@ -15,6 +15,7 @@ import { classesOn, formatDate, herDay } from '../src/schedule.ts';
 import { auditLedgerCoverage, auditLifeStatus } from '../src/sim/life-audit.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { worldAt, worldState } from '../src/world.ts';
+import { dayFrom, useRealWeather, type HourWeather } from '../src/weather.ts';
 
 const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
 const schedule = card.schedule!;
@@ -317,6 +318,28 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
                 rmSync(b, { recursive: true, force: true });
             }
         });
+    });
+
+    test('真实天气下午三点开始下雨（G2）：图书馆赶作业停在三点，之后在宿舍赶作业；三点以前那段不倒着改', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'life-rain-'));
+        const date = '2026-10-24';
+        const rain = [15, 16, 17];
+        const hours: Record<string, HourWeather> = Object.fromEntries(Array.from({ length: 24 }, (_, h) => [`${date}T${String(h).padStart(2, '0')}`,
+            { t: 16, p: rain.includes(h - 1) ? 1.2 : 0, c: rain.includes(h) ? 61 : 2, o: 1 as const }]));
+        useRealWeather({ day: (place, day, until) => (place === 'jinan' && day === date ? dayFrom(hours, day, until) : undefined) });
+        try {
+            const { events } = live(dir, at('2026-10-24T12:00:00'), at('2026-10-24T19:00:00'));
+            const library = events.filter(event => event.subject === '在图书馆赶作业');
+            const dorm = events.filter(event => event.subject === '在宿舍赶作业');
+            const three = at('2026-10-24T15:00:00');
+            assert.ok(library.length > 0, '下雨前在图书馆');
+            assert.ok(library.every(event => Date.parse(event.endedAt) <= three.getTime()), library.map(event => `${event.startedAt}–${event.endedAt}`).join('，'));
+            assert.ok(library.some(event => event.endedAt === three.toISOString()), '停在开始下雨的那一刻');
+            assert.ok(dorm.some(event => event.startedAt === three.toISOString()), dorm.map(event => event.startedAt).join('，'));
+        } finally {
+            useRealWeather(undefined);
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     test('三天半没人聊天：一件接一件、不重叠；每天睡觉、两顿饭、课都在；喂猫、洗澡的时候不记别的', () => {
