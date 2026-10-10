@@ -11,7 +11,7 @@ const classmate = loadCharacterCard(cardPath('classmate')).schedule!;
 /** 本地时间 2026 年 */
 const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m);
 /** 放完国庆 7 天内他在哪（卡上国庆的 partner_back，{{user}} 之后的部分） */
-const BACK = '国庆放完假，已经回学校了，你知道他回来了；聊天记录里他说在青岛，是放假那几天的事，现在他人就在学校';
+const BACK = '国庆放完假，已经回学校了，他回来你早就知道，不是今天才知道；聊天记录里他说在青岛，是放假那几天的事，现在他人就在学校';
 const hm = (date: Date) => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 
 describe('作息：某个时刻她在干什么', () => {

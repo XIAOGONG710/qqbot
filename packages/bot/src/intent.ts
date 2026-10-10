@@ -120,7 +120,7 @@ function busy(state: State | undefined, schedule: Schedule | undefined, now: Dat
 export function describeIntent(context: IntentContext): string | undefined {
     if (context.initiating) return undefined;
     // 「只接他刚说的你们两个人的事」这几个字让候选挑选（ADR 0041）和两条气泡的上限照亲密话算
-    if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行；他要睡就哄他睡，不另起话题，也不用约他睡醒再找你]';
+    if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行，只回一句「行，睡吧」就成了打发他；他要睡就哄他睡，不另起话题，也不用约他睡醒再找你]';
     if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句；不分享新进度，不说你接下来做什么，不另起话题，也不用约他忙完回来找你]';
     if (sharesGoodNews(context.history)) return '[这一轮你想：他刚说了件好事，先替他高兴、接住这件事；他顺口问的再顺口答，不另起话题]';
     if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
