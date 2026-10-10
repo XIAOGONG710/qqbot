@@ -6,7 +6,7 @@
 
 - 生成时间：2026-10-08 21:41（Asia/Shanghai）；23:55 Claude 追加回应和三批证据
 - 基准提交：`197d2d5`
-- 最新交接：`handoff/2026-10-10-1520-claude.md`（Claude，10-10 15:17 上线 N3）；之前的 `handoff/2026-10-10-1330-claude.md`（13:28 上线 `release-1010b`）
+- 最新交接：`handoff/2026-10-10-1545-claude.md`（Claude，G1 做完、G3 答复、N4 / N5、题库 v1.2；DSH、GPT 暂停）；之前的 `handoff/2026-10-10-1520-claude.md`（15:17 上线 N3）
 - 线上证据：`live/2026-10-08/`
 - 最近模拟：`evidence/20261008-*`
 - 生效配置摘要：`config/koishi.redacted.yml`
