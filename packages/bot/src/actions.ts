@@ -82,12 +82,15 @@ export function judgeAction(intent: ActionIntent, context: ActionContext): Actio
 
     if (intent.kind === 'sleep') return fixedAction(intent, sleepSpan(start, context.schedule), '在宿舍睡觉', context);
     if (intent.kind === 'eat') {
-        const meal = context.world?.routine?.meals.find(item => sameInstant(item.start, start));
+        // 饭点开头开始；见完面回来饭点已经开始了的，从回来那一刻吃（G1）
+        const meal = context.world?.routine?.meals.find(item => start >= item.start && start < item.end);
         const subject = meal?.kind;
         if (!meal) return failed(intent, 'unavailable');
         if (alreadyDid(context, intent.kind, start, subject)) return failed(intent, 'already_done');
         const where = meal.where === 'canteen' ? '在食堂' : meal.where === 'takeout' ? '点了外卖，在' : '在家';
-        return fixedAction({ ...intent, subject }, { start: meal.start, end: meal.end }, `${where}吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}`, context);
+        // 要出门赴约的，吃到出门那一刻（G1）；只能比饭点短，不能更长
+        const end = intent.durationMinutes ? new Date(Math.min(meal.end.getTime(), start.getTime() + intent.durationMinutes * 60_000)) : meal.end;
+        return fixedAction({ ...intent, subject }, { start, end }, `${where}吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}`, context);
     }
     if (intent.kind === 'meet') {
         const appointment = context.appointments?.find(item => item.id === intent.id && sameInstant(item.start, start));

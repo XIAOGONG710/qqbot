@@ -21,6 +21,10 @@ export interface LifeEvent {
     result: LifeEventResult;
     /** 世界裁判给出的可审计原因；成功时通常没有。 */
     reason?: string;
+    /**
+     * 做的是什么。见面（meet）存的是约定原话（「和他去东门吃麻辣烫」），「他」是对约的那个联系人（target）说的：
+     * 生活账接进提示词时，别的档位要走 describeAppointment 那种按看的人区分的说法，不能原样给
+     */
     subject?: string;
     target?: string;
     /** 这件行动本身也完成了一顿饭（例如约人出去吃饭）。 */

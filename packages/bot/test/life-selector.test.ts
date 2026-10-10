@@ -204,6 +204,121 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         }
     });
 
+    describe('约好的见面和吃饭、改约、取消、重启（G1，审查 P1-1 / P1-2）', () => {
+        const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        const meeting = (id: string, what: string, start: Date, minutes: number): Appointment => ({
+            contact: { qq: 42, name: '阿明', tier: 'boyfriend' },
+            promise: { id, what, date: formatDate(start), said: '2026-10-17', episode: 'ep-meet', meet: { time: hhmm(start), where: '东门口', minutes } },
+            start, end: new Date(start.getTime() + minutes * 60_000),
+        });
+        /** 每 10 分钟推一次（线上 LIFE_TICK_MS），约定按时钟换：appointments(clock) 是那一刻约定存储里有的 */
+        function liveMeet(dir: string, start: Date, end: Date, appointments: (clock: number) => Appointment[], restartAt?: Date) {
+            let clock = start.getTime();
+            const logs: string[] = [];
+            const sources: LifeSources = {
+                ...plain,
+                appointmentsBetween: (from, to) => appointments(clock).filter(a => a.start.getTime() - 15 * 60_000 < to.getTime() && a.end > from),
+            };
+            const open = () => {
+                const ledger = worldState(herWorld, schedule, message => logs.push(message), join(dir, 'world'), () => clock);
+                const queue = actionQueue(join(dir, 'world', 'action-queue.json'), message => logs.push(message));
+                const world = settlingWorld(ledger, queue, () => clock);
+                const executor = lifeExecutor({ ...sources, worldAt: time => world.at(herWorld, schedule, time), events: () => ledger.events() }, queue, { since: start, log: message => logs.push(message) });
+                return { world, executor };
+            };
+            let { world, executor } = open();
+            for (; clock <= end.getTime(); clock += 600_000) {
+                if (restartAt && clock === restartAt.getTime()) ({ world, executor } = open());
+                executor.fill(new Date(clock));
+                world.events();
+            }
+            return { events: world.events().filter(event => event.id.startsWith('life:')), logs, sources };
+        }
+        const lunch = worldAt(herWorld, schedule, at('2026-10-18T12:00:00'))!.routine!.meals.find(item => item.kind === 'lunch')!;
+        const dinner = worldAt(herWorld, schedule, at('2026-10-18T18:00:00'))!.routine!.meals.find(item => item.kind === 'dinner')!;
+        const overlapping = (events: readonly LifeEvent[], kind: string, from: Date, to: Date) =>
+            events.filter(event => event.kind === kind && Date.parse(event.startedAt) < to.getTime() && Date.parse(event.endedAt) > from.getTime());
+
+        test('不吃饭的约会只擦到午饭尾巴：出门前把饭吃完（截到出门那一刻），见面不算吃饭', () => {
+            const dir = mkdtempSync(join(tmpdir(), 'life-meet-'));
+            try {
+                // 午饭开始 31 分钟后见面，出门在午饭开始 16 分钟后；和午饭只重叠几分钟
+                const study = meeting('p-study', '和他在图书馆前面集合一起自习', new Date(lunch.start.getTime() + 31 * 60_000), 120);
+                const lead = new Date(study.start.getTime() - 15 * 60_000);
+                const { events, logs } = liveMeet(dir, at('2026-10-18T10:00:00'), at('2026-10-18T16:00:00'), () => [study]);
+                assert.deepEqual(logs.filter(line => line.includes('排不上') || line.includes('死信')), []);
+                const eat = overlapping(events, 'eat', lunch.start, lunch.end);
+                assert.deepEqual(eat.map(e => [e.startedAt, e.endedAt]), [[lunch.start.toISOString(), lead.toISOString()]]);
+                const meet = events.find(event => event.kind === 'meet')!;
+                assert.deepEqual([meet.startedAt, meet.endedAt, meet.meal], [lead.toISOString(), study.end.toISOString(), false]);
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+            }
+        });
+
+        test('上午的约会在午饭开始后几分钟见完：回来接着吃午饭', () => {
+            const dir = mkdtempSync(join(tmpdir(), 'life-meet-'));
+            try {
+                const back = new Date(lunch.start.getTime() + 6 * 60_000);
+                const errand = meeting('p-errand', '陪他去图书馆还书', at('2026-10-18T10:00:00'), (back.getTime() - at('2026-10-18T10:00:00').getTime()) / 60_000);
+                const { events } = liveMeet(dir, at('2026-10-18T08:30:00'), at('2026-10-18T14:00:00'), () => [errand]);
+                assert.deepEqual(overlapping(events, 'eat', lunch.start, lunch.end).map(e => [e.startedAt, e.endedAt]), [[back.toISOString(), lunch.end.toISOString()]]);
+                assert.equal(events.find(event => event.kind === 'meet')?.meal, false);
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+            }
+        });
+
+        test('晚饭约会出门以后他取消了：见面停在知道的那一刻，之后接着过；不在食堂再吃一顿', () => {
+            const dir = mkdtempSync(join(tmpdir(), 'life-meet-'));
+            try {
+                const date = meeting('p-dinner', '和他去东门吃麻辣烫', dinner.start, 90);
+                const lead = new Date(date.start.getTime() - 15 * 60_000);
+                const cancelledAt = at('2026-10-18T18:30:00');
+                const { events, logs } = liveMeet(dir, at('2026-10-18T15:00:00'), at('2026-10-18T22:00:00'), clock => (clock < cancelledAt.getTime() ? [date] : []));
+                const meet = events.filter(event => event.kind === 'meet');
+                assert.deepEqual(meet.map(e => [e.startedAt, e.endedAt]), [[lead.toISOString(), cancelledAt.toISOString()]]);
+                assert.ok(logs.some(line => line.includes('约好的见面中途取消了')));
+                const next = events.find(event => event.startedAt === cancelledAt.toISOString());
+                assert.ok(next && next.kind !== 'meet', '取消以后接着排别的');
+                assert.deepEqual(overlapping(events, 'eat', lead, date.end), []);
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+            }
+        });
+
+        test('出门前改了时间：按新的时间出门，旧时间那段照常过', () => {
+            const dir = mkdtempSync(join(tmpdir(), 'life-meet-'));
+            try {
+                const first = meeting('p-walk', '和他去趵突泉逛逛', at('2026-10-18T15:00:00'), 90);
+                const moved = meeting('p-walk', '和他去趵突泉逛逛', at('2026-10-18T19:00:00'), 90);
+                const movedAt = at('2026-10-18T14:00:00').getTime();
+                const { events } = liveMeet(dir, at('2026-10-18T13:00:00'), at('2026-10-18T22:00:00'), clock => [clock < movedAt ? first : moved]);
+                const meet = events.filter(event => event.kind === 'meet');
+                assert.deepEqual(meet.map(e => e.startedAt), [new Date(moved.start.getTime() - 15 * 60_000).toISOString()]);
+                assert.deepEqual(overlapping(events, 'meet', first.start, first.end), []);
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+            }
+        });
+
+        test('约会中途重启（ADR 0039）：事件账和不重启时一样', () => {
+            const a = mkdtempSync(join(tmpdir(), 'life-meet-'));
+            const b = mkdtempSync(join(tmpdir(), 'life-meet-'));
+            try {
+                const date = meeting('p-dinner', '和他去东门吃麻辣烫', dinner.start, 90);
+                const plainRun = liveMeet(a, at('2026-10-18T15:00:00'), at('2026-10-18T22:00:00'), () => [date]);
+                const restarted = liveMeet(b, at('2026-10-18T15:00:00'), at('2026-10-18T22:00:00'), () => [date], at('2026-10-18T18:20:00'));
+                const view = (events: readonly LifeEvent[]) => events.map(e => [e.id, e.kind, e.startedAt, e.endedAt, e.result, e.meal ?? null]);
+                assert.deepEqual(view(restarted.events), view(plainRun.events));
+                assert.deepEqual(auditLifeStatus(plainRun.events, { ...plainRun.sources, events: () => plainRun.events }), []);
+            } finally {
+                rmSync(a, { recursive: true, force: true });
+                rmSync(b, { recursive: true, force: true });
+            }
+        });
+    });
+
     test('三天半没人聊天：一件接一件、不重叠；每天睡觉、两顿饭、课都在；喂猫、洗澡的时候不记别的', () => {
         const dir = mkdtempSync(join(tmpdir(), 'life-selector-'));
         try {
