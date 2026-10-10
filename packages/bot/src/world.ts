@@ -507,7 +507,7 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
     }
     const camera = now.cameraFund?.camera;
     if (camera?.state === 'bought') {
-        const day = sameDay(camera.end, at) ? '今天' : `${camera.end.getMonth() + 1} 月 ${camera.end.getDate()} 日`;
+        const day = sameDay(camera.end, at) ? '今天' : sameDay(addDays(camera.end, 1), at) ? '昨天' : `${camera.end.getMonth() + 1} 月 ${camera.end.getDate()} 日`;
         parts.push(`相机：${day}${partOfDay(camera.start.getHours())}去${camera.where}买的${camera.what}（${camera.price} 元，攒的钱买的）`);
     } else if (camera?.state === 'buying') {
         parts.push(`相机：钱攒够了，这会儿在${camera.where}挑相机，看中的是${camera.what}，${camera.price} 元左右`);

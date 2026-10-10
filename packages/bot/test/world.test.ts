@@ -287,6 +287,7 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
         assert.ok(recapDay(back).some(item => item.includes(`去${fund.where}买了相机`)));
         assert.ok(busySpans(back).some(span => span.text === `去${fund.where}买相机` && span.start.getTime() === at('2026-10-11T14:00:00').getTime()));
         // 下周日不再往相机基金里存；那天以后说的是哪天买的
+        assert.match(describeWorld(worldAt(world, schedule, at('2026-10-12T20:00:00'), [gift])!, at('2026-10-12T20:00:00'))!, new RegExp(`相机：昨天下午去${fund.where}买的`));
         const nextWeek = worldAt(world, schedule, at('2026-10-18T22:00:00'), [gift])!;
         assert.match(describeWorld(nextWeek, at('2026-10-18T22:00:00'))!, new RegExp(`相机：10 月 11 日下午去${fund.where}买的`));
         assert.equal(simulateWorld(world, schedule, at('2026-10-18T22:00:00'), [gift]).ledger.filter(e => e.kind === 'deposit' && e.at > at('2026-10-11T00:00:00') && e.what === '存进相机基金').length, 0);
