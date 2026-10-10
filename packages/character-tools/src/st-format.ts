@@ -166,7 +166,7 @@ export interface CardSchedule {
     free: {
         morning: string[]; afternoon: string[]; evening: string[]; afternoonFrom: string; eveningFrom: string;
         /** 从 from 那天起才进抽签列表的空闲活动（ADR 0053 之后） */
-        later?: { window: 'morning' | 'afternoon' | 'evening'; text: string; from: string }[];
+        later?: { window: 'morning' | 'afternoon' | 'evening'; text: string; from: string; until?: string }[];
     };
     /** 上学期间她在哪 */
     where: string;

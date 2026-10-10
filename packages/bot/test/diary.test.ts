@@ -41,7 +41,9 @@ describe('她的日记（ADR 0017）', () => {
         assert.doesNotMatch(diaryMaterial(sources, new Date(2026, 9, 11), []), /你那边今天|身体：/, '没传世界就没有');
         // 空闲时按同学档的作息（ADR 0034）：修片是 cover，改了的打算里没有课名
         const shown: DiarySources = { ...withWorld, worldSchedule: classmate.schedule! };
-        assert.match(diaryMaterial(withWorld, new Date(2026, 9, 12), []), /下午修昨天拍的片子/, '最亲那一档的作息里有');
+        // 10-18 下午男朋友档抽到修片（10-12 原来是，10-12 起加了新相机的新鲜期，那天换了）
+        assert.match(diaryMaterial(withWorld, new Date(2026, 9, 18), []), /下午修昨天拍的片子/, '最亲那一档的作息里有');
+        assert.doesNotMatch(diaryMaterial(shown, new Date(2026, 9, 18), []), /拍的片子|相机/, '同学档那天是 cover');
         const oct12 = diaryMaterial(shown, new Date(2026, 9, 12), []);
         assert.match(oct12, /\n空闲时：上午去图书馆占座；下午窝着刷手机；晚上本来打算打独立游戏，作业明天要交，先赶作业\n/);
         assert.doesNotMatch(oct12, /拍的片子|摄影|计算机网络/);

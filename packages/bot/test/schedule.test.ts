@@ -135,9 +135,13 @@ describe('作息：某个时刻她在干什么', () => {
             }
         }
         const later = boyfriend.free.later!;
-        assert.deepEqual(later.map(item => [item.window, item.text, item.from]), [
-            ['afternoon', '拿新相机去校园里拍', '2026-10-12'], ['evening', '研究新相机的设置', '2026-10-11'],
+        assert.deepEqual(later.map(item => [item.window, item.text, item.from, item.until ?? null]), [
+            ['afternoon', '拿新相机去校园里拍', '2026-10-12', null], ['evening', '研究新相机的设置', '2026-10-11', null],
+            // 新鲜期（头两周多拿出来摆弄）
+            ['afternoon', '拿新相机去校园里拍', '2026-10-12', '2026-10-25'], ['evening', '把新相机拍的照片导出来修', '2026-10-12', '2026-10-31'],
         ]);
+        // 过了 until 就不在抽签列表里：11 月的晚上抽不到「导出来修」
+        for (let d = 1; d <= 30; d++) assert.notEqual(free(boyfriend, new Date(2026, 10, d, 21)), '把新相机拍的照片导出来修');
         // 之后一个月里抽得到；10-11 下午（正在买）抽不到「拿新相机去校园里拍」
         const seen = new Set<string>();
         for (let d = 11; d <= 40; d++) for (const h of [15, 21]) seen.add(free(boyfriend, new Date(2026, 9, d, h)) ?? '');

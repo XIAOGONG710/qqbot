@@ -290,6 +290,18 @@
                                 "window": "evening",
                                 "text": "窝着刷手机",
                                 "from": "2026-10-11"
+                            },
+                            {
+                                "window": "afternoon",
+                                "text": "出去转转",
+                                "from": "2026-10-12",
+                                "until": "2026-10-25"
+                            },
+                            {
+                                "window": "evening",
+                                "text": "窝着刷手机",
+                                "from": "2026-10-12",
+                                "until": "2026-10-31"
                             }
                         ]
                     },

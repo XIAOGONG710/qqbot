@@ -208,6 +208,28 @@ free:
     cover: 窝着刷手机
     from: "2026-10-11"
     note: ADR 0053 之后：买回来那天晚上起，晚上有时候在琢磨新相机
+  - window: afternoon
+    text: 拿新相机去校园里拍
+    tiers:
+      - boyfriend
+      - bestie
+      - girl_friend
+      - known
+    cover: 出去转转
+    from: "2026-10-12"
+    until: "2026-10-25"
+    note: 新鲜期（头两周）多一份：刚买的相机天天想拿出去；过了 10-25 回到和别的活动一样多
+  - window: evening
+    text: 把新相机拍的照片导出来修
+    tiers:
+      - boyfriend
+      - bestie
+      - girl_friend
+      - known
+    cover: 窝着刷手机
+    from: "2026-10-12"
+    until: "2026-10-31"
+    note: 新鲜期：拍得多，晚上导出来修；10 月底以后并回「修昨天拍的片子」那种日常
 course_detail:
   tiers:
     - boyfriend

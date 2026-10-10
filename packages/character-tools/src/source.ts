@@ -240,7 +240,8 @@ export interface ScheduleSource {
     /** 空闲时做什么；tiers 没写 = 所有档位都能看到 */
     /** cover：看不到这条的档位换成这句（ADR 0034：各档的列表一样长，同一时刻挑到同一格，不会男朋友看到「修片」、同学看到「打游戏」） */
     /** from：从这一天起才有（ADR 0053 之后：买了相机才有的活动；那天以前的抽签列表不变，过去的日子不被改写） */
-    free: { window: 'morning' | 'afternoon' | 'evening'; text: string; tiers?: string[]; cover?: string; from?: string; note?: string }[];
+    /** until：到这一天为止（新鲜期，例如新相机头两周天天摆弄） */
+    free: { window: 'morning' | 'afternoon' | 'evening'; text: string; tiers?: string[]; cover?: string; from?: string; until?: string; note?: string }[];
     /** 课名、教室、课型叫法给哪些档位 */
     course_detail: { tiers: string[]; note?: string };
     /** 课型：上课时过多少分钟才看到消息、最多回几条 */
@@ -635,7 +636,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         free: h.at('free').array(schedule.free).map((value, i) => {
             const c = h.at(`free[${i}]`);
             const o = c.object(value);
-            c.keys(o, ['window', 'text', 'tiers', 'cover', 'from', 'note']);
+            c.keys(o, ['window', 'text', 'tiers', 'cover', 'from', 'until', 'note']);
             const window = c.at('window').string(o.window) as ScheduleSource['free'][number]['window'];
             if (!['morning', 'afternoon', 'evening'].includes(window)) c.at('window').fail(`${window} 不是 morning / afternoon / evening`);
             const item: ScheduleSource['free'][number] = { window, text: c.at('text').string(o.text) };
@@ -649,6 +650,10 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
                 item.cover = c.at('cover').string(o.cover);
             }
             if (o.from !== undefined && o.from !== null) item.from = date(c.at('from'), o.from);
+            if (o.until !== undefined && o.until !== null) {
+                if (!item.from) c.at('until').fail('写了 until 也要写 from');
+                item.until = date(c.at('until'), o.until);
+            }
             return withNote(c.at('note'), o.note, item);
         }),
         course_detail: withNote(h.at('course_detail.note'), courseDetail.note, { tiers: h.at('course_detail.tiers').strings(courseDetail.tiers) }),

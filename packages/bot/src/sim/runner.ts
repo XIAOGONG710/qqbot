@@ -18,7 +18,7 @@ import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay } from '../proactive.ts';
 import { createProactivePlanner, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
-import { worldState, type World } from '../world.ts';
+import { worldState, type World, CAMERA_FUND_TARGET } from '../world.ts';
 import { DIARY_TEMPERATURE, diaryWriter } from '../diary.ts';
 import { formatDate, stateAt, type Schedule } from '../schedule.ts';
 import { actionQueue, settlingWorld } from '../action-queue.ts';
@@ -219,6 +219,14 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             }, queue, { since: new Date(scenario.start), log })
             : undefined;
         if (scenario.autonomous && !executor) throw new Error('autonomous 要开着作息、她自己的日子，卡上要有世界');
+        // 开场先记进账的、他给的钱（和线上补记一样走事件账，ADR 0027 调整）；restart 时账已经有了就不重复记
+        if (ledger && scenario.gifts?.length && !ledger.events().some(e => e.kind === 'receive_money')) {
+            ledger.recordEvents(scenario.gifts.map((g, i) => ({
+                id: `sim-gift:${i}`, kind: 'receive_money', startedAt: new Date(g.at).toISOString(), at: new Date(g.at).toISOString(),
+                source: 'conversation' as const, result: 'succeeded' as const, amount: g.amount, contact: contact.qq, episode: 'sim-gift',
+                ...(g.forCamera ? { target: CAMERA_FUND_TARGET } : {}),
+            })));
+        }
         // 读世界之前先结算到期的行动（ADR 0038 调整）：聊天、时间块、日记看到的都算上已经做完的
         const plan = executor ? (now: Date) => { executor.fill(now); } : undefined;
         return { ledger, queue, world: ledger && queue ? settlingWorld(ledger, queue, clock.now, plan) : undefined };
@@ -323,6 +331,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         memory,
         ...(promises ? { promises } : {}),
         ...(sharedWorld ? { worldState: sharedWorld } : {}),
+        ...(scenario.lifeInPrompt && scenario.autonomous ? { lifeInPrompt: true } : {}),
         contacts: [contact, ...others],
         log,
         now: clock.now,

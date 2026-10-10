@@ -78,12 +78,12 @@ export function scheduleForTier(schedule: ScheduleSource, tier: string): CardSch
     });
 
     const free = { morning: [] as string[], afternoon: [] as string[], evening: [] as string[] };
-    const later: { window: 'morning' | 'afternoon' | 'evening'; text: string; from: string }[] = [];
+    const later: { window: 'morning' | 'afternoon' | 'evening'; text: string; from: string; until?: string }[] = [];
     // 看不到的那条换成 cover，不删（ADR 0034）：空闲活动按「日期 + 时段」哈希挑格子，各档列表一样长才挑到同一件事
     // 有 from 的从那天起才进抽签列表（ADR 0053 之后），之前的日子抽到的不变
     for (const item of schedule.free) {
         const text = !item.tiers || item.tiers.includes(tier) ? item.text : item.cover ?? FREE_COVER;
-        if (item.from) later.push({ window: item.window, text, from: item.from });
+        if (item.from) later.push({ window: item.window, text, from: item.from, ...(item.until ? { until: item.until } : {}) });
         else free[item.window].push(text);
     }
 

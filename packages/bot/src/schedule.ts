@@ -29,7 +29,7 @@ export interface Schedule {
     free: {
         morning: string[]; afternoon: string[]; evening: string[]; afternoonFrom: string; eveningFrom: string;
         /** 从 from 那天起才进抽签列表（ADR 0053 之后：买了相机才有的活动）；那天以前抽到的不变 */
-        later?: { window: 'morning' | 'afternoon' | 'evening'; text: string; from: string }[];
+        later?: { window: 'morning' | 'afternoon' | 'evening'; text: string; from: string; until?: string }[];
     };
     where: string;
     partner?: string;
@@ -161,7 +161,7 @@ function holidayOn(schedule: Schedule, day: Date): Schedule['holidays'][number] 
 /** 同一天同一时段固定挑同一条（按日期 + 时段哈希） */
 function freeActivity(schedule: Schedule, day: Date, window: 'morning' | 'afternoon' | 'evening', extra: readonly ExtraFreeActivity[]): string {
     const date = formatDate(day);
-    const later = (schedule.free.later ?? []).filter(item => item.window === window && item.from <= date).map(item => item.text);
+    const later = (schedule.free.later ?? []).filter(item => item.window === window && item.from <= date && (!item.until || date <= item.until)).map(item => item.text);
     const list = [...schedule.free[window], ...later, ...extra.filter(item => item.window === window).map(item => item.text)];
     if (list.length === 0) return '';
     return list[hash(`${formatDate(day)} ${window}`) % list.length]!;
@@ -344,7 +344,10 @@ export function parseSchedule(json: unknown, source: string): Schedule {
                     const o = obj(v, `.free.later[${i}]`);
                     const window = str(o.window, `.free.later[${i}].window`) as 'morning' | 'afternoon' | 'evening';
                     if (!['morning', 'afternoon', 'evening'].includes(window)) fail(`.free.later[${i}].window ${window}`);
-                    return { window, text: str(o.text, `.free.later[${i}].text`), from: str(o.from, `.free.later[${i}].from`, DATE) };
+                    return {
+                        window, text: str(o.text, `.free.later[${i}].text`), from: str(o.from, `.free.later[${i}].from`, DATE),
+                        ...(o.until !== undefined ? { until: str(o.until, `.free.later[${i}].until`, DATE) } : {}),
+                    };
                 }),
             } : {}),
         },

@@ -1,0 +1,23 @@
+{
+    "name": "男朋友档：她这几天练拍照修图进提示词（ADR 0054）",
+    "description": "开着 autonomous 和 lifeInPrompt；开场记上 10-10 他转的 2000（买相机），所以 10-11 买了相机，和线上一致。10-14 早上账刚开始记，没有那一行；10-17 晚上账上有这几天导片子、研究设置、出去拍，他问新相机用得怎么样、这几天拍了啥，看她照账上的说，不编没记的、不说还在攒钱。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-14T08:00:00+08:00",
+    "memory": false,
+    "autonomous": true,
+    "lifeInPrompt": true,
+    "gifts": [{ "at": "2026-10-10T15:41:00+08:00", "amount": 2000, "forCamera": true }],
+    "steps": [
+        { "case": "LP01", "note": "10-14 早上：账从这一刻开始记，还没有练习，没有这一行" },
+        { "say": "早" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlockNot": "你这几天拍照修图" } },
+        { "advance": "3d13h30m" },
+        { "case": "LP02", "note": "10-17 21:30：账上有这几天导片子、研究设置、出去拍；问新相机" },
+        { "say": "新相机用得怎么样了" },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "你这几天拍照修图（[^\\n]*）：3 天里练了 \\d+ 回", "replyNone": ["还没买", "还在攒", "还差", "攒够了就"] } },
+        { "case": "LP03", "note": "追问这几天拍了啥：照账上的说（校园里、导出来修），不编具体去了哪个景点" },
+        { "say": "这几天都拍了啥" },
+        { "check": { "speechClean": true, "exitClean": true, "replyNone": ["趵突泉", "大明湖", "千佛山", "泉城广场"] } }
+    ]
+}

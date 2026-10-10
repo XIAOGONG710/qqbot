@@ -200,6 +200,10 @@ export interface Scenario {
     moody: boolean;
     /** 默认 false：没人聊天时她也一件件过日子（ADR 0040 规则自主选择器），要开着作息、她自己的日子、卡上有世界 */
     autonomous: boolean;
+    /** 默认 false：生活账接进提示词（ADR 0054，配置 lifeInPrompt）；要开着 autonomous */
+    lifeInPrompt: boolean;
+    /** 开场先记进账的、他给的钱（ADR 0027 调整的 receive_money）：at 是本地时刻，forCamera 存进相机基金。让场景里的世界和线上一致（10-10 他转了 2000，10-11 买了相机） */
+    gifts?: { at: string; amount: number; forCamera?: boolean }[];
     /** 看心情不回的概率（0–1），不写按档位算；写 1 时正聊着的「哈哈」一定不回，用来看不回之后的样子 */
     moodyChance?: number;
     /** 假的「真实天气」（ADR 0050）：日期 → 下雨的钟头（0–23），这几天按真实天气算（世界和主动消息都认），别的日子照旧生成 */
@@ -261,6 +265,13 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         proactive: s.proactive === true,
         moody: s.moody === true,
         autonomous: s.autonomous === true,
+        lifeInPrompt: s.lifeInPrompt === true,
+        ...(s.gifts !== undefined ? { gifts: (Array.isArray(s.gifts) ? s.gifts : fail('gifts 应为数组')).map((g: unknown, i: number) => {
+            const o = g as Record<string, unknown>;
+            if (!o || typeof o.at !== 'string' || !Number.isFinite(Date.parse(o.at))) fail(`gifts[${i}].at 应为时刻`);
+            if (!Number.isInteger(o.amount) || (o.amount as number) <= 0) fail(`gifts[${i}].amount 应为正整数`);
+            return { at: o.at as string, amount: o.amount as number, ...(o.forCamera === true ? { forCamera: true } : {}) };
+        }) } : {}),
         ...(s.moodyChance !== undefined ? { moodyChance: chance(s.moodyChance) } : {}),
         ...(s.realRain !== undefined ? { realRain: rainDays(s.realRain, fail) } : {}),
         ...(s.mood !== undefined ? { mood: typeof s.mood === 'string' && s.mood ? s.mood : fail('mood 应为心情的名字') } : {}),
