@@ -4,8 +4,9 @@ import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
 import {
     blockReason, candidatesOn, dayMatches, herDay, lunarMonthDay, parseDates, parseProactive, planFrom, unansweredCount,
-    type Candidate, type ProactiveInput, type ProactiveRecord,
+    occasionNote, type Candidate, type ProactiveInput, type ProactiveRecord,
 } from '../src/proactive.ts';
+import { rainingAt, rainOf } from '../src/proactive-planner.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 // 用转换器生成的真卡：男朋友档有作息、三个日子和主动设置（四种时机 + 待跟进 + 日子，每天 2 条，1 条没回就停）
@@ -29,7 +30,7 @@ const hm = (time: number) => new Date(time).toTimeString().slice(0, 5);
 
 describe('主动消息：读卡', () => {
     test('男朋友档有主动设置和三个日子，同学档都没有', () => {
-        assert.deepEqual(boyfriend.proactive, { occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates'], dailyMax: 2, unansweredMax: 1 });
+        assert.deepEqual(boyfriend.proactive, { occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather'], dailyMax: 2, unansweredMax: 1 });
         assert.deepEqual(boyfriend.dates.map(d => d.name), ['你的生日', '你们在一起的纪念日', '他的生日']);
         const classmate = loadCharacterCard(cardPath('classmate'));
         assert.equal(classmate.proactive, undefined);
@@ -217,5 +218,42 @@ describe('主动消息：到点时能不能发', () => {
         const full = [record('2026-09-28:morning', t(9, 28, 8)), record('2026-09-28:after_class', t(9, 28, 17))];
         assert.equal(blockReason(dates, t(9, 29, 0, 3), input({ history: busy, records: full })), undefined);
         assert.equal(blockReason(dates, t(9, 29, 0, 3), input({ history: [...busy, user(t(9, 29, 0, 1))] })), '有没回的消息，回复就好');
+    });
+});
+
+describe('主动消息：下雨了（ADR 0050，只认真实天气）', () => {
+    const real = (rainHours: number[], laterHour?: number) => ({
+        rain: rainHours.length > 0, low: 15, high: 22, real: true as const, rainHours, ...(laterHour !== undefined ? { laterHour, later: `预报 ${laterHour} 点后有雨` } : {}),
+    });
+    const seen = (weather: ReturnType<typeof real> | { rain: boolean; low: number; high: number }) => ({ day: '2026-10-16', weather });
+
+    test('今天的雨：在下的按这场开始的钟头；还没下的按预报；早上下过又停了的、生成的天气都不算', () => {
+        assert.deepEqual(rainOf(seen(real([13, 14, 15])), new Date(t(10, 16, 15, 20))), { day: '2026-10-16', start: t(10, 16, 13), forecast: false });
+        assert.deepEqual(rainOf(seen(real([], 17)), new Date(t(10, 16, 9))), { day: '2026-10-16', start: t(10, 16, 17), forecast: true });
+        assert.equal(rainOf(seen(real([8])), new Date(t(10, 16, 15))), undefined, '早上那场停了，不追着说');
+        assert.equal(rainOf(seen({ rain: true, low: 11, high: 18 }), new Date(t(10, 16, 15))), undefined, '生成的天气不触发');
+        assert.equal(rainingAt(real([14]), new Date(t(10, 16, 15, 30))), true, '上一个钟头还在下');
+        assert.equal(rainingAt(real([14]), new Date(t(10, 16, 16, 30))), false);
+    });
+
+    test('候选：这场雨开始后 10–25 分钟；晚上 10 点后不发；卡上没开就没有', () => {
+        const rain = { day: '2026-10-16', start: t(10, 16, 16), forecast: false };
+        const list = candidatesOn(day(10, 16), input({ rain }));
+        const c = find(list, 'weather')!;
+        assert.ok(c.at >= t(10, 16, 16, 10) && c.at <= t(10, 16, 16, 25), hm(c.at));
+        assert.equal(c.reason, '16:00 开始下雨');
+        assert.equal(c.id, '2026-10-16:weather');
+        assert.equal(find(candidatesOn(day(10, 16), input({ rain: { ...rain, start: t(10, 16, 22) } })), 'weather'), undefined);
+        const off = { ...boyfriend.proactive!, occasions: boyfriend.proactive!.occasions.filter(o => o !== 'weather') };
+        assert.equal(find(candidatesOn(day(10, 16), input({ rain, settings: off })), 'weather'), undefined);
+        assert.match(occasionNote(c, '宝宝'), /你这边下雨了.*带没带伞/);
+    });
+
+    test('到点核实：预报的雨没下就不发', () => {
+        const rain = { day: '2026-10-16', start: t(10, 16, 16), forecast: true };
+        const c = find(candidatesOn(day(10, 16), input({ rain })), 'weather')!;
+        const history = [user(t(10, 16, 9)), her(t(10, 16, 9, 1))];
+        assert.equal(blockReason(c, c.at, input({ rain, history, rainingNow: () => false })), '没在下雨');
+        assert.equal(blockReason(c, c.at, input({ rain, history, rainingNow: () => true })), undefined);
     });
 });

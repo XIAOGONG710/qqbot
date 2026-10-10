@@ -38,6 +38,8 @@ export interface DayWeather {
     rainHours?: number[];
     /** 还没下、预报之后有：「预报 20 点后有雨」 */
     later?: string;
+    /** 预报第一个下雨的钟头（later 那个）；主动消息排时刻用（ADR 0050） */
+    laterHour?: number;
 }
 
 /** 世界读真实天气的接口 */
@@ -123,7 +125,7 @@ export function dayFrom(hours: Readonly<Record<string, HourWeather>>, date: stri
         real: true,
         ...(current ? { now: { text: weatherText(current.c), temp: Math.round(current.t) } } : {}),
         rainHours,
-        ...(ahead >= 0 ? { later: `预报 ${ahead} 点后有雨` } : {}),
+        ...(ahead >= 0 ? { later: `预报 ${ahead} 点后有雨`, laterHour: ahead } : {}),
     };
 }
 

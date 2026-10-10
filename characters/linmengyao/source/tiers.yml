@@ -72,6 +72,7 @@ tiers:
         - quiet
         - follow_up
         - dates
+        - weather
       daily_max: 2
       unanswered_max: 1
       note: ADR 0011 确认记录：四种时机都开，每天最多 2 条，她主动发的有 1 条没回就停、等他回；待跟进的事问过一次就忘

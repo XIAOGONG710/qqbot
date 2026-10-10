@@ -24,10 +24,35 @@ import {
     type Candidate, type ImportantDay, type ProactiveInput, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
 import type { InitiateOutcome, Responder } from './responder.ts';
+import type { DayWeather } from './weather.ts';
 import { formatDate, type Schedule } from './schedule.ts';
 
 /** 记录留多少天 */
 const KEEP_DAYS = 30;
+/** 有真实天气时计划器最多睡多久就重算（ADR 0050） */
+export const RAIN_REPLAN_MS = 30 * 60_000;
+
+/** 这一刻在下吗：这个钟头或上一个钟头下过（实况） */
+export function rainingAt(weather: DayWeather | undefined, at: Date): boolean {
+    const hour = at.getHours();
+    return Boolean(weather?.real && weather.rainHours?.some(h => h === hour || h === hour - 1));
+}
+
+/**
+ * 今天的雨（ADR 0050）：在下的，按这场雨开始的钟头；还没下的，按预报第一个下雨的钟头；下过又停了的不算（不追着说早上那场雨）。只认真实天气
+ */
+export function rainOf(seen: { day: string; weather?: DayWeather } | undefined, at: Date): { day: string; start: number; forecast: boolean } | undefined {
+    const weather = seen?.weather;
+    if (!seen || !weather?.real) return undefined;
+    const [y, m, d] = seen.day.split('-').map(Number);
+    const hourOf = (h: number) => new Date(y!, m! - 1, d, h).getTime();
+    if (rainingAt(weather, at)) {
+        let start = weather.rainHours!.includes(at.getHours()) ? at.getHours() : at.getHours() - 1;
+        while (weather.rainHours!.includes(start - 1)) start--;
+        return { day: seen.day, start: hourOf(start), forecast: false };
+    }
+    return weather.laterHour !== undefined ? { day: seen.day, start: hourOf(weather.laterHour), forecast: true } : undefined;
+}
 const DAY_MS = 86_400_000;
 
 export interface PlannerDeps {
@@ -54,6 +79,8 @@ export interface PlannerDeps {
     skip?: (history: StoredMessage[]) => string | undefined;
     /** 她在聊天里跟谁说过「睡了」、还没到起床（ADR 0042）：不主动 */
     asleep?: (now: number) => boolean;
+    /** 她这一刻那边的天气（ADR 0050）：只认真实天气（real），按这个排「下雨」；有它时计划器最多睡 RAIN_REPLAN_MS 就重算（预报会变） */
+    weather?: (now: number) => { day: string; weather?: DayWeather } | undefined;
 }
 
 export interface PlannerStatus {
@@ -212,11 +239,16 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         return entry;
     }
 
-    const input = (): ProactiveInput => ({
-        qq: contact.qq, schedule: deps.schedule, settings: deps.settings, dates: deps.dates,
-        history: deps.history.load(contact.qq), records, mode: deps.mode, followUps, ...(deps.skip ? { skip: deps.skip } : {}),
-        ...(deps.asleep ? { asleep: deps.asleep } : {}),
-    });
+    const input = (): ProactiveInput => {
+        const rain = deps.weather ? rainOf(deps.weather(now()), new Date(now())) : undefined;
+        return {
+            qq: contact.qq, schedule: deps.schedule, settings: deps.settings, dates: deps.dates,
+            history: deps.history.load(contact.qq), records, mode: deps.mode, followUps, ...(deps.skip ? { skip: deps.skip } : {}),
+            ...(deps.asleep ? { asleep: deps.asleep } : {}),
+            ...(rain ? { rain } : {}),
+            ...(deps.weather ? { rainingNow: (at: number) => rainingAt(deps.weather!(at)?.weather, new Date(at)) } : {}),
+        };
+    };
 
     function describe(candidate: Candidate): string {
         const day = formatDate(new Date(candidate.at)) === formatDate(new Date(now())) ? '今天' : '明天';
@@ -305,7 +337,9 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             }
             // 没有要发的：等到下一天开始再算
             const day = herDay(deps.schedule, new Date(now()));
-            const target = next?.at ?? new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, ...deps.schedule.sleep.split(':').map(Number) as [number, number], 1).getTime();
+            const untilTomorrow = next?.at ?? new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, ...deps.schedule.sleep.split(':').map(Number) as [number, number], 1).getTime();
+            // 有真实天气时最多睡这么久就重算：预报会变，雨可能提前、推后（ADR 0050）
+            const target = deps.weather ? Math.min(untilTomorrow, now() + RAIN_REPLAN_MS) : untilTomorrow;
             wake = new AbortController();
             await waitUntil(target, wake.signal);
             const poked = wake.signal.aborted;

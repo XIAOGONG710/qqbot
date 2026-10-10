@@ -370,6 +370,13 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 skip: replySkip(character, config.moody),
                 // 她跟谁说过「睡了」就不主动找人了（ADR 0042）
                 asleep: now => Boolean(asleepSince(character.schedule!, bedtimes(character.schedule!, now), new Date(now))),
+                // 下雨了主动找他（ADR 0050）：她那边这一刻的天气，只有开了真实天气才有
+                ...(weather && sharedWorld && worldCard ? {
+                    weather: (now: number) => {
+                        const seen = sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, new Date(now));
+                        return seen ? { day: seen.day, ...(seen.weather ? { weather: seen.weather } : {}) } : undefined;
+                    },
+                } : {}),
                 // 待跟进的事：用同一个模型配置抽（测试替换的 generate 也用在这里）
                 extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log })),
                 ...(pipeline?.now ? { now: pipeline.now } : {}),

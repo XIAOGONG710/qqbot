@@ -305,7 +305,8 @@
                         "bedtime",
                         "quiet",
                         "follow_up",
-                        "dates"
+                        "dates",
+                        "weather"
                     ],
                     "dailyMax": 2,
                     "unansweredMax": 1

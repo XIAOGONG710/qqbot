@@ -282,7 +282,7 @@ test('重要的日子：日期跟着那句文字的档位写进卡的 extensions
 
 test('主动找人：只有写了 proactive 的档位（男朋友档）卡里有 extensions.qqbot.proactive', () => {
     assert.deepEqual(card('boyfriend').data.extensions.qqbot?.proactive, {
-        occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates'], dailyMax: 2, unansweredMax: 1,
+        occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather'], dailyMax: 2, unansweredMax: 1,
     });
     for (const tier of tiers.filter(t => t.name !== 'boyfriend')) assert.equal(card(tier.name).data.extensions.qqbot?.proactive, undefined, tier.name);
 });

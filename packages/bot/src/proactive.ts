@@ -2,7 +2,7 @@
 // 随机的部分按「联系人 + 她的那一天 + 时机」取种子，重启后算出同一个时刻。定时、记录文件和发送在计划器里（app.ts）。
 //
 // 「她的那一天」：从这一天的睡觉时刻（02:00）到第二天的睡觉时刻，和 schedule.ts 一样，00:00–02:00 算前一天的晚上。
-// 每一天的候选：早安、下课、睡前、冷场、待跟进的事、重要的日子，各一个时刻；到点时再查一遍能不能发（blockReason）。
+// 每一天的候选：早安、下课、睡前、冷场、待跟进的事、重要的日子、下雨（ADR 0050，只认真实天气），各一个时刻；到点时再查一遍能不能发（blockReason）。
 // 每天的条数有上限：候选比剩下的条数多时按优先级留（日子 > 待跟进 > 早安 > 下课 > 冷场 > 睡前），日子不受上限和「没回就停」限制。
 // 错过的不补：到点时没在跑、或者过了 GRACE_MS 才算到的候选，这一天就不发了。
 
@@ -13,7 +13,7 @@ import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from '.
 export { herDay } from './schedule.ts';
 
 /** 时机，按优先级从高到低 */
-export const OCCASIONS = ['dates', 'follow_up', 'morning', 'after_class', 'quiet', 'bedtime'] as const;
+export const OCCASIONS = ['dates', 'follow_up', 'weather', 'morning', 'after_class', 'quiet', 'bedtime'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 档位上的设置（卡的 extensions.qqbot.proactive） */
@@ -89,6 +89,10 @@ export interface ProactiveInput {
     skip?: (history: StoredMessage[]) => string | undefined;
     /** 她在聊天里跟谁说过「睡了」、这会儿还没到起床（ADR 0042）：和作息上在睡一样，不主动 */
     asleep?: (now: number) => boolean;
+    /** 下雨（ADR 0050，真实天气）：她的哪一天、这场雨几点开始（在下的按开始的钟头，还没下的按预报）、是不是预报 */
+    rain?: { day: string; start: number; forecast: boolean };
+    /** 这一刻是不是真在下（实况）；到点核实，预报不准就不发 */
+    rainingNow?: (now: number) => boolean;
 }
 
 const MIN = 60_000;
@@ -116,6 +120,10 @@ const QUIET_JITTER_MIN: [number, number] = [0, 30];
 const QUIET_AFTER_WAKE_MS = HOUR;
 /** 零点的日子：00:00 之后这么多分钟之内 */
 const MIDNIGHT_MIN: [number, number] = [0, 5];
+/** 下雨：开始下之后这么多分钟（看到窗外下了，过一会儿才想起来跟他说） */
+const RAIN_MIN: [number, number] = [10, 25];
+/** 下雨：这个时刻以后不发（晚上下雨，提醒带伞没什么意义） */
+const RAIN_UNTIL = '22:00';
 /** 落在上课时间里的候选推到下课后这么多分钟 */
 const PUSHED_MIN: [number, number] = [5, 15];
 /** 待跟进：第一天问的时刻再往后抖这么多分钟；早安被日子占了时，中午 12:00 起这么多分钟 */
@@ -225,6 +233,12 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
             const end = last.end.getTime();
             add('after_class', end + pick(seed('after_class'), 'at', minutes(AFTER_CLASS_MIN)), `今天的课 ${hm(end)} 上完了`, { classEnd: end });
         }
+    }
+
+    // 下雨（ADR 0050）：这场雨开始后过一会儿；起床前、晚上 10 点后不发。一天一次（id 按天）
+    if (enabled.has('weather') && input.rain?.day === dayText) {
+        const time = Math.max(input.rain.start, wake) + pick(seed('weather'), 'at', minutes(RAIN_MIN));
+        if (time < at(day, RAIN_UNTIL).getTime()) add('weather', time, `${hm(input.rain.start)} ${input.rain.forecast ? '预报要下雨' : '开始下雨'}`);
     }
 
     // 零点要祝的那个晚上不另说睡前（10-05 模拟器：睡前先说了「生日快乐，提前说过了」，零点又祝一遍）
@@ -348,6 +362,10 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
         case 'follow_up':
             if (!input.followUps?.some(f => f.id === candidate.followUp!.item.id)) return '那件事已经了结';
             break;
+        case 'weather':
+            // 按预报排的：到点没在下就不发（预报不准）
+            if (!input.rainingNow?.(now)) return '没在下雨';
+            break;
     }
     return undefined;
 }
@@ -364,6 +382,7 @@ export function occasionNote(candidate: Candidate, userName: string): string {
     const why: Record<Occasion, () => string> = {
         morning: () => `你起床没多久，跟${userName}说早安${candidate.today ? `；${userName}今天${candidate.today.join('、')}，可以说句加油` : ''}`,
         after_class: () => `你今天的课上完了，跟${userName}说一声`,
+        weather: () => `你这边下雨了（看「你那边」的天气），想起${userName}：问一句他在哪、带没带伞，或者说说你这边的雨；就说这一件`,
         bedtime: () => `时间不早了，跟${userName}道个晚安`,
         // 旧项目的教训（ADR 0013 决策 2）：分享「刚看到的」会编出一个具体的视频、帖子，对方要链接时给不出来
         quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
@@ -388,7 +407,7 @@ export function recallTopic(candidate: Candidate, userName: string): string {
 
 /** 日志、状态页里的说法：「早安（起床后 12 分钟）」 */
 export const OCCASION_LABELS: Record<Occasion, string> = {
-    dates: '重要的日子', follow_up: '待跟进的事', morning: '早安', after_class: '下课', quiet: '冷场', bedtime: '睡前',
+    dates: '重要的日子', follow_up: '待跟进的事', weather: '下雨', morning: '早安', after_class: '下课', quiet: '冷场', bedtime: '睡前',
 };
 
 export function candidateLabel(candidate: Candidate): string {
