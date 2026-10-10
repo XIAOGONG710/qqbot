@@ -17,7 +17,7 @@ import type { LifeEvent } from './life-events.ts';
 import { needsAt, type NeedsSnapshot } from './needs.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from './promises.ts';
 import { projectActivity } from './projects.ts';
-import { herDay, stateAt, type ExtraFreeActivity, type Schedule } from './schedule.ts';
+import { formatDate, herDay, stateAt, type ExtraFreeActivity, type Schedule } from './schedule.ts';
 import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
 
 export interface LifeSources {
@@ -103,6 +103,9 @@ export function busySpans(now: WorldNow | undefined): { start: Date; end: Date; 
     if (now.cat && 'fed' in now.cat.today) span(now.cat.today.fed, OCCUPATION_MINUTES.feed, `下楼喂${now.cat.name}`);
     for (const parcel of now.parcels.filter(p => p.status === 'picked_today')) span(parcel.when, OCCUPATION_MINUTES.parcel, `取快递（${parcel.item}）`);
     if (now.familyCall?.done) span(now.familyCall.at, OCCUPATION_MINUTES.call, '和家里视频');
+    // 去买相机那一趟（用户 10-10「这周末去买」）：只在那一天
+    const camera = now.cameraFund?.camera;
+    if (camera && formatDate(camera.start) === now.day) spans.push({ start: camera.start, end: camera.end, text: `去${camera.where}买相机` });
     return spans.sort((a, b) => a.start.getTime() - b.start.getTime());
 }
 

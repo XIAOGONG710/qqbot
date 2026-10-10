@@ -50,6 +50,8 @@ export interface CameraFundSource {
     saved: number;
     weekly: number;
     deposit_day: number;
+    /** 攒够以后哪天去买（用户 10-10：这周末去买）：那天 from 出门，minutes 分钟，去 where 买 what，花 price；钱不够就不买 */
+    purchase?: { date: string; from: string; minutes: number; where: string; what: string; price: number };
     note?: string;
 }
 
@@ -232,7 +234,10 @@ export function worldForTier(world: WorldSource | undefined, tier: string): Card
             },
         } : {}),
         ...(sees(world.camera_fund.tiers) ? {
-            cameraFund: { goal: world.camera_fund.goal, saved: world.camera_fund.saved, weekly: world.camera_fund.weekly, depositDay: world.camera_fund.deposit_day },
+            cameraFund: {
+                goal: world.camera_fund.goal, saved: world.camera_fund.saved, weekly: world.camera_fund.weekly, depositDay: world.camera_fund.deposit_day,
+                ...(world.camera_fund.purchase ? { purchase: { ...world.camera_fund.purchase } } : {}),
+            },
         } : {}),
         ...(sees(world.homework.tiers) ? { homework: { kinds: [...world.homework.kinds], chance: world.homework.chance, earlyChance: world.homework.early_chance } } : {}),
         ...(sees(world.family_call.tiers) ? { familyCall: { weekday: world.family_call.weekday, time: world.family_call.time } } : {}),
@@ -379,7 +384,13 @@ export function checkWorld(raw: unknown): WorldSource {
 
     const f = root.at('camera_fund');
     const fund = f.object(o.camera_fund);
-    f.keys(fund, ['tiers', 'goal', 'saved', 'weekly', 'deposit_day', 'note']);
+    f.keys(fund, ['tiers', 'goal', 'saved', 'weekly', 'deposit_day', 'purchase', 'note']);
+    const fp = f.at('purchase');
+    const purchase = fund.purchase === undefined ? undefined : fp.object(fund.purchase);
+    if (purchase) {
+        fp.keys(purchase, ['date', 'from', 'minutes', 'where', 'what', 'price']);
+        if (typeof purchase.date !== 'string' || !DATE.test(purchase.date)) fp.at('date').fail(`应为 YYYY-MM-DD：${String(purchase.date)}`);
+    }
 
     const h = root.at('homework');
     const homework = h.object(o.homework);
@@ -490,6 +501,12 @@ export function checkWorld(raw: unknown): WorldSource {
             saved: f.at('saved').integer(fund.saved, 0, 1_000_000),
             weekly: f.at('weekly').integer(fund.weekly, 0, 100_000),
             deposit_day: f.at('deposit_day').integer(fund.deposit_day, 1, 7),
+            ...(purchase ? {
+                purchase: {
+                    date: purchase.date as string, from: fp.at('from').time(purchase.from), minutes: fp.at('minutes').integer(purchase.minutes, 10, 600),
+                    where: fp.at('where').string(purchase.where), what: fp.at('what').string(purchase.what), price: fp.at('price').integer(purchase.price, 1, 1_000_000),
+                },
+            } : {}),
             ...f.at('note').note(fund.note),
         },
         homework: {

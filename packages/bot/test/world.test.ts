@@ -5,7 +5,8 @@ import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { Schedule } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { describeWorld, parseWorld, simulateWorld, worldAt, worldLogger, worldState, type World, type WorldAction } from '../src/world.ts';
+import { describeWorld, occupationAt, parseWorld, recapDay, simulateWorld, worldAt, worldLogger, worldState, type World, type WorldAction } from '../src/world.ts';
+import { busySpans } from '../src/life-selector.ts';
 
 const cards = resolve(import.meta.dirname, '../../../characters/linmengyao/st');
 const boyfriend = loadCharacterCard(join(cards, 'linmengyao-boyfriend.json'));
@@ -100,7 +101,8 @@ describe('她的世界（ADR 0021 W1）', () => {
         assert.equal(worldAt(fixed, schedule, at('2026-09-06T22:00:00'))!.cameraFund!.saved, fund.saved + fund.weekly);
         // 有钱的规则（ADR 0035）：9 月头一个周日手上宽裕，存满 200
         assert.equal(worldAt(world, schedule, at('2026-09-06T22:00:00'))!.cameraFund!.saved, fund.saved + world.money!.saving.max);
-        const rich = patch(w => { w.cameraFund!.saved = w.cameraFund!.goal - 50; });
+        // 只看存满即停：去掉 10-11 买相机的安排（买相机另有一项）
+        const rich = patch(w => { w.cameraFund!.saved = w.cameraFund!.goal - 50; delete w.cameraFund!.purchase; });
         assert.equal(worldAt(rich, schedule, at('2026-10-30T22:00:00'))!.cameraFund!.saved, rich.cameraFund!.goal);
     });
 
@@ -259,6 +261,40 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
+    });
+
+    test('攒够了这周末去买相机（用户 10-10）：出门前说要去、在外面挑、回来以后是买了的；剩下的钱回到手上，之后不再存；钱不够就不买', () => {
+        const gift: WorldAction = {
+            id: '1:ep-gift:1:receive_money', kind: 'receive_money', day: '2026-10-10', at: '2026-10-10T15:41', contact: 1, episode: 'ep-gift',
+            amount: 2000, target: 'camera_fund',
+        };
+        const fund = world.cameraFund!.purchase!;
+        assert.equal(fund.date, '2026-10-11');
+        const eve = worldAt(world, schedule, at('2026-10-10T21:00:00'), [gift])!;
+        assert.match(describeWorld(eve, at('2026-10-10T21:00:00'))!, new RegExp(`攒钱买相机：4500 / 4500 元，攒够了.*；明天 14:00 打算去${fund.where}买，看中的是${fund.what}`), '前一天就知道明天去买');
+        const before = worldAt(world, schedule, at('2026-10-11T13:00:00'), [gift])!;
+        assert.equal(before.cameraFund!.camera!.state, 'planned');
+        assert.match(describeWorld(before, at('2026-10-11T13:00:00'))!, new RegExp(`相机：钱攒够了（4500 元），今天 14:00 要去${fund.where}买，看中的是${fund.what}`));
+        const out = worldAt(world, schedule, at('2026-10-11T15:00:00'), [gift])!;
+        assert.equal(occupationAt(out, at('2026-10-11T15:00:00')), `在${fund.where}挑相机`);
+        const back = worldAt(world, schedule, at('2026-10-11T17:00:00'), [gift])!;
+        assert.equal(back.cameraFund!.camera!.state, 'bought');
+        const line = describeWorld(back, at('2026-10-11T17:00:00'))!;
+        assert.match(line, new RegExp(`相机：今天下午去${fund.where}买的${fund.what}（${fund.price} 元，攒的钱买的）`));
+        assert.doesNotMatch(line, /攒钱买相机/);
+        const left = simulateWorld(world, schedule, at('2026-10-11T17:00:00'), [gift]).ledger.find(e => e.what === '买完相机剩下的');
+        assert.equal(left?.amount, 4500 - fund.price, '剩下的回到手上');
+        assert.ok(recapDay(back).some(item => item.includes(`去${fund.where}买了相机`)));
+        assert.ok(busySpans(back).some(span => span.text === `去${fund.where}买相机` && span.start.getTime() === at('2026-10-11T14:00:00').getTime()));
+        // 下周日不再往相机基金里存；那天以后说的是哪天买的
+        const nextWeek = worldAt(world, schedule, at('2026-10-18T22:00:00'), [gift])!;
+        assert.match(describeWorld(nextWeek, at('2026-10-18T22:00:00'))!, new RegExp(`相机：10 月 11 日下午去${fund.where}买的`));
+        assert.equal(simulateWorld(world, schedule, at('2026-10-18T22:00:00'), [gift]).ledger.filter(e => e.kind === 'deposit' && e.at > at('2026-10-11T00:00:00') && e.what === '存进相机基金').length, 0);
+        assert.ok(!busySpans(nextWeek).some(span => span.text.includes('买相机')));
+        // 没有那笔钱：10-11 攒不够，不买
+        const plain = worldAt(world, schedule, at('2026-10-11T17:00:00'))!;
+        assert.equal(plain.cameraFund!.camera, undefined);
+        assert.match(describeWorld(plain, at('2026-10-11T17:00:00'))!, /攒钱买相机：\d+ \/ 4500 元，还差/);
     });
 
     test('作业用稳定目标跨档回写：低档看不到课名，仍完成和男朋友档同一份', () => {
