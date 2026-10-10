@@ -46,6 +46,21 @@ describe('回复时机：什么时候看到', () => {
         assert.deepEqual(whenSeen(hot, t(10, 12, 23, 20), busy), { at: t(10, 12, 22, 40), reason: '正聊着' }, '洗完以后照常');
     });
 
+    test('在外面办事（10-11 逛市场挑相机）：正聊着也隔 2–8 分钟才看到，最多回 2 条；洗澡这种看不了手机的排在前面；回来以后照常', () => {
+        const until = t(10, 11, 16, 30);
+        const out = { ...boyfriend, out: (now: number) => (now < until ? '在山大路科技市场挑相机，隔一会儿才看手机' : undefined) };
+        const hot = [her(t(10, 11, 15, 2)), user(t(10, 11, 15, 3), '挑好没')];
+        const seen = whenSeen(hot, t(10, 11, 15, 3), out)!;
+        assert.equal(seen.reason, '在山大路科技市场挑相机，隔一会儿才看手机');
+        assert.ok(seen.at >= t(10, 11, 15, 5) && seen.at <= t(10, 11, 15, 11), String(new Date(seen.at)));
+        assert.equal(seen.maxBubbles, 2);
+        assert.equal(whenSeen(hot, t(10, 11, 15, 3), out)!.at, seen.at, '同一串算出同一个时刻');
+        const both = { ...out, busy: () => ({ until: t(10, 11, 15, 20), reason: '在洗澡，洗完才看到' }) };
+        assert.equal(whenSeen(hot, t(10, 11, 15, 3), both)!.reason, '在洗澡，洗完才看到');
+        const back = [her(t(10, 11, 16, 38)), user(t(10, 11, 16, 40), '买到了？')];
+        assert.deepEqual(whenSeen(back, t(10, 11, 16, 40), out), { at: t(10, 11, 16, 40), reason: '正聊着' });
+    });
+
     test('上硬课：5–20 分钟后看到，最多回 1 条；上机房课 2–6 分钟、最多 2 条；水课照常', () => {
         const hard = whenSeen([user(t(10, 12, 10))], t(10, 12, 10), boyfriend)!;
         assert.ok(hard.at >= t(10, 12, 10, 5) && hard.at <= t(10, 12, 10, 20));

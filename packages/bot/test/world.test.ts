@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { Schedule } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { describeWorld, occupationAt, parseWorld, recapDay, simulateWorld, worldAt, worldLogger, worldNews, worldState, type World, type WorldAction } from '../src/world.ts';
+import { describeWorld, occupationAt, outAt, parseWorld, recapDay, simulateWorld, worldAt, worldLogger, worldNews, worldState, type World, type WorldAction } from '../src/world.ts';
 import { busySpans } from '../src/life-selector.ts';
 
 const cards = resolve(import.meta.dirname, '../../../characters/linmengyao/st');
@@ -279,6 +279,8 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
         assert.match(describeWorld(before, at('2026-10-11T13:00:00'))!, new RegExp(`相机：钱攒够了（4500 元），今天 14:00 要去${fund.where}买，看中的是${fund.what}`));
         const out = worldAt(world, schedule, at('2026-10-11T15:00:00'), [gift])!;
         assert.equal(occupationAt(out, at('2026-10-11T15:00:00')), `在${fund.where}挑相机`);
+        assert.equal(outAt(out), `在${fund.where}挑相机，隔一会儿才看手机`, '回消息隔一会儿');
+        assert.equal(outAt(before), undefined);
         assert.equal(occupationAt(worldAt(world, schedule, at('2026-10-11T16:40:00'), [gift])!, at('2026-10-11T16:40:00')), '刚买完相机回到宿舍，在摆弄新相机', '买完回来那一会儿');
         const back = worldAt(world, schedule, at('2026-10-11T17:00:00'), [gift])!;
         assert.equal(occupationAt(back, at('2026-10-11T17:00:00')), '刚买完相机回到宿舍，在摆弄新相机');

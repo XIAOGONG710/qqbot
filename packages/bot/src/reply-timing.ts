@@ -19,6 +19,9 @@ export const AFTER_WAKE_MS: Range = [0, 30 * 60_000];
 export const AFTER_CLASS_MS: Range = [30_000, 120_000];
 /** 忙完（洗完澡）之后过多久看到手机（ADR 0031） */
 export const AFTER_BUSY_MS: Range = [60_000, 180_000];
+/** 在外面办事（逛市场挑相机）：顾不上一直看手机，正聊着也隔这么久才看到；一次最多回这么多条 */
+export const OUT_DELAY_MS: Range = [2 * 60_000, 8 * 60_000];
+export const OUT_MAX_BUBBLES = 2;
 /** 男朋友档睡着时被吵醒：15 分钟内到了第 3 条，或者隔了 2 分钟以上又来一条（都在 15 分钟内） */
 export const WAKE_UP_WINDOW_MS = 15 * 60_000;
 export const WAKE_UP_COUNT = 3;
@@ -54,6 +57,8 @@ export interface TimingOptions {
     pace?: number;
     /** 这一刻在忙、看不了手机（ADR 0031：洗澡），忙到什么时候；不传就没有 */
     busy?: (now: number) => { until: number; reason: string } | undefined;
+    /** 这一刻在外面办事、看得了手机但顾不上一直看（买相机那一趟），说明写进日志；不传就没有 */
+    out?: (now: number) => string | undefined;
     /**
      * 她在聊天里说过「睡了」（ADR 0042，对谁说的都算）：从那一刻（since）起在睡，睡到 until；不传或没说过就按作息。
      * 吵醒的规则照旧（男朋友连着发），一晚从她说完那一刻算起
@@ -123,6 +128,10 @@ export function whenSeen(history: StoredMessage[], now: number, options: TimingO
     // 在忙得看不了手机（ADR 0031：洗澡）：忙完一两分钟才看到，正聊着也一样
     const busy = options.busy?.(now);
     if (busy) return listened(pending, { at: Math.max(first, busy.until) + pick(seed, 'busy', AFTER_BUSY_MS), reason: busy.reason });
+
+    // 在外面办事：正聊着也隔几分钟才看到，回得短（状态行写着「在山大路科技市场挑相机」，每条都秒回对不上）
+    const out = options.out?.(now);
+    if (out) return listened(pending, { at: first + pick(seed, 'out', OUT_DELAY_MS), reason: out, maxBubbles: OUT_MAX_BUBBLES });
 
     // 空闲、课间、水课、体育：正聊着马上看到，冷场过一会儿
     const lastReply = history.findLast(m => m.role === 'assistant');

@@ -25,7 +25,7 @@ import { describeMood, moodAt, readingActivities, readingSection } from './her-d
 import { describeIntent } from './intent.ts';
 import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
-import { describeWorld, recapDay, recentWith, unavailableAt, worldAt, type WorldState } from './world.ts';
+import { describeWorld, outAt, recapDay, recentWith, unavailableAt, worldAt, type WorldState } from './world.ts';
 import { npcMentioned } from './npc.ts';
 import { dayPlan, describePlans, describeSlot } from './day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
@@ -476,6 +476,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     const around = options.worldState?.at(character.herWorld, herSchedule, when) ?? worldAt(character.herWorld, herSchedule, when);
                     const busy = around ? unavailableAt(around, when) : undefined;
                     return busy ? { until: busy.until.getTime(), reason: busy.reason } : undefined;
+                },
+                // 在外面办事（买相机那一趟）：隔几分钟才看手机
+                out: moment => {
+                    if (!herSchedule || !character.herWorld) return undefined;
+                    const when = new Date(moment);
+                    const around = options.worldState?.at(character.herWorld, herSchedule, when) ?? worldAt(character.herWorld, herSchedule, when);
+                    return around ? outAt(around) : undefined;
                 },
                 asleep: moment => {
                     const asleep = asleepAt(new Date(moment));

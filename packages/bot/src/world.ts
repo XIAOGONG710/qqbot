@@ -627,6 +627,12 @@ export function unavailableAt(now: WorldNow, at: Date): { until: Date; reason: s
     return shower && at >= shower.start && at < shower.end ? { until: shower.end, reason: '在洗澡，洗完才看到' } : undefined;
 }
 
+/** 在外面办事、看得了手机但顾不上一直看（回复节奏用）：现在只有逛市场挑相机那一趟（ADR 0053） */
+export function outAt(now: WorldNow): string | undefined {
+    const camera = now.cameraFund?.camera;
+    return camera?.state === 'buying' ? `在${camera.where}挑相机，隔一会儿才看手机` : undefined;
+}
+
 /** 有时长的事各占多久（分钟，ADR 0030）：喂猫、取完快递往回走、和家里视频、写完作业之前在赶的那一段 */
 export const OCCUPATION_MINUTES = { feed: 10, parcel: 15, call: 30, homework: 90, newCamera: 90, beforeTrip: 90 } as const;
 
