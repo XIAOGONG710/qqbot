@@ -6,6 +6,7 @@ import { readingActivities } from '../her-days.ts';
 import { freeAction, type LifeSources } from '../life-selector.ts';
 import type { LifeEvent } from '../life-events.ts';
 import { herStatus } from '../status-line.ts';
+import { describeAppointment } from '../promises.ts';
 import type { TypedActionKind } from '../actions.ts';
 
 export interface LifeStatusMismatch {
@@ -95,10 +96,13 @@ export function auditLedgerCoverage(events: readonly LifeEvent[], sources: LifeS
 /** 同一时刻对外的状态行（和 contact.ts 拼提示词用同一个 herStatus） */
 function statusAt(at: Date, sources: LifeSources, reading: ReturnType<typeof readingActivities>, world: ReturnType<LifeSources['worldAt']>) {
     const asleep = asleepSince(sources.schedule, sources.bedtimes?.() ?? [], at);
+    const appointment = sources.appointmentsBetween?.(at, new Date(at.getTime() + 1))[0];
     return herStatus(sources.schedule, at, {
         extraFree: reading,
         ...(world ? { world } : {}),
         ...(asleep ? { asleep } : {}),
+        // 和线上状态行同一句（contact.ts 用 describeAppointment）：拿约的那个人当看的人
+        ...(appointment ? { appointment: describeAppointment(appointment, appointment.contact, at) } : {}),
         plans: {
             plans: sources.plans,
             ...(sources.bodyAt ? { body: sources.bodyAt(at) } : {}),
@@ -114,6 +118,7 @@ function statusKind(status: ReturnType<typeof herStatus>, at: Date, sources: Lif
         case 'between': return undefined;
         case 'free': {
             if (status.busy) {
+                if (/赴约|快出门了|约了人/.test(status.busy)) return 'meet';
                 if (/吃午饭|吃晚饭/.test(status.busy)) return 'eat';
                 if (/赶.*作业/.test(status.busy)) return 'study';
                 return undefined;

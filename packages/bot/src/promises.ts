@@ -319,6 +319,8 @@ export interface PromiseKeeper {
     plansOn(date: string): string[];
     /** 这一刻在赴约或快出门的（ADR 0047）：名单里所有人那儿约的 */
     appointmentsAt(at: Date): Appointment[];
+    /** 一段时间内会占用她的约定；自主生活选择器用它预留出门到见完的时段。 */
+    appointmentsBetween(from: Date, to: Date): Appointment[];
 }
 
 export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
@@ -336,6 +338,16 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         for (const id of Object.keys(state.early)) if (Number(id.slice(3)) < keepFrom || state.extracted[id] === true) delete state.early[id];
         writeJsonAtomic(path(contact), state);
     };
+    const appointmentsBetween = (from: Date, to: Date): Appointment[] => options.contacts.flatMap(contact =>
+        load(contact).promises.flatMap(promise => {
+            const window = meetWindow(promise);
+            if (!window) return [];
+            const lead = window.start.getTime() - MEET_LEAD_MINUTES * 60_000;
+            if (lead >= to.getTime() || window.end.getTime() <= from.getTime()) return [];
+            return [{ contact, promise, ...window }];
+        }))
+        .sort((a, b) => a.start.getTime() - b.start.getTime()
+            || a.contact.qq - b.contact.qq || a.promise.id.localeCompare(b.promise.id));
     const today = (at: Date) => (options.schedule ? herDay(options.schedule, at) : new Date(at.getFullYear(), at.getMonth(), at.getDate()));
 
     async function syncContact(contact: Contact): Promise<void> {
@@ -486,10 +498,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         },
         openLoops: (contact, chat, at) => dueLoops(load(contact).loops, today(at), at, chat),
         plansOn: date => options.contacts.flatMap(contact => load(contact).promises.filter(p => p.date === date).map(p => p.what)),
-        appointmentsAt: at => options.contacts.flatMap(contact => load(contact).promises.flatMap(promise => {
-            const window = meetWindow(promise);
-            if (!window || !meetStarted(promise, at) || at.getTime() >= window.end.getTime()) return [];
-            return [{ contact, promise, ...window }];
-        })),
+        appointmentsAt: at => appointmentsBetween(at, new Date(at.getTime() + 1)),
+        appointmentsBetween,
     };
 }

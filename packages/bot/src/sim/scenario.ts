@@ -332,7 +332,7 @@ function checkStep(step: unknown, where: string): void {
         if (typeof s.action !== 'object' || s.action === null) fail('action 应为对象');
         const action = s.action as Record<string, unknown>;
         if (typeof action.id !== 'string' || !action.id) fail('action.id 应为非空字符串');
-        if (!['sleep', 'eat', 'attend_class', 'study', 'rest', 'read_book', 'leisure', 'work_on_project', 'interact_npc'].includes(String(action.kind))) fail('action.kind 不认识');
+        if (!['sleep', 'eat', 'meet', 'attend_class', 'study', 'rest', 'read_book', 'leisure', 'work_on_project', 'interact_npc'].includes(String(action.kind))) fail('action.kind 不认识');
         if (action.subject !== undefined && typeof action.subject !== 'string') fail('action.subject 应为字符串');
         if (action.target !== undefined && typeof action.target !== 'string') fail('action.target 应为字符串');
         if (action.durationMinutes !== undefined && (!Number.isInteger(action.durationMinutes) || Number(action.durationMinutes) <= 0)) fail('action.durationMinutes 应为正整数');

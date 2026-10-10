@@ -7,7 +7,7 @@ import type { LifeEvent, LifeEventDraft, LifeEventSource } from './life-events.t
 import { classesOn, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
 
-export type TypedActionKind = 'sleep' | 'eat' | 'attend_class' | 'study' | 'rest' | 'read_book' | 'leisure' | 'work_on_project' | 'interact_npc';
+export type TypedActionKind = 'sleep' | 'eat' | 'meet' | 'attend_class' | 'study' | 'rest' | 'read_book' | 'leisure' | 'work_on_project' | 'interact_npc';
 export type ActionFailure = 'invalid_time' | 'unavailable' | 'conflict' | 'no_time' | 'missing_target' | 'already_done';
 /**
  * 灵活的行动做到一半停下的原因（ADR 0042）：硬事件打断——要去上课了、得赶作业了（写完之前那一段）；
@@ -25,7 +25,19 @@ export interface ActionIntent {
     subject?: string;
     /** 长期项目 ID 或 NPC ID；不把显示名当稳定标识。 */
     target?: string;
+    /** 赴约同时吃了一顿饭；需要值在行动完成时按吃饭结算。 */
+    meal?: boolean;
     durationMinutes?: number;
+}
+
+/** 从约定存储映射出的硬时段；只有这里列出的赴约才能通过裁判。 */
+export interface ActionAppointment {
+    id: string;
+    start: Date;
+    end: Date;
+    subject: string;
+    target: string;
+    meal: boolean;
 }
 
 export interface ActionContext {
@@ -33,6 +45,7 @@ export interface ActionContext {
     world?: WorldNow;
     books?: readonly ReadingBook[];
     events?: readonly LifeEvent[];
+    appointments?: readonly ActionAppointment[];
     /** 世界里别的有时长的事（洗澡、喂猫、取快递、和家里视频，ADR 0030、0031）：不记成行动，但占着时间，灵活的行动撞上就停（ADR 0040） */
     busy?: readonly { start: Date; end: Date }[];
 }
@@ -69,12 +82,22 @@ export function judgeAction(intent: ActionIntent, context: ActionContext): Actio
 
     if (intent.kind === 'sleep') return fixedAction(intent, sleepSpan(start, context.schedule), '在宿舍睡觉', context);
     if (intent.kind === 'eat') {
-        const meal = context.world?.routine?.meals.find(item => sameInstant(item.start, start));
+        // 饭点开头开始；见完面回来饭点已经开始了的，从回来那一刻吃（G1）
+        const meal = context.world?.routine?.meals.find(item => start >= item.start && start < item.end);
         const subject = meal?.kind;
         if (!meal) return failed(intent, 'unavailable');
         if (alreadyDid(context, intent.kind, start, subject)) return failed(intent, 'already_done');
         const where = meal.where === 'canteen' ? '在食堂' : meal.where === 'takeout' ? '点了外卖，在' : '在家';
-        return fixedAction({ ...intent, subject }, { start: meal.start, end: meal.end }, `${where}吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}`, context);
+        // 要出门赴约的，吃到出门那一刻（G1）；只能比饭点短，不能更长
+        const end = intent.durationMinutes ? new Date(Math.min(meal.end.getTime(), start.getTime() + intent.durationMinutes * 60_000)) : meal.end;
+        return fixedAction({ ...intent, subject }, { start, end }, `${where}吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}`, context);
+    }
+    if (intent.kind === 'meet') {
+        const appointment = context.appointments?.find(item => item.id === intent.id && sameInstant(item.start, start));
+        if (!appointment) return failed(intent, 'unavailable');
+        const occupation = appointment.meal ? `在外面吃饭（${appointment.subject}）` : `在赴约（${appointment.subject}）`;
+        return fixedAction({ ...intent, subject: appointment.subject, target: appointment.target, meal: appointment.meal },
+            appointment, occupation, context);
     }
     if (intent.kind === 'attend_class') {
         const lesson = classesOn(context.schedule, start).lessons.find(item => sameInstant(item.start, start));
@@ -140,6 +163,7 @@ export function typedOccupation(event: LifeEvent, at: Date, books: readonly Read
     switch (event.kind as TypedActionKind) {
         case 'sleep': return '在宿舍睡觉';
         case 'eat': return event.subject === 'lunch' ? '在吃午饭' : '在吃晚饭';
+        case 'meet': return event.meal ? `在外面吃饭${event.subject ? `（${event.subject}）` : ''}` : `在赴约${event.subject ? `（${event.subject}）` : ''}`;
         case 'attend_class': return `在上${event.subject ?? '课'}`;
         case 'study': return `在学习${event.subject ? `（${event.subject}）` : ''}`;
         case 'rest': return '在休息';
@@ -171,7 +195,8 @@ function succeeded(intent: ActionIntent, end: Date, occupation: string, requeste
         event: {
             id: intent.id.trim(), kind: intent.kind, startedAt: intent.startedAt.toISOString(), at: end.toISOString(),
             source: intent.source ?? 'simulation', result,
-            ...(subject ? { subject } : {}), ...(target ? { target } : {}), ...(reason ? { reason } : {}),
+            ...(subject ? { subject } : {}), ...(target ? { target } : {}), ...(intent.meal !== undefined ? { meal: intent.meal } : {}),
+            ...(reason ? { reason } : {}),
         },
         occupation, requestedMinutes, actualMinutes,
     };
@@ -187,6 +212,7 @@ function failed(intent: ActionIntent, reason: ActionFailure): ActionVerdict {
             source: intent.source ?? 'simulation', result: 'failed', reason,
             ...(intent.subject?.trim() ? { subject: intent.subject.trim() } : {}),
             ...(intent.target?.trim() ? { target: intent.target.trim() } : {}),
+            ...(intent.meal !== undefined ? { meal: intent.meal } : {}),
         },
         reason,
     };

@@ -21,8 +21,14 @@ export interface LifeEvent {
     result: LifeEventResult;
     /** 世界裁判给出的可审计原因；成功时通常没有。 */
     reason?: string;
+    /**
+     * 做的是什么。见面（meet）存的是约定原话（「和他去东门吃麻辣烫」），「他」是对约的那个联系人（target）说的：
+     * 生活账接进提示词时，别的档位要走 describeAppointment 那种按看的人区分的说法，不能原样给
+     */
     subject?: string;
     target?: string;
+    /** 这件行动本身也完成了一顿饭（例如约人出去吃饭）。 */
+    meal?: boolean;
     seen?: boolean;
     /** 对话来源的审计线索；模拟和外部事件可以没有。 */
     contact?: number;
@@ -39,6 +45,7 @@ export interface LifeEventDraft {
     reason?: string;
     subject?: string;
     target?: string;
+    meal?: boolean;
     seen?: boolean;
     contact?: number;
     episode?: string;
@@ -77,6 +84,7 @@ export function validLifeEvent(value: unknown): value is LifeEvent {
         && (event.reason === undefined || typeof event.reason === 'string')
         && (event.subject === undefined || typeof event.subject === 'string')
         && (event.target === undefined || typeof event.target === 'string')
+        && (event.meal === undefined || typeof event.meal === 'boolean')
         && (event.seen === undefined || typeof event.seen === 'boolean')
         && (event.contact === undefined || typeof event.contact === 'number')
         && (event.episode === undefined || typeof event.episode === 'string');

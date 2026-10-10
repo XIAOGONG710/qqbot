@@ -47,6 +47,14 @@ describe('连续需要投影（ADR 0045）', () => {
         assert.equal(withInterrupted.hunger, noMeal.hunger, '饭被打断，不能当作已经吃饱');
     });
 
+    test('出去吃饭的赴约在完成后也会结算饱腹', () => {
+        const dinner = { ...event('meet-dinner', 'meet', '2026-10-01T10:00:00.000Z', '2026-10-01T11:30:00.000Z'), meal: true };
+        const social = event('meet-show', 'meet', '2026-10-01T10:00:00.000Z', '2026-10-01T11:30:00.000Z');
+        const afterDinner = needsAt(anchor, [dinner], new Date('2026-10-01T11:30:00.000Z'));
+        const afterShow = needsAt(anchor, [social], new Date('2026-10-01T11:30:00.000Z'));
+        assert.ok(afterDinner.hunger < afterShow.hunger - 50);
+    });
+
     test('同一段生活一次推完和中途重启后接着推，结果一致', () => {
         const events = fortnight();
         const middle = new Date('2026-10-08T00:00:00.000Z');
