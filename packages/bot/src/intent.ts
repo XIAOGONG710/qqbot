@@ -21,6 +21,8 @@ export interface IntentContext {
     /** 挂着的事（ADR 0023）：在等他说结果的事、她问了他没答的 */
     waiting?: readonly string[];
     unanswered?: readonly string[];
+    /** 只有男朋友档会把拥抱、亲吻、想念确认等当作需要明确回接的亲密邀约。 */
+    intimate?: boolean;
 }
 
 /** 她上一次回复以后，他这次说的内容。 */
@@ -47,6 +49,19 @@ export function isEndingTurn(history: readonly Said[]): boolean {
 const ASKS_FOR_HER = /哄(?:哄)?我|陪(?:陪)?我|给我(?:讲|唱|念)|讲个(?:睡前)?故事|唱(?:首)?歌给我|摸摸(?:我的?)?头/;
 function asksForHer(history: readonly Said[]): boolean {
     return ASKS_FOR_HER.test(latestUserText(history));
+}
+
+/**
+ * 男朋友在要一个拥抱、亲吻、爱意确认或继续陪伴时，不把它压成普通问答，也不因为「睡」字直接收尾。
+ * 只匹配完整的亲密说法，避开「抱怨」「亲戚」「亲自」一类无关词；是否启用由调用方按档位决定。
+ */
+const INTIMATE_BID = /抱抱|抱我|抱一下|抱一会儿?|抱住我|给我抱|亲亲|亲我|亲一下|亲一口|亲个|mua|啵(?:一个|一下)?|想不想我|有没有想我|爱不爱我|爱我吗|喜不喜欢我|喜欢我吗|喜欢你|爱你|没爱了|不爱我了|不要我了|不喜欢我了|是不是不爱我|不准睡|别睡|不要睡|先别睡|不准走|别走|不要走|再陪(?:陪)?我?(?:一会儿?|一下)|陪我(?:聊|待|睡|一会儿?)/i;
+const MISSES_ME = /想我(?:吗|没|没有|了吗|了没|了没有|了|啊|呀|呢)?(?=$|[\s?？!！。…~～，,])/;
+// 「我想你应该先睡」「我想你帮我看看」里的「想你」是“我认为 / 我希望你”，不是想念。
+const MISSES_HER = /(?<![不没])想你(?!应该|该|帮|给|替|把|能|会|要|先|去|来|做|说|看|问)/;
+function isIntimateBid(history: readonly Said[]): boolean {
+    const text = latestUserText(history);
+    return INTIMATE_BID.test(text) || MISSES_ME.test(text) || MISSES_HER.test(text);
 }
 
 /**
@@ -80,7 +95,7 @@ function needsCare(history: readonly Said[]): boolean {
 function isRelationshipBid(history: readonly Said[]): boolean {
     const text = latestUserText(history);
     // 「你递过来的时候我心里特别软」（10-10 盲评 N3：她回「今天怎么突然这么黏」就转去讲自己的奶茶）
-    return /想你|喜欢你|爱你|亲亲|抱抱|纪念日|(?:认识|见面|在一起).{0,8}(?:天|年)|\d{3,}\s*天|心里.{0,4}(?:软|甜|暖)|心动|有你真好/.test(text);
+    return MISSES_HER.test(text) || /喜欢你|爱你|亲亲|抱抱|纪念日|(?:认识|见面|在一起).{0,8}(?:天|年)|\d{3,}\s*天|心里.{0,4}(?:软|甜|暖)|心动|有你真好/.test(text);
 }
 
 /** 只有这种没有实质话题的开场，才适合捡起待跟进的事；不能在对方正说别的时抢话。 */
@@ -120,6 +135,7 @@ function busy(state: State | undefined, schedule: Schedule | undefined, now: Dat
 export function describeIntent(context: IntentContext): string | undefined {
     if (context.initiating) return undefined;
     // 「只接他刚说的你们两个人的事」这几个字让候选挑选（ADR 0041）和两条气泡的上限照亲密话算
+    if (context.intimate && isIntimateBid(context.history)) return '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事：先给一个明确的亲密回应，再自然地保留一点嘴硬；嘴硬不能是整轮唯一内容，也不把亲近当成交换条件。QQ 上可以直接回抱、回亲或说想他；他说难受时先心疼他，他真要收尾时回应后顺着收尾，他不想你走时能陪就多陪一句]';
     if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行，别一句话就把他打发了；他要睡就哄他睡，他不让你走就再陪他一会儿，不另起话题，也不用约他睡醒再找你]';
     if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句；不分享新进度，不说你接下来做什么，不另起话题，也不用约他忙完回来找你]';
     if (sharesGoodNews(context.history)) return '[这一轮你想：他刚说了件好事，先替他高兴、接住这件事；他顺口问的再顺口答，不另起话题]';

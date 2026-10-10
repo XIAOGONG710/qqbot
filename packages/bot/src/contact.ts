@@ -348,6 +348,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 initiating: Boolean(initiate),
                 waiting: loops?.waiting.map(l => l.what),
                 unanswered: loops?.unanswered.map(l => l.what),
+                intimate: contact.tier === 'boyfriend',
             });
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;

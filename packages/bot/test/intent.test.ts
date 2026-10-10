@@ -82,6 +82,31 @@ describe('这一轮你想（ADR 0019）', () => {
         assert.equal(isEndingTurn([user('想睡觉了')]), true, '他自己说要睡还是收尾');
     });
 
+    test('男朋友要亲近或确认感情：先明确回接，再嘴硬；优先于普通问句和收尾', () => {
+        for (const text of ['需要抱抱', '亲我一下行不行', '发个mua', '你想我吗', '爱不爱我', '没爱了', '不准睡，再陪我聊会儿']) {
+            const line = describeIntent({ history: [assistant('我去睡了，晚安'), user(text)], now, intimate: true })!;
+            assert.match(line, /先给一个明确的亲密回应/, text);
+            assert.match(line, /嘴硬不能是整轮唯一内容/, text);
+            assert.match(line, /只接他刚说的你们两个人的事/, text);
+            assert.doesNotMatch(line, /先直接回答|顺着他的话收尾/, text);
+        }
+    });
+
+    test('亲密邀约只在男朋友档加强，词边界不误伤普通问句', () => {
+        assert.match(describeIntent({ history: [user('你想我吗')], now })!, /直接回答/, '非男朋友档不套亲密互惠');
+        for (const text of ['你别抱怨了行不行', '你亲戚来了吗', '这件事你亲自去吗', '你想我怎么做', '我想你应该先睡']) {
+            assert.doesNotMatch(describeIntent({ history: [user(text)], now, intimate: true }) ?? '', /亲密回应|只接他刚说的你们两个人的事/, text);
+        }
+    });
+
+    test('亲密邀约里带难受或明确收尾：意图同时保留照顾和收尾边界', () => {
+        const care = describeIntent({ history: [user('撑不住了，需要抱抱')], now, intimate: true })!;
+        assert.match(care, /先心疼他/);
+        assert.match(care, /回抱/);
+        const closing = describeIntent({ history: [user('我睡了，晚安，亲亲')], now, intimate: true })!;
+        assert.match(closing, /回应后顺着收尾/);
+    });
+
     test('明确难过时只接住，不转去讲自己的猫、书或进度；普通短句不脑补', () => {
         for (const text of ['悲', '我哭得很伤心', '今天累死了', '有点难受', '今天被导师骂了，烦死', '好烦啊', '心累']) {
             const line = describeIntent({ history: [user(text)], now, state: free('在追一部剧'), books: true })!;
