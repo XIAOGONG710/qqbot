@@ -23,6 +23,8 @@ export interface LifeEvent {
     reason?: string;
     subject?: string;
     target?: string;
+    /** 这件行动本身也完成了一顿饭（例如约人出去吃饭）。 */
+    meal?: boolean;
     seen?: boolean;
     /** 对话来源的审计线索；模拟和外部事件可以没有。 */
     contact?: number;
@@ -39,6 +41,7 @@ export interface LifeEventDraft {
     reason?: string;
     subject?: string;
     target?: string;
+    meal?: boolean;
     seen?: boolean;
     contact?: number;
     episode?: string;
@@ -77,6 +80,7 @@ export function validLifeEvent(value: unknown): value is LifeEvent {
         && (event.reason === undefined || typeof event.reason === 'string')
         && (event.subject === undefined || typeof event.subject === 'string')
         && (event.target === undefined || typeof event.target === 'string')
+        && (event.meal === undefined || typeof event.meal === 'boolean')
         && (event.seen === undefined || typeof event.seen === 'boolean')
         && (event.contact === undefined || typeof event.contact === 'number')
         && (event.episode === undefined || typeof event.episode === 'string');

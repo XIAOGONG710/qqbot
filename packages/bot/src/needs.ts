@@ -38,6 +38,7 @@ const RATES: Record<string, Rates> = {
     leisure: { energy: -1.3, hunger: 3, stress: -1.2 },
     read_book: { energy: -1.5, hunger: 3, stress: -0.8 },
     interact_npc: { energy: -1.2, hunger: 3, stress: -1.5 },
+    meet: { energy: -2, hunger: 3, stress: -1.4 },
     attend_class: { energy: -2.5, hunger: 3.2, stress: 1.2 },
     study: { energy: -3, hunger: 3.2, stress: 2 },
     work_on_project: { energy: -2.2, hunger: 3.1, stress: 0.8 },
@@ -104,7 +105,7 @@ export function needsAt(anchor: NeedsSnapshot, events: readonly LifeEvent[], at:
         // 离散后果只在事件真正结束且落在这次投影区间里结算；分段重启不会重复吃饭。
         for (const item of relevant) {
             if (item.end !== to || item.end <= anchorAt || item.end > target) continue;
-            if (item.event.kind === 'eat' && item.event.result === 'succeeded') hunger = clamp(hunger - MEAL_HUNGER_RELIEF);
+            if ((item.event.kind === 'eat' || item.event.meal) && item.event.result === 'succeeded') hunger = clamp(hunger - MEAL_HUNGER_RELIEF);
         }
     }
     return snapshot(at, { energy, hunger, stress });

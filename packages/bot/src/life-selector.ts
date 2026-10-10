@@ -6,7 +6,7 @@
 // 聊天里说过的事改写还没过的（ADR 0042）：她说「睡了」、说喂过猫、取了快递、写完作业、和家里视频过了，排着的那件停在那一刻，之后按新的世界接着排；
 // 已经落账的不改。
 
-import { homeworkSprints, type ActionContext, type ActionIntent, type TypedActionKind } from './actions.ts';
+import { homeworkSprints, type ActionAppointment, type ActionContext, type ActionIntent, type TypedActionKind } from './actions.ts';
 import type { ActionQueue, QueuedAction } from './action-queue.ts';
 import { asleepSince } from './bedtime.ts';
 import type { BodyNow } from './body.ts';
@@ -15,6 +15,7 @@ import type { ReadingBook } from './her-days.ts';
 import { bookProgressAt, readingActivities } from './her-days.ts';
 import type { LifeEvent } from './life-events.ts';
 import { needsAt, type NeedsSnapshot } from './needs.ts';
+import { MEET_LEAD_MINUTES, type Appointment } from './promises.ts';
 import { projectActivity } from './projects.ts';
 import { herDay, stateAt, type ExtraFreeActivity, type Schedule } from './schedule.ts';
 import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
@@ -31,6 +32,8 @@ export interface LifeSources {
     bodyAt?: (at: Date) => BodyNow | undefined;
     /** 她在聊天里说「睡了」的时刻（ADR 0042，bedtime.ts 的 saidBedtimes，对谁说的都算）：从那一刻起在睡，到那一晚该起的时候 */
     bedtimes?: () => readonly number[];
+    /** 约定存储里的见面；时间范围包含出门前 15 分钟到见完。 */
+    appointmentsBetween?: (from: Date, to: Date) => readonly Appointment[];
     /**
      * 连续需要的版本化起点（ADR 0045）。没有锚点时完全沿用旧选择器；有锚点时只调整空闲行动，
      * 上课、饭点、明确约定和截止时间仍按原来的硬规则优先。
@@ -43,6 +46,37 @@ export type Choice = { intent: ActionIntent; why: string } | { skipTo: Date; why
 
 /** 行动 id：开始时刻 + 种类，同一刻同一件事重放、重启都是同一个 id */
 export const lifeActionId = (at: Date, kind: TypedActionKind) => `life:${at.toISOString()}:${kind}`;
+
+/** 一次约定对应一个稳定行动；联系人自己的 promise id 只在该联系人内唯一，所以把 QQ 一起放进幂等键。 */
+function appointmentActions(sources: LifeSources, from: Date, to: Date): ActionAppointment[] {
+    const saidBedtimes = sources.bedtimes?.() ?? [];
+    return (sources.appointmentsBetween?.(from, to) ?? []).flatMap(appointment => {
+        const lead = new Date(appointment.start.getTime() - MEET_LEAD_MINUTES * 60_000);
+        const world = sources.worldAt(appointment.start);
+        const overlapsMeal = world?.routine?.meals.some(meal => meal.start < appointment.end && meal.end > appointment.start) ?? false;
+        const meal = overlapsMeal || /吃|饭|餐|火锅|烧烤|麻辣烫|烤肉|夜宵/.test(appointment.promise.what);
+        const segments: { start: Date; end: Date }[] = [];
+        let segmentStart: Date | undefined;
+        for (let time = lead.getTime(); time < appointment.end.getTime(); time += 60_000) {
+            const at = new Date(time);
+            const free = !asleepSince(sources.schedule, saidBedtimes, at) && stateAt(sources.schedule, at).activity.kind === 'free';
+            if (free && !segmentStart) segmentStart = at;
+            if (!free && segmentStart) {
+                segments.push({ start: segmentStart, end: at });
+                segmentStart = undefined;
+            }
+        }
+        if (segmentStart) segments.push({ start: segmentStart, end: appointment.end });
+        return segments.filter(segment => segment.start < to && segment.end > from).map(segment => ({
+            id: `${lifeActionId(segment.start, 'meet')}:${appointment.contact.qq}:${appointment.promise.id}`,
+            ...segment,
+            subject: appointment.promise.what,
+            target: `contact:${appointment.contact.qq}`,
+            // 只有真正走到约定结束的最后一段才算把这顿饭吃完；被课或睡觉截断的前段不结算饱腹。
+            meal: meal && segment.end.getTime() === appointment.end.getTime(),
+        }));
+    }).sort((a, b) => a.start.getTime() - b.start.getTime() || a.id.localeCompare(b.id));
+}
 
 /** 那一天快结束时的确定性世界；和 dayBusy 共用，才能看见稍后会发生、需要预留时间的事。 */
 function dayWorld(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date): WorldNow | undefined {
@@ -145,6 +179,20 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     }
     if (state.activity.kind === 'between') return { skipTo: state.activity.next.start, why: '赶去上课 / 课间' };
 
+    // 明确约定只覆盖空闲生活，不覆盖睡觉和上课；出门前 15 分钟起就占用她的时间。
+    const appointment = appointmentActions(sources, at, new Date(at.getTime() + 1))[0];
+    if (appointment) {
+        return appointment.start.getTime() === at.getTime()
+            ? {
+                intent: {
+                    id: appointment.id, kind: 'meet', startedAt: appointment.start, subject: appointment.subject,
+                    target: appointment.target, meal: appointment.meal,
+                },
+                why: appointment.meal ? `出去吃饭：${appointment.subject}` : `赴约：${appointment.subject}`,
+            }
+            : { skipTo: appointment.end, why: `正在赴约：${appointment.subject}` };
+    }
+
     const world = sources.worldAt(at);
     const meal = world?.routine?.meals.find(m => at >= m.start && at < m.end);
     if (meal) {
@@ -183,7 +231,8 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     const nextMeal = world?.routine?.meals.find(m => m.start > at)?.start;
     const nextBusy = blocks.find(s => s.start > at)?.start;
     const nextSocial = directNpcFacts(sources, at).map(event => event.at).find(start => start > at);
-    const soft = earliest([windowEnd(sources.schedule, at), nextMeal, nextBusy, nextSocial, sprint?.end]);
+    const nextAppointment = appointmentActions(sources, at, windowEnd(sources.schedule, at)).find(item => item.start > at)?.start;
+    const soft = earliest([windowEnd(sources.schedule, at), nextMeal, nextBusy, nextSocial, nextAppointment, sprint?.end]);
     const nextSprint = DEADLINE_KINDS.has(kind) ? homeworkSprints(world).map(h => h.start).filter(start => start > at) : [];
     const hard = earliest([soft, state.nextClass?.start, ...nextSprint]);
     // 到硬事件之前短得做不成这一类（学习至少 25 分钟、休闲 10 分钟）的空当不记（算在路上、发呆），不交给裁判判 no_time
@@ -283,8 +332,10 @@ export function lifeExecutor(sources: LifeSources, queue: ActionQueue, options: 
                     continue;
                 }
                 const world = sources.worldAt(cursor);
+                const appointments = appointmentActions(fixed, cursor, new Date(cursor.getTime() + 24 * 60 * 60_000));
                 const context: ActionContext = {
-                    schedule: sources.schedule, books: sources.books, events: sources.events(), busy: dayBusy(sources, cursor),
+                    schedule: sources.schedule, books: sources.books, events: sources.events(), appointments,
+                    busy: [...dayBusy(sources, cursor), ...appointments.map(item => ({ start: item.start, end: item.end }))],
                     ...(world ? { world } : {}),
                 };
                 const verdict = queue.schedule(choice.intent, context);
@@ -323,6 +374,7 @@ function changePoints(sources: LifeSources, start: Date, end: Date): Date[] {
         ...(sources.bedtimes?.() ?? []),
         ...sources.events().filter(event => event.source === 'conversation').map(event => Date.parse(event.endedAt)),
         ...dayBusy(sources, start).map(span => span.start.getTime()),
+        ...appointmentActions(sources, start, end).map(item => item.start.getTime()),
     ].filter(inside);
     return [...new Set(times)].sort((a, b) => a - b).map(t => new Date(t));
 }
