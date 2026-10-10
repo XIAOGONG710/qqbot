@@ -1,7 +1,10 @@
-// 长期项目的最小事实投影（ADR 0044）：项目进展只从已经落账的类型化行动派生，
-// 不另存一个会和事件账漂移的“进度数字”。批次 B 再补期限、资源、阻碍和暂停条件。
+// 长期项目的事实投影（ADR 0044 / 0056）：摄影进展只从已经落账的类型化行动派生；
+// B 阶段把课程、摄影和阅读统一成项目组合，仍不另存一个会和事实源漂移的“进度数字”。
 
+import { bookProgressAt, type ReadingBook } from './her-days.ts';
 import type { LifeEvent } from './life-events.ts';
+import type { Schedule } from './schedule.ts';
+import type { WorldNow } from './world.ts';
 
 export const PHOTOGRAPHY_PROJECT_ID = 'photography_growth';
 
@@ -20,6 +23,38 @@ export interface ProjectProgress {
     recentSteps: string[];
 }
 
+export type LongTermProjectKind = 'course' | 'photography' | 'reading';
+export type LongTermProjectStatus = 'active' | 'paused' | 'completed';
+
+/**
+ * B 阶段的项目事实层。状态只从已有事实源投影：
+ * - 课程项目：WorldNow.homework（期限、完成时刻）；
+ * - 摄影成长：生活事件账；
+ * - 阅读：角色卡里按日期推进的读书进度。
+ * 不单独落一个 project-state.json，避免重启或规则调整后和事实账漂移。
+ */
+export interface LongTermProject {
+    id: string;
+    kind: LongTermProjectKind;
+    title: string;
+    status: LongTermProjectStatus;
+    progress: string;
+    nextStep?: string;
+    deadline?: Date;
+    resources: string[];
+    obstacle?: string;
+    /** 只用于项目之间的确定性排序；不进提示词，也不是新的事实。 */
+    priority: number;
+}
+
+export interface ProjectPortfolioInput {
+    events: readonly LifeEvent[];
+    world?: WorldNow;
+    schedule: Schedule;
+    books: readonly ReadingBook[];
+    now: Date;
+}
+
 /**
  * 现有作息里真正服务于摄影成长的活动；普通刷手机、打游戏仍是 leisure。
  * 「刷摄影区」也是 leisure（10-09 Claude 改）：刷着看别人的片子是休闲，修片、出去拍才算在练；算成进展会把她的进度吹大。
@@ -33,7 +68,9 @@ export function projectActivity(text: string): ProjectActivity | undefined {
 
 /** 成功或做到一半被硬事件打断的时间都算真实投入；失败候选不算。 */
 export function photographyProgress(events: readonly LifeEvent[]): ProjectProgress {
-    const work = events.filter(event => event.kind === 'work_on_project' && event.target === PHOTOGRAPHY_PROJECT_ID && event.result !== 'failed');
+    const work = events
+        .filter(event => event.kind === 'work_on_project' && event.target === PHOTOGRAPHY_PROJECT_ID && event.result !== 'failed')
+        .sort((a, b) => a.endedAt.localeCompare(b.endedAt));
     const minutes = work.reduce((sum, event) => sum + Math.max(0, Math.round((Date.parse(event.endedAt) - Date.parse(event.startedAt)) / 60_000)), 0);
     const recentSteps = [...new Set(work.map(event => event.subject).filter((step): step is string => Boolean(step)))].slice(-3);
     return {
@@ -44,6 +81,87 @@ export function photographyProgress(events: readonly LifeEvent[]): ProjectProgre
         ...(work.length ? { lastAt: work.at(-1)!.endedAt } : {}),
         recentSteps,
     };
+}
+
+/**
+ * 当前项目组合。只描述已经存在的三个来源，不凭空生成“课程大作业”；
+ * 相机基金买完后是世界里的已完成事实，不再作为活跃项目重复出现。
+ */
+export function projectPortfolio({ events, world, schedule, books, now }: ProjectPortfolioInput): LongTermProject[] {
+    const projects: LongTermProject[] = [];
+
+    for (const homework of world?.homework ?? []) {
+        const title = `${homework.course || '课程'}作业`;
+        const hours = (homework.due.getTime() - now.getTime()) / 3_600_000;
+        const status: LongTermProjectStatus = homework.done ? 'completed' : 'active';
+        projects.push({
+            id: `course:${homework.course || 'unknown'}:${homework.due.toISOString()}`,
+            kind: 'course',
+            title,
+            status,
+            progress: homework.done ? `已在 ${clock(homework.doneAt)} 写完` : '还没写完',
+            ...(homework.done ? {} : { nextStep: `继续写${title}`, deadline: homework.due }),
+            resources: ['课程资料', '电脑'],
+            priority: homework.done ? -1 : deadlinePriority(hours),
+        });
+    }
+
+    const photography = photographyProgress(events);
+    const camera = world?.cameraFund?.camera;
+    const cameraReady = camera?.state === 'bought';
+    const recentStep = photography.recentSteps.at(-1);
+    const last = photography.lastAt ? new Date(photography.lastAt) : undefined;
+    const idleDays = last ? Math.max(0, Math.floor((now.getTime() - last.getTime()) / 86_400_000)) : Infinity;
+    projects.push({
+        id: photography.id,
+        kind: 'photography',
+        title: photography.title,
+        status: 'active',
+        progress: photography.sessions ? `练了 ${photography.sessions} 回${recentStep ? `；最近在${recentStep}` : ''}` : '还没有落账的练习',
+        nextStep: cameraReady ? (photography.sessions ? '拿相机出去拍，或者整理最近拍的片子' : '先熟悉新相机的设置') : '继续练拍摄和修片',
+        resources: cameraReady ? [camera.what] : ['现有拍摄设备'],
+        priority: idleDays >= 3 ? 35 : 25,
+    });
+
+    for (const book of books) {
+        const progress = bookProgressAt(schedule, book, now);
+        const status: LongTermProjectStatus = progress.finished ? 'completed' : progress.stopped ? 'paused' : 'active';
+        projects.push({
+            id: `reading:${book.id}`,
+            kind: 'reading',
+            title: `读《${book.title}》`,
+            status,
+            progress: progress.finished ? `读完了（${progress.amount} ${progress.unit}）` : `读到 ${progress.amount} ${progress.unit}`,
+            ...(status === 'active' ? { nextStep: `继续读《${book.title}》` } : {}),
+            resources: [book.platform],
+            ...(status === 'paused' ? { obstacle: book.progress.state === 'put_down' ? '自己放下了，暂时不继续' : `现有可靠进度只到 ${progress.amount} ${progress.unit}` } : {}),
+            priority: status === 'active' ? 20 : -1,
+        });
+    }
+
+    return projects.sort(compareProjects);
+}
+
+/** 活跃项目按确定性优先级排序；期限相同再按 id，重启和重放不会换顺序。 */
+export function activeProjects(projects: readonly LongTermProject[]): LongTermProject[] {
+    return projects.filter(project => project.status === 'active').sort(compareProjects);
+}
+
+function deadlinePriority(hours: number): number {
+    if (hours <= 0) return 120;
+    if (hours <= 24) return 100;
+    if (hours <= 72) return 80;
+    return 50;
+}
+
+function compareProjects(a: LongTermProject, b: LongTermProject): number {
+    return b.priority - a.priority
+        || (a.deadline?.getTime() ?? Infinity) - (b.deadline?.getTime() ?? Infinity)
+        || a.id.localeCompare(b.id);
+}
+
+function clock(at: Date): string {
+    return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
 }
 
 /** 最近几天的摄影练习（生活账接进提示词的第一步，配置 lifeInPrompt）：只数已经落账的 */
