@@ -25,7 +25,7 @@ import { arrivedWhileAsleep } from './reply-timing.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import type { ProactiveMode } from './proactive.ts';
 import { createProactivePlanner, type Planner, type PlannerStatus } from './proactive-planner.ts';
-import { promiseKeeper } from './promises.ts';
+import { promiseKeeper, type Appointment } from './promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from './her-days.ts';
 import { bodyAt } from './body.ts';
 import { worldState, type WorldNow } from './world.ts';
@@ -160,6 +160,8 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     const needsAnchor = lifeQueue ? loadNeedsAnchor(join(config.dataDir, 'world', 'needs-anchor.json'), lifeStartedAt, log) : undefined;
     // 她在聊天里跟名单里谁说过「睡了」（ADR 0042）：聊天记录在下面才打开，打开之前当没说过（之后读世界时排着的会按它改）
     let loadChat: ((qq: number) => StoredMessage[]) | undefined;
+    // promiseKeeper 要等聊天记录打开后才能建；生活执行器先拿稳定代理，真正第一次推进前再接上。
+    let loadAppointments: ((from: Date, to: Date) => readonly Appointment[]) | undefined;
     const bedtimes = (schedule: Schedule, now: number) => (loadChat ? saidBedtimes(config.contacts.map(c => loadChat!(c.qq)), schedule, now - 86_400_000) : []);
     const lifeRunner = lifeQueue && worldCard && ledgerWorld
         ? lifeExecutor({
@@ -167,6 +169,7 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             worldAt: time => ledgerWorld.at(worldCard.herWorld!, worldCard.schedule!, time), events: () => ledgerWorld.events(),
             ...(worldCard.herWorld!.body ? { bodyAt: (time: Date) => bodyAt(worldCard.herWorld!.body!, worldCard.schedule!, time) } : {}),
             bedtimes: () => bedtimes(worldCard.schedule!, worldNow()),
+            appointmentsBetween: (from, to) => loadAppointments?.(from, to) ?? [],
             ...(needsAnchor ? { needsAnchor } : {}),
         }, lifeQueue, { since: lifeStartedAt, log })
         : undefined;
@@ -187,7 +190,6 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     ) : undefined;
     const noteWorld = sharedWorld?.note;
     const noteHerDay = noteMoodAndBooks || noteWorld ? (now: Date) => { noteMoodAndBooks?.(now); noteWorld?.(now); } : undefined;
-    noteHerDay?.(new Date(pipeline?.now?.() ?? Date.now()));
     log(`作息：${config.schedule ? '按角色卡（她现在在干什么、什么时候看到、打字多久）' : '关（配置 schedule: false），随时几秒内回'}`);
     if (config.schedule) {
         const paces = [...tiersInUse].map(tier => `${tier} ×${cardFor(tier).character.pace}`).join('、');
@@ -252,6 +254,9 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             ...(sharedWorld ? { onWorldActions: sharedWorld.record } : {}),
         })
         : undefined;
+    loadAppointments = promises?.appointmentsBetween;
+    // 约定来源已经接上以后再第一次推进生活；否则启动瞬间会把赴约时段排成普通休闲。
+    noteHerDay?.(new Date(pipeline?.now?.() ?? Date.now()));
     if (promises) log('她答应的事：名单里的人每段聊天结束后抽一次，到了日子在时间块里提醒');
     const diaries = memory && diaryCard
         ? diaryWriter({

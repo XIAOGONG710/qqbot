@@ -770,6 +770,7 @@ export function worldState(
                 startedAt: startedAt.toISOString(), endedAt: endedAt.toISOString(), source: draft.source, result,
                 ...(reason ? { reason } : {}),
                 ...(subject ? { subject } : {}), ...(target ? { target } : {}),
+                ...(draft.meal !== undefined ? { meal: draft.meal } : {}),
                 ...(draft.seen !== undefined ? { seen: draft.seen } : {}),
                 ...(draft.contact !== undefined ? { contact: draft.contact } : {}),
                 ...(draft.episode ? { episode: draft.episode } : {}),

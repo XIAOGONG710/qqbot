@@ -10,6 +10,7 @@ import { readingActivities } from '../src/her-days.ts';
 import { chooseAt, dayBusy, freeKind, lifeExecutor, motivate, type LifeSources } from '../src/life-selector.ts';
 import type { LifeEvent, LifeEventDraft } from '../src/life-events.ts';
 import { needsAt, type NeedsSnapshot } from '../src/needs.ts';
+import type { Appointment } from '../src/promises.ts';
 import { classesOn, formatDate, herDay } from '../src/schedule.ts';
 import { auditLedgerCoverage, auditLifeStatus } from '../src/sim/life-audit.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
@@ -157,6 +158,50 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
             [chat.intent.kind, chat.intent.target, chat.intent.subject],
             ['interact_npc', 'chen_jianing', '在微信上跟陈佳宁聊了会儿'],
         );
+    });
+
+    test('约好的见面进入行动账：出门时截断柔性行动，餐约替代普通晚饭并结算为外出吃饭', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'life-meet-'));
+        try {
+            const dinner = worldAt(herWorld, schedule, at('2026-10-18T18:00:00'))!.routine!.meals.find(item => item.kind === 'dinner')!;
+            const meeting: Appointment = {
+                contact: { qq: 42, name: '阿明', tier: 'boyfriend' },
+                promise: {
+                    id: 'p-dinner', what: '和他去东门吃麻辣烫', date: '2026-10-18', said: '2026-10-17', episode: 'ep-meet',
+                    meet: { time: `${String(dinner.start.getHours()).padStart(2, '0')}:${String(dinner.start.getMinutes()).padStart(2, '0')}`, where: '东门口', minutes: 90 },
+                },
+                start: dinner.start,
+                end: new Date(dinner.start.getTime() + 90 * 60_000),
+            };
+            const lead = new Date(meeting.start.getTime() - 15 * 60_000);
+            const sources: LifeSources = {
+                ...plain,
+                appointmentsBetween: (from, to) => lead < to && meeting.end > from ? [meeting] : [],
+            };
+
+            const picked = chooseAt(lead, sources);
+            assert.ok('intent' in picked && picked.intent.kind === 'meet');
+            if ('intent' in picked) assert.deepEqual(
+                [picked.intent.target, picked.intent.meal], ['contact:42', true],
+            );
+
+            const { events, logs } = live(dir, new Date(lead.getTime() - 60 * 60_000), new Date(meeting.end.getTime() + 60 * 60_000), undefined, sources);
+            assert.deepEqual(logs.filter(line => line.includes('排不上') || line.includes('死信')), []);
+            const meet = events.find(event => event.kind === 'meet');
+            assert.deepEqual(
+                [meet?.startedAt, meet?.endedAt, meet?.subject, meet?.target, meet?.meal],
+                [lead.toISOString(), meeting.end.toISOString(), meeting.promise.what, 'contact:42', true],
+            );
+            assert.equal(events.some(event => event.kind === 'eat'
+                && Date.parse(event.startedAt) < meeting.end.getTime() && Date.parse(event.endedAt) > lead.getTime()), false,
+            '餐约时段不能同时在食堂吃晚饭');
+            const before = events.find(event => event.endedAt === lead.toISOString());
+            assert.ok(before && ['leisure', 'rest', 'read_book', 'study', 'work_on_project'].includes(before.kind));
+            assert.deepEqual(auditLifeStatus(events, { ...sources, events: () => events }), []);
+            assert.deepEqual(auditLedgerCoverage(events, { ...sources, events: () => events }), []);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     test('三天半没人聊天：一件接一件、不重叠；每天睡觉、两顿饭、课都在；喂猫、洗澡的时候不记别的', () => {

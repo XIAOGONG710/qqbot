@@ -259,6 +259,8 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
             const chat = [...history, msg('2026-10-16T17:30:00', 'user', '在干嘛')];
             assert.match(keeper.describe(amin, chat, at('2026-10-16T17:30:00'))!, /和他去东门吃麻辣烫（今天说的，打算今天）/);
             assert.deepEqual(keeper.appointmentsAt(at('2026-10-16T17:30:00')), []);
+            assert.equal(keeper.appointmentsBetween(at('2026-10-16T17:30:00'), at('2026-10-16T18:00:00')).length, 1,
+                '生活选择器能提前看到将要开始的约定并预留时间');
             // 17:45 起快出门：时间块不再提醒，状态行接手
             assert.equal(keeper.describe(amin, chat, at('2026-10-16T17:45:00')), undefined);
             const [soon] = keeper.appointmentsAt(at('2026-10-16T17:45:00'));

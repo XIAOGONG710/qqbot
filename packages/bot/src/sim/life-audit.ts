@@ -95,10 +95,12 @@ export function auditLedgerCoverage(events: readonly LifeEvent[], sources: LifeS
 /** 同一时刻对外的状态行（和 contact.ts 拼提示词用同一个 herStatus） */
 function statusAt(at: Date, sources: LifeSources, reading: ReturnType<typeof readingActivities>, world: ReturnType<LifeSources['worldAt']>) {
     const asleep = asleepSince(sources.schedule, sources.bedtimes?.() ?? [], at);
+    const appointment = sources.appointmentsBetween?.(at, new Date(at.getTime() + 1))[0];
     return herStatus(sources.schedule, at, {
         extraFree: reading,
         ...(world ? { world } : {}),
         ...(asleep ? { asleep } : {}),
+        ...(appointment ? { appointment: `正在赴约：${appointment.promise.what}` } : {}),
         plans: {
             plans: sources.plans,
             ...(sources.bodyAt ? { body: sources.bodyAt(at) } : {}),
@@ -114,6 +116,7 @@ function statusKind(status: ReturnType<typeof herStatus>, at: Date, sources: Lif
         case 'between': return undefined;
         case 'free': {
             if (status.busy) {
+                if (/赴约/.test(status.busy)) return 'meet';
                 if (/吃午饭|吃晚饭/.test(status.busy)) return 'eat';
                 if (/赶.*作业/.test(status.busy)) return 'study';
                 return undefined;
