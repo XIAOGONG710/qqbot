@@ -46,10 +46,11 @@ describe('统一状态行（ADR 0042）', () => {
     });
 
     test('改了打算：对外保留原因，生活执行器拿到实际在做的事', () => {
+        // 10-20 下午原来是在图书馆赶作业，10-11 买了相机以后是拿相机出去拍（ADR 0053）
         const rainy = status('2026-10-20T15:00:00');
-        assert.equal(rainy.revised, '本来打算在图书馆赶作业，下雨了，在宿舍赶作业');
+        assert.equal(rainy.revised, '本来打算拿新相机去校园里拍，下雨了，在宿舍研究新相机的设置');
         assert.deepEqual(rainy.state.activity, { kind: 'free', text: rainy.revised });
-        assert.equal(rainy.doing, '在宿舍赶作业');
+        assert.equal(rainy.doing, '在宿舍研究新相机的设置');
         assert.ok(rainy.slots.some(slot => slot.done !== slot.planned));
     });
 

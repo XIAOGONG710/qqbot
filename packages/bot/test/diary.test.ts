@@ -31,7 +31,9 @@ describe('她的日记（ADR 0017）', () => {
         const text = diaryMaterial(withWorld, new Date(2026, 9, 11), []);
         assert.match(text, /\n你那边今天：熬夜写完了 2 份作业；点了一杯奶茶外卖\n/, '天天一样的（没下雨、照常喂猫、还没写的作业）不写');
         assert.match(diaryMaterial(withWorld, new Date(2026, 9, 9), []), /\n你那边今天：下雨了；下雨没下楼喂土豆；去驿站取了快递（发圈）\n/);
-        assert.doesNotMatch(text, /宿舍|室友|陈佳宁|苏雨桐|相机|视频|Linux|MySQL/, '同学档看不到的不进公共库');
+        // 进公共库的那份按线上的调法（app.ts 传同学档的作息 worldSchedule）：空闲活动看不到的是 cover。
+        // 不传作息时用的是男朋友档的，10-11 晚上抽到「研究新相机的设置」——以前只是那天碰巧没抽到修片（10-10 加了买相机以后的活动才发现）
+        assert.doesNotMatch(diaryMaterial({ ...withWorld, worldSchedule: classmate.schedule! }, new Date(2026, 9, 11), []), /宿舍|室友|陈佳宁|苏雨桐|相机|视频|Linux|MySQL/, '同学档看不到的不进公共库');
         const cramps = diaryMaterial(withWorld, new Date(2026, 11, 21), []);
         assert.match(cramps, /\n身体：身上不太舒服，躺了大半天/);
         assert.doesNotMatch(cramps, /生理期|痛经/);
