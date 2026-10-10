@@ -40,3 +40,18 @@ DeepSeek 官方图像理解文档也明确：`deepseek-flash` 的 Chat Completio
   base64 的自制图 0.8 秒认对（「左侧为红色，右侧为蓝色」）。下不来、太大就退回直接给地址，再不行退回 OCR。只在线上入口 `configuredImageDescriber` 里下载，`deepSeekImageDescriber` 的测试照旧。
 - 上线要在 `koishi.yml` 的插件配置里打开 `vision.enabled`；第一次真用看日志里「看图」那一行，再请用户发一张愿意交给 DeepSeek 的普通照片。
 - ADR 0055 里「线上不在这台开发机」不对：这台机器的 Koishi 就是线上实例（`exchange/handoff/2026-10-10-2235-claude.md`）。
+
+## 调整（2026-10-10 夜，Claude）：空回复再问一次；DSH 对抗审查补的证据
+
+DSH 的对抗审查（`exchange/reviews/2026-10-10-dsh-adversary-review.md`，整理在 `exchange/handoff/2026-10-10-2355-dsh.md` 更正四）补了几条更硬的证据：
+
+- **接口自己声明**：`GET /models` 里 `deepseek-flash` 的 `input_modalities` 是 `["text","image"]`，`deepseek-v4-pro` 只有 `["text"]`；
+  带一张 64×64 图，flash 多算 184 个 token，v4-pro 只多 5 个（就是 `[Unsupported Image]` 占位符）。所以看图只能用 flash。
+- **图没到时会编**：v4-pro 收不到像素、题面又说有图时会照给答案；flash 在「没图 + 关思考」下 4 次里也编过 1 次。
+  我们这边图下不来时退回给原地址，flash 下不到会返回 400「Failed to download image」（报错，不是编），再退回 OCR / 「[图片]」——不会出现「没图却有描述」。
+- **认字会丢字也会加字**，而且看不清时还说自己「清晰度很高」：描述只当「图里大概是什么」，图上的字照旧以 NapCat 的 OCR 为准（`[图片：……；上面写着：……]` 两段分开）。
+- **偶尔 200 但正文是空的**（低频、没复现出概率，不是推理吃光预算）：原来直接算「没看出来」。现在 `vision.ts` 同一张图（已下好的 base64）再问一次（`EMPTY_RETRIES = 1`），
+  还空才算失败；HTTP 错误不重问（400 再问也是 400）。整体仍受 `media.ts` 的 8 秒上限管。
+- 看出来时日志记一行「看图：看图模型说了 N 个字（x 秒）」，只记字数，不记图上是什么；原来成功时没有日志，没法确认端到端。
+
+验证：`vision.test.ts` 加空回复重问（第二次拿到就用、两次都空才失败、400 只问一次）；真接口冒烟（本机画的红底白方块，base64）3/3 认对，每次 0.8–1.1 秒。

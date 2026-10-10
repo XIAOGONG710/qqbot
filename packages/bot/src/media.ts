@@ -181,7 +181,12 @@ async function look(data: Record<string, unknown>, sources: MediaSources, log: (
             : Promise.resolve(undefined),
         sources.vision
             ? within(sources.vision.describe({ url, ...(typeof data.file === 'string' ? { file: data.file } : {}) }), limits.vision).then(
-                text => inline(String(text ?? ''), OCR_MAX_CHARS) || undefined,
+                text => {
+                    const description = inline(String(text ?? ''), OCR_MAX_CHARS) || undefined;
+                    // 只记字数，不记图上是什么
+                    if (description) log(`看图：看图模型说了 ${description.length} 个字（${seconds(started)}）`);
+                    return description;
+                },
                 error => { log(`看图：看图模型没看出来（${reason(error)}）`); return undefined; },
             )
             : Promise.resolve(undefined),

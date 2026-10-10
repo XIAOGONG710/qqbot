@@ -34,4 +34,24 @@ describe('DeepSeek 看图（ADR 0055）', () => {
         const empty: VisionFetch = async () => ({ ok: true, status: 200, text: async () => '{"choices":[{"message":{"content":""}}]}' });
         await assert.rejects(() => deepSeekImageDescriber(options, empty).describe({ url: 'https://x/a.jpg' }), /没有文本/);
     });
+
+    test('200 但正文空（DSH 10-10：低频）：同一张图再问一次；还空才失败；HTTP 错误不重问', async () => {
+        const replies = ['{"choices":[{"message":{"content":""}}]}', JSON.stringify({ choices: [{ message: { content: '一张宿舍书桌的照片' } }] })];
+        const urls: string[] = [];
+        const flaky: VisionFetch = async (_url, init) => {
+            urls.push(JSON.parse(init.body).messages[0].content[1].image_url.url);
+            return { ok: true, status: 200, text: async () => replies.shift()! };
+        };
+        const download = async () => 'data:image/jpeg;base64,AAAA';
+        assert.equal(await deepSeekImageDescriber(options, flaky, download).describe({ url: 'https://x/a.jpg' }), '一张宿舍书桌的照片');
+        assert.deepEqual(urls, ['data:image/jpeg;base64,AAAA', 'data:image/jpeg;base64,AAAA']);
+        let calls = 0;
+        const empty: VisionFetch = async () => { calls++; return { ok: true, status: 200, text: async () => '{"choices":[{"message":{"content":"  "}}]}' }; };
+        await assert.rejects(() => deepSeekImageDescriber(options, empty).describe({ url: 'https://x/a.jpg' }), /没有文本/);
+        assert.equal(calls, 2);
+        calls = 0;
+        const failed: VisionFetch = async () => { calls++; return { ok: false, status: 400, text: async () => 'Failed to download image' }; };
+        await assert.rejects(() => deepSeekImageDescriber(options, failed).describe({ url: 'https://x/a.jpg' }), /返回 400/);
+        assert.equal(calls, 1);
+    });
 });

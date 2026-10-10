@@ -47,39 +47,49 @@ export function imageDownloader(timeoutMs: number): ImageDownload {
     };
 }
 
+/** 200 但正文是空的（DSH 对抗审查 10-10：deepseek-flash 低频出现，不是推理吃光预算）：同一张图再问一次，还空才算没看出来 */
+export const EMPTY_RETRIES = 1;
+
 export function deepSeekImageDescriber(options: DeepSeekVisionOptions, doFetch: VisionFetch = defaultFetch, download?: ImageDownload): ImageDescriber {
     return {
         async describe({ url: original }) {
             const url = (download ? await download(original) : undefined) ?? original;
-            const response = await doFetch(`${options.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${options.apiKey}`,
-                },
-                body: JSON.stringify({
-                    model: options.model,
-                    messages: [{
-                        role: 'user',
-                        content: [
-                            { type: 'text', text: '用一两句简短中文客观描述这张图里主要有什么。不要猜看不清的细节，不要复述这条要求。' },
-                            { type: 'image_url', image_url: { url } },
-                        ],
-                    }],
-                    max_tokens: 200,
-                    stream: false,
-                    thinking: { type: 'disabled' },
-                }),
-                signal: AbortSignal.timeout(options.timeoutMs),
-            });
-            const body = await response.text();
-            if (!response.ok) throw new Error(`看图模型返回 ${response.status}：${body.slice(0, 500)}`);
-            const json = JSON.parse(body) as { choices?: { message?: { content?: unknown } }[] };
-            const content = json.choices?.[0]?.message?.content;
-            if (typeof content !== 'string' || !content.trim()) throw new Error(`看图模型返回里没有文本：${body.slice(0, 500)}`);
-            return content.trim();
+            for (let attempt = 0; ; attempt++) {
+                const text = await ask(url);
+                if (text) return text;
+                if (attempt >= EMPTY_RETRIES) throw new Error('看图模型返回里没有文本');
+            }
         },
     };
+
+    async function ask(url: string): Promise<string | undefined> {
+        const response = await doFetch(`${options.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${options.apiKey}`,
+            },
+            body: JSON.stringify({
+                model: options.model,
+                messages: [{
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: '用一两句简短中文客观描述这张图里主要有什么。不要猜看不清的细节，不要复述这条要求。' },
+                        { type: 'image_url', image_url: { url } },
+                    ],
+                }],
+                max_tokens: 200,
+                stream: false,
+                thinking: { type: 'disabled' },
+            }),
+            signal: AbortSignal.timeout(options.timeoutMs),
+        });
+        const body = await response.text();
+        if (!response.ok) throw new Error(`看图模型返回 ${response.status}：${body.slice(0, 500)}`);
+        const json = JSON.parse(body) as { choices?: { message?: { content?: unknown } }[] };
+        const content = json.choices?.[0]?.message?.content;
+        return typeof content === 'string' && content.trim() ? content.trim() : undefined;
+    }
 }
 
 /** 两个运行入口共用：没配 vision 就完全不调外部看图接口。 */
