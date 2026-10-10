@@ -96,7 +96,9 @@ export function promisePrompt(transcript: string, pending: readonly HerPromise[]
         `下面「还挂着的事」（id 以 a-、q-、u- 开头）在这段聊天里有了结果、${user}回答了、或者那件事了结了，也把 id 写进 resolved。`,
         `最后抽取${char}在聊天里明确说自己已经做完、并会改变她身边现实的动作，写进 world：`,
         `- feed_cat：已经下楼喂猫；pick_parcel：已经取快递；finish_homework：已经写完作业；family_call：已经和家里视频。`,
-        `只看${char}的已完成事实陈述；计划、将来时、猜测、玩笑、否定句、${user}做的事都不要。at 必须是那句${char}消息的本地分钟 YYYY-MM-DDTHH:mm；`,
+        `- receive_money：${user}给${char}转账、发红包、给钱（聊天里可能写成「［转账］2000元」「红包 200」），${char}收下了（没拒绝、没退回去）；`
+            + `amount 写金额（整数元）；说了是给她买相机的写 "forCamera":true。这是唯一可以记${user}做的事的一类，at 是${char}收下时那句话。`,
+        `只看${char}的已完成事实陈述；计划、将来时、猜测、玩笑、否定句、${user}做的事（收钱除外）都不要。at 必须是那句${char}消息的本地分钟 YYYY-MM-DDTHH:mm；`,
         '取快递可把物品、写作业可把课程写进 subject，没说清不填；喂猫只有明确说见到或没见到时才写 seen。',
         '只输出一个 JSON 对象，不要别的文字，例如：',
         '{"add":[{"what":"给他讲《三体》的结局","date":null},{"what":"去拍银杏","date":"2026-10-10"},'
@@ -145,7 +147,7 @@ export function parsePromises(text: string): ExtractedPromises {
     const feelings: string[] = [];
     const facts = <T extends { what: string }>(list: T[]) => list.filter(item => (isFeeling(item.what) ? (feelings.push(item.what), false) : true));
     const resolved = (Array.isArray(data.resolved) ? data.resolved : []).filter((id): id is string => typeof id === 'string');
-    const kinds = new Set<WorldActionKind>(['feed_cat', 'pick_parcel', 'finish_homework', 'family_call']);
+    const kinds = new Set<WorldActionKind>(['feed_cat', 'pick_parcel', 'finish_homework', 'family_call', 'receive_money']);
     const world = (Array.isArray(data.world) ? data.world : []).flatMap(item => {
         if (!item || typeof item !== 'object') return [];
         const action = item as Record<string, unknown>;
@@ -159,6 +161,8 @@ export function parsePromises(text: string): ExtractedPromises {
             at,
             ...(subject ? { subject } : {}),
             ...(typeof action.seen === 'boolean' ? { seen: action.seen } : {}),
+            ...(typeof action.amount === 'number' && Number.isInteger(action.amount) && action.amount > 0 ? { amount: action.amount } : {}),
+            ...(action.forCamera === true ? { forCamera: true } : {}),
         }];
     });
     // 约好的见面（ADR 0047）：要有日子和几点才算

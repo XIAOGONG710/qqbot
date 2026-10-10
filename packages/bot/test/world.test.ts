@@ -217,6 +217,49 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
         }
     });
 
+    test('他给的钱（10-10 用户裁决：打字发的「转账」也当真）：买相机的存进相机基金到目标为止，多的留在手上；要他在这段里真发过，转述不算，同一笔不重复记', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'world-actions-'));
+        try {
+            const now = at('2026-09-15T22:00:00');
+            const contact = { qq: 1, name: '阿明', tier: 'boyfriend' as const };
+            const episode = {
+                id: 'ep-gift', start: at('2026-09-15T19:50:00'), end: at('2026-09-15T20:05:00'),
+                messages: [
+                    { role: 'user' as const, content: '［转账］5000元', time: at('2026-09-15T20:00:00').toISOString() },
+                    { role: 'user' as const, content: '拿去买相机', time: at('2026-09-15T20:00:30').toISOString() },
+                    { role: 'assistant' as const, content: '真转啊，那我收下了', time: at('2026-09-15T20:01:00').toISOString() },
+                ],
+            };
+            const gift = { kind: 'receive_money' as const, at: '2026-09-15T20:01', amount: 5000, forCamera: true };
+            const state = worldState(world, schedule, () => undefined, dir, () => now.getTime());
+            // 她跟闺蜜转述：那一段里没有他的转账，不算
+            state.record({ qq: 2, name: '思思', tier: 'bestie' }, {
+                id: 'ep-tell', start: at('2026-09-15T20:30:00'), end: at('2026-09-15T20:30:00'),
+                messages: [{ role: 'assistant', content: '他刚给我转了5000', time: at('2026-09-15T20:30:00').toISOString() }],
+            }, [{ ...gift, at: '2026-09-15T20:30' }]);
+            assert.equal(state.actions().length, 0);
+            // 金额对不上（他没发过 900）不算
+            state.record(contact, episode, [{ ...gift, amount: 900 }]);
+            assert.equal(state.actions().length, 0);
+            state.record(contact, episode, [gift]);
+            state.record(contact, { ...episode, id: 'ep-gift-again' }, [gift]);
+            assert.equal(state.actions().length, 1, '同一天同一个人同样的金额只记一次');
+            assert.equal(state.actions()[0]!.target, 'camera_fund');
+
+            const plain = worldAt(world, schedule, now)!;
+            const after = state.at(world, schedule, now)!;
+            const put = plain.cameraFund!.goal - plain.cameraFund!.saved;
+            assert.ok(put > 0 && put < 5000);
+            assert.equal(after.cameraFund!.saved, after.cameraFund!.goal);
+            assert.match(describeWorld(after, now)!, /攒钱买相机：(\d+) \/ \1 元，攒够了/);
+            if (plain.money) assert.equal(after.money!.balance - plain.money.balance, 5000 - put, '多出来的留在手上');
+            // 收下之前还是原来的数
+            assert.equal(state.at(world, schedule, at('2026-09-15T20:00:00'))!.cameraFund!.saved, plain.cameraFund!.saved);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('作业用稳定目标跨档回写：低档看不到课名，仍完成和男朋友档同一份', () => {
         const richWorld = patch(w => { w.homework!.chance = 1; w.homework!.earlyChance = 0; });
         const lowWorld = structuredClone(classmate.herWorld!);

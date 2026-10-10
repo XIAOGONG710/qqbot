@@ -29,6 +29,8 @@ export interface LifeEvent {
     target?: string;
     /** 这件行动本身也完成了一顿饭（例如约人出去吃饭）。 */
     meal?: boolean;
+    /** 收到的钱（世界动作 receive_money），整数元 */
+    amount?: number;
     seen?: boolean;
     /** 对话来源的审计线索；模拟和外部事件可以没有。 */
     contact?: number;
@@ -46,6 +48,7 @@ export interface LifeEventDraft {
     subject?: string;
     target?: string;
     meal?: boolean;
+    amount?: number;
     seen?: boolean;
     contact?: number;
     episode?: string;
@@ -85,6 +88,7 @@ export function validLifeEvent(value: unknown): value is LifeEvent {
         && (event.subject === undefined || typeof event.subject === 'string')
         && (event.target === undefined || typeof event.target === 'string')
         && (event.meal === undefined || typeof event.meal === 'boolean')
+        && (event.amount === undefined || (Number.isInteger(event.amount) && event.amount > 0))
         && (event.seen === undefined || typeof event.seen === 'boolean')
         && (event.contact === undefined || typeof event.contact === 'number')
         && (event.episode === undefined || typeof event.episode === 'string');

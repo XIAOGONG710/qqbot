@@ -72,7 +72,11 @@ export interface Homework {
 }
 
 /** W3：从她已经发出去的话里抽出的、会改变世界的动作。 */
-export type WorldActionKind = 'feed_cat' | 'pick_parcel' | 'finish_homework' | 'family_call';
+export type WorldActionKind = 'feed_cat' | 'pick_parcel' | 'finish_homework' | 'family_call' | 'receive_money';
+/** 收到的钱说了是给她买相机的：动作的 target */
+export const CAMERA_FUND_TARGET = 'camera_fund';
+/** 一笔收到的钱最多认多少（防抽错） */
+const MAX_GIFT = 50_000;
 
 /** 模型抽取的形状；at 是那句已完成陈述所在的本地分钟（YYYY-MM-DDTHH:mm）。 */
 export interface WorldActionDraft {
@@ -83,6 +87,10 @@ export interface WorldActionDraft {
     subject?: string;
     /** 喂猫时明确说见到 / 没见到才填。 */
     seen?: boolean;
+    /** receive_money：收到多少（整数元） */
+    amount?: number;
+    /** receive_money：说了是给她买相机的 */
+    forCamera?: boolean;
 }
 
 /** 落盘的动作；id 按联系人、片段和序号去重，day 按她的一天算。 */
@@ -320,6 +328,17 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
                 const time = new Date(at(day, WINDOWS.evening[0]).getTime() + Math.floor(unit(`${date} side job time`) * 120) * 60_000);
                 record.events.push({ id: 'side_job', text: `接了个${job.kind}的单，收了 ${job.pay} 元`, at: time });
                 book(time, job.pay, `${job.kind}的单`, 'income');
+            }
+        }
+        // 他给的钱（10-10 用户裁决：打字发的「［转账］」也当真）：记一笔收入；说了是买相机的存进相机基金，存满目标为止，多的留在手上
+        for (const action of todayActions.filter(a => a.kind === 'receive_money' && a.amount)) {
+            const time = new Date(action.at);
+            book(time, action.amount!, '收到的钱', 'income');
+            if (action.target === CAMERA_FUND_TARGET && world.cameraFund && saved < world.cameraFund.goal) {
+                const put = Math.min(action.amount!, world.cameraFund.goal - saved);
+                saved += put;
+                book(time, -put, '存进相机基金', 'deposit');
+                deposits.push({ at: time, saved, amount: put });
             }
         }
         // 相机基金：每周那天晚上存一笔，到目标就停；有钱的规则时存多少跟着手上的钱走（ADR 0035），没有时每周固定
@@ -686,7 +705,7 @@ export interface WorldState {
     events(): readonly LifeEvent[];
 }
 
-const ACTION_KINDS = new Set<WorldActionKind>(['feed_cat', 'pick_parcel', 'finish_homework', 'family_call']);
+const ACTION_KINDS = new Set<WorldActionKind>(['feed_cat', 'pick_parcel', 'finish_homework', 'family_call', 'receive_money']);
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const LOCAL_MINUTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
@@ -776,6 +795,7 @@ export function worldState(
                 ...(reason ? { reason } : {}),
                 ...(subject ? { subject } : {}), ...(target ? { target } : {}),
                 ...(draft.meal !== undefined ? { meal: draft.meal } : {}),
+                ...(draft.amount !== undefined ? { amount: draft.amount } : {}),
                 ...(draft.seen !== undefined ? { seen: draft.seen } : {}),
                 ...(draft.contact !== undefined ? { contact: draft.contact } : {}),
                 ...(draft.episode ? { episode: draft.episode } : {}),
@@ -812,9 +832,17 @@ export function worldState(
                 if (!Number.isFinite(at.getTime()) || at.getTime() > nowFn()) continue;
                 const day = formatDate(herDay(schedule, at));
                 if (day < world.startDay) continue;
-                const subject = draft.subject?.trim().slice(0, 40) || undefined;
-                // 同一天向不同人重复说同一件事，不重复改变世界；有物品/课程名时分别算。
-                const sameDayKind = (action: WorldAction) => action.day === day && action.kind === draft.kind;
+                const subject = draft.kind === 'receive_money' ? undefined : draft.subject?.trim().slice(0, 40) || undefined;
+                // 收到的钱：要有金额，而且这段聊天里对方真发过带这个金额的转账 / 红包（她跟别人转述「他给我转了」不算，那段里没有他的转账）
+                const amount = draft.kind === 'receive_money' ? draft.amount : undefined;
+                if (draft.kind === 'receive_money') {
+                    if (!amount || !Number.isInteger(amount) || amount <= 0 || amount > MAX_GIFT) continue;
+                    const sent = episode.messages.some(m => m.role === 'user' && new Date(m.time) <= at && /转账|红包|转你|给你转/.test(m.content) && m.content.replace(/[,，]/g, '').includes(String(amount)));
+                    if (!sent) continue;
+                }
+                // 同一天向不同人重复说同一件事，不重复改变世界；有物品/课程名时分别算。收到的钱按联系人和金额分开算
+                const sameDayKind = (action: WorldAction) => action.day === day && action.kind === draft.kind
+                    && (draft.kind !== 'receive_money' || (action.contact === contact.qq && action.amount === amount));
                 // 任一边没说清物品 / 课程时保守地当成同一件，避免“Linux 作业写完”换个人说成“作业写完”后误完成第二份。
                 if ([...actions, ...added].some(action => sameDayKind(action)
                     && (!subject || !action.subject || action.subject === subject))) continue;
@@ -822,6 +850,7 @@ export function worldState(
                 let target: string | undefined;
                 if (draft.kind === 'feed_cat' && !world.cat) continue;
                 if (draft.kind === 'family_call' && !world.familyCall) continue;
+                if (draft.kind === 'receive_money' && draft.forCamera && world.cameraFund) target = CAMERA_FUND_TARGET;
                 if (draft.kind === 'pick_parcel' || draft.kind === 'finish_homework') {
                     const timeline = simulateWorld(world, schedule, at, actions);
                     if (draft.kind === 'pick_parcel') {
@@ -851,6 +880,7 @@ export function worldState(
                     ...(subject ? { subject } : {}),
                     ...(target ? { target } : {}),
                     ...(draft.kind === 'feed_cat' && draft.seen !== undefined ? { seen: draft.seen } : {}),
+                    ...(amount ? { amount } : {}),
                 };
                 added.push(action);
             }
@@ -859,7 +889,7 @@ export function worldState(
                 id: action.id, kind: action.kind, at: new Date(action.at).toISOString(), source: 'conversation' as const,
                 result: 'succeeded' as const, contact: action.contact, episode: action.episode,
                 ...(action.subject ? { subject: action.subject } : {}), ...(action.target ? { target: action.target } : {}),
-                ...(action.seen !== undefined ? { seen: action.seen } : {}),
+                ...(action.seen !== undefined ? { seen: action.seen } : {}), ...(action.amount ? { amount: action.amount } : {}),
             })));
             for (const event of settled.filter(event => event.result === 'succeeded')) {
                 const action = lifeEventToAction(event)!;
@@ -879,7 +909,7 @@ function actionToLifeEvent(action: WorldAction): LifeEvent {
         startedAt: at, endedAt: at, source: 'conversation', result: 'succeeded',
         contact: action.contact, episode: action.episode,
         ...(action.subject ? { subject: action.subject } : {}), ...(action.target ? { target: action.target } : {}),
-        ...(action.seen !== undefined ? { seen: action.seen } : {}),
+        ...(action.seen !== undefined ? { seen: action.seen } : {}), ...(action.amount ? { amount: action.amount } : {}),
     };
 }
 
@@ -889,7 +919,7 @@ function lifeEventToAction(event: LifeEvent): WorldAction | undefined {
         id: event.id, kind: event.kind as WorldActionKind, day: event.day, at: localMinute(new Date(event.endedAt)),
         contact: event.contact ?? 0, episode: event.episode ?? event.id,
         ...(event.subject ? { subject: event.subject } : {}), ...(event.target ? { target: event.target } : {}),
-        ...(event.seen !== undefined ? { seen: event.seen } : {}),
+        ...(event.seen !== undefined ? { seen: event.seen } : {}), ...(event.amount ? { amount: event.amount } : {}),
     };
 }
 
@@ -913,7 +943,8 @@ function validAction(value: unknown): value is WorldAction {
         && typeof action.kind === 'string' && ACTION_KINDS.has(action.kind as WorldActionKind)
         && (action.subject === undefined || typeof action.subject === 'string')
         && (action.target === undefined || typeof action.target === 'string')
-        && (action.seen === undefined || typeof action.seen === 'boolean');
+        && (action.seen === undefined || typeof action.seen === 'boolean')
+        && (action.amount === undefined || (Number.isInteger(action.amount) && action.amount > 0));
 }
 
 function localMinute(date: Date): string {
@@ -926,6 +957,7 @@ function actionLabel(action: WorldAction, world: World): string {
     if (action.kind === 'feed_cat') return `${clock(new Date(action.at))} 喂了${world.cat?.name ?? '猫'}`;
     if (action.kind === 'pick_parcel') return `${clock(new Date(action.at))} 取了快递${subject}`;
     if (action.kind === 'finish_homework') return `${clock(new Date(action.at))} 写完作业${subject}`;
+    if (action.kind === 'receive_money') return `${clock(new Date(action.at))} 收到 ${action.amount} 元${action.target === CAMERA_FUND_TARGET ? '（买相机的）' : ''}`;
     return `${clock(new Date(action.at))} 和家里视频了`;
 }
 
