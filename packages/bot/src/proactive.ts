@@ -382,7 +382,8 @@ export function occasionNote(candidate: Candidate, userName: string): string {
     const why: Record<Occasion, () => string> = {
         morning: () => `你起床没多久，跟${userName}说早安${candidate.today ? `；${userName}今天${candidate.today.join('、')}，可以说句加油` : ''}`,
         after_class: () => `你今天的课上完了，跟${userName}说一声`,
-        weather: () => `你这边下雨了（看「你那边」的天气），想起${userName}：问一句他在哪、带没带伞，或者说说你这边的雨；就说这一件`,
+        // 他在哪看「你现在」那一行：同在学校时他那边也在下，不问「你那边下没下」（ADR 0050 验证：3 次里问了 2 次）
+        weather: () => `你这边下雨了（看「你那边」的天气），想起${userName}：问一句他在干嘛、带没带伞，或者说说你这边的雨；他在哪看「你现在」那一行，跟你在一个地方的话他那边也在下；就说这一件`,
         bedtime: () => `时间不早了，跟${userName}道个晚安`,
         // 旧项目的教训（ADR 0013 决策 2）：分享「刚看到的」会编出一个具体的视频、帖子，对方要链接时给不出来
         quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
