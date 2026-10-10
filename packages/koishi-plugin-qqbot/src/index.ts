@@ -21,6 +21,7 @@ import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
 import { textToSegments } from '../../bot/src/qq-faces.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from '../../bot/src/proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '../../bot/src/st/prompt-converters.ts';
+import { configuredImageDescriber } from '../../bot/src/vision.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 
 // koishi 的 ESM 入口是坏的（@koishijs/loader/lib/index.mjs 默认导入了一个 CJS 文件）：取 loader 自己用的那份 CJS
@@ -75,6 +76,7 @@ export interface Config {
     unlistedFriends: boolean;
     schedule: boolean;
     media: boolean;
+    vision: { enabled: boolean; baseUrl?: string; model?: string; timeoutMs?: number };
     moody: boolean;
     speechCheck: boolean;
     herDays: boolean;
@@ -129,6 +131,18 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         media: Schema.boolean().default(DEFAULTS.media)
             .description('**听语音、看图上的字**（ADR 0052）：他发的语音用 QQ 自带的语音转文字，照片、截图用 NapCat 的 OCR 取上面的字（只有 Windows），她就着内容回，听完语音才回。'
                 + '转不出来、没字、超时（5 秒）照旧只知道是语音、图片；表情包照旧用名字'),
+        vision: Schema.intersect([
+            Schema.object({ enabled: Schema.boolean().default(false).description('**看懂图片内容**（DeepSeek，ADR 0055）') }),
+            Schema.union([
+                Schema.object({
+                    enabled: Schema.const(true).required(),
+                    baseUrl: Schema.string().default(DEFAULTS.vision.baseUrl).pattern(NOT_BLANK).description('**接口地址**：一般不用改，复用模型页的 QQBOT_LLM_API_KEY'),
+                    model: Schema.string().default(DEFAULTS.vision.model).pattern(NOT_BLANK).description('**模型名**：deepseek-flash 支持图片'),
+                    timeoutMs: Schema.natural().min(1).default(DEFAULTS.vision.timeoutMs).description('**看图超时**（毫秒）：失败就退回只知道是图片'),
+                }),
+                Schema.object({}),
+            ]),
+        ]).description('普通照片和截图会发给 DeepSeek；图上的字仍同时走 NapCat OCR。表情包不发。'),
         moody: Schema.boolean().default(DEFAULTS.moody)
             .description('**看心情不回**（ADR 0013）：正聊着、对方一串只回了「哈哈」「嗯」这类反应时，偶尔不回（男朋友档约 15%，越疏越多，最多 35%）。'
                 + '隔一分钟以上再来一条一定回；问句、图片、晚安都照样回。要开着作息'),
@@ -142,7 +156,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**没人聊天时她一件件过日子**（ADR 0040）：按作息、课表、饭点、世界里的事和一天的打算排行动，过完记进事件账。'
                 + '现在是影子模式：只记账，还不进提示词。要开着她自己的日子'),
         lifeInPrompt: Schema.boolean().default(DEFAULTS.lifeInPrompt)
-            .description('**生活账进提示词（第一步）**：她这几天练拍照修图的回数、时长、上一回是什么时候，按账上记着的写一行进时间块；只给看得到她爱好的档位。要开着上面那一项'),
+            .description('**生活账进提示词（第一步）**：她最近三天里有几天练拍照修图、上一回是什么时候，按账上记着的写一行进时间块；只给看得到她爱好的档位。要开着上面那一项'),
         realWeather: Schema.boolean().default(DEFAULTS.realWeather)
             .description('**真实天气**（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成'),
         candidates: Schema.natural().min(1).max(5).default(DEFAULTS.candidates)
@@ -240,6 +254,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         Object.assign(extraBody, thinkingBody(thinking));
     }
     const { enabled, ...memory } = config.memory ?? { enabled: false };
+    const { enabled: visionEnabled, ...vision } = config.vision ?? { enabled: false };
     return {
         llm: dropUndefined({ ...llm, extraBody }),
         prompt: dropUndefined({ ...config.prompt, worldInfo: dropUndefined(config.prompt?.worldInfo ?? {}) }),
@@ -259,6 +274,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.contextContacts !== undefined ? { contextContacts: config.contextContacts } : {}),
         ...(config.proactive !== undefined ? { proactive: config.proactive } : {}),
         ...(config.media !== undefined ? { media: config.media } : {}),
+        ...(visionEnabled ? { vision: { provider: DEFAULTS.vision.provider, ...dropUndefined(vision) } } : {}),
         ...(enabled ? { memory: dropUndefined(memory) } : {}),
         dataDir: config.dataDir,
     };
@@ -356,7 +372,7 @@ export function apply(ctx: Context, config: Config) {
     };
     let app: ReturnType<typeof startApp>;
     try {
-        app = startApp({ config: appConfig, transport, log, media });
+        app = startApp({ config: appConfig, transport, log, media, vision: configuredImageDescriber(appConfig) });
     } catch (error) {
         const plain = plainError('插件没有启动', error);
         setConsoleState({ error: plain.message });

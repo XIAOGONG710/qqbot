@@ -11,11 +11,8 @@ import { PROACTIVE_MODES, type ProactiveMode } from './proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from './st/prompt-converters.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from './st/world-info.ts';
 
-/**
- * 看图能用的提供方（ADR 0052）：还没有接任何一家。接的时候在 media.ts 实现 ImageDescriber（key 从环境变量 QQBOT_VISION_API_KEY 读），
- * 名字加在这里，app.ts 按名字建
- */
-export const VISION_PROVIDERS: readonly string[] = [];
+/** 看图能用的提供方（ADR 0055）。DeepSeek 复用聊天模型的 QQBOT_LLM_API_KEY，不另要 key。 */
+export const VISION_PROVIDERS = ['deepseek'] as const;
 
 /** 名单里能用的档位（ADR 0003），从亲到疏 */
 export const CONTACT_TIERS = ['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger'] as const;
@@ -32,6 +29,7 @@ export const DEFAULTS = {
     llm: { temperature: 1, maxTokens: 300, timeoutMs: 120_000, promptPostProcessing: '' as PromptPostProcessing },
     prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
     memory: { timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' },
+    vision: { provider: 'deepseek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', timeoutMs: MEDIA_TIMEOUTS.vision },
     unlistedFriends: true,
     schedule: true,
     moody: true,
@@ -95,7 +93,7 @@ export interface AppConfig {
      */
     autonomousLife: boolean;
     /**
-     * 生活账接进提示词的第一步（ADR 0040 之后）：她这几天练拍照修图的回数、时长、上一回是什么时候，按账上已经落账的写一行，只给看得到她爱好的档位。
+     * 生活账接进提示词的第一步（ADR 0040 之后）：她这几天有几天练拍照修图、上一回是什么时候，按账上已经落账的写一行，只给看得到她爱好的档位。
      * 默认关；要开着 autonomousLife（账是它记的）
      */
     lifeInPrompt: boolean;
@@ -106,8 +104,8 @@ export interface AppConfig {
      * 转不出来、超时照旧「[语音]」「[图片]」。默认是
      */
     media: boolean;
-    /** 看图（ADR 0052 只留了口子）：看图模型的设置，有这一节才看图。还没有接任何提供方（VISION_PROVIDERS 是空的），现在配了会报错 */
-    vision?: { provider: string; model: string; baseUrl?: string; timeoutMs: number };
+    /** 看图（ADR 0055）：有这一节才把普通图片交给 DeepSeek；复用 QQBOT_LLM_API_KEY */
+    vision?: { provider: (typeof VISION_PROVIDERS)[number]; model: string; baseUrl?: string; timeoutMs: number };
     /** 他难过、说亲密话、收尾时一次生成几个候选、按规则挑一个（ADR 0041）。默认 1（不挑）；3 是三倍的模型调用（并行，不加时间） */
     candidates: number;
     /**
@@ -219,11 +217,11 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
     if (file.vision !== undefined) {
         const v = section(file, 'vision');
         const provider = str(v, 'provider', 'vision');
-        if (!VISION_PROVIDERS.includes(provider)) {
-            throw new Error(`配置 vision.provider「${provider}」不认识：${VISION_PROVIDERS.length ? `应为 ${VISION_PROVIDERS.join(' / ')} 之一` : '还没有接任何看图的模型（ADR 0052 只留了接口），先删掉 vision 这一节'}`);
+        if (!VISION_PROVIDERS.some(candidate => candidate === provider)) {
+            throw new Error(`配置 vision.provider「${provider}」不认识：应为 ${VISION_PROVIDERS.join(' / ')} 之一`);
         }
         vision = {
-            provider,
+            provider: provider as (typeof VISION_PROVIDERS)[number],
             model: str(v, 'model', 'vision'),
             ...(typeof v.baseUrl === 'string' && v.baseUrl ? { baseUrl: v.baseUrl } : {}),
             timeoutMs: num(v, 'timeoutMs', 'vision', MEDIA_TIMEOUTS.vision),

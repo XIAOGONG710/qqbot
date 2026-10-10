@@ -2,7 +2,7 @@
 // - 语音：NapCat 的 fetch_ptt_text（QQ 自带的语音转文字，按消息 id 找那条语音）；几秒从本地的语音文件（data.path，SILK / AMR）数帧，
 //   OneBot 的消息段里没有时长，文件读不到就不写秒数。转出来是「[语音 8秒：……]」，转不出来是「[语音 8秒]」，秒数也没有就是老样子「[语音]」。
 // - 图片：照片、截图跑 NapCat 的 ocr_image（只有 Windows），有字是「[图片，上面写着：……]」（截到 OCR_MAX_CHARS 个字），没字是「[图片]」；
-//   表情包（sub_type 不是 0，或者 summary 是它的名字）照旧用名字，不跑 OCR。配置了看图（vision，现在还没有接任何模型）再加上看到的样子。
+//   表情包（sub_type 不是 0，或者 summary 是它的名字）照旧用名字，不跑 OCR。配置了 DeepSeek 看图（vision）再加上看到的样子。
 // - 都有上限：超时、出错就退回老样子，不卡住回复。没字的图 NapCat 的 OCR 一直不回（10-10 实测：没字的 PNG、照片都等不到回应，有字的 0.3–1.1 秒），
 //   NapCat 启动后第一次 OCR 也可能要一分钟以上：都按超时算，就是「[图片]」。
 // - 聊天记录就是缓存：进了记录的消息（按 QQ 消息 id）不再转（app.ts 先查记录）；同一条正在转的（实时收到的和补回的撞上）共用一次调用（mediaReading）。
@@ -20,8 +20,8 @@ export interface MediaReader {
 }
 
 /**
- * 看图（ADR 0052 只留了口子）：一两句话说图里是什么；看不了就抛错。
- * 配置里有 vision 才有（config.ts），现在还没有实现任何提供方。
+ * 看图（ADR 0055）：一两句话说图里是什么；看不了就抛错。
+ * 配置里有 vision 才有（config.ts）；运行时现在接 DeepSeek，测试可以给假的。
  */
 export interface ImageDescriber {
     describe(image: { url: string; file?: string }): Promise<string>;
