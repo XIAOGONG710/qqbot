@@ -6,6 +6,7 @@
 // 书的进度数字（ADR 0015，这一轮放了「在读的书」才传 books）：说的第几卷 / 章、一共几章和资料对不上，重写一次，还不对就照发。
 // 编出一整段聊天（ADR 0033 模拟器里见到）：回复里出现提示词的结构（「[Start a new Chat]」、行首「[当前时间」「[你现在」……），是在替两个人写对话；
 // 重写一次，还在就从那一行起全删。
+// 照抄他发来的语音、图片在聊天记录里的写法（ADR 0052，行首「[语音」「[图片」）：重写一次，还在就删掉那一行。
 
 import {
     describeSpeechIssue, inspectBookProgress, inspectSpeech, stripOpeners, strippable,
@@ -18,7 +19,7 @@ const NAG_TOPIC: Record<NagKind, string> = { sleep: '早点睡', eat: '吃饭', 
 export interface ExitIssue {
     /** 回复里的第几行（从 0 开始，按 \n 分） */
     line: number;
-    kind: 'promise' | 'banned' | 'script' | SpeechIssue['kind'] | 'progress';
+    kind: 'promise' | 'banned' | 'script' | 'media' | SpeechIssue['kind'] | 'progress';
     /** 命中的片段 */
     match: string;
     /** 说话的毛病里的重复（speech-check.ts） */
@@ -54,9 +55,17 @@ const PROMISE = new RegExp(NOT_NEGATED + '(?:' + [
 /** 提示词的结构：新对话的分隔、时间块里各行的开头；放完假那几天「[宝宝国庆放完假……]」那一行以称呼开头（ADR 0007 调整 2026-10-10） */
 const SCRIPT = /\[Start a new Chat\]|^\s*\[(?:当前时间|距上一条消息|你现在|你今天的|你那边|这一轮|你的身体|你今天的打算)|^\s*\[[^\]\n]{1,16}放完假|^\s*\[(?:\d{4}年)?\d{1,2}月\d{1,2}日 星期/;
 
+/**
+ * 他发来的语音、图片在聊天记录里的写法（ADR 0052：「[语音 8秒：……]」「[图片，上面写着：……]」「[图片]」）：
+ * 她照抄出来就是在假装发语音、发图，那一行不发
+ */
+const MEDIA_LINE = /^\s*\[(?:语音|图片)(?:\]|[ ，：])/;
+
 export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext, books?: BookProgressContext): ExitIssue[] {
     const issues: ExitIssue[] = [];
     for (const [line, text] of reply.split('\n').entries()) {
+        const media = MEDIA_LINE.exec(text);
+        if (media) issues.push({ line, kind: 'media', match: media[0].trim() });
         const script = SCRIPT.exec(text);
         if (script) issues.push({ line, kind: 'script', match: script[0].trim() });
         const promise = PROMISE.exec(text.trim());
@@ -81,7 +90,7 @@ export function dropLines(reply: string, issues: readonly ExitIssue[]): string {
 
 /** 日志里的一句：第几行、哪一类、命中什么 */
 export function summarizeIssues(issues: readonly ExitIssue[]): string {
-    return issues.map(i => `第 ${i.line + 1} 行${i.kind === 'script' ? `编了一段对话「${i.match}」` : i.kind === 'promise' ? `做不到的事「${i.match}」`
+    return issues.map(i => `第 ${i.line + 1} 行${i.kind === 'script' ? `编了一段对话「${i.match}」` : i.kind === 'media' ? `照抄了语音、图片的写法「${i.match}」` : i.kind === 'promise' ? `做不到的事「${i.match}」`
         : i.kind === 'banned' ? `禁用词「${i.match}」`
             : i.kind === 'progress' ? `进度数字「${i.match}」（《${i.book!.title}》${progressFact(i.book!)}）` : describeSpeechIssue(i as SpeechIssue)}`).join('、');
 }
@@ -98,6 +107,7 @@ export function rewriteNote(reply: string, issues: readonly ExitIssue[], userNam
         const why = issues.filter(i => i.line === line).map(i => {
             switch (i.kind) {
                 case 'script': return `从这里开始你在替你和${userName}两个人写一段聊天记录；只写你这一次要发给${userName}的话`;
+                case 'media': return `这是${userName}发来的语音、图片在聊天记录里的写法，你只能打字，不写方括号`;
                 case 'promise': return '答应或者像是已经给对方发照片、语音、视频，或者打电话，可你只能打字聊天';
                 case 'banned': return `提到了「${i.match}」，这是不该对${userName}说的`;
                 case 'service': return `像客服说的话，用你自己的口气跟${userName}说`;
@@ -129,7 +139,7 @@ export interface ReviewOptions {
     log: (message: string) => void;
 }
 
-const HARD = new Set<ExitIssue['kind']>(['promise', 'banned']);
+const HARD = new Set<ExitIssue['kind']>(['promise', 'banned', 'media']);
 
 /** 去掉重复的语气词开头（可能连着几个，最多去两轮），返回去过之后的回复和剩下要重写的问题 */
 function strip(reply: string, options: ReviewOptions): { reply: string; issues: ExitIssue[] } {
@@ -145,7 +155,7 @@ function strip(reply: string, options: ReviewOptions): { reply: string; issues: 
     }
 }
 
-/** 重写之后（或重写失败时）还剩的问题：编的对话从那一行起全删；做不到的事、禁用词删行；助手腔、算账、怪对方没说也删，删完一行不剩就留着；重复、进度数字照发 */
+/** 重写之后（或重写失败时）还剩的问题：编的对话从那一行起全删；做不到的事、禁用词、照抄的语音图片行删行；助手腔、算账、怪对方没说也删，删完一行不剩就留着；重复、进度数字照发 */
 function settle(reply: string, issues: readonly ExitIssue[]): { reply: string; dropped: boolean } {
     const script = issues.find(i => i.kind === 'script');
     if (script) {

@@ -30,7 +30,7 @@ import { contextSummarizer, SUMMARY_HEADER, type TurnWindow } from '../context-w
 import { estimateTokens } from '../tokens.ts';
 import { auditLedgerCoverage, auditLifeStatus, type LedgerGap, type LifeStatusMismatch } from './life-audit.ts';
 import { repeatedSentences } from './repeats.ts';
-import { parseDuration, VirtualClock, type Checks, type LifeChecks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
+import { parseDuration, sayText, VirtualClock, type Checks, type LifeChecks, type ProactiveChecks, type Scenario, type SayStep } from './scenario.ts';
 
 /** 模拟的联系人用的 QQ 号（虚构） */
 export const SIM_QQ = 10001;
@@ -476,7 +476,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 lastSay = current;
                 bubblesThisStep = 0;
                 armed = step.interrupt;
-                const texts = Array.isArray(step.say) ? step.say : [step.say];
+                const texts = (Array.isArray(step.say) ? step.say : [step.say]).map(sayText);
                 for (const [i, text] of texts.entries()) {
                     if (i > 0) await sleep(step.gapMs ?? 800);
                     receive(text);

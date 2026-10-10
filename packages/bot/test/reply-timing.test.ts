@@ -215,3 +215,35 @@ describe('档位节奏和看心情不回（ADR 0013）', () => {
         assert.equal(moodySkip(chat([id, 1, 0, '哈哈哈'], [id + 5000, 1, 10, '你吃饭了吗']), 1), undefined);
     });
 });
+
+describe('听语音（ADR 0052）', () => {
+    test('正聊着来了语音：听完才算看到（几秒按记录里写的，只有字按字数，都没有按 6 秒）；两条语音接着听', () => {
+        const hot = [her(t(10, 5, 13, 55)), user(t(10, 5, 14), '[语音 8秒：今天食堂人好多]')];
+        assert.deepEqual(whenSeen(hot, t(10, 5, 14), boyfriend), { at: t(10, 5, 14, 0, 8), reason: '正聊着，听完语音（8 秒）' });
+        const unknown = [her(t(10, 5, 13, 55)), user(t(10, 5, 14), '[语音]')];
+        assert.equal(whenSeen(unknown, t(10, 5, 14), boyfriend)!.at, t(10, 5, 14, 0, 6));
+        // 文字先到、语音 3 秒后到：从语音到了开始听；第二条语音接着第一条听完
+        const two = [her(t(10, 5, 13, 55)), user(t(10, 5, 14), '你听听'), user(t(10, 5, 14, 0, 3), '[语音 10秒]'), user(t(10, 5, 14, 0, 5), '[语音 4秒：还有这个]')];
+        assert.deepEqual(whenSeen(two, t(10, 5, 14, 0, 5), boyfriend), { at: t(10, 5, 14, 0, 17), reason: '正聊着，听完语音（14 秒）' });
+        // 没有语音的照旧
+        assert.deepEqual(whenSeen([her(t(10, 5, 13, 55)), user(t(10, 5, 14), '[图片]')], t(10, 5, 14), boyfriend), { at: t(10, 5, 14), reason: '正聊着' });
+    });
+
+    test('冷场：过一会儿看到，再加上听的时间；上硬课不听（看转出来的字或者让他打字），照旧', () => {
+        const cold = [her(t(10, 5, 13, 40)), user(t(10, 5, 14))];
+        const base = whenSeen(cold, t(10, 5, 14), boyfriend)!;
+        const voice = [her(t(10, 5, 13, 40)), { ...cold[1]!, content: '[语音 20秒]' }];
+        assert.deepEqual(whenSeen(voice, t(10, 5, 14), boyfriend), { at: base.at + 20_000, reason: '冷场，过一会儿才看到，听完语音（20 秒）' });
+        const inClass = [user(t(10, 12, 10), '[语音 20秒：下课一起吃饭]')];
+        const text = [{ ...inClass[0]!, content: '下课一起吃饭' }];
+        assert.deepEqual(whenSeen(inClass, t(10, 12, 10), boyfriend), whenSeen(text, t(10, 12, 10), boyfriend));
+    });
+
+    test('附和看语音里说的：「[语音 2秒：嗯嗯]」算，说了别的不算；没转出来的和表情一样', () => {
+        assert.equal(isAck('[语音 2秒：嗯嗯]'), true);
+        assert.equal(isAck('[语音：晚安]'), true);
+        assert.equal(isAck('[语音 5秒：我还有个事跟你说]'), false);
+        assert.equal(isAck('[语音 3秒]'), true);
+        assert.equal(isReaction('[语音 2秒：哈哈哈]'), false, '语音不算反应，照样回');
+    });
+});

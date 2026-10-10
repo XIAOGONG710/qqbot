@@ -143,7 +143,7 @@ export function isPrivateFriendMessage(event: OneBotEvent): event is MessageEven
     return event.post_type === 'message' && event.message_type === 'private' && event.sub_type === 'friend';
 }
 
-/** 把消息段转成给模型看的纯文本；非文字的段用占位符（M1 不看图、不听语音） */
+/** 把消息段转成给模型看的纯文本；非文字的段用占位符（听过、看过的语音和图片在这之前已经换成一段文字，media.ts，ADR 0052） */
 export function segmentsToText(message: Segment[] | string): string {
     if (typeof message === 'string') return message;
     return message.map(segment => {

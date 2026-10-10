@@ -9,7 +9,7 @@ import type { MemoryItem, RecallRequest } from '../src/memory/hindsight.ts';
 import type { OpenAIMessage } from '../src/prompt.ts';
 import { renderReport } from '../src/sim/report.ts';
 import { runChecks, runScenario, type SimHindsight, type StepRecord } from '../src/sim/runner.ts';
-import { loadScenario, parseDuration, parseScenario, VirtualClock } from '../src/sim/scenario.ts';
+import { loadScenario, parseDuration, parseScenario, sayText, VirtualClock } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
@@ -39,6 +39,19 @@ describe('模拟器：场景文件', () => {
         for (const name of ['memory-fading', 'her-promises', 'memory-weeks', 'disclosure-boyfriend', 'disclosure-classmate', 'life-events', 'conversation-naturalness', 'promise-vs-topic', 'life-72h-auto', 'long-context-memory']) {
             assert.ok(loadScenario(join(repoRoot, `packages/bot/sim/${name}.json`)).steps.length > 0, name);
         }
+    });
+
+    test('他发的语音、图片（ADR 0052）：按 bot 进聊天记录的写法变成一行；写错报错', () => {
+        const scenario = loadScenario(join(repoRoot, 'packages/bot/sim/media-boyfriend.json'));
+        const says = scenario.steps.filter(step => 'say' in step).flatMap(step => [(step as { say: Parameters<typeof sayText>[0] | Parameters<typeof sayText>[0][] }).say].flat()).map(sayText);
+        assert.deepEqual(says, [
+            '[语音 15秒]', '[语音 9秒：今天下午体测跑了八百米，跑完腿都软了，现在走路都打晃]',
+            '我们期中考试时间出来了', '[图片，上面写着：期中考试安排 高等数学 11月12日 上午9:00 地点：知行楼301]', '你看', '[图片]', '[语音 6秒]',
+        ]);
+        const base = { name: 'x', tier: 'boyfriend', start: '2026-10-09T21:00:00+08:00' };
+        assert.throws(() => parseScenario({ ...base, steps: [{ say: [{ voice: '在吗', seconds: 0 }] }] }), /say 应为非空字符串，或数组/);
+        assert.throws(() => parseScenario({ ...base, steps: [{ say: [{ image: 1 }] }] }), /say 应为非空字符串，或数组/);
+        assert.throws(() => parseScenario({ ...base, steps: [{ say: [{ voice: '在吗', text: 'x' }] }] }), /say 应为非空字符串，或数组/);
     });
 
     test('时长写法', () => {

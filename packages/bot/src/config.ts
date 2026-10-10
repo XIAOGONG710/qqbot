@@ -6,9 +6,16 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
+import { MEDIA_TIMEOUTS } from './media.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from './proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from './st/prompt-converters.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from './st/world-info.ts';
+
+/**
+ * 看图能用的提供方（ADR 0052）：还没有接任何一家。接的时候在 media.ts 实现 ImageDescriber（key 从环境变量 QQBOT_VISION_API_KEY 读），
+ * 名字加在这里，app.ts 按名字建
+ */
+export const VISION_PROVIDERS: readonly string[] = [];
 
 /** 名单里能用的档位（ADR 0003），从亲到疏 */
 export const CONTACT_TIERS = ['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger'] as const;
@@ -32,6 +39,7 @@ export const DEFAULTS = {
     herDays: true,
     autonomousLife: false,
     realWeather: true,
+    media: true,
     candidates: 1,
     contextTurns: 0,
     contextContacts: [] as readonly number[],
@@ -87,6 +95,13 @@ export interface AppConfig {
     autonomousLife: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
+    /**
+     * 听语音、看图上的字（ADR 0052）：他发的语音用 QQ 自带的语音转文字、照片和截图用 NapCat 的 OCR 取上面的字，写进聊天记录；
+     * 转不出来、超时照旧「[语音]」「[图片]」。默认是
+     */
+    media: boolean;
+    /** 看图（ADR 0052 只留了口子）：看图模型的设置，有这一节才看图。还没有接任何提供方（VISION_PROVIDERS 是空的），现在配了会报错 */
+    vision?: { provider: string; model: string; baseUrl?: string; timeoutMs: number };
     /** 他难过、说亲密话、收尾时一次生成几个候选、按规则挑一个（ADR 0041）。默认 1（不挑）；3 是三倍的模型调用（并行，不加时间） */
     candidates: number;
     /**
@@ -194,6 +209,21 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         };
     }
 
+    let vision: AppConfig['vision'];
+    if (file.vision !== undefined) {
+        const v = section(file, 'vision');
+        const provider = str(v, 'provider', 'vision');
+        if (!VISION_PROVIDERS.includes(provider)) {
+            throw new Error(`配置 vision.provider「${provider}」不认识：${VISION_PROVIDERS.length ? `应为 ${VISION_PROVIDERS.join(' / ')} 之一` : '还没有接任何看图的模型（ADR 0052 只留了接口），先删掉 vision 这一节'}`);
+        }
+        vision = {
+            provider,
+            model: str(v, 'model', 'vision'),
+            ...(typeof v.baseUrl === 'string' && v.baseUrl ? { baseUrl: v.baseUrl } : {}),
+            timeoutMs: num(v, 'timeoutMs', 'vision', MEDIA_TIMEOUTS.vision),
+        };
+    }
+
     return {
         llm: {
             baseUrl: str(llm, 'baseUrl', 'llm'),
@@ -219,6 +249,8 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         herDays: bool(file, 'herDays', '', DEFAULTS.herDays),
         autonomousLife: bool(file, 'autonomousLife', '', DEFAULTS.autonomousLife),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
+        media: bool(file, 'media', '', DEFAULTS.media),
+        ...(vision ? { vision } : {}),
         candidates: candidateCount(file.candidates),
         contextTurns: contextTurnCount(file.contextTurns),
         contextContacts: qqList(file.contextContacts, 'contextContacts'),

@@ -107,6 +107,17 @@ describe('出口检查：重写一次，还不行删掉那几行', () => {
         assert.equal((await run('[你现在：在宿舍]', ['[你现在：在宿舍]'])).reply, '');
         assert.equal((await run('我说的是「你现在在干嘛」', [])).reply, '我说的是「你现在在干嘛」', '不在行首、没有方括号的不算');
     });
+    test('照抄他发来的语音、图片的写法（ADR 0052）：重写；还在就删掉那一行', async () => {
+        const r = await run('[语音 5秒：好呀好呀]\n等我一下', ['好呀\n等我一下']);
+        assert.equal(r.reply, '好呀\n等我一下');
+        assert.match(r.notes[0]!, /「\[语音 5秒：好呀好呀\]」这是阿明发来的语音、图片在聊天记录里的写法，你只能打字，不写方括号/);
+        assert.equal(r.logs[0], '出口检查：第 1 行照抄了语音、图片的写法「[语音」，带说明重写一次');
+        assert.equal((await run('你看\n[图片]', ['你看\n[图片]'])).reply, '你看');
+        assert.equal((await run('[图片，上面写着：明天见]', [new Error('超时')])).reply, '');
+        for (const line of ['你发的[语音]我在上课听不了', '图片看不清', '[语音通话]不方便', '刚看到你的语音']) {
+            assert.deepEqual(inspectReply(line, []).filter(i => i.kind === 'media'), [], line);
+        }
+    });
     test('重写请求失败，用第一版、删掉命中的行', async () => {
         const r = await run('在呢\n晚上给你打个电话', [new Error('连接超时')]);
         assert.equal(r.reply, '在呢');

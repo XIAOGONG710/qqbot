@@ -70,6 +70,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.deepEqual(config.prompt.worldInfo, DEFAULTS.prompt.worldInfo);
         assert.equal(config.unlistedFriends, DEFAULTS.unlistedFriends);
         assert.equal(config.schedule, DEFAULTS.schedule);
+        assert.equal(config.media, DEFAULTS.media);
         assert.equal(config.moody, DEFAULTS.moody);
         assert.equal(config.speechCheck, DEFAULTS.speechCheck);
         assert.equal(config.herDays, DEFAULTS.herDays);
@@ -95,6 +96,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
             { ...minimal, moody: false },
             { ...minimal, speechCheck: false },
             { ...minimal, herDays: false },
+            { ...minimal, media: false },
         ];
         for (const sample of samples) {
             const config = Config(sample as never);
@@ -110,6 +112,13 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.throws(() => Config({ ...minimal, proactive: 'yes' } as never));
         // 等于默认值时不写进 koishi.yml
         assert.equal('proactive' in (Config.simplify(Config(minimal as never)) as object), false);
+    });
+
+    test('听语音、看图（ADR 0052）：旧的配置没有这一项时是开；关了照样传过去；等于默认值时不写进 koishi.yml', () => {
+        assert.equal(fromKoishi(minimal).media, true);
+        assert.equal(fromKoishi(before0009).media, true);
+        assert.equal(fromKoishi({ ...minimal, media: false }).media, false);
+        assert.equal('media' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
     test('看心情不回（ADR 0013）：旧的配置没有这一项时是开；关了照样传过去；等于默认值时不写进 koishi.yml', () => {

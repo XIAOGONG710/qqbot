@@ -8,6 +8,7 @@ import { startApp } from './app.ts';
 import { loadConfig } from './config.ts';
 import { createLog } from './log.ts';
 import type { HistoryMessage } from './backfill.ts';
+import { ocrLines } from './media.ts';
 import { isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -25,6 +26,11 @@ const app = startApp({
         })).messages,
     },
     log,
+    // 听语音、看图上的字（ADR 0052）：QQ 自带的语音转文字、NapCat 的 OCR（只有 Windows）
+    media: {
+        voiceToText: async messageId => (await client.call<{ text: string }>('fetch_ptt_text', { message_id: messageId })).text,
+        ocr: async image => ocrLines(await client.call<unknown>('ocr_image', { image })),
+    },
 });
 process.on('exit', () => app.stop());
 

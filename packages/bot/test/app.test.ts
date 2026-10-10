@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { startApp, type App, type Transport } from '../src/app.ts';
 import type { HistoryMessage } from '../src/backfill.ts';
+import type { MEDIA_TIMEOUTS, MediaReader } from '../src/media.ts';
 import type { AppConfig } from '../src/config.ts';
 import { ChatHistory } from '../src/history.ts';
 import type { MessageEvent } from '../src/onebot.ts';
@@ -38,6 +39,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         realWeather: false,
+        media: true,
         candidates: 1,
         contextTurns: 0,
         contextContacts: [],
@@ -58,7 +60,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS> } = {}) {
     const sent: string[] = [];
     const logs: string[] = [];
     const asked: number[] = [];
@@ -75,6 +77,8 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
     };
     const app = startApp({
         config: cfg, transport, log: message => logs.push(message),
+        ...(options.media ? { media: options.media } : {}),
+        ...(options.mediaTimeouts ? { mediaTimeouts: options.mediaTimeouts } : {}),
         pipeline: {
             generate: async () => '好', settle: { quietMs: 0, maxMs: 0 },
             ...(options.clock ? { now: options.clock.now, waitUntil: options.clock.waitUntil } : {}),
@@ -291,5 +295,115 @@ describe('主动消息（ADR 0011）', () => {
         assert.ok(logs.some(l => /^\[10002\] 主动：早安（起床后 \d+ 分钟）计划在 \d\d:\d\d，错过了，不补$/.test(l)));
         assert.deepEqual(records(cfg).map(r => [r.id, r.result, r.reason]), [['2026-10-05:morning', 'skipped', '错过了，不补']]);
         assert.deepEqual(sent, []);
+    });
+});
+
+describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
+    const voiceSegment: MessageEvent['message'] = [{ type: 'record', data: { file: 'abc.amr', file_size: '3000' } }];
+    const photoSegment = (url: string): MessageEvent['message'] => [{ type: 'image', data: { file: 'a.jpg', url, sub_type: 0, summary: '' } }];
+    const mediaEvent = (userId: number, messageId: number, message: MessageEvent['message']): MessageEvent => ({ ...event(userId, messageId, ''), message, raw_message: '' });
+    const hang = <T>() => new Promise<T>(() => {});
+
+    /** 按消息 id 给转写、按 URL 给 OCR；hold 的那几条等 release 了才回；记下调了几次 */
+    function napcat(voices: Record<number, string | 'hang'>, ocr: Record<string, string[] | 'hang'> = {}) {
+        const calls = { voice: [] as number[], ocr: [] as string[] };
+        const held: (() => void)[] = [];
+        let holding = false;
+        const media: MediaReader = {
+            voiceToText: async id => {
+                calls.voice.push(id);
+                if (holding) await new Promise<void>(r => held.push(r));
+                const result = voices[id];
+                if (result === 'hang') return hang();
+                if (result === undefined) throw new Error('消息不存在');
+                return result;
+            },
+            ocr: async url => {
+                calls.ocr.push(url);
+                const result = ocr[url];
+                return result === 'hang' ? hang() : result ?? [];
+            },
+        };
+        return { media, calls, hold: () => { holding = true; }, release: () => { holding = false; for (const r of held.splice(0)) r(); } };
+    }
+
+    test('他发语音：转出来的字进聊天记录，照常回；重启后补回拿到同一条，不再转', async () => {
+        const cfg = config();
+        const fake = napcat({ 1: '今天食堂人好多' });
+        const first = setup(cfg, { 10001: [] }, { media: fake.media });
+        await first.app.connected(SELF);
+        first.app.receive(mediaEvent(10001, 1, voiceSegment));
+        await until(() => first.sent.length > 0);
+        assert.deepEqual(chat(cfg, 10001), ['user:[语音：今天食堂人好多]', 'assistant:好']);
+        assert.deepEqual(fake.calls.voice, [1]);
+        assert.ok(first.logs.some(l => /^\[10001\] 听语音：转出 7 个字（\d+\.\d 秒）$/.test(l)), first.logs.join('\n'));
+        first.app.stop();
+
+        // 重启：NapCat 的历史里还是那条语音和她的回复
+        const again = napcat({ 1: '今天食堂人好多' });
+        const second = setup(cfg, { 10001: [
+            { message_id: 1, time: nowSec() - 5, sender: { user_id: 10001 }, message: voiceSegment },
+            { message_id: 900, time: nowSec() - 3, sender: { user_id: SELF }, message: [{ type: 'text', data: { text: '好' } }] },
+        ] }, { media: again.media });
+        await second.app.connected(SELF);
+        await new Promise(r => setTimeout(r, 50));
+        assert.deepEqual(again.calls.voice, [], '聊天记录里有了，不再转');
+        assert.deepEqual(chat(cfg, 10001), ['user:[语音：今天食堂人好多]', 'assistant:好']);
+    });
+
+    test('补回：漏掉的语音、截图读过再记；补的时候实时又收到同一条语音，只转一次、只记一次', async () => {
+        const cfg = config();
+        const fake = napcat({ 5: '你下课了吗' }, { 'https://x/shot.png': ['期中考试安排'] });
+        const { app, sent } = setup(cfg, { 10001: [
+            { message_id: 5, time: nowSec() - 30, sender: { user_id: 10001 }, message: voiceSegment },
+            { message_id: 6, time: nowSec() - 20, sender: { user_id: 10001 }, message: photoSegment('https://x/shot.png') },
+        ] }, { media: fake.media });
+        // 断线前实时收到的那条还在转，这时连上了、补回也拿到它
+        fake.hold();
+        app.receive(mediaEvent(10001, 5, voiceSegment));
+        const connected = app.connected(SELF);
+        await new Promise(r => setTimeout(r, 20));
+        fake.release();
+        await connected;
+        await until(() => sent.length > 0);
+        await until(() => chat(cfg, 10001).filter(m => m.startsWith('user:')).length === 2);
+        assert.deepEqual(fake.calls.voice, [5]);
+        assert.deepEqual(fake.calls.ocr, ['https://x/shot.png']);
+        assert.deepEqual(chat(cfg, 10001).filter(m => m.startsWith('user:')), ['user:[语音：你下课了吗]', 'user:[图片，上面写着：期中考试安排]']);
+    });
+
+    test('读的时候后面来的话排在后面，顺序不乱；没字的图（NapCat 不回）超时退回「[图片]」，回复不卡住', async () => {
+        const cfg = config();
+        const fake = napcat({}, { 'https://x/cat.jpg': 'hang' });
+        const { app, sent, logs } = setup(cfg, { 10001: [] }, { media: fake.media, mediaTimeouts: { ocr: 100 } });
+        await app.connected(SELF);
+        app.receive(mediaEvent(10001, 1, photoSegment('https://x/cat.jpg')));
+        app.receive(event(10001, 2, '我家猫'));
+        await until(() => sent.length > 0);
+        assert.deepEqual(chat(cfg, 10001).filter(m => m.startsWith('user:')), ['user:[图片]', 'user:我家猫']);
+        assert.ok(logs.includes('[10001] 看图：没认出字（超时 0.1 秒）'), logs.join('\n'));
+    });
+
+    test('表情包不跑 OCR、照旧用名字；转不出来的语音照旧「[语音]」；配置关了什么都不调', async () => {
+        const cfg = config();
+        const fake = napcat({}, { 'https://x/a.gif': ['哈哈'] });
+        const { app, sent } = setup(cfg, { 10001: [] }, { media: fake.media });
+        await app.connected(SELF);
+        app.receive(mediaEvent(10001, 1, [{ type: 'image', data: { url: 'https://x/a.gif', sub_type: 1, summary: '[动画表情]' } }]));
+        app.receive(mediaEvent(10001, 2, voiceSegment));
+        await until(() => sent.length > 0 && chat(cfg, 10001).filter(m => m.startsWith('user:')).length === 2);
+        assert.deepEqual(chat(cfg, 10001).filter(m => m.startsWith('user:')), ['user:[动画表情]', 'user:[语音]']);
+        assert.deepEqual(fake.calls.ocr, []);
+        assert.deepEqual(fake.calls.voice, [2]);
+
+        const off = config({ media: false });
+        const quiet = napcat({ 1: '在吗' });
+        const offApp = setup(off, { 10001: [] }, { media: quiet.media });
+        await offApp.app.connected(SELF);
+        offApp.app.receive(mediaEvent(10001, 1, voiceSegment));
+        await until(() => offApp.sent.length > 0);
+        assert.deepEqual(chat(off, 10001)[0], 'user:[语音]');
+        assert.deepEqual(quiet.calls.voice, []);
+        assert.ok(offApp.logs.includes('听语音、看图：关（配置 media: false），照旧「[语音]」「[图片]」'));
     });
 });
