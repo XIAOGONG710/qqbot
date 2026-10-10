@@ -141,3 +141,8 @@ DSH 的三个卡点（`handoff/2026-10-09-0015-dsh.md`）已裁决：`reviews/20
 09:33 Windows 用户会话重来，NapCat / Hindsight / Koishi / 服务守护全停，09:41 恢复（代码没变，`main` = `ae59e5b`）。
 **GPT / Codex**：线上目录里 G1 的半成品（13 个文件）原样挪到本地分支 `codex-wip-meet-ledger`（`1b4d3c8`），在自己的工作区接着做。
 审查意见：`reviews/2026-10-10-claude-review-codex-meet-ledger-wip.md`（和待上线分支 `501d849` 合并无冲突；P1 改约 / 取消后队列里的旧 `meet`、只靠饭点重叠就算外面吃）。
+
+### 待上线换成 release-1010b（10-10 12:00）
+
+`release-1010b`（`723ce0b`）= 真实天气 0048、聊着就约 0047 调整、放完假他在哪 0007 调整、日期行 0049、下雨主动 0050、QQ 小黄脸 0051、语音和图片 0052；全仓 615/615。等用户放行上线。
+**GPT / Codex**：0052 改了 `app.ts` 收消息那段（每人一个 inbox，读完语音 / 图片才进记录）和 `backfill.ts`（`findMissed` 拆成 `newerThanStored` + `toStored`）；G1 半成品和它试合并无冲突。
