@@ -90,6 +90,15 @@ describe('这一轮你想（ADR 0019）', () => {
         }
         assert.equal(describeIntent({ history: [user('烦人精')], now, state: free('在追一部剧') }), undefined, '烦人精是叫他，不是心情');
         assert.match(describeIntent({ history: [user('已经见面5150天了呢')], now, state: free('刷摄影区'), books: true })!, /只接他刚说的你们两个人的事/);
+        // 身上不舒服、一般的累也算（10-10 盲评 N3 be-018 / be-017）
+        for (const said of [['宝贝', '我嗓子疼', '从下午就开始了 肿了', '没事 喝点水就行'], ['今天有点累', '没事 你不用管我', '考完试出来感觉脑子是空的'], ['我好像感冒了'], ['打球把脚崴了']]) {
+            const line = describeIntent({ history: said.map(text => user(text)), now, state: free('在追一部剧'), books: true })!;
+            assert.match(line, /第一句先安慰或问怎么了，不先损他/, said.join(' / '));
+        }
+        assert.match(describeIntent({ history: [user('好累 我先睡了')], now })!, /收尾/, '累了要睡还是收尾');
+        assert.match(describeIntent({ history: [user('头疼，明天的课你去不去')], now })!, /先直接回答他刚问的/, '问了事照旧先答');
+        assert.equal(describeIntent({ history: [user('背题背得脑瓜子都大了')], now, state: free('在追一部剧') }), undefined);
+        assert.match(describeIntent({ history: [user('就你那天拧开的那瓶水'), user('你递过来的时候我心里特别软')], now, state: free('刷摄影区'), books: true })!, /只接他刚说的你们两个人的事/);
     });
 });
 
