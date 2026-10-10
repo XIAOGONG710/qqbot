@@ -25,12 +25,17 @@ export function lengthHint(context: LengthContext): LengthHint | undefined {
     if (context.initiating || context.intent?.includes('收尾')) return undefined;
     const last = context.history.findLast(message => message.role === 'user');
     if (!last) return undefined;
+    // 他明着让她讲（「你帮我认真讲讲」「详细说说」）就多说几句，不抽签（10-10 示例改短之后 boyfriend-tone T06 讲梯度下降只剩 53 字）
+    if (!context.low && ASKS_TO_EXPLAIN.test(last.content)) return 'long';
     const roll = unit(`${last.time ?? ''} ${last.content} length`);
     if (roll < SHORT_CHANCE) return 'short';
     // 话多要有由头：他这次说的太短（「到家了」）就不加（第一批：一句「到家了」她一口气说了 4 条 77 个字）
     if (roll < SHORT_CHANCE + LONG_CHANCE && !context.low && [...saidSinceReply(context.history)].length >= LONG_MIN_CHARS) return 'long';
     return undefined;
 }
+
+/** 他明着让她讲、让她说详细 */
+export const ASKS_TO_EXPLAIN = /讲讲|讲一下|详细|认真(?:说|讲|跟我说)|解释|教教?我|展开说|具体说说/;
 
 /** 他这次说的不到这么多字，不加「话多一点」 */
 export const LONG_MIN_CHARS = 8;

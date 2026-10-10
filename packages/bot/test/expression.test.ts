@@ -27,6 +27,11 @@ describe('表达层（ADR 0024）', () => {
         const hints = Array.from({ length: 500 }, (_, i) => lengthHint({ history: brief(i) }));
         assert.ok(!hints.includes('long'), `不到 ${LONG_MIN_CHARS} 个字不加话多`);
         assert.ok(hints.includes('short'));
+        // 他明着让她讲：每次都是话多一点，不抽签；收尾、主动、身上不舒服照旧
+        const explain = (i: number) => [{ role: 'user' as const, content: '你帮我认真讲讲，梯度下降到底是怎么回事', time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
+        assert.ok(Array.from({ length: 200 }, (_, i) => lengthHint({ history: explain(i) })).every(hint => hint === 'long'));
+        assert.ok(Array.from({ length: 50 }, (_, i) => lengthHint({ history: explain(i), low: true })).every(hint => hint !== 'long'), '身上不舒服、心情安静时不加话多');
+        assert.equal(lengthHint({ history: explain(1), initiating: true }), undefined);
     });
 
     test('提示词只给一句约束，不给台词', () => {
