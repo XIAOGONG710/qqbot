@@ -1,0 +1,22 @@
+{
+    "name": "男朋友档：下午下雨了，她主动找他（ADR 0050）",
+    "description": "10-17 周六没课。中午他说下午出去打球；15 点开始下雨（假的真实天气，世界和主动消息都认），15:10–15:25 之间她找他一次，说雨、问伞或问他在哪。第二天没雨，不再说雨。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-17T11:30:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "realRain": { "2026-10-17": [15, 16, 17], "2026-10-18": [] },
+    "steps": [
+        { "case": "R01", "note": "中午聊几句，他下午出去打球" },
+        { "say": "起了没" },
+        { "say": "我下午跟室友去打球，晚上再找你" },
+        { "case": "R02", "note": "15 点下雨：她主动找他，说的是雨" },
+        { "wait": "proactive" },
+        { "check": { "proactive": { "count": [1, 1], "occasions": ["下雨"], "replyAny": ["雨", "伞"], "allowedTimes": true, "exitClean": true } } },
+        { "say": "刚到球场，还好有个顶棚" },
+        { "case": "R03", "note": "到第二天傍晚：没雨，不再说雨" },
+        { "advance": "1d" },
+        { "check": { "proactive": { "perDayMax": 2, "allowedTimes": true, "absent": ["下雨"], "exitClean": true } } }
+    ]
+}

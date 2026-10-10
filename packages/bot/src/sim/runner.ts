@@ -23,6 +23,7 @@ import { DIARY_TEMPERATURE, diaryWriter } from '../diary.ts';
 import { formatDate, stateAt, type Schedule } from '../schedule.ts';
 import { actionQueue, settlingWorld } from '../action-queue.ts';
 import { bodyAt } from '../body.ts';
+import { dayFrom, useRealWeather, type HourWeather, type RealWeather } from '../weather.ts';
 import type { LifeEvent } from '../life-events.ts';
 import { lifeExecutor, type LifeSources } from '../life-selector.ts';
 import { asleepSince, saidBedtimes } from '../bedtime.ts';
@@ -144,11 +145,23 @@ const PAST_HEADER = '[你想起的从前';
 /** responder.ts 的两句日志：清理后为空当场再生成一次、再空算回复失败 */
 export const EMPTIED = /模型回复清理后为空/;
 
+/** 场景的 realRain → 一份假的逐小时实况（写了的日子：下雨的钟头是小雨，其余阴天），走和线上一样的 dayFrom */
+function fakeRealWeather(rain: Readonly<Record<string, number[]>>): RealWeather {
+    const hours: Record<string, HourWeather> = {};
+    for (const [date, wet] of Object.entries(rain)) {
+        for (let h = 0; h < 24; h++) hours[`${date}T${String(h).padStart(2, '0')}`] = { t: h >= 12 && h <= 16 ? 19 : 15, p: 0, c: wet.includes(h) ? 61 : 3, o: 1 };
+    }
+    return { day: (_place, date, until) => dayFrom(hours, date, until) };
+}
+
 export async function runScenario(scenario: Scenario, options: RunOptions): Promise<RunResult> {
     const { dataDir } = options;
     const sleep = options.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)));
     mkdirSync(join(dataDir, 'prompts'), { recursive: true });
     const clock = new VirtualClock(new Date(scenario.start), options.realNow);
+    // 假的「真实天气」（ADR 0050）：场景写了 realRain 的日子按它算（世界和主动消息都认），跑完换回来
+    const fakeWeather = scenario.realRain ? fakeRealWeather(scenario.realRain) : undefined;
+    if (fakeWeather) useRealWeather(fakeWeather);
     const contact: Contact = { qq: SIM_QQ, name: scenario.user, tier: scenario.tier, persona: scenario.persona };
     const names = { user: contact.name, char: options.card.character.name };
     // 下面从数据目录建的几样（聊天记录、记忆、世界、答应的事、日记、回复器、主动消息）在 restart 步骤里丢掉重建（ADR 0039）
@@ -378,6 +391,13 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             log,
             skip: replySkip(character, scenario.moody, scenario.moodyChance),
             asleep: now => Boolean(asleepSince(character.schedule!, saidBedtimes([contact, ...others].map(person => history.load(person.qq)), character.schedule!, now - 86_400_000), new Date(now))),
+            // 下雨了主动找他（ADR 0050）：和 app.ts 一样只在有真实天气时给；这里是场景的 realRain
+            ...(fakeWeather && sharedWorld && character.herWorld ? {
+                weather: (now: number) => {
+                    const seen = sharedWorld!.at(character.herWorld!, character.schedule!, new Date(now));
+                    return seen ? { day: seen.day, ...(seen.weather ? { weather: seen.weather } : {}) } : undefined;
+                },
+            } : {}),
             now: clock.now,
             waitUntil: clock.waitUntil,
             names,
@@ -619,6 +639,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         }
     } finally {
         planner?.stop();
+        if (fakeWeather) useRealWeather(undefined);
         if (memory && options.hindsight && !options.keepBank) {
             for (const bank of banks) {
                 await options.hindsight.deleteBank(bank).catch(error => {

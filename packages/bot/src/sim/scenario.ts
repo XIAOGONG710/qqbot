@@ -195,6 +195,8 @@ export interface Scenario {
     autonomous: boolean;
     /** 看心情不回的概率（0–1），不写按档位算；写 1 时正聊着的「哈哈」一定不回，用来看不回之后的样子 */
     moodyChance?: number;
+    /** 假的「真实天气」（ADR 0050）：日期 → 下雨的钟头（0–23），这几天按真实天气算（世界和主动消息都认），别的日子照旧生成 */
+    realRain?: Record<string, number[]>;
     /** 指定今天的心情（ADR 0015，卡上心情的名字），比较不同心情时用；不写按虚拟日期抽 */
     mood?: string;
     /** 名单里的其他人（ADR 0016）：她认识写了 intro 的；开了记忆时，事先的聊天先写进他们自己的 bank 和公共库 */
@@ -223,6 +225,12 @@ export function loadScenario(path: string): Scenario {
     return parseScenario(JSON.parse(readFileSync(path, 'utf8')), path);
 }
 
+function rainDays(value: unknown, fail: (message: string) => never): Record<string, number[]> {
+    const ok = value && typeof value === 'object' && !Array.isArray(value) && Object.entries(value).every(([date, hours]) => /^\d{4}-\d{2}-\d{2}$/.test(date)
+        && Array.isArray(hours) && hours.every(h => Number.isInteger(h) && h >= 0 && h <= 23));
+    return ok ? value as Record<string, number[]> : fail('realRain 应为 { "YYYY-MM-DD": [下雨的钟头 0–23] }');
+}
+
 export function parseScenario(data: unknown, where = '场景'): Scenario {
     const fail = (message: string): never => { throw new Error(`${where}：${message}`); };
     if (typeof data !== 'object' || data === null) fail('应为对象');
@@ -247,6 +255,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         moody: s.moody === true,
         autonomous: s.autonomous === true,
         ...(s.moodyChance !== undefined ? { moodyChance: chance(s.moodyChance) } : {}),
+        ...(s.realRain !== undefined ? { realRain: rainDays(s.realRain, fail) } : {}),
         ...(s.mood !== undefined ? { mood: typeof s.mood === 'string' && s.mood ? s.mood : fail('mood 应为心情的名字') } : {}),
         others: parseOthers(s.others, Date.parse(s.start as string), fail),
         history: parseHistory(s.history, 'history', Date.parse(s.start as string), fail),
