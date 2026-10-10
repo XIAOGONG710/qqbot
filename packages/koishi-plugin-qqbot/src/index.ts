@@ -17,6 +17,7 @@ import type { HistoryMessage } from '../../bot/src/backfill.ts';
 import { CONTACT_TIERS, DEFAULTS, parseAppConfig, type AppConfig, type ContactTier } from '../../bot/src/config.ts';
 import { createLog, type Log } from '../../bot/src/log.ts';
 import { isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
+import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
 import { textToSegments } from '../../bot/src/qq-faces.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from '../../bot/src/proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '../../bot/src/st/prompt-converters.ts';
@@ -73,6 +74,7 @@ export interface Config {
     contacts: { qq: number; name: string; tier: ContactTier; persona?: string; intro?: string }[];
     unlistedFriends: boolean;
     schedule: boolean;
+    media: boolean;
     moody: boolean;
     speechCheck: boolean;
     herDays: boolean;
@@ -123,6 +125,9 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**名单外的好友**：私聊时也回复，按 unlisted 档（被认真问到时承认是 AI；任何人加小号好友就能调用模型）'),
         schedule: Schema.boolean().default(DEFAULTS.schedule)
             .description('**作息**：按角色卡上的作息，凌晨睡觉不回、上课晚回、打字有时间。深夜测试时关掉'),
+        media: Schema.boolean().default(DEFAULTS.media)
+            .description('**听语音、看图上的字**（ADR 0052）：他发的语音用 QQ 自带的语音转文字，照片、截图用 NapCat 的 OCR 取上面的字（只有 Windows），她就着内容回，听完语音才回。'
+                + '转不出来、没字、超时（5 秒）照旧只知道是语音、图片；表情包照旧用名字'),
         moody: Schema.boolean().default(DEFAULTS.moody)
             .description('**看心情不回**（ADR 0013）：正聊着、对方一串只回了「哈哈」「嗯」这类反应时，偶尔不回（男朋友档约 15%，越疏越多，最多 35%）。'
                 + '隔一分钟以上再来一条一定回；问句、图片、晚安都照样回。要开着作息'),
@@ -249,6 +254,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.contextTurns !== undefined ? { contextTurns: config.contextTurns } : {}),
         ...(config.contextContacts !== undefined ? { contextContacts: config.contextContacts } : {}),
         ...(config.proactive !== undefined ? { proactive: config.proactive } : {}),
+        ...(config.media !== undefined ? { media: config.media } : {}),
         ...(enabled ? { memory: dropUndefined(memory) } : {}),
         dataDir: config.dataDir,
     };
@@ -337,9 +343,16 @@ export function apply(ctx: Context, config: Config) {
         sendPrivateText: async (userId, text) => Number(await onlineBot().internal.sendPrivateMsg(userId, textToSegments(text))),
         friendHistory: (userId, count) => onlineBot().internal.getFriendMsgHistory(String(userId), undefined, count),
     };
+
+    // 听语音、看图上的字（ADR 0052）：QQ 自带的语音转文字、NapCat 的 OCR（只有 Windows）。adapter-onebot 没有 fetch_ptt_text 的方法，用它通用的 _get
+    const mediaBot = () => onlineBot().internal as unknown as OneBotMediaInternal;
+    const media: MediaReader = {
+        voiceToText: async messageId => String((await mediaBot()._get('fetch_ptt_text', { message_id: messageId }) as { text?: unknown } | null)?.text ?? ''),
+        ocr: async image => ocrLines(await mediaBot().ocrImage(image)),
+    };
     let app: ReturnType<typeof startApp>;
     try {
-        app = startApp({ config: appConfig, transport, log });
+        app = startApp({ config: appConfig, transport, log, media });
     } catch (error) {
         const plain = plainError('插件没有启动', error);
         setConsoleState({ error: plain.message });
@@ -443,4 +456,10 @@ interface OneBotInternal {
     sendPrivateMsg(userId: number, message: { type: string; data: Record<string, unknown> }[]): Promise<number>;
     getFriendMsgHistory(userId: string, messageSeq: undefined, count: number): Promise<HistoryMessage[]>;
     getFriendList(): Promise<OneBotFriend[]>;
+}
+
+/** 听语音、看图（ADR 0052）用到的：ocr_image 是 adapter-onebot 定义了的方法（原样返回 data），fetch_ptt_text 没有，走通用的 _get（retcode 不是 0 就抛错） */
+interface OneBotMediaInternal {
+    ocrImage(image: string): Promise<unknown>;
+    _get(action: string, params: Record<string, unknown>): Promise<unknown>;
 }

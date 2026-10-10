@@ -1,9 +1,11 @@
 // 回复时机（ADR 0007 决策 4–7）：没回的消息她什么时候看到、每条打字多久、收尾之后的附和不回。
 // 档位的节奏系数（ADR 0013 决策 1）：冷场时多久看到、打字多久乘它，越疏越慢；正聊着照样马上看到。
 // 看心情不回（ADR 0013 决策 4）：正聊着、对方这一串只是「哈哈」「嗯」这类反应，按概率不回；隔一分钟以上再来一条一定回。
+// 他发了语音（ADR 0052）：看到之后一条条听完才回，听的时间加在看到的时刻上；在上课不听（看转出来的字，或者让他打字）。
 // 都是纯函数，按聊天记录和时间算；随机的部分按消息 id 定下来，同一串消息重算多少次都一样（调度在 responder.ts，等待期间来新消息会重算）。
 
 import type { StoredMessage } from './history.ts';
+import { listenMs, parseVoiceLine } from './media.ts';
 import { KNOWN_FACE } from './qq-faces.ts';
 import { stateAt, type Schedule } from './schedule.ts';
 
@@ -97,9 +99,9 @@ export function whenSeen(history: StoredMessage[], now: number, options: TimingO
         if (options.wakeable && !history.some(m => m.role === 'assistant' && Date.parse(m.time) >= sleepStart)) {
             const nightly = pending.map(m => Date.parse(m.time)).filter(t => t >= sleepStart);
             const woke = wakeUpTime(nightly);
-            if (woke !== undefined) return { at: woke, reason: '睡着了，被连着来的消息吵醒', woken: true, maxBubbles: 1 };
+            if (woke !== undefined) return listened(pending, { at: woke, reason: '睡着了，被连着来的消息吵醒', woken: true, maxBubbles: 1 });
         }
-        return { at: until + pick(seed, 'wake', AFTER_WAKE_MS), reason: said && activity.kind !== 'sleep' ? '说了睡了，在睡觉，起床后看到' : '在睡觉，起床后看到' };
+        return listened(pending, { at: until + pick(seed, 'wake', AFTER_WAKE_MS), reason: said && activity.kind !== 'sleep' ? '说了睡了，在睡觉，起床后看到' : '在睡觉，起床后看到' });
     }
 
     if (activity.kind === 'class') {
@@ -120,12 +122,25 @@ export function whenSeen(history: StoredMessage[], now: number, options: TimingO
 
     // 在忙得看不了手机（ADR 0031：洗澡）：忙完一两分钟才看到，正聊着也一样
     const busy = options.busy?.(now);
-    if (busy) return { at: Math.max(first, busy.until) + pick(seed, 'busy', AFTER_BUSY_MS), reason: busy.reason };
+    if (busy) return listened(pending, { at: Math.max(first, busy.until) + pick(seed, 'busy', AFTER_BUSY_MS), reason: busy.reason });
 
     // 空闲、课间、水课、体育：正聊着马上看到，冷场过一会儿
     const lastReply = history.findLast(m => m.role === 'assistant');
-    if (lastReply && first - Date.parse(lastReply.time) <= HOT_MS) return { at: first, reason: '正聊着' };
-    return { at: first + Math.round(pick(seed, 'cold', COLD_DELAY_MS) * (options.pace ?? 1)), reason: '冷场，过一会儿才看到' };
+    if (lastReply && first - Date.parse(lastReply.time) <= HOT_MS) return listened(pending, { at: first, reason: '正聊着' });
+    return listened(pending, { at: first + Math.round(pick(seed, 'cold', COLD_DELAY_MS) * (options.pace ?? 1)), reason: '冷场，过一会儿才看到' });
+}
+
+/** 这一串里的语音一条条听完（ADR 0052）：从看到的时刻起，每条从它到了之后开始听；没有语音原样返回 */
+function listened(pending: StoredMessage[], seen: Seen): Seen {
+    let at = seen.at;
+    let total = 0;
+    for (const message of pending) {
+        const ms = listenMs(message.content);
+        if (!ms) continue;
+        at = Math.max(at, Date.parse(message.time)) + ms;
+        total += ms;
+    }
+    return total ? { ...seen, at, reason: `${seen.reason}，听完语音（${Math.round(total / 1000)} 秒）` } : seen;
 }
 
 /** 睡着以后的消息时间（从早到晚）：第几条把她吵醒，返回那一条的时间 */
@@ -165,6 +180,11 @@ function closedByHer(history: Said[]): boolean {
 }
 
 export function isAck(text: string): boolean {
+    // 语音、图片（ADR 0052）：转出了字的语音按他说的话算（「[语音 2秒：嗯嗯]」是附和，「[语音 5秒：我还有个事]」不是）；
+    // 没转出来的语音、照片不知道里面是什么，不算附和，照样回（10-10 模拟器：前一晚道了晚安，第二天上课时来一条语音，被当成附和没回）
+    const voice = parseVoiceLine(text);
+    if (voice) return voice.text ? isAck(voice.text) : false;
+    if (/^\s*\[图片[\]，：]/.test(text)) return false;
     const stripped = text.replace(/\[[^\]]*\]/g, '').replace(/[\p{P}\p{S}\p{Extended_Pictographic}\s～~]/gu, '');
     // 只有表情也算附和
     if (!stripped) return text.trim().length > 0;

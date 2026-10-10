@@ -28,6 +28,9 @@ describe('出口检查：做不到的事（ADR 0006 取证里的原句）', () =
         assert.deepEqual(promises('晚上给你打个电话'), ['打个电话']);
         assert.deepEqual(promises('等会开视频'), ['开视频']);
         assert.deepEqual(promises('我给你发条语音'), ['给你发']);
+        assert.deepEqual(promises('晚点发语音给你'), ['发语音']);
+        // 说的是他发的语音（ADR 0052，10-10 模拟器里「你发语音干嘛，我这没戴耳机」被当成她要发语音删掉了）
+        for (const line of ['你发语音干嘛，我这没戴耳机', '你又发语音', '你干嘛发语音', '你发的语音我听不了']) assert.deepEqual(promises(line), [], line);
         assert.deepEqual(promises('发个红包给你'), ['发个红包']);
     });
     test('拒绝、否定的说法不算', () => {
@@ -106,6 +109,17 @@ describe('出口检查：重写一次，还不行删掉那几行', () => {
         assert.equal((await run('嗯呢\n[10月12日 星期一]\n宝宝你在干嘛', [new Error('超时')])).reply, '嗯呢');
         assert.equal((await run('[你现在：在宿舍]', ['[你现在：在宿舍]'])).reply, '');
         assert.equal((await run('我说的是「你现在在干嘛」', [])).reply, '我说的是「你现在在干嘛」', '不在行首、没有方括号的不算');
+    });
+    test('照抄他发来的语音、图片的写法（ADR 0052）：重写；还在就删掉那一行', async () => {
+        const r = await run('[语音 5秒：好呀好呀]\n等我一下', ['好呀\n等我一下']);
+        assert.equal(r.reply, '好呀\n等我一下');
+        assert.match(r.notes[0]!, /「\[语音 5秒：好呀好呀\]」这是阿明发来的语音、图片在聊天记录里的写法，你只能打字，不写方括号/);
+        assert.equal(r.logs[0], '出口检查：第 1 行照抄了语音、图片的写法「[语音」，带说明重写一次');
+        assert.equal((await run('你看\n[图片]', ['你看\n[图片]'])).reply, '你看');
+        assert.equal((await run('[图片，上面写着：明天见]', [new Error('超时')])).reply, '');
+        for (const line of ['你发的[语音]我在上课听不了', '图片看不清', '[语音通话]不方便', '刚看到你的语音']) {
+            assert.deepEqual(inspectReply(line, []).filter(i => i.kind === 'media'), [], line);
+        }
     });
     test('重写请求失败，用第一版、删掉命中的行', async () => {
         const r = await run('在呢\n晚上给你打个电话', [new Error('连接超时')]);

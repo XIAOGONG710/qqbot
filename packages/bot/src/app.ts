@@ -5,6 +5,8 @@
 // 她自己的日子（ADR 0015）：启动时、她的每一天第一次生成时写一行当天的心情和进度；状态页的「今天」也在这里算。
 // 收发由入口传进来（ADR 0008）：独立入口 main.ts 是自写的 OneBot 客户端（onebot.ts），Koishi 插件是 adapter-onebot；
 // 两边给的都是 NapCat 的原始 OneBot 数据，所以转文字（segmentsToText）、补回（findMissed）只有一份。
+// 他发的语音、图片（ADR 0052）：入口给了 NapCat 的语音转文字、OCR（AppOptions.media）就先听一听、看一看再进聊天记录（media.ts），
+// 每人的消息按收到的顺序一条条进；读的时候不卡别人，读不出来、超时照旧「[语音]」「[图片]」。
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,8 +16,9 @@ import { acquireLock } from './lock.ts';
 import type { Log } from './log.ts';
 import { ChatHistory, type StoredMessage } from './history.ts';
 import { asleepSince, saidBedtimes } from './bedtime.ts';
-import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from './backfill.ts';
-import { segmentsToText, type MessageEvent } from './onebot.ts';
+import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from './backfill.ts';
+import { segmentsToText, type MessageEvent, type Segment } from './onebot.ts';
+import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from './media.ts';
 import type { Responder, ResponderStatus } from './responder.ts';
 import { contextSummarizer } from './context-window.ts';
 import { createContactResponder as createPipeline, loadTierCard, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
@@ -115,6 +118,12 @@ export interface AppOptions {
     log: Log;
     /** 测试用：替换每个回复器的生成、连发合并等待等 */
     pipeline?: Partial<Pick<ContactPipelineOptions, 'generate' | 'settle' | 'now' | 'waitUntil'>>;
+    /** NapCat 的语音转文字、OCR（ADR 0052）；不给就不听不看，照旧「[语音]」「[图片]」 */
+    media?: MediaReader;
+    /** 看图（ADR 0052 只留了口子，还没有提供方）：测试里直接给 */
+    vision?: ImageDescriber;
+    /** 测试用：换掉听、看各项的上限 */
+    mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>;
 }
 
 /** 名单外的人在提示词里的称呼（{{user}}）：QQ 昵称，没有就叫「对方」 */
@@ -122,7 +131,7 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, mediaTimeouts }: AppOptions): App {
     // 每个档位一张角色卡和一本世界书，用到时读一次
     const cards = new Map<Tier, TierCard>();
     const cardFor = (tier: Tier) => {
@@ -204,6 +213,11 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
         const paces = [...tiersInUse].map(tier => `${tier} ×${cardFor(tier).character.pace}`).join('、');
         log(`回复节奏：${paces}；看心情不回：${config.moody ? '开' : '关'}`);
     }
+    // 听语音、看图上的字（ADR 0052）：配置关了、入口没给就不读
+    const reading = config.media ? mediaReading({ ...(media ? { reader: media } : {}), ...(vision ? { vision } : {}), ...(mediaTimeouts ? { timeouts: mediaTimeouts } : {}) }) : undefined;
+    const canRead = [media?.voiceToText && '语音转文字', media?.ocr && '图上的字（OCR）', vision && '看图'].filter(Boolean).join('、');
+    log(`听语音、看图：${!config.media ? '关（配置 media: false），照旧「[语音]」「[图片]」'
+        : canRead ? `开（${canRead}；各最多等 ${(mediaTimeouts?.voice ?? MEDIA_TIMEOUTS.voice) / 1000} 秒，读不出来照旧「[语音]」「[图片]」）` : '开，但入口没给 NapCat 的语音转文字和 OCR，照旧「[语音]」「[图片]」'}`);
     // 主动消息：卡上写了 proactive 的名单联系人（名单外的不主动）；要按作息算时机
     const proactiveContacts = config.proactive !== 'off' && config.schedule
         ? config.contacts.filter(c => cardFor(c.tier).character.proactive && cardFor(c.tier).character.schedule)
@@ -414,6 +428,9 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
     let syncing = false;
     const buffered: MessageEvent[] = [];
 
+    /** 每人一条：要听、要看的消息读完才进聊天记录，后面来的排在它后面（顺序不乱；读是一收到就开始读，不排队） */
+    const inbox = new Map<number, Promise<void>>();
+
     function onMessage(event: MessageEvent): void {
         let responder = responders.get(event.user_id);
         if (!responder) {
@@ -433,7 +450,27 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
         }
         // 补回时可能已经从历史里拿到过这条
         if (history.load(event.user_id).some(m => m.messageId === event.message_id)) return;
-        const text = segmentsToText(event.message).trim();
+        const queued = inbox.get(event.user_id);
+        if (!queued && !reading?.needs(event.message)) {
+            deliver(responder, event, event.message);
+            return;
+        }
+        const qq = event.user_id;
+        const target = responder;
+        const read = reading
+            ? reading.read(event.message, event.message_id, message => log(`[${qq}] ${message}`)).catch(() => event.message)
+            : Promise.resolve(event.message);
+        const job = Promise.all([queued, read]).then(([, message]) => {
+            // 读的时候补回可能已经记下了这条
+            if (stopped || history.load(qq).some(m => m.messageId === event.message_id)) return;
+            deliver(target, event, message);
+        }).catch(error => log(`[${qq}] 处理收到的消息出错：${error instanceof Error ? error.message : String(error)}`));
+        inbox.set(qq, job);
+        void job.then(() => { if (inbox.get(qq) === job) inbox.delete(qq); });
+    }
+
+    function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string): void {
+        const text = segmentsToText(message).trim();
         if (!text) return;
         responder.receive(text, event.message_id, new Date(event.time * 1000));
         planners.get(event.user_id)?.poke();
@@ -450,7 +487,16 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
                 continue;
             }
             if (stopped) return;
-            const missed = findMissed(history.load(contact.qq), fetched, selfId, tierRecord.since(contact.qq));
+            let fresh = newerThanStored(history.load(contact.qq), fetched, tierRecord.since(contact.qq));
+            // 他发的语音、图片先听一听、看一看（ADR 0052）；读的时候实时收到的那条可能已经记下了，按 id 再筛一遍
+            if (reading && fresh.some(m => reading.needs(m.message))) {
+                const contactLog = (message: string) => log(`[${contact.qq}] ${message}`);
+                fresh = await Promise.all(fresh.map(async m => ({ ...m, message: await reading.read(m.message, m.message_id, contactLog).catch(() => m.message) })));
+                if (stopped) return;
+                const known = new Set(history.load(contact.qq).map(m => m.messageId));
+                fresh = fresh.filter(m => !known.has(m.message_id));
+            }
+            const missed = toStored(fresh, selfId);
             for (const message of missed) history.append(contact.qq, message);
             if (missed.length) {
                 const lines = missed.map(m => `${m.role === 'user' ? '对方' : '她'}：${m.content}`).join(' / ');

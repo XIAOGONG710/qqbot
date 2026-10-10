@@ -6,10 +6,17 @@ import { CONTACT_TIERS, UNLISTED_TIER, type ContactTier, type Tier } from '../co
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import type { LifeEventResult } from '../life-events.ts';
 import type { Interruption, TypedActionKind } from '../actions.ts';
+import { imageLine, voiceLine } from '../media.ts';
 
-/** 对方的一条或几条消息；几条时按 gapMs 的真实间隔依次发（默认 800 ms，算连发） */
+/**
+ * 他发的语音、图片（ADR 0052）：按 bot 进聊天记录的写法（media.ts 的 voiceLine / imageLine）变成一行。
+ * voice 是转出来的字（空串 = 没转出来），seconds 是几秒（不写 = 不知道）；image 是图上认出来的字（空串 = 没字）
+ */
+export type MediaSay = { voice: string; seconds?: number } | { image: string };
+
+/** 对方的一条或几条消息；几条时按 gapMs 的真实间隔依次发（默认 800 ms，算连发）。一条可以是语音、图片（MediaSay） */
 export interface SayStep {
-    say: string | string[];
+    say: string | (string | MediaSay)[];
     gapMs?: number;
     /** 在这次回复的过程中插一句：生成中（during: "generation"），或发出第 N 条之后（afterBubbles） */
     interrupt?: { say: string; during?: 'generation'; afterBubbles?: number };
@@ -303,7 +310,7 @@ function checkStep(step: unknown, where: string): void {
     if (kinds.length !== 1) fail(`要有且只有 ${STEP_KINDS.join(' / ')} 其中一个，现在是 ${kinds.join('、') || '都没有'}`);
     if ('say' in s) {
         const say = s.say;
-        if (!(typeof say === 'string' && say) && !(Array.isArray(say) && say.length > 0 && say.every(t => typeof t === 'string' && t))) fail('say 应为非空字符串或字符串数组');
+        if (!(typeof say === 'string' && say) && !(Array.isArray(say) && say.length > 0 && say.every(isSayItem))) fail('say 应为非空字符串，或数组（每项是非空字符串、{ "voice": 转出来的字, "seconds"?: 秒数 } 或 { "image": 图上的字 }）');
         if (s.interrupt !== undefined) {
             const it = s.interrupt as Record<string, unknown>;
             if (typeof it.say !== 'string' || !it.say) fail('interrupt.say 应为非空字符串');
@@ -340,6 +347,21 @@ function checkStep(step: unknown, where: string): void {
     if ('forget' in s && s.forget !== 'chat') fail('forget 只能是 "chat"');
     if ('hindsight' in s && s.hindsight !== 'down' && s.hindsight !== 'up') fail('hindsight 只能是 "down" 或 "up"');
     if ('restart' in s && s.restart !== true) fail('restart 只能是 true');
+}
+
+function isSayItem(item: unknown): boolean {
+    if (typeof item === 'string') return item !== '';
+    if (typeof item !== 'object' || item === null) return false;
+    const m = item as Record<string, unknown>;
+    if ('voice' in m) return typeof m.voice === 'string' && (m.seconds === undefined || (Number.isInteger(m.seconds) && Number(m.seconds) > 0)) && Object.keys(m).every(k => k === 'voice' || k === 'seconds');
+    return typeof m.image === 'string' && Object.keys(m).length === 1;
+}
+
+/** 他发的这一条在聊天记录里的样子 */
+export function sayText(item: string | MediaSay): string {
+    if (typeof item === 'string') return item;
+    if ('voice' in item) return voiceLine({ ...(item.seconds ? { seconds: item.seconds } : {}), ...(item.voice ? { text: item.voice } : {}) });
+    return imageLine(item.image ? { ocr: item.image } : {});
 }
 
 /** "45m"、"1d"、"9h30m"、"90s" → 毫秒 */

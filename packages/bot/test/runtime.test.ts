@@ -720,6 +720,15 @@ describe('配置', () => {
         assert.deepEqual(config.llm.extraBody, {});
     });
 
+    test('听语音、看图（ADR 0052）：默认开，可关；看图还没有提供方，配了 vision 就报错', () => {
+        const env = { QQBOT_LLM_API_KEY: 'k' };
+        assert.equal(withConfig(valid, env).media, true);
+        assert.equal(withConfig({ ...valid, media: false }, env).media, false);
+        assert.equal(withConfig(valid, env).vision, undefined);
+        assert.throws(() => withConfig({ ...valid, media: 'yes' }, env), /media 应为 true 或 false/);
+        assert.throws(() => withConfig({ ...valid, vision: { provider: 'qwen-vl', model: 'qwen-vl-max' } }, env), /vision\.provider「qwen-vl」不认识：还没有接任何看图的模型/);
+    });
+
     test('最近几轮 + 要点（ADR 0043）：默认关；轮数 0–40、灰度名单是 QQ 号数组', () => {
         const env = { QQBOT_LLM_API_KEY: 'k' };
         assert.equal(withConfig(valid, env).contextTurns, 0);

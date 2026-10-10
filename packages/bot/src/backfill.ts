@@ -30,13 +30,23 @@ export interface HistoryMessage {
  * notBefore：换档的时间（tier-record.ts）。降档后旧记录归档了，本地是空的，不设下限会把 QQ 里换档前的消息又补回来。
  */
 export function findMissed(stored: StoredMessage[], fetched: HistoryMessage[], selfId: number, notBefore?: Date): StoredMessage[] {
+    return toStored(newerThanStored(stored, fetched, notBefore), selfId);
+}
+
+/** findMissed 的前一半：还没转成文字的原始记录（他发的语音、图片先听一听、看一看再转，ADR 0052） */
+export function newerThanStored(stored: StoredMessage[], fetched: HistoryMessage[], notBefore?: Date): HistoryMessage[] {
     const known = new Set(stored.map(m => m.messageId).filter(id => id !== undefined));
     const last = stored.at(-1);
     const since = last ? Date.parse(last.time) : -Infinity;
     return fetched
         .filter(m => !known.has(m.message_id) && m.time * 1000 >= Math.floor(since / 1000) * 1000)
         .filter(m => !notBefore || m.time * 1000 >= notBefore.getTime())
-        .sort((a, b) => a.time - b.time)
+        .sort((a, b) => a.time - b.time);
+}
+
+/** findMissed 的后一半：转成聊天记录里的一条（空的不要） */
+export function toStored(messages: HistoryMessage[], selfId: number): StoredMessage[] {
+    return messages
         .map((m): StoredMessage => ({
             time: new Date(m.time * 1000).toISOString(),
             role: (m.sender?.user_id ?? m.user_id) === selfId ? 'assistant' : 'user',
