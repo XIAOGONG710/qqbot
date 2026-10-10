@@ -439,7 +439,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),
             ...(reading ? { books: reading } : {}),
             // 小黄脸（ADR 0051）：最近几次带得太密、他认真说事她只回表情
-            faces: faceContext(options.history.load(contact.qq)),
+            faces: faceContext(options.history.load(contact.qq), contact.tier),
             regenerate: async note => clean(await generate(
                 postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names),
                 log,

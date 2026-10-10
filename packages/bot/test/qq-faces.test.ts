@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { startApp, type Transport } from '../src/app.ts';
 import type { AppConfig } from '../src/config.ts';
-import { faceContext, FACE_WINDOW, FACE_WINDOW_MAX, inspectReply, MAX_FACES, reviewReply, rewriteNote, tidyFaces, type FaceContext } from '../src/exit-check.ts';
+import { faceContext, FACE_WINDOW, FACE_WINDOW_MAX, FACE_WINDOW_MAX_DISTANT, inspectReply, MAX_FACES, reviewReply, rewriteNote, tidyFaces, type FaceContext } from '../src/exit-check.ts';
 import { ChatHistory, type StoredMessage } from '../src/history.ts';
 import { segmentsToText, type MessageEvent } from '../src/onebot.ts';
 import { FACE_NAMES, faceText, facesIn, onlyFaces, SENDABLE_FACES, textToSegments } from '../src/qq-faces.ts';
@@ -110,6 +110,9 @@ describe('出口检查：小黄脸（ADR 0051）', () => {
         assert.equal(tidyFaces('那我先去洗澡了[偷笑]', { recent: spread, serious: false }).reply, '那我先去洗澡了', '隔开的两次也算');
         assert.equal(tidyFaces('那我先去洗澡了[偷笑]', { recent: [...spread.slice(1), '好'], serious: false }).reply, '那我先去洗澡了[偷笑]', '早的那次出了窗口');
         assert.equal(tidyFaces('那我先去洗澡了[偷笑]', { recent: ['哈哈', '好吧\n[委屈]'], serious: false }).reply, '那我先去洗澡了[偷笑]', '只带过一次');
+        // 不熟的档位：窗口里带过一次就不带
+        assert.deepEqual(tidyFaces('那我先去洗澡了[偷笑]', { recent: ['哈哈', '好吧\n[委屈]'], windowMax: FACE_WINDOW_MAX_DISTANT, serious: false }),
+            { reply: '那我先去洗澡了', notes: [`最近 ${FACE_WINDOW} 次回复里已经带了 1 次，这次的不带`] });
     });
     test('他在认真说事、她整条只回了表情：要重写；他只是「哈哈」时不管', () => {
         assert.equal(onlyFaces('[拥抱]'), true);
@@ -123,7 +126,10 @@ describe('出口检查：小黄脸（ADR 0051）', () => {
     test('上下文：她最近几次回复（连着的几条算一次）、她上次回复之后他说的是不是只是反应', () => {
         const m = (role: 'user' | 'assistant', content: string, i: number): StoredMessage => ({ time: new Date(Date.UTC(2026, 9, 10, 6, i)).toISOString(), role, content });
         const history = [m('assistant', '早[睡]', 0), m('user', '早', 1), m('assistant', '在吗', 2), m('assistant', '[捂脸]', 3), m('user', '哈哈哈[笑哭]', 4)];
-        assert.deepEqual(faceContext(history), { recent: ['早[睡]', '在吗\n[捂脸]'], serious: false });
+        assert.deepEqual(faceContext(history), { recent: ['早[睡]', '在吗\n[捂脸]'], windowMax: FACE_WINDOW_MAX, serious: false });
+        assert.equal(faceContext(history, 'boyfriend').windowMax, FACE_WINDOW_MAX);
+        assert.equal(faceContext(history, 'girl_friend').windowMax, FACE_WINDOW_MAX);
+        for (const tier of ['known', 'classmate', 'stranger', 'unlisted'] as const) assert.equal(faceContext(history, tier).windowMax, FACE_WINDOW_MAX_DISTANT, tier);
         assert.equal(faceContext([...history, m('user', '晚安', 5)]).serious, false);
         assert.equal(faceContext([...history, m('user', '今天面试没过', 5)]).serious, true);
         assert.equal(faceContext([...history, m('user', '[大哭]', 5)]).serious, false);
