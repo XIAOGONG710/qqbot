@@ -388,7 +388,7 @@ export function occasionNote(candidate: Candidate, userName: string): string {
         // 旧项目的教训（ADR 0013 决策 2）：分享「刚看到的」会编出一个具体的视频、帖子，对方要链接时给不出来
         quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
             `对方要链接你给不出来），或者问问对方在忙什么（对方可能在忙）`,
-        follow_up: () => `${followUp!.atMorning ? `你起床没多久，跟${userName}说早安，顺便` : ''}问问${userName}${followUp!.when}的${followUp!.item.what}怎么样了（${userName}之前跟你说过）`,
+        follow_up: () => `${followUp!.atMorning ? `你起床没多久，跟${userName}说早安，顺便` : ''}问问${userName}${followUp!.when}的${followUp!.item.what}怎么样了（${userName}之前跟你说过；提个头他就知道是哪件，别把事情经过复述一遍）`,
         dates: () => (candidate.id.endsWith(':midnight')
             ? `零点了，今天是${names}，你一直记着，第一时间跟${userName}说`
             : `今天是${names}。你起床没多久，跟${userName}说早安，也提一句这个日子`),

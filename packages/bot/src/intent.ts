@@ -129,7 +129,8 @@ export function describeIntent(context: IntentContext): string | undefined {
     if (saysOwnThing(context.history)) return '[这一轮你想：回应他刚说的那件事；真有想知道的细节再随口问，不必每次都追问]';
     if (!isOpeningPing(context.history)) return undefined;
     const waiting = context.waiting?.[0];
-    if (waiting) return `[这一轮你想：知道「${waiting}」后来怎么样了，随口问一句；他不想说就算了，不追问]`;
+    // 提个头就行（10-10 线上：主动跟进时把备忘原样念了一遍「昨天上午去图书馆前面集合，折腾了一整个上午，咋样啊」）
+    if (waiting) return `[这一轮你想：知道「${waiting}」后来怎么样了，随口问一句，提个头他就知道是哪件，别把事情经过复述一遍；他不想说就算了，不追问]`;
     if (context.promised) return '[这一轮你想：先把上面你答应的那件事说了，不另起话题]';
     const unanswered = context.unanswered?.[0];
     if (unanswered) return `[这一轮你想：上次问他「${unanswered}」他没顾上回，轻轻再问一次；他不接就算了，不追究]`;

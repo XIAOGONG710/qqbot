@@ -414,7 +414,7 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             const result = await runScenario(scenario, { runId: 'test', dataDir: dir, card, llm, prompt, hindsight, generate, settle: { quietMs: 100, maxMs: 500 } });
             const text = (messages: OpenAIMessage[]) => messages.map(m => m.content).join('\n');
             assert.doesNotMatch(text(seen[0]!), /这一轮你想：知道/);
-            assert.match(text(seen[1]!), /\[这一轮你想：知道「阿明周二下午字节面试」后来怎么样了，随口问一句；他不想说就算了，不追问\]/);
+            assert.match(text(seen[1]!), /\[这一轮你想：知道「阿明周二下午字节面试」后来怎么样了，随口问一句，提个头他就知道是哪件，别把事情经过复述一遍；他不想说就算了，不追问\]/);
             assert.match(text(seen[1]!), /\[你心里还记着、没了结的事（跨天只记客观事实，不保存情绪，也不是要你说的话）：10月5日说好一起看电影，他加班没去成。这件事让此刻的语气留一点余波，不必装作完全没发生；不用特意提，也不翻旧账/);
             assert.ok(result.steps.at(-1)!.logs.includes('挂着的事：等结果 1、没回答 0、没了结 1'));
         } finally {
