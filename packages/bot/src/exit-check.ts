@@ -191,7 +191,9 @@ export function rewriteNote(reply: string, issues: readonly ExitIssue[], userNam
                 case 'contrast': return `在拿${userName}和你自己比着说委屈；说你这边的事就说你这边的，${userName}那边的事顺着问问`;
                 case 'repeat': return i.repeat === 'opener'
                     ? `开头的「${i.match}」你最近几次回复已经用过 ${i.count} 次，换个开头`
-                    : `里的「${i.match}」你最近几次回复已经说过 ${i.count} 次，换个说法`;
+                    : i.repeat === 'verbatim'
+                        ? `是你刚才说过的原话，别再说一遍；接${userName}刚发的这条`
+                        : `里的「${i.match}」你最近几次回复已经说过 ${i.count} 次，换个说法`;
                 case 'nag': return `又在叮嘱${userName}${NAG_TOPIC[i.nag ?? 'sleep']}；这段聊天里你已经叮嘱过了，别再说一遍，接${userName}刚说的就行`;
                 case 'progress': return `「${i.match}」和你的进度对不上：《${i.book!.title}》你${progressFact(i.book!)}`;
                 case 'face': return i.face === 'only'
@@ -201,7 +203,7 @@ export function rewriteNote(reply: string, issues: readonly ExitIssue[], userNam
         });
         return `「${lines[line]!.trim()}」${[...new Set(why)].join('；')}`;
     });
-    const changesMeaning = issues.some(i => i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'contrast' || i.kind === 'service' || i.kind === 'progress' || i.kind === 'nag');
+    const changesMeaning = issues.some(i => (i.kind === 'repeat' && i.repeat === 'verbatim') || i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'contrast' || i.kind === 'service' || i.kind === 'progress' || i.kind === 'nag');
     return `[上一版回复没有发出去：${reasons.join('；')}。${changesMeaning ? '别的意思' : '意思'}不变，重写这次的回复，只输出要发的消息。]`;
 }
 

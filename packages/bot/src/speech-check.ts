@@ -21,8 +21,8 @@ export interface SpeechIssue {
     kind: SpeechKind;
     /** 命中的片段；重复时是那个开头或片段 */
     match: string;
-    /** 重复的是开头还是片段 */
-    repeat?: 'opener' | 'phrase';
+    /** 重复的是开头、片段，还是原话（最近说过的整句又说一遍） */
+    repeat?: 'opener' | 'phrase' | 'verbatim';
     /** 重复：最近几次回复里用过几次 */
     count?: number;
     /** 重复的开头是语气词：去掉它之后的这一行（只剩语气词时是空串） */
@@ -199,17 +199,41 @@ const PLAIN_OPENERS = new Set(['我', '你', '他', '她', '它', '那', '这', 
 const PLAIN_GRAMS = new Set(['你是不是', '是不是你', '我也不知', '也不知道', '不知道啊', '怎么回事', '什么时候']);
 
 /**
- * 夸他「行」的口头禅（10-10 线上：两分钟里连着「行啊你」「行啊你」「你可真行」「真有你的」开头，每个都没到重复的门槛，合起来是一个腔调翻来覆去）：
- * 都算同一个开头；去掉它后面的话照发
+ * 口头禅：几种说法算同一个开头，去掉它后面的话照发。每个单算都没到重复的门槛，合起来是一个腔调翻来覆去（10-10 线上）：
+ * - 夸他「行」：两分钟里连着「行啊你」「行啊你」「你可真行」「真有你的」开头
+ * - 回绝他要亲要抱：四分钟里「想得美」「你想得美」「想得美」，后来又「你做梦呢」「你想得美」
  */
-const TIC = new RegExp(`^(?:行啊你|可以啊你|你可真行|真有你的|你行啊|厉害了你|你真行)[${PUNCT}]*`);
-const TIC_KEY = '行啊你 / 你可真行 / 真有你的 这类';
+const TICS = [
+    { pattern: new RegExp(`^(?:行啊你|可以啊你|你可真行|真有你的|你行啊|厉害了你|你真行)[啊呀]?[${PUNCT}]*`), key: '行啊你 / 你可真行 / 真有你的 这类' },
+    { pattern: new RegExp(`^(?:你想得美|想得美|你想的美|想的美|美得你|你做梦呢|做梦呢|你做梦吧|做梦吧)[啊呀吧]?[${PUNCT}]*`), key: '想得美 / 做梦呢 这类' },
+];
 
-/** 这一行的开头：语气词（按一种算）、夸他行的口头禅（按一种算），或者第一个短句（3 个字以内、不是整行）；都不是就没有 */
+/** 原话重复：6 个字以上（不算标点）的小句和她最近几次回复里的一模一样（10-10 11:48 线上：他回了个表情，她把上一条「我舍友出门了，柜子里就剩半包饼干，中午不想吃这个」整句又说了一遍） */
+const VERBATIM_MIN = 6;
+const plain = (text: string) => text.replace(/[\p{P}\p{S}\s]/gu, '');
+
+/** 这一行里最近原样说过的小句（他最近说过的不算：那是在接他的话），和去掉它们后剩下的话（可能是空串） */
+function verbatim(text: string, said: string, his: string): { match: string; stripped: string } | undefined {
+    const pieces = text.split(new RegExp(`([${PUNCT}]+)`));
+    const repeated: string[] = [];
+    let rest = '';
+    for (let i = 0; i < pieces.length; i += 2) {
+        const clause = pieces[i]!.trim();
+        const core = plain(clause);
+        if (core.length >= VERBATIM_MIN && said.includes(core) && !his.includes(core)) repeated.push(clause);
+        else if (clause) rest += clause + (pieces[i + 1] ?? '');
+    }
+    if (!repeated.length) return undefined;
+    return { match: repeated.join('，'), stripped: rest.replace(new RegExp(`^[${PUNCT}]+|[，,、：:；;\\s]+$`, 'g'), '') };
+}
+
+/** 这一行的开头：语气词（按一种算）、口头禅（每一类按一种算），或者第一个短句（3 个字以内、不是整行）；都不是就没有 */
 export function opener(line: string): { key: string; stripped?: string } | undefined {
     const text = line.trim();
-    const tic = TIC.exec(text);
-    if (tic) return { key: TIC_KEY, stripped: text.slice(tic[0].length).trim() };
+    for (const tic of TICS) {
+        const hit = tic.pattern.exec(text);
+        if (hit) return { key: tic.key, stripped: text.slice(hit[0].length).trim() };
+    }
     const marker = MARKER.exec(text);
     if (marker) {
         const word = marker[1] ?? marker[2]!;
@@ -246,6 +270,8 @@ export function inspectSpeech(reply: string, context: SpeechContext, { repeatAt 
     const recentOpeners = context.recent.map(r => new Set(r.map(l => opener(l)?.key).filter(Boolean)));
     const recentGrams = context.recent.map(r => grams(r.join('\n')));
     const hisGrams = new Set(context.his.flatMap(m => [...grams(m)]));
+    const said = context.recent.map(r => plain(r.join(''))).join('|');
+    const his = context.his.map(plain).join('|');
     for (const [line, raw] of lines.entries()) {
         const text = raw.trim();
         if (!text) continue;
@@ -259,6 +285,11 @@ export function inspectSpeech(reply: string, context: SpeechContext, { repeatAt 
         const nag = nagRepeat(text, context);
         if (nag) {
             issues.push({ line, kind: 'nag', match: nag.match, nag: nag.kind });
+            continue;
+        }
+        const again = verbatim(text, said, his);
+        if (again) {
+            issues.push({ line, kind: 'repeat', repeat: 'verbatim', match: again.match, count: 1, stripped: again.stripped });
             continue;
         }
         const open = opener(text);
@@ -278,6 +309,9 @@ export function inspectSpeech(reply: string, context: SpeechContext, { repeatAt 
             }
         }
     }
+    // 整条都是原话：去不掉，带说明重写
+    const whole = issues.filter(i => i.repeat === 'verbatim' && i.stripped === '');
+    if (whole.length && whole.length === lines.filter(l => l.trim()).length) for (const issue of whole) delete issue.stripped;
     return issues;
 }
 
@@ -380,7 +414,8 @@ export function describeSpeechIssue(issue: SpeechIssue): string {
         case 'ledger': return `算账「${issue.match}」`;
         case 'blame': return `怪对方没说「${issue.match}」`;
         case 'contrast': return `对照的酸话「${issue.match}」`;
-        case 'repeat': return issue.repeat === 'opener' ? `开头「${issue.match}」最近用过 ${issue.count} 次` : `「${issue.match}」最近说过 ${issue.count} 次`;
+        case 'repeat': return issue.repeat === 'opener' ? `开头「${issue.match}」最近用过 ${issue.count} 次`
+            : issue.repeat === 'verbatim' ? `「${issue.match}」最近说过原话` : `「${issue.match}」最近说过 ${issue.count} 次`;
         case 'nag': return `又叮嘱「${issue.match}」（这段已经叮嘱过）`;
     }
 }
@@ -390,7 +425,7 @@ export function strippable(issue: { kind: string; stripped?: string }): boolean 
     return issue.kind === 'repeat' && issue.stripped !== undefined;
 }
 
-/** 去掉重复的语气词开头；只剩语气词的那一行删掉，全删光了就原样留着（不因为口癖不回） */
+/** 去掉重复的语气词开头、口头禅、原样说过的小句；只剩这些的那一行删掉，全删光了就原样留着（不因为口癖不回） */
 export function stripOpeners(reply: string, issues: readonly { line: number; kind: string; stripped?: string }[]): string {
     const strip = new Map(issues.filter(strippable).map(i => [i.line, i.stripped!]));
     if (strip.size === 0) return reply;

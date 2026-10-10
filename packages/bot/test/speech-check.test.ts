@@ -211,6 +211,29 @@ describe('说话的毛病：重复（和她最近几次回复比）', () => {
         assert.equal(opener('你可以啊，去吧'), undefined);
         assert.equal(opener('行啊'), undefined);
     });
+    test('回绝他要亲要抱的口头禅也按一种算（10-10 线上四分钟里三次「想得美」）', () => {
+        const context = { recent: recent('想得美，老老实实吃你的泡面', '就你会装可怜，抱一下\n行了吧，好好上课', '你想得美，抱一下你就能清醒了？'), his: [] };
+        assert.deepEqual(inspectSpeech('想得美，睡觉去', context).map(i => [i.match, i.count, i.stripped]), [['想得美 / 做梦呢 这类', 2, '睡觉去']]);
+        assert.deepEqual(opener('你做梦呢，我拿什么出'), { key: '想得美 / 做梦呢 这类', stripped: '我拿什么出' });
+        assert.equal(opener('我做梦呢'), undefined);
+    });
+    test('原话重复：6 个字以上的小句最近原样说过，去掉它、剩下的照发（10-10 11:48 线上）', () => {
+        const context = { recent: recent('大中午就吃泡面啊\n我也有点饿了，还没下去买', '我舍友出门了，柜子里就剩半包饼干，中午不想吃这个'), his: ['刚泡好泡面', '偷吃你舍友的', '[emmm]'] };
+        const reply = '偷吃也不至于，我舍友出门了，柜子里就剩半包饼干，中午不想吃这个\n算了，我下楼买点什么去';
+        const issues = inspectSpeech(reply, context);
+        assert.deepEqual(issues, [{ line: 0, kind: 'repeat', repeat: 'verbatim', match: '我舍友出门了，柜子里就剩半包饼干，中午不想吃这个', count: 1, stripped: '偷吃也不至于' }]);
+        assert.equal(stripOpeners(reply, issues), '偷吃也不至于\n算了，我下楼买点什么去');
+        // 一行全是原话：这一行删掉
+        assert.equal(stripOpeners('柜子里就剩半包饼干！\n算了，我下楼买点什么去', inspectSpeech('柜子里就剩半包饼干！\n算了，我下楼买点什么去', context)), '算了，我下楼买点什么去');
+        // 整条都是原话：去不掉，带说明重写
+        assert.deepEqual(inspectSpeech('我舍友出门了，柜子里就剩半包饼干', context).map(i => [i.repeat, i.stripped]), [['verbatim', undefined]]);
+    });
+    test('原话重复不算：5 个字以内的短句；他刚说过的话（在接他的话）', () => {
+        const context = { recent: recent('还差一千七\n你真要掏啊'), his: ['差多少你说'] };
+        assert.deepEqual(inspectSpeech('还差一千七，骗你干嘛', context), []);
+        const quoting = { recent: recent('柜子里就剩半包饼干'), his: ['柜子里就剩半包饼干？骗谁呢'] };
+        assert.deepEqual(inspectSpeech('真的，柜子里就剩半包饼干', quoting), []);
+    });
     test('别的开头：第一个短句 3 个字以内，用过 2 次要重写（不能直接去掉）', () => {
         const context = { recent: recent('快睡，都两点了', '你别闹', '快睡，明天还早八'), his: [] };
         assert.deepEqual(inspectSpeech('快睡，明天别忘了', context), [{ line: 0, kind: 'repeat', repeat: 'opener', match: '快睡', count: 2 }]);
