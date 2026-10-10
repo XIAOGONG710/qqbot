@@ -238,8 +238,9 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
                 messages: [{ role: 'assistant', content: '他刚给我转了5000', time: at('2026-09-15T20:30:00').toISOString() }],
             }, [{ ...gift, at: '2026-09-15T20:30' }]);
             assert.equal(state.actions().length, 0);
-            // 金额对不上（他没发过 900）不算
+            // 金额对不上（他没发过 900；「5000」里的「500」也不算）不算
             state.record(contact, episode, [{ ...gift, amount: 900 }]);
+            state.record(contact, episode, [{ ...gift, amount: 500 }]);
             assert.equal(state.actions().length, 0);
             state.record(contact, episode, [gift]);
             state.record(contact, { ...episode, id: 'ep-gift-again' }, [gift]);

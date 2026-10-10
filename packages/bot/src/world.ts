@@ -837,7 +837,7 @@ export function worldState(
                 const amount = draft.kind === 'receive_money' ? draft.amount : undefined;
                 if (draft.kind === 'receive_money') {
                     if (!amount || !Number.isInteger(amount) || amount <= 0 || amount > MAX_GIFT) continue;
-                    const sent = episode.messages.some(m => m.role === 'user' && new Date(m.time) <= at && /转账|红包|转你|给你转/.test(m.content) && m.content.replace(/[,，]/g, '').includes(String(amount)));
+                    const sent = episode.messages.some(m => m.role === 'user' && new Date(m.time) <= at && /转账|红包|转你|给你转/.test(m.content) && new RegExp(`(?<![0-9])${amount}(?![0-9])`).test(m.content.replace(/[,，]/g, '')));
                     if (!sent) continue;
                 }
                 // 同一天向不同人重复说同一件事，不重复改变世界；有物品/课程名时分别算。收到的钱按联系人和金额分开算
