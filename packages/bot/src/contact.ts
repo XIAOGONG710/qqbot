@@ -271,8 +271,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ? options.worldState?.at(character.herWorld, herSchedule, time) ?? worldAt(character.herWorld, herSchedule, time)
                 : undefined;
             const world = around ? describeWorld(around, time) : undefined;
-            const practiced = options.lifeInPrompt && character.herWorld?.cameraFund && options.worldState?.events ? recentPhotography(options.worldState.events(), time) : undefined;
-            const practice = practiced ? describeRecentPhotography(practiced, time) : undefined;
+            const practiced = options.lifeInPrompt && character.herWorld?.cameraFund && options.worldState?.events ? recentPhotography(options.worldState.events(), time, 3, herSchedule) : undefined;
+            const practice = practiced ? describeRecentPhotography(practiced, time, herSchedule) : undefined;
             // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）
             const recap = day && !day.period ? recapOf(day.start, time) : undefined;
             if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);

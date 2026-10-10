@@ -3,7 +3,7 @@
 
 import { bookProgressAt, type ReadingBook } from './her-days.ts';
 import type { LifeEvent } from './life-events.ts';
-import type { Schedule } from './schedule.ts';
+import { herDay, type Schedule } from './schedule.ts';
 import type { WorldNow } from './world.ts';
 
 export const PHOTOGRAPHY_PROJECT_ID = 'photography_growth';
@@ -189,15 +189,20 @@ function compareProjects(a: LongTermProject, b: LongTermProject): number {
         || a.id.localeCompare(b.id);
 }
 
+/** 她的哪一天：给了作息按作息日（02:00 前算前一天），没给按日历日 */
+function herDayOf(at: Date, schedule: Schedule | undefined): Date {
+    return schedule ? herDay(schedule, at) : new Date(at.getFullYear(), at.getMonth(), at.getDate());
+}
+
 function clock(at: Date): string {
     return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
 }
 
 /** 最近几天的摄影练习（生活账接进提示词的第一步，配置 lifeInPrompt）：只数已经落账的 */
-/** days：这几天里有几天弄过（按开始那天的日历日）；minutes 留着给以后用，不进提示词（账上一段空闲活动占满整个下午 / 晚上，加起来的时长夸张） */
+/** days：这几天里有几天弄过（按开始那天；给了作息就按她的作息日，02:00 前算前一天）；minutes 留着给以后用，不进提示词（账上一段空闲活动占满整个下午 / 晚上，加起来的时长夸张） */
 export interface RecentPractice { sessions: number; days: number; minutes: number; steps: string[]; last: Date }
 
-export function recentPhotography(events: readonly LifeEvent[], now: Date, days = 3): RecentPractice | undefined {
+export function recentPhotography(events: readonly LifeEvent[], now: Date, days = 3, schedule?: Schedule): RecentPractice | undefined {
     const from = now.getTime() - days * 86_400_000;
     const work = events
         .filter(event => event.kind === 'work_on_project' && event.target === PHOTOGRAPHY_PROJECT_ID && event.result !== 'failed')
@@ -206,19 +211,21 @@ export function recentPhotography(events: readonly LifeEvent[], now: Date, days 
     if (!work.length) return undefined;
     const minutes = work.reduce((sum, event) => sum + Math.max(0, Math.round((Date.parse(event.endedAt) - Date.parse(event.startedAt)) / 60_000)), 0);
     const steps = [...new Set(work.map(event => event.subject).filter((step): step is string => Boolean(step)))].slice(-3);
-    const dayKeys = new Set(work.map(event => { const d = new Date(event.startedAt); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }));
+    const dayKeys = new Set(work.map(event => { const d = herDayOf(new Date(event.startedAt), schedule); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }));
     return { sessions: work.length, days: dayKeys.size, minutes, steps, last: new Date(work.at(-1)!.endedAt) };
 }
 
 /**
  * 时间块里的一行：只写账上的事实和来源，不写台词（ADR 0021 决策 3）；没练就不写这一行。
- * 「上一回」按她的作息说今天 / 昨天 / 前天，再往前写几号
+ * 「上一回」按她的作息说今天 / 昨天 / 前天，再往前写几号：给了作息就按她的作息日（10-11 00:07 测试：头天 20:27–22:07 弄的，她还没睡，原来按日历日说成「昨天晚上」）
  */
-export function describeRecentPhotography(practice: RecentPractice, now: Date, days = 3): string {
+export function describeRecentPhotography(practice: RecentPractice, now: Date, schedule?: Schedule, days = 3): string {
     // 按天说，不报总时长：账上一段空闲活动占满整个下午或晚上，加起来是「3 天 17 个半小时」，真人不这么算，她会跟着说夸张（10-10 场景 life-in-prompt）
-    const dayOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const dayOf = (d: Date) => herDayOf(d, schedule).getTime();
     const ago = Math.round((dayOf(now) - dayOf(practice.last)) / 86_400_000);
-    const part = practice.last.getHours() < 12 ? '上午' : practice.last.getHours() < 18 ? '下午' : '晚上';
+    const hour = practice.last.getHours();
+    // 零点以后到早上还没睡的那一段是头天的晚上
+    const part = hour < 5 || hour >= 18 ? '晚上' : hour < 12 ? '上午' : '下午';
     const when = ago === 0 ? `今天${part}` : ago === 1 ? `昨天${part}` : ago === 2 ? `前天${part}` : `${practice.last.getMonth() + 1} 月 ${practice.last.getDate()} 日`;
     return `[你这几天拍照修图（你自己过的日子，账上记着的；用不用、怎么说你自己定，没写的别编）：${days} 天里有 ${practice.days} 天在弄（${practice.steps.join('、')}）；上一回是${when}]`;
 }

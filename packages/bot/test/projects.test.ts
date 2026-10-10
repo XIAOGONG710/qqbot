@@ -123,4 +123,12 @@ describe('最近几天的摄影练习进提示词（lifeInPrompt）', () => {
         assert.match(line, /3 天里有 1 天在弄（修昨天拍的片子、研究新相机的设置）；上一回是今天/);
         assert.doesNotMatch(line, /小时|分钟/);
     });
+    test('今天 / 昨天按她的作息日（02:00 前算前一天）：零点后她还没睡，头天晚上弄的是「今天晚上」；后半夜弄的第二天说「昨天晚上」', () => {
+        const sleepAt2 = { sleep: '02:00' } as Schedule;
+        const evening = recentPhotography([work('2026-10-14T20:30:00', 100, '修昨天拍的片子')], new Date('2026-10-15T00:10:00+08:00'), 3, sleepAt2)!;
+        assert.match(describeRecentPhotography(evening, new Date('2026-10-15T00:10:00+08:00'), sleepAt2), /上一回是今天晚上]$/);
+        assert.match(describeRecentPhotography(evening, new Date('2026-10-15T00:10:00+08:00')), /上一回是昨天晚上]$/, '不给作息还是日历日');
+        const late = recentPhotography([work('2026-10-14T23:50:00', 50, '把新相机拍的照片导出来修')], new Date('2026-10-15T10:00:00+08:00'), 3, sleepAt2)!;
+        assert.match(describeRecentPhotography(late, new Date('2026-10-15T10:00:00+08:00'), sleepAt2), /上一回是昨天晚上]$/, '00:40 弄完的，第二天说昨天晚上');
+    });
 });
