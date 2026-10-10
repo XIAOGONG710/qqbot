@@ -169,6 +169,14 @@ interface DayRecord {
 /** 买相机那一趟 */
 export interface CameraTrip { start: Date; end: Date; where: string; what: string; price: number }
 
+/** 她那边刚发生、想第一时间告诉他的事（ADR 0057，主动消息「她那边的事」）：现在只有买到相机（ADR 0053）；at 是事情了结的时刻 */
+export interface WorldNews { id: string; at: Date; what: string }
+
+export function worldNews(now: WorldNow): WorldNews[] {
+    const camera = now.cameraFund?.camera;
+    return camera ? [{ id: 'camera', at: camera.end, what: `刚在${camera.where}买到了${camera.what}（${camera.price} 元，攒的钱买的）` }] : [];
+}
+
 interface Timeline {
     days: Map<string, DayRecord>;
     /** 买了相机的那一趟（钱够、到了那天才有） */
@@ -475,6 +483,9 @@ const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '�
  */
 export function describeWorld(now: WorldNow, at: Date): string | undefined {
     const parts: string[] = [];
+    // 今天 / 明天 / 昨天按她的一天说（和 now.day 一样，凌晨 2 点前算前一天）：零点后她还没睡，下午买的相机还是「今天下午」、白天到的快递是「明天到」
+    const herToday = new Date(`${now.day}T00:00:00`);
+    const ahead = (d: Date) => Math.round((startOfDay(d).getTime() - herToday.getTime()) / DAY_MS);
     if (now.weather) parts.push(describeWeather(now.weather));
     if (now.cat) {
         const { today } = now.cat;
@@ -493,7 +504,7 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
     if (now.parcels.length) {
         parts.push(`快递：${now.parcels.map(p => p.status === 'station' ? `${p.item}在驿站，还没取（${short(p.deadline!)} 前）`
             : p.status === 'picked_today' ? `${p.item}今天取了`
-                : `${p.item}${sameDay(p.when, at) ? '今天' : '明天'}到`).join('；')}`);
+                : `${p.item}${ahead(p.when) <= 0 ? '今天' : '明天'}到`).join('；')}`);
     }
     if (now.homework.length) {
         // 看不到课名的档位，几份一样的合成一条
@@ -507,7 +518,7 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
     }
     const camera = now.cameraFund?.camera;
     if (camera?.state === 'bought') {
-        const day = sameDay(camera.end, at) ? '今天' : sameDay(addDays(camera.end, 1), at) ? '昨天' : `${camera.end.getMonth() + 1} 月 ${camera.end.getDate()} 日`;
+        const day = ahead(camera.end) === 0 ? '今天' : ahead(camera.end) === -1 ? '昨天' : `${camera.end.getMonth() + 1} 月 ${camera.end.getDate()} 日`;
         parts.push(`相机：${day}${partOfDay(camera.start.getHours())}去${camera.where}买的${camera.what}（${camera.price} 元，攒的钱买的）`);
     } else if (camera?.state === 'buying') {
         parts.push(`相机：钱攒够了，这会儿在${camera.where}挑相机，看中的是${camera.what}，${camera.price} 元左右`);
@@ -516,7 +527,7 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
     } else if (now.cameraFund) {
         const last = now.cameraFund.lastDeposit;
         // 周日 21:00 前看到的是上个周日存的
-        const when = last && (sameDay(last.at, at) ? '今天' : `${last.at.getDay() === at.getDay() ? '上' : ''}${WEEKDAYS[last.at.getDay()]}`);
+        const when = last && (ahead(last.at) === 0 ? '今天' : `${last.at.getDay() === herToday.getDay() ? '上' : ''}${WEEKDAYS[last.at.getDay()]}`);
         const note = !last ? '' : last.amount ? `（${when}存了 ${last.amount}）` : `（${when}没存，手上的钱留着花到月底）`;
         // 还差多少直接写上（ADR 0035 第二批：2750 / 4500 她说「还没到一半」）
         const left = now.cameraFund.goal - now.cameraFund.saved;

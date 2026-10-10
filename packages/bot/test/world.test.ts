@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { Schedule } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { describeWorld, occupationAt, parseWorld, recapDay, simulateWorld, worldAt, worldLogger, worldState, type World, type WorldAction } from '../src/world.ts';
+import { describeWorld, occupationAt, parseWorld, recapDay, simulateWorld, worldAt, worldLogger, worldNews, worldState, type World, type WorldAction } from '../src/world.ts';
 import { busySpans } from '../src/life-selector.ts';
 
 const cards = resolve(import.meta.dirname, '../../../characters/linmengyao/st');
@@ -286,7 +286,11 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
         assert.equal(left?.amount, 4500 - fund.price, '剩下的回到手上');
         assert.ok(recapDay(back).some(item => item.includes(`去${fund.where}买了相机`)));
         assert.ok(busySpans(back).some(span => span.text === `去${fund.where}买相机` && span.start.getTime() === at('2026-10-11T14:00:00').getTime()));
+        // 主动消息「她那边的事」（ADR 0057）：出门前就知道几点了结，16:30 买到
+        assert.deepEqual(worldNews(before), [{ id: 'camera', at: at('2026-10-11T16:30:00'), what: `刚在${fund.where}买到了${fund.what}（${fund.price} 元，攒的钱买的）` }]);
         // 下周日不再往相机基金里存；那天以后说的是哪天买的
+        // 零点过后她还没睡（凌晨 2 点前算前一天）：还是「今天下午」
+        assert.match(describeWorld(worldAt(world, schedule, at('2026-10-12T00:30:00'), [gift])!, at('2026-10-12T00:30:00'))!, new RegExp(`相机：今天下午去${fund.where}买的`));
         assert.match(describeWorld(worldAt(world, schedule, at('2026-10-12T20:00:00'), [gift])!, at('2026-10-12T20:00:00'))!, new RegExp(`相机：昨天下午去${fund.where}买的`));
         const nextWeek = worldAt(world, schedule, at('2026-10-18T22:00:00'), [gift])!;
         assert.match(describeWorld(nextWeek, at('2026-10-18T22:00:00'))!, new RegExp(`相机：10 月 11 日下午去${fund.where}买的`));
@@ -295,6 +299,7 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
         // 没有那笔钱：10-11 攒不够，不买
         const plain = worldAt(world, schedule, at('2026-10-11T17:00:00'))!;
         assert.equal(plain.cameraFund!.camera, undefined);
+        assert.deepEqual(worldNews(plain), []);
         assert.match(describeWorld(plain, at('2026-10-11T17:00:00'))!, /攒钱买相机：\d+ \/ 4500 元，还差/);
     });
 
