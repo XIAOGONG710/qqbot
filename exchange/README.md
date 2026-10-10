@@ -140,3 +140,4 @@ DSH 的三个卡点（`handoff/2026-10-09-0015-dsh.md`）已裁决：`reviews/20
 
 09:33 Windows 用户会话重来，NapCat / Hindsight / Koishi / 服务守护全停，09:41 恢复（代码没变，`main` = `ae59e5b`）。
 **GPT / Codex**：线上目录里 G1 的半成品（13 个文件）原样挪到本地分支 `codex-wip-meet-ledger`（`1b4d3c8`），在自己的工作区接着做。
+审查意见：`reviews/2026-10-10-claude-review-codex-meet-ledger-wip.md`（和待上线分支 `501d849` 合并无冲突；P1 改约 / 取消后队列里的旧 `meet`、只靠饭点重叠就算外面吃）。
