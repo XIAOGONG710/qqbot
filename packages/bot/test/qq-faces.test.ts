@@ -220,4 +220,51 @@ describe('QQ 小黄脸：编排（ADR 0051）', () => {
         assert.deepEqual(new ChatHistory(dataDir).load(10001).map(m => `${m.role}:${m.content}`), ['user:今天又迟到了[捂脸]', 'assistant:笑死[捂脸]', 'assistant:你也太惨了']);
         assert.deepEqual(facesIn('笑死[捂脸]').sendable, ['[捂脸]']);
     });
+
+    test('QQ 不收 face 段：去掉表情再发一次纯文字，日志记一行；超时不重发', async () => {
+        const dataDir = mkdtempSync(join(tmpdir(), 'qqbot-faces-'));
+        dirs.push(dataDir);
+        const config: AppConfig = {
+            llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
+            prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
+            characterCard: join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'),
+            contacts: [{ qq: 10001, name: '宝宝', tier: 'boyfriend' }, { qq: 10002, name: '阿杰', tier: 'boyfriend' }],
+            unlistedFriends: false, schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, realWeather: false,
+            candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir,
+        };
+        const sent: string[] = [];
+        const attempts: string[] = [];
+        const logs: string[] = [];
+        const transport: Transport = {
+            sendPrivateText: async (userId, t) => {
+                attempts.push(`${userId}:${t}`);
+                if (textToSegments(t).some(s => s.type === 'face')) throw new Error(userId === 10002 ? 'Timeout: send_private_msg' : 'retcode 1200');
+                sent.push(`${userId}:${t}`);
+                return 900 + sent.length;
+            },
+            friendHistory: async () => { throw new Error('消息不存在'); },
+        };
+        const app = startApp({
+            config, transport, log: line => logs.push(line),
+            pipeline: { generate: async () => '笑死[捂脸]', settle: { quietMs: 0, maxMs: 0 } },
+        });
+        try {
+            for (const [qq, id] of [[10001, 1], [10002, 2]] as const) {
+                app.receive({
+                    post_type: 'message', message_type: 'private', sub_type: 'friend', self_id: 20000, user_id: qq, message_id: id,
+                    time: Math.floor(Date.now() / 1000), message: [text('今天又迟到了')], raw_message: '', sender: { user_id: qq },
+                } as MessageEvent);
+            }
+            const deadline = Date.now() + 3000;
+            while (sent.length < 1 || !attempts.some(a => a.startsWith('10002:'))) {
+                if (Date.now() > deadline) assert.fail('等不到发送');
+                await new Promise(r => setTimeout(r, 10));
+            }
+        } finally {
+            app.stop();
+        }
+        assert.deepEqual(sent, ['10001:笑死'], '去掉表情再发');
+        assert.ok(logs.some(l => l.includes('带小黄脸的消息没发出去（retcode 1200），去掉表情再发一次')));
+        assert.deepEqual(attempts.filter(a => a.startsWith('10002:')), ['10002:笑死[捂脸]'], '超时不重发');
+    });
 });

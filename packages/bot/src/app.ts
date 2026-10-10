@@ -22,6 +22,7 @@ import { createContactResponder as createPipeline, loadTierCard, replySkip, type
 import { currentTierHistory, TierRecord } from './tier-record.ts';
 import { HindsightClient } from './memory/hindsight.ts';
 import { arrivedWhileAsleep } from './reply-timing.ts';
+import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import type { ProactiveMode } from './proactive.ts';
 import { createProactivePlanner, type Planner, type PlannerStatus } from './proactive-planner.ts';
@@ -339,7 +340,19 @@ export function startApp({ config, transport, log, pipeline }: AppOptions): App 
             ...(promises ? { promises } : {}),
             ...(sharedWorld ? { worldState: sharedWorld } : {}),
             contacts: config.contacts,
-            send: (userId, text) => transport.sendPrivateText(userId, text),
+            // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；
+            // 超时不重发：可能已经发出去了，再发就重复
+            send: async (userId, text) => {
+                try {
+                    return await transport.sendPrivateText(userId, text);
+                } catch (error) {
+                    const reason = error instanceof Error ? error.message : String(error);
+                    const plain = removeFaces(text, face => face !== undefined);
+                    if (plain === text || !plain || /timeout|timed out|超时/i.test(reason)) throw error;
+                    log(`[${userId}] 带小黄脸的消息没发出去（${reason}），去掉表情再发一次`);
+                    return transport.sendPrivateText(userId, plain);
+                }
+            },
             log,
             // last-prompt.json 记录的是后处理之后、实际发给模型的消息
             onPrompt: prompt => writeFileSync(
