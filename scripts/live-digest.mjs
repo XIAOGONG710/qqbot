@@ -61,6 +61,8 @@ const scenes = new Map();
 const memory = { recalls: 0, recallFailed: 0, commonFailed: 0, writeFailed: 0, sameThing: 0, submitted: 0 };
 const proactiveSent = new Map();
 const proactiveSkipped = new Map();
+// 听语音、看图（ADR 0052 / 0055）：media.ts 每读一段记一行
+const media = { voiceOk: 0, voiceFailed: 0, ocrText: 0, ocrNone: 0, visionOk: 0, visionFailed: 0 };
 const background = { promises: 0, followUpsAdded: 0, followUpsAsked: 0, followUpsMissed: 0, followUpsDropped: 0, diary: [], modelRetries: 0, replyFailed: 0 };
 const starts = [];
 let napcatDrops = 0;
@@ -114,6 +116,12 @@ for (const { at, type, name, text } of entries) {
         const hit = /命中世界书 ([^，]*)/.exec(body)[1];
         if (hit !== '无') for (const s of hit.split('、')) count(scenes, s.replace(/（.*）/, ''));
     }
+    if (body.startsWith('听语音：转出')) media.voiceOk++;
+    if (body.startsWith('听语音：没转出来')) media.voiceFailed++;
+    if (body.startsWith('看图：上面有')) media.ocrText++;
+    if (body.startsWith('看图：没认出字')) media.ocrNone++;
+    if (body.startsWith('看图：看图模型说了')) media.visionOk++;
+    if (body.startsWith('看图：看图模型没看出来')) media.visionFailed++;
     if (body.startsWith('召回长期记忆')) {
         memory.recalls++;
         memory.sameThing += Number(/同一件事多的 (\d+)/.exec(body)?.[1] ?? 0);
@@ -150,6 +158,8 @@ out.push(`- 意图行：${top(intents)}`);
 out.push(`- 长短：${top(lengths)}`);
 out.push(`- 出口检查介入：${top(exitChecks)}；重写后通过 ${rewrittenOk}`);
 out.push(`- 世界书命中：${top(scenes)}`);
+out.push('', '## 听语音、看图', '');
+out.push(`- 语音转出 ${media.voiceOk}、没转出 ${media.voiceFailed}；图上认出字 ${media.ocrText}、没认出 ${media.ocrNone}；看图模型看出 ${media.visionOk}、没看出 ${media.visionFailed}`);
 out.push('', '## 记忆', '');
 out.push(`- 召回 ${memory.recalls} 次（同一件事多的合计 ${memory.sameThing}）；召回失败 ${memory.recallFailed}、公共记忆召回失败 ${memory.commonFailed}、写入失败 ${memory.writeFailed}；片段提交 ${memory.submitted}`);
 out.push(`- 日记：${background.diary.join('、') || '没写'}`);
