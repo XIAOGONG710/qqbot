@@ -23,6 +23,8 @@ export interface IntentContext {
     unanswered?: readonly string[];
     /** 只有男朋友档会把拥抱、亲吻、想念确认等当作需要明确回接的亲密邀约。 */
     intimate?: boolean;
+    /** 只有男朋友档会把明显的网络梗、缩写和谐音当作需要顺势接住的玩笑。 */
+    playful?: boolean;
 }
 
 /** 她上一次回复以后，他这次说的内容。 */
@@ -55,13 +57,27 @@ function asksForHer(history: readonly Said[]): boolean {
  * 男朋友在要一个拥抱、亲吻、爱意确认或继续陪伴时，不把它压成普通问答，也不因为「睡」字直接收尾。
  * 只匹配完整的亲密说法，避开「抱怨」「亲戚」「亲自」一类无关词；是否启用由调用方按档位决定。
  */
-const INTIMATE_BID = /抱抱|抱我|抱一下|抱一会儿?|抱住我|给我抱|亲亲|亲我|亲一下|亲一口|亲个|mua|啵(?:一个|一下)?|想不想我|有没有想我|爱不爱我|爱我吗|喜不喜欢我|喜欢我吗|喜欢你|爱你|没爱了|不爱我了|不要我了|不喜欢我了|是不是不爱我|不准睡|别睡|不要睡|先别睡|不准走|别走|不要走|再陪(?:陪)?我?(?:一会儿?|一下)|陪我(?:聊|待|睡|一会儿?)/i;
+const INTIMATE_BID = /抱抱|抱我|抱一下|抱一会儿?|抱住我|给我抱|亲亲|亲我|亲一下|亲一口|亲个|mua(?!\s*(?:是什么意思|是啥|啥意思|怎么读|怎么说))|啵(?:一个|一下)?|想不想我|有没有想我|爱不爱我|爱我吗|喜不喜欢我|喜欢我吗|喜欢你|爱你|没爱了|不爱我了|不要我了|不喜欢我了|是不是不爱我|不准睡|别睡|不要睡|先别睡|不准走|别走|不要走|再陪(?:陪)?我?(?:一会儿?|一下)|陪我(?:聊|待|睡|一会儿?)/i;
 const MISSES_ME = /想我(?:吗|没|没有|了吗|了没|了没有|了|啊|呀|呢)?(?=$|[\s?？!！。…~～，,])/;
 // 「我想你应该先睡」「我想你帮我看看」里的「想你」是“我认为 / 我希望你”，不是想念。
 const MISSES_HER = /(?<![不没])想你(?!应该|该|帮|给|替|把|能|会|要|先|去|来|做|说|看|问)/;
 function isIntimateBid(history: readonly Said[]): boolean {
     const text = latestUserText(history);
     return INTIMATE_BID.test(text) || MISSES_ME.test(text) || MISSES_HER.test(text);
+}
+
+const MEME_SHORTHAND = /(?:^|[^a-z])(?:zdjd|xswl|awsl|yyds|nsdd|u1s1|srds|dbq|gkd|zqsg|yygq|nbcs|bdjw)(?=$|[^a-z])/i;
+const MEME_PHRASE = /尊嘟假嘟|绷不住|蚌埠住|我嘞个|不是哥们|闹麻了|已老实|求放过|补药|啊米诺斯|神金|丸辣|哈基米|典中典|寄了|包的|我先.{1,8}为敬|(?:^|\n)并非.{0,8}(?:$|\n)|老师.{0,12}死[\u4e00-\u9fff]{1,2}了/;
+function playfulHint(history: readonly Said[]): string | undefined {
+    const text = latestUserText(history);
+    if (!MEME_SHORTHAND.test(text) && !MEME_PHRASE.test(text)) return undefined;
+    const known: string[] = [];
+    if (/(?:^|[^a-z])zdjd(?=$|[^a-z])/i.test(text)) known.push('zdjd 是「真的假的 / 尊嘟假嘟」');
+    if (/(?:^|[^a-z])xswl(?=$|[^a-z])/i.test(text)) known.push('xswl 是「笑死我了」');
+    if (/(?:^|[^a-z])nsdd(?=$|[^a-z])/i.test(text)) known.push('nsdd 是「你说得对」');
+    if (/(?:^|[^a-z])u1s1(?=$|[^a-z])/i.test(text)) known.push('u1s1 是「有一说一」');
+    if (/(?:^|[^a-z])srds(?=$|[^a-z])/i.test(text)) known.push('srds 是「虽然但是」');
+    return known.length ? `；你认得这里的写法：${known.join('，')}，只拿来理解，不向他解释这张对照表` : '';
 }
 
 /**
@@ -137,6 +153,8 @@ export function describeIntent(context: IntentContext): string | undefined {
     // 「只接他刚说的你们两个人的事」这几个字让候选挑选（ADR 0041）和两条气泡的上限照亲密话算
     if (context.intimate && isIntimateBid(context.history)) return '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事：先给一个明确的亲密回应，再自然地保留一点嘴硬；嘴硬不能是整轮唯一内容，也不把亲近当成交换条件。QQ 上可以直接回抱、回亲或说想他；他说难受时先心疼他，他真要收尾时回应后顺着收尾，他不想你走时能陪就多陪一句]';
     if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行，别一句话就把他打发了；他要睡就哄他睡，他不让你走就再陪他一会儿，不另起话题，也不用约他睡醒再找你]';
+    const meme = context.playful ? playfulHint(context.history) : undefined;
+    if (meme !== undefined) return `[这一轮你想：他在玩网络梗、缩写或谐音，先按最近的上下文理解笑点，顺着同一套逻辑接一句，再接他真正说的事；不把梗按字面纠正，不解释梗或报出处。接不准就用你自己的口气问一句，不装懂；可以夸张、反差或者故意一本正经，但一次只玩一个点，不堆热词${meme}；他真要收尾时接完梗就收尾]`;
     if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句；不分享新进度，不说你接下来做什么，不另起话题，也不用约他忙完回来找你]';
     if (sharesGoodNews(context.history)) return '[这一轮你想：他刚说了件好事，先替他高兴、接住这件事；他顺口问的再顺口答，不另起话题]';
     if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';

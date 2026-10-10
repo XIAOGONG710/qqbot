@@ -107,6 +107,24 @@ describe('这一轮你想（ADR 0019）', () => {
         assert.match(closing, /回应后顺着收尾/);
     });
 
+    test('男朋友发网络缩写、谐音和故意怪话：先接梗，不落进普通问答或收尾', () => {
+        for (const text of ['zdjd', 'xswl', '我先睡为敬', '并非早', '刚才那节课的老师真是死冯了']) {
+            const line = describeIntent({ history: [user(text)], now, playful: true })!;
+            assert.match(line, /顺着同一套逻辑接一句/, text);
+            assert.match(line, /不解释梗或报出处/, text);
+            assert.doesNotMatch(line, /先直接回答|顺着他的话收尾/, text);
+        }
+        assert.match(describeIntent({ history: [user('zdjd')], now, playful: true })!, /真的假的 \/ 尊嘟假嘟/);
+        assert.match(describeIntent({ history: [user('u1s1 你这次说得有道理吗')], now, playful: true })!, /有一说一/);
+    });
+
+    test('接梗加强只给男朋友档，普通英文、真事故和正式说法不误触', () => {
+        assert.equal(describeIntent({ history: [user('zdjd')], now }), undefined);
+        for (const text of ['cos服到了吗', 'mua是什么意思', '我家猫死掉了', '这并非事实']) {
+            assert.doesNotMatch(describeIntent({ history: [user(text)], now, playful: true, intimate: true }) ?? '', /网络梗、缩写或谐音|亲密回应/, text);
+        }
+    });
+
     test('明确难过时只接住，不转去讲自己的猫、书或进度；普通短句不脑补', () => {
         for (const text of ['悲', '我哭得很伤心', '今天累死了', '有点难受', '今天被导师骂了，烦死', '好烦啊', '心累']) {
             const line = describeIntent({ history: [user(text)], now, state: free('在追一部剧'), books: true })!;
