@@ -46,7 +46,7 @@ export interface DaySource {
 }
 
 /** 主动找人的时机（ADR 0011 决策 2）：早安、下课、睡前、冷场、待跟进的事、重要的日子；下雨（ADR 0050，只认真实天气） */
-export const OCCASIONS = ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather'] as const;
+export const OCCASIONS = ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather', 'news'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 档位的回复节奏系数能写多少（ADR 0013 决策 1） */

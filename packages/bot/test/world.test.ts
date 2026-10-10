@@ -277,7 +277,10 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
         assert.match(describeWorld(before, at('2026-10-11T13:00:00'))!, new RegExp(`相机：钱攒够了（4500 元），今天 14:00 要去${fund.where}买，看中的是${fund.what}`));
         const out = worldAt(world, schedule, at('2026-10-11T15:00:00'), [gift])!;
         assert.equal(occupationAt(out, at('2026-10-11T15:00:00')), `在${fund.where}挑相机`);
+        assert.equal(occupationAt(worldAt(world, schedule, at('2026-10-11T16:40:00'), [gift])!, at('2026-10-11T16:40:00')), '刚买完相机回到宿舍，在摆弄新相机', '买完回来那一会儿');
         const back = worldAt(world, schedule, at('2026-10-11T17:00:00'), [gift])!;
+        assert.equal(occupationAt(back, at('2026-10-11T17:00:00')), '刚买完相机回到宿舍，在摆弄新相机');
+        assert.equal(occupationAt(worldAt(world, schedule, at('2026-10-11T17:40:00'), [gift])!, at('2026-10-11T17:40:00')), undefined, '一小时以后照作息');
         assert.equal(back.cameraFund!.camera!.state, 'bought');
         const line = describeWorld(back, at('2026-10-11T17:00:00'))!;
         assert.match(line, new RegExp(`相机：今天下午去${fund.where}买的${fund.what}（${fund.price} 元，攒的钱买的）`));

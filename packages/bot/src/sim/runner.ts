@@ -16,7 +16,7 @@ import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay } from '../proactive.ts';
-import { createProactivePlanner, type Planner } from '../proactive-planner.ts';
+import { createProactivePlanner, newsFrom, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
 import { worldState, type World, CAMERA_FUND_TARGET } from '../world.ts';
 import { DIARY_TEMPERATURE, diaryWriter } from '../diary.ts';
@@ -409,6 +409,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                     return seen ? { day: seen.day, ...(seen.weather ? { weather: seen.weather } : {}) } : undefined;
                 },
             } : {}),
+            // 她那边的事（ADR 0057）：和 app.ts 一样
+            ...(sharedWorld && character.herWorld ? { news: newsFrom(now => sharedWorld!.at(character.herWorld!, character.schedule!, now), character.schedule!) } : {}),
             now: clock.now,
             waitUntil: clock.waitUntil,
             names,

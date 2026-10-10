@@ -330,7 +330,8 @@
                         "quiet",
                         "follow_up",
                         "dates",
-                        "weather"
+                        "weather",
+                        "news"
                     ],
                     "dailyMax": 2,
                     "unansweredMax": 1

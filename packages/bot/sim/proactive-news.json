@@ -1,0 +1,25 @@
+{
+    "name": "男朋友档：买到相机了，她主动跟他说（ADR 0057）",
+    "description": "照 10-11 线上：头天他转了 2000 买相机（攒够了），周日 14:00–16:30 她去山大路科技市场买（ADR 0053）。上午聊几句，之后没人说话；16:35–16:50 之间她主动找他一次，说的是买到相机。他回了接得自然；第二天不再为这件事单发。不用记忆。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-11T10:40:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "gifts": [{ "at": "2026-10-10T15:41:00+08:00", "amount": 2000, "forCamera": true }],
+    "steps": [
+        { "case": "PN01", "note": "上午聊几句：她知道下午要去买" },
+        { "say": "起了没" },
+        { "say": "今天干嘛" },
+        { "check": { "replyAny": ["相机", "科技市场", "山大路", "买"], "exitClean": true } },
+        { "say": "去吧，买到了跟我说" },
+        { "case": "PN02", "note": "买到以后她主动找他：说的是相机" },
+        { "wait": "proactive" },
+        { "check": { "proactive": { "count": [1, 1], "occasions": ["她那边的事"], "replyAny": ["相机", "买到", "到手", "a6100", "索尼", "拿下"], "allowedTimes": true, "exitClean": true } } },
+        { "say": "可以啊，发我看看" },
+        { "check": { "exitClean": true } },
+        { "case": "PN03", "note": "到第二天傍晚：不再为买相机单发" },
+        { "advance": "1d" },
+        { "check": { "proactive": { "perDayMax": 2, "allowedTimes": true, "absent": ["她那边的事"], "exitClean": true } } }
+    ]
+}

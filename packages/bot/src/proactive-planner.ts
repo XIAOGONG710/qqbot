@@ -21,10 +21,11 @@ import type { OpenAIMessage } from './prompt.ts';
 import type { MacroNames } from './st/macros.ts';
 import {
     blockReason, candidateLabel, candidatesOn, herDay, MAX_PROACTIVE_BUBBLES, occasionNote, PENDING_REASON, planFrom, recallTopic,
-    type Candidate, type ImportantDay, type ProactiveInput, type ProactiveRecord, type ProactiveSettings,
+    type Candidate, type ImportantDay, type NewsItem, type ProactiveInput, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
 import type { InitiateOutcome, Responder } from './responder.ts';
 import type { DayWeather } from './weather.ts';
+import { worldNews, type WorldNow } from './world.ts';
 import { formatDate, type Schedule } from './schedule.ts';
 
 /** 记录留多少天 */
@@ -55,6 +56,17 @@ export function rainOf(seen: { day: string; weather?: DayWeather } | undefined, 
 }
 const DAY_MS = 86_400_000;
 
+/** 她那边的事（ADR 0057）：看到明天这一刻为止的世界，挑了结在她的今天、明天的那几件；app.ts 和模拟器共用 */
+export function newsFrom(worldAt: (now: Date) => WorldNow | undefined, schedule: Schedule): (now: number) => NewsItem[] {
+    return now => {
+        const ahead = worldAt(new Date(now + DAY_MS));
+        const days = new Set([now, now + DAY_MS].map(time => formatDate(herDay(schedule, new Date(time)))));
+        return (ahead ? worldNews(ahead) : [])
+            .map(item => ({ id: item.id, day: formatDate(herDay(schedule, item.at)), at: item.at.getTime(), what: item.what }))
+            .filter(item => days.has(item.day));
+    };
+}
+
 export interface PlannerDeps {
     contact: Contact;
     schedule: Schedule;
@@ -81,6 +93,8 @@ export interface PlannerDeps {
     asleep?: (now: number) => boolean;
     /** 她这一刻那边的天气（ADR 0050）：只认真实天气（real），按这个排「下雨」；有它时计划器最多睡 RAIN_REPLAN_MS 就重算（预报会变） */
     weather?: (now: number) => { day: string; weather?: DayWeather } | undefined;
+    /** 她那边的事（ADR 0057）：她的今天、明天会了结的那几件 */
+    news?: (now: number) => NewsItem[];
 }
 
 export interface PlannerStatus {
@@ -246,6 +260,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             history: deps.history.load(contact.qq), records, mode: deps.mode, followUps, ...(deps.skip ? { skip: deps.skip } : {}),
             ...(deps.asleep ? { asleep: deps.asleep } : {}),
             ...(rain ? { rain } : {}),
+            ...(deps.news ? { news: deps.news(now()) } : {}),
             ...(deps.weather ? { rainingNow: (at: number) => rainingAt(deps.weather!(at)?.weather, new Date(at)) } : {}),
         };
     };

@@ -2,8 +2,8 @@
 // 随机的部分按「联系人 + 她的那一天 + 时机」取种子，重启后算出同一个时刻。定时、记录文件和发送在计划器里（app.ts）。
 //
 // 「她的那一天」：从这一天的睡觉时刻（02:00）到第二天的睡觉时刻，和 schedule.ts 一样，00:00–02:00 算前一天的晚上。
-// 每一天的候选：早安、下课、睡前、冷场、待跟进的事、重要的日子、下雨（ADR 0050，只认真实天气），各一个时刻；到点时再查一遍能不能发（blockReason）。
-// 每天的条数有上限：候选比剩下的条数多时按优先级留（日子 > 待跟进 > 早安 > 下课 > 冷场 > 睡前），日子不受上限和「没回就停」限制。
+// 每一天的候选：早安、下课、睡前、冷场、待跟进的事、重要的日子、下雨（ADR 0050，只认真实天气）、她那边的事（ADR 0057），各一个时刻；到点时再查一遍能不能发（blockReason）。
+// 每天的条数有上限：候选比剩下的条数多时按优先级留（日子 > 她那边的事 > 待跟进 > 下雨 > 早安 > 下课 > 冷场 > 睡前），日子不受上限和「没回就停」限制。
 // 错过的不补：到点时没在跑、或者过了 GRACE_MS 才算到的候选，这一天就不发了。
 
 import { expired, firstAsk, partText, whenText, type FollowUp } from './follow-ups.ts';
@@ -13,7 +13,7 @@ import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from '.
 export { herDay } from './schedule.ts';
 
 /** 时机，按优先级从高到低 */
-export const OCCASIONS = ['dates', 'follow_up', 'weather', 'morning', 'after_class', 'quiet', 'bedtime'] as const;
+export const OCCASIONS = ['dates', 'news', 'follow_up', 'weather', 'morning', 'after_class', 'quiet', 'bedtime'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 档位上的设置（卡的 extensions.qqbot.proactive） */
@@ -54,6 +54,14 @@ export interface ProactiveRecord {
     messageIds?: number[];
 }
 
+/** 她那边的一件事（ADR 0057）：她的哪一天、几点了结的、说的是什么（world.ts 的 worldNews） */
+export interface NewsItem {
+    id: string;
+    day: string;
+    at: number;
+    what: string;
+}
+
 /** 某一天的一个候选 */
 export interface Candidate {
     id: string;
@@ -72,6 +80,8 @@ export interface Candidate {
     followUp?: { item: FollowUp; when: string; atMorning: boolean };
     /** 早安：他今天要经历的事（「下午 字节的面试」），说明里提一句 */
     today?: string[];
+    /** 她那边的事：是哪一件 */
+    news?: NewsItem;
 }
 
 export interface ProactiveInput {
@@ -93,6 +103,8 @@ export interface ProactiveInput {
     rain?: { day: string; start: number; forecast: boolean };
     /** 这一刻是不是真在下（实况）；到点核实，预报不准就不发 */
     rainingNow?: (now: number) => boolean;
+    /** 她那边的事（ADR 0057）：她的今天、明天会了结的；到点时没有了（没发生）就不发 */
+    news?: readonly NewsItem[];
 }
 
 const MIN = 60_000;
@@ -124,6 +136,10 @@ const MIDNIGHT_MIN: [number, number] = [0, 5];
 const RAIN_MIN: [number, number] = [10, 25];
 /** 下雨：这个时刻以后不发（晚上下雨，提醒带伞没什么意义） */
 const RAIN_UNTIL = '22:00';
+/** 她那边的事：了结之后这么多分钟（在回去的路上掏出手机） */
+const NEWS_MIN: [number, number] = [5, 20];
+/** 她那边的事：这么久之内聊过才不发（正聊着就在聊天里说）；比别的时机短，这种事等不了一小时 */
+export const NEWS_RECENT_MS = 10 * MIN;
 /** 落在上课时间里的候选推到下课后这么多分钟 */
 const PUSHED_MIN: [number, number] = [5, 15];
 /** 待跟进：第一天问的时刻再往后抖这么多分钟；早安被日子占了时，中午 12:00 起这么多分钟 */
@@ -241,6 +257,13 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
         if (time < at(day, RAIN_UNTIL).getTime()) add('weather', time, `${hm(input.rain.start)} ${input.rain.forecast ? '预报要下雨' : '开始下雨'}`);
     }
 
+    // 她那边的事（ADR 0057）：了结后过一会儿；一件一条（id 带事情的 id）
+    if (enabled.has('news')) {
+        for (const item of (input.news ?? []).filter(n => n.day === dayText)) {
+            add('news', Math.max(item.at, wake) + pick(seed(`news ${item.id}`), 'at', minutes(NEWS_MIN)), item.what, { news: item }, `:${item.id}`);
+        }
+    }
+
     // 零点要祝的那个晚上不另说睡前（10-05 模拟器：睡前先说了「生日快乐，提前说过了」，零点又祝一遍）
     if (enabled.has('bedtime') && !midnight.length) add('bedtime', at(day, BEDTIME_FROM).getTime() + pick(seed('bedtime'), 'at', minutes(BEDTIME_MIN)), '准备睡了');
 
@@ -334,6 +357,8 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
     if (special) return undefined;
     if (candidate.occasion === 'bedtime') {
         if (lastTime !== undefined && now - lastTime < BEDTIME_RECENT_MS) return '20 分钟内聊过';
+    } else if (candidate.occasion === 'news') {
+        if (lastTime !== undefined && now - lastTime < NEWS_RECENT_MS) return '正聊着，聊天里说';
     } else if (lastTime !== undefined && now - lastTime < RECENT_MS) {
         return '一小时内聊过';
     }
@@ -366,6 +391,13 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
             // 按预报排的：到点没在下就不发（预报不准）
             if (!input.rainingNow?.(now)) return '没在下雨';
             break;
+        case 'news': {
+            const item = input.news?.find(n => n.id === candidate.news!.id && n.day === candidate.day);
+            if (!item) return '那件事没发生';
+            // 那之后聊过：聊天里多半已经说了（状态行里有），不再单发一条
+            if (history.some(m => Date.parse(m.time) >= item.at)) return '那之后聊过了';
+            break;
+        }
     }
     return undefined;
 }
@@ -385,6 +417,8 @@ export function occasionNote(candidate: Candidate, userName: string): string {
         // 他在哪看「你现在」那一行：同在学校时他那边也在下，不问「你那边下没下」（ADR 0050 验证：3 次里问了 2 次）
         weather: () => `你这边下雨了（看「你那边」的天气），想起${userName}：问一句他在干嘛、带没带伞，或者说说你这边的雨；他在哪看「你现在」那一行，跟你在一个地方的话他那边也在下；就说这一件`,
         bedtime: () => `时间不早了，跟${userName}道个晚安`,
+        // 只给事实和方向，不给台词（ADR 0036 调整（2026-10-10 夜））
+        news: () => `你${candidate.news!.what}，想第一时间告诉${userName}：说说这件事（看「你那边」那一行），就说这一件；那一行里没写的细节不编`,
         // 旧项目的教训（ADR 0013 决策 2）：分享「刚看到的」会编出一个具体的视频、帖子，对方要链接时给不出来
         quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
             `对方要链接你给不出来），或者问问对方在忙什么（对方可能在忙）`,
@@ -408,7 +442,7 @@ export function recallTopic(candidate: Candidate, userName: string): string {
 
 /** 日志、状态页里的说法：「早安（起床后 12 分钟）」 */
 export const OCCASION_LABELS: Record<Occasion, string> = {
-    dates: '重要的日子', follow_up: '待跟进的事', weather: '下雨', morning: '早安', after_class: '下课', quiet: '冷场', bedtime: '睡前',
+    dates: '重要的日子', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', morning: '早安', after_class: '下课', quiet: '冷场', bedtime: '睡前',
 };
 
 export function candidateLabel(candidate: Candidate): string {

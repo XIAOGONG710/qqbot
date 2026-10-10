@@ -172,6 +172,12 @@ export interface CameraTrip { start: Date; end: Date; where: string; what: strin
 /** 她那边刚发生、想第一时间告诉他的事（ADR 0057，主动消息「她那边的事」）：现在只有买到相机（ADR 0053）；at 是事情了结的时刻 */
 export interface WorldNews { id: string; at: Date; what: string }
 
+/** 世界里定好了几点去做、占掉她一段空闲的事（ADR 0034 的打算里写这件）：现在只有买相机那一趟（ADR 0053），只在那一天 */
+export function worldErrands(now: WorldNow): { start: Date; end: Date; text: string }[] {
+    const camera = now.cameraFund?.camera;
+    return camera && formatDate(camera.start) === now.day ? [{ start: camera.start, end: camera.end, text: `去${camera.where}买相机` }] : [];
+}
+
 export function worldNews(now: WorldNow): WorldNews[] {
     const camera = now.cameraFund?.camera;
     return camera ? [{ id: 'camera', at: camera.end, what: `刚在${camera.where}买到了${camera.what}（${camera.price} 元，攒的钱买的）` }] : [];
@@ -622,7 +628,7 @@ export function unavailableAt(now: WorldNow, at: Date): { until: Date; reason: s
 }
 
 /** 有时长的事各占多久（分钟，ADR 0030）：喂猫、取完快递往回走、和家里视频、写完作业之前在赶的那一段 */
-export const OCCUPATION_MINUTES = { feed: 10, parcel: 15, call: 30, homework: 90 } as const;
+export const OCCUPATION_MINUTES = { feed: 10, parcel: 15, call: 30, homework: 90, newCamera: 60 } as const;
 
 /**
  * 此刻在做的事（ADR 0030，类型化行动的第一步）：世界里有时长的事，现在正好落在里面的那件；没有就是 undefined（照作息的空闲活动）。
@@ -632,6 +638,9 @@ export function occupationAt(now: WorldNow, at: Date): string | undefined {
     const within = (start: Date, minutes: number) => at.getTime() >= start.getTime() && at.getTime() < start.getTime() + minutes * 60_000;
     if (now.familyCall?.done && within(now.familyCall.at, OCCUPATION_MINUTES.call)) return '在和家里视频';
     if (now.cameraFund?.camera?.state === 'buying') return `在${now.cameraFund.camera.where}挑相机`;
+    // 买完回来的那一会儿（10-11 模拟：16:30 买完，状态回到作息里下午那段，16:39 她说「我现在人在图书馆」）
+    const camera = now.cameraFund?.camera;
+    if (camera?.state === 'bought' && within(camera.end, OCCUPATION_MINUTES.newCamera)) return '刚买完相机回到宿舍，在摆弄新相机';
     // 洗澡（ADR 0031）：洗的时候看不到消息（reply-timing 按 unavailableAt 推迟）；洗完后一会儿还算刚洗完
     const shower = now.routine?.shower;
     if (shower && at >= shower.start && at < shower.end) return '在洗澡';

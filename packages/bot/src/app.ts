@@ -28,7 +28,7 @@ import { arrivedWhileAsleep } from './reply-timing.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import type { ProactiveMode } from './proactive.ts';
-import { createProactivePlanner, type Planner, type PlannerStatus } from './proactive-planner.ts';
+import { createProactivePlanner, newsFrom, type Planner, type PlannerStatus } from './proactive-planner.ts';
 import { promiseKeeper, type Appointment } from './promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from './her-days.ts';
 import { bodyAt } from './body.ts';
@@ -417,6 +417,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
                         return seen ? { day: seen.day, ...(seen.weather ? { weather: seen.weather } : {}) } : undefined;
                     },
                 } : {}),
+                // 她那边的事（ADR 0057）：看到明天这一刻为止的世界，挑了结在她的今天、明天的
+                ...(sharedWorld && worldCard ? { news: newsFrom(now => sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, now), worldCard.schedule!) } : {}),
                 // 待跟进的事：用同一个模型配置抽（测试替换的 generate 也用在这里）
                 extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log })),
                 ...(pipeline?.now ? { now: pipeline.now } : {}),

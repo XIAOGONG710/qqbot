@@ -30,7 +30,7 @@ const hm = (time: number) => new Date(time).toTimeString().slice(0, 5);
 
 describe('主动消息：读卡', () => {
     test('男朋友档有主动设置和三个日子，同学档都没有', () => {
-        assert.deepEqual(boyfriend.proactive, { occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather'], dailyMax: 2, unansweredMax: 1 });
+        assert.deepEqual(boyfriend.proactive, { occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather', 'news'], dailyMax: 2, unansweredMax: 1 });
         assert.deepEqual(boyfriend.dates.map(d => d.name), ['你的生日', '你们在一起的纪念日', '他的生日']);
         const classmate = loadCharacterCard(cardPath('classmate'));
         assert.equal(classmate.proactive, undefined);
@@ -255,5 +255,44 @@ describe('主动消息：下雨了（ADR 0050，只认真实天气）', () => {
         const history = [user(t(10, 16, 9)), her(t(10, 16, 9, 1))];
         assert.equal(blockReason(c, c.at, input({ rain, history, rainingNow: () => false })), '没在下雨');
         assert.equal(blockReason(c, c.at, input({ rain, history, rainingNow: () => true })), undefined);
+    });
+});
+
+describe('主动消息：她那边的事（ADR 0057）', () => {
+    // 10-11 周日 14:00–16:30 去山大路科技市场买相机（ADR 0053）
+    const camera = { id: 'camera', day: '2026-10-11', at: t(10, 11, 16, 30), what: '刚在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头（4280 元，攒的钱买的）' };
+
+    test('候选：了结后 5–20 分钟，一件一条；别的日子的、卡上没开的没有', () => {
+        const c = find(candidatesOn(day(10, 11), input({ news: [camera] })), 'news')!;
+        assert.ok(c.at >= t(10, 11, 16, 35) && c.at <= t(10, 11, 16, 50), hm(c.at));
+        assert.equal(c.id, '2026-10-11:news:camera');
+        assert.equal(c.reason, camera.what);
+        assert.equal(find(candidatesOn(day(10, 12), input({ news: [camera] })), 'news'), undefined);
+        const off = { ...boyfriend.proactive!, occasions: boyfriend.proactive!.occasions.filter(o => o !== 'news') };
+        assert.equal(find(candidatesOn(day(10, 11), input({ news: [camera], settings: off })), 'news'), undefined);
+        // 说明：事实和方向，不带引号里的台词
+        const note = occasionNote(c, '宝宝');
+        assert.match(note, /你刚在山大路科技市场买到了二手索尼 a6100.*想第一时间告诉宝宝/);
+        assert.doesNotMatch(note, /「[^」]*[！!]」/);
+    });
+
+    test('到点：没发生的不发；那之后聊过不发；正聊着（10 分钟内）不发；隔了半小时照发', () => {
+        const c = find(candidatesOn(day(10, 11), input({ news: [camera] })), 'news')!;
+        const morning = [user(t(10, 11, 11)), her(t(10, 11, 11, 1))];
+        assert.equal(blockReason(c, c.at, input({ news: [camera], history: morning })), undefined);
+        assert.equal(blockReason(c, c.at, input({ news: [], history: morning })), '那件事没发生');
+        assert.equal(blockReason(c, t(10, 11, 16, 50), input({ news: [camera], history: [...morning, user(t(10, 11, 16, 31), '买到没'), her(t(10, 11, 16, 32), '买到了')] })), '那之后聊过了');
+        // 16:29 还在聊（在店里），16:36 到点：10 分钟内，聊天里说
+        const chatting = [...morning, user(t(10, 11, 16, 28), '挑好没'), her(t(10, 11, 16, 29), '在付钱')];
+        assert.equal(blockReason(c, t(10, 11, 16, 36), input({ news: [camera], history: chatting })), '正聊着，聊天里说');
+        assert.equal(blockReason(c, t(10, 11, 16, 45), input({ news: [camera], history: chatting })), undefined);
+        assert.equal(blockReason(c, c.at, input({ news: [camera], history: [...morning, user(t(10, 11, 16, 0), '买到没'), her(t(10, 11, 16, 1), '还在挑')] })), undefined);
+    });
+
+    test('一天只剩一条时先留她那边的事（日子之后、待跟进之前）', () => {
+        const records = [record('2026-10-11:morning', t(10, 11, 10))];
+        const plan = planFrom(t(10, 11, 12), input({ news: [camera], records, history: [user(t(10, 11, 10, 5)), her(t(10, 11, 10, 6))] }));
+        assert.deepEqual(plan.upcoming.map(c => c.occasion), ['news']);
+        assert.ok(plan.yielded.some(c => c.occasion === 'bedtime'));
     });
 });

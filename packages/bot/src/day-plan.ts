@@ -23,6 +23,8 @@ export interface PlanFacts {
     rainHours?: readonly number[];
     body?: BodyNow;
     homework?: readonly { course: string; due: Date; doneAt: Date }[];
+    /** 世界里定好了几点去做的事（world.ts 的 worldErrands，买相机那一趟）：那一段就写这件事，不写作息里的空闲活动（10-11 模拟：打算写「下午在图书馆赶作业」，她照着说了） */
+    errands?: readonly { start: Date; text: string }[];
 }
 
 /** 一个时段：打算的、实际的（没改就和打算的一样）、为什么改；until：作业压着改的，写完就回到原来的打算 */
@@ -46,6 +48,12 @@ export function dayPlan(schedule: Schedule, plans: Plans | undefined, day: Date,
         for (let t = from.getTime(); t < to.getTime() && planned === undefined; t += SAMPLE_MS) {
             const activity = stateAt(schedule, new Date(t), extra).activity;
             if (activity.kind === 'free' && activity.text) planned = activity.text;
+        }
+        const errand = facts.errands?.find(e => e.start >= from && e.start < to);
+        if (errand) {
+            const text = `${clock(errand.start)} ${errand.text}`;
+            slots.push({ window, planned: text, done: text });
+            continue;
         }
         if (planned === undefined) continue;
         slots.push({ window, planned, ...settle(plans, window, planned, day, from, to, facts) });
@@ -72,7 +80,9 @@ export function revisedSlot(schedule: Schedule, slots: readonly PlanSlot[], now:
 /** 一段的说法：改了的「下午本来打算去图书馆占座，下雨了，在宿舍写作业」，没改的「晚上在追一部剧」 */
 export function describeSlot(slot: PlanSlot): string {
     const name = WINDOW_NAMES[slot.window];
-    return slot.done === slot.planned ? `${name}${slot.planned}` : `${name}本来打算${slot.planned}，${slot.because}，${slot.done}`;
+    // 定了钟点的事（「14:00 去…」）前面空一格
+    const gap = /^[0-9]/.test(slot.planned) ? ' ' : '';
+    return slot.done === slot.planned ? `${name}${gap}${slot.planned}` : `${name}本来打算${slot.planned}，${slot.because}，${slot.done}`;
 }
 
 /**
@@ -113,6 +123,10 @@ function settle(plans: Plans | undefined, window: FreeWindow, planned: string, d
         }
     }
     return { done: planned };
+}
+
+function clock(at: Date): string {
+    return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
 }
 
 /** 那天的三个时段：上午从起床（或睡醒那刻往后都行，stateAt 自己会判断睡觉）到 afternoonFrom，下午到 eveningFrom，晚上到第二天睡觉 */

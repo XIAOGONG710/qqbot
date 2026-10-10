@@ -6,7 +6,7 @@ import { dayPlan, describePlans, describeSlot, planNow, type PlanFacts, type Pla
 import { readingActivities } from '../src/her-days.ts';
 import { stateAt } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { worldAt } from '../src/world.ts';
+import { worldAt, worldErrands, type WorldAction } from '../src/world.ts';
 
 const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
 const boyfriend = card('boyfriend');
@@ -95,5 +95,20 @@ describe('她一天的打算会改（ADR 0034）', () => {
         const slots = dayPlan(schedule, undefined, day(10, 20), facts(boyfriend, 10, 20), extra);
         assert.ok(slots.every(s => s.done === s.planned));
         assert.equal(plans.rest, '躺在床上刷手机');
+    });
+});
+
+describe('一天的打算：世界里定好了几点去做的事（买相机那一趟，ADR 0053）', () => {
+    test('10-11 下午那一段写「14:00 去山大路科技市场买相机」，不写作息里的空闲活动；别的日子照旧', () => {
+        // 头天他转了 2000 买相机，攒够了（10-10 线上）
+        const gift: WorldAction = { id: '1:ep:1:receive_money', kind: 'receive_money', day: '2026-10-10', at: '2026-10-10T15:41', contact: 1, episode: 'ep', amount: 2000, target: 'camera_fund' };
+        const morning = worldAt(boyfriend.herWorld!, schedule, at(10, 11, 11), [gift])!;
+        const errands = worldErrands(morning);
+        assert.deepEqual(errands.map(e => [e.text, e.start.getHours()]), [['去山大路科技市场买相机', 14]]);
+        const slots = dayPlan(schedule, plans, day(10, 11), { homework: morning.homework, errands }, extra);
+        const afternoon = slots.find(s => s.window === 'afternoon')!;
+        assert.deepEqual([afternoon.planned, afternoon.done], ['14:00 去山大路科技市场买相机', '14:00 去山大路科技市场买相机']);
+        assert.match(describePlans(schedule, slots, at(10, 11, 11))!, /下午 14:00 去山大路科技市场买相机/);
+        assert.deepEqual(worldErrands(worldAt(boyfriend.herWorld!, schedule, at(10, 12, 11), [gift])!), [], '只在那一天');
     });
 });
