@@ -32,6 +32,9 @@ QQ 机器人的核心：按 SillyTavern 角色卡 + 世界书拼提示词，调 
      默认 `false`（同 ST 默认的逐步挤出）。示例配置开着：示例对话是校正她语气的主要手段（调研方案 4.2 建议调试期常驻）
    - `llm.promptPostProcessing`：发送前的消息后处理，取值同 ST 自定义接口的 Prompt Post-Processing（`""` / `merge` / `semi` / `strict`），默认不处理
    - `llm.extraBody`：合并进请求体的额外参数，同 ST 自定义接口的 Include Body Parameters
+   - `vision`：可选的 DeepSeek 看图配置（[ADR 0055](../../docs/adr/0055-deepseek-vision.md)）。写成
+     `{ "provider": "deepseek", "model": "deepseek-flash" }` 后，普通照片 / 截图会用同一个 `QQBOT_LLM_API_KEY` 发给 DeepSeek；默认不配、不外发图片。
+     `baseUrl` 默认 `https://api.deepseek.com`，`timeoutMs` 默认 8000。NapCat OCR 不依赖这一项
 
    示例配置按 DeepSeek 填写（[接口文档](https://api-docs.deepseek.com/)）：
    - `promptPostProcessing: "semi"`：和 ST 的 DeepSeek 接入一致，连续同角色的消息合并，中途的 system 改成 user

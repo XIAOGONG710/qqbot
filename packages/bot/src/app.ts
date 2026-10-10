@@ -120,7 +120,7 @@ export interface AppOptions {
     pipeline?: Partial<Pick<ContactPipelineOptions, 'generate' | 'settle' | 'now' | 'waitUntil'>>;
     /** NapCat 的语音转文字、OCR（ADR 0052）；不给就不听不看，照旧「[语音]」「[图片]」 */
     media?: MediaReader;
-    /** 看图（ADR 0052 只留了口子，还没有提供方）：测试里直接给 */
+    /** 看图（ADR 0055）：运行入口按配置建；测试也可以直接给假的 */
     vision?: ImageDescriber;
     /** 测试用：换掉听、看各项的上限 */
     mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>;
@@ -216,10 +216,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
         log(`回复节奏：${paces}；看心情不回：${config.moody ? '开' : '关'}`);
     }
     // 听语音、看图上的字（ADR 0052）：配置关了、入口没给就不读
-    const reading = config.media ? mediaReading({ ...(media ? { reader: media } : {}), ...(vision ? { vision } : {}), ...(mediaTimeouts ? { timeouts: mediaTimeouts } : {}) }) : undefined;
+    const mediaLimits = { ...MEDIA_TIMEOUTS, ...(config.vision ? { vision: config.vision.timeoutMs } : {}), ...mediaTimeouts };
+    const reading = config.media ? mediaReading({ ...(media ? { reader: media } : {}), ...(vision ? { vision } : {}), timeouts: mediaLimits }) : undefined;
     const canRead = [media?.voiceToText && '语音转文字', media?.ocr && '图上的字（OCR）', vision && '看图'].filter(Boolean).join('、');
     log(`听语音、看图：${!config.media ? '关（配置 media: false），照旧「[语音]」「[图片]」'
-        : canRead ? `开（${canRead}；各最多等 ${(mediaTimeouts?.voice ?? MEDIA_TIMEOUTS.voice) / 1000} 秒，读不出来照旧「[语音]」「[图片]」）` : '开，但入口没给 NapCat 的语音转文字和 OCR，照旧「[语音]」「[图片]」'}`);
+        : canRead ? `开（${canRead}；语音最多等 ${mediaLimits.voice / 1000} 秒，OCR ${mediaLimits.ocr / 1000} 秒，看图模型 ${mediaLimits.vision / 1000} 秒，读不出来照旧「[语音]」「[图片]」）` : '开，但入口没给 NapCat 的语音转文字和 OCR，照旧「[语音]」「[图片]」'}`);
     // 主动消息：卡上写了 proactive 的名单联系人（名单外的不主动）；要按作息算时机
     const proactiveContacts = config.proactive !== 'off' && config.schedule
         ? config.contacts.filter(c => cardFor(c.tier).character.proactive && cardFor(c.tier).character.schedule)

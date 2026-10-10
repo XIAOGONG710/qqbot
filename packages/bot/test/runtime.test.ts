@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { loadConfig, parseAppConfig } from '../src/config.ts';
+import { MEDIA_TIMEOUTS } from '../src/media.ts';
 import { currentTierHistory, TierRecord } from '../src/tier-record.ts';
 import { ChatHistory, type StoredMessage } from '../src/history.ts';
 import { isPrivateFriendMessage, segmentsToText, type MessageEvent } from '../src/onebot.ts';
@@ -720,13 +721,15 @@ describe('配置', () => {
         assert.deepEqual(config.llm.extraBody, {});
     });
 
-    test('听语音、看图（ADR 0052）：默认开，可关；看图还没有提供方，配了 vision 就报错', () => {
+    test('听语音、看图（ADR 0052/0055）：默认只听语音和 OCR；DeepSeek 看图复用 LLM key', () => {
         const env = { QQBOT_LLM_API_KEY: 'k' };
         assert.equal(withConfig(valid, env).media, true);
         assert.equal(withConfig({ ...valid, media: false }, env).media, false);
         assert.equal(withConfig(valid, env).vision, undefined);
         assert.throws(() => withConfig({ ...valid, media: 'yes' }, env), /media 应为 true 或 false/);
-        assert.throws(() => withConfig({ ...valid, vision: { provider: 'qwen-vl', model: 'qwen-vl-max' } }, env), /vision\.provider「qwen-vl」不认识：还没有接任何看图的模型/);
+        const vision = withConfig({ ...valid, vision: { provider: 'deepseek', model: 'deepseek-flash' } }, env).vision!;
+        assert.deepEqual(vision, { provider: 'deepseek', model: 'deepseek-flash', timeoutMs: MEDIA_TIMEOUTS.vision });
+        assert.throws(() => withConfig({ ...valid, vision: { provider: 'qwen-vl', model: 'qwen-vl-max' } }, env), /vision\.provider「qwen-vl」不认识：应为 deepseek 之一/);
     });
 
     test('最近几轮 + 要点（ADR 0043）：默认关；轮数 0–40、灰度名单是 QQ 号数组', () => {

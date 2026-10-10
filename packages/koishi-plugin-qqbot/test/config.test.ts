@@ -71,6 +71,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(config.unlistedFriends, DEFAULTS.unlistedFriends);
         assert.equal(config.schedule, DEFAULTS.schedule);
         assert.equal(config.media, DEFAULTS.media);
+        assert.equal(config.vision.enabled, false);
         assert.equal(config.moody, DEFAULTS.moody);
         assert.equal(config.speechCheck, DEFAULTS.speechCheck);
         assert.equal(config.herDays, DEFAULTS.herDays);
@@ -97,6 +98,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
             { ...minimal, speechCheck: false },
             { ...minimal, herDays: false },
             { ...minimal, media: false },
+            { ...minimal, vision: { enabled: true, model: 'deepseek-flash', timeoutMs: 6000 } },
         ];
         for (const sample of samples) {
             const config = Config(sample as never);
@@ -119,6 +121,19 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(fromKoishi(before0009).media, true);
         assert.equal(fromKoishi({ ...minimal, media: false }).media, false);
         assert.equal('media' in (Config.simplify(Config(minimal as never)) as object), false);
+    });
+
+    test('DeepSeek 看图（ADR 0055）：默认关；打开后填默认接口和模型，复用 LLM key', () => {
+        assert.equal(fromKoishi(minimal).vision, undefined);
+        const parsed = fromKoishi({ ...minimal, vision: { enabled: true } });
+        assert.deepEqual(parsed.vision, {
+            provider: 'deepseek',
+            baseUrl: DEFAULTS.vision.baseUrl,
+            model: DEFAULTS.vision.model,
+            timeoutMs: DEFAULTS.vision.timeoutMs,
+        });
+        assert.equal(parsed.llm.apiKey, 'k');
+        assert.equal((Config.simplify(Config(minimal as never)) as { vision?: { enabled?: boolean } }).vision?.enabled ?? false, false);
     });
 
     test('看心情不回（ADR 0013）：旧的配置没有这一项时是开；关了照样传过去；等于默认值时不写进 koishi.yml', () => {

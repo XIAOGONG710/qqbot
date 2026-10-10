@@ -10,6 +10,7 @@ import { createLog } from './log.ts';
 import type { HistoryMessage } from './backfill.ts';
 import { ocrLines } from './media.ts';
 import { isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
+import { configuredImageDescriber } from './vision.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const config = loadConfig(repoRoot);
@@ -31,6 +32,7 @@ const app = startApp({
         voiceToText: async messageId => (await client.call<{ text: string }>('fetch_ptt_text', { message_id: messageId })).text,
         ocr: async image => ocrLines(await client.call<unknown>('ocr_image', { image })),
     },
+    vision: configuredImageDescriber(config),
 });
 process.on('exit', () => app.stop());
 
