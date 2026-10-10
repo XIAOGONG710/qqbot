@@ -61,6 +61,16 @@ function sharesGoodNews(history: readonly Said[]): boolean {
         && GOOD_NEWS.test(message.content) && /[！!]/.test(message.content) && !/[?？]/.test(message.content));
 }
 
+/**
+ * 他在认错、求和（「我错了还不行么」「还生气呢」「我说话也冲了」「我的我的」）：先接这件事，不拿她今天的事岔开。
+ * 10-10 盲评 be-046：「你别不理我啊 / 我错了还不行么」她回一句「行行行 知道错就行了」就去报土豆、猫粮、驿站（N3、N4 都这样）。
+ * 词表和 affect.ts 的 REPAIR 同源，多了口语的说法。
+ */
+const MAKING_UP = /对不起|抱歉|是我不好|我错了|我的我的|别生气|还(?:在)?生气|消消气|原谅我|别不理我|我说话(?:也)?(?:太)?冲|不该(?:那么|这么)?说/;
+function makesUp(history: readonly Said[]): boolean {
+    return MAKING_UP.test(latestUserText(history));
+}
+
 function asksQuestion(history: readonly Said[]): boolean {
     const text = latestUserText(history).trim();
     return !/^(?:在吗|在不在)[？?。！!\s]*$/.test(text) && QUESTION.test(text);
@@ -123,6 +133,7 @@ export function describeIntent(context: IntentContext): string | undefined {
     if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行，只回一句「行，睡吧」就成了打发他；他要睡就哄他睡，不另起话题，也不用约他睡醒再找你]';
     if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句；不分享新进度，不说你接下来做什么，不另起话题，也不用约他忙完回来找你]';
     if (sharesGoodNews(context.history)) return '[这一轮你想：他刚说了件好事，先替他高兴、接住这件事；他顺口问的再顺口答，不另起话题]';
+    if (makesUp(context.history)) return '[这一轮你想：他在认错、求和，先接这件事：原谅他也好，嘴硬两句也好，一两句就够；他顺口问的再顺口答，不另起话题，不铺开讲你今天的事]';
     if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
     if (needsCare(context.history)) return '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够；他认真难过、生病或很累时，第一句先安慰或问怎么了，不先损他；不转去讲你自己的事，不硬开新话题]';
     if (isRelationshipBid(context.history)) return '[这一轮你想：只接他刚说的你们两个人的事，一两句就够；不转去讲猫、书或手头的进度]';

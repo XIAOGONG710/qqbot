@@ -100,6 +100,16 @@ describe('这一轮你想（ADR 0019）', () => {
         assert.equal(describeIntent({ history: [user('背题背得脑瓜子都大了')], now, state: free('在追一部剧') }), undefined);
         assert.match(describeIntent({ history: [user('就你那天拧开的那瓶水'), user('你递过来的时候我心里特别软')], now, state: free('刷摄影区'), books: true })!, /只接他刚说的你们两个人的事/);
     });
+
+    test('他认错、求和时先接这件事，不铺开讲她今天的事；顺口问的照样答（10-10 盲评 be-046 / be-051）', () => {
+        for (const said of [['你别不理我啊', '我错了还不行么'], ['……还生气呢', '我昨晚上琢磨了一宿'], ['第七集', '……前天那事 我说话也冲了'], ['行行行 我的我的', '中午吃啥了 别不理人']]) {
+            const line = describeIntent({ history: said.map(text => user(text)), now, state: free('在追一部剧'), books: true })!;
+            assert.match(line, /他在认错、求和/, said.join(' / '));
+            assert.match(line, /他顺口问的再顺口答/);
+        }
+        assert.match(describeIntent({ history: [user('对不起嘛'), user('我先睡了 晚安')], now })!, /收尾/, '道完歉要睡还是收尾');
+        assert.equal(describeIntent({ history: [user('今天食堂人好多')], now, state: free('在追一部剧') }), undefined);
+    });
 });
 
 describe('挂着的事进意图行（ADR 0023）', () => {
