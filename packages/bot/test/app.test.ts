@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { startApp, type App, type Transport } from '../src/app.ts';
 import type { HistoryMessage } from '../src/backfill.ts';
-import type { MEDIA_TIMEOUTS, MediaReader } from '../src/media.ts';
+import type { ImageDescriber, MEDIA_TIMEOUTS, MediaReader } from '../src/media.ts';
 import type { AppConfig } from '../src/config.ts';
 import { ChatHistory } from '../src/history.ts';
 import type { MessageEvent } from '../src/onebot.ts';
@@ -61,7 +61,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS> } = {}) {
     const sent: string[] = [];
     const logs: string[] = [];
     const asked: number[] = [];
@@ -79,6 +79,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
     const app = startApp({
         config: cfg, transport, log: message => logs.push(message),
         ...(options.media ? { media: options.media } : {}),
+        ...(options.vision ? { vision: options.vision } : {}),
         ...(options.mediaTimeouts ? { mediaTimeouts: options.mediaTimeouts } : {}),
         pipeline: {
             generate: async () => '好', settle: { quietMs: 0, maxMs: 0 },
@@ -410,6 +411,22 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
         await until(() => sent.length > 0);
         assert.deepEqual(chat(cfg, 10001).filter(m => m.startsWith('user:')), ['user:[图片]', 'user:我家猫']);
         assert.ok(logs.includes('[10001] 看图：没认出字（超时 0.1 秒）'), logs.join('\n'));
+    });
+
+    test('看图只给名单里的人（用户 10-10）：名单外好友发来的照片不送看图模型，照旧只认图上的字', async () => {
+        const cfg = config({ unlistedFriends: true });
+        const fake = napcat({}, { 'https://x/cat.jpg': ['猫粮'], 'https://x/dog.jpg': ['狗粮'] });
+        const described: string[] = [];
+        const vision = { describe: async ({ url }: { url: string }) => { described.push(url); return '一只猫趴在窗台上'; } };
+        const { app, sent } = setup(cfg, { 10001: [], 20002: [] }, { media: fake.media, vision });
+        await app.connected(SELF);
+        app.receive(mediaEvent(10001, 1, photoSegment('https://x/cat.jpg')));
+        app.receive(mediaEvent(20002, 2, photoSegment('https://x/dog.jpg')));
+        await until(() => sent.length >= 2);
+        assert.deepEqual(described, ['https://x/cat.jpg'], '只看了名单里的人发的');
+        assert.match(chat(cfg, 10001).find(m => m.startsWith('user:'))!, /一只猫趴在窗台上/);
+        assert.doesNotMatch(chat(cfg, 20002).find(m => m.startsWith('user:'))!, /猫|窗台/);
+        assert.deepEqual(fake.calls.ocr.sort(), ['https://x/cat.jpg', 'https://x/dog.jpg'], 'OCR 两边照旧');
     });
 
     test('表情包不跑 OCR、照旧用名字；转不出来的语音照旧「[语音]」；配置关了什么都不调', async () => {

@@ -24,9 +24,33 @@ const defaultFetch: VisionFetch = (url, init) => undiciFetch(url, { ...init, dis
  * 一次只说明一张图，正文会再由 media.ts 截短。关思考，避免简单看图把 8 秒上限耗在推理过程上。
  * DeepSeek 官方的多模态格式：user.content = text + image_url 两个内容块。
  */
-export function deepSeekImageDescriber(options: DeepSeekVisionOptions, doFetch: VisionFetch = defaultFetch): ImageDescriber {
+/** 把图先下到本机、转成 data URL（DeepSeek 自己下载外网图会失败：10-10 冒烟，维基的图 400「Failed to download image」；base64 0.8 秒认出来） */
+export type ImageDownload = (url: string) => Promise<string | undefined>;
+
+/** 单张最多这么大（字节）；更大的、下不来的退回直接给地址 */
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+export function imageDownloader(timeoutMs: number): ImageDownload {
+    return async url => {
+        if (!url.startsWith('http://') && !url.startsWith('https://')) return undefined;
+        try {
+            const response = await undiciFetch(url, { dispatcher, signal: AbortSignal.timeout(timeoutMs) });
+            if (!response.ok) return undefined;
+            const type = response.headers.get('content-type')?.split(';')[0]?.trim() || 'image/jpeg';
+            if (!type.startsWith('image/')) return undefined;
+            const bytes = Buffer.from(await response.arrayBuffer());
+            if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) return undefined;
+            return `data:${type};base64,${bytes.toString('base64')}`;
+        } catch {
+            return undefined;
+        }
+    };
+}
+
+export function deepSeekImageDescriber(options: DeepSeekVisionOptions, doFetch: VisionFetch = defaultFetch, download?: ImageDownload): ImageDescriber {
     return {
-        async describe({ url }) {
+        async describe({ url: original }) {
+            const url = (download ? await download(original) : undefined) ?? original;
             const response = await doFetch(`${options.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
                 method: 'POST',
                 headers: {
@@ -66,5 +90,5 @@ export function configuredImageDescriber(config: Pick<AppConfig, 'llm' | 'vision
         model: config.vision.model,
         apiKey: config.llm.apiKey,
         timeoutMs: config.vision.timeoutMs,
-    });
+    }, defaultFetch, imageDownloader(Math.min(4000, config.vision.timeoutMs)));
 }

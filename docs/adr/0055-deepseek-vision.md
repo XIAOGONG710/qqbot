@@ -32,3 +32,11 @@ DeepSeek 官方图像理解文档也明确：`deepseek-flash` 的 Chat Completio
 1. 在虚拟机的 Koishi 控制台打开开关（线上不在这台开发机；不能拿本机端口和 `runtime/` 判断线上状态）。
 2. 用不含隐私的自制图做一次真接口冒烟，确认 QQ 图片 URL 能由 DeepSeek 下载、日志显示「看图」。
 3. 再由用户发一张愿意交给 DeepSeek 的普通图片确认端到端；失败只关开关，不影响 OCR 和文字聊天。
+
+## 调整（2026-10-10 晚，Claude）：只给名单里的人；先下载再发
+
+- **用户 10-10 22:50**：开，只对名单里的人。`app.ts` 建两份读取器，名单里的人用带看图的，名单外的（`unlistedFriends`）只走语音转文字和 OCR（OCR 在本机，图不出去）。测试：名单里的人发图调看图、名单外的不调，OCR 两边照旧。
+- **先把图下载到本机、转成 base64 data URL 再发**（`imageDownloader`，单张 5 MB 以内，4 秒）：冒烟时 DeepSeek 自己下载外网图会失败（维基的图 400「Failed to download image」），
+  base64 的自制图 0.8 秒认对（「左侧为红色，右侧为蓝色」）。下不来、太大就退回直接给地址，再不行退回 OCR。只在线上入口 `configuredImageDescriber` 里下载，`deepSeekImageDescriber` 的测试照旧。
+- 上线要在 `koishi.yml` 的插件配置里打开 `vision.enabled`；第一次真用看日志里「看图」那一行，再请用户发一张愿意交给 DeepSeek 的普通照片。
+- ADR 0055 里「线上不在这台开发机」不对：这台机器的 Koishi 就是线上实例（`exchange/handoff/2026-10-10-2235-claude.md`）。

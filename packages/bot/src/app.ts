@@ -218,7 +218,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
     // 听语音、看图上的字（ADR 0052）：配置关了、入口没给就不读
     const mediaLimits = { ...MEDIA_TIMEOUTS, ...(config.vision ? { vision: config.vision.timeoutMs } : {}), ...mediaTimeouts };
     const reading = config.media ? mediaReading({ ...(media ? { reader: media } : {}), ...(vision ? { vision } : {}), timeouts: mediaLimits }) : undefined;
-    const canRead = [media?.voiceToText && '语音转文字', media?.ocr && '图上的字（OCR）', vision && '看图'].filter(Boolean).join('、');
+    // 看图只给名单里的人（用户 10-10 22:50：开，只对名单里的人）——图会发到看图模型的服务器；名单外的照旧只认图上的字（OCR 在本机）
+    const readingUnlisted = config.media && vision ? mediaReading({ ...(media ? { reader: media } : {}), timeouts: mediaLimits }) : reading;
+    const readerFor = (qq: number) => (config.contacts.some(c => c.qq === qq) ? reading : readingUnlisted);
+    const canRead = [media?.voiceToText && '语音转文字', media?.ocr && '图上的字（OCR）', vision && '看图（只对名单里的人）'].filter(Boolean).join('、');
     log(`听语音、看图：${!config.media ? '关（配置 media: false），照旧「[语音]」「[图片]」'
         : canRead ? `开（${canRead}；语音最多等 ${mediaLimits.voice / 1000} 秒，OCR ${mediaLimits.ocr / 1000} 秒，看图模型 ${mediaLimits.vision / 1000} 秒，读不出来照旧「[语音]」「[图片]」）` : '开，但入口没给 NapCat 的语音转文字和 OCR，照旧「[语音]」「[图片]」'}`);
     // 主动消息：卡上写了 proactive 的名单联系人（名单外的不主动）；要按作息算时机
@@ -458,14 +461,15 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
         // 补回时可能已经从历史里拿到过这条
         if (history.load(event.user_id).some(m => m.messageId === event.message_id)) return;
         const queued = inbox.get(event.user_id);
-        if (!queued && !reading?.needs(event.message)) {
+        const reader = readerFor(event.user_id);
+        if (!queued && !reader?.needs(event.message)) {
             deliver(responder, event, event.message);
             return;
         }
         const qq = event.user_id;
         const target = responder;
-        const read = reading
-            ? reading.read(event.message, event.message_id, message => log(`[${qq}] ${message}`)).catch(() => event.message)
+        const read = reader
+            ? reader.read(event.message, event.message_id, message => log(`[${qq}] ${message}`)).catch(() => event.message)
             : Promise.resolve(event.message);
         const job = Promise.all([queued, read]).then(([, message]) => {
             // 读的时候补回可能已经记下了这条
@@ -496,9 +500,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
             if (stopped) return;
             let fresh = newerThanStored(history.load(contact.qq), fetched, tierRecord.since(contact.qq));
             // 他发的语音、图片先听一听、看一看（ADR 0052）；读的时候实时收到的那条可能已经记下了，按 id 再筛一遍
-            if (reading && fresh.some(m => reading.needs(m.message))) {
+            const backReader = readerFor(contact.qq);
+            if (backReader && fresh.some(m => backReader.needs(m.message))) {
                 const contactLog = (message: string) => log(`[${contact.qq}] ${message}`);
-                fresh = await Promise.all(fresh.map(async m => ({ ...m, message: await reading.read(m.message, m.message_id, contactLog).catch(() => m.message) })));
+                fresh = await Promise.all(fresh.map(async m => ({ ...m, message: await backReader.read(m.message, m.message_id, contactLog).catch(() => m.message) })));
                 if (stopped) return;
                 const known = new Set(history.load(contact.qq).map(m => m.messageId));
                 fresh = fresh.filter(m => !known.has(m.message_id));
