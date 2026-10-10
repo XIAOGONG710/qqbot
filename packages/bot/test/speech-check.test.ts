@@ -201,6 +201,16 @@ describe('说话的毛病：重复（和她最近几次回复比）', () => {
         assert.deepEqual(opener('行了吧，满意没'), { key: '行', stripped: '满意没' });
         assert.deepEqual(opener('哎哟，还挺准时'), { key: '哟', stripped: '还挺准时' });
     });
+    test('夸他行的口头禅按一种算（10-10 线上「行啊你」「你可真行」「真有你的」轮换），去掉后面的话照发', () => {
+        const context = { recent: recent('行啊你，还会挑时候', '宝宝今天几点下课', '你可真行\n这都能忘'), his: [] };
+        assert.deepEqual(inspectSpeech('真有你的，又没带伞', context), [{ line: 0, kind: 'repeat', repeat: 'opener', match: '行啊你 / 你可真行 / 真有你的 这类', count: 2, stripped: '又没带伞' }]);
+        assert.equal(stripOpeners('真有你的！\n又没带伞', inspectSpeech('真有你的！\n又没带伞', context)), '又没带伞');
+        assert.deepEqual(inspectSpeech('你行啊', { recent: recent('行啊你', '你可真行'), his: [] }).map(i => i.stripped), ['']);
+        // 只用过 1 次不算；「你可以啊」（准他做什么）、「行啊」不在这一类
+        assert.deepEqual(inspectSpeech('你可真行，又没带伞', { recent: recent('行啊你', '你喝吧'), his: [] }), []);
+        assert.equal(opener('你可以啊，去吧'), undefined);
+        assert.equal(opener('行啊'), undefined);
+    });
     test('别的开头：第一个短句 3 个字以内，用过 2 次要重写（不能直接去掉）', () => {
         const context = { recent: recent('快睡，都两点了', '你别闹', '快睡，明天还早八'), his: [] };
         assert.deepEqual(inspectSpeech('快睡，明天别忘了', context), [{ line: 0, kind: 'repeat', repeat: 'opener', match: '快睡', count: 2 }]);

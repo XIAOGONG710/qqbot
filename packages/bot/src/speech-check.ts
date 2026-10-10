@@ -198,9 +198,18 @@ const PLAIN_OPENERS = new Set(['我', '你', '他', '她', '它', '那', '这', 
 /** 太常见的 4 字片段 */
 const PLAIN_GRAMS = new Set(['你是不是', '是不是你', '我也不知', '也不知道', '不知道啊', '怎么回事', '什么时候']);
 
-/** 这一行的开头：语气词（按一种算），或者第一个短句（3 个字以内、不是整行）；都不是就没有 */
+/**
+ * 夸他「行」的口头禅（10-10 线上：两分钟里连着「行啊你」「行啊你」「你可真行」「真有你的」开头，每个都没到重复的门槛，合起来是一个腔调翻来覆去）：
+ * 都算同一个开头；去掉它后面的话照发
+ */
+const TIC = new RegExp(`^(?:行啊你|可以啊你|你可真行|真有你的|你行啊|厉害了你|你真行)[${PUNCT}]*`);
+const TIC_KEY = '行啊你 / 你可真行 / 真有你的 这类';
+
+/** 这一行的开头：语气词（按一种算）、夸他行的口头禅（按一种算），或者第一个短句（3 个字以内、不是整行）；都不是就没有 */
 export function opener(line: string): { key: string; stripped?: string } | undefined {
     const text = line.trim();
+    const tic = TIC.exec(text);
+    if (tic) return { key: TIC_KEY, stripped: text.slice(tic[0].length).trim() };
     const marker = MARKER.exec(text);
     if (marker) {
         const word = marker[1] ?? marker[2]!;
