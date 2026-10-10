@@ -628,7 +628,7 @@ export function unavailableAt(now: WorldNow, at: Date): { until: Date; reason: s
 }
 
 /** 有时长的事各占多久（分钟，ADR 0030）：喂猫、取完快递往回走、和家里视频、写完作业之前在赶的那一段 */
-export const OCCUPATION_MINUTES = { feed: 10, parcel: 15, call: 30, homework: 90, newCamera: 60 } as const;
+export const OCCUPATION_MINUTES = { feed: 10, parcel: 15, call: 30, homework: 90, newCamera: 90, beforeTrip: 90 } as const;
 
 /**
  * 此刻在做的事（ADR 0030，类型化行动的第一步）：世界里有时长的事，现在正好落在里面的那件；没有就是 undefined（照作息的空闲活动）。
@@ -653,6 +653,10 @@ export function occupationAt(now: WorldNow, at: Date): string | undefined {
     // 吃饭（ADR 0031）
     const meal = now.routine?.meals.find(m => at >= m.start && at < m.end);
     if (meal) return `${meal.where === 'canteen' ? '在食堂' : meal.where === 'takeout' ? '点了外卖，在' : '在家'}吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}`;
+    // 出门买相机前那一会儿（排在吃饭后面）：不写作息里那一段的空闲活动（10-11 预览：13:30 还「在图书馆赶作业」，14:00 就到了山大路）
+    if (camera?.state === 'planned' && at < camera.start && within(new Date(camera.start.getTime() - OCCUPATION_MINUTES.beforeTrip * 60_000), OCCUPATION_MINUTES.beforeTrip)) {
+        return `在宿舍准备出门，${clock(camera.start)} 去${camera.where}买相机`;
+    }
     return undefined;
 }
 
