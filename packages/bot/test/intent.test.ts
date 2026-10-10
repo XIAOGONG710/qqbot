@@ -26,6 +26,21 @@ describe('这一轮你想（ADR 0019）', () => {
         assert.doesNotMatch(describeIntent({ history: [user('没啥，就是有点累')], now, state: free('在追一部剧') }) ?? '', /直接回答/, '「没啥」不是问');
     });
 
+    test('他报了件好事又顺口问一句：先替他高兴，不被问句顶掉（盲评 v1.1 be-056）', () => {
+        const burst = [assistant('你上回说的那个面试 结果出来没'), user('啊 我刚睡醒'), user('手机静音了没听见'), user('出来了 过了！！'), user('你吃了没')];
+        assert.match(describeIntent({ history: burst, now, state: free('打独立游戏') })!, /先替他高兴/);
+        for (const news of ['我抢到了！', '四级过了！', '考上了！！', '拿到offer了!']) {
+            assert.match(describeIntent({ history: [user(news), user('这下算不算惊喜啊')], now })!, /先替他高兴/, news);
+        }
+        // 难过、吃过、没感叹号、问句都不算
+        assert.doesNotMatch(describeIntent({ history: [user('我好难过了！')], now })!, /先替他高兴/);
+        assert.match(describeIntent({ history: [user('吃过了！'), user('你呢')], now })!, /直接回答/);
+        assert.match(describeIntent({ history: [user('面试过了'), user('你吃了没')], now })!, /直接回答/);
+        assert.match(describeIntent({ history: [user('你四级过了没！？')], now })!, /直接回答/);
+        // 她上次回复之前的好消息不算
+        assert.match(describeIntent({ history: [user('过了！'), assistant('牛'), user('你吃了没')], now })!, /直接回答/);
+    });
+
     test('按线索顺序只给一个：他的事优先于答应的事，答应的事优先于手上的事', () => {
         assert.match(describeIntent({ history: [user('我今天去面试了')], now, promised: true, books: true })!, /回应他刚说的/);
         assert.match(describeIntent({ history: [user('在吗')], now, promised: true, books: true })!, /答应/);
@@ -69,7 +84,9 @@ describe('这一轮你想（ADR 0019）', () => {
 
     test('明确难过时只接住，不转去讲自己的猫、书或进度；普通短句不脑补', () => {
         for (const text of ['悲', '我哭得很伤心', '今天累死了', '有点难受', '今天被导师骂了，烦死', '好烦啊', '心累']) {
-            assert.match(describeIntent({ history: [user(text)], now, state: free('在追一部剧'), books: true })!, /先接住他此刻的情绪/, text);
+            const line = describeIntent({ history: [user(text)], now, state: free('在追一部剧'), books: true })!;
+            assert.match(line, /先接住他此刻的情绪/, text);
+            assert.match(line, /第一句先安慰或问怎么了，不先损他/, text);
         }
         assert.equal(describeIntent({ history: [user('烦人精')], now, state: free('在追一部剧') }), undefined, '烦人精是叫他，不是心情');
         assert.match(describeIntent({ history: [user('已经见面5150天了呢')], now, state: free('刷摄影区'), books: true })!, /只接他刚说的你们两个人的事/);

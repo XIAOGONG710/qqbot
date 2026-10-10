@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node src/main.ts",
     "sim": "node src/sim/run.ts",
+    "blind": "node src/sim/blind.ts",
     "typecheck": "tsc -p .",
     "test": "node --test \"test/**/*.test.ts\""
   },
