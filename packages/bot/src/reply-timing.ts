@@ -179,9 +179,11 @@ function closedByHer(history: Said[]): boolean {
 }
 
 export function isAck(text: string): boolean {
-    // 语音按他说的话算（ADR 0052）：「[语音 2秒：嗯嗯]」是附和，「[语音 5秒：我还有个事]」不是；没转出来的和表情一样
-    const spoken = parseVoiceLine(text)?.text;
-    if (spoken) return isAck(spoken);
+    // 语音、图片（ADR 0052）：转出了字的语音按他说的话算（「[语音 2秒：嗯嗯]」是附和，「[语音 5秒：我还有个事]」不是）；
+    // 没转出来的语音、照片不知道里面是什么，不算附和，照样回（10-10 模拟器：前一晚道了晚安，第二天上课时来一条语音，被当成附和没回）
+    const voice = parseVoiceLine(text);
+    if (voice) return voice.text ? isAck(voice.text) : false;
+    if (/^\s*\[图片[\]，：]/.test(text)) return false;
     const stripped = text.replace(/\[[^\]]*\]/g, '').replace(/[\p{P}\p{S}\p{Extended_Pictographic}\s～~]/gu, '');
     // 只有表情也算附和
     if (!stripped) return text.trim().length > 0;

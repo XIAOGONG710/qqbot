@@ -239,11 +239,17 @@ describe('听语音（ADR 0052）', () => {
         assert.deepEqual(whenSeen(inClass, t(10, 12, 10), boyfriend), whenSeen(text, t(10, 12, 10), boyfriend));
     });
 
-    test('附和看语音里说的：「[语音 2秒：嗯嗯]」算，说了别的不算；没转出来的和表情一样', () => {
+    test('附和看语音里说的：「[语音 2秒：嗯嗯]」算，说了别的不算；没转出来的语音、照片不知道是什么，不算（照样回）；表情包照旧算', () => {
         assert.equal(isAck('[语音 2秒：嗯嗯]'), true);
         assert.equal(isAck('[语音：晚安]'), true);
         assert.equal(isAck('[语音 5秒：我还有个事跟你说]'), false);
-        assert.equal(isAck('[语音 3秒]'), true);
+        assert.equal(isAck('[语音 3秒]'), false);
+        assert.equal(isAck('[语音]'), false);
+        assert.equal(isAck('[图片]'), false);
+        assert.equal(isAck('[图片，上面写着：晚安]'), false);
+        assert.equal(isAck('[动画表情]'), true);
+        // 前一晚她道了晚安，第二天来一条没转出来的语音：要回
+        assert.equal(isAckAfterClosing([her(t(10, 11, 22, 41), '晚安'), user(t(10, 12, 10, 5), '[语音 15秒]')]), false);
         assert.equal(isReaction('[语音 2秒：哈哈哈]'), false, '语音不算反应，照样回');
     });
 });

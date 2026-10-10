@@ -28,6 +28,9 @@ describe('出口检查：做不到的事（ADR 0006 取证里的原句）', () =
         assert.deepEqual(promises('晚上给你打个电话'), ['打个电话']);
         assert.deepEqual(promises('等会开视频'), ['开视频']);
         assert.deepEqual(promises('我给你发条语音'), ['给你发']);
+        assert.deepEqual(promises('晚点发语音给你'), ['发语音']);
+        // 说的是他发的语音（ADR 0052，10-10 模拟器里「你发语音干嘛，我这没戴耳机」被当成她要发语音删掉了）
+        for (const line of ['你发语音干嘛，我这没戴耳机', '你又发语音', '你干嘛发语音', '你发的语音我听不了']) assert.deepEqual(promises(line), [], line);
         assert.deepEqual(promises('发个红包给你'), ['发个红包']);
     });
     test('拒绝、否定的说法不算', () => {
