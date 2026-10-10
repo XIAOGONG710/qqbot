@@ -479,7 +479,8 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
         parts.push(`今天的小事：${now.events.map(e => e.text).join('；')}${people.length ? `（${people.map(([name, relation]) => `${name}：${relation}`).join('；')}）` : ''}`);
     }
     if (!parts.length) return undefined;
-    return `[你那边（今天到现在的事实，用不用、怎么说你自己定，别照着念；这里没写的别编）：${parts.join('｜')}]`;
+    // 他没问起时一次最多顺口提一件（T3 P2，10-10 盲评 be-046 / be-008：原谅完一口气报土豆、猫粮、驿站、下雨）
+    return `[你那边（今天到现在的事实，用不用、怎么说你自己定；他没问起时一次最多顺口提一件，别一件件报；这里没写的别编）：${parts.join('｜')}]`;
 }
 
 /**
