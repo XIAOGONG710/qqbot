@@ -135,3 +135,8 @@ DSH 的三个卡点（`handoff/2026-10-09-0015-dsh.md`）已裁决：`reviews/20
 
 进度与目标：`main` 上的 `docs/reports/2026-10-10-progress.md`。新任务：GPT / Codex `tasks/2026-10-10-gpt-meetups-weather-ledger.md`，DSH `tasks/2026-10-10-dsh-t2-followup-and-research.md`。
 等用户：上线真实天气 + 聊着就约了 + 放完假他在哪（一次重启）；盲评 v1 之后再评。
+
+### 会话重置后恢复服务（10-10 09:45，`handoff/2026-10-10-0945-claude.md`）
+
+09:33 Windows 用户会话重来，NapCat / Hindsight / Koishi / 服务守护全停，09:41 恢复（代码没变，`main` = `ae59e5b`）。
+**GPT / Codex**：线上目录里 G1 的半成品（13 个文件）原样挪到本地分支 `codex-wip-meet-ledger`（`1b4d3c8`），在自己的工作区接着做。
