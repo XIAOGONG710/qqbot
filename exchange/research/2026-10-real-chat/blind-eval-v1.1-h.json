@@ -1,0 +1,685 @@
+{
+ "label": "H",
+ "commit": "handwritten",
+ "dirty": false,
+ "status": false,
+ "createdAt": "2026-10-10T20:33:35+08:00",
+ "answers": [
+  {
+   "id": "be-001",
+   "bubbles": [
+    {
+     "after": 20,
+     "text": "在呢 还没睡"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-002",
+   "bubbles": [
+    {
+     "after": 40,
+     "text": "吃面呢 开不了"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-003",
+   "bubbles": [
+    {
+     "after": 50,
+     "text": "刚洗完澡 没看着"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-004",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "食堂也就那样"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-005",
+   "bubbles": [
+    {
+     "after": 25,
+     "text": "谢啦 编得挺像"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-006",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "我没听见"
+    },
+    {
+     "after": 36,
+     "text": "卡一晚上了"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-007",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "在呢 还在济南"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-008",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "没有 你瞎想啥"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-009",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "没事 十二月还早"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-010",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "还给我留了啊"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-011",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "我戴耳机呢"
+    },
+    {
+     "after": 36,
+     "text": "没听着"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-012",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "凑数也是练手啊"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-013",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "脚没事吧"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-014",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "卸游戏算你狠"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-015",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "我们还没测"
+    },
+    {
+     "after": 36,
+     "text": "你歇着"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-016",
+   "bubbles": [
+    {
+     "after": 25,
+     "text": "说话算话 我去"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-017",
+   "bubbles": [
+    {
+     "after": 20,
+     "text": "咋了 我听着呢"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-018",
+   "bubbles": [
+    {
+     "after": 45,
+     "text": "嗓子咋了 疼不疼"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-019",
+   "bubbles": [
+    {
+     "after": 25,
+     "text": "咋了 我醒着呢"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-020",
+   "bubbles": [
+    {
+     "after": 60,
+     "text": "咋岔气了 还疼吗"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-021",
+   "bubbles": [
+    {
+     "after": 20,
+     "text": "咋被打回来的"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-022",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "啊？咋不合适"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-023",
+   "bubbles": [
+    {
+     "after": 20,
+     "text": "他凭啥删你写的"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-024",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "记着呢"
+    },
+    {
+     "after": 36,
+     "text": "不就五百天"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-025",
+   "bubbles": [
+    {
+     "after": 20,
+     "text": "我也想你 就一点"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-026",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "想得美 过来吧你"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-027",
+   "bubbles": [
+    {
+     "after": 45,
+     "text": "啊"
+    },
+    {
+     "after": 51,
+     "text": "那咱俩见不着了"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-028",
+   "bubbles": [
+    {
+     "after": 40,
+     "text": "哪瓶啊 你记这么清"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-029",
+   "bubbles": [
+    {
+     "after": 25,
+     "text": "还没睡 你说呗"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-030",
+   "bubbles": [
+    {
+     "after": 40,
+     "text": "哈哈 那会儿不怕冷"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-031",
+   "bubbles": [
+    {
+     "after": 25,
+     "text": "开不了视频 你说"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-032",
+   "bubbles": [
+    {
+     "after": 600,
+     "text": "行"
+    },
+    {
+     "after": 605,
+     "text": "睡吧"
+    },
+    {
+     "after": 611,
+     "text": "明天还得早起"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-033",
+   "bubbles": [
+    {
+     "after": 20,
+     "text": "去吧 回来再说"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-034",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "行 你去吧"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-035",
+   "bubbles": [
+    {
+     "after": 15,
+     "text": "行 改天唠"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-036",
+   "bubbles": [
+    {
+     "after": 90,
+     "text": "知道啦 就你话多"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-037",
+   "bubbles": [
+    {
+     "after": 25,
+     "text": "知道了 睡了睡了"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-038",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "行 去吧"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-039",
+   "bubbles": [
+    {
+     "after": 18,
+     "text": "你猜啊"
+    },
+    {
+     "after": 25,
+     "text": "手都冻僵了"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-040",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "不知道"
+    },
+    {
+     "after": 36,
+     "text": "反正得重写"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-041",
+   "bubbles": [
+    {
+     "after": 20,
+     "text": "这回不用站了"
+    },
+    {
+     "after": 26,
+     "text": "得谢我"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-042",
+   "bubbles": [
+    {
+     "after": 20,
+     "text": "让你不听我的"
+    },
+    {
+     "after": 26,
+     "text": "扔了吧"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-043",
+   "bubbles": [
+    {
+     "after": 25,
+     "text": "你还笑"
+    },
+    {
+     "after": 31,
+     "text": "我都崩三回了"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-044",
+   "bubbles": [
+    {
+     "after": 18,
+     "text": "没 懒得下去捡了"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-045",
+   "bubbles": [
+    {
+     "after": 22,
+     "text": "你找呗"
+    },
+    {
+     "after": 28,
+     "text": "反正我发不了"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-046",
+   "bubbles": [
+    {
+     "after": 20,
+     "text": "昨晚那账回头再算"
+    },
+    {
+     "after": 26,
+     "text": "先记着"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-047",
+   "bubbles": [
+    {
+     "after": 40,
+     "text": "我说话直"
+    },
+    {
+     "after": 46,
+     "text": "别往心里去"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-048",
+   "bubbles": [
+    {
+     "after": 25,
+     "text": "行吧 算你办了件正事"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-049",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "我话说重了"
+    },
+    {
+     "after": 36,
+     "text": "但你也没管"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-050",
+   "bubbles": [
+    {
+     "after": 60,
+     "text": "知道 穿了"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-051",
+   "bubbles": [
+    {
+     "after": 20,
+     "text": "谁急了"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-052",
+   "bubbles": [
+    {
+     "after": 15,
+     "text": "我刚才语气冲了"
+    },
+    {
+     "after": 23,
+     "text": "票别退"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-053",
+   "bubbles": [
+    {
+     "after": 25,
+     "text": "行 那翻篇"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-054",
+   "bubbles": [
+    {
+     "after": 25,
+     "text": "昨晚等你等到一点"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-055",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "手机没电你倒有理"
+    },
+    {
+     "after": 36,
+     "text": "我吃了"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-056",
+   "bubbles": [
+    {
+     "after": 45,
+     "text": "过了就行 恭喜啊"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-057",
+   "bubbles": [
+    {
+     "after": 30,
+     "text": "嗯 你先睡吧"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-058",
+   "bubbles": [
+    {
+     "after": 40,
+     "text": "你才看见啊"
+    },
+    {
+     "after": 50,
+     "text": "行 回去了说"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-059",
+   "bubbles": [
+    {
+     "after": 20,
+     "text": "先发我 别的回头说"
+    }
+   ],
+   "logs": []
+  },
+  {
+   "id": "be-060",
+   "bubbles": [
+    {
+     "after": 90,
+     "text": "你妈那电话没事吧"
+    }
+   ],
+   "logs": []
+  }
+ ]
+}
