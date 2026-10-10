@@ -8,7 +8,7 @@
 import { dirname, join } from 'node:path';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { disclosureRules, isClose, sourceLabel, startsConversation, todayStart } from './disclosure.ts';
-import { reviewReply } from './exit-check.ts';
+import { faceContext, reviewReply } from './exit-check.ts';
 import type { ChatHistory, StoredMessage } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
@@ -438,6 +438,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             userName: contact.name,
             ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),
             ...(reading ? { books: reading } : {}),
+            // 小黄脸（ADR 0051）：最近几次带得太密、他认真说事她只回表情
+            faces: faceContext(options.history.load(contact.qq), contact.tier),
             regenerate: async note => clean(await generate(
                 postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names),
                 log,
