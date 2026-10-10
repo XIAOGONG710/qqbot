@@ -47,6 +47,14 @@ export type Choice = { intent: ActionIntent; why: string } | { skipTo: Date; why
 /** 行动 id：开始时刻 + 种类，同一刻同一件事重放、重启都是同一个 id */
 export const lifeActionId = (at: Date, kind: TypedActionKind) => `life:${at.toISOString()}:${kind}`;
 
+/** 这顿饭已经吃过了：账上有这顿（eat，subject 是 lunch / dinner），或者在约会里一起吃了（meet 带 meal，和饭点重叠） */
+function ateAlready(sources: Pick<LifeSources, 'events'>, meal: { kind: 'lunch' | 'dinner'; start: Date; end: Date }): boolean {
+    const dayStart = meal.start.getTime() - 6 * 3_600_000;
+    return sources.events().some(event => event.result !== 'failed' && (
+        (event.kind === 'eat' && event.subject === meal.kind && Date.parse(event.startedAt) >= dayStart && Date.parse(event.startedAt) < meal.end.getTime())
+        || (event.kind === 'meet' && event.meal === true && Date.parse(event.startedAt) < meal.end.getTime() && Date.parse(event.endedAt) > meal.start.getTime())));
+}
+
 /** 约好的事里说了吃的 */
 const FOOD = /吃|饭|餐|火锅|烧烤|麻辣烫|烤肉|夜宵|撸串/;
 /** 没说吃的、但盖住了一顿饭的大半（重叠这么多分钟以上）也算一起吃了；只擦到饭点边的不算（审查 P1-2：「下午一点图书馆集合」） */
@@ -222,10 +230,10 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
             why: `出门前先把${meal.kind === 'lunch' ? '午饭' : '晚饭'}吃了`,
         };
     }
-    // 见完面回来饭点已经开始了（没在外面吃）：这顿还没吃、还剩 MIN_MEAL_MINUTES 以上就接着吃
-    const back = meal && meal.start < at && appointmentActions(sources, new Date(at.getTime() - 60_000), at).some(item => item.end.getTime() === at.getTime() && !item.meal);
-    if (meal && back && minutesBetween(at, meal.end) >= MIN_MEAL_MINUTES) {
-        return { intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at }, why: `见完回来吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}` };
+    // 落在饭点中间、这顿还没吃（账上没有，也没在约会里一起吃过），还剩 MIN_MEAL_MINUTES 以上：从这一刻吃——忙到 17:48 也照样去吃晚饭。
+    // 原来只在饭点开头那一刻排吃饭，落在中间就当「饭吃到一半」跳过：10-09 线上执行器起点带秒（15:07:51），修片记到 17:47:51，晚饭整顿没记上
+    if (meal && meal.start < at && minutesBetween(at, meal.end) >= MIN_MEAL_MINUTES && !ateAlready(sources, meal)) {
+        return { intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at }, why: `晚了一点吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}` };
     }
     if (meal) {
         const target = meal.kind === 'lunch' ? targetForMeal(sources, at) : undefined;
@@ -355,7 +363,8 @@ export function lifeExecutor(sources: LifeSources, queue: ActionQueue, options: 
             const fixed: LifeSources = said ? { ...sources, bedtimes: () => said } : sources;
             // 先看排着的：聊天里说过的事改了世界的，停在那一刻或去掉（ADR 0042）
             for (const item of queue.pending()) revise(item, fixed, queue, now);
-            let cursor = new Date(Math.max(options.since.getTime(), ...ends()));
+            // 起点对齐到整分钟（10-09 线上起点 15:07:51，之后排的事都错开不到一分钟）
+            let cursor = new Date(Math.max(Math.floor(options.since.getTime() / 60_000) * 60_000, ...ends()));
             let scheduled = 0;
             for (let guard = 0; cursor < now && guard < 2000; guard++) {
                 const choice = chooseAt(cursor, fixed);

@@ -7,7 +7,7 @@ import { homeworkSprints } from '../src/actions.ts';
 import { actionQueue, settlingWorld } from '../src/action-queue.ts';
 import { bodyAt } from '../src/body.ts';
 import { readingActivities } from '../src/her-days.ts';
-import { chooseAt, dayBusy, freeKind, lifeExecutor, motivate, type LifeSources } from '../src/life-selector.ts';
+import { chooseAt, dayBusy, freeKind, lifeActionId as lifeActionIdFor, lifeExecutor, motivate, type LifeSources } from '../src/life-selector.ts';
 import type { LifeEvent, LifeEventDraft } from '../src/life-events.ts';
 import { needsAt, type NeedsSnapshot } from '../src/needs.ts';
 import type { Appointment } from '../src/promises.ts';
@@ -200,6 +200,34 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
             assert.ok(before && ['leisure', 'rest', 'read_book', 'study', 'work_on_project'].includes(before.kind));
             assert.deepEqual(auditLifeStatus(events, { ...sources, events: () => events }), []);
             assert.deepEqual(auditLedgerCoverage(events, { ...sources, events: () => events }), []);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('落在饭点中间、这顿还没吃：从这一刻吃；吃过了才跳过（10-09 线上晚饭整顿没记上）', () => {
+        const dinner = worldAt(herWorld, schedule, at('2026-10-18T18:00:00'))!.routine!.meals.find(item => item.kind === 'dinner')!;
+        const mid = new Date(dinner.start.getTime() + 51_000 + 60_000);
+        const picked = chooseAt(mid, plain);
+        assert.ok('intent' in picked && picked.intent.kind === 'eat', JSON.stringify(picked));
+        const eaten: LifeEvent = {
+            id: lifeActionIdFor(dinner.start, 'eat'), actor: 'linmengyao', kind: 'eat', day: '2026-10-18', startedAt: dinner.start.toISOString(), endedAt: dinner.end.toISOString(),
+            source: 'simulation', result: 'succeeded', subject: 'dinner',
+        };
+        const after = chooseAt(mid, { ...plain, events: () => [eaten] });
+        assert.ok('skipTo' in after && after.skipTo.getTime() === dinner.end.getTime(), JSON.stringify(after));
+        // 剩下不到 15 分钟就不吃了
+        const late = chooseAt(new Date(dinner.end.getTime() - 10 * 60_000), plain);
+        assert.ok('skipTo' in late, JSON.stringify(late));
+    });
+
+    test('起点带秒（线上 lifeStartedAt）：照样一顿不落，排的事从整分钟开始', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'life-seconds-'));
+        try {
+            const { events } = live(dir, at('2026-10-18T15:07:51'), at('2026-10-18T21:00:00'));
+            const dinners = events.filter(event => event.kind === 'eat' && event.subject === 'dinner');
+            assert.equal(dinners.length, 1, events.map(e => `${e.kind} ${e.startedAt}`).join('，'));
+            assert.ok(events.every(event => new Date(event.startedAt).getUTCSeconds() === 0), '对齐到整分钟');
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
