@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { describeState, inWeeks, parseSchedule, stateAt, type Schedule } from '../src/schedule.ts';
+import { describeState, inWeeks, parseSchedule, partnerBackLine, stateAt, type Schedule } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 // 用转换器生成的真卡（ADR 0007 决策 1）：学期 2026-08-31（周一）起，国庆 10-01–10-07，10-10 调休没课
@@ -143,6 +143,12 @@ describe('作息：某个时刻她在干什么', () => {
             `[你现在：在学校（济南），住宿舍；课间，09:55 接着上大数据应用技术]\n[宝宝${BACK}]`);
         assert.equal(describeState(stateAt(boyfriend, t(10, 5, 3)), boyfriend, { userName: '宝宝' }),
             '[你现在：国庆节放假，没抢到回青岛的票，留在学校（你们说好以后放假一起走，这次你不难受）；在宿舍睡觉，09:30 起；宝宝回青岛过国庆了（放假前就说好的）]');
+        // partnerApart：放完假那一行由提示词放到时间块事实的最后（partnerBackLine）；假期里、平时没有这一行
+        assert.equal(describeState(stateAt(boyfriend, t(10, 12, 9, 45)), boyfriend, { userName: '宝宝', partnerApart: true }),
+            '[你现在：在学校（济南），住宿舍；课间，09:55 接着上大数据应用技术]');
+        assert.equal(partnerBackLine(stateAt(boyfriend, t(10, 12, 9, 45)), '宝宝'), `[宝宝${BACK}]`);
+        assert.equal(partnerBackLine(stateAt(boyfriend, t(10, 5, 3)), '宝宝'), undefined);
+        assert.equal(partnerBackLine(stateAt(boyfriend, t(10, 30, 12)), '宝宝'), undefined);
     });
 
     test('周次写法', () => {

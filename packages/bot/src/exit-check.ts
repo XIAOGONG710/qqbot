@@ -182,7 +182,7 @@ export function rewriteNote(reply: string, issues: readonly ExitIssue[], userNam
         const why = issues.filter(i => i.line === line).map(i => {
             switch (i.kind) {
                 case 'script': return `从这里开始你在替你和${userName}两个人写一段聊天记录；只写你这一次要发给${userName}的话`;
-                case 'media': return `这是${userName}发来的语音、图片在聊天记录里的写法，你只能打字，不写方括号`;
+                case 'media': return `这是${userName}发来的语音、图片在聊天记录里的写法，你发不了语音和图片，只能打字，不写这种方括号`;
                 case 'promise': return '答应或者像是已经给对方发照片、语音、视频，或者打电话，可你只能打字聊天';
                 case 'banned': return `提到了「${i.match}」，这是不该对${userName}说的`;
                 case 'service': return `像客服说的话，用你自己的口气跟${userName}说`;

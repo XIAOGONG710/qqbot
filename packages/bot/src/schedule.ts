@@ -205,7 +205,16 @@ export function formatDate(date: Date): string {
  * 时间块里的一行：她在哪、在干什么、他在哪。卡上没写的（低档位的课名、教室）就不说。
  * woken：睡着时被消息吵醒（男朋友档，决策 6）；userName：他在哪的说法里的 {{user}} 换成称呼
  */
-export function describeState(state: State, schedule: Schedule, options: { woken?: boolean; userName?: string } = {}): string {
+/**
+ * 放完假那几天「他已经回学校了」那一行（partnerBack）；不是那几天就是 undefined。
+ * 提示词里放在时间块事实的最后、离他最新的话最近（describeState 传 partnerApart）：放在第 4 行时，合进 ADR 0051 / 0052 的两段说明后
+ * 「你不是在青岛吗」又回来了（schedule-boyfriend 10 次里 3 次；挪到最后 22 次里 1 次，2026-10-10）
+ */
+export function partnerBackLine(state: State, userName?: string): string | undefined {
+    return state.partnerJustBack && state.partner ? `[${state.partner.replaceAll('{{user}}', userName ?? '他')}]` : undefined;
+}
+
+export function describeState(state: State, schedule: Schedule, options: { woken?: boolean; userName?: string; partnerApart?: boolean } = {}): string {
     const { activity } = state;
     const course = (lesson: ClassToday) => lesson.name ?? '课';
     let doing: string;
@@ -230,7 +239,8 @@ export function describeState(state: State, schedule: Schedule, options: { woken
     }
     const partner = state.partner?.replaceAll('{{user}}', options.userName ?? '他');
     // 放完假那几天他在哪单独一行：跟在「你现在」最后时，她仍信聊天记录里假期中他说的「我在青岛」（ADR 0007 调整 2026-10-10）
-    if (state.partnerJustBack && partner) return `[你现在：${[state.where, doing].filter(Boolean).join('；')}]\n[${partner}]`;
+    // partnerApart：那一行由调用方用 partnerBackLine 放到别处（提示词里放在时间块事实的最后）
+    if (state.partnerJustBack && partner) return `[你现在：${[state.where, doing].filter(Boolean).join('；')}]${options.partnerApart ? '' : `\n[${partner}]`}`;
     return `[你现在：${[state.where, doing, partner].filter(Boolean).join('；')}]`;
 }
 

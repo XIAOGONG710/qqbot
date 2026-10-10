@@ -16,7 +16,7 @@
         { "advance": "6d18h30m" },
         { "case": "S02", "note": "10-12 周一 08:30 在上 Linux（机房课）：说在上课；约饭可以答应（ADR 0046）" },
         { "say": "在干嘛" },
-        { "check": { "timeBlock": "上Linux操作系统[^\\n]+\\]\\n\\[宝宝国庆放完假，已经回学校了", "exitClean": true, "maxBubbles": 3 } },
+        { "check": { "timeBlock": "上Linux操作系统[^\\n]+\\]\\n(?:\\[[^\\n]*\\]\\n)+\\[宝宝国庆放完假，已经回学校了[^\\n]*\\]\\n\\[这一轮", "exitClean": true, "maxBubbles": 3 } },
         { "say": "下课一起去食堂吃饭吧" },
         { "check": { "replyNone": ["不是在青岛", "在青岛吗", "还在青岛", "再青岛", "你在青岛", "什么时候回来"], "exitClean": true } },
         { "advance": "4h" },

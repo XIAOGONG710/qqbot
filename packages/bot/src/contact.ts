@@ -35,7 +35,7 @@ import { describeWarmAffect, warmAffect } from './affect.ts';
 import { describePast, pastCue } from './biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from './people.ts';
 import { describeAppointment, type PromiseKeeper } from './promises.ts';
-import { describeState, herDay } from './schedule.ts';
+import { describeState, herDay, partnerBackLine } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candidates.ts';
 import { turnCut, type Summarizer, type TurnWindow } from './context-window.ts';
@@ -286,6 +286,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (status?.busy) log(`此刻在做：${status.busy}`);
             if (status?.revised) log(`改了打算：${status.revised}`);
             const state = status?.state;
+            const partnerBack = state ? partnerBackLine(state, contact.name) : undefined;
             const plansLine = herSchedule ? describePlans(herSchedule, status?.slots ?? [], time) : undefined;
             const books = herSchedule
                 ? readingSection(herSchedule, character.books, time, {
@@ -385,7 +386,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     [
                         describeTime(chat, time, { initiating: Boolean(initiate) }),
                         ...(days ? [days] : []),
-                        ...(state ? [describeState(state, schedule!, { userName: contact.name, woken })] : []),
+                        ...(state ? [describeState(state, schedule!, { userName: contact.name, woken, partnerApart: true })] : []),
                         ...(mood ? [describeMood(mood, contact.name)] : []),
                         ...(body ? [body] : []),
                         ...(unsettled ? [unsettled] : []),
@@ -394,6 +395,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(world ? [world] : []),
                         ...(plansLine ? [plansLine] : []),
                         ...(promised ? [promised] : []),
+                        // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在青岛」
+                        ...(partnerBack ? [partnerBack] : []),
                         ...(intent ? [intent] : []),
                         ...(length ? [describeLength(length)] : []),
                         ...(initiate ? [initiate.note] : []),
