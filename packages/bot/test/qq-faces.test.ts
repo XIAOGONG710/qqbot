@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { startApp, type Transport } from '../src/app.ts';
 import type { AppConfig } from '../src/config.ts';
-import { faceContext, FACE_STREAK, inspectReply, MAX_FACES, reviewReply, rewriteNote, tidyFaces, type FaceContext } from '../src/exit-check.ts';
+import { faceContext, FACE_WINDOW, FACE_WINDOW_MAX, inspectReply, MAX_FACES, reviewReply, rewriteNote, tidyFaces, type FaceContext } from '../src/exit-check.ts';
 import { ChatHistory, type StoredMessage } from '../src/history.ts';
 import { segmentsToText, type MessageEvent } from '../src/onebot.ts';
 import { FACE_NAMES, faceText, facesIn, onlyFaces, SENDABLE_FACES, textToSegments } from '../src/qq-faces.ts';
@@ -101,12 +101,15 @@ describe('出口检查：小黄脸（ADR 0051）', () => {
         assert.deepEqual(tidyFaces('[捂脸][捂脸]\n哈哈[笑哭]', none), { reply: '[捂脸]\n哈哈', notes: ['一次回复里 3 个小黄脸，只留第一个'] });
         assert.equal(tidyFaces('哈哈[捂脸]\n你也是[doge]', none).reply, '哈哈[捂脸]\n你也是[doge]');
     });
-    test(`她前 ${FACE_STREAK} 次回复都带了，这次的去掉；整条只有表情的不去`, () => {
-        const streak: FaceContext = { recent: ['哈哈[捂脸]', '好吧\n[委屈]'], serious: false };
-        assert.deepEqual(tidyFaces('那我先去洗澡了[偷笑]', streak), { reply: '那我先去洗澡了', notes: [`前 ${FACE_STREAK} 次回复都带了小黄脸，这次的不带`] });
-        assert.equal(tidyFaces('[偷笑]', streak).reply, '[偷笑]');
-        assert.equal(tidyFaces('那我先去洗澡了[偷笑]', { recent: ['哈哈', '好吧\n[委屈]'], serious: false }).reply, '那我先去洗澡了[偷笑]');
-        assert.equal(tidyFaces('那我先去洗澡了[偷笑]', { recent: ['[委屈]'], serious: false }).reply, '那我先去洗澡了[偷笑]', '只回过一次');
+    test(`她最近 ${FACE_WINDOW} 次回复里已经带了 ${FACE_WINDOW_MAX} 次，这次的去掉；整条只有表情的不去`, () => {
+        const note = `最近 ${FACE_WINDOW} 次回复里已经带了 ${FACE_WINDOW_MAX} 次，这次的不带`;
+        const pair: FaceContext = { recent: ['哈哈[捂脸]', '好吧\n[委屈]'], serious: false };
+        assert.deepEqual(tidyFaces('那我先去洗澡了[偷笑]', pair), { reply: '那我先去洗澡了', notes: [note] }, '连着三次都带不会有');
+        assert.equal(tidyFaces('[偷笑]', pair).reply, '[偷笑]');
+        const spread = ['[捂脸]', '嗯', '在呢', '好吧[委屈]', '去吧', '哈哈'];
+        assert.equal(tidyFaces('那我先去洗澡了[偷笑]', { recent: spread, serious: false }).reply, '那我先去洗澡了', '隔开的两次也算');
+        assert.equal(tidyFaces('那我先去洗澡了[偷笑]', { recent: [...spread.slice(1), '好'], serious: false }).reply, '那我先去洗澡了[偷笑]', '早的那次出了窗口');
+        assert.equal(tidyFaces('那我先去洗澡了[偷笑]', { recent: ['哈哈', '好吧\n[委屈]'], serious: false }).reply, '那我先去洗澡了[偷笑]', '只带过一次');
     });
     test('他在认真说事、她整条只回了表情：要重写；他只是「哈哈」时不管', () => {
         assert.equal(onlyFaces('[拥抱]'), true);
@@ -117,7 +120,7 @@ describe('出口检查：小黄脸（ADR 0051）', () => {
         const note = rewriteNote('[拥抱]', inspectReply('[拥抱]', [], undefined, undefined, { recent: [], serious: true }), '宝宝');
         assert.match(note, /「\[拥抱\]」宝宝在认真跟你说事，你只回了个表情；用话回宝宝/);
     });
-    test('上下文：她最近两次回复（连着的几条算一次）、她上次回复之后他说的是不是只是反应', () => {
+    test('上下文：她最近几次回复（连着的几条算一次）、她上次回复之后他说的是不是只是反应', () => {
         const m = (role: 'user' | 'assistant', content: string, i: number): StoredMessage => ({ time: new Date(Date.UTC(2026, 9, 10, 6, i)).toISOString(), role, content });
         const history = [m('assistant', '早[睡]', 0), m('user', '早', 1), m('assistant', '在吗', 2), m('assistant', '[捂脸]', 3), m('user', '哈哈哈[笑哭]', 4)];
         assert.deepEqual(faceContext(history), { recent: ['早[睡]', '在吗\n[捂脸]'], serious: false });

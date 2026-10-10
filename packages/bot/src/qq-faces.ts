@@ -5,7 +5,7 @@
 // - 她发的：只认白名单 SENDABLE_FACES 里的十几个；发送时「[捂脸]」拆成 face 段，和前后的文字拼成一条消息（textToSegments），
 //   聊天记录里存的还是原文，下一轮她看得到自己发过什么。NapCat 发 face 时，表里带 AniStickerType 的（流泪、比心、贴贴、生气……）
 //   一律发成超级表情（大的动图，faceType 3，napcat-onebot/api/msg.ts），不像随手带的小黄脸，不进白名单。
-// - 白名单外的方括号、一次回复里堆太多、连着几次都带、他认真说事她只回表情：出口检查管（exit-check.ts）。
+// - 白名单外的方括号、一次回复里堆太多、最近几次带得太密、他认真说事她只回表情：出口检查管（exit-check.ts）。
 
 /** face 段的 id → 名字（NapCat face_config.json，见文件头） */
 export const FACE_NAMES: Readonly<Record<number, string>> = {
