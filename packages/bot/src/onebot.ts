@@ -8,6 +8,8 @@
 //     群临时会话为 "group"。api/msg.ts
 // 用 Node 自带的 WebSocket（undici），它支持非标准的 headers 选项。
 
+import { faceText, textToSegments } from './qq-faces.ts';
+
 export interface Segment {
     type: string;
     data: Record<string, unknown>;
@@ -130,10 +132,11 @@ export class OneBotClient {
         });
     }
 
+    /** 发一条私聊：文字里白名单的小黄脸（「[捂脸]」）发成 face 段，和文字拼成一条（ADR 0051） */
     async sendPrivateText(userId: number, text: string): Promise<number> {
         const data = await this.call<{ message_id: number }>('send_private_msg', {
             user_id: userId,
-            message: [{ type: 'text', data: { text } }],
+            message: textToSegments(text),
         });
         return data.message_id;
     }
@@ -152,7 +155,8 @@ export function segmentsToText(message: Segment[] | string): string {
             case 'text': return String(data.text ?? '');
             // 表情包、商城表情的 summary 是名字，如“[动画表情]”“[是的]”
             case 'image': return typeof data.summary === 'string' && data.summary ? data.summary : '[图片]';
-            case 'face': return '[表情]';
+            // QQ 小黄脸按 id 换成名字「[捂脸]」，表里没有的照旧「[表情]」（ADR 0051）
+            case 'face': return faceText(data.id);
             case 'at': return `@${String(data.qq ?? '')} `;
             case 'reply': return '';
             case 'record': return '[语音]';

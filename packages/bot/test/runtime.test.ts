@@ -46,7 +46,7 @@ describe('OneBot 消息', () => {
             { type: 'text', data: { text: '你看' } },
             { type: 'image', data: { summary: '[动画表情]', url: 'x' } },
             { type: 'image', data: { summary: '' } },
-            { type: 'face', data: { id: '1' } },
+            { type: 'face', data: { id: '9999' } },
             { type: 'record', data: {} },
             { type: 'poke', data: {} },
         ]), '你看[动画表情][图片][表情][语音][poke]');

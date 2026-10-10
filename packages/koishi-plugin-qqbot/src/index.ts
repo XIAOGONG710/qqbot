@@ -17,6 +17,7 @@ import type { HistoryMessage } from '../../bot/src/backfill.ts';
 import { CONTACT_TIERS, DEFAULTS, parseAppConfig, type AppConfig, type ContactTier } from '../../bot/src/config.ts';
 import { createLog, type Log } from '../../bot/src/log.ts';
 import { isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
+import { textToSegments } from '../../bot/src/qq-faces.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from '../../bot/src/proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '../../bot/src/st/prompt-converters.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
@@ -332,7 +333,8 @@ export function apply(ctx: Context, config: Config) {
         return bot as Bot & { internal: OneBotInternal };
     };
     const transport: Transport = {
-        sendPrivateText: async (userId, text) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'text', data: { text } }])),
+        // 白名单的小黄脸「[捂脸]」发成 face 段（ADR 0051），和 onebot.ts 发的是同一个请求
+        sendPrivateText: async (userId, text) => Number(await onlineBot().internal.sendPrivateMsg(userId, textToSegments(text))),
         friendHistory: (userId, count) => onlineBot().internal.getFriendMsgHistory(String(userId), undefined, count),
     };
     let app: ReturnType<typeof startApp>;

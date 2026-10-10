@@ -4,6 +4,7 @@
 // 都是纯函数，按聊天记录和时间算；随机的部分按消息 id 定下来，同一串消息重算多少次都一样（调度在 responder.ts，等待期间来新消息会重算）。
 
 import type { StoredMessage } from './history.ts';
+import { KNOWN_FACE } from './qq-faces.ts';
 import { stateAt, type Schedule } from './schedule.ts';
 
 /** 她这么久之内发过消息算正聊着，不加冷场延迟 */
@@ -170,16 +171,17 @@ export function isAck(text: string): boolean {
     return ACK.test(stripped);
 }
 
-// 反应：去掉表情（[表情]、[动画表情]、emoji）和标点之后只剩这些。晚安、拜拜不在里面（要回）
+// 反应：去掉表情（QQ 小黄脸「[捂脸]」、[表情]、[动画表情]、emoji）和标点之后只剩这些。晚安、拜拜不在里面（要回）
 const REACTION = /^(?:嗯+|恩+|好+|好的|好滴|好哒|哦+|噢+|喔+|ok+|行|收到|哈+|嘿+|嘻+|呵+|h+|233+|6+|笑死|草|绝了|确实|是的|对的?|对啊|对呀|可以|不错|好耶|牛)+$/i;
 
 /**
  * 这条只是个反应（「哈哈」「嗯嗯」「确实」、表情），不回也说得过去。问句不算；图片、语音、视频、戳一戳都不算
- * （不知道里面是什么，照样回）；表情包按它的名字算（[是的] 算，[动画表情] 算）
+ * （不知道里面是什么，照样回）；表情包按它的名字算（[是的] 算，[动画表情] 算）；
+ * QQ 小黄脸按名字认（ADR 0051：「[捂脸]」单独一条照旧算），「[疑问]」「[问号脸]」和问号一样不算
  */
 export function isReaction(text: string): boolean {
-    if (/[?？]/.test(text)) return false;
-    const stripped = text.replace(/\[(?:表情|动画表情)\]/g, '').replace(/[\p{P}\p{S}\p{Extended_Pictographic}\s～~]/gu, '');
+    if (/[?？]|\[(?:疑问|问号脸)\]/.test(text)) return false;
+    const stripped = text.replace(KNOWN_FACE, '').replace(/[\p{P}\p{S}\p{Extended_Pictographic}\s～~]/gu, '');
     if (!stripped) return text.trim().length > 0;
     return REACTION.test(stripped);
 }

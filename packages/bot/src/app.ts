@@ -46,7 +46,7 @@ export const WEATHER_REFRESH_MS = 30 * 60_000;
 
 /** 入口提供的收发 */
 export interface Transport {
-    /** 发一条私聊文字，返回 QQ 消息 id */
+    /** 发一条私聊文字，返回 QQ 消息 id；文字里白名单的小黄脸「[捂脸]」发成 face 段（qq-faces.ts textToSegments，ADR 0051） */
     sendPrivateText(userId: number, text: string): Promise<number>;
     /** NapCat 的 get_friend_msg_history：某人最近 count 条私聊（含小号自己发的），从旧到新。没有任何记录时 NapCat 也报错 */
     friendHistory(userId: number, count: number): Promise<HistoryMessage[]>;
