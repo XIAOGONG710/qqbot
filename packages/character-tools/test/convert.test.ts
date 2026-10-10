@@ -213,15 +213,17 @@ test('只有男朋友和闺蜜档知道「他」是男朋友；其他档位没�
     }
 });
 
-test('男朋友档的分寸和示例只给男朋友档', () => {
+test('男朋友档的分寸只给男朋友档；示例对话只给写了示例的档位（男朋友、闺蜜，10-10 N4），不带那一档的禁用词', () => {
     const boyfriend = card('boyfriend').data;
     assert.match(boyfriend.post_history_instructions, /你喜欢他，也依赖他/);
-    assert.equal(boyfriend.mes_example.split('<START>').length - 1, tiers[0]!.examples!.length);
-    for (const tier of tiers.slice(1)) {
+    for (const tier of tiers) {
         const { data } = card(tier.name);
-        assert.doesNotMatch(data.post_history_instructions, /你喜欢他/);
-        assert.equal(data.mes_example, '');
+        assert.equal(data.mes_example.split('<START>').length - 1, tier.examples?.length ?? 0, tier.name);
+        if (tier.name !== 'boyfriend') assert.doesNotMatch(data.post_history_instructions, /你喜欢他/);
+        for (const word of tier.banned ?? []) assert.ok(!data.mes_example.includes(word), `${tier.name} 的示例里有禁用词「${word}」`);
     }
+    assert.ok(card('bestie').data.mes_example.length > 0);
+    assert.equal(card('classmate').data.mes_example, '');
 });
 
 test('名单外好友：被认真问到是不是 AI 时承认；场景去掉否认是 AI 的两条', () => {
