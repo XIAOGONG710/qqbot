@@ -38,6 +38,7 @@ export const DEFAULTS = {
     speechCheck: true,
     herDays: true,
     autonomousLife: false,
+    lifeInPrompt: false,
     realWeather: true,
     media: true,
     candidates: 1,
@@ -93,6 +94,11 @@ export interface AppConfig {
      * 默认关；开了以后从开的那一刻排起，行动还不进提示词（影子模式）。要开着她自己的日子，卡上要有作息和世界
      */
     autonomousLife: boolean;
+    /**
+     * 生活账接进提示词的第一步（ADR 0040 之后）：她这几天练拍照修图的回数、时长、上一回是什么时候，按账上已经落账的写一行，只给看得到她爱好的档位。
+     * 默认关；要开着 autonomousLife（账是它记的）
+     */
+    lifeInPrompt: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -248,6 +254,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         speechCheck: bool(file, 'speechCheck', '', DEFAULTS.speechCheck),
         herDays: bool(file, 'herDays', '', DEFAULTS.herDays),
         autonomousLife: bool(file, 'autonomousLife', '', DEFAULTS.autonomousLife),
+        lifeInPrompt: bool(file, 'lifeInPrompt', '', DEFAULTS.lifeInPrompt),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         media: bool(file, 'media', '', DEFAULTS.media),
         ...(vision ? { vision } : {}),

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -38,6 +38,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         speechCheck: false,
         herDays: false,
         autonomousLife: false,
+        lifeInPrompt: false,
         realWeather: false,
         media: true,
         candidates: 1,
@@ -199,6 +200,33 @@ describe('编排（app.ts）', () => {
         // 启动时写当天摘要读过一次世界：排到了现在（这一刻正在上课一半、赶路时跳到下一个边界，可能还没有一件）
         const queue = join(cfg.dataDir, 'world', 'action-queue.json');
         if (existsSync(queue)) assert.ok(JSON.parse(readFileSync(queue, 'utf8')).items.every((item: { id: string }) => item.id.startsWith('life:')));
+    });
+
+    test('生活账进提示词（lifeInPrompt，默认关）：她这几天练拍照修图写一行，只有开着、账上真有才写', async () => {
+        const bf = [{ qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+        const seed = (cfg: AppConfig) => {
+            const end = new Date(Date.now() - 2 * 3_600_000);
+            const start = new Date(end.getTime() - 100 * 60_000);
+            const day = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+            mkdirSync(join(cfg.dataDir, 'world'), { recursive: true });
+            writeFileSync(join(cfg.dataDir, 'world', 'events.json'), JSON.stringify({ version: 1, events: [{
+                id: `life:${start.toISOString()}:work_on_project`, actor: 'linmengyao', kind: 'work_on_project', day,
+                startedAt: start.toISOString(), endedAt: end.toISOString(), source: 'simulation', result: 'succeeded',
+                subject: '修昨天拍的片子', target: 'photography_growth',
+            }] }));
+        };
+        const promptOf = async (cfg: AppConfig) => {
+            seed(cfg);
+            const { app, sent } = setup(cfg, { 10002: [historyMessage(1, 10002, '在干嘛', 5)] });
+            await app.connected(SELF);
+            await until(() => sent.length > 0);
+            const prompt = JSON.parse(readFileSync(join(cfg.dataDir, 'last-prompt.json'), 'utf8')) as { messages: { content: string }[] };
+            return prompt.messages.map(m => m.content).join('\n');
+        };
+        const on = await promptOf(config({ herDays: true, schedule: false, autonomousLife: true, lifeInPrompt: true, contacts: bf }));
+        assert.match(on, /\[你这几天拍照修图（你自己过的日子，账上记着的；用不用、怎么说你自己定，没写的别编）：3 天里练了 1 回，加起来 1 个半小时（修昨天拍的片子）；上一回是今天/);
+        const off = await promptOf(config({ herDays: true, schedule: false, autonomousLife: true, contacts: bf }));
+        assert.doesNotMatch(off, /你这几天拍照修图/, '默认关');
     });
 
     test('stop：释放锁；之后收到的消息、再连上都不处理', async () => {

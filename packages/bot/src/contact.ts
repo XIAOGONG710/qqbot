@@ -32,6 +32,7 @@ import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
 import { asleepSince, saidBedtimes } from './bedtime.ts';
 import { herStatus } from './status-line.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
+import { describeRecentPhotography, recentPhotography } from './projects.ts';
 import { describePast, pastCue } from './biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from './people.ts';
 import { describeAppointment, type PromiseKeeper } from './promises.ts';
@@ -116,7 +117,9 @@ export interface ContactPipelineOptions {
     /** 她答应过的事（ADR 0018 决策 2）：到了日子在时间块里提醒一句；名单外的人不用 */
     promises?: Pick<PromiseKeeper, 'describe'> & Partial<Pick<PromiseKeeper, 'openLoops' | 'appointmentsAt'>>;
     /** W3：所有联系人、日记和主动消息共用的一份世界动作。 */
-    worldState?: Pick<WorldState, 'at'>;
+    worldState?: Pick<WorldState, 'at'> & Partial<Pick<WorldState, 'events'>>;
+    /** 生活账接进提示词的第一步（配置 lifeInPrompt）：她这几天练拍照修图，只给看得到她爱好的档位（卡上有相机基金的） */
+    lifeInPrompt?: boolean;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
     mood?: string;
     /** herDays 开着时每次生成前调一次（app 按她的一天去重，写当天的摘要） */
@@ -266,6 +269,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ? options.worldState?.at(character.herWorld, herSchedule, time) ?? worldAt(character.herWorld, herSchedule, time)
                 : undefined;
             const world = around ? describeWorld(around, time) : undefined;
+            const practiced = options.lifeInPrompt && character.herWorld?.cameraFund && options.worldState?.events ? recentPhotography(options.worldState.events(), time) : undefined;
+            const practice = practiced ? describeRecentPhotography(practiced, time) : undefined;
             // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）
             const recap = day && !day.period ? recapOf(day.start, time) : undefined;
             if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
@@ -393,6 +398,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(warm ? [warm] : []),
                         ...(books ? [books.text] : []),
                         ...(world ? [world] : []),
+                        ...(practice ? [practice] : []),
                         ...(plansLine ? [plansLine] : []),
                         ...(promised ? [promised] : []),
                         // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在青岛」

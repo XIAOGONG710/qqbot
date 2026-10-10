@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { LifeEvent } from '../src/life-events.ts';
-import { photographyProgress, projectActivity } from '../src/projects.ts';
+import { describeRecentPhotography, photographyProgress, projectActivity, recentPhotography } from '../src/projects.ts';
 
 const event = (id: string, start: string, end: string, result: LifeEvent['result'] = 'succeeded'): LifeEvent => ({
     id, actor: 'linmengyao', kind: 'work_on_project', day: '2026-10-12',
@@ -31,5 +31,31 @@ describe('长期项目从事实账派生（ADR 0044）', () => {
             lastAt: '2026-10-12T08:30:00.000Z', recentSteps: ['修昨天拍的片子'],
         });
         assert.deepEqual(photographyProgress(events), photographyProgress(events));
+    });
+});
+
+describe('最近几天的摄影练习进提示词（lifeInPrompt）', () => {
+    const work = (start: string, minutes: number, subject = '修昨天拍的片子'): LifeEvent => {
+        const s = new Date(`${start}+08:00`);
+        return {
+            id: `life:${s.toISOString()}:work_on_project`, actor: 'linmengyao', kind: 'work_on_project', day: start.slice(0, 10),
+            startedAt: s.toISOString(), endedAt: new Date(s.getTime() + minutes * 60_000).toISOString(), source: 'simulation', result: 'succeeded',
+            subject, target: 'photography_growth',
+        };
+    };
+    const now = new Date('2026-10-14T20:00:00+08:00');
+    test('只数三天里落了账的；没练就没有这一行', () => {
+        assert.equal(recentPhotography([work('2026-10-10T15:00:00', 120)], now), undefined, '四天前的不算');
+        const practice = recentPhotography([work('2026-10-12T15:00:00', 40, '拿新相机去校园里拍'), work('2026-10-13T20:30:00', 80, '研究新相机的设置'), work('2026-10-15T09:00:00', 60)], now)!;
+        assert.deepEqual([practice.sessions, practice.minutes, practice.steps], [2, 120, ['拿新相机去校园里拍', '研究新相机的设置']], '还没到的不算');
+        assert.equal(describeRecentPhotography(practice, now), '[你这几天拍照修图（你自己过的日子，账上记着的；用不用、怎么说你自己定，没写的别编）：3 天里练了 2 回，加起来 2 个小时（拿新相机去校园里拍、研究新相机的设置）；上一回是昨天晚上]');
+    });
+    test('时长说成人话', () => {
+        const line = (minutes: number) => describeRecentPhotography(recentPhotography([work('2026-10-14T13:00:00', minutes)], now)!, now);
+        assert.match(line(45), /加起来 45 分钟/);
+        assert.match(line(70), /加起来一个多小时/);
+        assert.match(line(100), /加起来 1 个半小时/);
+        assert.match(line(185), /加起来 3 个小时/);
+        assert.match(line(45), /上一回是今天下午\]$/);
     });
 });
