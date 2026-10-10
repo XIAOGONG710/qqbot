@@ -2,7 +2,7 @@
 
 - 状态：已实现，待上线（分支 `news-occasion`）
 - 日期：2026-10-11
-- 关联：[ADR 0011](0011-proactive-messages.md)（主动消息）、[ADR 0050](0050-rain-message.md)（下雨了主动找他）、[ADR 0053](0053-buying-the-camera.md)（买相机）、[ADR 0036](0036-conversation-naturalness.md) 调整（2026-10-10 夜）
+- 关联：[ADR 0011](0011-proactive-messages.md)（主动消息）、[ADR 0050](0050-rain-proactive.md)（下雨了主动找他）、[ADR 0053](0053-buying-the-camera.md)（买相机）、[ADR 0036](0036-conversation-naturalness.md) 调整（2026-10-10 夜）
 
 ## 背景
 
