@@ -2,7 +2,7 @@
 
 - 时间：2026-10-11 20:40；复审人：Claude，在 VM 上，能看线上 `runtime/`
 - 范围：全文 322 行；逐条对了仓库文件、live `koishi.yml`、进程和日志
-- **原文件没改**。下面的改动请 GPT 改，或者用户点头后由我改
+- **20:50 已按本复审改进原文件**（用户要求）：`main` = `integration` = `3427a4e`（分支 `docs/deepseek-handoff-review`），只改文档；线上目录没动（`behind 1`，下次上线时随 ff 跟上）
 
 ## 结论
 
