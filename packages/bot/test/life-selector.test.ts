@@ -15,7 +15,7 @@ import { classesOn, formatDate, herDay } from '../src/schedule.ts';
 import { auditLedgerCoverage, auditLifeStatus } from '../src/sim/life-audit.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { herStatus } from '../src/status-line.ts';
-import { worldAt, worldState } from '../src/world.ts';
+import { worldAt, worldState, type WorldAction } from '../src/world.ts';
 import { dayFrom, useRealWeather, type HourWeather } from '../src/weather.ts';
 
 const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
@@ -100,6 +100,28 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         }
         const free = chooseAt(at('2026-10-13T13:00:00'), plain);
         assert.ok('intent' in free && ['leisure', 'study', 'rest', 'read_book', 'work_on_project'].includes(free.intent.kind));
+    });
+
+    test('买相机那天：行动账让出出门前、山大路和回来摆弄的三段，不再同时记作息活动', () => {
+        const gift: WorldAction = {
+            id: '1:camera-gift:1:receive_money', kind: 'receive_money', day: '2026-10-10', at: '2026-10-10T15:41',
+            contact: 1, episode: 'camera-gift', amount: 2000, target: 'camera_fund',
+        };
+        const cameraDay: LifeSources = { ...plain, worldAt: time => worldAt(herWorld, schedule, time, [gift]) };
+        const spans = dayBusy(cameraDay, at('2026-10-11T13:00:00')).filter(span => /相机/.test(span.text));
+        assert.deepEqual(spans.map(span => [span.start.toISOString(), span.end.toISOString(), span.text]), [
+            ['2026-10-11T04:30:00.000Z', '2026-10-11T06:00:00.000Z', '在宿舍准备出门，14:00 去山大路科技市场买相机'],
+            ['2026-10-11T06:00:00.000Z', '2026-10-11T08:30:00.000Z', '去山大路科技市场买相机'],
+            ['2026-10-11T08:30:00.000Z', '2026-10-11T10:00:00.000Z', '刚买完相机回到宿舍，在摆弄新相机'],
+        ]);
+        for (const [time, until] of [
+            ['2026-10-11T13:30:00', '2026-10-11T14:00:00'],
+            ['2026-10-11T15:00:00', '2026-10-11T16:30:00'],
+            ['2026-10-11T17:00:00', '2026-10-11T18:00:00'],
+        ] as const) {
+            const choice = chooseAt(at(time), cameraDay);
+            assert.ok('skipTo' in choice && choice.skipTo.getTime() === at(until).getTime(), `${time}: ${JSON.stringify(choice)}`);
+        }
     });
 
     test('空闲的事归类：在读的书 → 读书，作业 → 学习，躺着 → 休息，别的 → 休闲', () => {

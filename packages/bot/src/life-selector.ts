@@ -113,9 +113,23 @@ export function busySpans(now: WorldNow | undefined): { start: Date; end: Date; 
     if (now.cat && 'fed' in now.cat.today) span(now.cat.today.fed, OCCUPATION_MINUTES.feed, `下楼喂${now.cat.name}`);
     for (const parcel of now.parcels.filter(p => p.status === 'picked_today')) span(parcel.when, OCCUPATION_MINUTES.parcel, `取快递（${parcel.item}）`);
     if (now.familyCall?.done) span(now.familyCall.at, OCCUPATION_MINUTES.call, '和家里视频');
-    // 去买相机那一趟（用户 10-10「这周末去买」）：只在那一天
+    // 去买相机那天：状态行从出门前 90 分钟起写准备，回来后 90 分钟写在宿舍摆弄；
+    // 选择器也让出这两段，不能同时在行动账里记成图书馆赶作业等作息活动。
     const camera = now.cameraFund?.camera;
-    if (camera && formatDate(camera.start) === now.day) spans.push({ start: camera.start, end: camera.end, text: `去${camera.where}买相机` });
+    if (camera && formatDate(camera.start) === now.day) {
+        const startTime = camera.start.toTimeString().slice(0, 5);
+        spans.push({
+            start: new Date(camera.start.getTime() - OCCUPATION_MINUTES.beforeTrip * 60_000),
+            end: camera.start,
+            text: `在宿舍准备出门，${startTime} 去${camera.where}买相机`,
+        });
+        spans.push({ start: camera.start, end: camera.end, text: `去${camera.where}买相机` });
+        spans.push({
+            start: camera.end,
+            end: new Date(camera.end.getTime() + OCCUPATION_MINUTES.newCamera * 60_000),
+            text: '刚买完相机回到宿舍，在摆弄新相机',
+        });
+    }
     return spans.sort((a, b) => a.start.getTime() - b.start.getTime());
 }
 
