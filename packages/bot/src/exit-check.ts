@@ -26,7 +26,7 @@ const NAG_TOPIC: Record<NagKind, string> = { sleep: '早点睡', eat: '吃饭', 
 export interface ExitIssue {
     /** 回复里的第几行（从 0 开始，按 \n 分） */
     line: number;
-    kind: 'promise' | 'banned' | 'script' | 'media' | SpeechIssue['kind'] | 'progress' | 'face';
+    kind: 'promise' | 'banned' | 'script' | 'media' | 'text-intimacy' | SpeechIssue['kind'] | 'progress' | 'face';
     /** 命中的片段 */
     match: string;
     /** 说话的毛病里的重复（speech-check.ts） */
@@ -132,8 +132,23 @@ const SCRIPT = /\[Start a new Chat\]|^\s*\[(?:当前时间|距上一条消息|�
  */
 const MEDIA_LINE = /^\s*\[(?:语音|图片)(?:\]|[ ，：])/;
 
-export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext, books?: BookProgressContext, faces?: FaceContext): ExitIssue[] {
+/**
+ * 男朋友明确在用文字要抱抱、亲亲时，不能先回一点又说“必须当面 / 隔空不算”，把已经给出的文字互动收回。
+ * 只在当轮由调用方打开；普通约见面、讨论屏幕或明天的安排不查。
+ */
+const TEXT_INTIMACY_DEFERRAL = /(?:亲|抱|mua|啵).{0,8}(?:得|要|只能|必须)(?:当面|见面|线下)|(?:得|要|只能|必须)(?:当面|见面|线下).{0,8}(?:亲|抱|给|补|兑现)|(?:当面|见面|线下).{0,8}才(?:亲|抱|给|补|兑现)|(?:得|要|只能|必须)?等(?:我们)?(?:见了|见面)(?:以后|的时候)?(?:再|才)?(?:给|亲|抱|说|算|兑现)|现在(?:还)?不算.{0,8}(?:见面|见了|线下)|(?:真的)?还是线下才(?:有感觉|算|行)|隔空.{0,8}(?:不算|没用|摸不着|没感觉)|隔着?(?:屏幕|网线).{0,10}(?:不算|没用|摸不着|没感觉)|(?:自己|你去)亲(?:一下)?屏幕|亲(?:完)?(?:了)?你也摸不着|(?:先)?(?:留着|存着|欠着).{0,12}(?:当面|见面|见了|线下|下次)(?:给|补|兑现)?|(?:明天|下次).{0,8}(?:当面|见面|线下)?.{0,4}(?:补个?(?:亲|抱|mua)|补给你|兑现)/i;
+
+export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext, books?: BookProgressContext, faces?: FaceContext, textIntimacy = false): ExitIssue[] {
     const issues: ExitIssue[] = [];
+    // 模型会把“mua”和“等见面再给”拆成两个气泡；用等长标点替换换行后整段查，命中位置仍能映射回原行。
+    if (textIntimacy) {
+        const flattened = reply.replace(/\r?\n/g, newline => '，'.repeat(newline.length));
+        const deferred = TEXT_INTIMACY_DEFERRAL.exec(flattened);
+        if (deferred) {
+            const line = reply.slice(0, deferred.index).split('\n').length - 1;
+            issues.push({ line, kind: 'text-intimacy', match: deferred[0] });
+        }
+    }
     for (const [line, text] of reply.split('\n').entries()) {
         const media = MEDIA_LINE.exec(text);
         if (media) issues.push({ line, kind: 'media', match: media[0].trim() });
@@ -165,6 +180,7 @@ export function dropLines(reply: string, issues: readonly ExitIssue[]): string {
 /** 日志里的一句：第几行、哪一类、命中什么 */
 export function summarizeIssues(issues: readonly ExitIssue[]): string {
     return issues.map(i => `第 ${i.line + 1} 行${i.kind === 'script' ? `编了一段对话「${i.match}」` : i.kind === 'media' ? `照抄了语音、图片的写法「${i.match}」` : i.kind === 'promise' ? `做不到的事「${i.match}」`
+        : i.kind === 'text-intimacy' ? `把文字亲密推回当面「${i.match}」`
         : i.kind === 'banned' ? `禁用词「${i.match}」`
             : i.kind === 'face' ? (i.face === 'only' ? `他在认真说事，只回了表情「${i.match}」` : `QQ 里没有的表情「${i.match}」`)
             : i.kind === 'progress' ? `进度数字「${i.match}」（《${i.book!.title}》${progressFact(i.book!)}）` : describeSpeechIssue(i as SpeechIssue)}`).join('、');
@@ -184,6 +200,7 @@ export function rewriteNote(reply: string, issues: readonly ExitIssue[], userNam
                 case 'script': return `从这里开始你在替你和${userName}两个人写一段聊天记录；只写你这一次要发给${userName}的话`;
                 case 'media': return `这是${userName}发来的语音、图片在聊天记录里的写法，你发不了语音和图片，只能打字，不写这种方括号`;
                 case 'promise': return '答应或者像是已经给对方发照片、语音、视频，或者打电话，可你只能打字聊天';
+                case 'text-intimacy': return `把这次文字里的抱抱、亲亲或 mua 说成必须当面、隔空不算或以后再补；文字本身就是你和${userName}正在完成的互动，直接用文字回抱回亲就算数`;
                 case 'banned': return `提到了「${i.match}」，这是不该对${userName}说的`;
                 case 'service': return `像客服说的话，用你自己的口气跟${userName}说`;
                 case 'ledger': return `在说${userName}隔了这么久才来找你；${userName}来找你你是高兴的，直接接话`;
@@ -203,7 +220,7 @@ export function rewriteNote(reply: string, issues: readonly ExitIssue[], userNam
         });
         return `「${lines[line]!.trim()}」${[...new Set(why)].join('；')}`;
     });
-    const changesMeaning = issues.some(i => (i.kind === 'repeat' && i.repeat === 'verbatim') || i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'contrast' || i.kind === 'service' || i.kind === 'progress' || i.kind === 'nag');
+    const changesMeaning = issues.some(i => (i.kind === 'repeat' && i.repeat === 'verbatim') || i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'contrast' || i.kind === 'service' || i.kind === 'progress' || i.kind === 'nag' || i.kind === 'text-intimacy');
     return `[上一版回复没有发出去：${reasons.join('；')}。${changesMeaning ? '别的意思' : '意思'}不变，重写这次的回复，只输出要发的消息。]`;
 }
 
@@ -216,12 +233,14 @@ export interface ReviewOptions {
     books?: BookProgressContext;
     /** 小黄脸（ADR 0051）：她最近几次回复、他是不是在认真说事；不传就只查白名单外的和一次回复里堆太多 */
     faces?: FaceContext;
+    /** 男朋友这一轮明确在要文字抱抱、亲亲：不允许回复又降级成“只能当面 / 隔空不算”。 */
+    textIntimacy?: boolean;
     /** 在原来的提示词末尾加上这句说明重新生成，返回清理过的回复 */
     regenerate: (note: string) => Promise<string>;
     log: (message: string) => void;
 }
 
-const HARD = new Set<ExitIssue['kind']>(['promise', 'banned', 'media']);
+const HARD = new Set<ExitIssue['kind']>(['promise', 'banned', 'media', 'text-intimacy']);
 
 /** 先收拾小黄脸，再去掉重复的语气词开头（可能连着几个，最多去两轮），返回去过之后的回复和剩下要重写的问题 */
 function strip(reply: string, options: ReviewOptions): { reply: string; issues: ExitIssue[] } {
@@ -229,7 +248,7 @@ function strip(reply: string, options: ReviewOptions): { reply: string; issues: 
     if (tidy.notes.length) options.log(`出口检查：小黄脸——${tidy.notes.join('；')}，去掉`);
     let text = tidy.reply;
     for (let round = 0; ; round++) {
-        const issues = inspectReply(text, options.banned, options.speech, options.books, options.faces);
+        const issues = inspectReply(text, options.banned, options.speech, options.books, options.faces, options.textIntimacy);
         const removable = issues.filter(strippable);
         if (removable.length === 0 || round === 2) return { reply: text, issues: issues.filter(i => !strippable(i)) };
         const next = stripOpeners(text, removable);

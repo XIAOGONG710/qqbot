@@ -161,6 +161,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let reading: BookProgressContext | undefined;
     // 这一轮要不要挑候选（ADR 0041）：buildPrompt 按意图行定，紧跟着的 generate 用
     let pick: PickRules | undefined;
+    // 亲密轮次的出口检查：只在男朋友明确要抱抱、亲亲等时，拦“只能当面 / 隔空不算”把文字回应收回。
+    let textIntimacy = false;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -352,6 +354,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 playful: contact.tier === 'boyfriend',
             });
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
+            textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
             pick = picked ? {
                 kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: character.banned,
@@ -456,6 +459,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             ...(reading ? { books: reading } : {}),
             // 小黄脸（ADR 0051）：最近几次带得太密、他认真说事她只回表情
             faces: faceContext(options.history.load(contact.qq), contact.tier),
+            ...(textIntimacy ? { textIntimacy: true } : {}),
             regenerate: async note => clean(await generate(
                 postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names),
                 log,

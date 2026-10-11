@@ -87,6 +87,8 @@ describe('这一轮你想（ADR 0019）', () => {
             const line = describeIntent({ history: [assistant('我去睡了，晚安'), user(text)], now, intimate: true })!;
             assert.match(line, /先给一个明确的亲密回应/, text);
             assert.match(line, /嘴硬不能是整轮唯一内容/, text);
+            assert.match(line, /文字里的抱抱、亲一下和 mua 本身就是你们正在完成的互动/, text);
+            assert.match(line, /不要求当面/, text);
             assert.match(line, /只接他刚说的你们两个人的事/, text);
             assert.doesNotMatch(line, /先直接回答|顺着他的话收尾/, text);
         }
