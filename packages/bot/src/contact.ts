@@ -272,9 +272,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const around = herSchedule && character.herWorld
                 ? options.worldState?.at(character.herWorld, herSchedule, time) ?? worldAt(character.herWorld, herSchedule, time)
                 : undefined;
-            // 别人给的钱（买相机，ADR 0053 调整）：正在聊的人给的是「对方」，男朋友给的跟别人说是「男朋友」
+            // 别人给的钱（买相机，ADR 0053 调整）：正在聊的人给的写他的称呼（写「对方」她照抄成「对方给的2000」），男朋友给的跟别人说是「男朋友」
             const giver = (qq: number) => {
-                if (qq === contact.qq) return '对方';
+                if (qq === contact.qq) return contact.name;
                 const other = (options.contacts ?? []).find(c => c.qq === qq);
                 return other ? (other.tier === 'boyfriend' ? '男朋友' : other.name) : undefined;
             };

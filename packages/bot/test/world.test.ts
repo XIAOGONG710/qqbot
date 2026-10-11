@@ -287,7 +287,7 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
         const line = describeWorld(back, at('2026-10-11T17:00:00'))!;
         assert.match(line, new RegExp(`相机：今天下午去${fund.where}买的${fund.what}（${fund.price} 元：别人给的 2000 加上你自己攒的 ${fund.price - 2000}）`), '不知道是谁给的：别人');
         // 钱从哪来按正在看的人说（ADR 0053 调整，10-11：「攒的钱买的」跟他知道的对不上）
-        assert.match(describeWorld(back, at('2026-10-11T17:00:00'), qq => (qq === 1 ? '对方' : undefined))!, new RegExp(`（${fund.price} 元：对方给的 2000 加上你自己攒的 ${fund.price - 2000}）`));
+        assert.match(describeWorld(back, at('2026-10-11T17:00:00'), qq => (qq === 1 ? '阿明' : undefined))!, new RegExp(`（${fund.price} 元：阿明给的 2000 加上你自己攒的 ${fund.price - 2000}）`));
         assert.match(describeWorld(back, at('2026-10-11T17:00:00'), qq => (qq === 1 ? '男朋友' : undefined))!, /（4280 元：男朋友给的 2000 加上你自己攒的 2280）/);
         assert.match(describeWorld(worldAt(world, schedule, at('2026-10-11T17:00:00'))!, at('2026-10-11T17:00:00'))!, /攒钱买相机/, '没人给钱：攒不够就不买');
         assert.doesNotMatch(line, /攒钱买相机/);

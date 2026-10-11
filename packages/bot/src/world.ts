@@ -186,7 +186,7 @@ export function worldNews(now: WorldNow): WorldNews[] {
 
 /**
  * 相机的钱从哪来（ADR 0053 调整，10-11）：他 10-10 转了 2000 买相机，「攒的钱买的」跟他知道的对不上（模拟器里还说成「攒的钱到账了」）。
- * giver：给钱的人在这一行里怎么称呼（正在看的人自己给的是「对方」）；不给就是「别人」
+ * giver：给钱的人在这一行里怎么称呼（正在看的人自己给的写他的称呼，contact.ts 给）；不给就是「别人」
  */
 function cameraMoney(camera: CameraTrip, giver?: (qq: number) => string | undefined): string {
     const given = (camera.gifts ?? []).reduce((sum, g) => sum + g.amount, 0);
