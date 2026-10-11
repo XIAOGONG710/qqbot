@@ -208,6 +208,8 @@ export interface Scenario {
     gifts?: { at: string; amount: number; forCamera?: boolean }[];
     /** 看心情不回的概率（0–1），不写按档位算；写 1 时正聊着的「哈哈」一定不回，用来看不回之后的样子 */
     moodyChance?: number;
+    /** 这几种时机的主动消息（日志里的说法，如「她那边的事」）生成时都当没连上模型（10-11 断网那天），看后面的主动怎么接 */
+    proactiveOffline?: string[];
     /** 假的「真实天气」（ADR 0050）：日期 → 下雨的钟头（0–23），这几天按真实天气算（世界和主动消息都认），别的日子照旧生成 */
     realRain?: Record<string, number[]>;
     /** 指定今天的心情（ADR 0015，卡上心情的名字），比较不同心情时用；不写按虚拟日期抽 */
@@ -276,6 +278,10 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
             return { at: o.at as string, amount: o.amount as number, ...(o.forCamera === true ? { forCamera: true } : {}) };
         }) } : {}),
         ...(s.moodyChance !== undefined ? { moodyChance: chance(s.moodyChance) } : {}),
+        ...(s.proactiveOffline !== undefined ? {
+            proactiveOffline: Array.isArray(s.proactiveOffline) && s.proactiveOffline.every(x => typeof x === 'string' && x)
+                ? s.proactiveOffline as string[] : fail('proactiveOffline 应为时机说法的数组（「她那边的事」「冷场」…）'),
+        } : {}),
         ...(s.realRain !== undefined ? { realRain: rainDays(s.realRain, fail) } : {}),
         ...(s.mood !== undefined ? { mood: typeof s.mood === 'string' && s.mood ? s.mood : fail('mood 应为心情的名字') } : {}),
         others: parseOthers(s.others, Date.parse(s.start as string), fail),

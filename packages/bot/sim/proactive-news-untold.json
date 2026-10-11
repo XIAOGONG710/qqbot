@@ -1,0 +1,25 @@
+{
+    "name": "男朋友档：买到相机那条没发成，睡前顺带说（ADR 0057 调整）",
+    "description": "照 10-11 线上：头天他转了 2000 买相机，周日 14:00–16:30 她去山大路科技市场买（ADR 0053）。上午他问过、她说下午去；下午断网，买到相机那条和傍晚的冷场都没连上模型（场景里这两种时机断网，各试 3 次）。之后没人说话，睡前那条要顺带说买到了相机；钱的来历照「你那边」（他给的 2000 加她攒的），不说成全是自己攒的、也不说成钱到账了。第二天不再为这件事单发。不用记忆。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-11T10:40:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "proactiveOffline": ["她那边的事", "冷场"],
+    "gifts": [{ "at": "2026-10-10T15:41:00+08:00", "amount": 2000, "forCamera": true }],
+    "steps": [
+        { "case": "PU01", "note": "上午聊几句：她知道下午要去买" },
+        { "say": "你的相机什么时候去买？" },
+        { "check": { "replyAny": ["下午", "两点", "2点", "山大路", "科技市场"], "exitClean": true } },
+        { "say": "好，去吧" },
+        { "case": "PU02", "note": "相机那条、冷场都断网没发成：睡前那条顺带说买到了相机" },
+        { "wait": "proactive" },
+        { "check": { "proactive": { "count": [1, 1], "occasions": ["睡前"], "absent": ["她那边的事", "冷场"], "replyAny": ["相机", "买到", "到手", "a6100", "索尼", "拿下", "买了"], "allowedTimes": true, "exitClean": true } } },
+        { "say": "可以啊，花了多少" },
+        { "check": { "replyNone": ["到账", "全是我自己攒", "都是我自己攒"], "exitClean": true } },
+        { "case": "PU03", "note": "到第二天傍晚：不再为买相机单发" },
+        { "advance": "1d" },
+        { "check": { "proactive": { "perDayMax": 2, "allowedTimes": true, "absent": ["她那边的事"], "exitClean": true } } }
+    ]
+}

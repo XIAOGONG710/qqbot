@@ -422,8 +422,23 @@ export const MAX_PROACTIVE_BUBBLES = 2;
 /** 有没回的消息时不主动的原因（计划器和回复器都用） */
 export const PENDING_REASON = '有没回的消息，回复就好';
 
-/** 提示词里的说明（ADR 0011 决策 3）：这次是你主动找他、为什么。userName 是称呼（{{user}}） */
-export function occasionNote(candidate: Candidate, userName: string): string {
+/** 顺带说没说成的事的时机：问候、找他说话的这几种（日子、下雨、待跟进各有要说的那一件） */
+const CARRIES_NEWS: ReadonlySet<Occasion> = new Set(['morning', 'after_class', 'quiet', 'bedtime']);
+
+/**
+ * 她那边的事没说成（ADR 0057 调整，10-11）：这一天了结了、那条主动没发出去（没连上模型、错过了、没排上）、
+ * 那之后两人也没说过话——这一天后面的主动顺带说。10-11 下午断网，买到相机那条没发成，晚上的睡前只道晚安。
+ * 发出去了、还等着再试的不算；那之后聊过的不算（聊天里多半说了，和 blockReason 一样）
+ */
+export function untoldNews(candidate: Candidate, now: number, input: Pick<ProactiveInput, 'news' | 'records' | 'history'>): NewsItem[] {
+    if (!CARRIES_NEWS.has(candidate.occasion)) return [];
+    return (input.news ?? []).filter(item => item.day === candidate.day && item.at <= now
+        && !input.records.some(r => r.id === `${item.day}:news:${item.id}` && (counts(r) || waitingRetry(r)))
+        && !input.history.some(m => Date.parse(m.time) >= item.at));
+}
+
+/** 提示词里的说明（ADR 0011 决策 3）：这次是你主动找他、为什么。userName 是称呼（{{user}}）；untold：没说成的事（untoldNews） */
+export function occasionNote(candidate: Candidate, userName: string, untold: readonly NewsItem[] = []): string {
     const names = candidate.importantDays?.map(d => d.name).join('、') ?? '';
     const followUp = candidate.followUp;
     const why: Record<Occasion, () => string> = {
@@ -433,7 +448,7 @@ export function occasionNote(candidate: Candidate, userName: string): string {
         weather: () => `你这边下雨了（看「你那边」的天气），想起${userName}：问一句他在干嘛、带没带伞，或者说说你这边的雨；他在哪看「你现在」那一行，跟你在一个地方的话他那边也在下；就说这一件`,
         bedtime: () => `时间不早了，跟${userName}道个晚安`,
         // 只给事实和方向，不给台词（ADR 0036 调整（2026-10-10 夜））
-        news: () => `你${candidate.news!.what}，想第一时间告诉${userName}：说说这件事（看「你那边」那一行），就说这一件；那一行里没写的细节不编`,
+        news: () => `你刚${candidate.news!.what}，想第一时间告诉${userName}：说说这件事（看「你那边」那一行），就说这一件；那一行里没写的细节不编`,
         // 旧项目的教训（ADR 0013 决策 2）：分享「刚看到的」会编出一个具体的视频、帖子，对方要链接时给不出来
         quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
             `对方要链接你给不出来），或者问问对方在忙什么（对方可能在忙）`,
@@ -444,7 +459,9 @@ export function occasionNote(candidate: Candidate, userName: string): string {
     };
     // 10-05 模拟器：冷场 3 次有 1 次「都不带搭理我的」，早安 3 次有 2 次「我都起来了你还没消息」「都不吭声」。
     // 人设早就去掉了算「不回消息」的账（persona.yml heart.fear 的说明），这里每种时机都说一遍
-    return `[这次是你主动找${userName}：${why[candidate.occasion]()}。只发一两句，像平时随手发的消息；不抱怨对方没找你、没回你。]`;
+    // 没说成的事：只给事实和方向（ADR 0036 调整（2026-10-10 夜）），不给台词、不给没说成的原因（她那边的人不知道断网）
+    const told = untold.length ? `；你今天${untold.map(n => n.what).join('、')}，还没跟${userName}说过，这次一起说（看「你那边」那一行，没写的细节不编）` : '';
+    return `[这次是你主动找${userName}：${why[candidate.occasion]()}${told}。只发一两句，像平时随手发的消息；不抱怨对方没找你、没回你。]`;
 }
 
 /** 主动找他时召回长期记忆想知道什么（ADR 0012 决策 1 第 7 条） */

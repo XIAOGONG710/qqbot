@@ -272,7 +272,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const around = herSchedule && character.herWorld
                 ? options.worldState?.at(character.herWorld, herSchedule, time) ?? worldAt(character.herWorld, herSchedule, time)
                 : undefined;
-            const world = around ? describeWorld(around, time) : undefined;
+            // 别人给的钱（买相机，ADR 0053 调整）：正在聊的人给的是「对方」，男朋友给的跟别人说是「男朋友」
+            const giver = (qq: number) => {
+                if (qq === contact.qq) return '对方';
+                const other = (options.contacts ?? []).find(c => c.qq === qq);
+                return other ? (other.tier === 'boyfriend' ? '男朋友' : other.name) : undefined;
+            };
+            const world = around ? describeWorld(around, time, giver) : undefined;
             const practiced = options.lifeInPrompt && character.herWorld?.cameraFund && options.worldState?.events ? recentPhotography(options.worldState.events(), time, 3, herSchedule) : undefined;
             const practice = practiced ? describeRecentPhotography(practiced, time, herSchedule) : undefined;
             // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）

@@ -21,7 +21,7 @@ import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './memory/episo
 import type { OpenAIMessage } from './prompt.ts';
 import type { MacroNames } from './st/macros.ts';
 import {
-    blockReason, candidateLabel, candidatesOn, herDay, MAX_PROACTIVE_BUBBLES, occasionNote, PENDING_REASON, planFrom, recallTopic,
+    blockReason, candidateLabel, candidatesOn, herDay, MAX_PROACTIVE_BUBBLES, occasionNote, PENDING_REASON, planFrom, recallTopic, untoldNews,
     UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type ProactiveInput, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
 import type { InitiateOutcome, Responder } from './responder.ts';
@@ -286,9 +286,12 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         }
         let committed: ProactiveRecord | undefined;
         const dryRun = deps.mode === 'dryRun';
+        // 她那边的事没说成（ADR 0057 调整）：这一条顺带说
+        const untold = untoldNews(candidate, now(), current);
+        if (untold.length) deps.log(`主动${tag}：${candidateLabel(candidate)}顺带说没说成的事：${untold.map(n => n.what).join('、')}`);
         const outcome: InitiateOutcome = await deps.responder.initiate({
             label: candidateLabel(candidate),
-            note: occasionNote(candidate, contact.name),
+            note: occasionNote(candidate, contact.name, untold),
             topic: recallTopic(candidate, contact.name),
             maxBubbles: MAX_PROACTIVE_BUBBLES,
             dryRun,
