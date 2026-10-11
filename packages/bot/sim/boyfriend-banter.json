@@ -15,7 +15,7 @@
         { "check": { "maxBubbles": 2, "replyAny": ["笑", "哈哈", "哈"], "replyNone": ["什么意思", "看不懂"] } },
         { "case": "MB02", "note": "人名谐音：换一个姓，仍知道气史了是在把气死了拧成史老师的姓" },
         { "say": "史老师真给我气史了" },
-        { "check": { "maxBubbles": 2, "replyAny": ["气史", "气死", "哈哈", "笑"], "replyNone": ["老师去世", "谁死了"] } },
+        { "check": { "maxBubbles": 2, "replyAny": ["气史", "气死", "这么史", "哈哈", "笑"], "replyNone": ["老师去世", "谁死了"] } },
         { "case": "MB03", "note": "故意一本正经的怪话：顺着为敬继续拧，不只催睡" },
         { "say": "我先吃为敬" },
         { "check": { "maxBubbles": 2, "replyAny": ["敬", "留", "我也", "给我", "等我"] } },

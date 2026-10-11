@@ -120,6 +120,7 @@ describe('这一轮你想（ADR 0019）', () => {
             const line = describeIntent({ history: [user(text)], now, playful: true })!;
             assert.match(line, /顺着同一套逻辑接一句/, text);
             assert.match(line, /不解释梗或报出处/, text);
+            assert.match(line, /保留那句被拧过的关键词或句式/, text);
             assert.doesNotMatch(line, /先直接回答|顺着他的话收尾/, text);
         }
         assert.match(describeIntent({ history: [user('zdjd')], now, playful: true })!, /真的假的 \/ 尊嘟假嘟/);
