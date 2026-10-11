@@ -7,23 +7,39 @@
 
 - 快照日期：2026-10-11（UTC+8）。
 - 仓库：`XIAOGONG710/qqbot`，必须保持私有；远端为 `origin`。
-- 基线：`main`、`origin/main`、`origin/integration` 均指向 `2ba6df2c4daaf42b1db34cc4ccae713b7c711614`。
-- 工作树在编写本文件前无已跟踪改动；检查时须使用 `--ignore-submodules=all`，因为当前受限环境无法进入 `vendor/NapCatQQ` 的 Git 元数据。
+- 基线（写本文件时）：`main`、`origin/main`、`origin/integration` 均指向 `2ba6df2c4daaf42b1db34cc4ccae713b7c711614`；之后 `main` 只多了本文件这类文档提交。
+- **线上跑的代码是 `2ba6df2`**：12:30 cherry-pick 进线上目录的 `main`，Koishi 12:39 重启后生效。19:57 QQ 掉线、Koishi 退出，20:30 用户让恢复，代码没变。文档提交不影响运行。
+- 工作树在编写本文件前无已跟踪改动。在 Codex 沙箱里检查要加 `--ignore-submodules=all`，因为沙箱进不了 `vendor/NapCatQQ` 的 Git 元数据；在线上那台虚拟机上，普通 `git status` 就能用。
 - 2026-10-11 本机复核：`npm run typecheck` 通过；沙箱外 `npm test` 全部通过，共 738 项（bot 670、character-tools 40、Koishi 插件 28）。沙箱内同一测试曾有 133 项因临时目录原子 `rename` 被 `EPERM` 拒绝而失败，沙箱外重跑全部通过，不能把该环境误报当成代码回归。
-- 最新已上线记录：ADR 0060 于 2026-10-11 11:00 上线；当前 HEAD 另含跨回复行保留有效文字亲密回应的修正（ADR 0058）。线上运行开关和服务现状仍必须从实际 `runtime` 配置与进程重新确认，不能仅凭代码默认值推断。
+- 最新上线：ADR 0060 于 2026-10-11 11:00 上线；12:39 又上线了跨回复行保留有效文字亲密回应的修正（ADR 0058 调整，`2ba6df2`）。服务现状必须到线上机器上看进程、端口和日志（§0.1），不能凭代码默认值推断。线上开关见 §4 P2。
+
+### 0.1 线上在哪（已确定，不用问用户）
+
+- **线上实例在 VMware 虚拟机上**（局域网 192.168.139.138），目录是 `C:\Users\XG\Desktop\Project\qqbot`。端口：Koishi :5140、NapCat OneBot :3001、Hindsight :8888。运行数据在 `runtime/bot/`，她的世界账在 `runtime/bot/world/`，日志在 `runtime/bot/logs/<日期>.log` 和 `runtime/koishi/data/logs/<日期>-N.log`。
+- 用户联想主机上的仓库是**旧拷贝**：`runtime/` 是旧的，`koishi.yml` 停在 10-06（记忆关着），NapCat 是 pipe 模式。2026-10-10 DSH 和 Codex 都把那台机器的状态当成了线上，报了「服务挂了」「记忆关着」，都是错的。联想主机连不到这台虚拟机。
+- 凡是报告线上状态，必须写明**在哪台机器、看的哪个文件或端口**。在联想主机上看到的一律不算线上证据。
+- 用户说线上搬了地方，以用户说的为准，并更新本节。
+
+### 0.2 线上目录就是线上（最容易出事）
+
+- Node 24 直接跑 TS 源码，没有构建步骤：Koishi 每次启动，跑的都是这个目录当时的工作树。
+- 服务守护 `scripts/services-watchdog.mjs` 在后台运行，每 60 秒检查一次 NapCat、Hindsight、Koishi；连续两次查不到 Koishi，就用 `scripts/start-koishi.ps1` 自己拉起来（10 分钟最多 3 次）。也就是说，任何时候都可能有一次没人发起的重启。
+- Koishi 插件监视 `characters/linmengyao/st/`（`packages/koishi-plugin-qqbot/src/index.ts` 里的 `watch(cardDir…)`），卡一改就自己重载。所以在这个目录里跑 `npm run convert` 就是上线新卡。
+- 因此：**在线上目录里不切分支、不改文件、不合并、不重新生成卡、不跑测试或模拟**。这个目录只读，唯一例外是用户点头上线时 fast-forward `main`（§5.3）。干活用自己的 worktree（§8.1）。
 
 ### 共同创作来源
 
 - Claude 侧事实输入：`CLAUDE.md`、`docs/roadmap.md`、`docs/plans/2026-10-08-long-term-execution.md`、`docs/reports/2026-10-10-progress.md`、`docs/exchange-protocol.md`、ADR 0001–0060，以及这些文件记录的 Claude 实施、审查、上线和用户裁决。
 - GPT / Codex 侧本次交付：核对 Git 基线和远端、归纳当前能力与未来计划、设计 DS 接手提问和 GitHub 提交流程、执行类型检查与全仓测试、编写本文件。
-- 本次尝试了两次 Claude CLI 实时只读审阅；认证正常但调用长期无输出，均已中止。因此不得声称本文件经过了本次实时 Claude 复审。后续 Claude 恢复时，可按第 11 节复审并在变更记录中签名。
+- 本次尝试了两次 Claude CLI 实时只读审阅；认证正常但调用长期无输出，均已中止。
+- 2026-10-11 20:40 Claude 在线上虚拟机上复审，审查意见见 `exchange` 分支 `exchange/reviews/2026-10-11-claude-review-deepseek-handoff.md`；改动已合进本文件（§0.1、§0.2、§3.1、§4、§5、§7、§8，签名见 §11）。
 
 ## 1. 接手后的第一轮动作
 
 DS 不得一上来就改代码。先按顺序完成：
 
 1. 读完本文件、`CLAUDE.md`、`思维链工作流.txt`。
-2. 运行只读检查，确认当前分支、HEAD、远端和工作树；不要覆盖别人的未提交改动。
+2. 运行只读检查，确认当前分支、HEAD、远端和工作树；不要覆盖别人的未提交改动。线上目录只跑 `git status -sb` 看分支和改动，别的事都在自己的 worktree 里做（§0.2）。
 3. 读与当前任务直接相关的最新进度报告、路线图、ADR 和测试。
 4. 向用户发送第 7 节的“接手问题”，取得缺失的活状态、证据和授权边界。
 5. 用一段不超过 10 行的“事实摘要”复述：当前目标、已知事实、未知项、准备验证的最小假设。让用户纠正事实，不要求用户审批普通只读检查。
@@ -94,7 +110,7 @@ git diff --cached --name-status --ignore-submodules=all
 | 角色与隐私 | 7 个联系人档位、按档裁剪角色卡 / 世界书 / 作息 / 私密事实、低档禁用词检查 | ADR 0003、`characters/linmengyao/`、`packages/character-tools/` | 名单外好友正式开放前仍需限额、预算和真人 QQ 冒烟 |
 | 提示词 | 对齐 SillyTavern 1.19.0 的主要拼装、世界书、示例、宏、后处理与上下文预算 | `packages/bot/src/prompt.ts`、`packages/bot/src/st/`、提示词测试 | 与 ST 的已知差异见 `packages/bot/README.md` |
 | 回复时机 | 连发合并、生成 / 发送期间新消息处理、作息、睡眠、打字延迟、已读不回、主动消息 | ADR 0004/0007/0011/0013 | 低频分支仍需长期线上日志观察 |
-| 记忆 | Hindsight 私人 / 公共记忆、关系印象、日记、周记、记忆变淡、待跟进和承诺 | ADR 0012、0016–0018、0023，`docs/hindsight.md` | 实际是否开启必须查当前运行配置与日志 |
+| 记忆 | Hindsight 私人 / 公共记忆、关系印象、日记、周记、记忆变淡、待跟进和承诺 | ADR 0012、0016–0018、0023，`docs/hindsight.md` | 线上开着（用户 2026-10-10 23:15 裁决保持开）；Hindsight 和模拟共用一个 Postgres，见 §5.1 |
 | 生活引擎 | 世界状态、人物、身体、金钱、行动事件账、可重放队列、连续需要、见面、真实天气、项目组合 | ADR 0021–0057，`packages/bot/src/world.ts` 及相关模块 | 若干能力以开关 / 影子模式存在；不得仅因代码存在就说已上线 |
 | 对话自然度 | 意图行、情绪惯性、表达层、重复 / 算账 / 助手腔出口检查、真人形状基线、盲评工具 | ADR 0014/0019/0024/0028/0036/0041/0043/0058–0060 | ADR 0058/0059 仍需真模型回归和线上观察 |
 | 媒体 | QQ 小黄脸、语音转文字、图片 OCR、名单内 DeepSeek 看图与失败降级 | ADR 0051/0052/0055 | 真正发送照片、语音、电话、视频不支持；禁止假装已发送 |
@@ -102,30 +118,34 @@ git diff --cached --name-status --ignore-submodules=all
 
 ### 3.1 2026-10-11 的最新一批
 
-- ADR 0057：她那边的重要事件可在合适时机主动告诉男朋友；相机日状态已对齐。
-- ADR 0058：男朋友的文字亲密邀约先明确回应；不能在下一气泡又把已经发生的文字互动推回“只能当面”。当前 HEAD 是该跨行修正。
+- ADR 0057：她那边的重要事件可在合适时机主动告诉男朋友。**10-11 相机日线上没成**：16:35 那条（买到相机）按时开始生成，但虚拟机 12:15–19:52 解析不了外网域名（`api.deepseek.com` 连不上），重试四次失败后判「不再试」，这件事就丢了。影子账 12:36–18:00 也空着，出门买相机和回来摆弄都没有条目。见 `exchange/handoff/2026-10-11-2030-claude-camera-day.md`。
+- ADR 0058：男朋友的文字亲密邀约先明确回应；不能在下一气泡又把已经发生的文字互动推回“只能当面”。跨行修正 `2ba6df2` 12:39 已上线。
 - ADR 0059：识别缩写、谐音、故意怪话并先接梗；未知梗允许短问，不联网搜索私聊内容。
-- ADR 0060：男朋友要照片时，用她此刻的真实理由先不发，再把画面说给他听；不能回到笼统的“我发不了图片”。已记录为 2026-10-11 11:00 上线。
-- 仍待确认：ADR 0058 / 0059 的真模型回归、上述行为的真实 QQ 线上样本、当前各运行开关。
+- ADR 0060：男朋友要照片时，用她此刻的真实理由先不发，再把画面说给他听；不能回到笼统的“我发不了图片”。2026-10-11 11:00 上线。
+- 真模型回归已跑过（`--no-memory`，各 2 次）：`boyfriend-intimacy` 26/26、`photo-ask` 38/38、`proactive-news` 12/12、`boyfriend-banter` 14/15。**但** `boyfriend-banter` / `boyfriend-intimacy` 发的就是卡里示例左边那句，量的是她抄没抄，不是会不会接（`exchange/handoff/2026-10-11-1055-claude.md` 第 2 条）。
+- 仍待确认：换成卡里没有的同类说法再跑一遍；上述行为的真实 QQ 线上样本（到 10-11 晚还没有）；第一张真照片走完看图全链路（还没有人发过，见 `exchange/handoff/2026-10-11-2030-claude-first-photo.md`）。
 
 ## 4. 未来计划与优先级
 
 ### P0：接手当天先封住事实缺口
 
 1. 回答第 7 节问题，确认用户此刻唯一目标。
-2. 确认线上究竟在哪台机器 / 哪个 checkout、当前运行提交、Koishi / NapCat / Hindsight 进程和实际开关。
+2. 到线上虚拟机（§0.1）核对当前运行提交、Koishi / NapCat / Hindsight 进程和端口、服务守护日志 `runtime/services-watchdog.log`。
 3. 取得最近一次相关的脱敏日志与 `last-prompt.json`；若是偶发问题，先保存现场再复现。
 4. 核对工作树和远端，禁止在未知未提交改动上部署。
 
 ### P1：收尾最新对话改动
 
-1. 对 ADR 0058（亲密回应）、0059（接梗）、0060（要照片）跑相关固定场景和真模型回归。
+1. ADR 0058（亲密回应）、0059（接梗）的场景改成卡里没出现过的同类说法（例如 `xswl`、别的人名谐音、「我先吃为敬」、「好累想要抱抱」、「啵一个」），卡里的示例不动，再跑真模型；0060（要照片）已经 38/38 ×2。
 2. 取得真实 QQ 样本，只记录必要、脱敏的证据；检查是否出现跨气泡反悔、误触普通问句或旧式“发不了”回复。
 3. 若修复，先加取证原句测试，再改最小边界；不得扩大到所有联系人档位。
+4. 10-11 暴露的两个可靠性缺口（只是建议，用户还没裁决）：
+   - 「她那边的事」这种一次性主动，遇到连接类失败（`ENOTFOUND` / `CONNECT_TIMEOUT`）就丢了。建议推迟 10–20 分钟重排，当天最多 3 次，过了当天作废。
+   - 服务守护只看进程和端口，外网断了 7.5 小时没人发现。建议加一项域名解析检查，连续失败超过 10 分钟写进守护日志。
 
 ### P2：生活引擎灰度
 
-1. 查明 `lifeInPrompt`、`projectChoice`、`autonomousLife` 的实际线上值和最近影子审计。
+1. 线上开关（2026-10-11 20:40 读的 `runtime/koishi/koishi.yml`）：`memory.enabled: true`、`autonomousLife: true`（影子模式，只改行动账，不进提示词）、`vision.enabled: true`；`lifeInPrompt`、`projectChoice` 没写，即默认 `false`；`realWeather` 没写，即默认 `true`。改开关前再读一次原文件。影子账审计是 GPT 那条线，最近的结论看 `exchange/handoff/`。
 2. 影子账满足无重叠、状态行无分叉、硬事件优先后，只能一次灰度一个变量。
 3. 补课程项目、摄影 / 阅读项目的期限、资源、阻碍、延期、暂停和放弃；随后再做 NPC 主动联系、拒绝、迟到、改约和关系变化。
 
@@ -156,6 +176,13 @@ git status --short --branch --ignore-submodules=all
 
 全仓成功基线是 738 项：bot 670、character-tools 40、Koishi 插件 28。数量改变时要说明新增 / 删除原因，不能只写“通过”。
 
+**在线上虚拟机上跑测试和模拟的限制**（6 GB 内存，线上服务一直开着）：
+
+- 全量测试用 `node --test --test-concurrency=1`；跑之前先拿锁 `mkdir %TEMP%\qqbot-heavy.lock`，跑完 `rmdir`。锁目录已存在就等着。如果锁是会话中断留下的，先看它的创建时间和有没有 node 进程在跑，确认没人用再删。
+- 模拟一次只跑一批。全量测试和模拟不同时跑。
+- 带记忆的模拟（`memory: true`）和线上共用同一个 Hindsight Postgres。2026-10-07、10-09 两次把它挤爆过。要跑先问用户，跑的时候盯着可用内存，低于约 900 MB 就停。
+- 跑完重活看一眼线上：3001 / 5140 端口还在听，Koishi 日志还在出新行。
+
 如果测试在 Windows 沙箱临时目录大量报 `EPERM ... rename`：
 
 1. 抽查失败是否都在原子落盘步骤；
@@ -182,11 +209,23 @@ git status --short --branch --ignore-submodules=all
 - 回滚命令和上一个已知正常 commit；
 - 上线后需要观察的具体日志关键词和用户可见行为。
 
+上线 / 重启步骤（线上虚拟机，PowerShell）：
+
+1. `mkdir %TEMP%\qqbot-maintenance`：这个目录在的时候，服务守护不动手。不建的话，你停了 Koishi，它两分钟内会自己拉起来，和你抢。
+2. 线上目录 `git status -sb`：确认是 `main`、没有改动、没有别人留下的分支。
+3. 停 Koishi：supervisor（`node_modules\koishi\bin.js`）和它的 worker 都要停，再查一遍有没有残留的重复进程。
+4. 线上目录 `git merge --ff-only origin/main`（或者用户批准的那个提交），确认 `origin/main` 也在同一个提交上。
+5. `Start-Process powershell.exe -ArgumentList '-NoExit','-ExecutionPolicy','Bypass','-File','scripts\start-koishi.ps1' -WorkingDirectory <线上目录>`。用新窗口起，别放在会随当前会话一起退出的子进程里。
+6. 看 `runtime/koishi/data/logs/<日期>-N.log`：要出现「NapCat 账号 … 已就绪」和 `connect to server: ws://127.0.0.1:3001/`；5140 在听。
+7. `rmdir %TEMP%\qqbot-maintenance`；一分钟后守护日志里应该有「恢复正常」或者没有新报警。
+
+QQ 掉线时要重启 NapCat：**关掉整个 `start-napcat.ps1` 窗口**（连 powershell 带它的 node 子进程一起），再用同样的 `Start-Process` 起 `scripts\start-napcat.ps1`，它会快速登录。只杀 node 没用，脚本会自己把 NapCat 再拉起来。启动顺序是 NapCat → Hindsight → Koishi。
+
 ## 6. 隐私、仓库与禁止事项
 
 - 仓库必须保持私有。角色资料含真实隐私信息。
 - API key、密码、OneBot token 只走环境变量或被忽略的本地配置；不得写进提示、日志摘录、提交或 Issue。
-- QQ 号、昵称、真实称呼用稳定占位符；对方消息默认只写摘要。林梦瑶的原回复仅在定位问题所需的最小范围内保留。
+- 发给 DeepSeek API 或别的外部服务的材料：QQ 号、昵称、真实称呼用稳定占位符；对方消息默认只写摘要。林梦瑶的原回复仅在定位问题所需的最小范围内保留。（私有仓库 `exchange` 分支里的证据按 `exchange/README.md` 的数据约定：账号持有人已授权保留 QQ 号和对话原文。凭据不论放哪都必须删。）
 - 不整段读取或复述聊天日志；只搜索需要的行。不得把未经用户明确允许的角色卡、聊天或运行数据发给外部模型 / 搜索服务。
 - `runtime/`、`*.log`、`logs/` 默认不入库。需要交换的证据必须先脱敏，再放到用户批准的位置。
 - `vendor/SillyTavern`、`vendor/NapCatQQ` 默认只读；绝不提交 NapCat 源码修改。Koishi 和上游插件原样使用，上游问题在自有插件中绕开。
@@ -199,15 +238,24 @@ git status --short --branch --ignore-submodules=all
 
 DS 接手后的第一条用户可见消息应精炼地询问下面内容；用户不给全也能先做静态工作，但必须标记限制。
 
+用户的节奏（2026-10-06）：「不用整理，直接开始暴力推进」。只问只有用户知道的事；仓库、日志、本文件能查到的，自己查。线上在哪不用问（§0.1），当前提交和服务状态自己到线上机器上看。
+
 ### 7.1 必问问题
 
 1. **当前唯一目标是什么？** 是诊断、实现、审查、上线还是只写计划？期望的验收结果是什么？
-2. **哪台机器 / 哪个目录是真正线上？** 当前运行 commit、分支和服务状态是什么？
-3. **允许查看哪些私密证据？** 是否允许读取本机 `runtime`；哪些内容可以交给 DeepSeek API，哪些只能本地处理？
-4. **是否允许改动运行状态？** 能否停 / 重启 Koishi、NapCat、Hindsight，是否有不能中断的聊天窗口？
-5. **本批 GitHub 交付方式是什么？** 只提交分支、开 PR，还是经用户确认后合入 / 部署？
+2. **边界一句话问完：** 哪些材料可以发给 DeepSeek API、哪些只能本地读；这批能不能停 / 重启线上服务；交付是只推分支，还是也可以合入 `main`。
 
-### 7.2 按需请求的文件（从高到低）
+### 7.2 用户裁决从哪里找
+
+- `docs/research/2026-10-06-dsh/author-replies.md`：作者裁决，优先于任何「推荐方案」。
+- 各 ADR 的「确认记录」：每条决定是谁、在什么授权下拍板的。
+- 不在仓库里、但一直有效的几条：
+  - 回复用户用中文。
+  - 上线（重启线上 Koishi）要用户在当前会话里点头；一次点头只管那一次。
+  - 长期记忆在线上保持开着（2026-10-10 23:15）。
+  - 她发真照片（照片池或生成图）：用户 2026-10-11 说「暂时较难实现，先推迟」。用户自己提起之前，不要再提。这和他发照片给她看（看图）不是一件事。
+
+### 7.3 按需请求的文件（从高到低）
 
 | 优先级 | 请求内容 | 用途 | 提交 GitHub 前处理 |
 | --- | --- | --- | --- |
@@ -222,22 +270,37 @@ DS 接手后的第一条用户可见消息应精炼地询问下面内容；用�
 建议 DS 直接复制给用户的短问法：
 
 ```text
-我已读交接文件。请告诉我本批唯一目标和验收结果，并确认真正线上机器/目录、当前 commit 与实际开关。若问题来自一次真实聊天，请提供该次脱敏的 last-prompt、相关日志最小片段和必要上下文；同时说明这些材料哪些允许发给 DeepSeek API、哪些只能本地读取。本批是只提交分支/PR，还是也允许合入和重启上线？
+我已读交接文件，线上状态我自己到虚拟机上核对。请告诉我本批唯一目标和验收结果；再一句话告诉我：哪些材料可以发给 DeepSeek API、这批能不能重启线上、是只推分支还是也可以合入 main。
 ```
 
 ## 8. GitHub 提交协议
 
 ### 8.1 开工前
 
+**不要在线上目录 `Desktop\Project\qqbot` 里做下面这些事**（§0.2）。每批用自己的 worktree：
+
 ```powershell
-git status --short --branch --ignore-submodules=all
-git fetch origin
-git switch main
-git pull --ff-only origin main
-git switch -c deepseek/<task-slug>
+# 在线上目录里只做两件事：看状态、建 worktree
+git -C C:\Users\XG\Desktop\Project\qqbot status -sb
+git -C C:\Users\XG\Desktop\Project\qqbot fetch origin
+git -C C:\Users\XG\Desktop\Project\qqbot worktree add ..\qqbot-ds-<task-slug> -b deepseek/<task-slug> origin/main
+
+# 进 worktree 干活；node_modules 用 junction 指回线上目录，不另装
+cd C:\Users\XG\Desktop\Project\qqbot-ds-<task-slug>
+cmd /c mklink /J node_modules C:\Users\XG\Desktop\Project\qqbot\node_modules
+# 需要跑 bot 的测试或模拟时，复制一份 runtime\bot\config.json 进来（只复制配置，不碰线上数据）
 ```
 
+收尾时，先 `cmd /c rmdir node_modules` 删掉 junction，再 `git worktree remove`。不删 junction 就删 worktree，会连线上的 `node_modules` 一起删掉。
+
 若工作树已有改动，先识别归属；不得覆盖、暂存或提交与本任务无关的文件。若用户要求直接在现有分支继续，就记录起点而不要另切分支。
+
+### 8.1.1 和 Claude、GPT、DSH 怎么配合
+
+- 交接写在 `exchange` 分支的 `exchange/handoff/<日期>-<时分>-ds.md`（worktree `Desktop\Project\qqbot-exchange`），格式见 `docs/exchange-protocol.md`。`exchange` 永远不合进 `main`。
+- worktree 各有主人：`qqbot-integration` 和 `~\.codex\worktrees\` 归 GPT / Codex，`qqbot-claude2`、`qqbot-claude3`、`qqbot-codex-wip` 归 Claude。别人的 worktree 不切分支、不提交。动 git 之前先在那个目录跑 `git status -sb`，看清检出的是哪个分支。
+- 移动 `integration` 用 `git branch -f integration <sha>` 再 push，不要在别人的 worktree 里检出它。
+- DSH 是用户联想主机上的会话，连不到虚拟机，只能做调研、静态审查和规划；它在主机上看到的不是线上（§0.1）。
 
 ### 8.2 提交前
 
@@ -249,6 +312,8 @@ git status --short --branch --ignore-submodules=all
 git diff --name-status
 git diff --cached --name-status
 ```
+
+在线上虚拟机上，`npm test` 按 §5.1 的规矩跑（拿锁、`--test-concurrency=1`、不和模拟同时跑）。
 
 人工检查：
 
@@ -269,6 +334,7 @@ git push -u origin deepseek/<task-slug>
 - 默认推分支并把 commit / 分支 / 测试结果交给用户；开 PR、合并、部署分别需要对应授权。
 - 若用户明确要求直接提交当前 `main` 并推送，仍须先完成全部检查，再普通 `git push origin main`；禁止 `--force`。
 - 推送后用 `git rev-parse HEAD` 与远端引用复核，不能只相信命令无报错。
+- 推到 `origin/main` 不等于上线。线上目录的 `main` 只在用户点头后按 §5.3 快进；在那之前，线上目录落后 `origin/main` 是正常的。
 
 ## 9. 每批完整交付模板
 
@@ -320,3 +386,4 @@ DS 在开始实作前回复：
 | 日期 | 维护者 | 变更 | 复核 |
 | --- | --- | --- | --- |
 | 2026-10-11 | GPT / Codex，基于 Claude 已维护的项目事实源 | 建立 DS 连续接手入口；记录当前 Git / 测试基线、工作流、已交付能力、计划、提问清单和 GitHub 协议 | 本次 Claude CLI 实时审阅未返回结果，待 Claude 恢复后补审 |
+| 2026-10-11 20:40 | Claude（线上虚拟机上复审，用户要求改进本文件） | 新增 §0.1 线上在哪、§0.2 线上目录就是线上、§5.1 内存与锁、§5.3 上线 / 重启步骤（服务守护、NapCat）、§7.2 用户裁决入口、§8.1 worktree 流程和 §8.1.1 协作；更正 `2ba6df2` 已上线、相机日没成、0058 / 0059 真模型已跑和还缺什么、线上开关实际值；必问从 5 个减到 2 个 | 已复审，审查意见在 `exchange/reviews/2026-10-11-claude-review-deepseek-handoff.md`；全仓测试未重跑（只改文档） |
