@@ -393,15 +393,25 @@ describe('回复调度', () => {
         assert.deepEqual(sent, ['刚看到']);
     });
 
-    test('清理后为空：当场再生成一次；还是空就不发，算回复失败（有 retryAfterMs 时过一会儿再试）', async () => {
+    test('清理后为空：当场再生成，最多两次；还是空就不发，算回复失败（有 retryAfterMs 时过一会儿再试）', async () => {
         let calls = 0;
         const { responder, sent, logs } = setup({ generate: async () => { calls++; return '阿明: 替他说话'; }, clean: r => cleanUpReply(r, names) });
         responder.receive('在吗', 1, new Date());
         await responder.whenIdle();
-        assert.equal(calls, 2);
+        assert.equal(calls, 3);
         assert.deepEqual(sent, []);
         assert.ok(logs.includes('模型回复清理后为空，重新生成一次'));
+        assert.ok(logs.includes('模型回复清理后为空，重新生成一次（第 2 次）'));
         assert.ok(logs.includes('回复失败：模型回复清理后为空'));
+    });
+
+    test('空了两次、第三次有正文就照常发（10-11 接梗：看不懂的新梗原样重发 6 次空 3 次）', async () => {
+        let calls = 0;
+        const { responder, sent } = setup({ generate: async () => (++calls <= 2 ? '' : '啥山楂树') });
+        responder.receive('你这也太山楂树了', 1, new Date());
+        await responder.whenIdle();
+        assert.equal(calls, 3);
+        assert.deepEqual(sent, ['啥山楂树']);
     });
 
     test('模型返回空串，再生成一次有正文就照常发', async () => {

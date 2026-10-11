@@ -17,6 +17,8 @@
 // 生成中他来了消息，草稿不发，照常回他；生成完、发之前先调 commit（先记后发，崩溃、断线后不重发）；试运行到 commit 为止。
 
 const MAX_REGENERATE = 2;
+/** 清理后为空当场再生成几次（之后算回复失败，按 retryAfterMs 过一会儿再试） */
+const MAX_EMPTY_RETRIES = 2;
 /** 拆开的几条之间隔多久 */
 export const PART_GAP_MS = 1000;
 /** 连发合并的默认值：热聊里多等一下，把 3 秒内的第二句并进同一轮；最长不超过 12 秒（ADR 0019 决策 5）。 */
@@ -233,7 +235,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         let decision: Seen | undefined;
         let promptMaxBubbles: number | undefined;
         let seenAt = 0;
-        let retriedEmpty = false;
+        let retriedEmpty = 0;
         for (let attempt = 0; ; attempt++) {
             // 看到之前（重新生成时她已经在看手机了，不再等）
             if (deps.timing && attempt === 0) {
@@ -264,10 +266,12 @@ export function createResponder(deps: ResponderDeps): Responder {
                 deps.log('已停止，这次生成的回复不发');
                 return;
             }
-            // 模型偶尔返回空串（10-05 模拟器 817 次生成里 2 次，原样重发 4 次都有正文）：当场再生成一次
-            if (splitReply(reply).length === 0 && !retriedEmpty) {
-                retriedEmpty = true;
-                deps.log('模型回复清理后为空，重新生成一次');
+            // 模型偶尔返回空串（10-05 模拟器 817 次生成里 2 次，原样重发 4 次都有正文）：当场再生成，最多 MAX_EMPTY_RETRIES 次。
+            // 10-11 接梗模拟：开思考时，看不懂的新梗（「你这也太山楂树了」）原样重发 6 次空了 3 次——思考里编了另一句他没说的话、把回复写在思考里，正文是空的；
+            // 只再生成一次，两次都空的有四分之一，她就要过一分钟才回
+            if (splitReply(reply).length === 0 && retriedEmpty < MAX_EMPTY_RETRIES) {
+                retriedEmpty++;
+                deps.log(`模型回复清理后为空，重新生成一次${retriedEmpty > 1 ? `（第 ${retriedEmpty} 次）` : ''}`);
                 continue;
             }
             if (deps.history.load(deps.userId).length === stored.length || attempt >= MAX_REGENERATE) break;
