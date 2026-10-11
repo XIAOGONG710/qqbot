@@ -47,6 +47,14 @@ if (-not (Test-Path $manifest)) {
     Set-Content -Path $manifest -Encoding ascii -Value '{ "private": true, "dependencies": { "@koishijs/plugin-http": "*", "@koishijs/plugin-proxy-agent": "*" } }'
 }
 
+# One line when Koishi starts and one when node exits (runtime/koishi/start-koishi.log).
+# 10-11 20:00-20:25 the watchdog opened this script six times and every window was gone within seconds with no Koishi log:
+# a start line without an exit line means the window was closed from outside; an exit line gives node's code and how long it ran.
+# Logging never blocks the start (ErrorActionPreference is 'Stop' up to here).
+$startLog = Join-Path $instance 'start-koishi.log'
+$started = Get-Date
+try { Add-Content -Path $startLog -Encoding ascii -Value "$($started.ToString('yyyy-MM-dd HH:mm:ss')) start pid=$PID" } catch { }
+
 # Koishi resolves data/ (sqlite, its own logs) against the working directory
 Push-Location $instance
 try {
@@ -56,5 +64,7 @@ try {
     $exitCode = $LASTEXITCODE
 } finally {
     Pop-Location
+    $ran = [int]((Get-Date) - $started).TotalSeconds
+    try { Add-Content -Path $startLog -Encoding ascii -Value "$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss')) exit code=$exitCode after ${ran}s pid=$PID" } catch { }
 }
 exit $exitCode

@@ -6,9 +6,12 @@
 // - Koishi：没有 Koishi 进程 → 新开窗口跑 start-koishi.ps1；进程在、但 NapCat 已经好了 3 分钟以上、Koishi 日志里最后一次连接是断开
 //   （21:29 那次 Koishi 断开以后再没连回去）→ 停掉 Koishi 整棵进程树再拉起。
 // 维护（上线、手动重启）时先建目录 %TEMP%\qqbot-maintenance，做完删掉；有这个目录守护什么都不动。
+// 外网：每次也解析一下模型接口的域名，连着 NET_ALERT_MS 解析不了就记一行，好了再记一行（不动手，只留痕）。
+// 10-11 12:15–19:52 虚拟机解析不了外网，她连不上模型、主动消息全失败，守护只看进程和端口，一点没发现。
 //
 // node scripts/services-watchdog.mjs [--once]（--once：只查一次、打印结果、不动手，用来自检）
 import { execFileSync, spawn } from 'node:child_process';
+import { lookup } from 'node:dns/promises';
 import { appendFileSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -23,6 +26,9 @@ const EVERY_MS = 60_000;
 const KOISHI_STALE_MS = 3 * 60_000;
 const MAX_RESTARTS = 3;
 const RESTART_WINDOW_MS = 10 * 60_000;
+/** 模型接口的域名（packages/bot/src/config.ts 的默认 baseUrl，看图也走它） */
+const NET_HOST = 'api.deepseek.com';
+const NET_ALERT_MS = 10 * 60_000;
 
 const say = (text) => {
     const line = `${new Date().toLocaleString('zh-CN', { hour12: false })} ${text}`;
@@ -46,6 +52,19 @@ async function hindsightHealthy() {
         return res.ok;
     } catch {
         return false;
+    }
+}
+
+/** 解析得了模型接口的域名吗（和 bot 一样走系统的 getaddrinfo） */
+async function netUp() {
+    let timer;
+    try {
+        await Promise.race([lookup(NET_HOST), new Promise((_, fail) => { timer = setTimeout(() => fail(new Error('timeout')), 10_000); })]);
+        return true;
+    } catch {
+        return false;
+    } finally {
+        clearTimeout(timer);
     }
 }
 
@@ -100,6 +119,24 @@ const bad = { napcat: 0, hindsight: 0, koishi: 0 };
 const restarts = { napcat: [], hindsight: [], koishi: [] };
 const gaveUp = new Set();
 let napcatUpSince = Date.now();
+/** 外网从什么时候开始解析不了；报过没有 */
+let netDownSince;
+let netAlerted = false;
+
+function watchNet(up) {
+    const now = Date.now();
+    if (up) {
+        if (netAlerted) say(`外网：恢复正常（解析不了 ${NET_HOST} 大约 ${Math.round((now - netDownSince) / 60_000)} 分钟）`);
+        netDownSince = undefined;
+        netAlerted = false;
+        return;
+    }
+    netDownSince ??= now;
+    if (!netAlerted && now - netDownSince >= NET_ALERT_MS) {
+        say(`外网：${Math.round((now - netDownSince) / 60_000)} 分钟解析不了 ${NET_HOST}，她连不上模型（回复、主动消息、看图都会失败）；守护不动手，查虚拟机网络 / 宿主机`);
+        netAlerted = true;
+    }
+}
 
 function allowed(service) {
     const now = Date.now();
@@ -118,6 +155,7 @@ async function check() {
     if (!procs) return say('这次查不了进程（PowerShell 起不来，多半内存不够），下一分钟再查');
     const napcatUp = await portOpen(3001);
     const hindsightUp = await hindsightHealthy();
+    const net = await netUp();
     const koishiProcs = procs.filter(p => p.name === 'node.exe' && /qqbot\\node_modules\\koishi/.test(p.cmd));
     const connection = koishiConnection();
     if (!napcatUp) napcatUpSince = Infinity;
@@ -131,9 +169,10 @@ async function check() {
                 && Date.now() - Date.parse(connection.at) >= KOISHI_STALE_MS),
     };
     if (once) {
-        console.log(JSON.stringify({ ...status, koishiProcesses: koishiProcs.length, lastConnection: connection, maintenance: existsSync(MAINTENANCE) }));
+        console.log(JSON.stringify({ ...status, net, koishiProcesses: koishiProcs.length, lastConnection: connection, maintenance: existsSync(MAINTENANCE) }));
         return;
     }
+    watchNet(net);
     for (const service of Object.keys(status)) {
         if (status[service]) {
             if (bad[service] || gaveUp.has(service)) say(`${service}：恢复正常`);
@@ -172,7 +211,7 @@ async function check() {
 if (once) {
     await check();
 } else {
-    say(`服务守护：每 ${EVERY_MS / 1000} 秒查一次 NapCat（3001）、Hindsight（/health）、Koishi；有 ${MAINTENANCE} 时不动手`);
+    say(`服务守护：每 ${EVERY_MS / 1000} 秒查一次 NapCat（3001）、Hindsight（/health）、Koishi、外网（${NET_HOST}）；有 ${MAINTENANCE} 时不动手`);
     await check();
     setInterval(() => void check().catch(error => say(`这次检查出错：${error instanceof Error ? error.message : String(error)}`)), EVERY_MS);
 }
