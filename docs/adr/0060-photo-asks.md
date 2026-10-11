@@ -1,6 +1,6 @@
 # ADR 0060：他要看照片——她先不发，用她自己的理由，再说给他听
 
-- 状态：已实现；真模型回归过了，待上线
+- 状态：已上线（10-11 11:00，`57526b5`，和 GPT 的 `codex/intimacy-followup` 一起；用户当场同意）
 - 日期：2026-10-11
 - 关联：[ADR 0006](0006-exit-check.md)（做不到的事）、[ADR 0019](0019-today-layer.md)、[ADR 0053](0053-buying-the-camera.md)、[ADR 0057](0057-her-news.md)、[ADR 0058](0058-intimate-reciprocity.md)
 
@@ -37,3 +37,8 @@
 
   出口检查照旧拦了 4 次「拍给你」「给你看」（重写后通过）；有一次回自拍是「等会儿」，算轻微的口头答应，没拦。`proactive-news` PN01（上午问「今天干嘛」她提不提下午买相机）4 次里 2 次没提，live 代码上同样有，和本条无关。
 - 全量测试 667/667，typecheck 通过。
+- 和 `codex/intimacy-followup` 合并后（`release-1011a`）：全量 669/669；`boyfriend-intimacy` 26/26 ×2、`photo-ask` 38/38 ×2、`proactive-news` 12/12 ×2、`boyfriend-banter` 14/15 ×2（谐音和「为敬」各挂一次，live 上同样会，见 exchange `handoff/2026-10-11-1055-claude.md`）。
+
+## 确认记录
+
+- 10-11 10:58 用户在会话里选「现在上线」；11:00 停 Koishi → live `main` 快进到 `57526b5` → 推送 → 重启，日志无警告无错误，16:35「她那边的事」照旧排着。
