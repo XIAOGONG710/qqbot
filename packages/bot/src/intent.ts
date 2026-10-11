@@ -25,6 +25,8 @@ export interface IntentContext {
     intimate?: boolean;
     /** 只有男朋友档会把明显的网络梗、缩写和谐音当作需要顺势接住的玩笑。 */
     playful?: boolean;
+    /** 她那边今天了结了、还没跟他说过的事（ADR 0057 调整，contact.ts 的 untoldInChat）：那之后她还没说过话 */
+    news?: readonly string[];
 }
 
 /** 她上一次回复以后，他这次说的内容。 */
@@ -170,6 +172,9 @@ export function describeIntent(context: IntentContext): string | undefined {
     if (context.intimate && asksForPhoto(context.history)) return '[这一轮你想：他想看照片。你手机能拍也能发，只是这次先不发：用你此刻真实的理由轻轻推一下（看你正在干嘛，或者嫌拍得不好看），再用一两句话把他想看的样子说给他听；他要的是你已经拍好的照片，就说说拍了什么、拍得怎么样；不答应等会儿或者回头再发]';
     if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句；不分享新进度，不说你接下来做什么，不另起话题，也不用约他忙完回来找你]';
     if (sharesGoodNews(context.history)) return '[这一轮你想：他刚说了件好事，先替他高兴、接住这件事；他顺口问的再顺口答，不另起话题]';
+    // 她那边的事还没跟他说过（ADR 0057 调整）：放在「先回答」前面——他多半开口就问「在干嘛」，那一条的「不另起话题」会把这件压下去；他难过时先接情绪
+    const news = context.news?.length && !needsCare(context.history) ? context.news : undefined;
+    if (news) return `[这一轮你想：先回他刚说的；你今天${news.join('、')}，还没跟他说过，接着就说这件（看「你那边」那一行，没写的细节不编）]`;
     if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
     if (needsCare(context.history)) return '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够；他认真难过、生病或很累时，第一句先安慰或问怎么了，不先损他；不转去讲你自己的事，不硬开新话题]';
     if (isRelationshipBid(context.history)) return '[这一轮你想：只接他刚说的你们两个人的事，一两句就够；不转去讲猫、书或手头的进度]';
