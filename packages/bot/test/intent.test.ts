@@ -116,7 +116,7 @@ describe('这一轮你想（ADR 0019）', () => {
     });
 
     test('男朋友发网络缩写、谐音和故意怪话：先接梗，不落进普通问答或收尾', () => {
-        for (const text of ['zdjd', 'xswl', '我先睡为敬', '并非早', '刚才那节课的老师真是死冯了']) {
+        for (const text of ['zdjd', 'xswl', '我先睡为敬', '并非早', '刚才那节课的老师真是死冯了', '史老师真给我气史了']) {
             const line = describeIntent({ history: [user(text)], now, playful: true })!;
             assert.match(line, /顺着同一套逻辑接一句/, text);
             assert.match(line, /不解释梗或报出处/, text);
@@ -128,7 +128,7 @@ describe('这一轮你想（ADR 0019）', () => {
 
     test('接梗加强只给男朋友档，普通英文、真事故和正式说法不误触', () => {
         assert.equal(describeIntent({ history: [user('zdjd')], now }), undefined);
-        for (const text of ['cos服到了吗', 'mua是什么意思', '我家猫死掉了', '这并非事实']) {
+        for (const text of ['cos服到了吗', 'mua是什么意思', '我家猫死掉了', '这并非事实', '史老师今天真气坏了']) {
             assert.doesNotMatch(describeIntent({ history: [user(text)], now, playful: true, intimate: true }) ?? '', /网络梗、缩写或谐音|亲密回应/, text);
         }
     });
