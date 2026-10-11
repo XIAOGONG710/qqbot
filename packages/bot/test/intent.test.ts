@@ -83,7 +83,7 @@ describe('这一轮你想（ADR 0019）', () => {
     });
 
     test('男朋友要亲近或确认感情：先明确回接，再嘴硬；优先于普通问句和收尾', () => {
-        for (const text of ['需要抱抱', '亲我一下行不行', '发个mua', '你想我吗', '爱不爱我', '没爱了', '不准睡，再陪我聊会儿', '喜欢你', '别走啊']) {
+        for (const text of ['需要抱抱', '亲我一下行不行', '发个mua', '你想我吗', '爱不爱我', '没爱了', '不准睡，再陪我聊会儿', '喜欢你', '喜欢你❤️', '别走啊', '别走🥺']) {
             const line = describeIntent({ history: [assistant('我去睡了，晚安'), user(text)], now, intimate: true })!;
             assert.match(line, /先给一个明确的亲密回应/, text);
             assert.match(line, /嘴硬不能是整轮唯一内容/, text);
