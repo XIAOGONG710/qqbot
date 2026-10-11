@@ -68,7 +68,7 @@ function isIntimateBid(history: readonly Said[]): boolean {
 }
 
 const MEME_SHORTHAND = /(?:^|[^a-z])(?:zdjd|xswl|awsl|yyds|nsdd|u1s1|srds|dbq|gkd|zqsg|yygq|nbcs|bdjw)(?=$|[^a-z])/i;
-const MEME_PHRASE = /尊嘟假嘟|绷不住|蚌埠住|我嘞个|不是哥们|闹麻了|已老实|求放过|补药|啊米诺斯|神金|丸辣|哈基米|典中典|寄了|包的|我先.{1,8}为敬|(?:^|\n)并非.{0,8}(?:$|\n)|老师.{0,12}死[\u4e00-\u9fff]{1,2}了/;
+const MEME_PHRASE = /尊嘟假嘟|绷不住|蚌埠住|我嘞个|不是哥们|闹麻了|已老实|求放过|补药|啊米诺斯|神金|丸辣|哈基米|典中典|寄了|包的|我先.{1,8}为敬|(?:^|\n)并非.{0,8}(?:$|\n)|老师.{0,12}死[\u4e00-\u9fff]{1,2}了|([\u4e00-\u9fff]{1,2})老师.{0,12}(?:累|笑|气|烦|困|饿|冷|热|吓)\1了/;
 function playfulHint(history: readonly Said[]): string | undefined {
     const text = latestUserText(history);
     if (!MEME_SHORTHAND.test(text) && !MEME_PHRASE.test(text)) return undefined;
