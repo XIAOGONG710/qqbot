@@ -133,6 +133,19 @@ describe('这一轮你想（ADR 0019）', () => {
         }
     });
 
+    test('男朋友要她发照片：先不发，用她自己的理由，再说给他听；他自己要发的不算（10-11 预演买到相机）', () => {
+        for (const text of ['可以啊，发我看看', '来张自拍', '发张照片呗', '拍给我看看', '你拍的照片呢', '给我看看你的新相机', '有图吗', '晒一下', '发来康康']) {
+            const line = describeIntent({ history: [assistant('买到了 a6100'), user(text)], now, intimate: true })!;
+            assert.match(line, /他想看照片/, text);
+            assert.doesNotMatch(line, /发不了/, `${text}：意图行不写出不想要的话`);
+        }
+        for (const text of ['我发你看看', '我拍张给你', '我给你发个照片', '把地址发我', '发个定位']) {
+            assert.doesNotMatch(describeIntent({ history: [user(text)], now, intimate: true }) ?? '', /他想看照片/, text);
+        }
+        assert.doesNotMatch(describeIntent({ history: [user('发我看看')], now }) ?? '', /他想看照片/, '同学档走世界书');
+        assert.match(describeIntent({ history: [user('发张自拍，想你了')], now, intimate: true })!, /亲密回应/, '想他了排在要照片前');
+    });
+
     test('明确难过时只接住，不转去讲自己的猫、书或进度；普通短句不脑补', () => {
         for (const text of ['悲', '我哭得很伤心', '今天累死了', '有点难受', '今天被导师骂了，烦死', '好烦啊', '心累']) {
             const line = describeIntent({ history: [user(text)], now, state: free('在追一部剧'), books: true })!;
