@@ -5,6 +5,7 @@
 // 每一天的候选：早安、下课、睡前、冷场、待跟进的事、重要的日子、下雨（ADR 0050，只认真实天气）、她那边的事（ADR 0057），各一个时刻；到点时再查一遍能不能发（blockReason）。
 // 每天的条数有上限：候选比剩下的条数多时按优先级留（日子 > 她那边的事 > 待跟进 > 下雨 > 早安 > 下课 > 冷场 > 睡前），日子不受上限和「没回就停」限制。
 // 错过的不补：到点时没在跑、或者过了 GRACE_MS 才算到的候选，这一天就不发了。
+// 没连上模型的（断网）不算错过：记录里带 retryAt 的候选按那个时刻再排，最多 UNREACHABLE_MAX_TRIES 次，只在同一天里。
 
 import { expired, firstAsk, partText, whenText, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
@@ -47,12 +48,22 @@ export interface ProactiveRecord {
     plannedAt: string;
     /** 判断（和发送）的时刻（ISO） */
     at: string;
-    /** sent 发了；dryRun 试运行，本来要发；skipped 到点时不发（reason）；failed 生成或发送出错（不再试） */
+    /** sent 发了；dryRun 试运行，本来要发；skipped 到点时不发（reason）；failed 生成或发送出错（带 retryAt 的到时候再试，不带的不再试） */
     result: 'sent' | 'dryRun' | 'skipped' | 'failed';
     reason?: string;
     /** 发出去的 QQ 消息 id */
     messageIds?: number[];
+    /** 没连上模型：这个时刻（ISO）再试一次，候选还开着（同一天之内；过了 GRACE_MS 才算到照样算错过） */
+    retryAt?: string;
+    /** 没连上模型的第几次 */
+    tries?: number;
 }
+
+/** 没连上模型时，主动消息隔多久再试、一共试几次（10-11 下午断网，16:35 买到相机那条一次没连上就不再试，那天就没说成） */
+export const UNREACHABLE_RETRY_MS = 15 * 60_000;
+export const UNREACHABLE_MAX_TRIES = 3;
+
+const waitingRetry = (r: ProactiveRecord) => r.result === 'failed' && r.retryAt !== undefined;
 
 /** 她那边的一件事（ADR 0057）：她的哪一天、几点了结的、说的是什么（world.ts 的 worldNews） */
 export interface NewsItem {
@@ -321,14 +332,18 @@ export interface Plan {
  * 这一天没有了就看下一天（状态页显示「明天 09:52 早安」）。
  */
 export function planFrom(now: number, input: ProactiveInput): Plan {
-    const recorded = new Set(input.records.map(r => r.id));
+    const recorded = new Set(input.records.filter(r => !waitingRetry(r)).map(r => r.id));
+    // 没连上模型、等着再试的：还是那个候选，时刻换成再试的时刻
+    const retryAt = new Map(input.records.filter(waitingRetry).map(r => [r.id, Date.parse(r.retryAt!)]));
     const today = herDay(input.schedule, new Date(now));
     const missed: Candidate[] = [];
     const yielded: Candidate[] = [];
     const paused = unansweredCount(input) >= input.settings.unansweredMax ? '上一条主动消息他还没回，等他回了再排' : undefined;
     const result = (upcoming: Candidate[]): Plan => ({ upcoming, missed, yielded, ...(paused ? { paused } : {}) });
     for (const [offset, day] of [today, addDays(today, 1)].entries()) {
-        const all = candidatesOn(day, input).filter(c => !recorded.has(c.id));
+        const all = candidatesOn(day, input).filter(c => !recorded.has(c.id))
+            .map(c => (retryAt.has(c.id) ? { ...c, at: retryAt.get(c.id)! } : c))
+            .sort((a, b) => a.at - b.at);
         if (offset === 0) missed.push(...all.filter(c => c.at < now - GRACE_MS));
         const open = all.filter(c => c.at >= now - GRACE_MS);
         const left = paused ? 0 : Math.max(0, input.settings.dailyMax - usedOn(formatDate(day), input.records));

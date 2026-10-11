@@ -1,6 +1,7 @@
 // 主动消息的计划器（ADR 0011 决策 2、4、5、7）：一个联系人一个。按 proactive.ts 算下一次，等到点，再查一遍条件，交给回复器的 initiate。
 // - 记录文件 <数据目录>/proactive/<QQ>-<档位>.json：每个候选到点后记一条（发了、试运行、没发及原因、出错），记过的不再排；
 //   发之前先记（initiate 的 commit），之后崩溃、断线都不重发；只留 30 天。
+//   例外：生成时没连上模型的记成 failed + retryAt，过 UNREACHABLE_RETRY_MS 再试，一共 UNREACHABLE_MAX_TRIES 次。
 // - 错过的不补：启动、重新算的时候已经过了 GRACE_MS 的候选记成「错过了，不补」。
 // - 聊天记录变了（收到、补回）就 poke()：重新算（冷场的时刻跟着最后一条消息走）。
 // - 等待用可替换的 waitUntil（bot 用真实定时器，模拟器用虚拟时钟）。
@@ -21,7 +22,7 @@ import type { OpenAIMessage } from './prompt.ts';
 import type { MacroNames } from './st/macros.ts';
 import {
     blockReason, candidateLabel, candidatesOn, herDay, MAX_PROACTIVE_BUBBLES, occasionNote, PENDING_REASON, planFrom, recallTopic,
-    type Candidate, type ImportantDay, type NewsItem, type ProactiveInput, type ProactiveRecord, type ProactiveSettings,
+    UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type ProactiveInput, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
 import type { InitiateOutcome, Responder } from './responder.ts';
 import type { DayWeather } from './weather.ts';
@@ -308,10 +309,22 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
                 record(candidate, { result: 'skipped', reason: outcome.reason });
                 deps.log(`主动${tag}：${candidateLabel(candidate)}不发：${outcome.reason}`);
                 break;
-            case 'failed':
-                record(candidate, { result: 'failed', reason: outcome.reason, ...(outcome.messageIds ? { messageIds: outcome.messageIds } : {}) });
-                deps.log(`主动${tag}：${candidateLabel(candidate)}出错，不再试：${outcome.reason}`);
+            case 'failed': {
+                // 没连上模型（断网、DNS）：过一会儿再试，同一天最多 UNREACHABLE_MAX_TRIES 次；别的错不再试
+                const tries = (records.find(r => r.id === candidate.id)?.tries ?? 0) + 1;
+                if (outcome.unreachable && !outcome.messageIds && tries < UNREACHABLE_MAX_TRIES) {
+                    const retryAt = now() + UNREACHABLE_RETRY_MS;
+                    record(candidate, { result: 'failed', reason: outcome.reason, retryAt: new Date(retryAt).toISOString(), tries });
+                    deps.log(`主动${tag}：${candidateLabel(candidate)}没连上模型（第 ${tries} 次），${clock(retryAt)} 再试：${outcome.reason}`);
+                    break;
+                }
+                record(candidate, {
+                    result: 'failed', reason: outcome.reason, ...(outcome.unreachable ? { tries } : {}),
+                    ...(outcome.messageIds ? { messageIds: outcome.messageIds } : {}),
+                });
+                deps.log(`主动${tag}：${candidateLabel(candidate)}出错，不再试${outcome.unreachable ? `（没连上模型 ${tries} 次）` : ''}：${outcome.reason}`);
                 break;
+            }
         }
     }
 

@@ -25,6 +25,7 @@ export const DEFAULT_SETTLE = { quietMs: 4000, maxMs: 12000 };
 export const RETRY_AFTER_MS = [60_000, 300_000];
 
 import type { ChatHistory, StoredMessage } from './history.ts';
+import { ModelUnreachable } from './llm.ts';
 import type { ChatMessage, OpenAIMessage, PromptResult } from './prompt.ts';
 import { PENDING_REASON } from './proactive.ts';
 import { pendingMessages, type Seen } from './reply-timing.ts';
@@ -112,8 +113,8 @@ export type InitiateOutcome =
     | { result: 'dryRun'; parts: string[] }
     /** 没发：正在回消息、有没回的消息、生成中他来了消息、生成的是空的、已停止 */
     | { result: 'skipped'; reason: string }
-    /** 生成或发送出错（发送出错时可能已经发出了前几条） */
-    | { result: 'failed'; reason: string; messageIds?: number[] };
+    /** 生成或发送出错（发送出错时可能已经发出了前几条）；unreachable：生成时没连上模型（断网、DNS、超时、429 / 5xx），计划器过一会儿再试 */
+    | { result: 'failed'; reason: string; messageIds?: number[]; unreachable?: true };
 
 export interface Responder {
     receive(text: string, messageId: number, time: Date): void;
@@ -428,6 +429,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             if (pendingMessages(stored).length && !deps.timing?.skip(stored)) return skip(PENDING_REASON);
             const task = initiateOnce(request).catch((error): InitiateOutcome => ({
                 result: 'failed', reason: `生成失败：${error instanceof Error ? error.message : String(error)}`,
+                ...(error instanceof ModelUnreachable ? { unreachable: true as const } : {}),
             }));
             running = task.then(() => {
                 running = null;

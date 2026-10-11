@@ -289,6 +289,20 @@ describe('主动消息：她那边的事（ADR 0057）', () => {
         assert.equal(blockReason(c, c.at, input({ news: [camera], history: [...morning, user(t(10, 11, 16, 0), '买到没'), her(t(10, 11, 16, 1), '还在挑')] })), undefined);
     });
 
+    test('没连上模型的（带 retryAt）按再试的时刻再排；不带的不再排；再试的时刻过了 GRACE_MS 才算到就算错过', () => {
+        const history = [user(t(10, 11, 11)), her(t(10, 11, 11, 1))];
+        const c = find(candidatesOn(day(10, 11), input({ news: [camera] })), 'news')!;
+        const failed = (extra: Partial<ProactiveRecord>): ProactiveRecord => ({ ...record(c.id, c.at, 'failed'), occasion: 'news', reason: '生成失败：模型接口请求失败（ENOTFOUND）', ...extra });
+        const retry = failed({ retryAt: new Date(c.at + 15 * 60_000).toISOString(), tries: 1 });
+        const plan = planFrom(c.at + 60_000, input({ news: [camera], history, records: [retry] }));
+        const again = plan.upcoming.find(x => x.id === c.id);
+        assert.equal(again?.at, c.at + 15 * 60_000);
+        assert.ok(!plan.missed.some(x => x.id === c.id));
+        assert.equal(planFrom(c.at + 60_000, input({ news: [camera], history, records: [failed({})] })).upcoming.find(x => x.id === c.id), undefined);
+        const late = planFrom(c.at + 40 * 60_000, input({ news: [camera], history, records: [retry] }));
+        assert.ok(late.missed.some(x => x.id === c.id));
+    });
+
     test('一天只剩一条时先留她那边的事（日子之后、待跟进之前）', () => {
         const records = [record('2026-10-11:morning', t(10, 11, 10))];
         const plan = planFrom(t(10, 11, 12), input({ news: [camera], records, history: [user(t(10, 11, 10, 5)), her(t(10, 11, 10, 6))] }));

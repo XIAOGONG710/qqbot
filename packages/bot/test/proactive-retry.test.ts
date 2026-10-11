@@ -1,0 +1,98 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { afterEach, describe, test } from 'node:test';
+import type { StoredMessage } from '../src/history.ts';
+import type { ProactiveRecord } from '../src/proactive.ts';
+import { createProactivePlanner, type Planner } from '../src/proactive-planner.ts';
+import type { InitiateOutcome, InitiateRequest } from '../src/responder.ts';
+import { VirtualClock } from '../src/sim/scenario.ts';
+import { loadCharacterCard } from '../src/st/card.ts';
+
+const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const schedule = boyfriend.schedule!;
+const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m).getTime();
+const msg = (time: number, role: 'user' | 'assistant', content: string): StoredMessage => ({ time: new Date(time).toISOString(), role, content });
+const settled = () => new Promise(r => setTimeout(r, 30));
+
+// 10-11 下午虚拟机解析不了外网，16:35 买到相机那条生成失败，「不再试」，那天就没说成
+describe('主动消息：没连上模型过一会儿再试（10-11 相机那条）', () => {
+    const dirs: string[] = [];
+    const planners: Planner[] = [];
+    afterEach(() => {
+        for (const p of planners.splice(0)) p.stop();
+        for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+    });
+
+    const camera = { id: 'camera', day: '2026-10-11', at: t(10, 11, 16, 30), what: '刚在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头（4280 元，攒的钱买的）' };
+    const unreachable: InitiateOutcome = { result: 'failed', reason: '生成失败：模型接口请求失败（ENOTFOUND：getaddrinfo ENOTFOUND api.deepseek.com）', unreachable: true };
+
+    /** outcomes：每次到点依次返回；用完了就照常试运行 */
+    function setup(outcomes: InitiateOutcome[]) {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-retry-'));
+        dirs.push(dir);
+        const clock = new VirtualClock(new Date(t(10, 11, 16)));
+        const logs: string[] = [];
+        const tried: number[] = [];
+        const history = [msg(t(10, 11, 11), 'user', '我写代码去了'), msg(t(10, 11, 11, 1), 'assistant', '去吧')];
+        const planner = createProactivePlanner({
+            contact: { qq: 10001, name: '阿明', tier: 'boyfriend' },
+            schedule, settings: { occasions: ['news'], dailyMax: 3, unansweredMax: 2 }, dates: [], mode: 'dryRun',
+            history: { load: () => history },
+            responder: {
+                initiate: async (request: InitiateRequest) => {
+                    tried.push(clock.now());
+                    const next = outcomes.shift();
+                    if (next) return next;
+                    request.commit(['我买到相机啦']);
+                    return { result: 'dryRun', parts: ['我买到相机啦'] };
+                },
+            },
+            dir, log: m => logs.push(m), now: clock.now, waitUntil: clock.waitUntil,
+            names: { user: '阿明', char: '林梦瑶' },
+            news: () => [camera],
+        });
+        planners.push(planner);
+        const records = () => (JSON.parse(readFileSync(join(dir, '10001-boyfriend.json'), 'utf8')) as { records: ProactiveRecord[] }).records;
+        return { clock, logs, tried, records };
+    }
+
+    async function runUntil(clock: VirtualClock, end: number) {
+        for (let i = 0; i < 40 && clock.now() < end; i++) {
+            await settled();
+            const next = clock.nextTimer();
+            if (next === undefined || next > end) break;
+            clock.advanceTo(next);
+        }
+        await settled();
+    }
+
+    test('第一次没连上：15 分钟后再试，连上了照常说', async () => {
+        const { clock, logs, tried, records } = setup([unreachable]);
+        await runUntil(clock, t(10, 11, 18));
+        assert.equal(tried.length, 2, logs.join('\n'));
+        // 虚拟时钟偶尔多走 1 毫秒
+        assert.ok(Math.abs(tried[1]! - tried[0]! - 15 * 60_000) < 1000, `${tried[1]! - tried[0]!}`);
+        assert.ok(logs.some(l => /没连上模型（第 1 次），\d\d:\d\d 再试/.test(l)), logs.join('\n'));
+        assert.ok(logs.some(l => l.includes('本来要说：我买到相机啦')), logs.join('\n'));
+        assert.equal(records().find(r => r.occasion === 'news')?.result, 'dryRun');
+    });
+
+    test('一直连不上：一共试 3 次就不再试', async () => {
+        const { clock, logs, tried, records } = setup([unreachable, unreachable, unreachable, unreachable]);
+        await runUntil(clock, t(10, 11, 20));
+        assert.equal(tried.length, 3, logs.join('\n'));
+        assert.ok(logs.some(l => l.includes('出错，不再试（没连上模型 3 次）')), logs.join('\n'));
+        const last = records().find(r => r.occasion === 'news')!;
+        assert.equal(last.result, 'failed');
+        assert.equal(last.retryAt, undefined);
+    });
+
+    test('别的错（模型回了但不对、发送失败）照旧不再试', async () => {
+        const { clock, logs, tried } = setup([{ result: 'failed', reason: '生成失败：模型接口返回 400：bad request' }]);
+        await runUntil(clock, t(10, 11, 18));
+        assert.equal(tried.length, 1, logs.join('\n'));
+        assert.ok(logs.some(l => /出错，不再试：生成失败/.test(l)), logs.join('\n'));
+    });
+});
