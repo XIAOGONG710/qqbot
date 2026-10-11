@@ -57,13 +57,14 @@ function asksForHer(history: readonly Said[]): boolean {
  * 男朋友在要一个拥抱、亲吻、爱意确认或继续陪伴时，不把它压成普通问答，也不因为「睡」字直接收尾。
  * 只匹配完整的亲密说法，避开「抱怨」「亲戚」「亲自」一类无关词；是否启用由调用方按档位决定。
  */
-const INTIMATE_BID = /抱抱|抱我|抱一下|抱一会儿?|抱住我|给我抱|亲亲|亲我|亲一下|亲一口|亲个|mua(?!\s*(?:是什么意思|是啥|啥意思|怎么读|怎么说))|啵(?:一个|一下)?|想不想我|有没有想我|爱不爱我|爱我吗|喜不喜欢我|喜欢我吗|喜欢你|爱你|没爱了|不爱我了|不要我了|不喜欢我了|是不是不爱我|不准睡|别睡|不要睡|先别睡|不准走|别走|不要走|再陪(?:陪)?我?(?:一会儿?|一下)|陪我(?:聊|待|睡|一会儿?)/i;
+const INTIMATE_BID = /抱抱|抱我|抱一下|抱一会儿?|抱住我|给我抱|亲亲|亲我|亲一下|亲一口|亲个|mua(?!\s*(?:是什么意思|是啥|啥意思|怎么读|怎么说))|啵(?:一个|一下)?|想不想我|有没有想我|爱不爱我|爱我吗|喜不喜欢我|喜欢我吗|没爱了|不爱我了|不要我了|不喜欢我了|是不是不爱我|不准睡|别睡|不要睡|先别睡|(?:不准走|别走|不要走)(?=$|[\s?？!！。…~～，,了啊呀呢啦嘛呐哟])|再陪(?:陪)?我?(?:一会儿?|一下)|陪我(?:聊|待|睡|一会儿?)/i;
+const DIRECT_AFFECTION = /(?:喜欢你|爱你)(?=$|[\s?？!！。…~～，,啊呀呢啦嘛呐哟])/;
 const MISSES_ME = /想我(?:吗|没|没有|了吗|了没|了没有|了|啊|呀|呢)?(?=$|[\s?？!！。…~～，,])/;
 // 「我想你应该先睡」「我想你帮我看看」里的「想你」是“我认为 / 我希望你”，不是想念。
 const MISSES_HER = /(?<![不没])想你(?!应该|该|帮|给|替|把|能|会|要|先|去|来|做|说|看|问)/;
 function isIntimateBid(history: readonly Said[]): boolean {
     const text = latestUserText(history);
-    return INTIMATE_BID.test(text) || MISSES_ME.test(text) || MISSES_HER.test(text);
+    return INTIMATE_BID.test(text) || DIRECT_AFFECTION.test(text) || MISSES_ME.test(text) || MISSES_HER.test(text);
 }
 
 const MEME_SHORTHAND = /(?:^|[^a-z])(?:zdjd|xswl|awsl|yyds|nsdd|u1s1|srds|dbq|gkd|zqsg|yygq|nbcs|bdjw)(?=$|[^a-z])/i;
@@ -111,7 +112,7 @@ function needsCare(history: readonly Said[]): boolean {
 function isRelationshipBid(history: readonly Said[]): boolean {
     const text = latestUserText(history);
     // 「你递过来的时候我心里特别软」（10-10 盲评 N3：她回「今天怎么突然这么黏」就转去讲自己的奶茶）
-    return MISSES_HER.test(text) || /喜欢你|爱你|亲亲|抱抱|纪念日|(?:认识|见面|在一起).{0,8}(?:天|年)|\d{3,}\s*天|心里.{0,4}(?:软|甜|暖)|心动|有你真好/.test(text);
+    return MISSES_HER.test(text) || DIRECT_AFFECTION.test(text) || /亲亲|抱抱|纪念日|(?:认识|见面|在一起).{0,8}(?:天|年)|\d{3,}\s*天|心里.{0,4}(?:软|甜|暖)|心动|有你真好/.test(text);
 }
 
 /** 只有这种没有实质话题的开场，才适合捡起待跟进的事；不能在对方正说别的时抢话。 */
@@ -151,7 +152,7 @@ function busy(state: State | undefined, schedule: Schedule | undefined, now: Dat
 export function describeIntent(context: IntentContext): string | undefined {
     if (context.initiating) return undefined;
     // 「只接他刚说的你们两个人的事」这几个字让候选挑选（ADR 0041）和两条气泡的上限照亲密话算
-    if (context.intimate && isIntimateBid(context.history)) return '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事：先给一个明确的亲密回应，再自然地保留一点嘴硬；嘴硬不能是整轮唯一内容，也不把亲近当成交换条件。QQ 文字里的抱抱、亲一下和 mua 本身就是你们正在完成的互动，直接用文字回抱回亲就算数；不要求当面，不说隔空不算、亲屏幕或留到明天再补；他说难受时先心疼他，他真要收尾时回应后顺着收尾，他不想你走时能陪就多陪一句]';
+    if (context.intimate && isIntimateBid(context.history)) return '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事：先给一个明确的亲密回应，再自然地保留一点嘴硬；嘴硬不能是整轮唯一内容，也不把亲近当成交换条件。QQ 文字里的抱抱、亲一下和 mua 就是真的在抱、在亲，直接在这一轮用文字回抱回亲，让他收到你的回应；他说难受时先心疼他，他同时报了好消息时先替他高兴再接亲密话，他真要收尾时回应后顺着收尾，他不想你走时能陪就多陪一句]';
     if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行，别一句话就把他打发了；他要睡就哄他睡，他不让你走就再陪他一会儿，不另起话题，也不用约他睡醒再找你]';
     const meme = context.playful ? playfulHint(context.history) : undefined;
     if (meme !== undefined) return `[这一轮你想：他在玩网络梗、缩写或谐音，先按最近的上下文理解笑点，顺着同一套逻辑接一句，再接他真正说的事；不把梗按字面纠正，不解释梗或报出处。接不准就用你自己的口气问一句，不装懂；可以夸张、反差或者故意一本正经，但一次只玩一个点，不堆热词${meme}；他真要收尾时接完梗就收尾]`;

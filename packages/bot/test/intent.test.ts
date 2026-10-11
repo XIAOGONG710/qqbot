@@ -83,12 +83,12 @@ describe('这一轮你想（ADR 0019）', () => {
     });
 
     test('男朋友要亲近或确认感情：先明确回接，再嘴硬；优先于普通问句和收尾', () => {
-        for (const text of ['需要抱抱', '亲我一下行不行', '发个mua', '你想我吗', '爱不爱我', '没爱了', '不准睡，再陪我聊会儿']) {
+        for (const text of ['需要抱抱', '亲我一下行不行', '发个mua', '你想我吗', '爱不爱我', '没爱了', '不准睡，再陪我聊会儿', '喜欢你', '别走啊']) {
             const line = describeIntent({ history: [assistant('我去睡了，晚安'), user(text)], now, intimate: true })!;
             assert.match(line, /先给一个明确的亲密回应/, text);
             assert.match(line, /嘴硬不能是整轮唯一内容/, text);
-            assert.match(line, /文字里的抱抱、亲一下和 mua 本身就是你们正在完成的互动/, text);
-            assert.match(line, /不要求当面/, text);
+            assert.match(line, /文字里的抱抱、亲一下和 mua 就是真的在抱、在亲/, text);
+            assert.doesNotMatch(line, /隔空不算|亲屏幕|明天再补|不要求当面/, text);
             assert.match(line, /只接他刚说的你们两个人的事/, text);
             assert.doesNotMatch(line, /先直接回答|顺着他的话收尾/, text);
         }
@@ -96,9 +96,15 @@ describe('这一轮你想（ADR 0019）', () => {
 
     test('亲密邀约只在男朋友档加强，词边界不误伤普通问句', () => {
         assert.match(describeIntent({ history: [user('你想我吗')], now })!, /直接回答/, '非男朋友档不套亲密互惠');
-        for (const text of ['你别抱怨了行不行', '你亲戚来了吗', '这件事你亲自去吗', '你想我怎么做', '我想你应该先睡']) {
+        for (const text of ['你别抱怨了行不行', '你亲戚来了吗', '这件事你亲自去吗', '你想我怎么做', '我想你应该先睡', '别走那条路', '不要走太远', '我喜欢你昨天发的那张', '我爱你推荐的那本书']) {
             assert.doesNotMatch(describeIntent({ history: [user(text)], now, intimate: true }) ?? '', /亲密回应|只接他刚说的你们两个人的事/, text);
         }
+    });
+
+    test('好消息和亲密话在同一句：亲密意图同时接住好消息', () => {
+        const line = describeIntent({ history: [user('面试过了！！爱你')], now, intimate: true })!;
+        assert.match(line, /先替他高兴再接亲密话/);
+        assert.match(line, /先给一个明确的亲密回应/);
     });
 
     test('亲密邀约里带难受或明确收尾：意图同时保留照顾和收尾边界', () => {
