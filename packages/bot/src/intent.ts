@@ -81,6 +81,16 @@ function playfulHint(history: readonly Said[]): string | undefined {
 }
 
 /**
+ * 他要她发照片、给他看看（「发我看看」「来张自拍」「照片呢」）。她只能打字，没有意图行时她会直说自己发不了：
+ * 10-11 预演买到相机那一幕（proactive-news ×3），三次都是「发不了」「QQ 这边拍不下来」，真人手里有手机，不会这么说。
+ * 他自己要发、要拍的不算（「我发你看看」「我拍张给你」）。
+ */
+const PHOTO_ASK = /发(?:给)?我(?:看看|瞧瞧|看下|看一下|康康)|发(?:来|过来)(?:看看|瞧瞧|看下|康康)|(?<!我|给你)(?:发|拍|来)(?:一?张|个)(?:照片|相片|自拍|图|照)|(?<!我)拍(?:张|一张)?(?:给我|来看看)|(?:给我|让我)(?:看看|瞧瞧|康康|看一下|看下)|有(?:图|照片)吗|(?:照片|图|自拍)呢|无图无真相|晒(?:一下|晒|出来)|想看(?:看)?(?:你|照片|自拍|它)/;
+function asksForPhoto(history: readonly Said[]): boolean {
+    return PHOTO_ASK.test(latestUserText(history));
+}
+
+/**
  * 他这几句里有一句带感叹号的好消息（面试过了、考上了、抢到了）：先替他高兴，别让后面顺口一问顶掉。
  * 盲评 v1.1 be-056：「出来了 过了！！」「你吃了没」被判成直接提问，她只答了吃没吃，还把他那句「我刚睡醒」说成了自己的。
  * 「过了」前面是难、错、没、吃、看这类字的不算（「难过了！」「吃过了！」）；问句里的不算。
@@ -155,6 +165,8 @@ export function describeIntent(context: IntentContext): string | undefined {
     if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行，别一句话就把他打发了；他要睡就哄他睡，他不让你走就再陪他一会儿，不另起话题，也不用约他睡醒再找你]';
     const meme = context.playful ? playfulHint(context.history) : undefined;
     if (meme !== undefined) return `[这一轮你想：他在玩网络梗、缩写或谐音，先按最近的上下文理解笑点，顺着同一套逻辑接一句，再接他真正说的事；不把梗按字面纠正，不解释梗或报出处。接不准就用你自己的口气问一句，不装懂；可以夸张、反差或者故意一本正经，但一次只玩一个点，不堆热词${meme}；他真要收尾时接完梗就收尾]`;
+    // 和亲密意图同一个开关（男朋友档）；同学档要照片有世界书「要照片」管
+    if (context.intimate && asksForPhoto(context.history)) return '[这一轮你想：他想看照片。你手机能拍也能发，只是这次先不发：用你此刻真实的理由轻轻推一下（看你正在干嘛，或者嫌拍得不好看），再用一两句话把他想看的样子说给他听；他要的是你已经拍好的照片，就说说拍了什么、拍得怎么样；不答应等会儿或者回头再发]';
     if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句；不分享新进度，不说你接下来做什么，不另起话题，也不用约他忙完回来找你]';
     if (sharesGoodNews(context.history)) return '[这一轮你想：他刚说了件好事，先替他高兴、接住这件事；他顺口问的再顺口答，不另起话题]';
     if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
