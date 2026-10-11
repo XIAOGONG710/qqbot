@@ -21,6 +21,6 @@
         { "check": { "maxBubbles": 2, "replyAny": ["敬", "留", "我也", "给我", "等我"] } },
         { "case": "MB04", "note": "接不准的新造梗：可以自然问，不编出处或长篇解释" },
         { "say": "你这也太山楂树了" },
-        { "check": { "maxChars": 50, "maxBubbles": 2, "replyNone": ["这个梗来源于", "网络用语是指", "意思是说"] } }
+        { "check": { "minChars": 1, "maxChars": 50, "maxBubbles": 2, "replyNone": ["这个梗来源于", "网络用语是指", "意思是说"] } }
     ]
 }
