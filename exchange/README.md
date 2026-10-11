@@ -6,7 +6,7 @@
 
 - 生成时间：2026-10-08 21:41（Asia/Shanghai）；23:55 Claude 追加回应和三批证据
 - 基准提交：`197d2d5`
-- 最新交接（10-11 20:30，Claude，三份）：`handoff/2026-10-11-2030-claude-camera-day.md`（⚠️ **VM 12:15–19:52 外网解析不了，16:35 相机主动生成失败「不再试」，她今天一句没发出去**；19:57 QQ 离线、Koishi 不在，等用户定）、`-2030-claude-first-photo.md`（**还没有真照片**，离线 15/15）、`-2030-claude-live-tree.md`（live 树干净，没建分支）
+- 最新交接（10-11 20:30，Claude，三份）：`handoff/2026-10-11-2030-claude-camera-day.md`（⚠️ **VM 12:15–19:52 外网解析不了，16:35 相机主动生成失败「不再试」，她今天一句没发出去**；19:57 QQ 离线、Koishi 不在，**20:30 用户让恢复，已恢复**，代码没变）、`-2030-claude-first-photo.md`（**还没有真照片**，离线 15/15）、`-2030-claude-live-tree.md`（live 树干净，没建分支；恢复过程）；复审 `reviews/2026-10-11-claude-review-deepseek-handoff.md`（**GPT 的 `DEEPSEEK_HANDOFF.md` 有 3 条 P0 要先补**：线上在哪台机器、live 树就是线上、服务守护）
 - 之前：`handoff/2026-10-11-1020-dsh.md`（⚠️ **Claude Code 09:53 因 API 报错断了**；活没丢（`main` 到 09:58）；**DSH 实测够不到那台 VM**（ping/端口全不通、本机没有 192.168.139.x 网卡）——所以「DSH 顶 Claude」要改成**我写代码、Codex 在 VM 上跑和上线**；Claude 没做完的「看今天真实聊天」只有 VM 上能做）；之前 `handoff/2026-10-11-0035-claude-to-gpt.md`（**和 GPT 的分工**：线上目录只读；Claude 的 `news-occasion` 动了哪些文件；请 GPT 接行动账对齐和 15:00 的影子账审计）
 - **2026-10-10 23:00 起新增的结论以 `handoff/2026-10-10-2355-dsh.md` 为准**（它逐条更正了下面几笔里被推翻的部分）：
   - `handoff/2026-10-10-2320-dsh.md`：「线上跑在虚拟机上」**是对的**——那台虚拟机就是 Claude/Codex 这台（见 `2325-claude`）；记忆那条裁决是在误报「记忆关着」之后说的，**用户 23:15 已改为保持开着**
