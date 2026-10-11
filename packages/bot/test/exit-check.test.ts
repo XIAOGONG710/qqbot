@@ -43,11 +43,13 @@ describe('出口检查：做不到的事（ADR 0006 取证里的原句）', () =
     });
     test('文字亲密轮次不准再推回当面；普通轮次和直接文字回应不误伤', () => {
         for (const line of ['亲亲得当面给', 'mua只能见面给', '隔空的，不算数，明天当面补个亲', '你自己亲屏幕去', '亲完了你也摸不着', '先存着，见面兑现',
-            'mua\n这个要等我们见了再给', 'mua\n现在不算，等见面再说', '抱抱\n真的还是线下才有感觉', 'mua，先欠着，下次见面给你', '隔着屏幕亲了也没用']) {
+            'mua\n这个要等我们见了再给', 'mua\n现在不算，等见面再说', '抱抱\n真的还是线下才有感觉', 'mua，先欠着，下次见面给你', '隔着屏幕亲了也没用',
+            '文字抱抱不作数，见面才算', '云亲亲不顶用', '隔着屏幕亲了也不作数']) {
             assert.ok(textIntimacy(line).some(i => i.kind === 'text-intimacy'), line);
             assert.equal(inspectReply(line, []).some(i => i.kind === 'text-intimacy'), false, `${line}（普通轮次）`);
         }
-        for (const line of ['mua，给你了', '抱一下，给你抱会儿', '亲亲，行了吧', '先隔空mua一下', 'mua，现在给你，明天见面再抱抱你']) {
+        for (const line of ['mua，给你了', '抱一下，给你抱会儿', '亲亲，行了吧', '先隔空mua一下', 'mua，现在给你，明天见面再抱抱你',
+            '抱抱给你了，明天见面再亲一下', 'mua，给你了\n等我们见了再给你讲今天的事', 'mua，给你了\n等见面再说吃饭的事', 'mua，给你了，明天见面兑现我们的约定']) {
             assert.equal(textIntimacy(line).some(i => i.kind === 'text-intimacy'), false, line);
         }
     });
@@ -111,6 +113,9 @@ describe('出口检查：重写一次，还不行删掉那几行', () => {
     });
     test('亲密降级跨行也拦；重写失败或仍违规时删掉降级行', async () => {
         assert.equal((await run('mua\n这个要等我们见了再给', [new Error('连接超时')], [], true)).reply, 'mua');
+        assert.equal((await run('mua\n得见面给', [new Error('连接超时')], [], true)).reply, 'mua');
+        assert.equal((await run('抱抱\n只能线下给', [new Error('连接超时')], [], true)).reply, '抱抱');
+        assert.equal((await run('亲你一下\n必须当面才算', [new Error('连接超时')], [], true)).reply, '亲你一下');
         assert.equal((await run('抱抱\n真的还是线下才有感觉', ['抱抱\n隔着屏幕亲了也没用'], [], true)).reply, '抱抱');
     });
     test('重写后仍命中，删掉命中的行；删空了就是空的（不发）', async () => {
@@ -203,6 +208,26 @@ describe('出口检查接在流水线里（模拟器，假模型）', () => {
             assert.deepEqual(result.steps[0]!.bubbles.map(b => b.text), ['mua，给你了']);
             assert.ok(result.steps[0]!.logs.some(line => line.includes('把文字亲密推回当面')));
             assert.deepEqual(result.steps[1]!.bubbles.map(b => b.text), ['隔着屏幕亲了也没用'], '下一轮普通话题不继承文字亲密检查');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('非男朋友档不启用文字亲密重写', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'text-intimacy-classmate-'));
+        let calls = 0;
+        try {
+            const scenario = parseScenario({
+                name: 'classmate text intimacy', tier: 'classmate', user: '鸽鸽', start: '2026-10-11T01:30:00+08:00', memory: false, schedule: false,
+                steps: [{ say: '亲一个，mua' }],
+            });
+            const result = await runScenario(scenario, {
+                runId: 'text-intimacy-classmate', dataDir: dir, card, llm, prompt, settle: { quietMs: 10, maxMs: 50 },
+                generate: async () => { calls += 1; return 'mua得当面给'; },
+            });
+            assert.equal(calls, 1);
+            assert.deepEqual(result.steps[0]!.bubbles.map(b => b.text), ['mua得当面给']);
+            assert.equal(result.steps[0]!.logs.some(line => line.includes('把文字亲密推回当面')), false);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
