@@ -82,7 +82,12 @@ describe('模型请求', () => {
         const truncated = () => new Response(JSON.stringify({ choices: [{ message: { content: '', reasoning_content: '想……' }, finish_reason: 'length' }] }));
         const logs: string[] = [];
         assert.equal(await chatCompletion(options, messages, { fetch: fakeFetch([truncated]).fetch, log: m => logs.push(m) }), '');
-        assert.deepEqual(logs, ['模型输出被截断：思考用完了 max_tokens，正文是空的']);
+        assert.deepEqual(logs, ['模型输出被截断：思考用完了 max_tokens，正文是空的，思考 3 字']);
+        // 没到上限也空（10-11 接梗模拟：思考里把回复写完了，正文什么都没有）：写明 finish 和思考多长
+        const stopped = () => new Response(JSON.stringify({ choices: [{ message: { content: ' ', reasoning_content: '他说山楂树' }, finish_reason: 'stop' }] }));
+        const empty: string[] = [];
+        assert.equal(await chatCompletion(options, messages, { fetch: fakeFetch([stopped]).fetch, log: m => empty.push(m) }), ' ');
+        assert.deepEqual(empty, ['模型正文是空的（finish=stop，思考 5 字）']);
         const quiet: string[] = [];
         await chatCompletion(options, messages, { fetch: fakeFetch([ok]).fetch, log: m => quiet.push(m) });
         assert.deepEqual(quiet, []);
