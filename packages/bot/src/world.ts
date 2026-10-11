@@ -166,8 +166,8 @@ interface DayRecord {
     call?: Date;
 }
 
-/** 买相机那一趟 */
-export interface CameraTrip { start: Date; end: Date; where: string; what: string; price: number }
+/** 买相机那一趟；gifts：相机基金里别人给的那几笔（谁、存进去多少），没有就是全靠自己攒的 */
+export interface CameraTrip { start: Date; end: Date; where: string; what: string; price: number; gifts?: { contact: number; amount: number }[] }
 
 /** 她那边刚发生、想第一时间告诉他的事（ADR 0057，主动消息「她那边的事」）：现在只有买到相机（ADR 0053）；at 是事情了结的时刻 */
 export interface WorldNews { id: string; at: Date; what: string }
@@ -178,9 +178,21 @@ export function worldErrands(now: WorldNow): { start: Date; end: Date; text: str
     return camera && formatDate(camera.start) === now.day ? [{ start: camera.start, end: camera.end, text: `去${camera.where}买相机` }] : [];
 }
 
+/** what 不带「刚」：没说成的留到这一天后面的主动里说（ADR 0057 调整）；钱从哪来写在「你那边」那一行，那一行按是谁在看说 */
 export function worldNews(now: WorldNow): WorldNews[] {
     const camera = now.cameraFund?.camera;
-    return camera ? [{ id: 'camera', at: camera.end, what: `刚在${camera.where}买到了${camera.what}（${camera.price} 元，攒的钱买的）` }] : [];
+    return camera ? [{ id: 'camera', at: camera.end, what: `在${camera.where}买到了${camera.what}` }] : [];
+}
+
+/**
+ * 相机的钱从哪来（ADR 0053 调整，10-11）：他 10-10 转了 2000 买相机，「攒的钱买的」跟他知道的对不上（模拟器里还说成「攒的钱到账了」）。
+ * giver：给钱的人在这一行里怎么称呼（正在看的人自己给的写他的称呼，contact.ts 给）；不给就是「别人」
+ */
+function cameraMoney(camera: CameraTrip, giver?: (qq: number) => string | undefined): string {
+    const given = (camera.gifts ?? []).reduce((sum, g) => sum + g.amount, 0);
+    if (!given) return `${camera.price} 元，攒的钱买的`;
+    const who = [...new Set(camera.gifts!.map(g => giver?.(g.contact) ?? '别人'))].join('、');
+    return given >= camera.price ? `${camera.price} 元，${who}给的钱买的` : `${camera.price} 元：${who}给的 ${given} 加上你自己攒的 ${camera.price - given}`;
 }
 
 interface Timeline {
@@ -211,6 +223,8 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
     };
     let food = world.cat?.food.left ?? 0;
     let saved = world.cameraFund?.saved ?? 0;
+    /** 相机基金里别人给的那几笔（买相机时带上） */
+    let fundGifts: { contact: number; amount: number }[] = [];
     let camera: CameraTrip | undefined;
     const start = parseDate(world.startDay);
     const end = startOfDay(until);
@@ -367,9 +381,10 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             // 攒够以后去买（用户 10-10）：钱从相机基金出，剩下的回到手上；之后不再存
             if (!purchase || !tripStart || camera || saved < purchase.price) return;
             const end = new Date(tripStart.getTime() + purchase.minutes * 60_000);
-            camera = { start: tripStart, end, where: purchase.where, what: purchase.what, price: purchase.price };
+            camera = { start: tripStart, end, where: purchase.where, what: purchase.what, price: purchase.price, ...(fundGifts.length ? { gifts: fundGifts } : {}) };
             if (saved > purchase.price) book(end, saved - purchase.price, '买完相机剩下的', 'income');
             saved = 0;
+            fundGifts = [];
             deposits.push({ at: end, saved, amount: 0 });
         };
         const gifts = todayActions.filter(a => a.kind === 'receive_money' && a.amount).sort((a, b) => a.at.localeCompare(b.at));
@@ -380,6 +395,8 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             if (action.target === CAMERA_FUND_TARGET && world.cameraFund && !camera && saved < world.cameraFund.goal) {
                 const put = Math.min(action.amount!, world.cameraFund.goal - saved);
                 saved += put;
+                // 记他给的整笔（存满目标多出来的留在手上，也是给相机的）：说起来是「他给的 2000」，不是存进去的 1750
+                fundGifts.push({ contact: action.contact, amount: action.amount! });
                 book(time, -put, '存进相机基金', 'deposit');
                 deposits.push({ at: time, saved, amount: put });
             }
@@ -485,9 +502,9 @@ const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '�
 
 /**
  * 时间块里的一段「你那边」：只有事实（几点、几件、还剩几天），没有能原样说出口的整句；用不用、怎么说她自己定。
- * 没有可写的就不返回
+ * 没有可写的就不返回。giver：别人给的钱（买相机）在这一行里怎么称呼给钱的人（contact.ts 按正在看的人给）
  */
-export function describeWorld(now: WorldNow, at: Date): string | undefined {
+export function describeWorld(now: WorldNow, at: Date, giver?: (qq: number) => string | undefined): string | undefined {
     const parts: string[] = [];
     // 今天 / 明天 / 昨天按她的一天说（和 now.day 一样，凌晨 2 点前算前一天）：零点后她还没睡，下午买的相机还是「今天下午」、白天到的快递是「明天到」
     const herToday = new Date(`${now.day}T00:00:00`);
@@ -525,7 +542,7 @@ export function describeWorld(now: WorldNow, at: Date): string | undefined {
     const camera = now.cameraFund?.camera;
     if (camera?.state === 'bought') {
         const day = ahead(camera.end) === 0 ? '今天' : ahead(camera.end) === -1 ? '昨天' : `${camera.end.getMonth() + 1} 月 ${camera.end.getDate()} 日`;
-        parts.push(`相机：${day}${partOfDay(camera.start.getHours())}去${camera.where}买的${camera.what}（${camera.price} 元，攒的钱买的）`);
+        parts.push(`相机：${day}${partOfDay(camera.start.getHours())}去${camera.where}买的${camera.what}（${cameraMoney(camera, giver)}）`);
     } else if (camera?.state === 'buying') {
         parts.push(`相机：钱攒够了，这会儿在${camera.where}挑相机，看中的是${camera.what}，${camera.price} 元左右`);
     } else if (camera?.state === 'planned') {

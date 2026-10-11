@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
 import {
     blockReason, candidatesOn, dayMatches, herDay, lunarMonthDay, parseDates, parseProactive, planFrom, unansweredCount,
-    occasionNote, type Candidate, type ProactiveInput, type ProactiveRecord,
+    occasionNote, untoldNews, type Candidate, type ProactiveInput, type ProactiveRecord,
 } from '../src/proactive.ts';
 import { rainingAt, rainOf } from '../src/proactive-planner.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
@@ -260,7 +260,7 @@ describe('主动消息：下雨了（ADR 0050，只认真实天气）', () => {
 
 describe('主动消息：她那边的事（ADR 0057）', () => {
     // 10-11 周日 14:00–16:30 去山大路科技市场买相机（ADR 0053）
-    const camera = { id: 'camera', day: '2026-10-11', at: t(10, 11, 16, 30), what: '刚在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头（4280 元，攒的钱买的）' };
+    const camera = { id: 'camera', day: '2026-10-11', at: t(10, 11, 16, 30), what: '在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头' };
 
     test('候选：了结后 5–20 分钟，一件一条；别的日子的、卡上没开的没有', () => {
         const c = find(candidatesOn(day(10, 11), input({ news: [camera] })), 'news')!;
@@ -308,5 +308,29 @@ describe('主动消息：她那边的事（ADR 0057）', () => {
         const plan = planFrom(t(10, 11, 12), input({ news: [camera], records, history: [user(t(10, 11, 10, 5)), her(t(10, 11, 10, 6))] }));
         assert.deepEqual(plan.upcoming.map(c => c.occasion), ['news']);
         assert.ok(plan.yielded.some(c => c.occasion === 'bedtime'));
+    });
+
+    test('没说成的（10-11 断网）：这一天后面的冷场、睡前顺带说；发出去了、等着再试的、那之后聊过的、别的日子的不带', () => {
+        const morning = [user(t(10, 11, 11)), her(t(10, 11, 11, 1))];
+        const bedtime = find(candidatesOn(day(10, 11), input({ news: [camera] })), 'bedtime')!;
+        const news = find(candidatesOn(day(10, 11), input({ news: [camera] })), 'news')!;
+        const failed: ProactiveRecord = { ...record(news.id, news.at, 'failed'), reason: '生成失败：模型接口请求失败（UND_ERR_CONNECT_TIMEOUT）', tries: 3 };
+        const at = bedtime.at;
+        assert.deepEqual(untoldNews(bedtime, at, input({ news: [camera], history: morning, records: [failed] })), [camera]);
+        assert.deepEqual(untoldNews({ ...bedtime, occasion: 'quiet' }, at, input({ news: [camera], history: morning, records: [failed] })), [camera]);
+        // 错过了、没排上（skipped）的也算没说成
+        assert.deepEqual(untoldNews(bedtime, at, input({ news: [camera], history: morning, records: [{ ...failed, result: 'skipped', reason: '错过了，不补' }] })), [camera]);
+        assert.deepEqual(untoldNews(bedtime, at, input({ news: [camera], history: morning, records: [record(news.id, news.at)] })), [], '发出去了');
+        assert.deepEqual(untoldNews(bedtime, at, input({ news: [camera], history: morning, records: [{ ...failed, retryAt: new Date(at + 60_000).toISOString(), tries: 1 }] })), [], '还等着再试');
+        assert.deepEqual(untoldNews(bedtime, at, input({ news: [camera], history: [...morning, user(t(10, 11, 20), '买到没'), her(t(10, 11, 20, 1), '买到了')], records: [failed] })), [], '那之后聊过');
+        assert.deepEqual(untoldNews(bedtime, t(10, 11, 16), input({ news: [camera], history: morning, records: [failed] })), [], '还没了结');
+        assert.deepEqual(untoldNews({ ...bedtime, day: '2026-10-12' }, at + 86_400_000, input({ news: [camera], history: morning, records: [failed] })), [], '第二天不带');
+        assert.deepEqual(untoldNews({ ...bedtime, occasion: 'weather' }, at, input({ news: [camera], history: morning, records: [failed] })), [], '下雨只说这一件');
+        // 说明：睡前道晚安，顺带说这件；不给台词、不说为什么没说成
+        const note = occasionNote(bedtime, '宝宝', [camera]);
+        assert.match(note, /跟宝宝道个晚安；你今天在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头，还没跟宝宝说过，这次一起说/);
+        assert.doesNotMatch(note, /断网|网不好|发不出去|没发出去/);
+        assert.equal(occasionNote(bedtime, '宝宝'), occasionNote(bedtime, '宝宝', []));
+        assert.doesNotMatch(occasionNote(bedtime, '宝宝'), /相机/);
     });
 });

@@ -187,3 +187,24 @@ describe('挂着的事进意图行（ADR 0023）', () => {
         assert.match(line, /上次问他「他国庆回不回家」他没顾上回，轻轻再问一次；他不接就算了，不追究/);
     });
 });
+
+describe('她那边的事还没跟他说过（ADR 0057 调整）', () => {
+    const news = ['在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头'];
+
+    test('他开口问「在干嘛」、说「在吗」：先回他，接着说这件；不给台词', () => {
+        for (const text of ['在干嘛', '在吗', '你吃了没', '我回来了']) {
+            const line = describeIntent({ history: [user(text)], now, news, state: free('在宿舍') })!;
+            assert.match(line, /先回他刚说的；你今天在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头，还没跟他说过，接着就说这件/, text);
+            assert.doesNotMatch(line.replace('「你那边」', ''), /「/, text);
+        }
+    });
+
+    test('他难过、生病、收尾、要亲近、报好事时让路', () => {
+        assert.match(describeIntent({ history: [user('我发烧了，好难受')], now, news })!, /接住他此刻的情绪/);
+        assert.match(describeIntent({ history: [user('今天好累啊不想动')], now, news })!, /接住他此刻的情绪/);
+        assert.match(describeIntent({ history: [user('晚安')], now, news })!, /收尾/);
+        assert.match(describeIntent({ history: [user('想抱抱你')], now, news, intimate: true })!, /亲密回应/);
+        assert.match(describeIntent({ history: [user('我面试过了！！')], now, news })!, /替他高兴/);
+        assert.equal(describeIntent({ history: [user('在吗')], now, news, initiating: true }), undefined);
+    });
+});

@@ -388,7 +388,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             // 「forget」之后换了新的回复器：每次取当前的
             responder: {
                 initiate: async request => {
-                    initiating = request.label.replace(/（.*$/, '');
+                    const occasion = request.label.replace(/（.*$/, '');
+                    if (scenario.proactiveOffline?.includes(occasion)) {
+                        log(`主动找他（${request.label}）：场景里这个时机断网`);
+                        return { result: 'failed', reason: '模型接口请求失败（场景：断网）', unreachable: true };
+                    }
+                    initiating = occasion;
                     try {
                         return await responder.initiate(request);
                     } finally {

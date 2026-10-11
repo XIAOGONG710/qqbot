@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
-import type { ProactiveRecord } from '../src/proactive.ts';
+import type { ProactiveRecord, ProactiveSettings } from '../src/proactive.ts';
 import { createProactivePlanner, type Planner } from '../src/proactive-planner.ts';
 import type { InitiateOutcome, InitiateRequest } from '../src/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
@@ -25,24 +25,26 @@ describe('主动消息：没连上模型过一会儿再试（10-11 相机那条�
         for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
     });
 
-    const camera = { id: 'camera', day: '2026-10-11', at: t(10, 11, 16, 30), what: '刚在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头（4280 元，攒的钱买的）' };
+    const camera = { id: 'camera', day: '2026-10-11', at: t(10, 11, 16, 30), what: '在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头' };
     const unreachable: InitiateOutcome = { result: 'failed', reason: '生成失败：模型接口请求失败（ENOTFOUND：getaddrinfo ENOTFOUND api.deepseek.com）', unreachable: true };
 
-    /** outcomes：每次到点依次返回；用完了就照常试运行 */
-    function setup(outcomes: InitiateOutcome[]) {
+    /** outcomes：每次到点依次返回；用完了就照常试运行。occasions 默认只开她那边的事 */
+    function setup(outcomes: InitiateOutcome[], occasions: ProactiveSettings['occasions'] = ['news']) {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-retry-'));
         dirs.push(dir);
         const clock = new VirtualClock(new Date(t(10, 11, 16)));
         const logs: string[] = [];
         const tried: number[] = [];
+        const notes: string[] = [];
         const history = [msg(t(10, 11, 11), 'user', '我写代码去了'), msg(t(10, 11, 11, 1), 'assistant', '去吧')];
         const planner = createProactivePlanner({
             contact: { qq: 10001, name: '阿明', tier: 'boyfriend' },
-            schedule, settings: { occasions: ['news'], dailyMax: 3, unansweredMax: 2 }, dates: [], mode: 'dryRun',
+            schedule, settings: { occasions, dailyMax: 3, unansweredMax: 2 }, dates: [], mode: 'dryRun',
             history: { load: () => history },
             responder: {
                 initiate: async (request: InitiateRequest) => {
                     tried.push(clock.now());
+                    notes.push(request.note);
                     const next = outcomes.shift();
                     if (next) return next;
                     request.commit(['我买到相机啦']);
@@ -55,7 +57,7 @@ describe('主动消息：没连上模型过一会儿再试（10-11 相机那条�
         });
         planners.push(planner);
         const records = () => (JSON.parse(readFileSync(join(dir, '10001-boyfriend.json'), 'utf8')) as { records: ProactiveRecord[] }).records;
-        return { clock, logs, tried, records };
+        return { clock, logs, tried, notes, records };
     }
 
     async function runUntil(clock: VirtualClock, end: number) {
@@ -94,5 +96,15 @@ describe('主动消息：没连上模型过一会儿再试（10-11 相机那条�
         await runUntil(clock, t(10, 11, 18));
         assert.equal(tried.length, 1, logs.join('\n'));
         assert.ok(logs.some(l => /出错，不再试：生成失败/.test(l)), logs.join('\n'));
+    });
+
+    test('一直连不上、那之后也没聊过：睡前那条顺带说买到了相机（ADR 0057 调整）', async () => {
+        const { clock, logs, tried, notes, records } = setup([unreachable, unreachable, unreachable], ['news', 'bedtime']);
+        await runUntil(clock, t(10, 12, 1));
+        assert.equal(tried.length, 4, logs.join('\n'));
+        assert.doesNotMatch(notes[0]!, /还没跟阿明说过/);
+        assert.match(notes[3]!, /道个晚安；你今天在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头，还没跟阿明说过/);
+        assert.ok(logs.some(l => l.includes('睡前（准备睡了）顺带说没说成的事：在山大路科技市场买到了')), logs.join('\n'));
+        assert.equal(records().find(r => r.occasion === 'bedtime')?.result, 'dryRun');
     });
 });

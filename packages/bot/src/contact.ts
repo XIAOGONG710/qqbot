@@ -25,7 +25,7 @@ import { describeMood, moodAt, readingActivities, readingSection } from './her-d
 import { describeIntent } from './intent.ts';
 import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
-import { describeWorld, recapDay, recentWith, unavailableAt, worldAt, type WorldState } from './world.ts';
+import { describeWorld, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
 import { npcMentioned } from './npc.ts';
 import { dayPlan, describePlans, describeSlot } from './day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
@@ -36,7 +36,7 @@ import { describeRecentPhotography, recentPhotography } from './projects.ts';
 import { describePast, pastCue } from './biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from './people.ts';
 import { describeAppointment, type PromiseKeeper } from './promises.ts';
-import { describeState, herDay, partnerBackLine } from './schedule.ts';
+import { describeState, formatDate, herDay, partnerBackLine } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candidates.ts';
 import { turnCut, type Summarizer, type TurnWindow } from './context-window.ts';
@@ -272,7 +272,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const around = herSchedule && character.herWorld
                 ? options.worldState?.at(character.herWorld, herSchedule, time) ?? worldAt(character.herWorld, herSchedule, time)
                 : undefined;
-            const world = around ? describeWorld(around, time) : undefined;
+            // 别人给的钱（买相机，ADR 0053 调整）：正在聊的人给的写他的称呼（写「对方」她照抄成「对方给的2000」），男朋友给的跟别人说是「男朋友」
+            const giver = (qq: number) => {
+                if (qq === contact.qq) return contact.name;
+                const other = (options.contacts ?? []).find(c => c.qq === qq);
+                return other ? (other.tier === 'boyfriend' ? '男朋友' : other.name) : undefined;
+            };
+            const world = around ? describeWorld(around, time, giver) : undefined;
             const practiced = options.lifeInPrompt && character.herWorld?.cameraFund && options.worldState?.events ? recentPhotography(options.worldState.events(), time, 3, herSchedule) : undefined;
             const practice = practiced ? describeRecentPhotography(practiced, time, herSchedule) : undefined;
             // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）
@@ -340,6 +346,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 log(`挂着的事：等结果 ${loops.waiting.length}、没回答 ${loops.unanswered.length}、没了结 ${loops.unsettled.length}`);
             }
             if (affect) log(`情绪余温：${affect.kind}，还影响 ${affect.remaining} 轮`);
+            // 她那边的事还没说过（ADR 0057 调整）：她的今天了结的、那之后她一句话都还没说过（主动那条发出去了也算说过）——这一轮顺带说。先只给男朋友档
+            const untold = around && herSchedule && contact.tier === 'boyfriend' && !initiate
+                ? worldNews(around).filter(n => n.at <= time && formatDate(herDay(herSchedule, n.at)) === around.day
+                    && !chat.some(m => m.role === 'assistant' && m.time !== undefined && Date.parse(m.time) >= n.at.getTime())).map(n => n.what)
+                : [];
+            if (untold.length) log(`她那边的事还没跟他说过：${untold.join('、')}`);
             const intent = describeIntent({
                 history: chat,
                 state,
@@ -352,6 +364,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 unanswered: loops?.unanswered.map(l => l.what),
                 intimate: contact.tier === 'boyfriend',
                 playful: contact.tier === 'boyfriend',
+                ...(untold.length ? { news: untold } : {}),
             });
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
