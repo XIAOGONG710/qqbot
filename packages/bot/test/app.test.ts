@@ -142,6 +142,31 @@ describe('编排（app.ts）', () => {
         assert.deepEqual(chat(cfg, 10001), ['user:[动画表情]', 'assistant:她发了个表情包：白猫捂嘴偷笑']);
     });
 
+    test('图片表情：最终发送口清掉畸形内部指令，聊天历史也不保存协议残片', async () => {
+        const stickers: StickerShelf = {
+            consider: async () => undefined,
+            discover: async () => undefined,
+            prompt: () => undefined,
+            clean: text => text,
+            resolve: () => undefined,
+            history: text => text,
+            used: () => undefined,
+            status: () => ({ count: 0 }),
+        };
+        const cfg = config({ stickers: 'send', contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        const { app, sent, images, logs } = setup(cfg, { 10001: [] }, {
+            stickers,
+            generate: () => '哈哈 <sticker:not-an-id>',
+        });
+        await app.connected(SELF);
+        app.receive(event(10001, 10, '笑死'));
+        await until(() => sent.length === 1);
+        assert.deepEqual(sent, ['10001:哈哈']);
+        assert.deepEqual(images, []);
+        assert.deepEqual(chat(cfg, 10001), ['user:笑死', 'assistant:哈哈']);
+        assert.ok(logs.some(line => line.includes('发送前清掉残留')));
+    });
+
     test('图片表情 collect：只收男朋友发来的候选，不进提示词、不发送图片', async () => {
         const calls = { considered: 0, discovered: 0, prompted: 0 };
         const stickers: StickerShelf = {
@@ -203,6 +228,7 @@ describe('编排（app.ts）', () => {
         assert.equal(calls.prompted, 0);
         assert.equal(calls.resolved, 0);
         assert.equal(calls.discovered, 1, '账号自己的候选池仍可在后台收藏，只有男朋友档能看到');
+        assert.deepEqual(chat(cfg, 10001), ['user:[动画表情]', 'assistant:正常文字']);
     });
 
     test('连上时补回（小号自己发的算她说的），补的时候到的消息攒着、补完按顺序处理不重复，然后只回一次', async () => {

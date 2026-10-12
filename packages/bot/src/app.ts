@@ -39,7 +39,7 @@ import { loadNeedsAnchor } from './needs.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
-import { STICKER_DISCOVERY_INTERVAL_MS, type StickerShelf } from './stickers.ts';
+import { STICKER_DISCOVERY_INTERVAL_MS, stripStickerArtifacts, type StickerShelf } from './stickers.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -390,12 +390,18 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     sendingStickers!.used(sticker.id);
                     return id;
                 }
+                const safeText = /<sticker:/i.test(text) ? stripStickerArtifacts(text) : text;
+                if (!safeText) {
+                    log(`[${userId}] 拦下未通过图片表情协议校验的文字`);
+                    throw new Error('图片表情内部指令未通过校验');
+                }
+                if (safeText !== text) log(`[${userId}] 发送前清掉残留的图片表情内部指令`);
                 try {
-                    return await transport.sendPrivateText(userId, text);
+                    return await transport.sendPrivateText(userId, safeText);
                 } catch (error) {
                     const reason = error instanceof Error ? error.message : String(error);
-                    const plain = removeFaces(text, face => face !== undefined);
-                    if (plain === text || !plain || /timeout|timed out|超时/i.test(reason)) throw error;
+                    const plain = removeFaces(safeText, face => face !== undefined);
+                    if (plain === safeText || !plain || /timeout|timed out|超时/i.test(reason)) throw error;
                     log(`[${userId}] 带小黄脸的消息没发出去（${reason}），去掉表情再发一次`);
                     return transport.sendPrivateText(userId, plain);
                 }

@@ -24,7 +24,7 @@ export const STICKER_LIBRARY_MAX = 80;
 export const STICKER_REPLY_WINDOW = 8;
 export const STICKER_HISTORY_PREFIX = '她发了个表情包：';
 const INDEX_VERSION = 1;
-const TOKEN = /<sticker:([a-f0-9]{12})>/gi;
+const TOKEN_LIKE = /<sticker:[^>\r\n]*(?:>|$)/gi;
 const EXACT_TOKEN = /^<sticker:([a-f0-9]{12})>$/i;
 /** 模型不能用文字冒充真的图片消息；真实发送后的历史才会写入可读描述。 */
 const FAKE_STICKER_DESCRIPTION = /^\s*(?:(?:她|我)?发了?(?:一?个)?表情包[：:].+|[\[【（(]表情包[^\]】）)]*[\]】）)])\s*$/;
@@ -34,7 +34,7 @@ const dispatcher = new Agent({ connect: { timeout: 3000 } });
 export function stripStickerArtifacts(reply: string): string {
     return reply.split('\n').flatMap(line => {
         if (FAKE_STICKER_DESCRIPTION.test(line)) return [];
-        const plain = line.replace(TOKEN, '').trim();
+        const plain = line.replace(TOKEN_LIKE, '').trim();
         return plain ? [plain] : [];
     }).join('\n').trim();
 }
@@ -358,7 +358,7 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                     options.log(`图片表情：去掉模型冒充图片消息的文字「${line.trim()}」`);
                     return [];
                 }
-                const hits = [...line.matchAll(TOKEN)];
+                const hits = [...line.matchAll(TOKEN_LIKE)];
                 if (!hits.length) return [line];
                 const exact = EXACT_TOKEN.exec(line.trim());
                 const known = exact && index.entries.some(entry => entry.id === exact[1]!.toLowerCase());
@@ -366,7 +366,7 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                     kept = true;
                     return [`<sticker:${exact[1]!.toLowerCase()}>`];
                 }
-                const plain = line.replace(TOKEN, '').trim();
+                const plain = line.replace(TOKEN_LIKE, '').trim();
                 options.log(`图片表情：去掉${!allow && known ? '认真照顾轮次里的' : known ? '同一轮多出的' : '未知或混在文字里的'}发送指令「${hits.map(hit => hit[0]).join('、')}」`);
                 return plain ? [plain] : [];
             }).join('\n').trim();

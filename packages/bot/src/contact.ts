@@ -492,7 +492,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             log,
         }),
         send: options.send,
-        ...(options.stickers ? { historyContent: (sent: string) => options.stickers!.history(sent) } : {}),
+        historyContent: (sent: string) => {
+            const described = options.stickers?.history(sent) ?? sent;
+            if (described !== sent) return described;
+            return /<sticker:/i.test(sent) ? stripStickerArtifacts(sent) : sent;
+        },
         log,
         now,
         settle: options.settle ?? DEFAULT_SETTLE,
