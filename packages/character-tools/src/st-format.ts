@@ -140,6 +140,8 @@ export interface CardProactive {
     occasions: string[];
     dailyMax: number;
     unansweredMax: number;
+    /** 「她那边的事」开哪几类（ADR 0064）；没有 = 只有相机 */
+    newsKinds?: string[];
 }
 
 /** 课型：硬课、机房课、水课、体育（timetable.toml 的 tier） */

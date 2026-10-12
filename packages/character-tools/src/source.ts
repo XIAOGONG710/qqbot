@@ -49,6 +49,10 @@ export interface DaySource {
 export const OCCASIONS = ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather', 'news'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
+/** 「她那边的事」的事件类（ADR 0064），和 bot 的 proactive.ts 的 NEWS_KINDS 一致（两个包各存一份） */
+export const NEWS_KINDS = ['camera', 'homework_done', 'unwell'] as const;
+export type NewsKind = (typeof NEWS_KINDS)[number];
+
 /** 档位的回复节奏系数能写多少（ADR 0013 决策 1） */
 export const PACE_MIN = 0.5;
 export const PACE_MAX = 3;
@@ -60,6 +64,8 @@ export interface ProactiveSource {
     daily_max: number;
     /** 她主动发的连着几条没回就停，等他回 */
     unanswered_max: number;
+    /** 「她那边的事」开哪几类（ADR 0064）：没写 = 只有相机 */
+    news_kinds?: NewsKind[];
     note?: string;
 }
 
@@ -435,12 +441,18 @@ function noOccasions(value: unknown): boolean {
 
 function proactiveSource(c: Checker, value: unknown): ProactiveSource {
     const o = c.object(value);
-    c.keys(o, ['occasions', 'daily_max', 'unanswered_max', 'note']);
+    c.keys(o, ['occasions', 'daily_max', 'unanswered_max', 'news_kinds', 'note']);
     const occasions = c.at('occasions').strings(o.occasions);
     for (const occasion of occasions) {
         if (!OCCASIONS.includes(occasion as Occasion)) c.at('occasions').fail(`${occasion} 不是时机（${OCCASIONS.join(' / ')}）`);
     }
     if (new Set(occasions).size !== occasions.length) c.at('occasions').fail('有重复的时机');
+    // 页面上没勾任何类和没写一样（按只有相机）
+    const kinds = o.news_kinds === undefined || o.news_kinds === null ? [] : c.at('news_kinds').strings(o.news_kinds);
+    for (const kind of kinds) {
+        if (!NEWS_KINDS.includes(kind as NewsKind)) c.at('news_kinds').fail(`${kind} 不是她那边的事的类（${NEWS_KINDS.join(' / ')}）`);
+    }
+    if (new Set(kinds).size !== kinds.length) c.at('news_kinds').fail('有重复的类');
     // 页面上只勾了时机、没填条数时用 ADR 0011 确认的值
     const count = (key: 'daily_max' | 'unanswered_max', fallback: number) =>
         (o[key] === undefined || o[key] === null ? fallback : c.at(key).integer(o[key], 1, 10));
@@ -448,6 +460,7 @@ function proactiveSource(c: Checker, value: unknown): ProactiveSource {
         occasions: occasions as Occasion[],
         daily_max: count('daily_max', 2),
         unanswered_max: count('unanswered_max', 1),
+        ...(kinds.length ? { news_kinds: kinds as NewsKind[] } : {}),
     });
 }
 

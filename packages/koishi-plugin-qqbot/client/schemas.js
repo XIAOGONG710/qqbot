@@ -76,6 +76,15 @@ const OCCASION_LABELS = {
     quiet: '冷场（双方 8 小时没说话）',
     follow_up: '待跟进的事（他说过的面试、考试，过后问一次）',
     dates: '重要的日子',
+    weather: '下雨（只认真实天气）',
+    news: '她那边的事（下面选哪几类）',
+};
+
+/** 「她那边的事」的事件类（ADR 0064） */
+const NEWS_KIND_LABELS = {
+    camera: '买到相机',
+    homework_done: '24 小时内到期的作业写完了',
+    unwell: '一段不舒服的第一天（生理期、感冒）',
 };
 
 export function tierSections(source) {
@@ -100,6 +109,8 @@ export function tierSections(source) {
                 .description('**主动找对方的时机**：一个都不勾 = 不主动。名单外的好友不能勾'),
             daily_max: Schema.natural().min(1).max(10).description('**每天最多几条**：空着按 2'),
             unanswered_max: Schema.natural().min(1).max(10).description('**她主动发的连着几条没回就停**：等对方回了再说；空着按 1'),
+            news_kinds: Schema.array(Schema.union(Object.entries(NEWS_KIND_LABELS).map(([key, label]) => Schema.const(key).description(label)))).role('checkbox')
+                .description('**「她那边的事」包括哪几类**（要先勾上面的「她那边的事」）：一个都不勾 = 只有买到相机。只给看得到课名和生理期细节的档位'),
             note: note(),
         }).description('**主动找人**（ADR 0011）：插件配置里的「主动消息」开关打开（或试运行）时才生效'),
         note: note(),

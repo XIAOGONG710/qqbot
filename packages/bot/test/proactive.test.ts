@@ -272,7 +272,7 @@ describe('主动消息：下雨了（ADR 0050，只认真实天气）', () => {
 
 describe('主动消息：她那边的事（ADR 0057）', () => {
     // 10-11 周日 14:00–16:30 去山大路科技市场买相机（ADR 0053）
-    const camera = { id: 'camera', day: '2026-10-11', at: t(10, 11, 16, 30), what: '在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头' };
+    const camera = { id: 'camera', kind: 'camera' as const, day: '2026-10-11', at: t(10, 11, 16, 30), what: '在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头' };
 
     test('候选：了结后 5–20 分钟，一件一条；别的日子的、卡上没开的没有', () => {
         const c = find(candidatesOn(day(10, 11), input({ news: [camera] })), 'news')!;

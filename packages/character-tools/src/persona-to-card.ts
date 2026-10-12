@@ -140,6 +140,7 @@ export function personaToCard(source: CharacterSource, tierName: string, options
         occasions: [...tier.proactive.occasions],
         dailyMax: tier.proactive.daily_max,
         unansweredMax: tier.proactive.unanswered_max,
+        ...(tier.proactive.news_kinds ? { newsKinds: [...tier.proactive.news_kinds] } : {}),
     };
     const moods = moodsForTier(source, tier.name);
     const books = booksForTier(source, tier.name);

@@ -25,7 +25,7 @@ describe('主动消息：没连上模型过一会儿再试（10-11 相机那条�
         for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
     });
 
-    const camera = { id: 'camera', day: '2026-10-11', at: t(10, 11, 16, 30), what: '在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头' };
+    const camera = { id: 'camera', kind: 'camera' as const, day: '2026-10-11', at: t(10, 11, 16, 30), what: '在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头' };
     const unreachable: InitiateOutcome = { result: 'failed', reason: '生成失败：模型接口请求失败（ENOTFOUND：getaddrinfo ENOTFOUND api.deepseek.com）', unreachable: true };
 
     /** outcomes：每次到点依次返回；用完了就照常试运行。occasions 默认只开她那边的事 */

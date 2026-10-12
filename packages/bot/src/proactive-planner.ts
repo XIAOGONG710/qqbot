@@ -22,12 +22,13 @@ import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './memory/episo
 import type { OpenAIMessage } from './prompt.ts';
 import type { MacroNames } from './st/macros.ts';
 import {
-    blockReason, candidateLabel, candidatesOn, herDay, MAX_PROACTIVE_BUBBLES, occasionNote, PENDING_REASON, planFrom, recallTopic, untoldNews,
-    UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type ProactiveInput, type ProactiveRecord, type ProactiveSettings,
+    blockReason, candidateLabel, candidatesOn, DEFAULT_NEWS_KINDS, herDay, MAX_PROACTIVE_BUBBLES, newsKindsOf, occasionNote, PENDING_REASON, planFrom, recallTopic, untoldNews,
+    UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type NewsKind, type ProactiveInput, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
+import type { BodyNow } from './body.ts';
 import type { InitiateOutcome, Responder } from './responder.ts';
 import type { DayWeather } from './weather.ts';
-import { worldNews, type WorldNow } from './world.ts';
+import { unwellNews, worldNews, type WorldNews, type WorldNow } from './world.ts';
 import { formatDate, type Schedule } from './schedule.ts';
 
 /** 记录留多少天 */
@@ -58,14 +59,30 @@ export function rainOf(seen: { day: string; weather?: DayWeather } | undefined, 
 }
 const DAY_MS = 86_400_000;
 
-/** 她那边的事（ADR 0057）：看到明天这一刻为止的世界，挑了结在她的今天、明天的那几件；app.ts 和模拟器共用 */
-export function newsFrom(worldAt: (now: Date) => WorldNow | undefined, schedule: Schedule): (now: number) => NewsItem[] {
+/**
+ * 她那边的事（ADR 0057、0064）：挑了结在她的今天、明天的那几件；app.ts 和模拟器共用。
+ * 看三个快照：她今天、明天的最后一刻（作业写完了的当晚是看得到的：交作业的课一过，作业就不在世界快照里了），再加明天这一刻（相机，0057 原来的看法）；
+ * 同一件事以先看到的为准。kinds 开了哪几类（没写 = 只有相机）；bodyAt 给了才有「不舒服」
+ */
+export function newsFrom(
+    worldAt: (now: Date) => WorldNow | undefined, schedule: Schedule,
+    options: { kinds?: readonly NewsKind[]; bodyAt?: (time: Date) => BodyNow } = {},
+): (now: number) => NewsItem[] {
+    const kinds = options.kinds ?? DEFAULT_NEWS_KINDS;
     return now => {
-        const ahead = worldAt(new Date(now + DAY_MS));
-        const days = new Set([now, now + DAY_MS].map(time => formatDate(herDay(schedule, new Date(time)))));
-        return (ahead ? worldNews(ahead) : [])
-            .map(item => ({ id: item.id, day: formatDate(herDay(schedule, item.at)), at: item.at.getTime(), what: item.what }))
-            .filter(item => days.has(item.day));
+        const days = [now, now + DAY_MS].map(time => herDay(schedule, new Date(time)));
+        const dayTexts = new Set(days.map(formatDate));
+        const evening = (day: Date) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59);
+        const found: WorldNews[] = [];
+        for (const seen of [...days.map(day => worldAt(evening(day))), worldAt(new Date(now + DAY_MS))]) {
+            if (seen) found.push(...worldNews(seen, kinds));
+        }
+        if (kinds.includes('unwell') && options.bodyAt) for (const day of days) found.push(...unwellNews(day, schedule, options.bodyAt));
+        const seenIds = new Set<string>();
+        return found
+            .filter(item => !seenIds.has(item.id) && seenIds.add(item.id))
+            .map(item => ({ id: item.id, kind: item.kind, day: formatDate(herDay(schedule, item.at)), at: item.at.getTime(), what: item.what }))
+            .filter(item => dayTexts.has(item.day));
     };
 }
 
@@ -271,7 +288,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             ...(deps.asleep ? { asleep: deps.asleep } : {}),
             ...(deps.crisisPaused?.(now()) ? { crisisPaused: true } : {}),
             ...(rain ? { rain } : {}),
-            ...(deps.news ? { news: deps.news(now()) } : {}),
+            // 只认卡上开了的事件类（ADR 0064 决策 6）：没开的类即使调用方给了也不排
+            ...(deps.news ? { news: deps.news(now()).filter(item => newsKindsOf(deps.settings).includes(item.kind)) } : {}),
             ...(deps.weather ? { rainingNow: (at: number) => rainingAt(deps.weather!(at)?.weather, new Date(at)) } : {}),
         };
     };

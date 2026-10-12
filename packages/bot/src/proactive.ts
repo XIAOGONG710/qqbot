@@ -17,6 +17,12 @@ export { herDay } from './schedule.ts';
 export const OCCASIONS = ['dates', 'news', 'follow_up', 'weather', 'morning', 'after_class', 'quiet', 'bedtime'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
+/** 「她那边的事」的事件类（ADR 0064），按优先级从高到低：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天 */
+export const NEWS_KINDS = ['camera', 'homework_done', 'unwell'] as const;
+export type NewsKind = (typeof NEWS_KINDS)[number];
+/** 卡上没写 newsKinds 的按只有相机处理（0057 的行为，旧卡不变） */
+export const DEFAULT_NEWS_KINDS: readonly NewsKind[] = ['camera'];
+
 /** 档位上的设置（卡的 extensions.qqbot.proactive） */
 export interface ProactiveSettings {
     occasions: Occasion[];
@@ -24,6 +30,12 @@ export interface ProactiveSettings {
     dailyMax: number;
     /** 她主动发的、他还没回的到了这么多条就停，等他回 */
     unansweredMax: number;
+    /** 「她那边的事」开哪几类（ADR 0064）；没写 = 只有相机 */
+    newsKinds?: NewsKind[];
+}
+
+export function newsKindsOf(settings: Pick<ProactiveSettings, 'newsKinds'>): readonly NewsKind[] {
+    return settings.newsKinds ?? DEFAULT_NEWS_KINDS;
 }
 
 /** 重要的日子（卡的 extensions.qqbot.dates）：date 公历、lunar 农历，MM-DD；都写时公历那天主动提，农历那天只在时间块里提 */
@@ -65,9 +77,10 @@ export const UNREACHABLE_MAX_TRIES = 3;
 
 const waitingRetry = (r: ProactiveRecord) => r.result === 'failed' && r.retryAt !== undefined;
 
-/** 她那边的一件事（ADR 0057）：她的哪一天、几点了结的、说的是什么（world.ts 的 worldNews） */
+/** 她那边的一件事（ADR 0057、0064）：哪一类、她的哪一天、几点了结的、说的是什么（world.ts 的 worldNews） */
 export interface NewsItem {
     id: string;
+    kind: NewsKind;
     day: string;
     at: number;
     what: string;
@@ -303,7 +316,9 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
     return kept.sort((a, b) => a.at - b.at);
 }
 
-const counts = (r: ProactiveRecord) => r.result === 'sent' || r.result === 'dryRun';
+/** 发送出错、但前几个气泡已经发出去了：他收到了，和发了一样算（占每天的上限、算「没回」）；一个都没发出去的不算 */
+const partlySent = (r: ProactiveRecord) => r.result === 'failed' && Boolean(r.messageIds?.length);
+const counts = (r: ProactiveRecord) => r.result === 'sent' || r.result === 'dryRun' || partlySent(r);
 
 /** 她的这一天里已经主动了几条（日子不算） */
 export function usedOn(day: string, records: readonly ProactiveRecord[]): number {
@@ -315,7 +330,7 @@ export function unansweredCount(input: Pick<ProactiveInput, 'history' | 'records
     const lastUser = input.history.findLast(m => m.role === 'user');
     const since = lastUser ? Date.parse(lastUser.time) : -Infinity;
     const kind = input.mode === 'on' ? 'sent' : 'dryRun';
-    return input.records.filter(r => r.result === kind && Date.parse(r.at) > since).length;
+    return input.records.filter(r => (r.result === kind || (kind === 'sent' && partlySent(r))) && Date.parse(r.at) > since).length;
 }
 
 export interface Plan {
@@ -349,7 +364,10 @@ export function planFrom(now: number, input: ProactiveInput): Plan {
         if (offset === 0) missed.push(...all.filter(c => c.at < now - GRACE_MS));
         const open = all.filter(c => c.at >= now - GRACE_MS);
         const left = paused ? 0 : Math.max(0, input.settings.dailyMax - usedOn(formatDate(day), input.records));
-        const byPriority = open.filter(c => c.occasion !== 'dates').sort((a, b) => OCCASIONS.indexOf(a.occasion) - OCCASIONS.indexOf(b.occasion));
+        // 同是「她那边的事」的，按事件类排（相机 > 作业写完 > 不舒服，ADR 0064 决策 5）
+        const kindRank = (c: Candidate) => (c.news ? NEWS_KINDS.indexOf(c.news.kind) : 0);
+        const byPriority = open.filter(c => c.occasion !== 'dates')
+            .sort((a, b) => OCCASIONS.indexOf(a.occasion) - OCCASIONS.indexOf(b.occasion) || kindRank(a) - kindRank(b));
         const kept = new Set([...open.filter(c => c.occasion === 'dates'), ...byPriority.slice(0, left)]);
         if (offset === 0 && !paused) yielded.push(...byPriority.slice(left));
         const upcoming = open.filter(c => kept.has(c));
@@ -453,7 +471,12 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
         weather: () => `你这边下雨了（看「你那边」的天气），想起${userName}：问一句他在干嘛、带没带伞，或者说说你这边的雨；他在哪看「你现在」那一行，跟你在一个地方的话他那边也在下；就说这一件`,
         bedtime: () => `时间不早了，跟${userName}道个晚安`,
         // 只给事实和方向，不给台词（ADR 0036 调整（2026-10-10 夜））
-        news: () => `你刚${candidate.news!.what}，想第一时间告诉${userName}：说说这件事（看「你那边」那一行），就说这一件；那一行里没写的细节不编`,
+        // 每一类都写死：只说这一件、不要他回应或关心；不舒服不是求安抚（ADR 0064 决策 4，调研 D 块把「求安抚」类触发列为与目标冲突）
+        news: () => ({
+            camera: () => `你刚${candidate.news!.what}，想第一时间告诉${userName}：说说这件事（看「你那边」那一行），就说这一件；那一行里没写的细节不编`,
+            homework_done: () => `你刚${candidate.news!.what}，想跟${userName}说一声：就说这一件（看「你那边」那一行里的作业），不要他回应或夸你；那一行里没写的细节不编`,
+            unwell: () => `你今天${candidate.news!.what}，想跟${userName}说一声：只是告诉他，不是要他哄你、关心你，也不要他回应；说到哪一步照「你的身体」那一行，没写的细节不编`,
+        })[candidate.news!.kind](),
         // 旧项目的教训（ADR 0013 决策 2）：分享「刚看到的」会编出一个具体的视频、帖子，对方要链接时给不出来
         quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
             `对方要链接你给不出来），或者问问对方在忙什么（对方可能在忙）`,
@@ -483,7 +506,9 @@ export const OCCASION_LABELS: Record<Occasion, string> = {
 };
 
 export function candidateLabel(candidate: Candidate): string {
-    return `${OCCASION_LABELS[candidate.occasion]}（${candidate.reason}）`;
+    // 她那边的事写上事件类和事情的 id（ADR 0064 决策 7），日志里能指到来源
+    const kind = candidate.news ? `[${candidate.news.kind} ${candidate.news.id}]` : '';
+    return `${OCCASION_LABELS[candidate.occasion]}${kind}（${candidate.reason}）`;
 }
 
 // ---------- 读卡 ----------
@@ -518,5 +543,9 @@ export function parseProactive(json: unknown, source: string): ProactiveSettings
     const o = (typeof json === 'object' && json !== null && !Array.isArray(json) ? json : fail(' 应为对象')) as Record<string, unknown>;
     if (!Array.isArray(o.occasions) || !o.occasions.every(x => OCCASIONS.includes(x as Occasion))) fail(`.occasions 应为 ${OCCASIONS.join(' / ')} 组成的数组`);
     const count = (key: 'dailyMax' | 'unansweredMax') => (Number.isInteger(o[key]) && (o[key] as number) >= 1 ? o[key] as number : fail(`.${key} 应为正整数`));
-    return { occasions: o.occasions as Occasion[], dailyMax: count('dailyMax'), unansweredMax: count('unansweredMax') };
+    if (o.newsKinds !== undefined && !(Array.isArray(o.newsKinds) && o.newsKinds.every(x => NEWS_KINDS.includes(x as NewsKind)))) fail(`.newsKinds 应为 ${NEWS_KINDS.join(' / ')} 组成的数组`);
+    return {
+        occasions: o.occasions as Occasion[], dailyMax: count('dailyMax'), unansweredMax: count('unansweredMax'),
+        ...(o.newsKinds !== undefined ? { newsKinds: o.newsKinds as NewsKind[] } : {}),
+    };
 }

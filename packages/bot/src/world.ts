@@ -10,9 +10,10 @@ import { join } from 'node:path';
 import type { Contact } from './config.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import type { Episode } from './memory/episodes.ts';
-import { classesOn, formatDate, herDay, type ClassToday, type Schedule } from './schedule.ts';
+import { classesOn, formatDate, herDay, wakeOn, type ClassToday, type Schedule } from './schedule.ts';
 import { realWeather, type DayWeather } from './weather.ts';
-import { parseBody, type Body } from './body.ts';
+import { parseBody, unwell, type Body, type BodyNow } from './body.ts';
+import { DEFAULT_NEWS_KINDS, type NewsKind } from './proactive.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
 import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
 import type { Plans } from './day-plan.ts';
@@ -169,8 +170,8 @@ interface DayRecord {
 /** 买相机那一趟；gifts：相机基金里别人给的那几笔（谁、存进去多少），没有就是全靠自己攒的 */
 export interface CameraTrip { start: Date; end: Date; where: string; what: string; price: number; gifts?: { contact: number; amount: number }[] }
 
-/** 她那边刚发生、想第一时间告诉他的事（ADR 0057，主动消息「她那边的事」）：现在只有买到相机（ADR 0053）；at 是事情了结的时刻 */
-export interface WorldNews { id: string; at: Date; what: string }
+/** 她那边刚发生、想第一时间告诉他的事（ADR 0057、0064，主动消息「她那边的事」）：kind 是事件类（买到相机 ADR 0053、赶完作业、一段不舒服的第一天）；at 是事情了结的时刻 */
+export interface WorldNews { id: string; kind: NewsKind; at: Date; what: string }
 
 /** 世界里定好了几点去做、占掉她一段空闲的事（ADR 0034 的打算里写这件）：现在只有买相机那一趟（ADR 0053），只在那一天 */
 export function worldErrands(now: WorldNow): { start: Date; end: Date; text: string }[] {
@@ -179,9 +180,54 @@ export function worldErrands(now: WorldNow): { start: Date; end: Date; text: str
 }
 
 /** what 不带「刚」：没说成的留到这一天后面的主动里说（ADR 0057 调整）；钱从哪来写在「你那边」那一行，那一行按是谁在看说 */
-export function worldNews(now: WorldNow): WorldNews[] {
+function newsCamera(now: WorldNow): WorldNews[] {
     const camera = now.cameraFund?.camera;
-    return camera ? [{ id: 'camera', at: camera.end, what: `在${camera.where}买到了${camera.what}` }] : [];
+    return camera ? [{ id: 'camera', kind: 'camera', at: camera.end, what: `在${camera.where}买到了${camera.what}` }] : [];
+}
+
+/**
+ * 24 小时内到期的作业写完了（ADR 0064 决策 3，ADR 0056 的紧急口径）：早早写完的、离交还远的不算。
+ * 同一天写完的几份并成一件（id 按她写完的那一天）；课名按这一档看不看得到（WorldNow 里没有就不写）
+ */
+function newsHomework(now: WorldNow): WorldNews[] {
+    const byDay = new Map<string, WorldNow['homework']>();
+    for (const h of now.homework) {
+        if (!h.done || h.due.getTime() - h.doneAt.getTime() > DAY_MS) continue;
+        const day = formatDate(h.doneAt);
+        byDay.set(day, [...(byDay.get(day) ?? []), h]);
+    }
+    return [...byDay].map(([day, list]) => {
+        const courses = [...new Set(list.map(h => h.course).filter(Boolean))];
+        const what = courses.length ? `把${courses.join('、')}的作业写完了` : list.length > 1 ? `把 ${list.length} 份作业都写完了` : '把作业写完了';
+        return { id: `homework:${day}`, kind: 'homework_done' as const, at: new Date(Math.max(...list.map(h => h.doneAt.getTime()))), what };
+    });
+}
+
+/**
+ * 她那边的事（ADR 0057、0064）：一个快照里能看到的。kinds 开了哪几类，不传 = 只有相机（回复里顺带说用，ADR 0057 的行为不变）。
+ * 不舒服（unwell）不在这里：身体不在世界快照里，见 unwellNews
+ */
+export function worldNews(now: WorldNow, kinds: readonly NewsKind[] = DEFAULT_NEWS_KINDS): WorldNews[] {
+    return [...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : [])];
+}
+
+/**
+ * 一段不舒服的第一天（ADR 0064 决策 3 + 确认记录 1）：她的这一天（15:00 看）不舒服、前一天不是——连着几天疼只说头一天，之后被问到再说。
+ * 了结的时刻是她起床：一醒来就不舒服，是她那天第一件有话可说的事（到点时在上课、在睡觉的由计划器推后或不发）。
+ * bodyAt 由调用方按这一档的卡给，说得出口的程度（生理期细节）跟着档位
+ */
+export function unwellNews(day: Date, schedule: Schedule, bodyAt: (time: Date) => BodyNow): WorldNews[] {
+    const noon = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 15);
+    const today = bodyAt(noon);
+    if (!unwell(today) || unwell(bodyAt(new Date(noon.getTime() - DAY_MS)))) return [];
+    const parts: string[] = [];
+    if (today.period?.cramps) {
+        parts.push(today.period.detail
+            ? `肚子${today.period.cramps === 'bad' ? '疼得厉害' : '隐隐地疼'}（生理期）`
+            : today.period.cramps === 'bad' ? '身上不太舒服，只想躺着' : '身上有点不舒服');
+    }
+    if (today.cold) parts.push('有点感冒，嗓子疼');
+    return [{ id: `unwell:${formatDate(day)}`, kind: 'unwell', at: wakeOn(schedule, day), what: parts.join('，') }];
 }
 
 /**

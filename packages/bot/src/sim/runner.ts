@@ -16,7 +16,7 @@ import type { OpenAIMessage, PromptResult } from '../prompt.ts';
 import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
-import { herDay } from '../proactive.ts';
+import { herDay, newsKindsOf } from '../proactive.ts';
 import { createProactivePlanner, newsFrom, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
 import { worldState, type World, CAMERA_FUND_TARGET } from '../world.ts';
@@ -401,7 +401,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             // 「forget」之后换了新的回复器：每次取当前的
             responder: {
                 initiate: async request => {
-                    const occasion = request.label.replace(/（.*$/, '');
+                    const occasion = request.label.replace(/[[（].*$/, '');
                     if (scenario.proactiveOffline?.includes(occasion)) {
                         log(`主动找他（${request.label}）：场景里这个时机断网`);
                         return { result: 'failed', reason: '模型接口请求失败（场景：断网）', unreachable: true };
@@ -428,7 +428,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 },
             } : {}),
             // 她那边的事（ADR 0057）：和 app.ts 一样
-            ...(sharedWorld && character.herWorld ? { news: newsFrom(now => sharedWorld!.at(character.herWorld!, character.schedule!, now), character.schedule!) } : {}),
+            ...(sharedWorld && character.herWorld ? {
+                news: newsFrom(now => sharedWorld!.at(character.herWorld!, character.schedule!, now), character.schedule!, {
+                    kinds: newsKindsOf(character.proactive),
+                    ...(character.herWorld.body ? { bodyAt: (time: Date) => bodyAt(character.herWorld!.body!, character.schedule!, time) } : {}),
+                }),
+            } : {}),
             now: clock.now,
             waitUntil: clock.waitUntil,
             names,

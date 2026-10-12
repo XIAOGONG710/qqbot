@@ -296,7 +296,7 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
         assert.ok(recapDay(back).some(item => item.includes(`去${fund.where}买了相机`)));
         assert.ok(busySpans(back).some(span => span.text === `去${fund.where}买相机` && span.start.getTime() === at('2026-10-11T14:00:00').getTime()));
         // 主动消息「她那边的事」（ADR 0057）：出门前就知道几点了结，16:30 买到
-        assert.deepEqual(worldNews(before), [{ id: 'camera', at: at('2026-10-11T16:30:00'), what: `在${fund.where}买到了${fund.what}` }]);
+        assert.deepEqual(worldNews(before), [{ id: 'camera', kind: 'camera', at: at('2026-10-11T16:30:00'), what: `在${fund.where}买到了${fund.what}` }]);
         // 下周日不再往相机基金里存；那天以后说的是哪天买的
         // 零点过后她还没睡（凌晨 2 点前算前一天）：还是「今天下午」
         assert.match(describeWorld(worldAt(world, schedule, at('2026-10-12T00:30:00'), [gift])!, at('2026-10-12T00:30:00'))!, new RegExp(`相机：今天下午去${fund.where}买的`));

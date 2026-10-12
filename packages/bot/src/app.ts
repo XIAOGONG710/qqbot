@@ -27,7 +27,7 @@ import { HindsightClient } from './memory/hindsight.ts';
 import { arrivedWhileAsleep } from './reply-timing.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
-import type { ProactiveMode } from './proactive.ts';
+import { newsKindsOf, type ProactiveMode } from './proactive.ts';
 import { detectCrisis } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
 import { createProactivePlanner, newsFrom, type Planner, type PlannerStatus } from './proactive-planner.ts';
@@ -466,7 +466,13 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     },
                 } : {}),
                 // 她那边的事（ADR 0057）：看到明天这一刻为止的世界，挑了结在她的今天、明天的
-                ...(sharedWorld && worldCard ? { news: newsFrom(now => sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, now), worldCard.schedule!) } : {}),
+                // 事件类按这个联系人的卡开（ADR 0064）；课名、生理期细节跟着世界那张卡，所以开了类的只能是看得到这些的档位（现在只有男朋友档）
+                ...(sharedWorld && worldCard ? {
+                    news: newsFrom(now => sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, now), worldCard.schedule!, {
+                        kinds: newsKindsOf(character.proactive!),
+                        ...(worldCard.herWorld!.body ? { bodyAt: (time: Date) => bodyAt(worldCard.herWorld!.body!, worldCard.schedule!, time) } : {}),
+                    }),
+                } : {}),
                 // 待跟进的事：用同一个模型配置抽（测试替换的 generate 也用在这里）
                 extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log })),
                 ...(pipeline?.now ? { now: pipeline.now } : {}),
