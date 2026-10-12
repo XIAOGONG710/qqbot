@@ -42,6 +42,7 @@ import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candid
 import { turnCut, type Summarizer, type TurnWindow } from './context-window.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
+import { imageStickerAllowance, stripStickerArtifacts, type StickerShelf } from './stickers.ts';
 
 const DAY_MS = 86_400_000;
 
@@ -91,6 +92,8 @@ export interface ContactPipelineOptions {
     /** 整个名单（ADR 0016）：她认识名单里写了「别人提起时」的人；不传就谁都不认识 */
     contacts?: readonly Contact[];
     send: (userId: number, text: string) => Promise<number>;
+    /** 图片表情收藏：给模型列可选编号、校验输出；实际发送由 app.ts 的 send 接线。 */
+    stickers?: StickerShelf;
     /** 不带联系人前缀，这里会加上 [QQ 号] */
     log: Log;
     /** 每次生成前拿到后处理之后、实际发给模型的提示词 */
@@ -148,7 +151,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const now = options.now ?? Date.now;
     const log: Log = message => options.log(`[${contact.qq}] ${message}`);
     const generate = options.generate ?? ((messages, log) => chatCompletion(llm, messages, { log }));
-    const clean = (reply: string) => cleanUpReply(reply, names, character.regexScripts);
+    let stickersAllowed = true;
+    const clean = (reply: string) => {
+        const text = cleanUpReply(reply, names, character.regexScripts);
+        return options.stickers?.clean(text, stickersAllowed) ?? stripStickerArtifacts(text);
+    };
     const schedule = options.schedule ? character.schedule : undefined;
     const herSchedule = options.herDays ? character.schedule : undefined;
     // 她说过「睡了」（ADR 0042）：对名单里谁说的都算，从说完那一刻起在睡——各个联系人看到的是同一个她（状态行、什么时候看到消息）
@@ -369,6 +376,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
+            const stickerAllowance = options.stickers ? imageStickerAllowance(chat, intent, Boolean(woken)) : { allowed: false };
+            stickersAllowed = stickerAllowance.allowed;
+            if (options.stickers && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
             pick = picked ? {
                 kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: character.banned,
                 // 她自己生活里的东西：猫、相机、在读的书、手上的爱好（DSH 诊断 1.2、ADR 0036 的四类）
@@ -426,6 +436,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(promised ? [promised] : []),
                         // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在青岛」
                         ...(partnerBack ? [partnerBack] : []),
+                        ...(stickersAllowed && options.stickers?.prompt() ? [options.stickers.prompt()!] : []),
                         ...(intent ? [intent] : []),
                         ...(length ? [describeLength(length)] : []),
                         ...(initiate ? [initiate.note] : []),
@@ -473,6 +484,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 小黄脸（ADR 0051）：最近几次带得太密、他认真说事她只回表情
             faces: faceContext(options.history.load(contact.qq), contact.tier),
             ...(textIntimacy ? { textIntimacy: true } : {}),
+            ...(options.stickers ? { imageStickers: true } : {}),
             regenerate: async note => clean(await generate(
                 postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names),
                 log,
@@ -480,6 +492,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             log,
         }),
         send: options.send,
+        ...(options.stickers ? { historyContent: (sent: string) => options.stickers!.history(sent) } : {}),
         log,
         now,
         settle: options.settle ?? DEFAULT_SETTLE,

@@ -12,6 +12,7 @@ import type { MessageEvent } from '../src/onebot.ts';
 import type { ProactiveRecord } from '../src/proactive.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import type { StickerEntry, StickerShelf } from '../src/stickers.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const SELF = 20000;
@@ -62,13 +63,15 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS> } = {}) {
     const sent: string[] = [];
+    const images: string[] = [];
     const logs: string[] = [];
     const asked: number[] = [];
     let nextId = 900;
     const transport: Transport = {
         sendPrivateText: async (userId, text) => { sent.push(`${userId}:${text}`); return nextId++; },
+        sendPrivateImage: async (userId, file, summary) => { images.push(`${userId}:${file}:${summary}`); return nextId++; },
         friendHistory: async (userId, count) => {
             asked.push(userId);
             await options.holdHistory;
@@ -81,14 +84,15 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         config: cfg, transport, log: message => logs.push(message),
         ...(options.media ? { media: options.media } : {}),
         ...(options.vision ? { vision: options.vision } : {}),
+        ...(options.stickers ? { stickers: options.stickers } : {}),
         ...(options.mediaTimeouts ? { mediaTimeouts: options.mediaTimeouts } : {}),
         pipeline: {
-            generate: async () => '好', settle: { quietMs: 0, maxMs: 0 },
+            generate: async messages => options.generate?.(messages) ?? '好', settle: { quietMs: 0, maxMs: 0 },
             ...(options.clock ? { now: options.clock.now, waitUntil: options.clock.waitUntil } : {}),
         },
     });
     apps.push(app);
-    return { app, sent, logs, asked };
+    return { app, sent, images, logs, asked };
 }
 
 /** 等到条件成立（回复器在后台跑），再多等一会儿看有没有多余的回复 */
@@ -104,6 +108,103 @@ async function until(check: () => boolean, ms = 3000): Promise<void> {
 const chat = (cfg: AppConfig, qq: number) => new ChatHistory(cfg.dataDir).load(qq).map(m => `${m.role}:${m.content}`);
 
 describe('编排（app.ts）', () => {
+    test('图片表情：收到的候选后台交给收藏库，提示词列可用编号，单独气泡按图片发送', async () => {
+        const entry: StickerEntry = {
+            id: '123456abcdef', file: 'C:/stickers/123456abcdef.gif', description: '白猫捂嘴偷笑', tags: ['好笑'],
+            source: { kind: 'qq-custom' }, createdAt: new Date().toISOString(), used: 0,
+        };
+        const calls = { considered: 0, discovered: 0, used: 0 };
+        const stickers: StickerShelf = {
+            consider: async () => { calls.considered++; },
+            discover: async () => { calls.discovered++; },
+            prompt: () => '[你收藏的图片表情]\n- <sticker:123456abcdef>：白猫捂嘴偷笑（好笑）',
+            clean: text => text,
+            resolve: text => text.trim() === '<sticker:123456abcdef>' ? entry : undefined,
+            history: text => text.trim() === '<sticker:123456abcdef>' ? '她发了个表情包：白猫捂嘴偷笑' : text,
+            used: () => { calls.used++; },
+            status: () => ({ count: 1 }),
+        };
+        const cfg = config({ stickers: 'send', contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        let prompt = '';
+        const { app, images } = setup(cfg, { 10001: [] }, { stickers, generate: messages => { prompt = messages.map(m => m.content).join('\n'); return '<sticker:123456abcdef>'; } });
+        await app.connected(SELF);
+        const incoming: MessageEvent = {
+            ...event(10001, 9, ''), raw_message: '',
+            message: [{ type: 'image', data: { url: 'https://qq.invalid/incoming.gif', sub_type: 1, summary: '[动画表情]' } }],
+        };
+        app.receive(incoming);
+        await until(() => images.length === 1);
+        assert.deepEqual(images, ['10001:C:/stickers/123456abcdef.gif:[白猫捂嘴偷笑]']);
+        assert.match(prompt, /<sticker:123456abcdef>：白猫捂嘴偷笑/);
+        assert.equal(calls.considered, 1);
+        assert.equal(calls.discovered, 1);
+        assert.equal(calls.used, 1);
+        assert.deepEqual(chat(cfg, 10001), ['user:[动画表情]', 'assistant:她发了个表情包：白猫捂嘴偷笑']);
+    });
+
+    test('图片表情 collect：只收男朋友发来的候选，不进提示词、不发送图片', async () => {
+        const calls = { considered: 0, discovered: 0, prompted: 0 };
+        const stickers: StickerShelf = {
+            consider: async () => { calls.considered++; },
+            discover: async () => { calls.discovered++; },
+            prompt: () => { calls.prompted++; return '[不该出现的图片表情清单]'; },
+            clean: text => text,
+            resolve: () => undefined,
+            history: text => text,
+            used: () => undefined,
+            status: () => ({ count: 2 }),
+        };
+        const cfg = config({ stickers: 'collect', contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        let prompt = '';
+        const { app, sent, images } = setup(cfg, { 10001: [] }, {
+            stickers,
+            generate: messages => { prompt = messages.map(m => m.content).join('\n'); return '这个好好笑'; },
+        });
+        await app.connected(SELF);
+        app.receive({
+            ...event(10001, 9, ''), raw_message: '',
+            message: [{ type: 'image', data: { url: 'https://qq.invalid/incoming.gif', sub_type: 1, summary: '[动画表情]' } }],
+        });
+        await until(() => sent.length === 1);
+        assert.deepEqual(sent, ['10001:这个好好笑']);
+        assert.deepEqual(images, []);
+        assert.equal(calls.considered, 1);
+        assert.equal(calls.discovered, 1);
+        assert.equal(calls.prompted, 0);
+        assert.doesNotMatch(prompt, /图片表情清单/);
+    });
+
+    test('图片表情 send：同学档不收藏、不看清单、不发送，幻觉编号也不会漏成文字', async () => {
+        const calls = { considered: 0, discovered: 0, prompted: 0, resolved: 0 };
+        const stickers: StickerShelf = {
+            consider: async () => { calls.considered++; },
+            discover: async () => { calls.discovered++; },
+            prompt: () => { calls.prompted++; return '[不该给同学看的图片表情清单]'; },
+            clean: text => text,
+            resolve: () => { calls.resolved++; return undefined; },
+            history: text => text,
+            used: () => undefined,
+            status: () => ({ count: 3 }),
+        };
+        const cfg = config({ stickers: 'send' });
+        const { app, sent, images } = setup(cfg, { 10001: [] }, {
+            stickers,
+            generate: () => '<sticker:123456abcdef>\n正常文字',
+        });
+        await app.connected(SELF);
+        app.receive({
+            ...event(10001, 10, ''), raw_message: '',
+            message: [{ type: 'image', data: { url: 'https://qq.invalid/classmate.gif', sub_type: 1, summary: '[动画表情]' } }],
+        });
+        await until(() => sent.length === 1);
+        assert.deepEqual(sent, ['10001:正常文字']);
+        assert.deepEqual(images, []);
+        assert.equal(calls.considered, 0);
+        assert.equal(calls.prompted, 0);
+        assert.equal(calls.resolved, 0);
+        assert.equal(calls.discovered, 1, '账号自己的候选池仍可在后台收藏，只有男朋友档能看到');
+    });
+
     test('连上时补回（小号自己发的算她说的），补的时候到的消息攒着、补完按顺序处理不重复，然后只回一次', async () => {
         const cfg = config();
         let release!: () => void;

@@ -14,14 +14,16 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startApp, type Transport } from '../../bot/src/app.ts';
 import type { HistoryMessage } from '../../bot/src/backfill.ts';
-import { CONTACT_TIERS, DEFAULTS, parseAppConfig, type AppConfig, type ContactTier } from '../../bot/src/config.ts';
+import { CONTACT_TIERS, DEFAULTS, STICKER_MODES, parseAppConfig, type AppConfig, type ContactTier, type StickerMode } from '../../bot/src/config.ts';
 import { createLog, type Log } from '../../bot/src/log.ts';
 import { isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
 import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
 import { textToSegments } from '../../bot/src/qq-faces.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from '../../bot/src/proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '../../bot/src/st/prompt-converters.ts';
-import { configuredImageDescriber } from '../../bot/src/vision.ts';
+import { configuredImageDescriber, STICKER_VISION_PROMPT } from '../../bot/src/vision.ts';
+import { stickerDecider, stickerShelf } from '../../bot/src/stickers.ts';
+import { bqbDiscover } from '../../bot/src/sticker-sources.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 
 // koishi 的 ESM 入口是坏的（@koishijs/loader/lib/index.mjs 默认导入了一个 CJS 文件）：取 loader 自己用的那份 CJS
@@ -54,6 +56,7 @@ export type Thinking = (typeof THINKING)[number];
 const THINKING_LABELS: Record<Thinking, string> = { off: '关', low: '低', high: '高', max: '最高' };
 
 const PROACTIVE_LABELS: Record<ProactiveMode, string> = { off: '关', dryRun: '试运行（只写日志不发）', on: '开' };
+const STICKER_LABELS: Record<StickerMode, string> = { off: '关', collect: '只收藏核对（不发）', send: '收藏并发送' };
 
 const POST_PROCESSING_LABELS: Record<PromptPostProcessing, string> = {
     '': '不处理',
@@ -76,6 +79,7 @@ export interface Config {
     unlistedFriends: boolean;
     schedule: boolean;
     media: boolean;
+    stickers: StickerMode;
     vision: { enabled: boolean; baseUrl?: string; model?: string; timeoutMs?: number };
     moody: boolean;
     speechCheck: boolean;
@@ -132,6 +136,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         media: Schema.boolean().default(DEFAULTS.media)
             .description('**听语音、看图上的字**（ADR 0052）：他发的语音用 QQ 自带的语音转文字，照片、截图用 NapCat 的 OCR 取上面的字（只有 Windows），她就着内容回，听完语音才回。'
                 + '转不出来、没字、超时（5 秒）照旧只知道是语音、图片；表情包照旧用名字'),
+        stickers: Schema.union(STICKER_MODES.map(mode => Schema.const(mode).description(STICKER_LABELS[mode]))).default(DEFAULTS.stickers)
+            .description('**图片表情**（ADR 0063）：第一阶段只处理男朋友档。先用“只收藏核对”观察描述；完成真图核对和 NapCat 真发预检后，才可选“收藏并发送”。需要打开“看懂图片内容”；默认关'),
         vision: Schema.intersect([
             Schema.object({ enabled: Schema.boolean().default(false).description('**看懂图片内容**（DeepSeek，ADR 0055）') }),
             Schema.union([
@@ -143,7 +149,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
                 }),
                 Schema.object({}),
             ]),
-        ]).description('普通照片和截图会发给 DeepSeek；图上的字仍同时走 NapCat OCR。表情包不发。'),
+        ]).description('普通照片和截图会发给 DeepSeek；图上的字仍同时走 NapCat OCR。图片表情在上面选择 collect/send 后也会看图，用于收藏判断。'),
         moody: Schema.boolean().default(DEFAULTS.moody)
             .description('**看心情不回**（ADR 0013）：正聊着、对方一串只回了「哈哈」「嗯」这类反应时，偶尔不回（男朋友档约 15%，越疏越多，最多 35%）。'
                 + '隔一分钟以上再来一条一定回；问句、图片、晚安都照样回。要开着作息'),
@@ -278,6 +284,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.contextContacts !== undefined ? { contextContacts: config.contextContacts } : {}),
         ...(config.proactive !== undefined ? { proactive: config.proactive } : {}),
         ...(config.media !== undefined ? { media: config.media } : {}),
+        ...(config.stickers !== undefined ? { stickers: config.stickers } : {}),
         ...(visionEnabled ? { vision: { provider: DEFAULTS.vision.provider, ...dropUndefined(vision) } } : {}),
         ...(enabled ? { memory: dropUndefined(memory) } : {}),
         dataDir: config.dataDir,
@@ -365,6 +372,7 @@ export function apply(ctx: Context, config: Config) {
     const transport: Transport = {
         // 白名单的小黄脸「[捂脸]」发成 face 段（ADR 0051），和 onebot.ts 发的是同一个请求
         sendPrivateText: async (userId, text) => Number(await onlineBot().internal.sendPrivateMsg(userId, textToSegments(text))),
+        sendPrivateImage: async (userId, file, summary) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'image', data: { file, summary, sub_type: 1 } }])),
         friendHistory: (userId, count) => onlineBot().internal.getFriendMsgHistory(String(userId), undefined, count),
     };
 
@@ -374,9 +382,22 @@ export function apply(ctx: Context, config: Config) {
         voiceToText: async messageId => String((await mediaBot()._get('fetch_ptt_text', { message_id: messageId }) as { text?: unknown } | null)?.text ?? ''),
         ocr: async image => ocrLines(await mediaBot().ocrImage(image)),
     };
+    const vision = configuredImageDescriber(appConfig);
+    const stickerVision = configuredImageDescriber(appConfig, STICKER_VISION_PROMPT);
+    const stickers = (appConfig.stickers ?? 'off') !== 'off' && stickerVision ? stickerShelf({
+        dir: join(appConfig.dataDir, 'stickers'),
+        describe: image => stickerVision.describe(image),
+        decide: stickerDecider(appConfig.llm, log),
+        trendDiscover: bqbDiscover({ dir: join(appConfig.dataDir, 'stickers', 'sources'), log }),
+        discover: async () => {
+            const value = await mediaBot()._get('fetch_custom_face', { count: 48 });
+            return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+        },
+        log,
+    }) : undefined;
     let app: ReturnType<typeof startApp>;
     try {
-        app = startApp({ config: appConfig, transport, log, media, vision: configuredImageDescriber(appConfig) });
+        app = startApp({ config: appConfig, transport, log, media, vision, ...(stickers ? { stickers } : {}) });
     } catch (error) {
         const plain = plainError('插件没有启动', error);
         setConsoleState({ error: plain.message });

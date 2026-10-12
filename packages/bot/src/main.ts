@@ -10,17 +10,30 @@ import { createLog } from './log.ts';
 import type { HistoryMessage } from './backfill.ts';
 import { ocrLines } from './media.ts';
 import { isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
-import { configuredImageDescriber } from './vision.ts';
+import { configuredImageDescriber, STICKER_VISION_PROMPT } from './vision.ts';
+import { stickerDecider, stickerShelf } from './stickers.ts';
+import { bqbDiscover } from './sticker-sources.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const config = loadConfig(repoRoot);
 const log = createLog(join(config.dataDir, 'logs'));
 
 const client = new OneBotClient({ url: config.onebot.url, token: config.onebot.token, onEvent, log });
+const vision = configuredImageDescriber(config);
+const stickerVision = configuredImageDescriber(config, STICKER_VISION_PROMPT);
+const stickers = (config.stickers ?? 'off') !== 'off' && stickerVision ? stickerShelf({
+    dir: join(config.dataDir, 'stickers'),
+    describe: image => stickerVision.describe(image),
+    decide: stickerDecider(config.llm, log),
+    trendDiscover: bqbDiscover({ dir: join(config.dataDir, 'stickers', 'sources'), log }),
+    discover: () => client.call<string[]>('fetch_custom_face', { count: 48 }),
+    log,
+}) : undefined;
 const app = startApp({
     config,
     transport: {
         sendPrivateText: (userId, text) => client.sendPrivateText(userId, text),
+        sendPrivateImage: (userId, file, summary) => client.sendPrivateImage(userId, file, summary),
         friendHistory: async (userId, count) => (await client.call<{ messages: HistoryMessage[] }>('get_friend_msg_history', {
             user_id: String(userId),
             count,
@@ -32,7 +45,8 @@ const app = startApp({
         voiceToText: async messageId => (await client.call<{ text: string }>('fetch_ptt_text', { message_id: messageId })).text,
         ocr: async image => ocrLines(await client.call<unknown>('ocr_image', { image })),
     },
-    vision: configuredImageDescriber(config),
+    vision,
+    ...(stickers ? { stickers } : {}),
 });
 process.on('exit', () => app.stop());
 

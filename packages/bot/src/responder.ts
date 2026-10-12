@@ -62,6 +62,8 @@ export interface ResponderDeps {
     /** 拆好条、发出去之前最后改一下（ADR 0024：打错字再改口）；maxBubbles 是这一轮最多几条；不传就原样发 */
     decorate?: (parts: string[], maxBubbles: number) => string[];
     send: (userId: number, text: string) => Promise<number>;
+    /** 实际发送内容与聊天记录表示不同时转换（图片表情编号 -> 可读描述）。 */
+    historyContent?: (sent: string) => string;
     log: (message: string) => void;
     sleep?: (ms: number) => Promise<void>;
     /** 毫秒时间戳，默认 Date.now（测试用假时钟） */
@@ -301,7 +303,10 @@ export function createResponder(deps: ResponderDeps): Responder {
                 break;
             }
             const messageId = await deps.send(deps.userId, part);
-            deps.history.append(deps.userId, { time: new Date(now()).toISOString(), role: 'assistant', content: part, messageId });
+            deps.history.append(deps.userId, {
+                time: new Date(now()).toISOString(), role: 'assistant',
+                content: deps.historyContent?.(part) ?? part, messageId,
+            });
             sent.push(part);
         }
         seen = input;
@@ -384,7 +389,10 @@ export function createResponder(deps: ResponderDeps): Responder {
             } catch (error) {
                 return { result: 'failed', reason: `发送失败：${error instanceof Error ? error.message : String(error)}`, ...(messageIds.length ? { messageIds } : {}) };
             }
-            deps.history.append(deps.userId, { time: new Date(now()).toISOString(), role: 'assistant', content: part, messageId });
+            deps.history.append(deps.userId, {
+                time: new Date(now()).toISOString(), role: 'assistant',
+                content: deps.historyContent?.(part) ?? part, messageId,
+            });
             messageIds.push(messageId);
             sent.push(part);
         }
