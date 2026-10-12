@@ -22,15 +22,28 @@
 3. **每篇都左右翻完所有图**，每张停留一两秒（让图片落进本机缓存/磁盘）。翻到不像聊天的（教学、语录、封面卡、营销号字幕图）直接跳过。
 4. 翻完一轮就跟我说一声（比如「第一轮翻完了」），我就去读、抄录、脱敏。
 
+## 一之一、用什么打开：**官方没有 Windows 桌面客户端**（2026-10-12 实测）
+
+我渲染了官方下载页 `https://www.xiaohongshu.com/download`，官方只给这些：**网页版 / iOS 版 / Android 版 / 活动**，另有一个给创作者开播用的「电脑直播助手」（`xiaohongshu.com/zhibo/robs`）。
+**没有可下载的 Windows/Mac 桌面客户端。**
+
+| 途径 | 官方？ | 能不能用来刷帖 |
+| --- | --- | --- |
+| **网页版** `www.xiaohongshu.com`（Edge/Chrome 打开） | ✅ 官方 | ✅ **推荐**——刷新帖就用它，图落进浏览器缓存，我从那里读 |
+| iOS 版（App Store）/ Android 版（应用宝 `sj.qq.com/appdetail/com.xingin.xhs`） | ✅ 官方 | 能，但图在手机上，要传回电脑我才能读 |
+| 电脑直播助手（`zhibo/robs`） | ✅ 官方 | ❌ 只给开播，不能刷帖 |
+| 各种第三方「小红书电脑版安装包」 | ❌ 非官方 | 不建议——重打包/捆绑风险，官方渠道里没有这个东西 |
+
+**所以就用 Edge 打开网页版刷帖**（我这个 Edge profile 已经在用，登录态也在，图会落进下面那个缓存目录）。
+
 ## 二、我会读哪里（只读，不改你的东西）
 
-装好后我先探一遍本机，候选位置：
+已实测过的路径（本机 Edge）：
 
-- `%LOCALAPPDATA%\Xiaohongshu\...`、`%APPDATA%\Xiaohongshu\...`（客户端自己的缓存目录）
-- 客户端若是 Electron/CEF：`...\Cache\Cache_Data`、`...\Code Cache`、`...\GPUCache`（里面是哈希命名的小文件，我按**图片魔数**筛）
-- 若你用的是网页版：Edge 的 `%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\Cache\Cache_Data`
+- `%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\Cache\Cache_Data` —— **存在，368 MB / 1656 个文件**；用 `runtime/xhs/harvest.py` 试跑过：捞出 319 个候选、留下 **69 张竖图**（被浏览器锁住的缓存文件也能共享读）。缓存里多是 **640px 宽的 webp 缩略图**，聊天字通常还能认，认不清我就标 `[?]`。
+- 你若装了别的浏览器/客户端，我再按同样办法探（Electron/CEF 的 `Cache\Cache_Data` 都一样）。
 
-**最稳的一条（可选）**：你在 App/网页里把聊天截图**保存图片**到一个固定文件夹，告诉我路径（例如 `桌面\xhs-inbox`）。这样字最清楚，我也最容易读——你要是懒得一张张存，就用缓存那条，能读多少算多少。
+**最稳的一条（画质最好）**：在网页版里对着聊天截图**右键 → 图片另存为**，存到一个固定文件夹（例如 `C:\Users\22601\Desktop\xhs-inbox`），然后告诉我。另存拿到的是**原图（1080px 起）**，比缓存里的缩略图清楚得多；我用 `python runtime/xhs/harvest.py --inbox "…\xhs-inbox"` 读它。你要是懒得一张张存，就用缓存那条，能读多少算多少。
 
 ## 三、我读完会做什么
 

@@ -62,8 +62,8 @@ def main(path):
             fails.append(f'编号重复：{i}')
     for r in rows:
         rid = r.get('id', '?')
-        if not re.fullmatch(r'rc-b1-\d{3}', str(rid)):
-            fails.append(f'{rid}：编号格式应为 rc-b1-NNN')
+        if not re.fullmatch(r'rc-b\d+-\d{3}', str(rid)):
+            fails.append(f'{rid}：编号格式应为 rc-b<批号>-NNN')
         for f in ('relation', 'scene', 'staged', 'context', 'turns', 'her', 'confidence',
                   'persona_fit', 'stats', 'stats_scope'):
             if f not in r:
