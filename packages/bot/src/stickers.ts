@@ -85,16 +85,14 @@ export interface StickerEntry {
     createdAt: string;
     used: number;
     lastUsedAt?: string;
-    /** 已经同步进 QQ 账号「收藏的表情」；md5 是文件内容的大写十六进制，淘汰时按它找到那一张删掉 */
+    /** 已经同步进 QQ 账号「收藏的表情」；md5 是文件内容的大写十六进制，用来认出 QQ 收藏池里哪些是我们自己同步进去的 */
     qq?: { md5: string };
 }
 
-/** QQ 账号自己的「收藏的表情」（NapCat 的 add_custom_face / fetch_custom_face_detail / delete_custom_face） */
+/** QQ 账号自己的「收藏的表情」（NapCat 的 add_custom_face / fetch_custom_face_detail） */
 export interface StickerFavorites {
-    /** 把本地图片加进 QQ 收藏，返回文件内容的 md5（大写十六进制）；失败抛错 */
+    /** 把本地图片加进 QQ 收藏，返回文件内容的 md5（大写十六进制）；失败抛错。只加不删：本地收藏淘汰了，QQ 收藏里仍然留着（用户 10-12：「存着就行」） */
     add(file: string): Promise<string>;
-    /** 按 md5 从 QQ 收藏里删；本来就没有当作成功 */
-    remove(md5: string): Promise<void>;
 }
 
 interface StickerIndex {
@@ -128,7 +126,7 @@ export interface StickerShelfOptions {
     /** QQ 账号已有的自定义表情。 */
     /** knownMd5：已经同步进 QQ 收藏的那些（大写 md5）；QQ 收藏池里有它们，别再当新候选看一遍 */
     discover?: (knownMd5: ReadonlySet<string>) => Promise<string[]>;
-    /** 她收藏的每一张同步进 QQ 账号的「收藏的表情」，淘汰时一起删；不给就只存本地 */
+    /** 她收藏的每一张同步进 QQ 账号的「收藏的表情」（只加不删）；不给就只存本地 */
     favorites?: StickerFavorites;
     /** 两次 QQ 收藏操作之间隔多久（毫秒），像人一样一张张存 */
     favoritesGapMs?: number;
@@ -224,11 +222,17 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             .then(() => favGap > 0 ? new Promise<void>(resolve => setTimeout(resolve, favGap)) : undefined);
         return favQueue;
     };
-    const mirror = (entry: StickerEntry) => favorite(async () => {
-        if (!options.favorites || entry.qq || !index.entries.includes(entry)) return;
+    // batch：补同步时一批里有一张失败（比如 QQ 收藏满了），这一批剩下的就不再试，免得一小时刷十条同样的失败日志
+    const mirror = (entry: StickerEntry, batch?: { halted: boolean }) => favorite(async () => {
+        if (!options.favorites || entry.qq || batch?.halted || !index.entries.includes(entry)) return;
         const file = resolve(options.dir, entry.file);
         if (!existsSync(file)) return;
-        entry.qq = { md5: (await options.favorites.add(file)).toUpperCase() };
+        try {
+            entry.qq = { md5: (await options.favorites.add(file)).toUpperCase() };
+        } catch (error) {
+            if (batch) batch.halted = true;
+            throw error;
+        }
         persist();
         options.log(`图片表情：已加进 QQ 收藏（${entry.id}）`);
     });
@@ -296,10 +300,6 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             const victim = [...index.entries].sort((a, b) => Date.parse(a.lastUsedAt ?? a.createdAt) - Date.parse(b.lastUsedAt ?? b.createdAt))[0]!;
             index.entries.splice(index.entries.indexOf(victim), 1);
             rmSync(join(options.dir, victim.file), { force: true });
-            if (victim.qq && options.favorites) {
-                const { md5 } = victim.qq;
-                void favorite(async () => { await options.favorites!.remove(md5); options.log(`图片表情：已从 QQ 收藏里删掉（${victim.id}）`); });
-            }
             options.log(`图片表情：收藏已到 ${libraryMax} 个，淘汰最久没用的 ${victim.description}（${victim.id}）`);
         }
         const name = `${id}.${extension[image.type]}`;
@@ -351,7 +351,10 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             lastDiscoveredAt = at;
             let remaining = options.discoveryPerRun ?? STICKER_DISCOVERY_PER_RUN;
             // 还没进 QQ 收藏的（上线前就收了的、上次失败的）每次补几张，不一次全塞
-            if (options.favorites) for (const entry of index.entries.filter(item => !item.qq).slice(0, options.favoritesPerSync ?? STICKER_FAVORITES_PER_SYNC)) void mirror(entry);
+            if (options.favorites) {
+                const batch = { halted: false };
+                for (const entry of index.entries.filter(item => !item.qq).slice(0, options.favoritesPerSync ?? STICKER_FAVORITES_PER_SYNC)) void mirror(entry, batch);
+            }
 
             const local = inboxFiles(inboxDir).filter(path => {
                 try { return !index.seen.includes(inboxKey(path)); } catch { return false; }
