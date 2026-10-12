@@ -88,6 +88,25 @@ describe('图片表情收藏（ADR 0063）', () => {
         assert.equal(again.status().count, 2);
     });
 
+    test('公开目录的候选每天最多审看 3 个（跨小时、跨重启都算），第二天重新计', async () => {
+        const trend = Array.from({ length: 8 }, (_, i) => `https://zhaoolee.com/ChineseBQB/media/t${i + 1}.jpg`);
+        let time = Date.UTC(2026, 9, 12, 1, 0, 0);
+        const { dir, shelf, described } = setup({ trend, now: () => new Date(time) });
+        await shelf.discover();
+        assert.equal(described.length, 2, '这一小时的预算是 2');
+        time += 2 * 3_600_000;
+        await shelf.discover();
+        assert.equal(described.length, 3, '今天只剩 1 个额度');
+        time += 2 * 3_600_000;
+        await shelf.discover();
+        assert.equal(described.length, 3, '今天的额度用完了，不再审看');
+        const index = JSON.parse(readFileSync(join(dir, 'index.json'), 'utf8')) as { trend: { count: number } };
+        assert.equal(index.trend.count, 3);
+        time += 24 * 3_600_000;
+        await shelf.discover();
+        assert.equal(described.length, 5, '第二天重新计，这一小时的预算 2');
+    });
+
     test('持续更新的网络候选先经过同一收藏判断，再轮到 QQ 自定义表情', async () => {
         const { dir, shelf } = setup({
             trend: ['https://zhaoolee.com/ChineseBQB/media/cat.gif'],

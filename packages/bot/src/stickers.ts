@@ -20,6 +20,8 @@ export const STICKER_MAX_BYTES = 5 * 1024 * 1024;
 export const STICKER_PROMPT_MAX = 12;
 export const STICKER_DISCOVERY_PER_RUN = 3;
 export const STICKER_DISCOVERY_INTERVAL_MS = 60 * 60_000;
+/** 公开目录候选每天最多审看几个 */
+export const STICKER_TREND_PER_DAY = 3;
 export const STICKER_LIBRARY_MAX = 80;
 export const STICKER_REPLY_WINDOW = 8;
 export const STICKER_HISTORY_PREFIX = '她发了个表情包：';
@@ -88,6 +90,8 @@ interface StickerIndex {
     entries: StickerEntry[];
     /** 已看过的 URL（无论收没收藏）。只留最近一批，避免每次重启重新付一次看图费用，也能继续往表情池后面翻。 */
     seen: string[];
+    /** 公开目录候选今天已经审看了几个（按本地日期，跨重启） */
+    trend?: { day: string; count: number };
 }
 
 export interface StickerDecision {
@@ -108,6 +112,7 @@ export interface StickerShelfOptions {
     download?: (url: string) => Promise<DownloadedSticker>;
     /** 持续更新的公开网络候选源；与导入箱、QQ 自定义表情共用每小时预算。 */
     trendDiscover?: () => Promise<string[]>;
+    trendPerDay?: number;
     /** QQ 账号已有的自定义表情。 */
     discover?: () => Promise<string[]>;
     log: (message: string) => void;
@@ -134,6 +139,7 @@ export interface StickerShelf {
     status(): { count: number };
 }
 
+const localDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const emptyIndex = (): StickerIndex => ({ version: INDEX_VERSION, entries: [], seen: [] });
 
 /** 图片 URL 可能带短期 rkey；只把它作为本次去重线索，不写进提示词和聊天记录。 */
@@ -326,10 +332,16 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                 remaining--;
             }
 
-            if (remaining > 0 && options.trendDiscover) {
+            // 公开目录的候选每天最多审看 trendPerDay 个（跨重启也算）：每小时 3 个的话，80 张的收藏一天多就被整批换掉，
+            // 她就没有「自己的」表情包了。导入箱和 QQ 自定义表情不受这条限制（量本来就小）。
+            const day = localDay(now());
+            const trendLeft = (options.trendPerDay ?? STICKER_TREND_PER_DAY) - (index.trend?.day === day ? index.trend.count : 0);
+            if (remaining > 0 && trendLeft > 0 && options.trendDiscover) {
                 const urls = await options.trendDiscover();
                 const fresh = [...new Set(urls)].filter(url => typeof url === 'string' && /^https?:\/\//i.test(url) && !index.seen.includes(sourceKey(url)));
-                for (const url of fresh.slice(0, remaining)) {
+                for (const url of fresh.slice(0, Math.min(remaining, trendLeft))) {
+                    index.trend = { day, count: (index.trend?.day === day ? index.trend.count : 0) + 1 };
+                    persist();
                     await enqueue(url, undefined, { kind: 'bqb', name: 'ChineseBQB' });
                     remaining--;
                 }
