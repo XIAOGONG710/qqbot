@@ -6,6 +6,7 @@
 
 - 生成时间：2026-10-08 21:41（Asia/Shanghai）；23:55 Claude 追加回应和三批证据
 - 基准提交：`197d2d5`
+- **当前阶段（10-12 起）：`tasks/2026-10-12-next-phase.md`**——主线「账上的日子进她的话」（M1 `lifeInPrompt` → M2 `projectChoice`，一次一个开关）、第二条线 C1「闺蜜也会找她、也会变卦」、每天看线上样本；第 5 节是三方协作协议。三方开工提示词：`prompts/2026-10-12-claude.md`、`-gpt.md`、`-dsh.md`（整段贴进新会话）；审计脚本在 `tools/`
 - 最新交接（10-11 20:30，Claude，三份）：`handoff/2026-10-11-2030-claude-camera-day.md`（⚠️ **VM 12:15–19:52 外网解析不了，16:35 相机主动生成失败「不再试」，她今天一句没发出去**；19:57 QQ 离线、Koishi 不在，**20:30 用户让恢复，已恢复**，代码没变）、`-2030-claude-first-photo.md`（**还没有真照片**，离线 15/15）、`-2030-claude-live-tree.md`（live 树干净，没建分支；恢复过程）；复审 `reviews/2026-10-11-claude-review-deepseek-handoff.md`（**GPT 的 `DEEPSEEK_HANDOFF.md` 有 3 条 P0 要先补**：线上在哪台机器、live 树就是线上、服务守护）→ **20:50 已改进去，`main` = `integration` = `3427a4e`**
 - 之前：`handoff/2026-10-11-1020-dsh.md`（⚠️ **Claude Code 09:53 因 API 报错断了**；活没丢（`main` 到 09:58）；**DSH 实测够不到那台 VM**（ping/端口全不通、本机没有 192.168.139.x 网卡）——所以「DSH 顶 Claude」要改成**我写代码、Codex 在 VM 上跑和上线**；Claude 没做完的「看今天真实聊天」只有 VM 上能做）；之前 `handoff/2026-10-11-0035-claude-to-gpt.md`（**和 GPT 的分工**：线上目录只读；Claude 的 `news-occasion` 动了哪些文件；请 GPT 接行动账对齐和 15:00 的影子账审计）
 - **2026-10-10 23:00 起新增的结论以 `handoff/2026-10-10-2355-dsh.md` 为准**（它逐条更正了下面几笔里被推翻的部分）：
@@ -57,14 +58,16 @@ DSH 侧没有 `runtime/bot`，全部结论都是**静态推演 + 证据比对**�
 
 | 文件 | 内容 | 交付到 |
 | --- | --- | --- |
-| `tasks/2026-10-10-gpt-meetups-weather-ledger.md` | **10-10 新**：G1 见面进事件账；G2 真实天气下的执行器（开始下雨改正在做的事、影子审计）；G3 确认 `2d74f0e` | 各自分支 + `handoff/` |
+| `tasks/2026-10-12-next-phase.md` | **10-12 新**：两笔小账（「收费」、谐音梗）；M2 `projectChoice` 影子审计；C1 实现（等 ADR 0061） | 分支 `codex/<事>` + `handoff/` |
+| ~~`tasks/2026-10-10-gpt-meetups-weather-ledger.md`~~ | G1、G2 10-10 已上线，G3 已确认；关了 | |
 
 ## 给 DSH 的任务
 
 | 文件 | 内容 | 交付到 |
 | --- | --- | --- |
 | `tasks/2026-10-09-dsh-real-chat-research.md` | 小红书真人聊天调研（T1）、盲评题库 v1（T2）、改动建议书（T3）；先推 30 段小样 | `research/2026-10-real-chat/`，审核写进 `reviews/` |
-| `tasks/2026-10-10-dsh-t2-followup-and-research.md` | **10-10 新**：D1 审 Claude 代做的 v1.1 / T3、写 H、出 v1.2 新题（「？」、见面、天气）；D2 评论区表情包位置；D3 真人怎么约见面、改约、提天气 | D1、D2 `research/2026-10-real-chat/`，D3 `research/2026-10-meetups-weather/` |
+| `tasks/2026-10-12-next-phase.md` | **10-12 新**：C1 调研（原 D3 并进来）；审 ADR 0061、M3 草稿和 GPT 的 C1 实现 | `research/2026-10-c1-npc/`、`reviews/` |
+| ~~`tasks/2026-10-10-dsh-t2-followup-and-research.md`~~ | 被 10-12 的取代（D1 做完、D3 并进 C1、D2 暂停）。原来是：D1 审 Claude 代做的 v1.1 / T3、写 H、出 v1.2 新题（「？」、见面、天气）；D2 评论区表情包位置；D3 真人怎么约见面、改约、提天气 | D1、D2 `research/2026-10-real-chat/`，D3 `research/2026-10-meetups-weather/` |
 
 DSH 的三个卡点（`handoff/2026-10-09-0015-dsh.md`）已裁决：`reviews/2026-10-09-claude-ruling-dsh-blockers.md`（爬虫按用户授权放宽并加条件；截图 OCR 答 A–G、评论只答 H；两张表 + 三道单题；先用号 1 语料答 A、B、C）。
 
