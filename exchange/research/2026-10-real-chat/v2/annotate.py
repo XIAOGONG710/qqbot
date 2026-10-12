@@ -162,6 +162,40 @@ def med(nums):
     return statistics.median(nums) if nums else 0
 
 
+# ---- 表情包 / 图片 / 语音占位符的口径（Claude 10-12 复核要求）----
+# 占位符也是「一条消息」（bubbles 照数），但它不是她打的字：
+# 不进 median_chars、不算问句，单独记 stickers。整轮只有表情时 median_chars 为 null。
+_STICKER = re.compile(r'^\[(表情包|表情|动画表情|图片|视频|语音|文件)([：:].*)?\]$')
+
+
+def is_sticker(b: str) -> bool:
+    return bool(_STICKER.match(b.strip()))
+
+
+def text_bubbles(bubbles):
+    return [b for b in bubbles if not is_sticker(b)]
+
+
+def sticker_counts(bubbles):
+    out = {'表情包': 0, '图片': 0, '语音': 0}
+    for b in bubbles:
+        t = b.strip()
+        if not is_sticker(t):
+            continue
+        if t.startswith('[图片') or t.startswith('[视频'):
+            out['图片'] += 1
+        elif t.startswith('[语音'):
+            out['语音'] += 1
+        else:
+            out['表情包'] += 1
+    return out
+
+
+def turn_median(bubbles):
+    tb = text_bubbles(bubbles)
+    return med([len(b) for b in tb]) if tb else None
+
+
 def annotate(rec, rid, key_turns='turns'):
     ann = ANN.get(rid)
     if ann is None:
@@ -175,23 +209,30 @@ def annotate(rec, rid, key_turns='turns'):
     # 复核第 3 条：两个问句口径都给。asked = 宽松（旧口径），asked_strict = stats.ts 那个
     # 复核第 1 条之外：median_chars 的聚合要排除空轮（silent，bubbles 为空的轮）
     agg_bubbles, agg_chars, asked_n, asked_strict_n, switched_n = [], [], 0, 0, 0
+    sticker_total, sticker_turns = 0, 0
     for i, t in enumerate(turns):
         if i not in marks:
             continue
         act, mood, switched = marks[i]
         bubbles = t.get('bubbles') or []
+        tb = text_bubbles(bubbles)          # 占位符不计入字数与问句
         t['act'] = act
         t['mood'] = mood
         t['stats'] = {
             'bubbles': len(bubbles),
-            'median_chars': med([len(b) for b in bubbles]),
-            'asked': any(is_asked(b) for b in bubbles),
-            'asked_strict': any(is_asked_strict(b) for b in bubbles),
+            'text_bubbles': len(tb),
+            'median_chars': turn_median(bubbles),
+            'stickers': sticker_counts(bubbles),
+            'asked': any(is_asked(b) for b in tb),
+            'asked_strict': any(is_asked_strict(b) for b in tb),
             'switched_topic': bool(switched),
         }
         agg_bubbles.append(len(bubbles))
-        if bubbles:                      # 空轮不进 median_chars
-            agg_chars.extend([len(b) for b in bubbles])
+        agg_chars.extend([len(b) for b in tb])     # 空轮与纯表情轮都不进 median_chars
+        stk = t['stats']['stickers']
+        sticker_total += sum(stk.values())
+        if sum(stk.values()):
+            sticker_turns += 1
         asked_n += 1 if t['stats']['asked'] else 0
         asked_strict_n += 1 if t['stats']['asked_strict'] else 0
         switched_n += 1 if switched else 0
@@ -205,7 +246,9 @@ def annotate(rec, rid, key_turns='turns'):
         'silent_turns': sum(1 for i in her_idx if not (turns[i].get('bubbles') or [])),
         'bubbles_per_turn_median': med(agg_bubbles),
         'bubbles_per_turn_counts': agg_bubbles,
-        'median_chars': med(agg_chars),
+        'median_chars': med(agg_chars) if agg_chars else None,
+        'stickers_total': sticker_total,
+        'sticker_turns': sticker_turns,
         'asked_rate': round(asked_n / len(her_idx), 3) if her_idx else 0,
         'asked_strict_rate': round(asked_strict_n / len(her_idx), 3) if her_idx else 0,
         'switched_topic_count': switched_n,

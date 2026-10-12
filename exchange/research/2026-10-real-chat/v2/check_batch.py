@@ -19,6 +19,9 @@ import re
 import sys
 import statistics
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from annotate import text_bubbles, sticker_counts, turn_median  # noqa: E402  与 annotate.py 共用同一套口径
+
 ACTS = {'answer', 'confirm', 'comfort', 'joke', 'share', 'clarify', 'ask', 'refuse', 'close', 'silent'}
 MOODS = {'平', '开心', '难过', '生气', '撒娇', '无聊', '累'}
 RELS = {'boyfriend', 'bestie', 'friend', 'unknown'}
@@ -107,22 +110,28 @@ def main(path):
             if t.get('mood') not in MOODS:
                 fails.append(f"{rid}：mood={t.get('mood')!r} 越界")
             st = t.get('stats') or {}
+            tb = text_bubbles(bubbles)
             if st.get('bubbles') != len(bubbles):
                 fails.append(f'{rid}：第 {n_her} 轮 bubbles 对不上')
-            if abs(float(st.get('median_chars', -1)) - med([len(b) for b in bubbles])) > 1e-9:
-                fails.append(f'{rid}：第 {n_her} 轮 median_chars 对不上')
-            if bool(st.get('asked')) != any(is_asked(b) for b in bubbles):
+            if st.get('median_chars') != turn_median(bubbles):
+                fails.append(f'{rid}：第 {n_her} 轮 median_chars 对不上（整轮只有表情时必须是 null）')
+            if st.get('stickers') != sticker_counts(bubbles):
+                fails.append(f'{rid}：第 {n_her} 轮 stickers 对不上')
+            if st.get('text_bubbles') != len(tb):
+                fails.append(f'{rid}：第 {n_her} 轮 text_bubbles 对不上')
+            if bool(st.get('asked')) != any(is_asked(b) for b in tb):
                 fails.append(f'{rid}：第 {n_her} 轮 asked 对不上')
-            if bool(st.get('asked_strict')) != any(is_asked_strict(b) for b in bubbles):
+            if bool(st.get('asked_strict')) != any(is_asked_strict(b) for b in tb):
                 fails.append(f'{rid}：第 {n_her} 轮 asked_strict 对不上')
             aggb.append(len(bubbles))
-            aggc += [len(b) for b in bubbles]
+            aggc += [len(b) for b in tb]
             asked += 1 if st.get('asked') else 0
             asked_s += 1 if st.get('asked_strict') else 0
             sw += 1 if st.get('switched_topic') else 0
         agg = r.get('stats') or {}
         for k in ('her_turns', 'silent_turns', 'bubbles_per_turn_median', 'median_chars',
-                  'asked_rate', 'asked_strict_rate', 'switched_topic_count'):
+                  'stickers_total', 'sticker_turns', 'asked_rate', 'asked_strict_rate',
+                  'switched_topic_count'):
             if k not in agg:
                 fails.append(f'{rid}：顶层 stats 缺 {k}')
         if agg.get('her_turns') != n_her:

@@ -56,8 +56,14 @@ def is_asked_strict(text):
     return bool(_QUESTION.search(t)) and not bool(_RHETORICAL.search(t))
 
 
+# ---- 占位符口径：跟 annotate.py 共用同一套实现，避免两边算得不一样 ----
+sys.path.insert(0, HERE)
+from annotate import is_sticker, text_bubbles, sticker_counts, turn_median  # noqa: E402
+
+
 def median_chars(bubbles):
-    return statistics.median([len(b) for b in bubbles]) if bubbles else 0
+    """只数文字气泡；整轮只有表情包/图片/语音时为 None（Claude 10-12 复核要求）。"""
+    return turn_median(bubbles)
 
 
 def check_k1():
@@ -109,11 +115,16 @@ def check_k1():
                 bubbles = t.get('bubbles') or []
                 if st.get('bubbles') != len(bubbles):
                     fail(f'{rid}：第 {n_her} 轮 stats.bubbles={st.get("bubbles")} 和实际 {len(bubbles)} 对不上')
-                if abs(float(st.get('median_chars', -1)) - median_chars(bubbles)) > 1e-9:
-                    fail(f'{rid}：第 {n_her} 轮 stats.median_chars 和脚本算的不一致')
-                if bool(st.get('asked')) != any(is_asked(b) for b in bubbles):
+                if st.get('median_chars') != median_chars(bubbles):
+                    fail(f'{rid}：第 {n_her} 轮 stats.median_chars={st.get("median_chars")!r} '
+                         f'和脚本算的 {median_chars(bubbles)!r} 不一致（整轮只有表情时必须是 null）')
+                if st.get('stickers') != sticker_counts(bubbles):
+                    fail(f'{rid}：第 {n_her} 轮 stats.stickers 和脚本算的不一致')
+                if st.get('text_bubbles') != len(text_bubbles(bubbles)):
+                    fail(f'{rid}：第 {n_her} 轮 stats.text_bubbles 和脚本算的不一致')
+                if bool(st.get('asked')) != any(is_asked(b) for b in text_bubbles(bubbles)):
                     fail(f'{rid}：第 {n_her} 轮 stats.asked 和脚本算的不一致')
-                if bool(st.get('asked_strict')) != any(is_asked_strict(b) for b in bubbles):
+                if bool(st.get('asked_strict')) != any(is_asked_strict(b) for b in text_bubbles(bubbles)):
                     fail(f'{rid}：第 {n_her} 轮 stats.asked_strict 和脚本算的不一致')
                 if not isinstance(st.get('switched_topic'), bool):
                     fail(f'{rid}：第 {n_her} 轮 stats.switched_topic 不是布尔（人工标注也要给布尔）')
@@ -121,7 +132,8 @@ def check_k1():
                 fail(f'{rid}：没有任何 her 侧轮次')
             agg = rec.get('stats') or {}
             for f in ('her_turns', 'silent_turns', 'bubbles_per_turn_median', 'median_chars',
-                      'asked_rate', 'asked_strict_rate', 'switched_topic_count'):
+                      'stickers_total', 'sticker_turns', 'asked_rate', 'asked_strict_rate',
+                      'switched_topic_count'):
                 if f not in agg:
                     fail(f'{rid}：顶层 stats 缺 {f}')
     missing = [i for i in want_ids if i not in seen]

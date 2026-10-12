@@ -26,7 +26,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from annotate import is_asked, is_asked_strict, med   # 复用 K1 的统计口径
+from annotate import (is_asked, is_asked_strict, med, text_bubbles, sticker_counts,
+                      turn_median)   # 复用 K1 的口径（含 [表情包] 占位符口径）
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -113,8 +114,13 @@ SEGS = [
      '摆拍/软广样本，只作「她主动起话头」的句式参照，不进主统计'),
 ]
 
-PF = {
-    'rc-b1-001': ('mid', '「你这样会发霉的！！」「年糕给我 rua 一下」是熟人之间的损加黏，和她嘴硬里透黏有一半像；但整段是她在追着对方出门，比她主动'),
+# 复核建议（10-12）：暧昧语域标成 friend 会让「朋友」格偏向调情，单独写一句
+REL_NOTE = {
+    'rc-b1-002': '暧昧期（对方是她备注的 crush），不是情侣；K4 的朋友 / 闺蜜格不要混进去',
+    'rc-b1-003': '暧昧期（对方说「想和你去」但没有情侣称呼）；同上，K4 单独看待',
+}
+
+PF = {    'rc-b1-001': ('mid', '「你这样会发霉的！！」「年糕给我 rua 一下」是熟人之间的损加黏，和她嘴硬里透黏有一半像；但整段是她在追着对方出门，比她主动'),
     'rc-b1-002': ('mid', '答应得干脆、只有短句加表情包，像她「想他不含糊」那一面；但两句太短，看不出她的口癖'),
     'rc-b1-003': ('mid', '不接对方的软话、直接要他说明白，是嘴硬加直球；但只有一轮，看不出日常说话习惯'),
     'rc-b1-004': ('mid', '「没想」「你亲一口就知道了」正是她嘴硬加撩的样子；但整段是摆拍，不能当干净样本'),
@@ -133,24 +139,33 @@ def main():
         }
         if staged:
             rec['staged_why'] = staged_why
+        if rid in REL_NOTE:                 # 复核建议：暧昧语域单独标，别混进「朋友」格
+            rec['relation_note'] = REL_NOTE[rid]
         rec['persona_fit'] = {'level': PF[rid][0], 'why': PF[rid][1]}
 
         agg_b, agg_c, asked, asked_s, sw = [], [], 0, 0, 0
+        sticker_total, sticker_turns = 0, 0
         out_turns = []
         for who, bubbles, gap, act, mood, switched in turns:
             t = {'who': who, 'bubbles': bubbles, 'gap': gap}
             if who == her:
+                tb = text_bubbles(bubbles)
+                st = sticker_counts(bubbles)
                 t['act'] = act
                 t['mood'] = mood
                 t['stats'] = {
                     'bubbles': len(bubbles),
-                    'median_chars': med([len(b) for b in bubbles]),
-                    'asked': any(is_asked(b) for b in bubbles),
-                    'asked_strict': any(is_asked_strict(b) for b in bubbles),
+                    'text_bubbles': len(tb),
+                    'median_chars': turn_median(bubbles),
+                    'stickers': st,
+                    'asked': any(is_asked(b) for b in tb),
+                    'asked_strict': any(is_asked_strict(b) for b in tb),
                     'switched_topic': bool(switched),
                 }
                 agg_b.append(len(bubbles))
-                agg_c += [len(b) for b in bubbles]
+                agg_c += [len(b) for b in tb]
+                sticker_total += sum(st.values())
+                sticker_turns += 1 if sum(st.values()) else 0
                 asked += 1 if t['stats']['asked'] else 0
                 asked_s += 1 if t['stats']['asked_strict'] else 0
                 sw += 1 if switched else 0
@@ -162,7 +177,9 @@ def main():
             'silent_turns': 0,
             'bubbles_per_turn_median': med(agg_b),
             'bubbles_per_turn_counts': agg_b,
-            'median_chars': med(agg_c),
+            'median_chars': med(agg_c) if agg_c else None,
+            'stickers_total': sticker_total,
+            'sticker_turns': sticker_turns,
             'asked_rate': round(asked / n_her, 3) if n_her else 0,
             'asked_strict_rate': round(asked_s / n_her, 3) if n_her else 0,
             'switched_topic_count': sw,
