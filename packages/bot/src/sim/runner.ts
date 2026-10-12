@@ -5,6 +5,7 @@ import { appendFileSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BotConfig, Contact } from '../config.ts';
 import { createContactResponder, replySkip, type TierCard } from '../contact.ts';
+import { stickerShelf } from '../stickers.ts';
 import { promiseKeeper } from '../promises.ts';
 import { ChatHistory, type StoredMessage } from '../history.ts';
 import { chatCompletion, forExtraction } from '../llm.ts';
@@ -314,6 +315,17 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     let noteMoodAndBooks = openHerDayLogger();
     // 她的世界（ADR 0021）：每天一行摘要，state.json 写在这次的数据目录
     const noteHerDay = noteMoodAndBooks || sharedWorld ? (now: Date) => { noteMoodAndBooks?.(now); sharedWorld?.note(now); } : undefined;
+    // 假的图片表情收藏（ADR 0063）：用真的 shelf（提示词清单、清理、历史描述都是线上同一份代码），文件是空的
+    const stickers = scenario.stickers ? (() => {
+        const dir = join(dataDir, 'stickers');
+        mkdirSync(dir, { recursive: true });
+        for (const entry of scenario.stickers!) writeFileSync(join(dir, `${entry.id}.png`), '');
+        writeFileSync(join(dir, 'index.json'), JSON.stringify({
+            version: 1, seen: [],
+            entries: scenario.stickers!.map(entry => ({ id: entry.id, file: `${entry.id}.png`, description: entry.description, tags: entry.tags, source: { kind: 'qq-custom' }, createdAt: new Date(clock.now()).toISOString(), used: 0 })),
+        }));
+        return stickerShelf({ dir, describe: async () => '', decide: async () => ({ keep: false, description: '', tags: [] }), log });
+    })() : undefined;
     const createResponder = () => createContactResponder({
         contact,
         card: options.card,
@@ -334,6 +346,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(sharedWorld ? { worldState: sharedWorld } : {}),
         ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}),
         ...(scenario.lifeInPrompt && scenario.autonomous ? { lifeInPrompt: true } : {}),
+        ...(stickers ? { stickers } : {}),
         contacts: [contact, ...others],
         log,
         now: clock.now,
@@ -960,6 +973,14 @@ export function runChecks(
     }
     const first = step.bubbles[0]?.time;
     if (checks.noReply) results.push({ ok: step.bubbles.length === 0, text: `她没回（实际 ${step.bubbles.length} 条）` });
+    const stickerCount = step.bubbles.filter(bubble => /^<sticker:[a-f0-9]{12}>$/i.test(bubble.text.trim())).length;
+    if (checks.stickerSent !== undefined) results.push({ ok: checks.stickerSent ? stickerCount > 0 : stickerCount === 0, text: `她${checks.stickerSent ? '发了' : '没发'}图片表情（实际 ${stickerCount} 个）` });
+    // 只要气泡里出现过表情编号，就查它是不是单独一条（别的场景不出现编号时不多出这一项）
+    if (step.bubbles.some(bubble => /<sticker:/i.test(bubble.text))) {
+        const leaked = step.bubbles.filter(bubble => /<sticker:/i.test(bubble.text) && !/^<sticker:[a-f0-9]{12}>$/i.test(bubble.text.trim()));
+        results.push({ ok: leaked.length === 0, text: `表情编号只以单独一条出现、没被并进文字${leaked.length ? `（${leaked.map(b => JSON.stringify(b.text.slice(0, 40))).join('、')}）` : ''}` });
+    }
+    if (checks.maxStickers !== undefined) results.push({ ok: stickerCount <= checks.maxStickers, text: `她这一轮最多 ${checks.maxStickers} 个图片表情（实际 ${stickerCount}）` });
     const delay = first !== undefined && step.inputTime !== undefined ? first - step.inputTime : undefined;
     const minutes = (ms: number | undefined) => (ms === undefined ? '没回' : `${(ms / 60_000).toFixed(1)} 分钟`);
     if (checks.replyAfter !== undefined) {

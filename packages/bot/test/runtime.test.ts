@@ -28,6 +28,31 @@ describe('回复清理（同 ST cleanUpMessage 默认设置）', () => {
         assert.deepEqual(splitReply('躺着呢 刷土豆的照片\n\n  怎么了嘛 \r\n这么晚'), ['躺着呢 刷土豆的照片', '怎么了嘛', '这么晚']);
         assert.deepEqual(splitReply('\n \n'), []);
     });
+    test('图片表情指令那一行自己占一条，合并时绝不并进文字（ADR 0063，10-12 模拟器：文字、表情、文字最多 2 条时编号被并进上一句，发出去就成了文字）', () => {
+        const token = '<sticker:b2c3d4e5f6a7>';
+        // 原样复现：线上同一份输出，这一轮最多 2 条
+        assert.deepEqual(splitReply(`抱抱，抱住不撒手\n\n${token}\n\n突然这么黏人，嗯？`, 2), ['抱抱，抱住不撒手\n突然这么黏人，嗯？', token]);
+        // 条数够：文字分在指令前后，各占一条
+        assert.deepEqual(splitReply(`一\n${token}\n二`, 3), ['一', token, '二']);
+        // 剩下的 3 条文字位置按字数分：前面 4 行占 2 条，后面 2 行占 1 条
+        assert.deepEqual(splitReply(`一\n二\n三\n四\n${token}\n五\n六`, 4), ['一\n二', '三\n四', token, '五\n六']);
+        // 指令在最前 / 最后
+        assert.deepEqual(splitReply(`${token}\n一\n二\n三`, 2), [token, '一\n二\n三']);
+        assert.deepEqual(splitReply(`一\n二\n三\n${token}`, 2), ['一\n二\n三', token]);
+        // 只剩 1 条：保文字，不发图；只有指令：就是指令
+        assert.deepEqual(splitReply(`一\n${token}\n二`, 1), ['一\n二']);
+        assert.deepEqual(splitReply(token, 1), [token]);
+        // 没超条数的不动；没有指令的照旧
+        assert.deepEqual(splitReply(`一\n${token}`, 2), ['一', token]);
+        assert.equal(splitReply('一\n二\n三\n四', 2).length, 2);
+        // 任何情况下，指令都是单独一条
+        for (const max of [2, 3, 4, 5]) {
+            const parts = splitReply(`a\nb\nc\n${token}\nd\ne\nf\ng`, max);
+            assert.ok(parts.length <= max, `max ${max}`);
+            assert.equal(parts.filter(part => part.includes('<sticker:')).every(part => part === token), true);
+            assert.ok(parts.includes(token));
+        }
+    });
     test('超过 5 行按顺序合并成 5 条，字数最多的那条尽量短；5 行以内不变（ADR 0006）', () => {
         const five = ['一', '二', '三', '四', '五'];
         assert.deepEqual(splitReply(five.join('\n')), five);

@@ -1,0 +1,39 @@
+{
+    "name": "男朋友档：图片表情包什么时候发、什么时候不发（ADR 0063）",
+    "description": "给她一份假的收藏（四个表情，描述是她在提示词里看到的那句），看真模型：他轻松说笑、撒娇、晚安时可以发（一轮最多一个、不自己写「表情包：…」假文字）；他认真难过、问正事、要自拍时不能发。模拟器不发图，气泡里是 <sticker:编号>。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-15T20:30:00+08:00",
+    "memory": false,
+    "schedule": false,
+    "stickers": [
+        { "id": "a1b2c3d4e5f6", "description": "橘猫翻白眼，配字「无语」", "tags": ["无语", "嫌弃"] },
+        { "id": "b2c3d4e5f6a7", "description": "小熊抱着枕头蹭来蹭去", "tags": ["撒娇", "亲昵"] },
+        { "id": "c3d4e5f6a7b8", "description": "柴犬竖大拇指，配字「干得漂亮」", "tags": ["夸", "开心"] },
+        { "id": "d4e5f6a7b8c9", "description": "小猫趴在桌上睡着，配字「晚安」", "tags": ["晚安", "困了"] }
+    ],
+    "history": [
+        { "time": "2026-10-15T20:20:00+08:00", "role": "user", "content": "在干嘛" },
+        { "time": "2026-10-15T20:21:00+08:00", "role": "assistant", "content": "刚吃完饭，在宿舍躺着刷手机" }
+    ],
+    "steps": [
+        { "case": "ST01", "note": "他自己出糗、说笑：可以发表情，也可以不发；发就一个，不写「表情包：…」这种假文字" },
+        { "say": "我今天在食堂把一整碗汤扣自己裤子上了哈哈哈哈" },
+        { "check": { "speechClean": true, "exitClean": true, "maxStickers": 1, "replyNone": ["表情包：", "发了个表情包", "[表情包", "【表情包"] } },
+        { "case": "ST02", "note": "他认真难过：不能发表情，要先接住他" },
+        { "say": "我今天被导师当着全组的面骂了，感觉自己好没用，不太想说话" },
+        { "check": { "speechClean": true, "exitClean": true, "stickerSent": false } },
+        { "case": "ST03", "note": "问正事：回信息，不用表情糊弄" },
+        { "say": "你明天几点的课来着" },
+        { "check": { "speechClean": true, "exitClean": true, "stickerSent": false } },
+        { "case": "ST04", "note": "要自拍（ADR 0060）：照旧找理由先不发、说给他听；不拿表情包顶替" },
+        { "say": "发张你现在的自拍看看" },
+        { "check": { "speechClean": true, "exitClean": true, "stickerSent": false, "replyNone": ["发你个表情包", "给你发个表情包", "表情包代替"] } },
+        { "case": "ST05", "note": "撒娇想抱：先用文字回，表情最多一个" },
+        { "say": "想你了，抱一下" },
+        { "check": { "speechClean": true, "exitClean": true, "maxStickers": 1, "replyAny": ["抱", "想"] } },
+        { "case": "ST06", "note": "晚安：可以发晚安的表情，最多一个" },
+        { "say": "我先睡了，晚安" },
+        { "check": { "speechClean": true, "exitClean": true, "maxStickers": 1 } }
+    ]
+}
