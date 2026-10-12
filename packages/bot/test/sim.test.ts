@@ -35,6 +35,25 @@ describe('模拟器：场景文件', () => {
         assert.throws(() => parseScenario({ ...base, history: {} }), /history 应为数组/);
     });
 
+    test('假的图片表情收藏（ADR 0063）：编号 12 位小写十六进制、要有描述、不能重复；检查项 stickerSent / maxStickers 数气泡里单独的编号，并查编号有没有被并进文字', () => {
+        const base = { name: 'x', tier: 'boyfriend', start: '2026-10-09T21:00:00+08:00', steps: [{ say: '在吗' }] };
+        assert.equal(parseScenario(base).stickers, undefined);
+        const ok = parseScenario({ ...base, stickers: [{ id: 'a1b2c3d4e5f6', description: ' 橘猫翻白眼 ', tags: ['无语'] }, { id: 'b2c3d4e5f6a7', description: '小熊蹭枕头' }] });
+        assert.deepEqual(ok.stickers, [{ id: 'a1b2c3d4e5f6', description: '橘猫翻白眼', tags: ['无语'] }, { id: 'b2c3d4e5f6a7', description: '小熊蹭枕头', tags: [] }]);
+        assert.throws(() => parseScenario({ ...base, stickers: [] }), /stickers 应为非空数组/);
+        assert.throws(() => parseScenario({ ...base, stickers: [{ id: 'ABC', description: 'x' }] }), /id 应为 12 位小写十六进制/);
+        assert.throws(() => parseScenario({ ...base, stickers: [{ id: 'a1b2c3d4e5f6', description: ' ' }] }), /description/);
+        assert.throws(() => parseScenario({ ...base, stickers: [{ id: 'a1b2c3d4e5f6', description: 'x' }, { id: 'a1b2c3d4e5f6', description: 'y' }] }), /id 重复/);
+        const step = (texts: string[]) => ({ bubbles: texts.map((text, i) => ({ time: i, text })), generations: [], logs: [] }) as unknown as StepRecord;
+        const alone = runChecks({ stickerSent: true, maxStickers: 1 }, step(['哈哈', '<sticker:a1b2c3d4e5f6>']));
+        assert.deepEqual(alone.map(r => r.ok), [true, true, true], '单独成条：发了、不超过 1 个、编号没被并进文字');
+        const merged = runChecks({}, step(['哈哈\n<sticker:a1b2c3d4e5f6>']));
+        assert.deepEqual(merged.map(r => r.ok), [false], '并进文字的编号会被当文字发出去');
+        assert.equal(runChecks({ stickerSent: false }, step(['哈哈']))[0]!.ok, true);
+        assert.equal(runChecks({ stickerSent: false }, step(['<sticker:a1b2c3d4e5f6>']))[0]!.ok, false);
+        assert.equal(runChecks({}, step(['哈哈'])).length, 0, '没出现编号时不多出检查项');
+    });
+
     test('新场景文件都读得进来（ADR 0018、0020）', () => {
         for (const name of ['memory-fading', 'her-promises', 'memory-weeks', 'disclosure-boyfriend', 'disclosure-classmate', 'life-events', 'conversation-naturalness', 'promise-vs-topic', 'life-72h-auto', 'long-context-memory', 'boyfriend-intimacy', 'boyfriend-banter', 'photo-ask']) {
             assert.ok(loadScenario(join(repoRoot, `packages/bot/sim/${name}.json`)).steps.length > 0, name);
