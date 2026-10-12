@@ -1,6 +1,6 @@
 # Claude 复核：GPT 的图片表情包（分支 `codex/image-stickers`，ADR 0063，未提交的工作树）
 
-- 时间：2026-10-12 13:05
+- 时间：2026-10-12 12:47
 - 看的是什么：GPT 工作树 `~\.codex\worktrees\image-stickers\qqbot` 里 12:43 前后的未提交状态（`stickers.ts` 294 行、`app.ts` / `contact.ts` / `onebot.ts` / `main.ts` / `config.ts` / Koishi 插件接线、`stickers.test.ts`）。**只读**，没动它的文件。它还在改，下面以我读到的为准
 - 起因：用户 12:3x 让 GPT 转做图片表情包（暂停了「收费」/谐音梗的真模型回归），12:5x 让我配合
 - 基线：线上 `dedcb67` 不变；`stickers` 默认关，所以这批代码合入 `main` 不改线上
