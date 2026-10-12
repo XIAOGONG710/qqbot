@@ -23,7 +23,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from annotate import (is_asked, is_asked_strict, med, text_bubbles, sticker_counts,
-                      turn_median)
+                      turn_median, counted_bubbles, truncated_count)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -31,7 +31,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SEGS = [
     ('rc-b2-001', '20a8bf1d1da7-2', 'unknown', 9, False, '', 'medium',
      '字面全部可读、关系由原话点明（「不是男女朋友，只见过一次面」）；但谁是女方靠角色结构推断，无称呼或性别词',
-     'in',
+     'low_confidence',
      '见过一次面的人求见面、要求拥抱，她三次明确拒绝并以互删收尾',
      'A',
      [
@@ -47,7 +47,7 @@ SEGS = [
 
     ('rc-b2-002', '6a6bb90cb923-2', 'friend', 9, False, '', 'medium',
      '气泡文字清晰；女方身份靠笔记标题「被女生拒绝了 3 次」推断，聊天内没有硬性性别标记',
-     'in',
+     'low_confidence',
      '对方请她吃饭并让她定时间，她只问在哪、叫什么',
      'A',
      [
@@ -80,7 +80,7 @@ SEGS = [
      '她撒娇求对方帮忙上课打卡，对方说卡没了',
      'A',
      [
-         ('A', ['拍了拍B', '你下午去上课吗，可以帮我打个卡嘛', '[表情包]'], '不知道', 'ask', '撒娇', False),
+         ('A', ['你下午去上课吗，可以帮我打个卡嘛', '[表情包]'], '不知道', 'ask', '撒娇', False),
          ('B', ['啊？', '[表情包]', '没你的卡了手机里面', '[表情包]', '上次刷了无效就删掉了'], '不知道', None, None, None),
      ],
      '低置信：关系与性别都是推断，只作「撒娇求人办事」的句式参照，不进主统计'),
@@ -116,7 +116,7 @@ def main():
         rec['persona_fit'] = {'level': PF[rid][0], 'why': PF[rid][1]}
 
         agg_b, agg_c, asked, asked_s, sw = [], [], 0, 0, 0
-        sticker_total, sticker_turns = 0, 0
+        sticker_total, sticker_turns, truncated_total = 0, 0, 0
         out_turns = []
         for who, bubbles, gap, act, mood, switched in turns:
             t = {'who': who, 'bubbles': bubbles, 'gap': gap}
@@ -128,6 +128,7 @@ def main():
                 t['stats'] = {
                     'bubbles': len(bubbles),
                     'text_bubbles': len(tb),
+                    'truncated': truncated_count(bubbles),
                     'median_chars': turn_median(bubbles),
                     'stickers': st,
                     'asked': any(is_asked(b) for b in tb),
@@ -135,7 +136,8 @@ def main():
                     'switched_topic': bool(switched),
                 }
                 agg_b.append(len(bubbles))
-                agg_c += [len(b) for b in tb]
+                agg_c += [len(b) for b in counted_bubbles(bubbles)]
+                truncated_total += t['stats']['truncated']
                 sticker_total += sum(st.values())
                 sticker_turns += 1 if sum(st.values()) else 0
                 asked += 1 if t['stats']['asked'] else 0
@@ -152,6 +154,7 @@ def main():
             'median_chars': med(agg_c) if agg_c else None,
             'stickers_total': sticker_total,
             'sticker_turns': sticker_turns,
+            'truncated_bubbles': truncated_total,
             'asked_rate': round(asked / n_her, 3) if n_her else 0,
             'asked_strict_rate': round(asked_s / n_her, 3) if n_her else 0,
             'switched_topic_count': sw,

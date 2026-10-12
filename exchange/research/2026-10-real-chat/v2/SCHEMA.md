@@ -121,14 +121,18 @@
 | --- | --- |
 | `stats.bubbles` | 该轮气泡条数（含占位符） |
 | `stats.text_bubbles` | 其中文字气泡的条数 |
-| `stats.median_chars` | **只数文字气泡**；整轮只有占位符时为 `null`（原来会把 `[表情包]` 当 5 个字算进去） |
+| `stats.truncated` | 其中被脱敏截断的气泡数（「…」结尾） |
+| `stats.median_chars` | **只数文字气泡、且排除截断的**；两者都没有时为 `null`（原来会把 `[表情包]` 当 5 个字算进去） |
 | `stats.stickers` | `{"表情包": n, "图片": n, "语音": n}` |
-| `stats.asked` / `asked_strict` | 只在文字气泡上判 |
-| 顶层 `stats.stickers_total` / `sticker_turns` | 该段合计的占位符个数 / 含占位符的轮数 |
+| `stats.asked` / `asked_strict` | 只在文字气泡上判（截断的不排除） |
+| 顶层 `stats.stickers_total` / `sticker_turns` | 该段合计的占位符个数 / 含占位符的轮数（**含「图片」，跟 K4 对照请用 `turns[].stats.stickers.表情包`**） |
+| 顶层 `stats.truncated_bubbles` | 该段合计的截断气泡数 |
 
-实现共用 `annotate.py` 里的 `is_sticker / text_bubbles / sticker_counts / turn_median`；`check.py` 与 `check_batch.py` 都 import 同一套，避免两边算得不一样。
+实现共用 `annotate.py` 里的 `is_sticker / text_bubbles / counted_bubbles / truncated_count / sticker_counts / turn_median`；`check.py` 与 `check_batch.py` 都 import 同一套，避免两边算得不一样。
 
-**重算后（36 段 + 5 段）**：K1 那 36 段里只有 `rc-005`、`ct-002` 各 1 个占位符（各 1 轮），`ct-006` 整段只有占位符 → `median_chars: null`；K3 批次里 `rc-b1-001` 3 个、`rc-b1-002` 1 个、`rc-b1-005` 1 个。
+**重算后（36 段 + 5 段 + 4 段）**：K1 那 36 段里只有 `rc-005`、`ct-002` 各 1 个占位符（各 1 轮），`ct-006` 整段只有占位符 → `median_chars: null`；K3 批次里 `rc-b1-001` 3 个、`rc-b1-002` 1 个、`rc-b1-005` 1 个、`rc-b2-004` 1 个占位符。
+**截断气泡共 28 个**（rc 23 + ct 1 + b1 2 + b2 2），按 Claude 10-12 复核从 `median_chars` 里剔除；`rc-b2-001` 的中位字数因此从 19 变成 **13**。
 
 **另外（复核建议）**：关系是「暧昧期」的两段（`rc-b1-002` / `rc-b1-003`）加了 `relation_note`，K4 的「朋友 / 闺蜜」格不要把调情语域混进去。
+
 

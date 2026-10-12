@@ -20,7 +20,8 @@ import sys
 import statistics
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from annotate import text_bubbles, sticker_counts, turn_median  # noqa: E402  与 annotate.py 共用同一套口径
+from annotate import (text_bubbles, sticker_counts, turn_median,
+                      counted_bubbles, truncated_count)  # noqa: E402  与 annotate.py 共用同一套口径
 
 ACTS = {'answer', 'confirm', 'comfort', 'joke', 'share', 'clarify', 'ask', 'refuse', 'close', 'silent'}
 MOODS = {'平', '开心', '难过', '生气', '撒娇', '无聊', '累'}
@@ -119,19 +120,21 @@ def main(path):
                 fails.append(f'{rid}：第 {n_her} 轮 stickers 对不上')
             if st.get('text_bubbles') != len(tb):
                 fails.append(f'{rid}：第 {n_her} 轮 text_bubbles 对不上')
+            if st.get('truncated') != truncated_count(bubbles):
+                fails.append(f'{rid}：第 {n_her} 轮 truncated 对不上')
             if bool(st.get('asked')) != any(is_asked(b) for b in tb):
                 fails.append(f'{rid}：第 {n_her} 轮 asked 对不上')
             if bool(st.get('asked_strict')) != any(is_asked_strict(b) for b in tb):
                 fails.append(f'{rid}：第 {n_her} 轮 asked_strict 对不上')
             aggb.append(len(bubbles))
-            aggc += [len(b) for b in tb]
+            aggc += [len(b) for b in counted_bubbles(bubbles)]
             asked += 1 if st.get('asked') else 0
             asked_s += 1 if st.get('asked_strict') else 0
             sw += 1 if st.get('switched_topic') else 0
         agg = r.get('stats') or {}
         for k in ('her_turns', 'silent_turns', 'bubbles_per_turn_median', 'median_chars',
-                  'stickers_total', 'sticker_turns', 'asked_rate', 'asked_strict_rate',
-                  'switched_topic_count'):
+                  'stickers_total', 'sticker_turns', 'truncated_bubbles',
+                  'asked_rate', 'asked_strict_rate', 'switched_topic_count'):
             if k not in agg:
                 fails.append(f'{rid}：顶层 stats 缺 {k}')
         if agg.get('her_turns') != n_her:

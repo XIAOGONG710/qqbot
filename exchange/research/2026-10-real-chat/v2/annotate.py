@@ -176,6 +176,21 @@ def text_bubbles(bubbles):
     return [b for b in bubbles if not is_sticker(b)]
 
 
+# ---- 截断气泡的口径（Claude 10-12 复核第 2 条）----
+# 脱敏时超过 20 字的气泡被截断加「…」，那不是真人的字数，不能进 median_chars。
+def is_truncated(b: str) -> bool:
+    return b.strip().endswith(('…', '...'))
+
+
+def counted_bubbles(bubbles):
+    """进字数统计的气泡：既不是占位符，也不是被截断的。"""
+    return [b for b in text_bubbles(bubbles) if not is_truncated(b)]
+
+
+def truncated_count(bubbles):
+    return sum(1 for b in text_bubbles(bubbles) if is_truncated(b))
+
+
 def sticker_counts(bubbles):
     out = {'表情包': 0, '图片': 0, '语音': 0}
     for b in bubbles:
@@ -192,8 +207,8 @@ def sticker_counts(bubbles):
 
 
 def turn_median(bubbles):
-    tb = text_bubbles(bubbles)
-    return med([len(b) for b in tb]) if tb else None
+    cb = counted_bubbles(bubbles)
+    return med([len(b) for b in cb]) if cb else None
 
 
 def annotate(rec, rid, key_turns='turns'):
@@ -209,18 +224,20 @@ def annotate(rec, rid, key_turns='turns'):
     # 复核第 3 条：两个问句口径都给。asked = 宽松（旧口径），asked_strict = stats.ts 那个
     # 复核第 1 条之外：median_chars 的聚合要排除空轮（silent，bubbles 为空的轮）
     agg_bubbles, agg_chars, asked_n, asked_strict_n, switched_n = [], [], 0, 0, 0
-    sticker_total, sticker_turns = 0, 0
+    sticker_total, sticker_turns, truncated_total = 0, 0, 0
     for i, t in enumerate(turns):
         if i not in marks:
             continue
         act, mood, switched = marks[i]
         bubbles = t.get('bubbles') or []
         tb = text_bubbles(bubbles)          # 占位符不计入字数与问句
+        cb = counted_bubbles(bubbles)       # 再排除被截断的（Claude 复核第 2 条）
         t['act'] = act
         t['mood'] = mood
         t['stats'] = {
             'bubbles': len(bubbles),
             'text_bubbles': len(tb),
+            'truncated': truncated_count(bubbles),
             'median_chars': turn_median(bubbles),
             'stickers': sticker_counts(bubbles),
             'asked': any(is_asked(b) for b in tb),
@@ -228,7 +245,8 @@ def annotate(rec, rid, key_turns='turns'):
             'switched_topic': bool(switched),
         }
         agg_bubbles.append(len(bubbles))
-        agg_chars.extend([len(b) for b in tb])     # 空轮与纯表情轮都不进 median_chars
+        agg_chars.extend([len(b) for b in cb])   # 空轮 / 纯表情轮 / 截断气泡都不进 median_chars
+        truncated_total += t['stats']['truncated']
         stk = t['stats']['stickers']
         sticker_total += sum(stk.values())
         if sum(stk.values()):
@@ -249,6 +267,7 @@ def annotate(rec, rid, key_turns='turns'):
         'median_chars': med(agg_chars) if agg_chars else None,
         'stickers_total': sticker_total,
         'sticker_turns': sticker_turns,
+        'truncated_bubbles': truncated_total,
         'asked_rate': round(asked_n / len(her_idx), 3) if her_idx else 0,
         'asked_strict_rate': round(asked_strict_n / len(her_idx), 3) if her_idx else 0,
         'switched_topic_count': switched_n,

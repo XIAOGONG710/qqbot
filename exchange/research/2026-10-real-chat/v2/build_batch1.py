@@ -27,7 +27,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from annotate import (is_asked, is_asked_strict, med, text_bubbles, sticker_counts,
-                      turn_median)   # 复用 K1 的口径（含 [表情包] 占位符口径）
+                      turn_median, counted_bubbles, truncated_count)   # 复用 K1 的口径（含占位符/截断口径）
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -144,7 +144,7 @@ def main():
         rec['persona_fit'] = {'level': PF[rid][0], 'why': PF[rid][1]}
 
         agg_b, agg_c, asked, asked_s, sw = [], [], 0, 0, 0
-        sticker_total, sticker_turns = 0, 0
+        sticker_total, sticker_turns, truncated_total = 0, 0, 0
         out_turns = []
         for who, bubbles, gap, act, mood, switched in turns:
             t = {'who': who, 'bubbles': bubbles, 'gap': gap}
@@ -156,6 +156,7 @@ def main():
                 t['stats'] = {
                     'bubbles': len(bubbles),
                     'text_bubbles': len(tb),
+                    'truncated': truncated_count(bubbles),
                     'median_chars': turn_median(bubbles),
                     'stickers': st,
                     'asked': any(is_asked(b) for b in tb),
@@ -163,7 +164,8 @@ def main():
                     'switched_topic': bool(switched),
                 }
                 agg_b.append(len(bubbles))
-                agg_c += [len(b) for b in tb]
+                agg_c += [len(b) for b in counted_bubbles(bubbles)]
+                truncated_total += t['stats']['truncated']
                 sticker_total += sum(st.values())
                 sticker_turns += 1 if sum(st.values()) else 0
                 asked += 1 if t['stats']['asked'] else 0
@@ -180,6 +182,7 @@ def main():
             'median_chars': med(agg_c) if agg_c else None,
             'stickers_total': sticker_total,
             'sticker_turns': sticker_turns,
+            'truncated_bubbles': truncated_total,
             'asked_rate': round(asked / n_her, 3) if n_her else 0,
             'asked_strict_rate': round(asked_s / n_her, 3) if n_her else 0,
             'switched_topic_count': sw,

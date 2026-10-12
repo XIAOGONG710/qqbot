@@ -58,11 +58,12 @@ def is_asked_strict(text):
 
 # ---- 占位符口径：跟 annotate.py 共用同一套实现，避免两边算得不一样 ----
 sys.path.insert(0, HERE)
-from annotate import is_sticker, text_bubbles, sticker_counts, turn_median  # noqa: E402
+from annotate import (is_sticker, text_bubbles, sticker_counts, turn_median,
+                      counted_bubbles, truncated_count)  # noqa: E402
 
 
 def median_chars(bubbles):
-    """只数文字气泡；整轮只有表情包/图片/语音时为 None（Claude 10-12 复核要求）。"""
+    """只数文字气泡、且排除被截断的（「…」结尾）；整轮只有表情/图片/语音时为 None。"""
     return turn_median(bubbles)
 
 
@@ -122,6 +123,8 @@ def check_k1():
                     fail(f'{rid}：第 {n_her} 轮 stats.stickers 和脚本算的不一致')
                 if st.get('text_bubbles') != len(text_bubbles(bubbles)):
                     fail(f'{rid}：第 {n_her} 轮 stats.text_bubbles 和脚本算的不一致')
+                if st.get('truncated') != truncated_count(bubbles):
+                    fail(f'{rid}：第 {n_her} 轮 stats.truncated 和脚本算的不一致')
                 if bool(st.get('asked')) != any(is_asked(b) for b in text_bubbles(bubbles)):
                     fail(f'{rid}：第 {n_her} 轮 stats.asked 和脚本算的不一致')
                 if bool(st.get('asked_strict')) != any(is_asked_strict(b) for b in text_bubbles(bubbles)):
@@ -132,8 +135,8 @@ def check_k1():
                 fail(f'{rid}：没有任何 her 侧轮次')
             agg = rec.get('stats') or {}
             for f in ('her_turns', 'silent_turns', 'bubbles_per_turn_median', 'median_chars',
-                      'stickers_total', 'sticker_turns', 'asked_rate', 'asked_strict_rate',
-                      'switched_topic_count'):
+                      'stickers_total', 'sticker_turns', 'truncated_bubbles',
+                      'asked_rate', 'asked_strict_rate', 'switched_topic_count'):
                 if f not in agg:
                     fail(f'{rid}：顶层 stats 缺 {f}')
     missing = [i for i in want_ids if i not in seen]
