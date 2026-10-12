@@ -12,6 +12,7 @@ import { ocrLines } from './media.ts';
 import { isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
 import { configuredImageDescriber, STICKER_VISION_PROMPT } from './vision.ts';
 import { stickerDecider, stickerShelf } from './stickers.ts';
+import { qqFavorites } from './sticker-favorites.ts';
 import { bqbDiscover } from './sticker-sources.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -21,12 +22,14 @@ const log = createLog(join(config.dataDir, 'logs'));
 const client = new OneBotClient({ url: config.onebot.url, token: config.onebot.token, onEvent, log });
 const vision = configuredImageDescriber(config);
 const stickerVision = configuredImageDescriber(config, STICKER_VISION_PROMPT);
+const qqFav = qqFavorites((action, params) => client.call<unknown>(action, params));
 const stickers = (config.stickers ?? 'off') !== 'off' && stickerVision ? stickerShelf({
     dir: join(config.dataDir, 'stickers'),
     describe: image => stickerVision.describe(image),
     decide: stickerDecider(config.llm, log),
     trendDiscover: bqbDiscover({ dir: join(config.dataDir, 'stickers', 'sources'), log }),
-    discover: () => client.call<string[]>('fetch_custom_face', { count: 48 }),
+    discover: qqFav.discover,
+    favorites: qqFav.favorites,
     log,
 }) : undefined;
 const app = startApp({
