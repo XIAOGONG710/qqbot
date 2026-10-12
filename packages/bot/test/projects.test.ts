@@ -131,4 +131,11 @@ describe('最近几天的摄影练习进提示词（lifeInPrompt）', () => {
         const late = recentPhotography([work('2026-10-14T23:50:00', 50, '把新相机拍的照片导出来修')], new Date('2026-10-15T10:00:00+08:00'), 3, sleepAt2)!;
         assert.match(describeRecentPhotography(late, new Date('2026-10-15T10:00:00+08:00'), sleepAt2), /上一回是昨天晚上]$/, '00:40 弄完的，第二天说昨天晚上');
     });
+    test('正好弄到睡觉那一刻（02:00 整）的还是头天晚上（10-12 线上副本：22:00–02:00 第二天上午说成「今天晚上」）', () => {
+        const sleepAt2 = { sleep: '02:00' } as Schedule;
+        const toTwo = recentPhotography([work('2026-10-11T22:00:00', 240, '研究新相机的设置')], new Date('2026-10-12T10:15:00+08:00'), 3, sleepAt2)!;
+        assert.match(describeRecentPhotography(toTwo, new Date('2026-10-12T10:15:00+08:00'), sleepAt2), /上一回是昨天晚上]$/);
+        const older = recentPhotography([work('2026-10-11T22:00:00', 240)], new Date('2026-10-15T20:00:00+08:00'), 5, sleepAt2)!;
+        assert.match(describeRecentPhotography(older, new Date('2026-10-15T20:00:00+08:00'), sleepAt2, 5), /上一回是10 月 11 日]$/, '再往前写几号也按她的那一天');
+    });
 });
