@@ -35,8 +35,8 @@ describe('表达层（ADR 0024）', () => {
     });
 
     test('提示词只给一句约束，不给台词', () => {
-        assert.match(describeLength('short'), /^\[这一轮说话：多数情况只回很短的一句，一两个字也行/);
-        assert.match(describeLength('short'), /难受、报大事、等你安慰或认可、闹别扭，就别压成一两个字/);
+        assert.match(describeLength('short'), /^\[这一轮说话：只回很短的一句，一两个字也行/);
+        assert.match(describeLength('short'), /他在难受、报大事、等安慰或闹别扭时不适用，照平常的说/);
         assert.match(describeLength('long'), /^\[这一轮说话：话多一点/);
     });
 
