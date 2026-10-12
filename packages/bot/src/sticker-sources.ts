@@ -19,6 +19,9 @@ export const BQB_DEFAULT_ALLOW: readonly string[] = [
     // 10-12 18:40 DSH 判完剩下的类别（allow-candidates.md）后，我又在真图上试跑、挑出能直接聊天用的 13 类；
     // 没收：可爱男孩纸 / TATAN（陌生小孩的真人照片）、演奏 / 穿什么（没有字、意思散）、绿帽子（出轨梗）、程序员 / 火柴人 / 浏览器 / 中国春节（太窄或有季节性，以后再说）
     '打电话', '负鼠', '汪蛋', '表情符号', '吃', '微信拍一拍', '莲蓬头男孩', '喷雾', '熊本熊', 'Panda金馆长熊猫', '旅行青蛙', 'Mur猫', '仓鼠',
+    // 10-12 用户说「在加一些符合当前时代的」：目录里编号最靠后（最近加的）、有现在还在用的梗的 5 类。DSH 按「影视动漫游戏版权角色」判了 deny，
+    // 用户的要求本身就是要这类梗；只在本机自用，真人 / 时政 / R 级的（黄仁勋、黑袍纠察队）仍不收。
+    '企鹅家族', '人工智能', '黑神话悟空', '芙莉莲', '葫芦兄弟',
 ];
 /** 第二道闸门：加进 allow 也不要的类别 */
 const BQB_DENY = /特朗普|港独|反.{0,2}独|冠状|病毒|国庆|亮剑|觉醒年代|抬棺|马保国/;
@@ -28,7 +31,7 @@ const CACHE_VERSION = 1;
 
 export interface BqbItem { src: string; category: string; animated: boolean; bytes: number }
 /** allowKey：存的是按当时的名单过滤过的项，名单一变缓存就作废 */
-interface BqbCache { version: typeof CACHE_VERSION; fetchedAt: number; allowKey: string; items: BqbItem[] }
+interface BqbCache { version: typeof CACHE_VERSION; fetchedAt: number; allowKey: string; items: BqbItem[]; /** 目录里所有类别名（含没收的），用来发现维护者新加的类别 */ categories?: string[] }
 
 export interface BqbOptions {
     /** 缓存目录（目录副本只存过滤后的几百到几千项，不到 1 MB） */
@@ -120,9 +123,13 @@ export function bqbDiscover(options: BqbOptions): () => Promise<string[]> {
                 if (!Array.isArray(raw)) throw new Error('目录格式不对');
                 const items = raw.map(item => acceptBqbItem(item, allow)).filter((item): item is BqbItem => !!item);
                 if (!items.length) throw new Error('目录里没有符合名单的图');
-                cache = { version: CACHE_VERSION, fetchedAt: now().getTime(), allowKey, items };
+                const categories = [...new Set(raw.map(item => (item && typeof item === 'object' && typeof (item as Record<string, unknown>).categoryTitle === 'string' ? plain((item as Record<string, string>).categoryTitle!) : '')).filter(Boolean))].sort();
+                const added = cache?.categories ? categories.filter(name => !cache!.categories!.includes(name)) : [];
+                cache = { version: CACHE_VERSION, fetchedAt: now().getTime(), allowKey, items, categories };
                 writeJsonAtomic(cachePath, cache);
                 options.log(`表情来源 bqb：目录更新，${items.length} 张可用`);
+                // 维护者加了新类别（热门的新梗常常是新类别）：不自动收，只记一行，等人看过再进名单
+                if (added.length) options.log(`表情来源 bqb：目录里出现新类别（没在名单内，不会收）：${added.join('、')}`);
             } catch (error) {
                 if (!cache?.items?.length) throw error;
                 options.log(`表情来源 bqb：目录更新失败（${error instanceof Error ? error.message : String(error)}），继续用旧缓存`);

@@ -79,6 +79,21 @@ describe('表情包候选来源 bqb（ADR 0063 第二阶段）', () => {
         await assert.rejects(bqbDiscover({ dir: tmp(), log: () => {}, fetchJson: async () => { throw new Error('断网'); } })());
     });
 
+    test('目录里新出现的类别只记一行日志、不自动收（新梗常常是新类别）', async () => {
+        const dir = tmp();
+        const logs: string[] = [];
+        let time = Date.UTC(2026, 9, 12, 4, 0, 0);
+        let rows: unknown[] = catalog();
+        const discover = bqbDiscover({ dir, log: line => logs.push(line), pool: 50, now: () => new Date(time), fetchJson: async () => rows });
+        const before = await discover();
+        assert.ok(!logs.some(line => line.includes('新类别')), '第一次没有可比的旧目录');
+        time += 8 * 86_400_000;
+        rows = [...catalog(), item('某个新出的梗🆕'), item('某个新出的梗🆕')];
+        const after = await discover();
+        assert.ok(logs.some(line => line.includes('新类别') && line.includes('某个新出的梗')));
+        assert.equal(after.length, before.length, '新类别不在名单里，候选不变');
+    });
+
     test('名单收紧后，旧缓存里不再合格的项马上不出现', async () => {
         const dir = tmp();
         const base = { dir, log: () => {}, pool: 50, fetchJson: async () => catalog() };
