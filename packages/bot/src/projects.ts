@@ -222,10 +222,13 @@ export function recentPhotography(events: readonly LifeEvent[], now: Date, days 
 export function describeRecentPhotography(practice: RecentPractice, now: Date, schedule?: Schedule, days = 3): string {
     // 按天说，不报总时长：账上一段空闲活动占满整个下午或晚上，加起来是「3 天 17 个半小时」，真人不这么算，她会跟着说夸张（10-10 场景 life-in-prompt）
     const dayOf = (d: Date) => herDayOf(d, schedule).getTime();
-    const ago = Math.round((dayOf(now) - dayOf(practice.last)) / 86_400_000);
-    const hour = practice.last.getHours();
+    // 按这一段的最后一分钟算哪天：10-11 22:00 弄到 02:00 整（正好是她睡觉、作息日换天的时刻），按结束时刻算成第二天，第二天上午说「上一回是今天晚上」（10-12 线上副本试算）
+    const lastMoment = new Date(practice.last.getTime() - 60_000);
+    const ago = Math.round((dayOf(now) - dayOf(lastMoment)) / 86_400_000);
+    const hour = lastMoment.getHours();
     // 零点以后到早上还没睡的那一段是头天的晚上
     const part = hour < 5 || hour >= 18 ? '晚上' : hour < 12 ? '上午' : '下午';
-    const when = ago === 0 ? `今天${part}` : ago === 1 ? `昨天${part}` : ago === 2 ? `前天${part}` : `${practice.last.getMonth() + 1} 月 ${practice.last.getDate()} 日`;
+    const date = herDayOf(lastMoment, schedule);
+    const when = ago === 0 ? `今天${part}` : ago === 1 ? `昨天${part}` : ago === 2 ? `前天${part}` : `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
     return `[你这几天拍照修图（你自己过的日子，账上记着的；用不用、怎么说你自己定，没写的别编）：${days} 天里有 ${practice.days} 天在弄（${practice.steps.join('、')}）；上一回是${when}]`;
 }
