@@ -102,11 +102,19 @@ function koishiConnection() {
     return last;
 }
 
+/**
+ * 不能用 detached: true：Node 在 Windows 上会让这个中间的 powershell 没有控制台，它里面的 Start-Process 开不出窗口、也没有报错——
+ * 10-11 19:57 和 10-12 09:45 两次整套停了，守护几十次「拉起」一个窗口都没开出来（start-koishi.log 一条新的 start 都没有），停了近三小时。
+ * 10-12 12:52 在这台 VM 上拿无害脚本试了四种：detached: true 两种都没有窗口，detached: false 两种都开出来了（用户会话 6、可交互）。
+ * 中间的 powershell 开完窗口就退出，新窗口是它的孙进程，不跟着守护走。
+ */
 function openWindow(script) {
     const file = join(root, 'scripts', script);
-    spawn('powershell.exe', ['-NoProfile', '-Command',
+    const child = spawn('powershell.exe', ['-NoProfile', '-Command',
         `Start-Process powershell.exe -ArgumentList '-NoExit','-ExecutionPolicy','Bypass','-File','${file}' -WorkingDirectory '${root}'`],
-    { detached: true, stdio: 'ignore' }).unref();
+    { stdio: 'ignore', windowsHide: true });
+    child.on('error', error => say(`开窗口失败（${script}）：${error.message}`));
+    child.unref();
 }
 
 function kill(pids) {
