@@ -15,8 +15,10 @@ const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
 
 const BASE = 'https://zhaoolee.com/ChineseBQB/';
 // 她可能会留的：动物、可爱女孩、日常 meme 小人；对照：时政 / 疫情 / 名人 / 贡献暂存
-const LIKELY = ['可爱的女孩纸', '是喵星人啦', '开心鸭', '沙雕企鹅', '小幺鸡', '狗', '鸽子', '猪', '鹦鹉', '沙雕情侣头像', '白色小人', '滑稽大佬', '全是心心', '斗图之王', '乌龟'];
-const CONTROL = ['特朗普', '反港独', '冠状病毒', '罗翔', '微信网友贡献表情包'];
+const fromEnv = (name: string, fallback: string[]) => (process.env[name] === undefined ? fallback : process.env[name]!.split(',').map(x => x.trim()).filter(Boolean));
+// 环境变量 TRIAL_LIKELY / TRIAL_CONTROL（逗号分隔的类别名，空串表示没有）可以换掉下面两组
+const LIKELY = fromEnv('TRIAL_LIKELY', ['可爱的女孩纸', '是喵星人啦', '开心鸭', '沙雕企鹅', '小幺鸡', '狗', '鸽子', '猪', '鹦鹉', '沙雕情侣头像', '白色小人', '滑稽大佬', '全是心心', '斗图之王', '乌龟']);
+const CONTROL = fromEnv('TRIAL_CONTROL', ['特朗普', '反港独', '冠状病毒', '罗翔', '微信网友贡献表情包']);
 
 mkdirSync(out, { recursive: true });
 const indexFile = join(out, 'bqb-search.json');
@@ -38,11 +40,13 @@ for (const [group, names] of [['likely', LIKELY], ['control', CONTROL]] as const
 
 const src = (p: string) => `file:///${join(root, 'packages/bot/src', p).replaceAll('\\', '/')}`;
 const { stickerShelf, stickerDecider } = await import(src('stickers.ts'));
-const { deepSeekImageDescriber, imageDownloader } = await import(src('vision.ts'));
+const { deepSeekImageDescriber, imageDownloader, STICKER_VISION_PROMPT } = await import(src('vision.ts'));
 const { loadConfig, DEFAULTS } = await import(src('config.ts'));
 const config = loadConfig(root);
 const v = DEFAULTS.vision;
-const describer = deepSeekImageDescriber({ baseUrl: v.baseUrl, model: v.model, apiKey: config.llm.apiKey, timeoutMs: v.timeoutMs },
+const describer = deepSeekImageDescriber({ baseUrl: v.baseUrl, model: v.model, apiKey: config.llm.apiKey, timeoutMs: v.timeoutMs,
+    // 表情包专用的看图要求（先抄字再说画面）；TRIAL_PROMPT=default 用聊天里的旧要求做对照
+    ...(process.env.TRIAL_PROMPT === 'default' || !STICKER_VISION_PROMPT ? {} : { prompt: STICKER_VISION_PROMPT }) },
     undefined, imageDownloader(Math.min(4000, v.timeoutMs)));
 
 const log: string[] = [];
