@@ -24,7 +24,8 @@ export const STICKER_DISCOVERY_INTERVAL_MS = 60 * 60_000;
 export const STICKER_TREND_PER_DAY = 3;
 /** 每次发现最多补同步几张进 QQ 收藏 */
 export const STICKER_FAVORITES_PER_SYNC = 10;
-export const STICKER_LIBRARY_MAX = 80;
+// 10-12 19:26 用户一口气发来 60 多张自己常用的，80 张的上限当场把存货全挤掉了；QQ 收藏里反正只加不删，本地多留一些让她选择更多
+export const STICKER_LIBRARY_MAX = 200;
 export const STICKER_REPLY_WINDOW = 8;
 export const STICKER_HISTORY_PREFIX = '她发了个表情包：';
 const INDEX_VERSION = 1;
@@ -378,7 +379,7 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                 remaining--;
             }
 
-            // 公开目录的候选每天最多审看 trendPerDay 个（跨重启也算）：每小时 3 个的话，80 张的收藏一天多就被整批换掉，
+            // 公开目录的候选每天最多审看 trendPerDay 个（跨重启也算）：每小时 3 个的话，收藏一天多就被整批换掉，
             // 她就没有「自己的」表情包了。导入箱和 QQ 自定义表情不受这条限制（量本来就小）。
             const day = localDay(now());
             const trendLeft = (options.trendPerDay ?? STICKER_TREND_PER_DAY) - (index.trend?.day === day ? index.trend.count : 0);
