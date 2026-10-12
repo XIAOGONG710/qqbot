@@ -1,0 +1,23 @@
+{
+    "name": "男朋友档：痛经的第一天，她起来以后告诉他一声（ADR 0064）",
+    "description": "周一 12-21 是她这个周期痛经的第一天（世界里算出来的，不是场景编的）。头天晚上道过晚安；她起床以后主动找他一次，只是告诉他一声：肚子疼、不太舒服，不是要他哄、不要他回应，也不抱怨他没找她。他回「多喝热水」之类，她接得自然，不撒娇求安抚。第二天（还在疼）不再主动说。场景里先把 unwell 这一类开起来（线上的卡还没开）。不用记忆。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-12-20T22:40:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "newsKinds": ["camera", "unwell"],
+    "steps": [
+        { "case": "UW01", "note": "头天晚上道晚安" },
+        { "say": "我先睡啦，晚安" },
+        { "say": "你也早点睡" },
+        { "case": "UW02", "note": "第二天她起来以后主动找他：告诉他不舒服，不是求安抚" },
+        { "wait": "proactive" },
+        { "check": { "proactive": { "count": [1, 1], "replyAny": ["疼", "不舒服", "难受", "躺", "生理期", "姨妈", "肚子"], "replyNone": ["哄我", "安慰我", "快哄", "抱抱我", "你怎么不", "不理我", "都不找我", "关心我", "心疼我"], "allowedTimes": true, "exitClean": true } } },
+        { "say": "那多喝点热水，别硬撑" },
+        { "check": { "replyNone": ["哄我", "你怎么才", "都不关心"], "exitClean": true } },
+        { "case": "UW03", "note": "第二天她还在疼：不再主动说" },
+        { "advance": "1d" },
+        { "check": { "proactive": { "perDayMax": 2, "allowedTimes": true, "absent": ["她那边的事"], "exitClean": true } } }
+    ]
+}

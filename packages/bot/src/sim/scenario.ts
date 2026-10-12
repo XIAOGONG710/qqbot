@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { CONTACT_TIERS, UNLISTED_TIER, type ContactTier, type Tier } from '../config.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
+import { NEWS_KINDS, type NewsKind } from '../proactive.ts';
 import type { LifeEventResult } from '../life-events.ts';
 import type { Interruption, TypedActionKind } from '../actions.ts';
 import { imageLine, voiceLine } from '../media.ts';
@@ -216,6 +217,8 @@ export interface Scenario {
     moodyChance?: number;
     /** 这几种时机的主动消息（日志里的说法，如「她那边的事」）生成时都当没连上模型（10-11 断网那天），看后面的主动怎么接 */
     proactiveOffline?: string[];
+    /** 「她那边的事」开哪几类（ADR 0064）：线上的卡没写 newsKinds（只有相机），场景里用它先把新类开起来看；不写按卡 */
+    newsKinds?: NewsKind[];
     /** 假的图片表情收藏（ADR 0063）：编号是 12 位小写十六进制，描述是她在提示词里看到的那句；真的 shelf 代码，文件是空的（模拟器不发图，气泡里是 <sticker:编号>）。只有写了才给回复器 */
     stickers?: { id: string; description: string; tags: string[] }[];
     /** 假的「真实天气」（ADR 0050）：日期 → 下雨的钟头（0–23），这几天按真实天气算（世界和主动消息都认），别的日子照旧生成 */
@@ -305,6 +308,10 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         ...(s.proactiveOffline !== undefined ? {
             proactiveOffline: Array.isArray(s.proactiveOffline) && s.proactiveOffline.every(x => typeof x === 'string' && x)
                 ? s.proactiveOffline as string[] : fail('proactiveOffline 应为时机说法的数组（「她那边的事」「冷场」…）'),
+        } : {}),
+        ...(s.newsKinds !== undefined ? {
+            newsKinds: Array.isArray(s.newsKinds) && s.newsKinds.every(x => NEWS_KINDS.includes(x as NewsKind))
+                ? s.newsKinds as NewsKind[] : fail(`newsKinds 应为 ${NEWS_KINDS.join(' / ')} 组成的数组`),
         } : {}),
         ...(s.realRain !== undefined ? { realRain: rainDays(s.realRain, fail) } : {}),
         ...(s.mood !== undefined ? { mood: typeof s.mood === 'string' && s.mood ? s.mood : fail('mood 应为心情的名字') } : {}),

@@ -390,11 +390,13 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     let forgotten = 0;
 
     // 主动消息（ADR 0011）：场景开着、卡上有主动设置和作息时，计划器跑在虚拟时钟上（真发，记录在 dataDir/proactive）
-    const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && character.proactive && character.schedule
+    // 场景可以先把还没上线的事件类开起来（ADR 0064）
+    const proactiveSettings = character.proactive && scenario.newsKinds ? { ...character.proactive, newsKinds: scenario.newsKinds } : character.proactive;
+    const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && proactiveSettings && character.schedule
         ? createProactivePlanner({
             contact,
             schedule: character.schedule,
-            settings: character.proactive,
+            settings: proactiveSettings,
             dates: character.dates,
             mode: 'on',
             history,
@@ -430,7 +432,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             // 她那边的事（ADR 0057）：和 app.ts 一样
             ...(sharedWorld && character.herWorld ? {
                 news: newsFrom(now => sharedWorld!.at(character.herWorld!, character.schedule!, now), character.schedule!, {
-                    kinds: newsKindsOf(character.proactive),
+                    kinds: newsKindsOf(proactiveSettings),
                     ...(character.herWorld.body ? { bodyAt: (time: Date) => bodyAt(character.herWorld!.body!, character.schedule!, time) } : {}),
                 }),
             } : {}),

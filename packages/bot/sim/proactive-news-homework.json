@@ -1,0 +1,24 @@
+{
+    "name": "男朋友档：赶完作业了，她主动跟他说一声（ADR 0064）",
+    "description": "周三 10-14 晚上，她有一份 22:00 写完、第二天早上交的数据结构作业（世界里算出来的，不是场景编的）。20:30 和 21:15 各聊一句，她说作业还没写完（每句之后虚拟时钟会等到聊天片段结束，所以最后一句在 21:15，之后到 22:00）；之后没人说话；22:05–22:20 之间她主动找他一次，说作业写完了，不要他回应或夸她、不抱怨他没找她。他回了接得自然；睡前不再为这件事单发（他没回前她也不会连着发）。场景里先把 homework_done 这一类开起来（线上的卡还没开）。不用记忆。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-14T20:30:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "newsKinds": ["camera", "homework_done"],
+    "steps": [
+        { "case": "HW01", "note": "晚上聊几句：作业还没写完（世界里 22:00 才写完）" },
+        { "say": "在干嘛" },
+        { "say": "今晚作业写完了吗" },
+        { "check": { "replyNone": ["写完了", "写好了", "已经写完", "交了"], "exitClean": true } },
+        { "case": "HW02", "note": "22:00 写完以后她主动找他：说的是作业写完了，不要他回应或夸" },
+        { "wait": "proactive" },
+        { "check": { "proactive": { "count": [1, 1], "occasions": ["她那边的事"], "replyAny": ["作业", "写完", "写好", "数据结构", "交了"], "replyNone": ["你怎么不", "不理我", "都不找我", "夸夸我", "快夸", "你得夸"], "allowedTimes": true, "exitClean": true } } },
+        { "say": "辛苦啦，早点睡" },
+        { "check": { "exitClean": true } },
+        { "case": "HW03", "note": "到第二天傍晚：不再为这份作业单发" },
+        { "advance": "1d" },
+        { "check": { "proactive": { "perDayMax": 2, "allowedTimes": true, "absent": ["她那边的事"], "exitClean": true } } }
+    ]
+}
