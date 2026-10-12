@@ -41,6 +41,11 @@ describe('出口检查：做不到的事（ADR 0006 取证里的原句）', () =
             assert.deepEqual(promises(line), [], line);
         }
     });
+    test('图片表情开着时可以说发个表情包，照片和普通图片仍然做不到', () => {
+        assert.equal(inspectReply('给你发个表情包', [], undefined, undefined, undefined, false, true).some(i => i.kind === 'promise'), false);
+        assert.ok(inspectReply('给你发个表情包', []).some(i => i.kind === 'promise'), '开关没开时仍拦');
+        assert.ok(inspectReply('给你发张照片', [], undefined, undefined, undefined, false, true).some(i => i.kind === 'promise'));
+    });
     test('文字亲密轮次不准再推回当面；普通轮次和直接文字回应不误伤', () => {
         for (const line of ['亲亲得当面给', 'mua只能见面给', '隔空的，不算数，明天当面补个亲', '你自己亲屏幕去', '亲完了你也摸不着', '先存着，见面兑现',
             'mua\n这个要等我们见了再给', 'mua\n现在不算，等见面再说', '抱抱\n真的还是线下才有感觉', 'mua，先欠着，下次见面给你', '隔着屏幕亲了也没用',

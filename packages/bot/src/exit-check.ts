@@ -102,7 +102,7 @@ export function tidyFaces(reply: string, faces?: FaceContext): { reply: string; 
     return { reply: text, notes };
 }
 
-// 做不到的事：bot 只能发文字（决策 3）。主动给人看 / 发照片、语音、视频、红包，打电话、开视频，或者说得像已经发了。
+// 做不到的事：bot 能发文字和开关启用时本地收藏的图片表情；不能主动给人看 / 发照片、普通图片、语音、视频、红包，打电话、开视频，或者说得像已经发了。
 // 拒绝的说法不算：前面三个字以内有「不、没、别、懒得」（「才不想给你看」「我又没开相册给你看」），
 // 或者紧跟着「不行、不了、不方便、没法、算了」（「打电话不行」）；隔了标点的不管。
 // 再往前就不算了：「等它好好坐着不动我再拍了发你」是承诺。
@@ -138,7 +138,7 @@ const MEDIA_LINE = /^\s*\[(?:语音|图片)(?:\]|[ ，：])/;
  */
 const TEXT_INTIMACY_DEFERRAL = /(?:亲|抱|mua|啵)[^，。！？；]{0,8}(?:得|要|只能|必须)(?:当面|见面|线下)|(?:得|要|只能|必须)(?:当面|见面|线下).{0,8}(?:亲|抱|补|算|行|给(?=$|[，。！？；])|兑现(?=$|[，。！？；]))|(?:当面|见面|线下).{0,8}才(?:亲|抱|给|补|兑现)|(?:得|要|只能|必须)?等(?:我们)?(?:见了|见面)(?:以后|的时候)?(?:再|才)?(?:亲|抱|算|给(?=$|[，。！？；])|说(?=$|[，。！？；])|兑现(?=$|[，。！？；]))|现在(?:还)?不算.{0,8}(?:见面|见了|线下)|(?:真的)?还是线下才(?:有感觉|算|行)|隔空.{0,8}(?:不算|不作数|没用|不顶用|摸不着|没感觉)|隔着?(?:屏幕|网线).{0,10}(?:不算|不作数|没用|不顶用|摸不着|没感觉)|(?:文字|线上|云)(?:里|上)?(?:的)?(?:亲|抱|mua|啵){1,2}.{0,8}(?:不算|不作数|没用|不顶用|没感觉)|(?:自己|你去)亲(?:一下)?屏幕|亲(?:完)?(?:了)?你也摸不着|(?:先)?(?:留着|存着|欠着).{0,12}(?:当面|见面|见了|线下|下次)(?:给|补|兑现)?|(?:明天|下次).{0,8}(?:当面|见面|线下)?.{0,4}(?:补个?(?:亲|抱|mua)|补给你|兑现(?=$|[，。！？；]))/i;
 
-export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext, books?: BookProgressContext, faces?: FaceContext, textIntimacy = false): ExitIssue[] {
+export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext, books?: BookProgressContext, faces?: FaceContext, textIntimacy = false, imageStickers = false): ExitIssue[] {
     const issues: ExitIssue[] = [];
     // 模型会把“mua”和“等见面再给”拆成两个气泡；用等长标点替换换行后整段查，命中位置仍能映射回原行。
     if (textIntimacy) {
@@ -155,7 +155,7 @@ export function inspectReply(reply: string, banned: readonly string[], speech?: 
         const script = SCRIPT.exec(text);
         if (script) issues.push({ line, kind: 'script', match: script[0].trim() });
         const promise = PROMISE.exec(text.trim());
-        if (promise) issues.push({ line, kind: 'promise', match: promise[0] });
+        if (promise && !(imageStickers && /表情包/.test(text))) issues.push({ line, kind: 'promise', match: promise[0] });
         for (const word of banned) if (text.includes(word)) issues.push({ line, kind: 'banned', match: word });
         // QQ 里没有的表情：平时 tidyFaces 已经去掉，还在的是去掉就什么都不剩的
         for (const token of new Set(facesIn(text).unknown)) issues.push({ line, kind: 'face', face: 'unknown', match: token });
@@ -235,6 +235,8 @@ export interface ReviewOptions {
     faces?: FaceContext;
     /** 男朋友这一轮明确在要文字抱抱、亲亲：不允许回复又降级成“只能当面 / 隔空不算”。 */
     textIntimacy?: boolean;
+    /** ADR 0063：开着时允许说“发个表情包”；照片、普通图片仍然拦。 */
+    imageStickers?: boolean;
     /** 在原来的提示词末尾加上这句说明重新生成，返回清理过的回复 */
     regenerate: (note: string) => Promise<string>;
     log: (message: string) => void;
@@ -248,7 +250,7 @@ function strip(reply: string, options: ReviewOptions): { reply: string; issues: 
     if (tidy.notes.length) options.log(`出口检查：小黄脸——${tidy.notes.join('；')}，去掉`);
     let text = tidy.reply;
     for (let round = 0; ; round++) {
-        const issues = inspectReply(text, options.banned, options.speech, options.books, options.faces, options.textIntimacy);
+        const issues = inspectReply(text, options.banned, options.speech, options.books, options.faces, options.textIntimacy, options.imageStickers);
         const removable = issues.filter(strippable);
         if (removable.length === 0 || round === 2) return { reply: text, issues: issues.filter(i => !strippable(i)) };
         const next = stripOpeners(text, removable);

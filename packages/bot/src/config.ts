@@ -14,6 +14,10 @@ import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from './st/world-
 /** 看图能用的提供方（ADR 0055）。DeepSeek 复用聊天模型的 QQBOT_LLM_API_KEY，不另要 key。 */
 export const VISION_PROVIDERS = ['deepseek'] as const;
 
+/** 图片表情分阶段开关（ADR 0063）：先只收藏核对，再允许真实发送。 */
+export const STICKER_MODES = ['off', 'collect', 'send'] as const;
+export type StickerMode = (typeof STICKER_MODES)[number];
+
 /** 名单里能用的档位（ADR 0003），从亲到疏 */
 export const CONTACT_TIERS = ['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger'] as const;
 export type ContactTier = (typeof CONTACT_TIERS)[number];
@@ -40,6 +44,7 @@ export const DEFAULTS = {
     lifeInPrompt: false,
     realWeather: true,
     media: true,
+    stickers: 'off' as StickerMode,
     candidates: 1,
     contextTurns: 0,
     contextContacts: [] as readonly number[],
@@ -110,6 +115,8 @@ export interface AppConfig {
      * 转不出来、超时照旧「[语音]」「[图片]」。默认是
      */
     media: boolean;
+    /** 图片表情（ADR 0063）：off 关闭；collect 只收藏核对；send 才会进提示词并真实发送。默认 off */
+    stickers?: StickerMode;
     /** 看图（ADR 0055）：有这一节才把普通图片交给 DeepSeek；复用 QQBOT_LLM_API_KEY */
     vision?: { provider: (typeof VISION_PROVIDERS)[number]; model: string; baseUrl?: string; timeoutMs: number };
     /** 他难过、说亲密话、收尾时一次生成几个候选、按规则挑一个（ADR 0041）。默认 1（不挑）；3 是三倍的模型调用（并行，不加时间） */
@@ -262,6 +269,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         lifeInPrompt: bool(file, 'lifeInPrompt', '', DEFAULTS.lifeInPrompt),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         media: bool(file, 'media', '', DEFAULTS.media),
+        stickers: stickerMode(file.stickers),
         ...(vision ? { vision } : {}),
         candidates: candidateCount(file.candidates),
         contextTurns: contextTurnCount(file.contextTurns),
@@ -294,6 +302,14 @@ function proactiveMode(value: unknown): ProactiveMode {
     if (value === undefined) return DEFAULTS.proactive;
     if (!PROACTIVE_MODES.includes(value as ProactiveMode)) throw new Error(`配置 proactive 应为 ${PROACTIVE_MODES.map(v => JSON.stringify(v)).join(' / ')} 之一`);
     return value as ProactiveMode;
+}
+
+function stickerMode(value: unknown): StickerMode {
+    if (value === undefined) return DEFAULTS.stickers;
+    if (!STICKER_MODES.includes(value as StickerMode)) {
+        throw new Error(`配置 stickers 应为 ${STICKER_MODES.map(v => JSON.stringify(v)).join(' / ')} 之一`);
+    }
+    return value as StickerMode;
 }
 
 function section(file: Json, key: string): Json {

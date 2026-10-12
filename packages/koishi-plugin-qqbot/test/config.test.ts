@@ -71,6 +71,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(config.unlistedFriends, DEFAULTS.unlistedFriends);
         assert.equal(config.schedule, DEFAULTS.schedule);
         assert.equal(config.media, DEFAULTS.media);
+        assert.equal(config.stickers, DEFAULTS.stickers);
         assert.equal(config.vision.enabled, false);
         assert.equal(config.moody, DEFAULTS.moody);
         assert.equal(config.speechCheck, DEFAULTS.speechCheck);
@@ -99,6 +100,8 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
             { ...minimal, speechCheck: false },
             { ...minimal, herDays: false },
             { ...minimal, media: false },
+            { ...minimal, stickers: 'collect' },
+            { ...minimal, stickers: 'send' },
             { ...minimal, vision: { enabled: true, model: 'deepseek-flash', timeoutMs: 6000 } },
         ];
         for (const sample of samples) {
@@ -122,6 +125,15 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(fromKoishi(before0009).media, true);
         assert.equal(fromKoishi({ ...minimal, media: false }).media, false);
         assert.equal('media' in (Config.simplify(Config(minimal as never)) as object), false);
+    });
+
+    test('图片表情（ADR 0063）：旧配置默认关；collect/send 分开；默认值不写回 yml', () => {
+        assert.equal(fromKoishi(minimal).stickers, 'off');
+        assert.equal(fromKoishi(before0009).stickers, 'off');
+        assert.equal(fromKoishi({ ...minimal, stickers: 'collect' }).stickers, 'collect');
+        assert.equal(fromKoishi({ ...minimal, stickers: 'send' }).stickers, 'send');
+        assert.throws(() => Config({ ...minimal, stickers: true } as never));
+        assert.equal('stickers' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
     test('DeepSeek 看图（ADR 0055）：默认关；打开后填默认接口和模型，复用 LLM key', () => {

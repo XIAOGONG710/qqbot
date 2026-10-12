@@ -39,6 +39,7 @@ import { loadNeedsAnchor } from './needs.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
+import type { StickerShelf } from './stickers.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -52,6 +53,8 @@ export const WEATHER_REFRESH_MS = 30 * 60_000;
 export interface Transport {
     /** 发一条私聊文字，返回 QQ 消息 id；文字里白名单的小黄脸「[捂脸]」发成 face 段（qq-faces.ts textToSegments，ADR 0051） */
     sendPrivateText(userId: number, text: string): Promise<number>;
+    /** 发本地图片表情；配置 stickers 开时两个入口都提供。 */
+    sendPrivateImage?(userId: number, file: string, summary: string): Promise<number>;
     /** NapCat 的 get_friend_msg_history：某人最近 count 条私聊（含小号自己发的），从旧到新。没有任何记录时 NapCat 也报错 */
     friendHistory(userId: number, count: number): Promise<HistoryMessage[]>;
 }
@@ -122,6 +125,8 @@ export interface AppOptions {
     media?: MediaReader;
     /** 看图（ADR 0055）：运行入口按配置建；测试也可以直接给假的 */
     vision?: ImageDescriber;
+    /** 图片表情收藏（ADR 0063）；运行入口按配置建，测试可给假的。 */
+    stickers?: StickerShelf;
     /** 测试用：换掉听、看各项的上限 */
     mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>;
 }
@@ -131,7 +136,7 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, mediaTimeouts }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, stickers, mediaTimeouts }: AppOptions): App {
     // 每个档位一张角色卡和一本世界书，用到时读一次
     const cards = new Map<Tier, TierCard>();
     const cardFor = (tier: Tier) => {
@@ -226,6 +231,14 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
     const canRead = [media?.voiceToText && '语音转文字', media?.ocr && '图上的字（OCR）', vision && '看图（只对名单里的人）'].filter(Boolean).join('、');
     log(`听语音、看图：${!config.media ? '关（配置 media: false），照旧「[语音]」「[图片]」'
         : canRead ? `开（${canRead}；语音最多等 ${mediaLimits.voice / 1000} 秒，OCR ${mediaLimits.ocr / 1000} 秒，看图模型 ${mediaLimits.vision / 1000} 秒，读不出来照旧「[语音]」「[图片]」）` : '开，但入口没给 NapCat 的语音转文字和 OCR，照旧「[语音]」「[图片]」'}`);
+    const stickerMode = config.stickers ?? 'off';
+    const collectingStickers = stickerMode !== 'off' ? stickers : undefined;
+    const sendingStickers = stickerMode === 'send' && transport.sendPrivateImage ? collectingStickers : undefined;
+    log(`图片表情：${stickerMode === 'off' ? '关（配置 stickers: "off"）'
+        : !collectingStickers ? `配置为 ${stickerMode}，但看图或收藏库没准备好，不工作`
+            : stickerMode === 'collect' ? `只收藏核对（本地 ${collectingStickers.status().count} 个；不进提示词、不发送）`
+                : sendingStickers ? `允许发送（本地 ${sendingStickers.status().count} 个；第一阶段只对男朋友档）`
+                    : '配置为 send，但图片发送通道没准备好；仍只收藏、不发送'}`);
     // 主动消息：卡上写了 proactive 的名单联系人（名单外的不主动）；要按作息算时机
     const proactiveContacts = config.proactive !== 'off' && config.schedule
         ? config.contacts.filter(c => cardFor(c.tier).character.proactive && cardFor(c.tier).character.schedule)
@@ -359,6 +372,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
             herDays: config.herDays,
             candidates: config.candidates,
             ...contextWindowFor(contact),
+            ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
             history,
             memory,
@@ -370,6 +384,12 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；
             // 超时不重发：可能已经发出去了，再发就重复
             send: async (userId, text) => {
+                const sticker = contact.tier === 'boyfriend' ? sendingStickers?.resolve(text) : undefined;
+                if (sticker) {
+                    const id = await transport.sendPrivateImage!(userId, sticker.file, `[${sticker.description}]`);
+                    sendingStickers!.used(sticker.id);
+                    return id;
+                }
                 try {
                     return await transport.sendPrivateText(userId, text);
                 } catch (error) {
@@ -465,6 +485,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
         }
         // 补回时可能已经从历史里拿到过这条
         if (history.load(event.user_id).some(m => m.messageId === event.message_id)) return;
+        // 只从名单联系人收到的图片表情里挑；看图、判断、下载都在后台串行，不挡住这条消息的正常回复。
+        if (collectingStickers && config.contacts.some(contact => contact.qq === event.user_id && contact.tier === 'boyfriend')) {
+            void collectingStickers.consider(event.message, { from: event.user_id, messageId: event.message_id });
+        }
         const queued = inbox.get(event.user_id);
         const reader = readerFor(event.user_id);
         if (!queued && !reader?.needs(event.message)) {
@@ -506,6 +530,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
             let fresh = newerThanStored(history.load(contact.qq), fetched, tierRecord.since(contact.qq));
             // 他发的语音、图片先听一听、看一看（ADR 0052）；读的时候实时收到的那条可能已经记下了，按 id 再筛一遍
             const backReader = readerFor(contact.qq);
+            if (collectingStickers && contact.tier === 'boyfriend') {
+                for (const message of fresh.filter(message => (message.sender?.user_id ?? message.user_id) !== selfId)) {
+                    void collectingStickers.consider(message.message, { from: contact.qq, messageId: message.message_id });
+                }
+            }
             if (backReader && fresh.some(m => backReader.needs(m.message))) {
                 const contactLog = (message: string) => log(`[${contact.qq}] ${message}`);
                 fresh = await Promise.all(fresh.map(async m => ({ ...m, message: await backReader.read(m.message, m.message_id, contactLog).catch(() => m.message) })));
@@ -552,6 +581,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, medi
                     startPlanners();
                     for (const planner of planners.values()) planner.poke();
                     syncFollowUps();
+                    void collectingStickers?.discover().catch(error => log(`图片表情：读取 QQ 自定义表情失败（${error instanceof Error ? error.message : String(error)}）`));
                 }
             }
         },

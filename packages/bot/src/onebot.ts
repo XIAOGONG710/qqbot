@@ -140,6 +140,15 @@ export class OneBotClient {
         });
         return data.message_id;
     }
+
+    /** 发一张已经落到本机的图片表情（ADR 0063）。 */
+    async sendPrivateImage(userId: number, file: string, summary: string): Promise<number> {
+        const data = await this.call<{ message_id: number }>('send_private_msg', {
+            user_id: userId,
+            message: [{ type: 'image', data: { file, summary, sub_type: 1 } }],
+        });
+        return data.message_id;
+    }
 }
 
 export function isPrivateFriendMessage(event: OneBotEvent): event is MessageEvent {
