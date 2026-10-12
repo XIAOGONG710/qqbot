@@ -162,6 +162,18 @@ describe('主动消息：到点时能不能发', () => {
     });
     const history = [user(t(10, 11, 22)), her(t(10, 11, 22, 1))];
 
+    test('他最近说过想伤害自己的话（ADR 0068）：早安、下课、睡前、冷场、事、下雨都暂停；待跟进和重要的日子照旧', () => {
+        const calm = [user(t(10, 12, 10)), her(t(10, 12, 10, 1))];
+        const when = t(10, 12, 14);
+        for (const occasion of ['morning', 'after_class', 'bedtime', 'quiet', 'news', 'weather']) {
+            assert.equal(blockReason(at(occasion, when), when, input({ history: calm, crisisPaused: true })), '他最近说过想伤害自己的话，普通的主动消息先暂停', occasion);
+            assert.notEqual(blockReason(at(occasion, when), when, input({ history: calm })), '他最近说过想伤害自己的话，普通的主动消息先暂停', occasion);
+        }
+        for (const occasion of ['dates', 'follow_up']) {
+            assert.notEqual(blockReason(at(occasion, when), when, input({ history: calm, crisisPaused: true })), '他最近说过想伤害自己的话，普通的主动消息先暂停', occasion);
+        }
+    });
+
     test('睡觉、上课、夜里 00:30 以后不发', () => {
         assert.equal(blockReason(at('morning', t(10, 12, 7)), t(10, 12, 7), input({ history })), '她在睡觉');
         assert.equal(blockReason(at('morning', t(10, 12, 8, 30)), t(10, 12, 8, 30), input({ history })), '她在上课');

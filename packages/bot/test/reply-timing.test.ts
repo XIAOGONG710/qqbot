@@ -18,6 +18,23 @@ const her = (time: number, content = '嗯'): StoredMessage => ({ time: new Date(
 const MIN = 60_000;
 
 describe('回复时机：什么时候看到', () => {
+    test('他说了想伤害自己的话（ADR 0068）：睡觉、上课、冷场、洗澡都马上看到；睡着的被吵醒；所有档位、不受一晚一次限制', () => {
+        // 凌晨 3 点睡着：男朋友档（本来连发 3 条才被吵醒）一条就醒，同学档（本来不会被吵醒）也马上看到
+        const night = [user(t(10, 6, 3, 0), '我不想活了')];
+        for (const options of [boyfriend, classmate]) {
+            assert.deepEqual(whenSeen(night, t(10, 6, 3, 1), options), { at: t(10, 6, 3, 1), reason: '睡着了，被他说的不好的话吵醒', woken: true, maxBubbles: 3 });
+        }
+        // 同一晚她已经被吵醒回过一次，危机照样醒
+        assert.equal(whenSeen([her(t(10, 6, 2, 30)), user(t(10, 6, 3, 0), '我想自杀')], t(10, 6, 3, 1), boyfriend)!.woken, true);
+        // 白天冷场：不等 15–60 秒；上课、洗澡也不等
+        const cold = whenSeen([her(t(10, 5, 13, 0)), user(t(10, 5, 14), '真的不想活了')], t(10, 5, 14), boyfriend)!;
+        assert.deepEqual(cold, { at: t(10, 5, 14), reason: '他说了想伤害自己的话，马上看到', maxBubbles: 3 });
+        // 玩笑照旧按作息
+        const joke = whenSeen([her(t(10, 5, 13, 0)), user(t(10, 5, 14), '作业多得想死')], t(10, 5, 14), boyfriend)!;
+        assert.notEqual(joke.reason, '他说了想伤害自己的话，马上看到');
+        assert.equal(joke.at > t(10, 5, 14), true);
+    });
+
     test('没有没回的消息', () => {
         assert.equal(whenSeen([], t(10, 5, 14), boyfriend), undefined);
         assert.equal(whenSeen([user(t(10, 5, 14)), her(t(10, 5, 14, 1))], t(10, 5, 14, 2), boyfriend), undefined);

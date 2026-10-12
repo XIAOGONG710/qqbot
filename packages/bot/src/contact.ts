@@ -8,7 +8,7 @@
 import { dirname, join } from 'node:path';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { disclosureRules, isClose, sourceLabel, startsConversation, todayStart } from './disclosure.ts';
-import { faceContext, reviewReply } from './exit-check.ts';
+import { faceContext, reviewCrisisReply, reviewReply } from './exit-check.ts';
 import type { ChatHistory, StoredMessage } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
@@ -22,6 +22,7 @@ import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
+import { crisisInHistory } from './crisis.ts';
 import { describeIntent } from './intent.ts';
 import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
@@ -76,7 +77,8 @@ export function loadTierCard(pattern: string, tier: string): TierCard {
  * 回复器和主动消息的计划器用同一个（看心情没回的那串不算「有没回的消息」）。chance 只给模拟器用
  */
 export function replySkip(character: Character, moody: boolean, chance?: number): (history: StoredMessage[]) => string | undefined {
-    return history => (isAckAfterClosing(history)
+    // 危机回合（ADR 0068）：不因为「已经收尾」「看心情不回」不回
+    return history => (crisisInHistory(history) ? undefined : isAckAfterClosing(history)
         ? '她已经收尾，对方只回了附和，不回'
         : moody ? moodySkip(history, character.pace, chance) : undefined);
 }
@@ -84,6 +86,8 @@ export function replySkip(character: Character, moody: boolean, chance?: number)
 export interface ContactPipelineOptions {
     contact: Contact;
     card: TierCard;
+    /** 承认版的卡（ADR 0067）：危机回合（ADR 0068 决策 7）无论这个人知不知道她是程序，被问是不是真人都承认，所以这一轮换用它；本来就用承认版的、名单外的不用传 */
+    openCard?: TierCard;
     llm: AppConfig['llm'];
     prompt: AppConfig['prompt'];
     history: Pick<ChatHistory, 'load' | 'append'>;
@@ -170,6 +174,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let pick: PickRules | undefined;
     // 亲密轮次的出口检查：只在男朋友明确要抱抱、亲亲等时，拦“只能当面 / 隔空不算”把文字回应收回。
     let textIntimacy = false;
+    // 这一轮是不是危机回合（ADR 0068）：buildPrompt 按他发的内容定，紧跟着的出口检查、打错字、长短都按它
+    let crisisNow = false;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -359,6 +365,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     && !chat.some(m => m.role === 'assistant' && m.time !== undefined && Date.parse(m.time) >= n.at.getTime())).map(n => n.what)
                 : [];
             if (untold.length) log(`她那边的事还没跟他说过：${untold.join('、')}`);
+            // 危机信号（ADR 0068）：纯函数检测，最高优先级；主动找他时不算
+            crisisNow = !initiate && Boolean(crisisInHistory(chat));
+            if (crisisNow) log('危机信号：他这一轮说了想伤害自己的话，按危机回合处理（日志不记内容）');
             const intent = describeIntent({
                 history: chat,
                 state,
@@ -371,6 +380,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 unanswered: loops?.unanswered.map(l => l.what),
                 intimate: contact.tier === 'boyfriend',
                 playful: contact.tier === 'boyfriend',
+                ...(crisisNow ? { crisis: true } : {}),
                 ...(untold.length ? { news: untold } : {}),
             });
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
@@ -386,7 +396,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),
             } : undefined;
             // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
-            const length = lengthHint({ history: chat, intent, initiating: Boolean(initiate), low: mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) });
+            const length = crisisNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low: mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
@@ -403,9 +413,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     shown = { chat: lastDays.chat.slice(cut), omitted: lastDays.omitted + cut };
                 }
             }
+            // 危机回合被问是不是真人 / 程序一律承认（ADR 0068 决策 7）：换用承认版的卡，不在运行时叠一条覆盖（ADR 0003 / 0067 的纪律）
+            const turnCard = crisisNow && options.openCard ? options.openCard : { character, worldInfo };
             const prompt = buildPrompt({
-                character,
-                worldInfo,
+                character: turnCard.character,
+                worldInfo: turnCard.worldInfo,
                 history: shown.chat,
                 userName: contact.name,
                 userPersona: contact.persona,
@@ -454,7 +466,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return {
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
-                ...((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) ? { maxBubbles: 2 } : {}),
+                ...(crisisNow ? { maxBubbles: 3 } : (intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) ? { maxBubbles: 2 } : {}),
                 ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆${summary ? '和前面的要点' : ''}）` } : {}),
             };
         },
@@ -472,11 +484,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         // 打错字再改口（ADR 0024）：拆好条之后、发出去之前。种子只看是谁、说了什么，不看时间：同一句话结果固定
         // （带时间时，假模型的测试里「哟，还知道回来啊」有时被打成「知到」，测试时过时不过）
         decorate: (parts, maxBubbles) => {
+            // 危机回合不打错字（ADR 0068）
+            if (crisisNow) return parts;
             const typo = maybeTypo(parts, `${contact.qq} ${parts.join('|')}`, maxBubbles);
             if (typo.note) log(`打错字：${typo.note}`);
             return typo.parts;
         },
-        review: (reply, messages) => reviewReply(reply, {
+        review: (reply, messages) => (crisisNow ? reviewCrisisReply : reviewReply)(reply, {
             banned: character.banned,
             userName: contact.name,
             ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),

@@ -13,6 +13,8 @@ import type { ProactiveRecord } from '../src/proactive.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import type { StickerEntry, StickerShelf } from '../src/stickers.ts';
+import { CRISIS_FALLBACK } from '../src/exit-check.ts';
+import { CRISIS_MARK } from '../src/intent.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const SELF = 20000;
@@ -108,6 +110,58 @@ async function until(check: () => boolean, ms = 3000): Promise<void> {
 const chat = (cfg: AppConfig, qq: number) => new ChatHistory(cfg.dataDir).load(qq).map(m => `${m.role}:${m.content}`);
 
 describe('编排（app.ts）', () => {
+    test('危机回合（ADR 0068）：他说想不活了——意图行、换承认版卡、出口检查重写、不打错字不抽签短话；日志和状态页不含内容；只记时间；平常的话不受影响', async () => {
+        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend', knowsBot: true }] });
+        const prompts: string[] = [];
+        let first = true;
+        const { app, sent, logs } = setup(cfg, {}, {
+            generate: messages => {
+                prompts.push(messages.map(m => m.content).join('\n'));
+                if (/没有发出去/.test(prompts.at(-1)!)) return '我在。你现在安全吗？身边有人吗';
+                if (first) { first = false; return '别想太多，早点睡，晚安'; }
+                return '好';
+            },
+        });
+        app.receive(event(10001, 1, '我不想活了'));
+        await until(() => sent.length >= 1);
+        // 重写后通过：发的是接住他的版本，不是第一版的驱离
+        assert.deepEqual(sent, ['10001:我在。你现在安全吗？身边有人吗']);
+        // 提示词：危机意图、承认版卡（知道她是程序的联系人这一轮也承认）
+        assert.match(prompts[0]!, new RegExp(CRISIS_MARK));
+        assert.match(prompts[0]!, /大方承认/, '危机回合换用承认版卡');
+        // 日志和状态页只有时间，没有他说的内容
+        assert.ok(logs.some(line => line.includes('危机信号') && !line.includes('不想活了')));
+        const status = app.status().contacts[0]!;
+        assert.equal(status.crisis?.paused, true);
+        assert.doesNotMatch(JSON.stringify(app.status()), /不想活/);
+        assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(cfg.dataDir, 'crisis.json'), 'utf8'))), ['10001']);
+        // 下一轮他明着说开玩笑的 / 没事了：解除，回到平常——原卡（不承认）、没有危机意图（没解除前一小时内每一轮都还是危机回合）
+        const before = prompts.length;
+        app.receive(event(10001, 2, '开玩笑的，没事了'));
+        await until(() => sent.length >= 2);
+        const normal = prompts.slice(before).join('\n');
+        assert.doesNotMatch(normal, new RegExp(CRISIS_MARK));
+        assert.doesNotMatch(normal, /大方承认/);
+    });
+
+    test('危机回合：重写后仍不过就发固定的关怀兜底（含 12356）', async () => {
+        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate', knowsBot: true }] });
+        const { app, sent } = setup(cfg, {}, { generate: () => '开玩笑吧，晚安' });
+        app.receive(event(10001, 1, '我想自杀'));
+        await until(() => sent.length >= 2);
+        assert.equal(sent.join('\n'), CRISIS_FALLBACK.split('\n').map(line => `10001:${line}`).join('\n'));
+        assert.match(sent.join(''), /12356/);
+    });
+
+    test('危机回合：玩笑和夸张不触发（照常回复、不记危机、不暂停）', async () => {
+        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend', knowsBot: true }] });
+        const { app, sent } = setup(cfg, {}, { generate: () => '好' });
+        app.receive(event(10001, 1, '作业多得想死，笑死我了'));
+        await until(() => sent.length >= 1);
+        assert.equal(app.status().contacts[0]!.crisis, undefined);
+        assert.equal(existsSync(join(cfg.dataDir, 'crisis.json')), false);
+    });
+
     test('图片表情：收到的候选后台交给收藏库，提示词列可用编号，单独气泡按图片发送', async () => {
         const entry: StickerEntry = {
             id: '123456abcdef', file: 'C:/stickers/123456abcdef.gif', description: '白猫捂嘴偷笑', tags: ['好笑'],

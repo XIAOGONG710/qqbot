@@ -4,6 +4,7 @@
 // 他发了语音（ADR 0052）：看到之后一条条听完才回，听的时间加在看到的时刻上；在上课不听（看转出来的字，或者让他打字）。
 // 都是纯函数，按聊天记录和时间算；随机的部分按消息 id 定下来，同一串消息重算多少次都一样（调度在 responder.ts，等待期间来新消息会重算）。
 
+import { detectCrisis } from './crisis.ts';
 import type { StoredMessage } from './history.ts';
 import { listenMs, parseVoiceLine } from './media.ts';
 import { KNOWN_FACE } from './qq-faces.ts';
@@ -89,6 +90,12 @@ export function whenSeen(history: StoredMessage[], now: number, options: TimingO
     const seed = String(pending[0]!.messageId ?? pending[0]!.time);
     const state = stateAt(schedule, new Date(now));
     const { activity } = state;
+    // 他说了想伤害自己的话（ADR 0068 决策 4）：睡觉、上课、洗澡都不等，马上看到——不让一个说想不开的人等到起床。
+    // 用「安全」换掉一点「像人」；睡着的话被吵醒（沿用 0007 决策 6 的迷迷糊糊），所有档位都一样，不受「一晚最多吵醒一次」限制
+    if (detectCrisis(pending.map(message => message.content).join('\n'))) {
+        const asleep = activity.kind === 'sleep' || Boolean(options.asleep?.(now));
+        return { at: now, reason: asleep ? '睡着了，被他说的不好的话吵醒' : '他说了想伤害自己的话，马上看到', ...(asleep ? { woken: true } : {}), maxBubbles: 3 };
+    }
     // 她说过「睡了」（ADR 0042）：从说完那一刻起算睡着，不等作息上的入睡时刻
     const said = options.asleep?.(now);
 

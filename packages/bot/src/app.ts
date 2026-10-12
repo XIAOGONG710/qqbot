@@ -28,6 +28,8 @@ import { arrivedWhileAsleep } from './reply-timing.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import type { ProactiveMode } from './proactive.ts';
+import { detectCrisis } from './crisis.ts';
+import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
 import { createProactivePlanner, newsFrom, type Planner, type PlannerStatus } from './proactive-planner.ts';
 import { promiseKeeper, type Appointment } from './promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from './her-days.ts';
@@ -82,6 +84,8 @@ export interface ContactStatus {
     unlisted: boolean;
     /** 从什么时候起是这一档（tiers.json）；没换过档就没有 */
     tierSince?: string;
+    /** 最近一次危机信号的时间（ADR 0068；只记时间不记内容）和普通主动消息是否还在暂停期；没触发过就没有 */
+    crisis?: { at: string; paused: boolean };
     responder: ResponderStatus;
     /** 最后一条消息的时间和谁发的，不含内容 */
     last?: { time: string; from: 'user' | 'assistant' };
@@ -150,6 +154,19 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             cards.set(tier, card);
         }
         return card;
+    };
+    // 承认版的卡（ADR 0067）：危机回合用（ADR 0068 决策 7）；本来就用承认版的、名单外的没有；文件缺了就不换（那一轮靠意图行里的承认说法）
+    const openCards = new Map<string, TierCard | undefined>();
+    const openCardFor = (contact: Contact): TierCard | undefined => {
+        if (contact.tier === UNLISTED_TIER || cardKey(contact) !== contact.tier) return undefined;
+        const key = `${contact.tier}-open`;
+        if (!openCards.has(key)) {
+            try { openCards.set(key, cardFor(key)); } catch (error) {
+                log(`危机回合的承认版卡 ${key} 读不了，这一档的危机回合只靠意图行承认身份：${error instanceof Error ? error.message : String(error)}`);
+                openCards.set(key, undefined);
+            }
+        }
+        return openCards.get(key);
     };
     // 先把要用到的都读一遍，缺文件立刻报错
     const tiersInUse = new Set<Tier>(config.contacts.map(c => c.tier));
@@ -368,6 +385,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         return createPipeline({
             contact,
             card: cardFor(cardKey(contact)),
+            // 危机回合被问是不是真人一律承认（ADR 0068 决策 7）：知道她是程序的联系人这一轮换用承认版的卡
+            ...(openCardFor(contact) ? { openCard: openCardFor(contact)! } : {}),
             llm: config.llm,
             prompt: config.prompt,
             schedule: config.schedule,
@@ -414,6 +433,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         });
     }
 
+    // 危机信号（ADR 0068）：只记哪个联系人、什么时候，不记内容
+    const crisisState = createCrisisState(config.dataDir, log);
+
     /** 主动消息的计划器：第一次补回完才建 */
     const planners = new Map<number, Planner>();
     function startPlanners(): void {
@@ -432,6 +454,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 log: message => log(`[${contact.qq}] ${message}`),
                 names: { user: contact.name, char: character.name },
                 skip: replySkip(character, config.moody),
+                // 他最近说过想伤害自己的话：普通主动消息暂停 48 小时（ADR 0068）
+                crisisPaused: now => crisisState.pausedAt(contact.qq, now),
                 // 她跟谁说过「睡了」就不主动找人了（ADR 0042）
                 asleep: now => Boolean(asleepSince(character.schedule!, bedtimes(character.schedule!, now), new Date(now))),
                 // 下雨了主动找他（ADR 0050）：她那边这一刻的天气，只有开了真实天气才有
@@ -520,6 +544,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         const text = segmentsToText(message).trim();
         if (!text) return;
         responder.receive(text, event.message_id, new Date(event.time * 1000));
+        if (detectCrisis(text) && config.contacts.some(c => c.qq === event.user_id)) {
+            crisisState.mark(event.user_id, Date.now());
+            log(`[${event.user_id}] 危机信号：他说了想伤害自己的话（只记时间，不记内容）；普通主动消息暂停 ${CRISIS_PAUSE_MS / 3_600_000} 小时`);
+        }
         planners.get(event.user_id)?.poke();
     }
 
@@ -551,6 +579,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             }
             const missed = toStored(fresh, selfId);
             for (const message of missed) history.append(contact.qq, message);
+            // 停机期间他说过想伤害自己的话：补回时也记一笔（只记时间），暂停期从他说话的时候算（ADR 0068）
+            for (const message of missed) if (message.role === 'user' && detectCrisis(message.content)) crisisState.mark(contact.qq, Date.parse(message.time));
             if (missed.length) {
                 const lines = missed.map(m => `${m.role === 'user' ? '对方' : '她'}：${m.content}`).join(' / ');
                 log(`[${contact.qq}] 补回 ${missed.length} 条漏掉的消息：${lines}`);
@@ -630,6 +660,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     card: cardKey(contact),
                     unlisted: isUnlisted,
                     ...(since ? { tierSince: since.toISOString() } : {}),
+                    ...(crisisState.lastAt(contact.qq) !== undefined ? { crisis: { at: new Date(crisisState.lastAt(contact.qq)!).toISOString(), paused: crisisState.pausedAt(contact.qq, now.getTime()) } } : {}),
                     responder: responders.get(contact.qq)!.status(),
                     ...(last ? { last: { time: last.time, from: last.role } } : {}),
                     ...(schedule ? { now: describeState(stateAt(schedule, now, extraFree), schedule, { userName: contact.name }) } : {}),

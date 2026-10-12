@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { describeIntent, isEndingTurn, saysOwnThing } from '../src/intent.ts';
+import { CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, saysOwnThing } from '../src/intent.ts';
 import type { Schedule, State } from '../src/schedule.ts';
 
 const now = new Date('2026-10-06T20:00:00+08:00');
@@ -9,6 +9,27 @@ const assistant = (content: string) => ({ role: 'assistant' as const, content })
 const free = (text: string): State => ({ activity: { kind: 'free', text }, where: '学校', outsideSemester: false });
 
 describe('这一轮你想（ADR 0019）', () => {
+    test('危机回合（ADR 0068）：最高优先级，排在亲密、收尾、问答、好事之前；主动找他时不给；意图只给边界不给台词', () => {
+        const crisisBurst = [assistant('嗯'), user('晚安')];
+        for (const history of [
+            [assistant('嗯'), user('我不想活了')],
+            [assistant('嗯'), user('晚安'), user('我想去死')],
+            [assistant('嗯'), user('我想你了宝宝'), user('活着好累')],
+            [assistant('嗯'), user('你在干嘛'), user('其实我想自杀')],
+            [assistant('嗯'), user('我抢到了！'), user('可是我不想活了')],
+        ]) {
+            void crisisBurst;
+            assert.equal(describeIntent({ history, now, crisis: true, intimate: true, playful: true }), CRISIS_INTENT);
+        }
+        assert.equal(describeIntent({ history: [assistant('嗯'), user('我不想活了')], now, crisis: true, initiating: true }), undefined);
+        assert.notEqual(describeIntent({ history: [assistant('嗯'), user('在干嘛')], now, crisis: false }), CRISIS_INTENT);
+        // 只给边界：认真接、问安全、不讨论方法、12356、不装咨询师、不道晚安、被问承认是程序
+        for (const part of ['认真接住他的感受', '安不安全', '不讨论任何伤害自己的方法', '12356', '110 或 120', '别装咨询师', '不要答应过去找他', '不要道晚安', '承认你是程序', CRISIS_MARK]) {
+            assert.ok(CRISIS_INTENT.includes(part), part);
+        }
+        assert.doesNotMatch(CRISIS_INTENT, /[「“"]/, '不给可以照抄的台词');
+    });
+
     test('他刚说了自己的事：问一个具体细节；普通提问不算', () => {
         assert.equal(saysOwnThing([assistant('嗯'), user('我刚下课，累死了')]), true);
         assert.equal(saysOwnThing([assistant('嗯'), user('你今天干嘛')]), false);

@@ -61,7 +61,7 @@ export function imageStickerAllowance(
         || /(?:吗|嘛|呢)[？?。！!\s]*$/.test(current)) {
         return { allowed: false, reason: '他这一轮问了直接问题' };
     }
-    if (intent && /他想看照片|先接住他此刻的情绪|回应他刚说的那件事|他刚说了件好事|先直接回答他刚问的/.test(intent)) {
+    if (intent && /他想看照片|先接住他此刻的情绪|回应他刚说的那件事|他刚说了件好事|先直接回答他刚问的|想伤害自己、不想活/.test(intent)) {
         return { allowed: false, reason: '这一轮要认真回应他说的事' };
     }
     if (/(?:面试|考试|答辩|作业|工作|老板|老师|导师|家里|医院|生病|受伤|事故|出事|分手|吵架|转账|欠钱|难过|伤心|焦虑|害怕|疼|痛|累死|烦死)/.test(current)) {

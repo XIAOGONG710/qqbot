@@ -13,6 +13,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Contact } from './config.ts';
+import { detectCrisis } from './crisis.ts';
 import { aboutHer, expired, extractionPrompt, FOLLOW_UP_DAYS, mentions, parseExtraction, partText, tripAlreadyOver, type Extracted, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
@@ -96,6 +97,8 @@ export interface PlannerDeps {
     weather?: (now: number) => { day: string; weather?: DayWeather } | undefined;
     /** 她那边的事（ADR 0057）：她的今天、明天会了结的那几件 */
     news?: (now: number) => NewsItem[];
+    /** 现在是不是在危机信号的暂停期里（ADR 0068，crisis-state.ts）：普通主动消息不发，待跟进和重要的日子照旧 */
+    crisisPaused?: (now: number) => boolean;
 }
 
 export interface PlannerStatus {
@@ -199,6 +202,12 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         let changed = false;
         for (const episode of closed) {
             if (stopped) return;
+            // 危机相关的片段不抽成待跟进，也不让她主动提起（ADR 0068 决策 8）
+            if (episode.messages.some(m => m.role === 'user' && detectCrisis(m.content))) {
+                extracted[episode.id] = true;
+                save();
+                continue;
+            }
             // 只有她说话的片段（没人回的主动消息）不用抽
             if (!episode.messages.some(m => m.role === 'user')) {
                 extracted[episode.id] = true;
@@ -260,6 +269,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             qq: contact.qq, schedule: deps.schedule, settings: deps.settings, dates: deps.dates,
             history: deps.history.load(contact.qq), records, mode: deps.mode, followUps, ...(deps.skip ? { skip: deps.skip } : {}),
             ...(deps.asleep ? { asleep: deps.asleep } : {}),
+            ...(deps.crisisPaused?.(now()) ? { crisisPaused: true } : {}),
             ...(rain ? { rain } : {}),
             ...(deps.news ? { news: deps.news(now()) } : {}),
             ...(deps.weather ? { rainingNow: (at: number) => rainingAt(deps.weather!(at)?.weather, new Date(at)) } : {}),

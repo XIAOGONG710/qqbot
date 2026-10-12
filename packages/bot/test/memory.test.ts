@@ -462,6 +462,27 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
         }
     });
 
+    test('危机相关的片段（ADR 0068 决策 8）：私人库照写、公共库不写，重启 / 再同步也不补写；平常的片段不受影响', async () => {
+        const { memory, calls, cleanup } = setupCommon();
+        try {
+            const sensitive = [msg(0, 'user', '我不想活了'), msg(1, 'assistant', '我在，你现在安全吗')];
+            await memory.sync(B, gege, sensitive);
+            assert.deepEqual(calls.banks, [`retain ${memory.bankId(B)}`], '只写自己的 bank');
+            await memory.sync(B, gege, sensitive);
+            assert.equal(calls.banks.filter(bank => bank.includes('common')).length, 0, '再同步也不补写公共库');
+            // 同一个人后来的平常片段照常写进公共库
+            const later = [msg(100, 'user', '今天吃了火锅'), msg(101, 'assistant', '好吃吗')];
+            await memory.sync(B, gege, [...sensitive, ...later]);
+            assert.equal(calls.banks.filter(bank => bank.includes('common')).length, 1);
+            assert.match(calls.retain.at(-1)!.content, /今天吃了火锅/);
+            const commonDocs = calls.retain.filter(item => item.document_id?.includes(':')).map(item => item.content);
+            assert.ok(commonDocs.length >= 1);
+            assert.ok(commonDocs.every(content => !content.includes('不想活')), '公共库里没有那一段');
+        } finally {
+            cleanup();
+        }
+    });
+
     test('陌生人档、没开公共库：不写进公共库', async () => {
         const on = setupCommon();
         const off = setupCommon({}, false);

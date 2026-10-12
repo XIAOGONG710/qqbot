@@ -141,6 +141,18 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
         assert.equal(state().followUps.length, 1);
     });
 
+    test('危机相关的片段不抽成待跟进（ADR 0068 决策 8）：不调模型、记为抽过，不会第二天主动提起；平常的片段照抽', async () => {
+        const history = [
+            msg(t(10, 8, 21), 'user', '我不想活了'), msg(t(10, 8, 21, 1), 'assistant', '我在，你现在安全吗'), msg(t(10, 8, 21, 2), 'user', '明天下午两点还有面试'),
+        ];
+        const { planner, prompts, state } = setup(new Date(t(10, 8, 22)), history, ['{"add":[{"what":"面试","date":"2026-10-09","time":"14:00"}],"resolved":[]}']);
+        await planner.syncFollowUps();
+        assert.equal(prompts.length, 0, '危机片段不送去抽');
+        assert.deepEqual(state().followUps, []);
+        await planner.syncFollowUps();
+        assert.equal(prompts.length, 0, '记成抽过了，下次也不抽');
+    });
+
     test('片段结束后抽一次；到时候问（试运行），问过就忘', async () => {
         const history = [msg(t(10, 8, 21), 'user', '我明天下午两点有面试'), msg(t(10, 8, 21, 1), 'assistant', '加油')];
         const { clock, planner, logs, prompts, initiated, state } = setup(new Date(t(10, 8, 22)), history, ['{"add":[{"what":"字节的面试","date":"2026-10-09","time":"14:00"}],"resolved":[]}']);

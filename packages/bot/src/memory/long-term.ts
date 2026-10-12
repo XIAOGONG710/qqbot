@@ -17,6 +17,7 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { detectCrisis } from '../crisis.ts';
 import { ownSourceLabel, sourceLabel } from '../disclosure.ts';
 import type { StoredMessage } from '../history.ts';
 import { MIDNIGHT_RULE } from '../follow-ups.ts';
@@ -319,7 +320,15 @@ export class LongTermMemory {
         const pending = due(state.retained);
         if (pending.length) await this.#retainOwn(contact, names, state, pending);
         if (!this.#options.common || !knowsPeople(contact.tier)) return;
-        const common = due(state.common);
+        // 危机相关的片段不写进公共记忆库（ADR 0068 决策 8）：私人库保留事实本身，公共库不留
+        const common = due(state.common).filter(episode => {
+            const sensitive = episode.messages.some(message => message.role === 'user' && detectCrisis(message.content));
+            if (sensitive) {
+                (state.common ??= {})[episode.id] = episode.messages.length;
+                this.#save(contact, state);
+            }
+            return !sensitive;
+        });
         try {
             // 印象（ADR 0017）不等新片段：聊天早就都写进公共库的人（10-06 的鸽鸽），不然一直建不起来
             const bankId = await this.#ensureCommonBank(names.char);

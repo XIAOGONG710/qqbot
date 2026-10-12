@@ -97,6 +97,8 @@ export interface Candidate {
 
 export interface ProactiveInput {
     qq: number;
+    /** 他最近说过想伤害自己的话（ADR 0068）：在暂停期里，普通主动消息不发 */
+    crisisPaused?: boolean;
     schedule: Schedule;
     settings: ProactiveSettings;
     dates: readonly ImportantDay[];
@@ -359,6 +361,8 @@ export function planFrom(now: number, input: ProactiveInput): Plan {
 /** 到点时还能不能发：不能就返回原因（记进记录和日志） */
 export function blockReason(candidate: Candidate, now: number, input: ProactiveInput): string | undefined {
     const { schedule, history } = input;
+    // 他刚说过想伤害自己的话（ADR 0068 决策 5）：普通的主动消息暂停；待跟进和重要的日子不受影响
+    if (input.crisisPaused && candidate.occasion !== 'dates' && candidate.occasion !== 'follow_up') return CRISIS_PAUSE_REASON;
     const state = stateAt(schedule, new Date(now));
     if (state.activity.kind === 'sleep') return '她在睡觉';
     if (input.asleep?.(now)) return '她说过睡了';
@@ -421,6 +425,7 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
 export const MAX_PROACTIVE_BUBBLES = 2;
 /** 有没回的消息时不主动的原因（计划器和回复器都用） */
 export const PENDING_REASON = '有没回的消息，回复就好';
+export const CRISIS_PAUSE_REASON = '他最近说过想伤害自己的话，普通的主动消息先暂停';
 
 /** 顺带说没说成的事的时机：问候、找他说话的这几种（日子、下雨、待跟进各有要说的那一件） */
 const CARRIES_NEWS: ReadonlySet<Occasion> = new Set(['morning', 'after_class', 'quiet', 'bedtime']);

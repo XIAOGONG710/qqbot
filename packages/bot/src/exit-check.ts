@@ -297,3 +297,71 @@ export async function reviewReply(reply: string, options: ReviewOptions): Promis
     options.log(`出口检查：重写后仍有${summarizeIssues(second.issues)}，${dropped ? '删掉这几行' : '照发'}`);
     return settled;
 }
+
+// ── 危机回合（ADR 0068 决策 3）：回复里有手段 / 方法、驱离式敷衍、收尾道晚安 / 催睡，重写一次；还不过，发一条固定的关怀兜底 ──
+
+export interface CrisisIssue {
+    kind: 'method' | 'dismiss' | 'close' | 'visit';
+    match: string;
+}
+
+/** 具体的方式方法：她一个字都不该提（保护性的「别做傻事」不在其中） */
+const CRISIS_METHOD = /割腕|上吊|跳楼|跳河|烧炭|安眠药|煤气|农药|致死|剂量|多少片|怎么死|死法|吃(?:很多|一堆|整瓶).{0,3}药/;
+/** 把他的话当成不严重：驱离式敷衍 */
+const CRISIS_DISMISS = /别想太多|想太多了|想开点|(?<!不是|不是在|没在|没有在)开玩笑吧|至于吗|别闹了?|没那么严重|矫情|吓唬谁|不要胡思乱想|别胡思乱想/;
+/** 答应马上过去找他、当面陪他：她实际到不了，这是做不到的承诺（危机里更不该说） */
+const CRISIS_VISIT = /我(?:这就|马上|现在|立刻|立马)?(?:下楼|过去|过来|去找你|来找你|去你那|去你宿舍)|(?:你|在).{0,3}(?:哪栋楼|几号楼|哪个宿舍)|在楼下等你/;
+/** 收尾：道晚安、催他去睡、先这样 */
+const CRISIS_CLOSE = /晚安|早点睡|去睡吧|睡吧|先睡了|明天再说|先这样|拜拜/;
+
+export function inspectCrisisReply(reply: string): CrisisIssue[] {
+    const issues: CrisisIssue[] = [];
+    for (const [kind, pattern] of [['method', CRISIS_METHOD], ['dismiss', CRISIS_DISMISS], ['close', CRISIS_CLOSE], ['visit', CRISIS_VISIT]] as const) {
+        const hit = pattern.exec(reply);
+        if (hit) issues.push({ kind, match: hit[0] });
+    }
+    return issues;
+}
+
+/** 危机回合重写时加在提示词末尾的说明 */
+export function crisisRewriteNote(issues: readonly CrisisIssue[], userName: string): string {
+    const why = issues.map(issue => {
+        switch (issue.kind) {
+            case 'method': return `提到了具体的方式方法「${issue.match}」，这一类一个字都不要提`;
+            case 'dismiss': return `「${issue.match}」是在把${userName}说的当成不严重；${userName}刚才说的是想伤害自己，认真接住他`;
+            case 'close': return `「${issue.match}」是在收尾；这一轮不要道晚安、不要催${userName}去睡，先陪他、问问他现在安不安全`;
+            case 'visit': return `「${issue.match}」是答应过去找他，可你实际没法到他身边；别答应，说你在这儿陪他打字，让他去找身边现实里能到场的人，或者拨 12356、110、120`;
+        }
+    });
+    return `[上一版回复没有发出去：${why.join('；')}。重写这次的回复：认真接住他的感受，问他现在安不安全、身边有没有人，只输出要发的消息。]`;
+}
+
+/** 重写后仍不过时发的固定兜底：短，不含方法，含 12356 */
+export const CRISIS_FALLBACK = '我在听，你刚才说的我当真了。你现在安全吗？身边有信得过的人能陪你一会儿吗？\n要是撑不住了，可以打 12356（全国统一的心理援助热线），有危险就打 110 或 120。我在这儿。';
+
+/**
+ * 危机回合的审查：先走平常的出口检查，再查这三条；有问题重写一次（意思不变不适用——这里是换成接住他的说法），
+ * 还有问题就发固定兜底。重写失败也发兜底。
+ */
+export async function reviewCrisisReply(reply: string, options: ReviewOptions): Promise<string> {
+    const base = await reviewReply(reply, options);
+    const first = inspectCrisisReply(base);
+    if (first.length === 0) return base;
+    options.log(`危机回合出口检查：${first.map(i => `${i.kind === 'method' ? '提到方式方法' : i.kind === 'dismiss' ? '驱离式敷衍' : i.kind === 'visit' ? '答应过去找他' : '收尾'}「${i.match}」`).join('、')}，带说明重写一次`);
+    let rewritten: string;
+    try {
+        rewritten = await options.regenerate(crisisRewriteNote(first, options.userName));
+    } catch (error) {
+        options.log(`危机回合出口检查：重写失败（${error instanceof Error ? error.message : String(error)}），发固定的关怀兜底`);
+        return CRISIS_FALLBACK;
+    }
+    const again = inspectCrisisReply(rewritten);
+    // 重写出来的话也不能带做不到的事、禁用词（平常出口检查里的硬规则）
+    const hard = inspectReply(rewritten, options.banned).filter(issue => HARD.has(issue.kind));
+    if (again.length === 0 && hard.length === 0 && rewritten.trim()) {
+        options.log('危机回合出口检查：重写后通过');
+        return rewritten;
+    }
+    options.log(`危机回合出口检查：重写后仍有${[...again.map(i => `「${i.match}」`), ...hard.map(i => `「${i.match}」`)].join('、') || '空回复'}，发固定的关怀兜底`);
+    return CRISIS_FALLBACK;
+}
