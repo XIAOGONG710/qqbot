@@ -1,6 +1,6 @@
 # ADR 0068：自伤 / 危机回应的最小规则
 
-- 状态：**已实现，未上线**（分支 `adr-0068-crisis`；2026-10-12 用户在 `options.md` 里选了 E2，「待确认」由用户 22:10 的「你看着办」授权 Claude 按建议答复，见「确认记录」；上线要用户当次同意重启）
+- 状态：**已上线**（2026-10-12 22:45，`main` = `1340514`，用户当次同意后重启 Koishi，约 30 秒；原分支 `adr-0068-crisis`；2026-10-12 用户在 `options.md` 里选了 E2，「待确认」由用户 22:10 的「你看着办」授权 Claude 按建议答复，见「确认记录」；上线要用户当次同意重启）
 - 日期：2026-10-12
 - 关联：[ADR 0019](0019-today-layer.md)（这一轮她想：意图层）、[ADR 0058](0058-intimate-reciprocity.md)（意图只给动作边界、不给可照抄的台词）、[ADR 0006](0006-exit-check.md)（出口检查）、
   [ADR 0007](0007-schedule-and-reply-timing.md)（什么时候看到消息）、[ADR 0011](0011-proactive-messages.md)（主动消息）、[ADR 0018](0018-memory-fades-and-promises.md)（不存带情绪的记忆）、
