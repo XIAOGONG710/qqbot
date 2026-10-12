@@ -1,0 +1,3 @@
+# 跑 python 脚本会生成字节码缓存；别让它进仓库（check_batch.py import annotate 就会生成）
+__pycache__/
+*.pyc
