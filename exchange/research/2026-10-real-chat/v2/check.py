@@ -10,6 +10,7 @@
 """
 import json
 import os
+import re
 import sys
 import statistics
 
@@ -42,6 +43,19 @@ def is_asked(text):
     return t.endswith('吗') or t.endswith('呢') or t.endswith('吧')
 
 
+# 严格口径要跟 packages/bot/src/sim/stats.ts 一致（复核第 3 条）
+_QUESTION = re.compile(r'(?:[?？]|[吗呢么])[~～!！。.]*$')
+_RHETORICAL = re.compile(
+    r'(?:是吧|对吧|好吧|行吧|不是吗|难道|还不|又怎么|怎么了吗|谁让|凭什么|有意见吗|不行吗|可以吗你|是不是傻)[吗呢吧啊？?]*$')
+
+
+def is_asked_strict(text):
+    t = text.rstrip()
+    if not t:
+        return False
+    return bool(_QUESTION.search(t)) and not bool(_RHETORICAL.search(t))
+
+
 def median_chars(bubbles):
     return statistics.median([len(b) for b in bubbles]) if bubbles else 0
 
@@ -55,12 +69,15 @@ def check_k1():
             fail(f'K1 缺文件：v2/{fname}')
             continue
         for rec in load_jsonl(p):
-            rid = rec.get('id') or rec.get('key')
+            if 'key' in rec:
+                fail(f'{fname}：主键还是 key，要统一成 id（复核第 1 条）')
+            rid = rec.get('id')
             if not rid:
-                fail(f'{fname}：有一条没有 id/key')
+                fail(f'{fname}：有一条没有 id')
                 continue
             seen[rid] = rec
-            for f in ('relation', 'scene', 'turns', 'her', 'confidence', 'staged', 'persona_fit', 'stats'):
+            for f in ('relation', 'scene', 'turns', 'her', 'confidence', 'staged',
+                      'persona_fit', 'stats', 'stats_scope'):
                 if f not in rec:
                     fail(f'{rid}：缺字段 {f}')
             pf = rec.get('persona_fit') or {}
@@ -96,12 +113,15 @@ def check_k1():
                     fail(f'{rid}：第 {n_her} 轮 stats.median_chars 和脚本算的不一致')
                 if bool(st.get('asked')) != any(is_asked(b) for b in bubbles):
                     fail(f'{rid}：第 {n_her} 轮 stats.asked 和脚本算的不一致')
+                if bool(st.get('asked_strict')) != any(is_asked_strict(b) for b in bubbles):
+                    fail(f'{rid}：第 {n_her} 轮 stats.asked_strict 和脚本算的不一致')
                 if not isinstance(st.get('switched_topic'), bool):
                     fail(f'{rid}：第 {n_her} 轮 stats.switched_topic 不是布尔（人工标注也要给布尔）')
             if her and n_her == 0:
                 fail(f'{rid}：没有任何 her 侧轮次')
             agg = rec.get('stats') or {}
-            for f in ('her_turns', 'bubbles_per_turn_median', 'median_chars', 'asked_rate', 'switched_topic_count'):
+            for f in ('her_turns', 'silent_turns', 'bubbles_per_turn_median', 'median_chars',
+                      'asked_rate', 'asked_strict_rate', 'switched_topic_count'):
                 if f not in agg:
                     fail(f'{rid}：顶层 stats 缺 {f}')
     missing = [i for i in want_ids if i not in seen]
@@ -119,11 +139,17 @@ def check_k2():
         fail('K2 缺文件：v2/counterexamples.jsonl')
         return
     rows = load_jsonl(p)
+    ids = [r.get('id') for r in rows]
+    dup = sorted({i for i in ids if ids.count(i) > 1})
+    if dup:
+        fail(f'K2 编号重复：{dup}')
     by_type = {}
     for r in rows:
-        for f in ('id', 'type', 'source', 'line', 'why', 'nearest_real'):
+        for f in ('id', 'type', 'source', 'line', 'why', 'nearest_real', 'source_date'):
             if f not in r or not str(r.get(f, '')).strip():
                 fail(f'K2 {r.get("id")}：缺字段 {f}')
+        if 'still_reproduces' not in r:
+            fail(f'K2 {r.get("id")}：缺字段 still_reproduces（待测也要写 null）')
         t = r.get('type')
         if t not in TYPES:
             fail(f'K2 {r.get("id")}：type={t!r} 不在 7 类里')
@@ -148,7 +174,19 @@ def check_k2():
             fail(f'K2 {r.get("id")}：source 行号 {ln} 超出 {path} 的范围')
             continue
         quoted = str(r.get('line', '')).strip()
-        if quoted and quoted not in lines[ln - 1]:
+        if t == '连续三段式':
+            # 第 4 条：这一类的单位是一整轮，line = 所有气泡用 " / " 连起来
+            segs = [s.strip() for s in quoted.split(' / ')]
+            tb = r.get('turn_bubbles')
+            if not isinstance(tb, int) or tb < 2:
+                fail(f'K2 {r.get("id")}：连续三段式要带 turn_bubbles（≥2）')
+            elif tb != len(segs):
+                fail(f'K2 {r.get("id")}：turn_bubbles={tb} 和 line 里 {len(segs)} 段对不上')
+            window = ' '.join(lines[ln - 1: ln - 1 + (tb or 2) + 1])
+            for k, s in enumerate(segs, 1):
+                if s not in window:
+                    fail(f'K2 {r.get("id")}：第 {k} 个气泡在 {path}:{ln} 起的这一轮里找不到（不许编来源）')
+        elif quoted and quoted not in lines[ln - 1]:
             fail(f'K2 {r.get("id")}：第 {ln} 行里找不到引用的原话（不许编来源）')
     print(f'[K2] 反例 {len(rows)} 条')
     for t in TYPES:

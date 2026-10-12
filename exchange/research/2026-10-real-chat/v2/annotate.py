@@ -124,12 +124,38 @@ ANN = {
 
 
 def is_asked(text: str) -> bool:
+    """宽松口径（原 README 1.3）：末尾 ？/? 或末尾 吗/呢/吧。"""
     t = text.rstrip()
     if not t:
         return False
     if t.endswith('？') or t.endswith('?'):
         return True
     return t.endswith('吗') or t.endswith('呢') or t.endswith('吧')
+
+
+# 严格口径：与 packages/bot/src/sim/stats.ts 一致（复核第 3 条要求 K4 对照她时用这个）
+import re
+_QUESTION = re.compile(r'(?:[?？]|[吗呢么])[~～!！。.]*$')
+_RHETORICAL = re.compile(
+    r'(?:是吧|对吧|好吧|行吧|不是吗|难道|还不|又怎么|怎么了吗|谁让|凭什么|有意见吗|不行吗|可以吗你|是不是傻)[吗呢吧啊？?]*$')
+
+
+def is_asked_strict(text: str) -> bool:
+    t = text.rstrip()
+    if not t:
+        return False
+    return bool(_QUESTION.search(t)) and not bool(_RHETORICAL.search(t))
+
+
+# 复核第 3 条（既有语料脏点）：
+#   rc-026 实为家庭群（3 人）——按 README 群聊不收，保留在文件里但不进任何统计
+#   rc-003 / rc-022 / rc-028 关系未知——不进按关系的表，只进总体
+STATS_SCOPE = {
+    'rc-026': ('excluded', '实为家庭群（3 人）对话，按 README 群聊不收；保留在文件里用作收尾/家人语气的例子，但不进任何统计'),
+    'rc-003': ('overall_only', '关系未知（陌生人纠缠），不进按关系的表，只进总体'),
+    'rc-022': ('overall_only', '关系未知（追款对象），不进按关系的表，只进总体'),
+    'rc-028': ('overall_only', '说话人身份都判不出（母女关系近似 friend），不进按关系的表，只进总体'),
+}
 
 
 def med(nums):
@@ -146,7 +172,9 @@ def annotate(rec, rid, key_turns='turns'):
     if len(her_idx) != len(ann['t']):
         raise SystemExit(f'{rid}：人工标注 {len(ann["t"])} 轮，实际 her 侧 {len(her_idx)} 轮，对不上')
     marks = dict(zip(her_idx, ann['t']))
-    agg_bubbles, agg_chars, asked_n, switched_n = [], [], 0, 0
+    # 复核第 3 条：两个问句口径都给。asked = 宽松（旧口径），asked_strict = stats.ts 那个
+    # 复核第 1 条之外：median_chars 的聚合要排除空轮（silent，bubbles 为空的轮）
+    agg_bubbles, agg_chars, asked_n, asked_strict_n, switched_n = [], [], 0, 0, 0
     for i, t in enumerate(turns):
         if i not in marks:
             continue
@@ -158,19 +186,28 @@ def annotate(rec, rid, key_turns='turns'):
             'bubbles': len(bubbles),
             'median_chars': med([len(b) for b in bubbles]),
             'asked': any(is_asked(b) for b in bubbles),
+            'asked_strict': any(is_asked_strict(b) for b in bubbles),
             'switched_topic': bool(switched),
         }
         agg_bubbles.append(len(bubbles))
-        agg_chars.extend([len(b) for b in bubbles])
+        if bubbles:                      # 空轮不进 median_chars
+            agg_chars.extend([len(b) for b in bubbles])
         asked_n += 1 if t['stats']['asked'] else 0
+        asked_strict_n += 1 if t['stats']['asked_strict'] else 0
         switched_n += 1 if switched else 0
     rec['persona_fit'] = {'level': ann['pf'][0], 'why': ann['pf'][1]}
+    if rid in STATS_SCOPE:
+        rec['stats_scope'], rec['stats_scope_why'] = STATS_SCOPE[rid]
+    else:
+        rec['stats_scope'] = 'in'
     rec['stats'] = {
         'her_turns': len(her_idx),
+        'silent_turns': sum(1 for i in her_idx if not (turns[i].get('bubbles') or [])),
         'bubbles_per_turn_median': med(agg_bubbles),
         'bubbles_per_turn_counts': agg_bubbles,
         'median_chars': med(agg_chars),
         'asked_rate': round(asked_n / len(her_idx), 3) if her_idx else 0,
+        'asked_strict_rate': round(asked_strict_n / len(her_idx), 3) if her_idx else 0,
         'switched_topic_count': switched_n,
     }
     return rec
@@ -194,10 +231,11 @@ def main():
                 continue
             rec = json.loads(line)
             rec['turns'] = rec.pop('closing')
+            rec['id'] = rec.pop('key')    # 复核第 1 条：主键统一成 id（原来只有收尾这份叫 key）
             rec['scene'] = 5              # 收尾渠道抽样，按原 1–8 口径归到场景 5
             rec['staged'] = rec.get('staged') == 'yes' or rec.get('staged') is True
             rec['staged_note'] = '原字段为字符串 yes/no，v2 统一成布尔'
-            out2.append(annotate(rec, rec['key']))
+            out2.append(annotate(rec, rec['id']))
     with open(os.path.join(HERE, 'closing-turns.jsonl'), 'w', encoding='utf-8') as fh:
         for rec in out2:
             fh.write(json.dumps(rec, ensure_ascii=False) + '\n')
