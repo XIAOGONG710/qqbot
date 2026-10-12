@@ -66,6 +66,7 @@ DSH 侧没有 `runtime/bot`，全部结论都是**静态推演 + 证据比对**�
 | 文件 | 内容 | 交付到 |
 | --- | --- | --- |
 | `tasks/2026-10-09-dsh-real-chat-research.md` | 小红书真人聊天调研（T1）、盲评题库 v1（T2）、改动建议书（T3）；先推 30 段小样 | `research/2026-10-real-chat/`，审核写进 `reviews/` |
+| `tasks/2026-10-12-dsh-corpus-n2.md` | **10-12 新（用户点名，最先做）**：真人语料库做大做细——K1 给现有 36 段补标注（先定格式）、K2 她自己的反例库、K3 放大到 ≥150 段（含 C1 场景）、K4 统计更新、K5 等用户（正样本认可、能否用自己的聊天文本） | `research/2026-10-real-chat/v2/` |
 | `tasks/2026-10-12-next-phase.md` | **10-12 新**：C1 调研（原 D3 并进来）；审 ADR 0061、M3 草稿和 GPT 的 C1 实现 | `research/2026-10-c1-npc/`、`reviews/` |
 | ~~`tasks/2026-10-10-dsh-t2-followup-and-research.md`~~ | 被 10-12 的取代（D1 做完、D3 并进 C1、D2 暂停）。原来是：D1 审 Claude 代做的 v1.1 / T3、写 H、出 v1.2 新题（「？」、见面、天气）；D2 评论区表情包位置；D3 真人怎么约见面、改约、提天气 | D1、D2 `research/2026-10-real-chat/`，D3 `research/2026-10-meetups-weather/` |
 
