@@ -1,0 +1,919 @@
+{
+ "generatedAt": "2026-10-12",
+ "by": "DSH（7 个子代理逐张看图判定 + DSH 复核）",
+ "source": "https://zhaoolee.com/ChineseBQB/catalog/index.json",
+ "criteria": "像不像 18–23 岁女大学生会发给男朋友/闺蜜的表情；deny=版权角色/真人名人/时政/疫情/宗教/色情/群体攻击/猎奇/字太多/广告",
+ "method": "每类 1 封面 + 5 张随机抽样缩略图，看完即删，不存图；只访问 zhaoolee.com，不登录、无 cookie、无浏览器档案",
+ "alreadyAllowed": [
+  "可爱的女孩纸",
+  "是喵星人啦",
+  "开心鸭",
+  "沙雕企鹅",
+  "小幺鸡",
+  "狗",
+  "鸽子",
+  "猪",
+  "鹦鹉",
+  "沙雕情侣头像",
+  "白色小人",
+  "滑稽大佬",
+  "全是心心",
+  "斗图之王",
+  "乌龟"
+ ],
+ "counts_agent": {
+  "maybe": 14,
+  "allow": 19,
+  "deny": 65
+ },
+ "counts_reviewed": {
+  "deny": 74,
+  "allow": 12,
+  "maybe": 12
+ },
+ "missing": [],
+ "entries": [
+  {
+   "number": "003",
+   "title": "可爱男孩纸👶",
+   "count": 28,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "005",
+   "title": "莲蓬头男孩👲",
+   "count": 15,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "006",
+   "title": "仓鼠🐹",
+   "count": 4,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "009",
+   "title": "熊本熊🐻",
+   "count": 31,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "maybe",
+   "review_why": "熊本熊是熊本县的官方吉祥物 IP，按 IP 口径该降级；画风本身很好用"
+  },
+  {
+   "number": "015",
+   "title": "Panda金馆长熊猫🐼",
+   "count": 293,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "maybe",
+   "review_why": "熊猫头是全网通用梗，但那张脸是真人（崔成国）——和 041 具名明星类（已 deny）不是一回事，建议单列一档由你们定「通用梗脸算不算真人」"
+  },
+  {
+   "number": "016",
+   "title": "喷雾🚿",
+   "count": 16,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "017",
+   "title": "演奏🎻",
+   "count": 24,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "018",
+   "title": "汪蛋🥚",
+   "count": 45,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "020",
+   "title": "TATAN",
+   "count": 31,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "maybe",
+   "review_why": "整类用的是真人小孩照片，按「真人」判据要降级；表情本身好用"
+  },
+  {
+   "number": "023",
+   "title": "表情符号",
+   "count": 84,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "keep",
+   "review_why": "emoji 拼贴，零版权零风险"
+  },
+  {
+   "number": "033",
+   "title": "吃🍔",
+   "count": 7,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "keep",
+   "review_why": "饭点抱怨，无 IP 无真人无广告"
+  },
+  {
+   "number": "046",
+   "title": "穿什么",
+   "count": 123,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "keep",
+   "review_why": "熊熊换装模板，女生 P 图互损那一路"
+  },
+  {
+   "number": "051",
+   "title": "打电话",
+   "count": 105,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "keep",
+   "review_why": "原创简笔白团子接电话，正是「发对象/闺蜜」的语域（抽样里有一张带脏话缩写，用前看一眼）"
+  },
+  {
+   "number": "065",
+   "title": "旅行青蛙🐸",
+   "count": 10,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "maybe",
+   "review_why": "整类来自《旅かえる》这个游戏 IP，形象本身通用，建议按 IP 口径降级到 maybe"
+  },
+  {
+   "number": "072",
+   "title": "微信拍一拍👋",
+   "count": 9,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "keep",
+   "review_why": "微信「拍一拍」梗，学生日常刚好接得上"
+  },
+  {
+   "number": "083",
+   "title": "中国春节",
+   "count": 58,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "maybe",
+   "review_why": "春节本身不算时政，但抽样里混着古装剧剧照（影视版权），且节庆类时效性强"
+  },
+  {
+   "number": "089",
+   "title": "饮茶哥",
+   "count": 11,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "deny",
+   "review_why": "整类围着「饮茶哥」这个真人网红转 → 按「真人名人」判据应拒"
+  },
+  {
+   "number": "096",
+   "title": "国庆节",
+   "count": 39,
+   "verdict": "allow",
+   "codeGate": true,
+   "review": "deny",
+   "review_why": "**命中代码第二道闸门**（国庆）；且抽样里就有「国庆快乐」红旗祝图 = 节庆/时政口径"
+  },
+  {
+   "number": "109",
+   "title": "负鼠",
+   "count": 32,
+   "verdict": "allow",
+   "codeGate": false,
+   "review": "keep",
+   "review_why": "整类非 IP 萌宠吐槽，干净"
+  },
+  {
+   "number": "",
+   "title": "微信网友贡献表情包 暂存 有时间慢慢整理",
+   "count": 36,
+   "verdict": "maybe",
+   "codeGate": false,
+   "review": "deny",
+   "review_why": "同上：网友投稿暂存区，没审过，默认不进名单"
+  },
+  {
+   "number": "000",
+   "title": "贡献🇨🇳",
+   "count": 69,
+   "verdict": "maybe",
+   "codeGate": false,
+   "review": "deny",
+   "review_why": "**网友投稿类，没人审过**——代码 README 里就写了这类默认不进名单"
+  },
+  {
+   "number": "019",
+   "title": "Hat绿帽子🖼",
+   "count": 24,
+   "verdict": "maybe",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "024",
+   "title": "程序员",
+   "count": 47,
+   "verdict": "maybe",
+   "codeGate": false,
+   "review": "maybe",
+   "review_why": "程序员自嘲能用，但抽样里混进央视新闻截图和「戴绿帽」梗"
+  },
+  {
+   "number": "037",
+   "title": "鲁迅",
+   "count": 13,
+   "verdict": "maybe",
+   "codeGate": false,
+   "review": "deny",
+   "review_why": "整类围着鲁迅这个历史真人转（名言卡），按「真人名人」应拒"
+  },
+  {
+   "number": "045",
+   "title": "火柴人",
+   "count": 7,
+   "verdict": "maybe",
+   "codeGate": false,
+   "review": "maybe",
+   "review_why": "只有 7 张、抽样只覆盖 3 个画面，判不出稳定基调"
+  },
+  {
+   "number": "053",
+   "title": "University大学",
+   "count": 10,
+   "verdict": "maybe",
+   "codeGate": false,
+   "review": "maybe",
+   "review_why": "校徽梗只对本校人好笑，且混进一张版权角色劝退图"
+  },
+  {
+   "number": "060",
+   "title": "Mur猫😺",
+   "count": 22,
+   "verdict": "maybe",
+   "codeGate": false,
+   "review": "maybe",
+   "review_why": "Mur 猫通用，但整类走发光眼/宇宙特效，还有一张荤段子"
+  },
+  {
+   "number": "063",
+   "title": "浏览器",
+   "count": 7,
+   "verdict": "maybe",
+   "codeGate": false,
+   "review": "maybe",
+   "review_why": "程序员梗受众偏窄，且有整张英文长句图"
+  },
+  {
+   "number": "067",
+   "title": "黑人抬棺⚰",
+   "count": 32,
+   "verdict": "maybe",
+   "codeGate": true,
+   "review": "deny",
+   "review_why": "**命中代码第二道闸门**（抬棺）；素材来自加纳抬棺舞真人视频"
+  },
+  {
+   "number": "069",
+   "title": "Waves后浪🌊",
+   "count": 6,
+   "verdict": "maybe",
+   "codeGate": false,
+   "review": "deny",
+   "review_why": "整类绑 B 站《后浪》官方宣传片，抽样里有真人出镜截图 → 宣传物料不是聊天表情"
+  },
+  {
+   "number": "073",
+   "title": "腾讯与老千妈",
+   "count": 38,
+   "verdict": "maybe",
+   "codeGate": false,
+   "review": "maybe",
+   "review_why": "2020 年那件商业事件的时效梗＋真人拼图，越往后越看不懂"
+  },
+  {
+   "number": "077",
+   "title": "土嗨",
+   "count": 3,
+   "verdict": "maybe",
+   "codeGate": false,
+   "review": "deny",
+   "review_why": "整类只有 3 张、抽样里是街头拉扯现场，像冲突瞬间，不成基调"
+  },
+  {
+   "number": "078",
+   "title": "北方栖姬",
+   "count": 400,
+   "verdict": "maybe",
+   "codeGate": false,
+   "review": "deny",
+   "review_why": "统一口径：整类 400 张都是同一个游戏角色（舰队Collection 北方栖姬）的同人 → 与其它 IP 类同处理"
+  },
+  {
+   "number": "004",
+   "title": "假笑男孩👦",
+   "count": 28,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "007",
+   "title": "胖虎🐯",
+   "count": 22,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "013",
+   "title": "小猪佩奇👑",
+   "count": 22,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "deny",
+   "review_why": "同意（整类英国动画版权角色，虽然内容温和可爱）"
+  },
+  {
+   "number": "021",
+   "title": "同福客栈🏫",
+   "count": 102,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "022",
+   "title": "苏大强👴",
+   "count": 27,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "025",
+   "title": "超级英雄们👤",
+   "count": 11,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "028",
+   "title": "罗永浩🔨",
+   "count": 5,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "030",
+   "title": "天线宝宝👶",
+   "count": 3,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "032",
+   "title": "名人明星",
+   "count": 8,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "035",
+   "title": "猫和老鼠",
+   "count": 287,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "036",
+   "title": "皮卡丘",
+   "count": 4,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "038",
+   "title": "张学友",
+   "count": 6,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "039",
+   "title": "YaoMing表情包三巨头 姚明",
+   "count": 10,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "040",
+   "title": "HanazawaKana表情包三巨头 花泽香菜",
+   "count": 4,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "041",
+   "title": "ChenguoCui表情包三巨头 崔成国",
+   "count": 7,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "042",
+   "title": "张翰",
+   "count": 9,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "043",
+   "title": "奥特曼",
+   "count": 302,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "044",
+   "title": "魔仙王子游乐",
+   "count": 15,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "047",
+   "title": "ShowSword亮剑",
+   "count": 19,
+   "verdict": "deny",
+   "codeGate": true,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "048",
+   "title": "海绵宝宝",
+   "count": 12,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "049",
+   "title": "猫咪日常",
+   "count": 14,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "050",
+   "title": "反港独",
+   "count": 19,
+   "verdict": "deny",
+   "codeGate": true,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "052",
+   "title": "杰尼龟",
+   "count": 34,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "054",
+   "title": "猫眼三姐妹",
+   "count": 54,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "056",
+   "title": "哆啦A梦",
+   "count": 23,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "058",
+   "title": "冠状病毒",
+   "count": 15,
+   "verdict": "deny",
+   "codeGate": true,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "061",
+   "title": "柯南",
+   "count": 179,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "062",
+   "title": "蔡徐坤🏀",
+   "count": 11,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "064",
+   "title": "特朗普",
+   "count": 26,
+   "verdict": "deny",
+   "codeGate": true,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "066",
+   "title": "马克丁🐎",
+   "count": 17,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "068",
+   "title": "Aqua阿库娅",
+   "count": 22,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "070",
+   "title": "JOJO的奇妙冒险",
+   "count": 22,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "071",
+   "title": "辉夜大小姐🎀",
+   "count": 20,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "074",
+   "title": "兄贵哲学",
+   "count": 10,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "075",
+   "title": "虚拟youtuber",
+   "count": 8,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "076",
+   "title": "Moe可爱萝莉",
+   "count": 3,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "079",
+   "title": "马保国",
+   "count": 17,
+   "verdict": "deny",
+   "codeGate": true,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "080",
+   "title": "鬼灭之刃",
+   "count": 16,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "081",
+   "title": "吴刚",
+   "count": 19,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "082",
+   "title": "进击的巨人",
+   "count": 40,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "084",
+   "title": "刺客伍六七",
+   "count": 25,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "085",
+   "title": "王冰冰",
+   "count": 56,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "086",
+   "title": "杨超越",
+   "count": 53,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "087",
+   "title": "觉醒年代",
+   "count": 24,
+   "verdict": "deny",
+   "codeGate": true,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "088",
+   "title": "袁隆平",
+   "count": 16,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "090",
+   "title": "美少女战士",
+   "count": 88,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "091",
+   "title": "让子弹飞",
+   "count": 16,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "092",
+   "title": "罗翔",
+   "count": 88,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "093",
+   "title": "李安",
+   "count": 28,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "094",
+   "title": "夏洛特烦恼王老师",
+   "count": 13,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "095",
+   "title": "原神",
+   "count": 117,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "097",
+   "title": "那年那兔那些事",
+   "count": 21,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "098",
+   "title": "间谍过家家",
+   "count": 21,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "099",
+   "title": "女神异闻录",
+   "count": 30,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "100",
+   "title": "不良人",
+   "count": 17,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "101",
+   "title": "电锯人",
+   "count": 5,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "102",
+   "title": "老友记⛲️",
+   "count": 34,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "103",
+   "title": "甄嬛传💃",
+   "count": 31,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "104",
+   "title": "黄仁勋🧩",
+   "count": 14,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "105",
+   "title": "黑神话悟空🐒",
+   "count": 22,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "106",
+   "title": "芙莉莲🪄",
+   "count": 18,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "107",
+   "title": "葫芦兄弟",
+   "count": 24,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "108",
+   "title": "企鹅家族",
+   "count": 11,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "110",
+   "title": "人工智能",
+   "count": 11,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  },
+  {
+   "number": "111",
+   "title": "黑袍纠察队",
+   "count": 13,
+   "verdict": "deny",
+   "codeGate": false,
+   "review": "-",
+   "review_why": ""
+  }
+ ]
+}
