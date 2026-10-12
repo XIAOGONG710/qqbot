@@ -12,6 +12,7 @@ import { ocrLines } from './media.ts';
 import { isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
 import { configuredImageDescriber } from './vision.ts';
 import { stickerDecider, stickerShelf } from './stickers.ts';
+import { bqbDiscover } from './sticker-sources.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const config = loadConfig(repoRoot);
@@ -23,6 +24,7 @@ const stickers = (config.stickers ?? 'off') !== 'off' && vision ? stickerShelf({
     dir: join(config.dataDir, 'stickers'),
     describe: image => vision.describe(image),
     decide: stickerDecider(config.llm, log),
+    trendDiscover: bqbDiscover({ dir: join(config.dataDir, 'stickers', 'sources'), log }),
     discover: () => client.call<string[]>('fetch_custom_face', { count: 48 }),
     log,
 }) : undefined;

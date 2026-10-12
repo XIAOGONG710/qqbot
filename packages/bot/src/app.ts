@@ -39,7 +39,7 @@ import { loadNeedsAnchor } from './needs.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
-import type { StickerShelf } from './stickers.ts';
+import { STICKER_DISCOVERY_INTERVAL_MS, type StickerShelf } from './stickers.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -456,6 +456,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     }
 
     let stopped = false;
+    let stickerDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
+    const discoverStickers = () => void collectingStickers?.discover()
+        .catch(error => log(`图片表情：读取导入箱和 QQ 自定义表情失败（${error instanceof Error ? error.message : String(error)}）`));
     /** Hindsight 健康检查的结果（状态页用到时才探，见 status()） */
     let health: MemoryEvent | undefined;
     let probing = false;
@@ -581,7 +584,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     startPlanners();
                     for (const planner of planners.values()) planner.poke();
                     syncFollowUps();
-                    void collectingStickers?.discover().catch(error => log(`图片表情：读取 QQ 自定义表情失败（${error instanceof Error ? error.message : String(error)}）`));
+                    discoverStickers();
+                    if (collectingStickers && !stickerDiscoveryTimer) {
+                        stickerDiscoveryTimer = setInterval(discoverStickers, STICKER_DISCOVERY_INTERVAL_MS);
+                        stickerDiscoveryTimer.unref();
+                    }
                 }
             }
         },
@@ -599,6 +606,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (followUpTimer) clearInterval(followUpTimer);
             if (lifeTimer) clearInterval(lifeTimer);
             if (weatherTimer) clearInterval(weatherTimer);
+            if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
             useRealWeather(undefined);
             releaseLock();
         },

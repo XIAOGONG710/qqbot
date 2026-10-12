@@ -5,10 +5,11 @@
 // - 收藏任务后台串行，不挡住正常收消息和回复。
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { Agent, fetch as undiciFetch } from 'undici';
 import type { AppConfig } from './config.ts';
+import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { chatCompletion } from './llm.ts';
 import { isSticker, type ImageDescriber } from './media.ts';
@@ -18,7 +19,10 @@ import type { OpenAIMessage } from './prompt.ts';
 export const STICKER_MAX_BYTES = 5 * 1024 * 1024;
 export const STICKER_PROMPT_MAX = 12;
 export const STICKER_DISCOVERY_PER_RUN = 3;
+export const STICKER_DISCOVERY_INTERVAL_MS = 60 * 60_000;
 export const STICKER_LIBRARY_MAX = 80;
+export const STICKER_REPLY_WINDOW = 8;
+export const STICKER_HISTORY_PREFIX = '她发了个表情包：';
 const INDEX_VERSION = 1;
 const TOKEN = /<sticker:([a-f0-9]{12})>/gi;
 const EXACT_TOKEN = /^<sticker:([a-f0-9]{12})>$/i;
@@ -35,10 +39,37 @@ export function stripStickerArtifacts(reply: string): string {
     }).join('\n').trim();
 }
 
+/** 图片表情是调味，不在需要认真回应、刚被吵醒或最近已经用过时出现。 */
+export function imageStickerAllowance(
+    history: readonly Pick<StoredMessage, 'role' | 'content'>[],
+    intent?: string,
+    woken = false,
+): { allowed: boolean; reason?: string } {
+    if (woken) return { allowed: false, reason: '刚被消息吵醒' };
+    const recentReplies = history.filter(message => message.role === 'assistant').slice(-STICKER_REPLY_WINDOW);
+    if (recentReplies.some(message => message.content.startsWith(STICKER_HISTORY_PREFIX))) {
+        return { allowed: false, reason: `最近 ${STICKER_REPLY_WINDOW} 条回复里已经发过图片表情` };
+    }
+    const lastReply = history.findLastIndex(message => message.role === 'assistant');
+    const current = history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
+    if (/[？?]|(?:^|[，。！!\s])(?:怎么|为什么|咋|多少|几点|哪里|哪儿|谁|什么|是不是|有没有)/.test(current)
+        || /(?:吗|嘛|呢)[？?。！!\s]*$/.test(current)) {
+        return { allowed: false, reason: '他这一轮问了直接问题' };
+    }
+    if (intent && /他想看照片|先接住他此刻的情绪|回应他刚说的那件事|他刚说了件好事|先直接回答他刚问的/.test(intent)) {
+        return { allowed: false, reason: '这一轮要认真回应他说的事' };
+    }
+    if (/(?:面试|考试|答辩|作业|工作|老板|老师|导师|家里|医院|生病|受伤|事故|出事|分手|吵架|转账|欠钱|难过|伤心|焦虑|害怕|疼|痛|累死|烦死)/.test(current)) {
+        return { allowed: false, reason: '他在认真说事' };
+    }
+    return { allowed: true };
+}
+
 export interface StickerSource {
-    kind: 'received' | 'qq-custom';
+    kind: 'received' | 'qq-custom' | 'inbox' | 'web' | 'bqb';
     from?: number;
     messageId?: number;
+    name?: string;
 }
 
 export interface StickerEntry {
@@ -75,16 +106,21 @@ export interface StickerShelfOptions {
     describe: ImageDescriber['describe'];
     decide: (description: string, summary?: string) => Promise<StickerDecision>;
     download?: (url: string) => Promise<DownloadedSticker>;
+    /** 持续更新的公开网络候选源；与导入箱、QQ 自定义表情共用每小时预算。 */
+    trendDiscover?: () => Promise<string[]>;
+    /** QQ 账号已有的自定义表情。 */
     discover?: () => Promise<string[]>;
     log: (message: string) => void;
     now?: () => Date;
     discoveryPerRun?: number;
+    discoveryIntervalMs?: number;
+    libraryMax?: number;
 }
 
 export interface StickerShelf {
     /** 从一条收到的 OneBot 消息里挑图片表情；后台调用方不用等。 */
     consider(message: Segment[] | string, source: Omit<StickerSource, 'kind'>): Promise<void>;
-    /** 从 QQ 账号已有的自定义表情池里看几个新的候选。 */
+    /** 从导入箱、公开网络候选源和 QQ 自定义表情池看几个新的候选。 */
     discover(): Promise<void>;
     /** 给回复模型看的本地收藏清单。 */
     prompt(): string | undefined;
@@ -140,6 +176,10 @@ function normalizedDecision(value: StickerDecision): StickerDecision {
 
 export function stickerShelf(options: StickerShelfOptions): StickerShelf {
     mkdirSync(options.dir, { recursive: true });
+    const inboxDir = join(options.dir, 'inbox');
+    mkdirSync(inboxDir, { recursive: true });
+    mkdirSync(join(inboxDir, 'wechat'), { recursive: true });
+    mkdirSync(join(inboxDir, 'web'), { recursive: true });
     const indexPath = join(options.dir, 'index.json');
     const loaded = readJsonOr<StickerIndex>(indexPath, emptyIndex(), options.log);
     const index: StickerIndex = loaded.version === INDEX_VERSION && Array.isArray(loaded.entries) && Array.isArray(loaded.seen) ? loaded : emptyIndex();
@@ -147,9 +187,19 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
     const download = options.download ?? downloadSticker;
     const pending = new Set<string>();
     let queue = Promise.resolve();
-    let discovered = false;
+    let lastDiscoveredAt: number | undefined;
+    const libraryMax = options.libraryMax ?? STICKER_LIBRARY_MAX;
 
     const persist = () => writeJsonAtomic(indexPath, index);
+    const inboxKey = (path: string) => {
+        const stats = statSync(path);
+        return sourceKey(`inbox:${path}:${stats.size}:${stats.mtimeMs}`);
+    };
+    const inboxFiles = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(item => {
+        const path = join(dir, item.name);
+        if (item.isDirectory()) return inboxFiles(path);
+        return item.isFile() && item.name.toLowerCase() !== 'urls.txt' ? [path] : [];
+    });
     const enqueue = (url: string, summary: string | undefined, source: StickerSource) => {
         const key = sourceKey(url);
         if (pending.has(key) || index.seen.includes(key)) return Promise.resolve();
@@ -163,12 +213,35 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
 
     async function considerOne(url: string, summary: string | undefined, source: StickerSource): Promise<void> {
         const key = sourceKey(url);
-        if (index.entries.length >= STICKER_LIBRARY_MAX) return reject(key, `收藏已到 ${STICKER_LIBRARY_MAX} 个上限`);
         const description = (await options.describe({ url })).replace(/\s+/g, ' ').trim().slice(0, 120);
         if (!description) return reject(key, '看不清内容');
         const decision = normalizedDecision(await options.decide(description, summary));
         if (!decision.keep) return reject(key, `不收（${decision.description || description}）`);
         const image = await download(url);
+        keep(key, image, decision, source);
+    }
+
+    async function considerInbox(path: string): Promise<void> {
+        const key = inboxKey(path);
+        if (pending.has(key) || index.seen.includes(key)) return;
+        pending.add(key);
+        try {
+            const bytes = new Uint8Array(readFileSync(path));
+            if (!bytes.length || bytes.length > STICKER_MAX_BYTES) return reject(key, `${basename(path)} 为空或超过 5 MB`);
+            const type = typeOf(bytes);
+            if (!type) return reject(key, `${basename(path)} 不是支持的 PNG/JPEG/GIF/WebP`);
+            const dataUrl = `data:${type};base64,${Buffer.from(bytes).toString('base64')}`;
+            const description = (await options.describe({ url: dataUrl, file: path })).replace(/\s+/g, ' ').trim().slice(0, 120);
+            if (!description) return reject(key, `${basename(path)} 看不清内容`);
+            const decision = normalizedDecision(await options.decide(description, basename(path)));
+            if (!decision.keep) return reject(key, `不收 ${basename(path)}（${decision.description || description}）`);
+            keep(key, { bytes, type }, decision, { kind: 'inbox', name: basename(path) });
+        } finally {
+            pending.delete(key);
+        }
+    }
+
+    function keep(key: string, image: DownloadedSticker, decision: StickerDecision, source: StickerSource): void {
         const hash = createHash('sha256').update(image.bytes).digest('hex');
         const id = hash.slice(0, 12);
         const existing = index.entries.find(entry => entry.id === id);
@@ -177,6 +250,12 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             persist();
             options.log(`图片表情：已经收藏过 ${existing.description}`);
             return;
+        }
+        if (index.entries.length >= libraryMax) {
+            const victim = [...index.entries].sort((a, b) => Date.parse(a.lastUsedAt ?? a.createdAt) - Date.parse(b.lastUsedAt ?? b.createdAt))[0]!;
+            index.entries.splice(index.entries.indexOf(victim), 1);
+            rmSync(join(options.dir, victim.file), { force: true });
+            options.log(`图片表情：收藏已到 ${libraryMax} 个，淘汰最久没用的 ${victim.description}（${victim.id}）`);
         }
         const name = `${id}.${extension[image.type]}`;
         const target = join(options.dir, name);
@@ -219,13 +298,49 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             return Promise.all(tasks).then(() => undefined);
         },
         async discover() {
-            if (discovered || !options.discover) return;
-            const urls = await options.discover();
-            discovered = true;
-            const limit = options.discoveryPerRun ?? STICKER_DISCOVERY_PER_RUN;
-            const fresh = urls.filter(url => typeof url === 'string' && /^https?:\/\//i.test(url) && !index.seen.includes(sourceKey(url)));
-            for (const url of fresh.slice(0, limit)) {
-                await enqueue(url, undefined, { kind: 'qq-custom' });
+            const at = now().getTime();
+            const interval = options.discoveryIntervalMs ?? STICKER_DISCOVERY_INTERVAL_MS;
+            if (lastDiscoveredAt !== undefined && at - lastDiscoveredAt < interval) return;
+            lastDiscoveredAt = at;
+            let remaining = options.discoveryPerRun ?? STICKER_DISCOVERY_PER_RUN;
+
+            const local = inboxFiles(inboxDir).filter(path => {
+                try { return !index.seen.includes(inboxKey(path)); } catch { return false; }
+            }).sort();
+            for (const path of local.slice(0, remaining)) {
+                const task = queue.then(() => considerInbox(path))
+                    .catch(error => options.log(`图片表情：导入 ${basename(path)} 失败（${error instanceof Error ? error.message : String(error)}）`));
+                queue = task;
+                await task;
+                remaining--;
+            }
+
+            const manifest = join(inboxDir, 'urls.txt');
+            const webUrls = existsSync(manifest)
+                ? readFileSync(manifest, 'utf8').split(/\r?\n/).map(line => line.trim())
+                    .filter(line => line && !line.startsWith('#') && /^https?:\/\//i.test(line))
+                : [];
+            for (const url of [...new Set(webUrls)].filter(url => !index.seen.includes(sourceKey(url))).slice(0, remaining)) {
+                const name = (() => { try { return new URL(url).hostname; } catch { return 'urls.txt'; } })();
+                await enqueue(url, undefined, { kind: 'web', name });
+                remaining--;
+            }
+
+            if (remaining > 0 && options.trendDiscover) {
+                const urls = await options.trendDiscover();
+                const fresh = [...new Set(urls)].filter(url => typeof url === 'string' && /^https?:\/\//i.test(url) && !index.seen.includes(sourceKey(url)));
+                for (const url of fresh.slice(0, remaining)) {
+                    await enqueue(url, undefined, { kind: 'bqb', name: 'ChineseBQB' });
+                    remaining--;
+                }
+            }
+
+            if (remaining > 0 && options.discover) {
+                const urls = await options.discover();
+                const fresh = [...new Set(urls)].filter(url => typeof url === 'string' && /^https?:\/\//i.test(url) && !index.seen.includes(sourceKey(url)));
+                for (const url of fresh.slice(0, remaining)) {
+                    await enqueue(url, undefined, { kind: 'qq-custom' });
+                }
             }
         },
         prompt() {
@@ -264,7 +379,7 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
         history(text) {
             const match = EXACT_TOKEN.exec(text.trim());
             const entry = match ? index.entries.find(item => item.id === match[1]!.toLowerCase()) : undefined;
-            return entry ? `她发了个表情包：${entry.description}` : text;
+            return entry ? `${STICKER_HISTORY_PREFIX}${entry.description}` : text;
         },
         used(id) {
             const entry = index.entries.find(item => item.id === id);

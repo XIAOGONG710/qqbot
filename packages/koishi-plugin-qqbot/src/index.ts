@@ -23,6 +23,7 @@ import { PROACTIVE_MODES, type ProactiveMode } from '../../bot/src/proactive.ts'
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '../../bot/src/st/prompt-converters.ts';
 import { configuredImageDescriber } from '../../bot/src/vision.ts';
 import { stickerDecider, stickerShelf } from '../../bot/src/stickers.ts';
+import { bqbDiscover } from '../../bot/src/sticker-sources.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 
 // koishi 的 ESM 入口是坏的（@koishijs/loader/lib/index.mjs 默认导入了一个 CJS 文件）：取 loader 自己用的那份 CJS
@@ -386,6 +387,7 @@ export function apply(ctx: Context, config: Config) {
         dir: join(appConfig.dataDir, 'stickers'),
         describe: image => vision.describe(image),
         decide: stickerDecider(appConfig.llm, log),
+        trendDiscover: bqbDiscover({ dir: join(appConfig.dataDir, 'stickers', 'sources'), log }),
         discover: async () => {
             const value = await mediaBot()._get('fetch_custom_face', { count: 48 });
             return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];

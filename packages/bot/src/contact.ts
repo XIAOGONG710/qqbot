@@ -42,7 +42,7 @@ import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candid
 import { turnCut, type Summarizer, type TurnWindow } from './context-window.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
-import { stripStickerArtifacts, type StickerShelf } from './stickers.ts';
+import { imageStickerAllowance, stripStickerArtifacts, type StickerShelf } from './stickers.ts';
 
 const DAY_MS = 86_400_000;
 
@@ -376,7 +376,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
-            stickersAllowed = !intent?.includes('先接住他此刻的情绪');
+            const stickerAllowance = options.stickers ? imageStickerAllowance(chat, intent, Boolean(woken)) : { allowed: false };
+            stickersAllowed = stickerAllowance.allowed;
+            if (options.stickers && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
             pick = picked ? {
                 kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: character.banned,
                 // 她自己生活里的东西：猫、相机、在读的书、手上的爱好（DSH 诊断 1.2、ADR 0036 的四类）
