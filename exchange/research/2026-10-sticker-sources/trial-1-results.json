@@ -1,0 +1,848 @@
+{
+ "note": "10-12 real-image trial of the collect flow on ChineseBQB samples; descriptions only, no image files",
+ "rows": [
+  {
+   "group": "likely",
+   "category": "可爱的女孩纸",
+   "animated": true,
+   "description": "一个小女孩闭着眼睛挥动双拳，下方带有“哎呀 讨厌啦”的文字和黄色星星。",
+   "keep": true,
+   "tags": [
+    "撒娇",
+    "害羞",
+    "可爱",
+    "回应"
+   ],
+   "final": "小女孩闭眼挥拳配哎呀讨厌啦文字",
+   "ms": 1775
+  },
+  {
+   "group": "likely",
+   "category": "可爱的女孩纸",
+   "animated": true,
+   "description": "图中一名成年男子双手扶着一名穿米老鼠上衣的小女孩，底部有“给我滚”的文字。",
+   "keep": false,
+   "tags": [
+    "攻击性",
+    "真人照片",
+    "不适宜"
+   ],
+   "final": "成年男子扶小女孩，配攻击性文字",
+   "ms": 1550
+  },
+  {
+   "group": "likely",
+   "category": "可爱的女孩纸",
+   "animated": false,
+   "description": "一个脸颊带红晕的小孩正面对镜头，两颊分别标有“委”和“屈”两个字。",
+   "keep": true,
+   "tags": [
+    "委屈",
+    "可爱",
+    "撒娇"
+   ],
+   "final": "小孩红晕脸颊标委屈二字，表情可爱",
+   "ms": 1209
+  },
+  {
+   "group": "likely",
+   "category": "是喵星人啦",
+   "animated": false,
+   "description": "一只虎斑猫靠在墙边，图片下方有一行白色的中文文字。",
+   "keep": true,
+   "tags": [
+    "猫",
+    "表情包",
+    "搞笑"
+   ],
+   "final": "虎斑猫靠墙配白色中文文字，可爱又好笑",
+   "ms": 1192
+  },
+  {
+   "group": "likely",
+   "category": "是喵星人啦",
+   "animated": false,
+   "description": "一只白色猫咪抬头坐着，脸上有蓝色眼泪图案，下方写着“崽种”两个字。",
+   "keep": true,
+   "tags": [
+    "猫",
+    "搞笑",
+    "怼人",
+    "表情包"
+   ],
+   "final": "白猫抬头坐姿，脸上蓝色眼泪图案，配文崽种",
+   "ms": 1223
+  },
+  {
+   "group": "likely",
+   "category": "是喵星人啦",
+   "animated": false,
+   "description": "一只橘白相间的猫趴在木质表面，画面下方配有文字：“啧 年纪轻轻 怎么是个傻子”。",
+   "keep": true,
+   "tags": [
+    "猫",
+    "吐槽",
+    "无语",
+    "搞笑"
+   ],
+   "final": "橘白猫趴着配文吐槽对方是傻子",
+   "ms": 1079
+  },
+  {
+   "group": "likely",
+   "category": "开心鸭",
+   "animated": false,
+   "description": "图中是三只白鸭在水中倒立，只露出水面的下半身和橙色脚掌。图片底部配有“翻车了鸭”的文字。",
+   "keep": true,
+   "tags": [
+    "搞笑",
+    "鸭子",
+    "翻车",
+    "自嘲"
+   ],
+   "final": "三只白鸭水中倒立只露脚掌，配文翻车了鸭",
+   "ms": 1156
+  },
+  {
+   "group": "likely",
+   "category": "开心鸭",
+   "animated": false,
+   "description": "一只体型圆胖的白鸭站在网面上，图片底部有白色文字“吃太撑了鸭”。",
+   "keep": true,
+   "tags": [
+    "鸭",
+    "吃撑",
+    "可爱",
+    "搞笑"
+   ],
+   "final": "圆胖白鸭站在网面上，配文吃太撑了鸭",
+   "ms": 1260
+  },
+  {
+   "group": "likely",
+   "category": "开心鸭",
+   "animated": false,
+   "description": "画面正中是一只白色鸭子的正面特写，下方有一个“盯”字。",
+   "keep": true,
+   "tags": [
+    "无语",
+    "盯人",
+    "可爱",
+    "回复"
+   ],
+   "final": "白色鸭子正面特写，下方配盯字，表情呆萌",
+   "ms": 1260
+  },
+  {
+   "group": "likely",
+   "category": "沙雕企鹅",
+   "animated": false,
+   "description": "图中有黑色“THANK YOU”字样，其中“O”是一个圆脸图案，周围散布着几颗黄色星形。",
+   "keep": true,
+   "tags": [
+    "感谢",
+    "可爱",
+    "表情"
+   ],
+   "final": "黑色THANK YOU字样，O为圆脸，周围有黄色星星",
+   "ms": 1215
+  },
+  {
+   "group": "likely",
+   "category": "沙雕企鹅",
+   "animated": false,
+   "description": "图中是一只形似企鹅的黑色卡通角色，长着恶魔角，手持一把三叉戟，上方有粉色日文字符。",
+   "keep": true,
+   "tags": [
+    "卡通",
+    "恶魔",
+    "企鹅",
+    "日文"
+   ],
+   "final": "黑色卡通企鹅长恶魔角持三叉戟，上方有粉色日文",
+   "ms": 1298
+  },
+  {
+   "group": "likely",
+   "category": "沙雕企鹅",
+   "animated": false,
+   "description": "图中是一只企鹅拿着斧头，背景是红色和绿色的图案。",
+   "keep": false,
+   "tags": [
+    "暴力",
+    "动物",
+    "武器"
+   ],
+   "final": "企鹅持斧，背景红绿图案，含暴力暗示",
+   "ms": 1144
+  },
+  {
+   "group": "likely",
+   "category": "小幺鸡",
+   "animated": false,
+   "description": "图是一只白色卡通鸭子，有圆眼睛、橙色扁嘴和红色脸颊。",
+   "keep": true,
+   "tags": [
+    "可爱",
+    "卡通",
+    "鸭子"
+   ],
+   "final": "白色卡通鸭子，圆眼睛橙扁嘴红脸颊，可爱",
+   "ms": 895
+  },
+  {
+   "group": "likely",
+   "category": "小幺鸡",
+   "animated": false,
+   "description": "图中是一个黄色卡通形象的脸部，有着圆睁的大眼睛、红晕的脸颊和张开的小嘴，表情显得惊讶或呆滞。",
+   "keep": true,
+   "tags": [
+    "惊讶",
+    "呆滞",
+    "可爱",
+    "卡通"
+   ],
+   "final": "黄色卡通脸圆睁大眼红晕张嘴，表情惊讶呆滞",
+   "ms": 1489
+  },
+  {
+   "group": "likely",
+   "category": "小幺鸡",
+   "animated": false,
+   "description": "图中是一只黄色卡通小动物，长着大眼睛、红脸颊，手里拿着一个粉色物品。",
+   "keep": true,
+   "tags": [
+    "可爱",
+    "卡通",
+    "萌"
+   ],
+   "final": "黄色卡通小动物拿粉色物品，大眼睛红脸颊，可爱",
+   "ms": 1283
+  },
+  {
+   "group": "likely",
+   "category": "狗",
+   "animated": true,
+   "description": "沙发上有一只白色小狗正张大嘴，将嘴靠近另一只戴着项圈的黄白色大狗的脖颈处。",
+   "keep": true,
+   "tags": [
+    "宠物",
+    "搞笑",
+    "互动"
+   ],
+   "final": "白色小狗张嘴靠近戴项圈的大狗脖子",
+   "ms": 1733
+  },
+  {
+   "group": "likely",
+   "category": "狗",
+   "animated": false,
+   "description": "图中是一只小狗在看似光滑的平面上做出滑行或奔跑的动作，画面下方有一排白色中文字幕。",
+   "keep": true,
+   "tags": [
+    "搞笑",
+    "小狗",
+    "滑行",
+    "表情包"
+   ],
+   "final": "小狗在光滑地面滑行奔跑，配白色中文字幕",
+   "ms": 1376
+  },
+  {
+   "group": "likely",
+   "category": "狗",
+   "animated": true,
+   "description": "图中是一只侧面的棕白相间狗，后方有一个黄色叉子形状的物体靠近它。",
+   "keep": true,
+   "tags": [
+    "狗",
+    "搞笑",
+    "日常"
+   ],
+   "final": "棕白狗侧面，后方有黄色叉子状物体靠近",
+   "ms": 2284
+  },
+  {
+   "group": "likely",
+   "category": "鸽子",
+   "animated": false,
+   "description": "图中有一只白鸽在平整地面上行走，右下角带有“等我”字样的文字。",
+   "keep": true,
+   "tags": [
+    "可爱",
+    "欠欠",
+    "等回复",
+    "动物"
+   ],
+   "final": "白鸽行走配等我文字，可爱又欠欠的",
+   "ms": 1359
+  },
+  {
+   "group": "likely",
+   "category": "鸽子",
+   "animated": false,
+   "description": "一只小鹿趴着，背上停着一只鸟。图片底部有一行中文文字。",
+   "keep": true,
+   "tags": [
+    "可爱",
+    "动物",
+    "文字"
+   ],
+   "final": "小鹿趴着背上停鸟，底部有中文文字",
+   "ms": 1438
+  },
+  {
+   "group": "likely",
+   "category": "鸽子",
+   "animated": false,
+   "description": "图中主要有两只鸽子站在水池边的瓷砖地上，前景的鸽子身上写着“我”，下方配有一行文字。",
+   "keep": false,
+   "tags": [
+    "鸽子",
+    "水池",
+    "文字"
+   ],
+   "final": "两只鸽子站在水池边，前景鸽子身上写有文字",
+   "ms": 1820
+  },
+  {
+   "group": "likely",
+   "category": "猪",
+   "animated": true,
+   "description": "一只浅色狗在蓝绿色的水中游泳。",
+   "keep": true,
+   "tags": [
+    "动物",
+    "游泳",
+    "清爽"
+   ],
+   "final": "浅色狗在蓝绿色水中游泳，画面清爽可爱",
+   "ms": 1893
+  },
+  {
+   "group": "likely",
+   "category": "猪",
+   "animated": false,
+   "description": "图中有一只白色小猪的面部特写，上方有“emmm……”字样。",
+   "keep": true,
+   "tags": [
+    "无语",
+    "小猪",
+    "emmm"
+   ],
+   "final": "白色小猪特写，配emmm文字，表达无语",
+   "ms": 1462
+  },
+  {
+   "group": "likely",
+   "category": "猪",
+   "animated": false,
+   "description": "一只白色小猪站在浅色瓷砖地面上，抬头向上看。",
+   "keep": true,
+   "tags": [
+    "可爱",
+    "动物",
+    "呆萌"
+   ],
+   "final": "白色小猪抬头望天，呆萌可爱",
+   "ms": 1264
+  },
+  {
+   "group": "likely",
+   "category": "鹦鹉",
+   "animated": true,
+   "description": "图中主要有两个举着双手、戴白色兔子头套的黄色人偶，底部写有“老公睡我睡我”的文字。",
+   "keep": false,
+   "tags": [
+    "低俗",
+    "性暗示"
+   ],
+   "final": "黄色人偶配低俗文字，含性暗示",
+   "ms": 1571
+  },
+  {
+   "group": "likely",
+   "category": "鹦鹉",
+   "animated": true,
+   "description": "图中是一个黄色毛绒玩偶被双手拿着剪刀和梳子修剪，底部配有“忍不住点头”的文字。",
+   "keep": true,
+   "tags": [
+    "可爱",
+    "搞笑",
+    "点头"
+   ],
+   "final": "黄色毛绒玩偶被修剪，配文忍不住点头",
+   "ms": 1924
+  },
+  {
+   "group": "likely",
+   "category": "鹦鹉",
+   "animated": true,
+   "description": "图中是一个黄色毛绒玩偶，有着夸张的大眼睛和红脸蛋，底部写有“老婆~”的文字。",
+   "keep": true,
+   "tags": [
+    "撒娇",
+    "可爱",
+    "情侣",
+    "表情"
+   ],
+   "final": "黄色毛绒玩偶配文老婆，可爱撒娇",
+   "ms": 1596
+  },
+  {
+   "group": "likely",
+   "category": "沙雕情侣头像",
+   "animated": false,
+   "description": "图中是一个卡通小女孩，她留着黑色短发并扎着两个小辫子，头上戴着一个粉色蝴蝶结，正张着大嘴露出红色的心形图案。",
+   "keep": true,
+   "tags": [
+    "可爱",
+    "俏皮",
+    "表情"
+   ],
+   "final": "卡通小女孩张嘴吐心形，可爱俏皮",
+   "ms": 1546
+  },
+  {
+   "group": "likely",
+   "category": "沙雕情侣头像",
+   "animated": false,
+   "description": "图中一名戴墨镜、穿白色背心的男子抬起右手，手臂上有水珠飞溅。",
+   "keep": false,
+   "tags": [
+    "人物",
+    "动作",
+    "水珠"
+   ],
+   "final": "男子戴墨镜穿背心抬手臂，水珠飞溅",
+   "ms": 1408
+  },
+  {
+   "group": "likely",
+   "category": "沙雕情侣头像",
+   "animated": false,
+   "description": "画面主体是一个带动态模糊效果的男性特写，呈张嘴呼喊的神态，画面底部有“开炮 开炮 开炮”的文字。",
+   "keep": true,
+   "tags": [
+    "表情包",
+    "呼喊",
+    "搞笑",
+    "动态模糊"
+   ],
+   "final": "男子张嘴呼喊，底部有开炮开炮开炮文字",
+   "ms": 1617
+  },
+  {
+   "group": "likely",
+   "category": "白色小人",
+   "animated": false,
+   "description": "图中是一个浅蓝色和粉色头发的卡通人物，其中一只眼睛被黑色色块遮挡。",
+   "keep": false,
+   "tags": [
+    "卡通",
+    "遮挡",
+    "猎奇"
+   ],
+   "final": "卡通人物单眼被黑色色块遮挡，风格偏猎奇",
+   "ms": 1111
+  },
+  {
+   "group": "likely",
+   "category": "白色小人",
+   "animated": false,
+   "description": "图中是一个白色简笔画小人，头上戴着粉红色的蝴蝶结，张着嘴。",
+   "keep": true,
+   "tags": [
+    "可爱",
+    "简笔画",
+    "表情"
+   ],
+   "final": "白色简笔画小人戴粉红蝴蝶结张嘴",
+   "ms": 1044
+  },
+  {
+   "group": "likely",
+   "category": "白色小人",
+   "animated": false,
+   "description": "这是一张简笔画风格的圆形人脸，其中一只眼睛睁开，另一只眼睛闭着，嘴巴呈微笑状。",
+   "keep": true,
+   "tags": [
+    "可爱",
+    "眨眼",
+    "微笑"
+   ],
+   "final": "简笔画圆脸，单眼睁开单眼闭，微笑表情",
+   "ms": 1112
+  },
+  {
+   "group": "likely",
+   "category": "滑稽大佬",
+   "animated": false,
+   "description": "图中上方文字是“穷人的微笑”，主体是一个眯眼微笑的卡通表情，下方穿着印有“穷”字的破洞衣服。",
+   "keep": true,
+   "tags": [
+    "自嘲",
+    "搞笑",
+    "表情包"
+   ],
+   "final": "卡通表情眯眼微笑，衣服印穷字带破洞，配文穷人的微笑",
+   "ms": 1194
+  },
+  {
+   "group": "likely",
+   "category": "滑稽大佬",
+   "animated": false,
+   "description": "图中有一个表情符号、一个大拇指点赞图标和两行中文文字。",
+   "keep": false,
+   "tags": [
+    "文字图",
+    "不清晰"
+   ],
+   "final": "含大段文字的表情图，意思不清晰",
+   "ms": 1179
+  },
+  {
+   "group": "likely",
+   "category": "滑稽大佬",
+   "animated": false,
+   "description": "图中包含一个三维坐标系、一个站在原点上的微笑表情小人，以及“害怕”、“立体几何简约版”的字样。",
+   "keep": true,
+   "tags": [
+    "学习",
+    "数学",
+    "表情包"
+   ],
+   "final": "微笑小人站在三维坐标系原点，配文害怕立体几何",
+   "ms": 1134
+  },
+  {
+   "group": "likely",
+   "category": "全是心心",
+   "animated": false,
+   "description": "图中是一个穿灰色连帽衫、戴彩色墨镜的男孩和一只狗，画面中有粉色爱心和“me”、“you”等文字贴纸。",
+   "keep": true,
+   "tags": [
+    "可爱",
+    "搞笑",
+    "情侣",
+    "日常"
+   ],
+   "final": "男孩和狗戴墨镜配爱心贴纸，可爱搞笑",
+   "ms": 1416
+  },
+  {
+   "group": "likely",
+   "category": "全是心心",
+   "animated": false,
+   "description": "一只白色兔子正把一封信投入粉色邮筒，周围有多个粉色爱心图案。",
+   "keep": true,
+   "tags": [
+    "可爱",
+    "爱心",
+    "寄信"
+   ],
+   "final": "白兔投信粉色邮筒，周围粉色爱心",
+   "ms": 1840
+  },
+  {
+   "group": "likely",
+   "category": "全是心心",
+   "animated": false,
+   "description": "图中是动画角色痞老板，他面带笑容地拿着一卷印有粉色爱心图案的纸，周围漂浮着几个粉色爱心。",
+   "keep": true,
+   "tags": [
+    "可爱",
+    "爱心",
+    "动画角色",
+    "表情"
+   ],
+   "final": "痞老板笑着拿爱心纸卷，周围飘粉色爱心",
+   "ms": 1713
+  },
+  {
+   "group": "likely",
+   "category": "斗图之王",
+   "animated": false,
+   "description": "图片是一个熊猫头表情包，中间有一张人脸，下方写有“多喝热水少做梦”。",
+   "keep": true,
+   "tags": [
+    "熊猫头",
+    "调侃",
+    "日常"
+   ],
+   "final": "熊猫头表情包，配文多喝热水少做梦",
+   "ms": 1236
+  },
+  {
+   "group": "likely",
+   "category": "斗图之王",
+   "animated": true,
+   "description": "一只发胖的灰白猫咪在木地板上滑倒，图片下方有“出来丢人”的文字。",
+   "keep": true,
+   "tags": [
+    "猫",
+    "搞笑",
+    "丢人",
+    "表情包"
+   ],
+   "final": "灰白胖猫滑倒，配文出来丢人",
+   "ms": 2132
+  },
+  {
+   "group": "likely",
+   "category": "斗图之王",
+   "animated": false,
+   "description": "图中一只手用枪状物指着白猫的脖子，底部有“说人话”三个字。",
+   "keep": false,
+   "tags": [
+    "暴力",
+    "动物",
+    "威胁"
+   ],
+   "final": "枪状物指猫脖子配说人话文字，含暴力威胁",
+   "ms": 1409
+  },
+  {
+   "group": "likely",
+   "category": "乌龟",
+   "animated": false,
+   "description": "图中上方有“翠花王八”四个字，下方是一只绿色、带有紫色花纹的卡通乌龟。",
+   "keep": true,
+   "tags": [
+    "搞笑",
+    "动物",
+    "聊天"
+   ],
+   "final": "卡通绿龟配文字翠花王八，搞笑可爱",
+   "ms": 1353
+  },
+  {
+   "group": "likely",
+   "category": "乌龟",
+   "animated": false,
+   "description": "图上方有“可乐王八”四个字，下方是一只蓝白相间的卡通小动物。",
+   "keep": true,
+   "tags": [
+    "搞笑",
+    "卡通",
+    "聊天"
+   ],
+   "final": "卡通小动物配可乐王八文字，搞笑欠欠的",
+   "ms": 1118
+  },
+  {
+   "group": "likely",
+   "category": "乌龟",
+   "animated": false,
+   "description": "图中上方有“少林王八”四个字，中间是一只头戴斗笠的粉色乌龟，右侧有类似手捏乌龟的动作。",
+   "keep": true,
+   "tags": [
+    "搞笑",
+    "动物",
+    "表情包",
+    "无语"
+   ],
+   "final": "粉色乌龟戴斗笠，配字少林王八，有手捏动作",
+   "ms": 1054
+  },
+  {
+   "group": "control",
+   "category": "特朗普",
+   "animated": false,
+   "description": "图中是特朗普在蓝色背景前竖起中指，画面下方带有遮挡了部分字母的大写英文单词。",
+   "keep": false,
+   "tags": [
+    "政治人物",
+    "不雅手势",
+    "英文文字"
+   ],
+   "final": "特朗普竖中指并带遮挡英文单词的图片",
+   "ms": 1058
+  },
+  {
+   "group": "control",
+   "category": "特朗普",
+   "animated": false,
+   "description": "图中主要有希拉里·克林顿和唐纳德·特朗普，画面下方配有红色和白色文字。",
+   "keep": false,
+   "tags": [
+    "政治",
+    "人物",
+    "文字"
+   ],
+   "final": "希拉里与特朗普配文字的政治类图片",
+   "ms": 1173
+  },
+  {
+   "group": "control",
+   "category": "特朗普",
+   "animated": false,
+   "description": "图中一名男子坐在办公桌前，双手举着一本打开的文件夹。文件夹左右两页分别印有中文字，右侧页面底部有签名。",
+   "keep": false,
+   "tags": [
+    "办公",
+    "文件夹",
+    "文字"
+   ],
+   "final": "男子举文件夹，内页有文字和签名",
+   "ms": 1403
+  },
+  {
+   "group": "control",
+   "category": "反港独",
+   "animated": false,
+   "description": "海报上有两行英文标语“#CUSU IS NOT CU!”和一行中文标语“对不起，我们拒绝被代表”，中部配有一张戴墨镜人物挥手的图片，右下角写有日期“07/09/2017”和签名。",
+   "keep": false,
+   "tags": [
+    "海报",
+    "标语",
+    "政治"
+   ],
+   "final": "英文标语海报，含中文口号和日期签名",
+   "ms": 1581
+  },
+  {
+   "group": "control",
+   "category": "反港独",
+   "animated": false,
+   "description": "图中包含上下两个配有文字的卡通表情包：上方是一个短发人脸，下方是一个长耳朵人脸并拿着一把刀。",
+   "keep": true,
+   "tags": [
+    "卡通",
+    "表情包",
+    "搞笑",
+    "无语"
+   ],
+   "final": "上下两个卡通表情，上方短发人脸，下方长耳人脸持刀",
+   "ms": 1180
+  },
+  {
+   "group": "control",
+   "category": "反港独",
+   "animated": false,
+   "description": "墙上贴有多张写有“#CUSU IS NOT CU!”及“对不起，我们拒绝被代表”字样的海报和标语，并配有若干人物表情图片。",
+   "keep": false,
+   "tags": [
+    "政治",
+    "抗议",
+    "标语"
+   ],
+   "final": "政治抗议标语海报，含拒绝被代表等口号",
+   "ms": 1581
+  },
+  {
+   "group": "control",
+   "category": "冠状病毒",
+   "animated": false,
+   "description": "图中是一个戴防毒面具、穿废土风格服装的人物，正端着一杯茶，画面下方有橙色背景的“不去”字样。",
+   "keep": false,
+   "tags": [
+    "废土",
+    "防毒面具",
+    "拒绝"
+   ],
+   "final": "废土风格防毒面具人物端茶，配文不去",
+   "ms": 1534
+  },
+  {
+   "group": "control",
+   "category": "冠状病毒",
+   "animated": false,
+   "description": "图中有一名戴着防毒面具、穿黑色防护服的人正对着镜子自拍，身上挂有多瓶洗护用品，画面顶部带有“来了来了”的文字。",
+   "keep": false,
+   "tags": [
+    "防护服",
+    "防毒面具",
+    "自拍"
+   ],
+   "final": "戴防毒面具穿防护服对镜自拍，挂洗护用品，顶部有文字",
+   "ms": 1246
+  },
+  {
+   "group": "control",
+   "category": "罗翔",
+   "animated": false,
+   "description": "图中是一名戴眼镜的男子在蓝色背景前讲话，背景上有“厚大法考”的标志字样，画面底部有中文字幕。",
+   "keep": false,
+   "tags": [
+    "法考",
+    "讲课",
+    "截图"
+   ],
+   "final": "戴眼镜男子在蓝色背景前讲话，有法考标志和字幕",
+   "ms": 1458
+  },
+  {
+   "group": "control",
+   "category": "罗翔",
+   "animated": false,
+   "description": "图中是一位戴眼镜、穿西装的男士在蓝色背景前竖起一根手指讲话，背景有法考相关字样，底部配有一行大字。",
+   "keep": false,
+   "tags": [
+    "广告",
+    "培训",
+    "文字图"
+   ],
+   "final": "法考培训广告图，含商业宣传文字",
+   "ms": 1334
+  },
+  {
+   "group": "control",
+   "category": "罗翔",
+   "animated": false,
+   "description": "图中主要有一名穿西装打领带的男子用枪指着怀里的猫，下方配有文字。",
+   "keep": false,
+   "tags": [
+    "暴力",
+    "动物",
+    "威胁"
+   ],
+   "final": "男子持枪指猫，配文字，含暴力威胁",
+   "ms": 1242
+  },
+  {
+   "group": "control",
+   "category": "微信网友贡献表情包暂存有时间慢慢整理",
+   "animated": true,
+   "description": "图中是一个带有夸张表情的简笔画小人，下方配有“恩。是的。没错”的文字。",
+   "keep": true,
+   "tags": [
+    "无语",
+    "敷衍",
+    "回应"
+   ],
+   "final": "简笔画小人夸张表情配文字“恩。是的。没错”",
+   "ms": 1063
+  },
+  {
+   "group": "control",
+   "category": "微信网友贡献表情包暂存有时间慢慢整理",
+   "animated": false,
+   "description": "图中是一只穿着格纹衣服的玩偶坐在笔记本电脑前，画面底部带有字幕。",
+   "keep": true,
+   "tags": [
+    "玩偶",
+    "电脑",
+    "可爱",
+    "表情包"
+   ],
+   "final": "穿格纹衣玩偶坐电脑前，底部有字幕",
+   "ms": 1229
+  },
+  {
+   "group": "control",
+   "category": "微信网友贡献表情包暂存有时间慢慢整理",
+   "animated": false,
+   "description": "图中是一个圆形轮廓，里面是一张黑白的儿童面孔，底部有两个小支撑脚。",
+   "keep": true,
+   "tags": [
+    "可爱",
+    "简笔画",
+    "呆萌",
+    "表情"
+   ],
+   "final": "黑白简笔画儿童脸，带小脚，表情呆萌",
+   "ms": 1325
+  }
+ ]
+}
