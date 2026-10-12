@@ -6,7 +6,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { Agent, fetch as undiciFetch } from 'undici';
 import type { AppConfig } from './config.ts';
 import type { StoredMessage } from './history.ts';
@@ -22,6 +22,8 @@ export const STICKER_DISCOVERY_PER_RUN = 3;
 export const STICKER_DISCOVERY_INTERVAL_MS = 60 * 60_000;
 /** 公开目录候选每天最多审看几个 */
 export const STICKER_TREND_PER_DAY = 3;
+/** 每次发现最多补同步几张进 QQ 收藏 */
+export const STICKER_FAVORITES_PER_SYNC = 10;
 export const STICKER_LIBRARY_MAX = 80;
 export const STICKER_REPLY_WINDOW = 8;
 export const STICKER_HISTORY_PREFIX = '她发了个表情包：';
@@ -83,6 +85,16 @@ export interface StickerEntry {
     createdAt: string;
     used: number;
     lastUsedAt?: string;
+    /** 已经同步进 QQ 账号「收藏的表情」；md5 是文件内容的大写十六进制，淘汰时按它找到那一张删掉 */
+    qq?: { md5: string };
+}
+
+/** QQ 账号自己的「收藏的表情」（NapCat 的 add_custom_face / fetch_custom_face_detail / delete_custom_face） */
+export interface StickerFavorites {
+    /** 把本地图片加进 QQ 收藏，返回文件内容的 md5（大写十六进制）；失败抛错 */
+    add(file: string): Promise<string>;
+    /** 按 md5 从 QQ 收藏里删；本来就没有当作成功 */
+    remove(md5: string): Promise<void>;
 }
 
 interface StickerIndex {
@@ -114,7 +126,14 @@ export interface StickerShelfOptions {
     trendDiscover?: () => Promise<string[]>;
     trendPerDay?: number;
     /** QQ 账号已有的自定义表情。 */
-    discover?: () => Promise<string[]>;
+    /** knownMd5：已经同步进 QQ 收藏的那些（大写 md5）；QQ 收藏池里有它们，别再当新候选看一遍 */
+    discover?: (knownMd5: ReadonlySet<string>) => Promise<string[]>;
+    /** 她收藏的每一张同步进 QQ 账号的「收藏的表情」，淘汰时一起删；不给就只存本地 */
+    favorites?: StickerFavorites;
+    /** 两次 QQ 收藏操作之间隔多久（毫秒），像人一样一张张存 */
+    favoritesGapMs?: number;
+    /** 每次发现（启动和每小时）最多补同步几张还没进 QQ 收藏的 */
+    favoritesPerSync?: number;
     log: (message: string) => void;
     now?: () => Date;
     discoveryPerRun?: number;
@@ -197,6 +216,22 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
     const libraryMax = options.libraryMax ?? STICKER_LIBRARY_MAX;
 
     const persist = () => writeJsonAtomic(indexPath, index);
+    // QQ 收藏的操作串行、隔几秒一个：一张张存，不一股脑发；失败只记日志，本地收藏不受影响，下次发现时补。
+    let favQueue = Promise.resolve();
+    const favGap = options.favoritesGapMs ?? 2000;
+    const favorite = (task: () => Promise<void>) => {
+        favQueue = favQueue.then(task).catch(error => options.log(`图片表情：QQ 收藏操作失败（${error instanceof Error ? error.message : String(error)}）`))
+            .then(() => favGap > 0 ? new Promise<void>(resolve => setTimeout(resolve, favGap)) : undefined);
+        return favQueue;
+    };
+    const mirror = (entry: StickerEntry) => favorite(async () => {
+        if (!options.favorites || entry.qq || !index.entries.includes(entry)) return;
+        const file = resolve(options.dir, entry.file);
+        if (!existsSync(file)) return;
+        entry.qq = { md5: (await options.favorites.add(file)).toUpperCase() };
+        persist();
+        options.log(`图片表情：已加进 QQ 收藏（${entry.id}）`);
+    });
     const inboxKey = (path: string) => {
         const stats = statSync(path);
         return sourceKey(`inbox:${path}:${stats.size}:${stats.mtimeMs}`);
@@ -261,6 +296,10 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             const victim = [...index.entries].sort((a, b) => Date.parse(a.lastUsedAt ?? a.createdAt) - Date.parse(b.lastUsedAt ?? b.createdAt))[0]!;
             index.entries.splice(index.entries.indexOf(victim), 1);
             rmSync(join(options.dir, victim.file), { force: true });
+            if (victim.qq && options.favorites) {
+                const { md5 } = victim.qq;
+                void favorite(async () => { await options.favorites!.remove(md5); options.log(`图片表情：已从 QQ 收藏里删掉（${victim.id}）`); });
+            }
             options.log(`图片表情：收藏已到 ${libraryMax} 个，淘汰最久没用的 ${victim.description}（${victim.id}）`);
         }
         const name = `${id}.${extension[image.type]}`;
@@ -270,12 +309,14 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             writeFileSync(tmp, image.bytes);
             renameSync(tmp, target);
         }
-        index.entries.push({
+        const entry: StickerEntry = {
             id, file: name, description: decision.description, tags: decision.tags, source,
             createdAt: now().toISOString(), used: 0,
-        });
+        };
+        index.entries.push(entry);
         markSeen(key);
         persist();
+        if (options.favorites) void mirror(entry);
         options.log(`图片表情：收藏 ${decision.description}（${id}${decision.tags.length ? `；${decision.tags.join('、')}` : ''}）`);
     }
 
@@ -309,6 +350,8 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             if (lastDiscoveredAt !== undefined && at - lastDiscoveredAt < interval) return;
             lastDiscoveredAt = at;
             let remaining = options.discoveryPerRun ?? STICKER_DISCOVERY_PER_RUN;
+            // 还没进 QQ 收藏的（上线前就收了的、上次失败的）每次补几张，不一次全塞
+            if (options.favorites) for (const entry of index.entries.filter(item => !item.qq).slice(0, options.favoritesPerSync ?? STICKER_FAVORITES_PER_SYNC)) void mirror(entry);
 
             const local = inboxFiles(inboxDir).filter(path => {
                 try { return !index.seen.includes(inboxKey(path)); } catch { return false; }
@@ -348,7 +391,7 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             }
 
             if (remaining > 0 && options.discover) {
-                const urls = await options.discover();
+                const urls = await options.discover(new Set(index.entries.flatMap(entry => entry.qq ? [entry.qq.md5] : [])));
                 const fresh = [...new Set(urls)].filter(url => typeof url === 'string' && /^https?:\/\//i.test(url) && !index.seen.includes(sourceKey(url)));
                 for (const url of fresh.slice(0, remaining)) {
                     await enqueue(url, undefined, { kind: 'qq-custom' });

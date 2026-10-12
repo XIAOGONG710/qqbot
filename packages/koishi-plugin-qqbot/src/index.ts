@@ -23,6 +23,7 @@ import { PROACTIVE_MODES, type ProactiveMode } from '../../bot/src/proactive.ts'
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '../../bot/src/st/prompt-converters.ts';
 import { configuredImageDescriber, STICKER_VISION_PROMPT } from '../../bot/src/vision.ts';
 import { stickerDecider, stickerShelf } from '../../bot/src/stickers.ts';
+import { qqFavorites } from '../../bot/src/sticker-favorites.ts';
 import { bqbDiscover } from '../../bot/src/sticker-sources.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 
@@ -384,15 +385,14 @@ export function apply(ctx: Context, config: Config) {
     };
     const vision = configuredImageDescriber(appConfig);
     const stickerVision = configuredImageDescriber(appConfig, STICKER_VISION_PROMPT);
+    const qqFav = qqFavorites((action, params) => mediaBot()._get(action, params));
     const stickers = (appConfig.stickers ?? 'off') !== 'off' && stickerVision ? stickerShelf({
         dir: join(appConfig.dataDir, 'stickers'),
         describe: image => stickerVision.describe(image),
         decide: stickerDecider(appConfig.llm, log),
         trendDiscover: bqbDiscover({ dir: join(appConfig.dataDir, 'stickers', 'sources'), log }),
-        discover: async () => {
-            const value = await mediaBot()._get('fetch_custom_face', { count: 48 });
-            return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-        },
+        discover: qqFav.discover,
+        favorites: qqFav.favorites,
         log,
     }) : undefined;
     let app: ReturnType<typeof startApp>;
