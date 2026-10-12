@@ -12,9 +12,13 @@
 | `closing-turns.jsonl` | 6 段收尾（`ct-001`..`ct-006`）补标注后的版本 |
 | `counterexamples.jsonl` | 反例库，`cx-001`..`cx-076`（中间有跳号，见第 7 节），7 类 |
 | `counterexamples.md` | 每类 2 条最典型的 |
+| `samples-b1.jsonl` | **K3 第一批（试采）**：5 段，`rc-b1-001`..`rc-b1-005`，字段与 `samples.jsonl` 一致，另带 `stats_scope` |
+| `batch1.md` | 第一批说明：怎么采、抄录脱敏、没收的 6 条、本批 5 段、流水线的坑 |
 | `annotate.py` | K1 生成脚本：读 `../samples.jsonl`、`../closing-turns.jsonl`，写本目录两个 jsonl |
 | `build_counterexamples.py` | K2 生成脚本：反例表 → jsonl + md |
-| `check.py` | 自检门：字段、编号、统计可复算、反例编号唯一、反例来源行真实存在 |
+| `build_batch1.py` | K3 生成脚本：脱敏抄录表 + 人工标注 → `samples-b1.jsonl`（原始图已删，脚本自带抄录内容） |
+| `check.py` | K1/K2 自检门：字段、编号、统计可复算、反例编号唯一、反例来源行真实存在 |
+| `check_batch.py` | **K3 批次自检门**：脱敏硬规则（≤20 字/气泡、无号码/链接/账号、无日期钟点）+ 格式 + 编号唯一 |
 
 原文件 `../samples.jsonl`、`../closing-turns.jsonl` **未改动**，产物全部落在 `v2/`。
 
