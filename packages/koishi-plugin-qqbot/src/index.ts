@@ -21,7 +21,7 @@ import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
 import { textToSegments } from '../../bot/src/qq-faces.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from '../../bot/src/proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '../../bot/src/st/prompt-converters.ts';
-import { configuredImageDescriber } from '../../bot/src/vision.ts';
+import { configuredImageDescriber, STICKER_VISION_PROMPT } from '../../bot/src/vision.ts';
 import { stickerDecider, stickerShelf } from '../../bot/src/stickers.ts';
 import { bqbDiscover } from '../../bot/src/sticker-sources.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
@@ -383,9 +383,10 @@ export function apply(ctx: Context, config: Config) {
         ocr: async image => ocrLines(await mediaBot().ocrImage(image)),
     };
     const vision = configuredImageDescriber(appConfig);
-    const stickers = (appConfig.stickers ?? 'off') !== 'off' && vision ? stickerShelf({
+    const stickerVision = configuredImageDescriber(appConfig, STICKER_VISION_PROMPT);
+    const stickers = (appConfig.stickers ?? 'off') !== 'off' && stickerVision ? stickerShelf({
         dir: join(appConfig.dataDir, 'stickers'),
-        describe: image => vision.describe(image),
+        describe: image => stickerVision.describe(image),
         decide: stickerDecider(appConfig.llm, log),
         trendDiscover: bqbDiscover({ dir: join(appConfig.dataDir, 'stickers', 'sources'), log }),
         discover: async () => {

@@ -10,7 +10,7 @@ import { createLog } from './log.ts';
 import type { HistoryMessage } from './backfill.ts';
 import { ocrLines } from './media.ts';
 import { isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
-import { configuredImageDescriber } from './vision.ts';
+import { configuredImageDescriber, STICKER_VISION_PROMPT } from './vision.ts';
 import { stickerDecider, stickerShelf } from './stickers.ts';
 import { bqbDiscover } from './sticker-sources.ts';
 
@@ -20,9 +20,10 @@ const log = createLog(join(config.dataDir, 'logs'));
 
 const client = new OneBotClient({ url: config.onebot.url, token: config.onebot.token, onEvent, log });
 const vision = configuredImageDescriber(config);
-const stickers = (config.stickers ?? 'off') !== 'off' && vision ? stickerShelf({
+const stickerVision = configuredImageDescriber(config, STICKER_VISION_PROMPT);
+const stickers = (config.stickers ?? 'off') !== 'off' && stickerVision ? stickerShelf({
     dir: join(config.dataDir, 'stickers'),
-    describe: image => vision.describe(image),
+    describe: image => stickerVision.describe(image),
     decide: stickerDecider(config.llm, log),
     trendDiscover: bqbDiscover({ dir: join(config.dataDir, 'stickers', 'sources'), log }),
     discover: () => client.call<string[]>('fetch_custom_face', { count: 48 }),

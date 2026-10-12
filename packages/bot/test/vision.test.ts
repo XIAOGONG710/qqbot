@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { deepSeekImageDescriber, type VisionFetch } from '../src/vision.ts';
+import { DEFAULT_VISION_PROMPT, deepSeekImageDescriber, STICKER_VISION_PROMPT, type VisionFetch } from '../src/vision.ts';
 
 const options = {
     baseUrl: 'https://api.deepseek.com/',
@@ -10,6 +10,18 @@ const options = {
 };
 
 describe('DeepSeek 看图（ADR 0055）', () => {
+    test('表情包用自己的要求（先抄图上的字），聊天里的图仍用默认要求', async () => {
+        const prompts: string[] = [];
+        const fetch: VisionFetch = async (_url, init) => {
+            prompts.push(JSON.parse(init.body).messages[0].content[0].text);
+            return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '文字：收到，办不到｜画面：浣熊望窗' } }] }) };
+        };
+        await deepSeekImageDescriber(options, fetch).describe({ url: 'https://x/a.jpg' });
+        await deepSeekImageDescriber({ ...options, prompt: STICKER_VISION_PROMPT }, fetch).describe({ url: 'https://x/a.jpg' });
+        assert.deepEqual(prompts, [DEFAULT_VISION_PROMPT, STICKER_VISION_PROMPT]);
+        assert.match(STICKER_VISION_PROMPT, /原样抄下来/);
+    });
+
     test('按官方 Chat Completions 多模态格式发公网 URL，复用聊天模型的 key', async () => {
         let seenUrl = '';
         let seenInit!: Parameters<VisionFetch>[1];
