@@ -11,6 +11,13 @@ export const LONG_CHANCE = 0.1;
 
 export type LengthHint = 'short' | 'long';
 
+/**
+ * 这一轮要认真接话的意图行（先接他的情绪、替他高兴好事、回应他说的那件事、只接两个人的事、要亲近 / 要哄）：不加「回很短」。
+ * 10-12 真模型回归：同时带「先接住他此刻的情绪」和「回很短」（哪怕写了「难受时不适用」）时，哭着来的那一轮她没有一句安慰；
+ * 盲评 20 题里「短」在这类话题上输得多。只靠提示词里的例外不够，在代码里让路。
+ */
+export const ENGAGED_INTENT = /先接住他此刻的情绪|他刚说了件好事|回应他刚说的那件事|只接他刚说的你们两个人的事|他在向你要亲近|他在撒娇要你哄他/;
+
 export interface LengthContext {
     history: readonly { role: 'user' | 'assistant'; content: string; time?: string }[];
     /** 这一轮的意图行（收尾时不加） */
@@ -28,7 +35,7 @@ export function lengthHint(context: LengthContext): LengthHint | undefined {
     // 他明着让她讲（「你帮我认真讲讲」「详细说说」）就多说几句，不抽签（10-10 示例改短之后 boyfriend-tone T06 讲梯度下降只剩 53 字）
     if (!context.low && ASKS_TO_EXPLAIN.test(last.content)) return 'long';
     const roll = unit(`${last.time ?? ''} ${last.content} length`);
-    if (roll < SHORT_CHANCE) return 'short';
+    if (roll < SHORT_CHANCE) return context.intent && ENGAGED_INTENT.test(context.intent) ? undefined : 'short';
     // 话多要有由头：他这次说的太短（「到家了」）就不加（第一批：一句「到家了」她一口气说了 4 条 77 个字）
     if (roll < SHORT_CHANCE + LONG_CHANCE && !context.low && [...saidSinceReply(context.history)].length >= LONG_MIN_CHARS) return 'long';
     return undefined;

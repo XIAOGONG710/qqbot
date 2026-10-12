@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CORRECT_CHANCE, describeLength, LONG_CHANCE, LONG_MIN_CHARS, lengthHint, maybeTypo, SHORT_CHANCE, TYPO_CHANCE, TYPOS } from '../src/expression.ts';
+import { CORRECT_CHANCE, describeLength, ENGAGED_INTENT, LONG_CHANCE, LONG_MIN_CHARS, lengthHint, maybeTypo, SHORT_CHANCE, TYPO_CHANCE, TYPOS } from '../src/expression.ts';
 
 const said = (i: number) => [{ role: 'user' as const, content: `第 ${i} 句，今天上班被老板说了一顿`, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
 
@@ -12,6 +12,22 @@ describe('表达层（ADR 0024）', () => {
         assert.ok(Math.abs(short - SHORT_CHANCE) < 0.03, `short ${short}`);
         assert.ok(Math.abs(long - LONG_CHANCE) < 0.03, `long ${long}`);
         assert.equal(lengthHint({ history: said(7) }), lengthHint({ history: said(7) }));
+    });
+
+    test('他在难受、报好事、说自己的事、要亲近 / 要哄的轮次（意图行）不加「回很短」，普通问答照常抽', () => {
+        const shortOne = Array.from({ length: 200 }, (_, i) => i).find(i => lengthHint({ history: said(i) }) === 'short')!;
+        for (const intent of [
+            '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够]',
+            '[这一轮你想：他刚说了件好事，先替他高兴、接住这件事]',
+            '[这一轮你想：回应他刚说的那件事；真有想知道的细节再随口问]',
+            '[这一轮你想：只接他刚说的你们两个人的事，一两句就够]',
+            '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事]',
+            '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事]',
+        ]) {
+            assert.ok(ENGAGED_INTENT.test(intent), intent);
+            assert.equal(lengthHint({ history: said(shortOne), intent }), undefined, intent);
+        }
+        assert.equal(lengthHint({ history: said(shortOne), intent: '[这一轮你想：先直接回答他刚问的，不另起话题]' }), 'short');
     });
 
     test('收尾、主动找他时不加；心情安静、身体不舒服时不加「话多」；他还没说话不加', () => {
