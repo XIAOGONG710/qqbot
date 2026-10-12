@@ -29,7 +29,7 @@ export const STICKER_LIBRARY_MAX = 200;
 export const STICKER_REPLY_WINDOW = 8;
 export const STICKER_HISTORY_PREFIX = '她发了个表情包：';
 const INDEX_VERSION = 1;
-const TOKEN = /<sticker:([a-f0-9]{12})>/gi;
+const TOKEN_LIKE = /<sticker:[^>\r\n]*(?:>|$)/gi;
 const EXACT_TOKEN = /^<sticker:([a-f0-9]{12})>$/i;
 /** 模型不能用文字冒充真的图片消息；真实发送后的历史才会写入可读描述。 */
 const FAKE_STICKER_DESCRIPTION = /^\s*(?:(?:她|我)?发了?(?:一?个)?表情包[：:].+|[\[【（(]表情包[^\]】）)]*[\]】）)])\s*$/;
@@ -39,7 +39,7 @@ const dispatcher = new Agent({ connect: { timeout: 3000 } });
 export function stripStickerArtifacts(reply: string): string {
     return reply.split('\n').flatMap(line => {
         if (FAKE_STICKER_DESCRIPTION.test(line)) return [];
-        const plain = line.replace(TOKEN, '').trim();
+        const plain = line.replace(TOKEN_LIKE, '').trim();
         return plain ? [plain] : [];
     }).join('\n').trim();
 }
@@ -86,8 +86,17 @@ export interface StickerEntry {
     createdAt: string;
     used: number;
     lastUsedAt?: string;
+    /** 人工看过实际图片并确认描述可用；collect 阶段的上线证据。 */
+    reviewedAt?: string;
     /** 已经同步进 QQ 账号「收藏的表情」；md5 是文件内容的大写十六进制，用来认出 QQ 收藏池里哪些是我们自己同步进去的 */
     qq?: { md5: string };
+}
+
+export type StickerReviewEntry = Omit<StickerEntry, 'file'>;
+export interface StickerShelfStatus {
+    count: number;
+    /** 公开目录今天已经审看的数量；导入箱和收到的表情不占这个额度。 */
+    discovery?: { day: string; reviewed: number; limit: number };
 }
 
 /** QQ 账号自己的「收藏的表情」（NapCat 的 add_custom_face / fetch_custom_face_detail） */
@@ -154,7 +163,13 @@ export interface StickerShelf {
     /** 真实图片发出后写入聊天记录的可读内容；普通文字原样返回。 */
     history(text: string): string;
     used(id: string): void;
-    status(): { count: number };
+    status(): StickerShelfStatus;
+    /** 控制台人工核对用；不暴露本地路径。 */
+    review?(): StickerReviewEntry[];
+    /** 控制台按稳定编号一次读取一张图，避免把整库塞进定时状态推送。 */
+    preview?(id: string): string | undefined;
+    /** 控制台人工核对标记；取消标记不会删除收藏。 */
+    setReviewed?(id: string, reviewed: boolean): boolean;
 }
 
 const localDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -417,7 +432,7 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                     options.log(`图片表情：去掉模型冒充图片消息的文字「${line.trim()}」`);
                     return [];
                 }
-                const hits = [...line.matchAll(TOKEN)];
+                const hits = [...line.matchAll(TOKEN_LIKE)];
                 if (!hits.length) return [line];
                 const exact = EXACT_TOKEN.exec(line.trim());
                 const known = exact && index.entries.some(entry => entry.id === exact[1]!.toLowerCase());
@@ -425,7 +440,7 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                     kept = true;
                     return [`<sticker:${exact[1]!.toLowerCase()}>`];
                 }
-                const plain = line.replace(TOKEN, '').trim();
+                const plain = line.replace(TOKEN_LIKE, '').trim();
                 options.log(`图片表情：去掉${!allow && known ? '认真照顾轮次里的' : known ? '同一轮多出的' : '未知或混在文字里的'}发送指令「${hits.map(hit => hit[0]).join('、')}」`);
                 return plain ? [plain] : [];
             }).join('\n').trim();
@@ -447,7 +462,35 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             entry.lastUsedAt = now().toISOString();
             persist();
         },
-        status: () => ({ count: index.entries.length }),
+        status: () => {
+            const day = localDay(now());
+            return {
+                count: index.entries.length,
+                discovery: {
+                    day,
+                    reviewed: index.trend?.day === day ? Math.max(0, Math.floor(index.trend.count)) : 0,
+                    limit: options.trendPerDay ?? STICKER_TREND_PER_DAY,
+                },
+            };
+        },
+        review: () => index.entries.map(({ file: _file, ...entry }) => structuredClone(entry)),
+        preview(id) {
+            const entry = /^[a-f0-9]{12}$/.test(id) ? index.entries.find(item => item.id === id) : undefined;
+            if (!entry) return undefined;
+            const path = join(options.dir, entry.file);
+            if (!existsSync(path)) return undefined;
+            const bytes = new Uint8Array(readFileSync(path));
+            const type = typeOf(bytes);
+            return type ? `data:${type};base64,${Buffer.from(bytes).toString('base64')}` : undefined;
+        },
+        setReviewed(id, reviewed) {
+            const entry = /^[a-f0-9]{12}$/.test(id) ? index.entries.find(item => item.id === id) : undefined;
+            if (!entry) return false;
+            if (reviewed) entry.reviewedAt = now().toISOString();
+            else delete entry.reviewedAt;
+            persist();
+            return true;
+        },
     };
 }
 

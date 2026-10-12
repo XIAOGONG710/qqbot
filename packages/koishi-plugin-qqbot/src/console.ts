@@ -21,6 +21,10 @@ export interface ConsoleState {
     error?: string;
     /** 正在跑的 app 的状态 */
     status?: () => AppStatus;
+    /** 按编号读取一张收藏图；只给登录后的控制台监听器用。 */
+    stickerPreview?: (id: string) => string | undefined;
+    /** 人工核对通过或取消通过。 */
+    stickerReviewed?: (id: string, reviewed: boolean) => boolean;
     /** 角色资料：source/ 和 st/ 所在的目录、st/ 文件名的前缀（由插件配置的 characterCard 推出） */
     character?: { sourceDir: string; stDir: string; prefix: string };
 }
@@ -150,6 +154,18 @@ export function registerConsole(ctx: Context, repoRoot: string): void {
             const result = saveCharacter(part, value);
             if (result.ok) root.logger('qqbot').info(`控制台保存了角色资料（${part}），重新生成 ${result.written.length} 个文件：${result.written.join('、') || '无变化'}`);
             return result;
+        }, authority);
+        api.addListener('qqbot/stickers/preview', (id: string) => {
+            if (!/^[a-f0-9]{12}$/.test(id)) throw new Error('图片表情编号不合法');
+            const data = state.stickerPreview?.(id);
+            if (!data) throw new Error('这张图片表情不存在或文件已丢失');
+            return { data };
+        }, authority);
+        api.addListener('qqbot/stickers/reviewed', (id: string, reviewed: boolean) => {
+            if (!/^[a-f0-9]{12}$/.test(id) || typeof reviewed !== 'boolean') throw new Error('图片表情核对参数不合法');
+            if (!state.stickerReviewed?.(id, reviewed)) throw new Error('这张图片表情不存在');
+            void service?.refresh();
+            return { ok: true };
         }, authority);
     });
 }

@@ -10,7 +10,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type StickerMode, type Tier } from './config.ts';
 import { chatCompletion, forExtraction } from './llm.ts';
 import { acquireLock } from './lock.ts';
 import type { Log } from './log.ts';
@@ -39,7 +39,7 @@ import { loadNeedsAnchor } from './needs.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
-import { STICKER_DISCOVERY_INTERVAL_MS, type StickerShelf } from './stickers.ts';
+import { STICKER_DISCOVERY_INTERVAL_MS, stripStickerArtifacts, type StickerReviewEntry, type StickerShelf, type StickerShelfStatus } from './stickers.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -100,6 +100,8 @@ export interface AppStatus {
     /** 开着、用到的档位卡上有心情或书时：她今天的心情和在读的书 */
     today?: HerDayStatus;
     proactive: ProactiveMode;
+    /** 图片表情收藏及公开目录每日审看进度；条目不含本地路径，供控制台人工核对。 */
+    stickers: StickerShelfStatus & { mode: StickerMode; entries: StickerReviewEntry[] };
     /** 长期记忆开着时：服务探测结果（每分钟最多探一次）、最近一次写入和召回 */
     memory?: { baseUrl: string; health?: MemoryEvent; lastWrite?: MemoryEvent; lastRecall?: MemoryEvent };
 }
@@ -134,6 +136,11 @@ export interface AppOptions {
 /** 名单外的人在提示词里的称呼（{{user}}）：QQ 昵称，没有就叫「对方」 */
 export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
+}
+
+/** 定时找图只占用她作息里的空闲时间；没有启用作息时不额外阻断。 */
+export function mayDiscoverStickers(schedule: Schedule | undefined, now: Date): boolean {
+    return !schedule || stateAt(schedule, now).activity.kind === 'free';
 }
 
 export function startApp({ config, transport, log, pipeline, media, vision, stickers, mediaTimeouts }: AppOptions): App {
@@ -234,6 +241,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const stickerMode = config.stickers ?? 'off';
     const collectingStickers = stickerMode !== 'off' ? stickers : undefined;
     const sendingStickers = stickerMode === 'send' && transport.sendPrivateImage ? collectingStickers : undefined;
+    const stickerSchedule = config.schedule
+        ? ([...CONTACT_TIERS, UNLISTED_TIER] as Tier[]).filter(tier => tiersInUse.has(tier)).map(tier => cardFor(tier).character.schedule).find(Boolean)
+        : undefined;
     log(`图片表情：${stickerMode === 'off' ? '关（配置 stickers: "off"）'
         : !collectingStickers ? `配置为 ${stickerMode}，但看图或收藏库没准备好，不工作`
             : stickerMode === 'collect' ? `只收藏核对（本地 ${collectingStickers.status().count} 个；不进提示词、不发送）`
@@ -390,12 +400,18 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     sendingStickers!.used(sticker.id);
                     return id;
                 }
+                const safeText = /<sticker:/i.test(text) ? stripStickerArtifacts(text) : text;
+                if (!safeText) {
+                    log(`[${userId}] 拦下未通过图片表情协议校验的文字`);
+                    throw new Error('图片表情内部指令未通过校验');
+                }
+                if (safeText !== text) log(`[${userId}] 发送前清掉残留的图片表情内部指令`);
                 try {
-                    return await transport.sendPrivateText(userId, text);
+                    return await transport.sendPrivateText(userId, safeText);
                 } catch (error) {
                     const reason = error instanceof Error ? error.message : String(error);
-                    const plain = removeFaces(text, face => face !== undefined);
-                    if (plain === text || !plain || /timeout|timed out|超时/i.test(reason)) throw error;
+                    const plain = removeFaces(safeText, face => face !== undefined);
+                    if (plain === safeText || !plain || /timeout|timed out|超时/i.test(reason)) throw error;
                     log(`[${userId}] 带小黄脸的消息没发出去（${reason}），去掉表情再发一次`);
                     return transport.sendPrivateText(userId, plain);
                 }
@@ -457,8 +473,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
 
     let stopped = false;
     let stickerDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
-    const discoverStickers = () => void collectingStickers?.discover()
-        .catch(error => log(`图片表情：读取导入箱和 QQ 自定义表情失败（${error instanceof Error ? error.message : String(error)}）`));
+    const discoverStickers = () => {
+        if (!collectingStickers || !mayDiscoverStickers(stickerSchedule, new Date(worldNow()))) return;
+        void collectingStickers.discover()
+            .catch(error => log(`图片表情：读取导入箱和 QQ 自定义表情失败（${error instanceof Error ? error.message : String(error)}）`));
+    };
     /** Hindsight 健康检查的结果（状态页用到时才探，见 status()） */
     let health: MemoryEvent | undefined;
     let probing = false;
@@ -651,6 +670,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 ...(herDaysCard ? { today: herDayStatus(herDaysCard.schedule!, herDaysCard, now,
                     herDaysCard.herWorld && sharedWorld ? sharedWorld.at(herDaysCard.herWorld, herDaysCard.schedule!, now) : undefined) } : {}),
                 proactive: config.proactive,
+                stickers: {
+                    mode: stickerMode,
+                    ...(collectingStickers?.status() ?? { count: 0 }),
+                    entries: collectingStickers?.review?.() ?? [],
+                },
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
             };
         },

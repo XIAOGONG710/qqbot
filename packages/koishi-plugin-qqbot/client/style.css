@@ -91,3 +91,27 @@
 .qqbot-row-selected td:first-child {
     box-shadow: inset 3px 0 0 var(--k-color-active);
 }
+
+.qqbot-sticker-detail {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    margin-top: 16px;
+    padding: 16px;
+    border: 1px solid var(--k-color-divider);
+    border-radius: 8px;
+}
+
+.qqbot-sticker-preview {
+    width: 220px;
+    min-height: 160px;
+    display: grid;
+    place-items: center;
+    flex: none;
+}
+
+.qqbot-sticker-preview img {
+    max-width: 220px;
+    max-height: 220px;
+    object-fit: contain;
+}

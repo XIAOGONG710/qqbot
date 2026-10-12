@@ -172,6 +172,32 @@ describe('编排（app.ts）', () => {
         assert.equal(calls.discovered, 1);
         assert.equal(calls.prompted, 0);
         assert.doesNotMatch(prompt, /图片表情清单/);
+        assert.deepEqual(chat(cfg, 10001), ['user:[动画表情]', 'assistant:这个好好笑']);
+    });
+
+    test('图片表情：最终发送口清掉畸形内部指令，聊天历史也不保存协议残片', async () => {
+        const stickers: StickerShelf = {
+            consider: async () => undefined,
+            discover: async () => undefined,
+            prompt: () => undefined,
+            clean: text => text,
+            resolve: () => undefined,
+            history: text => text,
+            used: () => undefined,
+            status: () => ({ count: 0 }),
+        };
+        const cfg = config({ stickers: 'send', contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        const { app, sent, images, logs } = setup(cfg, { 10001: [] }, {
+            stickers,
+            generate: () => '哈哈 <sticker:not-an-id>',
+        });
+        await app.connected(SELF);
+        app.receive(event(10001, 10, '笑死'));
+        await until(() => sent.length === 1);
+        assert.deepEqual(sent, ['10001:哈哈']);
+        assert.deepEqual(images, []);
+        assert.deepEqual(chat(cfg, 10001), ['user:笑死', 'assistant:哈哈']);
+        assert.ok(logs.some(line => line.includes('发送前清掉残留')));
     });
 
     test('图片表情 send：同学档不收藏、不看清单、不发送，幻觉编号也不会漏成文字', async () => {

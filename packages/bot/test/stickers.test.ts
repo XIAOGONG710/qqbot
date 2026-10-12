@@ -52,6 +52,10 @@ describe('图片表情收藏（ADR 0063）', () => {
         const entry = shelf.resolve(`<sticker:${id}>`)!;
         assert.ok(existsSync(entry.file));
         assert.equal(shelf.history(`<sticker:${id}>`), '她发了个表情包：一只白猫捂着嘴偷笑');
+        assert.match(shelf.preview!(id)!, /^data:image\/png;base64,/);
+        assert.equal('file' in shelf.review!()[0]!, false, '控制台核对列表不暴露本地路径');
+        assert.equal(shelf.setReviewed!(id, true), true);
+        assert.ok(shelf.review!()[0]!.reviewedAt, '人工核对标记写回收藏索引');
         assert.deepEqual(JSON.parse(readFileSync(join(dir, 'index.json'), 'utf8')).entries[0].source, { kind: 'received', from: 10001, messageId: 7 });
         assert.ok(logs.some(line => line.includes('收藏 一只白猫捂着嘴偷笑')));
     });
@@ -183,6 +187,8 @@ describe('图片表情收藏（ADR 0063）', () => {
         assert.equal(shelf.clean(`<sticker:${id}>`, false), '', '认真照顾轮次不发图片表情');
         assert.equal(shelf.clean('她发了个表情包：白猫偷笑\n正常文字'), '正常文字', '模型不能用历史描述冒充真图片');
         assert.equal(stripStickerArtifacts(`<sticker:${id}>\n[表情包：白猫偷笑]\n正常文字`), '正常文字', '没有发送权限的档位也清掉内部协议和占位文字');
+        assert.equal(shelf.clean('哈哈 <sticker:not-an-id>\n正常文字'), '哈哈\n正常文字', '畸形编号也不能混进文字');
+        assert.equal(stripStickerArtifacts('哈哈 <sticker:not-an-id>\n<sticker:broken'), '哈哈', '未闭合的内部协议也不能外泄');
         shelf.used(id);
         assert.equal(shelf.resolve(`<sticker:${id}>`)?.used, 1);
     });
