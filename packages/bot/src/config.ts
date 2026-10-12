@@ -156,6 +156,16 @@ export interface Contact {
     persona?: string;
     /** 别人提起他时她知道的（ADR 0016）：名单里别人的话里出现他的称呼时给她看；没写就是别人提起他时她不认识 */
     intro?: string;
+    /**
+     * 这个人是否知道她是程序（ADR 0067）。true：知道，被认真问到是不是 AI 时按原卡（不承认 / 绕开）；
+     * false 或没写：不知道（或还没确认），用承认版卡，被认真问到时承认。默认安全：漏填不会对不知情的人否认
+     */
+    knowsBot?: boolean;
+}
+
+/** 这个联系人用哪一张卡（ADR 0067）：名单外那一档本来就是承认版；名单内知道的用原卡，其余用「<档位>-open」 */
+export function cardKey(contact: Pick<Contact, 'tier' | 'knowsBot'>): string {
+    return contact.tier === UNLISTED_TIER || contact.knowsBot === true ? contact.tier : `${contact.tier}-open`;
 }
 
 type Json = Record<string, unknown>;
@@ -206,6 +216,11 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         if (intro !== undefined) {
             if (typeof intro !== 'string') throw new Error(`配置 ${where}.intro 应为字符串`);
             if (intro.trim()) contact.intro = intro.trim();
+        }
+        const knowsBot = (value as Json).knowsBot;
+        if (knowsBot !== undefined) {
+            if (typeof knowsBot !== 'boolean') throw new Error(`配置 ${where}.knowsBot 应为 true 或 false（她是程序，这个人知不知道）`);
+            contact.knowsBot = knowsBot;
         }
         return contact;
     });

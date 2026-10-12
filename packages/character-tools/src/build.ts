@@ -4,7 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { biographyTierRefs } from './biography-to-card.ts';
-import { personaToCard } from './persona-to-card.ts';
+import { OPEN_AS_TIER, personaToCard } from './persona-to-card.ts';
 import { withReadBooks } from './read-books-to-lorebook.ts';
 import { scenesToLorebook, withKeyedTraits } from './scenes-to-lorebook.ts';
 import { checkScheduleTiers, scheduleForTier } from './schedule-to-card.ts';
@@ -13,10 +13,16 @@ import { checkPlansAgainstFree, worldTiers } from './world-source.ts';
 import type { CharacterCardV2, WorldInfoBook } from './st-format.ts';
 
 export interface BuiltTier {
+    /** 档位名；承认版（ADR 0067）是「<档位>-open」 */
     tier: string;
+    /** 承认版对应的原档位（禁用词、档位设定都按它查）；原卡没有 */
+    base?: string;
     card: CharacterCardV2;
     lorebook: WorldInfoBook;
 }
+
+/** 承认版去掉的两个「被问是不是 AI 就否认」的场景（和名单外那一档去掉的一样，ADR 0003 决策 2）；这一档的场景池里没有的就不去 */
+export const OPEN_DROP_SCENES = ['probe-are-you-ai', 'probe-prove-real'];
 
 export interface Built {
     tiers: BuiltTier[];
@@ -89,8 +95,8 @@ export function checkPrivacy(built: Built, source: CharacterSource): Problem[] {
         }
         for (const match of text.matchAll(PLACEHOLDERS)) problems.push({ tier, where, word: match[0], excerpt: match[0] });
     };
-    for (const { tier, card, lorebook } of built.tiers) {
-        const banned = source.tiers.tiers.find(t => t.name === tier)!.banned;
+    for (const { tier, base, card, lorebook } of built.tiers) {
+        const banned = source.tiers.tiers.find(t => t.name === (base ?? tier))!.banned;
         const { data } = card;
         for (const key of ['description', 'personality', 'scenario', 'post_history_instructions', 'mes_example', 'system_prompt'] as const) {
             scan(tier, key, data[key], banned);
@@ -153,6 +159,25 @@ export function buildCharacter(source: CharacterSource, prefix = 'linmengyao'): 
         tiers.push({ tier: tier.name, card, lorebook });
         files.set(`${prefix}-${tier.name}.json`, JSON.stringify(card, null, 4) + '\n');
         files.set(`${world}.json`, JSON.stringify(lorebook, null, 4) + '\n');
+
+        // 承认版（ADR 0067）：对方不知道她是程序时用。名单外那一档本来就是承认版，不再多做一份。
+        // 与原卡只差两处：「被问是不是 AI」取承认说法；场景世界书去掉否认「是不是真人」的场景
+        if (tier.name === OPEN_AS_TIER) continue;
+        const openWorld = `${prefix}-scenes-${tier.name}-open`;
+        const pool = new Set(source.scenes.filter(scene => scene.tiers.includes(tier.scenes)).map(scene => scene.id));
+        const openDrop = [...(tier.drop_scenes ?? []), ...OPEN_DROP_SCENES.filter(id => pool.has(id) && !(tier.drop_scenes ?? []).includes(id))];
+        const openLorebook = withReadBooks(
+            withKeyedTraits(scenesToLorebook(source.scenes, tier.scenes, openDrop), source.persona, tier.name),
+            source.books,
+            tier.name,
+        );
+        const openCard = personaToCard(source, tier.name, { world: openWorld, schedule, open: true });
+        if (openCard.data.description === card.data.description) {
+            throw new Error(`档位 ${tier.name} 的承认版和原卡一样：persona.yml 的 identity_note 里没有写给 ${OPEN_AS_TIER} 的承认说法`);
+        }
+        tiers.push({ tier: `${tier.name}-open`, base: tier.name, card: openCard, lorebook: openLorebook });
+        files.set(`${prefix}-${tier.name}-open.json`, JSON.stringify(openCard, null, 4) + '\n');
+        files.set(`${openWorld}.json`, JSON.stringify(openLorebook, null, 4) + '\n');
     }
     return { tiers, files };
 }

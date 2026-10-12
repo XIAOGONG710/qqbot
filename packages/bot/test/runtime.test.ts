@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { loadConfig, parseAppConfig } from '../src/config.ts';
+import { cardKey, loadConfig, parseAppConfig } from '../src/config.ts';
 import { MEDIA_TIMEOUTS } from '../src/media.ts';
 import { currentTierHistory, TierRecord } from '../src/tier-record.ts';
 import { ChatHistory, type StoredMessage } from '../src/history.ts';
@@ -821,6 +821,23 @@ describe('配置', () => {
         assert.equal(withConfig({ ...valid, unlistedFriends: false }, key).unlistedFriends, false);
         assert.equal(withConfig(valid, key).schedule, true);
         assert.equal(withConfig({ ...valid, schedule: false }, key).schedule, false);
+    });
+
+    test('knowsBot（ADR 0067）：true / false / 没写都能读；不是布尔值就报错；没写和 false 用承认版卡，true 用原卡，名单外本来就是承认版', () => {
+        const env = { QQBOT_LLM_API_KEY: 'k' };
+        const contacts = [
+            { qq: 1, name: '甲', tier: 'boyfriend', knowsBot: true },
+            { qq: 2, name: '乙', tier: 'classmate', knowsBot: false },
+            { qq: 3, name: '丙', tier: 'classmate' },
+        ];
+        const config = withConfig({ ...valid, contacts }, env);
+        assert.deepEqual(config.contacts.map(c => c.knowsBot), [true, false, undefined]);
+        assert.deepEqual(config.contacts.map(cardKey), ['boyfriend', 'classmate-open', 'classmate-open']);
+        assert.equal(cardKey({ tier: 'unlisted' }), 'unlisted');
+        assert.equal(cardKey({ tier: 'unlisted', knowsBot: false }), 'unlisted');
+        for (const bad of ['true', 1, null, '是']) {
+            assert.throws(() => withConfig({ ...valid, contacts: [{ qq: 1, name: '甲', tier: 'boyfriend', knowsBot: bad }] }, env), /knowsBot/);
+        }
     });
 
     test('Koishi 插件的配置没有 onebot 一节，同样校验、补默认值、按仓库根目录解析路径；独立入口仍要 onebot', () => {

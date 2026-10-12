@@ -10,7 +10,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { cardKey, CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { chatCompletion, forExtraction } from './llm.ts';
 import { acquireLock } from './lock.ts';
 import type { Log } from './log.ts';
@@ -74,6 +74,10 @@ export interface ContactStatus {
     qq: number;
     name: string;
     tier: Tier;
+    /** 配置里写的：这个人是否知道她是程序（ADR 0067）；没写就没有这个字段，按不知道处理 */
+    knowsBot?: boolean;
+    /** 实际用的卡：档位名，或承认版「<档位>-open」（ADR 0067） */
+    card: string;
     /** 名单外的好友（按 unlisted 档临时建的回复器） */
     unlisted: boolean;
     /** 从什么时候起是这一档（tiers.json）；没换过档就没有 */
@@ -137,9 +141,9 @@ export function unlistedName(nickname: string | undefined): string {
 }
 
 export function startApp({ config, transport, log, pipeline, media, vision, stickers, mediaTimeouts }: AppOptions): App {
-    // 每个档位一张角色卡和一本世界书，用到时读一次
-    const cards = new Map<Tier, TierCard>();
-    const cardFor = (tier: Tier) => {
+    // 每个档位一张角色卡和一本世界书，用到时读一次；不知道她是程序的联系人用「<档位>-open」承认版（ADR 0067，cardKey）
+    const cards = new Map<string, TierCard>();
+    const cardFor = (tier: string) => {
         let card = cards.get(tier);
         if (!card) {
             card = loadTierCard(config.characterCard, tier);
@@ -150,11 +154,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 先把要用到的都读一遍，缺文件立刻报错
     const tiersInUse = new Set<Tier>(config.contacts.map(c => c.tier));
     if (config.unlistedFriends) tiersInUse.add(UNLISTED_TIER);
-    for (const tier of tiersInUse) {
+    for (const tier of new Set<string>([...tiersInUse, ...config.contacts.map(cardKey)])) {
         const { character, worldInfo } = cardFor(tier);
         log(`档位 ${tier}：角色 ${character.name}，世界书 ${character.world || '无'}（${worldInfo.length} 条）`);
     }
-    const whitelist = config.contacts.map(c => `${c.qq}（${c.name}，${c.tier}）`).join('、');
+    const whitelist = config.contacts.map(c => `${c.qq}（${c.name}，${c.tier}，${c.knowsBot === true ? '知道她是程序' : '按不知道处理：被认真问到会承认'}）`).join('、');
     log(`名单：${whitelist}；名单外的好友${config.unlistedFriends ? '按 unlisted 档回复' : '不回复'}`);
     log(`出口检查：做不到的事、禁用词${config.speechCheck ? '、说话的毛病（助手腔、算账、怪对方没说、重复、一段里叮嘱两遍）' : '（说话的毛病不查，配置 speechCheck: false）'}`);
     // 她自己的日子同一天对所有人一样；摘要和状态页用名单里最亲的、卡上有心情或书的那一档（书按档位裁过，这里只用书名和进度）
@@ -363,7 +367,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     function createContactResponder(contact: Contact): Responder {
         return createPipeline({
             contact,
-            card: cardFor(contact.tier),
+            card: cardFor(cardKey(contact)),
             llm: config.llm,
             prompt: config.prompt,
             schedule: config.schedule,
@@ -622,6 +626,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     qq: contact.qq,
                     name: contact.name,
                     tier: contact.tier,
+                    ...(contact.knowsBot !== undefined ? { knowsBot: contact.knowsBot } : {}),
+                    card: cardKey(contact),
                     unlisted: isUnlisted,
                     ...(since ? { tierSince: since.toISOString() } : {}),
                     responder: responders.get(contact.qq)!.status(),

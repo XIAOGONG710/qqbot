@@ -34,9 +34,11 @@ describe('控制台的角色资料（ADR 0010）', () => {
         const scene = source.scenes.find(s => s.tiers.includes('boyfriend') && s.tiers.length === 1)!;
         scene.examples.push('虚构的一句新例句');
         const result = saveCharacter('scenes', source.scenes);
-        assert.deepEqual(result, { ok: true, written: ['linmengyao-scenes-boyfriend.json'] });
+        // 用到这个场景的世界书：这一档的原卡一本，加上它的承认版一本（ADR 0067）
+        assert.deepEqual(result, { ok: true, written: ['linmengyao-scenes-boyfriend.json', 'linmengyao-scenes-boyfriend-open.json'] });
         assert.ok(readFileSync(join(dir, 'source', 'scenes.yml'), 'utf8').includes('虚构的一句新例句'));
         assert.ok(readFileSync(join(dir, 'st', 'linmengyao-scenes-boyfriend.json'), 'utf8').includes('「虚构的一句新例句」'));
+        assert.ok(readFileSync(join(dir, 'st', 'linmengyao-scenes-boyfriend-open.json'), 'utf8').includes('「虚构的一句新例句」'));
     });
 
     test('档位隐私检查不过：不写，返回哪一档、哪个场景、哪个词', () => {

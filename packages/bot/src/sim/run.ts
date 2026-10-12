@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from '../config.ts';
+import { cardKey, loadConfig } from '../config.ts';
 import { loadTierCard } from '../contact.ts';
 import { HindsightClient } from '../memory/hindsight.ts';
 import { checkSummary, exitSummary, renderReport } from './report.ts';
@@ -71,7 +71,7 @@ mkdirSync(root, { recursive: true });
 let failed = 0;
 for (const [fileIndex, file] of files.entries()) {
     const scenario = loadScenario(file);
-    const card = loadTierCard(config.characterCard, scenario.tier);
+    const card = loadTierCard(config.characterCard, cardKey({ tier: scenario.tier, knowsBot: scenario.knowsBot }));
     // 日记里的世界按同学档（ADR 0026，和 bot 一样）
     const diaryCard = loadTierCard(config.characterCard, 'classmate').character;
     const diaryWorld = diaryCard.herWorld;

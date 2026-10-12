@@ -24,7 +24,8 @@ const cardText = (tier: string) => {
 
 test('st/ 下的文件就是 source/ 生成的（改了资料要重新生成，st/ 不手改）', () => {
     const built = buildCharacter(source);
-    assert.equal(built.files.size, 14);
+    // 7 档各一张卡和一本世界书，再加上除名单外以外 6 档的承认版（ADR 0067）
+    assert.equal(built.files.size, 26);
     for (const [file, text] of built.files) {
         assert.equal(readFileSync(join(characterDir, 'st', file), 'utf8'), text, file);
     }
@@ -113,9 +114,9 @@ test('档位隐私检查：现在的资料没有问题；卡、作息、世界�
     s.schedule.where.by_tier = [{ tiers: s.tiers.tiers.map(t => t.name), text: '<HIS_NICKNAME_1>在学校' }];
     const problems = checkPrivacy(buildCharacter(s), s);
     const lore = problems.filter(p => p.where === `世界书 ${scene.id}`);
-    assert.deepEqual([...new Set(lore.map(p => p.tier))].sort(), ['stranger', 'unlisted'].filter(t => !(t === 'unlisted' && s.tiers.tiers.find(x => x.name === 'unlisted')!.drop_scenes?.includes(scene.id))));
+    assert.deepEqual([...new Set(lore.map(p => p.tier))].sort(), ['stranger', 'stranger-open', 'unlisted'].filter(t => !(t === 'unlisted' && s.tiers.tiers.find(x => x.name === 'unlisted')!.drop_scenes?.includes(scene.id))));
     assert.ok(lore.every(p => p.word === word), '触发词不查，只查正文');
-    assert.equal(problems.filter(p => p.where === '作息' && p.word === '<HIS_NICKNAME_1>').length, tiers.length);
+    assert.equal(problems.filter(p => p.where === '作息' && p.word === '<HIS_NICKNAME_1>').length, buildCharacter(s).tiers.length);
 });
 
 test('每个档位的卡里都没有这一档的禁用词（低档位看不到高档位的事实）', () => {
@@ -591,4 +592,48 @@ test('biography.yml 写错时报错：缺字段、gap 写错、id 重复', () =>
     assert.throws(() => checkBiography({ ...ok, chunks: [{ ...ok.chunks[0], gap: 'maybe' }] }), /gap/);
     assert.throws(() => checkBiography({ ...ok, chunks: [ok.chunks[0], ok.chunks[0]] }), /重复/);
     assert.throws(() => checkBiography({ ...ok, chunks: [{ ...ok.chunks[0], keys: [] }] }), /keys/);
+});
+
+test('承认版（ADR 0067）：每个名单内档位多一张，与原卡只差「被问是不是 AI」一段、两个否认场景和 tags', () => {
+    const built = buildCharacter(source);
+    const named = tiers.filter(t => t.name !== 'unlisted');
+    for (const { name } of named) {
+        const base = built.tiers.find(t => t.tier === name)!;
+        const open = built.tiers.find(t => t.tier === `${name}-open`)!;
+        assert.equal(open.base, name);
+        assert.ok(built.files.has(`linmengyao-${name}-open.json`) && built.files.has(`linmengyao-scenes-${name}-open.json`), name);
+        // 承认版的说法和名单外那一档一模一样，原卡的否认说法不再出现
+        const unlistedNote = textFor(source.persona.sections.identity_note.note!, 'unlisted');
+        const baseNote = textFor(source.persona.sections.identity_note.note!, name);
+        assert.notEqual(unlistedNote, baseNote, name);
+        assert.ok(open.card.data.description.includes(unlistedNote), `${name} 承认版没有承认说法`);
+        assert.ok(!open.card.data.description.includes(baseNote), `${name} 承认版还留着否认说法`);
+        assert.ok(base.card.data.description.includes(baseNote), `${name} 原卡丢了否认说法`);
+        // 去掉「被问是不是 AI」那一段以外，description 逐字相同
+        const strip = (text: string, note: string) => text.replace(note, '');
+        assert.equal(strip(open.card.data.description, unlistedNote), strip(base.card.data.description, baseNote), name);
+        // 其余字段逐字相同（作息、主动设置、禁用词、说话方式……），只有世界书名和 tags 不同
+        const { description: _a, tags: openTags, extensions: openExt, ...openRest } = open.card.data;
+        const { description: _b, tags: baseTags, extensions: baseExt, ...baseRest } = base.card.data;
+        assert.deepEqual(openRest, baseRest, name);
+        assert.deepEqual(openTags, [name, 'open']);
+        assert.deepEqual(baseTags, [name]);
+        assert.deepEqual({ ...openExt, world: undefined }, { ...baseExt, world: undefined }, name);
+        assert.equal(openExt.world, `linmengyao-scenes-${name}-open`);
+        // 世界书：否认场景不在
+        const ids = (book: typeof base.lorebook) => Object.values(book.entries).map(e => /（([^（）]+)）$/.exec(e.comment)?.[1] ?? e.comment);
+        for (const id of ['probe-are-you-ai', 'probe-prove-real']) {
+            assert.ok(!ids(open.lorebook).includes(id), `${name} 承认版世界书里还有 ${id}`);
+        }
+    }
+    // 名单外那一档本来就是承认版，不再多做一份
+    assert.equal(built.tiers.find(t => t.tier === 'unlisted-open'), undefined);
+    assert.equal(built.tiers.length, tiers.length + named.length);
+});
+
+test('承认版：persona.yml 里没有写给名单外的承认说法时，生成就报错，不悄悄生成一张和原卡一样的', () => {
+    const s = copy();
+    const field = s.persona.sections.identity_note.note!;
+    field.variants = field.variants?.filter(v => !v.tiers.includes('unlisted'));
+    assert.throws(() => buildCharacter(s), /承认版和原卡一样/);
 });

@@ -163,7 +163,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     // 假的「真实天气」（ADR 0050）：场景写了 realRain 的日子按它算（世界和主动消息都认），跑完换回来
     const fakeWeather = scenario.realRain ? fakeRealWeather(scenario.realRain) : undefined;
     if (fakeWeather) useRealWeather(fakeWeather);
-    const contact: Contact = { qq: SIM_QQ, name: scenario.user, tier: scenario.tier, persona: scenario.persona };
+    const contact: Contact = { qq: SIM_QQ, name: scenario.user, tier: scenario.tier, persona: scenario.persona, knowsBot: scenario.knowsBot };
     const names = { user: contact.name, char: options.card.character.name };
     // 下面从数据目录建的几样（聊天记录、记忆、世界、答应的事、日记、回复器、主动消息）在 restart 步骤里丢掉重建（ADR 0039）
     let history = new ChatHistory(dataDir);

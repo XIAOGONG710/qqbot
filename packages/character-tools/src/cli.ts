@@ -29,6 +29,8 @@ const { written, unchanged } = writeOutputs(outDir, built);
 for (const file of written) console.log(`写入 ${relative(repoRoot, join(outDir, file))}`);
 console.log(`没变 ${unchanged.length} 个文件`);
 console.log('档位：');
+// 承认版（ADR 0067）：对方不知道她是程序时用，linmengyao-<档位>-open.json，和原卡只差「被问是不是 AI」一段与两个否认场景
+console.log(`  （另有 ${built.tiers.filter(t => t.base).length} 张承认版 -open：配置里 knowsBot 不是 true 的联系人用）`);
 for (const tier of source.tiers.tiers) {
     const { lorebook } = built.tiers.find(t => t.tier === tier.name)!;
     const drop = tier.drop_scenes?.length ? `，去掉 ${tier.drop_scenes.join('、')}` : '';

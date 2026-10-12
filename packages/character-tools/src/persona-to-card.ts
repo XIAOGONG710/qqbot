@@ -79,7 +79,12 @@ export interface CardOptions {
     world: string;
     /** 这一档的作息（schedule-to-card.ts），写进 extensions.qqbot.schedule */
     schedule?: CardSchedule;
+    /** 承认版（ADR 0067）：对方不知道她是程序时用；与原卡只差「被问是不是 AI」一段，取名单外那一档的承认说法 */
+    open?: boolean;
 }
+
+/** 承认版里「被问是不是 AI」取哪一档的说法（persona.yml identity_note 的 variants 里写给名单外的那条，ADR 0003 决策 2） */
+export const OPEN_AS_TIER = 'unlisted';
 
 /** 这一档看到的文字：第一条含这一档的改写，没有就用原文 */
 export function textFor(field: TextField, tier: string): string {
@@ -105,7 +110,8 @@ export function personaToCard(source: CharacterSource, tierName: string, options
             .filter(([, field]) => sees(field) && !field.keys)
             .map(([name, field]) => {
                 const label = FIELD_LABELS[`${key}.${name}`];
-                return label ? `${label}：${textFor(field, tier.name)}` : textFor(field, tier.name);
+                const text = textFor(field, key === 'identity_note' && options.open ? OPEN_AS_TIER : tier.name);
+                return label ? `${label}：${text}` : text;
             });
         if (lines.length) parts.push(`【${SECTION_TITLES[key]}】\n${lines.join('\n')}`);
     }
@@ -165,7 +171,7 @@ export function personaToCard(source: CharacterSource, tierName: string, options
             system_prompt: SYSTEM_PROMPT,
             post_history_instructions: postHistory,
             alternate_greetings: [],
-            tags: [tier.name],
+            tags: options.open ? [tier.name, 'open'] : [tier.name],
             creator: '',
             character_version: '',
             extensions: { world: options.world, regex_scripts: [STAGE_DIRECTION_SCRIPT], qqbot },

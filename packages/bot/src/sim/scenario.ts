@@ -192,6 +192,8 @@ export interface Scenario {
     user: string;
     /** ST 人设描述（可选） */
     persona?: string;
+    /** 这个人是否知道她是程序（ADR 0067）：默认 true（沿用原卡，旧场景不变）；写 false 测承认版卡 */
+    knowsBot: boolean;
     /** 虚拟时间的起点，ISO 字符串，带时区 */
     start: string;
     /** 默认 true：用 Hindsight（每次运行一个临时 bank） */
@@ -283,6 +285,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         tier: s.tier as Tier,
         user: typeof s.user === 'string' && s.user ? s.user : '阿明',
         persona: typeof s.persona === 'string' ? s.persona : undefined,
+        knowsBot: s.knowsBot !== false,
         start: s.start as string,
         memory: s.memory !== false,
         schedule: s.schedule !== false,

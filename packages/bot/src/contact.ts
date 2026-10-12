@@ -63,8 +63,8 @@ export interface TierCard {
     worldInfo: WorldInfoEntry[];
 }
 
-/** 读一个档位的角色卡和它链接的世界书；pattern 是配置里的 characterCard（{tier} 换成档位名），世界书在同目录的 <world>.json */
-export function loadTierCard(pattern: string, tier: Tier): TierCard {
+/** 读一个档位的角色卡和它链接的世界书；pattern 是配置里的 characterCard（{tier} 换成档位名，承认版是「<档位>-open」，ADR 0067），世界书在同目录的 <world>.json */
+export function loadTierCard(pattern: string, tier: string): TierCard {
     const path = pattern.replaceAll('{tier}', tier);
     const character = loadCharacterCard(path);
     const worldInfo = character.world ? loadWorldInfo(join(dirname(path), `${character.world}.json`), character.world) : [];

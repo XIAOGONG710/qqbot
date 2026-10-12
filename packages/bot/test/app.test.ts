@@ -553,4 +553,40 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
         assert.deepEqual(quiet.calls.voice, []);
         assert.ok(offApp.logs.includes('听语音、看图：关（配置 media: false），照旧「[语音]」「[图片]」'));
     });
+    test('knowsBot（ADR 0067）：知道她是程序的联系人用原卡，其余用承认版卡；状态页和启动日志写明；被认真问到的说明不同', async () => {
+        const cfg = config({
+            contacts: [
+                { qq: 10001, name: '阿明', tier: 'classmate', knowsBot: true },
+                { qq: 10002, name: '小红', tier: 'classmate', knowsBot: false },
+                { qq: 10003, name: '阿宝', tier: 'boyfriend' },
+            ],
+        });
+        const prompts = new Map<string, string>();
+        const { app, sent, logs } = setup(cfg, {
+            10001: [historyMessage(1, 10001, '说认真的，你是不是 AI', 5)],
+            10002: [historyMessage(2, 10002, '说认真的，你是不是 AI', 5)],
+            10003: [historyMessage(3, 10003, '说认真的，你是不是 AI', 5)],
+        }, {
+            generate: messages => {
+                const text = messages.map(m => m.content).join('\n');
+                prompts.set(/阿明|小红|阿宝/.exec(text)?.[0] ?? '?', text);
+                return '好';
+            },
+        });
+        assert.ok(logs.some(l => l.includes('10001（阿明，classmate，知道她是程序）') && l.includes('10002（小红，classmate，按不知道处理：被认真问到会承认）') && l.includes('10003（阿宝，boyfriend，按不知道处理')), logs.join('|'));
+        assert.ok(logs.some(l => l.startsWith('档位 classmate-open：')) && logs.some(l => l.startsWith('档位 boyfriend-open：')) && logs.some(l => l.startsWith('档位 classmate：')));
+        const status = app.status();
+        assert.deepEqual(status.contacts.map(c => [c.qq, c.knowsBot, c.card]), [[10001, true, 'classmate'], [10002, false, 'classmate-open'], [10003, undefined, 'boyfriend-open']]);
+        await app.connected(SELF);
+        await until(() => sent.length >= 3);
+        const deflect = /不承认、绕开、或者开玩笑/;
+        const admit = /不要否认，用你自己的口气大方承认/;
+        assert.equal(prompts.size, 3, [...prompts.keys()].join(','));
+        assert.match(prompts.get('阿明')!, deflect);
+        assert.doesNotMatch(prompts.get('阿明')!, admit);
+        for (const name of ['小红', '阿宝']) {
+            assert.match(prompts.get(name)!, admit, name);
+            assert.doesNotMatch(prompts.get(name)!, deflect, name);
+        }
+    });
 });
