@@ -35,7 +35,7 @@ describe('表达层（ADR 0024）', () => {
     });
 
     test('提示词只给一句约束，不给台词', () => {
-        assert.equal(describeLength('short'), '[这一轮说话：只回一句短的，几个字也行；不展开，不另起话题]');
+        assert.equal(describeLength('short'), '[这一轮说话：只回很短的一句，一两个字也行——语气词、单个词、一句反问都可以，不用凑成完整的句子；不展开，不另起话题]');
         assert.match(describeLength('long'), /^\[这一轮说话：话多一点/);
     });
 

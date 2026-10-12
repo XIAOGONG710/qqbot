@@ -6,7 +6,7 @@
 //   不靠模型：模型很少自己打错，让它「偶尔打错」会写成刻意的错。聊天记录里存的是发出去的样子（他看到的就是这样）。
 
 /** 回句短的、话多一点的概率（按轮） */
-export const SHORT_CHANCE = 0.35;
+export const SHORT_CHANCE = 0.5;
 export const LONG_CHANCE = 0.1;
 
 export type LengthHint = 'short' | 'long';
@@ -47,7 +47,7 @@ function saidSinceReply(history: LengthContext['history']): string {
 
 export function describeLength(hint: LengthHint): string {
     return hint === 'short'
-        ? '[这一轮说话：只回一句短的，几个字也行；不展开，不另起话题]'
+        ? '[这一轮说话：只回很短的一句，一两个字也行——语气词、单个词、一句反问都可以，不用凑成完整的句子；不展开，不另起话题]'
         : '[这一轮说话：话多一点，想说的可以多说几句、说完整，不用一两句就停]';
 }
 
