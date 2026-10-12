@@ -1,6 +1,6 @@
 // 把收藏库接到 QQ 账号自己的「收藏的表情」上（ADR 0063）。用 NapCat 的三个扩展接口：
-//   add_custom_face（本地文件加进收藏）、fetch_custom_face_detail（列出收藏，每项有 md5 / resId / url）、delete_custom_face（按 resId 删）。
-// 10-12 在她的真号上试过：加 1 张 → 列出来能看到 md5（大写）和 resId → 按 resId 删 → 列表回到 0；各步 retcode 都是 0。
+//   add_custom_face（本地文件加进收藏）、fetch_custom_face_detail（列出收藏，每项有 md5 / resId / url）。只加不删（用户 10-12：「存着就行」）。
+// 10-12 在她的真号上试过：加 1 张 → 列出来能看到 md5（大写）和 resId，各步 retcode 都是 0（试完用 delete_custom_face 删掉，没有留在收藏里）。
 // 这个文件只管「怎么调」，不碰收藏库的逻辑；两个运行入口（独立运行、Koishi 插件）各自给一个调用函数。
 
 import { createHash } from 'node:crypto';
@@ -10,8 +10,6 @@ import type { StickerFavorites } from './stickers.ts';
 export type QqCall = (action: string, params: Record<string, unknown>) => Promise<unknown>;
 
 interface FavoriteItem { md5: string; resId: string; url?: string }
-
-const FAVORITES_LIMIT = 300;
 
 function items(value: unknown): FavoriteItem[] {
     if (!Array.isArray(value)) return [];
@@ -35,11 +33,6 @@ export function qqFavorites(call: QqCall): {
                 const md5 = createHash('md5').update(readFileSync(file)).digest('hex').toUpperCase();
                 await call('add_custom_face', { file, is_origin: true });
                 return md5;
-            },
-            async remove(md5) {
-                const target = md5.toUpperCase();
-                const hit = (await list(FAVORITES_LIMIT)).find(item => item.md5 === target);
-                if (hit) await call('delete_custom_face', { res_id: hit.resId });
             },
         },
         async discover(knownMd5) {

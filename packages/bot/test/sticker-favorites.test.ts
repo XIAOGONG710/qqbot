@@ -12,7 +12,7 @@ afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: tru
 const tmp = () => { const dir = mkdtempSync(join(tmpdir(), 'qqbot-fav-')); dirs.push(dir); return dir; };
 const settle = () => new Promise(resolve => setTimeout(resolve, 30));
 
-describe('QQ 收藏的表情接口适配（ADR 0063，10-12 在真号上验证过各步返回）', () => {
+describe('QQ 收藏的表情接口适配（ADR 0063，10-12 在真号上验证过加 1 张、列出）', () => {
     test('add：算文件 md5（大写）、用 add_custom_face 加进收藏并返回 md5', async () => {
         const dir = tmp();
         const file = join(dir, 'a.png');
@@ -22,21 +22,6 @@ describe('QQ 收藏的表情接口适配（ADR 0063，10-12 在真号上验证�
         const md5 = await qqFavorites(call).favorites.add(file);
         assert.equal(md5, createHash('md5').update('sticker-bytes').digest('hex').toUpperCase());
         assert.deepEqual(calls, [['add_custom_face', { file, is_origin: true }]]);
-    });
-
-    test('remove：按 md5（不分大小写）在收藏列表里找 resId 再删；没有就什么都不删', async () => {
-        const calls: [string, Record<string, unknown>][] = [];
-        const call: QqCall = async (action, params) => {
-            calls.push([action, params]);
-            if (action === 'fetch_custom_face_detail') return [{ md5: 'AAAA', resId: 'r-a', url: 'https://p.qpic.cn/a' }, { md5: 'BBBB', resId: 'r-b' }, { nonsense: true }];
-            return { result: 0 };
-        };
-        const { favorites } = qqFavorites(call);
-        await favorites.remove('bbbb');
-        assert.deepEqual(calls.at(-1), ['delete_custom_face', { res_id: 'r-b' }]);
-        calls.length = 0;
-        await favorites.remove('CCCC');
-        assert.deepEqual(calls.map(([action]) => action), ['fetch_custom_face_detail']);
     });
 
     test('discover：只返回别处加进 QQ 收藏的（跳过我们同步进去的），没有地址或 md5 的项忽略', async () => {
@@ -58,7 +43,6 @@ function shelfWith(options: { failFirst?: boolean; libraryMax?: number; perSync?
     const dir = tmp();
     const logs: string[] = [];
     const added: string[] = [];
-    const removed: string[] = [];
     let failed = !options.failFirst;
     const favorites: StickerFavorites = {
         async add(file) {
@@ -66,7 +50,6 @@ function shelfWith(options: { failFirst?: boolean; libraryMax?: number; perSync?
             added.push(file);
             return createHash('md5').update(readFileSync(file)).digest('hex').toUpperCase();
         },
-        async remove(md5) { removed.push(md5); },
     };
     let time = Date.UTC(2026, 9, 12, 1, 0, 0);
     const shelf = stickerShelf({
@@ -83,7 +66,7 @@ function shelfWith(options: { failFirst?: boolean; libraryMax?: number; perSync?
         now: () => new Date(time),
     });
     const consider = (n: number) => shelf.consider([{ type: 'image', data: { url: `https://qq.invalid/${n}`, sub_type: 1, summary: '[动画表情]' } }], { from: 1, messageId: n });
-    return { dir, shelf, logs, added, removed, consider, advance: (ms: number) => { time += ms; } };
+    return { dir, shelf, logs, added, consider, advance: (ms: number) => { time += ms; } };
 }
 
 const indexOf = (dir: string) => JSON.parse(readFileSync(join(dir, 'index.json'), 'utf8')) as { entries: { id: string; qq?: { md5: string } }[] };
@@ -113,14 +96,13 @@ describe('收藏同步进 QQ 账号的收藏的表情', () => {
         assert.ok(indexOf(dir).entries[0]!.qq);
     });
 
-    test('淘汰最久没用的时，也把它从 QQ 收藏里删掉（按 md5）', async () => {
-        const { dir, consider, removed } = shelfWith({ libraryMax: 1 });
+    test('本地收藏淘汰最久没用的时，QQ 收藏里不删（存着就行）', async () => {
+        const { dir, consider, added } = shelfWith({ libraryMax: 1 });
         await consider(1);
         await settle();
-        const first = indexOf(dir).entries[0]!.qq!.md5;
         await consider(2);
         await settle();
-        assert.deepEqual(removed, [first]);
+        assert.equal(added.length, 2, '两张都加进过 QQ 收藏，淘汰第一张时没有任何删除');
         assert.equal(indexOf(dir).entries.length, 1);
     });
 
@@ -132,13 +114,27 @@ describe('收藏同步进 QQ 账号的收藏的表情', () => {
         assert.equal(indexOf(dir).entries.length, 3);
         const again = stickerShelf({
             dir, describe: async () => '', decide: async description => ({ keep: false, description, tags: [] }), log: () => {},
-            favorites: { async add(file) { added.push(file); return createHash('md5').update(readFileSync(file)).digest('hex').toUpperCase(); }, async remove() {} },
+            favorites: { async add(file) { added.push(file); return createHash('md5').update(readFileSync(file)).digest('hex').toUpperCase(); } },
             favoritesGapMs: 0, favoritesPerSync: 2,
         });
         await again.discover();
         await settle();
         assert.equal(added.length, 2, '这一次只补 2 张');
         assert.equal(indexOf(dir).entries.filter(entry => entry.qq).length, 2);
+    });
+
+    test('补同步时一批里有一张失败（比如 QQ 收藏满了），这一批剩下的不再试，只记一条失败日志', async () => {
+        const dir = tmp();
+        const logs: string[] = [];
+        const plain = stickerShelf({ dir, describe: async () => '一只小狗歪头', decide: async description => ({ keep: true, description, tags: [] }), download: async url => png(Number(url.split('/').at(-1))), log: () => {} });
+        for (const n of [21, 22, 23]) await plain.consider([{ type: 'image', data: { url: `https://qq.invalid/${n}`, sub_type: 1, summary: '[动画表情]' } }], { from: 1, messageId: n });
+        let tries = 0;
+        const full = stickerShelf({ dir, describe: async () => '', decide: async description => ({ keep: false, description, tags: [] }), log: line => logs.push(line),
+            favorites: { async add() { tries++; throw new Error('收藏已满'); } }, favoritesGapMs: 0 });
+        await full.discover();
+        await settle();
+        assert.equal(tries, 1);
+        assert.equal(logs.filter(line => line.includes('QQ 收藏操作失败')).length, 1);
     });
 
     test('discover 拿到的是已同步进 QQ 收藏的 md5：QQ 收藏池里它们不会被当成新候选再看一遍', async () => {
