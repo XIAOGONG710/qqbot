@@ -119,11 +119,17 @@ export async function chatCompletion(
         throw new Failure(`模型接口返回 ${response.status}：${body.slice(0, 500)}`);
     }
 
-    const json = JSON.parse(body) as { choices?: { message?: { content?: unknown }; finish_reason?: string }[] };
+    const json = JSON.parse(body) as { choices?: { message?: { content?: unknown; reasoning_content?: unknown }; finish_reason?: string }[] };
     const content = json.choices?.[0]?.message?.content;
     if (typeof content !== 'string') throw new Error(`模型接口返回里没有文本：${body.slice(0, 500)}`);
     // 开思考时思考也算在 max_tokens 里：偶尔想太久，正文就是空的（10-07 线上抽「她答应的事」两次「没有 JSON」）
-    if (!content.trim() && json.choices?.[0]?.finish_reason === 'length') log('模型输出被截断：思考用完了 max_tokens，正文是空的');
+    if (!content.trim()) {
+        const finish = json.choices?.[0]?.finish_reason;
+        const reasoning = json.choices?.[0]?.message?.reasoning_content;
+        const thought = typeof reasoning === 'string' && reasoning ? `，思考 ${[...reasoning].length} 字` : '';
+        // 10-11：没到上限也会空（finish=stop）——思考里把回复写完了，正文什么都没有；记下来才分得清是哪一种
+        log(finish === 'length' ? `模型输出被截断：思考用完了 max_tokens，正文是空的${thought}` : `模型正文是空的（finish=${finish ?? '无'}${thought}）`);
+    }
     return content;
 }
 
