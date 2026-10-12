@@ -199,6 +199,26 @@ describe('编排（app.ts）', () => {
         assert.doesNotMatch(prompt, /图片表情清单/);
     });
 
+    test('图片表情：定时找图只在作息空闲时运行，睡觉时不调用候选源', async () => {
+        let discovered = 0;
+        const stickers: StickerShelf = {
+            consider: async () => undefined,
+            discover: async () => { discovered++; },
+            prompt: () => undefined,
+            clean: text => text,
+            resolve: () => undefined,
+            history: text => text,
+            used: () => undefined,
+            status: () => ({ count: 0 }),
+        };
+        const cfg = config({ stickers: 'collect', schedule: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        const clock = new VirtualClock(new Date(2026, 9, 12, 3, 0));
+        const { app } = setup(cfg, { 10001: [] }, { stickers, clock });
+        await app.connected(SELF);
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.equal(discovered, 0);
+    });
+
     test('图片表情 send：同学档不收藏、不看清单、不发送，幻觉编号也不会漏成文字', async () => {
         const calls = { considered: 0, discovered: 0, prompted: 0, resolved: 0 };
         const stickers: StickerShelf = {

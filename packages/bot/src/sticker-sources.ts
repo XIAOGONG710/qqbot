@@ -2,14 +2,15 @@
 // bqb：开源仓库 ChineseBQB 的公开目录（zhaoolee.com/ChineseBQB，5871 张、114 个类别，按目录里的地址取图）。
 // 不登录、不抓网页、没有反爬；它不是官方接口，也没有许可证文件，所以图只在本机自用、不进仓库、不外传。
 // 谁能进来由两道代码闸门定，不靠看图判断器：
-//   1. 只收 allow 里列出的类别（默认是 10-12 试跑过的 15 类动物 / 可爱 / 日常小人）；
+//   1. 只收 allow 里列出的类别（默认是 10-12 试跑过的 28 类动物 / 可爱 / 日常小人）；
 //   2. 类别名里有时政、疫情这类词一律不要，即使有人把它加进 allow。
 // 10-12 的试跑里判断器只看图片描述，一张带刀的卡通脸（来自「反港独」类）被收下，所以类别必须在代码里拦，不能指望判断器。
-// 返回的是一个按天固定的候选池（同一天重启不会重新洗牌），收藏库自己去掉已经看过的并只取每天的几个。
+// 返回的是一个带类别元数据、按天固定的候选池（同一天重启不会重新洗牌），收藏库自己去掉已经看过的并只取每天的几个。
 
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { STICKER_USER_AGENT, type StickerCandidate } from './stickers.ts';
 
 export const BQB_BASE = 'https://zhaoolee.com/ChineseBQB/';
 export const BQB_DEFAULT_ALLOW: readonly string[] = [
@@ -46,7 +47,10 @@ export interface BqbOptions {
 const plain = (title: string) => title.replace(/[^\p{L}\p{N}]/gu, '');
 
 async function defaultFetchJson(url: string): Promise<unknown> {
-    const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    const response = await fetch(url, {
+        headers: { 'user-agent': STICKER_USER_AGENT },
+        signal: AbortSignal.timeout(20_000),
+    });
     if (!response.ok) throw new Error(`目录返回 ${response.status}`);
     return response.json();
 }
@@ -87,23 +91,26 @@ function shuffled<T>(items: readonly T[], rand: () => number): T[] {
     return out;
 }
 
-/** 当天固定的候选池：类别轮流取，免得「白色小人」这种 800 张的大类把别的挤掉 */
-export function bqbPool(items: readonly BqbItem[], day: string, pool: number): string[] {
+/** 当天固定的候选池：类别轮流取，免得「白色小人」这种 800 张的大类把别的挤掉；保留类别供收藏核对。 */
+export function bqbPool(items: readonly BqbItem[], day: string, pool: number): StickerCandidate[] {
     const rand = seeded(`bqb:${day}`);
     const groups = new Map<string, BqbItem[]>();
     for (const item of items) groups.set(item.category, [...(groups.get(item.category) ?? []), item]);
     const lists = shuffled([...groups.entries()].sort(([a], [b]) => a.localeCompare(b)), rand).map(([, list]) => shuffled(list, rand));
-    const urls: string[] = [];
-    for (let round = 0; urls.length < pool && lists.some(list => round < list.length); round++) {
-        for (const list of lists) if (round < list.length && urls.length < pool) urls.push(BQB_BASE + list[round]!.src);
+    const candidates: StickerCandidate[] = [];
+    for (let round = 0; candidates.length < pool && lists.some(list => round < list.length); round++) {
+        for (const list of lists) if (round < list.length && candidates.length < pool) {
+            const item = list[round]!;
+            candidates.push({ url: BQB_BASE + item.src, category: item.category });
+        }
     }
-    return urls;
+    return candidates;
 }
 
 const localDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** 给收藏库的 discover：返回当天的候选图地址 */
-export function bqbDiscover(options: BqbOptions): () => Promise<string[]> {
+export function bqbDiscover(options: BqbOptions): () => Promise<StickerCandidate[]> {
     const allow = options.allow ?? BQB_DEFAULT_ALLOW;
     const now = options.now ?? (() => new Date());
     const maxAge = options.maxAgeMs ?? 7 * 86_400_000;

@@ -1,5 +1,5 @@
 // 图片表情收藏（ADR 0063）：
-// - 候选来自 QQ 账号已有的自定义表情，以及名单联系人发来的图片表情；
+// - 候选来自 QQ 自定义表情、公开目录、微信/网页导入箱，以及名单联系人发来的图片表情；
 // - 先看图、按林梦瑶稳定的偏好判断要不要留，再下载到 dataDir/stickers；
 // - 回复模型只能从提示词列出的稳定编号里选，输出单独一行 <sticker:编号>，未知或混在文字里的指令不会发送；
 // - 收藏任务后台串行，不挡住正常收消息和回复。
@@ -19,7 +19,10 @@ import type { OpenAIMessage } from './prompt.ts';
 export const STICKER_MAX_BYTES = 5 * 1024 * 1024;
 export const STICKER_PROMPT_MAX = 12;
 export const STICKER_DISCOVERY_PER_RUN = 3;
+export const STICKER_DISCOVERY_PER_DAY = 3;
 export const STICKER_DISCOVERY_INTERVAL_MS = 60 * 60_000;
+export const STICKER_NETWORK_PACE_MS = 2_000;
+export const STICKER_USER_AGENT = 'qqbot-image-stickers/1.0 (+https://github.com/XIAOGONG710/qqbot)';
 export const STICKER_LIBRARY_MAX = 80;
 export const STICKER_REPLY_WINDOW = 8;
 export const STICKER_HISTORY_PREFIX = '她发了个表情包：';
@@ -70,6 +73,12 @@ export interface StickerSource {
     from?: number;
     messageId?: number;
     name?: string;
+    category?: string;
+}
+
+export interface StickerCandidate {
+    url: string;
+    category?: string;
 }
 
 export interface StickerEntry {
@@ -81,6 +90,14 @@ export interface StickerEntry {
     createdAt: string;
     used: number;
     lastUsedAt?: string;
+    /** 人工看过实际图片并确认描述可用；collect 阶段的上线证据。 */
+    reviewedAt?: string;
+}
+
+export type StickerReviewEntry = Omit<StickerEntry, 'file'>;
+export interface StickerShelfStatus {
+    count: number;
+    discovery?: { day: string; reviewed: number; limit: number };
 }
 
 interface StickerIndex {
@@ -88,6 +105,8 @@ interface StickerIndex {
     entries: StickerEntry[];
     /** 已看过的 URL（无论收没收藏）。只留最近一批，避免每次重启重新付一次看图费用，也能继续往表情池后面翻。 */
     seen: string[];
+    /** 定时发现的按日本地预算；收到别人发来的表情不占这个预算。 */
+    discovery?: { day: string; reviewed: number };
 }
 
 export interface StickerDecision {
@@ -106,21 +125,24 @@ export interface StickerShelfOptions {
     describe: ImageDescriber['describe'];
     decide: (description: string, summary?: string) => Promise<StickerDecision>;
     download?: (url: string) => Promise<DownloadedSticker>;
-    /** 持续更新的公开网络候选源；与导入箱、QQ 自定义表情共用每小时预算。 */
-    trendDiscover?: () => Promise<string[]>;
+    /** 持续更新的公开网络候选源；与导入箱、QQ 自定义表情共用每日预算。 */
+    trendDiscover?: () => Promise<readonly (string | StickerCandidate)[]>;
     /** QQ 账号已有的自定义表情。 */
     discover?: () => Promise<string[]>;
     log: (message: string) => void;
     now?: () => Date;
     discoveryPerRun?: number;
+    discoveryPerDay?: number;
     discoveryIntervalMs?: number;
+    networkPaceMs?: number;
+    sleep?: (ms: number) => Promise<void>;
     libraryMax?: number;
 }
 
 export interface StickerShelf {
     /** 从一条收到的 OneBot 消息里挑图片表情；后台调用方不用等。 */
     consider(message: Segment[] | string, source: Omit<StickerSource, 'kind'>): Promise<void>;
-    /** 从导入箱、公开网络候选源和 QQ 自定义表情池看几个新的候选。 */
+    /** 每小时在空闲时触发；从导入箱、公开网络候选源和 QQ 自定义表情池使用持久化的每日预算。 */
     discover(): Promise<void>;
     /** 给回复模型看的本地收藏清单。 */
     prompt(): string | undefined;
@@ -131,10 +153,18 @@ export interface StickerShelf {
     /** 真实图片发出后写入聊天记录的可读内容；普通文字原样返回。 */
     history(text: string): string;
     used(id: string): void;
-    status(): { count: number };
+    status(): StickerShelfStatus;
+    /** 控制台人工核对用；不暴露本地路径。 */
+    review?(): StickerReviewEntry[];
+    /** 控制台按稳定编号一次读取一张图，避免把整库塞进定时状态推送。 */
+    preview?(id: string): string | undefined;
+    /** 控制台人工核对标记；取消标记不会删除收藏。 */
+    setReviewed?(id: string, reviewed: boolean): boolean;
 }
 
 const emptyIndex = (): StickerIndex => ({ version: INDEX_VERSION, entries: [], seen: [] });
+
+const localDay = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
 /** 图片 URL 可能带短期 rkey；只把它作为本次去重线索，不写进提示词和聊天记录。 */
 function sourceKey(url: string): string {
@@ -153,7 +183,11 @@ function typeOf(bytes: Uint8Array, header?: string): DownloadedSticker['type'] |
 
 export async function downloadSticker(url: string): Promise<DownloadedSticker> {
     if (!/^https?:\/\//i.test(url)) throw new Error('只接受 http/https 图片地址');
-    const response = await undiciFetch(url, { dispatcher, signal: AbortSignal.timeout(8000) });
+    const response = await undiciFetch(url, {
+        dispatcher,
+        headers: { 'user-agent': STICKER_USER_AGENT },
+        signal: AbortSignal.timeout(8000),
+    });
     if (!response.ok) throw new Error(`下载返回 ${response.status}`);
     const length = Number(response.headers.get('content-length') ?? 0);
     if (length > STICKER_MAX_BYTES) throw new Error(`图片超过 ${STICKER_MAX_BYTES} 字节`);
@@ -183,12 +217,17 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
     const indexPath = join(options.dir, 'index.json');
     const loaded = readJsonOr<StickerIndex>(indexPath, emptyIndex(), options.log);
     const index: StickerIndex = loaded.version === INDEX_VERSION && Array.isArray(loaded.entries) && Array.isArray(loaded.seen) ? loaded : emptyIndex();
+    if (index.discovery && (typeof index.discovery.day !== 'string' || !Number.isFinite(index.discovery.reviewed))) delete index.discovery;
     const now = options.now ?? (() => new Date());
     const download = options.download ?? downloadSticker;
+    const sleep = options.sleep ?? (ms => new Promise<void>(resolve => setTimeout(resolve, ms)));
     const pending = new Set<string>();
     let queue = Promise.resolve();
     let lastDiscoveredAt: number | undefined;
+    let lastPublicCandidateAt: number | undefined;
     const libraryMax = options.libraryMax ?? STICKER_LIBRARY_MAX;
+    const discoveryPerDay = options.discoveryPerDay ?? STICKER_DISCOVERY_PER_DAY;
+    const networkPaceMs = options.networkPaceMs ?? STICKER_NETWORK_PACE_MS;
 
     const persist = () => writeJsonAtomic(indexPath, index);
     const inboxKey = (path: string) => {
@@ -209,6 +248,12 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             .finally(() => pending.delete(key));
         queue = task;
         return task;
+    };
+    const pacePublicCandidate = async () => {
+        const at = Date.now();
+        const wait = lastPublicCandidateAt === undefined ? 0 : networkPaceMs - (at - lastPublicCandidateAt);
+        if (wait > 0) await sleep(wait);
+        lastPublicCandidateAt = Date.now();
     };
 
     async function considerOne(url: string, summary: string | undefined, source: StickerSource): Promise<void> {
@@ -298,21 +343,33 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             return Promise.all(tasks).then(() => undefined);
         },
         async discover() {
-            const at = now().getTime();
+            const discoveredAt = now();
+            const at = discoveredAt.getTime();
             const interval = options.discoveryIntervalMs ?? STICKER_DISCOVERY_INTERVAL_MS;
             if (lastDiscoveredAt !== undefined && at - lastDiscoveredAt < interval) return;
             lastDiscoveredAt = at;
-            let remaining = options.discoveryPerRun ?? STICKER_DISCOVERY_PER_RUN;
+            const day = localDay(discoveredAt);
+            const reviewed = index.discovery?.day === day ? Math.max(0, Math.floor(index.discovery.reviewed)) : 0;
+            let remaining = Math.min(options.discoveryPerRun ?? STICKER_DISCOVERY_PER_RUN, Math.max(0, discoveryPerDay - reviewed));
+            const reserve = () => {
+                if (remaining <= 0) return false;
+                const current = index.discovery?.day === day ? Math.max(0, Math.floor(index.discovery.reviewed)) : 0;
+                index.discovery = { day, reviewed: current + 1 };
+                remaining--;
+                persist();
+                return true;
+            };
+            if (remaining <= 0) return;
 
             const local = inboxFiles(inboxDir).filter(path => {
                 try { return !index.seen.includes(inboxKey(path)); } catch { return false; }
             }).sort();
             for (const path of local.slice(0, remaining)) {
+                if (!reserve()) break;
                 const task = queue.then(() => considerInbox(path))
                     .catch(error => options.log(`图片表情：导入 ${basename(path)} 失败（${error instanceof Error ? error.message : String(error)}）`));
                 queue = task;
                 await task;
-                remaining--;
             }
 
             const manifest = join(inboxDir, 'urls.txt');
@@ -321,17 +378,24 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                     .filter(line => line && !line.startsWith('#') && /^https?:\/\//i.test(line))
                 : [];
             for (const url of [...new Set(webUrls)].filter(url => !index.seen.includes(sourceKey(url))).slice(0, remaining)) {
+                if (!reserve()) break;
                 const name = (() => { try { return new URL(url).hostname; } catch { return 'urls.txt'; } })();
+                await pacePublicCandidate();
                 await enqueue(url, undefined, { kind: 'web', name });
-                remaining--;
             }
 
             if (remaining > 0 && options.trendDiscover) {
-                const urls = await options.trendDiscover();
-                const fresh = [...new Set(urls)].filter(url => typeof url === 'string' && /^https?:\/\//i.test(url) && !index.seen.includes(sourceKey(url)));
-                for (const url of fresh.slice(0, remaining)) {
-                    await enqueue(url, undefined, { kind: 'bqb', name: 'ChineseBQB' });
-                    remaining--;
+                const candidates = (await options.trendDiscover()).map(candidate => typeof candidate === 'string' ? { url: candidate } : candidate);
+                const fresh = candidates.filter((candidate, position) => /^https?:\/\//i.test(candidate.url)
+                    && candidates.findIndex(other => other.url === candidate.url) === position
+                    && !index.seen.includes(sourceKey(candidate.url)));
+                for (const candidate of fresh.slice(0, remaining)) {
+                    if (!reserve()) break;
+                    await pacePublicCandidate();
+                    await enqueue(candidate.url, undefined, {
+                        kind: 'bqb', name: 'ChineseBQB',
+                        ...(candidate.category ? { category: candidate.category.replace(/\s+/g, ' ').trim().slice(0, 40) } : {}),
+                    });
                 }
             }
 
@@ -339,6 +403,7 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                 const urls = await options.discover();
                 const fresh = [...new Set(urls)].filter(url => typeof url === 'string' && /^https?:\/\//i.test(url) && !index.seen.includes(sourceKey(url)));
                 for (const url of fresh.slice(0, remaining)) {
+                    if (!reserve()) break;
                     await enqueue(url, undefined, { kind: 'qq-custom' });
                 }
             }
@@ -388,7 +453,35 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             entry.lastUsedAt = now().toISOString();
             persist();
         },
-        status: () => ({ count: index.entries.length }),
+        status: () => {
+            const day = localDay(now());
+            return {
+                count: index.entries.length,
+                discovery: {
+                    day,
+                    reviewed: index.discovery?.day === day ? Math.max(0, Math.floor(index.discovery.reviewed)) : 0,
+                    limit: discoveryPerDay,
+                },
+            };
+        },
+        review: () => index.entries.map(({ file: _file, ...entry }) => structuredClone(entry)),
+        preview(id) {
+            const entry = /^[a-f0-9]{12}$/.test(id) ? index.entries.find(item => item.id === id) : undefined;
+            if (!entry) return undefined;
+            const path = join(options.dir, entry.file);
+            if (!existsSync(path)) return undefined;
+            const bytes = new Uint8Array(readFileSync(path));
+            const type = typeOf(bytes);
+            return type ? `data:${type};base64,${Buffer.from(bytes).toString('base64')}` : undefined;
+        },
+        setReviewed(id, reviewed) {
+            const entry = /^[a-f0-9]{12}$/.test(id) ? index.entries.find(item => item.id === id) : undefined;
+            if (!entry) return false;
+            if (reviewed) entry.reviewedAt = now().toISOString();
+            else delete entry.reviewedAt;
+            persist();
+            return true;
+        },
     };
 }
 

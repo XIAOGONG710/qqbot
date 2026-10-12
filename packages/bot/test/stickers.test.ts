@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { imageStickerAllowance, stickerShelf, stripStickerArtifacts, type DownloadedSticker } from '../src/stickers.ts';
+import { imageStickerAllowance, stickerShelf, stripStickerArtifacts, type DownloadedSticker, type StickerCandidate } from '../src/stickers.ts';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -13,7 +13,7 @@ const png = (seed: number): DownloadedSticker => ({
     bytes: Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10, seed]),
 });
 
-function setup(options: { keep?: boolean; discover?: string[]; trend?: string[]; same?: boolean; now?: () => Date; libraryMax?: number } = {}) {
+function setup(options: { keep?: boolean; discover?: string[]; trend?: (string | StickerCandidate)[]; same?: boolean; now?: () => Date; libraryMax?: number; networkPaceMs?: number; slept?: number[] } = {}) {
     const dir = mkdtempSync(join(tmpdir(), 'qqbot-stickers-'));
     dirs.push(dir);
     const logs: string[] = [];
@@ -32,6 +32,8 @@ function setup(options: { keep?: boolean; discover?: string[]; trend?: string[];
         ...(options.trend ? { trendDiscover: async () => options.trend! } : {}),
         ...(options.discover ? { discover: async () => options.discover! } : {}),
         discoveryPerRun: 2,
+        networkPaceMs: options.networkPaceMs ?? 0,
+        sleep: async ms => { options.slept?.push(ms); },
         log: line => logs.push(line),
         now: options.now ?? (() => new Date(Date.UTC(2026, 9, 12, 1, 0, tick++))),
         ...(options.libraryMax ? { libraryMax: options.libraryMax } : {}),
@@ -52,6 +54,10 @@ describe('图片表情收藏（ADR 0063）', () => {
         const entry = shelf.resolve(`<sticker:${id}>`)!;
         assert.ok(existsSync(entry.file));
         assert.equal(shelf.history(`<sticker:${id}>`), '她发了个表情包：一只白猫捂着嘴偷笑');
+        assert.match(shelf.preview!(id)!, /^data:image\/png;base64,/);
+        assert.equal('file' in shelf.review!()[0]!, false, '控制台核对列表不暴露本地路径');
+        assert.equal(shelf.setReviewed!(id, true), true);
+        assert.ok(shelf.review!()[0]!.reviewedAt, '人工核对标记写回收藏索引');
         assert.deepEqual(JSON.parse(readFileSync(join(dir, 'index.json'), 'utf8')).entries[0].source, { kind: 'received', from: 10001, messageId: 7 });
         assert.ok(logs.some(line => line.includes('收藏 一只白猫捂着嘴偷笑')));
     });
@@ -71,7 +77,7 @@ describe('图片表情收藏（ADR 0063）', () => {
         const { dir, shelf, described } = setup({ discover: urls, same: true });
         await shelf.discover();
         await shelf.discover();
-        assert.deepEqual(described, urls.slice(0, 2), '一次进程只发现一次、每次最多两个');
+        assert.deepEqual(described, urls.slice(0, 2), '同一小时只发现一次、这次最多两个');
         assert.equal(shelf.status().count, 1, '下载内容相同只留一份');
         const afterRestart: string[] = [];
         const again = stickerShelf({
@@ -81,31 +87,46 @@ describe('图片表情收藏（ADR 0063）', () => {
             download: async () => png(2),
             discover: async () => urls,
             discoveryPerRun: 2,
+            networkPaceMs: 0,
             log: () => {},
         });
         await again.discover();
-        assert.deepEqual(afterRestart, [urls[2]], '重启后跳过看过的，继续往后翻');
+        assert.deepEqual(afterRestart, [urls[2]], '同一天重启后仍只剩一个审看名额，并跳过看过的继续往后翻');
+        await again.discover();
+        assert.deepEqual(afterRestart, [urls[2]], '同一天的三个名额用完后不再审看');
         assert.equal(again.status().count, 2);
     });
 
     test('持续更新的网络候选先经过同一收藏判断，再轮到 QQ 自定义表情', async () => {
         const { dir, shelf } = setup({
-            trend: ['https://zhaoolee.com/ChineseBQB/media/cat.gif'],
+            trend: [{ url: 'https://zhaoolee.com/ChineseBQB/media/cat.gif', category: '是喵星人啦' }],
             discover: ['https://qq.invalid/custom.gif'],
         });
         await shelf.discover();
         const sources = JSON.parse(readFileSync(join(dir, 'index.json'), 'utf8')).entries
             .map((entry: { source: unknown }) => entry.source);
         assert.deepEqual(sources, [
-            { kind: 'bqb', name: 'ChineseBQB' },
+            { kind: 'bqb', name: 'ChineseBQB', category: '是喵星人啦' },
             { kind: 'qq-custom' },
         ]);
     });
 
-    test('每小时从微信/网页导入箱审看少量候选，网络直链和本地文件都记录来源', async () => {
+    test('相邻公开网络候选至少节流两秒，首个候选不空等', async () => {
+        const slept: number[] = [];
+        const { shelf } = setup({
+            trend: ['https://zhaoolee.com/ChineseBQB/media/a.gif', 'https://zhaoolee.com/ChineseBQB/media/b.gif'],
+            networkPaceMs: 2_000,
+            slept,
+        });
+        await shelf.discover();
+        assert.equal(slept.length, 1);
+        assert.ok(slept[0]! > 0 && slept[0]! <= 2_000);
+    });
+
+    test('每小时检查导入箱、每天持久化审看上限，网络直链和本地文件都记录来源', async () => {
         let at = Date.UTC(2026, 9, 12, 1);
         const { dir, shelf, described, downloaded } = setup({
-            discover: ['https://qq.invalid/custom.gif'],
+            discover: ['https://qq.invalid/custom.gif', 'https://qq.invalid/custom-2.gif'],
             now: () => new Date(at),
         });
         writeFileSync(join(dir, 'inbox', 'wechat', 'exported.png'), png(77).bytes);
@@ -118,6 +139,7 @@ describe('图片表情收藏（ADR 0063）', () => {
         assert.equal(described[1], 'https://cdn.invalid/cat-web.gif');
         assert.deepEqual(downloaded, ['https://cdn.invalid/cat-web.gif'], '本地图片不再走网络下载器');
         const first = JSON.parse(readFileSync(join(dir, 'index.json'), 'utf8'));
+        assert.deepEqual(shelf.status().discovery, { day: '2026-10-12', reviewed: 2, limit: 3 });
         assert.deepEqual(first.entries.map((entry: { source: unknown }) => entry.source), [
             { kind: 'inbox', name: 'exported.png' },
             { kind: 'web', name: 'cdn.invalid' },
@@ -125,7 +147,15 @@ describe('图片表情收藏（ADR 0063）', () => {
 
         at += 60 * 60_000;
         await shelf.discover();
-        assert.equal(shelf.status().count, 3, '下一小时才继续看 QQ 自定义表情候选');
+        assert.equal(shelf.status().count, 3, '下一小时用掉当天最后一个名额，继续看 QQ 自定义表情候选');
+        assert.deepEqual(shelf.status().discovery, { day: '2026-10-12', reviewed: 3, limit: 3 });
+        at += 60 * 60_000;
+        await shelf.discover();
+        assert.equal(shelf.status().count, 3, '当天三个名额用完后，即使过了一小时也不再看');
+        at += 22 * 60 * 60_000;
+        await shelf.discover();
+        assert.equal(shelf.status().count, 4, '第二天恢复预算，继续看尚未审过的候选');
+        assert.deepEqual(shelf.status().discovery, { day: '2026-10-13', reviewed: 1, limit: 3 });
     });
 
     test('收藏达到上限时淘汰最久没用的，保留最近使用过的', async () => {

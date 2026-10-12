@@ -42,10 +42,10 @@ describe('表情包候选来源 bqb（ADR 0063 第二阶段）', () => {
     test('候选池按类别轮流取：800 张的大类不会把别的类别挤掉', () => {
         const items = catalog().map(raw => acceptBqbItem(raw, BQB_DEFAULT_ALLOW)).filter((i): i is NonNullable<typeof i> => !!i);
         const pool = bqbPool(items, '2026-10-12', 9);
-        const categories = new Set(pool.map(url => items.find(i => BQB_BASE + i.src === url)!.category));
+        const categories = new Set(pool.map(candidate => candidate.category));
         assert.equal(pool.length, 9);
         assert.equal(categories.size, 3);
-        assert.ok(pool.every(url => url.startsWith(BQB_BASE + 'media/')));
+        assert.ok(pool.every(candidate => candidate.url.startsWith(BQB_BASE + 'media/')));
     });
 
     test('同一天同一个池（重启不洗牌），换一天换一批', () => {

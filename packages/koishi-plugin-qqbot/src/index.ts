@@ -337,7 +337,7 @@ export function apply(ctx: Context, config: Config) {
     // 控制台的「林梦瑶」页面（ADR 0010）：注册一次，插件失败时也在
     registerConsole(ctx, repoRoot);
     const card = config.characterCard ?? CHARACTER_CARD;
-    setConsoleState({ running: false, error: undefined, status: undefined, character: characterPaths(isAbsolute(card) ? card : resolve(repoRoot, card)) });
+    setConsoleState({ running: false, error: undefined, status: undefined, stickerPreview: undefined, stickerReviewed: undefined, character: characterPaths(isAbsolute(card) ? card : resolve(repoRoot, card)) });
 
     const migrated = migrateThinking(config);
     if (migrated) {
@@ -403,10 +403,10 @@ export function apply(ctx: Context, config: Config) {
         setConsoleState({ error: plain.message });
         throw plain;
     }
-    setConsoleState({ running: true, error: undefined, status: () => app.status() });
+    setConsoleState({ running: true, error: undefined, status: () => app.status(), stickerPreview: stickers?.preview, stickerReviewed: stickers?.setReviewed });
     ctx.on('dispose', () => {
         app.stop();
-        setConsoleState({ running: false, status: undefined });
+        setConsoleState({ running: false, status: undefined, stickerPreview: undefined, stickerReviewed: undefined });
     });
 
     ctx.middleware((session, next) => {
