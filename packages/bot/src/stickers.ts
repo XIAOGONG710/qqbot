@@ -292,7 +292,7 @@ function jsonObject(text: string): Record<string, unknown> {
 export function stickerDecider(llm: AppConfig['llm'], log: (message: string) => void): StickerShelfOptions['decide'] {
     return async (description, summary) => {
         const messages: OpenAIMessage[] = [
-            { role: 'system', content: '你替大学女生林梦瑶整理私人 QQ 图片表情收藏。她喜欢可爱、好笑、欠欠的、轻微无语和能自然回朋友的表情；不收藏广告、二维码、政治、色情、猎奇血腥、攻击特定群体、私人照片、只有大段文字或意思看不清的图。只返回 JSON：{"keep":true或false,"description":"不超过30字的客观描述","tags":["1到5个短场景词"]}。不要因为来源于别人就偏爱。' },
+            { role: 'system', content: '你替大学女生林梦瑶整理私人 QQ 图片表情收藏。她喜欢可爱、好笑、欠欠的、轻微无语和能自然回朋友的表情；不收藏广告、二维码、政治、色情、猎奇血腥、攻击特定群体、私人照片、只有大段文字或意思看不清的图。真实的政治人物和新闻时政（哪怕配的是玩笑文字、写成反差搞笑）、疫情、战争、宗教、拿枪拿刀指着人或动物、辱骂和脏话、性暗示的图也一律不收；描述里点了真人的名字或头衔，就是真人，不收。只返回 JSON：{"keep":true或false,"description":"不超过30字的客观描述","tags":["1到5个短场景词"]}。不要因为来源于别人就偏爱。' },
             { role: 'user', content: `图片描述：${description}${summary ? `\nQQ 摘要：${summary}` : ''}` },
         ];
         try {
