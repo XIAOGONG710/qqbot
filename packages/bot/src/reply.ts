@@ -34,7 +34,32 @@ export const MAX_BUBBLES = 5;
  */
 export function splitReply(text: string, maxBubbles = MAX_BUBBLES): string[] {
     const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
-    return lines.length > maxBubbles ? packLines(lines, maxBubbles) : lines;
+    if (lines.length <= maxBubbles) return lines;
+    return lines.some(line => STICKER_LINE.test(line)) ? packAroundStickers(lines, maxBubbles) : packLines(lines, maxBubbles);
+}
+
+/** 图片表情的发送指令（stickers.ts 的 EXACT_TOKEN，ADR 0063）：一行就是一条消息，并进文字就认不出来了 */
+const STICKER_LINE = /^<sticker:[a-f0-9]{12}>$/i;
+
+/**
+ * 有图片表情指令时的合并：指令那一行自己占一条、绝不并进文字（并进去发送时认不出，编号会当文字发给对方，10-12 模拟器 ADR 0063 复测撞到）。
+ * 文字按指令前后分成两段，剩下的条数按字数分给两段；条数不够两段各占一条时，文字合在一起放前面、指令放最后。
+ */
+function packAroundStickers(lines: string[], count: number): string[] {
+    const at = lines.findIndex(line => STICKER_LINE.test(line));
+    const sticker = lines[at]!;
+    const before = lines.slice(0, at).filter(line => !STICKER_LINE.test(line));
+    const after = lines.slice(at + 1).filter(line => !STICKER_LINE.test(line));
+    const text = [...before, ...after];
+    const slots = count - 1;
+    if (slots <= 0) return text.length ? packLines(text, 1) : [sticker];
+    if (!text.length) return [sticker];
+    const pack = (list: string[], n: number) => (list.length > n ? packLines(list, n) : list);
+    if (!before.length) return [sticker, ...pack(after, slots)];
+    if (!after.length || slots < 2) return [...pack(text, slots), sticker];
+    const chars = (list: string[]) => list.reduce((sum, line) => sum + [...line].length, 0);
+    const forBefore = Math.min(slots - 1, Math.max(1, Math.round(slots * chars(before) / (chars(before) + chars(after)))));
+    return [...pack(before, forBefore), sticker, ...pack(after, slots - forBefore)];
 }
 
 /** 按顺序把几行合成 count 条，让字数最多的那条尽量短（线性划分） */

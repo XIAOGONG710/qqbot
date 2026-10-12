@@ -108,6 +108,10 @@ export interface Checks {
     noRepeat?: boolean;
     /** 这一步她一条都没发（ADR 0007：睡着、收尾后的附和） */
     noReply?: boolean;
+    /** 这一步她发了图片表情（ADR 0063，要写 stickers）：true 至少一个，false 一个都不能有 */
+    stickerSent?: boolean;
+    /** 这一步她最多发几个图片表情 */
+    maxStickers?: number;
     /** 她第一条在对方最后一条之后至少 / 至多多久发出，如 "5m"、"20m"（虚拟时间） */
     replyAfter?: string;
     replyWithin?: string;
@@ -210,6 +214,8 @@ export interface Scenario {
     moodyChance?: number;
     /** 这几种时机的主动消息（日志里的说法，如「她那边的事」）生成时都当没连上模型（10-11 断网那天），看后面的主动怎么接 */
     proactiveOffline?: string[];
+    /** 假的图片表情收藏（ADR 0063）：编号是 12 位小写十六进制，描述是她在提示词里看到的那句；真的 shelf 代码，文件是空的（模拟器不发图，气泡里是 <sticker:编号>）。只有写了才给回复器 */
+    stickers?: { id: string; description: string; tags: string[] }[];
     /** 假的「真实天气」（ADR 0050）：日期 → 下雨的钟头（0–23），这几天按真实天气算（世界和主动消息都认），别的日子照旧生成 */
     realRain?: Record<string, number[]>;
     /** 指定今天的心情（ADR 0015，卡上心情的名字），比较不同心情时用；不写按虚拟日期抽 */
@@ -238,6 +244,20 @@ export interface OtherContact {
 
 export function loadScenario(path: string): Scenario {
     return parseScenario(JSON.parse(readFileSync(path, 'utf8')), path);
+}
+
+function stickerEntries(value: unknown, fail: (message: string) => never): { id: string; description: string; tags: string[] }[] {
+    if (!Array.isArray(value) || value.length === 0) fail('stickers 应为非空数组');
+    const ids = new Set<string>();
+    return (value as unknown[]).map((item, i) => {
+        const o = item as Record<string, unknown>;
+        if (!o || typeof o.id !== 'string' || !/^[a-f0-9]{12}$/.test(o.id)) fail(`stickers[${i}].id 应为 12 位小写十六进制`);
+        if (typeof o.description !== 'string' || !o.description.trim()) fail(`stickers[${i}].description 应为描述`);
+        if (ids.has(o.id as string)) fail(`stickers[${i}].id 重复`);
+        ids.add(o.id as string);
+        const tags = o.tags === undefined ? [] : Array.isArray(o.tags) && o.tags.every(t => typeof t === 'string') ? o.tags as string[] : fail(`stickers[${i}].tags 应为字符串数组`);
+        return { id: o.id as string, description: (o.description as string).trim(), tags };
+    });
 }
 
 function rainDays(value: unknown, fail: (message: string) => never): Record<string, number[]> {
@@ -278,6 +298,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
             return { at: o.at as string, amount: o.amount as number, ...(o.forCamera === true ? { forCamera: true } : {}) };
         }) } : {}),
         ...(s.moodyChance !== undefined ? { moodyChance: chance(s.moodyChance) } : {}),
+        ...(s.stickers !== undefined ? { stickers: stickerEntries(s.stickers, fail) } : {}),
         ...(s.proactiveOffline !== undefined ? {
             proactiveOffline: Array.isArray(s.proactiveOffline) && s.proactiveOffline.every(x => typeof x === 'string' && x)
                 ? s.proactiveOffline as string[] : fail('proactiveOffline 应为时机说法的数组（「她那边的事」「冷场」…）'),
