@@ -14,11 +14,12 @@
 | `counterexamples.md` | 每类 2 条最典型的 |
 | `samples-b1.jsonl` | **K3 第一批（试采）**：5 段，`rc-b1-001`..`rc-b1-005`，字段与 `samples.jsonl` 一致，另带 `stats_scope` |
 | `samples-b2.jsonl` | **K3 第二批**：4 段，`rc-b2-001`..`rc-b2-004`（用「登录态副本」跑的那轮；`rc-b2-003` 是 `persona_fit: high`） |
-| `batch1.md` / `batch2.md` | 两批说明：怎么采、抄录脱敏、没收的、本批段落、流水线的坑 |
+| `samples-b3.jsonl` | **K3 第三批（最后一批）**：4 段，`rc-b3-001`..`rc-b3-004`（闺蜜 / 吵架 / 室友三格；`rc-b3-002` 进主统计且 `persona_fit: high`） |
+| `batch1.md` / `batch2.md` / `batch3.md` | 三批说明：怎么采、抄录脱敏、没收的、本批段落、流水线的坑；`batch3.md` 还写了「几个格子补不上的原因」 |
 | `user-browse-route.md` | 路线 1（用户自己翻、我只读本机数据）给用户看的一页：搜索词、缓存路径、另存文件夹 |
 | `annotate.py` | K1 生成脚本：读 `../samples.jsonl`、`../closing-turns.jsonl`，写本目录两个 jsonl |
 | `build_counterexamples.py` | K2 生成脚本：反例表 → jsonl + md |
-| `build_batch1.py` / `build_batch2.py` | K3 生成脚本：脱敏抄录表 + 人工标注 → `samples-b1/2.jsonl`（原始图已删，脚本自带抄录内容） |
+| `build_batch1.py` / `build_batch2.py` / `build_batch3.py` | K3 生成脚本：脱敏抄录表 + 人工标注 → `samples-b1/2/3.jsonl`（原始图已删，脚本自带抄录内容） |
 | `check.py` | K1/K2 自检门：字段、编号、统计可复算、反例编号唯一、反例来源行真实存在 |
 | `check_batch.py` | **K3 批次自检门**：脱敏硬规则（≤20 字/气泡、无号码/链接/账号、无日期钟点）+ 格式 + 编号唯一 |
 
@@ -134,5 +135,21 @@
 **截断气泡共 28 个**（rc 23 + ct 1 + b1 2 + b2 2），按 Claude 10-12 复核从 `median_chars` 里剔除；`rc-b2-001` 的中位字数因此从 19 变成 **13**。
 
 **另外（复核建议）**：关系是「暧昧期」的两段（`rc-b1-002` / `rc-b1-003`）加了 `relation_note`，K4 的「朋友 / 闺蜜」格不要把调情语域混进去。
+
+## 9. `stats_scope` 的判定规则（K3 三批统一后用下来的）
+
+| 情形 | scope |
+| --- | --- |
+| 「她」是**截图者本人**（绿气泡在右），且帖子以第一人称说自己是女生 | `in` |
+| 「她」是**推断出来的对方**（靠谁在追、谁在划界、笔记标题） | `low_confidence`（只作定性参照） |
+| `staged: true`（有生成/草稿痕迹、模板海报） | `staged_only`（只列不计） |
+| 台词像设计过的段子但界面原生（`staged_guess: possible`） | `low_confidence`，并在 `notes` 里写明 |
+| 她这一侧 **0 轮**（只有对方独白） | **根本不成段**，不收（见 `batch3.md` §3） |
+
+## 10. 采集时的两条新判据（K3 最后一批得出）
+
+1. **先看「她有没有露面」**：标题写「晚安这么说才有趣」这类帖子，很多是女生晒「他对我多好」——图里只有男朋友的话，她一个字都不在。这种帖**再高赞也补不了语料**，开图前先看主图有没有她的气泡。
+2. **按关键词分流**：`collect.mjs` 的 `--per-keyword` 曾经没生效（定义了却没写进循环），一批 15 篇全砸在第一个词上。现在循环里用 `takenThisKw` 判断，跑之前先 `node --check` 一眼。
+
 
 
