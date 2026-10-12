@@ -21,7 +21,7 @@
 
 | 项目 | 做什么 | 怎么触发主动发言 | 记忆方案 | 最近提交活跃度 | 许可证 | 哪一块值得拆开看 |
 | --- | --- | --- | --- | --- | --- | --- |
-| **MaiBot（麦麦 / MaiSaka）** 6.2k★ [S1] | QQ 拟人智能体，自称"数字生命"，群聊为主；模仿群友说话风格、学黑话 [文档] | README 只说"懂得在合适的时间说话、该闭嘴时闭嘴" [文档]；目录里有 `src/maisaka/turn_trigger/{scheduler,idle_backoff}.py` [目录]。**没找到**"她自己的生活驱动开口"的说明 | 中期记忆（带时间范围、参与者；10-03 报告读过 `mid_term.py`）+ 人物画像 + 图像记忆 [旧报告 / 目录]；目录里有独立记忆子系统 `src/A_memorix/`，含 `memory_lifecycle_policy.py`、`memory_maintenance_service.py`、`person_fact_verifier.py`、`person_fact_reverification.py` [目录] | 最新 2026-10-11；20 条在 1 天内（极密） | GPL-3.0 | **C**：`person_fact_reverification` + `memory_lifecycle_policy`（记错了怎么复核、记忆怎么过期）。**B**：`turn_trigger/idle_backoff`（沉默时怎么退避）。⚠ 群聊中心，私聊拟人要看是否适用 |
+| **MaiBot（麦麦 / MaiSaka）** 6.2k★ [S1] | QQ 拟人智能体，自称"数字生命"，群聊为主；模仿群友说话风格、学黑话 [文档] | README 只说"懂得在合适的时间说话、该闭嘴时闭嘴" [文档]。**更正（B 块读码后，10-12 晚）**：`turn_trigger/{scheduler,idle_backoff}.py` 管的是**收到消息后要不要进入回复循环**（群聊里连续没动作就指数退避），**不是**自己开口；核心里**没找到**自发开口的计时 / 生活驱动模块，主动靠插件调 `enqueue_proactive_task`，另有模型可调的 `wait` 工具 [代码，见 block-b.md] | 中期记忆（带时间范围、参与者；10-03 报告读过 `mid_term.py`）+ 人物画像 + 图像记忆 [旧报告 / 目录]；目录里有独立记忆子系统 `src/A_memorix/`，含 `memory_lifecycle_policy.py`、`memory_maintenance_service.py`、`person_fact_verifier.py`、`person_fact_reverification.py` [目录] | 最新 2026-10-11；20 条在 1 天内（极密） | GPL-3.0 | **C**：`person_fact_reverification` + `memory_lifecycle_policy`（记错了怎么复核、记忆怎么过期）。**B**：读过了，核心没有自发开口，见上面更正，不必再拆。⚠ 群聊中心，私聊拟人要看是否适用 |
 | **AstrBot** 41.8k★ [S2] | Python 通用聊天机器人框架，插件市场 1,300+；10-05 已做框架适配调研 | 本体：`future_task`（v4.14.0，**实验性**）由 LLM 或 WebUI 建一次性 / 间隔 / 每天 / 每周任务，到点唤醒 Agent；官方文档自己写"不是一直运行的自主监控" [文档]；`CronJobManager`、群聊概率回复 [旧码] | 本体：对话历史 + 知识库（RAG）+ 人格管理 [目录/旧码]；长期记忆靠插件（见下面 private_companion）[旧码] | 最新 2026-10-11；20 条在 3 天内（极密） | AGPL-3.0 | 本体**不必再拆**（10-05 已拆）。值得拆的是**插件生态**，见下面两行 |
 | ↳ AstrBot 插件 **private_companion** 390★ [S11] | "拟人化整合插件"：连续状态、每日日程、位置 / 天气 / 睡眠 / 饥饿 / 健康、重要日期、日记、**低频主动消息**；60+ 功能 [文档] | 官方文档写：由状态 / 日程 / 关系 / 近期互动形成**行为候选**，再过"**额度、时机、权限、发送前复核**"才发；记录"主动候选、**拦截原因**、改写结果、发送状态"供审计；区分"随机问候 / 重复触达 / 错误时段问候"；私聊有"**未回应降速**" [文档] | 与独立插件 `astrbot_plugin_memory_companion` 配对（采集 / 召回 / 权限 / 迁移 / 维护）；自带"Bot 自我时间线"、关系观察 [文档] | 最新 2026-10-11；20 条在 10 天内（密） | **没有许可证**（API 为 null，仓库无 LICENSE 文件）→ 默认保留所有权利，**只能看思路，不能搬代码** | **B 的首选**：它的架构和我们的"生活账 + 主动"几乎同构，且把"为什么没发"也记账。D 也要看它的"好感度 / 边界 / 道歉修复"（README 第 136 行起）。⚠ 60+ 功能，"好感度"是否在追黏性要到 D 块判 |
 | ↳ AstrBot 插件 **virtual_life** 5★ [S11] | 连续虚拟人生：长期时间表、每日日程、穿搭、当前状态、主动消息 [文档，仓库描述] | **没读 README**；仓库描述只写"主动消息" | **没找到**（没读） | 最新 2026-09-21；20 条跨 ~2 个月（慢） | GPL-3.0 | 体量小、可能只是个想法验证；除非 B 块需要第二个"日程驱动主动"样本，否则不拆 |
@@ -75,7 +75,7 @@
 按 B > C > D 的优先级，"最可能有料"的顺序：
 
 1. **private_companion**（B + D）——架构最像，且有"拦截原因"记账；没许可证，只读思路。
-2. **MaiBot**（B + C）——`turn_trigger/idle_backoff` 与 `person_fact_reverification` / `memory_lifecycle_policy`，是唯一同时碰"沉默时怎么办"和"记错了怎么纠正"的。群聊中心是风险。
+2. **MaiBot**（C）——`person_fact_reverification` / `memory_lifecycle_policy`，"记错了怎么纠正"。（原来写的 B 部分已更正：`idle_backoff` 不是主动发言，见上。）群聊中心是风险。
 3. **Letta Code**（C）——dreaming + MemFS。编码智能体出身是风险。
 4. **Graphiti**（C）——时间窗 + 溯源。只借数据模型的想法。
 
