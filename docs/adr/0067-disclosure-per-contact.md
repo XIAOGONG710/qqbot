@@ -1,6 +1,6 @@
 # ADR 0067：被认真问「是不是 AI」——按联系人标记她的身份是否被对方知道
 
-- 状态：**已采纳，已实现，已合并进 `main`（2026-10-12 用户批准合并；**线上目录暂缓**，见「上线顺序」下的暂缓说明），未上线**（2026-10-12 用户在 `options.md` 里选了 E1，并回答了前提：**线上两位联系人都知道她是程序，都已成年**）
+- 状态：**已上线**（2026-10-12 21:54:35，`main` = `0aadc03`，用户批准后重启 Koishi；两位联系人的 `knowsBot` 都是 `true`，行为和上线前一样）
 - 日期：2026-10-12
 - 关联：[ADR 0003](0003-contact-tiers.md)（决策 2：名单里的人都知道是 bot，被问时不承认；名单外的人不知道，被认真问到时承认）、[ADR 0006](0006-exit-check.md)（出口检查）、
   [ADR 0020](0020-disclosure-and-social-life.md)（披露分级）、[ADR 0068](0068-crisis-response.md)（危机回合一律承认）、`characters/linmengyao/source/persona.yml` `identity_note`
@@ -87,7 +87,13 @@
 3. 再重启 Koishi 让新代码生效。**顺序不能反**：新代码 + 没写 `knowsBot` = 两位都改成承认。
 4. 看启动日志里的「名单：……知道她是程序」两条和状态页的 `card` 列。
 
-## 暂缓说明（2026-10-12 21:5x）
+## 上线记录（2026-10-12）
+
+- 21:54 上线（用户说「贴纸改动不知道，你看着办，处理完就上线 0067」）：维护标记 `%TEMP%\qqbot-maintenance` → 停 Koishi → 线上目录那批别人未提交的贴纸改动原样保存（备份在 `runtime/backup-wip-20261012-2155/`，另存分支 `wip/live-tree-stickers-1012` `f01b362` 已推送；它们和 `codex/image-stickers` 分支同源，该分支未合并）→ 清工作区、快进到 `origin/main` → 在 `runtime/koishi/koishi.yml` 给两位联系人都写 `knowsBot: true` → 用守护程序同样的方式开新窗口启动 → 删维护标记。
+- 启动日志：「名单：……（鸽鸽，classmate，知道她是程序）、（宝宝，boyfriend，知道她是程序）」；档位 classmate / boyfriend 用原卡；NapCat 已就绪；主动消息开，下一次 00:03 睡前；0 条警告、0 条错误。
+- 没做：真模型的 `open-probes-*`（等用户允许）。
+
+## 暂缓说明（2026-10-12 21:5x，已解决）
 
 用户批准「合并并上线」。合并前核对线上目录（`main` `9f1b81c`）：有一批**别人未提交的贴纸改动**（`app.ts`、`contact.ts`、`stickers.ts`、Koishi 插件 `index.ts` / `console.ts` / `client/`，今晚 19:59–20:00 改的；Koishi 19:58 启动，所以这批改动还没生效），和本 ADR 改的文件重叠。用户选择：**先合并到 `main`，线上目录等贴纸改动提交后再上线**；Claude 没有碰线上目录、没有动那批改动、没有重启。
 
