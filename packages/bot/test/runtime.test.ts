@@ -98,10 +98,10 @@ describe('聊天记录', () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-history-'));
         try {
             const history = new ChatHistory(dir);
-            history.append(1, { time: 't1', role: 'user', content: '在吗', messageId: 10 });
-            history.append(2, { time: 't2', role: 'user', content: '别人' });
+            history.append(1, { time: '2026-10-05T12:00:00.000Z', role: 'user', content: '在吗', messageId: 10 });
+            history.append(2, { time: '2026-10-05T12:01:00.000Z', role: 'user', content: '别人' });
             appendFileSync(join(dir, 'chats', '1.jsonl'), '{"time":"t3","ro');
-            assert.deepEqual(history.load(1), [{ time: 't1', role: 'user', content: '在吗', messageId: 10 }]);
+            assert.deepEqual(history.load(1), [{ time: '2026-10-05T12:00:00.000Z', role: 'user', content: '在吗', messageId: 10 }]);
             assert.equal(history.load(2).length, 1);
             assert.deepEqual(history.load(3), []);
         } finally {

@@ -35,7 +35,9 @@ export class ChatHistory {
         }
         const stat = statSync(path);
         const cached = this.#cache.get(userId);
-        if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.messages;
+        // Callers use this as a point-in-time snapshot (for example, to detect a message arriving
+        // while a reply is generated). Never expose the mutable cache array itself.
+        if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return [...cached.messages];
         const messages: StoredMessage[] = [];
         let rejected = 0;
         for (const line of readFileSync(path, 'utf8').split('\n')) {
@@ -56,13 +58,25 @@ export class ChatHistory {
             messages,
             ids: new Set(messages.flatMap(message => message.messageId === undefined ? [] : [message.messageId])),
         });
-        return messages;
+        return [...messages];
     }
 
     append(userId: number, message: StoredMessage): void {
         if (!validStoredMessage(message)) throw new Error('拒绝写入不符合 schema 的聊天记录');
         const path = this.#path(userId);
-        const cached = this.#cache.get(userId);
+        let cached = this.#cache.get(userId);
+        // A chat file can be moved away by privacy/simulation tools while the process is alive.
+        // Do not extend that old cache into the newly-created file; refresh external changes too.
+        if (!existsSync(path)) {
+            this.#cache.delete(userId);
+            cached = undefined;
+        } else if (cached) {
+            const before = statSync(path);
+            if (cached.size !== before.size || cached.mtimeMs !== before.mtimeMs) {
+                this.load(userId);
+                cached = this.#cache.get(userId);
+            }
+        }
         const line = JSON.stringify(message) + '\n';
         appendFileSync(path, line);
         if (cached) {
