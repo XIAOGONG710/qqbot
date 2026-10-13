@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import { bodyAt, type Body } from '../src/body.ts';
 import type { Contact } from '../src/config.ts';
 import type { StoredMessage } from '../src/history.ts';
-import { describeObstacles, meetupDays, newObstacles, obstaclesBetween, type Obstacle, type ObstacleFacts } from '../src/obstacles.ts';
+import { describeObstacles, knownBy, meetupDays, newObstacles, obstaclesBetween, type Obstacle, type ObstacleFacts } from '../src/obstacles.ts';
 import {
     blockReason, candidateLabel, candidatesOn, occasionNote, planFrom, type ProactiveInput, type ProactiveRecord, type RescheduleItem,
 } from '../src/proactive.ts';
@@ -126,6 +126,16 @@ describe('他提到见面时的一行：meetupDays、describeObstacles（ADR 006
         assert.match(line, /今天 20:30–22:00 要赶作业（数据结构），22:00 左右写完/);
         assert.match(line, /没写到的时段你都有空\）/);
         assert.doesNotMatch(line, /不能|不许|必须|一定要推/);
+    });
+
+    test('她今天已经知道的才列：明天的身体、还没布置的作业不列（当天的身体不看未来）', () => {
+        const bodyOf = (time: Date) => bodyAt(cramps, schedule, time);
+        assert.equal(describeObstacles([day(12, 21)], t(12, 20, 21), facts({ bodyAt: bodyOf })), undefined, '头天晚上看不到明天的痛经');
+        assert.match(describeObstacles([day(12, 21)], t(12, 21, 9), facts({ bodyAt: bodyOf }))!, /今天整天 身上不舒服（生理期，肚子疼）/);
+        const later = () => world([hw('数据结构', t(10, 15, 22), t(10, 16, 8), '2026-10-15')]);
+        assert.doesNotMatch(describeObstacles([day(10, 15)], t(10, 14, 12), facts({ worldAt: later })) ?? '', /作业/, '明天才布置的作业今天不知道');
+        assert.match(describeObstacles([day(10, 15)], t(10, 15, 12), facts({ worldAt: later }))!, /要赶作业（数据结构）/);
+        assert.deepEqual(['class', 'other_meet'].map(kind => knownBy({ kind, id: 'x', text: 'x', start: day(12, 30), end: day(12, 30) } as Obstacle, '2026-01-01')), [true, true]);
     });
 
     test('只看现在以后；一行最多六条', () => {

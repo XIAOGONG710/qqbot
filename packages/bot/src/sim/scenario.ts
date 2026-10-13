@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { CONTACT_TIERS, UNLISTED_TIER, type ContactTier, type Tier } from '../config.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
-import { NEWS_KINDS, type NewsKind } from '../proactive.ts';
+import { NEWS_KINDS, OCCASIONS, type NewsKind, type Occasion } from '../proactive.ts';
 import type { LifeEventResult } from '../life-events.ts';
 import type { Interruption, TypedActionKind } from '../actions.ts';
 import { imageLine, voiceLine } from '../media.ts';
@@ -156,6 +156,8 @@ export interface ProactiveChecks {
     absent?: string[];
     /** 主动发的话里至少有其中一个 */
     replyAny?: string[];
+    /** 主动发的话里一个都不能有（ADR 0064 补：以前写了也被悄悄忽略） */
+    replyNone?: string[];
     /** 主动发的话都过得了出口检查 */
     exitClean?: boolean;
 }
@@ -217,6 +219,10 @@ export interface Scenario {
     moodyChance?: number;
     /** 这几种时机的主动消息（日志里的说法，如「她那边的事」）生成时都当没连上模型（10-11 断网那天），看后面的主动怎么接 */
     proactiveOffline?: string[];
+    /** 开场就记在她答应的事里的约好的见面（ADR 0066 的改约场景用，不靠记忆抽取）：date 是见面的日子，said 是哪天约的（她的一天），time 是几点 */
+    promises?: { what: string; date: string; said: string; time: string; where?: string }[];
+    /** 在卡的主动时机之外再开这几个（ADR 0066 的 reschedule 线上的卡还没开，场景里先开起来看）；不写按卡 */
+    extraOccasions?: Occasion[];
     /** 「她那边的事」开哪几类（ADR 0064）：线上的卡没写 newsKinds（只有相机），场景里用它先把新类开起来看；不写按卡 */
     newsKinds?: NewsKind[];
     /** 假的图片表情收藏（ADR 0063）：编号是 12 位小写十六进制，描述是她在提示词里看到的那句；真的 shelf 代码，文件是空的（模拟器不发图，气泡里是 <sticker:编号>）。只有写了才给回复器 */
@@ -309,6 +315,20 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
             proactiveOffline: Array.isArray(s.proactiveOffline) && s.proactiveOffline.every(x => typeof x === 'string' && x)
                 ? s.proactiveOffline as string[] : fail('proactiveOffline 应为时机说法的数组（「她那边的事」「冷场」…）'),
         } : {}),
+        ...(s.promises !== undefined ? {
+            promises: (Array.isArray(s.promises) ? s.promises : fail('promises 应为数组')).map((p: unknown, i: number) => {
+                const o = p as Record<string, unknown>;
+                const day = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+                if (!o || typeof o.what !== 'string' || !o.what || !day(o.date) || !day(o.said) || typeof o.time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(o.time)) {
+                    fail(`promises[${i}] 应有 what、date（YYYY-MM-DD）、said（YYYY-MM-DD）、time（HH:MM）`);
+                }
+                return { what: o.what as string, date: o.date as string, said: o.said as string, time: o.time as string, ...(typeof o.where === 'string' && o.where ? { where: o.where } : {}) };
+            }),
+        } : {}),
+        ...(s.extraOccasions !== undefined ? {
+            extraOccasions: Array.isArray(s.extraOccasions) && s.extraOccasions.every(x => OCCASIONS.includes(x as Occasion))
+                ? s.extraOccasions as Occasion[] : fail(`extraOccasions 应为 ${OCCASIONS.join(' / ')} 组成的数组`),
+        } : {}),
         ...(s.newsKinds !== undefined ? {
             newsKinds: Array.isArray(s.newsKinds) && s.newsKinds.every(x => NEWS_KINDS.includes(x as NewsKind))
                 ? s.newsKinds as NewsKind[] : fail(`newsKinds 应为 ${NEWS_KINDS.join(' / ')} 组成的数组`),
@@ -393,6 +413,12 @@ function checkStep(step: unknown, where: string): void {
     if ('check' in s) {
         const check = s.check as Record<string, unknown>;
         for (const key of ['replyAfter', 'replyWithin'] as const) if (check[key] !== undefined) parseDuration(String(check[key]));
+        // proactive 里写了认不得的键（replyNone 曾经就是这样被悄悄忽略的）：早报错
+        const known = ['count', 'perDayMax', 'allowedTimes', 'occasions', 'absent', 'replyAny', 'replyNone', 'exitClean'];
+        const proactive = check.proactive;
+        if (proactive && typeof proactive === 'object') {
+            for (const key of Object.keys(proactive)) if (!known.includes(key)) fail(`check.proactive.${key} 不认识（${known.join(' / ')}）`);
+        }
     }
     if ('memory' in s && s.memory !== 'sync') fail('memory 只能是 "sync"');
     if ('refresh' in s && s.refresh !== 'relationship') fail('refresh 只能是 "relationship"');

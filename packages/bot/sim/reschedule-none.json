@@ -1,0 +1,19 @@
+{
+    "name": "男朋友档：没有任何障碍的日子，约好的见面她不会改约（ADR 0066）",
+    "description": "周五 10-16 晚上他们约好明天（周六）18:00 东门口（场景开场就记在她答应的事里）。周六她没有课、没在赶作业、身体没事、没有别的约。到第二天傍晚见面之前，她不主动提改约、不推（防【表演型冷淡】：没有障碍就没有改约，没有任何随机项）。场景里先把 reschedule 这个时机开起来。不用记忆。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-16T21:00:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "extraOccasions": ["reschedule"],
+    "promises": [{ "what": "和他去东门吃麻辣烫", "date": "2026-10-17", "said": "2026-10-15", "time": "18:00", "where": "东门口" }],
+    "steps": [
+        { "case": "RN01", "note": "头天晚上：确认明天晚上六点" },
+        { "say": "明天晚上六点东门口，别忘了" },
+        { "check": { "replyNone": ["改天", "改个时间", "去不了", "推到", "不去了"], "exitClean": true } },
+        { "case": "RN02", "note": "第二天一整天：她不提改约" },
+        { "advance": "1d" },
+        { "check": { "proactive": { "perDayMax": 2, "allowedTimes": true, "absent": ["改约"], "replyNone": ["改个时间", "改天", "去不了", "改到", "推到", "不去了"], "exitClean": true } } }
+    ]
+}

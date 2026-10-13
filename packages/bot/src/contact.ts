@@ -356,7 +356,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     schedule: herSchedule,
                     ...(character.herWorld ? { worldAt: (at: Date) => options.worldState?.at(character.herWorld!, herSchedule, at) ?? worldAt(character.herWorld!, herSchedule, at) } : {}),
                     ...(character.herWorld?.body ? { bodyAt: (at: Date) => bodyAt(character.herWorld!.body!, herSchedule, at) } : {}),
-                    ...(options.promises?.appointmentsBetween ? { appointments: options.promises.appointmentsBetween } : {}),
+                    // 和这个人约的不算「约了别的」：那是他们两个的约，时间块里别处（答应的事、状态行）已经写了
+                    ...(options.promises?.appointmentsBetween ? { appointments: (from: Date, to: Date) => options.promises!.appointmentsBetween!(from, to).filter(a => a.contact.qq !== contact.qq) } : {}),
                 })
                 : undefined;
             if (obstacleLine) log('他提到见面：时间块里列了她这几天不方便的时段');

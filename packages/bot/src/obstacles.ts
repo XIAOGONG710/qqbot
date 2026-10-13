@@ -105,6 +105,14 @@ export function newObstacles(found: readonly Obstacle[], promise: { said: string
         : o.kind === 'homework' ? (o.assigned ?? '') > promise.said : false));
 }
 
+/**
+ * 这一天（她的一天，YYYY-MM-DD）她已经知道的障碍：当天的身体不看未来（今天看不到明天的痛经），还没布置的作业她不知道（不知道哪天布置的当作知道）；
+ * 课（含调休补课）和别的约一直看得到
+ */
+export function knownBy(o: Obstacle, today: string): boolean {
+    return o.kind === 'unwell' ? formatDate(o.start) <= today : o.kind === 'homework' ? (o.assigned ?? '') <= today : true;
+}
+
 const WEEKDAYS = '日一二三四五六';
 
 /** 他提到见面时，往后看哪几天：话里有「明天」「后天」「周X」「今晚」就只看那天，没有就看今天到后天 */
@@ -136,7 +144,7 @@ export function describeObstacles(days: readonly Date[], now: Date, facts: Obsta
         if (from.getTime() >= to.getTime()) continue;
         const offset = Math.round((dayStart.getTime() - today.getTime()) / DAY_MS);
         const word = offset === 0 ? '今天' : offset === 1 ? '明天' : offset === 2 ? '后天' : `周${WEEKDAYS[dayStart.getDay()]}`;
-        for (const o of obstaclesBetween(from, to, facts)) {
+        for (const o of obstaclesBetween(from, to, facts).filter(o => knownBy(o, formatDate(today)))) {
             lines.push(o.kind === 'unwell' ? `${word}整天 ${o.text}` : o.kind === 'other_meet' ? `${word} ${o.text}` : `${word} ${clock(o.start)}–${clock(o.end)} ${o.text}`);
         }
     }

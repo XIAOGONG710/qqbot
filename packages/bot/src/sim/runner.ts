@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import type { BotConfig, Contact } from '../config.ts';
 import { createContactResponder, replySkip, type TierCard } from '../contact.ts';
 import { stickerShelf } from '../stickers.ts';
-import { promiseKeeper } from '../promises.ts';
+import { MEET_MINUTES, promiseKeeper } from '../promises.ts';
+import { writeJsonAtomic } from '../json-file.ts';
 import { ChatHistory, type StoredMessage } from '../history.ts';
 import { chatCompletion, forExtraction } from '../llm.ts';
 import type { Log } from '../log.ts';
@@ -237,7 +238,18 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     let { ledger: ledgerWorld, queue: queuedActions, world: sharedWorld } = openWorld();
     // 她的日记（ADR 0017）：和 bot 一样，跨过她的一天就补写，存进公共库；场景关了作息就没有她的一天，不写
     // 她答应过的事（ADR 0018 决策 2）：和 bot 一样，开了记忆就抽（记忆同步时），到了日子在时间块里提醒，那天的打算写进日记
-    const openPromises = () => (memory
+    // 场景开场就有的约（ADR 0066）：写进她答应的事的状态文件，不靠模型抽取；有它就开着答应的事，不要求开长期记忆
+    if (scenario.promises?.length) {
+        mkdirSync(join(dataDir, 'promises'), { recursive: true });
+        writeJsonAtomic(join(dataDir, 'promises', `${contact.qq}-${contact.tier}.json`), {
+            promises: scenario.promises.map((p, i) => ({
+                id: `p-seed-${i + 1}`, what: p.what, date: p.date, said: p.said, episode: 'ep-0',
+                meet: { time: p.time, ...(p.where ? { where: p.where } : {}), minutes: MEET_MINUTES },
+            })),
+            loops: [], extracted: {}, early: {},
+        });
+    }
+    const openPromises = () => (memory || scenario.promises?.length
         ? promiseKeeper({
             contacts: [contact, ...others],
             history,
@@ -391,7 +403,13 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
 
     // 主动消息（ADR 0011）：场景开着、卡上有主动设置和作息时，计划器跑在虚拟时钟上（真发，记录在 dataDir/proactive）
     // 场景可以先把还没上线的事件类开起来（ADR 0064）
-    const proactiveSettings = character.proactive && scenario.newsKinds ? { ...character.proactive, newsKinds: scenario.newsKinds } : character.proactive;
+    const proactiveSettings = character.proactive && (scenario.newsKinds || scenario.extraOccasions)
+        ? {
+            ...character.proactive,
+            ...(scenario.newsKinds ? { newsKinds: scenario.newsKinds } : {}),
+            ...(scenario.extraOccasions ? { occasions: [...new Set([...character.proactive.occasions, ...scenario.extraOccasions])] } : {}),
+        }
+        : character.proactive;
     const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && proactiveSettings && character.schedule
         ? createProactivePlanner({
             contact,
@@ -885,6 +903,7 @@ export function proactiveChecks(checks: ProactiveChecks, steps: StepRecord[], ca
         const hit = checks.replyAny.filter(w => texts.includes(w));
         results.push({ ok: hit.length > 0, text: `主动发的话里有「${checks.replyAny.join('」「')}」之一${hit.length ? `（${hit.join('、')}）` : ''}` });
     }
+    for (const word of checks.replyNone ?? []) results.push({ ok: !texts.includes(word), text: `主动发的话里没有「${word}」` });
     if (checks.exitClean) {
         const issues = inspectReply(texts, card.character.banned);
         results.push({ ok: issues.length === 0, text: `主动发的话过得了出口检查${issues.length ? `（${summarizeIssues(issues)}）` : ''}` });

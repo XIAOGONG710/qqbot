@@ -307,6 +307,8 @@ test('日子和主动设置写错时报错；页面上全清空的当作没写',
     assert.throws(() => check(s => { boyfriend(s).proactive!.daily_max = 0; }), /daily_max 应为 1–10 的整数/);
     assert.throws(() => check(s => { s.tiers.tiers.at(-1)!.proactive = { occasions: ['morning'], daily_max: 1, unanswered_max: 1 }; }), /名单外的好友不主动找/);
     assert.equal(check(s => { boyfriend(s).proactive!.occasions = []; }).tiers.tiers[0]!.proactive, undefined);
+    // 改约（ADR 0066）是认得的时机
+    assert.deepEqual(check(s => { boyfriend(s).proactive!.occasions = ['morning', 'reschedule']; }).tiers.tiers[0]!.proactive!.occasions, ['morning', 'reschedule']);
     // 她那边的事开哪几类（ADR 0064）：没写 / 页面上一个都没勾 = 不进卡（按只有相机）；写了的原样进卡；写错的报错
     assert.equal(check(s => { boyfriend(s).proactive!.news_kinds = []; }).tiers.tiers[0]!.proactive!.news_kinds, undefined);
     assert.deepEqual(check(s => { boyfriend(s).proactive!.news_kinds = ['camera', 'homework_done']; }).tiers.tiers[0]!.proactive!.news_kinds, ['camera', 'homework_done']);
