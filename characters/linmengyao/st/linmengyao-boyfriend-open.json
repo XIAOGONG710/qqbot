@@ -332,7 +332,8 @@
                         "follow_up",
                         "dates",
                         "weather",
-                        "news"
+                        "news",
+                        "reschedule"
                     ],
                     "dailyMax": 2,
                     "unansweredMax": 1,
