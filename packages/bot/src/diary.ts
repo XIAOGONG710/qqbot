@@ -10,7 +10,7 @@ import type { Contact } from './config.ts';
 import { bookProgressOn, moodAt, readingActivities, type DailyMood, type ReadingBook } from './her-days.ts';
 import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
-import type { LongTermMemory } from './memory/long-term.ts';
+import type { LongTermMemory, WrittenRetention } from './memory/long-term.ts';
 import { knowsPeople } from './people.ts';
 import type { OpenAIMessage } from './prompt.ts';
 import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from './schedule.ts';
@@ -214,12 +214,12 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
                 options.log(`她的日记：${date} 模型回了空的，下次再写`);
                 return;
             }
-            const ok = await options.memory.retainDiary(date, day, text, options.sources.charName);
-            if (!ok) return;
+            const retention = await options.memory.retainDiary(date, day, text, options.sources.charName);
+            if (!retention) return;
             written[date] = [...text].length;
             state.texts[date] = text;
             save(state, today);
-            options.log(`她的日记：${date} 已写（${[...text].length} 字，聊过天的 ${chats.filter(c => c.messages.length).length} 人），存进公共记忆`);
+            options.log(`她的日记：${date} 已写（${[...text].length} 字，聊过天的 ${chats.filter(c => c.messages.length).length} 人），${retention === 'local-only' ? '含高敏内容，只保留本地' : '存进公共记忆'}`);
         }
         if (!(await catchUpWeeks(state, today))) return;
         await catchUpPhases(state, today);
@@ -246,8 +246,8 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         return found;
     };
 
-    /** 写一段周记或阶段总结；成功返回字数，失败记日志返回 undefined */
-    const summarize = async (label: string, period: string, diaries: { date: Date; text: string }[], retain: (text: string) => Promise<boolean>) => {
+    /** 写一段周记或阶段总结；成功返回字数和存放位置，失败记日志返回 undefined */
+    const summarize = async (label: string, period: string, diaries: { date: Date; text: string }[], retain: (text: string) => Promise<WrittenRetention>) => {
         let text: string;
         try {
             text = (await options.generate(summaryMessages(options.sources.charName, period, diaries))).trim();
@@ -259,7 +259,8 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
             options.log(`她的${label}：模型回了空的，下次再写`);
             return undefined;
         }
-        return (await retain(text)) ? [...text].length : undefined;
+        const retention = await retain(text);
+        return retention ? { length: [...text].length, retention } : undefined;
     };
 
     /** 周记：她这一周之前的 WEEK_BACKFILL 周（周一到周日）；全都处理完返回 true */
@@ -274,11 +275,11 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
             if (!diaries) return false;
             if (diaries.length) {
                 const period = `这周（${md(days[0]!)}–${md(days[6]!)}）`;
-                const length = await summarize(`周记（${id} 那周）`, period, diaries,
+                const summary = await summarize(`周记（${id} 那周）`, period, diaries,
                     text => options.memory.retainSummary(`week:${id}`, days[6]!, `${options.sources.charName}的周记（${md(days[0]!)}–${md(days[6]!)}）`, text, options.sources.charName, 'week'));
-                if (length === undefined) return false;
-                state.weeks[id] = length;
-                options.log(`她的周记：${id} 那周已写（${length} 字，用了 ${diaries.length} 篇日记），存进公共记忆`);
+                if (!summary) return false;
+                state.weeks[id] = summary.length;
+                options.log(`她的周记：${id} 那周已写（${summary.length} 字，用了 ${diaries.length} 篇日记），${summary.retention === 'local-only' ? '含高敏内容，只保留本地' : '存进公共记忆'}`);
             } else {
                 state.weeks[id] = 0;
             }
@@ -301,11 +302,11 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
             if (!diaries) return;
             if (diaries.length) {
                 const span = `${md(start!)}–${md(end!)}`;
-                const length = await summarize(`${holiday.name}总结`, `这个${holiday.name}（${span}）`, diaries,
+                const summary = await summarize(`${holiday.name}总结`, `这个${holiday.name}（${span}）`, diaries,
                     text => options.memory.retainSummary(`phase:${id}`, end!, `${options.sources.charName}的${holiday.name}总结（${span}）`, text, options.sources.charName, 'phase'));
-                if (length === undefined) return;
-                state.phases[id] = length;
-                options.log(`她的${holiday.name}总结已写（${length} 字，用了 ${diaries.length} 篇日记），存进公共记忆`);
+                if (!summary) return;
+                state.phases[id] = summary.length;
+                options.log(`她的${holiday.name}总结已写（${summary.length} 字，用了 ${diaries.length} 篇日记），${summary.retention === 'local-only' ? '含高敏内容，只保留本地' : '存进公共记忆'}`);
             } else {
                 state.phases[id] = 0;
             }

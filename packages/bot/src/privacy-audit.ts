@@ -126,7 +126,11 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
         if (common && typeof common === 'object' && !Array.isArray(common)) {
             for (const episode of Object.keys(common as Json)) commonDocuments.add(`${owner}:${episode}`);
         }
-        if (state?.personModel !== undefined) commonMentalModels.add(`person-${owner}`);
+        if (state?.personModel !== undefined) {
+            // v2 使用筛选后的公共标签；旧模型也列入遗忘目标，删除不存在的目标是幂等的。
+            commonMentalModels.add(`person-${owner}`);
+            commonMentalModels.add(`person-v2-${owner}`);
+        }
     }
 
     return {

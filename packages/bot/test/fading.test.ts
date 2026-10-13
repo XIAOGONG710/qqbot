@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import { clarity, isImportant, isLasting, isSummary, lastTouched, recentChat, withoutMark, type FadeOptions } from '../src/memory/fading.ts';
 import type { RecallResult } from '../src/memory/hindsight.ts';
 import { formatRecalled, VAGUE_NOTE } from '../src/memory/long-term.ts';
+import { MEMORY_EVIDENCE_RULE } from '../src/memory/safety.ts';
 
 const now = new Date('2026-11-20T21:00:00+08:00');
 /** now 往前 days 天那天中午（ISO） */
@@ -97,7 +98,7 @@ describe('召回整理时按记得多清楚筛（ADR 0018 决策 1）', () => {
         let stats;
         const text = formatRecalled(results, { now, limit: 3, fade: { heard: '海底捞还去吗', ignore: [], onFade: s => { stats = s; } } })!;
         const [header, ...lines] = text.split('\n');
-        assert.ok(header!.endsWith(`；${VAGUE_NOTE}]`));
+        assert.equal(header, `[你们以前聊过的事（从记忆里想起来的，只作参考；和最近的聊天对不上时以最近的为准，用不上就别提）；${VAGUE_NOTE}；记忆使用边界：${MEMORY_EVIDENCE_RULE}]`);
         assert.deepEqual(lines, [
             '- 9月1日：宝宝 9月1日面试字节',
             '- 10月6日（他一提才想起来，记不太清了）：宝宝去了海底捞',
@@ -109,7 +110,7 @@ describe('召回整理时按记得多清楚筛（ADR 0018 决策 1）', () => {
     test('都清楚时标题不变；全都想不起来就没有这一段；不传 fade 照旧', () => {
         let stats;
         const header = formatRecalled([fact('1', { occurred_start: ago(1) })], { now, header: '[记忆]', fade: { heard: '', ignore: [] } })!.split('\n')[0];
-        assert.equal(header, '[记忆]');
+        assert.equal(header, `[记忆；记忆使用边界：${MEMORY_EVIDENCE_RULE}]`);
         assert.equal(formatRecalled([fact('1', { occurred_start: ago(40) })], { now, fade: { heard: '', ignore: [], onFade: s => { stats = s; } } }), undefined);
         assert.deepEqual(stats, { vague: 0, recognized: 0, forgotten: 1, repeated: 0 });
         assert.match(formatRecalled([fact('1', { occurred_start: ago(40) })], { now })!, /事1$/);

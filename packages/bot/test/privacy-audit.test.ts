@@ -33,7 +33,8 @@ test('联系人隐私审计只报位置和数量，并给出私人 bank、公共
     assert.deepEqual(report.hindsight.banks, ['linmengyao-private']);
     assert.equal(report.hindsight.commonDocuments.length, 1);
     assert.match(report.hindsight.commonDocuments[0]!, /:ep1$/);
-    assert.equal(report.hindsight.commonMentalModels[0], `person-${report.hindsight.commonDocuments[0]!.split(':')[0]}`);
+    const owner = report.hindsight.commonDocuments[0]!.split(':')[0];
+    assert.deepEqual(report.hindsight.commonMentalModels, [`person-${owner}`, `person-v2-${owner}`]);
     assert.deepEqual(report.artifacts.map(item => [item.path.replaceAll('\\', '/'), item.kind, item.references]), [
         ['chats/10001.jsonl', 'direct', undefined],
         ['last-prompt.json', 'direct', undefined],

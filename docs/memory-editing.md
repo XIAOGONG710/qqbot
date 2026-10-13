@@ -77,7 +77,7 @@ bot 召回时只要带标签 `qq-private` 的（`tags_match: all_strict`，`long
   好让别人提起他时她也想得起来。只改一边，换个话头还会从另一边想起来，**两边都要改**。陌生人档、名单外不进公共库。
 - **等那段聊天结束再改**（安静满 45 分钟）。还在聊的那段每多 30 条整段重写一次（`OPEN_EPISODE_STEP`），你改的会被冲掉。
   已经结束的片段不会再写（本地写入记录 `runtime/bot/memory/<QQ>-<档位>.json` 记着），删掉的也不会被写回来；这个进度文件坏了才会从头重写。
-- **「关系概况」「她眼中的 X」不要直接改**：这是 Hindsight 按记忆自动写的 Mental Model（个人 bank 里的 `relationship`、公共库里的 `person-<哈希>`），
+- **「关系概况」「她眼中的 X」不要直接改**：这是 Hindsight 按记忆自动写的 Mental Model（个人 bank 里的 `relationship`、公共库里的 `person-v2-<哈希>`；`person-<哈希>` 是安全筛选升级前的旧模型），
   下次刷新就覆盖。改它背后的事实，再在面板里对这个 model 点刷新。
 - **不要改 bank 的写入说明（mission）**：那是代码设定的（`long-term.ts` 的 `bankMissions` / `commonBankMissions`），代码里的说明一变就会重新写入，面板里的修改不会同步回代码。
 - **她的日记**在公共库里，document_id 是 `diary:<日期>`（周记 `week:<周一>`、假期总结 `phase:<假期名>:<最后一天>`）。在面板里改它抽出的事实就行；
