@@ -24,6 +24,7 @@ import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
 import { crisisInHistory } from './crisis.ts';
 import { describeIntent } from './intent.ts';
+import { describeObstacles, meetupDays } from './obstacles.ts';
 import { describeLength, lengthHint, maybeTypo } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
@@ -36,7 +37,7 @@ import { describeWarmAffect, warmAffect } from './affect.ts';
 import { describeRecentPhotography, recentPhotography } from './projects.ts';
 import { describePast, pastCue } from './biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from './people.ts';
-import { describeAppointment, type PromiseKeeper } from './promises.ts';
+import { describeAppointment, mentionsMeetup, type PromiseKeeper } from './promises.ts';
 import { describeState, formatDate, herDay, partnerBackLine } from './schedule.ts';
 import { speechContext, type BookProgressContext } from './speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candidates.ts';
@@ -122,7 +123,7 @@ export interface ContactPipelineOptions {
      */
     herDays?: boolean;
     /** 她答应过的事（ADR 0018 决策 2）：到了日子在时间块里提醒一句；名单外的人不用 */
-    promises?: Pick<PromiseKeeper, 'describe'> & Partial<Pick<PromiseKeeper, 'openLoops' | 'appointmentsAt'>>;
+    promises?: Pick<PromiseKeeper, 'describe'> & Partial<Pick<PromiseKeeper, 'openLoops' | 'appointmentsAt' | 'appointmentsBetween'>>;
     /** W3：所有联系人、日记和主动消息共用的一份世界动作。 */
     worldState?: Pick<WorldState, 'at'> & Partial<Pick<WorldState, 'events'>>;
     /** ADR 0056：三天内课程作业可以接管空闲安排；执行器与状态行共用。 */
@@ -349,6 +350,16 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (aboutNpcs.length) log(`想起${npcs.map(person => person.name).join('、')}最近的事`);
             const promised = contact.tier !== UNLISTED_TIER ? options.promises?.describe(contact, chat, time) : undefined;
             if (promised) log('时间块里提醒了她答应的事');
+            // 他提到见面（ADR 0066 决策 2）：她那几天不方便的时段（有课、赶作业、身体不舒服、已经约了别的），只给事实，是否推、怎么说由她定；先只给男朋友档
+            const obstacleLine = contact.tier === 'boyfriend' && !initiate && herSchedule && mentionsMeetup(chat)
+                ? describeObstacles(meetupDays(chat.slice(-8).map(m => m.content).join('\n'), herDay(herSchedule, time)), time, {
+                    schedule: herSchedule,
+                    ...(character.herWorld ? { worldAt: (at: Date) => options.worldState?.at(character.herWorld!, herSchedule, at) ?? worldAt(character.herWorld!, herSchedule, at) } : {}),
+                    ...(character.herWorld?.body ? { bodyAt: (at: Date) => bodyAt(character.herWorld!.body!, herSchedule, at) } : {}),
+                    ...(options.promises?.appointmentsBetween ? { appointments: options.promises.appointmentsBetween } : {}),
+                })
+                : undefined;
+            if (obstacleLine) log('他提到见面：时间块里列了她这几天不方便的时段');
             // 挂着的事（ADR 0023）：等他说结果的、她问了他没答的进意图行；没了结的事实放在心情后面，只给事实
             const loops = contact.tier !== UNLISTED_TIER ? options.promises?.openLoops?.(contact, chat, time) : undefined;
             // 陌生人 / 名单外档没有她自己的日子，也不会因为一句越界的「爱你」凭空亲近。
@@ -446,6 +457,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(practice ? [practice] : []),
                         ...(plansLine ? [plansLine] : []),
                         ...(promised ? [promised] : []),
+                        ...(obstacleLine ? [obstacleLine] : []),
                         // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在青岛」
                         ...(partnerBack ? [partnerBack] : []),
                         ...(stickersAllowed && options.stickers?.prompt() ? [options.stickers.prompt()!] : []),

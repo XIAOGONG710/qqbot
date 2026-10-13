@@ -9,12 +9,14 @@
 
 import { expired, firstAsk, partText, whenText, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
+import type { ObstacleKind } from './obstacles.ts';
+import { mentionsMeetup } from './promises.ts';
 import { pendingMessages, pick } from './reply-timing.ts';
 import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from './schedule.ts';
 export { herDay } from './schedule.ts';
 
 /** 时机，按优先级从高到低 */
-export const OCCASIONS = ['dates', 'news', 'follow_up', 'weather', 'morning', 'after_class', 'quiet', 'bedtime'] as const;
+export const OCCASIONS = ['dates', 'reschedule', 'news', 'follow_up', 'weather', 'morning', 'after_class', 'quiet', 'bedtime'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 「她那边的事」的事件类（ADR 0064），按优先级从高到低：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天 */
@@ -69,6 +71,8 @@ export interface ProactiveRecord {
     retryAt?: string;
     /** 没连上模型的第几次 */
     tries?: number;
+    /** 改约（ADR 0066）：因为哪一类障碍；unwell 每个周期最多一次，靠它翻记录 */
+    obstacle?: ObstacleKind;
 }
 
 /** 没连上模型时，主动消息隔多久再试、一共试几次（10-11 下午断网，16:35 买到相机那条一次没连上就不再试，那天就没说成） */
@@ -84,6 +88,25 @@ export interface NewsItem {
     day: string;
     at: number;
     what: string;
+}
+
+/**
+ * 约好之后她这边出了事、想改约的一件（ADR 0066）：约的 id（promise id）、约在她的哪一天哪个钟点、几点能跟他说、是什么障碍。
+ * 由 proactive-planner.ts 的 reschedulesFrom 算（约 + 障碍都是确定性的事实）
+ */
+export interface RescheduleItem {
+    id: string;
+    /** 约的那天（她的一天） */
+    day: string;
+    /** 她能开口的时刻：那天起床 */
+    at: number;
+    /** 约的开始时刻 */
+    start: number;
+    /** 约的是什么：「和他去东门吃麻辣烫」 */
+    what: string;
+    time: string;
+    where?: string;
+    obstacle: { kind: ObstacleKind; id: string; text: string };
 }
 
 /** 某一天的一个候选 */
@@ -106,6 +129,8 @@ export interface Candidate {
     today?: string[];
     /** 她那边的事：是哪一件 */
     news?: NewsItem;
+    /** 改约：是哪一件约、什么障碍 */
+    reschedule?: RescheduleItem;
 }
 
 export interface ProactiveInput {
@@ -131,6 +156,8 @@ export interface ProactiveInput {
     rainingNow?: (now: number) => boolean;
     /** 她那边的事（ADR 0057）：她的今天、明天会了结的；到点时没有了（没发生）就不发 */
     news?: readonly NewsItem[];
+    /** 约好之后出了事、想改约的（ADR 0066）：到点时障碍没了、约没了就不发 */
+    reschedules?: readonly RescheduleItem[];
 }
 
 const MIN = 60_000;
@@ -290,6 +317,13 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
         }
     }
 
+    // 改约（ADR 0066）：约的那天起床后过一会儿；一件约一条（id 带约的 id），每件约只此一次
+    if (enabled.has('reschedule')) {
+        for (const item of (input.reschedules ?? []).filter(r => r.day === dayText)) {
+            add('reschedule', Math.max(item.at, wake) + pick(seed(`reschedule ${item.id}`), 'at', minutes(NEWS_MIN)), `${item.time} 的约：${item.obstacle.text}`, { reschedule: item }, `:${item.id}`);
+        }
+    }
+
     // 零点要祝的那个晚上不另说睡前（10-05 模拟器：睡前先说了「生日快乐，提前说过了」，零点又祝一遍）
     if (enabled.has('bedtime') && !midnight.length) add('bedtime', at(day, BEDTIME_FROM).getTime() + pick(seed('bedtime'), 'at', minutes(BEDTIME_MIN)), '准备睡了');
 
@@ -318,7 +352,7 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
 
 /** 发送出错、但前几个气泡已经发出去了：他收到了，和发了一样算（占每天的上限、算「没回」）；一个都没发出去的不算 */
 const partlySent = (r: ProactiveRecord) => r.result === 'failed' && Boolean(r.messageIds?.length);
-const counts = (r: ProactiveRecord) => r.result === 'sent' || r.result === 'dryRun' || partlySent(r);
+export const counts = (r: ProactiveRecord) => r.result === 'sent' || r.result === 'dryRun' || partlySent(r);
 
 /** 她的这一天里已经主动了几条（日子不算） */
 export function usedOn(day: string, records: readonly ProactiveRecord[]): number {
@@ -394,7 +428,7 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
     if (special) return undefined;
     if (candidate.occasion === 'bedtime') {
         if (lastTime !== undefined && now - lastTime < BEDTIME_RECENT_MS) return '20 分钟内聊过';
-    } else if (candidate.occasion === 'news') {
+    } else if (candidate.occasion === 'news' || candidate.occasion === 'reschedule') {
         if (lastTime !== undefined && now - lastTime < NEWS_RECENT_MS) return '正聊着，聊天里说';
     } else if (lastTime !== undefined && now - lastTime < RECENT_MS) {
         return '一小时内聊过';
@@ -428,6 +462,14 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
             // 按预报排的：到点没在下就不发（预报不准）
             if (!input.rainingNow?.(now)) return '没在下雨';
             break;
+        case 'reschedule': {
+            // 到点再核一遍：约还在、障碍还在、约还没到快出门的时候；那之后聊天里已经说到这件约了就不单发
+            const item = input.reschedules?.find(r => r.id === candidate.reschedule!.id && r.day === candidate.day);
+            if (!item) return '约没了，或者那个障碍没了';
+            if (now >= item.start - 15 * MIN) return '快到约好的时间了';
+            if (mentionsMeetup(history.filter(m => Date.parse(m.time) >= item.at))) return '聊天里已经说到这件约了';
+            break;
+        }
         case 'news': {
             const item = input.news?.find(n => n.id === candidate.news!.id && n.day === candidate.day);
             if (!item) return '那件事没发生';
@@ -472,6 +514,9 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
         bedtime: () => `时间不早了，跟${userName}道个晚安`,
         // 只给事实和方向，不给台词（ADR 0036 调整（2026-10-10 夜））
         // 每一类都写死：只说这一件、不要他回应或关心；不舒服不是求安抚（ADR 0064 决策 4，调研 D 块把「求安抚」类触发列为与目标冲突）
+        // 改约（ADR 0066 决策 3）：只说原因（那一条障碍事实）和提议改个时间；不过度道歉、不要他回应、不抱怨（0011 调整 5）
+        reschedule: () => `你和${userName}今天 ${candidate.reschedule!.time} 约好了${candidate.reschedule!.what}${candidate.reschedule!.where ? `（${candidate.reschedule!.where}）` : ''}，但今天${candidate.reschedule!.obstacle.text}：`
+            + '想跟他说一声，问问能不能改个时间；原因只说这一条（看「你那边」和上面的事实），别编别的，别过分道歉，不抱怨他',
         news: () => ({
             camera: () => `你刚${candidate.news!.what}，想第一时间告诉${userName}：说说这件事（看「你那边」那一行），就说这一件；那一行里没写的细节不编`,
             homework_done: () => `你刚${candidate.news!.what}，想跟${userName}说一声：就说这一件（看「你那边」那一行里的作业），不要他回应或夸你；那一行里没写的细节不编`,
@@ -502,7 +547,7 @@ export function recallTopic(candidate: Candidate, userName: string): string {
 
 /** 日志、状态页里的说法：「早安（起床后 12 分钟）」 */
 export const OCCASION_LABELS: Record<Occasion, string> = {
-    dates: '重要的日子', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', morning: '早安', after_class: '下课', quiet: '冷场', bedtime: '睡前',
+    dates: '重要的日子', reschedule: '改约', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', morning: '早安', after_class: '下课', quiet: '冷场', bedtime: '睡前',
 };
 
 export function candidateLabel(candidate: Candidate): string {

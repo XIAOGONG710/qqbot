@@ -17,7 +17,7 @@ import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay, newsKindsOf } from '../proactive.ts';
-import { createProactivePlanner, newsFrom, type Planner } from '../proactive-planner.ts';
+import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
 import { worldState, type World, CAMERA_FUND_TARGET } from '../world.ts';
 import { DIARY_TEMPERATURE, diaryWriter } from '../diary.ts';
@@ -434,6 +434,19 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 news: newsFrom(now => sharedWorld!.at(character.herWorld!, character.schedule!, now), character.schedule!, {
                     kinds: newsKindsOf(proactiveSettings),
                     ...(character.herWorld.body ? { bodyAt: (time: Date) => bodyAt(character.herWorld!.body!, character.schedule!, time) } : {}),
+                }),
+            } : {}),
+            // 约好之后她这边出了事、想改约（ADR 0066）：和 app.ts 一样；约要开了记忆才有
+            ...(sharedWorld && character.herWorld && character.schedule ? {
+                reschedule: reschedulesFrom({
+                    qq: contact.qq,
+                    appointments: (from, to) => promises?.appointmentsBetween(from, to) ?? [],
+                    facts: {
+                        schedule: character.schedule,
+                        worldAt: time => sharedWorld!.at(character.herWorld!, character.schedule!, time),
+                        appointments: (from, to) => promises?.appointmentsBetween(from, to) ?? [],
+                        ...(character.herWorld.body ? { bodyAt: (time: Date) => bodyAt(character.herWorld!.body!, character.schedule!, time) } : {}),
+                    },
                 }),
             } : {}),
             now: clock.now,

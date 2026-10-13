@@ -30,7 +30,7 @@ import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { newsKindsOf, type ProactiveMode } from './proactive.ts';
 import { detectCrisis } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
-import { createProactivePlanner, newsFrom, type Planner, type PlannerStatus } from './proactive-planner.ts';
+import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner, type PlannerStatus } from './proactive-planner.ts';
 import { promiseKeeper, type Appointment } from './promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from './her-days.ts';
 import { bodyAt } from './body.ts';
@@ -471,6 +471,19 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     news: newsFrom(now => sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, now), worldCard.schedule!, {
                         kinds: newsKindsOf(character.proactive!),
                         ...(worldCard.herWorld!.body ? { bodyAt: (time: Date) => bodyAt(worldCard.herWorld!.body!, worldCard.schedule!, time) } : {}),
+                    }),
+                } : {}),
+                // 约好之后她这边出了事、想改约（ADR 0066）：约来自她答应的事（开了长期记忆才有），障碍来自作息、世界、身体
+                ...(sharedWorld && worldCard && promises ? {
+                    reschedule: reschedulesFrom({
+                        qq: contact.qq,
+                        appointments: promises.appointmentsBetween,
+                        facts: {
+                            schedule: worldCard.schedule!,
+                            worldAt: time => sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, time),
+                            appointments: promises.appointmentsBetween,
+                            ...(worldCard.herWorld!.body ? { bodyAt: (time: Date) => bodyAt(worldCard.herWorld!.body!, worldCard.schedule!, time) } : {}),
+                        },
                     }),
                 } : {}),
                 // 待跟进的事：用同一个模型配置抽（测试替换的 generate 也用在这里）

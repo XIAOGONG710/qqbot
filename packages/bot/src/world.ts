@@ -134,7 +134,8 @@ export interface WorldNow {
     };
     /** 三天内要交的 */
     /** doneAt：几点写完（还没到就是打算几点写），日记用 */
-    homework: { course: string; due: Date; done: boolean; doneAt: Date }[];
+    /** assigned：哪天布置的（她的一天）；约好之后才布置的作业算新的障碍（ADR 0066） */
+    homework: { course: string; due: Date; done: boolean; doneAt: Date; assigned?: string }[];
     familyCall?: { at: Date; done: boolean };
     /** 她这一天的日常（ADR 0031）：午饭、晚饭在哪吃、几点到几点；洗澡几点到几点（不洗的日子没有） */
     routine?: { meals: { kind: 'lunch' | 'dinner'; start: Date; end: Date; where: 'canteen' | 'takeout' | 'home' }[]; shower?: { start: Date; end: Date } };
@@ -517,7 +518,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     }
     for (const item of timeline.homework) {
         if (item.assigned > date || item.due <= now || item.due.getTime() - startOfDay(now).getTime() > 3 * DAY_MS) continue;
-        result.homework.push({ course: item.course, due: item.due, done: item.done <= now, doneAt: item.done });
+        result.homework.push({ course: item.course, due: item.due, done: item.done <= now, doneAt: item.done, assigned: item.assigned });
     }
     if (record.call) result.familyCall = { at: record.call, done: record.call <= now };
     if (world.routine) result.routine = routineOn(world.routine, schedule, day, record.atSchool);

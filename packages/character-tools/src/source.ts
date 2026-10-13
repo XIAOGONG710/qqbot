@@ -45,8 +45,8 @@ export interface DaySource {
     midnight?: boolean;
 }
 
-/** 主动找人的时机（ADR 0011 决策 2）：早安、下课、睡前、冷场、待跟进的事、重要的日子；下雨（ADR 0050，只认真实天气） */
-export const OCCASIONS = ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather', 'news'] as const;
+/** 主动找人的时机（ADR 0011 决策 2）：早安、下课、睡前、冷场、待跟进的事、重要的日子；下雨（ADR 0050，只认真实天气）；她那边的事（0057、0064）；改约（ADR 0066，约好之后她这边出了事） */
+export const OCCASIONS = ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather', 'news', 'reschedule'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 「她那边的事」的事件类（ADR 0064），和 bot 的 proactive.ts 的 NEWS_KINDS 一致（两个包各存一份） */

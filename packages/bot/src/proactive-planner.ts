@@ -22,14 +22,16 @@ import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './memory/episo
 import type { OpenAIMessage } from './prompt.ts';
 import type { MacroNames } from './st/macros.ts';
 import {
-    blockReason, candidateLabel, candidatesOn, DEFAULT_NEWS_KINDS, herDay, MAX_PROACTIVE_BUBBLES, newsKindsOf, occasionNote, PENDING_REASON, planFrom, recallTopic, untoldNews,
-    UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type NewsKind, type ProactiveInput, type ProactiveRecord, type ProactiveSettings,
+    blockReason, candidateLabel, candidatesOn, counts, DEFAULT_NEWS_KINDS, herDay, MAX_PROACTIVE_BUBBLES, newsKindsOf, occasionNote, PENDING_REASON, planFrom, recallTopic, untoldNews,
+    UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type NewsKind, type ProactiveInput, type RescheduleItem, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
 import type { BodyNow } from './body.ts';
+import { newObstacles, obstaclesBetween, OBSTACLE_KINDS, type ObstacleFacts, type ObstacleKind } from './obstacles.ts';
+import { MEET_LEAD_MINUTES, type Appointment } from './promises.ts';
 import type { InitiateOutcome, Responder } from './responder.ts';
 import type { DayWeather } from './weather.ts';
 import { unwellNews, worldNews, type WorldNews, type WorldNow } from './world.ts';
-import { formatDate, type Schedule } from './schedule.ts';
+import { formatDate, wakeOn, type Schedule } from './schedule.ts';
 
 /** 记录留多少天 */
 const KEEP_DAYS = 30;
@@ -86,6 +88,41 @@ export function newsFrom(
     };
 }
 
+/** 同一类「不舒服」的改约至少隔这么多天才再来一次（ADR 0066 确认记录 1：每个周期最多一次，别和月经周期绑得太紧） */
+export const UNWELL_RESCHEDULE_GAP_DAYS = 20;
+
+/**
+ * 约好之后她这边出了事、想改约的（ADR 0066 决策 3）：今天、明天开始的约，约的时候没有、现在有的障碍（obstacles.ts 的 newObstacles），
+ * 每件约只取最要紧的一条；只给这个联系人的约，已经开始的不算。app.ts 和模拟器共用
+ */
+export function reschedulesFrom(options: {
+    qq: number; facts: ObstacleFacts; appointments: (from: Date, to: Date) => readonly Appointment[];
+}): (now: number) => RescheduleItem[] {
+    return now => {
+        const found: RescheduleItem[] = [];
+        for (const meeting of options.appointments(new Date(now), new Date(now + 2 * DAY_MS))) {
+            const { promise } = meeting;
+            if (meeting.contact.qq !== options.qq || !promise.meet || meeting.start.getTime() <= now) continue;
+            const window = obstaclesBetween(new Date(meeting.start.getTime() - MEET_LEAD_MINUTES * 60_000), meeting.end, options.facts, promise.id);
+            const first = newObstacles(window, promise).sort((a, b) => OBSTACLE_KINDS.indexOf(a.kind) - OBSTACLE_KINDS.indexOf(b.kind))[0];
+            if (!first) continue;
+            const day = herDay(options.facts.schedule, meeting.start);
+            found.push({
+                id: promise.id, day: formatDate(day), at: wakeOn(options.facts.schedule, day).getTime(), start: meeting.start.getTime(),
+                what: promise.what, time: promise.meet.time, ...(promise.meet.where ? { where: promise.meet.where } : {}),
+                obstacle: { kind: first.kind, id: first.id, text: first.text },
+            });
+        }
+        return found;
+    };
+}
+
+/** 「不舒服」的改约每个周期最多一次（ADR 0066 确认记录 1）：前 UNWELL_RESCHEDULE_GAP_DAYS 天里已经为不舒服改过约（发了或试运行）的，这一件不再算 */
+export function allowedReschedules(items: readonly RescheduleItem[], records: readonly ProactiveRecord[], now: number): RescheduleItem[] {
+    return items.filter(item => item.obstacle.kind !== 'unwell'
+        || !records.some(r => r.occasion === 'reschedule' && r.obstacle === 'unwell' && counts(r) && now - Date.parse(r.at) < UNWELL_RESCHEDULE_GAP_DAYS * DAY_MS));
+}
+
 export interface PlannerDeps {
     contact: Contact;
     schedule: Schedule;
@@ -114,6 +151,8 @@ export interface PlannerDeps {
     weather?: (now: number) => { day: string; weather?: DayWeather } | undefined;
     /** 她那边的事（ADR 0057）：她的今天、明天会了结的那几件 */
     news?: (now: number) => NewsItem[];
+    /** 约好之后她这边出了事、想改约的（ADR 0066，reschedulesFrom） */
+    reschedule?: (now: number) => RescheduleItem[];
     /** 现在是不是在危机信号的暂停期里（ADR 0068，crisis-state.ts）：普通主动消息不发，待跟进和重要的日子照旧 */
     crisisPaused?: (now: number) => boolean;
 }
@@ -274,6 +313,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     function record(candidate: Candidate, patch: Pick<ProactiveRecord, 'result'> & Partial<ProactiveRecord>): ProactiveRecord {
         const entry: ProactiveRecord = {
             id: candidate.id, occasion: candidate.occasion, plannedAt: new Date(candidate.at).toISOString(), at: new Date(now()).toISOString(), ...patch,
+            ...(candidate.reschedule ? { obstacle: candidate.reschedule.obstacle.kind } : {}),
         };
         records = [...records.filter(r => r.id !== candidate.id), entry];
         save();
@@ -290,6 +330,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             ...(rain ? { rain } : {}),
             // 只认卡上开了的事件类（ADR 0064 决策 6）：没开的类即使调用方给了也不排
             ...(deps.news ? { news: deps.news(now()).filter(item => newsKindsOf(deps.settings).includes(item.kind)) } : {}),
+            ...(deps.reschedule ? { reschedules: allowedReschedules(deps.reschedule(now()), records, now()) } : {}),
             ...(deps.weather ? { rainingNow: (at: number) => rainingAt(deps.weather!(at)?.weather, new Date(at)) } : {}),
         };
     };
