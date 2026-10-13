@@ -1,6 +1,6 @@
 # 看板（唯一的总表）
 
-- 更新：2026-10-13 13:45，Claude 主窗口（用户 10-13：「现在的工作分配太分散了，文件夹内杂乱的东西也太多了，先整合归档整理一下」）
+- 更新：2026-10-13 13:50，Claude 主窗口（用户 10-13：「现在的工作分配太分散了，文件夹内杂乱的东西也太多了，先整合归档整理一下」）
 - **规则**：别的文件和这里不一致时，以这里为准。状态变了就改这里的一行（带日期），不再为状态另开计划文件；交接、复核、研究照旧各写各的文件，只在这里留一行指针。
 - 老的计划、提示词、交接已按 `archive/ARCHIVE-INDEX.md` 归档（`git mv`，随时能拿回来）。
 - 不在这里的东西：代码和决策在 `main`（`docs/adr/`）；这里只管「谁手上有什么、现在到哪、等谁」。
@@ -56,7 +56,7 @@
 | ADR 0062 身体读账（已降级） | `adr-0062-body-from-ledger` | 不推进，留着 |
 | 表情包 `send` | — | 用户先发 10–20 张常用的 + 看货架 + 重启 |
 | `codex/image-stickers`（GPT 的表情包） | 475279c，3 个提交，未合 | 用户没确认，不合；线上目录当年那批未提交改动保全在 `wip/live-tree-stickers-1012` 和 `runtime/backup-wip-20261012-2155/` |
-| 其他停着的分支 | `sticker-source-bqb`、`sticker-qq-favorites`、`release-1012b/c/d` | 已被线上的表情包版本取代，见第 7 节的清理清单 |
+| 其他停着的本地分支 | `sticker-source-bqb`（有 1 个提交不在 main）、`empty-retry`、`real-chat-n6`、`adr-0036-judges`、`blind-o-1010b`、`gpt-addcd5c-rerun` | 只在本地或没并的实验；暂时留着，用得上再说，用不上下次一起清 |
 
 ### 3.3 做完了
 
@@ -123,3 +123,14 @@ ADR 0064 / 0065 / 0066 / 0067 / 0068；表情包 collect；M1；K3 语料（停�
 | 老的线上快照、10-08 的模拟 | `live/`、`evidence/`、`config/`：历史证据，被 ADR 引用，不用看 |
 
 仍留在 `handoff/`、`tasks/` 里的 10-08 到 10-12 的老文件，是因为 `docs/adr/` 或 `docs/reports/` 按路径引用了它们；下次有上线时顺手把引用改掉再挪。
+
+## 8. 10-13 整理记录（用户让整合归档；都可恢复）
+
+| 做了什么 | 怎么恢复 |
+| --- | --- |
+| 总表合成这一个 `BOARD.md`；`README.md` 缩成入口 | 旧 README 在 `archive/README-history-to-2026-10-13.md` |
+| 65 份 10-08 到 10-12 的交接 / 计划 / 提示词挪进 `archive/`（只挪没被 ADR 按路径引用的） | `archive/ARCHIVE-INDEX.md` 有新旧路径对照；`git mv` 挪回即可 |
+| 删了 81 个本地分支（72 个整条已在 `main`；8 个内容已在 `main`、提交号不同；`release-1012a` 随 `qqbot-claude2` 一起）；GitHub 上的分支一个没动 | `archive/deleted-local-branches-2026-10-13.txt` 有名字和提交号，`git branch <名字> <提交号>` |
+| 删了我自己的旧工作目录 `qqbot-claude2`（里面只有 3 个我留下的临时输出文件） | 分支内容都在 `main` 里 |
+| 本地分支 116 → 35；工作目录 15 → 14 | — |
+| **没动的**：GPT / Codex 的 worktree 和分支（`codex/*`、`qqbot-integration`、`qqbot-codex-wip`、线上目录 `runtime\` 里的 `ds-*`）→ 交给 GPT 自己盘点（任务书第 6 节第 0 项）；调研窗口的 `qqbot-claude4`（等它关了再删）；线上目录的 `runtime\sim` 等老输出共约 100 MB，14 个运行号被 ADR 引用，不删 | — |
