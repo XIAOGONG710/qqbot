@@ -223,3 +223,13 @@ uv pip install --python runtime\hindsight\venv\Scripts\python.exe --require-hash
     只断报过错的连接；输出在 `runtime/hindsight/watchdog.log`。单独跑：`node scripts/hindsight-watchdog.mjs [Postgres 日志目录]`。
   模拟器批次仍然一次只跑一批（锁 `%TEMP%\qqbot-hindsight-sim.lock`）。
 - 每个片段写入时 Hindsight 调一次 DeepSeek 抽取，进行中的片段每多 30 条整段重写一次。
+
+## 数据库口令和监听检查（ADR 0070 第 12 项）
+
+- PostgreSQL（pg0，5433）和 Hindsight API（8888）只监听 `127.0.0.1` / `::1`。这是唯一的外围防线，所以绑定变了要马上发现：`node packages/bot/src/ops/golive-check-cli.ts` 会列出我们自己的进程（node / python / postgres）监听的非回环地址，有就报「挡路」。本机 2026-10-13 18:20 实测：只有远程桌面（3389）和系统服务在非回环地址上，我们的进程都在 127.0.0.1。
+- 数据库口令默认仍是 `hindsight`，因为现有数据目录就是用它初始化的。`start-hindsight.ps1` 现在读环境变量 `QQBOT_HINDSIGHT_DB_PASSWORD`（至少 12 位，只许 `A-Za-z0-9_-`，同一个值要放进连接 URL）。**pg0 的 `-P` 只在新建数据目录时生效**，所以换口令不是改环境变量就完事，要这样做（**还没在线上执行**，需要用户同意 + 一段没人聊天的时间，Hindsight 重启一次）：
+  1. 停 Koishi 和 Hindsight API，保留 pg0 的 PostgreSQL 在跑（`pg0 info --name qqbot-hindsight` 看是否 running）。
+  2. 用 pg0 自带的 `psql` 以旧口令连上 `postgresql://hindsight:hindsight@127.0.0.1:5433/hindsight`，执行 `ALTER ROLE hindsight PASSWORD '<新口令>';`。
+  3. 把 `QQBOT_HINDSIGHT_DB_PASSWORD` 设成新口令（用户级环境变量，和 `QQBOT_LLM_API_KEY` 同一个地方），再启动 Hindsight 和 Koishi。
+  4. 回退：同样的 `ALTER ROLE` 改回 `hindsight`，删掉环境变量。
+- Hindsight API 本身没有认证令牌（上游若支持再加）。本机其他进程仍能读到全部长期记忆，这一点靠「监听本机 + 用户账户隔离」，不靠口令。

@@ -67,9 +67,16 @@ if ($pgData -match '[^\x00-\x7F]') {
     throw "PostgreSQL data directory ('$pgData') contains non-ASCII characters; pg0 fails with 'stream did not contain valid UTF-8'. Set QQBOT_PGDATA to an ASCII path (docs\hindsight.md)"
 }
 New-Item -ItemType Directory -Force -Path $pgData | Out-Null
+# Database password (ADR 0070 item 12). The default stays "hindsight" because the existing data directory was initialised with it:
+# pg0 only applies -P when it creates the cluster, so changing QQBOT_HINDSIGHT_DB_PASSWORD on an existing one needs the ALTER ROLE
+# step in docs\hindsight.md first. Only URL-safe characters, because the same value goes into the connection URL.
+$dbPassword = if ($env:QQBOT_HINDSIGHT_DB_PASSWORD) { $env:QQBOT_HINDSIGHT_DB_PASSWORD } else { 'hindsight' }
+if ($dbPassword -ne 'hindsight' -and $dbPassword -notmatch '^[A-Za-z0-9_-]{12,}$') {
+    throw 'QQBOT_HINDSIGHT_DB_PASSWORD must be at least 12 characters of A-Z a-z 0-9 _ -'
+}
 $info = & $pg0 info --name $instance 2>&1 | Out-String
 if ($info -notmatch 'is running') {
-    & $pg0 start --name $instance --data-dir $pgData --port $DbPort -u hindsight -P hindsight -n hindsight
+    & $pg0 start --name $instance --data-dir $pgData --port $DbPort -u hindsight -P $dbPassword -n hindsight
     if ($LASTEXITCODE -ne 0) { throw "pg0 start failed (exit $LASTEXITCODE)" }
 }
 
@@ -77,7 +84,7 @@ $env:HF_HOME = Join-Path $root 'hf'
 $env:PYTHONUTF8 = '1'
 $env:HINDSIGHT_API_HOST = '127.0.0.1'
 $env:HINDSIGHT_API_PORT = "$Port"
-$env:HINDSIGHT_API_DATABASE_URL = "postgresql://hindsight:hindsight@127.0.0.1:$DbPort/hindsight"
+$env:HINDSIGHT_API_DATABASE_URL = "postgresql://hindsight:$dbPassword@127.0.0.1:$DbPort/hindsight"
 $env:HINDSIGHT_API_LLM_PROVIDER = 'deepseek'
 $env:HINDSIGHT_API_LLM_API_KEY = $env:QQBOT_LLM_API_KEY
 $env:HINDSIGHT_API_LLM_MODEL = $Model

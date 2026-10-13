@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: ['**']
 
 permissions:
   contents: read
@@ -27,3 +27,5 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm test
+      # 依赖审计门（ADR 0070 第 11 项）：high / critical 或基线之外的新公告不通过；历史基线见 docs/security/npm-audit-baseline.json
+      - run: node packages/bot/src/ops/audit-gate-cli.ts
