@@ -341,6 +341,19 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
 });
 
 describe('统一生活事件账本（ADR 0029）', () => {
+    test('未知版本或坏事件失败关闭，不静默丢掉已经发生的生活', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'world-events-schema-'));
+        try {
+            const path = join(dir, 'events.json');
+            writeFileSync(path, JSON.stringify({ version: 2, events: [] }));
+            assert.throws(() => worldState(world, schedule, () => undefined, dir), /生活事件账.*schema.*拒绝启动/);
+            writeFileSync(path, JSON.stringify({ version: 1, events: [{ id: 'broken' }] }));
+            assert.throws(() => worldState(world, schedule, () => undefined, dir), /生活事件账.*schema.*拒绝启动/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('旧 actions.json 可直接升级；第一次新增事件时写 events.json，并继续维护旧投影', () => {
         const dir = mkdtempSync(join(tmpdir(), 'world-events-'));
         const legacy: WorldAction = {

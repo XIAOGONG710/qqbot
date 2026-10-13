@@ -1,6 +1,6 @@
 // 每个联系人一份聊天记录：<dataDir>/chats/<QQ 号>.jsonl，一行一条，只追加。
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface StoredMessage {
@@ -14,9 +14,12 @@ export interface StoredMessage {
 
 export class ChatHistory {
     #dir: string;
+    readonly #cache = new Map<number, { size: number; mtimeMs: number; messages: StoredMessage[]; ids: Set<number> }>();
+    readonly #log: (message: string) => void;
 
-    constructor(dataDir: string) {
+    constructor(dataDir: string, log: (message: string) => void = () => undefined) {
         this.#dir = join(dataDir, 'chats');
+        this.#log = log;
         mkdirSync(this.#dir, { recursive: true });
     }
 
@@ -26,20 +29,63 @@ export class ChatHistory {
 
     load(userId: number): StoredMessage[] {
         const path = this.#path(userId);
-        if (!existsSync(path)) return [];
+        if (!existsSync(path)) {
+            this.#cache.delete(userId);
+            return [];
+        }
+        const stat = statSync(path);
+        const cached = this.#cache.get(userId);
+        if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.messages;
         const messages: StoredMessage[] = [];
+        let rejected = 0;
         for (const line of readFileSync(path, 'utf8').split('\n')) {
             if (!line.trim()) continue;
             try {
-                messages.push(JSON.parse(line) as StoredMessage);
+                const value: unknown = JSON.parse(line);
+                if (validStoredMessage(value)) messages.push(value);
+                else rejected++;
             } catch {
                 // 进程在写入中途被杀时最后一行可能不完整，跳过
+                rejected++;
             }
         }
+        if (rejected) this.#log(`聊天记录 ${userId}.jsonl 忽略 ${rejected} 行损坏或不符合 schema 的内容`);
+        this.#cache.set(userId, {
+            size: stat.size,
+            mtimeMs: stat.mtimeMs,
+            messages,
+            ids: new Set(messages.flatMap(message => message.messageId === undefined ? [] : [message.messageId])),
+        });
         return messages;
     }
 
     append(userId: number, message: StoredMessage): void {
-        appendFileSync(this.#path(userId), JSON.stringify(message) + '\n');
+        if (!validStoredMessage(message)) throw new Error('拒绝写入不符合 schema 的聊天记录');
+        const path = this.#path(userId);
+        const cached = this.#cache.get(userId);
+        const line = JSON.stringify(message) + '\n';
+        appendFileSync(path, line);
+        if (cached) {
+            cached.messages.push(message);
+            if (message.messageId !== undefined) cached.ids.add(message.messageId);
+            const stat = statSync(path);
+            cached.size = stat.size;
+            cached.mtimeMs = stat.mtimeMs;
+        }
     }
+
+    /** O(1) message-id lookup after the first load; used by high-volume ingress paths. */
+    hasMessage(userId: number, messageId: number): boolean {
+        this.load(userId);
+        return this.#cache.get(userId)?.ids.has(messageId) ?? false;
+    }
+}
+
+export function validStoredMessage(value: unknown): value is StoredMessage {
+    if (!value || typeof value !== 'object') return false;
+    const message = value as Partial<StoredMessage>;
+    return typeof message.time === 'string' && Number.isFinite(Date.parse(message.time))
+        && (message.role === 'user' || message.role === 'assistant')
+        && typeof message.content === 'string'
+        && (message.messageId === undefined || (Number.isSafeInteger(message.messageId) && message.messageId >= 0));
 }

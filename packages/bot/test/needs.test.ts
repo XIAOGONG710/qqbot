@@ -105,6 +105,17 @@ describe('连续需要投影（ADR 0045）', () => {
             rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    test('已有锚点字段损坏时失败关闭，不拿当前时刻偷偷重建', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'needs-anchor-schema-'));
+        const path = join(dir, 'needs-anchor.json');
+        try {
+            writeFileSync(path, JSON.stringify({ version: 1, rulesVersion: NEEDS_RULES_VERSION, anchor: { at: 'bad', energy: 50, hunger: 50, stress: 50 } }));
+            assert.throws(() => loadNeedsAnchor(path, new Date('2026-10-08T00:00:00.000Z')), /需要锚点.*schema.*拒绝启动/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });
 
 /** 两周的确定性行动账：睡眠、两餐、课程 / 学习、休息和摄影交错。 */

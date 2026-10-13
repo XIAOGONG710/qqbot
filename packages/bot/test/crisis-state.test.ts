@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -9,6 +9,13 @@ const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
 describe('危机信号记录（ADR 0068 决策 5、6）', () => {
+    test('语法正确但内容损坏时失败关闭，不能清空后恢复普通主动消息', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-crisis-schema-'));
+        dirs.push(dir);
+        writeFileSync(join(dir, 'crisis.json'), JSON.stringify({ '10001': 'not-a-date' }));
+        assert.throws(() => createCrisisState(dir, () => {}), /危机状态.*schema.*拒绝启动/);
+    });
+
     test('只记谁、什么时候；暂停 48 小时；重启后还在；不记内容', () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-crisis-'));
         dirs.push(dir);

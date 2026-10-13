@@ -53,12 +53,17 @@ const MEAL_HUNGER_RELIEF = 55;
  */
 export function loadNeedsAnchor(path: string, at: Date, log: (message: string) => void = () => undefined): NeedsSnapshot {
     const existed = existsSync(path);
-    const loaded = readJsonOr<Partial<NeedsAnchorFile>>(path, {}, message => log(`她的需要：${message}`));
+    const loaded = readJsonOr<Partial<NeedsAnchorFile>>(path, {}, message => log(`她的需要：${message}`), existed ? {
+        validate: (value): value is NeedsAnchorFile => Boolean(value && typeof value === 'object'
+            && (value as Partial<NeedsAnchorFile>).version === 1
+            && typeof (value as Partial<NeedsAnchorFile>).rulesVersion === 'string'
+            && validSnapshot((value as Partial<NeedsAnchorFile>).anchor, at)),
+        invalid: 'throw', label: '需要锚点',
+    } : {});
     if (loaded.rulesVersion && loaded.rulesVersion !== NEEDS_RULES_VERSION) {
         throw new Error(`需要规则版本不兼容：${loaded.rulesVersion} → ${NEEDS_RULES_VERSION}，必须先迁移锚点`);
     }
     if (loaded.version === 1 && loaded.rulesVersion === NEEDS_RULES_VERSION && validSnapshot(loaded.anchor, at)) return loaded.anchor!;
-    if (existed) log('她的需要：锚点格式不对，改用当前时刻的新锚点');
     const anchor = snapshot(at, DEFAULT_NEEDS);
     writeJsonAtomic(path, { version: 1, rulesVersion: NEEDS_RULES_VERSION, anchor } satisfies NeedsAnchorFile);
     log(`她的需要：建立 ${NEEDS_RULES_VERSION} 锚点（${anchor.at}）`);

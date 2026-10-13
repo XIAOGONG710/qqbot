@@ -29,6 +29,19 @@ const withDir = (run: (dir: string) => void) => {
 };
 
 describe('可重放行动队列（ADR 0037、0038）', () => {
+    test('未知版本失败关闭；没有版本的旧容器显式迁移为 v1', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'action-queue-schema-'));
+        const path = join(dir, 'queue.json');
+        try {
+            writeFileSync(path, JSON.stringify({ version: 2, items: [] }));
+            assert.throws(() => actionQueue(path), /行动队列.*schema.*拒绝启动/);
+            writeFileSync(path, JSON.stringify({ items: [] }));
+            assert.deepEqual(actionQueue(path).pending(), []);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('计划先落盘，到结束时才提交事件；重启能恢复，同一 id 不重复排', () => withDir(dir => {
         const path = join(dir, 'queue.json');
         const start = at('2026-10-12T14:00:00');
