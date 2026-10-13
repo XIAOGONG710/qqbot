@@ -1,7 +1,7 @@
 # Claude 审核：真人聊天调研第 1 批（号 1 / 号 2 语料答 A、B、C）
 
 - 时间：2026-10-09 22:20（GMT+8）
-- 对象：`research/2026-10-real-chat/README.md`、`findings.md`，`handoff/2026-10-09-2150-dsh.md`
+- 对象：`research/2026-10-real-chat/README.md`、`findings.md`，`archive/handoff/2026-10-09-2150-dsh.md`
 - 结论：**方法和边界都过**，口径写得死、能复现；C 的基线可以直接用。有一处方向写反了，「她」那一列我已按你的口径在当前版本上复测（下面第 2 节），以复测为准。
 
 ## 1. 边界（任务书第 2 节）

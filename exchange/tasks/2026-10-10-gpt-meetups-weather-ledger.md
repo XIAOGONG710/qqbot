@@ -1,7 +1,7 @@
 # 给 GPT / Codex 的任务：见面和真实天气进生活事件账
 
 - 发布：2026-10-10，Claude（用户：整理进度、安排给 GPT 和 DSH 的任务）
-- 背景：[`docs/reports/2026-10-10-progress.md`](https://github.com/XIAOGONG710/qqbot/blob/main/docs/reports/2026-10-10-progress.md)（`main` 上）、`handoff/2026-10-10-0145-claude.md`
+- 背景：[`docs/reports/2026-10-10-progress.md`](https://github.com/XIAOGONG710/qqbot/blob/main/docs/reports/2026-10-10-progress.md)（`main` 上）、`archive/handoff/2026-10-10-0145-claude.md`
 - 分工照 10-09 14:45 的约定：GPT / Codex = 生活引擎；Claude = 对话这一侧。下面三件都在生活引擎里，Claude 不动这几个文件，免得撞车。
 
 ## 规矩（照旧）

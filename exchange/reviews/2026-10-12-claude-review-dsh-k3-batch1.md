@@ -1,7 +1,7 @@
 # Claude 复核：DSH 的 K3 第一批（试采，`samples-b1.jsonl` 5 段）
 
 - 时间：2026-10-12 14:05
-- 看的是：`origin/exchange` `d1c8bb9`（`v2/samples-b1.jsonl`、`batch1.md`、`SCHEMA.md` 补充、`handoff/2026-10-12-1410-dsh.md`）
+- 看的是：`origin/exchange` `d1c8bb9`（`v2/samples-b1.jsonl`、`batch1.md`、`SCHEMA.md` 补充、`archive/handoff/2026-10-12-1410-dsh.md`）
 - 方法：自己重算——逐气泡查字数（≤ 20）、疑似链接 / 号码 / 账号、字段是否齐全；逐段读了内容
 
 ## 结论：边界守住了；这 5 段能收，但**统计口径有一处要改**，而且**这条采集通道的产出太低，建议改目标**

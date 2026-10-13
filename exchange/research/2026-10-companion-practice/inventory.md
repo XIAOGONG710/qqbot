@@ -2,7 +2,7 @@
 
 - 日期：2026-10-12 晚；访问日期除特别注明外都是 **2026-10-12**
 - 谁做：**Claude 代做**（任务书原定 DSH，用户 10-12 晚明确让 Claude 做；因此交接文件署名 claude）
-- 任务书：`exchange/tasks/2026-10-12-dsh-companion-practice-research.md`；只读调研，没改代码、没碰 `docs/adr/`
+- 任务书：`exchange/archive/tasks/2026-10-12-dsh-companion-practice-research.md`；只读调研，没改代码、没碰 `docs/adr/`
 - 本表**没有读任何项目的源码**（按用户补充 2）。内容来源只有：README / 官方文档、GitHub 仓库元数据、仓库**文件名**（目录树，没打开文件）、以及 10-05 已经读过代码的旧报告。
 - 终极目标：让林梦瑶像真实的 20 岁左右女大学生那样活着，不追参与度、不宣称有意识。
 

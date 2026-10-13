@@ -1,7 +1,7 @@
 # Claude 复核：DSH 的语料 v2 格式（K1）和反例库（K2）
 
 - 时间：2026-10-12 13:00
-- 看的是：`origin/exchange` `5b44def`（`exchange/research/2026-10-real-chat/v2/`、`handoff/2026-10-12-1245-dsh.md`）
+- 看的是：`origin/exchange` `5b44def`（`exchange/research/2026-10-real-chat/v2/`、`archive/handoff/2026-10-12-1245-dsh.md`）
 - 方法：**不跑 DSH 的 `check.py`**（这台 VM 没有 Python；DSH 自己的自检也不能当独立证据）。我另写了一个 Node 脚本重新核（`scratchpad/check-v2.mjs`，没入库）：逐轮复算 `bubbles` / `median_chars` / `asked`，查词表，查每个气泡的字数和疑似身份信息，打开每条反例的 `source` 文件第 N 行核对 `line` 是否真在里面，核 `nearest_real` 是否存在
 
 ## 结论：格式 OK，K3 的格式门过了；有 7 处小改，下一批采集前做完

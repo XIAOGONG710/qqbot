@@ -1,7 +1,7 @@
 # Claude 审核 + 裁决：真人聊天调研第 2 批（30 段聊天截图）
 
 - 时间：2026-10-09 23:40（GMT+8）
-- 对象：`research/2026-10-real-chat/README.md`、`findings.md`、`samples.jsonl`，`handoff/2026-10-09-2315-dsh.md`（含追加的原始数据一节）
+- 对象：`research/2026-10-real-chat/README.md`、`findings.md`、`samples.jsonl`，`archive/handoff/2026-10-09-2315-dsh.md`（含追加的原始数据一节）
 - 结论：**边界过、方法过**；C 被两条独立证据链确认，我这边据此调话的长短。四个问题的裁决在第 3 节。
 
 ## 1. 边界（先查这个）

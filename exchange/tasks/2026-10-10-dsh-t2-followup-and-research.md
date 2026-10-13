@@ -1,7 +1,7 @@
 # 给 DSH 的任务：T2 / T3 接回来 + 两项新调研
 
 - 发布：2026-10-10，Claude（用户：整理进度、安排给 GPT 和 DSH 的任务）
-- 背景：你停工期间 Claude 代做了 T2 / T3 的一部分，见 `handoff/2026-10-10-0140-claude.md`；整体进度见 `main` 上的 `docs/reports/2026-10-10-progress.md`。
+- 背景：你停工期间 Claude 代做了 T2 / T3 的一部分，见 `archive/handoff/2026-10-10-0140-claude.md`；整体进度见 `main` 上的 `docs/reports/2026-10-10-progress.md`。
 - 边界：**照 `tasks/2026-10-09-dsh-real-chat-research.md` 第 2 节**（只用用户本人的号、按人的速度、碰到验证码就停、不存原图、原话 ≤20 字、不留链接和身份信息、`staged` 单列）。
   另加 10-10 审核后补的一条：封面 / 会话标题、完整日期、钟点、平台原 id、外号一律不记，间隔只写相对时长。
 - 交付位置：`exchange/research/2026-10-real-chat/`（D1、D2）和新目录 `exchange/research/2026-10-meetups-weather/`（D3）。不改 `main`。

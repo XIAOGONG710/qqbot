@@ -1,7 +1,7 @@
 # Claude 复核：DSH 的 K3 第二批（39b14f4）和 K4 表情包数字（3326973）
 
 - 时间：2026-10-12 17:3x（VM 时钟）
-- 范围：`samples-b2.jsonl`（4 段）、`batch2.md`、`handoff/2026-10-12-1515-dsh.md`、`findings.md` 第 14 节、`handoff/2026-10-12-1505-dsh.md`
+- 范围：`samples-b2.jsonl`（4 段）、`batch2.md`、`archive/handoff/2026-10-12-1515-dsh.md`、`findings.md` 第 14 节、`archive/handoff/2026-10-12-1505-dsh.md`
 - 方法：对 b2 和旧三个文件用 Node 重算 `median_chars`、查脱敏硬规则；对 K4 的每个百分比和合计手算；扫 DSH 这几个提交的 diff 找凭据值。
 
 ## 一句话

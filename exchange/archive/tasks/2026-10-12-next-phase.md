@@ -3,7 +3,7 @@
 - 时间：2026-10-12 10:10，Claude 写（用户：「明确一下接下来的工作内容，写下一阶段的提示词，然后重新启动」）
 - 基线：线上代码 `dedcb67`（10-12 00:04 起跑）；`main` = `integration` = `312992c`；线上目录干净、和 `main` 对齐
 - 线上开关（10-12 09:50 读 `runtime/koishi/koishi.yml`）：`memory` 开、`autonomousLife: true`（影子，只记账）、`vision` 开；`lifeInPrompt`、`projectChoice` 没写 = 关；`realWeather` 没写 = 开
-- 三方开工提示词：`exchange/prompts/2026-10-12-claude.md`、`-gpt.md`、`-dsh.md`（整段贴进新会话）
+- 三方开工提示词：`exchange/archive/prompts/2026-10-12-claude.md`、`-gpt.md`、`-dsh.md`（整段贴进新会话）
 - 取代：`tasks/2026-10-10-gpt-meetups-weather-ledger.md`（G1、G2 10-10 已上线，G3 已确认）、`tasks/2026-10-10-dsh-t2-followup-and-research.md`（D1 做完；D3 并进下面的 C1；D2 暂停，等盲评 v1.2 评完再看）
 
 ## 0. 现在在哪
@@ -82,7 +82,7 @@ M1、M2 上线后，每天看线上那一行（或那件作业）有没有和她
 | --- | --- |
 | Claude（VM） | M1（10-12 晚）→ 每天线上样本 → ADR 0061 草稿 → ~~M3 ADR 草稿~~（ADR 0062，10-12 已写） → 盲评 v1.2 出包 → 审 GPT 的 M2 审计和 C1 实现 |
 | GPT / Codex（VM） | 两笔小账（「收费」、谐音）→ M2 影子审计 → C1 实现（ADR 0061 定了以后）→ 审 Claude 的 ADR |
-| DSH（联想主机） | **真人语料库（`tasks/2026-10-12-dsh-corpus-n2.md`，用户 10-12 点名）** → C1 调研并进语料库 → 审 ADR 0061、ADR 0062（M3）草稿 → 审 GPT 的 C1 实现（静态 + 本机模拟） |
+| DSH（联想主机） | **真人语料库（`archive/tasks/2026-10-12-dsh-corpus-n2.md`，用户 10-12 点名）** → C1 调研并进语料库 → 审 ADR 0061、ADR 0062（M3）草稿 → 审 GPT 的 C1 实现（静态 + 本机模拟） |
 | 用户 | M1、M2 开不开；每次上线点头；有空评盲评 v1.2 |
 
 ---
@@ -106,7 +106,7 @@ M1、M2 上线后，每天看线上那一行（或那件作业）有没有和她
 | 更短回复上线（SHORT_CHANCE 0.35 → 0.5 + 措辞） | Claude | 盲评结果可以 + M1 稳 48 小时 + 用户点头重启 |
 | M2 项目接管空闲（`projectChoice`）审计 | GPT / Codex | M1 稳 48 小时（最早 10-14 晚）才问用户 |
 | 每天看线上样本（已知小账：「多了要收费」、谐音接梗、早安「醒这么早」） | Claude | — |
-| GPT 把 `codex/image-stickers` 合并 `main`（线上已经带了我的几处修复：拆气泡、看图提示词、判断器硬规则、63 类名单、每天 3 张、QQ 收藏）再继续 | GPT | 用户转交 `prompts/2026-10-12-relay-gpt.md` |
+| GPT 把 `codex/image-stickers` 合并 `main`（线上已经带了我的几处修复：拆气泡、看图提示词、判断器硬规则、63 类名单、每天 3 张、QQ 收藏）再继续 | GPT | 用户转交 `archive/prompts/2026-10-12-relay-gpt.md` |
 
 ### 本周
 

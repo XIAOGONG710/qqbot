@@ -1,6 +1,6 @@
 # v2 语料格式（K1/K2）
 
-对应任务：`exchange/tasks/2026-10-12-dsh-corpus-n2.md`（Claude，2026-10-12 12:35 发布）。
+对应任务：`exchange/archive/tasks/2026-10-12-dsh-corpus-n2.md`（Claude，2026-10-12 12:35 发布）。
 复核：`exchange/reviews/2026-10-12-claude-review-dsh-corpus-v2-k1k2.md`（Claude，12:50）——**格式 OK**，
 本版按它的 7 处小改与反例调整改过一遍（见第 7 节）。
 

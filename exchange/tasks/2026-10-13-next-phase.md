@@ -1,6 +1,6 @@
 # 下一阶段（10-13 起）：看、核、再动——六样东西上线之后的 48 小时
 
-- 时间：2026-10-13 13:40，Claude（调研窗口）写。用户：「写下一阶段的提示词吧」。接着 `tasks/2026-10-12-next-phase.md`（那份第 5 节的协作协议仍然有效，本文只写变了的）
+- 时间：2026-10-13 13:40，Claude（调研窗口）写。用户：「写下一阶段的提示词吧」。接着 `archive/tasks/2026-10-12-next-phase.md`（已归档；它第 5 节的协作协议现在合并进 `exchange/BOARD.md` 第 5 节，状态以看板为准）
 - 基线：`main` = `integration` = `f40a793`；线上目录 `7d26f22`（和 `main` 只差一个 ADR 文档提交，不用重启）；Koishi 10-13 13:17:31 起跑，两位联系人都 `knowsBot: true`
 - 线上开关（10-13 13:20 读 `runtime/koishi/koishi.yml`）：`memory` 开、`proactive: 'on'`、`autonomousLife: true`（影子）、`lifeInPrompt: true`、`stickers: collect`、`vision` 开、`unlistedFriends: false`；`projectChoice` 没写 = 关
 - 三方开工提示词：`exchange/prompts/2026-10-13-claude.md`、`-gpt.md`、`-dsh.md`（整段贴进新会话）。取代 10-12 的三份
@@ -79,7 +79,7 @@
 - 不再采集真人语料（K3 停在 49 段）；K5 等盲评。
 - 不为了看到新功能而催用户聊天。
 
-## 6. 协作协议（在 10-12 计划第 5 节之上补三条）
+## 6. 协作协议（已合并进 `BOARD.md` 第 5 节；这里留原文）
 
 1. **重启前先在 `exchange/handoff/` 写一行**「我要在 hh:mm 重启，原因」，另一个窗口开工前先看（10-12 两个 Claude 窗口先后各重启了一次，互相不知道）。
 2. **改卡 = 上线**：线上目录里 `characters/*/st/` 一变，插件当场热加载（ADR 0011 §5）。所以带卡改动的分支**不进 `main`**，直到用户当次点头要上线；快进线上目录前先看 `git log --oneline HEAD..origin/main`。

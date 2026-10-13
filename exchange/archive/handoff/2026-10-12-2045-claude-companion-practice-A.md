@@ -2,7 +2,7 @@
 
 - 时间：2026-10-12 20:45（GMT+8）
 - **署名说明**：任务书原定 DSH 做；用户 10-12 晚在 Claude 会话里贴了启动提示词并明确说"你来做"，所以这一份由 Claude 代做，没有冒名 DSH。
-- 依据：`exchange/tasks/2026-10-12-dsh-companion-practice-research.md`（`b73c979`）+ 用户四条补充（E 块来源限免登录；A 只出一行总表不读源码；优先级 B>C>D>E；D 块"表演型冷淡"归与目标冲突）
+- 依据：`exchange/archive/tasks/2026-10-12-dsh-companion-practice-research.md`（`b73c979`）+ 用户四条补充（E 块来源限免登录；A 只出一行总表不读源码；优先级 B>C>D>E；D 块"表演型冷淡"归与目标冲突）
 - 产物：`exchange/research/2026-10-companion-practice/inventory.md`
 - 范围：**只做了 A**。B–E、`options.md` 没动，等用户或 Claude 圈项目 / 确认方向。
 

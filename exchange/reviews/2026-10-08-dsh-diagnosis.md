@@ -3,7 +3,7 @@
 - 日期：2026-10-08
 - 诊断方：DSH 侧（独立 checkout，本机 `LAPTOP-FQ8J52JM`）
 - 基准：`exchange` 分支 `ccd3321`（= `main` `197d2d5` + 交换快照）
-- 依据：`exchange/handoff/2026-10-08-2141.md` 第 40 节列的「希望 DSH 优先复核」第 1 项
+- 依据：`exchange/archive/handoff/2026-10-08-2141.md` 第 40 节列的「希望 DSH 优先复核」第 1 项
 - 读过的证据：`last-prompt.json`（21:30 同学档真实一轮）、三天日志（10-06 319 行 / 10-07 265 行 / 10-08 210 行）、
   两个联系人的完整聊天流（宝宝 404 条、鸽鸽 42 条）、`world-state.json`、`promises/`、`koishi.redacted.yml`、相关源码
 
