@@ -1,6 +1,6 @@
 # ADR 0064：她账里的事成为开口的理由（0057 的推广）
 
-- 状态：**已实现，代码已合并进 `main`（`19bed59`，2026-10-13）；作业写完了这一类已在分支 `adr-0064-enable-homework` 里写进男朋友档的卡，等上线**（2026-10-12 用户在 `options.md` 里选了 B1，「待确认」由用户 22:10 的「你看着办」授权 Claude 按建议答复，见「确认记录」；10-13 用户说「可以，按照顺序一个一个来」：先合并、先开 `homework_done`，`unwell` 等它第一次出现再看日志；上线要用户当次同意重启）
+- 状态：**已上线**（2026-10-13 12:23:48 重启 Koishi，约 30 秒，用户当次同意；线上 `main` = `467d71a`；男朋友档 `newsKinds: [camera, homework_done]`；`unwell` 没开）。2026-10-12 用户在 `options.md` 里选了 B1，「待确认」由用户 22:10 的「你看着办」授权 Claude 按建议答复，见「确认记录」；10-13 用户说「可以，按照顺序一个一个来」
 - 日期：2026-10-12
 - 关联：[ADR 0011](0011-proactive-messages.md)（主动消息：时机、每天≤2、没回就停、先记后发）、[ADR 0057](0057-her-news.md)（她那边刚有件事：现在只有买相机）、
   [ADR 0056](0056-project-portfolio.md)（课程作业的紧急程度）、[ADR 0020](0020-disclosure-and-social-life.md)（披露分级）、[ADR 0036](0036-conversation-naturalness.md)（说明只给方向、不给台词）、
@@ -106,7 +106,9 @@
   - `proactive-news-unwell`（新）3 次：2 次 09:45 单发「宝宝，我今天肚子疼得厉害，躺床上了」「肚子疼，一早上没爬起来」，没有求哄 / 求关心的话；1 次出口检查的「小黄脸最近用多了」把第二个气泡删了，只剩一个「宝宝」。第二天（还在疼）三次都没再主动说。
   - 相机场景（`proactive-news`、`proactive-news-untold`）回归：`proactive-news-untold` 3/3 全过；`proactive-news` 有 2 次「PN01 回复里没提相机」，同一场景在没改的 `main`（`9c12afb`）上也是 2/3（`baseline-main-news`），不是这次改出来的。
 
-## 上线
+## 上线（2026-10-13 12:23）
+
+启动日志：名单两位都「知道她是程序」，主动消息开，NapCat 就绪，0 条错误，只有一个 Koishi 实例，守护程序没有重复拉起。回滚：线上目录快进回 `9c12afb` 再重启。第一次可能触发：10-14 22:05–22:20（前提是他在那之前回过她上一条主动消息，否则「没回就停」）。
 
 1. 代码合并进 `main`（`19bed59`，10-13 12:1x，用户同意）：不碰卡，行为不变。
 2. **开 `homework_done`**（分支 `adr-0064-enable-homework`）：`tiers.yml` 男朋友档 `proactive.news_kinds: [camera, homework_done]`，转换器重新生成，只有 `linmengyao-boyfriend.json` 和 `linmengyao-boyfriend-open.json` 多了一个 `newsKinds`（`git diff` 核对过）。**注意卡文件变了线上的插件会热重载**（0011 §5），所以这个分支不进 `main`，上线时才快进线上目录并重启。
