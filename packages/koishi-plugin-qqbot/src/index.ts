@@ -133,7 +133,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
                 .description('**别人提起时**：她认识的这个人，一两句（例如「网上认识的朋友，比较熟」）。名单里别人说起他的称呼时给她看，留空就是不认识（ADR 0016）'),
         })).description('**回复名单**：每人按自己的档位回复'),
         unlistedFriends: Schema.boolean().default(DEFAULTS.unlistedFriends)
-            .description('**名单外的好友**：私聊时也回复，按 unlisted 档（被认真问到时承认是 AI；任何人加小号好友就能调用模型）'),
+            .description('**名单外的好友**：默认关闭。打开后私聊按 unlisted 档回复（被认真问到时承认是 AI）；每人 10 分钟最多 30 条，全部名单外好友合计最多 100 条'),
         schedule: Schema.boolean().default(DEFAULTS.schedule)
             .description('**作息**：按角色卡上的作息，凌晨睡觉不回、上课晚回、打字有时间。深夜测试时关掉'),
         media: Schema.boolean().default(DEFAULTS.media)

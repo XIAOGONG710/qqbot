@@ -810,14 +810,14 @@ describe('配置', () => {
         assert.throws(() => withContacts([{ qq: 1, name: 'a', tier: 'classmate', persona: 1 }]), /contacts\[0\]\.persona/);
     });
 
-    test('每个联系人要有档位，unlisted 不能写在名单里；角色卡路径要带 {tier}；名单外好友默认回复', () => {
+    test('每个联系人要有档位，unlisted 不能写在名单里；角色卡路径要带 {tier}；名单外好友默认不回复', () => {
         const key = { QQBOT_LLM_API_KEY: 'k' };
         const withContacts = (contacts: unknown) => withConfig({ ...valid, contacts }, key);
         assert.equal(withContacts([{ qq: 1, name: 'a', tier: 'known' }]).contacts[0]!.tier, 'known');
         assert.throws(() => withContacts([{ qq: 1, name: 'a' }]), /contacts\[0\]\.tier/);
         assert.throws(() => withContacts([{ qq: 1, name: 'a', tier: 'unlisted' }]), /contacts\[0\]\.tier/);
         assert.throws(() => withConfig({ ...valid, characterCard: 'characters/linmengyao/st/linmengyao.json' }, key), /\{tier\}/);
-        assert.equal(withConfig(valid, key).unlistedFriends, true);
+        assert.equal(withConfig(valid, key).unlistedFriends, false);
         assert.equal(withConfig({ ...valid, unlistedFriends: false }, key).unlistedFriends, false);
         assert.equal(withConfig(valid, key).schedule, true);
         assert.equal(withConfig({ ...valid, schedule: false }, key).schedule, false);
