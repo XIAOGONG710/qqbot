@@ -27,7 +27,7 @@
 | --- | --- | --- | --- |
 | **Claude 主窗口** | VM；`qqbot-claude3` 等 | ① 窗口内每天一次线上审计（判据在 10-13 计划第 2 节）② 10-14 22:05–22:20 看第一次「作业写完了」③ 10-14 20:00 起问用户候选 4 ④ 接 RDP 断开标记的对比（第 6 节）⑤ ADR 0061 补完（等 DSH 样本 + 用户两条裁决）⑥ 复核 GPT / DSH 的推送 | `handoff/`、`reviews/` |
 | **Claude 第二窗口（调研窗口）** | VM；`qqbot-claude4` | 默认不开。用户开的时候：先在 `handoff/` 写认领一行，只做调研 / ADR / 实验，不重启；上一轮它做完了 0064、0066、0065 | `handoff/`、`research/` |
-| **GPT / Codex**（额度 10-12 用完，何时恢复由用户说） | VM；`qqbot-integration`、`~\.codex\worktrees\` | `tasks/2026-10-13-gpt-measure-realness-and-reliability.md` 的顺序：独立复核 0064 / 0066 → T1 反馈通道 → T3a 上线前检查脚本 + `restarts.log` → T2 每日「像不像」报告 → 心跳 / 告警 / 计划任务脚本（只写不装）→ 两笔小账（「收费」、谐音梗）→ M2 影子审计 → 审 ADR 0061 / 0062 → T4 两份只写设计的 ADR（0071、0072） | 分支 `codex/<事>`、`handoff/`、`reviews/` |
+| **GPT / Codex**（额度 10-12 用完，何时恢复由用户说） | VM；`qqbot-integration`、`~\.codex\worktrees\` | `tasks/2026-10-13-gpt-measure-realness-and-reliability.md` 的顺序：先盘点自己的 worktree 和分支（写清单，不自己删）→ 独立复核 0064 / 0066 → T1 反馈通道 → T3a 上线前检查脚本 + `restarts.log` → T2 每日「像不像」报告 → 心跳 / 告警 / 计划任务脚本（只写不装）→ 两笔小账（「收费」、谐音梗）→ M2 影子审计 → 审 ADR 0061 / 0062 → T4 两份只写设计的 ADR（0071、0072） | 分支 `codex/<事>`、`handoff/`、`reviews/` |
 | **DSH**（联想主机，够不到线上） | 联想主机 | `prompts/2026-10-13-dsh.md` 的顺序：独立静态复核 0064 / 0066 / 0067 / 0068 的实现 → C1 调研（49 段 + 公开资料，不再采新语料）→ 审 ADR 0061 / 0062；收尾两件：`rc-b3-004`（性暗示）从语料里删、`batch3.md` 补登录方式一行 | `reviews/`、`research/2026-10-c1-npc/` |
 | **用户** | — | 第 4 节的决定；有空时评盲评；不用为测试而聊天 | — |
 
