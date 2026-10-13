@@ -42,6 +42,8 @@ import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts'
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, type StickerShelf } from './stickers.ts';
+import { SlidingWindowRateLimiter } from './rate-limit.ts';
+import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -96,6 +98,8 @@ export interface ContactStatus {
 }
 
 export interface AppStatus {
+    /** 正在运行的提交、分支和启动时间；由启动脚本注入，不再靠 ADR 猜线上版本。 */
+    runtime: RuntimeInfo;
     contacts: ContactStatus[];
     unlistedFriends: boolean;
     schedule: boolean;
@@ -145,6 +149,7 @@ export function unlistedName(nickname: string | undefined): string {
 }
 
 export function startApp({ config, transport, log, pipeline, media, vision, stickers, mediaTimeouts }: AppOptions): App {
+    const runtime = runtimeInfo();
     // 每个档位一张角色卡和一本世界书，用到时读一次；不知道她是程序的联系人用「<档位>-open」承认版（ADR 0067，cardKey）
     const cards = new Map<string, TierCard>();
     const cardFor = (tier: string) => {
@@ -515,12 +520,20 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
 
     /** 每人一条：要听、要看的消息读完才进聊天记录，后面来的排在它后面（顺序不乱；读是一收到就开始读，不排队） */
     const inbox = new Map<number, Promise<void>>();
+    const unlistedLimiter = new SlidingWindowRateLimiter();
 
     function onMessage(event: MessageEvent): void {
+        // 补回或入口重投的同一条消息不消耗限额，也不重复处理。
+        if (history.load(event.user_id).some(m => m.messageId === event.message_id)) return;
         let responder = responders.get(event.user_id);
         if (!responder) {
             if (!config.unlistedFriends) {
                 log(`忽略 QQ ${event.user_id} 的私聊（不在名单）`);
+                return;
+            }
+            const decision = unlistedLimiter.take(event.user_id);
+            if (!decision.allowed) {
+                log(`忽略 QQ ${event.user_id} 的私聊（名单外好友${decision.scope === 'contact' ? '个人' : '全局'}限流；约 ${Math.ceil(decision.retryAfterMs / 60_000)} 分钟后恢复）`);
                 return;
             }
             // 名单外的好友：{{user}} 用对方的 QQ 昵称
@@ -532,9 +545,13 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             responder = createContactResponder(contact);
             responders.set(contact.qq, responder);
             unlisted.set(contact.qq, contact);
+        } else if (unlisted.has(event.user_id)) {
+            const decision = unlistedLimiter.take(event.user_id);
+            if (!decision.allowed) {
+                log(`忽略 QQ ${event.user_id} 的私聊（名单外好友${decision.scope === 'contact' ? '个人' : '全局'}限流；约 ${Math.ceil(decision.retryAfterMs / 60_000)} 分钟后恢复）`);
+                return;
+            }
         }
-        // 补回时可能已经从历史里拿到过这条
-        if (history.load(event.user_id).some(m => m.messageId === event.message_id)) return;
         // 只从名单联系人收到的图片表情里挑；看图、判断、下载都在后台串行，不挡住这条消息的正常回复。
         if (collectingStickers && config.contacts.some(contact => contact.qq === event.user_id && contact.tier === 'boyfriend')) {
             void collectingStickers.consider(event.message, { from: event.user_id, messageId: event.message_id });
@@ -695,6 +712,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     .finally(() => { probing = false; });
             }
             return {
+                runtime,
                 contacts: [
                     ...config.contacts.map(contact => contactStatus(contact, false)),
                     ...[...unlisted.values()].map(contact => contactStatus(contact, true)),

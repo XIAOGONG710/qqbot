@@ -21,8 +21,8 @@ QQ 机器人的核心：按 SillyTavern 角色卡 + 世界书拼提示词，调 
      （`boyfriend` / `bestie` / `girl_friend` / `known` / `classmate` / `stranger`）；每个号的聊天记录分开存。
      可选的 `persona` 是一两句“他是谁”（例如「同专业，坐你后排」），放在 ST 人设描述（`personaDescription`）的位置，可以用 `{{user}}` `{{char}}`。
      可选的 `intro` 是别人提起他时她知道的一两句（[ADR 0016](../../docs/adr/0016-people-she-knows.md)）：名单里别人的话里出现他的称呼时给她看，没写就是不认识
-   - `unlistedFriends`：名单外的好友私聊时是否用 `unlisted` 档回复（被认真问到时承认是 AI），默认 `true`；`{{user}}` 用对方的 QQ 昵称。
-     任何人加小号好友就能让 bot 调用模型，没有频率限制
+   - `unlistedFriends`：名单外的好友私聊时是否用 `unlisted` 档回复（被认真问到时承认是 AI），默认 `false`；`{{user}}` 用对方的 QQ 昵称。
+     明确打开后仍有固定保护线：每个名单外好友 10 分钟最多 30 条、全部名单外好友合计最多 100 条；超过时忽略并写不含正文的日志。名单联系人不受影响
    - `schedule`：按角色卡上的作息（[ADR 0007](../../docs/adr/0007-schedule-and-reply-timing.md)）决定她现在在干什么、什么时候看到消息、打字多久，默认 `true`。
      开着时她凌晨睡觉不回、上课晚回；深夜测试时设成 `false`，随时几秒内回
    - `memory`：长期记忆（[docs/hindsight.md](../../docs/hindsight.md)），`baseUrl` 是 Hindsight 地址；`recallTimeoutMs`（默认 3000）是生成前召回的限时，
@@ -94,6 +94,14 @@ bot 运行期间小号在手机上手动发的消息不会推给 bot，聊天记
 - `tiers.json`：每个联系人上次用的档位。启动时发现档位变了会提示；降档时提醒手动清理这个人的聊天记录（旧记录可能带着高档位才知道的内容），不自动删除
 - `last-prompt.json`：最近一次发给模型的完整提示词（是谁的、后处理之后的消息、命中的世界书条目），用来和 SillyTavern 试聊对照
 - `logs/<YYYY-MM-DD>.log`：终端里的日志同时按本地日期写一份，事后核对时只 grep 需要的几行（里面有聊天内容）
+
+删除或导出某个联系人数据前，先停 bot，再运行只读审计：
+
+```powershell
+npm run privacy-audit -w @qqbot/bot -- runtime/bot <QQ号>
+```
+
+报告不输出聊天正文，只列本地直接文件、混合文件里的引用数量、私人 Hindsight bank、公共库文档和个人模型标识；同时明确列出日记 / 周记、NapCat、Koishi、模型供应商及系统备份等不能自动归属的范围。当前命令刻意不执行删除，避免制造“已经彻底删除”的错误安全感。
 
 ## 提示词与 SillyTavern 的对应
 

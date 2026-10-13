@@ -34,7 +34,7 @@ export const DEFAULTS = {
     prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
     memory: { timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' },
     vision: { provider: 'deepseek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', timeoutMs: MEDIA_TIMEOUTS.vision },
-    unlistedFriends: true,
+    unlistedFriends: false,
     schedule: true,
     moody: true,
     speechCheck: true,
@@ -77,7 +77,7 @@ export interface AppConfig {
     characterCard: string;
     /** 名单：按各自的档位回复这些人的私聊。name 是提示词里的 {{user}} */
     contacts: Contact[];
-    /** 名单外的好友私聊时是否用 unlisted 档回复（ADR 0003 决策 2），默认是 */
+    /** 名单外的好友私聊时是否用 unlisted 档回复（ADR 0003 决策 2），默认否；即使打开也有固定限流 */
     unlistedFriends: boolean;
     /** 按角色卡上的作息（ADR 0007）：时间块里写她现在在干什么。默认是；深夜测试时关掉 */
     schedule: boolean;

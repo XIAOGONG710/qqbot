@@ -53,7 +53,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
     test('只填必填项：默认值和 config.json 留空时一样（默认值只有 config.ts 一份）', () => {
         const fromFile = parseAppConfig({ ...minimal, characterCard: 'characters/linmengyao/st/linmengyao-{tier}.json' }, repoRoot, env);
         assert.deepEqual(fromKoishi(minimal), fromFile);
-        assert.equal(fromFile.unlistedFriends, true);
+        assert.equal(fromFile.unlistedFriends, false);
         assert.equal(fromFile.memory, undefined);
         assert.equal(fromFile.dataDir, resolve(repoRoot, 'runtime/bot'));
     });

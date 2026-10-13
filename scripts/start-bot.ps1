@@ -27,6 +27,18 @@ if (-not $env:QQBOT_LLM_API_KEY) {
 $nodeMajor = [int]((node -v) -replace '^v(\d+)\..*', '$1')
 if ($nodeMajor -lt 24) { throw "Node >= 24 is required (found $(node -v))" }
 
+# Expose the exact running checkout on the status page. Failure here must not block startup.
+$env:QQBOT_GIT_COMMIT = 'unknown'
+$env:QQBOT_GIT_BRANCH = 'unknown'
+$env:QQBOT_GIT_DIRTY = 'unknown'
+try {
+    $env:QQBOT_GIT_COMMIT = (& git -C $repoRoot rev-parse HEAD).Trim()
+    $env:QQBOT_GIT_BRANCH = (& git -C $repoRoot branch --show-current).Trim()
+    if (-not $env:QQBOT_GIT_BRANCH) { $env:QQBOT_GIT_BRANCH = 'detached' }
+    $dirty = & git -C $repoRoot -c submodule.recurse=false status --porcelain --ignore-submodules=all
+    $env:QQBOT_GIT_DIRTY = if ($dirty) { 'true' } else { 'false' }
+} catch { }
+
 Push-Location $repoRoot
 try {
     # With 'Stop', PowerShell 5.1 turns node's stderr output into a terminating error.

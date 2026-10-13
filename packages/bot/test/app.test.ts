@@ -302,6 +302,17 @@ describe('编排（app.ts）', () => {
         assert.equal(JSON.parse(readFileSync(join(cfg.dataDir, 'tiers.json'), 'utf8'))['99999'].tier, 'unlisted');
     });
 
+    test('名单外：打开后每人 10 分钟最多接收 30 条，超出的不进聊天记录也不调用模型', async () => {
+        const cfg = config({ unlistedFriends: true });
+        let generated = 0;
+        const on = setup(cfg, {}, { generate: () => { generated++; return '好'; } });
+        for (let i = 1; i <= 31; i++) on.app.receive(event(99999, i, `第${i}条`, '小周'));
+        await until(() => on.logs.some(line => line.includes('名单外好友个人限流')));
+        assert.equal(new ChatHistory(cfg.dataDir).load(99999).filter(message => message.role === 'user').length, 30);
+        assert.ok(generated < 31, '限流消息没有触发生成');
+        assert.ok(on.logs.some(line => line === '忽略 QQ 99999 的私聊（名单外好友个人限流；约 10 分钟后恢复）'));
+    });
+
     test('状态（控制台用，ADR 0010）：每人的档位、回复器状态、最后一条是谁发的，名单外的好友也在；不含聊天内容；作息开着时有「她现在在干什么」', async () => {
         const cfg = config({ unlistedFriends: true, schedule: true, contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }] });
         const { app } = setup(cfg);

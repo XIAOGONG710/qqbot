@@ -37,6 +37,18 @@ if ($env:QQBOT_KOISHI_PASSWORD -eq '...') {
 $nodeMajor = [int]((node -v) -replace '^v(\d+)\..*', '$1')
 if ($nodeMajor -lt 24) { throw "Node >= 24 is required (found $(node -v))" }
 
+# Expose the exact running checkout on the status page. Failure here must not block startup.
+$env:QQBOT_GIT_COMMIT = 'unknown'
+$env:QQBOT_GIT_BRANCH = 'unknown'
+$env:QQBOT_GIT_DIRTY = 'unknown'
+try {
+    $env:QQBOT_GIT_COMMIT = (& git -C $repoRoot rev-parse HEAD).Trim()
+    $env:QQBOT_GIT_BRANCH = (& git -C $repoRoot branch --show-current).Trim()
+    if (-not $env:QQBOT_GIT_BRANCH) { $env:QQBOT_GIT_BRANCH = 'detached' }
+    $dirty = & git -C $repoRoot -c submodule.recurse=false status --porcelain --ignore-submodules=all
+    $env:QQBOT_GIT_DIRTY = if ($dirty) { 'true' } else { 'false' }
+} catch { }
+
 $koishi = Join-Path $repoRoot 'node_modules\koishi\bin.js'
 if (-not (Test-Path $koishi)) { throw "Koishi is not installed - run npm install at the repo root" }
 

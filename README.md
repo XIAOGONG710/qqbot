@@ -21,6 +21,8 @@ qqbot/
 为什么运行时独立于 SillyTavern（SillyTavern 只用来编写角色），见 [ADR 0002](docs/adr/0002-standalone-runtime.md)。
 进度见 [路线图](docs/roadmap.md)。
 
+所有提交到 `main` 和拉取请求都会在 Windows + Node 24 上运行类型检查与全量测试。Koishi 状态页显示当前运行提交、分支、工作树是否干净和启动时间，线上版本不再只靠操作记录判断。
+
 ## 获取代码
 
 ```powershell

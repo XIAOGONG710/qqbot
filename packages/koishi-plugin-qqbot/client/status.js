@@ -59,11 +59,15 @@ export const StatusTab = defineComponent({
             const data = store.qqbot;
             if (!data) return h('p', null, '正在读取……');
             const status = data.status;
+            const runtime = status?.runtime;
             const rows = [
                 ['插件', data.running
                     ? [tag('在回复', 'success')]
                     : [tag('没在运行', 'danger'), data.error ? h('span', { class: 'qqbot-error' }, ` ${data.error}`) : h('span', { class: 'qqbot-muted' }, ' 看插件配置页的运行日志')]],
                 ['NapCat', data.napcat?.online ? [tag('已连上', 'success'), h('span', { class: 'qqbot-muted' }, ` 小号 ${data.napcat.selfId ?? ''}`)] : [tag('没连上', 'danger')]],
+                ['运行版本', runtime
+                    ? [runtime.dirty === null ? tag('工作树未知', 'warning') : tag(runtime.dirty ? '有未提交改动' : '干净', runtime.dirty ? 'danger' : 'success'), h('span', { class: 'qqbot-muted' }, ` ${runtime.branch} · ${runtime.commit.slice(0, 12)} · ${clock(runtime.startedAt)} 启动`)]
+                    : [tag('重启 Koishi 后显示', 'info')]],
                 ['长期记忆', status ? memoryLine(status.memory) : [tag('—', 'info')]],
                 ['作息', status ? [status.schedule ? tag('按作息', 'success') : tag('关（随时几秒内回）', 'warning')] : [tag('—', 'info')]],
                 ['看心情不回', status ? [status.moody && status.schedule ? tag('开（偶尔不回「哈哈」「嗯」）', 'success') : tag('关', 'info')] : [tag('—', 'info')]],
