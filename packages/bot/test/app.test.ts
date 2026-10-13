@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { startApp, type App, type Transport } from '../src/app.ts';
+import { SENSITIVE_OFF, type SensitiveSwitch } from '../src/sensitive.ts';
 import type { HistoryMessage } from '../src/backfill.ts';
 import type { ImageDescriber, MEDIA_TIMEOUTS, MediaReader } from '../src/media.ts';
 import type { AppConfig } from '../src/config.ts';
@@ -65,7 +66,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -88,6 +89,8 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.vision ? { vision: options.vision } : {}),
         ...(options.stickers ? { stickers: options.stickers } : {}),
         ...(options.mediaTimeouts ? { mediaTimeouts: options.mediaTimeouts } : {}),
+        // 既有测试要核对日志正文和 last-prompt.json，所以默认开着敏感调试；关着的行为在下面单独测
+        sensitive: options.sensitive ?? { on: () => true, describe: () => '' },
         pipeline: {
             generate: async messages => options.generate?.(messages) ?? '好', settle: { quietMs: 0, maxMs: 0 },
             ...(options.clock ? { now: options.clock.now, waitUntil: options.clock.waitUntil } : {}),
@@ -669,5 +672,22 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
             assert.match(prompts.get(name)!, admit, name);
             assert.doesNotMatch(prompts.get(name)!, deflect, name);
         }
+    });
+});
+
+describe('敏感调试关着的时候（ADR 0070 第 8 项）', () => {
+    test('默认关：收到、已回复只记字数，不写 last-prompt.json，上次留下的也删掉', async () => {
+        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }] });
+        mkdirSync(cfg.dataDir, { recursive: true });
+        writeFileSync(join(cfg.dataDir, 'last-prompt.json'), JSON.stringify({ qq: 10001, messages: [{ content: '上次开着时留下的完整提示词' }] }));
+        const { app, sent, logs } = setup(cfg, { 10001: [] }, { sensitive: SENSITIVE_OFF });
+        assert.equal(existsSync(join(cfg.dataDir, 'last-prompt.json')), false, '上次留下的被清掉');
+        await app.connected(SELF);
+        app.receive(event(10001, 1, '今天我偷偷告诉你一个秘密'));
+        await until(() => sent.length === 1);
+        assert.ok(logs.some(line => line.includes('收到：12 字')), logs.join(' | '));
+        assert.ok(logs.some(line => line.includes('已回复：1 字')), logs.join(' | '));
+        assert.ok(!logs.some(line => line.includes('秘密')), '日志里没有聊天正文');
+        assert.equal(existsSync(join(cfg.dataDir, 'last-prompt.json')), false, '关着不写完整提示词');
     });
 });

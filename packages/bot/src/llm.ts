@@ -158,7 +158,7 @@ async function complete(
     const body = await response.text();
     if (!response.ok) {
         const Failure = response.status === 429 || response.status >= 500 ? ModelUnreachable : Error;
-        throw new Failure(`模型接口返回 ${response.status}：${body.slice(0, 500)}`);
+        throw new Failure(`模型接口返回 ${response.status}：${body.replace(/\s+/g, ' ').slice(0, 200)}`);
     }
 
     const json = JSON.parse(body) as { choices?: { message?: { content?: unknown; reasoning_content?: unknown }; finish_reason?: string }[] };

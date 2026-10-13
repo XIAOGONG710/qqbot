@@ -212,6 +212,23 @@ export class HindsightClient implements HindsightApi {
         await this.#request('DELETE', this.#bank(bankId));
     }
 
+    /** 删一篇文档（联系人遗忘，ADR 0070 第 9 项）；本来就没有算已经删了 */
+    async deleteDocument(bankId: string, documentId: string): Promise<void> {
+        await this.#deleteIfPresent(`${this.#bank(bankId)}/documents/${encodeURIComponent(documentId)}`);
+    }
+
+    async deleteMentalModel(bankId: string, modelId: string): Promise<void> {
+        await this.#deleteIfPresent(`${this.#bank(bankId)}/mental-models/${encodeURIComponent(modelId)}`);
+    }
+
+    async #deleteIfPresent(path: string): Promise<void> {
+        try {
+            await this.#request('DELETE', path);
+        } catch (error) {
+            if (!(error instanceof HindsightError && error.status === 404)) throw error;
+        }
+    }
+
     /** 服务在不在（GET /health，docs/hindsight.md）；不在就抛错 */
     async health(timeoutMs = 3000): Promise<void> {
         await this.#request('GET', '/health', undefined, timeoutMs);
