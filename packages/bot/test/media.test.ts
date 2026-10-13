@@ -203,4 +203,43 @@ describe('听语音、看图（ADR 0052）：读消息（假 NapCat）', () => {
         assert.equal(mediaReading({}).needs(voice()), false);
         assert.deepEqual(await mediaReading({}).read(voice(), 9, () => {}), voice());
     });
+
+    test('跨联系人的 OCR 也受全局并发上限约束，排队项不会提前启动', async () => {
+        let calls = 0;
+        let active = 0;
+        let peak = 0;
+        const releases: (() => void)[] = [];
+        const reader: MediaReader = {
+            ocr: () => new Promise<string[]>(resolve => {
+                calls++;
+                active++;
+                peak = Math.max(peak, active);
+                releases.push(() => { active--; resolve([]); });
+            }),
+        };
+        const tasks = [1, 2, 3].map(id => readMedia([photo(`https://x/${id}.jpg`)], id, { reader, timeouts: { ocr: 1000 } }, () => {}));
+        await new Promise(resolve => setTimeout(resolve, 10));
+        assert.equal(calls, 2);
+        assert.equal(peak, 2);
+        releases.shift()!();
+        await new Promise(resolve => setTimeout(resolve, 10));
+        assert.equal(calls, 3);
+        for (const release of releases.splice(0)) release();
+        await Promise.all(tasks);
+    });
+
+    test('停止 mediaReading 会把取消信号传给正在执行的适配器', async () => {
+        let aborted = false;
+        const reader: MediaReader = {
+            voiceToText: (_id, signal) => new Promise((_resolve, reject) => {
+                signal?.addEventListener('abort', () => { aborted = true; reject(signal.reason); }, { once: true });
+            }),
+        };
+        const reading = mediaReading({ reader, timeouts: { voice: 1000 } });
+        const task = reading.read(voice(), 10, () => {});
+        await new Promise(resolve => setTimeout(resolve, 10));
+        reading.stop();
+        assert.equal(segmentsToText(await task), '[语音]');
+        assert.equal(aborted, true);
+    });
 });

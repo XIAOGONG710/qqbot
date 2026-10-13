@@ -56,13 +56,13 @@ describe('图片表情收藏（ADR 0063）', () => {
         assert.ok(logs.some(line => line.includes('收藏 一只白猫捂着嘴偷笑')));
     });
 
-    test('不喜欢的不下载并记住；同一地址再遇到不重复看', async () => {
+    test('不喜欢的也只安全下载一次供识图，记住后同一地址不重复处理', async () => {
         const { shelf, described, downloaded } = setup({ keep: false });
         const message = [{ type: 'image', data: { url: 'https://qq.invalid/dog.gif', sub_type: 1, summary: '[动画表情]' } }];
         await shelf.consider(message, { from: 10001, messageId: 1 });
         await shelf.consider(message, { from: 10002, messageId: 2 });
         assert.deepEqual(described, ['https://qq.invalid/dog.gif']);
-        assert.deepEqual(downloaded, []);
+        assert.deepEqual(downloaded, ['https://qq.invalid/dog.gif']);
         assert.equal(shelf.prompt(), undefined);
     });
 

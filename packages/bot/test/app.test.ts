@@ -580,6 +580,22 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
         assert.ok(logs.includes('[10001] 看图：没认出字（超时 0.1 秒）'), logs.join('\n'));
     });
 
+    test('同一联系人后来的媒体任务在前一条完成前不会启动', async () => {
+        const cfg = config();
+        const fake = napcat({ 1: '第一条', 2: '第二条' });
+        const { app } = setup(cfg, { 10001: [] }, { media: fake.media });
+        await app.connected(SELF);
+        fake.hold();
+        app.receive(mediaEvent(10001, 1, voiceSegment));
+        app.receive(mediaEvent(10001, 2, voiceSegment));
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.deepEqual(fake.calls.voice, [1], '第二条仍在联系人队列里，没有提前调用 NapCat');
+        fake.release();
+        await until(() => chat(cfg, 10001).filter(message => message.startsWith('user:')).length === 2);
+        assert.deepEqual(fake.calls.voice, [1, 2]);
+        assert.deepEqual(chat(cfg, 10001).filter(message => message.startsWith('user:')), ['user:[语音：第一条]', 'user:[语音：第二条]']);
+    });
+
     test('看图只给名单里的人（用户 10-10）：名单外好友发来的照片不送看图模型，照旧只认图上的字', async () => {
         const cfg = config({ unlistedFriends: true });
         const fake = napcat({}, { 'https://x/cat.jpg': ['猫粮'], 'https://x/dog.jpg': ['狗粮'] });

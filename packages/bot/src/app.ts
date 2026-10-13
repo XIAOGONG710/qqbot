@@ -564,10 +564,13 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         }
         const qq = event.user_id;
         const target = responder;
-        const read = reader
-            ? reader.read(event.message, event.message_id, message => log(`[${qq}] ${message}`)).catch(() => event.message)
-            : Promise.resolve(event.message);
-        const job = Promise.all([queued, read]).then(([, message]) => {
+        // Defer media work until the previous message has fully entered the contact pipeline.
+        // Starting read() before awaiting `queued` only serialized delivery and still leaked parallel OCR/vision calls.
+        const job = (queued ?? Promise.resolve()).then(async () => {
+            if (stopped || history.load(qq).some(m => m.messageId === event.message_id)) return;
+            const message = reader
+                ? await reader.read(event.message, event.message_id, message => log(`[${qq}] ${message}`)).catch(() => event.message)
+                : event.message;
             // 读的时候补回可能已经记下了这条
             if (stopped || history.load(qq).some(m => m.messageId === event.message_id)) return;
             deliver(target, event, message);
@@ -670,6 +673,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         stop() {
             if (stopped) return;
             stopped = true;
+            reading?.stop();
+            if (readingUnlisted !== reading) readingUnlisted?.stop();
             for (const planner of planners.values()) planner.stop();
             for (const responder of responders.values()) responder.stop();
             if (memoryTimer) clearInterval(memoryTimer);

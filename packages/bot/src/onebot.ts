@@ -118,16 +118,32 @@ export class OneBotClient {
         else call.reject(new Error(`OneBot 调用失败 retcode ${response.retcode}：${response.wording || response.message || ''}`));
     }
 
-    call<T>(action: string, params: Record<string, unknown>): Promise<T> {
+    call<T>(action: string, params: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
         const ws = this.#ws;
         if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error('OneBot 未连接'));
+        if (signal?.aborted) return Promise.reject(signal.reason ?? new DOMException('已取消', 'AbortError'));
         const echo = String(this.#nextEcho++);
         return new Promise<T>((resolve, reject) => {
+            const finish = () => signal?.removeEventListener('abort', cancel);
+            const cancel = () => {
+                const pending = this.#pending.get(echo);
+                if (!pending) return;
+                this.#pending.delete(echo);
+                clearTimeout(pending.timer);
+                finish();
+                reject(signal?.reason ?? new DOMException('已取消', 'AbortError'));
+            };
             const timer = setTimeout(() => {
                 this.#pending.delete(echo);
+                finish();
                 reject(new Error(`OneBot 调用 ${action} 超时`));
             }, this.#options.timeoutMs ?? 30_000);
-            this.#pending.set(echo, { resolve: data => resolve(data as T), reject, timer });
+            this.#pending.set(echo, {
+                resolve: data => { finish(); resolve(data as T); },
+                reject: error => { finish(); reject(error); },
+                timer,
+            });
+            signal?.addEventListener('abort', cancel, { once: true });
             ws.send(JSON.stringify({ action, params, echo }));
         });
     }
