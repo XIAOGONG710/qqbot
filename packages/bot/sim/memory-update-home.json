@@ -1,0 +1,25 @@
+{
+    "name": "男朋友档：知识更新——搬了宿舍楼，她用新的还是旧的（ADR 0065 变体 B）",
+    "description": "第 1 天他说住 3 号楼，还说养了一盆绿萝（只说一次，对照）；第 5 天说搬到 7 号楼了；第 9 天问「你知道我现在住哪吗」。度量：新版（7 号楼）/ 旧版（3 号楼）/ 新旧并说 / 不记得，由 knowledge-update.ts 判。对照：问养的什么植物，应答绿萝。全部虚构，不按作息。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-01T20:00:00+08:00",
+    "schedule": false,
+    "steps": [
+        { "case": "KU-B0", "note": "第 1 天：住 3 号楼；养了绿萝（只说一次，对照）" },
+        { "say": "我住3号楼，离食堂挺近的" },
+        { "say": "对了我桌上养了一盆绿萝，长得特别快" },
+        { "advance": "1h" },
+        { "advance": "4d" },
+        { "case": "KU-B1", "note": "第 5 天：搬到 7 号楼" },
+        { "say": "跟你说，我搬到7号楼了，换了个宿舍" },
+        { "advance": "1h" },
+        { "advance": "4d" },
+        { "case": "KU-BQ", "note": "第 9 天：问现在住哪（度量）" },
+        { "say": "你知道我现在住哪吗" },
+        { "check": { "speechClean": true, "exitClean": true, "recall": ["7号楼", "3号楼"] } },
+        { "case": "KU-BC", "note": "对照：只说过一次的" },
+        { "say": "我养的那盆植物你还记得是啥吗" },
+        { "check": { "speechClean": true, "exitClean": true, "recall": ["绿萝"] } }
+    ]
+}
