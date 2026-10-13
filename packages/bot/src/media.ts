@@ -9,14 +9,15 @@
 // - 回复节奏：听完才回（reply-timing.ts 按 listenMs 把听的时间加在看到之后）。
 
 import { readFile } from 'node:fs/promises';
+import { AsyncGate } from './async-gate.ts';
 import type { Segment } from './onebot.ts';
 
 /** NapCat 那边能做的（入口传进来：main.ts 用自写的 OneBot 客户端，Koishi 插件用 adapter-onebot） */
 export interface MediaReader {
     /** fetch_ptt_text：这条消息里语音转出来的字 */
-    voiceToText?(messageId: number): Promise<string>;
+    voiceToText?(messageId: number, signal?: AbortSignal): Promise<string>;
     /** ocr_image：图上的字，一行一项（image 是图片的 URL、本地路径或 base64://） */
-    ocr?(image: string): Promise<string[]>;
+    ocr?(image: string, signal?: AbortSignal): Promise<string[]>;
 }
 
 /**
@@ -24,7 +25,7 @@ export interface MediaReader {
  * 配置里有 vision 才有（config.ts）；运行时现在接 DeepSeek，测试可以给假的。
  */
 export interface ImageDescriber {
-    describe(image: { url: string; file?: string }): Promise<string>;
+    describe(image: { url: string; file?: string; dataUrl?: string; signal?: AbortSignal }): Promise<string>;
 }
 
 export interface MediaSources {
@@ -45,6 +46,8 @@ export const OCR_MAX_IMAGES = 3;
 /** 听语音：知道秒数按秒数；只知道字按每秒 4 个字（最少 2 秒）；都不知道按这么久 */
 export const LISTEN_DEFAULT_MS = 6000;
 const LISTEN_MAX_MS = 60_000;
+const voiceGate = new AsyncGate(2);
+const ocrGate = new AsyncGate(2);
 
 /** 表情包、收藏的表情：sub_type 不是 0（NapCat 的 picSubType），或者 summary 是它的名字（「[动画表情]」「[是的]」） */
 export function isSticker(data: Record<string, unknown>): boolean {
@@ -132,25 +135,31 @@ export function voiceSeconds(file: Uint8Array): number | undefined {
     return frames ? Math.max(1, Math.round(frames * 20 / 1000)) : undefined;
 }
 
-/** 超过 ms 就算失败；原来的那个之后再失败也不报（没字的图 NapCat 一直不回） */
-function within<T>(promise: Promise<T>, ms: number): Promise<T> {
-    promise.catch(() => {});
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`超时 ${ms / 1000} 秒`)), ms); });
-    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+/** 超时或上层停机时主动取消；旧适配器不接 signal 时仍按原来的降级逻辑返回。 */
+function within<T>(work: (signal: AbortSignal) => Promise<T>, ms: number, parent?: AbortSignal): Promise<T> {
+    const controller = new AbortController();
+    const signal = parent ? AbortSignal.any([parent, controller.signal]) : controller.signal;
+    const timer = setTimeout(() => controller.abort(new Error(`超时 ${ms / 1000} 秒`)), ms);
+    let task: Promise<T>;
+    try { task = work(signal); } catch (error) { task = Promise.reject(error); }
+    task.catch(() => {});
+    const cancelled = new Promise<never>((_, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason ?? new DOMException('已取消', 'AbortError')), { once: true });
+    });
+    return Promise.race([task, cancelled]).finally(() => clearTimeout(timer));
 }
 
 const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const seconds = (since: number) => `${((Date.now() - since) / 1000).toFixed(1)} 秒`;
 
-async function hear(data: Record<string, unknown>, messageId: number, sources: MediaSources, log: (message: string) => void): Promise<string> {
+async function hear(data: Record<string, unknown>, messageId: number, sources: MediaSources, log: (message: string) => void, signal?: AbortSignal): Promise<string> {
     const limits = { ...MEDIA_TIMEOUTS, ...sources.timeouts };
     const started = Date.now();
     const path = typeof data.path === 'string' && data.path ? data.path : undefined;
     const [length, text] = await Promise.all([
-        path ? within(readFile(path), limits.voice).then(voiceSeconds, () => undefined) : Promise.resolve(undefined),
+        path ? within(() => readFile(path), limits.voice, signal).then(voiceSeconds, () => undefined) : Promise.resolve(undefined),
         sources.reader?.voiceToText
-            ? within(sources.reader.voiceToText(messageId), limits.voice).then(
+            ? voiceGate.run(() => within(inner => sources.reader!.voiceToText!(messageId, inner), limits.voice, signal), signal).then(
                 raw => inline(String(raw ?? ''), VOICE_MAX_CHARS) || undefined,
                 error => { log(`听语音：没转出来（${reason(error)}）`); return undefined; },
             )
@@ -160,14 +169,14 @@ async function hear(data: Record<string, unknown>, messageId: number, sources: M
     return voiceLine({ ...(length ? { seconds: length } : {}), ...(text ? { text } : {}) });
 }
 
-async function look(data: Record<string, unknown>, sources: MediaSources, log: (message: string) => void): Promise<string> {
+async function look(data: Record<string, unknown>, sources: MediaSources, log: (message: string) => void, signal?: AbortSignal): Promise<string> {
     const limits = { ...MEDIA_TIMEOUTS, ...sources.timeouts };
     const url = typeof data.url === 'string' && data.url ? data.url : undefined;
     if (!url) return imageLine({});
     const started = Date.now();
     const [ocr, description] = await Promise.all([
         sources.reader?.ocr
-            ? within(sources.reader.ocr(url), limits.ocr).then(
+            ? ocrGate.run(() => within(inner => sources.reader!.ocr!(url, inner), limits.ocr, signal), signal).then(
                 result => {
                     const lines = Array.isArray(result) ? result : [];
                     const text = inline(lines.join(' '), OCR_MAX_CHARS);
@@ -180,7 +189,7 @@ async function look(data: Record<string, unknown>, sources: MediaSources, log: (
             )
             : Promise.resolve(undefined),
         sources.vision
-            ? within(sources.vision.describe({ url, ...(typeof data.file === 'string' ? { file: data.file } : {}) }), limits.vision).then(
+            ? within(inner => sources.vision!.describe({ url, ...(typeof data.file === 'string' ? { file: data.file } : {}), signal: inner }), limits.vision, signal).then(
                 text => {
                     const description = inline(String(text ?? ''), OCR_MAX_CHARS) || undefined;
                     // 只记字数，不记图上是什么
@@ -198,15 +207,15 @@ async function look(data: Record<string, unknown>, sources: MediaSources, log: (
  * 听、看这条消息里的语音和图片：读过的段换成一段文字（「[语音 8秒：……]」「[图片，上面写着：……]」），别的段原样。
  * 没有要读的（纯文字、表情包）原样返回；什么都读不到时也换成老样子的那几个字。
  */
-export async function readMedia(message: Segment[] | string, messageId: number, sources: MediaSources, log: (message: string) => void): Promise<Segment[] | string> {
+export async function readMedia(message: Segment[] | string, messageId: number, sources: MediaSources, log: (message: string) => void, signal?: AbortSignal): Promise<Segment[] | string> {
     if (!needsReading(message)) return message;
     let images = 0;
     return Promise.all((message as Segment[]).map(async (segment): Promise<Segment> => {
         const data = segment.data ?? {};
-        if (segment.type === 'record') return { type: 'text', data: { text: await hear(data, messageId, sources, log) } };
+        if (segment.type === 'record') return { type: 'text', data: { text: await hear(data, messageId, sources, log, signal) } };
         if (segment.type === 'image' && !isSticker(data)) {
             if (++images > OCR_MAX_IMAGES) return segment;
-            return { type: 'text', data: { text: await look(data, sources, log) } };
+            return { type: 'text', data: { text: await look(data, sources, log, signal) } };
         }
         return segment;
     }));
@@ -217,6 +226,8 @@ export interface MediaReading {
     needs(message: Segment[] | string): boolean;
     /** 读这条（同一条正在读就等那一次的结果） */
     read(message: Segment[] | string, messageId: number, log: (message: string) => void): Promise<Segment[] | string>;
+    /** Stop queued/in-flight work during shutdown. */
+    stop(): void;
 }
 
 /**
@@ -225,6 +236,7 @@ export interface MediaReading {
  */
 export function mediaReading(sources: MediaSources): MediaReading {
     const reading = new Map<number, Promise<Segment[] | string>>();
+    const stopped = new AbortController();
     const enabled = Boolean(sources.reader?.voiceToText || sources.reader?.ocr || sources.vision);
     return {
         needs: message => enabled && needsReading(message),
@@ -232,10 +244,11 @@ export function mediaReading(sources: MediaSources): MediaReading {
             if (!enabled || !needsReading(message)) return Promise.resolve(message);
             let task = reading.get(messageId);
             if (!task) {
-                task = readMedia(message, messageId, sources, log).finally(() => reading.delete(messageId));
+                task = readMedia(message, messageId, sources, log, stopped.signal).finally(() => reading.delete(messageId));
                 reading.set(messageId, task);
             }
             return task;
         },
+        stop() { stopped.abort(new Error('媒体读取已停止')); },
     };
 }

@@ -45,8 +45,8 @@ const app = startApp({
     log,
     // 听语音、看图上的字（ADR 0052）：QQ 自带的语音转文字、NapCat 的 OCR（只有 Windows）
     media: {
-        voiceToText: async messageId => (await client.call<{ text: string }>('fetch_ptt_text', { message_id: messageId })).text,
-        ocr: async image => ocrLines(await client.call<unknown>('ocr_image', { image })),
+        voiceToText: async (messageId, signal) => (await client.call<{ text: string }>('fetch_ptt_text', { message_id: messageId }, signal)).text,
+        ocr: async (image, signal) => ocrLines(await client.call<unknown>('ocr_image', { image }, signal)),
     },
     vision,
     ...(stickers ? { stickers } : {}),
