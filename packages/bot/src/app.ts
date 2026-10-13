@@ -317,7 +317,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             history,
             names: contact => ({ user: contact.name, char: cardFor(contact.tier).character.name }),
             ...(diaryCard?.schedule ? { schedule: diaryCard.schedule } : {}),
-            extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log })),
+            extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
             dir: join(config.dataDir, 'promises'),
             log,
             ...(pipeline?.now ? { now: pipeline.now } : {}),
@@ -345,7 +345,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(promises ? { plans: promises.plansOn } : {}),
             generate: messages => (pipeline?.generate
                 ? pipeline.generate(messages, log)
-                : chatCompletion({ ...config.llm, temperature: DIARY_TEMPERATURE }, messages, { log })),
+                : chatCompletion({ ...config.llm, temperature: DIARY_TEMPERATURE }, messages, { log, purpose: 'background' })),
             dir: join(config.dataDir, 'memory'),
             log,
         })
@@ -378,7 +378,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 step: 4,
                 summarize: contextSummarizer({
                     names: { user: contact.name, char: cardFor(contact.tier).character.name },
-                    generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log })),
+                    generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
                     log: message => log(`[${contact.qq}] ${message}`),
                     file: join(dir, `${contact.qq}.json`),
                 }),
@@ -492,7 +492,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     }),
                 } : {}),
                 // 待跟进的事：用同一个模型配置抽（测试替换的 generate 也用在这里）
-                extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log })),
+                extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
                 ...(pipeline?.now ? { now: pipeline.now } : {}),
                 ...(pipeline?.waitUntil ? { waitUntil: pipeline.waitUntil } : {}),
             }));
