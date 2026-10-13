@@ -453,7 +453,7 @@ export function stickerDecider(llm: AppConfig['llm'], log: (message: string) => 
             const raw = await chatCompletion({
                 ...llm, temperature: 0.2, maxTokens: 180,
                 extraBody,
-            }, messages, { log });
+            }, messages, { log, purpose: 'background' });
             const value = jsonObject(raw);
             return normalizedDecision({
                 keep: value.keep === true,

@@ -5,6 +5,7 @@
 // 要么 10–40ms 连上，要么卡满 10 秒也连不上，没有慢慢连上的；线上 32 次生成有 11 次第一次连接卡满 10 秒，重试就好。
 
 import { Agent, fetch as undiciFetch } from 'undici';
+import { GuardRejected, ModelGuard, type ModelPurpose } from './model-guard.ts';
 import type { OpenAIMessage } from './prompt.ts';
 
 export interface LlmOptions {
@@ -39,6 +40,10 @@ export interface LlmDeps {
     fetch: Fetch;
     sleep: (ms: number) => Promise<void>;
     log: (message: string) => void;
+    /** 聊天（默认）先于后台任务（抽取、日记、总结、表情判断）；见 model-guard.ts */
+    purpose?: ModelPurpose;
+    /** 测试注入；不传用进程里共用的那个 */
+    guard?: ModelGuard;
 }
 
 /** 建立连接的超时 */
@@ -73,10 +78,47 @@ const defaultDeps: LlmDeps = {
     log: () => {},
 };
 
+let sharedGuard: ModelGuard | undefined;
+
+/** 进程里共用的总闸（ADR 0070 第 7 项）；环境变量 QQBOT_MODEL_DAILY_CALLS / QQBOT_MODEL_CONCURRENT 可调，默认值远高于实际用量 */
+export function modelGuard(log: (message: string) => void = () => {}): ModelGuard {
+    if (!sharedGuard) {
+        const positive = (text: string | undefined) => (Number.isFinite(Number(text)) && Number(text) >= 1 ? Math.floor(Number(text)) : undefined);
+        const dailyCalls = positive(process.env.QQBOT_MODEL_DAILY_CALLS);
+        const concurrent = positive(process.env.QQBOT_MODEL_CONCURRENT);
+        sharedGuard = new ModelGuard({
+            log,
+            ...(dailyCalls ? { dailyCalls } : {}),
+            ...(concurrent ? { concurrent, backgroundConcurrent: Math.max(1, Math.floor(concurrent / 2)) } : {}),
+        });
+    }
+    return sharedGuard;
+}
+
+/** 模拟器、批量评测这类自己控制并发的入口：换成不设限的总闸 */
+export function unlimitedModelGuard(): void {
+    sharedGuard = new ModelGuard({ concurrent: 1024, backgroundConcurrent: 1024, dailyCalls: Number.MAX_SAFE_INTEGER, breakerFailures: Number.MAX_SAFE_INTEGER });
+}
+
 export async function chatCompletion(
     options: LlmOptions,
     messages: OpenAIMessage[],
     deps: Partial<LlmDeps> = {},
+): Promise<string> {
+    const guard = deps.guard ?? modelGuard(deps.log);
+    try {
+        return await guard.run(deps.purpose ?? 'chat', () => complete(options, messages, deps), error => error instanceof ModelUnreachable);
+    } catch (error) {
+        // 被总闸挡住的不算模型坏了：和「没连上」一样，后台任务等好了再来（promises.ts 等已经这样处理 ModelUnreachable）
+        if (error instanceof GuardRejected) throw new ModelUnreachable(`模型调用被挡住（${error.message}）`, { cause: error });
+        throw error;
+    }
+}
+
+async function complete(
+    options: LlmOptions,
+    messages: OpenAIMessage[],
+    deps: Partial<LlmDeps>,
 ): Promise<string> {
     const { fetch: doFetch, sleep, log } = { ...defaultDeps, ...deps };
     const url = `${options.baseUrl.replace(/\/+$/, '')}/chat/completions`;

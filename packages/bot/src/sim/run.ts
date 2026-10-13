@@ -11,10 +11,14 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cardKey, loadConfig } from '../config.ts';
 import { loadTierCard } from '../contact.ts';
+import { unlimitedModelGuard } from '../llm.ts';
 import { HindsightClient } from '../memory/hindsight.ts';
 import { checkSummary, exitSummary, renderReport } from './report.ts';
 import { runScenario } from './runner.ts';
 import { loadScenario } from './scenario.ts';
+
+// 模拟器自己控制并发（--parallel），不受线上那套并发 / 日额度限制（ADR 0070 第 7 项）
+unlimitedModelGuard();
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
