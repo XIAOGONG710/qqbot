@@ -285,7 +285,7 @@ test('重要的日子：日期跟着那句文字的档位写进卡的 extensions
 
 test('主动找人：只有写了 proactive 的档位（男朋友档）卡里有 extensions.qqbot.proactive', () => {
     assert.deepEqual(card('boyfriend').data.extensions.qqbot?.proactive, {
-        occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather', 'news'], dailyMax: 2, unansweredMax: 1,
+        occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather', 'news'], dailyMax: 2, unansweredMax: 1, newsKinds: ['camera', 'homework_done'],
     });
     for (const tier of tiers.filter(t => t.name !== 'boyfriend')) assert.equal(card(tier.name).data.extensions.qqbot?.proactive, undefined, tier.name);
 });
@@ -643,9 +643,11 @@ test('承认版：persona.yml 里没有写给名单外的承认说法时，生�
     assert.throws(() => buildCharacter(s), /承认版和原卡一样/);
 });
 
-test('她那边的事的事件类（ADR 0064）：tiers.yml 的 news_kinds 进卡的 newsKinds；线上的卡没写，所以行为不变', () => {
-    assert.equal(card('boyfriend').data.extensions.qqbot?.proactive?.newsKinds, undefined);
+test('她那边的事的事件类（ADR 0064）：tiers.yml 的 news_kinds 进卡的 newsKinds；没写的卡没有这个键（按只有相机）', () => {
+    assert.deepEqual(card('boyfriend').data.extensions.qqbot?.proactive?.newsKinds, ['camera', 'homework_done']);
     const edited = copy();
-    edited.tiers.tiers[0]!.proactive!.news_kinds = ['camera', 'homework_done'];
-    assert.deepEqual(card('boyfriend', edited).data.extensions.qqbot?.proactive?.newsKinds, ['camera', 'homework_done']);
+    delete edited.tiers.tiers[0]!.proactive!.news_kinds;
+    assert.equal('newsKinds' in card('boyfriend', edited).data.extensions.qqbot!.proactive!, false);
+    edited.tiers.tiers[0]!.proactive!.news_kinds = ['camera', 'homework_done', 'unwell'];
+    assert.deepEqual(card('boyfriend', edited).data.extensions.qqbot?.proactive?.newsKinds, ['camera', 'homework_done', 'unwell']);
 });

@@ -1,6 +1,6 @@
 # ADR 0064：她账里的事成为开口的理由（0057 的推广）
 
-- 状态：**已实现（未上线）**（2026-10-13，分支 `adr-0064-her-events`；2026-10-12 用户在 `options.md` 里选了 B1，「待确认」由用户 22:10 的「你看着办」授权 Claude 按建议答复，见「确认记录」；**卡上还没开新类**（`tiers.yml` 没写 `news_kinds`），合并上线后行为和现在一样，开哪一类要用户当次同意）
+- 状态：**已实现，代码已合并进 `main`（`19bed59`，2026-10-13）；作业写完了这一类已在分支 `adr-0064-enable-homework` 里写进男朋友档的卡，等上线**（2026-10-12 用户在 `options.md` 里选了 B1，「待确认」由用户 22:10 的「你看着办」授权 Claude 按建议答复，见「确认记录」；10-13 用户说「可以，按照顺序一个一个来」：先合并、先开 `homework_done`，`unwell` 等它第一次出现再看日志；上线要用户当次同意重启）
 - 日期：2026-10-12
 - 关联：[ADR 0011](0011-proactive-messages.md)（主动消息：时机、每天≤2、没回就停、先记后发）、[ADR 0057](0057-her-news.md)（她那边刚有件事：现在只有买相机）、
   [ADR 0056](0056-project-portfolio.md)（课程作业的紧急程度）、[ADR 0020](0020-disclosure-and-social-life.md)（披露分级）、[ADR 0036](0036-conversation-naturalness.md)（说明只给方向、不给台词）、
@@ -106,8 +106,9 @@
   - `proactive-news-unwell`（新）3 次：2 次 09:45 单发「宝宝，我今天肚子疼得厉害，躺床上了」「肚子疼，一早上没爬起来」，没有求哄 / 求关心的话；1 次出口检查的「小黄脸最近用多了」把第二个气泡删了，只剩一个「宝宝」。第二天（还在疼）三次都没再主动说。
   - 相机场景（`proactive-news`、`proactive-news-untold`）回归：`proactive-news-untold` 3/3 全过；`proactive-news` 有 2 次「PN01 回复里没提相机」，同一场景在没改的 `main`（`9c12afb`）上也是 2/3（`baseline-main-news`），不是这次改出来的。
 
-## 上线（还没做）
+## 上线
 
-1. 合并进 `main`（只有代码，不碰卡，行为不变）。
-2. 开哪一类：改 `characters/linmengyao/source/tiers.yml` 男朋友档的 `proactive.news_kinds`（`[camera, homework_done]`；`unwell` 单独问），转换器重新生成卡，重启 Koishi。**每开一类问用户**；开之前线上先 `dryRun` 一天看日志里的 `[事件类 id]`（`dryRun` 是整个主动消息的开关，那一天她不会真发任何主动消息）。
-3. 作业写完了的频率：照真卡算，6 周约 15 天（每周两三次，多在 22:00 左右），睡前那条常被它占掉；痛经 / 感冒 6 周里只有 1 次（感冒），所以 `unwell` 很少出现。
+1. 代码合并进 `main`（`19bed59`，10-13 12:1x，用户同意）：不碰卡，行为不变。
+2. **开 `homework_done`**（分支 `adr-0064-enable-homework`）：`tiers.yml` 男朋友档 `proactive.news_kinds: [camera, homework_done]`，转换器重新生成，只有 `linmengyao-boyfriend.json` 和 `linmengyao-boyfriend-open.json` 多了一个 `newsKinds`（`git diff` 核对过）。**注意卡文件变了线上的插件会热重载**（0011 §5），所以这个分支不进 `main`，上线时才快进线上目录并重启。
+3. 开了以后的变化：作业写完那几天（6 周约 15 天，每周两三次，22:05–22:20），当天的 2 条额度先给「她那边的事」，下课、睡前、冷场会让出去（`proactive-weekday` 在 10-12 那天就是这样：22:07 单发了「计算机网络技术的作业写完了，明天交」，下课那条让给了它；这是 B1 要的，事比钟点优先）。那个场景因此只开相机一类，继续测钟点这几个时机。
+4. `unwell`：不开。痛经 / 感冒 6 周里只有 1 次，等它第一次真出现的前一天，对照日志再问用户。

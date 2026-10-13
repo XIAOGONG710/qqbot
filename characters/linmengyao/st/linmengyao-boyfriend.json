@@ -334,7 +334,11 @@
                         "news"
                     ],
                     "dailyMax": 2,
-                    "unansweredMax": 1
+                    "unansweredMax": 1,
+                    "newsKinds": [
+                        "camera",
+                        "homework_done"
+                    ]
                 },
                 "moods": [
                     {
