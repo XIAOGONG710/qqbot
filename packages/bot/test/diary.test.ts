@@ -7,6 +7,7 @@ import type { Contact } from '../src/config.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_CHAT_CHARS, diaryMaterial, diaryMessages, diaryWriter, type DiarySources } from '../src/diary.ts';
 import type { StoredMessage } from '../src/history.ts';
 import type { LongTermMemory } from '../src/memory/long-term.ts';
+import type { WrittenSources } from '../src/memory/provenance.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
@@ -14,6 +15,29 @@ const sources: DiarySources = { charName: card.name, schedule: card.schedule!, m
 const at = (iso: string, role: 'user' | 'assistant', content: string): StoredMessage => ({ time: new Date(iso).toISOString(), role, content });
 
 describe('她的日记（ADR 0017）', () => {
+    test('来源取实际材料的联系人，汇总带父日记 id；遗忘日期不再读回或参与生成', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-origin-'));
+        writeFileSync(join(dir, 'diary.json'), JSON.stringify({ written: { '2026-10-06': 5 }, forgotten: { '2026-10-06': true } }));
+        const origins: { id: string; sources: WrittenSources }[] = [];
+        const memory = {
+            retainDiary: async (date: string, _day: Date, _text: string, _char: string, source: WrittenSources) => { origins.push({ id: `diary:${date}`, sources: source }); return 'shared'; },
+            retainSummary: async (id: string, _day: Date, _title: string, _text: string, _char: string, _kind: string, source: WrittenSources) => { origins.push({ id, sources: source }); return 'shared'; },
+            readDiary: async (date: string) => { assert.notEqual(date, '2026-10-06'); return undefined; },
+        } as unknown as LongTermMemory;
+        const writer = diaryWriter({
+            sources, dir, memory, log: () => {}, generate: async () => '今天读了书',
+            contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }, { qq: 10002, name: '路人', tier: 'stranger' }],
+            history: { load: () => [at('2026-10-07T20:00:00+08:00', 'user', '今天聊天')] },
+        });
+        try {
+            await writer.catchUp(new Date('2026-10-08T12:00:00+08:00'));
+            assert.equal(origins.some(e => e.id === 'diary:2026-10-06'), false);
+            assert.deepEqual(origins.find(e => e.id === 'diary:2026-10-07')!.sources.contacts, [10001]);
+            assert.ok(origins.filter(e => e.id.startsWith('phase:')).every(e => !e.sources.parents.includes('diary:2026-10-06')));
+            assert.equal(JSON.parse(readFileSync(join(dir, 'diary.json'), 'utf8')).forgotten['2026-10-06'], true);
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
     test('材料：几点起、课（只写课型，不写课名和教室）、空闲活动、心情、书；不写在哪；没聊天的日子写明', () => {
         const text = diaryMaterial(sources, new Date(2026, 9, 9), []);
         assert.match(text, /^日期：10月9日 周五\n几点起：07:40\n课：08:20–09:40 机房课；09:55–11:15 机房课；13:40–15:00 机房课\n/);

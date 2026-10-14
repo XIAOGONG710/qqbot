@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readProvenance, relatedProvenance, type ProvenanceEntry } from './memory/provenance.ts';
 
 export interface PrivacyArtifact {
     path: string;
@@ -21,6 +22,9 @@ export interface PrivacyAudit {
         banks: string[];
         commonDocuments: string[];
         commonMentalModels: string[];
+        commonBank?: string;
+        trackedDocuments: { bankId: string; documentId: string }[];
+        derivedDocuments: ProvenanceEntry[];
     };
     limitations: string[];
 }
@@ -117,6 +121,13 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
     const banks = new Set<string>();
     const commonDocuments = new Set<string>();
     const commonMentalModels = new Set<string>();
+    const origins = readProvenance(join(root, 'memory'));
+    const related = relatedProvenance(origins, qq);
+    const derivedDocuments = related.filter(e => e.kind !== 'qq');
+    if (related.length) add(join(root, 'memory', 'provenance.json'), 'mixed', '来源标识账（不含正文）；联合派生内容需明确选择后处理', related.length);
+    if (derivedDocuments.some(e => e.kind === 'diary')) add(join(root, 'memory', 'diary.json'), 'mixed', '关联日记的本地原文缓存；联合内容按整篇回收，不做不可靠的按名字删句', derivedDocuments.filter(e => e.kind === 'diary').length);
+    for (const entry of related.filter(e => e.kind === 'qq' && e.documentId.startsWith('ep-'))) banks.add(entry.bankId);
+    const common = readJson(join(root, 'memory', 'common.json'));
     for (const path of walk(join(root, 'memory'))) {
         const match = new RegExp(`^${qqText}-([a-z_]+)\\.json$`).exec(basename(path));
         if (!match) continue;
@@ -141,10 +152,14 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
         artifacts: artifacts.sort((a, b) => a.path.localeCompare(b.path)),
         hindsight: {
             banks: [...banks].sort(), commonDocuments: [...commonDocuments].sort(), commonMentalModels: [...commonMentalModels].sort(),
+            ...(isObject(common) && typeof common.bankId === 'string' ? { commonBank: common.bankId } : {}),
+            trackedDocuments: related.filter(e => e.kind === 'qq' && !e.documentId.startsWith('ep-')).map(e => ({ bankId: e.bankId, documentId: e.documentId })),
+            derivedDocuments,
         },
         limitations: [
             '本报告不执行删除；清理时必须先停 bot，并对照 Hindsight API 逐项删除后复查。',
             '公共日记、周记和阶段总结可能用自然语言提到联系人，无法仅靠 QQ 号可靠归属，需要人工复核。',
+            `来源账只覆盖接入后的写入；当前有 ${origins.filter(e => e.kind !== 'qq' && !e.complete).length} 个来源不完整的派生文档，不能据此宣称已查全。`,
             '部署配置中的联系人 QQ、称呼和权限位于 dataDir 之外，需要单独修改。',
             'NapCat、Koishi、模型供应商及系统备份位于 dataDir 之外，不在本报告覆盖范围内。',
         ],

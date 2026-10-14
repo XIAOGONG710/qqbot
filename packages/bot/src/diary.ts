@@ -176,6 +176,8 @@ interface DiaryState {
     texts: Record<string, string>;
     weeks: Record<string, number>;
     phases: Record<string, number>;
+    /** 人工遗忘的日期不再从远端读回或重新成为总结材料。 */
+    forgotten: Record<string, boolean>;
 }
 
 /**
@@ -191,18 +193,21 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
     };
     const catchUp = async (now: Date) => {
         const stored = readJsonOr<Partial<DiaryState>>(path, {}, options.log);
-        const state: DiaryState = { written: stored.written ?? {}, texts: stored.texts ?? {}, weeks: stored.weeks ?? {}, phases: stored.phases ?? {} };
+        const state: DiaryState = { written: stored.written ?? {}, texts: stored.texts ?? {}, weeks: stored.weeks ?? {}, phases: stored.phases ?? {}, forgotten: stored.forgotten ?? {} };
         const { written } = state;
         const today = herDay(options.sources.schedule, now);
         for (let back = DIARY_BACKFILL_DAYS; back >= 1; back--) {
             const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() - back);
             const date = formatDate(day);
+            if (state.forgotten[date]) continue;
             if (written[date] !== undefined) continue;
             const chats = options.contacts.filter(contact => knowsPeople(contact.tier)).map(contact => ({
+                qq: contact.qq,
                 name: contact.name,
                 messages: options.history.load(contact.qq).filter(m => formatDate(herDay(options.sources.schedule, new Date(m.time))) === date),
             }));
-            const material = diaryMaterial(options.sources, day, chats, options.plans?.(date) ?? []);
+            const plans = options.plans?.(date) ?? [];
+            const material = diaryMaterial(options.sources, day, chats, plans);
             let text: string;
             try {
                 text = (await options.generate(diaryMessages(options.sources.charName, day, material))).trim();
@@ -214,7 +219,12 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
                 options.log(`她的日记：${date} 模型回了空的，下次再写`);
                 return;
             }
-            const retention = await options.memory.retainDiary(date, day, text, options.sources.charName);
+            const retention = await options.memory.retainDiary(date, day, text, options.sources.charName, {
+                contacts: chats.filter(c => c.messages.length || plans.length).map(c => c.qq),
+                parents: [],
+                // 计划和回写世界暂未携带完整来源，不能把这种材料误报为来源完整。
+                complete: !plans.length && !options.sources.resolveWorld,
+            });
             if (!retention) return;
             written[date] = [...text].length;
             state.texts[date] = text;
@@ -230,6 +240,7 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         const found: { date: Date; text: string }[] = [];
         for (const day of days) {
             const date = formatDate(day);
+            if (state.forgotten[date]) continue;
             if (state.written[date] === undefined) continue;
             let text = state.texts[date];
             if (text === undefined) {
@@ -276,7 +287,9 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
             if (diaries.length) {
                 const period = `这周（${md(days[0]!)}–${md(days[6]!)}）`;
                 const summary = await summarize(`周记（${id} 那周）`, period, diaries,
-                    text => options.memory.retainSummary(`week:${id}`, days[6]!, `${options.sources.charName}的周记（${md(days[0]!)}–${md(days[6]!)}）`, text, options.sources.charName, 'week'));
+                    text => options.memory.retainSummary(`week:${id}`, days[6]!, `${options.sources.charName}的周记（${md(days[0]!)}–${md(days[6]!)}）`, text, options.sources.charName, 'week', {
+                        contacts: [], parents: diaries.map(d => `diary:${formatDate(d.date)}`), complete: true,
+                    }));
                 if (!summary) return false;
                 state.weeks[id] = summary.length;
                 options.log(`她的周记：${id} 那周已写（${summary.length} 字，用了 ${diaries.length} 篇日记），${summary.retention === 'local-only' ? '含高敏内容，只保留本地' : '存进公共记忆'}`);
@@ -303,7 +316,9 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
             if (diaries.length) {
                 const span = `${md(start!)}–${md(end!)}`;
                 const summary = await summarize(`${holiday.name}总结`, `这个${holiday.name}（${span}）`, diaries,
-                    text => options.memory.retainSummary(`phase:${id}`, end!, `${options.sources.charName}的${holiday.name}总结（${span}）`, text, options.sources.charName, 'phase'));
+                    text => options.memory.retainSummary(`phase:${id}`, end!, `${options.sources.charName}的${holiday.name}总结（${span}）`, text, options.sources.charName, 'phase', {
+                        contacts: [], parents: diaries.map(d => `diary:${formatDate(d.date)}`), complete: true,
+                    }));
                 if (!summary) return;
                 state.phases[id] = summary.length;
                 options.log(`她的${holiday.name}总结已写（${summary.length} 字，用了 ${diaries.length} 篇日记），${summary.retention === 'local-only' ? '含高敏内容，只保留本地' : '存进公共记忆'}`);

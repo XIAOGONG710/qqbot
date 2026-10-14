@@ -26,7 +26,8 @@ import type { ChatMessage } from '../prompt.ts';
 import type { MacroNames } from '../st/macros.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes, type Episode } from './episodes.ts';
 import { clarity, IMPORTANT, isSummary, LASTING, lastTouched, withoutMark, type Clarity, type FadeStats } from './fading.ts';
-import type { BankConfig, HindsightApi, MentalModelRequest, RecallRequest, RecallResult } from './hindsight.ts';
+import type { BankConfig, HindsightApi, MemoryItem, MentalModelRequest, RecallRequest, RecallResult } from './hindsight.ts';
+import { inheritedSources, provenanceMetadata, recordProvenance, type ProvenanceEntry, type WrittenSources } from './provenance.ts';
 import { episodeForSharedMemory, highlySensitiveForSharing, memoryEvidence, MEMORY_EVIDENCE_RULE, safeSharedResults } from './safety.ts';
 
 /** 进行中的片段每多这么多条就整段重写一次 */
@@ -305,6 +306,18 @@ export class LongTermMemory {
         return `${this.#options.bankPrefix}-common`;
     }
 
+    /** 来源账先落盘再提交远端；超时/落盘失败也不丢失可审计的删除目标。 */
+    async #retainTracked(bankId: string, item: MemoryItem, kind: ProvenanceEntry['kind'], sources: WrittenSources): Promise<void> {
+        const entry: ProvenanceEntry = {
+            bankId, documentId: item.document_id, kind,
+            contacts: [...sources.contacts], parents: [...sources.parents], complete: sources.complete,
+            at: item.timestamp, retention: 'pending',
+        };
+        recordProvenance(this.#options.dir, entry);
+        await this.#options.api.retain(bankId, { ...item, metadata: { ...item.metadata, ...provenanceMetadata(sources) } });
+        recordProvenance(this.#options.dir, { ...entry, retention: 'shared' });
+    }
+
     /** 把还没写入的片段写进 Hindsight；同一联系人排队执行，返回这一次排进去的任务 */
     sync(contact: MemoryContact, names: MacroNames, history: StoredMessage[]): Promise<void> {
         const key = this.#key(contact);
@@ -359,7 +372,7 @@ export class LongTermMemory {
     /** 写进公共记忆库：document_id 带上是谁的（哈希，不带 QQ 号），原文开头写和谁的私聊 */
     async #retainCommon(contact: MemoryContact, names: MacroNames, state: ContactState, episodes: { episode: Episode; sourceMessages: number }[], bankId: string): Promise<void> {
         for (const { episode, sourceMessages } of episodes) {
-            await this.#options.api.retain(bankId, {
+            await this.#retainTracked(bankId, {
                 content: `和${names.user}的私聊\n${episodeTranscript(episode, names)}`,
                 timestamp: localIso(episode.start),
                 context: `QQ 私聊：${names.char}（AI 扮演）和${names.user}`,
@@ -367,7 +380,7 @@ export class LongTermMemory {
                 tags: COMMON_TAGS,
                 metadata: { source: 'qq', episode: episode.id, messages: String(episode.messages.length) },
                 entities: [{ text: names.user, type: 'PERSON' }, { text: names.char, type: 'PERSON' }],
-            });
+            }, 'qq', { contacts: [contact.qq], parents: [], complete: true });
             (state.common ??= {})[episode.id] = sourceMessages;
             this.#save(contact, state);
             this.#lastWrite = { at: this.#now(), ok: true };
@@ -381,39 +394,43 @@ export class LongTermMemory {
      * 她的日记（ADR 0017）写进公共库：document_id 是 diary:<日期>（同一天再写是覆盖），标签多一个 diary。
      * 写入返回 shared；命中高敏返回 local-only，由调用方只落本地；失败返回 false（下次再写）。
      */
-    async retainDiary(date: string, day: Date, text: string, char: string): Promise<WrittenRetention> {
-        return this.#retainWritten(`${DIARY_PREFIX}${date}`, day, `${char}的日记（${date}）`, text, char, 'diary', `她的日记：${date}`);
+    async retainDiary(date: string, day: Date, text: string, char: string, sources?: WrittenSources): Promise<WrittenRetention> {
+        return this.#retainWritten(`${DIARY_PREFIX}${date}`, day, `${char}的日记（${date}）`, text, char, 'diary', `她的日记：${date}`, sources);
     }
 
     /**
      * 周记、阶段总结（ADR 0018 决策 3）写进公共库：document_id 是 week:<周一>、phase:<假期名>:<最后一天>，标签多一个 week / phase，
      * 时间写最后那天晚上。title 是正文前面那一行（「林梦瑶的周记（10月5日–10月11日）」）
      */
-    async retainSummary(documentId: string, lastDay: Date, title: string, text: string, char: string, tag: 'week' | 'phase'): Promise<WrittenRetention> {
-        return this.#retainWritten(documentId, lastDay, title, text, char, tag, `她的${tag === 'week' ? '周记' : '阶段总结'}：${documentId}`);
+    async retainSummary(documentId: string, lastDay: Date, title: string, text: string, char: string, tag: 'week' | 'phase', sources?: WrittenSources): Promise<WrittenRetention> {
+        return this.#retainWritten(documentId, lastDay, title, text, char, tag, `她的${tag === 'week' ? '周记' : '阶段总结'}：${documentId}`, sources);
     }
 
     /** 她自己写的东西存进公共库；明确区分已共享、仅本地和失败。 */
-    async #retainWritten(documentId: string, day: Date, title: string, text: string, char: string, tag: string, what: string): Promise<WrittenRetention> {
+    async #retainWritten(documentId: string, day: Date, title: string, text: string, char: string, tag: 'diary' | 'week' | 'phase', what: string, sources?: WrittenSources): Promise<WrittenRetention> {
         if (!this.#options.common) return false;
+        const bankId = this.commonBankId();
+        const origin = inheritedSources(this.#options.dir, bankId, sources);
+        const timestamp = localIso(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 22));
         // 日记/总结也会被其他联系人召回；含高敏内容时保留本地原文，但不送进公共库。
         // 返回 local-only 表示这篇已经安全处理，调用方应落本地状态，避免无限重试同一篇。
         if (highlySensitiveForSharing(text)) {
+            recordProvenance(this.#options.dir, { bankId, documentId, kind: tag, contacts: [...origin.contacts], parents: [...origin.parents], complete: origin.complete, at: timestamp, retention: 'local-only' });
             this.#options.log(`${what} 含高敏内容，不写公共记忆`);
             return 'local-only';
         }
         try {
-            const bankId = await this.#ensureCommonBank(char);
-            await this.#options.api.retain(bankId, {
+            await this.#ensureCommonBank(char);
+            await this.#retainTracked(bankId, {
                 content: `${title}\n${text}`,
                 // 日记是睡前写的：时间写那天晚上
-                timestamp: localIso(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 22)),
+                timestamp,
                 context: `${char}自己写的${tag === 'diary' ? '日记' : tag === 'week' ? '周记' : '阶段总结'}`,
                 document_id: documentId,
                 tags: [...COMMON_TAGS, tag],
                 metadata: { source: tag, ...(tag === 'diary' ? { date: documentId.slice(DIARY_PREFIX.length) } : { id: documentId }) },
                 entities: [{ text: char, type: 'PERSON' }],
-            });
+            }, tag, origin);
             this.#lastWrite = { at: this.#now(), ok: true };
             this.#entities.fetchedAt = undefined;
             return 'shared';
@@ -471,7 +488,7 @@ export class LongTermMemory {
     async #retainOwn(contact: MemoryContact, names: MacroNames, state: ContactState, pending: Episode[]): Promise<void> {
         await this.#ensureBank(contact, names, state);
         for (const episode of pending) {
-            await this.#options.api.retain(state.bankId, {
+            await this.#retainTracked(state.bankId, {
                 content: episodeTranscript(episode, names),
                 // 带本机时区：抽取时按这个时间的日期、星期换算「明天」（ADR 0012 决策 1 第 2 条）
                 timestamp: localIso(episode.start),
@@ -480,7 +497,7 @@ export class LongTermMemory {
                 document_id: episode.id,
                 tags: TAGS,
                 metadata: { source: 'qq', episode: episode.id, messages: String(episode.messages.length) },
-            });
+            }, 'qq', { contacts: [contact.qq], parents: [], complete: true });
             state.retained[episode.id] = episode.messages.length;
             this.#save(contact, state);
             this.#lastWrite = { at: this.#now(), ok: true };

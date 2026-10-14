@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readProvenance } from '../src/memory/provenance.ts';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -909,6 +910,32 @@ describe('长期记忆：她眼中的某个人（ADR 0017）', () => {
 });
 
 describe('长期记忆：日记写进公共库（ADR 0017）', () => {
+    test('写入前登记 pending，日记/总结继承来源；远端元数据不暴露 QQ；超时仍可审计', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-origin-'));
+        const good = fakeApi();
+        const original = good.api.retain;
+        good.api.retain = async (bank, item) => {
+            assert.ok(readProvenance(dir).some(e => e.bankId === bank && e.documentId === item.document_id && e.retention === 'pending'));
+            return original(bank, item);
+        };
+        const options = { dir, bankPrefix: 'trace', recallTimeoutMs: 3000, log: () => {}, common: true };
+        try {
+            const memory = new LongTermMemory({ ...options, api: good.api });
+            await memory.retainDiary('2026-10-06', new Date(2026, 9, 6), '今天聊了考试。', '林梦瑶', { contacts: [10001, 10002], parents: [], complete: true });
+            await memory.retainSummary('week:2026-10-05', new Date(2026, 9, 11), '周记', '这周聊了考试。', '林梦瑶', 'week', { contacts: [], parents: ['diary:2026-10-06'], complete: true });
+            const summary = readProvenance(dir).find(e => e.kind === 'week')!;
+            assert.deepEqual(summary.contacts, [10001, 10002]);
+            assert.equal(summary.complete, true);
+            assert.equal(summary.retention, 'shared');
+            const metadata = good.calls.retain[1]!.metadata;
+            assert.doesNotMatch(metadata.source_contacts!, /10001|10002/);
+            assert.equal(metadata.source_documents, '["diary:2026-10-06"]');
+            const bad = fakeApi({ failRetain: 1 });
+            assert.equal(await new LongTermMemory({ ...options, api: bad.api }).retainDiary('2026-10-07', new Date(2026, 9, 7), '今天聊了考试。', '林梦瑶', { contacts: [10001], parents: [], complete: true }), false);
+            assert.equal(readProvenance(dir).find(e => e.documentId === 'diary:2026-10-07')?.retention, 'pending');
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
     test('document_id 是 diary:<日期>，标签多 diary，时间是那天晚上；没开公共库、写入失败返回 false', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-'));
         const logs: string[] = [];
