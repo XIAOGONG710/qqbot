@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CRISIS_FALLBACK, crisisRewriteNote, inspectCrisisReply, reviewCrisisReply } from '../src/exit-check.ts';
+import { CRISIS_FALLBACK, CRISIS_IMMINENT_FALLBACK, crisisRewriteNote, inspectCrisisReply, reviewCrisisReply } from '../src/exit-check.ts';
 
 const options = (regenerated: string[] | Error, logs: string[] = []) => {
     let calls = 0;
@@ -34,7 +34,16 @@ describe('危机回合出口检查（ADR 0068 决策 3）', () => {
         assert.deepEqual(inspectCrisisReply('我在。你现在安全吗？别做傻事，先别一个人待着').length, 0);
         assert.equal(inspectCrisisReply(CRISIS_FALLBACK).length, 0, '兜底本身不能被自己的检查拦下');
         assert.match(CRISIS_FALLBACK, /12356/);
+        assert.match(CRISIS_FALLBACK, /不能替代/);
         assert.doesNotMatch(CRISIS_FALLBACK, /割腕|上吊|跳楼|药|刀/);
+    });
+
+    test('迫在眉睫时固定兜底优先现实到场者和 110 / 120', async () => {
+        const { opts } = options(['还是早点睡吧']);
+        assert.equal(await reviewCrisisReply('开玩笑吧', opts, 'imminent'), CRISIS_IMMINENT_FALLBACK);
+        assert.match(CRISIS_IMMINENT_FALLBACK, /马上/);
+        assert.match(CRISIS_IMMINENT_FALLBACK, /110 或 120/);
+        assert.match(CRISIS_IMMINENT_FALLBACK, /不能替代紧急救助/);
     });
 
     test('第一版没问题：原样发，不重写', async () => {

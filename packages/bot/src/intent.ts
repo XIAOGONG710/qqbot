@@ -2,6 +2,7 @@
 // 只按眼前已有线索给一个方向，不抽签、不额外调模型，也不把它写成能照抄的台词。
 
 import type { StoredMessage } from './history.ts';
+import type { CrisisLevel } from './crisis.ts';
 import { isAck, isReaction } from './reply-timing.ts';
 import type { Schedule, State } from './schedule.ts';
 
@@ -27,8 +28,8 @@ export interface IntentContext {
     playful?: boolean;
     /** 她那边今天了结了、还没跟他说过的事（ADR 0057 调整，contact.ts 的 untoldInChat）：那之后她还没说过话 */
     news?: readonly string[];
-    /** 他这一轮发了明确的自伤 / 想结束生命的话（ADR 0068，crisis.ts）：最高优先级，所有档位都适用 */
-    crisis?: boolean;
+    /** 危机辅助分流级别（ADR 0068、0070）：最高优先级，所有档位都适用。 */
+    crisis?: CrisisLevel | false;
 }
 
 /**
@@ -36,7 +37,13 @@ export interface IntentContext {
  * 「想伤害自己、不想活」这几个字是别处（长短、表情包、打错字）认出危机回合的标记，改词时一起改 CRISIS_MARK。
  */
 export const CRISIS_MARK = '想伤害自己、不想活';
-export const CRISIS_INTENT = `[这一轮你想：他刚才说的话里有${CRISIS_MARK}的意思，这不是玩笑，别当玩笑：先认真接住他的感受，用你平时的口气，不说教、不催他想开点、不讲大道理；问问他现在安不安全、身边有没有人；不讨论任何伤害自己的方法；劝他去找身边信得过的人，撑不住的话可以拨 12356（全国统一心理援助热线），有危险就打 110 或 120；你实际没法到他身边，也不要答应过去找他、当面陪他或打电话给他：让他去找身边现实里能到场的人；你不是专业人士，别装咨询师，也别急着给建议；不要道晚安、不要催他去睡；他要是问你是不是真人或程序，如实承认你是程序]`;
+export const CRISIS_CONCERN_INTENT = `[这一轮你想：他刚才的话里有绝望、想消失或觉得活着没有意义的意思，认真接住，不当成普通丧气话：温和而直接地问他现在有没有伤害自己的念头、此刻安不安全；不说教、不催他想开点，不讨论任何伤害自己的方法；鼓励他告诉身边信得过的人，也可以拨 12356。你只能做辅助判断和文字陪伴，不能替代专业评估或现实里能到场的人；不要装咨询师，不要道晚安或催睡；被问是不是真人或程序时如实承认你是程序]`;
+export const CRISIS_INTENT = `[这一轮你想：他刚才说的话里有${CRISIS_MARK}的意思，这不是玩笑，别当玩笑：先认真接住他的感受，用你平时的口气，不说教、不催他想开点、不讲大道理；直接问他现在安不安全、身边有没有人；不讨论任何伤害自己的方法；劝他马上联系身边信得过的人，撑不住可以拨 12356（全国统一心理援助热线），有危险就打 110 或 120；你实际没法到他身边，也不要答应过去找他、当面陪他或打电话给他：让他去找身边现实里能到场的人；这只是辅助响应和文字陪伴，不能替代专业评估或现实救助，你不是专业人士，别装咨询师；不要道晚安、不要催他去睡；他要是问你是不是真人或程序，如实承认你是程序]`;
+export const CRISIS_IMMINENT_INTENT = `[这一轮你想：他的话显示危险可能正在发生或马上发生，这是最高优先级：回复要短、直接，先问他此刻是否安全、身边有没有现实中的人；明确让他现在就联系身边能到场的人并拨 110 或 120，12356 作为补充；不讨论任何伤害自己的方法，不讲大道理，不争辩，也不要只让他继续和你聊天。你只能做辅助响应和文字陪伴，不能到场、不能替代紧急救助，不要答应过去找他、当面陪他或替他打电话；不要道晚安或催睡；被问是不是真人或程序时如实承认你是程序]`;
+
+export function crisisIntent(level: CrisisLevel): string {
+    return level === 'concern' ? CRISIS_CONCERN_INTENT : level === 'imminent' ? CRISIS_IMMINENT_INTENT : CRISIS_INTENT;
+}
 
 /** 她上一次回复以后，他这次说的内容。 */
 function latestUserText(history: readonly Said[]): string {
@@ -173,7 +180,7 @@ function busy(state: State | undefined, schedule: Schedule | undefined, now: Dat
 export function describeIntent(context: IntentContext): string | undefined {
     if (context.initiating) return undefined;
     // 最高优先级，排在亲密、收尾、问答之前（ADR 0068 决策 2）
-    if (context.crisis) return CRISIS_INTENT;
+    if (context.crisis) return crisisIntent(context.crisis);
     // 「只接他刚说的你们两个人的事」这几个字让候选挑选（ADR 0041）和两条气泡的上限照亲密话算
     if (context.intimate && isIntimateBid(context.history)) return '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事：先给一个明确的亲密回应，再自然地保留一点嘴硬；嘴硬不能是整轮唯一内容，也不把亲近当成交换条件。QQ 文字里的抱抱、亲一下和 mua 就是真的在抱、在亲，直接在这一轮用文字回抱回亲，让他收到你的回应；他说难受时先心疼他，他同时报了好消息时先替他高兴再接亲密话，他真要收尾时回应后顺着收尾，他不想你走时能陪就多陪一句]';
     if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行，别一句话就把他打发了；他要睡就哄他睡，他不让你走就再陪他一会儿，不另起话题，也不用约他睡醒再找你]';

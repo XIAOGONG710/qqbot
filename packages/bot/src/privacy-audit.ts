@@ -86,7 +86,9 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
     }
     const crisisPath = join(root, 'crisis.json');
     const crisis = readJson(crisisPath);
-    if (isObject(crisis) && qqText in crisis) add(crisisPath, 'mixed', '危机信号时间', 1);
+    if (isObject(crisis) && (qqText in crisis || (isObject(crisis.contacts) && qqText in crisis.contacts))) {
+        add(crisisPath, 'mixed', '危机信号级别与时间', 1);
+    }
     const prompt = join(root, 'last-prompt.json');
     const lastPrompt = readJson(prompt);
     if (isObject(lastPrompt) && lastPrompt.qq === qq) add(prompt, 'direct', '最近一次完整提示词属于这个联系人');

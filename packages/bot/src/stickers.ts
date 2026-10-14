@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import type { AppConfig } from './config.ts';
+import type { CrisisLevel } from './crisis.ts';
 import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { chatCompletion } from './llm.ts';
@@ -48,7 +49,9 @@ export function imageStickerAllowance(
     history: readonly Pick<StoredMessage, 'role' | 'content'>[],
     intent?: string,
     woken = false,
+    crisis?: CrisisLevel,
 ): { allowed: boolean; reason?: string } {
+    if (crisis) return { allowed: false, reason: '危机辅助响应' };
     if (woken) return { allowed: false, reason: '刚被消息吵醒' };
     const recentReplies = history.filter(message => message.role === 'assistant').slice(-STICKER_REPLY_WINDOW);
     if (recentReplies.some(message => message.content.startsWith(STICKER_HISTORY_PREFIX))) {

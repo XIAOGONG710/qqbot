@@ -28,7 +28,7 @@ import { arrivedWhileAsleep } from './reply-timing.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { newsKindsOf, type ProactiveMode } from './proactive.ts';
-import { detectCrisis } from './crisis.ts';
+import { detectCrisis, type CrisisLevel } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner, type PlannerStatus } from './proactive-planner.ts';
 import { promiseKeeper, type Appointment } from './promises.ts';
@@ -87,8 +87,8 @@ export interface ContactStatus {
     unlisted: boolean;
     /** 从什么时候起是这一档（tiers.json）；没换过档就没有 */
     tierSince?: string;
-    /** 最近一次危机信号的时间（ADR 0068；只记时间不记内容）和普通主动消息是否还在暂停期；没触发过就没有 */
-    crisis?: { at: string; paused: boolean };
+    /** 最近一次危机信号的时间和分级（不记内容），以及普通主动消息是否仍暂停；没触发过就没有。 */
+    crisis?: { at: string; level: CrisisLevel; paused: boolean };
     responder: ResponderStatus;
     /** 最后一条消息的时间和谁发的，不含内容 */
     last?: { time: string; from: 'user' | 'assistant' };
@@ -590,9 +590,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         const text = segmentsToText(message).trim();
         if (!text) return;
         responder.receive(text, event.message_id, new Date(event.time * 1000));
-        if (detectCrisis(text) && config.contacts.some(c => c.qq === event.user_id)) {
-            crisisState.mark(event.user_id, Date.now());
-            log(`[${event.user_id}] 危机信号：他说了想伤害自己的话（只记时间，不记内容）；普通主动消息暂停 ${CRISIS_PAUSE_MS / 3_600_000} 小时`);
+        const crisis = detectCrisis(text);
+        if (crisis && config.contacts.some(c => c.qq === event.user_id)) {
+            crisisState.mark(event.user_id, event.time * 1000, crisis.level);
+            log(`[${event.user_id}] 危机信号：${crisis.level} 级（只记级别和时间，不记内容）；普通主动消息暂停 ${CRISIS_PAUSE_MS / 3_600_000} 小时`);
         }
         planners.get(event.user_id)?.poke();
     }
@@ -626,7 +627,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             const missed = toStored(fresh, selfId);
             for (const message of missed) history.append(contact.qq, message);
             // 停机期间他说过想伤害自己的话：补回时也记一笔（只记时间），暂停期从他说话的时候算（ADR 0068）
-            for (const message of missed) if (message.role === 'user' && detectCrisis(message.content)) crisisState.mark(contact.qq, Date.parse(message.time));
+            for (const message of missed) {
+                if (message.role !== 'user') continue;
+                const crisis = detectCrisis(message.content);
+                if (crisis) crisisState.mark(contact.qq, Date.parse(message.time), crisis.level);
+            }
             if (missed.length) {
                 const lines = sensitive.on()
                     ? missed.map(m => `${m.role === 'user' ? '对方' : '她'}：${m.content}`).join(' / ')
@@ -710,7 +715,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     card: cardKey(contact),
                     unlisted: isUnlisted,
                     ...(since ? { tierSince: since.toISOString() } : {}),
-                    ...(crisisState.lastAt(contact.qq) !== undefined ? { crisis: { at: new Date(crisisState.lastAt(contact.qq)!).toISOString(), paused: crisisState.pausedAt(contact.qq, now.getTime()) } } : {}),
+                    ...(crisisState.last(contact.qq) ? { crisis: {
+                        at: new Date(crisisState.last(contact.qq)!.at).toISOString(),
+                        level: crisisState.last(contact.qq)!.level,
+                        paused: crisisState.pausedAt(contact.qq, now.getTime()),
+                    } } : {}),
                     responder: responders.get(contact.qq)!.status(),
                     ...(last ? { last: { time: last.time, from: last.role } } : {}),
                     ...(schedule ? { now: describeState(stateAt(schedule, now, extraFree), schedule, { userName: contact.name }) } : {}),
