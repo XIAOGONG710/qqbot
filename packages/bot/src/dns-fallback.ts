@@ -5,8 +5,10 @@
 // 只给模型接口用；图片下载有自己的 SSRF 校验（safe-image.ts），不走这里。
 
 import { lookup as systemLookup, type LookupOptions } from 'node:dns';
-import { readFileSync, writeFileSync } from 'node:fs';
-import type { LookupFunction } from 'node:net';
+import { readFileSync } from 'node:fs';
+import { isIP, type LookupFunction } from 'node:net';
+import { writeJsonAtomic } from './json-file.ts';
+import { stateObject } from './state-schema.ts';
 
 export interface CachedAddress { address: string; family: number }
 type Cache = Record<string, { at: number; addresses: CachedAddress[] }>;
@@ -29,20 +31,36 @@ export function fallbackLookup(options: DnsFallbackOptions): LookupFunction {
     const lookup = options.lookup ?? (systemLookup as unknown as NonNullable<DnsFallbackOptions['lookup']>);
     const now = options.now ?? Date.now;
     const maxAge = options.maxAgeMs ?? 7 * 24 * 3_600_000;
-    const memory: Cache = {};
-    let warnedAt = 0;
+    const memory: Cache = Object.create(null);
+    const persistedAt = new Map<string, number>();
+    let warnedAt = -Infinity;
+
+    const validAddress = (value: unknown): value is CachedAddress => stateObject(value)
+        && typeof value.address === 'string' && (value.family === 4 || value.family === 6)
+        && isIP(value.address) === value.family;
 
     const load = (): Cache => {
         if (!options.file) return memory;
-        try { return { ...JSON.parse(readFileSync(options.file, 'utf8')) as Cache, ...memory }; } catch { return memory; }
+        try {
+            const parsed: unknown = JSON.parse(readFileSync(options.file, 'utf8'));
+            const disk: Cache = Object.create(null);
+            if (stateObject(parsed)) for (const host of options.hosts) {
+                const entry = Object.hasOwn(parsed, host) ? parsed[host] : undefined;
+                if (stateObject(entry) && typeof entry.at === 'number' && Number.isFinite(entry.at)
+                    && entry.at >= 0 && entry.at <= now() && Array.isArray(entry.addresses)
+                    && entry.addresses.length > 0 && entry.addresses.every(validAddress)) disk[host] = entry as Cache[string];
+            }
+            return { ...disk, ...memory };
+        } catch { return memory; }
     };
     const remember = (host: string, addresses: CachedAddress[]) => {
-        if (!addresses.length) return;
-        const previous = memory[host]?.addresses.map(item => item.address).join();
+        if (!addresses.length || !addresses.every(validAddress)) return;
+        const previous = JSON.stringify(memory[host]?.addresses);
         memory[host] = { at: now(), addresses };
-        // 地址没变就不重复写文件
-        if (!options.file || previous === addresses.map(item => item.address).join()) return;
-        try { writeFileSync(options.file, JSON.stringify(load())); } catch { /* 写不了就只放内存 */ }
+        // 地址不变也定期刷新落盘时间，否则长期健康后重启反而读到过期缓存。
+        if (!options.file || (previous === JSON.stringify(addresses)
+            && now() - (persistedAt.get(host) ?? -Infinity) < Math.min(3_600_000, maxAge / 2))) return;
+        try { writeJsonAtomic(options.file, load()); persistedAt.set(host, now()); } catch { /* 写不了就只放内存 */ }
     };
 
     return (hostname, lookupOptions, callback) => {
@@ -56,15 +74,17 @@ export function fallbackLookup(options: DnsFallbackOptions): LookupFunction {
                 return;
             }
             const cached = options.hosts.includes(hostname) ? load()[hostname] : undefined;
-            if (!FALLBACK_CODES.has(String(error.code)) || !cached || now() - cached.at > maxAge) {
+            const requestedFamily = (lookupOptions as LookupOptions).family;
+            const addresses = cached?.addresses.filter(item => !requestedFamily || item.family === requestedFamily) ?? [];
+            if (!FALLBACK_CODES.has(String(error.code)) || !cached || now() - cached.at < 0
+                || now() - cached.at > maxAge || !addresses.length) {
                 (callback as (error: NodeJS.ErrnoException | null, address?: unknown, family?: number) => void)(error);
                 return;
             }
             if (now() - warnedAt > 3_600_000) {
                 warnedAt = now();
-                options.log?.(`DNS 解析 ${hostname} 失败（${String(error.code)}），改用 ${Math.round((now() - cached.at) / 60_000)} 分钟前解析到的地址 ${cached.addresses[0]!.address}`);
+                options.log?.(`DNS 解析 ${hostname} 失败（${String(error.code)}），改用 ${Math.round((now() - cached.at) / 60_000)} 分钟前解析到的地址 ${addresses[0]!.address}`);
             }
-            const addresses = cached.addresses;
             if (wantAll) (callback as (error: null, address: CachedAddress[]) => void)(null, addresses);
             else (callback as (error: null, address: string, family: number) => void)(null, addresses[0]!.address, addresses[0]!.family);
         });

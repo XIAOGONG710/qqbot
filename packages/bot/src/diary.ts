@@ -195,22 +195,30 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         const unknown = { contacts: [], parents: [], complete: false };
         let shared = 0;
         let localOnly = 0;
+        let forgottenSummaries = 0;
         const count = (result: WrittenRetention) => { if (result === 'shared') shared++; else if (result === 'local-only') localOnly++; };
+        const includesForgotten = (start: Date, end: Date) => Object.keys(state.forgotten)
+            .some(date => date >= formatDate(start) && date <= formatDate(end));
+        const readRequired = async (id: string, local?: string): Promise<string> => {
+            const text = local ?? await options.memory.readWritten(id);
+            if (!text?.trim()) throw new Error(`旧文档 ${id} 暂无可用正文，迁移未完成`);
+            return text;
+        };
         try {
             for (const date of Object.keys(state.written).sort()) {
                 if (state.forgotten[date] || !state.written[date]) continue;
-                const text = state.texts[date] ?? await options.memory.readWritten(`diary:${date}`);
-                if (!text) continue;
+                const text = await readRequired(`diary:${date}`, state.texts[date]);
                 const result = await options.memory.retainDiary(date, dateOf(date), text, char, unknown);
                 if (!result) return false;
                 count(result);
             }
             for (const [id, length] of Object.entries(state.weeks)) {
                 if (!length) continue;
-                const text = await options.memory.readWritten(`week:${id}`);
-                if (!text) continue;
                 const monday = dateOf(id);
                 const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+                // 旧总结的精确来源未知；涉及遗忘日期时整篇不重放，不能从摘要复活原文。
+                if (includesForgotten(monday, sunday)) { forgottenSummaries++; continue; }
+                const text = await readRequired(`week:${id}`);
                 const result = await options.memory.retainSummary(`week:${id}`, sunday, `${char}的周记（${md(monday)}–${md(sunday)}）`, text, char, 'week', unknown);
                 if (!result) return false;
                 count(result);
@@ -218,20 +226,21 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
             for (const [id, length] of Object.entries(state.phases)) {
                 if (!length) continue;
                 const holiday = options.sources.schedule.holidays.find(item => `${item.name}:${item.end}` === id);
-                if (!holiday) continue;
-                const text = await options.memory.readWritten(`phase:${id}`);
-                if (!text) continue;
+                if (!holiday) throw new Error(`旧阶段 ${id} 缺少日期范围，迁移未完成`);
                 const [start, end] = [dateOf(holiday.start), dateOf(holiday.end)];
+                if (includesForgotten(start, end)) { forgottenSummaries++; continue; }
+                const text = await readRequired(`phase:${id}`);
                 const result = await options.memory.retainSummary(`phase:${id}`, end, `${char}的${holiday.name}总结（${md(start)}–${md(end)}）`, text, char, 'phase', unknown);
                 if (!result) return false;
                 count(result);
             }
+            options.memory.markWrittenReshared();
         } catch (error) {
             options.log(`她的日记：旧日记补写进公共记忆失败，下次再试：${error instanceof Error ? error.message : String(error)}`);
             return false;
         }
-        options.memory.markWrittenReshared();
         options.log(`她的日记：旧日记、周记、阶段总结已按新标签补写进公共记忆（${shared} 篇共享，${localOnly} 篇含高敏、只留本地）`);
+        if (forgottenSummaries) options.log(`她的日记：${forgottenSummaries} 篇旧总结涉及遗忘日期，未读取或重放；未删除远端旧版本`);
         return true;
     };
 
