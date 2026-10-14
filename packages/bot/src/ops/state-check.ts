@@ -15,6 +15,7 @@ import { readProvenance } from '../memory/provenance.ts';
 import { readCommonMemoryState, readContactMemoryState } from '../memory/state.ts';
 import { loadNeedsAnchor } from '../needs.ts';
 import { TierRecord } from '../tier-record.ts';
+import { readProactiveState } from '../proactive-state.ts';
 
 export interface StateCheck { name: string; file: string; ok: boolean; detail: string }
 
@@ -68,6 +69,7 @@ export function checkStates(dataDir: string, now: Date = new Date()): StateCheck
                     const path = join(folder, name);
                     if (dir === 'memory' && name === 'common.json') { readCommonMemoryState(path); return '公共记忆 v1 schema 通过'; }
                     if (dir === 'memory' && /^[1-9]\d*-[a-z_]+\.json$/.test(name)) { readContactMemoryState(path); return '联系人记忆 v1 schema 通过'; }
+                    if (dir === 'proactive' && /^[1-9]\d*-[a-z_]+\.json$/.test(name)) { readProactiveState(path); return '主动消息 v1 schema 通过'; }
                     JSON.parse(readFileSync(path, 'utf8'));
                     return '仅 JSON 语法通过（未做运行时 schema 校验）';
                 });
