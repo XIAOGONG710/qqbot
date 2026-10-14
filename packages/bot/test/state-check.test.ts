@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -16,6 +16,22 @@ function fixture() {
 }
 
 describe('状态文件兼容检查（ADR 0070 第 13 项）', () => {
+    test('联系人和公共记忆检查实际 schema，不把合法 JSON 的坏字段算通过；其他状态标出语法检查限制', () => {
+        const dir = fixture();
+        mkdirSync(join(dir, 'proactive'));
+        const bad = JSON.stringify({ bankId: 'test-bank', retained: [] });
+        const common = JSON.stringify({ bankId: 'test-common', writtenSafetyVersion: '2' });
+        writeFileSync(join(dir, 'memory', '10001-boyfriend.json'), bad);
+        writeFileSync(join(dir, 'memory', 'common.json'), common);
+        writeFileSync(join(dir, 'proactive', '10001-boyfriend.json'), '{}');
+        const checks = checkStates(dir);
+        assert.equal(checks.find(c => c.name === 'memory/10001-boyfriend.json')!.ok, false);
+        assert.equal(checks.find(c => c.name === 'memory/common.json')!.ok, false);
+        assert.match(checks.find(c => c.name === 'proactive/10001-boyfriend.json')!.detail, /仅 JSON 语法/);
+        assert.equal(readFileSync(join(dir, 'memory', '10001-boyfriend.json'), 'utf8'), bad);
+        assert.equal(readFileSync(join(dir, 'memory', 'common.json'), 'utf8'), common);
+    });
+
     test('什么文件都没有：全部按空状态开始，通过', () => {
         const checks = checkStates(fixture());
         assert.ok(checks.length > 0);

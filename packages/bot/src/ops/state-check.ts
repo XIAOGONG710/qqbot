@@ -12,6 +12,7 @@ import { readDiaryState } from '../diary-state.ts';
 import { ChatHistory } from '../history.ts';
 import { readLifeEvents } from '../life-events.ts';
 import { readProvenance } from '../memory/provenance.ts';
+import { readCommonMemoryState, readContactMemoryState } from '../memory/state.ts';
 import { loadNeedsAnchor } from '../needs.ts';
 import { TierRecord } from '../tier-record.ts';
 
@@ -58,12 +59,18 @@ export function checkStates(dataDir: string, now: Date = new Date()): StateCheck
                 });
             }
         }
-        // 其余只确认是合法 JSON（它们各自的读取函数在对应模块里，坏了会隔离后重建）
+        // 联系人/公共记忆使用真实 schema；尚未覆盖的其他状态明确标注只检查 JSON 语法。
         for (const dir of ['memory', 'proactive', 'promises', 'weather']) {
             const folder = join(copy, dir);
             if (!existsSync(folder)) continue;
             for (const name of readdirSync(folder).filter(file => file.endsWith('.json') && !/^(diary|provenance)\.json$/.test(file))) {
-                run(`${dir}/${name}`, join(dir, name), () => { JSON.parse(readFileSync(join(folder, name), 'utf8')); });
+                run(`${dir}/${name}`, join(dir, name), () => {
+                    const path = join(folder, name);
+                    if (dir === 'memory' && name === 'common.json') { readCommonMemoryState(path); return '公共记忆 v1 schema 通过'; }
+                    if (dir === 'memory' && /^[1-9]\d*-[a-z_]+\.json$/.test(name)) { readContactMemoryState(path); return '联系人记忆 v1 schema 通过'; }
+                    JSON.parse(readFileSync(path, 'utf8'));
+                    return '仅 JSON 语法通过（未做运行时 schema 校验）';
+                });
             }
         }
         return checks;

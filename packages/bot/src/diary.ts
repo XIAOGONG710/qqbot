@@ -257,7 +257,12 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         const { written } = state;
         const today = herDay(options.sources.schedule, now);
         // 公共记忆换了 v2 标签以后，过去写的日记、周记、阶段总结要先补写一遍（过高敏过滤），不然她想不起过去那些天
-        if (options.memory.writtenNeedsReshare?.() && !(await reshareWritten(state))) return;
+        try {
+            if (options.memory.writtenNeedsReshare?.() && !(await reshareWritten(state))) return;
+        } catch {
+            options.log('她的日记：公共记忆迁移状态读取失败，本轮停止；原文件未重建，请检查 common.json');
+            return;
+        }
         for (let back = DIARY_BACKFILL_DAYS; back >= 1; back--) {
             const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() - back);
             const date = formatDate(day);

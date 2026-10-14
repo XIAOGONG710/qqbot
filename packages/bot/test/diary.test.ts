@@ -15,6 +15,19 @@ const sources: DiarySources = { charName: card.name, schedule: card.schedule!, m
 const at = (iso: string, role: 'user' | 'assistant', content: string): StoredMessage => ({ time: new Date(iso).toISOString(), role, content });
 
 describe('她的日记（ADR 0017）', () => {
+    test('公共迁移状态读取失败只暂停本轮，不生成新日记或产生未处理拒绝', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-common-invalid-'));
+        const logs: string[] = [];
+        const memory = { writtenNeedsReshare: () => { throw new Error('PRIVATE_BAD_STATE'); } } as unknown as LongTermMemory;
+        const writer = diaryWriter({ sources, dir, contacts: [], memory, log: line => logs.push(line),
+            history: { load: () => assert.fail('不应读聊天') }, generate: async () => assert.fail('不应生成') });
+        try {
+            await writer.catchUp(new Date('2026-10-08T12:00:00+08:00'));
+            assert.ok(logs.some(line => line.includes('公共记忆迁移状态读取失败')));
+            assert.ok(logs.every(line => !line.includes('PRIVATE_BAD_STATE')));
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
     test('遗忘状态损坏只暂停日记，不产生未处理拒绝、不重建文件或调用外部服务', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-invalid-'));
         const path = join(dir, 'diary.json');
