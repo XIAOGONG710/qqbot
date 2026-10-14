@@ -250,3 +250,74 @@ describe('她的日记（ADR 0017）', () => {
         }
     });
 });
+
+describe('旧日记补写进 v2 标签（ADR 0070 第 2 项的迁移）', () => {
+    const setup = (opts: { failOn?: string } = {}) => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-reshare-'));
+        // 以前写过：10-03 的日记（本地没存原文）、10-05 的日记（本地有原文）、10-04 的日记含高敏、一周周记；10-02 被她要求遗忘
+        writeFileSync(join(dir, 'diary.json'), JSON.stringify({
+            version: 1,
+            written: { '2026-10-02': 3, '2026-10-03': 3, '2026-10-04': 3, '2026-10-05': 3 },
+            texts: { '2026-10-05': '本地有的第五天' },
+            weeks: { '2026-09-28': 5, '2026-09-21': 0 },
+            phases: {},
+            forgotten: { '2026-10-02': true },
+        }));
+        const retained: { date: string; text: string }[] = [];
+        const summaries: { id: string; text: string }[] = [];
+        const reads: string[] = [];
+        let marked = 0;
+        const memory = {
+            writtenNeedsReshare: () => marked === 0,
+            markWrittenReshared: () => { marked++; },
+            readWritten: async (id: string) => { reads.push(id); return `旧正文 ${id}`; },
+            retainDiary: async (date: string, _day: Date, text: string, _char: string, sources: WrittenSources) => {
+                assert.deepEqual(sources, { contacts: [], parents: [], complete: false }, '旧日记不知道是谁的聊天，标成来源不完整');
+                if (opts.failOn === date) return false;
+                retained.push({ date, text });
+                return date === '2026-10-04' ? 'local-only' : 'shared';
+            },
+            retainSummary: async (id: string, _day: Date, _title: string, text: string) => { summaries.push({ id, text }); return 'shared'; },
+        } as unknown as LongTermMemory;
+        const logs: string[] = [];
+        const writer = diaryWriter({
+            sources, contacts: [], memory, dir, log: message => logs.push(message), history: { load: () => [] },
+            generate: async () => { throw new Error('补写旧日记时不该生成新日记'); },
+        });
+        return { dir, writer, retained, summaries, reads, logs, marked: () => marked };
+    };
+
+    test('每篇旧日记和周记按同一个 id 重新写一遍：本地有原文用本地的，没有的按 id 读回；遗忘的和 0 字的不写；写完标记一次', async () => {
+        const { dir, writer, retained, summaries, reads, logs, marked } = setup();
+        try {
+            await writer.catchUp(new Date('2026-10-06T12:00:00+08:00'));
+            assert.deepEqual(retained, [
+                { date: '2026-10-03', text: '旧正文 diary:2026-10-03' },
+                { date: '2026-10-04', text: '旧正文 diary:2026-10-04' },
+                { date: '2026-10-05', text: '本地有的第五天' },
+            ]);
+            assert.deepEqual(summaries, [{ id: 'week:2026-09-28', text: '旧正文 week:2026-09-28' }]);
+            assert.ok(!reads.includes('diary:2026-10-02'), '遗忘的不读也不写');
+            assert.ok(!reads.includes('diary:2026-10-05'), '本地有原文不读');
+            assert.ok(!reads.includes('week:2026-09-21'), '0 字的周（没有日记）不写');
+            assert.equal(marked(), 1);
+            assert.ok(logs.some(line => line.includes('（3 篇共享，1 篇含高敏、只留本地）')), logs.join(' | '));
+            // 标记以后不再补写
+            await writer.catchUp(new Date('2026-10-06T13:00:00+08:00'));
+            assert.equal(retained.length, 3);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('任何一篇写失败就停、不标记，下一轮整轮重来', async () => {
+        const { dir, writer, retained, marked } = setup({ failOn: '2026-10-04' });
+        try {
+            await writer.catchUp(new Date('2026-10-06T12:00:00+08:00'));
+            assert.deepEqual(retained.map(item => item.date), ['2026-10-03']);
+            assert.equal(marked(), 0, '没写完不标记');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+});

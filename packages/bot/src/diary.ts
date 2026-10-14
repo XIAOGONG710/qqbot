@@ -183,6 +183,58 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         for (const date of Object.keys(state.texts)) if (date < keepFrom) delete state.texts[date];
         writeJsonAtomic(path, state);
     };
+    const dateOf = (text: string) => { const [y, m, d] = text.split('-').map(Number); return new Date(y!, m! - 1, d); };
+
+    /**
+     * 把 v2 标签以前写过的日记 / 周记 / 阶段总结按 v2 标签再写进公共库一遍（同一个 document_id，覆盖旧的）。
+     * 正文先用本地的，没有就按文档 id 从 Hindsight 读回来；高敏的只留本地（retain 返回 local-only）；
+     * 来源不明（旧的没记谁的聊天），标成不完整。任何一篇写失败就停，下次整轮再来（已经写好的覆盖同一个 id，不会重复）。
+     */
+    const reshareWritten = async (state: DiaryState): Promise<boolean> => {
+        const char = options.sources.charName;
+        const unknown = { contacts: [], parents: [], complete: false };
+        let shared = 0;
+        let localOnly = 0;
+        const count = (result: WrittenRetention) => { if (result === 'shared') shared++; else if (result === 'local-only') localOnly++; };
+        try {
+            for (const date of Object.keys(state.written).sort()) {
+                if (state.forgotten[date] || !state.written[date]) continue;
+                const text = state.texts[date] ?? await options.memory.readWritten(`diary:${date}`);
+                if (!text) continue;
+                const result = await options.memory.retainDiary(date, dateOf(date), text, char, unknown);
+                if (!result) return false;
+                count(result);
+            }
+            for (const [id, length] of Object.entries(state.weeks)) {
+                if (!length) continue;
+                const text = await options.memory.readWritten(`week:${id}`);
+                if (!text) continue;
+                const monday = dateOf(id);
+                const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+                const result = await options.memory.retainSummary(`week:${id}`, sunday, `${char}的周记（${md(monday)}–${md(sunday)}）`, text, char, 'week', unknown);
+                if (!result) return false;
+                count(result);
+            }
+            for (const [id, length] of Object.entries(state.phases)) {
+                if (!length) continue;
+                const holiday = options.sources.schedule.holidays.find(item => `${item.name}:${item.end}` === id);
+                if (!holiday) continue;
+                const text = await options.memory.readWritten(`phase:${id}`);
+                if (!text) continue;
+                const [start, end] = [dateOf(holiday.start), dateOf(holiday.end)];
+                const result = await options.memory.retainSummary(`phase:${id}`, end, `${char}的${holiday.name}总结（${md(start)}–${md(end)}）`, text, char, 'phase', unknown);
+                if (!result) return false;
+                count(result);
+            }
+        } catch (error) {
+            options.log(`她的日记：旧日记补写进公共记忆失败，下次再试：${error instanceof Error ? error.message : String(error)}`);
+            return false;
+        }
+        options.memory.markWrittenReshared();
+        options.log(`她的日记：旧日记、周记、阶段总结已按新标签补写进公共记忆（${shared} 篇共享，${localOnly} 篇含高敏、只留本地）`);
+        return true;
+    };
+
     const catchUp = async (now: Date) => {
         let state: DiaryState;
         try {
@@ -195,6 +247,8 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         }
         const { written } = state;
         const today = herDay(options.sources.schedule, now);
+        // 公共记忆换了 v2 标签以后，过去写的日记、周记、阶段总结要先补写一遍（过高敏过滤），不然她想不起过去那些天
+        if (options.memory.writtenNeedsReshare?.() && !(await reshareWritten(state))) return;
         for (let back = DIARY_BACKFILL_DAYS; back >= 1; back--) {
             const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() - back);
             const date = formatDate(day);

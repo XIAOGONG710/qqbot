@@ -249,6 +249,8 @@ interface ContactState {
 interface CommonState {
     bankId: string;
     bankConfigured?: string;
+    /** 日记 / 周记 / 阶段总结已按 v2 标签补写过（ADR 0070）；全新的公共库没有旧文档，建库时就是 2 */
+    writtenSafetyVersion?: 2;
 }
 
 /** 一次写入或召回的结果 */
@@ -446,12 +448,34 @@ export class LongTermMemory {
      * 读回以前写的日记正文（ADR 0018：写周记要用，本地以前没存原文）。没有这篇、没开公共库、接口没有这个方法都是 undefined；连不上抛错
      */
     async readDiary(date: string): Promise<string | undefined> {
+        return this.readWritten(`${DIARY_PREFIX}${date}`);
+    }
+
+    /** 读回她写的任何一篇（日记 diary:日期、周记 week:id、阶段总结 phase:id）的正文；按文档 id 取，和标签无关 */
+    async readWritten(documentId: string): Promise<string | undefined> {
         const get = this.#options.api.getDocument;
         if (!this.#options.common || !get) return undefined;
-        const document = await get.call(this.#options.api, this.commonBankId(), `${DIARY_PREFIX}${date}`, this.#options.recallTimeoutMs);
+        const document = await get.call(this.#options.api, this.commonBankId(), documentId, this.#options.recallTimeoutMs);
         const text = document?.original_text;
-        // 正文前面有一行「林梦瑶的日记（日期）」
+        // 正文前面有一行标题（「林梦瑶的日记（日期）」）
         return text ? text.slice(text.indexOf('\n') + 1).trim() || undefined : undefined;
+    }
+
+    /**
+     * 升级到 v2 标签以前写进公共库的日记、周记、阶段总结带的是旧标签，召回只查 v2，所以过去那些天她会「想不起来」。
+     * 这个标记说它们还没按 v2 补写过；diary.ts 补写完（经过高敏过滤）调用 markWrittenReshared。
+     */
+    writtenNeedsReshare(): boolean {
+        if (!this.#options.common) return false;
+        const stored = readJsonOr<Partial<CommonState>>(join(this.#options.dir, 'common.json'), {}, message => this.#options.log(message));
+        return stored.bankId === this.commonBankId() && Boolean(stored.bankConfigured) && stored.writtenSafetyVersion !== 2;
+    }
+
+    markWrittenReshared(): void {
+        const path = join(this.#options.dir, 'common.json');
+        const stored = readJsonOr<Partial<CommonState>>(path, {}, message => this.#options.log(message));
+        if (stored.bankId !== this.commonBankId()) return;
+        writeJsonAtomic(path, { ...stored, writtenSafetyVersion: 2 });
     }
 
     /** 公共库里「她眼中的他」：没有就建，设定变了（称呼改了）就改设定、刷新一次 */
@@ -474,7 +498,10 @@ export class LongTermMemory {
         const path = join(this.#options.dir, 'common.json');
         const bankId = this.commonBankId();
         const stored = readJsonOr<Partial<CommonState>>(path, {}, message => this.#options.log(message));
-        const state: CommonState = stored.bankId === bankId ? { bankId, ...(stored.bankConfigured ? { bankConfigured: stored.bankConfigured } : {}) } : { bankId };
+        // 全新的公共库没有旧标签的日记，直接记为已补写；已有的库保持原来的标记，没有就等 diary.ts 补写一遍
+        const state: CommonState = stored.bankId === bankId
+            ? { bankId, ...(stored.bankConfigured ? { bankConfigured: stored.bankConfigured } : {}), ...(stored.writtenSafetyVersion === 2 ? { writtenSafetyVersion: 2 as const } : {}) }
+            : { bankId, writtenSafetyVersion: 2 };
         const missions = commonBankMissions(char);
         const version = createHash('sha256').update(JSON.stringify(missions)).digest('hex').slice(0, 12);
         if (state.bankConfigured !== version) {

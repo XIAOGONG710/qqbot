@@ -4,7 +4,10 @@
 // 连接超时 3 秒（Node 自带 fetch 固定 10 秒，改不了，所以用 undici 包的 fetch）：10-04 在这台虚拟机上逐次新建连接，
 // 要么 10–40ms 连上，要么卡满 10 秒也连不上，没有慢慢连上的；线上 32 次生成有 11 次第一次连接卡满 10 秒，重试就好。
 
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Agent, fetch as undiciFetch } from 'undici';
+import { fallbackLookup } from './dns-fallback.ts';
 import { GuardRejected, ModelGuard, type ModelPurpose } from './model-guard.ts';
 import type { OpenAIMessage } from './prompt.ts';
 
@@ -51,7 +54,17 @@ export const CONNECT_TIMEOUT_MS = 3000;
 /** 连接失败后的等待时间；数组长度就是最多重试几次。连接全失败最多多等约 20 秒（5 次 × 3 秒 + 7 秒） */
 export const RETRY_DELAYS_MS = [1000, 1000, 2000, 3000];
 
-const dispatcher = new Agent({ connect: { timeout: CONNECT_TIMEOUT_MS } });
+/** 模型接口的域名：系统解析器断了的时候用上次解析到的地址（dns-fallback.ts）。QQBOT_DNS_FALLBACK_HOSTS 可追加（逗号分隔） */
+const DNS_FALLBACK_HOSTS = ['api.deepseek.com', ...(process.env.QQBOT_DNS_FALLBACK_HOSTS ?? '').split(',').map(host => host.trim()).filter(Boolean)];
+
+/** 聊天、看图共用：连接超时 3 秒 + DNS 兜底 */
+export const modelDispatcher = new Agent({
+    connect: {
+        timeout: CONNECT_TIMEOUT_MS,
+        lookup: fallbackLookup({ hosts: DNS_FALLBACK_HOSTS, file: process.env.QQBOT_DNS_CACHE ?? join(tmpdir(), 'qqbot-dns-cache.json'), log: message => console.log(`[${new Date().toLocaleString('zh-CN', { hour12: false })}] ${message}`) }),
+    },
+});
+const dispatcher = modelDispatcher;
 
 /** undici 的网络错误码（fetch 抛出的 TypeError 的 cause.code），出现时视为没连上，可以重试 */
 const RETRYABLE_CODES = new Set([
