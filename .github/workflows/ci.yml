@@ -16,6 +16,9 @@ jobs:
   test:
     runs-on: windows-latest
     timeout-minutes: 20
+    env:
+      # 作息/日记测试将本地日历与 +08:00 的消息时间对照；与线上一致，不依赖 runner 的 UTC 默认值。
+      TZ: Asia/Shanghai
     steps:
       - uses: actions/checkout@v4
         with:
