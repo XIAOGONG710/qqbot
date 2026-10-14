@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { chatCompletion, ModelUnreachable } from '../src/llm.ts';
+import { ModelGuard } from '../src/model-guard.ts';
 import { DEFAULT_VISION_PROMPT, deepSeekImageDescriber, STICKER_VISION_PROMPT, type VisionFetch } from '../src/vision.ts';
 
 const options = {
@@ -14,6 +16,63 @@ const pngUrl = `data:image/png;base64,${Buffer.from([137, 80, 78, 71, 13, 10, 26
 const okDownload = async () => pngUrl;
 
 describe('DeepSeek 看图（ADR 0055）', () => {
+    test('看图和文字共用日额度，后台达到限额不发请求，聊天保留额仍可用', async () => {
+        const guard = new ModelGuard({ dailyCalls: 2, hardMultiplier: 1.5 });
+        let calls = 0;
+        const fetch: VisionFetch = async () => { calls++; return { ok: true, status: 200, text: async () => '{"choices":[{"message":{"content":"好"}}]}' }; };
+        const textOptions = { ...options, temperature: 0, maxTokens: 30, extraBody: {} };
+        await chatCompletion(textOptions, [], { guard, fetch });
+        const vision = deepSeekImageDescriber({ ...options, purpose: 'background' }, fetch, okDownload, guard);
+        assert.equal(await vision.describe({ url: 'https://x/a.jpg' }), '好');
+        await assert.rejects(vision.describe({ url: 'https://x/a.jpg' }), error => error instanceof ModelUnreachable && /额度/.test(error.message));
+        assert.equal(calls, 2, '被预算拒绝时不发出新的视觉请求');
+        assert.equal(await chatCompletion(textOptions, [], { guard, fetch }), '好');
+        assert.equal(guard.status().callsToday, 3);
+    });
+
+    test('空正文重试另计预算；下载失败不计预算', async () => {
+        const guard = new ModelGuard({ dailyCalls: 1 });
+        let calls = 0;
+        const fetch: VisionFetch = async () => { calls++; return { ok: true, status: 200, text: async () => '{"choices":[]}' }; };
+        const badDownload = async () => { throw new Error('download blocked'); };
+        await assert.rejects(deepSeekImageDescriber(options, fetch, badDownload, guard).describe({ url: 'https://x/a.jpg' }), /download blocked/);
+        assert.equal(guard.status().callsToday, 0);
+        await assert.rejects(deepSeekImageDescriber({ ...options, purpose: 'background' }, fetch, okDownload, guard).describe({ url: 'https://x/a.jpg' }), /额度/);
+        assert.equal(calls, 1);
+    });
+
+    test('视觉 503 参与共享熔断，400 不熔断；错误正文不外泄', async () => {
+        const guard = new ModelGuard({ breakerFailures: 1 });
+        let status = 400;
+        let calls = 0;
+        const fetch: VisionFetch = async () => { calls++; return { ok: false, status, text: async () => 'SECRET_IMAGE_INPUT' }; };
+        const vision = deepSeekImageDescriber({ ...options, purpose: 'background' }, fetch, okDownload, guard);
+        await assert.rejects(vision.describe({ url: 'https://x/a.jpg' }), /返回 400/);
+        assert.equal(guard.status().breakerOpen, false);
+        status = 503;
+        await assert.rejects(vision.describe({ url: 'https://x/a.jpg' }), error => error instanceof ModelUnreachable && !error.message.includes('SECRET'));
+        assert.equal(guard.status().breakerOpen, true);
+        await assert.rejects(vision.describe({ url: 'https://x/a.jpg' }), /暂停后台/);
+        assert.equal(calls, 2);
+    });
+
+    test('看图排队时取消不发幽灵请求，也不保留总闸队列占位', async () => {
+        const guard = new ModelGuard({ concurrent: 1, backgroundConcurrent: 1 });
+        let release!: () => void;
+        const hold = guard.run('chat', () => new Promise<void>(resolve => { release = resolve; }));
+        const controller = new AbortController();
+        const fetch: VisionFetch = async () => assert.fail('取消后不能发出请求');
+        const vision = deepSeekImageDescriber(options, fetch, okDownload, guard);
+        const pending = vision.describe({ url: 'https://x/a.jpg', signal: controller.signal });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(guard.status().waiting, 1);
+        controller.abort(new Error('cancelled vision'));
+        await assert.rejects(pending, /cancelled vision/);
+        assert.equal(guard.status().waiting, 0);
+        release(); await hold;
+        assert.equal(guard.status().active, 0);
+    });
+
     test('表情包用自己的要求（先抄图上的字），聊天里的图仍用默认要求', async () => {
         const prompts: string[] = [];
         const fetch: VisionFetch = async (_url, init) => {
@@ -46,9 +105,19 @@ describe('DeepSeek 看图（ADR 0055）', () => {
 
     test('HTTP 错误和没有正文都失败，让 media.ts 退回只有「[图片]」', async () => {
         const failed: VisionFetch = async () => ({ ok: false, status: 400, text: async () => 'bad image' });
-        await assert.rejects(() => deepSeekImageDescriber(options, failed, okDownload).describe({ url: 'https://x/a.jpg' }), /返回 400：bad image/);
+        await assert.rejects(() => deepSeekImageDescriber(options, failed, okDownload).describe({ url: 'https://x/a.jpg' }), error => {
+            assert.match(String(error), /返回 400/);
+            assert.doesNotMatch(String(error), /bad image/);
+            return true;
+        });
         const empty: VisionFetch = async () => ({ ok: true, status: 200, text: async () => '{"choices":[{"message":{"content":""}}]}' });
         await assert.rejects(() => deepSeekImageDescriber(options, empty, okDownload).describe({ url: 'https://x/a.jpg' }), /没有文本/);
+        const malformed: VisionFetch = async () => ({ ok: true, status: 200, text: async () => 'SECRET_IMAGE_INPUT' });
+        await assert.rejects(() => deepSeekImageDescriber(options, malformed, okDownload).describe({ url: 'https://x/a.jpg' }), error => {
+            assert.match(String(error), /无效 JSON/);
+            assert.doesNotMatch(String(error), /SECRET/);
+            return true;
+        });
     });
 
     test('200 但正文空（DSH 10-10：低频）：同一张图再问一次；还空才失败；HTTP 错误不重问', async () => {

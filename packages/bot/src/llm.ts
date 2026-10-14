@@ -79,15 +79,18 @@ const defaultDeps: LlmDeps = {
 };
 
 let sharedGuard: ModelGuard | undefined;
+let sharedGuardLog: ((message: string) => void) | undefined;
 
 /** 进程里共用的总闸（ADR 0070 第 7 项）；环境变量 QQBOT_MODEL_DAILY_CALLS / QQBOT_MODEL_CONCURRENT 可调，默认值远高于实际用量 */
-export function modelGuard(log: (message: string) => void = () => {}): ModelGuard {
+export function modelGuard(log?: (message: string) => void): ModelGuard {
+    // 看图可能早于第一条文字回复创建总闸；后来的日志回调仍应接入。
+    if (log) sharedGuardLog = log;
     if (!sharedGuard) {
         const positive = (text: string | undefined) => (Number.isFinite(Number(text)) && Number(text) >= 1 ? Math.floor(Number(text)) : undefined);
         const dailyCalls = positive(process.env.QQBOT_MODEL_DAILY_CALLS);
         const concurrent = positive(process.env.QQBOT_MODEL_CONCURRENT);
         sharedGuard = new ModelGuard({
-            log,
+            log: message => sharedGuardLog?.(message),
             ...(dailyCalls ? { dailyCalls } : {}),
             ...(concurrent ? { concurrent, backgroundConcurrent: Math.max(1, Math.floor(concurrent / 2)) } : {}),
         });

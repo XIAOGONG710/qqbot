@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { CONTACT_TIERS, UNLISTED_TIER, type Tier } from './config.ts';
 import type { ChatHistory } from './history.ts';
 import { writeJsonAtomic } from './json-file.ts';
+import { stateObject, stateTimestamp } from './state-schema.ts';
 
 const ORDER: readonly string[] = [...CONTACT_TIERS, UNLISTED_TIER];
 
@@ -16,6 +17,13 @@ interface Entry {
     tier: string;
     /** 换到这一档的时间（ISO）；第一次记下的联系人没有 */
     since?: string;
+}
+
+function validTierState(value: unknown): value is Record<string, string | Entry> {
+    return stateObject(value) && Object.entries(value).every(([qq, entry]) => /^[1-9]\d*$/.test(qq) && Number.isSafeInteger(Number(qq))
+        && (typeof entry === 'string' ? ORDER.includes(entry)
+            : stateObject(entry) && typeof entry.tier === 'string' && ORDER.includes(entry.tier)
+                && (entry.since === undefined || stateTimestamp(entry.since))));
 }
 
 export class TierRecord {
@@ -26,7 +34,11 @@ export class TierRecord {
         this.#path = path;
         let data: Record<string, string | Entry> = {};
         try {
-            if (existsSync(path)) data = JSON.parse(readFileSync(path, 'utf8')) as Record<string, string | Entry>;
+            if (existsSync(path)) {
+                const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+                if (!validTierState(parsed)) throw new Error('档位状态内容不符合 schema');
+                data = parsed;
+            }
         } catch (error) {
             throw new Error(`${path} 读不了（${error instanceof Error ? error.message : String(error)}）：它记着每个联系人换档的时间，` +
                 '当成空的会让换档前的消息重新进提示词和记忆，所以不启动；修好或删掉它（删掉 = 都当没换过档）再启动');
@@ -37,6 +49,7 @@ export class TierRecord {
 
     /** 记下这次的档位；和上次不同时返回提示文字 */
     update(qq: number, tier: Tier, now: Date = new Date()): string | undefined {
+        if (!Number.isSafeInteger(qq) || qq <= 0 || !ORDER.includes(tier) || !Number.isFinite(now.getTime())) throw new Error('拒绝写入不符合 schema 的档位记录');
         const previous = this.#tiers[String(qq)]?.tier;
         if (previous === tier) return undefined;
         this.#tiers[String(qq)] = previous === undefined ? { tier } : { tier, since: now.toISOString() };

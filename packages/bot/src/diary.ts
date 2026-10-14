@@ -9,7 +9,8 @@ import { join } from 'node:path';
 import type { Contact } from './config.ts';
 import { bookProgressOn, moodAt, readingActivities, type DailyMood, type ReadingBook } from './her-days.ts';
 import type { StoredMessage } from './history.ts';
-import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { writeJsonAtomic } from './json-file.ts';
+import { readDiaryState, type DiaryState } from './diary-state.ts';
 import type { LongTermMemory, WrittenRetention } from './memory/long-term.ts';
 import { knowsPeople } from './people.ts';
 import type { OpenAIMessage } from './prompt.ts';
@@ -171,15 +172,6 @@ export interface DiaryWriterOptions {
 }
 
 /** diary.json：写过的日记（日期 → 字数）、日记原文、写过的周记和阶段总结（id → 字数，0 是没有日记、不写） */
-interface DiaryState {
-    written: Record<string, number>;
-    texts: Record<string, string>;
-    weeks: Record<string, number>;
-    phases: Record<string, number>;
-    /** 人工遗忘的日期不再从远端读回或重新成为总结材料。 */
-    forgotten: Record<string, boolean>;
-}
-
 /**
  * 补写还没写的日记：她这一天之前的 DIARY_BACKFILL_DAYS 天，一天一篇，按日期从早到晚；之后补周记、阶段总结（ADR 0018）。同一时间只跑一次
  */
@@ -192,8 +184,15 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         writeJsonAtomic(path, state);
     };
     const catchUp = async (now: Date) => {
-        const stored = readJsonOr<Partial<DiaryState>>(path, {}, options.log);
-        const state: DiaryState = { written: stored.written ?? {}, texts: stored.texts ?? {}, weeks: stored.weeks ?? {}, phases: stored.phases ?? {}, forgotten: stored.forgotten ?? {} };
+        let state: DiaryState;
+        try {
+            state = readDiaryState(path, options.log);
+        } catch {
+            // 定时入口不等待这个 Promise；坏状态只暂停日记，不能产生未处理拒绝拖垮聊天。
+            // 不记录解析错误正文，避免坏 JSON 中的日记内容进入日志。
+            options.log('她的日记：状态读取或校验失败，本轮停止，原文件未重建；请修复 diary.json 后再试');
+            return;
+        }
         const { written } = state;
         const today = herDay(options.sources.schedule, now);
         for (let back = DIARY_BACKFILL_DAYS; back >= 1; back--) {

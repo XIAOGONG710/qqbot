@@ -15,6 +15,29 @@ const sources: DiarySources = { charName: card.name, schedule: card.schedule!, m
 const at = (iso: string, role: 'user' | 'assistant', content: string): StoredMessage => ({ time: new Date(iso).toISOString(), role, content });
 
 describe('她的日记（ADR 0017）', () => {
+    test('遗忘状态损坏只暂停日记，不产生未处理拒绝、不重建文件或调用外部服务', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-invalid-'));
+        const path = join(dir, 'diary.json');
+        const original = JSON.stringify({ texts: { '2026-10-06': '不能写进错误日志的正文' }, forgotten: { '2026-10-06': 'true' } });
+        writeFileSync(path, original);
+        const logs: string[] = [];
+        let calls = 0;
+        const unexpected = async () => { calls++; throw new Error('不应调用'); };
+        const writer = diaryWriter({
+            sources, dir, log: message => logs.push(message), contacts: [],
+            history: { load: () => { calls++; return []; } }, generate: unexpected,
+            memory: { retainDiary: unexpected, retainSummary: unexpected, readDiary: unexpected } as unknown as LongTermMemory,
+        });
+        try {
+            await writer.catchUp(new Date('2026-10-08T12:00:00+08:00'));
+            await writer.catchUp(new Date('2026-10-08T12:00:00+08:00'));
+            assert.equal(calls, 0);
+            assert.equal(readFileSync(path, 'utf8'), original);
+            assert.equal(logs.length, 2);
+            assert.ok(logs.every(line => line.includes('本轮停止') && !line.includes('不能写进错误日志的正文')));
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
     test('来源取实际材料的联系人，汇总带父日记 id；遗忘日期不再读回或参与生成', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-origin-'));
         writeFileSync(join(dir, 'diary.json'), JSON.stringify({ written: { '2026-10-06': 5 }, forgotten: { '2026-10-06': true } }));

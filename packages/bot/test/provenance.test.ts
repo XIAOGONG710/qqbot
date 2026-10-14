@@ -104,3 +104,17 @@ test('远端仍有排队写入时，执行前拒绝，不移动本地或发送�
     await assert.rejects(forgetContact(dir, 10001, { apply: true, includeDerived: true, trashDir: join(base, 'trash'), commonBank: 'c', api }), /后台操作/);
     assert.equal(readFileSync(join(dir, 'chats', '10001.jsonl'), 'utf8'), 'fictional');
 });
+
+test('本地遗忘标记损坏时，远端删除前即拒绝，保留原状态', async () => {
+    const { base, dir, memory } = fixture();
+    recordProvenance(memory, entry('diary:2026-10-13'));
+    const damaged = JSON.stringify({ version: 1, forgotten: { '2026-10-13': 'true' } });
+    writeFileSync(join(memory, 'diary.json'), damaged);
+    const api: ForgetApi = {
+        deleteBank: async () => assert.fail('不能删除'),
+        deleteDocument: async () => assert.fail('不能删除'),
+        deleteMentalModel: async () => assert.fail('不能删除'),
+    };
+    await assert.rejects(forgetContact(dir, 10001, { apply: true, includeDerived: true, trashDir: join(base, 'trash'), commonBank: 'c', api }), /日记与遗忘状态.*拒绝启动/);
+    assert.equal(readFileSync(join(memory, 'diary.json'), 'utf8'), damaged);
+});

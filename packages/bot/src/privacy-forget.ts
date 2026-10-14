@@ -10,6 +10,7 @@ import { isProcessAlive } from './lock.ts';
 import { HindsightClient, HindsightError } from './memory/hindsight.ts';
 import { auditContactPrivacy, type PrivacyAudit } from './privacy-audit.ts';
 import { writeJsonAtomic } from './json-file.ts';
+import { readDiaryState } from './diary-state.ts';
 import type { ProvenanceEntry } from './memory/provenance.ts';
 
 /** Hindsight 里要删的东西的最小接口（测试给假的） */
@@ -69,16 +70,14 @@ function archiveDerivedDiary(root: string, trash: string, derived: readonly Prov
     const dates = [...new Set(derived.filter(e => e.kind === 'diary' && /^diary:\d{4}-\d{2}-\d{2}$/.test(e.documentId)).map(e => e.documentId.slice(6)))];
     const path = join(root, 'memory', 'diary.json');
     if (!dates.length || !existsSync(path)) return [];
-    const state = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
-    const object = (v: unknown): v is Record<string, unknown> => Boolean(v && typeof v === 'object' && !Array.isArray(v));
-    if (!object(state) || (state.texts !== undefined && !object(state.texts)) || (state.forgotten !== undefined && !object(state.forgotten))) throw new Error('日记缓存 schema 无效，拒绝修改');
-    const texts = (state.texts ?? {}) as Record<string, unknown>;
+    const state = readDiaryState(path);
+    const texts = state.texts;
     const selected = Object.fromEntries(dates.filter(d => typeof texts[d] === 'string').map(d => [d, texts[d]]));
     // 先回收命中的原文，绝不导出联合文件里无关的其他日期。
     writeJsonAtomic(join(trash, 'derived-diary.json'), { version: 1, texts: selected });
     for (const date of dates) delete texts[date];
     state.texts = texts;
-    state.forgotten = { ...(state.forgotten as Record<string, unknown> ?? {}), ...Object.fromEntries(dates.map(d => [d, true])) };
+    state.forgotten = { ...state.forgotten, ...Object.fromEntries(dates.map(d => [d, true])) };
     writeJsonAtomic(path, state);
     return dates;
 }
@@ -104,6 +103,11 @@ export async function forgetContact(
     if (running !== undefined) throw new Error(`bot 还在运行（PID ${running}）：先停掉再清理，否则它会把数据重新写回去`);
     if (plan.derived.length && !options.includeDerived) throw new Error('存在关联的联合日记/总结；先审查 derived 清单，明确同意整篇处理后加 --include-derived');
     if (plan.derived.some(e => e.retention !== 'local-only') && !options.api) throw new Error('关联派生内容可能已写入 Hindsight；必须提供 --hindsight 才能处理，不能只清掉本地原文');
+    const diaryPath = join(root, 'memory', 'diary.json');
+    if (options.includeDerived && plan.derived.some(e => e.kind === 'diary') && existsSync(diaryPath)) {
+        // 先验证本地遗忘状态，不能先删远端再发现本地关键标记已经损坏。
+        readDiaryState(diaryPath);
+    }
     if (options.api?.activeOperations) {
         const banks = new Set([
             ...plan.hindsight.banks,
