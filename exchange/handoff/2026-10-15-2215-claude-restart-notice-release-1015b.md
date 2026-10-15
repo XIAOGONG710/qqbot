@@ -6,3 +6,12 @@
 - 验证（候选 `aa3e07c`）：类型检查通过；`TZ=Asia/Shanghai` 下 bot 948/948、角色工具 43/43、插件 29/29；线上数据副本 `state-check` 16 项通过；按计划写的配置过插件 schema 和 `parseAppConfig` 都通过。
 - 不在这次里：`golive-guard`（会挡自己这次）、B、C、D、日报、开机拉起。
 - 回滚（不破坏）：把 `grievance`、`feedbackCommands` 改回 false，重启一次。回滚到代码 `9333bdd` 是 `git reset --hard`，要先问用户。
+
+## 结果（23:45 补；上面写的「22:15 前后」不准，实际时间线如下）
+
+- 22:02 建维护旗、停 Koishi；备份 `runtime\backup-pre-1015b-20261015-2202`（11.5 MB，含 `koishi.yml.before-1015b`）；`koishi.yml` 加三行；线上目录 `merge --ff-only aa3e07c`。
+- **起 Koishi 那一步被权限检查拦下（「生产部署」）**，我没有绕，停下来问用户；用户的会话放行后 **23:31:45 才起跑，停机共 1 小时 29 分**（计划是几分钟）。期间睡前消息（23:15）错过，不补；下一条 明天 09:41 早安。
+- 起跑后：「NapCat 账号 2561299676 已就绪」、「反馈通道：开（鸽鸽、宝宝对她的话回「假」/「像」…）」、23:31 之后 0 个错误行、`heartbeat.json` 每分钟更新（`ref` = `aa3e07c`，`connectedAt` 有值）、`state-check` 16 项通过、心跳守望 `--once` = ok、维护旗已撤。
+- 已推送：`main` = `integration` = `aa3e07c`；`claude/release-1015b`、`claude/d2-grievance`、`claude/feedback-channel`（24d48d4）、`claude/golive-guard`、`claude/adr-0071-0072`。
+- 观察窗口：10-15 23:31 → 10-17 23:31，不开新开关、不重启。D2 和反馈这次是一起开的（用户的明确指示），两者日志标签独立，出问题可单独改回 false。
+- 其他窗口：不要碰线上目录，不要同时起服务。
