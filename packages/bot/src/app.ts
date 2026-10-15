@@ -25,6 +25,7 @@ import { createContactResponder as createPipeline, loadTierCard, replySkip, type
 import { currentTierHistory, TierRecord } from './tier-record.ts';
 import { HindsightClient } from './memory/hindsight.ts';
 import { arrivedWhileAsleep } from './reply-timing.ts';
+import { startHeartbeat } from './heartbeat.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { newsKindsOf, type ProactiveMode } from './proactive.ts';
@@ -294,6 +295,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const chatHistory = new ChatHistory(config.dataDir, log);
     // 放在 ChatHistory 之后：它会建好数据目录
     const releaseLock = acquireLock(join(config.dataDir, 'bot.lock'));
+    // 心跳（任务书 T3b）：每分钟写 heartbeat.json（只有时间和进程号），ops/heartbeat-watch-cli.ts 看它多久没更新
+    let connectedAt: Date | undefined;
+    let lastMessageAt: Date | undefined;
+    const heartbeat = startHeartbeat({ dataDir: config.dataDir, log, state: () => ({ connectedAt, lastMessageAt }) });
 
     const tierRecord = new TierRecord(join(config.dataDir, 'tiers.json'));
     for (const contact of config.contacts) {
@@ -661,6 +666,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     return {
         async connected(selfId) {
             if (stopped) return;
+            connectedAt = new Date();
             syncing = true;
             try {
                 await syncMissed(selfId);
@@ -683,12 +689,14 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         },
         receive(event) {
             if (stopped) return;
+            lastMessageAt = new Date();
             if (syncing) buffered.push(event);
             else onMessage(event);
         },
         stop() {
             if (stopped) return;
             stopped = true;
+            heartbeat.stop();
             reading?.stop();
             if (readingUnlisted !== reading) readingUnlisted?.stop();
             for (const planner of planners.values()) planner.stop();

@@ -688,3 +688,20 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
         }
     });
 });
+
+describe('心跳（任务书 T3b）', () => {
+    test('启动就写 heartbeat.json：只有时间、进程号、提交、启动时间，没有聊天内容；停下后文件留着', async () => {
+        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        const { app, sent } = setup(cfg);
+        const path = join(cfg.dataDir, 'heartbeat.json');
+        assert.equal(existsSync(path), true);
+        const beat = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+        assert.equal(beat.pid, process.pid);
+        assert.deepEqual(Object.keys(beat).sort(), ['at', 'pid', 'ref', 'startedAt']);
+        app.receive(event(10001, 1, '今天我偷偷告诉你一个秘密'));
+        await until(() => sent.length === 1);
+        app.stop();
+        assert.equal(existsSync(path), true, '停下后旧心跳留着');
+        assert.doesNotMatch(readFileSync(path, 'utf8'), /秘密/);
+    });
+});

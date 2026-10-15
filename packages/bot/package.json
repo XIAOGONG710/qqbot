@@ -7,6 +7,7 @@
     "sim": "node src/sim/run.ts",
     "privacy-audit": "node src/privacy-audit.ts",
     "privacy-forget": "node src/privacy-forget.ts",
+    "heartbeat-watch": "node src/ops/heartbeat-watch-cli.ts",
     "blind": "node src/sim/blind.ts",
     "typecheck": "tsc -p .",
     "audit:gate": "node src/ops/audit-gate-cli.ts",
