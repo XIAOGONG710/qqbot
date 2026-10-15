@@ -255,6 +255,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...people.map((person, i) => (remembers
                     ? memory.recall(person, chat, time, {
                         ...recallOptions, ...fade(i + 2), limit: PERSON_RECALLED,
+                        crossContact: true,
                         header: `[关于${person.name}的旧事（${sourceLabel(person, contact)}；从记忆里想起来的，只作参考）]`,
                     })
                     : undefined)),

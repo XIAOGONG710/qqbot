@@ -65,7 +65,7 @@ describe('联系人数据导出与遗忘（ADR 0070 第 9 项）', () => {
         assert.ok(existsSync(join(result.trash!, 'forget-report.json')));
         assert.ok(existsSync(join(dir, 'chats', '10002.jsonl')), '别人的不动');
         assert.ok(existsSync(join(dir, 'logs', '2026-10-13.log')), '混合日志不碰');
-        assert.deepEqual(calls.map(call => call.split(':')[0]), ['doc', 'model', 'bank']);
+        assert.deepEqual(calls.map(call => call.split(':')[0]), ['doc', 'model', 'model', 'bank']);
         assert.deepEqual(result.failures, []);
         assert.equal(result.deleted.banks[0], 'demo-private');
     });

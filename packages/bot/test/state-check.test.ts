@@ -16,17 +16,20 @@ function fixture() {
 }
 
 describe('状态文件兼容检查（ADR 0070 第 13 项）', () => {
-    test('主动消息文件检查实际 schema；其他状态标出只做了语法检查', () => {
+    test('联系人和公共记忆检查实际 schema，不把合法 JSON 的坏字段算通过；其他状态标出语法检查限制', () => {
         const dir = fixture();
-        mkdirSync(join(dir, 'proactive'));
         mkdirSync(join(dir, 'weather'));
-        const bad = JSON.stringify({ version: 99 });
-        writeFileSync(join(dir, 'proactive', '10001-boyfriend.json'), bad);
+        const bad = JSON.stringify({ bankId: 'test-bank', retained: [] });
+        const common = JSON.stringify({ bankId: 'test-common', writtenSafetyVersion: '2' });
+        writeFileSync(join(dir, 'memory', '10001-boyfriend.json'), bad);
+        writeFileSync(join(dir, 'memory', 'common.json'), common);
         writeFileSync(join(dir, 'weather', 'test.json'), '{}');
         const checks = checkStates(dir);
-        assert.equal(checks.find(c => c.name === 'proactive/10001-boyfriend.json')!.ok, false);
+        assert.equal(checks.find(c => c.name === 'memory/10001-boyfriend.json')!.ok, false);
+        assert.equal(checks.find(c => c.name === 'memory/common.json')!.ok, false);
         assert.match(checks.find(c => c.name === 'weather/test.json')!.detail, /仅 JSON 语法/);
-        assert.equal(readFileSync(join(dir, 'proactive', '10001-boyfriend.json'), 'utf8'), bad, '原目录不动');
+        assert.equal(readFileSync(join(dir, 'memory', '10001-boyfriend.json'), 'utf8'), bad);
+        assert.equal(readFileSync(join(dir, 'memory', 'common.json'), 'utf8'), common);
     });
 
     test('承诺文件检查实际 schema：坏的报「会拒绝启动」，原文件不动', () => {

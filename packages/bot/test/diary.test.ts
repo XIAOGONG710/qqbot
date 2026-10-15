@@ -7,6 +7,7 @@ import type { Contact } from '../src/config.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_CHAT_CHARS, diaryMaterial, diaryMessages, diaryWriter, type DiarySources } from '../src/diary.ts';
 import type { StoredMessage } from '../src/history.ts';
 import type { LongTermMemory } from '../src/memory/long-term.ts';
+import type { WrittenSources } from '../src/memory/provenance.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
@@ -23,6 +24,65 @@ describe('她的日记（ADR 0017）', () => {
             await writer.catchUp(new Date('2026-10-08T12:00:00+08:00'));
             assert.ok(logs.some(line => line.includes('未知计划当成空白')));
             assert.ok(logs.every(line => !line.includes('PRIVATE_PLAN_STATE')));
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
+    test('公共迁移状态读取失败只暂停本轮，不生成新日记或产生未处理拒绝', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-common-invalid-'));
+        const logs: string[] = [];
+        const memory = { writtenNeedsReshare: () => { throw new Error('PRIVATE_BAD_STATE'); } } as unknown as LongTermMemory;
+        const writer = diaryWriter({ sources, dir, contacts: [], memory, log: line => logs.push(line),
+            history: { load: () => assert.fail('不应读聊天') }, generate: async () => assert.fail('不应生成') });
+        try {
+            await writer.catchUp(new Date('2026-10-08T12:00:00+08:00'));
+            assert.ok(logs.some(line => line.includes('公共记忆迁移状态读取失败')));
+            assert.ok(logs.every(line => !line.includes('PRIVATE_BAD_STATE')));
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
+    test('遗忘状态损坏只暂停日记，不产生未处理拒绝、不重建文件或调用外部服务', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-invalid-'));
+        const path = join(dir, 'diary.json');
+        const original = JSON.stringify({ texts: { '2026-10-06': '不能写进错误日志的正文' }, forgotten: { '2026-10-06': 'true' } });
+        writeFileSync(path, original);
+        const logs: string[] = [];
+        let calls = 0;
+        const unexpected = async () => { calls++; throw new Error('不应调用'); };
+        const writer = diaryWriter({
+            sources, dir, log: message => logs.push(message), contacts: [],
+            history: { load: () => { calls++; return []; } }, generate: unexpected,
+            memory: { retainDiary: unexpected, retainSummary: unexpected, readDiary: unexpected } as unknown as LongTermMemory,
+        });
+        try {
+            await writer.catchUp(new Date('2026-10-08T12:00:00+08:00'));
+            await writer.catchUp(new Date('2026-10-08T12:00:00+08:00'));
+            assert.equal(calls, 0);
+            assert.equal(readFileSync(path, 'utf8'), original);
+            assert.equal(logs.length, 2);
+            assert.ok(logs.every(line => line.includes('本轮停止') && !line.includes('不能写进错误日志的正文')));
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
+    test('来源取实际材料的联系人，汇总带父日记 id；遗忘日期不再读回或参与生成', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-origin-'));
+        writeFileSync(join(dir, 'diary.json'), JSON.stringify({ written: { '2026-10-06': 5 }, forgotten: { '2026-10-06': true } }));
+        const origins: { id: string; sources: WrittenSources }[] = [];
+        const memory = {
+            retainDiary: async (date: string, _day: Date, _text: string, _char: string, source: WrittenSources) => { origins.push({ id: `diary:${date}`, sources: source }); return 'shared'; },
+            retainSummary: async (id: string, _day: Date, _title: string, _text: string, _char: string, _kind: string, source: WrittenSources) => { origins.push({ id, sources: source }); return 'shared'; },
+            readDiary: async (date: string) => { assert.notEqual(date, '2026-10-06'); return undefined; },
+        } as unknown as LongTermMemory;
+        const writer = diaryWriter({
+            sources, dir, memory, log: () => {}, generate: async () => '今天读了书',
+            contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }, { qq: 10002, name: '路人', tier: 'stranger' }],
+            history: { load: () => [at('2026-10-07T20:00:00+08:00', 'user', '今天聊天')] },
+        });
+        try {
+            await writer.catchUp(new Date('2026-10-08T12:00:00+08:00'));
+            assert.equal(origins.some(e => e.id === 'diary:2026-10-06'), false);
+            assert.deepEqual(origins.find(e => e.id === 'diary:2026-10-07')!.sources.contacts, [10001]);
+            assert.ok(origins.filter(e => e.id.startsWith('phase:')).every(e => !e.sources.parents.includes('diary:2026-10-06')));
+            assert.equal(JSON.parse(readFileSync(join(dir, 'diary.json'), 'utf8')).forgotten['2026-10-06'], true);
         } finally { rmSync(dir, { recursive: true, force: true }); }
     });
 
@@ -213,5 +273,128 @@ describe('她的日记（ADR 0017）', () => {
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
+    });
+});
+
+describe('旧日记补写进 v2 标签（ADR 0070 第 2 项的迁移）', () => {
+    const setup = (opts: { failOn?: string; missingOn?: string; markFails?: boolean } = {}) => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-reshare-'));
+        // 以前写过：10-03 的日记（本地没存原文）、10-05 的日记（本地有原文）、10-04 的日记含高敏、一周周记；10-02 被她要求遗忘
+        writeFileSync(join(dir, 'diary.json'), JSON.stringify({
+            version: 1,
+            written: { '2026-10-02': 3, '2026-10-03': 3, '2026-10-04': 3, '2026-10-05': 3 },
+            texts: { '2026-10-05': '本地有的第五天' },
+            weeks: { '2026-09-21': 5, '2026-09-14': 0 },
+            phases: {},
+            forgotten: { '2026-10-02': true },
+        }));
+        const retained: { date: string; text: string }[] = [];
+        const summaries: { id: string; text: string }[] = [];
+        const reads: string[] = [];
+        let marked = 0;
+        const memory = {
+            writtenNeedsReshare: () => marked === 0,
+            markWrittenReshared: () => { if (opts.markFails) throw new Error('disk write failed'); marked++; },
+            readWritten: async (id: string) => { reads.push(id); return id === opts.missingOn ? undefined : `旧正文 ${id}`; },
+            retainDiary: async (date: string, _day: Date, text: string, _char: string, sources: WrittenSources) => {
+                assert.deepEqual(sources, { contacts: [], parents: [], complete: false }, '旧日记不知道是谁的聊天，标成来源不完整');
+                if (opts.failOn === date) return false;
+                retained.push({ date, text });
+                return date === '2026-10-04' ? 'local-only' : 'shared';
+            },
+            retainSummary: async (id: string, _day: Date, _title: string, text: string) => { summaries.push({ id, text }); return 'shared'; },
+        } as unknown as LongTermMemory;
+        const logs: string[] = [];
+        const writer = diaryWriter({
+            sources, contacts: [], memory, dir, log: message => logs.push(message), history: { load: () => [] },
+            generate: async () => { throw new Error('补写旧日记时不该生成新日记'); },
+        });
+        return { dir, writer, retained, summaries, reads, logs, marked: () => marked };
+    };
+
+    test('每篇旧日记和周记按同一个 id 重新写一遍：本地有原文用本地的，没有的按 id 读回；遗忘的和 0 字的不写；写完标记一次', async () => {
+        const { dir, writer, retained, summaries, reads, logs, marked } = setup();
+        try {
+            await writer.catchUp(new Date('2026-10-06T12:00:00+08:00'));
+            assert.deepEqual(retained, [
+                { date: '2026-10-03', text: '旧正文 diary:2026-10-03' },
+                { date: '2026-10-04', text: '旧正文 diary:2026-10-04' },
+                { date: '2026-10-05', text: '本地有的第五天' },
+            ]);
+            assert.deepEqual(summaries, [{ id: 'week:2026-09-21', text: '旧正文 week:2026-09-21' }]);
+            assert.ok(!reads.includes('diary:2026-10-02'), '遗忘的不读也不写');
+            assert.ok(!reads.includes('diary:2026-10-05'), '本地有原文不读');
+            assert.ok(!reads.includes('week:2026-09-14'), '0 字的周（没有日记）不写');
+            assert.equal(marked(), 1);
+            assert.ok(logs.some(line => line.includes('（3 篇共享，1 篇含高敏、只留本地）')), logs.join(' | '));
+            // 标记以后不再补写
+            await writer.catchUp(new Date('2026-10-06T13:00:00+08:00'));
+            assert.equal(retained.length, 3);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('任何一篇写失败就停、不标记，下一轮整轮重来', async () => {
+        const { dir, writer, retained, marked } = setup({ failOn: '2026-10-04' });
+        try {
+            await writer.catchUp(new Date('2026-10-06T12:00:00+08:00'));
+            assert.deepEqual(retained.map(item => item.date), ['2026-10-03']);
+            assert.equal(marked(), 0, '没写完不标记');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('日记、周记或阶段总结暂无正文时不标迁移完成；下次读到后可补写', async () => {
+        for (const missingOn of ['diary:2026-10-03', 'week:2026-09-21', 'phase:国庆节:2026-10-07']) {
+            const opts: { missingOn?: string } = { missingOn };
+            const { dir, writer, marked, logs } = setup(opts);
+            const path = join(dir, 'diary.json');
+            const state = JSON.parse(readFileSync(path, 'utf8'));
+            if (missingOn.startsWith('phase:')) {
+                state.phases['国庆节:2026-10-07'] = 5;
+                state.forgotten = {};
+                writeFileSync(path, JSON.stringify(state));
+            }
+            try {
+                await writer.catchUp(new Date('2026-10-06T12:00:00+08:00'));
+                assert.equal(marked(), 0);
+                assert.ok(logs.some(line => line.includes('暂无可用正文')));
+                opts.missingOn = undefined;
+                await writer.catchUp(new Date('2026-10-06T13:00:00+08:00'));
+                assert.equal(marked(), 1);
+            } finally { rmSync(dir, { recursive: true, force: true }); }
+        }
+    });
+
+    test('旧周记和阶段总结涉及遗忘日期时整篇不读不重放，无关周记保留', async () => {
+        const { dir, writer, marked, reads, summaries, logs } = setup();
+        const path = join(dir, 'diary.json');
+        const state = JSON.parse(readFileSync(path, 'utf8'));
+        state.weeks['2026-09-28'] = 5;
+        state.phases['国庆节:2026-10-07'] = 5;
+        writeFileSync(path, JSON.stringify(state));
+        try {
+            await writer.catchUp(new Date('2026-10-06T12:00:00+08:00'));
+            assert.equal(marked(), 1);
+            assert.ok(!reads.includes('week:2026-09-28'));
+            assert.ok(!reads.includes('phase:国庆节:2026-10-07'));
+            assert.deepEqual(summaries.map(item => item.id), ['week:2026-09-21']);
+            assert.ok(logs.some(line => line.includes('2 篇旧总结涉及遗忘日期')));
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
+    test('完成标记写盘失败只暂停迁移，下一轮仍可重试', async () => {
+        const opts = { markFails: true };
+        const { dir, writer, marked, logs } = setup(opts);
+        try {
+            await writer.catchUp(new Date('2026-10-06T12:00:00+08:00'));
+            assert.equal(marked(), 0);
+            assert.ok(logs.some(line => line.includes('disk write failed')));
+            opts.markFails = false;
+            await writer.catchUp(new Date('2026-10-06T13:00:00+08:00'));
+            assert.equal(marked(), 1);
+        } finally { rmSync(dir, { recursive: true, force: true }); }
     });
 });
