@@ -88,6 +88,7 @@ export interface Config {
     autonomousLife: boolean;
     projectChoice: boolean;
     lifeInPrompt: boolean;
+    feedbackCommands: boolean;
     realWeather: boolean;
     candidates: number;
     contextTurns: number;
@@ -169,6 +170,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**项目选择接管空闲安排**（ADR 0056，实验）：三天内未完成的课程作业优先于刷手机、休息、阅读和摄影；上课、吃饭、赴约等硬事件照旧优先。状态行和行动账共用同一决策。要开着上面那一项'),
         lifeInPrompt: Schema.boolean().default(DEFAULTS.lifeInPrompt)
             .description('**生活账进提示词（第一步）**：她最近三天里有几天练拍照修图、上一回是什么时候，按账上记着的写一行进时间块；只给看得到她爱好的档位。要开着上面那一项'),
+        feedbackCommands: Schema.boolean().default(DEFAULTS.feedbackCommands)
+            .description('**反馈通道**（ADR 0073）：男朋友档收到只有「假」或「像」一个字的消息（可带前面的 / 、后面的标点或一个小黄脸、QQ 的回复引用）时，记下她那一轮话是「假」还是「像」，不当聊天、她不回应。记录在数据目录的 feedback/ 里，不进日志正文。默认关'),
         realWeather: Schema.boolean().default(DEFAULTS.realWeather)
             .description('**真实天气**（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成'),
         candidates: Schema.natural().min(1).max(5).default(DEFAULTS.candidates)
@@ -281,6 +284,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.autonomousLife !== undefined ? { autonomousLife: config.autonomousLife } : {}),
         ...(config.projectChoice !== undefined ? { projectChoice: config.projectChoice } : {}),
         ...(config.lifeInPrompt !== undefined ? { lifeInPrompt: config.lifeInPrompt } : {}),
+        ...(config.feedbackCommands !== undefined ? { feedbackCommands: config.feedbackCommands } : {}),
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
         ...(config.contextTurns !== undefined ? { contextTurns: config.contextTurns } : {}),
