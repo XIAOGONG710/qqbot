@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, test } from 'node:test';
+import { checkStates } from '../src/ops/state-check.ts';
+
+const dirs: string[] = [];
+afterEach(() => dirs.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true })));
+
+function fixture() {
+    const dir = mkdtempSync(join(tmpdir(), 'qqbot-state-check-fixture-'));
+    dirs.push(dir);
+    for (const sub of ['world', 'memory', 'chats']) mkdirSync(join(dir, sub), { recursive: true });
+    return dir;
+}
+
+describe('状态文件兼容检查（ADR 0070 第 13 项）', () => {
+    test('什么文件都没有：全部按空状态开始，通过', () => {
+        const checks = checkStates(fixture());
+        assert.ok(checks.length > 0);
+        assert.ok(checks.every(check => check.ok), JSON.stringify(checks));
+    });
+
+    test('关键状态结构不对：报「会拒绝启动」；合法的照常通过；原目录一个字节都不动', () => {
+        const dir = fixture();
+        const bad = JSON.stringify({ version: 99, items: 'not-a-list' });
+        writeFileSync(join(dir, 'world', 'action-queue.json'), bad);
+        writeFileSync(join(dir, 'tiers.json'), JSON.stringify({ 10001: 'boyfriend' }));
+        writeFileSync(join(dir, 'chats', '10001.jsonl'), `${JSON.stringify({ time: '2026-10-13T10:00:00.000Z', role: 'user', content: '虚构的一句' })}\nnot json\n`);
+        const checks = checkStates(dir);
+        const byName = (name: string) => checks.find(check => check.name === name)!;
+        assert.equal(byName('行动队列').ok, false);
+        assert.match(byName('行动队列').detail, /拒绝启动/);
+        assert.equal(byName('档位记录').ok, true);
+        assert.match(byName('聊天记录 10001').detail, /1 条可用，1 行会被跳过/);
+        assert.equal(existsSync(join(dir, 'world', 'action-queue.json')), true, '原文件还在原处');
+        assert.equal(existsSync(join(dir, 'world', 'action-queue.json.corrupt-1')), false);
+    });
+});
