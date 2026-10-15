@@ -19,14 +19,25 @@ describe('状态文件兼容检查（ADR 0070 第 13 项）', () => {
     test('主动消息文件检查实际 schema；其他状态标出只做了语法检查', () => {
         const dir = fixture();
         mkdirSync(join(dir, 'proactive'));
-        mkdirSync(join(dir, 'promises'));
+        mkdirSync(join(dir, 'weather'));
         const bad = JSON.stringify({ version: 99 });
         writeFileSync(join(dir, 'proactive', '10001-boyfriend.json'), bad);
-        writeFileSync(join(dir, 'promises', '10001-boyfriend.json'), '{}');
+        writeFileSync(join(dir, 'weather', 'test.json'), '{}');
         const checks = checkStates(dir);
         assert.equal(checks.find(c => c.name === 'proactive/10001-boyfriend.json')!.ok, false);
-        assert.match(checks.find(c => c.name === 'promises/10001-boyfriend.json')!.detail, /仅 JSON 语法/);
+        assert.match(checks.find(c => c.name === 'weather/test.json')!.detail, /仅 JSON 语法/);
         assert.equal(readFileSync(join(dir, 'proactive', '10001-boyfriend.json'), 'utf8'), bad, '原目录不动');
+    });
+
+    test('承诺文件检查实际 schema：坏的报「会拒绝启动」，原文件不动', () => {
+        const dir = fixture();
+        mkdirSync(join(dir, 'promises'));
+        const bad = JSON.stringify({ version: 99 });
+        writeFileSync(join(dir, 'promises', '10001-boyfriend.json'), bad);
+        const check = checkStates(dir).find(c => c.name === 'promises/10001-boyfriend.json')!;
+        assert.equal(check.ok, false);
+        assert.match(check.detail, /拒绝启动/);
+        assert.equal(readFileSync(join(dir, 'promises', '10001-boyfriend.json'), 'utf8'), bad);
     });
 
     test('什么文件都没有：全部按空状态开始，通过', () => {

@@ -31,6 +31,7 @@ import { newsKindsOf, type ProactiveMode } from './proactive.ts';
 import { detectCrisis } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner, type PlannerStatus } from './proactive-planner.ts';
+import { PromiseStateUnavailable } from './promise-state.ts';
 import { promiseKeeper, type Appointment } from './promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from './her-days.ts';
 import { bodyAt } from './body.ts';
@@ -213,6 +214,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     let loadChat: ((qq: number) => StoredMessage[]) | undefined;
     // promiseKeeper 要等聊天记录打开后才能建；生活执行器先拿稳定代理，真正第一次推进前再接上。
     let loadAppointments: ((from: Date, to: Date) => readonly Appointment[]) | undefined;
+    let appointmentsAvailable = () => true;
+    let appointmentPlanningPaused = false;
     const bedtimes = (schedule: Schedule, now: number) => (loadChat ? saidBedtimes(config.contacts.map(c => loadChat!(c.qq)), schedule, now - 86_400_000) : []);
     const lifeRunner = lifeQueue && worldCard && ledgerWorld
         ? lifeExecutor({
@@ -226,7 +229,19 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         }, lifeQueue, { since: lifeStartedAt, log })
         : undefined;
     const sharedWorld = ledgerWorld && lifeQueue
-        ? settlingWorld(ledgerWorld, lifeQueue, worldNow, lifeRunner ? now => { lifeRunner.fill(now); } : undefined)
+        ? settlingWorld(ledgerWorld, lifeQueue, worldNow, lifeRunner ? now => {
+            if (!appointmentsAvailable()) {
+                if (!appointmentPlanningPaused) log('生活安排：约定来源不可用，暂停新增安排，不把未知约定当成空日历');
+                appointmentPlanningPaused = true;
+                return;
+            }
+            try { lifeRunner.fill(now); appointmentPlanningPaused = false; }
+            catch (error) {
+                if (!(error instanceof PromiseStateUnavailable)) throw error;
+                if (!appointmentPlanningPaused) log('生活安排：读取约定期间状态不可用，暂停新增安排');
+                appointmentPlanningPaused = true;
+            }
+        } : undefined)
         : ledgerWorld;
     if (config.contextTurns) log(`最近几轮 + 要点（ADR 0043）：${config.memory ? `开：原文只放最近 ${config.contextTurns} 轮，更早的在后台整理成要点，没整理好的那一轮照旧最近 80 条；${config.contextContacts.length ? `只对 ${config.contextContacts.join("、")}` : "名单里开了记忆的都开"}` : "配置开了，但长期记忆没开，不开"}`);
     if (config.candidates > 1) log(`挑候选：他难过、说亲密话、收尾时一次生成 ${config.candidates} 个，按规则挑一个（ADR 0041）`);
@@ -325,6 +340,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         })
         : undefined;
     loadAppointments = promises?.appointmentsBetween;
+    appointmentsAvailable = () => promises?.available() ?? true;
     // 约定来源已经接上以后再第一次推进生活；否则启动瞬间会把赴约时段排成普通休闲。
     noteHerDay?.(new Date(pipeline?.now?.() ?? Date.now()));
     if (promises) log('她答应的事：名单里的人每段聊天结束后抽一次，到了日子在时间块里提醒');

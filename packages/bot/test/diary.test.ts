@@ -14,6 +14,18 @@ const sources: DiarySources = { charName: card.name, schedule: card.schedule!, m
 const at = (iso: string, role: 'user' | 'assistant', content: string): StoredMessage => ({ time: new Date(iso).toISOString(), role, content });
 
 describe('她的日记（ADR 0017）', () => {
+    test('承诺计划来源失败不当成空计划继续写，不产生未处理拒绝', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-plans-invalid-')); const logs: string[] = [];
+        const writer = diaryWriter({ sources, dir, contacts: [], memory: {} as LongTermMemory,
+            history: { load: () => [] }, log: line => logs.push(line),
+            plans: () => { throw new Error('PRIVATE_PLAN_STATE'); }, generate: async () => assert.fail('不应生成日记') });
+        try {
+            await writer.catchUp(new Date('2026-10-08T12:00:00+08:00'));
+            assert.ok(logs.some(line => line.includes('未知计划当成空白')));
+            assert.ok(logs.every(line => !line.includes('PRIVATE_PLAN_STATE')));
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
     test('材料：几点起、课（只写课型，不写课名和教室）、空闲活动、心情、书；不写在哪；没聊天的日子写明', () => {
         const text = diaryMaterial(sources, new Date(2026, 9, 9), []);
         assert.match(text, /^日期：10月9日 周五\n几点起：07:40\n课：08:20–09:40 机房课；09:55–11:15 机房课；13:40–15:00 机房课\n/);

@@ -202,7 +202,13 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
                 name: contact.name,
                 messages: options.history.load(contact.qq).filter(m => formatDate(herDay(options.sources.schedule, new Date(m.time))) === date),
             }));
-            const material = diaryMaterial(options.sources, day, chats, options.plans?.(date) ?? []);
+            let plans: string[];
+            try { plans = options.plans?.(date) ?? []; }
+            catch {
+                options.log('她的日记：承诺计划来源暂不可用，本轮停止，不将未知计划当成空白');
+                return;
+            }
+            const material = diaryMaterial(options.sources, day, chats, plans);
             let text: string;
             try {
                 text = (await options.generate(diaryMessages(options.sources.charName, day, material))).trim();

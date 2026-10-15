@@ -123,7 +123,7 @@ export interface ContactPipelineOptions {
      */
     herDays?: boolean;
     /** 她答应过的事（ADR 0018 决策 2）：到了日子在时间块里提醒一句；名单外的人不用 */
-    promises?: Pick<PromiseKeeper, 'describe'> & Partial<Pick<PromiseKeeper, 'openLoops' | 'appointmentsAt' | 'appointmentsBetween'>>;
+    promises?: Pick<PromiseKeeper, 'describe'> & Partial<Pick<PromiseKeeper, 'available' | 'openLoops' | 'appointmentsAt' | 'appointmentsBetween'>>;
     /** W3：所有联系人、日记和主动消息共用的一份世界动作。 */
     worldState?: Pick<WorldState, 'at'> & Partial<Pick<WorldState, 'events'>>;
     /** ADR 0056：三天内课程作业可以接管空闲安排；执行器与状态行共用。 */
@@ -352,7 +352,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (promised) log('时间块里提醒了她答应的事');
             // 他提到见面（ADR 0066 决策 2）：她那几天不方便的时段（有课、赶作业、身体不舒服、已经约了别的），只给事实，是否推、怎么说由她定；先只给男朋友档
             const obstacleLine = contact.tier === 'boyfriend' && !initiate && herSchedule && mentionsMeetup(chat)
-                ? describeObstacles(meetupDays(chat.slice(-8).map(m => m.content).join('\n'), herDay(herSchedule, time)), time, {
+                ? options.promises?.available?.() === false
+                    ? '约定来源暂不可确认：不能认定没有别的约或编造空闲时段，涉及约见先确认；不要把内部状态或错误信息说给对方。'
+                    : describeObstacles(meetupDays(chat.slice(-8).map(m => m.content).join('\n'), herDay(herSchedule, time)), time, {
                     schedule: herSchedule,
                     ...(character.herWorld ? { worldAt: (at: Date) => options.worldState?.at(character.herWorld!, herSchedule, at) ?? worldAt(character.herWorld!, herSchedule, at) } : {}),
                     ...(character.herWorld?.body ? { bodyAt: (at: Date) => bodyAt(character.herWorld!.body!, herSchedule, at) } : {}),

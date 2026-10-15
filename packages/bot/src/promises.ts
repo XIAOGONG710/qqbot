@@ -16,7 +16,9 @@ import { join } from 'node:path';
 import type { Contact } from './config.ts';
 import { MIDNIGHT_RULE } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
-import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { writeJsonAtomic } from './json-file.ts';
+import { PromiseStateUnavailable, readPromiseState, validPromiseState, type PromiseState } from './promise-state.ts';
+import { calendarDate } from './state-schema.ts';
 import { ModelUnreachable } from './llm.ts';
 import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes, type Episode } from './memory/episodes.ts';
 import { dueLoops, isFeeling, loopForgotten, type DueLoops, type LoopKind, type OpenLoop } from './open-loops.ts';
@@ -65,7 +67,6 @@ export const NEXT_TIME_DAYS = 7;
 /** 一段聊天里她回了几次还没提，这段聊天里就不再放 */
 export const SHOWN_REPLIES = 3;
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 86_400_000;
 
 /** 挂着的事在给模型的列表里怎么写 */
@@ -140,7 +141,9 @@ export function parsePromises(text: string): ExtractedPromises {
     const items = (value: unknown) => (Array.isArray(value) ? value : []).flatMap(item => {
         const o = (item ?? {}) as Record<string, unknown>;
         const what = typeof o.what === 'string' ? o.what.trim() : '';
-        const date = typeof o.date === 'string' && DATE.test(o.date.trim()) ? o.date.trim() : undefined;
+        const date = typeof o.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.date.trim()) ? o.date.trim() : undefined;
+        // 保留旧版“周末/下次”等非日期文字的处理，但不存在的日历日不能滚动成另一日或降为无限期承诺。
+        if (date && !calendarDate(date)) return [];
         return what ? [{ what: what.slice(0, 40), ...(date ? { date } : {}) }] : [];
     });
     // 挂着的事只记事实：写成情绪的丢掉（ADR 0023）
@@ -300,19 +303,13 @@ export interface PromiseKeeperOptions {
     onWorldActions?: (contact: Contact, episode: Episode, actions: readonly WorldActionDraft[]) => void;
 }
 
-interface KeeperState {
-    promises: HerPromise[];
-    /** 挂着的事（ADR 0023）；旧文件没有 */
-    loops: OpenLoop[];
-    /** 片段 id → 抽过了（true），或者抽失败了几次 */
-    extracted: Record<string, true | number>;
-    /** 还没结束的片段 id → 先抽约见面时有几条消息（ADR 0047 调整）；旧文件没有 */
-    early: Record<string, number>;
-}
+type KeeperState = PromiseState;
 
 const LOOP_PREFIX: Record<LoopKind, string> = { waiting: 'a', unanswered: 'q', unsettled: 'u' };
 
 export interface PromiseKeeper {
+    /** 验证约定来源是否可用；false 不是“没有约定”。损坏暂停直到重建 keeper。 */
+    available(): boolean;
     /** 把结束了、还没抽的片段抽一遍，过期的忘掉；同一时间只跑一次 */
     sync(): Promise<void>;
     /** 这一轮时间块里的那一行（没有就是 undefined） */
@@ -331,19 +328,27 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
     const now = options.now ?? Date.now;
     mkdirSync(options.dir, { recursive: true });
     const path = (contact: Contact) => join(options.dir, `${contact.qq}-${contact.tier}.json`);
-    const load = (contact: Contact): KeeperState => {
-        const data = readJsonOr<Partial<KeeperState>>(path(contact), {}, message => options.log(`[${contact.qq}] 她答应的事：${message}`));
-        return { promises: data.promises ?? [], loops: data.loops ?? [], extracted: data.extracted ?? {}, early: data.early ?? {} };
+    const paused = new Set<string>();
+    const pause = (contact: Contact) => {
+        if (!paused.has(path(contact))) options.log(`[${contact.qq}] 承诺状态处理失败，暂停承诺抽取与使用；原文件未重建，请修复后重建 keeper`);
+        paused.add(path(contact));
+    };
+    const load = (contact: Contact): KeeperState | undefined => {
+        if (paused.has(path(contact))) return undefined;
+        try { return readPromiseState(path(contact)); }
+        catch { pause(contact); return undefined; }
     };
     const save = (contact: Contact, state: KeeperState) => {
         // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
         const keepFrom = now() - 30 * DAY_MS;
         for (const id of Object.keys(state.extracted)) if (Number(id.slice(3)) < keepFrom) delete state.extracted[id];
         for (const id of Object.keys(state.early)) if (Number(id.slice(3)) < keepFrom || state.extracted[id] === true) delete state.early[id];
+        if (paused.has(path(contact)) || !validPromiseState(state)) throw new PromiseStateUnavailable('承诺状态无效，拒绝写入');
         writeJsonAtomic(path(contact), state);
     };
-    const appointmentsBetween = (from: Date, to: Date): Appointment[] => options.contacts.flatMap(contact =>
-        load(contact).promises.flatMap(promise => {
+    const available = (): boolean => options.contacts.map(contact => load(contact) !== undefined).every(Boolean);
+    const knownAppointments = (from: Date, to: Date): Appointment[] => options.contacts.flatMap(contact =>
+        (load(contact)?.promises ?? []).flatMap(promise => {
             const window = meetWindow(promise);
             if (!window) return [];
             const lead = window.start.getTime() - MEET_LEAD_MINUTES * 60_000;
@@ -352,10 +357,15 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         }))
         .sort((a, b) => a.start.getTime() - b.start.getTime()
             || a.contact.qq - b.contact.qq || a.promise.id.localeCompare(b.promise.id));
+    const appointmentsBetween = (from: Date, to: Date): Appointment[] => {
+        if (!available()) throw new PromiseStateUnavailable('约定来源不可用，不能将未知约定当成空日历继续安排');
+        return knownAppointments(from, to);
+    };
     const today = (at: Date) => (options.schedule ? herDay(options.schedule, at) : new Date(at.getFullYear(), at.getMonth(), at.getDate()));
 
     async function syncContact(contact: Contact): Promise<void> {
         const state = load(contact);
+        if (!state) return;
         const log = (message: string) => options.log(`[${contact.qq}] 她答应的事：${message}`);
         const loopLog = (message: string) => options.log(`[${contact.qq}] 挂着的事：${message}`);
         const names = options.names(contact);
@@ -398,6 +408,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 log(`片段 ${episode.id} 抽取失败（第 ${tries} 次${tries >= 3 ? '，不再抽' : '，下次再抽'}）：${error instanceof Error ? error.message : String(error)}`);
                 continue;
             }
+            if (paused.has(path(contact))) return;
             try {
                 options.onWorldActions?.(contact, episode, result.world);
             } catch (error) {
@@ -459,6 +470,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
             try {
                 const pending = state.promises.filter(p => !earlyIn(open.id)(p));
                 const result = parsePromises(await options.extract(promisePrompt(episodeTranscript(open, names), pending, names, state.loops)));
+                if (paused.has(path(contact))) return;
                 const said = formatDate(today(open.end));
                 const earlier = state.promises.filter(earlyIn(open.id));
                 const next: HerPromise[] = [];
@@ -490,19 +502,28 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
     return {
         sync: () => {
             running ??= (async () => {
-                for (const contact of options.contacts) await syncContact(contact);
+                for (const contact of options.contacts) {
+                    try { await syncContact(contact); }
+                    catch { pause(contact); }
+                }
             })().finally(() => { running = undefined; });
             return running;
         },
+        available,
         describe: (contact, chat, at) => {
+            const state = load(contact);
+            if (!state) return '承诺记录暂不可确认：不要编造过去答应的事或认定没有约定；涉及约见时先确认。不要把内部状态或错误信息说给对方。';
             const day = today(at);
             // 约好的见面到了快出门的时候就不在这里提醒了，状态行接手（ADR 0047）
-            const items = duePromises(load(contact).promises.filter(p => !forgotten(p, day) && !meetStarted(p, at)), day, chat);
+            const items = duePromises(state.promises.filter(p => !forgotten(p, day) && !meetStarted(p, at)), day, chat);
             return describePromises(items, day, contact.name);
         },
-        openLoops: (contact, chat, at) => dueLoops(load(contact).loops, today(at), at, chat),
-        plansOn: date => options.contacts.flatMap(contact => load(contact).promises.filter(p => p.date === date).map(p => p.what)),
-        appointmentsAt: at => appointmentsBetween(at, new Date(at.getTime() + 1)),
+        openLoops: (contact, chat, at) => dueLoops(load(contact)?.loops ?? [], today(at), at, chat),
+        plansOn: date => {
+            if (!available()) throw new PromiseStateUnavailable('承诺来源不可用，不能生成缺失计划来源的日记');
+            return options.contacts.flatMap(contact => load(contact)!.promises.filter(p => p.date === date).map(p => p.what));
+        },
+        appointmentsAt: at => knownAppointments(at, new Date(at.getTime() + 1)),
         appointmentsBetween,
     };
 }

@@ -110,6 +110,23 @@ async function until(check: () => boolean, ms = 3000): Promise<void> {
 const chat = (cfg: AppConfig, qq: number) => new ChatHistory(cfg.dataDir).load(qq).map(m => `${m.role}:${m.content}`);
 
 describe('编排（app.ts）', () => {
+    test('承诺状态损坏暂停新增生活安排，但正常聊天继续；约见提示不能把未知当成有空', async () => {
+        const cfg = config({ herDays: true, autonomousLife: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }],
+            memory: { baseUrl: 'http://127.0.0.1:1', timeoutMs: 50, recallTimeoutMs: 50, bankPrefix: 'test' } });
+        const folder = join(cfg.dataDir, 'promises'); mkdirSync(folder);
+        const path = join(folder, '10001-boyfriend.json'); const original = 'PRIVATE_PROMISE_STATE bad json'; writeFileSync(path, original);
+        const prompts: string[] = [];
+        const { app, sent, logs } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '好'; } });
+        assert.ok(logs.some(line => line.includes('约定来源不可用，暂停新增安排')));
+        app.receive(event(10001, 1, '明天一起吃个饭吗'));
+        await until(() => sent.length > 0);
+        assert.ok(prompts.some(prompt => prompt.includes('暂不可确认')));
+        assert.equal(readFileSync(path, 'utf8'), original);
+        assert.ok(logs.every(line => !line.includes('PRIVATE_PROMISE_STATE')));
+        const queue = join(cfg.dataDir, 'world', 'action-queue.json');
+        if (existsSync(queue)) assert.deepEqual(JSON.parse(readFileSync(queue, 'utf8')).items, []);
+    });
+
     test('危机回合（ADR 0068）：他说想不活了——意图行、换承认版卡、出口检查重写、不打错字不抽签短话；日志和状态页不含内容；只记时间；平常的话不受影响', async () => {
         const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend', knowsBot: true }] });
         const prompts: string[] = [];
