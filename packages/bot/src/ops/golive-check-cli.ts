@@ -1,7 +1,9 @@
-// node src/ops/golive-check-cli.ts [--live <线上目录>] [--target origin/main] [--fetch] [--cards-ok]
+// node src/ops/golive-check-cli.ts [--live <线上目录>] [--target origin/main] [--fetch] [--cards-ok] [--safety "<理由>"] [--restarts <重启记录，默认 <线上目录>/runtime/bot/restarts.log>]
 // 只读：不切分支、不改文件、不重启。把「快进线上目录之前该看的」一次列出来。退出码 1 = 有挡路的。
 import { execFileSync, spawnSync } from 'node:child_process';
 import { classifyChanges, goLiveReport } from './golive-check.ts';
+import { join } from 'node:path';
+import { lastBehaviorRestart, readRestartLog } from './restart-log.ts';
 import { exposedListeners, LISTENERS_POWERSHELL, parseListeners } from './listeners.ts';
 
 const args = process.argv.slice(2);
@@ -18,7 +20,9 @@ const commits = git('log', '--oneline', `HEAD..${target}`).split('\n').filter(Bo
 const dirty = git('status', '--porcelain').length > 0;
 const shell = spawnSync('powershell', ['-NoProfile', '-Command', LISTENERS_POWERSHELL], { encoding: 'utf8' });
 const exposed = shell.status === 0 ? exposedListeners(parseListeners(shell.stdout)) : [];
-const report = goLiveReport({ liveHead, targetHead, dirty, commits, changes: classifyChanges(files), exposed }, { cardsApproved: args.includes('--cards-ok') });
+const restarts = readRestartLog(option('--restarts', join(live, 'runtime', 'bot', 'restarts.log')));
+const safety = args.includes('--safety') ? args[args.indexOf('--safety') + 1] : undefined;
+const report = goLiveReport({ liveHead, targetHead, dirty, commits, changes: classifyChanges(files), exposed, lastBehaviorRestart: lastBehaviorRestart(restarts), restartLogEmpty: restarts.length === 0 }, { cardsApproved: args.includes('--cards-ok'), ...(safety ? { safety } : {}) });
 
 console.log(`线上目录 ${live}`);
 for (const commit of commits.slice(0, 30)) console.log(`  ${commit}`);
