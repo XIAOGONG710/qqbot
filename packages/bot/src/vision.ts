@@ -5,7 +5,7 @@ import { fetch as undiciFetch } from 'undici';
 import { AsyncGate } from './async-gate.ts';
 import { DEFAULTS, type AppConfig } from './config.ts';
 import type { ImageDescriber } from './media.ts';
-import { modelGuard, ModelUnreachable } from './llm.ts';
+import { modelDispatcher, modelGuard, ModelUnreachable } from './llm.ts';
 import { GuardRejected, type ModelGuard, type ModelPurpose } from './model-guard.ts';
 import { fetchRemoteImage, imageDataUrl, REMOTE_IMAGE_MAX_BYTES, validateImageDataUrl } from './safe-image.ts';
 
@@ -32,7 +32,7 @@ export type VisionFetch = (
     init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal },
 ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
-const defaultFetch: VisionFetch = (url, init) => undiciFetch(url, init);
+const defaultFetch: VisionFetch = (url, init) => undiciFetch(url, { ...init, dispatcher: modelDispatcher });
 /** 聊天图片和后台表情识图共享，避免两个入口合起来打爆视觉接口。 */
 const visionGate = new AsyncGate(2);
 
