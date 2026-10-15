@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { parseAppConfig, type BotConfig, type Contact } from '../src/config.ts';
+import { canGiveFeedback, parseAppConfig, type BotConfig, type Contact } from '../src/config.ts';
 import type { Schedule } from '../src/schedule.ts';
 import { loadTierCard } from '../src/contact.ts';
 import type { MemoryItem } from '../src/memory/hindsight.ts';
@@ -69,6 +69,20 @@ describe('她认识的人（ADR 0016）', () => {
         assert.equal(parsed.contacts[0]!.intro, '比较熟');
         assert.equal('intro' in parsed.contacts[1]!, false);
         assert.throws(() => parseAppConfig({ ...base, contacts: [{ qq: 1, name: 'x', tier: 'classmate', intro: 3 }] }, repoRoot, env), /contacts\[0\]\.intro 应为字符串/);
+    });
+
+    test('配置：feedback 可选（ADR 0073），true 才记；写 false 等于没写；不是布尔值就拒绝启动', () => {
+        const repoRoot = resolve(import.meta.dirname, '../../..');
+        const base = { llm: { baseUrl: 'https://api.deepseek.com', model: 'm' }, characterCard: 'characters/linmengyao/st/linmengyao-{tier}.json' };
+        const env = { QQBOT_LLM_API_KEY: 'k' };
+        const parse = (feedback: unknown) => parseAppConfig({ ...base, contacts: [{ qq: 1, name: '鸽鸽', tier: 'classmate', feedback }] }, repoRoot, env);
+        assert.equal(parse(true).contacts[0]!.feedback, true);
+        assert.equal('feedback' in parse(false).contacts[0]!, false);
+        assert.equal('feedback' in parse(undefined).contacts[0]!, false);
+        assert.throws(() => parse('yes'), /contacts\[0\]\.feedback 应为 true 或 false/);
+        assert.equal(canGiveFeedback({ tier: 'boyfriend' }), true);
+        assert.equal(canGiveFeedback({ tier: 'classmate' }), false);
+        assert.equal(canGiveFeedback({ tier: 'classmate', feedback: true }), true);
     });
 });
 

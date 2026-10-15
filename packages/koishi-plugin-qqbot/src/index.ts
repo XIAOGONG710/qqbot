@@ -76,7 +76,7 @@ const FRIENDS_SCHEMA = 'qqbot.friends';
 const QQ_DESCRIPTION = '**QQ 号**：从小号的好友里选';
 
 export interface Config {
-    contacts: { qq: number; name: string; tier: ContactTier; persona?: string; intro?: string; knowsBot?: boolean }[];
+    contacts: { qq: number; name: string; tier: ContactTier; persona?: string; intro?: string; knowsBot?: boolean; feedback?: boolean }[];
     unlistedFriends: boolean;
     schedule: boolean;
     media: boolean;
@@ -130,6 +130,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             persona: Schema.string().role('textarea', { rows: [2, 8] }).description('**他是谁**：一两句，可选'),
             knowsBot: Schema.boolean()
                 .description('**知道她是程序**（ADR 0067）：勾上＝这个人知道，被认真问到是不是 AI 时按原卡（不承认、绕开）；不勾或没写＝按不知道处理，用承认版卡，被认真问到会承认。漏填不会对不知情的人否认'),
+            feedback: Schema.boolean()
+                .description('**可以对她的话打分**（ADR 0073）：勾上＝这个人发只有「假」或「像」一个字的消息时，记下她那一轮话是「假」还是「像」，不当聊天、她不回应。男朋友档不用勾；其余档位只对勾了的人生效，要先让他知道有这个功能。还要打开上面的「反馈通道」总开关'),
             intro: Schema.string().role('textarea', { rows: [1, 4] })
                 .description('**别人提起时**：她认识的这个人，一两句（例如「网上认识的朋友，比较熟」）。名单里别人说起他的称呼时给她看，留空就是不认识（ADR 0016）'),
         })).description('**回复名单**：每人按自己的档位回复'),

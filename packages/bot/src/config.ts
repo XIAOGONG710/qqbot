@@ -166,6 +166,16 @@ export interface Contact {
      * false 或没写：不知道（或还没确认），用承认版卡，被认真问到时承认。默认安全：漏填不会对不知情的人否认
      */
     knowsBot?: boolean;
+    /**
+     * 反馈通道（ADR 0073）：这个人也可以对她的话回「假」/「像」。男朋友档不用写（本来就可以）；
+     * 其余档位要一个一个人地写 true，不会因为档位相同就放开。他知道有这个功能，才写。默认没有
+     */
+    feedback?: boolean;
+}
+
+/** 这个联系人是不是可以用反馈通道（ADR 0073）：男朋友档，或名单里单独写了 feedback: true */
+export function canGiveFeedback(contact: Pick<Contact, 'tier' | 'feedback'>): boolean {
+    return contact.tier === 'boyfriend' || contact.feedback === true;
 }
 
 /** 这个联系人用哪一张卡（ADR 0067）：名单外那一档本来就是承认版；名单内知道的用原卡，其余用「<档位>-open」 */
@@ -226,6 +236,11 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         if (knowsBot !== undefined) {
             if (typeof knowsBot !== 'boolean') throw new Error(`配置 ${where}.knowsBot 应为 true 或 false（她是程序，这个人知不知道）`);
             contact.knowsBot = knowsBot;
+        }
+        const feedback = (value as Json).feedback;
+        if (feedback !== undefined) {
+            if (typeof feedback !== 'boolean') throw new Error(`配置 ${where}.feedback 应为 true 或 false（这个人是否可以对她的话回「假」/「像」）`);
+            if (feedback) contact.feedback = true;
         }
         return contact;
     });

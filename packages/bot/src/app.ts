@@ -10,7 +10,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cardKey, CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { canGiveFeedback, cardKey, CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { chatCompletion, forExtraction } from './llm.ts';
 import { acquireLock } from './lock.ts';
 import type { Log } from './log.ts';
@@ -305,7 +305,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const history = currentTierHistory(chatHistory, tierRecord);
     // 反馈通道（ADR 0073）：男朋友档回「假」/「像」只记下来，不当聊天；默认关
     const feedback = config.feedbackCommands ? createFeedbackChannel(config.dataDir, log) : undefined;
-    if (feedback) log('反馈通道：开（男朋友档对她的话回「假」/「像」，记在数据目录的 feedback/ 里，不当聊天、不回应）');
+    if (feedback) log(`反馈通道：开（${config.contacts.filter(canGiveFeedback).map(c => c.name).join('、')}对她的话回「假」/「像」，记在数据目录的 feedback/ 里，不当聊天、不回应）`);
     loadChat = qq => history.load(qq);
 
     // 长期记忆（Hindsight）：补回之后写一次，之后每隔一段时间把结束了的片段写进去
@@ -573,8 +573,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             }
         }
         // 他对她的话回「假」/「像」：记下来就算处理完，不进聊天记录、不交给回复器、不触发主动计划（ADR 0073）
-        if (feedback && config.contacts.some(c => c.qq === event.user_id && c.tier === 'boyfriend')
-            && feedback.consume(event.user_id, 'boyfriend', event.message, event.message_id, new Date(event.time * 1000), history.load(event.user_id))) return;
+        const feedbackContact = feedback ? config.contacts.find(c => c.qq === event.user_id && canGiveFeedback(c)) : undefined;
+        if (feedback && feedbackContact
+            && feedback.consume(event.user_id, feedbackContact.tier, event.message, event.message_id, new Date(event.time * 1000), history.load(event.user_id))) return;
         // 只从名单联系人收到的图片表情里挑；看图、判断、下载都在后台串行，不挡住这条消息的正常回复。
         if (collectingStickers && config.contacts.some(contact => contact.qq === event.user_id && contact.tier === 'boyfriend')) {
             void collectingStickers.consider(event.message, { from: event.user_id, messageId: event.message_id });
@@ -626,7 +627,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (stopped) return;
             let fresh = newerThanStored(history.load(contact.qq), fetched, tierRecord.since(contact.qq));
             // 停机期间他回的「假」/「像」：记下来，不当聊天补回（ADR 0073）
-            if (feedback && contact.tier === 'boyfriend') {
+            if (feedback && canGiveFeedback(contact)) {
                 const stored = history.load(contact.qq);
                 fresh = fresh.filter(m => (m.sender?.user_id ?? m.user_id) === selfId
                     || !feedback.consume(contact.qq, contact.tier, m.message, m.message_id, new Date(m.time * 1000), stored));
