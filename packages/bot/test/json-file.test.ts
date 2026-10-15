@@ -38,4 +38,28 @@ describe('状态文件', () => {
             rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    test('有效 JSON 也要过 schema；可迁移旧版本；关键状态校验失败时不挪走、不静默清空', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-json-schema-'));
+        try {
+            const path = join(dir, 'state.json');
+            writeFileSync(path, JSON.stringify({ values: [1, 2] }));
+            const current = readJsonOr(path, { version: 1, values: [] as number[] }, undefined, {
+                migrate: value => ({ version: 1, ...(value as object) }),
+                validate: (value): value is { version: 1; values: number[] } => Boolean(value && typeof value === 'object'
+                    && (value as { version?: unknown }).version === 1 && Array.isArray((value as { values?: unknown }).values)),
+            });
+            assert.deepEqual(current, { version: 1, values: [1, 2] });
+
+            writeFileSync(path, JSON.stringify({ version: 2, values: [] }));
+            assert.throws(() => readJsonOr(path, { version: 1, values: [] as number[] }, undefined, {
+                validate: (value): value is { version: 1; values: number[] } => (value as { version?: unknown })?.version === 1,
+                invalid: 'throw', label: '行动账',
+            }), /行动账.*schema.*拒绝启动/);
+            assert.equal(existsSync(path), true, '失败关闭保留原文件供修复');
+            assert.equal(readdirSync(dir).some(file => file.includes('.corrupt-')), false);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });

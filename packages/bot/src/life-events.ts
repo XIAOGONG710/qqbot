@@ -64,8 +64,14 @@ const RESULTS = new Set<LifeEventResult>(['succeeded', 'failed', 'interrupted'])
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 export function readLifeEvents(path: string, log: (message: string) => void): LifeEvent[] {
-    const loaded = readJsonOr<Partial<LifeEventsFile>>(path, {}, log);
-    return (Array.isArray(loaded.events) ? loaded.events : []).filter(validLifeEvent);
+    const loaded = readJsonOr<LifeEventsFile | undefined>(path, undefined, log, {
+        validate: (value): value is LifeEventsFile => Boolean(value && typeof value === 'object'
+            && (value as Partial<LifeEventsFile>).version === 1
+            && Array.isArray((value as Partial<LifeEventsFile>).events)
+            && (value as Partial<LifeEventsFile>).events!.every(validLifeEvent)),
+        invalid: 'throw', label: '生活事件账',
+    });
+    return loaded?.events ?? [];
 }
 
 export function writeLifeEvents(path: string, events: readonly LifeEvent[]): void {

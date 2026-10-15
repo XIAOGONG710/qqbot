@@ -276,7 +276,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         log(`主动消息：${config.proactive === 'dryRun' ? '试运行（只写日志，不发）' : '开'}：${who}`);
     }
 
-    const chatHistory = new ChatHistory(config.dataDir);
+    const chatHistory = new ChatHistory(config.dataDir, log);
     // 放在 ChatHistory 之后：它会建好数据目录
     const releaseLock = acquireLock(join(config.dataDir, 'bot.lock'));
 
@@ -524,7 +524,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
 
     function onMessage(event: MessageEvent): void {
         // 补回或入口重投的同一条消息不消耗限额，也不重复处理。
-        if (history.load(event.user_id).some(m => m.messageId === event.message_id)) return;
+        if (chatHistory.hasMessage(event.user_id, event.message_id)) return;
         let responder = responders.get(event.user_id);
         if (!responder) {
             if (!config.unlistedFriends) {
@@ -567,12 +567,12 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         // Defer media work until the previous message has fully entered the contact pipeline.
         // Starting read() before awaiting `queued` only serialized delivery and still leaked parallel OCR/vision calls.
         const job = (queued ?? Promise.resolve()).then(async () => {
-            if (stopped || history.load(qq).some(m => m.messageId === event.message_id)) return;
+            if (stopped || chatHistory.hasMessage(qq, event.message_id)) return;
             const message = reader
                 ? await reader.read(event.message, event.message_id, message => log(`[${qq}] ${message}`)).catch(() => event.message)
                 : event.message;
             // 读的时候补回可能已经记下了这条
-            if (stopped || history.load(qq).some(m => m.messageId === event.message_id)) return;
+            if (stopped || chatHistory.hasMessage(qq, event.message_id)) return;
             deliver(target, event, message);
         }).catch(error => log(`[${qq}] 处理收到的消息出错：${error instanceof Error ? error.message : String(error)}`));
         inbox.set(qq, job);

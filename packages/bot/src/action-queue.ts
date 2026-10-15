@@ -64,7 +64,19 @@ export interface ActionQueue {
 interface QueueFile { version: 1; items: QueuedAction[]; dead?: DeadAction[] }
 
 export function actionQueue(path: string, log: (message: string) => void = () => undefined): ActionQueue {
-    const loaded = readJsonOr<Partial<QueueFile>>(path, {}, message => log(`她的行动队列：${message}`));
+    const loaded = readJsonOr<Partial<QueueFile>>(path, {}, message => log(`她的行动队列：${message}`), {
+        migrate: value => {
+            if (value && typeof value === 'object' && !('version' in value) && Array.isArray((value as { items?: unknown }).items)) {
+                return { version: 1, ...value as object };
+            }
+            return value;
+        },
+        validate: (value): value is QueueFile => Boolean(value && typeof value === 'object'
+            && (value as Partial<QueueFile>).version === 1
+            && Array.isArray((value as Partial<QueueFile>).items)
+            && ((value as Partial<QueueFile>).dead === undefined || Array.isArray((value as Partial<QueueFile>).dead))),
+        invalid: 'throw', label: '行动队列',
+    });
     const raw = Array.isArray(loaded.items) ? loaded.items : [];
     let items = raw.filter(validQueuedAction).sort(byEnd);
     if (items.length !== raw.length) log(`她的行动队列：忽略 ${raw.length - items.length} 条格式损坏的计划`);

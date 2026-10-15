@@ -20,7 +20,11 @@ export interface CrisisState {
 
 export function createCrisisState(dataDir: string, log: (message: string) => void): CrisisState {
     const path = join(dataDir, 'crisis.json');
-    const state = readJsonOr<Record<string, string>>(path, {}, log);
+    const state = readJsonOr<Record<string, string>>(path, {}, log, {
+        validate: (value): value is Record<string, string> => Boolean(value && typeof value === 'object' && !Array.isArray(value)
+            && Object.entries(value).every(([qq, at]) => /^\d+$/.test(qq) && typeof at === 'string' && Number.isFinite(Date.parse(at)))),
+        invalid: 'throw', label: '危机状态',
+    });
     return {
         mark(qq, at) {
             const earlier = state[String(qq)] ? Date.parse(state[String(qq)]!) : 0;
