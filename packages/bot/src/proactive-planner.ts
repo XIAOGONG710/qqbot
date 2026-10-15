@@ -7,8 +7,7 @@
 // - 等待用可替换的 waitUntil（bot 用真实定时器，模拟器用虚拟时钟）。
 // - 待跟进的事（follow-ups.ts）也存在这个文件里：syncFollowUps() 从结束了的聊天片段里抽（调用方定时调），
 //   问过（发了或试运行）就删，过了 FOLLOW_UP_DAYS 天没问到也删。
-// - 记录文件先写临时文件再改名；读坏了挪开、从空记录开始（ADR 0013 决策 3）：过去超过 GRACE_MS 的候选记成「错过了，不补」，
-//   刚发过的有「一小时内聊过」（睡前是 20 分钟）挡着，计划器不会因为一个坏文件起不来。
+// - 状态使用 v1 schema，损坏时保留原文件并暂停该联系人的主动消息/抽取，不清空去重事实，也不拖垮聊天（ADR 0070）。
 
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,7 +15,8 @@ import type { Contact } from './config.ts';
 import { detectCrisis } from './crisis.ts';
 import { aboutHer, expired, extractionPrompt, FOLLOW_UP_DAYS, mentions, parseExtraction, partText, tripAlreadyOver, type Extracted, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
-import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { writeJsonAtomic } from './json-file.ts';
+import { readProactiveState, validProactiveState, type ProactiveState } from './proactive-state.ts';
 import { ModelUnreachable } from './llm.ts';
 import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './memory/episodes.ts';
 import type { OpenAIMessage } from './prompt.ts';
@@ -202,7 +202,16 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     mkdirSync(deps.dir, { recursive: true });
     const tag = deps.mode === 'dryRun' ? '（试运行）' : '';
 
-    const state = load();
+    let state: ProactiveState;
+    try { state = readProactiveState(path); }
+    catch {
+        const reason = '主动消息状态读取或校验失败，已暂停；请修复后重新创建计划器';
+        deps.log(`主动：${reason}；原文件未重建`);
+        return {
+            poke() {}, stop() {}, syncFollowUps: async () => {}, running: Promise.resolve(),
+            status: () => ({ mode: deps.mode, paused: reason, today: 0 }),
+        };
+    }
     let records = state.records;
     let followUps = state.followUps;
     /** 片段 id → 抽过了（true），或者抽失败了几次 */
@@ -217,18 +226,28 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     const notPlanned = new Map<string, string>();
     let loggedNext: string | undefined;
 
-    function load(): { records: ProactiveRecord[]; followUps: FollowUp[]; extracted: Record<string, true | number> } {
-        const data = readJsonOr<{ records?: ProactiveRecord[]; followUps?: FollowUp[]; extracted?: Record<string, true | number> }>(
-            path, {}, message => deps.log(`主动：${message}`));
-        return { records: data.records ?? [], followUps: data.followUps ?? [], extracted: data.extracted ?? {} };
+    function halt(): void {
+        stopped = true;
+        next = undefined;
+        paused = '主动消息状态处理失败，已暂停；请修复后重新创建计划器';
+        wake?.abort();
+        deps.log(`主动：${paused}；未清空原状态`);
     }
 
     function save(): void {
-        const keepFrom = now() - KEEP_DAYS * DAY_MS;
-        records = records.filter(r => Date.parse(r.at) >= keepFrom);
-        // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
-        for (const id of Object.keys(extracted)) if (Number(id.slice(3)) < keepFrom) delete extracted[id];
-        writeJsonAtomic(path, { records, followUps, extracted });
+        if (stopped) throw new Error('主动消息已暂停，不再写入状态');
+        try {
+            const keepFrom = now() - KEEP_DAYS * DAY_MS;
+            records = records.filter(r => Date.parse(r.at) >= keepFrom);
+            // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
+            for (const id of Object.keys(extracted)) if (Number(id.slice(3)) < keepFrom) delete extracted[id];
+            const next: ProactiveState = { version: 1, records, followUps, extracted };
+            if (!validProactiveState(next)) throw new Error('拒绝写入不符合 schema 的主动消息状态');
+            writeJsonAtomic(path, next);
+        } catch {
+            halt();
+            throw new Error('主动消息状态写入失败，已暂停');
+        }
     }
 
     /** 删掉一件待跟进的事 */
@@ -286,6 +305,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
                 deps.log(`待跟进：片段 ${episode.id} 抽取失败（第 ${tries} 次${tries >= 3 ? '，不再抽' : '，下次再抽'}）：${error instanceof Error ? error.message : String(error)}`);
                 continue;
             }
+            if (stopped) return;
             for (const id of result.resolved) {
                 if (followUps.some(f => f.id === id)) {
                     forget(id, '他已经说了结果');
@@ -453,14 +473,15 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         }
     }
 
-    const running = loop().catch(error => deps.log(`主动：计划器出错，停了：${error instanceof Error ? error.message : String(error)}`));
+    const running = loop().catch(() => { if (!stopped) halt(); });
 
     return {
         poke() {
             wake?.abort();
         },
         syncFollowUps() {
-            extracting ??= extractNow().finally(() => { extracting = undefined; });
+            if (stopped) return Promise.resolve();
+            extracting ??= extractNow().catch(() => { if (!stopped) halt(); }).finally(() => { extracting = undefined; });
             return extracting;
         },
         stop() {

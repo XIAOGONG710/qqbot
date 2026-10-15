@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -16,6 +16,19 @@ function fixture() {
 }
 
 describe('状态文件兼容检查（ADR 0070 第 13 项）', () => {
+    test('主动消息文件检查实际 schema；其他状态标出只做了语法检查', () => {
+        const dir = fixture();
+        mkdirSync(join(dir, 'proactive'));
+        mkdirSync(join(dir, 'promises'));
+        const bad = JSON.stringify({ version: 99 });
+        writeFileSync(join(dir, 'proactive', '10001-boyfriend.json'), bad);
+        writeFileSync(join(dir, 'promises', '10001-boyfriend.json'), '{}');
+        const checks = checkStates(dir);
+        assert.equal(checks.find(c => c.name === 'proactive/10001-boyfriend.json')!.ok, false);
+        assert.match(checks.find(c => c.name === 'promises/10001-boyfriend.json')!.detail, /仅 JSON 语法/);
+        assert.equal(readFileSync(join(dir, 'proactive', '10001-boyfriend.json'), 'utf8'), bad, '原目录不动');
+    });
+
     test('什么文件都没有：全部按空状态开始，通过', () => {
         const checks = checkStates(fixture());
         assert.ok(checks.length > 0);
