@@ -18,6 +18,7 @@
     "typecheck": "tsc -p .",
     "audit:gate": "node src/ops/audit-gate-cli.ts",
     "golive-check": "node src/ops/golive-check-cli.ts",
+    "restart-log": "node src/ops/restart-log-cli.ts",
     "state-check": "node src/ops/state-check-cli.ts",
     "dsh:link": "node src/ops/dsh-link-cli.ts",
     "ai-photo": "node src/ops/ai-photo-cli.ts",
