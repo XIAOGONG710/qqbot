@@ -1,6 +1,6 @@
 # ADR 0071：让她「会记得、会变」——现状够用的部分和一个待用户裁决的缺口（提议，只设计不实现）
 
-- 状态：**提议**（只设计，不写实现；需要用户先回答最后一节的问题）
+- 状态：**已裁决（2026-10-15）**：用户看了具体例子后说「1 不能接受……直接做 D2 就行」——选**选项 2（D2）**，实现见 [ADR 0074](0074-small-grievance.md)。选项 0、1 不做。a 部分（新事实顶旧事实）仍以 0065 为准。
 - 日期：2026-10-15
 - 关联：[ADR 0018](0018-memory-fades-and-promises.md)（变淡、一提就想起；不保存情绪记忆）、[ADR 0028](0028-emotional-inertia.md)（情绪有来处也有余温；**作者裁决：跨天只存「发生了什么」，不存「委屈」这类标签**）、[ADR 0065](0065-knowledge-update-probe.md)（新事实顶掉旧事实：现状够用）、[ADR 0064](0064-her-own-events-as-reasons.md)（她账里的事成为开口理由）；任务书 `exchange/tasks/2026-10-13-gpt-measure-realness-and-reliability.md` T4；2026-10-12 用户在 `research/2026-10-companion-practice/options.md` 里选了 B1 C1 D1 E1 E2，**没选 D2**
 
