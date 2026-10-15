@@ -49,3 +49,18 @@ test('联系人隐私审计只报位置和数量，并给出私人 bank、公共
     ]);
     assert.doesNotMatch(JSON.stringify(report), /秘密|不要出现在报告/);
 });
+
+test('危机状态 v1 和 v2 都能审计到对应联系人且不包含记录正文', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'qqbot-privacy-crisis-'));
+    dirs.push(dir);
+    for (const value of [
+        { '10001': '2026-10-13T10:00:00Z' },
+        { version: 2, contacts: { '10001': { at: '2026-10-13T10:00:00Z', level: 'high' } } },
+    ]) {
+        writeFileSync(join(dir, 'crisis.json'), JSON.stringify(value));
+        const report = auditContactPrivacy(dir, 10001);
+        assert.ok(report.artifacts.some(item => item.path === 'crisis.json' && item.references === 1));
+        assert.equal(auditContactPrivacy(dir, 10002).artifacts.length, 0);
+        assert.doesNotMatch(JSON.stringify(report), /2026-10-13T10:00:00Z/);
+    }
+});

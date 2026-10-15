@@ -153,13 +153,21 @@ describe('编排（app.ts）', () => {
         assert.ok(logs.some(line => line.includes('危机信号') && !line.includes('不想活了')));
         const status = app.status().contacts[0]!;
         assert.equal(status.crisis?.paused, true);
+        assert.equal(status.crisis?.level, 'high');
         assert.doesNotMatch(JSON.stringify(app.status()), /不想活/);
-        assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(cfg.dataDir, 'crisis.json'), 'utf8'))), ['10001']);
-        // 下一轮他明着说开玩笑的 / 没事了：解除，回到平常——原卡（不承认）、没有危机意图（没解除前一小时内每一轮都还是危机回合）
+        assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(cfg.dataDir, 'crisis.json'), 'utf8')).contacts), ['10001']);
+        // 一句“开玩笑 / 没事”不能解除：仍使用危机意图和承认版卡。
         const before = prompts.length;
         app.receive(event(10001, 2, '开玩笑的，没事了'));
         await until(() => sent.length >= 2);
-        const normal = prompts.slice(before).join('\n');
+        const stillCrisis = prompts.slice(before).join('\n');
+        assert.match(stillCrisis, new RegExp(CRISIS_MARK));
+        assert.match(stillCrisis, /大方承认/);
+        // 明确现在安全且有现实中的人陪同，才回到普通回合。
+        const safeAt = prompts.length;
+        app.receive(event(10001, 3, '我现在安全，室友在旁边陪我'));
+        await until(() => sent.length >= 3);
+        const normal = prompts.slice(safeAt).join('\n');
         assert.doesNotMatch(normal, new RegExp(CRISIS_MARK));
         assert.doesNotMatch(normal, /大方承认/);
     });

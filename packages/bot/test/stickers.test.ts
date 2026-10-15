@@ -163,6 +163,9 @@ describe('图片表情收藏（ADR 0063）', () => {
 
     test('图片表情只作调味：最近八条已发、直接提问、照片请求、正事和刚被吵醒都禁用', () => {
         assert.equal(imageStickerAllowance([{ role: 'user', content: '哈哈哈哈' }]).allowed, true);
+        for (const level of ['concern', 'high', 'imminent'] as const) {
+            assert.equal(imageStickerAllowance([{ role: 'user', content: '嗯' }], undefined, false, level).allowed, false, `${level} 不依赖意图文案禁用表情包`);
+        }
         assert.equal(imageStickerAllowance([
             { role: 'assistant', content: '她发了个表情包：白猫偷笑' },
             { role: 'user', content: '哈哈' },
