@@ -42,6 +42,7 @@ export const DEFAULTS = {
     autonomousLife: false,
     projectChoice: false,
     lifeInPrompt: false,
+    grievance: false,
     realWeather: true,
     media: true,
     stickers: 'off' as StickerMode,
@@ -108,6 +109,8 @@ export interface AppConfig {
      * 默认关；要开着 autonomousLife（账是它记的）
      */
     lifeInPrompt: boolean;
+    /** 有起因的小别扭与和好（ADR 0074）：男朋友档，他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点，他一哄就软下来。默认关 */
+    grievance: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -282,6 +285,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         autonomousLife: bool(file, 'autonomousLife', '', DEFAULTS.autonomousLife),
         projectChoice: bool(file, 'projectChoice', '', DEFAULTS.projectChoice),
         lifeInPrompt: bool(file, 'lifeInPrompt', '', DEFAULTS.lifeInPrompt),
+        grievance: bool(file, 'grievance', '', DEFAULTS.grievance),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         media: bool(file, 'media', '', DEFAULTS.media),
         stickers: stickerMode(file.stickers),

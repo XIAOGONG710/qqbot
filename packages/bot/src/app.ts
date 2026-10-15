@@ -429,6 +429,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(sharedWorld ? { worldState: sharedWorld } : {}),
             ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
             ...(config.lifeInPrompt && lifeRunner ? { lifeInPrompt: true } : {}),
+            ...(config.grievance ? { grievance: true } : {}),
             contacts: config.contacts,
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；
             // 超时不重发：可能已经发出去了，再发就重复

@@ -23,6 +23,7 @@ import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
 import { crisisInHistory } from './crisis.ts';
+import { describeGrievance, grievanceNow } from './grievance.ts';
 import { describeIntent } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
 import { describeLength, lengthHint, maybeTypo } from './expression.ts';
@@ -130,6 +131,8 @@ export interface ContactPipelineOptions {
     projectChoice?: boolean;
     /** 生活账接进提示词的第一步（配置 lifeInPrompt）：她这几天练拍照修图，只给看得到她爱好的档位（卡上有相机基金的） */
     lifeInPrompt?: boolean;
+    /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
+    grievance?: boolean;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
     mood?: string;
     /** herDays 开着时每次生成前调一次（app 按她的一天去重，写当天的摘要） */
@@ -177,6 +180,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let textIntimacy = false;
     // 这一轮是不是危机回合（ADR 0068）：buildPrompt 按他发的内容定，紧跟着的出口检查、打错字、长短都按它
     let crisisNow = false;
+    /** 这一轮是小别扭（不是和好）：出口检查放过「隔了很多天才来」这类带点抱怨的话（ADR 0074） */
+    let sulkNow = false;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -382,6 +387,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 危机信号（ADR 0068）：纯函数检测，最高优先级；主动找他时不算
             crisisNow = !initiate && Boolean(crisisInHistory(chat));
             if (crisisNow) log('危机信号：他这一轮说了想伤害自己的话，按危机回合处理（日志不记内容）');
+            // 小别扭 / 和好（ADR 0074）：从聊天记录的时间戳重算，不落盘；危机、主动找他、非男朋友档都不算
+            const grievance = options.grievance && contact.tier === 'boyfriend' && !initiate && !crisisNow ? grievanceNow(chat) : undefined;
             const intent = describeIntent({
                 history: chat,
                 state,
@@ -395,8 +402,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 intimate: contact.tier === 'boyfriend',
                 playful: contact.tier === 'boyfriend',
                 ...(crisisNow ? { crisis: true } : {}),
+                ...(grievance ? { grievance } : {}),
                 ...(untold.length ? { news: untold } : {}),
             });
+            const grievanceActive = Boolean(grievance && intent === describeGrievance(grievance));
+            sulkNow = grievanceActive && grievance!.stage === 'sulk';
+            if (grievanceActive) log(`${grievance!.stage === 'makeup' ? '和好' : '小别扭'}：他隔了 ${grievance!.days} 天才来（他回来后第 ${grievance!.round + 1} 轮；日志不记内容）`);
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
@@ -481,7 +492,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return {
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
-                ...(crisisNow ? { maxBubbles: 3 } : (intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) ? { maxBubbles: 2 } : {}),
+                ...(crisisNow ? { maxBubbles: 3 } : ((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) || grievanceActive) ? { maxBubbles: 2 } : {}),
                 ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆${summary ? '和前面的要点' : ''}）` } : {}),
             };
         },
@@ -508,7 +519,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         review: (reply, messages) => (crisisNow ? reviewCrisisReply : reviewReply)(reply, {
             banned: character.banned,
             userName: contact.name,
-            ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),
+            ...(options.speechCheck ? { speech: { ...speechContext(options.history.load(contact.qq)), ...(sulkNow ? { allowGrievance: true } : {}) } } : {}),
             ...(reading ? { books: reading } : {}),
             // 小黄脸（ADR 0051）：最近几次带得太密、他认真说事她只回表情
             faces: faceContext(options.history.load(contact.qq), contact.tier),

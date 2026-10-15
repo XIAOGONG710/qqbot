@@ -37,6 +37,8 @@ export interface SpeechContext {
     his: readonly string[];
     /** 这一段聊天里她已经说过的话（隔 45 分钟以上算新的一段）；不传就不查叮嘱重复 */
     segment?: readonly string[];
+    /** 小别扭这一轮（ADR 0074）：「隔了很多天才来」「也不说一声」这类带点抱怨的话是这一轮想要的，不按算账 / 怪他没说拦 */
+    allowGrievance?: boolean;
 }
 
 export type NagKind = 'sleep' | 'eat' | 'warm';
@@ -278,6 +280,7 @@ export function inspectSpeech(reply: string, context: SpeechContext, { repeatAt 
         for (const [kind, find] of [
             ['service', (t: string) => SERVICE.exec(t)], ['ledger', (t: string) => LEDGER.exec(t)], ['blame', (t: string) => BLAME.exec(t)], ['contrast', contrastHit],
         ] as const) {
+            if (context.allowGrievance && (kind === 'ledger' || kind === 'blame')) continue;
             const hit = find(text);
             // 引号里是别人的话（「面试官问『你还有什么想问的』」），不算她说的
             if (hit && !insideQuote(text, hit.index)) issues.push({ line, kind, match: hit[0].trim() });

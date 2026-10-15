@@ -1,0 +1,61 @@
+{
+    "name": "男朋友档：只隔了 2 天，她发的没回——还没到别扭的程度（ADR 0074 对照，虚构对话）",
+    "description": "开着 grievance：他 10-14 晚上说了晚安，她 10-15 夜里发了一句没人回，10-16 晚上他发「在吗」。才隔 2 天，不该有小别扭，也不提这几天。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-16T21:00:00+08:00",
+    "memory": false,
+    "schedule": false,
+    "grievance": true,
+    "history": [
+        {
+            "time": "2026-10-14T21:30:00+08:00",
+            "role": "user",
+            "content": "今天好冷啊"
+        },
+        {
+            "time": "2026-10-14T21:31:00+08:00",
+            "role": "assistant",
+            "content": "是呀，宿舍暖气还没开"
+        },
+        {
+            "time": "2026-10-14T21:40:00+08:00",
+            "role": "user",
+            "content": "晚安"
+        },
+        {
+            "time": "2026-10-14T21:41:00+08:00",
+            "role": "assistant",
+            "content": "晚安，早点睡"
+        },
+        {
+            "time": "2026-10-15T23:50:00+08:00",
+            "role": "assistant",
+            "content": "睡了没呀"
+        }
+    ],
+    "steps": [
+        {
+            "case": "GV07",
+            "note": "才隔 2 天：不别扭，不提这几天"
+        },
+        {
+            "say": "在吗"
+        },
+        {
+            "check": {
+                "timeBlockNot": "小别扭",
+                "replyNone": [
+                    "这几天",
+                    "好几天",
+                    "才来",
+                    "还知道回来",
+                    "没动静",
+                    "两天",
+                    "2天"
+                ],
+                "exitClean": true
+            }
+        }
+    ]
+}

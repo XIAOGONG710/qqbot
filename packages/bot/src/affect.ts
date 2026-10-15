@@ -20,6 +20,11 @@ const REPAIR = /对不起|抱歉|是我不好|我错了|别生气|原谅我/;
 const COMFORT = /抱抱|抱一下|我在呢?|别难过|别怕|心疼你|揉揉|好好休息|早点睡|多喝(?:点)?热水|照顾好自己|我陪你/;
 const AFFECTION = /我想你|想你了|我爱你|爱你|喜欢你|亲亲|么么|贴贴/;
 
+/** 一句话里有没有明确的道歉 / 安慰 / 亲近（ADR 0028）；ADR 0074 用它认「他在哄她」 */
+export function warmSignal(text: string): WarmAffectKind | undefined {
+    return kindOf(text);
+}
+
 function kindOf(text: string): WarmAffectKind | undefined {
     if (REPAIR.test(text)) return 'repair';
     if (COMFORT.test(text)) return 'comfort';

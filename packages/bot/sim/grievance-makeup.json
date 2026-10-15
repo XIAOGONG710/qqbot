@@ -1,0 +1,31 @@
+{
+    "name": "男朋友档：小别扭之后他道歉解释，她软下来（ADR 0074 和好，虚构对话）",
+    "description": "同 grievance-return 的开场。他先「在吗」（她小别扭一句），再「对不起啊，这几天赶论文，手机都没看」：这一轮气顺了，软下来，不再翻这件事，也不求他保证什么、不煽情；再往后一句正常聊天，不再有别扭或和好。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-16T21:00:00+08:00",
+    "memory": false,
+    "schedule": false,
+    "grievance": true,
+    "history": [
+        { "time": "2026-10-12T21:30:00+08:00", "role": "user", "content": "今天好冷啊" },
+        { "time": "2026-10-12T21:31:00+08:00", "role": "assistant", "content": "是呀，宿舍暖气还没开" },
+        { "time": "2026-10-12T21:40:00+08:00", "role": "user", "content": "晚安" },
+        { "time": "2026-10-12T21:41:00+08:00", "role": "assistant", "content": "晚安，早点睡" },
+        { "time": "2026-10-13T23:50:00+08:00", "role": "assistant", "content": "睡了没呀" }
+    ],
+    "steps": [
+        { "say": "在吗" },
+        { "check": { "timeBlock": "小别扭", "maxLines": 2, "exitClean": true } },
+        { "case": "GV03", "note": "他道歉并解释：气顺了、软下来；不再翻这件事、不要他保证、不煽情" },
+        { "say": "对不起啊，这几天赶论文，手机都没看" },
+        { "check": {
+            "timeBlock": "气顺了",
+            "replyNone": ["还知道", "没来", "这几天都", "别想", "不原谅", "不理你", "我不", "保证", "答应我", "以后不许", "再也不", "你知道我多"],
+            "maxLines": 2, "exitClean": true
+        } },
+        { "case": "GV04", "note": "和好之后他随口一句：正常聊，不再有别扭或和好的意图" },
+        { "say": "你吃饭了吗" },
+        { "check": { "timeBlockNot": "小别扭|气顺了", "replyNone": ["这几天", "好几天", "才来", "还知道回来"], "exitClean": true } }
+    ]
+}

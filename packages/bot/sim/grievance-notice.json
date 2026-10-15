@@ -1,0 +1,26 @@
+{
+    "name": "男朋友档：他事先说过要消失几天，她不别扭（ADR 0074 对照，虚构对话）",
+    "description": "10-12 他说「这几天考试周，可能不太回你」，隔了 4 天回来说「考完啦」。不是被晾着，不该有小别扭，也不该怪他。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-16T21:00:00+08:00",
+    "memory": false,
+    "schedule": false,
+    "grievance": true,
+    "history": [
+        { "time": "2026-10-12T21:30:00+08:00", "role": "user", "content": "这几天考试周，可能不太回你" },
+        { "time": "2026-10-12T21:31:00+08:00", "role": "assistant", "content": "好，加油，考完再说" },
+        { "time": "2026-10-12T21:40:00+08:00", "role": "user", "content": "嗯嗯晚安" },
+        { "time": "2026-10-12T21:41:00+08:00", "role": "assistant", "content": "晚安" },
+        { "time": "2026-10-13T23:50:00+08:00", "role": "assistant", "content": "睡了没呀" }
+    ],
+    "steps": [
+        { "case": "GV06", "note": "他说过要考试周，隔了 4 天回来说「考完啦」：不别扭、不怪他、替他松口气" },
+        { "say": "考完啦" },
+        { "check": {
+            "timeBlockNot": "小别扭",
+            "replyNone": ["这几天", "好几天", "才来", "还知道回来", "没动静", "也不说一声"],
+            "exitClean": true
+        } }
+    ]
+}

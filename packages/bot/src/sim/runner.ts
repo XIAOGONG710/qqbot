@@ -358,6 +358,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(sharedWorld ? { worldState: sharedWorld } : {}),
         ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}),
         ...(scenario.lifeInPrompt && scenario.autonomous ? { lifeInPrompt: true } : {}),
+        ...(scenario.grievance ? { grievance: true } : {}),
         ...(stickers ? { stickers } : {}),
         contacts: [contact, ...others],
         log,

@@ -1,6 +1,7 @@
 // 当天这一层的「这一轮你想」（ADR 0019 决策 2）。
 // 只按眼前已有线索给一个方向，不抽签、不额外调模型，也不把它写成能照抄的台词。
 
+import { describeGrievance, type Grievance } from './grievance.ts';
 import type { StoredMessage } from './history.ts';
 import { isAck, isReaction } from './reply-timing.ts';
 import type { Schedule, State } from './schedule.ts';
@@ -29,6 +30,8 @@ export interface IntentContext {
     news?: readonly string[];
     /** 他这一轮发了明确的自伤 / 想结束生命的话（ADR 0068，crisis.ts）：最高优先级，所有档位都适用 */
     crisis?: boolean;
+    /** 他隔了很多天才来、她发的一直没回（ADR 0074，grievance.ts）：只有男朋友档、配置开了才传 */
+    grievance?: Grievance;
 }
 
 /**
@@ -174,6 +177,9 @@ export function describeIntent(context: IntentContext): string | undefined {
     if (context.initiating) return undefined;
     // 最高优先级，排在亲密、收尾、问答之前（ADR 0068 决策 2）
     if (context.crisis) return CRISIS_INTENT;
+    // 小别扭 / 和好（ADR 0074）：他难过、生病、要她哄的时候让路；他在收尾时只让「别扭」让路，「和好」照样软一句
+    if (context.grievance && !needsCare(context.history) && !asksForHer(context.history)
+        && (context.grievance.stage === 'makeup' || !isEndingTurn(context.history))) return describeGrievance(context.grievance);
     // 「只接他刚说的你们两个人的事」这几个字让候选挑选（ADR 0041）和两条气泡的上限照亲密话算
     if (context.intimate && isIntimateBid(context.history)) return '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事：先给一个明确的亲密回应，再自然地保留一点嘴硬；嘴硬不能是整轮唯一内容，也不把亲近当成交换条件。QQ 文字里的抱抱、亲一下和 mua 就是真的在抱、在亲，直接在这一轮用文字回抱回亲，让他收到你的回应；他说难受时先心疼他，他同时报了好消息时先替他高兴再接亲密话，他真要收尾时回应后顺着收尾，他不想你走时能陪就多陪一句]';
     if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行，别一句话就把他打发了；他要睡就哄他睡，他不让你走就再陪他一会儿，不另起话题，也不用约他睡醒再找你]';

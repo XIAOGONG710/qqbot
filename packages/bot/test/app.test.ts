@@ -42,7 +42,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false,
+        lifeInPrompt: false, grievance: false,
         realWeather: false,
         media: true,
         candidates: 1,
@@ -703,5 +703,103 @@ describe('心跳（任务书 T3b）', () => {
         app.stop();
         assert.equal(existsSync(path), true, '停下后旧心跳留着');
         assert.doesNotMatch(readFileSync(path, 'utf8'), /秘密/);
+    });
+});
+
+describe('小别扭与和好（ADR 0074，配置 grievance）', () => {
+    const HOUR = 3_600_000;
+    /** 他 4 天前最后说话，她回了晚安，3 天前她主动发了一句没人回；今天他回来（事件用真实时间） */
+    const seedAway = (cfg: AppConfig, qq = 10001) => {
+        mkdirSync(cfg.dataDir, { recursive: true });
+        const history = new ChatHistory(cfg.dataDir);
+        const at = (hoursAgo: number) => new Date(Date.now() - hoursAgo * HOUR).toISOString();
+        history.append(qq, { time: at(100), role: 'user', content: '晚安', messageId: 701 });
+        history.append(qq, { time: at(99.9), role: 'assistant', content: '晚安', messageId: 702 });
+        history.append(qq, { time: at(70), role: 'assistant', content: '今天下课好晚', messageId: 703 });
+    };
+    const bf = [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }];
+    const promptsOf = (prompts: string[]) => prompts.join('\n---\n');
+
+    test('开着：他隔了 4 天回来，这一轮的提示词里有小别扭的意图、日志只记天数；带点抱怨的话不被出口检查拦；最多两个气泡', async () => {
+        const cfg = config({ contacts: bf, grievance: true, speechCheck: true });
+        seedAway(cfg);
+        const prompts: string[] = [];
+        const { app, sent, logs } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '哟，还知道回来呀'; } });
+        app.receive(event(10001, 1, '在吗'));
+        await until(() => sent.length >= 1);
+        assert.match(promptsOf(prompts), /他已经 4 天没来找你了/);
+        assert.match(promptsOf(prompts), /小别扭/);
+        assert.deepEqual(sent, ['10001:哟，还知道回来呀'], '「还知道回来」在这一轮不按算账拦');
+        assert.ok(logs.includes('[10001] 小别扭：他隔了 4 天才来（他回来后第 1 轮；日志不记内容）'), logs.join('|'));
+        assert.ok(logs.every(line => !line.includes('在吗') || !line.includes('小别扭')), '日志里不记内容');
+    });
+
+    test('他先道歉：不别扭；别扭一轮后他再道歉：这一轮和好（提示词里是「气顺了」），之后什么都没有', async () => {
+        const quick = config({ contacts: bf, grievance: true });
+        seedAway(quick);
+        const quickPrompts: string[] = [];
+        const first = setup(quick, {}, { generate: messages => { quickPrompts.push(messages.map(m => m.content).join('\n')); return '嗯，在'; } });
+        first.app.receive(event(10001, 1, '对不起啊这几天没理你'));
+        await until(() => first.sent.length >= 1);
+        assert.doesNotMatch(promptsOf(quickPrompts), /小别扭|气顺了/);
+
+        const cfg = config({ contacts: bf, grievance: true });
+        seedAway(cfg);
+        const prompts: string[] = [];
+        const { app, sent, logs } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '嗯，在'; } });
+        app.receive(event(10001, 2, '在吗'));
+        await until(() => sent.length >= 1);
+        app.receive(event(10001, 3, '对不起，这几天赶论文，手机都没看'));
+        await until(() => sent.length >= 2);
+        assert.match(prompts.at(-1)!, /气顺了/);
+        assert.ok(logs.includes('[10001] 和好：他隔了 4 天才来（他回来后第 2 轮；日志不记内容）'), logs.join('|'));
+        app.receive(event(10001, 4, '好'));
+        await until(() => sent.length >= 3);
+        assert.doesNotMatch(prompts.at(-1)!, /小别扭|气顺了/, '和好之后不再有');
+    });
+
+    test('关着（默认）、同学档、他难过、危机：都不别扭', async () => {
+        const off = config({ contacts: bf });
+        seedAway(off);
+        const offPrompts: string[] = [];
+        const a = setup(off, {}, { generate: messages => { offPrompts.push(messages.map(m => m.content).join('\n')); return '嗯，在'; } });
+        a.app.receive(event(10001, 1, '在吗'));
+        await until(() => a.sent.length >= 1);
+        assert.doesNotMatch(promptsOf(offPrompts), /小别扭/);
+
+        const mate = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }], grievance: true });
+        seedAway(mate);
+        const matePrompts: string[] = [];
+        const b = setup(mate, {}, { generate: messages => { matePrompts.push(messages.map(m => m.content).join('\n')); return '嗯，在'; } });
+        b.app.receive(event(10001, 1, '在吗'));
+        await until(() => b.sent.length >= 1);
+        assert.doesNotMatch(promptsOf(matePrompts), /小别扭/, '只有男朋友档');
+
+        const sad = config({ contacts: bf, grievance: true });
+        seedAway(sad);
+        const sadPrompts: string[] = [];
+        const c = setup(sad, {}, { generate: messages => { sadPrompts.push(messages.map(m => m.content).join('\n')); return '怎么了'; } });
+        c.app.receive(event(10001, 1, '我今天好难过'));
+        await until(() => c.sent.length >= 1);
+        assert.doesNotMatch(promptsOf(sadPrompts), /小别扭/, '他难过时先接住他');
+
+        const crisis = config({ contacts: bf, grievance: true });
+        seedAway(crisis);
+        const crisisPrompts: string[] = [];
+        const d = setup(crisis, {}, { generate: messages => { crisisPrompts.push(messages.map(m => m.content).join('\n')); return '我在。你现在安全吗？身边有人吗'; } });
+        d.app.receive(event(10001, 1, '我不想活了'));
+        await until(() => d.sent.length >= 1);
+        assert.doesNotMatch(promptsOf(crisisPrompts), /小别扭/, '危机回合最优先');
+        assert.match(promptsOf(crisisPrompts), /想伤害自己/);
+    });
+
+    test('开关关着时，带点抱怨的话照旧被出口检查拦（算账）：行为和以前一样', async () => {
+        const cfg = config({ contacts: bf, speechCheck: true });
+        seedAway(cfg);
+        const prompts: string[] = [];
+        const { app, sent } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return prompts.length === 1 ? '哟，还知道回来呀' : '嗯，在'; } });
+        app.receive(event(10001, 1, '在吗'));
+        await until(() => sent.length >= 1);
+        assert.deepEqual(sent, ['10001:嗯，在'], '第一版算账被重写掉了');
     });
 });

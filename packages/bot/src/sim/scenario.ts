@@ -213,6 +213,8 @@ export interface Scenario {
     projectChoice: boolean;
     /** 默认 false：生活账接进提示词（ADR 0054，配置 lifeInPrompt）；要开着 autonomous */
     lifeInPrompt: boolean;
+    /** 默认 false：有起因的小别扭与和好（ADR 0074，配置 grievance）；只对男朋友档有效 */
+    grievance: boolean;
     /** 开场先记进账的、他给的钱（ADR 0027 调整的 receive_money）：at 是本地时刻，forCamera 存进相机基金。让场景里的世界和线上一致（10-10 他转了 2000，10-11 买了相机） */
     gifts?: { at: string; amount: number; forCamera?: boolean }[];
     /** 看心情不回的概率（0–1），不写按档位算；写 1 时正聊着的「哈哈」一定不回，用来看不回之后的样子 */
@@ -303,6 +305,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         autonomous: s.autonomous === true,
         projectChoice: s.projectChoice === true,
         lifeInPrompt: s.lifeInPrompt === true,
+        grievance: s.grievance === true,
         ...(s.gifts !== undefined ? { gifts: (Array.isArray(s.gifts) ? s.gifts : fail('gifts 应为数组')).map((g: unknown, i: number) => {
             const o = g as Record<string, unknown>;
             if (!o || typeof o.at !== 'string' || !Number.isFinite(Date.parse(o.at))) fail(`gifts[${i}].at 应为时刻`);
