@@ -8,7 +8,7 @@
 // 他发的语音、图片（ADR 0052）：入口给了 NapCat 的语音转文字、OCR（AppOptions.media）就先听一听、看一看再进聊天记录（media.ts），
 // 每人的消息按收到的顺序一条条进；读的时候不卡别人，读不出来、超时照旧「[语音]」「[图片]」。
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cardKey, CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { chatCompletion, forExtraction } from './llm.ts';
@@ -44,6 +44,7 @@ import { describeState, formatDate, herDay, stateAt, type Schedule } from './sch
 import { useRealWeather, weatherFetcher } from './weather.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, type StickerShelf } from './stickers.ts';
 import { SlidingWindowRateLimiter } from './rate-limit.ts';
+import { sensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
@@ -142,6 +143,8 @@ export interface AppOptions {
     stickers?: StickerShelf;
     /** 测试用：换掉听、看各项的上限 */
     mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>;
+    /** 敏感调试开关（ADR 0070 第 8 项）；不传按环境变量 QQBOT_SENSITIVE_LOGS（默认关） */
+    sensitive?: SensitiveSwitch;
 }
 
 /** 名单外的人在提示词里的称呼（{{user}}）：QQ 昵称，没有就叫「对方」 */
@@ -149,8 +152,11 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, stickers, mediaTimeouts }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, stickers, mediaTimeouts, sensitive = sensitiveSwitch() }: AppOptions): App {
     const runtime = runtimeInfo();
+    log(sensitive.describe());
+    // 关着的时候不留上次开着时的完整提示词
+    if (!sensitive.on()) rmSync(join(config.dataDir, 'last-prompt.json'), { force: true });
     // 每个档位一张角色卡和一本世界书，用到时读一次；不知道她是程序的联系人用「<档位>-open」承认版（ADR 0067，cardKey）
     const cards = new Map<string, TierCard>();
     const cardFor = (tier: string) => {
@@ -446,10 +452,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             },
             log,
             // last-prompt.json 记录的是后处理之后、实际发给模型的消息
-            onPrompt: prompt => writeFileSync(
-                join(config.dataDir, 'last-prompt.json'),
-                JSON.stringify({ qq: contact.qq, ...prompt }, null, 2),
-            ),
+            sensitive: sensitive.on,
+            onPrompt: prompt => {
+                if (!sensitive.on()) return;
+                writeFileSync(join(config.dataDir, 'last-prompt.json'), JSON.stringify({ qq: contact.qq, ...prompt }, null, 2));
+            },
             ...pipeline,
         });
     }
@@ -637,7 +644,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             // 停机期间他说过想伤害自己的话：补回时也记一笔（只记时间），暂停期从他说话的时候算（ADR 0068）
             for (const message of missed) if (message.role === 'user' && detectCrisis(message.content)) crisisState.mark(contact.qq, Date.parse(message.time));
             if (missed.length) {
-                const lines = missed.map(m => `${m.role === 'user' ? '对方' : '她'}：${m.content}`).join(' / ');
+                const lines = sensitive.on()
+                    ? missed.map(m => `${m.role === 'user' ? '对方' : '她'}：${m.content}`).join(' / ')
+                    : `${missed.filter(m => m.role === 'user').length} 条是对方的，${missed.filter(m => m.role !== 'user').length} 条是她的（共 ${missed.reduce((total, m) => total + [...m.content].length, 0)} 字）`;
                 log(`[${contact.qq}] 补回 ${missed.length} 条漏掉的消息：${lines}`);
             }
         }

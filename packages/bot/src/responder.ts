@@ -65,6 +65,8 @@ export interface ResponderDeps {
     /** 实际发送内容与聊天记录表示不同时转换（图片表情编号 -> 可读描述）。 */
     historyContent?: (sent: string) => string;
     log: (message: string) => void;
+    /** 能不能把聊天正文写进日志（ADR 0070 第 8 项）；不传就不写，只记字数 */
+    sensitive?: () => boolean;
     sleep?: (ms: number) => Promise<void>;
     /** 毫秒时间戳，默认 Date.now（测试用假时钟） */
     now?: () => number;
@@ -310,7 +312,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             sent.push(part);
         }
         seen = input;
-        deps.log(`已回复${sent.length > 1 ? `（${sent.length} 条）` : ''}：${sent.join(' / ')}`);
+        deps.log(`已回复${sent.length > 1 ? `（${sent.length} 条）` : ''}：${deps.sensitive?.() ? sent.join(' / ') : `${sent.reduce((total, part) => total + [...part].length, 0)} 字`}`);
     }
 
     async function loop(): Promise<void> {
@@ -420,7 +422,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         receive(text, messageId, time) {
             if (stopped) return;
             deps.history.append(deps.userId, { time: time.toISOString(), role: 'user', content: text, messageId });
-            deps.log(`收到：${text}`);
+            deps.log(`收到：${deps.sensitive?.() ? text : `${[...text].length} 字`}`);
             lastReceived = now();
             burstStart ??= lastReceived;
             restart();
