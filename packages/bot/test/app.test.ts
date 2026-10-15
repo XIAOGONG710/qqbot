@@ -43,6 +43,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         autonomousLife: false,
         projectChoice: false,
         lifeInPrompt: false, grievance: false,
+        feedbackCommands: false,
         realWeather: false,
         media: true,
         candidates: 1,
@@ -801,5 +802,113 @@ describe('小别扭与和好（ADR 0074，配置 grievance）', () => {
         app.receive(event(10001, 1, '在吗'));
         await until(() => sent.length >= 1);
         assert.deepEqual(sent, ['10001:嗯，在'], '第一版算账被重写掉了');
+    });
+});
+
+describe('反馈通道（ADR 0073）：男朋友档回「假」/「像」', () => {
+    const bf = [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }];
+    const feedbackRows = (cfg: AppConfig) => {
+        const path = join(cfg.dataDir, 'feedback', `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}.jsonl`);
+        return existsSync(path) ? readFileSync(path, 'utf8').trimEnd().split('\n').map(line => JSON.parse(line) as { label: string; messageId: number; herMessageId: number; her: string[]; tier: string }) : [];
+    };
+    const quote = (messageId: number, id: number, text: string): MessageEvent => ({ ...event(10001, messageId, text), message: [{ type: 'reply', data: { id: String(id) } }, { type: 'text', data: { text } }] });
+
+    test('开关关着（默认）：「假」是一条普通消息，她照常回', async () => {
+        const cfg = config({ contacts: bf });
+        const { app, sent } = setup(cfg);
+        app.receive(event(10001, 1, '在吗'));
+        await until(() => sent.length === 1);
+        app.receive(event(10001, 2, '假'));
+        await until(() => sent.length === 2);
+        assert.deepEqual(chat(cfg, 10001), ['user:在吗', 'assistant:好', 'user:假', 'assistant:好']);
+        assert.equal(existsSync(join(cfg.dataDir, 'feedback')), false);
+    });
+
+    test('开着：「假」被消耗——记一行、她不回、不进聊天记录；日志只有标签；引用指定那一条；同一条再来不重复', async () => {
+        const cfg = config({ contacts: bf, feedbackCommands: true });
+        const { app, sent, logs } = setup(cfg);
+        app.receive(event(10001, 1, '在吗'));
+        await until(() => sent.length === 1);
+        app.receive(event(10001, 2, '假'));
+        await until(() => feedbackRows(cfg).length === 1);
+        assert.equal(sent.length, 1, '她没有回应这个字');
+        assert.deepEqual(chat(cfg, 10001), ['user:在吗', 'assistant:好'], '不进聊天记录');
+        assert.deepEqual(feedbackRows(cfg).map(r => [r.label, r.messageId, r.herMessageId, r.her, r.tier]), [['fake', 2, 900, ['好'], 'boyfriend']]);
+        assert.ok(logs.includes('[10001] 反馈：假（本月第 1 条）'), logs.join('|'));
+        assert.ok(logs.some(l => l.startsWith('反馈通道：开')));
+        // 带引用：目标是被引用的那条
+        app.receive(quote(3, 900, '/像。'));
+        await until(() => feedbackRows(cfg).length === 2);
+        assert.deepEqual(feedbackRows(cfg)[1], { ...feedbackRows(cfg)[1]!, label: 'real', messageId: 3, herMessageId: 900 });
+        // 入口重投同一条：吞掉、不再记
+        app.receive(event(10001, 2, '假'));
+        await new Promise(r => setTimeout(r, 100));
+        assert.equal(feedbackRows(cfg).length, 2);
+        assert.equal(sent.length, 1);
+        assert.deepEqual(chat(cfg, 10001), ['user:在吗', 'assistant:好']);
+    });
+
+    test('开着但只对男朋友档：同学档回「假」是普通消息；「假的」「太假了」也是普通消息', async () => {
+        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }, { qq: 10002, name: '阿宝', tier: 'boyfriend' }], feedbackCommands: true });
+        const { app, sent } = setup(cfg);
+        app.receive(event(10001, 1, '在吗'));
+        await until(() => sent.length === 1);
+        app.receive(event(10001, 2, '假'));
+        await until(() => sent.length === 2);
+        assert.deepEqual(chat(cfg, 10001), ['user:在吗', 'assistant:好', 'user:假', 'assistant:好']);
+        app.receive(event(10002, 3, '在吗'));
+        await until(() => sent.length === 3);
+        app.receive(event(10002, 4, '太假了'));
+        await until(() => sent.length === 4);
+        assert.deepEqual(chat(cfg, 10002), ['user:在吗', 'assistant:好', 'user:太假了', 'assistant:好']);
+        assert.equal(existsSync(join(cfg.dataDir, 'feedback')), false);
+    });
+
+    test('名单里单独写了 feedback: true 的同学档才可以：记下来、tier 记 classmate；同档没写的人不行', async () => {
+        const cfg = config({
+            contacts: [
+                { qq: 10001, name: '鸽鸽', tier: 'classmate', feedback: true },
+                { qq: 10003, name: '阿华', tier: 'classmate' },
+            ],
+            feedbackCommands: true,
+        });
+        const { app, sent, logs } = setup(cfg);
+        app.receive(event(10001, 1, '在吗'));
+        await until(() => sent.length === 1);
+        app.receive(event(10001, 2, '假'));
+        await until(() => feedbackRows(cfg).length === 1);
+        assert.equal(sent.length, 1, '她没有回应这个字');
+        assert.deepEqual(chat(cfg, 10001), ['user:在吗', 'assistant:好']);
+        assert.deepEqual(feedbackRows(cfg).map(r => [r.label, r.tier]), [['fake', 'classmate']]);
+        assert.ok(logs.some(l => l.startsWith('反馈通道：开（鸽鸽对她的话')), logs.join('|'));
+        // 同一档、没写 feedback 的人：「假」是普通消息
+        app.receive(event(10003, 3, '在吗'));
+        await until(() => sent.length === 2);
+        app.receive(event(10003, 4, '假'));
+        await until(() => sent.length === 3);
+        assert.deepEqual(chat(cfg, 10003), ['user:在吗', 'assistant:好', 'user:假', 'assistant:好']);
+        assert.equal(feedbackRows(cfg).length, 1);
+    });
+
+    test('她还没说过话（找不到被评价的那一轮）：「假」当普通消息', async () => {
+        const cfg = config({ contacts: bf, feedbackCommands: true });
+        const { app, sent } = setup(cfg);
+        app.receive(event(10001, 1, '假'));
+        await until(() => sent.length === 1);
+        assert.deepEqual(chat(cfg, 10001), ['user:假', 'assistant:好']);
+        assert.equal(feedbackRows(cfg).length, 0);
+    });
+
+    test('停机期间他回的「像」：补回时记下来，不当聊天补进记录、她也不回', async () => {
+        const cfg = config({ contacts: bf, feedbackCommands: true });
+        mkdirSync(cfg.dataDir, { recursive: true });
+        new ChatHistory(cfg.dataDir).append(10001, { time: new Date((nowSec() - 600) * 1000).toISOString(), role: 'assistant', content: '晚安啦', messageId: 800 });
+        const { app, sent, logs } = setup(cfg, { 10001: [historyMessage(800, SELF, '晚安啦', 600), historyMessage(801, 10001, '像', 300)] });
+        await app.connected(SELF);
+        await new Promise(r => setTimeout(r, 150));
+        assert.deepEqual(feedbackRows(cfg).map(r => [r.label, r.messageId, r.herMessageId, r.her]), [['real', 801, 800, ['晚安啦']]]);
+        assert.deepEqual(chat(cfg, 10001), ['assistant:晚安啦'], '没有补回成聊天');
+        assert.equal(sent.length, 0);
+        assert.ok(!logs.some(l => l.includes('补回')), logs.join('|'));
     });
 });
