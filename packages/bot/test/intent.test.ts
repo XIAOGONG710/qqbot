@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, saysOwnThing } from '../src/intent.ts';
+import { CRISIS_CONCERN_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, saysOwnThing } from '../src/intent.ts';
 import type { Schedule, State } from '../src/schedule.ts';
 
 const now = new Date('2026-10-06T20:00:00+08:00');
@@ -19,15 +19,21 @@ describe('这一轮你想（ADR 0019）', () => {
             [assistant('嗯'), user('我抢到了！'), user('可是我不想活了')],
         ]) {
             void crisisBurst;
-            assert.equal(describeIntent({ history, now, crisis: true, intimate: true, playful: true }), CRISIS_INTENT);
+            assert.equal(describeIntent({ history, now, crisis: 'high', intimate: true, playful: true }), CRISIS_INTENT);
         }
-        assert.equal(describeIntent({ history: [assistant('嗯'), user('我不想活了')], now, crisis: true, initiating: true }), undefined);
+        assert.equal(describeIntent({ history: [assistant('嗯'), user('我不想活了')], now, crisis: 'high', initiating: true }), undefined);
         assert.notEqual(describeIntent({ history: [assistant('嗯'), user('在干嘛')], now, crisis: false }), CRISIS_INTENT);
         // 只给边界：认真接、问安全、不讨论方法、12356、不装咨询师、不道晚安、被问承认是程序
         for (const part of ['认真接住他的感受', '安不安全', '不讨论任何伤害自己的方法', '12356', '110 或 120', '别装咨询师', '不要答应过去找他', '不要道晚安', '承认你是程序', CRISIS_MARK]) {
             assert.ok(CRISIS_INTENT.includes(part), part);
         }
         assert.doesNotMatch(CRISIS_INTENT, /[「“"]/, '不给可以照抄的台词');
+        assert.equal(describeIntent({ history: [user('活着没意义')], now, crisis: 'concern' }), CRISIS_CONCERN_INTENT);
+        assert.equal(describeIntent({ history: [user('我现在就要自杀')], now, crisis: 'imminent' }), CRISIS_IMMINENT_INTENT);
+        for (const intent of [CRISIS_CONCERN_INTENT, CRISIS_INTENT, CRISIS_IMMINENT_INTENT]) {
+            assert.match(intent, /辅助/);
+            assert.match(intent, /不能替代/);
+        }
     });
 
     test('他刚说了自己的事：问一个具体细节；普通提问不算', () => {
