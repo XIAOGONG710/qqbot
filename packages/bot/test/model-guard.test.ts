@@ -11,6 +11,27 @@ const gate = () => {
 };
 
 describe('模型调用总闸（ADR 0070 第 7 项）', () => {
+    test('已取消请求不入队；排队取消会移除等待者；拿到位置后取消也不启动工作', async () => {
+        const guard = new ModelGuard({ concurrent: 1, backgroundConcurrent: 1 });
+        const stopped = AbortSignal.abort(new Error('cancelled'));
+        await assert.rejects(guard.run('chat', async () => assert.fail('不能启动'), undefined, stopped), /cancelled/);
+        assert.equal(guard.status().callsToday, 0);
+        const hold = gate();
+        const first = guard.run('chat', () => hold.wait);
+        const controller = new AbortController();
+        const queued = guard.run('background', async () => assert.fail('不能启动'), undefined, controller.signal);
+        assert.equal(guard.status().waiting, 1);
+        controller.abort(new Error('queued cancelled'));
+        await assert.rejects(queued, /queued cancelled/);
+        assert.equal(guard.status().waiting, 0);
+        hold.open(); await first;
+        const racing = new AbortController();
+        const job = guard.run('chat', async () => assert.fail('不能启动'), undefined, racing.signal);
+        racing.abort(new Error('cancelled before work'));
+        await assert.rejects(job, /cancelled before work/);
+        assert.equal(guard.status().active, 0);
+    });
+
     test('并发有上限，后台任务最多占自己那份；空出来的位置聊天先拿', async () => {
         const guard = new ModelGuard({ concurrent: 3, backgroundConcurrent: 1 });
         const started: string[] = [];

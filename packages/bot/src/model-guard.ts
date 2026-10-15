@@ -76,15 +76,18 @@ export class ModelGuard {
         };
     }
 
-    async run<T>(purpose: ModelPurpose, work: () => Promise<T>, unreachable: (error: unknown) => boolean = () => false): Promise<T> {
+    async run<T>(purpose: ModelPurpose, work: () => Promise<T>, unreachable: (error: unknown) => boolean = () => false, signal?: AbortSignal): Promise<T> {
+        signal?.throwIfAborted();
         const probe = this.#admit(purpose);
         try {
-            await this.#acquire(purpose);
+            await this.#acquire(purpose, signal);
         } catch (error) {
             if (probe) this.#probing = false;
             throw error;
         }
         try {
+            // 获得位置和启动请求之间也可能取消，不能留下幽灵请求或占用位置。
+            signal?.throwIfAborted();
             const result = await work();
             this.#failures = 0;
             this.#openUntil = 0;
@@ -144,23 +147,32 @@ export class ModelGuard {
     }
 
     /** 拿到位置才返回，位置在这里（或 #next 里）同步占上，中间不留空隙让别的调用多放进来 */
-    #acquire(purpose: ModelPurpose): Promise<void> {
+    #acquire(purpose: ModelPurpose, signal?: AbortSignal): Promise<void> {
+        signal?.throwIfAborted();
         if (this.#canStart(purpose)) {
             this.#active[purpose]++;
             return Promise.resolve();
         }
         return new Promise<void>((resolve, reject) => {
+            const cleanup = () => { clearTimeout(waiter.timer); signal?.removeEventListener('abort', cancel); };
+            const remove = () => {
+                const queue = this.#waiting[purpose];
+                const at = queue.indexOf(waiter);
+                if (at >= 0) queue.splice(at, 1);
+                cleanup();
+            };
+            const cancel = () => { remove(); reject(signal!.reason); this.#next(); };
             const waiter: Waiter = {
                 purpose,
-                start: () => { clearTimeout(waiter.timer); resolve(); },
+                start: () => { cleanup(); resolve(); },
                 timer: setTimeout(() => {
-                    const queue = this.#waiting[purpose];
-                    const at = queue.indexOf(waiter);
-                    if (at >= 0) queue.splice(at, 1);
+                    remove();
                     reject(new GuardRejected('queue', `模型调用排队超过 ${(purpose === 'chat' ? this.#options.chatWaitMs : this.#options.backgroundWaitMs) / 1000} 秒`));
+                    this.#next();
                 }, purpose === 'chat' ? this.#options.chatWaitMs : this.#options.backgroundWaitMs),
             };
             this.#waiting[purpose].push(waiter);
+            signal?.addEventListener('abort', cancel, { once: true });
         });
     }
 
