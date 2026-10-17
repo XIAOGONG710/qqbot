@@ -75,18 +75,27 @@ ADR 0064 否掉过「把所有小事都当新闻」（会变成今日汇报、�
 
 | 文件 | 改了什么 |
 | --- | --- |
-| `packages/bot/src/npc-asks.ts`（新） | `DEFAULT_ASKS`（默认配置，按人的 id；第 1 步前移到 `world.yml`）、`npcAsksOn` / `npcAsksBetween`、`judgeAsk`、`describeAsk` |
-| `packages/bot/src/npc.ts` | `unit`（哈希）导出，一行 |
-| `packages/bot/src/sim/asks-preview.ts`（新） | 月历预览：`node src/sim/asks-preview.ts [起始日] [天数] [档位]`，列出约、结果、她的答复和每周频率 |
-| `packages/bot/test/npc-asks.test.ts`（新） | 14 项：重放一样；学期里每周频率；每个约都合理（有课 / 周末、不放假、不撞课、提前够久、一天一个）；病着不发起、新发的状态取消且理由对得上；结果占比；C 阶段门槛（任意两周窗口不会连着一次变卦都没有）；同学档没有；`judgeAsk` 的优先级、擦边、作业边界、改约再判；日志句 |
+| `packages/bot/src/npc-asks.ts`（新） | `DEFAULT_ASKS`（默认配置，按人的 id）、`npcAsksOn` / `npcAsksBetween`（`anchors`：约的是饭的名目，开始时刻跟世界里排好的那顿走）、`judgeAsk`、`describeAsk` |
+| `packages/bot/src/world.ts` | `World.asks` 开关；`WorldNow.dates`（`FriendDate`）；`friendDatesFor`（今天、明天里已经说到她这里的约，她按规则判）；`describeDate` / 「约：…」进「你那边」；`occupationAt` 在一起的那一段；`planDates`；复盘（`recapDay`）；说起她（`recentWith`：一句数 + 最近两件变卦）；开着时随机的 `lunch_with_friend` 让位 |
+| `packages/bot/src/day-plan.ts`、`status-line.ts` | 「你今天的打算」在原来的打算后面接上「20:30 和陈佳宁微信视频」（`PlanFacts.dates`、`PlanSlot.extra`）；改约要等她知道才换时间 |
+| `packages/bot/src/life-selector.ts` | 非吃饭的约进 `busySpans`；约的午饭给那顿 `eat` 带上 `target` |
+| `packages/bot/src/config.ts`、`app.ts`、`packages/koishi-plugin-qqbot/src/index.ts` | 配置 `npcAsks`（默认关）；`app.ts` 读卡时设上 `World.asks`；控制台一个复选框 |
+| `packages/bot/src/sim/scenario.ts`、`runner.ts` | 场景的 `npcAsks` |
+| `packages/bot/src/sim/asks-preview.ts`（新） | 月历预览：`node src/sim/asks-preview.ts [起始日] [天数] [档位]` |
+| `packages/bot/test/npc-asks.test.ts`（新）、`world-asks.test.ts`（新） | 事实层 14 项；世界层 15 项（关着不变、开着随机午饭让位、前一晚的约前一晚就知道、状态行盖住、选择器让出、迟到 / 改约 / 取消 / 推掉各自的「到她知道才写」、打算行、复盘、说起她的一句数、私事理由按档位、同学档没有） |
+| `packages/bot/sim/npc-asks-days.json`（新） | 真模型场景：六个真实日子（卡上推出来的），每步问一句，查时间块、状态行、不编、不夸大 |
 
 ## 验证
 
-- 单元：`npm test -w @qqbot/bot` 里 `npc-asks.test.ts` 14/14，`npc.test.ts` 不变；类型检查干净
+- 单元：`npc-asks` 14、`world-asks` 15；类型检查干净；**全量：bot 977/977、插件 29/29、工具 43/43**（10-18 02:0x，接线最终版；内存守护最低可用约 1.6 GB）
 - 统计（三年多、课表延长、去掉假期，276 次约）：每周 1.6 次；按时约 66%、迟到约 13%、改约约 13%、取消约 8%（含新发的病 / 忙 / 回家几个）
-- 全量测试**没跑**：写的时候虚拟机空闲内存只剩约 730 MB（别的程序占的），跑 380 秒的全量会挤到线上；只改了 `npc.ts` 一个 `export`，新文件另有 14 项，类型检查干净。接线以前要补一次全量
-- 真实学期（09-14 起 105 天）：23 次约，每周 1.5 次；不是按时的 11 次；她推掉 4 次（作业 2、身上不舒服 2），预览表在 `exchange/handoff/2026-10-18-claude-asks-preview-for-user.md`
-- **没做**：真模型（事实层没进提示词，没有可试的话）；线上完全没动
+- 真学期（09-14 起 105 天）：24 次约（含吃饭的约跟着饭点后重排），预览表在 `exchange/handoff/2026-10-18-claude-asks-preview-for-user.md`
+- **真模型（`npc-asks-days`，纯虚构对话，`--no-memory`）**：
+  - 第一轮（3 次）：90/92，管线 18/18；唯一的失败是 11-20 那步（视频改到 20:30）她 2 次说「没安排」——「你今天的打算」那一行还写着「晚上研究新相机」，没有这次约
+  - 加「打算行带约」之后（3 次）：92/93，该步 2/3 提到视频和 20:30
+  - 说起她时发现 3/3 夸大成「老放我鸽子」（只留每种约最近一次变卦，按时的被丢了）→ 改成先给一句数（「最近 14 天约过 3 次（按时 1、改时间 1、她临时去不了 1）」）再写最近两件变卦；之后（4 次）**144/144，管线 24/24**，说起雨桐时「约她三次有两次都黄了」「两周约了三回」，没有夸大
+  - 已知的小毛病：问「昨天中午」时 1 次编了「今天中午也没一块儿」（提示词里没有这件事，「没写的别编」管不住所有次数）；和 0064 的「顺带说」同一类风险，不在这里根治
+- 线上：**没动**。`npcAsks` 默认关；要开：`koishi.yml` 加 `npcAsks: true` 重启（一次一个变量，看 48 小时）；回滚 = 改回 false 重启
 
 ## 待用户
 
