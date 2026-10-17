@@ -519,7 +519,7 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
             + '想跟他说一声，问问能不能改个时间；原因只说这一条（看「你那边」和上面的事实），别编别的，别过分道歉，不抱怨他',
         news: () => ({
             camera: () => `你刚${candidate.news!.what}，想第一时间告诉${userName}：说说这件事（看「你那边」那一行），就说这一件；那一行里没写的细节不编`,
-            homework_done: () => `你刚${candidate.news!.what}，想跟${userName}说一声：就说这一件（看「你那边」那一行里的作业），不要他回应或夸你；那一行里没写的细节不编`,
+            homework_done: () => `你刚${candidate.news!.what}，想跟${userName}说一声：就说这一件（看「你那边」那一行里的作业），要让他一听就知道是你自己的作业、不是他的；不要他回应或夸你；那一行里没写的细节不编`,
             unwell: () => `你今天${candidate.news!.what}，想跟${userName}说一声：只是告诉他，不是要他哄你、关心你，也不要他回应；说到哪一步照「你的身体」那一行，没写的细节不编`,
         })[candidate.news!.kind](),
         // 旧项目的教训（ADR 0013 决策 2）：分享「刚看到的」会编出一个具体的视频、帖子，对方要链接时给不出来
