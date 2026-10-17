@@ -18,7 +18,7 @@ import { needsAt, type NeedsSnapshot } from './needs.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from './promises.ts';
 import { chooseProject, projectActivity } from './projects.ts';
 import { formatDate, herDay, stateAt, type ExtraFreeActivity, type Schedule } from './schedule.ts';
-import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
+import { dateSpan, OCCUPATION_MINUTES, type WorldNow } from './world.ts';
 
 export interface LifeSources {
     schedule: Schedule;
@@ -113,6 +113,8 @@ export function busySpans(now: WorldNow | undefined): { start: Date; end: Date; 
     if (now.cat && 'fed' in now.cat.today) span(now.cat.today.fed, OCCUPATION_MINUTES.feed, `下楼喂${now.cat.name}`);
     for (const parcel of now.parcels.filter(p => p.status === 'picked_today')) span(parcel.when, OCCUPATION_MINUTES.parcel, `取快递（${parcel.item}）`);
     if (now.familyCall?.done) span(now.familyCall.at, OCCUPATION_MINUTES.call, '和家里视频');
+    // 闺蜜的约（ADR 0061）：真的发生的那一段，占着时间（吃饭类的那顿由饭点处理，这里不重复）
+    for (const d of (now.dates ?? []).filter(d => d.held && formatDate(d.start) === now.day && d.kind !== 'canteen' && d.kind !== 'dinner')) span(dateSpan(d).start, d.minutes, d.doing);
     // 去买相机那天：状态行从出门前 90 分钟起写准备，回来后 90 分钟写在宿舍摆弄；
     // 选择器也让出这两段，不能同时在行动账里记成图书馆赶作业等作息活动。
     const camera = now.cameraFund?.camera;
@@ -150,7 +152,11 @@ function npcFacts(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date) 
 }
 
 function targetForMeal(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date): string | undefined {
-    return npcFacts(sources, at).find(event => MEAL_SOCIAL.has(event.id))?.person?.id;
+    const social = npcFacts(sources, at).find(event => MEAL_SOCIAL.has(event.id))?.person?.id;
+    if (social) return social;
+    // 闺蜜约的那顿午饭（ADR 0061）：真的发生了的才算
+    const world = dayWorld(sources, at);
+    return world?.dates?.find(d => d.held && d.kind === 'canteen' && formatDate(d.start) === world.day)?.person.id;
 }
 
 function targetForClass(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date, end: Date): string | undefined {

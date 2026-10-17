@@ -12,14 +12,23 @@ export type AskSlot = 'lunch' | 'dinner' | 'evening' | 'weekend';
 
 export interface AskKind {
     id: string;
-    /** {person} 换成名字 */
-    text: string;
+    /** 约的事（不带人名）：「下课一起去食堂吃饭」；整句是「<名字>约你<what>」 */
+    what: string;
+    /** 在一起的那段时间状态行怎么说，{person} 换成名字 */
+    doing: string;
     slot: AskSlot;
     /** 哪些日子会约：上课的日子 / 周末 / 都行（放假、学期外不约：那时她不在学校） */
     when: 'class_day' | 'weekend' | 'any';
     /** 这件事大约多久 */
     minutes: number;
     where?: string;
+    /** 约的就是她那天的这顿饭：开始时刻跟着世界里排好的那顿走（anchors.meal 给了才生效；没给就落在 slot 那一段里） */
+    anchor?: 'lunch' | 'dinner';
+}
+
+/** 世界里已经排好的事，约要对上它们（world.ts 传进来；预览、测试可以不传） */
+export interface AskAnchors {
+    meal?: (kind: 'lunch' | 'dinner', day: Date) => { start: Date; end: Date } | undefined;
 }
 
 /** 变卦的理由；private：对方自己的私事（身体、家里），只在最亲的档位、被问到才说（ADR 0020，ADR 0061 决策 4） */
@@ -44,7 +53,11 @@ export interface NpcAsk {
     person: string;
     name: string;
     kind: string;
+    /** 整句：「<名字>约你<what>」 */
     text: string;
+    what: string;
+    /** 在一起的那段时间状态行怎么说 */
+    doing: string;
     /** 约的那天 */
     day: string;
     /** 对方什么时候说的 */
@@ -87,10 +100,10 @@ export const DEFAULT_ASKS: Record<string, AsksConfig> = {
         perMonth: 4,
         dayBefore: 0.5,
         kinds: [
-            { id: 'canteen', text: '{person}约你下课一起去食堂吃饭', slot: 'lunch', when: 'class_day', minutes: 45 },
-            { id: 'dinner', text: '{person}约你一起去吃晚饭', slot: 'dinner', when: 'class_day', minutes: 50 },
-            { id: 'library', text: '{person}约你晚上一起去图书馆', slot: 'evening', when: 'class_day', minutes: 90, where: '图书馆' },
-            { id: 'stroll', text: '{person}约你周末下午出去转转', slot: 'weekend', when: 'weekend', minutes: 150 },
+            { id: 'canteen', what: '下课一起去食堂吃饭', doing: '在食堂和{person}吃饭', slot: 'lunch', when: 'class_day', minutes: 45, anchor: 'lunch' },
+            { id: 'dinner', what: '一起去吃晚饭', doing: '和{person}一起吃晚饭', slot: 'dinner', when: 'class_day', minutes: 50, anchor: 'dinner' },
+            { id: 'library', what: '一起去图书馆', doing: '在图书馆和{person}一起自习', slot: 'evening', when: 'class_day', minutes: 90, where: '图书馆' },
+            { id: 'stroll', what: '出去转转', doing: '和{person}出去转转', slot: 'weekend', when: 'weekend', minutes: 150 },
         ],
         late: { chance: 0.15, minutes: [5, 20], reasons: [{ text: '下课被老师拖堂了' }, { text: '出门晚了' }, { text: '路上碰到认识的人聊了几句' }] },
         moved: { chance: 0.1, shiftMinutes: [60, 150], reasons: [{ text: '临时要先去办件事' }, { text: '作业还差一点想先弄完' }, { text: '睡过头了' }] },
@@ -100,7 +113,7 @@ export const DEFAULT_ASKS: Record<string, AsksConfig> = {
         perMonth: 3,
         dayBefore: 0.7,
         kinds: [
-            { id: 'video', text: '{person}约你晚上微信视频', slot: 'evening', when: 'any', minutes: 40 },
+            { id: 'video', what: '微信视频', doing: '在和{person}微信视频', slot: 'evening', when: 'any', minutes: 40 },
         ],
         late: { chance: 0.15, minutes: [5, 25], reasons: [{ text: '她那边宿舍有点吵，找地方' }, { text: '刚忙完' }] },
         moved: { chance: 0.15, shiftMinutes: [60, 120], reasons: [{ text: '她那边临时有事' }, { text: '她作业还没弄完' }] },
@@ -116,12 +129,14 @@ const clock = (text: string) => { const [h, m] = text.split(':').map(Number); re
 const holidayOn = (schedule: Schedule, day: Date) => { const date = formatDate(day); return schedule.holidays.some(h => h.start <= date && date <= h.end); };
 
 /** 这一天、这个名目有没有合适的开始时刻：落在这一段里，且和课前后各留一点；有就按哈希挑一个（十分钟一档） */
-function startFor(kind: AskKind, schedule: Schedule, day: Date, key: string): Date | undefined {
+function startFor(kind: AskKind, schedule: Schedule, day: Date, key: string, anchors?: AskAnchors): Date | undefined {
     const { lessons, outsideSemester } = classesOn(schedule, day);
     if (outsideSemester || holidayOn(schedule, day)) return undefined;
     const weekend = day.getDay() === 0 || day.getDay() === 6;
     if (kind.when === 'class_day' && !lessons.length) return undefined;
     if (kind.when === 'weekend' && !weekend) return undefined;
+    // 约的是她那天的这顿饭：跟着世界里排好的那顿（和课撞的那顿世界里本来就没有）
+    if (kind.anchor && anchors?.meal) return anchors.meal(kind.anchor, day)?.start;
     const [from, to] = SLOTS[kind.slot].map(clock) as [number, number];
     const starts: number[] = [];
     for (let t = from; t <= to; t += 10) {
@@ -142,7 +157,7 @@ const BLOCKING: readonly NpcStateKind[] = ['sick', 'busy', 'home'];
 const stateOf = (person: AskPerson, schedule: Schedule, day: Date) => npcStates(person.id, person.life, schedule, day).find(s => BLOCKING.includes(s.kind));
 
 /** 这个人在 first 那个月里发起的约（约的那天都落在这个月） */
-function monthAsks(person: AskPerson, config: AsksConfig, schedule: Schedule, first: Date): NpcAsk[] {
+function monthAsks(person: AskPerson, config: AsksConfig, schedule: Schedule, first: Date, anchors?: AskAnchors): NpcAsk[] {
     const month = formatDate(first).slice(0, 7);
     const length = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
     const count = Math.floor(config.perMonth) + (unit(`${month} ${person.id} ask extra`) < config.perMonth % 1 ? 1 : 0);
@@ -156,7 +171,7 @@ function monthAsks(person: AskPerson, config: AsksConfig, schedule: Schedule, fi
             const day = addDays(first, (startIndex + step) % length);
             const date = formatDate(day);
             if (taken.has(date)) continue;
-            const start = startFor(kind, schedule, day, `${key} ${date}`);
+            const start = startFor(kind, schedule, day, `${key} ${date}`, anchors);
             if (!start) continue;
             const dayBefore = unit(`${key} lead`) < config.dayBefore;
             const askedDay = dayBefore ? addDays(day, -1) : day;
@@ -168,7 +183,7 @@ function monthAsks(person: AskPerson, config: AsksConfig, schedule: Schedule, fi
             taken.add(date);
             asks.push(settle({
                 id: `${date}:${person.id}:${kind.id}`, person: person.id, name: person.name, kind: kind.id,
-                text: kind.text.replace('{person}', person.name), day: date, askedAt: at(askedDay, askedMinutes), start, minutes: kind.minutes,
+                text: `${person.name}约你${kind.what}`, what: kind.what, doing: kind.doing.replace('{person}', person.name), day: date, askedAt: at(askedDay, askedMinutes), start, minutes: kind.minutes,
                 ...(kind.where ? { where: kind.where } : {}), outcome: 'on_time',
             }, person, config, schedule, key));
             break;
@@ -208,18 +223,18 @@ function settle(ask: NpcAsk, person: AskPerson, config: AsksConfig, schedule: Sc
 }
 
 /** 约的那天是 day 的所有约（按原定开始排）；没写配置的人没有约 */
-export function npcAsksOn(people: readonly AskPerson[], schedule: Schedule, day: Date, configs: Record<string, AsksConfig> = DEFAULT_ASKS): NpcAsk[] {
+export function npcAsksOn(people: readonly AskPerson[], schedule: Schedule, day: Date, configs: Record<string, AsksConfig> = DEFAULT_ASKS, anchors?: AskAnchors): NpcAsk[] {
     const first = new Date(day.getFullYear(), day.getMonth(), 1);
     const date = formatDate(day);
-    return people.flatMap(person => (configs[person.id] ? monthAsks(person, configs[person.id]!, schedule, first) : []))
+    return people.flatMap(person => (configs[person.id] ? monthAsks(person, configs[person.id]!, schedule, first, anchors) : []))
         .filter(ask => ask.day === date)
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 }
 
 /** 一段日子里的所有约（预览、审计用） */
-export function npcAsksBetween(people: readonly AskPerson[], schedule: Schedule, from: Date, to: Date, configs: Record<string, AsksConfig> = DEFAULT_ASKS): NpcAsk[] {
+export function npcAsksBetween(people: readonly AskPerson[], schedule: Schedule, from: Date, to: Date, configs: Record<string, AsksConfig> = DEFAULT_ASKS, anchors?: AskAnchors): NpcAsk[] {
     const out: NpcAsk[] = [];
-    for (let day = from; day.getTime() <= to.getTime(); day = addDays(day, 1)) out.push(...npcAsksOn(people, schedule, day, configs));
+    for (let day = from; day.getTime() <= to.getTime(); day = addDays(day, 1)) out.push(...npcAsksOn(people, schedule, day, configs, anchors));
     return out;
 }
 

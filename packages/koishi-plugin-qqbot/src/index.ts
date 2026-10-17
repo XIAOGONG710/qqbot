@@ -89,6 +89,7 @@ export interface Config {
     projectChoice: boolean;
     lifeInPrompt: boolean;
     grievance: boolean;
+    npcAsks: boolean;
     feedbackCommands: boolean;
     realWeather: boolean;
     candidates: number;
@@ -175,6 +176,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**生活账进提示词（第一步）**：她最近三天里有几天练拍照修图、上一回是什么时候，按账上记着的写一行进时间块；只给看得到她爱好的档位。要开着上面那一项'),
         grievance: Schema.boolean().default(DEFAULTS.grievance)
             .description('**有起因的小别扭与和好**（ADR 0074）：男朋友档，他隔了 3 天以上才来、这几天她发的一直没回时，她回来的头一两轮淡一点、点一句，他一解释 / 道歉 / 哄就软下来。只由这一个具体事件触发，一次只有一档，不存跨天的情绪，每轮从聊天记录的时间重算。默认关'),
+        npcAsks: Schema.boolean().default(DEFAULTS.npcAsks)
+            .description('**闺蜜的约**（ADR 0061）：陈佳宁、苏雨桐会约她（一起吃饭、去图书馆、微信视频），有时迟到、改到晚一点、临时取消；她按自己的课、身体、作业答应或推掉。进她的一天（状态行）和「你那边」。只给看得到这两个人的档位。默认关'),
         feedbackCommands: Schema.boolean().default(DEFAULTS.feedbackCommands)
             .description('**反馈通道**（ADR 0073）：男朋友档收到只有「假」或「像」一个字的消息（可带前面的 / 、后面的标点或一个小黄脸、QQ 的回复引用）时，记下她那一轮话是「假」还是「像」，不当聊天、她不回应。记录在数据目录的 feedback/ 里，不进日志正文。默认关'),
         realWeather: Schema.boolean().default(DEFAULTS.realWeather)
@@ -290,6 +293,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.projectChoice !== undefined ? { projectChoice: config.projectChoice } : {}),
         ...(config.lifeInPrompt !== undefined ? { lifeInPrompt: config.lifeInPrompt } : {}),
         ...(config.grievance !== undefined ? { grievance: config.grievance } : {}),
+        ...(config.npcAsks !== undefined ? { npcAsks: config.npcAsks } : {}),
         ...(config.feedbackCommands !== undefined ? { feedbackCommands: config.feedbackCommands } : {}),
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
