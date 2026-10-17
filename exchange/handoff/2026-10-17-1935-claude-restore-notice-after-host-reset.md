@@ -30,3 +30,11 @@
 - 已派 DSH 做宿主机只读取证：`exchange/tasks/2026-10-17-dsh-host-network-forensics.md`，用户贴 `exchange/prompts/2026-10-17-dsh-host-forensics.md` 给 DSH。
 - 第二次快进（只多脚本 / 文档、没重启）：`claude/release-1017b`（`02b3285`）= 探针进仓库 `scripts/net-probe.ts`（带对 NAT 网关 192.168.139.2 的 ICMP）+ 启动脚本在 Koishi 心跳新鲜后补起心跳守望和探针 + 文档。核对同前（`HEAD..origin/main` 空、4 个以内的 `scripts/` / `docs/` 文件、无 `packages/` / `characters/`、无维护旗）。`main` = `integration` = `02b3285` 已推送。原样手动跑 Run 命令冒烟：所有服务和两个观察工具「已经在跑」。
 - 下一步唯一的动作：等 DSH 的报告（用户贴提示词）；观察窗口 10-19 21:15 前不开新开关；窗口走完后再谈 B。
+
+## 22:10 更正（用户：「dsh是另一台电脑上的，不在宿主机上」）
+
+- **我错了两处，都是没核对就信了旧记忆 / 旧推断**：
+  1. 把宿主机取证派给 DSH：记忆 `qqbot-machines` 写着「DSH 在联想宿主机上」，用户 22:00 更正为 DSH 在另一台电脑、不在 VMware 宿主机上。已撤回给 DSH 的提示词（`prompts/2026-10-17-dsh-host-forensics.md` 删除），任务书改名 `tasks/2026-10-17-host-network-forensics.md`，改为**用户在宿主机上跑一次只读脚本** `tools/host-forensics.ps1`（虚拟机上试跑通过，50 KB，无敏感内容；副本在虚拟机桌面 `host-forensics.ps1`）。
+  2. 把 03:02 的登录写成「RDP 会话自动登录 / 像是远程桌面客户端自动重连」：事件 21/22 的来源是「本地」（控制台），重启后 12 秒；所有真正的 RDP 来源都是 127.0.0.1（经 SakuraFrp 隧道）。账户 `XG` 无密码（`PasswordRequired=False`），没设自动登录（`AutoAdminLogon=0`）。所以登录自启**只在有人登录后才触发**；10-15 两次更新重启后没人登录，停了 6 小时直到 09:25。无人值守还差「开机自动登录」，要管理员权限，由用户决定。
+- **新线索**：虚拟机里有 `VMware Virtual Battery`（80%，宿主机电池透传）→ 宿主机是笔记本；宿主机外接电源反复掉约 10 秒再恢复（虚拟机 Kernel-Power 105，`AcOnline=false`→`true`）：10-03..05 共 18 次，10-15 17:12、22:13，10-16 01:36、07:11、09:13、21:32，10-17 01:53。和网卡抖动时间对不上，未证实相关。
+- 下一步唯一的动作：用户把脚本在宿主机上跑一次并发回报告；我读报告。其余不变：窗口到 10-19 21:15 前不开新开关。
