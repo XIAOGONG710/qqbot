@@ -118,7 +118,40 @@ describe('危机信号检测（ADR 0068 决策 1）', () => {
                 { role: 'user', content: correction },
             ]), undefined, correction);
         }
-        for (const notEnough of ['没事，开玩笑的', '我没事', '开玩笑的，没事了', '我没有想伤害自己，就是最近太累了', '刚才不是开玩笑，我不是真的想伤害自己', '刚才没有夸张，我没有想伤害自己']) {
+        // 关切级里他直接否认想伤害自己，或她刚问过念头他回「没有」：解除（用户 10-17 定的）；高 / 紧急级不接受
+        for (const denial of ['刚才没有夸张，但我没有想伤害自己', '我没有想伤害自己，就是最近太累了', '我不会自杀的，别担心', '没有，就是累', '没想过，就是最近太累了', '真没有']) {
+            assert.equal(crisisInHistory([
+                { role: 'user', content: '最近总觉得活着好累，有时候想从这个世界消失' },
+                { role: 'assistant', content: '你有没有想过伤害自己？' },
+                { role: 'user', content: denial },
+            ]), undefined, denial);
+        }
+        for (const [asked, answer] of [['你吃饭了吗？', '没有，就是累'], ['你有没有想过伤害自己？', '没事，开玩笑的'], ['你有没有想过伤害自己？', '我没有想伤害自己吗？'], ['累了就早点睡', '没有']] as const) {
+            assert.equal(crisisInHistory([
+                { role: 'user', content: '最近总觉得活着好累，有时候想从这个世界消失' },
+                { role: 'assistant', content: asked },
+                { role: 'user', content: answer },
+            ])?.level, 'concern', `${asked} / ${answer}`);
+        }
+        // 她的回复拆成两个气泡、问题在第一个里（真模型 r5）
+        assert.equal(crisisInHistory([
+            { role: 'user', content: '活着好累，想消失' },
+            { role: 'assistant', content: '宝宝，你现在脑子里有没有真的想伤害自己？' },
+            { role: 'assistant', content: '你跟我说实话就行，我就在这儿听着' },
+            { role: 'user', content: '没有，就是累' },
+        ]), undefined);
+        // 她那句不带问号也算在问（「有没有想伤害自己的念头」）
+        assert.equal(crisisInHistory([
+            { role: 'user', content: '活着好累，想消失' },
+            { role: 'assistant', content: '你老实跟我说，你现在有没有想伤害自己的念头' },
+            { role: 'user', content: '没有，就是累' },
+        ]), undefined);
+        assert.equal(crisisInHistory([
+            { role: 'user', content: '我不想活了' },
+            { role: 'assistant', content: '你有没有想过伤害自己？' },
+            { role: 'user', content: '没有，就是累' },
+        ])?.level, 'high', '高级不接受「没有」');
+        for (const notEnough of ['没事，开玩笑的', '我没事', '开玩笑的，没事了', '刚才不是开玩笑，我不是真的想伤害自己']) {
             assert.equal(crisisInHistory([
                 { role: 'user', content: '最近总觉得活着好累，有时候想从这个世界消失' },
                 { role: 'assistant', content: '你有没有想过伤害自己' },
@@ -132,6 +165,19 @@ describe('危机信号检测（ADR 0068 决策 1）', () => {
             { role: 'user', content: '我真的撑不住了' },
             { role: 'user', content: '好想死' },
         ]));
+    });
+
+    test('高 / 紧急级里「有人了、还没说安全」：标记 awaitingSafe，只留一轮；关切级没有这个标记', () => {
+        const chat = (...contents: string[]) => contents.map(content => ({ role: 'user' as const, content }));
+        assert.equal(crisisInHistory(chat('我不想活了', '室友回来了，就在我旁边'))?.awaitingSafe, true);
+        assert.equal(crisisInHistory(chat('我刚吞了一把药', '室友在我旁边'))?.awaitingSafe, true);
+        assert.equal(crisisInHistory(chat('我刚吞了一把药', '室友在我旁边'))?.level, 'imminent');
+        assert.equal(crisisInHistory(chat('我不想活了'))?.awaitingSafe, undefined, '还没说有人');
+        assert.equal(crisisInHistory(chat('我不想活了', '我现在安全'))?.awaitingSafe, undefined, '只有安全没有人：不是等安全');
+        assert.equal(crisisInHistory(chat('我不想活了', '室友在我旁边', '嗯'))?.awaitingSafe, undefined, '下一句没再提：不再是这一步');
+        assert.equal(crisisInHistory(chat('我不想活了', '室友在我旁边', '我现在安全了')), undefined, '安全 + 刚才的有人：解除');
+        assert.equal(crisisInHistory(chat('活着好累', '室友在我旁边'))?.awaitingSafe, undefined, '关切级不用这一步');
+        assert.equal(crisisInHistory(chat('我不想活了', '室友在我旁边', '我又想死了'))?.awaitingSafe, undefined, '新的危险说法：重新来');
     });
 
     test('否定、假设、疑问、无关物品和过时的证据均不能解除', () => {

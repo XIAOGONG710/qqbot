@@ -403,7 +403,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 unanswered: loops?.unanswered.map(l => l.what),
                 intimate: contact.tier === 'boyfriend',
                 playful: contact.tier === 'boyfriend',
-                ...(crisisNow ? { crisis: crisisNow.level } : {}),
+                ...(crisisNow ? { crisis: crisisNow.level, ...(crisisNow.awaitingSafe ? { crisisAwaitingSafe: true } : {}) } : {}),
                 ...(grievance ? { grievance } : {}),
                 ...(untold.length ? { news: untold } : {}),
             });

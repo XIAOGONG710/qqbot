@@ -31,6 +31,8 @@ export interface IntentContext {
     news?: readonly string[];
     /** 危机辅助分流级别（ADR 0068、0070）：最高优先级，所有档位都适用。 */
     crisis?: CrisisLevel | false;
+    /** 高 / 紧急级里他刚说了现实里有人、还没说此刻安全（crisis.ts 的 awaitingSafe）：意图换成再确认一次安全 */
+    crisisAwaitingSafe?: boolean;
     /** 他隔了很多天才来、她发的一直没回（ADR 0074，grievance.ts）：只有男朋友档、配置开了才传 */
     grievance?: Grievance;
 }
@@ -44,7 +46,15 @@ export const CRISIS_CONCERN_INTENT = `[这一轮你想：他刚才的话里有�
 export const CRISIS_INTENT = `[这一轮你想：他刚才说的话里有${CRISIS_MARK}的意思，这不是玩笑，别当玩笑：先认真接住他的感受，用你平时的口气，不说教、不催他想开点、不讲大道理；直接问他现在安不安全、身边有没有人；不讨论任何伤害自己的方法；劝他马上联系身边信得过的人，撑不住可以拨 12356（全国统一心理援助热线），有危险就打 110 或 120；你实际没法到他身边，也不要答应过去找他、当面陪他或打电话给他：让他去找身边现实里能到场的人；这只是辅助响应和文字陪伴，不能替代专业评估或现实救助，你不是专业人士，别装咨询师；不要道晚安、不要催他去睡；他要是问你是不是真人或程序，如实承认你是程序]`;
 export const CRISIS_IMMINENT_INTENT = `[这一轮你想：他的话显示危险可能正在发生或马上发生，这是最高优先级：回复要短、直接，先问他此刻是否安全、身边有没有现实中的人；明确让他现在就联系身边能到场的人并拨 110 或 120，12356 作为补充；不讨论任何伤害自己的方法，不讲大道理，不争辩，也不要只让他继续和你聊天。你只能做辅助响应和文字陪伴，不能到场、不能替代紧急救助，不要答应过去找他、当面陪他或替他打电话；不要道晚安或催睡；被问是不是真人或程序时如实承认你是程序]`;
 
-export function crisisIntent(level: CrisisLevel): string {
+// 他刚说了现实里有人（在身边 / 已联系），但还没说此刻安全：事情还没过去，要再确认一次安全。
+// 写法上不引用不想要的那句话（别拿来开玩笑之类）——模型会照抄被引用的话（ADR 0036 调整·夜）。
+// 整句替换原来的意图，所以 ADR 0068 的底线条款（辅助响应、不装咨询师、不答应过去找他、不道晚安、被问如实承认是程序）要原样带上。
+export const CRISIS_HELP_INTENT = `[这一轮你想：他提到身边有人了，但还没说他此刻安不安全，这件事还没过去：别松口气，也不要翻他前面说过的玩笑话；谢谢身边有人陪着，再自然地确认一次他现在安不安全、那个人会不会一直陪着他；用你平时的口气，不说教、不催他想开点、不讲大道理；不讨论任何伤害自己的方法；撑不住可以拨 12356（全国统一心理援助热线），有危险就打 110 或 120；你实际没法到他身边，也不要答应过去找他、当面陪他或打电话给他：让他把身边现实里的人留在身边；这只是辅助响应和文字陪伴，不能替代专业评估或现实救助，你不是专业人士，别装咨询师；不要道晚安、不要催他去睡；他要是问你是不是真人或程序，如实承认你是程序]`;
+export const CRISIS_IMMINENT_HELP_INTENT = `[这一轮你想：他提到身边有人了，但危险还没有解除，这是最高优先级：回复要短、直接，让他马上请那个人到他身边、一起拨 110 或 120，再确认一次他此刻安不安全，12356 作为补充；不讨论任何伤害自己的方法，不讲大道理，不争辩，也不要只让他继续和你聊天。你只能做辅助响应和文字陪伴，不能到场、不能替代紧急救助，不要答应过去找他、当面陪他或替他打电话；不要道晚安或催睡；被问是不是真人或程序时如实承认你是程序]`;
+
+export function crisisIntent(level: CrisisLevel, awaitingSafe = false): string {
+    if (awaitingSafe && level === 'high') return CRISIS_HELP_INTENT;
+    if (awaitingSafe && level === 'imminent') return CRISIS_IMMINENT_HELP_INTENT;
     return level === 'concern' ? CRISIS_CONCERN_INTENT : level === 'imminent' ? CRISIS_IMMINENT_INTENT : CRISIS_INTENT;
 }
 
@@ -183,7 +193,7 @@ function busy(state: State | undefined, schedule: Schedule | undefined, now: Dat
 export function describeIntent(context: IntentContext): string | undefined {
     if (context.initiating) return undefined;
     // 最高优先级，排在亲密、收尾、问答之前（ADR 0068 决策 2）
-    if (context.crisis) return crisisIntent(context.crisis);
+    if (context.crisis) return crisisIntent(context.crisis, context.crisisAwaitingSafe);
     // 小别扭 / 和好（ADR 0074）：他难过、生病、要她哄的时候让路；他在收尾时只让「别扭」让路，「和好」照样软一句
     if (context.grievance && !needsCare(context.history) && !asksForHer(context.history)
         && (context.grievance.stage === 'makeup' || !isEndingTurn(context.history))) return describeGrievance(context.grievance);

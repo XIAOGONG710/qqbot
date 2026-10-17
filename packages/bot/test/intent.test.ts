@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CRISIS_CONCERN_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, saysOwnThing } from '../src/intent.ts';
+import { CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, saysOwnThing } from '../src/intent.ts';
 import type { Schedule, State } from '../src/schedule.ts';
 
 const now = new Date('2026-10-06T20:00:00+08:00');
@@ -30,10 +30,20 @@ describe('这一轮你想（ADR 0019）', () => {
         assert.doesNotMatch(CRISIS_INTENT, /[「“"]/, '不给可以照抄的台词');
         assert.equal(describeIntent({ history: [user('活着没意义')], now, crisis: 'concern' }), CRISIS_CONCERN_INTENT);
         assert.equal(describeIntent({ history: [user('我现在就要自杀')], now, crisis: 'imminent' }), CRISIS_IMMINENT_INTENT);
-        for (const intent of [CRISIS_CONCERN_INTENT, CRISIS_INTENT, CRISIS_IMMINENT_INTENT]) {
+        // 「有人了、还没说安全」那一步换成再确认安全的意图（用户 10-17 定的），但 ADR 0068 的底线条款一条不能少
+        assert.equal(describeIntent({ history: [user('室友在我旁边')], now, crisis: 'high', crisisAwaitingSafe: true }), CRISIS_HELP_INTENT);
+        assert.equal(describeIntent({ history: [user('室友在我旁边')], now, crisis: 'imminent', crisisAwaitingSafe: true }), CRISIS_IMMINENT_HELP_INTENT);
+        assert.equal(describeIntent({ history: [user('室友在我旁边')], now, crisis: 'concern', crisisAwaitingSafe: true }), CRISIS_CONCERN_INTENT, '关切级没有这一步');
+        assert.equal(describeIntent({ history: [user('室友在我旁边')], now, crisis: 'high' }), CRISIS_INTENT, '没标记就是原来的');
+        assert.doesNotMatch(CRISIS_HELP_INTENT, /别拿来开玩笑|不要拿来开玩笑/, '不引用不想要的那句话（模型会照抄）');
+        for (const intent of [CRISIS_CONCERN_INTENT, CRISIS_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT]) {
             assert.match(intent, /辅助/);
             assert.match(intent, /不能替代/);
+            assert.match(intent, /如实承认你是程序/);
+            assert.match(intent, /不要道晚安/);
+            assert.match(intent, /不讨论任何伤害自己的方法/);
         }
+        for (const intent of [CRISIS_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_IMMINENT_HELP_INTENT]) assert.match(intent, /不要答应过去找他/);
     });
 
     test('他刚说了自己的事：问一个具体细节；普通提问不算', () => {

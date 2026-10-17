@@ -7,6 +7,8 @@ export interface CrisisHit {
     /** 命中的片段只供纯函数测试；运行日志和持久状态不得写入它。 */
     match: string;
     level: CrisisLevel;
+    /** 只有 crisisInHistory 会设：高 / 紧急级里，上一条他说了现实里有人（已联系 / 在身边），但还没说此刻安全——这一轮该再确认一次安全。 */
+    awaitingSafe?: boolean;
 }
 
 const LEVEL_ORDER: Record<CrisisLevel, number> = { concern: 1, high: 2, imminent: 3 };
@@ -68,6 +70,19 @@ type Said = { role: 'user' | 'assistant'; content: string; time?: string };
 /** 低风险只有明确纠正才可解除；“开玩笑的 / 我没事”单独出现都不够。 */
 // 要同时有「回指刚才的话」「说那是开玩笑 / 夸张」「否认想伤害自己」三样；语气词（了、的、而已）照常说也算（真模型对话里「刚才只是夸张了，我不是真的想伤害自己」曾因为多一个「了」漏掉）。
 const EXPLICIT_CORRECTION = /(?:刚才|之前|前面|上面|那句|那话|那些话)(?:(?![不没非])[^，,。！!？?\n]){0,6}?(?:开玩笑|夸张(?:说法)?|说着玩|瞎说|胡说)(?:的|了|而已|罢了|啦)?[，,。\s]*(?:我)?(?:真的)?(?:不是真的|并不是真的|并没有|没有|不会|不打算|没打算)(?:想|要|打算)?(?:去)?(?:伤害自己|自残|自杀|轻生|想死)/;
+/**
+ * 关切级里他直接否认想伤害自己：①整句里明说「没有 / 不会想伤害自己、自杀、想死」；②她刚问过有没有伤害自己的念头，他回「没有」「没想过」「不会」。
+ * 只在关切级起作用（被动的绝望，她刚直接问过）；高 / 紧急级不接受，要「此刻安全」+「现实里有人」。疑问句不算。
+ */
+const EXPLICIT_DENIAL = /(?:^|[，,。！!\s])(?:但是|但|不过|可是|可)?(?:我)?(?:真的)?(?:并)?(?:没有|没|不会|不打算|没打算)(?:想过|想|要|打算)?(?:去)?(?:伤害自己|自残|自杀|轻生|想死)/;
+const ASKED_ABOUT_SELF_HARM = /(?:伤害自己|自残|自杀|轻生|想死|念头|想过)/;
+const BARE_NO = /^\s*(?:真的?)?(?:没有|没想过|没想|不会|没)(?:啊|的|呀|呢|哦)?\s*(?:[，,。！!～~]|$)/;
+const isQuestion = (text: string) => /[?？]|吗\s*$|么\s*$/.test(text);
+// 她的那句话是不是在问：除了问号，「有没有 / 是不是 / 想过没」这种问法常常不带问号（真模型：「你老实跟我说，你现在有没有想伤害自己的念头」）
+const asksSomething = (text: string) => isQuestion(text) || /吗|有没有|是不是|是否|想过没|想没想/.test(text);
+const deniesSelfHarm = (answer: string, asked: string | undefined) => !isQuestion(answer)
+    && (EXPLICIT_DENIAL.test(answer) || (asked !== undefined && asksSomething(asked) && ASKED_ABOUT_SELF_HARM.test(asked) && BARE_NO.test(answer)));
+
 /** 高风险解除要有“此刻安全”以及现实保护措施；两项可以在相邻回答中分别给出。 */
 const SAFE_NOW = /(?:我)?(?:现在|已经|目前)(?:很)?安全(?:了|的|着)?|(?:我)?(?:现在|已经)(?:在)?安全的地方|(?:现在|已经)没有危险(?:了)?/;
 const REAL_HELP = /(?:室友|朋友|家人|同学|老师|医生|辅导员|警察|急救人员).{0,6}(?:在(?:我)?(?:旁边|身边|这里)|陪着?(?:我)?|来了|过来了)|(?:已经|刚刚|刚才)(?:联系|告诉|叫|喊|打给|拨打)(?:了)?(?:室友|朋友|家人|同学|老师|医生|辅导员|12356|110|120)|(?:联系|告诉|叫|喊|打给|拨打)(?:室友|朋友|家人|同学|老师|医生|辅导员)(?:了|成功了)|(?<!没)(?<!未)(?<!没有)(?:离开|下了|走下|远离)(?:天台|楼顶|桥边|窗边|危险的地方)|(?<!没)(?<!未)(?<!没有)(?:把|已经把).{0,10}(?:放远|放下|交给|收起来|锁起来)/;
@@ -103,9 +118,14 @@ export function crisisInHistory(history: readonly Said[]): CrisisHit | undefined
     let active: CrisisHit | undefined;
     let safeSeen = false;
     let helpSeen = false;
+    // 她在他上一条消息之后说的话（她的回复常拆成几个气泡，问题可能在第一个气泡里）
+    let herWords = '';
 
     for (const message of history) {
+        if (message.role === 'assistant') { herWords += `\n${message.content}`; continue; }
         if (message.role !== 'user') continue;
+        const lastAsked = herWords || undefined;
+        herWords = '';
         if (message.time && Number.isFinite(Date.parse(message.time)) && Date.parse(message.time) < cutoff) continue;
         const hit = detectCrisis(message.content);
         if (hit) {
@@ -115,7 +135,7 @@ export function crisisInHistory(history: readonly Said[]): CrisisHit | undefined
             continue;
         }
         if (!active) continue;
-        if (active.level === 'concern' && EXPLICIT_CORRECTION.test(message.content)) {
+        if (active.level === 'concern' && (EXPLICIT_CORRECTION.test(message.content) || deniesSelfHarm(message.content, lastAsked))) {
             active = undefined;
             continue;
         }
@@ -130,5 +150,6 @@ export function crisisInHistory(history: readonly Said[]): CrisisHit | undefined
             helpSeen = evidence.help;
         }
     }
-    return active;
+    // 上一条他说了现实里有人、还没说此刻安全：留个标记，让这一轮的意图再确认一次安全（真模型对话里她曾回「那就好」就带过去了）
+    return active && active.level !== 'concern' && helpSeen && !safeSeen ? { ...active, awaitingSafe: true } : active;
 }
