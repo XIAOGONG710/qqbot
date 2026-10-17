@@ -14,3 +14,11 @@
 - 观察窗口：原定 10-15 23:31 → 10-17 23:31 被打断：真正模型可用的时间只有 10-15 23:31–10-16 05:31 和 10-17 21:15 之后。建议从 10-17 21:15 重新起算（→ 10-19 21:15），不开新开关。
 - 没有消息被晾着：最后一次文字对话 10-15 20:19，10-16 21:41 他发了一个表情，21:42:00 有一条表情回复（整秒时间戳，同 10-12 的「[干嘛]」形态，像有人从机器人 QQ 号上手动发的；不是她，表情包只收不发；推测）。
 - 登录自启：用户选了「登录时自启（当前用户 Run 项，不要密码）」。现成的 `scripts/start-services-at-boot.ps1`（分支 `claude/boot-start` `73701d2`，幂等、认维护旗、`-DryRun`）可直接复用；我在临时副本上 `-DryRun` 过：对眼前这套服务每一步都说「已经在跑，不动」。**还没装**：要先把这个分支合入 `main` 并快进线上目录（只多 3 个脚本，不重启）——两次授权——再写 `HKCU\...\Run`。等用户点头。
+
+## 21:40 补：登录时自启已装（用户 10-17：「不用问，继续做」，对象是我上一条里列的几步）
+
+- 做了：`claude/release-1017a`（`qqbot-claude2`）= `aa3e07c` + `e87f9fb`（摘取 `claude/boot-start` 的 `73701d2`）+ `1aa923d`（`install-logon-start.ps1`、启动脚本记分支 / 提交 / 是否脏、文档一节）→ 线上目录快进前核对（`HEAD..origin/main` 空；差异 4 个文件，全在 `scripts/`、`docs/`；无 `packages/`、`characters/`；无维护旗）→ `merge --ff-only`（不重启）→ 推送 `main` / `integration` / `claude/release-1017a` → 从线上目录 `install-logon-start.ps1 -Install` 写 `HKCU\...\Run\qqbot-boot` → 手动跑那条命令冒烟（2 秒，每步「已经在跑，不动」，进程号没变）。
+- 没做（用户这句话的范围之外，仍各自要当次点头）：B / D / C 三批、短回复候选 4、0064 措辞、任何新开关或重启；不加备用 DNS（依据被探针日志推翻）。
+- 没证实：真重启后隐藏窗口里 NapCat 快速登录能不能成功、Run 启动的 PowerShell 退出后子进程会不会被带走。第一次真重启用户在场看（`runtime\boot\boot.log` 和 `koishi` 日志「NapCat 账号 … 已就绪」）。
+- 探针 21:29 起多一项 `icmp[192.168.139.2=…]`（`%TEMP%\qqbot-net-probe\net-probe.ts`，不在仓库里；备份 `.bak-1017`）。探针和心跳守望都不在自启里，重启后要手动再起（心跳守望：`Start-Process node -ArgumentList 'packages/bot/src/ops/heartbeat-watch-cli.ts' -WindowStyle Hidden`）。
+- 下一步唯一的动作：等用户回答三个问题（宿主机 10-16 网通不通 / 02:46 谁动了虚拟机 / 观察窗口是否从 21:15 重起），其余等窗口走完再谈 B。
