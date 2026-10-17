@@ -132,7 +132,7 @@ describe('意图行的边界', () => {
         assert.match(withGrievance(history)!, new RegExp(SULK_MARK));
         assert.match(describeIntent({ history: [...history.slice(0, -1), m('user', -1, '你在干嘛')], now, grievance: sulk })!, new RegExp(SULK_MARK), '问句也先别扭一下');
         // 危机最高
-        assert.match(describeIntent({ history, now, grievance: sulk, crisis: true })!, /想伤害自己/);
+        assert.match(describeIntent({ history, now, grievance: sulk, crisis: 'high' })!, /想伤害自己/);
         // 他难过、生病、要她哄：让路给关心 / 哄
         for (const sad of ['我今天好难过', '我发烧了', '我好累']) {
             assert.doesNotMatch(describeIntent({ history: [...history.slice(0, -1), m('user', -1, sad)], now, grievance: sulk })!, new RegExp(SULK_MARK), sad);

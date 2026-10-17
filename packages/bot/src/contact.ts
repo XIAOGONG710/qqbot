@@ -8,7 +8,7 @@
 import { dirname, join } from 'node:path';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { disclosureRules, isClose, sourceLabel, startsConversation, todayStart } from './disclosure.ts';
-import { faceContext, reviewCrisisReply, reviewReply } from './exit-check.ts';
+import { faceContext, reviewCrisisReply, reviewReply, type ReviewOptions } from './exit-check.ts';
 import type { ChatHistory, StoredMessage } from './history.ts';
 import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
@@ -22,7 +22,7 @@ import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
-import { crisisInHistory } from './crisis.ts';
+import { crisisInHistory, type CrisisHit } from './crisis.ts';
 import { describeGrievance, grievanceNow } from './grievance.ts';
 import { describeIntent } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
@@ -181,7 +181,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     // 亲密轮次的出口检查：只在男朋友明确要抱抱、亲亲等时，拦“只能当面 / 隔空不算”把文字回应收回。
     let textIntimacy = false;
     // 这一轮是不是危机回合（ADR 0068）：buildPrompt 按他发的内容定，紧跟着的出口检查、打错字、长短都按它
-    let crisisNow = false;
+    let crisisNow: CrisisHit | undefined;
     /** 这一轮是小别扭（不是和好）：出口检查放过「隔了很多天才来」这类带点抱怨的话（ADR 0074） */
     let sulkNow = false;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
@@ -387,8 +387,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 : [];
             if (untold.length) log(`她那边的事还没跟他说过：${untold.join('、')}`);
             // 危机信号（ADR 0068）：纯函数检测，最高优先级；主动找他时不算
-            crisisNow = !initiate && Boolean(crisisInHistory(chat));
-            if (crisisNow) log('危机信号：他这一轮说了想伤害自己的话，按危机回合处理（日志不记内容）');
+            crisisNow = !initiate ? crisisInHistory(chat) : undefined;
+            if (crisisNow) log(`危机信号：按 ${crisisNow.level} 级辅助响应处理（日志不记内容）`);
             // 小别扭 / 和好（ADR 0074）：从聊天记录的时间戳重算，不落盘；危机、主动找他、非男朋友档都不算
             const grievance = options.grievance && contact.tier === 'boyfriend' && !initiate && !crisisNow ? grievanceNow(chat) : undefined;
             const intent = describeIntent({
@@ -403,7 +403,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 unanswered: loops?.unanswered.map(l => l.what),
                 intimate: contact.tier === 'boyfriend',
                 playful: contact.tier === 'boyfriend',
-                ...(crisisNow ? { crisis: true } : {}),
+                ...(crisisNow ? { crisis: crisisNow.level } : {}),
                 ...(grievance ? { grievance } : {}),
                 ...(untold.length ? { news: untold } : {}),
             });
@@ -413,7 +413,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
-            const stickerAllowance = options.stickers ? imageStickerAllowance(chat, intent, Boolean(woken)) : { allowed: false };
+            const stickerAllowance = options.stickers ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
             stickersAllowed = stickerAllowance.allowed;
             if (options.stickers && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
             pick = picked ? {
@@ -518,7 +518,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (typo.note) log(`打错字：${typo.note}`);
             return typo.parts;
         },
-        review: (reply, messages) => (crisisNow ? reviewCrisisReply : reviewReply)(reply, {
+        review: (reply, messages) => (crisisNow
+            ? (text: string, reviewOptions: ReviewOptions) => reviewCrisisReply(text, reviewOptions, crisisNow!.level)
+            : reviewReply)(reply, {
             banned: character.banned,
             userName: contact.name,
             ...(options.speechCheck ? { speech: { ...speechContext(options.history.load(contact.qq)), ...(sulkNow ? { allowGrievance: true } : {}) } } : {}),
