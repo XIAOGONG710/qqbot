@@ -18,8 +18,9 @@
 3. NapCat：3001 端口没在听才起 `start-napcat.ps1`（用保存的会话快速登录；要扫码的情况下它起不来，日志里会写）。
 4. Hindsight：`/health` 不通才起 `start-hindsight.ps1`，**默认跳过 Hindsight 启动时对模型接口的连通自检**（`HINDSIGHT_API_SKIP_LLM_VERIFICATION`，只对这个进程）。原因：10-15 DeepSeek 排队时这个自检超时、Hindsight 进程退出、记忆服务起不来；重启后网络没准备好也会这样。想保留自检传 `-SkipHindsightLlmCheck:$false`。
 5. Koishi：没有 `koishi/bin.js` 进程才起 `start-koishi.ps1`。
-6. 看门狗：没在跑才起，放前台。
-7. 全部输出在 `runtime\boot\`（`boot.log` 一行一步；每个服务一对 `.out` / `.err`），`runtime/` 被忽略，不进仓库。
+6. 观察工具（只读）：等 Koishi 的心跳新鲜（最多 150 秒）后，补起心跳守望（`packages/bot/src/ops/heartbeat-watch-cli.ts`）和网络探针（`scripts/net-probe.ts`，日志 `%TEMP%\qqbot-net-probe\probe.log`，30 秒一行）。它们 2026-10-17 随整机复位一起没了，之后没人再起；10-16 那次 20 小时断网正是靠探针日志才查出「不是 DNS」。
+7. 看门狗：没在跑才起，放前台。
+8. 全部输出在 `runtime\boot\`（`boot.log` 一行一步；每个服务一对 `.out` / `.err`），`runtime/` 被忽略，不进仓库。
 
 ## 怎么装（要你做的）
 
