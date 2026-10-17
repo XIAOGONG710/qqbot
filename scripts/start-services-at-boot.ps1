@@ -66,6 +66,15 @@ function Start-Hidden([string]$script, [string]$label) {
 $mode = if ($DryRun) { ' [dry run: nothing will be started]' } else { '' }
 Say "boot start begins$mode (repo $repoRoot, user $env:USERNAME)"
 
+# Node runs the TypeScript source straight from the working tree, so whatever is checked out here is what a start deploys.
+# Record it (informational, never blocks: availability after an outage matters more) so a wrong checkout can be traced.
+try {
+    $gitRef = (& git -C $repoRoot rev-parse --short HEAD).Trim()
+    $gitBranch = (& git -C $repoRoot branch --show-current).Trim()
+    $gitDirty = if (& git -C $repoRoot -c submodule.recurse=false status --porcelain --ignore-submodules=all) { 'DIRTY' } else { 'clean' }
+    Say ("working tree: branch {0} at {1}, {2}" -f $(if ($gitBranch) { $gitBranch } else { 'detached' }), $gitRef, $gitDirty)
+} catch { Say 'working tree: could not read git state' }
+
 # 1. Maintenance flag: somebody is doing a manual go-live / restart. A fresh flag means hands off; an old one is a leftover.
 $flag = Join-Path $env:TEMP 'qqbot-maintenance'
 if (Test-Path $flag) {
