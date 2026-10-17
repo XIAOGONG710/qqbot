@@ -224,9 +224,7 @@ describe('接进流水线（ADR 0015 第 5 步，假模型）', () => {
         assert.doesNotMatch(chat!.generations[0]!.timeBlock!, /在读的书/);
         assert.match(books!.generations[0]!.timeBlock!, /\[在读的书：\n- 《药屋少女的呢喃》[^\n]*看到第 7 卷/);
         assert.equal(books!.generations[0]!.rewrites?.length, 1);
-        // 敏感调试默认关：出口检查的日志保留中文类别描述，命中的原文（「两卷」）抹掉（ADR 0070 第 8 项）
-        assert.ok(books!.logs.some(line => line.includes('进度数字「…」（《药屋少女的呢喃》看到第 7 卷）')), books!.logs.join(' | '));
-        assert.ok(!books!.logs.some(line => line.includes('两卷')), books!.logs.join(' | '));
+        assert.ok(books!.logs.some(line => line.includes('进度数字「两卷」（《药屋少女的呢喃》看到第 7 卷）')));
         assert.deepEqual(books!.bubbles.map(bubble => bubble.text), ['在看药屋，看到第七卷了']);
         assert.ok(chat!.logs.some(line => /^她自己的日子：今天（10-06）/.test(line)));
     });

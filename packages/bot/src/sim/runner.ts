@@ -5,6 +5,7 @@ import { appendFileSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BotConfig, Contact } from '../config.ts';
 import { createContactResponder, replySkip, type TierCard } from '../contact.ts';
+import { SENSITIVE_ON, useSensitiveSwitch } from '../sensitive.ts';
 import { stickerShelf } from '../stickers.ts';
 import { MEET_MINUTES, promiseKeeper } from '../promises.ts';
 import { writeJsonAtomic } from '../json-file.ts';
@@ -157,6 +158,9 @@ function fakeRealWeather(rain: Readonly<Record<string, number[]>>): RealWeather 
 }
 
 export async function runScenario(scenario: Scenario, options: RunOptions): Promise<RunResult> {
+    // 模拟用的全是虚构对话，报告就是给人看细节的（主动消息原文、出口检查命中了什么）：日志照旧写原文。
+    // 线上的默认是不写（ADR 0070 第 8 项，sensitive.ts）；这里不恢复，因为同一进程里可能并行跑好几个场景，而模拟器不会进线上进程。
+    useSensitiveSwitch(SENSITIVE_ON);
     const { dataDir } = options;
     const sleep = options.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)));
     mkdirSync(join(dataDir, 'prompts'), { recursive: true });
