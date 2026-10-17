@@ -23,3 +23,12 @@
 `issuesForLog` 关着时改成「保留 `summarizeIssues` 的中文描述、把 `「…」` 里的原文抹掉」，别用英文类别名；对应改 `log-bodies.test.ts`。
 
 ## 结果（见末尾补）
+
+## 结果（23:05 补）
+
+- 候选 `claude/release-1017d` = `6221119`（已推送备份；**没进 `main`，线上没动**）。
+- 完整测试：**bot 955 / 955**（380 秒）、koishi 插件 29 / 29、character-tools 43 / 43；类型检查通过。内存守卫全程没触发，最低可用虚拟内存 1748 MB，线上服务没受影响。
+- 过程里测试抓到、已修的两处：① 主动消息标签里的待跟进事项原文（`candidateLabel`，扫描没扫到）；② 模拟器的报告断言日志里的待跟进原文——模拟用的是虚构对话，报告本来就是给人看细节的，所以改成 `runScenario` 里把开关设成开（线上代码不 import 模拟器，已确认）。
+- 「待改」已做：出口检查日志关着时保留中文类别词、只抹引号里的原文，`live-digest` 的分类不受影响。
+- 差异只有 `packages/bot/src`（app、contact、responder、sensitive、exit-check、onebot、proactive、proactive-planner、promises、stickers、sim/runner）、对应测试、`docs/sensitive-logs.md`；**没有卡改动（`characters/`），没有配置改动**。
+- 上线步骤（要用户当次明确点头，窗口 10-19 21:15 前不做）：写重启通知 → 维护旗 → 只停 Koishi → 备份 `runtime\bot` → 线上目录核对（`HEAD..origin/main`、差异、无卡改动）→ `merge --ff-only` → `Start-Process start-koishi.ps1` → 验证（日志第一行「敏感调试关着…」、`heartbeat`、`state-check` 副本、`heartbeat-watch --once`、新日志里 `收到：N 字`）→ 撤旗 → 推送 `main` / `integration`。顺手可选：NapCat `fileLogLevel` 改 `warn`（NapCat 下次启动生效，要重启 NapCat 才会读）。
