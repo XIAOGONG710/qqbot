@@ -104,6 +104,8 @@ export interface ContactPipelineOptions {
     log: Log;
     /** 每次生成前拿到后处理之后、实际发给模型的提示词 */
     onPrompt?: (prompt: PromptResult) => void;
+    /** 能不能把聊天正文写进日志（ADR 0070 第 8 项）；不传就不写 */
+    sensitive?: () => boolean;
     /** 毫秒时间戳，默认真实时间；模拟器传虚拟时钟 */
     now?: () => number;
     /** 默认调模型接口（llm.ts）；模拟器包一层，在生成中插入对方的消息 */
@@ -559,5 +561,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         },
         waitUntil: options.waitUntil,
         onPrompt: options.onPrompt,
+        ...(options.sensitive ? { sensitive: options.sensitive } : {}),
     });
 }
