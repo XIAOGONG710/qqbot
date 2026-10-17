@@ -570,6 +570,18 @@ function friendDate(world: World, schedule: Schedule, ask: NpcAsk, timeline: Tim
     };
 }
 
+/**
+ * 一天的打算里写的约（ADR 0061）：她那一刻相信会发生的——答应了的；改约的要等她知道才换成新时间，取消的要等她知道才去掉；她推掉的不写
+ */
+export function planDates(now: WorldNow, at: Date): { start: Date; text: string }[] {
+    return (now.dates ?? []).filter(d => formatDate(d.start) === now.day).flatMap(d => {
+        if (d.declined && d.declinedAt && at >= d.declinedAt) return [];
+        const known = d.knownAt ? at >= d.knownAt : false;
+        if (d.outcome === 'cancelled' && known) return [];
+        return [{ start: d.outcome === 'moved' && known ? d.actualStart! : d.start, text: `和${d.person.name}${d.what}` }];
+    });
+}
+
 /** 约真的发生的那一段：迟到、改约的按实际的时刻 */
 export function dateSpan(d: FriendDate): { start: Date; end: Date } {
     const start = d.actualStart ?? d.start;
@@ -941,9 +953,21 @@ export function recentWith(world: World, schedule: Schedule, now: Date, id: stri
         }
     }
     if (world.asks) {
+        const dated: { day: Date; d: FriendDate }[] = [];
         for (let day = from; day <= today; day = addDays(day, 1)) {
-            for (const d of friendDatesFor(world, schedule, now, [day], timeline).filter(d => d.person.id === id && d.start <= now)) {
-                latest.set(`ask:${d.kind}`, `${sameDay(day, today) ? '今天' : date(day)}${recapDate(d)}`);
+            for (const d of friendDatesFor(world, schedule, now, [day], timeline).filter(d => d.person.id === id && d.start <= now)) dated.push({ day, d });
+        }
+        if (dated.length) {
+            const count = (f: (d: FriendDate) => boolean) => dated.filter(x => f(x.d)).length;
+            const bits = [
+                [count(d => !d.declined && d.outcome === 'on_time'), '按时'], [count(d => !d.declined && d.outcome === 'late'), '迟到'],
+                [count(d => !d.declined && d.outcome === 'moved'), '改时间'], [count(d => !d.declined && d.outcome === 'cancelled'), '她临时去不了'],
+                [count(d => d.declined !== undefined), '你推掉'],
+            ].filter(([n]) => n).map(([n, what]) => `${what} ${n}`);
+            latest.set('ask:tally', `最近 ${days} 天约过 ${dated.length} 次（${bits.join('、')}）`);
+            // 变卦的，最近两件
+            for (const { day, d } of dated.filter(x => x.d.outcome !== 'on_time' || x.d.declined !== undefined).slice(-2)) {
+                latest.set(`ask:${d.id}`, `${sameDay(day, today) ? '今天' : date(day)}${recapDate(d)}`);
             }
         }
     }

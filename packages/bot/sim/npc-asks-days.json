@@ -32,6 +32,6 @@
         { "check": { "speechClean": true, "exitClean": true, "replyAny": ["没", "去不了", "老师", "自己", "一个人", "没一起"], "replyNone": ["一起吃了", "一起去的食堂"] } },
         { "case": "NA07", "note": "接着问雨桐最近怎么样（说起她时带上最近的约）" },
         { "say": "雨桐最近怎么样" },
-        { "check": { "speechClean": true, "exitClean": true, "log": "想起苏雨桐最近的事" } }
+        { "check": { "speechClean": true, "exitClean": true, "log": "想起苏雨桐最近的事", "replyNone": ["老放我鸽子", "总放我鸽子", "老是放我鸽子", "每次都放", "天天放"] } }
     ]
 }

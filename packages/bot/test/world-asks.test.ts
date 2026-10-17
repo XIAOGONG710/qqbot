@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { busySpans } from '../src/life-selector.ts';
+import { dayPlan, describePlans } from '../src/day-plan.ts';
+import { herDay } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { dateSpan, describeDate, describeWorld, occupationAt, recapDay, recentWith, worldAt, type FriendDate, type WorldNow } from '../src/world.ts';
+import { dateSpan, describeDate, describeWorld, occupationAt, planDates, recapDay, recentWith, worldAt, type FriendDate, type WorldNow } from '../src/world.ts';
 
 const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
 const boyfriend = card('boyfriend');
@@ -137,12 +139,35 @@ describe('闺蜜的约进世界（ADR 0061，World.asks）', () => {
         assert.equal(found.held, false);
     });
 
+    test('一天的打算里写上约：接在原来的打算后面；改约要等她知道才换时间，取消要等她知道才去掉，推掉的不写', () => {
+        const plan = (now: WorldNow, at: Date) => describePlans(schedule, dayPlan(schedule, on.plans, herDay(schedule, at), { homework: now.homework, dates: planDates(now, at) }), at) ?? '';
+        const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        const moved = first(d => d.outcome === 'moved' && d.held && d.kind === 'video')!;
+        const early = new Date(moved.date.knownAt!.getTime() - 60_000);
+        const late = new Date(moved.date.knownAt!.getTime() + 60_000);
+        assert.match(plan(worldAt(on, schedule, early)!, early), new RegExp(`${hhmm(moved.date.start)} 和${moved.date.person.name}${moved.date.what}`));
+        assert.match(plan(worldAt(on, schedule, late)!, late), new RegExp(`${hhmm(moved.date.actualStart!)} 和${moved.date.person.name}${moved.date.what}`));
+        const cancelled = first(d => d.outcome === 'cancelled' && !d.declined)!;
+        const before = new Date(cancelled.date.knownAt!.getTime() - 60_000);
+        const after = new Date(cancelled.date.knownAt!.getTime() + 60_000);
+        assert.match(plan(worldAt(on, schedule, before)!, before), new RegExp(`${hhmm(cancelled.date.start)} 和${cancelled.date.person.name}`));
+        assert.doesNotMatch(plan(worldAt(on, schedule, after)!, after), new RegExp(`和${cancelled.date.person.name}${cancelled.date.what}`));
+        const declined = first(d => d.declined !== undefined && d.declinedAt!.getTime() === d.askedAt.getTime())!;
+        const when = new Date(declined.date.askedAt.getTime() + 60_000);
+        assert.doesNotMatch(plan(worldAt(on, schedule, when)!, when), new RegExp(`和${declined.date.person.name}${declined.date.what}`));
+    });
+
     test('复盘那天、说起她时都带上约', () => {
         const x = first(d => d.person.id === 'su_yutong' && d.start < day(12, 20))!;
         const lines = recapDay(worldAt(on, schedule, new Date(x.date.start.getFullYear(), x.date.start.getMonth(), x.date.start.getDate(), 23, 30))!);
         assert.ok(lines.some(l => l.includes('苏雨桐') && l.includes(x.date.what.slice(0, 2))), lines.join('｜'));
-        const recent = recentWith(on, schedule, new Date(x.date.start.getTime() + 24 * 3600_000), 'su_yutong')!;
-        assert.ok(recent.some(l => l.includes(x.date.what.slice(0, 2))), recent.join('｜'));
+        // 说起她时：先一句数（按时的也算进去，免得只剩变卦的让她以为总在放鸽子），再写最近两件变卦
+        const changed = first(d => d.person.id === 'su_yutong' && d.outcome !== 'on_time' && !d.declined && d.start < day(12, 20))!;
+        const recent = recentWith(on, schedule, new Date(changed.date.start.getTime() + 24 * 3600_000), 'su_yutong')!;
+        assert.ok(recent.some(l => /^最近 14 天约过 \d+ 次（.*）$/.test(l)), recent.join('｜'));
+        assert.ok(recent.some(l => l.includes('苏雨桐') && l.includes(changed.date.what.slice(0, 2))), recent.join('｜'));
+        const tally = recent.find(l => l.startsWith('最近 14 天约过'))!;
+        assert.ok(/按时 \d+|迟到 \d+|改时间 \d+|她临时去不了 \d+/.test(tally));
         assert.deepEqual(recentWith(off, schedule, new Date(x.date.start.getTime() + 24 * 3600_000), 'su_yutong')!.filter(l => /约的|推掉/.test(l)), []);
     });
 
