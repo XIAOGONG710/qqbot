@@ -104,6 +104,27 @@ describe('危机信号检测（ADR 0068 决策 1）', () => {
             { role: 'assistant', content: '你是认真的吗' },
             { role: 'user', content: '刚才只是夸张说法，我并没有想伤害自己' },
         ]), undefined, 'concern 可以被完整、明确的纠正解除');
+        // 自然的说法也算明确更正（语气词不挡）；但只说开玩笑、只说没事、只否认而不回指刚才的话都不算
+        for (const correction of [
+            '刚才只是夸张了，我不是真的想伤害自己，就是最近太累了',
+            '刚才只是开玩笑的，我不是真的想伤害自己',
+            '刚才是我说着玩的，我不会自杀的',
+            '前面那句只是夸张，我没有想伤害自己',
+            '刚才夸张了，我没有想自杀',
+        ]) {
+            assert.equal(crisisInHistory([
+                { role: 'user', content: '最近总觉得活着好累，有时候想从这个世界消失' },
+                { role: 'assistant', content: '你有没有想过伤害自己' },
+                { role: 'user', content: correction },
+            ]), undefined, correction);
+        }
+        for (const notEnough of ['没事，开玩笑的', '我没事', '开玩笑的，没事了', '我没有想伤害自己，就是最近太累了', '刚才不是开玩笑，我不是真的想伤害自己', '刚才没有夸张，我没有想伤害自己']) {
+            assert.equal(crisisInHistory([
+                { role: 'user', content: '最近总觉得活着好累，有时候想从这个世界消失' },
+                { role: 'assistant', content: '你有没有想过伤害自己' },
+                { role: 'user', content: notEnough },
+            ])?.level, 'concern', notEnough);
+        }
         assert.equal(crisisInHistory([{ role: 'assistant', content: '想死你了' }]), undefined);
         // 连着发的几条拼起来看
         assert.ok(crisisInHistory([
