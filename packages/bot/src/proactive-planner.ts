@@ -12,6 +12,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Contact } from './config.ts';
+import { logBody } from './sensitive.ts';
 import { detectCrisis } from './crisis.ts';
 import { aboutHer, expired, extractionPrompt, FOLLOW_UP_DAYS, mentions, parseExtraction, partText, tripAlreadyOver, type Extracted, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
@@ -256,7 +257,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         if (!item) return;
         followUps = followUps.filter(f => f.id !== id);
         save();
-        deps.log(`待跟进：${why}，忘掉「${item.what}」（${item.date} ${partText(item.time)}）`);
+        deps.log(`待跟进：${why}，忘掉「${logBody(item.what)}」（${item.date} ${partText(item.time)}）`);
     }
 
     /** 问这件事的主动消息发出去了：问到了就忘；没问出口的留着下次再问，第二次还没问出口也忘了 */
@@ -267,7 +268,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         if ((item.missed ?? 0) >= 1) return forget(id, '又没问出口');
         followUps = followUps.map(f => (f.id === id ? { ...f, missed: (f.missed ?? 0) + 1 } : f));
         save();
-        deps.log(`待跟进：她没问出口「${item.what}」，留着下次再问`);
+        deps.log(`待跟进：她没问出口「${logBody(item.what)}」，留着下次再问`);
     }
 
     async function extractNow(): Promise<void> {
@@ -316,13 +317,13 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             for (const [i, add] of result.add.entries()) {
                 const item: FollowUp = { id: `f-${episode.start.getTime()}-${i + 1}`, ...add, episode: episode.id };
                 if (aboutHer(item.what, deps.names.char)) {
-                    deps.log(`待跟进：「${item.what}」是冲着她的事，不记`);
+                    deps.log(`待跟进：「${logBody(item.what)}」是冲着她的事，不记`);
                     continue;
                 }
                 if (expired(item, today) || followUps.some(f => f.what === item.what && f.date === item.date)) continue;
                 followUps = [...followUps, item];
                 changed = true;
-                deps.log(`待跟进：记下「${item.what}」（${item.date} ${partText(item.time)}）`);
+                deps.log(`待跟进：记下「${logBody(item.what)}」（${item.date} ${partText(item.time)}）`);
             }
             extracted[episode.id] = true;
             save();
@@ -390,11 +391,11 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         switch (outcome.result) {
             case 'sent':
                 record(candidate, { result: 'sent', at: committed!.at, messageIds: outcome.messageIds });
-                deps.log(`主动找他（${candidateLabel(candidate)}）${outcome.parts.length > 1 ? `（${outcome.parts.length} 条）` : ''}：${outcome.parts.join(' / ')}`);
+                deps.log(`主动找他（${candidateLabel(candidate)}）${outcome.parts.length > 1 ? `（${outcome.parts.length} 条）` : ''}：${logBody(outcome.parts.join(' / '))}`);
                 if (candidate.followUp) asked(candidate.followUp.item.id, outcome.parts, false);
                 break;
             case 'dryRun':
-                deps.log(`主动（试运行，没发）：${candidateLabel(candidate)}；今天第 ${usedToday()} 条；本来要说：${outcome.parts.join(' / ')}`);
+                deps.log(`主动（试运行，没发）：${candidateLabel(candidate)}；今天第 ${usedToday()} 条；本来要说：${logBody(outcome.parts.join(' / '))}`);
                 if (candidate.followUp) asked(candidate.followUp.item.id, outcome.parts, true);
                 break;
             case 'skipped':
@@ -453,7 +454,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             if (key !== loggedNext) {
                 loggedNext = key;
                 const parts = [...(paused ? [paused] : []), next ? `下一次 ${describe(next)}` : '今明两天没有要发的了'];
-                deps.log(`主动${tag}：${parts.join('；')}`);
+                deps.log(`主动${tag}：${logBody(parts.join('；'))}`);
             }
             // 没有要发的：等到下一天开始再算
             const day = herDay(deps.schedule, new Date(now()));

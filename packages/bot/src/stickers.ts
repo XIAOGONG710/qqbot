@@ -7,6 +7,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
+import { logBody } from './sensitive.ts';
 import type { AppConfig } from './config.ts';
 import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
@@ -392,7 +393,7 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             let kept = false;
             return reply.split('\n').flatMap(line => {
                 if (FAKE_STICKER_DESCRIPTION.test(line)) {
-                    options.log(`图片表情：去掉模型冒充图片消息的文字「${line.trim()}」`);
+                    options.log(`图片表情：去掉模型冒充图片消息的文字「${logBody(line.trim())}」`);
                     return [];
                 }
                 const hits = [...line.matchAll(TOKEN)];

@@ -46,7 +46,7 @@ import { describeState, formatDate, herDay, stateAt, type Schedule } from './sch
 import { useRealWeather, weatherFetcher } from './weather.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, type StickerShelf } from './stickers.ts';
 import { SlidingWindowRateLimiter } from './rate-limit.ts';
-import { sensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
+import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
@@ -156,6 +156,7 @@ export function unlistedName(nickname: string | undefined): string {
 
 export function startApp({ config, transport, log, pipeline, media, vision, stickers, mediaTimeouts, sensitive = sensitiveSwitch() }: AppOptions): App {
     const runtime = runtimeInfo();
+    useSensitiveSwitch(sensitive);
     log(sensitive.describe());
     // 关着的时候不留上次开着时的完整提示词
     if (!sensitive.on()) rmSync(join(config.dataDir, 'last-prompt.json'), { force: true });

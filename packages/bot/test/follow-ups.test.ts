@@ -11,6 +11,10 @@ import { createProactivePlanner, type Planner } from '../src/proactive-planner.t
 import type { InitiateRequest, ResponderStatus } from '../src/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { SENSITIVE_OFF, SENSITIVE_ON, useSensitiveSwitch } from '../src/sensitive.ts';
+
+// 这个文件里的测试靠日志里的原文来断言模块的行为；日志默认不写原文的那条由 log-bodies.test.ts 管
+useSensitiveSwitch(SENSITIVE_ON);
 
 const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
 const schedule = boyfriend.schedule!;
@@ -179,6 +183,28 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
         assert.equal(initiated.length, 1);
         assert.deepEqual(state().followUps, []);
         assert.ok(logs.some(l => l.startsWith('待跟进：试运行里问过了，忘掉「字节的面试」')));
+    });
+
+    test('敏感调试关着时：记下、问过就忘的日志只剩字数，没有原文（ADR 0070 第 8 项）', async () => {
+        useSensitiveSwitch(SENSITIVE_OFF);
+        try {
+            const history = [msg(t(10, 8, 21), 'user', '我明天下午两点有面试'), msg(t(10, 8, 21, 1), 'assistant', '加油')];
+            const { clock, planner, logs, initiated } = setup(new Date(t(10, 8, 22)), history, ['{"add":[{"what":"字节的面试","date":"2026-10-09","time":"14:00"}],"resolved":[]}']);
+            await planner.syncFollowUps();
+            assert.ok(logs.includes('待跟进：记下「（5 字）」（2026-10-09 14:00）'), logs.join(' | '));
+            for (let i = 0; i < 6 && !initiated.some(r => r.label.startsWith('待跟进')); i++) {
+                await settled();
+                const next = clock.nextTimer();
+                if (next === undefined) break;
+                clock.advanceTo(next);
+            }
+            await settled();
+            assert.ok(initiated.some(r => r.label.startsWith('待跟进')), '问过了');
+            assert.ok(logs.some(l => l.startsWith('待跟进：试运行里问过了，忘掉「（5 字）」')), logs.join(' | '));
+            assert.ok(!logs.some(l => l.includes('字节')), logs.join(' | '));
+        } finally {
+            useSensitiveSwitch(SENSITIVE_ON);
+        }
     });
 
     test('条数留给了待跟进：下课到点时没排上，记录和日志写的是这个原因（不是「他没回」）', async () => {

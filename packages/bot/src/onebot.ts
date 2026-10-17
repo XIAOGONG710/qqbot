@@ -9,6 +9,7 @@
 // 用 Node 自带的 WebSocket（undici），它支持非标准的 headers 选项。
 
 import { faceText, textToSegments } from './qq-faces.ts';
+import { logBody } from './sensitive.ts';
 
 export interface Segment {
     type: string;
@@ -101,7 +102,7 @@ export class OneBotClient {
         try {
             payload = JSON.parse(text);
         } catch {
-            this.#options.log(`OneBot 收到无法解析的数据：${text.slice(0, 200)}`);
+            this.#options.log(`OneBot 收到无法解析的数据：${logBody(text.slice(0, 200))}`);
             return;
         }
         if ('post_type' in payload) {

@@ -11,6 +11,10 @@ import { segmentsToText, type MessageEvent } from '../src/onebot.ts';
 import { FACE_NAMES, faceText, facesIn, onlyFaces, SENDABLE_FACES, textToSegments } from '../src/qq-faces.ts';
 import { isAck, isReaction, moodySkip } from '../src/reply-timing.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { SENSITIVE_ON, useSensitiveSwitch } from '../src/sensitive.ts';
+
+// 这个文件里的测试靠日志里的原文来断言模块的行为；日志默认不写原文的那条由 log-bodies.test.ts 管
+useSensitiveSwitch(SENSITIVE_ON);
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const face = (id: number | string) => ({ type: 'face', data: { id: String(id) } });

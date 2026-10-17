@@ -12,6 +12,7 @@
 // （单独的「[图片]」「[语音]」先被小黄脸那步当白名单外的方括号去掉；带秒数、带字的那种由这一条拦。）
 
 import type { Tier } from './config.ts';
+import { logBody, sensitiveOn } from './sensitive.ts';
 import type { StoredMessage } from './history.ts';
 import { facesIn, normalizeFaces, onlyFaces, removeFaces } from './qq-faces.ts';
 import { isAck, isReaction } from './reply-timing.ts';
@@ -186,6 +187,15 @@ export function summarizeIssues(issues: readonly ExitIssue[]): string {
             : i.kind === 'progress' ? `进度数字「${i.match}」（《${i.book!.title}》${progressFact(i.book!)}）` : describeSpeechIssue(i as SpeechIssue)}`).join('、');
 }
 
+/**
+ * 写进日志的那一句。敏感调试关着时保留行号和中文类别描述（审计按这些词数每类命中几次），只把引号里命中的原文抹成「…」。
+ * 描述里的引号都是命中的原文（编的对话、禁用词、做不到的事、重复的开头……），没有别的用途。
+ */
+export function issuesForLog(issues: readonly ExitIssue[]): string {
+    const summary = summarizeIssues(issues);
+    return sensitiveOn() ? summary : summary.replace(/「[^」]*」/g, '「…」');
+}
+
 /** 资料里的进度：看到第 7 卷 / 全书 550 章 */
 function progressFact(book: NonNullable<ExitIssue['book']>): string {
     return book.total ? `全书 ${book.expected} ${book.unit}` : `看到第 ${book.expected} ${book.unit}`;
@@ -255,7 +265,7 @@ function strip(reply: string, options: ReviewOptions): { reply: string; issues: 
         if (removable.length === 0 || round === 2) return { reply: text, issues: issues.filter(i => !strippable(i)) };
         const next = stripOpeners(text, removable);
         if (next === text) return { reply: text, issues: issues.filter(i => !strippable(i)) };
-        options.log(`出口检查：${summarizeIssues(removable)}，去掉`);
+        options.log(`出口检查：${issuesForLog(removable)}，去掉`);
         text = next;
     }
 }
@@ -280,7 +290,7 @@ function settle(reply: string, issues: readonly ExitIssue[]): { reply: string; d
 export async function reviewReply(reply: string, options: ReviewOptions): Promise<string> {
     const first = strip(reply, options);
     if (first.issues.length === 0) return first.reply;
-    options.log(`出口检查：${summarizeIssues(first.issues)}，带说明重写一次`);
+    options.log(`出口检查：${issuesForLog(first.issues)}，带说明重写一次`);
     let rewritten: string;
     try {
         rewritten = await options.regenerate(rewriteNote(first.reply, first.issues, options.userName));
@@ -294,7 +304,7 @@ export async function reviewReply(reply: string, options: ReviewOptions): Promis
         return second.reply;
     }
     const { reply: settled, dropped } = settle(second.reply, second.issues);
-    options.log(`出口检查：重写后仍有${summarizeIssues(second.issues)}，${dropped ? '删掉这几行' : '照发'}`);
+    options.log(`出口检查：重写后仍有${issuesForLog(second.issues)}，${dropped ? '删掉这几行' : '照发'}`);
     return settled;
 }
 
@@ -347,7 +357,7 @@ export async function reviewCrisisReply(reply: string, options: ReviewOptions): 
     const base = await reviewReply(reply, options);
     const first = inspectCrisisReply(base);
     if (first.length === 0) return base;
-    options.log(`危机回合出口检查：${first.map(i => `${i.kind === 'method' ? '提到方式方法' : i.kind === 'dismiss' ? '驱离式敷衍' : i.kind === 'visit' ? '答应过去找他' : '收尾'}「${i.match}」`).join('、')}，带说明重写一次`);
+    options.log(`危机回合出口检查：${first.map(i => `${i.kind === 'method' ? '提到方式方法' : i.kind === 'dismiss' ? '驱离式敷衍' : i.kind === 'visit' ? '答应过去找他' : '收尾'}「${logBody(i.match)}」`).join('、')}，带说明重写一次`);
     let rewritten: string;
     try {
         rewritten = await options.regenerate(crisisRewriteNote(first, options.userName));
@@ -362,6 +372,6 @@ export async function reviewCrisisReply(reply: string, options: ReviewOptions): 
         options.log('危机回合出口检查：重写后通过');
         return rewritten;
     }
-    options.log(`危机回合出口检查：重写后仍有${[...again.map(i => `「${i.match}」`), ...hard.map(i => `「${i.match}」`)].join('、') || '空回复'}，发固定的关怀兜底`);
+    options.log(`危机回合出口检查：重写后仍有${[...again.map(i => `「${logBody(i.match)}」`), ...hard.map(i => `「${logBody(i.match)}」`)].join('、') || '空回复'}，发固定的关怀兜底`);
     return CRISIS_FALLBACK;
 }

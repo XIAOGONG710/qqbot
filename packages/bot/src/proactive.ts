@@ -13,6 +13,7 @@ import type { ObstacleKind } from './obstacles.ts';
 import { mentionsMeetup } from './promises.ts';
 import { pendingMessages, pick } from './reply-timing.ts';
 import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from './schedule.ts';
+import { logBody } from './sensitive.ts';
 export { herDay } from './schedule.ts';
 
 /** 时机，按优先级从高到低 */
@@ -553,7 +554,9 @@ export const OCCASION_LABELS: Record<Occasion, string> = {
 export function candidateLabel(candidate: Candidate): string {
     // 她那边的事写上事件类和事情的 id（ADR 0064 决策 7），日志里能指到来源
     const kind = candidate.news ? `[${candidate.news.kind} ${candidate.news.id}]` : '';
-    return `${OCCASION_LABELS[candidate.occasion]}${kind}（${candidate.reason}）`;
+    // 待跟进的事是由他说过的话提炼出来的：标签（日志、状态页）里的那几个字随敏感调试开关走，关着只剩字数
+    const reason = candidate.followUp ? `问${candidate.followUp.when}的${logBody(candidate.followUp.item.what)}` : candidate.reason;
+    return `${OCCASION_LABELS[candidate.occasion]}${kind}（${reason}）`;
 }
 
 // ---------- 读卡 ----------

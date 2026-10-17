@@ -11,6 +11,10 @@ import {
     describeAppointment, describePromises, duePromises, forgotten, meetWindow, parsePromises, promiseKeeper, promisePrompt, SHOWN_REPLIES, type HerPromise,
 } from '../src/promises.ts';
 import type { Schedule } from '../src/schedule.ts';
+import { SENSITIVE_OFF, SENSITIVE_ON, useSensitiveSwitch } from '../src/sensitive.ts';
+
+// 这个文件里的测试靠日志里的原文来断言模块的行为；日志默认不写原文的那条由 log-bodies.test.ts 管
+useSensitiveSwitch(SENSITIVE_ON);
 
 const names = { user: '阿明', char: '林梦瑶' };
 const at = (iso: string) => new Date(`${iso}+08:00`);
@@ -242,6 +246,26 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
             assert.deepEqual(keeper.plansOn('2026-10-10'), ['去拍银杏']);
         } finally {
             cleanup();
+        }
+    });
+
+    test('敏感调试关着时：记下的日志只剩字数，没有原文（ADR 0070 第 8 项）', async () => {
+        useSensitiveSwitch(SENSITIVE_OFF);
+        const history = [
+            msg('2026-10-08T20:00:00', 'user', '周末干嘛'),
+            msg('2026-10-08T20:01:00', 'assistant', '周六打算去拍银杏，下次给你讲那本书的结局'),
+        ];
+        const { keeper, logs, cleanup } = setup(history, [
+            '{"add":[{"what":"去拍银杏","date":"2026-10-10"},{"what":"给他讲结局","date":null}],"resolved":[]}',
+        ], at('2026-10-08T22:00:00'));
+        try {
+            await keeper.sync();
+            assert.ok(logs.includes('[1] 她答应的事：记下「（4 字）」（2026-10-10）'), logs.join(' | '));
+            assert.ok(logs.includes('[1] 她答应的事：记下「（5 字）」（下次）'), logs.join(' | '));
+            assert.ok(!logs.some(line => line.includes('银杏') || line.includes('结局')), logs.join(' | '));
+        } finally {
+            cleanup();
+            useSensitiveSwitch(SENSITIVE_ON);
         }
     });
 

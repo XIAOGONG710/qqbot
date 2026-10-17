@@ -14,6 +14,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Contact } from './config.ts';
+import { logBody } from './sensitive.ts';
 import { MIDNIGHT_RULE } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
 import { writeJsonAtomic } from './json-file.ts';
@@ -371,7 +372,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         const names = options.names(contact);
         const day = today(new Date(now()));
         const before = state.promises.length;
-        for (const item of state.promises.filter(p => forgotten(p, day))) log(`过了日子没做，忘了「${item.what}」`);
+        for (const item of state.promises.filter(p => forgotten(p, day))) log(`过了日子没做，忘了「${logBody(item.what)}」`);
         state.promises = state.promises.filter(p => !forgotten(p, day));
         const loopsBefore = state.loops.length;
         for (const loop of state.loops.filter(l => loopForgotten(l, day))) loopLog(`过了几天，放下「${loop.what}」`);
@@ -420,7 +421,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 const item = state.promises.find(p => p.id === id);
                 if (item) {
                     state.promises = state.promises.filter(p => p.id !== id);
-                    log(`划掉「${item.what}」（做了，或者他说不用了）`);
+                    log(`划掉「${logBody(item.what)}」（做了，或者他说不用了）`);
                 }
                 const loop = state.loops.find(l => l.id === id);
                 if (loop) {
@@ -439,10 +440,10 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 if (forgotten(item, day) || state.promises.some(p => p.what === item.what && p.date === item.date)) continue;
                 if (item.meet && state.promises.some(p => sameMeetup(p, item))) continue;
                 state.promises.push(item);
-                log(`记下「${item.what}」（${item.date ?? '下次'}${item.meet ? ` ${item.meet.time}${item.meet.where ? ` ${item.meet.where}` : ''}` : ''}）`);
+                log(`记下「${logBody(item.what)}」（${item.date ?? '下次'}${item.meet ? ` ${item.meet.time}${item.meet.where ? ` ${logBody(item.meet.where)}` : ''}` : ''}）`);
             }
             for (const item of earlier) {
-                if (!state.promises.some(p => sameMeetup(p, item))) log(`划掉先记下的「${item.what}」（${item.date} ${item.meet!.time}；整段看下来改了或者不去了）`);
+                if (!state.promises.some(p => sameMeetup(p, item))) log(`划掉先记下的「${logBody(item.what)}」（${item.date} ${item.meet!.time}；整段看下来改了或者不去了）`);
             }
             const found: [LoopKind, { what: string; date?: string }[]][] = [['waiting', result.waiting], ['unanswered', result.unanswered], ['unsettled', result.unsettled]];
             for (const [kind, list] of found) {
@@ -452,7 +453,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                     };
                     if (loopForgotten(loop, day) || state.loops.some(l => l.kind === kind && l.what === loop.what)) continue;
                     state.loops.push(loop);
-                    loopLog(`记下「${loop.what}」（${LOOP_LABELS[kind]}${loop.date ? `，${loop.date}` : ''}）`);
+                    loopLog(`记下「${logBody(loop.what)}」（${LOOP_LABELS[kind]}${loop.date ? `，${loop.date}` : ''}）`);
                 }
             }
             if (result.feelings.length) loopLog(`写成了情绪、没记 ${result.feelings.length} 条（只记发生了什么）`);
@@ -482,9 +483,9 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                     // 和上次先记下的是同一个约就留着原来那条（id 不变）
                     next.push(earlier.find(p => sameMeetup(p, item)) ?? item);
                 }
-                for (const item of earlier.filter(p => !next.includes(p))) log(`划掉先记下的「${item.what}」（${item.date} ${item.meet!.time}；改了或者不去了）`);
+                for (const item of earlier.filter(p => !next.includes(p))) log(`划掉先记下的「${logBody(item.what)}」（${item.date} ${item.meet!.time}；改了或者不去了）`);
                 for (const item of next.filter(p => !earlier.includes(p))) {
-                    log(`聊着就约了，先记下「${item.what}」（${item.date} ${item.meet!.time}${item.meet!.where ? ` ${item.meet!.where}` : ''}）`);
+                    log(`聊着就约了，先记下「${logBody(item.what)}」（${item.date} ${item.meet!.time}${item.meet!.where ? ` ${logBody(item.meet!.where)}` : ''}）`);
                 }
                 state.promises = [...pending, ...next];
                 state.early[open.id] = open.messages.length;

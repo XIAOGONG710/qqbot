@@ -10,6 +10,26 @@ export interface SensitiveSwitch {
 }
 
 export const SENSITIVE_OFF: SensitiveSwitch = { on: () => false, describe: () => '敏感调试关着：日志只记长度和类型，不写聊天正文，也不留 last-prompt.json' };
+/** 测试用：一直开着 */
+export const SENSITIVE_ON: SensitiveSwitch = { on: () => true, describe: () => '敏感调试开着（测试）' };
+
+// startApp 装上它拿到的开关，这样只往日志里写「由聊天提炼出来的话」的那些模块（她答应的事、待跟进、主动消息、危机出口检查……）
+// 不必每个构造函数都多收一个参数。没人装的时候是关着的：默认就是不写。
+let active: SensitiveSwitch = SENSITIVE_OFF;
+
+export function useSensitiveSwitch(next: SensitiveSwitch): void {
+    active = next;
+}
+
+/** 现在敏感调试开着吗（要自己拼一句不带原文的日志时用） */
+export function sensitiveOn(): boolean {
+    return active.on();
+}
+
+/** 日志里要放「聊天里的话，或由聊天提炼出来的话」时用：开着就是原文，关着只剩字数 */
+export function logBody(text: string): string {
+    return active.on() ? text : `（${[...text].length} 字）`;
+}
 
 export function sensitiveSwitch(env: NodeJS.ProcessEnv = process.env, now: () => number = Date.now): SensitiveSwitch {
     const value = (env.QQBOT_SENSITIVE_LOGS ?? '').trim().toLowerCase();
