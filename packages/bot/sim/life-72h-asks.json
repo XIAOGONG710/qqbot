@@ -1,0 +1,70 @@
+{
+    "name": "男朋友档：三天没人说话，闺蜜的约进她的一天（ADR 0061，配置 npcAsks + 自主选择器）",
+    "description": "开着 npcAsks 和规则自主选择器。卡上推出来的真日子：11-06 周五 苏雨桐约午饭、迟到 6 分钟；11-09 周一 陈佳宁的晚上视频 17:40 说去不了了。三天半过完以后查：她过的日子没重叠、没失败、状态行 ↔ 事件账两个方向 0 分叉、和苏雨桐吃午饭记成带 target 的一顿饭；再问周一晚上，她说的要和约对得上（回顾过去某一天要开着记忆才有线索，这里不开记忆，recapDay 靠单元测试）。不用记忆。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-06T08:00:00+08:00",
+    "memory": false,
+    "npcAsks": true,
+    "autonomous": true,
+    "steps": [
+        {
+            "advance": "1d13h"
+        },
+        {
+            "restart": true
+        },
+        {
+            "advance": "2d"
+        },
+        {
+            "case": "LA00",
+            "note": "11-09 21:00，三天半过完：她自己过的日子"
+        },
+        {
+            "check": {
+                "life": {
+                    "atLeast": {
+                        "sleep": 3,
+                        "eat": 6,
+                        "attend_class": 5
+                    },
+                    "noOverlap": true,
+                    "noFailed": true,
+                    "npcInteractionsAtLeast": 1,
+                    "statusConsistent": true
+                }
+            }
+        },
+        {
+            "case": "LF02",
+            "note": "问今晚：陈佳宁的视频 17:40 说去不了了（睡着了），晚上没有视频"
+        },
+        {
+            "say": "你今晚是不是要跟佳宁视频"
+        },
+        {
+            "check": {
+                "speechClean": true,
+                "exitClean": true,
+                "replyAny": [
+                    "没",
+                    "去不了",
+                    "睡着",
+                    "取消",
+                    "不视频",
+                    "改天",
+                    "不了",
+                    "睡了",
+                    "困了"
+                ],
+                "replyNone": [
+                    "视频完",
+                    "刚视频",
+                    "正在视频",
+                    "一会儿视频"
+                ]
+            }
+        }
+    ]
+}
