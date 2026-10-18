@@ -11,6 +11,7 @@
 
 import type { StoredMessage } from './history.ts';
 import { segmentsToText, type Segment } from './onebot.ts';
+import { OPS_NOTICE_PREFIX } from './ops/alert-qq.ts';
 
 export const BACKFILL_COUNT = 20;
 /** 最后一条没回的消息在这段时间内才回复，更早的只补记录（时间感知在 M3 之前，隔太久再接话会很怪） */
@@ -40,6 +41,8 @@ export function newerThanStored(stored: StoredMessage[], fetched: HistoryMessage
     const since = last ? Date.parse(last.time) : -Infinity;
     return fetched
         .filter(m => !known.has(m.message_id) && m.time * 1000 >= Math.floor(since / 1000) * 1000)
+        // 运维提醒（外网断了 / 恢复了，用她的号发给用户，ops/alert-qq.ts）不是她说的话，不补进聊天记录
+        .filter(m => !segmentsToText(m.message).trim().startsWith(OPS_NOTICE_PREFIX))
         .filter(m => !notBefore || m.time * 1000 >= notBefore.getTime())
         .sort((a, b) => a.time - b.time);
 }

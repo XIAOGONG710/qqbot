@@ -6,8 +6,10 @@
 // - Koishi：没有 Koishi 进程 → 新开窗口跑 start-koishi.ps1；进程在、但 NapCat 已经好了 3 分钟以上、Koishi 日志里最后一次连接是断开
 //   （21:29 那次 Koishi 断开以后再没连回去）→ 停掉 Koishi 整棵进程树再拉起。
 // 维护（上线、手动重启）时先建目录 %TEMP%\qqbot-maintenance，做完删掉；有这个目录守护什么都不动。
-// 外网：每次也解析一下模型接口的域名，连着 NET_ALERT_MS 解析不了就记一行，好了再记一行（不动手，只留痕）。
+// 外网：每次也解析一下模型接口的域名、再连一下它的 443；最近 10 次里 7 次以上不通就记一行，最近 5 次都通了再记一行（不动手，只留痕）。
 // 10-11 12:15–19:52 虚拟机解析不了外网，她连不上模型、主动消息全失败，守护只看进程和端口，一点没发现。
+// 10-18 02:05 起的断网是时好时坏（DNS 偶尔成功、新连接大半超时），原来「连着 10 分钟解析不了」永远凑不齐，所以改成滑动窗口、并且加连 443。
+// 告警直接发到用户的 QQ：runtime/bot/alert.json 里 enabled 为 true 并写了 qq 才发（packages/bot/src/ops/alert-qq.ts），默认什么都不发。
 //
 // node scripts/services-watchdog.mjs [--once]（--once：只查一次、打印结果、不动手，用来自检）
 import { execFileSync, spawn } from 'node:child_process';
@@ -17,6 +19,7 @@ import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createNetWatch } from './net-watch.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const once = process.argv.includes('--once');
@@ -28,7 +31,9 @@ const MAX_RESTARTS = 3;
 const RESTART_WINDOW_MS = 10 * 60_000;
 /** 模型接口的域名（packages/bot/src/config.ts 的默认 baseUrl，看图也走它） */
 const NET_HOST = 'api.deepseek.com';
-const NET_ALERT_MS = 10 * 60_000;
+/** 最近 10 次检查里不通的有 7 次以上算断；断了以后最近 5 次都通算恢复（net-watch.mjs） */
+const NET_WINDOW = 10;
+const ALERT_FILE = join(root, 'runtime', 'bot', 'alert.json');
 
 const say = (text) => {
     const line = `${new Date().toLocaleString('zh-CN', { hour12: false })} ${text}`;
@@ -36,15 +41,17 @@ const say = (text) => {
     if (!once) appendFileSync(LOG, line + '\n');
 };
 
-function portOpen(port) {
+function tcpOpen(host, port, timeoutMs) {
     return new Promise(done => {
-        const socket = createConnection({ host: '127.0.0.1', port });
+        const socket = createConnection({ host, port });
         const finish = (ok) => { socket.destroy(); done(ok); };
-        socket.setTimeout(3000, () => finish(false));
+        socket.setTimeout(timeoutMs, () => finish(false));
         socket.once('connect', () => finish(true));
         socket.once('error', () => finish(false));
     });
 }
+
+const portOpen = (port) => tcpOpen('127.0.0.1', port, 3000);
 
 async function hindsightHealthy() {
     try {
@@ -55,16 +62,30 @@ async function hindsightHealthy() {
     }
 }
 
-/** 解析得了模型接口的域名吗（和 bot 一样走系统的 getaddrinfo） */
+/** 解析得了模型接口的域名（和 bot 一样走系统的 getaddrinfo），而且连得上它的 443 吗 */
 async function netUp() {
     let timer;
     try {
-        await Promise.race([lookup(NET_HOST), new Promise((_, fail) => { timer = setTimeout(() => fail(new Error('timeout')), 10_000); })]);
-        return true;
+        const { address } = await Promise.race([lookup(NET_HOST), new Promise((_, fail) => { timer = setTimeout(() => fail(new Error('timeout')), 10_000); })]);
+        return await tcpOpen(address, 443, 8000);
     } catch {
         return false;
     } finally {
         clearTimeout(timer);
+    }
+}
+
+/** 告警发到用户的 QQ（alert.json 开了才发；发不出去只记一行，不影响守护） */
+async function notify(kind, minutes) {
+    try {
+        const { readAlertConfig, sendAlert, networkDownText, networkUpText } = await import('../packages/bot/src/ops/alert-qq.ts');
+        const config = readAlertConfig(ALERT_FILE);
+        if (!config?.network) return;
+        const text = kind === 'down' ? networkDownText(minutes, NET_HOST) : networkUpText(minutes);
+        const result = await sendAlert({ url: 'ws://127.0.0.1:3001/', token: process.env.QQBOT_ONEBOT_TOKEN ?? '', qq: config.qq, text });
+        say(result.ok ? '外网：已通过她的 QQ 通知用户' : `外网：QQ 通知没发出去（${result.reason}）`);
+    } catch (error) {
+        say(`外网：QQ 通知出错（${error instanceof Error ? error.message : String(error)}）`);
     }
 }
 
@@ -127,22 +148,16 @@ const bad = { napcat: 0, hindsight: 0, koishi: 0 };
 const restarts = { napcat: [], hindsight: [], koishi: [] };
 const gaveUp = new Set();
 let napcatUpSince = Date.now();
-/** 外网从什么时候开始解析不了；报过没有 */
-let netDownSince;
-let netAlerted = false;
+const netWatch = createNetWatch({ window: NET_WINDOW, badMin: 7, goodRun: 5, everyMs: EVERY_MS });
 
 function watchNet(up) {
-    const now = Date.now();
-    if (up) {
-        if (netAlerted) say(`外网：恢复正常（解析不了 ${NET_HOST} 大约 ${Math.round((now - netDownSince) / 60_000)} 分钟）`);
-        netDownSince = undefined;
-        netAlerted = false;
-        return;
-    }
-    netDownSince ??= now;
-    if (!netAlerted && now - netDownSince >= NET_ALERT_MS) {
-        say(`外网：${Math.round((now - netDownSince) / 60_000)} 分钟解析不了 ${NET_HOST}，她连不上模型（回复、主动消息、看图都会失败）；守护不动手，查虚拟机网络 / 宿主机`);
-        netAlerted = true;
+    const event = netWatch.push(up);
+    if (event?.kind === 'down') {
+        say(`外网：最近 ${NET_WINDOW} 次检查有 ${event.bad} 次连不上 ${NET_HOST}（解析或 443），大约 ${event.minutes} 分钟了，她多半连不上模型（回复、主动消息、看图都会失败）；守护不动手，查虚拟机网络 / 宿主机`);
+        void notify('down', event.minutes);
+    } else if (event?.kind === 'up') {
+        say(`外网：恢复正常（连不上 ${NET_HOST} 大约 ${event.minutes} 分钟）`);
+        void notify('up', event.minutes);
     }
 }
 
