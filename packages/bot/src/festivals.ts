@@ -138,7 +138,7 @@ function dateIn(year: number, rule: Rule, lunarDays: ReadonlyMap<string, string>
 
 /** 这些年的公共节日（ImportantDay，带 year，公历那天）。mode 为 off 时没有 */
 export function festivalDays(years: readonly number[], mode: FestivalMode): ImportantDay[] {
-    if (mode === 'off') return [];
+    if (mode !== 'notes' && mode !== 'greet') return [];
     return years.flatMap(year => {
         const lunarDays = lunarCalendar(year);
         return FESTIVALS.flatMap((festival): ImportantDay[] => {
@@ -167,7 +167,7 @@ export function withFestivals(dates: readonly ImportantDay[], now: Date, mode: F
 
 /** 节日这一天某个时段她在做的事（Schedule.free.on 用的格式：公历那天）；notes 和 greet 都有，off 没有 */
 export function festivalActivities(years: readonly number[], mode: FestivalMode): NonNullable<Schedule['free']['on']> {
-    if (mode === 'off') return [];
+    if (mode !== 'notes' && mode !== 'greet') return [];
     return festivalDays(years, 'notes').flatMap(day => (DOING[day.name] ?? []).map(item => ({
         date: `${day.year}-${day.date}`, window: item.window, text: item.text, ...(item.home !== undefined ? { home: item.home } : {}),
     })));
@@ -175,5 +175,5 @@ export function festivalActivities(years: readonly number[], mode: FestivalMode)
 
 /** 把节日里她在做的事并进这张卡的作息（读卡时用；重复调用结果一样） */
 export function withFestivalActivities(schedule: Schedule | undefined, now: Date, mode: FestivalMode): void {
-    if (schedule && mode !== 'off') schedule.free.on = festivalActivities(festivalYears(now), mode);
+    if (schedule && (mode === 'notes' || mode === 'greet')) schedule.free.on = festivalActivities(festivalYears(now), mode);
 }

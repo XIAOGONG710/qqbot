@@ -391,8 +391,13 @@ describe('编排（app.ts）', () => {
     test('生活账进提示词（lifeInPrompt，默认关）：她这几天练拍照修图写一行，只有开着、账上真有才写', async () => {
         const bf = [{ qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
         const seed = (cfg: AppConfig) => {
-            const end = new Date(Date.now() - 2 * 3_600_000);
-            const start = new Date(end.getTime() - 100 * 60_000);
+            // 「今天」按她的一天算（02:00 起）：零点到凌晨几点之间跑，不能让这段落到昨天去（原来 03:21 跑会写成「上一回是昨天晚上」）
+            const now = Date.now();
+            const herDayStart = new Date(now);
+            herDayStart.setHours(2, 5, 0, 0);
+            if (herDayStart.getTime() > now) herDayStart.setDate(herDayStart.getDate() - 1);
+            const end = new Date(Math.min(Math.max(now - 2 * 3_600_000, herDayStart.getTime() + 30 * 60_000), now - 60_000));
+            const start = new Date(Math.max(end.getTime() - 100 * 60_000, herDayStart.getTime()));
             const day = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
             mkdirSync(join(cfg.dataDir, 'world'), { recursive: true });
             writeFileSync(join(cfg.dataDir, 'world', 'events.json'), JSON.stringify({ version: 1, events: [{
