@@ -127,6 +127,14 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal('media' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
+    test('公共节日（ADR 0076）：默认 off；notes / greet 分开；写错报错；默认值不写回 yml', () => {
+        assert.equal(fromKoishi(minimal).festivals, 'off');
+        assert.equal(fromKoishi(before0009).festivals, 'off');
+        assert.equal(fromKoishi({ ...minimal, festivals: 'notes' }).festivals, 'notes');
+        assert.equal(fromKoishi({ ...minimal, festivals: 'greet' }).festivals, 'greet');
+        assert.throws(() => Config({ ...minimal, festivals: true } as never));
+        assert.equal('festivals' in (Config.simplify(Config(minimal as never)) as object), false);
+    });
     test('图片表情（ADR 0063）：旧配置默认关；collect/send 分开；默认值不写回 yml', () => {
         assert.equal(fromKoishi(minimal).stickers, 'off');
         assert.equal(fromKoishi(before0009).stickers, 'off');
