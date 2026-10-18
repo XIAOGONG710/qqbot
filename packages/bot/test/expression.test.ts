@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CORRECT_CHANCE, describeLength, ENGAGED_INTENT, LONG_CHANCE, LONG_MIN_CHARS, lengthHint, maybeTypo, SHORT_CHANCE, TYPO_CHANCE, TYPOS } from '../src/expression.ts';
+import { CORRECT_CHANCE, describeLength, ENGAGED_INTENT, LONG_CHANCE, LONG_MIN_CHARS, lengthHint, maybeTypo, SHORT_CHANCE, TYPO_CHANCE, TYPOS, WORRIED_TEXT } from '../src/expression.ts';
 
 const said = (i: number) => [{ role: 'user' as const, content: `第 ${i} 句，今天上班被老板说了一顿`, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
 
@@ -28,6 +28,18 @@ describe('表达层（ADR 0024）', () => {
             assert.equal(lengthHint({ history: said(shortOne), intent }), undefined, intent);
         }
         assert.equal(lengthHint({ history: said(shortOne), intent: '[这一轮你想：先直接回答他刚问的，不另起话题]' }), 'short');
+    });
+
+    test('他刚在说不顺心 / 担心的事（报告被打回、没过、怎么办、还有救吗）：意图行只是「先直接回答他刚问的」也不加「回很短」；普通玩笑里的词不收', () => {
+        const asked = '[这一轮你想：先直接回答他刚问的，不另起话题]';
+        const history = (lines: string[], i: number) => lines.map((content, k) => ({ role: 'user' as const, content, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i, k)).toISOString() }));
+        for (const worried of [['我实训报告被老师打回来了', '让我重写', '你说我这还有救吗'], ['这次考试可能没过', '怎么办'], ['我是不是不行啊'], ['又挂科了咋办']]) {
+            assert.ok(WORRIED_TEXT.test(worried.join('')), worried.join('/'));
+            for (let i = 0; i < 200; i++) assert.notEqual(lengthHint({ history: history(worried, i), intent: asked }), 'short', worried.join('/'));
+        }
+        for (const joking of ['你服了没', '烦人精', '你太逗了', '今天吃什么']) assert.ok(!WORRIED_TEXT.test(joking), joking);
+        // 普通问答照常抽到「很短」
+        assert.ok(Array.from({ length: 400 }, (_, i) => lengthHint({ history: history(['今天吃什么'], i), intent: asked })).includes('short'));
     });
 
     test('收尾、主动找他时不加；心情安静、身体不舒服时不加「话多」；他还没说话不加', () => {

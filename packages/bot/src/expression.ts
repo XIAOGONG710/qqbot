@@ -18,6 +18,13 @@ export type LengthHint = 'short' | 'long';
  */
 export const ENGAGED_INTENT = /先接住他此刻的情绪|他刚说了件好事|回应他刚说的那件事|只接他刚说的你们两个人的事|他在向你要亲近|他在撒娇要你哄他/;
 
+/**
+ * 他这一段话里在说不顺心、担心的事（被打回、没过、怎么办、还有救吗）：意图行不是「先接情绪」时也不加「回很短」。
+ * 10-18 题库 be-021：他说报告被老师打回来、问「你说我这还有救吗」，意图行是「先直接回答他刚问的」，她只回了「有吧」两个字。
+ * 只认明确说法（和 intent.ts 的 needsCare 一样不从普通短句猜心情）；「服了」「烦」这类玩笑里也常用的词不收。
+ */
+export const WORRIED_TEXT = /被(?:老师|老板|导师|领导)?(?:打回|拒|刷|退回|淘汰)|没(?:过|通过|考好)|挂(?:了|科)|考砸|还有救|有救吗|怎么办|咋办|我是不是(?:不行|太)/;
+
 export interface LengthContext {
     history: readonly { role: 'user' | 'assistant'; content: string; time?: string }[];
     /** 这一轮的意图行（收尾时不加） */
@@ -35,7 +42,7 @@ export function lengthHint(context: LengthContext): LengthHint | undefined {
     // 他明着让她讲（「你帮我认真讲讲」「详细说说」）就多说几句，不抽签（10-10 示例改短之后 boyfriend-tone T06 讲梯度下降只剩 53 字）
     if (!context.low && ASKS_TO_EXPLAIN.test(last.content)) return 'long';
     const roll = unit(`${last.time ?? ''} ${last.content} length`);
-    if (roll < SHORT_CHANCE) return context.intent && ENGAGED_INTENT.test(context.intent) ? undefined : 'short';
+    if (roll < SHORT_CHANCE) return (context.intent && ENGAGED_INTENT.test(context.intent)) || WORRIED_TEXT.test(saidSinceReply(context.history)) ? undefined : 'short';
     // 话多要有由头：他这次说的太短（「到家了」）就不加（第一批：一句「到家了」她一口气说了 4 条 77 个字）
     if (roll < SHORT_CHANCE + LONG_CHANCE && !context.low && [...saidSinceReply(context.history)].length >= LONG_MIN_CHARS) return 'long';
     return undefined;
