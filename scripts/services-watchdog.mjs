@@ -76,11 +76,12 @@ async function netUp() {
 }
 
 /** 告警发到用户的 QQ（alert.json 开了才发；发不出去只记一行，不影响守护） */
-async function notify(text) {
+async function notify(kind, minutes) {
     try {
-        const { readAlertConfig, sendAlert } = await import('../packages/bot/src/ops/alert-qq.ts');
+        const { readAlertConfig, sendAlert, networkDownText, networkUpText } = await import('../packages/bot/src/ops/alert-qq.ts');
         const config = readAlertConfig(ALERT_FILE);
         if (!config?.network) return;
+        const text = kind === 'down' ? networkDownText(minutes, NET_HOST) : networkUpText(minutes);
         const result = await sendAlert({ url: 'ws://127.0.0.1:3001/', token: process.env.QQBOT_ONEBOT_TOKEN ?? '', qq: config.qq, text });
         say(result.ok ? '外网：已通过她的 QQ 通知用户' : `外网：QQ 通知没发出去（${result.reason}）`);
     } catch (error) {
@@ -153,10 +154,10 @@ function watchNet(up) {
     const event = netWatch.push(up);
     if (event?.kind === 'down') {
         say(`外网：最近 ${NET_WINDOW} 次检查有 ${event.bad} 次连不上 ${NET_HOST}（解析或 443），大约 ${event.minutes} 分钟了，她多半连不上模型（回复、主动消息、看图都会失败）；守护不动手，查虚拟机网络 / 宿主机`);
-        void notify(`【运维提醒】${event.minutes} 分钟连不上 ${NET_HOST}：她连不上模型，现在回不了话、主动消息也发不出。机器人和 NapCat 还在跑。多半是宿主机或虚拟机的网络问题。恢复了我会再说一声。`);
+        void notify('down', event.minutes);
     } else if (event?.kind === 'up') {
         say(`外网：恢复正常（连不上 ${NET_HOST} 大约 ${event.minutes} 分钟）`);
-        void notify(`【运维提醒】外网恢复了（断了大约 ${event.minutes} 分钟），她又能回话了。`);
+        void notify('up', event.minutes);
     }
 }
 

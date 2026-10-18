@@ -6,6 +6,9 @@
 
 import { readFileSync } from 'node:fs';
 
+/** 运维提醒的开头：补回漏掉的消息时（backfill.ts）认这个，不把它当成她说的话记进聊天记录 */
+export const OPS_NOTICE_PREFIX = '【运维提醒】';
+
 export interface AlertConfig {
     /** 发给谁（QQ 号；要是她号的好友，QQ 才让发私聊） */
     qq: number;
@@ -86,10 +89,10 @@ export function sendAlert(options: SendAlertOptions): Promise<AlertResult> {
 
 /** 外网断了超过阈值时的一条（minutes：已经断了多久） */
 export function networkDownText(minutes: number, host: string): string {
-    return `【运维提醒】${minutes} 分钟解析不了 ${host}：她连不上模型，现在回不了话、主动消息也发不出。机器人和 NapCat 还在跑。多半是宿主机或虚拟机的网络问题。恢复了我会再说一声。`;
+    return `${OPS_NOTICE_PREFIX}${minutes} 分钟解析不了 ${host}：她连不上模型，现在回不了话、主动消息也发不出。机器人和 NapCat 还在跑。多半是宿主机或虚拟机的网络问题。恢复了我会再说一声。`;
 }
 
 /** 外网恢复时的一条 */
 export function networkUpText(minutes: number): string {
-    return `【运维提醒】外网恢复了（断了大约 ${minutes} 分钟），她又能回话了。`;
+    return `${OPS_NOTICE_PREFIX}外网恢复了（断了大约 ${minutes} 分钟），她又能回话了。`;
 }
