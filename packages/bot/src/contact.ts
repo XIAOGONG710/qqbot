@@ -45,7 +45,7 @@ import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candid
 import { turnCut, type Summarizer, type TurnWindow } from './context-window.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
-import { imageStickerAllowance, stripStickerArtifacts, type StickerShelf } from './stickers.ts';
+import { imageStickerAllowance, stickerCued, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from './stickers.ts';
 
 const DAY_MS = 86_400_000;
 
@@ -100,6 +100,8 @@ export interface ContactPipelineOptions {
     send: (userId: number, text: string) => Promise<number>;
     /** 图片表情收藏：给模型列可选编号、校验输出；实际发送由 app.ts 的 send 接线。 */
     stickers?: StickerShelf;
+    /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
+    stickerChance?: number;
     /** 不带联系人前缀，这里会加上 [QQ 号] */
     log: Log;
     /** 每次生成前拿到后处理之后、实际发给模型的提示词 */
@@ -162,6 +164,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const log: Log = message => options.log(`[${contact.qq}] ${message}`);
     const generate = options.generate ?? ((messages, log) => chatCompletion(llm, messages, { log }));
     let stickersAllowed = true;
+    /** 这一轮抽到要发图片表情，并带上他这一轮说的话（给货架按它挑）；没抽到就不给她看货架 */
+    let stickerContext: { text: string } | undefined;
     const clean = (reply: string) => {
         const text = cleanUpReply(reply, names, character.regexScripts);
         return options.stickers?.clean(text, stickersAllowed) ?? stripStickerArtifacts(text);
@@ -415,6 +419,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
             const stickerAllowance = options.stickers ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
             stickersAllowed = stickerAllowance.allowed;
+            const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
+            stickerContext = stickersAllowed && stickerCued(saidNow) && stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE) ? { text: saidNow } : undefined;
+            if (stickerContext) log('图片表情：这一轮抽到要发一个');
             if (options.stickers && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
             pick = picked ? {
                 kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: character.banned,
@@ -476,7 +483,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(obstacleLine ? [obstacleLine] : []),
                         // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在青岛」
                         ...(partnerBack ? [partnerBack] : []),
-                        ...(stickersAllowed && options.stickers?.prompt() ? [options.stickers.prompt()!] : []),
+                        ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
                         ...(intent ? [intent] : []),
                         ...(length ? [describeLength(length)] : []),
                         ...(initiate ? [initiate.note] : []),

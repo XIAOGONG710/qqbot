@@ -83,7 +83,7 @@ export function loadQuestions(path: string): BlindQuestion[] {
 const SAME_MINUTE_STEP_MS = 15_000;
 
 /** 一道题 → 一个场景：他最后一句之前的都进事先的聊天，最后一句在那一刻发出 */
-export function toScenario(q: BlindQuestion): Scenario {
+export function toScenario(q: BlindQuestion, stickers?: { id: string; description: string; tags: string[] }[], stickerChance?: number): Scenario {
     const last = q.lines.at(-1)!;
     const times = q.lines.map(line => Date.parse(line.at));
     for (let i = times.length - 2; i >= 0; i--) times[i] = Math.min(times[i]!, times[i + 1]! - SAME_MINUTE_STEP_MS);
@@ -93,6 +93,8 @@ export function toScenario(q: BlindQuestion): Scenario {
         user: q.user,
         start: last.at,
         memory: false,
+        ...(stickers?.length ? { stickers } : {}),
+        ...(stickers?.length && stickerChance !== undefined ? { stickerChance } : {}),
         history: q.lines.slice(0, -1).map((line, i) => ({ time: new Date(times[i]!).toISOString(), role: line.who === '他' ? 'user' : 'assistant', content: line.text })),
         steps: [{ say: last.text }],
     }, q.id);
@@ -250,12 +252,17 @@ async function main(): Promise<void> {
     const status = flag('--status');
     const only = option('--only')?.split(',');
     const cardDir = option('--card');
+    const stickersFile = option('--stickers');
+    const stickerChanceOption = option('--sticker-chance');
     const parallel = Number(option('--parallel') ?? 4);
     if (args.length !== 1 || (!label && !status) || !Number.isInteger(parallel) || parallel < 1) {
-        console.error('用法：npm run blind -w @qqbot/bot -- <题库.json> --label O [--status] [--only be-001,be-002] [--card <目录>] [--parallel 4]');
+        console.error('用法：npm run blind -w @qqbot/bot -- <题库.json> --label O [--status] [--only be-001,be-002] [--card <目录>] [--stickers <货架 index.json> [--sticker-chance 0.2]] [--parallel 4]');
         process.exit(2);
     }
     const questions = loadQuestions(resolve(cwd, args[0]!)).filter(q => !only || only.includes(q.id));
+    // --stickers：把这份货架（线上 runtime/bot/stickers/index.json 的形状）放进每一题，看开了「发表情包」她会怎么用（模拟器里表情是 <sticker:编号> 气泡）
+    const stickers = stickersFile ? (JSON.parse(readFileSync(resolve(cwd, stickersFile), 'utf8')) as { entries: { id: string; description: string; tags?: string[] }[] | Record<string, { id: string; description: string; tags?: string[] }> }).entries : undefined;
+    const shelf = stickers ? (Array.isArray(stickers) ? stickers : Object.values(stickers)).filter(e => /^[a-f0-9]{12}$/.test(e.id) && e.description).map(e => ({ id: e.id, description: e.description, tags: e.tags ?? [] })) : undefined;
     const loaded = loadConfig(repoRoot);
     const config = cardDir ? { ...loaded, characterCard: join(resolve(cwd, cardDir), loaded.characterCard.split(/[\\/]/).at(-1)!) } : loaded;
     const git = (...a: string[]) => execFileSync('git', a, { cwd: repoRoot, encoding: 'utf8' }).trim();
@@ -270,7 +277,7 @@ async function main(): Promise<void> {
         while (next < questions.length) {
             const i = next++;
             const q = questions[i]!;
-            const result = await runScenario(toScenario(q), {
+            const result = await runScenario(toScenario(q, shelf, stickerChanceOption === undefined ? undefined : Number(stickerChanceOption)), {
                 runId: `blind-${name}-${q.id}`,
                 dataDir: join(root, q.id),
                 card: loadTierCard(config.characterCard, q.tier),

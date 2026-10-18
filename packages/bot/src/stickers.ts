@@ -20,6 +20,66 @@ import { detectImageType, fetchRemoteImage, imageDataUrl, type DownloadedImage }
 
 export const STICKER_MAX_BYTES = 5 * 1024 * 1024;
 export const STICKER_PROMPT_MAX = 12;
+/**
+ * 代码定哪几轮发图片表情（和 expression.ts 的长短一样按他这句话的哈希抽签）：他这句话里有明确的反应（哈哈、抱抱、晚安、无语、吃……，见 REACTIONS）
+ * 且允许发的轮次里，这么多发一个；没有明确反应的轮次不发（随便挑一张常常不搭）。
+ * 真人朋友之间约 9% 的轮里带表情包（调研 14.2）；最近 8 条回复里发过就不发（imageStickerAllowance）。
+ * 10-19 题库回放（73 个真人聊天场景、26 个允许发的）：不抽签让她自己决定，24 次最合适的场合（晚安、哈哈哈、抱抱）0 次发——
+ * 从一长串里挑编号对她太费劲，她拿 QQ 小黄脸就够了；抽签 + 按他这句话挑 8 张 + 写明「这一轮要发」：允许的 26 个里发了 20 个，
+ * 有明确反应的（晚安、抱抱、吃）选得贴，没有明确反应的（「知道啦」「哦哦 好」）选得不搭。
+ */
+export const STICKER_TURN_CHANCE = 0.7;
+/** 抽到的轮次给她看几张（按他这句话挑出来的，最合适的在前） */
+export const STICKER_SHORTLIST = 8;
+
+/** 他这句话里看出来的反应 → 货架标签 / 描述里要找的词（命中越多越靠前） */
+const REACTIONS: { cue: RegExp; words: string[] }[] = [
+    // 他发来的是个表情：人对方发表情之后，下一条有 17–23% 回表情（调研 14.2）
+    { cue: /[(?:动画)?表情]/, words: ['表情包', '可爱', '搞笑', '日常'] },
+    { cue: /哈哈|笑死|hh|笑哭|乐死|搞笑|绝了|太好笑/i, words: ['搞笑', '开心', '大笑', '得意', '调侃', '欠欠', '庆祝', '欢快'] },
+    { cue: /想你|抱抱|亲亲|爱你|么么|贴贴|心里.{0,3}软|宝宝|老婆|老公/, words: ['可爱', '撒娇', '爱心', '亲亲', '抱抱', '害羞', '暖', '甜', '委屈', '脸红'] },
+    { cue: /晚安|睡了|睡吧|先睡|困了|困死|眯一会/, words: ['晚安', '睡', '困', '月亮', '休息'] },
+    { cue: /无语|离谱|服了|什么鬼|拉倒|算了|滚|气死|烦|讨厌|崩溃/, words: ['无语', '无奈', '嫌弃', '崩溃', '烦躁', '欠欠', '摆烂'] },
+    { cue: /真的假的|不会吧|天哪|卧槽|我去|啊[？?]|！{2,}|!{2,}/, words: ['震惊', '惊讶', '困惑', '装傻', '疑惑', '恍然大悟'] },
+    { cue: /吃|饿|奶茶|火锅|外卖|好喝|好吃|烧烤|蛋糕/, words: ['吃', '美食', '馋', '奶茶', '喝', '干饭'] },
+    { cue: /好的|行吧|收到|知道了|嗯嗯|可以|没问题/, words: ['好的', '点头', '收到', '日常', '表情包'] },
+    { cue: /厉害|牛|棒|强|夸|优秀|赢了|拿下/, words: ['点赞', '夸', '厉害', '鼓掌', '庆祝'] },
+];
+/** 没看出特别的反应时找这些（通用、日常的） */
+const GENERIC_WORDS = ['日常', '可爱', '搞笑', '表情包', '聊天'];
+
+/** 他这句话里有没有明确的反应（哈哈、抱抱、晚安、无语、吃……）：没有就不抽签发表情 */
+export function stickerCued(text: string): boolean {
+    return REACTIONS.some(r => r.cue.test(text));
+}
+
+/** 他这句话的反应词（没看出来就是通用的） */
+export function stickerReactionWords(text: string): string[] {
+    const words = REACTIONS.filter(r => r.cue.test(text)).flatMap(r => r.words);
+    return words.length ? [...new Set(words)] : GENERIC_WORDS;
+}
+
+/** 按他这句话给货架排序：标签和描述里命中的反应词越多越靠前，同分的少用的在前；纯函数 */
+export function rankStickers(entries: readonly StickerEntry[], text: string): StickerEntry[] {
+    const words = stickerReactionWords(text);
+    const score = (entry: StickerEntry) => words.filter(word => entry.tags.includes(word) || entry.description.includes(word)).length;
+    return [...entries].sort((a, b) => score(b) - score(a) || a.used - b.used || Date.parse(a.lastUsedAt ?? a.createdAt) - Date.parse(b.lastUsedAt ?? b.createdAt));
+}
+
+/** 这一轮抽没抽到发图片表情（按他最后一条的时间和内容定，同一句每次一样） */
+export function stickerTurn(history: readonly { role: 'user' | 'assistant'; content: string; time?: string }[], chance = STICKER_TURN_CHANCE): boolean {
+    const last = history.findLast(message => message.role === 'user');
+    if (!last) return false;
+    let hash = 0x811c9dc5;
+    for (const char of `${last.time ?? ''} ${last.content} sticker`) {
+        hash ^= char.codePointAt(0)!;
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    hash ^= hash >>> 16;
+    hash = Math.imul(hash, 0x85ebca6b) >>> 0;
+    hash ^= hash >>> 13;
+    return ((hash >>> 0) / 0x1_0000_0000) < chance;
+}
 export const STICKER_DISCOVERY_PER_RUN = 3;
 export const STICKER_DISCOVERY_INTERVAL_MS = 60 * 60_000;
 /** 公开目录候选每天最多审看几个 */
@@ -145,8 +205,11 @@ export interface StickerShelf {
     consider(message: Segment[] | string, source: Omit<StickerSource, 'kind'>): Promise<void>;
     /** 从导入箱、公开网络候选源和 QQ 自定义表情池看几个新的候选。 */
     discover(): Promise<void>;
-    /** 给回复模型看的本地收藏清单。 */
-    prompt(): string | undefined;
+    /**
+     * 给回复模型看的本地收藏清单。不传 context：旧办法，最久没用的 12 张；
+     * 传 context（他这一轮说的话）：抽到发表情的这一轮，按他这句话挑 STICKER_SHORTLIST 张最合适的，并写明这一轮要发一个。
+     */
+    prompt(context?: { text: string }): string | undefined;
     /** 清掉未知、混在文字里的、以及同一轮第二个图片表情指令。 */
     clean(reply: string, allow?: boolean): string;
     /** 一整个气泡是不是一个可发送的收藏表情。 */
@@ -384,9 +447,16 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                 }
             }
         },
-        prompt() {
+        prompt(context) {
             if (!index.entries.length) return undefined;
-            const entries = index.entries.filter(entry => existsSync(join(options.dir, entry.file)))
+            const present = index.entries.filter(entry => existsSync(join(options.dir, entry.file)));
+            if (context) {
+                const shortlist = rankStickers(present, context.text).slice(0, STICKER_SHORTLIST);
+                if (!shortlist.length) return undefined;
+                return '[这一轮你要发一个图片表情：文字回完以后，另起一行单独写 <sticker:编号>（这一行必须有），从下面按他这句话挑出来的几张里选最贴的一张，编号只能从下面选，不解释编号]\n'
+                    + shortlist.map(entry => `- <sticker:${entry.id}>：${entry.description}${entry.tags.length ? `（${entry.tags.join('、')}）` : ''}`).join('\n');
+            }
+            const entries = present
                 .sort((a, b) => a.used - b.used || Date.parse(a.lastUsedAt ?? a.createdAt) - Date.parse(b.lastUsedAt ?? b.createdAt))
                 .slice(0, STICKER_PROMPT_MAX);
             return `[你收藏的图片表情：只有这轮真的合适时才用；不要在他认真难过、生病或讲正事时只发表情。要发就单独输出一行 <sticker:编号>，编号只能从下面选，一轮最多一个，不解释编号]\n`
