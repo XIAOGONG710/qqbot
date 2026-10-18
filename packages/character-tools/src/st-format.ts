@@ -152,7 +152,7 @@ export interface CardSchedule {
     /** 几点睡 */
     sleep: string;
     /** 有课在 earlySlot 那一节的日子 early 起，否则 lazy */
-    wake: { early: string; lazy: string; earlySlot: string };
+    wake: { early: string; lazy: string; earlySlot: string; jitter?: { from: string; spreadMin: number; weekendMin: number } };
     periods: Record<string, { start: string; end: string }>;
     /** start 是第 1 周的周一 */
     semester: { start: string; weeks: number };

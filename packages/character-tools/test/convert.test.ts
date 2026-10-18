@@ -373,7 +373,7 @@ const scheduleText = (tier: string) => JSON.stringify(scheduleOf(tier));
 test('作息：几点睡、几点起、节次、学期、假期、调休、课程、空闲活动', () => {
     const s = scheduleOf('boyfriend');
     assert.equal(s.sleep, '02:00');
-    assert.deepEqual(s.wake, { early: '07:40', lazy: '09:30', earlySlot: '1-2' });
+    assert.deepEqual(s.wake, { early: '07:40', lazy: '09:30', earlySlot: '1-2', jitter: { from: '2026-10-26', spreadMin: 40, weekendMin: 60 } });
     assert.deepEqual(s.periods['1-2'], { start: '08:20', end: '09:40' });
     assert.deepEqual(s.semester, { start: '2026-08-31', weeks: 18 });
     assert.deepEqual(s.holidays.map(h => [h.name, h.start, h.end]), [['中秋节', '2026-09-25', '2026-09-27'], ['国庆节', '2026-10-01', '2026-10-07']]);
