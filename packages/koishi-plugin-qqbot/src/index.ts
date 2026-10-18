@@ -390,8 +390,8 @@ export function apply(ctx: Context, config: Config) {
         // 白名单的小黄脸「[捂脸]」发成 face 段（ADR 0051），和 onebot.ts 发的是同一个请求
         sendPrivateText: async (userId, text) => Number(await onlineBot().internal.sendPrivateMsg(userId, textToSegments(text))),
         sendPrivateImage: async (userId, file, summary) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'image', data: { file, summary, sub_type: 1 } }])),
-        // NapCat 的扩展动作 set_input_status（Koishi 的 Internal 没有定义它，走 _request；ADR 0077）
-        setInputStatus: async (userId, eventType = 1) => { await (onlineBot().internal as unknown as { _request(action: string, params: object): Promise<unknown> })._request('set_input_status', { user_id: String(userId), event_type: eventType }); },
+        // NapCat 的扩展动作 set_input_status（adapter-onebot 没有定义它，走通用的 _get：retcode 不是 0 就抛错；ADR 0077）
+        setInputStatus: async (userId, eventType = 1) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_input_status', { user_id: String(userId), event_type: eventType }); },
         friendHistory: (userId, count) => onlineBot().internal.getFriendMsgHistory(String(userId), undefined, count),
     };
 
