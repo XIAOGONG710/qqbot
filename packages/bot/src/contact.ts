@@ -20,7 +20,7 @@ import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from 
 import { loadCharacterCard, type Character } from './st/card.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
-import { isAckAfterClosing, moodySkip, typingMs, whenSeen } from './reply-timing.ts';
+import { isAckAfterClosing, moodySkip, thinkMs, typingMs, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
 import { crisisInHistory, type CrisisHit } from './crisis.ts';
 import { describeGrievance, grievanceNow } from './grievance.ts';
@@ -559,6 +559,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 },
             }),
             typingMs: text => typingMs(text, character.pace),
+            thinkMs: text => thinkMs(text, character.pace),
             skip: replySkip(character, options.moody ?? false, options.moodyChance),
         },
         waitUntil: options.waitUntil,

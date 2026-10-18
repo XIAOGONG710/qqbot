@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
 import {
-    arrivedWhileAsleep, isAck, isAckAfterClosing, isReaction, MOODY_CHANCE, MOODY_MAX_CHANCE, moodySkip, pendingMessages, typingMs, wakeUpTime, whenSeen,
+    arrivedWhileAsleep, isAck, isAckAfterClosing, isReaction, MOODY_CHANCE, MOODY_MAX_CHANCE, moodySkip, pendingMessages, thinkMs, typingMs, wakeUpTime, whenSeen,
 } from '../src/reply-timing.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
@@ -128,12 +128,30 @@ describe('回复时机：什么时候看到', () => {
 });
 
 describe('回复时机：打字、附和、夜里的消息', () => {
-    test('打字时间按字数：0.8 秒 + 每字 0.1 秒，限制在 1–4 秒，±20%', () => {
+    test('打字时间按字数（手机上）：0.6 秒 + 每字 0.18 秒，限制在 0.9–9 秒，±30%；长的比短的慢得多', () => {
         const ten = typingMs('一二三四五六七八九十');
-        assert.ok(ten >= 1800 * 0.8 && ten <= 1800 * 1.2, String(ten));
-        assert.ok(typingMs('嗯') >= 800 && typingMs('嗯') <= 1200);
-        assert.ok(typingMs('长'.repeat(100)) <= 4800 && typingMs('长'.repeat(100)) >= 3200);
+        assert.ok(ten >= 2400 * 0.7 && ten <= 2400 * 1.3, String(ten));
+        assert.ok(typingMs('嗯') >= 900 * 0.7 && typingMs('嗯') <= 900 * 1.3);
+        assert.ok(typingMs('长'.repeat(100)) <= 9000 * 1.3 && typingMs('长'.repeat(100)) >= 9000 * 0.7);
         assert.equal(typingMs('一二三四五六七八九十'), ten);
+        const mean = (n: number) => Array.from({ length: 300 }, (_, i) => typingMs(`第${i}句${'字'.repeat(n)}`)).reduce((a, b) => a + b, 0) / 300;
+        assert.ok(mean(30) > mean(5) * 2, '30 字比 5 字慢一倍以上');
+    });
+
+    test('看 + 想（thinkMs）：多半 0.8–3.5 秒、有时到 10 秒、偶尔到 28 秒；三个字以内更快；同一句每次一样；乘节奏系数', () => {
+        const sample = Array.from({ length: 4000 }, (_, i) => thinkMs(`今天第${i}句要回的话，大概十几个字`));
+        const sorted = [...sample].sort((a, b) => a - b);
+        const q = (p: number) => sorted[Math.floor(p * (sorted.length - 1))]!;
+        assert.ok(q(0.5) >= 1800 && q(0.5) <= 3200, `中位 ${q(0.5)}`);
+        assert.ok(q(0.8) <= 3600, `p80 ${q(0.8)}`);
+        assert.ok(q(0.9) > 3500 && q(0.9) <= 10_000, `p90 ${q(0.9)}`);
+        assert.ok(q(0.99) > 10_000 && q(0.99) <= 28_000, `p99 ${q(0.99)}`);
+        assert.ok(Math.min(...sample) >= 800 && Math.max(...sample) <= 28_000);
+        const longMean = Array.from({ length: 4000 }, (_, i) => thinkMs(`第${i}句一二三四五`)).reduce((a, b) => a + b, 0) / 4000;
+        const shortMean = Array.from({ length: 4000 }, (_, i) => thinkMs(`${String.fromCodePoint(0x4e00 + i)}好`)).reduce((a, b) => a + b, 0) / 4000;
+        assert.ok(shortMean < longMean * 0.8, `${shortMean} vs ${longMean}`);
+        assert.equal(thinkMs('在呢，刚忙完'), thinkMs('在呢，刚忙完'));
+        assert.ok(Math.abs(thinkMs('在呢，刚忙完', 2) - thinkMs('在呢，刚忙完') * 2) <= 1);
     });
 
     test('她已经收尾，对方只回附和：不回；说了别的照常回', () => {
