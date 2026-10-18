@@ -42,6 +42,8 @@ export interface ReplyTiming {
     whenSeen(history: StoredMessage[], now: number): Seen | undefined;
     /** 一条的打字时间 */
     typingMs(text: string): number;
+    /** 看到消息之后、开始打字之前的「看 + 想」（只回他的消息时用；不传 = 没有） */
+    thinkMs?(text: string): number;
     /** 这次不回的原因（收尾之后的附和）；要回就返回 undefined */
     skip(history: StoredMessage[]): string | undefined;
 }
@@ -288,7 +290,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         const { timing } = deps;
         // 第一条：生成花掉的时间算在打字时间里
         if (timing) {
-            const due = seenAt + timing.typingMs(parts[0]!) - now();
+            const due = seenAt + (timing.thinkMs?.(parts[0]!) ?? 0) + timing.typingMs(parts[0]!) - now();
             if (due > 0) await sleep(due);
         }
         const sent: string[] = [];

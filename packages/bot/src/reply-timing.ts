@@ -160,10 +160,23 @@ export function wakeUpTime(times: number[]): number | undefined {
     return undefined;
 }
 
-/** 一条的打字时间：0.8 秒 + 每字 0.1 秒，限制在 1–4 秒，±20% 抖动（按内容定，同一句每次一样），再乘档位的节奏系数 */
+/**
+ * 一条的打字时间（手机上）：0.6 秒起手 + 每字 0.18 秒，限制在 0.9–9 秒，±30% 抖动（按内容定，同一句每次一样），再乘档位的节奏系数。
+ * 10-18 线上 339 次热聊回复：第一条离他最后一条的延迟中位 6.3 秒、p90 12.7 秒，回 ≤8 字 6.0 秒、回 ≥20 字 7.9 秒——不管回多长都差不多快（原来 0.8 秒 + 每字 0.1 秒、封顶 4 秒，再被生成时间盖住）
+ */
 export function typingMs(text: string, pace = 1): number {
-    const base = Math.min(4000, Math.max(1000, 800 + 100 * [...text].length));
-    return Math.round(base * (0.8 + 0.4 * unit(text)) * pace);
+    const base = Math.min(9000, Math.max(900, 600 + 180 * [...text].length));
+    return Math.round(base * (0.7 + 0.6 * unit(text)) * pace);
+}
+
+/**
+ * 看到消息之后、开始打字之前的「看 + 想」（只在回他的消息时有，主动找他时没有）：多半 0.8–3.5 秒（80%），有时 3.5–10 秒（15%），偶尔 10–28 秒（5%，看别的去了）；
+ * 回三个字以内的更快（×0.6）。按内容定，同一句每次一样，再乘档位的节奏系数。第一条真正发出去的时刻 = 看到 + 看想 + 打字，生成花掉的时间算在里面
+ */
+export function thinkMs(text: string, pace = 1): number {
+    const u = unit(`${text} think`);
+    const base = u < 0.8 ? 800 + 2700 * (u / 0.8) : u < 0.95 ? 3500 + 6500 * ((u - 0.8) / 0.15) : 10_000 + 18_000 * ((u - 0.95) / 0.05);
+    return Math.round(base * ([...text].length <= 3 ? 0.6 : 1) * pace);
 }
 
 // 收尾：她上一次说的话里有这些（晚安、去忙吧……）
