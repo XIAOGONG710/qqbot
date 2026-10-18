@@ -6,10 +6,24 @@
 //   不靠模型：模型很少自己打错，让它「偶尔打错」会写成刻意的错。聊天记录里存的是发出去的样子（他看到的就是这样）。
 
 /** 回句短的、话多一点的概率（按轮） */
-export const SHORT_CHANCE = 0.35;
+export const SHORT_CHANCE = 0.5;
 export const LONG_CHANCE = 0.1;
 
 export type LengthHint = 'short' | 'long';
+
+/**
+ * 这一轮要认真接话的意图行（先接他的情绪、替他高兴好事、回应他说的那件事、只接两个人的事、要亲近 / 要哄）：不加「回很短」。
+ * 10-12 真模型回归：同时带「先接住他此刻的情绪」和「回很短」（哪怕写了「难受时不适用」）时，哭着来的那一轮她没有一句安慰；
+ * 盲评 20 题里「短」在这类话题上输得多。只靠提示词里的例外不够，在代码里让路。
+ */
+export const ENGAGED_INTENT = /先接住他此刻的情绪|他刚说了件好事|回应他刚说的那件事|只接他刚说的你们两个人的事|他在向你要亲近|他在撒娇要你哄他/;
+
+/**
+ * 他这一段话里在说不顺心、担心的事（被打回、没过、怎么办、还有救吗）：意图行不是「先接情绪」时也不加「回很短」。
+ * 10-18 题库 be-021：他说报告被老师打回来、问「你说我这还有救吗」，意图行是「先直接回答他刚问的」，她只回了「有吧」两个字。
+ * 只认明确说法（和 intent.ts 的 needsCare 一样不从普通短句猜心情）；「服了」「烦」这类玩笑里也常用的词不收。
+ */
+export const WORRIED_TEXT = /被(?:老师|老板|导师|领导)?(?:打回|拒|刷|退回|淘汰)|没(?:过|通过|考好)|挂(?:了|科)|考砸|还有救|有救吗|怎么办|咋办|我是不是(?:不行|太)/;
 
 export interface LengthContext {
     history: readonly { role: 'user' | 'assistant'; content: string; time?: string }[];
@@ -28,7 +42,7 @@ export function lengthHint(context: LengthContext): LengthHint | undefined {
     // 他明着让她讲（「你帮我认真讲讲」「详细说说」）就多说几句，不抽签（10-10 示例改短之后 boyfriend-tone T06 讲梯度下降只剩 53 字）
     if (!context.low && ASKS_TO_EXPLAIN.test(last.content)) return 'long';
     const roll = unit(`${last.time ?? ''} ${last.content} length`);
-    if (roll < SHORT_CHANCE) return 'short';
+    if (roll < SHORT_CHANCE) return (context.intent && ENGAGED_INTENT.test(context.intent)) || WORRIED_TEXT.test(saidSinceReply(context.history)) ? undefined : 'short';
     // 话多要有由头：他这次说的太短（「到家了」）就不加（第一批：一句「到家了」她一口气说了 4 条 77 个字）
     if (roll < SHORT_CHANCE + LONG_CHANCE && !context.low && [...saidSinceReply(context.history)].length >= LONG_MIN_CHARS) return 'long';
     return undefined;
@@ -47,7 +61,7 @@ function saidSinceReply(history: LengthContext['history']): string {
 
 export function describeLength(hint: LengthHint): string {
     return hint === 'short'
-        ? '[这一轮说话：只回一句短的，几个字也行；不展开，不另起话题]'
+        ? '[这一轮说话：只回很短的一句，一两个字也行——语气词、单个词、一句反问都可以，不用凑成完整的句子；不展开，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说]'
         : '[这一轮说话：话多一点，想说的可以多说几句、说完整，不用一两句就停]';
 }
 
