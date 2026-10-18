@@ -1,0 +1,23 @@
+{
+    "name": "男朋友档：闺蜜临时去不了 / 改约，她知道以后主动跟他说一声（ADR 0061 第 2 步，事件类 friend_changed）",
+    "description": "开着 npcAsks，并把 friend_changed 开起来（线上的卡还没开）。卡上推出来的真日子：11-20 陈佳宁约晚上视频（19:10），18:30 她说改到 20:30；12-04 苏雨桐约下课一起吃午饭（12:02），10:32 她说临时去不了了（被老师叫去帮忙）。每一天她该主动跟他说一声：就说这一件、说对对象和约的事、原因照「你那边」不编、不求安慰、不借机埋怨他；之后别的时机不再为这件事单发。不用记忆。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-20T17:30:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "npcAsks": true,
+    "newsKinds": ["friend_changed"],
+    "steps": [
+        { "case": "FC01", "note": "11-20：陈佳宁 18:30 说视频改到 20:30，她知道以后主动跟他说一声" },
+        { "wait": "proactive" },
+        { "check": { "proactive": { "count": [1, 1], "occasions": ["她那边的事"], "replyAny": ["佳宁", "视频", "20:30", "八点半", "8点半"], "replyNone": ["你怎么不", "不理我", "都不找我", "安慰我", "哄哄我", "你说怎么办", "老是", "总是", "每次都"], "allowedTimes": true, "exitClean": true } } },
+        { "say": "哦这样，那你先忙" },
+        { "check": { "exitClean": true, "speechClean": true } },
+        { "advance": "13d14h", "note": "跳过去的路上 11-21 00:21 她会发一条睡前，下面的第二天检查只看 12-04 的" },
+        { "case": "FC02", "note": "12-04：苏雨桐 10:32 说午饭去不了了，她知道以后主动跟他说一声。跳过去的这十三天里她睡前那条他没回（没回就停），先回她一句，免得被「没回就停」挡住" },
+        { "say": "早啊" },
+        { "wait": "proactive" },
+        { "check": { "proactive": { "count": [1, 2], "occasions": ["她那边的事"], "replyAny": ["雨桐", "苏雨桐", "午饭", "食堂"], "replyNone": ["你怎么不", "不理我", "都不找我", "安慰我", "哄哄我", "你说怎么办", "老是", "总是", "每次都", "又放"], "allowedTimes": true, "exitClean": true } } }
+    ]
+}

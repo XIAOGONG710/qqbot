@@ -20,8 +20,8 @@ export { herDay } from './schedule.ts';
 export const OCCASIONS = ['dates', 'reschedule', 'news', 'follow_up', 'weather', 'morning', 'after_class', 'quiet', 'bedtime'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
-/** 「她那边的事」的事件类（ADR 0064），按优先级从高到低：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天 */
-export const NEWS_KINDS = ['camera', 'homework_done', 'unwell'] as const;
+/** 「她那边的事」的事件类（ADR 0064），按优先级从高到低：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天、闺蜜临时去不了 / 改到很晚（ADR 0061，开着配置 npcAsks 才有） */
+export const NEWS_KINDS = ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick'] as const;
 export type NewsKind = (typeof NEWS_KINDS)[number];
 /** 卡上没写 newsKinds 的按只有相机处理（0057 的行为，旧卡不变） */
 export const DEFAULT_NEWS_KINDS: readonly NewsKind[] = ['camera'];
@@ -521,6 +521,10 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
         news: () => ({
             camera: () => `你刚${candidate.news!.what}，想第一时间告诉${userName}：说说这件事（看「你那边」那一行），就说这一件；那一行里没写的细节不编`,
             homework_done: () => `你刚${candidate.news!.what}，想跟${userName}说一声：就说这一件（看「你那边」那一行里的作业），不要他回应或夸你；那一行里没写的细节不编`,
+            // 闺蜜的约变了（ADR 0061）：说的是她得知的这件事（谁、约的什么、变成了什么、她说的原因）；不是求安慰，也不借机抱怨她、不编她没说的原因
+            friend_changed: () => `你刚得知${candidate.news!.what}，想跟${userName}说一声：就说这一件（看「你那边」那一行里的约），不要他回应或安慰你；那一行里没写的原因和细节不编`,
+            // 闺蜜病了（头一天）：她从对方那里得知；只说这一件，不借机求安慰、不编病情
+            friend_sick: () => `你刚得知${candidate.news!.what}，想跟${userName}说一声：就说这一件（看「你那边」那一行里的朋友），不要他回应或安慰你；病得怎么样、有没有去看、你做了什么，那一行里没写的不编`,
             unwell: () => `你今天${candidate.news!.what}，想跟${userName}说一声：只是告诉他，不是要他哄你、关心你，也不要他回应；说到哪一步照「你的身体」那一行，没写的细节不编`,
         })[candidate.news!.kind](),
         // 旧项目的教训（ADR 0013 决策 2）：分享「刚看到的」会编出一个具体的视频、帖子，对方要链接时给不出来

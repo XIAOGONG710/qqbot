@@ -10,7 +10,7 @@ import {
 import { newsFrom } from '../src/proactive-planner.ts';
 import { wakeOn } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { unwellNews, worldNews, type WorldNow } from '../src/world.ts';
+import { unwellNews, worldNews, type FriendDate, type WorldNow } from '../src/world.ts';
 
 // ADR 0064：她账里的事成为开口的理由（事件类：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天）
 const cardPath = (tier: string) => resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`);
@@ -145,6 +145,84 @@ describe('newsFrom：把世界和身体变成排候选用的事（ADR 0064）', 
     });
 });
 
+describe('事件类：闺蜜的约变了（ADR 0061 第 2 步，friend_changed）', () => {
+    const date = (patch: Partial<FriendDate> = {}): FriendDate => ({
+        id: '2026-12-04:su_yutong:canteen', kind: 'canteen', person: { id: 'su_yutong', name: '苏雨桐', relation: '同专业的朋友' }, what: '下课一起去食堂吃饭', doing: '在食堂和苏雨桐吃饭',
+        askedAt: new Date(t(12, 4, 9, 53)), start: new Date(t(12, 4, 12, 2)), minutes: 45, outcome: 'cancelled', knownAt: new Date(t(12, 4, 10, 32)),
+        reason: '临时被老师叫去帮忙', held: false, ...patch,
+    });
+    const snap = (...dates: FriendDate[]): WorldNow => ({ ...snapshot(), day: '2026-12-04', dates });
+    const newsOf = (candidates: ReturnType<typeof candidatesOn>) => candidates.filter(c => c.occasion === 'news');
+
+    test('临时去不了了：了结的时刻 = 她得知的时刻，id 带约的 id，原因按档位裁过的写上', () => {
+        assert.deepEqual(worldNews(snap(date()), ['friend_changed']), [{
+            id: 'friend:2026-12-04:su_yutong:canteen', kind: 'friend_changed', at: new Date(t(12, 4, 10, 32)),
+            what: '苏雨桐约好 12:02 下课一起去食堂吃饭，她临时去不了了（临时被老师叫去帮忙）',
+        }]);
+        // 没有原因（私事、这一档说不出口）就不写原因，不编
+        assert.equal(worldNews(snap(date({ reason: undefined })), ['friend_changed'])[0]!.what, '苏雨桐约好 12:02 下课一起去食堂吃饭，她临时去不了了');
+    });
+
+    test('改到很晚（至少一小时）算；只晚一会儿、迟到、她自己推掉的、还没得知的、不是今天的不算；没开这一类就没有', () => {
+        const moved = (minutes: number) => date({ outcome: 'moved', actualStart: new Date(t(12, 4, 12, 2) + minutes * 60_000), held: true, reason: undefined });
+        assert.equal(worldNews(snap(moved(90)), ['friend_changed'])[0]!.what, '苏雨桐约好 12:02 下课一起去食堂吃饭，她说改到 13:32');
+        assert.deepEqual(worldNews(snap(moved(30)), ['friend_changed']), []);
+        assert.deepEqual(worldNews(snap(date({ outcome: 'late', actualStart: new Date(t(12, 4, 12, 10)), held: true })), ['friend_changed']), []);
+        assert.deepEqual(worldNews(snap(date({ declined: '作业还没写完', declinedAt: new Date(t(12, 4, 9, 53)) })), ['friend_changed']), []);
+        const { knownAt: _known, ...unknown } = date();
+        assert.deepEqual(worldNews(snap(unknown as FriendDate), ['friend_changed']), []);
+        assert.deepEqual(worldNews({ ...snap(date()), day: '2026-12-05' }, ['friend_changed']), []);
+        assert.deepEqual(worldNews(snap(date())), [], '不传 kinds = 只有相机');
+        assert.deepEqual(worldNews(snap(date()), ['camera', 'homework_done']), []);
+    });
+
+    test('说明：只说这一件、不要他回应或安慰、不编没写的原因；排在别的类后面', () => {
+        const item: NewsItem = { id: 'friend:x', kind: 'friend_changed', day: '2026-12-04', at: t(12, 4, 10, 32), what: '苏雨桐约好 12:02 下课一起去食堂吃饭，她临时去不了了（临时被老师叫去帮忙）' };
+        const text = occasionNote(newsOf(candidatesOn(day(12, 4), input({ news: [item] })))[0]!, '宝宝');
+        assert.match(text, /你刚得知苏雨桐约好 12:02 下课一起去食堂吃饭，她临时去不了了（临时被老师叫去帮忙），想跟宝宝说一声/);
+        assert.match(text, /不要他回应或安慰你/);
+        assert.match(text, /没写的原因和细节不编/);
+        assert.match(text, /不抱怨对方没找你、没回你/);
+        assert.doesNotMatch(text, /「[^」]*[！!]」/, '不给台词');
+        assert.ok(NEWS_KINDS.indexOf('friend_changed') > NEWS_KINDS.indexOf('unwell'), '优先级最低');
+    });
+});
+
+describe('事件类：闺蜜病了的头一天（friend_sick）', () => {
+    const people = (day: number, of = 3): WorldNow['people'] => [{ name: '苏雨桐', relation: '大学同专业，济南人，不是室友', states: [{ kind: 'sick', day, of }] }];
+    const snap = (day: number): WorldNow => ({ ...snapshot(), day: '2026-12-04', people: people(day) });
+
+    test('头一天才有：上午 9:00–11:30 她得知，同一天同一个人每次一样；第二天起不再单发', () => {
+        const [item, ...rest] = worldNews(snap(1), ['friend_sick']);
+        assert.equal(rest.length, 0);
+        assert.equal(item!.id, 'friend_sick:苏雨桐:2026-12-04');
+        assert.equal(item!.kind, 'friend_sick');
+        assert.equal(item!.what, '苏雨桐感冒了');
+        assert.ok(item!.at.getTime() >= t(12, 4, 9) && item!.at.getTime() <= t(12, 4, 11, 30), item!.at.toString());
+        assert.equal(worldNews(snap(1), ['friend_sick'])[0]!.at.getTime(), item!.at.getTime());
+        assert.deepEqual(worldNews(snap(2), ['friend_sick']), []);
+        assert.deepEqual(worldNews(snap(3), ['friend_sick']), []);
+    });
+
+    test('忙、回家不算；没开这一类就没有；看不到这个人（没有 people）就没有', () => {
+        const busy: WorldNow = { ...snapshot(), day: '2026-12-04', people: [{ name: '陈佳宁', relation: '高中同班，死党', states: [{ kind: 'busy', day: 1, of: 2, label: '有考试' }, { kind: 'home' }] }] };
+        assert.deepEqual(worldNews(busy, ['friend_sick']), []);
+        assert.deepEqual(worldNews(snap(1)), [], '不传 kinds = 只有相机');
+        assert.deepEqual(worldNews(snap(1), ['camera', 'homework_done', 'unwell', 'friend_changed']), []);
+        assert.deepEqual(worldNews({ ...snapshot(), day: '2026-12-04' }, ['friend_sick']), []);
+    });
+
+    test('说明：只说这一件、不要他回应或安慰、病情和做了什么没写的不编；排在最后', () => {
+        const item: NewsItem = { id: 'friend_sick:苏雨桐:2026-12-04', kind: 'friend_sick', day: '2026-12-04', at: t(12, 4, 10, 10), what: '苏雨桐感冒了' };
+        const text = occasionNote(candidatesOn(day(12, 4), input({ news: [item] })).filter(c => c.occasion === 'news')[0]!, '宝宝');
+        assert.match(text, /你刚得知苏雨桐感冒了，想跟宝宝说一声/);
+        assert.match(text, /不要他回应或安慰你/);
+        assert.match(text, /那一行里没写的不编/);
+        assert.doesNotMatch(text, /「[^」]*[！!]」/, '不给台词');
+        assert.equal(NEWS_KINDS.at(-1), 'friend_sick');
+    });
+});
+
 describe('主动消息里的事件类：优先级、说明、日志（ADR 0064 决策 4、5、7）', () => {
     const item = (kind: NewsItem['kind'], id: string, at: number, what: string): NewsItem => ({ id, kind, day: '2026-10-14', at, what });
     const camera = item('camera', 'camera', t(10, 14, 16, 30), '在山大路科技市场买到了二手相机');
@@ -197,7 +275,7 @@ describe('主动消息里的事件类：优先级、说明、日志（ADR 0064 �
         assert.equal('newsKinds' in parseProactive(base, '卡'), false);
         assert.throws(() => parseProactive({ ...base, newsKinds: ['camera', 'bogus'] }, '卡'), /newsKinds 应为 camera \/ homework_done \/ unwell/);
         assert.throws(() => parseProactive({ ...base, newsKinds: 'camera' }, '卡'), /newsKinds/);
-        assert.deepEqual([...NEWS_KINDS], ['camera', 'homework_done', 'unwell']);
+        assert.deepEqual([...NEWS_KINDS], ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick']);
     });
 });
 
