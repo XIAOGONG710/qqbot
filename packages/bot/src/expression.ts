@@ -32,6 +32,8 @@ export interface LengthContext {
     initiating?: boolean;
     /** 身体不舒服、心情安静：不加「话多」 */
     low?: boolean;
+    /** 他这一轮说起了她认识的人（闺蜜）：被问「雨桐最近怎么样」要把事说准，不适合只回很短的一句 */
+    aboutPerson?: boolean;
 }
 
 /** 这一轮说话的长短（没有就是照常） */
@@ -42,7 +44,9 @@ export function lengthHint(context: LengthContext): LengthHint | undefined {
     // 他明着让她讲（「你帮我认真讲讲」「详细说说」）就多说几句，不抽签（10-10 示例改短之后 boyfriend-tone T06 讲梯度下降只剩 53 字）
     if (!context.low && ASKS_TO_EXPLAIN.test(last.content)) return 'long';
     const roll = unit(`${last.time ?? ''} ${last.content} length`);
-    if (roll < SHORT_CHANCE) return (context.intent && ENGAGED_INTENT.test(context.intent)) || WORRIED_TEXT.test(saidSinceReply(context.history)) ? undefined : 'short';
+    // 他问起她认识的人（「雨桐最近怎么样」）：只回很短的一句会把最近的几件事压成一个评语——10-19 npc-asks-days NA07 在候选 4/5 的抽签下
+    // 4 次里 2 次回「老放我鸽子」（账上只有一次她临时去不了）。这类问题不加「回很短」
+    if (roll < SHORT_CHANCE) return (context.intent && ENGAGED_INTENT.test(context.intent)) || WORRIED_TEXT.test(saidSinceReply(context.history)) || context.aboutPerson ? undefined : 'short';
     // 话多要有由头：他这次说的太短（「到家了」）就不加（第一批：一句「到家了」她一口气说了 4 条 77 个字）
     if (roll < SHORT_CHANCE + LONG_CHANCE && !context.low && [...saidSinceReply(context.history)].length >= LONG_MIN_CHARS) return 'long';
     return undefined;

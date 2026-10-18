@@ -423,7 +423,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),
             } : undefined;
             // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
-            const length = crisisNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low: mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) });
+            const length = crisisNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low: mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false), aboutPerson: npcs.length > 0 });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
