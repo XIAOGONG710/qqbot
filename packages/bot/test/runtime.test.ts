@@ -942,6 +942,29 @@ describe('正在输入（ADR 0077）', () => {
         assert.deepEqual(events, ['typing', 'typing', 'typing', 'send:第一条', 'typing', 'send:第二条']);
     });
 
+    test('有「想」的那一段（ADR 0075 thinkMs）：想的时候不显示，开始打字才显示', async () => {
+        let t = Date.parse('2026-10-19T10:00:00+08:00');
+        const start = t;
+        const stored: StoredMessage[] = [];
+        const typed: number[] = [];
+        const responder = createResponder({
+            userId: 1,
+            history: { load: () => [...stored], append: (_id, m) => { stored.push(m); } },
+            buildPrompt: chat => ({ messages: chat.map(m => ({ role: m.role, content: m.content })), activatedWorldInfo: [] } satisfies PromptResult),
+            generate: async () => '好的呀',
+            clean: text => text.trim(),
+            send: async () => 1,
+            log: () => {},
+            sleep: async ms => { t += ms; },
+            now: () => t,
+            timing: { whenSeen: (_h, at) => ({ at, reason: '正聊着' }), thinkMs: () => 5000, typingMs: () => 3000, skip: () => undefined },
+            typing: () => { typed.push(t - start); },
+        });
+        responder.receive('在吗', 1, new Date(t));
+        await responder.whenIdle();
+        assert.deepEqual(typed, [5000], '想了 5 秒之后才开始显示，打字 3 秒只显示一次');
+        assert.equal(t - start, 8000);
+    });
     test('等待不到 1.5 秒不显示（刚显示就收到）；没配 typing 的照旧', async () => {
         const quick = run(() => 1000, '好的\n行');
         await quick.responder.whenIdle();
