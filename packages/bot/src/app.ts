@@ -166,6 +166,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         let card = cards.get(tier);
         if (!card) {
             card = loadTierCard(config.characterCard, tier);
+            // 闺蜜的约（ADR 0061，配置 npcAsks）：开关设在这张卡的世界上，其余代码照旧读世界
+            if (config.npcAsks && card.character.herWorld) card.character.herWorld.asks = true;
             cards.set(tier, card);
         }
         return card;

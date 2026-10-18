@@ -7,7 +7,7 @@ import type { ReadingBook } from './her-days.ts';
 import type { LifeEvent } from './life-events.ts';
 import { chooseProject, type ProjectChoice } from './projects.ts';
 import { herDay, stateAt, type ExtraFreeActivity, type Schedule, type State } from './schedule.ts';
-import { occupationAt, worldErrands, type WorldNow } from './world.ts';
+import { occupationAt, planDates, worldErrands, type WorldNow } from './world.ts';
 
 export interface StatusOptions {
     /** 看书的空闲活动（ADR 0015，readingActivities）。 */
@@ -61,6 +61,7 @@ export function herStatus(schedule: Schedule, at: Date, options: StatusOptions =
             body: options.plans.body,
             homework: options.world.homework,
             errands: worldErrands(options.world),
+            dates: planDates(options.world, at),
         }, options.extraFree ?? [])
         : [];
     const project = canPlan && options.world && options.projectChoice

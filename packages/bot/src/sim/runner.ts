@@ -207,6 +207,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     /** 跑完要删的：他自己的、名单里其他人的、公共库 */
     const banks = memory ? [bankId!, ...others.map(other => memory!.bankId(other)), memory.commonBankId()] : [];
     const { character } = options.card;
+    // 闺蜜的约（ADR 0061）：场景开着才有；开关在世界对象上，其余代码照旧读世界
+    if (scenario.npcAsks && character.herWorld) character.herWorld.asks = true;
     // W3：模拟器和线上共用同一状态层，抽取后的动作立即影响后续提示词和日记。
     const openWorld = () => {
         const ledger = options.herDays && scenario.schedule && character.schedule && character.herWorld

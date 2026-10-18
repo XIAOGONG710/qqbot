@@ -25,6 +25,8 @@ export interface PlanFacts {
     homework?: readonly { course: string; due: Date; doneAt: Date }[];
     /** 世界里定好了几点去做的事（world.ts 的 worldErrands，买相机那一趟）：那一段就写这件事，不写作息里的空闲活动（10-11 模拟：打算写「下午在图书馆赶作业」，她照着说了） */
     errands?: readonly { start: Date; text: string }[];
+    /** 约好的事（闺蜜的约，ADR 0061，world.ts 的 planDates）：不替换那一段的打算，写在后面（「晚上研究新相机的设置；20:30 和陈佳宁微信视频」） */
+    dates?: readonly { start: Date; text: string }[];
 }
 
 /** 一个时段：打算的、实际的（没改就和打算的一样）、为什么改；until：作业压着改的，写完就回到原来的打算 */
@@ -34,6 +36,8 @@ export interface PlanSlot {
     done: string;
     because?: string;
     until?: Date;
+    /** 这一段里约好的事（闺蜜的约），接在打算后面说 */
+    extra?: string;
 }
 
 const WINDOW_NAMES: Record<FreeWindow, string> = { morning: '上午', afternoon: '下午', evening: '晚上' };
@@ -49,14 +53,15 @@ export function dayPlan(schedule: Schedule, plans: Plans | undefined, day: Date,
             const activity = stateAt(schedule, new Date(t), extra).activity;
             if (activity.kind === 'free' && activity.text) planned = activity.text;
         }
+        const datesText = (facts.dates ?? []).filter(d => d.start >= from && d.start < to).map(d => `${clock(d.start)} ${d.text}`).join('；');
         const errand = facts.errands?.find(e => e.start >= from && e.start < to);
         if (errand) {
             const text = `${clock(errand.start)} ${errand.text}`;
-            slots.push({ window, planned: text, done: text });
+            slots.push({ window, planned: text, done: text, ...(datesText ? { extra: datesText } : {}) });
             continue;
         }
         if (planned === undefined) continue;
-        slots.push({ window, planned, ...settle(plans, window, planned, day, from, to, facts) });
+        slots.push({ window, planned, ...settle(plans, window, planned, day, from, to, facts), ...(datesText ? { extra: datesText } : {}) });
     }
     return slots;
 }
@@ -82,7 +87,8 @@ export function describeSlot(slot: PlanSlot): string {
     const name = WINDOW_NAMES[slot.window];
     // 定了钟点的事（「14:00 去…」）前面空一格
     const gap = /^[0-9]/.test(slot.planned) ? ' ' : '';
-    return slot.done === slot.planned ? `${name}${gap}${slot.planned}` : `${name}本来打算${slot.planned}，${slot.because}，${slot.done}`;
+    const plan = slot.done === slot.planned ? `${name}${gap}${slot.planned}` : `${name}本来打算${slot.planned}，${slot.because}，${slot.done}`;
+    return slot.extra ? `${plan}；${slot.extra}` : plan;
 }
 
 /**

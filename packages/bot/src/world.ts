@@ -12,10 +12,11 @@ import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import type { Episode } from './memory/episodes.ts';
 import { classesOn, formatDate, herDay, wakeOn, type ClassToday, type Schedule } from './schedule.ts';
 import { realWeather, type DayWeather } from './weather.ts';
-import { parseBody, unwell, type Body, type BodyNow } from './body.ts';
+import { bodyAt, parseBody, unwell, type Body, type BodyNow } from './body.ts';
 import { DEFAULT_NEWS_KINDS, type NewsKind } from './proactive.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
 import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
+import { DEFAULT_ASKS, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
 import type { Plans } from './day-plan.ts';
 import { ASK_HOME_TIME, depositFor, lastPayday, MISC_TIME, nextPayday, ORDER_TIME, PAY_TIME, parcelPrice, priceIn, sideJobOn, spendItems, type Money, type MoneyEntry } from './money.ts';
 
@@ -51,6 +52,8 @@ export interface World {
     plans?: Plans;
     /** 她的钱（ADR 0035，money.ts） */
     money?: Money;
+    /** 闺蜜的约（ADR 0061，npc-asks.ts）：运行开关（配置 npcAsks，启动时和模拟器设上），不是卡上的块；没开就没有约 */
+    asks?: boolean;
 }
 
 export interface Parcel {
@@ -109,6 +112,30 @@ export interface WorldAction extends WorldActionDraft {
     target?: string;
 }
 
+/**
+ * 闺蜜的一次约（ADR 0061）：她那一刻知道的样子。held：真的会发生（她答应了、对方没取消、改到的时间也没撞上别的事），占着一段时间；
+ * 推掉的 declined 有理由；knownAt：她什么时候知道变了（迟到：到点没到；改约 / 取消：提前通知）
+ */
+export interface FriendDate {
+    id: string;
+    kind: string;
+    person: { id: string; name: string; relation: string };
+    what: string;
+    doing: string;
+    where?: string;
+    askedAt: Date;
+    start: Date;
+    minutes: number;
+    outcome: AskOutcome;
+    actualStart?: Date;
+    knownAt?: Date;
+    reason?: string;
+    declined?: string;
+    /** 她推掉这件事的时刻：说的时候就推掉的是 askedAt；改约、迟到之后才撞上别的事的，是她知道变了的那一刻 */
+    declinedAt?: Date;
+    held: boolean;
+}
+
 /** 某一刻她身边的事实（到 now 为止发生了的） */
 export interface WorldNow {
     day: string;
@@ -146,6 +173,8 @@ export interface WorldNow {
     /** 她的钱（ADR 0035）：手上还有多少、下次几号到账、今天到现在花的；detail 是这一档说得出口 */
     /** askedHome：这个月（上次到账以后）跟家里多要了多少 */
     money?: { balance: number; nextPay: Date; today: { what: string; amount: number }[]; askedHome: number; detail: boolean };
+    /** 闺蜜的约（ADR 0061，开着 World.asks 才有）：今天、明天的，已经说到她这里的 */
+    dates?: FriendDate[];
 }
 
 const DAY_MS = 86_400_000;
@@ -392,6 +421,8 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
 
         // 学校和宿舍里的小事
         for (const event of world.events) {
+            // 开了闺蜜的约（ADR 0061）：和苏雨桐吃午饭只通过「约」发生，免得一天两顿
+            if (world.asks && event.id === 'lunch_with_friend') continue;
             if (event.weekday && (day.getDay() || 7) !== event.weekday) continue;
             const ok = event.when === 'any' || (event.when === 'school' ? atSchool : atSchool && lessons.length > 0);
             if (!ok || unit(`${date} ${event.id}`) >= event.chance) continue;
@@ -470,6 +501,114 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
     return { days, parcels, homework, deposits, ledger, ...(camera ? { camera } : {}) };
 }
 
+// ---------- 闺蜜的约（ADR 0061） ----------
+
+/** 她那一天在不在学校（和 simulateWorld 里的口径一样；约只在她在学校的日子） */
+function atSchoolOn(world: World, schedule: Schedule, day: Date): boolean {
+    const date = formatDate(day);
+    const { outsideSemester } = classesOn(schedule, day);
+    const holiday = schedule.holidays.find(h => h.start <= date && date <= h.end);
+    return !(holiday && world.awayHolidays.includes(holiday.name)) && !(outsideSemester && day > parseDate(world.startDay));
+}
+
+const KNOWN_MIN_BEFORE = { cancelled: 90, moved: 40 } as const;
+
+/**
+ * 这几天里闺蜜的约，按「她那一刻」(now) 知道的：说到她这里的（askedAt ≤ now）。她答不答应按规则判（judgeAsk：课、身上不舒服、快交的作业；
+ * 他的约在约定那边，这里看不到）。只给看得到这两个人的档位（world.people 已经按档位裁过），私事理由只给说得出口的档位
+ */
+function friendDatesFor(world: World, schedule: Schedule, now: Date, days: readonly Date[], timeline: Timeline): FriendDate[] {
+    if (!world.asks || !world.people.length) return [];
+    const detail = world.body?.period?.detail ?? false;
+    const anchors = {
+        meal: (kind: 'lunch' | 'dinner', day: Date) => {
+            if (!world.routine) return undefined;
+            const meal = routineOn(world.routine, schedule, day, atSchoolOn(world, schedule, day)).meals.find(m => m.kind === kind);
+            return meal && meal.where === 'canteen' ? meal : undefined;
+        },
+    };
+    const out: FriendDate[] = [];
+    for (const day of days) {
+        for (const ask of npcAsksOn(world.people, schedule, day, DEFAULT_ASKS, anchors)) {
+            if (ask.askedAt > now) continue;
+            out.push(friendDate(world, schedule, ask, timeline, detail));
+        }
+    }
+    return out.sort((a, b) => a.start.getTime() - b.start.getTime());
+}
+
+function friendDate(world: World, schedule: Schedule, ask: NpcAsk, timeline: Timeline, detail: boolean): FriendDate {
+    const person = world.people.find(p => p.id === ask.person)!;
+    const day = new Date(`${ask.day}T00:00`);
+    const askedOn = formatDate(startOfDay(ask.askedAt));
+    const due = timeline.homework.filter(h => h.assigned <= askedOn && h.due > ask.askedAt && h.done > ask.askedAt).sort((a, b) => a.due.getTime() - b.due.getTime())[0]?.due;
+    const facts: AskFacts = {
+        classes: classesOn(schedule, day).lessons.map(l => ({ start: l.start, end: l.end })),
+        meetups: [],
+        ...(due ? { homeworkDue: due } : {}),
+        unwell: world.body ? unwell(bodyAt(world.body, schedule, ask.start)) : false,
+    };
+    const first = judgeAsk(ask, facts);
+    let verdict = first;
+    // 迟到、改约之后的那一段也要对得上她的安排
+    if (verdict.accept && ask.actualStart && ask.outcome !== 'cancelled') {
+        verdict = judgeAsk(ask, facts, { start: ask.actualStart, end: new Date(ask.actualStart.getTime() + ask.minutes * 60_000) });
+    }
+    const reason = ask.reason && (!ask.reason.private || detail) ? ask.reason.text : undefined;
+    const declined = verdict.accept ? undefined : verdict.reason;
+    const knownAt = ask.outcome === 'cancelled' || ask.outcome === 'moved'
+        ? new Date(Math.max(ask.askedAt.getTime() + 10 * 60_000, ask.start.getTime() - KNOWN_MIN_BEFORE[ask.outcome] * 60_000))
+        : ask.outcome === 'late' ? ask.start : undefined;
+    // 说的时候就推掉的，那一刻就知道；改约、迟到之后才撞上的，要等她知道变了
+    const declinedAt = declined ? (first.accept ? knownAt ?? ask.askedAt : ask.askedAt) : undefined;
+    return {
+        id: ask.id, kind: ask.kind, person: { id: person.id, name: person.name, relation: person.relation },
+        what: ask.what, doing: ask.doing, ...(ask.where ? { where: ask.where } : {}),
+        askedAt: ask.askedAt, start: ask.start, minutes: ask.minutes, outcome: ask.outcome,
+        ...(ask.actualStart ? { actualStart: ask.actualStart } : {}), ...(knownAt ? { knownAt } : {}), ...(reason ? { reason } : {}),
+        ...(declined ? { declined, declinedAt: declinedAt! } : {}), held: !declined && ask.outcome !== 'cancelled',
+    };
+}
+
+/**
+ * 一天的打算里写的约（ADR 0061）：她那一刻相信会发生的——答应了的；改约的要等她知道才换成新时间，取消的要等她知道才去掉；她推掉的不写
+ */
+export function planDates(now: WorldNow, at: Date): { start: Date; text: string }[] {
+    return (now.dates ?? []).filter(d => formatDate(d.start) === now.day).flatMap(d => {
+        if (d.declined && d.declinedAt && at >= d.declinedAt) return [];
+        const known = d.knownAt ? at >= d.knownAt : false;
+        if (d.outcome === 'cancelled' && known) return [];
+        return [{ start: d.outcome === 'moved' && known ? d.actualStart! : d.start, text: `和${d.person.name}${d.what}` }];
+    });
+}
+
+/** 约真的发生的那一段：迟到、改约的按实际的时刻 */
+export function dateSpan(d: FriendDate): { start: Date; end: Date } {
+    const start = d.actualStart ?? d.start;
+    return { start, end: new Date(start.getTime() + d.minutes * 60_000) };
+}
+
+/** 进「你那边」的一句：只写事实，没有台词；at 是此刻，变卦要到她知道的那一刻才写 */
+export function describeDate(d: FriendDate, at: Date, herToday: Date): string {
+    const who = d.person.name;
+    const day = startOfDay(d.start).getTime() === herToday.getTime() ? '今天' : '明天';
+    const time = `${day} ${clock(d.start)}`;
+    const why = d.reason ? `（${d.reason}）` : '';
+    const plain = `约好${time}和${who}${d.what}`;
+    if (d.declined && d.declinedAt && at >= d.declinedAt) return `${who}约你${time} ${d.what}，你推掉了（${d.declined}）`;
+    const known = d.knownAt ? at >= d.knownAt : false;
+    switch (d.outcome) {
+        case 'cancelled': return known ? `${who}约好${time} ${d.what}，她说去不了了${why}` : plain;
+        case 'moved': return known ? `${who}约好${time} ${d.what}，她说改到 ${clock(d.actualStart!)}${why}` : plain;
+        case 'late': {
+            const late = Math.round((d.actualStart!.getTime() - d.start.getTime()) / 60_000);
+            if (!known) return plain;
+            return at < d.actualStart! ? `${plain}，她还没到${why}` : at >= dateSpan(d).end ? `${time}和${who}${d.what}了，她迟到了 ${late} 分钟${why}` : `${plain}，她迟到了 ${late} 分钟${why}`;
+        }
+        default: return at >= dateSpan(d).end ? `${time}和${who}${d.what}了` : plain;
+    }
+}
+
 /** 某一刻她身边的事实（按她的一天：凌晨 2 点前算前一天） */
 export function worldAt(world: World, schedule: Schedule, now: Date, actions: readonly WorldAction[] = []): WorldNow | undefined {
     const day = herDay(schedule, now);
@@ -529,6 +668,10 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     }
     const people = world.people.map(p => ({ name: p.name, relation: p.relation, states: npcStates(p.id, p.life, schedule, day) })).filter(p => p.states.length);
     if (people.length) result.people = people;
+    if (world.asks) {
+        const dates = friendDatesFor(world, schedule, now, [day, addDays(day, 1)], timeline);
+        if (dates.length) result.dates = dates;
+    }
     if (world.money) {
         const past = timeline.ledger.filter(e => e.at <= now);
         const paid = lastPayday(world.money, day);
@@ -622,6 +765,10 @@ export function describeWorld(now: WorldNow, at: Date, giver?: (qq: number) => s
         parts.push(`朋友：${now.people.map(p => describeNpc(p.name, p.states)).join('；')}（${now.people.map(p => `${p.name}：${p.relation}`).join('；')}）`);
         for (const p of now.people) introduced.add(p.name);
     }
+    if (now.dates?.length) {
+        parts.push(`约：${now.dates.map(d => describeDate(d, at, herToday)).join('；')}${now.dates.some(d => !introduced.has(d.person.name)) ? `（${[...new Map(now.dates.filter(d => !introduced.has(d.person.name)).map(d => [d.person.name, d.person.relation] as const))].map(([name, relation]) => `${name}：${relation}`).join('；')}）` : ''}`);
+        for (const d of now.dates) introduced.add(d.person.name);
+    }
     if (now.events.length) {
         const people = [...new Map(now.events.flatMap(e => (e.person && !introduced.has(e.person.name) ? [[e.person.name, e.person.relation] as const] : []))).entries()];
         parts.push(`今天的小事：${now.events.map(e => e.text).join('；')}${people.length ? `（${people.map(([name, relation]) => `${name}：${relation}`).join('；')}）` : ''}`);
@@ -714,6 +861,9 @@ export function occupationAt(now: WorldNow, at: Date): string | undefined {
     if (parcel) return `刚去驿站取了快递（${parcel.item}），在往回走`;
     const homework = now.homework.find(h => !h.done && within(new Date(h.doneAt.getTime() - OCCUPATION_MINUTES.homework * 60_000), OCCUPATION_MINUTES.homework));
     if (homework) return `在赶${homework.course ? `${homework.course}的` : ''}作业，${clock(homework.doneAt)} 左右能写完`;
+    // 闺蜜的约（ADR 0061）：在一起的那一段（迟到、改约的按实际的时刻）；比吃饭先说，免得「在食堂吃午饭」盖掉「和苏雨桐」
+    const together = now.dates?.find(d => d.held && at >= dateSpan(d).start && at < dateSpan(d).end);
+    if (together) return together.doing;
     // 吃饭（ADR 0031）
     const meal = now.routine?.meals.find(m => at >= m.start && at < m.end);
     if (meal) return `${meal.where === 'canteen' ? '在食堂' : meal.where === 'takeout' ? '点了外卖，在' : '在家'}吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}`;
@@ -746,6 +896,7 @@ export function recapDay(now: WorldNow): string[] {
     }
     if (now.familyCall?.done) lines.push(`${clock(now.familyCall.at)} 和家里视频了`);
     for (const event of now.events) lines.push(event.text);
+    for (const d of (now.dates ?? []).filter(d => formatDate(d.start) === now.day)) lines.push(recapDate(d));
     for (const person of now.people ?? []) lines.push(describeNpc(person.name, person.states)!);
     // 那天花了多少（ADR 0035）：说得出口的档位才有
     if (now.money?.detail && now.money.today.length) lines.push(`花了 ${now.money.today.reduce((sum, e) => sum + e.amount, 0)} 元（${spendItems(now.money.today)}）`);
@@ -754,6 +905,19 @@ export function recapDay(now: WorldNow): string[] {
     else if (now.cameraFund?.lastDeposit && formatDate(now.cameraFund.lastDeposit.at) === now.day) lines.push(now.cameraFund.lastDeposit.amount ? `相机基金存了 ${now.cameraFund.lastDeposit.amount}` : '相机基金这周没存');
     if (now.routine?.shower) lines.push(`${clock(now.routine.shower.start)} 去洗了澡`);
     return lines;
+}
+
+/** 过去那一天的约，一句（复盘、说起她时） */
+function recapDate(d: FriendDate): string {
+    const who = d.person.name;
+    const why = d.reason ? `（${d.reason}）` : '';
+    if (d.declined) return `你推掉了${who}约的${d.what}（${d.declined}）`;
+    switch (d.outcome) {
+        case 'cancelled': return `${who}约的${d.what}，她临时去不了${why}`;
+        case 'moved': return `${who}约的${d.what}，她改到 ${clock(d.actualStart!)}${why}`;
+        case 'late': return `${clock(d.start)} 和${who}${d.what}，她迟到了 ${Math.round((d.actualStart!.getTime() - d.start.getTime()) / 60_000)} 分钟${why}`;
+        default: return `${clock(d.start)} 和${who}${d.what}`;
+    }
 }
 
 /** 说起她身边的人时往回看几天（ADR 0033） */
@@ -786,6 +950,25 @@ export function recentWith(world: World, schedule: Schedule, now: Date, id: stri
         for (const event of timeline.days.get(formatDate(day))?.events ?? []) {
             if (event.person !== id || event.at > now) continue;
             latest.set(event.id, `${sameDay(day, today) ? '今天' : date(day)}${event.text.replaceAll('{person}', person.name)}`);
+        }
+    }
+    if (world.asks) {
+        const dated: { day: Date; d: FriendDate }[] = [];
+        for (let day = from; day <= today; day = addDays(day, 1)) {
+            for (const d of friendDatesFor(world, schedule, now, [day], timeline).filter(d => d.person.id === id && d.start <= now)) dated.push({ day, d });
+        }
+        if (dated.length) {
+            const count = (f: (d: FriendDate) => boolean) => dated.filter(x => f(x.d)).length;
+            const bits = [
+                [count(d => !d.declined && d.outcome === 'on_time'), '按时'], [count(d => !d.declined && d.outcome === 'late'), '迟到'],
+                [count(d => !d.declined && d.outcome === 'moved'), '改时间'], [count(d => !d.declined && d.outcome === 'cancelled'), '她临时去不了'],
+                [count(d => d.declined !== undefined), '你推掉'],
+            ].filter(([n]) => n).map(([n, what]) => `${what} ${n}`);
+            latest.set('ask:tally', `最近 ${days} 天约过 ${dated.length} 次（${bits.join('、')}）`);
+            // 变卦的，最近两件
+            for (const { day, d } of dated.filter(x => x.d.outcome !== 'on_time' || x.d.declined !== undefined).slice(-2)) {
+                latest.set(`ask:${d.id}`, `${sameDay(day, today) ? '今天' : date(day)}${recapDate(d)}`);
+            }
         }
     }
     return [...lines, ...latest.values()];

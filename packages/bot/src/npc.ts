@@ -108,7 +108,7 @@ function spanOn(key: string, perMonth: number, [min, max]: [number, number], day
 }
 
 /** FNV-1a 加一道 murmur3 的 fmix32：只差几个字的键（日期 + 人 + 名目）在小概率那头也散得开 */
-function unit(text: string): number {
+export function unit(text: string): number {
     let hash = 0x811c9dc5;
     for (const char of text) {
         hash ^= char.codePointAt(0)!;
