@@ -7,6 +7,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { MEDIA_TIMEOUTS } from './media.ts';
+import { FESTIVAL_MODES, type FestivalMode } from './festivals.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from './proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from './st/prompt-converters.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from './st/world-info.ts';
@@ -45,6 +46,7 @@ export const DEFAULTS = {
     grievance: false,
     feedbackCommands: false,
     realWeather: true,
+    festivals: 'off' as FestivalMode,
     media: true,
     stickers: 'off' as StickerMode,
     candidates: 1,
@@ -116,6 +118,8 @@ export interface AppConfig {
      * 反馈通道（ADR 0073）：男朋友档对她的话回一个字「假」或「像」，记进 feedback/YYYY-MM.jsonl，不当聊天、她不回应。默认关
      */
     feedbackCommands: boolean;
+    /** 公共节日（ADR 0076）：off 关；notes 她在时间块里知道今天、临近是什么节（平安夜、除夕、情人节……）；greet 再让她在情侣之间一定会说一句的节日里主动说（新年零点、除夕、平安夜、情人节……）。默认 off */
+    festivals: FestivalMode;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -308,6 +312,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         grievance: bool(file, 'grievance', '', DEFAULTS.grievance),
         feedbackCommands: bool(file, 'feedbackCommands', '', DEFAULTS.feedbackCommands),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
+        festivals: festivalMode(file.festivals),
         media: bool(file, 'media', '', DEFAULTS.media),
         stickers: stickerMode(file.stickers),
         ...(vision ? { vision } : {}),
@@ -342,6 +347,12 @@ function proactiveMode(value: unknown): ProactiveMode {
     if (value === undefined) return DEFAULTS.proactive;
     if (!PROACTIVE_MODES.includes(value as ProactiveMode)) throw new Error(`配置 proactive 应为 ${PROACTIVE_MODES.map(v => JSON.stringify(v)).join(' / ')} 之一`);
     return value as ProactiveMode;
+}
+
+function festivalMode(value: unknown): FestivalMode {
+    if (value === undefined) return DEFAULTS.festivals;
+    if (!FESTIVAL_MODES.includes(value as FestivalMode)) throw new Error(`配置 festivals 应为 ${FESTIVAL_MODES.map(v => JSON.stringify(v)).join(' / ')} 之一`);
+    return value as FestivalMode;
 }
 
 function stickerMode(value: unknown): StickerMode {

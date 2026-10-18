@@ -1,0 +1,42 @@
+{
+    "name": "节日主动：春节零点",
+    "description": "春节零点：开着 greet，她自己会不会发一句",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2027-02-05T23:30:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "festivals": "greet",
+    "steps": [
+        {
+            "case": "G01",
+            "note": "零点新年快乐"
+        },
+        {
+            "say": "马上十二点了"
+        },
+        {
+            "advance": "1h"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        2
+                    ],
+                    "occasions": [
+                        "重要的日子"
+                    ],
+                    "replyAny": [
+                        "新年",
+                        "春节",
+                        "过年"
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true
+                }
+            }
+        }
+    ]
+}

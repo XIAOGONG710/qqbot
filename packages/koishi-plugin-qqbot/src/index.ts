@@ -19,6 +19,7 @@ import { createLog, type Log } from '../../bot/src/log.ts';
 import { isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
 import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
 import { textToSegments } from '../../bot/src/qq-faces.ts';
+import { FESTIVAL_MODES, type FestivalMode } from '../../bot/src/festivals.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from '../../bot/src/proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '../../bot/src/st/prompt-converters.ts';
 import { configuredImageDescriber, STICKER_VISION_PROMPT } from '../../bot/src/vision.ts';
@@ -56,6 +57,7 @@ export const THINKING = ['off', 'low', 'high', 'max'] as const;
 export type Thinking = (typeof THINKING)[number];
 const THINKING_LABELS: Record<Thinking, string> = { off: '关', low: '低', high: '高', max: '最高' };
 
+const FESTIVAL_LABELS: Record<FestivalMode, string> = { off: '关', notes: '只让她知道今天 / 快到的是什么节', greet: '知道，并在新年零点、除夕、平安夜、情人节等主动说一句' };
 const PROACTIVE_LABELS: Record<ProactiveMode, string> = { off: '关', dryRun: '试运行（只写日志不发）', on: '开' };
 const STICKER_LABELS: Record<StickerMode, string> = { off: '关', collect: '只收藏核对（不发）', send: '收藏并发送' };
 
@@ -91,6 +93,7 @@ export interface Config {
     grievance: boolean;
     feedbackCommands: boolean;
     realWeather: boolean;
+    festivals: FestivalMode;
     candidates: number;
     contextTurns: number;
     contextContacts: number[];
@@ -179,6 +182,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**反馈通道**（ADR 0073）：男朋友档收到只有「假」或「像」一个字的消息（可带前面的 / 、后面的标点或一个小黄脸、QQ 的回复引用）时，记下她那一轮话是「假」还是「像」，不当聊天、她不回应。记录在数据目录的 feedback/ 里，不进日志正文。默认关'),
         realWeather: Schema.boolean().default(DEFAULTS.realWeather)
             .description('**真实天气**（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成'),
+        festivals: Schema.union(FESTIVAL_MODES.map(mode => Schema.const(mode).description(FESTIVAL_LABELS[mode]))).default(DEFAULTS.festivals)
+            .description('**公共节日**（ADR 0076）：她知道今天是平安夜、除夕、情人节……（时间块提前几天提醒）；选「主动说」时再在新年零点、除夕、平安夜、情人节、元宵、520、七夕、端午、中秋由「重要的日子」时机带一句。默认关'),
         candidates: Schema.natural().min(1).max(5).default(DEFAULTS.candidates)
             .description('**挑候选**（ADR 0041）：他难过、说亲密话、收尾时一次生成几个回复、按规则挑一个（少说几句、不扯自己的事、不约「写完跟我说」）。1 是不挑；3 是这几种时候三倍的模型调用'),
         contextTurns: Schema.natural().max(40).default(DEFAULTS.contextTurns)
@@ -292,6 +297,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.grievance !== undefined ? { grievance: config.grievance } : {}),
         ...(config.feedbackCommands !== undefined ? { feedbackCommands: config.feedbackCommands } : {}),
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
+        ...(config.festivals !== undefined ? { festivals: config.festivals } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
         ...(config.contextTurns !== undefined ? { contextTurns: config.contextTurns } : {}),
         ...(config.contextContacts !== undefined ? { contextContacts: config.contextContacts } : {}),

@@ -1,0 +1,39 @@
+{
+    "name": "节日主动：平安夜早上",
+    "description": "平安夜早上：开着 greet，她自己会不会发一句",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-12-24T07:00:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "festivals": "greet",
+    "steps": [
+        {
+            "case": "G01",
+            "note": "早安带平安夜"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        1
+                    ],
+                    "occasions": [
+                        "重要的日子"
+                    ],
+                    "replyAny": [
+                        "平安夜",
+                        "苹果",
+                        "圣诞"
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true
+                }
+            }
+        }
+    ]
+}
