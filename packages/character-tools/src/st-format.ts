@@ -157,7 +157,7 @@ export interface CardSchedule {
     /** start 是第 1 周的周一 */
     semester: { start: string; weeks: number };
     /** 含首尾两天；where：放假时她在哪，partner：他在哪，partnerBack：放完假 PARTNER_BACK_DAYS 天内他在哪（{{user}} 由运行时换成称呼） */
-    holidays: { name: string; start: string; end: string; where?: string; partner?: string; partnerBack?: string }[];
+    holidays: { name: string; start: string; end: string; where?: string; partner?: string; partnerBack?: string; home?: boolean }[];
     /** 调休补课：asDay 补星期几的课（1–7），0 = 没课 */
     makeups: { date: string; asDay: number }[];
     /** label：课型的叫法；seeAfterMin：上这种课时过多少分钟才看到消息；maxBubbles：最多回几条 */
@@ -169,6 +169,8 @@ export interface CardSchedule {
         morning: string[]; afternoon: string[]; evening: string[]; afternoonFrom: string; eveningFrom: string;
         /** 从 from 那天起才进抽签列表的空闲活动（ADR 0053 之后） */
         later?: { window: 'morning' | 'afternoon' | 'evening'; text: string; from: string; until?: string }[];
+        /** 在家的假期（holidays[].home）里用的空闲活动，同样按日期 + 时段哈希挑 */
+        home?: { morning: string[]; afternoon: string[]; evening: string[] };
     };
     /** 上学期间她在哪 */
     where: string;

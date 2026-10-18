@@ -4,7 +4,7 @@
 
 import { bookProgressAt, type ReadingBook } from './her-days.ts';
 import type { LifeEvent, LifeEventDraft, LifeEventSource } from './life-events.ts';
-import { classesOn, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
+import { atHome, classesOn, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
 
 export type TypedActionKind = 'sleep' | 'eat' | 'meet' | 'attend_class' | 'study' | 'rest' | 'read_book' | 'leisure' | 'work_on_project' | 'interact_npc';
@@ -80,7 +80,7 @@ export function judgeAction(intent: ActionIntent, context: ActionContext): Actio
     if (!intent.id.trim() || !Number.isFinite(start.getTime())) return failed(intent, 'invalid_time');
     if (context.events?.some(event => event.id === intent.id.trim())) return failed(intent, 'already_done');
 
-    if (intent.kind === 'sleep') return fixedAction(intent, sleepSpan(start, context.schedule), '在宿舍睡觉', context);
+    if (intent.kind === 'sleep') return fixedAction(intent, sleepSpan(start, context.schedule), atHome(context.schedule, herDay(context.schedule, start)) ? '在家睡觉' : '在宿舍睡觉', context);
     if (intent.kind === 'eat') {
         // 饭点开头开始；见完面回来饭点已经开始了的，从回来那一刻吃（G1）
         const meal = context.world?.routine?.meals.find(item => start >= item.start && start < item.end);

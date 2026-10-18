@@ -29,7 +29,7 @@ import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from './feedback.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
-import { withFestivals } from './festivals.ts';
+import { withFestivalActivities, withFestivals } from './festivals.ts';
 import { newsKindsOf, type ProactiveMode } from './proactive.ts';
 import { detectCrisis } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
@@ -162,6 +162,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             card = loadTierCard(config.characterCard, tier);
             // 公共节日（ADR 0076，配置 festivals）：并进这一档的重要的日子，时间块和主动消息照旧读 dates
             card.character.dates = withFestivals(card.character.dates, new Date(), config.festivals);
+            withFestivalActivities(card.character.schedule, new Date(), config.festivals);
             cards.set(tier, card);
         }
         return card;

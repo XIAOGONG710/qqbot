@@ -51,6 +51,8 @@ export interface ImportantDay {
     year?: number;
     /** 时间块里提前几天起提（不写 DAYS_AHEAD） */
     ahead?: number;
+    /** 时间块里跟在名字后面的一句说明（公共节日：「情侣的节日」） */
+    hint?: string;
     /** 只在时间块里提，不主动找他说 */
     silent?: boolean;
 }

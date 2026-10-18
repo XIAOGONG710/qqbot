@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { festivalDays, festivalYears, solarTerm, withFestivals, FESTIVAL_MODES } from '../src/festivals.ts';
+import { festivalActivities, festivalDays, festivalYears, solarTerm, withFestivalActivities, withFestivals, FESTIVAL_MODES } from '../src/festivals.ts';
+import { stateAt } from '../src/schedule.ts';
 import { candidatesOn, dayMatches, type ImportantDay, type ProactiveInput } from '../src/proactive.ts';
 import { describeDays } from '../src/time-context.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
@@ -78,19 +79,19 @@ describe('公共节日：时间块', () => {
 
     test('提前几天起提醒，当天说今天', () => {
         assert.equal(describeDays(days, at('2026-12-20T12:00:00')), undefined);
-        assert.equal(describeDays(days, at('2026-12-21T12:00:00')), '[明天是冬至]\n[再过 3 天（12月24日）是平安夜]');
-        assert.equal(describeDays(days, at('2026-12-23T12:00:00')), '[明天是平安夜]');
-        assert.equal(describeDays(days, at('2026-12-24T21:00:00')), '[今天是平安夜]\n[明天是圣诞节]');
+        assert.equal(describeDays(days, at('2026-12-21T12:00:00')), '[明天是冬至（北方吃饺子）]\n[再过 3 天（12月24日）是平安夜（年轻人爱互送苹果）]');
+        assert.equal(describeDays(days, at('2026-12-23T12:00:00')), '[明天是平安夜（年轻人爱互送苹果）]');
+        assert.equal(describeDays(days, at('2026-12-24T21:00:00')), '[今天是平安夜（年轻人爱互送苹果）]\n[明天是圣诞节]');
     });
 
     test('跨年：12 月 30 日已经看得到元旦', () => {
-        assert.equal(describeDays(days, at('2026-12-30T12:00:00')), '[明天是跨年夜]\n[后天是元旦]');
+        assert.equal(describeDays(days, at('2026-12-30T12:00:00')), '[明天是跨年夜（等零点，说新年快乐）]\n[后天是元旦（新年第一天）]');
     });
 
     test('除夕和春节提前一个星期', () => {
         const text = describeDays(days, at('2027-01-30T12:00:00'))!;
-        assert.ok(text.includes('再过 6 天（2月5日）是除夕'), text);
-        assert.ok(text.includes('再过 7 天（2月6日）是春节'), text);
+        assert.ok(text.includes('再过 6 天（2月5日）是除夕（一家人吃年夜饭、看春晚）'), text);
+        assert.ok(text.includes('再过 7 天（2月6日）是春节（新年第一天，拜年）'), text);
     });
 });
 
@@ -139,5 +140,34 @@ describe('公共节日：并进卡', () => {
         assert.equal(withFestivals(boyfriend.dates, now, 'off').length, boyfriend.dates.length);
         assert.deepEqual(once.slice(0, 3).map(d => d.name), ['你的生日', '你们在一起的纪念日', '他的生日']);
         assert.equal(once.length, boyfriend.dates.length + 19 * 3);
+    });
+});
+
+describe('公共节日：那一天她在做的事', () => {
+    const schedule = structuredClone(boyfriend.schedule!);
+    const state = (text: string) => stateAt(schedule, new Date(text));
+    const doing = (text: string) => { const a = state(text).activity; return a.kind === 'free' ? a.text : undefined; };
+
+    test('没开节日时晚上照旧从空闲活动里挑', () => {
+        assert.ok(!doing('2026-12-24T21:00:00')?.includes('分苹果'));
+    });
+
+    test('开着：平安夜晚上在学校，只从节日的事里挑；在家的那条不会出现', () => {
+        withFestivalActivities(schedule, new Date(2026, 9, 19), 'notes');
+        assert.equal(doing('2026-12-24T21:00:00'), '跟室友分苹果，看她们拍照');
+        assert.equal(doing('2026-12-23T21:00:00')?.includes('苹果'), false, '别的日子不受影响');
+    });
+
+    test('除夕在寒假（在家）：整天都是过年的事；寒假里别的日子用在家的那份', () => {
+        withFestivalActivities(schedule, new Date(2026, 9, 19), 'greet');
+        assert.equal(doing('2027-02-05T10:00:00'), '在家帮着收拾，准备过年');
+        assert.equal(doing('2027-02-05T15:00:00'), '在家跟爸妈一起包饺子');
+        assert.equal(doing('2027-02-05T20:00:00'), '跟爸妈一起看春晚');
+        assert.ok(/^(在家|在追|打独立|跟爸妈|刷手机|陪妈妈|在房间)/.test(doing('2027-01-20T21:00:00')!), doing('2027-01-20T21:00:00'));
+    });
+
+    test('活动表按年份写成公历那天；off 没有', () => {
+        assert.ok(festivalActivities([2027], 'greet').some(item => item.date === '2027-02-06' && item.window === 'afternoon'));
+        assert.deepEqual(festivalActivities([2027], 'off'), []);
     });
 });

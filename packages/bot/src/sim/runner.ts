@@ -5,7 +5,7 @@ import { appendFileSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BotConfig, Contact } from '../config.ts';
 import { createContactResponder, replySkip, type TierCard } from '../contact.ts';
-import { withFestivals } from '../festivals.ts';
+import { withFestivalActivities, withFestivals } from '../festivals.ts';
 import { stickerShelf } from '../stickers.ts';
 import { MEET_MINUTES, promiseKeeper } from '../promises.ts';
 import { writeJsonAtomic } from '../json-file.ts';
@@ -206,6 +206,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const { character } = options.card;
     // 公共节日（ADR 0076）：并进这一档的重要的日子；场景的开场时刻决定算哪几年
     character.dates = withFestivals(character.dates, new Date(clock.now()), scenario.festivals);
+    withFestivalActivities(character.schedule, new Date(clock.now()), scenario.festivals);
     // W3：模拟器和线上共用同一状态层，抽取后的动作立即影响后续提示词和日记。
     const openWorld = () => {
         const ledger = options.herDays && scenario.schedule && character.schedule && character.herWorld
