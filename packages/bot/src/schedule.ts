@@ -19,7 +19,11 @@ export interface Course {
 
 export interface Schedule {
     sleep: string;
-    wake: { early: string; lazy: string; earlySlot: string };
+    /**
+     * jitter（ADR 0078）：从 from 那天起，每天起床的时刻在 early / lazy 上下浮动 ±spreadMin 分钟（按日期哈希，同一天每次一样），
+     * 有早课的日子最多浮动 10 分钟；没有课的周末再晚 weekendMin 分钟；任何时候不晚于第一节课前 25 分钟。没写 = 每天精确在 early / lazy
+     */
+    wake: { early: string; lazy: string; earlySlot: string; jitter?: { from: string; spreadMin: number; weekendMin: number } };
     periods: Record<string, { start: string; end: string }>;
     semester: { start: string; weeks: number };
     holidays: { name: string; start: string; end: string; where?: string; partner?: string; partnerBack?: string; home?: boolean }[];
@@ -154,7 +158,19 @@ export function wakeOn(schedule: Schedule, day: Date): Date {
 export function wakeTime(schedule: Schedule, day: Date, lessons: ClassToday[]): Date {
     const early = schedule.periods[schedule.wake.earlySlot];
     const hasEarly = early !== undefined && lessons.some(l => l.start.getTime() === at(day, early.start).getTime());
-    return at(day, hasEarly ? schedule.wake.early : schedule.wake.lazy);
+    const base = at(day, hasEarly ? schedule.wake.early : schedule.wake.lazy);
+    const jitter = schedule.wake.jitter;
+    if (!jitter || formatDate(day) < jitter.from) return base;
+    // 浮动（ADR 0078）：有早课的日子只浮动一点，赶得上第一节；周末没课再晚一点；不晚于第一节课前 25 分钟（原来 09:30 起、09:55 上课的日子不动）
+    const spread = hasEarly ? Math.min(jitter.spreadMin, 10) : jitter.spreadMin;
+    const fraction = (hash(`${formatDate(day)} wake`) % 10_000) / 10_000;
+    let minutes = Math.round((fraction * 2 - 1) * spread);
+    const weekend = day.getDay() === 0 || day.getDay() === 6;
+    if (weekend && !hasEarly && lessons.length === 0) minutes += jitter.weekendMin;
+    let wake = base.getTime() + minutes * 60_000;
+    const first = lessons[0];
+    if (first) wake = Math.min(wake, first.start.getTime() - 25 * 60_000);
+    return new Date(wake);
 }
 
 function holidayOn(schedule: Schedule, day: Date): Schedule['holidays'][number] | undefined {
@@ -308,7 +324,13 @@ export function parseSchedule(json: unknown, source: string): Schedule {
     const texts = (v: unknown, at: string) => arr(v, at).map((t, i) => str(t, `${at}[${i}]`));
     const schedule: Schedule = {
         sleep: str(s.sleep, '.sleep', TIME),
-        wake: { early: str(wake.early, '.wake.early', TIME), lazy: str(wake.lazy, '.wake.lazy', TIME), earlySlot: str(wake.earlySlot, '.wake.earlySlot') },
+        wake: {
+            early: str(wake.early, '.wake.early', TIME), lazy: str(wake.lazy, '.wake.lazy', TIME), earlySlot: str(wake.earlySlot, '.wake.earlySlot'),
+            ...(wake.jitter !== undefined ? (() => {
+                const j = obj(wake.jitter, '.wake.jitter');
+                return { jitter: { from: str(j.from, '.wake.jitter.from', DATE), spreadMin: int(j.spreadMin, '.wake.jitter.spreadMin'), weekendMin: int(j.weekendMin, '.wake.jitter.weekendMin') } };
+            })() : {}),
+        },
         periods,
         semester: { start: str(semester.start, '.semester.start', DATE), weeks: int(semester.weeks, '.semester.weeks') },
         holidays: arr(s.holidays, '.holidays').map((h, i) => {

@@ -1,0 +1,14 @@
+{
+    "name": "男朋友档：起床时刻浮动以后她自己过三天，账和状态行对得上（ADR 0078）",
+    "description": "10-25（from 之前）晚上到 10-29：跨过 jitter.from（10-26），开着 autonomous。睡觉事件的结束时刻跟着每天的起床时刻变，不重叠、没有失败的、状态行和账对得上。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-25T20:00:00+08:00",
+    "memory": false,
+    "autonomous": true,
+    "steps": [
+        { "advance": "3d16h" },
+        { "case": "WJ01", "note": "10-29 12:00：三天半过完，账对得上" },
+        { "check": { "life": { "noOverlap": true, "noFailed": true, "statusConsistent": true, "atLeast": { "sleep": 3 } } } }
+    ]
+}

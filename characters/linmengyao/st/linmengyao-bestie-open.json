@@ -57,7 +57,12 @@
                     "wake": {
                         "early": "07:40",
                         "lazy": "09:30",
-                        "earlySlot": "1-2"
+                        "earlySlot": "1-2",
+                        "jitter": {
+                            "from": "2026-10-26",
+                            "spreadMin": 40,
+                            "weekendMin": 60
+                        }
                     },
                     "periods": {
                         "1-2": {

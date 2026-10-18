@@ -229,7 +229,9 @@ describe('改约的候选、说明和到点的检查（ADR 0066 决策 3、4）'
     test('优先级：日子 > 改约 > 她那边的事；一天只剩一条时留改约', () => {
         const news = { id: 'camera', kind: 'camera' as const, day: '2026-12-21', at: t(12, 21, 11).getTime(), what: '买到了相机' };
         const history = [msg('assistant', t(12, 21, 9, 0), '早'), msg('user', t(12, 21, 9, 5), '早呀')];
-        const plan = planFrom(t(12, 21, 9, 30).getTime(), input({ news: [news], history, records: [{ id: '2026-12-21:morning', occasion: 'morning', plannedAt: '', at: t(12, 21, 9).toISOString(), result: 'sent' }] }));
+        // 起床时刻从 2026-10-26 起每天不一样（ADR 0078），这一项是按 09:30 起床排的时间线：用没有浮动的作息
+        const exact = { ...schedule, wake: { early: schedule.wake.early, lazy: schedule.wake.lazy, earlySlot: schedule.wake.earlySlot } };
+        const plan = planFrom(t(12, 21, 9, 30).getTime(), input({ schedule: exact, news: [news], history, records: [{ id: '2026-12-21:morning', occasion: 'morning', plannedAt: '', at: t(12, 21, 9).toISOString(), result: 'sent' }] }));
         assert.deepEqual(plan.upcoming.map(c => c.occasion), ['reschedule']);
         assert.ok(plan.yielded.some(c => c.occasion === 'news'));
     });

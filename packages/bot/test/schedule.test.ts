@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { describeState, inWeeks, parseSchedule, partnerBackLine, stateAt, type Schedule } from '../src/schedule.ts';
+import { classesOn, describeState, inWeeks, parseSchedule, partnerBackLine, stateAt, wakeOn, type Schedule } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 // 用转换器生成的真卡（ADR 0007 决策 1）：学期 2026-08-31（周一）起，国庆 10-01–10-07，10-10 调休没课
@@ -96,7 +96,7 @@ describe('作息：某个时刻她在干什么', () => {
     });
 
     test('学期外没有课', () => {
-        const after = stateAt(boyfriend, new Date(2027, 0, 4, 10));
+        const after = stateAt(boyfriend, new Date(2027, 0, 4, 12));
         assert.equal(after.outsideSemester, true);
         assert.equal(after.activity.kind, 'free');
         assert.equal(stateAt(boyfriend, t(8, 30, 10)).outsideSemester, true);
@@ -194,5 +194,43 @@ describe('作息：某个时刻她在干什么', () => {
         assert.throws(() => parseSchedule({ ...raw, courses: [{ ...boyfriend.courses[0], slot: '5' }] }, '卡'), /slot 5 不在 periods 里/);
         assert.throws(() => parseSchedule({ ...raw, wake: { ...boyfriend.wake, earlySlot: '0' } }, '卡'), /earlySlot 0 不在 periods 里/);
         assert.deepEqual(parseSchedule(raw, '卡'), boyfriend);
+    });
+});
+
+describe('起床时刻浮动（ADR 0078）', () => {
+    const hm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const day = (month: number, d: number) => new Date(2026, month - 1, d);
+
+    test('卡上写了 jitter：from 以前每天精确在 07:40 / 09:30，从 from 起浮动，同一天每次一样', () => {
+        assert.deepEqual(boyfriend.wake.jitter, { from: '2026-10-26', spreadMin: 40, weekendMin: 60 });
+        // 10-24（周六）、10-25（周日）、10-19（周一，早课）都在 from 之前：精确
+        assert.equal(hm(wakeOn(boyfriend, day(10, 24))), '09:30');
+        assert.equal(hm(wakeOn(boyfriend, day(10, 25))), '09:30');
+        assert.equal(hm(wakeOn(boyfriend, day(10, 19))), '07:40');
+        const days = Array.from({ length: 28 }, (_, i) => day(10, 26 + i));
+        const times = days.map(d => hm(wakeOn(boyfriend, d)));
+        assert.deepEqual(times, days.map(d => hm(wakeOn(boyfriend, d))), '同一天每次一样');
+        assert.ok(new Set(times).size >= 10, `28 天里至少 10 个不同的时刻：${[...new Set(times)].join(' ')}`);
+    });
+
+    test('有早课的日子最多浮动 10 分钟；有课的日子不晚于第一节课前 25 分钟；周末没课的日子平均更晚', () => {
+        let weekend = 0, weekendN = 0, free = 0, freeN = 0;
+        for (let i = 0; i < 120; i++) {
+            const d = day(10, 26 + i);
+            const lessons = classesOn(boyfriend, d).lessons;
+            const wake = wakeOn(boyfriend, d);
+            const early = lessons.some(l => hm(l.start) === '08:20');
+            if (early) assert.ok(Math.abs(wake.getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate(), 7, 40).getTime()) <= 10 * 60_000, `${d.toDateString()} ${hm(wake)}`);
+            if (lessons[0]) assert.ok(wake.getTime() <= lessons[0].start.getTime() - 25 * 60_000, `${d.toDateString()} ${hm(wake)} vs ${hm(lessons[0].start)}`);
+            const minutes = wake.getHours() * 60 + wake.getMinutes();
+            if (!lessons.length && !early) { if (d.getDay() === 0 || d.getDay() === 6) { weekend += minutes; weekendN++; } else { free += minutes; freeN++; } }
+        }
+        // 寒假里没课的工作日也算 free，周末多 60 分钟
+        assert.ok(weekend / weekendN > free / freeN + 30, `周末 ${weekend / weekendN} 工作日没课 ${free / freeN}`);
+    });
+
+    test('卡上没写 jitter 的（同学档以外的老卡 / 测试里手写）照旧精确', () => {
+        const plain: Schedule = { ...boyfriend, wake: { early: boyfriend.wake.early, lazy: boyfriend.wake.lazy, earlySlot: boyfriend.wake.earlySlot } };
+        for (let i = 0; i < 20; i++) assert.ok(['07:40', '09:30'].includes(hm(wakeOn(plain, day(11, 2 + i)))));
     });
 });

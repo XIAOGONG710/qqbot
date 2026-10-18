@@ -235,7 +235,8 @@ export interface ByTier {
 export interface ScheduleSource {
     /** 几点睡；睡到 wakeup.lazy */
     sleep: string;
-    wakeup: { early: string; lazy: string };
+    /** jitter（ADR 0078）：从 from 那天起起床的时刻每天浮动（±spread_minutes，周末没课再晚 weekend_minutes）；不写 = 每天精确在 early / lazy */
+    wakeup: { early: string; lazy: string; jitter?: { from: string; spread_minutes: number; weekend_minutes: number; note?: string } };
     /** 节次 → "HH:MM-HH:MM" */
     periods: Record<string, string>;
     semester: { start: string; weeks: number };
@@ -604,7 +605,15 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
 
     const checkedSchedule: ScheduleSource = {
         sleep: time(h.at('sleep'), schedule.sleep),
-        wakeup: { early: time(h.at('wakeup.early'), wakeup.early), lazy: time(h.at('wakeup.lazy'), wakeup.lazy) },
+        wakeup: {
+            early: time(h.at('wakeup.early'), wakeup.early), lazy: time(h.at('wakeup.lazy'), wakeup.lazy),
+            ...(wakeup.jitter !== undefined && wakeup.jitter !== null ? (() => {
+                const j = h.at('wakeup.jitter');
+                const o = j.object(wakeup.jitter);
+                j.keys(o, ['from', 'spread_minutes', 'weekend_minutes', 'note']);
+                return { jitter: withNote(j.at('note'), o.note, { from: date(j.at('from'), o.from), spread_minutes: j.at('spread_minutes').integer(o.spread_minutes, 0, 120), weekend_minutes: j.at('weekend_minutes').integer(o.weekend_minutes, 0, 240) }) };
+            })() : {}),
+        },
         periods: Object.fromEntries(Object.entries(periods).map(([slot, range]) => {
             const c = h.at(`periods.${slot}`);
             const [start, end, ...rest] = c.string(range).split('-');

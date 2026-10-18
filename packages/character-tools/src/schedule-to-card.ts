@@ -97,7 +97,10 @@ export function scheduleForTier(schedule: ScheduleSource, tier: string): CardSch
 
     return {
         sleep: schedule.sleep,
-        wake: { early: schedule.wakeup.early, lazy: schedule.wakeup.lazy, earlySlot: firstSlot },
+        wake: {
+            early: schedule.wakeup.early, lazy: schedule.wakeup.lazy, earlySlot: firstSlot,
+            ...(schedule.wakeup.jitter ? { jitter: { from: schedule.wakeup.jitter.from, spreadMin: schedule.wakeup.jitter.spread_minutes, weekendMin: schedule.wakeup.jitter.weekend_minutes } } : {}),
+        },
         periods,
         semester: { start: schedule.semester.start, weeks: schedule.semester.weeks },
         holidays,
