@@ -50,7 +50,7 @@ export const OCCASIONS = ['morning', 'after_class', 'bedtime', 'quiet', 'follow_
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 「她那边的事」的事件类（ADR 0064），和 bot 的 proactive.ts 的 NEWS_KINDS 一致（两个包各存一份） */
-export const NEWS_KINDS = ['camera', 'homework_done', 'unwell'] as const;
+export const NEWS_KINDS = ['camera', 'homework_done', 'unwell', 'friend_changed'] as const;
 export type NewsKind = (typeof NEWS_KINDS)[number];
 
 /** 档位的回复节奏系数能写多少（ADR 0013 决策 1） */
