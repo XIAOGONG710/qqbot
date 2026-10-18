@@ -1,0 +1,21 @@
+{
+    "name": "男朋友档：平安夜前后三天她自己过日子（节日 + 自主选择器，ADR 0076）",
+    "description": "12-23 到 12-26，开着 festivals: greet 和 autonomous。平安夜晚上在学校跟室友分苹果；账里 12-24 晚上该有这件事，状态行和账对得上、不重叠、没有失败的。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-12-23T08:00:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "autonomous": true,
+    "lifeInPrompt": true,
+    "festivals": "greet",
+    "steps": [
+        { "advance": "1d13h" },
+        { "case": "FL01", "note": "12-24 21:00：平安夜晚上" },
+        { "say": "在干嘛" },
+        { "check": { "speechClean": true, "exitClean": true, "replyAny": ["苹果", "室友", "平安夜"] } },
+        { "advance": "2d" },
+        { "case": "FL02", "note": "12-26：三天过完，账对得上" },
+        { "check": { "life": { "noOverlap": true, "noFailed": true, "statusConsistent": true } } }
+    ]
+}
