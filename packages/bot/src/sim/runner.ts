@@ -366,6 +366,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.lifeInPrompt && scenario.autonomous ? { lifeInPrompt: true } : {}),
         ...(scenario.grievance ? { grievance: true } : {}),
         ...(stickers ? { stickers } : {}),
+        ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),
         contacts: [contact, ...others],
         log,
         now: clock.now,

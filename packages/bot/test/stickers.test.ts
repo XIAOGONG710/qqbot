@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { imageStickerAllowance, stickerShelf, stripStickerArtifacts, type DownloadedSticker } from '../src/stickers.ts';
+import { imageStickerAllowance, rankStickers, STICKER_SHORTLIST, STICKER_TURN_CHANCE, stickerCued, stickerReactionWords, stickerShelf, stickerTurn, stripStickerArtifacts, type DownloadedSticker, type StickerEntry } from '../src/stickers.ts';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -195,5 +195,59 @@ describe('图片表情收藏（ADR 0063）', () => {
         await shelf.consider([{ type: 'image', data: { url: 'https://qq.invalid/photo.jpg', sub_type: 0, summary: '' } }, { type: 'text', data: { text: '看' } }], { from: 1, messageId: 1 });
         await shelf.consider('纯文字', { from: 1, messageId: 2 });
         assert.deepEqual(described, []);
+    });
+});
+
+describe('图片表情：代码定哪几轮发、按他这句话挑一小撮（10-19，ADR 0063 调整）', () => {
+    const entry = (id: string, description: string, tags: string[], used = 0): StickerEntry => ({
+        id, file: `${id}.png`, description, tags, source: { kind: 'received', from: 1, messageId: 1 }, createdAt: '2026-10-12T00:00:00.000Z', used,
+    });
+    const shelf = [
+        entry('aaaaaaaaaaa1', '卡通仓鼠盖被睡觉', ['晚安', '睡', '可爱']),
+        entry('aaaaaaaaaaa2', '粉色小人举着食物兴奋', ['吃', '美食', '兴奋']),
+        entry('aaaaaaaaaaa3', '白猫捂嘴偷笑', ['搞笑', '偷笑', '开心']),
+        entry('aaaaaaaaaaa4', '小熊翻白眼', ['无语', '嫌弃']),
+        entry('aaaaaaaaaaa5', '小狗歪头', ['可爱']),
+    ];
+
+    test('他这句话里有明确的反应才抽签：晚安、哈哈、抱抱、吃、无语、他发来的表情；「知道啦」「哦哦 好」这类没有', () => {
+        for (const text of ['晚安', '先睡了啊宝', '哈哈哈哈你完了', '想你了，抱抱', '我先去吃饭了', '真是无语', '[动画表情]', '真的假的！！']) assert.equal(stickerCued(text), true, text);
+        for (const text of ['知道啦', '哦哦 好', '图书馆三楼 两点', '反正十二月才正式考', '']) assert.equal(stickerCued(text), false, text);
+    });
+
+    test('按他这句话排：命中反应词多的在前，同分的少用的在前；没有明确反应时找通用的', () => {
+        assert.equal(rankStickers(shelf, '晚安')[0]!.id, 'aaaaaaaaaaa1');
+        assert.equal(rankStickers(shelf, '我先去吃饭了')[0]!.id, 'aaaaaaaaaaa2');
+        assert.equal(rankStickers(shelf, '哈哈哈哈你完了')[0]!.id, 'aaaaaaaaaaa3');
+        assert.equal(rankStickers(shelf, '真是无语')[0]!.id, 'aaaaaaaaaaa4');
+        // 同分的少用的在前
+        const used = [entry('bbbbbbbbbbb1', '白猫偷笑', ['搞笑'], 5), entry('bbbbbbbbbbb2', '黄鸭大笑', ['搞笑'], 0)];
+        assert.equal(rankStickers(used, '哈哈')[0]!.id, 'bbbbbbbbbbb2');
+        assert.ok(stickerReactionWords('图书馆三楼').includes('可爱'), '没有明确反应 = 通用词');
+        assert.equal(rankStickers(shelf, '晚安').length, shelf.length, '只排序不丢');
+    });
+
+    test('抽签：同一句每次一样；概率跟着配置走；没有他的话不抽', () => {
+        const history = (i: number) => [{ role: 'user' as const, content: `第 ${i} 句哈哈`, time: new Date(Date.UTC(2026, 9, 19, 12, 0, i)).toISOString() }];
+        const draws = (chance: number) => Array.from({ length: 2000 }, (_, i) => stickerTurn(history(i), chance)).filter(Boolean).length / 2000;
+        assert.ok(Math.abs(draws(STICKER_TURN_CHANCE) - STICKER_TURN_CHANCE) < 0.04, String(draws(STICKER_TURN_CHANCE)));
+        assert.equal(draws(0), 0);
+        assert.equal(draws(1), 1);
+        assert.equal(stickerTurn(history(3)), stickerTurn(history(3)));
+        assert.equal(stickerTurn([{ role: 'assistant', content: '在' }]), false);
+    });
+
+    test('传了他这一轮的话：只列按它挑出来的几张并写明这一轮要发一个；不传还是旧办法（最久没用的 12 张）', async () => {
+        const { shelf: real } = setup();
+        for (let i = 0; i < 10; i++) {
+            await real.consider([{ type: 'image', data: { url: `https://qq.invalid/cat${i}.gif`, sub_type: 1, summary: '[动画表情]' } }], { from: 10001, messageId: i + 1 });
+        }
+        const forced = real.prompt({ text: '晚安' })!;
+        assert.match(forced, /这一轮你要发一个图片表情/);
+        assert.ok([...forced.matchAll(/<sticker:([a-f0-9]{12})>：/g)].length <= STICKER_SHORTLIST);
+        assert.match(forced, /编号只能从下面选/);
+        const legacy = real.prompt()!;
+        assert.match(legacy, /只有这轮真的合适时才用/);
+        assert.equal(real.prompt({ text: '晚安' }) === legacy, false);
     });
 });

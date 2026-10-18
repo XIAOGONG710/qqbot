@@ -67,7 +67,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -89,6 +89,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.media ? { media: options.media } : {}),
         ...(options.vision ? { vision: options.vision } : {}),
         ...(options.stickers ? { stickers: options.stickers } : {}),
+        ...(options.stickerChance !== undefined ? { stickerChance: options.stickerChance } : {}),
         ...(options.mediaTimeouts ? { mediaTimeouts: options.mediaTimeouts } : {}),
         // 既有测试要核对日志正文和 last-prompt.json，所以默认开着敏感调试；关着的行为在下面单独测
         sensitive: options.sensitive ?? { on: () => true, describe: () => '' },
@@ -209,7 +210,7 @@ describe('编排（app.ts）', () => {
         };
         const cfg = config({ stickers: 'send', contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
         let prompt = '';
-        const { app, images } = setup(cfg, { 10001: [] }, { stickers, generate: messages => { prompt = messages.map(m => m.content).join('\n'); return '<sticker:123456abcdef>'; } });
+        const { app, images } = setup(cfg, { 10001: [] }, { stickers, stickerChance: 1, generate: messages => { prompt = messages.map(m => m.content).join('\n'); return '<sticker:123456abcdef>'; } });
         await app.connected(SELF);
         const incoming: MessageEvent = {
             ...event(10001, 9, ''), raw_message: '',

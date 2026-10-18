@@ -143,6 +143,8 @@ export interface AppOptions {
     vision?: ImageDescriber;
     /** 图片表情收藏（ADR 0063）；运行入口按配置建，测试可给假的。 */
     stickers?: StickerShelf;
+    /** 允许发图片表情的轮次里抽中发的概率（不写按 STICKER_TURN_CHANCE；测试用）*/
+    stickerChance?: number;
     /** 测试用：换掉听、看各项的上限 */
     mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>;
     /** 敏感调试开关（ADR 0070 第 8 项）；不传按环境变量 QQBOT_SENSITIVE_LOGS（默认关） */
@@ -154,7 +156,7 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, stickers, mediaTimeouts, sensitive = sensitiveSwitch() }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, stickers, stickerChance, mediaTimeouts, sensitive = sensitiveSwitch() }: AppOptions): App {
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -435,6 +437,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             candidates: config.candidates,
             ...contextWindowFor(contact),
             ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
+            ...(stickerChance !== undefined ? { stickerChance } : {}),
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
             history,
             memory,
