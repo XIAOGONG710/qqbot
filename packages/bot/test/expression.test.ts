@@ -51,6 +51,12 @@ describe('表达层（ADR 0024）', () => {
         assert.equal(lengthHint({ history: said(shortOne), intent: '[这一轮你想：先直接回答他刚问的，不另起话题]' }), 'short');
     });
 
+    test('他问起她认识的人（「雨桐最近怎么样」）：不加「回很短」，别的话题照常抽', () => {
+        const shortOne = Array.from({ length: 200 }, (_, i) => i).find(i => lengthHint({ history: said(i) }) === 'short')!;
+        assert.equal(lengthHint({ history: said(shortOne), aboutPerson: true }), undefined);
+        assert.equal(lengthHint({ history: said(shortOne), aboutPerson: false }), 'short');
+    });
+
     test('他刚在说不顺心 / 担心的事（报告被打回、没过、怎么办、还有救吗）：意图行只是「先直接回答他刚问的」也不加「回很短」；普通玩笑里的词不收', () => {
         const asked = '[这一轮你想：先直接回答他刚问的，不另起话题]';
         const history = (lines: string[], i: number) => lines.map((content, k) => ({ role: 'user' as const, content, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i, k)).toISOString() }));
