@@ -13,7 +13,7 @@
         { "advance": "23d30m" },
         { "case": "NA02", "note": "11-06 12:30：苏雨桐约了午饭、迟到 6 分钟（下课被老师拖堂），此刻两个人在食堂" },
         { "say": "在干嘛呢" },
-        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "你现在：[^\\]]*在食堂和苏雨桐吃饭", "replyAny": ["食堂", "雨桐", "吃饭", "吃"], "replyNone": ["在宿舍", "在图书馆"] } },
+        { "check": { "speechClean": true, "exitClean": true, "timeBlock": "你现在：[^\\]]*在食堂和苏雨桐吃午饭", "replyAny": ["食堂", "雨桐", "吃饭", "吃"], "replyNone": ["在宿舍", "在图书馆"] } },
         { "advance": "3d5h30m" },
         { "case": "NA03", "note": "11-09 18:00：陈佳宁 17:40 说去不了了（睡着了），晚上的视频没了" },
         { "say": "今晚是不是要跟佳宁视频" },

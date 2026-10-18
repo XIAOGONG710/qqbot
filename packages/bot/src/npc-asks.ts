@@ -100,7 +100,7 @@ export const DEFAULT_ASKS: Record<string, AsksConfig> = {
         perMonth: 4,
         dayBefore: 0.5,
         kinds: [
-            { id: 'canteen', what: '下课一起去食堂吃饭', doing: '在食堂和{person}吃饭', slot: 'lunch', when: 'class_day', minutes: 45, anchor: 'lunch' },
+            { id: 'canteen', what: '下课一起去食堂吃饭', doing: '在食堂和{person}吃午饭', slot: 'lunch', when: 'class_day', minutes: 45, anchor: 'lunch' },
             { id: 'dinner', what: '一起去吃晚饭', doing: '和{person}一起吃晚饭', slot: 'dinner', when: 'class_day', minutes: 50, anchor: 'dinner' },
             { id: 'library', what: '一起去图书馆', doing: '在图书馆和{person}一起自习', slot: 'evening', when: 'class_day', minutes: 90, where: '图书馆' },
             { id: 'stroll', what: '出去转转', doing: '和{person}出去转转', slot: 'weekend', when: 'weekend', minutes: 150 },
