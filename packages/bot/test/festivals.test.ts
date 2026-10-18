@@ -160,7 +160,7 @@ describe('公共节日：那一天她在做的事', () => {
 
     test('除夕在寒假（在家）：整天都是过年的事；寒假里别的日子用在家的那份', () => {
         withFestivalActivities(schedule, new Date(2026, 9, 19), 'greet');
-        assert.equal(doing('2027-02-05T10:00:00'), '在家帮着收拾，准备过年');
+        assert.equal(doing('2027-02-05T11:00:00'), '在家帮着收拾，准备过年');
         assert.equal(doing('2027-02-05T15:00:00'), '在家跟爸妈一起包饺子');
         assert.equal(doing('2027-02-05T20:00:00'), '跟爸妈一起看春晚');
         assert.ok(/^(在家|在追|打独立|跟爸妈|刷手机|陪妈妈|在房间)/.test(doing('2027-01-20T21:00:00')!), doing('2027-01-20T21:00:00'));
