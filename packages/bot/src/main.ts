@@ -37,6 +37,7 @@ const app = startApp({
     transport: {
         sendPrivateText: (userId, text) => client.sendPrivateText(userId, text),
         sendPrivateImage: (userId, file, summary) => client.sendPrivateImage(userId, file, summary),
+        setInputStatus: (userId, eventType) => client.setInputStatus(userId, eventType),
         friendHistory: async (userId, count) => (await client.call<{ messages: HistoryMessage[] }>('get_friend_msg_history', {
             user_id: String(userId),
             count,

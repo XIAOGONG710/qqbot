@@ -21,6 +21,9 @@ const MAX_REGENERATE = 2;
 const MAX_EMPTY_REGENERATE = 2;
 /** 拆开的几条之间隔多久 */
 export const PART_GAP_MS = 1000;
+/** 打字时对方那边显示「正在输入…」（ADR 0077）：不到这么久的等待不显示；QQ 的输入状态几秒就消，所以每隔这么久补发一次 */
+export const TYPING_MIN_MS = 1500;
+export const TYPING_REFRESH_MS = 4000;
 /** 连发合并的默认值：热聊里多等一下，把 3 秒内的第二句并进同一轮；最长不超过 12 秒（ADR 0019 决策 5）。 */
 export const DEFAULT_SETTLE = { quietMs: 4000, maxMs: 12000 };
 /** 回复失败之后的再试间隔：1 分钟、5 分钟各一次（10-04 与用户确认，不无限重试） */
@@ -62,6 +65,8 @@ export interface ResponderDeps {
     /** 拆好条、发出去之前最后改一下（ADR 0024：打错字再改口）；maxBubbles 是这一轮最多几条；不传就原样发 */
     decorate?: (parts: string[], maxBubbles: number) => string[];
     send: (userId: number, text: string) => Promise<number>;
+    /** 让对方那边显示「正在输入…」（ADR 0077）：她打字的这段时间里每隔几秒调一次，调用不等结果、出错也不影响发送；不传就不显示 */
+    typing?: (userId: number) => void;
     /** 实际发送内容与聊天记录表示不同时转换（图片表情编号 -> 可读描述）。 */
     historyContent?: (sent: string) => string;
     log: (message: string) => void;
@@ -166,6 +171,20 @@ export function createResponder(deps: ResponderDeps): Responder {
     let retryToken = 0;
     const retryAfter = deps.retryAfterMs ?? [];
     const sleep = deps.sleep ?? (ms => new Promise<void>(resolve => setTimeout(resolve, ms)));
+    /**
+     * 打字的这段时间：对方那边显示「正在输入…」（ADR 0077）。QQ 的输入状态几秒就消，所以每 TYPING_REFRESH_MS 补发一次；
+     * 太短的（不到 TYPING_MIN_MS）不显示，真人也不会有「刚显示就收到」的闪一下；发出那条消息，状态自己消失
+     */
+    async function sleepTyping(ms: number): Promise<void> {
+        if (!deps.typing || ms < TYPING_MIN_MS) return sleep(ms);
+        const end = now() + ms;
+        for (;;) {
+            try { deps.typing(deps.userId); } catch { /* 显示不出来不影响发送 */ }
+            const left = end - now();
+            if (left <= TYPING_REFRESH_MS || stopped) return sleep(Math.max(0, left));
+            await sleep(TYPING_REFRESH_MS);
+        }
+    }
     const now = deps.now ?? Date.now;
     const waitUntil = deps.waitUntil ?? waitUntilReal;
     /** 正等着到点看到消息：中止它（来了新消息，重算什么时候看到） */
@@ -287,12 +306,12 @@ export function createResponder(deps: ResponderDeps): Responder {
         // 第一条：生成花掉的时间算在打字时间里
         if (timing) {
             const due = seenAt + timing.typingMs(parts[0]!) - now();
-            if (due > 0) await sleep(due);
+            if (due > 0) await sleepTyping(due);
         }
         const sent: string[] = [];
         for (const [i, part] of parts.entries()) {
             if (i > 0) {
-                await sleep(timing ? timing.typingMs(part) : PART_GAP_MS);
+                await (timing ? sleepTyping(timing.typingMs(part)) : sleep(PART_GAP_MS));
                 if (deps.history.load(deps.userId).slice(input).some(m => m.role === 'user')) {
                     deps.log(`发送中途对方插话，剩下 ${parts.length - i} 条不发`);
                     break;
@@ -367,13 +386,13 @@ export function createResponder(deps: ResponderDeps): Responder {
         const { timing } = deps;
         if (timing) {
             const due = startedAt + timing.typingMs(parts[0]!) - now();
-            if (due > 0) await sleep(due);
+            if (due > 0) await sleepTyping(due);
         }
         const messageIds: number[] = [];
         const sent: string[] = [];
         for (const [i, part] of parts.entries()) {
             if (i > 0) {
-                await sleep(timing ? timing.typingMs(part) : PART_GAP_MS);
+                await (timing ? sleepTyping(timing.typingMs(part)) : sleep(PART_GAP_MS));
                 if (deps.history.load(deps.userId).slice(input).some(m => m.role === 'user')) {
                     deps.log(`发送中途对方插话，剩下 ${parts.length - i} 条不发`);
                     break;

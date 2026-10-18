@@ -60,6 +60,8 @@ export const WEATHER_REFRESH_MS = 30 * 60_000;
 export interface Transport {
     /** 发一条私聊文字，返回 QQ 消息 id；文字里白名单的小黄脸「[捂脸]」发成 face 段（qq-faces.ts textToSegments，ADR 0051） */
     sendPrivateText(userId: number, text: string): Promise<number>;
+    /** 让对方那边显示「正在输入…」（配置 typingStatus，ADR 0077）；没有就不显示 */
+    setInputStatus?(userId: number, eventType?: number): Promise<void>;
     /** 发本地图片表情；配置 stickers 开时两个入口都提供。 */
     sendPrivateImage?(userId: number, file: string, summary: string): Promise<number>;
     /** NapCat 的 get_friend_msg_history：某人最近 count 条私聊（含小号自己发的），从旧到新。没有任何记录时 NapCat 也报错 */
@@ -154,6 +156,7 @@ export function unlistedName(nickname: string | undefined): string {
 export function startApp({ config, transport, log, pipeline, media, vision, stickers, mediaTimeouts }: AppOptions): App {
     const runtime = runtimeInfo();
     // 每个档位一张角色卡和一本世界书，用到时读一次；不知道她是程序的联系人用「<档位>-open」承认版（ADR 0067，cardKey）
+    let typingFailed = false;
     const cards = new Map<string, TierCard>();
     const cardFor = (tier: string) => {
         let card = cards.get(tier);
@@ -437,6 +440,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             contacts: config.contacts,
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；
             // 超时不重发：可能已经发出去了，再发就重复
+            // 她打字的这段时间对方那边显示「正在输入…」（ADR 0077，配置 typingStatus，默认关）；出错只记一次日志，不影响发送
+            ...(config.typingStatus && transport.setInputStatus ? { typing: (userId: number) => { transport.setInputStatus!(userId).catch(error => { if (!typingFailed) { typingFailed = true; log(`[${userId}] 显示「正在输入」失败（之后不再记）：${error instanceof Error ? error.message : String(error)}`); } }); } } : {}),
             send: async (userId, text) => {
                 const sticker = contact.tier === 'boyfriend' ? sendingStickers?.resolve(text) : undefined;
                 if (sticker) {

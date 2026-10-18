@@ -91,6 +91,7 @@ export interface Config {
     grievance: boolean;
     feedbackCommands: boolean;
     realWeather: boolean;
+    typingStatus: boolean;
     candidates: number;
     contextTurns: number;
     contextContacts: number[];
@@ -179,6 +180,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**反馈通道**（ADR 0073）：男朋友档收到只有「假」或「像」一个字的消息（可带前面的 / 、后面的标点或一个小黄脸、QQ 的回复引用）时，记下她那一轮话是「假」还是「像」，不当聊天、她不回应。记录在数据目录的 feedback/ 里，不进日志正文。默认关'),
         realWeather: Schema.boolean().default(DEFAULTS.realWeather)
             .description('**真实天气**（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成'),
+        typingStatus: Schema.boolean().default(DEFAULTS.typingStatus)
+            .description('**正在输入**（ADR 0077）：她打字的那几秒，对方的 QQ 上显示「对方正在输入…」（NapCat 的 set_input_status）。只在等待超过 1.5 秒时显示，每 4 秒补发一次。默认关'),
         candidates: Schema.natural().min(1).max(5).default(DEFAULTS.candidates)
             .description('**挑候选**（ADR 0041）：他难过、说亲密话、收尾时一次生成几个回复、按规则挑一个（少说几句、不扯自己的事、不约「写完跟我说」）。1 是不挑；3 是这几种时候三倍的模型调用'),
         contextTurns: Schema.natural().max(40).default(DEFAULTS.contextTurns)
@@ -292,6 +295,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.grievance !== undefined ? { grievance: config.grievance } : {}),
         ...(config.feedbackCommands !== undefined ? { feedbackCommands: config.feedbackCommands } : {}),
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
+        ...(config.typingStatus !== undefined ? { typingStatus: config.typingStatus } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
         ...(config.contextTurns !== undefined ? { contextTurns: config.contextTurns } : {}),
         ...(config.contextContacts !== undefined ? { contextContacts: config.contextContacts } : {}),
@@ -386,6 +390,8 @@ export function apply(ctx: Context, config: Config) {
         // 白名单的小黄脸「[捂脸]」发成 face 段（ADR 0051），和 onebot.ts 发的是同一个请求
         sendPrivateText: async (userId, text) => Number(await onlineBot().internal.sendPrivateMsg(userId, textToSegments(text))),
         sendPrivateImage: async (userId, file, summary) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'image', data: { file, summary, sub_type: 1 } }])),
+        // NapCat 的扩展动作 set_input_status（Koishi 的 Internal 没有定义它，走 _request；ADR 0077）
+        setInputStatus: async (userId, eventType = 1) => { await (onlineBot().internal as unknown as { _request(action: string, params: object): Promise<unknown> })._request('set_input_status', { user_id: String(userId), event_type: eventType }); },
         friendHistory: (userId, count) => onlineBot().internal.getFriendMsgHistory(String(userId), undefined, count),
     };
 

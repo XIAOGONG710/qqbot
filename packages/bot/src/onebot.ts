@@ -157,6 +157,11 @@ export class OneBotClient {
         return data.message_id;
     }
 
+    /** 让对方那边显示「正在输入…」（NapCat 的 set_input_status，event_type 1；ADR 0077）。显示几秒就消，要一直显示得隔几秒再发一次 */
+    async setInputStatus(userId: number, eventType = 1): Promise<void> {
+        await this.call('set_input_status', { user_id: String(userId), event_type: eventType });
+    }
+
     /** 发一张已经落到本机的图片表情（ADR 0063）。 */
     async sendPrivateImage(userId: number, file: string, summary: string): Promise<number> {
         const data = await this.call<{ message_id: number }>('send_private_msg', {
