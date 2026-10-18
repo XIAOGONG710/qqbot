@@ -32,3 +32,12 @@
 - 「待改」已做：出口检查日志关着时保留中文类别词、只抹引号里的原文，`live-digest` 的分类不受影响。
 - 差异只有 `packages/bot/src`（app、contact、responder、sensitive、exit-check、onebot、proactive、proactive-planner、promises、stickers、sim/runner）、对应测试、`docs/sensitive-logs.md`；**没有卡改动（`characters/`），没有配置改动**。
 - 上线步骤（要用户当次明确点头，窗口 10-19 21:15 前不做）：写重启通知 → 维护旗 → 只停 Koishi → 备份 `runtime\bot` → 线上目录核对（`HEAD..origin/main`、差异、无卡改动）→ `merge --ff-only` → `Start-Process start-koishi.ps1` → 验证（日志第一行「敏感调试关着…」、`heartbeat`、`state-check` 副本、`heartbeat-watch --once`、新日志里 `收到：N 字`）→ 撤旗 → 推送 `main` / `integration`。顺手可选：NapCat `fileLogLevel` 改 `warn`（NapCat 下次启动生效，要重启 NapCat 才会读）。
+
+## 更新（10-18 22:10）：B 的候选换成叠在新 `main` 上的版本
+
+`main` 在 10-18 21:51 前进到 `68c79d1`（外网断了通知 + `backfill.ts` 补回时跳过「【运维提醒】」，线上目录已是它）。原来的 `claude/release-1017d` 不再能 `merge --ff-only` 进线上目录，所以重建：
+
+- **B 候选 = `claude/release-1019a` `dfd8360`**（= `release-1017d` + 合并 `main` `68c79d1`，无冲突，已推送）。上线时用它代替 1017d：`git merge --ff-only claude/release-1019a`。类型检查干净；B 相关 12 个测试文件 150/150（含 alert、net-watch、backfill）。
+- **D 候选 = `claude/release-1019b` `4df3142`**（= `release-1017e` 叠到 1019a 上，无冲突，已推送）；类型检查干净，D 相关 6 个测试文件 116/116。D 仍要单独一次点头、单独一次重启。
+- **全量测试这次没重跑**：机器可用虚拟内存只剩约 1.0 GB（别的程序占的），380 秒的全量会挤到线上；上线前内存回到 > 1.5 GB 时补一次全量（守卫开着）。
+- 这次上线 B 的重启同时会让 `backfill.ts` 的「跳过运维提醒」生效。
