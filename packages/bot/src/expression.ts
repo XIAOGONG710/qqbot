@@ -8,8 +8,13 @@
 /** 回句短的、话多一点的概率（按轮） */
 export const SHORT_CHANCE = 0.5;
 export const LONG_CHANCE = 0.1;
+/**
+ * 想到哪说到哪、连着发三四条很短的（真人一轮 3 条以上占 14–23%，调研 C；候选 5 之后 73 题题库只剩 0%、两条占 44%，真人 22–28%）。
+ * 和「话多一点」不一样：不是把话说完整，是几个字一条地连发。要他说的有分量（LONG_MIN_CHARS）、她没在难受 / 不舒服，不在他说不顺心的事、要接住他情绪的时候用
+ */
+export const BURST_CHANCE = 0.12;
 
-export type LengthHint = 'short' | 'long';
+export type LengthHint = 'short' | 'long' | 'burst';
 
 /**
  * 这一轮要认真接话的意图行（先接他的情绪、替他高兴好事、回应他说的那件事、只接两个人的事、要亲近 / 要哄）：不加「回很短」。
@@ -45,8 +50,13 @@ export function lengthHint(context: LengthContext): LengthHint | undefined {
     if (roll < SHORT_CHANCE) return (context.intent && ENGAGED_INTENT.test(context.intent)) || WORRIED_TEXT.test(saidSinceReply(context.history)) ? undefined : 'short';
     // 话多要有由头：他这次说的太短（「到家了」）就不加（第一批：一句「到家了」她一口气说了 4 条 77 个字）
     if (roll < SHORT_CHANCE + LONG_CHANCE && !context.low && [...saidSinceReply(context.history)].length >= LONG_MIN_CHARS) return 'long';
+    if (roll >= SHORT_CHANCE + LONG_CHANCE && roll < SHORT_CHANCE + LONG_CHANCE + BURST_CHANCE && !context.low
+        && [...saidSinceReply(context.history)].length >= LONG_MIN_CHARS && !WORRIED_TEXT.test(saidSinceReply(context.history)) && !CARE_INTENT.test(context.intent ?? '')) return 'burst';
     return undefined;
 }
+
+/** 要先接住他情绪的轮次：连发很短的几条会像在敷衍，不用 burst */
+export const CARE_INTENT = /先接住他此刻的情绪/;
 
 /** 他明着让她讲、让她说详细 */
 export const ASKS_TO_EXPLAIN = /讲讲|讲一下|详细|认真(?:说|讲|跟我说)|解释|教教?我|展开说|具体说说/;
@@ -60,6 +70,7 @@ function saidSinceReply(history: LengthContext['history']): string {
 }
 
 export function describeLength(hint: LengthHint): string {
+    if (hint === 'burst') return '[这一轮说话：连着发三四条很短的，每条几个字，不用说成完整的句子，都围绕他刚说的这一件事，顺着他的话反应、接话；不另起话题，不报自己今天的别的事，别每条都问问题；他在难受或认真说事时不适用，照平常的说]';
     return hint === 'short'
         ? '[这一轮说话：只回很短的一句，一两个字也行——语气词、单个词、一句反问都可以，不用凑成完整的句子；不展开，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说]'
         : '[这一轮说话：话多一点，想说的可以多说几句、说完整，不用一两句就停]';

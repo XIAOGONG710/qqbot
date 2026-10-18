@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CORRECT_CHANCE, describeLength, ENGAGED_INTENT, LONG_CHANCE, LONG_MIN_CHARS, lengthHint, maybeTypo, SHORT_CHANCE, TYPO_CHANCE, TYPOS, WORRIED_TEXT } from '../src/expression.ts';
+import { BURST_CHANCE, CARE_INTENT, CORRECT_CHANCE, describeLength, ENGAGED_INTENT, LONG_CHANCE, LONG_MIN_CHARS, lengthHint, maybeTypo, SHORT_CHANCE, TYPO_CHANCE, TYPOS, WORRIED_TEXT } from '../src/expression.ts';
 
 const said = (i: number) => [{ role: 'user' as const, content: `第 ${i} 句，今天上班被老板说了一顿`, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
 
@@ -12,6 +12,27 @@ describe('表达层（ADR 0024）', () => {
         assert.ok(Math.abs(short - SHORT_CHANCE) < 0.03, `short ${short}`);
         assert.ok(Math.abs(long - LONG_CHANCE) < 0.03, `long ${long}`);
         assert.equal(lengthHint({ history: said(7) }), lengthHint({ history: said(7) }));
+    });
+
+    test(`想到哪说到哪（burst）：约 ${BURST_CHANCE * 100}% 的轮次连发几条很短的；他说的太短、她难受、他在说不顺心的事、要接住情绪、收尾、主动找他时不用`, () => {
+        const hints = Array.from({ length: 3000 }, (_, i) => lengthHint({ history: said(i) }));
+        const burst = hints.filter(h => h === 'burst').length / hints.length;
+        assert.ok(Math.abs(burst - BURST_CHANCE) < 0.03, `burst ${burst}`);
+        const one = Array.from({ length: 400 }, (_, i) => i).find(i => lengthHint({ history: said(i) }) === 'burst')!;
+        assert.ok(describeLength('burst').includes('连着发三四条很短的') && describeLength('burst').includes('不报自己今天的别的事'));
+        // 他说的太短（「到家了」）、她心情安静 / 不舒服：不用
+        const shortSaid = [{ role: 'user' as const, content: '到家了', time: said(one)[0]!.time }];
+        assert.notEqual(lengthHint({ history: shortSaid }), 'burst');
+        assert.notEqual(lengthHint({ history: said(one), low: true }), 'burst');
+        // 要先接住他情绪：不用；收尾、主动找他：不用
+        const care = '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够]';
+        assert.ok(CARE_INTENT.test(care));
+        assert.notEqual(lengthHint({ history: said(one), intent: care }), 'burst');
+        assert.equal(lengthHint({ history: said(one), intent: '[这一轮你想：顺着他的话收尾]' }), undefined);
+        assert.equal(lengthHint({ history: said(one), initiating: true }), undefined);
+        // 他刚在说不顺心的事：不用
+        const worried = (i: number) => [{ role: 'user' as const, content: '我实训报告被老师打回来了，你说我这还有救吗', time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
+        for (let i = 0; i < 300; i++) assert.notEqual(lengthHint({ history: worried(i) }), 'burst');
     });
 
     test('他在难受、报好事、说自己的事、要亲近 / 要哄的轮次（意图行）不加「回很短」，普通问答照常抽', () => {
