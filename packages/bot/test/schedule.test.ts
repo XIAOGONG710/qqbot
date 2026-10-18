@@ -134,7 +134,8 @@ describe('作息：某个时刻她在干什么', () => {
                 assert.equal(free(boyfriend, at), free(without, at), at.toDateString());
             }
         }
-        const later = boyfriend.free.later!;
+        // 10-21 起补的日常活动也在 later 里，这里只看买相机相关的那几条
+        const later = boyfriend.free.later!.filter(item => item.from < '2026-10-21');
         assert.deepEqual(later.map(item => [item.window, item.text, item.from, item.until ?? null]), [
             ['afternoon', '拿新相机去校园里拍', '2026-10-12', null], ['evening', '研究新相机的设置', '2026-10-11', null],
             // 新鲜期（头两周多拿出来摆弄）

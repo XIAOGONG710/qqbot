@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { BotConfig, Contact } from '../config.ts';
 import { createContactResponder, replySkip, type TierCard } from '../contact.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../sensitive.ts';
+import { withFestivalActivities, withFestivals } from '../festivals.ts';
 import { stickerShelf } from '../stickers.ts';
 import { MEET_MINUTES, promiseKeeper } from '../promises.ts';
 import { writeJsonAtomic } from '../json-file.ts';
@@ -209,6 +210,9 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const { character } = options.card;
     // 闺蜜的约（ADR 0061）：场景开着才有；开关在世界对象上，其余代码照旧读世界
     if (scenario.npcAsks && character.herWorld) character.herWorld.asks = true;
+    // 公共节日（ADR 0076）：并进这一档的重要的日子；场景的开场时刻决定算哪几年
+    character.dates = withFestivals(character.dates, new Date(clock.now()), scenario.festivals);
+    withFestivalActivities(character.schedule, new Date(clock.now()), scenario.festivals);
     // W3：模拟器和线上共用同一状态层，抽取后的动作立即影响后续提示词和日记。
     const openWorld = () => {
         const ledger = options.herDays && scenario.schedule && character.schedule && character.herWorld

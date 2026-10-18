@@ -44,6 +44,29 @@ holidays:
       只写「没抢到票」，她就羡慕、抱怨他在家（「你倒好，在家吃香的喝辣的」，模拟器 6 次里 7 行）。ADR 0019 A/B/C 选 C：
       把不酸的来源写成事实（说好以后一起走、这次不难受），不写「一个人待着也挺自在」「替他高兴」这种能被原样拿去回复的整句。
       状态行只写事实、约束和来源，不写可直接照抄成台词的表演句。
+  - name: 寒假
+    start: 2027-01-04
+    end: 2027-02-28
+    where:
+      - tiers:
+          - boyfriend
+          - bestie
+          - girl_friend
+          - known
+        text: 期末考完回青岛了，在家住（你们说好放假一起走）
+      - tiers:
+          - classmate
+          - stranger
+          - unlisted
+        text: 回家了
+    home: true
+    partner: "{{user}}也回青岛了（放假前就说好的）"
+    partner_back: "{{user}}寒假放完了，已经回学校了，他回来你早就知道，不是今天才知道；聊天记录里他说在青岛，是放假那几天的事，现在他人就在学校"
+    note: |-
+      草稿，没有用户的话作依据（10-19 凌晨用户让我自己往下做，醒来再看）：学期 18 周（08-31 起）到 2027-01-03 结束，之后到 02-28 按「期末考完回青岛过寒假」写，
+      春节（2027-02-06）她在家过。实际放假的日子、哪天回家、他回不回青岛、开学是不是 03-01，都等用户确认；不对就改 start / end / where。
+      为什么要写：之前没有这一条，学期一过完世界层就把她当成不在学校（world.ts atSchool），状态行却还写「在学校（济南）」；
+      10-19 模拟器在除夕晚上她说「没安排，宿舍跟室友瞎扯呢」。回家过的假期要同时写进 world.yml 的 away_holidays（那几天不喂猫、不取快递）
 makeups:
   - date: 2026-09-20
     as_day: 0
@@ -230,6 +253,73 @@ free:
     from: "2026-10-12"
     until: "2026-10-31"
     note: 新鲜期：拍得多，晚上导出来修；10 月底以后并回「修昨天拍的片子」那种日常
+  - window: morning
+    text: 赖在床上听歌
+    from: "2026-10-21"
+    note: 10-19 起补的日常（真账里 10 天休闲只有 5 种，persona 里最大的爱好王者荣耀一次也没出现）。from 是后天：此前的日子抽签列表不变，已经写下的账和日记不被改写
+  - window: morning
+    text: 在宿舍洗衣服、晾衣服
+    from: "2026-10-21"
+  - window: afternoon
+    text: 打了几把王者
+    from: "2026-10-21"
+    note: persona.yml：王者荣耀是高手（貂蝉），玩舍友的号——所以说「打王者」没有 ID、不报战绩
+  - window: afternoon
+    text: 刷B站
+    from: "2026-10-21"
+  - window: evening
+    text: 跟室友开黑打王者
+    from: "2026-10-21"
+  - window: evening
+    text: 躺着听歌刷B站
+    from: "2026-10-21"
+  - window: evening
+    text: 逛淘宝，购物车加了又删
+    from: "2026-10-21"
+    note: 只逛不买（钱的账不动）
+  - window: morning
+    text: 在家睡到自然醒，窝在床上刷手机
+    home: true
+    note: 以下带 home 的是在家的假期（寒假）里的空闲活动，学校的那份（上面）在家用不上（宿舍、图书馆）。只用已有的事实（独生女、青岛家里、爸妈），不新添家里的设定
+  - window: morning
+    text: 在家收拾房间
+    home: true
+  - window: morning
+    text: 在家吃完早饭窝回房间
+    home: true
+  - window: afternoon
+    text: 在家打独立游戏
+    home: true
+  - window: afternoon
+    text: 在房间里修之前拍的片子
+    tiers:
+      - boyfriend
+      - bestie
+      - girl_friend
+      - known
+    cover: 窝着刷手机
+    home: true
+  - window: afternoon
+    text: 在家追剧
+    home: true
+  - window: afternoon
+    text: 在家打了几把王者
+    home: true
+  - window: afternoon
+    text: 陪妈妈出去买东西
+    home: true
+  - window: evening
+    text: 在追一部剧
+    home: true
+  - window: evening
+    text: 打独立游戏
+    home: true
+  - window: evening
+    text: 跟爸妈一起看电视
+    home: true
+  - window: evening
+    text: 刷手机刷到忘了时间
+    home: true
 course_detail:
   tiers:
     - boyfriend

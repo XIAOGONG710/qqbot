@@ -1,0 +1,34 @@
+{
+    "name": "节日主动：万圣节早上（不该主动说）",
+    "description": "万圣节早上（不该主动说）：开着 greet，她自己会不会发一句",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-31T08:30:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "festivals": "greet",
+    "steps": [
+        {
+            "case": "G01",
+            "note": "只有早安，不提万圣节"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        0,
+                        1
+                    ],
+                    "replyNone": [
+                        "万圣"
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true
+                }
+            }
+        }
+    ]
+}

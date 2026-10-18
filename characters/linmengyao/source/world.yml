@@ -1,6 +1,7 @@
 # 林梦瑶的世界（ADR 0021）：会自己变的东西和推进规则。packages/character-tools 会改写这个文件，注释不会保留：说明写在 note 里。
 start_day: "2026-08-31"
-away_holidays: []
+away_holidays:
+  - 寒假
 weather:
   tiers:
     - boyfriend

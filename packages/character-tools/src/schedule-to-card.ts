@@ -55,6 +55,7 @@ export function scheduleForTier(schedule: ScheduleSource, tier: string): CardSch
         start: h.start,
         end: h.end,
         ...(h.where ? { where: forTier(h.where, tier) } : {}),
+        ...(h.home ? { home: true } : {}),
         ...(h.partner && partnerTiers.has(tier) ? { partner: h.partner } : {}),
         ...(h.partner_back && partnerTiers.has(tier) ? { partnerBack: h.partner_back } : {}),
     }));
@@ -79,11 +80,13 @@ export function scheduleForTier(schedule: ScheduleSource, tier: string): CardSch
 
     const free = { morning: [] as string[], afternoon: [] as string[], evening: [] as string[] };
     const later: { window: 'morning' | 'afternoon' | 'evening'; text: string; from: string; until?: string }[] = [];
+    const home = { morning: [] as string[], afternoon: [] as string[], evening: [] as string[] };
     // 看不到的那条换成 cover，不删（ADR 0034）：空闲活动按「日期 + 时段」哈希挑格子，各档列表一样长才挑到同一件事
     // 有 from 的从那天起才进抽签列表（ADR 0053 之后），之前的日子抽到的不变
     for (const item of schedule.free) {
         const text = !item.tiers || item.tiers.includes(tier) ? item.text : item.cover ?? FREE_COVER;
-        if (item.from) later.push({ window: item.window, text, from: item.from, ...(item.until ? { until: item.until } : {}) });
+        if (item.home) home[item.window].push(text);
+        else if (item.from) later.push({ window: item.window, text, from: item.from, ...(item.until ? { until: item.until } : {}) });
         else free[item.window].push(text);
     }
 
@@ -102,7 +105,7 @@ export function scheduleForTier(schedule: ScheduleSource, tier: string): CardSch
         kinds,
         courses,
         // 空闲时段的分界：上午到 12:00，下午到 18:00，晚上到睡觉
-        free: { ...free, afternoonFrom: '12:00', eveningFrom: '18:00', ...(later.length ? { later } : {}) },
+        free: { ...free, afternoonFrom: '12:00', eveningFrom: '18:00', ...(later.length ? { later } : {}), ...(home.morning.length + home.afternoon.length + home.evening.length ? { home } : {}) },
         where: forTier(schedule.where.by_tier, tier),
         ...(schedule.partner && partnerTiers.has(tier) ? { partner: schedule.partner.text } : {}),
     };

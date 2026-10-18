@@ -22,7 +22,7 @@ export interface Schedule {
     wake: { early: string; lazy: string; earlySlot: string };
     periods: Record<string, { start: string; end: string }>;
     semester: { start: string; weeks: number };
-    holidays: { name: string; start: string; end: string; where?: string; partner?: string; partnerBack?: string }[];
+    holidays: { name: string; start: string; end: string; where?: string; partner?: string; partnerBack?: string; home?: boolean }[];
     makeups: { date: string; asDay: number }[];
     kinds: Record<CourseKind, { label?: string; seeAfterMin?: [number, number]; maxBubbles?: number }>;
     courses: Course[];
@@ -30,6 +30,10 @@ export interface Schedule {
         morning: string[]; afternoon: string[]; evening: string[]; afternoonFrom: string; eveningFrom: string;
         /** 从 from 那天起才进抽签列表（ADR 0053 之后：买了相机才有的活动）；那天以前抽到的不变 */
         later?: { window: 'morning' | 'afternoon' | 'evening'; text: string; from: string; until?: string }[];
+        /** 在家的假期（holidays[].home）里用的这一份，没有就沿用上面的 */
+        home?: { morning: string[]; afternoon: string[]; evening: string[] };
+        /** 某一天某个时段专门做的事（公共节日，ADR 0076）：那一天那个时段只从这里挑；home 写了就只在在家 / 在学校的那天用 */
+        on?: { date: string; window: 'morning' | 'afternoon' | 'evening'; text: string; home?: boolean }[];
     };
     where: string;
     partner?: string;
@@ -158,9 +162,20 @@ function holidayOn(schedule: Schedule, day: Date): Schedule['holidays'][number] 
     return schedule.holidays.find(h => h.start <= d && d <= h.end);
 }
 
+/** 这一天她在家过（假期标了 home） */
+export function atHome(schedule: Schedule, day: Date): boolean {
+    return holidayOn(schedule, day)?.home === true;
+}
+
 /** 同一天同一时段固定挑同一条（按日期 + 时段哈希） */
 function freeActivity(schedule: Schedule, day: Date, window: 'morning' | 'afternoon' | 'evening', extra: readonly ExtraFreeActivity[]): string {
     const date = formatDate(day);
+    // 节日这一天这个时段有专门的事：只从它们里挑
+    const special = (schedule.free.on ?? []).filter(item => item.date === date && item.window === window && (item.home === undefined || item.home === atHome(schedule, day)));
+    if (special.length) return special[hash(`${date} ${window} on`) % special.length]!.text;
+    // 在家的假期：用在家的那一份（卡里有才用，没有就还是学校的）
+    const home = atHome(schedule, day) ? schedule.free.home?.[window] : undefined;
+    if (home?.length) return home[hash(`${date} ${window}`) % home.length]!;
     const later = (schedule.free.later ?? []).filter(item => item.window === window && item.from <= date && (!item.until || date <= item.until)).map(item => item.text);
     const list = [...schedule.free[window], ...later, ...extra.filter(item => item.window === window).map(item => item.text)];
     if (list.length === 0) return '';
@@ -226,7 +241,7 @@ export function describeState(state: State, schedule: Schedule, options: { woken
     let doing: string;
     switch (activity.kind) {
         case 'sleep':
-            doing = options.woken ? '在宿舍睡觉，被消息震醒了，迷迷糊糊的' : `在宿舍睡觉，${clock(activity.until)} 起`;
+            doing = options.woken ? `${state.holiday?.home ? '在家' : '在宿舍'}睡觉，被消息震醒了，迷迷糊糊的` : `${state.holiday?.home ? '在家' : '在宿舍'}睡觉，${clock(activity.until)} 起`;
             break;
         case 'class': {
             const { lesson } = activity;
@@ -305,6 +320,7 @@ export function parseSchedule(json: unknown, source: string): Schedule {
                 ...(o.where !== undefined ? { where: str(o.where, `.holidays[${i}].where`) } : {}),
                 ...(o.partner !== undefined ? { partner: str(o.partner, `.holidays[${i}].partner`) } : {}),
                 ...(o.partnerBack !== undefined ? { partnerBack: str(o.partnerBack, `.holidays[${i}].partnerBack`) } : {}),
+                ...(o.home === true ? { home: true } : {}),
             };
         }),
         makeups: arr(s.makeups, '.makeups').map((m, i) => {
@@ -339,6 +355,10 @@ export function parseSchedule(json: unknown, source: string): Schedule {
             evening: texts(free.evening, '.free.evening'),
             afternoonFrom: str(free.afternoonFrom, '.free.afternoonFrom', TIME),
             eveningFrom: str(free.eveningFrom, '.free.eveningFrom', TIME),
+            ...(free.home !== undefined ? (() => {
+                const home = obj(free.home, '.free.home');
+                return { home: { morning: texts(home.morning, '.free.home.morning'), afternoon: texts(home.afternoon, '.free.home.afternoon'), evening: texts(home.evening, '.free.home.evening') } };
+            })() : {}),
             ...(free.later !== undefined ? {
                 later: arr(free.later, '.free.later').map((v, i) => {
                     const o = obj(v, `.free.later[${i}]`);

@@ -57,12 +57,12 @@ export function describeDays(dates: readonly ImportantDay[], now: Date): string 
             lines.push(important.date ? `[今天是农历${lunar}，按农历也是${important.name}]` : `[今天（农历${lunar}）是${important.name}]`);
             if (!important.date) continue;
         }
-        for (let ahead = 0; ahead <= DAYS_AHEAD; ahead++) {
+        for (let ahead = 0; ahead <= (important.ahead ?? DAYS_AHEAD); ahead++) {
             const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() + ahead);
             // 只写了农历的日子，提前几天也按农历算
             if (important.date ? dayMatches(important, day) !== 'solar' : lunarMonthDay(day) !== important.lunar) continue;
             const whenText = ahead === 0 ? '今天' : ahead === 1 ? '明天' : ahead === 2 ? '后天' : `再过 ${ahead} 天（${day.getMonth() + 1}月${day.getDate()}日）`;
-            lines.push(`[${whenText}是${important.name}]`);
+            lines.push(`[${whenText}是${important.name}${important.hint ? `（${important.hint}）` : ''}]`);
             break;
         }
     }

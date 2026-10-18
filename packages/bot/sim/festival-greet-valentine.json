@@ -1,0 +1,37 @@
+{
+    "name": "节日主动：情人节早上",
+    "description": "情人节早上：开着 greet，她自己会不会发一句",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2027-02-14T07:30:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "festivals": "greet",
+    "steps": [
+        {
+            "case": "G01",
+            "note": "早安带情人节"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        1
+                    ],
+                    "occasions": [
+                        "重要的日子"
+                    ],
+                    "replyAny": [
+                        "情人节"
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true
+                }
+            }
+        }
+    ]
+}

@@ -48,6 +48,14 @@ export interface ImportantDay {
     lunar?: string;
     /** 当天零点主动发（否则并进当天的早安） */
     midnight?: boolean;
+    /** 只在这一年算（公共节日，ADR 0076：农历的日子每年落在不同的公历日，所以每年换算一条）；不写每年都算 */
+    year?: number;
+    /** 时间块里提前几天起提（不写 DAYS_AHEAD） */
+    ahead?: number;
+    /** 时间块里跟在名字后面的一句说明（公共节日：「情侣的节日」） */
+    hint?: string;
+    /** 只在时间块里提，不主动找他说 */
+    silent?: boolean;
 }
 
 /** 运行开关（插件配置）：关 / 试运行（照算照生成，只写日志不发）/ 开 */
@@ -233,6 +241,7 @@ export function lunarMonthDay(date: Date): string | undefined {
 
 /** 这个日子落在这一天吗：solar 公历那天，lunar 农历那天 */
 export function dayMatches(important: ImportantDay, date: Date): 'solar' | 'lunar' | undefined {
+    if (important.year !== undefined && important.year !== date.getFullYear()) return undefined;
     if (important.date && important.date === formatDate(date).slice(5)) return 'solar';
     if (important.lunar && important.lunar === lunarMonthDay(date)) return 'lunar';
     return undefined;
@@ -264,8 +273,8 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
     const morning = wake + pick(seed('morning'), 'at', minutes(MORNING_MIN));
     const names = (list: ImportantDay[]) => list.map(d => d.name).join('、');
     // 零点的日子：那天的 00:00 属于前一天（她还没睡）；别的日子并进当天的早安。同一天的几个并成一条
-    const midnight = enabled.has('dates') ? input.dates.filter(d => d.midnight && proactiveOn(d, addDays(day, 1))) : [];
-    const atMorning = enabled.has('dates') ? input.dates.filter(d => !d.midnight && proactiveOn(d, day)) : [];
+    const midnight = enabled.has('dates') ? input.dates.filter(d => !d.silent && d.midnight && proactiveOn(d, addDays(day, 1))) : [];
+    const atMorning = enabled.has('dates') ? input.dates.filter(d => !d.silent && !d.midnight && proactiveOn(d, day)) : [];
     if (midnight.length) {
         add('dates', addDays(day, 1).getTime() + pick(seed('dates midnight'), 'at', minutes(MIDNIGHT_MIN)),
             `今天是${names(midnight)}，零点`, { importantDays: midnight }, ':midnight');

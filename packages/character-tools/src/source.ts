@@ -239,7 +239,8 @@ export interface ScheduleSource {
     /** 节次 → "HH:MM-HH:MM" */
     periods: Record<string, string>;
     semester: { start: string; weeks: number };
-    holidays: { name: string; start: string; end: string; where?: ByTier[]; partner?: string; partner_back?: string; note?: string }[];
+    /** home：这段假期她在家过（空闲活动用 home 的那一份，睡觉说在家睡；世界层是否算在家看 world.yml 的 away_holidays） */
+    holidays: { name: string; start: string; end: string; where?: ByTier[]; partner?: string; partner_back?: string; home?: boolean; note?: string }[];
     /** 调休补课：补星期几（1–7，0 = 没定，按没课） */
     makeups: { date: string; as_day: number; note?: string }[];
     courses: { name: string; day: number; slot: string; room: string; kind: CourseKind; weeks: string; practice?: number; practice_room?: string }[];
@@ -247,7 +248,8 @@ export interface ScheduleSource {
     /** cover：看不到这条的档位换成这句（ADR 0034：各档的列表一样长，同一时刻挑到同一格，不会男朋友看到「修片」、同学看到「打游戏」） */
     /** from：从这一天起才有（ADR 0053 之后：买了相机才有的活动；那天以前的抽签列表不变，过去的日子不被改写） */
     /** until：到这一天为止（新鲜期，例如新相机头两周天天摆弄） */
-    free: { window: 'morning' | 'afternoon' | 'evening'; text: string; tiers?: string[]; cover?: string; from?: string; until?: string; note?: string }[];
+    /** home：只在 home 的假期里用的（在家的空闲活动，ADR 0076 调整）；没写的是在学校时的 */
+    free: { window: 'morning' | 'afternoon' | 'evening'; text: string; tiers?: string[]; cover?: string; from?: string; until?: string; home?: boolean; note?: string }[];
     /** 课名、教室、课型叫法给哪些档位 */
     course_detail: { tiers: string[]; note?: string };
     /** 课型：上课时过多少分钟才看到消息、最多回几条 */
@@ -613,13 +615,14 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         holidays: h.at('holidays').array(schedule.holidays).map((value, i) => {
             const c = h.at(`holidays[${i}]`);
             const o = c.object(value);
-            c.keys(o, ['name', 'start', 'end', 'where', 'partner', 'partner_back', 'note']);
+            c.keys(o, ['name', 'start', 'end', 'where', 'partner', 'partner_back', 'home', 'note']);
             const holiday: ScheduleSource['holidays'][number] = { name: c.at('name').string(o.name), start: date(c.at('start'), o.start), end: date(c.at('end'), o.end) };
             if (o.where !== undefined && o.where !== null && !(Array.isArray(o.where) && o.where.length === 0)) holiday.where = byTier(c.at('where'), o.where);
             const partnerText = c.at('partner').optionalString(o.partner);
             if (partnerText) holiday.partner = partnerText;
             const back = c.at('partner_back').optionalString(o.partner_back);
             if (back) holiday.partner_back = back;
+            if (o.home === true) holiday.home = true;
             return withNote(c.at('note'), o.note, holiday);
         }),
         makeups: h.at('makeups').array(schedule.makeups).map((value, i) => {
@@ -649,7 +652,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         free: h.at('free').array(schedule.free).map((value, i) => {
             const c = h.at(`free[${i}]`);
             const o = c.object(value);
-            c.keys(o, ['window', 'text', 'tiers', 'cover', 'from', 'until', 'note']);
+            c.keys(o, ['window', 'text', 'tiers', 'cover', 'from', 'until', 'home', 'note']);
             const window = c.at('window').string(o.window) as ScheduleSource['free'][number]['window'];
             if (!['morning', 'afternoon', 'evening'].includes(window)) c.at('window').fail(`${window} 不是 morning / afternoon / evening`);
             const item: ScheduleSource['free'][number] = { window, text: c.at('text').string(o.text) };
@@ -663,6 +666,10 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
                 item.cover = c.at('cover').string(o.cover);
             }
             if (o.from !== undefined && o.from !== null) item.from = date(c.at('from'), o.from);
+            if (o.home === true) {
+                if (item.from) c.at('home').fail('在家的活动不写 from');
+                item.home = true;
+            }
             if (o.until !== undefined && o.until !== null) {
                 if (!item.from) c.at('until').fail('写了 until 也要写 from');
                 item.until = date(c.at('until'), o.until);
