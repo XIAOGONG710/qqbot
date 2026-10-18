@@ -907,3 +907,69 @@ describe('档位记录', () => {
         }
     });
 });
+
+describe('正在输入（ADR 0077）', () => {
+    // 假时钟：sleep 只推进时间，不真等
+    function run(typingMs: (part: string) => number, reply: string, withTyping = true) {
+        let t = Date.parse('2026-10-19T10:00:00+08:00');
+        const stored: StoredMessage[] = [];
+        const events: string[] = [];
+        const typed: number[] = [];
+        const deps: ResponderDeps = {
+            userId: 1,
+            history: { load: () => [...stored], append: (_id, m) => { stored.push(m); } },
+            buildPrompt: chat => ({ messages: chat.map(m => ({ role: m.role, content: m.content })), activatedWorldInfo: [] } satisfies PromptResult),
+            generate: async () => reply,
+            clean: text => text.trim(),
+            send: async (_id, text) => { events.push(`send:${text}`); return 1; },
+            log: () => {},
+            sleep: async ms => { t += ms; },
+            now: () => t,
+            timing: { whenSeen: (_h, at) => ({ at, reason: '正聊着' }), typingMs, skip: () => undefined },
+            ...(withTyping ? { typing: () => { typed.push(t); events.push('typing'); } } : {}),
+        };
+        const responder = createResponder(deps);
+        responder.receive('在吗', 1, new Date(t));
+        return { responder, events, typed, start: t };
+    }
+
+    test('打字等了 9 秒：一开始就显示，之后每 4 秒补发一次；发出去之后不再有；两条之间的等待也各自显示', async () => {
+        const { responder, events, typed, start } = run(part => (part === '第一条' ? 9000 : 2500), '第一条\n第二条');
+        await responder.whenIdle();
+        // 第一条：第 0、4、8 秒各一次；第二条：打字 2.5 秒，一次
+        assert.equal(events.filter(e => e === 'typing').length, 4, events.join(','));
+        assert.deepEqual(typed.slice(0, 3).map(t => t - start), [0, 4000, 8000]);
+        assert.deepEqual(events, ['typing', 'typing', 'typing', 'send:第一条', 'typing', 'send:第二条']);
+    });
+
+    test('等待不到 1.5 秒不显示（刚显示就收到）；没配 typing 的照旧', async () => {
+        const quick = run(() => 1000, '好的\n行');
+        await quick.responder.whenIdle();
+        assert.equal(quick.events.includes('typing'), false);
+        const none = run(() => 9000, '好的', false);
+        await none.responder.whenIdle();
+        assert.deepEqual(none.events, ['send:好的']);
+    });
+
+    test('显示出错（抛异常）不影响发送', async () => {
+        let t = Date.parse('2026-10-19T10:00:00+08:00');
+        const stored: StoredMessage[] = [];
+        const sent: string[] = [];
+        const responder = createResponder({
+            userId: 1,
+            history: { load: () => [...stored], append: (_id, m) => { stored.push(m); } },
+            buildPrompt: chat => ({ messages: chat.map(m => ({ role: m.role, content: m.content })), activatedWorldInfo: [] } satisfies PromptResult),
+            generate: async () => '收到',
+            clean: text => text.trim(),
+            send: async (_id, text) => { sent.push(text); return 1; },
+            log: () => {},
+            sleep: async ms => { t += ms; },
+            now: () => t,
+            timing: { whenSeen: (_h, at) => ({ at, reason: '正聊着' }), typingMs: () => 6000, skip: () => undefined },
+            typing: () => { throw new Error('boom'); },
+        });
+        responder.receive('在吗', 1, new Date(t));
+        await responder.whenIdle();
+        assert.deepEqual(sent, ['收到']);
+    });
+});

@@ -48,6 +48,7 @@ export const DEFAULTS = {
     feedbackCommands: false,
     realWeather: true,
     festivals: 'off' as FestivalMode,
+    typingStatus: false,
     media: true,
     stickers: 'off' as StickerMode,
     candidates: 1,
@@ -123,6 +124,8 @@ export interface AppConfig {
     feedbackCommands: boolean;
     /** 公共节日（ADR 0076）：off 关；notes 她在时间块里知道今天、临近是什么节（平安夜、除夕、情人节……）；greet 再让她在情侣之间一定会说一句的节日里主动说（新年零点、除夕、平安夜、情人节……）。默认 off */
     festivals: FestivalMode;
+    /** 她打字的这段时间，对方的 QQ 上显示「对方正在输入…」（ADR 0077；NapCat 的 set_input_status）。默认关 */
+    typingStatus: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -317,6 +320,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         feedbackCommands: bool(file, 'feedbackCommands', '', DEFAULTS.feedbackCommands),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         festivals: festivalMode(file.festivals),
+        typingStatus: bool(file, 'typingStatus', '', DEFAULTS.typingStatus),
         media: bool(file, 'media', '', DEFAULTS.media),
         stickers: stickerMode(file.stickers),
         ...(vision ? { vision } : {}),

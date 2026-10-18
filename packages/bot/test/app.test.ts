@@ -45,7 +45,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         projectChoice: false,
         lifeInPrompt: false, grievance: false, npcAsks: false,
         feedbackCommands: false,
-        realWeather: false, festivals: 'off',
+        realWeather: false, festivals: 'off', typingStatus: false,
         media: true,
         candidates: 1,
         contextTurns: 0,
