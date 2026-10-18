@@ -17,6 +17,15 @@ describe('补回漏掉的消息', () => {
         { time: new Date(101_500).toISOString(), role: 'assistant', content: '在', messageId: 2 },
     ];
 
+    test('运维提醒（外网断了 / 恢复了，用她的号发给用户）不是她说的话：补回时跳过，别的小号发的照补', () => {
+        const fetched = [
+            fromSelf(6, 300, '【运维提醒】12 分钟解析不了 api.deepseek.com：她连不上模型'),
+            fromSelf(7, 301, '【运维提醒】外网恢复了（断了大约 30 分钟），她又能回话了。'),
+            fromSelf(8, 302, '我回来了'),
+        ];
+        assert.deepEqual(findMissed(stored, fetched, SELF).map(m => m.content), ['我回来了']);
+    });
+
     test('按消息 id 去重，只补比本地最后一条新的，按时间排好；小号发的算她说的', () => {
         const fetched = [
             fromPeer(1, 100, '在吗'),
