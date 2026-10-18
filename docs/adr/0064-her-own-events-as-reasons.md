@@ -114,3 +114,11 @@
 2. **开 `homework_done`**（分支 `adr-0064-enable-homework`）：`tiers.yml` 男朋友档 `proactive.news_kinds: [camera, homework_done]`，转换器重新生成，只有 `linmengyao-boyfriend.json` 和 `linmengyao-boyfriend-open.json` 多了一个 `newsKinds`（`git diff` 核对过）。**注意卡文件变了线上的插件会热重载**（0011 §5），所以这个分支不进 `main`，上线时才快进线上目录并重启。
 3. 开了以后的变化：作业写完那几天（6 周约 15 天，每周两三次，22:05–22:20），当天的 2 条额度先给「她那边的事」，下课、睡前、冷场会让出去（`proactive-weekday` 在 10-12 那天就是这样：22:07 单发了「计算机网络技术的作业写完了，明天交」，下课那条让给了它；这是 B1 要的，事比钟点优先）。那个场景因此只开相机一类，继续测钟点这几个时机。
 4. `unwell`：不开。痛经 / 感冒 6 周里只有 1 次，等它第一次真出现的前一天，对照日志再问用户。
+
+## 调整（2026-10-19）：事件类 friend_sick（闺蜜病了的头一天）
+
+- 起因：「她不会自己讲」那一类缺口（`exchange/handoff/2026-10-18-claude-realness-evidence-and-order.md` 第 3 条 ③）。苏雨桐、陈佳宁自己的日子（ADR 0033）每月各约 0.5 次生病，「你那边」里写着「苏雨桐感冒第 2 天」，但她从来不会自己跟他说一声——真人会：「苏雨桐感冒了」。
+- 做法：和 `friend_changed` 同一个路子。npc.ts 里 `sick` 的**第 1 天**才算（之后几天不再单发，被问到时「你那边」有「感冒第 N 天」）；了结的时刻 = 她得知的时刻（上午 9:00–11:30 之间按「日期 + 人」哈希取一刻，每次一样）；`what` 只有「苏雨桐感冒了」，不带病情。看得到这个人的档位才有（`WorldNow.people` 按档位裁过）。
+- 说明（`occasionNote`）：只说这一件（看「你那边」里的朋友）、不要他回应或安慰、病得怎么样、有没有去看、你做了什么，那一行里没写的不编。优先级最低（排在 `friend_changed` 后面）。
+- 卡上要在 `tiers.yml` 的 `news_kinds` 里写 `friend_sick` 才开（线上的卡没写；这一条跟 `friend_changed` 一起，是一次卡的改动，不重启）。
+- 验证：`sim/proactive-news-friend-sick.json`（10-18 苏雨桐感冒第 1 天；先早安、他回「早啊」，之后她 10:00 主动说「宝宝，苏雨桐感冒了」）6/6，没有求安慰、没有编照顾她的细节；`proactive-news-kinds.test.ts` 25 项（新增 3 项：头一天、不算的情形、说明）。

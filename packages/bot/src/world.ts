@@ -238,7 +238,21 @@ function newsHomework(now: WorldNow): WorldNews[] {
  * 不舒服（unwell）不在这里：身体不在世界快照里，见 unwellNews
  */
 export function worldNews(now: WorldNow, kinds: readonly NewsKind[] = DEFAULT_NEWS_KINDS): WorldNews[] {
-    return [...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : [])];
+    return [...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : []), ...(kinds.includes('friend_sick') ? newsFriendSick(now) : [])];
+}
+
+/**
+ * 闺蜜病了的头一天（ADR 0064 的新事件类 friend_sick）：npc.ts 的状态里 sick 的第 1 天；之后几天不再单发（被问到时「你那边」有「感冒第 N 天」）。
+ * 了结的时刻 = 她得知的时刻：上午 9:00–11:30 之间按哈希取一刻（对方发来微信的时候），同一天同一个人每次一样。
+ * 看得到这个人的档位才有（now.people 按档位裁过）
+ */
+function newsFriendSick(now: WorldNow): WorldNews[] {
+    return (now.people ?? []).flatMap(person => {
+        if (!person.states.some(state => state.kind === 'sick' && state.day === 1)) return [];
+        const minute = 9 * 60 + Math.floor(unit(`${now.day} ${person.name} sick told`) * 150);
+        const time = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+        return [{ id: `friend_sick:${person.name}:${now.day}`, kind: 'friend_sick' as const, at: at(parseDate(now.day), time), what: `${person.name}感冒了` }];
+    });
 }
 
 /** 改到这么久以后才算「变了」值得说（只晚一会儿的改约不单发） */

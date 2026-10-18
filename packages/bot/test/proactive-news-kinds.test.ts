@@ -188,6 +188,41 @@ describe('事件类：闺蜜的约变了（ADR 0061 第 2 步，friend_changed�
     });
 });
 
+describe('事件类：闺蜜病了的头一天（friend_sick）', () => {
+    const people = (day: number, of = 3): WorldNow['people'] => [{ name: '苏雨桐', relation: '大学同专业，济南人，不是室友', states: [{ kind: 'sick', day, of }] }];
+    const snap = (day: number): WorldNow => ({ ...snapshot(), day: '2026-12-04', people: people(day) });
+
+    test('头一天才有：上午 9:00–11:30 她得知，同一天同一个人每次一样；第二天起不再单发', () => {
+        const [item, ...rest] = worldNews(snap(1), ['friend_sick']);
+        assert.equal(rest.length, 0);
+        assert.equal(item!.id, 'friend_sick:苏雨桐:2026-12-04');
+        assert.equal(item!.kind, 'friend_sick');
+        assert.equal(item!.what, '苏雨桐感冒了');
+        assert.ok(item!.at.getTime() >= t(12, 4, 9) && item!.at.getTime() <= t(12, 4, 11, 30), item!.at.toString());
+        assert.equal(worldNews(snap(1), ['friend_sick'])[0]!.at.getTime(), item!.at.getTime());
+        assert.deepEqual(worldNews(snap(2), ['friend_sick']), []);
+        assert.deepEqual(worldNews(snap(3), ['friend_sick']), []);
+    });
+
+    test('忙、回家不算；没开这一类就没有；看不到这个人（没有 people）就没有', () => {
+        const busy: WorldNow = { ...snapshot(), day: '2026-12-04', people: [{ name: '陈佳宁', relation: '高中同班，死党', states: [{ kind: 'busy', day: 1, of: 2, label: '有考试' }, { kind: 'home' }] }] };
+        assert.deepEqual(worldNews(busy, ['friend_sick']), []);
+        assert.deepEqual(worldNews(snap(1)), [], '不传 kinds = 只有相机');
+        assert.deepEqual(worldNews(snap(1), ['camera', 'homework_done', 'unwell', 'friend_changed']), []);
+        assert.deepEqual(worldNews({ ...snapshot(), day: '2026-12-04' }, ['friend_sick']), []);
+    });
+
+    test('说明：只说这一件、不要他回应或安慰、病情和做了什么没写的不编；排在最后', () => {
+        const item: NewsItem = { id: 'friend_sick:苏雨桐:2026-12-04', kind: 'friend_sick', day: '2026-12-04', at: t(12, 4, 10, 10), what: '苏雨桐感冒了' };
+        const text = occasionNote(candidatesOn(day(12, 4), input({ news: [item] })).filter(c => c.occasion === 'news')[0]!, '宝宝');
+        assert.match(text, /你刚得知苏雨桐感冒了，想跟宝宝说一声/);
+        assert.match(text, /不要他回应或安慰你/);
+        assert.match(text, /那一行里没写的不编/);
+        assert.doesNotMatch(text, /「[^」]*[！!]」/, '不给台词');
+        assert.equal(NEWS_KINDS.at(-1), 'friend_sick');
+    });
+});
+
 describe('主动消息里的事件类：优先级、说明、日志（ADR 0064 决策 4、5、7）', () => {
     const item = (kind: NewsItem['kind'], id: string, at: number, what: string): NewsItem => ({ id, kind, day: '2026-10-14', at, what });
     const camera = item('camera', 'camera', t(10, 14, 16, 30), '在山大路科技市场买到了二手相机');
@@ -240,7 +275,7 @@ describe('主动消息里的事件类：优先级、说明、日志（ADR 0064 �
         assert.equal('newsKinds' in parseProactive(base, '卡'), false);
         assert.throws(() => parseProactive({ ...base, newsKinds: ['camera', 'bogus'] }, '卡'), /newsKinds 应为 camera \/ homework_done \/ unwell/);
         assert.throws(() => parseProactive({ ...base, newsKinds: 'camera' }, '卡'), /newsKinds/);
-        assert.deepEqual([...NEWS_KINDS], ['camera', 'homework_done', 'unwell', 'friend_changed']);
+        assert.deepEqual([...NEWS_KINDS], ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick']);
     });
 });
 

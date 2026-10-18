@@ -1,0 +1,20 @@
+{
+    "name": "男朋友档：闺蜜病了的头一天，她知道以后主动跟他说一声（ADR 0064 事件类 friend_sick）",
+    "description": "把 friend_sick 开起来（线上的卡还没开）。卡上推出来的真日子：10-18 苏雨桐感冒第 1 天（共 4 天），她上午 9:00–11:30 之间得知。先是早安，他回一句，之后她主动说一句：只说这一件，不要他安慰，不编病情和她做了什么。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-18T08:00:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "newsKinds": ["friend_sick"],
+    "steps": [
+        { "case": "FS01", "note": "10-18：早安在前（09:40 左右）" },
+        { "wait": "proactive" },
+        { "say": "早啊" },
+        { "case": "FS02", "note": "苏雨桐感冒第 1 天，上午她得知后主动跟他说一声" },
+        { "wait": "proactive" },
+        { "check": { "proactive": { "count": [2, 2], "occasions": ["早安", "她那边的事"], "replyAny": ["雨桐", "苏雨桐", "感冒"], "replyNone": ["你怎么不", "不理我", "安慰我", "哄哄我", "你说怎么办", "我照顾", "带她去", "陪她去", "医务室", "吃药", "退烧"], "allowedTimes": true, "exitClean": true } } },
+        { "say": "啊，她严不严重" },
+        { "check": { "exitClean": true, "speechClean": true } }
+    ]
+}
