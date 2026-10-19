@@ -1,0 +1,32 @@
+# Claude（主窗口）：整包 + 卡片 + 开关全开，结果和还没验的（10-20 02:50）
+
+## 做了什么（全部在用户当次说「将这些功能都上线并开启吧，然后实机测试一轮，好了通知我，顺便预估用时」之后）
+| 时间 | 动作 | 结果 |
+| --- | --- | --- |
+| 02:04 | B 上线（`golive-b.ps1` 修了递归 bug 之后） | `dfd8360`，日志不写正文，NapCat 日志 warn |
+| 02:32 | 整包落地（`golive-release.ps1`，Koishi 单独重启，开关全关）= `claude/release-1020a` `c957ce2` | 114 个文件；0 warn/error；state-check 16/16；备份 `runtime\backup-pre-dormant-20261020-0231` |
+| 02:43 | 卡片 + 开关（同一个脚本 `-SwapConfig`）= `claude/release-1020b` `30858db` | 20 个文件（13 张卡、3 个源、4 个测试）；备份 `runtime\backup-pre-cards-switches-20261020-0243`、`koishi.yml.bak-cards-switches-20261020-0243`；0 warn/error |
+
+## 现在打开的（`koishi.yml`）
+`stickers: send`、`npcAsks`、`festivals: greet`、`rhythm`、`shortReplies`、`typingStatus`、`pokes`、`pokeBack`、`recalls`、`selfRecall`、`pokeOut`、`readReceipts`、`reactions`、`onlineStatus`、`profileLikes`、`signature: 'on'`、`qzone: 'on'`（`qzoneVisibility: friends`）、`bilibili: 'on'`。启动日志里能直接看到的：图片表情允许发送（本地 98 个）、`存在感：在线状态、资料卡点赞、主动戳他、个性签名（真改）、说说（真发，仅好友可见）`、`刷 B 站：开，发给 宝宝`、`在线状态：离开`。其余开关开着不打启动日志；已核对插件把 19 个键都映射进了机器人配置。
+
+## 测试
+- 整包 `c957ce2`：bot 1128/1128、插件 35/35、工具 43/43。
+- 加卡片 + `friend_changed` / `friend_sick` 之后 `30858db` 的全套：bot 1127/1128、工具 41/43。3 个失败都是把男友档 `newsKinds` 写死成两项的断言（`proactive.test.ts`、`convert.test.ts` ×2），已改成四项；之后**只重跑了受影响的文件**（bot 的 proactive 两个文件 52/52、工具的 convert 43/43），没有重跑全套。
+- 探针（这个号、02:45）：`login`、`packet`（可用）、`qzone`（`send_qzone_msg` `ugc_right` 64 拿到 tid → `delete_qzone_msg` 已删）全成功。10-19 已验过接口的在线状态、点赞、戳一戳、正在输入、表情回应、已读、引用、撤回、自撤回这次没有重跑。
+- 手动改签名（`set_self_longnick`）02:15：「想拍点好看的东西」，读回一致；原来是空。现在签名开关是 `on`，模块第一次自己换要等 10:00 之后。
+
+## 还没验（需要人）
+1. **手机上的样子**：状态依次变（在线 → 离开 → 忙碌 → 听歌中 → 在线）、收到赞、「她戳了戳你」、对话顶上几秒「对方正在输入…」、一条「探针测试」消息被撤回。做法：用户说「开始」，我跑 `node scripts/napcat-probe.ts --user 2260168937 --steps login,packet,online,like,poke,typing,selfrecall --config <onebot11_2561299676.json>`，用户看手机，约 2 分钟。跑完要把状态改回「离开」（她睡着；探针结束时会改成「在线」）。
+2. **白天的真实行为**（她 09:40 起床后）：已读回执、表情回应、回复节奏、更短的回复、表情包、主动戳、正在输入、撤回重发、闺蜜的约、说说、B 站、签名自动换。看日志 + 用户聊几句。
+3. 用户一直没答的：「你发给她的消息下面现在显示已读还是未读」（决定已读回执有没有可见效果）。
+
+## 看哪几行日志（白天）
+`存在感：…`、`说说：发了「…」` / `说说：…`、`个性签名：改成「…」`、`刷 B 站：…`、`戳了她一下` / `戳回去了`、`他撤回了一条还没回的消息`、`[qq] 有没回的消息，回复`（已读）、状态变化行。出现 `…失败（之后不再记）` 的先看原因。
+
+## 限制与风险（照实说）
+- 这一次同时改了很多东西，出问题时要靠日志分辨；每个开关都能单独关（改 `koishi.yml` + 重启 Koishi），或整体回滚。
+- D 危机分级是随整包一起生效的，没有单独观察 48 小时。B 的观察期被压缩成约 1 天。
+- 寒假 2027-01-04..02-28 的日期是猜的。起床浮动 `from` 10-26，多出的 7 种日常 `from` 10-21。
+- 说说默认仅好友可见，她的好友里有谁我没核对；`public` 是用户的决定。发出去的说说没有删除办法（探针的 `delete_qzone_msg` 是用 tid 删，机器人本身没接这个动作）。
+- 同样没做：加固 C、候选 6 burst、B 站账号层、`projectChoice`。
