@@ -1,6 +1,6 @@
 # ADR 0085：NapCat 探针——在你在场时一次验完「没在真 QQ 上试过」的那些动作
 
-- 状态：**已实现，未运行**（分支 `claude/napcat-probe`；脚本 `scripts/napcat-probe.ts`，不属于机器人，不开任何开关）
+- 状态：**已实现，2026-10-19 在线上跑过两次（见「确认记录」）**（分支 `claude/napcat-probe`；脚本 `scripts/napcat-probe.ts`，不属于机器人，不开任何开关）
 - 日期：2026-10-19
 - 关联：[ADR 0077](0077-typing-status.md)（正在输入，同类的未验证）、[ADR 0079](0079-pokes.md)、[ADR 0081](0081-quote-read.md)、[ADR 0082](0082-recalls.md)、[ADR 0083](0083-presence.md)
 
@@ -41,6 +41,22 @@
 
 ## 没做
 
-- 没跑过。第一次运行本身就是对「NapCat 在真 QQ 上的行为」的验证，结果会写进 BOARD。
 - 不验：她这边收不到你的「正在输入」（ADR 0077 已查明 NapCat 不推这种事件）。
 - 不验 `friend_poke` 之外的 packet 动作。
+
+## 确认记录（2026-10-19，线上 NapCat，账号 2561299676「繁星」，对着 2260168937）
+
+第一次 16:52（默认步骤，听 150 秒）：19 项接口调用全部成功，0 失败。
+- `nc_get_packet_status` 可用（所以 `friend_poke`、戳回去能用）。
+- `set_online_status`：10/0 在线、30/0 离开、50/0 忙碌、10/1028 听歌中、改回 10/0，接口都成功。
+- `send_like`、`friend_poke`、`set_input_status` 接口成功。
+- 真实戳一戳事件（他戳了 3 下）全部被 `isPokeAtMe` 认出：`user_id` = 他、`sender_id` = 他、`target_id` = 她、`self_id` = 她；另带 `raw_info` 数组（不影响）。
+- 私聊消息 id 是 32 位整数（1104597188、1309710057）。
+- 对他的第一条消息 `set_msg_emoji_like`（emoji 76）和 `mark_private_msg_as_read` 接口成功。
+
+第二次 17:0x（`--steps login,events`，听 120 秒）：10 项全成功。
+- 引用回复：消息段是 `reply`+`text`；`get_msg` 用 `reply.data.id` 查得到被引用的那条（发送者是她）；转成给模型的文字带「[引用…]」。**该 id（461940964）在线上聊天记录里就是她那条消息的 `messageId`（role assistant）**——`reply.data.id`、`send_private_msg` 返回的 id、聊天记录里的 id 是同一套，ADR 0081 的按 id 查找成立。
+- 撤回：`friend_recall`，字段只有 `time`、`self_id`、`user_id`、`message_id`（没有 `sender`），被 `isFriendRecall` 认出；撤回的 id 就是刚收到的那条（也已在聊天记录里），ADR 0082 的按 id 标记成立。
+- 再次戳她：认得。
+
+**接口成功不等于屏幕上的样子对**：在线状态、赞、戳、「正在输入」、表情回应、已读这几项要他看手机确认，等他回话后补记在这里。线上她全程没受影响（心跳正常，他发的话照常回）。
