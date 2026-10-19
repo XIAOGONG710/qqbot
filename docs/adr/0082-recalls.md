@@ -2,7 +2,7 @@
 
 - 状态：**已实现，未上线、未在真 QQ 上验证**（分支 `claude/recall`；配置 `recalls` 默认关）
 - 日期：2026-10-19
-- 关联：[ADR 0079](0079-poke.md)、[ADR 0080](0080-share-cards.md)、[ADR 0081](0081-quote-reply-read.md)（同类：以前她看不见或看得太多的输入）、[ADR 0068](0068-crisis-grading.md)（危机的话必须看到）
+- 关联：[ADR 0079](0079-poke.md)、[ADR 0080](0080-share-cards.md)、[ADR 0081](0081-quote-reply-read.md)（同类：以前她看不见或看得太多的输入）、[ADR 0068](0068-crisis-response.md)（危机的话必须看到）
 - 用户授权：2026-10-19 09:14「继续」——做和测；上线（打开配置、重启）仍要用户在场点头。
 
 ## 背景
