@@ -1206,3 +1206,31 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
         assert.match(readFileSync(join(cfg.dataDir, 'presence', 'drafts.md'), 'utf8'), /这个梗我能玩一年[\s\S]*bilibili\.com\/video\/BV1Jonu6mEwN/);
     });
 });
+
+describe('她知道自己在 QQ 上的样子（ADR 0083）：进提示词', () => {
+    test('签名和 3 天内真发的说说进时间块；日志里签名只记字数', async () => {
+        const clock = new VirtualClock(new Date(2026, 10, 5, 20, 0));
+        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], schedule: true, herDays: true, signature: 'on' });
+        mkdirSync(join(cfg.dataDir, 'presence'), { recursive: true });
+        const now = clock.now();
+        writeFileSync(join(cfg.dataDir, 'presence', 'presence.json'), JSON.stringify({
+            version: 1, signature: { text: '土豆又胖了', at: now - 86_400_000, next: now + 3 * 86_400_000 },
+            qzone: [{ at: now - 20 * 3_600_000, text: '今天的云好看', photo: 'a.jpg', tid: 't1', mode: 'on' }], photosUsed: ['a.jpg'],
+        }));
+        const seen: string[] = [];
+        const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, generate: messages => { seen.push(messages.map(m => m.content).join('\n')); return '看到了'; } });
+        await app.connected(SELF);
+        app.receive({ ...event(10001, 1, '我看到你那条说说了'), time: Math.floor(now / 1000) });
+        const deadline = Date.now() + 8000;
+        while (sent.length === 0 && Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 20));
+            const next = clock.nextTimer();
+            if (next !== undefined) clock.advanceTo(next);
+        }
+        assert.equal(sent.length, 1);
+        const prompt = seen.at(-1)!;
+        assert.match(prompt, /个性签名现在是「土豆又胖了」/);
+        assert.match(prompt, /发了一条说说「今天的云好看」，配了一张图/);
+        assert.ok(!logs.some(l => l.includes('土豆又胖了')), '日志里没有签名原文');
+    });
+});

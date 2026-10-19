@@ -8,6 +8,7 @@ import { extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { pick } from './reply-timing.ts';
+import { logBody } from './sensitive.ts';
 import { formatDate, herDay, stateAt, type Activity, type ExtraFreeActivity, type Schedule } from './schedule.ts';
 
 /** 关 / 只写草稿不发（签名、说说）/ 开 */
@@ -185,7 +186,31 @@ export interface PresenceOptions {
     composeQzone?: (input: { now: number; photoFile?: string; recent: readonly string[] }) => Promise<{ text: string; withPhoto: boolean } | undefined>;
 }
 
+/** 「昨天晚上」「今天下午」「3 天前」 */
+function agoText(at: number, now: number): string {
+    const a = new Date(at);
+    const b = new Date(now);
+    const days = Math.round((new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime() - new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime()) / 86_400_000);
+    const hour = a.getHours();
+    const part = hour < 6 ? '凌晨' : hour < 12 ? '上午' : hour < 18 ? '下午' : '晚上';
+    return days <= 0 ? `今天${part}` : days === 1 ? `昨天${part}` : `${days} 天前`;
+}
+
+/**
+ * 她自己知道的、他点开资料卡 / 空间能看到的（提示词时间块里的一行）：现在的个性签名（真改了的，不含草稿），3 天内发的说说（真发了的）。
+ * 没有就返回 undefined。有了这一行，他提起「我看到你那条说说」她接得住，也不会编一条没发过的
+ */
+export function describeSelf(input: { signature?: { text: string; draft?: boolean }; qzone: readonly QzoneRecord[] }, now: number): string | undefined {
+    const parts: string[] = [];
+    if (input.signature?.text && !input.signature.draft) parts.push(`个性签名现在是「${input.signature.text}」`);
+    const post = input.qzone.findLast(record => record.mode === 'on' && record.at <= now && now - record.at <= 3 * 86_400_000);
+    if (post) parts.push(`${agoText(post.at, now)}发了一条说说「${post.text}」${post.photo ? '，配了一张图' : ''}`);
+    return parts.length ? `[你在 QQ 上的样子（他点开你的资料卡、空间能看到的；他问起或提到时照这个说，没写的别编）：${parts.join('；')}]` : undefined;
+}
+
 export interface Presence {
+    /** 提示词里的一行：她的签名、最近发的说说（describeSelf） */
+    selfNote(now: number): string | undefined;
     /** 看一眼现在该不该做什么（测试直接调；循环每分钟调一次） */
     tick(): Promise<void>;
     start(): void;
@@ -280,7 +305,7 @@ export function createPresence(options: PresenceOptions): Presence {
             draft(`${new Date(t).toLocaleString('zh-CN')} 个性签名（草稿，没改）`, text);
             state.signature = { text, at: t, next: signatureDueAt(t), draft: true };
             save();
-            log(`个性签名（试运行，没改）：写了草稿「${text}」`);
+            log(`个性签名（试运行，没改）：写了草稿「${logBody(text)}」`);
             return;
         }
         if (!transport.setSignature) return;
@@ -288,7 +313,7 @@ export function createPresence(options: PresenceOptions): Presence {
             await transport.setSignature(text);
             state.signature = { text, at: t, next: signatureDueAt(t) };
             save();
-            log(`个性签名：改成「${text}」`);
+            log(`个性签名：改成「${logBody(text)}」`);
             recovered('改个性签名');
         } catch (error) {
             fail('改个性签名', error);
@@ -331,7 +356,7 @@ export function createPresence(options: PresenceOptions): Presence {
             draft(`${new Date(t).toLocaleString('zh-CN')} 说说（草稿，没发）`, `${text}${photo ? `
 
 （配图：${photo}）` : ''}`);
-            log(`说说（试运行，没发）：写了草稿「${text}」${photo ? `，配图 ${photo}` : ''}`);
+            log(`说说（试运行，没发）：写了草稿「${logBody(text)}」${photo ? `，配图 ${photo}` : ''}`);
             return;
         }
         try {
@@ -344,7 +369,7 @@ export function createPresence(options: PresenceOptions): Presence {
             state.qzone = state.qzone.slice(-100);
             if (photo) state.photosUsed.push(photo);
             save();
-            log(`说说：发了「${text}」${photo ? `，配图 ${photo}` : ''}（${flags.qzoneVisibility === 'public' ? '所有人可见' : '好友可见'}）`);
+            log(`说说：发了「${logBody(text)}」${photo ? `，配图 ${photo}` : ''}（${flags.qzoneVisibility === 'public' ? '所有人可见' : '好友可见'}）`);
             recovered('发说说');
         } catch (error) {
             fail('发说说', error);
@@ -372,6 +397,7 @@ export function createPresence(options: PresenceOptions): Presence {
 
     return {
         tick,
+        selfNote: now => describeSelf(state, now),
         start() {
             if (timer) return;
             void tick();

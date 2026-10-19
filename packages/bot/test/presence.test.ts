@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import {
     AWAY, BUSY, cleanQzoneText, createPresence, LIKE_CHANCE, LISTENING, ONLINE, onlineStatusFor, pickQzonePhoto, QZONE_CHANCE, QZONE_MAX_CHARS,
-    likePlan, qzonePlan, reactionEmoji, SIGNATURES, signatureDueAt, signatureFor, type PresenceOptions, type PresenceTransport,
+    describeSelf, likePlan, qzonePlan, reactionEmoji, SIGNATURES, signatureDueAt, signatureFor, type PresenceOptions, type PresenceTransport,
 } from '../src/presence.ts';
 import { formatDate, herDay } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
@@ -213,5 +213,20 @@ describe('每分钟看一眼的循环（ADR 0083）', () => {
         await none.presence.tick();
         assert.deepEqual(none.calls, []);
         assert.ok(none.logs.some(l => l.includes('没写出合格的')), none.logs.join('|'));
+    });
+});
+
+describe('她知道自己在 QQ 上的样子（ADR 0083）', () => {
+    const now = at(11, 5, 20, 0);
+    test('签名（真改了的）和 3 天内真发的说说各一句；草稿、试运行、太久以前的不算；什么都没有返回 undefined', () => {
+        assert.equal(describeSelf({ qzone: [] }, now), undefined);
+        assert.equal(describeSelf({ signature: { text: '困', draft: true }, qzone: [{ at: now - 3_600_000, text: '草稿', mode: 'dryRun' }] }, now), undefined);
+        const line = describeSelf({ signature: { text: '土豆又胖了' }, qzone: [{ at: at(11, 4, 21, 30), text: '今天的云好看', photo: 'a.jpg', tid: 't', mode: 'on' }] }, now)!;
+        assert.match(line, /个性签名现在是「土豆又胖了」/);
+        assert.match(line, /昨天晚上发了一条说说「今天的云好看」，配了一张图/);
+        assert.match(line, /^\[你在 QQ 上的样子（.*没写的别编）：/);
+        assert.match(describeSelf({ qzone: [{ at: at(11, 5, 15, 0), text: '随手', mode: 'on' }] }, now)!, /今天下午发了一条说说「随手」/);
+        assert.match(describeSelf({ qzone: [{ at: at(11, 3, 15, 0), text: '随手', mode: 'on' }] }, now)!, /2 天前发了一条说说/);
+        assert.equal(describeSelf({ qzone: [{ at: at(11, 1, 15, 0), text: '太久以前', mode: 'on' }] }, now), undefined, '超过 3 天不提');
     });
 });

@@ -102,6 +102,8 @@ export interface ContactPipelineOptions {
     typing?: (userId: number) => void;
     /** 她看到他的消息的那一刻标已读 / 看到了不回时给他最后一条点表情回应（ADR 0083，配置 readReceipts / reactions）；不给就不做 */
     markRead?: (userId: number) => void;
+    /** 提示词时间块里「她在 QQ 上的样子」那一行（签名、最近发的说说，ADR 0083）；不给就没有 */
+    selfNote?: (now: number) => string | undefined;
     react?: (userId: number, messageId: number, text: string) => void;
     /** 图片表情收藏：给模型列可选编号、校验输出；实际发送由 app.ts 的 send 接线。 */
     stickers?: StickerShelf;
@@ -311,6 +313,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const world = around ? describeWorld(around, time, giver) : undefined;
             const practiced = options.lifeInPrompt && character.herWorld?.cameraFund && options.worldState?.events ? recentPhotography(options.worldState.events(), time, 3, herSchedule) : undefined;
             const practice = practiced ? describeRecentPhotography(practiced, time, herSchedule) : undefined;
+            const selfNote = options.selfNote?.(time.getTime());
             // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）
             const recap = day && !day.period ? recapOf(day.start, time) : undefined;
             if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
@@ -483,6 +486,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(books ? [books.text] : []),
                         ...(world ? [world] : []),
                         ...(practice ? [practice] : []),
+                        ...(selfNote ? [selfNote] : []),
                         ...(plansLine ? [plansLine] : []),
                         ...(promised ? [promised] : []),
                         ...(obstacleLine ? [obstacleLine] : []),
