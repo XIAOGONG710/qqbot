@@ -409,6 +409,7 @@
                     "newsKinds": [
                         "camera",
                         "homework_done",
+                        "unwell",
                         "friend_changed",
                         "friend_sick"
                     ]
