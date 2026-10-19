@@ -408,7 +408,9 @@
                     "unansweredMax": 1,
                     "newsKinds": [
                         "camera",
-                        "homework_done"
+                        "homework_done",
+                        "friend_changed",
+                        "friend_sick"
                     ]
                 },
                 "moods": [
