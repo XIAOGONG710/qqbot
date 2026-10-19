@@ -61,6 +61,7 @@ export const DEFAULTS = {
     qzone: 'off' as PresenceMode,
     qzoneVisibility: 'friends' as QzoneVisibility,
     typingStatus: false,
+    selfRecall: false,
     media: true,
     stickers: 'off' as StickerMode,
     candidates: 1,
@@ -160,6 +161,8 @@ export interface AppConfig {
     qzoneVisibility: QzoneVisibility;
     /** 她打字的这段时间，对方的 QQ 上显示「对方正在输入…」（ADR 0077；NapCat 的 set_input_status）。默认关 */
     typingStatus: boolean;
+    /** 她打错字想改口时，一部分改成撤回重发（先发打错的，几秒后撤回再发对的；NapCat 的 delete_msg，ADR 0086）。默认关 */
+    selfRecall: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -366,6 +369,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         qzone: oneOf(file.qzone, 'qzone', PRESENCE_MODES, DEFAULTS.qzone),
         qzoneVisibility: oneOf(file.qzoneVisibility, 'qzoneVisibility', QZONE_VISIBILITIES, DEFAULTS.qzoneVisibility),
         typingStatus: bool(file, 'typingStatus', '', DEFAULTS.typingStatus),
+        selfRecall: bool(file, 'selfRecall', '', DEFAULTS.selfRecall),
         media: bool(file, 'media', '', DEFAULTS.media),
         stickers: stickerMode(file.stickers),
         ...(vision ? { vision } : {}),

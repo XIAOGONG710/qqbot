@@ -38,6 +38,7 @@ const app = startApp({
         sendPrivateText: (userId, text) => client.sendPrivateText(userId, text),
         sendPrivateImage: (userId, file, summary) => client.sendPrivateImage(userId, file, summary),
         setInputStatus: (userId, eventType) => client.setInputStatus(userId, eventType),
+        deleteMessage: async messageId => { await client.call('delete_msg', { message_id: messageId }); },
         pokeFriend: async userId => { await client.call('friend_poke', { user_id: String(userId) }); },
         markRead: async userId => { await client.call('mark_private_msg_as_read', { user_id: String(userId) }); },
         reactMessage: async (messageId, emojiId) => { await client.call('set_msg_emoji_like', { message_id: messageId, emoji_id: String(emojiId), set: true }); },

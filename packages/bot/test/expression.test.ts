@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CORRECT_CHANCE, describeLength, ENGAGED_INTENT, LONG_CHANCE, LONG_MIN_CHARS, lengthHint, maybeTypo, SHORT_CHANCE, TYPO_CHANCE, TYPOS, WORRIED_TEXT } from '../src/expression.ts';
+import { CORRECT_CHANCE, describeLength, ENGAGED_INTENT, LONG_CHANCE, LONG_MIN_CHARS, lengthHint, maybeTypo, RECALL_SHARE, SHORT_CHANCE, TYPO_CHANCE, TYPOS, WORRIED_TEXT } from '../src/expression.ts';
 
 const said = (i: number) => [{ role: 'user' as const, content: `第 ${i} 句，今天上班被老板说了一顿`, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
 
@@ -92,6 +92,26 @@ describe('表达层（ADR 0024）', () => {
         // 这一轮只能发一条（上课）：打错了也不改口
         const seed = Array.from({ length: 4000 }, (_, i) => `seed ${i}`).find(s => maybeTypo(parts, s).parts.length === 3)!;
         assert.deepEqual(maybeTypo(['我应该明天去'], seed, 1), { parts: ['我因该明天去'], note: '应该 → 因该（没改）' });
+    });
+
+    test('撤回重发（ADR 0086）：有撤回的本事时，改口的一部分不再多出一条「*对的词」，而是先发打错的、撤回、再发对的；没有这个本事时和以前完全一样；上课只回一条时也能用', () => {
+        const parts = ['我应该明天去', '你早点睡'];
+        const seeds = Array.from({ length: 4000 }, (_, i) => `seed ${i}`);
+        for (const seed of seeds) assert.deepEqual(maybeTypo(parts, seed, 3, 0), maybeTypo(parts, seed, 3), '不给 recallShare 和以前一样');
+        const results = seeds.map(seed => maybeTypo(parts, seed, 3, RECALL_SHARE));
+        const corrected = results.filter(r => r.note?.includes('改口') || r.note?.includes('撤回重发'));
+        const recalled = results.filter(r => r.recall);
+        assert.ok(Math.abs(recalled.length / corrected.length - RECALL_SHARE) < 0.07, `${recalled.length}/${corrected.length}`);
+        const one = recalled[0]!;
+        assert.deepEqual(one.parts, parts, '发出去的最终内容是对的那版，没有多出一条');
+        assert.deepEqual(one.recall, { index: 0, wrong: '我因该明天去', fix: '*应该', afterMs: one.recall!.afterMs });
+        assert.equal(one.note, '应该 → 因该（撤回重发）');
+        assert.ok(recalled.every(r => r.recall!.afterMs >= 1500 && r.recall!.afterMs < 5000));
+        // 其余的（改口、没改、没打错）和不给 recallShare 时完全一样
+        for (const [i, r] of results.entries()) if (!r.recall) assert.deepEqual(r, maybeTypo(parts, seeds[i]!, 3));
+        // 只能发一条（上课）：没法多出一条改口，但撤回重发不多出条数，可以用
+        const seed = seeds.find(s => maybeTypo(parts, s, 1, RECALL_SHARE).recall)!;
+        assert.deepEqual(maybeTypo(['我应该明天去'], seed, 1, RECALL_SHARE).parts, ['我应该明天去']);
     });
 
     test('错词表：打错的和正确的读音一样、不是同一个词', () => {

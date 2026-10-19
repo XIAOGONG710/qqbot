@@ -110,6 +110,7 @@ export interface Config {
     realWeather: boolean;
     festivals: FestivalMode;
     typingStatus: boolean;
+    selfRecall: boolean;
     candidates: number;
     contextTurns: number;
     contextContacts: number[];
@@ -226,6 +227,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**公共节日**（ADR 0076）：她知道今天是平安夜、除夕、情人节……（时间块提前几天提醒）；选「主动说」时再在新年零点、除夕、平安夜、情人节、元宵、520、七夕、端午、中秋由「重要的日子」时机带一句。默认关'),
         typingStatus: Schema.boolean().default(DEFAULTS.typingStatus)
             .description('**正在输入**（ADR 0077）：她打字的那几秒，对方的 QQ 上显示「对方正在输入…」（NapCat 的 set_input_status）。只在等待超过 1.5 秒时显示，每 4 秒补发一次。默认关'),
+        selfRecall: Schema.boolean().default(DEFAULTS.selfRecall)
+            .description('**打错字撤回重发**（ADR 0086）：她打错字想改口时，约一半改成「先发打错的，几秒后撤回，再发对的」，他那边会看到「对方撤回了一条消息」；其余照旧补一条「*对的词」。撤回不了（超过两分钟）就补改口。大约 60 条回复里一次。默认关'),
         candidates: Schema.natural().min(1).max(5).default(DEFAULTS.candidates)
             .description('**挑候选**（ADR 0041）：他难过、说亲密话、收尾时一次生成几个回复、按规则挑一个（少说几句、不扯自己的事、不约「写完跟我说」）。1 是不挑；3 是这几种时候三倍的模型调用'),
         contextTurns: Schema.natural().max(40).default(DEFAULTS.contextTurns)
@@ -353,6 +356,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
         ...(config.festivals !== undefined ? { festivals: config.festivals } : {}),
         ...(config.typingStatus !== undefined ? { typingStatus: config.typingStatus } : {}),
+        ...(config.selfRecall !== undefined ? { selfRecall: config.selfRecall } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
         ...(config.contextTurns !== undefined ? { contextTurns: config.contextTurns } : {}),
         ...(config.contextContacts !== undefined ? { contextContacts: config.contextContacts } : {}),
@@ -446,6 +450,7 @@ export function apply(ctx: Context, config: Config) {
     const transport: Transport = {
         // 白名单的小黄脸「[捂脸]」发成 face 段（ADR 0051），和 onebot.ts 发的是同一个请求
         sendPrivateText: async (userId, text) => Number(await onlineBot().internal.sendPrivateMsg(userId, textToSegments(text))),
+        deleteMessage: async messageId => { await onlineBot().internal.deleteMsg(messageId); },
         pokeFriend: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('friend_poke', { user_id: String(userId) }); },
         markRead: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('mark_private_msg_as_read', { user_id: String(userId) }); },
         reactMessage: async (messageId, emojiId) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_msg_emoji_like', { message_id: messageId, emoji_id: String(emojiId), set: true }); },

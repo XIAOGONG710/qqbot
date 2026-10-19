@@ -92,17 +92,29 @@ export const TYPOS: readonly [string, string][] = [
 export const TYPO_CHANCE = 0.2;
 export const CORRECT_CHANCE = 0.7;
 
+/** 撤回重发（ADR 0086）：第 index 条先发打错的 wrong，afterMs 之后撤回，再发对的那条；撤回不了就补发 fix（「*对的词」） */
+export interface TypoRecall {
+    index: number;
+    wrong: string;
+    fix: string;
+    afterMs: number;
+}
+
+/** 打错了又改口的，改口的方式里撤回重发的占比（有撤回的本事时） */
+export const RECALL_SHARE = 0.5;
+
 export interface Typo {
     parts: string[];
     /** 日志用：「应该 → 因该（改口）」 */
     note?: string;
+    recall?: TypoRecall;
 }
 
 /**
  * 发出去之前：可能把一条里的一个词打错，后面跟一条改口。seed 让同一次回复的结果固定（测试、重放）。
  * 改口那条会超过这一轮的条数上限（上课只回一条）就不改（第二批：上课时多出一条「*在干嘛」）
  */
-export function maybeTypo(parts: readonly string[], seed: string, maxBubbles = Infinity): Typo {
+export function maybeTypo(parts: readonly string[], seed: string, maxBubbles = Infinity, recallShare = 0): Typo {
     const roll = unit(`${seed} typo`);
     if (roll >= TYPO_CHANCE) return { parts: [...parts] };
     for (const [i, part] of parts.entries()) {
@@ -110,7 +122,13 @@ export function maybeTypo(parts: readonly string[], seed: string, maxBubbles = I
         if (!found) continue;
         const [right, wrong] = found;
         const typed = part.replace(right, wrong);
-        const correct = unit(`${seed} correct`) < CORRECT_CHANCE && parts.length < maxBubbles;
+        const corrects = unit(`${seed} correct`) < CORRECT_CHANCE;
+        // 撤回重发不多出一条，上课只回一条时也能用；种子只在有撤回的本事时才看，没有时和以前完全一样
+        if (corrects && recallShare > 0 && unit(`${seed} recall`) < recallShare) {
+            const afterMs = 1500 + Math.floor(unit(`${seed} recall at`) * 3500);
+            return { parts: [...parts], note: `${right} → ${wrong}（撤回重发）`, recall: { index: i, wrong: typed, fix: `*${right}`, afterMs } };
+        }
+        const correct = corrects && parts.length < maxBubbles;
         const out = [...parts];
         out[i] = typed;
         if (correct) out.splice(i + 1, 0, `*${right}`);

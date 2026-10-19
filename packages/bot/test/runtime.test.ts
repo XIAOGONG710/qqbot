@@ -314,6 +314,41 @@ describe('回复调度', () => {
         assert.deepEqual(stored.filter(m => m.role === 'assistant').map(m => m.content), sent);
     });
 
+    test('撤回重发（ADR 0086）：先发打错的，过一会儿撤回，再发对的；聊天记录里只有对的；撤回不了就补一条改口，两条都记', async () => {
+        const recalled: number[] = [];
+        const ok = setup({
+            generate: async () => '我应该明天去\n你早点睡',
+            decorate: parts => ({ parts, recall: { index: 0, wrong: '我因该明天去', fix: '*应该', afterMs: 2500 } }),
+            recallOwn: async id => { recalled.push(id); },
+        });
+        ok.responder.receive('你哪天去', 1, new Date());
+        await ok.responder.whenIdle();
+        assert.deepEqual(ok.sent, ['我因该明天去', '我应该明天去', '你早点睡']);
+        assert.deepEqual(recalled, [101], '撤回的是打错的那条（第一条发出去的）');
+        assert.deepEqual(ok.stored.filter(m => m.role === 'assistant').map(m => [m.content, m.messageId]), [['我应该明天去', 102], ['你早点睡', 103]]);
+        assert.ok(ok.gaps.includes(2500), '发现打错之后过 afterMs 才撤回');
+        assert.ok(ok.logs.some(l => l.includes('撤回重发')));
+
+        const broken = setup({
+            generate: async () => '我应该明天去\n你早点睡',
+            decorate: parts => ({ parts, recall: { index: 0, wrong: '我因该明天去', fix: '*应该', afterMs: 2500 } }),
+            recallOwn: async () => { throw new Error('超过两分钟'); },
+        });
+        broken.responder.receive('你哪天去', 1, new Date());
+        await broken.responder.whenIdle();
+        assert.deepEqual(broken.sent, ['我因该明天去', '*应该', '你早点睡']);
+        assert.deepEqual(broken.stored.filter(m => m.role === 'assistant').map(m => m.content), broken.sent, '撤不了：错的和改口都在记录里，和不撤回时一样');
+        assert.ok(broken.logs.some(l => l.includes('撤回自己打错的那条失败') && l.includes('超过两分钟')));
+
+        const none = setup({
+            generate: async () => '我应该明天去\n你早点睡',
+            decorate: parts => ({ parts, recall: { index: 0, wrong: '我因该明天去', fix: '*应该', afterMs: 2500 } }),
+        });
+        none.responder.receive('你哪天去', 1, new Date());
+        await none.responder.whenIdle();
+        assert.deepEqual(none.sent, ['我应该明天去', '你早点睡'], '没有撤回的本事就不发打错的');
+    });
+
     test('拆条发送中途对方插话：剩下的不发，已发的照常记录，接着回复新消息', async () => {
         let replies = 0;
         let onGap: () => void = () => {};

@@ -14,6 +14,7 @@ import { POKE_BACK_DELAY_MS, pokeBackPlan } from '../src/pokes.ts';
 import type { ProactiveRecord } from '../src/proactive.ts';
 import { stateAt } from '../src/schedule.ts';
 import { videoPlan, type BiliFetch } from '../src/bilibili.ts';
+import { maybeTypo, RECALL_SHARE } from '../src/expression.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
@@ -49,7 +50,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         projectChoice: false,
         lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, readReceipts: false, bilibili: 'off', reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
-        realWeather: false, festivals: 'off', typingStatus: false,
+        realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false,
         media: true,
         candidates: 1,
         contextTurns: 0,
@@ -71,7 +72,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; bilibiliFetch?: BiliFetch } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -81,6 +82,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.setInputStatus ? { setInputStatus: options.setInputStatus } : {}),
         ...(options.markRead ? { markRead: options.markRead } : {}),
         ...(options.setOnlineStatus ? { setOnlineStatus: options.setOnlineStatus } : {}),
+        ...(options.deleteMessage ? { deleteMessage: options.deleteMessage } : {}),
         ...(options.reactMessage ? { reactMessage: options.reactMessage } : {}),
         sendPrivateText: async (userId, text) => { sent.push(`${userId}:${text}`); return nextId++; },
         sendPrivateImage: async (userId, file, summary) => { images.push(`${userId}:${file}:${summary}`); return nextId++; },
@@ -1065,6 +1067,31 @@ describe('正在输入（ADR 0077）：整条线接通', () => {
         };
         assert.ok((await run(true)).length >= 1, '开着：打字那几秒调了 setInputStatus');
         assert.deepEqual(await run(false), [], '关着：不调');
+    });
+});
+
+describe('打错字撤回重发（ADR 0086）：整条线接通', () => {
+    test('开着 selfRecall：app 把 deleteMessage 接到回复器上，打错字改口时先发打错的、撤回、再发对的（关着、没有 deleteMessage 的情形在 runtime / expression 的单元测试里）', async () => {
+        // 找一句话，让它在这个联系人那里抽中「打错字 + 撤回重发」，且撤回前等得短（真实时间的等待，省测试时间）
+        const reply = Array.from({ length: 20000 }, (_, i) => `我应该明天去${i}`).find(text => {
+            const plan = maybeTypo([text], `10001 ${text}`, 1, RECALL_SHARE).recall;
+            return plan && plan.afterMs < 1700;
+        })!;
+        assert.ok(reply, '找到了一句会撤回重发的话');
+        const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
+        const deleted: number[] = [];
+        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }], schedule: true, selfRecall: true });
+        const { app, sent, logs } = setup(cfg, {}, { clock, generate: () => reply, deleteMessage: async id => { deleted.push(id); } });
+        app.receive({ ...event(10001, 1, '你哪天去'), time: Math.floor(clock.now() / 1000) });
+        const deadline = Date.now() + 20000;
+        while (sent.length < 2 && Date.now() < deadline) {
+            await new Promise(r => setImmediate(r));
+            const next = clock.nextTimer();
+            if (next !== undefined) clock.advanceTo(next);
+        }
+        assert.deepEqual(sent, [`10001:${reply.replace('应该', '因该')}`, `10001:${reply}`], '先发打错的，再发对的');
+        assert.deepEqual(deleted, [900], '撤回的是第一条');
+        assert.ok(logs.some(l => l.includes('撤回重发')), logs.join('|'));
     });
 });
 

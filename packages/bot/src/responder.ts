@@ -29,6 +29,7 @@ export const DEFAULT_SETTLE = { quietMs: 4000, maxMs: 12000 };
 /** 回复失败之后的再试间隔：1 分钟、5 分钟各一次（10-04 与用户确认，不无限重试） */
 export const RETRY_AFTER_MS = [60_000, 300_000];
 
+import type { TypoRecall } from './expression.ts';
 import type { ChatHistory, StoredMessage } from './history.ts';
 import { ModelUnreachable } from './llm.ts';
 import type { ChatMessage, OpenAIMessage, PromptResult } from './prompt.ts';
@@ -65,8 +66,10 @@ export interface ResponderDeps {
     /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查 */
     review?: (reply: string, messages: OpenAIMessage[]) => Promise<string>;
     /** 拆好条、发出去之前最后改一下（ADR 0024：打错字再改口）；maxBubbles 是这一轮最多几条；不传就原样发 */
-    decorate?: (parts: string[], maxBubbles: number) => string[];
+    decorate?: (parts: string[], maxBubbles: number) => string[] | { parts: string[]; recall?: TypoRecall };
     send: (userId: number, text: string) => Promise<number>;
+    /** 撤回自己发出去的一条（NapCat 的 delete_msg，配置 selfRecall，ADR 0086）；不传就不撤回，打错字照旧补一条「*对的词」 */
+    recallOwn?: (messageId: number) => Promise<void>;
     /** 让对方那边显示「正在输入…」（ADR 0077）：她打字的这段时间里每隔几秒调一次，调用不等结果、出错也不影响发送；不传就不显示 */
     typing?: (userId: number) => void;
     /** 她「看到」他的消息的那一刻（ADR 0083，配置 readReceipts）：让他那边的消息从未读变成已读。不等结果、出错也不影响回复；不传就不标 */
@@ -183,6 +186,29 @@ export function createResponder(deps: ResponderDeps): Responder {
      * 打字的这段时间：对方那边显示「正在输入…」（ADR 0077）。QQ 的输入状态几秒就消，所以每 TYPING_REFRESH_MS 补发一次；
      * 太短的（不到 TYPING_MIN_MS）不显示，真人也不会有「刚显示就收到」的闪一下；发出那条消息，状态自己消失
      */
+    /**
+     * 发一条。recall 有值（打错字又想改口，ADR 0086）：先发打错的那条，过 afterMs 撤回，再「打字」发对的那条；聊天记录里只有对的。
+     * 撤回失败（超过两分钟、NapCat 报错）：错的留着，补发「*对的词」，和不撤回时一样，两条都进聊天记录
+     */
+    async function sendBubble(part: string, recall: TypoRecall | undefined): Promise<{ messageId: number; content: string }> {
+        if (!recall) return { messageId: await deps.send(deps.userId, part), content: part };
+        const wrongId = await deps.send(deps.userId, recall.wrong);
+        await sleep(recall.afterMs);
+        try {
+            await deps.recallOwn!(wrongId);
+        } catch (error) {
+            deps.log(`撤回自己打错的那条失败，补一条改口：${error instanceof Error ? error.message : String(error)}`);
+            deps.history.append(deps.userId, {
+                time: new Date(now()).toISOString(), role: 'assistant',
+                content: deps.historyContent?.(recall.wrong) ?? recall.wrong, messageId: wrongId,
+            });
+            return { messageId: await deps.send(deps.userId, recall.fix), content: recall.fix };
+        }
+        deps.log('打错字，撤回重发');
+        await (deps.timing ? sleepTyping(deps.timing.typingMs(part)) : sleep(PART_GAP_MS));
+        return { messageId: await deps.send(deps.userId, part), content: part };
+    }
+
     async function sleepTyping(ms: number): Promise<void> {
         if (!deps.typing || ms < TYPING_MIN_MS) return sleep(ms);
         const end = now() + ms;
@@ -315,7 +341,9 @@ export function createResponder(deps: ResponderDeps): Responder {
         const split = splitReply(reply, maxBubbles);
         // 再生成还是空：算回复失败，按 retryAfterMs 过一会儿再试
         if (split.length === 0) throw new Error('模型回复清理后为空');
-        const parts = deps.decorate ? deps.decorate(split, maxBubbles) : split;
+        const decorated = deps.decorate ? deps.decorate(split, maxBubbles) : split;
+        const parts = Array.isArray(decorated) ? decorated : decorated.parts;
+        const recall = Array.isArray(decorated) || !deps.recallOwn ? undefined : decorated.recall;
         setPhase({ phase: 'sending' });
         const { timing } = deps;
         // 第一条：生成花掉的时间算在打字时间里
@@ -339,12 +367,12 @@ export function createResponder(deps: ResponderDeps): Responder {
                 deps.log(`已停止，剩下 ${parts.length - i} 条不发`);
                 break;
             }
-            const messageId = await deps.send(deps.userId, part);
+            const { messageId, content } = await sendBubble(part, recall?.index === i ? recall : undefined);
             deps.history.append(deps.userId, {
                 time: new Date(now()).toISOString(), role: 'assistant',
-                content: deps.historyContent?.(part) ?? part, messageId,
+                content: deps.historyContent?.(content) ?? content, messageId,
             });
-            sent.push(part);
+            sent.push(content);
         }
         seen = input;
         deps.log(`已回复${sent.length > 1 ? `（${sent.length} 条）` : ''}：${deps.sensitive?.() ? sent.join(' / ') : `${sent.reduce((total, part) => total + [...part].length, 0)} 字`}`);
@@ -397,7 +425,9 @@ export function createResponder(deps: ResponderDeps): Responder {
         // 空的不再生成（宁可少发）
         const split = splitReply(reply, request.maxBubbles);
         if (split.length === 0) return { result: 'skipped', reason: '生成的是空的' };
-        const parts = deps.decorate ? deps.decorate(split, request.maxBubbles) : split;
+        const decorated = deps.decorate ? deps.decorate(split, request.maxBubbles) : split;
+        const parts = Array.isArray(decorated) ? decorated : decorated.parts;
+        const recall = Array.isArray(decorated) || !deps.recallOwn ? undefined : decorated.recall;
         request.commit(parts);
         if (request.dryRun) return { result: 'dryRun', parts };
 
@@ -420,18 +450,18 @@ export function createResponder(deps: ResponderDeps): Responder {
                 deps.log(`已停止，剩下 ${parts.length - i} 条不发`);
                 break;
             }
-            let messageId: number;
+            let bubble: { messageId: number; content: string };
             try {
-                messageId = await deps.send(deps.userId, part);
+                bubble = await sendBubble(part, recall?.index === i ? recall : undefined);
             } catch (error) {
                 return { result: 'failed', reason: `发送失败：${error instanceof Error ? error.message : String(error)}`, ...(messageIds.length ? { messageIds } : {}) };
             }
             deps.history.append(deps.userId, {
                 time: new Date(now()).toISOString(), role: 'assistant',
-                content: deps.historyContent?.(part) ?? part, messageId,
+                content: deps.historyContent?.(bubble.content) ?? bubble.content, messageId: bubble.messageId,
             });
-            messageIds.push(messageId);
-            sent.push(part);
+            messageIds.push(bubble.messageId);
+            sent.push(bubble.content);
         }
         if (sent.length) skipped = undefined;
         return sent.length ? { result: 'sent', parts: sent, messageIds } : { result: 'skipped', reason: '已停止' };

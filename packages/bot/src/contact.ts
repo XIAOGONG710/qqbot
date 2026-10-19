@@ -26,7 +26,7 @@ import { crisisInHistory, type CrisisHit } from './crisis.ts';
 import { describeGrievance, grievanceNow } from './grievance.ts';
 import { describeIntent } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
-import { describeLength, lengthHint, maybeTypo } from './expression.ts';
+import { describeLength, lengthHint, maybeTypo, RECALL_SHARE } from './expression.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
 import { npcMentioned } from './npc.ts';
@@ -100,6 +100,8 @@ export interface ContactPipelineOptions {
     send: (userId: number, text: string) => Promise<number>;
     /** 她打字的这段时间让对方那边显示「正在输入…」（ADR 0077，配置 typingStatus）；不给就不显示 */
     typing?: (userId: number) => void;
+    /** 撤回自己发出去的一条（配置 selfRecall，ADR 0086）：打错字改口的，一部分改成撤回重发；不给就一律补一条「*对的词」 */
+    recallOwn?: (messageId: number) => Promise<void>;
     /** 她看到他的消息的那一刻标已读 / 看到了不回时给他最后一条点表情回应（ADR 0083，配置 readReceipts / reactions）；不给就不做 */
     markRead?: (userId: number) => void;
     /** 提示词时间块里「她在 QQ 上的样子」那一行（签名、最近发的说说，ADR 0083）；不给就没有 */
@@ -530,9 +532,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         decorate: (parts, maxBubbles) => {
             // 危机回合不打错字（ADR 0068）
             if (crisisNow) return parts;
-            const typo = maybeTypo(parts, `${contact.qq} ${parts.join('|')}`, maxBubbles);
+            const typo = maybeTypo(parts, `${contact.qq} ${parts.join('|')}`, maxBubbles, options.recallOwn ? RECALL_SHARE : 0);
             if (typo.note) log(`打错字：${typo.note}`);
-            return typo.parts;
+            return typo.recall ? { parts: typo.parts, recall: typo.recall } : typo.parts;
         },
         review: (reply, messages) => (crisisNow
             ? (text: string, reviewOptions: ReviewOptions) => reviewCrisisReply(text, reviewOptions, crisisNow!.level)
@@ -553,6 +555,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         }),
         send: options.send,
         ...(options.typing ? { typing: options.typing } : {}),
+        ...(options.recallOwn ? { recallOwn: options.recallOwn } : {}),
         ...(options.markRead ? { markRead: () => options.markRead!(contact.qq) } : {}),
         ...(options.react ? { react: (messageId: number, text: string) => options.react!(contact.qq, messageId, text) } : {}),
         ...(options.stickers ? { historyContent: (sent: string) => options.stickers!.history(sent) } : {}),

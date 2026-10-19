@@ -72,6 +72,8 @@ export interface Transport extends PresenceTransport {
     reactMessage?(messageId: number, emojiId: number): Promise<void>;
     /** 让对方那边显示「正在输入…」（配置 typingStatus，ADR 0077）；没有就不显示 */
     setInputStatus?(userId: number, eventType?: number): Promise<void>;
+    /** 撤回自己发出去的一条（NapCat 的 delete_msg，配置 selfRecall，ADR 0086）；没有就不撤回 */
+    deleteMessage?(messageId: number): Promise<void>;
     /** 戳他一下（NapCat 的 friend_poke，配置 pokeBack）；没有就不戳 */
     pokeFriend?(userId: number): Promise<void>;
     /** 发本地图片表情；配置 stickers 开时两个入口都提供。 */
@@ -479,6 +481,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；
             // 超时不重发：可能已经发出去了，再发就重复
             // 她打字的这段时间对方那边显示「正在输入…」（ADR 0077，配置 typingStatus，默认关）；出错只记一次日志，不影响发送
+            ...(config.selfRecall && transport.deleteMessage ? { recallOwn: (messageId: number) => transport.deleteMessage!(messageId) } : {}),
             ...(config.typingStatus && transport.setInputStatus ? { typing: (userId: number) => { transport.setInputStatus!(userId).catch(error => { if (!typingFailed) { typingFailed = true; log(`[${userId}] 显示「正在输入」失败（之后不再记）：${error instanceof Error ? error.message : String(error)}`); } }); } } : {}),
             // 她在 QQ 上的样子（签名、最近发的说说）进时间块（ADR 0083）
             selfNote: (now: number) => presence?.selfNote(now),
