@@ -85,7 +85,12 @@
                     "wake": {
                         "early": "07:40",
                         "lazy": "09:30",
-                        "earlySlot": "1-2"
+                        "earlySlot": "1-2",
+                        "jitter": {
+                            "from": "2026-10-26",
+                            "spreadMin": 40,
+                            "weekendMin": 60
+                        }
                     },
                     "periods": {
                         "1-2": {
@@ -124,6 +129,13 @@
                             "start": "2026-10-01",
                             "end": "2026-10-07",
                             "where": "没回家，留在学校"
+                        },
+                        {
+                            "name": "寒假",
+                            "start": "2027-01-04",
+                            "end": "2027-02-28",
+                            "where": "回家了",
+                            "home": true
                         }
                     ],
                     "makeups": [
@@ -298,8 +310,63 @@
                                 "text": "窝着刷手机",
                                 "from": "2026-10-12",
                                 "until": "2026-10-31"
+                            },
+                            {
+                                "window": "morning",
+                                "text": "赖在床上听歌",
+                                "from": "2026-10-21"
+                            },
+                            {
+                                "window": "morning",
+                                "text": "在宿舍洗衣服、晾衣服",
+                                "from": "2026-10-21"
+                            },
+                            {
+                                "window": "afternoon",
+                                "text": "打了几把王者",
+                                "from": "2026-10-21"
+                            },
+                            {
+                                "window": "afternoon",
+                                "text": "刷B站",
+                                "from": "2026-10-21"
+                            },
+                            {
+                                "window": "evening",
+                                "text": "跟室友开黑打王者",
+                                "from": "2026-10-21"
+                            },
+                            {
+                                "window": "evening",
+                                "text": "躺着听歌刷B站",
+                                "from": "2026-10-21"
+                            },
+                            {
+                                "window": "evening",
+                                "text": "逛淘宝，购物车加了又删",
+                                "from": "2026-10-21"
                             }
-                        ]
+                        ],
+                        "home": {
+                            "morning": [
+                                "在家睡到自然醒，窝在床上刷手机",
+                                "在家收拾房间",
+                                "在家吃完早饭窝回房间"
+                            ],
+                            "afternoon": [
+                                "在家打独立游戏",
+                                "窝着刷手机",
+                                "在家追剧",
+                                "在家打了几把王者",
+                                "陪妈妈出去买东西"
+                            ],
+                            "evening": [
+                                "在追一部剧",
+                                "打独立游戏",
+                                "跟爸妈一起看电视",
+                                "刷手机刷到忘了时间"
+                            ]
+                        }
                     },
                     "where": "在学校，住宿舍"
                 },
@@ -681,7 +748,9 @@
                 ],
                 "world": {
                     "startDay": "2026-08-31",
-                    "awayHolidays": [],
+                    "awayHolidays": [
+                        "寒假"
+                    ],
                     "weather": {
                         "rainChance": 0.15,
                         "temps": {

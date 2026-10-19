@@ -55,8 +55,10 @@ describe('她一天的打算会改（ADR 0034）', () => {
         assert.equal(describeSlot(evening), '晚上本来打算打独立游戏，计算机网络技术的作业明天要交，先赶作业');
         assert.equal(planNow(schedule, slots, at(10, 12, 19, 30)), '本来打算打独立游戏，计算机网络技术的作业明天要交，先赶作业');
         assert.equal(planNow(schedule, slots, new Date(evening.until!.getTime() + 60_000)), undefined, '写完了');
-        // 本来就打算写作业的不用改（10-29 晚上「熬夜赶作业」）
-        assert.ok(planOn(boyfriend, 10, 29).every(s => s.done === s.planned));
+        // 本来就打算写作业的不用改（找一个晚上打算「熬夜赶作业」的日子；哪天抽到它跟着空闲活动的抽签走）
+        const studyNight = Array.from({ length: 40 }, (_, i) => planOn(boyfriend, 10, 8 + i)).find(day => day.find(s => s.window === 'evening')?.planned === '熬夜赶作业');
+        assert.ok(studyNight, '40 天里该有一晚打算熬夜赶作业');
+        assert.equal(studyNight.find(s => s.window === 'evening')!.done, '熬夜赶作业');
     });
 
     test('身上：肚子疼得厉害就躺着；感冒、不太舒服时只是不出门；说不出口的档位只说不舒服', () => {

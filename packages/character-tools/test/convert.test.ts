@@ -373,10 +373,11 @@ const scheduleText = (tier: string) => JSON.stringify(scheduleOf(tier));
 test('作息：几点睡、几点起、节次、学期、假期、调休、课程、空闲活动', () => {
     const s = scheduleOf('boyfriend');
     assert.equal(s.sleep, '02:00');
-    assert.deepEqual(s.wake, { early: '07:40', lazy: '09:30', earlySlot: '1-2' });
+    assert.deepEqual(s.wake, { early: '07:40', lazy: '09:30', earlySlot: '1-2', jitter: { from: '2026-10-26', spreadMin: 40, weekendMin: 60 } });
     assert.deepEqual(s.periods['1-2'], { start: '08:20', end: '09:40' });
     assert.deepEqual(s.semester, { start: '2026-08-31', weeks: 18 });
-    assert.deepEqual(s.holidays.map(h => [h.name, h.start, h.end]), [['中秋节', '2026-09-25', '2026-09-27'], ['国庆节', '2026-10-01', '2026-10-07']]);
+    assert.deepEqual(s.holidays.map(h => [h.name, h.start, h.end]), [['中秋节', '2026-09-25', '2026-09-27'], ['国庆节', '2026-10-01', '2026-10-07'], ['寒假', '2027-01-04', '2027-02-28']]);
+    assert.deepEqual(s.holidays.map(h => h.home), [undefined, undefined, true], '只有寒假是在家过的');
     assert.deepEqual(s.makeups, [{ date: '2026-09-20', asDay: 0 }, { date: '2026-10-10', asDay: 0 }]);
     assert.equal(s.courses.length, source.schedule.courses.length);
     assert.deepEqual(s.courses[1], {
@@ -384,7 +385,10 @@ test('作息：几点睡、几点起、节次、学期、假期、调休、课�
     });
     assert.deepEqual(s.kinds.hard, { label: '专业课，认真听', seeAfterMin: [5, 20], maxBubbles: 1 });
     // 有 from 的进 later（那天起才进抽签列表，ADR 0053 之后）
-    assert.equal(s.free.morning.length + s.free.afternoon.length + s.free.evening.length + (s.free.later?.length ?? 0), source.schedule.free.length);
+    // home: true 的进 free.home（在家的假期里用的那一份，每档一样长）
+    const homeCount = s.free.home ? s.free.home.morning.length + s.free.home.afternoon.length + s.free.home.evening.length : 0;
+    assert.equal(s.free.morning.length + s.free.afternoon.length + s.free.evening.length + (s.free.later?.length ?? 0) + homeCount, source.schedule.free.length);
+    assert.equal(homeCount, source.schedule.free.filter(item => item.home).length);
     assert.deepEqual(s.free.later?.map(item => item.from), source.schedule.free.filter(item => item.from).map(item => item.from));
 });
 
