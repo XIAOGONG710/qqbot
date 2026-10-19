@@ -14,6 +14,7 @@
 //   typing  set_input_status：你那边她的对话顶上显示「对方正在输入…」几秒
 //   events  听 --events-seconds 秒：你戳她、给她发一句话（会被点表情回应并标已读）、引用她的一句回复、发一句再撤回，
 //           每种事件都打印真实字段，并说明机器人认不认得
+//   selfrecall（要明确写进 --steps）给你发一条「测试，几秒后撤回」的消息，3 秒后用 delete_msg 撤回（selfRecall 用的那个动作），并看撤回通知长什么样
 //   signature（要 --signature）读她现在的签名，改成你给的，读回来核对，再改回原样
 //   qzone   （要 --qzone）发一条「仅自己可见」的测试说说，拿到 tid 后立刻删掉
 // 你发的消息她（线上那个）会照常回；探针自己不发任何文字消息。报告里不留消息正文，只留字段和长度。
@@ -23,7 +24,7 @@ import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isFriendRecall, isPokeAtMe, segmentsToText, type OneBotEvent, type Segment } from '../packages/bot/src/onebot.ts';
 
-export const STEPS = ['login', 'packet', 'online', 'like', 'poke', 'typing', 'events', 'signature', 'qzone'] as const;
+export const STEPS = ['login', 'packet', 'online', 'like', 'poke', 'typing', 'events', 'selfrecall', 'signature', 'qzone'] as const;
 export type Step = typeof STEPS[number];
 export const DEFAULT_STEPS: readonly Step[] = ['login', 'packet', 'online', 'like', 'poke', 'typing', 'events'];
 
@@ -135,6 +136,8 @@ export async function runProbe(options: ProbeOptions): Promise<ProbeResult[]> {
         selfId = await runEvents({ connection, user, say, sleep, eventsMs, record, selfId });
     }
 
+    if (steps.includes('selfrecall')) await runSelfRecall(connection, user, say, sleep, record);
+
     if (steps.includes('signature')) {
         if (!options.signature) record('signature', '个性签名', false, '没给 --signature，跳过');
         else await runSignature(connection, selfId, options.signature, record);
@@ -152,6 +155,31 @@ export async function runProbe(options: ProbeOptions): Promise<ProbeResult[]> {
         }
     }
     return results;
+}
+
+/** 给他发一条马上撤回的测试消息：delete_msg 能不能撤回自己发的；撤回时 NapCat 推的 friend_recall 是什么样、机器人（ADR 0082）认不认、是不是被她忽略 */
+async function runSelfRecall(connection: Connection, user: number, say: (line: string) => void, sleep: (ms: number) => Promise<void>, record: (step: Step, name: string, ok: boolean, detail?: string) => void): Promise<void> {
+    const notices: Record<string, unknown>[] = [];
+    const stop = connection.onEvent(event => { if (event.post_type === 'notice' && event.notice_type === 'friend_recall') notices.push(event); });
+    try {
+        say('撤回自己的消息：马上给你发一条「测试」，3 秒后撤回；你应该先看到它，再看到「对方撤回了一条消息」');
+        const sent = await connection.call('send_private_msg', { user_id: String(user), message: [{ type: 'text', data: { text: '（探针测试：这条几秒后撤回）' } }] });
+        const messageId = asRecord(sent.data).message_id;
+        if (!succeeded(sent) || typeof messageId !== 'number') { record('selfrecall', '发测试消息', false, failText(sent)); return; }
+        record('selfrecall', '发测试消息', true, `id ${messageId}${messageId < 2 ** 32 ? '（32 位）' : '（不是 32 位）'}`);
+        await sleep(3000);
+        const deleted = await connection.call('delete_msg', { message_id: messageId });
+        record('selfrecall', '撤回自己发的消息（delete_msg）', succeeded(deleted), succeeded(deleted) ? '你那边应该出现「对方撤回了一条消息」' : failText(deleted));
+        await sleep(2000);
+        const echo = notices.find(notice => Number(notice.message_id) === messageId);
+        if (!echo) say('· 没收到自己撤回的 friend_recall 通知（NapCat 不推自己撤回的，也行：机器人本来就不用它）');
+        else {
+            const mine = isFriendRecall(echo as OneBotEvent);
+            record('selfrecall', '自己撤回的通知', true, `${JSON.stringify(shapeOf(echo))}；机器人${mine ? '认得（但 receiveRecall 只处理他的消息，找不到她这条就什么都不做）' : '不认得'}`);
+        }
+    } finally {
+        stop();
+    }
 }
 
 async function runSignature(connection: Connection, selfId: number | undefined, text: string, record: (step: Step, name: string, ok: boolean, detail?: string) => void): Promise<void> {

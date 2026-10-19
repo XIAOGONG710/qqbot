@@ -136,6 +136,30 @@ describe('NapCat 探针（ADR 0085）', () => {
         assert.ok(!JSON.stringify([results, lines]).includes('你好呀'));
     });
 
+    test('撤回自己发的消息（selfrecall，要明确写进 steps）：发一条、过几秒用 delete_msg 撤回同一个 id；自己撤回的通知只描述形状；默认步骤里没有它', async () => {
+        const fake = fakeNapcat({ send_private_msg: ok({ message_id: 4242 }) });
+        const before = await runProbe({ connection: fake.connection, user: USER, sleep: noSleep });
+        assert.ok(!fake.calls.some(call => call.action === 'send_private_msg'), '默认不发任何消息');
+        assert.ok(before.every(result => result.step !== 'selfrecall'));
+        const lines: string[] = [];
+        const running = runProbe({ connection: fake.connection, user: USER, steps: ['selfrecall'], say: line => lines.push(line), sleep: () => new Promise(resolve => setTimeout(resolve, 20)) });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        fake.push({ post_type: 'notice', notice_type: 'friend_recall', self_id: SELF, user_id: USER, message_id: 4242, time: 1_800_000_000 });
+        const results = await running;
+        const sentIndex = fake.calls.findIndex(call => call.action === 'send_private_msg');
+        const deleteIndex = fake.calls.findIndex(call => call.action === 'delete_msg');
+        assert.ok(sentIndex >= 0 && deleteIndex > sentIndex);
+        assert.deepEqual(fake.calls[deleteIndex]!.params, { message_id: 4242 });
+        assert.deepEqual(fake.calls[sentIndex]!.params.user_id, String(USER));
+        assert.ok(results.every(result => result.ok), JSON.stringify(results));
+        assert.ok(results.some(result => result.name === '自己撤回的通知' && result.detail.includes('机器人认得')));
+
+        const refused = fakeNapcat({ send_private_msg: ok({ message_id: 7 }), delete_msg: failed(1200, '超过两分钟') });
+        const failedRun = await runProbe({ connection: refused.connection, user: USER, steps: ['selfrecall'], sleep: noSleep });
+        assert.deepEqual(failedRun.map(result => result.ok), [true, false]);
+        assert.match(failedRun[1]!.detail, /超过两分钟/);
+    });
+
     test('签名：读 → 改 → 读回来核对 → 改回；读不到原来的就不改', async () => {
         let current = '原来的签名';
         const fake = fakeNapcat({
