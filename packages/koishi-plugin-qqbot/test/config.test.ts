@@ -142,6 +142,14 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(fromKoishi({ ...minimal, typingStatus: true }).typingStatus, true);
         assert.equal('typingStatus' in (Config.simplify(Config(minimal as never)) as object), false);
     });
+    test('回复节奏（ADR 0075）和更短的回复（候选 5）：各自默认关；开了才进配置；默认值不写回 yml', () => {
+        for (const key of ['rhythm', 'shortReplies'] as const) {
+            assert.equal(fromKoishi(minimal)[key], false, key);
+            assert.equal(fromKoishi(before0009)[key], false, key);
+            assert.equal(fromKoishi({ ...minimal, [key]: true })[key], true, key);
+            assert.equal(key in (Config.simplify(Config(minimal as never)) as object), false, key);
+        }
+    });
     test('图片表情（ADR 0063）：旧配置默认关；collect/send 分开；默认值不写回 yml', () => {
         assert.equal(fromKoishi(minimal).stickers, 'off');
         assert.equal(fromKoishi(before0009).stickers, 'off');

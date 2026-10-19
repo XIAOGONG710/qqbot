@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
 import {
-    arrivedWhileAsleep, isAck, isAckAfterClosing, isReaction, MOODY_CHANCE, MOODY_MAX_CHANCE, moodySkip, pendingMessages, thinkMs, typingMs, wakeUpTime, whenSeen,
+    arrivedWhileAsleep, isAck, isAckAfterClosing, isReaction, MOODY_CHANCE, MOODY_MAX_CHANCE, moodySkip, legacyTypingMs, pendingMessages, replyDelays, thinkMs, typingMs, wakeUpTime, whenSeen,
 } from '../src/reply-timing.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
@@ -136,6 +136,20 @@ describe('回复时机：打字、附和、夜里的消息', () => {
         assert.equal(typingMs('一二三四五六七八九十'), ten);
         const mean = (n: number) => Array.from({ length: 300 }, (_, i) => typingMs(`第${i}句${'字'.repeat(n)}`)).reduce((a, b) => a + b, 0) / 300;
         assert.ok(mean(30) > mean(5) * 2, '30 字比 5 字慢一倍以上');
+    });
+
+    test('没开 rhythm（上线前的老样子）：打字 0.8 秒 + 每字 0.1 秒、1–4 秒、±20%，没有「看 + 想」；开了才是新节奏加「看 + 想」', () => {
+        const ten = legacyTypingMs('一二三四五六七八九十');
+        assert.ok(ten >= 1800 * 0.8 && ten <= 1800 * 1.2, String(ten));
+        assert.ok(legacyTypingMs('嗯') >= 1000 * 0.8 && legacyTypingMs('长'.repeat(100)) <= 4000 * 1.2);
+        assert.equal(legacyTypingMs('一二三四五六七八九十'), ten);
+        assert.ok(Math.abs(legacyTypingMs('一二三四五六七八九十', 1.6) - ten * 1.6) <= 1);
+        const off = replyDelays(false, 1.6);
+        assert.equal(off.thinkMs, undefined, '不开就没有「看 + 想」');
+        assert.equal(off.typingMs('你好呀'), legacyTypingMs('你好呀', 1.6));
+        const on = replyDelays(true, 1.6);
+        assert.equal(on.typingMs('你好呀'), typingMs('你好呀', 1.6));
+        assert.equal(on.thinkMs!('你好呀'), thinkMs('你好呀', 1.6));
     });
 
     test('看 + 想（thinkMs）：多半 0.8–3.5 秒、有时到 10 秒、偶尔到 28 秒；三个字以内更快；同一句每次一样；乘节奏系数', () => {

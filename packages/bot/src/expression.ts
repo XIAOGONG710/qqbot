@@ -5,8 +5,9 @@
 // - 打错字：发出去的气泡里有常见的同音错词（TYPOS）时，TYPO_CHANCE 的概率打错一个；多数紧跟一条「*正确的词」改口，少数懒得改。
 //   不靠模型：模型很少自己打错，让它「偶尔打错」会写成刻意的错。聊天记录里存的是发出去的样子（他看到的就是这样）。
 
-/** 回句短的、话多一点的概率（按轮） */
+/** 回句短的、话多一点的概率（按轮）；SHORT_CHANCE 是开了 shortReplies（候选 5）的，没开是 LEGACY_SHORT_CHANCE（上线前的老样子） */
 export const SHORT_CHANCE = 0.5;
+export const LEGACY_SHORT_CHANCE = 0.35;
 export const LONG_CHANCE = 0.1;
 
 export type LengthHint = 'short' | 'long';
@@ -34,6 +35,8 @@ export interface LengthContext {
     low?: boolean;
     /** 他这一轮说起了她认识的人（闺蜜）：被问「雨桐最近怎么样」要把事说准，不适合只回很短的一句 */
     aboutPerson?: boolean;
+    /** 配置 shortReplies：开了才用候选 5 的概率、让路的规则和新措辞；不开就是上线前的老样子（ADR 0024 的 10-19 调整） */
+    shortReplies?: boolean;
 }
 
 /** 这一轮说话的长短（没有就是照常） */
@@ -44,11 +47,12 @@ export function lengthHint(context: LengthContext): LengthHint | undefined {
     // 他明着让她讲（「你帮我认真讲讲」「详细说说」）就多说几句，不抽签（10-10 示例改短之后 boyfriend-tone T06 讲梯度下降只剩 53 字）
     if (!context.low && ASKS_TO_EXPLAIN.test(last.content)) return 'long';
     const roll = unit(`${last.time ?? ''} ${last.content} length`);
+    const shortChance = context.shortReplies ? SHORT_CHANCE : LEGACY_SHORT_CHANCE;
     // 他问起她认识的人（「雨桐最近怎么样」）：只回很短的一句会把最近的几件事压成一个评语——10-19 npc-asks-days NA07 在候选 4/5 的抽签下
     // 4 次里 2 次回「老放我鸽子」（账上只有一次她临时去不了）。这类问题不加「回很短」
-    if (roll < SHORT_CHANCE) return (context.intent && ENGAGED_INTENT.test(context.intent)) || WORRIED_TEXT.test(saidSinceReply(context.history)) || context.aboutPerson ? undefined : 'short';
+    if (roll < shortChance) return context.shortReplies && ((context.intent && ENGAGED_INTENT.test(context.intent)) || WORRIED_TEXT.test(saidSinceReply(context.history)) || context.aboutPerson) ? undefined : 'short';
     // 话多要有由头：他这次说的太短（「到家了」）就不加（第一批：一句「到家了」她一口气说了 4 条 77 个字）
-    if (roll < SHORT_CHANCE + LONG_CHANCE && !context.low && [...saidSinceReply(context.history)].length >= LONG_MIN_CHARS) return 'long';
+    if (roll < shortChance + LONG_CHANCE && !context.low && [...saidSinceReply(context.history)].length >= LONG_MIN_CHARS) return 'long';
     return undefined;
 }
 
@@ -63,9 +67,9 @@ function saidSinceReply(history: LengthContext['history']): string {
     return history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content).join('');
 }
 
-export function describeLength(hint: LengthHint): string {
+export function describeLength(hint: LengthHint, shortReplies = false): string {
     return hint === 'short'
-        ? '[这一轮说话：只回很短的一句，一两个字也行——语气词、单个词、一句反问都可以，不用凑成完整的句子；不展开，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说]'
+        ? !shortReplies ? '[这一轮说话：只回一句短的，几个字也行；不展开，不另起话题]' : '[这一轮说话：只回很短的一句，一两个字也行——语气词、单个词、一句反问都可以，不用凑成完整的句子；不展开，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说]'
         : '[这一轮说话：话多一点，想说的可以多说几句、说完整，不用一两句就停]';
 }
 

@@ -51,7 +51,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         projectChoice: false,
         lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
-        realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false,
+        realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false, shortReplies: false,
         media: true,
         candidates: 1,
         contextTurns: 0,

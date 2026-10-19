@@ -63,6 +63,8 @@ export const DEFAULTS = {
     qzoneVisibility: 'friends' as QzoneVisibility,
     typingStatus: false,
     selfRecall: false,
+    rhythm: false,
+    shortReplies: false,
     media: true,
     stickers: 'off' as StickerMode,
     candidates: 1,
@@ -166,6 +168,10 @@ export interface AppConfig {
     typingStatus: boolean;
     /** 她打错字想改口时，一部分改成撤回重发（先发打错的，几秒后撤回再发对的；NapCat 的 delete_msg，ADR 0086）。默认关 */
     selfRecall: boolean;
+    /** 回复节奏（ADR 0075）：打字时间按字数（0.6 秒 + 每字 0.18 秒）、回之前「看 + 想」一会儿；热聊中位慢约 4 秒。默认关（老样子：0.8 秒 + 每字 0.1 秒） */
+    rhythm: boolean;
+    /** 更短的回复（ADR 0024 的 10-19 调整，候选 5）：约一半的轮次回很短的一句，他在难受、说担心的事、问起她的朋友时让路。默认关（老样子：35%，老措辞） */
+    shortReplies: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -374,6 +380,8 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         qzoneVisibility: oneOf(file.qzoneVisibility, 'qzoneVisibility', QZONE_VISIBILITIES, DEFAULTS.qzoneVisibility),
         typingStatus: bool(file, 'typingStatus', '', DEFAULTS.typingStatus),
         selfRecall: bool(file, 'selfRecall', '', DEFAULTS.selfRecall),
+        rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
+        shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),
         media: bool(file, 'media', '', DEFAULTS.media),
         stickers: stickerMode(file.stickers),
         ...(vision ? { vision } : {}),

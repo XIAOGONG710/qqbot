@@ -218,6 +218,10 @@ export interface Scenario {
     lifeInPrompt: boolean;
     /** 默认 false：有起因的小别扭与和好（ADR 0074，配置 grievance）；只对男朋友档有效 */
     grievance: boolean;
+    /** 默认 false：回复节奏（ADR 0075，配置 rhythm）；模拟器里的虚拟时钟照样走 */
+    rhythm: boolean;
+    /** 默认 false：更短的回复（候选 5，配置 shortReplies） */
+    shortReplies: boolean;
     /** 默认 false：闺蜜的约（ADR 0061，配置 npcAsks）：约、迟到、改约、取消进她的一天；要开着 autonomous 才进行动账 */
     npcAsks: boolean;
     /** 默认 off：公共节日（ADR 0076，配置 festivals）：notes 只进时间块，greet 再加主动说 */
@@ -315,6 +319,8 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         projectChoice: s.projectChoice === true,
         lifeInPrompt: s.lifeInPrompt === true,
         grievance: s.grievance === true,
+        rhythm: s.rhythm === true,
+        shortReplies: s.shortReplies === true,
         npcAsks: s.npcAsks === true,
         festivals: s.festivals === undefined ? 'off' : (FESTIVAL_MODES.includes(s.festivals as FestivalMode) ? s.festivals as FestivalMode : fail(`festivals 应为 ${FESTIVAL_MODES.join(' / ')} 之一`)),
         ...(s.gifts !== undefined ? { gifts: (Array.isArray(s.gifts) ? s.gifts : fail('gifts 应为数组')).map((g: unknown, i: number) => {

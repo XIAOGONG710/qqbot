@@ -169,6 +169,19 @@ export function typingMs(text: string, pace = 1): number {
     return Math.round(base * (0.7 + 0.6 * unit(text)) * pace);
 }
 
+/** 上线前的老样子（没开 rhythm 时用）：0.8 秒 + 每字 0.1 秒，限制在 1–4 秒，±20% 抖动，再乘档位的节奏系数；没有「看 + 想」 */
+export function legacyTypingMs(text: string, pace = 1): number {
+    const base = Math.min(4000, Math.max(1000, 800 + 100 * [...text].length));
+    return Math.round(base * (0.8 + 0.4 * unit(text)) * pace);
+}
+
+/** 回复器用的打字 / 「看 + 想」时间（配置 rhythm）：开了是按字数的新节奏加「看 + 想」，不开是上线前的老样子（没有「看 + 想」） */
+export function replyDelays(rhythm: boolean, pace = 1): { typingMs(text: string): number; thinkMs?(text: string): number } {
+    return rhythm
+        ? { typingMs: text => typingMs(text, pace), thinkMs: text => thinkMs(text, pace) }
+        : { typingMs: text => legacyTypingMs(text, pace) };
+}
+
 /**
  * 看到消息之后、开始打字之前的「看 + 想」（只在回他的消息时有，主动找他时没有）：多半 0.8–3.5 秒（80%），有时 3.5–10 秒（15%），偶尔 10–28 秒（5%，看别的去了）；
  * 回三个字以内的更快（×0.6）。按内容定，同一句每次一样，再乘档位的节奏系数。第一条真正发出去的时刻 = 看到 + 看想 + 打字，生成花掉的时间算在里面

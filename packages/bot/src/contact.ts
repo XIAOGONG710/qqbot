@@ -20,7 +20,7 @@ import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from 
 import { loadCharacterCard, type Character } from './st/card.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
-import { isAckAfterClosing, moodySkip, thinkMs, typingMs, whenSeen } from './reply-timing.ts';
+import { isAckAfterClosing, moodySkip, replyDelays, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
 import { crisisInHistory, type CrisisHit } from './crisis.ts';
 import { describeGrievance, grievanceNow } from './grievance.ts';
@@ -144,6 +144,10 @@ export interface ContactPipelineOptions {
     projectChoice?: boolean;
     /** 生活账接进提示词的第一步（配置 lifeInPrompt）：她这几天练拍照修图，只给看得到她爱好的档位（卡上有相机基金的） */
     lifeInPrompt?: boolean;
+    /** 回复节奏（ADR 0075，配置 rhythm）：打字时间按字数、回之前有「看 + 想」；不开就是上线前的老样子（0.8 秒 + 每字 0.1 秒） */
+    rhythm?: boolean;
+    /** 更短的回复（ADR 0024 的 10-19 调整，配置 shortReplies）：回很短的概率 0.5、认真接话的轮次让路、新措辞；不开就是上线前的老样子（0.35、老措辞） */
+    shortReplies?: boolean;
     /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
     grievance?: boolean;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
@@ -440,7 +444,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),
             } : undefined;
             // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
-            const length = crisisNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low: mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false), aboutPerson: npcs.length > 0 });
+            const length = crisisNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low: mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false), aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
@@ -496,7 +500,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(partnerBack ? [partnerBack] : []),
                         ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
                         ...(intent ? [intent] : []),
-                        ...(length ? [describeLength(length)] : []),
+                        ...(length ? [describeLength(length, options.shortReplies)] : []),
                         ...(initiate ? [initiate.note] : []),
                     ].join('\n'),
                 ],
@@ -580,8 +584,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     return asleep ? { since: asleep.since.getTime(), until: asleep.until.getTime() } : undefined;
                 },
             }),
-            typingMs: text => typingMs(text, character.pace),
-            thinkMs: text => thinkMs(text, character.pace),
+            ...replyDelays(options.rhythm ?? false, character.pace),
             skip: replySkip(character, options.moody ?? false, options.moodyChance),
         },
         waitUntil: options.waitUntil,

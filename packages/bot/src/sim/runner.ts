@@ -370,6 +370,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}),
         ...(scenario.lifeInPrompt && scenario.autonomous ? { lifeInPrompt: true } : {}),
         ...(scenario.grievance ? { grievance: true } : {}),
+        ...(scenario.rhythm ? { rhythm: true } : {}),
+        ...(scenario.shortReplies ? { shortReplies: true } : {}),
         ...(stickers ? { stickers } : {}),
         ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),
         contacts: [contact, ...others],
