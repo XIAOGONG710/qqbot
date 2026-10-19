@@ -58,7 +58,8 @@ describe('点赞、签名、表情回应、说说的规则（ADR 0083）', () =>
         assert.notEqual(signatureFor({ day: '2026-11-03', last: text }), text);
         const base = 1_800_000_000_000;
         const gaps = Array.from({ length: 30 }, (_, i) => (signatureDueAt(base + i * 12_345_678) - (base + i * 12_345_678)) / 86_400_000);
-        assert.ok(gaps.every(days => days >= 3 && days <= 5), gaps.join(','));
+        assert.ok(gaps.every(days => days >= 2.4 && days <= 6), gaps.join(','));
+        assert.ok(Array.from({ length: 30 }, (_, i) => new Date(signatureDueAt(base + i * 12_345_678)).getHours()).every(hour => hour >= 10 && hour <= 22), '换签名的钟点在白天');
         const rainy = new Set(Array.from({ length: 200 }, (_, i) => signatureFor({ day: `d${i}`, rainy: true })));
         assert.ok([...rainy].some(sig => sig.includes('雨')));
     });
@@ -135,10 +136,23 @@ describe('每分钟看一眼的循环（ADR 0083）', () => {
         assert.deepEqual(calls, ['status:10/0'], '没变不改');
         clock.t = at(10, 11, 3); // 周日凌晨，睡着
         await presence.tick();
+        for (let i = 0; i < 46; i++) { clock.t += MINUTE_MS; await presence.tick(); } // 睡下之后「离开」晚 0–45 分钟才挂（不然每天夜里同一分钟）
         assert.deepEqual(calls, ['status:10/0', 'status:30/0']);
+
+        // 她自己说了睡了：不等
+        const said = make({ t: at(10, 10, 23) }, { ...OFF, onlineStatus: true }, { saidSleep: () => false });
+        await said.presence.tick();
+        let saidSleep = false;
+        const quickClock = { t: at(10, 10, 23) };
+        const quick = createPresence({ flags: { ...OFF, onlineStatus: true }, transport: { setOnlineStatus: async (status, ext) => { said.calls.push(`quick:${status}/${ext}`); } }, schedule, likeTargets: [], dir: tmp(), now: () => quickClock.t, log: () => {}, saidSleep: () => saidSleep });
+        await quick.tick();
+        saidSleep = true;
+        quickClock.t += 11 * MINUTE_MS;
+        await quick.tick();
+        assert.deepEqual(said.calls.filter(call => call.startsWith('quick:')), ['quick:10/0', 'quick:30/0'], '说了睡了立刻离开');
     });
 
-    test('在线状态：上课「忙碌」，课间不改回在线，下课一小时后才改回；睡下立刻离开', async () => {
+    test('在线状态：上课「忙碌」，课间不改回在线，下课一小时后才改回；睡下之后 45 分钟内离开', async () => {
         // 找一个有课的日子，逐分钟看出她的课（class）和非课
         let day = 2;
         let minutes: { t: number; kind: string }[] = [];
@@ -168,8 +182,8 @@ describe('每分钟看一眼的循环（ADR 0083）', () => {
         for (; lateClock.t <= lastClass.t + 62 * MINUTE_MS; lateClock.t += MINUTE_MS) await late.presence.tick();
         assert.equal(late.calls.length, 2);
         assert.match(late.calls[1]!, /^status:10\//,'一小时后改回在线（或听歌中）');
-        lateClock.t = at(11, day + 1, 3); // 凌晨睡着：不等一小时
-        await late.presence.tick();
+        lateClock.t = at(11, day + 1, 3); // 凌晨睡着：不等一小时（只是「离开」晚 0–45 分钟）
+        for (let i = 0; i < 47; i++) { await late.presence.tick(); lateClock.t += MINUTE_MS; }
         assert.equal(late.calls.at(-1), 'status:30/0');
     });
 
@@ -255,6 +269,7 @@ describe('每分钟看一眼的循环（ADR 0083）', () => {
         assert.equal(on.calls.filter(c => c.startsWith('sig:')).length, 1, '3 天内不再改');
 
         const logs: string[] = [];
+        clock.t = at(11, 8, 11); // 白天（签名只在 10:00–23:00 换）
         const bad = createPresence({
             flags: { ...OFF, signature: 'on' }, transport: { setSignature: async () => { throw new Error('接口不可用'); } },
             schedule, likeTargets: [], dir: tmp(), now: () => clock.t, log: m => logs.push(m),

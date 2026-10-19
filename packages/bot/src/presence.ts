@@ -41,7 +41,10 @@ export function onlineStatusFor(activity: Activity, saidSleep: boolean): OnlineS
     return ONLINE;
 }
 
-/** 状态变了也至少隔这么久才改一次（几分钟的活动不来回闪） */
+/** 作息上到睡觉的点之后，「离开」晚多久才挂上（0–45 分钟，按日期哈希）：不然每天夜里整整同一分钟变成离开，一看就是程序；她自己说了「睡了」的不等 */
+export const AWAY_JITTER_MIN: [number, number] = [0, 45];
+
+/** 睡下 / 醒来的状态变化，至少隔这么久才改一次 */
 export const STATUS_MIN_GAP_MS = 10 * 60_000;
 
 /**
@@ -69,11 +72,13 @@ export function likePlan(qq: number, day: string): { minutes: number; times: num
 
 /** 平时的签名（她的口吻，短；改成什么由日期哈希挑，不连着两次一样） */
 export const SIGNATURES: readonly string[] = [
-    '今天也在好好吃饭', '困', '土豆又胖了', '想去海边', '周末快点来', '相机预算攒中', '先睡了', '下雨天适合赖床',
+    '今天也在好好吃饭', '困', '土豆又胖了', '想去海边', '周末快点来', '相机预算攒中',
     '路过的猫都很可爱', '慢慢来', '今天的云很好看', '想吃烤冷面', '没有灵感', '平静', '少熬夜', '又是想放假的一天',
-    '食堂的面今天不错', '作业会自己写完的（不会）', '喂猫中', '刚醒', '想睡觉', '晚上吃点好的', '日子平平淡淡', '一切都会好的',
+    '食堂的面今天不错', '作业会自己写完的（不会）', '晚上吃点好的', '日子平平淡淡', '一切都会好的',
     '在攒钱', '不想动', '天气好就出去走走', '好好生活', '今天不想说话', '想拍点好看的东西',
+    '好好吃饭好好睡觉', '想吃火锅', '想去旅行', '最近有点上头', '一切刚刚好',
 ];
+// 签名一挂就是三五天，所以不放只在一个钟点成立的（「先睡了」「刚醒」「想睡觉」「喂猫中」）和只在某种天气成立的（「下雨天适合赖床」，雨天有雨天的那一组）
 
 /** 节日当天的签名（没列的节日不改，比如清明、520、双十一） */
 export const FESTIVAL_SIGNATURES: Readonly<Record<string, string>> = {
@@ -84,10 +89,15 @@ export const FESTIVAL_SIGNATURES: Readonly<Record<string, string>> = {
 /** 下雨天加的 */
 export const RAINY_SIGNATURES: readonly string[] = ['下雨了', '雨天不想出门', '下雨天适合发呆', '雨一直下'];
 
-/** 隔几天换一次：3–5 天，按上一次换的日期哈希 */
+/** 签名只在白天换（10:00–23:00）：不然会一直在上一次的钟点换，夜里睡前的 1 点多也换，还常常凑成整点 */
+export const SIGNATURE_HOURS: [number, number] = [10, 22];
+
+/** 隔几天换一次：3–5 天，当天的几点也按上一次换的时刻哈希（10:00–22:59）；所以两次之间约 2.5–5.6 天 */
 export function signatureDueAt(lastChangedAt: number): number {
     const days = pick(String(lastChangedAt), 'signature-gap', [3, 5]);
-    return lastChangedAt + days * 86_400_000;
+    const day = new Date(lastChangedAt);
+    return new Date(day.getFullYear(), day.getMonth(), day.getDate() + days,
+        pick(String(lastChangedAt), 'signature-hour', SIGNATURE_HOURS), pick(String(lastChangedAt), 'signature-minute', [0, 59])).getTime();
 }
 
 /** 这次换成什么：当天是节日就「<节日>快乐」；下雨天从雨天里挑；其余从平时的里挑，和上一条不一样 */
@@ -278,6 +288,7 @@ export function createPresence(options: PresenceOptions): Presence {
     const draft = (title: string, body: string) => appendFileSync(draftsPath, `## ${title}\n\n${body}\n\n`);
     let appliedThisRun: string | undefined;
     let lastClassAt: number | undefined;
+    let awayWantedSince: number | undefined;
     let statusRetryAt = 0;
     let statusFailures = 0;
     let busy = false;
@@ -290,7 +301,11 @@ export function createPresence(options: PresenceOptions): Presence {
         let want = onlineStatusFor(state0.activity, options.saidSleep?.(t) ?? false);
         const have = appliedThisRun;
         if (have === BUSY.label && want.label !== BUSY.label && want.label !== AWAY.label && lastClassAt !== undefined && t - lastClassAt < BUSY_HOLD_MS) want = BUSY;
+        if (want.label === AWAY.label) awayWantedSince ??= t; else awayWantedSince = undefined;
         if (want.label === have) return;
+        // 到了作息上睡觉的点，「离开」晚一会儿再挂（这次启动后第一次、她自己说了睡了的除外）
+        if (want.label === AWAY.label && have !== undefined && !(options.saidSleep?.(t) ?? false) && awayWantedSince !== undefined
+            && t - awayWantedSince < pick(formatDate(herDay(schedule, new Date(t))), 'away-jitter', AWAY_JITTER_MIN) * 60_000) return;
         // 刚改过不久就先不动（第一次——这次启动后还没设过——除外）
         if (have !== undefined && state.status && t - state.status.at < STATUS_MIN_GAP_MS) return;
         try {
@@ -334,6 +349,8 @@ export function createPresence(options: PresenceOptions): Presence {
 
     async function signature(t: number, day: string, awake: boolean): Promise<void> {
         if (flags.signature === 'off' || !awake) return;
+        const hour = new Date(t).getHours();
+        if (hour < SIGNATURE_HOURS[0] || hour > SIGNATURE_HOURS[1]) return;
         if (!state.signature) {
             // 第一次：一两个小时后改，不是一启动就改
             state.signature = { text: '', at: 0, next: t + pick(String(t), 'signature-first', [3_600_000, 7_200_000]) };

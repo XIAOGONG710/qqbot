@@ -87,7 +87,9 @@ describe('长跑：60 天每分钟一次，隔几天重启一次', () => {
         // 签名：第一次不是一开机就改；之后隔 3–5 天（等到她醒着，最多再晚一天）；睡着上课时不改
         assert.ok(events.sig.length >= 8 && events.sig.length <= 20, summary);
         assert.ok(events.sig[0]! - new Date(2026, 10, 2).getTime() >= HOUR, '第一次要隔一两个小时');
-        assert.ok(gaps(events.sig).every(gap => gap >= 3 * DAY && gap <= 6 * DAY), `签名间隔（天）：${gaps(events.sig).map(g => (g / DAY).toFixed(1)).join(',')}`);
+        assert.ok(events.sig.every(t => hourOf(t) >= 10 && hourOf(t) < 23), '签名只在白天换');
+        assert.ok(new Set(events.sig.map(t => new Date(t).getHours())).size >= 4, '钟点不扎堆在同一个点');
+        assert.ok(gaps(events.sig).every(gap => gap >= 2.4 * DAY && gap <= 6.6 * DAY), `签名间隔（天）：${gaps(events.sig).map(g => (g / DAY).toFixed(1)).join(',')}`);
         assert.ok(events.sig.every(t => !['sleep', 'class'].includes(kindAt(t))), '睡着、上课时不改签名');
 
         // 说说：任何 7 天里最多 3 条；两条之间至少 20 小时；工作日 17:30 以后、周末 11:00 以后；每周平均有一两条
@@ -107,6 +109,8 @@ describe('长跑：60 天每分钟一次，隔几天重启一次', () => {
         // 在线状态：只在变的时候改；两次之间至少 10 分钟（重启后的第一次除外）；一天不超过 12 次
         assert.ok(events.status.length > DAYS, `状态改得太少：${summary}`);
         assert.ok(events.status.every((entry, i) => i === 0 || entry.restart || entry.t - events.status[i - 1]!.t >= 10 * MINUTE), '状态改得太勤');
+        const awayMinutes = new Set(events.status.filter(entry => entry.label === '30/0' && !entry.restart).map(entry => { const d = new Date(entry.t); return d.getHours() * 60 + d.getMinutes(); }));
+        assert.ok(awayMinutes.size >= 8, `「离开」每天都在几乎同一分钟：${[...awayMinutes].join(',')}`);
         const perDay = new Map<string, number>();
         for (const entry of events.status) perDay.set(new Date(entry.t).toDateString(), (perDay.get(new Date(entry.t).toDateString()) ?? 0) + 1);
         const worst = [...perDay.entries()].sort((x, y) => y[1] - x[1])[0]!;
