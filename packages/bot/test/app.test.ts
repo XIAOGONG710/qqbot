@@ -70,13 +70,14 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
     const asked: number[] = [];
     let nextId = 900;
     const transport: Transport = {
+        ...(options.setInputStatus ? { setInputStatus: options.setInputStatus } : {}),
         sendPrivateText: async (userId, text) => { sent.push(`${userId}:${text}`); return nextId++; },
         sendPrivateImage: async (userId, file, summary) => { images.push(`${userId}:${file}:${summary}`); return nextId++; },
         ...(options.pokeFriend ? { pokeFriend: options.pokeFriend } : {}),
@@ -1036,5 +1037,28 @@ describe('戳一戳（ADR 0079，配置 pokes）', () => {
         const { app, logs } = setup(c, {}, { clock });
         app.receivePoke(pokeFrom(10001));
         assert.ok(logs.includes('[10001] 戳了她一下'), logs.join('|'));
+    });
+});
+
+describe('正在输入（ADR 0077）：整条线接通', () => {
+    test('开着 typingStatus 且她要打字一阵：app 把 setInputStatus 接到回复器上（contact.ts 以前没转发，开了也不会触发）；关着不调', async () => {
+        const reply = '今天去了食堂吃了面条还不错';
+        const run = async (typingStatus: boolean) => {
+            const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
+            const typed: number[] = [];
+            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }], schedule: true, typingStatus });
+            const { app, sent } = setup(cfg, {}, { clock, generate: () => reply, setInputStatus: async userId => { typed.push(userId); } });
+            app.receive({ ...event(10001, 1, '在吗'), time: Math.floor(clock.now() / 1000) });
+            const deadline = Date.now() + 8000;
+            while (sent.length === 0 && Date.now() < deadline) {
+                await new Promise(r => setTimeout(r, 20));
+                const next = clock.nextTimer();
+                if (next !== undefined) clock.advanceTo(next);
+            }
+            assert.equal(sent.length, 1, '回复发出去了');
+            return typed;
+        };
+        assert.ok((await run(true)).length >= 1, '开着：打字那几秒调了 setInputStatus');
+        assert.deepEqual(await run(false), [], '关着：不调');
     });
 });
