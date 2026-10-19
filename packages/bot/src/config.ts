@@ -44,6 +44,7 @@ export const DEFAULTS = {
     lifeInPrompt: false,
     grievance: false,
     pokes: false,
+    pokeBack: false,
     feedbackCommands: false,
     realWeather: true,
     media: true,
@@ -115,6 +116,8 @@ export interface AppConfig {
     grievance: boolean;
     /** 戳一戳（ADR 0079）：名单里的人在 QQ 里戳她，变成一条「[戳了戳你]」走原来的回复流程；睡着、上课时不理，5 分钟最多 3 下。默认关 */
     pokes: boolean;
+    /** 戳回去（ADR 0079 补）：开着 pokes 时，算数的戳里约 40% 她也戳回去一下（NapCat 的 friend_poke，要它的 packet 服务可用）。默认关 */
+    pokeBack: boolean;
     /**
      * 反馈通道（ADR 0073）：男朋友档对她的话回一个字「假」或「像」，记进 feedback/YYYY-MM.jsonl，不当聊天、她不回应。默认关
      */
@@ -310,6 +313,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         lifeInPrompt: bool(file, 'lifeInPrompt', '', DEFAULTS.lifeInPrompt),
         grievance: bool(file, 'grievance', '', DEFAULTS.grievance),
         pokes: bool(file, 'pokes', '', DEFAULTS.pokes),
+        pokeBack: bool(file, 'pokeBack', '', DEFAULTS.pokeBack),
         feedbackCommands: bool(file, 'feedbackCommands', '', DEFAULTS.feedbackCommands),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         media: bool(file, 'media', '', DEFAULTS.media),

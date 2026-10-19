@@ -90,6 +90,7 @@ export interface Config {
     lifeInPrompt: boolean;
     grievance: boolean;
     pokes: boolean;
+    pokeBack: boolean;
     feedbackCommands: boolean;
     realWeather: boolean;
     candidates: number;
@@ -176,6 +177,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**生活账进提示词（第一步）**：她最近三天里有几天练拍照修图、上一回是什么时候，按账上记着的写一行进时间块；只给看得到她爱好的档位。要开着上面那一项'),
         pokes: Schema.boolean().default(DEFAULTS.pokes)
             .description('**戳一戳**（ADR 0079）：名单里的人在 QQ 里戳她一下，她看到的是一条「[戳了戳你]」，像「戳我干嘛」那样短短回一句；睡着、上课时不理，5 分钟里最多算 3 下，不戳回去。默认关'),
+        pokeBack: Schema.boolean().default(DEFAULTS.pokeBack)
+            .description('**戳回去**（ADR 0079 补）：要先开上面的「戳一戳」。算数的戳里约 40% 她也戳他一下（NapCat 的 friend_poke，要它的 packet 服务可用；不可用就只记一行日志）。默认关'),
         grievance: Schema.boolean().default(DEFAULTS.grievance)
             .description('**有起因的小别扭与和好**（ADR 0074）：男朋友档，他隔了 3 天以上才来、这几天她发的一直没回时，她回来的头一两轮淡一点、点一句，他一解释 / 道歉 / 哄就软下来。只由这一个具体事件触发，一次只有一档，不存跨天的情绪，每轮从聊天记录的时间重算。默认关'),
         feedbackCommands: Schema.boolean().default(DEFAULTS.feedbackCommands)
@@ -294,6 +297,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.lifeInPrompt !== undefined ? { lifeInPrompt: config.lifeInPrompt } : {}),
         ...(config.grievance !== undefined ? { grievance: config.grievance } : {}),
         ...(config.pokes !== undefined ? { pokes: config.pokes } : {}),
+        ...(config.pokeBack !== undefined ? { pokeBack: config.pokeBack } : {}),
         ...(config.feedbackCommands !== undefined ? { feedbackCommands: config.feedbackCommands } : {}),
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
@@ -389,6 +393,7 @@ export function apply(ctx: Context, config: Config) {
     const transport: Transport = {
         // 白名单的小黄脸「[捂脸]」发成 face 段（ADR 0051），和 onebot.ts 发的是同一个请求
         sendPrivateText: async (userId, text) => Number(await onlineBot().internal.sendPrivateMsg(userId, textToSegments(text))),
+        pokeFriend: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('friend_poke', { user_id: String(userId) }); },
         sendPrivateImage: async (userId, file, summary) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'image', data: { file, summary, sub_type: 1 } }])),
         friendHistory: (userId, count) => onlineBot().internal.getFriendMsgHistory(String(userId), undefined, count),
     };

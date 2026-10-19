@@ -37,6 +37,7 @@ const app = startApp({
     transport: {
         sendPrivateText: (userId, text) => client.sendPrivateText(userId, text),
         sendPrivateImage: (userId, file, summary) => client.sendPrivateImage(userId, file, summary),
+        pokeFriend: async userId => { await client.call('friend_poke', { user_id: String(userId) }); },
         friendHistory: async (userId, count) => (await client.call<{ messages: HistoryMessage[] }>('get_friend_msg_history', {
             user_id: String(userId),
             count,

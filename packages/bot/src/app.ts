@@ -32,7 +32,7 @@ import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { newsKindsOf, type ProactiveMode } from './proactive.ts';
 import { detectCrisis } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
-import { createPokeLimiter, POKE_MAX_AGE_MS, POKE_MAX_IN_WINDOW, pokeMessage } from './pokes.ts';
+import { createPokeLimiter, POKE_BACK_COOLDOWN_MS, POKE_MAX_AGE_MS, POKE_MAX_IN_WINDOW, pokeBackPlan, pokeMessage } from './pokes.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner, type PlannerStatus } from './proactive-planner.ts';
 import { PromiseStateUnavailable } from './promise-state.ts';
 import { promiseKeeper, type Appointment } from './promises.ts';
@@ -61,6 +61,8 @@ export const WEATHER_REFRESH_MS = 30 * 60_000;
 export interface Transport {
     /** 发一条私聊文字，返回 QQ 消息 id；文字里白名单的小黄脸「[捂脸]」发成 face 段（qq-faces.ts textToSegments，ADR 0051） */
     sendPrivateText(userId: number, text: string): Promise<number>;
+    /** 戳他一下（NapCat 的 friend_poke，配置 pokeBack）；没有就不戳 */
+    pokeFriend?(userId: number): Promise<void>;
     /** 发本地图片表情；配置 stickers 开时两个入口都提供。 */
     sendPrivateImage?(userId: number, file: string, summary: string): Promise<number>;
     /** NapCat 的 get_friend_msg_history：某人最近 count 条私聊（含小号自己发的），从旧到新。没有任何记录时 NapCat 也报错 */
@@ -551,6 +553,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const inbox = new Map<number, Promise<void>>();
     const unlistedLimiter = new SlidingWindowRateLimiter();
     const pokeLimiter = createPokeLimiter();
+    const lastPokeBack = new Map<number, number>();
+    const pokeTimers = new Set<ReturnType<typeof setTimeout>>();
 
     function onMessage(event: MessageEvent): void {
         // 补回或入口重投的同一条消息不消耗限额，也不重复处理。
@@ -733,10 +737,25 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             }
             log(`[${contact.qq}] 戳了她一下`);
             onMessage(pokeMessage(event));
+            // 她也戳回去一下（比文字回复早一点）；失败只记一行，不影响回复
+            const back = config.pokeBack && transport.pokeFriend ? pokeBackPlan(contact.qq, event.time) : undefined;
+            const lastBack = lastPokeBack.get(contact.qq);
+            if (back && (lastBack === undefined || now - lastBack >= POKE_BACK_COOLDOWN_MS)) {
+                lastPokeBack.set(contact.qq, now);
+                const timer = setTimeout(() => {
+                    pokeTimers.delete(timer);
+                    if (stopped) return;
+                    transport.pokeFriend!(contact.qq).then(() => log(`[${contact.qq}] 戳回去了`), error => log(`[${contact.qq}] 戳回去失败：${error instanceof Error ? error.message : String(error)}`));
+                }, back.delayMs);
+                timer.unref?.();
+                pokeTimers.add(timer);
+            }
         },
         stop() {
             if (stopped) return;
             stopped = true;
+            for (const timer of pokeTimers) clearTimeout(timer);
+            pokeTimers.clear();
             heartbeat.stop();
             reading?.stop();
             if (readingUnlisted !== reading) readingUnlisted?.stop();

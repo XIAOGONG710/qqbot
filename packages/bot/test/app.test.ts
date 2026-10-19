@@ -9,6 +9,7 @@ import type { ImageDescriber, MEDIA_TIMEOUTS, MediaReader } from '../src/media.t
 import type { AppConfig } from '../src/config.ts';
 import { ChatHistory } from '../src/history.ts';
 import type { MessageEvent, PokeEvent } from '../src/onebot.ts';
+import { POKE_BACK_DELAY_MS, pokeBackPlan } from '../src/pokes.ts';
 import type { ProactiveRecord } from '../src/proactive.ts';
 import { stateAt } from '../src/schedule.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
@@ -44,7 +45,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, pokes: false,
+        lifeInPrompt: false, grievance: false, pokes: false, pokeBack: false,
         feedbackCommands: false,
         realWeather: false,
         media: true,
@@ -68,7 +69,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; pokeFriend?: (userId: number) => Promise<void> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -77,6 +78,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
     const transport: Transport = {
         sendPrivateText: async (userId, text) => { sent.push(`${userId}:${text}`); return nextId++; },
         sendPrivateImage: async (userId, file, summary) => { images.push(`${userId}:${file}:${summary}`); return nextId++; },
+        ...(options.pokeFriend ? { pokeFriend: options.pokeFriend } : {}),
         friendHistory: async (userId, count) => {
             asked.push(userId);
             await options.holdHistory;
@@ -952,6 +954,30 @@ describe('戳一戳（ADR 0079，配置 pokes）', () => {
         for (let i = 0; i < 5; i++) app.receivePoke(pokeFrom(10001));
         assert.equal(logs.filter(l => l === '[10001] 戳了她一下').length, 3);
         assert.equal(logs.filter(l => l.includes('已经戳过 3 下')).length, 2);
+    });
+
+    test('戳回去（配置 pokeBack）：算数的戳里按概率她也戳回去一下，隔一两秒；5 分钟里不戳第二次；关着或戳没算数就不戳', async () => {
+        // 找两个有「戳回去」的通知时间（按人和时间定，同一下每次一样）
+        const times: number[] = [];
+        for (let back = 0; back < 40 && times.length < 2; back++) if (pokeBackPlan(10001, nowSec() - back)) times.push(nowSec() - back);
+        assert.equal(times.length, 2, '40 个时间里该有两个');
+        const poke = (time: number): PokeEvent => ({ ...pokeFrom(10001), time });
+        const called: number[] = [];
+        const cfg = config({ contacts: bf, pokes: true, pokeBack: true });
+        const on = setup(cfg, {}, { pokeFriend: async userId => { called.push(userId); } });
+        const offCalled: number[] = [];
+        const off = setup(config({ contacts: bf, pokes: true }), {}, { pokeFriend: async userId => { offCalled.push(userId); } });
+        const failing = setup(config({ contacts: bf, pokes: true, pokeBack: true }), {}, { pokeFriend: async () => { throw new Error('packet 服务不可用'); } });
+        on.app.receivePoke(poke(times[0]!));
+        on.app.receivePoke(poke(times[1]!));
+        off.app.receivePoke(poke(times[0]!));
+        failing.app.receivePoke(poke(times[0]!));
+        await new Promise(r => setTimeout(r, POKE_BACK_DELAY_MS[1] + 400));
+        assert.deepEqual(called, [10001], '5 分钟里只戳一次');
+        assert.ok(on.logs.includes('[10001] 戳回去了'), on.logs.join('|'));
+        assert.deepEqual(offCalled, [], '关着不戳');
+        assert.equal(failing.sent.length, 1);
+        assert.ok(failing.logs.some(l => l.startsWith('[10001] 戳回去失败：packet 服务不可用')), '失败只记日志，文字回复照常：' + failing.logs.join('|'));
     });
 
     test('她睡着、在上课时的戳不算（日志记在干什么，不进聊天记录、不排回复）；空闲时算', async () => {
