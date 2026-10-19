@@ -46,6 +46,7 @@ export const DEFAULTS = {
     grievance: false,
     npcAsks: false,
     pokes: false,
+    recalls: false,
     feedbackCommands: false,
     realWeather: true,
     festivals: 'off' as FestivalMode,
@@ -121,6 +122,8 @@ export interface AppConfig {
     npcAsks: boolean;
     /** 戳一戳（ADR 0079）：名单里的人在 QQ 里戳她，变成一条「[戳了戳你]」走原来的回复流程；睡着、上课时不理，5 分钟最多 3 下。默认关 */
     pokes: boolean;
+    /** 撤回（ADR 0082）：他撤回一条她还没回的消息，她看到的是「[撤回了一条消息]」而不是原文（危机的话除外）。默认关 */
+    recalls: boolean;
     /**
      * 反馈通道（ADR 0073）：男朋友档对她的话回一个字「假」或「像」，记进 feedback/YYYY-MM.jsonl，不当聊天、她不回应。默认关
      */
@@ -321,6 +324,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         grievance: bool(file, 'grievance', '', DEFAULTS.grievance),
         npcAsks: bool(file, 'npcAsks', '', DEFAULTS.npcAsks),
         pokes: bool(file, 'pokes', '', DEFAULTS.pokes),
+        recalls: bool(file, 'recalls', '', DEFAULTS.recalls),
         feedbackCommands: bool(file, 'feedbackCommands', '', DEFAULTS.feedbackCommands),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         festivals: festivalMode(file.festivals),

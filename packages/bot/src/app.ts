@@ -17,7 +17,7 @@ import type { Log } from './log.ts';
 import { ChatHistory, type StoredMessage } from './history.ts';
 import { asleepSince, saidBedtimes } from './bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from './backfill.ts';
-import { segmentsToText, type MessageEvent, type PokeEvent, type QuoteLookup, type Segment } from './onebot.ts';
+import { segmentsToText, type MessageEvent, type PokeEvent, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
 import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from './media.ts';
 import type { Responder, ResponderStatus } from './responder.ts';
 import { contextSummarizer } from './context-window.ts';
@@ -78,6 +78,8 @@ export interface App {
     receive(event: MessageEvent): void;
     /** 名单里的人私聊戳了她一下（ADR 0079，配置 pokes）：算数的话变成一条「[戳了戳你]」走原来的回复流程；其余的忽略 */
     receivePoke(event: PokeEvent): void;
+    /** 名单里的人撤回了一条消息（ADR 0082，配置 recalls）：还没回的话记成「[撤回了一条消息]」；其余的忽略 */
+    receiveRecall(event: RecallEvent): void;
     /** 停下：回复器都停掉，不再写记忆，释放锁（Koishi 插件停用或重启时） */
     stop(): void;
     /** 此刻的状态（控制台「林梦瑶」页面，ADR 0010）；不含聊天内容 */
@@ -768,6 +770,16 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             }
             log(`[${contact.qq}] 戳了她一下`);
             onMessage(pokeMessage(event));
+        },
+
+        receiveRecall(event) {
+            if (stopped || !config.recalls) return;
+            const contact = config.contacts.find(c => c.qq === event.user_id);
+            if (!contact) return;
+            // 想伤害自己的话撤回了也照样看到（安全比像人优先，ADR 0068）；回过的她已经看过
+            if (chatHistory.recall(contact.qq, event.message_id, content => Boolean(detectCrisis(content)))) {
+                log(`[${contact.qq}] 他撤回了一条还没回的消息，记成「撤回了一条消息」`);
+            }
         },
         stop() {
             if (stopped) return;

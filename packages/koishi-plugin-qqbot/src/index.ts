@@ -16,7 +16,7 @@ import { startApp, type Transport } from '../../bot/src/app.ts';
 import type { HistoryMessage } from '../../bot/src/backfill.ts';
 import { CONTACT_TIERS, DEFAULTS, STICKER_MODES, parseAppConfig, type AppConfig, type ContactTier, type StickerMode } from '../../bot/src/config.ts';
 import { createLog, type Log } from '../../bot/src/log.ts';
-import { isPokeAtMe, isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
+import { isFriendRecall, isPokeAtMe, isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
 import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
 import { textToSegments } from '../../bot/src/qq-faces.ts';
 import { FESTIVAL_MODES, type FestivalMode } from '../../bot/src/festivals.ts';
@@ -93,6 +93,7 @@ export interface Config {
     grievance: boolean;
     npcAsks: boolean;
     pokes: boolean;
+    recalls: boolean;
     feedbackCommands: boolean;
     realWeather: boolean;
     festivals: FestivalMode;
@@ -181,6 +182,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**生活账进提示词（第一步）**：她最近三天里有几天练拍照修图、上一回是什么时候，按账上记着的写一行进时间块；只给看得到她爱好的档位。要开着上面那一项'),
         pokes: Schema.boolean().default(DEFAULTS.pokes)
             .description('**戳一戳**（ADR 0079）：名单里的人在 QQ 里戳她一下，她看到的是一条「[戳了戳你]」，像「戳我干嘛」那样短短回一句；睡着、上课时不理，5 分钟里最多算 3 下，不戳回去。默认关'),
+        recalls: Schema.boolean().default(DEFAULTS.recalls)
+            .description('**撤回**（ADR 0082）：他撤回了一条她还没回的消息，她看到的是「撤回了一条消息」而不是原文（像真人那样问一句「撤回啥了」）；回过的、想伤害自己的话撤回了也照样看到。默认关'),
         grievance: Schema.boolean().default(DEFAULTS.grievance)
             .description('**有起因的小别扭与和好**（ADR 0074）：男朋友档，他隔了 3 天以上才来、这几天她发的一直没回时，她回来的头一两轮淡一点、点一句，他一解释 / 道歉 / 哄就软下来。只由这一个具体事件触发，一次只有一档，不存跨天的情绪，每轮从聊天记录的时间重算。默认关'),
         npcAsks: Schema.boolean().default(DEFAULTS.npcAsks)
@@ -306,6 +309,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.grievance !== undefined ? { grievance: config.grievance } : {}),
         ...(config.npcAsks !== undefined ? { npcAsks: config.npcAsks } : {}),
         ...(config.pokes !== undefined ? { pokes: config.pokes } : {}),
+        ...(config.recalls !== undefined ? { recalls: config.recalls } : {}),
         ...(config.feedbackCommands !== undefined ? { feedbackCommands: config.feedbackCommands } : {}),
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
         ...(config.festivals !== undefined ? { festivals: config.festivals } : {}),
@@ -452,6 +456,12 @@ export function apply(ctx: Context, config: Config) {
         if (session.type !== 'notice' || session.subtype !== 'poke') return;
         const event = (session as Session & { onebot?: OneBotEvent }).onebot;
         if (session.platform === 'onebot' && event && isPokeAtMe(event)) app.receivePoke(event);
+    });
+
+    // 他撤回消息（ADR 0082）：adapter-onebot 把 friend_recall 发成 message-deleted 事件，原始数据在 session.onebot
+    ctx.on('internal/session', session => {
+        const event = (session as Session & { onebot?: OneBotEvent }).onebot;
+        if (session.platform === 'onebot' && event && isFriendRecall(event)) app.receiveRecall(event);
     });
 
     // QQ 号的下拉：挂在根上下文上，插件失败、重启时不卸掉（ADR 0009 试验结果第 5 条）
