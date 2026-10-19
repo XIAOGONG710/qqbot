@@ -133,3 +133,24 @@ describe('长跑：B 站接口一直取不到', () => {
         assert.ok(requests <= 150, `60 天里取了 ${requests} 次榜（被风控时不该一晚上每 15 分钟一次）`);
     });
 });
+
+describe('长跑：NapCat 的动作一直失败', () => {
+    test('60 天里每一项的尝试次数都有上限，日志每一项只记一次', async () => {
+        const clock = { t: new Date(2026, 10, 2, 0, 0).getTime() };
+        const logs: string[] = [];
+        const attempts = { status: 0, like: 0, sig: 0, qzone: 0, compose: 0 };
+        const boom = (key: keyof typeof attempts) => async (): Promise<never> => { attempts[key]++; throw new Error('retcode 1200'); };
+        const presence = createPresence({
+            flags: { onlineStatus: true, profileLikes: true, signature: 'on', qzone: 'on', qzoneVisibility: 'friends' },
+            transport: { setOnlineStatus: boom('status'), sendLike: boom('like'), setSignature: boom('sig'), postQzone: boom('qzone') },
+            schedule, likeTargets: [USER], dir: tmp(), now: () => clock.t, log: line => logs.push(line),
+            composeQzone: async ({ now }) => { attempts.compose++; return { text: `说说${now}`, withPhoto: false }; },
+        });
+        for (const end = clock.t + DAYS * DAY; clock.t < end; clock.t += MINUTE) await presence.tick();
+        assert.ok(attempts.like <= DAYS, `点赞试了 ${attempts.like} 次`);
+        assert.ok(attempts.qzone <= DAYS, `发说说试了 ${attempts.qzone} 次`);
+        assert.ok(attempts.sig <= DAYS * 4 + 1, `改签名试了 ${attempts.sig} 次`);
+        assert.ok(attempts.status <= DAYS * 14, `改状态试了 ${attempts.status} 次（一直失败不该每分钟一次）`);
+        assert.ok(logs.length <= 5, logs.join('|'));
+    });
+});

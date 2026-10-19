@@ -50,6 +50,9 @@ export const STATUS_MIN_GAP_MS = 10 * 60_000;
  */
 export const BUSY_HOLD_MS = 60 * 60_000;
 
+/** 改在线状态失败了就越隔越久再试：10、20、40、80 分钟，之后每 2 小时；成功一次从头（一直失败不该每分钟敲一次 NapCat） */
+const STATUS_RETRY_MAX_MS = 2 * 3_600_000;
+
 // ───────── 资料卡点赞 ─────────
 
 /** 一天点不点：约这个比例的日子（人也不是天天点） */
@@ -248,12 +251,15 @@ export function createPresence(options: PresenceOptions): Presence {
     const draft = (title: string, body: string) => appendFileSync(draftsPath, `## ${title}\n\n${body}\n\n`);
     let appliedThisRun: string | undefined;
     let lastClassAt: number | undefined;
+    let statusRetryAt = 0;
+    let statusFailures = 0;
     let busy = false;
     let timer: ReturnType<typeof setInterval> | undefined;
 
     async function online(t: number, state0: ReturnType<typeof stateAt>): Promise<void> {
         if (!flags.onlineStatus || !transport.setOnlineStatus) return;
         if (state0.activity.kind === 'class') lastClassAt = t;
+        if (t < statusRetryAt) return;
         let want = onlineStatusFor(state0.activity, options.saidSleep?.(t) ?? false);
         const have = appliedThisRun;
         if (have === BUSY.label && want.label !== BUSY.label && want.label !== AWAY.label && lastClassAt !== undefined && t - lastClassAt < BUSY_HOLD_MS) want = BUSY;
@@ -263,12 +269,15 @@ export function createPresence(options: PresenceOptions): Presence {
         try {
             await transport.setOnlineStatus(want.status, want.ext);
             appliedThisRun = want.label;
+            statusFailures = 0;
             state.status = { label: want.label, at: t };
             save();
             log(`在线状态：${want.label}`);
             recovered('改在线状态');
         } catch (error) {
             fail('改在线状态', error);
+            statusRetryAt = t + Math.min(STATUS_MIN_GAP_MS * 2 ** statusFailures, STATUS_RETRY_MAX_MS);
+            statusFailures++;
         }
     }
 
