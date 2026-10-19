@@ -10,6 +10,7 @@
 
 import { faceText, textToSegments } from './qq-faces.ts';
 import { logBody } from './sensitive.ts';
+import { FORWARD_TEXT, fileText, shareText } from './shares.ts';
 
 export interface Segment {
     type: string;
@@ -215,7 +216,10 @@ export function segmentsToText(message: Segment[] | string): string {
             case 'reply': return '';
             case 'record': return '[语音]';
             case 'video': return '[视频]';
-            case 'file': return '[文件]';
+            case 'file': return fileText(data.file);
+            // 分享卡片、转发的聊天记录（ADR 0080）：以前一律是「[json]」「[forward]」，她看不懂
+            case 'json': return shareText(data.data);
+            case 'forward': return FORWARD_TEXT;
             default: return `[${segment.type}]`;
         }
     }).join('');
