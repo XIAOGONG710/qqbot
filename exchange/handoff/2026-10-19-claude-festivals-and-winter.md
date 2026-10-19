@@ -99,4 +99,4 @@
 - **戳回去**（ADR 0079 补，`claude/poke` `f79ddfc`，已合进 all-candidates，配置 `pokeBack` 默认关）：约 40% 她隔 1.2–3.5 秒戳回去，5 分钟最多一次；NapCat `friend_poke` 是 packet 动作，线上 `packetBackend: auto` 是否真可用没验证。
 - **新：她在 QQ 上「有个人在」**（ADR 0083，分支 `claude/presence` `f6b70f5`，已合进 all-candidates，六个开关默认全关）：已读回执、表情回应、在线状态、资料卡点赞、个性签名、QQ 空间说说。你 11:20 提到的「空友爱看」是 QQ 空间把陌生人优质说说混进动态流的推荐池（风景、自拍、生活碎片、梗图为主）；说说往这个风格靠，图只用你放的，默认仅好友可见。另修了 ADR 0077 的接线漏洞。
 - **新：她刷 B 站**（ADR 0084，分支 `claude/bilibili` `8b4ccee`，已合进 all-candidates，配置 `bilibili` 默认关）。你问的「dsh 刷 B 站并 @ 用户评论」：最接近的是 chenluQwQ/bilibili-ai-bot（登录账号、刷推荐、发评论，没有 @ 功能）。只读那层做了（热门榜 + 热评 + 真链接，用 QQ 发给你）；要登录账号那层没做，原因和要你决定的四点在 ADR 0084。
-- **补**：她现在知道自己的个性签名和 3 天内真发的说说（时间块一行，`claude/presence-aware` `85ab1f8`，已合进 all-candidates）；存在感的日志里签名 / 说说只记字数。全套 bot 测试 12:04 在加这些之前跑过 1097/1097。
+- **补**：她现在知道自己的个性签名和 3 天内真发的说说（时间块一行，`claude/presence-aware` `85ab1f8`，已合进 all-candidates）；存在感的日志里签名 / 说说只记字数。全套 bot 测试 12:04 在加这些之前跑过 1097/1097；13:22 在加了这些的 `85ab1f8` 上重跑 1099/1099 全过。
