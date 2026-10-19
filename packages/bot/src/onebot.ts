@@ -171,8 +171,31 @@ export function isPrivateFriendMessage(event: OneBotEvent): event is MessageEven
     return event.post_type === 'message' && event.message_type === 'private' && event.sub_type === 'friend';
 }
 
-/** 把消息段转成给模型看的纯文本；非文字的段用占位符（听过、看过的语音和图片在这之前已经换成一段文字，media.ts，ADR 0052） */
-export function segmentsToText(message: Segment[] | string): string {
+/** 聊天记录里的一条（引用回复时按消息 id 找到被引用的那一条，ADR 0081） */
+export interface QuotedMessage {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
+export type QuoteLookup = (messageId: number) => QuotedMessage | undefined;
+
+const MAX_QUOTE = 40;
+
+/**
+ * 引用回复段 → 「[引用你说的：「我周三有早八」]」；找不到被引用的那一条（不是经过机器人收发的、已经不在记录里）就什么都不写，和以前一样。
+ * 被引用的那一条自己开头的引用不再套进来，换行压成空格，超过 MAX_QUOTE 个字截短
+ */
+function quoteText(id: unknown, lookup: QuoteLookup | undefined): string {
+    const number = Number(id);
+    const quoted = lookup && Number.isSafeInteger(number) ? lookup(number) : undefined;
+    if (!quoted) return '';
+    const text = quoted.content.replace(/^\[引用.*?」\]/, '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    return `[引用${quoted.role === 'assistant' ? '你说的' : '他之前说的'}：「${text.length > MAX_QUOTE ? `${text.slice(0, MAX_QUOTE)}…` : text}」]`;
+}
+
+/** 把消息段转成给模型看的纯文本；非文字的段用占位符（听过、看过的语音和图片在这之前已经换成一段文字，media.ts，ADR 0052）。quoted 给了就把引用回复的那句话写进去 */
+export function segmentsToText(message: Segment[] | string, quoted?: QuoteLookup): string {
     if (typeof message === 'string') return message;
     return message.map(segment => {
         const data = segment.data ?? {};
@@ -183,7 +206,7 @@ export function segmentsToText(message: Segment[] | string): string {
             // QQ 小黄脸按 id 换成名字「[捂脸]」，表里没有的照旧「[表情]」（ADR 0051）
             case 'face': return faceText(data.id);
             case 'at': return `@${String(data.qq ?? '')} `;
-            case 'reply': return '';
+            case 'reply': return quoteText(data.id, quoted);
             case 'record': return '[语音]';
             case 'video': return '[视频]';
             case 'file': return '[文件]';
