@@ -28,3 +28,7 @@ NapCat 有扩展动作 `set_input_status { user_id, event_type }`（`vendor/NapC
 
 - `test/runtime.test.ts` 新增 3 项（假时钟）：等 9 秒显示 3 次（0、4、8 秒）、两条之间的等待各自显示、发出去之后不再有；不到 1.5 秒不显示、没配 `typing` 照旧；`typing` 抛异常不影响发送。56 项全过。
 - `koishi-plugin-qqbot` 的 `config.test.ts` 新增 1 项（默认关、开了进配置、默认值不写回 yml）。
+
+## 补（10-19 11:40）：接线漏了一环，已修
+
+`app.ts` 把 `typing` 传给了 `createContactResponder`，但 `contact.ts` 的选项里没有 `typing`，也没转发给 `createResponder`——`...(cond ? { typing } : {})` 这种展开写法绕过了多余属性检查，类型检查没报。结果是：**开了 `typingStatus` 也永远不会触发**，responder 单测（直接给 `deps.typing`）一直是绿的，所以没发现。修法：`ContactPipelineOptions.typing?` + 转发；加了一条走整条线的测试（`app.test.ts`「正在输入：整条线接通」：开着时打字那几秒调 `setInputStatus`，关着不调）；没有修复时这条测试是红的。教训：这类「选项一路传下去」的开关要有一条从 app 入口到传输层的测试，不能只测最里面一层。

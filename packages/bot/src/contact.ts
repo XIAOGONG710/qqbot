@@ -98,6 +98,8 @@ export interface ContactPipelineOptions {
     /** 整个名单（ADR 0016）：她认识名单里写了「别人提起时」的人；不传就谁都不认识 */
     contacts?: readonly Contact[];
     send: (userId: number, text: string) => Promise<number>;
+    /** 她打字的这段时间让对方那边显示「正在输入…」（ADR 0077，配置 typingStatus）；不给就不显示 */
+    typing?: (userId: number) => void;
     /** 图片表情收藏：给模型列可选编号、校验输出；实际发送由 app.ts 的 send 接线。 */
     stickers?: StickerShelf;
     /** 不带联系人前缀，这里会加上 [QQ 号] */
@@ -532,6 +534,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             log,
         }),
         send: options.send,
+        ...(options.typing ? { typing: options.typing } : {}),
         ...(options.stickers ? { historyContent: (sent: string) => options.stickers!.history(sent) } : {}),
         log,
         now,
