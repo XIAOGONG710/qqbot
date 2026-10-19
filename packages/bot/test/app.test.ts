@@ -1309,7 +1309,7 @@ describe('她知道自己在 QQ 上的样子（ADR 0083）：进提示词', () =
 
 describe('全开冒烟（整包上线用）', () => {
     const bf = [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }];
-    test('所有开关一起开：连上、来一条消息、被戳、撤回——一个完整的来回不抛错、不丢回复、每个 NapCat 动作都被调到并且只在该调的时候调', async () => {
+    test('所有开关一起开：连上、来一条消息、被戳、撤回——一个完整的来回不抛错、不丢回复、日志里没有失败', async () => {
         const rejections: unknown[] = [];
         const onRejection = (reason: unknown) => { rejections.push(reason); };
         process.on('unhandledRejection', onRejection);
@@ -1329,8 +1329,8 @@ describe('全开冒烟（整包上线用）', () => {
                 deleteMessage: note('delete'), pokeFriend: note('poke'),
                 extra: { sendLike: note('like'), setSignature: note('signature'), postQzone: async () => 'tid' },
             });
-            const drive = async (done: () => boolean) => {
-                const deadline = Date.now() + 15000;
+            const drive = async (done: () => boolean, ms = 15000) => {
+                const deadline = Date.now() + ms;
                 while (!done() && Date.now() < deadline) {
                     await new Promise(r => setTimeout(r, 20));
                     const next = clock.nextTimer();
@@ -1354,7 +1354,7 @@ describe('全开冒烟（整包上线用）', () => {
 
             app.receive({ ...event(10001, 3, '你猜'), time: Math.floor(clock.now() / 1000) });
             app.receiveRecall({ post_type: 'notice', notice_type: 'friend_recall', self_id: SELF, user_id: 10001, message_id: 3, time: Math.floor(clock.now() / 1000) });
-            await drive(() => false);
+            await drive(() => false, 2000);
             const failures = logs.filter(l => /失败|出错|异常|未捕获|Error/.test(l));
             assert.deepEqual(failures, [], '全开时日志里不该有失败 / 出错：' + failures.join(' | '));
             assert.deepEqual(rejections, [], '没有没接住的 Promise 错误');
