@@ -73,7 +73,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -85,6 +85,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.setOnlineStatus ? { setOnlineStatus: options.setOnlineStatus } : {}),
         ...(options.deleteMessage ? { deleteMessage: options.deleteMessage } : {}),
         ...(options.reactMessage ? { reactMessage: options.reactMessage } : {}),
+        ...(options.extra ?? {}),
         sendPrivateText: async (userId, text) => { sent.push(`${userId}:${text}`); return nextId++; },
         sendPrivateImage: async (userId, file, summary) => { images.push(`${userId}:${file}:${summary}`); return nextId++; },
         ...(options.pokeFriend ? { pokeFriend: options.pokeFriend } : {}),
@@ -1303,5 +1304,62 @@ describe('她知道自己在 QQ 上的样子（ADR 0083）：进提示词', () =
         assert.match(prompt, /个性签名现在是「土豆又胖了」/);
         assert.match(prompt, /发了一条说说「今天的云好看」，配了一张图/);
         assert.ok(!logs.some(l => l.includes('土豆又胖了')), '日志里没有签名原文');
+    });
+});
+
+describe('全开冒烟（整包上线用）', () => {
+    const bf = [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }];
+    test('所有开关一起开：连上、来一条消息、被戳、撤回——一个完整的来回不抛错、不丢回复、每个 NapCat 动作都被调到并且只在该调的时候调', async () => {
+        const rejections: unknown[] = [];
+        const onRejection = (reason: unknown) => { rejections.push(reason); };
+        process.on('unhandledRejection', onRejection);
+        try {
+            const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
+            const calls: string[] = [];
+            const note = (name: string) => async (...args: unknown[]) => { calls.push(name + ':' + args.join('/')); };
+            const bili = async (): Promise<{ ok: boolean; status: number; text: () => Promise<string> }> => ({ ok: true, status: 200, text: async () => JSON.stringify({ code: 0, data: { list: [] } }) });
+            const cfg = config({
+                contacts: bf, schedule: true, herDays: true, pokes: true, pokeBack: true, pokeOut: true, recalls: true, readReceipts: true, reactions: true,
+                onlineStatus: true, profileLikes: true, signature: 'dryRun', qzone: 'dryRun', bilibili: 'dryRun', typingStatus: true, selfRecall: true,
+                rhythm: true, shortReplies: true, festivals: 'greet', npcAsks: true,
+            });
+            const { app, sent, logs } = setup(cfg, { 10001: [] }, {
+                clock, generate: () => '在呢，刚忙完', bilibiliFetch: bili,
+                setOnlineStatus: note('status'), markRead: note('read'), reactMessage: note('react'), setInputStatus: note('typing'),
+                deleteMessage: note('delete'), pokeFriend: note('poke'),
+                extra: { sendLike: note('like'), setSignature: note('signature'), postQzone: async () => 'tid' },
+            });
+            const drive = async (done: () => boolean) => {
+                const deadline = Date.now() + 15000;
+                while (!done() && Date.now() < deadline) {
+                    await new Promise(r => setTimeout(r, 20));
+                    const next = clock.nextTimer();
+                    if (next !== undefined) clock.advanceTo(next);
+                }
+                await new Promise(r => setTimeout(r, 80));
+            };
+            await app.connected(SELF);
+            await drive(() => calls.some(c => c.startsWith('status:')));
+            assert.ok(calls.some(c => c.startsWith('status:')), '连上就设了在线状态');
+
+            app.receive({ ...event(10001, 1, '在吗'), time: Math.floor(clock.now() / 1000) });
+            await drive(() => sent.length >= 1);
+            assert.ok(sent.length >= 1, '回了话（节奏和更短都开着也照回）');
+            assert.ok(calls.includes('read:10001'), '已读');
+
+            const before = sent.length;
+            app.receivePoke({ post_type: 'notice', notice_type: 'notify', sub_type: 'poke', self_id: SELF, user_id: 10001, target_id: SELF, time: Math.floor(clock.now() / 1000) });
+            await drive(() => sent.length > before);
+            assert.ok(sent.length > before, '被戳了回一句');
+
+            app.receive({ ...event(10001, 3, '你猜'), time: Math.floor(clock.now() / 1000) });
+            app.receiveRecall({ post_type: 'notice', notice_type: 'friend_recall', self_id: SELF, user_id: 10001, message_id: 3, time: Math.floor(clock.now() / 1000) });
+            await drive(() => false);
+            const failures = logs.filter(l => /失败|出错|异常|未捕获|Error/.test(l));
+            assert.deepEqual(failures, [], '全开时日志里不该有失败 / 出错：' + failures.join(' | '));
+            assert.deepEqual(rejections, [], '没有没接住的 Promise 错误');
+        } finally {
+            process.off('unhandledRejection', onRejection);
+        }
     });
 });
