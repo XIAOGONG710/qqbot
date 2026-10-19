@@ -36,6 +36,11 @@
 | QQ 空间说说 | `qzone: dryRun` → `on`；`qzoneVisibility` 默认仅好友 | 一周两三条，模仿空友爱看的随手一两句；有图就围着图写 | 同上 | 先看草稿；放图到 `presence/photos/`（要开「看懂图片内容」）；`public` 是你的决定 |
 | 刷 B 站 | `bilibili: dryRun` → `on`（`claude/bilibili`） | 她从 B 站热门榜挑一个真视频发给你，说一句感受，再附真链接；一周最多 3 个 | 改配置 = 插件重载一次（代码先上） | 先看 `presence/drafts.md` 的草稿；对口味再开 `on`。账号那一层（评论 / @）没做，要你决定 |
 
+> **10-19 17:20 的补充（探针和长跑测试之后）**
+> - 二里的戳一戳 / 戳回去 / 正在输入 / 撤回 / 已读回执 / 表情回应 / 在线状态 / 资料卡点赞，以及引用回复（一里的输入修复），**NapCat 的动作和事件格式已在线上用探针验过**（`scripts/napcat-probe.ts`，ADR 0085，两次共 29 项接口调用全成功；引用和撤回用的消息 id 与线上聊天记录一致）。剩下的只是「手机上看到的样子」和「她的行为好不好」，仍要各看 48 小时。签名、说说的接口（`set_self_longnick`、`send_qzone_msg`）探针有开关但这次没跑。
+> - 这几档的代码不是只靠 `claude/presence` 一个分支：存在感要带 `claude/presence` + `claude/presence-aware`（她知道自己的签名和说说）+ `claude/status-settle`（满课日状态一天闪 13 次的修补）+ `claude/presence-backoff`（状态一直失败时的退避）；刷 B 站要带 `claude/bilibili` + `claude/bilibili-backoff`（被风控时的退避）。上线时我会从 `claude/all-candidates` 里按档切出 `release-` 分支（像 B、D 那样），不会让你一个个点分支；切之前不用你做什么。
+> - 60 天长跑测试（`presence-soak.test.ts`）现在覆盖存在感五项和刷 B 站的频率与间隔界，包括 NapCat 一直失败、B 站一直被风控两种情形。
+
 ## 三、还在等你评
 
 | 档 | 在等什么 |
