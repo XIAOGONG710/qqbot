@@ -32,3 +32,7 @@ NapCat 有扩展动作 `set_input_status { user_id, event_type }`（`vendor/NapC
 ## 补（10-19 11:40）：接线漏了一环，已修
 
 `app.ts` 把 `typing` 传给了 `createContactResponder`，但 `contact.ts` 的选项里没有 `typing`，也没转发给 `createResponder`——`...(cond ? { typing } : {})` 这种展开写法绕过了多余属性检查，类型检查没报。结果是：**开了 `typingStatus` 也永远不会触发**，responder 单测（直接给 `deps.typing`）一直是绿的，所以没发现。修法：`ContactPipelineOptions.typing?` + 转发；加了一条走整条线的测试（`app.test.ts`「正在输入：整条线接通」：开着时打字那几秒调 `setInputStatus`，关着不调）；没有修复时这条测试是红的。教训：这类「选项一路传下去」的开关要有一条从 app 入口到传输层的测试，不能只测最里面一层。
+
+## 补：打字打到一半停一下（2026-10-19，跟着 `typingStatus` 一起开，没有单独的开关）
+
+真人打长句子，「对方正在输入…」常常亮一阵、灭几秒、又亮起来。现在：要打 7 秒以上的长回复里，约 12% 的轮次（按人和那一秒定，同一刻每次一样），打了大约一半时停 4.5–9 秒（停的时候不补发，QQ 的输入状态几秒自己消），再把剩下的打完。日志写「打字打到一半停了 N 秒」。只在显示「正在输入」时有意义——不开 `typingStatus` 就没有这回事；回复多等了停的那几秒。`ResponderDeps.hesitate: false` 可以关掉（测试用）。测试：命中率、会停、没停的轮次不变、不到 7 秒不停、关着不停。

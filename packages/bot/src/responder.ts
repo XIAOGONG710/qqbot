@@ -24,6 +24,14 @@ export const PART_GAP_MS = 1000;
 /** 打字时对方那边显示「正在输入…」（ADR 0077）：不到这么久的等待不显示；QQ 的输入状态几秒就消，所以每隔这么久补发一次 */
 export const TYPING_MIN_MS = 1500;
 export const TYPING_REFRESH_MS = 4000;
+
+/**
+ * 打字打到一半停一下（ADR 0077 补，开着 typingStatus 才有）：他那边的「对方正在输入…」亮了一阵、灭掉几秒、又亮起来，真人打长句子常这样。
+ * 只在要打 HESITATE_MIN_TYPING_MS 以上的长回复里、约 HESITATE_CHANCE 的轮次（按人和那一秒定，同一刻每次一样），在打了大约一半时停 HESITATE_PAUSE_MS 毫秒（QQ 的输入状态几秒自己消，停的时候不补发）
+ */
+export const HESITATE_CHANCE = 0.12;
+export const HESITATE_MIN_TYPING_MS = 7000;
+export const HESITATE_PAUSE_MS: [number, number] = [4500, 9000];
 /** 连发合并的默认值：热聊里多等一下，把 3 秒内的第二句并进同一轮；最长不超过 12 秒（ADR 0019 决策 5）。 */
 export const DEFAULT_SETTLE = { quietMs: 4000, maxMs: 12000 };
 /** 回复失败之后的再试间隔：1 分钟、5 分钟各一次（10-04 与用户确认，不无限重试） */
@@ -34,7 +42,7 @@ import type { ChatHistory, StoredMessage } from './history.ts';
 import { ModelUnreachable } from './llm.ts';
 import type { ChatMessage, OpenAIMessage, PromptResult } from './prompt.ts';
 import { PENDING_REASON } from './proactive.ts';
-import { pendingMessages, type Seen } from './reply-timing.ts';
+import { pendingMessages, pick, type Seen } from './reply-timing.ts';
 import { MAX_BUBBLES, splitReply } from './reply.ts';
 
 /** 拼好的提示词；note 是给日志的补充；maxBubbles 可让当前对话动作比作息上限更短。 */
@@ -72,6 +80,8 @@ export interface ResponderDeps {
     recallOwn?: (messageId: number) => Promise<void>;
     /** 让对方那边显示「正在输入…」（ADR 0077）：她打字的这段时间里每隔几秒调一次，调用不等结果、出错也不影响发送；不传就不显示 */
     typing?: (userId: number) => void;
+    /** 打字打到一半偶尔停几秒（默认会；false 不停，测试用）。只在显示「正在输入」时有意义 */
+    hesitate?: boolean;
     /** 她「看到」他的消息的那一刻（ADR 0083，配置 readReceipts）：让他那边的消息从未读变成已读。不等结果、出错也不影响回复；不传就不标 */
     markRead?: () => void;
     /** 她看到了却决定不回（看心情不回、收尾后的附和）：给他最后一条消息点个表情回应（ADR 0083，配置 reactions）；不传就什么都不做 */
@@ -211,9 +221,22 @@ export function createResponder(deps: ResponderDeps): Responder {
 
     async function sleepTyping(ms: number): Promise<void> {
         if (!deps.typing || ms < TYPING_MIN_MS) return sleep(ms);
+        const seed = `${deps.userId} ${Math.floor(now() / 1000)}`;
+        if (deps.hesitate !== false && ms >= HESITATE_MIN_TYPING_MS && pick(seed, 'hesitate', [0, 999]) < HESITATE_CHANCE * 1000) {
+            const before = Math.round(ms * 0.45);
+            await typeFor(before);
+            if (stopped) return;
+            const pause = pick(seed, 'hesitate-pause', HESITATE_PAUSE_MS);
+            deps.log(`打字打到一半停了 ${Math.round(pause / 1000)} 秒`);
+            await sleep(pause);
+            return typeFor(ms - before);
+        }
+        return typeFor(ms);
+    }
+    async function typeFor(ms: number): Promise<void> {
         const end = now() + ms;
         for (;;) {
-            try { deps.typing(deps.userId); } catch { /* 显示不出来不影响发送 */ }
+            try { deps.typing!(deps.userId); } catch { /* 显示不出来不影响发送 */ }
             const left = end - now();
             if (left <= TYPING_REFRESH_MS || stopped) return sleep(Math.max(0, left));
             await sleep(TYPING_REFRESH_MS);

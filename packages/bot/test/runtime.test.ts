@@ -11,7 +11,8 @@ import { isPrivateFriendMessage, segmentsToText, type MessageEvent } from '../sr
 import { unlistedName } from '../src/app.ts';
 import type { PromptResult } from '../src/prompt.ts';
 import { cleanUpReply, splitReply } from '../src/reply.ts';
-import { createResponder, DEFAULT_SETTLE, PART_GAP_MS, RETRY_AFTER_MS, type InitiateRequest, type ReplyTiming, type ResponderDeps } from '../src/responder.ts';
+import { createResponder, DEFAULT_SETTLE, HESITATE_CHANCE, HESITATE_PAUSE_MS, PART_GAP_MS, RETRY_AFTER_MS, TYPING_REFRESH_MS, type InitiateRequest, type ReplyTiming, type ResponderDeps } from '../src/responder.ts';
+import { pick } from '../src/reply-timing.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
 
@@ -945,27 +946,30 @@ describe('档位记录', () => {
 
 describe('正在输入（ADR 0077）', () => {
     // 假时钟：sleep 只推进时间，不真等
-    function run(typingMs: (part: string) => number, reply: string, withTyping = true) {
-        let t = Date.parse('2026-10-19T10:00:00+08:00');
+    function run(typingMs: (part: string) => number, reply: string, withTyping = true, hesitate?: boolean, startAt = '2026-10-19T10:00:00+08:00') {
+        let t = Date.parse(startAt);
         const stored: StoredMessage[] = [];
         const events: string[] = [];
         const typed: number[] = [];
+        const logs: string[] = [];
+        let sentAt = 0;
         const deps: ResponderDeps = {
             userId: 1,
             history: { load: () => [...stored], append: (_id, m) => { stored.push(m); } },
             buildPrompt: chat => ({ messages: chat.map(m => ({ role: m.role, content: m.content })), activatedWorldInfo: [] } satisfies PromptResult),
             generate: async () => reply,
             clean: text => text.trim(),
-            send: async (_id, text) => { events.push(`send:${text}`); return 1; },
-            log: () => {},
+            send: async (_id, text) => { events.push(`send:${text}`); sentAt = t; return 1; },
+            log: message => logs.push(message),
             sleep: async ms => { t += ms; },
             now: () => t,
             timing: { whenSeen: (_h, at) => ({ at, reason: '正聊着' }), typingMs, skip: () => undefined },
             ...(withTyping ? { typing: () => { typed.push(t); events.push('typing'); } } : {}),
+            hesitate: hesitate ?? false,
         };
         const responder = createResponder(deps);
         responder.receive('在吗', 1, new Date(t));
-        return { responder, events, typed, start: t };
+        return { responder, events, typed, start: t, logs, get sentAt() { return sentAt; } };
     }
 
     test('打字等了 9 秒：一开始就显示，之后每 4 秒补发一次；发出去之后不再有；两条之间的等待也各自显示', async () => {
@@ -975,6 +979,35 @@ describe('正在输入（ADR 0077）', () => {
         assert.equal(events.filter(e => e === 'typing').length, 4, events.join(','));
         assert.deepEqual(typed.slice(0, 3).map(t => t - start), [0, 4000, 8000]);
         assert.deepEqual(events, ['typing', 'typing', 'typing', 'send:第一条', 'typing', 'send:第二条']);
+    });
+
+    test('打字打到一半停一下：长回复里约 12% 的轮次，亮了一阵、灭几秒、再亮；短的、没配 typing 的、hesitate 关着的不停；停的那几秒不补发', async () => {
+        const seconds = Array.from({ length: 400 }, (_, i) => new Date(Date.parse('2026-10-19T10:00:00+08:00') + i * 1000));
+        const hits = seconds.filter(d => pick(`1 ${Math.floor(d.getTime() / 1000)}`, 'hesitate', [0, 999]) < HESITATE_CHANCE * 1000);
+        assert.ok(Math.abs(hits.length / seconds.length - HESITATE_CHANCE) < 0.06, String(hits.length / seconds.length));
+        const hit = hits[0]!;
+        const calm = seconds.find(d => pick(`1 ${Math.floor(d.getTime() / 1000)}`, 'hesitate', [0, 999]) >= HESITATE_CHANCE * 1000)!;
+
+        const paused = run(() => 10_000, '一大段话', true, true, hit.toISOString());
+        await paused.responder.whenIdle();
+        const gaps = paused.typed.slice(1).map((t, i) => t - paused.typed[i]!);
+        const pause = pick(`1 ${Math.floor(hit.getTime() / 1000)}`, 'hesitate-pause', HESITATE_PAUSE_MS);
+        assert.ok(gaps.some(gap => gap >= HESITATE_PAUSE_MS[0]), `中间有一个停顿：${gaps.join(',')}`);
+        assert.ok(gaps.every(gap => gap <= Math.max(TYPING_REFRESH_MS, pause + 1000)), '其余的间隔还是每 4 秒补发');
+        assert.equal(paused.events.at(-1), 'send:一大段话');
+        assert.equal(paused.logs.some(l => l.includes('打字打到一半停了')), true);
+        // 总共多等了停顿那么久
+        assert.ok(paused.sentAt - paused.start >= 10_000 + pause - 100, `${paused.sentAt - paused.start}`);
+
+        const calmRun = run(() => 10_000, '一大段话', true, true, calm.toISOString());
+        await calmRun.responder.whenIdle();
+        assert.equal(calmRun.logs.some(l => l.includes('打字打到一半停了')), false);
+        const short = run(() => 5_000, '一小段', true, true, hit.toISOString());
+        await short.responder.whenIdle();
+        assert.equal(short.logs.some(l => l.includes('打字打到一半停了')), false, '不到 7 秒的不停');
+        const off = run(() => 10_000, '一大段话', true, false, hit.toISOString());
+        await off.responder.whenIdle();
+        assert.equal(off.logs.some(l => l.includes('打字打到一半停了')), false, 'hesitate 关着不停');
     });
 
     test('有「想」的那一段（ADR 0075 thinkMs）：想的时候不显示，开始打字才显示', async () => {
