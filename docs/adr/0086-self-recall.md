@@ -21,16 +21,16 @@ NapCat 有 `delete_msg`，能撤回自己两分钟内发出的消息。
 6. 主动消息（早安、下课、刷 B 站）走同一个发送函数，也会偶尔这样。
 7. **开关** `selfRecall`（默认关），再加传输层有 `deleteMessage` 才生效；没有时 `maybeTypo` 的 `recallShare` 是 0，结果和以前逐位一样（测试里用 4000 个种子核对）。
 
-## 她自己撤回的事件
+## 她自己撤回的事件（探针验过，见下）
 
-她撤回时 NapCat 也会推一条 `friend_recall` 通知（`user_id` 是对方、`message_id` 是她那条）。`receiveRecall`（ADR 0082，配置 `recalls`）里 `chatHistory.recall` 只认**他**的、还没回过的消息，找不到她这条（没记进聊天记录）或者角色不是 user 都返回 false，什么都不做。
+她撤回时 NapCat 也会推一条 `friend_recall` 通知（探针实测 `user_id` 是她自己的号、`message_id` 是她那条）。`receiveRecall`（ADR 0082，配置 `recalls`）里 `chatHistory.recall` 只认**他**的、还没回过的消息，找不到她这条（没记进聊天记录）或者角色不是 user 都返回 false，什么都不做。
 
 ## 验证
 
 - `expression.test.ts` 1 项：不给 `recallShare` 与以前逐位一样；给了之后撤回占改口的 50% 左右；撤回的计划里 `parts` 是对的那版、`wrong` 是打错的、`afterMs` 在 1500–5000；只发一条时也能用。
 - `runtime.test.ts` 1 项：撤回成功（发出去的是 错 → 对 → 后面的；撤回的是第一条的 id；聊天记录里只有对的，id 是对的那条的；`afterMs` 真的等了）；撤回失败（错 → *改口 → 后面的，两条都记，日志写原因）；没有撤回的本事（只发对的）。
 - `app.test.ts` 1 项：整条线接通——`selfRecall` 开着、传输层有 `deleteMessage`，真的先发错的、撤回第 900 号、再发对的；去掉 app 里那一行接线，这条测试是红的。
-- 探针（ADR 0085）没有验 `delete_msg`；**第一次真用要你在场看**：开了之后等她打错字（大约 60 条回复一次），看你的 QQ 有没有「对方撤回了一条消息」+ 正确的那条。要早点看到可以让我临时调高 `RECALL_SHARE` 和打错字概率跑一次探针式的小测试。
+- **探针验过**（ADR 0085 的 `selfrecall` 步骤，2026-10-19 在线上跑）：给他发一条测试消息（id 是 32 位整数，1912047133）、3 秒后 `delete_msg` 同一个 id，接口成功。**NapCat 会推自己撤回的 `friend_recall`，但它的 `user_id` 是她自己的号（2561299676），不是对方的**（他撤回时 `user_id` 才是对方）：所以 `receiveRecall` 里 `config.contacts.find(c => c.qq === event.user_id)` 找不到联系人，直接返回，她自己的撤回不会被当成他的撤回。**手机上看到的样子**（先看到那条、再看到「对方撤回了一条消息」）要他确认。第一次真用的打错字撤回重发，要等她打错字（大约 60 条回复一次）。
 
 ## 没做
 
