@@ -41,8 +41,14 @@ export function onlineStatusFor(activity: Activity, saidSleep: boolean): OnlineS
     return ONLINE;
 }
 
-/** 状态变了也至少隔这么久才改一次（课间、几分钟的活动不来回闪） */
+/** 状态变了也至少隔这么久才改一次（几分钟的活动不来回闪） */
 export const STATUS_MIN_GAP_MS = 10 * 60_000;
+
+/**
+ * 下课后这么久内「忙碌」不改回「在线」：课间十五分钟一来一回，联系人列表上的状态一天要闪十几次，真人不会这样（60 天长跑测试发现的）。
+ * 睡下的「离开」不受这个限制
+ */
+export const BUSY_HOLD_MS = 60 * 60_000;
 
 // ───────── 资料卡点赞 ─────────
 
@@ -241,13 +247,16 @@ export function createPresence(options: PresenceOptions): Presence {
     const recovered = (what: string) => { if (failed.delete(what)) log(`${what}又成功了`); };
     const draft = (title: string, body: string) => appendFileSync(draftsPath, `## ${title}\n\n${body}\n\n`);
     let appliedThisRun: string | undefined;
+    let lastClassAt: number | undefined;
     let busy = false;
     let timer: ReturnType<typeof setInterval> | undefined;
 
     async function online(t: number, state0: ReturnType<typeof stateAt>): Promise<void> {
         if (!flags.onlineStatus || !transport.setOnlineStatus) return;
-        const want = onlineStatusFor(state0.activity, options.saidSleep?.(t) ?? false);
+        if (state0.activity.kind === 'class') lastClassAt = t;
+        let want = onlineStatusFor(state0.activity, options.saidSleep?.(t) ?? false);
         const have = appliedThisRun;
+        if (have === BUSY.label && want.label !== BUSY.label && want.label !== AWAY.label && lastClassAt !== undefined && t - lastClassAt < BUSY_HOLD_MS) want = BUSY;
         if (want.label === have) return;
         // 刚改过不久就先不动（第一次——这次启动后还没设过——除外）
         if (have !== undefined && state.status && t - state.status.at < STATUS_MIN_GAP_MS) return;

@@ -7,7 +7,7 @@ import {
     AWAY, BUSY, cleanQzoneText, createPresence, LIKE_CHANCE, LISTENING, ONLINE, onlineStatusFor, pickQzonePhoto, QZONE_CHANCE, QZONE_MAX_CHARS,
     describeSelf, likePlan, qzonePlan, reactionEmoji, SIGNATURES, signatureDueAt, signatureFor, type PresenceOptions, type PresenceTransport,
 } from '../src/presence.ts';
-import { formatDate, herDay } from '../src/schedule.ts';
+import { formatDate, herDay, stateAt } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const schedule = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;
@@ -16,6 +16,7 @@ const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-presence-')); di
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 const at = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m).getTime();
 const dayOf = (t: number) => formatDate(herDay(schedule, new Date(t)));
+const MINUTE_MS = 60_000;
 const isWeekend = (t: number) => new Date(t).getDay() === 0 || new Date(t).getDay() === 6;
 
 describe('在线状态（ADR 0083）', () => {
@@ -124,6 +125,41 @@ describe('每分钟看一眼的循环（ADR 0083）', () => {
         clock.t = at(10, 11, 3); // 周日凌晨，睡着
         await presence.tick();
         assert.deepEqual(calls, ['status:10/0', 'status:30/0']);
+    });
+
+    test('在线状态：上课「忙碌」，课间不改回在线，下课一小时后才改回；睡下立刻离开', async () => {
+        // 找一个有课的日子，逐分钟看出她的课（class）和非课
+        let day = 2;
+        let minutes: { t: number; kind: string }[] = [];
+        for (; day < 29; day++) {
+            minutes = Array.from({ length: 24 * 60 }, (_, i) => { const t = at(11, day, 0, i); return { t, kind: stateAt(schedule, new Date(t)).activity.kind }; });
+            if (minutes.filter(m => m.kind === 'class').length > 100) break;
+        }
+        const classMinutes = minutes.filter(m => m.kind === 'class');
+        const first = classMinutes[0]!;
+        const gap = classMinutes.find((m, i) => i > 0 && m.t - classMinutes[i - 1]!.t > MINUTE_MS)!; // 课间后的下一节课的第一分钟
+        const breakStart = classMinutes[classMinutes.indexOf(gap) - 1]!.t + MINUTE_MS;
+        const clock = { t: first.t };
+        const { presence, calls } = make(clock, { ...OFF, onlineStatus: true });
+        await presence.tick();
+        assert.deepEqual(calls, ['status:50/0'], '上课：忙碌');
+        assert.ok(gap.t - breakStart < 60 * MINUTE_MS, '第一个课间短于一小时');
+        for (clock.t = first.t; clock.t < gap.t; clock.t += MINUTE_MS) await presence.tick(); // 每分钟一次，和真的一样
+        assert.deepEqual(calls, ['status:50/0'], '课间不改回在线');
+        // 当天最后一节课（重新开一个，从最后一节课的最后一分钟起每分钟一次）
+        const lastClass = classMinutes.at(-1)!;
+        const lateClock = { t: lastClass.t };
+        const late = make(lateClock, { ...OFF, onlineStatus: true });
+        await late.presence.tick();
+        assert.deepEqual(late.calls, ['status:50/0']);
+        for (lateClock.t += MINUTE_MS; lateClock.t < lastClass.t + 59 * MINUTE_MS; lateClock.t += MINUTE_MS) await late.presence.tick();
+        assert.deepEqual(late.calls, ['status:50/0'], '下课不到一小时还是忙碌');
+        for (; lateClock.t <= lastClass.t + 62 * MINUTE_MS; lateClock.t += MINUTE_MS) await late.presence.tick();
+        assert.equal(late.calls.length, 2);
+        assert.match(late.calls[1]!, /^status:10\//,'一小时后改回在线（或听歌中）');
+        lateClock.t = at(11, day + 1, 3); // 凌晨睡着：不等一小时
+        await late.presence.tick();
+        assert.equal(late.calls.at(-1), 'status:30/0');
     });
 
     test('点赞：到点才点，一天一次；关着不点', async () => {
