@@ -173,6 +173,8 @@ export type Step =
     | ActionStep
     /** 虚拟时间往后跳，例如 "50m"、"1d"、"9h30m"；途中到点的事（她看到消息、回复）按时间顺序发生。开了记忆就接着把结束了的片段写进去并等 Hindsight 做完 */
     | { advance: string }
+    /** 她刷到一个 B 站视频、想发给他（ADR 0084）：按真实的字段给标题 / UP 主 / 分区 / 分钟数 / 热评，用和线上一样的说明让她主动说一句，直到她说出来 */
+    | { video: { title: string; owner: string; category: string; minutes: number; desc?: string; comments?: string[] } }
     /** 虚拟时间一直往后走，直到她回复（最多 1 天）：睡着、上课时来的消息；proactive：直到她主动发一次（最多 1 天） */
     | { wait: 'reply' | 'proactive' }
     /** 不跳时间，把能写的片段写进记忆并等 Hindsight 做完 */
@@ -385,7 +387,7 @@ function parseHistory(value: unknown, where: string, start: number, fail: (messa
     });
 }
 
-const STEP_KINDS = ['case', 'say', 'life', 'action', 'advance', 'wait', 'memory', 'refresh', 'check', 'forget', 'hindsight', 'restart'] as const;
+const STEP_KINDS = ['case', 'say', 'life', 'action', 'advance', 'video', 'wait', 'memory', 'refresh', 'check', 'forget', 'hindsight', 'restart'] as const;
 
 function checkStep(step: unknown, where: string): void {
     const fail = (message: string): never => { throw new Error(`${where}：${message}`); };
@@ -422,6 +424,12 @@ function checkStep(step: unknown, where: string): void {
         if (action.durationMinutes !== undefined && (!Number.isInteger(action.durationMinutes) || Number(action.durationMinutes) <= 0)) fail('action.durationMinutes 应为正整数');
     }
     if ('advance' in s) parseDuration(String(s.advance));
+    if ('video' in s) {
+        const video = s.video as Record<string, unknown> | null;
+        if (typeof video !== 'object' || video === null) fail('video 应为对象');
+        for (const key of ['title', 'owner', 'category'] as const) if (typeof video![key] !== 'string' || !video![key]) fail(`video.${key} 应为非空字符串`);
+        if (!Number.isInteger(video!.minutes) || Number(video!.minutes) <= 0) fail('video.minutes 应为正整数');
+    }
     if ('wait' in s && s.wait !== 'reply' && s.wait !== 'proactive') fail('wait 只能是 "reply" 或 "proactive"');
     if ('check' in s) {
         const check = s.check as Record<string, unknown>;

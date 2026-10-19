@@ -20,6 +20,7 @@ import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay, newsKindsOf } from '../proactive.ts';
+import { videoNote, videoTopic } from '../bilibili.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
 import { worldState, type World, CAMERA_FUND_TARGET } from '../world.ts';
@@ -108,7 +109,7 @@ export interface CheckResult { ok: boolean; text: string; pipeline?: boolean }
 export interface CheckCount { passed: number; failed: number }
 
 export interface StepRecord {
-    kind: 'case' | 'say' | 'life' | 'action' | 'advance' | 'wait' | 'memory' | 'refresh' | 'check' | 'forget' | 'hindsight' | 'restart';
+    kind: 'case' | 'say' | 'life' | 'action' | 'advance' | 'video' | 'wait' | 'memory' | 'refresh' | 'check' | 'forget' | 'hindsight' | 'restart';
     /** 这一步开始时的虚拟时间 */
     time: number;
     /** 到这一步为止对方最后一条消息的虚拟时间（replyAfter / replyWithin 从这里算） */
@@ -634,6 +635,17 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 if (queuedActions && ledgerWorld) queuedActions.settleDue(new Date(clock.now()), ledgerWorld);
                 current.time = clock.now();
                 await syncMemory();
+            } else if ('video' in step) {
+                const v = step.video;
+                const bvid = 'BV1sim0000000';
+                const video = { bvid, aid: 0, title: v.title, desc: v.desc ?? '-', owner: v.owner, category: v.category, views: 0, likes: 0, duration: v.minutes * 60, link: `https://www.bilibili.com/video/${bvid}` };
+                initiating = 'B 站视频';
+                try {
+                    await responder.initiate({ label: 'B 站视频', note: videoNote(video, v.comments ?? [], scenario.user), topic: videoTopic(scenario.user), maxBubbles: 2, dryRun: false, commit: () => undefined });
+                } finally {
+                    initiating = undefined;
+                }
+                await runTimers(clock.now() + WAIT_REPLY_MS, () => current.bubbles.some(b => b.proactive));
             } else if ('wait' in step && step.wait === 'proactive') {
                 await runTimers(clock.now() + WAIT_REPLY_MS, () => current.bubbles.some(b => b.proactive));
                 if (!current.bubbles.some(b => b.proactive)) log('等了一天她也没主动找');

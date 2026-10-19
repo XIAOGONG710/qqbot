@@ -53,6 +53,7 @@ export const DEFAULTS = {
     realWeather: true,
     festivals: 'off' as FestivalMode,
     readReceipts: false,
+    bilibili: 'off' as PresenceMode,
     reactions: false,
     onlineStatus: false,
     profileLikes: false,
@@ -141,6 +142,8 @@ export interface AppConfig {
     feedbackCommands: boolean;
     /** 公共节日（ADR 0076）：off 关；notes 她在时间块里知道今天、临近是什么节（平安夜、除夕、情人节……）；greet 再让她在情侣之间一定会说一句的节日里主动说（新年零点、除夕、平安夜、情人节……）。默认 off */
     festivals: FestivalMode;
+    /** 刷 B 站（ADR 0084）：她从 B 站热门榜挑一个真视频，发给男朋友档并说一句感受，再附真链接；dryRun 只写草稿。只读公开接口，不登录。默认关 */
+    bilibili: PresenceMode;
     /** 已读回执（ADR 0083）：她看到他的消息的那一刻标已读（NapCat mark_private_msg_as_read），睡着时保持未读。默认关 */
     readReceipts: boolean;
     /** 表情回应（ADR 0083）：她看到了却不回（看心情不回、收尾后的附和）时，给他最后一条点个表情回应（set_msg_emoji_like）。默认关 */
@@ -355,6 +358,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         festivals: festivalMode(file.festivals),
         readReceipts: bool(file, 'readReceipts', '', DEFAULTS.readReceipts),
+        bilibili: oneOf(file.bilibili, 'bilibili', PRESENCE_MODES, DEFAULTS.bilibili),
         reactions: bool(file, 'reactions', '', DEFAULTS.reactions),
         onlineStatus: bool(file, 'onlineStatus', '', DEFAULTS.onlineStatus),
         profileLikes: bool(file, 'profileLikes', '', DEFAULTS.profileLikes),

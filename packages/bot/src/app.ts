@@ -33,6 +33,7 @@ import { withFestivalActivities, withFestivals } from './festivals.ts';
 import { newsKindsOf, dayMatches, type ProactiveMode } from './proactive.ts';
 import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
 import { qzoneComposer } from './qzone.ts';
+import { createVideoBrowsing, type BiliFetch, type VideoBrowsing } from './bilibili.ts';
 import { detectCrisis, type CrisisLevel } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
 import { createPokeLimiter, POKE_BACK_COOLDOWN_MS, POKE_MAX_AGE_MS, POKE_MAX_IN_WINDOW, pokeBackPlan, pokeMessage } from './pokes.ts';
@@ -161,6 +162,8 @@ export interface AppOptions {
     stickers?: StickerShelf;
     /** 允许发图片表情的轮次里抽中发的概率（不写按 STICKER_TURN_CHANCE；测试用）*/
     stickerChance?: number;
+    /** B 站公开接口的 fetch（配置 bilibili；不给就用全局 fetch，测试注入假的） */
+    bilibiliFetch?: BiliFetch;
     /** 测试用：换掉听、看各项的上限 */
     mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>;
     /** 敏感调试开关（ADR 0070 第 8 项）；不传按环境变量 QQBOT_SENSITIVE_LOGS（默认关） */
@@ -172,7 +175,7 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, stickers, stickerChance, mediaTimeouts, sensitive = sensitiveSwitch() }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, stickers, stickerChance, mediaTimeouts, bilibiliFetch, sensitive = sensitiveSwitch() }: AppOptions): App {
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -557,6 +560,36 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         presence.start();
         log(`存在感：${[config.onlineStatus && '在线状态', config.profileLikes && '资料卡点赞', config.signature !== 'off' && `个性签名（${config.signature === 'dryRun' ? '只写草稿' : '真改'}）`, qzone && `说说（${config.qzone === 'dryRun' ? '只写草稿' : '真发'}，${config.qzoneVisibility === 'public' ? '所有人可见' : '仅好友可见'}）`].filter(Boolean).join('、')}`);
     }
+    /** 她刷 B 站、挑一个真视频发给他（ADR 0084，配置 bilibili）：只发给男朋友档的第一个人；第一次连上才起 */
+    let browsing: VideoBrowsing | undefined;
+    function startBrowsing(): void {
+        if (browsing || config.bilibili === 'off') return;
+        const target = config.contacts.find(c => c.tier === 'boyfriend');
+        if (!target || !worldCard?.schedule) {
+            log('刷 B 站：没有男朋友档的联系人或没有作息，不启动');
+            return;
+        }
+        const qq = target.qq;
+        browsing = createVideoBrowsing({
+            mode: config.bilibili,
+            target: { qq, name: target.name },
+            schedule: worldCard.schedule,
+            extraFree: config.herDays ? readingActivities(worldCard.books) : [],
+            dir: join(config.dataDir, 'presence'),
+            now: worldNow, log,
+            saidSleep: now => Boolean(asleepSince(worldCard.schedule!, bedtimes(worldCard.schedule!, now), new Date(now))),
+            fetch: bilibiliFetch ?? ((url, init) => fetch(url, init)),
+            initiate: request => responders.get(qq)!.initiate(request),
+            // 真链接作为下一条发出去；聊天记录里连标题一起记，她之后知道自己发过什么
+            sendLink: async video => {
+                const messageId = await transport.sendPrivateText(qq, video.link);
+                chatHistory.append(qq, { time: new Date(worldNow()).toISOString(), role: 'assistant', content: `${video.link}（《${video.title}》）`, messageId });
+            },
+        });
+        browsing.start();
+        log(`刷 B 站：${config.bilibili === 'dryRun' ? '只写草稿（不发）' : '开'}，发给 ${target.name}；一周最多 3 个，读 B 站热门榜（公开接口，不登录）`);
+    }
+
     function rainyAt(now: number): boolean {
         if (!sharedWorld || !worldCard?.herWorld || !worldCard.schedule) return false;
         return Boolean(sharedWorld.at(worldCard.herWorld, worldCard.schedule, new Date(now))?.weather?.rain);
@@ -804,6 +837,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     syncMemory();
                     startPlanners();
                     startPresence();
+                    startBrowsing();
                     for (const planner of planners.values()) planner.poke();
                     syncFollowUps();
                     discoverStickers();
@@ -878,6 +912,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (memoryTimer) clearInterval(memoryTimer);
             if (followUpTimer) clearInterval(followUpTimer);
             presence?.stop();
+            browsing?.stop();
             if (lifeTimer) clearInterval(lifeTimer);
             if (weatherTimer) clearInterval(weatherTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);

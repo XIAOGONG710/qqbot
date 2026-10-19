@@ -210,6 +210,9 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
             assert.equal(key in (Config.simplify(Config(minimal as never)) as object), false, key);
         }
         assert.equal(fromKoishi(minimal).signature, 'off');
+        assert.equal(fromKoishi(minimal).bilibili, 'off');
+        assert.equal(fromKoishi({ ...minimal, bilibili: 'dryRun' }).bilibili, 'dryRun');
+        assert.throws(() => Config({ ...minimal, bilibili: 'maybe' } as never));
         assert.equal(fromKoishi(minimal).qzone, 'off');
         assert.equal(fromKoishi(minimal).qzoneVisibility, 'friends');
         assert.equal(fromKoishi({ ...minimal, signature: 'dryRun', qzone: 'on', qzoneVisibility: 'public' }).qzone, 'on');

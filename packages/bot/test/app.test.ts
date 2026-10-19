@@ -13,6 +13,7 @@ import type { MessageEvent, PokeEvent } from '../src/onebot.ts';
 import { POKE_BACK_DELAY_MS, pokeBackPlan } from '../src/pokes.ts';
 import type { ProactiveRecord } from '../src/proactive.ts';
 import { stateAt } from '../src/schedule.ts';
+import { videoPlan, type BiliFetch } from '../src/bilibili.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
@@ -46,7 +47,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, readReceipts: false, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, readReceipts: false, bilibili: 'off', reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false,
         media: true,
@@ -70,7 +71,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; bilibiliFetch?: BiliFetch } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -99,6 +100,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.stickers ? { stickers: options.stickers } : {}),
         ...(options.stickerChance !== undefined ? { stickerChance: options.stickerChance } : {}),
         ...(options.mediaTimeouts ? { mediaTimeouts: options.mediaTimeouts } : {}),
+        ...(options.bilibiliFetch ? { bilibiliFetch: options.bilibiliFetch } : {}),
         // 既有测试要核对日志正文和 last-prompt.json，所以默认开着敏感调试；关着的行为在下面单独测
         sensitive: options.sensitive ?? { on: () => true, describe: () => '' },
         pipeline: {
@@ -1142,5 +1144,65 @@ describe('存在感（ADR 0083）：接进应用', () => {
         await noWorld.app.connected(SELF);
         await new Promise(r => setTimeout(r, 100));
         assert.ok(noWorld.logs.some(l => l.includes('存在感：没有作息')), noWorld.logs.join('|'));
+    });
+});
+
+describe('刷 B 站（ADR 0084）：接进应用', () => {
+    const bf = [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }];
+    const body = (value: unknown) => ({ ok: true, status: 200, text: async () => JSON.stringify(value) });
+    const fetchStub = (urls: string[]): BiliFetch => async url => {
+        urls.push(url);
+        if (url.includes('/reply/')) return body({ code: 0, data: { replies: [{ content: { message: '这个也太真实了吧哈哈' } }] } });
+        return body({ code: 0, data: { list: [{ bvid: 'BV1Jonu6mEwN', aid: 11, title: '一条搞笑视频', desc: '-', owner: { name: '某 UP' }, tname: '搞笑', stat: { view: 1000, like: 50 }, duration: 100 }] } });
+    };
+    const planDay = () => {
+        for (let day = 2; day < 29; day++) {
+            const date = new Date(2026, 10, day, 22, 40);
+            const weekend = date.getDay() === 0 || date.getDay() === 6;
+            const key = `2026-11-${String(day).padStart(2, '0')}`;
+            if (videoPlan(key, weekend)) return date;
+        }
+        return assert.fail('找不到要刷的日子');
+    };
+    const drive = async (clock: VirtualClock, done: () => boolean) => {
+        const deadline = Date.now() + 8000;
+        while (!done() && Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 20));
+            const next = clock.nextTimer();
+            if (next !== undefined) clock.advanceTo(next);
+        }
+        await new Promise(r => setTimeout(r, 80));
+    };
+
+    test('开着：第一次连上后到点，读热门榜和热评、让她主动说一句、再把真链接发在后面并记进聊天记录；关着不碰 B 站', async () => {
+        const evening = planDay();
+        const urls: string[] = [];
+        const clock = new VirtualClock(evening);
+        const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on' });
+        const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, bilibiliFetch: fetchStub(urls), generate: () => '这个也太真实了' });
+        await app.connected(SELF);
+        await drive(clock, () => sent.length >= 2);
+        assert.equal(sent.length, 2, sent.join('|') + logs.join('|'));
+        assert.equal(sent[0], '10001:这个也太真实了');
+        assert.equal(sent[1], '10001:https://www.bilibili.com/video/BV1Jonu6mEwN');
+        assert.ok(urls.some(u => u.includes('/popular')) && urls.some(u => u.includes('/reply/')));
+        const stored = new ChatHistory(cfg.dataDir).load(10001);
+        assert.ok(stored.some(m => m.role === 'assistant' && m.content === 'https://www.bilibili.com/video/BV1Jonu6mEwN（《一条搞笑视频》）'), JSON.stringify(stored));
+
+        const offUrls: string[] = [];
+        const off = setup(config({ contacts: bf, schedule: true, herDays: true }), { 10001: [] }, { clock: new VirtualClock(evening), bilibiliFetch: fetchStub(offUrls) });
+        await off.app.connected(SELF);
+        await new Promise(r => setTimeout(r, 150));
+        assert.deepEqual(offUrls, []);
+    });
+
+    test('试运行：生成但不发给他，话和链接存进 presence/drafts.md', async () => {
+        const clock = new VirtualClock(planDay());
+        const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'dryRun' });
+        const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, bilibiliFetch: fetchStub([]), generate: () => '这个梗我能玩一年' });
+        await app.connected(SELF);
+        await drive(clock, () => logs.some(l => l.includes('试运行，没发')));
+        assert.deepEqual(sent, []);
+        assert.match(readFileSync(join(cfg.dataDir, 'presence', 'drafts.md'), 'utf8'), /这个梗我能玩一年[\s\S]*bilibili\.com\/video\/BV1Jonu6mEwN/);
     });
 });

@@ -99,6 +99,7 @@ export interface Config {
     recalls: boolean;
     pokeBack: boolean;
     readReceipts: boolean;
+    bilibili: PresenceMode;
     reactions: boolean;
     onlineStatus: boolean;
     profileLikes: boolean;
@@ -195,6 +196,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**戳一戳**（ADR 0079）：名单里的人在 QQ 里戳她一下，她看到的是一条「[戳了戳你]」，像「戳我干嘛」那样短短回一句；睡着、上课时不理，5 分钟里最多算 3 下，不戳回去。默认关'),
         recalls: Schema.boolean().default(DEFAULTS.recalls)
             .description('**撤回**（ADR 0082）：他撤回了一条她还没回的消息，她看到的是「撤回了一条消息」而不是原文（像真人那样问一句「撤回啥了」）；回过的、想伤害自己的话撤回了也照样看到。默认关'),
+        bilibili: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.bilibili)
+            .description('**刷 B 站**（ADR 0084）：她从 B 站热门榜里按口味挑一个真视频（日常、搞笑、萌宠、美食、音乐、影视、游戏），连热评一起读，发给男朋友档的人并说一句感受，再把真链接发在后面；一周最多 3 个，工作日晚上、周末下午到晚上，睡着、上课、正聊着时不发。只读 B 站公开接口，不登录、不在 B 站发任何东西。选「只写草稿」时存在 presence/drafts.md。默认关'),
         readReceipts: Schema.boolean().default(DEFAULTS.readReceipts)
             .description('**已读回执**（ADR 0083）：她「看到」他的消息的那一刻标已读（NapCat 的 mark_private_msg_as_read），睡着、上课时不标，保持未读；「看心情不回」就成了真正的已读不回。NapCat 收到消息不会自动标已读。默认关'),
         reactions: Schema.boolean().default(DEFAULTS.reactions)
@@ -339,6 +342,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.recalls !== undefined ? { recalls: config.recalls } : {}),
         ...(config.pokeBack !== undefined ? { pokeBack: config.pokeBack } : {}),
         ...(config.readReceipts !== undefined ? { readReceipts: config.readReceipts } : {}),
+        ...(config.bilibili !== undefined ? { bilibili: config.bilibili } : {}),
         ...(config.reactions !== undefined ? { reactions: config.reactions } : {}),
         ...(config.onlineStatus !== undefined ? { onlineStatus: config.onlineStatus } : {}),
         ...(config.profileLikes !== undefined ? { profileLikes: config.profileLikes } : {}),

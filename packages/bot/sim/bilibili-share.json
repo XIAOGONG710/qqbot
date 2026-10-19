@@ -1,0 +1,25 @@
+{
+    "name": "男朋友档：她刷到一个真的 B 站视频、发给他（ADR 0084）",
+    "description": "用真实的热门榜字段（标题 / UP 主 / 分区 / 分钟数 / 热评）让她主动说一句；链接线上由程序跟在后面。她应该只说一两句真实的感受或接热评的梗，不编视频里没有的内容、不说看到哪一段、不自己写链接。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-24T21:00:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "V01", "note": "搞笑，有热评" },
+        { "video": { "title": "每一位认真谋生的人都值得被仰望", "owner": "李炮炮儿", "category": "搞笑", "minutes": 6, "comments": ["笑死我了每次都这样", "这个梗我能玩一年"] } },
+        { "check": { "proactive": { "count": [1, 1], "exitClean": true, "replyNone": ["http", "bilibili", "B站视频", "链接", "UP主", "标题"] } } },
+        { "advance": "2d" },
+        { "case": "V02", "note": "日常，没有热评、没有简介" },
+        { "video": { "title": "人生不是一条直线", "owner": "工农小鼠", "category": "日常", "minutes": 2 } },
+        { "check": { "proactive": { "count": [1, 1], "exitClean": true, "replyNone": ["http", "bilibili", "B站视频", "链接", "UP主", "标题"] } } },
+        { "advance": "2d" },
+        { "case": "V03", "note": "游戏" },
+        { "video": { "title": "全宇宙最team的一把救世主模式！！！", "owner": "是橘长呀", "category": "网络游戏", "minutes": 10, "comments": ["最后那波配合太离谱了"] } },
+        { "check": { "proactive": { "count": [1, 1], "exitClean": true, "replyNone": ["http", "bilibili", "B站视频", "链接", "UP主", "标题"] } } },
+        { "advance": "2d" },
+        { "case": "V04", "note": "鬼畜" },
+        { "video": { "title": "赵本山携手象牙山巨头们激情演唱《Uptown Funk》", "owner": "小朱佩琪66", "category": "鬼畜剧场", "minutes": 2, "comments": ["这个混剪太绝了"] } },
+        { "check": { "proactive": { "count": [1, 1], "exitClean": true, "replyNone": ["http", "bilibili", "B站视频", "链接", "UP主", "标题"] } } }
+    ]
+}
