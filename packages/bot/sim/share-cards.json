@@ -1,0 +1,26 @@
+{
+    "name": "男朋友档：他分享链接、转发聊天记录、发文件（占位符带来源和标题）",
+    "description": "ADR 0080：分享卡片写成「[分享：哔哩哔哩《标题》]」，转发写成「[转发的聊天记录]」，文件带文件名。她应该接得住——对标题有反应、问内容，不说「这是啥」「看不懂」，也不假装点开看过细节。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-24T20:00:00+08:00",
+    "memory": false,
+    "history": [
+        { "time": "2026-10-24T19:40:00+08:00", "role": "user", "content": "你吃饭了没" },
+        { "time": "2026-10-24T19:41:00+08:00", "role": "assistant", "content": "刚吃完，你呢" }
+    ],
+    "steps": [
+        { "case": "SH01", "note": "B 站分享：对标题有反应" },
+        { "say": "[分享：哔哩哔哩《原神枫丹新角色PV》]" },
+        { "check": { "maxChars": 60, "maxBubbles": 3, "replyNone": ["这是啥", "看不懂", "说人话", "json", "分享"] } },
+        { "case": "SH02", "note": "文字加网页分享" },
+        { "say": "你看这个[分享：小红书《济南大学周边平价小吃合集》]" },
+        { "check": { "maxChars": 60, "maxBubbles": 3, "replyNone": ["这是啥", "看不懂", "说人话", "json", "分享"] } },
+        { "case": "SH03", "note": "转发聊天记录" },
+        { "say": "[转发的聊天记录]" },
+        { "check": { "maxChars": 60, "maxBubbles": 3, "replyNone": ["forward", "转发的聊天记录", "json"] } },
+        { "case": "SH04", "note": "文件" },
+        { "say": "[文件：创业基础小组作业.docx]" },
+        { "check": { "maxChars": 60, "maxBubbles": 3, "replyNone": ["这是啥", "看不懂", "说人话"] } }
+    ]
+}
