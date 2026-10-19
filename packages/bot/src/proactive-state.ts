@@ -4,6 +4,7 @@ import { readJsonOr } from './json-file.ts';
 import { OBSTACLE_KINDS } from './obstacles.ts';
 import { OCCASIONS, UNREACHABLE_MAX_TRIES, type ProactiveRecord } from './proactive.ts';
 import { calendarDate, stateObject, stateTimestamp } from './state-schema.ts';
+import { TransientStateError } from './transient-io.ts';
 
 export interface ProactiveState {
     version: 1;
@@ -56,7 +57,8 @@ export function readProactiveState(path: string): ProactiveState {
                 ? { followUps: [], extracted: {}, ...value, version: 1 } : value,
             validate: validProactiveState, invalid: 'throw', label: '主动消息状态',
         });
-    } catch {
+    } catch (error) {
+        if (error instanceof TransientStateError) throw error;
         throw new Error(`主动消息状态 ${path} 读取或校验失败；暂停主动消息，原文件未重建，请修复或从可信备份恢复`);
     }
 }

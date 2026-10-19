@@ -3,8 +3,10 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, test } from 'node:test';
+import { fileOps } from '../src/json-file.ts';
 import { createProactivePlanner, type Planner, type PlannerDeps } from '../src/proactive-planner.ts';
 import { emptyProactiveState, readProactiveState, validProactiveState } from '../src/proactive-state.ts';
+import { TRANSIENT_GRACE_MS } from '../src/transient-io.ts';
 import { checkStates } from '../src/ops/state-check.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
@@ -91,15 +93,25 @@ test('可信旧状态下次正常写入存成 v1，抽取完成进度持久化',
     await planner.syncFollowUps(); assert.equal(calls, 1);
 });
 
-test('写盘失败暂停计划器及后续抽取，不产生未处理拒绝', async () => {
+test('写盘持续失败（目标路径是目录）：超过宽限期暂停计划器及后续抽取，不产生未处理拒绝', async () => {
     const dir = fixture(); const path = join(dir, '10001-boyfriend.json');
-    let calls = 0;
+    const delays = fileOps.writeDelaysMs;
+    fileOps.writeDelaysMs = [0]; // 不真等重试间隔
+    let calls = 0; let clock = Date.parse(at);
     const planner = createProactivePlanner(deps(dir, {
+        now: () => clock,
         history: { load: () => [{ time: '2026-10-13T10:00:00+08:00', role: 'user', content: '明天下午面试' }] },
         extract: async () => { calls++; return '{"add":[],"resolved":[]}'; },
     })); planners.push(planner);
     mkdirSync(path);
-    await planner.syncFollowUps(); await planner.running;
+    try {
+        await planner.syncFollowUps();
+        // 目标是个目录：Windows 上报 EPERM（和杀毒软件短暂占文件同一个码），先当暂时的撑着；持续超过宽限期才暂停（其他系统的 EISDIR 会更早暂停，同样通过）
+        clock += TRANSIENT_GRACE_MS + 1000;
+        planner.poke(); await planner.running;
+    } finally {
+        fileOps.writeDelaysMs = delays;
+    }
     assert.match(planner.status().paused!, /状态处理失败/);
     planner.poke(); await planner.syncFollowUps(); assert.equal(calls, 1);
     assert.deepEqual(readdirSync(path), []);

@@ -17,6 +17,7 @@ import { detectCrisis } from './crisis.ts';
 import { aboutHer, expired, extractionPrompt, FOLLOW_UP_DAYS, mentions, parseExtraction, partText, tripAlreadyOver, type Extracted, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
 import { writeJsonAtomic } from './json-file.ts';
+import { createTransientGate, describeError, isTransientIoError } from './transient-io.ts';
 import { readProactiveState, validProactiveState, type ProactiveState } from './proactive-state.ts';
 import { ModelUnreachable } from './llm.ts';
 import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './memory/episodes.ts';
@@ -38,6 +39,8 @@ import { formatDate, wakeOn, type Schedule } from './schedule.ts';
 const KEEP_DAYS = 30;
 /** 有真实天气时计划器最多睡多久就重算（ADR 0050） */
 export const RAIN_REPLAN_MS = 30 * 60_000;
+/** 状态文件暂时写不进时，多久补写一次 */
+export const DIRTY_RETRY_MS = 60_000;
 
 /** 这一刻在下吗：这个钟头或上一个钟头下过（实况） */
 export function rainingAt(weather: DayWeather | undefined, at: Date): boolean {
@@ -205,9 +208,9 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
 
     let state: ProactiveState;
     try { state = readProactiveState(path); }
-    catch {
+    catch (error) {
         const reason = '主动消息状态读取或校验失败，已暂停；请修复后重新创建计划器';
-        deps.log(`主动：${reason}；原文件未重建`);
+        deps.log(`主动：${reason}；原文件未重建（原因：${describeError(error)}）`);
         return {
             poke() {}, stop() {}, syncFollowUps: async () => {}, running: Promise.resolve(),
             status: () => ({ mode: deps.mode, paused: reason, today: 0 }),
@@ -227,12 +230,17 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     const notPlanned = new Map<string, string>();
     let loggedNext: string | undefined;
 
-    function halt(): void {
+    /** 状态文件暂时写不进的宽限（transient-io.ts）：内存里的状态照旧生效，磁盘上是上一版，每分钟补写；持续超过宽限期才暂停 */
+    const gate = createTransientGate();
+    let dirty = false;
+
+    function halt(reason?: unknown): void {
         stopped = true;
         next = undefined;
         paused = '主动消息状态处理失败，已暂停；请修复后重新创建计划器';
         wake?.abort();
-        deps.log(`主动：${paused}；未清空原状态`);
+        // 原因只写错误码 / 错误类型，不写 message（10-19 22:08 的暂停日志没写原因，事后查不出是什么触发的）
+        deps.log(`主动：${paused}；未清空原状态${reason === undefined ? '' : `（原因：${describeError(reason)}）`}`);
     }
 
     function save(): void {
@@ -245,10 +253,23 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             const next: ProactiveState = { version: 1, records, followUps, extracted };
             if (!validProactiveState(next)) throw new Error('拒绝写入不符合 schema 的主动消息状态');
             writeJsonAtomic(path, next);
-        } catch {
-            halt();
+            dirty = false;
+            if (gate.ok('write')) deps.log('主动：状态文件写得进去了，恢复正常');
+        } catch (error) {
+            if (isTransientIoError(error) && gate.fail('write', now()) === 'retry') {
+                dirty = true;
+                if (gate.shouldLog('write', now())) deps.log(`主动：状态文件暂时写不进（${describeError(error)}），先用内存里的，每分钟补写一次；持续 5 分钟写不进才暂停`);
+                return;
+            }
+            halt(error);
             throw new Error('主动消息状态写入失败，已暂停');
         }
+    }
+
+    /** 补写上次没写进去的状态；还在宽限期里就静静等下一次，拖过了 save() 自己会暂停 */
+    function flushIfDirty(): void {
+        if (!dirty || stopped) return;
+        try { save(); } catch { /* save() 已经记过日志并暂停 */ }
     }
 
     /** 删掉一件待跟进的事 */
@@ -428,6 +449,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
 
     async function loop(): Promise<void> {
         while (!stopped) {
+            flushIfDirty();
+            if (stopped) return;
             const today = herDay(deps.schedule, new Date(now()));
             for (const item of followUps.filter(f => expired(f, today))) forget(item.id, `过了 ${FOLLOW_UP_DAYS} 天还没问到`);
             const his = deps.history.load(contact.qq).filter(m => m.role === 'user');
@@ -460,7 +483,9 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             const day = herDay(deps.schedule, new Date(now()));
             const untilTomorrow = next?.at ?? new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, ...deps.schedule.sleep.split(':').map(Number) as [number, number], 1).getTime();
             // 有真实天气时最多睡这么久就重算：预报会变，雨可能提前、推后（ADR 0050）
-            const target = deps.weather ? Math.min(untilTomorrow, now() + RAIN_REPLAN_MS) : untilTomorrow;
+            const planned = deps.weather ? Math.min(untilTomorrow, now() + RAIN_REPLAN_MS) : untilTomorrow;
+            // 有没写进去的状态时，最多睡一分钟就起来补写（持续 5 分钟写不进 save() 会暂停）
+            const target = dirty ? Math.min(planned, now() + DIRTY_RETRY_MS) : planned;
             wake = new AbortController();
             await waitUntil(target, wake.signal);
             const poked = wake.signal.aborted;
@@ -474,7 +499,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         }
     }
 
-    const running = loop().catch(() => { if (!stopped) halt(); });
+    const running = loop().catch(error => { if (!stopped) halt(error); });
 
     return {
         poke() {
@@ -482,7 +507,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         },
         syncFollowUps() {
             if (stopped) return Promise.resolve();
-            extracting ??= extractNow().catch(() => { if (!stopped) halt(); }).finally(() => { extracting = undefined; });
+            extracting ??= extractNow().catch(error => { if (!stopped) halt(error); }).finally(() => { extracting = undefined; });
             return extracting;
         },
         stop() {

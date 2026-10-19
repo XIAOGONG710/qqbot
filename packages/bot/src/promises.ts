@@ -20,6 +20,7 @@ import type { StoredMessage } from './history.ts';
 import { writeJsonAtomic } from './json-file.ts';
 import { PromiseStateUnavailable, readPromiseState, validPromiseState, type PromiseState } from './promise-state.ts';
 import { calendarDate } from './state-schema.ts';
+import { createTransientGate, describeError, isTransientIoError, TransientStateError } from './transient-io.ts';
 import { ModelUnreachable } from './llm.ts';
 import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes, type Episode } from './memory/episodes.ts';
 import { dueLoops, isFeeling, loopForgotten, type DueLoops, type LoopKind, type OpenLoop } from './open-loops.ts';
@@ -330,14 +331,32 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
     mkdirSync(options.dir, { recursive: true });
     const path = (contact: Contact) => join(options.dir, `${contact.qq}-${contact.tier}.json`);
     const paused = new Set<string>();
-    const pause = (contact: Contact) => {
-        if (!paused.has(path(contact))) options.log(`[${contact.qq}] 承诺状态处理失败，暂停承诺抽取与使用；原文件未重建，请修复后重建 keeper`);
+    const pause = (contact: Contact, error?: unknown) => {
+        if (!paused.has(path(contact))) options.log(`[${contact.qq}] 承诺状态处理失败，暂停承诺抽取与使用；原文件未重建，请修复后重建 keeper${error === undefined ? '' : `（原因：${describeError(error)}）`}`);
         paused.add(path(contact));
+    };
+    // 暂时读不到 / 写不进（句柄或内存不足、杀毒软件占文件）不等于状态坏了：宽限期里跳过这一轮、下次再试，
+    // 拖过宽限期才按永久处理（10-19 22:08 一次内存紧张曾让三处模块各自「暂停到重启」一小时）。读和写各记各的。
+    const gate = createTransientGate();
+    const transient = (contact: Contact, verb: '读' | '写', error: unknown) => {
+        const key = `${verb}:${path(contact)}`;
+        if (gate.fail(key, now()) === 'give-up') { pause(contact, error); return; }
+        if (gate.shouldLog(key, now())) options.log(`[${contact.qq}] 承诺状态暂时${verb}不了（${describeError(error)}），这一轮先跳过、下一轮再试；持续 5 分钟才暂停`);
+    };
+    const recovered = (contact: Contact, verb: '读' | '写') => {
+        if (gate.ok(`${verb}:${path(contact)}`)) options.log(`[${contact.qq}] 承诺状态${verb}得动了，恢复正常`);
     };
     const load = (contact: Contact): KeeperState | undefined => {
         if (paused.has(path(contact))) return undefined;
-        try { return readPromiseState(path(contact)); }
-        catch { pause(contact); return undefined; }
+        try {
+            const state = readPromiseState(path(contact));
+            recovered(contact, '读');
+            return state;
+        } catch (error) {
+            if (error instanceof TransientStateError) transient(contact, '读', error);
+            else pause(contact, error);
+            return undefined;
+        }
     };
     const save = (contact: Contact, state: KeeperState) => {
         // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
@@ -346,6 +365,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         for (const id of Object.keys(state.early)) if (Number(id.slice(3)) < keepFrom || state.extracted[id] === true) delete state.early[id];
         if (paused.has(path(contact)) || !validPromiseState(state)) throw new PromiseStateUnavailable('承诺状态无效，拒绝写入');
         writeJsonAtomic(path(contact), state);
+        recovered(contact, '写');
     };
     const available = (): boolean => options.contacts.map(contact => load(contact) !== undefined).every(Boolean);
     const knownAppointments = (from: Date, to: Date): Appointment[] => options.contacts.flatMap(contact =>
@@ -505,7 +525,11 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
             running ??= (async () => {
                 for (const contact of options.contacts) {
                     try { await syncContact(contact); }
-                    catch { pause(contact); }
+                    catch (error) {
+                        // 暂时的写失败：这一轮的改动没落盘，状态文件还是上一版，下一轮同一批片段会再抽一遍（抽取本来就幂等重试）
+                        if (isTransientIoError(error)) transient(contact, '写', error);
+                        else pause(contact, error);
+                    }
                 }
             })().finally(() => { running = undefined; });
             return running;

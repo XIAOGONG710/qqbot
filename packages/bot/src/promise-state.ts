@@ -3,6 +3,7 @@ import { readJsonOr } from './json-file.ts';
 import type { OpenLoop } from './open-loops.ts';
 import type { HerPromise } from './promises.ts';
 import { calendarDate, stateObject } from './state-schema.ts';
+import { TransientStateError } from './transient-io.ts';
 
 export interface PromiseState {
     version: 1;
@@ -54,7 +55,9 @@ export function readPromiseState(path: string): PromiseState {
             migrate: value => stateObject(value) && value.version === undefined ? { loops: [], early: {}, ...value, version: 1 } : value,
             validate: validPromiseState, invalid: 'throw', label: '承诺状态',
         });
-    } catch {
+    } catch (error) {
+        // 暂时读不到（句柄 / 内存不足）不是状态坏了：原样往上抛，让调用方跳过这一轮、下次再读
+        if (error instanceof TransientStateError) throw error;
         throw new PromiseStateUnavailable(`承诺状态 ${path} 读取或校验失败；原文件未重建，约定暂不可确认，请修复或从可信备份恢复`);
     }
 }
