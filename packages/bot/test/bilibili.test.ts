@@ -173,7 +173,7 @@ describe('刷 B 站：每分钟看一眼（ADR 0084）', () => {
         assert.deepEqual(asleep.calls, [], '睡着了连榜都不取');
     });
 
-    test('取热门榜失败：只记一次日志，15 分钟后再试', async () => {
+    test('取热门榜失败：只记一次日志，15 分钟后再试，再失败就隔 30 分钟（越隔越久，最多 2 小时）', async () => {
         const t = findEvening();
         const clock = { t };
         const logs: string[] = [];
@@ -189,6 +189,12 @@ describe('刷 B 站：每分钟看一眼（ADR 0084）', () => {
         clock.t += 16 * 60_000;
         await browsing.tick();
         assert.equal(calls, 2);
+        clock.t += 29 * 60_000;
+        await browsing.tick();
+        assert.equal(calls, 2, '又失败了，这回隔 30 分钟，不是 15');
+        clock.t += 2 * 60_000;
+        await browsing.tick();
+        assert.equal(calls, 3);
         assert.equal(logs.filter(l => l.includes('取热门榜失败')).length, 1, logs.join('|'));
     });
 });

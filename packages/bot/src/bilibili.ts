@@ -116,6 +116,8 @@ export const VIDEO_MIN_GAP_MS = 36 * 3_600_000;
 export const VIDEO_WEEK_MAX = 3;
 const CACHE_MS = 3 * 3_600_000;
 const FAIL_RETRY_MS = 15 * 60_000;
+/** 一直取不到（多半是被风控了）就越隔越久：15、30、60、120 分钟，之后每 2 小时；取到一次就从头 */
+const FAIL_RETRY_MAX_MS = 2 * 3_600_000;
 const BUSY_RETRY_MS = 20 * 60_000;
 
 /** 这一天（她的一天）刷不刷、几点（当天的分钟数：工作日晚上，周末下午到晚上）；不刷返回 undefined */
@@ -168,6 +170,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
     let busy = false;
     let timer: ReturnType<typeof setInterval> | undefined;
     let failedLogged = false;
+    let failures = 0;
 
     async function tick(): Promise<void> {
         if (busy) return;
@@ -191,11 +194,13 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
                     state.cache = { at: t, list: (await fetchPopular(options.fetch)).filter(suitable) };
                     save();
                     failedLogged = false;
+                    failures = 0;
                 } catch (error) {
-                    retryAt = t + FAIL_RETRY_MS;
+                    retryAt = t + Math.min(FAIL_RETRY_MS * 2 ** failures, FAIL_RETRY_MAX_MS);
+                    failures++;
                     if (!failedLogged) {
                         failedLogged = true;
-                        log(`刷 B 站：取热门榜失败（之后不再记，15 分钟后再试）：${error instanceof Error ? error.message : String(error)}`);
+                        log(`刷 B 站：取热门榜失败（之后不再记，隔一会儿再试，越隔越久）：${error instanceof Error ? error.message : String(error)}`);
                     }
                     return;
                 }

@@ -114,3 +114,22 @@ describe('长跑：60 天每分钟一次，隔几天重启一次', () => {
         assert.ok(events.bili.length >= 6 && events.bili.length <= 25, summary);
     });
 });
+
+describe('长跑：B 站接口一直取不到', () => {
+    test('60 天里取榜的请求有上限（退避），只记一次日志，不发任何东西', async () => {
+        const clock = { t: new Date(2026, 10, 2, 0, 0).getTime() };
+        const logs: string[] = [];
+        let requests = 0;
+        let sent = 0;
+        const browsing = createVideoBrowsing({
+            mode: 'on', target: { qq: USER, name: '宝宝' }, schedule, dir: tmp(), now: () => clock.t, log: line => logs.push(line),
+            fetch: async () => { requests++; return reply({ code: -352, message: '风控' }); },
+            initiate: async request => { request.commit(['好看']); sent++; return { result: 'sent', parts: ['好看'], messageIds: [1] }; },
+            sendLink: async () => { sent++; },
+        });
+        for (const end = clock.t + DAYS * DAY; clock.t < end; clock.t += MINUTE) await browsing.tick();
+        assert.equal(sent, 0);
+        assert.ok(logs.length <= 2, logs.join('|'));
+        assert.ok(requests <= 150, `60 天里取了 ${requests} 次榜（被风控时不该一晚上每 15 分钟一次）`);
+    });
+});
