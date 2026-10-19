@@ -190,6 +190,9 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(fromKoishi(before0009).pokes, false);
         assert.equal(fromKoishi({ ...minimal, pokes: true }).pokes, true);
         assert.equal('pokes' in (Config.simplify(Config(minimal as never)) as object), false);
+        assert.equal(fromKoishi(minimal).pokeBack, false);
+        assert.equal(fromKoishi({ ...minimal, pokes: true, pokeBack: true }).pokeBack, true);
+        assert.equal('pokeBack' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
     test('撤回（ADR 0082）：旧配置没有这一项时是关；开了照样传过去；等于默认值时不写进 koishi.yml', () => {

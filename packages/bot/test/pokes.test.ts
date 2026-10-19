@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { isPokeAtMe, segmentsToText, type PokeEvent } from '../src/onebot.ts';
-import { createPokeLimiter, POKE_MAX_IN_WINDOW, POKE_TEXT, POKE_WINDOW_MS, pokeMessage } from '../src/pokes.ts';
+import { createPokeLimiter, POKE_BACK_CHANCE, POKE_BACK_DELAY_MS, POKE_MAX_IN_WINDOW, POKE_TEXT, POKE_WINDOW_MS, pokeBackPlan, pokeMessage } from '../src/pokes.ts';
 
 const SELF = 20000;
 const poke = (overrides: Record<string, unknown> = {}) => ({
@@ -43,5 +43,13 @@ describe('戳一戳（ADR 0079）', () => {
         assert.equal(limiter.take(1, t0 + POKE_WINDOW_MS - 1), false, '第一下还在窗口里');
         assert.equal(limiter.take(1, t0 + POKE_WINDOW_MS), true, '第一下滑出窗口');
         assert.equal(limiter.take(1, t0 + POKE_WINDOW_MS + 100), false, '窗口里现在有 第二、第三、新的一下');
+    });
+
+    test('戳回去：按人和时间定（同一下每次一样），约 POKE_BACK_CHANCE 的概率，隔 1.2–3.5 秒', () => {
+        const plans = Array.from({ length: 2000 }, (_, i) => pokeBackPlan(10001, 1_800_000_000 + i));
+        const hits = plans.filter(plan => plan !== undefined);
+        assert.ok(Math.abs(hits.length / plans.length - POKE_BACK_CHANCE) < 0.05, String(hits.length / plans.length));
+        assert.ok(hits.every(plan => plan!.delayMs >= POKE_BACK_DELAY_MS[0] && plan!.delayMs <= POKE_BACK_DELAY_MS[1]));
+        assert.deepEqual(pokeBackPlan(10001, 1_800_000_007), pokeBackPlan(10001, 1_800_000_007));
     });
 });
