@@ -17,7 +17,7 @@ import type { Log } from './log.ts';
 import { ChatHistory, type StoredMessage } from './history.ts';
 import { asleepSince, saidBedtimes } from './bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from './backfill.ts';
-import { segmentsToText, type MessageEvent, type PokeEvent, type Segment } from './onebot.ts';
+import { segmentsToText, type MessageEvent, type PokeEvent, type QuoteLookup, type Segment } from './onebot.ts';
 import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from './media.ts';
 import type { Responder, ResponderStatus } from './responder.ts';
 import { contextSummarizer } from './context-window.ts';
@@ -635,8 +635,14 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         void job.then(() => { if (inbox.get(qq) === job) inbox.delete(qq); });
     }
 
+    /** 他引用回复时，被引用的那一条在聊天记录里（按 QQ 消息 id；ADR 0081） */
+    const quoteLookup = (qq: number): QuoteLookup => id => {
+        const found = history.load(qq).findLast(message => message.messageId === id);
+        return found ? { role: found.role, content: found.content } : undefined;
+    };
+
     function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string): void {
-        const text = segmentsToText(message).trim();
+        const text = segmentsToText(message, quoteLookup(event.user_id)).trim();
         if (!text) return;
         responder.receive(text, event.message_id, new Date(event.time * 1000));
         const crisis = detectCrisis(text);
@@ -679,7 +685,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 const known = new Set(history.load(contact.qq).map(m => m.messageId));
                 fresh = fresh.filter(m => !known.has(m.message_id));
             }
-            const missed = toStored(fresh, selfId);
+            const missed = toStored(fresh, selfId, quoteLookup(contact.qq));
             for (const message of missed) history.append(contact.qq, message);
             // 停机期间他说过想伤害自己的话：补回时也记一笔（只记时间），暂停期从他说话的时候算（ADR 0068）
             for (const message of missed) {
