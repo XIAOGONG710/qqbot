@@ -145,6 +145,11 @@ describe('公共节日：并进卡', () => {
 
 describe('公共节日：那一天她在做的事', () => {
     const schedule = structuredClone(boyfriend.schedule!);
+    // 寒假（在家过，2027-01-04 起）写在 claude/release-cards 的卡里；卡还没上线时测试自己补上同样的一段，测的是代码
+    if (!schedule.holidays.some(holiday => holiday.name === '寒假')) {
+        schedule.holidays.push({ name: '寒假', start: '2027-01-04', end: '2027-02-28', where: '期末考完回青岛了，在家住', home: true });
+        schedule.free.home = { morning: ['在家睡到自然醒，窝在床上刷手机', '在家收拾房间'], afternoon: ['在家打独立游戏', '在家追剧', '陪妈妈出去买东西'], evening: ['在追一部剧', '跟爸妈一起看电视', '刷手机刷到忘了时间'] };
+    }
     const state = (text: string) => stateAt(schedule, new Date(text));
     const doing = (text: string) => { const a = state(text).activity; return a.kind === 'free' ? a.text : undefined; };
 

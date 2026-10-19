@@ -200,16 +200,18 @@ describe('作息：某个时刻她在干什么', () => {
 describe('起床时刻浮动（ADR 0078）', () => {
     const hm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     const day = (month: number, d: number) => new Date(2026, month - 1, d);
+    // jitter 写在 claude/release-cards 的卡里；卡还没上线时测试自己补上同样的一段，测的是代码
+    const jittered: Schedule = boyfriend.wake.jitter ? boyfriend : { ...boyfriend, wake: { ...boyfriend.wake, jitter: { from: '2026-10-26', spreadMin: 40, weekendMin: 60 } } };
 
     test('卡上写了 jitter：from 以前每天精确在 07:40 / 09:30，从 from 起浮动，同一天每次一样', () => {
-        assert.deepEqual(boyfriend.wake.jitter, { from: '2026-10-26', spreadMin: 40, weekendMin: 60 });
+        assert.deepEqual(jittered.wake.jitter, { from: '2026-10-26', spreadMin: 40, weekendMin: 60 });
         // 10-24（周六）、10-25（周日）、10-19（周一，早课）都在 from 之前：精确
-        assert.equal(hm(wakeOn(boyfriend, day(10, 24))), '09:30');
-        assert.equal(hm(wakeOn(boyfriend, day(10, 25))), '09:30');
-        assert.equal(hm(wakeOn(boyfriend, day(10, 19))), '07:40');
+        assert.equal(hm(wakeOn(jittered, day(10, 24))), '09:30');
+        assert.equal(hm(wakeOn(jittered, day(10, 25))), '09:30');
+        assert.equal(hm(wakeOn(jittered, day(10, 19))), '07:40');
         const days = Array.from({ length: 28 }, (_, i) => day(10, 26 + i));
-        const times = days.map(d => hm(wakeOn(boyfriend, d)));
-        assert.deepEqual(times, days.map(d => hm(wakeOn(boyfriend, d))), '同一天每次一样');
+        const times = days.map(d => hm(wakeOn(jittered, d)));
+        assert.deepEqual(times, days.map(d => hm(wakeOn(jittered, d))), '同一天每次一样');
         assert.ok(new Set(times).size >= 10, `28 天里至少 10 个不同的时刻：${[...new Set(times)].join(' ')}`);
     });
 
@@ -217,8 +219,8 @@ describe('起床时刻浮动（ADR 0078）', () => {
         let weekend = 0, weekendN = 0, free = 0, freeN = 0;
         for (let i = 0; i < 120; i++) {
             const d = day(10, 26 + i);
-            const lessons = classesOn(boyfriend, d).lessons;
-            const wake = wakeOn(boyfriend, d);
+            const lessons = classesOn(jittered, d).lessons;
+            const wake = wakeOn(jittered, d);
             const early = lessons.some(l => hm(l.start) === '08:20');
             if (early) assert.ok(Math.abs(wake.getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate(), 7, 40).getTime()) <= 10 * 60_000, `${d.toDateString()} ${hm(wake)}`);
             if (lessons[0]) assert.ok(wake.getTime() <= lessons[0].start.getTime() - 25 * 60_000, `${d.toDateString()} ${hm(wake)} vs ${hm(lessons[0].start)}`);

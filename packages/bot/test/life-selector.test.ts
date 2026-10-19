@@ -407,17 +407,17 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
 
     test('真实天气下午三点开始下雨（G2）：图书馆赶作业停在三点，之后在宿舍赶作业；三点以前那段不倒着改', () => {
         const dir = mkdtempSync(join(tmpdir(), 'life-rain-'));
-        // 11-29（周日）下午打算在图书馆赶作业（原来用 10-24、再后来 11-01；每次空闲活动的抽签列表变了，具体哪天跟着挪：10-21 起补了日常活动）
-        const date = '2026-11-29';
+        // 11-01（周日）下午打算在图书馆赶作业（原来用 10-24，10-11 买了相机以后那天下午换了，ADR 0053）
+        const date = '2026-11-01';
         const rain = [15, 16, 17];
         const hours: Record<string, HourWeather> = Object.fromEntries(Array.from({ length: 24 }, (_, h) => [`${date}T${String(h).padStart(2, '0')}`,
             { t: 16, p: rain.includes(h - 1) ? 1.2 : 0, c: rain.includes(h) ? 61 : 2, o: 1 as const }]));
         useRealWeather({ day: (place, day, until) => (place === 'jinan' && day === date ? dayFrom(hours, day, until) : undefined) });
         try {
-            const { events } = live(dir, at('2026-11-29T12:00:00'), at('2026-11-29T19:00:00'));
+            const { events } = live(dir, at('2026-11-01T12:00:00'), at('2026-11-01T19:00:00'));
             const library = events.filter(event => event.subject === '在图书馆赶作业');
             const dorm = events.filter(event => event.subject === '在宿舍赶作业');
-            const three = at('2026-11-29T15:00:00');
+            const three = at('2026-11-01T15:00:00');
             assert.ok(library.length > 0, '下雨前在图书馆');
             assert.ok(library.every(event => Date.parse(event.endedAt) <= three.getTime()), library.map(event => `${event.startedAt}–${event.endedAt}`).join('，'));
             assert.ok(library.some(event => event.endedAt === three.toISOString()), '停在开始下雨的那一刻');
