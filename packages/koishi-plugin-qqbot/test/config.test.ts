@@ -170,6 +170,13 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal('herDays' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
+    test('撤回（ADR 0082）：旧配置没有这一项时是关；开了照样传过去；等于默认值时不写进 koishi.yml', () => {
+        assert.equal(fromKoishi(minimal).recalls, false);
+        assert.equal(fromKoishi(before0009).recalls, false);
+        assert.equal(fromKoishi({ ...minimal, recalls: true }).recalls, true);
+        assert.equal('recalls' in (Config.simplify(Config(minimal as never)) as object), false);
+    });
+
     test('没人聊天时她一件件过日子（ADR 0040）：旧配置没有这一项时是关；开了照样传过去', () => {
         assert.equal(fromKoishi(minimal).autonomousLife, false);
         assert.equal(fromKoishi({ ...minimal, autonomousLife: true }).autonomousLife, true);

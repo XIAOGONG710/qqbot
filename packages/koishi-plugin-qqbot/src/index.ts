@@ -16,7 +16,7 @@ import { startApp, type Transport } from '../../bot/src/app.ts';
 import type { HistoryMessage } from '../../bot/src/backfill.ts';
 import { CONTACT_TIERS, DEFAULTS, STICKER_MODES, parseAppConfig, type AppConfig, type ContactTier, type StickerMode } from '../../bot/src/config.ts';
 import { createLog, type Log } from '../../bot/src/log.ts';
-import { isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
+import { isFriendRecall, isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
 import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
 import { textToSegments } from '../../bot/src/qq-faces.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from '../../bot/src/proactive.ts';
@@ -89,6 +89,7 @@ export interface Config {
     projectChoice: boolean;
     lifeInPrompt: boolean;
     grievance: boolean;
+    recalls: boolean;
     feedbackCommands: boolean;
     realWeather: boolean;
     candidates: number;
@@ -173,6 +174,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**项目选择接管空闲安排**（ADR 0056，实验）：三天内未完成的课程作业优先于刷手机、休息、阅读和摄影；上课、吃饭、赴约等硬事件照旧优先。状态行和行动账共用同一决策。要开着上面那一项'),
         lifeInPrompt: Schema.boolean().default(DEFAULTS.lifeInPrompt)
             .description('**生活账进提示词（第一步）**：她最近三天里有几天练拍照修图、上一回是什么时候，按账上记着的写一行进时间块；只给看得到她爱好的档位。要开着上面那一项'),
+        recalls: Schema.boolean().default(DEFAULTS.recalls)
+            .description('**撤回**（ADR 0082）：他撤回了一条她还没回的消息，她看到的是「撤回了一条消息」而不是原文（像真人那样问一句「撤回啥了」）；回过的、想伤害自己的话撤回了也照样看到。默认关'),
         grievance: Schema.boolean().default(DEFAULTS.grievance)
             .description('**有起因的小别扭与和好**（ADR 0074）：男朋友档，他隔了 3 天以上才来、这几天她发的一直没回时，她回来的头一两轮淡一点、点一句，他一解释 / 道歉 / 哄就软下来。只由这一个具体事件触发，一次只有一档，不存跨天的情绪，每轮从聊天记录的时间重算。默认关'),
         feedbackCommands: Schema.boolean().default(DEFAULTS.feedbackCommands)
@@ -290,6 +293,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.projectChoice !== undefined ? { projectChoice: config.projectChoice } : {}),
         ...(config.lifeInPrompt !== undefined ? { lifeInPrompt: config.lifeInPrompt } : {}),
         ...(config.grievance !== undefined ? { grievance: config.grievance } : {}),
+        ...(config.recalls !== undefined ? { recalls: config.recalls } : {}),
         ...(config.feedbackCommands !== undefined ? { feedbackCommands: config.feedbackCommands } : {}),
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
@@ -426,6 +430,12 @@ export function apply(ctx: Context, config: Config) {
         if (session.platform !== 'onebot' || !event || !isPrivateFriendMessage(event)) return next();
         app.receive(event);
     }, true);
+
+    // 他撤回消息（ADR 0082）：adapter-onebot 把 friend_recall 发成 message-deleted 事件，原始数据在 session.onebot
+    ctx.on('internal/session', session => {
+        const event = (session as Session & { onebot?: OneBotEvent }).onebot;
+        if (session.platform === 'onebot' && event && isFriendRecall(event)) app.receiveRecall(event);
+    });
 
     // QQ 号的下拉：挂在根上下文上，插件失败、重启时不卸掉（ADR 0009 试验结果第 5 条）
     if (!friendsLoaded) {

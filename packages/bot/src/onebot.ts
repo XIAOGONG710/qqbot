@@ -167,6 +167,21 @@ export class OneBotClient {
     }
 }
 
+/** 好友撤回消息（NapCat 的 notice/friend_recall）：user_id 是这段私聊的对方，message_id 是被撤回的那条（他的或她的）；ADR 0082 */
+export interface RecallEvent {
+    post_type: 'notice';
+    notice_type: 'friend_recall';
+    self_id: number;
+    user_id: number;
+    message_id: number;
+    [key: string]: unknown;
+}
+
+export function isFriendRecall(event: OneBotEvent): event is RecallEvent {
+    return event.post_type === 'notice' && event.notice_type === 'friend_recall'
+        && typeof event.user_id === 'number' && typeof event.message_id === 'number' && Number.isSafeInteger(event.message_id);
+}
+
 export function isPrivateFriendMessage(event: OneBotEvent): event is MessageEvent {
     return event.post_type === 'message' && event.message_type === 'private' && event.sub_type === 'friend';
 }

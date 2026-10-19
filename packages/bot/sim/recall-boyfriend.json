@@ -1,0 +1,25 @@
+{
+    "name": "男朋友档：他发了一条又撤回",
+    "description": "ADR 0082：他撤回的那条，聊天记录里是「[撤回了一条消息]」，她看不到原文。真人的反应：「你撤回啥了」「怎么撤回了」，不假装看到原文，不装没看见接着说别的。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-24T20:00:00+08:00",
+    "memory": false,
+    "history": [
+        { "time": "2026-10-24T19:40:00+08:00", "role": "user", "content": "你吃饭了没" },
+        { "time": "2026-10-24T19:41:00+08:00", "role": "assistant", "content": "刚吃完，你呢" },
+        { "time": "2026-10-24T19:50:00+08:00", "role": "user", "content": "我也吃了" }
+    ],
+    "steps": [
+        { "case": "RC01", "note": "只撤回了一条：她只看到撤回" },
+        { "say": "[撤回了一条消息]" },
+        { "check": { "maxChars": 30, "maxBubbles": 2, "replyAny": ["撤", "说啥", "说什么", "怎么了", "？", "?", "啥"] } },
+        { "case": "RC02", "note": "他接着解释" },
+        { "say": "打错了" },
+        { "check": { "maxChars": 40, "maxBubbles": 2 } },
+        { "case": "RC03", "note": "撤回之后接了一句别的" },
+        { "say": "[撤回了一条消息]" },
+        { "say": "没事，你吃的什么" },
+        { "check": { "maxChars": 50, "maxBubbles": 3 } }
+    ]
+}

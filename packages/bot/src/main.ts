@@ -9,7 +9,7 @@ import { loadConfig } from './config.ts';
 import { createLog } from './log.ts';
 import type { HistoryMessage } from './backfill.ts';
 import { ocrLines } from './media.ts';
-import { isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
+import { isFriendRecall, isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
 import { configuredImageDescriber, STICKER_VISION_PROMPT } from './vision.ts';
 import { stickerDecider, stickerShelf } from './stickers.ts';
 import { qqFavorites } from './sticker-favorites.ts';
@@ -61,6 +61,7 @@ function onEvent(event: OneBotEvent): void {
         return;
     }
     if (isPrivateFriendMessage(event)) app.receive(event);
+    else if (isFriendRecall(event)) app.receiveRecall(event);
 }
 
 // Ctrl+C 是 SIGINT；Windows 上直接关掉终端窗口是 SIGHUP

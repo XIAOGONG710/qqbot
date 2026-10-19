@@ -43,6 +43,7 @@ export const DEFAULTS = {
     projectChoice: false,
     lifeInPrompt: false,
     grievance: false,
+    recalls: false,
     feedbackCommands: false,
     realWeather: true,
     media: true,
@@ -112,6 +113,8 @@ export interface AppConfig {
     lifeInPrompt: boolean;
     /** 有起因的小别扭与和好（ADR 0074）：男朋友档，他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点，他一哄就软下来。默认关 */
     grievance: boolean;
+    /** 撤回（ADR 0082）：他撤回一条她还没回的消息，她看到的是「[撤回了一条消息]」而不是原文（危机的话除外）。默认关 */
+    recalls: boolean;
     /**
      * 反馈通道（ADR 0073）：男朋友档对她的话回一个字「假」或「像」，记进 feedback/YYYY-MM.jsonl，不当聊天、她不回应。默认关
      */
@@ -306,6 +309,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         projectChoice: bool(file, 'projectChoice', '', DEFAULTS.projectChoice),
         lifeInPrompt: bool(file, 'lifeInPrompt', '', DEFAULTS.lifeInPrompt),
         grievance: bool(file, 'grievance', '', DEFAULTS.grievance),
+        recalls: bool(file, 'recalls', '', DEFAULTS.recalls),
         feedbackCommands: bool(file, 'feedbackCommands', '', DEFAULTS.feedbackCommands),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         media: bool(file, 'media', '', DEFAULTS.media),
