@@ -133,3 +133,7 @@ DSH 的两条独立证据链给出接近的分布：真人每轮一条占 51–6
 - 起因：把所有候选合到 `claude/all-candidates` 后跑回归电池，`npc-asks-days` 的 NA07（「雨桐最近怎么样」）在 4 次里 2 次回「**老放我鸽子**」——账上只有一次苏雨桐临时去不了。这一句的哈希抽签在候选 4/5 的 `SHORT_CHANCE = 0.5` 下落在「回很短」里（基线 0.35 下不是），只回很短的一句会把「最近几件事」压成一个评语。
 - 做法：`LengthContext.aboutPerson`（`contact.ts` 传 `npcs.length > 0`，即他这一轮说起了她认识的闺蜜）；有它就不加「回很短」。话多、其他话题的抽签不变。
 - 测试：`expression.test.ts` 新增一项。真模型验证见合并后的 `claude/all-candidates`（NA07 的 `replyNone`）。
+
+## 补：配置开关 `shortReplies`（2026-10-19，整包上线用）
+
+候选 1–5 的「更短的回复」没有开关，代码一落地就变。现在 `shortReplies`（默认关）：关着用上线前的老样子（`LEGACY_SHORT_CHANCE` 0.35、老措辞「只回一句短的，几个字也行」、没有让路规则）；开了才是 0.5、新措辞，以及他在难受 / 说担心的事 / 问起她的朋友时不加「回很短」。`lengthHint({ shortReplies })`、`describeLength(hint, shortReplies)` 一处决定；模拟器 `shortReplies: true`、盲评回放 `--short-replies` 能开。测试：`expression.test.ts` 的候选 5 各项都带 `shortReplies: true`，另加一项核老样子（35%、老措辞、不让路、开了之后老的「短」仍在新的范围里）。
