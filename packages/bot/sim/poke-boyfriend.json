@@ -1,0 +1,23 @@
+{
+    "name": "男朋友档：他戳了她一下",
+    "description": "QQ 的「戳一戳」进来时是一条「[戳了戳你]」。真人的反应：很短的一两个字（「干嘛」「？」「怎么啦」），不解释、不当系统消息、不复述「你戳了我」。连戳要有点脾气但不烦。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-24T15:00:00+08:00",
+    "memory": false,
+    "history": [
+        { "time": "2026-10-24T13:30:00+08:00", "role": "user", "content": "我到家了" },
+        { "time": "2026-10-24T13:31:00+08:00", "role": "assistant", "content": "好~我刚吃完" }
+    ],
+    "steps": [
+        { "case": "PK01", "note": "隔了一阵他戳了一下：很短，不复述" },
+        { "say": "[戳了戳你]" },
+        { "check": { "maxChars": 20, "maxBubbles": 2, "replyNone": ["戳了戳你", "[戳", "收到", "系统"] } },
+        { "case": "PK02", "note": "他接着说话：照常聊" },
+        { "say": "没事 就想戳戳你" },
+        { "check": { "maxChars": 60, "maxBubbles": 3, "replyNone": ["[戳", "系统"] } },
+        { "case": "PK03", "note": "又戳一下：不烦、不重复上一句" },
+        { "say": "[戳了戳你]" },
+        { "check": { "maxChars": 25, "maxBubbles": 2, "replyNone": ["戳了戳", "[戳", "系统"] } }
+    ]
+}

@@ -8,9 +8,11 @@ import type { HistoryMessage } from '../src/backfill.ts';
 import type { ImageDescriber, MEDIA_TIMEOUTS, MediaReader } from '../src/media.ts';
 import type { AppConfig } from '../src/config.ts';
 import { ChatHistory } from '../src/history.ts';
-import type { MessageEvent } from '../src/onebot.ts';
+import type { MessageEvent, PokeEvent } from '../src/onebot.ts';
 import type { ProactiveRecord } from '../src/proactive.ts';
+import { stateAt } from '../src/schedule.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
+import { loadCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import type { StickerEntry, StickerShelf } from '../src/stickers.ts';
 import { CRISIS_FALLBACK } from '../src/exit-check.ts';
@@ -42,7 +44,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false,
+        lifeInPrompt: false, grievance: false, pokes: false,
         feedbackCommands: false,
         realWeather: false,
         media: true,
@@ -910,5 +912,69 @@ describe('反馈通道（ADR 0073）：男朋友档回「假」/「像」', () =
         assert.deepEqual(chat(cfg, 10001), ['assistant:晚安啦'], '没有补回成聊天');
         assert.equal(sent.length, 0);
         assert.ok(!logs.some(l => l.includes('补回')), logs.join('|'));
+    });
+});
+
+describe('戳一戳（ADR 0079，配置 pokes）', () => {
+    const bf = [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }];
+    const pokeFrom = (userId: number, secondsAgo = 0): PokeEvent => ({
+        post_type: 'notice', notice_type: 'notify', sub_type: 'poke', self_id: SELF, user_id: userId, target_id: SELF, time: nowSec() - secondsAgo,
+    });
+    const lastPrompt = (prompts: string[][]) => prompts.at(-1)!.join('\n');
+
+    test('关着（默认）：戳了不理；开着：名单里的人戳一下，她看到一条「[戳了戳你]」并回一句，聊天记录里是他发的这一条', async () => {
+        const off = setup(config({ contacts: bf }));
+        off.app.receivePoke(pokeFrom(10001));
+        await new Promise(r => setTimeout(r, 100));
+        assert.equal(off.sent.length, 0);
+
+        const seen: string[][] = [];
+        const cfg = config({ contacts: bf, pokes: true });
+        const on = setup(cfg, {}, { generate: messages => { seen.push(messages.map(m => m.content)); return '戳我干嘛'; } });
+        on.app.receivePoke(pokeFrom(10001));
+        await until(() => on.sent.length === 1);
+        assert.equal(on.sent[0], '10001:戳我干嘛');
+        assert.match(lastPrompt(seen), /\[戳了戳你\]/);
+        const stored = new ChatHistory(cfg.dataDir).load(10001);
+        assert.deepEqual(stored.map(m => [m.role, m.content]), [['user', '[戳了戳你]'], ['assistant', '戳我干嘛']]);
+        assert.ok(on.logs.includes('[10001] 戳了她一下'));
+    });
+
+    test('不理：不在名单的人、旧的通知（断线后补推）；5 分钟里第 4 下起不理，日志只记次数', async () => {
+        const cfg = config({ contacts: bf, pokes: true, unlistedFriends: true });
+        const { app, sent, logs } = setup(cfg);
+        app.receivePoke(pokeFrom(99999));
+        app.receivePoke(pokeFrom(10001, 120));
+        await new Promise(r => setTimeout(r, 100));
+        assert.equal(sent.length, 0);
+        assert.deepEqual(logs.filter(l => l.includes('戳')), []);
+
+        for (let i = 0; i < 5; i++) app.receivePoke(pokeFrom(10001));
+        assert.equal(logs.filter(l => l === '[10001] 戳了她一下').length, 3);
+        assert.equal(logs.filter(l => l.includes('已经戳过 3 下')).length, 2);
+    });
+
+    test('她睡着、在上课时的戳不算（日志记在干什么，不进聊天记录、不排回复）；空闲时算', async () => {
+        const schedule = loadCharacterCard(resolve(repoRoot, 'characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;
+        let classTime: Date | undefined;
+        for (let minute = 8 * 60; minute < 18 * 60 && !classTime; minute++) {
+            const at = new Date(2026, 9, 12, 0, minute);
+            if (stateAt(schedule, at).activity.kind === 'class') classTime = at;
+        }
+        assert.ok(classTime, '10-12（周一）白天应该有课');
+        const cfg = (clockAt: Date) => ({ cfg: config({ contacts: bf, pokes: true, schedule: true }), clock: new VirtualClock(clockAt) });
+
+        for (const [at, word] of [[new Date(2026, 9, 12, 3, 0), '睡觉'], [classTime, '上课']] as const) {
+            const { cfg: c, clock } = cfg(at);
+            const { app, logs } = setup(c, {}, { clock });
+            app.receivePoke(pokeFrom(10001));
+            assert.ok(logs.includes(`[10001] 戳了她一下，她在${word}，不理`), `${word}：${logs.join('|')}`);
+            assert.equal(new ChatHistory(c.dataDir).load(10001).length, 0);
+        }
+
+        const { cfg: c, clock } = cfg(new Date(2026, 9, 10, 15, 0));
+        const { app, logs } = setup(c, {}, { clock });
+        app.receivePoke(pokeFrom(10001));
+        assert.ok(logs.includes('[10001] 戳了她一下'), logs.join('|'));
     });
 });
