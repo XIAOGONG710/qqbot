@@ -30,7 +30,7 @@ const hm = (time: number) => new Date(time).toTimeString().slice(0, 5);
 
 describe('主动消息：读卡', () => {
     test('男朋友档有主动设置和三个日子，同学档都没有', () => {
-        assert.deepEqual(boyfriend.proactive, { occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather', 'news', 'reschedule'], dailyMax: 2, unansweredMax: 1, newsKinds: ['camera', 'homework_done'] });
+        assert.deepEqual(boyfriend.proactive, { occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather', 'news', 'reschedule'], dailyMax: 2, unansweredMax: 1, newsKinds: ['camera', 'homework_done', 'friend_changed', 'friend_sick'] });
         assert.deepEqual(boyfriend.dates.map(d => d.name), ['你的生日', '你们在一起的纪念日', '他的生日']);
         const classmate = loadCharacterCard(cardPath('classmate'));
         assert.equal(classmate.proactive, undefined);
