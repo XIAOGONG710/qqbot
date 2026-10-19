@@ -16,6 +16,7 @@ import { startApp, type Transport } from '../../bot/src/app.ts';
 import type { HistoryMessage } from '../../bot/src/backfill.ts';
 import { CONTACT_TIERS, DEFAULTS, STICKER_MODES, parseAppConfig, type AppConfig, type ContactTier, type StickerMode } from '../../bot/src/config.ts';
 import { createLog, type Log } from '../../bot/src/log.ts';
+import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/presence.ts';
 import { isFriendRecall, isPokeAtMe, isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
 import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
 import { textToSegments } from '../../bot/src/qq-faces.ts';
@@ -57,6 +58,8 @@ export const THINKING = ['off', 'low', 'high', 'max'] as const;
 export type Thinking = (typeof THINKING)[number];
 const THINKING_LABELS: Record<Thinking, string> = { off: '关', low: '低', high: '高', max: '最高' };
 
+const PRESENCE_LABELS: Record<PresenceMode, string> = { off: '关', dryRun: '只写草稿，不真做', on: '开' };
+const QZONE_LABELS: Record<QzoneVisibility, string> = { friends: '仅好友可见', public: '所有人可见' };
 const FESTIVAL_LABELS: Record<FestivalMode, string> = { off: '关', notes: '只让她知道今天 / 快到的是什么节', greet: '知道，并在新年零点、除夕、平安夜、情人节等主动说一句' };
 const PROACTIVE_LABELS: Record<ProactiveMode, string> = { off: '关', dryRun: '试运行（只写日志不发）', on: '开' };
 const STICKER_LABELS: Record<StickerMode, string> = { off: '关', collect: '只收藏核对（不发）', send: '收藏并发送' };
@@ -95,6 +98,13 @@ export interface Config {
     pokes: boolean;
     recalls: boolean;
     pokeBack: boolean;
+    readReceipts: boolean;
+    reactions: boolean;
+    onlineStatus: boolean;
+    profileLikes: boolean;
+    signature: PresenceMode;
+    qzone: PresenceMode;
+    qzoneVisibility: QzoneVisibility;
     feedbackCommands: boolean;
     realWeather: boolean;
     festivals: FestivalMode;
@@ -185,6 +195,20 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**戳一戳**（ADR 0079）：名单里的人在 QQ 里戳她一下，她看到的是一条「[戳了戳你]」，像「戳我干嘛」那样短短回一句；睡着、上课时不理，5 分钟里最多算 3 下，不戳回去。默认关'),
         recalls: Schema.boolean().default(DEFAULTS.recalls)
             .description('**撤回**（ADR 0082）：他撤回了一条她还没回的消息，她看到的是「撤回了一条消息」而不是原文（像真人那样问一句「撤回啥了」）；回过的、想伤害自己的话撤回了也照样看到。默认关'),
+        readReceipts: Schema.boolean().default(DEFAULTS.readReceipts)
+            .description('**已读回执**（ADR 0083）：她「看到」他的消息的那一刻标已读（NapCat 的 mark_private_msg_as_read），睡着、上课时不标，保持未读；「看心情不回」就成了真正的已读不回。NapCat 收到消息不会自动标已读。默认关'),
+        reactions: Schema.boolean().default(DEFAULTS.reactions)
+            .description('**表情回应**（ADR 0083）：她看到了却不回（看心情不回、收尾后的附和）时，给他最后一条消息点个表情回应（赞、爱心、笑哭），比空着像人。私聊里 NapCat 的 set_msg_emoji_like 能不能用没验证；不能用只记一行。默认关'),
+        onlineStatus: Schema.boolean().default(DEFAULTS.onlineStatus)
+            .description('**在线状态**（ADR 0083）：按她的作息，睡着或说过睡了「离开」、上课「忙碌」、在听歌「听歌中」、其余「在线」（NapCat 的 set_online_status）；状态变了至少隔 10 分钟才改。对外可见。默认关'),
+        profileLikes: Schema.boolean().default(DEFAULTS.profileLikes)
+            .description('**资料卡点赞**（ADR 0083）：约 80% 的日子，中午到晚上某个时刻给男朋友档的人点 1–5 个赞（NapCat 的 send_like）；睡着、上课时不点。他会收到通知。默认关'),
+        signature: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.signature)
+            .description('**个性签名**（ADR 0083）：隔 3–5 天换一条（节日当天是祝福，下雨天有雨天的；NapCat 的 set_self_longnick）。选「只写草稿」时草稿存在数据目录的 presence/drafts.md 里，不真改。默认关'),
+        qzone: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.qzone)
+            .description('**QQ 空间说说**（ADR 0083）：一周两三条，模仿「空友爱看」里常见的那种——随手一两句，有图就围着图写（图放在数据目录的 presence/photos/ 里，需要开「看懂图片内容」）。用最低隐私档的卡来写并过禁用词；选「只写草稿」时存在 presence/drafts.md 里，不真发。默认关'),
+        qzoneVisibility: Schema.union(QZONE_VISIBILITIES.map(mode => Schema.const(mode).description(QZONE_LABELS[mode]))).default(DEFAULTS.qzoneVisibility)
+            .description('**说说谁能看**（ADR 0083）：仅好友（默认）；所有人可见会让陌生人看到，也可能被「空友爱看」收录并收到好友申请'),
         pokeBack: Schema.boolean().default(DEFAULTS.pokeBack)
             .description('**戳回去**（ADR 0079 补）：要先开上面的「戳一戳」。算数的戳里约 40% 她也戳他一下（NapCat 的 friend_poke，要它的 packet 服务可用；不可用就只记一行日志）。默认关'),
         grievance: Schema.boolean().default(DEFAULTS.grievance)
@@ -314,6 +338,13 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.pokes !== undefined ? { pokes: config.pokes } : {}),
         ...(config.recalls !== undefined ? { recalls: config.recalls } : {}),
         ...(config.pokeBack !== undefined ? { pokeBack: config.pokeBack } : {}),
+        ...(config.readReceipts !== undefined ? { readReceipts: config.readReceipts } : {}),
+        ...(config.reactions !== undefined ? { reactions: config.reactions } : {}),
+        ...(config.onlineStatus !== undefined ? { onlineStatus: config.onlineStatus } : {}),
+        ...(config.profileLikes !== undefined ? { profileLikes: config.profileLikes } : {}),
+        ...(config.signature !== undefined ? { signature: config.signature } : {}),
+        ...(config.qzone !== undefined ? { qzone: config.qzone } : {}),
+        ...(config.qzoneVisibility !== undefined ? { qzoneVisibility: config.qzoneVisibility } : {}),
         ...(config.feedbackCommands !== undefined ? { feedbackCommands: config.feedbackCommands } : {}),
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
         ...(config.festivals !== undefined ? { festivals: config.festivals } : {}),
@@ -412,6 +443,13 @@ export function apply(ctx: Context, config: Config) {
         // 白名单的小黄脸「[捂脸]」发成 face 段（ADR 0051），和 onebot.ts 发的是同一个请求
         sendPrivateText: async (userId, text) => Number(await onlineBot().internal.sendPrivateMsg(userId, textToSegments(text))),
         pokeFriend: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('friend_poke', { user_id: String(userId) }); },
+        markRead: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('mark_private_msg_as_read', { user_id: String(userId) }); },
+        reactMessage: async (messageId, emojiId) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_msg_emoji_like', { message_id: messageId, emoji_id: String(emojiId), set: true }); },
+        setOnlineStatus: async (status, ext) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_online_status', { status, ext_status: ext, battery_status: 0 }); },
+        sendLike: async (userId, times) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('send_like', { user_id: String(userId), times }); },
+        setSignature: async text => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_self_longnick', { longNick: text }); },
+        postQzone: async post => String(((await (onlineBot().internal as unknown as OneBotMediaInternal)._get('send_qzone_msg', { content: post.content, ...(post.images ? { images: post.images } : {}), ugc_right: post.ugcRight })) as { tid?: unknown } | null)?.tid ?? ''),
+        // 空友爱看相关的说明见 ADR 0083
         sendPrivateImage: async (userId, file, summary) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'image', data: { file, summary, sub_type: 1 } }])),
         // NapCat 的扩展动作 set_input_status（adapter-onebot 没有定义它，走通用的 _get：retcode 不是 0 就抛错；ADR 0077）
         setInputStatus: async (userId, eventType = 1) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_input_status', { user_id: String(userId), event_type: eventType }); },

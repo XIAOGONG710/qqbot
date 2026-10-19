@@ -39,6 +39,12 @@ const app = startApp({
         sendPrivateImage: (userId, file, summary) => client.sendPrivateImage(userId, file, summary),
         setInputStatus: (userId, eventType) => client.setInputStatus(userId, eventType),
         pokeFriend: async userId => { await client.call('friend_poke', { user_id: String(userId) }); },
+        markRead: async userId => { await client.call('mark_private_msg_as_read', { user_id: String(userId) }); },
+        reactMessage: async (messageId, emojiId) => { await client.call('set_msg_emoji_like', { message_id: messageId, emoji_id: String(emojiId), set: true }); },
+        setOnlineStatus: async (status, ext) => { await client.call('set_online_status', { status, ext_status: ext, battery_status: 0 }); },
+        sendLike: async (userId, times) => { await client.call('send_like', { user_id: String(userId), times }); },
+        setSignature: async text => { await client.call('set_self_longnick', { longNick: text }); },
+        postQzone: async post => (await client.call<{ tid: string }>('send_qzone_msg', { content: post.content, ...(post.images ? { images: post.images } : {}), ugc_right: post.ugcRight })).tid,
         friendHistory: async (userId, count) => (await client.call<{ messages: HistoryMessage[] }>('get_friend_msg_history', {
             user_id: String(userId),
             count,

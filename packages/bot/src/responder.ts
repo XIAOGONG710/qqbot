@@ -69,6 +69,10 @@ export interface ResponderDeps {
     send: (userId: number, text: string) => Promise<number>;
     /** 让对方那边显示「正在输入…」（ADR 0077）：她打字的这段时间里每隔几秒调一次，调用不等结果、出错也不影响发送；不传就不显示 */
     typing?: (userId: number) => void;
+    /** 她「看到」他的消息的那一刻（ADR 0083，配置 readReceipts）：让他那边的消息从未读变成已读。不等结果、出错也不影响回复；不传就不标 */
+    markRead?: () => void;
+    /** 她看到了却决定不回（看心情不回、收尾后的附和）：给他最后一条消息点个表情回应（ADR 0083，配置 reactions）；不传就什么都不做 */
+    react?: (messageId: number, text: string) => void;
     /** 实际发送内容与聊天记录表示不同时转换（图片表情编号 -> 可读描述）。 */
     historyContent?: (sent: string) => string;
     log: (message: string) => void;
@@ -225,6 +229,10 @@ export function createResponder(deps: ResponderDeps): Responder {
             const skip = timing.skip(stored);
             if (skip) {
                 deps.log(skip);
+                // 看到了不回：已读不回，再点个表情回应（最后一条是真消息才点；戳一戳那种合成的 id 不点）
+                deps.markRead?.();
+                const last = stored.slice(seen).findLast(m => m.role === 'user');
+                if (deps.react && last?.messageId !== undefined && last.messageId < 2 ** 32) deps.react(last.messageId, last.content);
                 skipped = { at: now(), reason: skip };
                 seen = stored.length;
                 return null;
@@ -232,7 +240,10 @@ export function createResponder(deps: ResponderDeps): Responder {
             skipped = undefined;
             const decision = timing.whenSeen(stored, now());
             if (!decision) return null;
-            if (decision.at <= now()) return decision;
+            if (decision.at <= now()) {
+                deps.markRead?.();
+                return decision;
+            }
             if (decision.at !== loggedSeenAt) deps.log(`${decision.reason}，${clock(decision.at)} 看到`);
             loggedSeenAt = decision.at;
             setPhase({ phase: 'waiting', seenAt: decision.at, reason: decision.reason });

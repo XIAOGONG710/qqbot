@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { MEDIA_TIMEOUTS } from './media.ts';
 import { FESTIVAL_MODES, type FestivalMode } from './festivals.ts';
+import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from './presence.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from './proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from './st/prompt-converters.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from './st/world-info.ts';
@@ -51,6 +52,13 @@ export const DEFAULTS = {
     feedbackCommands: false,
     realWeather: true,
     festivals: 'off' as FestivalMode,
+    readReceipts: false,
+    reactions: false,
+    onlineStatus: false,
+    profileLikes: false,
+    signature: 'off' as PresenceMode,
+    qzone: 'off' as PresenceMode,
+    qzoneVisibility: 'friends' as QzoneVisibility,
     typingStatus: false,
     media: true,
     stickers: 'off' as StickerMode,
@@ -133,6 +141,20 @@ export interface AppConfig {
     feedbackCommands: boolean;
     /** 公共节日（ADR 0076）：off 关；notes 她在时间块里知道今天、临近是什么节（平安夜、除夕、情人节……）；greet 再让她在情侣之间一定会说一句的节日里主动说（新年零点、除夕、平安夜、情人节……）。默认 off */
     festivals: FestivalMode;
+    /** 已读回执（ADR 0083）：她看到他的消息的那一刻标已读（NapCat mark_private_msg_as_read），睡着时保持未读。默认关 */
+    readReceipts: boolean;
+    /** 表情回应（ADR 0083）：她看到了却不回（看心情不回、收尾后的附和）时，给他最后一条点个表情回应（set_msg_emoji_like）。默认关 */
+    reactions: boolean;
+    /** 在线状态（ADR 0083）：睡着离开、上课忙碌、听歌中、其余在线（set_online_status）。默认关 */
+    onlineStatus: boolean;
+    /** 资料卡点赞（ADR 0083）：约 80% 的日子给男朋友档点 1–5 个赞（send_like）。默认关 */
+    profileLikes: boolean;
+    /** 个性签名（ADR 0083）：隔 3–5 天换一条（set_self_longnick）；dryRun 只写草稿不改。默认关 */
+    signature: PresenceMode;
+    /** QQ 空间说说（ADR 0083）：一周两三条，用最低隐私档的卡写（send_qzone_msg）；dryRun 只写草稿不发。默认关 */
+    qzone: PresenceMode;
+    /** 说说谁能看：friends 仅好友（默认）/ public 所有人（可能进「空友爱看」被陌生人看到） */
+    qzoneVisibility: QzoneVisibility;
     /** 她打字的这段时间，对方的 QQ 上显示「对方正在输入…」（ADR 0077；NapCat 的 set_input_status）。默认关 */
     typingStatus: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
@@ -332,6 +354,13 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         feedbackCommands: bool(file, 'feedbackCommands', '', DEFAULTS.feedbackCommands),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         festivals: festivalMode(file.festivals),
+        readReceipts: bool(file, 'readReceipts', '', DEFAULTS.readReceipts),
+        reactions: bool(file, 'reactions', '', DEFAULTS.reactions),
+        onlineStatus: bool(file, 'onlineStatus', '', DEFAULTS.onlineStatus),
+        profileLikes: bool(file, 'profileLikes', '', DEFAULTS.profileLikes),
+        signature: oneOf(file.signature, 'signature', PRESENCE_MODES, DEFAULTS.signature),
+        qzone: oneOf(file.qzone, 'qzone', PRESENCE_MODES, DEFAULTS.qzone),
+        qzoneVisibility: oneOf(file.qzoneVisibility, 'qzoneVisibility', QZONE_VISIBILITIES, DEFAULTS.qzoneVisibility),
         typingStatus: bool(file, 'typingStatus', '', DEFAULTS.typingStatus),
         media: bool(file, 'media', '', DEFAULTS.media),
         stickers: stickerMode(file.stickers),
@@ -367,6 +396,13 @@ function proactiveMode(value: unknown): ProactiveMode {
     if (value === undefined) return DEFAULTS.proactive;
     if (!PROACTIVE_MODES.includes(value as ProactiveMode)) throw new Error(`配置 proactive 应为 ${PROACTIVE_MODES.map(v => JSON.stringify(v)).join(' / ')} 之一`);
     return value as ProactiveMode;
+}
+
+/** 取值在列表里的配置项；没写用默认值，写错了报错并列出可选的 */
+function oneOf<T extends string>(value: unknown, name: string, allowed: readonly T[], fallback: T): T {
+    if (value === undefined) return fallback;
+    if (!allowed.includes(value as T)) throw new Error(`配置 ${name} 应为 ${allowed.map(v => JSON.stringify(v)).join(' / ')} 之一`);
+    return value as T;
 }
 
 function festivalMode(value: unknown): FestivalMode {

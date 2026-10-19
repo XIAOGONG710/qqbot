@@ -202,6 +202,22 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal('recalls' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
+    test('存在感（ADR 0083）：旧配置没有这些项时全是关；开了照样传过去；等于默认值时不写进 koishi.yml；写错的模式报错', () => {
+        for (const key of ['readReceipts', 'reactions', 'onlineStatus', 'profileLikes'] as const) {
+            assert.equal(fromKoishi(minimal)[key], false, key);
+            assert.equal(fromKoishi(before0009)[key], false, key);
+            assert.equal(fromKoishi({ ...minimal, [key]: true })[key], true, key);
+            assert.equal(key in (Config.simplify(Config(minimal as never)) as object), false, key);
+        }
+        assert.equal(fromKoishi(minimal).signature, 'off');
+        assert.equal(fromKoishi(minimal).qzone, 'off');
+        assert.equal(fromKoishi(minimal).qzoneVisibility, 'friends');
+        assert.equal(fromKoishi({ ...minimal, signature: 'dryRun', qzone: 'on', qzoneVisibility: 'public' }).qzone, 'on');
+        assert.equal(fromKoishi({ ...minimal, qzoneVisibility: 'public' }).qzoneVisibility, 'public');
+        assert.throws(() => Config({ ...minimal, qzone: 'maybe' } as never));
+        assert.throws(() => parseAppConfig({ ...toAppConfigInput(Config(minimal as never)), qzone: 'maybe' }, repoRoot, env), /qzone/);
+    });
+
     test('没人聊天时她一件件过日子（ADR 0040）：旧配置没有这一项时是关；开了照样传过去', () => {
         assert.equal(fromKoishi(minimal).autonomousLife, false);
         assert.equal(fromKoishi({ ...minimal, autonomousLife: true }).autonomousLife, true);

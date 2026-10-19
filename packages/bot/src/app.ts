@@ -30,7 +30,9 @@ import { createFeedbackChannel } from './feedback.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from './festivals.ts';
-import { newsKindsOf, type ProactiveMode } from './proactive.ts';
+import { newsKindsOf, dayMatches, type ProactiveMode } from './proactive.ts';
+import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
+import { qzoneComposer } from './qzone.ts';
 import { detectCrisis, type CrisisLevel } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
 import { createPokeLimiter, POKE_BACK_COOLDOWN_MS, POKE_MAX_AGE_MS, POKE_MAX_IN_WINDOW, pokeBackPlan, pokeMessage } from './pokes.ts';
@@ -60,9 +62,13 @@ export const MEMORY_SYNC_MS = 5 * 60_000;
 export const WEATHER_REFRESH_MS = 30 * 60_000;
 
 /** 入口提供的收发 */
-export interface Transport {
+export interface Transport extends PresenceTransport {
     /** 发一条私聊文字，返回 QQ 消息 id；文字里白名单的小黄脸「[捂脸]」发成 face 段（qq-faces.ts textToSegments，ADR 0051） */
     sendPrivateText(userId: number, text: string): Promise<number>;
+    /** 标已读（NapCat mark_private_msg_as_read，配置 readReceipts，ADR 0083）；没有就不标 */
+    markRead?(userId: number): Promise<void>;
+    /** 给某条消息点表情回应（NapCat set_msg_emoji_like，配置 reactions，ADR 0083）；没有就不点 */
+    reactMessage?(messageId: number, emojiId: number): Promise<void>;
     /** 让对方那边显示「正在输入…」（配置 typingStatus，ADR 0077）；没有就不显示 */
     setInputStatus?(userId: number, eventType?: number): Promise<void>;
     /** 戳他一下（NapCat 的 friend_poke，配置 pokeBack）；没有就不戳 */
@@ -174,6 +180,12 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     if (!sensitive.on()) rmSync(join(config.dataDir, 'last-prompt.json'), { force: true });
     // 每个档位一张角色卡和一本世界书，用到时读一次；不知道她是程序的联系人用「<档位>-open」承认版（ADR 0067，cardKey）
     let typingFailed = false;
+    const failedOnce = new Set<string>();
+    const failOnce = (what: string, userId: number, error: unknown) => {
+        if (failedOnce.has(what)) return;
+        failedOnce.add(what);
+        log(`[${userId}] ${what}失败（之后不再记）：${error instanceof Error ? error.message : String(error)}`);
+    };
     const cards = new Map<string, TierCard>();
     const cardFor = (tier: string) => {
         let card = cards.get(tier);
@@ -465,6 +477,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             // 超时不重发：可能已经发出去了，再发就重复
             // 她打字的这段时间对方那边显示「正在输入…」（ADR 0077，配置 typingStatus，默认关）；出错只记一次日志，不影响发送
             ...(config.typingStatus && transport.setInputStatus ? { typing: (userId: number) => { transport.setInputStatus!(userId).catch(error => { if (!typingFailed) { typingFailed = true; log(`[${userId}] 显示「正在输入」失败（之后不再记）：${error instanceof Error ? error.message : String(error)}`); } }); } } : {}),
+            // 已读回执 / 表情回应（ADR 0083）：失败只记第一次，不影响回复
+            ...(config.readReceipts && transport.markRead ? { markRead: (userId: number) => { transport.markRead!(userId).catch(error => failOnce('已读回执', userId, error)); } } : {}),
+            ...(config.reactions && transport.reactMessage ? { react: (userId: number, messageId: number, text: string) => { transport.reactMessage!(messageId, reactionEmoji(text, messageId)).then(() => log(`[${userId}] 看到了没回，点了个表情回应`), error => failOnce('表情回应', userId, error)); } } : {}),
             send: async (userId, text) => {
                 const sticker = contact.tier === 'boyfriend' ? sendingStickers?.resolve(text) : undefined;
                 if (sticker) {
@@ -495,6 +510,57 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
 
     // 危机信号（ADR 0068）：只记哪个联系人、什么时候，不记内容
     const crisisState = createCrisisState(config.dataDir, log);
+
+    /** 存在感（ADR 0083）：在线状态 / 资料卡点赞 / 个性签名 / 说说；第一次连上才起，一个开关都没开就不起 */
+    let presence: Presence | undefined;
+    function startPresence(): void {
+        if (presence) return;
+        if (!config.onlineStatus && !config.profileLikes && config.signature === 'off' && config.qzone === 'off') return;
+        if (!worldCard?.schedule) {
+            log('存在感：没有作息（herDays 关或卡上没有作息），不启动——在线状态、点赞、签名、说说都按她的作息排');
+            return;
+        }
+        const schedule = worldCard.schedule;
+        const extraFree = config.herDays ? readingActivities(worldCard.books) : [];
+        const dir = join(config.dataDir, 'presence');
+        // 说说用最低隐私档的卡来写（陌生人档，没有就同学档）；两张都读不了就不发说说
+        let lowest: TierCard | undefined;
+        for (const tier of ['stranger', 'classmate']) {
+            try { lowest = cardFor(tier); break; } catch { /* 试下一档 */ }
+        }
+        const publicSchedule = lowest?.character.schedule ?? schedule;
+        const qzone = config.qzone !== 'off' && lowest
+            ? qzoneComposer({
+                character: { name: lowest.character.name, description: lowest.character.description, personality: lowest.character.personality, banned: lowest.character.banned },
+                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 1.1 }, messages, { log, purpose: 'background' })),
+                ...(vision ? { vision } : {}),
+                photoDir: join(dir, 'photos'),
+                situation: now => [
+                    // 这一档自己的作息：空闲时她在干什么按这一档看得到的来（男朋友档知道的事——买相机、他——不能漏进谁都可能看到的说说里）
+                    `你现在：${describeState(stateAt(publicSchedule, new Date(now), extraFree), publicSchedule)}`,
+                    ...(rainyAt(now) ? ['天气：在下雨'] : []),
+                ],
+                log,
+            })
+            : undefined;
+        if (config.qzone !== 'off' && !qzone) log('存在感：陌生人档和同学档的卡都读不了，不写说说');
+        presence = createPresence({
+            flags: { onlineStatus: config.onlineStatus, profileLikes: config.profileLikes, signature: config.signature, qzone: qzone ? config.qzone : 'off', qzoneVisibility: config.qzoneVisibility },
+            transport, schedule, extraFree,
+            likeTargets: config.contacts.filter(c => c.tier === 'boyfriend').map(c => c.qq),
+            dir, now: worldNow, log,
+            saidSleep: now => Boolean(asleepSince(schedule, bedtimes(schedule, now), new Date(now))),
+            festival: day => worldCard.dates.find(d => FESTIVAL_SIGNATURES[d.name] && dayMatches(d, day) === 'solar')?.name,
+            rainy: rainyAt,
+            ...(qzone ? { composeQzone: qzone } : {}),
+        });
+        presence.start();
+        log(`存在感：${[config.onlineStatus && '在线状态', config.profileLikes && '资料卡点赞', config.signature !== 'off' && `个性签名（${config.signature === 'dryRun' ? '只写草稿' : '真改'}）`, qzone && `说说（${config.qzone === 'dryRun' ? '只写草稿' : '真发'}，${config.qzoneVisibility === 'public' ? '所有人可见' : '仅好友可见'}）`].filter(Boolean).join('、')}`);
+    }
+    function rainyAt(now: number): boolean {
+        if (!sharedWorld || !worldCard?.herWorld || !worldCard.schedule) return false;
+        return Boolean(sharedWorld.at(worldCard.herWorld, worldCard.schedule, new Date(now))?.weather?.rain);
+    }
 
     /** 主动消息的计划器：第一次补回完才建 */
     const planners = new Map<number, Planner>();
@@ -737,6 +803,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     catchUpAll();
                     syncMemory();
                     startPlanners();
+                    startPresence();
                     for (const planner of planners.values()) planner.poke();
                     syncFollowUps();
                     discoverStickers();
@@ -810,6 +877,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             for (const responder of responders.values()) responder.stop();
             if (memoryTimer) clearInterval(memoryTimer);
             if (followUpTimer) clearInterval(followUpTimer);
+            presence?.stop();
             if (lifeTimer) clearInterval(lifeTimer);
             if (weatherTimer) clearInterval(weatherTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);

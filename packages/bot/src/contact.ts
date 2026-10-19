@@ -100,6 +100,9 @@ export interface ContactPipelineOptions {
     send: (userId: number, text: string) => Promise<number>;
     /** 她打字的这段时间让对方那边显示「正在输入…」（ADR 0077，配置 typingStatus）；不给就不显示 */
     typing?: (userId: number) => void;
+    /** 她看到他的消息的那一刻标已读 / 看到了不回时给他最后一条点表情回应（ADR 0083，配置 readReceipts / reactions）；不给就不做 */
+    markRead?: (userId: number) => void;
+    react?: (userId: number, messageId: number, text: string) => void;
     /** 图片表情收藏：给模型列可选编号、校验输出；实际发送由 app.ts 的 send 接线。 */
     stickers?: StickerShelf;
     /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
@@ -546,6 +549,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         }),
         send: options.send,
         ...(options.typing ? { typing: options.typing } : {}),
+        ...(options.markRead ? { markRead: () => options.markRead!(contact.qq) } : {}),
+        ...(options.react ? { react: (messageId: number, text: string) => options.react!(contact.qq, messageId, text) } : {}),
         ...(options.stickers ? { historyContent: (sent: string) => options.stickers!.history(sent) } : {}),
         log,
         now,

@@ -46,7 +46,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, readReceipts: false, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false,
         media: true,
@@ -70,7 +70,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -78,6 +78,9 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
     let nextId = 900;
     const transport: Transport = {
         ...(options.setInputStatus ? { setInputStatus: options.setInputStatus } : {}),
+        ...(options.markRead ? { markRead: options.markRead } : {}),
+        ...(options.setOnlineStatus ? { setOnlineStatus: options.setOnlineStatus } : {}),
+        ...(options.reactMessage ? { reactMessage: options.reactMessage } : {}),
         sendPrivateText: async (userId, text) => { sent.push(`${userId}:${text}`); return nextId++; },
         sendPrivateImage: async (userId, file, summary) => { images.push(`${userId}:${file}:${summary}`); return nextId++; },
         ...(options.pokeFriend ? { pokeFriend: options.pokeFriend } : {}),
@@ -1060,5 +1063,84 @@ describe('正在输入（ADR 0077）：整条线接通', () => {
         };
         assert.ok((await run(true)).length >= 1, '开着：打字那几秒调了 setInputStatus');
         assert.deepEqual(await run(false), [], '关着：不调');
+    });
+});
+
+describe('已读回执、表情回应（ADR 0083）：整条线接通', () => {
+    const bf = [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }];
+    const drive = async (clock: VirtualClock, done: () => boolean) => {
+        const deadline = Date.now() + 8000;
+        while (!done() && Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 20));
+            const next = clock.nextTimer();
+            if (next !== undefined) clock.advanceTo(next);
+        }
+        await new Promise(r => setTimeout(r, 60));
+    };
+
+    test('开着 readReceipts：她看到他的消息的那一刻标已读（回复之前），关着不标', async () => {
+        const run = async (readReceipts: boolean) => {
+            const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
+            const marked: number[] = [];
+            const cfg = config({ contacts: bf, schedule: true, readReceipts });
+            const { app, sent } = setup(cfg, {}, { clock, markRead: async userId => { marked.push(userId); } });
+            app.receive({ ...event(10001, 1, '在吗'), time: Math.floor(clock.now() / 1000) });
+            await drive(clock, () => sent.length === 1);
+            assert.equal(sent.length, 1);
+            return marked;
+        };
+        assert.deepEqual(await run(true), [10001]);
+        assert.deepEqual(await run(false), []);
+    });
+
+    test('她已经道了晚安、他只回「嗯嗯」：不回，但已读 + 点个表情回应（reactions 开着）；reactions 关着只已读', async () => {
+        const run = async (reactions: boolean) => {
+            const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
+            const cfg = config({ contacts: bf, schedule: true, readReceipts: true, reactions });
+            const now = clock.now();
+            const history = new ChatHistory(cfg.dataDir);
+            history.append(10001, { time: new Date(now - 300_000).toISOString(), role: 'user', content: '我要睡了', messageId: 11 });
+            history.append(10001, { time: new Date(now - 240_000).toISOString(), role: 'assistant', content: '晚安啦', messageId: 12 });
+            const marked: number[] = [];
+            const reacted: [number, number][] = [];
+            const { app, sent, logs } = setup(cfg, {}, { clock, markRead: async userId => { marked.push(userId); }, reactMessage: async (messageId, emojiId) => { reacted.push([messageId, emojiId]); } });
+            app.receive({ ...event(10001, 13, '嗯嗯'), time: Math.floor(now / 1000) });
+            await drive(clock, () => logs.some(l => l.includes('她已经收尾')));
+            assert.equal(sent.length, 0, '不回');
+            return { marked, reacted };
+        };
+        const on = await run(true);
+        assert.deepEqual(on.marked, [10001]);
+        assert.equal(on.reacted.length, 1);
+        assert.equal(on.reacted[0]![0], 13, '点的是他最后那一条');
+        assert.ok([66, 76].includes(on.reacted[0]![1]));
+        const off = await run(false);
+        assert.deepEqual(off.marked, [10001]);
+        assert.deepEqual(off.reacted, []);
+    });
+});
+
+describe('存在感（ADR 0083）：接进应用', () => {
+    const bf = [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }];
+    test('开着 onlineStatus：第一次连上就按她此刻在干什么设状态（周六下午空闲 → 在线）；一个开关都没开就不起；没有作息不起', async () => {
+        const calls: string[] = [];
+        const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
+        const on = setup(config({ contacts: bf, schedule: true, herDays: true, onlineStatus: true }), { 10001: [] }, { clock, setOnlineStatus: async (status, ext) => { calls.push(`${status}/${ext}`); } });
+        await on.app.connected(SELF);
+        await until(() => calls.length === 1);
+        assert.deepEqual(calls, ['10/0']);
+        assert.ok(on.logs.some(l => l.startsWith('存在感：在线状态')), on.logs.join('|'));
+
+        const idle: string[] = [];
+        const none = setup(config({ contacts: bf, schedule: true, herDays: true }), { 10001: [] }, { clock: new VirtualClock(new Date(2026, 9, 10, 15, 0)), setOnlineStatus: async (status, ext) => { idle.push(`${status}/${ext}`); } });
+        await none.app.connected(SELF);
+        await new Promise(r => setTimeout(r, 100));
+        assert.deepEqual(idle, [], '开关没开不动');
+        assert.ok(!none.logs.some(l => l.startsWith('存在感')));
+
+        const noWorld = setup(config({ contacts: bf, schedule: true, herDays: false, onlineStatus: true }), { 10001: [] }, { clock: new VirtualClock(new Date(2026, 9, 10, 15, 0)), setOnlineStatus: async () => { throw new Error('不该调'); } });
+        await noWorld.app.connected(SELF);
+        await new Promise(r => setTimeout(r, 100));
+        assert.ok(noWorld.logs.some(l => l.includes('存在感：没有作息')), noWorld.logs.join('|'));
     });
 });
