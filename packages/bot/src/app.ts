@@ -839,6 +839,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     syncMemory();
                     startPlanners();
                     startPresence();
+                    presence?.reapply();
                     startBrowsing();
                     for (const planner of planners.values()) planner.poke();
                     syncFollowUps();

@@ -224,6 +224,8 @@ export interface Presence {
     tick(): Promise<void>;
     start(): void;
     stop(): void;
+    /** NapCat 重新连上 / 重新登录之后：QQ 那边的状态可能已经被重置成「在线」，把现在该有的状态再设一遍 */
+    reapply(): void;
 }
 
 const STATE_VERSION = 1;
@@ -416,6 +418,11 @@ export function createPresence(options: PresenceOptions): Presence {
     return {
         tick,
         selfNote: now => describeSelf(state, now),
+        reapply() {
+            appliedThisRun = undefined;
+            statusRetryAt = 0;
+            if (timer) void tick();
+        },
         start() {
             if (timer) return;
             void tick();

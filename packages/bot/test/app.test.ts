@@ -1132,6 +1132,10 @@ describe('存在感（ADR 0083）：接进应用', () => {
         await until(() => calls.length === 1);
         assert.deepEqual(calls, ['10/0']);
         assert.ok(on.logs.some(l => l.startsWith('存在感：在线状态')), on.logs.join('|'));
+        // NapCat 重新连上（重新登录后 QQ 把状态重置成在线）：再设一遍，不等到下次状态变
+        await on.app.connected(SELF);
+        await until(() => calls.length === 2);
+        assert.deepEqual(calls, ['10/0', '10/0']);
 
         const idle: string[] = [];
         const none = setup(config({ contacts: bf, schedule: true, herDays: true }), { 10001: [] }, { clock: new VirtualClock(new Date(2026, 9, 10, 15, 0)), setOnlineStatus: async (status, ext) => { idle.push(`${status}/${ext}`); } });
