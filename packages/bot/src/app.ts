@@ -36,7 +36,7 @@ import { qzoneComposer } from './qzone.ts';
 import { createVideoBrowsing, type BiliFetch, type VideoBrowsing } from './bilibili.ts';
 import { detectCrisis, type CrisisLevel } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
-import { createPokeLimiter, POKE_BACK_COOLDOWN_MS, POKE_MAX_AGE_MS, POKE_MAX_IN_WINDOW, pokeBackPlan, pokeMessage } from './pokes.ts';
+import { createPokeLimiter, POKE_BACK_COOLDOWN_MS, POKE_MAX_AGE_MS, POKE_MAX_IN_WINDOW, POKE_OUT_TEXT, pokeBackPlan, pokeMessage, pokeOutMessageId, quietEnoughToPoke } from './pokes.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner, type PlannerStatus } from './proactive-planner.ts';
 import { PromiseStateUnavailable } from './promise-state.ts';
 import { promiseKeeper, type Appointment } from './promises.ts';
@@ -523,7 +523,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     let presence: Presence | undefined;
     function startPresence(): void {
         if (presence) return;
-        if (!config.onlineStatus && !config.profileLikes && config.signature === 'off' && config.qzone === 'off') return;
+        if (!config.onlineStatus && !config.profileLikes && config.signature === 'off' && config.qzone === 'off' && !config.pokeOut) return;
         if (!worldCard?.schedule) {
             log('存在感：没有作息（herDays 关或卡上没有作息），不启动——在线状态、点赞、签名、说说都按她的作息排');
             return;
@@ -553,9 +553,13 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             : undefined;
         if (config.qzone !== 'off' && !qzone) log('存在感：陌生人档和同学档的卡都读不了，不写说说');
         presence = createPresence({
-            flags: { onlineStatus: config.onlineStatus, profileLikes: config.profileLikes, signature: config.signature, qzone: qzone ? config.qzone : 'off', qzoneVisibility: config.qzoneVisibility },
+            flags: { onlineStatus: config.onlineStatus, profileLikes: config.profileLikes, signature: config.signature, qzone: qzone ? config.qzone : 'off', qzoneVisibility: config.qzoneVisibility, pokeOut: config.pokeOut },
             transport, schedule, extraFree,
             likeTargets: config.contacts.filter(c => c.tier === 'boyfriend').map(c => c.qq),
+            pokeTargets: config.contacts.filter(c => c.tier === 'boyfriend').map(c => c.qq),
+            // 聊天安静了一阵、最后一条是她说的、不是刚道过晚安，且没在危机暂停里，才戳他（ADR 0087）
+            canPokeOut: (qq, now) => !crisisState.pausedAt(qq, now) && quietEnoughToPoke(chatHistory.load(qq), now),
+            recordPokeOut: (qq, now) => { chatHistory.append(qq, { time: new Date(now).toISOString(), role: 'assistant', content: POKE_OUT_TEXT, messageId: pokeOutMessageId(now) }); },
             dir, now: worldNow, log,
             saidSleep: now => Boolean(asleepSince(schedule, bedtimes(schedule, now), new Date(now))),
             festival: day => worldCard.dates.find(d => FESTIVAL_SIGNATURES[d.name] && dayMatches(d, day) === 'solar')?.name,
@@ -563,7 +567,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(qzone ? { composeQzone: qzone } : {}),
         });
         presence.start();
-        log(`存在感：${[config.onlineStatus && '在线状态', config.profileLikes && '资料卡点赞', config.signature !== 'off' && `个性签名（${config.signature === 'dryRun' ? '只写草稿' : '真改'}）`, qzone && `说说（${config.qzone === 'dryRun' ? '只写草稿' : '真发'}，${config.qzoneVisibility === 'public' ? '所有人可见' : '仅好友可见'}）`].filter(Boolean).join('、')}`);
+        log(`存在感：${[config.onlineStatus && '在线状态', config.profileLikes && '资料卡点赞', config.pokeOut && '主动戳他', config.signature !== 'off' && `个性签名（${config.signature === 'dryRun' ? '只写草稿' : '真改'}）`, qzone && `说说（${config.qzone === 'dryRun' ? '只写草稿' : '真发'}，${config.qzoneVisibility === 'public' ? '所有人可见' : '仅好友可见'}）`].filter(Boolean).join('、')}`);
     }
     /** 她刷 B 站、挑一个真视频发给他（ADR 0084，配置 bilibili）：只发给男朋友档的第一个人；第一次连上才起 */
     let browsing: VideoBrowsing | undefined;

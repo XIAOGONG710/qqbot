@@ -10,7 +10,8 @@ import type { ImageDescriber, MEDIA_TIMEOUTS, MediaReader } from '../src/media.t
 import type { AppConfig } from '../src/config.ts';
 import { ChatHistory } from '../src/history.ts';
 import type { MessageEvent, PokeEvent } from '../src/onebot.ts';
-import { POKE_BACK_DELAY_MS, pokeBackPlan } from '../src/pokes.ts';
+import { POKE_BACK_DELAY_MS, POKE_OUT_TEXT, pokeBackPlan } from '../src/pokes.ts';
+import { pokeOutPlan } from '../src/presence.ts';
 import type { ProactiveRecord } from '../src/proactive.ts';
 import { stateAt } from '../src/schedule.ts';
 import { videoPlan, type BiliFetch } from '../src/bilibili.ts';
@@ -48,7 +49,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, readReceipts: false, bilibili: 'off', reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false,
         media: true,
@@ -1175,6 +1176,45 @@ describe('存在感（ADR 0083）：接进应用', () => {
         await noWorld.app.connected(SELF);
         await new Promise(r => setTimeout(r, 100));
         assert.ok(noWorld.logs.some(l => l.includes('存在感：没有作息')), noWorld.logs.join('|'));
+    });
+});
+
+describe('主动戳他（ADR 0087）：接进应用', () => {
+    const bf = [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }];
+    const planNight = () => {
+        for (let day = 2; day < 29; day++) {
+            const date = new Date(2026, 10, day, 21, 45);
+            const weekend = date.getDay() === 0 || date.getDay() === 6;
+            if (pokeOutPlan(`2026-11-${String(day).padStart(2, '0')}`, weekend)) return date;
+        }
+        return assert.fail('找不到要戳的日子');
+    };
+    const until2 = async (done: () => boolean, ms = 5000) => {
+        const deadline = Date.now() + ms;
+        while (!done() && Date.now() < deadline) await new Promise(r => setTimeout(r, 20));
+    };
+
+    test('开着 pokeOut：聊天安静了、最后一条是她说的 → 戳他一下并记进聊天记录；最后一条是他说的（还等她回）或关着就不戳', async () => {
+        const night = planNight();
+        const run = async (pokeOut: boolean, lastRole: 'assistant' | 'user', wait = 5000) => {
+            const poked: number[] = [];
+            const cfg = config({ contacts: bf, schedule: true, herDays: true, pokeOut });
+            const store = new ChatHistory(cfg.dataDir);
+            store.append(10001, { time: new Date(night.getTime() - 180 * 60_000).toISOString(), role: 'user', content: '在吗', messageId: 1 });
+            store.append(10001, { time: new Date(night.getTime() - 170 * 60_000).toISOString(), role: lastRole, content: lastRole === 'assistant' ? '在呀' : '嗯嗯', messageId: 2 });
+            const { app, logs } = setup(cfg, { 10001: [] }, { clock: new VirtualClock(night), pokeFriend: async qq => { poked.push(qq); } });
+            await app.connected(SELF);
+            await until2(() => poked.length >= 1, wait);
+            await new Promise(r => setTimeout(r, 100));
+            return { poked, stored: new ChatHistory(cfg.dataDir).load(10001), logs };
+        };
+        const on = await run(true, 'assistant');
+        assert.deepEqual(on.poked, [10001]);
+        assert.equal(on.stored.at(-1)?.content, POKE_OUT_TEXT, '记进聊天记录，他问起时她知道自己戳过');
+        assert.equal(on.stored.at(-1)?.role, 'assistant');
+        assert.ok(on.logs.some(l => l.includes('主动戳他')), on.logs.join('|'));
+        assert.deepEqual((await run(true, 'user', 400)).poked, [], '他说的最后一条，她还没回：不戳');
+        assert.deepEqual((await run(false, 'assistant', 400)).poked, [], '关着不戳');
     });
 });
 

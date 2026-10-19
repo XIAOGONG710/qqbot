@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import {
-    AWAY, BUSY, cleanQzoneText, createPresence, LIKE_CHANCE, LISTENING, ONLINE, onlineStatusFor, pickQzonePhoto, QZONE_CHANCE, QZONE_MAX_CHARS,
+    AWAY, BUSY, cleanQzoneText, createPresence, LIKE_CHANCE, LISTENING, ONLINE, onlineStatusFor, pickQzonePhoto, POKE_OUT_CHANCE, POKE_OUT_LATEST, pokeOutPlan, QZONE_CHANCE, QZONE_MAX_CHARS,
     describeSelf, likePlan, qzonePlan, reactionEmoji, SIGNATURES, signatureDueAt, signatureFor, type PresenceOptions, type PresenceTransport,
 } from '../src/presence.ts';
 import { formatDate, herDay, stateAt } from '../src/schedule.ts';
@@ -28,6 +28,16 @@ describe('在线状态（ADR 0083）', () => {
         const lesson = { kind: 'hard' as const, start: new Date(), end: new Date() };
         assert.deepEqual(onlineStatusFor({ kind: 'class', lesson }, false), BUSY);
         assert.equal(LISTENING.ext, 1028);
+    });
+});
+
+describe('主动戳他的规则（ADR 0087）', () => {
+    test('约 POKE_OUT_CHANCE 的日子戳；工作日 19:00 起、周末 14:00 起，最晚 21:30 起；同一天每次一样', () => {
+        const plans = Array.from({ length: 600 }, (_, i) => [pokeOutPlan(`d${i}`, i % 7 >= 5), i % 7 >= 5] as const);
+        const hits = plans.filter(([plan]) => plan);
+        assert.ok(Math.abs(hits.length / plans.length - POKE_OUT_CHANCE) < 0.06, String(hits.length / plans.length));
+        assert.ok(hits.every(([plan, weekend]) => plan!.minutes >= (weekend ? 14 : 19) * 60 && plan!.minutes <= 21 * 60 + 30));
+        assert.deepEqual(pokeOutPlan('2026-11-03', false), pokeOutPlan('2026-11-03', false));
     });
 });
 
@@ -94,6 +104,7 @@ describe('每分钟看一眼的循环（ADR 0083）', () => {
         const transport: PresenceTransport = {
             setOnlineStatus: async (status, ext) => { calls.push(`status:${status}/${ext}`); },
             sendLike: async (qq, times) => { calls.push(`like:${qq}x${times}`); },
+            pokeFriend: async qq => { calls.push(`poke:${qq}`); },
             setSignature: async text => { calls.push(`sig:${text}`); },
             postQzone: async post => { calls.push(`qzone:${post.content}|${post.images?.length ?? 0}|${post.ugcRight}`); return 'tid1'; },
         };
@@ -160,6 +171,50 @@ describe('每分钟看一眼的循环（ADR 0083）', () => {
         lateClock.t = at(11, day + 1, 3); // 凌晨睡着：不等一小时
         await late.presence.tick();
         assert.equal(late.calls.at(-1), 'status:30/0');
+    });
+
+    test('主动戳他（ADR 0087）：到点后等聊天安静才戳，一天一次；不合适就等，22:30 还不合适今天不戳；关着、没睡醒时不戳；戳完记下来', async () => {
+        const evening = (hour: number, minute = 0) => findDay(8, 0, t => Boolean(pokeOutPlan(dayOf(t), isWeekend(t)))) + (hour * 60 + minute) * MINUTE_MS - 8 * 3_600_000;
+        const noon = findDay(8, 0, t => Boolean(pokeOutPlan(dayOf(t), isWeekend(t))));
+        const plan = pokeOutPlan(dayOf(noon), isWeekend(noon))!;
+        assert.ok(plan.minutes >= 14 * 60 && plan.minutes <= 21 * 60 + 30);
+        const recorded: string[] = [];
+        let quiet = false;
+        const extra = { pokeTargets: [10001], canPokeOut: () => quiet, recordPokeOut: (qq: number) => { recorded.push(`记:${qq}`); } };
+
+        const clock = { t: evening(7) };
+        const { presence, calls, logs } = make(clock, { ...OFF, pokeOut: true }, extra);
+        await presence.tick();
+        assert.deepEqual(calls, [], '还没到点（或睡着）不戳');
+        clock.t = evening(Math.floor(plan.minutes / 60), plan.minutes % 60) + 60_000;
+        await presence.tick();
+        assert.deepEqual(calls, [], '到点了但聊天还没安静：等');
+        quiet = true;
+        clock.t += 10 * MINUTE_MS;
+        if (new Date(clock.t).getHours() * 60 + new Date(clock.t).getMinutes() > POKE_OUT_LATEST) clock.t = evening(21, 40);
+        await presence.tick();
+        assert.deepEqual(calls, ['poke:10001'], '安静了就戳');
+        assert.deepEqual(recorded, ['记:10001']);
+        assert.ok(logs.some(l => l.includes('戳了他一下')));
+        clock.t += 5 * MINUTE_MS;
+        await presence.tick();
+        assert.deepEqual(calls, ['poke:10001'], '一天一次');
+
+        // 22:30 之后还没等到合适的时候：今天不戳了，之后合适了也不戳
+        const late = { t: evening(22, 35) };
+        quiet = false;
+        const waited = make(late, { ...OFF, pokeOut: true }, extra);
+        await waited.presence.tick();
+        quiet = true;
+        late.t = evening(22, 40);
+        await waited.presence.tick();
+        assert.deepEqual(waited.calls, []);
+
+        // 关着不戳
+        quiet = true;
+        const off = make({ t: evening(21, 40) }, { ...OFF }, extra);
+        await off.presence.tick();
+        assert.deepEqual(off.calls, []);
     });
 
     test('点赞：到点才点，一天一次；关着不点', async () => {

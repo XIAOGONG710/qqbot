@@ -107,6 +107,20 @@ export function reactionEmoji(text: string, messageId: number): number {
     return pick(String(messageId), 'react', [0, 99]) < 70 ? 76 : 66;
 }
 
+// ───────── 主动戳他 ─────────
+
+/** 一天戳不戳：约这个比例的日子（一周最多 3 下，隔至少 36 小时）；工作日晚上、周末下午到晚上，到点之后等聊天安静下来再戳，22:30 以后今天不戳了 */
+export const POKE_OUT_CHANCE = 0.3;
+export const POKE_OUT_MIN_GAP_MS = 36 * 3_600_000;
+export const POKE_OUT_WEEK_MAX = 3;
+export const POKE_OUT_LATEST = 22 * 60 + 30;
+
+/** 这一天（她的一天）戳不戳、几点起；不戳返回 undefined */
+export function pokeOutPlan(day: string, weekend: boolean): { minutes: number } | undefined {
+    if (pick(day, 'poke-out', [0, 999]) >= POKE_OUT_CHANCE * 1000) return undefined;
+    return { minutes: weekend ? pick(day, 'poke-out-at', [14 * 60, 21 * 60 + 30]) : pick(day, 'poke-out-at', [19 * 60, 21 * 60 + 30]) };
+}
+
 // ───────── QQ 空间说说 ─────────
 
 /** 一天发不发：约这个比例的日子（一周两三条） */
@@ -148,6 +162,8 @@ export function cleanQzoneText(raw: string, banned: readonly string[] = []): str
 // ───────── 每分钟看一眼的小循环 ─────────
 
 export interface PresenceTransport {
+    /** 戳他一下（NapCat 的 friend_poke，要 packet 服务；ADR 0087） */
+    pokeFriend?(userId: number): Promise<void>;
     setOnlineStatus?(status: number, ext: number): Promise<void>;
     sendLike?(userId: number, times: number): Promise<void>;
     setSignature?(text: string): Promise<void>;
@@ -172,15 +188,24 @@ interface PresenceFile {
     qzone: QzoneRecord[];
     qzoneAttemptDay?: string;
     photosUsed: string[];
+    /** 她主动戳他的时刻（ADR 0087；旧文件没有这一项） */
+    pokesOut?: number[];
+    pokeOutAttemptDay?: string;
 }
 
 export interface PresenceOptions {
-    flags: { onlineStatus: boolean; profileLikes: boolean; signature: PresenceMode; qzone: PresenceMode; qzoneVisibility: QzoneVisibility };
+    flags: { onlineStatus: boolean; profileLikes: boolean; signature: PresenceMode; qzone: PresenceMode; qzoneVisibility: QzoneVisibility; pokeOut?: boolean };
     transport: PresenceTransport;
     schedule: Schedule;
     extraFree?: readonly ExtraFreeActivity[];
     /** 给谁点赞（男朋友档的联系人） */
     likeTargets: readonly number[];
+    /** 她主动戳谁（男朋友档的联系人；ADR 0087） */
+    pokeTargets?: readonly number[];
+    /** 这会儿适不适合戳他：聊天安静了一阵、不是刚道过晚安、没在危机暂停里。app 按聊天记录判断 */
+    canPokeOut?: (qq: number, now: number) => boolean;
+    /** 戳完记进聊天记录（「[你戳了戳他]」） */
+    recordPokeOut?: (qq: number, now: number) => void;
     /** 数据目录下的 presence/（状态文件、草稿、放图的 photos/） */
     dir: string;
     now: () => number;
@@ -342,6 +367,38 @@ export function createPresence(options: PresenceOptions): Presence {
         }
     }
 
+    async function pokeOut(t: number, day: string, awake: boolean): Promise<void> {
+        if (!flags.pokeOut || !transport.pokeFriend || !options.pokeTargets?.length || !awake || state.pokeOutAttemptDay === day) return;
+        const date = new Date(t);
+        const plan = pokeOutPlan(day, date.getDay() === 0 || date.getDay() === 6);
+        const minutes = date.getHours() * 60 + date.getMinutes();
+        if (!plan || minutes < plan.minutes) return;
+        const done = state.pokesOut ?? [];
+        const last = done.at(-1);
+        if ((last && t - last < POKE_OUT_MIN_GAP_MS) || done.filter(at => t - at < 7 * 86_400_000).length >= POKE_OUT_WEEK_MAX) return;
+        if (minutes > POKE_OUT_LATEST) {
+            // 等了一晚上聊天都没安静下来 / 一直不合适：今天不戳了
+            state.pokeOutAttemptDay = day;
+            save();
+            return;
+        }
+        const qq = options.pokeTargets.find(target => options.canPokeOut?.(target, t) ?? true);
+        if (qq === undefined) return;
+        state.pokeOutAttemptDay = day;
+        save();
+        try {
+            await transport.pokeFriend(qq);
+        } catch (error) {
+            fail('主动戳他', error);
+            return;
+        }
+        state.pokesOut = [...done, t].slice(-50);
+        save();
+        try { options.recordPokeOut?.(qq, t); } catch (error) { fail('记下戳了他', error); }
+        log(`[${qq}] 戳了他一下`);
+        recovered('主动戳他');
+    }
+
     async function qzone(t: number, day: string, awake: boolean): Promise<void> {
         if (flags.qzone === 'off' || !awake || !options.composeQzone || state.qzoneAttemptDay === day) return;
         if (flags.qzone === 'on' && !transport.postQzone) return;
@@ -410,6 +467,7 @@ export function createPresence(options: PresenceOptions): Presence {
             await likes(t, day, awake);
             await signature(t, day, awake);
             await qzone(t, day, awake);
+            await pokeOut(t, day, awake);
         } finally {
             busy = false;
         }

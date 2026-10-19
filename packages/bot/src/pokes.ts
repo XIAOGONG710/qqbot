@@ -7,6 +7,27 @@ import { pick } from './reply-timing.ts';
 export const POKE_TEXT = '[戳了戳你]';
 const POKE_ID_BASE = 2 ** 40;
 
+/** 她主动戳他一下（ADR 0087）记进聊天记录的那条：他问「戳我干嘛」时她知道自己戳过。id 同样不会和真 id、和他的戳撞 */
+export const POKE_OUT_TEXT = '[你戳了戳他]';
+const POKE_OUT_ID_BASE = 2 ** 41;
+export const pokeOutMessageId = (at: number): number => POKE_OUT_ID_BASE + at;
+
+/** 聊天安静了多久，她才会主动戳他 */
+export const POKE_OUT_QUIET_MS = 90 * 60_000;
+const GOODNIGHT = /晚安|睡了|去睡|先睡|睡觉|睡啦/;
+
+/**
+ * 这会儿适不适合戳他：最后一条是她说的（他没回、没有他的消息等着她回）、已经安静了 POKE_OUT_QUIET_MS 以上、最近几条里没有道晚安 / 说去睡。
+ * 没聊过的人不戳
+ */
+export function quietEnoughToPoke(messages: readonly { time: string; role: 'user' | 'assistant'; content: string }[], now: number): boolean {
+    const last = messages.at(-1);
+    if (!last || last.role !== 'assistant') return false;
+    const at = Date.parse(last.time);
+    if (!Number.isFinite(at) || now - at < POKE_OUT_QUIET_MS) return false;
+    return !messages.slice(-4).some(message => GOODNIGHT.test(message.content));
+}
+
 /** 戳是当下的事：通知到得比这晚（断线重连后补推等），当没发生 */
 export const POKE_MAX_AGE_MS = 60_000;
 /** 连着狂戳：5 分钟里最多算 3 下，之后的不理（她回过一两句「戳上瘾了」就够了） */

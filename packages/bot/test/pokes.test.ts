@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { isPokeAtMe, segmentsToText, type PokeEvent } from '../src/onebot.ts';
-import { createPokeLimiter, POKE_BACK_CHANCE, POKE_BACK_DELAY_MS, POKE_MAX_IN_WINDOW, POKE_TEXT, POKE_WINDOW_MS, pokeBackPlan, pokeMessage } from '../src/pokes.ts';
+import { createPokeLimiter, POKE_BACK_CHANCE, POKE_BACK_DELAY_MS, POKE_MAX_IN_WINDOW, POKE_OUT_QUIET_MS, POKE_OUT_TEXT, POKE_TEXT, POKE_WINDOW_MS, pokeBackPlan, pokeMessage, pokeOutMessageId, quietEnoughToPoke } from '../src/pokes.ts';
 
 const SELF = 20000;
 const poke = (overrides: Record<string, unknown> = {}) => ({
@@ -51,5 +51,28 @@ describe('戳一戳（ADR 0079）', () => {
         assert.ok(Math.abs(hits.length / plans.length - POKE_BACK_CHANCE) < 0.05, String(hits.length / plans.length));
         assert.ok(hits.every(plan => plan!.delayMs >= POKE_BACK_DELAY_MS[0] && plan!.delayMs <= POKE_BACK_DELAY_MS[1]));
         assert.deepEqual(pokeBackPlan(10001, 1_800_000_007), pokeBackPlan(10001, 1_800_000_007));
+    });
+});
+
+describe('主动戳他：什么时候合适（ADR 0087）', () => {
+    const now = Date.parse('2026-11-03T20:30:00+08:00');
+    const msg = (minutesAgo: number, role: 'user' | 'assistant', content: string) => ({ time: new Date(now - minutesAgo * 60_000).toISOString(), role, content });
+    test('最后一条是她说的、安静了 90 分钟以上、最近几条里没有道晚安才合适；没聊过、他最后说的（还等她回）、刚聊完都不戳', () => {
+        assert.equal(quietEnoughToPoke([msg(120, 'user', '在吗'), msg(110, 'assistant', '在呀')], now), true);
+        assert.equal(quietEnoughToPoke([msg(120, 'user', '在吗'), msg(POKE_OUT_QUIET_MS / 60_000 - 1, 'assistant', '在呀')], now), false, '才安静不到 90 分钟');
+        assert.equal(quietEnoughToPoke([msg(200, 'assistant', '在呀'), msg(120, 'user', '嗯嗯')], now), false, '他说的最后一条，她还没回');
+        assert.equal(quietEnoughToPoke([], now), false, '没聊过');
+        assert.equal(quietEnoughToPoke([msg(300, 'user', '晚安'), msg(290, 'assistant', '晚安宝宝')], now), false, '刚道过晚安');
+        assert.equal(quietEnoughToPoke([msg(400, 'user', '我先去睡了'), msg(390, 'assistant', '好')], now), false, '他说去睡了');
+        assert.equal(quietEnoughToPoke([msg(900, 'assistant', '晚安'), msg(800, 'user', '早'), msg(790, 'user', '在吗'), msg(780, 'assistant', '在'), msg(120, 'assistant', '人呢')], now), true, '更早的晚安不算');
+        assert.equal(quietEnoughToPoke([{ time: 'bad', role: 'assistant', content: 'x' }], now), false);
+    });
+
+    test('记进聊天记录的那条：id 是非负安全整数、不和真 id（32 位）、他的戳（2^40 起）撞', () => {
+        assert.equal(POKE_OUT_TEXT, '[你戳了戳他]');
+        const id = pokeOutMessageId(now);
+        assert.ok(Number.isSafeInteger(id) && id >= 2 ** 41 && id > 2 ** 32);
+        assert.ok(id > 2 ** 40 + now * 1000 / 1000, '大于他的戳的起头');
+        assert.notEqual(pokeOutMessageId(now), pokeOutMessageId(now + 1));
     });
 });

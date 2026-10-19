@@ -98,6 +98,7 @@ export interface Config {
     pokes: boolean;
     recalls: boolean;
     pokeBack: boolean;
+    pokeOut: boolean;
     readReceipts: boolean;
     bilibili: PresenceMode;
     reactions: boolean;
@@ -215,6 +216,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**说说谁能看**（ADR 0083）：仅好友（默认）；所有人可见会让陌生人看到，也可能被「空友爱看」收录并收到好友申请'),
         pokeBack: Schema.boolean().default(DEFAULTS.pokeBack)
             .description('**戳回去**（ADR 0079 补）：要先开上面的「戳一戳」。算数的戳里约 40% 她也戳他一下（NapCat 的 friend_poke，要它的 packet 服务可用；不可用就只记一行日志）。默认关'),
+        pokeOut: Schema.boolean().default(DEFAULTS.pokeOut)
+            .description('**主动戳他**（ADR 0087）：男朋友档，聊天安静了一个半小时以上、最后一条是她说的（他没回）、不是刚道过晚安时，约三成的日子晚上她戳他一下，一周最多 3 次、隔至少 36 小时（NapCat 的 friend_poke，要它的 packet 服务可用）。他问起「戳我干嘛」她知道自己戳过。默认关'),
         grievance: Schema.boolean().default(DEFAULTS.grievance)
             .description('**有起因的小别扭与和好**（ADR 0074）：男朋友档，他隔了 3 天以上才来、这几天她发的一直没回时，她回来的头一两轮淡一点、点一句，他一解释 / 道歉 / 哄就软下来。只由这一个具体事件触发，一次只有一档，不存跨天的情绪，每轮从聊天记录的时间重算。默认关'),
         npcAsks: Schema.boolean().default(DEFAULTS.npcAsks)
@@ -344,6 +347,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.pokes !== undefined ? { pokes: config.pokes } : {}),
         ...(config.recalls !== undefined ? { recalls: config.recalls } : {}),
         ...(config.pokeBack !== undefined ? { pokeBack: config.pokeBack } : {}),
+        ...(config.pokeOut !== undefined ? { pokeOut: config.pokeOut } : {}),
         ...(config.readReceipts !== undefined ? { readReceipts: config.readReceipts } : {}),
         ...(config.bilibili !== undefined ? { bilibili: config.bilibili } : {}),
         ...(config.reactions !== undefined ? { reactions: config.reactions } : {}),

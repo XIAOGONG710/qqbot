@@ -49,6 +49,7 @@ export const DEFAULTS = {
     pokes: false,
     recalls: false,
     pokeBack: false,
+    pokeOut: false,
     feedbackCommands: false,
     realWeather: true,
     festivals: 'off' as FestivalMode,
@@ -137,6 +138,8 @@ export interface AppConfig {
     recalls: boolean;
     /** 戳回去（ADR 0079 补）：开着 pokes 时，算数的戳里约 40% 她也戳回去一下（NapCat 的 friend_poke，要它的 packet 服务可用）。默认关 */
     pokeBack: boolean;
+    /** 主动戳他（ADR 0087）：男朋友档，聊天安静了一阵、最后一条是她说的时，一周最多 3 次她戳他一下（NapCat 的 friend_poke）。默认关 */
+    pokeOut: boolean;
     /**
      * 反馈通道（ADR 0073）：男朋友档对她的话回一个字「假」或「像」，记进 feedback/YYYY-MM.jsonl，不当聊天、她不回应。默认关
      */
@@ -357,6 +360,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         pokes: bool(file, 'pokes', '', DEFAULTS.pokes),
         recalls: bool(file, 'recalls', '', DEFAULTS.recalls),
         pokeBack: bool(file, 'pokeBack', '', DEFAULTS.pokeBack),
+        pokeOut: bool(file, 'pokeOut', '', DEFAULTS.pokeOut),
         feedbackCommands: bool(file, 'feedbackCommands', '', DEFAULTS.feedbackCommands),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         festivals: festivalMode(file.festivals),

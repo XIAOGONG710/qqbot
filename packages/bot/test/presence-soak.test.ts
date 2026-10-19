@@ -34,7 +34,7 @@ describe('长跑：60 天每分钟一次，隔几天重启一次', () => {
         const biliDir = tmp();
         const events = {
             status: [] as { t: number; label: string; restart: boolean }[],
-            like: [] as number[], sig: [] as number[], qzone: [] as number[], bili: [] as { t: number; bvid: string }[],
+            like: [] as number[], sig: [] as number[], qzone: [] as number[], poke: [] as number[], bili: [] as { t: number; bvid: string }[],
         };
         let restartedNow = false;
         let posts = 0;
@@ -43,10 +43,11 @@ describe('长跑：60 天每分钟一次，隔几天重启一次', () => {
             sendLike: async () => { events.like.push(clock.t); },
             setSignature: async () => { events.sig.push(clock.t); },
             postQzone: async () => { events.qzone.push(clock.t); return `tid${++posts}`; },
+            pokeFriend: async () => { events.poke.push(clock.t); },
         };
         const buildPresence = () => createPresence({
-            flags: { onlineStatus: true, profileLikes: true, signature: 'on', qzone: 'on', qzoneVisibility: 'friends' },
-            transport, schedule, likeTargets: [USER], dir: presenceDir, now: () => clock.t, log: () => {},
+            flags: { onlineStatus: true, profileLikes: true, signature: 'on', qzone: 'on', qzoneVisibility: 'friends', pokeOut: true },
+            transport, schedule, likeTargets: [USER], pokeTargets: [USER], canPokeOut: () => true, dir: presenceDir, now: () => clock.t, log: () => {},
             composeQzone: async ({ now }) => ({ text: `说说${now}`, withPhoto: false }),
         });
         const buildBrowsing = () => createVideoBrowsing({
@@ -96,6 +97,13 @@ describe('长跑：60 天每分钟一次，隔几天重启一次', () => {
         assert.ok(events.qzone.every(t => !['sleep', 'class'].includes(kindAt(t))), '睡着、上课时不发说说');
         assert.ok(events.qzone.length >= DAYS / 7 * 1 && events.qzone.length <= DAYS / 7 * 3, `说说总数：${summary}`);
 
+        // 主动戳他：任何 7 天最多 3 下；隔至少 36 小时；工作日 19:00 以后、周末 14:00 以后、22:30 以前；她醒着；约三成的日子，被每周上限压一压
+        assert.ok(rolling(events.poke, 7 * DAY) <= 3, `7 天里戳了 ${rolling(events.poke, 7 * DAY)} 下`);
+        assert.ok(gaps(events.poke).every(gap => gap >= 36 * HOUR), '戳他的间隔');
+        assert.ok(events.poke.every(t => hourOf(t) >= (weekend(t) ? 14 : 19) && hourOf(t) <= 22.6), '戳他的钟点');
+        assert.ok(events.poke.every(t => !['sleep', 'class'].includes(kindAt(t))), '睡着、上课时不戳');
+        assert.ok(events.poke.length >= 6 && events.poke.length <= 25, `戳他的次数：${events.poke.length}，${summary}`);
+
         // 在线状态：只在变的时候改；两次之间至少 10 分钟（重启后的第一次除外）；一天不超过 12 次
         assert.ok(events.status.length > DAYS, `状态改得太少：${summary}`);
         assert.ok(events.status.every((entry, i) => i === 0 || entry.restart || entry.t - events.status[i - 1]!.t >= 10 * MINUTE), '状态改得太勤');
@@ -138,19 +146,20 @@ describe('长跑：NapCat 的动作一直失败', () => {
     test('60 天里每一项的尝试次数都有上限，日志每一项只记一次', async () => {
         const clock = { t: new Date(2026, 10, 2, 0, 0).getTime() };
         const logs: string[] = [];
-        const attempts = { status: 0, like: 0, sig: 0, qzone: 0, compose: 0 };
+        const attempts = { status: 0, like: 0, sig: 0, qzone: 0, compose: 0, poke: 0 };
         const boom = (key: keyof typeof attempts) => async (): Promise<never> => { attempts[key]++; throw new Error('retcode 1200'); };
         const presence = createPresence({
-            flags: { onlineStatus: true, profileLikes: true, signature: 'on', qzone: 'on', qzoneVisibility: 'friends' },
-            transport: { setOnlineStatus: boom('status'), sendLike: boom('like'), setSignature: boom('sig'), postQzone: boom('qzone') },
-            schedule, likeTargets: [USER], dir: tmp(), now: () => clock.t, log: line => logs.push(line),
+            flags: { onlineStatus: true, profileLikes: true, signature: 'on', qzone: 'on', qzoneVisibility: 'friends', pokeOut: true },
+            transport: { setOnlineStatus: boom('status'), sendLike: boom('like'), setSignature: boom('sig'), postQzone: boom('qzone'), pokeFriend: boom('poke') },
+            schedule, likeTargets: [USER], pokeTargets: [USER], canPokeOut: () => true, dir: tmp(), now: () => clock.t, log: line => logs.push(line),
             composeQzone: async ({ now }) => { attempts.compose++; return { text: `说说${now}`, withPhoto: false }; },
         });
         for (const end = clock.t + DAYS * DAY; clock.t < end; clock.t += MINUTE) await presence.tick();
         assert.ok(attempts.like <= DAYS, `点赞试了 ${attempts.like} 次`);
         assert.ok(attempts.qzone <= DAYS, `发说说试了 ${attempts.qzone} 次`);
+        assert.ok(attempts.poke <= DAYS, `戳他试了 ${attempts.poke} 次`);
         assert.ok(attempts.sig <= DAYS * 4 + 1, `改签名试了 ${attempts.sig} 次`);
         assert.ok(attempts.status <= DAYS * 14, `改状态试了 ${attempts.status} 次（一直失败不该每分钟一次）`);
-        assert.ok(logs.length <= 5, logs.join('|'));
+        assert.ok(logs.length <= 6, logs.join('|'));
     });
 });
