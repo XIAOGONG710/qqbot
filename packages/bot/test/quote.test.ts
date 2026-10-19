@@ -63,7 +63,7 @@ describe('引用回复进应用（ADR 0081）', () => {
             unlistedFriends: false, schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, projectChoice: false,
             lifeInPrompt: false, grievance: false, feedbackCommands: false, realWeather: false, media: true,
             candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir,
-        } as AppConfig;
+        } as unknown as AppConfig; // 其余字段（后加的开关）都是未设 = 关
         const seen: string[] = [];
         const sent: string[] = [];
         const app = startApp({
