@@ -17,7 +17,7 @@ import type { Log } from './log.ts';
 import { ChatHistory, type StoredMessage } from './history.ts';
 import { asleepSince, saidBedtimes } from './bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from './backfill.ts';
-import { segmentsToText, type MessageEvent, type Segment } from './onebot.ts';
+import { segmentsToText, type MessageEvent, type PokeEvent, type Segment } from './onebot.ts';
 import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from './media.ts';
 import type { Responder, ResponderStatus } from './responder.ts';
 import { contextSummarizer } from './context-window.ts';
@@ -33,6 +33,7 @@ import { withFestivalActivities, withFestivals } from './festivals.ts';
 import { newsKindsOf, type ProactiveMode } from './proactive.ts';
 import { detectCrisis, type CrisisLevel } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
+import { createPokeLimiter, POKE_MAX_AGE_MS, POKE_MAX_IN_WINDOW, pokeMessage } from './pokes.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner, type PlannerStatus } from './proactive-planner.ts';
 import { PromiseStateUnavailable } from './promise-state.ts';
 import { promiseKeeper, type Appointment } from './promises.ts';
@@ -75,6 +76,8 @@ export interface App {
     connected(selfId: number): Promise<void>;
     /** 一条直接私聊（入口已经过滤掉群聊、群临时会话和小号自己发的） */
     receive(event: MessageEvent): void;
+    /** 名单里的人私聊戳了她一下（ADR 0079，配置 pokes）：算数的话变成一条「[戳了戳你]」走原来的回复流程；其余的忽略 */
+    receivePoke(event: PokeEvent): void;
     /** 停下：回复器都停掉，不再写记忆，释放锁（Koishi 插件停用或重启时） */
     stop(): void;
     /** 此刻的状态（控制台「林梦瑶」页面，ADR 0010）；不含聊天内容 */
@@ -569,6 +572,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     /** 每人一条：要听、要看的消息读完才进聊天记录，后面来的排在它后面（顺序不乱；读是一收到就开始读，不排队） */
     const inbox = new Map<number, Promise<void>>();
     const unlistedLimiter = new SlidingWindowRateLimiter();
+    const pokeLimiter = createPokeLimiter();
 
     function onMessage(event: MessageEvent): void {
         // 补回或入口重投的同一条消息不消耗限额，也不重复处理。
@@ -736,6 +740,28 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             lastMessageAt = new Date();
             if (syncing) buffered.push(event);
             else onMessage(event);
+        },
+        receivePoke(event) {
+            if (stopped || syncing || !config.pokes) return;
+            const contact = config.contacts.find(c => c.qq === event.user_id);
+            if (!contact) return;
+            const now = worldNow();
+            if (now - event.time * 1000 > POKE_MAX_AGE_MS) return;
+            // 睡着、在上课时的戳不算：她看不到手机，起床、下课后回一句「戳我干嘛」是怪的（消息才会等到起床后看到）
+            const schedule = config.schedule ? cardFor(contact.tier).character.schedule : undefined;
+            if (schedule) {
+                const kind = stateAt(schedule, new Date(now)).activity.kind;
+                if (kind === 'sleep' || kind === 'class' || asleepSince(schedule, bedtimes(schedule, now), new Date(now))) {
+                    log(`[${contact.qq}] 戳了她一下，她在${kind === 'class' ? '上课' : '睡觉'}，不理`);
+                    return;
+                }
+            }
+            if (!pokeLimiter.take(contact.qq, now)) {
+                log(`[${contact.qq}] 戳了她一下，5 分钟里已经戳过 ${POKE_MAX_IN_WINDOW} 下，不理`);
+                return;
+            }
+            log(`[${contact.qq}] 戳了她一下`);
+            onMessage(pokeMessage(event));
         },
         stop() {
             if (stopped) return;

@@ -173,6 +173,29 @@ export class OneBotClient {
     }
 }
 
+/**
+ * 私聊的戳一戳（NapCat 的 notice/notify/poke，OB11FriendPokeEvent）：user_id 是这段私聊的对方（不论谁戳的），
+ * sender_id 是戳的人，target_id 是被戳的人；所以「他戳了小号」是 target_id === self_id（ADR 0079）
+ */
+export interface PokeEvent {
+    post_type: 'notice';
+    notice_type: 'notify';
+    sub_type: 'poke';
+    self_id: number;
+    user_id: number;
+    target_id: number;
+    time: number;
+    [key: string]: unknown;
+}
+
+/** 别人私聊戳了小号（不是群里的、不是小号自己戳别人） */
+export function isPokeAtMe(event: OneBotEvent): event is PokeEvent {
+    return event.post_type === 'notice' && event.notice_type === 'notify' && event.sub_type === 'poke'
+        && !event.group_id
+        && typeof event.user_id === 'number' && typeof event.self_id === 'number' && typeof event.time === 'number'
+        && event.target_id === event.self_id && event.user_id !== event.self_id;
+}
+
 export function isPrivateFriendMessage(event: OneBotEvent): event is MessageEvent {
     return event.post_type === 'message' && event.message_type === 'private' && event.sub_type === 'friend';
 }
