@@ -34,6 +34,7 @@
 | 资料卡点赞 | `profileLikes: true` | 约 80% 的日子给你点 1–5 个赞，你会收到通知 | 同上 | 你在场；确认你想要这个 |
 | 个性签名 | `signature: dryRun` → `on` | 隔 3–5 天换一条 | 同上 | 先看 `presence/drafts.md` 的草稿 |
 | QQ 空间说说 | `qzone: dryRun` → `on`；`qzoneVisibility` 默认仅好友 | 一周两三条，模仿空友爱看的随手一两句；有图就围着图写 | 同上 | 先看草稿；放图到 `presence/photos/`（要开「看懂图片内容」）；`public` 是你的决定 |
+| 刷 B 站 | `bilibili: dryRun` → `on`（`claude/bilibili`） | 她从 B 站热门榜挑一个真视频发给你，说一句感受，再附真链接；一周最多 3 个 | 改配置 = 插件重载一次（代码先上） | 先看 `presence/drafts.md` 的草稿；对口味再开 `on`。账号那一层（评论 / @）没做，要你决定 |
 
 ## 三、还在等你评
 
