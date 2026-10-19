@@ -96,3 +96,4 @@
   - 「他正在输入」（NapCat 的 `OB11InputStatusEvent`，想用来在他还在打字时多等一会儿再回）：NapCat 收到这个推送时会写一行 `[Notice] [输入状态]`，翻了 10-10 到 10-19 全部 5 份 NapCat 日志（约 2.4 MB，包含你们真实聊天的那几天）一行都没有——这个版本 / 这个客户端上根本收不到，不做。
   - 他撤回消息（`friend_recall`，想让她看到「撤回了一条消息」而不是照着撤回的内容回）：聊天记录是只追加的 jsonl，十几处读取（提示词、长期记忆、摘要）；改写一行或加「已撤回」标记都要动这些地方，而且他撤回的如果是想伤害自己的话，必须仍然看到。值得做但不是顺手能做的，没做。
 - **新：他撤回消息**（ADR 0082，分支 `claude/recall`，已合进 all-candidates，配置 `recalls` 默认关）。原文留在只追加的 jsonl 里，只是 `load()` 给出去的是占位；危机的话不换。没在真 QQ 上验证 `friend_recall` 的字段。
+- **戳回去**（ADR 0079 补，`claude/poke` `f79ddfc`，已合进 all-candidates，配置 `pokeBack` 默认关）：约 40% 她隔 1.2–3.5 秒戳回去，5 分钟最多一次；NapCat `friend_poke` 是 packet 动作，线上 `packetBackend: auto` 是否真可用没验证。
