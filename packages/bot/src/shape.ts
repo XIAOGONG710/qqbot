@@ -15,7 +15,15 @@ export interface ShapePlan {
     cap: number;
     /** 最多几条 */
     maxBubbles: number;
+    /** 这一轮顺着他说，不驳他、不损他、不嘴硬（亲近的轮次除外：那条意图行里本来就有“再自然地保留一点嘴硬”） */
+    plain?: boolean;
 }
+
+/**
+ * 顺着说的轮次占比。10-21 在他真实发的话上重放：变短之后她的短回复里 12% 以“不好笑”“随你”“想得美”“没你个头”这类驳回开头（真人接话只有 3%），
+ * 回一两个字的只有真人的一半、带笑的更少——短被“嘴硬”填满了。真人的短回复更多是应一声、附和、笑一下、问一个字
+ */
+export const PLAIN_SHARE = 0.7;
 
 const BUCKETS: readonly { kind: ShapeKind; cap: number }[] = [
     { kind: 'micro', cap: 4 }, { kind: 'short', cap: 8 }, { kind: 'medium', cap: 14 }, { kind: 'long', cap: 24 }, { kind: 'wide', cap: 40 },
@@ -77,18 +85,23 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     const countRoll = unit(`${key} shape count`);
     // 一轮几条：真人 1 条 51–65%、2 条 22–28%、3 条以上约 15–20%；极短的一档多半只发一条
     const maxBubbles = closing ? (countRoll < 0.7 ? 1 : 2) : bucket.kind === 'micro' ? (countRoll < 0.8 ? 1 : 2) : countRoll < 0.55 ? 1 : countRoll < 0.83 ? 2 : 3;
-    return { kind: bucket.kind, cap: bucket.cap, maxBubbles };
+    const plain = !intimate && unit(`${key} shape plain`) < PLAIN_SHARE;
+    return { kind: bucket.kind, cap: bucket.cap, maxBubbles, ...(plain ? { plain: true } : {}) };
 }
+
+/** 顺着说的那一句：给方向（应一声、附和、笑、接他的话、问一个字），不给台词 */
+const PLAIN_NOTE = '；这一轮顺着他说就行：应一声、附和、笑一下、接他的话、问一个字都可以，别反驳他、别损他、别嘴硬';
 
 /** 放进提示词的一行；不给台词，只给数字和方向 */
 export function describeShape(plan: ShapePlan): string {
+    const plain = plan.plain ? PLAIN_NOTE : '';
     if (plan.kind === 'micro') {
-        return `[这一轮说话：${plan.maxBubbles === 1 ? '只回一条' : `最多 ${plan.maxBubbles} 条`}，每条不超过 ${plan.cap} 个字——语气词、单个词、一句反问都可以，不用凑成完整的句子；不展开，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说]`;
+        return `[这一轮说话：${plan.maxBubbles === 1 ? '只回一条' : `最多 ${plan.maxBubbles} 条`}，每条不超过 ${plan.cap} 个字——语气词、单个词、一句反问都可以，不用凑成完整的句子；不展开，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说${plain}]`;
     }
     if (plan.kind === 'short') {
-        return `[这一轮说话：每条不超过 ${plan.cap} 个字，最多 ${plan.maxBubbles} 条；像手机上随手打的，半句也行，不用凑成完整的句子；不展开，不另起话题]`;
+        return `[这一轮说话：每条不超过 ${plan.cap} 个字，最多 ${plan.maxBubbles} 条；像手机上随手打的，半句也行，不用凑成完整的句子；不展开，不另起话题${plain}]`;
     }
-    return `[这一轮说话：每条不超过 ${plan.cap} 个字，最多 ${plan.maxBubbles} 条；想到哪说到哪，不用把话说圆]`;
+    return `[这一轮说话：每条不超过 ${plan.cap} 个字，最多 ${plan.maxBubbles} 条；想到哪说到哪，不用把话说圆${plain}]`;
 }
 
 // ───────── 强制执行 ─────────

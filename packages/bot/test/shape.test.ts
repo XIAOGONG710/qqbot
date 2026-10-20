@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { describeShape, planShape, shapeProblems, shapeReply, trimToShape, type ShapePlan } from '../src/shape.ts';
+import { describeShape, PLAIN_SHARE, planShape, shapeProblems, shapeReply, trimToShape, type ShapePlan } from '../src/shape.ts';
 
 /** 同一句话，靠时间区分每一次抽签（抽签的种子是时间加内容），字数不变 */
 const said = (i: number, text: string) => [{ role: 'user' as const, content: text, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
@@ -77,6 +77,19 @@ describe('形状控制：这一轮每条最多几个字、最多几条（ADR 009
         assert.ok(micro.filter(plan => plan.maxBubbles === 1).length / micro.length > 0.7);
         const count = (n: number) => rest.filter(plan => plan.maxBubbles === n).length / rest.length;
         assert.ok(Math.abs(count(1) - 0.55) < 0.07 && Math.abs(count(2) - 0.28) < 0.07 && Math.abs(count(3) - 0.17) < 0.07, `${count(1)} ${count(2)} ${count(3)}`);
+    });
+
+    test('约七成的轮次“顺着他说”（不驳他、不损他、不嘴硬）；亲近 / 撒娇的轮次不加（那条意图行里本来就有一点嘴硬）', () => {
+        const plans = sample('在干嘛啊你', 1000);
+        const plain = plans.filter(plan => plan.plain).length / plans.length;
+        assert.ok(Math.abs(plain - PLAIN_SHARE) < 0.05, `plain ${plain}`);
+        const close = sample('想你了', 300, { intent: '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事]' });
+        assert.ok(close.every(plan => !plan.plain));
+        const on = describeShape({ kind: 'short', cap: 8, maxBubbles: 1, plain: true });
+        assert.ok(on.includes('顺着他说就行') && on.includes('别反驳他、别损他、别嘴硬') && on.endsWith(']'), on);
+        assert.ok(!describeShape({ kind: 'short', cap: 8, maxBubbles: 1 }).includes('顺着他说'));
+        assert.ok(describeShape({ kind: 'micro', cap: 4, maxBubbles: 1, plain: true }).includes('顺着他说就行'));
+        assert.ok(!/[「“"]/.test(on), '不举例句');
     });
 
     test('提示词里的一行：给数字和方向，不给台词', () => {
