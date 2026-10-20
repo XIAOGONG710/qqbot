@@ -129,6 +129,9 @@ export const IGNORED_MAX_MS = 6 * 3_600_000;
 /** 她那一串话里至少有一句是在说自己的感受：难过、烦、委屈、被骂、累。「人呢」「睡了没」这类打招呼不算——她睡前主动发的那条没人回，不能被当成被晾着 */
 const FEELING = /烦|难受|难过|委屈|不开心|不高兴|郁闷|崩溃|气死|累死|心累|心情不好|被(?:老师|老板|导师|领导|教授)?(?:骂|批评|说了|训)|哭了|想哭/;
 
+/** 他已经在道歉或安慰她了（不含「没看手机」这类解释） */
+const APOLOGY_OR_COMFORT = /对不起|抱歉|不好意思|我错了|错了错了|怪我|我的错|别生气|别气|不气|哄你|哄哄|抱抱|摸摸|乖|心疼|辛苦了|别难过|别烦/;
+
 /**
  * 她倾诉了几条（难过 / 烦的时候），他隔了 45 分钟到 6 小时才回，回来时还没哄她：这一轮她可以直接说他一两句。
  * 和 grievanceNow 一样不落盘，每一轮从聊天记录的时间戳和原话重算；只在他回来后她的第一次回复触发（回过之后就没有了）。
@@ -148,9 +151,11 @@ export function ignoredNow(history: readonly Said[]): Grievance | undefined {
     if (stretch.length < 2) return undefined;
     if (!(at(first) - at(stretch[0]!) <= IGNORED_MAX_MS)) return undefined;
     if (!stretch.some(message => FEELING.test(message.content))) return undefined;
-    // 他回来的这一串里已经在道歉 / 解释 / 哄：交给「先嘴硬再软」的通用态度，不再另加别扭
+    // 他回来的这一串里已经在道歉 / 哄：交给「先嘴硬再软」的通用态度，不再另加别扭。
+    // 只认道歉和安慰，不认「没看手机」「在忙」这类解释——解释多半是借口（10-20 留出题 h01：他说「刚才跟人开黑没看手机」，
+    // 被 isRepairText 当成已经在解释，她没发火还答歪了）；真有正当理由（手机没电、在医院）模型读他的话自然会软下来
     const comingBack = history.slice(turnStart).filter(message => message.role === 'user');
-    if (comingBack.some(message => isRepairText(message.content))) return undefined;
+    if (comingBack.some(message => APOLOGY_OR_COMFORT.test(message.content))) return undefined;
     return { stage: 'sulk', days: 0, round: 0, cause: 'ignored' };
 }
 

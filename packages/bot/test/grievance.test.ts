@@ -185,6 +185,13 @@ describe('她倾诉了几条、他隔了很久才回（ignoredNow，10-20 用户
         assert.equal(ignoredNow([m('assistant', -2.2, '人呢'), m('assistant', -2.1, '在吗'), ...back(-0.9, '刚才在忙')]), undefined, '没有感受词');
     });
 
+    test('他回来时给的是借口（没看手机、在打游戏）不是道歉：照样触发；真道歉 / 安慰才不触发（10-20 留出题 h01 的漏网）', () => {
+        const venting = [m('assistant', -2.7, '在吗'), m('assistant', -2.7, '我室友又把我的外卖吃了，气死我了'), m('assistant', -2.6, '还有那篇作业被打回来重写，心累')];
+        assert.equal(ignoredNow([...venting, ...back(-0.8, '刚才跟人开黑没看手机', '咋了')])?.cause, 'ignored');
+        assert.equal(ignoredNow([...venting, ...back(-0.8, '刚才在忙', '咋了')])?.cause, 'ignored');
+        assert.equal(ignoredNow([...venting, ...back(-0.8, '抱抱 刚才没看手机')]), undefined, '安慰');
+        assert.equal(ignoredNow([...venting, ...back(-0.8, '对不起 刚才在打游戏')]), undefined, '道歉');
+    });
     test('不触发：他回来时已经在道歉 / 解释（交给通用的「先嘴硬再软」）；回过一轮之后不再触发', () => {
         assert.equal(ignoredNow([...vent, ...back(-0.8, '不好意思，刚才在打游戏')]), undefined);
         const replied = [...vent, ...back(-0.8, '刚打完', '你发那几条我刚看见'), m('assistant', -0.7, '你还知道看消息啊'), ...back(-0.6, '明天再说行不')];
