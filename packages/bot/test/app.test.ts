@@ -1290,6 +1290,7 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
             if (url.includes('player/wbi/v2')) return body({ code: 0, data: { subtitle: { subtitles: [{ lan: 'ai-zh', subtitle_url: '//aisubtitle.hdslb.com/a.json' }] } } });
             if (url.includes('aisubtitle.hdslb.com')) return body({ body: [{ content: '今天讲讲楼下那只三花猫' }] });
             if (url.includes('reply/add')) return body({ code: 0, data: { rpid: 777, rpid_str: '777' } });
+            if (url.includes('web_im/send_msg')) return body({ code: 0, data: { msg_key: 1 } });
             if (url.includes('reply/main')) return body({ code: 0, data: { replies: [{ rpid: 777, rpid_str: '777' }] } });
             throw new Error(`没有准备这个请求：${url}`);
         };
@@ -1348,6 +1349,44 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
             assert.ok(prompts.some(p => p.includes('现在你要在 B 站一个视频下面发一条公开评论')), '评论走的是评论写手的说明');
             assert.ok(logs.some(l => l.includes('评论并 @ 了 小明')), logs.join('|'));
             assert.ok(logs.some(l => l.includes('分享后在视频下评论并 @ 小明（真发）')));
+        });
+
+        test('私信开着：链接和她的话发到他的 B 站私信，QQ 上只发一句提醒（没有链接）；私信记进聊天记录，他问起时她知道发过什么', async () => {
+            const clock = new VirtualClock(planDay());
+            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', bilibiliAccount: true, bilibiliDm: 'on', bilibiliAtUid: 98765 });
+            saveCredential(credentialPath(cfg.dataDir), credential);
+            const calls: { url: string; body?: string }[] = [];
+            const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, bilibiliFetch: fetchStub([]), bilibiliRequest: accountRequest(calls), generate: () => '这个也太真实了' });
+            await app.connected(SELF);
+            await drive(clock, () => sent.length >= 1 && calls.some(c => c.url.includes('web_im/send_msg')));
+            const dm = calls.find(c => c.url.includes('web_im/send_msg'))!;
+            const form = new URLSearchParams(dm.body);
+            assert.equal(form.get('msg[receiver_id]'), '98765');
+            assert.equal((JSON.parse(form.get('msg[content]')!) as { content: string }).content, '这个也太真实了\nhttps://www.bilibili.com/video/BV1search001');
+            assert.deepEqual(sent, ['10001:这个也太真实了'], 'QQ 上只有提醒这一句');
+            assert.ok(!sent.some(m => m.includes('bilibili.com')), 'QQ 上没有链接');
+            const stored = new ChatHistory(cfg.dataDir).load(10001);
+            assert.ok(stored.some(m => m.role === 'assistant' && m.content === '[B 站私信] 这个也太真实了（《三花猫日常》）'), JSON.stringify(stored));
+            assert.ok(logs.some(l => l.includes('改在 B 站给他发私信（真发）')));
+            assert.ok(logs.some(l => l.includes('在 B 站给他发了私信')) && logs.some(l => l.includes('在 QQ 上提醒他去看私信')), logs.join('|'));
+        });
+
+        test('私信开着但没填他的 uid，或没开账号：不发私信，各记一行日志，照旧在 QQ 上发链接', async () => {
+            for (const [overrides, expected] of [
+                [{ bilibiliAccount: true, bilibiliDm: 'on' as const }, '没填 bilibiliAtUid'],
+                [{ bilibiliDm: 'on' as const, bilibiliAtUid: 98765 }, '要 bilibiliAccount 也开着'],
+            ] as const) {
+                const clock = new VirtualClock(planDay());
+                const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', ...overrides });
+                saveCredential(credentialPath(cfg.dataDir), credential);
+                const calls: { url: string }[] = [];
+                const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, bilibiliFetch: fetchStub([]), bilibiliRequest: accountRequest(calls), generate: () => '这个也太真实了' });
+                await app.connected(SELF);
+                await drive(clock, () => sent.length >= 2);
+                assert.ok(logs.some(l => l.includes(expected)), logs.join('|'));
+                assert.ok(!calls.some(c => c.url.includes('web_im/send_msg')));
+                assert.ok(sent.some(m => m.includes('bilibili.com/video/')), 'QQ 上发了链接');
+            }
         });
 
         test('评论开着但没填要 @ 的人，或没开账号：不评论，各记一行日志', async () => {

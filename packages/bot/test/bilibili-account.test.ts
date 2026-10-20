@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import {
-    BiliApiError, cookieHeader, credentialPath, loadCredential, openAccount, parseClock, pickCookies, qrGenerate, qrPoll, saveCredential, subtitleExcerpt,
+    BiliApiError, cookieHeader, credentialPath, DM_MAX_CHARS, loadCredential, openAccount, parseClock, pickCookies, qrGenerate, qrPoll, saveCredential, subtitleExcerpt,
     wbiKeysFrom, wbiMixinKey, wbiSign, type BiliCredential, type BiliRequest, type BiliResponse,
 } from '../src/bilibili-account.ts';
 import { qrMatrix, qrSvg, qrTerminal } from '../src/qr.ts';
@@ -265,6 +265,37 @@ describe('B 站账号层：评论与复核', () => {
         assert.match(s.calls.at(-1)!.url, /reply\/main\?type=1&oid=11&mode=2&next=0&ps=20/);
         const empty = await open({ 'reply/main': () => json({ code: 0, data: {} }) });
         assert.equal(await empty.account.commentVisible({ aid: 11, rpid: '777' }), false);
+    });
+
+    test('发私信：表单带发信人 / 收信人 / 内容（JSON 里的 content）/ 时间 / 设备号 / csrf，查询串带 WBI 签名，Referer 是消息页', async () => {
+        const s = await open({ 'web_im/send_msg': () => json({ code: 0, data: { msg_key: 1 } }) });
+        await s.account.sendDm({ uid: 98765, text: '这个猫也太会了\nhttps://www.bilibili.com/video/BV1Jonu6mEwN' });
+        const call = s.calls.at(-1)!;
+        assert.match(call.url, /^https:\/\/api\.vc\.bilibili\.com\/web_im\/v1\/web_im\/send_msg\?/);
+        assert.match(call.url, /wts=\d+&w_rid=[0-9a-f]{32}$/);
+        assert.equal(call.init.method, 'POST');
+        assert.equal(call.init.headers.Referer, 'https://message.bilibili.com/');
+        assert.equal(call.init.headers.Cookie, cookieHeader(credential));
+        const form = new URLSearchParams(call.init.body);
+        assert.equal(form.get('msg[sender_uid]'), '4242');
+        assert.equal(form.get('msg[receiver_id]'), '98765');
+        assert.equal(form.get('msg[receiver_type]'), '1');
+        assert.equal(form.get('msg[msg_type]'), '1');
+        assert.deepEqual(JSON.parse(form.get('msg[content]')!), { content: '这个猫也太会了\nhttps://www.bilibili.com/video/BV1Jonu6mEwN' });
+        assert.match(form.get('msg[dev_id]')!, /^[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}$/);
+        assert.match(form.get('msg[timestamp]')!, /^\d{10}$/);
+        assert.equal(form.get('csrf'), 'jct123');
+        assert.equal(form.get('csrf_token'), 'jct123');
+    });
+
+    test('发私信出错：接口错误码带出来；过长在发之前就拒绝（不浪费一次请求）', async () => {
+        const refused = await open({ 'web_im/send_msg': () => json({ code: 21046, message: '对方未关注，无法发送' }) });
+        await assert.rejects(refused.account.sendDm({ uid: 1, text: '你好' }), (error: unknown) => error instanceof BiliApiError && error.code === 21046);
+        const calls = refused.calls.length;
+        await assert.rejects(refused.account.sendDm({ uid: 1, text: '长'.repeat(DM_MAX_CHARS + 1) }), (error: unknown) => error instanceof BiliApiError && error.code === 21007);
+        assert.equal(refused.calls.length, calls, '没有发出请求');
+        await refused.account.sendDm({ uid: 1, text: '长'.repeat(DM_MAX_CHARS) }).catch(() => undefined);
+        assert.equal(refused.calls.length, calls + 1, '刚好上限的会发');
     });
 });
 
