@@ -23,7 +23,7 @@ import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
 import { isAckAfterClosing, moodySkip, replyDelays, whenSeen } from './reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
 import { crisisInHistory, type CrisisHit } from './crisis.ts';
-import { describeGrievance, grievanceNow } from './grievance.ts';
+import { describeGrievance, grievanceNow, ignoredNow } from './grievance.ts';
 import { describeIntent } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
 import { describeLength, lengthHint, maybeTypo, RECALL_SHARE } from './expression.ts';
@@ -408,7 +408,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             crisisNow = !initiate ? crisisInHistory(chat) : undefined;
             if (crisisNow) log(`危机信号：按 ${crisisNow.level} 级辅助响应处理（日志不记内容）`);
             // 小别扭 / 和好（ADR 0074）：从聊天记录的时间戳重算，不落盘；危机、主动找他、非男朋友档都不算
-            const grievance = options.grievance && contact.tier === 'boyfriend' && !initiate && !crisisNow ? grievanceNow(chat) : undefined;
+            // 起因有两种：隔了好几天才来（grievanceNow），或者她倾诉了几条、他隔了很久才回（ignoredNow，10-20）
+            const grievance = options.grievance && contact.tier === 'boyfriend' && !initiate && !crisisNow ? (grievanceNow(chat) ?? ignoredNow(chat)) : undefined;
             const intent = describeIntent({
                 history: chat,
                 state,
@@ -427,7 +428,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             });
             const grievanceActive = Boolean(grievance && intent === describeGrievance(grievance));
             sulkNow = grievanceActive && grievance!.stage === 'sulk';
-            if (grievanceActive) log(`${grievance!.stage === 'makeup' ? '和好' : '小别扭'}：他隔了 ${grievance!.days} 天才来（他回来后第 ${grievance!.round + 1} 轮；日志不记内容）`);
+            if (grievanceActive) log(grievance!.cause === 'ignored'
+                ? '小别扭：她倾诉了几条他隔了很久才回（他回来后第一轮；日志不记内容）'
+                : `${grievance!.stage === 'makeup' ? '和好' : '小别扭'}：他隔了 ${grievance!.days} 天才来（他回来后第 ${grievance!.round + 1} 轮；日志不记内容）`);
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;

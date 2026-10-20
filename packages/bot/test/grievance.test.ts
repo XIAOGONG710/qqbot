@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { describeGrievance, GRIEVANCE_GAP_MS, grievanceNow, isRepairText, MAKEUP_MARK, SULK_MARK } from '../src/grievance.ts';
+import { ENGAGED_INTENT } from '../src/expression.ts';
+import { describeGrievance, GRIEVANCE_GAP_MS, grievanceNow, ignoredNow, IGNORED_GAP_MS, IGNORED_MAX_MS, isRepairText, MAKEUP_MARK, SULK_MARK } from '../src/grievance.ts';
 import { describeIntent } from '../src/intent.ts';
 
 const NOW = Date.parse('2026-10-16T20:00:00+08:00');
@@ -151,5 +152,50 @@ describe('意图行的边界', () => {
     test('修补的认法：道歉 / 解释 / 哄 / 想念都算，普通的话不算', () => {
         for (const text of ['对不起', '抱歉啊', '我错了', '别生气嘛', '不好意思', '这几天太忙了', '手机没电了', '想你了', '抱抱', '我的错']) assert.equal(isRepairText(text), true, text);
         for (const text of ['在吗', '你在干嘛', '哦', '好吧', '我刚下课', '今天天气不错']) assert.equal(isRepairText(text), false, text);
+    });
+});
+
+describe('她倾诉了几条、他隔了很久才回（ignoredNow，10-20 用户：应该要生气，责怪对方玩游戏不理自己）', () => {
+    const vent = [m('assistant', -2.2, '你睡了没'), m('assistant', -2.2, '我今天好烦'), m('assistant', -2.1, '实验又被老师骂了'), m('assistant', -1.9, '算了你打游戏吧')];
+    const back = (from: number, ...texts: string[]) => texts.map((text, i) => m('user', from + i * 0.01, text));
+
+    test('触发：连发的几条里有难过 / 烦，他过了一个多小时才回、还没哄她', () => {
+        const history = [...vent, ...back(-0.8, '刚打完', '咋还没睡', '你发那几条我刚看见', '明天再说行不 我困死了')];
+        assert.deepEqual(ignoredNow(history), { stage: 'sulk', days: 0, round: 0, cause: 'ignored' });
+    });
+
+    test('意图行：带「小别扭」标记（出口检查放过这一轮的抱怨），不写台词，让「回很短」让路，并且真能走到意图链里', () => {
+        const history = [...vent, ...back(-0.8, '刚打完', '你发那几条我刚看见', '明天再说行不 我困死了')];
+        const grievance = ignoredNow(history)!;
+        const line = describeGrievance(grievance);
+        assert.ok(line.includes(SULK_MARK));
+        assert.ok(ENGAGED_INTENT.test(line), '不然 shortReplies 会把这一轮压成一句');
+        assert.ok(/不翻旧账、不冷战、不长篇大论/.test(line));
+        assert.equal(describeIntent({ history, state: undefined, schedule: undefined, now: new Date(NOW), intimate: true, playful: true, grievance }), line);
+    });
+
+    test('不触发：他隔得不够久（正常回得慢）、隔得太久（睡一觉才回）', () => {
+        assert.equal(ignoredNow([...vent, ...back(-1.9 + (IGNORED_GAP_MS - 60_000) / HOUR, '刚看到')]), undefined);
+        assert.equal(ignoredNow([...vent, ...back(-1.9 + (IGNORED_MAX_MS + 60_000) / HOUR, '早啊')]), undefined);
+    });
+
+    test('不触发：她只发了一条、或者没有说自己的感受（睡前主动发的那条没人回，第二天他说刚醒）', () => {
+        assert.equal(ignoredNow([m('assistant', -2, '我今天好烦'), ...back(-0.5, '刚看到')]), undefined, '只一条');
+        assert.equal(ignoredNow([m('assistant', -9, '睡了没'), m('assistant', -9, '我先睡了啊'), ...back(-2.5, '刚醒')]), undefined, '打招呼不算感受、也隔得太久');
+        assert.equal(ignoredNow([m('assistant', -2.2, '人呢'), m('assistant', -2.1, '在吗'), ...back(-0.9, '刚才在忙')]), undefined, '没有感受词');
+    });
+
+    test('不触发：他回来时已经在道歉 / 解释（交给通用的「先嘴硬再软」）；回过一轮之后不再触发', () => {
+        assert.equal(ignoredNow([...vent, ...back(-0.8, '不好意思，刚才在打游戏')]), undefined);
+        const replied = [...vent, ...back(-0.8, '刚打完', '你发那几条我刚看见'), m('assistant', -0.7, '你还知道看消息啊'), ...back(-0.6, '明天再说行不')];
+        assert.equal(ignoredNow(replied), undefined);
+    });
+
+    test('原来的「隔了好几天才来」不受影响：没有 cause 字段', () => {
+        const history = [m('user', -100, '晚安'), m('assistant', -99, '晚安'), m('assistant', -50, '人呢'), m('user', -0.1, '我回来了')];
+        const grievance = grievanceNow(history);
+        assert.ok(grievance);
+        assert.equal(grievance.cause, undefined);
+        assert.ok(!describeGrievance(grievance).includes('他到现在才看到你前面发的'));
     });
 });

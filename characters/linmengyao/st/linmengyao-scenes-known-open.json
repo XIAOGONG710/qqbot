@@ -3692,6 +3692,58 @@
         "77": {
             "uid": 77,
             "key": [
+                "钥匙",
+                "进门",
+                "进的门",
+                "开门",
+                "锁门",
+                "没锁",
+                "反锁",
+                "门禁"
+            ],
+            "keysecondary": [],
+            "comment": "设定·说到才想起（persona-dorm_door）",
+            "content": "宿舍的门全天不锁，推门就进，不用钥匙。别人问你怎么进的门、钥匙在哪、有没有被锁在外面，就说门本来就没锁；不编谁给开的门，也不编找谁借了钥匙。",
+            "constant": false,
+            "vectorized": false,
+            "selective": true,
+            "selectiveLogic": 0,
+            "addMemo": false,
+            "order": 100,
+            "position": 1,
+            "disable": false,
+            "ignoreBudget": false,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "matchPersonaDescription": false,
+            "matchCharacterDescription": false,
+            "matchCharacterPersonality": false,
+            "matchCharacterDepthPrompt": false,
+            "matchScenario": false,
+            "matchCreatorNotes": false,
+            "delayUntilRecursion": 0,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "outletName": "",
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": false,
+            "useGroupScoring": null,
+            "automationId": "",
+            "role": 0,
+            "sticky": null,
+            "cooldown": null,
+            "delay": null,
+            "triggers": [],
+            "displayIndex": 77
+        },
+        "78": {
+            "uid": 78,
+            "key": [
                 "王者",
                 "农药",
                 "排位",
@@ -3755,10 +3807,10 @@
             "cooldown": null,
             "delay": null,
             "triggers": [],
-            "displayIndex": 77
+            "displayIndex": 78
         },
-        "78": {
-            "uid": 78,
+        "79": {
+            "uid": 79,
             "key": [
                 "偏偏宠爱",
                 "病态宠爱"
@@ -3801,10 +3853,10 @@
             "cooldown": null,
             "delay": null,
             "triggers": [],
-            "displayIndex": 78
+            "displayIndex": 79
         },
-        "79": {
-            "uid": 79,
+        "80": {
+            "uid": 80,
             "key": [
                 "伪装学渣",
                 "伪渣"
@@ -3847,10 +3899,10 @@
             "cooldown": null,
             "delay": null,
             "triggers": [],
-            "displayIndex": 79
+            "displayIndex": 80
         },
-        "80": {
-            "uid": 80,
+        "81": {
+            "uid": 81,
             "key": [
                 "撒野"
             ],
@@ -3892,10 +3944,10 @@
             "cooldown": null,
             "delay": null,
             "triggers": [],
-            "displayIndex": 80
+            "displayIndex": 81
         },
-        "81": {
-            "uid": 81,
+        "82": {
+            "uid": 82,
             "key": [
                 "将进酒"
             ],
@@ -3937,10 +3989,10 @@
             "cooldown": null,
             "delay": null,
             "triggers": [],
-            "displayIndex": 81
+            "displayIndex": 82
         },
-        "82": {
-            "uid": 82,
+        "83": {
+            "uid": 83,
             "key": [
                 "魔道祖师",
                 "无羁"
@@ -3983,10 +4035,10 @@
             "cooldown": null,
             "delay": null,
             "triggers": [],
-            "displayIndex": 82
+            "displayIndex": 83
         },
-        "83": {
-            "uid": 83,
+        "84": {
+            "uid": 84,
             "key": [
                 "天官赐福",
                 "纯情太子妖艳妃"
@@ -4029,10 +4081,10 @@
             "cooldown": null,
             "delay": null,
             "triggers": [],
-            "displayIndex": 83
+            "displayIndex": 84
         },
-        "84": {
-            "uid": 84,
+        "85": {
+            "uid": 85,
             "key": [
                 "人渣反派自救系统",
                 "渣反",
@@ -4076,10 +4128,10 @@
             "cooldown": null,
             "delay": null,
             "triggers": [],
-            "displayIndex": 84
+            "displayIndex": 85
         },
-        "85": {
-            "uid": 85,
+        "86": {
+            "uid": 86,
             "key": [
                 "墨香铜臭作品全集",
                 "墨香铜臭"
@@ -4122,7 +4174,7 @@
             "cooldown": null,
             "delay": null,
             "triggers": [],
-            "displayIndex": 85
+            "displayIndex": 86
         }
     }
 }

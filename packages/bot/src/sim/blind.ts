@@ -83,7 +83,7 @@ export function loadQuestions(path: string): BlindQuestion[] {
 const SAME_MINUTE_STEP_MS = 15_000;
 
 /** 一道题 → 一个场景：他最后一句之前的都进事先的聊天，最后一句在那一刻发出 */
-export function toScenario(q: BlindQuestion, stickers?: { id: string; description: string; tags: string[] }[], stickerChance?: number, switches?: { rhythm?: boolean; shortReplies?: boolean }): Scenario {
+export function toScenario(q: BlindQuestion, stickers?: { id: string; description: string; tags: string[] }[], stickerChance?: number, switches?: { rhythm?: boolean; shortReplies?: boolean; grievance?: boolean }): Scenario {
     const last = q.lines.at(-1)!;
     const times = q.lines.map(line => Date.parse(line.at));
     for (let i = times.length - 2; i >= 0; i--) times[i] = Math.min(times[i]!, times[i + 1]! - SAME_MINUTE_STEP_MS);
@@ -97,6 +97,7 @@ export function toScenario(q: BlindQuestion, stickers?: { id: string; descriptio
         ...(stickers?.length && stickerChance !== undefined ? { stickerChance } : {}),
         ...(switches?.rhythm ? { rhythm: true } : {}),
         ...(switches?.shortReplies ? { shortReplies: true } : {}),
+        ...(switches?.grievance ? { grievance: true } : {}),
         history: q.lines.slice(0, -1).map((line, i) => ({ time: new Date(times[i]!).toISOString(), role: line.who === '他' ? 'user' : 'assistant', content: line.text })),
         steps: [{ say: last.text }],
     }, q.id);
@@ -256,10 +257,10 @@ async function main(): Promise<void> {
     const cardDir = option('--card');
     const stickersFile = option('--stickers');
     const stickerChanceOption = option('--sticker-chance');
-    const switches = { rhythm: flag('--rhythm'), shortReplies: flag('--short-replies') };
+    const switches = { rhythm: flag('--rhythm'), shortReplies: flag('--short-replies'), grievance: flag('--grievance') };
     const parallel = Number(option('--parallel') ?? 4);
     if (args.length !== 1 || (!label && !status) || !Number.isInteger(parallel) || parallel < 1) {
-        console.error('用法：npm run blind -w @qqbot/bot -- <题库.json> --label O [--status] [--only be-001,be-002] [--card <目录>] [--stickers <货架 index.json> [--sticker-chance 0.2]] [--rhythm] [--short-replies] [--parallel 4]');
+        console.error('用法：npm run blind -w @qqbot/bot -- <题库.json> --label O [--status] [--only be-001,be-002] [--card <目录>] [--stickers <货架 index.json> [--sticker-chance 0.2]] [--rhythm] [--short-replies] [--grievance] [--parallel 4]');
         process.exit(2);
     }
     const questions = loadQuestions(resolve(cwd, args[0]!)).filter(q => !only || only.includes(q.id));

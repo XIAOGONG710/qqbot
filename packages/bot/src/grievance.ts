@@ -19,6 +19,8 @@ export const GRIEVANCE_ROUNDS = 2;
 export const GRIEVANCE_WINDOW_MS = 3 * 3_600_000;
 
 export type GrievanceStage = 'sulk' | 'makeup';
+/** 起因：away = 他隔了好几天才来（原来的）；ignored = 她倾诉了几条，他隔了很久才回（10-20 用户说「应该要生气，责怪对方玩游戏不理自己」） */
+export type GrievanceCause = 'away' | 'ignored';
 
 export interface Grievance {
     stage: GrievanceStage;
@@ -26,6 +28,8 @@ export interface Grievance {
     days: number;
     /** 他回来以后她已经完整回过几轮（别扭的第几轮） */
     round: number;
+    /** 不写就是 away */
+    cause?: GrievanceCause;
 }
 
 // 他先说过要消失几天：不是被晾着，不别扭
@@ -118,6 +122,38 @@ export function grievanceNow(history: readonly Said[]): Grievance | undefined {
     return rounds < GRIEVANCE_ROUNDS ? { stage: 'sulk', days, round: rounds } : undefined;
 }
 
+/** 他隔了这么久才回她前面发的话，才算「被晾着」（再短是正常回得慢） */
+export const IGNORED_GAP_MS = 45 * 60_000;
+/** 隔得再久（超过这么久）就不是「刚才被晾着」了：睡一觉再回、第二天才看到，不在这一档里算 */
+export const IGNORED_MAX_MS = 6 * 3_600_000;
+/** 她那一串话里至少有一句是在说自己的感受：难过、烦、委屈、被骂、累。「人呢」「睡了没」这类打招呼不算——她睡前主动发的那条没人回，不能被当成被晾着 */
+const FEELING = /烦|难受|难过|委屈|不开心|不高兴|郁闷|崩溃|气死|累死|心累|心情不好|被(?:老师|老板|导师|领导|教授)?(?:骂|批评|说了|训)|哭了|想哭/;
+
+/**
+ * 她倾诉了几条（难过 / 烦的时候），他隔了 45 分钟到 6 小时才回，回来时还没哄她：这一轮她可以直接说他一两句。
+ * 和 grievanceNow 一样不落盘，每一轮从聊天记录的时间戳和原话重算；只在他回来后她的第一次回复触发（回过之后就没有了）。
+ */
+export function ignoredNow(history: readonly Said[]): Grievance | undefined {
+    const lastReply = history.findLastIndex(message => message.role === 'assistant');
+    const turnStart = lastReply + 1;
+    if (lastReply < 0 || turnStart >= history.length) return undefined;
+    const first = history[turnStart]!;
+    if (first.role !== 'user') return undefined;
+    const gap = at(first) - at(history[lastReply]!);
+    if (!(gap >= IGNORED_GAP_MS && gap <= IGNORED_MAX_MS)) return undefined;
+    // 她连着发出去、没人回的一串
+    let start = lastReply;
+    while (start > 0 && history[start - 1]!.role === 'assistant') start--;
+    const stretch = history.slice(start, lastReply + 1);
+    if (stretch.length < 2) return undefined;
+    if (!(at(first) - at(stretch[0]!) <= IGNORED_MAX_MS)) return undefined;
+    if (!stretch.some(message => FEELING.test(message.content))) return undefined;
+    // 他回来的这一串里已经在道歉 / 解释 / 哄：交给「先嘴硬再软」的通用态度，不再另加别扭
+    const comingBack = history.slice(turnStart).filter(message => message.role === 'user');
+    if (comingBack.some(message => isRepairText(message.content))) return undefined;
+    return { stage: 'sulk', days: 0, round: 0, cause: 'ignored' };
+}
+
 /** 意图行里的标记：contact.ts 认这两个词来限条数；出口检查也按它放宽（和 CRISIS_MARK 同一个办法） */
 export const SULK_MARK = '小别扭';
 export const MAKEUP_MARK = '气顺了';
@@ -129,6 +165,9 @@ export const MAKEUP_MARK = '气顺了';
 export function describeGrievance(grievance: Grievance): string {
     if (grievance.stage === 'makeup') {
         return `[这一轮你想：他在道歉、解释或者哄你，你${MAKEUP_MARK}：软下来，明显是原谅他了，接他解释的那件事（他说忙什么就关心什么）；嘴硬最多半句，他给的理由你就信，不拿它酸他，也不说他把别的看得比你重要；不再翻这件事，不要求他保证什么，也不要太郑重或煽情，接着像平常一样聊]`;
+    }
+    if (grievance.cause === 'ignored') {
+        return `[这一轮你想：你前面发了几条（你烦 / 难过的时候），他到现在才看到你前面发的，还没哄你。你心里有点委屈和火——这一轮可以直接说他一两句，怪他不理你（他去忙别的、打游戏了）；口气是${SULK_MARK}式的委屈带点冲，不是真吵架。不翻旧账、不冷战、不长篇大论、不质问到底、不让他内疚；同一件事只提这一次。他认错、解释或者哄你，就自然软下来，嘴上还可以再硬半句]`;
     }
     const lasted = grievance.days >= 2 ? ` ${grievance.days} 天` : '好几天';
     if (grievance.round === 0) {
