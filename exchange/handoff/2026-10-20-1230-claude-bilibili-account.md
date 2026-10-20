@@ -55,5 +55,8 @@
 - **AI 味（用户问“还有什么其他的方式”，批“做，先做 1 和 2”）**：①`shape.ts`（配置 `shape`，默认关）：按他这一轮的长短定每条最多几个字 / 几条，写进提示词，超了重写一次、还超在分句处截断；真模型 A/B（7 场景 × 5 次）每条中位 11→8 字、≤4 字 8%→23%、一轮一条 56%→68%、尺子判成真人 29%→41%，模型照做率 97–100%。**找到 shortReplies 压不下来的两个原因**：“认真接话”名单把最常见的意图行也排除了（72% 的轮次）、`lengthHint` 用“有没有‘收尾’两个字”判收尾而亲近那条意图行里就有（`lengthHint` 的老毛病没顺手改，线上现在还有）。②`humanness.ts` + `ops/humanness-cli.ts`：只看写法的检测器，她 vs 真人 AUC 0.84，字数配平后 0.73，最露馅的是一个气泡里的逗号 / 分句、句末几乎无标点、从不用“～”“…”。尺子读不出语义层面的 AI 味。ADR 0091。
 - **第二次落地已备好，等用户一句话（要他自己用 `!` 跑）**：`scratchpad\golive-bili2.ps1`（86b57ca → 88fa361，预检通过）+ `koishi.bili3.yml`（比线上多 `bilibiliAtName: 穹P`、`bilibiliReplies: dryRun`、`shape: true` 三行）。`bilibiliComment` 没动（仍关）：线上让她专评 AI/DSH 视频还没做。
 
+### 10-21 01:46 落地 `ffc77ac`（线上 `main` = `integration`）
+用户：「你替我运行脚本就行，我现在不好操作，然后话题评论直接真发就行」。我跑了 `golive-bili3.ps1`（86b57ca → ffc77ac，合并了 ADR 0090 回复 + 风险转私信、ADR 0091 形状控制、ADR 0092 话题评论一次上线）。`koishi.yml` 比之前多：`bilibiliAtName: 穹P`、`bilibiliReplies: dryRun`、`bilibiliComment: 'on'`、`bilibiliCommentKeywords`（大肥鱼 插件 / DSH 插件 / deepseek harness / DeepSeek 大肥鱼 AI）、`shape: true`。备份 `runtime\backup-pre-bili3-20261021-0146`、`koishi.yml.bak-bili3-20261021-0146`；回滚 = `git reset --hard 86b57ca` + 换回旧 yml + 重启 Koishi。新日志（`2026-10-20-5.log`）：风险监控、话题评论（真发）、回复（试运行）都启动了，0 条错误 / 警告，已经写出第一条回复草稿；落地脚本第 6 步仍然看的是旧日志，要自己读。话题评论的计划：10-21 起 21:01、10-22 起 20:01（要隔够 24 小时）、10-23 起 21:10、10-24 起 14:52。后续提交 `110101f`（账号来源共用正在打开的这一次）在 `claude/bilibili-topics` 上，没上线。
+
 ## 风险（用户知情）
 封号（自动化评论违反用户协议，新号常被风控）；评论里真 @ 用户的号 = 公开把「她」和「他」连起来；凭证文件是账号钥匙，`runtime\bot` 的备份里也有。
