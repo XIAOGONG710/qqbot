@@ -244,6 +244,8 @@ export interface Scenario {
     stickers?: { id: string; description: string; tags: string[] }[];
     /** 允许发图片表情的轮次里抽中发的概率（0–1），不写按线上的 STICKER_TURN_CHANCE；写 1 = 允许的轮次都发（测选哪张用） */
     stickerChance?: number;
+    /** 固定「这一轮说多长」的抽签结果（0–1），不写按线上的哈希；0.6 恰好落在 shortReplies 开着时 burst 的区间开头（测措辞用，让路的规则照常生效） */
+    lengthRoll?: number;
     /** 假的「真实天气」（ADR 0050）：日期 → 下雨的钟头（0–23），这几天按真实天气算（世界和主动消息都认），别的日子照旧生成 */
     realRain?: Record<string, number[]>;
     /** 指定今天的心情（ADR 0015，卡上心情的名字），比较不同心情时用；不写按虚拟日期抽 */
@@ -335,6 +337,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         ...(s.moodyChance !== undefined ? { moodyChance: chance(s.moodyChance) } : {}),
         ...(s.stickers !== undefined ? { stickers: stickerEntries(s.stickers, fail) } : {}),
         ...(s.stickerChance !== undefined ? { stickerChance: typeof s.stickerChance === 'number' && s.stickerChance >= 0 && s.stickerChance <= 1 ? s.stickerChance : fail('stickerChance 应为 0–1 的数') } : {}),
+        ...(s.lengthRoll !== undefined ? { lengthRoll: typeof s.lengthRoll === 'number' && s.lengthRoll >= 0 && s.lengthRoll < 1 ? s.lengthRoll : fail('lengthRoll 应为 0 到 1（不含 1）的数') } : {}),
         ...(s.proactiveOffline !== undefined ? {
             proactiveOffline: Array.isArray(s.proactiveOffline) && s.proactiveOffline.every(x => typeof x === 'string' && x)
                 ? s.proactiveOffline as string[] : fail('proactiveOffline 应为时机说法的数组（「她那边的事」「冷场」…）'),

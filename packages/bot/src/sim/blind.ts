@@ -83,7 +83,7 @@ export function loadQuestions(path: string): BlindQuestion[] {
 const SAME_MINUTE_STEP_MS = 15_000;
 
 /** 一道题 → 一个场景：他最后一句之前的都进事先的聊天，最后一句在那一刻发出 */
-export function toScenario(q: BlindQuestion, stickers?: { id: string; description: string; tags: string[] }[], stickerChance?: number, switches?: { rhythm?: boolean; shortReplies?: boolean; burst?: boolean }): Scenario {
+export function toScenario(q: BlindQuestion, stickers?: { id: string; description: string; tags: string[] }[], stickerChance?: number, switches?: { rhythm?: boolean; shortReplies?: boolean; burst?: boolean; lengthRoll?: number }): Scenario {
     const last = q.lines.at(-1)!;
     const times = q.lines.map(line => Date.parse(line.at));
     for (let i = times.length - 2; i >= 0; i--) times[i] = Math.min(times[i]!, times[i + 1]! - SAME_MINUTE_STEP_MS);
@@ -98,6 +98,7 @@ export function toScenario(q: BlindQuestion, stickers?: { id: string; descriptio
         ...(switches?.rhythm ? { rhythm: true } : {}),
         ...(switches?.shortReplies ? { shortReplies: true } : {}),
         ...(switches?.burst ? { burst: true } : {}),
+        ...(switches?.lengthRoll !== undefined ? { lengthRoll: switches.lengthRoll } : {}),
         history: q.lines.slice(0, -1).map((line, i) => ({ time: new Date(times[i]!).toISOString(), role: line.who === '他' ? 'user' : 'assistant', content: line.text })),
         steps: [{ say: last.text }],
     }, q.id);
@@ -257,10 +258,13 @@ async function main(): Promise<void> {
     const cardDir = option('--card');
     const stickersFile = option('--stickers');
     const stickerChanceOption = option('--sticker-chance');
-    const switches = { rhythm: flag('--rhythm'), shortReplies: flag('--short-replies'), burst: flag('--burst') };
+    const lengthRollOption = option('--length-roll');
+    const lengthRoll = lengthRollOption === undefined ? undefined : Number(lengthRollOption);
+    if (lengthRoll !== undefined && !(lengthRoll >= 0 && lengthRoll < 1)) { console.error('--length-roll 应为 0 到 1（不含 1）的数'); process.exit(2); }
+    const switches = { rhythm: flag('--rhythm'), shortReplies: flag('--short-replies'), burst: flag('--burst'), ...(lengthRoll !== undefined ? { lengthRoll } : {}) };
     const parallel = Number(option('--parallel') ?? 4);
     if (args.length !== 1 || (!label && !status) || !Number.isInteger(parallel) || parallel < 1) {
-        console.error('用法：npm run blind -w @qqbot/bot -- <题库.json> --label O [--status] [--only be-001,be-002] [--card <目录>] [--stickers <货架 index.json> [--sticker-chance 0.2]] [--rhythm] [--short-replies] [--burst] [--parallel 4]');
+        console.error('用法：npm run blind -w @qqbot/bot -- <题库.json> --label O [--status] [--only be-001,be-002] [--card <目录>] [--stickers <货架 index.json> [--sticker-chance 0.2]] [--rhythm] [--short-replies] [--burst] [--length-roll 0.6] [--parallel 4]');
         process.exit(2);
     }
     const questions = loadQuestions(resolve(cwd, args[0]!)).filter(q => !only || only.includes(q.id));

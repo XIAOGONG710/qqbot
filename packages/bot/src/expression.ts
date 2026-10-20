@@ -45,6 +45,8 @@ export interface LengthContext {
     shortReplies?: boolean;
     /** 配置 burst（候选 6）：叠在 shortReplies 上，只在两个都开时才有「连发三四条很短的」这一档 */
     burst?: boolean;
+    /** 只给模拟器 / 盲评生成器：固定这一轮的抽签结果（0–1），不用哈希。线上永远不传；用来验某一档的措辞（如 0.6 恰好落在 shortReplies 开着时 burst 的区间开头），让路的规则照常生效 */
+    roll?: number;
 }
 
 /** 这一轮说话的长短（没有就是照常） */
@@ -54,7 +56,7 @@ export function lengthHint(context: LengthContext): LengthHint | undefined {
     if (!last) return undefined;
     // 他明着让她讲（「你帮我认真讲讲」「详细说说」）就多说几句，不抽签（10-10 示例改短之后 boyfriend-tone T06 讲梯度下降只剩 53 字）
     if (!context.low && ASKS_TO_EXPLAIN.test(last.content)) return 'long';
-    const roll = unit(`${last.time ?? ''} ${last.content} length`);
+    const roll = context.roll ?? unit(`${last.time ?? ''} ${last.content} length`);
     const shortChance = context.shortReplies ? SHORT_CHANCE : LEGACY_SHORT_CHANCE;
     // 他问起她认识的人（「雨桐最近怎么样」）：只回很短的一句会把最近的几件事压成一个评语——10-19 npc-asks-days NA07 在候选 4/5 的抽签下
     // 4 次里 2 次回「老放我鸽子」（账上只有一次她临时去不了）。这类问题不加「回很短」

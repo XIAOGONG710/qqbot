@@ -375,6 +375,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.burst ? { burst: true } : {}),
         ...(stickers ? { stickers } : {}),
         ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),
+        ...(scenario.lengthRoll !== undefined ? { lengthRoll: scenario.lengthRoll } : {}),
         contacts: [contact, ...others],
         log,
         now: clock.now,

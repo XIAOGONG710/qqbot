@@ -168,4 +168,18 @@ describe('表达层（ADR 0024）', () => {
         const worried = (i: number) => [{ role: 'user' as const, content: '我实训报告被老师打回来了，你说我这还有救吗', time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
         for (let i = 0; i < 300; i++) assert.notEqual(lengthHint({ history: worried(i), ...on }), 'burst');
     });
+
+    test('固定抽签结果 roll（只给模拟器 / 盲评生成器）：0.6 恰好落在 burst 区间开头；让路的规则照常生效；不传就还是哈希', () => {
+        const on = { shortReplies: true, burst: true };
+        const text = [{ role: 'user' as const, content: '今天去食堂吃了新开的那家面，味道还可以', time: '2026-10-07T12:00:00.000Z' }];
+        assert.equal(lengthHint({ history: text, roll: 0.6, ...on }), 'burst');
+        assert.equal(lengthHint({ history: text, roll: 0.6, shortReplies: true }), undefined, 'burst 关着：同样的抽签不出现这一档');
+        assert.equal(lengthHint({ history: text, roll: 0.3, ...on }), 'short');
+        assert.equal(lengthHint({ history: text, roll: 0.55, ...on }), 'long');
+        assert.equal(lengthHint({ history: text, roll: 0.99, ...on }), undefined);
+        const worried = [{ role: 'user' as const, content: '我实训报告被老师打回来了，你说我这还有救吗', time: '2026-10-07T12:00:00.000Z' }];
+        assert.notEqual(lengthHint({ history: worried, roll: 0.6, ...on }), 'burst', '他在说不顺心的事：固定了抽签也让路');
+        assert.notEqual(lengthHint({ history: text, roll: 0.6, aboutPerson: true, ...on }), 'burst');
+        assert.equal(lengthHint({ history: text, ...on }), lengthHint({ history: text, ...on, roll: undefined }), '不传 roll 就是哈希');
+    });
 });
