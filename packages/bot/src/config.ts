@@ -58,6 +58,7 @@ export const DEFAULTS = {
     bilibiliAccount: false,
     bilibiliComment: 'off' as PresenceMode,
     bilibiliDm: 'off' as PresenceMode,
+    bilibiliReplies: 'off' as PresenceMode,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
     reactions: false,
@@ -167,6 +168,11 @@ export interface AppConfig {
      * 私信发不出去（他没关注她的号、风控）就退回在 QQ 上直接发链接。要 bilibiliAccount；他要先关注她的号。dryRun 只写草稿。默认关
      */
     bilibiliDm: PresenceMode;
+    /**
+     * 回复别人回在她评论下面的话（ADR 0090）：先回他（bilibiliAtUid），其次挑有价值的；问她是不是 AI / 真人的、骂人的、广告、带链接的、想改她设定的一律不回；
+     * 每天有上限。有价值的回复（不含昵称和 uid）另存一份真人语料。要 bilibiliAccount、bilibiliAtUid；dryRun 只写草稿。默认关
+     */
+    bilibiliReplies: PresenceMode;
     /** 要 @ 的人的 B 站昵称 */
     bilibiliAtName: string;
     /** 他的 B 站 uid：@ 评论（要昵称和 uid 两样）和发私信（只要 uid）都用 */
@@ -396,6 +402,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         bilibiliAccount: bool(file, 'bilibiliAccount', '', DEFAULTS.bilibiliAccount),
         bilibiliComment: oneOf(file.bilibiliComment, 'bilibiliComment', PRESENCE_MODES, DEFAULTS.bilibiliComment),
         bilibiliDm: oneOf(file.bilibiliDm, 'bilibiliDm', PRESENCE_MODES, DEFAULTS.bilibiliDm),
+        bilibiliReplies: oneOf(file.bilibiliReplies, 'bilibiliReplies', PRESENCE_MODES, DEFAULTS.bilibiliReplies),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
         reactions: bool(file, 'reactions', '', DEFAULTS.reactions),

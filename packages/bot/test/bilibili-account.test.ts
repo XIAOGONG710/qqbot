@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import {
-    BiliApiError, cookieHeader, credentialPath, DM_MAX_CHARS, loadCredential, openAccount, parseClock, pickCookies, qrGenerate, qrPoll, saveCredential, subtitleExcerpt,
+    BiliApiError, cookieHeader, credentialPath, DM_MAX_CHARS, loadCredential, openAccount, parseClock, parseReplyFeed, pickCookies, qrGenerate, qrPoll, saveCredential, subtitleExcerpt,
     wbiKeysFrom, wbiMixinKey, wbiSign, type BiliCredential, type BiliRequest, type BiliResponse,
 } from '../src/bilibili-account.ts';
 import { qrMatrix, qrSvg, qrTerminal } from '../src/qr.ts';
@@ -265,6 +265,59 @@ describe('B 站账号层：评论与复核', () => {
         assert.match(s.calls.at(-1)!.url, /reply\/main\?type=1&oid=11&mode=2&next=0&ps=20/);
         const empty = await open({ 'reply/main': () => json({ code: 0, data: {} }) });
         assert.equal(await empty.account.commentVisible({ aid: 11, rpid: '777' }), false);
+    });
+
+    const feedItem = (over: Record<string, unknown> = {}, itemOver: Record<string, unknown> = {}, userOver: Record<string, unknown> = {}) => ({
+        id: 1, user: { mid: 555, nickname: '路人甲', ...userOver },
+        item: { subject_id: 117467389106971, root_id: 321352577408, source_id: 321352999999, target_id: 321352577408, source_content: '你也喜欢这个吗', target_reply_content: '千禧年梦核那味儿也太冲了', business_id: 1, title: '塔卫二时尚月刊', uri: 'https://www.bilibili.com/video/BV1PPJd62E75#reply321352999999', type: 'reply', ...itemOver },
+        reply_time: 1792512900, ...over,
+    });
+
+    test('「回复我的」：每一项取 rpid / 根 / 被回复的 / aid / 视频 / 回复的人 / 正文 / 她那句 / 时间（秒→毫秒）；不是视频评论区的、没正文的、没人的跳过', () => {
+        const items = parseReplyFeed({ items: [
+            feedItem(),
+            feedItem({}, { business_id: 12, source_id: 1 }),
+            feedItem({}, { source_content: '  ', source_id: 2 }),
+            feedItem({}, { source_id: 3 }, { mid: 0 }),
+            feedItem({}, { source_id: 4, root_id: 0, target_id: 0 }),
+            feedItem({}, { source_id: 321353000000, root_id: 0 }),
+        ] });
+        assert.deepEqual(items.map(item => item.id), ['321352999999', '321353000000']);
+        assert.deepEqual(items[0], { id: '321352999999', root: '321352577408', parent: '321352577408', aid: 117467389106971, bvid: 'BV1PPJd62E75', title: '塔卫二时尚月刊', uid: 555, name: '路人甲', text: '你也喜欢这个吗', mine: '千禧年梦核那味儿也太冲了', at: 1792512900000 });
+        assert.equal(items[1]!.root, '321352577408', '没有 root_id 就用被回复的那条当根');
+        assert.deepEqual(parseReplyFeed(undefined), []);
+        assert.deepEqual(parseReplyFeed({ items: 'x' }), []);
+    });
+
+    test('收回复：请求「回复我的」，带登录 Cookie 和消息页 Referer', async () => {
+        const s = await open({ 'msgfeed/reply': () => json({ code: 0, data: { items: [feedItem()] } }) });
+        const items = await s.account.fetchReplies();
+        assert.equal(items.length, 1);
+        const call = s.calls.at(-1)!;
+        assert.match(call.url, /^https:\/\/api\.bilibili\.com\/x\/msgfeed\/reply\?/);
+        assert.equal(call.init.headers.Cookie, cookieHeader(credential));
+        assert.equal(call.init.headers.Referer, 'https://message.bilibili.com/');
+        const failing = await open({ 'msgfeed/reply': () => json({ code: -101, message: '账号未登录' }) });
+        await assert.rejects(failing.account.fetchReplies(), (error: unknown) => error instanceof BiliApiError && error.code === -101);
+    });
+
+    test('发回复：表单带 root / parent；回的是串里别人的话，最前面写「回复 @昵称 :」并交上昵称对应的 uid；回的就是根评论就不加；没有 rpid 要报错', async () => {
+        const s = await open({ 'reply/add': () => json({ code: 0, data: { rpid_str: '42' } }) });
+        assert.deepEqual(await s.account.postReply({ aid: 11, bvid: 'BV1PPJd62E75', root: '100', parent: '200', to: { name: '路人甲', uid: 555 }, text: '对呀，太冲了' }), { rpid: '42' });
+        const call = s.calls.at(-1)!;
+        assert.equal(call.init.method, 'POST');
+        assert.equal(call.init.headers.Referer, 'https://www.bilibili.com/video/BV1PPJd62E75');
+        const form = new URLSearchParams(call.init.body);
+        assert.deepEqual([form.get('type'), form.get('oid'), form.get('root'), form.get('parent'), form.get('csrf')], ['1', '11', '100', '200', 'jct123']);
+        assert.equal(form.get('message'), '回复 @路人甲 :对呀，太冲了');
+        assert.deepEqual(JSON.parse(form.get('at_name_to_mid')!), { 路人甲: 555 });
+        await s.account.postReply({ aid: 11, root: '100', parent: '100', to: { name: '路人甲', uid: 555 }, text: '谢谢' });
+        const direct = new URLSearchParams(s.calls.at(-1)!.init.body);
+        assert.equal(direct.get('message'), '谢谢');
+        assert.equal(direct.has('at_name_to_mid'), false);
+        assert.equal(s.calls.at(-1)!.init.headers.Referer, 'https://www.bilibili.com/');
+        const empty = await open({ 'reply/add': () => json({ code: 0, data: {} }) });
+        await assert.rejects(empty.account.postReply({ aid: 11, root: '100', parent: '200', to: { name: 'a', uid: 1 }, text: 'x' }), /没有 rpid/);
     });
 
     test('发私信：表单带发信人 / 收信人 / 内容（JSON 里的 content）/ 时间 / 设备号 / csrf，查询串带 WBI 签名，Referer 是消息页', async () => {

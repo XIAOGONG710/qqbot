@@ -36,7 +36,8 @@ import { qzoneComposer } from './qzone.ts';
 import { createVideoBrowsing, dmMessageId, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
 import { realRequest, type BiliAccount, type BiliRequest } from './bilibili-account.ts';
 import { createAccountSource } from './bilibili-account-source.ts';
-import { commentComposer } from './bilibili-comment.ts';
+import { commentComposer, replyComposer } from './bilibili-comment.ts';
+import { createReplyWatcher, type ReplyOptions, type ReplyWatcher } from './bilibili-replies.ts';
 import { detectCrisis, type CrisisLevel } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
 import { createPokeLimiter, POKE_BACK_COOLDOWN_MS, POKE_MAX_AGE_MS, POKE_MAX_IN_WINDOW, POKE_OUT_TEXT, pokeBackPlan, pokeMessage, pokeOutMessageId, quietEnoughToPoke } from './pokes.ts';
@@ -588,9 +589,12 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     }
 
     /** 她的 B 站号（ADR 0089，配置 bilibiliAccount）：按需打开，凭证文件换了（重新扫码）就自动换上；细节在 bilibili-account-source.ts */
+    let accountSource: (() => Promise<BiliAccount | undefined>) | undefined;
     function bilibiliAccountSource(): (() => Promise<BiliAccount | undefined>) | undefined {
         if (!config.bilibiliAccount) return undefined;
-        return createAccountSource({ dataDir: config.dataDir, request: bilibiliRequest ?? realRequest, now: worldNow, log });
+        // 刷视频和回复评论共用一个来源：凭证只读一次、失败只记一次日志
+        accountSource ??= createAccountSource({ dataDir: config.dataDir, request: bilibiliRequest ?? realRequest, now: worldNow, log });
+        return accountSource;
     }
 
     /** 分享之后在视频下评论并 @ 他（ADR 0089，配置 bilibiliComment）：没配好就记一行日志、不评论 */
@@ -672,6 +676,55 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         });
         browsing.start();
         log(`刷 B 站：${config.bilibili === 'dryRun' ? '只写草稿（不发）' : '开'}，发给 ${target.name}；一周最多 3 个，${account ? '用她的 B 站号按口味搜、读字幕，搜不到再读 B 站热门榜' : '读 B 站热门榜（公开接口，不登录）'}${account && dm ? `；改在 B 站给他发私信（${dm.mode === 'dryRun' || config.bilibili === 'dryRun' ? '只写草稿' : '真发'}），QQ 上只提醒一句` : ''}${account && comment ? `；分享后在视频下评论并 @ ${config.bilibiliAtName}（${comment.mode === 'dryRun' || config.bilibili === 'dryRun' ? '只写草稿' : '真发'}）` : ''}`);
+    }
+
+    /** 回复别人回在她评论下面的话（ADR 0090，配置 bilibiliReplies）：没配好就记一行日志、不回；和刷视频各自启动（只要有评论就会有回复，不管分享开没开） */
+    let replies: ReplyWatcher | undefined;
+    function bilibiliReplyOptions(): ReplyOptions | undefined {
+        const mode = config.bilibiliReplies;
+        if (mode === 'off') return undefined;
+        const account = bilibiliAccountSource();
+        if (!account) {
+            log('回复 B 站评论：bilibiliReplies 开着，但要 bilibiliAccount 也开着，不回复');
+            return undefined;
+        }
+        if (config.bilibiliAtUid <= 0) {
+            log('回复 B 站评论：bilibiliReplies 开着，但没填 bilibiliAtUid（先回谁），不回复');
+            return undefined;
+        }
+        const schedule = worldCard?.schedule;
+        const lowest = lowestTierCard();
+        if (!lowest) {
+            log('回复 B 站评论：陌生人档和同学档的卡都读不了，不回复');
+            return undefined;
+        }
+        const extraFree = config.herDays && worldCard ? readingActivities(worldCard.books) : [];
+        return {
+            mode, account, userUid: config.bilibiliAtUid,
+            compose: replyComposer({
+                character: { name: lowest.character.name, description: lowest.character.description, personality: lowest.character.personality, banned: lowest.character.banned },
+                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 1.1 }, messages, { log, purpose: 'background' })),
+                log,
+            }),
+            dir: join(config.dataDir, 'presence'),
+            now: worldNow, log,
+            // 睡着、上课、说过「睡了」时不看不回；没有作息就一直方便
+            ...(schedule ? {
+                awake: (now: number) => {
+                    const kind = stateAt(schedule, new Date(now), extraFree).activity.kind;
+                    return (kind === 'free' || kind === 'between') && !asleepSince(schedule, bedtimes(schedule, now), new Date(now));
+                },
+            } : {}),
+        };
+    }
+
+    function startReplies(): void {
+        if (replies) return;
+        const options = bilibiliReplyOptions();
+        if (!options) return;
+        replies = createReplyWatcher(options);
+        replies.start();
+        log(`回复 B 站评论：${options.mode === 'dryRun' ? '只写草稿（不发）' : '开'}；每 10 分钟看一次「回复我的」，先回他，其次挑有价值的，一天最多 5 条（他的不算），问 AI / 真人的、骂人的、广告一律不回；有价值的回复另存真人语料（presence/bilibili-corpus.jsonl）`);
     }
 
     function rainyAt(now: number): boolean {
@@ -923,6 +976,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     startPresence();
                     presence?.reapply();
                     startBrowsing();
+                    startReplies();
                     for (const planner of planners.values()) planner.poke();
                     syncFollowUps();
                     discoverStickers();
@@ -998,6 +1052,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (followUpTimer) clearInterval(followUpTimer);
             presence?.stop();
             browsing?.stop();
+            replies?.stop();
             if (lifeTimer) clearInterval(lifeTimer);
             if (weatherTimer) clearInterval(weatherTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);

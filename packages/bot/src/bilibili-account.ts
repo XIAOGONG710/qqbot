@@ -233,6 +233,27 @@ export type SubtitleResult =
     /** 登录了还说要登录：Cookie 过期或被 B 站作废，要重新扫码 */
     | { status: 'needLogin' };
 
+/** 别人回在她评论下面的一条话（消息中心「回复我的」里的一项，ADR 0090） */
+export interface ReplyItem {
+    /** 这条回复自己的 rpid */
+    id: string;
+    /** 所在评论串的根评论 rpid */
+    root: string;
+    /** 被回复的那一条（她的评论或她的回复）的 rpid */
+    parent: string;
+    aid: number;
+    bvid?: string;
+    title: string;
+    uid: number;
+    name: string;
+    /** 对方写的话 */
+    text: string;
+    /** 被回复的那条她的话 */
+    mine: string;
+    /** 毫秒 */
+    at: number;
+}
+
 export interface BiliAccount {
     /** 账号昵称和 uid（日志里认得出是哪个号） */
     readonly name: string;
@@ -242,6 +263,13 @@ export interface BiliAccount {
     postComment(input: { aid: number; bvid: string; text: string; at?: { name: string; uid: number } }): Promise<{ rpid: string }>;
     /** 刚发的评论在公开的「最新」第一页里能不能找到（找不到不等于没发出去：可能在审核，也可能翻页看不到） */
     commentVisible(input: { aid: number; rpid: string }): Promise<boolean>;
+    /** 别人回在她评论下面的话（消息中心「回复我的」第一页，新的在前）；只收视频评论区的 */
+    fetchReplies(): Promise<ReplyItem[]>;
+    /**
+     * 回复评论区里的一条话（ADR 0090）：root 是那一串的根评论，parent 是被回复的那一条；
+     * 回的是别人在串里的回复（parent 不是 root）时，按网页的写法在最前面加「回复 @昵称 :」并交上 at_name_to_mid
+     */
+    postReply(input: { aid: number; bvid?: string; root: string; parent: string; to: { name: string; uid: number }; text: string }): Promise<{ rpid: string }>;
     /**
      * 给一个人发私信（文字）。对方没关注她时 B 站限制很严（只能发一条，或直接被拒），所以用户要先关注她的号；
      * 过长（B 站实测约 500 字）会被拒，调用方自己控制长度
@@ -260,6 +288,33 @@ export function parseClock(value: unknown): number {
     const parts = str(value).split(':').map(Number);
     if (!parts.length || parts.some(part => !Number.isFinite(part))) return 0;
     return parts.reduce((total, part) => total * 60 + part, 0);
+}
+
+const idOf = (value: unknown): string => (typeof value === 'string' && /^\d+$/.test(value) && value !== '0' ? value : typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? String(value) : '');
+
+/**
+ * 消息中心「回复我的」（x/msgfeed/reply）→ 回复项：source_id 是这条回复的 rpid，target_id 是被回复的那条，root_id 是那一串的根，
+ * subject_id 是视频的 aid，user 是回复的人，reply_time 是秒。视频以外的评论区、没有正文或没有人的跳过。
+ * 字段名来自公开的接口整理（bilibili-API-collect），还没拿真的回复核对过——第一条真回复到了要对一遍。
+ */
+export function parseReplyFeed(data: unknown): ReplyItem[] {
+    const items: ReplyItem[] = [];
+    for (const raw of Array.isArray(rec(data).items) ? rec(data).items as unknown[] : []) {
+        const entry = rec(raw);
+        const item = rec(entry.item);
+        const id = idOf(item.source_id);
+        const text = str(item.source_content).trim();
+        const aid = num(item.subject_id);
+        const uid = num(rec(entry.user).mid);
+        if (!id || !text || !aid || !uid) continue;
+        if (item.business_id !== undefined && num(item.business_id) !== 1) continue;
+        const parent = idOf(item.target_id);
+        const root = idOf(item.root_id) || parent;
+        if (!root) continue;
+        const bvid = /\/video\/(BV[0-9A-Za-z]{10})/.exec(str(item.uri))?.[1];
+        items.push({ id, root, parent: parent || root, aid, ...(bvid ? { bvid } : {}), title: str(item.title), uid, name: str(rec(entry.user).nickname), text, mine: str(item.target_reply_content).trim(), at: num(entry.reply_time) * 1000 });
+    }
+    return items;
 }
 
 /** nav 里的钥匙一天一换，这么久重取一次 */
@@ -367,6 +422,26 @@ export async function openAccount(request: BiliRequest, credential: BiliCredenti
             const { data } = await call(request, `https://api.bilibili.com/x/v2/reply/main?type=1&oid=${aid}&mode=2&next=0&ps=20`, { headers });
             const replies = Array.isArray(rec(data).replies) ? rec(data).replies as unknown[] : [];
             return replies.some(reply => (str(rec(reply).rpid_str) || String(num(rec(reply).rpid))) === rpid);
+        },
+
+        async fetchReplies() {
+            const { data } = await call(request, 'https://api.bilibili.com/x/msgfeed/reply?platform=web&build=0&mobi_app=web', { headers: { ...headers, Referer: 'https://message.bilibili.com/' } });
+            return parseReplyFeed(data);
+        },
+
+        async postReply({ aid, bvid, root, parent, to, text }) {
+            const nested = parent !== root;
+            const form = new URLSearchParams({ type: '1', oid: String(aid), root, parent, message: nested ? `回复 @${to.name} :${text}` : text, plat: '1', csrf: credential.biliJct });
+            if (nested) form.set('at_name_to_mid', JSON.stringify({ [to.name]: to.uid }));
+            const { data } = await call(request, 'https://api.bilibili.com/x/v2/reply/add', {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'https://www.bilibili.com', Referer: bvid ? `https://www.bilibili.com/video/${bvid}` : 'https://www.bilibili.com/' },
+                body: form.toString(),
+            });
+            const d = rec(data);
+            const rpid = str(d.rpid_str) || (num(d.rpid) ? String(num(d.rpid)) : '');
+            if (!rpid) throw new BiliApiError('回复发出了，但返回里没有 rpid', -999);
+            return { rpid };
         },
     };
 }

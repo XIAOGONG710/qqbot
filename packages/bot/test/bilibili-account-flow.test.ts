@@ -93,6 +93,9 @@ describe('刷 B 站：她的账号（ADR 0089）', () => {
                 const result = options.dm?.(input);
                 if (result instanceof Error) throw result;
             },
+            // 回复评论区别人的话有自己的测试（bilibili-replies.test.ts），这里的流程用不到
+            async fetchReplies() { return []; },
+            async postReply() { return { rpid: '900000009' }; },
         };
         return { account, log };
     }

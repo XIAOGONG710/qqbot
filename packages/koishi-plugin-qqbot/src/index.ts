@@ -104,6 +104,7 @@ export interface Config {
     bilibiliAccount: boolean;
     bilibiliComment: PresenceMode;
     bilibiliDm: PresenceMode;
+    bilibiliReplies: PresenceMode;
     bilibiliAtName: string;
     bilibiliAtUid: number;
     reactions: boolean;
@@ -213,6 +214,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**在 B 站评论并 @ 他**（ADR 0089）：每次分享后在那个视频下发一条公开评论、真 @ 他的 B 站号（一周最多 3 条，隔至少一天）；2 分钟和 20 分钟后去公开的最新评论里复核，两次都找不到（新号评论常被拦去审核，@ 的通知也不会推）就停一周；发失败停 24 小时，连续 3 次停到重启。评论是公开的，用最低隐私档的卡写、过禁用词，不提男朋友恋爱。要「她的 B 站号」、下面的昵称和 uid 都配好。分享是试运行时评论也只写草稿。选「只写草稿」时存在 presence/drafts.md。默认关'),
         bilibiliDm: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.bilibiliDm)
             .description('**在 B 站给他发私信**（ADR 0089）：她刷到视频后，把链接加一两句话私信到他的 B 站（用下面的 uid），QQ 上只说一句叫他去看私信，不再在 QQ 上发链接。私信里的话和聊天一样用男朋友档的卡写。他要先关注她的号，不然 B 站会限制或拒绝；私信发不出去就退回在 QQ 上直接发链接，连着失败 2 次到重启前不再试私信。要「她的 B 站号」开着。选「只写草稿」时私信和 QQ 提醒都存在 presence/drafts.md。默认关'),
+        bilibiliReplies: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.bilibiliReplies)
+            .description('**回复评论区别人的话**（ADR 0090）：别人回在她评论下面的话，每 10 分钟看一次；先回他（下面的 uid），其次挑有价值的回，一天最多 5 条（他的不算）、同一个人一天最多 2 条、两条之间隔几分钟，睡着、上课时不回。问她是不是 AI / 真人的、骂人的、广告、带链接的、想改她设定的一律不回；回的话和评论一样用最低隐私档的卡写、一句。有价值的回复另存一份真人语料（不含昵称和 uid）。要「她的 B 站号」和下面的 uid。选「只写草稿」时存在 presence/drafts.md。默认关'),
         bilibiliAtName: Schema.string().default(DEFAULTS.bilibiliAtName)
             .description('**要 @ 的人的 B 站昵称**（ADR 0089）：评论最前面会写 @昵称；不含 @ 和换行'),
         bilibiliAtUid: Schema.number().default(DEFAULTS.bilibiliAtUid)
@@ -374,6 +377,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.bilibiliAccount !== undefined ? { bilibiliAccount: config.bilibiliAccount } : {}),
         ...(config.bilibiliComment !== undefined ? { bilibiliComment: config.bilibiliComment } : {}),
         ...(config.bilibiliDm !== undefined ? { bilibiliDm: config.bilibiliDm } : {}),
+        ...(config.bilibiliReplies !== undefined ? { bilibiliReplies: config.bilibiliReplies } : {}),
         ...(config.bilibiliAtName !== undefined ? { bilibiliAtName: config.bilibiliAtName } : {}),
         ...(config.bilibiliAtUid !== undefined ? { bilibiliAtUid: config.bilibiliAtUid } : {}),
         ...(config.reactions !== undefined ? { reactions: config.reactions } : {}),

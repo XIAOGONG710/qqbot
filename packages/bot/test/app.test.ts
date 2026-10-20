@@ -50,7 +50,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false, shortReplies: false,
         media: true,
@@ -1386,6 +1386,52 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
                 assert.ok(logs.some(l => l.includes(expected)), logs.join('|'));
                 assert.ok(!calls.some(c => c.url.includes('web_im/send_msg')));
                 assert.ok(sent.some(m => m.includes('bilibili.com/video/')), 'QQ 上发了链接');
+            }
+        });
+
+        test('回复开着（ADR 0090）：不用开刷视频；看「回复我的」，他的话先回，试运行只写草稿、不碰 B 站、不发 QQ；日志说清楚', async () => {
+            const evening = planDay();
+            const clock = new VirtualClock(evening);
+            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibiliAccount: true, bilibiliReplies: 'dryRun', bilibiliAtUid: 98765 });
+            saveCredential(credentialPath(cfg.dataDir), credential);
+            const seconds = Math.floor(evening.getTime() / 1000);
+            const entry = (mid: number, nickname: string, id: number, text: string, ago: number) => ({
+                user: { mid, nickname },
+                item: { subject_id: 101, root_id: 500, source_id: id, target_id: 500, source_content: text, target_reply_content: '这个猫也太会了', business_id: 1, title: '三花猫日常', uri: `https://www.bilibili.com/video/BV1search001#reply${id}` },
+                reply_time: seconds - ago,
+            });
+            const feed = { code: 0, data: { items: [entry(555, '路人乙', 601, '你也养猫吗？', 120), entry(98765, '小明', 602, '她写得挺好', 60)] } };
+            const calls: { url: string; body?: string }[] = [];
+            const request: BiliRequest = async (url, init) => {
+                if (url.includes('msgfeed/reply')) { calls.push({ url }); return body(feed); }
+                return accountRequest(calls)(url, init);
+            };
+            const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, bilibiliFetch: fetchStub([]), bilibiliRequest: request, generate: () => '这个梗我能玩一年' });
+            await app.connected(SELF);
+            const drafts = join(cfg.dataDir, 'presence', 'drafts.md');
+            await drive(clock, () => existsSync(drafts));
+            const text = readFileSync(drafts, 'utf8');
+            assert.match(text, /要在 B 站回复的话（草稿，没发）\n\n回复 @小明 :这个梗我能玩一年\n\n（他说：她写得挺好/);
+            assert.ok(!text.includes('路人乙'), '一次只回一条，他的先');
+            assert.deepEqual(sent, []);
+            assert.ok(!calls.some(c => c.url.includes('reply/add') || c.url.includes('send_msg') || c.url.includes('wbi/search')), '试运行不写 B 站，也没开刷视频');
+            assert.ok(logs.some(l => l.includes('回复 B 站评论：只写草稿（不发）')), logs.join('|'));
+            assert.ok(existsSync(join(cfg.dataDir, 'presence', 'bilibili-corpus.jsonl')));
+        });
+
+        test('回复开着但没填他的 uid，或没开账号：不回复，各记一行日志', async () => {
+            for (const [overrides, expected] of [
+                [{ bilibiliAccount: true, bilibiliReplies: 'dryRun' as const }, '没填 bilibiliAtUid'],
+                [{ bilibiliReplies: 'dryRun' as const, bilibiliAtUid: 98765 }, '要 bilibiliAccount 也开着'],
+            ] as const) {
+                const cfg = config({ contacts: bf, schedule: true, herDays: true, ...overrides });
+                saveCredential(credentialPath(cfg.dataDir), credential);
+                const calls: { url: string }[] = [];
+                const { app, logs } = setup(cfg, { 10001: [] }, { clock: new VirtualClock(planDay()), bilibiliFetch: fetchStub([]), bilibiliRequest: accountRequest(calls), generate: () => '这个也太真实了' });
+                await app.connected(SELF);
+                await new Promise(r => setTimeout(r, 150));
+                assert.ok(logs.some(l => l.includes(expected)), logs.join('|'));
+                assert.ok(!calls.some(c => c.url.includes('msgfeed')));
             }
         });
 
