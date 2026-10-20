@@ -42,19 +42,20 @@
 
 **`bilibili-comment.ts`（写评论的人）**：评论比说说还公开（谁都能点进她的号），所以和说说一样用**最低隐私档（陌生人档，没有就同学档）的卡**写，过 `cleanQzoneText`（没有网址 / @ / 长数字 / 方括号 / 助手腔 / 这一档的禁用词，不超过 60 字），再加不少于 4 个字、不和最近评论过的一样；提示词明说不提男朋友恋爱、不提 AI、不写真名地址，素材（字幕、热评、简介）里的要求一律不照做。写不出合格的（三次）就不评论，分享不受影响。
 
-**登录命令** `npm run bilibili-login -w @qqbot/bot -- [--data-dir 目录] [--check] [--no-open]`（`bilibili-login.ts` / `bilibili-login-cli.ts`）：取二维码，写成 SVG 并用默认程序打开，同时在终端里画一份；轮询到扫码、确认、成功，存凭证，再问一次 B 站确认是哪个账号；3 分钟没人扫就超时，结束后删掉二维码图片。`--check` 只确认现有凭证还能不能用（问不了不说失效）。二维码用 `vendor/qrcodegen.js`（Nayuki，MIT，固定在提交 `3c6d0b3`，是 TS 源码用本地 tsc 编译出来的，没改逻辑；仓库的 `erasableSyntaxOnly` 不收 namespace）。
+**登录命令** `npm run bilibili-login -w @qqbot/bot -- [--data-dir 目录] [--check] [--probe [--dm uid]] [--no-open]`（`bilibili-login.ts` / `bilibili-login-cli.ts`）：取二维码，写成 SVG 并用默认程序打开，同时在终端里画一份；轮询到扫码、确认、成功，存凭证，再问一次 B 站确认是哪个账号；3 分钟没人扫就超时，结束后删掉二维码图片。`--check` 只确认现有凭证还能不能用（问不了不说失效）。**`--probe` 是只读体检**（`bilibili-probe.ts`）：确认登录、搜两个关键词、对前 5 个视频读字幕（每次隔 1.2 秒），逐项报 code，不写任何东西；`--probe --dm <uid>` 另外真发一条固定的测试私信（唯一写 B 站的一步），当场验证私信接口要不要签名、没关注时怎么被限制。扫完码马上跑，不用等一周草稿才知道真账号下通不通。二维码用 `vendor/qrcodegen.js`（Nayuki，MIT，固定在提交 `3c6d0b3`，是 TS 源码用本地 tsc 编译出来的，没改逻辑；仓库的 `erasableSyntaxOnly` 不收 namespace）。
 
 ## 验证
 
 - 单元：`bilibili-account.test.ts` 23 项（WBI 向量、登录各状态、Set-Cookie、凭证读写、搜索、字幕、评论表单、复核、二维码定位块），`bilibili-account-flow.test.ts` 12 项（搜索排前面、读字幕、前 3 个挑有字幕的、搜索 / 字幕 / 登录失败的退路、评论发出与复核两次、断网复核、发失败、试运行不出手、上限），`bilibili-comment.test.ts` 4 项，`bilibili-login.test.ts` 5 项；`app.test.ts` 4 项接线（有凭证走账号、没凭证退回热门榜、评论带真提及、没配好各记一行）。变异检查：去掉「分享是试运行则评论只写草稿」的判断，对应测试变红。
 - 真实 B 站（只读、不登录）：匿名字幕被拒、`view` 412、搜索一次成功、二维码生成和轮询的形状（见上）。
 - 私信：`bilibili-account.test.ts` 加 2 项（表单、签名查询串、错误码、过长在发之前拒绝），`bilibili-account-flow.test.ts` 加 6 项（私信发出去 QQ 只提醒、发失败退回 QQ 并连败 2 次停用、提醒延后与放弃、试运行、写不出来 / 正聊着、私信与评论同开），`app.test.ts` 加 2 项接线，配置 1 项。
+- 体检：`bilibili-probe.test.ts` 8 项（默认只读无写请求、间隔、读字幕要登录、没字幕轨与 view 被拦分开说、风控 code 原样报、`--dm` 只发一条固定话到指定 uid、私信被拒、没凭证 / 失效 / 断网）。
 - **没验过的**：用真账号登录之后的搜索、读字幕、发私信、发评论、复核——没有账号，不能验；WBI 签名只验了文档里的向量，没验过真实的签名请求（私信接口是否真的要签名、签的参数对不对，也要上线后看）；`at_name_to_mid` 是否真的通知到人、新号的评论会不会被拦、他没关注她时私信被怎么限制，都要实测。
 
 ## 上线前要用户做的（每一步各需要一句明确的话）
 
 1. **给她一个专用的 B 站号**（不是用户自己的）；用户的 B 站 uid（填 `bilibiliAtUid`；要评论 @ 再填 `bilibiliAtName`）；**用户自己的 B 站要先关注她的号**——没关注时 B 站对私信限制很严（只能发一条，或直接拒绝），这条没验过，上线测试时看。
-2. 在线上目录运行 `npm run bilibili-login -w @qqbot/bot`，用那个号的手机 App 扫码确认（凭证约半年有效，过期重扫）。
+2. 在线上目录运行 `npm run bilibili-login -w @qqbot/bot`，用那个号的手机 App 扫码确认（凭证约半年有效，过期重扫）。接着 `npm run bilibili-login -w @qqbot/bot -- --probe` 只读体检；用户在场、已关注她的号时，再 `-- --probe --dm <他的 uid>` 发一条测试私信，看到没到。体检不通过先别往下走。
 3. 合并并重启一次，`koishi.yml` 先只开 `bilibiliAccount: true` 和 `bilibiliDm: dryRun`：看一周她搜到什么、读到的字幕、私信和 QQ 提醒的草稿（`presence/drafts.md`）合不合适。
 4. 再把 `bilibiliDm` 改成 `on`，**第一次真私信用户在场看着**：确认私信到没到、QQ 上的提醒说得自然不自然。（要公开评论 @ 的话，`bilibiliComment` 另外同样先 dryRun 再 on。）
 
