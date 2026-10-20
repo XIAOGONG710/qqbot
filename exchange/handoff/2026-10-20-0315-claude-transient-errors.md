@@ -35,3 +35,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/XG/Desktop/golive-r
 
 ## 重启通知（08:59）
 用户在当前会话里（AskUserQuestion）选了「两项一起落地」。我现在用 `golive-release.ps1` 只重启 Koishi 约 15 秒，从 `30858db` 快进到 `05465cb`；她睡着。其他窗口不要碰线上目录。结果补在下面。
+
+## 结果（10-20 09:00）：已上线 `05465cb`
+- 09:00:01–09:00:10 `golive-release.ps1`：预检通过 → 维护旗 → 只停 Koishi → 备份 `runtime\backup-pre-transient-20261020-0900`（153 个文件）→ 快进 `30858db` → `05465cb`（13 个文件）→ 起 Koishi，心跳 ref = `05465cb` → 新日志 `2026-10-20-1.log` 0 条 warn/error，`state-check` 16 项通过 → 删旗 → 推送 `main` 和 `integration`。离线约 5 秒；她睡着（今天约 09:40 起床）。
+- 09:00 复核：线上 `05465cb` 干净；`origin/main` = `origin/integration` = `05465cb`；守护进程 / 心跳监视 / 网络探针都在；空闲虚拟内存 5.3 GB。
+- 前一个实例（`30858db`，02:43–09:00，**18 个开关全开的第一个完整夜晚**）的日志只有启动那 42 行，之后 6 个多小时没有任何行：0 warn/error，在线状态 02:43 设成「离开」后没再变。她睡着，没人聊、没有事件，符合预期；白天的行为（已读、表情回应、状态变化、点赞、说说、B 站、签名自动换……）还没有证据。
+- 用户在落地问答里选了「两项一起落地」，所以 `unwell` 已打开：下一次出现 = **2026-11-16（感冒）**，到那天看日志里的 `她那边的事[unwell…]` 和她说的话。
