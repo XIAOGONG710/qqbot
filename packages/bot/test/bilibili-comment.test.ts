@@ -57,6 +57,16 @@ describe('B 站评论：写手（ADR 0089）', () => {
         assert.equal(second.seen.length, 2);
     });
 
+    test('评论要简短：四十字以内的收，四十一字的重写（提示词要的是三十字以内）', async () => {
+        const forty = '一二三四五六七八九十'.repeat(4);
+        assert.equal(forty.length, 40);
+        assert.equal(await model([forty]).compose(input()), forty);
+        const long = model([`${forty}啊`, '这只猫的表情太绝了']);
+        assert.equal(await long.compose(input()), '这只猫的表情太绝了');
+        assert.equal(long.seen.length, 2);
+        assert.ok(commentSystemPrompt(character).includes('十个字到三十个字'));
+    });
+
     test('模型出错：记一行日志，这次不评论（不重试，分享不受影响）', async () => {
         const m = model([new Error('429')]);
         assert.equal(await m.compose(input()), undefined);
