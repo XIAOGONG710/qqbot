@@ -90,13 +90,13 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
 }
 
 /** 顺着说的那一句：给方向（应一声、附和、笑、接他的话、问一个字），不给台词 */
-const PLAIN_NOTE = '；这一轮顺着他说就行：应一声、附和、笑一下、接他的话、问一个字都可以，别反驳他、别损他、别嘴硬';
+const PLAIN_NOTE = '；这一轮顺着他说就行：应一声、附和、笑一下、接他的话都可以，别反驳他、别损他、别嘴硬，也别用反问句回他';
 
 /** 放进提示词的一行；不给台词，只给数字和方向 */
 export function describeShape(plan: ShapePlan): string {
     const plain = plan.plain ? PLAIN_NOTE : '';
     if (plan.kind === 'micro') {
-        return `[这一轮说话：${plan.maxBubbles === 1 ? '只回一条' : `最多 ${plan.maxBubbles} 条`}，每条不超过 ${plan.cap} 个字——语气词、单个词、一句反问都可以，不用凑成完整的句子；不展开，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说${plain}]`;
+        return `[这一轮说话：${plan.maxBubbles === 1 ? '只回一条' : `最多 ${plan.maxBubbles} 条`}，每条不超过 ${plan.cap} 个字——语气词、单个词都可以，不用凑成完整的句子；不展开，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说${plain}]`;
     }
     if (plan.kind === 'short') {
         return `[这一轮说话：每条不超过 ${plan.cap} 个字，最多 ${plan.maxBubbles} 条；像手机上随手打的，半句也行，不用凑成完整的句子；不展开，不另起话题${plain}]`;
