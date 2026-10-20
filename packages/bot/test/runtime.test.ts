@@ -905,6 +905,12 @@ describe('配置', () => {
         assert.deepEqual([defaults.bilibiliAccount, defaults.bilibiliComment, defaults.bilibiliDm, defaults.bilibiliReplies, defaults.bilibiliAtName, defaults.bilibiliAtUid], [false, 'off', 'off', 'off', '', 0]);
         const set = parseAppConfig({ ...rest, bilibiliAccount: true, bilibiliComment: 'dryRun', bilibiliDm: 'on', bilibiliReplies: 'dryRun', bilibiliAtName: ' 小明 ', bilibiliAtUid: 98765 }, 'C:/repo', env);
         assert.deepEqual([set.bilibiliAccount, set.bilibiliComment, set.bilibiliDm, set.bilibiliReplies, set.bilibiliAtName, set.bilibiliAtUid], [true, 'dryRun', 'on', 'dryRun', '小明', 98765]);
+        // 话题关键词（ADR 0092）：默认空；去掉空的和重复的；类型不对、太多、太长报错
+        assert.deepEqual(defaults.bilibiliCommentKeywords, []);
+        assert.deepEqual(parseAppConfig({ ...rest, bilibiliCommentKeywords: [' 大肥鱼 插件 ', 'DSH 插件', 'DSH 插件', ''] }, 'C:/repo', env).bilibiliCommentKeywords, ['大肥鱼 插件', 'DSH 插件']);
+        for (const bad of ['大肥鱼', [1], ['a\nb'], Array.from({ length: 11 }, (_, i) => `词${i}`), ['x'.repeat(31)]]) {
+            assert.throws(() => parseAppConfig({ ...rest, bilibiliCommentKeywords: bad }, 'C:/repo', env), /bilibiliCommentKeywords/, JSON.stringify(bad));
+        }
         for (const [key, bad, message] of [
             ['bilibiliAccount', 'yes', /bilibiliAccount/], ['bilibiliComment', 'maybe', /bilibiliComment/], ['bilibiliDm', true, /bilibiliDm/], ['bilibiliReplies', 'sure', /bilibiliReplies/], ['bilibiliAtName', 123, /bilibiliAtName/],
             ['bilibiliAtName', '@小明', /bilibiliAtName/], ['bilibiliAtName', 'x'.repeat(41), /bilibiliAtName/], ['bilibiliAtUid', '98765', /bilibiliAtUid/], ['bilibiliAtUid', -1, /bilibiliAtUid/], ['bilibiliAtUid', 1.5, /bilibiliAtUid/],

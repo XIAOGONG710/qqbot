@@ -88,6 +88,12 @@ export function replyComposer(deps: CommentComposerDeps): (input: ReplyInput) =>
     };
 }
 
+/**
+ * 评论里不说自己在用 AI / 有 AI 替自己做事 / 装了插件：话题模式专评 AI 和 DSH 视频，真模型顺着视频的氛围会编出“AI 替我刷视频”“回头我也换个上去”
+ * 这类设定（10-21 手动发的 5 条里有 3 条）——她只是个普通观众，提示词已经禁了，这里再拦一道
+ */
+const COMMENT_AI_CLAIM = /替我|(?:ai|AI|大肥鱼|dsh|DSH).{0,6}(?:帮|替)我|我(?:的|家)(?:ai|AI|大肥鱼|dsh|DSH|token|提示词|代码)|我(?:也)?(?:装|部署|养)了|回头我也(?:装|换|试|用)/;
+
 const TRIES = 3;
 const MIN_CHARS = 4;
 /** 评论要简短：提示词说三十字以内，超过四十字的不要（cleanQzoneText 的 60 字上限对评论太松） */
@@ -116,6 +122,7 @@ export function commentComposer(deps: CommentComposerDeps): (input: CommentInput
                 return undefined;
             }
             const text = cleanQzoneText(raw, deps.character.banned);
+            if (text && COMMENT_AI_CLAIM.test(text)) continue;
             if (text && text.length >= MIN_CHARS && text.length <= MAX_CHARS && !recent.includes(text)) return text;
         }
         return undefined;

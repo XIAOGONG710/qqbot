@@ -174,6 +174,23 @@ export function videoPlan(day: string, weekend: boolean): { minutes: number } | 
     return { minutes: weekend ? pick(day, 'bili-at', [14 * 60, 22 * 60 + 30]) : pick(day, 'bili-at', [19 * 60, 22 * 60 + 30]) };
 }
 
+/** 评论的计划（话题模式）：约一半的日子想评论一次，几点同刷视频（工作日晚上、周末下午到晚上）；还要过评论的间隔和一周上限 */
+export const COMMENT_CHANCE = 0.5;
+export function commentPlan(day: string, weekend: boolean): { minutes: number } | undefined {
+    if (pick(day, 'bili-cm', [0, 999]) >= COMMENT_CHANCE * 1000) return undefined;
+    return { minutes: weekend ? pick(day, 'bili-cm-at', [14 * 60, 22 * 60 + 30]) : pick(day, 'bili-cm-at', [19 * 60, 22 * 60 + 30]) };
+}
+
+/**
+ * 话题模式里她会点开去评论的视频：不看分区（DSH 插件视频在「计算机技术」「软件应用」「数码」……，分区口味会把它们全挡掉），
+ * 但时长（20 秒到 15 分钟）、标题长度、标题简介里的黑名单词（广告、争议……）、播放量（太冷清的没人看）还是要过
+ */
+export const TOPIC_MIN_VIEWS = 2000;
+export const TOPIC_MAX_DURATION_S = 15 * 60;
+export function topicSuitable(video: BiliVideo): boolean {
+    return video.aid > 0 && video.duration >= 20 && video.duration <= TOPIC_MAX_DURATION_S && video.title.length <= 60 && video.views >= TOPIC_MIN_VIEWS && !BLOCKED.test(`${video.title} ${video.desc}`);
+}
+
 /** 她在 B 站评论区发过的评论（账号层，ADR 0089） */
 export interface CommentRecord {
     at: number;
@@ -203,6 +220,8 @@ interface VideoFile {
     commentPausedUntil?: number;
     /** 连着失败几次（发成功清零）；到 3 次就停到重启 */
     commentFailures?: number;
+    /** 话题模式：这一天（她的一天）已经试过评论了，一天只试一次 */
+    topicDay?: string;
 }
 
 const validFile = (value: unknown): value is VideoFile =>
@@ -224,6 +243,11 @@ export interface CommentOptions {
     at: { name: string; uid: number };
     /** 写评论正文（不含 @）；写不出合格的返回 undefined */
     compose: (input: CommentInput) => Promise<string | undefined>;
+    /**
+     * 话题模式（配置 bilibiliCommentKeywords）：给了就不再跟着分享评论，而是她自己按这些话题关键词（每天换一个）搜视频、挑一个评论；
+     * 前期专评 AI 视频和 DSH 插件视频用（ADR 0092）。不给就是老样子：分享之后在那个视频下评论
+     */
+    keywords?: readonly string[];
 }
 
 /** 私信（ADR 0089）：她在 B 站给他发私信（链接 + 一两句话），QQ 上只说一句「去看私信」 */
@@ -372,15 +396,64 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
 
     /** 分享之后在这个视频下评论、@ 他：dryRun 只写草稿；失败不影响分享 */
     async function maybeComment(t: number, pickedVideo: Chosen): Promise<void> {
-        const { comment } = options;
-        if (!comment || commentHalted) return;
-        if (options.risk?.halted()) { log('刷 B 站：出过风险信号，公开评论先停着（话照常走私信），这次不评论'); return; }
-        const account = await getAccount();
-        if (!account) return;
+        // 话题模式（bilibiliCommentKeywords）：评论不跟着分享走，她自己按话题搜视频评论，见 topicComment
+        if (options.comment?.keywords?.length) return;
+        await commentUnder(t, pickedVideo);
+    }
+
+    /** 今天还能不能评论（风险、暂停、间隔、一周上限）：不能返回 undefined；quiet 时不记“暂停中”那行（话题模式每分钟问一次） */
+    async function commentAllowed(t: number, quiet = false): Promise<BiliAccount | undefined> {
+        if (!options.comment || commentHalted) return undefined;
+        if (options.risk?.halted()) { if (!quiet) log('刷 B 站：出过风险信号，公开评论先停着（话照常走私信），这次不评论'); return undefined; }
+        if (t < (state.commentPausedUntil ?? 0)) { if (!quiet) log('刷 B 站：评论暂停中（上次发失败或没出现在公开列表里），这次不评论'); return undefined; }
         const records = state.comments ?? [];
         const last = records.at(-1);
-        if (t < (state.commentPausedUntil ?? 0)) { log('刷 B 站：评论暂停中（上次发失败或没出现在公开列表里），这次不评论'); return; }
-        if ((last && t - last.at < COMMENT_MIN_GAP_MS) || records.filter(record => t - record.at < 7 * 86_400_000).length >= COMMENT_WEEK_MAX) return;
+        if ((last && t - last.at < COMMENT_MIN_GAP_MS) || records.filter(record => t - record.at < 7 * 86_400_000).length >= COMMENT_WEEK_MAX) return undefined;
+        return getAccount();
+    }
+
+    /** 话题模式：按话题关键词（每天一个）搜视频，挑一个她会评论的，读字幕和热评，评论并 @ 他；一天最多试一次，受评论的间隔和一周上限管 */
+    async function topicComment(t: number, day: string, awake: boolean): Promise<void> {
+        const keywords = options.comment?.keywords;
+        if (!keywords?.length || !awake || state.topicDay === day) return;
+        const date = new Date(t);
+        const plan = commentPlan(day, date.getDay() === 0 || date.getDay() === 6);
+        if (!plan || date.getHours() * 60 + date.getMinutes() < plan.minutes) return;
+        const account = await commentAllowed(t, true);
+        if (!account) return;
+        state.topicDay = day;
+        save();
+        const keyword = keywords[pick(day, 'bili-topic', [0, keywords.length - 1])]!;
+        let found: BiliVideo[];
+        try {
+            found = await account.search(keyword);
+        } catch (error) {
+            warnOnce('topic-search', `刷 B 站：按话题搜「${keyword}」失败（之后不再记），今天不评论：${reason(error)}`);
+            return;
+        }
+        const commented = new Set((state.comments ?? []).map(record => record.bvid));
+        const candidates = found.filter(video => topicSuitable(video) && !commented.has(video.bvid)).sort((a, b) => b.views - a.views);
+        log(`刷 B 站：按话题搜「${keyword}」，${found.length} 条，合适的 ${candidates.length} 条`);
+        if (!candidates.length) return;
+        // 播放多的前几个里按日期挑一个：DSH 视频底下本来就是这样的人多，不一定每次最热的
+        const video = candidates[pick(day, 'bili-topic-video', [0, Math.min(4, candidates.length - 1)])]!;
+        let excerpt: string | undefined;
+        try {
+            const result = await account.subtitle(video);
+            if (result.status === 'ok') excerpt = subtitleExcerpt(result.lines);
+            else if (result.status === 'needLogin') breakAccount();
+        } catch (error) {
+            warnOnce('subtitle', `刷 B 站：读字幕失败（之后不再记），这次只靠标题和热评：${reason(error)}`);
+        }
+        const hot = await fetchHotComments(options.fetch, video.aid).catch(() => [] as string[]);
+        await commentUnder(t, { day, video, ...(excerpt ? { excerpt } : {}), hot });
+    }
+
+    async function commentUnder(t: number, pickedVideo: Chosen): Promise<void> {
+        const { comment } = options;
+        const account = await commentAllowed(t);
+        if (!comment || !account) return;
+        const records = state.comments ?? [];
         const { video } = pickedVideo;
         if (video.aid <= 0) return;
         let text: string | undefined;
@@ -552,11 +625,13 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
         try {
             const t = options.now();
             await checkComments(t);
-            if (t < retryAt) return;
             const date = new Date(t);
             const day = formatDate(herDay(schedule, date));
             const current = stateAt(schedule, date, options.extraFree ?? []);
             const awake = (current.activity.kind === 'free' || current.activity.kind === 'between') && !options.saidSleep?.(t);
+            // 话题模式的评论和刷视频分享各过各的（分享取不到热门榜、正聊着的退避不该耽误它）
+            await topicComment(t, day, awake);
+            if (t < retryAt) return;
             // 私信已经发了、QQ 上的提醒还欠着：醒着、不在上课时补上
             if (state.dmPending) {
                 if (awake) await nudge(t);

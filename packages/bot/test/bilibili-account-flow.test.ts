@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { BiliApiError, type BiliAccount, type SubtitleResult } from '../src/bilibili-account.ts';
 import {
-    COMMENT_CHECK_AFTER_MS, COMMENT_PAUSE_MS, createVideoBrowsing, NUDGE_GIVE_UP_MS, pickVideo, rankVideos, SEARCH_KEYWORDS, videoPlan,
+    COMMENT_CHECK_AFTER_MS, COMMENT_PAUSE_MS, commentPlan, createVideoBrowsing, NUDGE_GIVE_UP_MS, pickVideo, rankVideos, SEARCH_KEYWORDS, TOPIC_MIN_VIEWS, topicSuitable, videoPlan,
     type BiliFetch, type BiliVideo, type CommentInput, type CommentRecord, type DmOptions,
 } from '../src/bilibili.ts';
 import type { RiskEvent, RiskGate } from '../src/bilibili-risk.ts';
@@ -104,7 +104,7 @@ describe('刷 B 站：她的账号（ADR 0089）', () => {
     }
 
     const make = (
-        t: number, mode: 'dryRun' | 'on', account: BiliAccount | (() => Promise<BiliAccount | undefined>) | undefined, comment?: { mode: 'dryRun' | 'on'; compose?: (input: CommentInput) => Promise<string | undefined> }, seed?: object,
+        t: number, mode: 'dryRun' | 'on', account: BiliAccount | (() => Promise<BiliAccount | undefined>) | undefined, comment?: { mode: 'dryRun' | 'on'; compose?: (input: CommentInput) => Promise<string | undefined>; keywords?: string[] }, seed?: object,
         extra: { dm?: DmOptions; drafts?: (request: InitiateRequest) => InitiateOutcome; nudges?: InitiateOutcome[]; risk?: RiskGate } = {},
     ) => {
         const clock = { t };
@@ -122,7 +122,7 @@ describe('刷 B 站：她的账号（ADR 0089）', () => {
             ...(account && extra.dm ? { dm: extra.dm, recordDm: (text: string, v: BiliVideo, at: number) => { recorded.push({ text, bvid: v.bvid, at }); } } : {}),
             ...(account && comment ? {
                 comment: {
-                    mode: comment.mode, at: { name: '小明', uid: 98765 },
+                    mode: comment.mode, at: { name: '小明', uid: 98765 }, ...(comment.keywords ? { keywords: comment.keywords } : {}),
                     compose: async (input: CommentInput) => { composed.push(input); return comment.compose ? comment.compose(input) : '这个猫也太会了'; },
                 },
             } : {}),
@@ -284,6 +284,98 @@ describe('刷 B 站：她的账号（ADR 0089）', () => {
         assert.equal(h.state().comments![0]!.visible, false);
         assert.equal(h.state().commentPausedUntil, t + COMMENT_CHECK_AFTER_MS[1] + 7 * 86_400_000);
         assert.ok(h.logs.some(l => l.includes('停止评论一周')));
+    });
+
+    describe('话题模式：自己按话题找视频评论（ADR 0092）', () => {
+        const KEYWORDS = ['大肥鱼 插件', 'DSH 插件', 'deepseek harness'];
+        const findTopicEvening = () => {
+            for (let day = 2; day < 29; day++) {
+                const t = at(11, day, 22, 40);
+                if (commentPlan(dayOf(t), isWeekend(t))) return t;
+            }
+            return assert.fail('找不到要评论的日子');
+        };
+        /** 搜到的话题视频：分区在她的口味之外（计算机技术），播放量够、时长合适 */
+        const dsh = (n: number, extra: Partial<BiliVideo> = {}) => searched(n, { category: '计算机技术', views: 50_000 - n * 1000, duration: 180, ...extra });
+
+        test('不看分区：搜话题关键词，在播放多的前几个里挑一个评论并 @ 他，读字幕和热评进评论素材；评论不跟着分享走（一次只评一条）', async () => {
+            const t = findTopicEvening();
+            const [a, b] = [dsh(1), dsh(2)];
+            const acct = fakeAccount({ found: [a, b], subtitles: { [a.bvid]: { status: 'ok', lan: 'ai-zh', lines: ['这个插件可以让大肥鱼自己刷 B 站'] }, [b.bvid]: { status: 'ok', lan: 'ai-zh', lines: ['这个插件可以让大肥鱼自己刷 B 站'] } } });
+            const s = make(t, 'on', acct.account, { mode: 'on', keywords: KEYWORDS });
+            await s.browsing.tick();
+            assert.equal(acct.log.posts.length, 1, '只有话题这一条，不会在分享的视频下再评一条');
+            assert.ok([a.aid, b.aid].includes(acct.log.posts[0]!.aid));
+            assert.deepEqual(acct.log.posts[0]!.at, { name: '小明', uid: 98765 });
+            assert.ok(acct.log.searches.some(keyword => KEYWORDS.includes(keyword)), acct.log.searches.join('|'));
+            assert.match(s.composed[0]!.excerpt ?? '', /大肥鱼自己刷 B 站/);
+            assert.ok(s.logs.some(line => line.includes('按话题搜') && line.includes('合适的 2 条')), s.logs.join('|'));
+            assert.equal(s.state().comments!.length, 1);
+        });
+
+        test('一天只试一次；已经评论过的视频、播放太少、太长、标题简介带黑名单词的不要；没有合适的就不评论', async () => {
+            const t = findTopicEvening();
+            const done = dsh(1);
+            const lowViews = dsh(2, { views: TOPIC_MIN_VIEWS - 1 });
+            const tooLong = dsh(3, { duration: 3600 });
+            const blocked = dsh(4, { title: '这个插件抽奖送大家' });
+            const none = fakeAccount({ found: [lowViews, tooLong, blocked] });
+            const n = make(t, 'on', none.account, { mode: 'on', keywords: KEYWORDS });
+            await n.browsing.tick();
+            assert.equal(none.log.posts.length, 0);
+            assert.ok(n.logs.some(line => line.includes('合适的 0 条')));
+            const searches = none.log.searches.length;
+            await n.browsing.tick();
+            assert.equal(none.log.searches.length, searches, '一天只试一次');
+
+            const seen = fakeAccount({ found: [done] });
+            const record: CommentRecord = { at: t - 2 * 86_400_000, bvid: done.bvid, aid: done.aid, rpid: '9', text: '以前评过', visible: true };
+            const s = make(t, 'on', seen.account, { mode: 'on', keywords: KEYWORDS }, { version: 1, seen: [], shares: [], comments: [record] });
+            await s.browsing.tick();
+            assert.equal(seen.log.posts.length, 0, '评过的视频不再评');
+            assert.equal(topicSuitable(dsh(5)), true);
+            assert.equal(topicSuitable(dsh(6, { aid: 0 })), false);
+        });
+
+        test('睡着、上课、风险停着、评论暂停中、一周评满了：不搜；试运行只写草稿', async () => {
+            const t = findTopicEvening();
+            const sleeping = fakeAccount({ found: [dsh(1)] });
+            const asleep = make(new Date(new Date(t).setHours(3, 0, 0, 0)).getTime(), 'on', sleeping.account, { mode: 'on', keywords: KEYWORDS });
+            await asleep.browsing.tick();
+            assert.ok(!sleeping.log.searches.some(keyword => KEYWORDS.includes(keyword)), '睡着不评论');
+
+            const risky = fakeAccount({ found: [dsh(1)] });
+            const halted = make(t, 'on', risky.account, { mode: 'on', keywords: KEYWORDS }, undefined, { risk: { halted: () => true, trip: async () => undefined } });
+            await halted.browsing.tick();
+            assert.ok(!risky.log.searches.some(keyword => KEYWORDS.includes(keyword)), '风险停着不搜');
+
+            const paused = fakeAccount({ found: [dsh(1)] });
+            const p = make(t, 'on', paused.account, { mode: 'on', keywords: KEYWORDS }, { version: 1, seen: [], shares: [], commentPausedUntil: t + 3600_000 });
+            await p.browsing.tick();
+            assert.ok(!paused.log.searches.some(keyword => KEYWORDS.includes(keyword)), '暂停中不搜');
+
+            const week = fakeAccount({ found: [dsh(1)] });
+            const records: CommentRecord[] = [1, 2, 3].map(n => ({ at: t - n * 2 * 86_400_000 + 3600_000, bvid: `BV1old${n}`, aid: n, rpid: String(n), text: `旧${n}`, visible: true }));
+            const full = make(t, 'on', week.account, { mode: 'on', keywords: KEYWORDS }, { version: 1, seen: [], shares: [], comments: records });
+            await full.browsing.tick();
+            assert.ok(!week.log.searches.some(keyword => KEYWORDS.includes(keyword)), '一周评满了不搜');
+
+            const dry = fakeAccount({ found: [dsh(1)] });
+            const d = make(t, 'on', dry.account, { mode: 'dryRun', keywords: KEYWORDS });
+            await d.browsing.tick();
+            assert.equal(dry.log.posts.length, 0);
+            assert.match(readFileSync(join(d.dir, 'drafts.md'), 'utf8'), /要在 B 站评论的话（草稿，没发）\n\n@小明 这个猫也太会了/);
+        });
+
+        test('不填关键词就是老样子：分享之后在那个视频下评论', async () => {
+            const t = findEvening();
+            const a = searched(1);
+            const acct = fakeAccount({ found: [a] });
+            const s = make(t, 'on', acct.account, { mode: 'on' });
+            await s.browsing.tick();
+            assert.equal(acct.log.posts.length, 1);
+            assert.equal(acct.log.posts[0]!.aid, a.aid);
+        });
     });
 
     describe('风险转私信（ADR 0090）', () => {

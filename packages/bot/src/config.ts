@@ -59,6 +59,7 @@ export const DEFAULTS = {
     bilibiliComment: 'off' as PresenceMode,
     bilibiliDm: 'off' as PresenceMode,
     bilibiliReplies: 'off' as PresenceMode,
+    bilibiliCommentKeywords: [] as readonly string[],
     shape: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
@@ -174,6 +175,11 @@ export interface AppConfig {
      * 每天有上限。有价值的回复（不含昵称和 uid）另存一份真人语料。要 bilibiliAccount、bilibiliAtUid；dryRun 只写草稿。默认关
      */
     bilibiliReplies: PresenceMode;
+    /**
+     * 话题模式（ADR 0092）：给了关键词，评论就不再跟着分享走，而是她自己每天按其中一个关键词搜视频、挑播放多的前几个里的一个、读字幕和热评后评论并 @ 他
+     * （不看分区，所以 DSH 插件、AI 视频搜得到）；约一半的日子想评论一次，仍受评论的间隔（一天）和一周 3 条的上限管。前期专评 AI 视频和 DSH 插件视频用。不写就是老样子
+     */
+    bilibiliCommentKeywords: readonly string[];
     /**
      * 形状控制（ADR 0091）：按他这一轮说了多长，定她每条最多几个字、最多几条（字数档取自真人聊天的分布），写进提示词，超了重写一次、还超就在分句处截断；
      * 代替 shortReplies 那句软提示（模型不听：开着它每条气泡中位还是 16 字，真人 6–7）。主动找他、收尾、他明着让她讲、危机回合不用。默认关
@@ -409,6 +415,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         bilibiliComment: oneOf(file.bilibiliComment, 'bilibiliComment', PRESENCE_MODES, DEFAULTS.bilibiliComment),
         bilibiliDm: oneOf(file.bilibiliDm, 'bilibiliDm', PRESENCE_MODES, DEFAULTS.bilibiliDm),
         bilibiliReplies: oneOf(file.bilibiliReplies, 'bilibiliReplies', PRESENCE_MODES, DEFAULTS.bilibiliReplies),
+        bilibiliCommentKeywords: bilibiliCommentKeywords(file.bilibiliCommentKeywords),
         shape: bool(file, 'shape', '', DEFAULTS.shape),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
@@ -469,6 +476,15 @@ function bilibiliAtName(value: unknown): string {
     if (value === undefined) return DEFAULTS.bilibiliAtName;
     if (typeof value !== 'string' || value.length > 40 || /[\r\n@]/.test(value)) throw new Error('配置 bilibiliAtName 应为 B 站昵称（不超过 40 个字，不含 @ 和换行）');
     return value.trim();
+}
+
+/** 话题关键词：最多 10 个，每个不超过 30 个字、不含换行；去掉空的和重复的；不写就是空（评论跟着分享走） */
+function bilibiliCommentKeywords(value: unknown): string[] {
+    if (value === undefined) return [...DEFAULTS.bilibiliCommentKeywords];
+    if (!Array.isArray(value) || value.length > 10 || value.some(item => typeof item !== 'string' || item.length > 30 || /[\r\n]/.test(item))) {
+        throw new Error('配置 bilibiliCommentKeywords 应为字符串数组（最多 10 个，每个不超过 30 个字，不含换行）');
+    }
+    return [...new Set((value as string[]).map(item => item.trim()).filter(Boolean))];
 }
 
 function bilibiliAtUid(value: unknown): number {

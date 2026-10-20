@@ -142,6 +142,17 @@ describe('B 站评论：写手（ADR 0089）', () => {
         assert.ok(commentSystemPrompt(character).includes('十个字到三十个字'));
     });
 
+    test('评论里不说自己在用 AI / 有 AI 替自己做事 / 装了插件（话题模式专评 AI 视频时模型会顺着编）：重写，三次都有就不评论', async () => {
+        for (const text of ['AI替我刷视频，那我图啥', '我的大肥鱼也会这个', '我也装了这个插件', '回头我也换个上去', '这个ai帮我写作业还行']) {
+            const m = model([text, text, text]);
+            assert.equal(await m.compose(input()), undefined, text);
+            assert.equal(m.seen.length, 3, `${text} 重写到第三次就放弃`);
+        }
+        const second = model(['AI替我刷完还得艾特我', '这个插件做得挺可爱']);
+        assert.equal(await second.compose(input()), '这个插件做得挺可爱');
+        assert.equal(await model(['这个桌宠动起来好可爱']).compose(input()), '这个桌宠动起来好可爱');
+    });
+
     test('模型出错：记一行日志，这次不评论（不重试，分享不受影响）', async () => {
         const m = model([new Error('429')]);
         assert.equal(await m.compose(input()), undefined);
