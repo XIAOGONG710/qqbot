@@ -543,12 +543,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (typo.note) log(`打错字：${typo.note}`);
             return typo.recall ? { parts: typo.parts, recall: typo.recall } : typo.parts;
         },
-        review: (reply, messages) => (crisisNow
+        review: (reply, messages, reviewContext) => (crisisNow
             ? (text: string, reviewOptions: ReviewOptions) => reviewCrisisReply(text, reviewOptions, crisisNow!.level)
             : reviewReply)(reply, {
             banned: character.banned,
             userName: contact.name,
-            ...(options.speechCheck ? { speech: { ...speechContext(options.history.load(contact.qq)), ...(sulkNow ? { allowGrievance: true } : {}) } } : {}),
+            ...(options.speechCheck ? { speech: { ...speechContext(options.history.load(contact.qq)), ...(sulkNow ? { allowGrievance: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}) } } : {}),
             ...(reading ? { books: reading } : {}),
             // 小黄脸（ADR 0051）：最近几次带得太密、他认真说事她只回表情
             faces: faceContext(options.history.load(contact.qq), contact.tier),

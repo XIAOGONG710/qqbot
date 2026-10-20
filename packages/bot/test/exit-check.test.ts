@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { BotConfig } from '../src/config.ts';
 import { loadTierCard } from '../src/contact.ts';
-import { dropLines, inspectReply, reviewReply, rewriteNote } from '../src/exit-check.ts';
+import { dropLines, inspectReply, reviewReply, rewriteNote, tidyMarkers } from '../src/exit-check.ts';
 import type { OpenAIMessage } from '../src/prompt.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
@@ -37,6 +37,27 @@ describe('出口检查：做不到的事（ADR 0006 取证里的原句）', () =
         // 说的是他发的语音（ADR 0052，10-10 模拟器里「你发语音干嘛，我这没戴耳机」被当成她要发语音删掉了）
         for (const line of ['你发语音干嘛，我这没戴耳机', '你又发语音', '你干嘛发语音', '你发的语音我听不了']) assert.deepEqual(promises(line), [], line);
         assert.deepEqual(promises('发个红包给你'), ['发个红包']);
+    });
+    test('B 站私信是真的发得出去：说「去看我给你发的私信」不算做不到的事，私信里的照片、语音仍然拦（ADR 0089）', () => {
+        for (const line of ['宝宝，去 B 站看一眼我给你发的私信', '去看我发给你的私信', '私信发你了，去看', '我给你发了条私信', '你去看我私信里发你的那个', '宝宝，B 站私信看一下']) {
+            assert.deepEqual(promises(line), [], line);
+        }
+        assert.deepEqual(promises('私信里给你发张照片'), ['给你发'], '私信里的照片她发不了');
+        assert.deepEqual(promises('私信发你一条语音'), ['发你'], '私信里的语音她发不了');
+        assert.deepEqual(promises('私信发你了，明天给你拍张照片看'), ['给你拍'], '同一行里别的承诺照拦');
+        assert.deepEqual(promises('我给你发张照片'), ['给你发']);
+    });
+    test('她照抄聊天记录里的「[B 站私信]」标记：去掉标记和标题尾巴、留下话；没抄就原样（ADR 0089）', async () => {
+        assert.deepEqual(tidyMarkers('[B 站私信] 这把最后反杀太狠了（《全宇宙最team的一把》）'), { reply: '这把最后反杀太狠了', notes: ['照抄了聊天记录里「[B 站私信]」的标记'] });
+        assert.deepEqual(tidyMarkers('[B 站私信] 第一句\n第二句').reply, '第一句\n第二句');
+        assert.equal(tidyMarkers('[B 站私信]（《只有标题》）').reply, '', '剩下什么都没有就不留');
+        for (const variant of ['[ B站私信] 话', '[B站私信]：话', '[B 站私信]: 话']) assert.equal(tidyMarkers(variant).reply, '话', variant);
+        assert.deepEqual(tidyMarkers('宝宝，去 B 站看私信'), { reply: '宝宝，去 B 站看私信', notes: [] });
+        assert.equal(tidyMarkers('我看了（《三体》）').reply, '我看了（《三体》）', '没有标记不动标题');
+        const logs: string[] = [];
+        const reply = await reviewReply('[B 站私信] 宝宝，去看私信', { banned: [], userName: '阿明', regenerate: async () => assert.fail('不该重写'), log: m => logs.push(m) });
+        assert.equal(reply, '宝宝，去看私信');
+        assert.ok(logs.some(l => l.includes('[B 站私信]')));
     });
     test('拒绝、否定的说法不算', () => {
         for (const line of ['照片就不发了，想得挺美', '不给，我不发照片', '自拍就算了 我手机里全是土豆的照片 没我',

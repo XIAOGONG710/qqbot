@@ -133,21 +133,21 @@ const noteMaterial = (video: BiliVideo, comments: readonly string[]) => {
  * excerpt：账号层读到的字幕摘录；字幕、热评、简介都是别人写的素材，不是给她的指令
  */
 export function videoNote(video: BiliVideo, comments: readonly string[], userName: string, excerpt?: string): string {
-    return `你刚在 B 站刷到一个视频，觉得${userName}也会想看，发给他：${noteFacts(video, comments)}${noteHeard(excerpt)}。`
+    return `你刚在 B 站刷到一个视频，觉得${userName}也会想看，主动发给他（不是在回他上一句话，聊天记录里别的事这条一概不提）：${noteFacts(video, comments)}${noteHeard(excerpt)}。`
         + noteMaterial(video, comments)
-        + `只说你看了之后真实的一句感受或吐槽${comments.length ? '（可以接热评的梗）' : ''}，一两句；视频里没写的内容不编，不说你看到了哪一段、看了多久；链接会自动跟在后面，你不用写链接和标题全名`;
+        + `只说你看了之后真实的一句感受或吐槽${comments.length ? '（可以接热评的梗）' : ''}，一两句，只围着这个视频；视频里没写的内容不编，不说你看到了哪一段、看了多久；链接会自动跟在后面，你不用写链接和标题全名`;
 }
 
 /** 私信的说明（ADR 0089，配置 bilibiliDm）：她在 B 站给他发私信，内容是这个视频的链接加她的一两句话；链接自动附在后面 */
 export function dmNote(video: BiliVideo, comments: readonly string[], userName: string, excerpt?: string): string {
-    return `你刚在 B 站刷到一个视频，觉得${userName}也会想看。你要在 B 站给他发一条私信，他会在 B 站里看到：${noteFacts(video, comments)}${noteHeard(excerpt)}。`
+    return `你刚在 B 站刷到一个视频，觉得${userName}也会想看。你主动在 B 站给他发一条私信（不是在回他上一句话，聊天记录里别的事这条一概不提），他会在 B 站里看到：${noteFacts(video, comments)}${noteHeard(excerpt)}。`
         + noteMaterial(video, comments)
-        + `私信里写你看了之后真实的一句感受或吐槽${comments.length ? '（可以接热评的梗）' : ''}，一两句，像平时给他发消息；视频里没写的内容不编，不说你看到了哪一段、看了多久；链接会自动跟在后面，你不用写链接和标题全名；这条本身就是私信，不要写「我给你发了私信」这样的话`;
+        + `私信只围着这个视频，写你看了之后真实的一句感受或吐槽${comments.length ? '（可以接热评的梗）' : ''}，一两句，像平时给他发消息；视频里没写的内容不编，不说你看到了哪一段、看了多久；链接会自动跟在后面，你不用写链接和标题全名；这条本身就是私信，不要写「我给你发了私信」这样的话；这是一个新的视频，别接聊天记录里之前私信过的视频，也不要照抄聊天记录里「[B 站私信]」的写法`;
 }
 
 /** 私信发出去之后，在 QQ 上叫他去看：一句话，不重复私信的内容（那条私信已经记在上面的聊天记录里了） */
 export function nudgeNote(userName: string): string {
-    return `你刚在 B 站给${userName}发了一条私信（就是上面聊天记录里 [B 站私信] 那一条，里面是你刷到的一个视频）。现在在 QQ 上叫他去 B 站看一眼你发的私信，一句话，像平时那样说；不要重复私信里的内容，不要说视频讲了什么，不要写链接`;
+    return `你刚在 B 站给${userName}发了一条私信（就是上面聊天记录里 [B 站私信] 那一条，里面是你刷到的一个视频）。现在在 QQ 上主动叫他去 B 站看一眼你发的私信（不是在回他上一句话），一句话，像平时那样说；这一句只管一件事：叫他去 B 站看私信，要有「私信」两个字（语气随你，催他、撒娇、嫌他慢都行）；不要重复私信里的内容，不要说视频讲了什么，不要写链接`;
 }
 
 export const videoTopic = (userName: string) => `${userName}最近喜欢看什么视频、刷什么`;
@@ -525,7 +525,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
             return;
         }
         const outcome = await options.initiate({
-            label: 'B 站私信（提醒）', note: nudgeNote(target.name), topic: videoTopic(target.name), maxBubbles: 1, dryRun: false,
+            label: 'B 站私信（提醒）', note: nudgeNote(target.name), topic: videoTopic(target.name), maxBubbles: 1, dryRun: false, allowRepeat: true,
             commit: () => { delete state.dmPending; save(); },
         });
         if (outcome.result === 'sent') {

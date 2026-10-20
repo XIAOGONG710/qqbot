@@ -125,6 +125,12 @@ const PROMISE = new RegExp(NOT_NEGATED + '(?:' + [
     '(?:要|想)(?:不要)?看(?:不|吗|嘛)$',
 ].join('|') + ')' + NOT_REFUSED);
 
+// B 站私信她真的发得出去（ADR 0089）：「去看我给你发的私信」「私信发你了」不是做不到的承诺，查别的承诺之前先把这几个字眼换成「私信」。
+// 只认动词和「私信」挨着的说法（隔三个字以内）；动词后面紧跟照片、图、视频、语音、红包的不算（「私信里给你发张照片」仍然拦）
+const SEND_VERB = '(?:给你发|发(?:给)?你)';
+const NOT_MEDIA = `(?!${CLAUSE}{0,2}(?:照片|图|视频|语音|红包|相册))`;
+const DM_SENT = new RegExp(`${SEND_VERB}${NOT_MEDIA}${CLAUSE}{0,3}私信|私信${CLAUSE}{0,3}${SEND_VERB}${NOT_MEDIA}`, 'g');
+
 /** 提示词的结构：新对话的分隔、时间块里各行的开头；放完假那几天「[宝宝国庆放完假……]」那一行以称呼开头（ADR 0007 调整 2026-10-10） */
 const SCRIPT = /\[Start a new Chat\]|^\s*\[(?:当前时间|距上一条消息|你现在|你今天的|你那边|这一轮|你的身体|你今天的打算)|^\s*\[[^\]\n]{1,16}放完假|^\s*\[(?:\d{4}年)?\d{1,2}月\d{1,2}日 星期/;
 
@@ -156,7 +162,7 @@ export function inspectReply(reply: string, banned: readonly string[], speech?: 
         if (media) issues.push({ line, kind: 'media', match: media[0].trim() });
         const script = SCRIPT.exec(text);
         if (script) issues.push({ line, kind: 'script', match: script[0].trim() });
-        const promise = PROMISE.exec(text.trim());
+        const promise = PROMISE.exec(text.trim().replace(DM_SENT, '私信'));
         if (promise && !(imageStickers && /表情包/.test(text))) issues.push({ line, kind: 'promise', match: promise[0] });
         for (const word of banned) if (text.includes(word)) issues.push({ line, kind: 'banned', match: word });
         // QQ 里没有的表情：平时 tidyFaces 已经去掉，还在的是去掉就什么都不剩的
@@ -255,9 +261,29 @@ export interface ReviewOptions {
 
 const HARD = new Set<ExitIssue['kind']>(['promise', 'banned', 'media', 'text-intimacy']);
 
+/**
+ * 聊天记录里程序自己写的标记：B 站私信记成「[B 站私信] 话（《标题》）」（ADR 0089）。她照抄整行时，去掉标记和标题尾巴、留下话；
+ * 不然这个标记会原样出现在发给他的 B 站私信或 QQ 提醒里
+ */
+const DM_MARKER = /^\s*\[\s*B\s*站\s*私信\s*\][:：]?\s*/;
+const TITLE_TAIL = /\s*[（(]《[^》]*》[）)]\s*$/;
+export function tidyMarkers(reply: string): { reply: string; notes: string[] } {
+    const kept: string[] = [];
+    let touched = false;
+    for (const line of reply.split('\n')) {
+        if (!DM_MARKER.test(line)) { kept.push(line); continue; }
+        touched = true;
+        const next = line.replace(DM_MARKER, '').replace(TITLE_TAIL, '');
+        if (next.trim()) kept.push(next);
+    }
+    return touched ? { reply: kept.join('\n'), notes: ['照抄了聊天记录里「[B 站私信]」的标记'] } : { reply, notes: [] };
+}
+
 /** 先收拾小黄脸，再去掉重复的语气词开头（可能连着几个，最多去两轮），返回去过之后的回复和剩下要重写的问题 */
 function strip(reply: string, options: ReviewOptions): { reply: string; issues: ExitIssue[] } {
-    const tidy = tidyFaces(reply, options.faces);
+    const marked = tidyMarkers(reply);
+    if (marked.notes.length) options.log(`出口检查：${marked.notes.join('；')}，去掉`);
+    const tidy = tidyFaces(marked.reply, options.faces);
     if (tidy.notes.length) options.log(`出口检查：小黄脸——${tidy.notes.join('；')}，去掉`);
     let text = tidy.reply;
     for (let round = 0; ; round++) {

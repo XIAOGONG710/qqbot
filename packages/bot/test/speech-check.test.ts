@@ -228,6 +228,13 @@ describe('说话的毛病：重复（和她最近几次回复比）', () => {
         // 整条都是原话：去不掉，带说明重写
         assert.deepEqual(inspectSpeech('我舍友出门了，柜子里就剩半包饼干', context).map(i => [i.repeat, i.stripped]), [['verbatim', undefined]]);
     });
+    test('allowRepeat（B 站私信之后的固定提醒，ADR 0089）：最近说过一模一样的不算复读；别的毛病照查', () => {
+        const context = { recent: recent('宝宝，去 B 站看我发的私信', '宝宝，去 B 站看我发的私信'), his: ['嗯'] };
+        const reply = '宝宝，去 B 站看我发的私信';
+        assert.equal(inspectSpeech(reply, context).some(i => i.kind === 'repeat'), true, '平常这就是复读');
+        assert.deepEqual(inspectSpeech(reply, { ...context, allowRepeat: true }), []);
+        assert.equal(inspectSpeech('希望对你有帮助', { ...context, allowRepeat: true }).some(i => i.kind === 'service'), true, '助手腔仍然查');
+    });
     test('原话重复不算：5 个字以内的短句；他刚说过的话（在接他的话）', () => {
         const context = { recent: recent('还差一千七\n你真要掏啊'), his: ['差多少你说'] };
         assert.deepEqual(inspectSpeech('还差一千七，骗你干嘛', context), []);

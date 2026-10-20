@@ -213,6 +213,16 @@ describe('刷 B 站：她的账号（ADR 0089）', () => {
         assert.match(s.requests.at(-1)!.note, /重新登录后读到的字幕/);
     });
 
+    test('私信之后的 QQ 提醒是固定的习惯说法：请求带 allowRepeat，出口检查不按“说过一模一样的”去掉；私信正文不带（ADR 0089）', async () => {
+        const { account } = fakeAccount({ found: [searched(1)] });
+        const s = make(findEvening(), 'on', account, undefined, undefined, { dm: { mode: 'on', uid: 98765 } });
+        await s.browsing.tick();
+        const nudge = s.requests.find(r => r.label === 'B 站私信（提醒）');
+        const draft = s.requests.find(r => r.label === 'B 站私信（写）');
+        assert.equal(nudge?.allowRepeat, true);
+        assert.notEqual(draft?.allowRepeat, true);
+    });
+
     test('没有账号：和以前一样，只读热门榜，说明里没有字幕', async () => {
         const s = make(findEvening(), 'on', undefined);
         await s.browsing.tick();
@@ -416,7 +426,7 @@ describe('刷 B 站：她的账号（ADR 0089）', () => {
             await s.browsing.tick();
             assert.deepEqual(log.dms, [{ uid: 98765, text: `这个猫也太会了，笑死\n${a.link}` }]);
             assert.deepEqual(dmLabels(s), ['B 站私信（写）·草稿', 'B 站私信（提醒）']);
-            assert.match(s.requests[0]!.note, /你要在 B 站给他发一条私信/);
+            assert.match(s.requests[0]!.note, /你主动在 B 站给他发一条私信（不是在回他上一句话/);
             assert.match(s.requests[0]!.note, /字幕里的一句话/);
             assert.equal(s.requests[0]!.maxBubbles, 1);
             assert.match(s.requests[1]!.note, /\[B 站私信\]/);

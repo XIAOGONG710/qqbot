@@ -72,7 +72,7 @@ export interface ResponderDeps {
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     clean: (reply: string) => string;
     /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查 */
-    review?: (reply: string, messages: OpenAIMessage[]) => Promise<string>;
+    review?: (reply: string, messages: OpenAIMessage[], context?: { allowRepeat?: boolean }) => Promise<string>;
     /** 拆好条、发出去之前最后改一下（ADR 0024：打错字再改口）；maxBubbles 是这一轮最多几条；不传就原样发 */
     decorate?: (parts: string[], maxBubbles: number) => string[] | { parts: string[]; recall?: TypoRecall };
     send: (userId: number, text: string) => Promise<number>;
@@ -136,6 +136,8 @@ export interface InitiateRequest {
     dryRun: boolean;
     /** 生成完、发之前调用（先记后发）；抛错就不发 */
     commit: (parts: string[]) => void;
+    /** 这句话本来就是固定的习惯说法，出口检查不按“最近说过一模一样的”去掉（B 站私信之后的提醒，ADR 0089） */
+    allowRepeat?: boolean;
 }
 
 export type InitiateOutcome =
@@ -440,7 +442,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
         deps.log(`主动找他（${request.label}）：生成，${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);
         let reply = deps.clean(await deps.generate(prompt.messages));
-        if (deps.review) reply = await deps.review(reply, prompt.messages);
+        if (deps.review) reply = await deps.review(reply, prompt.messages, request.allowRepeat ? { allowRepeat: true } : undefined);
         if (stopped) return { result: 'skipped', reason: '已停止' };
         if (deps.history.load(deps.userId).slice(input).some(m => m.role === 'user')) {
             return { result: 'skipped', reason: '生成期间他来了消息，草稿不发，照常回他' };

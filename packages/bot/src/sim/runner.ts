@@ -20,7 +20,7 @@ import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay, newsKindsOf } from '../proactive.ts';
-import { videoNote, videoTopic } from '../bilibili.ts';
+import { dmMessageId, dmNote, nudgeNote, videoNote, videoTopic } from '../bilibili.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
 import { worldState, type World, CAMERA_FUND_TARGET } from '../world.ts';
@@ -641,13 +641,40 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 const v = step.video;
                 const bvid = 'BV1sim0000000';
                 const video = { bvid, aid: 0, title: v.title, desc: v.desc ?? '-', owner: v.owner, category: v.category, views: 0, likes: 0, duration: v.minutes * 60, link: `https://www.bilibili.com/video/${bvid}` };
-                initiating = 'B 站视频';
-                try {
-                    await responder.initiate({ label: 'B 站视频', note: videoNote(video, v.comments ?? [], scenario.user), topic: videoTopic(scenario.user), maxBubbles: 2, dryRun: false, commit: () => undefined });
-                } finally {
-                    initiating = undefined;
+                if (v.via === 'dm') {
+                    // 私信（ADR 0089）：像线上一样先写（试运行，不进 QQ），把草稿记成一个气泡方便检查，再记进聊天记录；nudge 时在 QQ 上提醒一句
+                    initiating = 'B 站私信（写）';
+                    let drafted;
+                    try {
+                        drafted = await responder.initiate({ label: 'B 站私信（写）', note: dmNote(video, v.comments ?? [], scenario.user, v.excerpt), topic: videoTopic(scenario.user), maxBubbles: 1, dryRun: true, commit: () => undefined });
+                    } finally {
+                        initiating = undefined;
+                    }
+                    if (drafted.result === 'dryRun') {
+                        const text = drafted.parts.join('\n');
+                        current.bubbles.push({ time: clock.now(), text, proactive: 'B 站私信（写）' });
+                        history.append(contact.qq, { time: new Date(clock.now()).toISOString(), role: 'assistant', content: `[B 站私信] ${text}（《${video.title}》）`, messageId: dmMessageId(clock.now()) });
+                    } else {
+                        log(`私信没写出来：${drafted.result}`);
+                    }
+                    if (v.nudge && drafted.result === 'dryRun') {
+                        initiating = 'B 站私信（提醒）';
+                        try {
+                            await responder.initiate({ label: 'B 站私信（提醒）', note: nudgeNote(scenario.user), topic: videoTopic(scenario.user), maxBubbles: 1, dryRun: false, allowRepeat: true, commit: () => undefined });
+                        } finally {
+                            initiating = undefined;
+                        }
+                        await runTimers(clock.now() + WAIT_REPLY_MS, () => current.bubbles.some(b => b.proactive === 'B 站私信（提醒）'));
+                    }
+                } else {
+                    initiating = 'B 站视频';
+                    try {
+                        await responder.initiate({ label: 'B 站视频', note: videoNote(video, v.comments ?? [], scenario.user, v.excerpt), topic: videoTopic(scenario.user), maxBubbles: 2, dryRun: false, commit: () => undefined });
+                    } finally {
+                        initiating = undefined;
+                    }
+                    await runTimers(clock.now() + WAIT_REPLY_MS, () => current.bubbles.some(b => b.proactive));
                 }
-                await runTimers(clock.now() + WAIT_REPLY_MS, () => current.bubbles.some(b => b.proactive));
             } else if ('wait' in step && step.wait === 'proactive') {
                 await runTimers(clock.now() + WAIT_REPLY_MS, () => current.bubbles.some(b => b.proactive));
                 if (!current.bubbles.some(b => b.proactive)) log('等了一天她也没主动找');

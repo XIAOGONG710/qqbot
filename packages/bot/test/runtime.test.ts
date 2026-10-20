@@ -699,6 +699,17 @@ describe('回复调度', () => {
             assert.equal(responder.status().phase, 'idle');
         });
 
+        test('allowRepeat 交给出口检查（ADR 0089）：设了就带给 review，没设就不带', async () => {
+            const contexts: unknown[] = [];
+            const { responder } = setup({
+                generate: async () => '宝宝，去看私信',
+                review: async (reply, _messages, context) => { contexts.push(context); return reply; },
+            });
+            await responder.initiate(request({ allowRepeat: true }));
+            await responder.initiate(request());
+            assert.deepEqual(contexts, [{ allowRepeat: true }, undefined]);
+        });
+
         test('试运行：生成、commit，不发、不记', async () => {
             const { responder, stored, sent } = setup({ generate: async () => '早' });
             const req = request({ dryRun: true });

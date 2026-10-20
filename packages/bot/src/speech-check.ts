@@ -39,6 +39,8 @@ export interface SpeechContext {
     segment?: readonly string[];
     /** 小别扭这一轮（ADR 0074）：「隔了很多天才来」「也不说一声」这类带点抱怨的话是这一轮想要的，不按算账 / 怪他没说拦 */
     allowGrievance?: boolean;
+    /** 这句话本来就是一个固定的习惯说法（B 站私信之后叫他去看，ADR 0089）：最近说过一模一样的不算复读，不查重复（开头、原话、四字片段） */
+    allowRepeat?: boolean;
 }
 
 export type NagKind = 'sleep' | 'eat' | 'warm';
@@ -290,6 +292,7 @@ export function inspectSpeech(reply: string, context: SpeechContext, { repeatAt 
             issues.push({ line, kind: 'nag', match: nag.match, nag: nag.kind });
             continue;
         }
+        if (context.allowRepeat) continue;
         const again = verbatim(text, said, his);
         if (again) {
             issues.push({ line, kind: 'repeat', repeat: 'verbatim', match: again.match, count: 1, stripped: again.stripped });

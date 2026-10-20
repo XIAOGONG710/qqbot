@@ -173,8 +173,11 @@ export type Step =
     | ActionStep
     /** 虚拟时间往后跳，例如 "50m"、"1d"、"9h30m"；途中到点的事（她看到消息、回复）按时间顺序发生。开了记忆就接着把结束了的片段写进去并等 Hindsight 做完 */
     | { advance: string }
-    /** 她刷到一个 B 站视频、想发给他（ADR 0084）：按真实的字段给标题 / UP 主 / 分区 / 分钟数 / 热评，用和线上一样的说明让她主动说一句，直到她说出来 */
-    | { video: { title: string; owner: string; category: string; minutes: number; desc?: string; comments?: string[] } }
+    /**
+     * 她刷到一个 B 站视频、想发给他（ADR 0084）：按真实的字段给标题 / UP 主 / 分区 / 分钟数 / 热评，用和线上一样的说明让她主动说一句，直到她说出来。
+     * excerpt：字幕摘录（ADR 0089）；via: 'dm'：改成写一条 B 站私信（试运行生成，记成一个气泡，并像线上一样记进聊天记录）；nudge：私信之后在 QQ 上提醒一句
+     */
+    | { video: { title: string; owner: string; category: string; minutes: number; desc?: string; comments?: string[]; excerpt?: string; via?: 'dm'; nudge?: boolean } }
     /** 虚拟时间一直往后走，直到她回复（最多 1 天）：睡着、上课时来的消息；proactive：直到她主动发一次（最多 1 天） */
     | { wait: 'reply' | 'proactive' }
     /** 不跳时间，把能写的片段写进记忆并等 Hindsight 做完 */
@@ -435,6 +438,10 @@ function checkStep(step: unknown, where: string): void {
         if (typeof video !== 'object' || video === null) fail('video 应为对象');
         for (const key of ['title', 'owner', 'category'] as const) if (typeof video![key] !== 'string' || !video![key]) fail(`video.${key} 应为非空字符串`);
         if (!Number.isInteger(video!.minutes) || Number(video!.minutes) <= 0) fail('video.minutes 应为正整数');
+        if (video!.excerpt !== undefined && typeof video!.excerpt !== 'string') fail('video.excerpt 应为字符串');
+        if (video!.via !== undefined && video!.via !== 'dm') fail('video.via 只能是 "dm"');
+        if (video!.nudge !== undefined && typeof video!.nudge !== 'boolean') fail('video.nudge 应为布尔值');
+        if (video!.nudge && video!.via !== 'dm') fail('video.nudge 要和 via: "dm" 一起用');
     }
     if ('wait' in s && s.wait !== 'reply' && s.wait !== 'proactive') fail('wait 只能是 "reply" 或 "proactive"');
     if ('check' in s) {
