@@ -137,3 +137,11 @@ DSH 的两条独立证据链给出接近的分布：真人每轮一条占 51–6
 ## 补：配置开关 `shortReplies`（2026-10-19，整包上线用）
 
 候选 1–5 的「更短的回复」没有开关，代码一落地就变。现在 `shortReplies`（默认关）：关着用上线前的老样子（`LEGACY_SHORT_CHANCE` 0.35、老措辞「只回一句短的，几个字也行」、没有让路规则）；开了才是 0.5、新措辞，以及他在难受 / 说担心的事 / 问起她的朋友时不加「回很短」。`lengthHint({ shortReplies })`、`describeLength(hint, shortReplies)` 一处决定；模拟器 `shortReplies: true`、盲评回放 `--short-replies` 能开。测试：`expression.test.ts` 的候选 5 各项都带 `shortReplies: true`，另加一项核老样子（35%、老措辞、不让路、开了之后老的「短」仍在新的范围里）。
+
+## 调整（2026-10-20）：候选 6「想到哪说到哪」（burst）做成独立开关，叠在 `shortReplies` 上
+
+- 起因：10-20 对线上聊天记录的审计（`exchange/handoff/2026-10-20-0940-claude-chat-shape-audit.md`，用 `exchange/tools/chat-audit.mjs`，只出数字）：最近 7 天她 **96% 一轮只发一条**（全部历史 56%，真人 51–65%）；每气泡中位 13 字（真人 7）。候选 6 对着「一轮 3 条以上太少」。
+- 做法（10-19 `claude/burst-test` 的最终版，第三版措辞原样）移植到线上代码上：`lengthHint` 多一档 `burst`（`BURST_CHANCE = 0.12`，排在 `short`、`long` 后面的那一段哈希区间，所以**不改变原来 short / long 的抽签**）；条件同「话多一点」（他说的至少 8 个字、她没在难受 / 心情安静），再加：他刚在说不顺心的事（`WORRIED_TEXT`）、意图行是「先接住他此刻的情绪」（`CARE_INTENT`）、问起她认识的人（`aboutPerson`）时不用；收尾、主动找他、危机照旧不加。
+- **开关**：配置 `burst`（默认关）；**要和 `shortReplies` 一起开才有这一档**（只开一个都没有）。插件配置、`AppConfig`、模拟器场景 `burst`、盲评生成器 `--burst` 都接上了。
+- 测试：`expression.test.ts` 新增 1 项（比例；没开开关绝不出现；开了不改 short / long 的抽签；几种不用的情形）、插件配置默认关。
+- **没有结论**：要用户盲评（`exchange/blind/2026-10-20-burst-6-on-live/`）；评完才决定开不开。

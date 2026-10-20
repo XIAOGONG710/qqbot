@@ -114,6 +114,7 @@ export interface Config {
     selfRecall: boolean;
     rhythm: boolean;
     shortReplies: boolean;
+    burst: boolean;
     candidates: number;
     contextTurns: number;
     contextContacts: number[];
@@ -238,6 +239,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**回复节奏**（ADR 0075）：打字的时间按字数算（0.6 秒 + 每字 0.18 秒，0.9–9 秒），回之前先「看 + 想」一会儿（多半 0.8–3.5 秒，偶尔几秒到半分钟）；热聊的第一条中位慢约 4 秒。默认关（老样子：0.8 秒 + 每字 0.1 秒，1–4 秒）'),
         shortReplies: Schema.boolean().default(DEFAULTS.shortReplies)
             .description('**更短的回复**（ADR 0024 的 10-19 调整，候选 5）：约一半的轮次只回很短的一句（老样子 35%）；他在难受、说担心的事（报告被打回、没过）、问起她的朋友时不加。默认关'),
+        burst: Schema.boolean().default(DEFAULTS.burst)
+            .description('**想到哪说到哪**（ADR 0024 的 10-20 调整，候选 6）：叠在「更短的回复」上，约 12% 的轮次连发三四条很短的、都围绕他刚说的那件事（真人一轮 3 条以上占 14–23%，线上最近一周 96% 一轮一条）。要和 shortReplies 一起开才有用；他在难受、说担心的事、要先接住情绪、问起她的朋友时不用。默认关，需要盲评'),
         candidates: Schema.natural().min(1).max(5).default(DEFAULTS.candidates)
             .description('**挑候选**（ADR 0041）：他难过、说亲密话、收尾时一次生成几个回复、按规则挑一个（少说几句、不扯自己的事、不约「写完跟我说」）。1 是不挑；3 是这几种时候三倍的模型调用'),
         contextTurns: Schema.natural().max(40).default(DEFAULTS.contextTurns)
@@ -369,6 +372,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.selfRecall !== undefined ? { selfRecall: config.selfRecall } : {}),
         ...(config.rhythm !== undefined ? { rhythm: config.rhythm } : {}),
         ...(config.shortReplies !== undefined ? { shortReplies: config.shortReplies } : {}),
+        ...(config.burst !== undefined ? { burst: config.burst } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
         ...(config.contextTurns !== undefined ? { contextTurns: config.contextTurns } : {}),
         ...(config.contextContacts !== undefined ? { contextContacts: config.contextContacts } : {}),

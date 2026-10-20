@@ -65,6 +65,7 @@ export const DEFAULTS = {
     selfRecall: false,
     rhythm: false,
     shortReplies: false,
+    burst: false,
     media: true,
     stickers: 'off' as StickerMode,
     candidates: 1,
@@ -172,6 +173,8 @@ export interface AppConfig {
     rhythm: boolean;
     /** 更短的回复（ADR 0024 的 10-19 调整，候选 5）：约一半的轮次回很短的一句，他在难受、说担心的事、问起她的朋友时让路。默认关（老样子：35%，老措辞） */
     shortReplies: boolean;
+    /** 想到哪说到哪（ADR 0024 的 10-20 调整，候选 6）：叠在 shortReplies 上，约 12% 的轮次连发三四条很短的、都围绕他刚说的那件事；要和 shortReplies 一起开才有用。默认关 */
+    burst: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -382,6 +385,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         selfRecall: bool(file, 'selfRecall', '', DEFAULTS.selfRecall),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
         shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),
+        burst: bool(file, 'burst', '', DEFAULTS.burst),
         media: bool(file, 'media', '', DEFAULTS.media),
         stickers: stickerMode(file.stickers),
         ...(vision ? { vision } : {}),

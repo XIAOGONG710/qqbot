@@ -9,8 +9,14 @@
 export const SHORT_CHANCE = 0.5;
 export const LEGACY_SHORT_CHANCE = 0.35;
 export const LONG_CHANCE = 0.1;
+/**
+ * 想到哪说到哪、连着发三四条很短的（候选 6，配置 burst，要和 shortReplies 一起开）：真人一轮 3 条以上占 14–23%（调研 C），
+ * 候选 5 之后 73 题题库只剩 7%（10-20 对线上聊天记录的审计：最近一周 96% 一轮一条）。
+ * 和「话多一点」不一样：不是把话说完整，是几个字一条地连发。要他说的有分量（LONG_MIN_CHARS）、她没在难受 / 不舒服，不在他说不顺心的事、要接住他情绪的时候用
+ */
+export const BURST_CHANCE = 0.12;
 
-export type LengthHint = 'short' | 'long';
+export type LengthHint = 'short' | 'long' | 'burst';
 
 /**
  * 这一轮要认真接话的意图行（先接他的情绪、替他高兴好事、回应他说的那件事、只接两个人的事、要亲近 / 要哄）：不加「回很短」。
@@ -37,6 +43,8 @@ export interface LengthContext {
     aboutPerson?: boolean;
     /** 配置 shortReplies：开了才用候选 5 的概率、让路的规则和新措辞；不开就是上线前的老样子（ADR 0024 的 10-19 调整） */
     shortReplies?: boolean;
+    /** 配置 burst（候选 6）：叠在 shortReplies 上，只在两个都开时才有「连发三四条很短的」这一档 */
+    burst?: boolean;
 }
 
 /** 这一轮说话的长短（没有就是照常） */
@@ -53,8 +61,14 @@ export function lengthHint(context: LengthContext): LengthHint | undefined {
     if (roll < shortChance) return context.shortReplies && ((context.intent && ENGAGED_INTENT.test(context.intent)) || WORRIED_TEXT.test(saidSinceReply(context.history)) || context.aboutPerson) ? undefined : 'short';
     // 话多要有由头：他这次说的太短（「到家了」）就不加（第一批：一句「到家了」她一口气说了 4 条 77 个字）
     if (roll < shortChance + LONG_CHANCE && !context.low && [...saidSinceReply(context.history)].length >= LONG_MIN_CHARS) return 'long';
+    // 候选 6：排在 short、long 后面的那一段哈希区间；两个开关都开才有。条件同「话多一点」，再加：他在说不顺心的事、要先接住他情绪、问起她认识的人时不用
+    if (context.shortReplies && context.burst && roll >= shortChance + LONG_CHANCE && roll < shortChance + LONG_CHANCE + BURST_CHANCE && !context.low
+        && [...saidSinceReply(context.history)].length >= LONG_MIN_CHARS && !WORRIED_TEXT.test(saidSinceReply(context.history)) && !CARE_INTENT.test(context.intent ?? '') && !context.aboutPerson) return 'burst';
     return undefined;
 }
+
+/** 要先接住他情绪的轮次：连发很短的几条会像在敷衍，不用 burst */
+export const CARE_INTENT = /先接住他此刻的情绪/;
 
 /** 他明着让她讲、让她说详细 */
 export const ASKS_TO_EXPLAIN = /讲讲|讲一下|详细|认真(?:说|讲|跟我说)|解释|教教?我|展开说|具体说说/;
@@ -68,6 +82,7 @@ function saidSinceReply(history: LengthContext['history']): string {
 }
 
 export function describeLength(hint: LengthHint, shortReplies = false): string {
+    if (hint === 'burst') return '[这一轮说话：连着发三四条很短的，每条几个字，不用说成完整的句子，都围绕他刚说的这一件事，顺着他的话反应、接话；不另起话题，不报自己今天的别的事，不要每条都问问题，最多最后一条带一个简短的问句（真要接着聊的话）；他在难受或认真说事时不适用，照平常的说]';
     return hint === 'short'
         ? !shortReplies ? '[这一轮说话：只回一句短的，几个字也行；不展开，不另起话题]' : '[这一轮说话：只回很短的一句，一两个字也行——语气词、单个词、一句反问都可以，不用凑成完整的句子；不展开，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说]'
         : '[这一轮说话：话多一点，想说的可以多说几句、说完整，不用一两句就停]';

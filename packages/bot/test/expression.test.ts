@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CORRECT_CHANCE, describeLength, ENGAGED_INTENT, LEGACY_SHORT_CHANCE, LONG_CHANCE, LONG_MIN_CHARS, lengthHint, maybeTypo, RECALL_SHARE, SHORT_CHANCE, TYPO_CHANCE, TYPOS, WORRIED_TEXT } from '../src/expression.ts';
+import { BURST_CHANCE, CARE_INTENT, CORRECT_CHANCE, describeLength, ENGAGED_INTENT, LEGACY_SHORT_CHANCE, LONG_CHANCE, LONG_MIN_CHARS, lengthHint, maybeTypo, RECALL_SHARE, SHORT_CHANCE, TYPO_CHANCE, TYPOS, WORRIED_TEXT } from '../src/expression.ts';
 
 const said = (i: number) => [{ role: 'user' as const, content: `第 ${i} 句，今天上班被老板说了一顿`, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
 
@@ -133,5 +133,39 @@ describe('表达层（ADR 0024）', () => {
             assert.notEqual(right, wrong);
             assert.equal(right.length, wrong.length, `${right} / ${wrong}`);
         }
+    });
+
+    test(`想到哪说到哪（burst，候选 6）：要 shortReplies 和 burst 两个都开；约 ${BURST_CHANCE * 100}% 的轮次连发几条很短的；几种情形不用`, () => {
+        const on = { shortReplies: true, burst: true };
+        const hints = Array.from({ length: 3000 }, (_, i) => lengthHint({ history: said(i), ...on }));
+        const burst = hints.filter(h => h === 'burst').length / hints.length;
+        assert.ok(Math.abs(burst - BURST_CHANCE) < 0.03, `burst ${burst}`);
+        // 没开开关就绝不出现这一档：只开 shortReplies、只开 burst、都不开
+        for (const off of [{ shortReplies: true }, { burst: true }, {}]) {
+            for (let i = 0; i < 600; i++) assert.notEqual(lengthHint({ history: said(i), ...off }), 'burst', JSON.stringify(off));
+        }
+        // 开了 burst 不改变 short / long 的抽签：同一条消息，没有 burst 时是 short / long 的，开了之后还是
+        for (let i = 0; i < 600; i++) {
+            const before = lengthHint({ history: said(i), shortReplies: true });
+            const after = lengthHint({ history: said(i), ...on });
+            if (before !== undefined) assert.equal(after, before, `第 ${i} 句`);
+        }
+        const one = Array.from({ length: 400 }, (_, i) => i).find(i => lengthHint({ history: said(i), ...on }) === 'burst')!;
+        assert.ok(one !== undefined, '有触发 burst 的句子');
+        assert.ok(describeLength('burst').includes('连着发三四条很短的') && describeLength('burst').includes('不报自己今天的别的事') && describeLength('burst').includes('最多最后一条带一个简短的问句'));
+        // 他说的太短（「到家了」）、她心情安静 / 不舒服：不用
+        const shortSaid = [{ role: 'user' as const, content: '到家了', time: said(one)[0]!.time }];
+        assert.notEqual(lengthHint({ history: shortSaid, ...on }), 'burst');
+        assert.notEqual(lengthHint({ history: said(one), low: true, ...on }), 'burst');
+        // 要先接住他情绪：不用；收尾、主动找他：不用；问起她认识的人：不用
+        const care = '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够]';
+        assert.ok(CARE_INTENT.test(care));
+        assert.notEqual(lengthHint({ history: said(one), intent: care, ...on }), 'burst');
+        assert.equal(lengthHint({ history: said(one), intent: '[这一轮你想：顺着他的话收尾]', ...on }), undefined);
+        assert.equal(lengthHint({ history: said(one), initiating: true, ...on }), undefined);
+        assert.notEqual(lengthHint({ history: said(one), aboutPerson: true, ...on }), 'burst');
+        // 他刚在说不顺心的事：不用
+        const worried = (i: number) => [{ role: 'user' as const, content: '我实训报告被老师打回来了，你说我这还有救吗', time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
+        for (let i = 0; i < 300; i++) assert.notEqual(lengthHint({ history: worried(i), ...on }), 'burst');
     });
 });
