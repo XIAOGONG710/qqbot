@@ -49,7 +49,7 @@ describe('NapCat 探针（ADR 0085）', () => {
             'get_login_info', 'nc_get_packet_status',
             ...ONLINE_SEQUENCE.map(() => 'set_online_status'), 'send_like', 'friend_poke', 'set_input_status',
         ]);
-        assert.deepEqual(fake.calls.filter(call => call.action === 'set_online_status').map(call => [call.params.status, call.params.ext_status]), [[10, 0], [30, 0], [50, 0], [10, 1028], [10, 0]]);
+        assert.deepEqual(fake.calls.filter(call => call.action === 'set_online_status').map(call => [call.params.status, call.params.ext_status]), [[10, 0], [10, 1016], [10, 1018], [10, 1028], [10, 0]]);
         assert.deepEqual(fake.calls.find(call => call.action === 'send_like')?.params, { user_id: String(USER), times: 1 });
         assert.deepEqual(fake.calls.find(call => call.action === 'friend_poke')?.params, { user_id: String(USER) });
         assert.deepEqual(fake.calls.find(call => call.action === 'set_input_status')?.params, { user_id: String(USER), event_type: 1 });
@@ -232,5 +232,35 @@ describe('NapCat 探针（ADR 0085）', () => {
         } finally {
             server.close();
         }
+    });
+});
+
+describe('NapCat 探针：外层 ok 但内核拒绝（data.result 非 0）算失败', () => {
+    test('typing：set_input_status 外层 ok、result 65011 → 这一项失败，并写明是内核拒绝', async () => {
+        const fake = fakeNapcat({ set_input_status: ok({ result: 65011, errMsg: '操作失败，请稍后再试哦' }) });
+        const results = await runProbe({ connection: fake.connection, user: USER, steps: ['typing'], sleep: noSleep });
+        assert.equal(results[0]!.ok, false);
+        assert.match(results[0]!.detail, /QQ 内核拒绝了.*65011.*操作失败/);
+    });
+
+    test('typing：内核回 result 0（errMsg success）照旧成功', async () => {
+        const fake = fakeNapcat({ set_input_status: ok({ result: 0, errMsg: 'success' }) });
+        const results = await runProbe({ connection: fake.connection, user: USER, steps: ['typing'], sleep: noSleep });
+        assert.equal(results[0]!.ok, true);
+    });
+
+    test('events：表情回应被内核拒绝 → 记成失败，不再被外层的 ok 骗（10-20 私聊实测 65011）', async () => {
+        const fake = fakeNapcat({
+            get_login_info: ok({ user_id: SELF, nickname: '她' }),
+            set_msg_emoji_like: ok({ result: 65011, errMsg: '操作失败，请稍后再试哦' }),
+        });
+        const { results } = await withEvents(fake, async () => {
+            fake.push(message());
+            await new Promise(resolve => setTimeout(resolve, 20));
+        });
+        const reaction = results.find(result => result.name.includes('表情回应'));
+        assert.ok(reaction, '有表情回应这一项');
+        assert.equal(reaction.ok, false);
+        assert.match(reaction.detail, /QQ 内核拒绝了/);
     });
 });

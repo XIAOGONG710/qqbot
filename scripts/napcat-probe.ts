@@ -8,7 +8,7 @@
 // 步骤：
 //   login   get_login_info：确认连的是她的号
 //   packet  nc_get_packet_status：戳一戳 / 戳回去用的 packet 服务能不能用
-//   online  set_online_status：依次改成 在线 / 离开 / 忙碌 / 听歌中，最后改回在线（你看手机上她的状态）
+//   online  set_online_status：依次改成 在线 / 睡觉中 / 学习中 / 听歌中，最后改回在线（你看手机上她的状态；这就是机器人真用的几个状态）
 //   like    send_like：给你的资料卡点 1 个赞
 //   poke    friend_poke：她戳你一下
 //   typing  set_input_status：你那边她的对话顶上显示「对方正在输入…」几秒
@@ -60,19 +60,32 @@ export function shapeOf(value: unknown, key = ''): unknown {
     return value;
 }
 
+/** NapCat 有几个动作把 QQ 内核的失败放在 data.result 里，外层照样 ok / retcode 0（10-20 实测：私聊表情回应 result 65011）；这里把它也算失败 */
+const kernelRefusal = (response: ActionResponse): { result: number; errMsg: string } | undefined => {
+    const data = response.data;
+    if (!data || typeof data !== 'object' || !('result' in data)) return undefined;
+    const { result, errMsg } = data as { result: unknown; errMsg?: unknown };
+    return typeof result === 'number' && result !== 0 ? { result, errMsg: typeof errMsg === 'string' ? errMsg : '' } : undefined;
+};
 const failText = (response: ActionResponse): string => {
-    const text = `retcode ${response.retcode ?? '?'}${response.message || response.wording ? `：${String(response.message ?? response.wording)}` : ''}`;
+    const refused = kernelRefusal(response);
+    const text = refused && response.status === 'ok' && response.retcode === 0
+        ? `接口外层成功，但 QQ 内核拒绝了（result ${refused.result}${refused.errMsg ? `：${refused.errMsg}` : ''}）`
+        : `retcode ${response.retcode ?? '?'}${response.message || response.wording ? `：${String(response.message ?? response.wording)}` : ''}`;
     return text.length > MAX_DETAIL ? `${text.slice(0, MAX_DETAIL)}…` : text;
 };
-const succeeded = (response: ActionResponse): boolean => response.status === 'ok' && response.retcode === 0;
+const succeeded = (response: ActionResponse): boolean => response.status === 'ok' && response.retcode === 0 && !kernelRefusal(response);
 const sleepReal = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 const asRecord = (value: unknown): Record<string, unknown> => (value && typeof value === 'object' ? value as Record<string, unknown> : {});
 
-/** NapCat 的在线状态：status 10 在线 / 30 离开 / 50 忙碌 / 70 请勿打扰 / 40 隐身；ext_status 1028 听歌中（NapCat 文档） */
+/**
+ * 机器人真用的在线状态（presence.ts）：status 10 + ext_status 1016 睡觉中 / 1018 学习中 / 1028 听歌中（NapCat 文档）。
+ * 不用 30 离开：QQ 的「离开」会给每个来消息的人自动回一句预设的话（10-20 实测）。
+ */
 export const ONLINE_SEQUENCE: readonly { name: string; status: number; ext: number }[] = [
     { name: '在线', status: 10, ext: 0 },
-    { name: '离开', status: 30, ext: 0 },
-    { name: '忙碌', status: 50, ext: 0 },
+    { name: '睡觉中', status: 10, ext: 1016 },
+    { name: '学习中', status: 10, ext: 1018 },
     { name: '听歌中', status: 10, ext: 1028 },
     { name: '在线（改回去）', status: 10, ext: 0 },
 ];

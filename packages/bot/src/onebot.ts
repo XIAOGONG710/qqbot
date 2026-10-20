@@ -50,6 +50,19 @@ export interface OneBotOptions {
     timeoutMs?: number;
 }
 
+/**
+ * NapCat 有几个动作（表情回应、正在输入）把 QQ 内核的失败放在返回值的 result 里，外层照样回 status ok / retcode 0。
+ * result 不是 0 就当失败。10-20 实测：私聊里 set_msg_emoji_like 外层 ok，data 是 {result: 65011, errMsg: '操作失败，请稍后再试哦'}，
+ * 之前的探针和机器人都只看外层，一直以为点成功了。
+ */
+export function assertKernelOk(action: string, data: unknown): void {
+    if (!data || typeof data !== 'object' || !('result' in data)) return;
+    const { result, errMsg } = data as { result: unknown; errMsg?: unknown };
+    if (typeof result === 'number' && result !== 0) {
+        throw new Error(`${action} 被 QQ 拒绝（result ${result}${typeof errMsg === 'string' && errMsg ? `：${errMsg}` : ''}）`);
+    }
+}
+
 export class OneBotClient {
     #options: OneBotOptions;
     #ws: WebSocket | null = null;
@@ -161,7 +174,7 @@ export class OneBotClient {
 
     /** 让对方那边显示「正在输入…」（NapCat 的 set_input_status，event_type 1；ADR 0077）。显示几秒就消，要一直显示得隔几秒再发一次 */
     async setInputStatus(userId: number, eventType = 1): Promise<void> {
-        await this.call('set_input_status', { user_id: String(userId), event_type: eventType });
+        assertKernelOk('set_input_status', await this.call('set_input_status', { user_id: String(userId), event_type: eventType }));
     }
 
     /** 发一张已经落到本机的图片表情（ADR 0063）。 */

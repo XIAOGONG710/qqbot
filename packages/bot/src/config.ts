@@ -154,7 +154,7 @@ export interface AppConfig {
     readReceipts: boolean;
     /** 表情回应（ADR 0083）：她看到了却不回（看心情不回、收尾后的附和）时，给他最后一条点个表情回应（set_msg_emoji_like）。默认关 */
     reactions: boolean;
-    /** 在线状态（ADR 0083）：睡着离开、上课忙碌、听歌中、其余在线（set_online_status）。默认关 */
+    /** 在线状态（ADR 0083）：睡着「睡觉中」、上课「学习中」、听歌中、其余在线（set_online_status）。默认关 */
     onlineStatus: boolean;
     /** 资料卡点赞（ADR 0083）：约 80% 的日子给男朋友档点 1–5 个赞（send_like）。默认关 */
     profileLikes: boolean;

@@ -30,7 +30,7 @@ const popular = Array.from({ length: 80 }, (_, i) => ({
     bvid: `BV1${String(i).padStart(9, '0')}`, aid: 1000 + i, title: `视频${i}`, desc: '-', owner: { name: 'UP' }, tname: '搞笑', stat: { view: 100000, like: 5000 }, duration: 200,
 }));
 const fetchStub: BiliFetch = async url => ({ ok: true, status: 200, text: async () => JSON.stringify(url.includes('/popular') ? { code: 0, data: { list: popular } } : { code: 0, data: { replies: [] } }) });
-const STATUS_NAMES: Record<string, string> = { '10/0': '在线', '30/0': '离开', '50/0': '忙碌', '10/1028': '听歌中' };
+const STATUS_NAMES: Record<string, string> = { '10/0': '在线', '10/1016': '睡觉中', '10/1018': '学习中', '10/1028': '听歌中', '30/0': '离开（旧）', '50/0': '忙碌（旧）' };
 
 const presence = createPresence({
     flags: { onlineStatus: true, profileLikes: true, signature: 'on', qzone: 'on', qzoneVisibility: 'friends', pokeOut: true },

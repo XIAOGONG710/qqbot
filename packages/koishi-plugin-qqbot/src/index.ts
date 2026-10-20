@@ -17,7 +17,7 @@ import type { HistoryMessage } from '../../bot/src/backfill.ts';
 import { CONTACT_TIERS, DEFAULTS, STICKER_MODES, parseAppConfig, type AppConfig, type ContactTier, type StickerMode } from '../../bot/src/config.ts';
 import { createLog, type Log } from '../../bot/src/log.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/presence.ts';
-import { isFriendRecall, isPokeAtMe, isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
+import { assertKernelOk, isFriendRecall, isPokeAtMe, isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
 import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
 import { textToSegments } from '../../bot/src/qq-faces.ts';
 import { FESTIVAL_MODES, type FestivalMode } from '../../bot/src/festivals.ts';
@@ -203,11 +203,11 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         bilibili: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.bilibili)
             .description('**刷 B 站**（ADR 0084）：她从 B 站热门榜里按口味挑一个真视频（日常、搞笑、萌宠、美食、音乐、影视、游戏），连热评一起读，发给男朋友档的人并说一句感受，再把真链接发在后面；一周最多 3 个，工作日晚上、周末下午到晚上，睡着、上课、正聊着时不发。只读 B 站公开接口，不登录、不在 B 站发任何东西。选「只写草稿」时存在 presence/drafts.md。默认关'),
         readReceipts: Schema.boolean().default(DEFAULTS.readReceipts)
-            .description('**已读回执**（ADR 0083）：她「看到」他的消息的那一刻标已读（NapCat 的 mark_private_msg_as_read），睡着、上课时不标，保持未读；「看心情不回」就成了真正的已读不回。NapCat 收到消息不会自动标已读。默认关'),
+            .description('**已读回执**（ADR 0083）：她「看到」他的消息的那一刻标已读（NapCat 的 mark_private_msg_as_read），睡着、上课时不标，保持未读；「看心情不回」就成了真正的已读不回。NapCat 收到消息不会自动标已读。QQ 私聊本身没有「已读 / 未读」的显示（10-20 用户实测），所以对方看不到，无害但没有可见效果。默认关'),
         reactions: Schema.boolean().default(DEFAULTS.reactions)
-            .description('**表情回应**（ADR 0083）：她看到了却不回（看心情不回、收尾后的附和）时，给他最后一条消息点个表情回应（赞、爱心、笑哭），比空着像人。私聊里 NapCat 的 set_msg_emoji_like 能不能用没验证；不能用只记一行。默认关'),
+            .description('**表情回应**（ADR 0083）：她看到了却不回（看心情不回、收尾后的附和）时，给他最后一条消息点个表情回应（赞、爱心、笑哭），比空着像人。**私聊里点不了**（10-20 实测：NapCat 的 set_msg_emoji_like 外层返回成功，内核结果是 65011「操作失败」，对方看不到），所以不要开；开着只会白调用并记一行失败。默认关'),
         onlineStatus: Schema.boolean().default(DEFAULTS.onlineStatus)
-            .description('**在线状态**（ADR 0083）：按她的作息，睡着或说过睡了「离开」、上课「忙碌」、在听歌「听歌中」、其余「在线」（NapCat 的 set_online_status）；状态变了至少隔 10 分钟才改。对外可见。默认关'),
+            .description('**在线状态**（ADR 0083）：按她的作息，睡着或说过睡了「睡觉中」、上课「学习中」、在听歌「听歌中」、其余「在线」（NapCat 的 set_online_status）；状态变了至少隔 10 分钟才改。不用「离开」：QQ 的「离开」会给每个来消息的人自动回一句预设的话（10-20 实测）。对外可见。默认关'),
         profileLikes: Schema.boolean().default(DEFAULTS.profileLikes)
             .description('**资料卡点赞**（ADR 0083）：约 80% 的日子，中午到晚上某个时刻给男朋友档的人点 1–5 个赞（NapCat 的 send_like）；睡着、上课时不点。他会收到通知。默认关'),
         signature: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.signature)
@@ -465,7 +465,7 @@ export function apply(ctx: Context, config: Config) {
         deleteMessage: async messageId => { await onlineBot().internal.deleteMsg(messageId); },
         pokeFriend: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('friend_poke', { user_id: String(userId) }); },
         markRead: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('mark_private_msg_as_read', { user_id: String(userId) }); },
-        reactMessage: async (messageId, emojiId) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_msg_emoji_like', { message_id: messageId, emoji_id: String(emojiId), set: true }); },
+        reactMessage: async (messageId, emojiId) => { assertKernelOk('set_msg_emoji_like', await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_msg_emoji_like', { message_id: messageId, emoji_id: String(emojiId), set: true })); },
         setOnlineStatus: async (status, ext) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_online_status', { status, ext_status: ext, battery_status: 0 }); },
         sendLike: async (userId, times) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('send_like', { user_id: String(userId), times }); },
         setSignature: async text => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_self_longnick', { longNick: text }); },
@@ -473,7 +473,7 @@ export function apply(ctx: Context, config: Config) {
         // 空友爱看相关的说明见 ADR 0083
         sendPrivateImage: async (userId, file, summary) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'image', data: { file, summary, sub_type: 1 } }])),
         // NapCat 的扩展动作 set_input_status（adapter-onebot 没有定义它，走通用的 _get：retcode 不是 0 就抛错；ADR 0077）
-        setInputStatus: async (userId, eventType = 1) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_input_status', { user_id: String(userId), event_type: eventType }); },
+        setInputStatus: async (userId, eventType = 1) => { assertKernelOk('set_input_status', await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_input_status', { user_id: String(userId), event_type: eventType })); },
         friendHistory: (userId, count) => onlineBot().internal.getFriendMsgHistory(String(userId), undefined, count),
     };
 

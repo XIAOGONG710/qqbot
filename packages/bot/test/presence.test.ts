@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import {
-    AWAY, BUSY, cleanQzoneText, createPresence, LIKE_CHANCE, LISTENING, ONLINE, onlineStatusFor, pickQzonePhoto, POKE_OUT_CHANCE, POKE_OUT_LATEST, pokeOutPlan, QZONE_CHANCE, QZONE_MAX_CHARS,
+    SLEEPING, STUDYING, cleanQzoneText, createPresence, LIKE_CHANCE, LISTENING, ONLINE, onlineStatusFor, pickQzonePhoto, POKE_OUT_CHANCE, POKE_OUT_LATEST, pokeOutPlan, QZONE_CHANCE, QZONE_MAX_CHARS,
     describeSelf, likePlan, qzonePlan, reactionEmoji, SIGNATURES, signatureDueAt, signatureFor, type PresenceOptions, type PresenceTransport,
 } from '../src/presence.ts';
 import { formatDate, herDay, stateAt } from '../src/schedule.ts';
@@ -20,13 +20,13 @@ const MINUTE_MS = 60_000;
 const isWeekend = (t: number) => new Date(t).getDay() === 0 || new Date(t).getDay() === 6;
 
 describe('在线状态（ADR 0083）', () => {
-    test('睡着或说过睡了：离开；上课：忙碌；在听歌：听歌中；其余在线', () => {
-        assert.deepEqual(onlineStatusFor({ kind: 'sleep', until: new Date() }, false), AWAY);
-        assert.deepEqual(onlineStatusFor({ kind: 'free', text: '刷手机' }, true), AWAY);
+    test('睡着或说过睡了：睡觉中；上课：学习中；在听歌：听歌中；其余在线', () => {
+        assert.deepEqual(onlineStatusFor({ kind: 'sleep', until: new Date() }, false), SLEEPING);
+        assert.deepEqual(onlineStatusFor({ kind: 'free', text: '刷手机' }, true), SLEEPING);
         assert.deepEqual(onlineStatusFor({ kind: 'free', text: '刷手机' }, false), ONLINE);
         assert.deepEqual(onlineStatusFor({ kind: 'free', text: '戴着耳机听歌，写点东西' }, false), LISTENING);
         const lesson = { kind: 'hard' as const, start: new Date(), end: new Date() };
-        assert.deepEqual(onlineStatusFor({ kind: 'class', lesson }, false), BUSY);
+        assert.deepEqual(onlineStatusFor({ kind: 'class', lesson }, false), STUDYING);
         assert.equal(LISTENING.ext, 1028);
     });
 });
@@ -136,8 +136,8 @@ describe('每分钟看一眼的循环（ADR 0083）', () => {
         assert.deepEqual(calls, ['status:10/0'], '没变不改');
         clock.t = at(10, 11, 3); // 周日凌晨，睡着
         await presence.tick();
-        for (let i = 0; i < 46; i++) { clock.t += MINUTE_MS; await presence.tick(); } // 睡下之后「离开」晚 0–45 分钟才挂（不然每天夜里同一分钟）
-        assert.deepEqual(calls, ['status:10/0', 'status:30/0']);
+        for (let i = 0; i < 46; i++) { clock.t += MINUTE_MS; await presence.tick(); } // 睡下之后「睡觉中」晚 0–45 分钟才挂（不然每天夜里同一分钟）
+        assert.deepEqual(calls, ['status:10/0', 'status:10/1016']);
 
         // 她自己说了睡了：不等
         const said = make({ t: at(10, 10, 23) }, { ...OFF, onlineStatus: true }, { saidSleep: () => false });
@@ -149,10 +149,10 @@ describe('每分钟看一眼的循环（ADR 0083）', () => {
         saidSleep = true;
         quickClock.t += 11 * MINUTE_MS;
         await quick.tick();
-        assert.deepEqual(said.calls.filter(call => call.startsWith('quick:')), ['quick:10/0', 'quick:30/0'], '说了睡了立刻离开');
+        assert.deepEqual(said.calls.filter(call => call.startsWith('quick:')), ['quick:10/0', 'quick:10/1016'], '说了睡了立刻挂睡觉中');
     });
 
-    test('在线状态：上课「忙碌」，课间不改回在线，下课一小时后才改回；睡下之后 45 分钟内离开', async () => {
+    test('在线状态：上课「学习中」，课间不改回在线，下课一小时后才改回；睡下之后 45 分钟内睡觉中', async () => {
         // 找一个有课的日子，逐分钟看出她的课（class）和非课
         let day = 2;
         let minutes: { t: number; kind: string }[] = [];
@@ -167,24 +167,24 @@ describe('每分钟看一眼的循环（ADR 0083）', () => {
         const clock = { t: first.t };
         const { presence, calls } = make(clock, { ...OFF, onlineStatus: true });
         await presence.tick();
-        assert.deepEqual(calls, ['status:50/0'], '上课：忙碌');
+        assert.deepEqual(calls, ['status:10/1018'], '上课：学习中');
         assert.ok(gap.t - breakStart < 60 * MINUTE_MS, '第一个课间短于一小时');
         for (clock.t = first.t; clock.t < gap.t; clock.t += MINUTE_MS) await presence.tick(); // 每分钟一次，和真的一样
-        assert.deepEqual(calls, ['status:50/0'], '课间不改回在线');
+        assert.deepEqual(calls, ['status:10/1018'], '课间不改回在线');
         // 当天最后一节课（重新开一个，从最后一节课的最后一分钟起每分钟一次）
         const lastClass = classMinutes.at(-1)!;
         const lateClock = { t: lastClass.t };
         const late = make(lateClock, { ...OFF, onlineStatus: true });
         await late.presence.tick();
-        assert.deepEqual(late.calls, ['status:50/0']);
+        assert.deepEqual(late.calls, ['status:10/1018']);
         for (lateClock.t += MINUTE_MS; lateClock.t < lastClass.t + 59 * MINUTE_MS; lateClock.t += MINUTE_MS) await late.presence.tick();
-        assert.deepEqual(late.calls, ['status:50/0'], '下课不到一小时还是忙碌');
+        assert.deepEqual(late.calls, ['status:10/1018'], '下课不到一小时还是学习中');
         for (; lateClock.t <= lastClass.t + 62 * MINUTE_MS; lateClock.t += MINUTE_MS) await late.presence.tick();
         assert.equal(late.calls.length, 2);
         assert.match(late.calls[1]!, /^status:10\//,'一小时后改回在线（或听歌中）');
-        lateClock.t = at(11, day + 1, 3); // 凌晨睡着：不等一小时（只是「离开」晚 0–45 分钟）
+        lateClock.t = at(11, day + 1, 3); // 凌晨睡着：不等一小时（只是「睡觉中」晚 0–45 分钟）
         for (let i = 0; i < 47; i++) { await late.presence.tick(); lateClock.t += MINUTE_MS; }
-        assert.equal(late.calls.at(-1), 'status:30/0');
+        assert.equal(late.calls.at(-1), 'status:10/1016');
     });
 
     test('主动戳他（ADR 0087）：到点后等聊天安静才戳，一天一次；不合适就等，22:30 还不合适今天不戳；关着、没睡醒时不戳；戳完记下来', async () => {

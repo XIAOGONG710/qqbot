@@ -9,7 +9,7 @@ import { loadConfig } from './config.ts';
 import { createLog } from './log.ts';
 import type { HistoryMessage } from './backfill.ts';
 import { ocrLines } from './media.ts';
-import { isFriendRecall, isPokeAtMe, isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
+import { assertKernelOk, isFriendRecall, isPokeAtMe, isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
 import { configuredImageDescriber, STICKER_VISION_PROMPT } from './vision.ts';
 import { stickerDecider, stickerShelf } from './stickers.ts';
 import { qqFavorites } from './sticker-favorites.ts';
@@ -41,7 +41,7 @@ const app = startApp({
         deleteMessage: async messageId => { await client.call('delete_msg', { message_id: messageId }); },
         pokeFriend: async userId => { await client.call('friend_poke', { user_id: String(userId) }); },
         markRead: async userId => { await client.call('mark_private_msg_as_read', { user_id: String(userId) }); },
-        reactMessage: async (messageId, emojiId) => { await client.call('set_msg_emoji_like', { message_id: messageId, emoji_id: String(emojiId), set: true }); },
+        reactMessage: async (messageId, emojiId) => { assertKernelOk('set_msg_emoji_like', await client.call('set_msg_emoji_like', { message_id: messageId, emoji_id: String(emojiId), set: true })); },
         setOnlineStatus: async (status, ext) => { await client.call('set_online_status', { status, ext_status: ext, battery_status: 0 }); },
         sendLike: async (userId, times) => { await client.call('send_like', { user_id: String(userId), times }); },
         setSignature: async text => { await client.call('set_self_longnick', { longNick: text }); },

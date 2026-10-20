@@ -109,8 +109,8 @@ describe('长跑：60 天每分钟一次，隔几天重启一次', () => {
         // 在线状态：只在变的时候改；两次之间至少 10 分钟（重启后的第一次除外）；一天不超过 12 次
         assert.ok(events.status.length > DAYS, `状态改得太少：${summary}`);
         assert.ok(events.status.every((entry, i) => i === 0 || entry.restart || entry.t - events.status[i - 1]!.t >= 10 * MINUTE), '状态改得太勤');
-        const awayMinutes = new Set(events.status.filter(entry => entry.label === '30/0' && !entry.restart).map(entry => { const d = new Date(entry.t); return d.getHours() * 60 + d.getMinutes(); }));
-        assert.ok(awayMinutes.size >= 8, `「离开」每天都在几乎同一分钟：${[...awayMinutes].join(',')}`);
+        const awayMinutes = new Set(events.status.filter(entry => entry.label === '10/1016' && !entry.restart).map(entry => { const d = new Date(entry.t); return d.getHours() * 60 + d.getMinutes(); }));
+        assert.ok(awayMinutes.size >= 8, `「睡觉中」每天都在几乎同一分钟：${[...awayMinutes].join(',')}`);
         const perDay = new Map<string, number>();
         for (const entry of events.status) perDay.set(new Date(entry.t).toDateString(), (perDay.get(new Date(entry.t).toDateString()) ?? 0) + 1);
         const worst = [...perDay.entries()].sort((x, y) => y[1] - x[1])[0]!;

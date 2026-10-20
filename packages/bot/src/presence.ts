@@ -21,35 +21,40 @@ export type QzoneVisibility = (typeof QZONE_VISIBILITIES)[number];
 // ───────── 在线状态 ─────────
 
 export interface OnlineStatus {
-    /** NapCat set_online_status 的 status：10 在线 30 离开 50 忙碌（NapCat 文档里的码） */
+    /** NapCat set_online_status 的 status：10 在线（我们只用这一个；30 离开、50 忙碌见下面的说明）（NapCat 文档里的码） */
     status: number;
-    /** ext_status：1028 听歌中；0 没有 */
+    /** ext_status：QQ 自带的「在线状态」小标：1016 睡觉中、1018 学习中、1028 听歌中；0 没有 */
     ext: number;
     label: string;
 }
 
 export const ONLINE: OnlineStatus = { status: 10, ext: 0, label: '在线' };
-export const AWAY: OnlineStatus = { status: 30, ext: 0, label: '离开' };
-export const BUSY: OnlineStatus = { status: 50, ext: 0, label: '忙碌' };
+/**
+ * 睡着（或说过「睡了」）。不用 QQ 的「离开」（status 30）：「离开」会让 QQ 给每个来消息的人自动回一句预设的话，
+ * 睡着的人不会那样回——10-20 实测，她睡着时他发消息收到了「自动回复」，换成这个状态之后就没有了。
+ */
+export const SLEEPING: OnlineStatus = { status: 10, ext: 1016, label: '睡觉中' };
+/** 上课。不用「忙碌」（status 50）：它可能同样带自动回复，没单独测；「学习中」是 QQ 自带的状态，也更像在上课 */
+export const STUDYING: OnlineStatus = { status: 10, ext: 1018, label: '学习中' };
 export const LISTENING: OnlineStatus = { status: 10, ext: 1028, label: '听歌中' };
 
-/** 她此刻在干什么 → 联系人列表上看到的状态：睡着（或说过「睡了」）离开，上课忙碌，在听歌就「听歌中」，其余在线 */
+/** 她此刻在干什么 → 联系人列表上看到的状态：睡着（或说过「睡了」）「睡觉中」，上课「学习中」，在听歌就「听歌中」，其余在线 */
 export function onlineStatusFor(activity: Activity, saidSleep: boolean): OnlineStatus {
-    if (saidSleep || activity.kind === 'sleep') return AWAY;
-    if (activity.kind === 'class') return BUSY;
+    if (saidSleep || activity.kind === 'sleep') return SLEEPING;
+    if (activity.kind === 'class') return STUDYING;
     if (activity.kind === 'free' && /听歌|听音乐|歌单/.test(activity.text)) return LISTENING;
     return ONLINE;
 }
 
-/** 作息上到睡觉的点之后，「离开」晚多久才挂上（0–45 分钟，按日期哈希）：不然每天夜里整整同一分钟变成离开，一看就是程序；她自己说了「睡了」的不等 */
+/** 作息上到睡觉的点之后，「睡觉中」晚多久才挂上（0–45 分钟，按日期哈希）：不然每天夜里整整同一分钟变成睡觉中，一看就是程序；她自己说了「睡了」的不等（名字里的 AWAY 是老叫法） */
 export const AWAY_JITTER_MIN: [number, number] = [0, 45];
 
 /** 睡下 / 醒来的状态变化，至少隔这么久才改一次 */
 export const STATUS_MIN_GAP_MS = 10 * 60_000;
 
 /**
- * 下课后这么久内「忙碌」不改回「在线」：课间十五分钟一来一回，联系人列表上的状态一天要闪十几次，真人不会这样（60 天长跑测试发现的）。
- * 睡下的「离开」不受这个限制
+ * 下课后这么久内「学习中」不改回「在线」：课间十五分钟一来一回，联系人列表上的状态一天要闪十几次，真人不会这样（60 天长跑测试发现的）。
+ * 睡下的「睡觉中」不受这个限制（名字里的 BUSY 是老叫法）
  */
 export const BUSY_HOLD_MS = 60 * 60_000;
 
@@ -300,11 +305,11 @@ export function createPresence(options: PresenceOptions): Presence {
         if (t < statusRetryAt) return;
         let want = onlineStatusFor(state0.activity, options.saidSleep?.(t) ?? false);
         const have = appliedThisRun;
-        if (have === BUSY.label && want.label !== BUSY.label && want.label !== AWAY.label && lastClassAt !== undefined && t - lastClassAt < BUSY_HOLD_MS) want = BUSY;
-        if (want.label === AWAY.label) awayWantedSince ??= t; else awayWantedSince = undefined;
+        if (have === STUDYING.label && want.label !== STUDYING.label && want.label !== SLEEPING.label && lastClassAt !== undefined && t - lastClassAt < BUSY_HOLD_MS) want = STUDYING;
+        if (want.label === SLEEPING.label) awayWantedSince ??= t; else awayWantedSince = undefined;
         if (want.label === have) return;
-        // 到了作息上睡觉的点，「离开」晚一会儿再挂（这次启动后第一次、她自己说了睡了的除外）
-        if (want.label === AWAY.label && have !== undefined && !(options.saidSleep?.(t) ?? false) && awayWantedSince !== undefined
+        // 到了作息上睡觉的点，「睡觉中」晚一会儿再挂（这次启动后第一次、她自己说了睡了的除外）
+        if (want.label === SLEEPING.label && have !== undefined && !(options.saidSleep?.(t) ?? false) && awayWantedSince !== undefined
             && t - awayWantedSince < pick(formatDate(herDay(schedule, new Date(t))), 'away-jitter', AWAY_JITTER_MIN) * 60_000) return;
         // 刚改过不久就先不动（第一次——这次启动后还没设过——除外）
         if (have !== undefined && state.status && t - state.status.at < STATUS_MIN_GAP_MS) return;
