@@ -34,6 +34,15 @@ function harness(respond: (cookie: string) => BiliResponse | Promise<BiliRespons
 }
 
 describe('她的 B 站号的来源：凭证文件换了就自动换上（ADR 0089）', () => {
+    test('几个模块同时来要账号（刷视频、回复、风险监控启动时）：共用正在打开的这一次，只登录一遍、只记一次日志', async () => {
+        const h = harness(() => nav('繁星小窝'));
+        writeCredential(h.dataDir, 'sess-1');
+        const [a, b, c] = await Promise.all([h.source(), h.source(), h.source()]);
+        assert.ok(a && a === b && b === c);
+        assert.equal(h.cookies.length, 1);
+        assert.equal(h.logs.filter(line => line.includes('已登录「繁星小窝」')).length, 1);
+    });
+
     test('先没有凭证文件：只记一次日志、不请求 B 站；之后扫码存了凭证，不用重启就打开', async () => {
         const h = harness(() => nav('繁星小窝'));
         assert.equal(await h.source(), undefined);

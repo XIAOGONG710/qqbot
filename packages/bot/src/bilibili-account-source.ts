@@ -27,7 +27,7 @@ export function createAccountSource(options: AccountSourceOptions): () => Promis
     let nextTryAt = 0;
     let failureLogged = false;
     const giveUp = (message: string) => { gone = true; goneStamp = stamp(); log(message); };
-    return async () => {
+    const attempt = async (): Promise<BiliAccount | undefined> => {
         const current = stamp();
         if (opened && current !== openedStamp) {
             opened = undefined;
@@ -67,5 +67,11 @@ export function createAccountSource(options: AccountSourceOptions): () => Promis
             }
             return undefined;
         }
+    };
+    // 刷视频、回复、风险监控启动时同时来要账号：正在打开的时候共用这一次，别各登录一遍（10-21 落地后日志里“已登录”出现了两次）
+    let pending: Promise<BiliAccount | undefined> | undefined;
+    return () => {
+        pending ??= attempt().finally(() => { pending = undefined; });
+        return pending;
     };
 }
