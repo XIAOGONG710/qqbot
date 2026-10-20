@@ -98,7 +98,7 @@ describe('刷 B 站：她的账号（ADR 0089）', () => {
     }
 
     const make = (
-        t: number, mode: 'dryRun' | 'on', account: BiliAccount | undefined, comment?: { mode: 'dryRun' | 'on'; compose?: (input: CommentInput) => Promise<string | undefined> }, seed?: object,
+        t: number, mode: 'dryRun' | 'on', account: BiliAccount | (() => Promise<BiliAccount | undefined>) | undefined, comment?: { mode: 'dryRun' | 'on'; compose?: (input: CommentInput) => Promise<string | undefined> }, seed?: object,
         extra: { dm?: DmOptions; drafts?: (request: InitiateRequest) => InitiateOutcome; nudges?: InitiateOutcome[] } = {},
     ) => {
         const clock = { t };
@@ -192,6 +192,25 @@ describe('刷 B 站：她的账号（ADR 0089）', () => {
         await s3.browsing.tick();
         assert.ok(s3.logs.some(l => l.includes('Cookie 可能过期')));
         assert.equal(login.log.posts.length, 0, '登录态不对就不评论');
+    });
+
+    test('字幕说要登录之后不是到重启才恢复：过了 1 小时再问来源，来源给了新账号（重新扫码）就用上，不用重启', async () => {
+        const [dayA, dayB] = plannedEvenings(2) as [number, number];
+        const stale = fakeAccount({ found: [searched(1)], subtitles: { BV1search001: { status: 'needLogin' } } });
+        const fresh = fakeAccount({ found: [searched(2)], subtitles: { BV1search002: { status: 'ok', lan: 'zh', lines: ['重新登录后读到的字幕'] } } });
+        let current = stale.account;
+        const s = make(dayA, 'on', async () => current);
+        await s.browsing.tick();
+        assert.ok(s.logs.some(l => l.includes('1 小时内不再用账号')), s.logs.join('|'));
+        assert.equal(s.links.length, 1, '字幕读不了也照常分享（只靠标题和热评）');
+        assert.equal(fresh.log.searches.length, 0);
+
+        current = fresh.account; // 重新扫码：来源给出新账号
+        s.clock.t = dayB;
+        await s.browsing.tick();
+        assert.equal(fresh.log.searches.length, 1, '过了 1 小时又用上了账号');
+        assert.equal(s.links.length, 2);
+        assert.match(s.requests.at(-1)!.note, /重新登录后读到的字幕/);
     });
 
     test('没有账号：和以前一样，只读热门榜，说明里没有字幕', async () => {

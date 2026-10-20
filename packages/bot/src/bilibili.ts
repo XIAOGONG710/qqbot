@@ -248,6 +248,8 @@ export const COMMENT_HIDDEN_PAUSE_MS = 7 * 24 * 3_600_000;
 /** 发出后超过这么久才轮到复核就不复核了（「最新」第一页早被挤走，找不到不代表什么） */
 export const COMMENT_CHECK_GIVE_UP_MS = 2 * 3_600_000;
 /** B 站说这个视频的评论区关了：是视频的事，不算账号失败 */
+/** 登录态不对之后隔多久再问账号来源一次 */
+export const ACCOUNT_RETRY_MS = 3_600_000;
 const COMMENT_CLOSED_CODE = 12002;
 const COMMENT_FAILURES_MAX = 3;
 
@@ -301,8 +303,9 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
     const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
     const warned = new Set<string>();
     const warnOnce = (key: string, message: string) => { if (!warned.has(key)) { warned.add(key); log(message); } };
-    /** 登录态不对（Cookie 过期 / 被作废）：到重启前不再用账号 */
-    let accountBroken = false;
+    /** 登录态不对（Cookie 过期 / 被作废）：这个时刻之前不再用账号；到点再问来源一次（重新扫码换了凭证文件就自动换上，不用重启） */
+    let accountBrokenUntil = 0;
+    const breakAccount = () => { accountBrokenUntil = options.now() + ACCOUNT_RETRY_MS; };
     /** 评论连着失败到上限：到重启前不再评论 */
     let commentHalted = false;
     let searchCache: { day: string; list: BiliVideo[] } | undefined;
@@ -312,7 +315,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
     /** 账号：直接给的对象，或按需打开的函数（打不开返回 undefined；重试、日志由它自己管） */
     async function getAccount(): Promise<BiliAccount | undefined> {
         const source = options.account;
-        if (!source || accountBroken) return undefined;
+        if (!source || options.now() < accountBrokenUntil) return undefined;
         return typeof source === 'function' ? source() : source;
     }
 
@@ -348,8 +351,8 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
                     const result = await account.subtitle(candidate);
                     if (result.status === 'ok') { index = i; excerpt = subtitleExcerpt(result.lines); break; }
                     if (result.status === 'needLogin') {
-                        accountBroken = true;
-                        log('刷 B 站：账号读字幕时 B 站说要登录——Cookie 可能过期了，到重启前不再用账号（重新扫码登录后重启）');
+                        breakAccount();
+                        log('刷 B 站：账号读字幕时 B 站说要登录——Cookie 可能过期了，1 小时内不再用账号（重新扫码登录后会自动换上新凭证）');
                         break;
                     }
                 } catch (error) {
@@ -404,7 +407,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
             state.commentFailures = (state.commentFailures ?? 0) + 1;
             state.commentPausedUntil = t + COMMENT_PAUSE_MS;
             save();
-            if (error instanceof BiliApiError && (error.code === -101 || error.code === -111)) accountBroken = true;
+            if (error instanceof BiliApiError && (error.code === -101 || error.code === -111)) breakAccount();
             if (state.commentFailures >= COMMENT_FAILURES_MAX) commentHalted = true;
             log(`刷 B 站：评论没发出去（连着第 ${state.commentFailures} 次${commentHalted ? '，到重启前不再评论' : '，停 24 小时'}）：${reason(error)}`);
         }
@@ -497,7 +500,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
             await account.sendDm({ uid: dm.uid, text: body });
         } catch (error) {
             dmFailures++;
-            if (error instanceof BiliApiError && (error.code === -101 || error.code === -111)) accountBroken = true;
+            if (error instanceof BiliApiError && (error.code === -101 || error.code === -111)) breakAccount();
             log(`刷 B 站：私信没发出去（${reason(error)}）${dmFailures >= DM_FAILURES_MAX ? '；连着失败，到重启前不再用私信' : ''}，这次改成在 QQ 上直接发给他`);
             return 'fallback';
         }

@@ -34,7 +34,8 @@ import { newsKindsOf, dayMatches, type ProactiveMode } from './proactive.ts';
 import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
 import { qzoneComposer } from './qzone.ts';
 import { createVideoBrowsing, dmMessageId, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
-import { credentialPath, loadCredential, openAccount, realRequest, type BiliAccount, type BiliRequest } from './bilibili-account.ts';
+import { realRequest, type BiliAccount, type BiliRequest } from './bilibili-account.ts';
+import { createAccountSource } from './bilibili-account-source.ts';
 import { commentComposer } from './bilibili-comment.ts';
 import { detectCrisis, type CrisisLevel } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
@@ -586,53 +587,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         return undefined;
     }
 
-    /**
-     * 她的 B 站号（ADR 0089，配置 bilibiliAccount）：第一次要用时才打开（用到才请求 B 站）；
-     * 打不开（断网、风控）隔 30 分钟再试，只记一次日志；没有凭证文件、凭证已失效记一次日志就不再试（扫码后重启）。不记凭证内容
-     */
+    /** 她的 B 站号（ADR 0089，配置 bilibiliAccount）：按需打开，凭证文件换了（重新扫码）就自动换上；细节在 bilibili-account-source.ts */
     function bilibiliAccountSource(): (() => Promise<BiliAccount | undefined>) | undefined {
         if (!config.bilibiliAccount) return undefined;
-        const request = bilibiliRequest ?? realRequest;
-        let opened: BiliAccount | undefined;
-        let gone = false;
-        let nextTryAt = 0;
-        let failureLogged = false;
-        return async () => {
-            if (opened) return opened;
-            if (gone || worldNow() < nextTryAt) return undefined;
-            let credential;
-            try {
-                credential = loadCredential(credentialPath(config.dataDir), log);
-            } catch (error) {
-                gone = true;
-                log(`B 站账号：凭证文件读不了，这次不用账号（修好或重新扫码后重启）：${error instanceof Error ? error.message : String(error)}`);
-                return undefined;
-            }
-            if (!credential) {
-                gone = true;
-                log('B 站账号：开关开着，但没有凭证文件——先在命令行运行 `npm run bilibili-login -w @qqbot/bot` 扫码登录，再重启；这次只读热门榜');
-                return undefined;
-            }
-            try {
-                const account = await openAccount(request, credential, { log });
-                if (!account) {
-                    gone = true;
-                    log('B 站账号：凭证已经失效（B 站说没登录）——重新扫码登录后重启；这次只读热门榜');
-                    return undefined;
-                }
-                opened = account;
-                failureLogged = false;
-                log(`B 站账号：已登录「${account.name}」，按口味搜视频、读字幕`);
-                return opened;
-            } catch (error) {
-                nextTryAt = worldNow() + 30 * 60_000;
-                if (!failureLogged) {
-                    failureLogged = true;
-                    log(`B 站账号：打开失败（断网或风控，之后不再记，30 分钟后再试）：${error instanceof Error ? error.message : String(error)}`);
-                }
-                return undefined;
-            }
-        };
+        return createAccountSource({ dataDir: config.dataDir, request: bilibiliRequest ?? realRequest, now: worldNow, log });
     }
 
     /** 分享之后在视频下评论并 @ 他（ADR 0089，配置 bilibiliComment）：没配好就记一行日志、不评论 */
