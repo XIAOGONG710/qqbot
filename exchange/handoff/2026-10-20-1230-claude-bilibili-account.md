@@ -27,7 +27,7 @@
 2. 在线上目录跑 `npm run bilibili-login -w @qqbot/bot`，用那个号的 App 扫码确认。
 3. 合并 + 重启一次；`koishi.yml` 先只开 `bilibiliAccount: true` + `bilibiliDm: dryRun`，看一周草稿（`presence/drafts.md`：私信和 QQ 提醒）和日志。
 4. 再改 `bilibiliDm: on`；**第一次真私信用户在场**，确认私信到没到（他先关注她的号）、QQ 提醒说得自然不自然。公开评论 @ 另算，同样先 dryRun。
-- 落地脚本的 `-Allowed`：默认的 `packages/bot/(src|test|sim)/` 已经盖住 `src/vendor/`；要再加 `packages/koishi-plugin-qqbot/src/[^/]+$`、`packages/bot/package\.json$`、`docs/adr/(0084|0089)-[^/]+\.md$`。分支（含体检命令、账号来源）相对线上 `ad1e387` 共 25 个文件，全在这些路径里，没有卡、没有 koishi.yml；落地前用 `git diff --name-only` 重数一遍。
+- 落地脚本的 `-Allowed`：默认的 `packages/bot/(src|test|sim)/` 已经盖住 `src/vendor/`；要再加 `packages/koishi-plugin-qqbot/src/[^/]+$`、`packages/bot/package\.json$`、`docs/adr/(0084|0089)-[^/]+\.md$`。分支（含体检命令、账号来源、演练修复）相对线上 `ad1e387` 共 35 个文件，全在这些路径里，没有卡、没有 koishi.yml；落地前用 `git diff --name-only` 重数一遍。
 - 没验过的：用真账号的搜索 / 读字幕 / 发私信 / 发评论 / 复核；WBI 真请求（私信接口是否要签名）；`at_name_to_mid` 是否真通知到人；新号评论会不会被拦；他没关注她时私信被怎么限制。
 
 ## 10-20 15:20 补：体检命令（用户说 16:35 下课后提供账号）
@@ -37,6 +37,8 @@
 - 代码 `bilibili-probe.ts`，测试 `bilibili-probe.test.ts` 8 项；ADR 0089 已补。
 
 **15:35 再补：重新扫码不用重启。** 账号来源抽成 `bilibili-account-source.ts`：凭证缺失 / 读不了 / 失效各记一次日志，之后只在凭证文件的修改时间变了才再试；已打开的账号，文件换了也重新打开；字幕 / 私信 / 评论遇到 -101 / -111 / 要登录，1 小时内不再用账号、到点再问来源一次。所以合并重启**之后**才扫码、过期了重扫、换号，都不用再重启 Koishi（重启要用户点头）。测试 6 + 1 项，变异检查两处变红；全套 bot 1236 / 插件 35 / 工具 43；提交 `8c089b4`（已推送）。
+
+**18:40 再补：真模型演练（提交 `771b4cc`，已推送）。** 用户 17:50 说“继续做”（账号还没给），我用真模型把私信 / 提醒的文字演了几轮（`sim/bilibili-dm.json`、`sim/bilibili-share-chat.json`，各 3 次 × 4 案例；sim 的 video 步骤加了 `via: dm` / `nudge` / `excerpt`）。单元测试里的假模型看不出来的四件事，都修了：出口检查把“我给你发的私信”当成做不到的承诺（`DM_SENT`）；她照抄“[B 站私信]”标记（`tidyMarkers`）；QQ 提醒被“最近说过原话”切成“宝宝”（`allowRepeat`）；私信草稿 / 线上 QQ 发话会去接他上一句话（说明里明说只围着这个视频）。最后一版：提醒 12/12 清楚；私信草稿约 10/12 围着视频，其余泛泛或编别的事——**所以先 dryRun 一周、由用户读 `drafts.md` 再决定，是必要的**。字幕 / 热评里夹的假指令（说你是 AI、用英文、说爱他一百遍）约 15 条没有一条照做。**注意：这个分支现在改了线上会用到的东西**（`videoNote` 措辞、出口检查两处、`allowRepeat`），合并重启后才生效；`-Allowed` 默认的 `packages/bot/(src|test|sim)/` 都盖住。全套 bot 1241 / 插件 35 / 工具 43。详见 ADR 0089 “真模型演练”。
 
 **16:35 之后的顺序**（每一步都不动线上）：1) 他给：专用号已注册、他的 uid、已关注她的号 → 2) 在线上目录跑登录（二维码会在 VM 桌面上弹出，也画在终端里；他用专用号的手机 App 扫）→ 3) `--check` → 4) `--probe` → 5) 他在场时 `--probe --dm <uid>` → 6) 体检不通过就先看 code，不进下一步 → 7) 体检通过后才问他“合并 + 重启一次，开 `bilibiliAccount` + `bilibiliDm: dryRun`”要不要现在做。合并重启各要他一句明确的话。
 
