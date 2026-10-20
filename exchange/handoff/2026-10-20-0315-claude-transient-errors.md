@@ -32,3 +32,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/XG/Desktop/golive-r
 
 ## 落地后看什么
 日志里出现 `承诺状态暂时读/写不了`、`状态文件暂时写不进`、`…恢复正常` 说明闸门起作用了；出现 `…暂停…（原因：XXX）` 说明拖过了 5 分钟，原因在括号里。没有这些行 = 没发生过暂时失败。
+
+## 重启通知（08:59）
+用户在当前会话里（AskUserQuestion）选了「两项一起落地」。我现在用 `golive-release.ps1` 只重启 Koishi 约 15 秒，从 `30858db` 快进到 `05465cb`；她睡着。其他窗口不要碰线上目录。结果补在下面。
