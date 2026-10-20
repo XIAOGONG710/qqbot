@@ -55,6 +55,10 @@ export const DEFAULTS = {
     festivals: 'off' as FestivalMode,
     readReceipts: false,
     bilibili: 'off' as PresenceMode,
+    bilibiliAccount: false,
+    bilibiliComment: 'off' as PresenceMode,
+    bilibiliAtName: '',
+    bilibiliAtUid: 0,
     reactions: false,
     onlineStatus: false,
     profileLikes: false,
@@ -150,6 +154,17 @@ export interface AppConfig {
     festivals: FestivalMode;
     /** 刷 B 站（ADR 0084）：她从 B 站热门榜挑一个真视频，发给男朋友档并说一句感受，再附真链接；dryRun 只写草稿。只读公开接口，不登录。默认关 */
     bilibili: PresenceMode;
+    /**
+     * 她的 B 站号（ADR 0089）：用凭证文件（<dataDir>/secrets/bilibili.json，`npm run bilibili-login -w @qqbot/bot` 扫码生成）登录，
+     * 按口味搜视频、读字幕，让分享更有内容。要 bilibili 也开着；只读，不在 B 站发任何东西。默认关
+     */
+    bilibiliAccount: boolean;
+    /** 在她分享的视频下评论并 @ 他（ADR 0089）：要 bilibiliAccount、bilibiliAtName、bilibiliAtUid 都配好；评论公开，用最低隐私档的卡写；dryRun 只写草稿。默认关 */
+    bilibiliComment: PresenceMode;
+    /** 要 @ 的人的 B 站昵称 */
+    bilibiliAtName: string;
+    /** 要 @ 的人的 B 站 uid（真提及要昵称和 uid 两样） */
+    bilibiliAtUid: number;
     /** 已读回执（ADR 0083）：她看到他的消息的那一刻标已读（NapCat mark_private_msg_as_read），睡着时保持未读。默认关 */
     readReceipts: boolean;
     /** 表情回应（ADR 0083）：她看到了却不回（看心情不回、收尾后的附和）时，给他最后一条点个表情回应（set_msg_emoji_like）。默认关 */
@@ -372,6 +387,10 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         festivals: festivalMode(file.festivals),
         readReceipts: bool(file, 'readReceipts', '', DEFAULTS.readReceipts),
         bilibili: oneOf(file.bilibili, 'bilibili', PRESENCE_MODES, DEFAULTS.bilibili),
+        bilibiliAccount: bool(file, 'bilibiliAccount', '', DEFAULTS.bilibiliAccount),
+        bilibiliComment: oneOf(file.bilibiliComment, 'bilibiliComment', PRESENCE_MODES, DEFAULTS.bilibiliComment),
+        bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
+        bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
         reactions: bool(file, 'reactions', '', DEFAULTS.reactions),
         onlineStatus: bool(file, 'onlineStatus', '', DEFAULTS.onlineStatus),
         profileLikes: bool(file, 'profileLikes', '', DEFAULTS.profileLikes),
@@ -423,6 +442,18 @@ function oneOf<T extends string>(value: unknown, name: string, allowed: readonly
     if (value === undefined) return fallback;
     if (!allowed.includes(value as T)) throw new Error(`配置 ${name} 应为 ${allowed.map(v => JSON.stringify(v)).join(' / ')} 之一`);
     return value as T;
+}
+
+function bilibiliAtName(value: unknown): string {
+    if (value === undefined) return DEFAULTS.bilibiliAtName;
+    if (typeof value !== 'string' || value.length > 40 || /[\r\n@]/.test(value)) throw new Error('配置 bilibiliAtName 应为 B 站昵称（不超过 40 个字，不含 @ 和换行）');
+    return value.trim();
+}
+
+function bilibiliAtUid(value: unknown): number {
+    if (value === undefined) return DEFAULTS.bilibiliAtUid;
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error('配置 bilibiliAtUid 应为 B 站 uid（非负整数）');
+    return value;
 }
 
 function festivalMode(value: unknown): FestivalMode {

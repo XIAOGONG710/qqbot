@@ -33,7 +33,9 @@ import { withFestivalActivities, withFestivals } from './festivals.ts';
 import { newsKindsOf, dayMatches, type ProactiveMode } from './proactive.ts';
 import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
 import { qzoneComposer } from './qzone.ts';
-import { createVideoBrowsing, type BiliFetch, type VideoBrowsing } from './bilibili.ts';
+import { createVideoBrowsing, type BiliFetch, type CommentOptions, type VideoBrowsing } from './bilibili.ts';
+import { credentialPath, loadCredential, openAccount, realRequest, type BiliAccount, type BiliRequest } from './bilibili-account.ts';
+import { commentComposer } from './bilibili-comment.ts';
 import { detectCrisis, type CrisisLevel } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
 import { createPokeLimiter, POKE_BACK_COOLDOWN_MS, POKE_MAX_AGE_MS, POKE_MAX_IN_WINDOW, POKE_OUT_TEXT, pokeBackPlan, pokeMessage, pokeOutMessageId, quietEnoughToPoke } from './pokes.ts';
@@ -166,6 +168,8 @@ export interface AppOptions {
     stickerChance?: number;
     /** B 站公开接口的 fetch（配置 bilibili；不给就用全局 fetch，测试注入假的） */
     bilibiliFetch?: BiliFetch;
+    /** 她的 B 站号用的请求函数（配置 bilibiliAccount；要读 Set-Cookie、发 POST；不给就用真的，测试注入假的） */
+    bilibiliRequest?: BiliRequest;
     /** 测试用：换掉听、看各项的上限 */
     mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>;
     /** 敏感调试开关（ADR 0070 第 8 项）；不传按环境变量 QQBOT_SENSITIVE_LOGS（默认关） */
@@ -177,7 +181,7 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, stickers, stickerChance, mediaTimeouts, bilibiliFetch, sensitive = sensitiveSwitch() }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, stickers, stickerChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, sensitive = sensitiveSwitch() }: AppOptions): App {
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -573,6 +577,92 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     }
     /** 她刷 B 站、挑一个真视频发给他（ADR 0084，配置 bilibili）：只发给男朋友档的第一个人；第一次连上才起 */
     let browsing: VideoBrowsing | undefined;
+
+    /** 公开的地方（说说、B 站评论）用最低隐私档的卡来写：陌生人档，没有就同学档；两张都读不了返回 undefined */
+    function lowestTierCard(): TierCard | undefined {
+        for (const tier of ['stranger', 'classmate']) {
+            try { return cardFor(tier); } catch { /* 试下一档 */ }
+        }
+        return undefined;
+    }
+
+    /**
+     * 她的 B 站号（ADR 0089，配置 bilibiliAccount）：第一次要用时才打开（用到才请求 B 站）；
+     * 打不开（断网、风控）隔 30 分钟再试，只记一次日志；没有凭证文件、凭证已失效记一次日志就不再试（扫码后重启）。不记凭证内容
+     */
+    function bilibiliAccountSource(): (() => Promise<BiliAccount | undefined>) | undefined {
+        if (!config.bilibiliAccount) return undefined;
+        const request = bilibiliRequest ?? realRequest;
+        let opened: BiliAccount | undefined;
+        let gone = false;
+        let nextTryAt = 0;
+        let failureLogged = false;
+        return async () => {
+            if (opened) return opened;
+            if (gone || worldNow() < nextTryAt) return undefined;
+            let credential;
+            try {
+                credential = loadCredential(credentialPath(config.dataDir), log);
+            } catch (error) {
+                gone = true;
+                log(`B 站账号：凭证文件读不了，这次不用账号（修好或重新扫码后重启）：${error instanceof Error ? error.message : String(error)}`);
+                return undefined;
+            }
+            if (!credential) {
+                gone = true;
+                log('B 站账号：开关开着，但没有凭证文件——先在命令行运行 `npm run bilibili-login -w @qqbot/bot` 扫码登录，再重启；这次只读热门榜');
+                return undefined;
+            }
+            try {
+                const account = await openAccount(request, credential, { log });
+                if (!account) {
+                    gone = true;
+                    log('B 站账号：凭证已经失效（B 站说没登录）——重新扫码登录后重启；这次只读热门榜');
+                    return undefined;
+                }
+                opened = account;
+                failureLogged = false;
+                log(`B 站账号：已登录「${account.name}」，按口味搜视频、读字幕`);
+                return opened;
+            } catch (error) {
+                nextTryAt = worldNow() + 30 * 60_000;
+                if (!failureLogged) {
+                    failureLogged = true;
+                    log(`B 站账号：打开失败（断网或风控，之后不再记，30 分钟后再试）：${error instanceof Error ? error.message : String(error)}`);
+                }
+                return undefined;
+            }
+        };
+    }
+
+    /** 分享之后在视频下评论并 @ 他（ADR 0089，配置 bilibiliComment）：没配好就记一行日志、不评论 */
+    function bilibiliCommentOptions(): CommentOptions | undefined {
+        const mode = config.bilibiliComment;
+        if (mode === 'off') return undefined;
+        if (!config.bilibiliAccount) {
+            log('刷 B 站：bilibiliComment 开着，但要 bilibiliAccount 也开着才能评论，不评论');
+            return undefined;
+        }
+        if (!config.bilibiliAtName || config.bilibiliAtUid <= 0) {
+            log('刷 B 站：bilibiliComment 开着，但没填 bilibiliAtName / bilibiliAtUid（要 @ 的人），不评论');
+            return undefined;
+        }
+        const lowest = lowestTierCard();
+        if (!lowest) {
+            log('刷 B 站：陌生人档和同学档的卡都读不了，不评论');
+            return undefined;
+        }
+        return {
+            mode,
+            at: { name: config.bilibiliAtName, uid: config.bilibiliAtUid },
+            compose: commentComposer({
+                character: { name: lowest.character.name, description: lowest.character.description, personality: lowest.character.personality, banned: lowest.character.banned },
+                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 1.1 }, messages, { log, purpose: 'background' })),
+                log,
+            }),
+        };
+    }
+
     function startBrowsing(): void {
         if (browsing || config.bilibili === 'off') return;
         const target = config.contacts.find(c => c.tier === 'boyfriend');
@@ -581,8 +671,12 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             return;
         }
         const qq = target.qq;
+        const account = bilibiliAccountSource();
+        const comment = bilibiliCommentOptions();
         browsing = createVideoBrowsing({
             mode: config.bilibili,
+            ...(account ? { account } : {}),
+            ...(account && comment ? { comment } : {}),
             target: { qq, name: target.name },
             schedule: worldCard.schedule,
             extraFree: config.herDays ? readingActivities(worldCard.books) : [],
@@ -598,7 +692,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             },
         });
         browsing.start();
-        log(`刷 B 站：${config.bilibili === 'dryRun' ? '只写草稿（不发）' : '开'}，发给 ${target.name}；一周最多 3 个，读 B 站热门榜（公开接口，不登录）`);
+        log(`刷 B 站：${config.bilibili === 'dryRun' ? '只写草稿（不发）' : '开'}，发给 ${target.name}；一周最多 3 个，${account ? '用她的 B 站号按口味搜、读字幕，搜不到再读 B 站热门榜' : '读 B 站热门榜（公开接口，不登录）'}${account && comment ? `；分享后在视频下评论并 @ ${config.bilibiliAtName}（${comment.mode === 'dryRun' || config.bilibili === 'dryRun' ? '只写草稿' : '真发'}）` : ''}`);
     }
 
     function rainyAt(now: number): boolean {

@@ -886,6 +886,21 @@ describe('配置', () => {
         assert.throws(() => parseAppConfig({ ...rest, contacts: [] }, 'C:/repo', { QQBOT_LLM_API_KEY: 'k' }), /contacts/);
         assert.throws(() => withConfig(rest, { QQBOT_LLM_API_KEY: 'k' }), /配置缺少 onebot/);
     });
+
+    test('B 站账号层（ADR 0089）：默认全关、昵称和 uid 空；写了就读进来；类型不对报错', () => {
+        const { onebot: _, ...rest } = valid;
+        const env = { QQBOT_LLM_API_KEY: 'k' };
+        const defaults = parseAppConfig(rest, 'C:/repo', env);
+        assert.deepEqual([defaults.bilibiliAccount, defaults.bilibiliComment, defaults.bilibiliAtName, defaults.bilibiliAtUid], [false, 'off', '', 0]);
+        const set = parseAppConfig({ ...rest, bilibiliAccount: true, bilibiliComment: 'dryRun', bilibiliAtName: ' 小明 ', bilibiliAtUid: 98765 }, 'C:/repo', env);
+        assert.deepEqual([set.bilibiliAccount, set.bilibiliComment, set.bilibiliAtName, set.bilibiliAtUid], [true, 'dryRun', '小明', 98765]);
+        for (const [key, bad, message] of [
+            ['bilibiliAccount', 'yes', /bilibiliAccount/], ['bilibiliComment', 'maybe', /bilibiliComment/], ['bilibiliAtName', 123, /bilibiliAtName/],
+            ['bilibiliAtName', '@小明', /bilibiliAtName/], ['bilibiliAtName', 'x'.repeat(41), /bilibiliAtName/], ['bilibiliAtUid', '98765', /bilibiliAtUid/], ['bilibiliAtUid', -1, /bilibiliAtUid/], ['bilibiliAtUid', 1.5, /bilibiliAtUid/],
+        ] as const) {
+            assert.throws(() => parseAppConfig({ ...rest, [key]: bad }, 'C:/repo', env), message, `${key}=${String(bad)}`);
+        }
+    });
 });
 
 describe('档位记录', () => {

@@ -15,6 +15,7 @@ import { pokeOutPlan } from '../src/presence.ts';
 import type { ProactiveRecord } from '../src/proactive.ts';
 import { stateAt } from '../src/schedule.ts';
 import { videoPlan, type BiliFetch } from '../src/bilibili.ts';
+import { credentialPath, saveCredential, type BiliRequest } from '../src/bilibili-account.ts';
 import { maybeTypo, RECALL_SHARE } from '../src/expression.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
@@ -49,7 +50,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false, shortReplies: false,
         media: true,
@@ -73,7 +74,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; extra?: Partial<Transport> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -105,6 +106,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.stickerChance !== undefined ? { stickerChance: options.stickerChance } : {}),
         ...(options.mediaTimeouts ? { mediaTimeouts: options.mediaTimeouts } : {}),
         ...(options.bilibiliFetch ? { bilibiliFetch: options.bilibiliFetch } : {}),
+        ...(options.bilibiliRequest ? { bilibiliRequest: options.bilibiliRequest } : {}),
         // 既有测试要核对日志正文和 last-prompt.json，所以默认开着敏感调试；关着的行为在下面单独测
         sensitive: options.sensitive ?? { on: () => true, describe: () => '' },
         pipeline: {
@@ -1276,6 +1278,94 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
         await drive(clock, () => logs.some(l => l.includes('试运行，没发')));
         assert.deepEqual(sent, []);
         assert.match(readFileSync(join(cfg.dataDir, 'presence', 'drafts.md'), 'utf8'), /这个梗我能玩一年[\s\S]*bilibili\.com\/video\/BV1Jonu6mEwN/);
+    });
+
+    describe('她的账号（ADR 0089）', () => {
+        const credential = { sessdata: 's', biliJct: 'j', dedeUserId: '4242', buvid3: 'b', savedAt: '2026-10-20T00:00:00.000Z' };
+        const accountRequest = (calls: { url: string; body?: string }[]): BiliRequest => async (url, init) => {
+            calls.push({ url, ...(init.body ? { body: init.body } : {}) });
+            if (url.includes('web-interface/nav')) return body({ code: 0, data: { isLogin: true, uname: '繁星小窝', mid: 4242, wbi_img: { img_url: 'https://x/7cd084941338484aae1ad9425b84077c.png', sub_url: 'https://x/4932caff0ff746eab6f01bf08b70ac45.png' } } });
+            if (url.includes('wbi/search/type')) return body({ code: 0, data: { result: [{ bvid: 'BV1search001', aid: 101, title: '三花猫日常', description: '猫', author: '猫奴', typename: '喵星人', play: 5000, like: 10, duration: '2:00' }] } });
+            if (url.includes('web-interface/view')) return body({ code: 0, data: { cid: 555 } });
+            if (url.includes('player/wbi/v2')) return body({ code: 0, data: { subtitle: { subtitles: [{ lan: 'ai-zh', subtitle_url: '//aisubtitle.hdslb.com/a.json' }] } } });
+            if (url.includes('aisubtitle.hdslb.com')) return body({ body: [{ content: '今天讲讲楼下那只三花猫' }] });
+            if (url.includes('reply/add')) return body({ code: 0, data: { rpid: 777, rpid_str: '777' } });
+            if (url.includes('reply/main')) return body({ code: 0, data: { replies: [{ rpid: 777, rpid_str: '777' }] } });
+            throw new Error(`没有准备这个请求：${url}`);
+        };
+
+        test('有凭证：按口味搜到的排第一，读字幕，摘录进她的提示词；日志说已登录；凭证内容不进日志', async () => {
+            const clock = new VirtualClock(planDay());
+            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', bilibiliAccount: true });
+            saveCredential(credentialPath(cfg.dataDir), credential);
+            const calls: { url: string; body?: string }[] = [];
+            const prompts: string[] = [];
+            const { app, sent, logs } = setup(cfg, { 10001: [] }, {
+                clock, bilibiliFetch: fetchStub([]), bilibiliRequest: accountRequest(calls),
+                generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '这个也太真实了'; },
+            });
+            await app.connected(SELF);
+            await drive(clock, () => sent.length >= 2);
+            assert.equal(sent[1], '10001:https://www.bilibili.com/video/BV1search001', sent.join('|') + logs.join('|'));
+            assert.ok(logs.some(l => l.includes('已登录「繁星小窝」')));
+            assert.ok(logs.some(l => l.includes('读了字幕')));
+            assert.ok(prompts.some(p => p.includes('今天讲讲楼下那只三花猫')), '字幕摘录进了提示词');
+            assert.ok(calls.some(c => c.url.includes('wbi/search/type')));
+            assert.ok(!calls.some(c => c.url.includes('reply/add')), '没开评论就不评论');
+            assert.ok(!logs.join('\n').includes(credential.sessdata + credential.biliJct), '日志里没有凭证');
+        });
+
+        test('开关开着但没有凭证文件：记一次日志说怎么办，照旧读热门榜', async () => {
+            const clock = new VirtualClock(planDay());
+            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', bilibiliAccount: true });
+            const calls: { url: string }[] = [];
+            const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, bilibiliFetch: fetchStub([]), bilibiliRequest: accountRequest(calls), generate: () => '这个也太真实了' });
+            await app.connected(SELF);
+            await drive(clock, () => sent.length >= 2);
+            assert.equal(sent[1], '10001:https://www.bilibili.com/video/BV1Jonu6mEwN');
+            assert.equal(logs.filter(l => l.includes('没有凭证文件')).length, 1);
+            assert.deepEqual(calls, [], '没有凭证就不请求 B 站账号接口');
+        });
+
+        test('评论开着：分享之后在视频下评论并真 @ 他（昵称 + uid），写评论的用最低隐私档的卡；复核在 2 分钟后', async () => {
+            const clock = new VirtualClock(planDay());
+            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', bilibiliAccount: true, bilibiliComment: 'on', bilibiliAtName: '小明', bilibiliAtUid: 98765 });
+            saveCredential(credentialPath(cfg.dataDir), credential);
+            const calls: { url: string; body?: string }[] = [];
+            const prompts: string[] = [];
+            const { app, sent, logs } = setup(cfg, { 10001: [] }, {
+                clock, bilibiliFetch: fetchStub([]), bilibiliRequest: accountRequest(calls),
+                generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '这个也太真实了'; },
+            });
+            await app.connected(SELF);
+            await drive(clock, () => calls.some(c => c.url.includes('reply/add')));
+            const add = calls.find(c => c.url.includes('reply/add'))!;
+            const form = new URLSearchParams(add.body);
+            assert.equal(form.get('message'), '@小明 这个也太真实了');
+            assert.deepEqual(JSON.parse(form.get('at_name_to_mid')!), { 小明: 98765 });
+            assert.equal(form.get('oid'), '101');
+            assert.equal(sent.length, 2, '先发了 QQ 的话和链接');
+            assert.ok(prompts.some(p => p.includes('现在你要在 B 站一个视频下面发一条公开评论')), '评论走的是评论写手的说明');
+            assert.ok(logs.some(l => l.includes('评论并 @ 了 小明')), logs.join('|'));
+            assert.ok(logs.some(l => l.includes('分享后在视频下评论并 @ 小明（真发）')));
+        });
+
+        test('评论开着但没填要 @ 的人，或没开账号：不评论，各记一行日志', async () => {
+            for (const [overrides, expected] of [
+                [{ bilibiliAccount: true, bilibiliComment: 'on' as const }, '没填 bilibiliAtName / bilibiliAtUid'],
+                [{ bilibiliComment: 'on' as const, bilibiliAtName: '小明', bilibiliAtUid: 98765 }, '要 bilibiliAccount 也开着'],
+            ] as const) {
+                const clock = new VirtualClock(planDay());
+                const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', ...overrides });
+                saveCredential(credentialPath(cfg.dataDir), credential);
+                const calls: { url: string }[] = [];
+                const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, bilibiliFetch: fetchStub([]), bilibiliRequest: accountRequest(calls), generate: () => '这个也太真实了' });
+                await app.connected(SELF);
+                await drive(clock, () => sent.length >= 2);
+                assert.ok(logs.some(l => l.includes(expected)), logs.join('|'));
+                assert.ok(!calls.some(c => c.url.includes('reply/add')));
+            }
+        });
     });
 });
 
