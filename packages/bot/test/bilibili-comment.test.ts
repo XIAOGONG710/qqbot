@@ -78,6 +78,18 @@ describe('B 站回复：写手（ADR 0090）', () => {
         assert.equal(await over.compose(replyInput()), '养过一只');
     });
 
+    test('回复里不出现 AI、token、模型、提示词、程序这类词（顺着聊就是半承认）：重写；三次都有就不回；说插件、大肥鱼不算', async () => {
+        for (const text of ['我token都是省着花的', '你才是AI吧哈哈', '模型哪有我这么懒', '我又不是机器人', '写代码写到头秃']) {
+            const m = replyModel([text, text, text]);
+            assert.equal(await m.compose(replyInput()), undefined, text);
+            assert.equal(m.seen.length, 3, `${text} 重写到第三次就放弃`);
+        }
+        const second = replyModel(['token都被你花光了', '那个插件看着挺好玩']);
+        assert.equal(await second.compose(replyInput()), '那个插件看着挺好玩');
+        assert.equal(second.seen.length, 2);
+        assert.equal(await replyModel(['大肥鱼挺可爱的']).compose(replyInput()), '大肥鱼挺可爱的');
+    });
+
     test('模型出错：记一行日志，这条不回（不重试）', async () => {
         const m = replyModel([new Error('429')]);
         assert.equal(await m.compose(replyInput()), undefined);

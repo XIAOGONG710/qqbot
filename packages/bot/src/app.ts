@@ -38,6 +38,7 @@ import { realRequest, type BiliAccount, type BiliRequest } from './bilibili-acco
 import { createAccountSource } from './bilibili-account-source.ts';
 import { commentComposer, replyComposer } from './bilibili-comment.ts';
 import { createReplyWatcher, type ReplyOptions, type ReplyWatcher } from './bilibili-replies.ts';
+import { createRiskMonitor, type RiskMonitor } from './bilibili-risk.ts';
 import { detectCrisis, type CrisisLevel } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
 import { createPokeLimiter, POKE_BACK_COOLDOWN_MS, POKE_MAX_AGE_MS, POKE_MAX_IN_WINDOW, POKE_OUT_TEXT, pokeBackPlan, pokeMessage, pokeOutMessageId, quietEnoughToPoke } from './pokes.ts';
@@ -485,6 +486,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.grievance ? { grievance: true } : {}),
             ...(config.rhythm ? { rhythm: true } : {}),
             ...(config.shortReplies ? { shortReplies: true } : {}),
+            ...(config.shape ? { shape: true } : {}),
             contacts: config.contacts,
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；
             // 超时不重发：可能已经发出去了，再发就重复
@@ -651,10 +653,12 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         const account = bilibiliAccountSource();
         const comment = bilibiliCommentOptions();
         const dm = bilibiliDmOptions();
+        const gate = comment ? bilibiliRisk() : undefined;
         browsing = createVideoBrowsing({
             mode: config.bilibili,
             ...(account ? { account } : {}),
             ...(account && comment ? { comment } : {}),
+            ...(gate ? { risk: gate } : {}),
             ...(account && dm ? {
                 dm,
                 // 私信不在 QQ 上，要自己记进聊天记录：他问起「哪个视频」时她知道自己发过什么
@@ -678,6 +682,22 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         log(`刷 B 站：${config.bilibili === 'dryRun' ? '只写草稿（不发）' : '开'}，发给 ${target.name}；一周最多 3 个，${account ? '用她的 B 站号按口味搜、读字幕，搜不到再读 B 站热门榜' : '读 B 站热门榜（公开接口，不登录）'}${account && dm ? `；改在 B 站给他发私信（${dm.mode === 'dryRun' || config.bilibili === 'dryRun' ? '只写草稿' : '真发'}），QQ 上只提醒一句` : ''}${account && comment ? `；分享后在视频下评论并 @ ${config.bilibiliAtName}（${comment.mode === 'dryRun' || config.bilibili === 'dryRun' ? '只写草稿' : '真发'}）` : ''}`);
     }
 
+    /**
+     * 风险转私信（ADR 0090）：公开评论或回复开着时，每 15 分钟看一次她的系统通知；评论 / 回复被拦、评论发出去看不到、收到违规警告类的通知，
+     * 立刻停公开发言并私信告诉他。评论和回复共用一个，没开公开发言或没填他的 uid 就没有
+     */
+    let risk: RiskMonitor | undefined;
+    function bilibiliRisk(): RiskMonitor | undefined {
+        if (risk) return risk;
+        if (config.bilibiliComment === 'off' && config.bilibiliReplies === 'off') return undefined;
+        const account = bilibiliAccountSource();
+        if (!account || config.bilibiliAtUid <= 0) return undefined;
+        risk = createRiskMonitor({ account, uid: config.bilibiliAtUid, dir: join(config.dataDir, 'presence'), now: worldNow, log });
+        risk.start();
+        log('B 站风险：公开评论 / 回复开着，每 15 分钟看一次她的系统通知；评论或回复被拦、评论发出去看不到、收到违规或警告通知时，立刻停公开发言并私信告诉他（这条私信不受私信试运行开关管）');
+        return risk;
+    }
+
     /** 回复别人回在她评论下面的话（ADR 0090，配置 bilibiliReplies）：没配好就记一行日志、不回；和刷视频各自启动（只要有评论就会有回复，不管分享开没开） */
     let replies: ReplyWatcher | undefined;
     function bilibiliReplyOptions(): ReplyOptions | undefined {
@@ -699,8 +719,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             return undefined;
         }
         const extraFree = config.herDays && worldCard ? readingActivities(worldCard.books) : [];
+        const gate = bilibiliRisk();
         return {
             mode, account, userUid: config.bilibiliAtUid,
+            ...(gate ? { risk: gate } : {}),
             compose: replyComposer({
                 character: { name: lowest.character.name, description: lowest.character.description, personality: lowest.character.personality, banned: lowest.character.banned },
                 generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 1.1 }, messages, { log, purpose: 'background' })),
@@ -1053,6 +1075,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             presence?.stop();
             browsing?.stop();
             replies?.stop();
+            risk?.stop();
             if (lifeTimer) clearInterval(lifeTimer);
             if (weatherTimer) clearInterval(weatherTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);

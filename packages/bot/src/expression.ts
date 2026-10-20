@@ -62,7 +62,7 @@ export const ASKS_TO_EXPLAIN = /讲讲|讲一下|详细|认真(?:说|讲|跟我�
 /** 他这次说的不到这么多字，不加「话多一点」 */
 export const LONG_MIN_CHARS = 8;
 
-function saidSinceReply(history: LengthContext['history']): string {
+export function saidSinceReply(history: LengthContext['history']): string {
     const lastReply = history.findLastIndex(message => message.role === 'assistant');
     return history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content).join('');
 }
@@ -141,7 +141,7 @@ export function maybeTypo(parts: readonly string[], seed: string, maxBubbles = I
     return { parts: [...parts] };
 }
 
-function unit(text: string): number {
+export function unit(text: string): number {
     let hash = 0x811c9dc5;
     for (const char of text) {
         hash ^= char.codePointAt(0)!;

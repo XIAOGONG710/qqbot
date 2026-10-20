@@ -7,6 +7,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { BiliApiError, subtitleExcerpt, type BiliAccount } from './bilibili-account.ts';
+import { isRiskError, type RiskEvent, type RiskGate } from './bilibili-risk.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import type { InitiateOutcome, InitiateRequest } from './responder.ts';
 import { pick } from './reply-timing.ts';
@@ -262,6 +263,8 @@ export interface VideoBrowsingOptions {
     account?: BiliAccount | (() => Promise<BiliAccount | undefined>);
     /** 评论区 @ 他：要有 account 才会用 */
     comment?: CommentOptions;
+    /** 风险转私信（ADR 0090）：出过风险信号就停掉公开评论；评论被拦、发出去看不到时告诉它，它会把话改成私信发给他 */
+    risk?: RiskGate;
     /** 在 B 站给他发私信、QQ 上只提醒一句：要有 account 才会用；发不出去就退回在 QQ 上直接发链接 */
     dm?: DmOptions;
     /** 把发出去的私信记进聊天记录（她之后知道自己发过什么；QQ 上没有这一条，所以要自己记） */
@@ -371,6 +374,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
     async function maybeComment(t: number, pickedVideo: Chosen): Promise<void> {
         const { comment } = options;
         if (!comment || commentHalted) return;
+        if (options.risk?.halted()) { log('刷 B 站：出过风险信号，公开评论先停着（话照常走私信），这次不评论'); return; }
         const account = await getAccount();
         if (!account) return;
         const records = state.comments ?? [];
@@ -410,6 +414,8 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
             if (error instanceof BiliApiError && (error.code === -101 || error.code === -111)) breakAccount();
             if (state.commentFailures >= COMMENT_FAILURES_MAX) commentHalted = true;
             log(`刷 B 站：评论没发出去（连着第 ${state.commentFailures} 次${commentHalted ? '，到重启前不再评论' : '，停 24 小时'}）：${reason(error)}`);
+            // 验证码、风控、账号受限一类：立刻改成私信告诉他，公开发言（评论和回复）都先停
+            if (isRiskError(error)) await options.risk?.trip({ why: `评论被 B 站拦了（${reason(error)}）`, wanted: text, link: video.link });
         }
     }
 
@@ -418,6 +424,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
         if (!state.comments?.some(record => record.checkAt !== undefined && t >= record.checkAt)) return;
         const account = await getAccount();
         if (!account) return;
+        let hidden: RiskEvent | undefined;
         for (const record of state.comments) {
             if (record.checkAt === undefined || t < record.checkAt) continue;
             // 拖得太久才轮到（重启、断网之后）：已经被后来的评论挤出「最新」第一页，找不到说明不了什么，不下结论
@@ -440,6 +447,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
                         delete record.checkAt;
                         state.commentPausedUntil = t + COMMENT_HIDDEN_PAUSE_MS;
                         log(`刷 B 站：评论 ${record.rpid} 两次都没在公开的最新评论里找到（可能在审核，@ 的通知也不会推给他；不等于没发出去）——停止评论一周`);
+                        hidden = { why: '她发的评论在公开的最新评论里一直找不到（可能在审核或被屏蔽，@ 的通知也不会推给你）', wanted: record.text, link: `https://www.bilibili.com/video/${record.bvid}`, days: 7 };
                     }
                 }
             } catch (error) {
@@ -449,6 +457,8 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
             }
         }
         save();
+        // 找不到可能是在审核 / 被屏蔽：公开发言先停，话改成私信告诉他（热门视频的评论区刷得快、被挤出第一页也会这样，措辞里说的是「可能」）
+        if (hidden) await options.risk?.trip(hidden);
     }
 
     /** 写一条给他的话，不发 QQ（走和聊天一样的生成：卡、记忆、出口检查）；返回正文，或说明为什么没有 */

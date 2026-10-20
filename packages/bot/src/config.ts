@@ -59,6 +59,7 @@ export const DEFAULTS = {
     bilibiliComment: 'off' as PresenceMode,
     bilibiliDm: 'off' as PresenceMode,
     bilibiliReplies: 'off' as PresenceMode,
+    shape: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
     reactions: false,
@@ -173,6 +174,11 @@ export interface AppConfig {
      * 每天有上限。有价值的回复（不含昵称和 uid）另存一份真人语料。要 bilibiliAccount、bilibiliAtUid；dryRun 只写草稿。默认关
      */
     bilibiliReplies: PresenceMode;
+    /**
+     * 形状控制（ADR 0091）：按他这一轮说了多长，定她每条最多几个字、最多几条（字数档取自真人聊天的分布），写进提示词，超了重写一次、还超就在分句处截断；
+     * 代替 shortReplies 那句软提示（模型不听：开着它每条气泡中位还是 16 字，真人 6–7）。主动找他、收尾、他明着让她讲、危机回合不用。默认关
+     */
+    shape: boolean;
     /** 要 @ 的人的 B 站昵称 */
     bilibiliAtName: string;
     /** 他的 B 站 uid：@ 评论（要昵称和 uid 两样）和发私信（只要 uid）都用 */
@@ -403,6 +409,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         bilibiliComment: oneOf(file.bilibiliComment, 'bilibiliComment', PRESENCE_MODES, DEFAULTS.bilibiliComment),
         bilibiliDm: oneOf(file.bilibiliDm, 'bilibiliDm', PRESENCE_MODES, DEFAULTS.bilibiliDm),
         bilibiliReplies: oneOf(file.bilibiliReplies, 'bilibiliReplies', PRESENCE_MODES, DEFAULTS.bilibiliReplies),
+        shape: bool(file, 'shape', '', DEFAULTS.shape),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
         reactions: bool(file, 'reactions', '', DEFAULTS.reactions),

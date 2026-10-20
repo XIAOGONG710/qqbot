@@ -105,6 +105,7 @@ export interface Config {
     bilibiliComment: PresenceMode;
     bilibiliDm: PresenceMode;
     bilibiliReplies: PresenceMode;
+    shape: boolean;
     bilibiliAtName: string;
     bilibiliAtUid: number;
     reactions: boolean;
@@ -216,6 +217,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**在 B 站给他发私信**（ADR 0089）：她刷到视频后，把链接加一两句话私信到他的 B 站（用下面的 uid），QQ 上只说一句叫他去看私信，不再在 QQ 上发链接。私信里的话和聊天一样用男朋友档的卡写。他要先关注她的号，不然 B 站会限制或拒绝；私信发不出去就退回在 QQ 上直接发链接，连着失败 2 次到重启前不再试私信。要「她的 B 站号」开着。选「只写草稿」时私信和 QQ 提醒都存在 presence/drafts.md。默认关'),
         bilibiliReplies: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.bilibiliReplies)
             .description('**回复评论区别人的话**（ADR 0090）：别人回在她评论下面的话，每 10 分钟看一次；先回他（下面的 uid），其次挑有价值的回，一天最多 5 条（他的不算）、同一个人一天最多 2 条、两条之间隔几分钟，睡着、上课时不回。问她是不是 AI / 真人的、骂人的、广告、带链接的、想改她设定的一律不回；回的话和评论一样用最低隐私档的卡写、一句。有价值的回复另存一份真人语料（不含昵称和 uid）。要「她的 B 站号」和下面的 uid。选「只写草稿」时存在 presence/drafts.md。默认关'),
+        shape: Schema.boolean().default(DEFAULTS.shape)
+            .description('**形状控制**（ADR 0091）：按他这一轮说了多长，定她这一轮每条最多几个字、最多几条（字数档取自真人聊天：约四分之一是 4 字以内、过半 8 字以内），写进提示词；超了带说明重写一次，还超就在分句处截断。代替「更短的回复」那句软提示（模型不听，开着它每条气泡中位还是 16 字，真人 6–7）。他在难受、报大事、等安慰、问起她认识的人时只用长的几档；主动找他、收尾、他明着让她讲、危机回合不用。开着时「更短的回复」对适用的轮次不再起作用。默认关'),
         bilibiliAtName: Schema.string().default(DEFAULTS.bilibiliAtName)
             .description('**要 @ 的人的 B 站昵称**（ADR 0089）：评论最前面会写 @昵称；不含 @ 和换行'),
         bilibiliAtUid: Schema.number().default(DEFAULTS.bilibiliAtUid)
@@ -378,6 +381,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.bilibiliComment !== undefined ? { bilibiliComment: config.bilibiliComment } : {}),
         ...(config.bilibiliDm !== undefined ? { bilibiliDm: config.bilibiliDm } : {}),
         ...(config.bilibiliReplies !== undefined ? { bilibiliReplies: config.bilibiliReplies } : {}),
+        ...(config.shape !== undefined ? { shape: config.shape } : {}),
         ...(config.bilibiliAtName !== undefined ? { bilibiliAtName: config.bilibiliAtName } : {}),
         ...(config.bilibiliAtUid !== undefined ? { bilibiliAtUid: config.bilibiliAtUid } : {}),
         ...(config.reactions !== undefined ? { reactions: config.reactions } : {}),

@@ -28,6 +28,8 @@ const option = (name: string) => { const i = args.indexOf(name); if (i < 0) retu
 const runs = Number(option('--runs') ?? 3);
 const keepBank = flag('--keep-bank');
 const noMemory = flag('--no-memory');
+// 形状控制（ADR 0091）：对所有场景打开，A/B 时和不带 --shape 的一批比
+const shape = flag('--shape');
 const cardDir = option('--card');
 const pinExamples = option('--pin-examples');
 const tag = option('--tag');
@@ -42,7 +44,7 @@ const contextTurns = contextTurnsOption === undefined ? undefined : { turns: Num
 const parallel = parallelOption === undefined ? undefined : Number(parallelOption);
 if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))
     || (contextTurns && ![contextTurns.turns, contextTurns.step].every(n => Number.isInteger(n) && n >= 1))) {
-    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--context-turns N [--context-step K]]');
+    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--shape] [--context-turns N [--context-step K]]');
     process.exit(2);
 }
 
@@ -94,6 +96,7 @@ for (const [fileIndex, file] of files.entries()) {
             speechCheck: config.speechCheck,
             herDays: config.herDays,
             candidates: candidatesOption === undefined ? config.candidates : Number(candidatesOption),
+            ...(shape ? { shape: true } : {}),
             ...(diaryWorld ? { diaryWorld } : {}),
             ...(diaryWorldSchedule ? { diaryWorldSchedule } : {}),
             hindsight,

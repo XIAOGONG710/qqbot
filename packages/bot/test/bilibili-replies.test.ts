@@ -271,6 +271,27 @@ describe('B 站回复：出错和写不出', () => {
         assert.equal(auth.fetches(), fetched, '一小时内不再用账号');
     });
 
+    test('风险转私信（ADR 0090）：停着的时候不看不回；回复被 B 站拦了（验证码、风控）告诉风险模块，带着她想回的话和视频链接；评论区关了不算', async () => {
+        const trips: { why: string; wanted?: string; link?: string }[] = [];
+        let halted = true;
+        const risk = { halted: () => halted, trip: async (event: { why: string; wanted?: string; link?: string }) => { trips.push(event); } };
+        const s = setup([item({ text: '停着的时候不会回', name: '路人乙', bvid: 'BV1Jonu6mEwN' })], { post: () => new BiliApiError('B 站接口 code 12015（需要验证码）', 12015) });
+        const w = s.make('on', { risk });
+        await w.tick();
+        assert.equal(s.fetches(), 0, '停着不看');
+        halted = false;
+        await w.tick();
+        assert.equal(trips.length, 1);
+        assert.match(trips[0]!.why, /回复被 B 站拦了.*12015/);
+        assert.equal(trips[0]!.wanted, '回 @路人乙：回：停着的时候不');
+        assert.equal(trips[0]!.link, 'https://www.bilibili.com/video/BV1Jonu6mEwN');
+
+        const closed = setup([item({ text: '这个评论区已经关了' })], { post: () => new BiliApiError('评论区已关闭', 12002) });
+        const quiet: typeof trips = [];
+        await closed.make('on', { risk: { halted: () => false, trip: async event => { quiet.push(event); } } }).tick();
+        assert.equal(quiet.length, 0);
+    });
+
     test('看「回复我的」失败：只记一次日志，10 分钟后再试；没有账号（凭证没配好）就什么都不做', async () => {
         let broken = true;
         const s = setup([item({ text: '恢复之后才看得到' })], { fetch: () => (broken ? new Error('断网') : s.state.feed) });

@@ -7,6 +7,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { BiliApiError, type BiliAccount, type ReplyItem } from './bilibili-account.ts';
 import { BLOCKED } from './bilibili.ts';
+import { isRiskError, type RiskGate } from './bilibili-risk.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { formatDate } from './schedule.ts';
 
@@ -54,6 +55,8 @@ export interface ReplyOptions {
     log: (message: string) => void;
     /** 她现在醒着、方便看手机：睡着、上课时不看不回；不给就一直方便 */
     awake?: (now: number) => boolean;
+    /** 风险转私信：出过风险信号就停着；回复被 B 站拦了告诉它，它把话改成私信发给他 */
+    risk?: RiskGate;
     random?: () => number;
 }
 
@@ -103,8 +106,8 @@ const IDENTITY = [
     /谁(的|家的?)(dsh|大肥鱼|号)/i,
 ];
 
-/** 去掉 [表情]、空白、标点之后还剩几个字 */
-const bodyLength = (text: string) => text.replace(/\[[^\]]{1,10}\]/g, '').replace(/[\s\p{P}\p{S}]/gu, '').length;
+/** 去掉 [表情]（B 站的表情记号可以很长，如「[崩坏3·光辉矢愿_让我摸摸]」）、空白、标点之后还剩几个字 */
+const bodyLength = (text: string) => text.replace(/\[[^\]]{1,30}\]/g, '').replace(/[\s\p{P}\p{S}]/gu, '').length;
 
 /** 不回的原因（没有就是可以回）；谁说的都一样，包括他：AI 相关的由他自己去解释，她不承认也不否认 */
 export function skipReason(text: string): string | undefined {
@@ -163,6 +166,7 @@ export function createReplyWatcher(options: ReplyOptions): ReplyWatcher {
         try {
             const t = options.now();
             if (t < (state.pausedUntil ?? 0) || t < (state.nextPollAt ?? 0)) return;
+            if (options.risk?.halted()) return;
             if (options.awake && !options.awake(t)) return;
             const account = await getAccount();
             if (!account) return;
@@ -226,7 +230,7 @@ export function createReplyWatcher(options: ReplyOptions): ReplyWatcher {
                 save();
 
                 if (options.mode === 'dryRun') {
-                    appendFileSync(draftsPath, `## ${new Date(t).toLocaleString('zh-CN')} 要在 B 站回复的话（草稿，没发）\n\n回复 @${item.name} :${text}\n\n（${fromUser ? '他' : '别人'}说：${item.text}｜她那条：${item.mine}｜《${item.title}》）\n\n`);
+                    appendFileSync(draftsPath, `## ${new Date(t).toLocaleString('zh-CN')} 要在 B 站回复的话（草稿，没发）\n\n回复 @${item.name} :${text}\n\n（${fromUser ? '他' : '别人'}说：${item.text}｜她那条：${item.mine}${item.title ? `｜《${item.title}》` : ''}）\n\n`);
                     remember(item, fromUser, 'draft', text);
                     log(`B 站回复（试运行，没发）：回${fromUser ? '他' : '别人'}「${item.text.slice(0, 20)}」→「${text}」，写进了 drafts.md`);
                     continue;
@@ -248,6 +252,8 @@ export function createReplyWatcher(options: ReplyOptions): ReplyWatcher {
                     state.pausedUntil = t + REPLY_PAUSE_MS;
                     if (state.failures >= FAILURES_MAX) halted = true;
                     log(`B 站回复：没发出去（连着第 ${state.failures} 次${halted ? '，到重启前不再回复' : '，停 24 小时'}）：${reason(error)}`);
+                    // 验证码、风控、账号受限一类：改成私信告诉他，公开发言（评论和回复）都先停
+                    if (isRiskError(error)) await options.risk?.trip({ why: `回复被 B 站拦了（${reason(error)}）`, wanted: `回 @${item.name}：${text}`, ...(item.bvid ? { link: `https://www.bilibili.com/video/${item.bvid}` } : {}) });
                     break;
                 }
             }

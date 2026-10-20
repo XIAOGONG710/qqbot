@@ -243,6 +243,7 @@ export interface ReplyItem {
     parent: string;
     aid: number;
     bvid?: string;
+    /** 视频标题；评论区的回复通知里没有（detail_title 是空的），所以常常是空串 */
     title: string;
     uid: number;
     name: string;
@@ -251,6 +252,15 @@ export interface ReplyItem {
     /** 被回复的那条她的话 */
     mine: string;
     /** 毫秒 */
+    at: number;
+}
+
+/** 系统通知里的一条（字段按 query_unified_notify 的公开整理读，列表目前是空的，没拿真数据核对过） */
+export interface SystemNotice {
+    id: string;
+    title: string;
+    content: string;
+    /** 毫秒；读不出来是 0 */
     at: number;
 }
 
@@ -270,6 +280,10 @@ export interface BiliAccount {
      * 回的是别人在串里的回复（parent 不是 root）时，按网页的写法在最前面加「回复 @昵称 :」并交上 at_name_to_mid
      */
     postReply(input: { aid: number; bvid?: string; root: string; parent: string; to: { name: string; uid: number }; text: string }): Promise<{ rpid: string }>;
+    /** 系统通知的未读数（B 站在系统通知里发违规、风控、评论被删之类的消息；ADR 0090 的风险转私信用它） */
+    systemNoticeUnread(): Promise<number>;
+    /** 系统通知第一页，新的在前 */
+    systemNotices(): Promise<SystemNotice[]>;
     /**
      * 给一个人发私信（文字）。对方没关注她时 B 站限制很严（只能发一条，或直接被拒），所以用户要先关注她的号；
      * 过长（B 站实测约 500 字）会被拒，调用方自己控制长度
@@ -295,7 +309,9 @@ const idOf = (value: unknown): string => (typeof value === 'string' && /^\d+$/.t
 /**
  * 消息中心「回复我的」（x/msgfeed/reply）→ 回复项：source_id 是这条回复的 rpid，target_id 是被回复的那条，root_id 是那一串的根，
  * subject_id 是视频的 aid，user 是回复的人，reply_time 是秒。视频以外的评论区、没有正文或没有人的跳过。
- * 字段名来自公开的接口整理（bilibili-API-collect），还没拿真的回复核对过——第一条真回复到了要对一遍。
+ * 2026-10-21 拿真的回复（他在她的评论下回的 6 条）核对过：source_id / target_id / root_id / subject_id / user / reply_time 和上面一致；
+ * 和公开整理里写的不一样的两处：①`title` 是她那条评论的正文（不是视频标题，视频标题在 `detail_title` 里，评论类的是空的）；
+ * ②直接回在她的评论上时 `target_reply_content` 是空的，她那条话在 `root_reply_content`。
  */
 export function parseReplyFeed(data: unknown): ReplyItem[] {
     const items: ReplyItem[] = [];
@@ -312,9 +328,24 @@ export function parseReplyFeed(data: unknown): ReplyItem[] {
         const root = idOf(item.root_id) || parent;
         if (!root) continue;
         const bvid = /\/video\/(BV[0-9A-Za-z]{10})/.exec(str(item.uri))?.[1];
-        items.push({ id, root, parent: parent || root, aid, ...(bvid ? { bvid } : {}), title: str(item.title), uid, name: str(rec(entry.user).nickname), text, mine: str(item.target_reply_content).trim(), at: num(entry.reply_time) * 1000 });
+        items.push({ id, root, parent: parent || root, aid, ...(bvid ? { bvid } : {}), title: str(item.detail_title), uid, name: str(rec(entry.user).nickname), text, mine: (str(item.target_reply_content) || str(item.root_reply_content)).trim(), at: num(entry.reply_time) * 1000 });
     }
     return items;
+}
+
+/** 系统通知 → 条目：id 缺了就用 cursor；标题和正文都没有的跳过；time_at 是「2026-10-21 00:12:00」（北京时间） */
+export function parseSystemNotices(data: unknown): SystemNotice[] {
+    const notices: SystemNotice[] = [];
+    for (const raw of Array.isArray(rec(data).system_notify_list) ? rec(data).system_notify_list as unknown[] : []) {
+        const entry = rec(raw);
+        const title = str(entry.title).trim();
+        const content = str(entry.content).trim();
+        const id = idOf(entry.id) || idOf(entry.cursor) || str(entry.key);
+        if (!id || (!title && !content)) continue;
+        const stamp = str(entry.time_at);
+        notices.push({ id, title, content, at: stamp ? Date.parse(`${stamp.replace(' ', 'T')}+08:00`) || 0 : 0 });
+    }
+    return notices;
 }
 
 /** nav 里的钥匙一天一换，这么久重取一次 */
@@ -427,6 +458,16 @@ export async function openAccount(request: BiliRequest, credential: BiliCredenti
         async fetchReplies() {
             const { data } = await call(request, 'https://api.bilibili.com/x/msgfeed/reply?platform=web&build=0&mobi_app=web', { headers: { ...headers, Referer: 'https://message.bilibili.com/' } });
             return parseReplyFeed(data);
+        },
+
+        async systemNoticeUnread() {
+            const { data } = await call(request, 'https://api.bilibili.com/x/msgfeed/unread?build=0&mobi_app=web', { headers: { ...headers, Referer: 'https://message.bilibili.com/' } });
+            return num(rec(data).sys_msg);
+        },
+
+        async systemNotices() {
+            const { data } = await call(request, `https://message.bilibili.com/x/sys-msg/query_unified_notify?csrf=${credential.biliJct}&csrf_token=${credential.biliJct}&page_size=10&build=0&mobi_app=web`, { headers: { ...headers, Referer: 'https://message.bilibili.com/' } });
+            return parseSystemNotices(data);
         },
 
         async postReply({ aid, bvid, root, parent, to, text }) {

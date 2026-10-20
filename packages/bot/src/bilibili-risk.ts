@@ -1,0 +1,168 @@
+// 风险转私信（ADR 0090，用户 2026-10-21：「如果出现风险消息，立刻转为私信@」）：
+// 公开发言（评论、回复）一旦出现风险信号——发评论被 B 站拦了（验证码、风控、账号受限……）、评论发出去公开看不到（可能在审核）、
+// 她的号收到了违规 / 警告类的系统通知——立刻停掉公开发言一段时间，并把她本来想说的话改成私信发给他（他的 B 站，bilibiliAtUid），
+// 之后的话只走私信。这条私信是运维性质的提醒，不受 bilibiliDm 的试运行开关管（试运行是「别把她写的话发出去」，这里是告诉他出事了）。
+// 系统通知的字段没拿真数据核对过（现在是 0 条）；未读数的接口核对过。
+
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { BiliApiError, DM_MAX_CHARS, type BiliAccount } from './bilibili-account.ts';
+import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+
+/** 停多久：风险信号出现后公开发言停这么久（可以被单次事件覆盖） */
+export const RISK_HALT_DAYS = 7;
+/** 同一段时间内最多提醒一次，免得连着失败时刷屏 */
+export const RISK_ALERT_GAP_MS = 30 * 60_000;
+/** 多久看一次系统通知的未读数 */
+export const RISK_POLL_MS = 15 * 60_000;
+
+export interface RiskEvent {
+    /** 出了什么事（一句话，进私信） */
+    why: string;
+    /** 她本来想发的话（评论 / 回复的正文），改成私信带给他 */
+    wanted?: string;
+    link?: string;
+    days?: number;
+}
+
+/** 评论、回复模块用的：停着就别发；出事了告诉它 */
+export interface RiskGate {
+    halted(): boolean;
+    trip(event: RiskEvent): Promise<void>;
+}
+
+/**
+ * 发评论 / 回复时 B 站返回的错误里，哪些是「风险」：验证码、风控、账号受限……
+ * 不算风险的：评论区关了（12002，是视频的事）、重复评论（12051）、太长（12009 / 12025，是我们的事）
+ */
+export const NOT_RISK_CODES: ReadonlySet<number> = new Set([12002, 12051, 12009, 12025]);
+export const isRiskError = (error: unknown): error is BiliApiError => error instanceof BiliApiError && !NOT_RISK_CODES.has(error.code) && error.code !== -101 && error.code !== -111;
+
+/** 系统通知里哪些像是风险：违规、警告、处罚、限制、评论被删…… */
+export const RISK_NOTICE = /违规|警告|处罚|封禁|封号|禁言|限制|风控|异常|冻结|删除|不当|审核|举报|账号安全|屏蔽|限流|不予展示/;
+
+interface RiskFile {
+    version: 1;
+    /** 公开发言停到这个时间 */
+    until?: number;
+    seen: string[];
+    lastUnread?: number;
+    lastAlertAt?: number;
+}
+
+const validFile = (value: unknown): value is RiskFile =>
+    typeof value === 'object' && value !== null && (value as RiskFile).version === 1 && Array.isArray((value as RiskFile).seen);
+
+export interface RiskOptions {
+    account: BiliAccount | (() => Promise<BiliAccount | undefined>);
+    /** 他的 B 站 uid：提醒私信发到这里 */
+    uid: number;
+    dir: string;
+    now: () => number;
+    log: (message: string) => void;
+}
+
+export interface RiskMonitor extends RiskGate {
+    tick(): Promise<void>;
+    start(): void;
+    stop(): void;
+}
+
+export function createRiskMonitor(options: RiskOptions): RiskMonitor {
+    const { log } = options;
+    mkdirSync(options.dir, { recursive: true });
+    const statePath = join(options.dir, 'bilibili-risk.json');
+    const state = readJsonOr<RiskFile>(statePath, { version: 1, seen: [] }, log, { validate: validFile, label: 'B 站风险状态' });
+    const save = () => writeJsonAtomic(statePath, { ...state, seen: state.seen.slice(-200) });
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let busy = false;
+    let nextPollAt = 0;
+    const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+    async function getAccount(): Promise<BiliAccount | undefined> {
+        return typeof options.account === 'function' ? options.account() : options.account;
+    }
+
+    /** 私信告诉他；发不出去（风控、没关注……）只记日志 */
+    async function alert(text: string, t: number): Promise<void> {
+        if (t - (state.lastAlertAt ?? 0) < RISK_ALERT_GAP_MS) { log('B 站风险：刚提醒过他，这次的私信先不重复发'); return; }
+        const account = await getAccount();
+        if (!account) { log('B 站风险：账号用不了，没法私信提醒他'); return; }
+        state.lastAlertAt = t;
+        save();
+        try {
+            await account.sendDm({ uid: options.uid, text: text.slice(0, DM_MAX_CHARS) });
+            log('B 站风险：已私信提醒他');
+        } catch (error) {
+            log(`B 站风险：私信提醒也没发出去（${reason(error)}）`);
+        }
+    }
+
+    async function trip(event: RiskEvent): Promise<void> {
+        const t = options.now();
+        const days = event.days ?? RISK_HALT_DAYS;
+        state.until = Math.max(state.until ?? 0, t + days * 86_400_000);
+        save();
+        log(`B 站风险：${event.why}；公开评论和回复停 ${days} 天，之后的话只走私信`);
+        await alert([
+            `【B 站风险提醒】${event.why}`,
+            ...(event.wanted ? [`她本来想发的：${event.wanted}`] : []),
+            ...(event.link ? [event.link] : []),
+            `公开评论和回复先停 ${days} 天，之后的话只走私信。`,
+        ].join('\n'), t);
+    }
+
+    async function tick(): Promise<void> {
+        if (busy) return;
+        busy = true;
+        try {
+            const t = options.now();
+            if (t < nextPollAt) return;
+            const account = await getAccount();
+            if (!account) return;
+            nextPollAt = t + RISK_POLL_MS;
+            let unread: number;
+            try {
+                unread = await account.systemNoticeUnread();
+            } catch (error) {
+                log(`B 站风险：看系统通知的未读数失败（过 15 分钟再试）：${reason(error)}`);
+                return;
+            }
+            if (unread === 0) { if (state.lastUnread) { state.lastUnread = 0; save(); } return; }
+            if (unread === state.lastUnread) return;
+            state.lastUnread = unread;
+            let notices: Awaited<ReturnType<BiliAccount['systemNotices']>> = [];
+            try { notices = await account.systemNotices(); } catch (error) { log(`B 站风险：读系统通知失败：${reason(error)}`); }
+            const fresh = notices.filter(notice => !state.seen.includes(notice.id));
+            state.seen.push(...fresh.map(notice => notice.id));
+            save();
+            const risky = fresh.filter(notice => RISK_NOTICE.test(`${notice.title}${notice.content}`));
+            if (risky.length) {
+                const first = risky[0]!;
+                await trip({ why: `她的号收到了 B 站的系统通知「${first.title.slice(0, 40)}」${first.content ? `：${first.content.slice(0, 160)}` : ''}${risky.length > 1 ? `（另有 ${risky.length - 1} 条）` : ''}` });
+            } else if (fresh.length) {
+                log(`B 站风险：系统通知 ${fresh.length} 条，没有违规 / 警告一类的字眼（${fresh.map(notice => notice.title.slice(0, 20)).join('、')}）`);
+            } else if (notices.length === 0) {
+                // 未读数涨了但读不出内容：不知道是什么，不停发言，只让他去看一眼（读得出、只是都见过了的不用提醒）
+                await alert(`【B 站风险提醒】她的号有 ${unread} 条未读的系统通知，我没能读出内容；请你登录她的号看一眼是不是违规或风控提醒。`, t);
+            }
+        } finally {
+            busy = false;
+        }
+    }
+
+    return {
+        halted: () => options.now() < (state.until ?? 0),
+        trip, tick,
+        start() {
+            if (timer) return;
+            void tick();
+            timer = setInterval(() => void tick(), 60_000);
+            timer.unref?.();
+        },
+        stop() {
+            if (timer) clearInterval(timer);
+            timer = undefined;
+        },
+    };
+}

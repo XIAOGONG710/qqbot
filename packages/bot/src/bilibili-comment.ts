@@ -51,12 +51,17 @@ export function replySystemPrompt(character: CommentComposerDeps['character']): 
 const REPLY_MIN_CHARS = 2;
 const REPLY_MAX_CHARS = 30;
 const REPLY_SKIP = /^\s*SKIP\b/i;
+/**
+ * 她的回复里不出现 AI 一类的词：不承认也不否认，所以连顺着聊都不聊（真模型对着他的「token 没地方花」回了「我 token 都是省着花的」，等于半承认）。
+ * 只说「插件」「大肥鱼」「DSH」作为看视频的人聊两句不算
+ */
+const REPLY_AI_WORDS = /\bai\b|人工智能|机器人|\btoken\b|tokens|算力|模型|提示词|\bprompt\b|程序|代码|部署|算法|\bllm\b|\bgpt\b|\bapi\b/i;
 
 /** 写回复的函数，给 createReplyWatcher 的 compose 用：写不出合格的（模型出错、三次都不合格）或模型说不该回，返回 undefined */
 export function replyComposer(deps: CommentComposerDeps): (input: ReplyInput) => Promise<string | undefined> {
     return async ({ title, mine, theirs, fromUser, recent }) => {
         const lines = [
-            `视频：《${title}》`,
+            ...(title ? [`视频：《${title}》`] : []),
             ...(mine ? [`你之前的话：「${mine}」`] : []),
             `【对方回复你】「${theirs}」`,
             fromUser ? '（对方是你认识的人，可以随意一点）' : '',
@@ -76,6 +81,7 @@ export function replyComposer(deps: CommentComposerDeps): (input: ReplyInput) =>
             }
             if (REPLY_SKIP.test(raw)) return undefined;
             const text = cleanQzoneText(raw, deps.character.banned);
+            if (text && REPLY_AI_WORDS.test(text)) continue;
             if (text && text.length >= REPLY_MIN_CHARS && text.length <= REPLY_MAX_CHARS && !recent.includes(text)) return text;
         }
         return undefined;

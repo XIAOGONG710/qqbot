@@ -8,6 +8,7 @@ import {
     COMMENT_CHECK_AFTER_MS, COMMENT_PAUSE_MS, createVideoBrowsing, NUDGE_GIVE_UP_MS, pickVideo, rankVideos, SEARCH_KEYWORDS, videoPlan,
     type BiliFetch, type BiliVideo, type CommentInput, type CommentRecord, type DmOptions,
 } from '../src/bilibili.ts';
+import type { RiskEvent, RiskGate } from '../src/bilibili-risk.ts';
 import type { InitiateOutcome, InitiateRequest } from '../src/responder.ts';
 import { formatDate, herDay } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
@@ -96,13 +97,15 @@ describe('刷 B 站：她的账号（ADR 0089）', () => {
             // 回复评论区别人的话有自己的测试（bilibili-replies.test.ts），这里的流程用不到
             async fetchReplies() { return []; },
             async postReply() { return { rpid: '900000009' }; },
+            async systemNoticeUnread() { return 0; },
+            async systemNotices() { return []; },
         };
         return { account, log };
     }
 
     const make = (
         t: number, mode: 'dryRun' | 'on', account: BiliAccount | (() => Promise<BiliAccount | undefined>) | undefined, comment?: { mode: 'dryRun' | 'on'; compose?: (input: CommentInput) => Promise<string | undefined> }, seed?: object,
-        extra: { dm?: DmOptions; drafts?: (request: InitiateRequest) => InitiateOutcome; nudges?: InitiateOutcome[] } = {},
+        extra: { dm?: DmOptions; drafts?: (request: InitiateRequest) => InitiateOutcome; nudges?: InitiateOutcome[]; risk?: RiskGate } = {},
     ) => {
         const clock = { t };
         const recorded: { text: string; bvid: string; at: number }[] = [];
@@ -115,6 +118,7 @@ describe('刷 B 站：她的账号（ADR 0089）', () => {
         const browsing = createVideoBrowsing({
             mode, target: { qq: 10001, name: '宝宝' }, schedule, dir, now: () => clock.t, log: m => logs.push(m), fetch: anonymous,
             ...(account ? { account } : {}),
+            ...(extra.risk ? { risk: extra.risk } : {}),
             ...(account && extra.dm ? { dm: extra.dm, recordDm: (text: string, v: BiliVideo, at: number) => { recorded.push({ text, bvid: v.bvid, at }); } } : {}),
             ...(account && comment ? {
                 comment: {
@@ -280,6 +284,61 @@ describe('刷 B 站：她的账号（ADR 0089）', () => {
         assert.equal(h.state().comments![0]!.visible, false);
         assert.equal(h.state().commentPausedUntil, t + COMMENT_CHECK_AFTER_MS[1] + 7 * 86_400_000);
         assert.ok(h.logs.some(l => l.includes('停止评论一周')));
+    });
+
+    describe('风险转私信（ADR 0090）', () => {
+        const gate = (halted = false) => {
+            const trips: RiskEvent[] = [];
+            const risk: RiskGate = { halted: () => halted, trip: async event => { trips.push(event); } };
+            return { risk, trips };
+        };
+
+        test('评论被拦（验证码、风控一类）：告诉风险模块，带着她想发的话和视频链接；评论区关了、重复评论不算风险', async () => {
+            const t = findEvening();
+            const a = searched(1);
+            for (const [error, risky] of [[new BiliApiError('B 站接口 code 12015（需要验证码）', 12015), true], [new BiliApiError('B 站接口 code -352（风控）', -352), true], [new BiliApiError('评论区关闭', 12002), false], [new BiliApiError('重复评论', 12051), false]] as const) {
+                const refused = fakeAccount({ found: [a], post: () => error });
+                const g = gate();
+                const s = make(t, 'on', refused.account, { mode: 'on' }, undefined, { risk: g.risk });
+                await s.browsing.tick();
+                assert.equal(s.links.length, 1, '分享照常');
+                assert.equal(g.trips.length, risky ? 1 : 0, String(error.code));
+                if (risky) {
+                    assert.match(g.trips[0]!.why, new RegExp(`评论被 B 站拦了.*${error.code}`));
+                    assert.equal(g.trips[0]!.wanted, '这个猫也太会了');
+                    assert.equal(g.trips[0]!.link, a.link);
+                }
+            }
+        });
+
+        test('评论发出去两次都没在公开列表里找到：告诉风险模块（停一周，评论的正文改成私信带给他）', async () => {
+            const t = findEvening();
+            const hidden = fakeAccount({ found: [searched(1)], visible: () => false });
+            const g = gate();
+            const h = make(t, 'on', hidden.account, { mode: 'on' }, undefined, { risk: g.risk });
+            await h.browsing.tick();
+            h.clock.t = t + COMMENT_CHECK_AFTER_MS[0];
+            await h.browsing.tick();
+            assert.equal(g.trips.length, 0, '第一次没找到还不算');
+            h.clock.t = t + COMMENT_CHECK_AFTER_MS[1];
+            await h.browsing.tick();
+            assert.equal(g.trips.length, 1);
+            assert.deepEqual([g.trips[0]!.days, g.trips[0]!.wanted], [7, '这个猫也太会了']);
+            assert.match(g.trips[0]!.why, /一直找不到/);
+        });
+
+        test('停着的时候不评论、不碰账号的评论接口；分享和私信照常', async () => {
+            const t = findEvening();
+            const a = searched(1);
+            const acct = fakeAccount({ found: [a] });
+            const g = gate(true);
+            const s = make(t, 'on', acct.account, { mode: 'on' }, undefined, { risk: g.risk });
+            await s.browsing.tick();
+            assert.equal(s.links.length, 1);
+            assert.equal(acct.log.posts.length, 0);
+            assert.equal(s.composed.length, 0, '连评论都不写');
+            assert.ok(s.logs.some(line => line.includes('出过风险信号，公开评论先停着')));
+        });
     });
 
     test('复核时断网：5 分钟后再试，不当成没找到；等了两小时还查不了就不查了', async () => {

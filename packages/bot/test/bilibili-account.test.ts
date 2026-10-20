@@ -269,7 +269,8 @@ describe('B 站账号层：评论与复核', () => {
 
     const feedItem = (over: Record<string, unknown> = {}, itemOver: Record<string, unknown> = {}, userOver: Record<string, unknown> = {}) => ({
         id: 1, user: { mid: 555, nickname: '路人甲', ...userOver },
-        item: { subject_id: 117467389106971, root_id: 321352577408, source_id: 321352999999, target_id: 321352577408, source_content: '你也喜欢这个吗', target_reply_content: '千禧年梦核那味儿也太冲了', business_id: 1, title: '塔卫二时尚月刊', uri: 'https://www.bilibili.com/video/BV1PPJd62E75#reply321352999999', type: 'reply', ...itemOver },
+        // 字段照 2026-10-21 他在她的评论下回的真通知：title 是她那条评论的正文（不是视频标题），detail_title 是空的，直接回评论时 target_reply_content 是空的
+        item: { subject_id: 117467389106971, root_id: 321352577408, source_id: 321352999999, target_id: 321352577408, source_content: '你也喜欢这个吗', title: '@穹P 千禧年梦核那味儿也太冲了', detail_title: '', root_reply_content: '千禧年梦核那味儿也太冲了', target_reply_content: '', business_id: 1, uri: 'https://www.bilibili.com/video/BV1PPJd62E75#reply321352999999', type: 'reply', ...itemOver },
         reply_time: 1792512900, ...over,
     });
 
@@ -283,8 +284,11 @@ describe('B 站账号层：评论与复核', () => {
             feedItem({}, { source_id: 321353000000, root_id: 0 }),
         ] });
         assert.deepEqual(items.map(item => item.id), ['321352999999', '321353000000']);
-        assert.deepEqual(items[0], { id: '321352999999', root: '321352577408', parent: '321352577408', aid: 117467389106971, bvid: 'BV1PPJd62E75', title: '塔卫二时尚月刊', uid: 555, name: '路人甲', text: '你也喜欢这个吗', mine: '千禧年梦核那味儿也太冲了', at: 1792512900000 });
+        assert.deepEqual(items[0], { id: '321352999999', root: '321352577408', parent: '321352577408', aid: 117467389106971, bvid: 'BV1PPJd62E75', title: '', uid: 555, name: '路人甲', text: '你也喜欢这个吗', mine: '千禧年梦核那味儿也太冲了', at: 1792512900000 });
         assert.equal(items[1]!.root, '321352577408', '没有 root_id 就用被回复的那条当根');
+        // 回的是她在串里回的那句：她那条话在 target_reply_content；有 detail_title 就是视频标题
+        const nested = parseReplyFeed({ items: [feedItem({}, { source_id: 321353111111, target_id: 321353000001, target_reply_content: '我回的那一句', detail_title: '塔卫二时尚月刊' })] });
+        assert.deepEqual([nested[0]!.mine, nested[0]!.parent, nested[0]!.root, nested[0]!.title], ['我回的那一句', '321353000001', '321352577408', '塔卫二时尚月刊']);
         assert.deepEqual(parseReplyFeed(undefined), []);
         assert.deepEqual(parseReplyFeed({ items: 'x' }), []);
     });
@@ -318,6 +322,29 @@ describe('B 站账号层：评论与复核', () => {
         assert.equal(s.calls.at(-1)!.init.headers.Referer, 'https://www.bilibili.com/');
         const empty = await open({ 'reply/add': () => json({ code: 0, data: {} }) });
         await assert.rejects(empty.account.postReply({ aid: 11, root: '100', parent: '200', to: { name: 'a', uid: 1 }, text: 'x' }), /没有 rpid/);
+    });
+
+    test('系统通知：未读数取 sys_msg；列表按 id / 标题 / 正文 / time_at（北京时间）读，id 缺了用 cursor，标题正文都没有的跳过', async () => {
+        const s = await open({
+            'msgfeed/unread': () => json({ code: 0, data: { at: 0, sys_msg: 3, reply: 6 } }),
+            'query_unified_notify': () => json({ code: 0, data: { system_notify_list: [
+                { id: 11, title: '评论违规提醒', content: '你的评论已被删除', time_at: '2026-10-21 00:12:00' },
+                { cursor: 12, title: '欢迎', content: '', time_at: '' },
+                { id: 13, title: '', content: '' },
+            ] } }),
+        });
+        assert.equal(await s.account.systemNoticeUnread(), 3);
+        const notices = await s.account.systemNotices();
+        assert.deepEqual(notices, [
+            { id: '11', title: '评论违规提醒', content: '你的评论已被删除', at: Date.parse('2026-10-21T00:12:00+08:00') },
+            { id: '12', title: '欢迎', content: '', at: 0 },
+        ]);
+        const call = s.calls.at(-1)!;
+        assert.match(call.url, /^https:\/\/message\.bilibili\.com\/x\/sys-msg\/query_unified_notify\?csrf=jct123&csrf_token=jct123/);
+        assert.equal(call.init.headers.Cookie, cookieHeader(credential));
+        const empty = await open({ 'msgfeed/unread': () => json({ code: 0, data: {} }), 'query_unified_notify': () => json({ code: 0, data: {} }) });
+        assert.equal(await empty.account.systemNoticeUnread(), 0);
+        assert.deepEqual(await empty.account.systemNotices(), []);
     });
 
     test('发私信：表单带发信人 / 收信人 / 内容（JSON 里的 content）/ 时间 / 设备号 / csrf，查询串带 WBI 签名，Referer 是消息页', async () => {

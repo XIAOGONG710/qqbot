@@ -27,6 +27,7 @@ import { describeGrievance, grievanceNow, ignoredNow } from './grievance.ts';
 import { describeIntent } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
 import { describeLength, lengthHint, maybeTypo, RECALL_SHARE } from './expression.ts';
+import { describeShape, planShape, shapeReply, type ShapePlan } from './shape.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
 import { npcMentioned } from './npc.ts';
@@ -148,6 +149,8 @@ export interface ContactPipelineOptions {
     rhythm?: boolean;
     /** 更短的回复（ADR 0024 的 10-19 调整，配置 shortReplies）：回很短的概率 0.5、认真接话的轮次让路、新措辞；不开就是上线前的老样子（0.35、老措辞） */
     shortReplies?: boolean;
+    /** 形状控制（配置 shape）：按他这一轮的长短定她每条最多几个字、最多几条，超了重写 / 截断；开了就不用 shortReplies 的软提示（ADR 0091） */
+    shape?: boolean;
     /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
     grievance?: boolean;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
@@ -201,6 +204,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let crisisNow: CrisisHit | undefined;
     /** 这一轮是小别扭（不是和好）：出口检查放过「隔了很多天才来」这类带点抱怨的话（ADR 0074） */
     let sulkNow = false;
+    /** 这一轮的形状（配置 shape）：buildPrompt 按他说的长短定，紧跟着的出口检查按它强制执行；主动找他、收尾、危机回合没有 */
+    let shapeNow: ShapePlan | undefined;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -447,8 +452,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),
             } : undefined;
             // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
-            const length = crisisNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low: mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false), aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
+            const low = mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false);
+            // 形状控制开着：用具体的字数和条数代替「回短一点」的软提示；不适用的轮次（他明着让她讲、主动找他、收尾）照旧走 lengthHint
+            shapeNow = options.shape && !crisisNow ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0 }) : undefined;
+            const length = crisisNow || shapeNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
+            if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
             // ADR 0043（配置 contextTurns，默认关）：最近几轮原文 + 更早的要点，代替最近 80 条
@@ -504,6 +513,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
                         ...(intent ? [intent] : []),
                         ...(length ? [describeLength(length, options.shortReplies)] : []),
+                        ...(shapeNow ? [describeShape(shapeNow)] : []),
                         ...(initiate ? [initiate.note] : []),
                     ].join('\n'),
                 ],
@@ -519,7 +529,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return {
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
-                ...(crisisNow ? { maxBubbles: 3 } : ((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) || grievanceActive) ? { maxBubbles: 2 } : {}),
+                ...(crisisNow ? { maxBubbles: 3 } : ((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) || grievanceActive) ? { maxBubbles: shapeNow ? Math.min(2, shapeNow.maxBubbles) : 2 } : shapeNow ? { maxBubbles: shapeNow.maxBubbles } : {}),
                 ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆${summary ? '和前面的要点' : ''}）` } : {}),
             };
         },
@@ -543,23 +553,25 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (typo.note) log(`打错字：${typo.note}`);
             return typo.recall ? { parts: typo.parts, recall: typo.recall } : typo.parts;
         },
-        review: (reply, messages, reviewContext) => (crisisNow
-            ? (text: string, reviewOptions: ReviewOptions) => reviewCrisisReply(text, reviewOptions, crisisNow!.level)
-            : reviewReply)(reply, {
-            banned: character.banned,
-            userName: contact.name,
-            ...(options.speechCheck ? { speech: { ...speechContext(options.history.load(contact.qq)), ...(sulkNow ? { allowGrievance: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}) } } : {}),
-            ...(reading ? { books: reading } : {}),
-            // 小黄脸（ADR 0051）：最近几次带得太密、他认真说事她只回表情
-            faces: faceContext(options.history.load(contact.qq), contact.tier),
-            ...(textIntimacy ? { textIntimacy: true } : {}),
-            ...(options.stickers ? { imageStickers: true } : {}),
-            regenerate: async note => clean(await generate(
-                postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names),
+        review: async (reply, messages, reviewContext) => {
+            const regenerate = async (note: string) => clean(await generate(postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names), log));
+            const reviewed = await (crisisNow
+                ? (text: string, reviewOptions: ReviewOptions) => reviewCrisisReply(text, reviewOptions, crisisNow!.level)
+                : reviewReply)(reply, {
+                banned: character.banned,
+                userName: contact.name,
+                ...(options.speechCheck ? { speech: { ...speechContext(options.history.load(contact.qq)), ...(sulkNow ? { allowGrievance: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}) } } : {}),
+                ...(reading ? { books: reading } : {}),
+                // 小黄脸（ADR 0051）：最近几次带得太密、他认真说事她只回表情
+                faces: faceContext(options.history.load(contact.qq), contact.tier),
+                ...(textIntimacy ? { textIntimacy: true } : {}),
+                ...(options.stickers ? { imageStickers: true } : {}),
+                regenerate,
                 log,
-            )),
-            log,
-        }),
+            });
+            // 形状控制（配置 shape）：出口检查之后再看字数和条数，超了重写一次、还超就在分句处截断
+            return shapeNow && !crisisNow ? shapeReply(reviewed, shapeNow, { regenerate, log }) : reviewed;
+        },
         send: options.send,
         ...(options.typing ? { typing: options.typing } : {}),
         ...(options.recallOwn ? { recallOwn: options.recallOwn } : {}),

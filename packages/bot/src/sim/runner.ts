@@ -77,6 +77,8 @@ export interface RunOptions {
     herDays?: boolean;
     /** 他难过、亲密话、收尾时挑候选（ADR 0041），run.ts 照 bot 的配置或 --candidates 传；默认不挑 */
     candidates?: number;
+    /** 形状控制（ADR 0091）：run.ts 的 --shape 对所有场景打开 */
+    shape?: boolean;
     /** 日记里的世界（ADR 0026）：同学档的卡上的，run.ts 传 */
     diaryWorld?: World;
     /** 和 diaryWorld 同一档的作息（ADR 0034） */
@@ -372,6 +374,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.grievance ? { grievance: true } : {}),
         ...(scenario.rhythm ? { rhythm: true } : {}),
         ...(scenario.shortReplies ? { shortReplies: true } : {}),
+        ...(scenario.shape || options.shape ? { shape: true } : {}),
         ...(stickers ? { stickers } : {}),
         ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),
         contacts: [contact, ...others],

@@ -50,7 +50,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', shape: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false, shortReplies: false,
         media: true,
@@ -146,6 +146,29 @@ describe('编排（app.ts）', () => {
         assert.ok(logs.every(line => !line.includes('PRIVATE_PROMISE_STATE')));
         const queue = join(cfg.dataDir, 'world', 'action-queue.json');
         if (existsSync(queue)) assert.deepEqual(JSON.parse(readFileSync(queue, 'utf8')).items, []);
+    });
+
+    test('形状控制（ADR 0091）：开着时提示词里有具体的字数和条数，太长重写一次，发出去的不超过上限；关着没有这一行也不重写；危机回合不受影响', async () => {
+        const long = '今天真的好累啊，而且还要写作业，烦死了，'.repeat(4);
+        const run = async (shape: boolean, said: string) => {
+            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], shape });
+            const prompts: string[] = [];
+            const { app, sent, logs } = setup(cfg, {}, { generate: messages => { const text = messages.map(m => m.content).join('\n'); prompts.push(text); return /太长了/.test(text) ? '好累啊' : long; } });
+            app.receive(event(10001, 1, said));
+            await until(() => sent.length >= 1);
+            return { prompts, sent, logs };
+        };
+        const on = await run(true, '在干嘛');
+        assert.match(on.prompts[0]!, /\[这一轮说话：[^\]]*每条不超过 \d+ 个字/);
+        assert.ok(on.prompts.some(prompt => prompt.includes('太长了')), '太长，带说明重写了一次');
+        assert.deepEqual(on.sent, ['10001:好累啊']);
+        assert.ok(on.logs.some(line => line.includes('这一轮形状：每条不超过')) && on.logs.some(line => line.includes('形状：') && line.includes('带说明重写一次')), on.logs.join('|'));
+        const off = await run(false, '在干嘛');
+        assert.doesNotMatch(off.prompts[0]!, /每条不超过/);
+        assert.ok(!off.prompts.some(prompt => prompt.includes('太长了')));
+        assert.ok(off.logs.every(line => !line.includes('这一轮形状')));
+        const crisis = await run(true, '我不想活了');
+        assert.doesNotMatch(crisis.prompts[0]!, /每条不超过/, '危机回合不加形状');
     });
 
     test('危机回合（ADR 0068）：他说想不活了——意图行、换承认版卡、出口检查重写、不打错字不抽签短话；日志和状态页不含内容；只记时间；平常的话不受影响', async () => {
@@ -1290,6 +1313,7 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
             if (url.includes('player/wbi/v2')) return body({ code: 0, data: { subtitle: { subtitles: [{ lan: 'ai-zh', subtitle_url: '//aisubtitle.hdslb.com/a.json' }] } } });
             if (url.includes('aisubtitle.hdslb.com')) return body({ body: [{ content: '今天讲讲楼下那只三花猫' }] });
             if (url.includes('reply/add')) return body({ code: 0, data: { rpid: 777, rpid_str: '777' } });
+            if (url.includes('msgfeed/unread')) return body({ code: 0, data: { sys_msg: 0 } });
             if (url.includes('web_im/send_msg')) return body({ code: 0, data: { msg_key: 1 } });
             if (url.includes('reply/main')) return body({ code: 0, data: { replies: [{ rpid: 777, rpid_str: '777' }] } });
             throw new Error(`没有准备这个请求：${url}`);
