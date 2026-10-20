@@ -33,7 +33,7 @@ import { withFestivalActivities, withFestivals } from './festivals.ts';
 import { newsKindsOf, dayMatches, type ProactiveMode } from './proactive.ts';
 import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
 import { qzoneComposer } from './qzone.ts';
-import { createVideoBrowsing, type BiliFetch, type CommentOptions, type VideoBrowsing } from './bilibili.ts';
+import { createVideoBrowsing, dmMessageId, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
 import { credentialPath, loadCredential, openAccount, realRequest, type BiliAccount, type BiliRequest } from './bilibili-account.ts';
 import { commentComposer } from './bilibili-comment.ts';
 import { detectCrisis, type CrisisLevel } from './crisis.ts';
@@ -663,6 +663,21 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         };
     }
 
+    /** 在 B 站给他发私信、QQ 上只提醒一句（ADR 0089，配置 bilibiliDm）：没配好就记一行日志、不发 */
+    function bilibiliDmOptions(): DmOptions | undefined {
+        const mode = config.bilibiliDm;
+        if (mode === 'off') return undefined;
+        if (!config.bilibiliAccount) {
+            log('刷 B 站：bilibiliDm 开着，但要 bilibiliAccount 也开着才能发私信，不发私信');
+            return undefined;
+        }
+        if (config.bilibiliAtUid <= 0) {
+            log('刷 B 站：bilibiliDm 开着，但没填 bilibiliAtUid（收私信的人的 B 站 uid），不发私信');
+            return undefined;
+        }
+        return { mode, uid: config.bilibiliAtUid };
+    }
+
     function startBrowsing(): void {
         if (browsing || config.bilibili === 'off') return;
         const target = config.contacts.find(c => c.tier === 'boyfriend');
@@ -673,10 +688,16 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         const qq = target.qq;
         const account = bilibiliAccountSource();
         const comment = bilibiliCommentOptions();
+        const dm = bilibiliDmOptions();
         browsing = createVideoBrowsing({
             mode: config.bilibili,
             ...(account ? { account } : {}),
             ...(account && comment ? { comment } : {}),
+            ...(account && dm ? {
+                dm,
+                // 私信不在 QQ 上，要自己记进聊天记录：他问起「哪个视频」时她知道自己发过什么
+                recordDm: (text, video, at) => { chatHistory.append(qq, { time: new Date(at).toISOString(), role: 'assistant', content: `[B 站私信] ${text}（《${video.title}》）`, messageId: dmMessageId(at) }); },
+            } : {}),
             target: { qq, name: target.name },
             schedule: worldCard.schedule,
             extraFree: config.herDays ? readingActivities(worldCard.books) : [],
@@ -692,7 +713,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             },
         });
         browsing.start();
-        log(`刷 B 站：${config.bilibili === 'dryRun' ? '只写草稿（不发）' : '开'}，发给 ${target.name}；一周最多 3 个，${account ? '用她的 B 站号按口味搜、读字幕，搜不到再读 B 站热门榜' : '读 B 站热门榜（公开接口，不登录）'}${account && comment ? `；分享后在视频下评论并 @ ${config.bilibiliAtName}（${comment.mode === 'dryRun' || config.bilibili === 'dryRun' ? '只写草稿' : '真发'}）` : ''}`);
+        log(`刷 B 站：${config.bilibili === 'dryRun' ? '只写草稿（不发）' : '开'}，发给 ${target.name}；一周最多 3 个，${account ? '用她的 B 站号按口味搜、读字幕，搜不到再读 B 站热门榜' : '读 B 站热门榜（公开接口，不登录）'}${account && dm ? `；改在 B 站给他发私信（${dm.mode === 'dryRun' || config.bilibili === 'dryRun' ? '只写草稿' : '真发'}），QQ 上只提醒一句` : ''}${account && comment ? `；分享后在视频下评论并 @ ${config.bilibiliAtName}（${comment.mode === 'dryRun' || config.bilibili === 'dryRun' ? '只写草稿' : '真发'}）` : ''}`);
     }
 
     function rainyAt(now: number): boolean {

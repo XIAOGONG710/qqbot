@@ -3,7 +3,7 @@
 // 这里只管和 B 站说话：所有请求经注入的 request 发出（测试注入假的），不碰聊天、不碰她的话。
 // 参考：GitHub c1overzz/dsh-bili-scroll（MIT）的扫码登录、评论复核、字幕读取思路；接口细节来自它的实测记录。
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { BiliVideo } from './bilibili.ts';
@@ -242,7 +242,15 @@ export interface BiliAccount {
     postComment(input: { aid: number; bvid: string; text: string; at?: { name: string; uid: number } }): Promise<{ rpid: string }>;
     /** 刚发的评论在公开的「最新」第一页里能不能找到（找不到不等于没发出去：可能在审核，也可能翻页看不到） */
     commentVisible(input: { aid: number; rpid: string }): Promise<boolean>;
+    /**
+     * 给一个人发私信（文字）。对方没关注她时 B 站限制很严（只能发一条，或直接被拒），所以用户要先关注她的号；
+     * 过长（B 站实测约 500 字）会被拒，调用方自己控制长度
+     */
+    sendDm(input: { uid: number; text: string }): Promise<void>;
 }
+
+/** 私信一条最多这么多字（dsh-bili-scroll 实测 490 字发得出去、更长返回 21007）；留一点余地 */
+export const DM_MAX_CHARS = 480;
 
 const stripHtml = (text: string) => text.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").trim();
 
@@ -335,6 +343,24 @@ export async function openAccount(request: BiliRequest, credential: BiliCredenti
             const rpid = str(d.rpid_str) || (num(d.rpid) ? String(num(d.rpid)) : '');
             if (!rpid) throw new BiliApiError('评论发出了，但返回里没有 rpid', -999);
             return { rpid };
+        },
+
+        async sendDm({ uid, text }) {
+            if (text.length > DM_MAX_CHARS) throw new BiliApiError(`私信太长（${text.length} 字，上限 ${DM_MAX_CHARS}）`, 21007);
+            const k = await ensureKeys();
+            const seconds = Math.floor(now() / 1000);
+            const form = new URLSearchParams({
+                'msg[sender_uid]': String(num(nav.mid)), 'msg[receiver_id]': String(uid), 'msg[receiver_type]': '1', 'msg[msg_type]': '1', 'msg[msg_status]': '0',
+                'msg[dev_id]': randomUUID().toUpperCase(), 'msg[timestamp]': String(seconds), 'msg[new_face_version]': '0', 'msg[content]': JSON.stringify({ content: text }),
+                csrf_token: credential.biliJct, csrf: credential.biliJct,
+            });
+            // 这个接口近年也带 WBI 签名；拿不到钥匙就不签（签了多余的参数 B 站会忽略）
+            const query = k ? wbiSign({ build: 0, mobi_app: 'web' }, k, seconds) : 'build=0&mobi_app=web';
+            await call(request, `https://api.vc.bilibili.com/web_im/v1/web_im/send_msg?${query}`, {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'https://message.bilibili.com', Referer: 'https://message.bilibili.com/' },
+                body: form.toString(),
+            });
         },
 
         async commentVisible({ aid, rpid }) {

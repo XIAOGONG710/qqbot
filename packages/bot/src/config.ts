@@ -57,6 +57,7 @@ export const DEFAULTS = {
     bilibili: 'off' as PresenceMode,
     bilibiliAccount: false,
     bilibiliComment: 'off' as PresenceMode,
+    bilibiliDm: 'off' as PresenceMode,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
     reactions: false,
@@ -161,9 +162,14 @@ export interface AppConfig {
     bilibiliAccount: boolean;
     /** 在她分享的视频下评论并 @ 他（ADR 0089）：要 bilibiliAccount、bilibiliAtName、bilibiliAtUid 都配好；评论公开，用最低隐私档的卡写；dryRun 只写草稿。默认关 */
     bilibiliComment: PresenceMode;
+    /**
+     * 在 B 站给他发私信（ADR 0089）：她刷到视频后，把链接加一两句话私信到他的 B 站（用 bilibiliAtUid），QQ 上只说一句「去看私信」，不再在 QQ 上发链接；
+     * 私信发不出去（他没关注她的号、风控）就退回在 QQ 上直接发链接。要 bilibiliAccount；他要先关注她的号。dryRun 只写草稿。默认关
+     */
+    bilibiliDm: PresenceMode;
     /** 要 @ 的人的 B 站昵称 */
     bilibiliAtName: string;
-    /** 要 @ 的人的 B 站 uid（真提及要昵称和 uid 两样） */
+    /** 他的 B 站 uid：@ 评论（要昵称和 uid 两样）和发私信（只要 uid）都用 */
     bilibiliAtUid: number;
     /** 已读回执（ADR 0083）：她看到他的消息的那一刻标已读（NapCat mark_private_msg_as_read），睡着时保持未读。默认关 */
     readReceipts: boolean;
@@ -389,6 +395,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         bilibili: oneOf(file.bilibili, 'bilibili', PRESENCE_MODES, DEFAULTS.bilibili),
         bilibiliAccount: bool(file, 'bilibiliAccount', '', DEFAULTS.bilibiliAccount),
         bilibiliComment: oneOf(file.bilibiliComment, 'bilibiliComment', PRESENCE_MODES, DEFAULTS.bilibiliComment),
+        bilibiliDm: oneOf(file.bilibiliDm, 'bilibiliDm', PRESENCE_MODES, DEFAULTS.bilibiliDm),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
         reactions: bool(file, 'reactions', '', DEFAULTS.reactions),
