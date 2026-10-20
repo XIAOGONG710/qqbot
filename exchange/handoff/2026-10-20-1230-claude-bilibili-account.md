@@ -27,8 +27,16 @@
 2. 在线上目录跑 `npm run bilibili-login -w @qqbot/bot`，用那个号的 App 扫码确认。
 3. 合并 + 重启一次；`koishi.yml` 先只开 `bilibiliAccount: true` + `bilibiliDm: dryRun`，看一周草稿（`presence/drafts.md`：私信和 QQ 提醒）和日志。
 4. 再改 `bilibiliDm: on`；**第一次真私信用户在场**，确认私信到没到（他先关注她的号）、QQ 提醒说得自然不自然。公开评论 @ 另算，同样先 dryRun。
-- 落地脚本的 `-Allowed` 要包含：`packages/bot/src/vendor/[^/]+$`、`packages/koishi-plugin-qqbot/src/[^/]+$`、`packages/bot/package\.json$`、`docs/adr/(0084|0089)-[^/]+\.md$`（比上次多这几类）。
+- 落地脚本的 `-Allowed`：默认的 `packages/bot/(src|test|sim)/` 已经盖住 `src/vendor/`；要再加 `packages/koishi-plugin-qqbot/src/[^/]+$`、`packages/bot/package\.json$`、`docs/adr/(0084|0089)-[^/]+\.md$`。分支（含体检命令）相对线上 `ad1e387` 共 23 个文件，全在这些路径里，没有卡、没有 koishi.yml；落地前用 `git diff --name-only` 重数一遍。
 - 没验过的：用真账号的搜索 / 读字幕 / 发私信 / 发评论 / 复核；WBI 真请求（私信接口是否要签名）；`at_name_to_mid` 是否真通知到人；新号评论会不会被拦；他没关注她时私信被怎么限制。
+
+## 10-20 15:20 补：体检命令（用户说 16:35 下课后提供账号）
+用户 15:10：「继续往后完善，b站账号等我 16:35 下课之后进行提供」。所以做了一个只读体检，扫完码当场验证“没验过的”那几条，不用等一周草稿：
+- `npm run bilibili-login -w @qqbot/bot -- --probe`：确认登录 → 搜两个关键词（带登录态 + WBI）→ 对前 5 个视频读字幕（隔 1.2 秒）。不写任何东西；输出只有数量、code 和公开视频标题。
+- `... -- --probe --dm <他的 uid>`：另外真发一条固定的测试私信（“（测试）这是她的号发来的第一条私信，收到就行，不用回。”）。**唯一写 B 站的一步，要他在场且已关注她的号**；失败会把 code 和消息原样打出来（这就是“没关注时被怎么限制”的实测）。
+- 代码 `bilibili-probe.ts`，测试 `bilibili-probe.test.ts` 8 项；ADR 0089 已补。
+
+**16:35 之后的顺序**（每一步都不动线上）：1) 他给：专用号已注册、他的 uid、已关注她的号 → 2) 在线上目录跑登录（二维码会在 VM 桌面上弹出，也画在终端里；他用专用号的手机 App 扫）→ 3) `--check` → 4) `--probe` → 5) 他在场时 `--probe --dm <uid>` → 6) 体检不通过就先看 code，不进下一步 → 7) 体检通过后才问他“合并 + 重启一次，开 `bilibiliAccount` + `bilibiliDm: dryRun`”要不要现在做。合并重启各要他一句明确的话。
 
 ## 风险（用户知情）
 封号（自动化评论违反用户协议，新号常被风控）；评论里真 @ 用户的号 = 公开把「她」和「他」连起来；凭证文件是账号钥匙，`runtime\bot` 的备份里也有。
