@@ -21,3 +21,9 @@
 
 ## 重启通知（11:20）
 用户在当前会话里（AskUserQuestion）选了「现在落地」。我用 `golive-release.ps1` 只重启 Koishi 约 5–15 秒，从 `357b60e` 快进到 `ad1e387`（24 个文件：卡片 + 人设源文件 + `grievance.ts` 等代码 + ADR 0088）；全套测试 bot 1158 / 插件 35 / 工具 43 全过，预检通过。其他窗口不要碰线上目录。结果补在下面。
+
+## 落地结果（11:23）
+- `golive-release.ps1 -OldHead 357b60e -NewHead ad1e387 -Tag temper`：预检 24 个文件全在允许路径内；Koishi 停 → 备份 `runtime\backup-pre-temper-20261020-1122`（154 个文件）→ 快进 → 起 Koishi（心跳 ref = `ad1e387`）→ 日志 0 条 error/warn、state-check 16 项过 → 去掉维护旗 → 推 main / integration。
+- 线上 `main` = `integration` = `origin/main` = `ad1e387`，工作区干净。
+- 回滚：`git reset --hard 357b60e` 并重启 Koishi（先问用户）；卡片是同一次提交，不用单独换。
+- 之后观察：傲娇有没有变成怼人；他玩游戏不理她那类场景的实际回复；一两天后重跑 `exchange/tools/chat-audit.mjs`。
