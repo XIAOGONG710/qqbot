@@ -197,7 +197,8 @@ describe('改约：reschedulesFrom（ADR 0066 决策 3）', () => {
 });
 
 describe('改约的候选、说明和到点的检查（ADR 0066 决策 3、4）', () => {
-    const settings = { ...boyfriend.proactive!, occasions: [...boyfriend.proactive!.occasions, 'reschedule' as const] };
+    // 这些测试按“每天 2 条、没有 share”写的（ADR 0066 / 0011 的确认值）；卡上现在多了 share、上限 4（ADR 0096）
+    const settings = { ...boyfriend.proactive!, occasions: [...new Set([...boyfriend.proactive!.occasions.filter(o => o !== 'share'), 'reschedule' as const])], dailyMax: 2 };
     const item: RescheduleItem = {
         id: 'p-1', day: '2026-12-21', at: wakeOn(schedule, day(12, 21)).getTime(), start: t(12, 21, 15).getTime(), what: '和他去东门吃麻辣烫', time: '15:00', where: '东门口',
         obstacle: { kind: 'unwell', id: 'unwell:2026-12-21', text: '身上不舒服（生理期，肚子疼）' },

@@ -22,7 +22,7 @@ const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month
 const day = (month: number, d: number) => new Date(2026, month - 1, d);
 const item = (patch: Partial<FollowUp> = {}): FollowUp => ({ id: 'f-1', what: '字节的面试', date: '2026-10-09', time: 'afternoon', episode: 'ep-1', ...patch });
 const input = (patch: Partial<ProactiveInput> = {}): ProactiveInput => ({
-    qq: 10001, schedule, settings: boyfriend.proactive!, dates: [], history: [], records: [], mode: 'on', ...patch,
+    qq: 10001, schedule, settings: { ...boyfriend.proactive!, occasions: boyfriend.proactive!.occasions.filter(o => o !== 'share'), dailyMax: 2 }, dates: [], history: [], records: [], mode: 'on', ...patch,
 });
 const hm = (time: number) => new Date(time).toTimeString().slice(0, 5);
 

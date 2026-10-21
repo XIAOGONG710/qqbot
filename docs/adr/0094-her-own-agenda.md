@@ -1,6 +1,6 @@
 # ADR 0094：答完他的话之后，偶尔带一件自己的事（配置 `shapeAgenda`，默认关）
 
-- 状态：**已实现，默认关**（要 `shape` 开着；上不上线等用户点头）
+- 状态：**已实现；2026-10-22 随 bili9 上线（`shapeAgenda: true`，要 `shape` 开着）**；回滚：配置里改回 false 并重启
 - 日期：2026-10-21
 - 关联：[ADR 0091](0091-reply-shape.md)（形状控制）、DSH `exchange/research/2026-10-21-aliveness`（活人感研究，第 2 步）、`exchange/research/2026-10-real-chat`（真人聊天样本）
 - 用户提出：「现在长短什么的已经和真人相似了，但内容还是差距有点大」；10-21 晚「看 ds 的推送」「继续吧」

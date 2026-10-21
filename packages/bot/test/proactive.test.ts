@@ -19,9 +19,12 @@ const day = (month: number, d: number, year = 2026) => new Date(year, month - 1,
 let nextId = 1;
 const user = (time: number, content = '在吗'): StoredMessage => ({ time: new Date(time).toISOString(), role: 'user', content, messageId: nextId++ });
 const her = (time: number, content = '嗯'): StoredMessage => ({ time: new Date(time).toISOString(), role: 'assistant', content, messageId: nextId++ });
+// 这个文件里原来的测试按“每天 2 条、没有 share”的设置写的（ADR 0011 的确认值）；卡上现在多了 share、上限 4（ADR 0096），share 自己的测试用卡上的真设置（cardInput）
+const legacySettings = { ...boyfriend.proactive!, occasions: boyfriend.proactive!.occasions.filter(o => o !== 'share'), dailyMax: 2 };
 const input = (patch: Partial<ProactiveInput> = {}): ProactiveInput => ({
-    qq: 10001, schedule, settings: boyfriend.proactive!, dates: boyfriend.dates, history: [], records: [], mode: 'on', ...patch,
+    qq: 10001, schedule, settings: legacySettings, dates: boyfriend.dates, history: [], records: [], mode: 'on', ...patch,
 });
+const cardInput = (patch: Partial<ProactiveInput> = {}): ProactiveInput => input({ settings: boyfriend.proactive!, ...patch });
 const record = (id: string, at: number, result: ProactiveRecord['result'] = 'sent'): ProactiveRecord => ({
     id, occasion: id.split(':')[1] as ProactiveRecord['occasion'], plannedAt: new Date(at).toISOString(), at: new Date(at).toISOString(), result,
 });
@@ -30,7 +33,7 @@ const hm = (time: number) => new Date(time).toTimeString().slice(0, 5);
 
 describe('主动消息：读卡', () => {
     test('男朋友档有主动设置和三个日子，同学档都没有', () => {
-        assert.deepEqual(boyfriend.proactive, { occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather', 'news', 'reschedule'], dailyMax: 2, unansweredMax: 1, newsKinds: ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick'] });
+        assert.deepEqual(boyfriend.proactive, { occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather', 'news', 'reschedule', 'share'], dailyMax: 4, unansweredMax: 1, newsKinds: ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick'] });
         assert.deepEqual(boyfriend.dates.map(d => d.name), ['你的生日', '你们在一起的纪念日', '他的生日']);
         const classmate = loadCharacterCard(cardPath('classmate'));
         assert.equal(classmate.proactive, undefined);
@@ -348,11 +351,13 @@ describe('主动消息：她那边的事（ADR 0057）', () => {
 });
 
 describe('主动消息：随口说件自己的事（share，ADR 0096）', () => {
-    const withShare = (patch: Partial<ProactiveInput> = {}) => input({ settings: { ...boyfriend.proactive!, occasions: [...boyfriend.proactive!.occasions, 'share'] }, ...patch });
+    const withShare = cardInput;
+    const withoutShare = input;
     const share = (history: StoredMessage[], d = day(10, 12)) => find(candidatesOn(d, withShare({ history })), 'share');
 
-    test('卡上没写 share 就没有（线上现在的卡），写了才有', () => {
-        assert.equal(find(candidatesOn(day(10, 12), input({ history: [user(t(10, 12, 9)), her(t(10, 12, 9, 1))] })), 'share'), undefined);
+    test('男朋友档的卡写了 share（ADR 0096）；卡上没写（别的档、旧卡）就没有', () => {
+        assert.ok(boyfriend.proactive!.occasions.includes('share') && boyfriend.proactive!.dailyMax === 4);
+        assert.equal(find(candidatesOn(day(10, 12), withoutShare({ history: [user(t(10, 12, 9)), her(t(10, 12, 9, 1))] })), 'share'), undefined);
         assert.ok(share([user(t(10, 12, 9)), her(t(10, 12, 9, 1))]));
     });
 

@@ -22,7 +22,7 @@ let nextId = 1;
 const user = (time: number, content = '在吗'): StoredMessage => ({ time: new Date(time).toISOString(), role: 'user', content, messageId: nextId++ });
 const her = (time: number, content = '嗯'): StoredMessage => ({ time: new Date(time).toISOString(), role: 'assistant', content, messageId: nextId++ });
 const input = (patch: Partial<ProactiveInput> = {}): ProactiveInput => ({
-    qq: 10001, schedule, settings: boyfriend.proactive!, dates: boyfriend.dates, history: [], records: [], mode: 'on', ...patch,
+    qq: 10001, schedule, settings: { ...boyfriend.proactive!, occasions: boyfriend.proactive!.occasions.filter(o => o !== 'share'), dailyMax: 2 }, dates: boyfriend.dates, history: [], records: [], mode: 'on', ...patch,
 });
 const record = (id: string, at: number, result: ProactiveRecord['result'] = 'sent', extra: Partial<ProactiveRecord> = {}): ProactiveRecord => ({
     id, occasion: id.split(':')[1] as ProactiveRecord['occasion'], plannedAt: new Date(at).toISOString(), at: new Date(at).toISOString(), result, ...extra,

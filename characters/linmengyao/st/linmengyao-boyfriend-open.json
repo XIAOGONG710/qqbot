@@ -402,9 +402,10 @@
                         "dates",
                         "weather",
                         "news",
-                        "reschedule"
+                        "reschedule",
+                        "share"
                     ],
-                    "dailyMax": 2,
+                    "dailyMax": 4,
                     "unansweredMax": 1,
                     "newsKinds": [
                         "camera",

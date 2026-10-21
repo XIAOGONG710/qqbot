@@ -582,7 +582,9 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
             ],
         });
         try {
-            const result = await runScenario(scenario, { runId: 'test', dataDir: dir, card, llm, prompt, generate, settle: { quietMs: 50, maxMs: 200 } });
+            // 这条按 ADR 0011 的“每天 2 条、没有 share”写的；卡上现在多了 share、上限 4（ADR 0096）
+            const legacy = { ...card, character: { ...card.character, proactive: { ...card.character.proactive!, occasions: card.character.proactive!.occasions.filter(o => o !== 'share'), dailyMax: 2 } } };
+            const result = await runScenario(scenario, { runId: 'test', dataDir: dir, card: legacy, llm, prompt, generate, settle: { quietMs: 50, maxMs: 200 } });
             const failed = result.steps.flatMap(s => s.checks).filter(c => !c.ok).map(c => c.text);
             assert.deepEqual(failed, [], result.steps.flatMap(s => s.logs).filter(l => /主动|待跟进/.test(l)).join('\n'));
             assert.equal(extractions >= 1, true);
