@@ -108,6 +108,7 @@ export interface Config {
     bilibiliCommentKeywords: string[];
     shape: boolean;
     shapeAgenda: boolean;
+    shapeFiller: boolean;
     bilibiliAtName: string;
     bilibiliAtUid: number;
     reactions: boolean;
@@ -225,6 +226,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**形状控制**（ADR 0091）：按他这一轮说了多长，定她这一轮每条最多几个字、最多几条（字数档取自真人聊天：约四分之一是 4 字以内、过半 8 字以内），写进提示词；超了带说明重写一次，还超就在分句处截断。代替「更短的回复」那句软提示（模型不听，开着它每条气泡中位还是 16 字，真人 6–7）。他在难受、报大事、等安慰、问起她认识的人时只用长的几档；主动找他、收尾、他明着让她讲、危机回合不用。开着时「更短的回复」对适用的轮次不再起作用。默认关'),
         shapeAgenda: Schema.boolean().default(DEFAULTS.shapeAgenda)
             .description('**带自己的小事**（ADR 0094，要「形状控制」开着）：适用的轮次里约五分之一（不是收尾、不是认真接话、不是亲近、心情不安静），她答完他的话之后，从「你那边」的事实里挑一件自己的事顺带说一句，说完不问他；那里没有合适的就不说，不编。这一轮至少 14 字一条、至少 2 条。默认关'),
+        shapeFiller: Schema.boolean().default(DEFAULTS.shapeFiller)
+            .description('**废话**（ADR 0095，要「形状控制」开着）：真人聊天里有不带内容的话（哈哈哈、嗯嗯、啊啊啊、好困、无聊），她的线上回复几乎没有。开了以后，他的话短、不是问句、不在难受 / 撒娇 / 收尾的轮次里约 7% 她只回一条不超过 4 个字、不带内容的话；他用「～」或拖长音说话时，约六成的轮次她也跟着拖音。默认关'),
         bilibiliAtName: Schema.string().default(DEFAULTS.bilibiliAtName)
             .description('**要 @ 的人的 B 站昵称**（ADR 0089）：评论最前面会写 @昵称；不含 @ 和换行'),
         bilibiliAtUid: Schema.number().default(DEFAULTS.bilibiliAtUid)
@@ -390,6 +393,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.bilibiliCommentKeywords !== undefined ? { bilibiliCommentKeywords: config.bilibiliCommentKeywords } : {}),
         ...(config.shape !== undefined ? { shape: config.shape } : {}),
         ...(config.shapeAgenda !== undefined ? { shapeAgenda: config.shapeAgenda } : {}),
+        ...(config.shapeFiller !== undefined ? { shapeFiller: config.shapeFiller } : {}),
         ...(config.bilibiliAtName !== undefined ? { bilibiliAtName: config.bilibiliAtName } : {}),
         ...(config.bilibiliAtUid !== undefined ? { bilibiliAtUid: config.bilibiliAtUid } : {}),
         ...(config.reactions !== undefined ? { reactions: config.reactions } : {}),

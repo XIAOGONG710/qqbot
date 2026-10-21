@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { AGENDA_SHARE, describeShape, PLAIN_SHARE, planShape, shapeProblems, shapeReply, trimToShape, type ShapePlan } from '../src/shape.ts';
+import { AGENDA_SHARE, describeShape, FILLER_SHARE, STRETCH_SHARE, PLAIN_SHARE, planShape, shapeProblems, shapeReply, trimToShape, type ShapePlan } from '../src/shape.ts';
 
 /** 同一句话，靠时间区分每一次抽签（抽签的种子是时间加内容），字数不变 */
 const said = (i: number, text: string) => [{ role: 'user' as const, content: text, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
@@ -136,6 +136,69 @@ describe('形状控制：这一轮每条最多几个字、最多几条（ADR 009
         assert.ok(line.includes('先回他刚说的') && line.includes('你自己的事') && line.includes('「你那边」') && line.includes('「你的身体」') && line.includes('「你今天的心情」') && line.includes('更别编') && line.includes('不用问他'), line);
         assert.ok(!line.includes('顺着他说就行'), '带事的轮次不同时“顺着说”');
         assert.ok(!describeShape({ kind: 'medium', cap: 14, maxBubbles: 2 }).includes('你自己的事'));
+    });
+
+    // ADR 0095：真人聊天里有不带内容的话（整轮只有笑 / 语气词 / 应一声 / 叹状态：真人女生 5%、他本人 1.3%、她线上 0.5%）
+    test('废话（filler）：没开不抽；开了约 7%，只在他的话短、不是问句、意图行不拦着的轮次；这样的轮次只一条、不超过 4 个字', () => {
+        assert.ok(sample('在干嘛啊你', 600).every(plan => !plan.filler), '没开就一轮也没有');
+        const plans = sample('在干嘛', 2000, { filler: true });
+        const filler = plans.filter(plan => plan.filler);
+        assert.ok(Math.abs(filler.length / plans.length - FILLER_SHARE) < 0.02, `filler ${filler.length / plans.length}`);
+        assert.ok(filler.every(plan => plan.kind === 'micro' && plan.cap === 4 && plan.maxBubbles === 1 && !plan.plain && !plan.agenda));
+        // 其余轮次和不开时一模一样
+        const baseline = sample('在干嘛', 2000);
+        plans.forEach((plan, i) => { if (!plan.filler) assert.deepEqual(plan, baseline[i]); });
+        // 他发了一大段、问了问题：不抽
+        assert.ok(sample('今天下午我们去了图书馆然后发现没位置就去食堂坐了一会儿', 600, { filler: true }).every(plan => !plan.filler), '他说得长');
+        assert.ok(sample('你在干嘛呀？', 600, { filler: true }).every(plan => !plan.filler), '问句');
+        // 不适用的轮次一轮也没有：收尾、认真接话、亲近、心情安静、呜呜、意图行拦着的
+        for (const extra of [
+            { intent: '[这一轮你想：顺着他的话收尾，只回一两句]' },
+            { intent: '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够]' },
+            { intent: '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事]' },
+            { intent: '[这一轮你想：先直接回答他刚问的，不另起话题]' },
+            { aboutPerson: true },
+            { low: true },
+        ]) {
+            assert.ok(sample('在干嘛', 600, { filler: true, ...extra }).every(plan => !plan.filler), JSON.stringify(extra));
+        }
+        assert.ok(sample('呜呜呜', 400, { filler: true }).every(plan => !plan.filler), '呜呜');
+    });
+
+    test('废话那一行：定下是哪一种，只回一条、不超过 4 个字、什么都不带；状态那种要和此刻对得上；不问他、不顶嘴', () => {
+        const kinds = ['ack', 'laugh', 'drawl', 'state'] as const;
+        for (const kind of kinds) {
+            const line = describeShape({ kind: 'micro', cap: 4, maxBubbles: 1, filler: kind });
+            assert.ok(line.startsWith('[这一轮说话：只回一条，不超过 4 个字，') && line.endsWith(']'), line);
+            assert.ok(line.includes('别的什么都不说') && line.includes('不问他') && line.includes('不顶嘴'), line);
+            assert.ok(!line.includes('拖音说话'), '他没拖音就不提');
+        }
+        assert.ok(describeShape({ kind: 'micro', cap: 4, maxBubbles: 1, filler: 'state' }).includes('对得上'));
+        assert.ok(describeShape({ kind: 'micro', cap: 4, maxBubbles: 1, filler: 'laugh' }).includes('只笑一下'));
+        assert.ok(describeShape({ kind: 'micro', cap: 4, maxBubbles: 1, filler: 'ack' }).includes('只应一声'));
+        assert.ok(describeShape({ kind: 'micro', cap: 4, maxBubbles: 1, filler: 'drawl', stretch: true }).includes('他在用「～」或拖长音说话'));
+    });
+
+    test('四种废话都会抽到，占比大致是应声 35% / 笑 25% / 拖音 20% / 状态 20%', () => {
+        const filler = sample('在干嘛', 6000, { filler: true }).filter(plan => plan.filler);
+        assert.ok(filler.length > 300);
+        const share = (kind: string) => filler.filter(plan => plan.filler === kind).length / filler.length;
+        for (const [kind, want] of [['ack', 0.35], ['laugh', 0.25], ['drawl', 0.2], ['state', 0.2]] as const) assert.ok(Math.abs(share(kind) - want) < 0.07, `${kind} ${share(kind)}`);
+    });
+
+    test('他在拖音（～、啊啊啊）时她约六成的轮次也跟着拖；他没拖就不加；没开 filler 不加', () => {
+        const stretched = sample('说点什么呢～', 1500, { filler: true });
+        const share = stretched.filter(plan => plan.stretch).length / stretched.length;
+        assert.ok(Math.abs(share - STRETCH_SHARE) < 0.05, `stretch ${share}`);
+        assert.ok(sample('说点什么呢', 600, { filler: true }).every(plan => !plan.stretch), '他没拖');
+        assert.ok(sample('呜呜呜', 400, { filler: true }).every(plan => !plan.stretch), '呜呜是难受 / 撒娇，不是拖音');
+        assert.ok(sample('哈哈哈哈', 400, { filler: true }).every(plan => !plan.stretch), '哈哈是笑，不是拖音');
+        assert.ok(sample('啊啊啊好忙', 400, { filler: true }).some(plan => plan.stretch), '啊啊啊算拖音');
+        assert.ok(sample('说点什么呢～', 600).every(plan => !plan.stretch), '没开');
+        assert.ok(sample('啊啊啊好烦', 300, { filler: true, intent: '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够]' }).every(plan => !plan.stretch), '认真接话时不跟着拖');
+        const withNote = describeShape({ kind: 'short', cap: 8, maxBubbles: 1, plain: true, stretch: true });
+        assert.ok(withNote.includes('顺着他说就行') && withNote.includes('拖个音') && withNote.endsWith(']'), withNote);
+        assert.ok(!describeShape({ kind: 'short', cap: 8, maxBubbles: 1, plain: true }).includes('拖个音'));
     });
 
     test('提示词里的一行：给数字和方向，不给台词', () => {
