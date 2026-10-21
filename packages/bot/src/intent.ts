@@ -98,7 +98,19 @@ function isIntimateBid(history: readonly Said[]): boolean {
     return INTIMATE_BID.test(text) || DIRECT_AFFECTION.test(text) || MISSES_ME.test(text) || MISSES_HER.test(text);
 }
 
-const MEME_SHORTHAND = /(?:^|[^a-z])(?:zdjd|xswl|awsl|yyds|nsdd|u1s1|srds|dbq|gkd|zqsg|yygq|nbcs|bdjw)(?=$|[^a-z])/i;
+/**
+ * 他直接说爱你、喜欢你、想你（不是在问“你想不想我”这种能逗一逗的）：10-21 用户改写「爱你」的回复——她回「我也爱你呀，这么肉麻你也不嫌腻」，
+ * 用户的版本是「我也爱你，mua，抱抱」。这时直接温柔地回，不吐槽、不反问；抱抱、亲亲、想不想我这类要亲近的才保留一点嘴硬（ADR 0058）
+ */
+const TESTING_LOVE = /想不想我|有没有想我|爱不爱我|爱我吗|喜不喜欢我|喜欢我吗|没爱了|不爱我了|不要我了|不喜欢我了|是不是不爱我/;
+function isPlainAffection(history: readonly Said[]): boolean {
+    const text = latestUserText(history);
+    return (DIRECT_AFFECTION.test(text) || MISSES_HER.test(text)) && !MISSES_ME.test(text) && !TESTING_LOVE.test(text);
+}
+const BID_REPLY = '再自然地保留一点嘴硬；嘴硬不能是整轮唯一内容，也不把亲近当成交换条件';
+const AFFECTION_REPLY = '直接、温柔地回应他（我也爱你、我也想你、mua、抱抱这类，叠词也行），不吐槽他肉麻、不反问、不损他，也不把亲近当成交换条件';
+
+const MEME_SHORTHAND =/(?:^|[^a-z])(?:zdjd|xswl|awsl|yyds|nsdd|u1s1|srds|dbq|gkd|zqsg|yygq|nbcs|bdjw)(?=$|[^a-z])/i;
 const MEME_PHRASE = /尊嘟假嘟|绷不住|蚌埠住|我嘞个|不是哥们|闹麻了|已老实|求放过|补药|啊米诺斯|神金|丸辣|哈基米|典中典|寄了|包的|我先.{1,8}为敬|(?:^|\n)并非.{0,8}(?:$|\n)|老师.{0,12}死[\u4e00-\u9fff]{1,2}了|([\u4e00-\u9fff]{1,2})老师.{0,12}(?:累|笑|气|烦|困|饿|冷|热|吓)\1了/;
 function playfulHint(history: readonly Said[]): string | undefined {
     const text = latestUserText(history);
@@ -135,8 +147,20 @@ function sharesGoodNews(history: readonly Said[]): boolean {
 }
 
 function asksQuestion(history: readonly Said[]): boolean {
-    const text = latestUserText(history).trim();
+    // 句首的感叹（「什么，竟然不理我，我真要哭了」「怎么，你还不信」）不是在问：10-21 用户改写这一句——她被当成提问、回了「哭什么」，该先哄的
+    const text = latestUserText(history).trim().replace(/(^|\n)(?:什么|啥|怎么|我去|我靠|卧槽)[，,！!…]+/g, '$1');
     return !/^(?:在吗|在不在)[？?。！!\s]*$/.test(text) && QUESTION.test(text);
+}
+
+/**
+ * 他在逗她、拿她开玩笑（「别吃成芝麻酥那样，小心压穿地球」）：10-21 用户改写这一句——她回「说谁呢」，用户的版本是陪他玩（「芝麻酥不肥！恶语伤酥心～」）。
+ * 只认明确的逗法（胖、吃成、压穿、小猪、笨蛋……）；他说自己的（「我又胖了」）不算
+ */
+const TEASE = /胖(?:了|成|子)|吃成|压穿|压垮|小猪|猪猪|懒猪|笨蛋|傻瓜|小笨|蠢货|丑八怪|肥(?:了|婆|猪)/;
+const SELF_DEPRECATING = /我.{0,6}?(?:胖|肥|丑|懒|笨|蠢)/;
+function teasesHer(history: readonly Said[]): boolean {
+    const text = latestUserText(history);
+    return TEASE.test(text) && !SELF_DEPRECATING.test(text);
 }
 
 /** 对方此刻在递情绪，不拿她自己的生活进度把这句话顶掉。只认明确说法，不从普通短句猜心情。 */
@@ -198,7 +222,7 @@ export function describeIntent(context: IntentContext): string | undefined {
     if (context.grievance && !needsCare(context.history) && !asksForHer(context.history)
         && (context.grievance.stage === 'makeup' || !isEndingTurn(context.history))) return describeGrievance(context.grievance);
     // 「只接他刚说的你们两个人的事」这几个字让候选挑选（ADR 0041）和两条气泡的上限照亲密话算
-    if (context.intimate && isIntimateBid(context.history)) return '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事：先给一个明确的亲密回应，再自然地保留一点嘴硬；嘴硬不能是整轮唯一内容，也不把亲近当成交换条件。QQ 文字里的抱抱、亲一下和 mua 就是真的在抱、在亲，直接在这一轮用文字回抱回亲，让他收到你的回应；他说难受时先心疼他，他同时报了好消息时先替他高兴再接亲密话，他真要收尾时回应后顺着收尾，他不想你走时能陪就多陪一句]';
+    if (context.intimate && isIntimateBid(context.history)) return `[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事：先给一个明确的亲密回应，${isPlainAffection(context.history) ? AFFECTION_REPLY : BID_REPLY}。QQ 文字里的抱抱、亲一下和 mua 就是真的在抱、在亲，直接在这一轮用文字回抱回亲，让他收到你的回应；他说难受时先心疼他，他同时报了好消息时先替他高兴再接亲密话，他真要收尾时回应后顺着收尾，他不想你走时能陪就多陪一句]`;
     if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行，别一句话就把他打发了；他要睡就哄他睡，他不让你走就再陪他一会儿，不另起话题，也不用约他睡醒再找你]';
     const meme = context.playful ? playfulHint(context.history) : undefined;
     if (meme !== undefined) return `[这一轮你想：他在玩网络梗、缩写或谐音，先按最近的上下文理解笑点，顺着同一套逻辑接一句，再接他真正说的事；不把梗按字面纠正，不解释梗或报出处。他把固定说法里的一个词换掉时，回话保留那句被拧过的关键词或句式，别只按字面劝他去吃、睡或做事。接不准就用你自己的口气问一句，不装懂；可以夸张、反差或者故意一本正经，但一次只玩一个点，不堆热词${meme}；他真要收尾时接完梗就收尾]`;
@@ -206,13 +230,15 @@ export function describeIntent(context: IntentContext): string | undefined {
     if (context.intimate && asksForPhoto(context.history)) return '[这一轮你想：他想看照片。你手机能拍也能发，只是这次先不发：用你此刻真实的理由轻轻推一下（看你正在干嘛，或者嫌拍得不好看），再用一两句话把他想看的样子说给他听；他要的是你已经拍好的照片，就说说拍了什么、拍得怎么样；不答应等会儿或者回头再发]';
     if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句；不分享新进度，不说你接下来做什么，不另起话题，也不用约他忙完回来找你]';
     if (sharesGoodNews(context.history)) return '[这一轮你想：他刚说了件好事，先替他高兴、接住这件事；他顺口问的再顺口答，不另起话题]';
+    // 他在逗她（男朋友档）：陪他玩，别板着脸顶回去（10-21 用户改写：「说谁呢」→「芝麻酥不肥！恶语伤酥心～」）；他难过、要哄的时候已经在前面让路了
+    if (context.intimate && teasesHer(context.history)) return '[这一轮你想：他在逗你、拿你开玩笑，你陪他玩：装委屈、撒娇式不服、护着自己的东西，或者反过来逗他一句都行；别板着脸顶回去，不说“说谁呢”“不好笑”这类冷的]';
     // 她那边的事还没跟他说过（ADR 0057 调整）：放在「先回答」前面——他多半开口就问「在干嘛」，那一条的「不另起话题」会把这件压下去；他难过时先接情绪
     const news = context.news?.length && !needsCare(context.history) ? context.news : undefined;
     if (news) return `[这一轮你想：先回他刚说的；你今天${news.join('、')}，还没跟他说过，接着就说这件（看「你那边」那一行，没写的细节不编）]`;
     if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
-    if (needsCare(context.history)) return '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够；他认真难过、生病或很累时，第一句先安慰或问怎么了，不先损他；不转去讲你自己的事，不硬开新话题]';
+    if (needsCare(context.history)) return '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够；他认真难过、生病或很累时，第一句先安慰或问怎么了，不先损他；他是撒娇式的呜呜、要哭了，就直接哄（叠词哄：同一个词连说几遍，或者抱抱），别反问他哭什么；不转去讲你自己的事，不硬开新话题]';
     if (isRelationshipBid(context.history)) return '[这一轮你想：只接他刚说的你们两个人的事，一两句就够；不转去讲猫、书或手头的进度]';
-    if (saysOwnThing(context.history)) return '[这一轮你想：回应他刚说的那件事；真有想知道的细节再随口问，不必每次都追问]';
+    if (saysOwnThing(context.history)) return '[这一轮你想：回应他刚说的那件事；先对这件事本身有个反应（意外、羡慕、心疼、吐槽一句都行），别急着追问细节，真要问也只问一两个字]';
     if (!isOpeningPing(context.history)) return undefined;
     const waiting = context.waiting?.[0];
     if (waiting) return `[这一轮你想：知道「${waiting}」后来怎么样了，随口问一句；他不想说就算了，不追问]`;

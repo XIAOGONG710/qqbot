@@ -86,7 +86,7 @@ describe('形状控制：这一轮每条最多几个字、最多几条（ADR 009
         const close = sample('想你了', 300, { intent: '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事]' });
         assert.ok(close.every(plan => !plan.plain));
         const on = describeShape({ kind: 'short', cap: 8, maxBubbles: 1, plain: true });
-        assert.ok(on.includes('顺着他说就行') && on.includes('别反驳他、别损他、别嘴硬') && on.includes('别用反问句回他') && on.endsWith(']'), on);
+        assert.ok(on.includes('顺着他说就行') && on.includes('别反驳他、别损他、别嘴硬') && on.includes('别用反问句回他') && on.includes('网络缩写') && on.endsWith(']'), on);
         assert.ok(!describeShape({ kind: 'micro', cap: 4, maxBubbles: 1 }).includes('反问'), '极短的一档不再鼓励反问');
         assert.ok(!describeShape({ kind: 'short', cap: 8, maxBubbles: 1 }).includes('顺着他说'));
         assert.ok(describeShape({ kind: 'micro', cap: 4, maxBubbles: 1, plain: true }).includes('顺着他说就行'));

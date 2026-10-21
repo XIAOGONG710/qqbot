@@ -90,7 +90,7 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
 }
 
 /** 顺着说的那一句：给方向（应一声、附和、笑、接他的话、问一个字），不给台词 */
-const PLAIN_NOTE = '；这一轮顺着他说就行：应一声、附和、笑一下、接他的话都可以，别反驳他、别损他、别嘴硬，也别用反问句回他';
+const PLAIN_NOTE = '；这一轮顺着他说就行：应一声、附和、笑一下、接他的话都可以，别反驳他、别损他、别嘴硬，也别用反问句回他；他用了网络缩写（zdjd、xswl 这类）你也可以顺着用';
 
 /** 放进提示词的一行；不给台词，只给数字和方向 */
 export function describeShape(plan: ShapePlan): string {

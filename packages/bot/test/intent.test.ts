@@ -120,7 +120,7 @@ describe('这一轮你想（ADR 0019）', () => {
     });
 
     test('男朋友要亲近或确认感情：先明确回接，再嘴硬；优先于普通问句和收尾', () => {
-        for (const text of ['需要抱抱', '亲我一下行不行', '发个mua', '你想我吗', '爱不爱我', '没爱了', '不准睡，再陪我聊会儿', '喜欢你', '喜欢你❤️', '别走啊', '别走🥺']) {
+        for (const text of ['需要抱抱', '亲我一下行不行', '发个mua', '你想我吗', '爱不爱我', '没爱了', '不准睡，再陪我聊会儿', '别走啊', '别走🥺']) {
             const line = describeIntent({ history: [assistant('我去睡了，晚安'), user(text)], now, intimate: true })!;
             assert.match(line, /先给一个明确的亲密回应/, text);
             assert.match(line, /嘴硬不能是整轮唯一内容/, text);
@@ -129,6 +129,48 @@ describe('这一轮你想（ADR 0019）', () => {
             assert.match(line, /只接他刚说的你们两个人的事/, text);
             assert.doesNotMatch(line, /先直接回答|顺着他的话收尾/, text);
         }
+    });
+
+    test('他直接说爱你、喜欢你、想你：直接温柔地回应，不留嘴硬（10-21 用户改写：「这么肉麻你也不嫌腻」→「我也爱你，mua，抱抱」）；问“想不想我 / 爱不爱我”这类能逗一逗的才留嘴硬', () => {
+        for (const text of ['爱你', '喜欢你', '喜欢你❤️', '想你了，多说点～', '爱你，抱抱']) {
+            const line = describeIntent({ history: [assistant('我去睡了，晚安'), user(text)], now, intimate: true })!;
+            assert.match(line, /先给一个明确的亲密回应，直接、温柔地回应他/, text);
+            assert.match(line, /不吐槽他肉麻、不反问、不损他/, text);
+            assert.doesNotMatch(line, /保留一点嘴硬/, text);
+            assert.match(line, /只接他刚说的你们两个人的事/, text);
+            assert.match(line, /文字里的抱抱、亲一下和 mua 就是真的在抱、在亲/, text);
+        }
+        for (const text of ['你想我吗', '爱不爱我', '没爱了', '想我了没']) {
+            const line = describeIntent({ history: [user(text)], now, intimate: true })!;
+            assert.match(line, /再自然地保留一点嘴硬/, text);
+        }
+    });
+
+    test('句首的感叹（「什么，竟然不理我，我真要哭了」）不当成提问：先哄他，叠词哄、别反问哭什么（10-21 用户改写：「哭什么」→「不哭不哭」）', () => {
+        const line = describeIntent({ history: [assistant('忙着呢'), user('什么，竟然不理我，我真要哭了')], now })!;
+        assert.match(line, /先接住他此刻的情绪/);
+        assert.match(line, /叠词哄/);
+        assert.match(line, /别反问他哭什么/);
+        assert.match(describeIntent({ history: [user('什么时候下课？')], now })!, /先直接回答/, '真的在问还是照样直接回答');
+        assert.match(describeIntent({ history: [user('怎么办，我好难受')], now })!, /先直接回答|先接住/, '怎么办是真的在问');
+    });
+
+    test('他在逗她（男朋友档）：陪他玩，别板着脸顶回去；他说自己的、非男朋友档都不套', () => {
+        const history = [assistant('在吃呢'), user('别吃成芝麻酥那样，小心压穿地球')];
+        const line = describeIntent({ history, now, intimate: true })!;
+        assert.match(line, /他在逗你、拿你开玩笑，你陪他玩/);
+        assert.match(line, /不说“说谁呢”“不好笑”/);
+        assert.doesNotMatch(describeIntent({ history, now }) ?? '', /他在逗你/, '非男朋友档不套');
+        for (const text of ['我又胖了', '我最近好像胖了好多', '今天好累']) assert.doesNotMatch(describeIntent({ history: [user(text)], now, intimate: true }) ?? '', /他在逗你/, text);
+        // 他难过、要哄的时候让路
+        assert.doesNotMatch(describeIntent({ history: [user('哄我睡觉呗，你这个小猪')], now, intimate: true })!, /他在逗你/);
+    });
+
+    test('他说自己的事：先对这件事本身有个反应，别急着追问细节', () => {
+        const line = describeIntent({ history: [assistant('嗯'), user('我今天去看了个展')], now })!;
+        assert.match(line, /回应他刚说的那件事/);
+        assert.match(line, /先对这件事本身有个反应/);
+        assert.match(line, /别急着追问细节/);
     });
 
     test('亲密邀约只在男朋友档加强，词边界不误伤普通问句', () => {
