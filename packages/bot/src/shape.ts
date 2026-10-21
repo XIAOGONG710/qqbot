@@ -63,6 +63,11 @@ const FILLER_MAX_HIS = 12;
 const AGENDA_INTENT = /回应他刚说的那件事/;
 /** 他在撒娇 / 呜呜 / 哭的话（不一定被“难过”的意图行认出来，比如玩笑式的「呜呜呜」）：这时转头说自己的事很冷，10-21 第二次重放里「呜呜呜」后面挂「我刚下楼喂土豆来着」 */
 const EMOTIVE = /呜|嘤|哭/;
+/**
+ * 他在说倒霉事 / 难受的事（意图行不一定认得出：「悲，U盘坏了」第二次起的重放里她回「U盘坏了？里面的东西还读得出来不 / 我这边在捣鼓新相机」，他在难受她转头说自己的事）：
+ * 这时不带自己的事、不只回一个词。只管 agenda / filler 两个开关，宁可多排除
+ */
+const NEGATIVE = /悲(?![剧观壮])|惨|倒霉|坏了|丢了|摔了|挂科|没过|被骂|心情不好|不开心|失眠|难受|烦/;
 
 const BUCKETS: readonly { kind: ShapeKind; cap: number }[] = [
     { kind: 'micro', cap: 4 }, { kind: 'short', cap: 8 }, { kind: 'medium', cap: 14 }, { kind: 'long', cap: 24 }, { kind: 'wide', cap: 40 },
@@ -121,7 +126,7 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
         if (roll < acc) { rolled = i; break; }
     }
     // 意图行不拦着、他不在难受 / 撒娇 / 收尾：她可以带自己的事，也可以只回一条废话
-    const free = (!context.intent || AGENDA_INTENT.test(context.intent)) && !EMOTIVE.test(said) && !closing && !engaged && !intimate && !context.low;
+    const free = (!context.intent || AGENDA_INTENT.test(context.intent)) && !EMOTIVE.test(said) && !NEGATIVE.test(said) && !closing && !engaged && !intimate && !context.low;
     const stretch = Boolean(context.filler) && !closing && !engaged && STRETCHED.test(said) && unit(`${key} shape stretch`) < STRETCH_SHARE;
     // 废话轮次：他的话短、不是问句，她就只回一条几个字、不带内容的
     if (Boolean(context.filler) && free && his <= FILLER_MAX_HIS && !/[？?]/.test(said) && unit(`${key} shape filler`) < FILLER_SHARE) {
@@ -153,7 +158,7 @@ const AGENDA_NOTE = '；这一轮先回他刚说的，回完顺带说一句你�
  * 分成几条的那一句：真人多条回复多半是一个意思拆成几个小片段（反应 → 补一句想法 / 细节 / 一个小问题），不是把一句话硬断开。
  * 小问题是真想知道的（「哪个手指头啊」），不是反问；顺着说的轮次里“别用反问句”照旧
  */
-const splitNote = (parts: number) => `；这一轮分成 ${parts} 条发，一条一行：每条是一个小意思，不是把一句话硬断成两截——先一条反应，后面接一句补充（想法、细节，或者真想知道的问他一个小问题，不是反问）`;
+const splitNote = (parts: number) => `；这一轮分成 ${parts} 条发，一条一行：每条是一个小意思，不是把一句话硬断成两截——先一条反应或回答，后面接一句补充（想法、细节、理由；真有想知道的才问他一个小问题，不是反问，没有就别硬问）`;
 
 /** 他在拖音：给方向，不给台词 */
 const STRETCH_NOTE = '；他在用「～」或拖长音说话，你也可以拖个音（句尾加～、叠个字），别每句都拖';

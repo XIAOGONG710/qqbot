@@ -123,6 +123,10 @@ describe('形状控制：这一轮每条最多几个字、最多几条（ADR 009
         }
         // 他在呜呜 / 哭 / 嘤嘤：不转头说自己的事（玩笑式的呜呜呜也算，意图行不一定认得出）
         for (const text of ['呜呜呜', '呜呜你好狠', '嘤嘤嘤', '我想哭']) assert.ok(sample(text, 300, { agenda: true }).every(plan => !plan.agenda), text);
+        // 他在说倒霉事（意图行认不出来的）：不带自己的事、不只回一个词（第二次重放里「悲，U盘坏了」后面她挂了一句“我这边在捣鼓新相机”）
+        for (const text of ['悲，U盘坏了', '今天倒霉透了', '手机摔了', '这课惨啊', '失眠了']) {
+            assert.ok(sample(text, 300, { agenda: true, filler: true }).every(plan => !plan.agenda && !plan.filler), text);
+        }
         // 意图行不拦着的：没有意图行、或者「回应他刚说的那件事」，都照常抽
         for (const extra of [{}, { intent: '[这一轮你想：回应他刚说的那件事；先对这件事本身有个反应（意外、羡慕、心疼、吐槽一句都行），别急着追问细节，真要问也只问一两个字]' }]) {
             const some = sample('在干嘛啊你', 1000, { agenda: true, ...extra }).filter(plan => plan.agenda).length / 1000;
@@ -221,7 +225,7 @@ describe('形状控制：这一轮每条最多几个字、最多几条（ADR 009
     test('分成几条那一句：写明条数、一条一行、一个小意思；带自己的事的轮次条数写进计数、事的说法用自己的那句', () => {
         const line = describeShape({ kind: 'medium', cap: 14, maxBubbles: 2, parts: 2 });
         assert.ok(line.includes('每条不超过 14 个字，分成 2 条发') && !line.includes('最多 2 条'), line);
-        assert.ok(line.includes('一条一行') && line.includes('一个小意思') && line.includes('不是把一句话硬断成两截') && line.includes('不是反问'), line);
+        assert.ok(line.includes('一条一行') && line.includes('一个小意思') && line.includes('不是把一句话硬断成两截') && line.includes('不是反问') && line.includes('没有就别硬问'), line);
         assert.ok(describeShape({ kind: 'short', cap: 8, maxBubbles: 3, parts: 3 }).includes('分成 3 条发'));
         const agenda = describeShape({ kind: 'medium', cap: 14, maxBubbles: 2, parts: 2, agenda: true });
         assert.ok(agenda.includes('分成 2 条发') && agenda.includes('回完顺带说一句你自己的事') && !agenda.includes('一个小意思'), agenda);
