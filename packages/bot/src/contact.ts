@@ -26,7 +26,7 @@ import { crisisInHistory, type CrisisHit } from './crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from './grievance.ts';
 import { describeIntent } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
-import { describeLength, lengthHint, maybeTypo, RECALL_SHARE } from './expression.ts';
+import { describeLength, lengthHint, maybeTypo, RECALL_SHARE, recentCrutches } from './expression.ts';
 import { describeShape, planShape, shapeReply, type ShapePlan } from './shape.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
@@ -461,6 +461,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const low = mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false);
             // 形状控制开着：用具体的字数和条数代替「回短一点」的软提示；不适用的轮次（他明着让她讲、主动找他、收尾）照旧走 lengthHint
             shapeNow = options.shape && !crisisNow ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, split: options.shapeSplit }) : undefined;
+            // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
+            const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
+            const crutchLine = crutches.length
+                ? `[你这几条里反复在说「${crutches.join('」「')}」：这一轮别再用这几个字，换个反应——直接答、逗他、反问、认怂、生气都行]`
+                : undefined;
+            if (crutchLine) log(`最近反复说的字词：${crutches.join('、')}（提示词里让她换个反应）`);
             const length = crisisNow || shapeNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? '，带自己的事' : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
@@ -520,6 +526,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(intent ? [intent] : []),
                         ...(length ? [describeLength(length, options.shortReplies)] : []),
                         ...(shapeNow ? [describeShape(shapeNow)] : []),
+                        ...(crutchLine ? [crutchLine] : []),
                         ...(initiate ? [initiate.note] : []),
                     ].join('\n'),
                 ],

@@ -210,6 +210,36 @@ function busy(state: State | undefined, schedule: Schedule | undefined, now: Dat
     return Boolean(schedule && nearSleep(now, schedule.sleep));
 }
 
+// ───────── 10-22 深夜测试对话（用户：「她现在还是会有 AI 的味道」）量出来的三处 ─────────
+// ① 被指出“不像真人 / 重复 / 敷衍”时她辩解、解释原因（「哪有老重复，是困得话都说不利索了」「我没敷衍」「我说的算数」「不是设定」），114 条里 5% 是这类自证，真人样本 0；
+// ② 被问很大很抽象的问题（谈恋爱是什么样子、喜欢我什么、伤心什么感觉）时答成金句体（「就两个人待着不用装，他不在会惦记，见了就想多待会儿」「喜欢你嘴硬，其实心不硬」）；
+// ③ 被连着追问一个答案时原地打转：一段里 12 条气泡 9 条是“太急 / 太突然 / 困 / 明天说”的不同说法。
+/** 他在说她的话不像真人、重复、敷衍（问她是不是 AI / 真人是另一回事，走身份那一路，不在这里） */
+const REALNESS_CHALLENGE = /(?:跟|像|很像|好像|太像)(?:是)?(?:ai|AI|Ai|机器人|程序|稿子|客服)(?:似的|一样)?|活人感|真人(?:不会|哪有|才不|不这么|不是这样)|(?:老是|总是|又在|一直)重复|重复(?:一件|同一|了)|敷衍|模棱两可|你总是这样/;
+const AI_IDENTITY_QUESTION = /是不是.{0,6}(?:ai|AI|Ai|机器人|程序|真人)|是.{0,3}(?:ai|AI|Ai|机器人|程序)吗|是真人吗/;
+function challengesRealness(history: readonly Said[]): boolean {
+    const text = latestUserText(history);
+    return REALNESS_CHALLENGE.test(text) && !AI_IDENTITY_QUESTION.test(text);
+}
+
+/** 他在问一个很大、很抽象的问题（要她“真正的想法 / 感觉”） */
+const ABSTRACT_ASK = /谈恋爱.{0,8}(?:什么|样子|怎样)|喜欢我什么|为什么喜欢|(?:真实|真正|真心)(?:的)?(?:想法|话|感觉)|伤心是什么|是什么感觉|什么样(?:子)?的人|怎么看(?:待)?(?:爱情|感情|我们)|爱情是什么|理想型/;
+
+/** 他在追她要一个答案 */
+const PRESSING = /回答我|不要回避|别回避|到底|愿不愿意|愿意吗|接受或|同意吗|真实想法|真正的想法|给我.{0,2}(?:答案|回答)|为什么不能是现在|别想.{0,6}(?:第一|直接)/;
+/** 她前面几条在往后推（困、明天说、太急、太突然……） */
+const DEFERRING = /明天|改天|以后|太急|太快|太突然|这么急|这么突然|困|现在不|脑子.{0,3}(?:转不动|不清楚|懵)|再说|再想想|我要想想/;
+/** 他在追答案，她最近 6 条气泡里至少有 3 条在往后推：原来会接着换个说法再推一轮 */
+function pressedAfterStalling(history: readonly Said[]): boolean {
+    if (!PRESSING.test(latestUserText(history))) return false;
+    const hers = history.filter(message => message.role === 'assistant').slice(-6);
+    return hers.filter(message => DEFERRING.test(message.content)).length >= 3;
+}
+
+export const CHALLENGE_INTENT = '[这一轮你想：他在说你的话不像真人、重复或者敷衍。别替自己辩解，也别解释原因（不说「我是因为困」「我没敷衍」「我说的算数」「不是设定」这类自证）；像真人被说中了那样：嗔一句、笑着认个怂、反呛他一句，或者撒个娇带过，一两句就够，别去分析自己说话的毛病]';
+export const ABSTRACT_INTENT = '[这一轮你想：他在问一个很大、很抽象的问题。别总结成一句漂亮的话（不要排比、对仗、「不是…而是…」、「其实」）；说一件具体的小事、一个画面，或者坦白说不太清楚再补半句，也可以反问他一句；说得零散一点没关系，别说得像写好的]';
+export const STALL_INTENT = '[这一轮你想：他在追你要一个答案，你前面已经推了好几次了。别再用同样的理由往后推（困、明天说、太急、太突然这些你已经说过了）：现在就给一个态度，哪怕不完整——答应、半答应带点害羞，或者明说你在怕什么，用你自己的话，一两句]';
+
 /**
  * 时间块里的一行；没有当下线索就不返回。顺序与 ADR 0019 的决策表一致，ADR 0023 插了两类「在等的」：
  * 等他说结果的事排在他说自己的事之前（最自然的开口），她问了他没答的排在她答应的事之后。两类都只表达期待（作者裁决二·3），不写介意。
@@ -228,6 +258,10 @@ export function describeIntent(context: IntentContext): string | undefined {
     if (meme !== undefined) return `[这一轮你想：他在玩网络梗、缩写或谐音，先按最近的上下文理解笑点，顺着同一套逻辑接一句，再接他真正说的事；不把梗按字面纠正，不解释梗或报出处。他把固定说法里的一个词换掉时，回话保留那句被拧过的关键词或句式，别只按字面劝他去吃、睡或做事。接不准就用你自己的口气问一句，不装懂；可以夸张、反差或者故意一本正经，但一次只玩一个点，不堆热词${meme}；他真要收尾时接完梗就收尾]`;
     // 和亲密意图同一个开关（男朋友档）；同学档要照片有世界书「要照片」管
     if (context.intimate && asksForPhoto(context.history)) return '[这一轮你想：他想看照片。你手机能拍也能发，只是这次先不发：用你此刻真实的理由轻轻推一下（看你正在干嘛，或者嫌拍得不好看），再用一两句话把他想看的样子说给他听；他要的是你已经拍好的照片，就说说拍了什么、拍得怎么样；不答应等会儿或者回头再发]';
+    // 10-22：被追问答案时别原地打转 / 被指出不像真人时别自证 / 很抽象的问题别答成金句（在亲密邀约、逗她之后，收尾、好事、回答问题之前）
+    if (pressedAfterStalling(context.history)) return STALL_INTENT;
+    if (challengesRealness(context.history)) return CHALLENGE_INTENT;
+    if (ABSTRACT_ASK.test(latestUserText(context.history))) return ABSTRACT_INTENT;
     if (isEndingTurn(context.history)) return '[这一轮你想：顺着他的话收尾，只回一两句；不分享新进度，不说你接下来做什么，不另起话题，也不用约他忙完回来找你]';
     if (sharesGoodNews(context.history)) return '[这一轮你想：他刚说了件好事，先替他高兴、接住这件事；他顺口问的再顺口答，不另起话题]';
     // 他在逗她（男朋友档）：陪他玩，别板着脸顶回去（10-21 用户改写：「说谁呢」→「芝麻酥不肥！恶语伤酥心～」）；他难过、要哄的时候已经在前面让路了

@@ -62,6 +62,35 @@ export const ASKS_TO_EXPLAIN = /讲讲|讲一下|详细|认真(?:说|讲|跟我�
 /** 他这次说的不到这么多字，不加「话多一点」 */
 export const LONG_MIN_CHARS = 8;
 
+/**
+ * 她最近几条里反复在说的字词（10-22 深夜测试对话：被追问时一段里 12 条气泡 9 条是“太急 / 太突然 / 困 / 明天说”；肚子坠着说了三个晚上）。
+ * 最近 8 条气泡里至少 3 条出现的两字词、或至少 4 条出现的单字（去掉虚字、称呼、笑声），最多 4 个；不够 4 条气泡不算
+ */
+const CRUTCH_STOP = new Set([...'的了我你是不吗呢啊吧就也都在有这那么什好点一个没还会要说想去看到能和跟让给把被对为以及但可很真又再先后来过着起得别它他她们']);
+const CRUTCH_SKIP = /宝宝|哈哈|抱抱|晚安|早安|嘿嘿|[mM]ua|睡觉|知道|可以|时候|现在|今天|不是|没有|就是|一下|什么|怎么|还是|已经|觉得|不会|不用|这么|那么|所以|因为|但是|然后/;
+export function recentCrutches(history: LengthContext['history']): string[] {
+    const mine = history.filter(message => message.role === 'assistant').slice(-8).map(message => message.content.replace(/\[[^\]]{1,12}\]/g, ''));
+    if (mine.length < 4) return [];
+    const pairs = new Map<string, number>();
+    const singles = new Map<string, number>();
+    for (const text of mine) {
+        const chars = [...text.replace(/[\s\p{P}\p{S}]/gu, '')];
+        const seenPairs = new Set<string>();
+        const seenSingles = new Set<string>();
+        chars.forEach((char, i) => {
+            if (CRUTCH_STOP.has(char)) return;
+            seenSingles.add(char);
+            const next = chars[i + 1];
+            if (next !== undefined && !CRUTCH_STOP.has(next)) seenPairs.add(char + next);
+        });
+        for (const p of seenPairs) pairs.set(p, (pairs.get(p) ?? 0) + 1);
+        for (const c of seenSingles) singles.set(c, (singles.get(c) ?? 0) + 1);
+    }
+    const words = [...pairs].filter(([word, n]) => n >= 3 && !CRUTCH_SKIP.test(word)).sort((a, b) => b[1] - a[1]).map(([word]) => word);
+    const chars = [...singles].filter(([char, n]) => n >= 4 && !words.some(word => word.includes(char)) && !CRUTCH_SKIP.test(char)).sort((a, b) => b[1] - a[1]).map(([char]) => char);
+    return [...words, ...chars].slice(0, 4);
+}
+
 export function saidSinceReply(history: LengthContext['history']): string {
     const lastReply = history.findLastIndex(message => message.role === 'assistant');
     return history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content).join('');
