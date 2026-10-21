@@ -14,7 +14,7 @@
 | `counterexamples.md` | 每类 2 条最典型的 |
 | `samples-b1.jsonl` | **K3 第一批（试采）**：5 段，`rc-b1-001`..`rc-b1-005`，字段与 `samples.jsonl` 一致，另带 `stats_scope` |
 | `samples-b2.jsonl` | **K3 第二批**：4 段，`rc-b2-001`..`rc-b2-004`（用「登录态副本」跑的那轮；`rc-b2-003` 是 `persona_fit: high`） |
-| `samples-b3.jsonl` | **K3 第三批（最后一批）**：4 段，`rc-b3-001`..`rc-b3-004`（闺蜜 / 吵架 / 室友三格；`rc-b3-002` 进主统计且 `persona_fit: high`） |
+| `samples-b3.jsonl` | **K3 第三批（最后一批）**：**3 段**，`rc-b3-001`..`rc-b3-003`（朋友误发 / 吵架 / 闺蜜；`rc-b3-002` 进主统计且 `persona_fit: high`）。**原 4 段，10-15 按 Claude 复核删掉 `rc-b3-004`**（合租室友那段属性暗示，且只是 `staged_only` 不进统计） |
 | `batch1.md` / `batch2.md` / `batch3.md` | 三批说明：怎么采、抄录脱敏、没收的、本批段落、流水线的坑；`batch3.md` 还写了「几个格子补不上的原因」 |
 | `user-browse-route.md` | 路线 1（用户自己翻、我只读本机数据）给用户看的一页：搜索词、缓存路径、另存文件夹 |
 | `annotate.py` | K1 生成脚本：读 `../samples.jsonl`、`../closing-turns.jsonl`，写本目录两个 jsonl |
@@ -40,6 +40,7 @@
 | `persona_fit` | 顶层 | `{level: high/mid/low, why}`；对照 `characters/linmengyao/source/persona.yml`——**像不像她**，不是像不像真人。`her` 未知的样本记 `n/a` |
 | `stats_scope` | 顶层 | `in`（进所有统计）/ `overall_only`（只进总体，不进按关系的表）/ `excluded`（不进任何统计）；可选 `stats_scope_why` |
 | `staged` | 顶层 | 照旧；`closing-turns` 原来写字符串 `yes/no`，v2 统一成布尔，原值位置记在 `staged_note` |
+| `staged_guess` | 顶层（可选，10-15 新增） | `unlikely` / `possible` / `likely`——**界面是原生截图**但**台词像设计过的段子**时用 `possible`，与 `staged` 布尔不冲突（`staged: false` 表示没有生成痕迹）。见 `batch3.md`：`rc-b3-001`、`rc-b3-003` 都是 `possible` |
 
 **主键统一成 `id`**（复核第 1 条）：`closing-turns.jsonl` 原来叫 `key`，v2 起没有 `key` 字段。
 
