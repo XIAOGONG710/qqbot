@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { describeShape, PLAIN_SHARE, planShape, shapeProblems, shapeReply, trimToShape, type ShapePlan } from '../src/shape.ts';
+import { AGENDA_SHARE, describeShape, PLAIN_SHARE, planShape, shapeProblems, shapeReply, trimToShape, type ShapePlan } from '../src/shape.ts';
 
 /** 同一句话，靠时间区分每一次抽签（抽签的种子是时间加内容），字数不变 */
 const said = (i: number, text: string) => [{ role: 'user' as const, content: text, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
@@ -91,6 +91,51 @@ describe('形状控制：这一轮每条最多几个字、最多几条（ADR 009
         assert.ok(!describeShape({ kind: 'short', cap: 8, maxBubbles: 1 }).includes('顺着他说'));
         assert.ok(describeShape({ kind: 'micro', cap: 4, maxBubbles: 1, plain: true }).includes('顺着他说就行'));
         assert.ok(!/[「“"]/.test(on), '不举例句');
+    });
+
+    // ADR 0094：真人女生一侧 30% 的轮次带自己的事，她在形状控制下只剩 12–15%
+    test('带自己的事（agenda）：没开不抽；开了约四分之一，只在意图行不拦着的轮次，这样的轮次至少 medium、至少 2 条、不再“顺着说”', () => {
+        assert.ok(sample('在干嘛啊你', 600).every(plan => !plan.agenda), '没开就一轮也没有');
+        const plans = sample('在干嘛啊你', 1500, { agenda: true });
+        const withAgenda = plans.filter(plan => plan.agenda);
+        assert.ok(Math.abs(withAgenda.length / plans.length - AGENDA_SHARE) < 0.04, `agenda ${withAgenda.length / plans.length}`);
+        assert.ok(withAgenda.every(plan => plan.cap >= 14 && plan.maxBubbles >= 2 && !plan.plain), JSON.stringify(withAgenda.find(plan => plan.cap < 14 || plan.maxBubbles < 2 || plan.plain)));
+        // 其余的轮次和不开的时候一模一样（同一个种子，别的抽签不动）
+        const baseline = sample('在干嘛啊你', 1500);
+        plans.forEach((plan, i) => { if (!plan.agenda) assert.deepEqual(plan, baseline[i]); });
+        // 不适用的轮次一轮也没有：收尾、认真接话（难受 / 好事 / 问起她认识的人）、亲近 / 撒娇、心情安静
+        for (const extra of [
+            { intent: '[这一轮你想：顺着他的话收尾，只回一两句]' },
+            { intent: '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够]' },
+            { intent: '[这一轮你想：他刚说了件好事，替他高兴]' },
+            { intent: '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事]' },
+            { aboutPerson: true },
+            { low: true },
+            { initiating: true },
+            // 这些意图行明着不让另起话题 / 转去讲自己（或者本来就让她接着说她那边的事）：加一句自己的事会和它打架
+            { intent: '[这一轮你想：先直接回答他刚问的，不另起话题]' },
+            { intent: '[这一轮你想：先把上面你答应的那件事说了，不另起话题]' },
+            { intent: '[这一轮你想：回两句就去忙，不铺开新话题]' },
+            { intent: '[这一轮你想：只接他刚说的你们两个人的事，一两句就够；不转去讲猫、书或手头的进度]' },
+            { intent: '[这一轮你想：先回他刚说的；你今天买到了相机，还没跟他说过，接着就说这件（看「你那边」那一行，没写的细节不编）]' },
+        ]) {
+            assert.ok(sample('在干嘛啊你', 400, { agenda: true, ...extra }).every(plan => !plan?.agenda), JSON.stringify(extra));
+        }
+        // 他在呜呜 / 哭 / 嘤嘤：不转头说自己的事（玩笑式的呜呜呜也算，意图行不一定认得出）
+        for (const text of ['呜呜呜', '呜呜你好狠', '嘤嘤嘤', '我想哭']) assert.ok(sample(text, 300, { agenda: true }).every(plan => !plan.agenda), text);
+        // 意图行不拦着的：没有意图行、或者「回应他刚说的那件事」，都照常抽
+        for (const extra of [{}, { intent: '[这一轮你想：回应他刚说的那件事；先对这件事本身有个反应（意外、羡慕、心疼、吐槽一句都行），别急着追问细节，真要问也只问一两个字]' }]) {
+            const some = sample('在干嘛啊你', 1000, { agenda: true, ...extra }).filter(plan => plan.agenda).length / 1000;
+            assert.ok(Math.abs(some - AGENDA_SHARE) < 0.05, JSON.stringify(extra) + ' ' + some);
+        }
+    });
+
+    test('带自己的事的那一行：先回他的话，只从她那边已有的事实 / 身体 / 心情里挑，没有合适的就不说、不编，说完不问他', () => {
+        const line = describeShape({ kind: 'medium', cap: 14, maxBubbles: 2, agenda: true });
+        assert.ok(line.startsWith('[这一轮说话：') && line.endsWith(']'), line);
+        assert.ok(line.includes('先回他刚说的') && line.includes('你自己的事') && line.includes('「你那边」') && line.includes('「你的身体」') && line.includes('「你今天的心情」') && line.includes('更别编') && line.includes('不用问他'), line);
+        assert.ok(!line.includes('顺着他说就行'), '带事的轮次不同时“顺着说”');
+        assert.ok(!describeShape({ kind: 'medium', cap: 14, maxBubbles: 2 }).includes('你自己的事'));
     });
 
     test('提示词里的一行：给数字和方向，不给台词', () => {

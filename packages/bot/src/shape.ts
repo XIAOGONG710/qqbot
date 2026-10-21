@@ -17,6 +17,8 @@ export interface ShapePlan {
     maxBubbles: number;
     /** 这一轮顺着他说，不驳他、不损他、不嘴硬（亲近的轮次除外：那条意图行里本来就有“再自然地保留一点嘴硬”） */
     plain?: boolean;
+    /** 这一轮答完他的话之后，顺带说一件她自己今天的小事（配置 shapeAgenda）；这样的轮次至少 medium、至少 2 条，不再“顺着说” */
+    agenda?: boolean;
 }
 
 /**
@@ -24,6 +26,22 @@ export interface ShapePlan {
  * 回一两个字的只有真人的一半、带笑的更少——短被“嘴硬”填满了。真人的短回复更多是应一声、附和、笑一下、问一个字
  */
 export const PLAIN_SHARE = 0.7;
+
+/**
+ * 带自己的小事的轮次占比（只在适用的轮次里算：不是收尾、不是认真接话、不是亲近、不是心情安静）。10-21 用同一把尺子量真人女生一侧：
+ * 30% 的轮次里她会带上和他刚说的话无关的、自己的事；她的回复在旧代码是 19%，开了形状控制后降到 12–15%（压短时顺带压掉了“补一句自己的事”）。
+ * 取 0.25，不是 0.3：她的“自己的事”只能从她那边已有的事实 / 心情 / 身体里挑（不编），连着说同一件事会像复读。
+ * 10-21 第一次重放（0.2，没限意图）：带事的轮次里 89% 真说了一件她那边的事、只有 6% 带问号，但自带议程只从 15% 涨到 19%，而且他问了问题时
+ * （意图行写着「不另起话题」）后面挂一句「刚喂了土豆」很生硬——真人的自带议程在他问问题时只有 17%、不问时 34%，所以只在意图行不拦着的轮次里加
+ */
+export const AGENDA_SHARE = 0.25;
+/**
+ * 意图行不拦着她说自己的事的轮次：没有意图行，或者「回应他刚说的那件事」。别的意图行都明着不让另起话题 / 转去讲自己（回答问题、他的好事、答应的事、
+ * 忙着、两个人的事、她那边的事还没说过——那条本来就让她接着说），加上去会和意图行打架
+ */
+const AGENDA_INTENT = /回应他刚说的那件事/;
+/** 他在撒娇 / 呜呜 / 哭的话（不一定被“难过”的意图行认出来，比如玩笑式的「呜呜呜」）：这时转头说自己的事很冷，10-21 第二次重放里「呜呜呜」后面挂「我刚下楼喂土豆来着」 */
+const EMOTIVE = /呜|嘤|哭/;
 
 const BUCKETS: readonly { kind: ShapeKind; cap: number }[] = [
     { kind: 'micro', cap: 4 }, { kind: 'short', cap: 8 }, { kind: 'medium', cap: 14 }, { kind: 'long', cap: 24 }, { kind: 'wide', cap: 40 },
@@ -54,7 +72,7 @@ const CLOSING_INTENT = /顺着他的话收尾/;
 /** 收尾的轮次：真人这时就是一两个字（晚安、好哒、嗯嗯） */
 const CLOSING_WEIGHTS = [0.4, 0.4, 0.15, 0.05, 0] as const;
 
-export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'>;
+export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'> & { agenda?: boolean };
 
 const chars = (text: string) => [...text.replace(/\[[^\]]{1,6}\]/g, '#')].length;
 
@@ -76,25 +94,31 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     const key = `${last.time ?? ''} ${last.content}`;
     const roll = unit(`${key} shape`) * total;
     let acc = 0;
-    let index = weights.length - 1;
+    let rolled = weights.length - 1;
     for (const [i, weight] of weights.entries()) {
         acc += weight;
-        if (roll < acc) { index = i; break; }
+        if (roll < acc) { rolled = i; break; }
     }
-    const bucket = BUCKETS[index]!;
+    const agenda = Boolean(context.agenda) && (!context.intent || AGENDA_INTENT.test(context.intent)) && !EMOTIVE.test(said) && !closing && !engaged && !intimate && !context.low && unit(`${key} shape agenda`) < AGENDA_SHARE;
+    // 带自己的事的轮次至少 medium：两三个字的档装不下“回完他的话再说一件自己的事”
+    const bucket = BUCKETS[agenda ? Math.max(rolled, 2) : rolled]!;
     const countRoll = unit(`${key} shape count`);
     // 一轮几条：真人 1 条 51–65%、2 条 22–28%、3 条以上约 15–20%；极短的一档多半只发一条
-    const maxBubbles = closing ? (countRoll < 0.7 ? 1 : 2) : bucket.kind === 'micro' ? (countRoll < 0.8 ? 1 : 2) : countRoll < 0.55 ? 1 : countRoll < 0.83 ? 2 : 3;
-    const plain = !intimate && unit(`${key} shape plain`) < PLAIN_SHARE;
-    return { kind: bucket.kind, cap: bucket.cap, maxBubbles, ...(plain ? { plain: true } : {}) };
+    const rolledBubbles = closing ? (countRoll < 0.7 ? 1 : 2) : bucket.kind === 'micro' ? (countRoll < 0.8 ? 1 : 2) : countRoll < 0.55 ? 1 : countRoll < 0.83 ? 2 : 3;
+    const maxBubbles = agenda ? Math.max(2, rolledBubbles) : rolledBubbles;
+    const plain = !agenda && !intimate && unit(`${key} shape plain`) < PLAIN_SHARE;
+    return { kind: bucket.kind, cap: bucket.cap, maxBubbles, ...(plain ? { plain: true } : {}), ...(agenda ? { agenda: true } : {}) };
 }
 
 /** 顺着说的那一句：给方向（应一声、附和、笑、接他的话、问一个字），不给台词 */
 const PLAIN_NOTE = '；这一轮顺着他说就行：应一声、附和、笑一下、接他的话都可以，别反驳他、别损他、别嘴硬，也别用反问句回他；他用了网络缩写（zdjd、xswl 这类）你也可以顺着用';
 
+/** 带自己的事的那一句：事实只能从她那边已有的事实 / 身体 / 心情里挑，没有合适的就不说；不给台词，也不让她拿这件事去问他 */
+const AGENDA_NOTE = '；这一轮先回他刚说的，回完顺带说一句你自己的事：从「你那边」「你的身体」「你今天的心情」里挑一件他还不知道的（不是你正在做的那件事，他早知道了；前面说过的也别再说），事，或者此刻的感受：累、困、饿、烦、开心都行，随口说，像突然想起来的，不用接得很圆，也不用每次都从「刚」开头；那里没有合适的就别说，更别编；说完不用问他，也别用反问句';
+
 /** 放进提示词的一行；不给台词，只给数字和方向 */
 export function describeShape(plan: ShapePlan): string {
-    const plain = plan.plain ? PLAIN_NOTE : '';
+    const plain = plan.agenda ? AGENDA_NOTE : plan.plain ? PLAIN_NOTE : '';
     if (plan.kind === 'micro') {
         return `[这一轮说话：${plan.maxBubbles === 1 ? '只回一条' : `最多 ${plan.maxBubbles} 条`}，每条不超过 ${plan.cap} 个字——语气词、单个词都可以，不用凑成完整的句子；不展开，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说${plain}]`;
     }

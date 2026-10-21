@@ -151,6 +151,8 @@ export interface ContactPipelineOptions {
     shortReplies?: boolean;
     /** 形状控制（配置 shape）：按他这一轮的长短定她每条最多几个字、最多几条，超了重写 / 截断；开了就不用 shortReplies 的软提示（ADR 0091） */
     shape?: boolean;
+    /** 带自己的小事（配置 shapeAgenda，要 shape 开着）：适用的轮次里约五分之一，答完他的话再从“你那边”里挑一件自己的事说一句（ADR 0094） */
+    shapeAgenda?: boolean;
     /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
     grievance?: boolean;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
@@ -454,10 +456,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
             const low = mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false);
             // 形状控制开着：用具体的字数和条数代替「回短一点」的软提示；不适用的轮次（他明着让她讲、主动找他、收尾）照旧走 lengthHint
-            shapeNow = options.shape && !crisisNow ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0 }) : undefined;
+            shapeNow = options.shape && !crisisNow ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda }) : undefined;
             const length = crisisNow || shapeNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
-            if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}）`);
+            if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? '，带自己的事' : ''}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
             // ADR 0043（配置 contextTurns，默认关）：最近几轮原文 + 更早的要点，代替最近 80 条

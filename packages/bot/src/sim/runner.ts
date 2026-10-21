@@ -79,6 +79,8 @@ export interface RunOptions {
     candidates?: number;
     /** 形状控制（ADR 0091）：run.ts 的 --shape 对所有场景打开 */
     shape?: boolean;
+    /** 带自己的小事（ADR 0094）：run.ts 的 --agenda 对所有场景打开，同时打开 shape */
+    shapeAgenda?: boolean;
     /** 日记里的世界（ADR 0026）：同学档的卡上的，run.ts 传 */
     diaryWorld?: World;
     /** 和 diaryWorld 同一档的作息（ADR 0034） */
@@ -374,7 +376,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.grievance ? { grievance: true } : {}),
         ...(scenario.rhythm ? { rhythm: true } : {}),
         ...(scenario.shortReplies ? { shortReplies: true } : {}),
-        ...(scenario.shape || options.shape ? { shape: true } : {}),
+        ...(scenario.shape || options.shape || scenario.shapeAgenda || options.shapeAgenda ? { shape: true } : {}),
+        ...(scenario.shapeAgenda || options.shapeAgenda ? { shapeAgenda: true } : {}),
         ...(stickers ? { stickers } : {}),
         ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),
         contacts: [contact, ...others],

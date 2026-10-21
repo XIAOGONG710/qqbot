@@ -107,6 +107,7 @@ export interface Config {
     bilibiliReplies: PresenceMode;
     bilibiliCommentKeywords: string[];
     shape: boolean;
+    shapeAgenda: boolean;
     bilibiliAtName: string;
     bilibiliAtUid: number;
     reactions: boolean;
@@ -222,6 +223,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**评论的话题关键词**（ADR 0092）：填了，评论就不再跟着分享走，而是她自己每天按其中一个关键词搜视频（比如「大肥鱼 插件」「DSH 插件」「deepseek harness」），在播放多的前几个里挑一个，读字幕和热评后评论并 @ 他。不看分区，所以 AI 视频、DSH 插件视频搜得到；约一半的日子想评论一次，仍受「隔至少一天、一周最多 3 条」管。前期专评 AI 视频和 DSH 插件视频用。不填就是老样子（分享之后在那个视频下评论）。最多 10 个，每个不超过 30 个字'),
         shape: Schema.boolean().default(DEFAULTS.shape)
             .description('**形状控制**（ADR 0091）：按他这一轮说了多长，定她这一轮每条最多几个字、最多几条（字数档取自真人聊天：约四分之一是 4 字以内、过半 8 字以内），写进提示词；超了带说明重写一次，还超就在分句处截断。代替「更短的回复」那句软提示（模型不听，开着它每条气泡中位还是 16 字，真人 6–7）。他在难受、报大事、等安慰、问起她认识的人时只用长的几档；主动找他、收尾、他明着让她讲、危机回合不用。开着时「更短的回复」对适用的轮次不再起作用。默认关'),
+        shapeAgenda: Schema.boolean().default(DEFAULTS.shapeAgenda)
+            .description('**带自己的小事**（ADR 0094，要「形状控制」开着）：适用的轮次里约五分之一（不是收尾、不是认真接话、不是亲近、心情不安静），她答完他的话之后，从「你那边」的事实里挑一件自己的事顺带说一句，说完不问他；那里没有合适的就不说，不编。这一轮至少 14 字一条、至少 2 条。默认关'),
         bilibiliAtName: Schema.string().default(DEFAULTS.bilibiliAtName)
             .description('**要 @ 的人的 B 站昵称**（ADR 0089）：评论最前面会写 @昵称；不含 @ 和换行'),
         bilibiliAtUid: Schema.number().default(DEFAULTS.bilibiliAtUid)
@@ -386,6 +389,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.bilibiliReplies !== undefined ? { bilibiliReplies: config.bilibiliReplies } : {}),
         ...(config.bilibiliCommentKeywords !== undefined ? { bilibiliCommentKeywords: config.bilibiliCommentKeywords } : {}),
         ...(config.shape !== undefined ? { shape: config.shape } : {}),
+        ...(config.shapeAgenda !== undefined ? { shapeAgenda: config.shapeAgenda } : {}),
         ...(config.bilibiliAtName !== undefined ? { bilibiliAtName: config.bilibiliAtName } : {}),
         ...(config.bilibiliAtUid !== undefined ? { bilibiliAtUid: config.bilibiliAtUid } : {}),
         ...(config.reactions !== undefined ? { reactions: config.reactions } : {}),

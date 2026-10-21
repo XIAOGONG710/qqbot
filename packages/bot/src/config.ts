@@ -61,6 +61,7 @@ export const DEFAULTS = {
     bilibiliReplies: 'off' as PresenceMode,
     bilibiliCommentKeywords: [] as readonly string[],
     shape: false,
+    shapeAgenda: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
     reactions: false,
@@ -185,6 +186,11 @@ export interface AppConfig {
      * 代替 shortReplies 那句软提示（模型不听：开着它每条气泡中位还是 16 字，真人 6–7）。主动找他、收尾、他明着让她讲、危机回合不用。默认关
      */
     shape: boolean;
+    /**
+     * 带自己的小事（ADR 0094，要 shape 开着）：适用的轮次里约五分之一（不是收尾、不是认真接话、不是亲近、心情不安静），让她答完他的话之后，
+     * 从「你那边」的事实里挑一件自己的事顺带说一句。真人女生一侧 30% 的轮次这样，她在开形状控制后只有 12–15%。默认关
+     */
+    shapeAgenda: boolean;
     /** 要 @ 的人的 B 站昵称 */
     bilibiliAtName: string;
     /** 他的 B 站 uid：@ 评论（要昵称和 uid 两样）和发私信（只要 uid）都用 */
@@ -417,6 +423,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         bilibiliReplies: oneOf(file.bilibiliReplies, 'bilibiliReplies', PRESENCE_MODES, DEFAULTS.bilibiliReplies),
         bilibiliCommentKeywords: bilibiliCommentKeywords(file.bilibiliCommentKeywords),
         shape: bool(file, 'shape', '', DEFAULTS.shape),
+        shapeAgenda: bool(file, 'shapeAgenda', '', DEFAULTS.shapeAgenda),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
         reactions: bool(file, 'reactions', '', DEFAULTS.reactions),
