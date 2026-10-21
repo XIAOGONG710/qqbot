@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
 import {
     blockReason, candidatesOn, dayMatches, herDay, lunarMonthDay, parseDates, parseProactive, planFrom, unansweredCount,
-    occasionNote, untoldNews, type Candidate, type ProactiveInput, type ProactiveRecord,
+    candidateLabel, occasionNote, untoldNews, type Candidate, type ProactiveInput, type ProactiveRecord,
 } from '../src/proactive.ts';
 import { rainingAt, rainOf } from '../src/proactive-planner.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
@@ -344,5 +344,50 @@ describe('主动消息：她那边的事（ADR 0057）', () => {
         assert.doesNotMatch(note, /断网|网不好|发不出去|没发出去/);
         assert.equal(occasionNote(bedtime, '宝宝'), occasionNote(bedtime, '宝宝', []));
         assert.doesNotMatch(occasionNote(bedtime, '宝宝'), /相机/);
+    });
+});
+
+describe('主动消息：随口说件自己的事（share，ADR 0096）', () => {
+    const withShare = (patch: Partial<ProactiveInput> = {}) => input({ settings: { ...boyfriend.proactive!, occasions: [...boyfriend.proactive!.occasions, 'share'] }, ...patch });
+    const share = (history: StoredMessage[], d = day(10, 12)) => find(candidatesOn(d, withShare({ history })), 'share');
+
+    test('卡上没写 share 就没有（线上现在的卡），写了才有', () => {
+        assert.equal(find(candidatesOn(day(10, 12), input({ history: [user(t(10, 12, 9)), her(t(10, 12, 9, 1))] })), 'share'), undefined);
+        assert.ok(share([user(t(10, 12, 9)), her(t(10, 12, 9, 1))]));
+    });
+
+    test('时刻：下午 14:00 起抖动 0–150 分钟；聊过之后至少隔 2.5 小时；排到 21:30 以后这天就没有', () => {
+        const early = share([user(t(10, 12, 9)), her(t(10, 12, 9, 1))])!;
+        assert.ok(early.at >= t(10, 12, 14) && early.at <= t(10, 12, 16, 30), hm(early.at));
+        const afternoon = share([user(t(10, 12, 15)), her(t(10, 12, 15, 2))])!;
+        assert.ok(afternoon.at >= t(10, 12, 17, 32), hm(afternoon.at));
+        assert.equal(share([user(t(10, 12, 19)), her(t(10, 12, 19, 2))]), undefined, '19:00 + 2.5 小时 = 21:32，过了 21:30');
+        const none = share([])!;
+        assert.ok(none.at >= t(10, 12, 14) && none.at <= t(10, 12, 16, 30), '一天没聊过也有');
+    });
+
+    test('到点再核一遍：刚聊过不发（2.5 小时内），隔够了照发', () => {
+        const history = [user(t(10, 12, 15)), her(t(10, 12, 15, 2))];
+        const candidate = share(history)!;
+        assert.equal(blockReason(candidate, t(10, 12, 17, 10), withShare({ history })), '刚聊过');
+        assert.equal(blockReason(candidate, t(10, 12, 17, 40), withShare({ history })), undefined);
+    });
+
+    test('提示词：只从她自己的生活事实里挑、不提刚刷到的视频帖子、不问在干嘛、没写的不编', () => {
+        const candidate = share([user(t(10, 12, 9)), her(t(10, 12, 9, 1))])!;
+        const note = occasionNote(candidate, '宝宝');
+        assert.ok(note.startsWith('[这次是你主动找宝宝：你想起一件自己的小事'), note);
+        assert.ok(note.includes('「你那边」') && note.includes('不提刚刷到的视频、帖子、新闻') && note.includes('不问「在干嘛」') && note.includes('不编'), note);
+        assert.equal(candidateLabel(candidate), '随口说件自己的事（一阵子没说话了）');
+    });
+
+    test('一天的条数上限照旧管：share 的优先级最低（排在睡前后面），不挤掉早安 / 下课 / 睡前', () => {
+        const history = [user(t(10, 12, 8)), her(t(10, 12, 8, 1))];
+        const list = candidatesOn(day(10, 12), withShare({ history }));
+        const order = list.map(c => c.occasion);
+        assert.ok(order.includes('share') && order.includes('bedtime'));
+        const plan = planFrom(t(10, 12, 9), withShare({ history }));
+        const kept = [...plan.upcoming, ...plan.yielded].map(c => c.occasion);
+        assert.ok(kept.includes('share'));
     });
 });

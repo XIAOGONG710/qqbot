@@ -109,6 +109,7 @@ export interface Config {
     shape: boolean;
     shapeAgenda: boolean;
     shapeFiller: boolean;
+    shapeSplit: boolean;
     bilibiliAtName: string;
     bilibiliAtUid: number;
     reactions: boolean;
@@ -228,6 +229,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**带自己的小事**（ADR 0094，要「形状控制」开着）：适用的轮次里约五分之一（不是收尾、不是认真接话、不是亲近、心情不安静），她答完他的话之后，从「你那边」的事实里挑一件自己的事顺带说一句，说完不问他；那里没有合适的就不说，不编。这一轮至少 14 字一条、至少 2 条。默认关'),
         shapeFiller: Schema.boolean().default(DEFAULTS.shapeFiller)
             .description('**废话**（ADR 0095，要「形状控制」开着）：真人聊天里有不带内容的话（哈哈哈、嗯嗯、啊啊啊、好困、无聊），她的线上回复几乎没有。开了以后，他的话短、不是问句、不在难受 / 撒娇 / 收尾的轮次里约 7% 她只回一条不超过 4 个字、不带内容的话；他用「～」或拖长音说话时，约六成的轮次她也跟着拖音。默认关'),
+        shapeSplit: Schema.boolean().default(DEFAULTS.shapeSplit)
+            .description('**分成几条**（ADR 0096，要「形状控制」开着）：形状控制抽出的条数（1 条约 55%、2 条约 28%、3 条约 17%）本来只是上限，真模型多半只写一行——线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思（先一条反应，再补一句想法、细节或一个小问题），不是把一句话硬断开。默认关'),
         bilibiliAtName: Schema.string().default(DEFAULTS.bilibiliAtName)
             .description('**要 @ 的人的 B 站昵称**（ADR 0089）：评论最前面会写 @昵称；不含 @ 和换行'),
         bilibiliAtUid: Schema.number().default(DEFAULTS.bilibiliAtUid)
@@ -394,6 +397,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.shape !== undefined ? { shape: config.shape } : {}),
         ...(config.shapeAgenda !== undefined ? { shapeAgenda: config.shapeAgenda } : {}),
         ...(config.shapeFiller !== undefined ? { shapeFiller: config.shapeFiller } : {}),
+        ...(config.shapeSplit !== undefined ? { shapeSplit: config.shapeSplit } : {}),
         ...(config.bilibiliAtName !== undefined ? { bilibiliAtName: config.bilibiliAtName } : {}),
         ...(config.bilibiliAtUid !== undefined ? { bilibiliAtUid: config.bilibiliAtUid } : {}),
         ...(config.reactions !== undefined ? { reactions: config.reactions } : {}),

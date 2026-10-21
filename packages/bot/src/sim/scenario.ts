@@ -231,6 +231,8 @@ export interface Scenario {
     shapeAgenda: boolean;
     /** 默认 false：废话（ADR 0095，配置 shapeFiller，要 shape 开着）；run.ts 的 --filler 对所有场景打开 */
     shapeFiller: boolean;
+    /** 默认 false：分成几条（ADR 0096，配置 shapeSplit，要 shape 开着）；run.ts 的 --split 对所有场景打开 */
+    shapeSplit: boolean;
     /** 默认 false：闺蜜的约（ADR 0061，配置 npcAsks）：约、迟到、改约、取消进她的一天；要开着 autonomous 才进行动账 */
     npcAsks: boolean;
     /** 默认 off：公共节日（ADR 0076，配置 festivals）：notes 只进时间块，greet 再加主动说 */
@@ -333,6 +335,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         shape: s.shape === true,
         shapeAgenda: s.shapeAgenda === true,
         shapeFiller: s.shapeFiller === true,
+        shapeSplit: s.shapeSplit === true,
         npcAsks: s.npcAsks === true,
         festivals: s.festivals === undefined ? 'off' : (FESTIVAL_MODES.includes(s.festivals as FestivalMode) ? s.festivals as FestivalMode : fail(`festivals 应为 ${FESTIVAL_MODES.join(' / ')} 之一`)),
         ...(s.gifts !== undefined ? { gifts: (Array.isArray(s.gifts) ? s.gifts : fail('gifts 应为数组')).map((g: unknown, i: number) => {

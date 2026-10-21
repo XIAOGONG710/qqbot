@@ -201,6 +201,33 @@ describe('形状控制：这一轮每条最多几个字、最多几条（ADR 009
         assert.ok(!describeShape({ kind: 'short', cap: 8, maxBubbles: 1, plain: true }).includes('拖个音'));
     });
 
+    // ADR 0096：条数本来只是上限，真模型多半只写一行（线上 / 重放 85% 是 1 条，真人女生 59%）；开了就把它当成目标写进提示词
+    test('分成几条（split）：没开不带；开了抽到 2 / 3 条的非极短轮次带 parts（等于 maxBubbles），其余不带；其余的字段和不开时一模一样', () => {
+        assert.ok(sample('在干嘛啊你', 600).every(plan => plan.parts === undefined), '没开就没有');
+        const plans = sample('在干嘛啊你', 2000, { split: true });
+        const baseline = sample('在干嘛啊你', 2000);
+        plans.forEach((plan, i) => {
+            const { parts, ...rest } = plan;
+            assert.deepEqual(rest, baseline[i]);
+            if (parts !== undefined) assert.ok(plan.kind !== 'micro' && plan.maxBubbles === parts && parts >= 2, JSON.stringify(plan));
+            else assert.ok(plan.kind === 'micro' || plan.maxBubbles === 1, JSON.stringify(plan));
+        });
+        const multi = plans.filter(plan => plan.parts).length / plans.length;
+        assert.ok(multi > 0.28 && multi < 0.5, `multi ${multi}`);
+        // 收尾的轮次不分
+        assert.ok(sample('晚安啦我先睡了', 400, { split: true, intent: '[这一轮你想：顺着他的话收尾，只回一两句]' }).every(plan => plan.parts === undefined));
+    });
+
+    test('分成几条那一句：写明条数、一条一行、一个小意思；带自己的事的轮次条数写进计数、事的说法用自己的那句', () => {
+        const line = describeShape({ kind: 'medium', cap: 14, maxBubbles: 2, parts: 2 });
+        assert.ok(line.includes('每条不超过 14 个字，分成 2 条发') && !line.includes('最多 2 条'), line);
+        assert.ok(line.includes('一条一行') && line.includes('一个小意思') && line.includes('不是把一句话硬断成两截') && line.includes('不是反问'), line);
+        assert.ok(describeShape({ kind: 'short', cap: 8, maxBubbles: 3, parts: 3 }).includes('分成 3 条发'));
+        const agenda = describeShape({ kind: 'medium', cap: 14, maxBubbles: 2, parts: 2, agenda: true });
+        assert.ok(agenda.includes('分成 2 条发') && agenda.includes('回完顺带说一句你自己的事') && !agenda.includes('一个小意思'), agenda);
+        assert.ok(describeShape({ kind: 'medium', cap: 14, maxBubbles: 2 }).includes('最多 2 条'), '没有 parts 还是上限');
+    });
+
     test('提示词里的一行：给数字和方向，不给台词', () => {
         for (const kind of ['micro', 'short', 'medium', 'long', 'wide'] as const) {
             const cap = { micro: 4, short: 8, medium: 14, long: 24, wide: 40 }[kind];

@@ -3,7 +3,7 @@
 //
 // 「她的那一天」：从这一天的睡觉时刻（02:00）到第二天的睡觉时刻，和 schedule.ts 一样，00:00–02:00 算前一天的晚上。
 // 每一天的候选：早安、下课、睡前、冷场、待跟进的事、重要的日子、下雨（ADR 0050，只认真实天气）、她那边的事（ADR 0057），各一个时刻；到点时再查一遍能不能发（blockReason）。
-// 每天的条数有上限：候选比剩下的条数多时按优先级留（日子 > 她那边的事 > 待跟进 > 下雨 > 早安 > 下课 > 冷场 > 睡前），日子不受上限和「没回就停」限制。
+// 每天的条数有上限：候选比剩下的条数多时按优先级留（日子 > 她那边的事 > 待跟进 > 下雨 > 早安 > 下课 > 冷场 > 睡前 > 随口说件自己的事），日子不受上限和「没回就停」限制。
 // 错过的不补：到点时没在跑、或者过了 GRACE_MS 才算到的候选，这一天就不发了。
 // 没连上模型的（断网）不算错过：记录里带 retryAt 的候选按那个时刻再排，最多 UNREACHABLE_MAX_TRIES 次，只在同一天里。
 
@@ -17,7 +17,7 @@ import { logBody } from './sensitive.ts';
 export { herDay } from './schedule.ts';
 
 /** 时机，按优先级从高到低 */
-export const OCCASIONS = ['dates', 'reschedule', 'news', 'follow_up', 'weather', 'morning', 'after_class', 'quiet', 'bedtime'] as const;
+export const OCCASIONS = ['dates', 'reschedule', 'news', 'follow_up', 'weather', 'morning', 'after_class', 'quiet', 'bedtime', 'share'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 「她那边的事」的事件类（ADR 0064），按优先级从高到低：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天、闺蜜临时去不了 / 改到很晚（ADR 0061，开着配置 npcAsks 才有） */
@@ -184,6 +184,14 @@ export const RECENT_MS = HOUR;
 export const BEDTIME_RECENT_MS = 20 * MIN;
 /** 冷场：双方这么久没说话 */
 export const QUIET_MS = 8 * HOUR;
+/**
+ * 随口说件自己的事（ADR 0096）：下午到晚上，双方这么久没说话了，她想起一件自己的小事跟他说一句。
+ * 为什么：10-05 到 10-21 她一天主动 1–2 条，几乎全是早安 / 下课 / 睡前这几个固定时机；「冷场」要整整 8 小时没说话才算，天天被每天 2 条的上限挤掉
+ */
+export const SHARE_QUIET_MS = 2.5 * HOUR;
+const SHARE_FROM = '14:00';
+const SHARE_UNTIL = '21:30';
+const SHARE_JITTER_MIN: [number, number] = [0, 150];
 const MORNING_MIN: [number, number] = [10, 40];
 const AFTER_CLASS_MIN: [number, number] = [5, 20];
 /** 睡前：23:00 起这么多分钟之内（到 00:30） */
@@ -338,6 +346,12 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
     if (enabled.has('bedtime') && !midnight.length) add('bedtime', at(day, BEDTIME_FROM).getTime() + pick(seed('bedtime'), 'at', minutes(BEDTIME_MIN)), '准备睡了');
 
     const last = input.history.at(-1);
+    // 随口说件自己的事（ADR 0096）：下午起一个时刻（抖动 2.5 小时），聊过之后至少隔 SHARE_QUIET_MS；排到 21:30 以后就这一天没有。一天一次（id 按天）
+    if (enabled.has('share')) {
+        const lastTime = last ? Date.parse(last.time) : 0;
+        const time = Math.max(at(day, SHARE_FROM).getTime() + pick(seed('share'), 'at', minutes(SHARE_JITTER_MIN)), lastTime + SHARE_QUIET_MS, wake + QUIET_AFTER_WAKE_MS);
+        if (time < at(day, SHARE_UNTIL).getTime()) add('share', time, '一阵子没说话了');
+    }
     if (enabled.has('quiet') && last) {
         const lastTime = Date.parse(last.time);
         const time = Math.max(lastTime + QUIET_MS, wake + QUIET_AFTER_WAKE_MS) + pick(seed('quiet'), 'at', minutes(QUIET_JITTER_MIN));
@@ -462,6 +476,9 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
             if (history.some(m => Date.parse(m.time) >= evening && GOODNIGHT.test(m.content))) return '已经道过晚安';
             break;
         }
+        case 'share':
+            if (lastTime !== undefined && now - lastTime < SHARE_QUIET_MS) return '刚聊过';
+            break;
         case 'quiet':
             if (lastTime === undefined || now - lastTime < QUIET_MS) return '没到 8 小时';
             break;
@@ -498,7 +515,7 @@ export const PENDING_REASON = '有没回的消息，回复就好';
 export const CRISIS_PAUSE_REASON = '他最近说过想伤害自己的话，普通的主动消息先暂停';
 
 /** 顺带说没说成的事的时机：问候、找他说话的这几种（日子、下雨、待跟进各有要说的那一件） */
-const CARRIES_NEWS: ReadonlySet<Occasion> = new Set(['morning', 'after_class', 'quiet', 'bedtime']);
+const CARRIES_NEWS: ReadonlySet<Occasion> = new Set(['morning', 'after_class', 'share', 'quiet', 'bedtime']);
 
 /**
  * 她那边的事没说成（ADR 0057 调整，10-11）：这一天了结了、那条主动没发出去（没连上模型、错过了、没排上）、
@@ -536,6 +553,9 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
             friend_sick: () => `你刚得知${candidate.news!.what}，想跟${userName}说一声：就说这一件（看「你那边」那一行里的朋友），不要他回应或安慰你；病得怎么样、有没有去看、你做了什么，那一行里没写的不编`,
             unwell: () => `你今天${candidate.news!.what}，想跟${userName}说一声：只是告诉他，不是要他哄你、关心你，也不要他回应；说到哪一步照「你的身体」那一行，没写的细节不编`,
         })[candidate.news!.kind](),
+        // 只从她自己的生活事实里挑（不是刚刷到的视频、帖子：旧项目的教训，ADR 0013 决策 2）；不问「在干嘛」，说完不用他回应
+        share: () => `你想起一件自己的小事，想跟${userName}说一句：从「你那边」「你的身体」「你今天的心情」里挑一件他还不知道的（不是你这会儿正在做的那件事，前面说过的也别再说），` +
+            `随口说，像突然想起来的；不提刚刷到的视频、帖子、新闻（对方要链接你给不出来）；不问「在干嘛」，说完也不用追问他，那里没有合适的、没写的细节不编`,
         // 旧项目的教训（ADR 0013 决策 2）：分享「刚看到的」会编出一个具体的视频、帖子，对方要链接时给不出来
         quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
             `对方要链接你给不出来），或者问问对方在忙什么（对方可能在忙）`,
@@ -561,7 +581,7 @@ export function recallTopic(candidate: Candidate, userName: string): string {
 
 /** 日志、状态页里的说法：「早安（起床后 12 分钟）」 */
 export const OCCASION_LABELS: Record<Occasion, string> = {
-    dates: '重要的日子', reschedule: '改约', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', morning: '早安', after_class: '下课', quiet: '冷场', bedtime: '睡前',
+    dates: '重要的日子', reschedule: '改约', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', morning: '早安', after_class: '下课', share: '随口说件自己的事', quiet: '冷场', bedtime: '睡前',
 };
 
 export function candidateLabel(candidate: Candidate): string {

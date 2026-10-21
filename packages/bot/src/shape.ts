@@ -23,6 +23,8 @@ export interface ShapePlan {
     filler?: FillerKind;
     /** 他在用「～」或拖长音说话，这一轮她也可以拖个音（配置 shapeFiller） */
     stretch?: boolean;
+    /** 这一轮要分成几条发（配置 shapeSplit，ADR 0096）：不只是上限，提示词里写“分成 N 条”；没有就按 maxBubbles 当上限 */
+    parts?: number;
 }
 
 /**
@@ -91,7 +93,7 @@ const CLOSING_INTENT = /顺着他的话收尾/;
 /** 收尾的轮次：真人这时就是一两个字（晚安、好哒、嗯嗯） */
 const CLOSING_WEIGHTS = [0.4, 0.4, 0.15, 0.05, 0] as const;
 
-export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'> & { agenda?: boolean; filler?: boolean };
+export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'> & { agenda?: boolean; filler?: boolean; split?: boolean };
 
 const chars = (text: string) => [...text.replace(/\[[^\]]{1,6}\]/g, '#')].length;
 
@@ -136,7 +138,9 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     const rolledBubbles = closing ? (countRoll < 0.7 ? 1 : 2) : bucket.kind === 'micro' ? (countRoll < 0.8 ? 1 : 2) : countRoll < 0.55 ? 1 : countRoll < 0.83 ? 2 : 3;
     const maxBubbles = agenda ? Math.max(2, rolledBubbles) : rolledBubbles;
     const plain = !agenda && !intimate && unit(`${key} shape plain`) < PLAIN_SHARE;
-    return { kind: bucket.kind, cap: bucket.cap, maxBubbles, ...(plain ? { plain: true } : {}), ...(agenda ? { agenda: true } : {}), ...(stretch ? { stretch: true } : {}) };
+    // 要分成几条：上面抽出来的条数本来只是上限，真模型多半只写一行（重放里 85% 是 1 条，真人女生 59%）；开了 shapeSplit 就把它当成目标写进提示词
+    const parts = Boolean(context.split) && !closing && bucket.kind !== 'micro' && maxBubbles >= 2 ? maxBubbles : undefined;
+    return { kind: bucket.kind, cap: bucket.cap, maxBubbles, ...(plain ? { plain: true } : {}), ...(agenda ? { agenda: true } : {}), ...(stretch ? { stretch: true } : {}), ...(parts ? { parts } : {}) };
 }
 
 /** 顺着说的那一句：给方向（应一声、附和、笑、接他的话、问一个字），不给台词 */
@@ -144,6 +148,12 @@ const PLAIN_NOTE = '；这一轮顺着他说就行：应一声、附和、笑一
 
 /** 带自己的事的那一句：事实只能从她那边已有的事实 / 身体 / 心情里挑，没有合适的就不说；不给台词，也不让她拿这件事去问他 */
 const AGENDA_NOTE = '；这一轮先回他刚说的，回完顺带说一句你自己的事：从「你那边」「你的身体」「你今天的心情」里挑一件他还不知道的（不是你正在做的那件事，他早知道了；前面说过的也别再说），事，或者此刻的感受：累、困、饿、烦、开心都行，随口说，像突然想起来的，不用接得很圆，也不用每次都从「刚」开头；那里没有合适的就别说，更别编；说完不用问他，也别用反问句';
+
+/**
+ * 分成几条的那一句：真人多条回复多半是一个意思拆成几个小片段（反应 → 补一句想法 / 细节 / 一个小问题），不是把一句话硬断开。
+ * 小问题是真想知道的（「哪个手指头啊」），不是反问；顺着说的轮次里“别用反问句”照旧
+ */
+const splitNote = (parts: number) => `；这一轮分成 ${parts} 条发，一条一行：每条是一个小意思，不是把一句话硬断成两截——先一条反应，后面接一句补充（想法、细节，或者真想知道的问他一个小问题，不是反问）`;
 
 /** 他在拖音：给方向，不给台词 */
 const STRETCH_NOTE = '；他在用「～」或拖长音说话，你也可以拖个音（句尾加～、叠个字），别每句都拖';
@@ -163,14 +173,16 @@ const fillerLine = (kind: FillerKind) => `[这一轮说话：只回一条，不�
 /** 放进提示词的一行；不给台词，只给数字和方向 */
 export function describeShape(plan: ShapePlan): string {
     if (plan.filler) return `${fillerLine(plan.filler)}${plan.stretch ? STRETCH_NOTE : ''}]`;
-    const plain = (plan.agenda ? AGENDA_NOTE : plan.plain ? PLAIN_NOTE : '') + (plan.stretch ? STRETCH_NOTE : '');
+    const split = plan.parts && !plan.agenda ? splitNote(plan.parts) : '';
+    const plain = (plan.agenda ? AGENDA_NOTE : plan.plain ? PLAIN_NOTE : '') + split + (plan.stretch ? STRETCH_NOTE : '');
+    const count = plan.parts ? `分成 ${plan.parts} 条发` : `最多 ${plan.maxBubbles} 条`;
     if (plan.kind === 'micro') {
         return `[这一轮说话：${plan.maxBubbles === 1 ? '只回一条' : `最多 ${plan.maxBubbles} 条`}，每条不超过 ${plan.cap} 个字——语气词、单个词都可以，不用凑成完整的句子；不展开，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说${plain}]`;
     }
     if (plan.kind === 'short') {
-        return `[这一轮说话：每条不超过 ${plan.cap} 个字，最多 ${plan.maxBubbles} 条；像手机上随手打的，半句也行，不用凑成完整的句子；不展开，不另起话题${plain}]`;
+        return `[这一轮说话：每条不超过 ${plan.cap} 个字，${count}；像手机上随手打的，半句也行，不用凑成完整的句子；不展开，不另起话题${plain}]`;
     }
-    return `[这一轮说话：每条不超过 ${plan.cap} 个字，最多 ${plan.maxBubbles} 条；想到哪说到哪，不用把话说圆${plain}]`;
+    return `[这一轮说话：每条不超过 ${plan.cap} 个字，${count}；想到哪说到哪，不用把话说圆${plain}]`;
 }
 
 // ───────── 强制执行 ─────────

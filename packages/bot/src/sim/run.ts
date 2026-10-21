@@ -34,6 +34,8 @@ const shape = flag('--shape');
 const agenda = flag('--agenda');
 // 废话（ADR 0095）：同时打开 shape
 const filler = flag('--filler');
+// 分成几条（ADR 0096）：同时打开 shape
+const split = flag('--split');
 const cardDir = option('--card');
 const pinExamples = option('--pin-examples');
 const tag = option('--tag');
@@ -48,7 +50,7 @@ const contextTurns = contextTurnsOption === undefined ? undefined : { turns: Num
 const parallel = parallelOption === undefined ? undefined : Number(parallelOption);
 if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))
     || (contextTurns && ![contextTurns.turns, contextTurns.step].every(n => Number.isInteger(n) && n >= 1))) {
-    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--shape] [--agenda] [--filler] [--context-turns N [--context-step K]]');
+    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--shape] [--agenda] [--filler] [--split] [--context-turns N [--context-step K]]');
     process.exit(2);
 }
 
@@ -100,9 +102,10 @@ for (const [fileIndex, file] of files.entries()) {
             speechCheck: config.speechCheck,
             herDays: config.herDays,
             candidates: candidatesOption === undefined ? config.candidates : Number(candidatesOption),
-            ...(shape || agenda || filler ? { shape: true } : {}),
+            ...(shape || agenda || filler || split ? { shape: true } : {}),
             ...(agenda ? { shapeAgenda: true } : {}),
             ...(filler ? { shapeFiller: true } : {}),
+            ...(split ? { shapeSplit: true } : {}),
             ...(diaryWorld ? { diaryWorld } : {}),
             ...(diaryWorldSchedule ? { diaryWorldSchedule } : {}),
             hindsight,
