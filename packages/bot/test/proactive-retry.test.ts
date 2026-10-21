@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
-import type { ProactiveRecord, ProactiveSettings } from '../src/proactive.ts';
+import type { ProactiveRecord, ProactiveSettings, RescheduleItem } from '../src/proactive.ts';
+import { PromiseStateUnavailable } from '../src/promise-state.ts';
 import { createProactivePlanner, type Planner } from '../src/proactive-planner.ts';
 import type { InitiateOutcome, InitiateRequest } from '../src/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
@@ -33,7 +34,7 @@ describe('主动消息：没连上模型过一会儿再试（10-11 相机那条�
     const unreachable: InitiateOutcome = { result: 'failed', reason: '生成失败：模型接口请求失败（ENOTFOUND：getaddrinfo ENOTFOUND api.deepseek.com）', unreachable: true };
 
     /** outcomes：每次到点依次返回；用完了就照常试运行。occasions 默认只开她那边的事 */
-    function setup(outcomes: InitiateOutcome[], occasions: ProactiveSettings['occasions'] = ['news']) {
+    function setup(outcomes: InitiateOutcome[], occasions: ProactiveSettings['occasions'] = ['news'], reschedule?: () => RescheduleItem[]) {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-retry-'));
         dirs.push(dir);
         const clock = new VirtualClock(new Date(t(10, 11, 16)));
@@ -58,6 +59,7 @@ describe('主动消息：没连上模型过一会儿再试（10-11 相机那条�
             dir, log: m => logs.push(m), now: clock.now, waitUntil: clock.waitUntil,
             names: { user: '阿明', char: '林梦瑶' },
             news: () => [camera],
+            ...(reschedule ? { reschedule } : {}),
         });
         planners.push(planner);
         const records = () => (JSON.parse(readFileSync(join(dir, '10001-boyfriend.json'), 'utf8')) as { records: ProactiveRecord[] }).records;
@@ -100,6 +102,25 @@ describe('主动消息：没连上模型过一会儿再试（10-11 相机那条�
         await runUntil(clock, t(10, 11, 18));
         assert.equal(tried.length, 1, logs.join('\n'));
         assert.ok(logs.some(l => /出错，不再试：生成失败/.test(l)), logs.join('\n'));
+    });
+
+    // DSH 10-15 复核的 0066 问题 0：约定来源读不到时 reschedule 会抛 PromiseStateUnavailable，原来一路冒到 loop().catch → halt()，这个联系人的主动消息全停
+    test('约定来源暂时读不到：只是这段不排改约，别的主动消息照旧发，来源回来后恢复', async () => {
+        let readable = false;
+        const { clock, logs, tried, records } = setup([], ['news'], () => {
+            if (!readable) throw new PromiseStateUnavailable('约定来源不可用，不能将未知约定当成空日历继续安排');
+            return [];
+        });
+        await runUntil(clock, t(10, 11, 18));
+        assert.equal(tried.length, 1, logs.join('\n'));
+        assert.equal(records().find(r => r.occasion === 'news')?.result, 'dryRun');
+        assert.ok(logs.some(l => l.includes('约定来源暂时读不到')), logs.join('\n'));
+        assert.ok(!logs.some(l => l.includes('主动消息状态处理失败')), logs.join('\n'));
+        assert.equal(logs.filter(l => l.includes('约定来源暂时读不到')).length, 1, '同一段不可用只记一次');
+        readable = true;
+        await runUntil(clock, t(10, 12, 12));
+        assert.ok(logs.some(l => l.includes('约定来源又读得到了')), logs.join('\n'));
+        assert.ok(!logs.some(l => l.includes('主动消息状态处理失败')), logs.join('\n'));
     });
 
     test('一直连不上、那之后也没聊过：睡前那条顺带说买到了相机（ADR 0057 调整）', async () => {

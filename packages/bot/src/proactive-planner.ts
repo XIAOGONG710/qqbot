@@ -30,6 +30,7 @@ import {
 import type { BodyNow } from './body.ts';
 import { newObstacles, obstaclesBetween, OBSTACLE_KINDS, type ObstacleFacts, type ObstacleKind } from './obstacles.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from './promises.ts';
+import { PromiseStateUnavailable } from './promise-state.ts';
 import type { InitiateOutcome, Responder } from './responder.ts';
 import type { DayWeather } from './weather.ts';
 import { unwellNews, worldNews, type WorldNews, type WorldNow } from './world.ts';
@@ -362,6 +363,22 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         return entry;
     }
 
+    /** 约定来源暂时读不到（承诺状态文件在宽限期里）：这一轮不排改约，别让异常一路冒到 loop 把整个主动消息停掉 */
+    let reschedulesUnavailable = false;
+    const reschedulesNow = (): RescheduleItem[] => {
+        try {
+            const items = allowedReschedules(deps.reschedule!(now()), records, now());
+            if (reschedulesUnavailable) deps.log(`主动${tag}：约定来源又读得到了，恢复排改约`);
+            reschedulesUnavailable = false;
+            return items;
+        } catch (error) {
+            if (!(error instanceof PromiseStateUnavailable)) throw error;
+            if (!reschedulesUnavailable) deps.log(`主动${tag}：约定来源暂时读不到，这段时间不排改约，别的主动消息照旧`);
+            reschedulesUnavailable = true;
+            return [];
+        }
+    };
+
     const input = (): ProactiveInput => {
         const rain = deps.weather ? rainOf(deps.weather(now()), new Date(now())) : undefined;
         return {
@@ -372,7 +389,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             ...(rain ? { rain } : {}),
             // 只认卡上开了的事件类（ADR 0064 决策 6）：没开的类即使调用方给了也不排
             ...(deps.news ? { news: deps.news(now()).filter(item => newsKindsOf(deps.settings).includes(item.kind)) } : {}),
-            ...(deps.reschedule ? { reschedules: allowedReschedules(deps.reschedule(now()), records, now()) } : {}),
+            ...(deps.reschedule ? { reschedules: reschedulesNow() } : {}),
             ...(deps.weather ? { rainingNow: (at: number) => rainingAt(deps.weather!(at)?.weather, new Date(at)) } : {}),
         };
     };
