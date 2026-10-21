@@ -26,7 +26,7 @@ import { crisisInHistory, type CrisisHit } from './crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from './grievance.ts';
 import { describeIntent } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
-import { describeLength, lengthHint, maybeTypo, RECALL_SHARE, recentCrutches } from './expression.ts';
+import { alreadyTold, describeLength, lengthHint, maybeTypo, RECALL_SHARE, recentCrutches } from './expression.ts';
 import { describeShape, planShape, shapeReply, type ShapePlan } from './shape.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
@@ -460,16 +460,28 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
             const low = mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false);
             // 形状控制开着：用具体的字数和条数代替「回短一点」的软提示；不适用的轮次（他明着让她讲、主动找他、收尾）照旧走 lengthHint
-            shapeNow = options.shape && !crisisNow ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, split: options.shapeSplit }) : undefined;
+            // 她这一天半里已经主动说过的事（ADR 0098）；带自己的事的轮次从她还没说过的事里挑一件说
+            const told = !crisisNow ? alreadyTold(chat, time.getTime()) : [];
+            const TOLD_LABEL: Record<string, RegExp> = { 相机: /相机/, 猫: /土豆|猫/, 作业: /作业/, 快递: /快递/ };
+            const worldLabels = world ? world.replace(/^\[你那边（[^）]*）：/, '').replace(/\]$/, '').split('｜').map(item => item.split('：')[0]!.trim()).filter(Boolean) : [];
+            const agendaTopics = [
+                ...worldLabels.filter(label => !told.some(name => TOLD_LABEL[name]?.test(label))),
+                ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
+                ...(mood ? ['心情'] : []),
+            ];
+            shapeNow = options.shape && !crisisNow ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, split: options.shapeSplit, agendaTopics }) : undefined;
             // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
             const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
             const crutchLine = crutches.length
                 ? `[你这几条里反复在说「${crutches.join('」「')}」：这一轮别再用这几个字，换个反应——直接答、逗他、反问、认怂、生气都行]`
                 : undefined;
             if (crutchLine) log(`最近反复说的字词：${crutches.join('、')}（提示词里让她换个反应）`);
+            // 说过了就不再自己提（ADR 0098）：事实还在时间块里，他问起来照常答
+            const toldLine = told.length ? `[这些事你已经主动跟他说过了：${told.join('、')}。他不问，就别再自己提]` : undefined;
+            if (toldLine) log(`已经主动说过：${told.join('、')}（提示词里让她不再自己提）`);
             const length = crisisNow || shapeNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
-            if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? '，带自己的事' : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
+            if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
             // ADR 0043（配置 contextTurns，默认关）：最近几轮原文 + 更早的要点，代替最近 80 条
@@ -527,6 +539,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(length ? [describeLength(length, options.shortReplies)] : []),
                         ...(shapeNow ? [describeShape(shapeNow)] : []),
                         ...(crutchLine ? [crutchLine] : []),
+                        ...(toldLine ? [toldLine] : []),
                         ...(initiate ? [initiate.note] : []),
                     ].join('\n'),
                 ],

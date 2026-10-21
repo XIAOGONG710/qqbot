@@ -91,6 +91,37 @@ export function recentCrutches(history: LengthContext['history']): string[] {
     return [...words, ...chars].slice(0, 4);
 }
 
+/**
+ * 她这一天半里已经主动跟他说过的、关于她自己的事（ADR 0098）。10-20 到 10-21 三个晚上她每晚都提「肚子坠着」，他说「你会老是重复一件事」。
+ * 「主动」= 说那句话的那一轮，他前面的话里没有提到这件事（他问起来她答，不算）。事实还在那里（时间块 / 身体那一行照旧写），只是说过了就不再自己提
+ */
+const TOLD_TOPICS: readonly { name: string; pattern: RegExp }[] = [
+    { name: '肚子不舒服', pattern: /肚子|痛经|生理期|大姨妈|坠着|头疼|头痛|嗓子|感冒|发烧|不舒服/ },
+    { name: '相机', pattern: /相机|镜头|a6100|参数|快门|攒钱/ },
+    { name: '猫', pattern: /土豆|猫粮|喂猫/ },
+    { name: '作业', pattern: /作业|ddl|数据结构|Linux|操作系统/ },
+    { name: '快递', pattern: /快递|驿站/ },
+];
+export const TOLD_WINDOW_MS = 36 * 3_600_000;
+export function alreadyTold(history: LengthContext['history'], now: number): string[] {
+    const told = new Set<string>();
+    let prompt = '';
+    let previous: 'user' | 'assistant' | undefined;
+    for (const message of history) {
+        if (message.role === 'user') {
+            prompt = previous === 'user' ? `${prompt}\n${message.content}` : message.content;
+        } else {
+            const at = message.time ? Date.parse(message.time) : Number.NaN;
+            if (Number.isFinite(at) && now - at <= TOLD_WINDOW_MS) {
+                const text = message.content.replace(/\[[^\]]{1,12}\]/g, '');
+                for (const topic of TOLD_TOPICS) if (topic.pattern.test(text) && !topic.pattern.test(prompt)) told.add(topic.name);
+            }
+        }
+        previous = message.role;
+    }
+    return [...told];
+}
+
 export function saidSinceReply(history: LengthContext['history']): string {
     const lastReply = history.findLastIndex(message => message.role === 'assistant');
     return history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content).join('');

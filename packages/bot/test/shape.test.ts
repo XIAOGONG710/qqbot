@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { AGENDA_SHARE, describeShape, FILLER_SHARE, STRETCH_SHARE, PLAIN_SHARE, planShape, shapeProblems, shapeReply, trimToShape, type ShapePlan } from '../src/shape.ts';
+import { AGENDA_SHARE, describeShape, DRAWL_SHARE, FILLER_SHARE, STRETCH_SHARE, PLAIN_SHARE, planShape, shapeProblems, shapeReply, trimToShape, type ShapePlan } from '../src/shape.ts';
 
 /** 同一句话，靠时间区分每一次抽签（抽签的种子是时间加内容），字数不变 */
 const said = (i: number, text: string) => [{ role: 'user' as const, content: text, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
@@ -151,7 +151,7 @@ describe('形状控制：这一轮每条最多几个字、最多几条（ADR 009
         assert.ok(filler.every(plan => plan.kind === 'micro' && plan.cap === 4 && plan.maxBubbles === 1 && !plan.plain && !plan.agenda));
         // 其余轮次和不开时一模一样
         const baseline = sample('在干嘛', 2000);
-        plans.forEach((plan, i) => { if (!plan.filler) assert.deepEqual(plan, baseline[i]); });
+        plans.forEach((plan, i) => { if (!plan.filler) { const { drawl: _drawl, ...rest } = plan; assert.deepEqual(rest, baseline[i]); } });
         // 他发了一大段、问了问题：不抽
         assert.ok(sample('今天下午我们去了图书馆然后发现没位置就去食堂坐了一会儿', 600, { filler: true }).every(plan => !plan.filler), '他说得长');
         assert.ok(sample('你在干嘛呀？', 600, { filler: true }).every(plan => !plan.filler), '问句');
@@ -285,5 +285,48 @@ describe('形状控制：强制执行', () => {
         assert.equal(await shapeReply(tooLong, plan, make(new Error('429'))), '今天真的好累啊');
         assert.ok(logs.some(line => line.includes('重写失败') && line.includes('429')));
         assert.equal(await shapeReply(tooLong, plan, make('')), '今天真的好累啊', '重写是空的就用第一版截');
+    });
+});
+
+// ADR 0098：带自己的事的轮次里这一次说哪一件，按轮抽（72 句真人对话测：开了带事以后 21% 的回复提到相机 / 土豆 / 作业 / 快递，相机一件就 14%——模型总挑同两件）
+describe('带自己的事：这一次说哪一件（agendaTopic）', () => {
+    test('给了候选就从里面抽、各件都会抽到；没给候选就没有；不带事的轮次没有', () => {
+        const topics = ['作业', '天气', '身体', '心情', '快递'];
+        const plans = sample('在干嘛', 3000, { agenda: true, agendaTopics: topics });
+        const withTopic = plans.filter(plan => plan.agenda);
+        assert.ok(withTopic.length > 300);
+        assert.ok(withTopic.every(plan => plan.agendaTopic !== undefined && topics.includes(plan.agendaTopic)));
+        for (const topic of topics) assert.ok(withTopic.filter(plan => plan.agendaTopic === topic).length > 40, topic);
+        assert.ok(plans.filter(plan => !plan.agenda).every(plan => plan.agendaTopic === undefined));
+        assert.ok(sample('在干嘛', 1000, { agenda: true }).every(plan => plan.agendaTopic === undefined), '没给候选');
+        // 其余字段和不给候选时一模一样
+        const base = sample('在干嘛', 3000, { agenda: true });
+        plans.forEach((plan, i) => { const { agendaTopic: _topic, ...rest } = plan; assert.deepEqual(rest, base[i]); });
+    });
+
+    test('提示词里写明就说这一件，并且没写的细节不编', () => {
+        const line = describeShape({ kind: 'medium', cap: 14, maxBubbles: 2, agenda: true, agendaTopic: '作业' });
+        assert.ok(line.includes('就说「作业」这一件') && line.includes('没写的细节不编') && line.includes('说完不用问他'), line);
+        const free = describeShape({ kind: 'medium', cap: 14, maxBubbles: 2, agenda: true });
+        assert.ok(free.includes('挑一件他还不知道的') && !free.includes('这一件（看'), free);
+    });
+});
+
+// ADR 0098：他自己线上的话 11% 带「～」或「…」，她 0%
+describe('语气松一点（drawl）：句尾可以带「～」或「……」', () => {
+    test('没开 filler 不带；开了约 12%；不是认真接话 / 收尾 / 他说倒霉事 / 呜呜；和“跟着他拖音”不同时出现', () => {
+        assert.ok(sample('在干嘛啊你', 600).every(plan => !plan.drawl), '没开就没有');
+        const plans = sample('在干嘛啊你', 3000, { filler: true });
+        const share = plans.filter(plan => plan.drawl).length / plans.length;
+        assert.ok(Math.abs(share - DRAWL_SHARE) < 0.03, `drawl ${share}`);
+        for (const [text, extra] of [
+            ['晚安啦我先睡了', { intent: '[这一轮你想：顺着他的话收尾，只回一两句]' }],
+            ['今天好烦', { intent: '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够]' }],
+            ['悲，U盘坏了', {}], ['呜呜呜', {}],
+        ] as const) assert.ok(sample(text, 400, { filler: true, ...extra }).every(plan => !plan.drawl), text);
+        assert.ok(sample('说点什么呢～', 600, { filler: true }).every(plan => !(plan.drawl && plan.stretch)), '他拖了音就走跟着拖那一路');
+        const line = describeShape({ kind: 'short', cap: 8, maxBubbles: 1, drawl: true });
+        assert.ok(line.includes('句尾可以带个「～」或者「……」') && line.includes('别每句都这样') && line.endsWith(']'), line);
+        assert.ok(!describeShape({ kind: 'short', cap: 8, maxBubbles: 1 }).includes('句尾可以带个'));
     });
 });

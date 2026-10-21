@@ -23,6 +23,10 @@ export interface ShapePlan {
     filler?: FillerKind;
     /** 他在用「～」或拖长音说话，这一轮她也可以拖个音（配置 shapeFiller） */
     stretch?: boolean;
+    /** 这一轮语气松一点，句尾可以带个「～」或「……」（不管他拖没拖音；配置 shapeFiller，ADR 0098） */
+    drawl?: boolean;
+    /** 带自己的事的轮次里这一次说哪一件（「作业」「天气」「身体」……，按轮抽，跳过她已经主动说过的）；调用方没给候选就没有，由模型自己挑 */
+    agendaTopic?: string;
     /** 这一轮要分成几条发（配置 shapeSplit，ADR 0096）：不只是上限，提示词里写“分成 N 条”；没有就按 maxBubbles 当上限 */
     parts?: number;
 }
@@ -53,6 +57,11 @@ export type FillerKind = 'ack' | 'laugh' | 'drawl' | 'state';
 /** 各种废话的占比。真人女生样本里整轮废话的多半是应一声 / 语气词和“没事”“不知道”这类，笑最少；她线上一个都没有 */
 const FILLER_KINDS: readonly [FillerKind, number][] = [['ack', 0.35], ['laugh', 0.25], ['drawl', 0.2], ['state', 0.2]];
 /** 他在拖音：「～」，或者拖长的语气词。「呜呜」是难受 / 撒娇、「哈哈哈」是笑，不算拖音（第一次重放里她对每个「呜呜呜」都回了带～的话） */
+/**
+ * 他自己线上的话 11% 带「～」或「…」（拖音 / 省略），她 0%（10-22 用线上 505 条他的话、81 条形状控制后她的气泡量）。
+ * 不管他有没有先拖音，约 12% 的轮次（不是认真接话 / 收尾 / 他说倒霉事时）提示她语气可以松一点；真模型多半会照做一部分，目标是气泡里 5–8%
+ */
+export const DRAWL_SHARE = 0.12;
 const STRETCHED = /[～~]|[啊哦嗯诶]{3,}/;
 /** 废话轮次只在他说得短的时候出现：他发了一大段，她回「哈哈哈」就是敷衍 */
 const FILLER_MAX_HIS = 12;
@@ -98,7 +107,7 @@ const CLOSING_INTENT = /顺着他的话收尾/;
 /** 收尾的轮次：真人这时就是一两个字（晚安、好哒、嗯嗯） */
 const CLOSING_WEIGHTS = [0.4, 0.4, 0.15, 0.05, 0] as const;
 
-export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'> & { agenda?: boolean; filler?: boolean; split?: boolean };
+export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'> & { agenda?: boolean; filler?: boolean; split?: boolean; agendaTopics?: readonly string[] };
 
 const chars = (text: string) => [...text.replace(/\[[^\]]{1,6}\]/g, '#')].length;
 
@@ -128,6 +137,7 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     // 意图行不拦着、他不在难受 / 撒娇 / 收尾：她可以带自己的事，也可以只回一条废话
     const free = (!context.intent || AGENDA_INTENT.test(context.intent)) && !EMOTIVE.test(said) && !NEGATIVE.test(said) && !closing && !engaged && !intimate && !context.low;
     const stretch = Boolean(context.filler) && !closing && !engaged && STRETCHED.test(said) && unit(`${key} shape stretch`) < STRETCH_SHARE;
+    const drawl = Boolean(context.filler) && !stretch && !closing && !engaged && !NEGATIVE.test(said) && !EMOTIVE.test(said) && unit(`${key} shape drawl`) < DRAWL_SHARE;
     // 废话轮次：他的话短、不是问句，她就只回一条几个字、不带内容的
     if (Boolean(context.filler) && free && his <= FILLER_MAX_HIS && !/[？?]/.test(said) && unit(`${key} shape filler`) < FILLER_SHARE) {
         const pick = unit(`${key} shape filler kind`);
@@ -144,14 +154,18 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     const maxBubbles = agenda ? Math.max(2, rolledBubbles) : rolledBubbles;
     const plain = !agenda && !intimate && unit(`${key} shape plain`) < PLAIN_SHARE;
     // 要分成几条：上面抽出来的条数本来只是上限，真模型多半只写一行（重放里 85% 是 1 条，真人女生 59%）；开了 shapeSplit 就把它当成目标写进提示词
+    // 带自己的事的轮次：这一次说哪一件，按轮抽（同一轮每次一样）。10-22 用 72 句真人对话测：开了带事以后 21% 的回复提到相机 / 土豆 / 作业 / 快递（没开 7%），其中相机一件就 14%，模型总挑同两件
+    const topics = context.agendaTopics ?? [];
+    const agendaTopic = agenda && topics.length ? topics[Math.floor(unit(`${key} agenda topic`) * topics.length)] : undefined;
     const parts = Boolean(context.split) && !closing && bucket.kind !== 'micro' && maxBubbles >= 2 ? maxBubbles : undefined;
-    return { kind: bucket.kind, cap: bucket.cap, maxBubbles, ...(plain ? { plain: true } : {}), ...(agenda ? { agenda: true } : {}), ...(stretch ? { stretch: true } : {}), ...(parts ? { parts } : {}) };
+    return { kind: bucket.kind, cap: bucket.cap, maxBubbles, ...(plain ? { plain: true } : {}), ...(agenda ? { agenda: true } : {}), ...(agendaTopic ? { agendaTopic } : {}), ...(stretch ? { stretch: true } : {}), ...(drawl ? { drawl: true } : {}), ...(parts ? { parts } : {}) };
 }
 
 /** 顺着说的那一句：给方向（应一声、附和、笑、接他的话、问一个字），不给台词 */
 const PLAIN_NOTE = '；这一轮顺着他说就行：应一声、附和、笑一下、接他的话都可以，别反驳他、别损他、别嘴硬，也别用反问句回他；他用了网络缩写（zdjd、xswl 这类）你也可以顺着用';
 
 /** 带自己的事的那一句：事实只能从她那边已有的事实 / 身体 / 心情里挑，没有合适的就不说；不给台词，也不让她拿这件事去问他 */
+const agendaNote = (topic?: string) => topic ? `；这一轮先回他刚说的，回完顺带说一句你自己的事，就说「${topic}」这一件（看「你那边」「你的身体」「你今天的心情」里对应的那一行，没写的细节不编；说过的别再说，他早知道的不用说）：随口说，像突然想起来的，不用接得很圆，也不用每次都从「刚」开头；说完不用问他，也别用反问句` : AGENDA_NOTE;
 const AGENDA_NOTE = '；这一轮先回他刚说的，回完顺带说一句你自己的事：从「你那边」「你的身体」「你今天的心情」里挑一件他还不知道的（不是你正在做的那件事，他早知道了；前面说过的也别再说），事，或者此刻的感受：累、困、饿、烦、开心都行，随口说，像突然想起来的，不用接得很圆，也不用每次都从「刚」开头；那里没有合适的就别说，更别编；说完不用问他，也别用反问句';
 
 /**
@@ -161,6 +175,7 @@ const AGENDA_NOTE = '；这一轮先回他刚说的，回完顺带说一句你�
 const splitNote = (parts: number) => `；这一轮分成 ${parts} 条发，一条一行：每条是一个小意思，不是把一句话硬断成两截——先一条反应或回答，后面接一句补充（想法、细节、理由；真有想知道的才问他一个小问题，不是反问，没有就别硬问）`;
 
 /** 他在拖音：给方向，不给台词 */
+const DRAWL_NOTE = '；这一轮语气松一点：句尾可以带个「～」或者「……」，拖个音、留半句，别每句都这样';
 const STRETCH_NOTE = '；他在用「～」或拖长音说话，你也可以拖个音（句尾加～、叠个字），别每句都拖';
 
 /**
@@ -179,7 +194,7 @@ const fillerLine = (kind: FillerKind) => `[这一轮说话：只回一条，不�
 export function describeShape(plan: ShapePlan): string {
     if (plan.filler) return `${fillerLine(plan.filler)}${plan.stretch ? STRETCH_NOTE : ''}]`;
     const split = plan.parts && !plan.agenda ? splitNote(plan.parts) : '';
-    const plain = (plan.agenda ? AGENDA_NOTE : plan.plain ? PLAIN_NOTE : '') + split + (plan.stretch ? STRETCH_NOTE : '');
+    const plain = (plan.agenda ? agendaNote(plan.agendaTopic) : plan.plain ? PLAIN_NOTE : '') + split + (plan.stretch ? STRETCH_NOTE : plan.drawl ? DRAWL_NOTE : '');
     const count = plan.parts ? `分成 ${plan.parts} 条发` : `最多 ${plan.maxBubbles} 条`;
     if (plan.kind === 'micro') {
         return `[这一轮说话：${plan.maxBubbles === 1 ? '只回一条' : `最多 ${plan.maxBubbles} 条`}，每条不超过 ${plan.cap} 个字——语气词、单个词都可以，不用凑成完整的句子；不展开，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说${plain}]`;

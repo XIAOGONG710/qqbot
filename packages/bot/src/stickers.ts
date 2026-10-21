@@ -120,11 +120,15 @@ export function imageStickerAllowance(
     }
     const lastReply = history.findLastIndex(message => message.role === 'assistant');
     const current = history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
-    if (/[？?]|(?:^|[，。！!\s])(?:怎么|为什么|咋|多少|几点|哪里|哪儿|谁|什么|是不是|有没有)/.test(current)
-        || /(?:吗|嘛|呢)[？?。！!\s]*$/.test(current)) {
+    // 「在吗」「在干嘛」「睡了吗」这类招呼式的问句不算“直接提问”：真人收到这种话常常回个表情（10-22：线上 52 次图片表情判定里 31 次被“他问了直接问题”挡掉，其中多半是测试里的真问题，但招呼式的也在里面）
+    const greeting = /^(?:在吗|在不在|在干嘛|干嘛呢|干嘛|干啥呢|睡了吗|睡了没|吃了吗|吃了没|起了吗|醒了吗|忙吗|想我没|想我吗)[呀啊吧呢嘛\s]*[？?]*$/.test(current.trim());
+    if (!greeting && (/[？?]|(?:^|[，。！!\s])(?:怎么|为什么|咋|多少|几点|哪里|哪儿|谁|什么|是不是|有没有)/.test(current)
+        || /(?:吗|嘛|呢)[？?。！!\s]*$/.test(current))) {
         return { allowed: false, reason: '他这一轮问了直接问题' };
     }
-    if (intent && /他想看照片|先接住他此刻的情绪|回应他刚说的那件事|他刚说了件好事|先直接回答他刚问的|想伤害自己、不想活/.test(intent)) {
+    // 「回应他刚说的那件事」是最常见的意图行（他说自己的事、先对这件事有个反应）：一个表情就是一种反应，原来整条挡掉，所以图片表情判定里 11 次“要认真回应”几乎全是它；
+    // 「他刚说了件好事」庆祝类的表情也自然。挡住的只剩要认真接的：想看照片、难过、直接提问、危机。有没有合适的表情还要看他这句话有没有明确的反应（stickerCued），没有照旧不发
+    if (intent && /他想看照片|先接住他此刻的情绪|先直接回答他刚问的|想伤害自己、不想活/.test(intent)) {
         return { allowed: false, reason: '这一轮要认真回应他说的事' };
     }
     if (/(?:面试|考试|答辩|作业|工作|老板|老师|导师|家里|医院|生病|受伤|事故|出事|分手|吵架|转账|欠钱|难过|伤心|焦虑|害怕|疼|痛|累死|烦死)/.test(current)) {

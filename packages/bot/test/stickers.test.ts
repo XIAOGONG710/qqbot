@@ -176,6 +176,18 @@ describe('图片表情收藏（ADR 0063）', () => {
         assert.equal(imageStickerAllowance([{ role: 'user', content: '醒醒' }], undefined, true).allowed, false);
     });
 
+    // 10-22：线上 52 次图片表情判定只有 2 次放行（4%），真人约 9% 的轮次带表情包；“回应他刚说的那件事”这条最常见的意图行和招呼式问句原来整条挡掉
+    test('招呼式的问句和“回应他刚说的那件事”不再挡表情；真问题、难过、照片这些认真的轮次照旧挡', () => {
+        for (const text of ['在吗', '在吗？', '在干嘛', '在干嘛呀', '睡了吗', '吃了吗？', '想我没']) assert.equal(imageStickerAllowance([{ role: 'user', content: text }]).allowed, true, text);
+        for (const text of ['你今天吃了什么？', '明天几点上课？', '为什么不回我', '你怎么了？']) assert.equal(imageStickerAllowance([{ role: 'user', content: text }]).allowed, false, text);
+        const saysOwn = '[这一轮你想：回应他刚说的那件事；先对这件事本身有个反应（意外、羡慕、心疼、吐槽一句都行），别急着追问细节，真要问也只问一两个字]';
+        assert.equal(imageStickerAllowance([{ role: 'user', content: '今天买了杯奶茶哈哈' }], saysOwn).allowed, true);
+        assert.equal(imageStickerAllowance([{ role: 'user', content: '过了！哈哈' }], '[这一轮你想：他刚说了件好事，替他高兴]').allowed, true);
+        for (const intent of ['[这一轮你想：先直接回答他刚问的，不另起话题]', '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够]', '[这一轮你想：他想看照片]']) {
+            assert.equal(imageStickerAllowance([{ role: 'user', content: '哈哈哈' }], intent).allowed, false, intent);
+        }
+    });
+
     test('发送指令必须独占一行、编号存在且一轮最多一个', async () => {
         const { shelf } = setup();
         await shelf.consider([{ type: 'image', data: { url: 'https://qq.invalid/cat.gif', sub_type: 1 } }], { from: 1, messageId: 1 });
