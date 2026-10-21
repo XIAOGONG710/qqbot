@@ -362,3 +362,14 @@ describe('说话的毛病接在流水线里（模拟器，假模型）', () => {
         });
     }
 });
+
+describe('承认版卡的禁用词（ADR 0067，DSH 10-15 复核问题 3）', () => {
+    const pattern = resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-{tier}.json');
+    const banned = (tier: string) => loadTierCard(pattern, tier).character.banned;
+    const flagged = (tier: string) => inspectReply('我就是我啊，我不承认', banned(tier)).some(issue => issue.kind === 'banned' && issue.match === '不承认');
+
+    test('所有承认版（含名单外那一档）都拦「不承认」；知道她是程序的人面前的原卡不拦', () => {
+        for (const tier of ['unlisted', 'stranger-open', 'classmate-open', 'known-open', 'girl_friend-open', 'bestie-open', 'boyfriend-open']) assert.equal(flagged(tier), true, tier);
+        for (const tier of ['stranger', 'classmate', 'known', 'girl_friend', 'bestie', 'boyfriend']) assert.equal(flagged(tier), false, tier);
+    });
+});

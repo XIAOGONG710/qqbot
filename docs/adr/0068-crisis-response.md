@@ -120,3 +120,9 @@ DSH 的 `exchange/reviews/2026-10-15-dsh-review-0064-0068-impl.md` 对 `crisis.t
 ## 2026-10-21 附：主动消息规划不再被约定来源的异常整个停掉（ADR 0066，复核“问题 0”）
 
 `reschedulesFrom` 经 `promises.appointmentsBetween` 读约定，来源不可用时抛 `PromiseStateUnavailable`；它在 `proactive-planner.ts` 的 `input()` 里被调用，没人接，一路冒到 `loop().catch → halt()`，这个联系人的主动消息就此全停，直到重启。`app.ts` 的生活安排那边早就有同样的保护。现在 `input()` 里包了一层 `reschedulesNow()`：只接 `PromiseStateUnavailable`，这一段不排改约、日志记一次，来源回来后记一次恢复；其他异常照旧往上冒。测试：`proactive-retry.test.ts`「约定来源暂时读不到」。
+
+## 2026-10-22 DSH 复核第 2 节的收尾
+
+- **问题 2（`CALM` 整条作废）**、**问题 6（两套判定不同源）**：10-13 的加固（ADR 0070 第 10 项）已经去掉了 `CALM`，`crisisInHistory` 对每一条都以 `detectCrisis` 为准——两处现在同源。补了回归测试把它钉住：`crisis.test.ts`「单条判定和回合判定同源」，命中表 + 排除表的每一句，单条判和回合判结论、级别都一样；同一条里既安抚又有真信号两处都判；一句「我没事」解除不了前面的信号。
+- 一次聊天取得解除证据不清除 48 小时的普通主动消息暂停（ADR 0070 第 5 条），所以“同一句话一处判危机、一处按平常”的情形只剩这个有意的不对称。
+- 问题 1、3、4、5 和委婉词表：见 10-21 补漏一节。

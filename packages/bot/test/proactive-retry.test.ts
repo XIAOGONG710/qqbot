@@ -63,7 +63,7 @@ describe('主动消息：没连上模型过一会儿再试（10-11 相机那条�
         });
         planners.push(planner);
         const records = () => (JSON.parse(readFileSync(join(dir, '10001-boyfriend.json'), 'utf8')) as { records: ProactiveRecord[] }).records;
-        return { clock, logs, tried, notes, records };
+        return { clock, logs, tried, notes, records, planner };
     }
 
     async function runUntil(clock: VirtualClock, end: number) {
@@ -121,6 +121,19 @@ describe('主动消息：没连上模型过一会儿再试（10-11 相机那条�
         await runUntil(clock, t(10, 12, 12));
         assert.ok(logs.some(l => l.includes('约定来源又读得到了')), logs.join('\n'));
         assert.ok(!logs.some(l => l.includes('主动消息状态处理失败')), logs.join('\n'));
+    });
+
+    // DSH 10-15 复核 0064 问题 2、3：发了一半就出错的，日志里要说清楚；状态页「今天第 N 条」和卡额度同口径
+    test('发了一半就出错：额度按已发算，状态页的今天条数一致，日志写明后面的没发出去', async () => {
+        const { clock, logs, tried, records, planner } = setup([{ result: 'failed', reason: '发送失败：timeout', messageIds: [3] }]);
+        await runUntil(clock, t(10, 11, 18));
+        const dump = logs.join('\n');
+        assert.equal(tried.length, 1, dump);
+        const last = records().find(r => r.occasion === 'news')!;
+        assert.equal(last.result, 'failed');
+        assert.deepEqual(last.messageIds, [3]);
+        assert.equal(planner.status().today, 1, '状态页：今天第 1 条');
+        assert.ok(logs.some(l => l.includes('只发出去了 1 条，后面的没发出去：按已发算')), dump);
     });
 
     test('一直连不上、那之后也没聊过：睡前那条顺带说买到了相机（ADR 0057 调整）', async () => {

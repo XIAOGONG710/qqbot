@@ -237,11 +237,15 @@ const earlyIn = (episode: string) => (p: HerPromise) => Boolean(p.early && p.epi
  * 最近几句里有约见面、也有时间的字眼（ADR 0047 调整）：只用来决定要不要先抽，抽不抽得出来看模型。
  * 光说「吃饭」「等你」不算（聊吃什么、「等你回来」太常见，每 5 分钟多调一次模型不值）
  */
-const MEET_WORDS = /见面|见个面|一起(?:去|吃|看|逛)|约(?:你|好|了)|门口|楼下|吃个饭|吃顿|请你吃|电影|演唱会|找你|接你/;
+// DSH 10-15 复核 0066 问题 4：「我明天去楼下取个快递」被当成约（门口 / 楼下 + 明天），「明天约吗」这类问法却漏掉。
+// 门口 / 楼下是地点，不是约；和取快递 / 外卖这类跑腿的话一起出现就不算（「三点东门口，别忘了」照旧算）。「约吗 / 约不约 / 约一下」要算
+const MEET_WORDS = /见面|见个面|见一面|见见你|一起(?:去|吃|看|逛)|约(?:你|好|了|吗|不约|一下|个)|吃个饭|吃顿|请你吃|电影|演唱会|找你|接你/;
+const MEET_PLACE = /门口|楼下/;
+const ERRAND = /快递|外卖|驿站|取件|取货|取个|拿个/;
 const MEET_TIME = /\d{1,2}\s*[:：点]|[一二两三四五六七八九十]+点|今晚|晚上|中午|下午|明天|后天|周[一二三四五六日天]|礼拜/;
 export function mentionsMeetup(messages: readonly { content: string }[]): boolean {
     const text = messages.slice(-8).map(m => m.content).join('\n');
-    return MEET_WORDS.test(text) && MEET_TIME.test(text);
+    return (MEET_WORDS.test(text) || (MEET_PLACE.test(text) && !ERRAND.test(text))) && MEET_TIME.test(text);
 }
 
 function parseDay(date: string): Date {

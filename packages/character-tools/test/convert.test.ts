@@ -629,7 +629,11 @@ test('承认版（ADR 0067）：每个名单内档位多一张，与原卡只差
         assert.deepEqual(openRest, baseRest, name);
         assert.deepEqual(openTags, [name, 'open']);
         assert.deepEqual(baseTags, [name]);
-        assert.deepEqual({ ...openExt, world: undefined }, { ...baseExt, world: undefined }, name);
+        // 禁用词：承认版多一条「不承认」（名单外那一档的表里本来有；DSH 10-15 复核 0067 问题 3），原卡不加；其余扩展逐字相同
+        const withoutBanned = (ext: typeof openExt) => ({ ...ext, world: undefined, qqbot: { ...ext.qqbot, banned: undefined } });
+        assert.deepEqual(withoutBanned(openExt), withoutBanned(baseExt), name);
+        assert.deepEqual(openExt.qqbot?.banned, [...baseExt.qqbot!.banned, ...(baseExt.qqbot!.banned.includes('不承认') ? [] : ['不承认'])], name);
+        assert.ok(openExt.qqbot!.banned.includes('不承认'), name);
         assert.equal(openExt.world, `linmengyao-scenes-${name}-open`);
         // 世界书：否认场景不在
         const ids = (book: typeof base.lorebook) => Object.values(book.entries).map(e => /（([^（）]+)）$/.exec(e.comment)?.[1] ?? e.comment);

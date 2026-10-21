@@ -201,7 +201,11 @@ export interface Scenario {
     user: string;
     /** ST 人设描述（可选） */
     persona?: string;
-    /** 这个人是否知道她是程序（ADR 0067）：默认 true（沿用原卡，旧场景不变）；写 false 测承认版卡 */
+    /**
+     * 这个人是否知道她是程序（ADR 0067）：默认 true（沿用原卡，旧场景不变）；写 false 测承认版卡。
+     * 注意方向和线上相反：线上联系人没写 knowsBot 是承认版（安全方向），模拟器没写是原卡（线上现在两位联系人都写了 true，所以模拟器默认贴近线上）；
+     * 要测线上“没写”的行为，场景里明写 false（DSH 10-15 复核 0067 问题 2）
+     */
     knowsBot: boolean;
     /** 虚拟时间的起点，ISO 字符串，带时区 */
     start: string;

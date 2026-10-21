@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -707,6 +707,18 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
         assert.deepEqual(chat(off, 10001)[0], 'user:[语音]');
         assert.deepEqual(quiet.calls.voice, []);
         assert.ok(offApp.logs.includes('听语音、看图：关（配置 media: false），照旧「[语音]」「[图片]」'));
+    });
+    test('knowsBot: true 的联系人，危机回合要换的承认版卡缺了就启动报错（不再静默退回原卡；DSH 10-15 复核 0067 问题 1）', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-cards-'));
+        dirs.push(dir);
+        const source = join(repoRoot, 'characters/linmengyao/st');
+        for (const file of ['linmengyao-classmate.json', 'linmengyao-scenes-classmate.json']) copyFileSync(join(source, file), join(dir, file));
+        const cfg = config({ characterCard: join(dir, 'linmengyao-{tier}.json'), contacts: [{ qq: 10001, name: '阿明', tier: 'classmate', knowsBot: true }] });
+        assert.throws(() => setup(cfg, {}), /classmate-open/);
+        // 补上承认版就起得来
+        for (const file of ['linmengyao-classmate-open.json', 'linmengyao-scenes-classmate-open.json']) copyFileSync(join(source, file), join(dir, file));
+        const ok = setup(cfg, {});
+        assert.ok(ok.logs.some(l => l.startsWith('档位 classmate-open：')), '启动时就读了承认版');
     });
     test('knowsBot（ADR 0067）：知道她是程序的联系人用原卡，其余用承认版卡；状态页和启动日志写明；被认真问到的说明不同', async () => {
         const cfg = config({

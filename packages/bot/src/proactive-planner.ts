@@ -454,6 +454,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
                     ...(outcome.messageIds ? { messageIds: outcome.messageIds } : {}),
                 });
                 deps.log(`主动${tag}：${candidateLabel(candidate)}出错，不再试${outcome.unreachable ? `（没连上模型 ${tries} 次）` : ''}：${outcome.reason}`);
+                if (outcome.messageIds?.length) deps.log(`主动${tag}：${candidateLabel(candidate)}只发出去了 ${outcome.messageIds.length} 条，后面的没发出去：按已发算（ADR 0011 核对 10-12 的取舍：宁可不重复），这件事不会再补说；要补得他问起或下次聊到`);
                 break;
             }
         }
@@ -461,7 +462,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
 
     function usedToday(): number {
         const day = formatDate(herDay(deps.schedule, new Date(now())));
-        return records.filter(r => r.id.startsWith(`${day}:`) && r.occasion !== 'dates' && (r.result === 'sent' || r.result === 'dryRun')).length;
+        // 和额度用同一个口径（counts）：发了一半就出错的也算一条（原来状态页写 1 条、真正卡额度的是 2 条；DSH 10-15 复核 0064 问题 3）
+        return records.filter(r => r.id.startsWith(`${day}:`) && r.occasion !== 'dates' && counts(r)).length;
     }
 
     async function loop(): Promise<void> {

@@ -41,6 +41,12 @@ export interface ObstacleFacts {
 
 const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) => aStart.getTime() < bEnd.getTime() && aEnd.getTime() > bStart.getTime();
 
+/** 她的一天从睡觉时刻（schedule.sleep，02:00）起算到第二天的这个时刻：herDay 的另一头，身体那一类的窗口用它（原来写成 [D 00:00, D+1 02:00)，凌晨两小时会算到前一天的身上） */
+function herDayWindow(schedule: Schedule, day: Date): { start: Date; end: Date } {
+    const [h, m] = schedule.sleep.split(':').map(Number);
+    return { start: new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m), end: new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, h, m) };
+}
+
 function lessonName(facts: ObstacleFacts, lesson: ReturnType<typeof classesOn>['lessons'][number]): string {
     return lesson.name ?? facts.schedule.kinds[lesson.kind]?.label?.split('，')[0] ?? '课';
 }
@@ -70,10 +76,10 @@ export function obstaclesBetween(from: Date, to: Date, facts: ObstacleFacts, exc
             });
         }
         const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
-        const dayEnd = new Date(dayStart.getTime() + DAY_MS + 2 * 3_600_000);
-        if (facts.bodyAt && overlaps(dayStart, dayEnd, from, to)) {
+        const own = herDayWindow(facts.schedule, day);
+        if (facts.bodyAt && overlaps(own.start, own.end, from, to)) {
             const body = facts.bodyAt(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 15));
-            if (unwell(body)) put({ kind: 'unwell', id: `unwell:${date}`, start: dayStart, end: dayEnd, text: unwellText(body) });
+            if (unwell(body)) put({ kind: 'unwell', id: `unwell:${date}`, start: own.start, end: own.end, text: unwellText(body) });
         }
         const world = facts.worldAt?.(from.getTime() > dayStart.getTime() ? from : dayStart);
         for (const h of world?.homework ?? []) {
@@ -114,19 +120,34 @@ export function knownBy(o: Obstacle, today: string): boolean {
 }
 
 const WEEKDAYS = '日一二三四五六';
+/** 时间块里最多写几条障碍；超过的说明后面还有（DSH 复核 0066 问题 7：切掉的明后天被表头的「没写到的都有空」说成有空） */
+const LINES_MAX = 6;
 
-/** 他提到见面时，往后看哪几天：话里有「明天」「后天」「周X」「今晚」就只看那天，没有就看今天到后天 */
-export function meetupDays(text: string, today: Date): Date[] {
+/**
+ * 他提到见面时，往后看哪几天：话里有「明天」「后天」「大后天」「周X」「下周X」「周末」「今晚」就只看那天（周末看周六周日），没有就看今天到后天。
+ * today 是她的一天；now 给了，并且已经过了零点、还没到她睡觉的时刻（herDay 还是前一个日历日）时，他嘴里的「今天 / 今晚 / 下午 / 晚上」是日历上的今天，也就是她的一天的下一天——
+ * 凌晨一点他说「今天晚上一起吃饭」，原来算成已经过去的那一天，整桶丢掉（DSH 10-15 复核 0066 问题 1）
+ */
+export function meetupDays(text: string, today: Date, now?: Date): Date[] {
     const plus = (n: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + n);
-    const week = text.match(/(?:周|星期|礼拜)([一二三四五六日天])/);
-    if (week) {
-        const target = WEEKDAYS.indexOf(week[1] === '天' ? '日' : week[1]!);
-        const ahead = (target - today.getDay() + 7) % 7;
-        return [plus(ahead)];
+    const late = now !== undefined && formatDate(now) !== formatDate(today) ? 1 : 0;
+    const dayIndex = (word: string) => WEEKDAYS.indexOf(word === '天' ? '日' : word);
+    // 周一为一周的开头：下周X = 下一个周一再往后数
+    const nextMonday = 7 - ((today.getDay() + 6) % 7);
+    const nextWeek = text.match(/下(?:个)?(?:周|星期|礼拜)([一二三四五六日天])/);
+    if (nextWeek) return [plus(nextMonday + ((dayIndex(nextWeek[1]!) + 6) % 7))];
+    if (/下(?:个)?(?:周|星期|礼拜)末/.test(text)) return [plus(nextMonday + 5), plus(nextMonday + 6)];
+    if (/周末/.test(text)) {
+        // 周六周日：今天已经是周末就从今天起
+        const sat = (6 - today.getDay() + 7) % 7;
+        return today.getDay() === 0 ? [plus(0)] : [plus(sat), plus(sat + 1)];
     }
+    const week = text.match(/(?:周|星期|礼拜)([一二三四五六日天])/);
+    if (week) return [plus((dayIndex(week[1]!) - today.getDay() + 7) % 7)];
+    if (/大后天/.test(text)) return [plus(3)];
     if (/后天/.test(text)) return [plus(2)];
     if (/明天|明晚|明早|明午/.test(text)) return [plus(1)];
-    if (/今晚|今天|今早|中午|下午|晚上/.test(text)) return [plus(0)];
+    if (/今晚|今天|今早|中午|下午|晚上/.test(text)) return [plus(late)];
     return [plus(0), plus(1), plus(2)];
 }
 
@@ -136,19 +157,21 @@ export function meetupDays(text: string, today: Date): Date[] {
  */
 export function describeObstacles(days: readonly Date[], now: Date, facts: ObstacleFacts): string | undefined {
     const today = herDay(facts.schedule, now);
+    // 「今天 / 明天」按日历日叫（凌晨一点他说的今天是日历上的今天）；身体那类只认她的那一天，不把前一个她的一天的身体说成「明天整天」
+    const calendarToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const lines: string[] = [];
     for (const day of days) {
         const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
         const from = new Date(Math.max(now.getTime(), dayStart.getTime()));
         const to = new Date(dayStart.getTime() + DAY_MS);
         if (from.getTime() >= to.getTime()) continue;
-        const offset = Math.round((dayStart.getTime() - today.getTime()) / DAY_MS);
+        const offset = Math.round((dayStart.getTime() - calendarToday.getTime()) / DAY_MS);
         const word = offset === 0 ? '今天' : offset === 1 ? '明天' : offset === 2 ? '后天' : `周${WEEKDAYS[dayStart.getDay()]}`;
-        for (const o of obstaclesBetween(from, to, facts).filter(o => knownBy(o, formatDate(today)))) {
+        for (const o of obstaclesBetween(from, to, facts).filter(o => knownBy(o, formatDate(today)) && (o.kind !== 'unwell' || o.id === `unwell:${formatDate(dayStart)}`))) {
             lines.push(o.kind === 'unwell' ? `${word}整天 ${o.text}` : o.kind === 'other_meet' ? `${word} ${o.text}` : `${word} ${clock(o.start)}–${clock(o.end)} ${o.text}`);
         }
     }
     return lines.length
-        ? `[你${days.length > 1 ? '这几天' : '那天'}不方便的时段（事实；他约见面时对照：约在这些时段里你多半得推掉或者改时间，说原因就照这里写的，别编别的；没写到的时段你都有空）：${lines.slice(0, 6).join('；')}]`
+        ? `[你${days.length > 1 ? '这几天' : '那天'}不方便的时段（事实；他约见面时对照：约在这些时段里你多半得推掉或者改时间，说原因就照这里写的，别编别的；${lines.length > LINES_MAX ? `这里只写了最早的 ${LINES_MAX} 条，后面的还有没写出来的，别当成有空` : '没写到的时段你都有空'}）：${lines.slice(0, LINES_MAX).join('；')}]`
         : undefined;
 }

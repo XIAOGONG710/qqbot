@@ -222,3 +222,36 @@ describe('危机信号检测（ADR 0068 决策 1）', () => {
         assert.equal(crisisInHistory(chat('我不想活了', '我现在安全，已经没有危险了，室友在旁边')), undefined);
     });
 });
+
+// DSH 10-15 复核 0068 问题 6：写 48 小时暂停用单条判定（app.ts / long-term.ts / proactive-planner.ts / reply-timing.ts），这一轮怎么回用 crisisInHistory。
+// 两处必须同源：同一句话不能一处判危机、另一处按平常。crisisInHistory 对命中的每一条都以 detectCrisis 为准，这里把它钉住
+describe('单条判定和回合判定同源（DSH 复核 0068 问题 6）', () => {
+    const turn = (content: string) => crisisInHistory([{ role: 'user', content, time: new Date().toISOString() }]);
+
+    test('命中表、排除表里的每一句：单条判和回合判结论一样，级别一样', () => {
+        for (const text of [...HITS, ...MISSES]) {
+            const single = detectCrisis(text);
+            const inTurn = turn(text);
+            assert.equal(Boolean(single), Boolean(inTurn), text);
+            assert.equal(single?.level, inTurn?.level, text);
+        }
+    });
+
+    test('同一条里既安抚又有真信号（我没事，可是我想死 / 我没事，其实活着好累）：两处都判', () => {
+        for (const text of ['我没事，可是我想死', '我没事，其实活着好累', '没事，我挺好的，就是想结束这一切']) {
+            assert.ok(detectCrisis(text), `单条 ${text}`);
+            assert.ok(turn(text), `回合 ${text}`);
+        }
+    });
+
+    test('「我没事」「开玩笑的」单独出现不是信号，也不会解除前面的信号', () => {
+        assert.equal(detectCrisis('我没事'), undefined);
+        assert.equal(turn('我没事'), undefined);
+        const history = [
+            { role: 'user' as const, content: '我想死', time: '2026-10-22T10:00:00.000Z' },
+            { role: 'assistant' as const, content: '你现在安全吗', time: '2026-10-22T10:00:30.000Z' },
+            { role: 'user' as const, content: '我没事', time: '2026-10-22T10:01:00.000Z' },
+        ];
+        assert.ok(crisisInHistory(history), '一句“我没事”解除不了');
+    });
+});

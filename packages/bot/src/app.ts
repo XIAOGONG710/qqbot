@@ -228,7 +228,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 先把要用到的都读一遍，缺文件立刻报错
     const tiersInUse = new Set<Tier>(config.contacts.map(c => c.tier));
     if (config.unlistedFriends) tiersInUse.add(UNLISTED_TIER);
-    for (const tier of new Set<string>([...tiersInUse, ...config.contacts.map(cardKey)])) {
+    // 知道她是程序的联系人平时用原卡，危机回合要换的承认版 <档位>-open 也先读一遍：缺文件就启动报错，和 knowsBot 不是 true 那一侧一样（原来只在危机那一刻 log 一行，
+    // 然后原卡的“不承认、绕开”和意图行的“如实承认”同时进提示词；DSH 10-15 复核 0067 问题 1）
+    const crisisOpenTiers = config.contacts.filter(c => c.tier !== UNLISTED_TIER && c.knowsBot === true).map(c => `${c.tier}-open`);
+    for (const tier of new Set<string>([...tiersInUse, ...config.contacts.map(cardKey), ...crisisOpenTiers])) {
         const { character, worldInfo } = cardFor(tier);
         log(`档位 ${tier}：角色 ${character.name}，世界书 ${character.world || '无'}（${worldInfo.length} 条）`);
     }

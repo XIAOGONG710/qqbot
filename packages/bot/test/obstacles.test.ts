@@ -9,7 +9,7 @@ import {
     blockReason, candidateLabel, candidatesOn, occasionNote, planFrom, type ProactiveInput, type ProactiveRecord, type RescheduleItem,
 } from '../src/proactive.ts';
 import { allowedReschedules, reschedulesFrom } from '../src/proactive-planner.ts';
-import { meetWindow, type Appointment, type HerPromise } from '../src/promises.ts';
+import { meetWindow, mentionsMeetup, type Appointment, type HerPromise } from '../src/promises.ts';
 import { classesOn, formatDate, wakeOn } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import type { WorldNow } from '../src/world.ts';
@@ -192,6 +192,8 @@ describe('改约：reschedulesFrom（ADR 0066 决策 3）', () => {
         assert.equal(allowedReschedules([item!], [sent(10)], now).length, 0, '10 天前刚为不舒服改过');
         assert.equal(allowedReschedules([item!], [sent(25)], now).length, 1, '25 天前的不算');
         assert.equal(allowedReschedules([item!], [sent(5, 'skipped')], now).length, 1, '没发出去的不算');
+        // DSH 复核 0066 的缺口：dryRun（试运行，没真发）按已发算额度，免得试运行转正之后同一个周期里又来一次
+        assert.equal(allowedReschedules([item!], [sent(5, 'dryRun')], now).length, 0, '试运行里排过的算');
         assert.equal(allowedReschedules([item!], [sent(5, 'sent', 'homework')], now).length, 1, '为别的原因改的不算');
     });
 });
@@ -249,3 +251,75 @@ describe('改约的候选、说明和到点的检查（ADR 0066 决策 3、4）'
         assert.equal(blockReason(c, c.at, input({ history: chatting })), '正聊着，聊天里说');
     });
 });
+
+// DSH 10-15 对 ADR 0066 的实现复核（exchange/reviews/2026-10-15-dsh-review-0064-0068-impl.md 第 5 节），10-22 逐条修
+describe('DSH 复核 0066：她的一天、说法、门、截断', () => {
+    const ymd = (days: Date[]) => days.map(formatDate);
+    const bodyOf = (body: Body) => (time: Date) => bodyAt(body, schedule, time);
+
+    test('问题 3：下周三 = 下一周的周三（不是今天）；周末 = 周六周日；大后天 = 三天后', () => {
+        const wed = day(10, 14); // 周三
+        assert.deepEqual(ymd(meetupDays('下周三见面吧', wed)), ['2026-10-21']);
+        assert.deepEqual(ymd(meetupDays('下个星期五一起吃饭', wed)), ['2026-10-23']);
+        assert.deepEqual(ymd(meetupDays('下周日出来玩', wed)), ['2026-10-25']);
+        assert.deepEqual(ymd(meetupDays('周末晚上一起吃饭', wed)), ['2026-10-17', '2026-10-18']);
+        assert.deepEqual(ymd(meetupDays('周末晚上一起吃饭', day(10, 17))), ['2026-10-17', '2026-10-18'], '今天就是周六');
+        assert.deepEqual(ymd(meetupDays('周末晚上一起吃饭', day(10, 18))), ['2026-10-18'], '今天是周日，只剩今天');
+        assert.deepEqual(ymd(meetupDays('下周末去看展', wed)), ['2026-10-24', '2026-10-25']);
+        assert.deepEqual(ymd(meetupDays('大后天见', wed)), ['2026-10-17']);
+        assert.deepEqual(ymd(meetupDays('后天见', wed)), ['2026-10-16'], '后天照旧');
+        assert.deepEqual(ymd(meetupDays('周六出来逛逛', wed)), ['2026-10-17'], '周X 照旧');
+        assert.deepEqual(ymd(meetupDays('下周三见面吧', day(10, 19))), ['2026-10-28'], '周一问下周三 = 隔了一周');
+    });
+
+    test('问题 1：凌晨 00:00–02:00 他说「今天晚上」是日历上的今天（她的一天还没换），原来整桶丢掉', () => {
+        const now = t(10, 15, 1, 0);
+        const today = day(10, 14); // herDay(01:00) 还是 10-14
+        assert.deepEqual(ymd(meetupDays('今天晚上一起吃饭吧', today, now)), ['2026-10-15']);
+        assert.deepEqual(ymd(meetupDays('今天晚上一起吃饭吧', today)), ['2026-10-14'], '不给 now 就是老行为');
+        assert.deepEqual(ymd(meetupDays('明天见面', today, now)), ['2026-10-15'], '明天照旧（她的一天的下一天）');
+        // 10-15 周四 18:30 有课（见 DSH 的复现）：凌晨一点问也要列出来，且叫“今天”
+        const lesson = classesOn(schedule, day(10, 15)).lessons.find(l => l.start.getHours() >= 16);
+        if (lesson) {
+            const line = describeObstacles(meetupDays('今天晚上一起吃饭吧', today, now), now, facts())!;
+            assert.ok(line.includes('今天 '), line);
+        }
+    });
+
+    test('问题 2a：他 20:00 说「明天见面」，前一个她的一天（到 02:00）的身体不能叫成“明天整天不舒服”', () => {
+        const now = t(12, 21, 20, 0);
+        const line = describeObstacles([day(12, 22)], now, facts({ bodyAt: bodyOf(cramps) }));
+        assert.ok(!line || !/明天整天 身上不舒服/.test(line), line);
+        // 同一个日历日里“今天”这一天自己的身体照旧
+        assert.match(describeObstacles([day(12, 21)], now, facts({ bodyAt: bodyOf(cramps) }))!, /今天整天 身上不舒服（生理期，肚子疼）/);
+    });
+
+    test('问题 2b：跨零点的约（12-21 23:45–12-22 00:30）算 12-21 的身体，不把 12-22 的当成障碍', () => {
+        const ids = obstaclesBetween(t(12, 21, 23, 45), t(12, 22, 0, 30), facts({ bodyAt: bodyOf(cramps) })).map(o => o.id);
+        assert.ok(!ids.includes('unwell:2026-12-22'), ids.join());
+        // 身体窗口是她的一天 [D 02:00, D+1 02:00)：02:00 之后才是下一天
+        assert.ok(obstaclesBetween(t(12, 22, 2, 30), t(12, 22, 3, 0), facts({ bodyAt: bodyOf({ period: { ...cramps.period!, first: '2026-12-22' } }) })).some(o => o.id === 'unwell:2026-12-22'));
+        assert.equal(obstaclesBetween(t(12, 22, 0, 30), t(12, 22, 1, 0), facts({ bodyAt: bodyOf({ period: { ...cramps.period!, first: '2026-12-22' } }) })).some(o => o.id === 'unwell:2026-12-22'), false, '00:30 还是前一天');
+    });
+
+    test('问题 7：障碍超过 6 条时写明后面还有没写出来的，不再说“没写到的时段你都有空”', () => {
+        const many = Array.from({ length: 8 }, (_, i) => hw(`课${i}`, t(10, 14, 22), new Date(t(10, 15, 8).getTime() + i * 60_000)));
+        const line = describeObstacles([day(10, 14), day(10, 15)], t(10, 14, 12), facts({ worldAt: () => world(many) }))!;
+        assert.ok(line.includes('后面的还有没写出来的，别当成有空') && !line.includes('没写到的时段你都有空'), line);
+        const few = describeObstacles([day(10, 14)], t(10, 14, 12), facts({ worldAt: () => world([hw('数据结构', t(10, 14, 22), t(10, 15, 8))]) }))!;
+        assert.ok(few.includes('没写到的时段你都有空') && !few.includes('后面的还有'), few);
+    });
+
+    test('问题 4：约见面的门——取快递不算，「明天约吗」「约不约」算，「三点东门口」照旧算', () => {
+        const says = (...texts: string[]) => mentionsMeetup(texts.map(content => ({ content })));
+        assert.equal(says('我明天去楼下取个快递'), false);
+        assert.equal(says('明天下午在门口拿外卖'), false);
+        assert.equal(says('明天约吗'), true);
+        assert.equal(says('周六约不约'), true);
+        assert.equal(says('今天下午三点东门口，别忘了'), true);
+        assert.equal(says('明天晚上六点楼下等你'), true);
+        assert.equal(says('我下周有空'), false);
+        assert.equal(says('你什么时候来'), false);
+    });
+});
+

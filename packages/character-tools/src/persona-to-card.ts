@@ -86,6 +86,13 @@ export interface CardOptions {
 /** 承认版里「被问是不是 AI」取哪一档的说法（persona.yml identity_note 的 variants 里写给名单外的那条，ADR 0003 决策 2） */
 export const OPEN_AS_TIER = 'unlisted';
 
+/**
+ * 承认版（ADR 0067）出口检查多禁的词：名单外那一档（线上原来唯一在跑的承认版）的禁用词表里有「不承认」，别的档的承认版取的是原档位的表，没有这一条——
+ * 同一张承认版卡，禁用词的强度因档位而异（DSH 10-15 复核 0067 问题 3：`inspectReply('我就是我啊，我不承认')` unlisted 拦、stranger-open 不拦）。
+ * 只给承认版加，原卡不加：知道她是程序的人面前她可以说「我才不承认」这类寻常的话
+ */
+export const OPEN_EXTRA_BANNED = ['不承认'] as const;
+
 /** 这一档看到的文字：第一条含这一档的改写，没有就用原文 */
 export function textFor(field: TextField, tier: string): string {
     return field.variants?.find(v => v.tiers.includes(tier))?.text ?? field.text;
@@ -147,7 +154,7 @@ export function personaToCard(source: CharacterSource, tierName: string, options
     const world = worldForTier(source.world, tier.name);
     const biography = biographyForTier(source.biography, tier.name);
     const qqbot = {
-        banned: tier.banned,
+        banned: options.open ? [...tier.banned, ...OPEN_EXTRA_BANNED.filter(word => !tier.banned.includes(word))] : tier.banned,
         ...(options.schedule ? { schedule: options.schedule } : {}),
         ...(dates.length ? { dates } : {}),
         ...(tier.pace !== undefined ? { pace: tier.pace } : {}),

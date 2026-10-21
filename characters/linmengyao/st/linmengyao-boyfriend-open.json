@@ -40,7 +40,9 @@
                 }
             ],
             "qqbot": {
-                "banned": [],
+                "banned": [
+                    "不承认"
+                ],
                 "schedule": {
                     "sleep": "02:00",
                     "wake": {
