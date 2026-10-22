@@ -843,7 +843,9 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
     const told = untold.length ? `；你今天${untold.map(n => n.what).join('、')}，还没跟${userName}说过，这次一起说（看「你那边」那一行，没写的细节不编）` : '';
     // 催他那一种本来就是在说他没回，不再加“不抱怨没回”
     const tail = candidate.occasion === 'reach' ? '只发一两句，像平时随手发的消息。' : '只发一两句，像平时随手发的消息；不抱怨对方没找你、没回你。';
-    return `[这次是你主动找${userName}：${why[candidate.occasion]()}${told}。${tail}]`;
+    // 开头别叫名字（10-22 量的：她回话时 2% 以「宝宝」开头，主动开口时线上 32%、模拟里 63%——提示词里“约宝宝……”“找宝宝……”把名字塞进了她嘴里）；重要的日子（生日祝福之类）叫名字是自然的，不管
+    const opener = candidate.occasion === 'dates' ? '' : '；开头直接说事，别先叫他的名字或昵称';
+    return `[这次是你主动找${userName}：${why[candidate.occasion]()}${told}${opener}。${tail}]`;
 }
 
 /** 主动找他时召回长期记忆想知道什么（ADR 0012 决策 1 第 7 条） */

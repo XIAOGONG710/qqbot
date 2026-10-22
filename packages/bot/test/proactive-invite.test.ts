@@ -169,6 +169,19 @@ describe('约他一起玩：提示词和计划器', () => {
         assert.ok(note.endsWith('不抱怨对方没找你、没回你。]'), note);
     });
 
+    test('开头别叫名字：除了重要的日子，每一种主动的说明里都写了（线上主动开口 32%、模拟里 63% 以「宝宝」开头，回话时只有 2%）', () => {
+        const base = { day: '2026-10-09', at: 0, reason: 'x' };
+        const list: Candidate[] = [
+            { ...base, id: '2026-10-09:morning', occasion: 'morning' }, { ...base, id: '2026-10-09:after_class', occasion: 'after_class', classEnd: 0 },
+            { ...base, id: '2026-10-09:bedtime', occasion: 'bedtime' }, { ...base, id: '2026-10-09:share', occasion: 'share' }, { ...base, id: '2026-10-09:quiet', occasion: 'quiet' },
+            { ...base, id: '2026-10-09:weather', occasion: 'weather' }, candidate(INVITE_ACTIVITIES[0]!.what), { ...base, id: '2026-10-09:reach:1', occasion: 'reach', reach: { count: 1 } },
+            { ...base, id: '2026-10-09:inner:th-1', occasion: 'inner', inner: { id: 'th-1', text: '想他了', goes: 'tell' } },
+        ];
+        for (const c of list) assert.ok(occasionNote(c, '宝宝').includes('开头直接说事，别先叫他的名字或昵称'), c.occasion);
+        const date = occasionNote({ ...base, id: '2026-10-09:dates', occasion: 'dates', importantDays: [{ name: '他的生日', date: '10-09' }] }, '宝宝');
+        assert.ok(!date.includes('开头直接说事'), '生日祝福叫名字是自然的');
+    });
+
     const dirs: string[] = [];
     const planners: Planner[] = [];
     afterEach(() => {
