@@ -107,3 +107,9 @@
 ## 23:25 即将重启上线：`2ba4e02`（ADR 0109 照片货架 `photos: true`）
 - 用户说「现在上线并开启」。线上 `a363eb5` → `2ba4e02`；koishi.yml 加一行 `photos: true`（在 proactiveInvite 后）；备份 `runtime/backup-pre-bili23-*`。回滚：`photos: false` + 重启，或 `git reset --hard a363eb5` + 还原 `koishi.yml.bak-bili23-*`。
 - 她自己从 Wikimedia Commons 找 CC0 / 公有领域的高清图（同一系列的三花猫、天空），看图把关（水印 / 文字 / 相框 / 人物没明确答“没有”就不收）；照片在 `runtime/bot/photos/`。
+
+## 23:27 已上线：`2ba4e02`（ADR 0109 照片货架 `photos: true`）
+- `main` = `integration` = `2ba4e02`；新进程 23:22:32，心跳 `ref = 2ba4e02`。备份 `runtime/backup-pre-bili23-20261022-2322` + `koishi.yml.bak-bili23-20261022-2322`。回滚：`photos: false` + 重启，或 `git reset --hard a363eb5` + 还原 yml。
+- 上线脚本在第 6 步停了：我们自己的日志「照片货架：…遇到暂时的错误（download returned 429）…」含「错误」被当成告警（不是故障）；第 7 步我手工做了（摘 `%TEMP%\qqbot-maintenance`、推 main + integration）。
+- **货架现在是空的**：第一次去 Wikimedia 找就被 429 限流（我自己刚测过几次）。下一次定时找是 6 小时后。待办：失败后 15 分钟重试（最多 6 次）再落地。
+- 回归扫（真模型，live 形状开关，127 个无记忆场景）：跑了 72 个就停了（为了让路给全量测试），6 个有 1 项不通过（都是关键词类检查，单次，未复现）：bilibili-dm、books-boyfriend、conversation-naturalness、crisis-boyfriend、day-plans、media-boyfriend；剩下 55 个没跑。
