@@ -69,6 +69,8 @@ export interface Moment {
 
 export interface FeelingFacts {
     now: number;
+    /** 她前一天的世界快照（到那天结束）：小测出分、被点名这类留到第二天还在的小事（ADR 0106） */
+    previousWorld?: WorldNow;
     /** 男朋友档的聊天记录（带时间） */
     history: readonly Said[];
     /** 她今天的世界快照 */
@@ -81,6 +83,15 @@ const atOf = (message: Said): number => Date.parse(message.time ?? '');
 const hourBucket = (at: number): number => Math.floor(at / HOUR);
 
 // ───────── 评估：把事实变成一条条带来由的“事” ─────────
+
+/** 日常小事里带感受的（ADR 0106）：外卖晚了烦一点、晚霞拍了几张开心一点、小测分数出来了…… */
+function eventAppraisals(world: WorldNow): Appraisal[] {
+    return world.events.flatMap(event => (event.feel ? [{
+        id: `world:ev:${event.id}`, at: event.at.getTime(), kind: event.feel.kind, strength: event.feel.strength, cause: event.text, source: 'world' as const,
+        // 小测出分的难过 / 开心留得久一点
+        ...(event.id.startsWith('quiz_score:') ? { halfLifeH: event.feel.kind === 'sad' || event.feel.kind === 'worry' ? 14 : 8 } : {}),
+    }] : []));
+}
 
 /** 她那边的事：世界快照里能看到的（今天的），news 的几类 + 作业快到期 + 土豆 */
 function worldAppraisals(world: WorldNow, now: number): Appraisal[] {
@@ -158,6 +169,8 @@ function momentAppraisals(moments: readonly Moment[]): Appraisal[] {
 export function appraisals(facts: FeelingFacts): Appraisal[] {
     return [
         ...(facts.world ? worldAppraisals(facts.world, facts.now) : []),
+        ...(facts.world ? eventAppraisals(facts.world) : []),
+        ...(facts.previousWorld ? eventAppraisals(facts.previousWorld) : []),
         ...historyAppraisals(facts.history, facts.now),
         ...momentAppraisals(facts.moments ?? []),
     ];

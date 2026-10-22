@@ -69,6 +69,7 @@ export const DEFAULTS = {
     herFeelings: false,
     herNo: false,
     lagTail: false,
+    everydayLife: false,
     shapeSplit: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
@@ -235,6 +236,13 @@ export interface AppConfig {
      * 并且回复一直失败（断网）十分钟以上才终于发出去时，时间块里多一句断网的事实，她可以顺口说一句“刚才网断了”，不编别的原因。默认关
      */
     lagTail: boolean;
+    /**
+     * 她每天碰到的小事（ADR 0106）：线上 15 天的事件账全是课、饭、睡这样的例行，卡上的“小事”只有 12 条。开了以后世界里多约 90 条日常尺度的小事
+     * （外卖晚了、老师拖堂、下雨没带伞、舍友的闹钟、食堂阿姨多给了半勺菜、晚霞拍了几张、和苏雨桐 / 陈佳宁的来往、土豆的事……），
+     * 按日期哈希、有天气 / 月份 / 星期 / 土豆见没见到这些条件，一天最多多 4 件、同一类一天一件；另有“小测”的一条线（高数 / 概率论 / 专业课每四周一次，
+     * 前一次课老师说、当天写、两天后出分，数学类偏低）。其中带感受的会成为她开心 / 烦 / 担心 / 难过的来由（要 herFeelings）。不改角色卡，只给亲近的档位看全。默认关
+     */
+    everydayLife: boolean;
     /**
      * 分成几条（ADR 0096，要 shape 开着）：形状里抽出的条数（1 条约 55%、2 条约 28%、3 条约 17%）本来只是上限，真模型多半只写一行——
      * 线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思。默认关
@@ -480,6 +488,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),
         lagTail: bool(file, 'lagTail', '', DEFAULTS.lagTail),
+        everydayLife: bool(file, 'everydayLife', '', DEFAULTS.everydayLife),
         shapeSplit: bool(file, 'shapeSplit', '', DEFAULTS.shapeSplit),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),

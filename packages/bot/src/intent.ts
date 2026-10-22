@@ -37,6 +37,8 @@ export interface IntentContext {
     grievance?: Grievance;
     /** 会拒绝（ADR 0103，配置 herNo）：开了才有“他在磨她”“他在管着她”这两个意图；只有男朋友档 */
     refuse?: boolean;
+    /** 她今天有可讲的小事（ADR 0106，配置 everydayLife）：他问“今天干嘛了 / 有什么好玩的事”时让她从里面挑具体的说 */
+    dayThings?: boolean;
 }
 
 /**
@@ -284,6 +286,16 @@ export function controlsHer(history: readonly Said[]): boolean {
     return CONTROLLING.test(text) && !CARING_ORDER.test(text);
 }
 
+/**
+ * 他在问她今天过得怎么样 / 有什么事（ADR 0106）：线上有了很多小事以后，被问“今天干嘛了 / 有什么好玩的事 / 有没有什么烦的”她还是回“赶作业呢”“没呢”——
+ * 事实就在「你那边」里（今天的小事），她不用。这时让她挑一两件具体的说，别回什么都没说的；今天确实没有才说没有
+ */
+const ASKS_HER_DAY = /今天(?:干嘛|干什么|做了什么|过得|怎么样|咋样|忙什么|都干|有什么|怎么过)|有(?:没有)?什么(?:好玩|有趣|新鲜|开心|高兴|烦|倒霉|糟心|事)|最近(?:怎么样|咋样|忙什么|过得|在忙)|发生了什么|今天怎么样/;
+export function asksAboutHerDay(history: readonly Said[]): boolean {
+    return ASKS_HER_DAY.test(latestUserText(history));
+}
+export const ABOUT_DAY_INTENT = '[这一轮你想：他在问你今天过得怎么样、有什么事。从「你那边」里“今天的小事”和今天的事实里挑一两件具体的说（带上你当时的感觉，像随口讲给他听），别回“没什么 / 就赶作业”这种什么都没说的；今天真的什么都没有才说没有，没写的别编]';
+
 export const PRESSED_INTENT = '[这一轮你想：你刚推了他，他在磨你。你的理由没变，别被磨两句就答应：软着再推一次（换个说法，别重复上一句），或者给个折中（下课以后 / 明天 / 就十分钟）；他给了新理由，或者认真地求你，才松口。别生气，别讲道理，一两句]';
 export const CONTROL_INTENT = '[这一轮你想：他在管着你、替你定能跟谁说话、去哪（不许、听到没、你得听我的）。你最受不了被人管着、被人替你定怎么活——对他不会真翻脸，但也不是他说什么你就“好好好都听你的”：先别扭一句，该不答应的就明说你不答应，小事可以逗他、给个折中；他好好说、认真讲理，你就软下来。别冷着脸教训他，一两句]';
 
@@ -323,6 +335,7 @@ export function describeIntent(context: IntentContext): string | undefined {
     // 她那边的事还没跟他说过（ADR 0057 调整）：放在「先回答」前面——他多半开口就问「在干嘛」，那一条的「不另起话题」会把这件压下去；他难过时先接情绪
     const news = context.news?.length && !needsCare(context.history) ? context.news : undefined;
     if (news) return `[这一轮你想：先回他刚说的；你今天${news.join('、')}，还没跟他说过，接着就说这件（看「你那边」那一行，没写的细节不编）]`;
+    if (context.dayThings && !needsCare(context.history) && asksAboutHerDay(context.history)) return ABOUT_DAY_INTENT;
     if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
     if (needsCare(context.history)) return '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够；他认真难过、生病或很累时，第一句先安慰或问怎么了，不先损他；他是撒娇式的呜呜、要哭了，就直接哄（叠词哄：同一个词连说几遍，或者抱抱），别反问他哭什么；不转去讲你自己的事，不硬开新话题]';
     if (isRelationshipBid(context.history)) return '[这一轮你想：只接他刚说的你们两个人的事，一两句就够；不转去讲猫、书或手头的进度]';

@@ -36,6 +36,7 @@ import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
 import { asleepSince, saidBedtimes } from './bedtime.ts';
 import { herStatus } from './status-line.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
+import { withEveryday } from './everyday.ts';
 import { appraisals, asksAfterHer, criedRecently, describeFeelings, FEELING_NAME, feelingsAt, feelsLow, voicedKinds, type Felt, type Moment } from './feelings.ts';
 import { describeRecentPhotography, recentPhotography } from './projects.ts';
 import { describePast, pastCue } from './biography.ts';
@@ -69,9 +70,11 @@ export interface TierCard {
 }
 
 /** 读一个档位的角色卡和它链接的世界书；pattern 是配置里的 characterCard（{tier} 换成档位名，承认版是「<档位>-open」，ADR 0067），世界书在同目录的 <world>.json */
-export function loadTierCard(pattern: string, tier: string): TierCard {
+export function loadTierCard(pattern: string, tier: string, options: { everydayLife?: boolean } = {}): TierCard {
     const path = pattern.replaceAll('{tier}', tier);
-    const character = loadCharacterCard(path);
+    const loaded = loadCharacterCard(path);
+    // 补充的日常小事和小测（ADR 0106，配置 everydayLife）：代码里加进世界的“小事”块，不改角色卡
+    const character = options.everydayLife && loaded.herWorld ? { ...loaded, herWorld: withEveryday(loaded.herWorld, tier)! } : loaded;
     const worldInfo = character.world ? loadWorldInfo(join(dirname(path), `${character.world}.json`), character.world) : [];
     return { character, worldInfo };
 }
@@ -177,6 +180,8 @@ export interface ContactPipelineOptions {
     herFeelings?: boolean;
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
     moments?: () => readonly Moment[];
+    /** 她每天碰到的小事（ADR 0106，配置 everydayLife；卡在 loadTierCard 里补）：他问“今天干嘛了 / 有什么好玩的事”时让她从今天的小事里挑具体的说 */
+    everydayLife?: boolean;
     /** 回复延迟的长尾（ADR 0105，配置 lagTail）：醒着空着时有一部分消息她在做别的，过一会儿才看到；断网很久之后才回，时间块里写一句 */
     lagTail?: boolean;
     /** 会拒绝（ADR 0103，配置 herNo）：她刚推了他、他在磨她时别被磨两句就答应；他在管着她（不许 / 听到没）时不顺着说“都听你的”。只给男朋友档 */
@@ -463,6 +468,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 books: Boolean(books),
                 initiating: Boolean(initiate),
                 ...(options.herNo ? { refuse: true } : {}),
+                ...(options.everydayLife && around?.events.length ? { dayThings: true } : {}),
                 waiting: loops?.waiting.map(l => l.what),
                 unanswered: loops?.unanswered.map(l => l.what),
                 intimate: contact.tier === 'boyfriend',
@@ -477,9 +483,16 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ? '小别扭：她倾诉了几条他隔了很久才回（他回来后第一轮；日志不记内容）'
                 : `${grievance!.stage === 'makeup' ? '和好' : '小别扭'}：他隔了 ${grievance!.days} 天才来（他回来后第 ${grievance!.round + 1} 轮；日志不记内容）`);
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
+            // 前一天的世界（到那天结束）：小测出分这类事第二天她还记着（ADR 0106）；只在开了心境时算
+            const previousAround = options.herFeelings && herSchedule && character.herWorld && contact.tier === 'boyfriend'
+                ? (() => {
+                    const end = new Date(herDay(herSchedule, time).getTime() - 60_000);
+                    return options.worldState?.at(character.herWorld!, herSchedule, end) ?? worldAt(character.herWorld!, herSchedule, end);
+                })()
+                : undefined;
             // 心境（ADR 0102）：事实 → 带来由的评估 → 按半衰期衰减的感受，不落盘、每一轮重算；只给男朋友档，危机回合不算；小别扭 / 和好那一轮由 0074 的态度管，不叠
             const feltNow: Felt[] = options.herFeelings && contact.tier === 'boyfriend' && !crisisNow
-                ? feelingsAt(appraisals({ now: time.getTime(), history: chat, ...(around ? { world: around } : {}), moments: options.moments?.() ?? [] }), time.getTime())
+                ? feelingsAt(appraisals({ now: time.getTime(), history: chat, ...(around ? { world: around } : {}), ...(previousAround ? { previousWorld: previousAround } : {}), moments: options.moments?.() ?? [] }), time.getTime())
                 : [];
             const hisWords = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
             const feelingLine = feltNow.length && !grievanceActive

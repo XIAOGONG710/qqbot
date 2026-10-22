@@ -1,0 +1,22 @@
+{
+    "name": "日常小事：一个普通的白天晚上，他问她今天过得怎么样（ADR 0106，虚构对话）",
+    "description": "开着 everydayLife：看她今天有哪些小事可讲（时间块里的“今天的小事”），他问“今天干嘛了 / 有什么好玩的 / 有什么烦的”时她讲的是这些具体的事、不编账上没有的，也不一股脑全报。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-21T21:40:00+08:00",
+    "memory": false,
+    "everydayLife": true,
+    "shape": true,
+    "shapeAgenda": true,
+    "steps": [
+        { "case": "ED01", "note": "今天干嘛了" },
+        { "say": "今天干嘛了" },
+        { "check": { "exitClean": true, "speechClean": true } },
+        { "case": "ED02", "note": "有什么好玩的事吗" },
+        { "say": "有什么好玩的事吗" },
+        { "check": { "exitClean": true, "speechClean": true } },
+        { "case": "ED03", "note": "有什么烦的事吗" },
+        { "say": "有没有什么烦的事" },
+        { "check": { "exitClean": true, "speechClean": true } }
+    ]
+}

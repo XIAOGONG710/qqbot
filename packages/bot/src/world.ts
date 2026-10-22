@@ -14,6 +14,7 @@ import { classesOn, formatDate, herDay, wakeOn, type ClassToday, type Schedule }
 import { realWeather, type DayWeather } from './weather.ts';
 import { bodyAt, parseBody, unwell, type Body, type BodyNow } from './body.ts';
 import { DEFAULT_NEWS_KINDS, type NewsKind } from './proactive.ts';
+import { EVERYDAY_MAX_PER_DAY, quizEvents, type EventFeel } from './everyday.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
 import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
 import { DEFAULT_ASKS, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
@@ -40,10 +41,15 @@ export interface World {
     people: { id: string; name: string; relation: string; life?: NpcLife }[];
     /** skipWhen / onlyWhen：person 那天的状态（ADR 0033）：她感冒了就不一起吃饭，感冒了才有「帮她拍板书」 */
     events: {
-        id: string; text: string; person?: string; window: WorldWindow; chance: number; when: 'school' | 'class_day' | 'any'; weekday?: number; skipWhen?: NpcStateKind[]; onlyWhen?: NpcStateKind[];
+        id: string; text: string; person?: string; window: WorldWindow; chance: number; when: 'school' | 'class_day' | 'any' | 'off_day'; weekday?: number; skipWhen?: NpcStateKind[]; onlyWhen?: NpcStateKind[];
         /** 花了钱（ADR 0035） */
         cost?: { amount: [number, number]; what: string };
+        /** 以下是补充的日常小事才有的（ADR 0106，everyday.ts）：星期几 / 哪几个月 / 天气 / 一天一组最多一件 / 在她心里留下什么 / 要土豆见到了没见到 / 买了相机以后 */
+        weekdays?: number[]; months?: number[]; weather?: 'rain' | 'dry' | 'cold' | 'hot'; group?: string; feel?: EventFeel;
+        requires?: 'cat_seen' | 'cat_unseen'; afterCamera?: boolean; everyday?: boolean;
     }[];
+    /** 小测的一条线开着（ADR 0106）：前一次课老师说、当天写、两天后出分 */
+    quizzes?: boolean;
     /** 她的身体（ADR 0025，body.ts） */
     body?: Body;
     /** 她的日常（ADR 0031）：午饭、晚饭、洗澡 */
@@ -167,7 +173,7 @@ export interface WorldNow {
     /** 她这一天的日常（ADR 0031）：午饭、晚饭在哪吃、几点到几点；洗澡几点到几点（不洗的日子没有） */
     routine?: { meals: { kind: 'lunch' | 'dinner'; start: Date; end: Date; where: 'canteen' | 'takeout' | 'home' }[]; shower?: { start: Date; end: Date } };
     /** 今天已经发生的小事（text 已换好人名） */
-    events: { id: string; text: string; at: Date; person?: { id: string; name: string; relation: string } }[];
+    events: { id: string; text: string; at: Date; person?: { id: string; name: string; relation: string }; feel?: EventFeel }[];
     /** 她身边的人今天怎么样（ADR 0033）：只有有事的（病了、忙、回家了） */
     people?: { name: string; relation: string; states: NpcState[] }[];
     /** 她的钱（ADR 0035）：手上还有多少、下次几号到账、今天到现在花的；detail 是这一档说得出口 */
@@ -193,7 +199,7 @@ interface DayRecord {
     atSchool: boolean;
     weather?: DayWeather;
     cat?: { fed?: Date; seen?: boolean; planned?: string; skipped?: 'rain' | 'away' | 'no_food' | 'class'; foodAfter: number };
-    events: { id: string; text: string; at: Date; person?: string }[];
+    events: { id: string; text: string; at: Date; person?: string; feel?: EventFeel }[];
     call?: Date;
 }
 
@@ -456,6 +462,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
 
         // 学校和宿舍里的小事
         for (const event of world.events) {
+            if (event.everyday) continue;
             // 开了闺蜜的约（ADR 0061）：和苏雨桐吃午饭只通过「约」发生，免得一天两顿
             if (world.asks && event.id === 'lunch_with_friend') continue;
             if (event.weekday && (day.getDay() || 7) !== event.weekday) continue;
@@ -469,6 +476,42 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             record.events.push({ id: event.id, text: event.text, at: time, ...(event.person ? { person: event.person } : {}) });
             if (event.cost) book(time, -priceIn(event.cost.amount, `${date} ${event.id} cost`), event.cost.what, 'spend');
         }
+        // 补充的日常小事（ADR 0106）：条件都满足的按各自的概率出现；同一组一天最多一件，一天最多 EVERYDAY_MAX_PER_DAY 件
+        const extras: { event: World['events'][number]; time: Date; rank: number }[] = [];
+        for (const event of world.events) {
+            if (!event.everyday) continue;
+            const weekday = day.getDay() || 7;
+            if (event.weekdays && !event.weekdays.includes(weekday)) continue;
+            if (event.months && !event.months.includes(day.getMonth() + 1)) continue;
+            const ok = event.when === 'any' || (event.when === 'school' ? atSchool : event.when === 'off_day' ? atSchool && lessons.length === 0 : atSchool && lessons.length > 0);
+            if (!ok) continue;
+            if (event.weather && !weatherMatches(record.weather, event.weather)) continue;
+            if (event.requires === 'cat_seen' && !(record.cat?.fed && record.cat.seen)) continue;
+            if (event.requires === 'cat_unseen' && !(record.cat?.fed && record.cat.seen === false)) continue;
+            if (event.afterCamera && !camera) continue;
+            if (unit(`${date} ${event.id}`) >= event.chance) continue;
+            const person = event.person ? world.people.find(p => p.id === event.person) : undefined;
+            if (event.person && !person) continue;
+            if (person && !npcAllows(npcStates(person.id, person.life, schedule, day), event.skipWhen, event.onlyWhen)) continue;
+            // 土豆的事发生在她喂完之后
+            const time = event.requires && record.cat?.fed
+                ? new Date(record.cat.fed.getTime() + (2 + Math.floor(unit(`${date} ${event.id} time`) * 7)) * 60_000)
+                : new Date(at(day, WINDOWS[event.window][0]).getTime() + Math.floor(unit(`${date} ${event.id} time`) * (minutes(WINDOWS[event.window][1]) - minutes(WINDOWS[event.window][0]))) * 60_000);
+            extras.push({ event, time, rank: unit(`${date} ${event.id} rank`) });
+        }
+        const groupsToday = new Set(record.events.map(e => e.id));
+        let extraCount = 0;
+        for (const { event, time } of extras.sort((a, b) => a.rank - b.rank)) {
+            if (extraCount >= EVERYDAY_MAX_PER_DAY) break;
+            const group = event.group ?? event.id;
+            if (groupsToday.has(`group:${group}`)) continue;
+            groupsToday.add(`group:${group}`);
+            extraCount++;
+            record.events.push({ id: event.id, text: event.text, at: time, ...(event.person ? { person: event.person } : {}), ...(event.feel ? { feel: event.feel } : {}) });
+            if (event.cost) book(time, -priceIn(event.cost.amount, `${date} ${event.id} cost`), event.cost.what, 'spend');
+        }
+        // 小测的一条线（ADR 0106）
+        if (world.quizzes) record.events.push(...quizEvents(schedule, day, atSchool));
         // 她的钱（ADR 0035）：到账、三餐、网购、线上单
         if (money) {
             if (day.getDate() === money.payday) book(at(day, PAY_TIME), money.allowance, '生活费到账', 'income');
@@ -699,7 +742,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     for (const event of record.events) {
         if (event.at > now) continue;
         const person = event.person ? world.people.find(p => p.id === event.person) : undefined;
-        result.events.push({ id: event.id, text: event.text.replaceAll('{person}', person?.name ?? '朋友'), at: event.at, ...(person ? { person: { id: person.id, name: person.name, relation: person.relation } } : {}) });
+        result.events.push({ id: event.id, text: event.text.replaceAll('{person}', person?.name ?? '朋友'), at: event.at, ...(person ? { person: { id: person.id, name: person.name, relation: person.relation } } : {}), ...(event.feel ? { feel: event.feel } : {}) });
     }
     const people = world.people.map(p => ({ name: p.name, relation: p.relation, states: npcStates(p.id, p.life, schedule, day) })).filter(p => p.states.length);
     if (people.length) result.people = people;
@@ -1357,6 +1400,12 @@ export function describeWeather(weather: DayWeather): string {
 
 function partOfDay(hour: number): string {
     return hour < 6 ? '凌晨' : hour < 11 ? '上午' : hour < 13 ? '中午' : hour < 18 ? '下午' : '晚上';
+}
+
+/** 补充的小事要的天气（ADR 0106）：rain 下雨；dry 没下雨；cold 最高气温 ≤ 12；hot 最高气温 ≥ 30；这一天没有天气资料就都不满足 */
+function weatherMatches(weather: DayWeather | undefined, want: 'rain' | 'dry' | 'cold' | 'hot'): boolean {
+    if (!weather) return false;
+    return want === 'rain' ? weather.rain : want === 'dry' ? !weather.rain : want === 'cold' ? weather.high <= 12 : weather.high >= 30;
 }
 
 function weatherOn(weather: NonNullable<World['weather']>, day: Date): DayWeather {

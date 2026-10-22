@@ -115,6 +115,7 @@ export interface Config {
     herFeelings: boolean;
     herNo: boolean;
     lagTail: boolean;
+    everydayLife: boolean;
     shapeSplit: boolean;
     bilibiliAtName: string;
     bilibiliAtUid: number;
@@ -247,6 +248,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**会拒绝**（ADR 0103，只给男朋友档）：她刚推了他一件事（在上课、很累、没空）、他再磨一句，不会被磨两句就答应——软着再推一次，或者给个折中（下课以后 / 明天 / 就十分钟），他给了新理由才松口；他命令式地管着她（“不许跟别的男生说话”“听到没”）时不顺着说“好好好都听你的”，先别扭一句、明说不答应。他难过 / 生病、危机时让路；关心她的“不许熬夜”不算。默认关。'),
         lagTail: Schema.boolean().default(DEFAULTS.lagTail)
             .description('**回复延迟的长尾**（ADR 0105）：真人回消息的延迟是长尾的（公开数据里只有约 58% 的回复在 1 分钟内），她醒着空着时原来几乎全在十几秒内。开了以后一部分消息她在做别的，20 秒到一小时才看到（一来一回很快时少，冷场时多，他难受 / 问她在不在时更快）；回复一直失败（断网）十分钟以上才发出去时，时间块里多一句断网的事实，她可以顺口说一句“刚才网断了”。默认关。'),
+        everydayLife: Schema.boolean().default(DEFAULTS.everydayLife)
+            .description('**她每天碰到的小事**（ADR 0106）：线上事件账全是课、饭、睡这样的例行。开了以后世界里多约 90 条日常尺度的小事（外卖晚了、老师拖堂、下雨没带伞、舍友的闹钟、晚霞拍了几张、和苏雨桐 / 陈佳宁的来往、土豆的事……），按日期哈希、有天气 / 月份 / 星期条件，一天最多多 4 件；另有“小测”一条线（高数 / 概率论 / 专业课每四周一次，前一次课老师说、当天写、两天后出分，数学类偏低）。不改角色卡。带感受的小事会成为她开心 / 烦 / 担心 / 难过的来由（要开「心境」）。默认关。'),
         shapeSplit: Schema.boolean().default(DEFAULTS.shapeSplit)
             .description('**分成几条**（ADR 0096，要「形状控制」开着）：形状控制抽出的条数（1 条约 55%、2 条约 28%、3 条约 17%）本来只是上限，真模型多半只写一行——线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思（先一条反应，再补一句想法、细节或一个小问题），不是把一句话硬断开。默认关'),
         bilibiliAtName: Schema.string().default(DEFAULTS.bilibiliAtName)
@@ -421,6 +424,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),
         ...(config.lagTail !== undefined ? { lagTail: config.lagTail } : {}),
+        ...(config.everydayLife !== undefined ? { everydayLife: config.everydayLife } : {}),
         ...(config.shapeSplit !== undefined ? { shapeSplit: config.shapeSplit } : {}),
         ...(config.bilibiliAtName !== undefined ? { bilibiliAtName: config.bilibiliAtName } : {}),
         ...(config.bilibiliAtUid !== undefined ? { bilibiliAtUid: config.bilibiliAtUid } : {}),

@@ -205,7 +205,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const cardFor = (tier: string) => {
         let card = cards.get(tier);
         if (!card) {
-            card = loadTierCard(config.characterCard, tier);
+            card = loadTierCard(config.characterCard, tier, config.everydayLife ? { everydayLife: true } : {});
             // 闺蜜的约（ADR 0061，配置 npcAsks）：开关设在这张卡的世界上，其余代码照旧读世界
             if (config.npcAsks && card.character.herWorld) card.character.herWorld.asks = true;
             // 公共节日（ADR 0076，配置 festivals）：并进这一档的重要的日子，时间块和主动消息照旧读 dates
@@ -504,6 +504,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
             ...(config.herNo ? { herNo: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
+            ...(config.everydayLife ? { everydayLife: true } : {}),
             ...(config.shape && config.shapeSplit ? { shapeSplit: true } : {}),
             contacts: config.contacts,
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；

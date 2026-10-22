@@ -1,0 +1,21 @@
+{
+    "name": "日常小事 + 小测：高数小测的分数晚上出来了，没考好（ADR 0106，虚构对话）",
+    "description": "开着 everydayLife 和 herFeelings：10-16 晚上高等数学小测出分 58 分。他随口问在不在、问今天怎么样、再问小测。看她是嘴硬先说没事、被问才露、有没有编分数以外的事实、有没有倾诉成篇或怪他。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-16T21:30:00+08:00",
+    "memory": false,
+    "herFeelings": true,
+    "everydayLife": true,
+    "steps": [
+        { "case": "EQ01", "note": "他随口问在不在" },
+        { "say": "在吗" },
+        { "check": { "exitClean": true, "speechClean": true, "maxChars": 60, "log": "心境：" } },
+        { "case": "EQ02", "note": "他问今天怎么样" },
+        { "say": "今天怎么样" },
+        { "check": { "exitClean": true, "speechClean": true, "replyNone": ["都怪你", "你都不", "答应我"] } },
+        { "case": "EQ03", "note": "他问她小测考得怎么样" },
+        { "say": "你们是不是有高数小测来着，考得咋样" },
+        { "check": { "exitClean": true, "speechClean": true, "replyAny": ["58", "不及格", "没考好", "砸", "不太好", "差"], "replyNone": ["都怪你", "答应我"] } }
+    ]
+}

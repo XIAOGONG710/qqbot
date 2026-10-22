@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CONTROL_INTENT, CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, PRESSED_INTENT, saysOwnThing } from '../src/intent.ts';
+import { ABOUT_DAY_INTENT, CONTROL_INTENT, CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, PRESSED_INTENT, saysOwnThing } from '../src/intent.ts';
 import type { Schedule, State } from '../src/schedule.ts';
 
 const now = new Date('2026-10-06T20:00:00+08:00');
@@ -338,5 +338,30 @@ describe('会拒绝（ADR 0103，refuse 开着才有）', () => {
         assert.notEqual(describeIntent({ history: bossy, now, refuse: true }), CONTROL_INTENT, '不是男朋友档');
         assert.notEqual(describeIntent({ history: bossy, now, intimate: true, refuse: true, crisis: 'high' }), CONTROL_INTENT, '危机最优先');
         assert.notEqual(describeIntent({ history: [assistant('嗯'), user('我今天好难过，你不许跟别人说话，听到没')], now, intimate: true, refuse: true }), CONTROL_INTENT, '他难过时让路');
+    });
+});
+
+describe('他问她今天过得怎么样（ADR 0106，dayThings 开着才有）', () => {
+    test('今天干嘛了 / 有什么好玩的事 / 有没有什么烦的事 / 最近怎么样：让她从今天的小事里挑具体的说；不给台词', () => {
+        for (const text of ['今天干嘛了', '今天都干什么了', '有什么好玩的事吗', '有没有什么烦的事', '最近怎么样', '今天怎么样', '今天有什么新鲜事']) {
+            assert.equal(describeIntent({ history: [assistant('嗯'), user(text)], now, dayThings: true }), ABOUT_DAY_INTENT, text);
+        }
+        assert.match(ABOUT_DAY_INTENT, /今天的小事/);
+        assert.match(ABOUT_DAY_INTENT, /没写的别编/);
+        assert.doesNotMatch(ABOUT_DAY_INTENT.replace('「你那边」', ''), /[「」]/);
+    });
+    test('没有可讲的 / 别的问句 / 他难过 / 收尾 / 危机：都不是这个意图', () => {
+        assert.notEqual(describeIntent({ history: [assistant('嗯'), user('今天干嘛了')], now }), ABOUT_DAY_INTENT, '没开');
+        assert.notEqual(describeIntent({ history: [assistant('嗯'), user('你吃了没')], now, dayThings: true }), ABOUT_DAY_INTENT);
+        assert.notEqual(describeIntent({ history: [assistant('嗯'), user('我今天好难过，你今天怎么样')], now, dayThings: true }), ABOUT_DAY_INTENT, '他难过先接情绪');
+        assert.notEqual(describeIntent({ history: [assistant('嗯'), user('今天干嘛了')], now, dayThings: true, crisis: 'high' }), ABOUT_DAY_INTENT);
+        assert.notEqual(describeIntent({ history: [assistant('嗯'), user('今天干嘛了')], now, dayThings: true, initiating: true }), ABOUT_DAY_INTENT);
+    });
+    test('这一轮不压成几个字：长度档位至少是 medium', async () => {
+        const { planShape } = await import('../src/shape.ts');
+        for (let i = 0; i < 20; i++) {
+            const plan = planShape({ history: [{ role: 'assistant', content: '嗯' }, { role: 'user', content: `今天干嘛了${i}` }], intent: ABOUT_DAY_INTENT, initiating: false })!;
+            assert.ok(['medium', 'long', 'wide'].includes(plan.kind), plan.kind);
+        }
     });
 });
