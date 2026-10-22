@@ -138,6 +138,7 @@ const SCRIPT = /\[Start a new Chat\]|^\s*\[(?:当前时间|距上一条消息|�
  * 他发来的语音、图片在聊天记录里的写法（ADR 0052：「[语音 8秒：……]」「[图片，上面写着：……]」「[图片]」）：
  * 她照抄出来就是在假装发语音、发图，那一行不发
  */
+const PHOTO_TOKEN = /^<photo:[a-f0-9]{12}>$/im;
 const MEDIA_LINE = /^\s*\[(?:语音|图片)(?:\]|[ ，：])/;
 
 /**
@@ -163,7 +164,8 @@ export function inspectReply(reply: string, banned: readonly string[], speech?: 
         const script = SCRIPT.exec(text);
         if (script) issues.push({ line, kind: 'script', match: script[0].trim() });
         const promise = PROMISE.exec(text.trim().replace(DM_SENT, '私信'));
-        if (promise && !(imageStickers && /表情包/.test(text))) issues.push({ line, kind: 'promise', match: promise[0] });
+        // 这一条回复里真带着一张照片（photos.ts 已校验过编号）：“翻出来给你看”“发你”说的就是它，不算她做不到的承诺
+        if (promise && !(imageStickers && /表情包/.test(text)) && !PHOTO_TOKEN.test(reply)) issues.push({ line, kind: 'promise', match: promise[0] });
         for (const word of banned) if (text.includes(word)) issues.push({ line, kind: 'banned', match: word });
         // QQ 里没有的表情：平时 tidyFaces 已经去掉，还在的是去掉就什么都不剩的
         for (const token of new Set(facesIn(text).unknown)) issues.push({ line, kind: 'face', face: 'unknown', match: token });

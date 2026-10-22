@@ -1,0 +1,62 @@
+{
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-24T20:30:00+08:00",
+    "memory": false,
+    "photos": [
+        {
+            "kind": "cat",
+            "caption": "土豆趴在宿舍楼下自行车棚顶上晒太阳，眯着眼"
+        },
+        {
+            "kind": "cat",
+            "caption": "土豆蹲在猫粮碗边上，抬头看镜头"
+        },
+        {
+            "kind": "view",
+            "caption": "宿舍楼窗外的晚霞，天边一片橘红"
+        }
+    ],
+    "history": [
+        {
+            "time": "2026-10-24T20:00:00+08:00",
+            "role": "user",
+            "content": "在干嘛"
+        },
+        {
+            "time": "2026-10-24T20:00:30+08:00",
+            "role": "assistant",
+            "content": "刚吃完饭，瘫着"
+        }
+    ],
+    "name": "照片：他没要，她不乱发（ADR 0109）",
+    "description": "货架里有照片，但他只是聊别的事（累了、在忙）。她一张都不发。",
+    "steps": [
+        {
+            "case": "PN01",
+            "note": "他聊别的"
+        },
+        {
+            "say": "今天好累啊，一直在改代码"
+        },
+        {
+            "check": {
+                "photoSent": false,
+                "exitClean": true
+            }
+        },
+        {
+            "case": "PN02",
+            "note": "他问她在干嘛"
+        },
+        {
+            "say": "你在干嘛呢"
+        },
+        {
+            "check": {
+                "photoSent": false,
+                "exitClean": true
+            }
+        }
+    ]
+}

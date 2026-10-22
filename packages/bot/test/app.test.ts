@@ -21,6 +21,7 @@ import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import type { StickerEntry, StickerShelf } from '../src/stickers.ts';
+import { photoShelf } from '../src/photos.ts';
 import { CRISIS_FALLBACK } from '../src/exit-check.ts';
 import { CRISIS_MARK } from '../src/intent.ts';
 
@@ -50,7 +51,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, proactiveInvite: false, innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, pursuits: false, shapeSplit: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, proactiveInvite: false, photos: false, innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, pursuits: false, shapeSplit: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false, shortReplies: false,
         media: true,
@@ -264,6 +265,52 @@ describe('编排（app.ts）', () => {
         assert.equal(calls.discovered, 1);
         assert.equal(calls.used, 1);
         assert.deepEqual(chat(cfg, 10001), ['user:[动画表情]', 'assistant:她发了个表情包：白猫捂嘴偷笑']);
+    });
+
+    test('照片货架（ADR 0109）：他要看土豆，货架里有 → 提示词列编号、先一句话再发图；聊天记录写成可读的一句；没要的时候模型乱写指令一律清掉', async () => {
+        const cfg = config({ photos: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        const source = join(cfg.dataDir, 'cat.jpg');
+        writeFileSync(source, 'fake-jpg');
+        const entry = photoShelf({ dir: join(cfg.dataDir, 'photos'), log: () => {} }).add(source, 'cat', '土豆趴在自行车棚顶上晒太阳');
+        let prompt = '';
+        const { app, images, sent } = setup(cfg, { 10001: [] }, { generate: messages => { prompt = messages.map(m => m.content).join('\n'); return `翻到一张，上周拍的\n<photo:${entry.id}>`; } });
+        await app.connected(SELF);
+        app.receive(event(10001, 1, '发张土豆的照片我看看'));
+        await until(() => images.length === 1);
+        assert.equal(images[0], `10001:${join(cfg.dataDir, 'photos', 'files', `${entry.id}.jpg`)}:[照片]`);
+        assert.match(prompt, new RegExp(`<photo:${entry.id}>：土豆趴在自行车棚顶上晒太阳`));
+        assert.match(prompt, /以前拍的/);
+        assert.deepEqual(sent.map(m => m.replace(/^10001:/, '')), ['翻到一张，上周拍的']);
+        assert.deepEqual(chat(cfg, 10001), ['user:发张土豆的照片我看看', 'assistant:翻到一张，上周拍的', `assistant:她发了张照片：土豆趴在自行车棚顶上晒太阳`]);
+
+        // 没要的时候：模型自己写了照片指令，清掉、不发图
+        const quiet = config({ photos: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        writeFileSync(join(quiet.dataDir, 'cat.jpg'), 'fake-jpg');
+        const quietEntry = photoShelf({ dir: join(quiet.dataDir, 'photos'), log: () => {} }).add(join(quiet.dataDir, 'cat.jpg'), 'cat', '土豆晒太阳');
+        const second = setup(quiet, { 10001: [] }, { generate: () => `今天好冷\n<photo:${quietEntry.id}>` });
+        await second.app.connected(SELF);
+        second.app.receive(event(10001, 2, '今天好冷啊'));
+        await until(() => second.sent.length >= 1);
+        assert.equal(second.images.length, 0);
+        assert.ok(second.sent.every(m => !m.includes('<photo')));
+    });
+
+    test('照片货架没开 / 货架空：他要看照片也不发图（照旧走“先不发”）', async () => {
+        const off = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        const a = setup(off, { 10001: [] }, { generate: () => '不给你看' });
+        await a.app.connected(SELF);
+        a.app.receive(event(10001, 1, '发张照片看看'));
+        await until(() => a.sent.length >= 1);
+        assert.equal(a.images.length, 0);
+        const empty = config({ photos: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        let prompt = '';
+        const b = setup(empty, { 10001: [] }, { generate: messages => { prompt = messages.map(m => m.content).join('\n'); return '不给你看'; } });
+        await b.app.connected(SELF);
+        b.app.receive(event(10001, 2, '发张照片看看'));
+        await until(() => b.sent.length >= 1);
+        assert.equal(b.images.length, 0);
+        assert.doesNotMatch(prompt, /<photo:/);
+        assert.match(prompt, /他想看照片/);
     });
 
     // ADR 0099：他自己的线上话里发表情的轮次约六成只有表情；抽到发表情的轮次里一半只发表情、不写文字
@@ -1582,7 +1629,7 @@ describe('全开冒烟（整包上线用）', () => {
                 contacts: bf, schedule: true, herDays: true, pokes: true, pokeBack: true, pokeOut: true, recalls: true, readReceipts: true, reactions: true,
                 onlineStatus: true, profileLikes: true, signature: 'dryRun', qzone: 'dryRun', bilibili: 'dryRun', typingStatus: true, selfRecall: true,
                 rhythm: true, shortReplies: true, festivals: 'greet', npcAsks: true,
-                herFeelings: true, herNo: true, proactiveInvite: true, lagTail: true, everydayLife: true, pursuits: true, shape: true, shapeAgenda: true, shapeFiller: true, shapeFeel: true, shapeSplit: true, grievance: true,
+                herFeelings: true, herNo: true, proactiveInvite: true, photos: true, lagTail: true, everydayLife: true, pursuits: true, shape: true, shapeAgenda: true, shapeFiller: true, shapeFeel: true, shapeSplit: true, grievance: true,
             });
             const { app, sent, logs } = setup(cfg, { 10001: [] }, {
                 clock, generate: () => '在呢，刚忙完', bilibiliFetch: bili,

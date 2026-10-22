@@ -57,6 +57,7 @@ import { loadNeedsAnchor } from './needs.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
+import { photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, type PhotoSource } from './photos.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } from './stickers.ts';
 import { SlidingWindowRateLimiter } from './rate-limit.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
@@ -170,6 +171,8 @@ export interface AppOptions {
     vision?: ImageDescriber;
     /** 图片表情收藏（ADR 0063）；运行入口按配置建，测试可给假的。 */
     stickers?: StickerShelf;
+    /** 照片货架的网络来源（ADR 0109：她自己从网上找高清图）；运行入口按配置建（看图没配置就没有），测试可给假的 */
+    photoSource?: PhotoSource;
     /** 允许发图片表情的轮次里抽中发的概率（不写按 STICKER_TURN_CHANCE；测试用）*/
     stickerChance?: number;
     /** 抽到发表情的轮次里只发表情不写文字的概率（不写：shapeFeel 开着按 STICKER_ONLY_SHARE，否则 0；测试用，ADR 0099）*/
@@ -189,7 +192,7 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, stickers, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, sensitive = sensitiveSwitch() }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, sensitive = sensitiveSwitch() }: AppOptions): App {
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -337,6 +340,12 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const stickerMode = config.stickers ?? 'off';
     const collectingStickers = stickerMode !== 'off' ? stickers : undefined;
     const sendingStickers = stickerMode === 'send' && transport.sendPrivateImage ? collectingStickers : undefined;
+    // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
+    const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, ...(photoSource ? { source: photoSource } : {}) }) : undefined;
+    if (config.photos) {
+        const have = photos?.status();
+        log(photos ? `照片货架：开（本地 ${have!.count} 张：土豆 ${have!.byKind.cat}、风景 ${have!.byKind.view}、她的片子 ${have!.byKind.work}；${photoSource ? '她自己去网上找（CC0 / 公有领域，看图把关，每 6 小时一次）' : '网络来源没开（看图没配置），只有手动加的'}；只对男朋友档；没有照片就什么都不做）` : '照片货架：配置开着，但发图片的通道没准备好，不工作');
+    }
     log(`图片表情：${stickerMode === 'off' ? '关（配置 stickers: "off"）'
         : !collectingStickers ? `配置为 ${stickerMode}，但看图或收藏库没准备好，不工作`
             : stickerMode === 'collect' ? `只收藏核对（本地 ${collectingStickers.status().count} 个；不进提示词、不发送）`
@@ -486,6 +495,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             candidates: config.candidates,
             ...contextWindowFor(contact),
             ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
+            ...(photos && contact.tier === 'boyfriend' ? { photos } : {}),
             ...(stickerChance !== undefined ? { stickerChance } : {}),
             // 抽到发表情的轮次里一半只发表情（ADR 0099）：跟着情绪轮的开关走；测试可以直接给概率
             ...((stickerOnlyChance ?? (config.shape && config.shapeFeel ? STICKER_ONLY_SHARE : 0)) > 0 ? { stickerOnlyChance: stickerOnlyChance ?? STICKER_ONLY_SHARE } : {}),
@@ -524,6 +534,12 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.readReceipts && transport.markRead ? { markRead: (userId: number) => { transport.markRead!(userId).catch(error => failOnce('已读回执', userId, error)); } } : {}),
             ...(config.reactions && transport.reactMessage ? { react: (userId: number, messageId: number, text: string) => { transport.reactMessage!(messageId, reactionEmoji(text, messageId)).then(() => log(`[${userId}] 看到了没回，点了个表情回应`), error => failOnce('表情回应', userId, error)); } } : {}),
             send: async (userId, text) => {
+                const photo = contact.tier === 'boyfriend' ? photos?.resolve(text) : undefined;
+                if (photo) {
+                    const id = await transport.sendPrivateImage!(userId, photo.file, '[照片]');
+                    photos!.used(photo.id);
+                    return id;
+                }
                 const sticker = contact.tier === 'boyfriend' ? sendingStickers?.resolve(text) : undefined;
                 if (sticker) {
                     const id = await transport.sendPrivateImage!(userId, sticker.file, `[${sticker.description}]`);
@@ -850,6 +866,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
 
     let stopped = false;
     let stickerDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
+    let photoDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
+    const discoverPhotos = () => void photos?.discover().catch(error => log(`照片货架：找照片出错（${error instanceof Error ? error.message : String(error)}）`));
     const discoverStickers = () => void collectingStickers?.discover()
         .catch(error => log(`图片表情：读取导入箱和 QQ 自定义表情失败（${error instanceof Error ? error.message : String(error)}）`));
     /** Hindsight 健康检查的结果（状态页用到时才探，见 status()） */
@@ -1030,6 +1048,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     for (const planner of planners.values()) planner.poke();
                     syncFollowUps();
                     discoverStickers();
+                    discoverPhotos();
+                    if (photos && !photoDiscoveryTimer) {
+                        photoDiscoveryTimer = setInterval(discoverPhotos, PHOTO_DISCOVERY_INTERVAL_MS);
+                        photoDiscoveryTimer.unref();
+                    }
                     if (collectingStickers && !stickerDiscoveryTimer) {
                         stickerDiscoveryTimer = setInterval(discoverStickers, STICKER_DISCOVERY_INTERVAL_MS);
                         stickerDiscoveryTimer.unref();
@@ -1107,6 +1130,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (lifeTimer) clearInterval(lifeTimer);
             if (weatherTimer) clearInterval(weatherTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
+            if (photoDiscoveryTimer) clearInterval(photoDiscoveryTimer);
             useRealWeather(undefined);
             releaseLock();
         },

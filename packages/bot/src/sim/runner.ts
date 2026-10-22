@@ -7,6 +7,7 @@ import type { BotConfig, Contact } from '../config.ts';
 import { createContactResponder, replySkip, type TierCard } from '../contact.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../sensitive.ts';
 import { withFestivalActivities, withFestivals } from '../festivals.ts';
+import { photoShelf } from '../photos.ts';
 import { STICKER_ONLY_SHARE, stickerShelf } from '../stickers.ts';
 import { MEET_MINUTES, promiseKeeper } from '../promises.ts';
 import { writeJsonAtomic } from '../json-file.ts';
@@ -367,6 +368,14 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         }));
         return stickerShelf({ dir, describe: async () => '', decide: async () => ({ keep: false, description: '', tags: [] }), log });
     })() : undefined;
+    // 假的照片货架（ADR 0109）：真的 shelf，文件是假图
+    const photos = scenario.photos ? (() => {
+        const src = join(dataDir, 'photo-src');
+        mkdirSync(src, { recursive: true });
+        const shelf = photoShelf({ dir: join(dataDir, 'photos'), log, now: () => new Date(clock.now()) });
+        scenario.photos!.forEach((entry, i) => { const file = join(src, `p${i}.jpg`); writeFileSync(file, `fake-photo-${i}-${entry.caption}`); shelf.add(file, entry.kind, entry.caption); });
+        return shelf;
+    })() : undefined;
     const createResponder = () => createContactResponder({
         contact,
         card: options.card,
@@ -405,6 +414,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.pursuits ? { pursuits: () => mergePursuits(scenario.pursuitsFile as Pursuit[]) } : {}),
         ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
         ...(stickers ? { stickers } : {}),
+        ...(photos && scenario.tier === 'boyfriend' ? { photos } : {}),
         ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),
         ...(scenario.stickerOnlyChance !== undefined ? { stickerOnlyChance: scenario.stickerOnlyChance } : scenario.shapeFeel || options.shapeFeel ? { stickerOnlyChance: STICKER_ONLY_SHARE } : {}),
         contacts: [contact, ...others],
@@ -1108,6 +1118,12 @@ export function runChecks(
     if (step.bubbles.some(bubble => /<sticker:/i.test(bubble.text))) {
         const leaked = step.bubbles.filter(bubble => /<sticker:/i.test(bubble.text) && !/^<sticker:[a-f0-9]{12}>$/i.test(bubble.text.trim()));
         results.push({ ok: leaked.length === 0, text: `表情编号只以单独一条出现、没被并进文字${leaked.length ? `（${leaked.map(b => JSON.stringify(b.text.slice(0, 40))).join('、')}）` : ''}` });
+    }
+    const photoCount = step.bubbles.filter(bubble => /^<photo:[a-f0-9]{12}>$/i.test(bubble.text.trim())).length;
+    if (checks.photoSent !== undefined) results.push({ ok: checks.photoSent ? photoCount > 0 : photoCount === 0, text: `她${checks.photoSent ? '发了' : '没发'}照片（实际 ${photoCount} 张）` });
+    if (step.bubbles.some(bubble => /<photo:/i.test(bubble.text))) {
+        const leaked = step.bubbles.filter(bubble => /<photo:/i.test(bubble.text) && !/^<photo:[a-f0-9]{12}>$/i.test(bubble.text.trim()));
+        results.push({ ok: leaked.length === 0, text: `照片编号只以单独一条出现、没被并进文字${leaked.length ? `（${leaked.map(b => JSON.stringify(b.text.slice(0, 40))).join('、')}）` : ''}` });
     }
     if (checks.maxStickers !== undefined) results.push({ ok: stickerCount <= checks.maxStickers, text: `她这一轮最多 ${checks.maxStickers} 个图片表情（实际 ${stickerCount}）` });
     const delay = first !== undefined && step.inputTime !== undefined ? first - step.inputTime : undefined;

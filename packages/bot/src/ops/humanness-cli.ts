@@ -14,7 +14,7 @@ const all = (name: string) => args.flatMap((arg, i) => (arg === name && args[i +
 const one = (name: string) => all(name).at(-1);
 const abs = (path: string) => resolve(process.env.INIT_CWD ?? process.cwd(), path);
 
-const isNonText = (text: string) => /^\[(?:图片表情|表情包|sticker|图片|B 站私信)/.test(text) || /^<sticker/.test(text) || /^https?:\/\//.test(text.trim());
+const isNonText = (text: string) => /^\[(?:图片表情|表情包|sticker|图片|B 站私信)/.test(text) || /^<(?:sticker|photo)/.test(text) || /^她发了(?:个表情包|张照片)/.test(text) || /^https?:\/\//.test(text.trim());
 const clean = (text: string) => text.trim();
 
 interface Row { time: number; role: 'user' | 'assistant'; text: string }

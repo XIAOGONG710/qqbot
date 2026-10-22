@@ -252,7 +252,7 @@ export function describeShape(plan: ShapePlan): string {
 
 // ───────── 强制执行 ─────────
 
-const STICKER_LINE = /^<sticker:[a-f0-9]{12}>$/i;
+const STICKER_LINE = /^<(?:sticker|photo):[a-f0-9]{12}>$/i;
 /** 超出多少算「太长」：给一点余地，免得 9 个字的话为了 8 的上限被砍 */
 const slack = (cap: number) => Math.max(2, Math.ceil(cap * 0.35));
 const limitOf = (plan: ShapePlan) => plan.cap + slack(plan.cap);

@@ -39,7 +39,7 @@ export function splitReply(text: string, maxBubbles = MAX_BUBBLES): string[] {
 }
 
 /** 图片表情的发送指令（stickers.ts 的 EXACT_TOKEN，ADR 0063）：一行就是一条消息，并进文字就认不出来了 */
-const STICKER_LINE = /^<sticker:[a-f0-9]{12}>$/i;
+const STICKER_LINE = /^<(?:sticker|photo):[a-f0-9]{12}>$/i;
 
 /**
  * 有图片表情指令时的合并：指令那一行自己占一条、绝不并进文字（并进去发送时认不出，编号会当文字发给对方，10-12 模拟器 ADR 0063 复测撞到）。

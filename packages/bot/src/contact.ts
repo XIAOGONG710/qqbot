@@ -49,6 +49,7 @@ import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candid
 import { turnCut, type Summarizer, type TurnWindow } from './context-window.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
+import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from './photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from './stickers.ts';
 
 const DAY_MS = 86_400_000;
@@ -126,6 +127,8 @@ export interface ContactPipelineOptions {
     react?: (userId: number, messageId: number, text: string) => void;
     /** 图片表情收藏：给模型列可选编号、校验输出；实际发送由 app.ts 的 send 接线。 */
     stickers?: StickerShelf;
+    /** 照片货架（ADR 0109，配置 photos）：他要看土豆 / 风景 / 她的片子时，货架里有就发；只对男朋友档 */
+    photos?: PhotoShelf;
     /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
     stickerChance?: number;
     /** 抽到发表情的轮次里只发表情不写文字的概率（不写 = 0，不开；app.ts 在 shapeFeel 开着时给 STICKER_ONLY_SHARE；模拟器场景可以调来测，ADR 0099） */
@@ -226,9 +229,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let stickerContext: { text: string; only?: boolean } | undefined;
     /** 这一轮只发表情、不写文字（ADR 0099）：模型多写了文字就去掉，只留那一行表情；它没写表情就照它写的发 */
     let stickerOnlyNow = false;
+    /** 这一轮发哪一类照片（ADR 0109）：他要看、货架里有、允许发才有；没有就一律清掉模型写的照片指令 */
+    let photoNow: PhotoKind | undefined;
     const clean = (reply: string) => {
         const text = cleanUpReply(reply, names, character.regexScripts);
-        const cleaned = options.stickers?.clean(text, stickersAllowed) ?? stripStickerArtifacts(text);
+        const stickered = options.stickers?.clean(text, stickersAllowed) ?? stripStickerArtifacts(text);
+        const cleaned = options.photos ? options.photos.clean(stickered, photoNow !== undefined) : stickered;
         if (!stickerOnlyNow) return cleaned;
         const only = cleaned.split('\n').map(line => line.trim()).filter(line => /^<sticker:[a-f0-9]{12}>$/i.test(line));
         return only.length ? only.join('\n') : cleaned;
@@ -464,7 +470,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 小别扭 / 和好（ADR 0074）：从聊天记录的时间戳重算，不落盘；危机、主动找他、非男朋友档都不算
             // 起因有两种：隔了好几天才来（grievanceNow），或者她倾诉了几条、他隔了很久才回（ignoredNow，10-20）
             const grievance = options.grievance && contact.tier === 'boyfriend' && !initiate && !crisisNow ? (grievanceNow(chat) ?? ignoredNow(chat)) : undefined;
-            const intent = thinking ? undefined : describeIntent({
+            const baseIntent = thinking ? undefined : describeIntent({
                 history: chat,
                 state,
                 schedule: schedule ?? herSchedule,
@@ -483,6 +489,19 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(grievance ? { grievance } : {}),
                 ...(untold.length ? { news: untold } : {}),
             });
+            // 照片（ADR 0109）：他明确要看土豆 / 风景 / 她的片子，货架里有这一类，允许发（没连着发、今天没发够、不是危机 / 吵醒 / 小别扭 / 他难过），就发；
+            // 没有明确对象（只说“发张照片”）取手上有的第一类；要的是她本人（自拍）不在货架里，照旧走“先不发”
+            photoNow = undefined;
+            if (options.photos && contact.tier === 'boyfriend' && !thinking && !initiate && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))) {
+                const wanted = photoWanted(chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n'));
+                const kind = wanted === 'any' ? PHOTO_KINDS.find(k => options.photos!.has(k)) : wanted;
+                if (kind && options.photos.has(kind)) {
+                    const allowance = photoAllowance(chat, time.getTime(), false, Boolean(woken));
+                    if (allowance.allowed) { photoNow = kind; log(`照片货架：他想看${kind}，货架里有，这一轮发一张`); }
+                    else log(`照片货架：这一轮不发（${allowance.reason}）`);
+                }
+            }
+            const intent = photoNow ? photoIntent(photoNow) : baseIntent;
             const grievanceActive = Boolean(grievance && intent === describeGrievance(grievance));
             sulkNow = grievanceActive && grievance!.stage === 'sulk';
             if (grievanceActive) log(grievance!.cause === 'ignored'
@@ -514,7 +533,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
             const stickerAllowance = options.stickers && !thinking ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
-            stickersAllowed = stickerAllowance.allowed;
+            stickersAllowed = stickerAllowance.allowed && !photoNow;
             const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
             stickerOnlyNow = stickersAllowed && stickerCued(saidNow) && stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE) && stickerOnlyTurn(chat, options.stickerOnlyChance ?? 0);
             stickerContext = stickersAllowed && stickerCued(saidNow) && stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE) ? { text: saidNow, ...(stickerOnlyNow ? { only: true } : {}) } : undefined;
@@ -538,7 +557,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
                 ...(mood ? ['心情'] : []),
             ];
-            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !thinking ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
+            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !thinking ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
             // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
             const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
             const crutchLine = crutches.length
@@ -551,7 +570,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她最近心里在想的（ADR 0101）：前后是同一个在想事情的人
             const innerNow = !initiate && !crisisNow ? options.innerLine?.() : undefined;
             if (innerNow) log('内心：这一轮提示词里放了她最近的念头');
-            const length = crisisNow || shapeNow || stickerOnlyNow || thinking ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
+            const length = crisisNow || shapeNow || stickerOnlyNow || photoNow || thinking ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
@@ -614,6 +633,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在青岛」
                         ...(partnerBack ? [partnerBack] : []),
                         ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
+                        ...(photoNow && options.photos?.prompt(photoNow) ? [options.photos.prompt(photoNow)!] : []),
                         ...(intent ? [intent] : []),
                         ...(length ? [describeLength(length, options.shortReplies)] : []),
                         ...(shapeNow ? [describeShape(shapeNow)] : []),
@@ -684,7 +704,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         ...(options.recallOwn ? { recallOwn: options.recallOwn } : {}),
         ...(options.markRead ? { markRead: () => options.markRead!(contact.qq) } : {}),
         ...(options.react ? { react: (messageId: number, text: string) => options.react!(contact.qq, messageId, text) } : {}),
-        ...(options.stickers ? { historyContent: (sent: string) => options.stickers!.history(sent) } : {}),
+        ...(options.stickers || options.photos ? { historyContent: (sent: string) => { const withSticker = options.stickers ? options.stickers.history(sent) : sent; return withSticker === sent && options.photos ? options.photos.history(sent) : withSticker; } } : {}),
         log,
         now,
         settle: options.settle ?? DEFAULT_SETTLE,

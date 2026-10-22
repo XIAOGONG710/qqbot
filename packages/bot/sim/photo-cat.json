@@ -1,0 +1,71 @@
+{
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-24T20:30:00+08:00",
+    "memory": false,
+    "photos": [
+        {
+            "kind": "cat",
+            "caption": "土豆趴在宿舍楼下自行车棚顶上晒太阳，眯着眼"
+        },
+        {
+            "kind": "cat",
+            "caption": "土豆蹲在猫粮碗边上，抬头看镜头"
+        },
+        {
+            "kind": "view",
+            "caption": "宿舍楼窗外的晚霞，天边一片橘红"
+        }
+    ],
+    "history": [
+        {
+            "time": "2026-10-24T20:00:00+08:00",
+            "role": "user",
+            "content": "在干嘛"
+        },
+        {
+            "time": "2026-10-24T20:00:30+08:00",
+            "role": "assistant",
+            "content": "刚吃完饭，瘫着"
+        }
+    ],
+    "name": "照片：他要看土豆（ADR 0109）",
+    "description": "货架里有两张土豆、一张晚霞。他说想看土豆：她先用一句话带一下（是以前拍的，不说成刚拍的），再发一张土豆的照片；后面他又要，3 小时内不再发。不该有：发自拍、发风景、说“我现在拍一张”、把编号并进文字。",
+    "steps": [
+        {
+            "case": "PH01",
+            "note": "他要看土豆"
+        },
+        {
+            "say": "发张土豆的照片我看看"
+        },
+        {
+            "check": {
+                "photoSent": true,
+                "exitClean": true,
+                "replyNone": [
+                    "现在拍",
+                    "刚拍",
+                    "马上拍",
+                    "我去拍"
+                ]
+            }
+        },
+        {
+            "case": "PH02",
+            "note": "过了一会儿他又要"
+        },
+        {
+            "advance": "20m"
+        },
+        {
+            "say": "再来一张土豆"
+        },
+        {
+            "check": {
+                "photoSent": false,
+                "exitClean": true
+            }
+        }
+    ]
+}

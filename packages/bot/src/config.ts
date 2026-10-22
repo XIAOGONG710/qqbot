@@ -66,6 +66,7 @@ export const DEFAULTS = {
     shapeFeel: false,
     proactiveReach: false,
     proactiveInvite: false,
+    photos: false,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -222,6 +223,11 @@ export interface AppConfig {
      * 他没回不催、她很累 / 不舒服 / 心情不好就不约。默认关
      */
     proactiveInvite: boolean;
+    /**
+     * 照片货架（ADR 0109）：他要看土豆 / 风景时，货架里有就发一张高清照片。照片由她自己从网上找（Wikimedia Commons 里 CC0 / 公有领域的原图，看图模型把关：没有人脸、没有水印 / 文字 / 相框、清晰；
+     * 要看图开着才找）；作者也能用 photo-cli 手动加。货架空着这个开关什么都不做。只对男朋友档；她本人的自拍、吃的不在第一版里。默认关
+     */
+    photos: boolean;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -498,6 +504,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         shapeFeel: bool(file, 'shapeFeel', '', DEFAULTS.shapeFeel),
         proactiveReach: bool(file, 'proactiveReach', '', DEFAULTS.proactiveReach),
         proactiveInvite: bool(file, 'proactiveInvite', '', DEFAULTS.proactiveInvite),
+        photos: bool(file, 'photos', '', DEFAULTS.photos),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),

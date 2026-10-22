@@ -114,6 +114,8 @@ export interface Checks {
     stickerSent?: boolean;
     /** 这一步她最多发几个图片表情 */
     maxStickers?: number;
+    /** 这一步她发了照片（ADR 0109，要写 photos）：true 至少一张，false 一张都不能有 */
+    photoSent?: boolean;
     /** 她第一条在对方最后一条之后至少 / 至多多久发出，如 "5m"、"20m"（虚拟时间） */
     replyAfter?: string;
     replyWithin?: string;
@@ -279,6 +281,8 @@ export interface Scenario {
     newsKinds?: NewsKind[];
     /** 假的图片表情收藏（ADR 0063）：编号是 12 位小写十六进制，描述是她在提示词里看到的那句；真的 shelf 代码，文件是空的（模拟器不发图，气泡里是 <sticker:编号>）。只有写了才给回复器 */
     stickers?: { id: string; description: string; tags: string[] }[];
+    /** 假的照片货架（ADR 0109）：真的 shelf 代码，文件是几个字节的假图（模拟器不发图，气泡里是 <photo:编号>）。只有写了才给回复器，并打开 photos */
+    photos?: { kind: 'cat' | 'view' | 'work'; caption: string }[];
     /** 允许发图片表情的轮次里抽中发的概率（0–1），不写按线上的 STICKER_TURN_CHANCE；写 1 = 允许的轮次都发（测选哪张用） */
     stickerChance?: number;
     /** 抽到发表情的轮次里只发表情、不写文字的概率（0–1），不写：shapeFeel 开着（场景里或 --feel）按线上的 STICKER_ONLY_SHARE，否则 0；写 1 = 抽到的轮次都只发表情（ADR 0099） */
@@ -324,6 +328,16 @@ function stickerEntries(value: unknown, fail: (message: string) => never): { id:
         ids.add(o.id as string);
         const tags = o.tags === undefined ? [] : Array.isArray(o.tags) && o.tags.every(t => typeof t === 'string') ? o.tags as string[] : fail(`stickers[${i}].tags 应为字符串数组`);
         return { id: o.id as string, description: (o.description as string).trim(), tags };
+    });
+}
+
+function photoEntries(value: unknown, fail: (message: string) => never): { kind: 'cat' | 'view' | 'work'; caption: string }[] {
+    if (!Array.isArray(value) || value.length === 0) fail('photos 应为非空数组');
+    return (value as unknown[]).map((item, i) => {
+        const o = item as Record<string, unknown>;
+        if (!o || !['cat', 'view', 'work'].includes(o.kind as string)) fail(`photos[${i}].kind 应为 cat / view / work`);
+        if (typeof o.caption !== 'string' || !o.caption.trim()) fail(`photos[${i}].caption 应为一句说明`);
+        return { kind: o.kind as 'cat' | 'view' | 'work', caption: (o.caption as string).trim() };
     });
 }
 
@@ -389,6 +403,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         }) } : {}),
         ...(s.moodyChance !== undefined ? { moodyChance: chance(s.moodyChance) } : {}),
         ...(s.stickers !== undefined ? { stickers: stickerEntries(s.stickers, fail) } : {}),
+        ...(s.photos !== undefined ? { photos: photoEntries(s.photos, fail) } : {}),
         ...(s.stickerChance !== undefined ? { stickerChance: typeof s.stickerChance === 'number' && s.stickerChance >= 0 && s.stickerChance <= 1 ? s.stickerChance : fail('stickerChance 应为 0–1 的数') } : {}),
         ...(s.stickerOnlyChance !== undefined ? { stickerOnlyChance: typeof s.stickerOnlyChance === 'number' && s.stickerOnlyChance >= 0 && s.stickerOnlyChance <= 1 ? s.stickerOnlyChance : fail('stickerOnlyChance 应为 0–1 的数') } : {}),
         ...(s.proactiveOffline !== undefined ? {

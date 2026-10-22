@@ -7,13 +7,15 @@ import { AsyncGate } from './async-gate.ts';
 export type SupportedImageType = 'image/gif' | 'image/jpeg' | 'image/png' | 'image/webp';
 export interface DownloadedImage { bytes: Uint8Array; type: SupportedImageType }
 export type HostResolver = (hostname: string) => Promise<readonly { address: string; family: number }[]>;
-export type ImageFetch = (url: string, init: { redirect: 'manual'; signal: AbortSignal }) => Promise<Response>;
+export type ImageFetch = (url: string, init: { redirect: 'manual'; signal: AbortSignal; headers?: Record<string, string> }) => Promise<Response>;
 
 export interface RemoteImageOptions {
     timeoutMs?: number;
     maxBytes?: number;
     maxRedirects?: number;
     signal?: AbortSignal;
+    /** 额外的请求头（例如 Wikimedia 要求带说明性的 User-Agent）；每一跳都带 */
+    headers?: Record<string, string>;
     /** Test seams only. Production also validates DNS again while opening the socket. */
     resolve?: HostResolver;
     fetch?: ImageFetch;
@@ -115,7 +117,7 @@ export function fetchRemoteImage(raw: string, options: RemoteImageOptions = {}):
             let url = checkedUrl(raw);
             for (let redirects = 0; ; redirects++) {
                 await assertPublic(url, resolveHost);
-                const response = await fetchImage(url.href, { redirect: 'manual', signal });
+                const response = await fetchImage(url.href, { redirect: 'manual', signal, ...(options.headers ? { headers: options.headers } : {}) });
                 // A body we will not read must be released, otherwise the socket stays busy until the server gives up.
                 const drop = () => response.body?.cancel().catch(() => {});
                 if (response.status >= 300 && response.status < 400) {

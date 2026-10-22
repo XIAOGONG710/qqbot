@@ -27,6 +27,7 @@ import { configuredImageDescriber, STICKER_VISION_PROMPT } from '../../bot/src/v
 import { stickerDecider, stickerShelf } from '../../bot/src/stickers.ts';
 import { qqFavorites } from '../../bot/src/sticker-favorites.ts';
 import { bqbDiscover } from '../../bot/src/sticker-sources.ts';
+import { webPhotoSource } from '../../bot/src/photo-sources.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 
 // koishi 的 ESM 入口是坏的（@koishijs/loader/lib/index.mjs 默认导入了一个 CJS 文件）：取 loader 自己用的那份 CJS
@@ -112,6 +113,7 @@ export interface Config {
     shapeFeel: boolean;
     proactiveReach: boolean;
     proactiveInvite: boolean;
+    photos: boolean;
     innerLife: boolean;
     herFeelings: boolean;
     herNo: boolean;
@@ -244,6 +246,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**他没回也继续找他、催他一下**（ADR 0100，要「主动消息」开着）：原来她主动发的有一条没回就整个停下等他回。开了以后没回的可以再发到 3 条，一条比一条隔得久（隔 2 小时、再隔 4 小时），她自己想一想要不要催他——第一次轻轻戳一下，第二次带点小脾气，也可以决定先不发；晚上 10 点半以后、他说过去睡了 / 去忙了不催；到 3 条就停，等他回。默认关。'),
         proactiveInvite: Schema.boolean().default(DEFAULTS.proactiveInvite)
             .description('**约他一起玩**（ADR 0107，要「主动消息」开着）：晚上（19:30 以后）她想起你们的固定节目——卡上写着的我的世界存档、王者双排——随口约他一句。一周最多 3 次、两次之间至少隔 2 天（他回的第一句像拒绝就隔 4 天）；他没回不催；他说过去忙 / 去睡了、他今晚有事、她自己很累 / 不舒服 / 心情不好，就不约。默认关。'),
+        photos: Schema.boolean().default(DEFAULTS.photos)
+            .description('**照片货架**（ADR 0109）：他要看土豆（楼下的流浪猫）/ 天空时，货架里有就发一张高清照片（只对男朋友档）。照片由她自己从网上找：Wikimedia Commons 里 CC0 / 公有领域的原图（不用署名），看图模型逐张把关——有人脸、有水印 / 文字 / 相框、不清晰、不是三花猫 / 天空的都不收；猫只收同一只（同一个系列）。需要「看图」开着才会去找；货架空着这个开关什么都不做。她本人的自拍、吃的不在里面。默认关。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
@@ -427,6 +431,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.shapeFeel !== undefined ? { shapeFeel: config.shapeFeel } : {}),
         ...(config.proactiveReach !== undefined ? { proactiveReach: config.proactiveReach } : {}),
         ...(config.proactiveInvite !== undefined ? { proactiveInvite: config.proactiveInvite } : {}),
+        ...(config.photos !== undefined ? { photos: config.photos } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),
@@ -577,7 +582,8 @@ export function apply(ctx: Context, config: Config) {
     }) : undefined;
     let app: ReturnType<typeof startApp>;
     try {
-        app = startApp({ config: appConfig, transport, log, media, vision, ...(stickers ? { stickers } : {}) });
+        const photoSource = appConfig.photos ? webPhotoSource(appConfig, log) : undefined;
+        app = startApp({ config: appConfig, transport, log, media, vision, ...(stickers ? { stickers } : {}), ...(photoSource ? { photoSource } : {}) });
     } catch (error) {
         const plain = plainError('插件没有启动', error);
         setConsoleState({ error: plain.message });
