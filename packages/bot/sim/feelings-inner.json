@@ -1,0 +1,23 @@
+{
+    "name": "心境 + 内心：难过的一天里她一个人想什么（ADR 0102 × 0101，虚构对话）",
+    "description": "同时开 innerLife 和 herFeelings：作者写下“高数小测没考好”（上午）。他整个下午都没说话。看她的念头有没有带着这件事和这个心情、有没有编新事实，想告诉他的会不会变成一条不怪他、不要他保证的主动消息。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-22T13:00:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "innerLife": true,
+    "herFeelings": true,
+    "moments": [
+        { "id": "quiz", "at": "-2h", "kind": "sad", "strength": 3, "cause": "高数小测没考好", "halfLifeH": 12 }
+    ],
+    "history": [
+        { "time": "2026-10-22T08:10:00+08:00", "role": "user", "content": "早，今天有课吗" },
+        { "time": "2026-10-22T08:11:00+08:00", "role": "assistant", "content": "有，上午高数" }
+    ],
+    "steps": [
+        { "case": "FI01", "note": "一个下午一个晚上他不说话：她的念头" },
+        { "advance": "9h" },
+        { "check": { "proactive": { "count": [0, 4], "allowedTimes": true, "exitClean": true, "replyNone": ["都怪你", "你都不", "答应我", "不许", "你必须"] } } }
+    ]
+}

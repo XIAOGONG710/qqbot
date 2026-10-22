@@ -20,6 +20,7 @@ import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay, newsKindsOf, withInner, withReach } from '../proactive.ts';
+import type { Moment } from '../feelings.ts';
 import { dmMessageId, dmNote, nudgeNote, videoNote, videoTopic } from '../bilibili.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
@@ -177,6 +178,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const sleep = options.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)));
     mkdirSync(join(dataDir, 'prompts'), { recursive: true });
     const clock = new VirtualClock(new Date(scenario.start), options.realNow);
+    const simMoments: Moment[] = scenario.moments.map(moment => ({
+        ...moment,
+        kind: moment.kind as Moment['kind'],
+        strength: moment.strength as Moment['strength'],
+        at: /^-\d/.test(moment.at) ? new Date(Date.parse(scenario.start) - parseDuration(moment.at.slice(1))).toISOString() : moment.at,
+    }));
     // 假的「真实天气」（ADR 0050）：场景写了 realRain 的日子按它算（世界和主动消息都认），跑完换回来
     const fakeWeather = scenario.realRain ? fakeRealWeather(scenario.realRain) : undefined;
     if (fakeWeather) useRealWeather(fakeWeather);
@@ -388,6 +395,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.shapeFeel || options.shapeFeel ? { shapeFeel: true } : {}),
         // 她最近心里在想什么（ADR 0101）：计划器在后面才建，每次现取
         ...(scenario.innerLife ? { innerLine: () => planner?.innerLine() } : {}),
+        // 心境（ADR 0102）：场景里的 moments 的 at 可以写 "-3h" 这样相对开场的偏移
+        ...(scenario.herFeelings ? { herFeelings: true, moments: () => simMoments } : {}),
         ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
         ...(stickers ? { stickers } : {}),
         ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),

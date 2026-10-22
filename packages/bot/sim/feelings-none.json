@@ -1,0 +1,14 @@
+{
+    "name": "心境：没有任何来由时什么都不变（ADR 0102 对照，虚构对话）",
+    "description": "开着 herFeelings 但没有 moments、也没有别的事实：提示词里不该有心境一行。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-22T20:30:00+08:00",
+    "memory": false,
+    "herFeelings": true,
+    "steps": [
+        { "case": "FN01", "note": "平常一晚" },
+        { "say": "在吗" },
+        { "check": { "timeBlockNot": "你此刻的心境", "exitClean": true, "speechClean": true } }
+    ]
+}

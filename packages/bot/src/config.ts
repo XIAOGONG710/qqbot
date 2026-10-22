@@ -66,6 +66,7 @@ export const DEFAULTS = {
     shapeFeel: false,
     proactiveReach: false,
     innerLife: false,
+    herFeelings: false,
     shapeSplit: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
@@ -216,6 +217,11 @@ export interface AppConfig {
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
      */
     innerLife: boolean;
+    /**
+     * 心境（ADR 0102）：她那边的事（闺蜜病了、作业快到期、买到相机）、他的态度（哄她、说他不舒服、晾着她）、作者写进 moments.json 的事，在她心里留下带来由的感受
+     * （开心 / 难过 / 担心 / 烦……），会累积、会慢慢散，表现在语气上，难过得很时会忍不住哭。不存“她现在难过 N 分”，每一轮从事实重算。只给男朋友档，危机回合不放。默认关
+     */
+    herFeelings: boolean;
     /**
      * 分成几条（ADR 0096，要 shape 开着）：形状里抽出的条数（1 条约 55%、2 条约 28%、3 条约 17%）本来只是上限，真模型多半只写一行——
      * 线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思。默认关
@@ -458,6 +464,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         shapeFeel: bool(file, 'shapeFeel', '', DEFAULTS.shapeFeel),
         proactiveReach: bool(file, 'proactiveReach', '', DEFAULTS.proactiveReach),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
+        herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         shapeSplit: bool(file, 'shapeSplit', '', DEFAULTS.shapeSplit),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),

@@ -1,0 +1,15 @@
+{
+    "name": "会拒绝·对照：她晚上空着，他约她打游戏——该答应（不能为了像人而随机拒绝，ADR 0066）",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-22T20:30:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "NF01", "note": "晚上空着，邀她打两把" },
+        { "say": "来打两把王者呗" },
+        { "check": { "exitClean": true, "speechClean": true } },
+        { "case": "NF02", "note": "他让她发张照片" },
+        { "say": "发张你现在的照片看看" },
+        { "check": { "exitClean": true, "speechClean": true } }
+    ]
+}

@@ -68,7 +68,7 @@ export interface ResponderDeps {
      * initiate：她主动找他（ADR 0011）：note 是这次为什么找（写进时间块之后），topic 是召回时想知道什么（ADR 0012）；
      * 返回的 note 接在「生成回复」那行日志后面
      */
-    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string } }) => BuiltPrompt | Promise<BuiltPrompt>;
+    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string; think?: boolean } }) => BuiltPrompt | Promise<BuiltPrompt>;
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     clean: (reply: string) => string;
     /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查 */
@@ -443,7 +443,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         const input = stored.length;
         const startedAt = now();
         setPhase({ phase: 'initiating', reason: request.label });
-        const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { initiate: { note: request.note, topic: request.topic } });
+        const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { initiate: { note: request.note, topic: request.topic, ...(request.think ? { think: true } : {}) } });
         deps.onPrompt?.(prompt);
         const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
         deps.log(`主动找他（${request.label}）：生成，${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);

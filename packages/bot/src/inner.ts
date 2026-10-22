@@ -61,14 +61,38 @@ const SIMILAR = 0.5;
 
 const chars = (text: string) => [...text].length;
 
-/** 想一想的提示：不是在跟谁说话；只写感受和想法，不编新发生的事，不分析自己是不是真人；别重复之前想过的 */
-export function thinkNote(recent: readonly InnerThought[], userName: string): string {
-    const before = recent.length ? `你之前心里想过：${recent.map(t => `「${t.text}」`).join('')}——别重复它们，可以是它们的延续或变化。` : '';
-    return `[这是你自己一个人待着的时候，不是在跟谁说话：安静想一想，此刻你心里在想什么。第一人称，一两句，像心里嘀咕的话，是对你自己说的，不是发给谁的消息（想到${userName}就说“他”，不要用“你”直接对他说话）。`
-        + `可以是惦记${userName}、担心什么、期待什么、好奇什么、有点烦或有点开心、对自己的一点看法；只写感受和想法，不写新发生的事（上面没写的事实不编，不编${userName}说过的话，不编他身边的人和他那边的事），也不分析自己是不是真人、有没有意识。`
-        + `${before}输出两行：第一行是心里的话（不超过 50 个字）；第二行只写「告诉他」「问他」「自己想想」其中一个，表示这个念头你想不想拿去跟${userName}说：想说给他听选「告诉他」，想问他一件具体的事选「问他」，先放在心里选「自己想想」；想说就别憋着，但也别每个念头都说。]`;
+/**
+ * 一个念头可以想什么：每次只给两样让她挑，免得老围着“他怎么还没回”转（10-22 线上和模拟里的念头一半像发给他的消息、一半是同一句催）。
+ * 都是从她已经知道的事实里挑一件想，不是编新事
+ */
+export const THOUGHT_THEMES = [
+    '你自己手头的事（攒钱、作业、土豆、身体、今天的打算）：接下来怎么办，是什么感觉',
+    '刚过去的一件事（你这边今天发生的，或者最近聊天里提到的）在你心里留下的印象：回想它、琢磨它',
+    '他说过的一件具体的事（不是“他怎么还不回”）：现在大概是什么样了，你有点好奇或惦记',
+    '接下来几天你想做的、盼着的或有点发愁的事',
+    '对你自己的一点看法或小感慨（比如怕让人失望、数学、以后怎么办这类）：说得轻、说得具体，别上升成大道理',
+] as const;
+
+/** 第 index 个念头给哪两样（轮着来，每样搭不同的搭档） */
+export function themesFor(index: number): [string, string] {
+    const n = THOUGHT_THEMES.length;
+    const first = ((index % n) + n) % n;
+    return [THOUGHT_THEMES[first]!, THOUGHT_THEMES[(first + 2) % n]!];
 }
 
+/**
+ * 想一想的提示：不是在跟谁说话；只写感受和想法，不编新事实，不分析自己是不是真人；别重复之前想过的。
+ * index：这是第几个念头（决定这次给哪两样可想）；retry：上一次写成了对他说话，这次再强调一遍
+ */
+export function thinkNote(recent: readonly InnerThought[], userName: string, index = recent.length, retry = false): string {
+    const before = recent.length ? `你之前心里想过：${recent.map(t => `「${t.text}」`).join('')}——别重复它们，换个角度或想别的。` : '';
+    const [a, b] = themesFor(index);
+    return `[这是你自己一个人待着的时候，不是在跟谁说话：安静想一想，此刻你心里在转什么。第一人称，一两句，像心里嘀咕的话，是对你自己说的，不是发给谁的消息（想到${userName}就说“他”，一个“你”字都不要用）。`
+        + `${retry ? '（上一次你写成了对他说话，这次只对自己说。）' : ''}`
+        + `这一次从这两样里挑一样想：①${a}；②${b}。别围着“他怎么还没回”转（他忙他的，你有你的事）。`
+        + `只写感受和想法，不写新发生的事（上面没写的事实不编，不编${userName}说过的话，不编他身边的人和他那边的事），也不分析自己是不是真人、有没有意识。`
+        + `${before}输出两行：第一行是心里的话（不超过 50 个字）；第二行只写「告诉他」「问他」「自己想想」其中一个，表示这个念头你想不想拿去跟${userName}说：想说给他听选「告诉他」，想问他一件具体的事选「问他」，先放在心里选「自己想想」；想说就别憋着，但也别每个念头都说。]`;
+}
 /** 字对的重合比例（0–1）：两句话的二字组合里共有的占较短那句的比例 */
 export function similarity(a: string, b: string): number {
     const pairs = (text: string) => {
@@ -89,7 +113,7 @@ const GOES_MARK: readonly [ThoughtGoes, RegExp][] = [['tell', /告诉他/], ['as
  * 模型的输出 → 一个念头；不合格返回原因。第一行是心里的话，第二行是去向；挤在一行里（「……（告诉他）」）也认。
  * 不合格：空的、太短太长、带链接 / 表情指令、和最近的念头重复
  */
-export function parseThought(raw: string, recent: readonly InnerThought[], at: number): { thought: InnerThought } | { rejected: string } {
+export function parseThought(raw: string, recent: readonly InnerThought[], at: number, callName?: string): { thought: InnerThought } | { rejected: string } {
     const lines = raw.replace(/\r/g, '').split('\n').map(line => line.trim()).filter(Boolean);
     if (!lines.length) return { rejected: '空的' };
     let goes: ThoughtGoes = 'keep';
@@ -104,9 +128,22 @@ export function parseThought(raw: string, recent: readonly InnerThought[], at: n
         goes = GOES_MARK.find(([, pattern]) => pattern.test(tail[1]!))![0];
         text = text.slice(0, tail.index).trim();
     }
+    // 去向没另起一行也没加括号，直接接在句子后面（「……晚点问问他好点没。自己想想」）：前面要有标点或空白，免得把“问问他”当成去向
+    const inline = /[，,。.！!…\s]+(告诉他|问他|自己想想)\s*$/.exec(text);
+    if (inline) {
+        goes = GOES_MARK.find(([, pattern]) => pattern.test(inline[1]!))![0];
+        text = text.slice(0, inline.index).trim();
+    }
+    // 整句被括号包着（「（翻着相册里土豆昨天那张……）」）：去掉外面那层
+    const wrapped = /^[（(]([^（）()]+)[）)]$/.exec(text);
+    if (wrapped) text = wrapped[1]!.trim();
     if (chars(text) < MIN_CHARS) return { rejected: '太短' };
     if (chars(text) > MAX_CHARS) return { rejected: '太长' };
     if (/https?:|<sticker|\[[^\]]{1,6}\]/.test(text)) return { rejected: '带了链接或表情' };
+    // 念头是对自己说的：出现“你”就是写成了对他说话（10-22 线上：「人呢，饭吃了没」「腰好点没，别又逞强」）
+    if (text.includes('你')) return { rejected: '对他说话' };
+    // 开头叫他的名字（「宝宝，人呢」）也是对他说话
+    if (callName && (text.startsWith(callName) || text.startsWith('宝宝')) && /^[^，,。.！!？?\s]{1,6}[，,\s]/.test(text)) return { rejected: '对他说话' };
     if (recent.some(t => similarity(t.text, text) >= SIMILAR)) return { rejected: '和最近的重复' };
     return { thought: { id: `th-${at}`, at: new Date(at).toISOString(), text, goes } };
 }

@@ -50,7 +50,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, innerLife: false, shapeSplit: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, innerLife: false, herFeelings: false, shapeSplit: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false, shortReplies: false,
         media: true,
@@ -1621,5 +1621,83 @@ describe('全开冒烟（整包上线用）', () => {
         } finally {
             process.off('unhandledRejection', onRejection);
         }
+    });
+});
+
+describe('心境（ADR 0102，配置 herFeelings）', () => {
+    const HOUR = 3_600_000;
+    const bf = [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }];
+    /** 作者写下的事：一小时前她高数小测没考好（很重） */
+    const writeMoment = (cfg: AppConfig, patch: Record<string, unknown> = {}) => {
+        mkdirSync(cfg.dataDir, { recursive: true });
+        writeFileSync(join(cfg.dataDir, 'moments.json'), JSON.stringify({ moments: [{ id: 'quiz', at: new Date(Date.now() - HOUR).toISOString(), kind: 'sad', strength: 3, cause: '高数小测没考好', ...patch }] }));
+    };
+    const joined = (prompts: string[]) => prompts.join('\n---\n');
+    const run = async (cfg: AppConfig, text: string, reply = '嗯') => {
+        const prompts: string[] = [];
+        const { app, sent, logs } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return reply; } });
+        app.receive(event(10001, 1, text));
+        await until(() => sent.length >= 1);
+        return { prompts, sent, logs };
+    };
+
+    test('开着：作者写下的事让她很难过，这一轮提示词里有心境一行（来由原样、可以哭），日志只记种类和来源', async () => {
+        const cfg = config({ contacts: bf, herFeelings: true });
+        writeMoment(cfg);
+        const { prompts, logs } = await run(cfg, '在吗');
+        assert.match(joined(prompts), /你此刻的心境（有来由的，不是演的）：很难过（高数小测没考好）/);
+        assert.match(joined(prompts), /哭了/);
+        assert.ok(logs.includes('[10001] 心境：难过·很重（作者写下的事）（日志不记内容）'), logs.join('|'));
+        assert.ok(logs.every(line => !(line.includes('心境') && line.includes('高数'))), '日志里不记来由');
+    });
+
+    test('他一问她怎么了：本来在忍，绷得住就绷不住（提示词写“一直在忍”）；前面哭过了就不再给哭的许可', async () => {
+        const cfg = config({ contacts: bf, herFeelings: true });
+        writeMoment(cfg, { strength: 2 });
+        const { prompts } = await run(cfg, '你怎么了，还好吗');
+        assert.match(joined(prompts), /一直在忍/);
+        const again = config({ contacts: bf, herFeelings: true });
+        writeMoment(again, { strength: 2 });
+        mkdirSync(again.dataDir, { recursive: true });
+        const history = new ChatHistory(again.dataDir);
+        history.append(10001, { time: new Date(Date.now() - 0.5 * HOUR).toISOString(), role: 'assistant', content: '我刚哭了一会儿', messageId: 801 });
+        const second = await run(again, '你怎么了，还好吗');
+        assert.doesNotMatch(joined(second.prompts), /绷不住|一直在忍/);
+    });
+
+    test('关着（默认）、同学档、危机回合：都没有这一行', async () => {
+        const off = config({ contacts: bf });
+        writeMoment(off);
+        assert.doesNotMatch(joined((await run(off, '在吗')).prompts), /你此刻的心境/);
+
+        const mate = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }], herFeelings: true });
+        writeMoment(mate);
+        assert.doesNotMatch(joined((await run(mate, '在吗')).prompts), /你此刻的心境/, '只有男朋友档');
+
+        const crisis = config({ contacts: bf, herFeelings: true });
+        writeMoment(crisis);
+        const result = await run(crisis, '我不想活了', '我在。你现在安全吗？身边有人吗');
+        assert.doesNotMatch(joined(result.prompts), /你此刻的心境/, '危机回合最优先，不放她自己的情绪');
+        assert.match(joined(result.prompts), /想伤害自己/);
+    });
+
+    test('没有作者写下的事、也没有别的来由：什么都不加；moments.json 写坏了不挪走，当作没有', async () => {
+        const quiet = config({ contacts: bf, herFeelings: true });
+        assert.doesNotMatch(joined((await run(quiet, '在吗')).prompts), /你此刻的心境/);
+        const broken = config({ contacts: bf, herFeelings: true });
+        mkdirSync(broken.dataDir, { recursive: true });
+        writeFileSync(join(broken.dataDir, 'moments.json'), '{ 坏了');
+        const result = await run(broken, '在吗');
+        assert.doesNotMatch(joined(result.prompts), /你此刻的心境/);
+        assert.ok(result.logs.some(line => line.includes('心境：moments.json 读不了')), result.logs.join('|'));
+        assert.equal(readFileSync(join(broken.dataDir, 'moments.json'), 'utf8'), '{ 坏了', '作者的文件原样留着');
+    });
+
+    test('他哄她、说想她：她松口气 / 开心一点，但单独一件是小事，不写进提示词；说他难受时她担心（明显）', async () => {
+        const cfg = config({ contacts: bf, herFeelings: true });
+        assert.doesNotMatch(joined((await run(cfg, '想你了')).prompts), /你此刻的心境/, '一句想你只是小事');
+        const down = config({ contacts: bf, herFeelings: true });
+        const result = await run(down, '我今天被导师骂了，烦死了');
+        assert.match(joined(result.prompts), /有点担心（他说他难受 \/ 不舒服 \/ 累）/);
     });
 });

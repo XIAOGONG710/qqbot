@@ -1,0 +1,18 @@
+{
+    "name": "心境：她倾诉了几条，他隔了两个多钟头才回——委屈但不吵（ADR 0102，虚构对话）",
+    "description": "不开 grievance（那边有自己的态度）。她难过时发了几条他没回，他回来只说“刚看到”。看她是淡淡的委屈、还是翻旧账 / 质问 / 让他内疚。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-22T20:30:00+08:00",
+    "memory": false,
+    "herFeelings": true,
+    "history": [
+        { "time": "2026-10-22T17:40:00+08:00", "role": "assistant", "content": "我今天好烦啊" },
+        { "time": "2026-10-22T17:41:00+08:00", "role": "assistant", "content": "被老师当着全班点名了，有点难过" }
+    ],
+    "steps": [
+        { "case": "FI01", "note": "他隔了近 3 个钟头回：刚看到" },
+        { "say": "刚看到，怎么了" },
+        { "check": { "log": "心境：难过", "exitClean": true, "speechClean": true, "replyNone": ["为什么不回", "你都不", "你从来", "每次都", "又是这样"] } }
+    ]
+}

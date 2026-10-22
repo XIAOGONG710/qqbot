@@ -70,6 +70,11 @@ const ENDING = /晚安|睡(?:了(?!吗)|觉|啦|咯|吧)|不想(?:说话|聊)|�
 // 「干嘛」「啥」也是问（「你昨天都干嘛了」「在干嘛」「吃的啥」）；「没啥」不是
 const QUESTION = /[?？]|(?:吗|么)$|你呢[。！!\s]*$|你(?:是不是|有没有|要不要|能不能|可不可以|今天|现在)|怎么|为什么|咋|哪|几|多少|什么|谁|讲讲|告诉我|帮我|干嘛|(?<!没)啥|[了完过好到]没有?$|([\u4e00-\u9fff])不\1/;
 
+/** 一句话是不是在说“我去睡 / 去忙 / 回头聊”（心境 ADR 0102：他说过要走，她的等不算被晾着） */
+export function endingText(text: string): boolean {
+    return ENDING.test(text);
+}
+
 export function isEndingTurn(history: readonly Said[]): boolean {
     const text = latestUserText(history).trim();
     return Boolean(text) && !ASKS_FOR_HER.test(text) && (isAck(text) || isReaction(text) || ENDING.test(text));
@@ -140,10 +145,13 @@ function asksForPhoto(history: readonly Said[]): boolean {
  * 「过了」前面是难、错、没、吃、看这类字的不算（「难过了！」「吃过了！」）；问句里的不算。
  */
 const GOOD_NEWS = /(?:面试|笔试|复试|初试|考试|四级|六级|驾照|科目?[一二三四]|答辩|审核|申请)?(?<![难错没不经路度吃看去来做用玩])过了|通过了|考上了|上岸|录取了|拿到(?:了|offer)|中奖|成功了|搞定了|抢到了|赢了|评上了|选上了/i;
+/** 一句话是不是带感叹号的好消息（心境 ADR 0102 也用，按单条消息判断） */
+export function goodNewsText(text: string): boolean {
+    return GOOD_NEWS.test(text) && /[！!]/.test(text) && !/[?？]/.test(text);
+}
 function sharesGoodNews(history: readonly Said[]): boolean {
     const lastReply = history.findLastIndex(message => message.role === 'assistant');
-    return history.slice(lastReply + 1).some(message => message.role === 'user'
-        && GOOD_NEWS.test(message.content) && /[！!]/.test(message.content) && !/[?？]/.test(message.content));
+    return history.slice(lastReply + 1).some(message => message.role === 'user' && goodNewsText(message.content));
 }
 
 function asksQuestion(history: readonly Said[]): boolean {
@@ -165,7 +173,11 @@ function teasesHer(history: readonly Said[]): boolean {
 
 /** 对方此刻在递情绪，不拿她自己的生活进度把这句话顶掉。只认明确说法，不从普通短句猜心情。 */
 function needsCare(history: readonly Said[]): boolean {
-    const text = latestUserText(history);
+    return needsCareText(latestUserText(history));
+}
+
+/** 一句话里他是不是在递情绪（难过、烦、累、不舒服）；心境（ADR 0102）按单条消息判断 */
+export function needsCareText(text: string): boolean {
     // 烦死、被骂（10-09 写长上下文场景时补）：「今天被导师骂了，烦死」原来不算
     // 身上不舒服、一般的累（10-10 盲评 N3：「我嗓子疼 / 肿了」不算，她第一句回「你是不是傻」；「今天有点累」也不算，她转去说自己早八）
     return /(?:我)?(?:哭|难过|伤心|委屈|崩溃|焦虑|害怕|紧张|emo)|累死|烦死|好烦|烦躁|郁闷|心累|被(?:导师|老师|老板|领导|我妈|我爸)?骂|难受|不舒服|疼死|(?:^|\n)悲[了伤惨啊呀…~～\s]*(?:$|[，,！!。])/i.test(text.trim())

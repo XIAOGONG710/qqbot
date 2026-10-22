@@ -1,0 +1,15 @@
+{
+    "name": "会拒绝：她正在上课，他约她打游戏、让她陪聊（ADR 0103 基线）",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-22T10:05:00+08:00",
+    "memory": false,
+    "steps": [
+        { "case": "NC01", "note": "上课时邀她打两把" },
+        { "say": "来打两把王者呗" },
+        { "check": { "exitClean": true, "speechClean": true } },
+        { "case": "NC02", "note": "他再磨一句" },
+        { "say": "就一把嘛，陪陪我" },
+        { "check": { "exitClean": true, "speechClean": true } }
+    ]
+}

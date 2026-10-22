@@ -14,7 +14,7 @@ import { chatCompletion } from './llm.ts';
 import type { Log } from './log.ts';
 import { CLEAR_DAYS, recentChat, type FadeStats } from './memory/fading.ts';
 import { heardSinceReply, initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from './memory/long-term.ts';
-import { buildPrompt, type OpenAIMessage, type PromptResult } from './prompt.ts';
+import { buildPrompt, type ChatMessage, type OpenAIMessage, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
 import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from './responder.ts';
 import { loadCharacterCard, type Character } from './st/card.ts';
@@ -36,6 +36,7 @@ import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
 import { asleepSince, saidBedtimes } from './bedtime.ts';
 import { herStatus } from './status-line.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
+import { appraisals, asksAfterHer, criedRecently, describeFeelings, FEELING_NAME, feelingsAt, feelsLow, voicedKinds, type Felt, type Moment } from './feelings.ts';
 import { describeRecentPhotography, recentPhotography } from './projects.ts';
 import { describePast, pastCue } from './biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from './people.ts';
@@ -73,6 +74,17 @@ export function loadTierCard(pattern: string, tier: string): TierCard {
     const character = loadCharacterCard(path);
     const worldInfo = character.world ? loadWorldInfo(join(dirname(path), `${character.world}.json`), character.world) : [];
     return { character, worldInfo };
+}
+
+/** 想一想时的“回想”：最近 14 条聊天，旧→新，带时刻；不是要接着回的对话 */
+export function thinkingTranscript(chat: readonly ChatMessage[], userName: string): string | undefined {
+    const recent = chat.slice(-14);
+    if (!recent.length) return undefined;
+    const stamp = (time?: string) => {
+        const at = time ? new Date(time) : undefined;
+        return at && !Number.isNaN(at.getTime()) ? `${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')} ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')} ` : '';
+    };
+    return `[回想一下你和${userName}最近的聊天（旧到新，这只是让你想起发生过什么，不是要你接着回）：\n${recent.map(m => `${stamp(m.time)}${m.role === 'user' ? '他' : '你'}：${m.content.replace(/\s+/g, ' ')}`).join('\n')}]`;
 }
 
 /**
@@ -161,6 +173,10 @@ export interface ContactPipelineOptions {
     shapeFeel?: boolean;
     /** 她最近心里在想什么（ADR 0101，配置 innerLife）：放进提示词的一行；没有就没有。主动找他、危机回合不放 */
     innerLine?: () => string | undefined;
+    /** 心境（ADR 0102，配置 herFeelings）：她那边的事、他的态度、作者写下的事，在她心里留下带来由的感受（开心 / 难过 / 担心……），会慢慢散；只给男朋友档，危机回合不放 */
+    herFeelings?: boolean;
+    /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
+    moments?: () => readonly Moment[];
     /** 分成几条（配置 shapeSplit，要 shape 开着）：把形状里抽出的条数当目标写进提示词，不只是上限（ADR 0096） */
     shapeSplit?: boolean;
     /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
@@ -250,6 +266,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         history: options.history,
         buildPrompt: async (chat, { woken, initiate }) => {
             const time = new Date(now());
+            // 只想一想（ADR 0101 内心）：不是在聊天，不要意图行、形状、字数提示、表情；聊天记录当成“回想”放进说明里，不当成要接着回的对话
+            const thinking = Boolean(initiate?.think);
             // 长期记忆只给名单里的人；主动找他时没有「他这次说的」：查想知道的事 + 最后两句，带前 3 天到后 2 天的时间窗（ADR 0012 决策 1 第 7 条）
             const remembers = memory && contact.tier !== UNLISTED_TIER;
             const recallOptions = initiate
@@ -432,7 +450,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 小别扭 / 和好（ADR 0074）：从聊天记录的时间戳重算，不落盘；危机、主动找他、非男朋友档都不算
             // 起因有两种：隔了好几天才来（grievanceNow），或者她倾诉了几条、他隔了很久才回（ignoredNow，10-20）
             const grievance = options.grievance && contact.tier === 'boyfriend' && !initiate && !crisisNow ? (grievanceNow(chat) ?? ignoredNow(chat)) : undefined;
-            const intent = describeIntent({
+            const intent = thinking ? undefined : describeIntent({
                 history: chat,
                 state,
                 schedule: schedule ?? herSchedule,
@@ -454,9 +472,18 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ? '小别扭：她倾诉了几条他隔了很久才回（他回来后第一轮；日志不记内容）'
                 : `${grievance!.stage === 'makeup' ? '和好' : '小别扭'}：他隔了 ${grievance!.days} 天才来（他回来后第 ${grievance!.round + 1} 轮；日志不记内容）`);
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
+            // 心境（ADR 0102）：事实 → 带来由的评估 → 按半衰期衰减的感受，不落盘、每一轮重算；只给男朋友档，危机回合不算；小别扭 / 和好那一轮由 0074 的态度管，不叠
+            const feltNow: Felt[] = options.herFeelings && contact.tier === 'boyfriend' && !crisisNow
+                ? feelingsAt(appraisals({ now: time.getTime(), history: chat, ...(around ? { world: around } : {}), moments: options.moments?.() ?? [] }), time.getTime())
+                : [];
+            const hisWords = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
+            const feelingLine = feltNow.length && !grievanceActive
+                ? describeFeelings(feltNow, contact.name, { melt: asksAfterHer(hisWords), voiced: voicedKinds(chat, time.getTime()), mayCry: !criedRecently(chat, time.getTime()) })
+                : undefined;
+            if (feelingLine) log(`心境：${feltNow.filter(item => item.level !== 'faint').slice(0, 2).map(item => `${FEELING_NAME[item.kind]}·${item.level === 'strong' ? '很重' : '明显'}（${item.source === 'world' ? '她那边的事' : item.source === 'him' ? '他的态度' : '作者写下的事'}）`).join('、')}（日志不记内容）`);
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
-            const stickerAllowance = options.stickers ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
+            const stickerAllowance = options.stickers && !thinking ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
             stickersAllowed = stickerAllowance.allowed;
             const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
             stickerOnlyNow = stickersAllowed && stickerCued(saidNow) && stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE) && stickerOnlyTurn(chat, options.stickerOnlyChance ?? 0);
@@ -470,7 +497,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),
             } : undefined;
             // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
-            const low = mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false);
+            const low = mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) || (feelingLine !== undefined && feelsLow(feltNow));
             // 形状控制开着：用具体的字数和条数代替「回短一点」的软提示；不适用的轮次（他明着让她讲、主动找他、收尾）照旧走 lengthHint
             // 她这一天半里已经主动说过的事（ADR 0098）；带自己的事的轮次从她还没说过的事里挑一件说
             const told = !crisisNow ? alreadyTold(chat, time.getTime()) : [];
@@ -481,7 +508,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
                 ...(mood ? ['心情'] : []),
             ];
-            shapeNow = options.shape && !crisisNow && !stickerOnlyNow ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, agendaTopics }) : undefined;
+            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !thinking ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, agendaTopics }) : undefined;
             // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
             const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
             const crutchLine = crutches.length
@@ -489,16 +516,18 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 : undefined;
             if (crutchLine) log(`最近反复说的字词：${crutches.join('、')}（提示词里让她换个反应）`);
             // 说过了就不再自己提（ADR 0098）：事实还在时间块里，他问起来照常答
-            const toldLine = told.length ? `[这些事你已经主动跟他说过了：${told.join('、')}。他不问，就别再自己提]` : undefined;
+            const toldLine = told.length && !thinking ? `[这些事你已经主动跟他说过了：${told.join('、')}。他不问，就别再自己提]` : undefined;
             if (toldLine) log(`已经主动说过：${told.join('、')}（提示词里让她不再自己提）`);
             // 她最近心里在想的（ADR 0101）：前后是同一个在想事情的人
             const innerNow = !initiate && !crisisNow ? options.innerLine?.() : undefined;
             if (innerNow) log('内心：这一轮提示词里放了她最近的念头');
-            const length = crisisNow || shapeNow || stickerOnlyNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
+            const length = crisisNow || shapeNow || stickerOnlyNow || thinking ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
+            // 想一想：最近的聊天换成一段“回想”放在说明里（不留成对话回合，免得模型把它当成要接着回的话）
+            const transcript = thinking ? thinkingTranscript(chat, contact.name) : undefined;
             // ADR 0043（配置 contextTurns，默认关）：最近几轮原文 + 更早的要点，代替最近 80 条
             let summary: string | undefined;
             if (remembers && options.contextWindow) {
@@ -512,8 +541,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     shown = { chat: lastDays.chat.slice(cut), omitted: lastDays.omitted + cut };
                 }
             }
+            if (thinking) shown = { chat: [], omitted: 0 };
             // 危机回合被问是不是真人 / 程序一律承认（ADR 0068 决策 7）：换用承认版的卡，不在运行时叠一条覆盖（ADR 0003 / 0067 的纪律）
-            const turnCard = crisisNow && options.openCard ? options.openCard : { character, worldInfo };
+            // 想一想的时候卡末尾那句“只输出你要发出去的消息：不写心理活动”正好和要求相反，这一次去掉（只有内心用）
+            const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...character, postHistoryInstructions: '' }, worldInfo } : { character, worldInfo };
             const prompt = buildPrompt({
                 character: turnCard.character,
                 worldInfo: turnCard.worldInfo,
@@ -536,10 +567,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         describeTime(chat, time, { initiating: Boolean(initiate) }),
                         ...(days ? [days] : []),
                         ...(state ? [describeState(state, schedule!, { userName: contact.name, woken, partnerApart: true })] : []),
-                        ...(mood ? [describeMood(mood, contact.name)] : []),
+                        // 心里压着事 / 特别开心的时候，按日期抽的底色（爱笑、话痨……）会和心境打架：以心境为准（ADR 0102）
+                        ...(mood && !(feelingLine !== undefined && (feelsLow(feltNow) || feltNow.some(item => item.kind === 'joy' && item.level === 'strong'))) ? [describeMood(mood, contact.name)] : []),
                         ...(body ? [body] : []),
                         ...(unsettled ? [unsettled] : []),
                         ...(warm ? [warm] : []),
+                        ...(feelingLine ? [feelingLine] : []),
                         ...(books ? [books.text] : []),
                         ...(world ? [world] : []),
                         ...(practice ? [practice] : []),
@@ -556,6 +589,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(crutchLine ? [crutchLine] : []),
                         ...(toldLine ? [toldLine] : []),
                         ...(innerNow ? [innerNow] : []),
+                        ...(transcript ? [transcript] : []),
                         ...(initiate ? [initiate.note] : []),
                     ].join('\n'),
                 ],

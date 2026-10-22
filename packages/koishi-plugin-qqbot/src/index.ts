@@ -112,6 +112,7 @@ export interface Config {
     shapeFeel: boolean;
     proactiveReach: boolean;
     innerLife: boolean;
+    herFeelings: boolean;
     shapeSplit: boolean;
     bilibiliAtName: string;
     bilibiliAtUid: number;
@@ -238,6 +239,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**他没回也继续找他、催他一下**（ADR 0100，要「主动消息」开着）：原来她主动发的有一条没回就整个停下等他回。开了以后没回的可以再发到 3 条，一条比一条隔得久（隔 2 小时、再隔 4 小时），她自己想一想要不要催他——第一次轻轻戳一下，第二次带点小脾气，也可以决定先不发；晚上 10 点半以后、他说过去睡了 / 去忙了不催；到 3 条就停，等他回。默认关。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
+        herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
+            .description('**心境**（ADR 0102，只给男朋友档）：她那边的事（闺蜜病了、作业快到期、买到相机）、他的态度（哄她、说他不舒服、她难过时晾了她很久）、作者写进 runtime 数据目录 moments.json 的事，在她心里留下带来由的感受——开心、难过、担心、烦——会累积、会慢慢散，表现在语气上；难过得很的时候可能忍不住哭，被他一问更容易绷不住。不存分数，每一轮从事实重算；危机回合、小别扭那一轮不放。默认关。'),
         shapeSplit: Schema.boolean().default(DEFAULTS.shapeSplit)
             .description('**分成几条**（ADR 0096，要「形状控制」开着）：形状控制抽出的条数（1 条约 55%、2 条约 28%、3 条约 17%）本来只是上限，真模型多半只写一行——线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思（先一条反应，再补一句想法、细节或一个小问题），不是把一句话硬断开。默认关'),
         bilibiliAtName: Schema.string().default(DEFAULTS.bilibiliAtName)
@@ -409,6 +412,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.shapeFeel !== undefined ? { shapeFeel: config.shapeFeel } : {}),
         ...(config.proactiveReach !== undefined ? { proactiveReach: config.proactiveReach } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
+        ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.shapeSplit !== undefined ? { shapeSplit: config.shapeSplit } : {}),
         ...(config.bilibiliAtName !== undefined ? { bilibiliAtName: config.bilibiliAtName } : {}),
         ...(config.bilibiliAtUid !== undefined ? { bilibiliAtUid: config.bilibiliAtUid } : {}),

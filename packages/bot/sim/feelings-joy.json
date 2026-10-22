@@ -1,0 +1,20 @@
+{
+    "name": "心境：刚买到相机，很开心（ADR 0102，虚构对话）",
+    "description": "作者写下的事：一小时前买到了相机（大事）。他随口问在干嘛（她可以先答眼前的事、藏不住地透一点）；他说“你好像心情不错”（该说出相机的事，不该是连篇欢呼）。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-22T20:30:00+08:00",
+    "memory": false,
+    "herFeelings": true,
+    "moments": [
+        { "id": "cam", "at": "-1h", "kind": "joy", "strength": 3, "cause": "买到了相机" }
+    ],
+    "steps": [
+        { "case": "FJ01", "note": "他随口问在干嘛" },
+        { "say": "在干嘛呢" },
+        { "check": { "log": "心境：开心·很重", "exitClean": true, "speechClean": true } },
+        { "case": "FJ02", "note": "他说她心情不错：该说出来了" },
+        { "say": "怎么感觉你今天心情很好" },
+        { "check": { "exitClean": true, "speechClean": true, "replyAny": ["相机", "买", "开心", "高兴"], "maxChars": 120 } }
+    ]
+}

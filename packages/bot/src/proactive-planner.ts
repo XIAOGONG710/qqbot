@@ -524,23 +524,30 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     /** 想一次：借回复器的主动通道生成（带着她的时间、状态、心情、世界、记忆和最近的聊天），不发送；留下的念头存进状态文件 */
     async function think(): Promise<void> {
         const started = now();
-        const outcome = await deps.responder.initiate({
-            label: '内心', note: thinkNote(inner.thoughts.slice(-3), contact.name),
-            topic: `${contact.name}最近在忙什么、我自己最近惦记什么、担心什么、期待什么`,
-            maxBubbles: 1, dryRun: false, think: true, commit: () => undefined,
-        });
-        if (stopped) return;
-        if (outcome.result !== 'thought') {
-            thinkRetryAt = now() + (outcome.result === 'failed' ? UNREACHABLE_RETRY_MS : THINK_RETRY_MS);
-            deps.log(`内心${tag}：没想成，${clock(thinkRetryAt)} 再试：${outcome.result === 'skipped' || outcome.result === 'failed' ? outcome.reason : ''}`);
-            return;
+        // 写成了对他说话（出现“你”）就再来一次，最多两次；别的不合格（重复、太短）不重来
+        let parsed: ReturnType<typeof parseThought> | undefined;
+        for (const retry of [false, true]) {
+            const outcome = await deps.responder.initiate({
+                label: '内心', note: thinkNote(inner.thoughts.slice(-3), contact.name, inner.thoughts.length, retry),
+                topic: `${contact.name}最近在忙什么、我自己最近惦记什么、担心什么、期待什么`,
+                maxBubbles: 1, dryRun: false, think: true, commit: () => undefined,
+            });
+            if (stopped) return;
+            if (outcome.result !== 'thought') {
+                thinkRetryAt = now() + (outcome.result === 'failed' ? UNREACHABLE_RETRY_MS : THINK_RETRY_MS);
+                deps.log(`内心${tag}：没想成，${clock(thinkRetryAt)} 再试：${outcome.result === 'skipped' || outcome.result === 'failed' ? outcome.reason : ''}`);
+                return;
+            }
+            parsed = parseThought(outcome.text, inner.thoughts.slice(-8), started, contact.name);
+            if (!('rejected' in parsed) || parsed.rejected !== '对他说话') break;
+            deps.log(`内心${tag}：写成了对他说话，${retry ? '不留' : '再想一次'}`);
         }
         thinkRetryAt = undefined;
         inner = { ...inner, lastThinkAt: new Date(started).toISOString() };
-        const parsed = parseThought(outcome.text, inner.thoughts.slice(-8), started);
-        if ('rejected' in parsed) {
+        if (!parsed || 'rejected' in parsed) {
+            const rejected = parsed && 'rejected' in parsed ? parsed.rejected : '没有结果';
             save();
-            deps.log(`内心${tag}：想了，但不留（${parsed.rejected}）`);
+            deps.log(`内心${tag}：想了，但不留（${rejected}）`);
             return;
         }
         inner = { ...inner, thoughts: [...inner.thoughts, parsed.thought].slice(-THOUGHTS_KEPT) };

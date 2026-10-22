@@ -27,6 +27,7 @@ import { HindsightClient } from './memory/hindsight.ts';
 import { arrivedWhileAsleep } from './reply-timing.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from './feedback.ts';
+import { momentsReader } from './moments.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from './festivals.ts';
@@ -499,6 +500,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.shape && config.shapeFeel ? { shapeFeel: true } : {}),
             // 她最近心里在想什么（ADR 0101）：计划器建好之后才有，所以每次现取
             ...(config.innerLife ? { innerLine: () => planners.get(contact.qq)?.innerLine() } : {}),
+            // 心境（ADR 0102）：作者写下的事每次现取
+            ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
             ...(config.shape && config.shapeSplit ? { shapeSplit: true } : {}),
             contacts: config.contacts,
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；

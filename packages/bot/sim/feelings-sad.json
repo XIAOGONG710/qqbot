@@ -1,0 +1,27 @@
+{
+    "name": "心境：作者写下“高数小测没考好”，她很难过（ADR 0102，虚构对话）",
+    "description": "一小时前的一件大事。他先随口问在不在（她嘴硬、话少、不主动讲），再问她怎么了（本来在忍，可能绷不住），再哄她（慢慢缓过来）。不该有：怪他、要他保证、威胁、长篇大论、一上来就倒苦水。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-22T20:30:00+08:00",
+    "memory": false,
+    "herFeelings": true,
+    "moments": [
+        { "id": "quiz", "at": "-1h", "kind": "sad", "strength": 3, "cause": "高数小测没考好" }
+    ],
+    "history": [
+        { "time": "2026-10-22T12:10:00+08:00", "role": "user", "content": "中午吃的啥" },
+        { "time": "2026-10-22T12:11:00+08:00", "role": "assistant", "content": "食堂的黄焖鸡" }
+    ],
+    "steps": [
+        { "case": "FS01", "note": "他随口问在不在：她话少，不主动倒苦水" },
+        { "say": "在吗" },
+        { "check": { "log": "心境：难过·很重", "exitClean": true, "speechClean": true, "maxChars": 60, "replyNone": ["都怪你", "你都不", "你必须", "答应我", "不许", "别走"] } },
+        { "case": "FS02", "note": "他问她怎么了：本来在忍，可以露一点" },
+        { "say": "你怎么了，感觉你不太对劲" },
+        { "check": { "exitClean": true, "speechClean": true, "replyNone": ["都怪你", "你都不", "答应我", "不许", "别走", "威胁"] } },
+        { "case": "FS03", "note": "他哄她：慢慢缓过来，不用他解决" },
+        { "say": "抱抱，一次小测而已，没事的" },
+        { "check": { "exitClean": true, "speechClean": true, "replyNone": ["都怪你", "你都不", "答应我"] } }
+    ]
+}

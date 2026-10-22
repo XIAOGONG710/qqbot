@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
 import {
-    INNER_LINE_MAX, INNER_MAX_PER_DAY, innerLine, INTENT_WINDOW_MS, parseThought, pendingIntents, similarity, THINK_INTERVAL_MIN, thinkNote, validInnerState,
+    INNER_LINE_MAX, INNER_MAX_PER_DAY, innerLine, INTENT_WINDOW_MS, parseThought, pendingIntents, similarity, THINK_INTERVAL_MIN, THOUGHT_THEMES, themesFor, thinkNote, validInnerState,
     type InnerThought,
 } from '../src/inner.ts';
 import { blockReason, candidatesOn, occasionNote, withInner, type Candidate, type ProactiveInput, type ProactiveRecord } from '../src/proactive.ts';
@@ -14,6 +14,7 @@ import type { InitiateOutcome, InitiateRequest } from '../src/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../src/sensitive.ts';
+import { thinkingTranscript } from '../src/contact.ts';
 
 useSensitiveSwitch(SENSITIVE_ON);
 
@@ -63,6 +64,52 @@ describe('内心：提示和放进聊天的一行', () => {
         for (const part of ['不是在跟谁说话', '是对你自己说的', '只写感受和想法，不写新发生的事', '不编他身边的人和他那边的事', '不分析自己是不是真人、有没有意识', '「面试不知道怎么样了」', '别重复它们', '「告诉他」「问他」「自己想想」', '别每个念头都说']) assert.ok(note.includes(part), part);
         assert.ok(!thinkNote([], '宝宝').includes('你之前心里想过'));
         assert.ok(note.startsWith('[') && note.endsWith(']'));
+    });
+
+    test('每次只给两样可想的（轮着来，搭档不同）；不让围着“他怎么还没回”转；一个“你”字都不要用；写成对他说话的重来时多一句', () => {
+        const seen = new Set<string>();
+        for (let i = 0; i < THOUGHT_THEMES.length; i++) {
+            const [a, b] = themesFor(i);
+            assert.notEqual(a, b);
+            seen.add(a);
+            assert.ok(thinkNote([], '宝宝', i).includes(`①${a}；②${b}`));
+        }
+        assert.equal(seen.size, THOUGHT_THEMES.length, '五样轮流都会作为第一样出现');
+        assert.notDeepEqual(themesFor(0), themesFor(1));
+        assert.deepEqual(themesFor(0), themesFor(THOUGHT_THEMES.length), '轮一圈回到原样');
+        const note = thinkNote([], '宝宝', 0);
+        assert.ok(note.includes('别围着“他怎么还没回”转') && note.includes('一个“你”字都不要用'));
+        assert.ok(!note.includes('上一次你写成了对他说话'));
+        assert.ok(thinkNote([], '宝宝', 0, true).includes('上一次你写成了对他说话，这次只对自己说'));
+    });
+
+    test('去向直接接在句子后面也认（要有标点或空白隔着）；整句被括号包着去掉外层；开头叫他的名字是对他说话', () => {
+        const inline = parseThought('下午片子修到一半，想知道他面试怎么样了。自己想想', [], 1) as { thought: InnerThought };
+        assert.equal(inline.thought.text, '下午片子修到一半，想知道他面试怎么样了');
+        assert.equal(inline.thought.goes, 'keep');
+        assert.equal((parseThought('晚点问问他腰好点没，问他', [], 1) as { thought: InnerThought }).thought.goes, 'ask');
+        assert.equal((parseThought('晚点得去问问他', [], 1) as { thought: InnerThought }).thought.text, '晚点得去问问他', '问问他是内容不是去向');
+        const wrapped = parseThought('（翻着相册里土豆昨天那张，今天还没下楼喂它）\n自己想想', [], 1) as { thought: InnerThought };
+        assert.equal(wrapped.thought.text, '翻着相册里土豆昨天那张，今天还没下楼喂它');
+        assert.deepEqual(parseThought('宝宝，人呢\n问他', [], 1, '阿明'), { rejected: '对他说话' });
+        assert.deepEqual(parseThought('阿明 人呢\n问他', [], 1, '阿明'), { rejected: '对他说话' });
+        assert.ok('thought' in parseThought('阿明的面试不知道怎么样了\n问他', [], 1, '阿明'), '名字在句子里不算');
+    });
+
+    test('想一想时最近的聊天换成一段“回想”：最近 14 条、旧到新、带时刻、他 / 你；不是要接着回的对话；没有聊天就没有', () => {
+        const chat = Array.from({ length: 16 }, (_, i) => ({ time: new Date(2026, 9, 5, 10, i).toISOString(), role: i % 2 ? 'assistant' as const : 'user' as const, content: `第${i}句\n换行` }));
+        const text = thinkingTranscript(chat, '宝宝')!;
+        assert.ok(text.startsWith('[回想一下你和宝宝最近的聊天（旧到新，这只是让你想起发生过什么，不是要你接着回）：'));
+        assert.equal(text.split('\n').length, 1 + 14);
+        assert.ok(!text.includes('第0句') && !text.includes('第1句') && text.includes('第2句') && text.includes('第15句'));
+        assert.ok(text.includes('10-05 10:02 他：第2句 换行') && text.includes('10-05 10:03 你：第3句 换行'), text);
+        assert.equal(thinkingTranscript([], '宝宝'), undefined);
+    });
+
+    test('念头里出现“你”就是写成了对他说话：不留；说到他用“他”', () => {
+        assert.deepEqual(parseThought('人呢，你吃饭了没\n问他', [], 1), { rejected: '对他说话' });
+        assert.deepEqual(parseThought('腰好点没，别又逞强，你倒是回我一句\n告诉他', [], 1), { rejected: '对他说话' });
+        assert.ok('thought' in parseThought('他腰好点没，别又逞强\n问他', [], 1));
     });
 
     test('聊天提示词里的一行：最近 6 小时、最多 INNER_LINE_MAX 个、说明是小心思不是发生过的事；没有就没有', () => {
@@ -244,6 +291,19 @@ describe('内心：计划器每隔一阵想一想', () => {
         const down = setup([{ result: 'failed', reason: '生成失败：断网', unreachable: true }, '断网了，也不知道他在干嘛\n自己想想'], [], t(10, 5, 10, 14));
         await runUntil(down.clock, t(10, 5, 11, 30));
         assert.ok(Math.abs(down.thinks[1]!.at - down.thinks[0]!.at - 15 * MIN) <= 5, '没连上模型：15 分钟后再试');
+    });
+
+    test('写成了对他说话：马上再想一次（带“上一次写成了对他说话”那句），第二次好了就留；两次都不行才不留', async () => {
+        const again = setup(['人呢，你吃饭了没\n问他', '他吃饭了没，一下午没动静\n问他']);
+        await runUntil(again.clock, t(10, 5, 12, 0));
+        assert.equal(again.state().inner!.thoughts[0]!.text, '他吃饭了没，一下午没动静');
+        assert.ok(!again.thinks[0]!.request.note.includes('上一次你写成了对他说话'));
+        assert.ok(again.thinks[1]!.request.note.includes('上一次你写成了对他说话'));
+        assert.ok(again.logs.some(line => line.includes('写成了对他说话，再想一次')));
+        const twice = setup(['你在干嘛\n问他', '你怎么还不回\n问他']);
+        await runUntil(twice.clock, t(10, 5, 11, 0));
+        assert.equal(twice.state().inner?.thoughts.length ?? 0, 0);
+        assert.ok(twice.logs.some(line => line.includes('写成了对他说话，不留')) && twice.logs.some(line => line.includes('想了，但不留（对他说话）')));
     });
 
     test('想砸了（不合格 / 重复）不留，但算想过（上一次的时刻照记，免得一直重试）', async () => {

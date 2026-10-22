@@ -241,6 +241,9 @@ export interface Scenario {
     proactiveReach: boolean;
     /** 默认 false：内心（ADR 0101，配置 innerLife）；要 proactive 开着 */
     innerLife: boolean;
+    /** 默认 false：心境（ADR 0102，配置 herFeelings）；只对男朋友档有效。moments：作者写下的事（runtime/bot/moments.json 的样子，at 可写相对开场的偏移如 "-3h"） */
+    herFeelings: boolean;
+    moments: { id: string; at: string; kind: string; strength: number; cause: string; halfLifeH?: number }[];
     /** 默认 false：分成几条（ADR 0096，配置 shapeSplit，要 shape 开着）；run.ts 的 --split 对所有场景打开 */
     shapeSplit: boolean;
     /** 默认 false：闺蜜的约（ADR 0061，配置 npcAsks）：约、迟到、改约、取消进她的一天；要开着 autonomous 才进行动账 */
@@ -350,6 +353,8 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         shapeFeel: s.shapeFeel === true,
         proactiveReach: s.proactiveReach === true,
         innerLife: s.innerLife === true,
+        herFeelings: s.herFeelings === true,
+        moments: Array.isArray(s.moments) ? s.moments as Scenario['moments'] : [],
         shapeSplit: s.shapeSplit === true,
         npcAsks: s.npcAsks === true,
         festivals: s.festivals === undefined ? 'off' : (FESTIVAL_MODES.includes(s.festivals as FestivalMode) ? s.festivals as FestivalMode : fail(`festivals 应为 ${FESTIVAL_MODES.join(' / ')} 之一`)),
