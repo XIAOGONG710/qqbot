@@ -89,3 +89,6 @@
 - 分支 `claude/realness` `55aafba`（基于线上 `362cd48`）。新主动时机 `invite`：晚上约他玩卡上写着的固定节目（我的世界存档 / 王者双排）；一周 ≤3 次、隔 ≥2 天（被拒 4 天）、他没回不催、他刚说忙 / 累 / 去睡 / 在聊游戏 / 今晚有事就不约、她自己状态差可输出「不发」。回复侧 `DECLINED_INVITE_INTENT`（跟 `herNo`）。
 - 全量 1520 + 35 + 43 通过；真模型模拟：应了自然、没回不催、被拒 5/5 轻松放下。
 - 上线 = `koishi.yml` 加 `proactiveInvite: true` + 重启，等用户说「上线」。
+
+## 22:45 即将重启上线：`a552227`（ADR 0107 `proactiveInvite: true`）
+- 用户说「现在上线并开启」。线上 `362cd48` → `a552227`；koishi.yml 加一行 `proactiveInvite: true`（在 herNo 后）；备份 `runtime/backup-pre-bili21-*`。回滚：改回 false + 重启，或 `git reset --hard 362cd48` + 还原 `koishi.yml.bak-bili21-*`。
