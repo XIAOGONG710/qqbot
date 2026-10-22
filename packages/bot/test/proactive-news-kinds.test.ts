@@ -219,7 +219,8 @@ describe('事件类：闺蜜病了的头一天（friend_sick）', () => {
         assert.match(text, /不要他回应或安慰你/);
         assert.match(text, /那一行里没写的不编/);
         assert.doesNotMatch(text, /「[^」]*[！!]」/, '不给台词');
-        assert.equal(NEWS_KINDS.at(-1), 'friend_sick');
+        assert.equal(NEWS_KINDS.at(-1), 'cat_photo', '新加的一类（ADR 0110）排在最后；friend_sick 在它前面');
+        assert.equal(NEWS_KINDS.at(-2), 'friend_sick');
     });
 });
 
@@ -275,7 +276,7 @@ describe('主动消息里的事件类：优先级、说明、日志（ADR 0064 �
         assert.equal('newsKinds' in parseProactive(base, '卡'), false);
         assert.throws(() => parseProactive({ ...base, newsKinds: ['camera', 'bogus'] }, '卡'), /newsKinds 应为 camera \/ homework_done \/ unwell/);
         assert.throws(() => parseProactive({ ...base, newsKinds: 'camera' }, '卡'), /newsKinds/);
-        assert.deepEqual([...NEWS_KINDS], ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick']);
+        assert.deepEqual([...NEWS_KINDS], ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick', 'cat_photo']);
     });
 });
 
