@@ -239,6 +239,8 @@ export interface Scenario {
     shapeFeel: boolean;
     /** 默认 false：他没回也继续找他、催他一下（ADR 0100，配置 proactiveReach）；要 proactive 开着 */
     proactiveReach: boolean;
+    /** 默认 false：内心（ADR 0101，配置 innerLife）；要 proactive 开着 */
+    innerLife: boolean;
     /** 默认 false：分成几条（ADR 0096，配置 shapeSplit，要 shape 开着）；run.ts 的 --split 对所有场景打开 */
     shapeSplit: boolean;
     /** 默认 false：闺蜜的约（ADR 0061，配置 npcAsks）：约、迟到、改约、取消进她的一天；要开着 autonomous 才进行动账 */
@@ -347,6 +349,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         shapeFiller: s.shapeFiller === true,
         shapeFeel: s.shapeFeel === true,
         proactiveReach: s.proactiveReach === true,
+        innerLife: s.innerLife === true,
         shapeSplit: s.shapeSplit === true,
         npcAsks: s.npcAsks === true,
         festivals: s.festivals === undefined ? 'off' : (FESTIVAL_MODES.includes(s.festivals as FestivalMode) ? s.festivals as FestivalMode : fail(`festivals 应为 ${FESTIVAL_MODES.join(' / ')} 之一`)),

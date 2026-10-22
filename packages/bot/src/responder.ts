@@ -140,11 +140,15 @@ export interface InitiateRequest {
     allowRepeat?: boolean;
     /** 她想了想可以决定先不发：模型只输出「不发」两个字就记成没发（催他回，ADR 0100） */
     canDecline?: boolean;
+    /** 只想一想（ADR 0101，内心）：生成之后不清理、不检查、不发送、不 commit，把模型原文还给调用方；占用回复器的方式和主动找他一样（正在回消息、有没回的消息就不想） */
+    think?: boolean;
 }
 
 export type InitiateOutcome =
     | { result: 'sent'; parts: string[]; messageIds: number[] }
     | { result: 'dryRun'; parts: string[] }
+    /** think：模型原文（内心，ADR 0101） */
+    | { result: 'thought'; text: string }
     /** 没发：正在回消息、有没回的消息、生成中他来了消息、生成的是空的、已停止 */
     | { result: 'skipped'; reason: string }
     /** 生成或发送出错（发送出错时可能已经发出了前几条）；unreachable：生成时没连上模型（断网、DNS、超时、429 / 5xx），计划器过一会儿再试 */
@@ -444,6 +448,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
         deps.log(`主动找他（${request.label}）：生成，${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);
         const raw = await deps.generate(prompt.messages);
+        if (request.think) return { result: 'thought', text: raw };
         // 她想了想决定先不发（ADR 0100）：只有「不发」两个字，带不带括号都算
         if (request.canDecline && /^\s*[（(【[]?\s*不发\s*[）)】\]]?[。.！!]?\s*$/.test(raw)) return { result: 'skipped', reason: '她想了想，先不发' };
         let reply = deps.clean(raw);

@@ -1,6 +1,7 @@
 // 已发送/已跳过记录是主动消息去重的事实源；坏状态不能清空后继续计划。
 import type { FollowUp } from './follow-ups.ts';
 import { readJsonOr } from './json-file.ts';
+import { validInnerState, type InnerState } from './inner.ts';
 import { OBSTACLE_KINDS } from './obstacles.ts';
 import { OCCASIONS, UNREACHABLE_MAX_TRIES, type ProactiveRecord } from './proactive.ts';
 import { calendarDate, stateObject, stateTimestamp } from './state-schema.ts';
@@ -11,6 +12,8 @@ export interface ProactiveState {
     records: ProactiveRecord[];
     followUps: FollowUp[];
     extracted: Record<string, true | number>;
+    /** 她的内心（ADR 0101）：开了 innerLife 才有 */
+    inner?: InnerState;
 }
 
 export const emptyProactiveState = (): ProactiveState => ({ version: 1, records: [], followUps: [], extracted: {} });
@@ -47,6 +50,7 @@ export function validProactiveState(value: unknown): value is ProactiveState {
     return stateObject(value) && value.version === 1
         && Array.isArray(value.records) && value.records.every(validRecord) && unique(value.records)
         && Array.isArray(value.followUps) && value.followUps.every(validFollowUp) && unique(value.followUps)
+        && (value.inner === undefined || validInnerState(value.inner))
         && stateObject(value.extracted) && Object.entries(value.extracted).every(([key, attempts]) => episodeId(key) && (attempts === true || integer(attempts, 0, 2)));
 }
 

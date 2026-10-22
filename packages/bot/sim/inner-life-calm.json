@@ -1,0 +1,26 @@
+{
+    "name": "内心：平常的一天，不催的那种（ADR 0101）",
+    "description": "只开 innerLife（不开 proactiveReach）：他上午来聊了一阵、之后一直没再说话。看她的念头里有没有真正“自己的”东西（惦记、担心、期待），想告诉他 / 想问他的会不会变成一条主动消息、说的是不是那个念头本身、有没有照着念原话或编事实。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-05T09:50:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "innerLife": true,
+    "history": [
+        { "time": "2026-10-04T22:00:00+08:00", "role": "user", "content": "我妈让我国庆回去帮忙搬家，累死了" },
+        { "time": "2026-10-04T22:01:00+08:00", "role": "assistant", "content": "搬家最累了，你别硬撑" },
+        { "time": "2026-10-04T22:02:00+08:00", "role": "user", "content": "嗯，晚安" },
+        { "time": "2026-10-04T22:02:30+08:00", "role": "assistant", "content": "晚安" }
+    ],
+    "steps": [
+        { "case": "K01", "note": "上午他来聊了一阵" },
+        { "say": "早，今天搬了一上午，腰要断了" },
+        { "wait": "reply" },
+        { "say": "你今天干嘛" },
+        { "wait": "reply" },
+        { "case": "K02", "note": "之后他不说话了：她一个人的时候在想什么，有没有什么念头变成主动消息" },
+        { "advance": "13h" },
+        { "check": { "proactive": { "count": [0, 3], "allowedTimes": true, "exitClean": true } } }
+    ]
+}

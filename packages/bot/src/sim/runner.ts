@@ -19,7 +19,7 @@ import type { OpenAIMessage, PromptResult } from '../prompt.ts';
 import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
-import { herDay, newsKindsOf, withReach } from '../proactive.ts';
+import { herDay, newsKindsOf, withInner, withReach } from '../proactive.ts';
 import { dmMessageId, dmNote, nudgeNote, videoNote, videoTopic } from '../bilibili.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
@@ -386,6 +386,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.shapeAgenda || options.shapeAgenda ? { shapeAgenda: true } : {}),
         ...(scenario.shapeFiller || options.shapeFiller ? { shapeFiller: true } : {}),
         ...(scenario.shapeFeel || options.shapeFeel ? { shapeFeel: true } : {}),
+        // 她最近心里在想什么（ADR 0101）：计划器在后面才建，每次现取
+        ...(scenario.innerLife ? { innerLine: () => planner?.innerLine() } : {}),
         ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
         ...(stickers ? { stickers } : {}),
         ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),
@@ -441,12 +443,14 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             ...(scenario.extraOccasions ? { occasions: [...new Set([...character.proactive.occasions, ...scenario.extraOccasions])] } : {}),
         }
         : character.proactive;
-    const proactiveSettings = proactiveBase && scenario.proactiveReach ? withReach(proactiveBase) : proactiveBase;
+    const withReached = proactiveBase && scenario.proactiveReach ? withReach(proactiveBase) : proactiveBase;
+    const proactiveSettings = withReached && scenario.innerLife ? withInner(withReached) : withReached;
     const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && proactiveSettings && character.schedule
         ? createProactivePlanner({
             contact,
             schedule: character.schedule,
             settings: proactiveSettings,
+            ...(scenario.innerLife ? { inner: true } : {}),
             dates: character.dates,
             mode: 'on',
             history,

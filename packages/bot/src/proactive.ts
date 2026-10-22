@@ -8,6 +8,7 @@
 // 没连上模型的（断网）不算错过：记录里带 retryAt 的候选按那个时刻再排，最多 UNREACHABLE_MAX_TRIES 次，只在同一天里。
 
 import { expired, firstAsk, partText, whenText, type FollowUp } from './follow-ups.ts';
+import { INNER_DELAY_MIN, INNER_MAX_PER_DAY, type InnerThought } from './inner.ts';
 import type { StoredMessage } from './history.ts';
 import type { ObstacleKind } from './obstacles.ts';
 import { mentionsMeetup } from './promises.ts';
@@ -17,7 +18,7 @@ import { logBody } from './sensitive.ts';
 export { herDay } from './schedule.ts';
 
 /** 时机，按优先级从高到低 */
-export const OCCASIONS = ['dates', 'reschedule', 'news', 'follow_up', 'weather', 'reach', 'morning', 'after_class', 'quiet', 'bedtime', 'share'] as const;
+export const OCCASIONS = ['dates', 'reschedule', 'news', 'follow_up', 'weather', 'inner', 'reach', 'morning', 'after_class', 'quiet', 'bedtime', 'share'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 「她那边的事」的事件类（ADR 0064），按优先级从高到低：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天、闺蜜临时去不了 / 改到很晚（ADR 0061，开着配置 npcAsks 才有） */
@@ -152,6 +153,8 @@ export interface Candidate {
     reschedule?: RescheduleItem;
     /** 催他：现在她主动发了几条他没回的；replied：一条主动的都还没发，是聊着聊着他没再理她最后那句回复 */
     reach?: { count: number; replied?: true };
+    /** 心里惦记：是哪个念头、想告诉他还是想问他（ADR 0101） */
+    inner?: { id: string; text: string; goes: 'tell' | 'ask' };
 }
 
 export interface ProactiveInput {
@@ -177,6 +180,8 @@ export interface ProactiveInput {
     rainingNow?: (now: number) => boolean;
     /** 她那边的事（ADR 0057）：她的今天、明天会了结的；到点时没有了（没发生）就不发 */
     news?: readonly NewsItem[];
+    /** 她心里想着、想告诉他 / 想问他、还没说的念头（ADR 0101，planner 从内心状态里挑）；到点时没有了（说过了、过期了）就不发 */
+    inner?: readonly InnerThought[];
     /** 约好之后出了事、想改约的（ADR 0066）：到点时障碍没了、约没了就不发 */
     reschedules?: readonly RescheduleItem[];
 }
@@ -252,6 +257,11 @@ const LEFT_FOR_NOW = /晚安|睡了|去睡|先睡|明天聊|去忙|先忙|忙去
 export const REACH_DECLINE = '不发';
 
 /** 打开 proactiveReach：加上 reach 时机和没回的节流闸（按档位卡上的 unanswered_max 起算） */
+export function withInner(settings: ProactiveSettings): ProactiveSettings {
+    return { ...settings, occasions: [...new Set<Occasion>([...settings.occasions, 'inner'])] };
+}
+
+/** 打开 proactiveReach：加上 reach 时机和没回的节流闸（见上） */
 export function withReach(settings: ProactiveSettings): ProactiveSettings {
     return { ...settings, occasions: [...new Set<Occasion>([...settings.occasions, 'reach'])], reach: settings.reach ?? DEFAULT_REACH };
 }
@@ -403,6 +413,18 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
     if (enabled.has('reschedule')) {
         for (const item of (input.reschedules ?? []).filter(r => r.day === dayText)) {
             add('reschedule', Math.max(item.at, wake) + pick(seed(`reschedule ${item.id}`), 'at', minutes(NEWS_MIN)), `${item.time} 的约：${item.obstacle.text}`, { reschedule: item }, `:${item.id}`);
+        }
+    }
+
+    // 心里惦记（ADR 0101）：她自己想了想、想告诉他 / 想问他的念头，过一会儿想起来跟他说；一个念头一条，一天最多 INNER_MAX_PER_DAY 条
+    if (enabled.has('inner') && input.inner?.length) {
+        const sent = input.records.filter(r => r.occasion === 'inner' && r.id.startsWith(`${dayText}:`) && counts(r)).length;
+        if (sent < INNER_MAX_PER_DAY) {
+            for (const thought of input.inner) {
+                if (thought.goes === 'keep' || formatDate(herDay(schedule, new Date(thought.at))) !== dayText) continue;
+                const time = Math.max(Date.parse(thought.at) + pick(seed(`inner ${thought.id}`), 'at', minutes(INNER_DELAY_MIN)), wake + QUIET_AFTER_WAKE_MS);
+                add('inner', time, '心里惦记着一件事', { inner: { id: thought.id, text: thought.text, goes: thought.goes } }, `:${thought.id}`);
+            }
         }
     }
 
@@ -614,6 +636,12 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
         case 'share':
             if (lastTime !== undefined && now - lastTime < SHARE_QUIET_MS) return '刚聊过';
             break;
+        case 'inner': {
+            if (!input.inner?.some(t => t.id === candidate.inner!.id)) return '那个念头已经过去了（说过了，或者过期了）';
+            const sentToday = input.records.filter(r => r.occasion === 'inner' && r.id.startsWith(`${candidate.day}:`) && counts(r)).length;
+            if (sentToday >= INNER_MAX_PER_DAY) return '今天已经因为心里的事找过他了';
+            break;
+        }
         case 'reach': {
             if (gate.count < input.settings.unansweredMax && !gate.replied) return '他回过了';
             if (gate.notBefore !== undefined && now < gate.notBefore) return gate.replied ? '离她最后一句回复还没隔够' : '他还没回，离上一条主动消息隔得不够久';
@@ -700,6 +728,10 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
         share: () => `你想起一件自己的小事，想跟${userName}说一句：从「你那边」「你的身体」「你今天的心情」里挑一件他还不知道的（不是你这会儿正在做的那件事，前面说过的也别再说），` +
             `随口说，像突然想起来的；不提刚刷到的视频、帖子、新闻（对方要链接你给不出来）；不问「在干嘛」，说完也不用追问他，那里没有合适的、没写的细节不编`,
         // 旧项目的教训（ADR 0013 决策 2）：分享「刚看到的」会编出一个具体的视频、帖子，对方要链接时给不出来
+        // 心里惦记（ADR 0101）：念头原话给她看，但别照着念；只说这个念头，不另外编事实
+        inner: () => `你心里一直想着这么一件事：「${candidate.inner!.text}」。${candidate.inner!.goes === 'ask'
+            ? `想问问${userName}：问一个具体的小问题（不是反问）`
+            : `想跟${userName}说说：说完不用他回应`}；像突然想起来随口说的，别照着念原话，一两句；只说这个念头本身，不另外编发生过的事`,
         // 他没回、她自己想要不要催他（ADR 0100）：第一次轻轻戳一下，第二次起带点小脾气；也可以决定先不发。只给方向，不给台词
         reach: () => {
             const count = candidate.reach?.count ?? 1;
@@ -742,7 +774,7 @@ export function recallTopic(candidate: Candidate, userName: string): string {
 
 /** 日志、状态页里的说法：「早安（起床后 12 分钟）」 */
 export const OCCASION_LABELS: Record<Occasion, string> = {
-    dates: '重要的日子', reschedule: '改约', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', morning: '早安', after_class: '下课', share: '随口说件自己的事', quiet: '冷场', bedtime: '睡前', reach: '催他回',
+    dates: '重要的日子', reschedule: '改约', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', inner: '心里惦记', morning: '早安', after_class: '下课', share: '随口说件自己的事', quiet: '冷场', bedtime: '睡前', reach: '催他回',
 };
 
 export function candidateLabel(candidate: Candidate): string {

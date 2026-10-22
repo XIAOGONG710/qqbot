@@ -65,6 +65,7 @@ export const DEFAULTS = {
     shapeFiller: false,
     shapeFeel: false,
     proactiveReach: false,
+    innerLife: false,
     shapeSplit: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
@@ -210,6 +211,11 @@ export interface AppConfig {
      * 并且她自己想一想要不要催他（第一次轻轻戳一下，第二次带点小脾气，也可以决定先不发）；到 3 条就停到他回。要主动消息开着。默认关
      */
     proactiveReach: boolean;
+    /**
+     * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
+     * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
+     */
+    innerLife: boolean;
     /**
      * 分成几条（ADR 0096，要 shape 开着）：形状里抽出的条数（1 条约 55%、2 条约 28%、3 条约 17%）本来只是上限，真模型多半只写一行——
      * 线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思。默认关
@@ -451,6 +457,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         shapeFiller: bool(file, 'shapeFiller', '', DEFAULTS.shapeFiller),
         shapeFeel: bool(file, 'shapeFeel', '', DEFAULTS.shapeFeel),
         proactiveReach: bool(file, 'proactiveReach', '', DEFAULTS.proactiveReach),
+        innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         shapeSplit: bool(file, 'shapeSplit', '', DEFAULTS.shapeSplit),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),

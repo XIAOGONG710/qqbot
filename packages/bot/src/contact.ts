@@ -159,6 +159,8 @@ export interface ContactPipelineOptions {
     shapeFiller?: boolean;
     /** 情绪轮（配置 shapeFeel，要 shape 开着）：适用的轮次里约 18% 先说自己对他的小情绪，不把他的话处理完整（ADR 0099） */
     shapeFeel?: boolean;
+    /** 她最近心里在想什么（ADR 0101，配置 innerLife）：放进提示词的一行；没有就没有。主动找他、危机回合不放 */
+    innerLine?: () => string | undefined;
     /** 分成几条（配置 shapeSplit，要 shape 开着）：把形状里抽出的条数当目标写进提示词，不只是上限（ADR 0096） */
     shapeSplit?: boolean;
     /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
@@ -489,6 +491,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 说过了就不再自己提（ADR 0098）：事实还在时间块里，他问起来照常答
             const toldLine = told.length ? `[这些事你已经主动跟他说过了：${told.join('、')}。他不问，就别再自己提]` : undefined;
             if (toldLine) log(`已经主动说过：${told.join('、')}（提示词里让她不再自己提）`);
+            // 她最近心里在想的（ADR 0101）：前后是同一个在想事情的人
+            const innerNow = !initiate && !crisisNow ? options.innerLine?.() : undefined;
+            if (innerNow) log('内心：这一轮提示词里放了她最近的念头');
             const length = crisisNow || shapeNow || stickerOnlyNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
@@ -550,6 +555,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(shapeNow ? [describeShape(shapeNow)] : []),
                         ...(crutchLine ? [crutchLine] : []),
                         ...(toldLine ? [toldLine] : []),
+                        ...(innerNow ? [innerNow] : []),
                         ...(initiate ? [initiate.note] : []),
                     ].join('\n'),
                 ],

@@ -34,7 +34,11 @@ import { PromiseStateUnavailable } from './promise-state.ts';
 import type { InitiateOutcome, Responder } from './responder.ts';
 import type { DayWeather } from './weather.ts';
 import { unwellNews, worldNews, type WorldNews, type WorldNow } from './world.ts';
-import { formatDate, wakeOn, type Schedule } from './schedule.ts';
+import { formatDate, stateAt, wakeOn, type Schedule } from './schedule.ts';
+import { pick } from './reply-timing.ts';
+import {
+    innerLine as innerLineOf, parseThought, pendingIntents, THINK_AFTER_CHAT_MS, THINK_AFTER_WAKE_MS, THINK_INTERVAL_MIN, THINK_MAX_PER_DAY, THINK_MIN_GAP_MS, THINK_RETRY_MS, thinkNote, THOUGHTS_KEPT, type InnerState,
+} from './inner.ts';
 
 /** 记录留多少天 */
 const KEEP_DAYS = 30;
@@ -165,6 +169,8 @@ export interface PlannerDeps {
     reschedule?: (now: number) => RescheduleItem[];
     /** 现在是不是在危机信号的暂停期里（ADR 0068，crisis-state.ts）：普通主动消息不发，待跟进和重要的日子照旧 */
     crisisPaused?: (now: number) => boolean;
+    /** 内心（ADR 0101，配置 innerLife）：每隔一阵她自己想一想，念头存在状态文件里；想告诉他 / 想问他的变成“心里惦记”的主动消息 */
+    inner?: boolean;
 }
 
 export interface PlannerStatus {
@@ -184,6 +190,8 @@ export interface Planner {
     syncFollowUps(): Promise<void>;
     stop(): void;
     status(): PlannerStatus;
+    /** 她最近几个钟头心里在想什么，放进聊天提示词的一行（ADR 0101）；没开 innerLife、没有念头就没有 */
+    innerLine(): string | undefined;
     /** 跑完当前这一轮（测试用） */
     readonly running: Promise<void>;
 }
@@ -218,12 +226,16 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         const reason = '主动消息状态读取或校验失败，已暂停；请修复后重新创建计划器';
         deps.log(`主动：${reason}；原文件未重建（原因：${describeError(error)}）`);
         return {
-            poke() {}, stop() {}, syncFollowUps: async () => {}, running: Promise.resolve(),
+            poke() {}, stop() {}, syncFollowUps: async () => {}, running: Promise.resolve(), innerLine: () => undefined,
             status: () => ({ mode: deps.mode, paused: reason, today: 0 }),
         };
     }
     let records = state.records;
     let followUps = state.followUps;
+    /** 她的内心（ADR 0101）：念头和上一次想的时刻 */
+    let inner: InnerState = state.inner ?? { thoughts: [] };
+    /** 没想成（正在回消息、没连上模型）的下一次再试 */
+    let thinkRetryAt: number | undefined;
     /** 片段 id → 抽过了（true），或者抽失败了几次 */
     const extracted = state.extracted;
     let extracting: Promise<void> | undefined;
@@ -256,7 +268,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             records = records.filter(r => Date.parse(r.at) >= keepFrom);
             // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
             for (const id of Object.keys(extracted)) if (Number(id.slice(3)) < keepFrom) delete extracted[id];
-            const next: ProactiveState = { version: 1, records, followUps, extracted };
+            const next: ProactiveState = { version: 1, records, followUps, extracted, ...(inner.thoughts.length || inner.lastThinkAt ? { inner } : {}) };
             if (!validProactiveState(next)) throw new Error('拒绝写入不符合 schema 的主动消息状态');
             writeJsonAtomic(path, next);
             dirty = false;
@@ -391,6 +403,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             history: deps.history.load(contact.qq), records, mode: deps.mode, followUps, ...(deps.skip ? { skip: deps.skip } : {}),
             ...(deps.asleep ? { asleep: deps.asleep } : {}),
             ...(deps.crisisPaused?.(now()) ? { crisisPaused: true } : {}),
+            ...(deps.inner ? { inner: pendingIntents(inner.thoughts, now()) } : {}),
             ...(rain ? { rain } : {}),
             // 只认卡上开了的事件类（ADR 0064 决策 6）：没开的类即使调用方给了也不排
             ...(deps.news ? { news: deps.news(now()).filter(item => newsKindsOf(deps.settings).includes(item.kind)) } : {}),
@@ -437,6 +450,11 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
                 record(candidate, { result: 'sent', at: committed!.at, messageIds: outcome.messageIds });
                 deps.log(`主动找他（${candidateLabel(candidate)}）${outcome.parts.length > 1 ? `（${outcome.parts.length} 条）` : ''}：${logBody(outcome.parts.join(' / '))}`);
                 if (candidate.followUp) asked(candidate.followUp.item.id, outcome.parts, false);
+                // 心里惦记的念头说出去了：记成说过（聊天提示词里不再当“心里的小心思”放，也不会再变成主动消息）
+                if (candidate.inner) {
+                    inner = { ...inner, thoughts: inner.thoughts.map(t => (t.id === candidate.inner!.id ? { ...t, told: true as const } : t)) };
+                    save();
+                }
                 break;
             case 'dryRun':
                 deps.log(`主动（试运行，没发）：${candidateLabel(candidate)}；今天第 ${usedToday()} 条；本来要说：${logBody(outcome.parts.join(' / '))}`);
@@ -464,6 +482,70 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
                 break;
             }
         }
+    }
+
+    // ---------- 内心（ADR 0101）----------
+
+    const MIN = 60_000;
+    /** 睡着（作息上 / 说过睡了）的时刻不想 */
+    const thinkAsleep = (time: number) => stateAt(deps.schedule, new Date(time)).activity.kind === 'sleep' || Boolean(deps.asleep?.(time));
+    const dayAfter = (day: Date) => new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+
+    /** 下一次什么时候想：上一次之后隔 90–150 分钟（按上一次的时刻取种子）；聊完一段（他说过话、之后 20 分钟没人说话）就早一点；睡着的推到起床后；一天最多 THINK_MAX_PER_DAY 次 */
+    function nextThinkAt(): number {
+        const last = inner.lastThinkAt ? Date.parse(inner.lastThinkAt) : undefined;
+        const today = herDay(deps.schedule, new Date(now()));
+        let at = last === undefined
+            ? wakeOn(deps.schedule, today).getTime() + THINK_AFTER_WAKE_MS
+            : last + pick(`${contact.qq} ${last}`, 'think', [THINK_INTERVAL_MIN[0] * MIN, THINK_INTERVAL_MIN[1] * MIN]);
+        if (last !== undefined) {
+            const chat = deps.history.load(contact.qq);
+            const lastMessage = chat.at(-1);
+            if (lastMessage && Date.parse(lastMessage.time) > last && chat.some(m => m.role === 'user' && Date.parse(m.time) > last)) {
+                at = Math.min(at, Math.max(Date.parse(lastMessage.time) + THINK_AFTER_CHAT_MS, last + THINK_MIN_GAP_MS));
+            }
+        }
+        if (thinkRetryAt !== undefined) at = Math.max(at, thinkRetryAt);
+        const day = herDay(deps.schedule, new Date(at));
+        const dayText = formatDate(day);
+        const todayCount = inner.thoughts.filter(t => formatDate(herDay(deps.schedule, new Date(t.at))) === dayText).length;
+        if (todayCount >= THINK_MAX_PER_DAY) at = wakeOn(deps.schedule, dayAfter(day)).getTime() + THINK_AFTER_WAKE_MS;
+        if (thinkAsleep(at)) {
+            const d = herDay(deps.schedule, new Date(at));
+            let wakeAt = wakeOn(deps.schedule, d).getTime() + THINK_AFTER_WAKE_MS;
+            if (wakeAt <= at) wakeAt = wakeOn(deps.schedule, dayAfter(d)).getTime() + THINK_AFTER_WAKE_MS;
+            at = wakeAt;
+        }
+        return at;
+    }
+
+    const GOES_LABEL = { tell: '想告诉他', ask: '想问他', keep: '自己想想' } as const;
+
+    /** 想一次：借回复器的主动通道生成（带着她的时间、状态、心情、世界、记忆和最近的聊天），不发送；留下的念头存进状态文件 */
+    async function think(): Promise<void> {
+        const started = now();
+        const outcome = await deps.responder.initiate({
+            label: '内心', note: thinkNote(inner.thoughts.slice(-3), contact.name),
+            topic: `${contact.name}最近在忙什么、我自己最近惦记什么、担心什么、期待什么`,
+            maxBubbles: 1, dryRun: false, think: true, commit: () => undefined,
+        });
+        if (stopped) return;
+        if (outcome.result !== 'thought') {
+            thinkRetryAt = now() + (outcome.result === 'failed' ? UNREACHABLE_RETRY_MS : THINK_RETRY_MS);
+            deps.log(`内心${tag}：没想成，${clock(thinkRetryAt)} 再试：${outcome.result === 'skipped' || outcome.result === 'failed' ? outcome.reason : ''}`);
+            return;
+        }
+        thinkRetryAt = undefined;
+        inner = { ...inner, lastThinkAt: new Date(started).toISOString() };
+        const parsed = parseThought(outcome.text, inner.thoughts.slice(-8), started);
+        if ('rejected' in parsed) {
+            save();
+            deps.log(`内心${tag}：想了，但不留（${parsed.rejected}）`);
+            return;
+        }
+        inner = { ...inner, thoughts: [...inner.thoughts, parsed.thought].slice(-THOUGHTS_KEPT) };
+        save();
+        deps.log(`内心${tag}：${logBody(parsed.thought.text)}（${GOES_LABEL[parsed.thought.goes]}）`);
     }
 
     function usedToday(): number {
@@ -511,12 +593,19 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             const withWeather = deps.weather ? Math.min(untilTomorrow, now() + RAIN_REPLAN_MS) : untilTomorrow;
             const planned = deps.settings.reach ? Math.min(withWeather, now() + REACH_REPLAN_MS) : withWeather;
             // 有没写进去的状态时，最多睡一分钟就起来补写（持续 5 分钟写不进 save() 会暂停）
-            const target = dirty ? Math.min(planned, now() + DIRTY_RETRY_MS) : planned;
+            const thinkAt = deps.inner ? nextThinkAt() : undefined;
+            const withThink = thinkAt === undefined ? planned : Math.min(planned, thinkAt);
+            const target = dirty ? Math.min(withThink, now() + DIRTY_RETRY_MS) : withThink;
             wake = new AbortController();
             await waitUntil(target, wake.signal);
             const poked = wake.signal.aborted;
             wake = undefined;
             if (stopped) return;
+            // 该想了：想完重新算（念头可能变成要说的话）
+            if (thinkAt !== undefined && now() >= thinkAt) {
+                await think();
+                continue;
+            }
             if (poked || !next || now() < next.at) continue;
             // 到点：按现在的聊天记录再算一遍（冷场的时刻可能往后挪了，或者让给了优先级更高的）
             const fresh = planFrom(now(), input()).upcoming.find(c => c.id === next!.id);
@@ -540,6 +629,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             stopped = true;
             wake?.abort();
         },
+        innerLine: () => (deps.inner ? innerLineOf(inner.thoughts, now()) : undefined),
         status: () => ({
             mode: deps.mode,
             ...(next ? { next: { at: next.at, label: candidateLabel(next) } } : {}),

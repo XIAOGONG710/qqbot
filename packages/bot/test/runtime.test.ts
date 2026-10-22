@@ -725,6 +725,20 @@ describe('回复调度', () => {
             assert.equal((await inSentence.responder.initiate(request({ canDecline: true }))).result, 'sent');
         });
 
+        test('只想一想（think，ADR 0101 内心）：模型原文原样还回去，不清理、不检查、不 commit、不发、不记；正在回消息 / 有没回的消息照样不想', async () => {
+            let reviews = 0;
+            const { responder, sent, stored } = setup({ generate: async () => '腰不会真搬坏了吧\n告诉他', review: async reply => { reviews++; return reply; } });
+            const req = request({ think: true });
+            assert.deepEqual(await responder.initiate(req), { result: 'thought', text: '腰不会真搬坏了吧\n告诉他' });
+            assert.deepEqual(req.committed, []);
+            assert.deepEqual(sent, []);
+            assert.deepEqual(stored, []);
+            assert.equal(reviews, 0);
+            const pending = setup();
+            pending.stored.push({ time: new Date().toISOString(), role: 'user', content: '在吗', messageId: 1 });
+            assert.deepEqual(await pending.responder.initiate(request({ think: true })), { result: 'skipped', reason: '有没回的消息，回复就好' });
+        });
+
         test('试运行：生成、commit，不发、不记', async () => {
             const { responder, stored, sent } = setup({ generate: async () => '早' });
             const req = request({ dryRun: true });

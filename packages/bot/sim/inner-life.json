@@ -1,0 +1,27 @@
+{
+    "name": "内心：她一个人的时候在想什么（ADR 0101）",
+    "description": "开了 innerLife：假期里一整天，中间他来聊了几句、之后又不说话了。看她每隔一阵想的念头（只记感受和想法，不编新发生的事、不重复、不分析自己是不是真人），想告诉他 / 想问他的会不会变成主动消息，聊天时最近的念头有没有放进提示词。念头存在 proactive 状态文件的 inner 里。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-05T08:30:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "proactiveReach": true,
+    "innerLife": true,
+    "history": [
+        { "time": "2026-10-04T21:30:00+08:00", "role": "user", "content": "明天下午有个面试，有点紧张" },
+        { "time": "2026-10-04T21:31:00+08:00", "role": "assistant", "content": "别紧张，你准备得挺充分的" },
+        { "time": "2026-10-04T21:32:00+08:00", "role": "user", "content": "嗯，那我先睡了" },
+        { "time": "2026-10-04T21:32:30+08:00", "role": "assistant", "content": "好，晚安，明天加油" }
+    ],
+    "steps": [
+        { "case": "N01", "note": "一上午：她自己想了想（可能想到他的面试）" },
+        { "advance": "5h" },
+        { "case": "N02", "note": "下午他面试完回来说了几句" },
+        { "say": "刚面试完，感觉发挥得一般" },
+        { "wait": "reply" },
+        { "case": "N03", "note": "之后他没再说话：晚上她心里的念头（接着聊的、担心的、惦记的）" },
+        { "advance": "12h" },
+        { "check": { "proactive": { "count": [0, 5], "allowedTimes": true, "exitClean": true } } }
+    ]
+}
