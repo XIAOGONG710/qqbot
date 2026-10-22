@@ -28,6 +28,7 @@ import { arrivedWhileAsleep } from './reply-timing.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from './feedback.ts';
 import { momentsReader } from './moments.ts';
+import { pursuitsReader } from './pursuits.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from './festivals.ts';
@@ -505,6 +506,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.herNo ? { herNo: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
+            ...(config.pursuits ? { pursuits: pursuitsReader(config.dataDir, log) } : {}),
             ...(config.shape && config.shapeSplit ? { shapeSplit: true } : {}),
             contacts: config.contacts,
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；

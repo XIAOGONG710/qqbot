@@ -37,6 +37,8 @@ export interface IntentContext {
     grievance?: Grievance;
     /** 会拒绝（ADR 0103，配置 herNo）：开了才有“他在磨她”“他在管着她”这两个意图；只有男朋友档 */
     refuse?: boolean;
+    /** 她此刻正在做的、自己在意的事（修片、拍照，ADR 0104）；配合 refuse：他让她先放下时可以先弄完这一小段 */
+    pursuitDoing?: string;
     /** 她今天有可讲的小事（ADR 0106，配置 everydayLife）：他问“今天干嘛了 / 有什么好玩的事”时让她从里面挑具体的说 */
     dayThings?: boolean;
 }
@@ -296,6 +298,16 @@ export function asksAboutHerDay(history: readonly Said[]): boolean {
 }
 export const ABOUT_DAY_INTENT = '[这一轮你想：他在问你今天过得怎么样、有什么事。从「你那边」里“今天的小事”和今天的事实里挑一两件具体的说（带上你当时的感觉，像随口讲给他听），别回“没什么 / 就赶作业”这种什么都没说的；今天真的什么都没有才说没有，没写的别编]';
 
+/**
+ * 她正在做自己在意的事（修片、拍照），他让她先放下陪他（ADR 0104 × 0103）：原来她说“来了来了，修图哪有你重要”一口放下，
+ * 手头的事对她没有分量。有了追求以后她可以先弄完这一小段并给个大概的时间；他认真说需要她、或她自己也想聊了就放下
+ */
+const DROPS_HER_THING = /先?别(?:修|拍|写|弄|学|忙)|放一放|放下(?:手头|手里)|不要(?:修|写|学|弄)了/;
+export function dropsHerThing(history: readonly Said[]): boolean {
+    return DROPS_HER_THING.test(latestUserText(history));
+}
+export const holdPursuitIntent = (doing: string) => `[这一轮你想：你正在${doing}，这是你自己在意的事；他让你先放下陪他。你可以说先把手上这一小段弄完，给个大概的时间，不用立刻放下，也不是不理他（他是你很想聊的人，别冷着）；他认真地说需要你、或者你自己也想聊了，就放下。别生气，一两句]`;
+
 export const PRESSED_INTENT = '[这一轮你想：你刚推了他，他在磨你。你的理由没变，别被磨两句就答应：软着再推一次（换个说法，别重复上一句），或者给个折中（下课以后 / 明天 / 就十分钟）；他给了新理由，或者认真地求你，才松口。别生气，别讲道理，一两句]';
 export const CONTROL_INTENT = '[这一轮你想：他在管着你、替你定能跟谁说话、去哪（不许、听到没、你得听我的）。你最受不了被人管着、被人替你定怎么活——对他不会真翻脸，但也不是他说什么你就“好好好都听你的”：先别扭一句，该不答应的就明说你不答应，小事可以逗他、给个折中；他好好说、认真讲理，你就软下来。别冷着脸教训他，一两句]';
 
@@ -316,6 +328,7 @@ export function describeIntent(context: IntentContext): string | undefined {
         && (context.grievance.stage === 'makeup' || !isEndingTurn(context.history))) return describeGrievance(context.grievance);
     // 会拒绝（ADR 0103）：管着她的、她刚推了他还在磨她的，排在亲密邀约之前 / 撒娇要哄之前（“陪陪我”会被当成要哄）；他难过、生病的时候让路
     if (context.refuse && context.intimate && !needsCare(context.history) && controlsHer(context.history)) return CONTROL_INTENT;
+    if (context.refuse && context.intimate && context.pursuitDoing && !needsCare(context.history) && dropsHerThing(context.history)) return holdPursuitIntent(context.pursuitDoing);
     // 「只接他刚说的你们两个人的事」这几个字让候选挑选（ADR 0041）和两条气泡的上限照亲密话算
     if (context.intimate && isIntimateBid(context.history)) return `[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事：先给一个明确的亲密回应，${isPlainAffection(context.history) ? AFFECTION_REPLY : BID_REPLY}。QQ 文字里的抱抱、亲一下和 mua 就是真的在抱、在亲，直接在这一轮用文字回抱回亲，让他收到你的回应；他说难受时先心疼他，他同时报了好消息时先替他高兴再接亲密话，他真要收尾时回应后顺着收尾，他不想你走时能陪就多陪一句]`;
     if (context.refuse && context.intimate && !needsCare(context.history) && pressedAfterRefusing(context.history)) return PRESSED_INTENT;

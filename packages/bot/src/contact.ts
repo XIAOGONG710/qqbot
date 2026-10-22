@@ -37,8 +37,9 @@ import { asleepSince, saidBedtimes } from './bedtime.ts';
 import { herStatus } from './status-line.ts';
 import { describeWarmAffect, warmAffect } from './affect.ts';
 import { withEveryday } from './everyday.ts';
+import { describePursuits, pursuitViews, type Pursuit } from './pursuits.ts';
 import { appraisals, asksAfterHer, criedRecently, describeFeelings, FEELING_NAME, feelingsAt, feelsLow, voicedKinds, type Felt, type Moment } from './feelings.ts';
-import { describeRecentPhotography, recentPhotography } from './projects.ts';
+import { describeRecentPhotography, projectActivity, recentPhotography } from './projects.ts';
 import { describePast, pastCue } from './biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from './people.ts';
 import { describeAppointment, mentionsMeetup, type PromiseKeeper } from './promises.ts';
@@ -180,6 +181,8 @@ export interface ContactPipelineOptions {
     herFeelings?: boolean;
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
     moments?: () => readonly Moment[];
+    /** 她自己的追求（ADR 0104，配置 pursuits）：内置两条（别挂科、用新相机拍出满意的东西）加作者在 pursuits.json 里改的 / 加的；每次生成现取 */
+    pursuits?: () => readonly Pursuit[];
     /** 她每天碰到的小事（ADR 0106，配置 everydayLife；卡在 loadTierCard 里补）：他问“今天干嘛了 / 有什么好玩的事”时让她从今天的小事里挑具体的说 */
     everydayLife?: boolean;
     /** 回复延迟的长尾（ADR 0105，配置 lagTail）：醒着空着时有一部分消息她在做别的，过一会儿才看到；断网很久之后才回，时间块里写一句 */
@@ -469,6 +472,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 initiating: Boolean(initiate),
                 ...(options.herNo ? { refuse: true } : {}),
                 ...(options.everydayLife && around?.events.length ? { dayThings: true } : {}),
+                ...(options.pursuits && state?.activity.kind === 'free' && projectActivity(state.activity.text) ? { pursuitDoing: projectActivity(state.activity.text)!.step } : {}),
                 waiting: loops?.waiting.map(l => l.what),
                 unanswered: loops?.unanswered.map(l => l.what),
                 intimate: contact.tier === 'boyfriend',
@@ -484,6 +488,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 : `${grievance!.stage === 'makeup' ? '和好' : '小别扭'}：他隔了 ${grievance!.days} 天才来（他回来后第 ${grievance!.round + 1} 轮；日志不记内容）`);
             if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
             // 前一天的世界（到那天结束）：小测出分这类事第二天她还记着（ADR 0106）；只在开了心境时算
+            // 她自己的追求（ADR 0104）：进度只来自她做过的事（生活账里的摄影）和出分的小测
+            const pursuitList = options.pursuits && contact.tier === 'boyfriend' && herSchedule ? options.pursuits() : [];
+            const pursuitViewsNow = pursuitList.length && herSchedule
+                ? pursuitViews(pursuitList, { now: time, schedule: herSchedule, quizzes: Boolean(options.everydayLife), ...(options.worldState?.events ? { events: options.worldState.events() } : {}), ...(around ? { world: around } : {}) })
+                : [];
+            const pursuitLine = describePursuits(pursuitViewsNow);
             const previousAround = options.herFeelings && herSchedule && character.herWorld && contact.tier === 'boyfriend'
                 ? (() => {
                     const end = new Date(herDay(herSchedule, time).getTime() - 60_000);
@@ -492,7 +502,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 : undefined;
             // 心境（ADR 0102）：事实 → 带来由的评估 → 按半衰期衰减的感受，不落盘、每一轮重算；只给男朋友档，危机回合不算；小别扭 / 和好那一轮由 0074 的态度管，不叠
             const feltNow: Felt[] = options.herFeelings && contact.tier === 'boyfriend' && !crisisNow
-                ? feelingsAt(appraisals({ now: time.getTime(), history: chat, ...(around ? { world: around } : {}), ...(previousAround ? { previousWorld: previousAround } : {}), moments: options.moments?.() ?? [] }), time.getTime())
+                ? feelingsAt(appraisals({ now: time.getTime(), history: chat, ...(around ? { world: around } : {}), ...(previousAround ? { previousWorld: previousAround } : {}), moments: options.moments?.() ?? [], extra: pursuitViewsNow.flatMap(view => view.appraisals) }), time.getTime())
                 : [];
             const hisWords = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
             const feelingLine = feltNow.length && !grievanceActive
@@ -594,6 +604,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(books ? [books.text] : []),
                         ...(world ? [world] : []),
                         ...(practice ? [practice] : []),
+                        ...(pursuitLine ? [pursuitLine] : []),
                         ...(selfNote ? [selfNote] : []),
                         ...(plansLine ? [plansLine] : []),
                         ...(promised ? [promised] : []),

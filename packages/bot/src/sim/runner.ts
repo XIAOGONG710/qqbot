@@ -21,6 +21,7 @@ import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext }
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay, newsKindsOf, withInner, withReach } from '../proactive.ts';
 import type { Moment } from '../feelings.ts';
+import { mergePursuits, type Pursuit } from '../pursuits.ts';
 import { dmMessageId, dmNote, nudgeNote, videoNote, videoTopic } from '../bilibili.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
@@ -400,6 +401,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.herNo ? { herNo: true } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),
         ...(scenario.everydayLife ? { everydayLife: true } : {}),
+        ...(scenario.pursuits ? { pursuits: () => mergePursuits(scenario.pursuitsFile as Pursuit[]) } : {}),
         ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
         ...(stickers ? { stickers } : {}),
         ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),

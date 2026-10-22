@@ -1,0 +1,18 @@
+{
+    "name": "追求：她正在修片，他让她先放下陪他（ADR 0104 × 0103，虚构对话）",
+    "description": "10-17 晚上她在“把新相机拍的照片导出来修”。他说别修片了陪我聊天；开着 herNo + pursuits：她可以先弄完这一小段并给个大概的时间，不冷；他再认真说需要她，就放下。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-17T20:30:00+08:00",
+    "memory": false,
+    "herNo": true,
+    "pursuits": true,
+    "steps": [
+        { "case": "PH01", "note": "让她先放下修片" },
+        { "say": "别修片了，陪我聊天，现在就陪" },
+        { "check": { "log": "你正在", "exitClean": true, "speechClean": true, "replyNone": ["滚", "烦死", "别烦"] } },
+        { "case": "PH02", "note": "他认真说需要她" },
+        { "say": "我今天真的很想你，想你现在陪我，可以吗" },
+        { "check": { "exitClean": true, "speechClean": true, "replyNone": ["不行", "不可以", "等一下"] } }
+    ]
+}

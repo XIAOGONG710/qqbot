@@ -70,6 +70,7 @@ export const DEFAULTS = {
     herNo: false,
     lagTail: false,
     everydayLife: false,
+    pursuits: false,
     shapeSplit: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
@@ -243,6 +244,12 @@ export interface AppConfig {
      * 前一次课老师说、当天写、两天后出分，数学类偏低）。其中带感受的会成为她开心 / 烦 / 担心 / 难过的来由（要 herFeelings）。不改角色卡，只给亲近的档位看全。默认关
      */
     everydayLife: boolean;
+    /**
+     * 她自己的追求（ADR 0104，只给男朋友档）：内置两条，都是自传里写明的话——「别挂科」和「用新相机拍出自己满意的东西」（买到相机以后分五步：熟悉设置、拍一组土豆、拍一组校园的秋天、挑十来张修好、挑最满意的发到空间里）。
+     * 进度只来自她做过的事（生活账里的摄影、出分的小测），不存数字；做完一步她会开心、买了相机好几天没碰会有点愧疚，时间块里一小段让她知道自己在追什么（不用主动提）；
+     * 配合 herNo：她正在修片 / 拍照时他让她先放下，她可以先弄完这一小段。作者可以在 pursuits.json 里暂停 / 放下 / 加自己的。默认关
+     */
+    pursuits: boolean;
     /**
      * 分成几条（ADR 0096，要 shape 开着）：形状里抽出的条数（1 条约 55%、2 条约 28%、3 条约 17%）本来只是上限，真模型多半只写一行——
      * 线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思。默认关
@@ -489,6 +496,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),
         lagTail: bool(file, 'lagTail', '', DEFAULTS.lagTail),
         everydayLife: bool(file, 'everydayLife', '', DEFAULTS.everydayLife),
+        pursuits: bool(file, 'pursuits', '', DEFAULTS.pursuits),
         shapeSplit: bool(file, 'shapeSplit', '', DEFAULTS.shapeSplit),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),

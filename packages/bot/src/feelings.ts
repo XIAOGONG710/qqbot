@@ -77,6 +77,8 @@ export interface FeelingFacts {
     world?: WorldNow;
     /** 作者写下的事 */
     moments?: readonly Moment[];
+    /** 别处算好的评估（她的追求做完一步、好几天没碰，ADR 0104） */
+    extra?: readonly Appraisal[];
 }
 
 const atOf = (message: Said): number => Date.parse(message.time ?? '');
@@ -173,6 +175,7 @@ export function appraisals(facts: FeelingFacts): Appraisal[] {
         ...(facts.previousWorld ? eventAppraisals(facts.previousWorld) : []),
         ...historyAppraisals(facts.history, facts.now),
         ...momentAppraisals(facts.moments ?? []),
+        ...(facts.extra ?? []),
     ];
 }
 
