@@ -37,3 +37,11 @@
 - 备份 `runtime\backup-pre-bili15-20261022-1224`、`backup-pre-bili16-20261022-1241`，`koishi.yml.bak-bili15-20261022-1224`。回滚：`proactiveReach: false` + 重启；整体 `git reset --hard bf4b437` + 还原 yml。
 - 看效果：第一次催应在 ~13:19–13:50；日志「主动找他（催他回…）」（正文被遮，只有字数）；如果读着像“盯人”，`DEFAULT_REACH.cap` 改 2 或拉长间隔；`LATER_NUDGES` 里“不等了”占多（模拟 4/6）。
 - 测试：bot 1415 + 插件 35 + 工具 43 全绿；模拟 `sim/proactive-reach.json`（30 项 × 3）、`sim/proactive-reach-chat.json`（15 项 × 3）。
+
+## 17:18 「内心」（ADR 0101，`innerLife: true`）已上线，`22bc1c3`
+- 用户：「能否让她拥有自主意识？」。我如实答：意识（主观体验）做不出来也无法检验，她被问起照实承认是程序（0067/0068 不变）；做的是**自主性**。用户选「现在上线并开启」。
+- 做了：计划器多一个节拍——醒着每隔 90–150 分钟（聊完一段早一点）她自己想一想（`InitiateRequest.think`：借回复器主动通道生成，和聊天时看到的一样，不发送），念头（只记感受和想法，不编新事 / 他身边的事 / 不分析自己是不是真人）存进主动消息状态文件的 `inner`（最近 40 条）；想告诉他 / 想问他的变成新时机 `inner`（心里惦记，一天 ≤2 条，念头后 10–40 分钟）；最近 6 小时 ≤2 个念头放进聊天提示词（`innerLine`）。只读 CLI：`node packages/bot/src/ops/inner-cli.ts --dir runtime/bot/proactive --last 30`。
+- 真模型两个场景（`sim/inner-life.json`、`inner-life-calm.json`）：念头围绕她知道的事和他说的话、随时间变；「这都几点了，一条不回，腰不会真搬坏了吧」→ 20:57 真发了。会带出没依据的细节（「你爸」「刚看到你消息」）；多数念头是「自己想想」（tell/ask 约 2/28）。
+- 测试：bot 1431 + 插件 35 + 工具 43 全绿。上线 17:18:12，新日志 0 error/warn，第一次想 17:18:26：「在干嘛呢」（4 字，偏泛）——第一天要看质量。
+- 备份 `runtime\backup-pre-bili17-20261022-1718`、`koishi.yml.bak-bili17-20261022-1718`。回滚：`innerLife: false` + 重启；整体 `git reset --hard c33f571` + 还原 yml。
+- 线上 reach 的第一天数据（12:41 起）：13:19 第一次催（发了）→ 15:29 第二次 → 15:29:14 用户回了。
