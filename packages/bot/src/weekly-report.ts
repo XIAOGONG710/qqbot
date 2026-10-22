@@ -79,6 +79,17 @@ export function weeklyReport(input: WeeklyReportInput): string {
     const openers = rows.filter((r, i) => r.role === 'assistant' && i > 0 && r.t - rows[i - 1]!.t > 3_600_000 && rows[i - 1]!.role !== 'user');
     push(`以昵称开头：回话 ${rate(replyFirst, t => OPENER.test(t.trim()))}；她先开口 ${rate(openers, t => OPENER.test(t.trim()))}（${openers.length} 条；ADR 0108 之前约 32%）`);
 
+    // 她的口头禅：她说了 ≥3 次、他一次没说过的 3–4 字组合（前 15）。只有她的话，他的话不出现——用来每周扫一眼有没有“真人不这么说”的说法冒头（用户 10-23 的反馈：「肚子坠着」）
+    const hisAll = his.map(r => r.text).join('\n');
+    const cjkParts = (text: string) => text.replace(/[^一-鿿]+/g, ' ').split(' ').filter(Boolean);
+    const phraseCount = new Map<string, number>();
+    for (const r of herText) for (const n of [3, 4]) for (const g of new Set(cjkParts(r.text).flatMap(part => Array.from({ length: Math.max(0, part.length - n + 1) }, (_, i) => part.slice(i, i + n))))) phraseCount.set(g, (phraseCount.get(g) ?? 0) + 1);
+    const herOnly = [...phraseCount].filter(([g, c]) => c >= 3 && !hisAll.includes(g)).sort((a, b) => b[1] - a[1]);
+    // 4 字组合里被更长的 / 同次数的 3 字组合包含的，只留 4 字的
+    const keep = herOnly.filter(([g, c]) => !herOnly.some(([h, d]) => h.length > g.length && h.includes(g) && d === c)).slice(0, 15);
+    push('\n## 她的口头禅（她说了 ≥3 次、他一次没说过的 3–4 字组合；扫一眼有没有真人不这么说的）');
+    push(keep.length ? keep.map(([g, c]) => `${g}×${c}`).join('  ') : '（没有）');
+
     // 主动性
     const proactiveFile = join(dataDir, 'proactive', `${qq}-${input.tier}.json`);
     push('\n## 主动性');

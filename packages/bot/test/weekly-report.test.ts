@@ -80,3 +80,23 @@ describe('什么时候出', () => {
         assert.equal(weeklyReportDue(new Date(2026, 10, 22, 23, 0), dir), false, '这周已经出过了');
     });
 });
+
+describe('她的口头禅一节', () => {
+    test('她说了 ≥3 次、他一次没说过的 3–4 字组合才列；他也说过的不列；他的话不出现', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-weekly-phrases-'));
+        dirs.push(dir);
+        mkdirSync(join(dir, 'chats'));
+        const secret = '他才会说的怪话五五五';
+        const rows = [
+            ...[1, 2, 3, 4].map(d => ({ time: at(d, 10, 0), role: 'assistant', content: '想得美，才不告诉你' })),
+            ...[1, 2, 3].map(d => ({ time: at(d, 11, 0), role: 'assistant', content: '一起去吃饭吧' })),
+            { time: at(1, 12, 0), role: 'user', content: `一起去吃饭吧 ${secret}` },
+        ];
+        writeFileSync(join(dir, 'chats', '10001.jsonl'), rows.map(r => JSON.stringify(r)).join('\n'));
+        const report = weeklyReport({ dataDir: dir, qq: 10001, tier: 'boyfriend', since: now - 7 * 86_400_000, now });
+        assert.ok(report.includes('## 她的口头禅'));
+        assert.match(report, /想得美×4/);
+        assert.ok(!report.includes('一起去吃×'), '他也说过的不列');
+        assert.ok(!report.includes(secret));
+    });
+});

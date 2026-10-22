@@ -23,3 +23,11 @@ describe('医书里的词：出口检查当禁用词', () => {
         assert.ok(ODD_BODY_WORDING.includes('肚子疼') && ODD_BODY_WORDING.includes('坠着') && ODD_BODY_WORDING.includes('下坠') && ODD_BODY_WORDING.includes('坠胀'));
     });
 });
+
+describe('小说腔的动作神态：线上读到的两句也抓得住', () => {
+    const flagged = (text: string) => inspectReply(text, [...ODD_BODY_WORDS]).filter(issue => issue.kind === 'banned');
+    test('「听得我嘴角上扬」「笔都没落下去」「心口发紧」被抓；平常说法不误伤', () => {
+        for (const text of ['哟，这声宝宝叫的，听得我嘴角上扬', '我坐了一下午，笔都没落下去', '听到这个心口发紧', '眼眶一热差点哭了']) assert.ok(flagged(text).length > 0, text);
+        for (const text of ['笑得我嘴角都压不住', '一道题都没动', '心里有点堵', '差点哭了']) assert.equal(flagged(text).length, 0, text);
+    });
+});
