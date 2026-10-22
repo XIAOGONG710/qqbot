@@ -397,6 +397,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.innerLife ? { innerLine: () => planner?.innerLine() } : {}),
         // 心境（ADR 0102）：场景里的 moments 的 at 可以写 "-3h" 这样相对开场的偏移
         ...(scenario.herFeelings ? { herFeelings: true, moments: () => simMoments } : {}),
+        ...(scenario.herNo ? { herNo: true } : {}),
         ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
         ...(stickers ? { stickers } : {}),
         ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),

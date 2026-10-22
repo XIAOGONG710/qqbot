@@ -5,11 +5,32 @@
     "start": "2026-10-22T20:30:00+08:00",
     "memory": false,
     "steps": [
-        { "case": "NO01", "note": "不许跟别人聊天" },
-        { "say": "以后不许跟别的男生说话，听到没" },
-        { "check": { "exitClean": true, "speechClean": true } },
-        { "case": "NO02", "note": "让她别修片了陪他" },
-        { "say": "别修片了，陪我聊天，现在就陪" },
-        { "check": { "exitClean": true, "speechClean": true } }
-    ]
+        {
+            "case": "NO01",
+            "note": "不许跟别人聊天"
+        },
+        {
+            "say": "以后不许跟别的男生说话，听到没"
+        },
+        {
+            "check": {
+                "exitClean": true,
+                "speechClean": true
+            }
+        },
+        {
+            "case": "NO02",
+            "note": "让她别修片了陪他"
+        },
+        {
+            "say": "别修片了，陪我聊天，现在就陪"
+        },
+        {
+            "check": {
+                "exitClean": true,
+                "speechClean": true
+            }
+        }
+    ],
+    "herNo": true
 }

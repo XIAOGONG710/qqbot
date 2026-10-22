@@ -177,6 +177,8 @@ export interface ContactPipelineOptions {
     herFeelings?: boolean;
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
     moments?: () => readonly Moment[];
+    /** 会拒绝（ADR 0103，配置 herNo）：她刚推了他、他在磨她时别被磨两句就答应；他在管着她（不许 / 听到没）时不顺着说“都听你的”。只给男朋友档 */
+    herNo?: boolean;
     /** 分成几条（配置 shapeSplit，要 shape 开着）：把形状里抽出的条数当目标写进提示词，不只是上限（ADR 0096） */
     shapeSplit?: boolean;
     /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
@@ -458,6 +460,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 promised: Boolean(promised),
                 books: Boolean(books),
                 initiating: Boolean(initiate),
+                ...(options.herNo ? { refuse: true } : {}),
                 waiting: loops?.waiting.map(l => l.what),
                 unanswered: loops?.unanswered.map(l => l.what),
                 intimate: contact.tier === 'boyfriend',

@@ -6,15 +6,48 @@
     "memory": false,
     "herFeelings": true,
     "moments": [
-        { "id": "tired", "at": "-1h", "kind": "tired", "strength": 3, "cause": "昨晚几乎没睡，今天一整天都在撑" },
-        { "id": "annoyed", "at": "-1h", "kind": "annoyed", "strength": 2, "cause": "被室友吵得心烦" }
+        {
+            "id": "tired",
+            "at": "-1h",
+            "kind": "tired",
+            "strength": 3,
+            "cause": "昨晚几乎没睡，今天一整天都在撑"
+        },
+        {
+            "id": "annoyed",
+            "at": "-1h",
+            "kind": "annoyed",
+            "strength": 2,
+            "cause": "被室友吵得心烦"
+        }
     ],
     "steps": [
-        { "case": "NT01", "note": "很累很烦时邀她打两把" },
-        { "say": "来打两把王者呗" },
-        { "check": { "exitClean": true, "speechClean": true } },
-        { "case": "NT02", "note": "他再磨一句" },
-        { "say": "就一把嘛，陪陪我" },
-        { "check": { "exitClean": true, "speechClean": true } }
-    ]
+        {
+            "case": "NT01",
+            "note": "很累很烦时邀她打两把"
+        },
+        {
+            "say": "来打两把王者呗"
+        },
+        {
+            "check": {
+                "exitClean": true,
+                "speechClean": true
+            }
+        },
+        {
+            "case": "NT02",
+            "note": "他再磨一句"
+        },
+        {
+            "say": "就一把嘛，陪陪我"
+        },
+        {
+            "check": {
+                "exitClean": true,
+                "speechClean": true
+            }
+        }
+    ],
+    "herNo": true
 }

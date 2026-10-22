@@ -35,6 +35,8 @@ export interface IntentContext {
     crisisAwaitingSafe?: boolean;
     /** 他隔了很多天才来、她发的一直没回（ADR 0074，grievance.ts）：只有男朋友档、配置开了才传 */
     grievance?: Grievance;
+    /** 会拒绝（ADR 0103，配置 herNo）：开了才有“他在磨她”“他在管着她”这两个意图；只有男朋友档 */
+    refuse?: boolean;
 }
 
 /**
@@ -248,6 +250,43 @@ function pressedAfterStalling(history: readonly Said[]): boolean {
     return hers.filter(message => DEFERRING.test(message.content)).length >= 3;
 }
 
+// ───────── 会拒绝（ADR 0103）：10-22 用户要她“会拒绝”。基线（真模型，各 3 次）：理由摆在那儿（在上课 / 很累）她说一次不，他再磨一句就答应了（累 + 烦时 2/3 磨一句就“行行行，就一把”）；
+// 他命令式地管她（“以后不许跟别的男生说话，听到没”）1/3 直接“行行行，都听你的”。人家的基线：不会被磨两句就让步（0099：她让步 13–20%，真人 4%）。
+// 这里只做两件事，都是确定性的判断，不是“随机拒绝”（ADR 0066：拒绝要有来由，不演冷淡）：①她刚推了他、他在磨她，理由没变，别马上答应；②他在管着她（不许 / 听到没 / 必须），这是她自传里最受不了的事。
+/** 她刚说的话里有“推”的意思 */
+const REFUSAL_WORDS = /不行|不要|不想|不去|不打|不陪|不给|不发|没空|没法|不方便|等下课|下课再|下了课|晚点|待会|回头|明天再|改天|下次|先不|不了|算了吧|不能/;
+/** 他在磨她 */
+const PRESSING_ON = /就一(?:把|下|会|次|局|盘|个)|陪陪我|求你|好不好|行不行|可以嘛|好嘛|拜托|再(?:陪|来|打|玩|聊)一|你就(?:陪|答应|来)|答应我|来嘛|嘛[～~！!]*$|别这样|为什么不/;
+
+/** 他在磨一个她刚推掉的事：她上一串话里有“推”，他这一串在磨；她已经连着推了两回就不再替她守着（她自己定要不要松口） */
+export function pressedAfterRefusing(history: readonly Said[]): boolean {
+    if (!PRESSING_ON.test(latestUserText(history))) return false;
+    const lastReply = history.findLastIndex(message => message.role === 'assistant');
+    if (lastReply < 0) return false;
+    // 她上面几串回复（连着的气泡算一串），最近的一串必须有“推”
+    const groups: string[] = [];
+    let i = lastReply;
+    while (i >= 0 && groups.length < 4) {
+        const parts: string[] = [];
+        while (i >= 0 && history[i]!.role === 'assistant') { parts.unshift(history[i]!.content); i--; }
+        groups.push(parts.join('\n'));
+        while (i >= 0 && history[i]!.role === 'user') i--;
+    }
+    if (!REFUSAL_WORDS.test(groups[0]!)) return false;
+    return groups.filter(group => REFUSAL_WORDS.test(group)).length < 2;
+}
+
+/** 他在管着她、替她定能跟谁说话 / 去哪（“不许跟别的男生说话”“听到没”“你得听我的”）；关心她的“不许熬夜”“听到没，早点睡”不算 */
+const CONTROLLING = /不(?:许|准)(?:你)?(?:再)?(?:跟|和|同|理|找|加|见|聊|说话|联系|出去|去|玩)|听(?:到|见)没|你得听我的|我说了算|把.{0,8}(?:删了|删掉|拉黑|卸载)/;
+const CARING_ORDER = /熬夜|早饭|吃饭|吃药|喝(?:水|药|热)|早点睡|睡觉|感冒|多穿|穿(?:多|厚)|冷|累|难过|哭|生病|发烧|注意|小心|安全/;
+export function controlsHer(history: readonly Said[]): boolean {
+    const text = latestUserText(history);
+    return CONTROLLING.test(text) && !CARING_ORDER.test(text);
+}
+
+export const PRESSED_INTENT = '[这一轮你想：你刚推了他，他在磨你。你的理由没变，别被磨两句就答应：软着再推一次（换个说法，别重复上一句），或者给个折中（下课以后 / 明天 / 就十分钟）；他给了新理由，或者认真地求你，才松口。别生气，别讲道理，一两句]';
+export const CONTROL_INTENT = '[这一轮你想：他在管着你、替你定能跟谁说话、去哪（不许、听到没、你得听我的）。你最受不了被人管着、被人替你定怎么活——对他不会真翻脸，但也不是他说什么你就“好好好都听你的”：先别扭一句，该不答应的就明说你不答应，小事可以逗他、给个折中；他好好说、认真讲理，你就软下来。别冷着脸教训他，一两句]';
+
 export const CHALLENGE_INTENT = '[这一轮你想：他在说你的话不像真人、重复或者敷衍。别替自己辩解，也别解释原因（不说「我是因为困」「我没敷衍」「我说的算数」「不是设定」这类自证）；像真人被说中了那样：嗔一句、笑着认个怂、反呛他一句，或者撒个娇带过，一两句就够，别去分析自己说话的毛病]';
 export const ABSTRACT_INTENT = '[这一轮你想：他在问一个很大、很抽象的问题。别总结成一句漂亮的话（不要排比、对仗、「不是…而是…」、「其实」）；说一件具体的小事、一个画面，或者坦白说不太清楚再补半句，也可以反问他一句；说得零散一点没关系，别说得像写好的]';
 export const STALL_INTENT = '[这一轮你想：他在追你要一个答案，你前面已经推了好几次了。别再用同样的理由往后推（困、明天说、太急、太突然这些你已经说过了）：现在就给一个态度，哪怕不完整——答应、半答应带点害羞，或者明说你在怕什么，用你自己的话，一两句]';
@@ -263,8 +302,11 @@ export function describeIntent(context: IntentContext): string | undefined {
     // 小别扭 / 和好（ADR 0074）：他难过、生病、要她哄的时候让路；他在收尾时只让「别扭」让路，「和好」照样软一句
     if (context.grievance && !needsCare(context.history) && !asksForHer(context.history)
         && (context.grievance.stage === 'makeup' || !isEndingTurn(context.history))) return describeGrievance(context.grievance);
+    // 会拒绝（ADR 0103）：管着她的、她刚推了他还在磨她的，排在亲密邀约之前 / 撒娇要哄之前（“陪陪我”会被当成要哄）；他难过、生病的时候让路
+    if (context.refuse && context.intimate && !needsCare(context.history) && controlsHer(context.history)) return CONTROL_INTENT;
     // 「只接他刚说的你们两个人的事」这几个字让候选挑选（ADR 0041）和两条气泡的上限照亲密话算
     if (context.intimate && isIntimateBid(context.history)) return `[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事：先给一个明确的亲密回应，${isPlainAffection(context.history) ? AFFECTION_REPLY : BID_REPLY}。QQ 文字里的抱抱、亲一下和 mua 就是真的在抱、在亲，直接在这一轮用文字回抱回亲，让他收到你的回应；他说难受时先心疼他，他同时报了好消息时先替他高兴再接亲密话，他真要收尾时回应后顺着收尾，他不想你走时能陪就多陪一句]`;
+    if (context.refuse && context.intimate && !needsCare(context.history) && pressedAfterRefusing(context.history)) return PRESSED_INTENT;
     if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行，别一句话就把他打发了；他要睡就哄他睡，他不让你走就再陪他一会儿，不另起话题，也不用约他睡醒再找你]';
     const meme = context.playful ? playfulHint(context.history) : undefined;
     if (meme !== undefined) return `[这一轮你想：他在玩网络梗、缩写或谐音，先按最近的上下文理解笑点，顺着同一套逻辑接一句，再接他真正说的事；不把梗按字面纠正，不解释梗或报出处。他把固定说法里的一个词换掉时，回话保留那句被拧过的关键词或句式，别只按字面劝他去吃、睡或做事。接不准就用你自己的口气问一句，不装懂；可以夸张、反差或者故意一本正经，但一次只玩一个点，不堆热词${meme}；他真要收尾时接完梗就收尾]`;

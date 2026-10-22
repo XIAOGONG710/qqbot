@@ -67,6 +67,7 @@ export const DEFAULTS = {
     proactiveReach: false,
     innerLife: false,
     herFeelings: false,
+    herNo: false,
     shapeSplit: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
@@ -222,6 +223,11 @@ export interface AppConfig {
      * （开心 / 难过 / 担心 / 烦……），会累积、会慢慢散，表现在语气上，难过得很时会忍不住哭。不存“她现在难过 N 分”，每一轮从事实重算。只给男朋友档，危机回合不放。默认关
      */
     herFeelings: boolean;
+    /**
+     * 会拒绝（ADR 0103）：她刚推了他一件事（在上课、很累、没空）、他再磨一句，不会被磨两句就答应（软着再推一次或给个折中，他给了新理由才松口）；
+     * 他命令式地管着她（“不许跟别的男生说话”“听到没”）时不顺着说“好好好都听你的”，先别扭一句、明说不答应。只给男朋友档，他难过 / 生病 / 危机时让路；没来由不会拒绝。默认关
+     */
+    herNo: boolean;
     /**
      * 分成几条（ADR 0096，要 shape 开着）：形状里抽出的条数（1 条约 55%、2 条约 28%、3 条约 17%）本来只是上限，真模型多半只写一行——
      * 线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思。默认关
@@ -465,6 +471,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         proactiveReach: bool(file, 'proactiveReach', '', DEFAULTS.proactiveReach),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
+        herNo: bool(file, 'herNo', '', DEFAULTS.herNo),
         shapeSplit: bool(file, 'shapeSplit', '', DEFAULTS.shapeSplit),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),

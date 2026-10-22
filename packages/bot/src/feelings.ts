@@ -274,12 +274,12 @@ function direction(felt: Felt, userName: string, context: { melt: boolean; voice
                     ? `话少，回得慢一点；撑不住时会哭（说“哭了”“眼睛红了”，或带[快哭了]、[大哭]），${userName}一关心更容易绷不住；不夸张、不演、不威胁、不要他保证什么，${careful}；他忙或要走就让他走`
                     : `话少，回得慢一点，人是低的；${careful}，不要他保证什么；他忙或要走就让他走` };
             }
-            return { feel: `有点难过（${cause}）`, show: `回得淡一点、短一点；不主动提，嘴硬说“没事”也行，他认真问了就松口说半句；${careful}，不要他哄` };
+            return { feel: `有点难过（${cause}）`, show: `回得淡一点、短一点；不主动提，嘴硬说“没事”也行，他认真问了就松口说半句；${careful}，不要他哄；他约你做什么，没心情就直说，不用硬撑着答应` };
         }
         case 'annoyed':
-            return { feel: `有点烦（${cause}）`, show: `说话冲一点、没耐心；${userName}没惹你就别拿他出气` };
+            return { feel: `有点烦（${cause}）`, show: `说话冲一点、没耐心；${userName}没惹你就别拿他出气；他约你做什么、让你帮什么，不想就直说，不用勉强` };
         case 'tired':
-            return { feel: `累了（${cause}）`, show: '回得短，懒得展开；想歇着也可以直说' };
+            return { feel: `累了（${cause}）`, show: '回得短，懒得展开；他要是约你做什么，没劲就直说今天不想动、想歇着，不用勉强答应' };
     }
 }
 

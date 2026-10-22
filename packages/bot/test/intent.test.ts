@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, saysOwnThing } from '../src/intent.ts';
+import { CONTROL_INTENT, CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, PRESSED_INTENT, saysOwnThing } from '../src/intent.ts';
 import type { Schedule, State } from '../src/schedule.ts';
 
 const now = new Date('2026-10-06T20:00:00+08:00');
@@ -285,5 +285,58 @@ describe('她那边的事还没跟他说过（ADR 0057 调整）', () => {
         assert.match(describeIntent({ history: [user('想抱抱你')], now, news, intimate: true })!, /亲密回应/);
         assert.match(describeIntent({ history: [user('我面试过了！！')], now, news })!, /替他高兴/);
         assert.equal(describeIntent({ history: [user('在吗')], now, news, initiating: true }), undefined);
+    });
+});
+
+describe('会拒绝（ADR 0103，refuse 开着才有）', () => {
+    const asked = [user('来打两把王者呗'), assistant('我还在上课呢，等下课陪你打')];
+
+    test('她刚推了他、他在磨她：别被磨两句就答应；理由没变，软着再推或给折中；不给台词', () => {
+        for (const text of ['就一把嘛，陪陪我', '求你了', '好不好嘛', '拜托拜托', '你就陪我一下嘛']) {
+            const line = describeIntent({ history: [...asked, user(text)], now, intimate: true, refuse: true })!;
+            assert.equal(line, PRESSED_INTENT, text);
+        }
+        assert.match(PRESSED_INTENT, /理由没变/);
+        assert.match(PRESSED_INTENT, /折中/);
+        assert.match(PRESSED_INTENT, /新理由/);
+        assert.doesNotMatch(PRESSED_INTENT, /[「“"]/, '不给可以照抄的台词');
+    });
+
+    test('没开、不是男朋友档、她前面没推、他难过 / 生病：都不触发', () => {
+        const history = [...asked, user('就一把嘛，陪陪我')];
+        assert.notEqual(describeIntent({ history, now, intimate: true }), PRESSED_INTENT, '没开 refuse');
+        assert.notEqual(describeIntent({ history, now, refuse: true }), PRESSED_INTENT, '不是男朋友档');
+        assert.notEqual(describeIntent({ history: [user('来打两把'), assistant('好呀，等我'), user('就一把嘛，陪陪我')], now, intimate: true, refuse: true }), PRESSED_INTENT, '她没推');
+        assert.notEqual(describeIntent({ history: [...asked, user('我今天被骂了好难过，就一把嘛陪陪我')], now, intimate: true, refuse: true }), PRESSED_INTENT, '他难过时让路');
+        assert.notEqual(describeIntent({ history, now, intimate: true, refuse: true, initiating: true }), PRESSED_INTENT, '主动找他');
+        assert.notEqual(describeIntent({ history, now, intimate: true, refuse: true, crisis: 'high' }), PRESSED_INTENT, '危机最优先');
+    });
+
+    test('她已经连着推了两回：不再替她守着（她自己定要不要松口）', () => {
+        const twice = [user('来打两把'), assistant('在上课呢，等下课再说'), user('就一把嘛'), assistant('真不行，晚点再说'), user('求你了陪陪我')];
+        assert.notEqual(describeIntent({ history: twice, now, intimate: true, refuse: true }), PRESSED_INTENT);
+        const once = [user('来打两把'), assistant('在上课呢，等下课再说'), user('就一把嘛')];
+        assert.equal(describeIntent({ history: once, now, intimate: true, refuse: true }), PRESSED_INTENT);
+    });
+
+    test('他命令式地管着她（不许跟别人说话、听到没、你得听我的）：别顺着说“都听你的”，先别扭一句、明说不答应', () => {
+        for (const text of ['以后不许跟别的男生说话，听到没', '不准你再跟他聊天', '你得听我的', '把他的微信删了', '我说了算']) {
+            assert.equal(describeIntent({ history: [assistant('嗯'), user(text)], now, intimate: true, refuse: true }), CONTROL_INTENT, text);
+        }
+        assert.match(CONTROL_INTENT, /最受不了被人管着/);
+        assert.match(CONTROL_INTENT, /不会真翻脸/);
+        assert.match(CONTROL_INTENT, /认真讲理，你就软下来/);
+        assert.doesNotMatch(CONTROL_INTENT, /[「」]/, '不给可以照抄的台词');
+    });
+
+    test('关心她的命令不算管着她（不许熬夜、听到没早点睡、多穿点）；没开 / 不是男朋友档 / 他难过时 / 危机都不触发', () => {
+        for (const text of ['不许熬夜，听到没', '听到没，早点睡', '不准不吃早饭', '多穿点，不许感冒', '必须去吃饭']) {
+            assert.notEqual(describeIntent({ history: [assistant('嗯'), user(text)], now, intimate: true, refuse: true }), CONTROL_INTENT, text);
+        }
+        const bossy = [assistant('嗯'), user('以后不许跟别的男生说话，听到没')];
+        assert.notEqual(describeIntent({ history: bossy, now, intimate: true }), CONTROL_INTENT, '没开 refuse');
+        assert.notEqual(describeIntent({ history: bossy, now, refuse: true }), CONTROL_INTENT, '不是男朋友档');
+        assert.notEqual(describeIntent({ history: bossy, now, intimate: true, refuse: true, crisis: 'high' }), CONTROL_INTENT, '危机最优先');
+        assert.notEqual(describeIntent({ history: [assistant('嗯'), user('我今天好难过，你不许跟别人说话，听到没')], now, intimate: true, refuse: true }), CONTROL_INTENT, '他难过时让路');
     });
 });

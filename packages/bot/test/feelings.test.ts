@@ -233,6 +233,8 @@ describe('提示词里的一行', () => {
         assert.match(line([make('worry', 'clear')])!, /不用主动讲/);
         assert.match(line([make('annoyed', 'clear')])!, /没耐心/);
         assert.match(line([make('tired', 'clear')])!, /回得短/);
+        // 有来由的不想：累 / 烦 / 难过得明显时，他约她做什么，可以直说不想（会拒绝，ADR 0103；来由是她自己的状态，不是随机）
+        for (const kind of ['tired', 'annoyed', 'sad'] as const) assert.match(line([make(kind, 'clear')])!, /(不用勉强答应|不用勉强|不用硬撑着答应)/, kind);
         assert.match(line([make('relief', 'clear')])!, /放松/);
         const three = line([make('sad', 'strong'), make('worry', 'clear'), make('joy', 'clear')])!;
         assert.match(three, /很难过/);
