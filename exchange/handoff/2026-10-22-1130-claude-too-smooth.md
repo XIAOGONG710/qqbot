@@ -113,3 +113,9 @@
 - 上线脚本在第 6 步停了：我们自己的日志「照片货架：…遇到暂时的错误（download returned 429）…」含「错误」被当成告警（不是故障）；第 7 步我手工做了（摘 `%TEMP%\qqbot-maintenance`、推 main + integration）。
 - **货架现在是空的**：第一次去 Wikimedia 找就被 429 限流（我自己刚测过几次）。下一次定时找是 6 小时后。待办：失败后 15 分钟重试（最多 6 次）再落地。
 - 回归扫（真模型，live 形状开关，127 个无记忆场景）：跑了 72 个就停了（为了让路给全量测试），6 个有 1 项不通过（都是关键词类检查，单次，未复现）：bilibili-dm、books-boyfriend、conversation-naturalness、crisis-boyfriend、day-plans、media-boyfriend；剩下 55 个没跑。
+
+## 10-23 03:20 分支进度（未上线）：`claude/realness` = `4691545`，线上仍是 `2ba4e02`
+- 用户 10-22 夜说「把 A 全部做完，然后再做 B」：A1–A14 全部做完，B15、B16 做完，B17（自拍）不做，B18（吃的照片）没做（账上没有“吃了什么”，只有午饭 / 晚饭和时间；见记忆 qqbot-plan-a-b-1022）。
+- 新功能（开关全默认关）：photos 找照片重试、photoShares 0110、together 0111、comeBack 0112、relationship 0113、jokes 0114、interruptions 0115、proactiveAsk 0116、hisHours 0117、weeklyReport 0118、jealousy 0123、proactiveRoom 0124。无开关：一致性检查 0119、控制台仪表盘 0120、医书词 0121（「肚子坠着」）、模块总表 0122（docs/modules/）。
+- 全量：bot 1622 / 插件 42 / 工具 43 全绿。回归扫 127 个场景：12 个有失败项，其中 6 个在线上同一版代码上一样失败（旧场景，预期过时），6 个是关键词类单次波动。
+- 线上现状问题：照片货架是空的（上线时第一次撞 Wikimedia 429，重试修复在分支上）；「肚子坠着」修复也在分支上。落地等用户说「上线」。
