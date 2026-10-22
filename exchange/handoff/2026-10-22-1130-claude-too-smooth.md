@@ -23,3 +23,8 @@
 
 ## 工具
 - 量化脚本存到 `exchange/tools/measure/`（`annotate.mts` 分类、`judge-ctx.mts` 带上文的鉴别员、`make-ctx-variants.cjs` 生成带上文场景、`prep-hers2.cjs` 取她的回复、`collect.sh` / `run-config.sh` / `pool.cjs` 跑与合并）；路径写死在这台机器和当时的会话临时目录，换环境要改。
+
+## 11:25 已上线（用户 AskUserQuestion：「现在上线并开启」）
+- `main` = `integration` = `bf4b437`；`koishi.yml` 加 `shapeFeel: true`（紧跟 `shapeFiller`）。新进程 11:25:11 起，新日志 `2026-10-22-2.log` 0 error/warn，心跳 `ref = bf4b437`，状态检查 16 项通过。上线前后聊天记录最后一条都是 01:35（上线时没人在聊）。
+- 备份 `runtime\backup-pre-bili14-20261022-1125`（166 个文件）+ `runtime\koishi\koishi.yml.bak-bili14-20261022-1125`。回滚：`shapeFeel: false` + 重启（只关这一项）；整体回滚 `git reset --hard 7a13ba2` + 还原 yml + 重启。
+- 启动日志里没有“形状控制 / 情绪轮”的开机提示（形状开关一直没有），第一次实际抽到时看「这一轮形状：…先说小情绪」和「图片表情：这一轮抽到只发表情、不写文字」。
