@@ -14,7 +14,7 @@ const pct = (n, d) => (d ? `${(100 * n / d).toFixed(0)}%` : 'n/a');
 const q = (arr, p) => { if (!arr.length) return NaN; const s = [...arr].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 const fmt = x => (Number.isFinite(x) ? String(Math.round(x * 10) / 10) : 'n/a');
 const len = text => [...text.replace(/\[[^\]]{1,6}\]/g, '#')].length;
-const isMedia = text => /^\[(?:图片表情|表情包|动画表情|sticker|图片|语音|B 站私信)/.test(text) || /^<sticker/.test(text);
+const isMedia = text => /^\[(?:图片表情|表情包|动画表情|sticker|图片|语音|B 站私信)/.test(text) || /^<(?:sticker|photo)/.test(text) || /^她发了张照片/.test(text);
 const isSticker = text => /^\[(?:图片表情|表情包|动画表情)/.test(text) || /^<sticker/.test(text);
 
 const rows = readFileSync(join(root, 'chats', `${qq}.jsonl`), 'utf8').split(/\r?\n/).filter(Boolean)
