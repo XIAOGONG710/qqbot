@@ -111,6 +111,7 @@ export interface Config {
     shapeFiller: boolean;
     shapeFeel: boolean;
     proactiveReach: boolean;
+    proactiveInvite: boolean;
     innerLife: boolean;
     herFeelings: boolean;
     herNo: boolean;
@@ -241,6 +242,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**情绪轮**（ADR 0099，要「形状控制」开着）：适用的轮次里约 18%，她这一轮先说自己对他的一点小情绪——撒娇要确认、夸张地装崩溃、小委屈、不讲理地考验他——不把他的话处理完整。真人女生约三分之一的回复主要在表达情绪 / 态度，她更多是体贴地把事情处理完。默认关。'),
         proactiveReach: Schema.boolean().default(DEFAULTS.proactiveReach)
             .description('**他没回也继续找他、催他一下**（ADR 0100，要「主动消息」开着）：原来她主动发的有一条没回就整个停下等他回。开了以后没回的可以再发到 3 条，一条比一条隔得久（隔 2 小时、再隔 4 小时），她自己想一想要不要催他——第一次轻轻戳一下，第二次带点小脾气，也可以决定先不发；晚上 10 点半以后、他说过去睡了 / 去忙了不催；到 3 条就停，等他回。默认关。'),
+        proactiveInvite: Schema.boolean().default(DEFAULTS.proactiveInvite)
+            .description('**约他一起玩**（ADR 0107，要「主动消息」开着）：晚上（19:30 以后）她想起你们的固定节目——卡上写着的我的世界存档、王者双排——随口约他一句。一周最多 3 次、两次之间至少隔 2 天（他回的第一句像拒绝就隔 4 天）；他没回不催；他说过去忙 / 去睡了、他今晚有事、她自己很累 / 不舒服 / 心情不好，就不约。默认关。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
@@ -423,6 +426,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.shapeFiller !== undefined ? { shapeFiller: config.shapeFiller } : {}),
         ...(config.shapeFeel !== undefined ? { shapeFeel: config.shapeFeel } : {}),
         ...(config.proactiveReach !== undefined ? { proactiveReach: config.proactiveReach } : {}),
+        ...(config.proactiveInvite !== undefined ? { proactiveInvite: config.proactiveInvite } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),

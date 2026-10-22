@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { ABOUT_DAY_INTENT, CONTROL_INTENT, CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, PRESSED_INTENT, saysOwnThing } from '../src/intent.ts';
+import { ABOUT_DAY_INTENT, CONTROL_INTENT, DECLINED_INVITE_INTENT, CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, PRESSED_INTENT, saysOwnThing } from '../src/intent.ts';
 import type { Schedule, State } from '../src/schedule.ts';
 
 const now = new Date('2026-10-06T20:00:00+08:00');
@@ -317,6 +317,24 @@ describe('会拒绝（ADR 0103，refuse 开着才有）', () => {
         assert.notEqual(describeIntent({ history: twice, now, intimate: true, refuse: true }), PRESSED_INTENT);
         const once = [user('来打两把'), assistant('在上课呢，等下课再说'), user('就一把嘛')];
         assert.equal(describeIntent({ history: once, now, intimate: true, refuse: true }), PRESSED_INTENT);
+    });
+
+    test('她约了他、他说这次不行（ADR 0107）：接得轻松，不说“我还等着你”，不追问不劝不再约；他应了、没人约、他难过时都不触发', () => {
+        const invited = [user('在吗'), assistant('宝宝，晚上开黑不，双排')];
+        for (const text of ['今天不行，在赶东西', '没空，下次吧', '今天不玩了', '改天吧，今晚有事', '在忙，你先玩']) {
+            assert.equal(describeIntent({ history: [...invited, user(text)], now, intimate: true, refuse: true }), DECLINED_INVITE_INTENT, text);
+        }
+        for (const text of ['来啊，我马上上线', '行，等我五分钟', '好呀', '可以，不过我可能累了就先下']) {
+            assert.notEqual(describeIntent({ history: [...invited, user(text)], now, intimate: true, refuse: true }), DECLINED_INVITE_INTENT, text);
+        }
+        const plain = [user('在吗'), assistant('在呢，刚吃完饭')];
+        assert.notEqual(describeIntent({ history: [...plain, user('今天不行，在赶东西')], now, intimate: true, refuse: true }), DECLINED_INVITE_INTENT, '她没约');
+        assert.notEqual(describeIntent({ history: [...invited, user('今天不行，在赶东西')], now, intimate: true }), DECLINED_INVITE_INTENT, '没开 refuse');
+        assert.notEqual(describeIntent({ history: [...invited, user('今天不行，在赶东西')], now, refuse: true }), DECLINED_INVITE_INTENT, '不是男朋友档');
+        assert.notEqual(describeIntent({ history: [...invited, user('我今天被骂了好难过，不想玩')], now, intimate: true, refuse: true }), DECLINED_INVITE_INTENT, '他难过时让路');
+        assert.notEqual(describeIntent({ history: [assistant('我在玩王者呢'), user('累了')], now, intimate: true, refuse: true }), DECLINED_INVITE_INTENT, '她只是说自己在玩');
+        assert.match(DECLINED_INVITE_INTENT, /别说“我还等着你”/);
+        assert.match(DECLINED_INVITE_INTENT, /别再约第二遍/);
     });
 
     test('他命令式地管着她（不许跟别人说话、听到没、你得听我的）：别顺着说“都听你的”，先别扭一句、明说不答应', () => {

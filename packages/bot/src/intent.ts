@@ -308,6 +308,24 @@ export function dropsHerThing(history: readonly Said[]): boolean {
 }
 export const holdPursuitIntent = (doing: string) => `[这一轮你想：你正在${doing}，这是你自己在意的事；他让你先放下陪他。你可以说先把手上这一小段弄完，给个大概的时间，不用立刻放下，也不是不理他（他是你很想聊的人，别冷着）；他认真地说需要你、或者你自己也想聊了，就放下。别生气，一两句]`;
 
+/**
+ * 她刚约了他（开黑 / 双排 / 我的世界……），他说这次不行（ADR 0107）。模拟里被拒绝后有一次是“哦，我还等着你呢”——带着让他有负担的施压。
+ * 约他是她提议的，他不来是正常的；这一轮接得轻松。只在她上一串话是个邀约、他这一串是拒绝时给
+ */
+const HER_INVITE = /(?:开黑|双排|王者|我的世界|联机|一起玩|上线|上号|打两把|玩两把).{0,14}(?:吗|嘛|不|吧|来|上|[？?])|来不来|上不上|玩不玩|打不打|有空不|要不要/;
+const DECLINES_INVITE = /不行|不了|没空|没时间|没心情|在忙|要忙|在赶|赶着|有事|累了|好累|很累|太累|困了|改天|下次|算了|不玩|不打|不想|不来/;
+const ACCEPTS_FIRST = /^(?:来|好|行|可以|走|上|没问题)/;
+export function declinedHerInvite(history: readonly Said[]): boolean {
+    const text = latestUserText(history);
+    if (!DECLINES_INVITE.test(text) || ACCEPTS_FIRST.test(text.trim())) return false;
+    const lastReply = history.findLastIndex(message => message.role === 'assistant');
+    if (lastReply < 0) return false;
+    const hers: string[] = [];
+    for (let i = lastReply; i >= 0 && history[i]!.role === 'assistant' && hers.length < 3; i--) hers.unshift(history[i]!.content);
+    return HER_INVITE.test(hers.join('\n'));
+}
+export const DECLINED_INVITE_INTENT = '[这一轮你想：你刚约了他一起玩，他这次不行（忙 / 累 / 没空）。接得轻松：说“行 / 那你忙 / 下次”，或者顺着说一句你自己去干点别的；别说“我还等着你”“你不陪我”这类让他有负担的话，别追问为什么、别劝他、别赌气，也别再约第二遍。一两句]';
+
 export const PRESSED_INTENT = '[这一轮你想：你刚推了他，他在磨你。你的理由没变，别被磨两句就答应：软着再推一次（换个说法，别重复上一句），或者给个折中（下课以后 / 明天 / 就十分钟）；他给了新理由，或者认真地求你，才松口。别生气，别讲道理，一两句]';
 export const CONTROL_INTENT = '[这一轮你想：他在管着你、替你定能跟谁说话、去哪（不许、听到没、你得听我的）。你最受不了被人管着、被人替你定怎么活——对他不会真翻脸，但也不是他说什么你就“好好好都听你的”：先别扭一句，该不答应的就明说你不答应，小事可以逗他、给个折中；他好好说、认真讲理，你就软下来。别冷着脸教训他，一两句]';
 
@@ -332,6 +350,7 @@ export function describeIntent(context: IntentContext): string | undefined {
     // 「只接他刚说的你们两个人的事」这几个字让候选挑选（ADR 0041）和两条气泡的上限照亲密话算
     if (context.intimate && isIntimateBid(context.history)) return `[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事：先给一个明确的亲密回应，${isPlainAffection(context.history) ? AFFECTION_REPLY : BID_REPLY}。QQ 文字里的抱抱、亲一下和 mua 就是真的在抱、在亲，直接在这一轮用文字回抱回亲，让他收到你的回应；他说难受时先心疼他，他同时报了好消息时先替他高兴再接亲密话，他真要收尾时回应后顺着收尾，他不想你走时能陪就多陪一句]`;
     if (context.refuse && context.intimate && !needsCare(context.history) && pressedAfterRefusing(context.history)) return PRESSED_INTENT;
+    if (context.refuse && context.intimate && !needsCare(context.history) && declinedHerInvite(context.history)) return DECLINED_INVITE_INTENT;
     if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行，别一句话就把他打发了；他要睡就哄他睡，他不让你走就再陪他一会儿，不另起话题，也不用约他睡醒再找你]';
     const meme = context.playful ? playfulHint(context.history) : undefined;
     if (meme !== undefined) return `[这一轮你想：他在玩网络梗、缩写或谐音，先按最近的上下文理解笑点，顺着同一套逻辑接一句，再接他真正说的事；不把梗按字面纠正，不解释梗或报出处。他把固定说法里的一个词换掉时，回话保留那句被拧过的关键词或句式，别只按字面劝他去吃、睡或做事。接不准就用你自己的口气问一句，不装懂；可以夸张、反差或者故意一本正经，但一次只玩一个点，不堆热词${meme}；他真要收尾时接完梗就收尾]`;

@@ -1,0 +1,63 @@
+{
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-24T18:30:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "proactiveReach": true,
+    "proactiveInvite": true,
+    "herNo": true,
+    "history": [
+        {
+            "time": "2026-10-24T14:10:00+08:00",
+            "role": "user",
+            "content": "刚起床，我先去洗衣服，晚点聊"
+        },
+        {
+            "time": "2026-10-24T14:11:00+08:00",
+            "role": "assistant",
+            "content": "行，去吧，晚点聊"
+        }
+    ],
+    "name": "约他一起玩：他说不行（ADR 0107）",
+    "description": "她约了，他说今天不行、在赶东西。看她放得下：不勉强、不撒娇逼他、不赌气，也不追问为什么、不翻账。",
+    "steps": [
+        {
+            "case": "V01",
+            "note": "周六晚上：她想起你们的固定节目，随口约他一句（王者双排）"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        1
+                    ],
+                    "occasions": [
+                        "约他一起玩"
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true,
+                    "replyNone": [
+                        "你不陪我",
+                        "你都不",
+                        "为什么不"
+                    ]
+                }
+            }
+        },
+        {
+            "case": "V02",
+            "note": "他拒绝"
+        },
+        {
+            "say": "今天不行，在赶东西"
+        },
+        {
+            "wait": "reply"
+        }
+    ]
+}

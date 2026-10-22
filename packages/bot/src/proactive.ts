@@ -18,7 +18,7 @@ import { logBody } from './sensitive.ts';
 export { herDay } from './schedule.ts';
 
 /** 时机，按优先级从高到低 */
-export const OCCASIONS = ['dates', 'reschedule', 'news', 'follow_up', 'weather', 'inner', 'reach', 'morning', 'after_class', 'quiet', 'bedtime', 'share'] as const;
+export const OCCASIONS = ['dates', 'reschedule', 'news', 'follow_up', 'weather', 'inner', 'reach', 'morning', 'after_class', 'quiet', 'bedtime', 'invite', 'share'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 「她那边的事」的事件类（ADR 0064），按优先级从高到低：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天、闺蜜临时去不了 / 改到很晚（ADR 0061，开着配置 npcAsks 才有） */
@@ -155,6 +155,8 @@ export interface Candidate {
     reach?: { count: number; replied?: true };
     /** 心里惦记：是哪个念头、想告诉他还是想问他（ADR 0101） */
     inner?: { id: string; text: string; goes: 'tell' | 'ask' };
+    /** 约他一起玩：约的是哪一样（ADR 0107） */
+    invite?: { id: string; what: string };
 }
 
 export interface ProactiveInput {
@@ -256,7 +258,68 @@ const LEFT_FOR_NOW = /晚安|睡了|去睡|先睡|明天聊|去忙|先忙|忙去
 /** 要不要催的那次，模型想了想决定不发时输出的两个字 */
 export const REACH_DECLINE = '不发';
 
-/** 打开 proactiveReach：加上 reach 时机和没回的节流闸（按档位卡上的 unanswered_max 起算） */
+/**
+ * 约他一起玩（ADR 0107，配置 proactiveInvite）：晚上她想起你们的固定节目，随口约他一句。
+ * 为什么：她原来只会报告自己的事、接他的话——真人情侣会主动提议“今晚打不打游戏”；有来有往的关系里，提议的一方不总是他。
+ * 约的只限卡上写着的、你们真的会一起做的事（character 卡：我的世界存档是“固定节目”，对话示例里“今晚王者双排吗”），不编新活动。
+ * 不勉强：一周最多 INVITE_MAX_PER_WEEK 次、两次之间至少隔几天；他回的第一句像是拒绝（忙、累、改天）就隔得更久；他没回也不催（reach 不接这一条）。
+ */
+export const INVITE_ACTIVITIES: readonly { id: string; weight: number; what: string }[] = [
+    { id: 'minecraft', weight: 3, what: '一起上你们那个我的世界存档（你想拉他去看你盖的东西，或者一起弄点什么）' },
+    { id: 'wzry', weight: 2, what: '晚上一起开黑打王者（双排）' },
+];
+export const INVITE_MAX_PER_WEEK = 3;
+/** 两次约之间至少隔几天；他回的是拒绝就隔 INVITE_DECLINED_GAP_DAYS 天 */
+export const INVITE_MIN_GAP_DAYS = 2;
+export const INVITE_DECLINED_GAP_DAYS = 4;
+/** 某一天想起来约的概率：周五到周日高一点（平均一周两三次，被每周的上限兜着） */
+const INVITE_DAY_CHANCE = { weekend: 0.6, weekday: 0.35 };
+const INVITE_FROM = '19:30';
+const INVITE_UNTIL = '22:00';
+const INVITE_JITTER_MIN: [number, number] = [0, 100];
+/** 他刚说过去忙 / 去睡了，这么久之内不约 */
+const INVITE_LEFT_MS = 3 * HOUR;
+/** 他回约的第一句里有这些，就当他这次不想 / 没空 */
+const INVITE_DECLINE = /不了|不行|不想|没空|没时间|没心情|今天不|改天|下次|算了|不玩|不打|不来|在忙|要忙|有事|累了|困了|想睡/;
+/** 他这几个钟头里说过这些：在忙、累了、没空——今晚不是玩的时候，不约 */
+const INVITE_BUSY = /不行|没空|没时间|没心情|在忙|要忙|在赶|赶着|有事|累了|累死|好累|很累|太累|困了|想睡|不想玩|不玩|不打/;
+/** 他这几个钟头里已经在聊游戏了：聊天里自然会说到，不用另外约 */
+const INVITE_GAMES = /王者|我的世界|开黑|双排|打游戏|玩游戏|联机|上号/;
+/** 约完这么久之内他的第一句才算是回这个约的 */
+const INVITE_REPLY_MS = 4 * HOUR;
+
+const inviteDay = (record: ProactiveRecord) => record.id.slice(0, 10);
+
+/** 上一次约，他回的第一句是不是拒绝 */
+export function inviteDeclined(record: ProactiveRecord, history: readonly StoredMessage[]): boolean {
+    const sent = Date.parse(record.at);
+    const reply = history.find(m => m.role === 'user' && Date.parse(m.time) > sent);
+    return Boolean(reply && Date.parse(reply.time) - sent < INVITE_REPLY_MS && INVITE_DECLINE.test(reply.content));
+}
+
+/** 这一天她会不会约他、约几点、约什么：看之前的记录（隔了几天、这周几次、上次他怎么回），再按“联系人 + 日子”取哈希；没有就 undefined */
+function inviteOn(day: Date, input: ProactiveInput, seed: (purpose: string) => string): { at: number; activity: (typeof INVITE_ACTIVITIES)[number] } | undefined {
+    const dayText = formatDate(day);
+    const past = input.records.filter(r => r.occasion === 'invite' && counts(r) && inviteDay(r) < dayText).sort((a, b) => inviteDay(a).localeCompare(inviteDay(b)));
+    const daysSince = (r: ProactiveRecord) => Math.round((startOfDay(day).getTime() - Date.parse(inviteDay(r))) / (24 * HOUR));
+    if (past.filter(r => daysSince(r) <= 7).length >= INVITE_MAX_PER_WEEK) return undefined;
+    const last = past.at(-1);
+    if (last && daysSince(last) < (inviteDeclined(last, input.history) ? INVITE_DECLINED_GAP_DAYS : INVITE_MIN_GAP_DAYS)) return undefined;
+    const weekend = [0, 5, 6].includes(day.getDay());
+    if (pick(seed('invite day'), 'at', [0, 999]) / 1000 >= (weekend ? INVITE_DAY_CHANCE.weekend : INVITE_DAY_CHANCE.weekday)) return undefined;
+    const time = at(day, INVITE_FROM).getTime() + pick(seed('invite'), 'at', minutes(INVITE_JITTER_MIN));
+    if (time >= at(day, INVITE_UNTIL).getTime()) return undefined;
+    let roll = pick(seed('invite activity'), 'at', [0, INVITE_ACTIVITIES.reduce((n, a) => n + a.weight, 0) - 1]);
+    const activity = INVITE_ACTIVITIES.find(a => (roll -= a.weight) < 0) ?? INVITE_ACTIVITIES[0]!;
+    return { at: time, activity };
+}
+
+/** 打开 proactiveInvite：加上 invite 时机 */
+export function withInvite(settings: ProactiveSettings): ProactiveSettings {
+    return { ...settings, occasions: [...new Set<Occasion>([...settings.occasions, 'invite'])] };
+}
+
+/** 打开 innerLife：加上 inner 时机 */
 export function withInner(settings: ProactiveSettings): ProactiveSettings {
     return { ...settings, occasions: [...new Set<Occasion>([...settings.occasions, 'inner'])] };
 }
@@ -445,6 +508,12 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
         add('quiet', time, '你们大半天没说话了');
     }
 
+    // 约他一起玩（ADR 0107）：晚上一个时刻；一天一次（id 按天）
+    if (enabled.has('invite')) {
+        const plan = inviteOn(day, input, seed);
+        if (plan) add('invite', plan.at, '晚上想起你们的固定节目', { invite: { id: plan.activity.id, what: plan.activity.what } });
+    }
+
     // 没回也继续（ADR 0100）：她主动发的他还没回、还没到顶时，别的时机都不早于“离上一条隔够了”；另加 reach：想一想要不要催他
     const gate = unansweredGate(input, day);
     if (gate.notBefore !== undefined) {
@@ -454,7 +523,8 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
             for (const candidate of list) if (candidate.occasion !== 'dates' && candidate.at < notBefore) candidate.at = notBefore;
         }
         let reachAdded = false;
-        if (enabled.has('reach') && settings.reach) {
+        // 约他一起玩的那条他没回：她不催（约了就是约了，不追着要答复）
+        if (enabled.has('reach') && settings.reach && unansweredRecords(input).at(-1)?.occasion !== 'invite') {
             const thought = input.records.filter(r => r.occasion === 'reach' && r.id.startsWith(`${dayText}:`) && !waitingRetry(r));
             if (thought.length < REACH_MAX_PER_DAY) {
                 const lastThought = Math.max(-Infinity, ...thought.map(r => Date.parse(r.at)));
@@ -650,6 +720,15 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
             if (lastUser && now - Date.parse(lastUser.time) < LEFT_FOR_NOW_MS && LEFT_FOR_NOW.test(lastUser.content)) return '他说过去睡了 / 去忙了，不催';
             break;
         }
+        case 'invite': {
+            if (now >= at(day, INVITE_UNTIL).getTime()) return '太晚了，不约他';
+            const lately = history.filter(m => m.role === 'user' && now - Date.parse(m.time) < INVITE_LEFT_MS);
+            if (lately.some(m => LEFT_FOR_NOW.test(m.content))) return '他刚说过去忙 / 去睡了，不约';
+            if (lately.some(m => INVITE_BUSY.test(m.content))) return '他刚说过在忙 / 累了 / 没空，不约';
+            if (lately.some(m => INVITE_GAMES.test(m.content))) return '他刚说到游戏，聊天里自然会说，不另外约';
+            if (input.followUps?.some(f => f.date === candidate.day && (f.time === 'evening' || (/^\d/.test(f.time) && f.time >= '18:00')))) return '他今晚有事，不约';
+            break;
+        }
         case 'quiet':
             if (lastTime === undefined || now - lastTime < QUIET_MS) return '没到 8 小时';
             break;
@@ -748,6 +827,9 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
                 ? `你前面主动找了${userName}一次（看上面的聊天），他一直没回，过了好一阵了。他可能在忙、在上课、没看手机。你想催他理你一下，轻轻的，像随手发的：${flavor}；语气是想他理你，不是质问，也不翻前面的账；${decline}`
                 : `你前面主动找了${userName}好几次，他都没回，又过了好几个钟头。这次你有点小脾气了（傲娇的那种，不是真生气），不长篇大论，不威胁，不翻旧账，也别和前面发过的话重复（连开头也别一样）：${flavor}；${decline}`;
         },
+        // 约他（ADR 0107）：约的是卡上写着的固定节目；随口一句，不勉强，他不来也没关系；很累 / 不舒服 / 心情不好就不约
+        invite: () => `晚上了，你想起你们的固定节目，想约${userName}${candidate.invite!.what}：随口约一句，像平时那样，不用解释一大堆；他来不来都行，别勉强他、别撒娇逼他、别说“你不陪我”这类话；`
+            + `要是你这会儿很累、不舒服或心情不好，就只输出「${REACH_DECLINE}」两个字`,
         quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
             `对方要链接你给不出来），或者问问对方在忙什么（对方可能在忙）`,
         follow_up: () => `${followUp!.atMorning ? `你起床没多久，跟${userName}说早安，顺便` : ''}问问${userName}${followUp!.when}的${followUp!.item.what}怎么样了（${userName}之前跟你说过）`,
@@ -774,7 +856,7 @@ export function recallTopic(candidate: Candidate, userName: string): string {
 
 /** 日志、状态页里的说法：「早安（起床后 12 分钟）」 */
 export const OCCASION_LABELS: Record<Occasion, string> = {
-    dates: '重要的日子', reschedule: '改约', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', inner: '心里惦记', morning: '早安', after_class: '下课', share: '随口说件自己的事', quiet: '冷场', bedtime: '睡前', reach: '催他回',
+    dates: '重要的日子', reschedule: '改约', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', inner: '心里惦记', morning: '早安', after_class: '下课', share: '随口说件自己的事', quiet: '冷场', bedtime: '睡前', invite: '约他一起玩', reach: '催他回',
 };
 
 export function candidateLabel(candidate: Candidate): string {

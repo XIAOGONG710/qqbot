@@ -440,7 +440,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             note: occasionNote(candidate, contact.name, untold),
             topic: recallTopic(candidate, contact.name),
             maxBubbles: MAX_PROACTIVE_BUBBLES,
-            ...(candidate.occasion === 'reach' ? { canDecline: true } : {}),
+            ...(candidate.occasion === 'reach' || candidate.occasion === 'invite' ? { canDecline: true } : {}),
             dryRun,
             // 先记后发
             commit: () => { committed = record(candidate, { result: dryRun ? 'dryRun' : 'sent' }); },

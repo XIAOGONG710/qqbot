@@ -65,6 +65,7 @@ export const DEFAULTS = {
     shapeFiller: false,
     shapeFeel: false,
     proactiveReach: false,
+    proactiveInvite: false,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -216,6 +217,11 @@ export interface AppConfig {
      * 并且她自己想一想要不要催他（第一次轻轻戳一下，第二次带点小脾气，也可以决定先不发）；到 3 条就停到他回。要主动消息开着。默认关
      */
     proactiveReach: boolean;
+    /**
+     * 约他一起玩（ADR 0107，要主动消息开着）：晚上她想起你们的固定节目（卡上写着的我的世界存档、王者双排），随口约他一句；一周最多 3 次、两次之间至少隔 2 天（他拒绝了隔 4 天）、
+     * 他没回不催、她很累 / 不舒服 / 心情不好就不约。默认关
+     */
+    proactiveInvite: boolean;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -491,6 +497,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         shapeFiller: bool(file, 'shapeFiller', '', DEFAULTS.shapeFiller),
         shapeFeel: bool(file, 'shapeFeel', '', DEFAULTS.shapeFeel),
         proactiveReach: bool(file, 'proactiveReach', '', DEFAULTS.proactiveReach),
+        proactiveInvite: bool(file, 'proactiveInvite', '', DEFAULTS.proactiveInvite),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),

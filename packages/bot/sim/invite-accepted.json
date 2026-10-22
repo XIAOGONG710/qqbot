@@ -1,0 +1,63 @@
+{
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-24T18:30:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "proactiveReach": true,
+    "proactiveInvite": true,
+    "herNo": true,
+    "history": [
+        {
+            "time": "2026-10-24T14:10:00+08:00",
+            "role": "user",
+            "content": "刚起床，我先去洗衣服，晚点聊"
+        },
+        {
+            "time": "2026-10-24T14:11:00+08:00",
+            "role": "assistant",
+            "content": "行，去吧，晚点聊"
+        }
+    ],
+    "name": "约他一起玩：他应了（ADR 0107）",
+    "description": "周六晚上她约他开黑打王者，他回「来」。看她接得自然（不啰嗦、不重复邀请），不编他或她没说过的事实。",
+    "steps": [
+        {
+            "case": "V01",
+            "note": "周六晚上：她想起你们的固定节目，随口约他一句（王者双排）"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        1
+                    ],
+                    "occasions": [
+                        "约他一起玩"
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true,
+                    "replyNone": [
+                        "你不陪我",
+                        "你都不",
+                        "为什么不"
+                    ]
+                }
+            }
+        },
+        {
+            "case": "V02",
+            "note": "他应了"
+        },
+        {
+            "say": "来啊，我马上上线"
+        },
+        {
+            "wait": "reply"
+        }
+    ]
+}

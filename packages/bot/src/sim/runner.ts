@@ -19,7 +19,7 @@ import type { OpenAIMessage, PromptResult } from '../prompt.ts';
 import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
-import { herDay, newsKindsOf, withInner, withReach } from '../proactive.ts';
+import { herDay, newsKindsOf, withInner, withInvite, withReach } from '../proactive.ts';
 import type { Moment } from '../feelings.ts';
 import { mergePursuits, type Pursuit } from '../pursuits.ts';
 import { dmMessageId, dmNote, nudgeNote, videoNote, videoTopic } from '../bilibili.ts';
@@ -459,7 +459,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         }
         : character.proactive;
     const withReached = proactiveBase && scenario.proactiveReach ? withReach(proactiveBase) : proactiveBase;
-    const proactiveSettings = withReached && scenario.innerLife ? withInner(withReached) : withReached;
+    const withInned = withReached && scenario.innerLife ? withInner(withReached) : withReached;
+    const proactiveSettings = withInned && scenario.proactiveInvite ? withInvite(withInned) : withInned;
     const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && proactiveSettings && character.schedule
         ? createProactivePlanner({
             contact,

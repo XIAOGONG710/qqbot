@@ -239,6 +239,8 @@ export interface Scenario {
     shapeFeel: boolean;
     /** 默认 false：他没回也继续找他、催他一下（ADR 0100，配置 proactiveReach）；要 proactive 开着 */
     proactiveReach: boolean;
+    /** 默认 false：约他一起玩（ADR 0107，配置 proactiveInvite）；要 proactive 开着 */
+    proactiveInvite: boolean;
     /** 默认 false：内心（ADR 0101，配置 innerLife）；要 proactive 开着 */
     innerLife: boolean;
     /** 默认 false：心境（ADR 0102，配置 herFeelings）；只对男朋友档有效。moments：作者写下的事（runtime/bot/moments.json 的样子，at 可写相对开场的偏移如 "-3h"） */
@@ -365,6 +367,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         shapeFiller: s.shapeFiller === true,
         shapeFeel: s.shapeFeel === true,
         proactiveReach: s.proactiveReach === true,
+        proactiveInvite: s.proactiveInvite === true,
         innerLife: s.innerLife === true,
         herFeelings: s.herFeelings === true,
         herNo: s.herNo === true,

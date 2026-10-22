@@ -519,7 +519,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             stickerOnlyNow = stickersAllowed && stickerCued(saidNow) && stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE) && stickerOnlyTurn(chat, options.stickerOnlyChance ?? 0);
             stickerContext = stickersAllowed && stickerCued(saidNow) && stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE) ? { text: saidNow, ...(stickerOnlyNow ? { only: true } : {}) } : undefined;
             if (stickerContext) log(stickerOnlyNow ? '图片表情：这一轮抽到只发表情、不写文字' : '图片表情：这一轮抽到要发一个');
-            if (options.stickers && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
+            if (options.stickers && !thinking && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
             pick = picked ? {
                 kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: character.banned,
                 // 她自己生活里的东西：猫、相机、在读的书、手上的爱好（DSH 诊断 1.2、ADR 0036 的四类）

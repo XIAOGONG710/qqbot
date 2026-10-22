@@ -33,7 +33,7 @@ import { pursuitsReader } from './pursuits.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from './festivals.ts';
-import { newsKindsOf, dayMatches, withInner, withReach, type ProactiveMode } from './proactive.ts';
+import { newsKindsOf, dayMatches, withInner, withInvite, withReach, type ProactiveMode } from './proactive.ts';
 import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
 import { qzoneComposer } from './qzone.ts';
 import { createVideoBrowsing, dmMessageId, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
@@ -789,7 +789,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             planners.set(contact.qq, createProactivePlanner({
                 contact,
                 schedule: character.schedule!,
-                settings: config.innerLife ? withInner(config.proactiveReach ? withReach(character.proactive!) : character.proactive!) : config.proactiveReach ? withReach(character.proactive!) : character.proactive!,
+                settings: [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite]
+                    .reduce((settings, overlay) => (overlay ? overlay(settings) : settings), character.proactive!),
                 ...(config.innerLife ? { inner: true } : {}),
                 dates: character.dates,
                 mode: config.proactive,
