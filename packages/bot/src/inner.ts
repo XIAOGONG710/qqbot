@@ -128,11 +128,11 @@ export function parseThought(raw: string, recent: readonly InnerThought[], at: n
         goes = GOES_MARK.find(([, pattern]) => pattern.test(tail[1]!))![0];
         text = text.slice(0, tail.index).trim();
     }
-    // 去向没另起一行也没加括号，直接接在句子后面（「……晚点问问他好点没。自己想想」）：前面要有标点或空白，免得把“问问他”当成去向
-    const inline = /[，,。.！!…\s]+(告诉他|问他|自己想想)\s*$/.exec(text);
+    // 去向没另起一行也没加括号，直接接在句子后面（「……晚点问问他好点没。自己想想」「（……答不上来。）告诉他」）：前面要有标点、空白或右括号隔着，免得把“问问他”当成去向
+    const inline = /(?<=[，,。.！!…\s）)」』】\]])(告诉他|问他|自己想想)\s*$/.exec(text);
     if (inline) {
         goes = GOES_MARK.find(([, pattern]) => pattern.test(inline[1]!))![0];
-        text = text.slice(0, inline.index).trim();
+        text = text.slice(0, inline.index).replace(/[，,。.！!…\s]+$/, '').trim();
     }
     // 整句被括号包着（「（翻着相册里土豆昨天那张……）」）：去掉外面那层
     const wrapped = /^[（(]([^（）()]+)[）)]$/.exec(text);

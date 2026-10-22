@@ -89,6 +89,10 @@ describe('内心：提示和放进聊天的一行', () => {
         assert.equal(inline.thought.goes, 'keep');
         assert.equal((parseThought('晚点问问他腰好点没，问他', [], 1) as { thought: InnerThought }).thought.goes, 'ask');
         assert.equal((parseThought('晚点得去问问他', [], 1) as { thought: InnerThought }).thought.text, '晚点得去问问他', '问问他是内容不是去向');
+        // 线上 10-22 20:24：整句被括号包着、去向紧跟在右括号后面
+        const afterBracket = parseThought('（他早上问了个大问题，我那句回得太糊弄了，其实我也答不上来。）告诉他', [], 1) as { thought: InnerThought };
+        assert.equal(afterBracket.thought.goes, 'tell');
+        assert.equal(afterBracket.thought.text, '他早上问了个大问题，我那句回得太糊弄了，其实我也答不上来。');
         const wrapped = parseThought('（翻着相册里土豆昨天那张，今天还没下楼喂它）\n自己想想', [], 1) as { thought: InnerThought };
         assert.equal(wrapped.thought.text, '翻着相册里土豆昨天那张，今天还没下楼喂它');
         assert.deepEqual(parseThought('宝宝，人呢\n问他', [], 1, '阿明'), { rejected: '对他说话' });
