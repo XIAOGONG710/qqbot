@@ -96,3 +96,6 @@
 ## 22:32 已上线：`a552227`（ADR 0107 `proactiveInvite: true`）
 - `main` = `integration` = `a552227`；新进程 22:31:29，心跳 `ref = a552227`、`connectedAt` 14:31:30Z，启动后日志 0 个错误行。备份 `runtime/backup-pre-bili21-20261022-2231` + `koishi.yml.bak-bili21-20261022-2231`。回滚：`proactiveInvite: false` + 重启，或 `git reset --hard 362cd48` + 还原 yml。
 - 最早可能的第一次约：周日 10-25 晚上（按现有哈希 minecraft 20:38，前提是他当天没说忙 / 累 / 在聊游戏）。
+
+## 22:47 即将重启上线：`a363eb5`（ADR 0108 主动开口不先叫名字）
+- 用户说「现在上线并开启」。线上 `a552227` → `a363eb5`；只改 `proactive.ts` 的提示词措辞（+测试 +ADR），没有新开关、不换配置；备份 `runtime/backup-pre-bili22-*`。回滚：`git reset --hard a552227` + 重启。
