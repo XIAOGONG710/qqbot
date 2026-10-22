@@ -333,11 +333,11 @@ describe('语气松一点（drawl）：句尾可以带「～」或「……」',
 
 // ADR 0099：情绪轮——这一轮先说自己对他的一点小情绪，不把他的话处理完整
 describe('情绪轮（feel）：先说自己对他的小情绪', () => {
-    test('没开不抽；开了约 18%，一两条、每条不超过 10 个字，不带自己的事、不“顺着说”', () => {
+    test('没开不抽；开了约 27%（0.3 里先扣掉废话轮次的 10%），一两条、每条不超过 10 个字，不带自己的事、不“顺着说”', () => {
         assert.ok(sample('想你了呀', 600).every(plan => !plan.feel), '没开就一轮也没有');
         const plans = sample('我肯定行啊', 3000, { feel: true, agenda: true, filler: true });
         const feel = plans.filter(plan => plan.feel);
-        assert.ok(Math.abs(feel.length / plans.length - FEEL_SHARE) < 0.03, `feel ${feel.length / plans.length}`);
+        assert.ok(Math.abs(feel.length / plans.length - FEEL_SHARE * (1 - FILLER_SHARE)) < 0.03, `feel ${feel.length / plans.length}`);
         assert.ok(feel.every(plan => plan.kind === 'short' && plan.cap === 10 && plan.maxBubbles <= 2 && !plan.plain && !plan.agenda && !plan.filler && !plan.parts));
         assert.ok(feel.some(plan => plan.maxBubbles === 1) && feel.some(plan => plan.maxBubbles === 2));
     });
