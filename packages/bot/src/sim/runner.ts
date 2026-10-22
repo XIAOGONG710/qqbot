@@ -401,6 +401,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.herNo ? { herNo: true } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),
         ...(scenario.everydayLife ? { everydayLife: true } : {}),
+        ...(scenario.shapeShares ? { shapeShares: scenario.shapeShares } : {}),
         ...(scenario.pursuits ? { pursuits: () => mergePursuits(scenario.pursuitsFile as Pursuit[]) } : {}),
         ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
         ...(stickers ? { stickers } : {}),

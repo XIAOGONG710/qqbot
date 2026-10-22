@@ -126,7 +126,10 @@ const CLOSING_INTENT = /顺着他的话收尾/;
 /** 收尾的轮次：真人这时就是一两个字（晚安、好哒、嗯嗯） */
 const CLOSING_WEIGHTS = [0.4, 0.4, 0.15, 0.05, 0] as const;
 
-export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'> & { agenda?: boolean; filler?: boolean; feel?: boolean; split?: boolean; agendaTopics?: readonly string[] };
+/** 各种轮次的占比（调参用：模拟器的场景里可以改，线上用上面的常量）；不写的用默认 */
+export interface ShapeShares { feel?: number; filler?: number; agenda?: number; plain?: number }
+
+export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'> & { shares?: ShapeShares; agenda?: boolean; filler?: boolean; feel?: boolean; split?: boolean; agendaTopics?: readonly string[] };
 
 const chars = (text: string) => [...text.replace(/\[[^\]]{1,6}\]/g, '#')].length;
 
@@ -158,27 +161,27 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     const stretch = Boolean(context.filler) && !closing && !engaged && STRETCHED.test(said) && unit(`${key} shape stretch`) < STRETCH_SHARE;
     const drawl = Boolean(context.filler) && !stretch && !closing && !engaged && !NEGATIVE.test(said) && !EMOTIVE.test(said) && unit(`${key} shape drawl`) < DRAWL_SHARE;
     // 废话轮次：他的话短、不是问句，她就只回一条几个字、不带内容的
-    if (Boolean(context.filler) && free && his <= FILLER_MAX_HIS && !/[？?]/.test(said) && unit(`${key} shape filler`) < FILLER_SHARE) {
+    if (Boolean(context.filler) && free && his <= FILLER_MAX_HIS && !/[？?]/.test(said) && unit(`${key} shape filler`) < (context.shares?.filler ?? FILLER_SHARE)) {
         const pick = unit(`${key} shape filler kind`);
         let acc = 0;
         const kind = FILLER_KINDS.find(([, share]) => (acc += share) > pick)?.[0] ?? FILLER_KINDS[FILLER_KINDS.length - 1]![0];
         return { kind: 'micro', cap: 4, maxBubbles: 1, filler: kind, ...(stretch ? { stretch: true } : {}) };
     }
     // 情绪轮：先说自己对他的小情绪，一两句、短的；不带自己的事、不“顺着说”（顺着说的那句写着别驳他别嘴硬，和这里打架）
-    if (Boolean(context.feel) && free && his <= FEEL_MAX_HIS && !HIS_LOW.test(said) && unit(`${key} shape feel`) < FEEL_SHARE) {
+    if (Boolean(context.feel) && free && his <= FEEL_MAX_HIS && !HIS_LOW.test(said) && unit(`${key} shape feel`) < (context.shares?.feel ?? FEEL_SHARE)) {
         const count = unit(`${key} shape feel count`) < 0.6 ? 1 : 2;
         return { kind: 'short', cap: 10, maxBubbles: count, feel: true, ...(drawl ? { drawl: true } : {}) };
     }
     // 不马上让步：和情绪轮同一个开关。不是收尾 / 认真接话 / 亲近的轮次，提示词里加一句“他说你的不是时别一本正经认错”
     const pushback = Boolean(context.feel) && !closing && !engaged && !intimate;
-    const agenda = Boolean(context.agenda) && free && unit(`${key} shape agenda`) < AGENDA_SHARE;
+    const agenda = Boolean(context.agenda) && free && unit(`${key} shape agenda`) < (context.shares?.agenda ?? AGENDA_SHARE);
     // 带自己的事的轮次至少 medium：两三个字的档装不下“回完他的话再说一件自己的事”
     const bucket = BUCKETS[agenda ? Math.max(rolled, 2) : rolled]!;
     const countRoll = unit(`${key} shape count`);
     // 一轮几条：真人 1 条 51–65%、2 条 22–28%、3 条以上约 15–20%；极短的一档多半只发一条
     const rolledBubbles = closing ? (countRoll < 0.7 ? 1 : 2) : bucket.kind === 'micro' ? (countRoll < 0.8 ? 1 : 2) : countRoll < 0.55 ? 1 : countRoll < 0.83 ? 2 : 3;
     const maxBubbles = agenda ? Math.max(2, rolledBubbles) : rolledBubbles;
-    const plain = !agenda && !intimate && unit(`${key} shape plain`) < PLAIN_SHARE;
+    const plain = !agenda && !intimate && unit(`${key} shape plain`) < (context.shares?.plain ?? PLAIN_SHARE);
     // 要分成几条：上面抽出来的条数本来只是上限，真模型多半只写一行（重放里 85% 是 1 条，真人女生 59%）；开了 shapeSplit 就把它当成目标写进提示词
     // 带自己的事的轮次：这一次说哪一件，按轮抽（同一轮每次一样）。10-22 用 72 句真人对话测：开了带事以后 21% 的回复提到相机 / 土豆 / 作业 / 快递（没开 7%），其中相机一件就 14%，模型总挑同两件
     const topics = context.agendaTopics ?? [];

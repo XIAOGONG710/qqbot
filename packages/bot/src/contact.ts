@@ -27,7 +27,7 @@ import { describeGrievance, grievanceNow, ignoredNow } from './grievance.ts';
 import { describeIntent } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
 import { alreadyTold, describeLength, lengthHint, maybeTypo, RECALL_SHARE, recentCrutches } from './expression.ts';
-import { describeShape, planShape, shapeReply, type ShapePlan } from './shape.ts';
+import { describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from './shape.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
 import { npcMentioned } from './npc.ts';
@@ -171,6 +171,8 @@ export interface ContactPipelineOptions {
     shape?: boolean;
     /** 带自己的小事（配置 shapeAgenda，要 shape 开着）：适用的轮次里约五分之一，答完他的话再从“你那边”里挑一件自己的事说一句（ADR 0094） */
     shapeAgenda?: boolean;
+    /** 各种形状轮次的占比（调参用，模拟器的场景里设；线上不用，用 shape.ts 的常量） */
+    shapeShares?: ShapeShares;
     /** 废话（配置 shapeFiller，要 shape 开着）：适用的轮次里约 7% 只回一条笑 / 应声 / 拖音 / 叹一句状态，他拖音时她也跟着拖（ADR 0095） */
     shapeFiller?: boolean;
     /** 情绪轮（配置 shapeFeel，要 shape 开着）：适用的轮次里约 18% 先说自己对他的小情绪，不把他的话处理完整（ADR 0099） */
@@ -536,7 +538,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
                 ...(mood ? ['心情'] : []),
             ];
-            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !thinking ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, agendaTopics }) : undefined;
+            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !thinking ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
             // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
             const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
             const crutchLine = crutches.length

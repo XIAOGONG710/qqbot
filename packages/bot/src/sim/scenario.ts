@@ -252,6 +252,8 @@ export interface Scenario {
     /** 默认 false：她自己的追求（ADR 0104，配置 pursuits）；pursuitsFile：作者的 pursuits.json 的样子（不写就只有内置两条） */
     pursuits: boolean;
     pursuitsFile: unknown[];
+    /** 调参用：各种形状轮次的占比（shape.ts 的 ShapeShares）；不写用默认 */
+    shapeShares?: { feel?: number; filler?: number; agenda?: number; plain?: number };
     moments: { id: string; at: string; kind: string; strength: number; cause: string; halfLifeH?: number }[];
     /** 默认 false：分成几条（ADR 0096，配置 shapeSplit，要 shape 开着）；run.ts 的 --split 对所有场景打开 */
     shapeSplit: boolean;
@@ -368,6 +370,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         everydayLife: s.everydayLife === true,
         pursuits: s.pursuits === true,
         pursuitsFile: Array.isArray(s.pursuitsFile) ? s.pursuitsFile as unknown[] : [],
+        ...(s.shapeShares && typeof s.shapeShares === 'object' ? { shapeShares: s.shapeShares as NonNullable<Scenario['shapeShares']> } : {}),
         moments: Array.isArray(s.moments) ? s.moments as Scenario['moments'] : [],
         shapeSplit: s.shapeSplit === true,
         npcAsks: s.npcAsks === true,
