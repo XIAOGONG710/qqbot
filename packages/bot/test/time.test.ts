@@ -8,6 +8,20 @@ const iso = (text: string) => at(text).toISOString();
 const user = (time: string, content = '在吗') => ({ role: 'user' as const, content, time: iso(time) }) satisfies TimedMessage & { content: string };
 const her = (time: string, content = '嗯') => ({ role: 'assistant' as const, content, time: iso(time) }) satisfies TimedMessage & { content: string };
 
+describe('断网很久才回（ADR 0105）', () => {
+    const chat = [her('2026-10-10T19:00:00'), user('2026-10-10T19:10:00', '在吗')];
+    test('回复一直失败超过 10 分钟：时间块里多一句断网的事实，可以顺口说“刚才网断了”，不编别的原因', () => {
+        const line = describeTime(chat, at('2026-10-10T21:00:00'), { offlineSince: at('2026-10-10T19:12:00').getTime() });
+        assert.match(line, /你这边有一阵子（约 .*）一直连不上网，他的消息刚才才收到/);
+        assert.match(line, /刚才网断了/);
+        assert.match(line, /别编别的原因/);
+    });
+    test('不到 10 分钟 / 没有 / 主动找他：什么都不加', () => {
+        assert.doesNotMatch(describeTime(chat, at('2026-10-10T19:20:00'), { offlineSince: at('2026-10-10T19:12:00').getTime() }), /连不上网/);
+        assert.doesNotMatch(describeTime(chat, at('2026-10-10T21:00:00')), /连不上网/);
+    });
+});
+
 describe('ST 时间宏（中文界面）', () => {
     test('日期、星期、时间的格式', () => {
         const macros = timeMacros(at('2026-10-04T09:05:00'), []);

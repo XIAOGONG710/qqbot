@@ -302,3 +302,54 @@ describe('听语音（ADR 0052）', () => {
         assert.equal(isReaction('[语音 2秒：哈哈哈]'), false, '语音不算反应，照样回');
     });
 });
+
+describe('回复延迟的长尾（ADR 0105，lagTail）', () => {
+    // 周六晚上，空着
+    const options = { schedule, wakeable: true, lagTail: true };
+    const him = (time: number, content: string, id: number): StoredMessage => ({ time: new Date(time).toISOString(), role: 'user', content, messageId: id });
+    const seenDelays = (build: (id: number) => StoredMessage[], opts: Parameters<typeof whenSeen>[2] = options) =>
+        Array.from({ length: 400 }, (_, i) => {
+            const history = build(i + 1);
+            const first = history.filter(m => m.role === 'user')[0]!;
+            const decision = whenSeen(history, Date.parse(first.time) + 1000, opts)!;
+            return decision.at - Date.parse(first.time);
+        });
+    const share = (values: number[], test: (ms: number) => boolean) => values.filter(test).length / values.length;
+    const hotChat = (text: string) => (id: number) => [her(t(10, 10, 20, 20)), him(t(10, 10, 20, 25), text, id)];
+
+    test('没开：醒着空着正聊着就是马上看到（原来的样子，一毫秒都不加）', () => {
+        const delays = seenDelays(hotChat('在干嘛'), { schedule, wakeable: true });
+        assert.ok(delays.every(ms => ms === 0));
+    });
+
+    test('开了：正聊着 ≈ 70% 马上、有 1 分钟以上的、有 5 分钟以上的长尾；冷场更慢；一来一回很快时 ≈ 90% 马上', () => {
+        const hot = seenDelays(hotChat('在干嘛'));
+        assert.ok(share(hot, ms => ms === 0) > 0.6 && share(hot, ms => ms === 0) < 0.8, String(share(hot, ms => ms === 0)));
+        assert.ok(share(hot, ms => ms > 60_000) > 0.05 && share(hot, ms => ms > 60_000) < 0.3, String(share(hot, ms => ms > 60_000)));
+        assert.ok(share(hot, ms => ms >= 300_000) > 0.01, '长尾：偶尔 5 分钟以上');
+        assert.ok(Math.max(...hot) <= 3_600_000, '最长一小时');
+        const rapid = seenDelays(id => [her(t(10, 10, 20, 24)), him(t(10, 10, 20, 24, 30), '在干嘛', id)]);
+        assert.ok(share(rapid, ms => ms === 0) > 0.82, String(share(rapid, ms => ms === 0)));
+        const cold = seenDelays(id => [her(t(10, 10, 19, 0)), him(t(10, 10, 20, 25), '在干嘛', id)]);
+        assert.ok(share(cold, ms => ms > 60_000) > share(hot, ms => ms > 60_000), '冷场比正聊着慢');
+        assert.ok(share(cold, ms => ms > 60_000) > 0.2, String(share(cold, ms => ms > 60_000)));
+    });
+
+    test('他在难受 / 问她在不在：更快看到，最多 1 分钟的分心；同一串消息每次算出来一样', () => {
+        const careful = seenDelays(hotChat('我今天好难过'));
+        const plain = seenDelays(hotChat('今天好热啊'));
+        assert.ok(share(careful, ms => ms === 0) > share(plain, ms => ms === 0));
+        assert.ok(Math.max(...careful) <= 60_000 + 1);
+        const history = [her(t(10, 10, 20, 20)), him(t(10, 10, 20, 25), '今天好热啊', 7)];
+        assert.deepEqual(whenSeen(history, t(10, 10, 20, 25, 1), options), whenSeen(history, t(10, 10, 20, 25, 9), options));
+    });
+
+    test('睡着、危机都不受影响（它们各有各的规则）；理由写明在做别的和多久', () => {
+        const crisis = [her(t(10, 10, 20, 20)), him(t(10, 10, 20, 25), '我不想活了', 11)];
+        assert.equal(whenSeen(crisis, t(10, 10, 20, 25, 5), options)!.at, t(10, 10, 20, 25, 5));
+        const asleep = [him(t(10, 10, 3, 30), '睡了吗', 12)];
+        assert.equal(whenSeen(asleep, t(10, 10, 3, 30, 5), options)!.reason, '在睡觉，起床后看到');
+        const delayed = Array.from({ length: 400 }, (_, i) => whenSeen([her(t(10, 10, 20, 20)), him(t(10, 10, 20, 25), '今天好热啊', i + 100)], t(10, 10, 20, 25, 5), options)!).find(d => d.reason.includes('在做别的'));
+        assert.ok(delayed && /在做别的，\d+ (秒|分钟)后才看到/.test(delayed.reason), delayed?.reason);
+    });
+});

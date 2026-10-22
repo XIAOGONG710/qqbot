@@ -10,6 +10,8 @@ import { dayMatches, lunarMonthDay, type ImportantDay } from './proactive.ts';
 import { pendingMessages, unansweredMessages } from './reply-timing.ts';
 import type { TimedMessage } from './st/time-macros.ts';
 
+/** 回复一直失败（连不上模型）超过这么久才终于发出去，时间块里加一句断网的事实（ADR 0105） */
+export const OFFLINE_NOTE_MS = 10 * 60_000;
 /** 对方的消息发出超过这么久才回复时，提示是什么时候发的 */
 export const LATE_REPLY_MS = 10 * 60_000;
 
@@ -17,7 +19,7 @@ const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四
 const pad = (n: number) => String(n).padStart(2, '0');
 
 /** initiating：她主动找他（ADR 0011），不是在回消息：只写上一条消息，不把没回的附和当成「这次的消息」 */
-export function describeTime(chat: (TimedMessage & { content: string })[], now: Date, options: { initiating?: boolean } = {}): string {
+export function describeTime(chat: (TimedMessage & { content: string })[], now: Date, options: { initiating?: boolean; offlineSince?: number } = {}): string {
     const lines = [`[当前时间：${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${WEEKDAYS[now.getDay()]} ${clock(now)}]`];
 
     // 这一组：她上次回复之后对方发的消息；只有附和、又要回（关掉作息时附和也回）就按附和算
@@ -40,6 +42,10 @@ export function describeTime(chat: (TimedMessage & { content: string })[], now: 
     }
     if (firstTime && now.getTime() - firstTime.getTime() > LATE_REPLY_MS) {
         lines.push(`[对方这次的消息是${when(firstTime, now)} 发的，到现在过了 ${duration(now.getTime() - firstTime.getTime())}]`);
+    }
+    // 断网很久才回（ADR 0105）：她这边连不上网是实情，可以顺口说一句“刚才网断了”；别编别的原因
+    if (options.offlineSince !== undefined && now.getTime() - options.offlineSince >= OFFLINE_NOTE_MS) {
+        lines.push(`[你这边有一阵子（约 ${duration(now.getTime() - options.offlineSince)}）一直连不上网，他的消息刚才才收到。他要是问你怎么才回，或者你顺口想解释，说一句“刚才网断了 / 没信号”就行；别编别的原因，也别道歉过头]`);
     }
     return lines.join('\n');
 }

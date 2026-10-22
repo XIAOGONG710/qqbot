@@ -245,6 +245,8 @@ export interface Scenario {
     herFeelings: boolean;
     /** 默认 false：会拒绝（ADR 0103，配置 herNo）；只对男朋友档有效 */
     herNo: boolean;
+    /** 默认 false：回复延迟的长尾（ADR 0105，配置 lagTail） */
+    lagTail: boolean;
     moments: { id: string; at: string; kind: string; strength: number; cause: string; halfLifeH?: number }[];
     /** 默认 false：分成几条（ADR 0096，配置 shapeSplit，要 shape 开着）；run.ts 的 --split 对所有场景打开 */
     shapeSplit: boolean;
@@ -357,6 +359,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         innerLife: s.innerLife === true,
         herFeelings: s.herFeelings === true,
         herNo: s.herNo === true,
+        lagTail: s.lagTail === true,
         moments: Array.isArray(s.moments) ? s.moments as Scenario['moments'] : [],
         shapeSplit: s.shapeSplit === true,
         npcAsks: s.npcAsks === true,

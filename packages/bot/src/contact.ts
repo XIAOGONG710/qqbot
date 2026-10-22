@@ -177,6 +177,8 @@ export interface ContactPipelineOptions {
     herFeelings?: boolean;
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
     moments?: () => readonly Moment[];
+    /** 回复延迟的长尾（ADR 0105，配置 lagTail）：醒着空着时有一部分消息她在做别的，过一会儿才看到；断网很久之后才回，时间块里写一句 */
+    lagTail?: boolean;
     /** 会拒绝（ADR 0103，配置 herNo）：她刚推了他、他在磨她时别被磨两句就答应；他在管着她（不许 / 听到没）时不顺着说“都听你的”。只给男朋友档 */
     herNo?: boolean;
     /** 分成几条（配置 shapeSplit，要 shape 开着）：把形状里抽出的条数当目标写进提示词，不只是上限（ADR 0096） */
@@ -266,7 +268,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     return createResponder({
         userId: contact.qq,
         history: options.history,
-        buildPrompt: async (chat, { woken, initiate }) => {
+        buildPrompt: async (chat, { woken, initiate, offlineSince }) => {
             const time = new Date(now());
             // 只想一想（ADR 0101 内心）：不是在聊天，不要意图行、形状、字数提示、表情；聊天记录当成“回想”放进说明里，不当成要接着回的对话
             const thinking = Boolean(initiate?.think);
@@ -567,7 +569,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     ...peopleText,
                     ...(common || today || peopleText.length ? [disclosureRules(contact)] : []),
                     [
-                        describeTime(chat, time, { initiating: Boolean(initiate) }),
+                        describeTime(chat, time, { initiating: Boolean(initiate), ...(options.lagTail && offlineSince !== undefined ? { offlineSince } : {}) }),
                         ...(days ? [days] : []),
                         ...(state ? [describeState(state, schedule!, { userName: contact.name, woken, partnerApart: true })] : []),
                         // 心里压着事 / 特别开心的时候，按日期抽的底色（爱笑、话痨……）会和心境打架：以心境为准（ADR 0102）
@@ -665,6 +667,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         timing: schedule && {
             whenSeen: (history, at) => whenSeen(history, at, {
                 schedule, wakeable: contact.tier === 'boyfriend', pace: character.pace,
+                ...(options.lagTail ? { lagTail: true } : {}),
                 // 洗澡时看不到消息（ADR 0031），按她这一档的世界算
                 busy: moment => {
                     if (!herSchedule || !character.herWorld) return undefined;

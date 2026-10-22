@@ -60,6 +60,8 @@ export interface TimingOptions {
      * 吵醒的规则照旧（男朋友连着发），一晚从她说完那一刻算起
      */
     asleep?: (now: number) => { since: number; until: number } | undefined;
+    /** 回复延迟的长尾（ADR 0105，配置 lagTail）：醒着、空着的时候，有一部分消息她在做别的，过一会儿才看到 */
+    lagTail?: boolean;
 }
 
 /** 判断附和、收尾只要角色和内容（聊天记录、提示词里的消息都行） */
@@ -133,8 +135,48 @@ export function whenSeen(history: StoredMessage[], now: number, options: TimingO
 
     // 空闲、课间、水课、体育：正聊着马上看到，冷场过一会儿
     const lastReply = history.findLast(m => m.role === 'assistant');
-    if (lastReply && first - Date.parse(lastReply.time) <= HOT_MS) return listened(pending, { at: first, reason: '正聊着' });
-    return listened(pending, { at: first + Math.round(pick(seed, 'cold', COLD_DELAY_MS) * (options.pace ?? 1)), reason: '冷场，过一会儿才看到' });
+    const hot = Boolean(lastReply && first - Date.parse(lastReply.time) <= HOT_MS);
+    // 分心的延迟（ADR 0105）：在她手里的这一刻之外再加一段，真人回消息的延迟是长尾的
+    const lag = options.lagTail
+        ? distractionMs(seed, {
+            hot,
+            rapid: Boolean(lastReply && first - Date.parse(lastReply.time) <= RAPID_MS),
+            careful: pending.some(message => CARE_NOW.test(message.content)),
+            hour: new Date(first).getHours(),
+        })
+        : undefined;
+    const base = hot ? first : first + Math.round(pick(seed, 'cold', COLD_DELAY_MS) * (options.pace ?? 1));
+    const reason = hot ? '正聊着' : '冷场，过一会儿才看到';
+    if (lag) return listened(pending, { at: base + lag, reason: `${reason}；在做别的，${minutesText(lag)}才看到` });
+    return listened(pending, { at: base, reason });
+}
+
+/** 一来一回很快的（她上一次回复离他这一串不到这么久）：手一直在手机上，不容易分心 */
+export const RAPID_MS = 90_000;
+/** 他在难受 / 不舒服 / 问她在不在：她会更快看到 */
+const CARE_NOW = /难过|难受|不舒服|烦死|累死|哭|崩溃|生病|发烧|疼|在吗|在不在|人呢|喂[？?]?$/;
+
+/**
+ * 分心的延迟（ADR 0105，配置 lagTail）。真人回消息的延迟是长尾的：公开数据里 WhatsApp 111 个人的回复只有 57.8% 在 1 分钟内
+ * （arXiv 1802.03393），她原来醒着空着时 100% 在十几秒内。这里按第一条没回的消息的 id 定下来（同一串重算多少次都一样）：
+ * 一来一回很快时 10% 分心、正聊着 30%、冷场 45%（夜里 23 点以后手在手机上，打八折；他在难受 / 问她在不在，打四折且不超过 1 分钟）；
+ * 分心了：55% 20–75 秒、28% 1.5–5 分钟、13% 5–20 分钟、4% 20–60 分钟。没分心就是 0。
+ */
+export function distractionMs(seed: string, context: { hot: boolean; rapid: boolean; careful: boolean; hour: number }): number | undefined {
+    let chance = context.rapid ? 0.1 : context.hot ? 0.3 : 0.45;
+    if (context.hour >= 23 || context.hour < 2) chance *= 0.8;
+    if (context.careful) chance *= 0.4;
+    if (unit(`${seed} lag`) >= chance) return undefined;
+    const u = unit(`${seed} lag size`);
+    const ms = u < 0.55 ? pick(seed, 'lag-a', [20_000, 75_000])
+        : u < 0.83 ? pick(seed, 'lag-b', [90_000, 300_000])
+            : u < 0.96 ? pick(seed, 'lag-c', [300_000, 1_200_000])
+                : pick(seed, 'lag-d', [1_200_000, 3_600_000]);
+    return context.careful ? Math.min(ms, 60_000) : ms;
+}
+
+function minutesText(ms: number): string {
+    return ms < 90_000 ? `${Math.round(ms / 1000)} 秒后` : `${Math.round(ms / 60_000)} 分钟后`;
 }
 
 /** 这一串里的语音一条条听完（ADR 0052）：从看到的时刻起，每条从它到了之后开始听；没有语音原样返回 */

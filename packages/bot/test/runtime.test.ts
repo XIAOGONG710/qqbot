@@ -246,6 +246,39 @@ describe('回复调度', () => {
         assert.deepEqual(sent, ['刚看到']);
     });
 
+    test('回复一直失败之后才发出去：生成时知道是从哪一刻起一直失败（断网很久的补回，ADR 0105）；发出去之后清掉', async () => {
+        let calls = 0;
+        const seenOffline: (number | undefined)[] = [];
+        let clock = Date.parse('2026-10-10T20:00:00+08:00');
+        const { waits, sleep } = manualSleep();
+        const { responder, sent } = setup({
+            retryAfterMs: RETRY_AFTER_MS,
+            sleep,
+            now: () => clock,
+            buildPrompt: (chat, context) => {
+                seenOffline.push(context.offlineSince);
+                return { messages: chat.map(m => ({ role: m.role, content: m.content })), activatedWorldInfo: [] } satisfies PromptResult;
+            },
+            generate: async () => { if (++calls <= 2) throw new Error('断网'); return '刚才网断了'; },
+        });
+        responder.receive('在吗', 1, new Date(clock));
+        await responder.whenIdle();
+        clock += 60_000;
+        waits[0]!.release();
+        await tick();
+        await responder.whenIdle();
+        clock += 5 * 60_000;
+        waits[1]!.release();
+        await tick();
+        await responder.whenIdle();
+        assert.deepEqual(sent, ['刚才网断了']);
+        assert.equal(seenOffline[0], undefined, '第一次生成时还没失败过');
+        assert.equal(seenOffline[2], Date.parse('2026-10-10T20:00:00+08:00'), '第三次（成功的那次）知道从 20:00 起一直失败');
+        responder.receive('哦', 2, new Date(clock));
+        await responder.whenIdle();
+        assert.equal(seenOffline.at(-1), undefined, '发出去之后清掉');
+    });
+
     test('等着再试时对方发了新消息：照常回复、重新计次，之前排定的那次作废', async () => {
         let calls = 0;
         const { waits, sleep } = manualSleep();

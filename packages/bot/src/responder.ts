@@ -68,7 +68,7 @@ export interface ResponderDeps {
      * initiate：她主动找他（ADR 0011）：note 是这次为什么找（写进时间块之后），topic 是召回时想知道什么（ADR 0012）；
      * 返回的 note 接在「生成回复」那行日志后面
      */
-    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string; think?: boolean } }) => BuiltPrompt | Promise<BuiltPrompt>;
+    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string; think?: boolean }; offlineSince?: number }) => BuiltPrompt | Promise<BuiltPrompt>;
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     clean: (reply: string) => string;
     /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查 */
@@ -262,6 +262,8 @@ export function createResponder(deps: ResponderDeps): Responder {
     let phase: Omit<ResponderStatus, 'failures' | 'skipped'> = { phase: 'idle' };
     const setPhase = (next: Omit<ResponderStatus, 'failures' | 'skipped'>) => { phase = next; };
     let skipped: ResponderStatus['skipped'];
+    /** 回复从这一刻起一直失败（连不上模型 / 网断了），发出去之后清掉（ADR 0105：断网很久才回，时间块里写一句） */
+    let failingSince: number | undefined;
 
     /** 等到 at，期间来新消息就提前返回 */
     async function waitForSeen(at: number): Promise<void> {
@@ -347,7 +349,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             seenAt = now();
             setPhase({ phase: 'generating' });
 
-            const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { woken: decision?.woken });
+            const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { woken: decision?.woken, ...(failingSince !== undefined ? { offlineSince: failingSince } : {}) });
             promptMaxBubbles = prompt.maxBubbles;
             deps.onPrompt?.(prompt);
             const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
@@ -406,6 +408,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             sent.push(content);
         }
         seen = input;
+        failingSince = undefined;
         deps.log(`已回复${sent.length > 1 ? `（${sent.length} 条）` : ''}：${deps.sensitive?.() ? sent.join(' / ') : `${sent.reduce((total, part) => total + [...part].length, 0)} 字`}`);
     }
 
@@ -418,6 +421,7 @@ export function createResponder(deps: ResponderDeps): Responder {
                 failures = 0;
             } catch (error) {
                 const reason = `回复失败：${error instanceof Error ? error.message : String(error)}`;
+                failingSince ??= now();
                 if (stopped) {
                     deps.log(`${reason}（已停止，不再试）`);
                     continue;
