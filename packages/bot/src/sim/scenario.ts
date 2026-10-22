@@ -281,6 +281,10 @@ export interface Scenario {
     newsKinds?: NewsKind[];
     /** 假的图片表情收藏（ADR 0063）：编号是 12 位小写十六进制，描述是她在提示词里看到的那句；真的 shelf 代码，文件是空的（模拟器不发图，气泡里是 <sticker:编号>）。只有写了才给回复器 */
     stickers?: { id: string; description: string; tags: string[] }[];
+    /** 默认 false：陪玩状态（ADR 0111，配置 together） */
+    together: boolean;
+    /** 默认 false：她主动发照片（ADR 0110，配置 photoShares，要 photos 和 proactive）；喂完土豆见到它的日子里约 35% 的天 */
+    photoShares: boolean;
     /** 假的照片货架（ADR 0109）：真的 shelf 代码，文件是几个字节的假图（模拟器不发图，气泡里是 <photo:编号>）。只有写了才给回复器，并打开 photos */
     photos?: { kind: 'cat' | 'view' | 'work'; caption: string }[];
     /** 允许发图片表情的轮次里抽中发的概率（0–1），不写按线上的 STICKER_TURN_CHANCE；写 1 = 允许的轮次都发（测选哪张用） */
@@ -382,6 +386,8 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         shapeFeel: s.shapeFeel === true,
         proactiveReach: s.proactiveReach === true,
         proactiveInvite: s.proactiveInvite === true,
+        photoShares: s.photoShares === true,
+        together: s.together === true,
         innerLife: s.innerLife === true,
         herFeelings: s.herFeelings === true,
         herNo: s.herNo === true,

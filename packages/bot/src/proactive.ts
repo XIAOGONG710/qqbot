@@ -22,7 +22,7 @@ export const OCCASIONS = ['dates', 'reschedule', 'news', 'follow_up', 'weather',
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 「她那边的事」的事件类（ADR 0064），按优先级从高到低：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天、闺蜜临时去不了 / 改到很晚（ADR 0061，开着配置 npcAsks 才有） */
-export const NEWS_KINDS = ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick'] as const;
+export const NEWS_KINDS = ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick', 'cat_photo'] as const;
 export type NewsKind = (typeof NEWS_KINDS)[number];
 /** 卡上没写 newsKinds 的按只有相机处理（0057 的行为，旧卡不变） */
 export const DEFAULT_NEWS_KINDS: readonly NewsKind[] = ['camera'];
@@ -186,6 +186,10 @@ export interface ProactiveInput {
     inner?: readonly InnerThought[];
     /** 约好之后出了事、想改约的（ADR 0066）：到点时障碍没了、约没了就不发 */
     reschedules?: readonly RescheduleItem[];
+    /** 货架里有这一类照片、这会儿也允许发（ADR 0110，photos.ts 的 has + photoAllowance）：没有就不发“拍了张照片”那条 */
+    photoReady?: (kind: 'cat', now: number) => boolean;
+    /** 此刻是不是正和他一起玩（ADR 0111，together.ts）：是就不插别的主动消息（日子除外） */
+    together?: (now: number) => boolean;
 }
 
 const MIN = 60_000;
@@ -312,6 +316,18 @@ function inviteOn(day: Date, input: ProactiveInput, seed: (purpose: string) => s
     let roll = pick(seed('invite activity'), 'at', [0, INVITE_ACTIVITIES.reduce((n, a) => n + a.weight, 0) - 1]);
     const activity = INVITE_ACTIVITIES.find(a => (roll -= a.weight) < 0) ?? INVITE_ACTIVITIES[0]!;
     return { at: time, activity };
+}
+
+/**
+ * 打开 photoShares（ADR 0110，要 photos 开着）：喂完土豆见到它之后，有的日子她拍了张照片发给他（news 的新一类 cat_photo）。
+ * 加 news 时机和 cat_photo 这一类，不改角色卡；其余的事件类照卡上的
+ */
+export function withCatPhoto(settings: ProactiveSettings): ProactiveSettings {
+    return {
+        ...settings,
+        occasions: [...new Set<Occasion>([...settings.occasions, 'news'])],
+        newsKinds: [...new Set<NewsKind>([...newsKindsOf(settings), 'cat_photo'])],
+    };
 }
 
 /** 打开 proactiveInvite：加上 invite 时机 */
@@ -675,6 +691,9 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
     const last = history.at(-1);
     const lastTime = last ? Date.parse(last.time) : undefined;
     if (special) return undefined;
+    // 正一起玩着（ADR 0111）：他们俩都在游戏里，没说话不是冷场
+    // 睡前那句晚安照常说：玩到很晚她也会说“我要睡了”（聊着的时候有 20 分钟的老规矩挡着）
+    if (candidate.occasion !== 'bedtime' && input.together?.(now)) return '正和他一起玩';
     if (candidate.occasion === 'bedtime') {
         if (lastTime !== undefined && now - lastTime < BEDTIME_RECENT_MS) return '20 分钟内聊过';
     } else if (candidate.occasion === 'news' || candidate.occasion === 'reschedule') {
@@ -750,6 +769,8 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
         case 'news': {
             const item = input.news?.find(n => n.id === candidate.news!.id && n.day === candidate.day);
             if (!item) return '那件事没发生';
+            // 说“拍了张照片”却发不出照片会穿帮：货架里没有 / 刚发过 / 今天发够了就不发
+            if (item.kind === 'cat_photo' && !input.photoReady?.('cat', now)) return '货架里没有土豆的照片，或者这会儿不该发照片';
             // 那之后聊过：聊天里多半已经说了（状态行里有），不再单发一条
             if (history.some(m => Date.parse(m.time) >= item.at)) return '那之后聊过了';
             break;
@@ -774,7 +795,7 @@ const CARRIES_NEWS: ReadonlySet<Occasion> = new Set(['morning', 'after_class', '
  */
 export function untoldNews(candidate: Candidate, now: number, input: Pick<ProactiveInput, 'news' | 'records' | 'history'>): NewsItem[] {
     if (!CARRIES_NEWS.has(candidate.occasion)) return [];
-    return (input.news ?? []).filter(item => item.day === candidate.day && item.at <= now
+    return (input.news ?? []).filter(item => item.kind !== 'cat_photo' && item.day === candidate.day && item.at <= now
         && !input.records.some(r => r.id === `${item.day}:news:${item.id}` && (counts(r) || waitingRetry(r)))
         && !input.history.some(m => Date.parse(m.time) >= item.at));
 }
@@ -802,6 +823,8 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
             // 闺蜜病了（头一天）：她从对方那里得知；只说这一件，不借机求安慰、不编病情
             friend_sick: () => `你刚得知${candidate.news!.what}，想跟${userName}说一声：就说这一件（看「你那边」那一行里的朋友），不要他回应或安慰你；病得怎么样、有没有去看、你做了什么，那一行里没写的不编`,
             unwell: () => `你今天${candidate.news!.what}，想跟${userName}说一声：只是告诉他，不是要他哄你、关心你，也不要他回应；说到哪一步照「你的身体」那一行，没写的细节不编`,
+            // 喂完土豆拍了张照片（ADR 0110）：先一句话带一下，另起一行单独发照片（提示词里列了编号）；照片是以前拍的，别说“现在”；不要他回应
+            cat_photo: () => `你刚下楼喂了土豆，还拍了它一张照片，想发给${userName}看：先用一句话带一下（喂它这件事看「你那边」土豆那一行，没写的细节不编），然后另起一行单独发照片；不要他回应，别问他想不想看`,
         })[candidate.news!.kind](),
         // 只从她自己的生活事实里挑（不是刚刷到的视频、帖子：旧项目的教训，ADR 0013 决策 2）；不问「在干嘛」，说完不用他回应
         share: () => `你想起一件自己的小事，想跟${userName}说一句：从「你那边」「你的身体」「你今天的心情」里挑一件他还不知道的（不是你这会儿正在做的那件事，前面说过的也别再说），` +

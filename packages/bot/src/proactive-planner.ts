@@ -167,6 +167,10 @@ export interface PlannerDeps {
     news?: (now: number) => NewsItem[];
     /** 约好之后她这边出了事、想改约的（ADR 0066，reschedulesFrom） */
     reschedule?: (now: number) => RescheduleItem[];
+    /** 货架里有这一类照片、这会儿也允许发（ADR 0110）；不给 = 不发“拍了张照片”那一类 */
+    photoReady?: (kind: 'cat', now: number) => boolean;
+    /** 此刻是不是正和他一起玩（ADR 0111）：是就不插别的主动消息 */
+    together?: (now: number) => boolean;
     /** 现在是不是在危机信号的暂停期里（ADR 0068，crisis-state.ts）：普通主动消息不发，待跟进和重要的日子照旧 */
     crisisPaused?: (now: number) => boolean;
     /** 内心（ADR 0101，配置 innerLife）：每隔一阵她自己想一想，念头存在状态文件里；想告诉他 / 想问他的变成“心里惦记”的主动消息 */
@@ -408,6 +412,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             // 只认卡上开了的事件类（ADR 0064 决策 6）：没开的类即使调用方给了也不排
             ...(deps.news ? { news: deps.news(now()).filter(item => newsKindsOf(deps.settings).includes(item.kind)) } : {}),
             ...(deps.reschedule ? { reschedules: reschedulesNow() } : {}),
+            ...(deps.photoReady ? { photoReady: deps.photoReady } : {}),
+            ...(deps.together ? { together: deps.together } : {}),
             ...(deps.weather ? { rainingNow: (at: number) => rainingAt(deps.weather!(at)?.weather, new Date(at)) } : {}),
         };
     };
@@ -441,6 +447,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             topic: recallTopic(candidate, contact.name),
             maxBubbles: MAX_PROACTIVE_BUBBLES,
             ...(candidate.occasion === 'reach' || candidate.occasion === 'invite' ? { canDecline: true } : {}),
+            ...(candidate.news?.kind === 'cat_photo' ? { photo: 'cat' as const } : {}),
             dryRun,
             // 先记后发
             commit: () => { committed = record(candidate, { result: dryRun ? 'dryRun' : 'sent' }); },

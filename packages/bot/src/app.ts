@@ -33,7 +33,7 @@ import { pursuitsReader } from './pursuits.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from './festivals.ts';
-import { newsKindsOf, dayMatches, withInner, withInvite, withReach, type ProactiveMode } from './proactive.ts';
+import { newsKindsOf, dayMatches, withCatPhoto, withInner, withInvite, withReach, type ProactiveMode } from './proactive.ts';
 import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
 import { qzoneComposer } from './qzone.ts';
 import { createVideoBrowsing, dmMessageId, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
@@ -57,7 +57,8 @@ import { loadNeedsAnchor } from './needs.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
-import { photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type PhotoSource } from './photos.ts';
+import { togetherNow } from './together.ts';
+import { photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type PhotoSource } from './photos.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } from './stickers.ts';
 import { SlidingWindowRateLimiter } from './rate-limit.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
@@ -519,6 +520,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.innerLife ? { innerLine: () => planners.get(contact.qq)?.innerLine() } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
+            ...(config.together ? { together: true } : {}),
             ...(config.herNo ? { herNo: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
@@ -804,11 +806,15 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         if (planners.size || config.proactive === 'off') return;
         for (const contact of proactiveContacts) {
             const { character } = cardFor(contact.tier);
+            const plannerSettings = [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite, config.photos && config.photoShares && photos && contact.tier === 'boyfriend' && withCatPhoto]
+                .reduce((settings, overlay) => (overlay ? overlay(settings) : settings), character.proactive!);
             planners.set(contact.qq, createProactivePlanner({
                 contact,
                 schedule: character.schedule!,
-                settings: [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite]
-                    .reduce((settings, overlay) => (overlay ? overlay(settings) : settings), character.proactive!),
+                settings: plannerSettings,
+                // 喂完土豆拍的照片（ADR 0110）：货架里有土豆的照片、这会儿也允许发才发
+                ...(config.together && contact.tier === 'boyfriend' ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
+                ...(photos && config.photoShares ? { photoReady: (_kind: 'cat', at: number) => photos.has('cat') && photoAllowance(history.load(contact.qq), at).allowed } : {}),
                 ...(config.innerLife ? { inner: true } : {}),
                 dates: character.dates,
                 mode: config.proactive,
@@ -833,7 +839,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 // 事件类按这个联系人的卡开（ADR 0064）；课名、生理期细节跟着世界那张卡，所以开了类的只能是看得到这些的档位（现在只有男朋友档）
                 ...(sharedWorld && worldCard ? {
                     news: newsFrom(now => sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, now), worldCard.schedule!, {
-                        kinds: newsKindsOf(character.proactive!),
+                        kinds: newsKindsOf(plannerSettings),
                         ...(worldCard.herWorld!.body ? { bodyAt: (time: Date) => bodyAt(worldCard.herWorld!.body!, worldCard.schedule!, time) } : {}),
                     }),
                 } : {}),

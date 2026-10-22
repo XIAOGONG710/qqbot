@@ -67,6 +67,8 @@ export const DEFAULTS = {
     proactiveReach: false,
     proactiveInvite: false,
     photos: false,
+    photoShares: false,
+    together: false,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -228,6 +230,15 @@ export interface AppConfig {
      * 要看图开着才找）；作者也能用 photo-cli 手动加。货架空着这个开关什么都不做。只对男朋友档；她本人的自拍、吃的不在第一版里。默认关
      */
     photos: boolean;
+    /**
+     * 她主动发照片（ADR 0110，要 photos 和主动消息开着）：喂完土豆见到它的日子里，有的天（约 35%）她拍了张照片，过十来分钟发给他，配一句话；货架里没有土豆的照片就不发。默认关
+     */
+    photoShares: boolean;
+    /**
+     * 陪玩状态（ADR 0111）：他答应了她的邀约（或她答应了他的“今晚王者双排吗”）之后两三个小时，她正和他一起玩：回话短一点、慢一点，聊局里的事；这段时间不插别的主动消息；
+     * 谁说“下了 / 不玩了 / 睡了 / 晚安”就结束。只对男朋友档。默认关
+     */
+    together: boolean;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -505,6 +516,8 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         proactiveReach: bool(file, 'proactiveReach', '', DEFAULTS.proactiveReach),
         proactiveInvite: bool(file, 'proactiveInvite', '', DEFAULTS.proactiveInvite),
         photos: bool(file, 'photos', '', DEFAULTS.photos),
+        photoShares: bool(file, 'photoShares', '', DEFAULTS.photoShares),
+        together: bool(file, 'together', '', DEFAULTS.together),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),

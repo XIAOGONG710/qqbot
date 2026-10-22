@@ -1,0 +1,86 @@
+{
+    "name": "主动：喂完土豆拍了张照片发给他（ADR 0110）",
+    "description": "货架里有三张土豆、一张晚霞。10-26 傍晚（那天世界账里喂完见到土豆、会拍照）：过十来分钟她发给他——先一句话再发一张土豆的照片，不要他回应；不是风景；编号单独一条。之后他回话，照常聊。不该有：说“现在拍”、把编号并进文字、发风景。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-26T18:00:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "photoShares": true,
+    "herNo": true,
+    "photos": [
+        {
+            "kind": "cat",
+            "caption": "土豆趴在宿舍楼下自行车棚顶上晒太阳，眯着眼"
+        },
+        {
+            "kind": "cat",
+            "caption": "土豆蹲在猫粮碗边上，抬头看镜头"
+        },
+        {
+            "kind": "cat",
+            "caption": "土豆蜷在花坛边的石头上睡觉"
+        },
+        {
+            "kind": "view",
+            "caption": "宿舍楼窗外的晚霞，天边一片橘红"
+        }
+    ],
+    "history": [
+        {
+            "time": "2026-10-26T17:20:00+08:00",
+            "role": "user",
+            "content": "我先去忙了，晚点聊"
+        },
+        {
+            "time": "2026-10-26T17:21:00+08:00",
+            "role": "assistant",
+            "content": "好，晚点聊"
+        }
+    ],
+    "steps": [
+        {
+            "case": "CS01",
+            "note": "傍晚喂完土豆，过一阵她发来一句话加一张照片"
+        },
+        {
+            "advance": "3h"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        2
+                    ],
+                    "occasions": [
+                        "她那边的事"
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true,
+                    "replyNone": [
+                        "现在拍",
+                        "刚拍",
+                        "马上拍"
+                    ],
+                    "replyAny": [
+                        "<photo:"
+                    ]
+                }
+            }
+        },
+        {
+            "case": "CS02",
+            "note": "他回话：照常聊"
+        },
+        {
+            "say": "哇，好可爱，这是你拍的吗"
+        },
+        {
+            "check": {
+                "exitClean": true,
+                "photoSent": false
+            }
+        }
+    ]
+}

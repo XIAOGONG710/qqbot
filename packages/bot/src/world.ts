@@ -217,6 +217,23 @@ export function worldErrands(now: WorldNow): { start: Date; end: Date; text: str
     return camera && formatDate(camera.start) === now.day ? [{ start: camera.start, end: camera.end, text: `去${camera.where}买相机` }] : [];
 }
 
+/** 喂完见到土豆的日子里，这一天拍了照片的概率（平均一周两三次，不是天天） */
+export const CAT_PHOTO_CHANCE = 0.35;
+/** 喂完过了多久想起来发（分钟范围） */
+const CAT_PHOTO_DELAY_MIN: [number, number] = [8, 25];
+
+/**
+ * 喂完土豆、见到它的日子里，有的天她拍了张照片想发给他（ADR 0110）：按“日期”取哈希，同一天每次一样。
+ * 了结的时刻 = 喂完之后几分钟；没见到它的天没有照片可拍
+ */
+function newsCatPhoto(now: WorldNow): WorldNews[] {
+    const cat = now.cat;
+    if (!cat || !('fed' in cat.today) || cat.today.seen !== true) return [];
+    if (unit(`${now.day} cat photo`) >= CAT_PHOTO_CHANCE) return [];
+    const delay = CAT_PHOTO_DELAY_MIN[0] + Math.floor(unit(`${now.day} cat photo delay`) * (CAT_PHOTO_DELAY_MIN[1] - CAT_PHOTO_DELAY_MIN[0] + 1));
+    return [{ id: `cat_photo:${now.day}`, kind: 'cat_photo', at: new Date(cat.today.fed.getTime() + delay * 60_000), what: `给${cat.name}拍了张照片` }];
+}
+
 /** what 不带「刚」：没说成的留到这一天后面的主动里说（ADR 0057 调整）；钱从哪来写在「你那边」那一行，那一行按是谁在看说 */
 function newsCamera(now: WorldNow): WorldNews[] {
     const camera = now.cameraFund?.camera;
@@ -246,7 +263,7 @@ function newsHomework(now: WorldNow): WorldNews[] {
  * 不舒服（unwell）不在这里：身体不在世界快照里，见 unwellNews
  */
 export function worldNews(now: WorldNow, kinds: readonly NewsKind[] = DEFAULT_NEWS_KINDS): WorldNews[] {
-    return [...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : []), ...(kinds.includes('friend_sick') ? newsFriendSick(now) : [])];
+    return [...(kinds.includes('cat_photo') ? newsCatPhoto(now) : []), ...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : []), ...(kinds.includes('friend_sick') ? newsFriendSick(now) : [])];
 }
 
 /**
