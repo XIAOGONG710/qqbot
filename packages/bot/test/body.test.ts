@@ -73,3 +73,15 @@ describe('她的身体（ADR 0025）', () => {
         assert.equal(line({}, '2026-10-11T15:00:00+08:00'), undefined);
     });
 });
+
+describe('用词：医书里的“坠”（用户 10-22：她最近老是说肚子坠着）', () => {
+    test('疼的那两天身体那一行教她大白话，不要“坠着 / 下坠 / 坠胀”；不疼的生理期日子不加', () => {
+        const body = boyfriend.herWorld!.body!;
+        const bad = line(body, '2026-12-21T21:30:00+08:00')!;
+        const mild = line(body, '2026-12-22T21:30:00+08:00')!;
+        for (const text of [bad, mild]) {
+            assert.ok(text.includes('说的时候用大白话') && text.includes('肚子疼、小腹酸') && text.includes('别用“坠着”“下坠”“坠胀”'), text);
+        }
+        assert.ok(!line(body, '2026-10-22T21:30:00+08:00')!.includes('大白话'), '第 3 天没疼：不加');
+    });
+});

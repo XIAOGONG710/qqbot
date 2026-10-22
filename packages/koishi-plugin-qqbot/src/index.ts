@@ -122,6 +122,7 @@ export interface Config {
     interruptions: boolean;
     proactiveAsk: boolean;
     hisHours: boolean;
+    weeklyReport: boolean;
     innerLife: boolean;
     herFeelings: boolean;
     herNo: boolean;
@@ -272,6 +273,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**问问他的意见**（ADR 0116，要「主动消息」开着）：下午到傍晚她拿不准一件小事（吃什么、穿什么、作业先写哪个、周末干嘛），随口问他一句，选项最多两个，不考他知识、不要他替她做大决定。一周最多 2 次、两次之间至少隔 2 天；他没回不催；他刚说过去忙 / 累了、下午晚上有事就不问；她自己难过 / 很累 / 不舒服可以只输出「不发」。默认关。'),
         hisHours: Schema.boolean().default(DEFAULTS.hisHours)
             .description('**按他平时在线的钟头排**（ADR 0117，要「主动消息」开着）：「随口说件事」「约他」「问他意见」本来就没有固定钟点，别挑在他最近三周几乎从不说话的钟头——挪到它自己时间窗内最近的、他常在线的钟头。他最近 21 天说的话少于 60 条（没规律）时不挪。默认关。'),
+        weeklyReport: Schema.boolean().default(DEFAULTS.weeklyReport)
+            .description('**周报**（ADR 0118）：每周日 21:30 以后自动出一份“她离真人还差多少”的数字——说话的样子（字数、一轮几条、延迟）、表情和语气、主动、日志里数到的新功能有没有真的在发生——写进数据目录的 reports/weekly-<周日日期>.md。只有数字，没有原话。也可手动：`node src/ops/weekly-report-cli.ts --write`。默认关。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
@@ -464,6 +467,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.interruptions !== undefined ? { interruptions: config.interruptions } : {}),
         ...(config.proactiveAsk !== undefined ? { proactiveAsk: config.proactiveAsk } : {}),
         ...(config.hisHours !== undefined ? { hisHours: config.hisHours } : {}),
+        ...(config.weeklyReport !== undefined ? { weeklyReport: config.weeklyReport } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),

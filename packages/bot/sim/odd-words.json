@@ -1,0 +1,82 @@
+{
+    "name": "用词：不说“肚子坠着”这类医书里的词（生理期第 1 天）",
+    "description": "12-21 是她生理期第 1 天、肚子疼得厉害。他问她肚子还疼吗、今天怎么样、有没有好点。她用大白话说（肚子疼 / 小腹酸 / 懒得动），一句都不能出现“坠”。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-12-21T21:30:00+08:00",
+    "memory": false,
+    "history": [
+        {
+            "time": "2026-12-21T20:00:00+08:00",
+            "role": "user",
+            "content": "在吗"
+        },
+        {
+            "time": "2026-12-21T20:00:20+08:00",
+            "role": "assistant",
+            "content": "在呢"
+        }
+    ],
+    "steps": [
+        {
+            "case": "OW01",
+            "note": "问她肚子"
+        },
+        {
+            "say": "你肚子还疼吗"
+        },
+        {
+            "check": {
+                "exitClean": true,
+                "replyNone": [
+                    "坠"
+                ]
+            }
+        },
+        {
+            "case": "OW02",
+            "note": "问今天怎么样"
+        },
+        {
+            "say": "今天过得怎么样"
+        },
+        {
+            "check": {
+                "exitClean": true,
+                "replyNone": [
+                    "坠"
+                ]
+            }
+        },
+        {
+            "case": "OW03",
+            "note": "问好点没"
+        },
+        {
+            "say": "那你好点了没，吃药了吗"
+        },
+        {
+            "check": {
+                "exitClean": true,
+                "replyNone": [
+                    "坠"
+                ]
+            }
+        },
+        {
+            "case": "OW04",
+            "note": "劝她早点睡"
+        },
+        {
+            "say": "早点睡吧，别硬撑"
+        },
+        {
+            "check": {
+                "exitClean": true,
+                "replyNone": [
+                    "坠"
+                ]
+            }
+        }
+    ]
+}

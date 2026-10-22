@@ -8,7 +8,7 @@
 // 他发的语音、图片（ADR 0052）：入口给了 NapCat 的语音转文字、OCR（AppOptions.media）就先听一听、看一看再进聊天记录（media.ts），
 // 每人的消息按收到的顺序一条条进；读的时候不卡别人，读不出来、超时照旧「[语音]」「[图片]」。
 
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canGiveFeedback, cardKey, CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { chatCompletion, forExtraction } from './llm.ts';
@@ -57,6 +57,7 @@ import { loadNeedsAnchor } from './needs.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
+import { featureStatuses, type FeatureStatus } from './features.ts';
 import { jokeStore, JOKES_CHECK_MS, refreshJokes } from './jokes.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { togetherNow } from './together.ts';
@@ -147,6 +148,10 @@ export interface AppStatus {
     /** 开着、用到的档位卡上有心情或书时：她今天的心情和在读的书 */
     today?: HerDayStatus;
     proactive: ProactiveMode;
+    /** 每个功能开关此刻开没开（ADR 0120）：状态页按模块分组画 */
+    features: FeatureStatus[];
+    /** 照片货架 / 小梗 / 最近一份周报（ADR 0120）；对应的功能没开就没有 */
+    extras?: { photos?: { count: number; cat: number; view: number; work: number }; jokes?: number; report?: { name: string; text: string } };
     /** 长期记忆开着时：服务探测结果（每分钟最多探一次）、最近一次写入和召回 */
     memory?: { baseUrl: string; health?: MemoryEvent; lastWrite?: MemoryEvent; lastRecall?: MemoryEvent };
 }
@@ -897,6 +902,20 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             } catch (error) { log(`周报：写不出来（${error instanceof Error ? error.message : String(error)}）`); }
         }
     };
+    // 状态页的补充（ADR 0120）：货架、小梗个数、最近一份周报的文字（只有数字）
+    const statusExtras = (): NonNullable<AppStatus['extras']> => {
+        const extras: NonNullable<AppStatus['extras']> = {};
+        if (photos) { const s = photos.status(); extras.photos = { count: s.count, cat: s.byKind.cat, view: s.byKind.view, work: s.byKind.work }; }
+        if (jokes) extras.jokes = config.contacts.filter(c => c.tier === 'boyfriend').reduce((n, c) => n + jokes.load(c.qq).jokes.length, 0);
+        if (config.weeklyReport) {
+            try {
+                const dir = join(config.dataDir, 'reports');
+                const latest = existsSync(dir) ? readdirSync(dir).filter(f => /^weekly-\d{4}-\d{2}-\d{2}\.md$/.test(f)).sort().at(-1) : undefined;
+                if (latest) extras.report = { name: latest, text: readFileSync(join(dir, latest), 'utf8').slice(0, 4000) };
+            } catch { /* 读不到就不显示 */ }
+        }
+        return extras;
+    };
     // 小梗（ADR 0114）：隔一阵从最近的聊天里抽；出错只记日志
     let jokesTimer: ReturnType<typeof setInterval> | undefined;
     const refreshAllJokes = () => {
@@ -1251,6 +1270,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 ...(herDaysCard ? { today: herDayStatus(herDaysCard.schedule!, herDaysCard, now,
                     herDaysCard.herWorld && sharedWorld ? sharedWorld.at(herDaysCard.herWorld, herDaysCard.schedule!, now) : undefined) } : {}),
                 proactive: config.proactive,
+                features: featureStatuses(config),
+                ...(photos || jokes || config.weeklyReport ? { extras: statusExtras() } : {}),
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
             };
         },

@@ -61,5 +61,6 @@
                 "exitClean": true
             }
         }
-    ]
+    ],
+    "proactiveReach": true
 }

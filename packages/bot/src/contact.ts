@@ -26,7 +26,7 @@ import { crisisInHistory, type CrisisHit } from './crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from './grievance.ts';
 import { describeIntent } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
-import { alreadyTold, describeLength, lengthHint, maybeTypo, RECALL_SHARE, recentCrutches } from './expression.ts';
+import { alreadyTold, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches } from './expression.ts';
 import { describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from './shape.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
@@ -570,7 +570,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (stickerContext) log(stickerOnlyNow ? '图片表情：这一轮抽到只发表情、不写文字' : '图片表情：这一轮抽到要发一个');
             if (options.stickers && !thinking && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
             pick = picked ? {
-                kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: character.banned,
+                kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: [...character.banned, ...ODD_BODY_WORDS],
                 // 她自己生活里的东西：猫、相机、在读的书、手上的爱好（DSH 诊断 1.2、ADR 0036 的四类）
                 own: [...(around?.cat ? [around.cat.name] : []), '相机', ...character.books.map(book => book.title), '追剧', '调色', '构图', '修片', '摄影区'],
                 ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),
@@ -719,7 +719,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const reviewed = await (crisisNow
                 ? (text: string, reviewOptions: ReviewOptions) => reviewCrisisReply(text, reviewOptions, crisisNow!.level)
                 : reviewReply)(reply, {
-                banned: character.banned,
+                // 角色卡的禁用词 + 医书里的词（“肚子坠着”之类，expression.ts 的 ODD_BODY_WORDS）：出了就让她重写
+                banned: [...character.banned, ...ODD_BODY_WORDS],
                 userName: contact.name,
                 ...(options.speechCheck ? { speech: { ...speechContext(options.history.load(contact.qq)), ...(sulkNow ? { allowGrievance: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}) } } : {}),
                 ...(reading ? { books: reading } : {}),

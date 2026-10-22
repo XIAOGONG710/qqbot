@@ -6,15 +6,51 @@
     "start": "2026-10-06T08:00:00+08:00",
     "memory": false,
     "proactive": true,
+    "proactiveReach": true,
     "steps": [
-        { "case": "H01", "note": "早安：起床后 10–40 分钟" },
-        { "wait": "proactive" },
-        { "say": "早，我在家帮我妈收拾东西，晚点聊" },
-        { "case": "H02", "note": "他说晚点聊之后一直没声：8 小时后找他（冷场），不怪他" },
-        { "wait": "proactive" },
-        { "say": "刚忙完，累瘫了" },
-        { "case": "H03", "note": "到第二天早上：已经 2 次，不再找" },
-        { "advance": "13h" },
-        { "check": { "proactive": { "count": [2, 2], "perDayMax": 2, "allowedTimes": true, "occasions": ["早安", "冷场"], "exitClean": true } } }
+        {
+            "case": "H01",
+            "note": "早安：起床后 10–40 分钟"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "say": "早，我在家帮我妈收拾东西，晚点聊"
+        },
+        {
+            "case": "H02",
+            "note": "他说晚点聊之后一直没声：8 小时后找他（冷场），不怪他"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "say": "刚忙完，累瘫了"
+        },
+        {
+            "case": "H03",
+            "note": "到第二天早上：已经 2 次，不再找"
+        },
+        {
+            "advance": "13h"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        2,
+                        2
+                    ],
+                    "perDayMax": 2,
+                    "allowedTimes": true,
+                    "occasions": [
+                        "早安",
+                        "冷场"
+                    ],
+                    "exitClean": true
+                }
+            }
+        }
     ]
 }

@@ -6,21 +6,93 @@
     "start": "2026-10-08T21:00:00+08:00",
     "memory": false,
     "proactive": true,
+    "proactiveReach": true,
     "steps": [
-        { "case": "F01", "note": "晚上他说了明天的面试" },
-        { "say": "我明天下午两点有个面试，好紧张" },
-        { "say": "不说了，我再看看资料，早点睡" },
-        { "say": "晚安" },
-        { "case": "F02", "note": "第二天早上：早安（可以提一句面试、说加油）" },
-        { "wait": "proactive" },
-        { "say": "嗯嗯，早" },
-        { "check": { "proactive": { "count": [1, 1], "occasions": ["早安"], "exitClean": true } } },
-        { "case": "F03", "note": "面试之后：问结果" },
-        { "wait": "proactive" },
-        { "check": { "proactive": { "count": [1, 1], "occasions": ["待跟进的事"], "replyAny": ["面试", "怎么样", "咋样"], "allowedTimes": true, "exitClean": true } } },
-        { "say": "过了！下周一入职" },
-        { "case": "F04", "note": "再过一天：不再问面试" },
-        { "advance": "1d" },
-        { "check": { "proactive": { "perDayMax": 2, "allowedTimes": true, "absent": ["待跟进的事"], "exitClean": true } } }
+        {
+            "case": "F01",
+            "note": "晚上他说了明天的面试"
+        },
+        {
+            "say": "我明天下午两点有个面试，好紧张"
+        },
+        {
+            "say": "不说了，我再看看资料，早点睡"
+        },
+        {
+            "say": "晚安"
+        },
+        {
+            "case": "F02",
+            "note": "第二天早上：早安（可以提一句面试、说加油）"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "say": "嗯嗯，早"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        1
+                    ],
+                    "occasions": [
+                        "早安"
+                    ],
+                    "exitClean": true
+                }
+            }
+        },
+        {
+            "case": "F03",
+            "note": "面试之后：问结果"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        1
+                    ],
+                    "occasions": [
+                        "待跟进的事"
+                    ],
+                    "replyAny": [
+                        "面试",
+                        "怎么样",
+                        "咋样"
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true
+                }
+            }
+        },
+        {
+            "say": "过了！下周一入职"
+        },
+        {
+            "case": "F04",
+            "note": "再过一天：不再问面试"
+        },
+        {
+            "advance": "1d"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "perDayMax": 2,
+                    "allowedTimes": true,
+                    "absent": [
+                        "待跟进的事"
+                    ],
+                    "exitClean": true
+                }
+            }
+        }
     ]
 }

@@ -4,6 +4,7 @@
 // - 小感冒按概率，几天里从嗓子疼到快好了。
 // - 和世界一样按「日期 + 名目」取哈希，同一天对所有人一样，不存状态。进提示词的只有事实和一句约束（describeBody），不写台词。
 
+import { ODD_BODY_WORDING } from './expression.ts';
 import { classesOn, formatDate, herDay, wakeTime, type Schedule } from './schedule.ts';
 
 export interface Body {
@@ -79,7 +80,9 @@ export function describeBody(now: BodyNow): string | undefined {
     if (now.period) {
         const { day, cramps, detail } = now.period;
         if (detail) {
-            parts.push(`生理期第 ${day} 天${cramps === 'bad' ? '，肚子疼得厉害，只想躺着' : cramps === 'mild' ? '，肚子隐隐地疼，懒得动' : ''}`);
+            // 疼的那两天加一句用词提示：模型会从“痛经”联想出“肚子坠着 / 下坠感 / 坠胀”这类医书里的词，真人不这么说（用户 10-22：「她最近老是说肚子坠着，这不是正常人的语言说话方式」）
+            const wording = cramps ? `（说的时候用大白话：${ODD_BODY_WORDING}）` : '';
+            parts.push(`生理期第 ${day} 天${cramps === 'bad' ? '，肚子疼得厉害，只想躺着' : cramps === 'mild' ? '，肚子隐隐地疼，懒得动' : ''}${wording}`);
         } else if (cramps) {
             parts.push(cramps === 'bad' ? '身上不太舒服，只想躺着' : '身上有点不舒服，懒得动');
         }

@@ -6,19 +6,64 @@
     "start": "2026-10-11T22:30:00+08:00",
     "memory": false,
     "proactive": true,
-    "newsKinds": ["camera"],
+    "proactiveReach": true,
+    "newsKinds": [
+        "camera"
+    ],
     "steps": [
-        { "case": "P01", "note": "前一晚聊过几句，道了晚安" },
-        { "say": "明天周一又要上班了，好烦" },
-        { "say": "我先睡了，晚安" },
-        { "case": "P02", "note": "早上：起床后找他说早安（07:50 前后，早课 08:20 开始；落在课上就推到 09:40 下课后）" },
-        { "wait": "proactive" },
-        { "say": "早啊，刚到公司" },
-        { "case": "P03", "note": "下午：最后一节下课后找他" },
-        { "wait": "proactive" },
-        { "say": "刚开完会，累死" },
-        { "case": "P04", "note": "到第二天早上 06:00：已经 2 次，不再找" },
-        { "advance": "13h" },
-        { "check": { "proactive": { "count": [2, 2], "perDayMax": 2, "allowedTimes": true, "occasions": ["早安", "下课"], "exitClean": true } } }
+        {
+            "case": "P01",
+            "note": "前一晚聊过几句，道了晚安"
+        },
+        {
+            "say": "明天周一又要上班了，好烦"
+        },
+        {
+            "say": "我先睡了，晚安"
+        },
+        {
+            "case": "P02",
+            "note": "早上：起床后找他说早安（07:50 前后，早课 08:20 开始；落在课上就推到 09:40 下课后）"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "say": "早啊，刚到公司"
+        },
+        {
+            "case": "P03",
+            "note": "下午：最后一节下课后找他"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "say": "刚开完会，累死"
+        },
+        {
+            "case": "P04",
+            "note": "到第二天早上 06:00：已经 2 次，不再找"
+        },
+        {
+            "advance": "13h"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        2,
+                        2
+                    ],
+                    "perDayMax": 2,
+                    "allowedTimes": true,
+                    "occasions": [
+                        "早安",
+                        "下课"
+                    ],
+                    "exitClean": true
+                }
+            }
+        }
     ]
 }

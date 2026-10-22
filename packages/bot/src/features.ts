@@ -1,0 +1,96 @@
+// 功能总表（ADR 0120）：每个能开关的功能一行——属于哪个模块、叫什么、对应哪份 ADR。控制台「状态」页按它画“功能开关”，一眼看清哪些开着。
+// 新加一个开关时必须在这里加一行（features.test.ts 会核对：config 里每个布尔 / 模式开关要么在这里，要么在 NOT_SWITCHES 里说明不是功能开关）。
+// 纯数据 + 一个函数，没有副作用；不放任何密钥或聊天内容。
+
+export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
+export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
+
+/** 一行：key 是 config 里的名字；kind 'bool' 看真假，'mode' 看值不是 off（festivals / stickers / bilibili… 的模式） */
+export interface FeatureDef { key: string; label: string; group: FeatureGroup; adr?: string; kind?: 'bool' | 'mode' }
+
+export const FEATURES: readonly FeatureDef[] = [
+    // 说话
+    { key: 'shape', label: '形状控制（每条多长、几条）', group: '说话', adr: '0091' },
+    { key: 'shapeAgenda', label: '带自己的事', group: '说话', adr: '0094' },
+    { key: 'shapeFiller', label: '废话轮次', group: '说话', adr: '0095' },
+    { key: 'shapeSplit', label: '拆成几条', group: '说话', adr: '0096' },
+    { key: 'shapeFeel', label: '情绪轮（先说自己的小情绪）', group: '说话', adr: '0099' },
+    { key: 'shortReplies', label: '说话更短', group: '说话' },
+    { key: 'rhythm', label: '回复节奏（看想 / 打字时间）', group: '说话', adr: '0075' },
+    { key: 'lagTail', label: '回复延迟的长尾', group: '说话', adr: '0105' },
+    { key: 'herNo', label: '会拒绝', group: '说话', adr: '0103' },
+    { key: 'moody', label: '看心情不回', group: '说话', adr: '0013' },
+    { key: 'speechCheck', label: '说话的毛病（出口检查）', group: '说话', adr: '0014' },
+    { key: 'relationship', label: '关系阶段（聊得多了更放得开）', group: '说话', adr: '0113' },
+    { key: 'jokes', label: '小梗回头提', group: '说话', adr: '0114' },
+    { key: 'interruptions', label: '被第三方打断', group: '说话', adr: '0115' },
+    { key: 'together', label: '陪玩状态', group: '说话', adr: '0111' },
+    // 她的日子
+    { key: 'herDays', label: '每日心情、在读的书', group: '她的日子', adr: '0015' },
+    { key: 'schedule', label: '作息', group: '她的日子', adr: '0007' },
+    { key: 'autonomousLife', label: '没人聊天时她一件件过日子', group: '她的日子', adr: '0040' },
+    { key: 'projectChoice', label: '作业接管空闲', group: '她的日子', adr: '0056' },
+    { key: 'lifeInPrompt', label: '生活账进提示词', group: '她的日子', adr: '0045' },
+    { key: 'realWeather', label: '真实天气', group: '她的日子', adr: '0048' },
+    { key: 'everydayLife', label: '日常小事 / 小测', group: '她的日子', adr: '0106' },
+    { key: 'pursuits', label: '她自己的追求', group: '她的日子', adr: '0104' },
+    { key: 'herFeelings', label: '心境（开心 / 难过 / 流泪）', group: '她的日子', adr: '0102' },
+    { key: 'grievance', label: '小别扭 / 和好', group: '她的日子', adr: '0074' },
+    { key: 'npcAsks', label: '闺蜜约人 / 改约', group: '她的日子', adr: '0061' },
+    { key: 'festivals', label: '公共节日', group: '她的日子', adr: '0076', kind: 'mode' },
+    // 主动找他
+    { key: 'proactive', label: '主动消息', group: '主动找他', adr: '0011', kind: 'mode' },
+    { key: 'proactiveReach', label: '没回也继续 / 催他', group: '主动找他', adr: '0100' },
+    { key: 'innerLife', label: '内心（念头 / 心里惦记）', group: '主动找他', adr: '0101' },
+    { key: 'proactiveInvite', label: '约他一起玩', group: '主动找他', adr: '0107' },
+    { key: 'proactiveAsk', label: '问问他的意见', group: '主动找他', adr: '0116' },
+    { key: 'photoShares', label: '喂完土豆发张照片', group: '主动找他', adr: '0110' },
+    { key: 'comeBack', label: '说了等下之后回来', group: '主动找他', adr: '0112' },
+    { key: 'hisHours', label: '按他在线的钟头排', group: '主动找他', adr: '0117' },
+    // 照片和表情
+    { key: 'photos', label: '照片货架（网上找高清图）', group: '照片和表情', adr: '0109' },
+    { key: 'stickers', label: '图片表情', group: '照片和表情', adr: '0063', kind: 'mode' },
+    { key: 'media', label: '听语音、看图', group: '照片和表情', adr: '0052' },
+    // B 站
+    { key: 'bilibili', label: '刷 B 站发给他', group: 'B 站', adr: '0084', kind: 'mode' },
+    { key: 'bilibiliAccount', label: '她自己的 B 站账号', group: 'B 站', adr: '0089' },
+    { key: 'bilibiliDm', label: 'B 站私信', group: 'B 站', adr: '0089', kind: 'mode' },
+    { key: 'bilibiliReplies', label: '回复 B 站评论', group: 'B 站', adr: '0090', kind: 'mode' },
+    { key: 'bilibiliComment', label: '话题评论', group: 'B 站', adr: '0092', kind: 'mode' },
+    // 在 QQ 上的样子
+    { key: 'pokes', label: '被戳会回', group: '在 QQ 上的样子', adr: '0079' },
+    { key: 'pokeBack', label: '戳回去', group: '在 QQ 上的样子', adr: '0079' },
+    { key: 'pokeOut', label: '主动戳他', group: '在 QQ 上的样子', adr: '0087' },
+    { key: 'recalls', label: '看得到他撤回', group: '在 QQ 上的样子', adr: '0082' },
+    { key: 'readReceipts', label: '已读回执', group: '在 QQ 上的样子', adr: '0083' },
+    { key: 'reactions', label: '表情回应', group: '在 QQ 上的样子', adr: '0083' },
+    { key: 'onlineStatus', label: '在线状态', group: '在 QQ 上的样子', adr: '0083' },
+    { key: 'profileLikes', label: '资料卡点赞', group: '在 QQ 上的样子', adr: '0083' },
+    { key: 'signature', label: '个性签名', group: '在 QQ 上的样子', adr: '0083', kind: 'mode' },
+    { key: 'qzone', label: '说说', group: '在 QQ 上的样子', adr: '0083', kind: 'mode' },
+    { key: 'typingStatus', label: '“正在输入…”', group: '在 QQ 上的样子', adr: '0077' },
+    { key: 'selfRecall', label: '打错字撤回重发', group: '在 QQ 上的样子', adr: '0086' },
+    // 记忆和安全
+    { key: 'unlistedFriends', label: '名单外的好友也回', group: '记忆和安全' },
+    { key: 'feedbackCommands', label: '“假 / 像”反馈通道', group: '记忆和安全', adr: '0073' },
+    // 工具
+    { key: 'weeklyReport', label: '周报', group: '工具', adr: '0118' },
+];
+
+/** config 里有、但不是“功能开关”的键（配置数值、对象、字符串……）：features.test.ts 用它核对没有开关被漏掉 */
+export const NOT_SWITCHES: readonly string[] = [
+    'llm', 'prompt', 'memory', 'vision', 'bilibiliCommentKeywords', 'bilibiliAtName', 'bilibiliAtUid', 'qzoneVisibility', 'candidates', 'contextTurns', 'contextContacts', 'dataDir',
+    // 下面几个是 config 里的联系人 / 其他结构，不在 DEFAULTS 里也无妨
+];
+
+export interface FeatureStatus { key: string; label: string; group: FeatureGroup; adr?: string; on: boolean; mode?: string }
+
+/** 此刻哪些功能开着：bool 看真假；mode 看值不是 'off'（并把值带上，比如 dryRun / greet / send） */
+export function featureStatuses(config: object): FeatureStatus[] {
+    const values = config as Record<string, unknown>;
+    return FEATURES.map(def => {
+        const value = values[def.key];
+        const on = def.kind === 'mode' ? typeof value === 'string' && value !== 'off' : value === true;
+        return { key: def.key, label: def.label, group: def.group, ...(def.adr ? { adr: def.adr } : {}), on, ...(def.kind === 'mode' && on ? { mode: String(value) } : {}) };
+    });
+}

@@ -2,6 +2,7 @@
 import { defineComponent, h } from 'vue';
 import { store } from '@koishijs/client';
 import { c, clock, tag, tierLabel } from './common.js';
+import { extrasRows, featureGroups, featureLabel, featureTitle, featureTotals } from './dashboard.js';
 
 function phaseText(r) {
     switch (r.phase) {
@@ -53,6 +54,29 @@ function memoryLine(memory) {
     return parts.filter(Boolean);
 }
 
+/** 功能开关（ADR 0120）：按模块分组，开着的亮绿色、关着的灰色；鼠标放上去看 ADR 编号。页面文件是从仓库直接读的：插件还是旧代码（没重启）时状态里没有 features */
+function featurePanel(status) {
+    if (!status.features) return h('p', { class: 'qqbot-muted' }, '功能开关：重启 Koishi 后显示');
+    const { on, total } = featureTotals(status.features);
+    return h('div', { class: 'qqbot-features' }, [
+        h('div', { class: 'qqbot-features-title' }, `功能开关　已开 ${on} / ${total}`),
+        ...featureGroups(status.features).map(group => h('div', { class: 'qqbot-feature-group' }, [
+            h('span', { class: 'qqbot-label' }, `${group.name} ${group.on}/${group.total}`),
+            h('span', { class: 'qqbot-chips' }, group.items.map(item => h('span', { class: 'qqbot-chip', title: featureTitle(item) }, [tag(featureLabel(item), item.on ? 'success' : 'info')]))),
+        ])),
+    ]);
+}
+
+/** 照片货架、小梗、最近一份周报（ADR 0120）：对应的功能没开就没有这几行；周报是只有数字的文字 */
+function extrasPanel(status) {
+    const rows = extrasRows(status.extras);
+    if (!rows.length) return null;
+    return h('div', { class: 'qqbot-summary', style: 'margin-top: 16px' }, [
+        ...rows.map(row => h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, row.label), h('span', null, row.text)])),
+        status.extras?.report ? h('pre', { class: 'qqbot-report' }, status.extras.report.text) : null,
+    ]);
+}
+
 export const StatusTab = defineComponent({
     setup() {
         return () => {
@@ -80,6 +104,8 @@ export const StatusTab = defineComponent({
                 h('span', { class: 'qqbot-label' }, label), h('span', null, value),
             ])));
             if (!status) return h('div', null, [summary]);
+            const features = featurePanel(status);
+            const extras = extrasPanel(status);
             const table = h(c('el-table'), { data: status.contacts, border: true, style: 'width: 100%; margin-top: 16px' }, () => [
                 h(c('el-table-column'), { label: '称呼', prop: 'name', width: 120 }),
                 h(c('el-table-column'), { label: 'QQ', prop: 'qq', width: 120 }),
@@ -94,7 +120,7 @@ export const StatusTab = defineComponent({
                 }),
                 h(c('el-table-column'), { label: '她此刻（这一档看到的作息）', minWidth: 260 }, { default: ({ row }) => row.now ?? '—' }),
             ]);
-            return h('div', null, [summary, table]);
+            return h('div', null, [summary, features, extras, table]);
         };
     },
 });

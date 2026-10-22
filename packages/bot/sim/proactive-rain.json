@@ -6,17 +6,73 @@
     "start": "2026-10-17T11:30:00+08:00",
     "memory": false,
     "proactive": true,
-    "realRain": { "2026-10-17": [15, 16, 17], "2026-10-18": [] },
+    "proactiveReach": true,
+    "realRain": {
+        "2026-10-17": [
+            15,
+            16,
+            17
+        ],
+        "2026-10-18": []
+    },
     "steps": [
-        { "case": "R01", "note": "中午聊几句，他下午出去打球" },
-        { "say": "起了没" },
-        { "say": "我下午跟室友去打球，晚上再找你" },
-        { "case": "R02", "note": "15 点下雨：她主动找他，说的是雨" },
-        { "wait": "proactive" },
-        { "check": { "proactive": { "count": [1, 1], "occasions": ["下雨"], "replyAny": ["雨", "伞"], "allowedTimes": true, "exitClean": true } } },
-        { "say": "刚到球场，还好有个顶棚" },
-        { "case": "R03", "note": "到第二天傍晚：没雨，不再说雨" },
-        { "advance": "1d" },
-        { "check": { "proactive": { "perDayMax": 2, "allowedTimes": true, "absent": ["下雨"], "exitClean": true } } }
+        {
+            "case": "R01",
+            "note": "中午聊几句，他下午出去打球"
+        },
+        {
+            "say": "起了没"
+        },
+        {
+            "say": "我下午跟室友去打球，晚上再找你"
+        },
+        {
+            "case": "R02",
+            "note": "15 点下雨：她主动找他，说的是雨"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        1
+                    ],
+                    "occasions": [
+                        "下雨"
+                    ],
+                    "replyAny": [
+                        "雨",
+                        "伞"
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true
+                }
+            }
+        },
+        {
+            "say": "刚到球场，还好有个顶棚"
+        },
+        {
+            "case": "R03",
+            "note": "到第二天傍晚：没雨，不再说雨"
+        },
+        {
+            "advance": "1d"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "perDayMax": 2,
+                    "allowedTimes": true,
+                    "absent": [
+                        "下雨"
+                    ],
+                    "exitClean": true
+                }
+            }
+        }
     ]
 }

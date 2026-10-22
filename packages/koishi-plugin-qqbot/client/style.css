@@ -91,3 +91,13 @@
 .qqbot-row-selected td:first-child {
     box-shadow: inset 3px 0 0 var(--k-color-active);
 }
+
+/* 功能开关仪表盘（ADR 0120） */
+.qqbot-features { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--k-color-divider, #ddd); border-radius: 6px; }
+.qqbot-features-title { font-weight: 600; margin-bottom: 8px; }
+.qqbot-feature-group { display: flex; gap: 12px; align-items: flex-start; padding: 6px 0; border-top: 1px dashed var(--k-color-divider, #ddd); }
+.qqbot-feature-group:first-of-type { border-top: none; }
+.qqbot-feature-group .qqbot-label { flex: 0 0 8.5em; }
+.qqbot-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.qqbot-chip { cursor: default; }
+.qqbot-report { margin: 8px 0 0; padding: 10px 12px; max-height: 320px; overflow: auto; white-space: pre-wrap; font-size: 12px; line-height: 1.6; background: var(--k-color-surface-1, #f6f6f6); border-radius: 4px; }
