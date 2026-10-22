@@ -59,3 +59,7 @@
 - 备份 `runtime\backup-pre-bili18-20261022-1945` + `runtime\koishi\koishi.yml.bak-bili18-20261022-1945`。回滚：`herFeelings: false` / `herNo: false` + 重启（各关各的）；整体 `git reset --hard 22bc1c3` + 还原 yml + 重启。内心的质量修复不带开关。
 - 看效果：①下一次想（~20:20–21:20）起 `node packages/bot/src/ops/inner-cli.ts --dir runtime/bot/proactive --last 20`，念头该是有内容的独白（不再是「在干嘛呢」）；②日志「心境：…」（只记种类和来源）；③日志「这一轮有意图：你刚推了他…」「…管着你…」；④没有 `moments.json` 时她只会被小事轻轻影响，大事等作者写。
 - ADR 0104（有自己的追求）：草稿在 `claude/pursuits`（`0bcdac3`），5 条候选都标草稿，等用户选。
+
+## 21:2x 我要重启 Koishi 上线 `5a69f60`（用户：「现在上线并开启」）
+- 原因：补平差距——回复延迟长尾（`lagTail`，ADR 0105）、日常小事 + 小测（`everydayLife`，ADR 0106，从第二天起才有，不改写已经过完的日子）、自己的追求（`pursuits`，ADR 0104）三个开关一起开；顺带情绪轮占比 0.18 → 0.3、废话轮次 0.07 → 0.1（带上文重放 216 条：带情绪 25% → 35%，真人 38%）。
+- 分支 `claude/realness`，测试 bot 1507 + 插件 35 + 工具 43 全绿，全开冒烟过。回滚：三个开关各自改 false + 重启；整体 `git reset --hard 5157efa` + 还原 yml。
