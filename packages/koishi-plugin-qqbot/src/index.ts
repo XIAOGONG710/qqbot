@@ -117,6 +117,11 @@ export interface Config {
     photoShares: boolean;
     together: boolean;
     comeBack: boolean;
+    relationship: boolean;
+    jokes: boolean;
+    interruptions: boolean;
+    proactiveAsk: boolean;
+    hisHours: boolean;
     innerLife: boolean;
     herFeelings: boolean;
     herNo: boolean;
@@ -257,6 +262,16 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**陪玩状态**（ADR 0111）：他答应了她的邀约（或她答应了他的“今晚王者双排吗”）之后的两三个小时，她正和他一起玩——回话短一点、慢一点，聊眼前这局 / 存档里的事；这段时间不插“你人呢”之类别的主动消息；谁说“下了 / 不玩了 / 睡了 / 晚安”就结束。只对男朋友档。默认关。'),
         comeBack: Schema.boolean().default(DEFAULTS.comeBack)
             .description('**说了“等下”之后自己回来**（ADR 0112，要「主动消息」开着）：她最后一句是“等下 / 我去拿个东西 / 弄完这张再说”，他没接话，过 4–14 分钟她回来说一声“回来了”，顺带说刚才那件事怎么样了；不算每天的主动条数，他在这几分钟里说了话就不回来了。默认关。'),
+        relationship: Schema.boolean().default(DEFAULTS.relationship)
+            .description('**关系阶段**（ADR 0113）：角色卡写着她“相处越久越敢说心里话”。最近 30 天里有 14 天以上真聊过（他那天至少说了 3 条），她会更放得开一点：想他直接说、心里的事愿意往外倒一点，仍然是她、不黏人。聊得少时保持现在的样子（只向上变，不会因为他忙而变冷）；不存分数，窗口是滑动的。只对男朋友档。默认关。'),
+        jokes: Schema.boolean().default(DEFAULTS.jokes)
+            .description('**小梗回头提**（ADR 0114）：情侣之间只有你们懂的玩笑。隔一阵让模型从最近两周的聊天里挑最多 3 个反复出现、当时都在笑的词 / 短句（后台抽取；代码硬校验——梗必须在聊天里原样出现过至少两次，编的丢掉）；约四分之一的轮次给她看一个，话赶话正好接得上就顺口提一句；她 72 小时内用过的不再给；你难过 / 危机 / 小别扭时不给。存在数据目录的 jokes/，可随时删。只对男朋友档。默认关。'),
+        interruptions: Schema.boolean().default(DEFAULTS.interruptions)
+            .description('**被第三方打断**（ADR 0115）：正聊着（最近一条在 5 分钟内），她那边发生了一件小事——世界账里有发生时刻的日常小事（室友、食堂、澡堂、查卫生……）恰好落在她上一次回话之后的几分钟里——她当场岔一下说一声（“等下，……”），细节只用世界账那一句、不编。你难过 / 危机 / 小别扭时不打断。只对男朋友档。默认关。'),
+        proactiveAsk: Schema.boolean().default(DEFAULTS.proactiveAsk)
+            .description('**问问他的意见**（ADR 0116，要「主动消息」开着）：下午到傍晚她拿不准一件小事（吃什么、穿什么、作业先写哪个、周末干嘛），随口问他一句，选项最多两个，不考他知识、不要他替她做大决定。一周最多 2 次、两次之间至少隔 2 天；他没回不催；他刚说过去忙 / 累了、下午晚上有事就不问；她自己难过 / 很累 / 不舒服可以只输出「不发」。默认关。'),
+        hisHours: Schema.boolean().default(DEFAULTS.hisHours)
+            .description('**按他平时在线的钟头排**（ADR 0117，要「主动消息」开着）：「随口说件事」「约他」「问他意见」本来就没有固定钟点，别挑在他最近三周几乎从不说话的钟头——挪到它自己时间窗内最近的、他常在线的钟头。他最近 21 天说的话少于 60 条（没规律）时不挪。默认关。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
@@ -444,6 +459,11 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.photoShares !== undefined ? { photoShares: config.photoShares } : {}),
         ...(config.together !== undefined ? { together: config.together } : {}),
         ...(config.comeBack !== undefined ? { comeBack: config.comeBack } : {}),
+        ...(config.relationship !== undefined ? { relationship: config.relationship } : {}),
+        ...(config.jokes !== undefined ? { jokes: config.jokes } : {}),
+        ...(config.interruptions !== undefined ? { interruptions: config.interruptions } : {}),
+        ...(config.proactiveAsk !== undefined ? { proactiveAsk: config.proactiveAsk } : {}),
+        ...(config.hisHours !== undefined ? { hisHours: config.hisHours } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),

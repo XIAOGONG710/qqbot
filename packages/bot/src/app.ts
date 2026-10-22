@@ -33,7 +33,7 @@ import { pursuitsReader } from './pursuits.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from './festivals.ts';
-import { newsKindsOf, dayMatches, withBack, withCatPhoto, withInner, withInvite, withReach, type ProactiveMode } from './proactive.ts';
+import { newsKindsOf, dayMatches, withAsk, withBack, withCatPhoto, withInner, withInvite, withReach, type ProactiveMode } from './proactive.ts';
 import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
 import { qzoneComposer } from './qzone.ts';
 import { createVideoBrowsing, dmMessageId, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
@@ -57,6 +57,7 @@ import { loadNeedsAnchor } from './needs.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
+import { jokeStore, JOKES_CHECK_MS, refreshJokes } from './jokes.ts';
 import { togetherNow } from './together.ts';
 import { photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type PhotoSource } from './photos.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } from './stickers.ts';
@@ -343,6 +344,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const stickerMode = config.stickers ?? 'off';
     const collectingStickers = stickerMode !== 'off' ? stickers : undefined;
     const sendingStickers = stickerMode === 'send' && transport.sendPrivateImage ? collectingStickers : undefined;
+    // 小梗（ADR 0114）：派生数据，存 <数据目录>/jokes/<QQ>.json
+    const jokes = config.jokes ? jokeStore({ dir: join(config.dataDir, 'jokes'), log }) : undefined;
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
     const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, ...(photoSource ? { source: photoSource } : {}) }) : undefined;
     if (config.photos) {
@@ -521,6 +524,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             // 心境（ADR 0102）：作者写下的事每次现取
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
             ...(config.together ? { together: true } : {}),
+            ...(config.relationship ? { relationship: true } : {}),
+            ...(config.interruptions ? { interruptions: true } : {}),
+            ...(jokes && contact.tier === 'boyfriend' ? { jokes: () => jokes.load(contact.qq).jokes } : {}),
             ...(config.herNo ? { herNo: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
@@ -806,13 +812,14 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         if (planners.size || config.proactive === 'off') return;
         for (const contact of proactiveContacts) {
             const { character } = cardFor(contact.tier);
-            const plannerSettings = [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite, config.photos && config.photoShares && photos && contact.tier === 'boyfriend' && withCatPhoto, config.comeBack && withBack]
+            const plannerSettings = [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite, config.proactiveAsk && withAsk, config.photos && config.photoShares && photos && contact.tier === 'boyfriend' && withCatPhoto, config.comeBack && withBack]
                 .reduce((settings, overlay) => (overlay ? overlay(settings) : settings), character.proactive!);
             planners.set(contact.qq, createProactivePlanner({
                 contact,
                 schedule: character.schedule!,
                 settings: plannerSettings,
                 // 喂完土豆拍的照片（ADR 0110）：货架里有土豆的照片、这会儿也允许发才发
+                ...(config.hisHours && contact.tier === 'boyfriend' ? { hisHours: true } : {}),
                 ...(config.together && contact.tier === 'boyfriend' ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
                 ...(photos && config.photoShares ? { photoReady: (_kind: 'cat', at: number) => photos.has('cat') && photoAllowance(history.load(contact.qq), at).allowed } : {}),
                 ...(config.innerLife ? { inner: true } : {}),
@@ -875,6 +882,18 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     let stopped = false;
     let stickerDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
     let photoDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
+    // 小梗（ADR 0114）：隔一阵从最近的聊天里抽；出错只记日志
+    let jokesTimer: ReturnType<typeof setInterval> | undefined;
+    const refreshAllJokes = () => {
+        if (!jokes || stopped) return;
+        for (const contact of config.contacts.filter(c => c.tier === 'boyfriend')) {
+            void refreshJokes({
+                qq: contact.qq, userName: contact.name, charName: cardFor(contact.tier).character.name, history: history.load(contact.qq), store: jokes,
+                extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
+                now: pipeline?.now ? pipeline.now() : Date.now(), log: message => log(`[${contact.qq}] ${message}`),
+            }).catch(error => log(`[${contact.qq}] 小梗：抽取出错（${error instanceof Error ? error.message : String(error)}）`));
+        }
+    };
     // 被限流 / 断网打断了就过一会儿再来（上线时第一次就撞上 Wikimedia 的 429，货架空了 6 小时），最多 PHOTO_RETRY_MAX 次
     let photoRetries = 0;
     let photoRetryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1070,6 +1089,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     syncFollowUps();
                     discoverStickers();
                     discoverPhotos();
+                    refreshAllJokes();
+                    if (jokes && !jokesTimer) {
+                        jokesTimer = setInterval(refreshAllJokes, JOKES_CHECK_MS);
+                        jokesTimer.unref();
+                    }
                     if (photos && !photoDiscoveryTimer) {
                         photoDiscoveryTimer = setInterval(discoverPhotos, PHOTO_DISCOVERY_INTERVAL_MS);
                         photoDiscoveryTimer.unref();
@@ -1152,6 +1176,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (weatherTimer) clearInterval(weatherTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
             if (photoDiscoveryTimer) clearInterval(photoDiscoveryTimer);
+            if (jokesTimer) clearInterval(jokesTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);
             releaseLock();

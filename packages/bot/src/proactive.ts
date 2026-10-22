@@ -18,7 +18,7 @@ import { logBody } from './sensitive.ts';
 export { herDay } from './schedule.ts';
 
 /** 时机，按优先级从高到低 */
-export const OCCASIONS = ['dates', 'back', 'reschedule', 'news', 'follow_up', 'weather', 'inner', 'reach', 'morning', 'after_class', 'quiet', 'bedtime', 'invite', 'share'] as const;
+export const OCCASIONS = ['dates', 'back', 'reschedule', 'news', 'follow_up', 'weather', 'inner', 'reach', 'morning', 'after_class', 'quiet', 'bedtime', 'invite', 'ask', 'share'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 「她那边的事」的事件类（ADR 0064），按优先级从高到低：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天、闺蜜临时去不了 / 改到很晚（ADR 0061，开着配置 npcAsks 才有） */
@@ -190,6 +190,8 @@ export interface ProactiveInput {
     photoReady?: (kind: 'cat', now: number) => boolean;
     /** 此刻是不是正和他一起玩（ADR 0111，together.ts）：是就不插别的主动消息（日子除外） */
     together?: (now: number) => boolean;
+    /** 随口说件事 / 约他 / 问他意见按他平时在线的钟头排（ADR 0117） */
+    hisHours?: boolean;
 }
 
 const MIN = 60_000;
@@ -316,6 +318,84 @@ function inviteOn(day: Date, input: ProactiveInput, seed: (purpose: string) => s
     let roll = pick(seed('invite activity'), 'at', [0, INVITE_ACTIVITIES.reduce((n, a) => n + a.weight, 0) - 1]);
     const activity = INVITE_ACTIVITIES.find(a => (roll -= a.weight) < 0) ?? INVITE_ACTIVITIES[0]!;
     return { at: time, activity };
+}
+
+/**
+ * 问问他的意见（ADR 0116，配置 proactiveAsk）：她拿不准一件小事（吃什么、穿什么、作业先写哪个、周末干嘛），随口问他一句。
+ * 为什么：她原来只会报告自己的事、接他的话；有来有往的关系里，她也会拿小事来问他、让他参与她的决定（而不是永远是他在问她）。
+ * 只问小事：事由从“你那边”“你今天的打算”里她手上真有的事里挑，没有合适的就问晚上吃什么；选项最多两个，不考他的知识，不要他替她做大决定。
+ * 不勉强：一周最多 ASK_MAX_PER_WEEK 次、两次之间至少隔 ASK_MIN_GAP_DAYS 天；他没回不催（reach 不接这一条）；他刚说过去忙 / 累了、今晚有事就不问；她自己难过 / 很累可以只输出「不发」。
+ */
+export const ASK_MAX_PER_WEEK = 2;
+export const ASK_MIN_GAP_DAYS = 2;
+/** 某一天想起来问的概率（周末高一点；被每周上限兜着） */
+const ASK_DAY_CHANCE = { weekend: 0.32, weekday: 0.28 };
+const ASK_FROM = '14:30';
+const ASK_UNTIL = '21:00';
+const ASK_JITTER_MIN: [number, number] = [0, 150];
+
+/** 这一天她会不会想起来问他、几点；看之前的记录（隔了几天、这周几次），再按“联系人 + 日子”取哈希 */
+function askOn(day: Date, input: ProactiveInput, seed: (purpose: string) => string): { at: number } | undefined {
+    const dayText = formatDate(day);
+    const past = input.records.filter(r => r.occasion === 'ask' && counts(r) && r.id.slice(0, 10) < dayText);
+    const daysSince = (r: ProactiveRecord) => Math.round((startOfDay(day).getTime() - Date.parse(r.id.slice(0, 10))) / (24 * HOUR));
+    if (past.filter(r => daysSince(r) <= 7).length >= ASK_MAX_PER_WEEK) return undefined;
+    if (past.some(r => daysSince(r) < ASK_MIN_GAP_DAYS)) return undefined;
+    const weekend = [0, 5, 6].includes(day.getDay());
+    if (pick(seed('ask day'), 'at', [0, 999]) / 1000 >= (weekend ? ASK_DAY_CHANCE.weekend : ASK_DAY_CHANCE.weekday)) return undefined;
+    const time = at(day, ASK_FROM).getTime() + pick(seed('ask'), 'at', minutes(ASK_JITTER_MIN));
+    if (time >= at(day, ASK_UNTIL).getTime()) return undefined;
+    return { at: time };
+}
+
+/** 打开 proactiveAsk：加上 ask 时机 */
+export function withAsk(settings: ProactiveSettings): ProactiveSettings {
+    return { ...settings, occasions: [...new Set<Occasion>([...settings.occasions, 'ask'])] };
+}
+
+/**
+ * 按他平时在线的钟头排（ADR 0117，配置 hisHours）：真人会记得“他这个点一般没空 / 在睡”。
+ * 他最近 HIS_HOURS_DAYS 天里每个钟头（本地时间）说话的占比；至少 HIS_HOURS_MIN 条才算有规律（太少就不挪）。
+ * 随口说件事 / 约他 / 问他意见这三种本来就没有固定钟点，如果挑在占比低于 LOW_HOUR 的钟头，就挪到它自己时间窗内最近的、占比不低于 GOOD_HOUR 的钟头（分钟保留）；窗口里没有好钟头就不动。
+ * 早安 / 下课 / 睡前这些跟着她自己的作息走的不挪。线上他的在线钟头被调试占满，规律不明显时这条等于没开。
+ */
+export const HIS_HOURS_DAYS = 21;
+export const HIS_HOURS_MIN = 60;
+const LOW_HOUR = 0.015;
+const GOOD_HOUR = 0.04;
+
+/** 他每个钟头（本地）说话的占比（相邻钟头各借 1/4 做平滑）；数据太少返回 undefined */
+export function hisHourWeights(history: readonly StoredMessage[], day: Date): number[] | undefined {
+    const end = startOfDay(day).getTime();
+    const start = end - HIS_HOURS_DAYS * 24 * HOUR;
+    const counts = new Array<number>(24).fill(0);
+    let total = 0;
+    for (const message of history) {
+        if (message.role !== 'user') continue;
+        const time = Date.parse(message.time);
+        if (Number.isNaN(time) || time < start || time >= end) continue;
+        counts[new Date(time).getHours()]!++;
+        total++;
+    }
+    if (total < HIS_HOURS_MIN) return undefined;
+    return counts.map((n, h) => (n + 0.25 * (counts[(h + 23) % 24]! + counts[(h + 1) % 24]!)) / (total * 1.5));
+}
+
+/** 把候选时刻挪到窗口里离它最近的好钟头；不用挪 / 窗口里没有好钟头返回 undefined */
+export function moveToHisHours(time: number, weights: readonly number[], from: number, until: number, seedText: string): number | undefined {
+    if (weights[new Date(time).getHours()]! >= LOW_HOUR) return undefined;
+    let best: { hour: number; at: number; distance: number } | undefined;
+    const base = new Date(time);
+    for (let hour = 0; hour < 24; hour++) {
+        if (weights[hour]! < GOOD_HOUR) continue;
+        const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hour, 0).getTime();
+        const target = start + (time % HOUR + HOUR) % HOUR;
+        if (target < from || target >= until) continue;
+        const distance = Math.abs(target - time);
+        if (!best || distance < best.distance) best = { hour, at: target, distance };
+    }
+    void seedText;
+    return best?.at;
 }
 
 /**
@@ -558,6 +638,12 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
         if (plan) add('invite', plan.at, '晚上想起你们的固定节目', { invite: { id: plan.activity.id, what: plan.activity.what } });
     }
 
+    // 问问他的意见（ADR 0116）：下午到傍晚一个时刻；一天一次（id 按天）
+    if (enabled.has('ask')) {
+        const plan = askOn(day, input, seed);
+        if (plan) add('ask', plan.at, '拿不准一件小事，想问问他');
+    }
+
     // 没回也继续（ADR 0100）：她主动发的他还没回、还没到顶时，别的时机都不早于“离上一条隔够了”；另加 reach：想一想要不要催他
     const gate = unansweredGate(input, day);
     if (gate.notBefore !== undefined) {
@@ -568,7 +654,7 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
         }
         let reachAdded = false;
         // 约他一起玩的那条他没回：她不催（约了就是约了，不追着要答复）
-        if (enabled.has('reach') && settings.reach && unansweredRecords(input).at(-1)?.occasion !== 'invite') {
+        if (enabled.has('reach') && settings.reach && !['invite', 'ask'].includes(unansweredRecords(input).at(-1)?.occasion ?? '')) {
             const thought = input.records.filter(r => r.occasion === 'reach' && r.id.startsWith(`${dayText}:`) && !waitingRetry(r));
             if (thought.length < REACH_MAX_PER_DAY) {
                 const lastThought = Math.max(-Infinity, ...thought.map(r => Date.parse(r.at)));
@@ -585,6 +671,20 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
         // 他没回的这段时间里，“随口说件事”和“冷场”这两个泛泛找他说话的时机交给 reach（想一想要不要催他）；不然当天的名额被它们先占了，她只会一条条说自己的事、不催
         if (reachAdded) {
             for (let i = list.length - 1; i >= 0; i--) if (list[i]!.occasion === 'share' || list[i]!.occasion === 'quiet') list.splice(i, 1);
+        }
+    }
+
+    // 按他平时在线的钟头挪（ADR 0117，配置 hisHours）：随口说件事 / 约他 / 问他意见这三种本来就没有固定钟点，别挑在他平时几乎不在的钟头
+    if (input.hisHours) {
+        const weights = hisHourWeights(input.history, day);
+        if (weights) {
+            const windows: Partial<Record<Occasion, [string, string]>> = { share: [SHARE_FROM, SHARE_UNTIL], invite: [INVITE_FROM, INVITE_UNTIL], ask: [ASK_FROM, ASK_UNTIL] };
+            for (const candidate of list) {
+                const window = windows[candidate.occasion];
+                if (!window) continue;
+                const moved = moveToHisHours(candidate.at, weights, at(day, window[0]).getTime(), at(day, window[1]).getTime(), `${seed(candidate.occasion)} hours`);
+                if (moved !== undefined && moved !== candidate.at) { candidate.at = moved; candidate.reason += '（挪到他平时在线的钟头）'; }
+            }
         }
     }
 
@@ -783,6 +883,14 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
             if (input.followUps?.some(f => f.date === candidate.day && (f.time === 'evening' || (/^\d/.test(f.time) && f.time >= '18:00')))) return '他今晚有事，不约';
             break;
         }
+        case 'ask': {
+            if (now >= at(day, ASK_UNTIL).getTime()) return '太晚了，不问他';
+            const lately = history.filter(m => m.role === 'user' && now - Date.parse(m.time) < INVITE_LEFT_MS);
+            if (lately.some(m => LEFT_FOR_NOW.test(m.content))) return '他刚说过去忙 / 去睡了，不问';
+            if (lately.some(m => INVITE_BUSY.test(m.content))) return '他刚说过在忙 / 累了 / 没空，不问';
+            if (input.followUps?.some(f => f.date === candidate.day && (f.time === 'evening' || (/^\d/.test(f.time) && f.time >= '16:00')))) return '他下午 / 晚上有事，不问';
+            break;
+        }
         case 'quiet':
             if (lastTime === undefined || now - lastTime < QUIET_MS) return '没到 8 小时';
             break;
@@ -890,6 +998,9 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
             + `要是上面写着你此刻心里难受、不开心，或者你很累、不舒服（看「你此刻的心境」「你的身体」），今晚就别约了，只输出「${REACH_DECLINE}」两个字`,
         // 说了等下之后回来（ADR 0112）：只说回来了和刚才那件事；不抱怨他没理你，没写的细节不编
         back: () => `你前面跟${userName}说了要离开一下（看上面最后几句：你去弄什么），现在回来了：说一声回来了，顺带说一句刚才那件事弄得怎么样了（只用你前面说的和「你现在」那一行写着的，没写的别编），不要他回应`,
+        // 问问他的意见（ADR 0116）：只问小事，选项最多两个，不考他的知识、不要他替她做大决定；很累 / 难过 / 不舒服就不问
+        ask: () => `你有件小事拿不准，想随口问问${userName}的意见：从「你那边」「你今天的打算」里挑一件你手上真有的小事（吃什么、穿什么、作业先写哪个、周末干嘛、攒的钱先买什么），没有合适的就问晚上吃什么；问一个具体的小问题，选项最多两个，像随手问的，不是考他知识，也别让他替你做大决定；不要长段；`
+            + `要是上面写着你此刻心里难受、不开心，或者你很累、不舒服（看「你此刻的心境」「你的身体」），就别问了，只输出「${REACH_DECLINE}」两个字`,
         quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
             `对方要链接你给不出来），或者问问对方在忙什么（对方可能在忙）`,
         follow_up: () => `${followUp!.atMorning ? `你起床没多久，跟${userName}说早安，顺便` : ''}问问${userName}${followUp!.when}的${followUp!.item.what}怎么样了（${userName}之前跟你说过）`,
@@ -918,7 +1029,7 @@ export function recallTopic(candidate: Candidate, userName: string): string {
 
 /** 日志、状态页里的说法：「早安（起床后 12 分钟）」 */
 export const OCCASION_LABELS: Record<Occasion, string> = {
-    dates: '重要的日子', reschedule: '改约', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', inner: '心里惦记', morning: '早安', after_class: '下课', share: '随口说件自己的事', quiet: '冷场', bedtime: '睡前', invite: '约他一起玩', reach: '催他回', back: '说了等下之后回来',
+    dates: '重要的日子', reschedule: '改约', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', inner: '心里惦记', morning: '早安', after_class: '下课', share: '随口说件自己的事', quiet: '冷场', bedtime: '睡前', invite: '约他一起玩', ask: '问问他的意见', reach: '催他回', back: '说了等下之后回来',
 };
 
 export function candidateLabel(candidate: Candidate): string {

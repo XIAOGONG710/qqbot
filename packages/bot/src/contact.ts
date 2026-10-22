@@ -49,6 +49,9 @@ import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candid
 import { turnCut, type Summarizer, type TurnWindow } from './context-window.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
+import { describeInterruption, interruptionNow } from './interruption.ts';
+import { jokeLine, type Joke } from './jokes.ts';
+import { describeCloseness } from './relationship.ts';
 import { describeTogether, togetherNow } from './together.ts';
 import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from './photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from './stickers.ts';
@@ -187,6 +190,12 @@ export interface ContactPipelineOptions {
     herFeelings?: boolean;
     /** 陪玩状态（ADR 0111）：他答应了她的邀约（或她答应了他的）之后两三个小时，她正和他一起玩：回话短、聊局里的事；只对男朋友档 */
     together?: boolean;
+    /** 关系阶段（ADR 0113）：最近 30 天里有 14 天以上真聊过，她更放得开一点；只对男朋友档 */
+    relationship?: boolean;
+    /** 被第三方打断（ADR 0115）：聊着聊着她那边发生了一件小事（世界账里有时刻的），当场岔一下；只对男朋友档 */
+    interruptions?: boolean;
+    /** 小梗（ADR 0114）：他们之间聊天里反复出现的玩笑；约 1/4 的轮次给她看一个，话赶话接得上就顺口提；只对男朋友档 */
+    jokes?: () => readonly Joke[];
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
     moments?: () => readonly Moment[];
     /** 她自己的追求（ADR 0104，配置 pursuits）：内置两条（别挂科、用新相机拍出满意的东西）加作者在 pursuits.json 里改的 / 加的；每次生成现取 */
@@ -508,6 +517,18 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const togetherState = options.together && contact.tier === 'boyfriend' && !initiate && !crisisNow ? togetherNow(chat, time.getTime()) : undefined;
             const togetherLine = togetherState ? describeTogether(togetherState, time.getTime()) : undefined;
             if (togetherState) log(`陪玩：他们正一起${togetherState.activity === 'wzry' ? '打王者' : togetherState.activity === 'minecraft' ? '玩我的世界' : '玩游戏'}（从答应起 ${Math.round((time.getTime() - togetherState.since) / 60_000)} 分钟）`);
+            // 关系阶段（ADR 0113）：聊得多了更放得开；危机回合、小别扭、她在想事情（think）时不加
+            const closenessLine = options.relationship && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance ? describeCloseness(chat, time.getTime()) : undefined;
+            if (closenessLine) log('关系：最近几乎天天在聊，她更放得开一点（提示词里多一行）');
+            // 被打断（ADR 0115）：聊天正在进行时，世界账里她那边恰好发生了一件小事；他难过 / 危机 / 小别扭 / 主动找他 / 她在想事情时不加
+            const interruption = options.interruptions && around && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
+                ? interruptionNow(around.events, chat, time.getTime()) : undefined;
+            const interruptLine = interruption ? describeInterruption(interruption) : undefined;
+            if (interruptLine) log('被打断：聊着的时候她那边发生了一件小事（提示词里多一行；日志不记内容）');
+            // 小梗（ADR 0114）：他难过 / 危机 / 小别扭 / 主动找他 / 她在想事情时不给；日志不记梗的内容
+            const jokeNow = options.jokes && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
+                ? jokeLine(options.jokes(), chat, time.getTime()) : undefined;
+            if (jokeNow) log('小梗：这一轮提示词里放了一个他们之间的梗（日志不记内容）');
             // 主动发的那条（喂完土豆拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
             const intent = photoNow && !initiate ? photoIntent(photoNow) : baseIntent;
             const grievanceActive = Boolean(grievance && intent === describeGrievance(grievance));
@@ -641,6 +662,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在青岛」
                         ...(partnerBack ? [partnerBack] : []),
                         ...(togetherLine ? [togetherLine] : []),
+                        ...(closenessLine ? [closenessLine] : []),
+                        ...(jokeNow ? [jokeNow] : []),
+                        ...(interruptLine ? [interruptLine] : []),
                         ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
                         ...(photoNow && options.photos?.prompt(photoNow) ? [options.photos.prompt(photoNow)!] : []),
                         ...(intent ? [intent] : []),

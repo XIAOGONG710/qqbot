@@ -1,0 +1,134 @@
+{
+    "name": "小梗回头提（ADR 0114）",
+    "description": "预置一个梗「大肘子」（他把土豆叫成大肘子，她每次都纠正）。八句闲聊里她偶尔顺口提一句，话赶话接得上才提；不该每句都提、不解释这个梗、他难过时不提。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-20T21:00:00+08:00",
+    "memory": false,
+    "jokes": [
+        {
+            "phrase": "大肘子",
+            "origin": "他把土豆叫成大肘子，她每次都纠正"
+        }
+    ],
+    "history": [
+        {
+            "time": "2026-11-18T20:00:00+08:00",
+            "role": "user",
+            "content": "你又去喂大肘子了吧"
+        },
+        {
+            "time": "2026-11-18T20:00:30+08:00",
+            "role": "assistant",
+            "content": "什么大肘子，那是土豆"
+        },
+        {
+            "time": "2026-11-19T20:00:00+08:00",
+            "role": "user",
+            "content": "大肘子本肘来了"
+        },
+        {
+            "time": "2026-11-19T20:00:30+08:00",
+            "role": "assistant",
+            "content": "哈哈哈哈你烦不烦"
+        }
+    ],
+    "steps": [
+        {
+            "case": "J01",
+            "note": "土豆今天出来了吗"
+        },
+        {
+            "say": "土豆今天出来了吗"
+        },
+        {
+            "check": {
+                "exitClean": true
+            }
+        },
+        {
+            "case": "J02",
+            "note": "我今天吃撑了"
+        },
+        {
+            "say": "我今天吃撑了"
+        },
+        {
+            "check": {
+                "exitClean": true
+            }
+        },
+        {
+            "case": "J03",
+            "note": "你猜我刚才看到啥"
+        },
+        {
+            "say": "你猜我刚才看到啥"
+        },
+        {
+            "check": {
+                "exitClean": true
+            }
+        },
+        {
+            "case": "J04",
+            "note": "哈哈哈哈"
+        },
+        {
+            "say": "哈哈哈哈"
+        },
+        {
+            "check": {
+                "exitClean": true
+            }
+        },
+        {
+            "case": "J05",
+            "note": "明天又有课"
+        },
+        {
+            "say": "明天又有课"
+        },
+        {
+            "check": {
+                "exitClean": true
+            }
+        },
+        {
+            "case": "J06",
+            "note": "你那边冷不冷"
+        },
+        {
+            "say": "你那边冷不冷"
+        },
+        {
+            "check": {
+                "exitClean": true
+            }
+        },
+        {
+            "case": "J07",
+            "note": "我在想晚上吃什么"
+        },
+        {
+            "say": "我在想晚上吃什么"
+        },
+        {
+            "check": {
+                "exitClean": true
+            }
+        },
+        {
+            "case": "J08",
+            "note": "土豆有没有胖"
+        },
+        {
+            "say": "土豆有没有胖"
+        },
+        {
+            "check": {
+                "exitClean": true
+            }
+        }
+    ]
+}

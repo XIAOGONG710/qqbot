@@ -281,6 +281,16 @@ export interface Scenario {
     newsKinds?: NewsKind[];
     /** 假的图片表情收藏（ADR 0063）：编号是 12 位小写十六进制，描述是她在提示词里看到的那句；真的 shelf 代码，文件是空的（模拟器不发图，气泡里是 <sticker:编号>）。只有写了才给回复器 */
     stickers?: { id: string; description: string; tags: string[] }[];
+    /** 预置的小梗（ADR 0114，配置 jokes）：写了才打开；跑场景时不去抽，直接用这几个 */
+    jokes?: { phrase: string; origin: string }[];
+    /** 默认 false：按他平时在线的钟头排（ADR 0117，配置 hisHours） */
+    hisHours: boolean;
+    /** 默认 false：问问他的意见（ADR 0116，配置 proactiveAsk） */
+    proactiveAsk: boolean;
+    /** 默认 false：被第三方打断（ADR 0115，配置 interruptions） */
+    interruptions: boolean;
+    /** 默认 false：关系阶段（ADR 0113，配置 relationship） */
+    relationship: boolean;
     /** 默认 false：说了等下之后自己回来（ADR 0112，配置 comeBack，要 proactive） */
     comeBack: boolean;
     /** 默认 false：陪玩状态（ADR 0111，配置 together） */
@@ -391,6 +401,11 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         photoShares: s.photoShares === true,
         together: s.together === true,
         comeBack: s.comeBack === true,
+        relationship: s.relationship === true,
+        interruptions: s.interruptions === true,
+        proactiveAsk: s.proactiveAsk === true,
+        hisHours: s.hisHours === true,
+        ...(Array.isArray(s.jokes) && s.jokes.length ? { jokes: (s.jokes as { phrase?: unknown; origin?: unknown }[]).filter(j => typeof j.phrase === 'string' && typeof j.origin === 'string').map(j => ({ phrase: j.phrase as string, origin: j.origin as string })) } : {}),
         innerLife: s.innerLife === true,
         herFeelings: s.herFeelings === true,
         herNo: s.herNo === true,

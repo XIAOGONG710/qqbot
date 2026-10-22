@@ -1,0 +1,45 @@
+{
+    "name": "被第三方打断：聊着聊着宿舍查卫生（ADR 0115）",
+    "description": "10-28 22:16 世界账里“宿舍查卫生”，她 22:12 刚回过他，22:20 他又来一句。她先接他的话，顺带说一声刚被查卫生岔了一下（“等下，……”）；细节只用那一句写的，不编检查结果 / 谁来查。不该有：长段、编新事实。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-28T22:20:00+08:00",
+    "memory": false,
+    "interruptions": true,
+    "comeBack": true,
+    "proactive": true,
+    "history": [
+        {
+            "time": "2026-10-28T22:12:00+08:00",
+            "role": "user",
+            "content": "在吗"
+        },
+        {
+            "time": "2026-10-28T22:12:30+08:00",
+            "role": "assistant",
+            "content": "在呢"
+        }
+    ],
+    "steps": [
+        {
+            "case": "IN01",
+            "note": "聊到一半，查卫生"
+        },
+        {
+            "say": "你在干嘛"
+        },
+        {
+            "check": {
+                "exitClean": true,
+                "replyAny": [
+                    "查卫生",
+                    "卫生",
+                    "检查",
+                    "收拾",
+                    "宿管"
+                ],
+                "maxChars": 80
+            }
+        }
+    ]
+}

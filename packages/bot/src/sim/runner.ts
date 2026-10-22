@@ -21,7 +21,7 @@ import type { OpenAIMessage, PromptResult } from '../prompt.ts';
 import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
-import { herDay, newsKindsOf, withBack, withCatPhoto, withInner, withInvite, withReach } from '../proactive.ts';
+import { herDay, newsKindsOf, withAsk, withBack, withCatPhoto, withInner, withInvite, withReach } from '../proactive.ts';
 import type { Moment } from '../feelings.ts';
 import { mergePursuits, type Pursuit } from '../pursuits.ts';
 import { dmMessageId, dmNote, nudgeNote, videoNote, videoTopic } from '../bilibili.ts';
@@ -409,6 +409,9 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         // 心境（ADR 0102）：场景里的 moments 的 at 可以写 "-3h" 这样相对开场的偏移
         ...(scenario.herFeelings ? { herFeelings: true, moments: () => simMoments } : {}),
         ...(scenario.together ? { together: true } : {}),
+        ...(scenario.relationship ? { relationship: true } : {}),
+        ...(scenario.interruptions ? { interruptions: true } : {}),
+        ...(scenario.jokes?.length ? { jokes: () => scenario.jokes! } : {}),
         ...(scenario.herNo ? { herNo: true } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),
         ...(scenario.everydayLife ? { everydayLife: true } : {}),
@@ -472,7 +475,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         : character.proactive;
     const withReached = proactiveBase && scenario.proactiveReach ? withReach(proactiveBase) : proactiveBase;
     const withInned = withReached && scenario.innerLife ? withInner(withReached) : withReached;
-    const withInvited = withInned && scenario.proactiveInvite ? withInvite(withInned) : withInned;
+    const withInvitedOnly = withInned && scenario.proactiveInvite ? withInvite(withInned) : withInned;
+    const withInvited = withInvitedOnly && scenario.proactiveAsk ? withAsk(withInvitedOnly) : withInvitedOnly;
     const withPhotoShare = withInvited && scenario.photoShares && scenario.photos ? withCatPhoto(withInvited) : withInvited;
     const proactiveSettings = withPhotoShare && scenario.comeBack ? withBack(withPhotoShare) : withPhotoShare;
     const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && proactiveSettings && character.schedule
@@ -481,6 +485,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             schedule: character.schedule,
             settings: proactiveSettings,
             ...(scenario.innerLife ? { inner: true } : {}),
+            ...(scenario.hisHours ? { hisHours: true } : {}),
             ...(scenario.together ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
             ...(photos && scenario.photoShares ? { photoReady: (_kind: 'cat', at: number) => photos.has('cat') && photoAllowance(history.load(contact.qq), at).allowed } : {}),
             dates: character.dates,

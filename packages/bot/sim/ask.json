@@ -1,0 +1,65 @@
+{
+    "name": "问问他的意见（ADR 0116）",
+    "description": "10-30 周五下午，她拿不准一件小事，随口问他一句：选项最多两个，用她手上真有的事（吃什么 / 作业 / 周末），不考他知识、不让他做大决定；不长段。他说随便，她接着；他一直不回，她不催。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-30T14:00:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "proactiveAsk": true,
+    "herNo": true,
+    "history": [
+        {
+            "time": "2026-10-30T11:00:00+08:00",
+            "role": "user",
+            "content": "我先去忙了，晚点聊"
+        },
+        {
+            "time": "2026-10-30T11:01:00+08:00",
+            "role": "assistant",
+            "content": "好，晚点聊"
+        }
+    ],
+    "steps": [
+        {
+            "case": "AQ01",
+            "note": "下午：她拿不准一件小事"
+        },
+        {
+            "advance": "4h"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        2
+                    ],
+                    "occasions": [
+                        "问问他的意见"
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true,
+                    "replyNone": [
+                        "怎么办啊",
+                        "你说我该",
+                        "帮我决定",
+                        "你必须"
+                    ]
+                }
+            }
+        },
+        {
+            "case": "AQ02",
+            "note": "他回：随便"
+        },
+        {
+            "say": "随便吧，你定"
+        },
+        {
+            "check": {
+                "exitClean": true
+            }
+        }
+    ]
+}

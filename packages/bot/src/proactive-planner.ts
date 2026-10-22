@@ -171,6 +171,8 @@ export interface PlannerDeps {
     photoReady?: (kind: 'cat', now: number) => boolean;
     /** 此刻是不是正和他一起玩（ADR 0111）：是就不插别的主动消息 */
     together?: (now: number) => boolean;
+    /** 随口说件事 / 约他 / 问他意见按他平时在线的钟头排（ADR 0117） */
+    hisHours?: boolean;
     /** 现在是不是在危机信号的暂停期里（ADR 0068，crisis-state.ts）：普通主动消息不发，待跟进和重要的日子照旧 */
     crisisPaused?: (now: number) => boolean;
     /** 内心（ADR 0101，配置 innerLife）：每隔一阵她自己想一想，念头存在状态文件里；想告诉他 / 想问他的变成“心里惦记”的主动消息 */
@@ -414,6 +416,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             ...(deps.reschedule ? { reschedules: reschedulesNow() } : {}),
             ...(deps.photoReady ? { photoReady: deps.photoReady } : {}),
             ...(deps.together ? { together: deps.together } : {}),
+            ...(deps.hisHours ? { hisHours: true } : {}),
             ...(deps.weather ? { rainingNow: (at: number) => rainingAt(deps.weather!(at)?.weather, new Date(at)) } : {}),
         };
     };
@@ -446,7 +449,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             note: occasionNote(candidate, contact.name, untold),
             topic: recallTopic(candidate, contact.name),
             maxBubbles: MAX_PROACTIVE_BUBBLES,
-            ...(candidate.occasion === 'reach' || candidate.occasion === 'invite' ? { canDecline: true } : {}),
+            ...(candidate.occasion === 'reach' || candidate.occasion === 'invite' || candidate.occasion === 'ask' ? { canDecline: true } : {}),
             ...(candidate.news?.kind === 'cat_photo' ? { photo: 'cat' as const } : {}),
             dryRun,
             // 先记后发

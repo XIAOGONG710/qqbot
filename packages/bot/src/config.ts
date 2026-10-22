@@ -70,6 +70,11 @@ export const DEFAULTS = {
     photoShares: false,
     together: false,
     comeBack: false,
+    relationship: false,
+    jokes: false,
+    interruptions: false,
+    proactiveAsk: false,
+    hisHours: false,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -244,6 +249,31 @@ export interface AppConfig {
      * 说了“等下”之后自己回来（ADR 0112，要主动消息开着）：她最后一句是“等下 / 我去拿个东西 / 弄完这张再说”，他没接话，过 4–14 分钟她回来说一声，顺带说刚才那件事；不算每天的主动条数。默认关
      */
     comeBack: boolean;
+    /**
+     * 关系阶段（ADR 0113）：角色卡【会变】“相处越久越敢说心里话”。最近 30 天里有 14 天以上真聊过（他那天至少说了 3 条），她更放得开一点：想他直接说、心里的事愿意往外倒一点；
+     * 聊得少时保持现在的样子（只向上变，不让她因为他忙而变冷）；不存分数。只对男朋友档。默认关
+     */
+    relationship: boolean;
+    /**
+     * 小梗回头提（ADR 0114）：隔一阵让模型从最近两周的聊天里挑最多 3 个只有他们懂的玩笑（后台抽取；代码硬校验：梗必须在聊天里原样出现过至少两次，编的丢掉），
+     * 约 1/4 的轮次给她看一个，话赶话正好接得上就顺口提一句；她 72 小时内用过的不再给；他难过 / 危机 / 小别扭时不给。存 <数据目录>/jokes/，可随时删。默认关
+     */
+    jokes: boolean;
+    /**
+     * 被第三方打断（ADR 0115）：聊着聊着（最近一条在 5 分钟内）她那边发生了一件小事——世界账里有发生时刻的日常小事（室友、食堂、澡堂、查卫生……）恰好落在她上一次回话之后的几分钟里——
+     * 她当场岔一下说一声（“等下，……”），细节只用世界账那一句；他难过 / 危机 / 小别扭时不打断。只对男朋友档。默认关
+     */
+    interruptions: boolean;
+    /**
+     * 问问他的意见（ADR 0116，要主动消息开着）：下午到傍晚她拿不准一件小事（吃什么、穿什么、作业先写哪个、周末干嘛），随口问他一句；一周最多 2 次、两次之间至少隔 2 天；
+     * 他没回不催；他刚说过去忙 / 累了、今晚有事就不问；她自己难过 / 很累 / 不舒服可以只输出「不发」。默认关
+     */
+    proactiveAsk: boolean;
+    /**
+     * 按他平时在线的钟头排（ADR 0117，要主动消息开着）：随口说件事 / 约他 / 问他意见本来就没有固定钟点，别挑在他最近三周几乎从不说话的钟头——挪到它自己时间窗内最近的好钟头。
+     * 他最近 21 天说的话少于 60 条（没规律）时不挪。默认关
+     */
+    hisHours: boolean;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -524,6 +554,11 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         photoShares: bool(file, 'photoShares', '', DEFAULTS.photoShares),
         together: bool(file, 'together', '', DEFAULTS.together),
         comeBack: bool(file, 'comeBack', '', DEFAULTS.comeBack),
+        relationship: bool(file, 'relationship', '', DEFAULTS.relationship),
+        jokes: bool(file, 'jokes', '', DEFAULTS.jokes),
+        interruptions: bool(file, 'interruptions', '', DEFAULTS.interruptions),
+        proactiveAsk: bool(file, 'proactiveAsk', '', DEFAULTS.proactiveAsk),
+        hisHours: bool(file, 'hisHours', '', DEFAULTS.hisHours),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),
