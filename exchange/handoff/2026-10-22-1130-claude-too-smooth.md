@@ -63,3 +63,8 @@
 ## 21:2x 我要重启 Koishi 上线 `5a69f60`（用户：「现在上线并开启」）
 - 原因：补平差距——回复延迟长尾（`lagTail`，ADR 0105）、日常小事 + 小测（`everydayLife`，ADR 0106，从第二天起才有，不改写已经过完的日子）、自己的追求（`pursuits`，ADR 0104）三个开关一起开；顺带情绪轮占比 0.18 → 0.3、废话轮次 0.07 → 0.1（带上文重放 216 条：带情绪 25% → 35%，真人 38%）。
 - 分支 `claude/realness`，测试 bot 1507 + 插件 35 + 工具 43 全绿，全开冒烟过。回滚：三个开关各自改 false + 重启；整体 `git reset --hard 5157efa` + 还原 yml。
+
+## 21:16 已上线（用户：「现在上线并开启」）：`5a69f60`
+- `main` = `integration` = `5a69f60`；`koishi.yml` 加 `lagTail: true`、`everydayLife: true`、`pursuits: true`（紧跟 `herNo`）。新进程 21:16:22 起，新日志 `2026-10-22-7.log` 0 error/warn，心跳 `ref = 5a69f60`；`runtime/bot/world/everyday-from.json` = 2026-10-23（日常小事和小测从明天起，已经过完的日子不改）。
+- 备份 `runtime\backup-pre-bili19-20261022-2116` + `koishi.yml.bak-bili19-20261022-2116`。回滚：三个开关各自改 false + 重启；整体 `git reset --hard 5157efa` + 还原 yml。情绪轮 / 废话比例是常量，随代码走（回滚要回退提交）。
+- 测试 bot 1507 + 插件 35 + 工具 43 全绿。看效果：`node exchange/tools/realness-report.mjs <起始日期>`（只出数字）。
