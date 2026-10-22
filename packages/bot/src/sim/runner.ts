@@ -7,7 +7,7 @@ import type { BotConfig, Contact } from '../config.ts';
 import { createContactResponder, replySkip, type TierCard } from '../contact.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../sensitive.ts';
 import { withFestivalActivities, withFestivals } from '../festivals.ts';
-import { stickerShelf } from '../stickers.ts';
+import { STICKER_ONLY_SHARE, stickerShelf } from '../stickers.ts';
 import { MEET_MINUTES, promiseKeeper } from '../promises.ts';
 import { writeJsonAtomic } from '../json-file.ts';
 import { ChatHistory, type StoredMessage } from '../history.ts';
@@ -83,6 +83,8 @@ export interface RunOptions {
     shapeAgenda?: boolean;
     /** 废话（ADR 0095）：run.ts 的 --filler 对所有场景打开，同时打开 shape */
     shapeFiller?: boolean;
+    /** 情绪轮（ADR 0099）：run.ts 的 --feel 对所有场景打开，同时打开 shape */
+    shapeFeel?: boolean;
     /** 分成几条（ADR 0096）：run.ts 的 --split 对所有场景打开，同时打开 shape */
     shapeSplit?: boolean;
     /** 日记里的世界（ADR 0026）：同学档的卡上的，run.ts 传 */
@@ -380,12 +382,14 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.grievance ? { grievance: true } : {}),
         ...(scenario.rhythm ? { rhythm: true } : {}),
         ...(scenario.shortReplies ? { shortReplies: true } : {}),
-        ...(scenario.shape || options.shape || scenario.shapeAgenda || options.shapeAgenda || scenario.shapeFiller || options.shapeFiller || scenario.shapeSplit || options.shapeSplit ? { shape: true } : {}),
+        ...(scenario.shape || options.shape || scenario.shapeAgenda || options.shapeAgenda || scenario.shapeFiller || options.shapeFiller || scenario.shapeFeel || options.shapeFeel || scenario.shapeSplit || options.shapeSplit ? { shape: true } : {}),
         ...(scenario.shapeAgenda || options.shapeAgenda ? { shapeAgenda: true } : {}),
         ...(scenario.shapeFiller || options.shapeFiller ? { shapeFiller: true } : {}),
+        ...(scenario.shapeFeel || options.shapeFeel ? { shapeFeel: true } : {}),
         ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
         ...(stickers ? { stickers } : {}),
         ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),
+        ...(scenario.stickerOnlyChance !== undefined ? { stickerOnlyChance: scenario.stickerOnlyChance } : scenario.shapeFeel || options.shapeFeel ? { stickerOnlyChance: STICKER_ONLY_SHARE } : {}),
         contacts: [contact, ...others],
         log,
         now: clock.now,

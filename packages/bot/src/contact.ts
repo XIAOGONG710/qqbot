@@ -46,7 +46,7 @@ import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candid
 import { turnCut, type Summarizer, type TurnWindow } from './context-window.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
-import { imageStickerAllowance, stickerCued, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from './stickers.ts';
+import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from './stickers.ts';
 
 const DAY_MS = 86_400_000;
 
@@ -112,6 +112,8 @@ export interface ContactPipelineOptions {
     stickers?: StickerShelf;
     /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
     stickerChance?: number;
+    /** 抽到发表情的轮次里只发表情不写文字的概率（不写 = 0，不开；app.ts 在 shapeFeel 开着时给 STICKER_ONLY_SHARE；模拟器场景可以调来测，ADR 0099） */
+    stickerOnlyChance?: number;
     /** 不带联系人前缀，这里会加上 [QQ 号] */
     log: Log;
     /** 每次生成前拿到后处理之后、实际发给模型的提示词 */
@@ -155,6 +157,8 @@ export interface ContactPipelineOptions {
     shapeAgenda?: boolean;
     /** 废话（配置 shapeFiller，要 shape 开着）：适用的轮次里约 7% 只回一条笑 / 应声 / 拖音 / 叹一句状态，他拖音时她也跟着拖（ADR 0095） */
     shapeFiller?: boolean;
+    /** 情绪轮（配置 shapeFeel，要 shape 开着）：适用的轮次里约 18% 先说自己对他的小情绪，不把他的话处理完整（ADR 0099） */
+    shapeFeel?: boolean;
     /** 分成几条（配置 shapeSplit，要 shape 开着）：把形状里抽出的条数当目标写进提示词，不只是上限（ADR 0096） */
     shapeSplit?: boolean;
     /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
@@ -187,10 +191,15 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const generate = options.generate ?? ((messages, log) => chatCompletion(llm, messages, { log }));
     let stickersAllowed = true;
     /** 这一轮抽到要发图片表情，并带上他这一轮说的话（给货架按它挑）；没抽到就不给她看货架 */
-    let stickerContext: { text: string } | undefined;
+    let stickerContext: { text: string; only?: boolean } | undefined;
+    /** 这一轮只发表情、不写文字（ADR 0099）：模型多写了文字就去掉，只留那一行表情；它没写表情就照它写的发 */
+    let stickerOnlyNow = false;
     const clean = (reply: string) => {
         const text = cleanUpReply(reply, names, character.regexScripts);
-        return options.stickers?.clean(text, stickersAllowed) ?? stripStickerArtifacts(text);
+        const cleaned = options.stickers?.clean(text, stickersAllowed) ?? stripStickerArtifacts(text);
+        if (!stickerOnlyNow) return cleaned;
+        const only = cleaned.split('\n').map(line => line.trim()).filter(line => /^<sticker:[a-f0-9]{12}>$/i.test(line));
+        return only.length ? only.join('\n') : cleaned;
     };
     const schedule = options.schedule ? character.schedule : undefined;
     const herSchedule = options.herDays ? character.schedule : undefined;
@@ -448,8 +457,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const stickerAllowance = options.stickers ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
             stickersAllowed = stickerAllowance.allowed;
             const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
-            stickerContext = stickersAllowed && stickerCued(saidNow) && stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE) ? { text: saidNow } : undefined;
-            if (stickerContext) log('图片表情：这一轮抽到要发一个');
+            stickerOnlyNow = stickersAllowed && stickerCued(saidNow) && stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE) && stickerOnlyTurn(chat, options.stickerOnlyChance ?? 0);
+            stickerContext = stickersAllowed && stickerCued(saidNow) && stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE) ? { text: saidNow, ...(stickerOnlyNow ? { only: true } : {}) } : undefined;
+            if (stickerContext) log(stickerOnlyNow ? '图片表情：这一轮抽到只发表情、不写文字' : '图片表情：这一轮抽到要发一个');
             if (options.stickers && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
             pick = picked ? {
                 kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: character.banned,
@@ -469,7 +479,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
                 ...(mood ? ['心情'] : []),
             ];
-            shapeNow = options.shape && !crisisNow ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, split: options.shapeSplit, agendaTopics }) : undefined;
+            shapeNow = options.shape && !crisisNow && !stickerOnlyNow ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, agendaTopics }) : undefined;
             // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
             const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
             const crutchLine = crutches.length
@@ -479,9 +489,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 说过了就不再自己提（ADR 0098）：事实还在时间块里，他问起来照常答
             const toldLine = told.length ? `[这些事你已经主动跟他说过了：${told.join('、')}。他不问，就别再自己提]` : undefined;
             if (toldLine) log(`已经主动说过：${told.join('、')}（提示词里让她不再自己提）`);
-            const length = crisisNow || shapeNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
+            const length = crisisNow || shapeNow || stickerOnlyNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
-            if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
+            if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
             // ADR 0043（配置 contextTurns，默认关）：最近几轮原文 + 更早的要点，代替最近 80 条

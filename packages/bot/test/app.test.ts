@@ -50,7 +50,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeSplit: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, shapeSplit: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false, shortReplies: false,
         media: true,
@@ -74,7 +74,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; extra?: Partial<Transport> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -104,6 +104,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.vision ? { vision: options.vision } : {}),
         ...(options.stickers ? { stickers: options.stickers } : {}),
         ...(options.stickerChance !== undefined ? { stickerChance: options.stickerChance } : {}),
+        ...(options.stickerOnlyChance !== undefined ? { stickerOnlyChance: options.stickerOnlyChance } : {}),
         ...(options.mediaTimeouts ? { mediaTimeouts: options.mediaTimeouts } : {}),
         ...(options.bilibiliFetch ? { bilibiliFetch: options.bilibiliFetch } : {}),
         ...(options.bilibiliRequest ? { bilibiliRequest: options.bilibiliRequest } : {}),
@@ -263,6 +264,54 @@ describe('编排（app.ts）', () => {
         assert.equal(calls.discovered, 1);
         assert.equal(calls.used, 1);
         assert.deepEqual(chat(cfg, 10001), ['user:[动画表情]', 'assistant:她发了个表情包：白猫捂嘴偷笑']);
+    });
+
+    // ADR 0099：他自己的线上话里发表情的轮次约六成只有表情；抽到发表情的轮次里一半只发表情、不写文字
+    test('图片表情：抽到「只发表情」的轮次，模型多写的文字去掉、只发那一张；没抽到只发表情就文字加表情照旧；模型没写表情就照它写的发', async () => {
+        const entry: StickerEntry = {
+            id: '123456abcdef', file: 'C:/stickers/123456abcdef.gif', description: '白猫捂嘴偷笑', tags: ['好笑'],
+            source: { kind: 'qq-custom' }, createdAt: new Date().toISOString(), used: 0,
+        };
+        const prompts: ({ text: string; only?: boolean } | undefined)[] = [];
+        const make = (): StickerShelf => ({
+            consider: async () => undefined, discover: async () => undefined,
+            prompt: context => { prompts.push(context); return '[这一轮你要发一个图片表情]\n- <sticker:123456abcdef>：白猫捂嘴偷笑（好笑）'; },
+            clean: text => text,
+            resolve: text => text.trim() === '<sticker:123456abcdef>' ? entry : undefined,
+            history: text => text.trim() === '<sticker:123456abcdef>' ? '她发了个表情包：白猫捂嘴偷笑' : text,
+            used: () => undefined, status: () => ({ count: 1 }),
+        });
+        const run = async (stickerOnlyChance: number | undefined, reply: string, qq: number, bubbles = 1, overrides: Partial<AppConfig> = {}, said = '哈哈哈哈笑死我了') => {
+            const cfg = config({ stickers: 'send', contacts: [{ qq, name: '阿明', tier: 'boyfriend' }], ...overrides });
+            const { app, sent, images } = setup(cfg, { [qq]: [] }, { stickers: make(), stickerChance: 1, stickerOnlyChance, generate: () => reply });
+            await app.connected(SELF);
+            app.receive(event(qq, 9, said));
+            await until(() => sent.length + images.length >= bubbles);
+            return { sent: sent.map(line => line.slice(String(qq).length + 1)), images, history: chat(cfg, qq) };
+        };
+        const only = await run(1, '哈哈哈哈\n<sticker:123456abcdef>', 10001);
+        assert.deepEqual(only.sent, [], '文字去掉');
+        assert.equal(only.images.length, 1);
+        assert.deepEqual(only.history, ['user:哈哈哈哈笑死我了', 'assistant:她发了个表情包：白猫捂嘴偷笑']);
+        assert.equal(prompts.at(-1)?.only, true, '货架提示词里写明这一轮只发表情');
+        const both = await run(0, '哈哈哈哈\n<sticker:123456abcdef>', 10002, 2);
+        assert.deepEqual(both.sent, ['哈哈哈哈']);
+        assert.equal(both.images.length, 1);
+        assert.notEqual(prompts.at(-1)?.only, true);
+        const textOnly = await run(1, '哈哈哈哈笑死', 10003);
+        assert.deepEqual(textOnly.sent, ['哈哈哈哈笑死'], '抽到只发表情但模型没写表情：照它写的发');
+        assert.equal(textOnly.images.length, 0);
+        // 没给概率：shapeFeel 没开就是 0（文字加表情照旧）；开了（要 shape 一起开）按 STICKER_ONLY_SHARE，同一句每次一样
+        const unset = await run(undefined, '哈哈哈哈\n<sticker:123456abcdef>', 10004, 2);
+        assert.deepEqual(unset.sent, ['哈哈哈哈']);
+        assert.notEqual(prompts.at(-1)?.only, true);
+        // shapeFeel（和 shape）开着：走 STICKER_ONLY_SHARE 的抽签，不同的话抽到不同的结果（12 句里两种都有；全是同一种的概率约 1/2000）
+        const seen = new Set<boolean>();
+        for (let i = 0; i < 12; i++) {
+            await run(undefined, '哈哈哈哈\n<sticker:123456abcdef>', 10010 + i, 1, { shape: true, shapeFeel: true }, `哈哈哈哈笑死我了第${i}句`);
+            seen.add(prompts.at(-1)?.only === true);
+        }
+        assert.deepEqual([...seen].sort(), [false, true], '开了 shapeFeel 之后有的轮次只发表情、有的不');
     });
 
     test('图片表情 collect：只收男朋友发来的候选，不进提示词、不发送图片', async () => {

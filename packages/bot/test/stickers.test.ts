@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { imageStickerAllowance, rankStickers, STICKER_SHORTLIST, STICKER_TURN_CHANCE, stickerCued, stickerReactionWords, stickerShelf, stickerTurn, stripStickerArtifacts, type DownloadedSticker, type StickerEntry } from '../src/stickers.ts';
+import { imageStickerAllowance, rankStickers, STICKER_ONLY_SHARE, STICKER_SHORTLIST, STICKER_TURN_CHANCE, stickerCued, stickerOnlyTurn, stickerReactionWords, stickerShelf, stickerTurn, stripStickerArtifacts, type DownloadedSticker, type StickerEntry } from '../src/stickers.ts';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -247,6 +247,34 @@ describe('图片表情：代码定哪几轮发、按他这句话挑一小撮（1
         assert.equal(draws(1), 1);
         assert.equal(stickerTurn(history(3)), stickerTurn(history(3)));
         assert.equal(stickerTurn([{ role: 'assistant', content: '在' }]), false);
+    });
+
+    // ADR 0099：他自己的线上话里发表情的轮次约六成只有表情
+    test('只发表情的抽签：占抽到发表情的轮次的 STICKER_ONLY_SHARE；同一句每次一样；和「发不发」的抽签互不影响；没有他的话不抽', () => {
+        const history = (i: number) => [{ role: 'user' as const, content: `第 ${i} 句哈哈`, time: new Date(Date.UTC(2026, 9, 19, 12, 0, i)).toISOString() }];
+        const only = (chance?: number) => Array.from({ length: 3000 }, (_, i) => stickerOnlyTurn(history(i), chance)).filter(Boolean).length / 3000;
+        assert.ok(Math.abs(only() - STICKER_ONLY_SHARE) < 0.04, String(only()));
+        assert.equal(only(0), 0);
+        assert.equal(only(1), 1);
+        assert.equal(stickerOnlyTurn(history(5)), stickerOnlyTurn(history(5)));
+        assert.equal(stickerOnlyTurn([{ role: 'assistant', content: '在' }]), false);
+        // 在“抽到发表情”的那些轮次里，只发表情的比例也是 STICKER_ONLY_SHARE（两个抽签不相关）
+        const drawn = Array.from({ length: 6000 }, (_, i) => history(i)).filter(h => stickerTurn(h));
+        const share = drawn.filter(h => stickerOnlyTurn(h)).length / drawn.length;
+        assert.ok(Math.abs(share - STICKER_ONLY_SHARE) < 0.05, String(share));
+    });
+
+    test('传了他这一轮的话、且这一轮只发表情：提示词写明只回一行编号、别的什么都不写；还是只列按他这句话挑的几张', async () => {
+        const { shelf: real } = setup();
+        for (let i = 0; i < 10; i++) {
+            await real.consider([{ type: 'image', data: { url: `https://qq.invalid/cat${i}.gif`, sub_type: 1, summary: '[动画表情]' } }], { from: 10001, messageId: i + 1 });
+        }
+        const only = real.prompt({ text: '哈哈哈', only: true })!;
+        assert.match(only, /这一轮你只发一个图片表情，不写任何文字/);
+        assert.match(only, /别的什么都不写/);
+        assert.doesNotMatch(only, /文字回完以后/);
+        assert.ok([...only.matchAll(/<sticker:([a-f0-9]{12})>：/g)].length <= STICKER_SHORTLIST);
+        assert.match(real.prompt({ text: '哈哈哈' })!, /文字回完以后/, '没写 only 还是旧写法');
     });
 
     test('传了他这一轮的话：只列按它挑出来的几张并写明这一轮要发一个；不传还是旧办法（最久没用的 12 张）', async () => {

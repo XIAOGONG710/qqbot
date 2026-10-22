@@ -25,6 +25,10 @@ export interface ShapePlan {
     stretch?: boolean;
     /** 这一轮语气松一点，句尾可以带个「～」或「……」（不管他拖没拖音；配置 shapeFiller，ADR 0098） */
     drawl?: boolean;
+    /** 这一轮先说自己对他的一点小情绪，不把他的话处理完（配置 shapeFeel，ADR 0099）：撒娇要确认 / 夸张装崩溃 / 小委屈 / 不讲理地考验他，挑哪一种看他刚说的话 */
+    feel?: boolean;
+    /** 他要是在说她的不是 / 叮嘱她 / 拿她开玩笑，别一本正经地认错、答应改（配置 shapeFeel，ADR 0099）：提示词里加一句，顺着他玩或带点委屈 */
+    pushback?: boolean;
     /** 带自己的事的轮次里这一次说哪一件（「作业」「天气」「身体」……，按轮抽，跳过她已经主动说过的）；调用方没给候选就没有，由模型自己挑 */
     agendaTopic?: string;
     /** 这一轮要分成几条发（配置 shapeSplit，ADR 0096）：不只是上限，提示词里写“分成 N 条”；没有就按 maxBubbles 当上限 */
@@ -62,6 +66,21 @@ const FILLER_KINDS: readonly [FillerKind, number][] = [['ack', 0.35], ['laugh', 
  * 不管他有没有先拖音，约 12% 的轮次（不是认真接话 / 收尾 / 他说倒霉事时）提示她语气可以松一点；真模型多半会照做一部分，目标是气泡里 5–8%
  */
 export const DRAWL_SHARE = 0.12;
+/**
+ * 情绪轮占比（ADR 0099），只在适用的轮次里算（和 filler 一样的“自由”轮次：意图行不拦着、他不在难受 / 撒娇 / 收尾）。
+ * 10-22 在 72 对真人情侣聊天上带上文重放（她和真人回复同一个标注员分类）：真人女生 38% 的回复主要在表达自己对他 / 这件事的情绪或态度
+ * （要抱抱、问他想不想自己、夸张地装崩溃、小委屈、考验他），她 25%；她的回复里“把他的话处理完整”的 39%（真人 22%）、主动补一个他没问的细节 36%（真人 21%）、
+ * 俏皮话 28%（真人 17%）都偏多。真人这些话不讲道理、不体贴地处理事情——“嗯那我不活了”“你就是不信我”“要你要你”，她的是“那你快去别迟到”“行那我多动动”“是是是行了吧”。
+ * 取 0.18：自由轮次约占六成，折成整体约 11%，再加上卡里本来就有的脾气
+ */
+export const FEEL_SHARE = 0.18;
+/** 情绪轮只在他说得不长的时候出现：他发了一大段在讲事，她转头撒娇是没在听 */
+const FEEL_MAX_HIS = 40;
+/**
+ * 他自己情绪不对 / 想一个人待着 / 不舒服的话：这时她转头撒娇或闹情绪是没在听（10-22 重放里「我情绪不对你就别问了，你就晾我一会」那一轮抽到了情绪轮）。
+ * 意图行 / WORRIED_TEXT / NEGATIVE 认不出这几类，只管情绪轮，宁可多排除
+ */
+const HIS_LOW = /情绪不对|情绪不好|别问|晾我|想静静|一个人待|烦心|压力|崩溃|撑不住|不舒服|生病|发烧|头疼|肚子疼|哭了|心里难受|低落|累死|好累/;
 const STRETCHED = /[～~]|[啊哦嗯诶]{3,}/;
 /** 废话轮次只在他说得短的时候出现：他发了一大段，她回「哈哈哈」就是敷衍 */
 const FILLER_MAX_HIS = 12;
@@ -107,7 +126,7 @@ const CLOSING_INTENT = /顺着他的话收尾/;
 /** 收尾的轮次：真人这时就是一两个字（晚安、好哒、嗯嗯） */
 const CLOSING_WEIGHTS = [0.4, 0.4, 0.15, 0.05, 0] as const;
 
-export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'> & { agenda?: boolean; filler?: boolean; split?: boolean; agendaTopics?: readonly string[] };
+export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'> & { agenda?: boolean; filler?: boolean; feel?: boolean; split?: boolean; agendaTopics?: readonly string[] };
 
 const chars = (text: string) => [...text.replace(/\[[^\]]{1,6}\]/g, '#')].length;
 
@@ -145,6 +164,13 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
         const kind = FILLER_KINDS.find(([, share]) => (acc += share) > pick)?.[0] ?? FILLER_KINDS[FILLER_KINDS.length - 1]![0];
         return { kind: 'micro', cap: 4, maxBubbles: 1, filler: kind, ...(stretch ? { stretch: true } : {}) };
     }
+    // 情绪轮：先说自己对他的小情绪，一两句、短的；不带自己的事、不“顺着说”（顺着说的那句写着别驳他别嘴硬，和这里打架）
+    if (Boolean(context.feel) && free && his <= FEEL_MAX_HIS && !HIS_LOW.test(said) && unit(`${key} shape feel`) < FEEL_SHARE) {
+        const count = unit(`${key} shape feel count`) < 0.6 ? 1 : 2;
+        return { kind: 'short', cap: 10, maxBubbles: count, feel: true, ...(drawl ? { drawl: true } : {}) };
+    }
+    // 不马上让步：和情绪轮同一个开关。不是收尾 / 认真接话 / 亲近的轮次，提示词里加一句“他说你的不是时别一本正经认错”
+    const pushback = Boolean(context.feel) && !closing && !engaged && !intimate;
     const agenda = Boolean(context.agenda) && free && unit(`${key} shape agenda`) < AGENDA_SHARE;
     // 带自己的事的轮次至少 medium：两三个字的档装不下“回完他的话再说一件自己的事”
     const bucket = BUCKETS[agenda ? Math.max(rolled, 2) : rolled]!;
@@ -158,11 +184,18 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     const topics = context.agendaTopics ?? [];
     const agendaTopic = agenda && topics.length ? topics[Math.floor(unit(`${key} agenda topic`) * topics.length)] : undefined;
     const parts = Boolean(context.split) && !closing && bucket.kind !== 'micro' && maxBubbles >= 2 ? maxBubbles : undefined;
-    return { kind: bucket.kind, cap: bucket.cap, maxBubbles, ...(plain ? { plain: true } : {}), ...(agenda ? { agenda: true } : {}), ...(agendaTopic ? { agendaTopic } : {}), ...(stretch ? { stretch: true } : {}), ...(drawl ? { drawl: true } : {}), ...(parts ? { parts } : {}) };
+    return { kind: bucket.kind, cap: bucket.cap, maxBubbles, ...(plain ? { plain: true } : {}), ...(pushback ? { pushback: true } : {}), ...(agenda ? { agenda: true } : {}), ...(agendaTopic ? { agendaTopic } : {}), ...(stretch ? { stretch: true } : {}), ...(drawl ? { drawl: true } : {}), ...(parts ? { parts } : {}) };
 }
 
 /** 顺着说的那一句：给方向（应一声、附和、笑、接他的话、问一个字），不给台词 */
 const PLAIN_NOTE = '；这一轮顺着他说就行：应一声、附和、笑一下、接他的话都可以，别反驳他、别损他、别嘴硬，也别用反问句回他；他用了网络缩写（zdjd、xswl 这类）你也可以顺着用';
+
+/**
+ * 不马上让步那一句（ADR 0099，挂在 shapeFeel 上）。10-22 带上文重放 72 对真人情侣聊天：「顺从 / 让步 / 认错 / 答应照他说的做 / 马上附和他的批评或建议」
+ * 真人 4%（轻松的 2/46），她约 20%（轻松的 13%、冲突里 40%）：「那我跟着你练」「行，那我多动动」「好啦，不闹了」「好好好我注意」，真人是「嗯那我不活了」「不找就不找」「哎算了」。
+ * 不写成“顶回去”：ADR 0091 的教训是短回复被「不好笑」「随你」这类驳回填满。这里只说别一本正经地认错 / 答应，往情绪那边走（玩笑式的夸张或委屈）
+ */
+const PUSHBACK_NOTE = '；他要是在说你的不是、叮嘱你或拿你开玩笑，别一本正经地认错、答应改、保证以后——顺着他玩（夸张地装崩溃、装可怜）或者带点委屈就行';
 
 /** 带自己的事的那一句：事实只能从她那边已有的事实 / 身体 / 心情里挑，没有合适的就不说；不给台词，也不让她拿这件事去问他 */
 const agendaNote = (topic?: string) => topic ? `；这一轮先回他刚说的，回完顺带说一句你自己的事，就说「${topic}」这一件（看「你那边」「你的身体」「你今天的心情」里对应的那一行，没写的细节不编；说过的别再说，他早知道的不用说）：随口说，像突然想起来的，不用接得很圆，也不用每次都从「刚」开头；说完不用问他，也别用反问句` : AGENDA_NOTE;
@@ -190,11 +223,18 @@ const FILLER_LINES: Record<FillerKind, string> = {
 };
 const fillerLine = (kind: FillerKind) => `[这一轮说话：只回一条，不超过 4 个字，${FILLER_LINES[kind]}；不问他，不解释，不顶嘴，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说`;
 
+/**
+ * 情绪轮那一行（ADR 0099）：只给“他说了什么 → 她这一轮是哪种情绪”，不给台词；挑哪一种让模型看他刚说的话。
+ * 夸张装崩溃那一种明写“玩笑里的夸张，不涉及伤害自己”：真人会说“我不活了”，但她的话进危机检测之前不该出现这类字眼
+ */
+const FEEL_NOTE = '这一轮不用把他的话回应完整，先说你此刻对他的一点小情绪，看他刚说的话挑一种最搭的：他说想你、亲你、抱你，就撒个娇，向他要点亲近或确认（想不想你、想了多少、要不要抱）；他戳到你的短处、拿你开玩笑，就夸张地装崩溃、装可怜（玩笑里的夸张，不是真的难过，更不涉及伤害自己）；他回得短、敷衍、不上心，就小声委屈或赌气地嫌他一句；他夸口、立保证，就不讲理地考验他一下；他夸你、说到让你不好意思的事，就害羞地嘴硬、岔开；他说的话让你有点泄气，就叹一声、算了。不讲道理，不解释，不安慰他，不去追问他；实在和他刚说的话搭不上，就照平常回';
+
 /** 放进提示词的一行；不给台词，只给数字和方向 */
 export function describeShape(plan: ShapePlan): string {
     if (plan.filler) return `${fillerLine(plan.filler)}${plan.stretch ? STRETCH_NOTE : ''}]`;
+    if (plan.feel) return `[这一轮说话：${plan.maxBubbles === 1 ? '只回一条' : `最多 ${plan.maxBubbles} 条`}，每条不超过 ${plan.cap} 个字；${FEEL_NOTE}${plan.drawl ? DRAWL_NOTE : ''}]`;
     const split = plan.parts && !plan.agenda ? splitNote(plan.parts) : '';
-    const plain = (plan.agenda ? agendaNote(plan.agendaTopic) : plan.plain ? PLAIN_NOTE : '') + split + (plan.stretch ? STRETCH_NOTE : plan.drawl ? DRAWL_NOTE : '');
+    const plain = (plan.agenda ? agendaNote(plan.agendaTopic) : plan.plain ? PLAIN_NOTE : '') + (plan.pushback ? PUSHBACK_NOTE : '') + split + (plan.stretch ? STRETCH_NOTE : plan.drawl ? DRAWL_NOTE : '');
     const count = plan.parts ? `分成 ${plan.parts} 条发` : `最多 ${plan.maxBubbles} 条`;
     if (plan.kind === 'micro') {
         return `[这一轮说话：${plan.maxBubbles === 1 ? '只回一条' : `最多 ${plan.maxBubbles} 条`}，每条不超过 ${plan.cap} 个字——语气词、单个词都可以，不用凑成完整的句子；不展开，不另起话题。他在难受、报大事、等安慰或闹别扭时不适用，照平常的说${plain}]`;
@@ -262,19 +302,33 @@ export interface ShapeDeps {
     log: (message: string) => void;
 }
 
-/** 出口：太长或条数超了，带说明重写一次；还超就截断 */
+/**
+ * 夸张装崩溃那一种（情绪轮 / 不马上让步）：真人会说「我不活了」「我死了」，她的话里不要出现这类字眼（ADR 0099）——她是陪伴程序，不拿“不想活”开玩笑；
+ * 「笑死了」「累死了」「困死了」这类日常夸张不在内（要“我死了”“想死”“去死”这几个才算）。只在带这类说明的轮次检查
+ */
+const SELF_HARM_JOKE = /不想活|不活了|活不下去|想死|去死|死了算|自杀|一了百了|我死了|死掉/;
+const harmLines = (reply: string, plan: ShapePlan): number => plan.feel || plan.pushback ? lines(reply).filter(line => SELF_HARM_JOKE.test(line)).length : 0;
+
+/** 出口：太长或条数超了、（情绪轮里）出现了拿“不想活”开玩笑的字眼，带说明重写一次；还超就截断，字眼的那几行去掉 */
 export async function shapeReply(reply: string, plan: ShapePlan, deps: ShapeDeps): Promise<string> {
     const first = shapeProblems(reply, plan);
-    if (first.tooLong === 0 && first.tooMany === 0) return reply;
-    deps.log(`形状：${first.tooLong ? `有 ${first.tooLong} 条超过 ${limitOf(plan)} 字` : ''}${first.tooLong && first.tooMany ? '，' : ''}${first.tooMany ? `多了 ${first.tooMany} 条` : ''}，带说明重写一次`);
+    const harm = harmLines(reply, plan);
+    if (first.tooLong === 0 && first.tooMany === 0 && harm === 0) return reply;
+    deps.log(`形状：${first.tooLong ? `有 ${first.tooLong} 条超过 ${limitOf(plan)} 字` : ''}${first.tooLong && first.tooMany ? '，' : ''}${first.tooMany ? `多了 ${first.tooMany} 条` : ''}${harm ? `${first.tooLong || first.tooMany ? '，' : ''}有 ${harm} 行拿“不想活”开玩笑` : ''}，带说明重写一次`);
     let current = reply;
+    const reasons = [
+        ...(first.tooLong || first.tooMany ? [`太长了——这一轮每条不超过 ${plan.cap} 个字，最多 ${plan.maxBubbles} 条。意思不变，缩短重写`] : []),
+        ...(harm ? ['里面有拿“不想活”“去死”开玩笑的字眼，你是陪伴程序，不拿这个开玩笑。换个夸张的说法（无语、崩溃、丢人、没脸见人这类），意思和语气不变'] : []),
+    ];
     try {
-        const rewritten = await deps.regenerate(`[上一版回复没有发出去：太长了——这一轮每条不超过 ${plan.cap} 个字，最多 ${plan.maxBubbles} 条。意思不变，缩短重写，只输出要发的消息。]`);
+        const rewritten = await deps.regenerate(`[上一版回复没有发出去：${reasons.join('；另外')}，只输出要发的消息。]`);
         if (lines(rewritten).length > 0) current = rewritten;
     } catch (error) {
         deps.log(`形状：重写失败（${error instanceof Error ? error.message : String(error)}），直接截断`);
     }
     const trimmed = trimToShape(current, plan);
     if (trimmed.notes.length) deps.log(`形状：${trimmed.notes.join('；')}`);
-    return trimmed.reply;
+    if (!harmLines(trimmed.reply, plan)) return trimmed.reply;
+    deps.log('形状：重写后还有拿“不想活”开玩笑的字眼，那几行去掉');
+    return lines(trimmed.reply).filter(line => !SELF_HARM_JOKE.test(line)).join('\n');
 }

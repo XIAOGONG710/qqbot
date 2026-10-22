@@ -63,6 +63,7 @@ export const DEFAULTS = {
     shape: false,
     shapeAgenda: false,
     shapeFiller: false,
+    shapeFeel: false,
     shapeSplit: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
@@ -198,6 +199,11 @@ export interface AppConfig {
      * 他用「～」或拖长音说话时，约六成的轮次她也跟着拖音。真人聊天里有这类话，她的线上回复几乎没有（0.5%，真人 5–10%；拖音 1.5%，他自己 26%）。默认关
      */
     shapeFiller: boolean;
+    /**
+     * 情绪轮（ADR 0099，要 shape 开着）：适用的轮次里约 18% 她这一轮先说自己对他的一点小情绪（撒娇要确认 / 夸张装崩溃 / 小委屈 / 不讲理地考验他），不把他的话处理完整。
+     * 带上文重放 72 对真人情侣聊天：真人女生 38% 的回复主要在表达情绪 / 态度，她 25%；她“处理得完整”的 39%（真人 22%）。默认关
+     */
+    shapeFeel: boolean;
     /**
      * 分成几条（ADR 0096，要 shape 开着）：形状里抽出的条数（1 条约 55%、2 条约 28%、3 条约 17%）本来只是上限，真模型多半只写一行——
      * 线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思。默认关
@@ -437,6 +443,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         shape: bool(file, 'shape', '', DEFAULTS.shape),
         shapeAgenda: bool(file, 'shapeAgenda', '', DEFAULTS.shapeAgenda),
         shapeFiller: bool(file, 'shapeFiller', '', DEFAULTS.shapeFiller),
+        shapeFeel: bool(file, 'shapeFeel', '', DEFAULTS.shapeFeel),
         shapeSplit: bool(file, 'shapeSplit', '', DEFAULTS.shapeSplit),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),

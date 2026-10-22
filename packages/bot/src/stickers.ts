@@ -29,6 +29,11 @@ export const STICKER_PROMPT_MAX = 12;
  * 有明确反应的（晚安、抱抱、吃）选得贴，没有明确反应的（「知道啦」「哦哦 好」）选得不搭。
  */
 export const STICKER_TURN_CHANCE = 0.7;
+/**
+ * 抽到发图片表情的轮次里，只发表情、不写文字的比例（ADR 0099）。他自己的线上话：437 轮里 6% 只有表情（动画表情或纯 QQ 小表情）、10% 带表情，
+ * 也就是发表情的轮次里约六成是纯表情；她线上 437 轮里只有表情 1 轮、带表情 4 轮。取 0.5：她的表情本来就少，偏保守
+ */
+export const STICKER_ONLY_SHARE = 0.5;
 /** 抽到的轮次给她看几张（按他这句话挑出来的，最合适的在前） */
 export const STICKER_SHORTLIST = 8;
 
@@ -64,6 +69,21 @@ export function rankStickers(entries: readonly StickerEntry[], text: string): St
     const words = stickerReactionWords(text);
     const score = (entry: StickerEntry) => words.filter(word => entry.tags.includes(word) || entry.description.includes(word)).length;
     return [...entries].sort((a, b) => score(b) - score(a) || a.used - b.used || Date.parse(a.lastUsedAt ?? a.createdAt) - Date.parse(b.lastUsedAt ?? b.createdAt));
+}
+
+/** 抽到发图片表情的这一轮，是不是只发表情、不写文字（按他最后一条的时间和内容定，同一句每次一样；和 stickerTurn 的抽签互不影响） */
+export function stickerOnlyTurn(history: readonly { role: 'user' | 'assistant'; content: string; time?: string }[], chance = STICKER_ONLY_SHARE): boolean {
+    const last = history.findLast(message => message.role === 'user');
+    if (!last) return false;
+    let hash = 0x811c9dc5;
+    for (const char of `${last.time ?? ''} ${last.content} sticker only`) {
+        hash ^= char.codePointAt(0)!;
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    hash ^= hash >>> 16;
+    hash = Math.imul(hash, 0x85ebca6b) >>> 0;
+    hash ^= hash >>> 13;
+    return ((hash >>> 0) / 0x1_0000_0000) < chance;
 }
 
 /** 这一轮抽没抽到发图片表情（按他最后一条的时间和内容定，同一句每次一样） */
@@ -213,7 +233,7 @@ export interface StickerShelf {
      * 给回复模型看的本地收藏清单。不传 context：旧办法，最久没用的 12 张；
      * 传 context（他这一轮说的话）：抽到发表情的这一轮，按他这句话挑 STICKER_SHORTLIST 张最合适的，并写明这一轮要发一个。
      */
-    prompt(context?: { text: string }): string | undefined;
+    prompt(context?: { text: string; only?: boolean }): string | undefined;
     /** 清掉未知、混在文字里的、以及同一轮第二个图片表情指令。 */
     clean(reply: string, allow?: boolean): string;
     /** 一整个气泡是不是一个可发送的收藏表情。 */
@@ -457,7 +477,10 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             if (context) {
                 const shortlist = rankStickers(present, context.text).slice(0, STICKER_SHORTLIST);
                 if (!shortlist.length) return undefined;
-                return '[这一轮你要发一个图片表情：文字回完以后，另起一行单独写 <sticker:编号>（这一行必须有），从下面按他这句话挑出来的几张里选最贴的一张，编号只能从下面选，不解释编号]\n'
+                const heading = context.only
+                    ? '[这一轮你只发一个图片表情，不写任何文字：回复里只有一行 <sticker:编号>（这一行必须有，别的什么都不写），从下面按他这句话挑出来的几张里选最贴的一张，编号只能从下面选，不解释编号]\n'
+                    : '[这一轮你要发一个图片表情：文字回完以后，另起一行单独写 <sticker:编号>（这一行必须有），从下面按他这句话挑出来的几张里选最贴的一张，编号只能从下面选，不解释编号]\n';
+                return heading
                     + shortlist.map(entry => `- <sticker:${entry.id}>：${entry.description}${entry.tags.length ? `（${entry.tags.join('、')}）` : ''}`).join('\n');
             }
             const entries = present

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { AGENDA_SHARE, describeShape, DRAWL_SHARE, FILLER_SHARE, STRETCH_SHARE, PLAIN_SHARE, planShape, shapeProblems, shapeReply, trimToShape, type ShapePlan } from '../src/shape.ts';
+import { AGENDA_SHARE, describeShape, DRAWL_SHARE, FEEL_SHARE, FILLER_SHARE, STRETCH_SHARE, PLAIN_SHARE, planShape, shapeProblems, shapeReply, trimToShape, type ShapePlan } from '../src/shape.ts';
 
 /** 同一句话，靠时间区分每一次抽签（抽签的种子是时间加内容），字数不变 */
 const said = (i: number, text: string) => [{ role: 'user' as const, content: text, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
@@ -328,5 +328,103 @@ describe('语气松一点（drawl）：句尾可以带「～」或「……」',
         const line = describeShape({ kind: 'short', cap: 8, maxBubbles: 1, drawl: true });
         assert.ok(line.includes('句尾可以带个「～」或者「……」') && line.includes('别每句都这样') && line.endsWith(']'), line);
         assert.ok(!describeShape({ kind: 'short', cap: 8, maxBubbles: 1 }).includes('句尾可以带个'));
+    });
+});
+
+// ADR 0099：情绪轮——这一轮先说自己对他的一点小情绪，不把他的话处理完整
+describe('情绪轮（feel）：先说自己对他的小情绪', () => {
+    test('没开不抽；开了约 18%，一两条、每条不超过 10 个字，不带自己的事、不“顺着说”', () => {
+        assert.ok(sample('想你了呀', 600).every(plan => !plan.feel), '没开就一轮也没有');
+        const plans = sample('我肯定行啊', 3000, { feel: true, agenda: true, filler: true });
+        const feel = plans.filter(plan => plan.feel);
+        assert.ok(Math.abs(feel.length / plans.length - FEEL_SHARE) < 0.03, `feel ${feel.length / plans.length}`);
+        assert.ok(feel.every(plan => plan.kind === 'short' && plan.cap === 10 && plan.maxBubbles <= 2 && !plan.plain && !plan.agenda && !plan.filler && !plan.parts));
+        assert.ok(feel.some(plan => plan.maxBubbles === 1) && feel.some(plan => plan.maxBubbles === 2));
+    });
+
+    test('只在“自由”的轮次、他说得不长时出现：收尾、认真接话、亲近、心情安静、意图行拦着（问问题）、他在呜呜 / 倒霉、他发了一大段都不抽', () => {
+        for (const [text, extra] of [
+            ['晚安啦我先睡了', { intent: '[这一轮你想：顺着他的话收尾，只回一两句]' }],
+            ['今天好烦', { intent: '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够]' }],
+            ['想你了', { intent: '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事]' }],
+            ['你吃了吗', { intent: '[这一轮你想：先直接回答他刚问的，不另起话题]' }],
+            ['在干嘛', { aboutPerson: true }], ['在干嘛', { low: true }],
+            ['呜呜呜', {}], ['悲，U盘坏了', {}], ['我没咋啊，我情绪不对你就别问了', {}], ['宝宝我有点不舒服', {}],
+            ['今天下午我们去了图书馆然后发现没位置就去食堂坐了一会儿然后又去了操场走了两圈最后回宿舍洗了个澡', {}],
+        ] as const) assert.ok(sample(text, 500, { feel: true, ...extra }).every(plan => !plan.feel), text);
+        // 意图行是「回应他刚说的那件事」（最常见的一条）不拦着
+        assert.ok(sample('我肯定行啊', 800, { feel: true, intent: '[这一轮你想：回应他刚说的那件事；先对这件事本身有个反应]' }).some(plan => plan.feel));
+    });
+
+    test('开了情绪轮，其余轮次和不开时一模一样（抽签互不影响）', () => {
+        const base = sample('我肯定行啊', 1500, { agenda: true, filler: true });
+        const withFeel = sample('我肯定行啊', 1500, { agenda: true, filler: true, feel: true });
+        withFeel.forEach((plan, i) => { if (!plan.feel) { const { pushback: _pushback, ...rest } = plan; assert.deepEqual(rest, base[i]); } });
+    });
+
+    test('不马上让步（pushback）：开了情绪轮才有；收尾 / 认真接话 / 亲近的轮次没有；提示词里多一句“别一本正经认错”，不引用台词，也不叫她顶回去', () => {
+        assert.ok(sample('你太懒了吧', 300).every(plan => !plan.pushback), '没开就没有');
+        assert.ok(sample('你太懒了吧', 300, { feel: true }).every(plan => plan.feel || plan.pushback), '开了：非情绪轮的普通轮次都带');
+        for (const extra of [
+            { intent: '[这一轮你想：顺着他的话收尾，只回一两句]' },
+            { intent: '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够]' },
+            { intent: '[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事]' },
+        ]) assert.ok(sample('你太懒了吧', 300, { feel: true, ...extra }).every(plan => !plan.pushback), JSON.stringify(extra));
+        const line = describeShape({ kind: 'short', cap: 8, maxBubbles: 1, plain: true, pushback: true });
+        for (const part of ['说你的不是、叮嘱你或拿你开玩笑', '别一本正经地认错、答应改、保证以后', '夸张地装崩溃、装可怜', '带点委屈']) assert.ok(line.includes(part), part);
+        assert.ok(line.includes('别反驳他、别损他、别嘴硬'), '顺着说那句还在，这里不叫她顶回去');
+        assert.ok(!describeShape({ kind: 'short', cap: 8, maxBubbles: 1, plain: true }).includes('一本正经'));
+        assert.ok(!/我会注意|行吧|好好好|知道啦/.test(line), '不引用不想要的那句');
+    });
+
+    test('情绪轮那一行：给“他说了什么 → 哪种情绪”，不给台词；不安慰、不解释、不追问；夸张只是玩笑、不涉及伤害自己；搭不上就照平常回；可以带拖音', () => {
+        const line = describeShape({ kind: 'short', cap: 10, maxBubbles: 1, feel: true });
+        for (const part of ['不用把他的话回应完整', '撒个娇', '夸张地装崩溃', '不是真的难过，更不涉及伤害自己', '小声委屈或赌气', '考验他一下', '害羞地嘴硬', '叹一声', '不安慰他', '不去追问他', '就照平常回', '只回一条']) assert.ok(line.includes(part), part);
+        assert.ok(!line.includes('顺着他说就行'), '和“顺着说”不同时出现');
+        assert.ok(!/怎么了|咋了|我不活了|抱抱|mua/.test(line), '不给台词、不引用不想要的那句');
+        assert.ok(describeShape({ kind: 'short', cap: 10, maxBubbles: 2, feel: true }).includes('最多 2 条'));
+        assert.ok(describeShape({ kind: 'short', cap: 10, maxBubbles: 1, feel: true, drawl: true }).includes('句尾可以带个'));
+        assert.ok(line.endsWith(']'));
+    });
+});
+
+describe('情绪轮的出口：不拿“不想活”开玩笑（ADR 0099）', () => {
+    const feel: ShapePlan = { kind: 'short', cap: 10, maxBubbles: 2, feel: true };
+    const make = (reply: string | Error, notes: string[] = [], logs: string[] = []) => ({ regenerate: async (note: string) => { notes.push(note); if (reply instanceof Error) throw reply; return reply; }, log: (m: string) => logs.push(m) });
+
+    test('情绪轮 / 不马上让步的轮次里出现「我不活了」「想死」「去死」这类字眼：带说明重写一次，重写合格就用重写的；日常夸张（笑死了、累死了）不算', async () => {
+        const notes: string[] = [];
+        assert.equal(await shapeReply('完了\n我不活了', feel, make('丢死人了', notes)), '丢死人了');
+        assert.equal(notes.length, 1);
+        assert.ok(notes[0]!.startsWith('[上一版回复没有发出去') && notes[0]!.includes('你是陪伴程序，不拿这个开玩笑') && !notes[0]!.includes('太长了'), notes[0]);
+        for (const ok of ['笑死了', '累死了', '困死了', '丢人死了']) {
+            const quiet: string[] = [];
+            assert.equal(await shapeReply(ok, feel, make('不该到这里', quiet)), ok, ok);
+            assert.equal(quiet.length, 0, ok);
+        }
+        for (const bad of ['我不想活了', '想死', '你去死吧', '我死了', '活不下去了']) {
+            const q: string[] = [];
+            await shapeReply(bad, feel, make('好了', q));
+            assert.equal(q.length, 1, bad);
+        }
+    });
+
+    test('重写后还有就把那几行去掉；重写失败也去掉；太长和字眼一起出现时说明里两件事都写', async () => {
+        const logs: string[] = [];
+        assert.equal(await shapeReply('完了\n我不活了', feel, make('还是不活了\n好丢人', [], logs)), '好丢人');
+        assert.ok(logs.some(line => line.includes('那几行去掉')));
+        assert.equal(await shapeReply('完了\n我不活了', feel, make(new Error('429'))), '完了');
+        const notes: string[] = [];
+        await shapeReply('今天真的好累啊而且还要写作业我不活了烦死了真的', feel, make('丢人', notes));
+        assert.ok(notes[0]!.includes('太长了') && notes[0]!.includes('不拿这个开玩笑'), notes[0]);
+    });
+
+    test('只在带情绪轮 / 不马上让步说明的轮次检查：别的轮次原样放行（她说自己难过的话不归这里管）', async () => {
+        const quiet: string[] = [];
+        assert.equal(await shapeReply('我不活了', { kind: 'short', cap: 8, maxBubbles: 2 }, make('x', quiet)), '我不活了');
+        assert.equal(quiet.length, 0);
+        const push: string[] = [];
+        await shapeReply('我不活了', { kind: 'short', cap: 8, maxBubbles: 2, plain: true, pushback: true }, make('丢人', push));
+        assert.equal(push.length, 1, '不马上让步的轮次也查');
     });
 });

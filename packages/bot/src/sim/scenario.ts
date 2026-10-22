@@ -235,6 +235,8 @@ export interface Scenario {
     shapeAgenda: boolean;
     /** 默认 false：废话（ADR 0095，配置 shapeFiller，要 shape 开着）；run.ts 的 --filler 对所有场景打开 */
     shapeFiller: boolean;
+    /** 默认 false：情绪轮（ADR 0099，配置 shapeFeel，要 shape 开着）；run.ts 的 --feel 对所有场景打开 */
+    shapeFeel: boolean;
     /** 默认 false：分成几条（ADR 0096，配置 shapeSplit，要 shape 开着）；run.ts 的 --split 对所有场景打开 */
     shapeSplit: boolean;
     /** 默认 false：闺蜜的约（ADR 0061，配置 npcAsks）：约、迟到、改约、取消进她的一天；要开着 autonomous 才进行动账 */
@@ -257,6 +259,8 @@ export interface Scenario {
     stickers?: { id: string; description: string; tags: string[] }[];
     /** 允许发图片表情的轮次里抽中发的概率（0–1），不写按线上的 STICKER_TURN_CHANCE；写 1 = 允许的轮次都发（测选哪张用） */
     stickerChance?: number;
+    /** 抽到发表情的轮次里只发表情、不写文字的概率（0–1），不写：shapeFeel 开着（场景里或 --feel）按线上的 STICKER_ONLY_SHARE，否则 0；写 1 = 抽到的轮次都只发表情（ADR 0099） */
+    stickerOnlyChance?: number;
     /** 假的「真实天气」（ADR 0050）：日期 → 下雨的钟头（0–23），这几天按真实天气算（世界和主动消息都认），别的日子照旧生成 */
     realRain?: Record<string, number[]>;
     /** 指定今天的心情（ADR 0015，卡上心情的名字），比较不同心情时用；不写按虚拟日期抽 */
@@ -339,6 +343,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         shape: s.shape === true,
         shapeAgenda: s.shapeAgenda === true,
         shapeFiller: s.shapeFiller === true,
+        shapeFeel: s.shapeFeel === true,
         shapeSplit: s.shapeSplit === true,
         npcAsks: s.npcAsks === true,
         festivals: s.festivals === undefined ? 'off' : (FESTIVAL_MODES.includes(s.festivals as FestivalMode) ? s.festivals as FestivalMode : fail(`festivals 应为 ${FESTIVAL_MODES.join(' / ')} 之一`)),
@@ -351,6 +356,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         ...(s.moodyChance !== undefined ? { moodyChance: chance(s.moodyChance) } : {}),
         ...(s.stickers !== undefined ? { stickers: stickerEntries(s.stickers, fail) } : {}),
         ...(s.stickerChance !== undefined ? { stickerChance: typeof s.stickerChance === 'number' && s.stickerChance >= 0 && s.stickerChance <= 1 ? s.stickerChance : fail('stickerChance 应为 0–1 的数') } : {}),
+        ...(s.stickerOnlyChance !== undefined ? { stickerOnlyChance: typeof s.stickerOnlyChance === 'number' && s.stickerOnlyChance >= 0 && s.stickerOnlyChance <= 1 ? s.stickerOnlyChance : fail('stickerOnlyChance 应为 0–1 的数') } : {}),
         ...(s.proactiveOffline !== undefined ? {
             proactiveOffline: Array.isArray(s.proactiveOffline) && s.proactiveOffline.every(x => typeof x === 'string' && x)
                 ? s.proactiveOffline as string[] : fail('proactiveOffline 应为时机说法的数组（「她那边的事」「冷场」…）'),

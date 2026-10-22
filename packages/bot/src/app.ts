@@ -54,7 +54,7 @@ import { loadNeedsAnchor } from './needs.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
-import { STICKER_DISCOVERY_INTERVAL_MS, type StickerShelf } from './stickers.ts';
+import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } from './stickers.ts';
 import { SlidingWindowRateLimiter } from './rate-limit.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
@@ -169,6 +169,8 @@ export interface AppOptions {
     stickers?: StickerShelf;
     /** 允许发图片表情的轮次里抽中发的概率（不写按 STICKER_TURN_CHANCE；测试用）*/
     stickerChance?: number;
+    /** 抽到发表情的轮次里只发表情不写文字的概率（不写：shapeFeel 开着按 STICKER_ONLY_SHARE，否则 0；测试用，ADR 0099）*/
+    stickerOnlyChance?: number;
     /** B 站公开接口的 fetch（配置 bilibili；不给就用全局 fetch，测试注入假的） */
     bilibiliFetch?: BiliFetch;
     /** 她的 B 站号用的请求函数（配置 bilibiliAccount；要读 Set-Cookie、发 POST；不给就用真的，测试注入假的） */
@@ -184,7 +186,7 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, stickers, stickerChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, sensitive = sensitiveSwitch() }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, stickers, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, sensitive = sensitiveSwitch() }: AppOptions): App {
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -479,6 +481,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...contextWindowFor(contact),
             ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
             ...(stickerChance !== undefined ? { stickerChance } : {}),
+            // 抽到发表情的轮次里一半只发表情（ADR 0099）：跟着情绪轮的开关走；测试可以直接给概率
+            ...((stickerOnlyChance ?? (config.shape && config.shapeFeel ? STICKER_ONLY_SHARE : 0)) > 0 ? { stickerOnlyChance: stickerOnlyChance ?? STICKER_ONLY_SHARE } : {}),
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
             history,
             memory,
@@ -492,6 +496,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.shape ? { shape: true } : {}),
             ...(config.shape && config.shapeAgenda ? { shapeAgenda: true } : {}),
             ...(config.shape && config.shapeFiller ? { shapeFiller: true } : {}),
+            ...(config.shape && config.shapeFeel ? { shapeFeel: true } : {}),
             ...(config.shape && config.shapeSplit ? { shapeSplit: true } : {}),
             contacts: config.contacts,
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；
