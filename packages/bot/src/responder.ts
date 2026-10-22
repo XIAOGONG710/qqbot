@@ -138,6 +138,8 @@ export interface InitiateRequest {
     commit: (parts: string[]) => void;
     /** 这句话本来就是固定的习惯说法，出口检查不按“最近说过一模一样的”去掉（B 站私信之后的提醒，ADR 0089） */
     allowRepeat?: boolean;
+    /** 她想了想可以决定先不发：模型只输出「不发」两个字就记成没发（催他回，ADR 0100） */
+    canDecline?: boolean;
 }
 
 export type InitiateOutcome =
@@ -441,7 +443,10 @@ export function createResponder(deps: ResponderDeps): Responder {
         deps.onPrompt?.(prompt);
         const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
         deps.log(`主动找他（${request.label}）：生成，${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);
-        let reply = deps.clean(await deps.generate(prompt.messages));
+        const raw = await deps.generate(prompt.messages);
+        // 她想了想决定先不发（ADR 0100）：只有「不发」两个字，带不带括号都算
+        if (request.canDecline && /^\s*[（(【[]?\s*不发\s*[）)】\]]?[。.！!]?\s*$/.test(raw)) return { result: 'skipped', reason: '她想了想，先不发' };
+        let reply = deps.clean(raw);
         if (deps.review) reply = await deps.review(reply, prompt.messages, request.allowRepeat ? { allowRepeat: true } : undefined);
         if (stopped) return { result: 'skipped', reason: '已停止' };
         if (deps.history.load(deps.userId).slice(input).some(m => m.role === 'user')) {

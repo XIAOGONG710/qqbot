@@ -30,7 +30,7 @@ import { createFeedbackChannel } from './feedback.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from './festivals.ts';
-import { newsKindsOf, dayMatches, type ProactiveMode } from './proactive.ts';
+import { newsKindsOf, dayMatches, withReach, type ProactiveMode } from './proactive.ts';
 import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
 import { qzoneComposer } from './qzone.ts';
 import { createVideoBrowsing, dmMessageId, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
@@ -775,7 +775,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             planners.set(contact.qq, createProactivePlanner({
                 contact,
                 schedule: character.schedule!,
-                settings: character.proactive!,
+                settings: config.proactiveReach ? withReach(character.proactive!) : character.proactive!,
                 dates: character.dates,
                 mode: config.proactive,
                 history,

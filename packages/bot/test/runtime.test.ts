@@ -710,6 +710,21 @@ describe('回复调度', () => {
             assert.deepEqual(contexts, [{ allowRepeat: true }, undefined]);
         });
 
+        test('催他回（ADR 0100）：canDecline 时模型只输出「不发」就记成没发、不 commit；没设 canDecline 不认这个；带括号 / 句号也算；夹在句子里的不算', async () => {
+            for (const text of ['不发', '（不发）', '[不发]', ' 不发。 ']) {
+                const { responder, sent, stored } = setup({ generate: async () => text });
+                const req = request({ canDecline: true });
+                assert.deepEqual(await responder.initiate(req), { result: 'skipped', reason: '她想了想，先不发' }, text);
+                assert.deepEqual(req.committed, []);
+                assert.deepEqual(sent, []);
+                assert.deepEqual(stored, []);
+            }
+            const plain = setup({ generate: async () => '不发' });
+            assert.equal((await plain.responder.initiate(request())).result, 'sent', '没设 canDecline：就是一句话');
+            const inSentence = setup({ generate: async () => '不发你消息了，哼' });
+            assert.equal((await inSentence.responder.initiate(request({ canDecline: true }))).result, 'sent');
+        });
+
         test('试运行：生成、commit，不发、不记', async () => {
             const { responder, stored, sent } = setup({ generate: async () => '早' });
             const req = request({ dryRun: true });

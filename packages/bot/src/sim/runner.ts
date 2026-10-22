@@ -19,7 +19,7 @@ import type { OpenAIMessage, PromptResult } from '../prompt.ts';
 import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
-import { herDay, newsKindsOf } from '../proactive.ts';
+import { herDay, newsKindsOf, withReach } from '../proactive.ts';
 import { dmMessageId, dmNote, nudgeNote, videoNote, videoTopic } from '../bilibili.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner } from '../proactive-planner.ts';
 import { herDayLogger } from '../her-days.ts';
@@ -434,13 +434,14 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
 
     // 主动消息（ADR 0011）：场景开着、卡上有主动设置和作息时，计划器跑在虚拟时钟上（真发，记录在 dataDir/proactive）
     // 场景可以先把还没上线的事件类开起来（ADR 0064）
-    const proactiveSettings = character.proactive && (scenario.newsKinds || scenario.extraOccasions)
+    const proactiveBase = character.proactive && (scenario.newsKinds || scenario.extraOccasions)
         ? {
             ...character.proactive,
             ...(scenario.newsKinds ? { newsKinds: scenario.newsKinds } : {}),
             ...(scenario.extraOccasions ? { occasions: [...new Set([...character.proactive.occasions, ...scenario.extraOccasions])] } : {}),
         }
         : character.proactive;
+    const proactiveSettings = proactiveBase && scenario.proactiveReach ? withReach(proactiveBase) : proactiveBase;
     const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && proactiveSettings && character.schedule
         ? createProactivePlanner({
             contact,

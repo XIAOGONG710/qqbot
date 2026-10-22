@@ -3,7 +3,7 @@
 //
 // 「她的那一天」：从这一天的睡觉时刻（02:00）到第二天的睡觉时刻，和 schedule.ts 一样，00:00–02:00 算前一天的晚上。
 // 每一天的候选：早安、下课、睡前、冷场、待跟进的事、重要的日子、下雨（ADR 0050，只认真实天气）、她那边的事（ADR 0057），各一个时刻；到点时再查一遍能不能发（blockReason）。
-// 每天的条数有上限：候选比剩下的条数多时按优先级留（日子 > 她那边的事 > 待跟进 > 下雨 > 早安 > 下课 > 冷场 > 睡前 > 随口说件自己的事），日子不受上限和「没回就停」限制。
+// 每天的条数有上限：候选比剩下的条数多时按优先级留（日子 > 她那边的事 > 待跟进 > 下雨 > 催他回 > 早安 > 下课 > 冷场 > 睡前 > 随口说件自己的事），日子不受上限和「没回就停」限制。
 // 错过的不补：到点时没在跑、或者过了 GRACE_MS 才算到的候选，这一天就不发了。
 // 没连上模型的（断网）不算错过：记录里带 retryAt 的候选按那个时刻再排，最多 UNREACHABLE_MAX_TRIES 次，只在同一天里。
 
@@ -17,7 +17,7 @@ import { logBody } from './sensitive.ts';
 export { herDay } from './schedule.ts';
 
 /** 时机，按优先级从高到低 */
-export const OCCASIONS = ['dates', 'reschedule', 'news', 'follow_up', 'weather', 'morning', 'after_class', 'quiet', 'bedtime', 'share'] as const;
+export const OCCASIONS = ['dates', 'reschedule', 'news', 'follow_up', 'weather', 'reach', 'morning', 'after_class', 'quiet', 'bedtime', 'share'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 「她那边的事」的事件类（ADR 0064），按优先级从高到低：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天、闺蜜临时去不了 / 改到很晚（ADR 0061，开着配置 npcAsks 才有） */
@@ -35,6 +35,16 @@ export interface ProactiveSettings {
     unansweredMax: number;
     /** 「她那边的事」开哪几类（ADR 0064）；没写 = 只有相机 */
     newsKinds?: NewsKind[];
+    /** 他没回也继续找他、可以催他一下（ADR 0100，配置 proactiveReach 给）；没写 = 没回到 unansweredMax 条就停 */
+    reach?: ReachSettings;
+}
+
+/** 没回也继续（ADR 0100） */
+export interface ReachSettings {
+    /** 她主动发的、他还没回的最多到几条就停（含 unansweredMax 以内的那几条） */
+    cap: number;
+    /** 已经有 unansweredMax + i 条没回时，离上一条主动消息至少隔多久（毫秒）；i 超出数组就用最后一项 */
+    gapsMs: readonly number[];
 }
 
 export function newsKindsOf(settings: Pick<ProactiveSettings, 'newsKinds'>): readonly NewsKind[] {
@@ -140,6 +150,8 @@ export interface Candidate {
     news?: NewsItem;
     /** 改约：是哪一件约、什么障碍 */
     reschedule?: RescheduleItem;
+    /** 催他：现在她发了几条他没回的 */
+    reach?: { count: number };
 }
 
 export interface ProactiveInput {
@@ -192,6 +204,47 @@ export const SHARE_QUIET_MS = 2.5 * HOUR;
 const SHARE_FROM = '14:00';
 const SHARE_UNTIL = '21:30';
 const SHARE_JITTER_MIN: [number, number] = [0, 150];
+/**
+ * 没回也继续找他（ADR 0100）。10-22 用户：「只要我不回复她的消息她就不继续发了，能不能让她能进行自主思考，不再被动」「也不会催我进行回复」。
+ * 原来 unanswered_max 1：她主动发的有一条没回就整个停下，等他回——他上午没回早安，这一天她就再没出声。
+ * 现在（开了 proactiveReach）：没回的条数没到 cap 时还能再发，但一条比一条隔得久（DEFAULT_REACH.gapsMs：第二条隔 2 小时、第三条再隔 4 小时），到 cap 就停到他回；
+ * 另加一个时机 reach：他没回的这段时间里，她自己想一想要不要催他一下（第一次轻轻戳一下，第二次带点小脾气），也可以决定先不发（模型只输出「不发」）。
+ */
+export const DEFAULT_REACH: ReachSettings = { cap: 3, gapsMs: [2 * HOUR, 4 * HOUR] };
+/** 他沉默的每多一整天，没回的上限多放一条（最多加这么多天）：不然他三条没回之后哪怕隔了好几天，她也一个字不再说 */
+export const REACH_EXTRA_DAYS = 3;
+/** 一天最多想几次要不要催（发了的和决定不发的都算） */
+export const REACH_MAX_PER_DAY = 3;
+/** 她决定不发（或没排上）之后，下一次想这件事至少隔多久 */
+const REACH_RETHINK_MS = HOUR;
+/** 晚上这个时刻以后不催他 */
+const REACH_UNTIL = '22:30';
+/** 排在节流闸之后再往后抖这么多分钟 */
+const GATE_JITTER_MIN: [number, number] = [0, 30];
+/** 催他回的方向（轮换）。只给方向，不给台词 */
+const FIRST_NUDGES = [
+    '问问他在不在、忙不忙',
+    '顺手说一件你这会儿在做的小事，让他有话可接',
+    '只用一两个字加点语气戳他一下，别的不说',
+    '说你想起他了，问他在干嘛',
+];
+const LATER_NUDGES = [
+    '嘴硬地嫌他不理人',
+    '赌气说你不等了、不理他了（轻轻的，别当真）',
+    '小委屈地说你有点想他、有点惦记',
+    '开他玩笑：是不是被什么绊住了、是不是睡着了、是不是把你忘了',
+];
+/** 他刚说过去睡了 / 去忙了：不催（这么久之内） */
+const LEFT_FOR_NOW_MS = 12 * HOUR;
+const LEFT_FOR_NOW = /晚安|睡了|去睡|先睡|明天聊|去忙|先忙|忙去了|去上课|上课去|开会|洗澡去|去洗澡|先这样|回头聊|待会聊|一会儿聊|等会儿聊|晚点聊|先撤|溜了/;
+/** 要不要催的那次，模型想了想决定不发时输出的两个字 */
+export const REACH_DECLINE = '不发';
+
+/** 打开 proactiveReach：加上 reach 时机和没回的节流闸（按档位卡上的 unanswered_max 起算） */
+export function withReach(settings: ProactiveSettings): ProactiveSettings {
+    return { ...settings, occasions: [...new Set<Occasion>([...settings.occasions, 'reach'])], reach: settings.reach ?? DEFAULT_REACH };
+}
+
 const MORNING_MIN: [number, number] = [10, 40];
 const AFTER_CLASS_MIN: [number, number] = [5, 20];
 /** 睡前：23:00 起这么多分钟之内（到 00:30） */
@@ -359,6 +412,26 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
         add('quiet', time, '你们大半天没说话了');
     }
 
+    // 没回也继续（ADR 0100）：她主动发的他还没回、还没到顶时，别的时机都不早于“离上一条隔够了”；另加 reach：想一想要不要催他
+    const gate = unansweredGate(input, day);
+    if (gate.notBefore !== undefined) {
+        const notBefore = gate.notBefore + pick(seed('unanswered gate'), 'at', minutes(GATE_JITTER_MIN));
+        for (const candidate of list) if (candidate.occasion !== 'dates' && candidate.at < notBefore) candidate.at = notBefore;
+        // 他没回的这段时间里，“随口说件事”和“冷场”这两个泛泛找他说话的时机交给 reach（想一想要不要催他）；不然当天的名额被它们先占了，她只会一条条说自己的事、不催
+        if (enabled.has('reach') && settings.reach) {
+            for (let i = list.length - 1; i >= 0; i--) if (list[i]!.occasion === 'share' || list[i]!.occasion === 'quiet') list.splice(i, 1);
+        }
+        if (enabled.has('reach') && settings.reach) {
+            const thought = input.records.filter(r => r.occasion === 'reach' && r.id.startsWith(`${dayText}:`) && !waitingRetry(r));
+            if (thought.length < REACH_MAX_PER_DAY) {
+                const lastThought = Math.max(-Infinity, ...thought.map(r => Date.parse(r.at)));
+                const base = Math.max(gate.notBefore, lastThought + REACH_RETHINK_MS, wake + QUIET_AFTER_WAKE_MS);
+                const time = base + pick(seed(`reach ${thought.length + 1}`), 'at', minutes(GATE_JITTER_MIN));
+                if (time < at(day, REACH_UNTIL).getTime()) add('reach', time, '他一直没回', { reach: { count: gate.count } }, `:${thought.length + 1}`);
+            }
+        }
+    }
+
     // 落在上课时间里的推到下课后；推完过了夜里的时刻、或者在睡觉的，这一天就没有了
     const kept: Candidate[] = [];
     for (const candidate of list) {
@@ -384,11 +457,40 @@ export function usedOn(day: string, records: readonly ProactiveRecord[]): number
 }
 
 /** 他最后一条消息之后，她主动发了几条（试运行时算试运行的记录，打开时算真发的） */
-export function unansweredCount(input: Pick<ProactiveInput, 'history' | 'records' | 'mode'>): number {
+function unansweredRecords(input: Pick<ProactiveInput, 'history' | 'records' | 'mode'>): ProactiveRecord[] {
     const lastUser = input.history.findLast(m => m.role === 'user');
     const since = lastUser ? Date.parse(lastUser.time) : -Infinity;
     const kind = input.mode === 'on' ? 'sent' : 'dryRun';
-    return input.records.filter(r => (r.result === kind || (kind === 'sent' && partlySent(r))) && Date.parse(r.at) > since).length;
+    return input.records.filter(r => (r.result === kind || (kind === 'sent' && partlySent(r))) && Date.parse(r.at) > since);
+}
+
+export function unansweredCount(input: Pick<ProactiveInput, 'history' | 'records' | 'mode'>): number {
+    return unansweredRecords(input).length;
+}
+
+/**
+ * 他没回时还能不能再发（ADR 0100）：blocked = 到顶了，等他回；notBefore = 还能发，但要等到这个时刻（离上一条主动消息隔够了）。
+ * 没开 reach 的卡：没回到 unansweredMax 条就 blocked（原来的样子）
+ */
+export interface UnansweredGate {
+    count: number;
+    blocked?: string;
+    notBefore?: number;
+}
+
+export function unansweredGate(input: Pick<ProactiveInput, 'history' | 'records' | 'mode' | 'settings' | 'schedule'>, day: Date): UnansweredGate {
+    const records = unansweredRecords(input);
+    const count = records.length;
+    const { unansweredMax, reach } = input.settings;
+    if (count < unansweredMax) return { count };
+    // 他最后一次说话是前天或更早：每多一整天（昨天不算，隔夜还是同一次）多放一条，所以他消失好几天她也会每天说一声早安
+    const lastUser = input.history.findLast(m => m.role === 'user');
+    const silentDays = lastUser ? Math.round((day.getTime() - herDay(input.schedule, new Date(lastUser.time)).getTime()) / (24 * HOUR)) : 0;
+    const extra = Math.min(Math.max(0, silentDays - 1), REACH_EXTRA_DAYS);
+    if (!reach || count >= reach.cap + extra) return { count, blocked: '上一条主动消息他还没回' };
+    const last = Math.max(...records.map(r => Date.parse(r.at)));
+    const gap = reach.gapsMs[Math.min(count - unansweredMax, reach.gapsMs.length - 1)] ?? 0;
+    return { count, notBefore: last + gap };
 }
 
 export interface Plan {
@@ -413,7 +515,7 @@ export function planFrom(now: number, input: ProactiveInput): Plan {
     const today = herDay(input.schedule, new Date(now));
     const missed: Candidate[] = [];
     const yielded: Candidate[] = [];
-    const paused = unansweredCount(input) >= input.settings.unansweredMax ? '上一条主动消息他还没回，等他回了再排' : undefined;
+    const paused = unansweredGate(input, today).blocked ? '上一条主动消息他还没回，等他回了再排' : undefined;
     const result = (upcoming: Candidate[]): Plan => ({ upcoming, missed, yielded, ...(paused ? { paused } : {}) });
     for (const [offset, day] of [today, addDays(today, 1)].entries()) {
         const all = candidatesOn(day, input).filter(c => !recorded.has(c.id))
@@ -459,7 +561,9 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
     }
     const used = usedOn(candidate.day, input.records);
     if (used >= input.settings.dailyMax) return `今天已经主动了 ${used} 条`;
-    if (unansweredCount(input) >= input.settings.unansweredMax) return '上一条主动消息他还没回';
+    const gate = unansweredGate(input, day);
+    if (gate.blocked) return gate.blocked;
+    if (gate.notBefore !== undefined && now < gate.notBefore) return '他还没回，离上一条主动消息隔得不够久';
     const wake = wakeOn(schedule, day).getTime();
     const userSince = (time: number) => history.some(m => m.role === 'user' && Date.parse(m.time) >= time);
     switch (candidate.occasion) {
@@ -479,6 +583,13 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
         case 'share':
             if (lastTime !== undefined && now - lastTime < SHARE_QUIET_MS) return '刚聊过';
             break;
+        case 'reach': {
+            if (gate.count < input.settings.unansweredMax) return '他回过了';
+            if (now >= at(day, REACH_UNTIL).getTime()) return '太晚了，不催他';
+            const lastUser = history.findLast(m => m.role === 'user');
+            if (lastUser && now - Date.parse(lastUser.time) < LEFT_FOR_NOW_MS && LEFT_FOR_NOW.test(lastUser.content)) return '他说过去睡了 / 去忙了，不催';
+            break;
+        }
         case 'quiet':
             if (lastTime === undefined || now - lastTime < QUIET_MS) return '没到 8 小时';
             break;
@@ -557,6 +668,17 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
         share: () => `你想起一件自己的小事，想跟${userName}说一句：从「你那边」「你的身体」「你今天的心情」里挑一件他还不知道的（不是你这会儿正在做的那件事，前面说过的也别再说），` +
             `随口说，像突然想起来的；不提刚刷到的视频、帖子、新闻（对方要链接你给不出来）；不问「在干嘛」，说完也不用追问他，那里没有合适的、没写的细节不编`,
         // 旧项目的教训（ADR 0013 决策 2）：分享「刚看到的」会编出一个具体的视频、帖子，对方要链接时给不出来
+        // 他没回、她自己想要不要催他（ADR 0100）：第一次轻轻戳一下，第二次起带点小脾气；也可以决定先不发。只给方向，不给台词
+        reach: () => {
+            const count = candidate.reach?.count ?? 1;
+            // 方向按这一条轮换（同一条每次一样）：模型对“催”只有一种说法，三次里四次都以同一个词开头（10-22 真模型）
+            const flavors = count <= 1 ? FIRST_NUDGES : LATER_NUDGES;
+            const flavor = flavors[pick(candidate.id, 'nudge', [0, flavors.length - 1])]!;
+            const decline = `要是你觉得他这会儿明显在忙或睡了，就只输出「${REACH_DECLINE}」两个字`;
+            return count <= 1
+                ? `你前面主动找了${userName}一次（看上面的聊天），他一直没回，过了好一阵了。他可能在忙、在上课、没看手机。你想催他理你一下，轻轻的，像随手发的：${flavor}；语气是想他理你，不是质问，也不翻前面的账；${decline}`
+                : `你前面主动找了${userName}好几次，他都没回，又过了好几个钟头。这次你有点小脾气了（傲娇的那种，不是真生气），不长篇大论，不威胁，不翻旧账，也别和前面发过的话重复（连开头也别一样）：${flavor}；${decline}`;
+        },
         quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
             `对方要链接你给不出来），或者问问对方在忙什么（对方可能在忙）`,
         follow_up: () => `${followUp!.atMorning ? `你起床没多久，跟${userName}说早安，顺便` : ''}问问${userName}${followUp!.when}的${followUp!.item.what}怎么样了（${userName}之前跟你说过）`,
@@ -568,7 +690,9 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
     // 人设早就去掉了算「不回消息」的账（persona.yml heart.fear 的说明），这里每种时机都说一遍
     // 没说成的事：只给事实和方向（ADR 0036 调整（2026-10-10 夜）），不给台词、不给没说成的原因（她那边的人不知道断网）
     const told = untold.length ? `；你今天${untold.map(n => n.what).join('、')}，还没跟${userName}说过，这次一起说（看「你那边」那一行，没写的细节不编）` : '';
-    return `[这次是你主动找${userName}：${why[candidate.occasion]()}${told}。只发一两句，像平时随手发的消息；不抱怨对方没找你、没回你。]`;
+    // 催他那一种本来就是在说他没回，不再加“不抱怨没回”
+    const tail = candidate.occasion === 'reach' ? '只发一两句，像平时随手发的消息。' : '只发一两句，像平时随手发的消息；不抱怨对方没找你、没回你。';
+    return `[这次是你主动找${userName}：${why[candidate.occasion]()}${told}。${tail}]`;
 }
 
 /** 主动找他时召回长期记忆想知道什么（ADR 0012 决策 1 第 7 条） */
@@ -581,7 +705,7 @@ export function recallTopic(candidate: Candidate, userName: string): string {
 
 /** 日志、状态页里的说法：「早安（起床后 12 分钟）」 */
 export const OCCASION_LABELS: Record<Occasion, string> = {
-    dates: '重要的日子', reschedule: '改约', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', morning: '早安', after_class: '下课', share: '随口说件自己的事', quiet: '冷场', bedtime: '睡前',
+    dates: '重要的日子', reschedule: '改约', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', morning: '早安', after_class: '下课', share: '随口说件自己的事', quiet: '冷场', bedtime: '睡前', reach: '催他回',
 };
 
 export function candidateLabel(candidate: Candidate): string {

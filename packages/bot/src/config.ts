@@ -64,6 +64,7 @@ export const DEFAULTS = {
     shapeAgenda: false,
     shapeFiller: false,
     shapeFeel: false,
+    proactiveReach: false,
     shapeSplit: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
@@ -204,6 +205,11 @@ export interface AppConfig {
      * 带上文重放 72 对真人情侣聊天：真人女生 38% 的回复主要在表达情绪 / 态度，她 25%；她“处理得完整”的 39%（真人 22%）。默认关
      */
     shapeFeel: boolean;
+    /**
+     * 他没回也继续找他（ADR 0100）：原来她主动发的有一条没回就整个停下等他回；开了以后没回的可以再发到 3 条，一条比一条隔得久（2 小时、4 小时），
+     * 并且她自己想一想要不要催他（第一次轻轻戳一下，第二次带点小脾气，也可以决定先不发）；到 3 条就停到他回。要主动消息开着。默认关
+     */
+    proactiveReach: boolean;
     /**
      * 分成几条（ADR 0096，要 shape 开着）：形状里抽出的条数（1 条约 55%、2 条约 28%、3 条约 17%）本来只是上限，真模型多半只写一行——
      * 线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思。默认关
@@ -444,6 +450,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         shapeAgenda: bool(file, 'shapeAgenda', '', DEFAULTS.shapeAgenda),
         shapeFiller: bool(file, 'shapeFiller', '', DEFAULTS.shapeFiller),
         shapeFeel: bool(file, 'shapeFeel', '', DEFAULTS.shapeFeel),
+        proactiveReach: bool(file, 'proactiveReach', '', DEFAULTS.proactiveReach),
         shapeSplit: bool(file, 'shapeSplit', '', DEFAULTS.shapeSplit),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),

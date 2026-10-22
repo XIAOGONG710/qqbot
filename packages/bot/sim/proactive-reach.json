@@ -1,0 +1,160 @@
+{
+    "name": "主动：他一直不回，她自己想要不要催（ADR 0100）",
+    "description": "假期里他前一天没说什么要走的话，之后一直没回。开了 proactiveReach：早安没回，过一阵她自己想想要不要再找他（第一次轻轻戳一下，第二次带点小脾气，也可以决定先不发），一条比一条隔得久，到 3 条就停；他沉默的第二天她还是说一声早安。不抱怨、不威胁、不长篇大论，不翻旧账。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-05T08:30:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "proactiveReach": true,
+    "history": [
+        {
+            "time": "2026-10-04T21:30:00+08:00",
+            "role": "user",
+            "content": "今天去操场跑了两圈，腿有点酸"
+        },
+        {
+            "time": "2026-10-04T21:31:00+08:00",
+            "role": "assistant",
+            "content": "厉害呀，明天腿肯定更酸"
+        }
+    ],
+    "steps": [
+        {
+            "case": "R01",
+            "note": "起床后的早安：他没回"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        1
+                    ],
+                    "occasions": [
+                        "早安"
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true
+                }
+            }
+        },
+        {
+            "case": "R02",
+            "note": "隔了两三个小时他还没回：她自己想了想，轻轻戳他一下（也可能决定先不发）"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        1
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true,
+                    "replyNone": [
+                        "滚",
+                        "不理你",
+                        "再也不",
+                        "分手",
+                        "拉黑"
+                    ]
+                }
+            }
+        },
+        {
+            "case": "R03",
+            "note": "又隔了几个小时还没回：带点小脾气催一句，不威胁、不翻旧账"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        1
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true,
+                    "replyNone": [
+                        "滚",
+                        "再也不",
+                        "分手",
+                        "拉黑",
+                        "永远"
+                    ]
+                }
+            }
+        },
+        {
+            "case": "R04",
+            "note": "没回的到 3 条就停：当天剩下的时间没有主动（等他回）"
+        },
+        {
+            "advance": "8h"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        0,
+                        0
+                    ]
+                }
+            }
+        },
+        {
+            "case": "R05",
+            "note": "他消失的第二天：每多沉默一整天多放一条，所以她还是说一声早安（只一条，不翻前一天的账）"
+        },
+        {
+            "wait": "proactive"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        1
+                    ],
+                    "occasions": [
+                        "早安"
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true,
+                    "replyNone": [
+                        "昨天",
+                        "一天",
+                        "不回我",
+                        "不理我"
+                    ]
+                }
+            }
+        },
+        {
+            "case": "R06",
+            "note": "第二天的那条也没回：到顶了，之后一整天没有"
+        },
+        {
+            "advance": "10h"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        0,
+                        0
+                    ]
+                }
+            }
+        }
+    ]
+}
