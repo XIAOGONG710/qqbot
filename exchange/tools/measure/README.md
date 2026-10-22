@@ -31,3 +31,20 @@
 | `night-compare.cjs` | 同一个场景改代码前后各跑 3 次，比自证 / 往后推的字词 / 金句体 / 重复片段 | `node night-compare.cjs <基线批次目录> <新批次目录>` |
 
 注意：逗号不是“AI 味”——用户自己带逗号的话占 43%，她形状控制后 35%，对上了；别再拿它当尺子。
+
+## 10-22 补充：“太顺”（ADR 0099）——带上文 + 按回复方式分类
+
+旧的鉴别员是单轮、没上文的，看不懂半句话就只能回“咋啦”，而且对改动不敏感（54–59%，±3–6）。这一套换成：带上文重放真人情侣对话 + 另一个调用给回复方式分类，每个版本跑三份不同抽签（共 216 条）。
+**路径写死在这台机器和当时的会话临时目录**（`SP` / `OUT` / 各脚本头部），换环境先改路径；用的是 `qqbot-claude2/packages/bot` 里的 `llm.ts` / `config.ts`（要环境变量 `QQBOT_LLM_API_KEY`）。
+
+| 脚本 | 看什么 | 用法 |
+| --- | --- | --- |
+| `make-ctx-variants.cjs` | 把 `exchange/research/2026-10-real-chat` 里 boyfriend 的 22 段做成 72 个带上文的单轮场景（`history` = 这一轮之前最多 8 条），分 3 份放进 `ctx-<v>-chunk-N`；`v0/v1/v2` 起点错开 0 / 11 / 23 分钟 = 不同抽签 | `node make-ctx-variants.cjs v0` |
+| `run-config.sh` | 对一个变体跑模拟器（3 路并行，要先拿 `%TEMP%\qqbot-heavy.lock`） | `bash run-config.sh v0 <标签> --feel` |
+| `prep-hers2.cjs` | 从模拟输出取她**最后一次**连续回复（带上文时聊天文件里先有历史行，不能取第一次） | 见文件头 |
+| `annotate.mts` | 另一个调用按回复方式分类（完整接话 / 部分 / 应一声 / 短追问 / 自己的事 / 带情绪）+ 解释 / 劝慰 / 俏皮 / 疑问 / 补细节 / 顺从；`human` = 真人回复 | `node annotate.mts <标签> <hers.json|human>` |
+| `judge-ctx.mts` | 带上文的鉴别员（旧的 `blind-judge-cli` 的带上文版） | `node judge-ctx.mts <hers.json> <标签>` |
+| `collect.sh` | 一个标签 + 变体：取回复 → 分类 → 鉴别 | `bash collect.sh <标签> v0` |
+| `pool.cjs` | 把某标签的 `v0..v2` 合并成一行，和真人对照 | `node pool.cjs base feel3` |
+
+读法：真人（71 对）完整接话 23% / 带情绪 38% / 顺从 4% / 补细节 20%；ADR 0099 前她是 47 / 21 / 20 / 37。别拿鉴别员的百分比当尺子，它分不出。
