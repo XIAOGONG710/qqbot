@@ -85,7 +85,7 @@ mkdirSync(root, { recursive: true });
 let failed = 0;
 for (const [fileIndex, file] of files.entries()) {
     const scenario = loadScenario(file);
-    const card = loadTierCard(config.characterCard, cardKey({ tier: scenario.tier, knowsBot: scenario.knowsBot }), scenario.everydayLife ? { everydayLife: true } : {});
+    const card = loadTierCard(config.characterCard, cardKey({ tier: scenario.tier, knowsBot: scenario.knowsBot }), scenario.everydayLife ? { everydayLife: true, ...(scenario.everydayFrom ? { everydayFrom: scenario.everydayFrom } : {}) } : {});
     // 日记里的世界按同学档（ADR 0026，和 bot 一样）
     const diaryCard = loadTierCard(config.characterCard, 'classmate').character;
     const diaryWorld = diaryCard.herWorld;

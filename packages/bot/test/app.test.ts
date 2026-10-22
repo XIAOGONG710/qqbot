@@ -1582,6 +1582,7 @@ describe('全开冒烟（整包上线用）', () => {
                 contacts: bf, schedule: true, herDays: true, pokes: true, pokeBack: true, pokeOut: true, recalls: true, readReceipts: true, reactions: true,
                 onlineStatus: true, profileLikes: true, signature: 'dryRun', qzone: 'dryRun', bilibili: 'dryRun', typingStatus: true, selfRecall: true,
                 rhythm: true, shortReplies: true, festivals: 'greet', npcAsks: true,
+                herFeelings: true, herNo: true, lagTail: true, everydayLife: true, pursuits: true, shape: true, shapeAgenda: true, shapeFiller: true, shapeFeel: true, shapeSplit: true, grievance: true,
             });
             const { app, sent, logs } = setup(cfg, { 10001: [] }, {
                 clock, generate: () => '在呢，刚忙完', bilibiliFetch: bili,

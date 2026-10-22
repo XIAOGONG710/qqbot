@@ -50,6 +50,8 @@ export interface World {
     }[];
     /** 小测的一条线开着（ADR 0106）：前一次课老师说、当天写、两天后出分 */
     quizzes?: boolean;
+    /** 补充的小事和小测从这一天起才有（ADR 0106）：她已经过完的日子不被改写、不凭空多出没发生过的小测 */
+    everydayFrom?: string;
     /** 她的身体（ADR 0025，body.ts） */
     body?: Body;
     /** 她的日常（ADR 0031）：午饭、晚饭、洗澡 */
@@ -480,6 +482,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         const extras: { event: World['events'][number]; time: Date; rank: number }[] = [];
         for (const event of world.events) {
             if (!event.everyday) continue;
+            if (world.everydayFrom && date < world.everydayFrom) continue;
             const weekday = day.getDay() || 7;
             if (event.weekdays && !event.weekdays.includes(weekday)) continue;
             if (event.months && !event.months.includes(day.getMonth() + 1)) continue;
@@ -511,7 +514,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             if (event.cost) book(time, -priceIn(event.cost.amount, `${date} ${event.id} cost`), event.cost.what, 'spend');
         }
         // 小测的一条线（ADR 0106）
-        if (world.quizzes) record.events.push(...quizEvents(schedule, day, atSchool));
+        if (world.quizzes && (!world.everydayFrom || date >= world.everydayFrom)) record.events.push(...quizEvents(schedule, day, atSchool));
         // 她的钱（ADR 0035）：到账、三餐、网购、线上单
         if (money) {
             if (day.getDate() === money.payday) book(at(day, PAY_TIME), money.allowance, '生活费到账', 'income');

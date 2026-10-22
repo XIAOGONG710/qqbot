@@ -105,6 +105,8 @@ export interface PursuitFacts {
     world?: WorldNow;
     /** 小测的线开着（everydayLife）：别挂科的进度才有数 */
     quizzes: boolean;
+    /** 小测从哪天起才有（everydayFrom）：之前的日子没有小测，不凭空数进去 */
+    quizFrom?: string;
 }
 
 export interface PursuitView {
@@ -122,9 +124,10 @@ const clockDay = (at: Date, now: Date) => {
 };
 
 /** 别挂科：这学期到现在出了分的小测（出分 = 小测后两天） */
-export function quizRecord(schedule: Schedule, now: Date): { course: string; score: number; date: string }[] {
+export function quizRecord(schedule: Schedule, now: Date, from?: string): { course: string; score: number; date: string }[] {
     const out: { course: string; score: number; date: string }[] = [];
-    const start = new Date(`${schedule.semester.start}T00:00:00`);
+    const semesterStart = new Date(`${schedule.semester.start}T00:00:00`);
+    const start = from && new Date(`${from}T00:00:00`) > semesterStart ? new Date(`${from}T00:00:00`) : semesterStart;
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     for (let day = start; day.getTime() <= today.getTime() - 2 * DAY_MS; day = new Date(day.getTime() + DAY_MS)) {
         for (const quiz of quizzesOn(schedule, day)) out.push({ course: quiz.course, score: quizScore(quiz, formatDate(day)), date: formatDate(day) });
@@ -133,7 +136,7 @@ export function quizRecord(schedule: Schedule, now: Date): { course: string; sco
 }
 
 function coursesView(pursuit: Pursuit, facts: PursuitFacts): PursuitView {
-    const record = facts.quizzes ? quizRecord(facts.schedule, facts.now) : [];
+    const record = facts.quizzes ? quizRecord(facts.schedule, facts.now, facts.quizFrom) : [];
     const base = `${pursuit.title}——${pursuit.why}`;
     if (!record.length) return { pursuit, text: base, appraisals: [] };
     const low = record.reduce((min, item) => (item.score < min.score ? item : min));

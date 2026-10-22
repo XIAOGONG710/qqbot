@@ -1,13 +1,16 @@
 // 她每天碰到的小事和小测（ADR 0106）：目录要干净、条件要满足、频率要合理、小测的线要连得上、带感受的要进心境。
 
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { loadTierCard } from '../src/contact.ts';
 import {
-    EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, everydayEventsFor, quizEvents, quizFeel, quizScore, quizzesOn, withEveryday,
+    EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, everydayEventsFor, loadEverydayFrom, quizEvents, quizFeel, quizScore, quizzesOn, withEveryday,
 } from '../src/everyday.ts';
 import { appraisals, feelingsAt } from '../src/feelings.ts';
+import { quizRecord } from '../src/pursuits.ts';
 import { simulateWorld, worldAt, type WorldNow } from '../src/world.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
@@ -230,5 +233,51 @@ describe('小测的一条线', () => {
     test('quizEvents 只在她在学校的日子', () => {
         assert.deepEqual(quizEvents(schedule, day('2026-10-21'), false), []);
         assert.ok(quizEvents(schedule, day('2026-10-21'), true).length >= 0);
+    });
+});
+
+describe('从哪天起才有（她已经过完的日子不改写）', () => {
+    const from = '2026-10-23';
+    const gated = withEveryday(loadTierCard(pattern, 'boyfriend').character.herWorld, 'boyfriend', from)!;
+    const until = new Date('2026-12-20T23:00:00+08:00');
+    const plainTimeline = simulateWorld(loadTierCard(pattern, 'boyfriend').character.herWorld!, schedule, until);
+    const gatedTimeline = simulateWorld(gated, schedule, until);
+    const full = simulateWorld(world, schedule, until);
+
+    test('之前的日子和没开的时候一模一样（一件小事、一场小测都不多）；之后的日子和一直开着的一样', () => {
+        for (const [date, record] of gatedTimeline.days) {
+            const ids = record.events.map(e => e.id);
+            if (date < from) {
+                assert.deepEqual(ids, plainTimeline.days.get(date)!.events.map(e => e.id), date);
+            } else {
+                assert.deepEqual(ids, full.days.get(date)!.events.map(e => e.id), date);
+            }
+        }
+        const after = [...gatedTimeline.days].filter(([date]) => date >= from).flatMap(([, record]) => record.events);
+        assert.ok(after.some(e => e.id.startsWith('ed_')) && after.some(e => e.id.startsWith('quiz_')));
+        const before = [...gatedTimeline.days].filter(([date]) => date < from).flatMap(([, record]) => record.events);
+        assert.ok(before.every(e => !e.id.startsWith('ed_') && !e.id.startsWith('quiz_')));
+    });
+
+    test('别挂科的数也只数从那天起的小测', () => {
+        const now = new Date('2026-12-20T20:00:00+08:00');
+        assert.ok(quizRecord(schedule, now).length > quizRecord(schedule, now, from).length);
+        assert.ok(quizRecord(schedule, now, from).every(item => item.date >= from));
+        assert.equal(quizRecord(schedule, new Date('2026-10-25T20:00:00+08:00'), from).length, 0, '才过了两天，还没有出分的');
+    });
+
+    test('第一次开的时候定下“第二天”并存进文件，以后重启读同一个；文件坏了也不往前改', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-everyday-'));
+        try {
+            const path = join(dir, 'everyday-from.json');
+            const logs: string[] = [];
+            assert.equal(loadEverydayFrom(path, new Date('2026-10-22T21:30:00+08:00'), line => logs.push(line)), '2026-10-23');
+            assert.ok(logs.some(line => line.includes('从 2026-10-23 起生效')));
+            assert.equal(loadEverydayFrom(path, new Date('2026-11-30T10:00:00+08:00')), '2026-10-23', '重启后读同一个');
+            writeFileSync(path, '{ 坏了');
+            assert.equal(loadEverydayFrom(path, new Date('2026-11-30T10:00:00+08:00')), '2026-12-01', '读不了就用今天之后的一天，不去改写已经过的日子');
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 });

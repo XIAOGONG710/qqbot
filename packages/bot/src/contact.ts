@@ -71,11 +71,11 @@ export interface TierCard {
 }
 
 /** 读一个档位的角色卡和它链接的世界书；pattern 是配置里的 characterCard（{tier} 换成档位名，承认版是「<档位>-open」，ADR 0067），世界书在同目录的 <world>.json */
-export function loadTierCard(pattern: string, tier: string, options: { everydayLife?: boolean } = {}): TierCard {
+export function loadTierCard(pattern: string, tier: string, options: { everydayLife?: boolean; everydayFrom?: string } = {}): TierCard {
     const path = pattern.replaceAll('{tier}', tier);
     const loaded = loadCharacterCard(path);
     // 补充的日常小事和小测（ADR 0106，配置 everydayLife）：代码里加进世界的“小事”块，不改角色卡
-    const character = options.everydayLife && loaded.herWorld ? { ...loaded, herWorld: withEveryday(loaded.herWorld, tier)! } : loaded;
+    const character = options.everydayLife && loaded.herWorld ? { ...loaded, herWorld: withEveryday(loaded.herWorld, tier, options.everydayFrom)! } : loaded;
     const worldInfo = character.world ? loadWorldInfo(join(dirname(path), `${character.world}.json`), character.world) : [];
     return { character, worldInfo };
 }
@@ -493,7 +493,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她自己的追求（ADR 0104）：进度只来自她做过的事（生活账里的摄影）和出分的小测
             const pursuitList = options.pursuits && contact.tier === 'boyfriend' && herSchedule ? options.pursuits() : [];
             const pursuitViewsNow = pursuitList.length && herSchedule
-                ? pursuitViews(pursuitList, { now: time, schedule: herSchedule, quizzes: Boolean(options.everydayLife), ...(options.worldState?.events ? { events: options.worldState.events() } : {}), ...(around ? { world: around } : {}) })
+                ? pursuitViews(pursuitList, { now: time, schedule: herSchedule, quizzes: Boolean(options.everydayLife), ...(character.herWorld?.everydayFrom ? { quizFrom: character.herWorld.everydayFrom } : {}), ...(options.worldState?.events ? { events: options.worldState.events() } : {}), ...(around ? { world: around } : {}) })
                 : [];
             const pursuitLine = describePursuits(pursuitViewsNow);
             const previousAround = options.herFeelings && herSchedule && character.herWorld && contact.tier === 'boyfriend'

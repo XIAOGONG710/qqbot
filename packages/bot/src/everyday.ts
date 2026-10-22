@@ -8,6 +8,7 @@
 // 另有“小测”的一条线：高数 / 概率论 / 专业课每四周一次，前一次课老师说，当天写，两天后出分——分数是她难过或开心的真正来由（数学类偏低，自传：怕数学）。
 
 import type { FeelingKind } from './feelings.ts';
+import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { classesOn, formatDate, type ClassToday, type Schedule } from './schedule.ts';
 import type { World, WorldWindow } from './world.ts';
 
@@ -192,10 +193,24 @@ export function everydayEventsFor(world: World, tier: string): WorldEventDef[] {
         }));
 }
 
-/** 把补充的小事加进这个世界（档位只看得到自己该看的）；小测的线开着 */
-export function withEveryday(world: World | undefined, tier: string): World | undefined {
+/** 把补充的小事加进这个世界（档位只看得到自己该看的）；小测的线开着。from：从这一天起才有（她已经过完的日子不改写） */
+export function withEveryday(world: World | undefined, tier: string, from?: string): World | undefined {
     if (!world) return world;
-    return { ...world, events: [...world.events, ...everydayEventsFor(world, tier)], quizzes: CLOSE.includes(baseTier(tier)) };
+    return { ...world, events: [...world.events, ...everydayEventsFor(world, tier)], quizzes: CLOSE.includes(baseTier(tier)), ...(from ? { everydayFrom: from } : {}) };
+}
+
+/**
+ * 第一次开 everydayLife 时定下“从哪天起”并存进文件，以后重启都读同一个（和 needs-anchor.json 一个办法）：从第二天起，今天已经过的不改。
+ * 文件读不了就用今天之后的一天，不去改写已经过的日子
+ */
+export function loadEverydayFrom(path: string, now: Date, log: (message: string) => void = () => undefined): string {
+    const existing = readJsonOr<{ version?: number; from?: string }>(path, {}, message => log(`日常小事：${message}`));
+    if (existing.version === 1 && typeof existing.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(existing.from)) return existing.from;
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const from = formatDate(tomorrow);
+    writeJsonAtomic(path, { version: 1, from });
+    log(`日常小事：从 ${from} 起生效（已经过完的日子不改）`);
+    return from;
 }
 
 // ───────────────────────── 小测的一条线 ─────────────────────────
