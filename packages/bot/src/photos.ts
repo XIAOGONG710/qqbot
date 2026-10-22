@@ -22,6 +22,9 @@ export const PHOTO_TARGET: Partial<Record<PhotoKind, number>> = { cat: 8, view: 
 export const PHOTO_DISCOVERY_PER_RUN = 2;
 /** 每隔多久找一次 */
 export const PHOTO_DISCOVERY_INTERVAL_MS = 6 * 60 * 60_000;
+/** 被限流 / 断网打断后多久再试、最多试几次（Wikimedia 的 Retry-After 有的是 10 分钟） */
+export const PHOTO_RETRY_MS = 15 * 60_000;
+export const PHOTO_RETRY_MAX = 6;
 /** 搜索结果翻页的起点：一页都没有新的就翻下一页 */
 const PAGE_OFFSETS = [0, 30, 60] as const;
 /** 两次下载之间歇一下：Wikimedia 对快速连续的请求回 429 */
@@ -126,8 +129,8 @@ export interface PhotoShelf {
     history(text: string): string;
     used(id: string): void;
     status(): { count: number; byKind: Record<PhotoKind, number> };
-    /** 从网络来源找新的（没配来源就什么都不做）；同一时刻只跑一个 */
-    discover(): Promise<void>;
+    /** 从网络来源找新的（没配来源就什么都不做）；同一时刻只跑一个。返回 retry = 这一轮被限流 / 断网打断了，调用方过一会儿再来 */
+    discover(): Promise<'done' | 'retry'>;
 }
 
 export interface PhotoShelfOptions {
@@ -185,8 +188,9 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
     return {
         async discover() {
             const source = options.source;
-            if (!source || discovering) return;
+            if (!source || discovering) return 'done';
             discovering = true;
+            let outcome: 'done' | 'retry' = 'done';
             let downloaded = 0;
             try {
                 for (const kind of PHOTO_KINDS) {
@@ -198,7 +202,9 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                     for (const offset of PAGE_OFFSETS) {
                         let found: PhotoCandidate[];
                         try { found = await source.search(kind, offset); } catch (error) {
-                            options.log(`照片货架：找${kind}失败（${error instanceof Error ? error.message : String(error)}），下次再试`);
+                            const reason = error instanceof Error ? error.message : String(error);
+                            options.log(`照片货架：找${kind}失败（${reason}），下次再试`);
+                            if (TRANSIENT.test(reason)) outcome = 'retry';
                             break;
                         }
                         fresh = found.filter(c => c.kind === kind && !seen.has(c.title) && !owned.has(c.title));
@@ -246,13 +252,14 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                             const reason = error instanceof Error ? error.message : String(error);
                             if (TRANSIENT.test(reason)) {
                                 options.log(`照片货架：处理 ${candidate.title} 时遇到暂时的错误（${reason}），这一轮先停，下次再来`);
-                                return;
+                                return 'retry';
                             }
                             markSeen(candidate.title);
                             options.log(`照片货架：处理 ${candidate.title} 失败（${reason}），以后不再试这张`);
                         }
                     }
                 }
+                return outcome;
             } finally {
                 discovering = false;
             }

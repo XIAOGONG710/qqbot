@@ -21,7 +21,7 @@ import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import type { StickerEntry, StickerShelf } from '../src/stickers.ts';
-import { photoShelf } from '../src/photos.ts';
+import { photoShelf, type PhotoSource } from '../src/photos.ts';
 import { CRISIS_FALLBACK } from '../src/exit-check.ts';
 import { CRISIS_MARK } from '../src/intent.ts';
 
@@ -75,7 +75,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; extra?: Partial<Transport> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -104,6 +104,8 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.media ? { media: options.media } : {}),
         ...(options.vision ? { vision: options.vision } : {}),
         ...(options.stickers ? { stickers: options.stickers } : {}),
+        ...(options.photoSource ? { photoSource: options.photoSource } : {}),
+        ...(options.photoRetryMs !== undefined ? { photoRetryMs: options.photoRetryMs } : {}),
         ...(options.stickerChance !== undefined ? { stickerChance: options.stickerChance } : {}),
         ...(options.stickerOnlyChance !== undefined ? { stickerOnlyChance: options.stickerOnlyChance } : {}),
         ...(options.mediaTimeouts ? { mediaTimeouts: options.mediaTimeouts } : {}),
@@ -293,6 +295,29 @@ describe('编排（app.ts）', () => {
         await until(() => second.sent.length >= 1);
         assert.equal(second.images.length, 0);
         assert.ok(second.sent.every(m => !m.includes('<photo')));
+    });
+
+    test('照片货架：第一次找被限流（429）→ 过一会儿自己再来一次，最多 PHOTO_RETRY_MAX 次；找到就不再重试', async () => {
+        const cfg = config({ photos: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        let searches = 0;
+        const source: PhotoSource = {
+            search: async kind => {
+                if (kind !== 'cat') return [];
+                searches++;
+                if (searches === 1) throw new Error('Commons 搜索返回 429');
+                return [{ kind: 'cat', title: 'File:Calico cat, Lebanon 1.jpg', pageUrl: 'https://commons.wikimedia.org/wiki/File:x.jpg', imageUrl: 'https://upload.wikimedia.org/x.jpg', width: 4032, height: 3024, license: 'Public domain', artist: 'x', series: 'Calico cat, Lebanon' }];
+            },
+            download: async () => ({ bytes: new Uint8Array(150 * 1024).fill(7), type: 'image/jpeg' as const }),
+            judge: async () => ({ keep: true, caption: '一只三花猫蹲在水泥地上，周围是绿草' }),
+        };
+        const { app, logs } = setup(cfg, { 10001: [] }, { photoSource: source, photoRetryMs: 30, generate: () => '好' });
+        await app.connected(SELF);
+        await until(() => searches >= 2 && logs.some(m => m.includes('收了一张 cat')));
+        assert.ok(logs.some(m => m.includes('找cat失败（Commons 搜索返回 429）')));
+        const before = searches;
+        await new Promise(r => setTimeout(r, 120));
+        assert.equal(searches, before, '收到了就不再重试');
+        app.stop();
     });
 
     test('照片货架没开 / 货架空：他要看照片也不发图（照旧走“先不发”）', async () => {

@@ -130,7 +130,7 @@ describe('货架自己去网上找（discover）', () => {
 
     test('猫：同一个系列放一起（候选最多的那个系列）；每次最多收 PHOTO_DISCOVERY_PER_RUN 张；出处记下来；文件真的落盘', async () => {
         const { shelf, dir, calls } = setup();
-        await shelf.discover();
+        assert.equal(await shelf.discover(), 'done');
         assert.equal(calls.download.length, PHOTO_DISCOVERY_PER_RUN);
         const cats = shelf.list('cat');
         assert.equal(cats.length, PHOTO_DISCOVERY_PER_RUN);
@@ -152,7 +152,7 @@ describe('货架自己去网上找（discover）', () => {
         assert.equal(shelf.list().length, 0);
         assert.ok(logs.some(m => m.includes('不收 File:Calico cat, Lebanon 1.jpg（有水印')));
         mode = 'limit';
-        await shelf.discover();
+        assert.equal(await shelf.discover(), 'retry');
         assert.ok(logs.some(m => m.includes('暂时的错误')));
         mode = 'ok';
         await shelf.discover();
@@ -168,8 +168,10 @@ describe('货架自己去网上找（discover）', () => {
         assert.ok(small.logs.some(m => m.includes('文件太小')));
 
         const broken = setup({ search: async () => { throw new Error('ENOTFOUND commons.wikimedia.org'); } });
-        await broken.shelf.discover();
+        assert.equal(await broken.shelf.discover(), 'retry', '断网这类暂时的错误：让调用方过一会儿再来');
         assert.ok(broken.logs.some(m => m.includes('找cat失败')));
+        const odd = setup({ search: async () => { throw new Error('JSON 解析不了'); } });
+        assert.equal(await odd.shelf.discover(), 'done', '不是暂时的错误：不重试');
 
         const full = setup();
         for (let i = 0; i < (PHOTO_TARGET.cat ?? 0) / PHOTO_DISCOVERY_PER_RUN + 1; i++) await full.shelf.discover();

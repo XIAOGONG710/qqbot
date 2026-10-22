@@ -57,7 +57,7 @@ import { loadNeedsAnchor } from './needs.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
-import { photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, type PhotoSource } from './photos.ts';
+import { photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type PhotoSource } from './photos.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } from './stickers.ts';
 import { SlidingWindowRateLimiter } from './rate-limit.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
@@ -173,6 +173,8 @@ export interface AppOptions {
     stickers?: StickerShelf;
     /** 照片货架的网络来源（ADR 0109：她自己从网上找高清图）；运行入口按配置建（看图没配置就没有），测试可给假的 */
     photoSource?: PhotoSource;
+    /** 照片找到一半被限流 / 断网打断后多久再试（毫秒，默认 PHOTO_RETRY_MS；测试用） */
+    photoRetryMs?: number;
     /** 允许发图片表情的轮次里抽中发的概率（不写按 STICKER_TURN_CHANCE；测试用）*/
     stickerChance?: number;
     /** 抽到发表情的轮次里只发表情不写文字的概率（不写：shapeFeel 开着按 STICKER_ONLY_SHARE，否则 0；测试用，ADR 0099）*/
@@ -192,7 +194,7 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, sensitive = sensitiveSwitch() }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, sensitive = sensitiveSwitch() }: AppOptions): App {
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -867,7 +869,20 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     let stopped = false;
     let stickerDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
     let photoDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
-    const discoverPhotos = () => void photos?.discover().catch(error => log(`照片货架：找照片出错（${error instanceof Error ? error.message : String(error)}）`));
+    // 被限流 / 断网打断了就过一会儿再来（上线时第一次就撞上 Wikimedia 的 429，货架空了 6 小时），最多 PHOTO_RETRY_MAX 次
+    let photoRetries = 0;
+    let photoRetryTimer: ReturnType<typeof setTimeout> | undefined;
+    const discoverPhotos = (): void => {
+        if (!photos || stopped) return;
+        photos.discover().then(result => {
+            if (result === 'done') { photoRetries = 0; return; }
+            if (photoRetries >= PHOTO_RETRY_MAX || stopped) return;
+            photoRetries++;
+            clearTimeout(photoRetryTimer);
+            photoRetryTimer = setTimeout(discoverPhotos, photoRetryMs ?? PHOTO_RETRY_MS);
+            photoRetryTimer.unref();
+        }).catch(error => log(`照片货架：找照片出错（${error instanceof Error ? error.message : String(error)}）`));
+    };
     const discoverStickers = () => void collectingStickers?.discover()
         .catch(error => log(`图片表情：读取导入箱和 QQ 自定义表情失败（${error instanceof Error ? error.message : String(error)}）`));
     /** Hindsight 健康检查的结果（状态页用到时才探，见 status()） */
@@ -1131,6 +1146,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (weatherTimer) clearInterval(weatherTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
             if (photoDiscoveryTimer) clearInterval(photoDiscoveryTimer);
+            clearTimeout(photoRetryTimer);
             useRealWeather(undefined);
             releaseLock();
         },
