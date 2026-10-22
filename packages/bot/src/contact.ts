@@ -192,6 +192,8 @@ export interface ContactPipelineOptions {
     together?: boolean;
     /** 关系阶段（ADR 0113）：最近 30 天里有 14 天以上真聊过，她更放得开一点；只对男朋友档 */
     relationship?: boolean;
+    /** 吃醋，最轻的一档（ADR 0123）：他提到别的女生时嘴上不承认的别扭，不盘问、不要保证、不限制他；只对男朋友档 */
+    jealousy?: boolean;
     /** 被第三方打断（ADR 0115）：聊着聊着她那边发生了一件小事（世界账里有时刻的），当场岔一下；只对男朋友档 */
     interruptions?: boolean;
     /** 小梗（ADR 0114）：他们之间聊天里反复出现的玩笑；约 1/4 的轮次给她看一个，话赶话接得上就顺口提；只对男朋友档 */
@@ -491,6 +493,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 books: Boolean(books),
                 initiating: Boolean(initiate),
                 ...(options.herNo ? { refuse: true } : {}),
+                ...(options.jealousy ? { jealous: true } : {}),
                 ...(options.everydayLife && around?.events.length ? { dayThings: true } : {}),
                 ...(options.pursuits && state?.activity.kind === 'free' && projectActivity(state.activity.text) ? { pursuitDoing: projectActivity(state.activity.text)!.step } : {}),
                 waiting: loops?.waiting.map(l => l.what),

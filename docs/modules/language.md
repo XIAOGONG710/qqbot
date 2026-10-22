@@ -24,6 +24,7 @@
 - `jokes.ts`
 - `interruption.ts`
 - `together.ts`
+- `jealousy.ts`
 - `llm.ts`
 - `model-guard.ts`
 - `st/`
@@ -47,6 +48,7 @@
 | `jokes` | 小梗回头提 | [ADR 0114](../adr/0114-running-jokes.md) |
 | `interruptions` | 被第三方打断 | [ADR 0115](../adr/0115-interruptions.md) |
 | `together` | 陪玩状态 | [ADR 0111](../adr/0111-together.md) |
+| `jealousy` | 吃醋（最轻一档） | [ADR 0123](../adr/0123-jealousy.md) |
 
 ## 看它有没有变好
 

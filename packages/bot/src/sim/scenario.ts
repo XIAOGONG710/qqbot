@@ -289,6 +289,10 @@ export interface Scenario {
     proactiveAsk: boolean;
     /** 默认 false：被第三方打断（ADR 0115，配置 interruptions） */
     interruptions: boolean;
+    /** 默认 false：给主动名额留余地（ADR 0124，配置 proactiveRoom） */
+    proactiveRoom: boolean;
+    /** 默认 false：吃醋，最轻的一档（ADR 0123，配置 jealousy） */
+    jealousy: boolean;
     /** 默认 false：关系阶段（ADR 0113，配置 relationship） */
     relationship: boolean;
     /** 默认 false：说了等下之后自己回来（ADR 0112，配置 comeBack，要 proactive） */
@@ -402,6 +406,8 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         together: s.together === true,
         comeBack: s.comeBack === true,
         relationship: s.relationship === true,
+        jealousy: s.jealousy === true,
+        proactiveRoom: s.proactiveRoom === true,
         interruptions: s.interruptions === true,
         proactiveAsk: s.proactiveAsk === true,
         hisHours: s.hisHours === true,

@@ -2,6 +2,7 @@
 // 只按眼前已有线索给一个方向，不抽签、不额外调模型，也不把它写成能照抄的台词。
 
 import { describeGrievance, type Grievance } from './grievance.ts';
+import { JEALOUS_INTENT, jealousTurn, SOFTEN_INTENT } from './jealousy.ts';
 import type { StoredMessage } from './history.ts';
 import type { CrisisLevel } from './crisis.ts';
 import { isAck, isReaction } from './reply-timing.ts';
@@ -37,6 +38,8 @@ export interface IntentContext {
     grievance?: Grievance;
     /** 会拒绝（ADR 0103，配置 herNo）：开了才有“他在磨她”“他在管着她”这两个意图；只有男朋友档 */
     refuse?: boolean;
+    /** 吃醋，最轻的一档（ADR 0123，配置 jealousy）：他提到别的女生时嘴上不承认的别扭；只有男朋友档 */
+    jealous?: boolean;
     /** 她此刻正在做的、自己在意的事（修片、拍照，ADR 0104）；配合 refuse：他让她先放下时可以先弄完这一小段 */
     pursuitDoing?: string;
     /** 她今天有可讲的小事（ADR 0106，配置 everydayLife）：他问“今天干嘛了 / 有什么好玩的事”时让她从里面挑具体的说 */
@@ -351,6 +354,12 @@ export function describeIntent(context: IntentContext): string | undefined {
     if (context.intimate && isIntimateBid(context.history)) return `[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事：先给一个明确的亲密回应，${isPlainAffection(context.history) ? AFFECTION_REPLY : BID_REPLY}。QQ 文字里的抱抱、亲一下和 mua 就是真的在抱、在亲，直接在这一轮用文字回抱回亲，让他收到你的回应；他说难受时先心疼他，他同时报了好消息时先替他高兴再接亲密话，他真要收尾时回应后顺着收尾，他不想你走时能陪就多陪一句]`;
     if (context.refuse && context.intimate && !needsCare(context.history) && pressedAfterRefusing(context.history)) return PRESSED_INTENT;
     if (context.refuse && context.intimate && !needsCare(context.history) && declinedHerInvite(context.history)) return DECLINED_INVITE_INTENT;
+    // 吃醋（ADR 0123）：他难过 / 生病的时候已经在前面让路；别盘问、不要保证、不限制他
+    if (context.jealous && context.intimate && !needsCare(context.history)) {
+        const turn = jealousTurn(context.history, context.now.getTime());
+        if (turn === 'jealous') return JEALOUS_INTENT;
+        if (turn === 'soften') return SOFTEN_INTENT;
+    }
     if (asksForHer(context.history)) return '[这一轮你想：他在撒娇要你哄他、陪他，只接他刚说的你们两个人的事：顺着哄他一两句，嘴硬着哄也行，别一句话就把他打发了；他要睡就哄他睡，他不让你走就再陪他一会儿，不另起话题，也不用约他睡醒再找你]';
     const meme = context.playful ? playfulHint(context.history) : undefined;
     if (meme !== undefined) return `[这一轮你想：他在玩网络梗、缩写或谐音，先按最近的上下文理解笑点，顺着同一套逻辑接一句，再接他真正说的事；不把梗按字面纠正，不解释梗或报出处。他把固定说法里的一个词换掉时，回话保留那句被拧过的关键词或句式，别只按字面劝他去吃、睡或做事。接不准就用你自己的口气问一句，不装懂；可以夸张、反差或者故意一本正经，但一次只玩一个点，不堆热词${meme}；他真要收尾时接完梗就收尾]`;

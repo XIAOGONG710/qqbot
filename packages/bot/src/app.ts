@@ -33,7 +33,7 @@ import { pursuitsReader } from './pursuits.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from './festivals.ts';
-import { newsKindsOf, dayMatches, withAsk, withBack, withCatPhoto, withInner, withInvite, withReach, type ProactiveMode } from './proactive.ts';
+import { newsKindsOf, dayMatches, withAsk, withBack, withCatPhoto, withInner, withInvite, withReach, withRoom, type ProactiveMode } from './proactive.ts';
 import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
 import { qzoneComposer } from './qzone.ts';
 import { createVideoBrowsing, dmMessageId, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
@@ -531,6 +531,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
             ...(config.together ? { together: true } : {}),
             ...(config.relationship ? { relationship: true } : {}),
+            ...(config.jealousy ? { jealousy: true } : {}),
             ...(config.interruptions ? { interruptions: true } : {}),
             ...(jokes && contact.tier === 'boyfriend' ? { jokes: () => jokes.load(contact.qq).jokes } : {}),
             ...(config.herNo ? { herNo: true } : {}),
@@ -818,7 +819,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         if (planners.size || config.proactive === 'off') return;
         for (const contact of proactiveContacts) {
             const { character } = cardFor(contact.tier);
-            const plannerSettings = [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite, config.proactiveAsk && withAsk, config.photos && config.photoShares && photos && contact.tier === 'boyfriend' && withCatPhoto, config.comeBack && withBack]
+            const plannerSettings = [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite, config.proactiveAsk && withAsk, config.photos && config.photoShares && photos && contact.tier === 'boyfriend' && withCatPhoto, config.comeBack && withBack, config.proactiveRoom && withRoom]
                 .reduce((settings, overlay) => (overlay ? overlay(settings) : settings), character.proactive!);
             planners.set(contact.qq, createProactivePlanner({
                 contact,

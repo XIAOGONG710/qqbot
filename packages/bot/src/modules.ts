@@ -26,7 +26,7 @@ export const MODULES: readonly ModuleDef[] = [
         id: 'language', name: '说话（语言）',
         scope: '她每一句话怎么说：提示词怎么拼、这一轮的意图、每条多长几条、口头禅和书面词、出口检查（助手腔 / 禁用词 / 医书词）、小梗、被打断、关系阶段、陪玩。',
         files: ['prompt.ts', 'intent.ts', 'shape.ts', 'expression.ts', 'exit-check.ts', 'speech-check.ts', 'candidates.ts', 'humanness.ts', 'reply.ts', 'qq-faces.ts', 'context-window.ts', 'tokens.ts',
-            'status-line.ts', 'time-context.ts', 'relationship.ts', 'jokes.ts', 'interruption.ts', 'together.ts', 'llm.ts', 'model-guard.ts', 'st/'],
+            'status-line.ts', 'time-context.ts', 'relationship.ts', 'jokes.ts', 'interruption.ts', 'together.ts', 'jealousy.ts', 'llm.ts', 'model-guard.ts', 'st/'],
         groups: ['说话'],
         metrics: '周报「说话的样子」「表情和语气」「她的口头禅」；consistency-cli；humanness-cli；blind-judge-cli',
         adrs: ['0091', '0095', '0096', '0099', '0113', '0114', '0115', '0111', '0121'],
@@ -54,7 +54,7 @@ export const MODULES: readonly ModuleDef[] = [
         files: ['proactive.ts', 'proactive-planner.ts', 'proactive-state.ts', 'inner.ts', 'shares.ts', 'follow-ups.ts'],
         groups: ['主动找他'],
         metrics: '周报「主动性」（条数、30 分钟内他回的占比、按时机分）',
-        adrs: ['0011', '0100', '0101', '0107', '0110', '0112', '0116', '0117'],
+        adrs: ['0011', '0100', '0101', '0107', '0110', '0112', '0116', '0117', '0124'],
     },
     {
         id: 'memory', name: '记忆与数据',

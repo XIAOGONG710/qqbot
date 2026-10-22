@@ -123,6 +123,8 @@ export interface Config {
     proactiveAsk: boolean;
     hisHours: boolean;
     weeklyReport: boolean;
+    jealousy: boolean;
+    proactiveRoom: boolean;
     innerLife: boolean;
     herFeelings: boolean;
     herNo: boolean;
@@ -275,6 +277,10 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**按他平时在线的钟头排**（ADR 0117，要「主动消息」开着）：「随口说件事」「约他」「问他意见」本来就没有固定钟点，别挑在他最近三周几乎从不说话的钟头——挪到它自己时间窗内最近的、他常在线的钟头。他最近 21 天说的话少于 60 条（没规律）时不挪。默认关。'),
         weeklyReport: Schema.boolean().default(DEFAULTS.weeklyReport)
             .description('**周报**（ADR 0118）：每周日 21:30 以后自动出一份“她离真人还差多少”的数字——说话的样子（字数、一轮几条、延迟）、表情和语气、主动、日志里数到的新功能有没有真的在发生——写进数据目录的 reports/weekly-<周日日期>.md。只有数字，没有原话。也可手动：`node src/ops/weekly-report-cli.ts --write`。默认关。'),
+        jealousy: Schema.boolean().default(DEFAULTS.jealousy)
+            .description('**吃醋，最轻的一档**（ADR 0123）：角色卡写着她“会吃醋，但嘴上不承认”。你明确提到别的女生、并且是在说和她有来往（一起吃饭、聊天、加微信、夸她好看……）时，约一半的情况她酸一句 / 岔开话题 / 轻轻问一句“哦，谁啊”就放下。不盘问、不要你保证、不让你愧疚、不翻旧账、不威胁、不冷战、不限制你跟谁来往；你一解释 / 哄她她就松下来；3 天内只触发第一次；你难过 / 生病 / 危机 / 小别扭时让路。只对男朋友档。默认关。'),
+        proactiveRoom: Schema.boolean().default(DEFAULTS.proactiveRoom)
+            .description('**给主动名额留余地**（ADR 0124，要「主动消息」开着）：你一整天没回时，早安 + 催你 + 冷场会把每天的条数占满，「随口说件事」「下课」「睡前」全被挤掉（10-22 连晚安都没说成）。开了以后：睡前那句晚安不占名额；别的时机最多占「每天上限 - 1」条，留一个给「随口说件事」。总条数不超过「每天上限 + 睡前一条」，不增加催你的次数。默认关。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
@@ -468,6 +474,8 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.proactiveAsk !== undefined ? { proactiveAsk: config.proactiveAsk } : {}),
         ...(config.hisHours !== undefined ? { hisHours: config.hisHours } : {}),
         ...(config.weeklyReport !== undefined ? { weeklyReport: config.weeklyReport } : {}),
+        ...(config.jealousy !== undefined ? { jealousy: config.jealousy } : {}),
+        ...(config.proactiveRoom !== undefined ? { proactiveRoom: config.proactiveRoom } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),

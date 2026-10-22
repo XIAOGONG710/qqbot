@@ -25,6 +25,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'jokes', label: '小梗回头提', group: '说话', adr: '0114' },
     { key: 'interruptions', label: '被第三方打断', group: '说话', adr: '0115' },
     { key: 'together', label: '陪玩状态', group: '说话', adr: '0111' },
+    { key: 'jealousy', label: '吃醋（最轻一档）', group: '说话', adr: '0123' },
     // 她的日子
     { key: 'herDays', label: '每日心情、在读的书', group: '她的日子', adr: '0015' },
     { key: 'schedule', label: '作息', group: '她的日子', adr: '0007' },
@@ -47,6 +48,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'photoShares', label: '喂完土豆发张照片', group: '主动找他', adr: '0110' },
     { key: 'comeBack', label: '说了等下之后回来', group: '主动找他', adr: '0112' },
     { key: 'hisHours', label: '按他在线的钟头排', group: '主动找他', adr: '0117' },
+    { key: 'proactiveRoom', label: '给主动名额留余地（晚安不占、留一个给随口说）', group: '主动找他', adr: '0124' },
     // 照片和表情
     { key: 'photos', label: '照片货架（网上找高清图）', group: '照片和表情', adr: '0109' },
     { key: 'stickers', label: '图片表情', group: '照片和表情', adr: '0063', kind: 'mode' },

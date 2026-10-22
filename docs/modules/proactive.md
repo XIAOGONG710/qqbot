@@ -25,6 +25,7 @@
 | `photoShares` | 喂完土豆发张照片 | [ADR 0110](../adr/0110-photo-shares.md) |
 | `comeBack` | 说了等下之后回来 | [ADR 0112](../adr/0112-come-back.md) |
 | `hisHours` | 按他在线的钟头排 | [ADR 0117](../adr/0117-his-hours.md) |
+| `proactiveRoom` | 给主动名额留余地（晚安不占、留一个给随口说） | [ADR 0124](../adr/0124-proactive-room.md) |
 
 ## 看它有没有变好
 
@@ -32,4 +33,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0011](../adr/0011-proactive-messages.md)、[ADR 0100](../adr/0100-reach-when-unanswered.md)、[ADR 0101](../adr/0101-inner-life.md)、[ADR 0107](../adr/0107-invite-to-play.md)、[ADR 0110](../adr/0110-photo-shares.md)、[ADR 0112](../adr/0112-come-back.md)、[ADR 0116](../adr/0116-ask-opinion.md)、[ADR 0117](../adr/0117-his-hours.md)
+[ADR 0011](../adr/0011-proactive-messages.md)、[ADR 0100](../adr/0100-reach-when-unanswered.md)、[ADR 0101](../adr/0101-inner-life.md)、[ADR 0107](../adr/0107-invite-to-play.md)、[ADR 0110](../adr/0110-photo-shares.md)、[ADR 0112](../adr/0112-come-back.md)、[ADR 0116](../adr/0116-ask-opinion.md)、[ADR 0117](../adr/0117-his-hours.md)、[ADR 0124](../adr/0124-proactive-room.md)
