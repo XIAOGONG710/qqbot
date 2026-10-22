@@ -2,7 +2,7 @@
 
 - 状态：**已实现，未上线**（2026-10-22；配置 `lagTail`；默认关）。上线 = `koishi.yml` 里加 `lagTail: true` + 重启；回滚 = 改回 false + 重启（不存任何状态）
 - 日期：2026-10-22
-- 关联：[ADR 0007](0007-schedule-and-reply-timing.md)（什么时候看到）、[ADR 0075](0075-reply-rhythm.md)（打字按字数 + 看想）、[ADR 0013](0013-reply-moods-and-pace.md)（冷场延迟、看心情不回）
+- 关联：[ADR 0007](0007-schedule-and-reply-timing.md)（什么时候看到）、[ADR 0075](0075-reply-rhythm.md)（打字按字数 + 看想）、[ADR 0013](0013-old-project-advice.md)（冷场延迟、看心情不回）
 - 用户提出：2026-10-22「把你提出的这些差距都进行补平，真人怎么样就让她怎么样」（差距之一：回复延迟没有长尾）
 
 ## 差距（有数据）
