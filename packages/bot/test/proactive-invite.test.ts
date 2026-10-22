@@ -165,7 +165,7 @@ describe('约他一起玩：提示词和计划器', () => {
     test('只给方向：约的是哪一样，随口，不勉强，很累 / 不舒服 / 心情不好可以只输出「不发」', () => {
         const note = occasionNote(candidate(INVITE_ACTIVITIES[1]!.what), '宝宝');
         assert.ok(note.includes(INVITE_ACTIVITIES[1]!.what) && note.includes('别勉强他') && note.includes('别撒娇逼他'), note);
-        assert.ok(note.includes(`只输出「${REACH_DECLINE}」两个字`) && note.includes('很累、不舒服或心情不好'), note);
+        assert.ok(note.includes(`只输出「${REACH_DECLINE}」两个字`) && note.includes('你此刻的心境'), note);
         assert.ok(note.endsWith('不抱怨对方没找你、没回你。]'), note);
     });
 

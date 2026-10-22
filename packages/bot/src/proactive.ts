@@ -829,7 +829,7 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
         },
         // 约他（ADR 0107）：约的是卡上写着的固定节目；随口一句，不勉强，他不来也没关系；很累 / 不舒服 / 心情不好就不约
         invite: () => `晚上了，你想起你们的固定节目，想约${userName}${candidate.invite!.what}：随口约一句，像平时那样，不用解释一大堆；他来不来都行，别勉强他、别撒娇逼他、别说“你不陪我”这类话；`
-            + `要是你这会儿很累、不舒服或心情不好，就只输出「${REACH_DECLINE}」两个字`,
+            + `要是上面写着你此刻心里难受、不开心，或者你很累、不舒服（看「你此刻的心境」「你的身体」），今晚就别约了，只输出「${REACH_DECLINE}」两个字`,
         quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
             `对方要链接你给不出来），或者问问对方在忙什么（对方可能在忙）`,
         follow_up: () => `${followUp!.atMorning ? `你起床没多久，跟${userName}说早安，顺便` : ''}问问${userName}${followUp!.when}的${followUp!.item.what}怎么样了（${userName}之前跟你说过）`,

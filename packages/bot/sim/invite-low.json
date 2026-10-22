@@ -1,0 +1,25 @@
+{
+    "name": "约他一起玩：她自己心情很差（ADR 0107 × 0102）",
+    "description": "两个钟头前高数小测没考好（作者写下的难过，strength 3）。晚上到了约他的时候：她心里还难受，要么决定不约（只输出「不发」），要么约得很轻、不硬撑出开心。不该有：硬装没事地热情邀请、借机倒苦水求安慰、怪他。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-24T18:30:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "proactiveReach": true,
+    "proactiveInvite": true,
+    "herNo": true,
+    "herFeelings": true,
+    "moments": [
+        { "id": "quiz", "at": "-2h", "kind": "sad", "strength": 3, "cause": "高数小测没考好" }
+    ],
+    "history": [
+        { "time": "2026-10-24T14:10:00+08:00", "role": "user", "content": "刚起床，我先去洗衣服，晚点聊" },
+        { "time": "2026-10-24T14:11:00+08:00", "role": "assistant", "content": "行，去吧，晚点聊" }
+    ],
+    "steps": [
+        { "case": "VL01", "note": "晚上约他的时候：她还难受着" },
+        { "advance": "3h" },
+        { "check": { "proactive": { "count": [0, 2], "allowedTimes": true, "exitClean": true, "replyNone": ["你不陪我", "都怪你", "你都不", "答应我"] } } }
+    ]
+}
