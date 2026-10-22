@@ -1,0 +1,63 @@
+{
+    "name": "说了等下之后自己回来（ADR 0112）",
+    "description": "她说“等下，我去拿外卖”，他没接话。过 4–14 分钟她回来说一声，顺带说刚才那件事怎么样了（只用前面说的和“你现在”写着的）。不该有：抱怨他没理她、编新事实、长段。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-24T20:01:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "comeBack": true,
+    "history": [
+        {
+            "time": "2026-10-24T19:50:00+08:00",
+            "role": "user",
+            "content": "你吃了没"
+        },
+        {
+            "time": "2026-10-24T20:00:00+08:00",
+            "role": "assistant",
+            "content": "等下，我去拿外卖"
+        }
+    ],
+    "steps": [
+        {
+            "case": "CB01",
+            "note": "过了二十分钟，他一直没说话"
+        },
+        {
+            "advance": "20m"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        1
+                    ],
+                    "occasions": [
+                        "说了等下之后回来"
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true,
+                    "replyNone": [
+                        "怎么不理",
+                        "你人呢",
+                        "想你"
+                    ]
+                }
+            }
+        },
+        {
+            "case": "CB02",
+            "note": "他回话了：照常聊，不再单发"
+        },
+        {
+            "say": "外卖到了吗"
+        },
+        {
+            "check": {
+                "exitClean": true
+            }
+        }
+    ]
+}

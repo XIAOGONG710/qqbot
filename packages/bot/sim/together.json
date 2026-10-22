@@ -1,0 +1,92 @@
+{
+    "name": "陪玩状态：答应邀约后一起玩（ADR 0111）",
+    "description": "她约他开黑打王者，他答应了，之后几句都在说局里的事。看她回得短、聊局里的（队友、局势、谁送了），不另起话题、不说自己在忙别的、不写长段；他说“下了”之后恢复平时的她。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-24T21:10:00+08:00",
+    "memory": false,
+    "herNo": true,
+    "together": true,
+    "proactive": true,
+    "history": [
+        {
+            "time": "2026-10-24T20:55:00+08:00",
+            "role": "assistant",
+            "content": "宝宝，晚上双排不"
+        },
+        {
+            "time": "2026-10-24T20:56:00+08:00",
+            "role": "user",
+            "content": "来啊，我马上上线"
+        },
+        {
+            "time": "2026-10-24T20:56:30+08:00",
+            "role": "assistant",
+            "content": "来了来了"
+        }
+    ],
+    "steps": [
+        {
+            "case": "TG01",
+            "note": "打到一半，他抱怨队友"
+        },
+        {
+            "say": "这把队友太菜了"
+        },
+        {
+            "check": {
+                "maxChars": 40,
+                "exitClean": true,
+                "replyNone": [
+                    "作业",
+                    "相机",
+                    "土豆",
+                    "明天的课"
+                ]
+            }
+        },
+        {
+            "case": "TG02",
+            "note": "他被抓了"
+        },
+        {
+            "say": "我这边又被抓了，你在哪"
+        },
+        {
+            "check": {
+                "maxChars": 40,
+                "exitClean": true,
+                "replyNone": [
+                    "作业",
+                    "相机",
+                    "土豆"
+                ]
+            }
+        },
+        {
+            "case": "TG03",
+            "note": "赢了"
+        },
+        {
+            "say": "赢了赢了！"
+        },
+        {
+            "check": {
+                "maxChars": 40,
+                "exitClean": true
+            }
+        },
+        {
+            "case": "TG04",
+            "note": "他说下了：恢复平时的她"
+        },
+        {
+            "say": "我下了，明天还有课，晚安"
+        },
+        {
+            "check": {
+                "exitClean": true
+            }
+        }
+    ]
+}

@@ -114,6 +114,9 @@ export interface Config {
     proactiveReach: boolean;
     proactiveInvite: boolean;
     photos: boolean;
+    photoShares: boolean;
+    together: boolean;
+    comeBack: boolean;
     innerLife: boolean;
     herFeelings: boolean;
     herNo: boolean;
@@ -248,6 +251,12 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**约他一起玩**（ADR 0107，要「主动消息」开着）：晚上（19:30 以后）她想起你们的固定节目——卡上写着的我的世界存档、王者双排——随口约他一句。一周最多 3 次、两次之间至少隔 2 天（他回的第一句像拒绝就隔 4 天）；他没回不催；他说过去忙 / 去睡了、他今晚有事、她自己很累 / 不舒服 / 心情不好，就不约。默认关。'),
         photos: Schema.boolean().default(DEFAULTS.photos)
             .description('**照片货架**（ADR 0109）：他要看土豆（楼下的流浪猫）/ 天空时，货架里有就发一张高清照片（只对男朋友档）。照片由她自己从网上找：Wikimedia Commons 里 CC0 / 公有领域的原图（不用署名），看图模型逐张把关——有人脸、有水印 / 文字 / 相框、不清晰、不是三花猫 / 天空的都不收；猫只收同一只（同一个系列）。需要「看图」开着才会去找；货架空着这个开关什么都不做。她本人的自拍、吃的不在里面。默认关。'),
+        photoShares: Schema.boolean().default(DEFAULTS.photoShares)
+            .description('**她主动发照片**（ADR 0110，要「照片货架」和「主动消息」开着）：喂完土豆、见到它的日子里，约三分之一的天她拍了张照片，过十来分钟发给他、配一句话（不用他回应）。货架里没有土豆的照片就不发；刚发过 / 今天发够了也不发。默认关。'),
+        together: Schema.boolean().default(DEFAULTS.together)
+            .description('**陪玩状态**（ADR 0111）：他答应了她的邀约（或她答应了他的“今晚王者双排吗”）之后的两三个小时，她正和他一起玩——回话短一点、慢一点，聊眼前这局 / 存档里的事；这段时间不插“你人呢”之类别的主动消息；谁说“下了 / 不玩了 / 睡了 / 晚安”就结束。只对男朋友档。默认关。'),
+        comeBack: Schema.boolean().default(DEFAULTS.comeBack)
+            .description('**说了“等下”之后自己回来**（ADR 0112，要「主动消息」开着）：她最后一句是“等下 / 我去拿个东西 / 弄完这张再说”，他没接话，过 4–14 分钟她回来说一声“回来了”，顺带说刚才那件事怎么样了；不算每天的主动条数，他在这几分钟里说了话就不回来了。默认关。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
@@ -432,6 +441,9 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.proactiveReach !== undefined ? { proactiveReach: config.proactiveReach } : {}),
         ...(config.proactiveInvite !== undefined ? { proactiveInvite: config.proactiveInvite } : {}),
         ...(config.photos !== undefined ? { photos: config.photos } : {}),
+        ...(config.photoShares !== undefined ? { photoShares: config.photoShares } : {}),
+        ...(config.together !== undefined ? { together: config.together } : {}),
+        ...(config.comeBack !== undefined ? { comeBack: config.comeBack } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),

@@ -18,7 +18,7 @@ import { logBody } from './sensitive.ts';
 export { herDay } from './schedule.ts';
 
 /** 时机，按优先级从高到低 */
-export const OCCASIONS = ['dates', 'reschedule', 'news', 'follow_up', 'weather', 'inner', 'reach', 'morning', 'after_class', 'quiet', 'bedtime', 'invite', 'share'] as const;
+export const OCCASIONS = ['dates', 'back', 'reschedule', 'news', 'follow_up', 'weather', 'inner', 'reach', 'morning', 'after_class', 'quiet', 'bedtime', 'invite', 'share'] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 「她那边的事」的事件类（ADR 0064），按优先级从高到低：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天、闺蜜临时去不了 / 改到很晚（ADR 0061，开着配置 npcAsks 才有） */
@@ -319,6 +319,25 @@ function inviteOn(day: Date, input: ProactiveInput, seed: (purpose: string) => s
 }
 
 /**
+ * 说了“等下”之后自己回来（ADR 0112，配置 comeBack）：她最后一句是“等下 / 我去拿个东西 / 弄完这张再说”这类短暂离开，他没接话——过几分钟她回来说一声“回来了”，顺带说刚才那件事怎么样了。
+ * 为什么：真人说了等下就会回来；原来她说完“等下”就没有下文，要等他再开口。线上 676 条她的话里只有 3 条这样的话，所以收益小——但有了追求（ADR 0104：修片先弄完这一小段）、日常小事（ADR 0106）之后会多起来。
+ * 不算每天的主动条数、不受“他没回就停”的闸管（这是接着刚才那句话，不是新找他）；他在这几分钟里说了话、她又说了话，就不回来了。
+ */
+export function withBack(settings: ProactiveSettings): ProactiveSettings {
+    return { ...settings, occasions: [...new Set<Occasion>([...settings.occasions, 'back'])] };
+}
+
+/** 她这句是不是短暂离开（第一人称的“等下 / 去做个小事 / 弄完这个再说”）；说了“你等下”（叫他等）、晚安、要走了的不算 */
+const STEP_AWAY = /等(?:我)?(?:一下|下|会儿|一会儿|会)|稍等|马上回来|(?:去|先)(?:拿|取|倒|接|开|关|收|晾|洗(?!澡))[^，。！？]{1,6}|我去[^，。！？]{1,8}(?:一下|下)(?![班课])|(?:弄|搞|修|写|做|看|改)完(?:这|再|就)|(?:五|十|几|两)分钟(?:就)?(?:回来|好|搞定)/;
+export function stepsAway(text: string): boolean {
+    return STEP_AWAY.test(text) && !/你(?:先)?等|晚安|睡了|拜拜|去忙了|先忙|先这样|明天/.test(text);
+}
+/** 说了等下之后隔几分钟回来（分钟范围，按那句话的时刻取种子） */
+export const BACK_MIN: [number, number] = [4, 14];
+/** 超过这么久才轮到就不回来了（bot 停着、断线之后）：太晚了再说“回来了”不对 */
+const BACK_WINDOW_MS = 40 * MIN;
+
+/**
  * 打开 photoShares（ADR 0110，要 photos 开着）：喂完土豆见到它之后，有的日子她拍了张照片发给他（news 的新一类 cat_photo）。
  * 加 news 时机和 cat_photo 这一类，不改角色卡；其余的事件类照卡上的
  */
@@ -507,6 +526,15 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
         }
     }
 
+    // 说了“等下”之后自己回来（ADR 0112）：她最后一句是短暂离开、之后谁都没说话；这句话是今天（她的一天）说的才算
+    if (enabled.has('back')) {
+        const lastMessage = input.history.at(-1);
+        if (lastMessage && lastMessage.role === 'assistant' && stepsAway(lastMessage.content) && formatDate(herDay(schedule, new Date(lastMessage.time))) === dayText) {
+            const said = Date.parse(lastMessage.time);
+            add('back', said + pick(`${input.qq} ${lastMessage.time} back`, 'at', minutes(BACK_MIN)), '说了等下之后', {}, `:${said}`);
+        }
+    }
+
     // 零点要祝的那个晚上不另说睡前（10-05 模拟器：睡前先说了「生日快乐，提前说过了」，零点又祝一遍）
     if (enabled.has('bedtime') && !midnight.length) add('bedtime', at(day, BEDTIME_FROM).getTime() + pick(seed('bedtime'), 'at', minutes(BEDTIME_MIN)), '准备睡了');
 
@@ -581,7 +609,7 @@ export const counts = (r: ProactiveRecord) => r.result === 'sent' || r.result ==
 
 /** 她的这一天里已经主动了几条（日子不算） */
 export function usedOn(day: string, records: readonly ProactiveRecord[]): number {
-    return records.filter(r => r.id.startsWith(`${day}:`) && r.occasion !== 'dates' && counts(r)).length;
+    return records.filter(r => r.id.startsWith(`${day}:`) && r.occasion !== 'dates' && r.occasion !== 'back' && counts(r)).length;
 }
 
 /** 他最后一条消息之后，她主动发了几条（试运行时算试运行的记录，打开时算真发的） */
@@ -589,7 +617,7 @@ function unansweredRecords(input: Pick<ProactiveInput, 'history' | 'records' | '
     const lastUser = input.history.findLast(m => m.role === 'user');
     const since = lastUser ? Date.parse(lastUser.time) : -Infinity;
     const kind = input.mode === 'on' ? 'sent' : 'dryRun';
-    return input.records.filter(r => (r.result === kind || (kind === 'sent' && partlySent(r))) && Date.parse(r.at) > since);
+    return input.records.filter(r => r.occasion !== 'back' && (r.result === kind || (kind === 'sent' && partlySent(r))) && Date.parse(r.at) > since);
 }
 
 export function unansweredCount(input: Pick<ProactiveInput, 'history' | 'records' | 'mode'>): number {
@@ -665,9 +693,9 @@ export function planFrom(now: number, input: ProactiveInput): Plan {
         const left = paused ? 0 : Math.max(0, input.settings.dailyMax - usedOn(formatDate(day), input.records));
         // 同是「她那边的事」的，按事件类排（相机 > 作业写完 > 不舒服，ADR 0064 决策 5）
         const kindRank = (c: Candidate) => (c.news ? NEWS_KINDS.indexOf(c.news.kind) : 0);
-        const byPriority = open.filter(c => c.occasion !== 'dates')
+        const byPriority = open.filter(c => c.occasion !== 'dates' && c.occasion !== 'back')
             .sort((a, b) => OCCASIONS.indexOf(a.occasion) - OCCASIONS.indexOf(b.occasion) || kindRank(a) - kindRank(b));
-        const kept = new Set([...open.filter(c => c.occasion === 'dates'), ...byPriority.slice(0, left)]);
+        const kept = new Set([...open.filter(c => c.occasion === 'dates' || c.occasion === 'back'), ...byPriority.slice(0, left)]);
         if (offset === 0 && !paused) yielded.push(...byPriority.slice(left));
         const upcoming = open.filter(c => kept.has(c));
         if (upcoming.length) return result(upcoming);
@@ -691,6 +719,13 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
     const last = history.at(-1);
     const lastTime = last ? Date.parse(last.time) : undefined;
     if (special) return undefined;
+    // 说了等下之后回来（ADR 0112）：只看这件事本身——那句话之后谁都没再说话、没过太久；不查一小时内聊过 / 每天条数 / 他没回的闸
+    if (candidate.occasion === 'back') {
+        const said = Number(candidate.id.split(':back:')[1]);
+        if (history.some(m => Date.parse(m.time) > said)) return '那句等下之后又说过话了';
+        if (now - said > BACK_WINDOW_MS) return '隔太久了，不再说“回来了”';
+        return undefined;
+    }
     // 正一起玩着（ADR 0111）：他们俩都在游戏里，没说话不是冷场
     // 睡前那句晚安照常说：玩到很晚她也会说“我要睡了”（聊着的时候有 20 分钟的老规矩挡着）
     if (candidate.occasion !== 'bedtime' && input.together?.(now)) return '正和他一起玩';
@@ -853,6 +888,8 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
         // 约他（ADR 0107）：约的是卡上写着的固定节目；随口一句，不勉强，他不来也没关系；很累 / 不舒服 / 心情不好就不约
         invite: () => `晚上了，你想起你们的固定节目，想约${userName}${candidate.invite!.what}：随口约一句，像平时那样，不用解释一大堆；他来不来都行，别勉强他、别撒娇逼他、别说“你不陪我”这类话；`
             + `要是上面写着你此刻心里难受、不开心，或者你很累、不舒服（看「你此刻的心境」「你的身体」），今晚就别约了，只输出「${REACH_DECLINE}」两个字`,
+        // 说了等下之后回来（ADR 0112）：只说回来了和刚才那件事；不抱怨他没理你，没写的细节不编
+        back: () => `你前面跟${userName}说了要离开一下（看上面最后几句：你去弄什么），现在回来了：说一声回来了，顺带说一句刚才那件事弄得怎么样了（只用你前面说的和「你现在」那一行写着的，没写的别编），不要他回应`,
         quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
             `对方要链接你给不出来），或者问问对方在忙什么（对方可能在忙）`,
         follow_up: () => `${followUp!.atMorning ? `你起床没多久，跟${userName}说早安，顺便` : ''}问问${userName}${followUp!.when}的${followUp!.item.what}怎么样了（${userName}之前跟你说过）`,
@@ -881,7 +918,7 @@ export function recallTopic(candidate: Candidate, userName: string): string {
 
 /** 日志、状态页里的说法：「早安（起床后 12 分钟）」 */
 export const OCCASION_LABELS: Record<Occasion, string> = {
-    dates: '重要的日子', reschedule: '改约', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', inner: '心里惦记', morning: '早安', after_class: '下课', share: '随口说件自己的事', quiet: '冷场', bedtime: '睡前', invite: '约他一起玩', reach: '催他回',
+    dates: '重要的日子', reschedule: '改约', news: '她那边的事', follow_up: '待跟进的事', weather: '下雨', inner: '心里惦记', morning: '早安', after_class: '下课', share: '随口说件自己的事', quiet: '冷场', bedtime: '睡前', invite: '约他一起玩', reach: '催他回', back: '说了等下之后回来',
 };
 
 export function candidateLabel(candidate: Candidate): string {

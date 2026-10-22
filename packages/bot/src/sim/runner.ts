@@ -21,7 +21,7 @@ import type { OpenAIMessage, PromptResult } from '../prompt.ts';
 import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
-import { herDay, newsKindsOf, withCatPhoto, withInner, withInvite, withReach } from '../proactive.ts';
+import { herDay, newsKindsOf, withBack, withCatPhoto, withInner, withInvite, withReach } from '../proactive.ts';
 import type { Moment } from '../feelings.ts';
 import { mergePursuits, type Pursuit } from '../pursuits.ts';
 import { dmMessageId, dmNote, nudgeNote, videoNote, videoTopic } from '../bilibili.ts';
@@ -473,7 +473,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const withReached = proactiveBase && scenario.proactiveReach ? withReach(proactiveBase) : proactiveBase;
     const withInned = withReached && scenario.innerLife ? withInner(withReached) : withReached;
     const withInvited = withInned && scenario.proactiveInvite ? withInvite(withInned) : withInned;
-    const proactiveSettings = withInvited && scenario.photoShares && scenario.photos ? withCatPhoto(withInvited) : withInvited;
+    const withPhotoShare = withInvited && scenario.photoShares && scenario.photos ? withCatPhoto(withInvited) : withInvited;
+    const proactiveSettings = withPhotoShare && scenario.comeBack ? withBack(withPhotoShare) : withPhotoShare;
     const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && proactiveSettings && character.schedule
         ? createProactivePlanner({
             contact,

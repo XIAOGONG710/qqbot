@@ -69,6 +69,7 @@ export const DEFAULTS = {
     photos: false,
     photoShares: false,
     together: false,
+    comeBack: false,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -239,6 +240,10 @@ export interface AppConfig {
      * 谁说“下了 / 不玩了 / 睡了 / 晚安”就结束。只对男朋友档。默认关
      */
     together: boolean;
+    /**
+     * 说了“等下”之后自己回来（ADR 0112，要主动消息开着）：她最后一句是“等下 / 我去拿个东西 / 弄完这张再说”，他没接话，过 4–14 分钟她回来说一声，顺带说刚才那件事；不算每天的主动条数。默认关
+     */
+    comeBack: boolean;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -518,6 +523,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         photos: bool(file, 'photos', '', DEFAULTS.photos),
         photoShares: bool(file, 'photoShares', '', DEFAULTS.photoShares),
         together: bool(file, 'together', '', DEFAULTS.together),
+        comeBack: bool(file, 'comeBack', '', DEFAULTS.comeBack),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),
