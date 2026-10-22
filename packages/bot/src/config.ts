@@ -75,6 +75,7 @@ export const DEFAULTS = {
     interruptions: false,
     proactiveAsk: false,
     hisHours: false,
+    weeklyReport: false,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -274,6 +275,11 @@ export interface AppConfig {
      * 他最近 21 天说的话少于 60 条（没规律）时不挪。默认关
      */
     hisHours: boolean;
+    /**
+     * 周报（ADR 0118）：每周日 21:30 以后自动出一份“她离真人还差多少”的数字（说话的样子、延迟、表情、主动、日志里数到的新功能），写进 <数据目录>/reports/weekly-<周日日期>.md；
+     * 只有数字，没有原话；同一把尺子每周对比。也可手动：node src/ops/weekly-report-cli.ts --write。默认关
+     */
+    weeklyReport: boolean;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -559,6 +565,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         interruptions: bool(file, 'interruptions', '', DEFAULTS.interruptions),
         proactiveAsk: bool(file, 'proactiveAsk', '', DEFAULTS.proactiveAsk),
         hisHours: bool(file, 'hisHours', '', DEFAULTS.hisHours),
+        weeklyReport: bool(file, 'weeklyReport', '', DEFAULTS.weeklyReport),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),

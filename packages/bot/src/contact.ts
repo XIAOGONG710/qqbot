@@ -530,7 +530,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ? jokeLine(options.jokes(), chat, time.getTime()) : undefined;
             if (jokeNow) log('小梗：这一轮提示词里放了一个他们之间的梗（日志不记内容）');
             // 主动发的那条（喂完土豆拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
-            const intent = photoNow && !initiate ? photoIntent(photoNow) : baseIntent;
+            // 被打断的这一轮（ADR 0115）：不带“先直接回答他刚问的”这类意图、不套形状 / 长短提示——它们和“先接他的话、顺带说一声刚被什么岔了一下”冲突，模型会按更紧的那条来、把打断吞掉（模拟 5/5 没提）
+            const intent = photoNow && !initiate ? photoIntent(photoNow) : interruptLine ? undefined : baseIntent;
             const grievanceActive = Boolean(grievance && intent === describeGrievance(grievance));
             sulkNow = grievanceActive && grievance!.stage === 'sulk';
             if (grievanceActive) log(grievance!.cause === 'ignored'
@@ -586,7 +587,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
                 ...(mood ? ['心情'] : []),
             ];
-            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !thinking ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
+            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
             // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
             const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
             const crutchLine = crutches.length
@@ -599,7 +600,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她最近心里在想的（ADR 0101）：前后是同一个在想事情的人
             const innerNow = !initiate && !crisisNow ? options.innerLine?.() : undefined;
             if (innerNow) log('内心：这一轮提示词里放了她最近的念头');
-            const length = crisisNow || shapeNow || stickerOnlyNow || photoNow || thinking ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
+            const length = crisisNow || shapeNow || stickerOnlyNow || photoNow || interruptLine || thinking ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放

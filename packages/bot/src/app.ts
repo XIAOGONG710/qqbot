@@ -58,6 +58,7 @@ import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts'
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
 import { jokeStore, JOKES_CHECK_MS, refreshJokes } from './jokes.ts';
+import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { togetherNow } from './together.ts';
 import { photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type PhotoSource } from './photos.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } from './stickers.ts';
@@ -882,6 +883,20 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     let stopped = false;
     let stickerDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
     let photoDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
+    // 周报（ADR 0118）：每小时看一眼，周日 21:30 以后这周的还没有就写一份；出错只记日志
+    let weeklyTimer: ReturnType<typeof setInterval> | undefined;
+    const checkWeeklyReport = () => {
+        if (!config.weeklyReport || stopped) return;
+        const reportsDir = join(config.dataDir, 'reports');
+        const nowDate = new Date(pipeline?.now ? pipeline.now() : Date.now());
+        if (!weeklyReportDue(nowDate, reportsDir)) return;
+        for (const contact of config.contacts.filter(c => c.tier === 'boyfriend')) {
+            try {
+                const file = writeWeeklyReport({ dataDir: config.dataDir, qq: contact.qq, tier: contact.tier, since: nowDate.getTime() - 7 * 86_400_000, now: nowDate.getTime(), reportsDir });
+                log(`周报：写好了（${file}；只有数字）`);
+            } catch (error) { log(`周报：写不出来（${error instanceof Error ? error.message : String(error)}）`); }
+        }
+    };
     // 小梗（ADR 0114）：隔一阵从最近的聊天里抽；出错只记日志
     let jokesTimer: ReturnType<typeof setInterval> | undefined;
     const refreshAllJokes = () => {
@@ -1090,6 +1105,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     discoverStickers();
                     discoverPhotos();
                     refreshAllJokes();
+                    checkWeeklyReport();
+                    if (config.weeklyReport && !weeklyTimer) {
+                        weeklyTimer = setInterval(checkWeeklyReport, 60 * 60_000);
+                        weeklyTimer.unref();
+                    }
                     if (jokes && !jokesTimer) {
                         jokesTimer = setInterval(refreshAllJokes, JOKES_CHECK_MS);
                         jokesTimer.unref();
@@ -1177,6 +1197,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
             if (photoDiscoveryTimer) clearInterval(photoDiscoveryTimer);
             if (jokesTimer) clearInterval(jokesTimer);
+            if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);
             releaseLock();
