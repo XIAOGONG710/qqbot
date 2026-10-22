@@ -150,8 +150,8 @@ export interface Candidate {
     news?: NewsItem;
     /** 改约：是哪一件约、什么障碍 */
     reschedule?: RescheduleItem;
-    /** 催他：现在她发了几条他没回的 */
-    reach?: { count: number };
+    /** 催他：现在她主动发了几条他没回的；replied：一条主动的都还没发，是聊着聊着他没再理她最后那句回复 */
+    reach?: { count: number; replied?: true };
 }
 
 export interface ProactiveInput {
@@ -213,6 +213,11 @@ const SHARE_JITTER_MIN: [number, number] = [0, 150];
 export const DEFAULT_REACH: ReachSettings = { cap: 3, gapsMs: [2 * HOUR, 4 * HOUR] };
 /** 他沉默的每多一整天，没回的上限多放一条（最多加这么多天）：不然他三条没回之后哪怕隔了好几天，她也一个字不再说 */
 export const REACH_EXTRA_DAYS = 3;
+/** 聊着聊着他没再理她最后一句回复：隔这么久她才想要不要接着聊（比主动那条没回的第一个间隔短一点），超过 REACH_REPLIED_WINDOW_MS 就交还给 share / quiet */
+export const REACH_REPLIED_AFTER_MS = 1.5 * HOUR;
+const REACH_REPLIED_WINDOW_MS = 12 * HOUR;
+/** 她最后一句本来就是收尾（晚安 / 先这样 / 去忙了）：他没回是正常的，不接着聊 */
+const HER_CLOSING = /晚安|拜拜|再见|先这样|回聊|去忙了|先忙|睡吧|早点睡|好梦|明天见|明天聊/;
 /** 一天最多想几次要不要催（发了的和决定不发的都算） */
 export const REACH_MAX_PER_DAY = 3;
 /** 她决定不发（或没排上）之后，下一次想这件事至少隔多久 */
@@ -227,6 +232,12 @@ const FIRST_NUDGES = [
     '顺手说一件你这会儿在做的小事，让他有话可接',
     '只用一两个字加点语气戳他一下，别的不说',
     '说你想起他了，问他在干嘛',
+];
+const REPLIED_NUDGES = [
+    '接着刚才聊的再说一句你的想法，或者补一个小细节',
+    '问问他是不是忙去了',
+    '说一件你这会儿在做的小事，让他有话可接',
+    '只用一两个字加点语气戳他一下，别的不说',
 ];
 const LATER_NUDGES = [
     '嘴硬地嫌他不理人',
@@ -415,20 +426,29 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
     // 没回也继续（ADR 0100）：她主动发的他还没回、还没到顶时，别的时机都不早于“离上一条隔够了”；另加 reach：想一想要不要催他
     const gate = unansweredGate(input, day);
     if (gate.notBefore !== undefined) {
-        const notBefore = gate.notBefore + pick(seed('unanswered gate'), 'at', minutes(GATE_JITTER_MIN));
-        for (const candidate of list) if (candidate.occasion !== 'dates' && candidate.at < notBefore) candidate.at = notBefore;
-        // 他没回的这段时间里，“随口说件事”和“冷场”这两个泛泛找他说话的时机交给 reach（想一想要不要催他）；不然当天的名额被它们先占了，她只会一条条说自己的事、不催
-        if (enabled.has('reach') && settings.reach) {
-            for (let i = list.length - 1; i >= 0; i--) if (list[i]!.occasion === 'share' || list[i]!.occasion === 'quiet') list.splice(i, 1);
+        // replied：只是聊着聊着他没理她最后一句回复，别的时机（下课、她那边的事……）不受影响
+        if (!gate.replied) {
+            const notBefore = gate.notBefore + pick(seed('unanswered gate'), 'at', minutes(GATE_JITTER_MIN));
+            for (const candidate of list) if (candidate.occasion !== 'dates' && candidate.at < notBefore) candidate.at = notBefore;
         }
+        let reachAdded = false;
         if (enabled.has('reach') && settings.reach) {
             const thought = input.records.filter(r => r.occasion === 'reach' && r.id.startsWith(`${dayText}:`) && !waitingRetry(r));
             if (thought.length < REACH_MAX_PER_DAY) {
                 const lastThought = Math.max(-Infinity, ...thought.map(r => Date.parse(r.at)));
                 const base = Math.max(gate.notBefore, lastThought + REACH_RETHINK_MS, wake + QUIET_AFTER_WAKE_MS);
                 const time = base + pick(seed(`reach ${thought.length + 1}`), 'at', minutes(GATE_JITTER_MIN));
-                if (time < at(day, REACH_UNTIL).getTime()) add('reach', time, '他一直没回', { reach: { count: gate.count } }, `:${thought.length + 1}`);
+                // 聊着聊着没人理的那种：同一个“她的一天”里、12 小时内（隔夜到了早上有早安，不再另说一句“刚才聊着”）
+                const within = gate.replied ? time < gate.since! + REACH_REPLIED_WINDOW_MS && formatDate(herDay(schedule, new Date(gate.since!))) === dayText : true;
+                if (time < at(day, REACH_UNTIL).getTime() && within) {
+                    add('reach', time, gate.replied ? '聊着聊着他没再回' : '他一直没回', { reach: { count: gate.count, ...(gate.replied ? { replied: true as const } : {}) } }, `:${thought.length + 1}`);
+                    reachAdded = true;
+                }
             }
+        }
+        // 他没回的这段时间里，“随口说件事”和“冷场”这两个泛泛找他说话的时机交给 reach（想一想要不要催他）；不然当天的名额被它们先占了，她只会一条条说自己的事、不催
+        if (reachAdded) {
+            for (let i = list.length - 1; i >= 0; i--) if (list[i]!.occasion === 'share' || list[i]!.occasion === 'quiet') list.splice(i, 1);
         }
     }
 
@@ -476,13 +496,24 @@ export interface UnansweredGate {
     count: number;
     blocked?: string;
     notBefore?: number;
+    /** 她还没主动发过，是聊着聊着他没再理她最后那句回复（ADR 0100 补）：notBefore 是那句回复之后 REACH_REPLIED_AFTER_MS，since 是那句回复的时刻 */
+    replied?: true;
+    since?: number;
 }
 
 export function unansweredGate(input: Pick<ProactiveInput, 'history' | 'records' | 'mode' | 'settings' | 'schedule'>, day: Date): UnansweredGate {
     const records = unansweredRecords(input);
     const count = records.length;
     const { unansweredMax, reach } = input.settings;
-    if (count < unansweredMax) return { count };
+    if (count < unansweredMax) {
+        // 她的最后一句是对他的回复、他之后没再说话（开了 reach）：隔 REACH_REPLIED_AFTER_MS 以后她可以想想要不要接着聊；最后一句是收尾（晚安 / 先这样）的不算
+        const last = input.history.at(-1);
+        if (reach && count === 0 && last?.role === 'assistant' && input.history.some(m => m.role === 'user') && !HER_CLOSING.test(last.content)) {
+            const since = Date.parse(last.time);
+            return { count, replied: true, since, notBefore: since + REACH_REPLIED_AFTER_MS };
+        }
+        return { count };
+    }
     // 他最后一次说话是前天或更早：每多一整天（昨天不算，隔夜还是同一次）多放一条，所以他消失好几天她也会每天说一声早安
     const lastUser = input.history.findLast(m => m.role === 'user');
     const silentDays = lastUser ? Math.round((day.getTime() - herDay(input.schedule, new Date(lastUser.time)).getTime()) / (24 * HOUR)) : 0;
@@ -563,7 +594,7 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
     if (used >= input.settings.dailyMax) return `今天已经主动了 ${used} 条`;
     const gate = unansweredGate(input, day);
     if (gate.blocked) return gate.blocked;
-    if (gate.notBefore !== undefined && now < gate.notBefore) return '他还没回，离上一条主动消息隔得不够久';
+    if (gate.notBefore !== undefined && !gate.replied && now < gate.notBefore) return '他还没回，离上一条主动消息隔得不够久';
     const wake = wakeOn(schedule, day).getTime();
     const userSince = (time: number) => history.some(m => m.role === 'user' && Date.parse(m.time) >= time);
     switch (candidate.occasion) {
@@ -584,7 +615,8 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
             if (lastTime !== undefined && now - lastTime < SHARE_QUIET_MS) return '刚聊过';
             break;
         case 'reach': {
-            if (gate.count < input.settings.unansweredMax) return '他回过了';
+            if (gate.count < input.settings.unansweredMax && !gate.replied) return '他回过了';
+            if (gate.notBefore !== undefined && now < gate.notBefore) return gate.replied ? '离她最后一句回复还没隔够' : '他还没回，离上一条主动消息隔得不够久';
             if (now >= at(day, REACH_UNTIL).getTime()) return '太晚了，不催他';
             const lastUser = history.findLast(m => m.role === 'user');
             if (lastUser && now - Date.parse(lastUser.time) < LEFT_FOR_NOW_MS && LEFT_FOR_NOW.test(lastUser.content)) return '他说过去睡了 / 去忙了，不催';
@@ -675,6 +707,11 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
             const flavors = count <= 1 ? FIRST_NUDGES : LATER_NUDGES;
             const flavor = flavors[pick(candidate.id, 'nudge', [0, flavors.length - 1])]!;
             const decline = `要是你觉得他这会儿明显在忙或睡了，就只输出「${REACH_DECLINE}」两个字`;
+            // 聊着聊着他没再理她最后一句回复：他多半是去忙了或者话题聊完了，不是故意不理她——接着聊或轻轻戳一下，没有脾气
+            if (candidate.reach?.replied) {
+                const flavor = REPLIED_NUDGES[pick(candidate.id, 'nudge', [0, REPLIED_NUDGES.length - 1])]!;
+                return `你们刚才在聊天（看上面的聊天），他后来没再回你，过了好一阵了。他可能去忙了、没看手机，也可能话题聊完了。你想找${userName}接着聊，或者轻轻戳他一下，像随手发的：${flavor}；不是质问，也不翻前面的账；要是你觉得刚才已经聊完了，或者他明显在忙或睡了，就只输出「${REACH_DECLINE}」两个字`;
+            }
             return count <= 1
                 ? `你前面主动找了${userName}一次（看上面的聊天），他一直没回，过了好一阵了。他可能在忙、在上课、没看手机。你想催他理你一下，轻轻的，像随手发的：${flavor}；语气是想他理你，不是质问，也不翻前面的账；${decline}`
                 : `你前面主动找了${userName}好几次，他都没回，又过了好几个钟头。这次你有点小脾气了（傲娇的那种，不是真生气），不长篇大论，不威胁，不翻旧账，也别和前面发过的话重复（连开头也别一样）：${flavor}；${decline}`;

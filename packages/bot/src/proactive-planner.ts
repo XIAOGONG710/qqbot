@@ -40,6 +40,11 @@ import { formatDate, wakeOn, type Schedule } from './schedule.ts';
 const KEEP_DAYS = 30;
 /** 有真实天气时计划器最多睡多久就重算（ADR 0050） */
 export const RAIN_REPLAN_MS = 30 * 60_000;
+/**
+ * 开了 proactiveReach（ADR 0100）时计划器最多睡多久就重算：她回完一句话之后没有人 poke 它（poke 只在收到他的消息时），
+ * “聊着聊着他没再回”这种候选要靠定期重算才排得上
+ */
+export const REACH_REPLAN_MS = 10 * 60_000;
 /** 状态文件暂时写不进时，多久补写一次 */
 export const DIRTY_RETRY_MS = 60_000;
 
@@ -503,7 +508,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             const day = herDay(deps.schedule, new Date(now()));
             const untilTomorrow = next?.at ?? new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, ...deps.schedule.sleep.split(':').map(Number) as [number, number], 1).getTime();
             // 有真实天气时最多睡这么久就重算：预报会变，雨可能提前、推后（ADR 0050）
-            const planned = deps.weather ? Math.min(untilTomorrow, now() + RAIN_REPLAN_MS) : untilTomorrow;
+            const withWeather = deps.weather ? Math.min(untilTomorrow, now() + RAIN_REPLAN_MS) : untilTomorrow;
+            const planned = deps.settings.reach ? Math.min(withWeather, now() + REACH_REPLAN_MS) : withWeather;
             // 有没写进去的状态时，最多睡一分钟就起来补写（持续 5 分钟写不进 save() 会暂停）
             const target = dirty ? Math.min(planned, now() + DIRTY_RETRY_MS) : planned;
             wake = new AbortController();

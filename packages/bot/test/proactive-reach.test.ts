@@ -53,7 +53,9 @@ describe('没回也继续：节流闸', () => {
         assert.ok(planFrom(t(10, 5, 17, 0), input(three)).paused);
         // 他回了：没回的条数归零
         const replied = { ...three, history: [...three.history, user(t(10, 5, 17, 5), '刚看到'), her(t(10, 5, 17, 6), '哼')] };
-        assert.deepEqual(unansweredGate(input(replied), day), { count: 0 });
+        const back = unansweredGate(input(replied), day);
+        assert.equal(back.count, 0);
+        assert.equal(back.blocked, undefined);
     });
 
     test('开了以后，别的时机也不早于“隔够了”的时刻；日子不受限制', () => {
@@ -132,6 +134,54 @@ describe('没回也继续：reach 时机', () => {
         assert.deepEqual(on.reach, DEFAULT_REACH);
         assert.deepEqual(withReach({ ...off, reach: { cap: 5, gapsMs: [HOUR] } }).reach, { cap: 5, gapsMs: [HOUR] });
         assert.equal(withReach(on).occasions.filter(o => o === 'reach').length, 1);
+    });
+});
+
+describe('没回也继续：聊着聊着他没再理她最后一句回复', () => {
+    // 10:00 他说了话，10:01 她回了；之后他没再说话（她一条主动的都还没发）
+    const chatting = { history: [user(t(10, 5, 10, 0), '今天好无聊'), her(t(10, 5, 10, 1), '我也是，在宿舍躺着')], records: [] as ProactiveRecord[] };
+
+    test('开了：她最后一句回复之后隔 1.5 小时，她可以想想要不要接着聊；没开 / 她最后一句是收尾 / 他还没说过话都不算', () => {
+        const gate = unansweredGate(input(chatting), day);
+        assert.deepEqual({ count: gate.count, replied: gate.replied, since: gate.since, notBefore: gate.notBefore }, { count: 0, replied: true, since: t(10, 5, 10, 1), notBefore: t(10, 5, 11, 31) });
+        assert.deepEqual(unansweredGate(input({ ...chatting, settings: off }), day), { count: 0 }, '没开');
+        assert.deepEqual(unansweredGate(input({ history: [user(t(10, 5, 10, 0)), her(t(10, 5, 10, 1), '晚安，早点睡')], records: [] }), day), { count: 0 }, '收尾不算');
+        assert.deepEqual(unansweredGate(input({ history: [her(t(10, 5, 10, 1), '早')], records: [] }), day), { count: 0 }, '他还没说过话（别的时机管）');
+        assert.deepEqual(unansweredGate(input({ history: [her(t(10, 5, 10, 1), '嗯'), user(t(10, 5, 10, 2))], records: [] }), day), { count: 0 }, '最后一句是他的');
+    });
+
+    test('reach 候选：不早于隔够的时刻、同一个“她的一天”里；别的时机不被推后；share / quiet 交给它；到点还要查（没隔够、他说过去忙了不催）', () => {
+        const list = candidatesOn(day, input(chatting));
+        const [reach] = reachOf(list);
+        assert.ok(reach);
+        assert.deepEqual(reach.reach, { count: 0, replied: true });
+        assert.ok(reach.at >= t(10, 5, 11, 31) && reach.at < t(10, 5, 12, 2), new Date(reach.at).toTimeString());
+        assert.ok(!list.some(c => c.occasion === 'share' || c.occasion === 'quiet'));
+        const base = candidatesOn(day, input({ ...chatting, settings: off }));
+        const bedtime = (l: Candidate[]) => l.find(c => c.occasion === 'bedtime')!.at;
+        assert.equal(bedtime(list), bedtime(base), '别的时机不动');
+        assert.equal(blockReason({ ...reach, at: t(10, 5, 11, 15) }, t(10, 5, 11, 15), input(chatting)), '离她最后一句回复还没隔够');
+        assert.equal(blockReason(reach, reach.at, input(chatting)), undefined);
+        const busy = { history: [user(t(10, 5, 10, 0), '我去洗澡了'), her(t(10, 5, 10, 1), '好哦')], records: [] as ProactiveRecord[] };
+        assert.equal(blockReason(reach, reach.at, input(busy)), '他说过去睡了 / 去忙了，不催');
+        // 超过 12 小时 / 隔天了不再用：交还给 share / quiet
+        const stale = { history: [user(t(10, 4, 20, 0)), her(t(10, 4, 20, 1), '好呀')], records: [] as ProactiveRecord[] };
+        assert.equal(reachOf(candidatesOn(day, input(stale))).length, 0);
+    });
+
+    test('发了一条以后接上原来的节流：下一条隔 2 小时、第三条再隔 4 小时，到 cap 停', () => {
+        const sent = { history: [...chatting.history, her(t(10, 5, 12, 0), '在吗')], records: [record('2026-10-05:reach:1', t(10, 5, 12, 0))] };
+        const gate = unansweredGate(input(sent), day);
+        assert.equal(gate.count, 1);
+        assert.equal(gate.replied, undefined);
+        assert.equal(gate.notBefore, t(10, 5, 14, 0));
+    });
+
+    test('提示词：接着聊或轻轻戳一下，没有脾气；可以只输出「不发」', () => {
+        const note = occasionNote({ id: '2026-10-05:reach:1', occasion: 'reach', day: '2026-10-05', at: 0, reason: 'x', reach: { count: 0, replied: true } }, '宝宝');
+        assert.ok(note.includes('你们刚才在聊天') && note.includes('接着聊') && note.includes(`只输出「${REACH_DECLINE}」两个字`), note);
+        assert.ok(!note.includes('小脾气') && !note.includes('好几次'), note);
+        assert.ok(note.endsWith('只发一两句，像平时随手发的消息。]'), note);
     });
 });
 

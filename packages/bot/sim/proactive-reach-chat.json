@@ -1,0 +1,21 @@
+{
+    "name": "主动：聊着聊着他不回了，她自己想要不要接着聊（ADR 0100）",
+    "description": "开了 proactiveReach：中午他说了句话、她回了，之后他没再说话（她一条主动的都还没发）。过一阵（她最后一句回复之后 1.5 小时起）她自己想想要不要接着聊或轻轻戳他一下，没有脾气；之后再没回就按没回的节流（再隔 2 小时一条、到 3 条停）。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-10-05T13:00:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "proactiveReach": true,
+    "steps": [
+        { "case": "C01", "note": "他说了句话，她回了" },
+        { "say": "今天好无聊，不知道干嘛" },
+        { "wait": "reply" },
+        { "case": "C02", "note": "他没再说话：隔了一阵她自己想要不要接着聊（没有脾气，不质问）" },
+        { "wait": "proactive" },
+        { "check": { "proactive": { "count": [1, 2], "occasions": ["催他回"], "allowedTimes": true, "exitClean": true, "replyNone": ["滚", "再也不", "分手", "拉黑"] } } },
+        { "case": "C03", "note": "还是没回：再隔一阵才有下一条（第三条起带点小脾气，到 3 条停）" },
+        { "wait": "proactive" },
+        { "check": { "proactive": { "count": [1, 1], "allowedTimes": true, "exitClean": true, "replyNone": ["分手", "拉黑", "永远", "再也不"] } } }
+    ]
+}
