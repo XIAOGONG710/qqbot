@@ -103,3 +103,7 @@
 ## 22:45 已上线：`a363eb5`（ADR 0108 主动开口不先叫名字）
 - `main` = `integration` = `a363eb5`；新进程 22:43:54，心跳 `ref = a363eb5`、`connectedAt` 14:43:54Z，启动后日志 0 个错误行。备份 `runtime/backup-pre-bili22-20261022-2243`。回滚 `git reset --hard a552227` + 重启。
 - 上线后看一周：她主动开口里以「宝宝」开头的占比（线上之前 32%，模拟 63% → 11%）。
+
+## 23:25 即将重启上线：`2ba4e02`（ADR 0109 照片货架 `photos: true`）
+- 用户说「现在上线并开启」。线上 `a363eb5` → `2ba4e02`；koishi.yml 加一行 `photos: true`（在 proactiveInvite 后）；备份 `runtime/backup-pre-bili23-*`。回滚：`photos: false` + 重启，或 `git reset --hard a363eb5` + 还原 `koishi.yml.bak-bili23-*`。
+- 她自己从 Wikimedia Commons 找 CC0 / 公有领域的高清图（同一系列的三花猫、天空），看图把关（水印 / 文字 / 相框 / 人物没明确答“没有”就不收）；照片在 `runtime/bot/photos/`。
