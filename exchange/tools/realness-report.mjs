@@ -81,8 +81,7 @@ if (existsSync(eventsFile)) {
 const logDir = join(root, 'logs');
 const counts = {};
 const bump = (key, n = 1) => { counts[key] = (counts[key] ?? 0) + n; };
-let gapHours = 0;
-let prev;
+const failures = [];
 if (existsSync(logDir)) {
     for (const file of readdirSync(logDir).filter(f => /^\d{4}-\d{2}-\d{2}\.log$/.test(f)).sort()) {
         if (Date.parse(file.slice(0, 10)) + 86_400_000 < since) continue;
@@ -90,12 +89,8 @@ if (existsSync(logDir)) {
             const m = /^\[(\d{4})\/(\d\d)\/(\d\d) (\d\d):(\d\d):(\d\d)\]/.exec(line);
             if (m) {
                 const t = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
-                if (t >= since) {
-                    // 白天（9–23 点）里超过 30 分钟没有任何日志的缝隙，当作她不在线的粗略估计
-                    if (prev && t - prev >= 30 * 60_000 && new Date(prev).getHours() >= 9 && new Date(prev).getHours() <= 22) gapHours += (t - prev) / 3_600_000;
-                    prev = t;
-                }
                 if (t < since) continue;
+                if (line.includes('回复失败') || line.includes('没连上模型')) failures.push(t);
             }
             if (line.includes('心境：')) bump(`心境·${/心境：([^·（]+)·(很重|明显)/.exec(line)?.slice(1, 3).join('·') ?? '?'}`);
             if (line.includes('这一轮有意图：你刚推了他')) bump('会拒绝·被磨时守着');
@@ -110,4 +105,12 @@ if (existsSync(logDir)) {
 }
 console.log('\n## 日志里数到的（新功能有没有真的在发生）');
 console.log(Object.entries(counts).sort().map(([k, v]) => `${k} ${v}`).join('；') || '（没有）');
-console.log(`\n## 在不在\n白天（9–23 点）日志缝隙 ≥ 30 分钟的合计 ${gapHours.toFixed(1)} 小时（粗估她回不了话的时间，约占 ${pct(gapHours, days * 14)} 的白天）`);
+// 回复失败的行，相隔不到 30 分钟的算同一次断（这是下限：整机复位、守护程序自己的告警期间日志里什么都没有）
+const clusters = [];
+for (const t of failures.sort((a, b) => a - b)) {
+    const last = clusters.at(-1);
+    if (last && t - last.end <= 30 * 60_000) last.end = t;
+    else clusters.push({ start: t, end: t });
+}
+const downHours = clusters.reduce((sum, c) => sum + (c.end - c.start) / 3_600_000, 0);
+console.log(`\n## 在不在（下限）\n回复失败成 ${clusters.length} 次断，合计至少 ${downHours.toFixed(1)} 小时回不了话；最长一次 ${fmt(Math.max(0, ...clusters.map(c => (c.end - c.start) / 3_600_000)))} 小时。整机复位 / 日志里什么都没有的时间没算进去（见 exchange/BOARD.md 的可靠性一节）`);
