@@ -53,3 +53,9 @@
 - 心境：评估（她那边的事 / 他的态度 / 作者写下的事）→ 半衰期衰减 → 时间块里一行（只给方向）。不存分数。难过时嘴硬说“没事”，被哄才露，很重或被一问可以哭；不怪他、不威胁、不要保证、他要走就让他走。作者的大事放 `runtime/bot/moments.json`（`moment-cli.ts`），**我没替作者写任何一件**。
 - 会拒绝：他磨她时不被磨两句就答应；他命令式管她时不顺从（8 次：顺从 5/8 → 2/8）；累 / 烦 / 难过明显时可以直说不想（很累很烦时约她打游戏：“来” 8/8 → 推掉并说原因 7/8）；晚上空着照样答应。
 - 测试：bot 1470 + 插件 35 + 工具 43 全绿。
+
+## 19:45 已上线（用户 AskUserQuestion：「现在上线并开启两个」）：`5157efa`
+- `main` = `integration` = `5157efa`；`koishi.yml` 加 `herFeelings: true`、`herNo: true`（紧跟 `innerLife`）。新进程 19:45:38 起，新日志 `2026-10-22-6.log` 0 error/warn，心跳 `ref = 5157efa`，状态检查 16 项通过。
+- 备份 `runtime\backup-pre-bili18-20261022-1945` + `runtime\koishi\koishi.yml.bak-bili18-20261022-1945`。回滚：`herFeelings: false` / `herNo: false` + 重启（各关各的）；整体 `git reset --hard 22bc1c3` + 还原 yml + 重启。内心的质量修复不带开关。
+- 看效果：①下一次想（~20:20–21:20）起 `node packages/bot/src/ops/inner-cli.ts --dir runtime/bot/proactive --last 20`，念头该是有内容的独白（不再是「在干嘛呢」）；②日志「心境：…」（只记种类和来源）；③日志「这一轮有意图：你刚推了他…」「…管着你…」；④没有 `moments.json` 时她只会被小事轻轻影响，大事等作者写。
+- ADR 0104（有自己的追求）：草稿在 `claude/pursuits`（`0bcdac3`），5 条候选都标草稿，等用户选。
