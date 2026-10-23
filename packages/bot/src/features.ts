@@ -33,6 +33,8 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'projectChoice', label: '作业接管空闲', group: '她的日子', adr: '0056' },
     { key: 'lifeInPrompt', label: '生活账进提示词', group: '她的日子', adr: '0045' },
     { key: 'realWeather', label: '真实天气', group: '她的日子', adr: '0048' },
+    { key: 'biliStickers', label: '表情包自己在 B 站找（顶替小黄脸）', group: '照片和表情', adr: '0132' },
+    { key: 'texture', label: '说话的质感（问号 / ～ / 小黄脸 / 叠字）', group: '说话', adr: '0131' },
     { key: 'curious', label: '会追问（问他刚说的那件事）', group: '说话', adr: '0126' },
     { key: 'everydayLife', label: '日常小事 / 小测', group: '她的日子', adr: '0106' },
     { key: 'menu', label: '每顿吃什么（每天随机）', group: '她的日子', adr: '0125' },

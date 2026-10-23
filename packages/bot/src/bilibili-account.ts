@@ -60,6 +60,9 @@ const rec = (value: unknown): Record<string, unknown> => (typeof value === 'obje
 
 // ───────── 凭证 ─────────
 
+/** B 站的官方表情包（ADR 0132）：一个包一组图片地址 */
+export interface EmotePack { id: number; text: string; urls: string[] }
+
 export interface BiliCredential {
     sessdata: string;
     biliJct: string;
@@ -269,6 +272,8 @@ export interface BiliAccount {
     readonly name: string;
     readonly mid: number;
     search(keyword: string, order?: SearchOrder): Promise<BiliVideo[]>;
+    /** 她的号能用的官方表情包（评论区的那套）：小黄脸、热词系列、tv_小电视、颜文字…… */
+    emotePackages?(): Promise<EmotePack[]>;
     subtitle(video: Pick<BiliVideo, 'bvid'> & { cid?: number }): Promise<SubtitleResult>;
     postComment(input: { aid: number; bvid: string; text: string; at?: { name: string; uid: number } }): Promise<{ rpid: string }>;
     /** 刚发的评论在公开的「最新」第一页里能不能找到（找不到不等于没发出去：可能在审核，也可能翻页看不到） */
@@ -463,6 +468,14 @@ export async function openAccount(request: BiliRequest, credential: BiliCredenti
         async systemNoticeUnread() {
             const { data } = await call(request, 'https://api.bilibili.com/x/msgfeed/unread?build=0&mobi_app=web', { headers: { ...headers, Referer: 'https://message.bilibili.com/' } });
             return num(rec(data).sys_msg);
+        },
+
+        async emotePackages() {
+            const data = rec((await call(request, 'https://api.bilibili.com/x/emote/user/panel/web?business=reply', { headers })).data);
+            return (Array.isArray(data.packages) ? data.packages : []).map(rec).map(pack => ({
+                id: num(pack.id), text: str(pack.text),
+                urls: (Array.isArray(pack.emote) ? pack.emote : []).map(rec).map(e => str(e.url)).filter(url => /^https?:\/\//.test(url)),
+            }));
         },
 
         async systemNotices() {

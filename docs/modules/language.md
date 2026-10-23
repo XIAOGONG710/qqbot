@@ -24,6 +24,8 @@
 - `jokes.ts`
 - `memes.ts`
 - `watching.ts`
+- `texture.ts`
+- `bili-stickers.ts`
 - `interruption.ts`
 - `together.ts`
 - `jealousy.ts`
@@ -52,6 +54,7 @@
 | `interruptions` | 被第三方打断 | [ADR 0115](../adr/0115-interruptions.md) |
 | `together` | 陪玩状态 | [ADR 0111](../adr/0111-together.md) |
 | `jealousy` | 吃醋（最轻一档） | [ADR 0123](../adr/0123-jealousy.md) |
+| `texture` | 说话的质感（问号 / ～ / 小黄脸 / 叠字） | [ADR 0131](../adr/0131-texture.md) |
 | `curious` | 会追问（问他刚说的那件事） | [ADR 0126](../adr/0126-curious.md) |
 | `memes` | 知道网上的热梗 | [ADR 0129](../adr/0129-memes.md) |
 

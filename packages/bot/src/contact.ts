@@ -24,8 +24,9 @@ import { isAckAfterClosing, moodySkip, replyDelays, whenSeen } from './reply-tim
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
 import { crisisInHistory, type CrisisHit } from './crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from './grievance.ts';
-import { describeIntent } from './intent.ts';
+import { describeIntent, needsCareText } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
+import { applyTexture } from './texture.ts';
 import { alreadyTold, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, STILTED_WORDS } from './expression.ts';
 import { describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from './shape.ts';
 import { describeUnsettled } from './open-loops.ts';
@@ -142,6 +143,8 @@ export interface ContactPipelineOptions {
     stickerChance?: number;
     /** 抽到发表情的轮次里只发表情不写文字的概率（不写 = 0，不开；app.ts 在 shapeFeel 开着时给 STICKER_ONLY_SHARE；模拟器场景可以调来测，ADR 0099） */
     stickerOnlyChance?: number;
+    /** 他这句话没有明确反应、但允许发图片表情的轮次里，抽到发一个的概率（ADR 0132，配置 biliStickers）：原来只有有明确反应的轮次才抽，她线上 437 轮里发了 1 个；不给就还是原来的 */
+    stickerUncued?: number;
     /** 不带联系人前缀，这里会加上 [QQ 号] */
     log: Log;
     /** 每次生成前拿到后处理之后、实际发给模型的提示词 */
@@ -205,6 +208,8 @@ export interface ContactPipelineOptions {
     interruptions?: boolean;
     /** 小梗（ADR 0114）：他们之间聊天里反复出现的玩笑；约 1/4 的轮次给她看一个，话赶话接得上就顺口提；只对男朋友档 */
     jokes?: () => readonly Joke[];
+    /** 说话的质感（ADR 0131）：发出去之前在气泡上加真人常有的小黄脸 / 「～」 / 问号 / 叠字……；危机和他难过的回合不加 */
+    texture?: boolean;
     /** 网络热梗（ADR 0129）：他用到库里的梗给她意思，没用到约 20% 的轮次给她看最近的几个；只对男朋友档 */
     memes?: () => readonly MemeEntry[];
     /** 她自己在 B 站看过的东西（ADR 0130，配置 watching）：他问到“最近看了什么”时给她真看过的两条；只对男朋友档 */
@@ -286,6 +291,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let sulkNow = false;
     /** 这一轮的形状（配置 shape）：buildPrompt 按他说的长短定，紧跟着的出口检查按它强制执行；主动找他、收尾、危机回合没有 */
     let shapeNow: ShapePlan | undefined;
+    /** 这一轮发出去之前加质感用的上下文（ADR 0131）：他这一串说的话、这一轮是不是认真的回合、她最近几次回复里带了几次小黄脸 */
+    let textureNow: { said: string; serious: boolean; recentFaces: number } | undefined;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -592,8 +599,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const stickerAllowance = options.stickers && !thinking ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
             stickersAllowed = stickerAllowance.allowed && !photoNow;
             const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
-            stickerOnlyNow = stickersAllowed && stickerCued(saidNow) && stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE) && stickerOnlyTurn(chat, options.stickerOnlyChance ?? 0);
-            stickerContext = stickersAllowed && stickerCued(saidNow) && stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE) ? { text: saidNow, ...(stickerOnlyNow ? { only: true } : {}) } : undefined;
+            // 没有明确反应的轮次也抽一抽（ADR 0132）：她拿不到小黄脸以后，表情包得顶上；抽签的种子和有反应的那条路分开
+            const stickerDrawn = stickersAllowed && (stickerCued(saidNow)
+                ? stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE)
+                : Boolean(options.stickerUncued) && saidNow.trim().length > 0 && stickerTurn(chat, options.stickerUncued!, 'sticker uncued'));
+            stickerOnlyNow = stickerDrawn && stickerOnlyTurn(chat, options.stickerOnlyChance ?? 0);
+            stickerContext = stickerDrawn ? { text: saidNow, ...(stickerOnlyNow ? { only: true } : {}) } : undefined;
             if (stickerContext) log(stickerOnlyNow ? '图片表情：这一轮抽到只发表情、不写文字' : '图片表情：这一轮抽到要发一个');
             if (options.stickers && !thinking && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
             pick = picked ? {
@@ -627,6 +638,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她最近心里在想的（ADR 0101）：前后是同一个在想事情的人
             const innerNow = !initiate && !crisisNow ? options.innerLine?.() : undefined;
             if (innerNow) log('内心：这一轮提示词里放了她最近的念头');
+            // 质感（ADR 0131）发出去之前用的上下文：只对男朋友档；他难过 / 生病 / 小别扭 / 危机的回合不加
+            textureNow = options.texture && contact.tier === 'boyfriend' && !thinking
+                ? {
+                    said: saidNow,
+                    serious: Boolean(crisisNow || grievanceActive || sulkNow || needsCareText(saidNow) || (baseIntent && /先接住他此刻的情绪/.test(baseIntent))),
+                    recentFaces: faceContext(options.history.load(contact.qq), contact.tier).recent.filter(reply => /\[[\p{Script=Han}A-Za-z0-9]{1,6}\]/u.test(reply)).length,
+                }
+                : undefined;
             const length = crisisNow || shapeNow || stickerOnlyNow || photoNow || interruptLine || thinking ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
@@ -739,7 +758,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         decorate: (parts, maxBubbles) => {
             // 危机回合不打错字（ADR 0068）
             if (crisisNow) return parts;
-            const typo = maybeTypo(parts, `${contact.qq} ${parts.join('|')}`, maxBubbles, options.recallOwn ? RECALL_SHARE : 0);
+            // 质感（ADR 0131）：先加质感，再打错字（打错字认的是汉字，不碰小黄脸 / 标点）
+            let shaped = parts;
+            if (options.texture && textureNow) {
+                const textured = applyTexture(parts, { seed: `${contact.qq} ${parts.join('|')}`, said: textureNow.said, serious: textureNow.serious, recentFaces: textureNow.recentFaces, maxBubbles });
+                shaped = textured.parts;
+                if (textured.notes.length) log(`质感：${textured.notes.join('；')}`);
+            }
+            const typo = maybeTypo(shaped, `${contact.qq} ${parts.join('|')}`, maxBubbles, options.recallOwn ? RECALL_SHARE : 0);
             if (typo.note) log(`打错字：${typo.note}`);
             return typo.recall ? { parts: typo.parts, recall: typo.recall } : typo.parts;
         },

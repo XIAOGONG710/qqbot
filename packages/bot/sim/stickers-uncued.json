@@ -1,0 +1,126 @@
+{
+    "name": "表情包顶替小黄脸：没有明确反应的日常话里偶尔发一个（ADR 0132）",
+    "description": "stickerUncued 抽满（1）测代码路径：他说的日常话没有「哈哈 / 抱抱 / 晚安」这类明确反应，也允许发表情的轮次里，她发一个表情包（挑得上的），不写「表情包：」这种假文字，不带小黄脸。他在问正事 / 认真难过时照旧不发。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-12T20:30:00+08:00",
+    "memory": false,
+    "stickerChance": 1,
+    "stickerUncued": 1,
+    "schedule": false,
+    "stickers": [
+        {
+            "id": "a1b2c3d4e5f6",
+            "description": "橘猫翻白眼，配字「无语」",
+            "tags": [
+                "无语",
+                "嫌弃"
+            ]
+        },
+        {
+            "id": "b2c3d4e5f6a7",
+            "description": "小熊抱着枕头蹭来蹭去",
+            "tags": [
+                "撒娇",
+                "亲昵"
+            ]
+        },
+        {
+            "id": "c3d4e5f6a7b8",
+            "description": "柴犬竖大拇指，配字「干得漂亮」",
+            "tags": [
+                "夸",
+                "开心"
+            ]
+        },
+        {
+            "id": "d4e5f6a7b8c9",
+            "description": "小猫趴在桌上睡着，配字「晚安」",
+            "tags": [
+                "晚安",
+                "困了"
+            ]
+        },
+        {
+            "id": "e5f6a7b8c9d0",
+            "description": "白色卡通小鸟脸颊红晕，配爱心",
+            "tags": [
+                "可爱",
+                "日常",
+                "表情包"
+            ]
+        },
+        {
+            "id": "f6a7b8c9d0e1",
+            "description": "手写体大字「好家伙」",
+            "tags": [
+                "惊讶",
+                "调侃",
+                "文字表情"
+            ]
+        }
+    ],
+    "history": [
+        {
+            "time": "2026-11-12T20:20:00+08:00",
+            "role": "user",
+            "content": "在干嘛"
+        },
+        {
+            "time": "2026-11-12T20:21:00+08:00",
+            "role": "assistant",
+            "content": "刚吃完饭，在宿舍躺着刷手机"
+        }
+    ],
+    "steps": [
+        {
+            "case": "BU01",
+            "note": "日常话（没有明确反应）：可以发一个表情包"
+        },
+        {
+            "say": "我今天去了趟超市"
+        },
+        {
+            "check": {
+                "speechClean": true,
+                "exitClean": true,
+                "stickerSent": true,
+                "maxStickers": 1,
+                "replyNone": [
+                    "表情包：",
+                    "发了个表情包",
+                    "[表情包",
+                    "【表情包"
+                ]
+            }
+        },
+        {
+            "case": "BU02",
+            "note": "问正事：不发"
+        },
+        {
+            "say": "你明天几点的课来着"
+        },
+        {
+            "check": {
+                "speechClean": true,
+                "exitClean": true,
+                "stickerSent": false
+            }
+        },
+        {
+            "case": "BU03",
+            "note": "他认真难过：不发"
+        },
+        {
+            "say": "我今天被导师当着全组的面骂了，感觉自己好没用，不太想说话"
+        },
+        {
+            "check": {
+                "speechClean": true,
+                "exitClean": true,
+                "stickerSent": false
+            }
+        }
+    ]
+}

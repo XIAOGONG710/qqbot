@@ -27,6 +27,7 @@ import { configuredImageDescriber, STICKER_VISION_PROMPT } from '../../bot/src/v
 import { stickerDecider, stickerShelf } from '../../bot/src/stickers.ts';
 import { qqFavorites } from '../../bot/src/sticker-favorites.ts';
 import { bqbDiscover } from '../../bot/src/sticker-sources.ts';
+import { biliStickerScreen } from '../../bot/src/bili-stickers.ts';
 import { webFoodSource, webPhotoSource } from '../../bot/src/photo-sources.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 
@@ -131,6 +132,8 @@ export interface Config {
     foodPhotos: boolean;
     memes: boolean;
     watching: boolean;
+    texture: boolean;
+    biliStickers: boolean;
     innerLife: boolean;
     herFeelings: boolean;
     herNo: boolean;
@@ -299,6 +302,10 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**网络热梗**（ADR 0129，要「她的 B 站号」开着才会自己去学）：她的知识停在模型训练的那一天，网上现在流行的梗她一个都不知道。开了以后每 12 小时读一次 B 站热门 / 热搜、微博热搜、百度热榜，挑出可能是梗的词，用她的 B 站号搜「<词> 什么梗」、读字幕当证据，只根据证据写意思（把握不到“中”、不适合聊天的不收；政治、灾难、案件、低俗、骂人的一律不收）；聊天里你用到库里的梗，她知道意思、顺着接；没用到时约 20% 的轮次给她看最近的几个，想用就自然地用。只对男朋友档。默认关。'),
         watching: Schema.boolean().default(DEFAULTS.watching)
             .description('**她自己在 B 站看东西、形成看法**（ADR 0130，要「她的 B 站号」开着；要「内心」开着看法才会变成念头和主动消息）：每天 14 点以后她自己“看”一个视频（按口味搜、读字幕摘要和热评，只存摘要），想事情时多一个题目“你最近在 B 站看过的那个东西，你自己怎么想”；你问到“最近看了什么”时，给她真看过的两条。B 站评论区当说话语料试过（957 句只剩 39 句可用，全是“哈哈哈”“加油”），不做。只对男朋友档。默认关。'),
+        texture: Schema.boolean().default(DEFAULTS.texture)
+            .description('**说话的质感**（ADR 0131）：用“像不像真人”的尺子量，她的话和真人差在写法上——句末几乎不带标点、问句不带问号、没有“～”、没有小黄脸、不叠字、很少回两个字的反应。模型自己不会写这些，所以放在代码里：发出去之前按概率、按语气加（问号、“～”、语气对得上的小黄脸、叠字、偶尔 ok / hhh、去掉结尾的省略号、两条短的并成一条、先回一个字的反应）。危机和你难过 / 生病 / 小别扭的回合不加。只对男朋友档。默认关。'),
+        biliStickers: Schema.boolean().default(DEFAULTS.biliStickers)
+            .description('**她自己在 B 站找表情包**（ADR 0132，要「图片表情」和「她的 B 站号」开着）：表情包的候选来源换成 B 站——她的号读官方表情包（热词系列、tv_小电视；不要小黄脸、颜文字）+ 热门视频评论区里像表情包的图（真人照片、截图、广告的不收）；公开目录只在 B 站这路没东西时兜底。并且没有明确反应的、允许发表情的轮次里也约 12% 发一个（原来她线上 437 轮里只发了 1 个），顶替小黄脸。默认关。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
@@ -500,6 +507,8 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.foodPhotos !== undefined ? { foodPhotos: config.foodPhotos } : {}),
         ...(config.memes !== undefined ? { memes: config.memes } : {}),
         ...(config.watching !== undefined ? { watching: config.watching } : {}),
+        ...(config.texture !== undefined ? { texture: config.texture } : {}),
+        ...(config.biliStickers !== undefined ? { biliStickers: config.biliStickers } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),
@@ -644,6 +653,7 @@ export function apply(ctx: Context, config: Config) {
         describe: image => stickerVision.describe(image),
         decide: stickerDecider(appConfig.llm, log),
         trendDiscover: bqbDiscover({ dir: join(appConfig.dataDir, 'stickers', 'sources'), log }),
+        screen: biliStickerScreen,
         discover: qqFav.discover,
         favorites: qqFav.favorites,
         log,

@@ -72,11 +72,11 @@ export function rankStickers(entries: readonly StickerEntry[], text: string): St
 }
 
 /** 抽到发图片表情的这一轮，是不是只发表情、不写文字（按他最后一条的时间和内容定，同一句每次一样；和 stickerTurn 的抽签互不影响） */
-export function stickerOnlyTurn(history: readonly { role: 'user' | 'assistant'; content: string; time?: string }[], chance = STICKER_ONLY_SHARE): boolean {
+export function stickerOnlyTurn(history: readonly { role: 'user' | 'assistant'; content: string; time?: string }[], chance = STICKER_ONLY_SHARE, salt = 'sticker only'): boolean {
     const last = history.findLast(message => message.role === 'user');
     if (!last) return false;
     let hash = 0x811c9dc5;
-    for (const char of `${last.time ?? ''} ${last.content} sticker only`) {
+    for (const char of `${last.time ?? ''} ${last.content} ${salt}`) {
         hash ^= char.codePointAt(0)!;
         hash = Math.imul(hash, 0x01000193) >>> 0;
     }
@@ -87,11 +87,11 @@ export function stickerOnlyTurn(history: readonly { role: 'user' | 'assistant'; 
 }
 
 /** 这一轮抽没抽到发图片表情（按他最后一条的时间和内容定，同一句每次一样） */
-export function stickerTurn(history: readonly { role: 'user' | 'assistant'; content: string; time?: string }[], chance = STICKER_TURN_CHANCE): boolean {
+export function stickerTurn(history: readonly { role: 'user' | 'assistant'; content: string; time?: string }[], chance = STICKER_TURN_CHANCE, salt = 'sticker'): boolean {
     const last = history.findLast(message => message.role === 'user');
     if (!last) return false;
     let hash = 0x811c9dc5;
-    for (const char of `${last.time ?? ''} ${last.content} sticker`) {
+    for (const char of `${last.time ?? ''} ${last.content} ${salt}`) {
         hash ^= char.codePointAt(0)!;
         hash = Math.imul(hash, 0x01000193) >>> 0;
     }
@@ -158,7 +158,7 @@ export function imageStickerAllowance(
 }
 
 export interface StickerSource {
-    kind: 'received' | 'qq-custom' | 'inbox' | 'web' | 'bqb';
+    kind: 'received' | 'qq-custom' | 'inbox' | 'web' | 'bqb' | 'bili';
     from?: number;
     messageId?: number;
     name?: string;
@@ -208,6 +208,8 @@ export interface StickerShelfOptions {
     /** 持续更新的公开网络候选源；与导入箱、QQ 自定义表情共用每小时预算。 */
     trendDiscover?: () => Promise<string[]>;
     trendPerDay?: number;
+    /** 看完描述、做收藏判断之前的筛（ADR 0132：B 站评论区图片里的真人照片 / 截图 / 广告）；返回不收的原因，通过返回 undefined */
+    screen?: (description: string, source: StickerSource) => string | undefined;
     /** QQ 账号已有的自定义表情。 */
     /** knownMd5：已经同步进 QQ 收藏的那些（大写 md5）；QQ 收藏池里有它们，别再当新候选看一遍 */
     discover?: (knownMd5: ReadonlySet<string>) => Promise<string[]>;
@@ -229,6 +231,8 @@ export interface StickerShelf {
     consider(message: Segment[] | string, source: Omit<StickerSource, 'kind'>): Promise<void>;
     /** 从导入箱、公开网络候选源和 QQ 自定义表情池看几个新的候选。 */
     discover(): Promise<void>;
+    /** 运行时换掉“持续更新的公开网络候选源”（ADR 0132：app 起来、她的 B 站号能用了以后换成 B 站）；make 拿到原来的来源，可以当兜底。perDay 不给就沿用 */
+    setTrend?(make: (previous?: () => Promise<string[]>) => () => Promise<string[]>, perDay?: number): void;
     /**
      * 给回复模型看的本地收藏清单。不传 context：旧办法，最久没用的 12 张；
      * 传 context（他这一轮说的话）：抽到发表情的这一轮，按他这句话挑 STICKER_SHORTLIST 张最合适的，并写明这一轮要发一个。
@@ -281,6 +285,8 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
     let queue = Promise.resolve();
     let lastDiscoveredAt: number | undefined;
     const libraryMax = options.libraryMax ?? STICKER_LIBRARY_MAX;
+    let trendSource = options.trendDiscover;
+    let trendPerDay = options.trendPerDay;
 
     const persist = () => writeJsonAtomic(indexPath, index);
     // QQ 收藏的操作串行、隔几秒一个：一张张存，不一股脑发；失败只记日志，本地收藏不受影响，下次发现时补。
@@ -331,6 +337,8 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
         const image = await download(url);
         const description = (await options.describe({ url, dataUrl: imageDataUrl(image) })).replace(/\s+/g, ' ').trim().slice(0, 120);
         if (!description) return reject(key, '看不清内容');
+        const screened = options.screen?.(description, source);
+        if (screened) return reject(key, `${screened}（${description}）`);
         const decision = normalizedDecision(await options.decide(description, summary));
         if (!decision.keep) return reject(key, `不收（${decision.description || description}）`);
         keep(key, image, decision, source);
@@ -451,14 +459,15 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             // 公开目录的候选每天最多审看 trendPerDay 个（跨重启也算）：每小时 3 个的话，收藏一天多就被整批换掉，
             // 她就没有「自己的」表情包了。导入箱和 QQ 自定义表情不受这条限制（量本来就小）。
             const day = localDay(now());
-            const trendLeft = (options.trendPerDay ?? STICKER_TREND_PER_DAY) - (index.trend?.day === day ? index.trend.count : 0);
-            if (remaining > 0 && trendLeft > 0 && options.trendDiscover) {
-                const urls = await options.trendDiscover();
+            const trendLeft = (trendPerDay ?? STICKER_TREND_PER_DAY) - (index.trend?.day === day ? index.trend.count : 0);
+            if (remaining > 0 && trendLeft > 0 && trendSource) {
+                const urls = await trendSource();
                 const fresh = [...new Set(urls)].filter(url => typeof url === 'string' && /^https?:\/\//i.test(url) && !index.seen.includes(sourceKey(url)));
                 for (const url of fresh.slice(0, Math.min(remaining, trendLeft))) {
                     index.trend = { day, count: (index.trend?.day === day ? index.trend.count : 0) + 1 };
                     persist();
-                    await enqueue(url, undefined, { kind: 'bqb', name: 'ChineseBQB' });
+                    // B 站的图都在 hdslb.com：官方表情包在 /bfs/emote/，评论区图片在别处（ADR 0132）
+                    await enqueue(url, undefined, /(?:^|\.)hdslb\.com\//.test(url.replace(/^https?:\/\//, '')) ? { kind: 'bili', name: url.includes('/bfs/emote/') ? 'emote' : 'comment' } : { kind: 'bqb', name: 'ChineseBQB' });
                     remaining--;
                 }
             }
@@ -470,6 +479,10 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                     await enqueue(url, undefined, { kind: 'qq-custom' });
                 }
             }
+        },
+        setTrend(make, perDay) {
+            trendSource = make(trendSource);
+            if (perDay !== undefined) trendPerDay = perDay;
         },
         prompt(context) {
             if (!index.entries.length) return undefined;

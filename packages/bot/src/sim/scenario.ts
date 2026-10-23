@@ -289,6 +289,8 @@ export interface Scenario {
     proactiveAsk: boolean;
     /** 默认 false：被第三方打断（ADR 0115，配置 interruptions） */
     interruptions: boolean;
+    /** 默认 false：说话的质感（ADR 0131，配置 texture） */
+    texture: boolean;
     /** 预置的她看过的东西（ADR 0130，配置 watching）：写了才打开；跑场景时不去看，直接用这几条（day 默认是起点那天） */
     watched?: { title: string; owner: string; tname: string; excerpt: string; hot?: string[] }[];
     /** 预置的网络热梗（ADR 0129，配置 memes）：写了才打开；跑场景时不去学，直接用这几个 */
@@ -320,6 +322,8 @@ export interface Scenario {
     stickerChance?: number;
     /** 抽到发表情的轮次里只发表情、不写文字的概率（0–1），不写：shapeFeel 开着（场景里或 --feel）按线上的 STICKER_ONLY_SHARE，否则 0；写 1 = 抽到的轮次都只发表情（ADR 0099） */
     stickerOnlyChance?: number;
+    /** 没有明确反应的、允许发表情的轮次里抽到发一个的概率（ADR 0132，配置 biliStickers）；不写就没有这条路 */
+    stickerUncued?: number;
     /** 假的「真实天气」（ADR 0050）：日期 → 下雨的钟头（0–23），这几天按真实天气算（世界和主动消息都认），别的日子照旧生成 */
     realRain?: Record<string, number[]>;
     /** 指定今天的心情（ADR 0015，卡上心情的名字），比较不同心情时用；不写按虚拟日期抽 */
@@ -424,6 +428,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         proactiveRoom: s.proactiveRoom === true,
         menu: s.menu === true,
         curious: s.curious === true,
+        texture: s.texture === true,
         smallNews: s.smallNews === true,
         foodPhotos: s.foodPhotos === true,
         ...(typeof s.menuFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.menuFrom) ? { menuFrom: s.menuFrom } : {}),
@@ -456,6 +461,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         ...(s.stickers !== undefined ? { stickers: stickerEntries(s.stickers, fail) } : {}),
         ...(s.photos !== undefined ? { photos: photoEntries(s.photos, fail) } : {}),
         ...(s.stickerChance !== undefined ? { stickerChance: typeof s.stickerChance === 'number' && s.stickerChance >= 0 && s.stickerChance <= 1 ? s.stickerChance : fail('stickerChance 应为 0–1 的数') } : {}),
+        ...(s.stickerUncued !== undefined ? { stickerUncued: typeof s.stickerUncued === 'number' && s.stickerUncued >= 0 && s.stickerUncued <= 1 ? s.stickerUncued : fail('stickerUncued 应为 0–1 的数') } : {}),
         ...(s.stickerOnlyChance !== undefined ? { stickerOnlyChance: typeof s.stickerOnlyChance === 'number' && s.stickerOnlyChance >= 0 && s.stickerOnlyChance <= 1 ? s.stickerOnlyChance : fail('stickerOnlyChance 应为 0–1 的数') } : {}),
         ...(s.proactiveOffline !== undefined ? {
             proactiveOffline: Array.isArray(s.proactiveOffline) && s.proactiveOffline.every(x => typeof x === 'string' && x)

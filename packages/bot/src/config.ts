@@ -84,6 +84,8 @@ export const DEFAULTS = {
     foodPhotos: false,
     memes: false,
     watching: false,
+    texture: false,
+    biliStickers: false,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -332,6 +334,17 @@ export interface AppConfig {
      * 他问到“最近看了什么”时给她真看过的两条。B 站评论区当说话语料试过（957 句只剩 39 句可用，全是「哈哈哈」「加油」），不做。只对男朋友档。默认关
      */
     watching: boolean;
+    /**
+     * 说话的质感（ADR 0131）：用「像不像真人」的尺子量，她的话和真人差在写法上——句末几乎不带标点（95% 对 79%）、问句不带问号（3% 对 10%）、没有「～」（0 对 10%）、没有小黄脸（0 对 18%）、不叠字、很少回两个字的反应。
+     * 模型自己不会写这些（提示词里写了也没用），所以放在代码里：发出去之前按概率、按语气加（问号、「～」、语气对得上的小黄脸、叠字、偶尔 ok / hhh、去掉结尾的省略号、两条短的并一条、先回一个字的反应）。危机和他难过 / 生病 / 小别扭的回合不加。只对男朋友档。默认关
+     */
+    texture: boolean;
+    /**
+     * 她自己在 B 站找表情包（ADR 0132，要 stickers 和 bilibiliAccount 开着）：用户 10-23「表情包让她在 bilibili 自己找，不要用或者少用黄豆表情」。
+     * 表情包的候选来源换成 B 站：她的号读官方表情包（热词系列、tv_小电视，不要小黄脸 / 颜文字）+ 热门视频评论区里像表情包的图（真人照片、截图、广告的不收）；公开目录只在 B 站这路没东西时兜底。
+     * 并且没有明确反应的、允许发表情的轮次里也约 12% 发一个（原来她线上 437 轮里只发了 1 个），顶替小黄脸。默认关
+     */
+    biliStickers: boolean;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -626,6 +639,8 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         foodPhotos: bool(file, 'foodPhotos', '', DEFAULTS.foodPhotos),
         memes: bool(file, 'memes', '', DEFAULTS.memes),
         watching: bool(file, 'watching', '', DEFAULTS.watching),
+        texture: bool(file, 'texture', '', DEFAULTS.texture),
+        biliStickers: bool(file, 'biliStickers', '', DEFAULTS.biliStickers),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),

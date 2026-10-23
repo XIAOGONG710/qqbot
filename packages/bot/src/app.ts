@@ -30,6 +30,7 @@ import { createFeedbackChannel } from './feedback.ts';
 import { momentsReader } from './moments.ts';
 import { loadEverydayFrom } from './everyday.ts';
 import { dishesBetween, loadMenuFrom } from './menu.ts';
+import { BILI_STICKER_PER_DAY, biliStickerDiscover, STICKER_UNCUED_CHANCE } from './bili-stickers.ts';
 import { pursuitsReader } from './pursuits.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
@@ -522,6 +523,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
             ...(photos && contact.tier === 'boyfriend' ? { photos } : {}),
             ...(stickerChance !== undefined ? { stickerChance } : {}),
+            ...(config.biliStickers ? { stickerUncued: STICKER_UNCUED_CHANCE } : {}),
             // 抽到发表情的轮次里一半只发表情（ADR 0099）：跟着情绪轮的开关走；测试可以直接给概率
             ...((stickerOnlyChance ?? (config.shape && config.shapeFeel ? STICKER_ONLY_SHARE : 0)) > 0 ? { stickerOnlyChance: stickerOnlyChance ?? STICKER_ONLY_SHARE } : {}),
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
@@ -550,6 +552,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(jokes && contact.tier === 'boyfriend' ? { jokes: () => jokes.load(contact.qq).jokes } : {}),
             ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => memeEntries } : {}),
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
+            ...(config.texture ? { texture: true } : {}),
             ...(config.herNo ? { herNo: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
@@ -671,6 +674,13 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         // 刷视频和回复评论共用一个来源：凭证只读一次、失败只记一次日志
         accountSource ??= createAccountSource({ dataDir: config.dataDir, request: bilibiliRequest ?? realRequest, now: worldNow, log });
         return accountSource;
+    }
+
+    // 她自己在 B 站找表情包（ADR 0132，配置 biliStickers）：表情包的候选来源换成 B 站（原来的公开目录兜底）；别的来源（他发来的、QQ 收藏、导入箱）照旧
+    if (config.biliStickers && stickers?.setTrend) {
+        const source = bilibiliAccountSource();
+        if (!source) log('B 站表情包：biliStickers 开着，但要 bilibiliAccount 也开着，还用原来的公开目录');
+        else stickers.setTrend(previous => biliStickerDiscover({ account: source, fetch: (url, init) => fetch(url, init) as never, now: () => new Date(worldNow()), log }, previous), BILI_STICKER_PER_DAY);
     }
 
     /** 分享之后在视频下评论并 @ 他（ADR 0089，配置 bilibiliComment）：没配好就记一行日志、不评论 */
