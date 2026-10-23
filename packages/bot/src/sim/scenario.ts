@@ -289,6 +289,8 @@ export interface Scenario {
     proactiveAsk: boolean;
     /** 默认 false：被第三方打断（ADR 0115，配置 interruptions） */
     interruptions: boolean;
+    /** 默认 false：吃的照片（ADR 0128，配置 foodPhotos；要 photos 和 menu）；photos 里写 kind food + dish */
+    foodPhotos: boolean;
     /** 默认 false：她会主动讲今天的小事（ADR 0127，配置 smallNews；要 everydayLife）；proactive 场景用 */
     smallNews: boolean;
     /** 默认 false：会追问（ADR 0126，配置 curious） */
@@ -309,7 +311,7 @@ export interface Scenario {
     /** 默认 false：她主动发照片（ADR 0110，配置 photoShares，要 photos 和 proactive）；喂完土豆见到它的日子里约 35% 的天 */
     photoShares: boolean;
     /** 假的照片货架（ADR 0109）：真的 shelf 代码，文件是几个字节的假图（模拟器不发图，气泡里是 <photo:编号>）。只有写了才给回复器，并打开 photos */
-    photos?: { kind: 'cat' | 'view' | 'work'; caption: string }[];
+    photos?: { kind: 'cat' | 'view' | 'work' | 'food'; caption: string; dish?: string }[];
     /** 允许发图片表情的轮次里抽中发的概率（0–1），不写按线上的 STICKER_TURN_CHANCE；写 1 = 允许的轮次都发（测选哪张用） */
     stickerChance?: number;
     /** 抽到发表情的轮次里只发表情、不写文字的概率（0–1），不写：shapeFeel 开着（场景里或 --feel）按线上的 STICKER_ONLY_SHARE，否则 0；写 1 = 抽到的轮次都只发表情（ADR 0099） */
@@ -358,13 +360,14 @@ function stickerEntries(value: unknown, fail: (message: string) => never): { id:
     });
 }
 
-function photoEntries(value: unknown, fail: (message: string) => never): { kind: 'cat' | 'view' | 'work'; caption: string }[] {
+function photoEntries(value: unknown, fail: (message: string) => never): { kind: 'cat' | 'view' | 'work' | 'food'; caption: string; dish?: string }[] {
     if (!Array.isArray(value) || value.length === 0) fail('photos 应为非空数组');
     return (value as unknown[]).map((item, i) => {
         const o = item as Record<string, unknown>;
-        if (!o || !['cat', 'view', 'work'].includes(o.kind as string)) fail(`photos[${i}].kind 应为 cat / view / work`);
+        if (!o || !['cat', 'view', 'work', 'food'].includes(o.kind as string)) fail(`photos[${i}].kind 应为 cat / view / work / food`);
+        if (o.kind === 'food' && (typeof o.dish !== 'string' || !o.dish.trim())) fail(`photos[${i}].dish 应为这张是哪道菜`);
         if (typeof o.caption !== 'string' || !o.caption.trim()) fail(`photos[${i}].caption 应为一句说明`);
-        return { kind: o.kind as 'cat' | 'view' | 'work', caption: (o.caption as string).trim() };
+        return { kind: o.kind as 'cat' | 'view' | 'work' | 'food', caption: (o.caption as string).trim(), ...(o.kind === 'food' ? { dish: (o.dish as string).trim() } : {}) };
     });
 }
 
@@ -418,6 +421,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         menu: s.menu === true,
         curious: s.curious === true,
         smallNews: s.smallNews === true,
+        foodPhotos: s.foodPhotos === true,
         ...(typeof s.menuFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.menuFrom) ? { menuFrom: s.menuFrom } : {}),
         interruptions: s.interruptions === true,
         proactiveAsk: s.proactiveAsk === true,

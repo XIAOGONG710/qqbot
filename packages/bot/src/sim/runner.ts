@@ -21,7 +21,7 @@ import type { OpenAIMessage, PromptResult } from '../prompt.ts';
 import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
-import { herDay, newsKindsOf, withAsk, withBack, withCatPhoto, withCurious, withInner, withInvite, withReach, withRoom, withSmallNews } from '../proactive.ts';
+import { herDay, newsKindsOf, withAsk, withBack, withCatPhoto, withCurious, withFoodShares, withInner, withInvite, withReach, withRoom, withSmallNews } from '../proactive.ts';
 import type { Moment } from '../feelings.ts';
 import { mergePursuits, type Pursuit } from '../pursuits.ts';
 import { dmMessageId, dmNote, nudgeNote, videoNote, videoTopic } from '../bilibili.ts';
@@ -374,7 +374,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         const src = join(dataDir, 'photo-src');
         mkdirSync(src, { recursive: true });
         const shelf = photoShelf({ dir: join(dataDir, 'photos'), log, now: () => new Date(clock.now()) });
-        scenario.photos!.forEach((entry, i) => { const file = join(src, `p${i}.jpg`); writeFileSync(file, `fake-photo-${i}-${entry.caption}`); shelf.add(file, entry.kind, entry.caption); });
+        scenario.photos!.forEach((entry, i) => { const file = join(src, `p${i}.jpg`); writeFileSync(file, `fake-photo-${i}-${entry.caption}`); shelf.add(file, entry.kind, entry.caption, entry.dish); });
         return shelf;
     })() : undefined;
     const createResponder = () => createContactResponder({
@@ -483,7 +483,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const withBacked = withPhotoShare && scenario.comeBack ? withBack(withPhotoShare) : withPhotoShare;
     const withRoomed = withBacked && scenario.proactiveRoom ? withRoom(withBacked) : withBacked;
     const withCurioused = withRoomed && scenario.curious ? withCurious(withRoomed) : withRoomed;
-    const proactiveSettings = withCurioused && scenario.smallNews ? withSmallNews(withCurioused) : withCurioused;
+    const withSmalled = withCurioused && scenario.smallNews ? withSmallNews(withCurioused) : withCurioused;
+    const proactiveSettings = withSmalled && scenario.foodPhotos && scenario.menu && scenario.photos ? withFoodShares(withSmalled) : withSmalled;
     const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && proactiveSettings && character.schedule
         ? createProactivePlanner({
             contact,
@@ -492,7 +493,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             ...(scenario.innerLife ? { inner: true } : {}),
             ...(scenario.hisHours ? { hisHours: true } : {}),
             ...(scenario.together ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
-            ...(photos && scenario.photoShares ? { photoReady: (_kind: 'cat', at: number) => photos.has('cat') && photoAllowance(history.load(contact.qq), at).allowed } : {}),
+            ...(photos && (scenario.photoShares || scenario.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),
             dates: character.dates,
             mode: 'on',
             history,

@@ -1,6 +1,6 @@
 // node src/ops/photo-cli.ts list|add|remove [--dir <数据目录>]（她手机里的照片，ADR 0109）
 //   list                                                  列出货架里的照片（编号、种类、说明、发过几次）
-//   add <图片文件> --kind <cat|view|work> --caption "<照片里是什么>"
+//   add <图片文件> --kind <cat|view|work|food> --caption "<照片里是什么>" [--dish "<菜名>"]   food 要写菜名（ADR 0128）
 //   remove <编号>
 // 照片放在 <数据目录>/photos/（默认 runtime/bot）：files/ 里是复制进去的原图，index.json 是清单。配置 photos 开了才会发；没有照片什么都不做。
 // 种类：cat 土豆（楼下的流浪猫）、view 窗外 / 路上的风景、work 她自己拍的片子。她本人的自拍、吃的不收（见 ADR 0109）。
@@ -28,12 +28,14 @@ if (command === 'list') {
     const file = args[1] && !args[1].startsWith('--') ? resolve(process.env.INIT_CWD ?? process.cwd(), args[1]) : undefined;
     const kind = one('--kind');
     const caption = one('--caption');
+    const dish = one('--dish');
     if (!file || !kind || !PHOTO_KINDS.includes(kind as PhotoKind) || !caption) {
-        console.error(`用法：add <图片文件> --kind <${PHOTO_KINDS.join('|')}> --caption "<照片里是什么>"`);
+        console.error(`用法：add <图片文件> --kind <${PHOTO_KINDS.join('|')}> --caption "<照片里是什么>" [--dish "<菜名>"]`);
         process.exit(2);
     }
+    if (kind === 'food' && !dish) { console.error('food 要用 --dish 写这是哪道菜（她只会发这一顿这道菜的）'); process.exit(2); }
     try {
-        const entry = shelf.add(file, kind as PhotoKind, caption);
+        const entry = shelf.add(file, kind as PhotoKind, caption, dish);
         console.log(`好了：${entry.id}（${entry.kind}）${entry.caption}`);
     } catch (error) {
         console.error(error instanceof Error ? error.message : String(error));
@@ -44,6 +46,6 @@ if (command === 'list') {
     if (!id || !shelf.remove(id)) { console.error(`没有编号 ${id} 的照片`); process.exit(2); }
     console.log(`删掉了 ${id}（原图还留在 photos/files/，要彻底删手动删）`);
 } else {
-    console.error('用法：list | add <图片文件> --kind <cat|view|work> --caption "<…>" | remove <编号>   [--dir <数据目录>]');
+    console.error('用法：list | add <图片文件> --kind <cat|view|work|food> --caption "<…>" [--dish "<菜名>"] | remove <编号>   [--dir <数据目录>]');
     process.exit(2);
 }

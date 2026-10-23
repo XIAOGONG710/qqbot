@@ -29,12 +29,12 @@ import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from './feedback.ts';
 import { momentsReader } from './moments.ts';
 import { loadEverydayFrom } from './everyday.ts';
-import { loadMenuFrom } from './menu.ts';
+import { dishesBetween, loadMenuFrom } from './menu.ts';
 import { pursuitsReader } from './pursuits.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from './festivals.ts';
-import { newsKindsOf, dayMatches, withAsk, withBack, withCatPhoto, withCurious, withInner, withInvite, withReach, withRoom, withSmallNews, type ProactiveMode } from './proactive.ts';
+import { newsKindsOf, dayMatches, withAsk, withBack, withCatPhoto, withCurious, withFoodShares, withInner, withInvite, withReach, withRoom, withSmallNews, type ProactiveMode } from './proactive.ts';
 import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
 import { qzoneComposer } from './qzone.ts';
 import { createVideoBrowsing, dmMessageId, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
@@ -62,7 +62,7 @@ import { featureStatuses, type FeatureStatus } from './features.ts';
 import { jokeStore, JOKES_CHECK_MS, refreshJokes } from './jokes.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { togetherNow } from './together.ts';
-import { photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type PhotoSource } from './photos.ts';
+import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoSource } from './photos.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } from './stickers.ts';
 import { SlidingWindowRateLimiter } from './rate-limit.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
@@ -152,7 +152,7 @@ export interface AppStatus {
     /** 每个功能开关此刻开没开（ADR 0120）：状态页按模块分组画 */
     features: FeatureStatus[];
     /** 照片货架 / 小梗 / 最近一份周报（ADR 0120）；对应的功能没开就没有 */
-    extras?: { photos?: { count: number; cat: number; view: number; work: number }; jokes?: number; report?: { name: string; text: string } };
+    extras?: { photos?: { count: number; cat: number; view: number; work: number; food: number }; jokes?: number; report?: { name: string; text: string } };
     /** 长期记忆开着时：服务探测结果（每分钟最多探一次）、最近一次写入和召回 */
     memory?: { baseUrl: string; health?: MemoryEvent; lastWrite?: MemoryEvent; lastRecall?: MemoryEvent };
 }
@@ -182,6 +182,8 @@ export interface AppOptions {
     stickers?: StickerShelf;
     /** 照片货架的网络来源（ADR 0109：她自己从网上找高清图）；运行入口按配置建（看图没配置就没有），测试可给假的 */
     photoSource?: PhotoSource;
+    /** 吃的照片的来源（ADR 0128，photo-sources.ts 的 webFoodSource）；不给就没有吃的照片 */
+    foodSource?: FoodSource;
     /** 照片找到一半被限流 / 断网打断后多久再试（毫秒，默认 PHOTO_RETRY_MS；测试用） */
     photoRetryMs?: number;
     /** 允许发图片表情的轮次里抽中发的概率（不写按 STICKER_TURN_CHANCE；测试用）*/
@@ -203,7 +205,7 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, sensitive = sensitiveSwitch() }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, sensitive = sensitiveSwitch() }: AppOptions): App {
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -356,7 +358,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 小梗（ADR 0114）：派生数据，存 <数据目录>/jokes/<QQ>.json
     const jokes = config.jokes ? jokeStore({ dir: join(config.dataDir, 'jokes'), log }) : undefined;
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
-    const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, ...(photoSource ? { source: photoSource } : {}) }) : undefined;
+    const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, ...(photoSource ? { source: photoSource } : {}), ...(config.foodPhotos && foodSource ? { foodSource } : {}) }) : undefined;
     if (config.photos) {
         const have = photos?.status();
         log(photos ? `照片货架：开（本地 ${have!.count} 张：土豆 ${have!.byKind.cat}、风景 ${have!.byKind.view}、她的片子 ${have!.byKind.work}；${photoSource ? '她自己去网上找（CC0 / 公有领域，看图把关，每 6 小时一次）' : '网络来源没开（看图没配置），只有手动加的'}；只对男朋友档；没有照片就什么都不做）` : '照片货架：配置开着，但发图片的通道没准备好，不工作');
@@ -823,7 +825,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         if (planners.size || config.proactive === 'off') return;
         for (const contact of proactiveContacts) {
             const { character } = cardFor(contact.tier);
-            const plannerSettings = [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite, config.proactiveAsk && withAsk, config.photos && config.photoShares && photos && contact.tier === 'boyfriend' && withCatPhoto, config.comeBack && withBack, config.proactiveRoom && withRoom, contact.tier === 'boyfriend' && config.curious && withCurious, contact.tier === 'boyfriend' && config.everydayLife && config.smallNews && withSmallNews]
+            const plannerSettings = [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite, config.proactiveAsk && withAsk, config.photos && config.photoShares && photos && contact.tier === 'boyfriend' && withCatPhoto, config.comeBack && withBack, config.proactiveRoom && withRoom, contact.tier === 'boyfriend' && config.curious && withCurious, config.menu && config.foodPhotos && photos && contact.tier === 'boyfriend' && withFoodShares, contact.tier === 'boyfriend' && config.everydayLife && config.smallNews && withSmallNews]
                 .reduce((settings, overlay) => (overlay ? overlay(settings) : settings), character.proactive!);
             planners.set(contact.qq, createProactivePlanner({
                 contact,
@@ -832,7 +834,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 // 喂完土豆拍的照片（ADR 0110）：货架里有土豆的照片、这会儿也允许发才发
                 ...(config.hisHours && contact.tier === 'boyfriend' ? { hisHours: true } : {}),
                 ...(config.together && contact.tier === 'boyfriend' ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
-                ...(photos && config.photoShares ? { photoReady: (_kind: 'cat', at: number) => photos.has('cat') && photoAllowance(history.load(contact.qq), at).allowed } : {}),
+                ...(photos && (config.photoShares || config.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),
                 ...(config.innerLife ? { inner: true } : {}),
                 dates: character.dates,
                 mode: config.proactive,
@@ -893,6 +895,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     let stopped = false;
     let stickerDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
     let photoDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
+    let foodDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
+    let foodRetryTimer: ReturnType<typeof setTimeout> | undefined;
+    let foodRetries = 0;
     // 周报（ADR 0118）：每小时看一眼，周日 21:30 以后这周的还没有就写一份；出错只记日志
     let weeklyTimer: ReturnType<typeof setInterval> | undefined;
     const checkWeeklyReport = () => {
@@ -910,7 +915,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 状态页的补充（ADR 0120）：货架、小梗个数、最近一份周报的文字（只有数字）
     const statusExtras = (): NonNullable<AppStatus['extras']> => {
         const extras: NonNullable<AppStatus['extras']> = {};
-        if (photos) { const s = photos.status(); extras.photos = { count: s.count, cat: s.byKind.cat, view: s.byKind.view, work: s.byKind.work }; }
+        if (photos) { const s = photos.status(); extras.photos = { count: s.count, cat: s.byKind.cat, view: s.byKind.view, work: s.byKind.work, food: s.byKind.food }; }
         if (jokes) extras.jokes = config.contacts.filter(c => c.tier === 'boyfriend').reduce((n, c) => n + jokes.load(c.qq).jokes.length, 0);
         if (config.weeklyReport) {
             try {
@@ -946,6 +951,20 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             photoRetryTimer = setTimeout(discoverPhotos, photoRetryMs ?? PHOTO_RETRY_MS);
             photoRetryTimer.unref();
         }).catch(error => log(`照片货架：找照片出错（${error instanceof Error ? error.message : String(error)}）`));
+    };
+    // 吃的照片（ADR 0128）：给今天、明天要吃的菜找照片；被限流 / 断网打断了同样过一会儿再来
+    const discoverFoodPhotos = (): void => {
+        if (!photos || !foodSource || !config.foodPhotos || !config.menu || stopped) return;
+        const dishes = dishesBetween(new Date(), 2, cardFor('boyfriend').character.herWorld?.menu, menuFrom);
+        if (!dishes.length) return;
+        photos.discoverFood(dishes).then(result => {
+            if (result === 'done') { foodRetries = 0; return; }
+            if (foodRetries >= PHOTO_RETRY_MAX || stopped) return;
+            foodRetries++;
+            clearTimeout(foodRetryTimer);
+            foodRetryTimer = setTimeout(discoverFoodPhotos, photoRetryMs ?? PHOTO_RETRY_MS);
+            foodRetryTimer.unref();
+        }).catch(error => log(`照片货架：找吃的照片出错（${error instanceof Error ? error.message : String(error)}）`));
     };
     const discoverStickers = () => void collectingStickers?.discover()
         .catch(error => log(`图片表情：读取导入箱和 QQ 自定义表情失败（${error instanceof Error ? error.message : String(error)}）`));
@@ -1128,6 +1147,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     syncFollowUps();
                     discoverStickers();
                     discoverPhotos();
+                    discoverFoodPhotos();
                     refreshAllJokes();
                     checkWeeklyReport();
                     if (config.weeklyReport && !weeklyTimer) {
@@ -1141,6 +1161,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     if (photos && !photoDiscoveryTimer) {
                         photoDiscoveryTimer = setInterval(discoverPhotos, PHOTO_DISCOVERY_INTERVAL_MS);
                         photoDiscoveryTimer.unref();
+                    }
+                    if (photos && foodSource && config.foodPhotos && !foodDiscoveryTimer) {
+                        foodDiscoveryTimer = setInterval(discoverFoodPhotos, FOOD_DISCOVERY_INTERVAL_MS);
+                        foodDiscoveryTimer.unref();
                     }
                     if (collectingStickers && !stickerDiscoveryTimer) {
                         stickerDiscoveryTimer = setInterval(discoverStickers, STICKER_DISCOVERY_INTERVAL_MS);
@@ -1220,6 +1244,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (weatherTimer) clearInterval(weatherTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
             if (photoDiscoveryTimer) clearInterval(photoDiscoveryTimer);
+            if (foodDiscoveryTimer) clearInterval(foodDiscoveryTimer);
+            clearTimeout(foodRetryTimer);
             if (jokesTimer) clearInterval(jokesTimer);
             if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);

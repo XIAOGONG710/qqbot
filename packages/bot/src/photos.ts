@@ -27,6 +27,8 @@ export const PHOTO_RETRY_MS = 15 * 60_000;
 export const PHOTO_RETRY_MAX = 6;
 /** 每道菜攒几张（吃的照片，ADR 0128）：同一道菜轮着发，不用多 */
 export const FOOD_PER_DISH = 2;
+/** 多久给今天明天的菜找一次照片 */
+export const FOOD_DISCOVERY_INTERVAL_MS = 2 * 60 * 60_000;
 /** 找一道菜的照片，一轮最多看几张 */
 export const FOOD_TRIES_PER_DISH = 4;
 /** 一道菜搜不到新的以后多久再搜（毫秒；重启后重新计） */
@@ -129,7 +131,7 @@ export type PublicPhoto = Omit<PhotoEntry, 'file'> & { file: string };
 
 export interface PhotoShelf {
     /** 作者加一张（CLI 用）：复制进货架、按内容哈希定编号；同一张重复加返回已有的 */
-    add(source: string, kind: PhotoKind, caption: string): PhotoEntry;
+    add(source: string, kind: PhotoKind, caption: string, dish?: string): PhotoEntry;
     remove(id: string): boolean;
     list(kind?: PhotoKind, dish?: string): PhotoEntry[];
     /** 这一类有没有可发的；food 要给菜名（只算这道菜的，没给就是没有） */
@@ -355,7 +357,7 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                 discoveringFood = false;
             }
         },
-        add(source, kind, caption) {
+        add(source, kind, caption, dish) {
             if (!PHOTO_KINDS.includes(kind)) throw new Error(`种类只能是 ${PHOTO_KINDS.join(' / ')}`);
             const text = caption.trim();
             if (!text) throw new Error('要写一句照片里是什么');
@@ -369,7 +371,7 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
             mkdirSync(filesDir, { recursive: true });
             const file = `${id}${extension === '.jpeg' ? '.jpg' : extension}`;
             copyFileSync(source, join(filesDir, file));
-            const entry: PhotoEntry = { id, file, kind, caption: text, addedAt: now().toISOString(), used: 0 };
+            const entry: PhotoEntry = { id, file, kind, caption: text, addedAt: now().toISOString(), used: 0, ...(kind === 'food' && dish ? { dish } : {}) };
             index = { ...index, entries: [...index.entries, entry] };
             persist();
             options.log(`照片货架：加了一张 ${kind}（${id}；来自 ${basename(source)}）`);

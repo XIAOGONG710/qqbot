@@ -29,7 +29,7 @@ import { describeObstacles, meetupDays } from './obstacles.ts';
 import { alreadyTold, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches } from './expression.ts';
 import { describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from './shape.ts';
 import { describeUnsettled } from './open-loops.ts';
-import { describeWorld, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
+import { describeWorld, lastMealDish, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
 import { npcMentioned } from './npc.ts';
 import { dayPlan, describePlans, describeSlot } from './day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
@@ -250,6 +250,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let stickerOnlyNow = false;
     /** 这一轮发哪一类照片（ADR 0109）：他要看、货架里有、允许发才有；没有就一律清掉模型写的照片指令 */
     let photoNow: PhotoKind | undefined;
+    /** 吃的照片是哪道菜（ADR 0128）；只有 photoNow 是 food 时有 */
+    let photoDishNow: string | undefined;
     const clean = (reply: string) => {
         const text = cleanUpReply(reply, names, character.regexScripts);
         const stickered = options.stickers?.clean(text, stickersAllowed) ?? stripStickerArtifacts(text);
@@ -513,12 +515,15 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 照片（ADR 0109）：他明确要看土豆 / 风景 / 她的片子，货架里有这一类，允许发（没连着发、今天没发够、不是危机 / 吵醒 / 小别扭 / 他难过），就发；
             // 没有明确对象（只说“发张照片”）取手上有的第一类；要的是她本人（自拍）不在货架里，照旧走“先不发”
             photoNow = undefined;
+            photoDishNow = undefined;
             if (options.photos && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))) {
                 const wanted = initiate ? initiate.photo : photoWanted(chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n'));
                 const kind = wanted === 'any' ? PHOTO_KINDS.find(k => options.photos!.has(k)) : wanted;
-                if (kind && options.photos.has(kind)) {
+                // 吃的（ADR 0128）：只拿她最近吃的那一顿那道菜的；主动那条自己带着菜名
+                const dish = kind === 'food' ? (initiate?.photoDish ?? (around ? lastMealDish(around, time)?.dish : undefined)) : undefined;
+                if (kind && options.photos.has(kind, dish)) {
                     const allowance = photoAllowance(chat, time.getTime(), false, Boolean(woken));
-                    if (allowance.allowed) { photoNow = kind; log(`照片货架：他想看${kind}，货架里有，这一轮发一张`); }
+                    if (allowance.allowed) { photoNow = kind; photoDishNow = dish; log(`照片货架：他想看${kind}${dish ? `（${dish}）` : ''}，货架里有，这一轮发一张`); }
                     else log(`照片货架：这一轮不发（${allowance.reason}）`);
                 }
             }
@@ -676,7 +681,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(jokeNow ? [jokeNow] : []),
                         ...(interruptLine ? [interruptLine] : []),
                         ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
-                        ...(photoNow && options.photos?.prompt(photoNow) ? [options.photos.prompt(photoNow)!] : []),
+                        ...(photoNow && options.photos?.prompt(photoNow, photoDishNow) ? [options.photos.prompt(photoNow, photoDishNow)!] : []),
                         ...(intent ? [intent] : []),
                         ...(length ? [describeLength(length, options.shortReplies)] : []),
                         ...(shapeNow ? [describeShape(shapeNow)] : []),

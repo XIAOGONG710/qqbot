@@ -27,7 +27,7 @@ import { configuredImageDescriber, STICKER_VISION_PROMPT } from '../../bot/src/v
 import { stickerDecider, stickerShelf } from '../../bot/src/stickers.ts';
 import { qqFavorites } from '../../bot/src/sticker-favorites.ts';
 import { bqbDiscover } from '../../bot/src/sticker-sources.ts';
-import { webPhotoSource } from '../../bot/src/photo-sources.ts';
+import { webFoodSource, webPhotoSource } from '../../bot/src/photo-sources.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 
 // koishi 的 ESM 入口是坏的（@koishijs/loader/lib/index.mjs 默认导入了一个 CJS 文件）：取 loader 自己用的那份 CJS
@@ -128,6 +128,7 @@ export interface Config {
     menu: boolean;
     curious: boolean;
     smallNews: boolean;
+    foodPhotos: boolean;
     innerLife: boolean;
     herFeelings: boolean;
     herNo: boolean;
@@ -290,6 +291,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**会追问**（ADR 0126）：量过，她问句率 12% 和真人持平，但问的多是口头语（「睡吧？」），问你生活、问你刚说那件事的很少——因为你说自己的事时提示词写着“别急着追问细节，真要问也只问一两个字”。开了以后：你说了件有细节的事（去了哪、见了谁、买了什么、考试 / 面试 / 项目……），约六成回完反应后问一个关于这件事本身的问题（最近几条里问过就不问，一轮最多一个）；「主动消息」开着的话，“问问你”那个时机换成“想多了解你一点”，问你自己的事。只对男朋友档。默认关。'),
         smallNews: Schema.boolean().default(DEFAULTS.smallNews)
             .description('**她会主动讲今天的小事**（ADR 0127，要「主动消息」和「日常小事」都开着）：日常小事（食堂新窗口、宿舍楼道的灯、朋友发来的搞笑图……）原来只在你问“今天干嘛了”时才说得出口，她自己从来不提，聊天就只剩作业 / 相机 / 困。开了以后：约一半的日子，她从当天碰到的小事里挑一件，过十几二十分钟随口发给你（一天最多一件，不要你回应）。只对男朋友档。默认关。'),
+        foodPhotos: Schema.boolean().default(DEFAULTS.foodPhotos)
+            .description('**吃的照片**（ADR 0128，要「照片货架」和「每顿吃什么」都开着）：她每天按菜单吃的那几道菜，自己去网上（Wikimedia Commons，普通人随手拍的饭，高清；看图把关：人脸 / 水印 / 招牌 / 不是这道菜的都不收；出处和许可存在货架索引里）找照片。你说“拍给我看看你吃的”时发这一顿这道菜的；主动那边（要「主动消息」开着）约每顿 18% 吃完饭拍了张发给你。没有这道菜的照片就不发，她那顿“没拍”。只对男朋友档。默认关。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
@@ -488,6 +491,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.menu !== undefined ? { menu: config.menu } : {}),
         ...(config.curious !== undefined ? { curious: config.curious } : {}),
         ...(config.smallNews !== undefined ? { smallNews: config.smallNews } : {}),
+        ...(config.foodPhotos !== undefined ? { foodPhotos: config.foodPhotos } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),
@@ -639,7 +643,8 @@ export function apply(ctx: Context, config: Config) {
     let app: ReturnType<typeof startApp>;
     try {
         const photoSource = appConfig.photos ? webPhotoSource(appConfig, log) : undefined;
-        app = startApp({ config: appConfig, transport, log, media, vision, ...(stickers ? { stickers } : {}), ...(photoSource ? { photoSource } : {}) });
+        const foodSource = appConfig.photos && appConfig.foodPhotos && appConfig.menu ? webFoodSource(appConfig, log) : undefined;
+        app = startApp({ config: appConfig, transport, log, media, vision, ...(stickers ? { stickers } : {}), ...(photoSource ? { photoSource } : {}), ...(foodSource ? { foodSource } : {}) });
     } catch (error) {
         const plain = plainError('插件没有启动', error);
         setConsoleState({ error: plain.message });

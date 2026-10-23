@@ -97,7 +97,7 @@ export function newsFrom(
         const seenIds = new Set<string>();
         return found
             .filter(item => !seenIds.has(item.id) && seenIds.add(item.id))
-            .map(item => ({ id: item.id, kind: item.kind, day: formatDate(herDay(schedule, item.at)), at: item.at.getTime(), what: item.what }))
+            .map(item => ({ id: item.id, kind: item.kind, day: formatDate(herDay(schedule, item.at)), at: item.at.getTime(), what: item.what, ...(item.dish ? { dish: item.dish } : {}) }))
             .filter(item => dayTexts.has(item.day));
     };
 }
@@ -168,7 +168,7 @@ export interface PlannerDeps {
     /** 约好之后她这边出了事、想改约的（ADR 0066，reschedulesFrom） */
     reschedule?: (now: number) => RescheduleItem[];
     /** 货架里有这一类照片、这会儿也允许发（ADR 0110）；不给 = 不发“拍了张照片”那一类 */
-    photoReady?: (kind: 'cat', now: number) => boolean;
+    photoReady?: (kind: 'cat' | 'food', now: number, dish?: string) => boolean;
     /** 此刻是不是正和他一起玩（ADR 0111）：是就不插别的主动消息 */
     together?: (now: number) => boolean;
     /** 随口说件事 / 约他 / 问他意见按他平时在线的钟头排（ADR 0117） */
@@ -451,6 +451,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             maxBubbles: MAX_PROACTIVE_BUBBLES,
             ...(candidate.occasion === 'reach' || candidate.occasion === 'invite' || candidate.occasion === 'ask' ? { canDecline: true } : {}),
             ...(candidate.news?.kind === 'cat_photo' ? { photo: 'cat' as const } : {}),
+            ...(candidate.news?.kind === 'food_photo' && candidate.news.dish ? { photo: 'food' as const, photoDish: candidate.news.dish } : {}),
             dryRun,
             // 先记后发
             commit: () => { committed = record(candidate, { result: dryRun ? 'dryRun' : 'sent' }); },

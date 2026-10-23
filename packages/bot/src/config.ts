@@ -81,6 +81,7 @@ export const DEFAULTS = {
     menu: false,
     curious: false,
     smallNews: false,
+    foodPhotos: false,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -312,6 +313,11 @@ export interface AppConfig {
      * 她自己从来不提，聊天就只剩作业 / 相机 / 困。开了以后：约一半的日子，她从当天碰到的小事里挑一件，过一会儿随口发给你（一天最多一件，不要你回应）。只对男朋友档。默认关
      */
     smallNews: boolean;
+    /**
+     * 吃的照片（ADR 0128，要 photos 和 menu 都开着）：她每天按菜单吃的那几道菜，自己去网上（Wikimedia Commons，普通人随手拍的饭，看图把关：人脸 / 水印 / 招牌 / 不是这道菜的都不收）找照片；
+     * 他说“拍给我看看你吃的”时发这一顿这道菜的；主动那边（要主动消息开着）约每顿 18% 吃完饭拍了张发给他。没有这道菜的照片就不发（她那顿“没拍”）。只对男朋友档。默认关
+     */
+    foodPhotos: boolean;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -603,6 +609,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         menu: bool(file, 'menu', '', DEFAULTS.menu),
         curious: bool(file, 'curious', '', DEFAULTS.curious),
         smallNews: bool(file, 'smallNews', '', DEFAULTS.smallNews),
+        foodPhotos: bool(file, 'foodPhotos', '', DEFAULTS.foodPhotos),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),

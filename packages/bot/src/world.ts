@@ -214,7 +214,7 @@ interface DayRecord {
 export interface CameraTrip { start: Date; end: Date; where: string; what: string; price: number; gifts?: { contact: number; amount: number }[] }
 
 /** 她那边刚发生、想第一时间告诉他的事（ADR 0057、0064，主动消息「她那边的事」）：kind 是事件类（买到相机 ADR 0053、赶完作业、一段不舒服的第一天）；at 是事情了结的时刻 */
-export interface WorldNews { id: string; kind: NewsKind; at: Date; what: string }
+export interface WorldNews { id: string; kind: NewsKind; at: Date; what: string; dish?: string }
 
 /** 世界里定好了几点去做、占掉她一段空闲的事（ADR 0034 的打算里写这件）：现在只有买相机那一趟（ADR 0053），只在那一天 */
 export function worldErrands(now: WorldNow): { start: Date; end: Date; text: string }[] {
@@ -237,6 +237,22 @@ function newsCatPhoto(now: WorldNow): WorldNews[] {
     if (unit(`${now.day} cat photo`) >= CAT_PHOTO_CHANCE) return [];
     const delay = CAT_PHOTO_DELAY_MIN[0] + Math.floor(unit(`${now.day} cat photo delay`) * (CAT_PHOTO_DELAY_MIN[1] - CAT_PHOTO_DELAY_MIN[0] + 1));
     return [{ id: `cat_photo:${now.day}`, kind: 'cat_photo', at: new Date(cat.today.fed.getTime() + delay * 60_000), what: `给${cat.name}拍了张照片` }];
+}
+
+/** 吃饭时拍了照片发给他的概率（每顿；平均一周两三次）和拍完过多久想起来发（分钟范围） */
+export const FOOD_PHOTO_CHANCE = 0.18;
+const FOOD_PHOTO_DELAY_MIN: [number, number] = [6, 18];
+
+/**
+ * 吃饭时拍了张照片想发给他（ADR 0128，配置 foodPhotos，要 menu 开着）：每顿按“日期 + 哪一顿”取哈希，约 FOOD_PHOTO_CHANCE 的顿数有；
+ * 了结的时刻 = 饭点开始之后几分钟。菜名跟着走，发的时候只拿这道菜的照片
+ */
+function newsFoodPhoto(now: WorldNow): WorldNews[] {
+    return (now.routine?.meals ?? []).flatMap(meal => {
+        if (!meal.dish || unit(`${now.day} ${meal.kind} food photo`) >= FOOD_PHOTO_CHANCE) return [];
+        const delay = FOOD_PHOTO_DELAY_MIN[0] + Math.floor(unit(`${now.day} ${meal.kind} food photo delay`) * (FOOD_PHOTO_DELAY_MIN[1] - FOOD_PHOTO_DELAY_MIN[0] + 1));
+        return [{ id: `food_photo:${now.day}:${meal.kind}`, kind: 'food_photo' as const, at: new Date(meal.start.getTime() + delay * 60_000), what: `${meal.kind === 'lunch' ? '午饭' : '晚饭'}吃的${meal.dish}`, dish: meal.dish }];
+    });
 }
 
 /** 哪些小事她会主动讲（ADR 0127）：有来由、有点画面的；天气、身体、学习、家里的不单发（天气和身体本来有自己的地方说） */
@@ -289,7 +305,7 @@ function newsHomework(now: WorldNow): WorldNews[] {
  * 不舒服（unwell）不在这里：身体不在世界快照里，见 unwellNews
  */
 export function worldNews(now: WorldNow, kinds: readonly NewsKind[] = DEFAULT_NEWS_KINDS): WorldNews[] {
-    return [...(kinds.includes('small_thing') ? newsSmallThing(now) : []), ...(kinds.includes('cat_photo') ? newsCatPhoto(now) : []), ...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : []), ...(kinds.includes('friend_sick') ? newsFriendSick(now) : [])];
+    return [...(kinds.includes('food_photo') ? newsFoodPhoto(now) : []), ...(kinds.includes('small_thing') ? newsSmallThing(now) : []), ...(kinds.includes('cat_photo') ? newsCatPhoto(now) : []), ...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : []), ...(kinds.includes('friend_sick') ? newsFriendSick(now) : [])];
 }
 
 /**
@@ -955,6 +971,13 @@ function routineOn(routine: NonNullable<World['routine']>, schedule: Schedule, d
     const start = new Date(at(day, routine.shower.from).getTime() + Math.floor(unit(`${date} shower at`) * (routine.shower.spread + 1)) * 60_000);
     const end = new Date(start.getTime() + (min + Math.floor(unit(`${date} shower long`) * (max - min + 1))) * 60_000);
     return { meals, shower: { start, end } };
+}
+
+/** 此刻最近吃的那顿的菜（ADR 0128）：已经到饭点的最后一顿；还没吃过、没开 menu 就没有 */
+export function lastMealDish(now: WorldNow, at: Date): { kind: 'lunch' | 'dinner'; dish: string } | undefined {
+    const meals = (now.routine?.meals ?? []).filter(m => m.dish && m.start.getTime() <= at.getTime()).sort((a, b) => a.start.getTime() - b.start.getTime());
+    const last = meals.at(-1);
+    return last?.dish ? { kind: last.kind, dish: last.dish } : undefined;
 }
 
 /** 这顿在哪吃（ADR 0125）：写在“吃的是什么”前面——「在食堂吃了黄焖鸡」「点外卖吃了麻辣烫」「在家吃了水饺」 */

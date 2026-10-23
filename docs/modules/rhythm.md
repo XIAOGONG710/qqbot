@@ -26,6 +26,7 @@
 
 | 配置 | 功能 | ADR |
 | --- | --- | --- |
+| `foodPhotos` | 吃的照片（这一顿拍给他看） | [ADR 0128](../adr/0128-food-photos.md) |
 | `photos` | 照片货架（网上找高清图） | [ADR 0109](../adr/0109-photo-shelf.md) |
 | `stickers` | 图片表情（模式） | [ADR 0063](../adr/0063-image-stickers.md) |
 | `media` | 听语音、看图 | [ADR 0052](../adr/0052-voice-and-images.md) |

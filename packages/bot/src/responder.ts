@@ -68,7 +68,7 @@ export interface ResponderDeps {
      * initiate：她主动找他（ADR 0011）：note 是这次为什么找（写进时间块之后），topic 是召回时想知道什么（ADR 0012）；
      * 返回的 note 接在「生成回复」那行日志后面
      */
-    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string; think?: boolean; photo?: 'cat' }; offlineSince?: number }) => BuiltPrompt | Promise<BuiltPrompt>;
+    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string; think?: boolean; photo?: 'cat' | 'food'; photoDish?: string }; offlineSince?: number }) => BuiltPrompt | Promise<BuiltPrompt>;
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     clean: (reply: string) => string;
     /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查 */
@@ -139,7 +139,9 @@ export interface InitiateRequest {
     /** 这句话本来就是固定的习惯说法，出口检查不按“最近说过一模一样的”去掉（B 站私信之后的提醒，ADR 0089） */
     allowRepeat?: boolean;
     /** 这一条要带一张照片（ADR 0110，喂完土豆拍的）：回复器让货架的这一类照片进提示词，并允许输出一行 <photo:编号> */
-    photo?: 'cat';
+    photo?: 'cat' | 'food';
+    /** 带的是吃的照片时，是哪道菜（ADR 0128）：货架里只拿这道菜的 */
+    photoDish?: string;
     /** 她想了想可以决定先不发：模型只输出「不发」两个字就记成没发（催他回，ADR 0100） */
     canDecline?: boolean;
     /** 只想一想（ADR 0101，内心）：生成之后不清理、不检查、不发送、不 commit，把模型原文还给调用方；占用回复器的方式和主动找他一样（正在回消息、有没回的消息就不想） */
@@ -449,7 +451,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         const input = stored.length;
         const startedAt = now();
         setPhase({ phase: 'initiating', reason: request.label });
-        const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { initiate: { note: request.note, topic: request.topic, ...(request.think ? { think: true } : {}), ...(request.photo ? { photo: request.photo } : {}) } });
+        const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { initiate: { note: request.note, topic: request.topic, ...(request.think ? { think: true } : {}), ...(request.photo ? { photo: request.photo } : {}), ...(request.photoDish ? { photoDish: request.photoDish } : {}) } });
         deps.onPrompt?.(prompt);
         const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
         deps.log(`主动找他（${request.label}）：生成，${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);
