@@ -21,7 +21,7 @@ import type { OpenAIMessage, PromptResult } from '../prompt.ts';
 import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
-import { herDay, newsKindsOf, withAsk, withBack, withCatPhoto, withInner, withInvite, withReach, withRoom } from '../proactive.ts';
+import { herDay, newsKindsOf, withAsk, withBack, withCatPhoto, withCurious, withInner, withInvite, withReach, withRoom } from '../proactive.ts';
 import type { Moment } from '../feelings.ts';
 import { mergePursuits, type Pursuit } from '../pursuits.ts';
 import { dmMessageId, dmNote, nudgeNote, videoNote, videoTopic } from '../bilibili.ts';
@@ -411,6 +411,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.together ? { together: true } : {}),
         ...(scenario.relationship ? { relationship: true } : {}),
         ...(scenario.jealousy ? { jealousy: true } : {}),
+        ...(scenario.curious ? { curious: true } : {}),
         ...(scenario.interruptions ? { interruptions: true } : {}),
         ...(scenario.jokes?.length ? { jokes: () => scenario.jokes! } : {}),
         ...(scenario.herNo ? { herNo: true } : {}),
@@ -480,7 +481,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const withInvited = withInvitedOnly && scenario.proactiveAsk ? withAsk(withInvitedOnly) : withInvitedOnly;
     const withPhotoShare = withInvited && scenario.photoShares && scenario.photos ? withCatPhoto(withInvited) : withInvited;
     const withBacked = withPhotoShare && scenario.comeBack ? withBack(withPhotoShare) : withPhotoShare;
-    const proactiveSettings = withBacked && scenario.proactiveRoom ? withRoom(withBacked) : withBacked;
+    const withRoomed = withBacked && scenario.proactiveRoom ? withRoom(withBacked) : withBacked;
+    const proactiveSettings = withRoomed && scenario.curious ? withCurious(withRoomed) : withRoomed;
     const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && proactiveSettings && character.schedule
         ? createProactivePlanner({
             contact,

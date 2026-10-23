@@ -118,7 +118,7 @@ const INTIMATE_WEIGHTS = [0, 0.35, 0.4, 0.2, 0.05] as const;
  * 现有的「认真接话」名单（ENGAGED_INTENT）把「回应他刚说的那件事」也算进去了，而这是最常见的意图行——10-21 模拟里 104 轮有 72% 落在名单里，
  * 极短的两档只剩 28%（该有 55%），这也是 shortReplies 一直压不下来的原因。这里只把真正要有内容的拆出来：难受、报好事、等他的解释
  */
-const SUBSTANTIVE_INTENT = /先接住他此刻的情绪|他刚说了件好事|他到现在才看到你前面发的|他在问一个很大、很抽象的问题|他在追你要一个答案|他在问你今天过得怎么样/;
+const SUBSTANTIVE_INTENT = /然后问一个你真想知道的问题|先接住他此刻的情绪|他刚说了件好事|他到现在才看到你前面发的|他在问一个很大、很抽象的问题|他在追你要一个答案|他在问你今天过得怎么样/;
 const INTIMATE_INTENT = /只接他刚说的你们两个人的事|他在向你要亲近|他在撒娇要你哄他/;
 /**
  * 收尾的意图行是「顺着他的话收尾，只回一两句」。不能像 lengthHint 那样看有没有「收尾」两个字：亲近那条意图行里写着「他真要收尾时回应后顺着收尾」，
@@ -183,7 +183,9 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     // 一轮几条：真人 1 条 51–65%、2 条 22–28%、3 条以上约 15–20%；极短的一档多半只发一条
     const rolledBubbles = closing ? (countRoll < 0.7 ? 1 : 2) : bucket.kind === 'micro' ? (countRoll < 0.8 ? 1 : 2) : countRoll < 0.55 ? 1 : countRoll < 0.83 ? 2 : 3;
     const maxBubbles = agenda ? Math.max(2, rolledBubbles) : rolledBubbles;
-    const plain = !agenda && !intimate && unit(`${key} shape plain`) < (context.shares?.plain ?? PLAIN_SHARE);
+    // 追问的轮次（ADR 0126）：意图行让她问一个问题，“顺着说、别用反问句”那句不加
+    const asking = Boolean(context.intent && /然后问一个你真想知道的问题/.test(context.intent));
+    const plain = !agenda && !intimate && !asking && unit(`${key} shape plain`) < (context.shares?.plain ?? PLAIN_SHARE);
     // 要分成几条：上面抽出来的条数本来只是上限，真模型多半只写一行（重放里 85% 是 1 条，真人女生 59%）；开了 shapeSplit 就把它当成目标写进提示词
     // 带自己的事的轮次：这一次说哪一件，按轮抽（同一轮每次一样）。10-22 用 72 句真人对话测：开了带事以后 21% 的回复提到相机 / 土豆 / 作业 / 快递（没开 7%），其中相机一件就 14%，模型总挑同两件
     const topics = context.agendaTopics ?? [];

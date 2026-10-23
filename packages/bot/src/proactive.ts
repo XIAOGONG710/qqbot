@@ -11,6 +11,7 @@ import { expired, firstAsk, partText, whenText, type FollowUp } from './follow-u
 import { INNER_DELAY_MIN, INNER_MAX_PER_DAY, type InnerThought } from './inner.ts';
 import type { StoredMessage } from './history.ts';
 import type { ObstacleKind } from './obstacles.ts';
+import { CURIOUS_ASK_NOTE } from './curious.ts';
 import { mentionsMeetup } from './promises.ts';
 import { pendingMessages, pick } from './reply-timing.ts';
 import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from './schedule.ts';
@@ -40,6 +41,8 @@ export interface ProactiveSettings {
     reach?: ReachSettings;
     /** 给“随口说件事”留一个名额、睡前那句晚安不占名额（ADR 0124，配置 proactiveRoom）；没写 = 原来的数法 */
     room?: boolean;
+    /** “问问他”这个时机换成“想多了解他一点”（ADR 0126，配置 curious）；没写 = 问他的意见（ADR 0116） */
+    curious?: boolean;
 }
 
 /** 没回也继续（ADR 0100） */
@@ -157,6 +160,8 @@ export interface Candidate {
     reach?: { count: number; replied?: true };
     /** 心里惦记：是哪个念头、想告诉他还是想问他（ADR 0101） */
     inner?: { id: string; text: string; goes: 'tell' | 'ask' };
+    /** 问问他这个时机是“想多了解他一点”（ADR 0126，配置 curious） */
+    curious?: boolean;
     /** 约他一起玩：约的是哪一样（ADR 0107） */
     invite?: { id: string; what: string };
 }
@@ -353,6 +358,11 @@ function askOn(day: Date, input: ProactiveInput, seed: (purpose: string) => stri
 /** 打开 proactiveAsk：加上 ask 时机 */
 export function withAsk(settings: ProactiveSettings): ProactiveSettings {
     return { ...settings, occasions: [...new Set<Occasion>([...settings.occasions, 'ask'])] };
+}
+
+/** 打开 curious（ADR 0126）：问问他这个时机（不开 proactiveAsk 也有）换成“想多了解他一点”——问他自己的事，不是问他对她小事的意见 */
+export function withCurious(settings: ProactiveSettings): ProactiveSettings {
+    return { ...withAsk(settings), curious: true };
 }
 
 /**
@@ -643,7 +653,7 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
     // 问问他的意见（ADR 0116）：下午到傍晚一个时刻；一天一次（id 按天）
     if (enabled.has('ask')) {
         const plan = askOn(day, input, seed);
-        if (plan) add('ask', plan.at, '拿不准一件小事，想问问他');
+        if (plan) add('ask', plan.at, input.settings.curious ? '想多了解他一点，问他一件事' : '拿不准一件小事，想问问他', input.settings.curious ? { curious: true } : {});
     }
 
     // 没回也继续（ADR 0100）：她主动发的他还没回、还没到顶时，别的时机都不早于“离上一条隔够了”；另加 reach：想一想要不要催他
@@ -1024,7 +1034,7 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
         // 说了等下之后回来（ADR 0112）：只说回来了和刚才那件事；不抱怨他没理你，没写的细节不编
         back: () => `你前面跟${userName}说了要离开一下（看上面最后几句：你去弄什么），现在回来了：说一声回来了，顺带说一句刚才那件事弄得怎么样了（只用你前面说的和「你现在」那一行写着的，没写的别编），不要他回应`,
         // 问问他的意见（ADR 0116）：只问小事，选项最多两个，不考他的知识、不要他替她做大决定；很累 / 难过 / 不舒服就不问
-        ask: () => `你有件小事拿不准，想随口问问${userName}的意见：从「你那边」「你今天的打算」里挑一件你手上真有的小事（吃什么、穿什么、作业先写哪个、周末干嘛、攒的钱先买什么），没有合适的就问晚上吃什么；问一个具体的小问题，选项最多两个，像随手问的，不是考他知识，也别让他替你做大决定；不要长段；`
+        ask: () => candidate.curious ? `你${CURIOUS_ASK_NOTE}；不要长段；要是上面写着你此刻心里难受、不开心，或者你很累、不舒服（看「你此刻的心境」「你的身体」），就别问了，只输出「${REACH_DECLINE}」两个字` : `你有件小事拿不准，想随口问问${userName}的意见：从「你那边」「你今天的打算」里挑一件你手上真有的小事（吃什么、穿什么、作业先写哪个、周末干嘛、攒的钱先买什么），没有合适的就问晚上吃什么；问一个具体的小问题，选项最多两个，像随手问的，不是考他知识，也别让他替你做大决定；不要长段；`
             + `要是上面写着你此刻心里难受、不开心，或者你很累、不舒服（看「你此刻的心境」「你的身体」），就别问了，只输出「${REACH_DECLINE}」两个字`,
         quiet: () => `你们大半天没说话了，你想找${userName}说两句：说说你自己在干嘛（照「你现在」那一行说；不提刚刷到的视频、帖子、新闻，` +
             `对方要链接你给不出来），或者问问对方在忙什么（对方可能在忙）`,

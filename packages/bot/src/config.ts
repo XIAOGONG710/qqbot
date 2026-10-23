@@ -79,6 +79,7 @@ export const DEFAULTS = {
     jealousy: false,
     proactiveRoom: false,
     menu: false,
+    curious: false,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -299,6 +300,12 @@ export interface AppConfig {
      * 第一次开的时候定下“从哪天起”（第二天），已经过完的日子不改。默认关
      */
     menu: boolean;
+    /**
+     * 会追问（ADR 0126）：量过，她问句率 12% 和真人持平，但问的多是口头语（「睡吧？」），问他生活、问他刚说那件事的很少——
+     * 因为他说自己的事时意图行写着“别急着追问细节，真要问也只问一两个字”。开了以后：他说了件有细节的事，约六成回完反应后问一个关于这件事本身的问题（最近几条里问过就不问）；
+     * 要主动消息开着的话，“问问他”那个时机换成“想多了解他一点”，问他自己的事（从聊天和她记得的事里挑）。只对男朋友档。默认关
+     */
+    curious: boolean;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -588,6 +595,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         jealousy: bool(file, 'jealousy', '', DEFAULTS.jealousy),
         proactiveRoom: bool(file, 'proactiveRoom', '', DEFAULTS.proactiveRoom),
         menu: bool(file, 'menu', '', DEFAULTS.menu),
+        curious: bool(file, 'curious', '', DEFAULTS.curious),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),

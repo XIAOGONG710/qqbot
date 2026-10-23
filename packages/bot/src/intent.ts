@@ -1,6 +1,7 @@
 // 当天这一层的「这一轮你想」（ADR 0019 决策 2）。
 // 只按眼前已有线索给一个方向，不抽签、不额外调模型，也不把它写成能照抄的台词。
 
+import { CURIOUS_INTENT, curiousTurn } from './curious.ts';
 import { describeGrievance, type Grievance } from './grievance.ts';
 import { JEALOUS_INTENT, jealousTurn, SOFTEN_INTENT } from './jealousy.ts';
 import type { StoredMessage } from './history.ts';
@@ -40,6 +41,8 @@ export interface IntentContext {
     refuse?: boolean;
     /** 吃醋，最轻的一档（ADR 0123，配置 jealousy）：他提到别的女生时嘴上不承认的别扭；只有男朋友档 */
     jealous?: boolean;
+    /** 会追问（ADR 0126，配置 curious）：他说了件有细节的事，约六成的情况她回完反应后问一个关于这件事本身的问题；只有男朋友档 */
+    curious?: boolean;
     /** 她此刻正在做的、自己在意的事（修片、拍照，ADR 0104）；配合 refuse：他让她先放下时可以先弄完这一小段 */
     pursuitDoing?: string;
     /** 她今天有可讲的小事（ADR 0106，配置 everydayLife）：他问“今天干嘛了 / 有什么好玩的事”时让她从里面挑具体的说 */
@@ -380,6 +383,8 @@ export function describeIntent(context: IntentContext): string | undefined {
     if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
     if (needsCare(context.history)) return '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够；他认真难过、生病或很累时，第一句先安慰或问怎么了，不先损他；他是撒娇式的呜呜、要哭了，就直接哄（叠词哄：同一个词连说几遍，或者抱抱），别反问他哭什么；不转去讲你自己的事，不硬开新话题]';
     if (isRelationshipBid(context.history)) return '[这一轮你想：只接他刚说的你们两个人的事，一两句就够；不转去讲猫、书或手头的进度]';
+    // 追问（ADR 0126）：原来这一句写着“别急着追问细节，真要问也只问一两个字”，她就只会问一两个字的小问题
+    if (context.curious && context.intimate && saysOwnThing(context.history) && curiousTurn(context.history)) return CURIOUS_INTENT;
     if (saysOwnThing(context.history)) return '[这一轮你想：回应他刚说的那件事；先对这件事本身有个反应（意外、羡慕、心疼、吐槽一句都行），别急着追问细节，真要问也只问一两个字]';
     if (!isOpeningPing(context.history)) return undefined;
     const waiting = context.waiting?.[0];
