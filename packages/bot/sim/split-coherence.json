@@ -1,0 +1,76 @@
+{
+    "name": "分成几条时后面几条要接着前面说（ADR 0134）",
+    "description": "十四句需要她拿主意 / 选一个 / 给个答复的话（两选一、要不要、哪个好看）。分成两三条发的时候，后面几条应该顺着前一条往下说：选了逛街就说逛街的事，不要又提没选的、不要改口。没有检查项，只为了读「分成 N 条」那几轮的回复。用法：node src/sim/run.ts sim/split-coherence.json --runs 2 --shape --agenda --filler --split --feel --tag splitco",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-10T20:30:00+08:00",
+    "memory": false,
+    "shape": true,
+    "shapeAgenda": true,
+    "shapeFiller": true,
+    "shapeFeel": true,
+    "shapeSplit": true,
+    "curious": true,
+    "texture": true,
+    "menu": true,
+    "everydayLife": true,
+    "everydayFrom": "2026-11-01",
+    "herFeelings": true,
+    "herNo": true,
+    "history": [
+        {
+            "time": "2026-11-10T20:10:00+08:00",
+            "role": "user",
+            "content": "在吗"
+        },
+        {
+            "time": "2026-11-10T20:10:10+08:00",
+            "role": "assistant",
+            "content": "在呢"
+        }
+    ],
+    "steps": [
+        {
+            "say": "周末是去看电影还是去逛街好呢，你定"
+        },
+        {
+            "say": "火锅还是烧烤，选一个"
+        },
+        {
+            "say": "今晚是早点睡还是再打两把游戏"
+        },
+        {
+            "say": "这个耳机黑的好看还是白的好看"
+        },
+        {
+            "say": "要不要买那个机械键盘，三百多"
+        },
+        {
+            "say": "明天穿外套还是穿卫衣"
+        },
+        {
+            "say": "你说我是先写作业还是先洗澡"
+        },
+        {
+            "say": "去年那个蓝色的包和新出的黑色的，你喜欢哪个"
+        },
+        {
+            "say": "咱们国庆是出去玩还是在家待着"
+        },
+        {
+            "say": "喝奶茶还是喝咖啡好"
+        },
+        {
+            "say": "这周末要不要一起去图书馆"
+        },
+        {
+            "say": "你想看喜剧还是悬疑"
+        },
+        {
+            "say": "我是不是该把头发剪短"
+        },
+        {
+            "say": "周六早起去爬山还是睡懒觉"
+        }
+    ]
+}

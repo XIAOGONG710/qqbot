@@ -26,7 +26,7 @@ import { crisisInHistory, type CrisisHit } from './crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from './grievance.ts';
 import { describeIntent, needsCareText } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
-import { applyTexture } from './texture.ts';
+import { applyTexture, TEXTURE_TILDE_WINDOW } from './texture.ts';
 import { alreadyTold, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, STILTED_WORDS } from './expression.ts';
 import { describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from './shape.ts';
 import { describeUnsettled } from './open-loops.ts';
@@ -292,7 +292,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     /** 这一轮的形状（配置 shape）：buildPrompt 按他说的长短定，紧跟着的出口检查按它强制执行；主动找他、收尾、危机回合没有 */
     let shapeNow: ShapePlan | undefined;
     /** 这一轮发出去之前加质感用的上下文（ADR 0131）：他这一串说的话、这一轮是不是认真的回合、她最近几次回复里带了几次小黄脸 */
-    let textureNow: { said: string; serious: boolean; recentFaces: number } | undefined;
+    let textureNow: { said: string; serious: boolean; recentFaces: number; recentTildes: number } | undefined;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -644,6 +644,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     said: saidNow,
                     serious: Boolean(crisisNow || grievanceActive || sulkNow || needsCareText(saidNow) || (baseIntent && /先接住他此刻的情绪/.test(baseIntent))),
                     recentFaces: faceContext(options.history.load(contact.qq), contact.tier).recent.filter(reply => /\[[\p{Script=Han}A-Za-z0-9]{1,6}\]/u.test(reply)).length,
+                    recentTildes: faceContext(options.history.load(contact.qq), contact.tier).recent.slice(-TEXTURE_TILDE_WINDOW).filter(reply => /[～~]\s*$/m.test(reply)).length,
                 }
                 : undefined;
             const length = crisisNow || shapeNow || stickerOnlyNow || photoNow || interruptLine || thinking ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
@@ -761,7 +762,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 质感（ADR 0131）：先加质感，再打错字（打错字认的是汉字，不碰小黄脸 / 标点）
             let shaped = parts;
             if (options.texture && textureNow) {
-                const textured = applyTexture(parts, { seed: `${contact.qq} ${parts.join('|')}`, said: textureNow.said, serious: textureNow.serious, recentFaces: textureNow.recentFaces, maxBubbles });
+                const textured = applyTexture(parts, { seed: `${contact.qq} ${parts.join('|')}`, said: textureNow.said, serious: textureNow.serious, recentFaces: textureNow.recentFaces, recentTildes: textureNow.recentTildes, maxBubbles });
                 shaped = textured.parts;
                 if (textured.notes.length) log(`质感：${textured.notes.join('；')}`);
             }

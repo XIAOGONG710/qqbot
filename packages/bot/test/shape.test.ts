@@ -226,6 +226,9 @@ describe('形状控制：这一轮每条最多几个字、最多几条（ADR 009
         const line = describeShape({ kind: 'medium', cap: 14, maxBubbles: 2, parts: 2 });
         assert.ok(line.includes('每条不超过 14 个字，分成 2 条发') && !line.includes('最多 2 条'), line);
         assert.ok(line.includes('一条一行') && line.includes('一个小意思') && line.includes('不是把一句话硬断成两截') && line.includes('不是反问') && line.includes('没有就别硬问'), line);
+        // ADR 0134：后面几条顺着前一条说，不改口、不另起不相干的事、不凑数
+        for (const phrase of ['顺着它往下说', '选了哪个就按选的说下去', '别又提没选的', '别改口', '别另起一件不相干的事', '换个说法再说一遍', '就少发一条，别凑数']) assert.ok(line.includes(phrase), phrase);
+        assert.ok(!line.includes('接一句补充'), line);
         assert.ok(describeShape({ kind: 'short', cap: 8, maxBubbles: 3, parts: 3 }).includes('分成 3 条发'));
         const agenda = describeShape({ kind: 'medium', cap: 14, maxBubbles: 2, parts: 2, agenda: true });
         assert.ok(agenda.includes('分成 2 条发') && agenda.includes('回完顺带说一句你自己的事') && !agenda.includes('一个小意思'), agenda);

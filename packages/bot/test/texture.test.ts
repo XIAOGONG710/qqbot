@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { facesIn, SENDABLE_FACES } from '../src/qq-faces.ts';
-import { applyTexture, faceFor, TEXTURE_FACE_WINDOW_MAX, TEXTURE_SHARES, type TextureContext } from '../src/texture.ts';
+import { applyTexture, faceFor, TEXTURE_FACE_WINDOW_MAX, TEXTURE_SHARES, TEXTURE_TILDE_WINDOW, type TextureContext } from '../src/texture.ts';
 
 // ADR 0131：说话的质感。纯函数，同一句话结果固定；危机和他难过的回合不加
 const ctx = (seed: string, patch: Partial<TextureContext> = {}): TextureContext => ({ seed, said: '', serious: false, recentFaces: 0, ...patch });
@@ -57,6 +57,13 @@ describe('「～」', () => {
         assert.ok(hit > 0.2 && hit < 0.7, `${hit}`);
         for (const r of sweep(['好呀', '那我先去洗澡啦'])) assert.ok(r.parts.filter(p => /～/.test(p)).length <= 1);
         for (const bubble of ['宿舍有人睡了', '今天上了一天课真的好累', '你吃了吗', '我在写作业呢呢呢呢呢呢呢呢呢呢呢呢呢呢']) assert.ok(sweep([bubble], {}, 80).every(r => !r.parts[0]!.endsWith('～')), bubble);
+    });
+
+    test('最近几次回复里带过「～」就不再加（ADR 0134：选择题连着答「X吧～」）；没带过照旧', () => {
+        for (const r of sweep(['不行哦'], { recentTildes: 1 })) assert.ok(!r.parts.some(p => /～$/.test(p)), r.parts.join('|'));
+        assert.ok(share(sweep(['不行哦'], { recentTildes: 0 }), p => p[0] === '不行哦～') > 0.2);
+        assert.ok(share(sweep(['不行哦']), p => p[0] === '不行哦～') > 0.2, '不写按 0');
+        assert.equal(TEXTURE_TILDE_WINDOW, 3);
     });
 });
 

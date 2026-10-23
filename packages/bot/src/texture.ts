@@ -27,6 +27,8 @@ export interface TextureContext {
     serious: boolean;
     /** 她最近 6 次回复里已经有几次带了小黄脸（faceContext 的 recent 里数） */
     recentFaces: number;
+    /** 她最近 TEXTURE_TILDE_WINDOW 次回复里有几次句尾带了「～」（不管是模型写的还是这里加的）；有就不再加（ADR 0134：选择题连着答「X吧～」，一场测试里 27–39% 的气泡以「～」结尾，他自己是 9%）；不写按 0 */
+    recentTildes?: number;
     /** 这一轮最多几条气泡（加一条单独的反应要有空位）；不写按 3 */
     maxBubbles?: number;
 }
@@ -48,6 +50,9 @@ export const TEXTURE_SHARES = {
     /** 他陈述了件事（不是问句、不难过）时，她先嗯一声再说 */
     ack: 0.1,
 } as const;
+
+/** 看最近几次回复有没有带「～」：这么多次回复里有一次，这次就不再加 */
+export const TEXTURE_TILDE_WINDOW = 3;
 
 /** 她最近 6 次回复里带了这么多次小黄脸，这次就不带（和 exit-check 的 FACE_WINDOW_MAX 一致） */
 export const TEXTURE_FACE_WINDOW_MAX = 2;
@@ -142,8 +147,8 @@ export function applyTexture(parts: readonly string[], ctx: TextureContext): Tex
         }
     }
 
-    // ② 「～」：轻松的短句，一次回复最多一条
-    if (!decorated) {
+    // ② 「～」：轻松的短句，一次回复最多一条；最近几次回复里带过就不加
+    if (!decorated && (ctx.recentTildes ?? 0) === 0) {
         for (const [i, part] of out.entries()) {
             const text = part.trim();
             if (!text || UNTOUCHED.test(text) || /[？?！!～~…]$/.test(text) || /^[a-z]+$/i.test(text) || chars(text) > 14 || chars(text) < 2) continue;
