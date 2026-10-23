@@ -153,3 +153,9 @@
 
 ## 10-23 20:35 重启：热修 `9e3a5ab`（`d0ef24e` 之上，4 个文件）
 - 上线 `d0ef24e` 后日志：「她看视频：这一轮出错（ENOENT … watching\watched.json.tmp…）」——`writeJsonAtomic` 不建目录，`memes/`、`watching/` 目录线上还不存在；`memes` 同样会在存盘时失败。修：`saveMemes` / `saveWatched` 存前先 `mkdirSync(dirname, recursive)`，加了两个测试（目录不存在）。没有配置变化。回滚 `git reset --hard d0ef24e`。
+
+## 10-23 20:45 结果：六个开关已上线并开着（`9e3a5ab`），另有一个未上线的小修 `7871423`
+- 线上 `main` = `integration` = `9e3a5ab`（20:31 `d0ef24e` 六开关一起开；20:33 热修：`memes/` `watching/` 目录没建，存盘失败）。备份 `runtime/backup-pre-bili25-*` `backup-pre-bili26-*`、`koishi.yml.bak-bili25-*`。回滚：六个开关改 false + 重启，或 `git reset --hard 4691545` + 还原 yml。两次上线脚本 step 6 都因我们自己的日志行（照片 429「暂时的错误」）停住，step 7 手动做完（删 `%TEMP%\qqbot-maintenance`、推 main + integration）。
+- 线上第一轮：她看了一个视频（手机游戏，221 字字幕 + 2 条热评）；热梗学会 6 个（亿点、白毛控、世一上、跑刀、智械危机、曲中人，偏游戏圈）；照片货架在补（Wikimedia 偶尔 429，重试机制接着）；`menu` 从 10-24 起生效。
+- 用户 20:30 反馈「现在说话还是一股人机的感觉：开局出拳套这个思路我服，尤其是最后俩字」：线上聊天 708 条里没有这类，是 watching 的念头写出来的。修在 `7871423`（分支，**未上线**）：`STILTED_WORDS` / `stiltedHit`（聊天走出口检查、念头走 parseThought「书面腔」再想一次）+ 想事情的提示词改 30 字内最平常口语。全量：bot 1698 / 插件 42 / 工具 43 全绿。
+- 还剩的人机感（尺子）：质感——没有小黄脸（0 对 18%）、「～」（0 对 8%）、叠字（2 对 6%）、两字以内的反应（5 对 24%）、英文字母；要不要往真人挪，等用户意见。
