@@ -23,7 +23,7 @@ export const OCCASIONS = ['dates', 'back', 'reschedule', 'news', 'follow_up', 'w
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 「她那边的事」的事件类（ADR 0064），按优先级从高到低：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天、闺蜜临时去不了 / 改到很晚（ADR 0061，开着配置 npcAsks 才有） */
-export const NEWS_KINDS = ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick', 'cat_photo'] as const;
+export const NEWS_KINDS = ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick', 'cat_photo', 'small_thing'] as const;
 export type NewsKind = (typeof NEWS_KINDS)[number];
 /** 卡上没写 newsKinds 的按只有相机处理（0057 的行为，旧卡不变） */
 export const DEFAULT_NEWS_KINDS: readonly NewsKind[] = ['camera'];
@@ -438,6 +438,15 @@ export function withCatPhoto(settings: ProactiveSettings): ProactiveSettings {
         ...settings,
         occasions: [...new Set<Occasion>([...settings.occasions, 'news'])],
         newsKinds: [...new Set<NewsKind>([...newsKindsOf(settings), 'cat_photo'])],
+    };
+}
+
+/** 打开 smallNews（ADR 0127，要 everydayLife 开着）：今天碰到的一件小事，她过一会儿随口告诉他（news 的新一类 small_thing）；不改角色卡 */
+export function withSmallNews(settings: ProactiveSettings): ProactiveSettings {
+    return {
+        ...settings,
+        occasions: [...new Set<Occasion>([...settings.occasions, 'news'])],
+        newsKinds: [...new Set<NewsKind>([...newsKindsOf(settings), 'small_thing'])],
     };
 }
 
@@ -973,7 +982,7 @@ const CARRIES_NEWS: ReadonlySet<Occasion> = new Set(['morning', 'after_class', '
  */
 export function untoldNews(candidate: Candidate, now: number, input: Pick<ProactiveInput, 'news' | 'records' | 'history'>): NewsItem[] {
     if (!CARRIES_NEWS.has(candidate.occasion)) return [];
-    return (input.news ?? []).filter(item => item.kind !== 'cat_photo' && item.day === candidate.day && item.at <= now
+    return (input.news ?? []).filter(item => item.kind !== 'cat_photo' && item.kind !== 'small_thing' && item.day === candidate.day && item.at <= now
         && !input.records.some(r => r.id === `${item.day}:news:${item.id}` && (counts(r) || waitingRetry(r)))
         && !input.history.some(m => Date.parse(m.time) >= item.at));
 }
@@ -1003,6 +1012,8 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
             unwell: () => `你今天${candidate.news!.what}，想跟${userName}说一声：只是告诉他，不是要他哄你、关心你，也不要他回应；说到哪一步照「你的身体」那一行，没写的细节不编`,
             // 喂完土豆拍了张照片（ADR 0110）：先一句话带一下，另起一行单独发照片（提示词里列了编号）；照片是以前拍的，别说“现在”；不要他回应
             cat_photo: () => `你刚下楼喂了土豆，还拍了它一张照片，想发给${userName}看：先用一句话带一下（喂它这件事看「你那边」土豆那一行，没写的细节不编），然后另起一行单独发照片；不要他回应，别问他想不想看`,
+            // 今天碰到的一件小事（ADR 0127）：随口说，不要他回应；细节只用那一行里写的
+            small_thing: () => `你今天${candidate.news!.what}，想随口跟${userName}说一句：就说这一件（看「你那边」今天的小事那一行），像突然想起来的，一两句，不要他回应，也别铺开讲；那一行里没写的细节不编，也不要借这件事去问他什么`,
         })[candidate.news!.kind](),
         // 只从她自己的生活事实里挑（不是刚刷到的视频、帖子：旧项目的教训，ADR 0013 决策 2）；不问「在干嘛」，说完不用他回应
         share: () => `你想起一件自己的小事，想跟${userName}说一句：从「你那边」「你的身体」「你今天的心情」里挑一件他还不知道的（不是你这会儿正在做的那件事，前面说过的也别再说），` +

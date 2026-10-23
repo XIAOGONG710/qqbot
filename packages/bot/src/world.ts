@@ -15,7 +15,7 @@ import { classesOn, formatDate, herDay, wakeOn, type ClassToday, type Schedule }
 import { realWeather, type DayWeather } from './weather.ts';
 import { bodyAt, parseBody, unwell, type Body, type BodyNow } from './body.ts';
 import { DEFAULT_NEWS_KINDS, type NewsKind } from './proactive.ts';
-import { EVERYDAY_MAX_PER_DAY, quizEvents, type EventFeel } from './everyday.ts';
+import { EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, quizEvents, type EventFeel } from './everyday.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
 import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
 import { DEFAULT_ASKS, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
@@ -239,6 +239,27 @@ function newsCatPhoto(now: WorldNow): WorldNews[] {
     return [{ id: `cat_photo:${now.day}`, kind: 'cat_photo', at: new Date(cat.today.fed.getTime() + delay * 60_000), what: `给${cat.name}拍了张照片` }];
 }
 
+/** 哪些小事她会主动讲（ADR 0127）：有来由、有点画面的；天气、身体、学习、家里的不单发（天气和身体本来有自己的地方说） */
+export const SMALL_TELL_GROUPS: ReadonlySet<string> = new Set(['food', 'class', 'phone', 'dorm', 'leisure', 'social', 'cat', 'shop', 'photo']);
+/** 有小事的日子里，约这么多天她会拿一件去告诉他（平均一周三四次，不是天天） */
+export const SMALL_TELL_CHANCE = 0.5;
+/** 小事发生后过多久想起来说（分钟范围） */
+const SMALL_TELL_DELAY_MIN: [number, number] = [10, 40];
+
+/**
+ * 今天碰到的一件小事，她随口告诉他（ADR 0127，配置 smallNews，要 everydayLife 开着）：
+ * 从当天已经发生的日常小事（ADR 0106）里挑一件（按日期取哈希，同一天每次一样），过 10–40 分钟想起来说；一天最多一件
+ */
+function newsSmallThing(now: WorldNow): WorldNews[] {
+    if (unit(`${now.day} small tell`) >= SMALL_TELL_CHANCE) return [];
+    const groups = new Map(EVERYDAY_EVENT_DEFS.map(def => [def.id, def.group] as const));
+    const tellable = now.events.filter(event => SMALL_TELL_GROUPS.has(groups.get(event.id) ?? ''));
+    if (!tellable.length) return [];
+    const pick = tellable[Math.floor(unit(`${now.day} small tell pick`) * tellable.length)]!;
+    const delay = SMALL_TELL_DELAY_MIN[0] + Math.floor(unit(`${now.day} small tell delay`) * (SMALL_TELL_DELAY_MIN[1] - SMALL_TELL_DELAY_MIN[0] + 1));
+    return [{ id: `small:${now.day}:${pick.id}`, kind: 'small_thing', at: new Date(pick.at.getTime() + delay * 60_000), what: pick.text }];
+}
+
 /** what 不带「刚」：没说成的留到这一天后面的主动里说（ADR 0057 调整）；钱从哪来写在「你那边」那一行，那一行按是谁在看说 */
 function newsCamera(now: WorldNow): WorldNews[] {
     const camera = now.cameraFund?.camera;
@@ -268,7 +289,7 @@ function newsHomework(now: WorldNow): WorldNews[] {
  * 不舒服（unwell）不在这里：身体不在世界快照里，见 unwellNews
  */
 export function worldNews(now: WorldNow, kinds: readonly NewsKind[] = DEFAULT_NEWS_KINDS): WorldNews[] {
-    return [...(kinds.includes('cat_photo') ? newsCatPhoto(now) : []), ...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : []), ...(kinds.includes('friend_sick') ? newsFriendSick(now) : [])];
+    return [...(kinds.includes('small_thing') ? newsSmallThing(now) : []), ...(kinds.includes('cat_photo') ? newsCatPhoto(now) : []), ...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : []), ...(kinds.includes('friend_sick') ? newsFriendSick(now) : [])];
 }
 
 /**

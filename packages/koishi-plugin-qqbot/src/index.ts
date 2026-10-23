@@ -127,6 +127,7 @@ export interface Config {
     proactiveRoom: boolean;
     menu: boolean;
     curious: boolean;
+    smallNews: boolean;
     innerLife: boolean;
     herFeelings: boolean;
     herNo: boolean;
@@ -287,6 +288,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**每顿吃什么**（ADR 0125）：账上的“吃饭”只有午饭 / 晚饭和在哪吃，没有“吃了什么”，你问“中午吃的啥”她就现编，前后对不上。开了以后每天每顿从一张通用的学生菜单里按日期随机取一道（同一天对所有人一样、一个循环不重样），她说得出今天吃了什么、昨天吃了什么。第一次开的时候定下“从哪天起”（第二天），已经过完的日子不改。以后“吃的照片”要靠它。默认关。'),
         curious: Schema.boolean().default(DEFAULTS.curious)
             .description('**会追问**（ADR 0126）：量过，她问句率 12% 和真人持平，但问的多是口头语（「睡吧？」），问你生活、问你刚说那件事的很少——因为你说自己的事时提示词写着“别急着追问细节，真要问也只问一两个字”。开了以后：你说了件有细节的事（去了哪、见了谁、买了什么、考试 / 面试 / 项目……），约六成回完反应后问一个关于这件事本身的问题（最近几条里问过就不问，一轮最多一个）；「主动消息」开着的话，“问问你”那个时机换成“想多了解你一点”，问你自己的事。只对男朋友档。默认关。'),
+        smallNews: Schema.boolean().default(DEFAULTS.smallNews)
+            .description('**她会主动讲今天的小事**（ADR 0127，要「主动消息」和「日常小事」都开着）：日常小事（食堂新窗口、宿舍楼道的灯、朋友发来的搞笑图……）原来只在你问“今天干嘛了”时才说得出口，她自己从来不提，聊天就只剩作业 / 相机 / 困。开了以后：约一半的日子，她从当天碰到的小事里挑一件，过十几二十分钟随口发给你（一天最多一件，不要你回应）。只对男朋友档。默认关。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
@@ -484,6 +487,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.proactiveRoom !== undefined ? { proactiveRoom: config.proactiveRoom } : {}),
         ...(config.menu !== undefined ? { menu: config.menu } : {}),
         ...(config.curious !== undefined ? { curious: config.curious } : {}),
+        ...(config.smallNews !== undefined ? { smallNews: config.smallNews } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),

@@ -25,6 +25,7 @@
 | `photoShares` | 喂完土豆发张照片 | [ADR 0110](../adr/0110-photo-shares.md) |
 | `comeBack` | 说了等下之后回来 | [ADR 0112](../adr/0112-come-back.md) |
 | `hisHours` | 按他在线的钟头排 | [ADR 0117](../adr/0117-his-hours.md) |
+| `smallNews` | 主动讲今天的小事 | [ADR 0127](../adr/0127-small-news.md) |
 | `proactiveRoom` | 给主动名额留余地（晚安不占、留一个给随口说） | [ADR 0124](../adr/0124-proactive-room.md) |
 
 ## 看它有没有变好
