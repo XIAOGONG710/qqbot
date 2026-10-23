@@ -197,3 +197,6 @@
 ## 10-23 23:08 结果：`da8721d` 已上线
 - 线上 `40dd0f5` → `da8721d`：心跳 ref = `da8721d…`、connectedAt 15:06:24Z；日志 0 条错误；维护标记已删。备份 `runtime/backup-pre-bili31-20261023-2306`，回滚 `git reset --hard 40dd0f5`。
 - 脚本第 7 步又显示 STOPPED（git push 的进度写到 stderr 被当成错误）；main 已推，integration 手动补推，现在 main = integration = origin/claude/realness = `da8721d`。
+
+## 10-24 01:22 即将重启上线：`334e854`（ADR 0135：主动消息开头别老是同一种、不照搬套话、不编事实里没有的小动作）
+- 用户说「上线」。线上 `da8721d` → `334e854`；7 个文件（proactive.ts / expression.ts / contact.ts + 3 个测试 + ADR 0135），没有配置变化、没有新开关。备份 `runtime/backup-pre-bili32-*`。回滚 `git reset --hard da8721d`。
