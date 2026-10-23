@@ -1,0 +1,38 @@
+{
+    "name": "他连发里有个不是最后一条的问题：第一条引用它来回（ADR 0136）",
+    "description": "八次他先问一句、紧跟着又发一句别的（问题不在最后一条）；两次连发里没有问题（不该引用）。quoteShare 给 1，每次都引用，只为了读：第一条是不是直接在回被引用的那句，后面是不是顺着回其余的，有没有把那句话复述一遍。用法：node src/sim/run.ts sim/quote-reply.json --runs 2 --shape --agenda --filler --split --feel --tag quote",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-10T20:30:00+08:00",
+    "memory": false,
+    "quoteReply": true,
+    "quoteShare": 1,
+    "shape": true,
+    "shapeAgenda": true,
+    "shapeFiller": true,
+    "shapeFeel": true,
+    "shapeSplit": true,
+    "curious": true,
+    "texture": true,
+    "menu": true,
+    "everydayLife": true,
+    "everydayFrom": "2026-11-01",
+    "herFeelings": true,
+    "herNo": true,
+    "history": [
+        { "time": "2026-11-10T20:10:00+08:00", "role": "user", "content": "在吗" },
+        { "time": "2026-11-10T20:10:10+08:00", "role": "assistant", "content": "在呢" }
+    ],
+    "steps": [
+        { "say": ["你周末有空吗？", "我在想去哪玩"] },
+        { "say": ["晚上吃什么呢", "我有点饿了"] },
+        { "say": ["你作业写完了吗", "我今天一直在改论文，快疯了"] },
+        { "say": ["明天几点有课？", "我想早点睡"] },
+        { "say": ["你喜欢那部电影吗？", "我昨天刚看完"] },
+        { "say": ["你猫今天乖吗", "我想看它"] },
+        { "say": ["最近怎么都不找我聊天呢", "算了我也不是很在意"] },
+        { "say": ["你是不是又熬夜了？", "我看你昨晚两点还在线"] },
+        { "say": ["我刚到宿舍", "今天好冷"] },
+        { "say": ["哈哈哈哈", "笑死我了"] }
+    ]
+}

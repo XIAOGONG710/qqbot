@@ -86,6 +86,7 @@ export const DEFAULTS = {
     watching: false,
     texture: false,
     biliStickers: false,
+    quoteReply: false,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -345,6 +346,12 @@ export interface AppConfig {
      * 并且没有明确反应的、允许发表情的轮次里也约 12% 发一个（原来她线上 437 轮里只发了 1 个），顶替小黄脸。默认关
      */
     biliStickers: boolean;
+    /**
+     * 引用回复（ADR 0136）：QQ 里长按一条消息「回复」。她以前一次都没引用过。两种明确的时候才引：
+     * 他连着发了几条、其中有个不是最后一条的问题，她回答那个问题，按概率引用它；打错字撤回失败（超过两分钟）补「*对的词」时，有时引用刚才那条错的。
+     * 他自己 654 条消息里引用过 1 次，所以这是很少出现的事。引用发不出去就去掉引用再发一次。默认关
+     */
+    quoteReply: boolean;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -641,6 +648,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         watching: bool(file, 'watching', '', DEFAULTS.watching),
         texture: bool(file, 'texture', '', DEFAULTS.texture),
         biliStickers: bool(file, 'biliStickers', '', DEFAULTS.biliStickers),
+        quoteReply: bool(file, 'quoteReply', '', DEFAULTS.quoteReply),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),

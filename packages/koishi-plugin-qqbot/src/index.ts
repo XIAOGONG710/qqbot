@@ -17,7 +17,7 @@ import type { HistoryMessage } from '../../bot/src/backfill.ts';
 import { CONTACT_TIERS, DEFAULTS, STICKER_MODES, parseAppConfig, type AppConfig, type ContactTier, type StickerMode } from '../../bot/src/config.ts';
 import { createLog, type Log } from '../../bot/src/log.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/presence.ts';
-import { assertKernelOk, isFriendRecall, isPokeAtMe, isPrivateFriendMessage, type OneBotEvent } from '../../bot/src/onebot.ts';
+import { assertKernelOk, isFriendRecall, isPokeAtMe, isPrivateFriendMessage, replySegment, type OneBotEvent } from '../../bot/src/onebot.ts';
 import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
 import { textToSegments } from '../../bot/src/qq-faces.ts';
 import { FESTIVAL_MODES, type FestivalMode } from '../../bot/src/festivals.ts';
@@ -134,6 +134,7 @@ export interface Config {
     watching: boolean;
     texture: boolean;
     biliStickers: boolean;
+    quoteReply: boolean;
     innerLife: boolean;
     herFeelings: boolean;
     herNo: boolean;
@@ -306,6 +307,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**说话的质感**（ADR 0131）：用“像不像真人”的尺子量，她的话和真人差在写法上——句末几乎不带标点、问句不带问号、没有“～”、没有小黄脸、不叠字、很少回两个字的反应。模型自己不会写这些，所以放在代码里：发出去之前按概率、按语气加（问号、“～”、语气对得上的小黄脸、叠字、偶尔 ok / hhh、去掉结尾的省略号、两条短的并成一条、先回一个字的反应）。危机和你难过 / 生病 / 小别扭的回合不加。只对男朋友档。默认关。'),
         biliStickers: Schema.boolean().default(DEFAULTS.biliStickers)
             .description('**她自己在 B 站找表情包**（ADR 0132，要「图片表情」和「她的 B 站号」开着）：表情包的候选来源换成 B 站——她的号读官方表情包（热词系列、tv_小电视；不要小黄脸、颜文字）+ 热门视频评论区里像表情包的图（真人照片、截图、广告的不收）；公开目录只在 B 站这路没东西时兜底。并且没有明确反应的、允许发表情的轮次里也约 12% 发一个（原来她线上 437 轮里只发了 1 个），顶替小黄脸。默认关。'),
+        quoteReply: Schema.boolean().default(DEFAULTS.quoteReply)
+            .description('**引用回复**（ADR 0136）：QQ 里长按一条消息“回复”。她以前一次都没引用过。两种明确的时候才引：他连着发了几条、其中有个不是最后一条的问题，她回答它时按概率引用它；打错字撤回失败（超过两分钟）补“*对的词”时有时引用那条错的。他自己 654 条消息里只引用过 1 次，所以这是很少出现的事。引用发不出去就去掉引用再发一次。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
@@ -509,6 +512,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.watching !== undefined ? { watching: config.watching } : {}),
         ...(config.texture !== undefined ? { texture: config.texture } : {}),
         ...(config.biliStickers !== undefined ? { biliStickers: config.biliStickers } : {}),
+        ...(config.quoteReply !== undefined ? { quoteReply: config.quoteReply } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),
@@ -623,7 +627,7 @@ export function apply(ctx: Context, config: Config) {
     };
     const transport: Transport = {
         // 白名单的小黄脸「[捂脸]」发成 face 段（ADR 0051），和 onebot.ts 发的是同一个请求
-        sendPrivateText: async (userId, text) => Number(await onlineBot().internal.sendPrivateMsg(userId, textToSegments(text))),
+        sendPrivateText: async (userId, text, replyTo) => Number(await onlineBot().internal.sendPrivateMsg(userId, replyTo === undefined ? textToSegments(text) : [replySegment(replyTo), ...textToSegments(text)])),
         deleteMessage: async messageId => { await onlineBot().internal.deleteMsg(messageId); },
         pokeFriend: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('friend_poke', { user_id: String(userId) }); },
         markRead: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('mark_private_msg_as_read', { user_id: String(userId) }); },

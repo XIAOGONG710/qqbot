@@ -80,6 +80,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'qzone', label: '说说', group: '在 QQ 上的样子', adr: '0083', kind: 'mode' },
     { key: 'typingStatus', label: '“正在输入…”', group: '在 QQ 上的样子', adr: '0077' },
     { key: 'selfRecall', label: '打错字撤回重发', group: '在 QQ 上的样子', adr: '0086' },
+    { key: 'quoteReply', label: '引用回复（他连发里的问题 / 补错字）', group: '在 QQ 上的样子', adr: '0136' },
     // 记忆和安全
     { key: 'unlistedFriends', label: '名单外的好友也回', group: '记忆和安全' },
     { key: 'feedbackCommands', label: '“假 / 像”反馈通道', group: '记忆和安全', adr: '0073' },

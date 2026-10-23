@@ -27,6 +27,7 @@ import { describeGrievance, grievanceNow, ignoredNow } from './grievance.ts';
 import { describeIntent, needsCareText } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from './texture.ts';
+import { describeQuote, planQuote, quoteFix, type QuotePlan } from './quote-reply.ts';
 import { alreadyTold, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from './expression.ts';
 import { describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from './shape.ts';
 import { describeUnsettled } from './open-loops.ts';
@@ -125,7 +126,11 @@ export interface ContactPipelineOptions {
     memory?: LongTermMemory;
     /** 整个名单（ADR 0016）：她认识名单里写了「别人提起时」的人；不传就谁都不认识 */
     contacts?: readonly Contact[];
-    send: (userId: number, text: string) => Promise<number>;
+    send: (userId: number, text: string, options?: { replyTo?: number }) => Promise<number>;
+    /** 引用回复（ADR 0136，配置 quoteReply）：他连发里有个不是最后一条的问题时，第一条引用它来回；打错字撤回失败补「*对的词」时有时引用那条错的 */
+    quoteReply?: boolean;
+    /** 引用的概率（默认 QUOTE_SHARE；模拟器场景可以调来测）*/
+    quoteShare?: number;
     /** 她打字的这段时间让对方那边显示「正在输入…」（ADR 0077，配置 typingStatus）；不给就不显示 */
     typing?: (userId: number) => void;
     /** 撤回自己发出去的一条（配置 selfRecall，ADR 0086）：打错字改口的，一部分改成撤回重发；不给就一律补一条「*对的词」 */
@@ -293,6 +298,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let shapeNow: ShapePlan | undefined;
     /** 这一轮发出去之前加质感用的上下文（ADR 0131）：他这一串说的话、这一轮是不是认真的回合、她最近几次回复里带了几次小黄脸 */
     let textureNow: { said: string; serious: boolean; recentFaces: number; recentTildes: number } | undefined;
+    /** 这一轮第一条要引用他的哪一句（ADR 0136，配置 quoteReply）：buildPrompt 按他没回的那一串定，紧跟着发送时现取 */
+    let quoteNow: QuotePlan | undefined;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -607,6 +614,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             stickerContext = stickerDrawn ? { text: saidNow, ...(stickerOnlyNow ? { only: true } : {}) } : undefined;
             if (stickerContext) log(stickerOnlyNow ? '图片表情：这一轮抽到只发表情、不写文字' : '图片表情：这一轮抽到要发一个');
             if (options.stickers && !thinking && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
+            // 引用回复（ADR 0136）：他连发里有个不是最后一条的问题，按概率引用它；危机、他难过、主动找他、只发表情 / 照片的回合不引用
+            quoteNow = options.quoteReply && !initiate && !thinking && !crisisNow && !stickerOnlyNow && !photoNow && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
+                ? planQuote(options.history.load(contact.qq), contact.qq, options.quoteShare)
+                : undefined;
+            const quoteLine = quoteNow ? describeQuote(quoteNow) : undefined;
+            if (quoteLine) log('引用回复：这一轮第一条引用他连发里的一个问题（日志不记内容）');
             pick = picked ? {
                 kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS],
                 // 她自己生活里的东西：猫、相机、在读的书、手上的爱好（DSH 诊断 1.2、ADR 0036 的四类）
@@ -724,6 +737,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(intent ? [intent] : []),
                         ...(length ? [describeLength(length, options.shortReplies)] : []),
                         ...(shapeNow ? [describeShape(shapeNow)] : []),
+                        ...(quoteLine ? [quoteLine] : []),
                         ...(crutchLine ? [crutchLine] : []),
                         ...(toldLine ? [toldLine] : []),
                         ...(openerLine ? [openerLine] : []),
@@ -796,6 +810,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return shapeNow && !crisisNow ? shapeReply(reviewed, shapeNow, { regenerate, log }) : reviewed;
         },
         send: options.send,
+        ...(options.quoteReply ? { quote: () => quoteNow?.messageId, quoteFix: (wrongId: number) => quoteFix(contact.qq, wrongId) } : {}),
         ...(options.typing ? { typing: options.typing } : {}),
         ...(options.recallOwn ? { recallOwn: options.recallOwn } : {}),
         ...(options.markRead ? { markRead: () => options.markRead!(contact.qq) } : {}),

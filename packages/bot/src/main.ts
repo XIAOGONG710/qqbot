@@ -35,7 +35,7 @@ const stickers = (config.stickers ?? 'off') !== 'off' && stickerVision ? sticker
 const app = startApp({
     config,
     transport: {
-        sendPrivateText: (userId, text) => client.sendPrivateText(userId, text),
+        sendPrivateText: (userId, text, replyTo) => client.sendPrivateText(userId, text, replyTo),
         sendPrivateImage: (userId, file, summary) => client.sendPrivateImage(userId, file, summary),
         setInputStatus: (userId, eventType) => client.setInputStatus(userId, eventType),
         deleteMessage: async messageId => { await client.call('delete_msg', { message_id: messageId }); },

@@ -291,6 +291,10 @@ export interface Scenario {
     interruptions: boolean;
     /** 默认 false：说话的质感（ADR 0131，配置 texture） */
     texture: boolean;
+    /** 默认 false：引用回复（ADR 0136，配置 quoteReply） */
+    quoteReply: boolean;
+    /** 引用的概率（0–1，不写按 QUOTE_SHARE）：测试和对比用 */
+    quoteShare?: number;
     /** 预置的她看过的东西（ADR 0130，配置 watching）：写了才打开；跑场景时不去看，直接用这几条（day 默认是起点那天） */
     watched?: { title: string; owner: string; tname: string; excerpt: string; hot?: string[] }[];
     /** 预置的网络热梗（ADR 0129，配置 memes）：写了才打开；跑场景时不去学，直接用这几个 */
@@ -429,6 +433,8 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         menu: s.menu === true,
         curious: s.curious === true,
         texture: s.texture === true,
+        quoteReply: s.quoteReply === true,
+        ...(typeof s.quoteShare === 'number' && s.quoteShare >= 0 && s.quoteShare <= 1 ? { quoteShare: s.quoteShare } : {}),
         smallNews: s.smallNews === true,
         foodPhotos: s.foodPhotos === true,
         ...(typeof s.menuFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.menuFrom) ? { menuFrom: s.menuFrom } : {}),

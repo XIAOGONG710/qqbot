@@ -82,7 +82,7 @@ export const WEATHER_REFRESH_MS = 30 * 60_000;
 /** 入口提供的收发 */
 export interface Transport extends PresenceTransport {
     /** 发一条私聊文字，返回 QQ 消息 id；文字里白名单的小黄脸「[捂脸]」发成 face 段（qq-faces.ts textToSegments，ADR 0051） */
-    sendPrivateText(userId: number, text: string): Promise<number>;
+    sendPrivateText(userId: number, text: string, replyTo?: number): Promise<number>;
     /** 标已读（NapCat mark_private_msg_as_read，配置 readReceipts，ADR 0083）；没有就不标 */
     markRead?(userId: number): Promise<void>;
     /** 给某条消息点表情回应（NapCat set_msg_emoji_like，配置 reactions，ADR 0083）；没有就不点 */
@@ -553,6 +553,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => memeEntries } : {}),
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
+            ...(config.quoteReply ? { quoteReply: true } : {}),
             ...(config.herNo ? { herNo: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
@@ -569,7 +570,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             // 已读回执 / 表情回应（ADR 0083）：失败只记第一次，不影响回复
             ...(config.readReceipts && transport.markRead ? { markRead: (userId: number) => { transport.markRead!(userId).catch(error => failOnce('已读回执', userId, error)); } } : {}),
             ...(config.reactions && transport.reactMessage ? { react: (userId: number, messageId: number, text: string) => { transport.reactMessage!(messageId, reactionEmoji(text, messageId)).then(() => log(`[${userId}] 看到了没回，点了个表情回应`), error => failOnce('表情回应', userId, error)); } } : {}),
-            send: async (userId, text) => {
+            send: async (userId, text, sendOptions) => {
                 const photo = contact.tier === 'boyfriend' ? photos?.resolve(text) : undefined;
                 if (photo) {
                     const id = await transport.sendPrivateImage!(userId, photo.file, '[照片]');
@@ -582,14 +583,27 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     sendingStickers!.used(sticker.id);
                     return id;
                 }
+                // 引用回复（ADR 0136）：引用发不出去（那条消息太老 / QQ 不认）就去掉引用再发一次；超时不重发，可能已经发出去了
+                const replyTo = sendOptions?.replyTo;
+                const sendText = async (body: string): Promise<number> => {
+                    if (replyTo === undefined) return transport.sendPrivateText(userId, body);
+                    try {
+                        return await transport.sendPrivateText(userId, body, replyTo);
+                    } catch (error) {
+                        const reason = error instanceof Error ? error.message : String(error);
+                        if (/timeout|timed out|超时/i.test(reason)) throw error;
+                        log(`[${userId}] 引用回复没发出去（${reason}），去掉引用再发一次`);
+                        return transport.sendPrivateText(userId, body);
+                    }
+                };
                 try {
-                    return await transport.sendPrivateText(userId, text);
+                    return await sendText(text);
                 } catch (error) {
                     const reason = error instanceof Error ? error.message : String(error);
                     const plain = removeFaces(text, face => face !== undefined);
                     if (plain === text || !plain || /timeout|timed out|超时/i.test(reason)) throw error;
                     log(`[${userId}] 带小黄脸的消息没发出去（${reason}），去掉表情再发一次`);
-                    return transport.sendPrivateText(userId, plain);
+                    return sendText(plain);
                 }
             },
             log,

@@ -75,7 +75,12 @@ export interface ResponderDeps {
     review?: (reply: string, messages: OpenAIMessage[], context?: { allowRepeat?: boolean }) => Promise<string>;
     /** 拆好条、发出去之前最后改一下（ADR 0024：打错字再改口）；maxBubbles 是这一轮最多几条；不传就原样发 */
     decorate?: (parts: string[], maxBubbles: number) => string[] | { parts: string[]; recall?: TypoRecall };
-    send: (userId: number, text: string) => Promise<number>;
+    /** replyTo：QQ 引用回复这一条（他的）消息（ADR 0136，配置 quoteReply）；只对文字有意义，不给就是普通的一条 */
+    send: (userId: number, text: string, options?: { replyTo?: number }) => Promise<number>;
+    /** 这一轮第一条要引用他的哪一条（ADR 0136）：发之前现取，没有就不引用；contact.ts 在拼提示词时定 */
+    quote?: () => number | undefined;
+    /** 打错字撤回失败、补「*对的词」时要不要引用刚才那条错的（ADR 0136，配置 quoteReply）；按那条错的消息 id 定 */
+    quoteFix?: (wrongId: number) => boolean;
     /** 撤回自己发出去的一条（NapCat 的 delete_msg，配置 selfRecall，ADR 0086）；不传就不撤回，打错字照旧补一条「*对的词」 */
     recallOwn?: (messageId: number) => Promise<void>;
     /** 让对方那边显示「正在输入…」（ADR 0077）：她打字的这段时间里每隔几秒调一次，调用不等结果、出错也不影响发送；不传就不显示 */
@@ -212,9 +217,10 @@ export function createResponder(deps: ResponderDeps): Responder {
      * 发一条。recall 有值（打错字又想改口，ADR 0086）：先发打错的那条，过 afterMs 撤回，再「打字」发对的那条；聊天记录里只有对的。
      * 撤回失败（超过两分钟、NapCat 报错）：错的留着，补发「*对的词」，和不撤回时一样，两条都进聊天记录
      */
-    async function sendBubble(part: string, recall: TypoRecall | undefined): Promise<{ messageId: number; content: string }> {
-        if (!recall) return { messageId: await deps.send(deps.userId, part), content: part };
-        const wrongId = await deps.send(deps.userId, recall.wrong);
+    async function sendBubble(part: string, recall: TypoRecall | undefined, replyTo?: number): Promise<{ messageId: number; content: string }> {
+        const quoted = replyTo === undefined ? undefined : { replyTo };
+        if (!recall) return { messageId: await deps.send(deps.userId, part, quoted), content: part };
+        const wrongId = await deps.send(deps.userId, recall.wrong, quoted);
         await sleep(recall.afterMs);
         try {
             await deps.recallOwn!(wrongId);
@@ -224,11 +230,13 @@ export function createResponder(deps: ResponderDeps): Responder {
                 time: new Date(now()).toISOString(), role: 'assistant',
                 content: deps.historyContent?.(recall.wrong) ?? recall.wrong, messageId: wrongId,
             });
-            return { messageId: await deps.send(deps.userId, recall.fix), content: recall.fix };
+            // 补「*对的词」：有时引用刚才那条错的（ADR 0136）
+            const fixQuote = deps.quoteFix?.(wrongId) ? { replyTo: wrongId } : undefined;
+            return { messageId: await deps.send(deps.userId, recall.fix, fixQuote), content: recall.fix };
         }
         deps.log('打错字，撤回重发');
         await (deps.timing ? sleepTyping(deps.timing.typingMs(part)) : sleep(PART_GAP_MS));
-        return { messageId: await deps.send(deps.userId, part), content: part };
+        return { messageId: await deps.send(deps.userId, part, quoted), content: part };
     }
 
     async function sleepTyping(ms: number): Promise<void> {
@@ -392,6 +400,8 @@ export function createResponder(deps: ResponderDeps): Responder {
             if (due > 0) await sleepTyping(due);
         }
         const sent: string[] = [];
+        // 这一轮第一条引用他的某一句（ADR 0136）：只引一次，只在第一条
+        const quoteId = deps.quote?.();
         for (const [i, part] of parts.entries()) {
             if (i > 0) {
                 await (timing ? sleepTyping(timing.typingMs(part)) : sleep(PART_GAP_MS));
@@ -404,7 +414,7 @@ export function createResponder(deps: ResponderDeps): Responder {
                 deps.log(`已停止，剩下 ${parts.length - i} 条不发`);
                 break;
             }
-            const { messageId, content } = await sendBubble(part, recall?.index === i ? recall : undefined);
+            const { messageId, content } = await sendBubble(part, recall?.index === i ? recall : undefined, i === 0 ? quoteId : undefined);
             deps.history.append(deps.userId, {
                 time: new Date(now()).toISOString(), role: 'assistant',
                 content: deps.historyContent?.(content) ?? content, messageId,

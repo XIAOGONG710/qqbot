@@ -17,6 +17,11 @@ export interface Segment {
     data: Record<string, unknown>;
 }
 
+/** 引用回复段（OneBot 11 的 reply）：放在消息最前面，id 是被引用那条的 message_id（ADR 0136） */
+export function replySegment(messageId: number): Segment {
+    return { type: 'reply', data: { id: String(messageId) } };
+}
+
 export interface MessageEvent {
     post_type: 'message';
     message_type: 'private' | 'group';
@@ -163,11 +168,11 @@ export class OneBotClient {
         });
     }
 
-    /** 发一条私聊：文字里白名单的小黄脸（「[捂脸]」）发成 face 段，和文字拼成一条（ADR 0051） */
-    async sendPrivateText(userId: number, text: string): Promise<number> {
+    /** 发一条私聊：文字里白名单的小黄脸（「[捂脸]」）发成 face 段，和文字拼成一条（ADR 0051）；replyTo 给了就是引用回复那条消息（ADR 0136） */
+    async sendPrivateText(userId: number, text: string, replyTo?: number): Promise<number> {
         const data = await this.call<{ message_id: number }>('send_private_msg', {
             user_id: userId,
-            message: textToSegments(text),
+            message: replyTo === undefined ? textToSegments(text) : [replySegment(replyTo), ...textToSegments(text)],
         });
         return data.message_id;
     }

@@ -103,7 +103,7 @@ export interface RunOptions {
 }
 
 /** proactive：她主动发的（ADR 0011），是哪个时机（日志里的说法） */
-export interface Bubble { time: number; text: string; proactive?: string }
+export interface Bubble { time: number; text: string; proactive?: string; /** 引用回复（ADR 0136）：引用的是他的哪一句 */ quote?: string }
 export interface Input { time: number; text: string; interrupt?: boolean }
 export interface Generation {
     time: number; recall?: string; timeBlock?: string; relationship?: string; people?: string; common?: string; todayOthers?: string; past?: string; messages: number;
@@ -414,6 +414,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.jealousy ? { jealousy: true } : {}),
         ...(scenario.curious ? { curious: true } : {}),
         ...(scenario.texture ? { texture: true } : {}),
+        ...(scenario.quoteReply ? { quoteReply: true, ...(scenario.quoteShare !== undefined ? { quoteShare: scenario.quoteShare } : {}) } : {}),
         ...(scenario.interruptions ? { interruptions: true } : {}),
         ...(scenario.jokes?.length ? { jokes: () => scenario.jokes! } : {}),
         ...(scenario.watched?.length ? { watched: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); } } : {}),
@@ -435,8 +436,9 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         settle: options.settle,
         retryAfterMs: [],
         waitUntil: clock.waitUntil,
-        send: async (_userId, text) => {
-            current.bubbles.push({ time: clock.now(), text, ...(initiating ? { proactive: initiating } : {}) });
+        send: async (_userId, text, sendOptions) => {
+            const quoted = sendOptions?.replyTo === undefined ? undefined : history.load(contact.qq).find(m => m.messageId === sendOptions.replyTo)?.content;
+            current.bubbles.push({ time: clock.now(), text, ...(initiating ? { proactive: initiating } : {}), ...(quoted ? { quote: quoted } : {}) });
             bubblesThisStep++;
             if (armed?.afterBubbles !== undefined && bubblesThisStep >= armed.afterBubbles) {
                 const it = armed;
