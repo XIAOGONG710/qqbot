@@ -186,3 +186,7 @@
 
 ## 10-23 22:37 即将重启上线：`40dd0f5`（卡：空闲活动「逛淘宝，购物车加了又删」→「逛淘宝」）
 - 用户说「上线」。线上 `bee3768` → `40dd0f5`；17 个文件（13 张卡各 1 行 + schedule.yml + ADR 0133 状态 + 2 个 sim），没有配置变化。备份 `runtime/backup-pre-bili30-*`。回滚 `git reset --hard bee3768`。
+
+## 10-23 22:38 结果：`40dd0f5` 已上线
+- 线上 `bee3768` → `40dd0f5`：心跳 ref = `40dd0f5…`、connectedAt 14:36:37Z；日志 0 条错误；线上卡里已是「逛淘宝」。维护标记已删。备份 `runtime/backup-pre-bili30-20261023-2236`，回滚 `git reset --hard bee3768`。
+- 脚本第 7 步显示 STOPPED 只是 git push 把进度写到 stderr 被当成错误；main 其实已推上去，integration 我手动推了。
