@@ -123,3 +123,7 @@
 ## 10-23 11:00 即将重启上线：`4691545`（ADR 0110–0124 全部代码 + 照片重试 + 「肚子坠着」修复 + 状态页 + 模块图）
 - 用户说「上线」。线上 `2ba4e02` → `4691545`；84 个文件，全在允许路径内；koishi.yml 只加两行 `proactiveRoom: true`、`weeklyReport: true`（在 `photos: true` 后），其余新开关（photoShares / together / comeBack / relationship / jokes / interruptions / proactiveAsk / hisHours / jealousy）保持关；备份 `runtime/backup-pre-bili24-*`。回滚：两个开关改 false + 重启，或 `git reset --hard 2ba4e02` + 还原 `koishi.yml.bak-bili24-*`。
 - 注意：外网（DNS）此刻不通（github / 模型接口都连不上，日志里 10:5x 起连接超时），所以这次重启后没法验证她回话；步骤 7 的 `git push` 也会失败，网络回来后要补推 `main` 与 `main:integration`。
+
+## 10-23 11:00 重启完成：`4691545` 已上线
+- `main` = `4691545`（`integration` 未推，见下）；新进程 10:58:15，心跳 `ref = 4691545`、`connectedAt` 02:58:15Z，启动后日志 0 个错误/警告行。备份 `runtime/backup-pre-bili24-20261023-1057` + `koishi.yml.bak-bili24-20261023-1057`。回滚：`proactiveRoom` / `weeklyReport` 改 false + 重启，或 `git reset --hard 2ba4e02` + 还原 yml。
+- 外网仍不通（模型接口、B 站、天气、Wikimedia 都连不上），所以照片货架还是空的、她此刻回不了话；步骤 7 的两个 `git push` 失败，网络回来后要在线上目录补推 `main` 和 `main:integration`，再推本分支 `exchange`。
