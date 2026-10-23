@@ -190,3 +190,6 @@
 ## 10-23 22:38 结果：`40dd0f5` 已上线
 - 线上 `bee3768` → `40dd0f5`：心跳 ref = `40dd0f5…`、connectedAt 14:36:37Z；日志 0 条错误；线上卡里已是「逛淘宝」。维护标记已删。备份 `runtime/backup-pre-bili30-20261023-2236`，回滚 `git reset --hard bee3768`。
 - 脚本第 7 步显示 STOPPED 只是 git push 把进度写到 stderr 被当成错误；main 其实已推上去，integration 我手动推了。
+
+## 10-23 23:07 即将重启上线：`da8721d`（ADR 0134：分条发时后面几条顺着前一条说；「～」最近 3 次回复带过就不加）
+- 用户说「上线」。线上 `40dd0f5` → `da8721d`；8 个文件（shape.ts / texture.ts / contact.ts + 2 个测试 + ADR 0134 + 2 个 sim），没有配置变化、没有新开关。备份 `runtime/backup-pre-bili31-*`。回滚 `git reset --hard 40dd0f5`。
