@@ -168,3 +168,6 @@
 - `texture`：发出去之前（`contact.ts` decorate，和打错字同位置）按概率加：问号 / 感叹号、「～」、叠字、ok / hhh、去结尾省略号、并两条短的、先回一个字的反应；小黄脸降到约 2%（`TEXTURE_SHARES.faceCue` 0.1，中性的不带）。尺子（他自己聊天训练）：离线重放 30% → 41% 判成真人（平均分 0.438 → 0.506）；真模型 A/B（6 场景 × 2 次，约 230 条）34% → 45%（有质感那批当时小黄脸还是 13%）。**没有超过他（64%）**，ADR 里写了还差什么（内容层面）。
 - `biliStickers`：来源换成 B 站——她的号读官方表情包（热词系列、tv_小电视，不要小黄脸 / 颜文字）+ 热门视频评论区里像表情包的图（筛真人 / 截图 / 广告）；每天审看 6 个；没有明确反应的允许轮次里也约 12% 抽一个（线上原来 437 轮只发了 1 个）。实测 24 个候选收 21 个，评论区那路混进真人照片和截图所以加了筛；模拟里抽满时 5 次发了 2 次，问正事 / 难过时不发。
 - 全量：bot 1722 / 插件 42 / 工具 43 全绿。要上线：`koishi.yml` 加 `texture: true`、`biliStickers: true`（`stickers: send`、`bilibiliAccount` 已开）。
+
+## 10-23 21:46 即将重启上线：`ae7747e`（ADR 0131 texture + ADR 0132 biliStickers）
+- 用户说「上线吧」。线上 `7871423` → `ae7747e`；22 个文件，全在允许路径内；koishi.yml 在 `watching: true` 后加 `texture: true`、`biliStickers: true`；备份 `runtime/backup-pre-bili28-*`。回滚：两个开关改 false + 重启，或 `git reset --hard 7871423` + 还原 `koishi.yml.bak-bili28-*`。
