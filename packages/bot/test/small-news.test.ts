@@ -68,7 +68,7 @@ describe('主动：随口讲一件小事', () => {
         const c = candidate();
         assert.ok(c, '有候选');
         const note = occasionNote(c, '宝宝');
-        for (const phrase of ['就说这一件', '别铺开讲', '没写的细节不编', '别写成一句平平的汇报', '你猜怎么着', '留个能接的口子']) assert.ok(note.includes(phrase), phrase);
+        for (const phrase of ['就说这一件', '别铺开讲', '没写的细节不编', '别写成一句平平的汇报', '开头别老是同一种', '留个能接的口子']) assert.ok(note.includes(phrase), phrase);
         for (const old of ['像突然想起来的', '不要他回应']) assert.ok(!note.includes(old), old);
         assert.doesNotMatch(note, /「[^」]*[！!]」/, '不给台词');
     });

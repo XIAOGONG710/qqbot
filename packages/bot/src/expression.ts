@@ -123,6 +123,28 @@ export function recentCrutches(history: LengthContext['history']): string[] {
 }
 
 /**
+ * 她最近几次开头用的同一个起头词（ADR 0135）。10-23 的主动消息模拟里 11 条非催他的里 6 条以「刚」开头，催他的 8 条里 5 条以「人呢」开头——
+ * 单条都自然，连起来像套话。每次“话头”（她连着发的一串）的第一句算一次开头，最近 5 次里同一个起头词出现 2 次以上就返回它；
+ * 起头词只认这些最常见的口头起头（不认任意前两个字：「刚在」「刚洗」不同，但都是「刚」）
+ */
+const OPENER_WORDS = /^(刚刚|刚|对了|哎呀|哎|诶|欸|唉|喂|人呢|跟你说|我跟你说|你猜|话说|今天)/;
+export function repeatedOpener(history: LengthContext['history']): string | undefined {
+    const openers: string[] = [];
+    let previous: 'user' | 'assistant' | undefined;
+    for (const message of history) {
+        if (message.role === 'assistant' && previous !== 'assistant') {
+            const text = message.content.replace(/\[[^\]]{1,12}\]/g, '').trim();
+            openers.push(OPENER_WORDS.exec(text)?.[1] ?? '');
+        }
+        previous = message.role;
+    }
+    const recent = openers.slice(-5).filter(Boolean).map(word => (word === '刚刚' ? '刚' : word));
+    const counts = new Map<string, number>();
+    for (const word of recent) counts.set(word, (counts.get(word) ?? 0) + 1);
+    return [...counts].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
+/**
  * 她这一天半里已经主动跟他说过的、关于她自己的事（ADR 0098）。10-20 到 10-21 三个晚上她每晚都提「肚子坠着」，他说「你会老是重复一件事」。
  * 「主动」= 说那句话的那一轮，他前面的话里没有提到这件事（他问起来她答，不算）。事实还在那里（时间块 / 身体那一行照旧写），只是说过了就不再自己提
  */

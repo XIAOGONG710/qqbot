@@ -27,7 +27,7 @@ import { describeGrievance, grievanceNow, ignoredNow } from './grievance.ts';
 import { describeIntent, needsCareText } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from './texture.ts';
-import { alreadyTold, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, STILTED_WORDS } from './expression.ts';
+import { alreadyTold, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from './expression.ts';
 import { describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from './shape.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, lastMealDish, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
@@ -632,6 +632,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ? `[你这几条里反复在说「${crutches.join('」「')}」：这一轮别再用这几个字，换个反应——直接答、逗他、反问、认怂、生气都行]`
                 : undefined;
             if (crutchLine) log(`最近反复说的字词：${crutches.join('、')}（提示词里让她换个反应）`);
+            // 主动找他时，最近几次开头用了同一个起头词（「刚」「人呢」……）就换一种（ADR 0135）
+            const opener = initiate && !crisisNow && !thinking ? repeatedOpener(chat) : undefined;
+            const openerLine = opener ? `[你最近几次开头都是「${opener}」：这次换一种开头，别用「${opener}」起头]` : undefined;
+            if (openerLine) log(`最近几次开头都是「${opener}」（提示词里让她这次换个开头）`);
             // 说过了就不再自己提（ADR 0098）：事实还在时间块里，他问起来照常答
             const toldLine = told.length && !thinking ? `[这些事你已经主动跟他说过了：${told.join('、')}。他不问，就别再自己提]` : undefined;
             if (toldLine) log(`已经主动说过：${told.join('、')}（提示词里让她不再自己提）`);
@@ -722,6 +726,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(shapeNow ? [describeShape(shapeNow)] : []),
                         ...(crutchLine ? [crutchLine] : []),
                         ...(toldLine ? [toldLine] : []),
+                        ...(openerLine ? [openerLine] : []),
                         ...(innerNow ? [innerNow] : []),
                         ...(transcript ? [transcript] : []),
                         ...(initiate ? [initiate.note] : []),

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { recentCrutches } from '../src/expression.ts';
+import { recentCrutches, repeatedOpener } from '../src/expression.ts';
 import { ABSTRACT_INTENT, CHALLENGE_INTENT, describeIntent, STALL_INTENT } from '../src/intent.ts';
 import { planShape } from '../src/shape.ts';
 
@@ -88,5 +88,30 @@ describe('最近反复说的字词（recentCrutches）', () => {
     test('只看她自己的气泡，他的话不算', () => {
         const history = [user('急急急'), her('嗯'), user('急死了'), her('好'), user('急'), her('啊'), user('急'), her('哦')];
         assert.deepEqual(recentCrutches(history), []);
+    });
+});
+
+// ADR 0135：主动消息开头别老是同一种
+describe('最近几次开头用的同一个起头词（repeatedOpener）', () => {
+    test('最近 5 次话头里「刚」出现 2 次以上：点出来；「刚在」「刚洗」算同一个', () => {
+        const history = [her('刚在超市逛了一圈'), user('哦'), her('洗完澡了'), user('嗯'), her('刚洗完澡出来'), user('哈'), her('作业没写')];
+        assert.equal(repeatedOpener(history), '刚');
+    });
+
+    test('连着发的几条只算一次开头（看第一句）；表情占位符不算字', () => {
+        const history = [her('[偷笑]刚下课'), her('刚才路上碰到老师'), her('刚吃完'), user('嗯'), her('人呢'), user('嗯'), her('人呢，我有点无聊')];
+        assert.equal(repeatedOpener(history), '人呢', '「刚」只有一次话头（连着发的算一次）');
+    });
+
+    test('开头各不相同、只出现一次、没有常见起头词：不算；他的话不算', () => {
+        assert.equal(repeatedOpener([her('刚下课'), user('嗯'), her('作业还没写'), user('嗯'), her('对了土豆呢'), user('嗯'), her('今天好冷')]), undefined);
+        assert.equal(repeatedOpener([user('刚刚'), her('嗯'), user('刚下班'), her('好'), user('刚吃完'), her('哦')]), undefined);
+        assert.equal(repeatedOpener([]), undefined);
+    });
+
+    test('只看最近 5 次话头：更早的不算', () => {
+        const old = [her('刚a'), user('嗯'), her('刚b'), user('嗯')];
+        const fresh = [her('作业'), user('嗯'), her('猫'), user('嗯'), her('冷'), user('嗯'), her('饿'), user('嗯'), her('困')];
+        assert.equal(repeatedOpener([...old, ...fresh]), undefined);
     });
 });
