@@ -1,0 +1,38 @@
+{
+    "name": "日常闲聊读一遍（二）：意见、逗、知识、长段、夸",
+    "description": "十二句更考验“像同龄人而不是助手”的话（没有检查项，只为了读她的回复）：让她拿主意、逗她、问知识 / 代码、一大段倾诉、夸她、问她喜欢什么、吐槽别人、说一件没头没尾的小事。开关同 real-feel.json。用法：node src/sim/run.ts sim/real-feel-2.json --runs 2 --shape --agenda --filler --split --feel --tag real2",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-10T20:30:00+08:00",
+    "memory": false,
+    "shape": true,
+    "shapeAgenda": true,
+    "shapeFiller": true,
+    "shapeFeel": true,
+    "shapeSplit": true,
+    "curious": true,
+    "texture": true,
+    "menu": true,
+    "everydayLife": true,
+    "everydayFrom": "2026-11-01",
+    "herFeelings": true,
+    "herNo": true,
+    "history": [
+        { "time": "2026-11-10T20:10:00+08:00", "role": "user", "content": "在吗" },
+        { "time": "2026-11-10T20:10:10+08:00", "role": "assistant", "content": "在呢" }
+    ],
+    "steps": [
+        { "say": "周末是去看电影还是去逛街好呢，你定" },
+        { "say": "你是不是胖了哈哈" },
+        { "say": "python 里列表和元组到底有啥区别" },
+        { "say": "光速是多少来着" },
+        { "say": "你觉得我这个人怎么样" },
+        { "say": "今天部门聚餐，我们组那个新来的一直在抢话，领导还觉得他特别积极，我就坐在旁边听着，说实话有点不舒服，但又觉得自己是不是太小心眼了，下班路上一直在想这个事" },
+        { "say": "你最喜欢吃什么" },
+        { "say": "你长得真好看" },
+        { "say": "我室友打呼噜贼大声" },
+        { "say": "你会不会有一天不喜欢我了" },
+        { "say": "推荐个电影吧" },
+        { "say": "我今天吃了五个包子" }
+    ]
+}
