@@ -64,11 +64,12 @@ describe('主动：随口讲一件小事', () => {
     const input = (patch: Partial<ProactiveInput> = {}): ProactiveInput => ({ qq: 10001, schedule, settings: on, dates: [], history: [], records: [], mode: 'on', news: [item('2026-11-17')], ...patch });
     const candidate = (): Candidate => candidatesOn(new Date(2026, 10, 17), input()).find(c => c.occasion === 'news' && c.news?.kind === 'small_thing')!;
 
-    test('说明：就说这一件、随口、不要他回应、不铺开、不编细节、不借这件事问他', () => {
+    test('说明：就说这一件、不铺开、不编细节；要有由头和自己的感觉、留个话头（用户 10-23：「没来由的突然发一个，十分突兀」）', () => {
         const c = candidate();
         assert.ok(c, '有候选');
         const note = occasionNote(c, '宝宝');
-        for (const phrase of ['就说这一件', '像突然想起来的', '不要他回应', '别铺开讲', '没写的细节不编', '不要借这件事去问他什么']) assert.ok(note.includes(phrase), phrase);
+        for (const phrase of ['就说这一件', '别铺开讲', '没写的细节不编', '别写成一句平平的汇报', '你猜怎么着', '留个能接的口子']) assert.ok(note.includes(phrase), phrase);
+        for (const old of ['像突然想起来的', '不要他回应']) assert.ok(!note.includes(old), old);
         assert.doesNotMatch(note, /「[^」]*[！!]」/, '不给台词');
     });
 

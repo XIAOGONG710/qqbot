@@ -66,12 +66,13 @@ describe('主动：吃饭时拍的照片', () => {
     const input = (patch: Partial<ProactiveInput> = {}): ProactiveInput => ({ qq: 10001, schedule, settings: on, dates: [], history: [], records: [], mode: 'on', news: [item('2026-11-17')], ...patch });
     const candidate = (): Candidate => candidatesOn(new Date(2026, 10, 17), input()).find(c => c.occasion === 'news' && c.news?.kind === 'food_photo')!;
 
-    test('说明：说是哪一顿、吃的什么，另起一行单独发照片，不要他回应，不问他想不想看', () => {
+    test('说明：说是哪一顿、吃的什么，另起一行单独发照片，那句话要有由头和自己的感觉（不写成汇报），不问他想不想看', () => {
         const c = candidate();
         assert.ok(c, '有候选');
         assert.equal(c.news?.dish, '兰州拉面');
         const note = occasionNote(c, '宝宝');
-        for (const phrase of ['午饭吃的兰州拉面', '拍了张照片', '另起一行单独发照片', '不要他回应', '别问他想不想看', '没写的细节不编']) assert.ok(note.includes(phrase), phrase);
+        for (const phrase of ['午饭吃的兰州拉面', '拍了张照片', '另起一行单独发照片', '别写成一句平平的汇报', '别问他想不想看', '没写的细节不编']) assert.ok(note.includes(phrase), phrase);
+        assert.ok(!note.includes('不要他回应'), '不再要求“不要他回应”（用户 10-23：太突兀）');
         assert.doesNotMatch(note, /「[^」]*[！!]」/, '不给台词');
     });
 

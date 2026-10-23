@@ -382,7 +382,7 @@ describe('主动消息：随口说件自己的事（share，ADR 0096）', () => 
         const candidate = share([user(t(10, 12, 9)), her(t(10, 12, 9, 1))])!;
         const note = occasionNote(candidate, '宝宝');
         assert.ok(note.startsWith('[这次是你主动找宝宝：你想起一件自己的小事'), note);
-        assert.ok(note.includes('「你那边」') && note.includes('不提刚刷到的视频、帖子、新闻') && note.includes('不问「在干嘛」') && note.includes('不编'), note);
+        assert.ok(note.includes('「你那边」') && note.includes('不提刚刷到的视频、帖子、新闻') && note.includes('别问「在干嘛」') && note.includes('别写成一句平平的汇报') && note.includes('不编') && !note.includes('像突然想起来的'), note);
         assert.equal(candidateLabel(candidate), '随口说件自己的事（一阵子没说话了）');
     });
 

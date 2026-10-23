@@ -83,6 +83,7 @@ const root = join(repoRoot, 'runtime', 'sim', stamp);
 mkdirSync(root, { recursive: true });
 
 let failed = 0;
+const usage = { generations: 0, tokens: 0 };
 for (const [fileIndex, file] of files.entries()) {
     const scenario = loadScenario(file);
     const card = loadTierCard(config.characterCard, cardKey({ tier: scenario.tier, knowsBot: scenario.knowsBot }), { ...(scenario.everydayLife ? { everydayLife: true, ...(scenario.everydayFrom ? { everydayFrom: scenario.everydayFrom } : {}) } : {}), ...(scenario.menu ? { menu: true, ...(scenario.menuFrom ? { menuFrom: scenario.menuFrom } : {}) } : {}) });
@@ -121,10 +122,13 @@ for (const [fileIndex, file] of files.entries()) {
         return result;
     });
     for (const [i, result] of results.entries()) {
+        for (const step of result.steps) for (const generation of step.generations) { usage.generations++; usage.tokens += generation.tokens ?? 0; }
         failed += result.checks.failed;
         console.log(`  r${i + 1}：检查 ${checkSummary(result.checks)} · ${exitSummary(result)} → ${join(result.dataDir, 'report.md')}`);
     }
 }
+// 用量小计（10-23 用户：「昨天的花费好像有点高」——实测 10-22 的 4,800 次生成、约 2,500 万输入 token 几乎都是模拟，线上自己一天只有几十次）：每次跑完看一眼，别在不知道的情况下烧
+console.log(`用量小计：这次共 ${usage.generations} 次模型生成（聊天 / 主动 / 内心；不含看图、抽取、记忆），输入约 ${(usage.tokens / 1e6).toFixed(2)} 百万 token（估法同 tokens.ts；DeepSeek 有上下文缓存，实际更便宜）`);
 process.exit(failed > 0 ? 1 : 0);
 
 /** 跑 count 次 job，同时最多 width 个；结果按次序返回 */

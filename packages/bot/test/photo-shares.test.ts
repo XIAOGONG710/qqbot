@@ -69,11 +69,11 @@ describe('主动：喂完土豆拍的照片', () => {
     });
     const candidate = (): Candidate => candidatesOn(new Date(2026, 9, 24), input()).find(c => c.occasion === 'news' && c.news?.kind === 'cat_photo')!;
 
-    test('说明：喂了、拍了照，另起一行单独发照片，不要他回应；货架里没有 / 这会儿不该发照片就不发；那之后聊过也不发', () => {
+    test('说明：喂了、拍了照，另起一行单独发照片，那句话有由头和自己的感觉；货架里没有 / 这会儿不该发照片就不发；那之后聊过也不发', () => {
         const c = candidate();
         assert.ok(c, '有候选');
         const note = occasionNote(c, '宝宝');
-        assert.ok(note.includes('拍了它一张照片') && note.includes('另起一行单独发照片') && note.includes('不要他回应'), note);
+        assert.ok(note.includes('拍了它一张照片') && note.includes('另起一行单独发照片') && note.includes('别写成一句平平的汇报') && !note.includes('不要他回应'), note);
         assert.equal(blockReason(c, c.at, input({ photoReady: () => true })), undefined);
         assert.match(blockReason(c, c.at, input())!, /货架里没有土豆的照片/, '没给 photoReady = 不发');
         assert.match(blockReason(c, c.at, input({ photoReady: () => false }))!, /货架里没有土豆的照片/);

@@ -184,9 +184,9 @@ describe('内心：心里惦记（主动消息的一个时机）', () => {
         assert.ok(blockReason(c!, c!.at, input({ inner: [pending], records: two })), '已经发了两条（没回）：到点也不发');
     });
 
-    test('提示词：给她念头原话但让她别照着念；想问的问一个具体的小问题（不是反问）；想说的说完不用他回应；不另外编事实', () => {
+    test('提示词：给她念头原话但让她别照着念；想问的问一个具体的小问题（不是反问）；想说的要有由头和自己的感觉（ADR 0133，不再“说完不用他回应”）；不另外编事实', () => {
         const tell = occasionNote({ id: 'x:inner:th-1', occasion: 'inner', day: '2026-10-05', at: 0, reason: 'r', inner: { id: 'th-1', text: '腰不会真搬坏了吧', goes: 'tell' } }, '宝宝');
-        assert.ok(tell.includes('「腰不会真搬坏了吧」') && tell.includes('想跟宝宝说说') && tell.includes('说完不用他回应') && tell.includes('别照着念原话') && tell.includes('不另外编发生过的事'), tell);
+        assert.ok(tell.includes('「腰不会真搬坏了吧」') && tell.includes('想跟宝宝说说') && tell.includes('别写成一句平平的汇报') && !tell.includes('说完不用他回应') && tell.includes('别照着念原话') && tell.includes('不另外编发生过的事'), tell);
         const ask = occasionNote({ id: 'x:inner:th-1', occasion: 'inner', day: '2026-10-05', at: 0, reason: 'r', inner: { id: 'th-1', text: '面试结果出来了没', goes: 'ask' } }, '宝宝');
         assert.ok(ask.includes('想问问宝宝') && ask.includes('具体的小问题（不是反问）'), ask);
     });
