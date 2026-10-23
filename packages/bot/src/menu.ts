@@ -98,6 +98,20 @@ export function withMenu(world: World | undefined, from?: string): World | undef
     return { ...world, menu: menuOf((world.routine as { menu?: unknown } | undefined)?.menu), ...(from ? { menuFrom: from } : {}) };
 }
 
+/** 从 from 这天起 days 天里要吃的菜（午饭、晚饭，去重，按先后）；menuFrom 之前的日子没有菜 */
+export function dishesBetween(from: Date, days: number, menu: Menu = DEFAULT_MENU, menuFrom?: string): string[] {
+    const out: string[] = [];
+    for (let i = 0; i < days; i++) {
+        const date = formatDate(new Date(from.getFullYear(), from.getMonth(), from.getDate() + i));
+        if (menuFrom && date < menuFrom) continue;
+        for (const kind of ['lunch', 'dinner'] as const) {
+            const dish = dishOn(date, kind, menu);
+            if (dish && !out.includes(dish)) out.push(dish);
+        }
+    }
+    return out;
+}
+
 /** 句子里说这顿的菜：「（吃的是黄焖鸡米饭）」；没有菜就是空 */
 export function dishNote(dish: string | undefined): string {
     return dish ? `，吃的是${dish}` : '';

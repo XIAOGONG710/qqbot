@@ -11,9 +11,9 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 
-export const PHOTO_KINDS = ['cat', 'view', 'work'] as const;
+export const PHOTO_KINDS = ['cat', 'view', 'work', 'food'] as const;
 export type PhotoKind = (typeof PHOTO_KINDS)[number];
-export const PHOTO_KIND_NAMES: Record<PhotoKind, string> = { cat: '土豆（楼下的流浪猫）', view: '窗外 / 路上的风景', work: '你自己拍的片子' };
+export const PHOTO_KIND_NAMES: Record<PhotoKind, string> = { cat: '土豆（楼下的流浪猫）', view: '窗外 / 路上的风景', work: '你自己拍的片子', food: '你自己吃的饭' };
 
 export const PHOTO_MAX_BYTES = 12 * 1024 * 1024;
 /** 网络来源每一类攒到几张就不再找（猫是同一系列里的，风景换着发） */
@@ -25,6 +25,12 @@ export const PHOTO_DISCOVERY_INTERVAL_MS = 6 * 60 * 60_000;
 /** 被限流 / 断网打断后多久再试、最多试几次（Wikimedia 的 Retry-After 有的是 10 分钟） */
 export const PHOTO_RETRY_MS = 15 * 60_000;
 export const PHOTO_RETRY_MAX = 6;
+/** 每道菜攒几张（吃的照片，ADR 0128）：同一道菜轮着发，不用多 */
+export const FOOD_PER_DISH = 2;
+/** 找一道菜的照片，一轮最多看几张 */
+export const FOOD_TRIES_PER_DISH = 4;
+/** 一道菜搜不到新的以后多久再搜（毫秒；重启后重新计） */
+export const FOOD_MISS_RETRY_MS = 6 * 60 * 60_000;
 /** 搜索结果翻页的起点：一页都没有新的就翻下一页 */
 const PAGE_OFFSETS = [0, 30, 60] as const;
 /** 两次下载之间歇一下：Wikimedia 对快速连续的请求回 429 */
@@ -88,6 +94,13 @@ export interface PhotoSource {
     judge(image: { bytes: Uint8Array; type: string }, kind: PhotoKind): Promise<PhotoJudgement>;
 }
 
+/** 吃的照片的网络来源（ADR 0128）：按菜名搜，不按种类 */
+export interface FoodSource {
+    search(dish: string, offset?: number): Promise<PhotoCandidate[]>;
+    download(url: string): Promise<{ bytes: Uint8Array; type: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' }>;
+    judge(image: { bytes: Uint8Array; type: string }, dish: string): Promise<PhotoJudgement>;
+}
+
 export interface PhotoEntry {
     id: string;
     /** 货架目录里的文件名 */
@@ -100,6 +113,8 @@ export interface PhotoEntry {
     lastUsedAt?: string;
     /** 网络来源的出处；手动加的没有 */
     origin?: PhotoOrigin;
+    /** 吃的照片是哪道菜（ADR 0128）；只有 food 这一类有 */
+    dish?: string;
 }
 
 interface PhotoIndex {
@@ -116,11 +131,11 @@ export interface PhotoShelf {
     /** 作者加一张（CLI 用）：复制进货架、按内容哈希定编号；同一张重复加返回已有的 */
     add(source: string, kind: PhotoKind, caption: string): PhotoEntry;
     remove(id: string): boolean;
-    list(kind?: PhotoKind): PhotoEntry[];
-    /** 这一类有没有可发的 */
-    has(kind: PhotoKind): boolean;
-    /** 给回复模型看的这一类的候选清单（最久没发的在前）；没有就 undefined */
-    prompt(kind: PhotoKind): string | undefined;
+    list(kind?: PhotoKind, dish?: string): PhotoEntry[];
+    /** 这一类有没有可发的；food 要给菜名（只算这道菜的，没给就是没有） */
+    has(kind: PhotoKind, dish?: string): boolean;
+    /** 给回复模型看的这一类的候选清单（最久没发的在前）；没有就 undefined。food 要给菜名 */
+    prompt(kind: PhotoKind, dish?: string): string | undefined;
     /** 清掉未知的、混在文字里的、同一轮第二张；allow 为 false 时全清掉 */
     clean(reply: string, allow?: boolean): string;
     /** 一整个气泡是不是一张可发送的照片 */
@@ -131,6 +146,8 @@ export interface PhotoShelf {
     status(): { count: number; byKind: Record<PhotoKind, number> };
     /** 从网络来源找新的（没配来源就什么都不做）；同一时刻只跑一个。返回 retry = 这一轮被限流 / 断网打断了，调用方过一会儿再来 */
     discover(): Promise<'done' | 'retry'>;
+    /** 给这几道菜各找照片（ADR 0128，没配 foodSource 就什么都不做）；已经有够的、刚搜过没有的跳过。返回 retry 同 discover */
+    discoverFood(dishes: readonly string[]): Promise<'done' | 'retry'>;
 }
 
 export interface PhotoShelfOptions {
@@ -139,6 +156,8 @@ export interface PhotoShelfOptions {
     now?: () => Date;
     /** 网络来源（photo-sources.ts + 下载 + 看图）；不给就只有作者手动加的 */
     source?: PhotoSource;
+    /** 吃的照片的来源（ADR 0128，photo-sources.ts 的 webFoodSource）；不给就没有吃的照片 */
+    foodSource?: FoodSource;
     /** 两次下载之间歇多久（毫秒，默认 PHOTO_DOWNLOAD_GAP_MS；Wikimedia 限流，测试里给 0） */
     pauseMs?: number;
 }
@@ -152,7 +171,7 @@ function readIndex(file: string, log: (message: string) => void): PhotoIndex {
         if (value?.version !== INDEX_VERSION || !Array.isArray(value.entries)) throw new Error('版本或结构不对');
         const entries = value.entries.filter(entry => typeof entry?.id === 'string' && /^[a-f0-9]{12}$/.test(entry.id)
             && typeof entry.file === 'string' && PHOTO_KINDS.includes(entry.kind) && typeof entry.caption === 'string' && entry.caption.trim()
-            && typeof entry.used === 'number');
+            && typeof entry.used === 'number' && (entry.dish === undefined || typeof entry.dish === 'string'));
         if (entries.length !== value.entries.length) log(`照片货架：${value.entries.length - entries.length} 条记录不合格，已忽略`);
         const seen = Array.isArray(value.seen) ? value.seen.filter((title): title is string => typeof title === 'string') : [];
         return { version: INDEX_VERSION, entries, seen };
@@ -174,11 +193,14 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
         writeFileSync(tmp, `${JSON.stringify(index, null, 2)}\n`, 'utf8');
         renameSync(tmp, indexFile);
     };
-    const present = (kind?: PhotoKind) => index.entries.filter(entry => (!kind || entry.kind === kind) && existsSync(join(filesDir, entry.file)));
+    // food 一类只算同一道菜的：没给菜名就是没有（不会拿别的菜的照片说是这一顿）
+    const present = (kind?: PhotoKind, dish?: string) => index.entries.filter(entry => (!kind || entry.kind === kind) && (kind !== 'food' || (dish !== undefined && entry.dish === dish)) && existsSync(join(filesDir, entry.file)));
     const publicOf = (entry: PhotoEntry): PublicPhoto => ({ ...entry, file: join(filesDir, entry.file) });
     const byId = (id: string) => index.entries.find(entry => entry.id === id.toLowerCase() && existsSync(join(filesDir, entry.file)));
 
     let discovering = false;
+    let discoveringFood = false;
+    const foodMissAt = new Map<string, number>();
     const extFor = (type: string) => (type === 'image/png' ? '.png' : type === 'image/webp' ? '.webp' : type === 'image/gif' ? '.gif' : '.jpg');
     const markSeen = (title: string) => {
         index = { ...index, seen: [...index.seen.filter(t => t !== title), title].slice(-SEEN_KEPT) };
@@ -264,6 +286,75 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                 discovering = false;
             }
         },
+        async discoverFood(dishes) {
+            const source = options.foodSource;
+            if (!source || discoveringFood) return 'done';
+            discoveringFood = true;
+            let outcome: 'done' | 'retry' = 'done';
+            let downloaded = 0;
+            try {
+                for (const dish of [...new Set(dishes)]) {
+                    if (present('food', dish).length >= FOOD_PER_DISH) continue;
+                    const missedAt = foodMissAt.get(dish);
+                    if (missedAt !== undefined && now().getTime() - missedAt < FOOD_MISS_RETRY_MS) continue;
+                    const seen = new Set(index.seen);
+                    const owned = new Set(index.entries.map(entry => entry.origin?.title).filter((t): t is string => Boolean(t)));
+                    const seenKey = (title: string) => `${dish}|${title}`;
+                    let fresh: PhotoCandidate[] = [];
+                    for (const offset of PAGE_OFFSETS) {
+                        let found: PhotoCandidate[];
+                        try { found = await source.search(dish, offset); } catch (error) {
+                            const reason = error instanceof Error ? error.message : String(error);
+                            options.log(`照片货架：找「${dish}」的照片失败（${reason}），下次再试`);
+                            if (TRANSIENT.test(reason)) outcome = 'retry';
+                            break;
+                        }
+                        fresh = found.filter(c => !seen.has(seenKey(c.title)) && !owned.has(c.title));
+                        if (fresh.length) break;
+                        if (!found.length) break;
+                    }
+                    if (!fresh.length) { if (outcome !== 'retry') foodMissAt.set(dish, now().getTime()); continue; }
+                    let tried = 0;
+                    for (const candidate of fresh) {
+                        if (tried >= FOOD_TRIES_PER_DISH || present('food', dish).length >= FOOD_PER_DISH) break;
+                        if (downloaded > 0) await new Promise(resolve => setTimeout(resolve, options.pauseMs ?? PHOTO_DOWNLOAD_GAP_MS));
+                        tried++;
+                        downloaded++;
+                        try {
+                            const image = await source.download(candidate.imageUrl);
+                            if (image.bytes.length < MIN_BYTES / 2) { markSeen(seenKey(candidate.title)); options.log(`照片货架：${candidate.title} 文件太小，不收`); continue; }
+                            if (image.bytes.length > PHOTO_MAX_BYTES) { markSeen(seenKey(candidate.title)); options.log(`照片货架：${candidate.title} 太大，不收`); continue; }
+                            const judged = await source.judge(image, dish);
+                            markSeen(seenKey(candidate.title));
+                            if (!judged.keep) { options.log(`照片货架：不收 ${candidate.title}（${dish}：${judged.reason ?? '没通过'}）`); continue; }
+                            const id = createHash('sha256').update(image.bytes).digest('hex').slice(0, 12);
+                            if (index.entries.some(entry => entry.id === id)) continue;
+                            mkdirSync(filesDir, { recursive: true });
+                            const file = `${id}${extFor(image.type)}`;
+                            writeFileSync(join(filesDir, file), image.bytes);
+                            const entry: PhotoEntry = {
+                                id, file, kind: 'food', dish, caption: judged.caption, addedAt: now().toISOString(), used: 0,
+                                origin: { title: candidate.title, page: candidate.pageUrl, license: candidate.license, artist: candidate.artist, series: dish },
+                            };
+                            index = { ...index, entries: [...index.entries, entry] };
+                            persist();
+                            options.log(`照片货架：收了一张「${dish}」（${id}；${candidate.width}×${candidate.height}，${candidate.license}；${candidate.title}）`);
+                        } catch (error) {
+                            const reason = error instanceof Error ? error.message : String(error);
+                            if (TRANSIENT.test(reason)) {
+                                options.log(`照片货架：处理 ${candidate.title} 时遇到暂时的错误（${reason}），这一轮先停，下次再来`);
+                                return 'retry';
+                            }
+                            markSeen(seenKey(candidate.title));
+                            options.log(`照片货架：处理 ${candidate.title} 失败（${reason}），以后不再试这张`);
+                        }
+                    }
+                }
+                return outcome;
+            } finally {
+                discoveringFood = false;
+            }
+        },
         add(source, kind, caption) {
             if (!PHOTO_KINDS.includes(kind)) throw new Error(`种类只能是 ${PHOTO_KINDS.join(' / ')}`);
             const text = caption.trim();
@@ -291,14 +382,16 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
             persist();
             return true;
         },
-        list: kind => present(kind),
-        has: kind => present(kind).length > 0,
-        prompt(kind) {
-            const list = present(kind)
+        list: (kind, dish) => present(kind, dish),
+        has: (kind, dish) => present(kind, dish).length > 0,
+        prompt(kind, dish) {
+            const list = present(kind, dish)
                 .sort((a, b) => a.used - b.used || Date.parse(a.lastUsedAt ?? a.addedAt) - Date.parse(b.lastUsedAt ?? b.addedAt))
                 .slice(0, PHOTO_SHORTLIST);
             if (!list.length) return undefined;
-            return `[你手机里${PHOTO_KIND_NAMES[kind]}的照片（都是以前拍的，别说成刚拍的；只能从下面选，编号不解释，一轮最多发一张）：发就另起一行单独写 <photo:编号>，这一行必须有，别的字不要塞在这一行里]\n`
+            // 吃的照片是这一顿饭拍的（ADR 0128），可以说“刚拍的”；别的照片都是以前拍的
+            const when = kind === 'food' ? `这一顿${dish ? `（${dish}）` : ''}你拍的照片，可以说是吃饭时拍的` : '都是以前拍的，别说成刚拍的';
+            return `[你手机里${PHOTO_KIND_NAMES[kind]}的照片（${when}；只能从下面选，编号不解释，一轮最多发一张）：发就另起一行单独写 <photo:编号>，这一行必须有，别的字不要塞在这一行里]\n`
                 + list.map(entry => `- <photo:${entry.id}>：${entry.caption}`).join('\n');
         },
         clean(reply, allow = true) {
@@ -335,7 +428,7 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
             persist();
         },
         status() {
-            const byKind = { cat: 0, view: 0, work: 0 } as Record<PhotoKind, number>;
+            const byKind = { cat: 0, view: 0, work: 0, food: 0 } as Record<PhotoKind, number>;
             for (const entry of present()) byKind[entry.kind]++;
             return { count: present().length, byKind };
         },
@@ -352,12 +445,18 @@ const SHOW_WORDS = /看看|瞧瞧|康康|看下|看一下|发(?:来|过来|给�
 const CAT_WORDS = /土豆|猫|喵|三花/;
 const VIEW_WORDS = /风景|天空|夕阳|落日|晚霞|窗外|云|月亮|下雪|雪景|雨景|路上/;
 const WORK_WORDS = /你拍的|你修的|作品|片子|相机里|拍的照片|修的图|摄影/;
+/** 要看吃的（ADR 0128）：吃的 / 饭 / 菜 / 外卖 / 食堂 / 具体的一餐；比“你拍的”优先（「拍给我看看你吃的」） */
+const FOOD_WORDS = /吃的|吃了啥|吃什么|午饭|晚饭|这顿|那顿|饭菜|外卖|食堂|饭呢|你的饭|吃啥/;
 const SELF_WORDS = /自拍|你的脸|你长啥|你长什么|看看你|想看你|看你本人|穿.{0,4}给我看|你现在的样子|你在干嘛的照片/;
+/** 明确要她本人（脸、自拍、样子）的说法：带吃的字眼也不放行 */
+const HARD_SELF_WORDS = /自拍|你的脸|你长啥|你长什么|看你本人|穿.{0,4}给我看|你现在的样子|你在干嘛的照片/;
 export function photoWanted(text: string): PhotoKind | 'any' | undefined {
     if (!SHOW_WORDS.test(text)) return undefined;
-    if (SELF_WORDS.test(text)) return undefined;
+    // 「看看你吃的」是要看饭，不是要看她本人（ADR 0128）：有吃的字眼、又没有明确要她的脸 / 自拍时放行
+    if (SELF_WORDS.test(text) && !(FOOD_WORDS.test(text) && !HARD_SELF_WORDS.test(text))) return undefined;
     if (CAT_WORDS.test(text)) return 'cat';
     if (VIEW_WORDS.test(text)) return 'view';
+    if (FOOD_WORDS.test(text)) return 'food';
     if (WORK_WORDS.test(text)) return 'work';
     return /照片|图|相片/.test(text) ? 'any' : undefined;
 }
@@ -382,5 +481,6 @@ export function photoAllowance(
 
 /** 这一轮的意图行：他要看的照片她有，就发；先带一句，再另起一行放照片 */
 export function photoIntent(kind: PhotoKind): string {
+    if (kind === 'food') return '[这一轮你想：他想看你吃的饭，你吃饭时刚好拍了：先用一句话带一下（说是哪一顿、吃的什么，看「你那边」吃的那一行，没写的细节不编），然后另起一行单独发照片；不用解释，别多说]';
     return `[这一轮你想：他想看${PHOTO_KIND_NAMES[kind]}的照片，你手机里正好有，翻出来发给他：先用一句话带一下（像随手翻出来的，是以前拍的，别说成刚拍的、别说“现在拍”），然后另起一行单独发照片；不用解释照片怎么来的，别多说]`;
 }

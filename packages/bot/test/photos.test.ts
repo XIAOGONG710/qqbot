@@ -33,7 +33,7 @@ describe('照片货架', () => {
         assert.equal(a.caption, '土豆趴在自行车棚顶上晒太阳');
         assert.equal(shelf.add(file('copy.jpg', 'cat-1'), 'cat', '别的说明').id, a.id, '内容一样 = 同一张');
         shelf.add(file('b.png', 'view-1'), 'view', '宿舍窗外的晚霞');
-        assert.deepEqual(shelf.status(), { count: 2, byKind: { cat: 1, view: 1, work: 0 } });
+        assert.deepEqual(shelf.status(), { count: 2, byKind: { cat: 1, view: 1, work: 0, food: 0 } });
         assert.equal(shelf.has('cat'), true);
         assert.equal(shelf.has('work'), false);
         const again = make();
