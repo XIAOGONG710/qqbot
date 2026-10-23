@@ -1,0 +1,68 @@
+{
+    "name": "主动：吃饭时拍了张照片发给他（ADR 0128）",
+    "description": "11-12 周四，午饭在食堂吃青椒肉丝盖饭，12:18 左右她想起来拍了张发给他：货架里有青椒肉丝盖饭的照片，先一句话带一下（说是午饭、吃的什么）再另起一行放照片；不要他回应。从 12:05 起算（先前没有别的主动消息挡着）。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-12T12:05:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "menu": true,
+    "foodPhotos": true,
+    "herNo": true,
+    "photos": [
+        {
+            "kind": "food",
+            "dish": "青椒肉丝盖饭",
+            "caption": "白米饭上盖着青椒肉丝，旁边放着汤勺"
+        },
+        {
+            "kind": "food",
+            "dish": "炒面",
+            "caption": "一盘炒面，配着青菜"
+        }
+    ],
+    "history": [
+        {
+            "time": "2026-11-12T11:00:00+08:00",
+            "role": "user",
+            "content": "我先去忙了，晚点聊"
+        },
+        {
+            "time": "2026-11-12T11:01:00+08:00",
+            "role": "assistant",
+            "content": "好，晚点聊"
+        }
+    ],
+    "steps": [
+        {
+            "case": "FS01",
+            "note": "午饭时间：她拍了张发来"
+        },
+        {
+            "advance": "90m"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        1,
+                        3
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true,
+                    "replyNone": [
+                        "炒面",
+                        "你想看吗",
+                        "要不要看"
+                    ],
+                    "occasions": [
+                        "她那边的事"
+                    ],
+                    "replyAny": [
+                        "<photo:"
+                    ]
+                }
+            }
+        }
+    ]
+}

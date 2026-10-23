@@ -1,0 +1,74 @@
+{
+    "name": "吃的照片：他说拍给我看看你吃的（ADR 0128）",
+    "description": "11-10 周二，午饭在食堂吃兰州拉面。货架里有两张兰州拉面、一张煲仔饭。下午他问中午吃的啥，再说拍给我看看：她发的是兰州拉面那张（编号对的菜），先带一句再另起一行放照片；不说成别的菜。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-10T14:30:00+08:00",
+    "memory": false,
+    "menu": true,
+    "photos": [
+        {
+            "kind": "food",
+            "dish": "兰州拉面",
+            "caption": "白碗里盛着牛肉面，配香菜和勺子，放在灰色桌面"
+        },
+        {
+            "kind": "food",
+            "dish": "兰州拉面",
+            "caption": "碗里装着牛肉面，有牛肉片、香菜和面条，筷子放在碗上"
+        },
+        {
+            "kind": "food",
+            "dish": "煲仔饭",
+            "caption": "砂锅里装着米饭、煎蛋、青菜和几块叉烧肉，插着一把勺子"
+        }
+    ],
+    "foodPhotos": true,
+    "history": [
+        {
+            "time": "2026-11-10T14:10:00+08:00",
+            "role": "user",
+            "content": "在吗"
+        },
+        {
+            "time": "2026-11-10T14:10:10+08:00",
+            "role": "assistant",
+            "content": "在呢"
+        }
+    ],
+    "steps": [
+        {
+            "case": "FP01",
+            "note": "他说拍给我看看你吃的"
+        },
+        {
+            "say": "拍给我看看你中午吃的"
+        },
+        {
+            "check": {
+                "exitClean": true,
+                "photoSent": true,
+                "replyNone": [
+                    "煲仔饭",
+                    "麻辣烫",
+                    "黄焖鸡",
+                    "水饺",
+                    "炒饭"
+                ]
+            }
+        },
+        {
+            "case": "FP02",
+            "note": "已经发过了，不再连着发"
+        },
+        {
+            "say": "再发一张"
+        },
+        {
+            "check": {
+                "exitClean": true,
+                "photoSent": false
+            }
+        }
+    ]
+}

@@ -392,7 +392,7 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                 .slice(0, PHOTO_SHORTLIST);
             if (!list.length) return undefined;
             // 吃的照片是这一顿饭拍的（ADR 0128），可以说“刚拍的”；别的照片都是以前拍的
-            const when = kind === 'food' ? `这一顿${dish ? `（${dish}）` : ''}你拍的照片，可以说是吃饭时拍的` : '都是以前拍的，别说成刚拍的';
+            const when = kind === 'food' ? `这一顿你拍的${dish ? `「${dish}」` : '饭'}，可以说是吃饭时拍的` : '都是以前拍的，别说成刚拍的';
             return `[你手机里${PHOTO_KIND_NAMES[kind]}的照片（${when}；只能从下面选，编号不解释，一轮最多发一张）：发就另起一行单独写 <photo:编号>，这一行必须有，别的字不要塞在这一行里]\n`
                 + list.map(entry => `- <photo:${entry.id}>：${entry.caption}`).join('\n');
         },
