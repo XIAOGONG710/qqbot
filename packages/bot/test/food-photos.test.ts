@@ -137,7 +137,7 @@ describe('货架：按菜名收、按菜名发', () => {
         await shelf.discoverFood(['炒饭', '麻辣烫']);
         const prompt = shelf.prompt('food', '炒饭')!;
         assert.ok(prompt.includes('一碗炒饭放在木桌上') && !prompt.includes('一碗麻辣烫'), prompt);
-        assert.match(prompt, /这一顿（炒饭）你拍的照片，可以说是吃饭时拍的/);
+        assert.match(prompt, /这一顿你拍的「炒饭」，可以说是吃饭时拍的/);
         assert.doesNotMatch(prompt, /别说成刚拍的/);
         assert.equal(shelf.prompt('food'), undefined);
         assert.equal(shelf.prompt('food', '水饺'), undefined);
