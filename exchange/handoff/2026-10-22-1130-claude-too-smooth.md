@@ -146,3 +146,7 @@
 - 做法：每天 14 点后她自己看一个视频（按口味搜，读字幕摘要 + 两条热评，存 `watching/watched.json`）；新看的视频下一次想事情就专门想这一件（`forceWatch`，想完记 `inner.reflected`）；他问到“最近看了什么”才把最近两条给她。
 - 数据：只加可选题目时 20 个念头 1 个落到视频；改成专门想以后 5 次 4 次第一个念头就有立场（「开局出拳套这个思路我服……不过对面要是怂着不打，那不白出了？」）。聊天那边 5 次 4 次接得上（1 次是检查没认「看游戏」）。
 - 开关汇总（全部默认关、未上线）：menu / curious / smallNews / foodPhotos / memes / watching。
+
+## 10-23 20:33 即将重启上线：`d0ef24e`（ADR 0125–0130，六个开关一起开）
+- 用户说「都上线并开启」。线上 `4691545` → `d0ef24e`；61 个文件，全在允许路径内；koishi.yml 在 `weeklyReport: true` 后加六行：`menu` `foodPhotos` `curious` `smallNews` `memes` `watching` 都是 true；备份 `runtime/backup-pre-bili25-*`。回滚：六个开关改 false + 重启，或 `git reset --hard 4691545` + 还原 `koishi.yml.bak-bili25-*`。
+- 注意：`menu` / `foodPhotos` 从第二天（10-24）起才有菜名和照片；`memes` 启动时就会读榜、学一轮；`watching` 14 点后才看，今天 20:33 已过 14 点，重启后就会看一个。
