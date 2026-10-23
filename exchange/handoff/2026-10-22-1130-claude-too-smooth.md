@@ -183,3 +183,6 @@
 ## 10-23 22:17 结果：`bee3768` 已上线
 - 线上 `ae7747e` → `bee3768`，一次到位：心跳 ref = `bee3768…`、connectedAt 14:16:22Z；step 7（删维护标记、推 main / integration）已做。备份 `runtime/backup-pre-bili29-*`，回滚 `git reset --hard ae7747e`，脚本 `golive-bili29.ps1`。无配置变化。
 - 用户随后说「现在的她还不够真实」（没点具体哪一项）。下一步按证据找剩下的“人机感”，真模型模拟保持小量（`--runs 2–3`）。
+
+## 10-23 22:37 即将重启上线：`40dd0f5`（卡：空闲活动「逛淘宝，购物车加了又删」→「逛淘宝」）
+- 用户说「上线」。线上 `bee3768` → `40dd0f5`；17 个文件（13 张卡各 1 行 + schedule.yml + ADR 0133 状态 + 2 个 sim），没有配置变化。备份 `runtime/backup-pre-bili30-*`。回滚 `git reset --hard bee3768`。
