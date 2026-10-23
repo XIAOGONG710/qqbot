@@ -414,6 +414,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.curious ? { curious: true } : {}),
         ...(scenario.interruptions ? { interruptions: true } : {}),
         ...(scenario.jokes?.length ? { jokes: () => scenario.jokes! } : {}),
+        ...(scenario.memes?.length ? { memes: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); } } : {}),
         ...(scenario.herNo ? { herNo: true } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),
         ...(scenario.everydayLife ? { everydayLife: true } : {}),

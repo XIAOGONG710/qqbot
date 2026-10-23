@@ -289,6 +289,8 @@ export interface Scenario {
     proactiveAsk: boolean;
     /** 默认 false：被第三方打断（ADR 0115，配置 interruptions） */
     interruptions: boolean;
+    /** 预置的网络热梗（ADR 0129，配置 memes）：写了才打开；跑场景时不去学，直接用这几个 */
+    memes?: { term: string; meaning: string }[];
     /** 默认 false：吃的照片（ADR 0128，配置 foodPhotos；要 photos 和 menu）；photos 里写 kind food + dish */
     foodPhotos: boolean;
     /** 默认 false：她会主动讲今天的小事（ADR 0127，配置 smallNews；要 everydayLife）；proactive 场景用 */
@@ -427,6 +429,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         proactiveAsk: s.proactiveAsk === true,
         hisHours: s.hisHours === true,
         ...(Array.isArray(s.jokes) && s.jokes.length ? { jokes: (s.jokes as { phrase?: unknown; origin?: unknown }[]).filter(j => typeof j.phrase === 'string' && typeof j.origin === 'string').map(j => ({ phrase: j.phrase as string, origin: j.origin as string })) } : {}),
+        ...(Array.isArray(s.memes) && s.memes.length ? { memes: (s.memes as { term?: unknown; meaning?: unknown }[]).filter(m => typeof m.term === 'string' && typeof m.meaning === 'string').map(m => ({ term: m.term as string, meaning: m.meaning as string })) } : {}),
         innerLife: s.innerLife === true,
         herFeelings: s.herFeelings === true,
         herNo: s.herNo === true,

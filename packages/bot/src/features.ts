@@ -50,6 +50,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'photoShares', label: '喂完土豆发张照片', group: '主动找他', adr: '0110' },
     { key: 'comeBack', label: '说了等下之后回来', group: '主动找他', adr: '0112' },
     { key: 'hisHours', label: '按他在线的钟头排', group: '主动找他', adr: '0117' },
+    { key: 'memes', label: '知道网上的热梗', group: '说话', adr: '0129' },
     { key: 'foodPhotos', label: '吃的照片（这一顿拍给他看）', group: '照片和表情', adr: '0128' },
     { key: 'smallNews', label: '主动讲今天的小事', group: '主动找他', adr: '0127' },
     { key: 'proactiveRoom', label: '给主动名额留余地（晚安不占、留一个给随口说）', group: '主动找他', adr: '0124' },

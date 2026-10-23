@@ -82,6 +82,7 @@ export const DEFAULTS = {
     curious: false,
     smallNews: false,
     foodPhotos: false,
+    memes: false,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -318,6 +319,12 @@ export interface AppConfig {
      * 他说“拍给我看看你吃的”时发这一顿这道菜的；主动那边（要主动消息开着）约每顿 18% 吃完饭拍了张发给他。没有这道菜的照片就不发（她那顿“没拍”）。只对男朋友档。默认关
      */
     foodPhotos: boolean;
+    /**
+     * 网络热梗（ADR 0129，要 bilibiliAccount 开着才会自己去学）：她的知识停在模型训练的那一天，网上现在流行的梗她一个都不知道。
+     * 开了以后每 12 小时读一次 B 站热门 / 热搜、微博热搜、百度热榜，挑出可能是梗的词，用她的 B 站号搜「<词> 什么梗」、读字幕当证据，只根据证据写意思（把握不到中 / 不适合聊天的不收）；
+     * 聊天里他用到库里的梗，她知道意思、顺着接；没用到时约 20% 的轮次给她看最近的几个，想用就自然地用。只对男朋友档。默认关
+     */
+    memes: boolean;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -610,6 +617,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         curious: bool(file, 'curious', '', DEFAULTS.curious),
         smallNews: bool(file, 'smallNews', '', DEFAULTS.smallNews),
         foodPhotos: bool(file, 'foodPhotos', '', DEFAULTS.foodPhotos),
+        memes: bool(file, 'memes', '', DEFAULTS.memes),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),

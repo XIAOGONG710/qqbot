@@ -22,6 +22,7 @@
 - `time-context.ts`
 - `relationship.ts`
 - `jokes.ts`
+- `memes.ts`
 - `interruption.ts`
 - `together.ts`
 - `jealousy.ts`
@@ -51,6 +52,7 @@
 | `together` | 陪玩状态 | [ADR 0111](../adr/0111-together.md) |
 | `jealousy` | 吃醋（最轻一档） | [ADR 0123](../adr/0123-jealousy.md) |
 | `curious` | 会追问（问他刚说的那件事） | [ADR 0126](../adr/0126-curious.md) |
+| `memes` | 知道网上的热梗 | [ADR 0129](../adr/0129-memes.md) |
 
 ## 看它有没有变好
 
