@@ -6,6 +6,8 @@
 // 聊天时最近的几个念头也会放进提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事（不编事实）。
 // 纯函数 + 状态校验；什么时候想、调模型、存盘在 proactive-planner.ts。
 
+import { stiltedHit } from './expression.ts';
+
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 
@@ -98,7 +100,7 @@ export function thinkNote(recent: readonly InnerThought[], userName: string, ind
         + `${retry ? '（上一次你写成了对他说话，这次只对自己说。）' : ''}`
         + `${saw}${watched && forceWatch ? `这一次就想这一件：${WATCH_THEME}。` : `这一次从这两样里挑一样想：①${a}；②${b}。`}别围着“他怎么还没回”转（他忙他的，你有你的事）。`
         + `只写感受和想法，不写新发生的事（上面没写的事实不编，不编${userName}说过的话，不编他身边的人和他那边的事），也不分析自己是不是真人、有没有意识。`
-        + `${before}输出两行：第一行是心里的话（不超过 50 个字）；第二行只写「告诉他」「问他」「自己想想」其中一个，表示这个念头你想不想拿去跟${userName}说：想说给他听选「告诉他」，想问他一件具体的事选「问他」，先放在心里选「自己想想」；想说就别憋着，但也别每个念头都说。]`;
+        + `${before}输出两行：第一行是心里的话（不超过 30 个字，半句也行，像小声嘀咕；用最平常的口语，别用成语，别写“我服”“我认”“我给满分”这类表态的词，别写成总结或评语）；第二行只写「告诉他」「问他」「自己想想」其中一个，表示这个念头你想不想拿去跟${userName}说：想说给他听选「告诉他」，想问他一件具体的事选「问他」，先放在心里选「自己想想」；想说就别憋着，但也别每个念头都说。]`;
 }
 /** 字对的重合比例（0–1）：两句话的二字组合里共有的占较短那句的比例 */
 export function similarity(a: string, b: string): number {
@@ -151,6 +153,8 @@ export function parseThought(raw: string, recent: readonly InnerThought[], at: n
     if (text.includes('你')) return { rejected: '对他说话' };
     // 开头叫他的名字（「宝宝，人呢」）也是对他说话
     if (callName && (text.startsWith(callName) || text.startsWith('宝宝')) && /^[^，,。.！!？?\s]{1,6}[，,\s]/.test(text)) return { rejected: '对他说话' };
+    // 书面腔 / 模型腔（「这思路我服」「头头是道」，ADR 0130 的验证里写出来的）：不收，让调用方换个写法再想一次
+    if (stiltedHit(text)) return { rejected: '书面腔' };
     if (recent.some(t => similarity(t.text, text) >= SIMILAR)) return { rejected: '和最近的重复' };
     return { thought: { id: `th-${at}`, at: new Date(at).toISOString(), text, goes } };
 }

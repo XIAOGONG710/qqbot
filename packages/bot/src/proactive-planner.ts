@@ -555,8 +555,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
                 return;
             }
             parsed = parseThought(outcome.text, inner.thoughts.slice(-8), started, contact.name);
-            if (!('rejected' in parsed) || parsed.rejected !== '对他说话') break;
-            deps.log(`内心${tag}：写成了对他说话，${retry ? '不留' : '再想一次'}`);
+            if (!('rejected' in parsed) || (parsed.rejected !== '对他说话' && parsed.rejected !== '书面腔')) break;
+            deps.log(`内心${tag}：写成了${parsed.rejected === '书面腔' ? '书面腔' : '对他说话'}，${retry ? '不留' : '再想一次'}`);
         }
         thinkRetryAt = undefined;
         inner = { ...inner, lastThinkAt: new Date(started).toISOString() };

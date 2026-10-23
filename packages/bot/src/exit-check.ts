@@ -166,7 +166,11 @@ export function inspectReply(reply: string, banned: readonly string[], speech?: 
         const promise = PROMISE.exec(text.trim().replace(DM_SENT, '私信'));
         // 这一条回复里真带着一张照片（photos.ts 已校验过编号）：“翻出来给你看”“发你”说的就是它，不算她做不到的承诺
         if (promise && !(imageStickers && /表情包/.test(text)) && !PHOTO_TOKEN.test(reply)) issues.push({ line, kind: 'promise', match: promise[0] });
-        for (const word of banned) if (text.includes(word)) issues.push({ line, kind: 'banned', match: word });
+        // banned 里以“re:”开头的是正则（书面腔 / 模型腔，expression.ts 的 STILTED_WORDS），其余是子串
+        for (const word of banned) {
+            const hit = word.startsWith('re:') ? new RegExp(word.slice(3)).exec(text)?.[0] : text.includes(word) ? word : undefined;
+            if (hit) issues.push({ line, kind: 'banned', match: hit });
+        }
         // QQ 里没有的表情：平时 tidyFaces 已经去掉，还在的是去掉就什么都不剩的
         for (const token of new Set(facesIn(text).unknown)) issues.push({ line, kind: 'face', face: 'unknown', match: token });
     }
