@@ -11,6 +11,7 @@
 - `shape.ts`
 - `expression.ts`
 - `exit-check.ts`
+- `fact-check.ts`
 - `speech-check.ts`
 - `candidates.ts`
 - `humanness.ts`
@@ -49,6 +50,7 @@
 | `herNo` | 会拒绝 | [ADR 0103](../adr/0103-her-no.md) |
 | `moody` | 看心情不回 | [ADR 0013](../adr/0013-old-project-advice.md) |
 | `speechCheck` | 说话的毛病（出口检查） | [ADR 0014](../adr/0014-speech-habits.md) |
+| `factCheck` | 逐条事实检查（编的说法 / 对不上事实）（模式） | [ADR 0137](../adr/0137-fact-check.md) |
 | `relationship` | 关系阶段（聊得多了更放得开） | [ADR 0113](../adr/0113-relationship-stage.md) |
 | `jokes` | 小梗回头提 | [ADR 0114](../adr/0114-running-jokes.md) |
 | `interruptions` | 被第三方打断 | [ADR 0115](../adr/0115-interruptions.md) |
@@ -64,4 +66,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0091](../adr/0091-reply-shape.md)、[ADR 0095](../adr/0095-filler-turns.md)、[ADR 0096](../adr/0096-split-and-share.md)、[ADR 0099](../adr/0099-too-smooth.md)、[ADR 0113](../adr/0113-relationship-stage.md)、[ADR 0114](../adr/0114-running-jokes.md)、[ADR 0115](../adr/0115-interruptions.md)、[ADR 0111](../adr/0111-together.md)、[ADR 0121](../adr/0121-odd-words.md)
+[ADR 0091](../adr/0091-reply-shape.md)、[ADR 0095](../adr/0095-filler-turns.md)、[ADR 0096](../adr/0096-split-and-share.md)、[ADR 0099](../adr/0099-too-smooth.md)、[ADR 0113](../adr/0113-relationship-stage.md)、[ADR 0114](../adr/0114-running-jokes.md)、[ADR 0115](../adr/0115-interruptions.md)、[ADR 0111](../adr/0111-together.md)、[ADR 0121](../adr/0121-odd-words.md)、[ADR 0137](../adr/0137-fact-check.md)

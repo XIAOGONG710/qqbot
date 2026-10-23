@@ -38,6 +38,8 @@ const filler = flag('--filler');
 const split = flag('--split');
 // 情绪轮（ADR 0099）：同时打开 shape
 const feel = flag('--feel');
+// 逐条事实检查（ADR 0137）：对所有场景打开，log 只查只记、fix 查到就重写；不写按场景自己的
+const factOption = option('--fact');
 const cardDir = option('--card');
 const pinExamples = option('--pin-examples');
 const tag = option('--tag');
@@ -50,9 +52,13 @@ const contextTurnsOption = option('--context-turns');
 const contextStepOption = option('--context-step');
 const contextTurns = contextTurnsOption === undefined ? undefined : { turns: Number(contextTurnsOption), step: Number(contextStepOption ?? 4) };
 const parallel = parallelOption === undefined ? undefined : Number(parallelOption);
+if (factOption !== undefined && !['off', 'log', 'fix'].includes(factOption)) {
+    console.error('--fact 应为 off / log / fix');
+    process.exit(2);
+}
 if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))
     || (contextTurns && ![contextTurns.turns, contextTurns.step].every(n => Number.isInteger(n) && n >= 1))) {
-    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--shape] [--agenda] [--filler] [--feel] [--split] [--context-turns N [--context-step K]]');
+    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--shape] [--agenda] [--filler] [--feel] [--split] [--fact off|log|fix] [--context-turns N [--context-step K]]');
     process.exit(2);
 }
 
@@ -83,7 +89,7 @@ const root = join(repoRoot, 'runtime', 'sim', stamp);
 mkdirSync(root, { recursive: true });
 
 let failed = 0;
-const usage = { generations: 0, tokens: 0 };
+const usage = { generations: 0, tokens: 0, audits: 0, auditChars: 0 };
 for (const [fileIndex, file] of files.entries()) {
     const scenario = loadScenario(file);
     const card = loadTierCard(config.characterCard, cardKey({ tier: scenario.tier, knowsBot: scenario.knowsBot }), { ...(scenario.everydayLife ? { everydayLife: true, ...(scenario.everydayFrom ? { everydayFrom: scenario.everydayFrom } : {}) } : {}), ...(scenario.menu ? { menu: true, ...(scenario.menuFrom ? { menuFrom: scenario.menuFrom } : {}) } : {}) });
@@ -110,6 +116,7 @@ for (const [fileIndex, file] of files.entries()) {
             ...(filler ? { shapeFiller: true } : {}),
             ...(feel ? { shapeFeel: true } : {}),
             ...(split ? { shapeSplit: true } : {}),
+            ...(factOption ? { factCheck: factOption as 'off' | 'log' | 'fix' } : {}),
             ...(diaryWorld ? { diaryWorld } : {}),
             ...(diaryWorldSchedule ? { diaryWorldSchedule } : {}),
             hindsight,
@@ -123,12 +130,13 @@ for (const [fileIndex, file] of files.entries()) {
     });
     for (const [i, result] of results.entries()) {
         for (const step of result.steps) for (const generation of step.generations) { usage.generations++; usage.tokens += generation.tokens ?? 0; }
+        for (const step of result.steps) for (const fact of step.facts ?? []) { usage.audits++; usage.auditChars += fact.chars; }
         failed += result.checks.failed;
         console.log(`  r${i + 1}：检查 ${checkSummary(result.checks)} · ${exitSummary(result)} → ${join(result.dataDir, 'report.md')}`);
     }
 }
 // 用量小计（10-23 用户：「昨天的花费好像有点高」——实测 10-22 的 4,800 次生成、约 2,500 万输入 token 几乎都是模拟，线上自己一天只有几十次）：每次跑完看一眼，别在不知道的情况下烧
-console.log(`用量小计：这次共 ${usage.generations} 次模型生成（聊天 / 主动 / 内心；不含看图、抽取、记忆），输入约 ${(usage.tokens / 1e6).toFixed(2)} 百万 token（估法同 tokens.ts；DeepSeek 有上下文缓存，实际更便宜）`);
+console.log(`用量小计：这次共 ${usage.generations} 次模型生成（聊天 / 主动 / 内心；不含看图、抽取、记忆），输入约 ${(usage.tokens / 1e6).toFixed(2)} 百万 token（估法同 tokens.ts；DeepSeek 有上下文缓存，实际更便宜）${usage.audits ? `；另有 ${usage.audits} 次事实审稿，输入约 ${(usage.auditChars / 1.6 / 1e6).toFixed(2)} 百万 token（按每 token 约 1.6 个字符估）` : ''}`);
 process.exit(failed > 0 ? 1 : 0);
 
 /** 跑 count 次 job，同时最多 width 个；结果按次序返回 */

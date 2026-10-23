@@ -14,6 +14,7 @@ import { STICKER_ONLY_SHARE, stickerShelf } from '../stickers.ts';
 import { MEET_MINUTES, promiseKeeper } from '../promises.ts';
 import { writeJsonAtomic } from '../json-file.ts';
 import { ChatHistory, type StoredMessage } from '../history.ts';
+import type { FactRecord } from '../fact-check.ts';
 import { chatCompletion, forExtraction } from '../llm.ts';
 import type { Log } from '../log.ts';
 import type { HindsightApi } from '../memory/hindsight.ts';
@@ -92,6 +93,8 @@ export interface RunOptions {
     shapeFeel?: boolean;
     /** 分成几条（ADR 0096）：run.ts 的 --split 对所有场景打开，同时打开 shape */
     shapeSplit?: boolean;
+    /** 逐条事实检查的档位（ADR 0137，run.ts 的 --fact）：覆盖场景自己写的；不传按场景 */
+    factCheck?: 'off' | 'log' | 'fix';
     /** 日记里的世界（ADR 0026）：同学档的卡上的，run.ts 传 */
     diaryWorld?: World;
     /** 和 diaryWorld 同一档的作息（ADR 0034） */
@@ -140,6 +143,8 @@ export interface StepRecord {
     advance?: string;
     life?: string;
     action?: string;
+    /** 逐条事实检查的记录（ADR 0137，场景里 factCheck 开着才有） */
+    facts?: FactRecord[];
 }
 
 export interface RunResult {
@@ -415,6 +420,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.curious ? { curious: true } : {}),
         ...(scenario.texture ? { texture: true } : {}),
         ...(scenario.quoteReply ? { quoteReply: true, ...(scenario.quoteShare !== undefined ? { quoteShare: scenario.quoteShare } : {}) } : {}),
+        // 逐条事实检查（ADR 0137）：审稿的调用走场景自己的模型（假模型也行）；每次的记录进这一步，报告里看得到
+        ...((options.factCheck ?? scenario.factCheck) !== 'off' ? {
+            factCheck: options.factCheck ?? scenario.factCheck,
+            factAudit: (messages: OpenAIMessage[]) => (options.generate ? options.generate(messages, log) : chatCompletion({ ...forExtraction(options.llm), temperature: 0 }, messages, { log })),
+            onFactCheck: (record: FactRecord) => { (current.facts ??= []).push(record); },
+        } : {}),
         ...(scenario.interruptions ? { interruptions: true } : {}),
         ...(scenario.jokes?.length ? { jokes: () => scenario.jokes! } : {}),
         ...(scenario.watched?.length ? { watched: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); } } : {}),

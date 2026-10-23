@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { MEDIA_TIMEOUTS } from './media.ts';
 import { FESTIVAL_MODES, type FestivalMode } from './festivals.ts';
+import { FACT_CHECK_MODES, type FactCheckMode } from './fact-check.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from './presence.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from './proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from './st/prompt-converters.ts';
@@ -87,6 +88,7 @@ export const DEFAULTS = {
     texture: false,
     biliStickers: false,
     quoteReply: false,
+    factCheck: 'off' as FactCheckMode,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -352,6 +354,12 @@ export interface AppConfig {
      * 他自己 654 条消息里引用过 1 次，所以这是很少出现的事。引用发不出去就去掉引用再发一次。默认关
      */
     quoteReply: boolean;
+    /**
+     * 逐条事实检查（ADR 0137）：她最容易露馅的是编——事实里只有“土豆今天没下楼”，她写“土豆一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。
+     * 回复发出去之前，让模型当审稿员把回复拆成关于她自己 / 她身边世界的一条条具体说法，对照设定、这一轮的事实和聊天记录，找出“矛盾”和“事实里根本没有”的（每个回复多一次小调用，温度 0）。
+     * off 不查；log 只查、只在日志里记几条（敏感调试关着时只记条数），回复照发——先看误报多不多；fix 有问题就带说明重写一次，重写后再查，还有就删那几行。危机回合不查。查不成一律照发。默认 off
+     */
+    factCheck: FactCheckMode;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -649,6 +657,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         texture: bool(file, 'texture', '', DEFAULTS.texture),
         biliStickers: bool(file, 'biliStickers', '', DEFAULTS.biliStickers),
         quoteReply: bool(file, 'quoteReply', '', DEFAULTS.quoteReply),
+        factCheck: oneOf(file.factCheck, 'factCheck', FACT_CHECK_MODES, DEFAULTS.factCheck),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),

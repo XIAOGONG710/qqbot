@@ -10,7 +10,8 @@ import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config
 import { disclosureRules, isClose, sourceLabel, startsConversation, todayStart } from './disclosure.ts';
 import { faceContext, reviewCrisisReply, reviewReply, type ReviewOptions } from './exit-check.ts';
 import type { ChatHistory, StoredMessage } from './history.ts';
-import { chatCompletion } from './llm.ts';
+import { checkFacts, type FactCheckMode, type FactRecord } from './fact-check.ts';
+import { chatCompletion, forExtraction } from './llm.ts';
 import type { Log } from './log.ts';
 import { CLEAR_DAYS, recentChat, type FadeStats } from './memory/fading.ts';
 import { heardSinceReply, initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from './memory/long-term.ts';
@@ -129,6 +130,12 @@ export interface ContactPipelineOptions {
     send: (userId: number, text: string, options?: { replyTo?: number }) => Promise<number>;
     /** 引用回复（ADR 0136，配置 quoteReply）：他连发里有个不是最后一条的问题时，第一条引用它来回；打错字撤回失败补「*对的词」时有时引用那条错的 */
     quoteReply?: boolean;
+    /** 逐条事实检查（ADR 0137，配置 factCheck）：log 只查、记日志；fix 有对不上事实的说法就带说明重写一次。不传 / off 不查 */
+    factCheck?: FactCheckMode;
+    /** 审稿用的模型调用（默认同一个模型、温度 0；模拟器 / 测试换成自己的） */
+    factAudit?: (messages: OpenAIMessage[]) => Promise<string>;
+    /** 每次事实检查的记录（模拟器的报告用） */
+    onFactCheck?: (record: FactRecord) => void;
     /** 引用的概率（默认 QUOTE_SHARE；模拟器场景可以调来测）*/
     quoteShare?: number;
     /** 她打字的这段时间让对方那边显示「正在输入…」（ADR 0077，配置 typingStatus）；不给就不显示 */
@@ -300,6 +307,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let textureNow: { said: string; serious: boolean; recentFaces: number; recentTildes: number } | undefined;
     /** 这一轮第一条要引用他的哪一句（ADR 0136，配置 quoteReply）：buildPrompt 按他没回的那一串定，紧跟着发送时现取 */
     let quoteNow: QuotePlan | undefined;
+    /** 这一轮拼出来的提示词（ST 后处理之前，system 还是 system）：事实检查拿它当“她能依据的事实”（ADR 0137） */
+    let promptSource: OpenAIMessage[] | undefined;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -755,6 +764,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 },
                 countTokens: estimateTokens,
             });
+            promptSource = prompt.messages;
             return {
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
@@ -791,9 +801,17 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         },
         review: async (reply, messages, reviewContext) => {
             const regenerate = async (note: string) => clean(await generate(postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names), log));
+            // 逐条事实检查（ADR 0137）：先于出口检查——重写出来的话还要过出口检查这一关；危机回合、固定说法（allowRepeat）不查
+            const factual = options.factCheck && options.factCheck !== 'off' && !crisisNow && !reviewContext?.allowRepeat && promptSource
+                ? await checkFacts(reply, {
+                    mode: options.factCheck, source: promptSource, names,
+                    audit: options.factAudit ?? ((auditMessages: OpenAIMessage[]) => chatCompletion({ ...forExtraction(llm), temperature: 0 }, auditMessages, { log })),
+                    regenerate, log, ...(options.onFactCheck ? { onRecord: options.onFactCheck } : {}),
+                })
+                : reply;
             const reviewed = await (crisisNow
                 ? (text: string, reviewOptions: ReviewOptions) => reviewCrisisReply(text, reviewOptions, crisisNow!.level)
-                : reviewReply)(reply, {
+                : reviewReply)(factual, {
                 // 角色卡的禁用词 + 医书里的词（“肚子坠着”之类，expression.ts 的 ODD_BODY_WORDS）：出了就让她重写
                 banned: [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS],
                 userName: contact.name,

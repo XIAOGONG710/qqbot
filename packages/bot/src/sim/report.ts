@@ -125,6 +125,11 @@ function renderExchange(step: StepRecord, dayPrefix: (time: number) => string): 
         ...step.bubbles.map(b => ({ time: b.time, text: `她${b.proactive ? `（主动：${b.proactive}）` : ''}${b.quote ? `（引用「${b.quote.replaceAll('\n', ' ')}」）` : ''}：${b.text.replaceAll('\n', ' ⏎ ')}` })),
     ].sort((a, b) => a.time - b.time);
     for (const e of events) out.push(`- \`${dayPrefix(e.time)}${clock(e.time)}\` ${e.text}`);
+    // 逐条事实检查（ADR 0137）：审稿员挑出来的说法和处理结果
+    for (const fact of step.facts ?? []) {
+        const what = { pass: '没问题', logged: '只记录，照发', rewritten: '重写后过了', dropped: '重写后还有，删了那几行', kept: '重写后还有，删不了照发', skipped: '没查成' }[fact.action];
+        out.push(`- 事实检查（${what}）${fact.claims.length ? `：${fact.claims.map(c => `${c.kind === 'contradicts' ? '矛盾' : '没依据'}「${c.quote}」${c.why ? `（${c.why}）` : ''}`).join('；')}` : ''}${fact.again?.length ? `；重写后又查到：${fact.again.map(c => `「${c.quote}」`).join('、')}` : ''}${fact.rewritten ? `；重写成：${fact.rewritten.replaceAll('\n', ' ⏎ ')}` : ''}`);
+    }
     const scheduling = step.logs.filter(l => SCHEDULING.test(l));
     const size = step.generations.at(-1)?.tokens;
     out.push('', `生成 ${step.generations.length} 次${size ? `（提示词约 ${size} token）` : ''}${scheduling.length ? `；${scheduling.join('；')}` : ''}`, '');

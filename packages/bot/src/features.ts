@@ -21,6 +21,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'herNo', label: '会拒绝', group: '说话', adr: '0103' },
     { key: 'moody', label: '看心情不回', group: '说话', adr: '0013' },
     { key: 'speechCheck', label: '说话的毛病（出口检查）', group: '说话', adr: '0014' },
+    { key: 'factCheck', label: '逐条事实检查（编的说法 / 对不上事实）', group: '说话', adr: '0137', kind: 'mode' },
     { key: 'relationship', label: '关系阶段（聊得多了更放得开）', group: '说话', adr: '0113' },
     { key: 'jokes', label: '小梗回头提', group: '说话', adr: '0114' },
     { key: 'interruptions', label: '被第三方打断', group: '说话', adr: '0115' },

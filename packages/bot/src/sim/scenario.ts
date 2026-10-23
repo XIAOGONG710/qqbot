@@ -3,6 +3,7 @@
 
 import { readFileSync } from 'node:fs';
 import { CONTACT_TIERS, UNLISTED_TIER, type ContactTier, type Tier } from '../config.ts';
+import { FACT_CHECK_MODES, type FactCheckMode } from '../fact-check.ts';
 import { FESTIVAL_MODES, type FestivalMode } from '../festivals.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { NEWS_KINDS, OCCASIONS, type NewsKind, type Occasion } from '../proactive.ts';
@@ -293,6 +294,8 @@ export interface Scenario {
     texture: boolean;
     /** 默认 false：引用回复（ADR 0136，配置 quoteReply） */
     quoteReply: boolean;
+    /** 默认 off：逐条事实检查（ADR 0137，配置 factCheck）：log 只查只记，fix 查到就重写 */
+    factCheck: FactCheckMode;
     /** 引用的概率（0–1，不写按 QUOTE_SHARE）：测试和对比用 */
     quoteShare?: number;
     /** 预置的她看过的东西（ADR 0130，配置 watching）：写了才打开；跑场景时不去看，直接用这几条（day 默认是起点那天） */
@@ -434,6 +437,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         curious: s.curious === true,
         texture: s.texture === true,
         quoteReply: s.quoteReply === true,
+        factCheck: s.factCheck === undefined ? 'off' : FACT_CHECK_MODES.includes(s.factCheck as FactCheckMode) ? s.factCheck as FactCheckMode : fail(`factCheck 应为 ${FACT_CHECK_MODES.join(' / ')} 之一`),
         ...(typeof s.quoteShare === 'number' && s.quoteShare >= 0 && s.quoteShare <= 1 ? { quoteShare: s.quoteShare } : {}),
         smallNews: s.smallNews === true,
         foodPhotos: s.foodPhotos === true,
