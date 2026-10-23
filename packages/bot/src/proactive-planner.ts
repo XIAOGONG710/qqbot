@@ -169,6 +169,8 @@ export interface PlannerDeps {
     reschedule?: (now: number) => RescheduleItem[];
     /** 货架里有这一类照片、这会儿也允许发（ADR 0110）；不给 = 不发“拍了张照片”那一类 */
     photoReady?: (kind: 'cat' | 'food', now: number, dish?: string) => boolean;
+    /** 她最近在 B 站看过的东西（ADR 0130，配置 watching）：想事情时多一个“你怎么想”的题目；没有就 undefined */
+    watchedFacts?: () => { id: string; text: string } | undefined;
     /** 此刻是不是正和他一起玩（ADR 0111）：是就不插别的主动消息 */
     together?: (now: number) => boolean;
     /** 随口说件事 / 约他 / 问他意见按他平时在线的钟头排（ADR 0117） */
@@ -274,7 +276,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             records = records.filter(r => Date.parse(r.at) >= keepFrom);
             // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
             for (const id of Object.keys(extracted)) if (Number(id.slice(3)) < keepFrom) delete extracted[id];
-            const next: ProactiveState = { version: 1, records, followUps, extracted, ...(inner.thoughts.length || inner.lastThinkAt ? { inner } : {}) };
+            const next: ProactiveState = { version: 1, records, followUps, extracted, ...(inner.thoughts.length || inner.lastThinkAt || inner.reflected?.length ? { inner } : {}) };
             if (!validProactiveState(next)) throw new Error('拒绝写入不符合 schema 的主动消息状态');
             writeJsonAtomic(path, next);
             dirty = false;
@@ -537,9 +539,12 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         const started = now();
         // 写成了对他说话（出现“你”）就再来一次，最多两次；别的不合格（重复、太短）不重来
         let parsed: ReturnType<typeof parseThought> | undefined;
+        // 她最近看过的视频（ADR 0130）：还没专门想过的，这一次就想这一件；想过的只是多一个可选的题目
+        const watched = deps.watchedFacts?.();
+        const forceWatch = Boolean(watched && !inner.reflected?.includes(watched.id));
         for (const retry of [false, true]) {
             const outcome = await deps.responder.initiate({
-                label: '内心', note: thinkNote(inner.thoughts.slice(-3), contact.name, inner.thoughts.length, retry),
+                label: '内心', note: thinkNote(inner.thoughts.slice(-3), contact.name, inner.thoughts.length, retry, watched?.text, forceWatch),
                 topic: `${contact.name}最近在忙什么、我自己最近惦记什么、担心什么、期待什么`,
                 maxBubbles: 1, dryRun: false, think: true, commit: () => undefined,
             });
@@ -561,7 +566,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             deps.log(`内心${tag}：想了，但不留（${rejected}）`);
             return;
         }
-        inner = { ...inner, thoughts: [...inner.thoughts, parsed.thought].slice(-THOUGHTS_KEPT) };
+        inner = { ...inner, thoughts: [...inner.thoughts, parsed.thought].slice(-THOUGHTS_KEPT), ...(forceWatch && watched ? { reflected: [...(inner.reflected ?? []), watched.id].slice(-30) } : {}) };
         save();
         deps.log(`内心${tag}：${logBody(parsed.thought.text)}（${GOES_LABEL[parsed.thought.goes]}）`);
     }

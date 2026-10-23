@@ -20,6 +20,7 @@
 
 | 配置 | 功能 | ADR |
 | --- | --- | --- |
+| `watching` | 自己在 B 站看东西、有看法 | [ADR 0130](../adr/0130-watching.md) |
 | `bilibili` | 刷 B 站发给他（模式） | [ADR 0084](../adr/0084-bilibili-browsing.md) |
 | `bilibiliAccount` | 她自己的 B 站账号 | [ADR 0089](../adr/0089-bilibili-account.md) |
 | `bilibiliDm` | B 站私信（模式） | [ADR 0089](../adr/0089-bilibili-account.md) |

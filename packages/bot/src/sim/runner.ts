@@ -3,6 +3,7 @@
 
 import { appendFileSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { watchedFacts } from '../watching.ts';
 import type { BotConfig, Contact } from '../config.ts';
 import { createContactResponder, replySkip, type TierCard } from '../contact.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../sensitive.ts';
@@ -414,6 +415,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.curious ? { curious: true } : {}),
         ...(scenario.interruptions ? { interruptions: true } : {}),
         ...(scenario.jokes?.length ? { jokes: () => scenario.jokes! } : {}),
+        ...(scenario.watched?.length ? { watched: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); } } : {}),
         ...(scenario.memes?.length ? { memes: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); } } : {}),
         ...(scenario.herNo ? { herNo: true } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),
@@ -492,6 +494,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             schedule: character.schedule,
             settings: proactiveSettings,
             ...(scenario.innerLife ? { inner: true } : {}),
+            ...(scenario.innerLife && scenario.watched?.length ? { watchedFacts: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return watchedFacts(scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })), d); } } : {}),
             ...(scenario.hisHours ? { hisHours: true } : {}),
             ...(scenario.together ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
             ...(photos && (scenario.photoShares || scenario.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),

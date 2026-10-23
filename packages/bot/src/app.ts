@@ -61,6 +61,7 @@ import { useRealWeather, weatherFetcher } from './weather.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
 import { jokeStore, JOKES_CHECK_MS, refreshJokes } from './jokes.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes, type MemeEntry } from './memes.ts';
+import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from './watching.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { togetherNow } from './together.ts';
 import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoSource } from './photos.ts';
@@ -361,6 +362,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；刷新在下面（要她的 B 站号）
     const memesFile = memesPath(config.dataDir);
     let memeEntries: readonly MemeEntry[] = config.memes ? loadMemes(memesFile, log).entries : [];
+    // 她自己在 B 站看过的（ADR 0130）：派生数据，存 <数据目录>/watching/watched.json；“看”在下面（要她的 B 站号）
+    const watchedFile = watchedPath(config.dataDir);
+    let watchedEntries: readonly Watched[] = config.watching ? loadWatched(watchedFile, log).entries : [];
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
     const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, ...(photoSource ? { source: photoSource } : {}), ...(config.foodPhotos && foodSource ? { foodSource } : {}) }) : undefined;
     if (config.photos) {
@@ -545,6 +549,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.interruptions ? { interruptions: true } : {}),
             ...(jokes && contact.tier === 'boyfriend' ? { jokes: () => jokes.load(contact.qq).jokes } : {}),
             ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => memeEntries } : {}),
+            ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.herNo ? { herNo: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
@@ -841,6 +846,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 ...(config.together && contact.tier === 'boyfriend' ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
                 ...(photos && (config.photoShares || config.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),
                 ...(config.innerLife ? { inner: true } : {}),
+                ...(config.innerLife && config.watching && contact.tier === 'boyfriend' ? { watchedFacts: () => watchedFacts(watchedEntries, new Date(pipeline?.now ? pipeline.now() : Date.now())) } : {}),
                 dates: character.dates,
                 mode: config.proactive,
                 history,
@@ -934,6 +940,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 小梗（ADR 0114）：隔一阵从最近的聊天里抽；出错只记日志
     let jokesTimer: ReturnType<typeof setInterval> | undefined;
     let memesTimer: ReturnType<typeof setInterval> | undefined;
+    let watchingTimer: ReturnType<typeof setInterval> | undefined;
+    let watchingRunning = false;
     let memesRunning = false;
     const refreshAllJokes = () => {
         if (!jokes || stopped) return;
@@ -943,6 +951,30 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
                 now: pipeline?.now ? pipeline.now() : Date.now(), log: message => log(`[${contact.qq}] ${message}`),
             }).catch(error => log(`[${contact.qq}] 小梗：抽取出错（${error instanceof Error ? error.message : String(error)}）`));
+        }
+    };
+    // 她自己看一个视频（ADR 0130）：每天一次，14 点以后；30 分钟看一眼该不该看；要她的 B 站号
+    const watchJob = async (): Promise<void> => {
+        if (!config.watching || stopped || watchingRunning) return;
+        const source = bilibiliAccountSource();
+        if (!source) return;
+        const nowDate = new Date(pipeline?.now ? pipeline.now() : Date.now());
+        if (nowDate.getHours() < 14) return;
+        watchingRunning = true;
+        try {
+            const account = await source();
+            if (!account) return;
+            const biliFetch: BiliFetch = bilibiliFetch ?? ((url, init) => fetch(url, init));
+            await watchOne({
+                path: watchedFile, now: () => nowDate, log,
+                search: keyword => account.search(keyword), subtitle: video => account.subtitle(video), hotComments: aid => fetchHotComments(biliFetch, aid, 3),
+                sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+            });
+            watchedEntries = loadWatched(watchedFile, log).entries;
+        } catch (error) {
+            log(`她看视频：这一轮出错（${error instanceof Error ? error.message : String(error)}）`);
+        } finally {
+            watchingRunning = false;
         }
     };
     // 网络热梗（ADR 0129）：每 12 小时一次（30 分钟看一眼该不该刷）；要她的 B 站号，没有就不学，只用库里已有的
@@ -1184,11 +1216,16 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     discoverPhotos();
                     discoverFoodPhotos();
                     void refreshMemeJob();
+                    void watchJob();
                     refreshAllJokes();
                     checkWeeklyReport();
                     if (config.weeklyReport && !weeklyTimer) {
                         weeklyTimer = setInterval(checkWeeklyReport, 60 * 60_000);
                         weeklyTimer.unref();
+                    }
+                    if (config.watching && !watchingTimer) {
+                        watchingTimer = setInterval(() => void watchJob(), 30 * 60_000);
+                        watchingTimer.unref();
                     }
                     if (config.memes && !memesTimer) {
                         memesTimer = setInterval(() => void refreshMemeJob(), 30 * 60_000);
@@ -1285,6 +1322,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
             if (photoDiscoveryTimer) clearInterval(photoDiscoveryTimer);
             if (memesTimer) clearInterval(memesTimer);
+            if (watchingTimer) clearInterval(watchingTimer);
             if (foodDiscoveryTimer) clearInterval(foodDiscoveryTimer);
             clearTimeout(foodRetryTimer);
             if (jokesTimer) clearInterval(jokesTimer);

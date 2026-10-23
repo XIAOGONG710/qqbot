@@ -23,6 +23,7 @@
 - `relationship.ts`
 - `jokes.ts`
 - `memes.ts`
+- `watching.ts`
 - `interruption.ts`
 - `together.ts`
 - `jealousy.ts`

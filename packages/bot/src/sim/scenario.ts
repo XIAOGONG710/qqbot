@@ -289,6 +289,8 @@ export interface Scenario {
     proactiveAsk: boolean;
     /** 默认 false：被第三方打断（ADR 0115，配置 interruptions） */
     interruptions: boolean;
+    /** 预置的她看过的东西（ADR 0130，配置 watching）：写了才打开；跑场景时不去看，直接用这几条（day 默认是起点那天） */
+    watched?: { title: string; owner: string; tname: string; excerpt: string; hot?: string[] }[];
     /** 预置的网络热梗（ADR 0129，配置 memes）：写了才打开；跑场景时不去学，直接用这几个 */
     memes?: { term: string; meaning: string }[];
     /** 默认 false：吃的照片（ADR 0128，配置 foodPhotos；要 photos 和 menu）；photos 里写 kind food + dish */
@@ -429,6 +431,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         proactiveAsk: s.proactiveAsk === true,
         hisHours: s.hisHours === true,
         ...(Array.isArray(s.jokes) && s.jokes.length ? { jokes: (s.jokes as { phrase?: unknown; origin?: unknown }[]).filter(j => typeof j.phrase === 'string' && typeof j.origin === 'string').map(j => ({ phrase: j.phrase as string, origin: j.origin as string })) } : {}),
+        ...(Array.isArray(s.watched) && s.watched.length ? { watched: (s.watched as Record<string, unknown>[]).filter(w => typeof w.title === 'string' && typeof w.excerpt === 'string').map(w => ({ title: w.title as string, owner: typeof w.owner === 'string' ? w.owner : 'UP', tname: typeof w.tname === 'string' ? w.tname : '日常', excerpt: w.excerpt as string, ...(Array.isArray(w.hot) ? { hot: (w.hot as unknown[]).filter((h): h is string => typeof h === 'string') } : {}) })) } : {}),
         ...(Array.isArray(s.memes) && s.memes.length ? { memes: (s.memes as { term?: unknown; meaning?: unknown }[]).filter(m => typeof m.term === 'string' && typeof m.meaning === 'string').map(m => ({ term: m.term as string, meaning: m.meaning as string })) } : {}),
         innerLife: s.innerLife === true,
         herFeelings: s.herFeelings === true,

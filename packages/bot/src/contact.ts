@@ -53,6 +53,7 @@ import { estimateTokens } from './tokens.ts';
 import { describeInterruption, interruptionNow } from './interruption.ts';
 import { jokeLine, type Joke } from './jokes.ts';
 import { memeLine, type MemeEntry } from './memes.ts';
+import { watchedLine, type Watched } from './watching.ts';
 import { describeCloseness } from './relationship.ts';
 import { describeTogether, togetherNow } from './together.ts';
 import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from './photos.ts';
@@ -206,6 +207,8 @@ export interface ContactPipelineOptions {
     jokes?: () => readonly Joke[];
     /** 网络热梗（ADR 0129）：他用到库里的梗给她意思，没用到约 20% 的轮次给她看最近的几个；只对男朋友档 */
     memes?: () => readonly MemeEntry[];
+    /** 她自己在 B 站看过的东西（ADR 0130，配置 watching）：他问到“最近看了什么”时给她真看过的两条；只对男朋友档 */
+    watched?: () => readonly Watched[];
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
     moments?: () => readonly Moment[];
     /** 她自己的追求（ADR 0104，配置 pursuits）：内置两条（别挂科、用新相机拍出满意的东西）加作者在 pursuits.json 里改的 / 加的；每次生成现取 */
@@ -550,6 +553,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const memeNow = options.memes && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
                 ? memeLine(options.memes(), chat, time.getTime()) : undefined;
             if (memeNow) log('网络热梗：这一轮提示词里放了梗的意思（日志不记内容）');
+            // 她在 B 站看过的（ADR 0130）：他问到“最近看了什么 / 刷到什么”才放
+            const watchedNow = options.watched && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? watchedLine(options.watched(), chat, time) : undefined;
+            if (watchedNow) log('她看视频：这一轮提示词里放了她最近看过的（日志不记内容）');
             // 主动发的那条（喂完土豆拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
             // 被打断的这一轮（ADR 0115）：不带“先直接回答他刚问的”这类意图、不套形状 / 长短提示——它们和“先接他的话、顺带说一声刚被什么岔了一下”冲突，模型会按更紧的那条来、把打断吞掉（模拟 5/5 没提）
             const intent = photoNow && !initiate ? photoIntent(photoNow) : interruptLine ? undefined : baseIntent;
@@ -687,6 +693,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(closenessLine ? [closenessLine] : []),
                         ...(jokeNow ? [jokeNow] : []),
                         ...(memeNow ? [memeNow] : []),
+                        ...(watchedNow ? [watchedNow] : []),
                         ...(interruptLine ? [interruptLine] : []),
                         ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
                         ...(photoNow && options.photos?.prompt(photoNow, photoDishNow) ? [options.photos.prompt(photoNow, photoDishNow)!] : []),

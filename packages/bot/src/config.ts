@@ -83,6 +83,7 @@ export const DEFAULTS = {
     smallNews: false,
     foodPhotos: false,
     memes: false,
+    watching: false,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -325,6 +326,12 @@ export interface AppConfig {
      * 聊天里他用到库里的梗，她知道意思、顺着接；没用到时约 20% 的轮次给她看最近的几个，想用就自然地用。只对男朋友档。默认关
      */
     memes: boolean;
+    /**
+     * 她自己在 B 站看东西、形成看法（ADR 0130，要 bilibiliAccount 开着；要内心 innerLife 开着看法才会变成念头和主动消息）：
+     * 每天 14 点以后她自己“看”一个视频（按口味搜、读字幕摘要和热评，只存摘要），想事情时多一个题目「你最近在 B 站看过的那个东西，你自己怎么想」，
+     * 他问到“最近看了什么”时给她真看过的两条。B 站评论区当说话语料试过（957 句只剩 39 句可用，全是「哈哈哈」「加油」），不做。只对男朋友档。默认关
+     */
+    watching: boolean;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -618,6 +625,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         smallNews: bool(file, 'smallNews', '', DEFAULTS.smallNews),
         foodPhotos: bool(file, 'foodPhotos', '', DEFAULTS.foodPhotos),
         memes: bool(file, 'memes', '', DEFAULTS.memes),
+        watching: bool(file, 'watching', '', DEFAULTS.watching),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),

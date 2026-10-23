@@ -29,6 +29,8 @@ export interface InnerState {
     thoughts: InnerThought[];
     /** 上一次想的时刻（想砸了、想不出来的也算，免得一直重试） */
     lastThinkAt?: string;
+    /** 已经专门想过的 B 站视频（ADR 0130）：每看完一个新的，下一次想事情就专门想这一件，想完记在这里，不会反复想 */
+    reflected?: string[];
 }
 
 /** 两次想之间隔多久（分钟范围，按上一次的时刻取种子）：一天醒着十几个钟头，想八九次 */
@@ -73,23 +75,28 @@ export const THOUGHT_THEMES = [
     '对你自己的一点看法或小感慨（比如怕让人失望、数学、以后怎么办这类）：说得轻、说得具体，别上升成大道理',
 ] as const;
 
-/** 第 index 个念头给哪两样（轮着来，每样搭不同的搭档） */
-export function themesFor(index: number): [string, string] {
-    const n = THOUGHT_THEMES.length;
+/** 她最近在 B 站看过东西时多一个可想的题目（ADR 0130）：事实是那条字幕摘要 / 热评，想法由她自己定 */
+export const WATCH_THEME = '你最近在 B 站看过的那个东西（见下面「你最近在 B 站看过」）：你自己怎么想——喜欢还是不以为然、哪里好笑、哪里不对劲；说得具体、有自己的立场，别写成影评或总结';
+
+/** 第 index 个念头给哪两样（轮着来，每样搭不同的搭档）；watched：她最近在 B 站看过东西，多一个题目 */
+export function themesFor(index: number, watched = false): [string, string] {
+    const themes = watched ? [...THOUGHT_THEMES, WATCH_THEME] : THOUGHT_THEMES;
+    const n = themes.length;
     const first = ((index % n) + n) % n;
-    return [THOUGHT_THEMES[first]!, THOUGHT_THEMES[(first + 2) % n]!];
+    return [themes[first]!, themes[(first + 2) % n]!];
 }
 
 /**
  * 想一想的提示：不是在跟谁说话；只写感受和想法，不编新事实，不分析自己是不是真人；别重复之前想过的。
  * index：这是第几个念头（决定这次给哪两样可想）；retry：上一次写成了对他说话，这次再强调一遍
  */
-export function thinkNote(recent: readonly InnerThought[], userName: string, index = recent.length, retry = false): string {
+export function thinkNote(recent: readonly InnerThought[], userName: string, index = recent.length, retry = false, watched?: string, forceWatch = false): string {
     const before = recent.length ? `你之前心里想过：${recent.map(t => `「${t.text}」`).join('')}——别重复它们，换个角度或想别的。` : '';
-    const [a, b] = themesFor(index);
+    const [a, b] = themesFor(index, Boolean(watched));
+    const saw = watched ? `你最近在 B 站看过（真的看过，读了字幕；想法由你自己定，不用夸，也不用附和热评；事实以这里写的为准，不编里面没有的情节）：${watched}。` : '';
     return `[这是你自己一个人待着的时候，不是在跟谁说话：安静想一想，此刻你心里在转什么。第一人称，一两句，像心里嘀咕的话，是对你自己说的，不是发给谁的消息（想到${userName}就说“他”，一个“你”字都不要用）。`
         + `${retry ? '（上一次你写成了对他说话，这次只对自己说。）' : ''}`
-        + `这一次从这两样里挑一样想：①${a}；②${b}。别围着“他怎么还没回”转（他忙他的，你有你的事）。`
+        + `${saw}${watched && forceWatch ? `这一次就想这一件：${WATCH_THEME}。` : `这一次从这两样里挑一样想：①${a}；②${b}。`}别围着“他怎么还没回”转（他忙他的，你有你的事）。`
         + `只写感受和想法，不写新发生的事（上面没写的事实不编，不编${userName}说过的话，不编他身边的人和他那边的事），也不分析自己是不是真人、有没有意识。`
         + `${before}输出两行：第一行是心里的话（不超过 50 个字）；第二行只写「告诉他」「问他」「自己想想」其中一个，表示这个念头你想不想拿去跟${userName}说：想说给他听选「告诉他」，想问他一件具体的事选「问他」，先放在心里选「自己想想」；想说就别憋着，但也别每个念头都说。]`;
 }
@@ -174,5 +181,6 @@ export function validThought(value: unknown): value is InnerThought {
 export function validInnerState(value: unknown): value is InnerState {
     if (!isObject(value) || !Array.isArray(value.thoughts) || !value.thoughts.every(validThought)) return false;
     if (new Set(value.thoughts.map(t => (t as InnerThought).id)).size !== value.thoughts.length) return false;
+    if (value.reflected !== undefined && !(Array.isArray(value.reflected) && value.reflected.every(id => typeof id === 'string'))) return false;
     return value.lastThinkAt === undefined || isTime(value.lastThinkAt);
 }

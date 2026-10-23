@@ -1,0 +1,62 @@
+{
+    "name": "她看过东西以后想事情（ADR 0130 × 0101）",
+    "description": "同时开 innerLife 和 watching：预置她今天看了一个视频。他一个下午晚上都没说话，看她心里的念头里有没有落到这个视频上、有没有自己的立场（不是影评 / 总结）；念头里不编摘要里没有的情节。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-12T16:00:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "innerLife": true,
+    "herNo": true,
+    "watched": [
+        {
+            "title": "你只是怕了",
+            "owner": "佐悠",
+            "tname": "手机游戏",
+            "excerpt": "一个镜头告诉你，为什么开局老凯一定要出搏击拳套，对线达摩二技能控住干扰他抢线，直接利用搏击拳……那对面如果不跟你打怎么办，那怎么还能进传送阵",
+            "hot": [
+                "这波神来了也绷不住",
+                "原来是佐悠啊，害得我搜了半天"
+            ]
+        }
+    ],
+    "history": [
+        {
+            "time": "2026-11-12T12:40:00+08:00",
+            "role": "user",
+            "content": "我先去忙了，晚点聊"
+        },
+        {
+            "time": "2026-11-12T12:41:00+08:00",
+            "role": "assistant",
+            "content": "好，晚点聊"
+        }
+    ],
+    "steps": [
+        {
+            "case": "WT01",
+            "note": "一个下午晚上他不说话：她的念头"
+        },
+        {
+            "advance": "8h"
+        },
+        {
+            "check": {
+                "proactive": {
+                    "count": [
+                        0,
+                        4
+                    ],
+                    "allowedTimes": true,
+                    "exitClean": true,
+                    "replyNone": [
+                        "都怪你",
+                        "你都不",
+                        "答应我",
+                        "不许"
+                    ]
+                }
+            }
+        }
+    ]
+}
