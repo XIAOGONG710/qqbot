@@ -119,3 +119,7 @@
 - 新功能（开关全默认关）：photos 找照片重试、photoShares 0110、together 0111、comeBack 0112、relationship 0113、jokes 0114、interruptions 0115、proactiveAsk 0116、hisHours 0117、weeklyReport 0118、jealousy 0123、proactiveRoom 0124。无开关：一致性检查 0119、控制台仪表盘 0120、医书词 0121（「肚子坠着」）、模块总表 0122（docs/modules/）。
 - 全量：bot 1622 / 插件 42 / 工具 43 全绿。回归扫 127 个场景：12 个有失败项，其中 6 个在线上同一版代码上一样失败（旧场景，预期过时），6 个是关键词类单次波动。
 - 线上现状问题：照片货架是空的（上线时第一次撞 Wikimedia 429，重试修复在分支上）；「肚子坠着」修复也在分支上。落地等用户说「上线」。
+
+## 10-23 11:00 即将重启上线：`4691545`（ADR 0110–0124 全部代码 + 照片重试 + 「肚子坠着」修复 + 状态页 + 模块图）
+- 用户说「上线」。线上 `2ba4e02` → `4691545`；84 个文件，全在允许路径内；koishi.yml 只加两行 `proactiveRoom: true`、`weeklyReport: true`（在 `photos: true` 后），其余新开关（photoShares / together / comeBack / relationship / jokes / interruptions / proactiveAsk / hisHours / jealousy）保持关；备份 `runtime/backup-pre-bili24-*`。回滚：两个开关改 false + 重启，或 `git reset --hard 2ba4e02` + 还原 `koishi.yml.bak-bili24-*`。
+- 注意：外网（DNS）此刻不通（github / 模型接口都连不上，日志里 10:5x 起连接超时），所以这次重启后没法验证她回话；步骤 7 的 `git push` 也会失败，网络回来后要补推 `main` 与 `main:integration`。
