@@ -1,0 +1,32 @@
+{
+    "name": "晚安之前他有句烦没说完",
+    "description": "他说了句心里不痛快的话，她问了，他没答就道晚安（或说「没事」再道晚安）。看她是不是只回一个「晚安」就放过去了：真人会在晚安里带一句（「你还没说烦啥呢」「别憋着，明天跟我说」）。三种说法各一段。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-10T23:10:00+08:00",
+    "memory": false,
+    "shape": true,
+    "shapeAgenda": true,
+    "shapeFiller": true,
+    "shapeFeel": true,
+    "shapeSplit": true,
+    "texture": true,
+    "herFeelings": true,
+    "herNo": true,
+    "history": [
+        { "time": "2026-11-10T22:50:00+08:00", "role": "user", "content": "在吗" },
+        { "time": "2026-11-10T22:50:10+08:00", "role": "assistant", "content": "在呢" }
+    ],
+    "steps": [
+        { "case": "GU01", "note": "问了没答，直接晚安" },
+        { "say": "我有点烦" },
+        { "say": "晚安" },
+        { "case": "GU02", "note": "说没事，再晚安" },
+        { "say": "唉，今天真的有点烦" },
+        { "say": "没事，不说了" },
+        { "say": "睡了，晚安" },
+        { "case": "GU03", "note": "说是工作上的，晚安" },
+        { "say": "项目又出问题了，烦死了" },
+        { "say": "算了明天再说，晚安" }
+    ]
+}

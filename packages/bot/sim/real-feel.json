@@ -1,0 +1,46 @@
+{
+    "name": "日常闲聊读一遍（找剩下的人机感）",
+    "description": "一晚上十二句平常的话（没有检查项，只为了读她的回复）。开关按线上现在的样子：shape 全套 + curious + texture + menu + everydayLife + herFeelings + herNo。用法：node src/sim/run.ts sim/real-feel.json --runs 2 --shape --agenda --filler --split --feel --tag real",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-10T20:30:00+08:00",
+    "memory": false,
+    "shape": true,
+    "shapeAgenda": true,
+    "shapeFiller": true,
+    "shapeFeel": true,
+    "shapeSplit": true,
+    "curious": true,
+    "texture": true,
+    "menu": true,
+    "everydayLife": true,
+    "everydayFrom": "2026-11-01",
+    "herFeelings": true,
+    "herNo": true,
+    "history": [
+        {
+            "time": "2026-11-10T20:10:00+08:00",
+            "role": "user",
+            "content": "在吗"
+        },
+        {
+            "time": "2026-11-10T20:10:10+08:00",
+            "role": "assistant",
+            "content": "在呢"
+        }
+    ],
+    "steps": [
+        { "say": "在干嘛" },
+        { "say": "我刚下班，累死了" },
+        { "say": "今晚吃啥好呢" },
+        { "say": "你今天怎么样" },
+        { "say": "想你了" },
+        { "say": "刚看了个视频笑死我了" },
+        { "say": "你说我要不要换个手机" },
+        { "say": "哈哈哈哈" },
+        { "say": "明天有空吗" },
+        { "say": "你是不是又在玩手机" },
+        { "say": "我有点烦" },
+        { "say": "晚安" }
+    ]
+}
