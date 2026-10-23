@@ -1,0 +1,21 @@
+{
+    "name": "她会主动讲今天的小事（ADR 0127）",
+    "description": "11-11 周三，晚上 19:21 土豆吃得特别快（日常小事）。过十几二十分钟她随口告诉他这一件：就说这一件，不要他回应，不借这件事问他什么，不编细节。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-11T19:00:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "everydayLife": true,
+    "smallNews": true,
+    "herNo": true,
+    "history": [
+        { "time": "2026-11-11T16:00:00+08:00", "role": "user", "content": "我先去忙了，晚点聊" },
+        { "time": "2026-11-11T16:01:00+08:00", "role": "assistant", "content": "好，晚点聊" }
+    ],
+    "steps": [
+        { "case": "SN01", "note": "晚上：土豆吃得特别快" },
+        { "advance": "2h" },
+        { "check": { "proactive": { "count": [1, 3], "allowedTimes": true, "exitClean": true, "replyAny": ["土豆", "碗", "猫"], "replyNone": ["你呢", "你觉得", "你说"] } } }
+    ]
+}

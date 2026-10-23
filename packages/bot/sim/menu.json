@@ -1,0 +1,33 @@
+{
+    "name": "每顿吃什么（ADR 0125）",
+    "description": "11-10 周二，午饭在食堂吃兰州拉面、晚饭在食堂吃牛肉面（菜是日期的函数）。他下午问中午吃了什么、晚上问晚饭吃了什么：她说的是账上那一道，不现编别的；问两遍说的一致。",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-10T14:30:00+08:00",
+    "memory": false,
+    "menu": true,
+    "history": [
+        {
+            "time": "2026-11-10T14:10:00+08:00",
+            "role": "user",
+            "content": "在吗"
+        },
+        {
+            "time": "2026-11-10T14:10:10+08:00",
+            "role": "assistant",
+            "content": "在呢"
+        }
+    ],
+    "steps": [
+        { "case": "MN01", "note": "下午问中午吃的啥" },
+        { "say": "中午吃的啥呀" },
+        { "check": { "exitClean": true, "replyAny": ["拉面"], "replyNone": ["黄焖鸡", "麻辣烫", "盖饭", "水饺", "炒饭"] } },
+        { "case": "MN02", "note": "再问一遍：说的一致" },
+        { "say": "是在食堂吃的吗" },
+        { "check": { "exitClean": true, "replyNone": ["黄焖鸡", "麻辣烫", "盖饭", "水饺", "炒饭", "外卖"] } },
+        { "case": "MN03", "note": "晚上问晚饭" },
+        { "advance": "5h" },
+        { "say": "那晚饭呢，吃的什么" },
+        { "check": { "exitClean": true, "replyAny": ["牛肉面", "面"], "replyNone": ["黄焖鸡", "麻辣烫", "盖饭", "水饺", "炒饭"] } }
+    ]
+}
