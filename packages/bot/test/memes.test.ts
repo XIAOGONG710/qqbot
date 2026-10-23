@@ -181,6 +181,14 @@ describe('刷新', () => {
         assert.equal(refreshDue({ version: 1, refreshedAt: new Date(now.getTime() - 13 * 3_600_000).toISOString(), entries: [] }, now), true);
     });
 
+    test('库所在的目录还不存在（线上第一次）：先建目录再存，不抛', async () => {
+        const { deps, path } = make();
+        const nested = join(path, '..', 'not-yet', 'memes', 'memes.json');
+        const result = await refreshMemes({ ...deps, path: nested });
+        assert.equal(result.added, 2);
+        assert.equal(loadMemes(nested).entries.length, 2);
+    });
+
     test('库文件坏了 / 有不合格的条目：当空的 / 忽略不合格的', () => {
         const path = tmp();
         writeFileSync(path, '{坏了');

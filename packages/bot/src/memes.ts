@@ -12,7 +12,8 @@
 //   - 没用到的话，约 MEME_TURN_SHARE 的轮次给她 3 个最近的梗当“你最近刷到的”：知道意思，想用就自然地用一个，用得上才用；他难过 / 认真说事时不放。
 // 她的话里最近原样出现过的梗不再放（别总用同一个）。
 
-import { join } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { subtitleExcerpt, type SubtitleResult } from './bilibili-account.ts';
 import { BLOCKED, type BiliVideo } from './bilibili.ts';
 import { unit } from './expression.ts';
@@ -71,7 +72,11 @@ export function loadMemes(path: string, log: (message: string) => void = () => u
     return { version: 1, ...(typeof raw.refreshedAt === 'string' ? { refreshedAt: raw.refreshedAt } : {}), entries };
 }
 
-export const saveMemes = (path: string, file: MemeFile): void => writeJsonAtomic(path, file);
+/** 存盘；目录不存在先建（writeJsonAtomic 不建目录——上线第一次存 memes/memes.json 就因为这个失败过） */
+export function saveMemes(path: string, file: MemeFile): void {
+    mkdirSync(dirname(path), { recursive: true });
+    writeJsonAtomic(path, file);
+}
 export const memesPath = (dataDir: string): string => join(dataDir, 'memes', 'memes.json');
 
 /** 过期（MEME_KEEP_DAYS 天没再出现）的去掉，最多留 MEME_MAX 个（最近出现的优先） */

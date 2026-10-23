@@ -11,7 +11,8 @@
 //   3. 他问到“最近看了什么 / 刷到什么”时，提示词里有她真看过的两条，让她从里面挑说。
 // 看的是公开视频的字幕和热评，只存摘要（≤ 220 字）和标题，不存评论者；只看她口味范围内的分区（bilibili.ts 的 CATEGORY_OK / BLOCKED / suitable）。
 
-import { join } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { subtitleExcerpt, type SubtitleResult } from './bilibili-account.ts';
 import { rankVideos, searchKeyword, SEARCH_KEYWORDS, type BiliVideo } from './bilibili.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
@@ -56,7 +57,11 @@ export function loadWatched(path: string, log: (message: string) => void = () =>
     return { version: 1, entries };
 }
 
-export const saveWatched = (path: string, file: WatchedFile): void => writeJsonAtomic(path, file);
+/** 存盘；目录不存在先建（writeJsonAtomic 不建目录——上线第一次存 watching/watched.json 就因为这个失败过） */
+export function saveWatched(path: string, file: WatchedFile): void {
+    mkdirSync(dirname(path), { recursive: true });
+    writeJsonAtomic(path, file);
+}
 
 /** 过期的去掉、最多留 WATCHED_MAX 条（新的优先） */
 export function trimWatched(entries: readonly Watched[], now: Date): Watched[] {

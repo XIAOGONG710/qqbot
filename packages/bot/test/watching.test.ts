@@ -78,6 +78,13 @@ describe('她看一个', () => {
         assert.equal(loadWatched(path).entries.length, 1);
     });
 
+    test('目录还不存在（线上第一次）：先建目录再存，不抛', async () => {
+        const { deps, path } = make();
+        const nested = join(path, '..', 'not-yet', 'watching', 'watched.json');
+        assert.equal(await watchOne({ ...deps, path: nested }), 'watched');
+        assert.equal(loadWatched(nested).entries.length, 1);
+    });
+
     test('没有字幕的跳过去看下一个；一个关键词没有就换下一个词；都没有就记一行、不存', async () => {
         const none = make({ subtitle: () => ({ status: 'none' }) });
         assert.equal(await watchOne(none.deps), 'none');
