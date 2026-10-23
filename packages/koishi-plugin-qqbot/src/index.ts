@@ -137,6 +137,7 @@ export interface Config {
     texture: boolean;
     biliStickers: boolean;
     quoteReply: boolean;
+    idioms: boolean;
     factCheck: FactCheckMode;
     innerLife: boolean;
     herFeelings: boolean;
@@ -312,6 +313,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**她自己在 B 站找表情包**（ADR 0132，要「图片表情」和「她的 B 站号」开着）：表情包的候选来源换成 B 站——她的号读官方表情包（热词系列、tv_小电视；不要小黄脸、颜文字）+ 热门视频评论区里像表情包的图（真人照片、截图、广告的不收）；公开目录只在 B 站这路没东西时兜底。并且没有明确反应的、允许发表情的轮次里也约 12% 发一个（原来她线上 437 轮里只发了 1 个），顶替小黄脸。默认关。'),
         quoteReply: Schema.boolean().default(DEFAULTS.quoteReply)
             .description('**引用回复**（ADR 0136）：QQ 里长按一条消息“回复”。她以前一次都没引用过。两种明确的时候才引：他连着发了几条、其中有个不是最后一条的问题，她回答它时按概率引用它；打错字撤回失败（超过两分钟）补“*对的词”时有时引用那条错的。他自己 654 条消息里只引用过 1 次，所以这是很少出现的事。引用发不出去就去掉引用再发一次。'),
+        idioms: Schema.boolean().default(DEFAULTS.idioms)
+            .description('**被他带出来的口头习惯**（ADR 0138）：处久了的两个人会互相沾说话的习惯——他爱说“笑死”，她过阵子也会顺口来一句。隔一阵让模型从他最近一个月的话里挑最多 8 个口头习惯（口头禅、句首句尾的语气词、爱用的网络说法），代码硬校验：必须是他的话里原样出现过至少 4 条、分布在至少 3 个不同日子的 1–6 个字的短语；名词 / 人名 / 数字 / 脏话 / 危机相关的词 / 卡上的禁用词 / 太泛的一律丢掉。用的时候约一半的轮次提示她他爱说的一两个词，这一轮正好用得上就顺口用一个；她最近三次回复里用过的不再给；只对男朋友档，他难过 / 危机 / 小别扭时不给。她的语气、长短、条数都不变。存在 idioms/ 目录下，导出和遗忘时跟着走。'),
         factCheck: Schema.union(FACT_CHECK_MODES.map(mode => Schema.const(mode).description(FACT_CHECK_LABELS[mode]))).default(DEFAULTS.factCheck)
             .description('**逐条事实检查**（ADR 0137）：她最容易露馅的是编——事实里只有“土豆今天没下楼”，她写“土豆一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。回复发出去之前让模型当审稿员，把回复拆成关于她自己 / 她身边世界的一条条具体说法，对照设定、这一轮的事实和聊天记录，找出“矛盾”和“事实里根本没有”的（每个回复多一次小调用，温度 0）。off 不查；log 只查、只在日志里记（敏感调试关着时只记条数），回复照发——先看误报多不多；fix 有问题就带说明重写一次，重写后再查，还有就删那几行。危机回合不查，查不成一律照发。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
@@ -518,6 +521,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.texture !== undefined ? { texture: config.texture } : {}),
         ...(config.biliStickers !== undefined ? { biliStickers: config.biliStickers } : {}),
         ...(config.quoteReply !== undefined ? { quoteReply: config.quoteReply } : {}),
+        ...(config.idioms !== undefined ? { idioms: config.idioms } : {}),
         ...(config.factCheck !== undefined ? { factCheck: config.factCheck } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),

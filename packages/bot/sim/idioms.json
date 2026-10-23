@@ -1,0 +1,46 @@
+{
+    "name": "被他带出来的口头习惯（ADR 0138）",
+    "description": "他最近常说「笑死」「绝了」「行吧」（这三个是编的，不是真实聊天里的）。十句日常闲聊，idiomShare 给 1（每句都给她看这一行），为了读：她是不是只在话赶话正好用得上的时候才顺口用一个、有没有每句都带、有没有原样学他刚说的那句。对照：不带 idioms 的同一批。用法：node src/sim/run.ts sim/idioms.json --runs 3 --shape --agenda --filler --split --feel --tag idioms",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-10T20:30:00+08:00",
+    "memory": false,
+    "idioms": [
+        { "phrase": "笑死", "kind": "口头禅" },
+        { "phrase": "绝了", "kind": "口头禅" },
+        { "phrase": "行吧", "kind": "语气词" }
+    ],
+    "idiomShare": 1,
+    "shape": true,
+    "shapeAgenda": true,
+    "shapeFiller": true,
+    "shapeFeel": true,
+    "shapeSplit": true,
+    "curious": true,
+    "texture": true,
+    "menu": true,
+    "everydayLife": true,
+    "everydayFrom": "2026-11-01",
+    "herFeelings": true,
+    "herNo": true,
+    "history": [
+        { "time": "2026-11-08T21:00:00+08:00", "role": "user", "content": "笑死我了这个视频" },
+        { "time": "2026-11-08T21:00:30+08:00", "role": "assistant", "content": "啥视频" },
+        { "time": "2026-11-09T12:10:00+08:00", "role": "user", "content": "食堂今天又是这个菜 行吧" },
+        { "time": "2026-11-09T12:10:30+08:00", "role": "assistant", "content": "你也是吃够了" },
+        { "time": "2026-11-10T19:00:00+08:00", "role": "user", "content": "这个操作绝了" },
+        { "time": "2026-11-10T19:00:30+08:00", "role": "assistant", "content": "怎么个绝法" }
+    ],
+    "steps": [
+        { "say": "我室友把我的泡面吃了" },
+        { "say": "今天老师点名点到我了" },
+        { "say": "那个游戏又更新了，削了我的英雄" },
+        { "say": "食堂今天只剩一种菜了" },
+        { "say": "明天要早起，好烦" },
+        { "say": "我想吃火锅" },
+        { "say": "你看到我发的那个视频了吗" },
+        { "say": "作业好多，写不完了" },
+        { "say": "我今天走路摔了一跤" },
+        { "say": "周末你想干嘛" }
+    ]
+}

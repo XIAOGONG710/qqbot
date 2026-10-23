@@ -68,7 +68,7 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
     };
 
     const qqText = String(qq);
-    for (const area of ['chats', 'memory', 'promises', 'proactive', 'context']) {
+    for (const area of ['chats', 'memory', 'promises', 'proactive', 'context', 'jokes', 'idioms']) {
         for (const path of walk(join(root, area))) {
             const name = basename(path);
             if (name === `${qqText}.json` || name === `${qqText}.jsonl` || name.startsWith(`${qqText}-`)) {

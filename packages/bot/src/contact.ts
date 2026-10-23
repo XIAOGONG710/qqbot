@@ -54,6 +54,7 @@ import { turnCut, type Summarizer, type TurnWindow } from './context-window.ts';
 import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 import { describeInterruption, interruptionNow } from './interruption.ts';
+import { idiomLine, type Idiom } from './idioms.ts';
 import { jokeLine, type Joke } from './jokes.ts';
 import { memeLine, type MemeEntry } from './memes.ts';
 import { watchedLine, type Watched } from './watching.ts';
@@ -220,6 +221,10 @@ export interface ContactPipelineOptions {
     interruptions?: boolean;
     /** 小梗（ADR 0114）：他们之间聊天里反复出现的玩笑；约 1/4 的轮次给她看一个，话赶话接得上就顺口提；只对男朋友档 */
     jokes?: () => readonly Joke[];
+    /** 他的口头习惯（ADR 0138，配置 idioms）：约一半的轮次给她看他爱说的一两个词，这一轮正好用得上就顺口用一个；只对男朋友档 */
+    idioms?: () => readonly Idiom[];
+    /** 给她看口头习惯的概率（默认 IDIOM_TURN_SHARE；模拟器场景可以调来测）*/
+    idiomShare?: number;
     /** 说话的质感（ADR 0131）：发出去之前在气泡上加真人常有的小黄脸 / 「～」 / 问号 / 叠字……；危机和他难过的回合不加 */
     texture?: boolean;
     /** 网络热梗（ADR 0129）：他用到库里的梗给她意思，没用到约 20% 的轮次给她看最近的几个；只对男朋友档 */
@@ -572,6 +577,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const jokeNow = options.jokes && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
                 ? jokeLine(options.jokes(), chat, time.getTime()) : undefined;
             if (jokeNow) log('小梗：这一轮提示词里放了一个他们之间的梗（日志不记内容）');
+            // 他的口头习惯（ADR 0138）：让路同小梗；日志不记内容
+            const idiomNow = options.idioms && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
+                ? idiomLine(options.idioms(), chat, time.getTime(), options.idiomShare) : undefined;
+            if (idiomNow) log('口头习惯：这一轮提示词里放了他爱说的词（日志不记内容）');
             // 网络热梗（ADR 0129）：让路同小梗；日志不记梗的内容
             const memeNow = options.memes && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
                 ? memeLine(options.memes(), chat, time.getTime()) : undefined;
@@ -738,6 +747,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(togetherLine ? [togetherLine] : []),
                         ...(closenessLine ? [closenessLine] : []),
                         ...(jokeNow ? [jokeNow] : []),
+                        ...(idiomNow ? [idiomNow] : []),
                         ...(memeNow ? [memeNow] : []),
                         ...(watchedNow ? [watchedNow] : []),
                         ...(interruptLine ? [interruptLine] : []),

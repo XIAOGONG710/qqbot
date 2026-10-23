@@ -294,6 +294,10 @@ export interface Scenario {
     texture: boolean;
     /** 默认 false：引用回复（ADR 0136，配置 quoteReply） */
     quoteReply: boolean;
+    /** 预置的他的口头习惯（ADR 0138，配置 idioms）：写了才打开；跑场景时不去学，直接用这几个 */
+    idioms?: { phrase: string; kind?: string }[];
+    /** 给她看口头习惯的概率（0–1，不写按 IDIOM_TURN_SHARE）：测试和对比用 */
+    idiomShare?: number;
     /** 默认 off：逐条事实检查（ADR 0137，配置 factCheck）：log 只查只记，fix 查到就重写 */
     factCheck: FactCheckMode;
     /** 引用的概率（0–1，不写按 QUOTE_SHARE）：测试和对比用 */
@@ -437,6 +441,12 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         curious: s.curious === true,
         texture: s.texture === true,
         quoteReply: s.quoteReply === true,
+        ...(Array.isArray(s.idioms) && s.idioms.length ? { idioms: s.idioms.map((item: unknown, i: number) => {
+            const o = item as { phrase?: unknown; kind?: unknown } | null;
+            if (typeof o?.phrase !== 'string' || !o.phrase.trim()) fail(`idioms[${i}].phrase 应为非空字符串`);
+            return { phrase: (o!.phrase as string).trim(), ...(typeof o!.kind === 'string' ? { kind: o!.kind } : {}) };
+        }) } : {}),
+        ...(typeof s.idiomShare === 'number' && s.idiomShare >= 0 && s.idiomShare <= 1 ? { idiomShare: s.idiomShare } : {}),
         factCheck: s.factCheck === undefined ? 'off' : FACT_CHECK_MODES.includes(s.factCheck as FactCheckMode) ? s.factCheck as FactCheckMode : fail(`factCheck 应为 ${FACT_CHECK_MODES.join(' / ')} 之一`),
         ...(typeof s.quoteShare === 'number' && s.quoteShare >= 0 && s.quoteShare <= 1 ? { quoteShare: s.quoteShare } : {}),
         smallNews: s.smallNews === true,

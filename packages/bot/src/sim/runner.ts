@@ -428,6 +428,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         } : {}),
         ...(scenario.interruptions ? { interruptions: true } : {}),
         ...(scenario.jokes?.length ? { jokes: () => scenario.jokes! } : {}),
+        ...(scenario.idioms?.length ? { idioms: () => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), ...(scenario.idiomShare !== undefined ? { idiomShare: scenario.idiomShare } : {}) } : {}),
         ...(scenario.watched?.length ? { watched: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); } } : {}),
         ...(scenario.memes?.length ? { memes: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); } } : {}),
         ...(scenario.herNo ? { herNo: true } : {}),

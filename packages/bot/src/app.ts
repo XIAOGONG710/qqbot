@@ -60,6 +60,7 @@ import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts'
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
+import { idiomStore, IDIOMS_CHECK_MS, refreshIdioms } from './idioms.ts';
 import { jokeStore, JOKES_CHECK_MS, refreshJokes } from './jokes.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes, type MemeEntry } from './memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from './watching.ts';
@@ -360,6 +361,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const sendingStickers = stickerMode === 'send' && transport.sendPrivateImage ? collectingStickers : undefined;
     // 小梗（ADR 0114）：派生数据，存 <数据目录>/jokes/<QQ>.json
     const jokes = config.jokes ? jokeStore({ dir: join(config.dataDir, 'jokes'), log }) : undefined;
+    // 他的口头习惯（ADR 0138）：派生数据，存 <数据目录>/idioms/<QQ>.json
+    const idioms = config.idioms ? idiomStore({ dir: join(config.dataDir, 'idioms'), log }) : undefined;
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；刷新在下面（要她的 B 站号）
     const memesFile = memesPath(config.dataDir);
     let memeEntries: readonly MemeEntry[] = config.memes ? loadMemes(memesFile, log).entries : [];
@@ -550,6 +553,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.curious ? { curious: true } : {}),
             ...(config.interruptions ? { interruptions: true } : {}),
             ...(jokes && contact.tier === 'boyfriend' ? { jokes: () => jokes.load(contact.qq).jokes } : {}),
+            ...(idioms && contact.tier === 'boyfriend' ? { idioms: () => idioms.load(contact.qq).items } : {}),
             ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => memeEntries } : {}),
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
@@ -964,6 +968,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     };
     // 小梗（ADR 0114）：隔一阵从最近的聊天里抽；出错只记日志
     let jokesTimer: ReturnType<typeof setInterval> | undefined;
+    let idiomsTimer: ReturnType<typeof setInterval> | undefined;
     let memesTimer: ReturnType<typeof setInterval> | undefined;
     let watchingTimer: ReturnType<typeof setInterval> | undefined;
     let watchingRunning = false;
@@ -976,6 +981,19 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
                 now: pipeline?.now ? pipeline.now() : Date.now(), log: message => log(`[${contact.qq}] ${message}`),
             }).catch(error => log(`[${contact.qq}] 小梗：抽取出错（${error instanceof Error ? error.message : String(error)}）`));
+        }
+    };
+    // 他的口头习惯（ADR 0138）：隔一阵从他最近的话里学；出错只记日志。不收进去的词：联系人和角色的名字、卡上的禁用词
+    const refreshAllIdioms = () => {
+        if (!idioms || stopped) return;
+        for (const contact of config.contacts.filter(c => c.tier === 'boyfriend')) {
+            const character = cardFor(contact.tier).character;
+            void refreshIdioms({
+                qq: contact.qq, userName: contact.name, charName: character.name, history: history.load(contact.qq), store: idioms,
+                blocked: [contact.name, character.name, ...config.contacts.map(c => c.name), ...character.banned],
+                extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
+                now: pipeline?.now ? pipeline.now() : Date.now(), log: message => log(`[${contact.qq}] ${message}`),
+            }).catch(error => log(`[${contact.qq}] 口头习惯：学习出错（${error instanceof Error ? error.message : String(error)}）`));
         }
     };
     // 她自己看一个视频（ADR 0130）：每天一次，14 点以后；30 分钟看一眼该不该看；要她的 B 站号
@@ -1243,6 +1261,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     void refreshMemeJob();
                     void watchJob();
                     refreshAllJokes();
+                    refreshAllIdioms();
                     checkWeeklyReport();
                     if (config.weeklyReport && !weeklyTimer) {
                         weeklyTimer = setInterval(checkWeeklyReport, 60 * 60_000);
@@ -1259,6 +1278,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     if (jokes && !jokesTimer) {
                         jokesTimer = setInterval(refreshAllJokes, JOKES_CHECK_MS);
                         jokesTimer.unref();
+                    }
+                    if (idioms && !idiomsTimer) {
+                        idiomsTimer = setInterval(refreshAllIdioms, IDIOMS_CHECK_MS);
+                        idiomsTimer.unref();
                     }
                     if (photos && !photoDiscoveryTimer) {
                         photoDiscoveryTimer = setInterval(discoverPhotos, PHOTO_DISCOVERY_INTERVAL_MS);
@@ -1351,6 +1374,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (foodDiscoveryTimer) clearInterval(foodDiscoveryTimer);
             clearTimeout(foodRetryTimer);
             if (jokesTimer) clearInterval(jokesTimer);
+            if (idiomsTimer) clearInterval(idiomsTimer);
             if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);
