@@ -150,3 +150,6 @@
 ## 10-23 20:33 即将重启上线：`d0ef24e`（ADR 0125–0130，六个开关一起开）
 - 用户说「都上线并开启」。线上 `4691545` → `d0ef24e`；61 个文件，全在允许路径内；koishi.yml 在 `weeklyReport: true` 后加六行：`menu` `foodPhotos` `curious` `smallNews` `memes` `watching` 都是 true；备份 `runtime/backup-pre-bili25-*`。回滚：六个开关改 false + 重启，或 `git reset --hard 4691545` + 还原 `koishi.yml.bak-bili25-*`。
 - 注意：`menu` / `foodPhotos` 从第二天（10-24）起才有菜名和照片；`memes` 启动时就会读榜、学一轮；`watching` 14 点后才看，今天 20:33 已过 14 点，重启后就会看一个。
+
+## 10-23 20:35 重启：热修 `9e3a5ab`（`d0ef24e` 之上，4 个文件）
+- 上线 `d0ef24e` 后日志：「她看视频：这一轮出错（ENOENT … watching\watched.json.tmp…）」——`writeJsonAtomic` 不建目录，`memes/`、`watching/` 目录线上还不存在；`memes` 同样会在存盘时失败。修：`saveMemes` / `saveWatched` 存前先 `mkdirSync(dirname, recursive)`，加了两个测试（目录不存在）。没有配置变化。回滚 `git reset --hard d0ef24e`。
