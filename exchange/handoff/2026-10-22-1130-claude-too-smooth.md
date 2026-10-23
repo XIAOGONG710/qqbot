@@ -179,3 +179,7 @@
 
 ## 10-23 22:17 即将重启上线：`bee3768`（ADR 0133 主动发的话要有由头）
 - 用户说「做」。线上 `ae7747e` → `bee3768`；9 个文件，没有配置变化，没有新开关。备份 `runtime/backup-pre-bili29-*`。回滚 `git reset --hard ae7747e`。
+
+## 10-23 22:17 结果：`bee3768` 已上线
+- 线上 `ae7747e` → `bee3768`，一次到位：心跳 ref = `bee3768…`、connectedAt 14:16:22Z；step 7（删维护标记、推 main / integration）已做。备份 `runtime/backup-pre-bili29-*`，回滚 `git reset --hard ae7747e`，脚本 `golive-bili29.ps1`。无配置变化。
+- 用户随后说「现在的她还不够真实」（没点具体哪一项）。下一步按证据找剩下的“人机感”，真模型模拟保持小量（`--runs 2–3`）。
