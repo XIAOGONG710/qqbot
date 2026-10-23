@@ -35,7 +35,7 @@ export const MODULES: readonly ModuleDef[] = [
         id: 'life', name: '她的日子（生活）',
         scope: '她自己的一天：作息、世界账（天气、猫、快递、作业、钱）、日常小事和小测、项目与追求、身体、心情和在读的书、闺蜜、节日、承诺和日记。',
         files: ['schedule.ts', 'world.ts', 'life-selector.ts', 'life-events.ts', 'action-queue.ts', 'actions.ts', 'projects.ts', 'pursuits.ts', 'money.ts', 'body.ts', 'needs.ts', 'her-days.ts', 'day-plan.ts',
-            'everyday.ts', 'weather.ts', 'festivals.ts', 'npc.ts', 'npc-asks.ts', 'obstacles.ts', 'diary.ts', 'biography.ts', 'bedtime.ts', 'people.ts', 'promises.ts', 'promise-state.ts', 'open-loops.ts'],
+            'everyday.ts', 'menu.ts', 'weather.ts', 'festivals.ts', 'npc.ts', 'npc-asks.ts', 'obstacles.ts', 'diary.ts', 'biography.ts', 'bedtime.ts', 'people.ts', 'promises.ts', 'promise-state.ts', 'open-loops.ts'],
         groups: ['她的日子'],
         metrics: '周报「她的日子」；consistency-cli（说的和账对不对）；sim/life-audit',
         adrs: ['0015', '0040', '0045', '0104', '0106'],

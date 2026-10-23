@@ -289,6 +289,9 @@ export interface Scenario {
     proactiveAsk: boolean;
     /** 默认 false：被第三方打断（ADR 0115，配置 interruptions） */
     interruptions: boolean;
+    /** 默认 false：每顿吃什么（ADR 0125，配置 menu）；menuFrom：从这一天起才有，不写就从头 */
+    menu: boolean;
+    menuFrom?: string;
     /** 默认 false：给主动名额留余地（ADR 0124，配置 proactiveRoom） */
     proactiveRoom: boolean;
     /** 默认 false：吃醋，最轻的一档（ADR 0123，配置 jealousy） */
@@ -408,6 +411,8 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         relationship: s.relationship === true,
         jealousy: s.jealousy === true,
         proactiveRoom: s.proactiveRoom === true,
+        menu: s.menu === true,
+        ...(typeof s.menuFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.menuFrom) ? { menuFrom: s.menuFrom } : {}),
         interruptions: s.interruptions === true,
         proactiveAsk: s.proactiveAsk === true,
         hisHours: s.hisHours === true,

@@ -78,6 +78,7 @@ export const DEFAULTS = {
     weeklyReport: false,
     jealousy: false,
     proactiveRoom: false,
+    menu: false,
     innerLife: false,
     herFeelings: false,
     herNo: false,
@@ -292,6 +293,12 @@ export interface AppConfig {
      * 开了以后：睡前那句晚安不占名额；别的时机最多占 dailyMax - 1 条，留一个给“随口说件事”。总条数不超过 dailyMax + 睡前一条（不加催他的次数）。默认关
      */
     proactiveRoom: boolean;
+    /**
+     * 每顿吃什么（ADR 0125）：账上的“吃饭”只有午饭 / 晚饭和在哪吃，没有“吃了什么”，他问“中午吃的啥”她就现编，前后对不上。
+     * 开了以后每天每顿从一张通用的学生菜单里按日期随机取一道（同一天对所有人一样、重启重放都一样、一个循环不重样），写进她那边的事实、此刻在做的事和复盘；
+     * 第一次开的时候定下“从哪天起”（第二天），已经过完的日子不改。默认关
+     */
+    menu: boolean;
     /**
      * 内心（ADR 0101，要主动消息开着）：每隔一阵她自己安静地想一想，写下心里的话存起来；想告诉他 / 想问他的念头会变成“心里惦记”的主动消息，
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
@@ -580,6 +587,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         weeklyReport: bool(file, 'weeklyReport', '', DEFAULTS.weeklyReport),
         jealousy: bool(file, 'jealousy', '', DEFAULTS.jealousy),
         proactiveRoom: bool(file, 'proactiveRoom', '', DEFAULTS.proactiveRoom),
+        menu: bool(file, 'menu', '', DEFAULTS.menu),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),

@@ -9,6 +9,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Contact } from './config.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { dishNote, dishOn, type Menu } from './menu.ts';
 import type { Episode } from './memory/episodes.ts';
 import { classesOn, formatDate, herDay, wakeOn, type ClassToday, type Schedule } from './schedule.ts';
 import { realWeather, type DayWeather } from './weather.ts';
@@ -52,6 +53,10 @@ export interface World {
     quizzes?: boolean;
     /** 补充的小事和小测从这一天起才有（ADR 0106）：她已经过完的日子不被改写、不凭空多出没发生过的小测 */
     everydayFrom?: string;
+    /** 每顿吃什么（ADR 0125，配置 menu）：菜单；有它，午饭 / 晚饭才有“吃的是什么”（日期的函数，不存状态） */
+    menu?: Menu;
+    /** 菜单从这一天起才有（ADR 0125）：她已经过完的日子不被改写 */
+    menuFrom?: string;
     /** 她的身体（ADR 0025，body.ts） */
     body?: Body;
     /** 她的日常（ADR 0031）：午饭、晚饭、洗澡 */
@@ -173,7 +178,7 @@ export interface WorldNow {
     homework: { course: string; due: Date; done: boolean; doneAt: Date; assigned?: string }[];
     familyCall?: { at: Date; done: boolean };
     /** 她这一天的日常（ADR 0031）：午饭、晚饭在哪吃、几点到几点；洗澡几点到几点（不洗的日子没有） */
-    routine?: { meals: { kind: 'lunch' | 'dinner'; start: Date; end: Date; where: 'canteen' | 'takeout' | 'home' }[]; shower?: { start: Date; end: Date } };
+    routine?: { meals: { kind: 'lunch' | 'dinner'; start: Date; end: Date; where: 'canteen' | 'takeout' | 'home'; /** 吃的是什么（ADR 0125，配置 menu） */ dish?: string }[]; shower?: { start: Date; end: Date } };
     /** 今天已经发生的小事（text 已换好人名） */
     events: { id: string; text: string; at: Date; person?: { id: string; name: string; relation: string }; feel?: EventFeel }[];
     /** 她身边的人今天怎么样（ADR 0033）：只有有事的（病了、忙、回家了） */
@@ -758,7 +763,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
         result.homework.push({ course: item.course, due: item.due, done: item.done <= now, doneAt: item.done, assigned: item.assigned });
     }
     if (record.call) result.familyCall = { at: record.call, done: record.call <= now };
-    if (world.routine) result.routine = routineOn(world.routine, schedule, day, record.atSchool);
+    if (world.routine) result.routine = routineOn(world.routine, schedule, day, record.atSchool, world.menu ? { menu: world.menu, ...(world.menuFrom ? { from: world.menuFrom } : {}) } : undefined);
     for (const event of record.events) {
         if (event.at > now) continue;
         const person = event.person ? world.people.find(p => p.id === event.person) : undefined;
@@ -851,6 +856,9 @@ export function describeWorld(now: WorldNow, at: Date, giver?: (qq: number) => s
         const spent = now.money.today.reduce((sum, e) => sum + e.amount, 0);
         parts.push(`钱：手上还有 ${now.money.balance} 元（生活费每月 ${now.money.nextPay.getDate()} 号到，这个月的到了，离下次还有 ${days} 天${now.money.askedHome ? `；这个月跟家里多要了 ${now.money.askedHome}` : ''}）；${spent ? `今天花了 ${spent} 元（${spendItems(now.money.today)}）` : '今天还没花钱'}`);
     }
+    // 今天吃的（ADR 0125，配置 menu）：已经到饭点的每一顿；没写的别编
+    const eaten = (now.routine?.meals ?? []).filter(m => m.dish && m.start.getTime() <= at.getTime());
+    if (eaten.length) parts.push(`吃的：${eaten.map(m => `${m.kind === 'lunch' ? '午饭' : '晚饭'}${mealWhere(m.where)}${m.dish}`).join('；')}`);
     if (now.familyCall) {
         // 视频的那半小时里写「还在视频」（ADR 0030：写成「视频过了」时，她 3/3 在视频中途说「刚跟我妈视频完」）
         const calling = now.familyCall.done && at.getTime() < now.familyCall.at.getTime() + OCCUPATION_MINUTES.call * 60_000;
@@ -908,7 +916,7 @@ export function diaryWorld(now: WorldNow): string[] {
  * 她这一天的日常（ADR 0031）：按日期取哈希，同一天对所有人一样。和课撞上的那顿不吃（节次里午饭、晚饭的点本来不上课）；
  * 周末、放假按概率点外卖，不在学校就在家吃；洗澡按概率，洗的那天在 from 之后 spread 分钟内去
  */
-function routineOn(routine: NonNullable<World['routine']>, schedule: Schedule, day: Date, atSchool: boolean): NonNullable<WorldNow['routine']> {
+function routineOn(routine: NonNullable<World['routine']>, schedule: Schedule, day: Date, atSchool: boolean, menu?: { menu: Menu; from?: string }): NonNullable<WorldNow['routine']> {
     const date = formatDate(day);
     const { lessons } = classesOn(schedule, day);
     const off = lessons.length === 0;
@@ -918,13 +926,19 @@ function routineOn(routine: NonNullable<World['routine']>, schedule: Schedule, d
         const end = new Date(start.getTime() + plan.minutes * 60_000);
         if (lessons.some(l => l.start < end && start < l.end)) return [];
         const where = !atSchool ? 'home' as const : off && unit(`${date} ${kind} takeout`) < routine.takeoutChance ? 'takeout' as const : 'canteen' as const;
-        return [{ kind, start, end, where }];
+        const dish = menu && (!menu.from || date >= menu.from) ? dishOn(date, kind, menu.menu) : undefined;
+        return [{ kind, start, end, where, ...(dish ? { dish } : {}) }];
     });
     if (unit(`${date} shower`) >= routine.shower.chance) return { meals };
     const [min, max] = routine.shower.minutes;
     const start = new Date(at(day, routine.shower.from).getTime() + Math.floor(unit(`${date} shower at`) * (routine.shower.spread + 1)) * 60_000);
     const end = new Date(start.getTime() + (min + Math.floor(unit(`${date} shower long`) * (max - min + 1))) * 60_000);
     return { meals, shower: { start, end } };
+}
+
+/** 这顿在哪吃（ADR 0125）：写在“吃的是什么”前面——「在食堂吃了黄焖鸡」「点外卖吃了麻辣烫」「在家吃了水饺」 */
+function mealWhere(where: 'canteen' | 'takeout' | 'home'): string {
+    return where === 'canteen' ? '在食堂吃的' : where === 'takeout' ? '点的外卖，' : '在家吃的';
 }
 
 /** 洗完澡后多久还算「刚洗完澡」（分钟，ADR 0031） */
@@ -964,7 +978,7 @@ export function occupationAt(now: WorldNow, at: Date): string | undefined {
     if (together) return together.doing;
     // 吃饭（ADR 0031）
     const meal = now.routine?.meals.find(m => at >= m.start && at < m.end);
-    if (meal) return `${meal.where === 'canteen' ? '在食堂' : meal.where === 'takeout' ? '点了外卖，在' : '在家'}吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}`;
+    if (meal) return `${meal.where === 'canteen' ? '在食堂' : meal.where === 'takeout' ? '点了外卖，在' : '在家'}吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}${dishNote(meal.dish)}`;
     // 出门买相机前那一会儿（排在吃饭后面）：不写作息里那一段的空闲活动（10-11 预览：13:30 还「在图书馆赶作业」，14:00 就到了山大路）
     if (camera?.state === 'planned' && at < camera.start && within(new Date(camera.start.getTime() - OCCUPATION_MINUTES.beforeTrip * 60_000), OCCUPATION_MINUTES.beforeTrip)) {
         return `在宿舍准备出门，${clock(camera.start)} 去${camera.where}买相机`;
@@ -1001,6 +1015,7 @@ export function recapDay(now: WorldNow): string[] {
     const trip = now.cameraFund?.camera;
     if (trip?.state === 'bought' && formatDate(trip.end) === now.day) lines.push(`${partOfDay(trip.start.getHours())}去${trip.where}买了相机（${trip.what}，${trip.price} 元）`);
     else if (now.cameraFund?.lastDeposit && formatDate(now.cameraFund.lastDeposit.at) === now.day) lines.push(now.cameraFund.lastDeposit.amount ? `相机基金存了 ${now.cameraFund.lastDeposit.amount}` : '相机基金这周没存');
+    for (const meal of now.routine?.meals ?? []) if (meal.dish) lines.push(`${meal.kind === 'lunch' ? '午饭' : '晚饭'}${mealWhere(meal.where)}${meal.dish}`);
     if (now.routine?.shower) lines.push(`${clock(now.routine.shower.start)} 去洗了澡`);
     return lines;
 }

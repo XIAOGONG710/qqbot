@@ -34,6 +34,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'lifeInPrompt', label: '生活账进提示词', group: '她的日子', adr: '0045' },
     { key: 'realWeather', label: '真实天气', group: '她的日子', adr: '0048' },
     { key: 'everydayLife', label: '日常小事 / 小测', group: '她的日子', adr: '0106' },
+    { key: 'menu', label: '每顿吃什么（每天随机）', group: '她的日子', adr: '0125' },
     { key: 'pursuits', label: '她自己的追求', group: '她的日子', adr: '0104' },
     { key: 'herFeelings', label: '心境（开心 / 难过 / 流泪）', group: '她的日子', adr: '0102' },
     { key: 'grievance', label: '小别扭 / 和好', group: '她的日子', adr: '0074' },

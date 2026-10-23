@@ -4,6 +4,7 @@
 
 import { bookProgressAt, type ReadingBook } from './her-days.ts';
 import type { LifeEvent, LifeEventDraft, LifeEventSource } from './life-events.ts';
+import { dishNote } from './menu.ts';
 import { atHome, classesOn, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
 
@@ -90,7 +91,7 @@ export function judgeAction(intent: ActionIntent, context: ActionContext): Actio
         const where = meal.where === 'canteen' ? '在食堂' : meal.where === 'takeout' ? '点了外卖，在' : '在家';
         // 要出门赴约的，吃到出门那一刻（G1）；只能比饭点短，不能更长
         const end = intent.durationMinutes ? new Date(Math.min(meal.end.getTime(), start.getTime() + intent.durationMinutes * 60_000)) : meal.end;
-        return fixedAction({ ...intent, subject }, { start, end }, `${where}吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}`, context);
+        return fixedAction({ ...intent, subject }, { start, end }, `${where}吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}${dishNote(meal.dish)}`, context);
     }
     if (intent.kind === 'meet') {
         const appointment = context.appointments?.find(item => item.id === intent.id && sameInstant(item.start, start));

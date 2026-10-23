@@ -29,6 +29,7 @@ import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from './feedback.ts';
 import { momentsReader } from './moments.ts';
 import { loadEverydayFrom } from './everyday.ts';
+import { loadMenuFrom } from './menu.ts';
 import { pursuitsReader } from './pursuits.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
@@ -219,11 +220,13 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 补充的日常小事（ADR 0106）：第一次开的时候定下“从哪天起”（第二天）并存起来，以后重启读同一个；她已经过完的日子不改写
     mkdirSync(join(config.dataDir, 'world'), { recursive: true });
     const everydayFrom = config.everydayLife ? loadEverydayFrom(join(config.dataDir, 'world', 'everyday-from.json'), new Date(), log) : undefined;
+    // 每顿吃什么（ADR 0125）：同样第一次开的时候定下“从哪天起”
+    const menuFrom = config.menu ? loadMenuFrom(join(config.dataDir, 'world', 'menu-from.json'), new Date(), log) : undefined;
     const cards = new Map<string, TierCard>();
     const cardFor = (tier: string) => {
         let card = cards.get(tier);
         if (!card) {
-            card = loadTierCard(config.characterCard, tier, everydayFrom ? { everydayLife: true, everydayFrom } : {});
+            card = loadTierCard(config.characterCard, tier, { ...(everydayFrom ? { everydayLife: true, everydayFrom } : {}), ...(menuFrom ? { menu: true, menuFrom } : {}) });
             // 闺蜜的约（ADR 0061，配置 npcAsks）：开关设在这张卡的世界上，其余代码照旧读世界
             if (config.npcAsks && card.character.herWorld) card.character.herWorld.asks = true;
             // 公共节日（ADR 0076，配置 festivals）：并进这一档的重要的日子，时间块和主动消息照旧读 dates
