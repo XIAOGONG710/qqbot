@@ -1,0 +1,22 @@
+{
+    "name": "听到一首歌分享给他（ADR 0139）",
+    "description": "11-11 周三，晚上 21:42 她听到一首歌想分享（世界账里这一天有 music_share；歌是编的：《晚风小站》）。歌曲卡片先发，她再说一两句：只说听到的感觉、可以引一句歌词，不编她和这首歌的往事 / 听了多少遍，不问「好听吗」「你听过吗」，不要他回应。用法：node src/sim/run.ts sim/music-share.json --runs 3 --tag music",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-11T19:00:00+08:00",
+    "memory": false,
+    "proactive": true,
+    "musicShares": true,
+    "music": [
+        { "title": "晚风小站", "artist": "阿夏", "chart": "飙升榜", "lyric": ["我把夏天折成一只纸船", "漂向你家那条街"] }
+    ],
+    "history": [
+        { "time": "2026-11-11T16:00:00+08:00", "role": "user", "content": "我先去忙了，晚点聊" },
+        { "time": "2026-11-11T16:01:00+08:00", "role": "assistant", "content": "好，晚点聊" }
+    ],
+    "steps": [
+        { "case": "MU01", "note": "晚上：听到一首歌" },
+        { "advance": "3h" },
+        { "check": { "proactive": { "count": [1, 4], "allowedTimes": true, "exitClean": true, "replyAny": ["音乐卡片"], "replyNone": ["好听吗", "你听过吗", "循环", "遍", "作业", "生理期", "开黑"] } } }
+    ]
+}

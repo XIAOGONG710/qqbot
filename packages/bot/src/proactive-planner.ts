@@ -27,6 +27,7 @@ import {
     blockReason, candidateLabel, candidatesOn, counts, DEFAULT_NEWS_KINDS, herDay, MAX_PROACTIVE_BUBBLES, newsKindsOf, occasionNote, PENDING_REASON, planFrom, recallTopic, untoldNews,
     UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type NewsKind, type ProactiveInput, type RescheduleItem, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
+import type { MusicPick } from './music.ts';
 import type { BodyNow } from './body.ts';
 import { newObstacles, obstaclesBetween, OBSTACLE_KINDS, type ObstacleFacts, type ObstacleKind } from './obstacles.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from './promises.ts';
@@ -169,6 +170,8 @@ export interface PlannerDeps {
     reschedule?: (now: number) => RescheduleItem[];
     /** 货架里有这一类照片、这会儿也允许发（ADR 0110）；不给 = 不发“拍了张照片”那一类 */
     photoReady?: (kind: 'cat' | 'food', now: number, dish?: string) => boolean;
+    /** 分享歌曲（ADR 0139，配置 musicShares）：ready 是此刻能发的那首（没有 / 上一首刚发过就没有），used 是发出去了要记一笔；不给 = 不发“听到一首歌”那一类 */
+    music?: { ready: (now: number) => MusicPick | undefined; used: (id: number, now: number) => void };
     /** 她最近在 B 站看过的东西（ADR 0130，配置 watching）：想事情时多一个“你怎么想”的题目；没有就 undefined */
     watchedFacts?: () => { id: string; text: string } | undefined;
     /** 此刻是不是正和他一起玩（ADR 0111）：是就不插别的主动消息 */
@@ -417,6 +420,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             ...(deps.news ? { news: deps.news(now()).filter(item => newsKindsOf(deps.settings).includes(item.kind)) } : {}),
             ...(deps.reschedule ? { reschedules: reschedulesNow() } : {}),
             ...(deps.photoReady ? { photoReady: deps.photoReady } : {}),
+            ...(deps.music ? { musicReady: (at: number) => Boolean(deps.music!.ready(at)) } : {}),
             ...(deps.together ? { together: deps.together } : {}),
             ...(deps.hisHours ? { hisHours: true } : {}),
             ...(deps.weather ? { rainingNow: (at: number) => rainingAt(deps.weather!(at)?.weather, new Date(at)) } : {}),
@@ -446,12 +450,14 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         // 她那边的事没说成（ADR 0057 调整）：这一条顺带说
         const untold = untoldNews(candidate, now(), current);
         if (untold.length) deps.log(`主动${tag}：${candidateLabel(candidate)}顺带说没说成的事：${untold.map(n => n.what).join('、')}`);
+        const musicPick = candidate.news?.kind === 'music_share' ? deps.music?.ready(now()) : undefined;
         const outcome: InitiateOutcome = await deps.responder.initiate({
             label: candidateLabel(candidate),
             note: occasionNote(candidate, contact.name, untold),
             topic: recallTopic(candidate, contact.name),
             maxBubbles: MAX_PROACTIVE_BUBBLES,
             ...(candidate.occasion === 'reach' || candidate.occasion === 'invite' || candidate.occasion === 'ask' ? { canDecline: true } : {}),
+            ...(musicPick ? { music: musicPick } : {}),
             ...(candidate.news?.kind === 'cat_photo' ? { photo: 'cat' as const } : {}),
             ...(candidate.news?.kind === 'food_photo' && candidate.news.dish ? { photo: 'food' as const, photoDish: candidate.news.dish } : {}),
             dryRun,
@@ -463,6 +469,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
                 record(candidate, { result: 'sent', at: committed!.at, messageIds: outcome.messageIds });
                 deps.log(`主动找他（${candidateLabel(candidate)}）${outcome.parts.length > 1 ? `（${outcome.parts.length} 条）` : ''}：${logBody(outcome.parts.join(' / '))}`);
                 if (candidate.followUp) asked(candidate.followUp.item.id, outcome.parts, false);
+                // 歌发出去了：记下来，上一首发出去不到几天不再发下一首
+                if (musicPick) deps.music?.used(musicPick.id, now());
                 // 心里惦记的念头说出去了：记成说过（聊天提示词里不再当“心里的小心思”放，也不会再变成主动消息）
                 if (candidate.inner) {
                     inner = { ...inner, thoughts: inner.thoughts.map(t => (t.id === candidate.inner!.id ? { ...t, told: true as const } : t)) };

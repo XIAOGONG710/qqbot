@@ -35,7 +35,7 @@ import { pursuitsReader } from './pursuits.ts';
 import { removeFaces } from './qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from './memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from './festivals.ts';
-import { newsKindsOf, dayMatches, withAsk, withBack, withCatPhoto, withCurious, withFoodShares, withInner, withInvite, withReach, withRoom, withSmallNews, type ProactiveMode } from './proactive.ts';
+import { newsKindsOf, dayMatches, withAsk, withBack, withCatPhoto, withCurious, withFoodShares, withInner, withInvite, withMusic, withReach, withRoom, withSmallNews, type ProactiveMode } from './proactive.ts';
 import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
 import { qzoneComposer } from './qzone.ts';
 import { createVideoBrowsing, dmMessageId, fetchHotComments, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
@@ -61,6 +61,7 @@ import { describeState, formatDate, herDay, stateAt, type Schedule } from './sch
 import { useRealWeather, weatherFetcher } from './weather.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
 import { idiomStore, IDIOMS_CHECK_MS, refreshIdioms } from './idioms.ts';
+import { loadMusic, markShared, MUSIC_CHECK_MS, musicPath, readyPick, refreshMusic, saveMusic, shareMusicCard, type MusicPick } from './music.ts';
 import { jokeStore, JOKES_CHECK_MS, refreshJokes } from './jokes.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes, type MemeEntry } from './memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from './watching.ts';
@@ -96,6 +97,8 @@ export interface Transport extends PresenceTransport {
     pokeFriend?(userId: number): Promise<void>;
     /** 发本地图片表情；配置 stickers 开时两个入口都提供。 */
     sendPrivateImage?(userId: number, file: string, summary: string): Promise<number>;
+    /** 发一张网易云歌曲卡片（OneBot music 段，配置 musicShares，ADR 0139）；没有就只发文字链接 */
+    sendPrivateMusic?(userId: number, id: number): Promise<number>;
     /** NapCat 的 get_friend_msg_history：某人最近 count 条私聊（含小号自己发的），从旧到新。没有任何记录时 NapCat 也报错 */
     friendHistory(userId: number, count: number): Promise<HistoryMessage[]>;
 }
@@ -361,6 +364,19 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const sendingStickers = stickerMode === 'send' && transport.sendPrivateImage ? collectingStickers : undefined;
     // 小梗（ADR 0114）：派生数据，存 <数据目录>/jokes/<QQ>.json
     const jokes = config.jokes ? jokeStore({ dir: join(config.dataDir, 'jokes'), log }) : undefined;
+    // 分享歌曲（ADR 0139）：候选存 <数据目录>/music/music.json（派生数据）；每天刷一次，发出去的记下来
+    const musicFile = musicPath(config.dataDir);
+    const musicShelf = config.musicShares
+        ? {
+            ready: (at: number): MusicPick | undefined => readyPick(loadMusic(musicFile, log), at),
+            used: (id: number, at: number): void => saveMusic(musicFile, markShared(loadMusic(musicFile, log), id, at)),
+        }
+        : undefined;
+    // 歌曲卡片发不出去（NapCat 不认 / 超时以外的错）就发文字链接兜底；超时不重发（可能已经发出去了）
+    const sendMusicCard = (userId: number, pick: MusicPick): Promise<number> => shareMusicCard({
+        ...(transport.sendPrivateMusic ? { sendMusic: transport.sendPrivateMusic.bind(transport) } : {}),
+        sendText: transport.sendPrivateText.bind(transport), log: message => log(`[${userId}] ${message}`),
+    }, userId, pick);
     // 他的口头习惯（ADR 0138）：派生数据，存 <数据目录>/idioms/<QQ>.json
     const idioms = config.idioms ? idiomStore({ dir: join(config.dataDir, 'idioms'), log }) : undefined;
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；刷新在下面（要她的 B 站号）
@@ -558,6 +574,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
+            ...(musicShelf && contact.tier === 'boyfriend' ? { sendMusic: sendMusicCard } : {}),
             ...(config.factCheck !== 'off' ? { factCheck: config.factCheck } : {}),
             ...(config.herNo ? { herNo: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
@@ -864,7 +881,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         if (planners.size || config.proactive === 'off') return;
         for (const contact of proactiveContacts) {
             const { character } = cardFor(contact.tier);
-            const plannerSettings = [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite, config.proactiveAsk && withAsk, config.photos && config.photoShares && photos && contact.tier === 'boyfriend' && withCatPhoto, config.comeBack && withBack, config.proactiveRoom && withRoom, contact.tier === 'boyfriend' && config.curious && withCurious, config.menu && config.foodPhotos && photos && contact.tier === 'boyfriend' && withFoodShares, contact.tier === 'boyfriend' && config.everydayLife && config.smallNews && withSmallNews]
+            const plannerSettings = [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite, config.proactiveAsk && withAsk, config.photos && config.photoShares && photos && contact.tier === 'boyfriend' && withCatPhoto, config.comeBack && withBack, config.proactiveRoom && withRoom, contact.tier === 'boyfriend' && config.curious && withCurious, config.menu && config.foodPhotos && photos && contact.tier === 'boyfriend' && withFoodShares, contact.tier === 'boyfriend' && config.everydayLife && config.smallNews && withSmallNews, contact.tier === 'boyfriend' && musicShelf && withMusic]
                 .reduce((settings, overlay) => (overlay ? overlay(settings) : settings), character.proactive!);
             planners.set(contact.qq, createProactivePlanner({
                 contact,
@@ -874,6 +891,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 ...(config.hisHours && contact.tier === 'boyfriend' ? { hisHours: true } : {}),
                 ...(config.together && contact.tier === 'boyfriend' ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
                 ...(photos && (config.photoShares || config.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),
+                ...(musicShelf && contact.tier === 'boyfriend' ? { music: musicShelf } : {}),
                 ...(config.innerLife ? { inner: true } : {}),
                 ...(config.innerLife && config.watching && contact.tier === 'boyfriend' ? { watchedFacts: () => watchedFacts(watchedEntries, new Date(pipeline?.now ? pipeline.now() : Date.now())) } : {}),
                 dates: character.dates,
@@ -969,6 +987,12 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 小梗（ADR 0114）：隔一阵从最近的聊天里抽；出错只记日志
     let jokesTimer: ReturnType<typeof setInterval> | undefined;
     let idiomsTimer: ReturnType<typeof setInterval> | undefined;
+    let musicTimer: ReturnType<typeof setInterval> | undefined;
+    const refreshMusicJob = () => {
+        if (!musicShelf || stopped) return;
+        void refreshMusic({ path: musicFile, now: () => (pipeline?.now ? pipeline.now() : Date.now()), log })
+            .catch(error => log(`分享歌曲：刷候选出错（${error instanceof Error ? error.message : String(error)}）`));
+    };
     let memesTimer: ReturnType<typeof setInterval> | undefined;
     let watchingTimer: ReturnType<typeof setInterval> | undefined;
     let watchingRunning = false;
@@ -1262,6 +1286,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     void watchJob();
                     refreshAllJokes();
                     refreshAllIdioms();
+                    refreshMusicJob();
                     checkWeeklyReport();
                     if (config.weeklyReport && !weeklyTimer) {
                         weeklyTimer = setInterval(checkWeeklyReport, 60 * 60_000);
@@ -1278,6 +1303,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     if (jokes && !jokesTimer) {
                         jokesTimer = setInterval(refreshAllJokes, JOKES_CHECK_MS);
                         jokesTimer.unref();
+                    }
+                    if (musicShelf && !musicTimer) {
+                        musicTimer = setInterval(refreshMusicJob, MUSIC_CHECK_MS);
+                        musicTimer.unref();
                     }
                     if (idioms && !idiomsTimer) {
                         idiomsTimer = setInterval(refreshAllIdioms, IDIOMS_CHECK_MS);
@@ -1375,6 +1404,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             clearTimeout(foodRetryTimer);
             if (jokesTimer) clearInterval(jokesTimer);
             if (idiomsTimer) clearInterval(idiomsTimer);
+            if (musicTimer) clearInterval(musicTimer);
             if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);

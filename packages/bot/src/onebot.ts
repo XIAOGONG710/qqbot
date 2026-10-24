@@ -177,6 +177,15 @@ export class OneBotClient {
         return data.message_id;
     }
 
+    /** 发一张网易云歌曲卡片（OneBot 11 的 music 段，type 163；ADR 0139） */
+    async sendPrivateMusic(userId: number, id: number): Promise<number> {
+        const data = await this.call<{ message_id: number }>('send_private_msg', {
+            user_id: userId,
+            message: [{ type: 'music', data: { type: '163', id: String(id) } }],
+        });
+        return data.message_id;
+    }
+
     /** 让对方那边显示「正在输入…」（NapCat 的 set_input_status，event_type 1；ADR 0077）。显示几秒就消，要一直显示得隔几秒再发一次 */
     async setInputStatus(userId: number, eventType = 1): Promise<void> {
         assertKernelOk('set_input_status', await this.call('set_input_status', { user_id: String(userId), event_type: eventType }));

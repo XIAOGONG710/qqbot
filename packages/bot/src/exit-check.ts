@@ -28,7 +28,7 @@ const NAG_TOPIC: Record<NagKind, string> = { sleep: '早点睡', eat: '吃饭', 
 export interface ExitIssue {
     /** 回复里的第几行（从 0 开始，按 \n 分） */
     line: number;
-    kind: 'promise' | 'banned' | 'script' | 'media' | 'text-intimacy' | SpeechIssue['kind'] | 'progress' | 'face';
+    kind: 'promise' | 'banned' | 'script' | 'media' | 'text-intimacy' | SpeechIssue['kind'] | 'progress' | 'face' | 'made-up';
     /** 命中的片段 */
     match: string;
     /** 说话的毛病里的重复（speech-check.ts） */
@@ -147,7 +147,15 @@ const MEDIA_LINE = /^\s*\[(?:语音|图片)(?:\]|[ ，：])/;
  */
 const TEXT_INTIMACY_DEFERRAL = /(?:亲|抱|mua|啵)[^，。！？；]{0,8}(?:得|要|只能|必须)(?:当面|见面|线下)|(?:得|要|只能|必须)(?:当面|见面|线下).{0,8}(?:亲|抱|补|算|行|给(?=$|[，。！？；])|兑现(?=$|[，。！？；]))|(?:当面|见面|线下).{0,8}才(?:亲|抱|给|补|兑现)|(?:得|要|只能|必须)?等(?:我们)?(?:见了|见面)(?:以后|的时候)?(?:再|才)?(?:亲|抱|算|给(?=$|[，。！？；])|说(?=$|[，。！？；])|兑现(?=$|[，。！？；]))|现在(?:还)?不算.{0,8}(?:见面|见了|线下)|(?:真的)?还是线下才(?:有感觉|算|行)|隔空.{0,8}(?:不算|不作数|没用|不顶用|摸不着|没感觉)|隔着?(?:屏幕|网线).{0,10}(?:不算|不作数|没用|不顶用|摸不着|没感觉)|(?:文字|线上|云)(?:里|上)?(?:的)?(?:亲|抱|mua|啵){1,2}.{0,8}(?:不算|不作数|没用|不顶用|没感觉)|(?:自己|你去)亲(?:一下)?屏幕|亲(?:完)?(?:了)?你也摸不着|(?:先)?(?:留着|存着|欠着).{0,12}(?:当面|见面|见了|线下|下次)(?:给|补|兑现)?|(?:明天|下次).{0,8}(?:当面|见面|线下)?.{0,4}(?:补个?(?:亲|抱|mua)|补给你|兑现(?=$|[，。！？；]))/i;
 
-export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext, books?: BookProgressContext, faces?: FaceContext, textIntimacy = false, imageStickers = false): ExitIssue[] {
+/**
+ * 这一轮程序真的先发了一张歌曲卡片（ADR 0139）：「这首发你了」「发你听听」说的就是那张卡片，不算做不到的承诺——查别的承诺之前把「发你 / 给你发」去掉；
+ * 后面紧跟照片、图、视频、语音、红包、相册的不去（还是拦）
+ */
+const CARD_SENT = new RegExp(`${SEND_VERB}${NOT_MEDIA}`, 'g');
+/** 分享歌曲这一轮编的听歌经历和歌的细节（ADR 0139）：「单曲循环」「循环了好几遍」「听了一晚上」「前奏一起就……」「编曲」「嗓音」——提示词里只有歌名、歌手、几句歌词，这些都没写 */
+export const MADE_UP_LISTENING = /单曲循环|循环(?:了|着)?[好一两三几]?[几一两三]?(?:遍|次)|循环(?:了|着)?(?:一|整)?(?:晚上|下午|上午|一天|好久|半天)|听了(?:好)?[几一两三]?(?:遍|次|晚上|一晚上|一下午|一天|好久|半天)|听了又听|前奏|间奏|尾奏|编曲|嗓音|音色|旋律|鼓点|唱腔|唱得/;
+
+export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext, books?: BookProgressContext, faces?: FaceContext, textIntimacy = false, imageStickers = false, cardShared = false): ExitIssue[] {
     const issues: ExitIssue[] = [];
     // 模型会把“mua”和“等见面再给”拆成两个气泡；用等长标点替换换行后整段查，命中位置仍能映射回原行。
     if (textIntimacy) {
@@ -163,7 +171,9 @@ export function inspectReply(reply: string, banned: readonly string[], speech?: 
         if (media) issues.push({ line, kind: 'media', match: media[0].trim() });
         const script = SCRIPT.exec(text);
         if (script) issues.push({ line, kind: 'script', match: script[0].trim() });
-        const promise = PROMISE.exec(text.trim().replace(DM_SENT, '私信'));
+        const made = cardShared ? MADE_UP_LISTENING.exec(text) : null;
+        if (made) issues.push({ line, kind: 'made-up', match: made[0] });
+        const promise = PROMISE.exec((cardShared ? text.replace(CARD_SENT, '') : text).trim().replace(DM_SENT, '私信'));
         // 这一条回复里真带着一张照片（photos.ts 已校验过编号）：“翻出来给你看”“发你”说的就是它，不算她做不到的承诺
         if (promise && !(imageStickers && /表情包/.test(text)) && !PHOTO_TOKEN.test(reply)) issues.push({ line, kind: 'promise', match: promise[0] });
         // banned 里以“re:”开头的是正则（书面腔 / 模型腔，expression.ts 的 STILTED_WORDS），其余是子串
@@ -196,6 +206,7 @@ export function summarizeIssues(issues: readonly ExitIssue[]): string {
     return issues.map(i => `第 ${i.line + 1} 行${i.kind === 'script' ? `编了一段对话「${i.match}」` : i.kind === 'media' ? `照抄了语音、图片的写法「${i.match}」` : i.kind === 'promise' ? `做不到的事「${i.match}」`
         : i.kind === 'text-intimacy' ? `把文字亲密推回当面「${i.match}」`
         : i.kind === 'banned' ? `禁用词「${i.match}」`
+        : i.kind === 'made-up' ? `编的听歌经历「${i.match}」`
             : i.kind === 'face' ? (i.face === 'only' ? `他在认真说事，只回了表情「${i.match}」` : `QQ 里没有的表情「${i.match}」`)
             : i.kind === 'progress' ? `进度数字「${i.match}」（《${i.book!.title}》${progressFact(i.book!)}）` : describeSpeechIssue(i as SpeechIssue)}`).join('、');
 }
@@ -225,6 +236,7 @@ export function rewriteNote(reply: string, issues: readonly ExitIssue[], userNam
                 case 'promise': return '答应或者像是已经给对方发照片、语音、视频，或者打电话，可你只能打字聊天';
                 case 'text-intimacy': return `把这次文字里的抱抱、亲亲或 mua 说成必须当面、隔空不算或以后再补；文字本身就是你和${userName}正在完成的互动，直接用文字回抱回亲就算数`;
                 case 'banned': return `提到了「${i.match}」，这是不该对${userName}说的`;
+                case 'made-up': return `「${i.match}」是你编的：你听了几遍、听了多久，歌的前奏、编曲、唱法，上面都没写；只说你听着的感觉和歌词里的句子`;
                 case 'service': return `像客服说的话，用你自己的口气跟${userName}说`;
                 case 'ledger': return `在说${userName}隔了这么久才来找你；${userName}来找你你是高兴的，直接接话`;
                 case 'blame': return `在怪${userName}没告诉你、没带上你；${userName}说起自己的事是在跟你分享，顺着问问、替对方高兴`;
@@ -243,7 +255,7 @@ export function rewriteNote(reply: string, issues: readonly ExitIssue[], userNam
         });
         return `「${lines[line]!.trim()}」${[...new Set(why)].join('；')}`;
     });
-    const changesMeaning = issues.some(i => (i.kind === 'repeat' && i.repeat === 'verbatim') || i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'contrast' || i.kind === 'service' || i.kind === 'progress' || i.kind === 'nag' || i.kind === 'text-intimacy');
+    const changesMeaning = issues.some(i => (i.kind === 'repeat' && i.repeat === 'verbatim') || i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'contrast' || i.kind === 'service' || i.kind === 'progress' || i.kind === 'nag' || i.kind === 'text-intimacy' || i.kind === 'made-up');
     return `[上一版回复没有发出去：${reasons.join('；')}。${changesMeaning ? '别的意思' : '意思'}不变，重写这次的回复，只输出要发的消息。]`;
 }
 
@@ -260,6 +272,8 @@ export interface ReviewOptions {
     textIntimacy?: boolean;
     /** ADR 0063：开着时允许说“发个表情包”；照片、普通图片仍然拦。 */
     imageStickers?: boolean;
+    /** 这一轮程序先发了一张歌曲卡片（ADR 0139）：「这首发你了」不算做不到的承诺 */
+    cardShared?: boolean;
     /** 在原来的提示词末尾加上这句说明重新生成，返回清理过的回复 */
     regenerate: (note: string) => Promise<string>;
     log: (message: string) => void;
@@ -293,7 +307,7 @@ function strip(reply: string, options: ReviewOptions): { reply: string; issues: 
     if (tidy.notes.length) options.log(`出口检查：小黄脸——${tidy.notes.join('；')}，去掉`);
     let text = tidy.reply;
     for (let round = 0; ; round++) {
-        const issues = inspectReply(text, options.banned, options.speech, options.books, options.faces, options.textIntimacy, options.imageStickers);
+        const issues = inspectReply(text, options.banned, options.speech, options.books, options.faces, options.textIntimacy, options.imageStickers, options.cardShared);
         const removable = issues.filter(strippable);
         if (removable.length === 0 || round === 2) return { reply: text, issues: issues.filter(i => !strippable(i)) };
         const next = stripOpeners(text, removable);
@@ -314,7 +328,7 @@ function settle(reply: string, issues: readonly ExitIssue[]): { reply: string; d
         return { reply: settle(kept, issues.filter(i => i.line < script.line)).reply, dropped: true };
     }
     const hard = issues.filter(i => HARD.has(i.kind) || (i.kind === 'face' && i.face === 'unknown'));
-    const soft = issues.filter(i => i.kind === 'service' || i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'contrast');
+    const soft = issues.filter(i => i.kind === 'service' || i.kind === 'ledger' || i.kind === 'blame' || i.kind === 'contrast' || i.kind === 'made-up');
     const withSoft = dropLines(reply, [...hard, ...soft]);
     if (withSoft || soft.length === 0) return { reply: withSoft, dropped: hard.length + soft.length > 0 };
     return { reply: dropLines(reply, hard), dropped: hard.length > 0 };

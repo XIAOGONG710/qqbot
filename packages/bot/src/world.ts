@@ -239,6 +239,17 @@ function newsCatPhoto(now: WorldNow): WorldNews[] {
     return [{ id: `cat_photo:${now.day}`, kind: 'cat_photo', at: new Date(cat.today.fed.getTime() + delay * 60_000), what: `给${cat.name}拍了张照片` }];
 }
 
+/** 听到一首歌想分享给他的日子占比（ADR 0139，平均一周一两次）；晚上 20:30–22:30 之间按日期取一刻 */
+export const MUSIC_SHARE_CHANCE = 0.2;
+
+/** 听到一首歌，想分享给他（ADR 0139，配置 musicShares）：按“日期”取哈希，同一天每次一样。歌从哪来、有没有候选由计划器的 musicReady 管 */
+function newsMusicShare(now: WorldNow): WorldNews[] {
+    if (unit(`${now.day} music share`) >= MUSIC_SHARE_CHANCE) return [];
+    const at = new Date(`${now.day}T00:00:00`);
+    at.setMinutes(20 * 60 + 30 + Math.floor(unit(`${now.day} music share time`) * 121));
+    return [{ id: `music_share:${now.day}`, kind: 'music_share', at, what: '听到一首歌' }];
+}
+
 /** 吃饭时拍了照片发给他的概率（每顿；平均一周两三次）和拍完过多久想起来发（分钟范围） */
 export const FOOD_PHOTO_CHANCE = 0.18;
 const FOOD_PHOTO_DELAY_MIN: [number, number] = [6, 18];
@@ -305,7 +316,7 @@ function newsHomework(now: WorldNow): WorldNews[] {
  * 不舒服（unwell）不在这里：身体不在世界快照里，见 unwellNews
  */
 export function worldNews(now: WorldNow, kinds: readonly NewsKind[] = DEFAULT_NEWS_KINDS): WorldNews[] {
-    return [...(kinds.includes('food_photo') ? newsFoodPhoto(now) : []), ...(kinds.includes('small_thing') ? newsSmallThing(now) : []), ...(kinds.includes('cat_photo') ? newsCatPhoto(now) : []), ...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : []), ...(kinds.includes('friend_sick') ? newsFriendSick(now) : [])];
+    return [...(kinds.includes('food_photo') ? newsFoodPhoto(now) : []), ...(kinds.includes('small_thing') ? newsSmallThing(now) : []), ...(kinds.includes('cat_photo') ? newsCatPhoto(now) : []), ...(kinds.includes('music_share') ? newsMusicShare(now) : []), ...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : []), ...(kinds.includes('friend_sick') ? newsFriendSick(now) : [])];
 }
 
 /**

@@ -23,7 +23,8 @@ import type { OpenAIMessage, PromptResult } from '../prompt.ts';
 import { inspectReply, summarizeIssues } from '../exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
-import { herDay, newsKindsOf, withAsk, withBack, withCatPhoto, withCurious, withFoodShares, withInner, withInvite, withReach, withRoom, withSmallNews } from '../proactive.ts';
+import { herDay, newsKindsOf, withAsk, withBack, withCatPhoto, withCurious, withFoodShares, withInner, withInvite, withMusic, withReach, withRoom, withSmallNews } from '../proactive.ts';
+import { markShared, readyPick, type MusicPick, type MusicState } from '../music.ts';
 import type { Moment } from '../feelings.ts';
 import { mergePursuits, type Pursuit } from '../pursuits.ts';
 import { dmMessageId, dmNote, nudgeNote, videoNote, videoTopic } from '../bilibili.ts';
@@ -419,6 +420,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.jealousy ? { jealousy: true } : {}),
         ...(scenario.curious ? { curious: true } : {}),
         ...(scenario.texture ? { texture: true } : {}),
+        // 分享歌曲（ADR 0139）：卡片记成一条气泡「[音乐卡片：《歌名》- 歌手]」，和线上聊天记录里的写法一样
+        ...(scenario.musicShares && scenario.music?.length ? { sendMusic: async (_userId: number, pick: MusicPick) => {
+            current.bubbles.push({ time: clock.now(), text: `[音乐卡片：《${pick.title}》- ${pick.artist}]`, ...(initiating ? { proactive: initiating } : {}) });
+            bubblesThisStep++;
+            return nextMessageId++;
+        } } : {}),
         ...(scenario.quoteReply ? { quoteReply: true, ...(scenario.quoteShare !== undefined ? { quoteShare: scenario.quoteShare } : {}) } : {}),
         // 逐条事实检查（ADR 0137）：审稿的调用走场景自己的模型（假模型也行）；每次的记录进这一步，报告里看得到
         ...((options.factCheck ?? scenario.factCheck) !== 'off' ? {
@@ -503,7 +510,10 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const withRoomed = withBacked && scenario.proactiveRoom ? withRoom(withBacked) : withBacked;
     const withCurioused = withRoomed && scenario.curious ? withCurious(withRoomed) : withRoomed;
     const withSmalled = withCurioused && scenario.smallNews ? withSmallNews(withCurioused) : withCurioused;
-    const proactiveSettings = withSmalled && scenario.foodPhotos && scenario.menu && scenario.photos ? withFoodShares(withSmalled) : withSmalled;
+    const withFooded = withSmalled && scenario.foodPhotos && scenario.menu && scenario.photos ? withFoodShares(withSmalled) : withSmalled;
+    const proactiveSettings = withFooded && scenario.musicShares && scenario.music?.length ? withMusic(withFooded) : withFooded;
+    // 预置的歌（ADR 0139）：发过的记在内存里，跟着虚拟时钟算“隔几天”
+    let musicState: MusicState = { version: 1, picks: (scenario.music ?? []).map((item, i): MusicPick => ({ id: 1_000_000 + i, title: item.title, artist: item.artist, chart: item.chart ?? '飙升榜', lyric: item.lyric ?? [] })), shared: {} };
     const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && proactiveSettings && character.schedule
         ? createProactivePlanner({
             contact,
@@ -512,6 +522,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             ...(scenario.innerLife ? { inner: true } : {}),
             ...(scenario.innerLife && scenario.watched?.length ? { watchedFacts: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return watchedFacts(scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })), d); } } : {}),
             ...(scenario.hisHours ? { hisHours: true } : {}),
+            ...(scenario.musicShares && scenario.music?.length ? { music: { ready: (at: number) => readyPick(musicState, at), used: (id: number, at: number) => { musicState = markShared(musicState, id, at); } } } : {}),
             ...(scenario.together ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
             ...(photos && (scenario.photoShares || scenario.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),
             dates: character.dates,
@@ -1042,7 +1053,8 @@ export function proactiveChecks(checks: ProactiveChecks, steps: StepRecord[], ca
     }
     for (const word of checks.replyNone ?? []) results.push({ ok: !texts.includes(word), text: `主动发的话里没有「${word}」` });
     if (checks.exitClean) {
-        const issues = inspectReply(texts, card.character.banned);
+        // 发了歌曲卡片的轮次（ADR 0139）：「发你了」说的是那张卡片，和线上的出口检查一样
+        const issues = inspectReply(texts, card.character.banned, undefined, undefined, undefined, false, false, texts.includes('[音乐卡片：'));
         results.push({ ok: issues.length === 0, text: `主动发的话过得了出口检查${issues.length ? `（${summarizeIssues(issues)}）` : ''}` });
     }
     return results;

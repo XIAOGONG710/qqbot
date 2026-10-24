@@ -12,6 +12,7 @@
 - `inner.ts`
 - `shares.ts`
 - `follow-ups.ts`
+- `music.ts`
 
 ## 开关
 
@@ -23,6 +24,7 @@
 | `proactiveInvite` | 约他一起玩 | [ADR 0107](../adr/0107-invite-to-play.md) |
 | `proactiveAsk` | 问问他的意见 | [ADR 0116](../adr/0116-ask-opinion.md) |
 | `photoShares` | 喂完土豆发张照片 | [ADR 0110](../adr/0110-photo-shares.md) |
+| `musicShares` | 听到一首歌分享给他（歌曲卡片） | [ADR 0139](../adr/0139-music-shares.md) |
 | `comeBack` | 说了等下之后回来 | [ADR 0112](../adr/0112-come-back.md) |
 | `hisHours` | 按他在线的钟头排 | [ADR 0117](../adr/0117-his-hours.md) |
 | `smallNews` | 主动讲今天的小事 | [ADR 0127](../adr/0127-small-news.md) |
@@ -34,4 +36,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0011](../adr/0011-proactive-messages.md)、[ADR 0100](../adr/0100-reach-when-unanswered.md)、[ADR 0101](../adr/0101-inner-life.md)、[ADR 0107](../adr/0107-invite-to-play.md)、[ADR 0110](../adr/0110-photo-shares.md)、[ADR 0112](../adr/0112-come-back.md)、[ADR 0116](../adr/0116-ask-opinion.md)、[ADR 0117](../adr/0117-his-hours.md)、[ADR 0124](../adr/0124-proactive-room.md)
+[ADR 0011](../adr/0011-proactive-messages.md)、[ADR 0100](../adr/0100-reach-when-unanswered.md)、[ADR 0101](../adr/0101-inner-life.md)、[ADR 0107](../adr/0107-invite-to-play.md)、[ADR 0110](../adr/0110-photo-shares.md)、[ADR 0112](../adr/0112-come-back.md)、[ADR 0116](../adr/0116-ask-opinion.md)、[ADR 0117](../adr/0117-his-hours.md)、[ADR 0124](../adr/0124-proactive-room.md)、[ADR 0139](../adr/0139-music-shares.md)

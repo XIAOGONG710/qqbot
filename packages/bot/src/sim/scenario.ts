@@ -294,6 +294,10 @@ export interface Scenario {
     texture: boolean;
     /** 默认 false：引用回复（ADR 0136，配置 quoteReply） */
     quoteReply: boolean;
+    /** 默认 false：听到一首歌分享给他（ADR 0139，配置 musicShares）；要 proactive 和 music */
+    musicShares: boolean;
+    /** 预置的可分享的歌（ADR 0139）：跑场景时不去网易云读，直接用这几首（发过一首之后下一首要隔几天） */
+    music?: { title: string; artist: string; chart?: string; lyric?: string[] }[];
     /** 预置的他的口头习惯（ADR 0138，配置 idioms）：写了才打开；跑场景时不去学，直接用这几个 */
     idioms?: { phrase: string; kind?: string }[];
     /** 给她看口头习惯的概率（0–1，不写按 IDIOM_TURN_SHARE）：测试和对比用 */
@@ -441,6 +445,12 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         curious: s.curious === true,
         texture: s.texture === true,
         quoteReply: s.quoteReply === true,
+        musicShares: s.musicShares === true,
+        ...(Array.isArray(s.music) && s.music.length ? { music: s.music.map((item: unknown, i: number) => {
+            const o = item as { title?: unknown; artist?: unknown; chart?: unknown; lyric?: unknown } | null;
+            if (typeof o?.title !== 'string' || !o.title.trim() || typeof o.artist !== 'string' || !o.artist.trim()) fail(`music[${i}] 要有 title 和 artist`);
+            return { title: (o!.title as string).trim(), artist: (o!.artist as string).trim(), ...(typeof o!.chart === 'string' ? { chart: o!.chart } : {}), ...(Array.isArray(o!.lyric) ? { lyric: o!.lyric.filter((l): l is string => typeof l === 'string') } : {}) };
+        }) } : {}),
         ...(Array.isArray(s.idioms) && s.idioms.length ? { idioms: s.idioms.map((item: unknown, i: number) => {
             const o = item as { phrase?: unknown; kind?: unknown } | null;
             if (typeof o?.phrase !== 'string' || !o.phrase.trim()) fail(`idioms[${i}].phrase 应为非空字符串`);

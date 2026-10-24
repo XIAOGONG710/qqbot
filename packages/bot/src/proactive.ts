@@ -23,7 +23,7 @@ export const OCCASIONS = ['dates', 'back', 'reschedule', 'news', 'follow_up', 'w
 export type Occasion = (typeof OCCASIONS)[number];
 
 /** 「她那边的事」的事件类（ADR 0064），按优先级从高到低：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天、闺蜜临时去不了 / 改到很晚（ADR 0061，开着配置 npcAsks 才有） */
-export const NEWS_KINDS = ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick', 'cat_photo', 'small_thing', 'food_photo'] as const;
+export const NEWS_KINDS = ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick', 'cat_photo', 'small_thing', 'food_photo', 'music_share'] as const;
 export type NewsKind = (typeof NEWS_KINDS)[number];
 /** 卡上没写 newsKinds 的按只有相机处理（0057 的行为，旧卡不变） */
 export const DEFAULT_NEWS_KINDS: readonly NewsKind[] = ['camera'];
@@ -197,6 +197,8 @@ export interface ProactiveInput {
     reschedules?: readonly RescheduleItem[];
     /** 货架里有这一类照片、这会儿也允许发（ADR 0110，photos.ts 的 has + photoAllowance）：没有就不发“拍了张照片”那条 */
     photoReady?: (kind: 'cat' | 'food', now: number, dish?: string) => boolean;
+    /** 有可分享的歌、上一首也发出去够久了（ADR 0139，music.ts 的 readyPick）：没有就不发“听到一首歌”那条 */
+    musicReady?: (now: number) => boolean;
     /** 此刻是不是正和他一起玩（ADR 0111，together.ts）：是就不插别的主动消息（日子除外） */
     together?: (now: number) => boolean;
     /** 随口说件事 / 约他 / 问他意见按他平时在线的钟头排（ADR 0117） */
@@ -273,7 +275,7 @@ const LEFT_FOR_NOW = /晚安|睡了|去睡|先睡|明天聊|去忙|先忙|忙去
 /** 要不要催的那次，模型想了想决定不发时输出的两个字 */
 export const REACH_DECLINE = '不发';
 /** 说自己的小事的那几类 news（ADR 0133）：他没回的时候不发 */
-const LIGHT_NEWS: ReadonlySet<string> = new Set(['small_thing', 'cat_photo', 'food_photo']);
+const LIGHT_NEWS: ReadonlySet<string> = new Set(['small_thing', 'cat_photo', 'food_photo', 'music_share']);
 
 /**
  * 别写成汇报（用户 10-23：「现在她主动发的信息很莫名其妙，没来由的突然发一个，感觉十分突兀」）。
@@ -450,6 +452,15 @@ export function withCatPhoto(settings: ProactiveSettings): ProactiveSettings {
         ...settings,
         occasions: [...new Set<Occasion>([...settings.occasions, 'news'])],
         newsKinds: [...new Set<NewsKind>([...newsKindsOf(settings), 'cat_photo'])],
+    };
+}
+
+/** 打开 musicShares（ADR 0139）：晚上有的日子她听到一首歌想分享给他（news 的新一类 music_share）；不改角色卡 */
+export function withMusic(settings: ProactiveSettings): ProactiveSettings {
+    return {
+        ...settings,
+        occasions: [...new Set<Occasion>([...settings.occasions, 'news'])],
+        newsKinds: [...new Set<NewsKind>([...newsKindsOf(settings), 'music_share'])],
     };
 }
 
@@ -988,6 +999,7 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
             // 说“拍了张照片”却发不出照片会穿帮：货架里没有 / 刚发过 / 今天发够了就不发
             if (item.kind === 'cat_photo' && !input.photoReady?.('cat', now)) return '货架里没有土豆的照片，或者这会儿不该发照片';
             if (item.kind === 'food_photo' && !input.photoReady?.('food', now, item.dish)) return '货架里没有这顿饭的照片，或者这会儿不该发照片';
+            if (item.kind === 'music_share' && !input.musicReady?.(now)) return '没有可分享的歌，或者上一首发出去才几天';
             // 那之后聊过：聊天里多半已经说了（状态行里有），不再单发一条
             if (history.some(m => Date.parse(m.time) >= item.at)) return '那之后聊过了';
             break;
@@ -1012,7 +1024,7 @@ const CARRIES_NEWS: ReadonlySet<Occasion> = new Set(['morning', 'after_class', '
  */
 export function untoldNews(candidate: Candidate, now: number, input: Pick<ProactiveInput, 'news' | 'records' | 'history'>): NewsItem[] {
     if (!CARRIES_NEWS.has(candidate.occasion)) return [];
-    return (input.news ?? []).filter(item => item.kind !== 'cat_photo' && item.kind !== 'small_thing' && item.kind !== 'food_photo' && item.day === candidate.day && item.at <= now
+    return (input.news ?? []).filter(item => item.kind !== 'cat_photo' && item.kind !== 'small_thing' && item.kind !== 'food_photo' && item.kind !== 'music_share' && item.day === candidate.day && item.at <= now
         && !input.records.some(r => r.id === `${item.day}:news:${item.id}` && (counts(r) || waitingRetry(r)))
         && !input.history.some(m => Date.parse(m.time) >= item.at));
 }
@@ -1045,6 +1057,8 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
             // 吃饭时拍了张照片（ADR 0128）：先一句话带一下，另起一行单独发照片（提示词里列了编号，只有这道菜的）；不要他回应
             food_photo: () => `你${candidate.news!.what}，吃饭时拍了张照片，想发给${userName}看：先用一句话带一下（说是哪一顿、吃的什么，看「你那边」吃的那一行，没写的细节不编；那句话要有点自己的感觉：${LEAD_NOTE}），然后另起一行单独发照片；别问他想不想看`,
             // 今天碰到的一件小事（ADR 0127）：随口说，不要他回应；细节只用那一行里写的
+            // 听到一首歌想分享（ADR 0139）：歌曲卡片由程序先发（在你这条消息前面），你只说一两句；歌的事实在下面“这首歌”那一行，没写的不编
+            music_share: () => `你刚听到一首歌觉得好听，歌曲卡片已经先发给${userName}了（就在你这条消息前面）：接着用一两句说这首歌——为什么想发给他（只说你真有的感觉：听到了、觉得好听、哪句戳你；你和这首歌的往事、听了几遍、听了多久都没写，不编）；可以引一句歌词（最多一句，看下面“这首歌”那一行）；这一条只说这首歌，别提别的事（作业、身体、他在干什么）；别问他「好听吗」「你听过吗」这类客套，不要他回应；开头别老是同一种，也别照搬现成的套话`,
             small_thing: () => `你今天碰到一件小事：${candidate.news!.what}。想跟${userName}说一句：就说这一件（看「你那边」今天的小事那一行），一两句，别铺开讲；那一行里没写的细节不编。${LEAD_NOTE}`,
         })[candidate.news!.kind](),
         // 只从她自己的生活事实里挑（不是刚刷到的视频、帖子：旧项目的教训，ADR 0013 决策 2）；不问「在干嘛」，说完不用他回应

@@ -55,6 +55,7 @@ import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 import { describeInterruption, interruptionNow } from './interruption.ts';
 import { idiomLine, type Idiom } from './idioms.ts';
+import { describeMusic, type MusicPick } from './music.ts';
 import { jokeLine, type Joke } from './jokes.ts';
 import { memeLine, type MemeEntry } from './memes.ts';
 import { watchedLine, type Watched } from './watching.ts';
@@ -129,6 +130,8 @@ export interface ContactPipelineOptions {
     /** 整个名单（ADR 0016）：她认识名单里写了「别人提起时」的人；不传就谁都不认识 */
     contacts?: readonly Contact[];
     send: (userId: number, text: string, options?: { replyTo?: number }) => Promise<number>;
+    /** 发一张歌曲卡片（ADR 0139，配置 musicShares）；不给就不发卡片 */
+    sendMusic?: (userId: number, pick: MusicPick) => Promise<number>;
     /** 引用回复（ADR 0136，配置 quoteReply）：他连发里有个不是最后一条的问题时，第一条引用它来回；打错字撤回失败补「*对的词」时有时引用那条错的 */
     quoteReply?: boolean;
     /** 逐条事实检查（ADR 0137，配置 factCheck）：log 只查、记日志；fix 有对不上事实的说法就带说明重写一次。不传 / off 不查 */
@@ -314,6 +317,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let quoteNow: QuotePlan | undefined;
     /** 这一轮拼出来的提示词（ST 后处理之前，system 还是 system）：事实检查拿它当“她能依据的事实”（ADR 0137） */
     let promptSource: OpenAIMessage[] | undefined;
+    /** 这一轮程序先发了一张歌曲卡片（ADR 0139）：出口检查里「这首发你了」不算做不到的承诺 */
+    let cardShared = false;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -343,6 +348,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const time = new Date(now());
             // 只想一想（ADR 0101 内心）：不是在聊天，不要意图行、形状、字数提示、表情；聊天记录当成“回想”放进说明里，不当成要接着回的对话
             const thinking = Boolean(initiate?.think);
+            cardShared = Boolean(initiate?.music);
             // 长期记忆只给名单里的人；主动找他时没有「他这次说的」：查想知道的事 + 最后两句，带前 3 天到后 2 天的时间窗（ADR 0012 决策 1 第 7 条）
             const remembers = memory && contact.tier !== UNLISTED_TIER;
             const recallOptions = initiate
@@ -762,6 +768,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(openerLine ? [openerLine] : []),
                         ...(innerNow ? [innerNow] : []),
                         ...(transcript ? [transcript] : []),
+                        ...(initiate?.music ? [describeMusic(initiate.music)] : []),
                         ...(initiate ? [initiate.note] : []),
                     ].join('\n'),
                 ],
@@ -831,6 +838,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 faces: faceContext(options.history.load(contact.qq), contact.tier),
                 ...(textIntimacy ? { textIntimacy: true } : {}),
                 ...(options.stickers ? { imageStickers: true } : {}),
+                ...(cardShared ? { cardShared: true } : {}),
                 regenerate,
                 log,
             });
@@ -838,6 +846,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return shapeNow && !crisisNow ? shapeReply(reviewed, shapeNow, { regenerate, log }) : reviewed;
         },
         send: options.send,
+        ...(options.sendMusic ? { sendMusic: options.sendMusic } : {}),
         ...(options.quoteReply ? { quote: () => quoteNow?.messageId, quoteFix: (wrongId: number) => quoteFix(contact.qq, wrongId) } : {}),
         ...(options.typing ? { typing: options.typing } : {}),
         ...(options.recallOwn ? { recallOwn: options.recallOwn } : {}),

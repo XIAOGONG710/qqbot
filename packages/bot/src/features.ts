@@ -52,6 +52,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'proactiveInvite', label: '约他一起玩', group: '主动找他', adr: '0107' },
     { key: 'proactiveAsk', label: '问问他的意见', group: '主动找他', adr: '0116' },
     { key: 'photoShares', label: '喂完土豆发张照片', group: '主动找他', adr: '0110' },
+    { key: 'musicShares', label: '听到一首歌分享给他（歌曲卡片）', group: '主动找他', adr: '0139' },
     { key: 'comeBack', label: '说了等下之后回来', group: '主动找他', adr: '0112' },
     { key: 'hisHours', label: '按他在线的钟头排', group: '主动找他', adr: '0117' },
     { key: 'watching', label: '自己在 B 站看东西、有看法', group: 'B 站', adr: '0130' },

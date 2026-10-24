@@ -38,6 +38,7 @@ export const DEFAULT_SETTLE = { quietMs: 4000, maxMs: 12000 };
 export const RETRY_AFTER_MS = [60_000, 300_000];
 
 import type { TypoRecall } from './expression.ts';
+import type { MusicPick } from './music.ts';
 import type { ChatHistory, StoredMessage } from './history.ts';
 import { ModelUnreachable } from './llm.ts';
 import type { ChatMessage, OpenAIMessage, PromptResult } from './prompt.ts';
@@ -68,7 +69,7 @@ export interface ResponderDeps {
      * initiate：她主动找他（ADR 0011）：note 是这次为什么找（写进时间块之后），topic 是召回时想知道什么（ADR 0012）；
      * 返回的 note 接在「生成回复」那行日志后面
      */
-    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string; think?: boolean; photo?: 'cat' | 'food'; photoDish?: string }; offlineSince?: number }) => BuiltPrompt | Promise<BuiltPrompt>;
+    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string; think?: boolean; photo?: 'cat' | 'food'; photoDish?: string; music?: MusicPick }; offlineSince?: number }) => BuiltPrompt | Promise<BuiltPrompt>;
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     clean: (reply: string) => string;
     /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查 */
@@ -77,6 +78,8 @@ export interface ResponderDeps {
     decorate?: (parts: string[], maxBubbles: number) => string[] | { parts: string[]; recall?: TypoRecall };
     /** replyTo：QQ 引用回复这一条（他的）消息（ADR 0136，配置 quoteReply）；只对文字有意义，不给就是普通的一条 */
     send: (userId: number, text: string, options?: { replyTo?: number }) => Promise<number>;
+    /** 发一张歌曲卡片（ADR 0139）：主动分享歌曲时，在文字前面先发；返回 QQ 消息 id。不给 = 不发卡片，只发文字 */
+    sendMusic?: (userId: number, pick: MusicPick) => Promise<number>;
     /** 这一轮第一条要引用他的哪一条（ADR 0136）：发之前现取，没有就不引用；contact.ts 在拼提示词时定 */
     quote?: () => number | undefined;
     /** 打错字撤回失败、补「*对的词」时要不要引用刚才那条错的（ADR 0136，配置 quoteReply）；按那条错的消息 id 定 */
@@ -147,6 +150,8 @@ export interface InitiateRequest {
     photo?: 'cat' | 'food';
     /** 带的是吃的照片时，是哪道菜（ADR 0128）：货架里只拿这道菜的 */
     photoDish?: string;
+    /** 这一条要先发一张歌曲卡片（ADR 0139，分享歌曲）：歌的事实进提示词，卡片由回复器在文字前面发，聊天记录里写成「[音乐卡片：《歌名》- 歌手]」 */
+    music?: MusicPick;
     /** 她想了想可以决定先不发：模型只输出「不发」两个字就记成没发（催他回，ADR 0100） */
     canDecline?: boolean;
     /** 只想一想（ADR 0101，内心）：生成之后不清理、不检查、不发送、不 commit，把模型原文还给调用方；占用回复器的方式和主动找他一样（正在回消息、有没回的消息就不想） */
@@ -461,7 +466,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         const input = stored.length;
         const startedAt = now();
         setPhase({ phase: 'initiating', reason: request.label });
-        const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { initiate: { note: request.note, topic: request.topic, ...(request.think ? { think: true } : {}), ...(request.photo ? { photo: request.photo } : {}), ...(request.photoDish ? { photoDish: request.photoDish } : {}) } });
+        const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { initiate: { note: request.note, topic: request.topic, ...(request.think ? { think: true } : {}), ...(request.photo ? { photo: request.photo } : {}), ...(request.photoDish ? { photoDish: request.photoDish } : {}), ...(request.music ? { music: request.music } : {}) } });
         deps.onPrompt?.(prompt);
         const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
         deps.log(`主动找他（${request.label}）：生成，${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);
@@ -491,6 +496,17 @@ export function createResponder(deps: ResponderDeps): Responder {
         }
         const messageIds: number[] = [];
         const sent: string[] = [];
+        // 分享歌曲：卡片先发，隔一会儿再发文字（ADR 0139）；卡片发不出去（连文字链接兜底也失败）算这次发送失败
+        if (request.music && deps.sendMusic && !stopped) {
+            try {
+                const cardId = await deps.sendMusic(deps.userId, request.music);
+                deps.history.append(deps.userId, { time: new Date(now()).toISOString(), role: 'assistant', content: `[音乐卡片：《${request.music.title}》- ${request.music.artist}]`, messageId: cardId });
+                messageIds.push(cardId);
+                await sleep(PART_GAP_MS);
+            } catch (error) {
+                return { result: 'failed', reason: `发歌曲卡片失败：${error instanceof Error ? error.message : String(error)}` };
+            }
+        }
         for (const [i, part] of parts.entries()) {
             if (i > 0) {
                 await (timing ? sleepTyping(timing.typingMs(part)) : sleep(PART_GAP_MS));
