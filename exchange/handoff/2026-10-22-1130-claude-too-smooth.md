@@ -220,3 +220,8 @@
 - 线上 `334e854` → `e8e5603`：心跳 ref = `e8e5603…`、connectedAt 01:22:21Z（10-24 UTC）；新日志 0 条错误；koishi.yml 多了 `quoteReply: true` / `factCheck: log` / `idioms: true` 三行，其余没动；维护标记已删。启动后 28 秒日志：「口头习惯：学了一次，现在有 3 个」。备份 `runtime/backup-pre-bili33-20261024-0922` + `runtime/koishi/koishi.yml.bak-bili33-20261024-0922`，回滚去掉三行重启或 `git reset --hard 334e854` + 还原 yml。
 - 脚本第 7 步又显示 STOPPED（git push 进度写到 stderr）；main 已推，integration 手动补推，现在 main = integration = origin/claude/realness = `e8e5603`。
 - 接下来几天看：`factCheck: log` 的日志里「事实检查：N 条说法对不上事实」的条数占回复的比例（要看原话用 `QQBOT_SENSITIVE_LOGS=15m`），觉得误报不多再改 `fix`；第一次线上引用回复要看有没有「引用回复没发出去」；`idioms/2260168937.json` 里学到的是不是都是说话习惯（不是名词）。
+
+## 10-24 10:00 已实现、未上线（默认关）：ADR 0139 `musicShares`（`claude/realness`，线上还是 `e8e5603`）
+- 来源：用户「上线，然后继续开发新功能」。**听到一首歌分享给他**：网易云公开榜单（飙升 / 新歌 / 热歌 / 原创）每天刷候选（中文歌、两句副歌歌词，过滤 DJ / 伴奏 / 翻唱、脏话、危机词）；world.ts 新的 news 类 `music_share`（晚 20:30–22:30，约 20% 的天，两首至少隔 3 天），计划器 `musicReady`；先发歌曲卡片（OneBot `music` 段 type 163，发不出去改发文字链接），隔 1 秒再发她的一两句。出口检查：发了卡片的轮次「发你」放行、不编听歌经历 / 前奏编曲。第二部分：他发来音乐卡片时按歌名 + 歌手搜网易云读两句歌词给她。
+- **没验证过线上 QQ 对 music 段的反应**（协议标准，有兜底）；第一次线上分享要看他那边是卡片还是链接，日志有没有「歌曲卡片没发出去」。
+- 上线 = `koishi.yml` 加 `musicShares: true`（要主动消息开着）；回滚去掉重启。全套测试：bot 1809 / plugin 42 / tools 43。
