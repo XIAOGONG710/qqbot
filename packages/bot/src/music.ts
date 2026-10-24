@@ -302,6 +302,6 @@ export async function lookupSong(get: MusicGet, song: { title: string; artist?: 
 
 /** 提示词里他发来的歌：歌名、歌手、歌词的几句（有才有）；她没听、不知道歌的故事，说哪句戳她或者问他为什么发这首 */
 export function describeHisSong(pick: MusicPick): string {
-    const lyric = pick.lyric.length ? `歌词里有这几句：${pick.lyric.map(line => `「${line}」`).join('')}。你点开看了歌词，` : '你没点开听，';
+    const lyric = pick.lyric.length ? `歌词里有这几句：${pick.lyric.map(line => `「${line}」`).join('')}。你点开看了歌词（他看不到你看的歌词：说到哪一句就把那一句原样写出来，别只说“这句”），` : '你没点开听，';
     return `[他发来了一首歌：《${pick.title}》${pick.artist ? `，${pick.artist}` : ''}。${lyric}这些是你知道的全部：你以前有没有听过、歌的故事、歌手的事、前奏编曲唱得怎么样，都别编；接他的话——说哪句戳你，或者问他为什么发这首、是不是最近在听；一两句就好，别评价得太专业]`;
 }

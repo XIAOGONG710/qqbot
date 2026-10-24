@@ -55,7 +55,7 @@ import { describeDays, describeTime } from './time-context.ts';
 import { estimateTokens } from './tokens.ts';
 import { describeInterruption, interruptionNow } from './interruption.ts';
 import { idiomLine, type Idiom } from './idioms.ts';
-import { describeMusic, type MusicPick } from './music.ts';
+import { describeHisSong, describeMusic, sharedSong, type MusicPick } from './music.ts';
 import { jokeLine, type Joke } from './jokes.ts';
 import { memeLine, type MemeEntry } from './memes.ts';
 import { watchedLine, type Watched } from './watching.ts';
@@ -132,6 +132,8 @@ export interface ContactPipelineOptions {
     send: (userId: number, text: string, options?: { replyTo?: number }) => Promise<number>;
     /** 发一张歌曲卡片（ADR 0139，配置 musicShares）；不给就不发卡片 */
     sendMusic?: (userId: number, pick: MusicPick) => Promise<number>;
+    /** 他发来一张音乐卡片时查这首歌（ADR 0139 第二部分）：歌名 + 歌手 → 歌词的几句；不给就只知道歌名和歌手 */
+    songLookup?: (song: { title: string; artist?: string }) => Promise<MusicPick>;
     /** 引用回复（ADR 0136，配置 quoteReply）：他连发里有个不是最后一条的问题时，第一条引用它来回；打错字撤回失败补「*对的词」时有时引用那条错的 */
     quoteReply?: boolean;
     /** 逐条事实检查（ADR 0137，配置 factCheck）：log 只查、记日志；fix 有对不上事实的说法就带说明重写一次。不传 / off 不查 */
@@ -319,6 +321,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let promptSource: OpenAIMessage[] | undefined;
     /** 这一轮程序先发了一张歌曲卡片（ADR 0139）：出口检查里「这首发你了」不算做不到的承诺 */
     let cardShared = false;
+    /** 这一轮他发来了一首歌、她在接话（ADR 0139）：出口检查里不编听歌经历 */
+    let songTalk = false;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -631,6 +635,16 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             stickersAllowed = stickerAllowance.allowed && !photoNow;
             const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
             // 没有明确反应的轮次也抽一抽（ADR 0132）：她拿不到小黄脸以后，表情包得顶上；抽签的种子和有反应的那条路分开
+            // 他发来一首歌（ADR 0139 第二部分）：查歌词的两句给她；查不到 / 超时就只有歌名和歌手。只对男朋友档，危机回合不放
+            const hisSong = options.songLookup && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? sharedSong(saidNow) : undefined;
+            songTalk = Boolean(hisSong);
+            const songLine = hisSong
+                ? describeHisSong(await Promise.race([
+                    options.songLookup!(hisSong).catch((): MusicPick => ({ id: 0, title: hisSong.title, artist: hisSong.artist ?? '', chart: '他发来的', lyric: [] })),
+                    new Promise<MusicPick>(resolve => setTimeout(() => resolve({ id: 0, title: hisSong.title, artist: hisSong.artist ?? '', chart: '他发来的', lyric: [] }), 4000).unref()),
+                ]))
+                : undefined;
+            if (songLine) log('他发来一首歌：这一轮提示词里放了歌名和歌词的几句（日志不记内容）');
             const stickerDrawn = stickersAllowed && (stickerCued(saidNow)
                 ? stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE)
                 : Boolean(options.stickerUncued) && saidNow.trim().length > 0 && stickerTurn(chat, options.stickerUncued!, 'sticker uncued'));
@@ -754,6 +768,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(closenessLine ? [closenessLine] : []),
                         ...(jokeNow ? [jokeNow] : []),
                         ...(idiomNow ? [idiomNow] : []),
+                        ...(songLine ? [songLine] : []),
                         ...(memeNow ? [memeNow] : []),
                         ...(watchedNow ? [watchedNow] : []),
                         ...(interruptLine ? [interruptLine] : []),
@@ -839,6 +854,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(textIntimacy ? { textIntimacy: true } : {}),
                 ...(options.stickers ? { imageStickers: true } : {}),
                 ...(cardShared ? { cardShared: true } : {}),
+                ...(songTalk ? { songTalk: true } : {}),
                 regenerate,
                 log,
             });

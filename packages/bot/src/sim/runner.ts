@@ -421,6 +421,11 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.curious ? { curious: true } : {}),
         ...(scenario.texture ? { texture: true } : {}),
         // 分享歌曲（ADR 0139）：卡片记成一条气泡「[音乐卡片：《歌名》- 歌手]」，和线上聊天记录里的写法一样
+        // 他发来的歌：从场景预置的歌里按歌名找（找不到只有歌名和歌手）
+        ...(scenario.musicShares && scenario.music?.length ? { songLookup: async (song: { title: string; artist?: string }): Promise<MusicPick> => {
+            const preset = musicState.picks.find(p => p.title === song.title);
+            return preset ?? { id: 0, title: song.title, artist: song.artist ?? '', chart: '他发来的', lyric: [] };
+        } } : {}),
         ...(scenario.musicShares && scenario.music?.length ? { sendMusic: async (_userId: number, pick: MusicPick) => {
             current.bubbles.push({ time: clock.now(), text: `[音乐卡片：《${pick.title}》- ${pick.artist}]`, ...(initiating ? { proactive: initiating } : {}) });
             bubblesThisStep++;

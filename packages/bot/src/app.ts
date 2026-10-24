@@ -61,7 +61,7 @@ import { describeState, formatDate, herDay, stateAt, type Schedule } from './sch
 import { useRealWeather, weatherFetcher } from './weather.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
 import { idiomStore, IDIOMS_CHECK_MS, refreshIdioms } from './idioms.ts';
-import { loadMusic, markShared, MUSIC_CHECK_MS, musicPath, readyPick, refreshMusic, saveMusic, shareMusicCard, type MusicPick } from './music.ts';
+import { loadMusic, lookupSong, markShared, MUSIC_CHECK_MS, musicGet, musicPath, readyPick, refreshMusic, saveMusic, shareMusicCard, type MusicPick } from './music.ts';
 import { jokeStore, JOKES_CHECK_MS, refreshJokes } from './jokes.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes, type MemeEntry } from './memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from './watching.ts';
@@ -377,6 +377,18 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         ...(transport.sendPrivateMusic ? { sendMusic: transport.sendPrivateMusic.bind(transport) } : {}),
         sendText: transport.sendPrivateText.bind(transport), log: message => log(`[${userId}] ${message}`),
     }, userId, pick);
+    // 他发来的歌（ADR 0139 第二部分）：按歌名 + 歌手搜一次，同一首歌在进程里只查一次
+    const songCache = new Map<string, Promise<MusicPick>>();
+    const lookupHisSong = (song: { title: string; artist?: string }): Promise<MusicPick> => {
+        const key = `${song.title}|${song.artist ?? ''}`;
+        let found = songCache.get(key);
+        if (!found) {
+            if (songCache.size >= 50) songCache.clear();
+            found = lookupSong(musicGet, song);
+            songCache.set(key, found);
+        }
+        return found;
+    };
     // 他的口头习惯（ADR 0138）：派生数据，存 <数据目录>/idioms/<QQ>.json
     const idioms = config.idioms ? idiomStore({ dir: join(config.dataDir, 'idioms'), log }) : undefined;
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；刷新在下面（要她的 B 站号）
@@ -574,7 +586,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
-            ...(musicShelf && contact.tier === 'boyfriend' ? { sendMusic: sendMusicCard } : {}),
+            ...(musicShelf && contact.tier === 'boyfriend' ? { sendMusic: sendMusicCard, songLookup: lookupHisSong } : {}),
             ...(config.factCheck !== 'off' ? { factCheck: config.factCheck } : {}),
             ...(config.herNo ? { herNo: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),

@@ -1,0 +1,25 @@
+{
+    "name": "他发来一首歌，她接话（ADR 0139 第二部分）",
+    "description": "他发来音乐卡片（聊天记录里写成「[分享音乐：歌名 - 歌手]」）。她点开看了歌词：说哪句戳她、或者问他为什么发这首；不编她以前听过、听了几遍、前奏编曲。第三首不在预置里（只有歌名和歌手）。用法：node src/sim/run.ts sim/music-his.json --runs 3 --tag musichis",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-11T22:00:00+08:00",
+    "memory": false,
+    "musicShares": true,
+    "music": [
+        { "title": "晚风小站", "artist": "阿夏", "chart": "飙升榜", "lyric": ["我把夏天折成一只纸船", "漂向你家那条街"] },
+        { "title": "半夜的信号", "artist": "林屿", "chart": "热歌榜", "lyric": ["你说过的话我都留在手机里", "只是再没有人回我一句"] }
+    ],
+    "shape": true,
+    "shapeSplit": true,
+    "texture": true,
+    "history": [
+        { "time": "2026-11-11T21:00:00+08:00", "role": "user", "content": "在吗" },
+        { "time": "2026-11-11T21:00:10+08:00", "role": "assistant", "content": "在呢" }
+    ],
+    "steps": [
+        { "say": ["听听这个", "[分享音乐：晚风小站 - 阿夏]"] },
+        { "say": "[分享音乐：半夜的信号 - 林屿]" },
+        { "say": ["最近老听这首", "[分享音乐：某首歌 - 某人]"] }
+    ]
+}

@@ -3,10 +3,12 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
+import type { BotConfig } from '../src/config.ts';
+import { loadTierCard } from '../src/contact.ts';
 import { inspectReply } from '../src/exit-check.ts';
 import type { StoredMessage } from '../src/history.ts';
 import {
-    describeMusic, loadMusic, lyricLines, markShared, MUSIC_GAP_DAYS, MUSIC_KEEP_SHARED_DAYS, MUSIC_PICKS, MUSIC_REFRESH_MS, mostlyChinese, parseChart, pickLyric,
+    describeHisSong, describeMusic, findSong, loadMusic, lookupSong, sharedSong, lyricLines, markShared, MUSIC_GAP_DAYS, MUSIC_KEEP_SHARED_DAYS, MUSIC_PICKS, MUSIC_REFRESH_MS, mostlyChinese, parseChart, pickLyric,
     readyPick, refreshMusic, saveMusic, shareMusicCard, usableTrack, type MusicPick, type MusicState, type Track,
 } from '../src/music.ts';
 import {
@@ -142,6 +144,15 @@ describe('出口检查：分享歌曲这一轮不编听歌经历', () => {
     });
 });
 
+describe('出口检查：他发来歌的那一轮也不编听歌经历，但「发你」照旧拦', () => {
+    test('songTalk：单曲循环 / 前奏拦；发你照拦（不是她发的卡片）', () => {
+        const kinds = (text: string) => inspectReply(text, [], undefined, undefined, undefined, false, false, false, true).map(i => i.kind);
+        assert.deepEqual(kinds('我也单曲循环了'), ['made-up']);
+        assert.deepEqual(kinds('这句听着挺戳的'), []);
+        assert.deepEqual(kinds('发你照片'), ['promise']);
+    });
+});
+
 describe('shareMusicCard：发卡片，发不出去改发文字链接', () => {
     const make = (sendMusic?: (userId: number, id: number) => Promise<number>) => {
         const sent: string[] = [];
@@ -166,6 +177,46 @@ describe('shareMusicCard：发卡片，发不出去改发文字链接', () => {
         const slow = make(async () => { throw new Error('OneBot 调用 send_private_msg 超时'); });
         await assert.rejects(shareMusicCard(slow.deps, 1, pick(42)), /超时/);
         assert.deepEqual(slow.sent, [], '超时可能已经发出去了：不再发链接');
+    });
+});
+
+describe('他发来的歌（ADR 0139 第二部分）', () => {
+    test('sharedSong：认聊天记录里的「[分享音乐：歌名 - 歌手]」，最后一张；没有歌手也行；别的方括号不认', () => {
+        assert.deepEqual(sharedSong('在吗\n[分享音乐：晚风小站 - 阿夏]'), { title: '晚风小站', artist: '阿夏' });
+        assert.deepEqual(sharedSong('[分享音乐：旧歌 - 甲]\n[分享音乐：新歌]'), { title: '新歌' });
+        assert.equal(sharedSong('[分享：哔哩哔哩《视频》]'), undefined);
+        assert.equal(sharedSong('我发你一首歌'), undefined);
+    });
+
+    const search = (songs: { id: number; name: string; artists: string[] }[]) => async (url: string): Promise<unknown> => {
+        if (url.includes('/search/get')) return { result: { songs: songs.map(s => ({ id: s.id, name: s.name, artists: s.artists.map(name => ({ name })) })) } };
+        return { lrc: { lyric: LRC } };
+    };
+
+    test('findSong：歌名对得上（忽略空格标点大小写）且歌手对得上的第一首；对不上 / 接口结构不对返回空', async () => {
+        const songs = [{ id: 1, name: '晚风小站 (Live)', artists: ['阿夏'] }, { id: 2, name: '晚风 小站', artists: ['别人'] }, { id: 3, name: '晚风小站', artists: ['阿夏', '小林'] }];
+        assert.equal((await findSong(search(songs), { title: '晚风小站', artist: '阿夏' }))?.id, 1, '以歌名开头也算（带后缀的版本）');
+        assert.equal((await findSong(search([songs[1]!, songs[2]!]), { title: '晚风小站', artist: '阿夏' }))?.id, 3, '歌手对不上的跳过');
+        assert.equal((await findSong(search(songs), { title: '晚风小站' }))?.id, 1, '没有歌手就只看歌名');
+        assert.equal(await findSong(search(songs), { title: '完全不同的歌', artist: '阿夏' }), undefined);
+        assert.equal(await findSong(async () => ({}), { title: '晚风小站' }), undefined);
+    });
+
+    test('lookupSong：搜得到就带两句歌词；搜不到 / 接口出错就只有歌名和歌手', async () => {
+        const found = await lookupSong(search([{ id: 3, name: '晚风小站', artists: ['阿夏'] }]), { title: '晚风小站', artist: '阿夏' });
+        assert.deepEqual([found.id, found.title, found.artist, found.lyric], [3, '晚风小站', '阿夏', ['我把夏天折成一只纸船', '漂向你家那条街']]);
+        const missing = await lookupSong(search([]), { title: '没有的歌', artist: '甲' });
+        assert.deepEqual([missing.id, missing.lyric], [0, []]);
+        const broken = await lookupSong(async () => { throw new Error('HTTP 500'); }, { title: '晚风小站', artist: '阿夏' });
+        assert.deepEqual([broken.title, broken.artist, broken.lyric], ['晚风小站', '阿夏', []]);
+    });
+
+    test('describeHisSong：有歌词就说点开看了歌词，没有就说没点开听；写明听过没有 / 歌的故事 / 前奏编曲都别编', () => {
+        const withLyric = describeHisSong(pick(3, { title: '晚风小站', artist: '阿夏' }));
+        assert.ok(withLyric.includes('他发来了一首歌：《晚风小站》，阿夏') && withLyric.includes('点开看了歌词') && withLyric.includes('把那一句原样写出来') && withLyric.includes('「晚风吹过楼顶的灯」'));
+        assert.match(withLyric, /你以前有没有听过、歌的故事、歌手的事、前奏编曲唱得怎么样，都别编/);
+        const plain = describeHisSong(pick(0, { lyric: [], artist: '' }));
+        assert.ok(plain.includes('你没点开听') && !plain.includes('歌词里有'));
     });
 });
 
@@ -318,6 +369,34 @@ describe('主动：听到一首歌', () => {
             planner.stop();
             planner = undefined;
         }
+    });
+});
+
+describe('模拟器里走一遍：他发来一首歌', () => {
+    test('开着：提示词里有他发来的歌和歌词两句；他没发歌的轮次没有；没开 musicShares 没有', async () => {
+        const root = resolve(import.meta.dirname, '../../..');
+        const card = loadTierCard(join(root, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+        const { runScenario } = await import('../src/sim/runner.ts');
+        const { parseScenario } = await import('../src/sim/scenario.ts');
+        const { DEFAULT_WORLD_INFO_SETTINGS } = await import('../src/st/world-info.ts');
+        const llm: BotConfig['llm'] = { baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: '', extraBody: {} };
+        const prompt: BotConfig['prompt'] = { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true };
+        const run = async (musicShares: boolean, say: string) => {
+            const d = dir();
+            const seen: string[] = [];
+            await runScenario(parseScenario({
+                name: '他发来的歌', tier: 'boyfriend', start: '2026-11-11T20:00:00+08:00', memory: false,
+                ...(musicShares ? { musicShares: true, music: [{ title: '晚风小站', artist: '阿夏', lyric: ['我把夏天折成一只纸船', '漂向你家那条街'] }] } : {}),
+                steps: [{ say }],
+            }), { runId: 'his-song', dataDir: d, card, llm, prompt, generate: async messages => { seen.push(messages.map(m => m.content).join('\n')); return '这句有点戳我'; } });
+            return seen;
+        };
+        const on = await run(true, '[分享音乐：晚风小站 - 阿夏]');
+        assert.ok(on.at(-1)!.includes('他发来了一首歌：《晚风小站》，阿夏') && on.at(-1)!.includes('「漂向你家那条街」'));
+        assert.ok((await run(true, '今天好冷')).every(p => !p.includes('他发来了一首歌')));
+        assert.ok((await run(false, '[分享音乐：晚风小站 - 阿夏]')).every(p => !p.includes('他发来了一首歌')));
+        const unknown = await run(true, '[分享音乐：没听过的歌 - 某人]');
+        assert.ok(unknown.at(-1)!.includes('他发来了一首歌：《没听过的歌》，某人') && unknown.at(-1)!.includes('你没点开听'));
     });
 });
 

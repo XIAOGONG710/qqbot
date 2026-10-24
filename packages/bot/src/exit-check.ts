@@ -155,7 +155,7 @@ const CARD_SENT = new RegExp(`${SEND_VERB}${NOT_MEDIA}`, 'g');
 /** 分享歌曲这一轮编的听歌经历和歌的细节（ADR 0139）：「单曲循环」「循环了好几遍」「听了一晚上」「前奏一起就……」「编曲」「嗓音」——提示词里只有歌名、歌手、几句歌词，这些都没写 */
 export const MADE_UP_LISTENING = /单曲循环|循环(?:了|着)?[好一两三几]?[几一两三]?(?:遍|次)|循环(?:了|着)?(?:一|整)?(?:晚上|下午|上午|一天|好久|半天)|听了(?:好)?[几一两三]?(?:遍|次|晚上|一晚上|一下午|一天|好久|半天)|听了又听|前奏|间奏|尾奏|编曲|嗓音|音色|旋律|鼓点|唱腔|唱得/;
 
-export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext, books?: BookProgressContext, faces?: FaceContext, textIntimacy = false, imageStickers = false, cardShared = false): ExitIssue[] {
+export function inspectReply(reply: string, banned: readonly string[], speech?: SpeechContext, books?: BookProgressContext, faces?: FaceContext, textIntimacy = false, imageStickers = false, cardShared = false, songTalk = false): ExitIssue[] {
     const issues: ExitIssue[] = [];
     // 模型会把“mua”和“等见面再给”拆成两个气泡；用等长标点替换换行后整段查，命中位置仍能映射回原行。
     if (textIntimacy) {
@@ -171,7 +171,7 @@ export function inspectReply(reply: string, banned: readonly string[], speech?: 
         if (media) issues.push({ line, kind: 'media', match: media[0].trim() });
         const script = SCRIPT.exec(text);
         if (script) issues.push({ line, kind: 'script', match: script[0].trim() });
-        const made = cardShared ? MADE_UP_LISTENING.exec(text) : null;
+        const made = cardShared || songTalk ? MADE_UP_LISTENING.exec(text) : null;
         if (made) issues.push({ line, kind: 'made-up', match: made[0] });
         const promise = PROMISE.exec((cardShared ? text.replace(CARD_SENT, '') : text).trim().replace(DM_SENT, '私信'));
         // 这一条回复里真带着一张照片（photos.ts 已校验过编号）：“翻出来给你看”“发你”说的就是它，不算她做不到的承诺
@@ -274,6 +274,8 @@ export interface ReviewOptions {
     imageStickers?: boolean;
     /** 这一轮程序先发了一张歌曲卡片（ADR 0139）：「这首发你了」不算做不到的承诺 */
     cardShared?: boolean;
+    /** 这一轮他发来了一首歌、她在接话（ADR 0139）：不编听过几遍 / 前奏编曲这类细节（不放行「发你」） */
+    songTalk?: boolean;
     /** 在原来的提示词末尾加上这句说明重新生成，返回清理过的回复 */
     regenerate: (note: string) => Promise<string>;
     log: (message: string) => void;
@@ -307,7 +309,7 @@ function strip(reply: string, options: ReviewOptions): { reply: string; issues: 
     if (tidy.notes.length) options.log(`出口检查：小黄脸——${tidy.notes.join('；')}，去掉`);
     let text = tidy.reply;
     for (let round = 0; ; round++) {
-        const issues = inspectReply(text, options.banned, options.speech, options.books, options.faces, options.textIntimacy, options.imageStickers, options.cardShared);
+        const issues = inspectReply(text, options.banned, options.speech, options.books, options.faces, options.textIntimacy, options.imageStickers, options.cardShared, options.songTalk);
         const removable = issues.filter(strippable);
         if (removable.length === 0 || round === 2) return { reply: text, issues: issues.filter(i => !strippable(i)) };
         const next = stripOpeners(text, removable);
