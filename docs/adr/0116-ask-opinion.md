@@ -1,6 +1,6 @@
 # ADR 0116：问问他的意见（主动时机 `ask`，配置 `proactiveAsk`，默认关）
 
-- 状态：**已实现，未上线**（2026-10-22；配置 `proactiveAsk`，要主动消息开着；默认关）。上线 = `koishi.yml` 里加 `proactiveAsk: true` + 重启；回滚 = 改回 false + 重启
+- 状态：**已上线**（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、interruptions、jokes、proactiveAsk、together、relationship；`koishi.yml` 各加一行 `true`，代码不动）。回滚 = 改回 false + 重启
 - 日期：2026-10-22
 - 关联：[ADR 0107](0107-invite-to-play.md)（同一种“不勉强”的规则）、[ADR 0100](0100-reach-when-unanswered.md)
 - 用户提出：2026-10-22「把 A 全部做完」（A9）

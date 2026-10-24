@@ -101,12 +101,23 @@ describe('看图把关（水印、人物必须明确说“没有”）', () => {
 
     test('济南没有的东西不收：模型明说有棕榈 / 热带植物 / 沙滩，或说明里写了；字段没回答不拦（只在明确说「有」时拦）', () => {
         const sky = { ...good, 猫: false, 三花: false, 天空: true, 说明: '黄昏的天空，云层被染成橘红色' };
-        assert.equal(judge('view', { ...sky, 热带: true }).reason, '画面里有济南没有的东西（棕榈 / 热带植物 / 沙滩）');
+        assert.equal(judge('view', { ...sky, 热带: true }).reason, '画面里有济南没有的东西（棕榈 / 热带植物 / 沙滩 / 海面 / 岛屿 / 大片水面）');
         assert.equal(judge('view', { ...sky, 说明: '金黄云霞铺满蓝天，底部是棕榈树和树丛的黑色剪影' }).keep, false);
         assert.equal(judge('view', { ...sky, 说明: '蓝天下的沙滩和海浪，光线明亮' }).keep, false);
+        assert.equal(judge('view', { ...sky, 说明: '平静水面倒映着橙蓝渐变的晚霞与云层' }).keep, false);
+        assert.equal(judge('view', { ...sky, 说明: '粉蓝紫霞光布满天空，下方是深色山影与海面' }).keep, false);
         assert.equal(judge('view', { ...sky, 热带: false }).keep, true);
         assert.equal(judge('view', sky).keep, true, '字段没回答：照旧收');
         assert.ok(PHOTO_VISION_PROMPT.includes('"热带"'));
+    });
+
+    test('场景里的招牌 / 外文不收（水印检查只管叠加的字）：模型明说有，或说明里写了；没回答不拦', () => {
+        const sky = { ...good, 猫: false, 三花: false, 天空: true, 说明: '黄昏的天空，云层被染成橘红色' };
+        assert.equal(judge('view', { ...sky, 招牌: true }).reason, '画面里有招牌 / 文字');
+        assert.equal(judge('view', { ...sky, 说明: '日落天空，左下角有一块圆形广告牌' }).keep, false);
+        assert.equal(judge('view', { ...sky, 招牌: false }).keep, true);
+        assert.equal(judge('view', sky).keep, true);
+        assert.ok(PHOTO_VISION_PROMPT.includes('"招牌"'));
     });
 
     test('给看图模型的要求里写明了：四个角和边缘、署名、日期戳、版权标记、相框', () => {

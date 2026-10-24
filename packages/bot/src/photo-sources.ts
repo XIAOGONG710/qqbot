@@ -106,7 +106,7 @@ export function commonsSearch(options: CommonsOptions = {}): (kind: PhotoKind, o
 
 export const PHOTO_VISION_PROMPT = '这是一张要放进某人手机相册的照片。请只输出一个 JSON 对象，不要别的字：'
     + '{"人物":画面里有没有清晰可辨的人脸或人物(true/false),"水印":图上任何位置（尤其四个角和边缘）有没有叠加的文字、水印、徽标、署名、日期戳、版权标记或相框边框(true/false),"猫":主体是不是一只猫(true/false),'
-    + '"三花":是不是三花猫，白底带黑色和橘色斑块(true/false),"天空":画面是不是以天空、云、日落日出为主(true/false),"热带":画面里有没有棕榈树、椰子树、热带植物、沙滩或海滩（中国北方城市看不到的东西）(true/false),"清晰":对焦清晰不糊(true/false),'
+    + '"三花":是不是三花猫，白底带黑色和橘色斑块(true/false),"天空":画面是不是以天空、云、日落日出为主(true/false),"热带":画面里有没有棕榈树、椰子树、热带植物、沙滩、大海、岛屿、大片水面、摩天轮（内陆北方城市看不到的东西）(true/false),"招牌":画面里有没有任何能读出来的文字、招牌、广告牌、路牌、标牌（包括外文，场景里的也算）(true/false),"清晰":对焦清晰不糊(true/false),'
     + '"说明":"一句话客观描述画面，不超过 30 个字，只写看得见的东西和光线，不写地名、品种名、拍摄者、年代"}。不要猜看不清的东西。';
 
 const bool = (value: unknown) => value === true || value === 'true' || value === '是';
@@ -126,7 +126,9 @@ export function judgePhoto(kind: PhotoKind, reply: string): PhotoJudgement {
     if (kind === 'cat' && !(bool(o['猫']) && bool(o['三花']))) return { keep: false, caption, reason: '不是三花猫' };
     if (kind === 'view' && !bool(o['天空'])) return { keep: false, caption, reason: '不是以天空为主' };
     // 济南没有的东西（10-25：货架里有两张澳大利亚 Palm Beach 的棕榈树晚霞，用户看了说假）：模型明说有，或说明里写了，都不收；字段没回答不算（只在明确说「有」时拦）
-    if (bool(o['热带']) || /棕榈|椰子|椰树|热带|沙滩|海滩|仙人掌/.test(caption)) return { keep: false, caption, reason: '画面里有济南没有的东西（棕榈 / 热带植物 / 沙滩）' };
+    // 场景里的招牌 / 外文（10-25：一张澳大利亚的晚霞左下角是英文啤酒招牌，叠加水印的检查拦不住场景里的字）：模型明说有就不收；字段没回答不算
+    if (bool(o['招牌']) || /招牌|标牌|广告牌|路牌|字母|文字/.test(caption)) return { keep: false, caption, reason: '画面里有招牌 / 文字' };
+    if (bool(o['热带']) || /棕榈|椰子|椰树|热带|沙滩|海滩|仙人掌|海面|海边|海浪|大海|岛|水面|湖面|摩天轮/.test(caption)) return { keep: false, caption, reason: '画面里有济南没有的东西（棕榈 / 热带植物 / 沙滩 / 海面 / 岛屿 / 大片水面）' };
     const chars = [...caption].length;
     if (chars < 6 || chars > 40) return { keep: false, caption, reason: '说明太短或太长' };
     // 说明里不许带地名 / 品种 / 外文：会和她在济南的生活、“土豆”对不上

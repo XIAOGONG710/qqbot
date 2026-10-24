@@ -1,6 +1,6 @@
 # ADR 0114：小梗回头提（配置 `jokes`，默认关）
 
-- 状态：**已实现，未上线**（2026-10-22；配置 `jokes`；默认关）。上线 = `koishi.yml` 里加 `jokes: true` + 重启；回滚 = 改回 false + 重启（`<数据目录>/jokes/` 是派生数据，可随时删）
+- 状态：**已上线**（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、interruptions、jokes、proactiveAsk、together、relationship；`koishi.yml` 各加一行 `true`，代码不动）。回滚 = 改回 false + 重启
 - 日期：2026-10-22
 - 关联：[ADR 0011](0011-proactive-messages.md)、[ADR 0098](0098-already-told-and-topic-pick.md)
 - 用户提出：2026-10-22「把 A 全部做完」（A7）

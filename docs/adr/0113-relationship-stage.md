@@ -1,6 +1,6 @@
 # ADR 0113：关系阶段——聊得多了她更放得开（配置 `relationship`，默认关）
 
-- 状态：**已实现，未上线**（2026-10-22；配置 `relationship`；默认关）。上线 = `koishi.yml` 里加 `relationship: true` + 重启；回滚 = 改回 false + 重启（不存任何状态）
+- 状态：**已上线**（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、interruptions、jokes、proactiveAsk、together、relationship；`koishi.yml` 各加一行 `true`，代码不动）。回滚 = 改回 false + 重启
 - 日期：2026-10-22
 - 关联：[ADR 0039](0039-restart-consistency.md)（从聊天记录往回推，不落盘）、[ADR 0102](0102-feelings.md)
 - 用户提出：2026-10-22「把 A 全部做完」（A6）

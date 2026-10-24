@@ -1,6 +1,6 @@
 # ADR 0111：陪玩状态——答应邀约后的两三个小时她正和他一起玩（配置 `together`，默认关）
 
-- 状态：**已实现，未上线**（2026-10-22；配置 `together`；默认关）。上线 = `koishi.yml` 里加 `together: true` + 重启；回滚 = 改回 false + 重启（不存任何状态）
+- 状态：**已上线**（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、interruptions、jokes、proactiveAsk、together、relationship；`koishi.yml` 各加一行 `true`，代码不动）。回滚 = 改回 false + 重启
 - 日期：2026-10-22
 - 关联：[ADR 0107](0107-invite-to-play.md)（她约他）、[ADR 0039](0039-restart-consistency.md)（从聊天记录往回推，不落盘）、[ADR 0105](0105-reply-lag-tail.md)
 - 用户提出：2026-10-22「把 A 全部做完」（A4）

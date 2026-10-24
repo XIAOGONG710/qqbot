@@ -1,6 +1,6 @@
 # ADR 0112：说了“等下”之后自己回来（主动时机 `back`，配置 `comeBack`，默认关）
 
-- 状态：**已实现，未上线**（2026-10-22；配置 `comeBack`，要主动消息开着；默认关）。上线 = `koishi.yml` 里加 `comeBack: true` + 重启；回滚 = 改回 false + 重启
+- 状态：**已上线**（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、interruptions、jokes、proactiveAsk、together、relationship；`koishi.yml` 各加一行 `true`，代码不动）。回滚 = 改回 false + 重启
 - 日期：2026-10-22
 - 关联：[ADR 0011](0011-proactive-messages.md)、[ADR 0100](0100-reach-when-unanswered.md)、[ADR 0104](0104-pursuits.md)（先把手上这一小段弄完）、[ADR 0106](0106-everyday-life.md)
 - 用户提出：2026-10-22「把 A 全部做完」（A5）
