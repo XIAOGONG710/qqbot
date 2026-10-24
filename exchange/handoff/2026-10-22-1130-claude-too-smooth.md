@@ -215,3 +215,8 @@
 
 ## 10-24 09:22 即将重启上线：`e8e5603`（ADR 0136 引用回复 / 0137 事实检查 / 0138 口头习惯）
 - 用户说「上线，然后继续开发新功能」。线上 `334e854` → `e8e5603`；30 个文件（bot src/test/sim、插件 index.ts、ADR 0136–0138、模块文档），**koishi.yml 加三行**：`quoteReply: true`、`factCheck: log`（先只查只记，回复照发）、`idioms: true`；其余键一个没动。备份 `runtime/backup-pre-bili33-*` + `koishi.yml.bak-bili33-*`。回滚：去掉这三行重启，或 `git reset --hard 334e854` + 还原 yml。
+
+## 10-24 09:24 结果：`e8e5603` 已上线（ADR 0136 / 0137 / 0138）
+- 线上 `334e854` → `e8e5603`：心跳 ref = `e8e5603…`、connectedAt 01:22:21Z（10-24 UTC）；新日志 0 条错误；koishi.yml 多了 `quoteReply: true` / `factCheck: log` / `idioms: true` 三行，其余没动；维护标记已删。启动后 28 秒日志：「口头习惯：学了一次，现在有 3 个」。备份 `runtime/backup-pre-bili33-20261024-0922` + `runtime/koishi/koishi.yml.bak-bili33-20261024-0922`，回滚去掉三行重启或 `git reset --hard 334e854` + 还原 yml。
+- 脚本第 7 步又显示 STOPPED（git push 进度写到 stderr）；main 已推，integration 手动补推，现在 main = integration = origin/claude/realness = `e8e5603`。
+- 接下来几天看：`factCheck: log` 的日志里「事实检查：N 条说法对不上事实」的条数占回复的比例（要看原话用 `QQBOT_SENSITIVE_LOGS=15m`），觉得误报不多再改 `fix`；第一次线上引用回复要看有没有「引用回复没发出去」；`idioms/2260168937.json` 里学到的是不是都是说话习惯（不是名词）。
