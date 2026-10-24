@@ -9,6 +9,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { MEDIA_TIMEOUTS } from './media.ts';
 import { FESTIVAL_MODES, type FestivalMode } from './festivals.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from './fact-check.ts';
+import { LOCAL_MODELS, type LocalModel } from './tts.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from './presence.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from './proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from './st/prompt-converters.ts';
@@ -90,6 +91,7 @@ export const DEFAULTS = {
     quoteReply: false,
     idioms: false,
     musicShares: false,
+    voice: false,
     factCheck: 'off' as FactCheckMode,
     innerLife: false,
     herFeelings: false,
@@ -369,6 +371,12 @@ export interface AppConfig {
      * 歌曲卡片先发（OneBot 的 music 段，发不出去就发文字链接），隔一会儿再发她的话。要「主动消息」开着；只对男朋友档。默认关
      */
     musicShares: boolean;
+    /** 开口说话（ADR 0140）：满足条件的轮次她可以发语音（本机离线合成，不联网）；唱歌要另外接服务。默认关；只对男朋友档 */
+    voice: boolean;
+    /** 语音引擎（ADR 0140，配置 voiceEngine，可不写）：本机的 sherpa-onnx；dir 是装它的目录（默认 <仓库>/runtime/voice） */
+    voiceEngine?: { model: LocalModel; speaker: number; speed: number; timeoutMs: number; dir?: string };
+    /** 唱歌引擎（ADR 0140，配置 songEngine，可不写）：外接命令 [可执行文件, 参数…]，从 stdin 读 { lines, style, out, maxSeconds }，把 wav 写到 out，stdout 最后一行打印 { ok, seconds }；没写就不唱 */
+    songEngine?: { command: string[]; timeoutMs: number };
     /**
      * 逐条事实检查（ADR 0137）：她最容易露馅的是编——事实里只有“土豆今天没下楼”，她写“土豆一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。
      * 回复发出去之前，让模型当审稿员把回复拆成关于她自己 / 她身边世界的一条条具体说法，对照设定、这一轮的事实和聊天记录，找出“矛盾”和“事实里根本没有”的（每个回复多一次小调用，温度 0）。
@@ -603,6 +611,24 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         };
     }
 
+    let songEngine: AppConfig['songEngine'];
+    if (file.songEngine !== undefined) {
+        const v = section(file, 'songEngine');
+        if (!Array.isArray(v.command) || !v.command.length || v.command.some(part => typeof part !== 'string' || !part)) throw new Error('配置 songEngine.command 应为非空的字符串数组（可执行文件 + 参数）');
+        songEngine = { command: v.command as string[], timeoutMs: num(v, 'timeoutMs', 'songEngine', 180_000) };
+    }
+    let voiceEngine: AppConfig['voiceEngine'];
+    if (file.voiceEngine !== undefined) {
+        const v = section(file, 'voiceEngine');
+        voiceEngine = {
+            model: oneOf(v.model, 'voiceEngine.model', LOCAL_MODELS, 'kokoro'),
+            speaker: num(v, 'speaker', 'voiceEngine', 3),
+            speed: num(v, 'speed', 'voiceEngine', 1),
+            timeoutMs: num(v, 'timeoutMs', 'voiceEngine', 90_000),
+            ...(typeof v.dir === 'string' && v.dir ? { dir: v.dir } : {}),
+        };
+    }
+
     return {
         llm: {
             baseUrl: str(llm, 'baseUrl', 'llm'),
@@ -674,6 +700,9 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         quoteReply: bool(file, 'quoteReply', '', DEFAULTS.quoteReply),
         idioms: bool(file, 'idioms', '', DEFAULTS.idioms),
         musicShares: bool(file, 'musicShares', '', DEFAULTS.musicShares),
+        voice: bool(file, 'voice', '', DEFAULTS.voice),
+        ...(voiceEngine ? { voiceEngine } : {}),
+        ...(songEngine ? { songEngine } : {}),
         factCheck: oneOf(file.factCheck, 'factCheck', FACT_CHECK_MODES, DEFAULTS.factCheck),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),

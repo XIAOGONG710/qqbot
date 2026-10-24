@@ -9,7 +9,7 @@
 // 每人的消息按收到的顺序一条条进；读的时候不卡别人，读不出来、超时照旧「[语音]」「[图片]」。
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { canGiveFeedback, cardKey, CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { chatCompletion, forExtraction } from './llm.ts';
 import { acquireLock } from './lock.ts';
@@ -72,6 +72,7 @@ import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } 
 import { SlidingWindowRateLimiter } from './rate-limit.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
+import { commandSong, localSpeech, localSpeechProblem, sweepClips, type SongEngine, type SpeechEngine } from './tts.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -99,6 +100,8 @@ export interface Transport extends PresenceTransport {
     sendPrivateImage?(userId: number, file: string, summary: string): Promise<number>;
     /** 发一张网易云歌曲卡片（OneBot music 段，配置 musicShares，ADR 0139）；没有就只发文字链接 */
     sendPrivateMusic?(userId: number, id: number): Promise<number>;
+    /** 发一条本机的语音文件（OneBot record 段，配置 voice，ADR 0140）；没有就只发文字 */
+    sendPrivateVoice?(userId: number, file: string): Promise<number>;
     /** NapCat 的 get_friend_msg_history：某人最近 count 条私聊（含小号自己发的），从旧到新。没有任何记录时 NapCat 也报错 */
     friendHistory(userId: number, count: number): Promise<HistoryMessage[]>;
 }
@@ -205,6 +208,8 @@ export interface AppOptions {
     mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>;
     /** 敏感调试开关（ADR 0070 第 8 项）；不传按环境变量 QQBOT_SENSITIVE_LOGS（默认关） */
     sensitive?: SensitiveSwitch;
+    /** 开口说话、唱歌（ADR 0140，配置 voice）：speech 不给就按配置建本机引擎；sing 是唱歌的引擎（运行入口按配置建，没配就没有）；测试可给假的 */
+    voice?: { speech?: SpeechEngine; sing?: SongEngine };
 }
 
 /** 名单外的人在提示词里的称呼（{{user}}）：QQ 昵称，没有就叫「对方」 */
@@ -212,7 +217,7 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, sensitive = sensitiveSwitch() }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, sensitive = sensitiveSwitch(), voice: voiceOptions }: AppOptions): App {
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -389,6 +394,28 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         }
         return found;
     };
+    // 开口说话（ADR 0140）：本机离线合成（sherpa-onnx 子进程，念完就退出）；引擎没装好 / 发语音的通道没准备好就不工作，照旧只发文字。音频文件发完就删，启动时清残留
+    const voiceDir = join(config.dataDir, 'voice');
+    const voiceEngineDir = resolve(config.voiceEngine?.dir ?? join(config.dataDir, '..', 'voice'));
+    const voiceModel = config.voiceEngine?.model ?? 'kokoro';
+    const voiceProblem = !config.voice ? undefined
+        : !transport.sendPrivateVoice ? '发语音的通道没准备好'
+            : voiceOptions?.speech ? undefined : localSpeechProblem(voiceEngineDir, voiceModel);
+    const voiceSpeech: SpeechEngine | undefined = config.voice && !voiceProblem
+        ? voiceOptions?.speech ?? localSpeech({ engineDir: voiceEngineDir, outDir: voiceDir, model: voiceModel, speaker: config.voiceEngine?.speaker ?? 3, speed: config.voiceEngine?.speed ?? 1, timeoutMs: config.voiceEngine?.timeoutMs ?? 90_000, log })
+        : undefined;
+    // 唱歌引擎：入口给了用入口的（测试），否则按配置 songEngine 建外接命令的；都没有就不唱
+    const singEngine: SongEngine | undefined = !config.voice || voiceProblem ? undefined
+        : voiceOptions?.sing ?? (config.songEngine ? commandSong({ command: config.songEngine.command, outDir: voiceDir, timeoutMs: config.songEngine.timeoutMs, log }) : undefined);
+    if (config.voice) {
+        const swept = sweepClips(voiceDir, 3_600_000);
+        log(voiceSpeech
+            ? `开口说话：开（${voiceSpeech.name}；只对男朋友档；满足条件的轮次她可以发语音，一天最多 2 条，他明着要的另算；唱歌${singEngine ? `用 ${singEngine.name}` : '没接引擎，不唱'}${swept ? `；清掉残留音频 ${swept} 个` : ''}）`
+            : `开口说话：配置开着，但${voiceProblem}，不工作（照旧只发文字）`);
+    }
+    const voiceDeps = voiceSpeech && transport.sendPrivateVoice
+        ? { speech: voiceSpeech, ...(singEngine ? { sing: singEngine } : {}), sendVoice: transport.sendPrivateVoice.bind(transport) }
+        : undefined;
     // 他的口头习惯（ADR 0138）：派生数据，存 <数据目录>/idioms/<QQ>.json
     const idioms = config.idioms ? idiomStore({ dir: join(config.dataDir, 'idioms'), log }) : undefined;
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；刷新在下面（要她的 B 站号）
@@ -586,6 +613,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
+            ...(voiceDeps && contact.tier === 'boyfriend' ? { voice: voiceDeps } : {}),
             ...(musicShelf && contact.tier === 'boyfriend' ? { sendMusic: sendMusicCard, songLookup: lookupHisSong } : {}),
             ...(config.factCheck !== 'off' ? { factCheck: config.factCheck } : {}),
             ...(config.herNo ? { herNo: true } : {}),

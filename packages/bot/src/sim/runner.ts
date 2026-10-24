@@ -25,6 +25,8 @@ import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext }
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { herDay, newsKindsOf, withAsk, withBack, withCatPhoto, withCurious, withFoodShares, withInner, withInvite, withMusic, withReach, withRoom, withSmallNews } from '../proactive.ts';
 import { markShared, readyPick, type MusicPick, type MusicState } from '../music.ts';
+import { voiceLine } from '../media.ts';
+import { SING_MARK } from '../voice.ts';
 import type { Moment } from '../feelings.ts';
 import { mergePursuits, type Pursuit } from '../pursuits.ts';
 import { dmMessageId, dmNote, nudgeNote, videoNote, videoTopic } from '../bilibili.ts';
@@ -327,6 +329,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     let diaries = openDiaries();
 
     let nextMessageId = 1;
+    /** 假语音：最后一次念 / 唱的内容（sendVoice 记成气泡用，ADR 0140） */
+    let voiceNow: { kind: 'voice' | 'sing'; text: string; seconds: number } = { kind: 'voice', text: '', seconds: 1 };
     let armed: SayStep['interrupt'];
     let bubblesThisStep = 0;
     let injecting = 0;
@@ -432,6 +436,17 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             return nextMessageId++;
         } } : {}),
         ...(scenario.quoteReply ? { quoteReply: true, ...(scenario.quoteShare !== undefined ? { quoteShare: scenario.quoteShare } : {}) } : {}),
+        // 开口说话（ADR 0140）：假的合成，不出声；念出来 / 唱出来的字记成一条气泡，和线上聊天记录里的写法一样（media.ts 的 voiceLine）
+        ...(scenario.voice && scenario.voiceShare !== undefined ? { voiceShare: scenario.voiceShare } : {}),
+        ...(scenario.voice ? { voice: {
+            speech: { name: '模拟', synthesize: async (text: string) => { voiceNow = { kind: 'voice', text, seconds: Math.max(1, Math.round([...text].length / 4)) }; return { file: 'sim.wav', seconds: voiceNow.seconds }; } },
+            ...(scenario.sing ? { sing: { name: '模拟', sing: async (lines: readonly string[]) => { voiceNow = { kind: 'sing', text: lines.join('／'), seconds: lines.length * 4 }; return { file: 'sim.wav', seconds: voiceNow.seconds }; } } } : {}),
+            sendVoice: async () => {
+                current.bubbles.push({ time: clock.now(), text: voiceLine({ seconds: voiceNow.seconds, text: voiceNow.kind === 'sing' ? `${SING_MARK}${voiceNow.text}` : voiceNow.text }), ...(initiating ? { proactive: initiating } : {}) });
+                bubblesThisStep++;
+                return nextMessageId++;
+            },
+        } } : {}),
         // 逐条事实检查（ADR 0137）：审稿的调用走场景自己的模型（假模型也行）；每次的记录进这一步，报告里看得到
         ...((options.factCheck ?? scenario.factCheck) !== 'off' ? {
             factCheck: options.factCheck ?? scenario.factCheck,

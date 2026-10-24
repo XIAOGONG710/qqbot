@@ -264,3 +264,27 @@ describe('NapCat 探针：外层 ok 但内核拒绝（data.result 非 0）算失
         assert.match(reaction.detail, /QQ 内核拒绝了/);
     });
 });
+
+describe('voice 步骤（ADR 0140）', () => {
+    test('给了音频就发一条 record 段；没给音频记失败、不调接口；NapCat 报错记失败', async () => {
+        const fake = fakeNapcat();
+        const sent = await runProbe({ connection: fake.connection, user: USER, steps: ['voice'], voiceFile: 'D:/x/a.wav', say: () => undefined, sleep: noSleep });
+        assert.deepEqual(sent.map(r => [r.step, r.ok]), [['voice', true]]);
+        assert.deepEqual(fake.calls, [{ action: 'send_private_msg', params: { user_id: String(USER), message: [{ type: 'record', data: { file: 'D:/x/a.wav' } }] } }]);
+
+        const none = fakeNapcat();
+        const skipped = await runProbe({ connection: none.connection, user: USER, steps: ['voice'], say: () => undefined, sleep: noSleep });
+        assert.equal(skipped[0]!.ok, false);
+        assert.deepEqual(none.calls, []);
+
+        const broken = fakeNapcat({ send_private_msg: failed(200, '语音转换失败') });
+        const failedSend = await runProbe({ connection: broken.connection, user: USER, steps: ['voice'], voiceFile: 'a.wav', say: () => undefined, sleep: noSleep });
+        assert.equal(failedSend[0]!.ok, false);
+        assert.match(failedSend[0]!.detail, /语音转换失败/);
+    });
+
+    test('参数：--steps voice、--voice-dir、--voice-text 认得；voice 不在默认步骤里', () => {
+        const args = parseArgs(['--user', '1', '--steps', 'voice', '--voice-dir', 'D:/v', '--voice-text', '你好']);
+        assert.deepEqual([args.steps, args.voiceDir, args.voiceText], [['voice'], 'D:/v', '你好']);
+    });
+});

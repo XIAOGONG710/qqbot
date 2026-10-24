@@ -199,6 +199,15 @@ export class OneBotClient {
         });
         return data.message_id;
     }
+
+    /** 发一条已经落到本机的语音（wav 也行，NapCat 自带的 ffmpeg 转成 QQ 的 silk；ADR 0140） */
+    async sendPrivateVoice(userId: number, file: string): Promise<number> {
+        const data = await this.call<{ message_id: number }>('send_private_msg', {
+            user_id: userId,
+            message: [{ type: 'record', data: { file } }],
+        });
+        return data.message_id;
+    }
 }
 
 /**

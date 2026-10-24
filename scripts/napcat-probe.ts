@@ -17,14 +17,17 @@
 //   selfrecall（要明确写进 --steps）给你发一条「测试，几秒后撤回」的消息，3 秒后用 delete_msg 撤回（selfRecall 用的那个动作），并看撤回通知长什么样
 //   signature（要 --signature）读她现在的签名，改成你给的，读回来核对，再改回原样
 //   qzone   （要 --qzone）发一条「仅自己可见」的测试说说，拿到 tid 后立刻删掉
+//   voice   （要明确写进 --steps）用本机的语音引擎（ADR 0140，--voice-dir，默认 <仓库>/runtime/voice）念一句测试的话，作为一条 QQ 语音发给你（OneBot record 段，wav 由 NapCat 转 silk）；
+//           你在手机上点开听：能不能播、声音正不正常、响度够不够。发出去的音频文件发完就删
 // 你发的消息她（线上那个）会照常回；探针自己不发任何文字消息。报告里不留消息正文，只留字段和长度。
 // token 从 NapCat 的 onebot11.json 里读（不打印）。默认 <仓库>/runtime/napcat/workdir/config/onebot11.json。
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isFriendRecall, isPokeAtMe, segmentsToText, type OneBotEvent, type Segment } from '../packages/bot/src/onebot.ts';
+import { discardClip, localSpeech, localSpeechProblem, type SpeechClip } from '../packages/bot/src/tts.ts';
 
-export const STEPS = ['login', 'packet', 'online', 'like', 'poke', 'typing', 'events', 'selfrecall', 'signature', 'qzone'] as const;
+export const STEPS = ['login', 'packet', 'online', 'like', 'poke', 'typing', 'events', 'selfrecall', 'signature', 'qzone', 'voice'] as const;
 export type Step = typeof STEPS[number];
 export const DEFAULT_STEPS: readonly Step[] = ['login', 'packet', 'online', 'like', 'poke', 'typing', 'events'];
 
@@ -47,6 +50,8 @@ export interface ProbeOptions {
     eventsMs?: number;
     signature?: string;
     qzone?: boolean;
+    /** voice 步骤要发的本机音频文件（调用方合成好；ADR 0140）*/
+    voiceFile?: string;
 }
 
 const MAX_DETAIL = 300;
@@ -154,6 +159,11 @@ export async function runProbe(options: ProbeOptions): Promise<ProbeResult[]> {
     if (steps.includes('signature')) {
         if (!options.signature) record('signature', '个性签名', false, '没给 --signature，跳过');
         else await runSignature(connection, selfId, options.signature, record);
+    }
+
+    if (steps.includes('voice')) {
+        if (!options.voiceFile) record('voice', '发语音', false, '没有可发的音频（本机语音引擎没装好？见 ADR 0140）');
+        else await act('voice', '发一条语音（record 段）', 'send_private_msg', { user_id: String(user), message: [{ type: 'record', data: { file: options.voiceFile } }] }, '你应该收到一条语音：点开听，看能不能播、声音正不正常、响度够不够');
     }
 
     if (steps.includes('qzone')) {
@@ -324,7 +334,7 @@ export function connect(url: string, timeoutMs = 10_000): Promise<Connection> {
     });
 }
 
-interface Args { user?: number; config?: string; url?: string; steps?: Step[]; eventsSeconds?: number; holdSeconds?: number; out?: string; signature?: string; qzone: boolean }
+interface Args { user?: number; config?: string; url?: string; steps?: Step[]; eventsSeconds?: number; holdSeconds?: number; out?: string; signature?: string; qzone: boolean; voiceDir?: string; voiceText?: string }
 
 export function parseArgs(argv: readonly string[]): Args {
     const args: Args = { qzone: false };
@@ -341,6 +351,8 @@ export function parseArgs(argv: readonly string[]): Args {
             case '--out': args.out = value(); break;
             case '--signature': args.signature = value(); break;
             case '--qzone': args.qzone = true; break;
+            case '--voice-dir': args.voiceDir = value(); break;
+            case '--voice-text': args.voiceText = value(); break;
             default: throw new Error(`不认识的参数：${flag}`);
         }
     }
@@ -362,6 +374,17 @@ async function main(): Promise<void> {
     const configPath = args.config ?? resolve(import.meta.dirname, '..', 'runtime/napcat/workdir/config/onebot11.json');
     const server = serverFromConfig(readFileSync(configPath, 'utf8'));
     const url = `${args.url ?? server.url}${server.token ? `?access_token=${encodeURIComponent(server.token)}` : ''}`;
+    // voice 步骤：先在本机合成一条（引擎在 --voice-dir，默认 <仓库>/runtime/voice），发完删
+    let voiceClip: SpeechClip | undefined;
+    if (args.steps?.includes('voice')) {
+        const engineDir = resolve(args.voiceDir ?? resolve(import.meta.dirname, '..', 'runtime/voice'));
+        const problem = localSpeechProblem(engineDir, 'kokoro');
+        if (problem) console.log(`本机语音引擎没装好：${problem}`);
+        else {
+            const engine = localSpeech({ engineDir, outDir: resolve(engineDir, 'probe'), model: 'kokoro', speaker: 3, speed: 1, log: line => console.log(line) });
+            voiceClip = await engine.synthesize(args.voiceText ?? '喂，听得到吗？这是探针发的一条测试语音，不是真的聊天。').catch(error => { console.log(`合成失败：${error instanceof Error ? error.message : String(error)}`); return undefined; });
+        }
+    }
     const connection = await connect(url);
     const lines: string[] = [];
     const say = (line: string): void => { lines.push(line); console.log(line); };
@@ -373,6 +396,7 @@ async function main(): Promise<void> {
             ...(args.holdSeconds !== undefined ? { holdMs: args.holdSeconds * 1000 } : {}),
             ...(args.signature !== undefined ? { signature: args.signature } : {}),
             qzone: args.qzone,
+            ...(voiceClip ? { voiceFile: voiceClip.file } : {}),
         });
         const failed = results.filter(result => !result.ok);
         console.log(`\n共 ${results.length} 项，${results.length - failed.length} 项成功，${failed.length} 项没成功${failed.length ? `：${failed.map(result => result.name).join('、')}` : ''}`);
@@ -384,6 +408,7 @@ async function main(): Promise<void> {
         process.exitCode = failed.length ? 1 : 0;
     } finally {
         connection.close();
+        discardClip(voiceClip);
     }
 }
 

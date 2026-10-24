@@ -139,6 +139,11 @@ export interface Config {
     quoteReply: boolean;
     idioms: boolean;
     musicShares: boolean;
+    voice: boolean;
+    /** 语音引擎（ADR 0140）：不在表单里，只能在 koishi.yml 里写（model / speaker / speed / timeoutMs / dir）；不写就用默认 */
+    voiceEngine?: { model?: string; speaker?: number; speed?: number; timeoutMs?: number; dir?: string };
+    /** 唱歌引擎（ADR 0140）：同样只能在 koishi.yml 里写 { command: [可执行文件, 参数…], timeoutMs }；不写就不唱 */
+    songEngine?: { command: string[]; timeoutMs?: number };
     factCheck: FactCheckMode;
     innerLife: boolean;
     herFeelings: boolean;
@@ -316,6 +321,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**引用回复**（ADR 0136）：QQ 里长按一条消息“回复”。她以前一次都没引用过。两种明确的时候才引：他连着发了几条、其中有个不是最后一条的问题，她回答它时按概率引用它；打错字撤回失败（超过两分钟）补“*对的词”时有时引用那条错的。他自己 654 条消息里只引用过 1 次，所以这是很少出现的事。引用发不出去就去掉引用再发一次。'),
         idioms: Schema.boolean().default(DEFAULTS.idioms)
             .description('**被他带出来的口头习惯**（ADR 0138）：处久了的两个人会互相沾说话的习惯——他爱说“笑死”，她过阵子也会顺口来一句。隔一阵让模型从他最近一个月的话里挑最多 8 个口头习惯（口头禅、句首句尾的语气词、爱用的网络说法），代码硬校验：必须是他的话里原样出现过至少 4 条、分布在至少 3 个不同日子的 1–6 个字的短语；名词 / 人名 / 数字 / 脏话 / 危机相关的词 / 卡上的禁用词 / 太泛的一律丢掉。用的时候约一半的轮次提示她他爱说的一两个词，这一轮正好用得上就顺口用一个；她最近三次回复里用过的不再给；只对男朋友档，他难过 / 危机 / 小别扭时不给。她的语气、长短、条数都不变。存在 idioms/ 目录下，导出和遗忘时跟着走。'),
+        voice: Schema.boolean().default(DEFAULTS.voice)
+            .description('**开口说话**（ADR 0140，只对男朋友档）：真人女朋友偶尔会发条语音——懒得打字、撒个娇、想他了、他刚发了语音，或者他说“想听你声音”。满足条件的轮次（她方便出声：不在上课 / 图书馆 / 睡觉 / 夜里宿舍室友在睡；今天没发够 2 条、距上一条 3 小时以上；他明着要的另算）提示词里多一行“这一轮你也可以发语音”，她要发就在回复第一行写 <voice>，程序把话改成口语、用本机离线的语音合成念出来（不联网、不要 key，聊天内容不会发给第三方）发成一条 QQ 语音；念不出来（太长 / 合成失败 / 发不出去）就照常发文字。他难过 / 危机 / 小别扭 / 主动找他的轮次不发。**唱歌**要另外接服务（本机的合成不会唱），没接就不唱，他要她唱歌时她像真人那样推掉。装引擎的步骤见 ADR 0140。'),
         musicShares: Schema.boolean().default(DEFAULTS.musicShares)
             .description('**听到一首歌分享给他**（ADR 0139，要「主动消息」开着；只对男朋友档）：情侣之间最常见的小事之一——一张歌曲卡片加一两句话。晚上有的日子（平均一周一两次，两首之间至少隔 3 天）她听到一首歌想分享给他：歌从网易云公开榜单（飙升榜、新歌榜、热歌榜、原创榜）的候选里来（每天刷一次，能播、不是 DJ / 伴奏 / 翻唱，歌词里没有脏话 / 危机相关的词），歌词只取两句，歌的故事、她听了几遍都不编。歌曲卡片先发，发不出去就发文字链接，隔一会儿再发她的话。'),
         factCheck: Schema.union(FACT_CHECK_MODES.map(mode => Schema.const(mode).description(FACT_CHECK_LABELS[mode]))).default(DEFAULTS.factCheck)
@@ -526,6 +533,9 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.quoteReply !== undefined ? { quoteReply: config.quoteReply } : {}),
         ...(config.idioms !== undefined ? { idioms: config.idioms } : {}),
         ...(config.musicShares !== undefined ? { musicShares: config.musicShares } : {}),
+        ...(config.voice !== undefined ? { voice: config.voice } : {}),
+        ...(config.voiceEngine ? { voiceEngine: dropUndefined(config.voiceEngine) } : {}),
+        ...(config.songEngine ? { songEngine: dropUndefined(config.songEngine) } : {}),
         ...(config.factCheck !== undefined ? { factCheck: config.factCheck } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
@@ -652,6 +662,7 @@ export function apply(ctx: Context, config: Config) {
         postQzone: async post => String(((await (onlineBot().internal as unknown as OneBotMediaInternal)._get('send_qzone_msg', { content: post.content, ...(post.images ? { images: post.images } : {}), ugc_right: post.ugcRight })) as { tid?: unknown } | null)?.tid ?? ''),
         // 空友爱看相关的说明见 ADR 0083
         sendPrivateMusic: async (userId, id) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'music', data: { type: '163', id: String(id) } }])),
+        sendPrivateVoice: async (userId, file) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'record', data: { file } }])),
         sendPrivateImage: async (userId, file, summary) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'image', data: { file, summary, sub_type: 1 } }])),
         // NapCat 的扩展动作 set_input_status（adapter-onebot 没有定义它，走通用的 _get：retcode 不是 0 就抛错；ADR 0077）
         setInputStatus: async (userId, eventType = 1) => { assertKernelOk('set_input_status', await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_input_status', { user_id: String(userId), event_type: eventType })); },

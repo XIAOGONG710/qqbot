@@ -1,0 +1,21 @@
+{
+    "name": "他想听她唱歌，但没有唱歌引擎（ADR 0140）",
+    "description": "和 voice-ask 一样的晚上，没有唱歌引擎：提示词里写「他想听你唱歌，可你现在不方便」。看她像不像真人那样推掉（害羞、下次），有没有说「发不了」「我只能打字」，有没有写 <sing>（写了也只当文字）。用法：node src/sim/run.ts sim/voice-ask-nosing.json --runs 3 --tag voicenosing",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-11T20:30:00+08:00",
+    "memory": false,
+    "schedule": true,
+    "voice": true,
+    "shape": true,
+    "texture": true,
+    "history": [
+        { "time": "2026-11-11T20:10:00+08:00", "role": "user", "content": "在吗" },
+        { "time": "2026-11-11T20:10:10+08:00", "role": "assistant", "content": "在呢" }
+    ],
+    "steps": [
+        { "say": "唱首歌给我听" },
+        { "say": "哎呀就唱两句嘛" },
+        { "say": "那你哼个歌" }
+    ]
+}

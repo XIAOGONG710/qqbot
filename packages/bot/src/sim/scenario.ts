@@ -296,6 +296,12 @@ export interface Scenario {
     quoteReply: boolean;
     /** 默认 false：听到一首歌分享给他（ADR 0139，配置 musicShares）；要 proactive 和 music */
     musicShares: boolean;
+    /** 默认 false：开口说话（ADR 0140，配置 voice）：用假的合成（不出声），念出来的字记成一条气泡「[语音 N秒：……]」 */
+    voice: boolean;
+    /** 默认 false：有唱歌的引擎（ADR 0140）：假的，唱的词记成「[语音 N秒：（唱歌）词一／词二]」；没有就是没接引擎 */
+    sing: boolean;
+    /** 没人要时提供“发语音”选项的概率（不写按 voice.ts 的常量）：调成 1 就是每个轮次都提供，只为了读她会不会写 <voice> */
+    voiceShare?: number;
     /** 预置的可分享的歌（ADR 0139）：跑场景时不去网易云读，直接用这几首（发过一首之后下一首要隔几天） */
     music?: { title: string; artist: string; chart?: string; lyric?: string[] }[];
     /** 预置的他的口头习惯（ADR 0138，配置 idioms）：写了才打开；跑场景时不去学，直接用这几个 */
@@ -446,6 +452,9 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         texture: s.texture === true,
         quoteReply: s.quoteReply === true,
         musicShares: s.musicShares === true,
+        voice: s.voice === true,
+        sing: s.sing === true,
+        ...(typeof s.voiceShare === 'number' ? { voiceShare: s.voiceShare } : {}),
         ...(Array.isArray(s.music) && s.music.length ? { music: s.music.map((item: unknown, i: number) => {
             const o = item as { title?: unknown; artist?: unknown; chart?: unknown; lyric?: unknown } | null;
             if (typeof o?.title !== 'string' || !o.title.trim() || typeof o.artist !== 'string' || !o.artist.trim()) fail(`music[${i}] 要有 title 和 artist`);

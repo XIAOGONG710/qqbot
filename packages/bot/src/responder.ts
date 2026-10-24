@@ -45,6 +45,22 @@ import type { ChatMessage, OpenAIMessage, PromptResult } from './prompt.ts';
 import { PENDING_REASON } from './proactive.ts';
 import { pendingMessages, pick, type Seen } from './reply-timing.ts';
 import { MAX_BUBBLES, splitReply } from './reply.ts';
+import { recordMs, type SpeechKind } from './voice.ts';
+
+/** 做好的一条语音（ADR 0140）：音频已经合成在本机，等着发 */
+export interface VoiceMade {
+    kind: SpeechKind;
+    /** 聊天记录里这一条的写法（media.ts 的 voiceLine：「[语音 6秒：……]」） */
+    content: string;
+    seconds: number;
+    /** 本机的音频文件（wav），send 用 */
+    file: string;
+    /** 发出去（或放弃）之后删掉本机的音频文件 */
+    discard(): void;
+}
+
+/** 语音这一步的结果：做好了一条语音；或者做不成语音、改发这几条文字（唱歌失败时发词）；undefined = 照常发文字 */
+export type VoiceOutcome = { voice: VoiceMade } | { text: string[] };
 
 /** 拼好的提示词；note 是给日志的补充；maxBubbles 可让当前对话动作比作息上限更短。 */
 export type BuiltPrompt = PromptResult & { note?: string; maxBubbles?: number };
@@ -78,6 +94,14 @@ export interface ResponderDeps {
     decorate?: (parts: string[], maxBubbles: number) => string[] | { parts: string[]; recall?: TypoRecall };
     /** replyTo：QQ 引用回复这一条（他的）消息（ADR 0136，配置 quoteReply）；只对文字有意义，不给就是普通的一条 */
     send: (userId: number, text: string, options?: { replyTo?: number }) => Promise<number>;
+    /**
+     * 语音（ADR 0140，配置 voice）：这一轮她写了 <voice> / <sing> 又满足条件时，把拆好的几条气泡念成（唱成）一条语音。
+     * make 在出口检查之后、打字之前调：返回 undefined = 照常发文字；出错也照常发文字。send 只管发，返回 QQ 消息 id
+     */
+    voice?: {
+        make(parts: string[]): Promise<VoiceOutcome | undefined>;
+        send(userId: number, made: VoiceMade): Promise<number>;
+    };
     /** 发一张歌曲卡片（ADR 0139）：主动分享歌曲时，在文字前面先发；返回 QQ 消息 id。不给 = 不发卡片，只发文字 */
     sendMusic?: (userId: number, pick: MusicPick) => Promise<number>;
     /** 这一轮第一条要引用他的哪一条（ADR 0136）：发之前现取，没有就不引用；contact.ts 在拼提示词时定 */
@@ -388,9 +412,47 @@ export function createResponder(deps: ResponderDeps): Responder {
             deps.log('生成期间收到新消息，带上新消息重新生成');
         }
         const maxBubbles = Math.min(decision?.maxBubbles ?? MAX_BUBBLES, promptMaxBubbles ?? MAX_BUBBLES);
-        const split = splitReply(reply, maxBubbles);
+        let split = splitReply(reply, maxBubbles);
         // 再生成还是空：算回复失败，按 retryAfterMs 过一会儿再试
         if (split.length === 0) throw new Error('模型回复清理后为空');
+        // 语音（ADR 0140）：做成一条语音就不走下面的文字气泡（不加质感、不打错字、不引用）；做不成照旧发文字
+        if (deps.voice) {
+            let outcome: VoiceOutcome | undefined;
+            try {
+                outcome = await deps.voice.make(split);
+            } catch (error) {
+                deps.log(`语音没做出来（${error instanceof Error ? error.message : String(error)}），改发文字`);
+            }
+            if (outcome && 'text' in outcome) split = outcome.text;
+            else if (outcome) {
+                const made = outcome.voice;
+                try {
+                    setPhase({ phase: 'sending' });
+                    // 「录」这条语音要的时间：看到之后先想一下，再录和念出来一样长的时间（不显示「正在输入」）
+                    if (deps.timing) {
+                        const due = seenAt + (deps.timing.thinkMs?.(split[0]!) ?? 0) + recordMs(made.seconds) - now();
+                        if (due > 0) await sleep(due);
+                    }
+                    if (stopped) {
+                        deps.log('已停止，这次的语音不发');
+                        return;
+                    }
+                    const messageId = await deps.voice.send(deps.userId, made);
+                    deps.history.append(deps.userId, { time: new Date(now()).toISOString(), role: 'assistant', content: made.content, messageId });
+                    seen = input;
+                    failingSince = undefined;
+                    deps.log(`已回复（语音 ${Math.round(made.seconds)} 秒）：${deps.sensitive?.() ? made.content : `${[...made.content].length} 字`}`);
+                    return;
+                } catch (error) {
+                    const reason = error instanceof Error ? error.message : String(error);
+                    // 超时不重发：可能已经发出去了，再发就重复
+                    if (/timeout|timed out|超时/i.test(reason)) throw error;
+                    deps.log(`语音没发出去（${reason}），改发文字`);
+                } finally {
+                    made.discard();
+                }
+            }
+        }
         const decorated = deps.decorate ? deps.decorate(split, maxBubbles) : split;
         const parts = Array.isArray(decorated) ? decorated : decorated.parts;
         const recall = Array.isArray(decorated) || !deps.recallOwn ? undefined : decorated.recall;

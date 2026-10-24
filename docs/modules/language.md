@@ -54,6 +54,7 @@
 | `factCheck` | 逐条事实检查（编的说法 / 对不上事实）（模式） | [ADR 0137](../adr/0137-fact-check.md) |
 | `relationship` | 关系阶段（聊得多了更放得开） | [ADR 0113](../adr/0113-relationship-stage.md) |
 | `jokes` | 小梗回头提 | [ADR 0114](../adr/0114-running-jokes.md) |
+| `voice` | 开口说话（语音消息；唱歌要另接服务） | [ADR 0140](../adr/0140-voice.md) |
 | `idioms` | 被他带出口头习惯（他爱说的词她偶尔顺口用） | [ADR 0138](../adr/0138-idioms.md) |
 | `interruptions` | 被第三方打断 | [ADR 0115](../adr/0115-interruptions.md) |
 | `together` | 陪玩状态 | [ADR 0111](../adr/0111-together.md) |

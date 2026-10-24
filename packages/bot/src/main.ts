@@ -38,6 +38,7 @@ const app = startApp({
         sendPrivateText: (userId, text, replyTo) => client.sendPrivateText(userId, text, replyTo),
         sendPrivateImage: (userId, file, summary) => client.sendPrivateImage(userId, file, summary),
         sendPrivateMusic: (userId, id) => client.sendPrivateMusic(userId, id),
+        sendPrivateVoice: (userId, file) => client.sendPrivateVoice(userId, file),
         setInputStatus: (userId, eventType) => client.setInputStatus(userId, eventType),
         deleteMessage: async messageId => { await client.call('delete_msg', { message_id: messageId }); },
         pokeFriend: async userId => { await client.call('friend_poke', { user_id: String(userId) }); },

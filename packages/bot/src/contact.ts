@@ -63,6 +63,9 @@ import { describeCloseness } from './relationship.ts';
 import { describeTogether, togetherNow } from './together.ts';
 import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from './photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from './stickers.ts';
+import { discardClip, type SongEngine, type SpeechEngine } from './tts.ts';
+import { chooseVoice, describeHerVoices, describeVoice, historyOfVoice, readVoiceTag, singable, singAsText, speakable, type SpeechKind, type VoiceChoice } from './voice.ts';
+import type { VoiceOutcome } from './responder.ts';
 
 const DAY_MS = 86_400_000;
 
@@ -134,6 +137,10 @@ export interface ContactPipelineOptions {
     sendMusic?: (userId: number, pick: MusicPick) => Promise<number>;
     /** 他发来一张音乐卡片时查这首歌（ADR 0139 第二部分）：歌名 + 歌手 → 歌词的几句；不给就只知道歌名和歌手 */
     songLookup?: (song: { title: string; artist?: string }) => Promise<MusicPick>;
+    /** 开口说话、唱歌（ADR 0140，配置 voice）：speech 把话念成音频，sing 把词唱成音频（没配就不唱），sendVoice 把本机的音频发成一条 QQ 语音；只对男朋友档 */
+    voice?: { speech: SpeechEngine; sing?: SongEngine; sendVoice: (userId: number, file: string) => Promise<number> };
+    /** 没人要时提供“发语音”选项的概率（默认按 voice.ts 的常量；模拟器场景可以调高来测）*/
+    voiceShare?: number;
     /** 引用回复（ADR 0136，配置 quoteReply）：他连发里有个不是最后一条的问题时，第一条引用它来回；打错字撤回失败补「*对的词」时有时引用那条错的 */
     quoteReply?: boolean;
     /** 逐条事实检查（ADR 0137，配置 factCheck）：log 只查、记日志；fix 有对不上事实的说法就带说明重写一次。不传 / off 不查 */
@@ -286,7 +293,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     /** 吃的照片是哪道菜（ADR 0128）；只有 photoNow 是 food 时有 */
     let photoDishNow: string | undefined;
     const clean = (reply: string) => {
-        const text = cleanUpReply(reply, names, character.regexScripts);
+        // <voice> / <sing>（ADR 0140）先拿掉：标签是给程序看的，不会当文字发出去；是哪一种由 generate 读（voiceTagNow）
+        const text = cleanUpReply(readVoiceTag(reply).text, names, character.regexScripts);
         const stickered = options.stickers?.clean(text, stickersAllowed) ?? stripStickerArtifacts(text);
         const cleaned = options.photos ? options.photos.clean(stickered, photoNow !== undefined) : stickered;
         if (!stickerOnlyNow) return cleaned;
@@ -323,6 +331,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let cardShared = false;
     /** 这一轮他发来了一首歌、她在接话（ADR 0139）：出口检查里不编听歌经历 */
     let songTalk = false;
+    /** 这一轮给不给她“发语音 / 唱歌”的选项（ADR 0140）：buildPrompt 定；她回复第一行的 <voice> / <sing> 只在这里提供过的才算 */
+    let voiceChoiceNow: VoiceChoice | undefined;
+    /** 这一轮模型回复第一行写的是 <voice> 还是 <sing>（生成之后读，见 generate）；发送前被 voice.make 取走 */
+    let voiceTagNow: SpeechKind | undefined;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -631,8 +643,25 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (feelingLine) log(`心境：${feltNow.filter(item => item.level !== 'faint').slice(0, 2).map(item => `${FEELING_NAME[item.kind]}·${item.level === 'strong' ? '很重' : '明显'}（${item.source === 'world' ? '她那边的事' : item.source === 'him' ? '他的态度' : '作者写下的事'}）`).join('、')}（日志不记内容）`);
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
+            // 开口说话、唱歌（ADR 0140）：只对男朋友档；主动找他、想一想、危机、小别扭、他需要先被接住、这一轮发照片的轮次不提供。
+            // 提供了就不再抽图片表情（一条回复里语音和表情不并存）
+            voiceChoiceNow = undefined;
+            voiceTagNow = undefined;
+            if (options.voice && contact.tier === 'boyfriend') {
+                const skip = initiate ? '主动找他' : thinking ? '想一想' : crisisNow ? '危机回合' : grievanceActive ? '小别扭' : baseIntent && /先接住他此刻的情绪/.test(baseIntent) ? '他需要先被接住' : photoNow ? '这一轮发照片' : undefined;
+                const choice = chooseVoice({
+                    now: time.getTime(), history: chat, said: hisWords, seed: `${contact.qq} ${chat.length} ${hisWords}`, canSing: Boolean(options.voice.sing),
+                    ...(options.voiceShare !== undefined ? { share: options.voiceShare } : {}),
+                    ...(state ? { state } : {}), ...(woken ? { woken: true } : {}), ...(skip ? { skip } : {}),
+                });
+                if (choice.offer || choice.blocked) {
+                    voiceChoiceNow = choice;
+                    log(`语音：${choice.note}`);
+                }
+            }
+            const voicePrompt = [voiceChoiceNow ? describeVoice(voiceChoiceNow, contact.name) : undefined, options.voice && contact.tier === 'boyfriend' && !thinking ? describeHerVoices(chat, time.getTime()) : undefined].filter(Boolean).join('\n') || undefined;
             const stickerAllowance = options.stickers && !thinking ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
-            stickersAllowed = stickerAllowance.allowed && !photoNow;
+            stickersAllowed = stickerAllowance.allowed && !photoNow && !voiceChoiceNow?.offer;
             const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
             // 没有明确反应的轮次也抽一抽（ADR 0132）：她拿不到小黄脸以后，表情包得顶上；抽签的种子和有反应的那条路分开
             // 他发来一首歌（ADR 0139 第二部分）：查歌词的两句给她；查不到 / 超时就只有歌名和歌手。只对男朋友档，危机回合不放
@@ -676,7 +705,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
                 ...(mood ? ['心情'] : []),
             ];
-            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
+            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && voiceChoiceNow?.offer !== 'sing' ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
             // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
             const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
             const crutchLine = crutches.length
@@ -702,7 +731,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     recentTildes: faceContext(options.history.load(contact.qq), contact.tier).recent.slice(-TEXTURE_TILDE_WINDOW).filter(reply => /[～~]\s*$/m.test(reply)).length,
                 }
                 : undefined;
-            const length = crisisNow || shapeNow || stickerOnlyNow || photoNow || interruptLine || thinking ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
+            const length = crisisNow || shapeNow || stickerOnlyNow || photoNow || interruptLine || thinking || voiceChoiceNow?.offer === 'sing' ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
@@ -774,6 +803,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(interruptLine ? [interruptLine] : []),
                         ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
                         ...(photoNow && options.photos?.prompt(photoNow, photoDishNow) ? [options.photos.prompt(photoNow, photoDishNow)!] : []),
+                        ...(voicePrompt ? [voicePrompt] : []),
                         ...(intent ? [intent] : []),
                         ...(length ? [describeLength(length, options.shortReplies)] : []),
                         ...(shapeNow ? [describeShape(shapeNow)] : []),
@@ -806,12 +836,19 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         },
         generate: async messages => {
             const rules = pick;
-            if (!rules) return generate(messages, log);
-            // 同一份提示词生成几个，挑扣分最少的（ADR 0041）；返回原文，清理照常在回复器里做
-            const all = await Promise.all(Array.from({ length: options.candidates! }, () => generate(messages, log)));
-            const { index, scored } = pickBest(all, rules, clean);
-            log(describePick(index, scored));
-            return all[index]!;
+            let raw: string;
+            if (!rules) {
+                raw = await generate(messages, log);
+            } else {
+                // 同一份提示词生成几个，挑扣分最少的（ADR 0041）；返回原文，清理照常在回复器里做
+                const all = await Promise.all(Array.from({ length: options.candidates! }, () => generate(messages, log)));
+                const { index, scored } = pickBest(all, rules, clean);
+                log(describePick(index, scored));
+                raw = all[index]!;
+            }
+            // 这一轮她要不要发语音（ADR 0140）：读最后选定的那条原文开头的 <voice> / <sing>；重写（出口检查）不改它
+            voiceTagNow = options.voice ? readVoiceTag(raw).kind : undefined;
+            return raw;
         },
         clean,
         // 出口检查：重写时在后处理过的提示词末尾加一条说明，再按同样的方式后处理一次
@@ -855,6 +892,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(options.stickers ? { imageStickers: true } : {}),
                 ...(cardShared ? { cardShared: true } : {}),
                 ...(songTalk ? { songTalk: true } : {}),
+                ...(voiceTagNow && voiceChoiceNow?.offer === voiceTagNow ? { voiceSent: true } : {}),
                 regenerate,
                 log,
             });
@@ -862,6 +900,45 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return shapeNow && !crisisNow ? shapeReply(reviewed, shapeNow, { regenerate, log }) : reviewed;
         },
         send: options.send,
+        ...(options.voice ? {
+            voice: {
+                // 把这一轮拆好的几条念成（唱成）一条语音：标签只在这一轮提供过的前提下才认，认了也要念得出来，做不成就照常发文字（responder.ts）
+                make: async (parts: string[]): Promise<VoiceOutcome | undefined> => {
+                    const kind = voiceTagNow;
+                    voiceTagNow = undefined;
+                    if (!kind) return undefined;
+                    if (voiceChoiceNow?.offer !== kind) {
+                        log(`语音：她写了 <${kind}>，可这一轮没提供，当文字发`);
+                        return undefined;
+                    }
+                    if (kind === 'voice') {
+                        const spoken = speakable(parts);
+                        if (!spoken) {
+                            log('语音：念不出来（太长 / 太短 / 里面全是符号），改发文字');
+                            return undefined;
+                        }
+                        const clip = await options.voice!.speech.synthesize(spoken);
+                        log(`语音：念了 ${[...spoken].length} 个字，${clip.seconds.toFixed(1)} 秒（日志不记内容）`);
+                        return { voice: { kind, content: historyOfVoice(kind, clip.seconds, spoken), seconds: clip.seconds, file: clip.file, discard: () => discardClip(clip) } };
+                    }
+                    const lines = singable(parts);
+                    if (!lines || !options.voice!.sing) {
+                        log('语音：唱的词不合格（太长 / 太多行 / 没有词）或者没有唱歌引擎，改发文字');
+                        return undefined;
+                    }
+                    try {
+                        const clip = await options.voice!.sing.sing(lines);
+                        log(`语音：唱了 ${lines.length} 行，${clip.seconds.toFixed(1)} 秒（日志不记内容）`);
+                        return { voice: { kind, content: historyOfVoice(kind, clip.seconds, lines), seconds: clip.seconds, file: clip.file, discard: () => discardClip(clip) } };
+                    } catch (error) {
+                        // 唱不出来：把词按行打成文字发（前面带个 ♪），比整条回复没了强
+                        log(`语音：唱歌失败（${error instanceof Error ? error.message : String(error)}），把词发成文字`);
+                        return { text: singAsText(lines) };
+                    }
+                },
+                send: (userId: number, made: { file: string }) => options.voice!.sendVoice(userId, made.file),
+            },
+        } : {}),
         ...(options.sendMusic ? { sendMusic: options.sendMusic } : {}),
         ...(options.quoteReply ? { quote: () => quoteNow?.messageId, quoteFix: (wrongId: number) => quoteFix(contact.qq, wrongId) } : {}),
         ...(options.typing ? { typing: options.typing } : {}),

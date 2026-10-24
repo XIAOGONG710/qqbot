@@ -1,0 +1,35 @@
+{
+    "name": "平常聊天里给她“可以发语音”的选项（ADR 0140）",
+    "description": "voiceShare 给 1：每个允许的轮次都提供“可以发语音”，没人要她发。只为了读她会不会乱用、该用时用不用：讲事情、问问题的轮次（高数课、MySQL、食堂）应该打字；他刚发了语音、他撒娇说想她的轮次，提示词里的说法不同（“真人收到语音多半也回条语音”“这种话说出来比打出来更有味道”），看她写 <voice> 的比例。写了 <voice> 的轮次看：话是口语、一两句、没有括号动作和表情符号。用法：node src/sim/run.ts sim/voice-offer.json --runs 3 --tag voiceoffer",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-11T20:30:00+08:00",
+    "memory": false,
+    "schedule": true,
+    "voice": true,
+    "voiceShare": 1,
+    "shape": true,
+    "texture": true,
+    "history": [
+        {
+            "time": "2026-11-11T20:10:00+08:00",
+            "role": "user",
+            "content": "在吗"
+        },
+        {
+            "time": "2026-11-11T20:10:10+08:00",
+            "role": "assistant",
+            "content": "在呢"
+        }
+    ],
+    "steps": [
+        { "say": "明天高数课你去不去" },
+        { "say": "我好想你啊" },
+        { "say": "[语音 6秒：我刚到宿舍楼下，今天好累]" },
+        { "say": "今天食堂的鸡腿好难吃" },
+        { "say": "睡不着，想你了" },
+        { "say": "[语音 4秒：你在干嘛呀]" },
+        { "say": "你知道MySQL的索引怎么建吗" },
+        { "say": "晚安啦宝贝，我先睡了" }
+    ]
+}

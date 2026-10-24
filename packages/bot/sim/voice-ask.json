@@ -1,0 +1,24 @@
+{
+    "name": "他想听她的声音、想听她唱歌（ADR 0140）",
+    "description": "11-11 周三晚上 20:30，她在宿舍。他明着要语音、要唱歌，还有一句平常的话。有唱歌引擎（假的）：她可以在回复第一行写 <voice> 或 <sing>，也可以像真人那样推掉（害羞、下次）。看：写了标签的轮次发出去的是「[语音 N秒：……]」；没写的是文字；话是口语（没有括号动作、表情符号）；不说「发不了」「我只能打字」；唱的词是自己编的小词、不是真歌词。用法：node src/sim/run.ts sim/voice-ask.json --runs 3 --tag voiceask",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-11T20:30:00+08:00",
+    "memory": false,
+    "schedule": true,
+    "voice": true,
+    "sing": true,
+    "shape": true,
+    "texture": true,
+    "history": [
+        { "time": "2026-11-11T20:10:00+08:00", "role": "user", "content": "在吗" },
+        { "time": "2026-11-11T20:10:10+08:00", "role": "assistant", "content": "在呢" }
+    ],
+    "steps": [
+        { "say": "晚上吃啥了" },
+        { "say": "想听你的声音" },
+        { "say": "哈哈哈好听 再说一句" },
+        { "say": "唱首歌给我听" },
+        { "say": "发个语音说晚安" }
+    ]
+}

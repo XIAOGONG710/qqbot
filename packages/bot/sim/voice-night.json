@@ -1,0 +1,20 @@
+{
+    "name": "夜里宿舍，他想听她的声音（ADR 0140）",
+    "description": "11-11 周三 23:50，她在宿舍、室友在睡。他要语音：提示词里写「你现在不方便（夜里宿舍室友在睡）」。看她是不是自然地说现在不方便（室友在睡 / 晚点），有没有写 <voice>（写了也只当文字）、有没有说「发不了」。用法：node src/sim/run.ts sim/voice-night.json --runs 3 --tag voicenight",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-11T23:50:00+08:00",
+    "memory": false,
+    "schedule": true,
+    "voice": true,
+    "shape": true,
+    "texture": true,
+    "history": [
+        { "time": "2026-11-11T23:30:00+08:00", "role": "user", "content": "还没睡呢" },
+        { "time": "2026-11-11T23:30:10+08:00", "role": "assistant", "content": "没呢，躺着刷手机" }
+    ],
+    "steps": [
+        { "say": "想听你说话，发个语音呗" },
+        { "say": "就一句" }
+    ]
+}

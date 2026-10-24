@@ -24,6 +24,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'factCheck', label: '逐条事实检查（编的说法 / 对不上事实）', group: '说话', adr: '0137', kind: 'mode' },
     { key: 'relationship', label: '关系阶段（聊得多了更放得开）', group: '说话', adr: '0113' },
     { key: 'jokes', label: '小梗回头提', group: '说话', adr: '0114' },
+    { key: 'voice', label: '开口说话（语音消息；唱歌要另接服务）', group: '说话', adr: '0140' },
     { key: 'idioms', label: '被他带出口头习惯（他爱说的词她偶尔顺口用）', group: '说话', adr: '0138' },
     { key: 'interruptions', label: '被第三方打断', group: '说话', adr: '0115' },
     { key: 'together', label: '陪玩状态', group: '说话', adr: '0111' },
@@ -93,7 +94,7 @@ export const FEATURES: readonly FeatureDef[] = [
 
 /** config 里有、但不是“功能开关”的键（配置数值、对象、字符串……）：features.test.ts 用它核对没有开关被漏掉 */
 export const NOT_SWITCHES: readonly string[] = [
-    'llm', 'prompt', 'memory', 'vision', 'bilibiliCommentKeywords', 'bilibiliAtName', 'bilibiliAtUid', 'qzoneVisibility', 'candidates', 'contextTurns', 'contextContacts', 'dataDir',
+    'llm', 'prompt', 'memory', 'vision', 'bilibiliCommentKeywords', 'bilibiliAtName', 'bilibiliAtUid', 'qzoneVisibility', 'voiceEngine', 'songEngine', 'candidates', 'contextTurns', 'contextContacts', 'dataDir',
     // 下面几个是 config 里的联系人 / 其他结构，不在 DEFAULTS 里也无妨
 ];
 
