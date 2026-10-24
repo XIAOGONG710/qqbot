@@ -99,6 +99,16 @@ describe('看图把关（水印、人物必须明确说“没有”）', () => {
         assert.equal(judgePhoto('cat', '{坏的').keep, false);
     });
 
+    test('济南没有的东西不收：模型明说有棕榈 / 热带植物 / 沙滩，或说明里写了；字段没回答不拦（只在明确说「有」时拦）', () => {
+        const sky = { ...good, 猫: false, 三花: false, 天空: true, 说明: '黄昏的天空，云层被染成橘红色' };
+        assert.equal(judge('view', { ...sky, 热带: true }).reason, '画面里有济南没有的东西（棕榈 / 热带植物 / 沙滩）');
+        assert.equal(judge('view', { ...sky, 说明: '金黄云霞铺满蓝天，底部是棕榈树和树丛的黑色剪影' }).keep, false);
+        assert.equal(judge('view', { ...sky, 说明: '蓝天下的沙滩和海浪，光线明亮' }).keep, false);
+        assert.equal(judge('view', { ...sky, 热带: false }).keep, true);
+        assert.equal(judge('view', sky).keep, true, '字段没回答：照旧收');
+        assert.ok(PHOTO_VISION_PROMPT.includes('"热带"'));
+    });
+
     test('给看图模型的要求里写明了：四个角和边缘、署名、日期戳、版权标记、相框', () => {
         for (const word of ['四个角', '水印', '徽标', '署名', '日期戳', '版权', '相框', 'JSON']) assert.ok(PHOTO_VISION_PROMPT.includes(word), word);
     });
