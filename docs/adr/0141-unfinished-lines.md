@@ -1,6 +1,6 @@
 # ADR 0141：话说到一半就停了——出口检查，提示词不再鼓励「半句」（随 `speechCheck`，没有新开关）
 
-- 状态：**已实现，未上线**（等用户说「上线」；上线 = 只换代码重启，配置不变）。回滚 = `git reset --hard e8e5603` 后重启
+- 状态：**已上线**（2026-10-25 00:38，用户在 AskUserQuestion 里选「现在重启，并上线」；只换代码重启，配置不变，同一次重启 `foodPhotos` 改为 false 生效）。回滚 = `git reset --hard e8e5603` 后重启
 - 日期：2026-10-25
 - 关联：[ADR 0014](0014-speech-habits.md)（`speechCheck` 出口检查）、[ADR 0091](0091-reply-shape.md)（`shape`）、[ADR 0096](0096-split-and-share.md)（`shapeSplit`）、[ADR 0131](0131-texture.md)（质感）、[ADR 0134](0134-split-follows.md)
 - 用户提出：2026-10-24 夜「现在她的话会说到一半停止，给我一种话没说完的感觉，就是刚才发的」
