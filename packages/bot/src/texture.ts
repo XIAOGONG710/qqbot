@@ -17,6 +17,7 @@
 
 import { SENDABLE_FACES } from './qq-faces.ts';
 import { unit } from './expression.ts';
+import { endsHanging } from './unfinished.ts';
 
 export interface TextureContext {
     /** 种子：同一句话每次结果固定（测试、重放） */
@@ -138,7 +139,8 @@ export function applyTexture(parts: readonly string[], ctx: TextureContext): Tex
         const longer = REPEAT[core];
         if (longer && !/[？?]/.test(tail) && unit(`${seed} repeat`) < TEXTURE_SHARES.repeat) { out[i] = `${longer}${tail}`; notes.push(`叠字：${core} → ${longer}`); continue; }
         if (/[…]+$/.test(text) && chars(core) >= 3) {
-            if (unit(`${seed} ellipsis`) < TEXTURE_SHARES.ellipsis) { out[i] = ASKING.test(core) && unit(`${seed} q2`) < TEXTURE_SHARES.question ? `${core}？` : core; notes.push('去掉结尾的省略号'); }
+            // 停在连词 / 假设词上的「……」是故意拖着的，去掉就成了话说到一半（ADR 0141）
+            if (!endsHanging(core) && unit(`${seed} ellipsis`) < TEXTURE_SHARES.ellipsis) { out[i] = ASKING.test(core) && unit(`${seed} q2`) < TEXTURE_SHARES.question ? `${core}？` : core; notes.push('去掉结尾的省略号'); }
             continue;
         }
         if (!hasEnding(text) && chars(text) >= 2 && chars(text) <= 24) {

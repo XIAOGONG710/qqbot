@@ -13,6 +13,7 @@
 - `exit-check.ts`
 - `fact-check.ts`
 - `speech-check.ts`
+- `unfinished.ts`
 - `candidates.ts`
 - `humanness.ts`
 - `reply.ts`

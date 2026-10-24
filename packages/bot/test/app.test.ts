@@ -175,6 +175,30 @@ describe('编排（app.ts）', () => {
         assert.doesNotMatch(crisis.prompts[0]!, /每条不超过/, '危机回合不加形状');
     });
 
+    test('话说到一半就停了（ADR 0141）：最后一条只剩一句转折的态度，带说明重写一次；重写还是这样就并回前一条；说话的毛病不查（speechCheck: false）时不管；危机回合不管', async () => {
+        const run = async (speechCheck: boolean, said: string, rewrite: string, count = 2) => {
+            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const, knowsBot: true }], speechCheck });
+            const prompts: string[] = [];
+            const { app, sent, logs } = setup(cfg, {}, { generate: messages => { const text = messages.map(m => m.content).join('\n'); prompts.push(text); return /上一版回复没有发出去：有一条话没说完/.test(text) ? rewrite : '想啊，都想得有点睡不着了\n不过你别得意'; } });
+            app.receive(event(10001, 1, said));
+            await until(() => sent.length >= count);
+            await new Promise(resolve => setTimeout(resolve, 400));
+            return { prompts, sent, logs };
+        };
+        const fixed = await run(true, '醒着呢，怎么，想我了？', '想啊，都想得有点睡不着了\n不过你别得意，我就想了一下下');
+        assert.ok(fixed.prompts.some(prompt => prompt.includes('停在了转折或铺垫上')), '带说明重写了一次');
+        assert.ok(fixed.sent.join('|').includes('我就想了一下下'), fixed.sent.join('|'));
+        assert.ok(fixed.logs.some(line => line.includes('话没说完：') && line.includes('带说明重写一次')) && fixed.logs.filter(line => line.includes('话没说完')).every(line => !line.includes('得意')), fixed.logs.join('|'));
+        const merged = await run(true, '醒着呢，怎么，想我了？', '想啊，都想得有点睡不着了\n不过你别得意', 1);
+        assert.equal(merged.sent.length, 1, merged.sent.join('|'));
+        assert.ok(merged.sent[0]!.includes('，不过你别得意'), merged.sent[0]);
+        const off = await run(false, '醒着呢，怎么，想我了？', 'x');
+        assert.ok(!off.prompts.some(prompt => prompt.includes('停在了转折或铺垫上')));
+        assert.ok(off.sent.length === 2 && off.logs.every(line => !line.includes('话没说完：')));
+        const crisis = await run(true, '我不想活了', 'x', 1);
+        assert.ok(crisis.logs.every(line => !line.includes('话没说完：')), '危机回合不走这一关');
+    });
+
     test('危机回合（ADR 0068）：他说想不活了——意图行、换承认版卡、出口检查重写、不打错字不抽签短话；日志和状态页不含内容；只记时间；平常的话不受影响', async () => {
         const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend', knowsBot: true }] });
         const prompts: string[] = [];

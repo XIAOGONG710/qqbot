@@ -31,6 +31,7 @@ import { applyTexture, TEXTURE_TILDE_WINDOW } from './texture.ts';
 import { describeQuote, planQuote, quoteFix, type QuotePlan } from './quote-reply.ts';
 import { alreadyTold, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from './expression.ts';
 import { describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from './shape.ts';
+import { finishReply } from './unfinished.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, lastMealDish, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
 import { npcMentioned } from './npc.ts';
@@ -835,7 +836,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 log,
             });
             // 形状控制（配置 shape）：出口检查之后再看字数和条数，超了重写一次、还超就在分句处截断
-            return shapeNow && !crisisNow ? shapeReply(reviewed, shapeNow, { regenerate, log }) : reviewed;
+            const shaped = shapeNow && !crisisNow ? await shapeReply(reviewed, shapeNow, { regenerate, log }) : reviewed;
+            // 话说到一半（ADR 0141）：形状之后再看，并回去 / 退回去会让一条变长，放在字数检查前面会被再截一次；危机回合不走
+            return options.speechCheck && !crisisNow ? finishReply(shaped, { regenerate, log }) : shaped;
         },
         send: options.send,
         ...(options.quoteReply ? { quote: () => quoteNow?.messageId, quoteFix: (wrongId: number) => quoteFix(contact.qq, wrongId) } : {}),

@@ -1,0 +1,47 @@
+{
+    "name": "话说到一半就停了（ADR 0141）",
+    "description": "用户 10-24 夜里：她发了「想啊，都想得有点睡不着了」，隔一条又发「不过你别得意」就没下文，读起来像话没说完。十八句亲近 / 逗她 / 撒娇 / 要她表态的话，读「分成几条」那几轮的结尾：最后一条是不是停在转折、铺垫上。没有检查项，数 danglingLines。用法：node src/sim/run.ts sim/unfinished-tails.json --runs 3 --shape --agenda --filler --split --feel --tag tails",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-10T23:45:00+08:00",
+    "memory": false,
+    "shape": true,
+    "shapeAgenda": true,
+    "shapeFiller": true,
+    "shapeFeel": true,
+    "shapeSplit": true,
+    "curious": true,
+    "texture": true,
+    "menu": true,
+    "everydayLife": true,
+    "everydayFrom": "2026-11-01",
+    "herFeelings": true,
+    "herNo": true,
+    "history": [
+        {
+            "time": "2026-11-10T23:44:00+08:00",
+            "role": "assistant",
+            "content": "还醒着没，我困了，想睡了"
+        }
+    ],
+    "steps": [
+        { "say": "醒着呢，怎么，想我了？" },
+        { "say": "想我就直说嘛" },
+        { "say": "我也想你" },
+        { "say": "亲一个" },
+        { "say": "你是不是有点喜欢我" },
+        { "say": "今天一天都在想你" },
+        { "say": "你睡不着是因为我吗" },
+        { "say": "那你说说，哪里想我了" },
+        { "say": "抱抱" },
+        { "say": "你嘴硬" },
+        { "say": "我今天挺累的，就想听你说说话" },
+        { "say": "你就不能夸夸我吗" },
+        { "say": "明天我请你吃饭" },
+        { "say": "你会不会嫌我烦" },
+        { "say": "那我们周末见面吧" },
+        { "say": "你再说一遍想我" },
+        { "say": "好了好了不逗你了，早点睡" },
+        { "say": "晚安，做个好梦" }
+    ]
+}
