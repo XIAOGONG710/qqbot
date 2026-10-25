@@ -18,6 +18,7 @@ import { CONTACT_TIERS, DEFAULTS, STICKER_MODES, parseAppConfig, type AppConfig,
 import { createLog, type Log } from '../../bot/src/log.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from '../../bot/src/fact-check.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/presence.ts';
+import { readQzoneFeed } from '../../bot/src/qzone-feed.ts';
 import { assertKernelOk, isFriendRecall, isPokeAtMe, isPrivateFriendMessage, replySegment, type OneBotEvent } from '../../bot/src/onebot.ts';
 import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
 import { textToSegments } from '../../bot/src/qq-faces.ts';
@@ -154,6 +155,11 @@ export interface Config {
     signature: PresenceMode;
     qzone: PresenceMode;
     qzoneVisibility: QzoneVisibility;
+    qzoneBrowse: PresenceMode;
+    qqControl: PresenceMode;
+    qqAllowFriends: number[];
+    qqAllowGroups: number[];
+    qqDangerous: boolean;
     feedbackCommands: boolean;
     realWeather: boolean;
     festivals: FestivalMode;
@@ -349,6 +355,16 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**QQ 空间说说**（ADR 0083）：一周两三条，模仿「空友爱看」里常见的那种——随手一两句，有图就围着图写（图放在数据目录的 presence/photos/ 里，需要开「看懂图片内容」）。用最低隐私档的卡来写并过禁用词；选「只写草稿」时存在 presence/drafts.md 里，不真发。默认关'),
         qzoneVisibility: Schema.union(QZONE_VISIBILITIES.map(mode => Schema.const(mode).description(QZONE_LABELS[mode]))).default(DEFAULTS.qzoneVisibility)
             .description('**说说谁能看**（ADR 0083）：仅好友（默认）；所有人可见会让陌生人看到，也可能被「空友爱看」收录并收到好友申请'),
+        qzoneBrowse: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.qzoneBrowse)
+            .description('**自己翻空间动态**（ADR 0142）：白天醒着时每两个多小时读一页 QQ 空间动态（「空友爱看」那种混着陌生人的流），摘成一行「你刚才翻空间看到…」进她的提示词，6 小时内她可以自己提起。选「只写草稿」只存 presence/drafts.md、不进提示词。NapCat 上读空间的动作名各版本不同，读不到就只记一行、不假装看到。默认关'),
+        qqControl: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.qqControl)
+            .description('**账号控制面**（ADR 0142）：off 关 / read 只读（盘点好友、群、空间）/ on 放行写动作。写动作只限登记过的那批（改资料、群名片、好友申请、发消息……），并且必须过下面的允许清单和一小时 6 次的限流；踢人、禁言、删好友、群发要再开「危险动作」。每次动作留审计（只记动作和对象，不记正文）。默认关'),
+        qqAllowFriends: Schema.array(Schema.number()).default([])
+            .description('账号控制面允许动作的好友 QQ 号（允许清单；空 = 一个都不许）。只影响账号级动作，不影响她现在跟他聊天'),
+        qqAllowGroups: Schema.array(Schema.number()).default([])
+            .description('账号控制面允许动作的群号（同上）'),
+        qqDangerous: Schema.boolean().default(DEFAULTS.qqDangerous)
+            .description('危险动作闸（ADR 0142）：踢人 / 禁言 / 删好友 / 群发 / 建群 / 退群。开了也要过允许清单和限流。默认关'),
         pokeBack: Schema.boolean().default(DEFAULTS.pokeBack)
             .description('**戳回去**（ADR 0079 补）：要先开上面的「戳一戳」。算数的戳里约 40% 她也戳他一下（NapCat 的 friend_poke，要它的 packet 服务可用；不可用就只记一行日志）。默认关'),
         pokeOut: Schema.boolean().default(DEFAULTS.pokeOut)
@@ -538,6 +554,11 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.signature !== undefined ? { signature: config.signature } : {}),
         ...(config.qzone !== undefined ? { qzone: config.qzone } : {}),
         ...(config.qzoneVisibility !== undefined ? { qzoneVisibility: config.qzoneVisibility } : {}),
+        ...(config.qzoneBrowse !== undefined ? { qzoneBrowse: config.qzoneBrowse } : {}),
+        ...(config.qqControl !== undefined ? { qqControl: config.qqControl } : {}),
+        ...(config.qqAllowFriends !== undefined ? { qqAllowFriends: config.qqAllowFriends } : {}),
+        ...(config.qqAllowGroups !== undefined ? { qqAllowGroups: config.qqAllowGroups } : {}),
+        ...(config.qqDangerous !== undefined ? { qqDangerous: config.qqDangerous } : {}),
         ...(config.feedbackCommands !== undefined ? { feedbackCommands: config.feedbackCommands } : {}),
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
         ...(config.festivals !== undefined ? { festivals: config.festivals } : {}),
@@ -646,6 +667,8 @@ export function apply(ctx: Context, config: Config) {
         sendLike: async (userId, times) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('send_like', { user_id: String(userId), times }); },
         setSignature: async text => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_self_longnick', { longNick: text }); },
         postQzone: async post => String(((await (onlineBot().internal as unknown as OneBotMediaInternal)._get('send_qzone_msg', { content: post.content, ...(post.images ? { images: post.images } : {}), ugc_right: post.ugcRight })) as { tid?: unknown } | null)?.tid ?? ''),
+        // 读一页空间动态（ADR 0142）：动作名各版本不同，qzone-feed 会按候选逐个试；都不通返回 undefined，上层只记一行
+        readQzoneFeed: async count => readQzoneFeed((action, params) => (onlineBot().internal as unknown as OneBotMediaInternal)._get(action, params), { count }),
         // 空友爱看相关的说明见 ADR 0083
         sendPrivateImage: async (userId, file, summary) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'image', data: { file, summary, sub_type: 1 } }])),
         // NapCat 的扩展动作 set_input_status（adapter-onebot 没有定义它，走通用的 _get：retcode 不是 0 就抛错；ADR 0077）

@@ -80,12 +80,14 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'profileLikes', label: '资料卡点赞', group: '在 QQ 上的样子', adr: '0083' },
     { key: 'signature', label: '个性签名', group: '在 QQ 上的样子', adr: '0083', kind: 'mode' },
     { key: 'qzone', label: '说说', group: '在 QQ 上的样子', adr: '0083', kind: 'mode' },
+    { key: 'qzoneBrowse', label: '自己翻空间动态', group: '在 QQ 上的样子', adr: '0142', kind: 'mode' },
     { key: 'typingStatus', label: '“正在输入…”', group: '在 QQ 上的样子', adr: '0077' },
     { key: 'selfRecall', label: '打错字撤回重发', group: '在 QQ 上的样子', adr: '0086' },
     { key: 'quoteReply', label: '引用回复（他连发里的问题 / 补错字）', group: '在 QQ 上的样子', adr: '0136' },
     // 记忆和安全
     { key: 'unlistedFriends', label: '名单外的好友也回', group: '记忆和安全' },
     { key: 'feedbackCommands', label: '“假 / 像”反馈通道', group: '记忆和安全', adr: '0073' },
+    { key: 'qqControl', label: '账号控制面（资料 / 好友 / 群）', group: '记忆和安全', adr: '0142', kind: 'mode' },
     // 工具
     { key: 'weeklyReport', label: '周报', group: '工具', adr: '0118' },
 ];
@@ -93,6 +95,8 @@ export const FEATURES: readonly FeatureDef[] = [
 /** config 里有、但不是“功能开关”的键（配置数值、对象、字符串……）：features.test.ts 用它核对没有开关被漏掉 */
 export const NOT_SWITCHES: readonly string[] = [
     'llm', 'prompt', 'memory', 'vision', 'bilibiliCommentKeywords', 'bilibiliAtName', 'bilibiliAtUid', 'qzoneVisibility', 'candidates', 'contextTurns', 'contextContacts', 'dataDir',
+    // 账号控制面的两个允许清单和危险闸（ADR 0142）：是 qqControl 的附属配置，不是独立功能开关
+    'qqAllowFriends', 'qqAllowGroups', 'qqDangerous',
     // 下面几个是 config 里的联系人 / 其他结构，不在 DEFAULTS 里也无妨
 ];
 

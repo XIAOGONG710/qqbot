@@ -105,6 +105,11 @@ export const DEFAULTS = {
     signature: 'off' as PresenceMode,
     qzone: 'off' as PresenceMode,
     qzoneVisibility: 'friends' as QzoneVisibility,
+    qzoneBrowse: 'off' as PresenceMode,
+    qqControl: 'off' as PresenceMode,
+    qqAllowFriends: [] as readonly number[],
+    qqAllowGroups: [] as readonly number[],
+    qqDangerous: false,
     typingStatus: false,
     selfRecall: false,
     rhythm: false,
@@ -425,6 +430,16 @@ export interface AppConfig {
     qzone: PresenceMode;
     /** 说说谁能看：friends 仅好友（默认）/ public 所有人（可能进「空友爱看」被陌生人看到） */
     qzoneVisibility: QzoneVisibility;
+    /** 她自己翻空间动态（ADR 0142，「空友爱看」那种混着陌生人的流）：读一页、记下「刚才看到什么」，dryRun 只写草稿。默认关 */
+    qzoneBrowse?: PresenceMode;
+    /** 账号控制面（ADR 0142）：off 关 / read 只读盘点 / on 放行写动作。默认 off */
+    qqControl?: PresenceMode;
+    /** 允许她动作的好友 QQ 号（写动作的允许清单；空 = 一个都不许） */
+    qqAllowFriends?: readonly number[];
+    /** 允许她动作的群号（同上） */
+    qqAllowGroups?: readonly number[];
+    /** 危险动作闸（踢人 / 禁言 / 删好友 / 群发 / 建群）：默认关 */
+    qqDangerous?: boolean;
     /** 她打字的这段时间，对方的 QQ 上显示「对方正在输入…」（ADR 0077；NapCat 的 set_input_status）。默认关 */
     typingStatus: boolean;
     /** 她打错字想改口时，一部分改成撤回重发（先发打错的，几秒后撤回再发对的；NapCat 的 delete_msg，ADR 0086）。默认关 */
@@ -682,6 +697,11 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         signature: oneOf(file.signature, 'signature', PRESENCE_MODES, DEFAULTS.signature),
         qzone: oneOf(file.qzone, 'qzone', PRESENCE_MODES, DEFAULTS.qzone),
         qzoneVisibility: oneOf(file.qzoneVisibility, 'qzoneVisibility', QZONE_VISIBILITIES, DEFAULTS.qzoneVisibility),
+        qzoneBrowse: oneOf(file.qzoneBrowse, 'qzoneBrowse', PRESENCE_MODES, DEFAULTS.qzoneBrowse),
+        qqControl: oneOf(file.qqControl, 'qqControl', PRESENCE_MODES, DEFAULTS.qqControl),
+        qqAllowFriends: qqList(file.qqAllowFriends, 'qqAllowFriends'),
+        qqAllowGroups: qqList(file.qqAllowGroups, 'qqAllowGroups'),
+        qqDangerous: bool(file, 'qqDangerous', '', DEFAULTS.qqDangerous),
         typingStatus: bool(file, 'typingStatus', '', DEFAULTS.typingStatus),
         selfRecall: bool(file, 'selfRecall', '', DEFAULTS.selfRecall),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),

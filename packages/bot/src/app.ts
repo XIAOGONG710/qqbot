@@ -629,7 +629,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     let presence: Presence | undefined;
     function startPresence(): void {
         if (presence) return;
-        if (!config.onlineStatus && !config.profileLikes && config.signature === 'off' && config.qzone === 'off' && !config.pokeOut) return;
+        if (!config.onlineStatus && !config.profileLikes && config.signature === 'off' && config.qzone === 'off' && (config.qzoneBrowse ?? 'off') === 'off' && !config.pokeOut) return;
         if (!worldCard?.schedule) {
             log('存在感：没有作息（herDays 关或卡上没有作息），不启动——在线状态、点赞、签名、说说都按她的作息排');
             return;
@@ -659,7 +659,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             : undefined;
         if (config.qzone !== 'off' && !qzone) log('存在感：陌生人档和同学档的卡都读不了，不写说说');
         presence = createPresence({
-            flags: { onlineStatus: config.onlineStatus, profileLikes: config.profileLikes, signature: config.signature, qzone: qzone ? config.qzone : 'off', qzoneVisibility: config.qzoneVisibility, pokeOut: config.pokeOut },
+            flags: { onlineStatus: config.onlineStatus, profileLikes: config.profileLikes, signature: config.signature, qzone: qzone ? config.qzone : 'off', qzoneVisibility: config.qzoneVisibility, pokeOut: config.pokeOut, qzoneBrowse: config.qzoneBrowse },
             transport, schedule, extraFree,
             likeTargets: config.contacts.filter(c => c.tier === 'boyfriend').map(c => c.qq),
             pokeTargets: config.contacts.filter(c => c.tier === 'boyfriend').map(c => c.qq),
@@ -673,7 +673,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(qzone ? { composeQzone: qzone } : {}),
         });
         presence.start();
-        log(`存在感：${[config.onlineStatus && '在线状态', config.profileLikes && '资料卡点赞', config.pokeOut && '主动戳他', config.signature !== 'off' && `个性签名（${config.signature === 'dryRun' ? '只写草稿' : '真改'}）`, qzone && `说说（${config.qzone === 'dryRun' ? '只写草稿' : '真发'}，${config.qzoneVisibility === 'public' ? '所有人可见' : '仅好友可见'}）`].filter(Boolean).join('、')}`);
+        log(`存在感：${[config.onlineStatus && '在线状态', config.profileLikes && '资料卡点赞', config.pokeOut && '主动戳他', config.signature !== 'off' && `个性签名（${config.signature === 'dryRun' ? '只写草稿' : '真改'}）`, qzone && `说说（${config.qzone === 'dryRun' ? '只写草稿' : '真发'}，${config.qzoneVisibility === 'public' ? '所有人可见' : '仅好友可见'}）`, (config.qzoneBrowse ?? 'off') !== 'off' && `翻空间（${config.qzoneBrowse === 'dryRun' ? '只写草稿' : '记进提示词'}）`].filter(Boolean).join('、')}`);
     }
     /** 她刷 B 站、挑一个真视频发给他（ADR 0084，配置 bilibili）：只发给男朋友档的第一个人；第一次连上才起 */
     let browsing: VideoBrowsing | undefined;
