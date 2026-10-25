@@ -1,6 +1,6 @@
 # ADR 0149：被问直接问题时，答完再接着说（shapeAsk）
 
-- 状态：**已实现，默认关，未上线**（分支 `claude/human-videos`；开关 `shapeAsk`，要 `shape` 开着）
+- 状态：**已上线 2026-10-25 21:59**（`bb3f77e`；`koishi.yml` 里 `shapeAsk: true`，要 `shape` 开着；回退：删掉那一行并重启）
 - 日期：2026-10-25
 - 关联：[ADR 0091](0091-reply-shape.md)（形状控制）、[ADR 0096](0096-split-and-share.md)（拆成几条）、[ADR 0099](0099-too-smooth.md)（太顺：带上文重放 + 分类）、[ADR 0146](0146-human-videos.md)（同一套重放工具）
 - 用户提出：2026-10-25「对话的时候我感觉她好像不会思考，而是根据程序设定进行的回复」

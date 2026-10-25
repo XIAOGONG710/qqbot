@@ -1,6 +1,6 @@
 # ADR 0151：认真问她时深思——换更强的模型、不套字数、只留一句「先想清楚」（deliberate）
 
-- 状态：**已实现，默认关，未上线**（分支 `claude/human-videos`；开关 `deliberate`，模型名 `deliberateModel`，默认 `deepseek-v4-pro`）
+- 状态：**已上线 2026-10-25 21:59**（`bb3f77e`；`koishi.yml` 里 `deliberate: true`，`deliberateModel` 用默认 `deepseek-v4-pro`；回退：删掉那一行并重启）
 - 日期：2026-10-25
 - 关联：[ADR 0091](0091-reply-shape.md)（形状控制）、[ADR 0099](0099-too-smooth.md)、[ADR 0149](0149-answer-then-continue.md)、[ADR 0150](0150-long-answers.md)（长答：同一问题的轻量版）、[ADR 0146](0146-human-videos.md)（关思考的对比实验）
 - 用户提出：2026-10-25「她好像不会思考，而是根据程序设定进行的回复」；「能否让她像 ds 一样经过深度思考后再回答我的问题或消息，而不是每一次都被程序框死」

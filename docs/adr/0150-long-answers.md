@@ -1,6 +1,6 @@
 # ADR 0150：被认真问想法 / 原因时说长一点（shapeLong）
 
-- 状态：**已实现，默认关，未上线**（分支 `claude/human-videos`；开关 `shapeLong`，要 `shape` 开着）
+- 状态：**已上线 2026-10-25 21:59**（`bb3f77e`；`koishi.yml` 里 `shapeLong: true`，要 `shape` 开着；回退：删掉那一行并重启）
 - 日期：2026-10-25
 - 关联：[ADR 0091](0091-reply-shape.md)（形状控制）、[ADR 0096](0096-split-and-share.md)（拆成几条）、[ADR 0149](0149-answer-then-continue.md)（被问时答完再接着说）、[ADR 0151](0151-deliberate.md)（深思）
 - 用户提出：2026-10-25「她的消息一直都太短，不会有长回复」
