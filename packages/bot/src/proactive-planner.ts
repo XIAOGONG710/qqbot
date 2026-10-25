@@ -97,7 +97,7 @@ export function newsFrom(
         const seenIds = new Set<string>();
         return found
             .filter(item => !seenIds.has(item.id) && seenIds.add(item.id))
-            .map(item => ({ id: item.id, kind: item.kind, day: formatDate(herDay(schedule, item.at)), at: item.at.getTime(), what: item.what, ...(item.dish ? { dish: item.dish } : {}) }))
+            .map(item => ({ id: item.id, kind: item.kind, day: formatDate(herDay(schedule, item.at)), at: item.at.getTime(), what: item.what, ...(item.dish ? { dish: item.dish } : {}), ...(item.feel ? { feel: item.feel } : {}) }))
             .filter(item => dayTexts.has(item.day));
     };
 }

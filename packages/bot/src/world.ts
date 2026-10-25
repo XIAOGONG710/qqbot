@@ -214,7 +214,7 @@ interface DayRecord {
 export interface CameraTrip { start: Date; end: Date; where: string; what: string; price: number; gifts?: { contact: number; amount: number }[] }
 
 /** 她那边刚发生、想第一时间告诉他的事（ADR 0057、0064，主动消息「她那边的事」）：kind 是事件类（买到相机 ADR 0053、赶完作业、一段不舒服的第一天）；at 是事情了结的时刻 */
-export interface WorldNews { id: string; kind: NewsKind; at: Date; what: string; dish?: string }
+export interface WorldNews { id: string; kind: NewsKind; at: Date; what: string; dish?: string; /** 这件小事让她有什么感觉（small_thing 用，ADR 0152）：说它的由头 */ feel?: EventFeel['kind'] }
 
 /** 世界里定好了几点去做、占掉她一段空闲的事（ADR 0034 的打算里写这件）：现在只有买相机那一趟（ADR 0053），只在那一天 */
 export function worldErrands(now: WorldNow): { start: Date; end: Date; text: string }[] {
@@ -269,11 +269,13 @@ const SMALL_TELL_DELAY_MIN: [number, number] = [10, 40];
 function newsSmallThing(now: WorldNow): WorldNews[] {
     if (unit(`${now.day} small tell`) >= SMALL_TELL_CHANCE) return [];
     const groups = new Map(EVERYDAY_EVENT_DEFS.map(def => [def.id, def.group] as const));
+    const feels = new Map(EVERYDAY_EVENT_DEFS.map(def => [def.id, def.feel?.kind] as const));
     const tellable = now.events.filter(event => SMALL_TELL_GROUPS.has(groups.get(event.id) ?? ''));
     if (!tellable.length) return [];
     const pick = tellable[Math.floor(unit(`${now.day} small tell pick`) * tellable.length)]!;
     const delay = SMALL_TELL_DELAY_MIN[0] + Math.floor(unit(`${now.day} small tell delay`) * (SMALL_TELL_DELAY_MIN[1] - SMALL_TELL_DELAY_MIN[0] + 1));
-    return [{ id: `small:${now.day}:${pick.id}`, kind: 'small_thing', at: new Date(pick.at.getTime() + delay * 60_000), what: pick.text }];
+    const feel = feels.get(pick.id);
+    return [{ id: `small:${now.day}:${pick.id}`, kind: 'small_thing', at: new Date(pick.at.getTime() + delay * 60_000), what: pick.text, ...(feel ? { feel } : {}) }];
 }
 
 /** what 不带「刚」：没说成的留到这一天后面的主动里说（ADR 0057 调整）；钱从哪来写在「你那边」那一行，那一行按是谁在看说 */

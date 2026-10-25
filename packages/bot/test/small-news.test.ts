@@ -73,6 +73,31 @@ describe('主动：随口讲一件小事', () => {
         assert.doesNotMatch(note, /「[^」]*[！!]」/, '不给台词');
     });
 
+    test('为什么说（ADR 0152）：按这件事自带的感觉定下是分享 / 吐槽 / 随口讲；不编反转；手上没有的图和话不说「给你看」', () => {
+        const c = candidate();
+        const joy = occasionNote({ ...c, news: { ...c.news!, what: '陈佳宁发来一张搞笑图，互损了几句', feel: 'joy' } }, '宝宝');
+        assert.match(joy, /是分享，不是吐槽，更不是求安慰/);
+        assert.match(joy, /不要编「原来……」「没想到……」「才反应过来」这类反转/);
+        assert.match(joy, /别说「给你看看」「转给你」「发你」/);
+        assert.match(joy, /没写的细节不编/);
+        const annoyed = occasionNote({ ...c, news: { ...c.news!, feel: 'annoyed' } }, '宝宝');
+        assert.match(annoyed, /随口吐槽两句，想让他附和一句，不是真的难过，也不是求安慰/);
+        const none = occasionNote({ ...c, news: { ...c.news!, feel: undefined } }, '宝宝');
+        assert.doesNotMatch(none, /是分享|随口吐槽|求安慰/, '没有感觉的小事不硬加由头');
+        assert.match(none, /不要编「原来/);
+    });
+
+    test('世界账里的小事带着事件自己的感觉（开心 / 烦 / 累……），没有感觉的不带', () => {
+        const feels = new Map(EVERYDAY_EVENT_DEFS.map(def => [def.id, def.feel?.kind] as const));
+        const hits = days.flatMap(d => worldNews(endOf(d), ['small_thing']).map(n => ({ n, now: endOf(d) })));
+        assert.ok(hits.length > 0);
+        for (const { n, now } of hits) {
+            const event = now.events.find(e => n.id === `small:${now.day}:${e.id}`)!;
+            assert.equal(n.feel, feels.get(event.id), event.id);
+        }
+        assert.ok(hits.some(({ n }) => n.feel), '有感觉的');
+    });
+
     test('那之后聊过了就不单发；没说成的不留到后面的主动里说（过了就过了）', () => {
         const c = candidate();
         const chatted: StoredMessage[] = [
