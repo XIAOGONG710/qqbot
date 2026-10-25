@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
-import { createDeviceControl, jsonlAudit, type DeviceControl, type DeviceMode, type DeviceTarget, type DispatchJob, type DispatchResult, type PolicyContext } from './device-actions.ts';
+import { createDeviceControl, jsonlAudit, type AuditEntry, type DeviceControl, type DeviceMode, type DeviceTarget, type DispatchJob, type DispatchResult, type PolicyContext } from './device-actions.ts';
 import { createDeviceHub, type DeviceHub } from './device-hub.ts';
 import { createPhonePublisher } from './device-phone.ts';
 import type { ImageDescriber } from './media.ts';
@@ -91,6 +91,8 @@ export interface DeviceServiceOptions {
     apps: readonly string[];
     /** 把一行小提示发给他（待批准的说明、批准后没做成） */
     say: (text: string) => void;
+    /** 每一条审计记录同时给这个回调（时间线 ADR 0159 用；回调里不能出错影响设备控制） */
+    onAudit?: (entry: AuditEntry) => void;
     /** 看图（屏幕 / 摄像头）；没配看图就看不了，截到的图也不留 */
     describe?: { screen?: ImageDescriber; camera?: ImageDescriber };
     log: (message: string) => void;
@@ -153,7 +155,13 @@ export async function startDeviceService(options: DeviceServiceOptions): Promise
         },
         say: options.say,
         ...(options.now ? { now: options.now } : {}),
-        audit: jsonlAudit(join(options.dataDir, 'devices', 'audit.jsonl')),
+        audit: (() => {
+            const write = jsonlAudit(join(options.dataDir, 'devices', 'audit.jsonl'));
+            return (entry: AuditEntry) => {
+                write(entry);
+                try { options.onAudit?.(entry); } catch { /* 时间线出错不影响设备控制 */ }
+            };
+        })(),
         draft: line => { mkdirSync(dirname(draftsPath), { recursive: true }); appendFileSync(draftsPath, `- ${line}\n`); },
         log,
     });

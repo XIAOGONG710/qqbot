@@ -8,6 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isProcessAlive } from './lock.ts';
 import { HindsightClient } from './memory/hindsight.ts';
+import { memoryLedger, recordForget } from './memory-audit.ts';
 import { auditContactPrivacy, type PrivacyAudit } from './privacy-audit.ts';
 
 /** Hindsight 里要删的东西的最小接口（测试给假的） */
@@ -138,6 +139,8 @@ function main(): void {
         commonBank: `${prefix}-common`,
         ...(api ? { api } : {}),
     }).then(result => {
+        // 真删了的才记进记忆账本（ADR 0158）：只记 id 和数量，不记内容
+        if (result.applied) recordForget(memoryLedger(data), qq, result);
         console.log(JSON.stringify(result, null, 2));
         console.log(result.applied ? `已处理；本地文件移到 ${result.trash}，要恢复就挪回去。Hindsight 删完请再跑一次 privacy-audit 和 recall 复查。` : '这是演练，什么都没动；确认清单后加 --apply（先停 bot）。');
         if (result.failures.length) process.exitCode = 1;
