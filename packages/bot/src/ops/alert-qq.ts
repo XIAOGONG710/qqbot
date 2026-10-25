@@ -14,7 +14,14 @@ export interface AlertConfig {
     qq: number;
     /** 外网断了 / 恢复了要不要发（默认发） */
     network: boolean;
+    /**
+     * 断网时也要通知的人（QQ 号，要是她号的好友）：能动虚拟机 / 宿主机的人（用户 10-26：「以后断网的话用她的号发送简短的通知给鸽鸽，他是可以修改虚拟机的」）。
+     * 只收外网断了 / 恢复的两条简短的（不带她的聊天细节），不收别的告警；最多 3 个，去重，不含 qq 本人
+     */
+    helpers: readonly number[];
 }
+
+const MAX_HELPERS = 3;
 
 /** 读 alert.json；没有、坏了、没开都当没有（永远不抛，守护不能因为这个出错） */
 export function readAlertConfig(path: string): AlertConfig | undefined {
@@ -22,7 +29,9 @@ export function readAlertConfig(path: string): AlertConfig | undefined {
         const value = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
         if (value.enabled !== true) return undefined;
         if (!Number.isSafeInteger(value.qq) || (value.qq as number) <= 0) return undefined;
-        return { qq: value.qq as number, network: value.network !== false };
+        const qq = value.qq as number;
+        const helpers = Array.isArray(value.helpers) ? [...new Set(value.helpers.filter((n): n is number => Number.isSafeInteger(n) && n > 0 && n !== qq))].slice(0, MAX_HELPERS) : [];
+        return { qq, network: value.network !== false, helpers };
     } catch {
         return undefined;
     }
@@ -95,4 +104,49 @@ export function networkDownText(minutes: number, host: string): string {
 /** 外网恢复时的一条 */
 export function networkUpText(minutes: number): string {
     return `${OPS_NOTICE_PREFIX}外网恢复了（断了大约 ${minutes} 分钟），她又能回话了。`;
+}
+
+/** 给能动虚拟机的人的简短一条：只说事实和该看哪（ADR 0165）；不带她的聊天细节 */
+export function networkDownHelperText(minutes: number, host: string): string {
+    return `${OPS_NOTICE_PREFIX}虚拟机 ${minutes} 分钟连不上外网（解析不了 ${host}），梦瑶回不了话。NapCat 还在跑，多半是宿主机或虚拟机网络，麻烦看下。`;
+}
+
+/** 恢复时给他的一条：让他知道不用再看了 */
+export function networkUpHelperText(minutes: number): string {
+    return `${OPS_NOTICE_PREFIX}外网恢复了（断了大约 ${minutes} 分钟），不用再看了。`;
+}
+
+export interface AlertDelivery {
+    to: 'user' | 'helper';
+    ok: boolean;
+    /** 没发出去的原因（不含 QQ 号） */
+    reason?: string;
+}
+
+/**
+ * 外网断了 / 恢复了：先发给用户，再发给 helpers（各自独立，一个发不出去不影响另一个）。
+ * 没开外网提醒就什么都不发。send 由调用方给（守护脚本传 sendAlert，测试传假的）；永远不抛。
+ */
+export async function dispatchNetworkAlert(
+    config: AlertConfig,
+    kind: 'down' | 'up',
+    minutes: number,
+    host: string,
+    send: (qq: number, text: string) => Promise<AlertResult>,
+): Promise<AlertDelivery[]> {
+    if (!config.network) return [];
+    const out: AlertDelivery[] = [];
+    const targets: { to: AlertDelivery['to']; qq: number; text: string }[] = [
+        { to: 'user', qq: config.qq, text: kind === 'down' ? networkDownText(minutes, host) : networkUpText(minutes) },
+        ...config.helpers.map(qq => ({ to: 'helper' as const, qq, text: kind === 'down' ? networkDownHelperText(minutes, host) : networkUpHelperText(minutes) })),
+    ];
+    for (const target of targets) {
+        try {
+            const result = await send(target.qq, target.text);
+            out.push(result.ok ? { to: target.to, ok: true } : { to: target.to, ok: false, reason: result.reason });
+        } catch (error) {
+            out.push({ to: target.to, ok: false, reason: error instanceof Error ? error.message : String(error) });
+        }
+    }
+    return out;
 }

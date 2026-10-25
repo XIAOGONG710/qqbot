@@ -78,12 +78,15 @@ async function netUp() {
 /** 告警发到用户的 QQ（alert.json 开了才发；发不出去只记一行，不影响守护） */
 async function notify(kind, minutes) {
     try {
-        const { readAlertConfig, sendAlert, networkDownText, networkUpText } = await import('../packages/bot/src/ops/alert-qq.ts');
+        const { readAlertConfig, sendAlert, dispatchNetworkAlert } = await import('../packages/bot/src/ops/alert-qq.ts');
         const config = readAlertConfig(ALERT_FILE);
         if (!config?.network) return;
-        const text = kind === 'down' ? networkDownText(minutes, NET_HOST) : networkUpText(minutes);
-        const result = await sendAlert({ url: 'ws://127.0.0.1:3001/', token: process.env.QQBOT_ONEBOT_TOKEN ?? '', qq: config.qq, text });
-        say(result.ok ? '外网：已通过她的 QQ 通知用户' : `外网：QQ 通知没发出去（${result.reason}）`);
+        const token = process.env.QQBOT_ONEBOT_TOKEN ?? '';
+        const deliveries = await dispatchNetworkAlert(config, kind, minutes, NET_HOST, (qq, text) => sendAlert({ url: 'ws://127.0.0.1:3001/', token, qq, text }));
+        for (const delivery of deliveries) {
+            const who = delivery.to === 'user' ? '用户' : '帮忙看虚拟机的人';
+            say(delivery.ok ? `外网：已通过她的 QQ 通知${who}` : `外网：QQ 通知${who}没发出去（${delivery.reason}）`);
+        }
     } catch (error) {
         say(`外网：QQ 通知出错（${error instanceof Error ? error.message : String(error)}）`);
     }
