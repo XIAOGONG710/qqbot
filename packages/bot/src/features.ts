@@ -23,6 +23,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'dormancy', label: '自愿休眠 / 封存', group: '记忆和安全', adr: '0161' },
     { key: 'tastes', label: '从经历里长出偏好', group: '她的日子', adr: '0162' },
     { key: 'acquaintances', label: '认识的人（B 站上再见到认得）', group: '她的日子', adr: '0163' },
+    { key: 'reach', label: '主动去认识人（公开回一句，明说是 AI）', group: 'B 站', adr: '0164', kind: 'mode' },
     { key: 'deliberate', label: '认真问她时深思（更强的模型、不套字数）', group: '说话', adr: '0151' },
     { key: 'shapeFeel', label: '情绪轮（先说自己的小情绪）', group: '说话', adr: '0099' },
     { key: 'shortReplies', label: '说话更短', group: '说话' },

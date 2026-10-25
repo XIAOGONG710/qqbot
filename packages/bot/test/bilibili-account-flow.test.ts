@@ -66,6 +66,7 @@ describe('刷 B 站：她的账号（ADR 0089）', () => {
         const log = { searches: [] as string[], subtitles: [] as string[], posts: [] as Parameters<BiliAccount['postComment']>[0][], visible: [] as string[], dms: [] as Parameters<BiliAccount['sendDm']>[0][] };
         const account: BiliAccount = {
             name: '繁星小窝', mid: 4242,
+            async videoComments() { return []; },
             async search(keyword) {
                 log.searches.push(keyword);
                 if (options.found instanceof Error) throw options.found;

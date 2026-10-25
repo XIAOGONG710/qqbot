@@ -113,6 +113,7 @@ export const DEFAULTS = {
     webLookup: 'off' as WebMode,
     tastes: false,
     acquaintances: false,
+    reach: 'off' as PresenceMode,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
     reactions: false,
@@ -471,6 +472,8 @@ export interface AppConfig {
     tastes: boolean;
     /** 认识的人（ADR 0163）：B 站上回复她的人登记下来，再见到认得；不替她主动加好友 / 私信陌生人。默认关 */
     acquaintances: boolean;
+    /** 主动去认识人（ADR 0164）：去 AI 社区的视频评论区找人，公开回一句并明说自己是 AI；off / dryRun（只写草稿）/ on。要 bilibiliAccount 开着。默认关 */
+    reach: PresenceMode;
     /** 要 @ 的人的 B 站昵称 */
     bilibiliAtName: string;
     /** 他的 B 站 uid：@ 评论（要昵称和 uid 两样）和发私信（只要 uid）都用 */
@@ -753,6 +756,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         webLookup: oneOf(file.webLookup, 'webLookup', WEB_MODES, DEFAULTS.webLookup),
         tastes: bool(file, 'tastes', '', DEFAULTS.tastes),
         acquaintances: bool(file, 'acquaintances', '', DEFAULTS.acquaintances),
+        reach: oneOf(file.reach, 'reach', PRESENCE_MODES, DEFAULTS.reach),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
         reactions: bool(file, 'reactions', '', DEFAULTS.reactions),

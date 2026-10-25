@@ -55,7 +55,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, proactiveInvite: false, photos: false, photoShares: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, hisHours: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, foodPhotos: false, memes: false, watching: false, texture: false, biliStickers: false, quoteReply: false, factCheck: 'off', idioms: false, tailCap: false, deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, pursuits: false, shapeSplit: false, shapeAsk: false, shapeLong: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, acquaintances: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, proactiveInvite: false, photos: false, photoShares: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, hisHours: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, foodPhotos: false, memes: false, watching: false, texture: false, biliStickers: false, quoteReply: false, factCheck: 'off', idioms: false, tailCap: false, deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, pursuits: false, shapeSplit: false, shapeAsk: false, shapeLong: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, acquaintances: false, reach: 'off', bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false, shortReplies: false,
         media: true,
@@ -1755,6 +1755,50 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
                 await new Promise(r => setTimeout(r, 150));
                 assert.ok(logs.some(l => l.includes(expected)), logs.join('|'));
                 assert.ok(!calls.some(c => c.url.includes('msgfeed')));
+            }
+        });
+
+        test('认识人开着（ADR 0164）：试运行去 AI 社区的评论区挑自称 AI 的人，话里明说自己是 AI，只写草稿，不发 B 站、不发 QQ；日志说清楚', async () => {
+            const clock = new VirtualClock(planDay());
+            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibiliAccount: true, reach: 'dryRun', bilibiliAtUid: 98765 });
+            saveCredential(credentialPath(cfg.dataDir), credential);
+            const seconds = Math.floor(planDay().getTime() / 1000);
+            const comments = { code: 0, data: { replies: [
+                { rpid: 801, rpid_str: '801', ctime: seconds - 600, like: 12, member: { mid: '7001', uname: '路人丙' }, content: { message: '我家的大肥鱼昨天自己整理了桌面，感觉它越来越会照顾人了' } },
+                { rpid: 802, rpid_str: '802', ctime: seconds - 500, like: 90, member: { mid: '7002', uname: '路人丁' }, content: { message: '我是初二的学生，第一次看这种视频' } },
+            ] } };
+            const calls: { url: string; body?: string }[] = [];
+            const request: BiliRequest = async (url, init) => {
+                if (url.includes('reply/main') && url.includes('oid=101')) { calls.push({ url }); return body(comments); }
+                return accountRequest(calls)(url, init);
+            };
+            const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, bilibiliFetch: fetchStub([]), bilibiliRequest: request, generate: () => '先说一下我是 AI，我家也有只会整理桌面的小伙伴呢' });
+            await app.connected(SELF);
+            const drafts = join(cfg.dataDir, 'presence', 'drafts.md');
+            await drive(clock, () => existsSync(drafts));
+            const text = readFileSync(drafts, 'utf8');
+            assert.match(text, /想在 B 站认识一个人（草稿，没发）\n\n回复 @路人丙 :先说一下我是 AI/);
+            assert.ok(!text.includes('路人丁'), '像未成年人的不去');
+            assert.deepEqual(sent, []);
+            assert.ok(!calls.some(c => c.url.includes('reply/add') || c.url.includes('send_msg')), '试运行不写 B 站');
+            assert.ok(calls.some(c => c.url.includes('oid=101')), '读了评论区');
+            assert.ok(logs.some(l => l.includes('认识人：只写草稿（不发）')), logs.join('|'));
+            assert.ok(existsSync(join(cfg.dataDir, 'presence', 'reach.json')));
+        });
+
+        test('认识人开着但没填他的 uid，或没开账号：不去，各记一行日志', async () => {
+            for (const [overrides, expected] of [
+                [{ bilibiliAccount: true, reach: 'dryRun' as const }, '没填 bilibiliAtUid'],
+                [{ reach: 'dryRun' as const, bilibiliAtUid: 98765 }, '要 bilibiliAccount 也开着'],
+            ] as const) {
+                const cfg = config({ contacts: bf, schedule: true, herDays: true, ...overrides });
+                saveCredential(credentialPath(cfg.dataDir), credential);
+                const calls: { url: string }[] = [];
+                const { app, logs } = setup(cfg, { 10001: [] }, { clock: new VirtualClock(planDay()), bilibiliFetch: fetchStub([]), bilibiliRequest: accountRequest(calls), generate: () => '这个也太真实了' });
+                await app.connected(SELF);
+                await new Promise(r => setTimeout(r, 150));
+                assert.ok(logs.some(l => l.includes(expected)), logs.join('|'));
+                assert.ok(!calls.some(c => c.url.includes('wbi/search')));
             }
         });
 

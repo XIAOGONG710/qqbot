@@ -109,8 +109,8 @@ const IDENTITY = [
 /** 去掉 [表情]（B 站的表情记号可以很长，如「[崩坏3·光辉矢愿_让我摸摸]」）、空白、标点之后还剩几个字 */
 const bodyLength = (text: string) => text.replace(/\[[^\]]{1,30}\]/g, '').replace(/[\s\p{P}\p{S}]/gu, '').length;
 
-/** 不回的原因（没有就是可以回）；谁说的都一样，包括他：AI 相关的由他自己去解释，她不承认也不否认 */
-export function skipReason(text: string): string | undefined {
+/** 除了「问她是不是 AI」之外的不回原因（ADR 0164 去认识人时她自己先说明身份，只需要这一部分） */
+export function baseSkipReason(text: string): string | undefined {
     const length = bodyLength(text);
     if (length < 2) return '太短（只有表情或标点）';
     if (text.length > 150) return '太长';
@@ -119,6 +119,13 @@ export function skipReason(text: string): string | undefined {
     if (INSULT.test(text)) return '骂人';
     if (INJECTION.test(text)) return '想改她的设定';
     if (BLOCKED.test(text)) return '敏感话题';
+    return undefined;
+}
+
+/** 不回的原因（没有就是可以回）；谁说的都一样，包括他：AI 相关的由他自己去解释，她不承认也不否认 */
+export function skipReason(text: string): string | undefined {
+    const base = baseSkipReason(text);
+    if (base) return base;
     if (IDENTITY.some(pattern => pattern.test(text))) return '在问她是不是 AI / 真人';
     return undefined;
 }

@@ -162,6 +162,7 @@ export interface Config {
     webLookup: WebMode;
     tastes: boolean;
     acquaintances: boolean;
+    reach: PresenceMode;
     bilibiliAtName: string;
     bilibiliAtUid: number;
     reactions: boolean;
@@ -377,6 +378,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**从经历里长出偏好**（ADR 0162）：每天最多回头看一次最近两周的真经历（生活账、看过的视频），指出带证据的偏好，之后聊天里自然带出来。默认关'),
         acquaintances: Schema.boolean().default(DEFAULTS.acquaintances)
             .description('**认识的人**（ADR 0163）：B 站上回复她的人登记下来（昵称 / uid / 40 字摘录），再见到认得、他问起才说；不替她主动加好友 / 私信陌生人。默认关'),
+        reach: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.reach)
+            .description('**主动去认识人**（ADR 0164）：去 AI 社区的视频评论区找人，公开回一句并**明说自己是 AI**；不私信、不关注、不要联系方式。要 bilibiliAccount 开着。默认关；试运行只写草稿'),
         bilibiliAtName: Schema.string().default(DEFAULTS.bilibiliAtName)
             .description('**要 @ 的人的 B 站昵称**（ADR 0089）：评论最前面会写 @昵称；不含 @ 和换行'),
         bilibiliAtUid: Schema.number().default(DEFAULTS.bilibiliAtUid)
@@ -591,6 +594,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.webLookup !== undefined ? { webLookup: config.webLookup } : {}),
         ...(config.tastes !== undefined ? { tastes: config.tastes } : {}),
         ...(config.acquaintances !== undefined ? { acquaintances: config.acquaintances } : {}),
+        ...(config.reach !== undefined ? { reach: config.reach } : {}),
         ...(config.bilibiliAtName !== undefined ? { bilibiliAtName: config.bilibiliAtName } : {}),
         ...(config.bilibiliAtUid !== undefined ? { bilibiliAtUid: config.bilibiliAtUid } : {}),
         ...(config.reactions !== undefined ? { reactions: config.reactions } : {}),

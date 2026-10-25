@@ -280,6 +280,8 @@ export interface BiliAccount {
     commentVisible(input: { aid: number; rpid: string }): Promise<boolean>;
     /** 别人回在她评论下面的话（消息中心「回复我的」第一页，新的在前）；只收视频评论区的 */
     fetchReplies(): Promise<ReplyItem[]>;
+    /** 一个视频评论区第一页的顶层评论（按热度，最多 20 条；ADR 0164 的“认识人”读它找人）：只读，不发任何东西 */
+    videoComments(video: { aid: number }): Promise<VideoComment[]>;
     /**
      * 回复评论区里的一条话（ADR 0090）：root 是那一串的根评论，parent 是被回复的那一条；
      * 回的是别人在串里的回复（parent 不是 root）时，按网页的写法在最前面加「回复 @昵称 :」并交上 at_name_to_mid
@@ -318,6 +320,34 @@ const idOf = (value: unknown): string => (typeof value === 'string' && /^\d+$/.t
  * 和公开整理里写的不一样的两处：①`title` 是她那条评论的正文（不是视频标题，视频标题在 `detail_title` 里，评论类的是空的）；
  * ②直接回在她的评论上时 `target_reply_content` 是空的，她那条话在 `root_reply_content`。
  */
+export interface VideoComment {
+    /** 这条评论的 rpid（回复它时同时是 root 和 parent） */
+    id: string;
+    aid: number;
+    uid: number;
+    name: string;
+    text: string;
+    like: number;
+    /** 毫秒 */
+    at: number;
+}
+
+/** x/v2/reply/main 的 data.replies → 顶层评论；字段缺了的丢掉（不猜） */
+export function parseVideoComments(data: unknown, aid: number): VideoComment[] {
+    const out: VideoComment[] = [];
+    for (const raw of Array.isArray(rec(data).replies) ? rec(data).replies as unknown[] : []) {
+        const item = rec(raw);
+        const member = rec(item.member);
+        const content = rec(item.content);
+        const id = String(item.rpid_str ?? item.rpid ?? '');
+        const uid = Number(member.mid);
+        const text = str(content.message).trim();
+        if (!id || !Number.isFinite(uid) || uid <= 0 || !text) continue;
+        out.push({ id, aid, uid, name: str(member.uname), text, like: num(item.like), at: num(item.ctime) * 1000 });
+    }
+    return out;
+}
+
 export function parseReplyFeed(data: unknown): ReplyItem[] {
     const items: ReplyItem[] = [];
     for (const raw of Array.isArray(rec(data).items) ? rec(data).items as unknown[] : []) {
@@ -463,6 +493,11 @@ export async function openAccount(request: BiliRequest, credential: BiliCredenti
         async fetchReplies() {
             const { data } = await call(request, 'https://api.bilibili.com/x/msgfeed/reply?platform=web&build=0&mobi_app=web', { headers: { ...headers, Referer: 'https://message.bilibili.com/' } });
             return parseReplyFeed(data);
+        },
+
+        async videoComments(video) {
+            const { data } = await call(request, `https://api.bilibili.com/x/v2/reply/main?type=1&oid=${video.aid}&mode=3&next=0&ps=20`, { headers });
+            return parseVideoComments(data, video.aid);
         },
 
         async systemNoticeUnread() {

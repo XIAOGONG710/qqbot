@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import {
-    BiliApiError, cookieHeader, credentialPath, DM_MAX_CHARS, loadCredential, openAccount, parseClock, parseReplyFeed, pickCookies, qrGenerate, qrPoll, saveCredential, subtitleExcerpt,
+    BiliApiError, cookieHeader, credentialPath, DM_MAX_CHARS, loadCredential, openAccount, parseClock, parseReplyFeed, parseVideoComments, pickCookies, qrGenerate, qrPoll, saveCredential, subtitleExcerpt,
     wbiKeysFrom, wbiMixinKey, wbiSign, type BiliCredential, type BiliRequest, type BiliResponse,
 } from '../src/bilibili-account.ts';
 import { qrMatrix, qrSvg, qrTerminal } from '../src/qr.ts';
@@ -303,6 +303,23 @@ describe('B 站账号层：评论与复核', () => {
         assert.equal(call.init.headers.Referer, 'https://message.bilibili.com/');
         const failing = await open({ 'msgfeed/reply': () => json({ code: -101, message: '账号未登录' }) });
         await assert.rejects(failing.account.fetchReplies(), (error: unknown) => error instanceof BiliApiError && error.code === -101);
+    });
+
+    test('视频评论区第一页：取 rpid / 人 / 正文 / 点赞 / 时间（秒→毫秒）；没正文的、没人的跳过；只读，请求带 type=1 和 aid', async () => {
+        const reply = (over: Record<string, unknown> = {}, member: Record<string, unknown> = {}) => ({ rpid: 88, rpid_str: '88', ctime: 1792512900, like: 7, member: { mid: '555', uname: '路人甲', ...member }, content: { message: '这个视频的剪辑真的很用心' }, ...over });
+        const parsed = parseVideoComments({ replies: [reply(), reply({ rpid_str: '', rpid: 89, content: { message: '  ' } }), reply({ rpid: 90, rpid_str: '90' }, { mid: 0 }), reply({ rpid: 91, rpid_str: '91', like: undefined })] }, 11);
+        assert.deepEqual(parsed.map(item => item.id), ['88', '91']);
+        assert.deepEqual(parsed[0], { id: '88', aid: 11, uid: 555, name: '路人甲', text: '这个视频的剪辑真的很用心', like: 7, at: 1792512900000 });
+        assert.equal(parsed[1]!.like, 0);
+        assert.deepEqual(parseVideoComments(undefined, 1), []);
+        assert.deepEqual(parseVideoComments({ replies: null }, 1), []);
+        const s = await open({ 'reply/main': () => json({ code: 0, data: { replies: [reply()] } }) });
+        assert.equal((await s.account.videoComments({ aid: 117467389106971 })).length, 1);
+        const call = s.calls.at(-1)!;
+        assert.match(call.url, /^https:\/\/api\.bilibili\.com\/x\/v2\/reply\/main\?type=1&oid=117467389106971&mode=3&next=0&ps=20$/);
+        assert.equal(call.init.method ?? 'GET', 'GET');
+        const closed = await open({ 'reply/main': () => json({ code: 12061, message: 'up主已关闭评论区' }) });
+        await assert.rejects(closed.account.videoComments({ aid: 1 }), (error: unknown) => error instanceof BiliApiError && error.code === 12061);
     });
 
     test('发回复：表单带 root / parent；回的是串里别人的话，最前面写「回复 @昵称 :」并交上昵称对应的 uid；回的就是根评论就不加；没有 rpid 要报错', async () => {

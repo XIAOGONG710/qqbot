@@ -56,6 +56,7 @@ import { configuredImageDescriber } from './vision.ts';
 import { BILIBILI_RISK, createBreaker, guardRequest } from './platform-breaker.ts';
 import { commentComposer, replyComposer } from './bilibili-comment.ts';
 import { createReplyWatcher, type ReplyOptions, type ReplyWatcher } from './bilibili-replies.ts';
+import { createCommunityReach, reachComposer, type CommunityReach } from './community.ts';
 import { createRiskMonitor, type RiskMonitor } from './bilibili-risk.ts';
 import { detectCrisis, type CrisisLevel } from './crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from './crisis-state.ts';
@@ -931,7 +932,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     let risk: RiskMonitor | undefined;
     function bilibiliRisk(): RiskMonitor | undefined {
         if (risk) return risk;
-        if (config.bilibiliComment === 'off' && config.bilibiliReplies === 'off') return undefined;
+        if (config.bilibiliComment === 'off' && config.bilibiliReplies === 'off' && config.reach === 'off') return undefined;
         const account = bilibiliAccountSource();
         if (!account || config.bilibiliAtUid <= 0) return undefined;
         risk = createRiskMonitor({ account, uid: config.bilibiliAtUid, dir: join(config.dataDir, 'presence'), now: worldNow, log });
@@ -989,6 +990,53 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         replies = createReplyWatcher(options);
         replies.start();
         log(`回复 B 站评论：${options.mode === 'dryRun' ? '只写草稿（不发）' : '开'}；每 10 分钟看一次「回复我的」，先回他，其次挑有价值的，一天最多 5 条（他的不算），问 AI / 真人的、骂人的、广告一律不回；有价值的回复另存真人语料（presence/bilibili-corpus.jsonl）`);
+    }
+
+    /** 主动去认识人（ADR 0164，配置 reach）：每天最多一次，去 AI 社区的视频评论区挑一个人公开回一句，话里明说自己是 AI；试运行只写草稿 */
+    let reachJob: CommunityReach | undefined;
+    function startReach(): void {
+        if (reachJob || config.reach === 'off') return;
+        const account = bilibiliAccountSource();
+        if (!account) {
+            log('认识人：reach 开着，但要 bilibiliAccount 也开着，不去');
+            return;
+        }
+        if (config.bilibiliAtUid <= 0) {
+            log('认识人：reach 开着，但没填 bilibiliAtUid（不去认识他，出风险时也要私信他），不去');
+            return;
+        }
+        const lowest = lowestTierCard();
+        if (!lowest) {
+            log('认识人：陌生人档和同学档的卡都读不了，不去');
+            return;
+        }
+        const schedule = worldCard?.schedule;
+        const extraFree = config.herDays && worldCard ? readingActivities(worldCard.books) : [];
+        const gate = bilibiliRisk();
+        reachJob = createCommunityReach({
+            mode: config.reach, account, userUid: config.bilibiliAtUid,
+            ...(gate ? { risk: gate } : {}),
+            compose: reachComposer({
+                character: { name: lowest.character.name, description: lowest.character.description, personality: lowest.character.personality, banned: lowest.character.banned },
+                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 1.1 }, messages, { log, purpose: 'background' })),
+                log,
+            }),
+            dir: join(config.dataDir, 'presence'),
+            now: worldNow, log,
+            // 休眠、睡着、上课时不去
+            awake: (now: number) => {
+                if (dormancy?.isDormant()) return false;
+                if (!schedule) return true;
+                const kind = stateAt(schedule, new Date(now), extraFree).activity.kind;
+                return (kind === 'free' || kind === 'between') && !asleepSince(schedule, bedtimes(schedule, now), new Date(now));
+            },
+            onMet: (candidate, _text, outcome) => {
+                if (outcome !== 'sent') return;
+                acquaintances?.observe({ platform: 'bilibili', uid: String(candidate.comment.uid), name: candidate.comment.name, where: `B 站《${candidate.video.title}》评论区`, what: candidate.comment.text, kind: candidate.kind });
+            },
+        });
+        reachJob.start();
+        log(`认识人：${config.reach === 'dryRun' ? '只写草稿（不发）' : '开'}；每天最多去认识 1 个、一周 3 个（不知道是不是真人的一周 1 个），公开回一句且话里明说自己是 AI，不私信、不关注、不要联系方式；像未成年人的、低落或谈感情的不去打扰`);
     }
 
     function rainyAt(now: number): boolean {
@@ -1421,7 +1469,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             const missed = chatHistory.load(deviceOwner.qq).filter(m => m.role === 'user' && Date.parse(m.time) >= since).length;
             tellOwner(`（她醒了。睡了 ${woke.minutes} 分钟；核对：${problems.length ? problems.join('；') : '封存清单、设定、记忆账本都对得上'}。休眠期间你发了 ${missed} 条。）`);
             catchUpAll();
-            startBrowsing(); startReplies(); void watchJob();
+            startBrowsing(); startReplies(); startReach(); void watchJob();
             for (const planner of planners.values()) planner.poke();
             presence?.reapply();
             const outcome = await responders.get(deviceOwner.qq)!.initiate({
@@ -1516,7 +1564,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     startPlanners();
                     startPresence();
                     presence?.reapply();
-                    if (!dormancy?.isDormant()) { startBrowsing(); startReplies(); }
+                    if (!dormancy?.isDormant()) { startBrowsing(); startReplies(); startReach(); }
                     for (const planner of planners.values()) planner.poke();
                     for (const notice of ownerNotices.splice(0)) tellOwner(notice);
                     syncFollowUps();
@@ -1631,6 +1679,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             presence?.stop();
             browsing?.stop();
             replies?.stop();
+            reachJob?.stop();
             risk?.stop();
             if (lifeTimer) clearInterval(lifeTimer);
             if (weatherTimer) clearInterval(weatherTimer);
