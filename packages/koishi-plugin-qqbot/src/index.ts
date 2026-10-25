@@ -19,7 +19,8 @@ import { createLog, type Log } from '../../bot/src/log.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from '../../bot/src/fact-check.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/presence.ts';
 import { readQzoneFeed } from '../../bot/src/qzone-feed.ts';
-import { readUserQzone, sessionFromCookies } from '../../bot/src/qzone-remote.ts';
+import { readFriendsFeed } from '../../bot/src/qzone-feeds3.ts';
+import { sessionFromCookies } from '../../bot/src/qzone-remote.ts';
 import { readStrangerFeed } from '../../bot/src/qzone-strangers.ts';
 import { ACCOUNT_MODES, QQ_FRIEND_GATES, type ControlMode, type FriendGate } from '../../bot/src/account.ts';
 import { assertKernelOk, isFriendRecall, isPokeAtMe, isPrivateFriendMessage, replySegment, type OneBotEvent } from '../../bot/src/onebot.ts';
@@ -364,7 +365,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         qzoneBrowse: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.qzoneBrowse)
             .description('**自己翻空间动态**（ADR 0142）：白天醒着时每两个多小时读一页 QQ 空间动态（「空友爱看」那种混着陌生人的流），摘成一行「你刚才翻空间看到…」进她的提示词，6 小时内她可以自己提起。选「只写草稿」只存 presence/drafts.md、不进提示词。NapCat 上读空间的动作名各版本不同，读不到就只记一行、不假装看到。默认关'),
         qzonePeek: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.qzonePeek)
-            .description('**看好友的空间**（ADR 0143）：用她自己的登录态（NapCat 的 get_cookies）读名单里好友的说说，10:00–22:00、每 4 小时最多一次、一次一个人；摘成一行进提示词。只对「允许动作的好友」里的人生效；读不到（不是好友 / 登录态过期 / 风控）只记一行。默认关'),
+            .description('**刷好友动态**（ADR 0145）：用她自己的登录态（NapCat 的 get_cookies）读她自己的好友动态页，挑出名单里好友 3 天内新发的说说（不进对方空间、不留访客记录），10:00–22:00、每 4 小时最多一次；摘成一行带时间进提示词，6 小时内她可以自己提起。名单是下面「允许动作的好友」；读不到（登录态过期 / 断网 / 风控）6 小时后再试。默认关'),
         qzoneStrangers: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.qzoneStrangers)
             .description('**刷陌生人的空间**（ADR 0144）：用她的登录态读平台推的陌生人说说（「空友爱看」那种流），09:00–23:00、每 3 小时最多一次；只读不互动。摘一句进提示词，样本（只有正文，没有名字和号）留在 presence/strangers.jsonl。接口名没有公开文档，读不到只记一行。默认关'),
         qqControl: Schema.union(ACCOUNT_MODES.map(mode => Schema.const(mode).description(mode === 'off' ? '关' : mode === 'read' ? '只读（盘点）' : '放行写动作'))).default(DEFAULTS.qqControl)
@@ -684,16 +685,25 @@ export function apply(ctx: Context, config: Config) {
         postQzone: async post => String(((await (onlineBot().internal as unknown as OneBotMediaInternal)._get('send_qzone_msg', { content: post.content, ...(post.images ? { images: post.images } : {}), ugc_right: post.ugcRight })) as { tid?: unknown } | null)?.tid ?? ''),
         // 读一页空间动态（ADR 0142）：动作名各版本不同，qzone-feed 会按候选逐个试；都不通返回 undefined，上层只记一行
         readQzoneFeed: async count => readQzoneFeed((action, params) => (onlineBot().internal as unknown as OneBotMediaInternal)._get(action, params), { count }),
-        // 看好友的空间（ADR 0143）：先拿她这个号在 qzone.qq.com 的登录态，再按 uin 读说说；拿不到登录态返回 undefined
         readStrangerFeed: async () => {
             const raw = await (onlineBot().internal as unknown as OneBotMediaInternal)._get('get_cookies', { domain: 'qzone.qq.com' });
             const session = sessionFromCookies(raw);
             return session ? readStrangerFeed({ session }) : undefined;
         },
+        // 看好友发的说说（ADR 0145）：读她自己的好友动态流（不进对方空间、不留访客记录），再挑出这个人发的；
+        // 拿不到登录态或这页读不了返回 undefined，读到了但这个人没发就返回 []
         readUserQzone: async uin => {
             const raw = await (onlineBot().internal as unknown as OneBotMediaInternal)._get('get_cookies', { domain: 'qzone.qq.com' });
             const session = sessionFromCookies(raw);
-            return session ? readUserQzone({ hostUin: uin, session }) : undefined;
+            const posts = session ? await readFriendsFeed({ session }) : undefined;
+            return posts?.filter(post => post.uin === uin).map(post => ({
+                id: post.id,
+                uin: post.uin,
+                ...(post.name ? { name: post.name } : {}),
+                text: post.text,
+                images: post.images,
+                ...(post.at !== undefined ? { at: post.at } : {}),
+            }));
         },
         // 空友爱看相关的说明见 ADR 0083
         sendPrivateImage: async (userId, file, summary) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'image', data: { file, summary, sub_type: 1 } }])),
