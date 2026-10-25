@@ -86,3 +86,54 @@ describe('她自己翻空间动态（ADR 0142）', () => {
         assert.deepEqual(reads, [], '凌晨三点不翻空间');
     });
 });
+
+describe('看好友的空间（ADR 0143）', () => {
+    const friendFeed = () => [{ id: 'p1', text: '今天拍到了很好看的云', images: 1 }];
+
+    test('开着：按名单看一个人的空间，进提示词；4 小时内不再看', async () => {
+        const reads: number[] = [];
+        const dir = tmp();
+        const p = createPresence({
+            flags: { onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', qzonePeek: 'on' },
+            transport: { readUserQzone: async uin => { reads.push(uin); return friendFeed(); } },
+            schedule,
+            likeTargets: [],
+            peekTargets: [{ qq: 10001, name: '小雨' }],
+            dir,
+            now: () => at(10, 23, 11, 30),
+            log: () => undefined,
+        });
+        await p.tick();
+        assert.deepEqual(reads, [10001]);
+        const note = p.selfNote(at(10, 23, 11, 30));
+        assert.match(note ?? '', /翻了翻小雨的空间/);
+        assert.match(note ?? '', /今天拍到了很好看的云/);
+        await p.tick();
+        assert.equal(reads.length, 1);
+    });
+
+    test('试运行只写草稿；读不到只记一次、不假装', async () => {
+        const dir = tmp();
+        const p = createPresence({
+            flags: { onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', qzonePeek: 'dryRun' },
+            transport: { readUserQzone: async () => friendFeed() },
+            schedule, likeTargets: [], peekTargets: [{ qq: 10001, name: '小雨' }],
+            dir, now: () => at(10, 23, 11, 30), log: () => undefined,
+        });
+        await p.tick();
+        assert.equal(p.selfNote(at(10, 23, 11, 30)), undefined);
+        assert.match(readFileSync(join(dir, 'drafts.md'), 'utf8'), /看了小雨的空间/);
+
+        const reads: number[] = [];
+        const broken = createPresence({
+            flags: { onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', qzonePeek: 'on' },
+            transport: { readUserQzone: async uin => { reads.push(uin); return undefined; } },
+            schedule, likeTargets: [], peekTargets: [{ qq: 10001, name: '小雨' }],
+            dir: tmp(), now: () => at(10, 23, 11, 30), log: () => undefined,
+        });
+        await broken.tick();
+        await broken.tick();
+        assert.equal(reads.length, 1, '读不到就不再试');
+        assert.equal(broken.selfNote(at(10, 23, 11, 30)), undefined);
+    });
+});

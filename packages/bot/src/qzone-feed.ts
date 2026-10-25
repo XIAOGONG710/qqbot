@@ -122,7 +122,7 @@ const MAX_QUOTE = 40;
  * 给她看的一行：「你刚才翻了会儿空间，刷到：①「…」②「…」③「…」（一共 8 条）」。
  * 只留文字（图和别人的名字都不进提示词），同一批里完全不重复的不再列；一条都没有返回 undefined。
  */
-export function feedDigest(feed: QzoneFeed | undefined, limit = 3): string | undefined {
+export function feedDigest(feed: QzoneFeed | undefined, limit = 3, prefix = '你刚才翻了会儿 QQ 空间，刷到：'): string | undefined {
     if (!feed || !feed.items.length) return undefined;
     const seen = new Set<string>();
     const quotes: string[] = [];
@@ -134,7 +134,7 @@ export function feedDigest(feed: QzoneFeed | undefined, limit = 3): string | und
         if (quotes.length >= limit) break;
     }
     if (!quotes.length) return undefined;
-    return `你刚才翻了会儿 QQ 空间，刷到：${quotes.join('、')}（这一页一共 ${feed.items.length} 条）`;
+    return `${prefix}${quotes.join('、')}（这一页一共 ${feed.items.length} 条）`;
 }
 
 /** 点赞 / 评论的动作名候选（和读一样，按版本试）；账号层会再过一遍闸 */

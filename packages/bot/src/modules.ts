@@ -67,10 +67,10 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'rhythm', name: '节奏、图片和在 QQ 上的样子',
         scope: '什么时候看到、打字多久、一次发几条；图片表情和照片货架；戳一戳、已读、在线状态、说说、签名、“正在输入”、撤回；听语音看图。',
-        files: ['responder.ts', 'reply-timing.ts', 'rate-limit.ts', 'async-gate.ts', 'stickers.ts', 'sticker-favorites.ts', 'sticker-sources.ts', 'photos.ts', 'photo-sources.ts', 'pokes.ts', 'presence.ts', 'qzone.ts', 'qzone-feed.ts', 'account.ts', 'quote-reply.ts', 'media.ts', 'safe-image.ts', 'vision.ts'],
+        files: ['responder.ts', 'reply-timing.ts', 'rate-limit.ts', 'async-gate.ts', 'stickers.ts', 'sticker-favorites.ts', 'sticker-sources.ts', 'photos.ts', 'photo-sources.ts', 'pokes.ts', 'presence.ts', 'qzone.ts', 'qzone-feed.ts', 'qzone-remote.ts', 'account.ts', 'quote-reply.ts', 'media.ts', 'safe-image.ts', 'vision.ts'],
         groups: ['照片和表情', '在 QQ 上的样子'],
         metrics: '周报「说话的样子」里的延迟、「表情和语气」',
-        adrs: ['0063', '0075', '0077', '0083', '0105', '0109', '0136', '0142'],
+        adrs: ['0063', '0075', '0077', '0083', '0105', '0109', '0136', '0142', '0143'],
     },
     {
         id: 'bilibili', name: '外部世界：B 站',

@@ -81,6 +81,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'signature', label: '个性签名', group: '在 QQ 上的样子', adr: '0083', kind: 'mode' },
     { key: 'qzone', label: '说说', group: '在 QQ 上的样子', adr: '0083', kind: 'mode' },
     { key: 'qzoneBrowse', label: '自己翻空间动态', group: '在 QQ 上的样子', adr: '0142', kind: 'mode' },
+    { key: 'qzonePeek', label: '看好友的空间', group: '在 QQ 上的样子', adr: '0143', kind: 'mode' },
     { key: 'typingStatus', label: '“正在输入…”', group: '在 QQ 上的样子', adr: '0077' },
     { key: 'selfRecall', label: '打错字撤回重发', group: '在 QQ 上的样子', adr: '0086' },
     { key: 'quoteReply', label: '引用回复（他连发里的问题 / 补错字）', group: '在 QQ 上的样子', adr: '0136' },
