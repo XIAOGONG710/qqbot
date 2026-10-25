@@ -1,6 +1,6 @@
 # ADR 0143：她看好友的 QQ 空间（用她自己的登录态）
 
-- 状态：**已实现，未上线、未在真 QQ 上验证**（分支 `dsh/qq-control`；开关 `qzonePeek`，默认 `off`）
+- 状态：**已被 [ADR 0145](0145-qzone-friends-feed.md) 取代**（读法改成她自己的好友动态流；原来的逐人读法 `emotion_cgi_msglist_v6` 没有在真 QQ 上验证过，代码留在 `qzone-remote.ts` 里，不再接线）
 - 日期：2026-10-25
 - 关联：[ADR 0142](0142-qq-account-control.md)（账号控制面）、[ADR 0083](0083-presence.md)（她自己的说说）、[ADR 0085](0085-napcat-probe.md)（先探针再上线）
 - 用户授权：2026-10-25「浏览别人的空间内容」（接在「让她完全控制自己的 QQ 账号」之后）
