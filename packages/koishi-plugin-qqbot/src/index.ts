@@ -150,6 +150,7 @@ export interface Config {
     everydayLife: boolean;
     pursuits: boolean;
     shapeSplit: boolean;
+    shapeAsk: boolean;
     bilibiliAtName: string;
     bilibiliAtUid: number;
     reactions: boolean;
@@ -343,6 +344,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**她自己的追求**（ADR 0104，只给男朋友档）：内置两条自传里写明的——「别挂科」和「用新相机拍出自己满意的东西」（买到相机之后分五步，进度来自她真的拍过 / 修过几回）。做完一步她会开心、好几天没碰有点愧疚；时间块里一小段让她知道自己在追什么（不用主动提）；配合「会拒绝」，她正在修片时他让她先放下，她可以先弄完这一小段。作者可在数据目录 pursuits.json 里暂停 / 放下 / 加自己的。默认关。'),
         shapeSplit: Schema.boolean().default(DEFAULTS.shapeSplit)
             .description('**分成几条**（ADR 0096，要「形状控制」开着）：形状控制抽出的条数（1 条约 55%、2 条约 28%、3 条约 17%）本来只是上限，真模型多半只写一行——线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思（先一条反应，再补一句想法、细节或一个小问题），不是把一句话硬断开。默认关'),
+        shapeAsk: Schema.boolean().default(DEFAULTS.shapeAsk)
+            .description('**被问问题时答完再接着说**（ADR 0149，要「形状控制」开着）：他问了她一个直接的问题的轮次，不再加“顺着他说：应一声、附和”那一句（和“先直接回答”是反的），条数按真人被问问题时的分布抽（真人 52% 一条、平均 2.0 条；她线上 86% 一条、平均 1.19 条），每条多长不动。默认关'),
         bilibiliAtName: Schema.string().default(DEFAULTS.bilibiliAtName)
             .description('**要 @ 的人的 B 站昵称**（ADR 0089）：评论最前面会写 @昵称；不含 @ 和换行'),
         bilibiliAtUid: Schema.number().default(DEFAULTS.bilibiliAtUid)
@@ -546,6 +549,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.everydayLife !== undefined ? { everydayLife: config.everydayLife } : {}),
         ...(config.pursuits !== undefined ? { pursuits: config.pursuits } : {}),
         ...(config.shapeSplit !== undefined ? { shapeSplit: config.shapeSplit } : {}),
+        ...(config.shapeAsk !== undefined ? { shapeAsk: config.shapeAsk } : {}),
         ...(config.bilibiliAtName !== undefined ? { bilibiliAtName: config.bilibiliAtName } : {}),
         ...(config.bilibiliAtUid !== undefined ? { bilibiliAtUid: config.bilibiliAtUid } : {}),
         ...(config.reactions !== undefined ? { reactions: config.reactions } : {}),

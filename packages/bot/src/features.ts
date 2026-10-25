@@ -14,6 +14,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'shapeAgenda', label: '带自己的事', group: '说话', adr: '0094' },
     { key: 'shapeFiller', label: '废话轮次', group: '说话', adr: '0095' },
     { key: 'shapeSplit', label: '拆成几条', group: '说话', adr: '0096' },
+    { key: 'shapeAsk', label: '被问问题时答完再接着说', group: '说话', adr: '0149' },
     { key: 'shapeFeel', label: '情绪轮（先说自己的小情绪）', group: '说话', adr: '0099' },
     { key: 'shortReplies', label: '说话更短', group: '说话' },
     { key: 'rhythm', label: '回复节奏（看想 / 打字时间）', group: '说话', adr: '0075' },

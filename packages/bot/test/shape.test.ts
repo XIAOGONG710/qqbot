@@ -431,3 +431,39 @@ describe('情绪轮的出口：不拿“不想活”开玩笑（ADR 0099）', ()
         assert.equal(push.length, 1, '不马上让步的轮次也查');
     });
 });
+
+describe('被问直接问题时答完再接着说（shapeAsk，ADR 0149）', () => {
+    const ASK = '[这一轮你想：先直接回答他刚问的，不另起话题]';
+    const mean = (plans: ShapePlan[]) => plans.reduce((sum, plan) => sum + plan.maxBubbles, 0) / plans.length;
+
+    test('没开：照旧；开了但意图行不是「先直接回答」：也照旧', () => {
+        const off = sample('你今天吃了什么呀', 600, { intent: ASK });
+        const other = sample('你今天吃了什么呀', 600, { intent: '[这一轮你想：回应他刚说的那件事；先对这件事本身有个反应]', ask: true });
+        const baseline = sample('你今天吃了什么呀', 600, { intent: '[这一轮你想：回应他刚说的那件事；先对这件事本身有个反应]' });
+        assert.deepEqual(other, baseline);
+        assert.ok(off.some(plan => plan.plain), '没开时仍是 70% 左右的轮次带「顺着他说」');
+    });
+
+    test('开了：被问问题的轮次不再带「应一声、附和」，条数平均从约 1.6 挪到约 1.8', () => {
+        const off = sample('你今天吃了什么呀', 900, { intent: ASK });
+        const on = sample('你今天吃了什么呀', 900, { intent: ASK, ask: true });
+        assert.ok(off.filter(plan => plan.plain).length > 400);
+        assert.equal(on.filter(plan => plan.plain).length, 0);
+        assert.ok(mean(on) - mean(off) > 0.15, `${mean(off)} → ${mean(on)}`);
+        assert.ok(Math.abs(mean(on) - 1.8) < 0.12, `${mean(on)}`);
+        assert.ok(on.filter(plan => plan.maxBubbles === 1).length / on.length < 0.46);
+    });
+
+    test('每条多长不动：同一句话抽到的字数档和没开时逐个一样（只改条数和那一句）', () => {
+        const off = sample('你今天吃了什么呀', 300, { intent: ASK });
+        const on = sample('你今天吃了什么呀', 300, { intent: ASK, ask: true });
+        assert.deepEqual(on.map(plan => plan.cap), off.map(plan => plan.cap));
+    });
+
+    test('收尾、亲近的轮次不受影响（它们的意图行本来就不是「先直接回答」）；说明里的话照旧', () => {
+        const on = planShape({ history: said(5, '你今天吃了什么呀'), intent: ASK, ask: true })!;
+        assert.ok(!describeShape(on).includes('应一声'), describeShape(on));
+        const closing = sample('晚安啦', 300, { intent: '[这一轮你想：顺着他的话收尾，只回一两句]', ask: true });
+        assert.ok(closing.every(plan => plan.maxBubbles <= 2));
+    });
+});

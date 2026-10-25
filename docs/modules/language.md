@@ -46,6 +46,7 @@
 | `shapeAgenda` | 带自己的事 | [ADR 0094](../adr/0094-her-own-agenda.md) |
 | `shapeFiller` | 废话轮次 | [ADR 0095](../adr/0095-filler-turns.md) |
 | `shapeSplit` | 拆成几条 | [ADR 0096](../adr/0096-split-and-share.md) |
+| `shapeAsk` | 被问问题时答完再接着说 | [ADR 0149](../adr/0149-answer-then-continue.md) |
 | `shapeFeel` | 情绪轮（先说自己的小情绪） | [ADR 0099](../adr/0099-too-smooth.md) |
 | `shortReplies` | 说话更短 |  |
 | `rhythm` | 回复节奏（看想 / 打字时间） | [ADR 0075](../adr/0075-reply-rhythm.md) |

@@ -36,6 +36,8 @@ const agenda = flag('--agenda');
 const filler = flag('--filler');
 // 分成几条（ADR 0096）：同时打开 shape
 const split = flag('--split');
+// 被问直接问题时答完再接着说（ADR 0149）：同时打开 shape
+const ask = flag('--ask');
 // 情绪轮（ADR 0099）：同时打开 shape
 const feel = flag('--feel');
 // 逐条事实检查（ADR 0137）：对所有场景打开，log 只查只记、fix 查到就重写；不写按场景自己的
@@ -125,7 +127,8 @@ for (const [fileIndex, file] of files.entries()) {
             speechCheck: config.speechCheck,
             herDays: config.herDays,
             candidates: candidatesOption === undefined ? config.candidates : Number(candidatesOption),
-            ...(shape || agenda || filler || feel || split ? { shape: true } : {}),
+            ...(shape || agenda || filler || feel || split || ask ? { shape: true } : {}),
+            ...(ask ? { shapeAsk: true } : {}),
             ...(agenda ? { shapeAgenda: true } : {}),
             ...(filler ? { shapeFiller: true } : {}),
             ...(feel ? { shapeFeel: true } : {}),

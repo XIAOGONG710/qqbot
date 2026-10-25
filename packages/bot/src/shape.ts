@@ -131,7 +131,15 @@ const CLOSING_WEIGHTS = [0.4, 0.4, 0.15, 0.05, 0] as const;
 /** 各种轮次的占比（调参用：模拟器的场景里可以改，线上用上面的常量）；不写的用默认 */
 export interface ShapeShares { feel?: number; filler?: number; agenda?: number; plain?: number }
 
-export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'> & { shares?: ShapeShares; agenda?: boolean; filler?: boolean; feel?: boolean; split?: boolean; agendaTopics?: readonly string[] };
+export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'> & { shares?: ShapeShares; agenda?: boolean; filler?: boolean; feel?: boolean; split?: boolean; ask?: boolean; agendaTopics?: readonly string[] };
+
+/**
+ * 他问了她一个直接的问题（意图行「先直接回答他刚问的」）。配置 shapeAsk（ADR 0149）：这样的轮次不加「顺着他说：应一声、附和」那一句（它和意图行是反的），
+ * 条数往真人那边挪。10-25 用户说「她好像不会思考，只是按程序设定回复」，量线上日志（形状开了之后 42 个这样的轮次）：她 86% 只发 1 条、整轮 ≤4 字占 26%、平均 1.19 条；
+ * 真人女生被问问题时（72 对里 23 对）52% 只发 1 条、整轮 ≤4 字 13%、平均 2.00 条——每条的长短一样（中位 5–6 字），差在答完之后她不接着说。
+ * 例：他问「嗯，怎么啦，有问题吗？」，她回「那就好」，意图行要她直接回答，形状却只给 4 个字、还写着「应一声、附和」
+ */
+const ASKED_INTENT = /先直接回答他刚问的/;
 
 const chars = (text: string) => [...text.replace(/\[[^\]]{1,6}\]/g, '#')].length;
 
@@ -146,6 +154,7 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     const closing = Boolean(context.intent && CLOSING_INTENT.test(context.intent));
     const engaged = !closing && Boolean((context.intent && SUBSTANTIVE_INTENT.test(context.intent)) || WORRIED_TEXT.test(said) || context.aboutPerson);
     const intimate = !closing && !engaged && Boolean(context.intent && INTIMATE_INTENT.test(context.intent));
+    const asked = Boolean(context.ask) && !closing && !intimate && Boolean(context.intent && ASKED_INTENT.test(context.intent));
     let weights: readonly number[] = closing ? CLOSING_WEIGHTS : engaged ? ENGAGED_WEIGHTS : intimate ? INTIMATE_WEIGHTS : his <= 3 ? WEIGHTS.tiny : his <= 10 ? WEIGHTS.base : his <= 25 ? WEIGHTS.talky : WEIGHTS.long;
     // 心情安静、身体不舒服：往短里挪一点（话少、不展开），不用到最长的两档
     if (context.low && !engaged) weights = weights.map((weight, i) => weight * [1.5, 1.3, 1, 0.5, 0.2][i]!);
@@ -181,11 +190,11 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     const bucket = BUCKETS[agenda ? Math.max(rolled, 2) : rolled]!;
     const countRoll = unit(`${key} shape count`);
     // 一轮几条：真人 1 条 51–65%、2 条 22–28%、3 条以上约 15–20%；极短的一档多半只发一条
-    const rolledBubbles = closing ? (countRoll < 0.7 ? 1 : 2) : bucket.kind === 'micro' ? (countRoll < 0.8 ? 1 : 2) : countRoll < 0.55 ? 1 : countRoll < 0.83 ? 2 : 3;
+    const rolledBubbles = closing ? (countRoll < 0.7 ? 1 : 2) : asked ? (countRoll < 0.4 ? 1 : countRoll < 0.78 ? 2 : 3) : bucket.kind === 'micro' ? (countRoll < 0.8 ? 1 : 2) : countRoll < 0.55 ? 1 : countRoll < 0.83 ? 2 : 3;
     const maxBubbles = agenda ? Math.max(2, rolledBubbles) : rolledBubbles;
     // 追问的轮次（ADR 0126）：意图行让她问一个问题，“顺着说、别用反问句”那句不加
     const asking = Boolean(context.intent && /然后问一个你真想知道的问题/.test(context.intent));
-    const plain = !agenda && !intimate && !asking && unit(`${key} shape plain`) < (context.shares?.plain ?? PLAIN_SHARE);
+    const plain = !agenda && !intimate && !asking && !asked && unit(`${key} shape plain`) < (context.shares?.plain ?? PLAIN_SHARE);
     // 要分成几条：上面抽出来的条数本来只是上限，真模型多半只写一行（重放里 85% 是 1 条，真人女生 59%）；开了 shapeSplit 就把它当成目标写进提示词
     // 带自己的事的轮次：这一次说哪一件，按轮抽（同一轮每次一样）。10-22 用 72 句真人对话测：开了带事以后 21% 的回复提到相机 / 土豆 / 作业 / 快递（没开 7%），其中相机一件就 14%，模型总挑同两件
     const topics = context.agendaTopics ?? [];

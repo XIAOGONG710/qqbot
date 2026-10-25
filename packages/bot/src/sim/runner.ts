@@ -93,6 +93,8 @@ export interface RunOptions {
     shapeFeel?: boolean;
     /** 分成几条（ADR 0096）：run.ts 的 --split 对所有场景打开，同时打开 shape */
     shapeSplit?: boolean;
+    /** 被问直接问题时答完再接着说（ADR 0149）：run.ts 的 --ask 对所有场景打开，同时打开 shape */
+    shapeAsk?: boolean;
     /** 「做题式」写法（ADR 0146 实验）：run.ts 的 --frame solve；线上没有 */
     replyFrame?: 'solve';
     /** 测试注入：设备控制的钩子（ADR 0148）；模拟器命令行不传 */
@@ -410,7 +412,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.grievance ? { grievance: true } : {}),
         ...(scenario.rhythm ? { rhythm: true } : {}),
         ...(scenario.shortReplies ? { shortReplies: true } : {}),
-        ...(scenario.shape || options.shape || scenario.shapeAgenda || options.shapeAgenda || scenario.shapeFiller || options.shapeFiller || scenario.shapeFeel || options.shapeFeel || scenario.shapeSplit || options.shapeSplit ? { shape: true } : {}),
+        ...(scenario.shape || options.shape || scenario.shapeAgenda || options.shapeAgenda || scenario.shapeFiller || options.shapeFiller || scenario.shapeFeel || options.shapeFeel || scenario.shapeSplit || options.shapeSplit || options.shapeAsk ? { shape: true } : {}),
         ...(scenario.shapeAgenda || options.shapeAgenda ? { shapeAgenda: true } : {}),
         ...(scenario.shapeFiller || options.shapeFiller ? { shapeFiller: true } : {}),
         ...(scenario.shapeFeel || options.shapeFeel ? { shapeFeel: true } : {}),
@@ -441,6 +443,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.shapeShares ? { shapeShares: scenario.shapeShares } : {}),
         ...(scenario.pursuits ? { pursuits: () => mergePursuits(scenario.pursuitsFile as Pursuit[]) } : {}),
         ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
+        ...(options.shapeAsk ? { shapeAsk: true } : {}),
         ...(options.replyFrame ? { replyFrame: options.replyFrame } : {}),
         ...(options.devices ? { devices: options.devices } : {}),
         ...(stickers ? { stickers } : {}),

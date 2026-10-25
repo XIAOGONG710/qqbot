@@ -101,6 +101,7 @@ export const DEFAULTS = {
     everydayLife: false,
     pursuits: false,
     shapeSplit: false,
+    shapeAsk: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
     reactions: false,
@@ -428,6 +429,11 @@ export interface AppConfig {
      * 线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思。默认关
      */
     shapeSplit: boolean;
+    /**
+     * 被问直接问题时答完再接着说（ADR 0149，要 shape 开着）：他问了她一个问题（意图行「先直接回答他刚问的」）的轮次，不加「顺着他说：应一声、附和」那一句（和意图行是反的），
+     * 条数按真人被问问题时的分布抽（52% 一条、平均 2.0 条；线上她 86% 一条、平均 1.19 条）。每条多长不动。默认关
+     */
+    shapeAsk: boolean;
     /** 要 @ 的人的 B 站昵称 */
     bilibiliAtName: string;
     /** 他的 B 站 uid：@ 评论（要昵称和 uid 两样）和发私信（只要 uid）都用 */
@@ -699,6 +705,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         everydayLife: bool(file, 'everydayLife', '', DEFAULTS.everydayLife),
         pursuits: bool(file, 'pursuits', '', DEFAULTS.pursuits),
         shapeSplit: bool(file, 'shapeSplit', '', DEFAULTS.shapeSplit),
+        shapeAsk: bool(file, 'shapeAsk', '', DEFAULTS.shapeAsk),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
         reactions: bool(file, 'reactions', '', DEFAULTS.reactions),
