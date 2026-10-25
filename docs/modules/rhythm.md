@@ -20,6 +20,7 @@
 - `qzone.ts`
 - `qzone-feed.ts`
 - `qzone-remote.ts`
+- `qzone-strangers.ts`
 - `account.ts`
 - `quote-reply.ts`
 - `media.ts`
@@ -47,6 +48,7 @@
 | `qzone` | 说说（模式） | [ADR 0083](../adr/0083-presence.md) |
 | `qzoneBrowse` | 自己翻空间动态（模式） | [ADR 0142](../adr/0142-qq-account-control.md) |
 | `qzonePeek` | 看好友的空间（模式） | [ADR 0143](../adr/0143-qzone-peek.md) |
+| `qzoneStrangers` | 刷陌生人的空间（学人怎么说话）（模式） | [ADR 0144](../adr/0144-qzone-strangers.md) |
 | `typingStatus` | “正在输入…” | [ADR 0077](../adr/0077-typing-status.md) |
 | `selfRecall` | 打错字撤回重发 | [ADR 0086](../adr/0086-self-recall.md) |
 | `quoteReply` | 引用回复（他连发里的问题 / 补错字） | [ADR 0136](../adr/0136-quote-reply.md) |
@@ -57,4 +59,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0063](../adr/0063-image-stickers.md)、[ADR 0075](../adr/0075-reply-rhythm.md)、[ADR 0077](../adr/0077-typing-status.md)、[ADR 0083](../adr/0083-presence.md)、[ADR 0105](../adr/0105-reply-lag-tail.md)、[ADR 0109](../adr/0109-photo-shelf.md)、[ADR 0136](../adr/0136-quote-reply.md)、[ADR 0142](../adr/0142-qq-account-control.md)、[ADR 0143](../adr/0143-qzone-peek.md)
+[ADR 0063](../adr/0063-image-stickers.md)、[ADR 0075](../adr/0075-reply-rhythm.md)、[ADR 0077](../adr/0077-typing-status.md)、[ADR 0083](../adr/0083-presence.md)、[ADR 0105](../adr/0105-reply-lag-tail.md)、[ADR 0109](../adr/0109-photo-shelf.md)、[ADR 0136](../adr/0136-quote-reply.md)、[ADR 0142](../adr/0142-qq-account-control.md)、[ADR 0143](../adr/0143-qzone-peek.md)、[ADR 0144](../adr/0144-qzone-strangers.md)

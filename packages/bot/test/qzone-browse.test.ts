@@ -137,3 +137,45 @@ describe('看好友的空间（ADR 0143）', () => {
         assert.equal(broken.selfNote(at(10, 23, 11, 30)), undefined);
     });
 });
+
+describe('刷陌生人（ADR 0144）', () => {
+    const feed = () => ({ action: 'emotion_cgi_re_feeds', items: [{ text: '今天风好大，出门五分钟就后悔了', images: 0 }, { text: '食堂的糖醋里脊居然不甜', images: 1 }] });
+
+    test('开着：摘一句进提示词，样本落 strangers.jsonl（只有正文）', async () => {
+        const dir = tmp();
+        const p = createPresence({
+            flags: { onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', qzoneStrangers: 'on' },
+            transport: { readStrangerFeed: async () => feed() },
+            schedule, likeTargets: [], dir, now: () => at(10, 23, 11, 30), log: () => undefined,
+        });
+        await p.tick();
+        const note = p.selfNote(at(10, 23, 11, 30));
+        assert.match(note ?? '', /陌生人发的/);
+        assert.match(note ?? '', /今天风好大/);
+        const samples = readFileSync(join(dir, 'strangers.jsonl'), 'utf8').trim().split(String.fromCharCode(10));
+        assert.equal(samples.length, 2);
+        assert.equal((samples[0] ?? '').includes('uin'), false);
+    });
+
+    test('试运行只写草稿；读不到只试一次', async () => {
+        const dir = tmp();
+        const p = createPresence({
+            flags: { onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', qzoneStrangers: 'dryRun' },
+            transport: { readStrangerFeed: async () => feed() },
+            schedule, likeTargets: [], dir, now: () => at(10, 23, 11, 30), log: () => undefined,
+        });
+        await p.tick();
+        assert.equal(p.selfNote(at(10, 23, 11, 30)), undefined);
+        assert.match(readFileSync(join(dir, 'drafts.md'), 'utf8'), /陌生人/);
+
+        const calls: number[] = [];
+        const broken = createPresence({
+            flags: { onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', qzoneStrangers: 'on' },
+            transport: { readStrangerFeed: async () => { calls.push(1); return undefined; } },
+            schedule, likeTargets: [], dir: tmp(), now: () => at(10, 23, 11, 30), log: () => undefined,
+        });
+        await broken.tick();
+        await broken.tick();
+        assert.equal(calls.length, 1);
+    });
+});

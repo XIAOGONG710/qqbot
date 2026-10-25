@@ -108,6 +108,7 @@ export const DEFAULTS = {
     qzoneVisibility: 'friends' as QzoneVisibility,
     qzoneBrowse: 'off' as PresenceMode,
     qzonePeek: 'off' as PresenceMode,
+    qzoneStrangers: 'off' as PresenceMode,
     qqControl: 'off' as ControlMode,
     qqAllowFriends: [] as readonly number[],
     qqAllowGroups: [] as readonly number[],
@@ -437,6 +438,8 @@ export interface AppConfig {
     qzoneBrowse?: PresenceMode;
     /** 看名单里好友的空间（ADR 0143，用她自己的登录态走 Qzone 网页接口）：10:00–22:00、每 4 小时最多一次、一次看一个人。默认关 */
     qzonePeek?: PresenceMode;
+    /** 刷平台推的陌生人说说（ADR 0144，「空友爱看」那种流）：09:00–23:00、每 3 小时最多一次；只读、只留正文样本。默认关 */
+    qzoneStrangers?: PresenceMode;
     /** 账号控制面（ADR 0142）：off 关 / read 只读盘点 / on 放行写动作。默认 off */
     qqControl?: ControlMode;
     /** 允许她动作的好友 QQ 号（写动作的允许清单；空 = 一个都不许） */
@@ -706,6 +709,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         qzoneVisibility: oneOf(file.qzoneVisibility, 'qzoneVisibility', QZONE_VISIBILITIES, DEFAULTS.qzoneVisibility),
         qzoneBrowse: oneOf(file.qzoneBrowse, 'qzoneBrowse', PRESENCE_MODES, DEFAULTS.qzoneBrowse),
         qzonePeek: oneOf(file.qzonePeek, 'qzonePeek', PRESENCE_MODES, DEFAULTS.qzonePeek),
+        qzoneStrangers: oneOf(file.qzoneStrangers, 'qzoneStrangers', PRESENCE_MODES, DEFAULTS.qzoneStrangers),
         qqControl: oneOf(file.qqControl, 'qqControl', ACCOUNT_MODES, DEFAULTS.qqControl),
         qqAllowFriends: qqList(file.qqAllowFriends, 'qqAllowFriends'),
         qqAllowGroups: qqList(file.qqAllowGroups, 'qqAllowGroups'),

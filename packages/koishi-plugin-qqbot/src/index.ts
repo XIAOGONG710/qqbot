@@ -20,6 +20,7 @@ import { FACT_CHECK_MODES, type FactCheckMode } from '../../bot/src/fact-check.t
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/presence.ts';
 import { readQzoneFeed } from '../../bot/src/qzone-feed.ts';
 import { readUserQzone, sessionFromCookies } from '../../bot/src/qzone-remote.ts';
+import { readStrangerFeed } from '../../bot/src/qzone-strangers.ts';
 import { ACCOUNT_MODES, QQ_FRIEND_GATES, type ControlMode, type FriendGate } from '../../bot/src/account.ts';
 import { assertKernelOk, isFriendRecall, isPokeAtMe, isPrivateFriendMessage, replySegment, type OneBotEvent } from '../../bot/src/onebot.ts';
 import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
@@ -159,6 +160,7 @@ export interface Config {
     qzoneVisibility: QzoneVisibility;
     qzoneBrowse: PresenceMode;
     qzonePeek: PresenceMode;
+    qzoneStrangers: PresenceMode;
     qqControl: ControlMode;
     qqFriendGate: FriendGate;
     qqAllowFriends: number[];
@@ -363,6 +365,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**自己翻空间动态**（ADR 0142）：白天醒着时每两个多小时读一页 QQ 空间动态（「空友爱看」那种混着陌生人的流），摘成一行「你刚才翻空间看到…」进她的提示词，6 小时内她可以自己提起。选「只写草稿」只存 presence/drafts.md、不进提示词。NapCat 上读空间的动作名各版本不同，读不到就只记一行、不假装看到。默认关'),
         qzonePeek: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.qzonePeek)
             .description('**看好友的空间**（ADR 0143）：用她自己的登录态（NapCat 的 get_cookies）读名单里好友的说说，10:00–22:00、每 4 小时最多一次、一次一个人；摘成一行进提示词。只对「允许动作的好友」里的人生效；读不到（不是好友 / 登录态过期 / 风控）只记一行。默认关'),
+        qzoneStrangers: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.qzoneStrangers)
+            .description('**刷陌生人的空间**（ADR 0144）：用她的登录态读平台推的陌生人说说（「空友爱看」那种流），09:00–23:00、每 3 小时最多一次；只读不互动。摘一句进提示词，样本（只有正文，没有名字和号）留在 presence/strangers.jsonl。接口名没有公开文档，读不到只记一行。默认关'),
         qqControl: Schema.union(ACCOUNT_MODES.map(mode => Schema.const(mode).description(mode === 'off' ? '关' : mode === 'read' ? '只读（盘点）' : '放行写动作'))).default(DEFAULTS.qqControl)
             .description('**账号控制面**（ADR 0142）：off 关 / read 只读（盘点好友、群、空间）/ on 放行写动作。写动作只限登记过的那批（改资料、群名片、好友申请、发消息……），并且必须过下面的允许清单和一小时 6 次的限流；踢人、禁言、删好友、群发要再开「危险动作」。每次动作留审计（只记动作和对象，不记正文）。默认关'),
         qqAllowFriends: Schema.array(Schema.number()).default([])
@@ -564,6 +568,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.qzoneVisibility !== undefined ? { qzoneVisibility: config.qzoneVisibility } : {}),
         ...(config.qzoneBrowse !== undefined ? { qzoneBrowse: config.qzoneBrowse } : {}),
         ...(config.qzonePeek !== undefined ? { qzonePeek: config.qzonePeek } : {}),
+        ...(config.qzoneStrangers !== undefined ? { qzoneStrangers: config.qzoneStrangers } : {}),
         ...(config.qqControl !== undefined ? { qqControl: config.qqControl } : {}),
         ...(config.qqAllowFriends !== undefined ? { qqAllowFriends: config.qqAllowFriends } : {}),
         ...(config.qqAllowGroups !== undefined ? { qqAllowGroups: config.qqAllowGroups } : {}),
@@ -680,6 +685,11 @@ export function apply(ctx: Context, config: Config) {
         // 读一页空间动态（ADR 0142）：动作名各版本不同，qzone-feed 会按候选逐个试；都不通返回 undefined，上层只记一行
         readQzoneFeed: async count => readQzoneFeed((action, params) => (onlineBot().internal as unknown as OneBotMediaInternal)._get(action, params), { count }),
         // 看好友的空间（ADR 0143）：先拿她这个号在 qzone.qq.com 的登录态，再按 uin 读说说；拿不到登录态返回 undefined
+        readStrangerFeed: async () => {
+            const raw = await (onlineBot().internal as unknown as OneBotMediaInternal)._get('get_cookies', { domain: 'qzone.qq.com' });
+            const session = sessionFromCookies(raw);
+            return session ? readStrangerFeed({ session }) : undefined;
+        },
         readUserQzone: async uin => {
             const raw = await (onlineBot().internal as unknown as OneBotMediaInternal)._get('get_cookies', { domain: 'qzone.qq.com' });
             const session = sessionFromCookies(raw);
