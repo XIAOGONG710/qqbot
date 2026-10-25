@@ -109,3 +109,25 @@ describe('主动：随口讲一件小事', () => {
         assert.deepEqual(untoldNews(morning, morning.at, input()), [], '小事不顺带留到睡前');
     });
 });
+
+describe('小糗事（ADR 0155）：搞笑女要有真东西可讲', () => {
+    const mishaps = EVERYDAY_EVENT_DEFS.filter(def => def.group === 'mishap');
+
+    test('十条，都是一句话的日常小出丑：不涉及身材 / 身体 / 恋爱，不加新的人；这一组她会主动讲', () => {
+        assert.equal(mishaps.length, 10);
+        for (const def of mishaps) {
+            assert.ok([...def.text].length <= 40, def.text);
+            assert.doesNotMatch(def.text, /体重|胖|瘦|身高|肚子|生理|痛经|男朋友|他|喜欢|表白/, def.text);
+            assert.ok(!def.text.includes('{person}'), '不加新的人');
+        }
+        assert.ok(SMALL_TELL_GROUPS.has('mishap'));
+    });
+
+    test('120 天里平均一周一两件（不是天天出丑）；同一天同一组最多一件', () => {
+        const ids = new Set(mishaps.map(def => def.id));
+        const per = days.map(d => endOf(d).events.filter(e => ids.has(e.id)).length);
+        const total = per.reduce((a, b) => a + b, 0);
+        assert.ok(total >= 120 / 7 * 0.7 && total <= 120 / 7 * 3, `120 天里 ${total} 件`);
+        assert.ok(per.every(n => n <= 1));
+    });
+});

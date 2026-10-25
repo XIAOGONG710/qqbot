@@ -140,6 +140,18 @@ const DEFS: Def[] = [
     { id: 'ed_cat_other_feeder', text: '碰到别的同学也在喂土豆', window: 'evening', chance: 0.04, when: 'any', requires: 'cat_seen', group: 'cat' },
     { id: 'ed_cat_waiting', text: '喊了好几声土豆没出来，猫碗放在老地方', window: 'evening', chance: 0.2, when: 'any', requires: 'cat_unseen', group: 'cat', feel: f('worry') },
 
+    // ───── 小糗事（ADR 0155）：搞笑女的好笑要有真东西可讲；都是日常尺度、一句话说完的小出丑，不加新的人，不涉及身材 / 身体 / 恋爱 ─────
+    { id: 'ed_mis_window', text: '打饭走错了窗口，还大声报出了隔壁窗口的菜名', window: 'afternoon', chance: 0.10, when: 'school', skipWhen: ['sick', 'home'], tiers: CLOSE, group: 'mishap', feel: f('joy') },
+    { id: 'ed_mis_cup', text: '把室友的水杯当成自己的，喝了一口才发现', window: 'evening', chance: 0.08, when: 'school', skipWhen: ['home'], tiers: CLOSE, group: 'mishap', feel: f('joy') },
+    { id: 'ed_mis_phone', text: '找手机找了十分钟，结果手机就在手上拿着', window: 'evening', chance: 0.10, when: 'any', tiers: CLOSE, group: 'mishap', feel: f('joy') },
+    { id: 'ed_mis_inside_out', text: '出门走了一路，才发现衣服穿反了', window: 'morning', chance: 0.08, when: 'school', skipWhen: ['home'], tiers: CLOSE, group: 'mishap', feel: f('joy') },
+    { id: 'ed_mis_question', text: '上课被点名站起来，才发现老师问的根本不是她以为的那个问题', window: 'afternoon', chance: 0.08, when: 'class_day', skipWhen: ['sick'], tiers: CLOSE, group: 'mishap', feel: f('joy') },
+    { id: 'ed_mis_room', text: '把下节课的教室记成了隔壁楼，白跑了十分钟', window: 'afternoon', chance: 0.10, when: 'class_day', skipWhen: ['sick'], tiers: CLOSE, group: 'mishap', feel: f('annoyed') },
+    { id: 'ed_mis_library', text: '在图书馆手机外放了表情包的声音，整排人都看过来', window: 'afternoon', chance: 0.06, when: 'school', skipWhen: ['sick', 'home'], tiers: CLOSE, group: 'mishap', feel: f('joy') },
+    { id: 'ed_mis_selfie', text: '对着手机前置摄像头练表情，被路过的人撞见了', window: 'evening', chance: 0.06, when: 'any', tiers: CLOSE, group: 'mishap', feel: f('joy') },
+    { id: 'ed_mis_cat', text: '喊了半天土豆没动静，一转身它从背后冒出来，把她吓得叫出了声', window: 'evening', chance: 0.10, when: 'any', requires: 'cat_seen', tiers: CLOSE, group: 'mishap', feel: f('joy') },
+    { id: 'ed_mis_parcel', text: '取快递报错了手机尾号，被快递站阿姨当场纠正', window: 'afternoon', chance: 0.08, when: 'any', tiers: CLOSE, group: 'mishap', feel: f('joy') },
+
     // ───── 朋友（陈佳宁在外地，苏雨桐是同专业济南人；只做互动，不加新人新事） ─────
     { id: 'ed_jn_meme', text: '{person}发来一张搞笑图，互损了几句', window: 'evening', chance: 0.14, when: 'any', person: 'chen_jianing', skipWhen: ['busy'], tiers: CLOSE, group: 'social', feel: f('joy') },
     { id: 'ed_jn_campus', text: '{person}吐槽她们学校的食堂，笑死了', window: 'evening', chance: 0.09, when: 'any', person: 'chen_jianing', skipWhen: ['busy'], tiers: CLOSE, group: 'social', feel: f('joy') },

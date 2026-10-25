@@ -256,7 +256,7 @@ function newsFoodPhoto(now: WorldNow): WorldNews[] {
 }
 
 /** 哪些小事她会主动讲（ADR 0127）：有来由、有点画面的；天气、身体、学习、家里的不单发（天气和身体本来有自己的地方说） */
-export const SMALL_TELL_GROUPS: ReadonlySet<string> = new Set(['food', 'class', 'phone', 'dorm', 'leisure', 'social', 'cat', 'shop', 'photo']);
+export const SMALL_TELL_GROUPS: ReadonlySet<string> = new Set(['food', 'class', 'phone', 'dorm', 'leisure', 'social', 'cat', 'shop', 'photo', 'mishap']);
 /** 有小事的日子里，约这么多天她会拿一件去告诉他（平均一周三四次，不是天天） */
 export const SMALL_TELL_CHANCE = 0.5;
 /** 小事发生后过多久想起来说（分钟范围） */
