@@ -19,6 +19,7 @@ import { createLog, type Log } from '../../bot/src/log.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from '../../bot/src/fact-check.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/presence.ts';
 import { readQzoneFeed } from '../../bot/src/qzone-feed.ts';
+import { ACCOUNT_MODES, QQ_FRIEND_GATES, type ControlMode, type FriendGate } from '../../bot/src/account.ts';
 import { assertKernelOk, isFriendRecall, isPokeAtMe, isPrivateFriendMessage, replySegment, type OneBotEvent } from '../../bot/src/onebot.ts';
 import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
 import { textToSegments } from '../../bot/src/qq-faces.ts';
@@ -156,7 +157,8 @@ export interface Config {
     qzone: PresenceMode;
     qzoneVisibility: QzoneVisibility;
     qzoneBrowse: PresenceMode;
-    qqControl: PresenceMode;
+    qqControl: ControlMode;
+    qqFriendGate: FriendGate;
     qqAllowFriends: number[];
     qqAllowGroups: number[];
     qqDangerous: boolean;
@@ -357,7 +359,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**说说谁能看**（ADR 0083）：仅好友（默认）；所有人可见会让陌生人看到，也可能被「空友爱看」收录并收到好友申请'),
         qzoneBrowse: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.qzoneBrowse)
             .description('**自己翻空间动态**（ADR 0142）：白天醒着时每两个多小时读一页 QQ 空间动态（「空友爱看」那种混着陌生人的流），摘成一行「你刚才翻空间看到…」进她的提示词，6 小时内她可以自己提起。选「只写草稿」只存 presence/drafts.md、不进提示词。NapCat 上读空间的动作名各版本不同，读不到就只记一行、不假装看到。默认关'),
-        qqControl: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.qqControl)
+        qqControl: Schema.union(ACCOUNT_MODES.map(mode => Schema.const(mode).description(mode === 'off' ? '关' : mode === 'read' ? '只读（盘点）' : '放行写动作'))).default(DEFAULTS.qqControl)
             .description('**账号控制面**（ADR 0142）：off 关 / read 只读（盘点好友、群、空间）/ on 放行写动作。写动作只限登记过的那批（改资料、群名片、好友申请、发消息……），并且必须过下面的允许清单和一小时 6 次的限流；踢人、禁言、删好友、群发要再开「危险动作」。每次动作留审计（只记动作和对象，不记正文）。默认关'),
         qqAllowFriends: Schema.array(Schema.number()).default([])
             .description('账号控制面允许动作的好友 QQ 号（允许清单；空 = 一个都不许）。只影响账号级动作，不影响她现在跟他聊天'),
@@ -365,6 +367,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('账号控制面允许动作的群号（同上）'),
         qqDangerous: Schema.boolean().default(DEFAULTS.qqDangerous)
             .description('危险动作闸（ADR 0142）：踢人 / 禁言 / 删好友 / 群发 / 建群 / 退群。开了也要过允许清单和限流。默认关'),
+        qqFriendGate: Schema.union(QQ_FRIEND_GATES.map(mode => Schema.const(mode).description(mode === 'off' ? '不处理' : mode === 'allow' ? '名单内自动同意，其余留给人' : '名单内同意、名单外驳回'))).default(DEFAULTS.qqFriendGate)
+            .description('**好友申请**（ADR 0142）：有人申请加她时怎么处理。要 `qqControl` 设为 on 才生效；名单是上面的「允许动作的好友」。默认关（不碰，留给你）'),
         pokeBack: Schema.boolean().default(DEFAULTS.pokeBack)
             .description('**戳回去**（ADR 0079 补）：要先开上面的「戳一戳」。算数的戳里约 40% 她也戳他一下（NapCat 的 friend_poke，要它的 packet 服务可用；不可用就只记一行日志）。默认关'),
         pokeOut: Schema.boolean().default(DEFAULTS.pokeOut)
@@ -559,6 +563,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.qqAllowFriends !== undefined ? { qqAllowFriends: config.qqAllowFriends } : {}),
         ...(config.qqAllowGroups !== undefined ? { qqAllowGroups: config.qqAllowGroups } : {}),
         ...(config.qqDangerous !== undefined ? { qqDangerous: config.qqDangerous } : {}),
+        ...(config.qqFriendGate !== undefined ? { qqFriendGate: config.qqFriendGate } : {}),
         ...(config.feedbackCommands !== undefined ? { feedbackCommands: config.feedbackCommands } : {}),
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
         ...(config.festivals !== undefined ? { festivals: config.festivals } : {}),
@@ -674,6 +679,8 @@ export function apply(ctx: Context, config: Config) {
         // NapCat 的扩展动作 set_input_status（adapter-onebot 没有定义它，走通用的 _get：retcode 不是 0 就抛错；ADR 0077）
         setInputStatus: async (userId, eventType = 1) => { assertKernelOk('set_input_status', await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_input_status', { user_id: String(userId), event_type: eventType })); },
         friendHistory: (userId, count) => onlineBot().internal.getFriendMsgHistory(String(userId), undefined, count),
+        // 账号控制面（ADR 0142）的通用调用：动作名和参数由 account.ts 的白名单决定，这里只负责发
+        callAction: async (action, params) => (onlineBot().internal as unknown as OneBotMediaInternal)._get(action, params),
     };
 
     // 听语音、看图上的字（ADR 0052）：QQ 自带的语音转文字、NapCat 的 OCR（只有 Windows）。adapter-onebot 没有 fetch_ptt_text 的方法，用它通用的 _get
@@ -728,6 +735,15 @@ export function apply(ctx: Context, config: Config) {
     ctx.on('internal/session', session => {
         const event = (session as Session & { onebot?: OneBotEvent }).onebot;
         if (session.platform === 'onebot' && event && isFriendRecall(event)) app.receiveRecall(event);
+    });
+
+    // 有人申请加她（ADR 0142，配置 qqFriendGate）：adapter-onebot 把 request/friend 发成 friend-request，flag 在 messageId
+    ctx.on('internal/session', session => {
+        if (session.type !== 'friend-request' || session.platform !== 'onebot') return;
+        const userId = Number(session.userId);
+        const flag = String(session.messageId ?? '');
+        if (!Number.isSafeInteger(userId) || userId <= 0 || !flag) return;
+        app.receiveFriendRequest({ userId, flag });
     });
 
     // QQ 号的下拉：挂在根上下文上，插件失败、重启时不卸掉（ADR 0009 试验结果第 5 条）

@@ -88,6 +88,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'unlistedFriends', label: '名单外的好友也回', group: '记忆和安全' },
     { key: 'feedbackCommands', label: '“假 / 像”反馈通道', group: '记忆和安全', adr: '0073' },
     { key: 'qqControl', label: '账号控制面（资料 / 好友 / 群）', group: '记忆和安全', adr: '0142', kind: 'mode' },
+    { key: 'qqFriendGate', label: '好友申请（名单内同意 / 名单外驳回）', group: '记忆和安全', adr: '0142', kind: 'mode' },
     // 工具
     { key: 'weeklyReport', label: '周报', group: '工具', adr: '0118' },
 ];

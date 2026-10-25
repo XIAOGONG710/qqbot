@@ -24,6 +24,7 @@
 | `unlistedFriends` | 名单外的好友也回 |  |
 | `feedbackCommands` | “假 / 像”反馈通道 | [ADR 0073](../adr/0073-feedback-channel.md) |
 | `qqControl` | 账号控制面（资料 / 好友 / 群）（模式） | [ADR 0142](../adr/0142-qq-account-control.md) |
+| `qqFriendGate` | 好友申请（名单内同意 / 名单外驳回）（模式） | [ADR 0142](../adr/0142-qq-account-control.md) |
 
 ## 看它有没有变好
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { ACCOUNT_ACTIONS, createAccount, DEFAULT_ACCOUNT_POLICY, type AccountPolicy } from '../src/account.ts';
+import { ACCOUNT_ACTIONS, createAccount, DEFAULT_ACCOUNT_POLICY, friendRequestVerdict, type AccountPolicy } from '../src/account.ts';
 
 const policy = (patch: Partial<AccountPolicy> = {}): AccountPolicy => ({ ...DEFAULT_ACCOUNT_POLICY, mode: 'on', friends: [10001], groups: [90001], ...patch });
 
@@ -91,5 +91,16 @@ describe('账号控制面的闸（ADR 0142）', () => {
         assert.equal(inventory.groups, 0);
         assert.deepEqual(inventory.unsupported, ['get_group_list']);
         assert.equal(inventory.login?.uin, 2561299676);
+    });
+});
+
+describe('好友申请怎么处理（ADR 0142）', () => {
+    test('关：不碰；名单内：同意；名单外：allow 留着、all 驳回', () => {
+        assert.equal(friendRequestVerdict('off', [10001], 10001), 'ignore');
+        assert.equal(friendRequestVerdict('allow', [10001], 10001), 'accept');
+        assert.equal(friendRequestVerdict('all', [10001], 10001), 'accept');
+        assert.equal(friendRequestVerdict('allow', [10001], 20002), 'ignore');
+        assert.equal(friendRequestVerdict('all', [10001], 20002), 'reject');
+        assert.equal(friendRequestVerdict('all', [], 20002), 'reject');
     });
 });

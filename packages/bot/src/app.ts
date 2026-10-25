@@ -8,9 +8,10 @@
 // 他发的语音、图片（ADR 0052）：入口给了 NapCat 的语音转文字、OCR（AppOptions.media）就先听一听、看一看再进聊天记录（media.ts），
 // 每人的消息按收到的顺序一条条进；读的时候不卡别人，读不出来、超时照旧「[语音]」「[图片]」。
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canGiveFeedback, cardKey, CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { createAccount, friendRequestVerdict } from './account.ts';
 import { chatCompletion, forExtraction } from './llm.ts';
 import { acquireLock } from './lock.ts';
 import type { Log } from './log.ts';
@@ -98,6 +99,8 @@ export interface Transport extends PresenceTransport {
     sendPrivateImage?(userId: number, file: string, summary: string): Promise<number>;
     /** NapCat 的 get_friend_msg_history：某人最近 count 条私聊（含小号自己发的），从旧到新。没有任何记录时 NapCat 也报错 */
     friendHistory(userId: number, count: number): Promise<HistoryMessage[]>;
+    /** 通用 OneBot 调用（账号控制面用，ADR 0142）：传什么动作就发什么，闸由 account.ts 管；没有就不开控制面 */
+    callAction?(action: string, params: Record<string, unknown>): Promise<unknown>;
 }
 
 export interface App {
@@ -109,6 +112,8 @@ export interface App {
     receivePoke(event: PokeEvent): void;
     /** 名单里的人撤回了一条消息（ADR 0082，配置 recalls）：还没回的话记成「[撤回了一条消息]」；其余的忽略 */
     receiveRecall(event: RecallEvent): void;
+    /** 有人申请加她（ADR 0142，配置 qqFriendGate）：名单内同意；名单外按档留着或驳回。不认识的申请不碰 */
+    receiveFriendRequest(input: { userId: number; flag: string; comment?: string }): void;
     /** 停下：回复器都停掉，不再写记忆，释放锁（Koishi 插件停用或重启时） */
     stop(): void;
     /** 此刻的状态（控制台「林梦瑶」页面，ADR 0010）；不含聊天内容 */
@@ -1235,6 +1240,28 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         }
     }
 
+    // 账号控制面（ADR 0142）：qqControl 开着、入口给了通用 OneBot 调用才建；每个动作都过闸并写审计
+    const accountMode = config.qqControl ?? 'off';
+    const account = accountMode !== 'off' && transport.callAction
+        ? createAccount({
+            policy: {
+                mode: accountMode,
+                friends: config.qqAllowFriends ?? [],
+                groups: config.qqAllowGroups ?? [],
+                perHour: 6,
+                dangerous: config.qqDangerous ?? false,
+            },
+            call: transport.callAction,
+            now: () => Date.now(),
+            log,
+            audit: entry => { try { appendFileSync(join(config.dataDir, 'account-audit.jsonl'), `${JSON.stringify(entry)}
+`); } catch { /* 审计写不进去不影响动作 */ } },
+        })
+        : undefined;
+    if (accountMode !== 'off' && !account) log('账号控制面：入口没给通用 OneBot 调用，控制面没有启动');
+    if ((config.qqFriendGate ?? 'off') !== 'off' && accountMode !== 'on') log('好友申请：要 qqControl 设为 on 才处理，现在没生效');
+    else if ((config.qqFriendGate ?? 'off') !== 'off') log(`好友申请：${config.qqFriendGate === 'all' ? '名单内同意、名单外驳回' : '只自动同意名单内的'}（名单 ${(config.qqAllowFriends ?? []).join('、') || '空'}）`);
+
     return {
         async connected(selfId) {
             if (stopped) return;
@@ -1348,6 +1375,18 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (chatHistory.recall(contact.qq, event.message_id, content => Boolean(detectCrisis(content)))) {
                 log(`[${contact.qq}] 他撤回了一条还没回的消息，记成「撤回了一条消息」`);
             }
+        },
+        receiveFriendRequest({ userId, flag }) {
+            const gate = config.qqFriendGate ?? 'off';
+            if (!account || gate === 'off') return;
+            const verdict = friendRequestVerdict(gate, config.qqAllowFriends ?? [], userId);
+            if (verdict === 'ignore') {
+                log(`[好友申请] ${userId} 不在名单里，留着给你处理`);
+                return;
+            }
+            account.run('set_friend_add_request', { flag, approve: verdict === 'accept' })
+                .then(() => log(`[好友申请] ${userId} ${verdict === 'accept' ? '同意' : '驳回'}`))
+                .catch(error => log(`[好友申请] ${userId} 处理失败：${error instanceof Error ? error.message : String(error)}`));
         },
         stop() {
             if (stopped) return;

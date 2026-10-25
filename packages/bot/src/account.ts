@@ -8,7 +8,8 @@
 // 这里只管「闸」和「记账」，不直接连 NapCat：call 由调用方给（机器人里走 OneBot，探针里走直连）。
 // 机器人自己收发消息的那条线**不经过**这里（那边已经有出口检查、限流、隐私开关）。
 
-export type ControlMode = 'off' | 'read' | 'on';
+export const ACCOUNT_MODES = ['off', 'read', 'on'] as const;
+export type ControlMode = (typeof ACCOUNT_MODES)[number];
 
 export interface AccountPolicy {
     /** 总闸：off 什么都不能做；read 只能看（盘点、读列表）；on 才放行写动作 */
@@ -50,14 +51,24 @@ export const ACCOUNT_ACTIONS: Readonly<Record<string, AccountActionDef>> = {
     get_group_msg_history: { tier: 'read', target: 'group', label: '读群聊天记录' },
     get_qzone_msg_list: { tier: 'read', target: 'none', label: '读空间动态' },
     get_qzone_feeds: { tier: 'read', target: 'none', label: '读空间动态（备用名）' },
+    get_group_file_list: { tier: 'read', target: 'group', label: '读群文件' },
+    get_group_honor_info: { tier: 'read', target: 'group', label: '读群荣誉' },
+    get_group_system_msg: { tier: 'read', target: 'none', label: '读群系统消息' },
+    get_group_at_all_remain: { tier: 'read', target: 'group', label: '读 @全体 剩余次数' },
+    get_friends_with_category: { tier: 'read', target: 'none', label: '读分组好友' },
+    get_cookies: { tier: 'read', target: 'none', label: '读登录态（排障用）' },
     // 改账号自己的样子
     set_self_longnick: { tier: 'profile', target: 'none', label: '改个性签名' },
     set_qq_profile: { tier: 'profile', target: 'none', label: '改昵称 / 资料' },
     set_qq_avatar: { tier: 'profile', target: 'none', label: '换头像' },
     set_group_card: { tier: 'profile', target: 'group', label: '改群名片' },
     set_group_remark: { tier: 'profile', target: 'group', label: '改群备注' },
+    set_friend_remark: { tier: 'profile', target: 'friend', label: '改好友备注' },
+    set_group_name: { tier: 'profile', target: 'group', label: '改群名' },
+    set_group_portrait: { tier: 'profile', target: 'group', label: '改群头像' },
     // 社交动作
-    set_friend_add_request: { tier: 'social', target: 'friend', label: '同意 / 拒绝好友申请' },
+    // 对象由申请事件自己带（flag），允许清单在 friendRequestVerdict 里判，不走 target 的白名单
+    set_friend_add_request: { tier: 'social', target: 'none', label: '同意 / 拒绝好友申请' },
     set_group_add_request: { tier: 'social', target: 'group', label: '同意 / 拒绝入群申请' },
     send_like: { tier: 'social', target: 'friend', label: '资料卡点赞' },
     friend_poke: { tier: 'social', target: 'friend', label: '戳一戳' },
@@ -70,6 +81,10 @@ export const ACCOUNT_ACTIONS: Readonly<Record<string, AccountActionDef>> = {
     mark_private_msg_as_read: { tier: 'social', target: 'friend', label: '标已读' },
     delete_msg: { tier: 'social', target: 'none', label: '撤回消息' },
     send_qzone_msg: { tier: 'social', target: 'none', label: '发说说' },
+    send_private_forward_msg: { tier: 'social', target: 'friend', label: '转发给好友' },
+    upload_private_file: { tier: 'social', target: 'friend', label: '发文件给好友' },
+    set_group_sign: { tier: 'social', target: 'group', label: '群签到' },
+    set_group_todo: { tier: 'social', target: 'group', label: '群待办' },
     // 危险动作（还要 policy.dangerous）
     delete_friend: { tier: 'dangerous', target: 'friend', label: '删好友' },
     set_group_kick: { tier: 'dangerous', target: 'group', label: '踢人' },
@@ -78,7 +93,14 @@ export const ACCOUNT_ACTIONS: Readonly<Record<string, AccountActionDef>> = {
     set_group_admin: { tier: 'dangerous', target: 'group', label: '设管理员' },
     set_group_leave: { tier: 'dangerous', target: 'group', label: '退群' },
     create_group: { tier: 'dangerous', target: 'none', label: '建群' },
+    delete_group_file: { tier: 'dangerous', target: 'group', label: '删群文件' },
+    set_group_special_title: { tier: 'dangerous', target: 'group', label: '设群头衔' },
+    send_group_forward_msg: { tier: 'dangerous', target: 'group', label: '群发转发' },
 };
+
+/** 好友申请怎么处理：off 不碰；allow 只自动同意名单里的，其余留给人；all 名单内同意、名单外驳回 */
+export const QQ_FRIEND_GATES = ['off', 'allow', 'all'] as const;
+export type FriendGate = (typeof QQ_FRIEND_GATES)[number];
 
 export type AccountDecision = { allowed: true; def: AccountActionDef } | { allowed: false; reason: string };
 
@@ -131,6 +153,16 @@ export function accountTarget(action: string, params: Record<string, unknown>): 
     const def = ACCOUNT_ACTIONS[action];
     if (!def || def.target === 'none') return undefined;
     return numberOrUndefined(def.target === 'friend' ? params.user_id : params.group_id);
+}
+
+/**
+ * 好友申请怎么处理（纯函数，便于测）：名单内一律同意；名单外看档——
+ * allow 留着给人处理（不驳回，免得错杀），all 直接驳回。
+ */
+export function friendRequestVerdict(gate: FriendGate, allow: readonly number[], userId: number): 'accept' | 'ignore' | 'reject' {
+    if (gate === 'off') return 'ignore';
+    if (allow.includes(userId)) return 'accept';
+    return gate === 'all' ? 'reject' : 'ignore';
 }
 
 export function createAccount(deps: AccountDeps): Account {

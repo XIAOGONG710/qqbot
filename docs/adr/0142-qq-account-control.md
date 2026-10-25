@@ -1,6 +1,6 @@
 # ADR 0142：她对 QQ 账号的控制面（默认关，按后果分档）
 
-- 状态：**已实现，未上线、未在真 QQ 上验证**（分支 `dsh/qq-control`；`qqControl` / `qzoneBrowse` 两个开关，默认 `off`）
+- 状态：**已实现并接进机器人，未上线、未在真 QQ 上验证**（分支 `dsh/qq-control`；`qqControl` / `qqFriendGate` / `qzoneBrowse` 三个开关，默认全 `off`）
 - 日期：2026-10-25
 - 关联：[ADR 0083](0083-presence.md)（她的签名、说说，「空友爱看」）、[ADR 0085](0085-napcat-probe.md)（同样用只读探针先问「这台 NapCat 有什么」）、[ADR 0079](0079-poke.md)、[ADR 0089](0089-bilibili-account.md)（B 站号的开关分层）
 - 用户授权：2026-10-25「让她完全控制自己的 QQ 账号，风险由我实名承担，最好能让她自己翻看 QQ 空间的空友爱看」。实现与测试；上线（开开关、重启）仍要用户当次点头，一次一个开关。
@@ -15,7 +15,7 @@ NapCat 给了约两百个动作：发消息只是其中一小块，账号本身�
 
 ### 1. 控制面是一个「白名单 + 分档闸」，不是把 NapCat 全部暴露给她
 
-`packages/bot/src/account.ts`：登记过的动作才可能执行，查不到的（哪怕 NapCat 有）一律拒绝。四档：
+`packages/bot/src/account.ts`：登记过的动作才可能执行，查不到的（哪怕 NapCat 有）一律拒绝。现在登记了 54 个（只读 19 / 资料 8 / 社交 17 / 危险 10）。四档：
 
 | 档 | 例 | 开 `qqControl` 的哪一档才放行 |
 | --- | --- | --- |
@@ -43,7 +43,24 @@ NapCat 给了约两百个动作：发消息只是其中一小块，账号本身�
 
 **没有做**：点赞和评论空间动态。动作名（`like_qzone_msg` / `comment_qzone_msg`）没法在这台机器上验证，而且一旦错了是公开动作；等探针在线上确认了再单独接（`social` 档，默认关）。
 
-### 3. 好友申请、群管理、资料——能力都有，开关都在
+### 3. 好友申请自动处理（`qqFriendGate`）
+
+`request/friend` 事件（adapter-onebot 发成 `friend-request`，flag 在 `session.messageId`）现在接进了 `app.receiveFriendRequest`：
+- `off`：不碰，全部留给人；
+- `allow`：名单（`qqAllowFriends`）里的申请自动同意，名单外留着；
+- `all`：名单内同意、名单外驳回。
+
+要 `qqControl: on` 才生效（`social` 档）；每条都过 allowlist 和审计，日志只写 QQ 号和处理结果。`friendRequestVerdict` 是纯函数，4 组用例覆盖三种档。
+
+### 4. 控制面在机器人里的实例与审计
+
+`startApp` 在 `qqControl !== 'off'` 且入口给了 `callAction`（插件用 `_get` 实现）时创建一个实例；审计逐行追加到 `<dataDir>/account-audit.jsonl`（时间、动作、对象、放行与否、原因，不含正文）。入口没有 `callAction` 就一行日志说明控制面没起，不影响聊天。
+
+### 5. 命令行：`scripts/qq-admin.ts`
+
+`inventory`（只读盘点）/ `actions`（列出 54 个动作和档位）/ `run <动作> --params '<json>'`。默认 `--mode read`；写动作必须显式 `--mode on --yes`，并且照样过允许清单、限流、危险闸。这是「完全控制」的操作口：登记表里有的，你都能一条命令执行，且留痕。
+
+### 6. 群管理、资料——能力都有，开关都在
 
 `set_friend_add_request` / `set_group_add_request` / `set_group_card` / `set_qq_profile` / `set_qq_avatar` / `set_group_notice` 等都登记在案，`qqControl: on` + 允许清单 + 危险闸三层过滤后才可能执行。**没有做自动同意好友申请的策略**：同意谁、拒绝谁是用户的事，先让探针盘点，再谈规则。
 
@@ -53,9 +70,9 @@ NapCat 给了约两百个动作：发消息只是其中一小块，账号本身�
 
 ## 验证
 
-- `account.test.ts` 9 项：默认关、只读档、未登记动作、允许清单、危险闸、一小时限流、审计不含正文、登记表合法性、盘点；
+- `account.test.ts` 10 项：默认关、只读档、未登记动作、允许清单、危险闸、一小时限流、审计不含正文、登记表合法性、盘点；
 - `qzone-feed.test.ts` 4 项：三种数据形状、候选逐个试、全不通返回 undefined、摘要（只留文字 / 40 字 / 去重 / 条数）；
-- `qzone-browse.test.ts` 4 项：开着读一页并进提示词、6 小时后不再提、试运行只写草稿、关着不读、睡着不读；
+- `app.test.ts` 新增 2 项（好友申请：名单内同意 / 名单外 allow 留着 / all 驳回 / gate off 不发）；`qzone-browse.test.ts` 4 项：开着读一页并进提示词、6 小时后不再提、试运行只写草稿、关着不读、睡着不读；
 - 类型检查：`packages/bot`、`packages/koishi-plugin-qqbot` 都干净；`modules.test.ts` / `features.test.ts` 覆盖新文件和新开关。
 
 ## 没做 / 要注意
