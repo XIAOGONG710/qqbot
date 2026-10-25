@@ -89,7 +89,7 @@ export class Timeline {
         const items = this.recent(now, hours, limit);
         if (!items.length) return undefined;
         const parts = items.map(e => `${whenText(new Date(e.at), now)} ${e.summary}${e.ok === false ? '（没做成）' : ''}`);
-        return `[你最近在 QQ 聊天以外做过的事（这是你自己的经历，聊天里没说过）：${parts.join('；')}。他问到才说，自然带过，别念清单；没记在这里的就是没做过，别编]`;
+        return `[你最近在 QQ 聊天以外做过的事（这是你自己的经历，聊天里没说过）：${parts.join('；')}。他问到才说，自然带过，别念清单；只说这里写了的事本身，没写的细节（内容、原因、两件事之间的联系、你的感受）别编，他追问你就说记不太清；没记在这里的就是没做过]`;
     }
 }
 

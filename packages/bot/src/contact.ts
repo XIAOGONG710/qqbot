@@ -178,6 +178,11 @@ export interface ContactPipelineOptions {
     generate?: (messages: OpenAIMessage[], log: Log, use?: AppConfig['llm']) => Promise<string>;
     /** 深思（配置 deliberate，ADR 0151）：认真问她的轮次不套字数和条数、用这份更强的模型配置（generate 的第三个参数）、提示词只留一句“先想清楚” */
     deliberate?: { llm: AppConfig['llm'] };
+    /**
+     * 连续性（ADR 0157–0163，app.ts 提供）：按这一轮他说的话，返回要放进提示词的几行——设定改动的背景、QQ 以外做过的事、
+     * 上网查到的资料、自己发现的口味、又见到的人。危机回合、只想一想的轮次不调用。出错 / 超时一律当没有，不挡回复
+     */
+    continuity?: (context: { contact: Contact; said: string; initiating: boolean; now: Date }) => Promise<string[]>;
     /** 连发合并的等待，默认 DEFAULT_SETTLE（测试用短的） */
     settle?: { quietMs: number; maxMs: number };
     /** 按卡上的作息（ADR 0007）：时间块里加一行她现在在干什么，按作息决定什么时候看到、打字多久，收尾后的附和不回。默认否；卡上没有作息时也不按 */
@@ -651,6 +656,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const stickerAllowance = options.stickers && !thinking ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
             stickersAllowed = stickerAllowance.allowed && !photoNow;
             const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
+            // 连续性（ADR 0157–0163）：设定改动的背景 / QQ 以外做过的事 / 上网查到的 / 自己发现的口味 / 又见到的人；出错当没有，不挡回复
+            const continuityLines = options.continuity && !crisisNow && !thinking
+                ? await options.continuity({ contact, said: saidNow, initiating: Boolean(initiate), now: time }).catch(error => { log(`连续性：出错，这一轮不放（${error instanceof Error ? error.message : String(error)}）`); return [] as string[]; })
+                : [];
             // 没有明确反应的轮次也抽一抽（ADR 0132）：她拿不到小黄脸以后，表情包得顶上；抽签的种子和有反应的那条路分开
             const stickerDrawn = stickersAllowed && (stickerCued(saidNow)
                 ? stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE)
@@ -783,6 +792,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(idiomNow ? [idiomNow] : []),
                         ...(memeNow ? [memeNow] : []),
                         ...(watchedNow ? [watchedNow] : []),
+                        ...continuityLines,
                         ...(interruptLine ? [interruptLine] : []),
                         // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给
                         ...(options.devices && !crisisNow && !thinking ? [options.devices.menu()] : []),

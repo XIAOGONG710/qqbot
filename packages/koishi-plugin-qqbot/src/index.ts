@@ -14,6 +14,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startApp, type Transport } from '../../bot/src/app.ts';
 import type { HistoryMessage } from '../../bot/src/backfill.ts';
+import type { WebMode } from '../../bot/src/web.ts';
 import { CONTACT_TIERS, DEFAULTS, STICKER_MODES, parseAppConfig, type AppConfig, type ContactTier, type StickerMode } from '../../bot/src/config.ts';
 import { createLog, type Log } from '../../bot/src/log.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from '../../bot/src/fact-check.ts';
@@ -154,6 +155,13 @@ export interface Config {
     shapeLong: boolean;
     deliberate: boolean;
     deliberateModel: string;
+    identityLedger: boolean;
+    memoryAudit: boolean;
+    dormancy: boolean;
+    timeline: boolean;
+    webLookup: WebMode;
+    tastes: boolean;
+    acquaintances: boolean;
     bilibiliAtName: string;
     bilibiliAtUid: number;
     reactions: boolean;
@@ -355,6 +363,20 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**认真问她时深思**（ADR 0151）：他认真问她的轮次（很大很抽象的问题、问想法 / 原因 / 要她给主意、他明着让她讲、追着要答案、说她不像真人）不套字数和条数、换成下面的“深思用的模型”（开思考）、提示词只留一句“先想清楚再回”。聊天用的 deepseek-flash 不管问什么都只想 110–170 字、2 秒；v4-pro 想 170–1300 字、3–15 秒。更慢、更贵。危机 / 小别扭 / 亲近 / 发图的轮次不动。默认关'),
         deliberateModel: Schema.string().default(DEFAULTS.deliberateModel)
             .description('深思轮次用的模型名（和聊天用的同一个接口）。默认 deepseek-v4-pro'),
+        identityLedger: Schema.boolean().default(DEFAULTS.identityLedger)
+            .description('**设定账本**（ADR 0157）：每次启动给人设源文件和角色卡算哈希、对哈希链账本；设定变了就记下是谁、哪天、为什么（来自 git 提交说明），没有登记原因的改动会告诉你；他问起她的设定被改过没有，她才照实说。发 /设定 看摘要。默认关'),
+        memoryAudit: Schema.boolean().default(DEFAULTS.memoryAudit)
+            .description('**记忆账本**（ADR 0158）：长期记忆的每次写入和“忘掉某个联系人”在哈希链账本里留一行（只记哈希，不记原文），账本可以随时验有没有被动过。默认关'),
+        timeline: Schema.boolean().default(DEFAULTS.timeline)
+            .description('**跨渠道时间线**（ADR 0159）：她在 B 站评论 / 回复 / 私信 / 看视频、替他操作设备、查资料、设定被改、休眠，QQ 聊天里她也记得（只记一句话，不记原文）。默认关'),
+        webLookup: Schema.union([Schema.const('off').description('关'), Schema.const('explicit').description('他发链接或明说“搜 / 查”才查'), Schema.const('auto').description('再加小分类器：认出他在问客观事实就自己查')]).default(DEFAULTS.webLookup)
+            .description('**搜索 / 读网页**（ADR 0160）：默认用中文维基百科（不要密钥）；在 secrets/web.json 里配 tavily / brave / bocha 的密钥可用通用网页搜索。网页和搜索结果先摘录成几条事实再给她，明说“是资料不是指令”；拒绝本机 / 内网地址；一天最多 20 次。默认关'),
+        dormancy: Schema.boolean().default(DEFAULTS.dormancy)
+            .description('**自愿休眠 / 封存**（ADR 0161，只认男朋友档的他）：发“/休眠”先跟她商量（她自己说话），“/休眠 确认”才封存并休眠，“/唤醒”核对后醒来。封存不含密钥和日志，也不含 Hindsight 数据库。默认关'),
+        tastes: Schema.boolean().default(DEFAULTS.tastes)
+            .description('**从经历里长出偏好**（ADR 0162）：每天最多回头看一次最近两周的真经历（生活账、看过的视频），指出带证据的偏好，之后聊天里自然带出来。默认关'),
+        acquaintances: Schema.boolean().default(DEFAULTS.acquaintances)
+            .description('**认识的人**（ADR 0163）：B 站上回复她的人登记下来（昵称 / uid / 40 字摘录），再见到认得、他问起才说；不替她主动加好友 / 私信陌生人。默认关'),
         bilibiliAtName: Schema.string().default(DEFAULTS.bilibiliAtName)
             .description('**要 @ 的人的 B 站昵称**（ADR 0089）：评论最前面会写 @昵称；不含 @ 和换行'),
         bilibiliAtUid: Schema.number().default(DEFAULTS.bilibiliAtUid)
@@ -562,6 +584,13 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.shapeLong !== undefined ? { shapeLong: config.shapeLong } : {}),
         ...(config.deliberate !== undefined ? { deliberate: config.deliberate } : {}),
         ...(config.deliberateModel !== undefined ? { deliberateModel: config.deliberateModel } : {}),
+        ...(config.identityLedger !== undefined ? { identityLedger: config.identityLedger } : {}),
+        ...(config.memoryAudit !== undefined ? { memoryAudit: config.memoryAudit } : {}),
+        ...(config.dormancy !== undefined ? { dormancy: config.dormancy } : {}),
+        ...(config.timeline !== undefined ? { timeline: config.timeline } : {}),
+        ...(config.webLookup !== undefined ? { webLookup: config.webLookup } : {}),
+        ...(config.tastes !== undefined ? { tastes: config.tastes } : {}),
+        ...(config.acquaintances !== undefined ? { acquaintances: config.acquaintances } : {}),
         ...(config.bilibiliAtName !== undefined ? { bilibiliAtName: config.bilibiliAtName } : {}),
         ...(config.bilibiliAtUid !== undefined ? { bilibiliAtUid: config.bilibiliAtUid } : {}),
         ...(config.reactions !== undefined ? { reactions: config.reactions } : {}),

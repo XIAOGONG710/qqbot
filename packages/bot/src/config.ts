@@ -4,6 +4,7 @@
 //   QQBOT_ONEBOT_TOKEN  NapCat OneBot 网络配置里的 token（NapCat 没设 token 时可不填）
 // Koishi 插件（ADR 0008）没有 onebot 一节（连接归 adapter-onebot），其余部分和 config.json 同形，走同一个 parseAppConfig。
 
+import { WEB_MODES, type WebMode } from './web.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { MEDIA_TIMEOUTS } from './media.ts';
@@ -105,6 +106,13 @@ export const DEFAULTS = {
     shapeLong: false,
     deliberate: false,
     deliberateModel: 'deepseek-v4-pro',
+    identityLedger: false,
+    memoryAudit: false,
+    dormancy: false,
+    timeline: false,
+    webLookup: 'off' as WebMode,
+    tastes: false,
+    acquaintances: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
     reactions: false,
@@ -449,6 +457,20 @@ export interface AppConfig {
     deliberate: boolean;
     /** 深思轮次用的模型名，默认 deepseek-v4-pro（和聊天用的同一个接口） */
     deliberateModel: string;
+    /** 设定账本（ADR 0157）：每次启动给人设源文件和角色卡算哈希、对哈希链账本、记下改动（谁、哪天、为什么——来自提交说明）；有没登记原因的改动告诉用户；他问起她的设定被改过没有才会说。/设定 看摘要。默认关 */
+    identityLedger: boolean;
+    /** 记忆账本（ADR 0158）：长期记忆的每次写入和删除在哈希链账本里留一行（只记哈希，不记原文）。默认关 */
+    memoryAudit: boolean;
+    /** 自愿休眠 / 封存（ADR 0161）：他发 /休眠 先跟她商量（她自己说话）、/休眠 确认 才封存并休眠、/唤醒 核对后醒来。只认男朋友档。默认关 */
+    dormancy: boolean;
+    /** 跨渠道时间线（ADR 0159）：B 站评论 / 回复 / 私信 / 看视频、替他操作设备、查资料、设定改动、休眠，QQ 聊天里她也记得。默认关 */
+    timeline: boolean;
+    /** 搜索 / 读网页（ADR 0160）：off / explicit（他发链接或明说“搜 / 查”）/ auto（再加小分类器认出“在问客观事实”）。默认百科，secrets/web.json 里配密钥可用通用搜索。默认 off */
+    webLookup: WebMode;
+    /** 从经历里长出偏好（ADR 0162）：每天最多回头看一次最近两周的真经历，指出带证据的偏好。默认关 */
+    tastes: boolean;
+    /** 认识的人（ADR 0163）：B 站上回复她的人登记下来，再见到认得；不替她主动加好友 / 私信陌生人。默认关 */
+    acquaintances: boolean;
     /** 要 @ 的人的 B 站昵称 */
     bilibiliAtName: string;
     /** 他的 B 站 uid：@ 评论（要昵称和 uid 两样）和发私信（只要 uid）都用 */
@@ -724,6 +746,13 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         shapeLong: bool(file, 'shapeLong', '', DEFAULTS.shapeLong),
         deliberate: bool(file, 'deliberate', '', DEFAULTS.deliberate),
         deliberateModel: deliberateModel(file.deliberateModel),
+        identityLedger: bool(file, 'identityLedger', '', DEFAULTS.identityLedger),
+        memoryAudit: bool(file, 'memoryAudit', '', DEFAULTS.memoryAudit),
+        dormancy: bool(file, 'dormancy', '', DEFAULTS.dormancy),
+        timeline: bool(file, 'timeline', '', DEFAULTS.timeline),
+        webLookup: oneOf(file.webLookup, 'webLookup', WEB_MODES, DEFAULTS.webLookup),
+        tastes: bool(file, 'tastes', '', DEFAULTS.tastes),
+        acquaintances: bool(file, 'acquaintances', '', DEFAULTS.acquaintances),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
         reactions: bool(file, 'reactions', '', DEFAULTS.reactions),

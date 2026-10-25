@@ -35,10 +35,10 @@ export const MODULES: readonly ModuleDef[] = [
         id: 'life', name: '她的日子（生活）',
         scope: '她自己的一天：作息、世界账（天气、猫、快递、作业、钱）、日常小事和小测、项目与追求、身体、心情和在读的书、闺蜜、节日、承诺和日记。',
         files: ['schedule.ts', 'world.ts', 'life-selector.ts', 'life-events.ts', 'action-queue.ts', 'actions.ts', 'projects.ts', 'pursuits.ts', 'money.ts', 'body.ts', 'needs.ts', 'her-days.ts', 'day-plan.ts',
-            'everyday.ts', 'menu.ts', 'weather.ts', 'festivals.ts', 'npc.ts', 'npc-asks.ts', 'obstacles.ts', 'diary.ts', 'biography.ts', 'bedtime.ts', 'people.ts', 'promises.ts', 'promise-state.ts', 'open-loops.ts'],
+            'everyday.ts', 'menu.ts', 'weather.ts', 'festivals.ts', 'npc.ts', 'npc-asks.ts', 'obstacles.ts', 'diary.ts', 'biography.ts', 'bedtime.ts', 'people.ts', 'promises.ts', 'promise-state.ts', 'open-loops.ts', 'tastes.ts', 'acquaintances.ts'],
         groups: ['她的日子'],
         metrics: '周报「她的日子」；consistency-cli（说的和账对不对）；sim/life-audit',
-        adrs: ['0015', '0040', '0045', '0104', '0106'],
+        adrs: ['0015', '0040', '0045', '0104', '0106', '0162', '0163'],
     },
     {
         id: 'emotion', name: '心境与安全',
@@ -59,10 +59,11 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'memory', name: '记忆与数据',
         scope: '长期记忆（Hindsight）、聊天记录、状态文件的读写和校验、归档、遗忘、隐私审计。',
-        files: ['memory/', 'history.ts', 'archive.ts', 'backfill.ts', 'state-schema.ts', 'tier-record.ts', 'json-file.ts', 'transient-io.ts', 'privacy-audit.ts', 'privacy-forget.ts'],
+        files: ['memory/', 'history.ts', 'archive.ts', 'backfill.ts', 'state-schema.ts', 'tier-record.ts', 'json-file.ts', 'transient-io.ts', 'privacy-audit.ts', 'privacy-forget.ts',
+            'ledger.ts', 'identity.ts', 'memory-audit.ts', 'timeline.ts', 'dormancy.ts'],
         groups: ['记忆和安全'],
-        metrics: '状态页「长期记忆」；ops/state-check-cli',
-        adrs: ['0012', '0017', '0043'],
+        metrics: '状态页「长期记忆」；ops/state-check-cli；ops/continuity-cli（设定账本 / 记忆账本）；聊天里发 /设定',
+        adrs: ['0012', '0017', '0043', '0157', '0158', '0159', '0161'],
     },
     {
         id: 'rhythm', name: '节奏、图片和在 QQ 上的样子',
@@ -84,10 +85,10 @@ export const MODULES: readonly ModuleDef[] = [
         id: 'platform', name: '接入、配置与运维',
         scope: 'Koishi / NapCat 接入、配置、启动与锁、心跳、日志、网络兜底、设备控制（电脑 / 手机，ADR 0148）、功能总表、周报、一致性检查、模块总表、模拟器。',
         files: ['app.ts', 'main.ts', 'contact.ts', 'config.ts', 'features.ts', 'modules.ts', 'modules-doc.ts', 'weekly-report.ts', 'consistency.ts', 'onebot.ts', 'lock.ts', 'log.ts', 'heartbeat.ts', 'runtime-info.ts', 'dns-fallback.ts', 'qr.ts', 'device-actions.ts', 'device-hub.ts', 'device-phone.ts', 'device-service.ts',
-            'sensitive.ts', 'ops/', 'sim/', 'vendor/'],
+            'sensitive.ts', 'web.ts', 'ops/', 'sim/', 'vendor/'],
         groups: ['工具'],
         metrics: '控制台「状态」页（ADR 0120）；ops/golive-check-cli；ops/heartbeat-watch-cli',
-        adrs: ['0002', '0008', '0118', '0119', '0120'],
+        adrs: ['0002', '0008', '0118', '0119', '0120', '0160'],
     },
 ];
 

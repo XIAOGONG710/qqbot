@@ -9,9 +9,18 @@
 // 每人的消息按收到的顺序一条条进；读的时候不卡别人，读不出来、超时照旧「[语音]」「[图片]」。
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { canGiveFeedback, cardKey, CONTACT_TIERS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { chatCompletion, forExtraction } from './llm.ts';
+import { Acquaintances, acquaintancesAccount } from './acquaintances.ts';
+import { Dormancy, proposeNote, wakeNote } from './dormancy.ts';
+import { Identity, realGit } from './identity.ts';
+import { auditedApi, memoryLedger, summarize as summarizeMemoryLedger } from './memory-audit.ts';
+import { experiencesFromLife, experiencesFromWatched, Tastes } from './tastes.ts';
+import { readLifeEvents } from './life-events.ts';
+import { Timeline, timelineAccount, timelineFromDevice } from './timeline.ts';
+import { readWebSecrets, WebLookup } from './web.ts';
 import { acquireLock } from './lock.ts';
 import type { Log } from './log.ts';
 import { ChatHistory, type StoredMessage } from './history.ts';
@@ -421,6 +430,94 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 起来之前她的菜单是空的、回复里的令牌只摘不用
     let deviceService: DeviceService | undefined;
     const deviceOwner = config.contacts.find(c => c.tier === 'boyfriend');
+
+    // ───────── 连续性（ADR 0157–0163）：设定账本 / 记忆账本 / 时间线 / 搜索 / 休眠 / 口味 / 认识的人 ─────────
+    // 都是默认关的开关；账本和时间线只写数据目录里的小文件。出错一律只记日志，不影响聊天
+    const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+    const clockNow = () => new Date(pipeline?.now ? pipeline.now() : Date.now());
+    /** 连上之后发给用户的运维提示（设定账本验不过、有没登记原因的改动……）：以「（」开头的纯文字，不进她的聊天记录 */
+    const ownerNotices: string[] = [];
+    const timeline = config.timeline ? new Timeline(join(config.dataDir, 'timeline.jsonl'), clockNow) : undefined;
+    const noteTimeline = (entry: Parameters<Timeline['record']>[0]): void => {
+        try { timeline?.record(entry); } catch (error) { log(`时间线：写不进去（${error instanceof Error ? error.message : String(error)}）`); }
+    };
+    const identity = config.identityLedger ? new Identity({ repoRoot, dataDir: config.dataDir, now: clockNow, log }) : undefined;
+    if (identity) {
+        try {
+            const report = identity.check();
+            if (!report.chain.ok) ownerNotices.push(`（设定账本验不过：${report.chain.reason}，从第 ${report.chain.brokenAt} 条起。账本只追加，被动过的话原文件先留着。）`);
+            if (report.unexplained.length) ownerNotices.push(`（设定有 ${report.unexplained.length} 处改动没有登记原因——文件变了，但没有对应的提交说明，或工作区里还有没提交的改动。发 /设定 看详情。）`);
+            const first = report.changes[0];
+            if (first) noteTimeline({ channel: 'identity', kind: 'change', summary: `设定变了 ${first.files.length} 个文件（${first.explained ? '有记录' : '没登记原因'}）`, ok: first.explained });
+        } catch (error) {
+            log(`设定账本：核对出错（${error instanceof Error ? error.message : String(error)}）`);
+        }
+    }
+    const memoryLedgerNow = config.memoryAudit ? memoryLedger(config.dataDir) : undefined;
+    if (memoryLedgerNow) {
+        const check = memoryLedgerNow.verify();
+        log(`记忆账本：${check.ok ? `验过了（${check.count} 条）` : `验不过：${check.reason}`}`);
+        if (!check.ok) ownerNotices.push(`（记忆账本验不过：${check.reason}，从第 ${check.brokenAt} 条起。）`);
+    }
+    // 小调用（摘录、分类、回头看）：不开思考，温度 0；测试里换成假的
+    const { reasoning_effort: _effort, ...llmExtra } = config.llm.extraBody as Record<string, unknown>;
+    const quietLlm = { ...forExtraction(config.llm), temperature: 0, extraBody: { ...llmExtra, thinking: { type: 'disabled' } } };
+    const askSmall = (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => (pipeline?.generate
+        ? pipeline.generate(messages, log)
+        : chatCompletion(quietLlm, messages, { log, purpose: 'background' }));
+    const web = config.webLookup !== 'off'
+        ? new WebLookup({
+            mode: config.webLookup, dataDir: config.dataDir, ask: askSmall, now: clockNow, log,
+            ...(readWebSecrets(join(config.dataDir, 'secrets', 'web.json')) ? { secrets: readWebSecrets(join(config.dataDir, 'secrets', 'web.json'))! } : {}),
+            onDone: e => noteTimeline({ channel: 'web', kind: e.kind, summary: e.summary, ok: e.ok }),
+        })
+        : undefined;
+    const tastes = config.tastes
+        ? new Tastes({
+            dataDir: config.dataDir, now: clockNow, log,
+            experiences: () => [
+                ...experiencesFromLife(readLifeEvents(join(config.dataDir, 'world', 'events.json'), () => undefined)),
+                ...experiencesFromWatched(loadWatched(watchedPath(config.dataDir)).entries),
+            ],
+            ask: (system, user) => (pipeline?.generate
+                ? pipeline.generate([{ role: 'system', content: system }, { role: 'user', content: user }], log)
+                : chatCompletion({ ...forExtraction(config.llm), temperature: 0 }, [{ role: 'system', content: system }, { role: 'user', content: user }], { log, purpose: 'background' })),
+            onChange: (taste, kind) => noteTimeline({ channel: 'tastes', kind, summary: `${kind === 'new' ? '发现自己' : '重新看了看自己'}${taste.stance === 'like' ? '喜欢' : '不太喜欢'}${taste.name}` }),
+        })
+        : undefined;
+    // 回头看一天最多一次（tastes.ts 里有间隔）：每小时来看一眼要不要看，启动两分钟后先看一次
+    const tastesTimer = tastes ? setInterval(() => void tastes.reflect().catch(error => log(`口味：出错（${error instanceof Error ? error.message : String(error)}）`)), 3_600_000) : undefined;
+    tastesTimer?.unref();
+    const tastesFirst = tastes ? setTimeout(() => void tastes.reflect().catch(error => log(`口味：出错（${error instanceof Error ? error.message : String(error)}）`)), 120_000) : undefined;
+    tastesFirst?.unref();
+    const acquaintances = config.acquaintances ? new Acquaintances({ dataDir: config.dataDir, now: clockNow, log }) : undefined;
+    const dormancy = config.dormancy && deviceOwner ? new Dormancy({ dataDir: config.dataDir, repoRoot, now: clockNow, gitHead: () => realGit(repoRoot).head(), log }) : undefined;
+    if (config.dormancy && !deviceOwner) log('休眠：开着，但名单里没有男朋友档的联系人，不启动');
+    if (dormancy?.isDormant()) log(`休眠：${dormancy.status()}`);
+    const decorateAccounts = (source: () => Promise<BiliAccount | undefined>): (() => Promise<BiliAccount | undefined>) => (!timeline && !acquaintances ? source : async () => {
+        const account = await source();
+        if (!account) return account;
+        const recorded = timeline ? timelineAccount(account, timeline) : account;
+        return acquaintances ? acquaintancesAccount(recorded, acquaintances) : recorded;
+    });
+    const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T | undefined> => new Promise(resolveTimeout => {
+        const timer = setTimeout(() => resolveTimeout(undefined), ms);
+        timer.unref?.();
+        promise.then(value => { clearTimeout(timer); resolveTimeout(value); }, () => { clearTimeout(timer); resolveTimeout(undefined); });
+    });
+    /** 给每个联系人流水线的一组“连续性”提示词行（ADR 0157–0163）：只给男朋友档 */
+    const continuity: ContactPipelineOptions['continuity'] | undefined = identity || timeline || web || tastes || acquaintances
+        ? async ({ contact, said, initiating, now }) => {
+            if (contact.tier !== 'boyfriend') return [];
+            const lines: string[] = [];
+            const note = contact.knowsBot ? identity?.promptLine() : undefined;
+            if (note) { lines.push(note); identity!.markTold(); }
+            const looked = web && !initiating && said.trim() ? await withTimeout(web.line(said), 25_000) : undefined;
+            if (looked) lines.push(looked);
+            for (const line of [timeline?.promptLine(now), tastes?.promptLine(), acquaintances?.promptLine(now)]) if (line) lines.push(line);
+            return lines;
+        }
+        : undefined;
     const deviceHooks: NonNullable<ContactPipelineOptions['devices']> | undefined = config.deviceControl !== 'off' && deviceOwner
         ? {
             menu: () => deviceService?.control.menu() ?? '',
@@ -435,6 +532,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             : undefined;
         void (startDevices ?? startDeviceService)({
             dataDir: config.dataDir, mode: config.deviceControl as 'dryRun' | 'on', links: config.deviceLinks, apps: config.deviceApps, log,
+            ...(timeline ? { onAudit: timelineFromDevice(timeline) } : {}),
             say: text => { transport.sendPrivateText(deviceOwner.qq, text).catch(error => log(`设备控制：提示没发出去（${error instanceof Error ? error.message : String(error)}）`)); },
             ...(describers?.screen && describers.camera ? { describe: { screen: describers.screen, camera: describers.camera } } : {}),
         }).then(service => {
@@ -447,7 +545,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const hindsight = config.memory ? new HindsightClient(config.memory.baseUrl, config.memory.timeoutMs) : undefined;
     const memory = config.memory
         ? new LongTermMemory({
-            api: hindsight!,
+            api: memoryLedgerNow ? auditedApi(hindsight!, memoryLedgerNow, { now: clockNow, log }) : hindsight!,
             dir: join(config.dataDir, 'memory'),
             bankPrefix: config.memory.bankPrefix,
             recallTimeoutMs: config.memory.recallTimeoutMs,
@@ -601,6 +699,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.shape && config.shapeAsk ? { shapeAsk: true } : {}),
             ...(config.shape && config.shapeLong ? { shapeLong: true } : {}),
             ...(config.deliberate ? { deliberate: { llm: deliberateLlm(config.llm, config.deliberateModel) } } : {}),
+            ...(continuity ? { continuity } : {}),
             contacts: config.contacts,
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；
             // 超时不重发：可能已经发出去了，再发就重复
@@ -696,6 +795,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             : undefined;
         if (config.qzone !== 'off' && !qzone) log('存在感：陌生人档和同学档的卡都读不了，不写说说');
         presence = createPresence({
+            ...(dormancy ? { paused: () => dormancy.isDormant() } : {}),
             flags: { onlineStatus: config.onlineStatus, profileLikes: config.profileLikes, signature: config.signature, qzone: qzone ? config.qzone : 'off', qzoneVisibility: config.qzoneVisibility, pokeOut: config.pokeOut },
             transport, schedule, extraFree,
             likeTargets: config.contacts.filter(c => c.tier === 'boyfriend').map(c => c.qq),
@@ -729,7 +829,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         if (!config.bilibiliAccount) return undefined;
         // 刷视频和回复评论共用一个来源：凭证只读一次、失败只记一次日志
         // 真实请求外面包一层持久熔断（ADR 0147）：碰到 B 站的风控信号就整体停，要人在本机 `npm run platform -w @qqbot/bot -- resume bilibili --acknowledge-account-risk` 才恢复；测试注入的假请求不包
-        accountSource ??= createAccountSource({ dataDir: config.dataDir, request: bilibiliRequest ?? guardRequest(realRequest, createBreaker({ dataDir: config.dataDir, platform: 'bilibili', log }), BILIBILI_RISK), now: worldNow, log });
+        accountSource ??= decorateAccounts(createAccountSource({ dataDir: config.dataDir, request: bilibiliRequest ?? guardRequest(realRequest, createBreaker({ dataDir: config.dataDir, platform: 'bilibili', log }), BILIBILI_RISK), now: worldNow, log }));
         return accountSource;
     }
 
@@ -925,7 +1025,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 // 他最近说过想伤害自己的话：普通主动消息暂停 48 小时（ADR 0068）
                 crisisPaused: now => crisisState.pausedAt(contact.qq, now),
                 // 她跟谁说过「睡了」就不主动找人了（ADR 0042）
-                asleep: now => Boolean(asleepSince(character.schedule!, bedtimes(character.schedule!, now), new Date(now))),
+                asleep: now => Boolean(dormancy?.isDormant()) || Boolean(asleepSince(character.schedule!, bedtimes(character.schedule!, now), new Date(now))),
                 // 下雨了主动找他（ADR 0050）：她那边这一刻的天气，只有开了真实天气才有
                 ...(weather && sharedWorld && worldCard ? {
                     weather: (now: number) => {
@@ -1164,6 +1264,24 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         const feedbackContact = feedback ? config.contacts.find(c => c.qq === event.user_id && canGiveFeedback(c)) : undefined;
         if (feedback && feedbackContact
             && feedback.consume(event.user_id, feedbackContact.tier, event.message, event.message_id, new Date(event.time * 1000), history.load(event.user_id))) return;
+        // 连续性命令（ADR 0157 / 0161）：「/设定」看设定账本和记忆账本的摘要；「/休眠 [原因]」「/休眠 确认」「/休眠 取消」「/唤醒」。
+        // 只认纯文字、只认男朋友档的他；命中的算处理完，不进聊天记录、不交给回复器。休眠中除了这几条，她什么都不回
+        if (deviceOwner && event.user_id === deviceOwner.qq) {
+            const plain = plainTextOf(event.message)?.trim();
+            if (plain === '/设定' && (identity || memoryLedgerNow || dormancy)) {
+                tellOwner([identity?.status(), memoryLedgerNow ? summarizeMemoryLedger(memoryLedgerNow) : undefined, dormancy?.status()].filter(Boolean).join('\n\n'));
+                return;
+            }
+            if (dormancy && plain && /^\/休眠(?:\s|$)/.test(plain)) { void handleDormancyCommand(plain.replace(/^\/休眠\s*/, '')); return; }
+            if (dormancy && plain === '/唤醒') { void wakeUp(); return; }
+        }
+        if (dormancy?.isDormant()) {
+            if (deviceOwner && event.user_id === deviceOwner.qq && Date.now() - lastDormantHint > 30 * 60_000) {
+                lastDormantHint = Date.now();
+                tellOwner('（她在休眠中，发 /唤醒 叫醒她）');
+            }
+            return;
+        }
         // 他发「/主动」（ADR 0156）：让她现在就主动找他一次，只认纯文字、只认男朋友档的他；命中的算处理完，不进聊天记录、不交给回复器。
         // 她自己发的那条走主动消息的整条链路（人设、事实、记忆）；发不了（危机暂停、他有没回的消息、主动没开）时回一句原因
         if (event.user_id === deviceOwner?.qq && plainTextOf(event.message)?.trim() === '/主动') {
@@ -1246,6 +1364,77 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         planners.get(event.user_id)?.poke();
     }
 
+    // ───────── 休眠与连续性命令的实现（ADR 0161）─────────
+    let selfIdKnown = 0;
+    let lastDormantHint = 0;
+    const tellOwner = (text: string): void => {
+        if (!deviceOwner) return;
+        transport.sendPrivateText(deviceOwner.qq, text).catch(error => log(`提示没发出去（${error instanceof Error ? error.message : String(error)}）`));
+    };
+
+    /** 「/休眠 [原因]」先商量：让她自己说话（这一条会发给他），记下她的话；「/休眠 确认」才封存并休眠；「/休眠 取消」回到醒着 */
+    async function handleDormancyCommand(argument: string): Promise<void> {
+        if (!dormancy || !deviceOwner) return;
+        try {
+            if (argument === '确认') {
+                const done = dormancy.confirm();
+                if (!done.ok) { tellOwner(`（${done.reason}）`); return; }
+                noteTimeline({ channel: 'dormancy', kind: 'sleep', summary: '进入休眠，设定和状态封存好了' });
+                log(`休眠：已封存 ${done.archive.files} 个文件（${(done.archive.bytes / 1_048_576).toFixed(1)} MB）到 ${done.archive.dir}`);
+                tellOwner(`（已封存：${done.archive.files} 个文件、${(done.archive.bytes / 1_048_576).toFixed(1)} MB，在 ${done.archive.dir}；不含密钥、日志和 Hindsight 数据库。她进入休眠，发 /唤醒 叫醒她。）`);
+                return;
+            }
+            if (argument === '取消') { tellOwner(dormancy.cancel() ? '（不休眠了，她还醒着。）' : '（没有在商量的休眠。）'); return; }
+            if (dormancy.isDormant()) { tellOwner('（她已经在休眠了。）'); return; }
+            const reason = argument.trim() || undefined;
+            dormancy.propose(reason, undefined);
+            const outcome = await responders.get(deviceOwner.qq)!.initiate({ label: '休眠前商量', note: proposeNote(reason), topic: '休眠前她想对他说什么', maxBubbles: 3, dryRun: false, commit: () => undefined });
+            if (outcome.result === 'sent') {
+                dormancy.propose(reason, outcome.parts.join('\n'));
+                tellOwner('（她回答了，上面就是她的话，已经记进封存。要继续就发「/休眠 确认」，改主意发「/休眠 取消」。）');
+            } else {
+                tellOwner(`（没能让她回答${outcome.result === 'failed' || outcome.result === 'skipped' ? `：${outcome.reason}` : ''}。你可以直接发「/休眠 确认」（她的留言会是空的），或「/休眠 取消」。）`);
+            }
+        } catch (error) {
+            log(`休眠：处理命令出错（${error instanceof Error ? error.message : String(error)}）`);
+            tellOwner('（休眠命令出错了，没有做任何改动；详情看日志。）');
+        }
+    }
+
+    /** 「/唤醒」：核对封存清单、设定账本、记忆账本，补回休眠期间漏掉的消息，她像刚睡醒一样跟他说一句 */
+    async function wakeUp(): Promise<void> {
+        if (!dormancy || !deviceOwner) return;
+        try {
+            const since = (() => { const state = dormancy.state(); return state.state === 'dormant' ? Date.parse(state.since) : Date.now(); })();
+            const woke = dormancy.wake();
+            if (!woke.ok) { tellOwner(`（${woke.reason}）`); return; }
+            const problems = [...woke.check.problems];
+            let identityLine: string | undefined;
+            if (identity) {
+                const report = identity.check();
+                if (!report.chain.ok) problems.push(`设定账本验不过（${report.chain.reason}）`);
+                identityLine = report.changes.length ? `设定有 ${report.changes[0]!.files.length} 处改动${report.unexplained.length ? '，其中有没登记原因的' : '，都有记录'}` : '设定和睡前一样';
+            }
+            if (memoryLedgerNow) { const check = memoryLedgerNow.verify(); if (!check.ok) problems.push(`记忆账本验不过（${check.reason}）`); }
+            noteTimeline({ channel: 'dormancy', kind: 'wake', summary: `醒来了，睡了 ${woke.minutes} 分钟${problems.length ? '，核对有问题' : '，核对都对得上'}`, ok: problems.length === 0 });
+            if (selfIdKnown) { await syncMissed(selfIdKnown); }
+            const missed = chatHistory.load(deviceOwner.qq).filter(m => m.role === 'user' && Date.parse(m.time) >= since).length;
+            tellOwner(`（她醒了。睡了 ${woke.minutes} 分钟；核对：${problems.length ? problems.join('；') : '封存清单、设定、记忆账本都对得上'}。休眠期间你发了 ${missed} 条。）`);
+            catchUpAll();
+            startBrowsing(); startReplies(); void watchJob();
+            for (const planner of planners.values()) planner.poke();
+            presence?.reapply();
+            const outcome = await responders.get(deviceOwner.qq)!.initiate({
+                label: '醒来', note: wakeNote(woke.minutes, problems, identityLine, missed ? `休眠期间他发了 ${missed} 条，你会接着回。` : ''),
+                topic: '她刚睡醒，想对他说什么', maxBubbles: 3, dryRun: false, commit: () => undefined,
+            });
+            if (outcome.result !== 'sent') log('休眠：醒来的那一句没发出去');
+        } catch (error) {
+            log(`休眠：醒来出错（${error instanceof Error ? error.message : String(error)}）`);
+            tellOwner('（醒来的过程出错了；详情看日志。）');
+        }
+    }
+
     async function syncMissed(selfId: number): Promise<void> {
         for (const contact of config.contacts) {
             let fetched: HistoryMessage[] = [];
@@ -1314,6 +1503,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         async connected(selfId) {
             if (stopped) return;
             connectedAt = new Date();
+            selfIdKnown = selfId;
             syncing = true;
             try {
                 await syncMissed(selfId);
@@ -1321,20 +1511,20 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 syncing = false;
                 if (!stopped) {
                     for (const message of buffered.splice(0)) onMessage(message);
-                    catchUpAll();
+                    if (!dormancy?.isDormant()) catchUpAll();
                     syncMemory();
                     startPlanners();
                     startPresence();
                     presence?.reapply();
-                    startBrowsing();
-                    startReplies();
+                    if (!dormancy?.isDormant()) { startBrowsing(); startReplies(); }
                     for (const planner of planners.values()) planner.poke();
+                    for (const notice of ownerNotices.splice(0)) tellOwner(notice);
                     syncFollowUps();
                     discoverStickers();
                     discoverPhotos();
                     discoverFoodPhotos();
                     void refreshMemeJob();
-                    void watchJob();
+                    if (!dormancy?.isDormant()) void watchJob();
                     refreshAllJokes();
                     refreshAllIdioms();
                     checkWeeklyReport();
@@ -1435,6 +1625,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             for (const planner of planners.values()) planner.stop();
             for (const responder of responders.values()) responder.stop();
             if (memoryTimer) clearInterval(memoryTimer);
+            if (tastesTimer) clearInterval(tastesTimer);
+            if (tastesFirst) clearTimeout(tastesFirst);
             if (followUpTimer) clearInterval(followUpTimer);
             presence?.stop();
             browsing?.stop();

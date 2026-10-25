@@ -40,6 +40,7 @@ describe('跨渠道时间线', () => {
         const line = timeline.promptLine(at(12))!;
         assert.match(line, /今天 08:30 在 B 站看了一条视频/);
         assert.match(line, /别编/);
+        assert.match(line, /他追问你就说记不太清/);
         assert.doesNotMatch(line, /三天前/);
     });
 

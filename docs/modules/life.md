@@ -33,11 +33,15 @@
 - `promises.ts`
 - `promise-state.ts`
 - `open-loops.ts`
+- `tastes.ts`
+- `acquaintances.ts`
 
 ## 开关
 
 | 配置 | 功能 | ADR |
 | --- | --- | --- |
+| `tastes` | 从经历里长出偏好 | [ADR 0162](../adr/0162-tastes.md) |
+| `acquaintances` | 认识的人（B 站上再见到认得） | [ADR 0163](../adr/0163-acquaintances.md) |
 | `herDays` | 每日心情、在读的书 | [ADR 0015](../adr/0015-her-own-days.md) |
 | `schedule` | 作息 | [ADR 0007](../adr/0007-schedule-and-reply-timing.md) |
 | `autonomousLife` | 没人聊天时她一件件过日子 | [ADR 0040](../adr/0040-rule-life-selector.md) |
@@ -58,4 +62,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)
+[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0162](../adr/0162-tastes.md)、[ADR 0163](../adr/0163-acquaintances.md)

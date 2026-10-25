@@ -209,6 +209,8 @@ interface PresenceFile {
 }
 
 export interface PresenceOptions {
+    /** 休眠中（ADR 0161）：这一次整个不做（在线状态、点赞、签名、说说、戳他都不动） */
+    paused?: () => boolean;
     flags: { onlineStatus: boolean; profileLikes: boolean; signature: PresenceMode; qzone: PresenceMode; qzoneVisibility: QzoneVisibility; pokeOut?: boolean };
     transport: PresenceTransport;
     schedule: Schedule;
@@ -476,7 +478,7 @@ export function createPresence(options: PresenceOptions): Presence {
     }
 
     async function tick(): Promise<void> {
-        if (busy) return;
+        if (busy || options.paused?.()) return;
         busy = true;
         try {
             const t = options.now();
