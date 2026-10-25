@@ -25,6 +25,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'relationship', label: '关系阶段（聊得多了更放得开）', group: '说话', adr: '0113' },
     { key: 'jokes', label: '小梗回头提', group: '说话', adr: '0114' },
     { key: 'idioms', label: '被他带出口头习惯（他爱说的词她偶尔顺口用）', group: '说话', adr: '0138' },
+    { key: 'tailCap', label: '句尾「吧」「呢」封顶（压回真人的水平）', group: '说话', adr: '0146' },
     { key: 'interruptions', label: '被第三方打断', group: '说话', adr: '0115' },
     { key: 'together', label: '陪玩状态', group: '说话', adr: '0111' },
     { key: 'jealousy', label: '吃醋（最轻一档）', group: '说话', adr: '0123' },

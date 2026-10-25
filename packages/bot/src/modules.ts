@@ -25,10 +25,10 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'language', name: '说话（语言）',
         scope: '她每一句话怎么说：提示词怎么拼、这一轮的意图、每条多长几条、口头禅和书面词、出口检查（助手腔 / 禁用词 / 医书词）、小梗、被打断、关系阶段、陪玩。',
-        files: ['prompt.ts', 'intent.ts', 'shape.ts', 'expression.ts', 'exit-check.ts', 'fact-check.ts', 'speech-check.ts', 'unfinished.ts', 'candidates.ts', 'humanness.ts', 'reply.ts', 'qq-faces.ts', 'context-window.ts', 'tokens.ts',
+        files: ['prompt.ts', 'intent.ts', 'shape.ts', 'expression.ts', 'exit-check.ts', 'fact-check.ts', 'speech-check.ts', 'unfinished.ts', 'candidates.ts', 'humanness.ts', 'rough-edges.ts', 'reply.ts', 'qq-faces.ts', 'context-window.ts', 'tokens.ts',
             'status-line.ts', 'time-context.ts', 'relationship.ts', 'jokes.ts', 'idioms.ts', 'memes.ts', 'watching.ts', 'texture.ts', 'bili-stickers.ts', 'interruption.ts', 'together.ts', 'jealousy.ts', 'curious.ts', 'llm.ts', 'model-guard.ts', 'st/'],
         groups: ['说话'],
-        metrics: '周报「说话的样子」「表情和语气」「她的口头禅」；consistency-cli；humanness-cli；blind-judge-cli',
+        metrics: '周报「说话的样子」「表情和语气」「她的口头禅」；consistency-cli；humanness-cli；rough-edges-cli；blind-judge-cli',
         adrs: ['0091', '0095', '0096', '0099', '0113', '0114', '0115', '0111', '0121', '0137', '0138'],
     },
     {
@@ -75,7 +75,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'bilibili', name: '外部世界：B 站',
         scope: '她的 B 站号：搜视频读字幕、私信、回复评论、话题评论、风险监控。',
-        files: ['bilibili.ts', 'bilibili-account-source.ts', 'bilibili-account.ts', 'bilibili-comment.ts', 'bilibili-login-cli.ts', 'bilibili-login.ts', 'bilibili-probe.ts', 'bilibili-replies.ts', 'bilibili-risk.ts'],
+        files: ['bilibili.ts', 'bilibili-account-source.ts', 'bilibili-account.ts', 'platform-breaker.ts', 'bilibili-comment.ts', 'bilibili-login-cli.ts', 'bilibili-login.ts', 'bilibili-probe.ts', 'bilibili-replies.ts', 'bilibili-risk.ts'],
         groups: ['B 站'],
         metrics: '日志里的 B 站风险监控；presence/drafts.md',
         adrs: ['0084', '0089', '0090', '0092'],

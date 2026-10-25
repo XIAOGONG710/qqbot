@@ -40,6 +40,10 @@ const split = flag('--split');
 const feel = flag('--feel');
 // 逐条事实检查（ADR 0137）：对所有场景打开，log 只查只记、fix 查到就重写；不写按场景自己的
 const factOption = option('--fact');
+// 实验 A（ADR 0146）：做题式写法 / 换温度 / 关思考。思考开着时 temperature 不起作用（10-25 实测：温度 0 与 1.5 同样 5/5 种不同输出），所以要调温度先 --thinking off
+const frameOption = option('--frame');
+const temperatureOption = option('--temperature');
+const thinkingOption = option('--thinking');
 const cardDir = option('--card');
 const pinExamples = option('--pin-examples');
 const tag = option('--tag');
@@ -54,6 +58,10 @@ const contextTurns = contextTurnsOption === undefined ? undefined : { turns: Num
 const parallel = parallelOption === undefined ? undefined : Number(parallelOption);
 if (factOption !== undefined && !['off', 'log', 'fix'].includes(factOption)) {
     console.error('--fact 应为 off / log / fix');
+    process.exit(2);
+}
+if ((frameOption !== undefined && frameOption !== 'solve') || (thinkingOption !== undefined && thinkingOption !== 'off') || (temperatureOption !== undefined && !(Number(temperatureOption) >= 0 && Number(temperatureOption) <= 2))) {
+    console.error('--frame 只认 solve；--thinking 只认 off；--temperature 要在 0 到 2 之间');
     process.exit(2);
 }
 if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))
@@ -71,8 +79,14 @@ const files = args.flatMap(arg => {
 });
 
 const loaded = loadConfig(repoRoot);
+const { reasoning_effort: _dropEffort, ...extraWithoutEffort } = (loaded.llm.extraBody ?? {}) as Record<string, unknown>;
 const config = {
     ...loaded,
+    llm: {
+        ...loaded.llm,
+        ...(temperatureOption !== undefined ? { temperature: Number(temperatureOption) } : {}),
+        ...(thinkingOption === 'off' ? { extraBody: { ...extraWithoutEffort, thinking: { type: 'disabled' } } } : {}),
+    },
     ...(cardDir ? { characterCard: join(resolve(process.env.INIT_CWD ?? process.cwd(), cardDir), basename(loaded.characterCard)) } : {}),
     ...(pinExamples ? { prompt: { ...loaded.prompt, pinExamples: pinExamples === 'on' } } : {}),
 };
@@ -116,6 +130,7 @@ for (const [fileIndex, file] of files.entries()) {
             ...(filler ? { shapeFiller: true } : {}),
             ...(feel ? { shapeFeel: true } : {}),
             ...(split ? { shapeSplit: true } : {}),
+            ...(frameOption === 'solve' ? { replyFrame: 'solve' as const } : {}),
             ...(factOption ? { factCheck: factOption as 'off' | 'log' | 'fix' } : {}),
             ...(diaryWorld ? { diaryWorld } : {}),
             ...(diaryWorldSchedule ? { diaryWorldSchedule } : {}),

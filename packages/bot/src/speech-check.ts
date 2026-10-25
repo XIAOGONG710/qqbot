@@ -12,8 +12,9 @@
 import type { StoredMessage } from './history.ts';
 import { EPISODE_GAP_MS } from './memory/episodes.ts';
 import type { BookProgress, ReadingBook } from './her-days.ts';
+import { hasTail, tailParticle, TAIL_PARTICLES } from './rough-edges.ts';
 
-export type SpeechKind = 'service' | 'ledger' | 'blame' | 'contrast' | 'repeat' | 'nag';
+export type SpeechKind = 'service' | 'ledger' | 'blame' | 'contrast' | 'repeat' | 'nag' | 'tail';
 
 export interface SpeechIssue {
     /** 回复里的第几行（从 0 开始，按 \n 分） */
@@ -41,6 +42,61 @@ export interface SpeechContext {
     allowGrievance?: boolean;
     /** 这句话本来就是一个固定的习惯说法（B 站私信之后叫他去看，ADR 0089）：最近说过一模一样的不算复读，不查重复（开头、原话、四字片段） */
     allowRepeat?: boolean;
+    /** 句尾语气字封顶（ADR 0146，配置 tailCap）：哪个字、她最近的气泡里以它收尾的占比不超过多少；没列的字不管；不传就不查 */
+    tailCaps?: Readonly<Record<string, number>>;
+    /** 封顶用的：她最近 TAIL_WINDOW 条文字气泡里，一共几条、各个语气字各收尾了几条 */
+    tailRecent?: { bubbles: number; counts: Readonly<Record<string, number>> };
+}
+
+/**
+ * 按字封顶（ADR 0146，实验 C 的测量，条数口径，10-05 起）：她多出来的尾巴几乎全在「吧」和「呢」上——
+ * 吧：她 5.0%（10-19 起）/ 4.9%（之前），他 2.2%，真人女生 1.6%，真人男生 0.6%；呢：她 5.0% / 4.5%，他 1.8%，女生 0.5%，男生 0%。
+ * 啊（她 6.1% / 2.9%，他 4.9%，女生 2.6%，男生 4.6%）在真人范围内，嘛 / 呀 / 啦 她反而偏少，所以不封。
+ * 封在他本人水平略放宽一点：吧 3%、呢 2.5%（窗口 80 条里最多各挂 2 次）。
+ */
+export const TAIL_CAPS: Readonly<Record<string, number>> = { 吧: 0.03, 呢: 0.025 };
+/** 看她最近多少条文字气泡来算占比（她一天大约 20 条，80 条约四天） */
+export const TAIL_WINDOW = 80;
+
+/** 去掉了会变成另一个意思或不成词的固定搭配（干嘛、网吧、好吧、行吧……）；这些里的「吧 / 嘛」不是挂上去的尾巴 */
+const TAIL_PROTECTED = /(?:干嘛|网吧|酒吧|贴吧|吧台|(?:好|行|算了|拉倒|得了|走|来|是|对|不是|别|随便|可以|成|也行|就这样|那就这样)吧)$/;
+/** 「你呢」「然后呢」这类省略问句里的「呢」是疑问本身，不能去 */
+const TAIL_ELLIPTIC = /^(?:你|我|他|她|那|这|然后|所以|那你|那他|那我)(?:们)?呢$/;
+/** 太短的（好啊、在呢、是啊）是应声，去掉就只剩一个字，不动 */
+const TAIL_MIN_CHARS = 5;
+const TAIL_FACE = /\[[^\]]{1,6}\]/g;
+const TAIL_TRAILING = /[\s。！!？?，,、～~…\.]+$/u;
+const NON_TEXT_ROW = /^\[(?:图片表情|表情包|sticker|图片|B 站私信)|^<(?:sticker|photo)|^她发了(?:个表情包|张照片)|^https?:\/\//;
+
+/** 这一行句尾那个语气字去掉之后的样子；不是该去的（没挂尾巴 / 固定搭配 / 太短）返回 undefined。标点、拖音、表情记号原样留着 */
+export function stripTailParticle(line: string): string | undefined {
+    if (!hasTail(line)) return undefined;
+    // 从尾巴往前跳过标点、拖音和表情记号，找到那个语气字的位置
+    let end = line.length;
+    for (;;) {
+        const before = end;
+        const face = /\[[^\]]{1,6}\]$/.exec(line.slice(0, end));
+        if (face) end -= face[0].length;
+        const trailing = TAIL_TRAILING.exec(line.slice(0, end));
+        if (trailing) end -= trailing[0].length;
+        if (end === before) break;
+    }
+    const at = end - 1;
+    if (at < 0 || !TAIL_PARTICLES.includes(line[at]!)) return undefined;
+    const body = line.slice(0, end).replace(TAIL_FACE, '');
+    if ([...body].length < TAIL_MIN_CHARS || TAIL_PROTECTED.test(body) || TAIL_ELLIPTIC.test(body)) return undefined;
+    return `${line.slice(0, at)}${line.slice(at + 1)}`;
+}
+
+/** 她最近 TAIL_WINDOW 条文字气泡里，一共几条、各个语气字各收尾了几条 */
+export function tailRecentOf(history: readonly StoredMessage[]): { bubbles: number; counts: Record<string, number> } {
+    const mine = history.filter(m => m.role === 'assistant' && !NON_TEXT_ROW.test(m.content.trim()) && m.content.trim()).slice(-TAIL_WINDOW);
+    const counts: Record<string, number> = {};
+    for (const m of mine) {
+        const particle = tailParticle(m.content.trim());
+        if (particle) counts[particle] = (counts[particle] ?? 0) + 1;
+    }
+    return { bubbles: mine.length, counts };
 }
 
 export type NagKind = 'sleep' | 'eat' | 'warm';
@@ -318,6 +374,26 @@ export function inspectSpeech(reply: string, context: SpeechContext, { repeatAt 
     // 整条都是原话：去不掉，带说明重写
     const whole = issues.filter(i => i.repeat === 'verbatim' && i.stripped === '');
     if (whole.length && whole.length === lines.filter(l => l.trim()).length) for (const issue of whole) delete issue.stripped;
+    // 句尾语气字按字封顶（ADR 0146）：某个字（吧 / 呢）最近以它收尾的占比已经到了真人的水平，这一轮再用它收尾的就把那个字去掉（不重写）。
+    // 已经有别的问题的行不动（去开头 / 重写之后下一轮会重新查）；从前往后数，前面的行占了名额后面的才会被去
+    if (context.tailCaps && context.tailRecent) {
+        let bubbles = context.tailRecent.bubbles;
+        const counts: Record<string, number> = { ...context.tailRecent.counts };
+        for (const [line, raw] of lines.entries()) {
+            if (!raw.trim() || NON_TEXT_ROW.test(raw.trim())) continue;
+            bubbles++;
+            const particle = tailParticle(raw.trim());
+            if (!particle) continue;
+            const cap = context.tailCaps[particle];
+            const used = counts[particle] ?? 0;
+            const stripped = cap === undefined || issues.some(i => i.line === line) ? undefined : stripTailParticle(raw);
+            if (cap !== undefined && stripped !== undefined && (used + 1) / bubbles > cap) {
+                issues.push({ line, kind: 'tail', match: particle, count: used, stripped });
+                continue;
+            }
+            counts[particle] = used + 1;
+        }
+    }
     return issues;
 }
 
@@ -397,7 +473,7 @@ function relative(actual: number, expected: number): number {
 }
 
 /** 从聊天记录取比较用的：她最近几次回复（连着的几条算一次）、对方最近几条 */
-export function speechContext(history: readonly StoredMessage[]): SpeechContext {
+export function speechContext(history: readonly StoredMessage[], options: { tailCaps?: Readonly<Record<string, number>> } = {}): SpeechContext {
     const replies: string[][] = [];
     let open = false;
     for (const message of history) {
@@ -410,7 +486,10 @@ export function speechContext(history: readonly StoredMessage[]): SpeechContext 
         }
     }
     const his = history.filter(m => m.role === 'user').slice(-HIS_MESSAGES).map(m => m.content);
-    return { recent: replies.slice(-RECENT_REPLIES), his, segment: segmentReplies(history) };
+    return {
+        recent: replies.slice(-RECENT_REPLIES), his, segment: segmentReplies(history),
+        ...(options.tailCaps ? { tailCaps: options.tailCaps, tailRecent: tailRecentOf(history) } : {}),
+    };
 }
 
 /** 日志里的说法（不带行号） */
@@ -423,12 +502,13 @@ export function describeSpeechIssue(issue: SpeechIssue): string {
         case 'repeat': return issue.repeat === 'opener' ? `开头「${issue.match}」最近用过 ${issue.count} 次`
             : issue.repeat === 'verbatim' ? `「${issue.match}」最近说过原话` : `「${issue.match}」最近说过 ${issue.count} 次`;
         case 'nag': return `又叮嘱「${issue.match}」（这段已经叮嘱过）`;
+        case 'tail': return `句尾「${issue.match}」（最近 ${TAIL_WINDOW} 条里已经有 ${issue.count} 条以它收尾，压回真人的水平）`;
     }
 }
 
-/** 去掉语气词就解决了的重复（不用重写） */
+/** 去掉语气词就解决了的重复、句尾语气字超出封顶（不用重写） */
 export function strippable(issue: { kind: string; stripped?: string }): boolean {
-    return issue.kind === 'repeat' && issue.stripped !== undefined;
+    return (issue.kind === 'repeat' || issue.kind === 'tail') && issue.stripped !== undefined;
 }
 
 /** 去掉重复的语气词开头、口头禅、原样说过的小句；只剩这些的那一行删掉，全删光了就原样留着（不因为口癖不回） */

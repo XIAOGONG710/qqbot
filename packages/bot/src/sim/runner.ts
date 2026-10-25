@@ -93,6 +93,8 @@ export interface RunOptions {
     shapeFeel?: boolean;
     /** 分成几条（ADR 0096）：run.ts 的 --split 对所有场景打开，同时打开 shape */
     shapeSplit?: boolean;
+    /** 「做题式」写法（ADR 0146 实验）：run.ts 的 --frame solve；线上没有 */
+    replyFrame?: 'solve';
     /** 逐条事实检查的档位（ADR 0137，run.ts 的 --fact）：覆盖场景自己写的；不传按场景 */
     factCheck?: 'off' | 'log' | 'fix';
     /** 日记里的世界（ADR 0026）：同学档的卡上的，run.ts 传 */
@@ -437,6 +439,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.shapeShares ? { shapeShares: scenario.shapeShares } : {}),
         ...(scenario.pursuits ? { pursuits: () => mergePursuits(scenario.pursuitsFile as Pursuit[]) } : {}),
         ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
+        ...(options.replyFrame ? { replyFrame: options.replyFrame } : {}),
         ...(stickers ? { stickers } : {}),
         ...(photos && scenario.tier === 'boyfriend' ? { photos } : {}),
         ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),

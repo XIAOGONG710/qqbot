@@ -16,6 +16,7 @@
 - `unfinished.ts`
 - `candidates.ts`
 - `humanness.ts`
+- `rough-edges.ts`
 - `reply.ts`
 - `qq-faces.ts`
 - `context-window.ts`
@@ -56,6 +57,7 @@
 | `relationship` | 关系阶段（聊得多了更放得开） | [ADR 0113](../adr/0113-relationship-stage.md) |
 | `jokes` | 小梗回头提 | [ADR 0114](../adr/0114-running-jokes.md) |
 | `idioms` | 被他带出口头习惯（他爱说的词她偶尔顺口用） | [ADR 0138](../adr/0138-idioms.md) |
+| `tailCap` | 句尾「吧」「呢」封顶（压回真人的水平） | ADR 0146 |
 | `interruptions` | 被第三方打断 | [ADR 0115](../adr/0115-interruptions.md) |
 | `together` | 陪玩状态 | [ADR 0111](../adr/0111-together.md) |
 | `jealousy` | 吃醋（最轻一档） | [ADR 0123](../adr/0123-jealousy.md) |
@@ -65,7 +67,7 @@
 
 ## 看它有没有变好
 
-周报「说话的样子」「表情和语气」「她的口头禅」；consistency-cli；humanness-cli；blind-judge-cli
+周报「说话的样子」「表情和语气」「她的口头禅」；consistency-cli；humanness-cli；rough-edges-cli；blind-judge-cli
 
 ## 最相关的 ADR
 

@@ -49,7 +49,7 @@ import { describePast, pastCue } from './biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from './people.ts';
 import { describeAppointment, mentionsMeetup, type PromiseKeeper } from './promises.ts';
 import { describeState, formatDate, herDay, partnerBackLine } from './schedule.ts';
-import { speechContext, type BookProgressContext } from './speech-check.ts';
+import { speechContext, TAIL_CAPS, type BookProgressContext } from './speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from './candidates.ts';
 import { turnCut, type Summarizer, type TurnWindow } from './context-window.ts';
 import { describeDays, describeTime } from './time-context.ts';
@@ -63,6 +63,12 @@ import { describeCloseness } from './relationship.ts';
 import { describeTogether, togetherNow } from './together.ts';
 import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from './photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from './stickers.ts';
+
+/**
+ * 「做题式」写法（ADR 0146 实验）：不是让她演自己，而是让她推断这个情境里最可能真的发出去的那几条。
+ * 只有模拟器的 --frame solve 用，线上没有这个开关；写法里不引任何她不该说的句子（提示词里引了模型会照抄）。
+ */
+export const SOLVE_FRAME_NOTE = '这一轮不要去想怎么显得像真人，也不要演。只做一件事：根据上面的一切（你是谁、此刻的状态、聊天记录、他刚说的话），推断在这个情境里你最可能真的发出去的那几条消息——最普通、最不费力、最贴着语境的那一版，不是最精彩、最周全的那一版。只输出这几条消息，每条一行';
 
 const DAY_MS = 86_400_000;
 
@@ -177,6 +183,8 @@ export interface ContactPipelineOptions {
     moody?: boolean;
     /** 出口检查里查说话的毛病（ADR 0014）；默认否 */
     speechCheck?: boolean;
+    /** 句尾语气字封顶（ADR 0146，配置 tailCap，要 speechCheck 开着）：她最近的气泡里挂尾巴的占比到了真人的水平，这一轮再挂的把那个字去掉 */
+    tailCap?: boolean;
     /** 他难过、说亲密话、收尾时一次生成几个候选、按规则挑一个（ADR 0041）；不写或 1 是不挑 */
     candidates?: number;
     /**
@@ -244,6 +252,8 @@ export interface ContactPipelineOptions {
     herNo?: boolean;
     /** 分成几条（配置 shapeSplit，要 shape 开着）：把形状里抽出的条数当目标写进提示词，不只是上限（ADR 0096） */
     shapeSplit?: boolean;
+    /** 「做题式」写法（ADR 0146 实验，只有模拟器的 --frame solve 用，线上没有这个开关）：不让她演自己，让她推断这个情境里最可能发出的那几条 */
+    replyFrame?: 'solve';
     /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
     grievance?: boolean;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
@@ -643,7 +653,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS],
                 // 她自己生活里的东西：猫、相机、在读的书、手上的爱好（DSH 诊断 1.2、ADR 0036 的四类）
                 own: [...(around?.cat ? [around.cat.name] : []), '相机', ...character.books.map(book => book.title), '追剧', '调色', '构图', '修片', '摄影区'],
-                ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq)) } : {}),
+                ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq), options.tailCap ? { tailCaps: TAIL_CAPS } : {}) } : {}),
             } : undefined;
             // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
             const low = mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) || (feelingLine !== undefined && feelsLow(feltNow));
@@ -763,6 +773,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(openerLine ? [openerLine] : []),
                         ...(innerNow ? [innerNow] : []),
                         ...(transcript ? [transcript] : []),
+                        ...(options.replyFrame === 'solve' && !initiate && !crisisNow ? [SOLVE_FRAME_NOTE] : []),
                         ...(initiate ? [initiate.note] : []),
                     ].join('\n'),
                 ],
@@ -826,7 +837,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 // 角色卡的禁用词 + 医书里的词（“肚子坠着”之类，expression.ts 的 ODD_BODY_WORDS）：出了就让她重写
                 banned: [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS],
                 userName: contact.name,
-                ...(options.speechCheck ? { speech: { ...speechContext(options.history.load(contact.qq)), ...(sulkNow ? { allowGrievance: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}) } } : {}),
+                ...(options.speechCheck ? { speech: { ...speechContext(options.history.load(contact.qq), options.tailCap ? { tailCaps: TAIL_CAPS } : {}), ...(sulkNow ? { allowGrievance: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}) } } : {}),
                 ...(reading ? { books: reading } : {}),
                 // 小黄脸（ADR 0051）：最近几次带得太密、他认真说事她只回表情
                 faces: faceContext(options.history.load(contact.qq), contact.tier),

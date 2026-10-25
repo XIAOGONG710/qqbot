@@ -89,6 +89,7 @@ export const DEFAULTS = {
     biliStickers: false,
     quoteReply: false,
     idioms: false,
+    tailCap: false,
     factCheck: 'off' as FactCheckMode,
     innerLife: false,
     herFeelings: false,
@@ -362,6 +363,12 @@ export interface AppConfig {
      * 用的时候约一半的轮次多一行“他平时爱说 X、Y，这一轮正好用得上就顺口用一个”；她最近三次回复里用过的不再给；只对男朋友档，他难过 / 危机 / 小别扭时不给。她的语气、长短、条数都不变。默认关
      */
     idioms: boolean;
+    /**
+     * 句尾「吧」「呢」封顶（ADR 0146）：她多出来的句尾语气字几乎全在这两个字上（吧 5.0% 对他的 2.2%，呢 5.0% 对他的 1.8%；啊 / 嘛 / 呀 / 啦在真人范围内，不动）。
+     * 开了以后，她最近 80 条气泡里以「吧」收尾的占比到 3%、以「呢」收尾的到 2.5% 时，这一轮再用它收尾的就把那个字去掉（不重写）；
+     * 固定搭配（干嘛 / 好吧 / 行吧 / 网吧）、省略问句（你呢）和太短的应声不动。默认关。
+     */
+    tailCap: boolean;
     /**
      * 逐条事实检查（ADR 0137）：她最容易露馅的是编——事实里只有“土豆今天没下楼”，她写“土豆一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。
      * 回复发出去之前，让模型当审稿员把回复拆成关于她自己 / 她身边世界的一条条具体说法，对照设定、这一轮的事实和聊天记录，找出“矛盾”和“事实里根本没有”的（每个回复多一次小调用，温度 0）。
@@ -666,6 +673,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         biliStickers: bool(file, 'biliStickers', '', DEFAULTS.biliStickers),
         quoteReply: bool(file, 'quoteReply', '', DEFAULTS.quoteReply),
         idioms: bool(file, 'idioms', '', DEFAULTS.idioms),
+        tailCap: bool(file, 'tailCap', '', DEFAULTS.tailCap),
         factCheck: oneOf(file.factCheck, 'factCheck', FACT_CHECK_MODES, DEFAULTS.factCheck),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),

@@ -41,6 +41,7 @@ import { qzoneComposer } from './qzone.ts';
 import { createVideoBrowsing, dmMessageId, fetchHotComments, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
 import { realRequest, type BiliAccount, type BiliRequest } from './bilibili-account.ts';
 import { createAccountSource } from './bilibili-account-source.ts';
+import { BILIBILI_RISK, createBreaker, guardRequest } from './platform-breaker.ts';
 import { commentComposer, replyComposer } from './bilibili-comment.ts';
 import { createReplyWatcher, type ReplyOptions, type ReplyWatcher } from './bilibili-replies.ts';
 import { createRiskMonitor, type RiskMonitor } from './bilibili-risk.ts';
@@ -520,6 +521,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             schedule: config.schedule,
             moody: config.moody,
             speechCheck: config.speechCheck,
+            ...(config.tailCap ? { tailCap: true } : {}),
             herDays: config.herDays,
             candidates: config.candidates,
             ...contextWindowFor(contact),
@@ -691,7 +693,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     function bilibiliAccountSource(): (() => Promise<BiliAccount | undefined>) | undefined {
         if (!config.bilibiliAccount) return undefined;
         // 刷视频和回复评论共用一个来源：凭证只读一次、失败只记一次日志
-        accountSource ??= createAccountSource({ dataDir: config.dataDir, request: bilibiliRequest ?? realRequest, now: worldNow, log });
+        // 真实请求外面包一层持久熔断（ADR 0147）：碰到 B 站的风控信号就整体停，要人在本机 `npm run platform -w @qqbot/bot -- resume bilibili --acknowledge-account-risk` 才恢复；测试注入的假请求不包
+        accountSource ??= createAccountSource({ dataDir: config.dataDir, request: bilibiliRequest ?? guardRequest(realRequest, createBreaker({ dataDir: config.dataDir, platform: 'bilibili', log }), BILIBILI_RISK), now: worldNow, log });
         return accountSource;
     }
 
@@ -1425,6 +1428,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 schedule: config.schedule,
                 moody: config.moody,
                 speechCheck: config.speechCheck,
+                ...(config.tailCap ? { tailCap: true } : {}),
                 herDays: config.herDays,
                 ...(herDaysCard ? { today: herDayStatus(herDaysCard.schedule!, herDaysCard, now,
                     herDaysCard.herWorld && sharedWorld ? sharedWorld.at(herDaysCard.herWorld, herDaysCard.schedule!, now) : undefined) } : {}),

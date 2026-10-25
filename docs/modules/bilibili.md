@@ -9,6 +9,7 @@
 - `bilibili.ts`
 - `bilibili-account-source.ts`
 - `bilibili-account.ts`
+- `platform-breaker.ts`
 - `bilibili-comment.ts`
 - `bilibili-login-cli.ts`
 - `bilibili-login.ts`
