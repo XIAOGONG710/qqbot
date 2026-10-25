@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { dispatchNetworkAlert, networkDownHelperText, networkDownText, networkUpHelperText, networkUpText, readAlertConfig, sendAlert, type AlertConfig, type AlertResult, type SocketLike } from '../src/ops/alert-qq.ts';
+import { dispatchNetworkAlert, networkDownHelperText, networkDownText, networkUpText, readAlertConfig, sendAlert, type AlertConfig, type AlertResult, type SocketLike } from '../src/ops/alert-qq.ts';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -54,37 +54,37 @@ describe('告警发到 QQ（alert-qq）', () => {
         assert.deepEqual(readAlertConfig(file('{"enabled": true, "qq": 12345, "helpers": 777}'))?.helpers, []);
     });
 
-    test('断网发给谁：先用户，再 helpers；各自独立，一个失败不影响另一个；helpers 的文字更短、不带她的聊天细节', async () => {
+    test('断网发给谁：先用户，再 helpers；各自独立，一个失败不影响另一个；恢复时只告诉用户，不打扰 helpers', async () => {
         const config: AlertConfig = { qq: 1, network: true, helpers: [2, 3] };
         const sent: { qq: number; text: string }[] = [];
         const send = async (qq: number, text: string): Promise<AlertResult> => {
             sent.push({ qq, text });
             if (qq === 2) return { ok: false, reason: '不是好友' };
-            if (qq === 3 && text.includes('恢复')) throw new Error('炸了');
             return { ok: true, messageId: 1 };
         };
         const down = await dispatchNetworkAlert(config, 'down', 12, 'api.deepseek.com', send);
         assert.deepEqual(down, [{ to: 'user', ok: true }, { to: 'helper', ok: false, reason: '不是好友' }, { to: 'helper', ok: true }]);
         assert.deepEqual(sent.map(m => m.qq), [1, 2, 3]);
         assert.equal(sent[0]!.text, networkDownText(12, 'api.deepseek.com'));
-        assert.equal(sent[1]!.text, networkDownHelperText(12, 'api.deepseek.com'));
+        assert.equal(sent[1]!.text, networkDownHelperText());
         sent.length = 0;
         const up = await dispatchNetworkAlert(config, 'up', 40, 'api.deepseek.com', send);
-        assert.deepEqual(up.map(d => [d.to, d.ok]), [['user', true], ['helper', false], ['helper', false]]);
-        assert.equal(up[2]!.reason, '炸了');
-        assert.equal(sent[2]!.text, networkUpHelperText(40));
+        assert.deepEqual(up, [{ to: 'user', ok: true }]);
+        assert.deepEqual(sent.map(m => m.qq), [1]);
+        assert.equal(sent[0]!.text, networkUpText(40));
+        const boom = await dispatchNetworkAlert({ ...config, helpers: [4] }, 'down', 5, 'h', async qq => { if (qq === 4) throw new Error('炸了'); return { ok: true, messageId: 1 }; });
+        assert.deepEqual(boom, [{ to: 'user', ok: true }, { to: 'helper', ok: false, reason: '炸了' }]);
+        sent.length = 0;
         assert.deepEqual(await dispatchNetworkAlert({ ...config, network: false }, 'down', 12, 'h', send), [], '没开外网提醒什么都不发');
-        assert.equal(sent.length, 3);
+        assert.equal(sent.length, 0);
     });
 
-    test('给 helpers 的文字：简短、一眼看得出是运维提醒、说清楚该看什么；不夸大、不写她的聊天', () => {
-        const down = networkDownHelperText(12, 'api.deepseek.com');
-        const up = networkUpHelperText(40);
-        for (const text of [down, up]) { assert.match(text, /^【运维提醒】/); assert.ok([...text].length <= 80, text); }
-        assert.match(down, /12 分钟连不上外网（解析不了 api\.deepseek\.com）/);
-        assert.match(down, /宿主机或虚拟机网络/);
-        assert.match(up, /不用再看了/);
-        assert.doesNotMatch(down + up, /主动消息|男朋友|聊天/);
+    test('给 helpers 的话：她自己的口吻、只说断网、很短；不是「【运维提醒】」，不求什么，不带聊天细节', () => {
+        const text = networkDownHelperText();
+        assert.match(text, /^鸽鸽，/);
+        assert.match(text, /断网了/);
+        assert.doesNotMatch(text, /运维提醒|麻烦|帮忙|主动消息|男朋友|聊天|api\./);
+        assert.ok([...text].length <= 30, text);
     });
 
     test('发一条：连上就发 send_private_msg，只发文字、带 token、等回执、发完断开', async () => {

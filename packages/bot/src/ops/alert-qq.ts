@@ -106,14 +106,13 @@ export function networkUpText(minutes: number): string {
     return `${OPS_NOTICE_PREFIX}外网恢复了（断了大约 ${minutes} 分钟），她又能回话了。`;
 }
 
-/** 给能动虚拟机的人的简短一条：只说事实和该看哪（ADR 0165）；不带她的聊天细节 */
-export function networkDownHelperText(minutes: number, host: string): string {
-    return `${OPS_NOTICE_PREFIX}虚拟机 ${minutes} 分钟连不上外网（解析不了 ${host}），梦瑶回不了话。NapCat 还在跑，多半是宿主机或虚拟机网络，麻烦看下。`;
-}
-
-/** 恢复时给他的一条：让他知道不用再看了 */
-export function networkUpHelperText(minutes: number): string {
-    return `${OPS_NOTICE_PREFIX}外网恢复了（断了大约 ${minutes} 分钟），不用再看了。`;
+/**
+ * 给能动虚拟机的人（鸽鸽，网络运维，知情）的一条（ADR 0165）：用她自己的口吻，只说断网这件事，不求什么、不带细节。
+ * 断网时模型也连不上，所以这里是固定的一句，不是现写的；没有「【运维提醒】」前缀——这是她自己对他说的话，
+ * 补回漏掉的消息时会记进和他的聊天记录里，之后她知道自己说过。
+ */
+export function networkDownHelperText(): string {
+    return '鸽鸽，我这边断网了，连不上外网，现在回不了消息。';
 }
 
 export interface AlertDelivery {
@@ -124,7 +123,7 @@ export interface AlertDelivery {
 }
 
 /**
- * 外网断了 / 恢复了：先发给用户，再发给 helpers（各自独立，一个发不出去不影响另一个）。
+ * 外网断了 / 恢复了：先发给用户；断了的那一次再发给 helpers（各自独立，一个发不出去不影响另一个；恢复时不打扰 helpers）。
  * 没开外网提醒就什么都不发。send 由调用方给（守护脚本传 sendAlert，测试传假的）；永远不抛。
  */
 export async function dispatchNetworkAlert(
@@ -138,7 +137,7 @@ export async function dispatchNetworkAlert(
     const out: AlertDelivery[] = [];
     const targets: { to: AlertDelivery['to']; qq: number; text: string }[] = [
         { to: 'user', qq: config.qq, text: kind === 'down' ? networkDownText(minutes, host) : networkUpText(minutes) },
-        ...config.helpers.map(qq => ({ to: 'helper' as const, qq, text: kind === 'down' ? networkDownHelperText(minutes, host) : networkUpHelperText(minutes) })),
+        ...(kind === 'down' ? config.helpers.map(qq => ({ to: 'helper' as const, qq, text: networkDownHelperText() })) : []),
     ];
     for (const target of targets) {
         try {
