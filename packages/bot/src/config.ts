@@ -90,6 +90,9 @@ export const DEFAULTS = {
     quoteReply: false,
     idioms: false,
     tailCap: false,
+    deviceControl: 'off' as PresenceMode,
+    deviceLinks: [] as readonly string[],
+    deviceApps: [] as readonly string[],
     factCheck: 'off' as FactCheckMode,
     innerLife: false,
     herFeelings: false,
@@ -369,6 +372,17 @@ export interface AppConfig {
      * 固定搭配（干嘛 / 好吧 / 行吧 / 网吧）、省略问句（你呢）和太短的应声不动。默认关。
      */
     tailCap: boolean;
+    /**
+     * 她对他的电脑和手机的有限控制（ADR 0148）：off 关 / dryRun 只写草稿（会做什么，不执行）/ on 真做。只给男朋友档。
+     * 动作表只有通知、定时、音乐、音量、打开他登记过的网页 / 应用、让手机响（自动，有次数限制），锁屏 / 休眠（他回「批准」才执行），
+     * 看屏幕 / 摄像头（只有他发 /屏幕 /摄像头 命令才行）。电脑那头是宿主机上的 device-agent.ps1，主动来取任务，有它自己的白名单；
+     * 手机用 ntfy 推送。密钥和话题在 <数据目录>/secrets/devices.json（npm run devices -w @qqbot/bot -- init 生成）。默认关。
+     */
+    deviceControl: PresenceMode;
+    /** 他登记的网页（她只能说名字）：「名字=https://地址」，最多 8 个；电脑上的 device-agent.config.json 里也要有同名的才会打开 */
+    deviceLinks: readonly string[];
+    /** 他登记的应用名字，最多 8 个；电脑上的 device-agent.config.json 里要有同名的路径才会打开 */
+    deviceApps: readonly string[];
     /**
      * 逐条事实检查（ADR 0137）：她最容易露馅的是编——事实里只有“土豆今天没下楼”，她写“土豆一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。
      * 回复发出去之前，让模型当审稿员把回复拆成关于她自己 / 她身边世界的一条条具体说法，对照设定、这一轮的事实和聊天记录，找出“矛盾”和“事实里根本没有”的（每个回复多一次小调用，温度 0）。
@@ -674,6 +688,9 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         quoteReply: bool(file, 'quoteReply', '', DEFAULTS.quoteReply),
         idioms: bool(file, 'idioms', '', DEFAULTS.idioms),
         tailCap: bool(file, 'tailCap', '', DEFAULTS.tailCap),
+        deviceControl: oneOf(file.deviceControl, 'deviceControl', PRESENCE_MODES, DEFAULTS.deviceControl),
+        deviceLinks: deviceLinks(file.deviceLinks),
+        deviceApps: deviceApps(file.deviceApps),
         factCheck: oneOf(file.factCheck, 'factCheck', FACT_CHECK_MODES, DEFAULTS.factCheck),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
@@ -750,6 +767,22 @@ function bilibiliCommentKeywords(value: unknown): string[] {
         throw new Error('配置 bilibiliCommentKeywords 应为字符串数组（最多 10 个，每个不超过 30 个字，不含换行）');
     }
     return [...new Set((value as string[]).map(item => item.trim()).filter(Boolean))];
+}
+
+/** 登记的网页：「名字=https://地址」，最多 8 个；名字不超过 12 个字、不含换行和 = ；地址只认 https */
+function deviceLinks(value: unknown): string[] {
+    if (value === undefined) return [...DEFAULTS.deviceLinks];
+    const ok = Array.isArray(value) && value.length <= 8 && value.every(item => typeof item === 'string' && /^[^=\r\n|<>]{1,12}=https:\/\/[^\s<>|]{4,200}$/.test(item.trim()));
+    if (!ok) throw new Error('配置 deviceLinks 应为「名字=https://地址」的数组（最多 8 个，名字不超过 12 个字，地址只认 https）');
+    return [...new Set((value as string[]).map(item => item.trim()))];
+}
+
+/** 登记的应用名字：最多 8 个，不超过 12 个字，不含换行、|、<> */
+function deviceApps(value: unknown): string[] {
+    if (value === undefined) return [...DEFAULTS.deviceApps];
+    const ok = Array.isArray(value) && value.length <= 8 && value.every(item => typeof item === 'string' && /^[^=\r\n|<>]{1,12}$/.test(item.trim()));
+    if (!ok) throw new Error('配置 deviceApps 应为应用名字的数组（最多 8 个，每个不超过 12 个字）');
+    return [...new Set((value as string[]).map(item => item.trim()))];
 }
 
 function bilibiliAtUid(value: unknown): number {

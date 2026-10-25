@@ -17,6 +17,7 @@ import { CLEAR_DAYS, recentChat, type FadeStats } from './memory/fading.ts';
 import { heardSinceReply, initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from './memory/long-term.ts';
 import { buildPrompt, type ChatMessage, type OpenAIMessage, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
+import { stripDeviceTokens, type DeviceControl, type ParsedTokens } from './device-actions.ts';
 import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from './responder.ts';
 import { loadCharacterCard, type Character } from './st/card.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
@@ -254,6 +255,8 @@ export interface ContactPipelineOptions {
     shapeSplit?: boolean;
     /** 「做题式」写法（ADR 0146 实验，只有模拟器的 --frame solve 用，线上没有这个开关）：不让她演自己，让她推断这个情境里最可能发出的那几条 */
     replyFrame?: 'solve';
+    /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；菜单进提示词，回复里的 <device:…> 令牌在发送前登记并按档处理 */
+    devices?: Pick<DeviceControl, 'menu' | 'parse' | 'commit'>;
     /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
     grievance?: boolean;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
@@ -291,8 +294,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let photoNow: PhotoKind | undefined;
     /** 吃的照片是哪道菜（ADR 0128）；只有 photoNow 是 food 时有 */
     let photoDishNow: string | undefined;
+    /** 这一轮回复里摘出来的设备令牌（ADR 0148）：最后一次 clean 对应最终要发的那份；发送前由 beforeSend 登记。没开设备控制的一律只摘不用 */
+    let deviceNow: ParsedTokens | undefined;
     const clean = (reply: string) => {
-        const text = cleanUpReply(reply, names, character.regexScripts);
+        deviceNow = options.devices ? options.devices.parse(reply) : undefined;
+        const text = cleanUpReply(deviceNow ? deviceNow.reply : stripDeviceTokens(reply), names, character.regexScripts);
         const stickered = options.stickers?.clean(text, stickersAllowed) ?? stripStickerArtifacts(text);
         const cleaned = options.photos ? options.photos.clean(stickered, photoNow !== undefined) : stickered;
         if (!stickerOnlyNow) return cleaned;
@@ -762,6 +768,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(memeNow ? [memeNow] : []),
                         ...(watchedNow ? [watchedNow] : []),
                         ...(interruptLine ? [interruptLine] : []),
+                        // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给
+                        ...(options.devices && !crisisNow && !thinking ? [options.devices.menu()] : []),
                         ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
                         ...(photoNow && options.photos?.prompt(photoNow, photoDishNow) ? [options.photos.prompt(photoNow, photoDishNow)!] : []),
                         ...(intent ? [intent] : []),
@@ -804,6 +812,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return all[index]!;
         },
         clean,
+        // 设备指令（ADR 0148）：回复定下来、马上要发的那一刻才登记；被丢弃 / 重写的草稿不会操作他的设备
+        beforeSend: () => {
+            if (deviceNow && options.devices) options.devices.commit(deviceNow);
+            deviceNow = undefined;
+        },
         // 出口检查：重写时在后处理过的提示词末尾加一条说明，再按同样的方式后处理一次
         // 打错字再改口（ADR 0024）：拆好条之后、发出去之前。种子只看是谁、说了什么，不看时间：同一句话结果固定
         // （带时间时，假模型的测试里「哟，还知道回来啊」有时被打成「知到」，测试时过时不过）

@@ -139,6 +139,9 @@ export interface Config {
     quoteReply: boolean;
     idioms: boolean;
     tailCap: boolean;
+    deviceControl: PresenceMode;
+    deviceLinks: string[];
+    deviceApps: string[];
     factCheck: FactCheckMode;
     innerLife: boolean;
     herFeelings: boolean;
@@ -316,6 +319,12 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**引用回复**（ADR 0136）：QQ 里长按一条消息“回复”。她以前一次都没引用过。两种明确的时候才引：他连着发了几条、其中有个不是最后一条的问题，她回答它时按概率引用它；打错字撤回失败（超过两分钟）补“*对的词”时有时引用那条错的。他自己 654 条消息里只引用过 1 次，所以这是很少出现的事。引用发不出去就去掉引用再发一次。'),
         idioms: Schema.boolean().default(DEFAULTS.idioms)
             .description('**被他带出来的口头习惯**（ADR 0138）：处久了的两个人会互相沾说话的习惯——他爱说“笑死”，她过阵子也会顺口来一句。隔一阵让模型从他最近一个月的话里挑最多 8 个口头习惯（口头禅、句首句尾的语气词、爱用的网络说法），代码硬校验：必须是他的话里原样出现过至少 4 条、分布在至少 3 个不同日子的 1–6 个字的短语；名词 / 人名 / 数字 / 脏话 / 危机相关的词 / 卡上的禁用词 / 太泛的一律丢掉。用的时候约一半的轮次提示她他爱说的一两个词，这一轮正好用得上就顺口用一个；她最近三次回复里用过的不再给；只对男朋友档，他难过 / 危机 / 小别扭时不给。她的语气、长短、条数都不变。存在 idioms/ 目录下，导出和遗忘时跟着走。'),
+        deviceControl: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.deviceControl)
+            .description('**她对他的电脑和手机的有限控制**（ADR 0148，只给男朋友档）：只能通知、定时、音乐、音量、打开他登记过的网页 / 应用、让手机响（自动，有次数限制）；锁屏 / 休眠要他回“批准”；看屏幕 / 摄像头只有他发 /屏幕 /摄像头 才行。电脑那头是宿主机上的 device-agent.ps1（主动来取任务，有自己的白名单），手机用 ntfy 推送；令牌在 secrets/devices.json（npm run devices -w @qqbot/bot -- init）。选“只写草稿”只记会做什么、不执行。默认关'),
+        deviceLinks: Schema.array(Schema.string()).default([...DEFAULTS.deviceLinks])
+            .description('他登记的网页（她只能说名字），每行“名字=https://地址”，最多 8 个；电脑上的 device-agent.config.json 里也要有同名的才会打开'),
+        deviceApps: Schema.array(Schema.string()).default([...DEFAULTS.deviceApps])
+            .description('他登记的应用名字，最多 8 个；电脑上的 device-agent.config.json 里要有同名的路径才会打开'),
         tailCap: Schema.boolean().default(DEFAULTS.tailCap)
             .description('**句尾「吧」「呢」封顶**（ADR 0146）：她多出来的句尾语气字几乎全在这两个字上（吧 5.0% 对他的 2.2%，呢 5.0% 对他的 1.8%；啊 / 嘛 / 呀 / 啦在真人范围内，不动）。开了以后，她最近 80 条气泡里以“吧”收尾的占比到 3%、以“呢”收尾的到 2.5% 时，这一轮再用它收尾的就把那个字去掉（不重写）；固定搭配（干嘛 / 好吧 / 行吧）、省略问句（你呢）和太短的应声不动。默认关'),
         factCheck: Schema.union(FACT_CHECK_MODES.map(mode => Schema.const(mode).description(FACT_CHECK_LABELS[mode]))).default(DEFAULTS.factCheck)
@@ -526,6 +535,9 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.quoteReply !== undefined ? { quoteReply: config.quoteReply } : {}),
         ...(config.idioms !== undefined ? { idioms: config.idioms } : {}),
         ...(config.tailCap !== undefined ? { tailCap: config.tailCap } : {}),
+        ...(config.deviceControl !== undefined ? { deviceControl: config.deviceControl } : {}),
+        ...(config.deviceLinks !== undefined ? { deviceLinks: config.deviceLinks } : {}),
+        ...(config.deviceApps !== undefined ? { deviceApps: config.deviceApps } : {}),
         ...(config.factCheck !== undefined ? { factCheck: config.factCheck } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),

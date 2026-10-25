@@ -87,13 +87,14 @@ export const FEATURES: readonly FeatureDef[] = [
     // 记忆和安全
     { key: 'unlistedFriends', label: '名单外的好友也回', group: '记忆和安全' },
     { key: 'feedbackCommands', label: '“假 / 像”反馈通道', group: '记忆和安全', adr: '0073' },
+    { key: 'deviceControl', label: '她能操作他的电脑和手机（有限控制）', group: '记忆和安全', adr: '0148', kind: 'mode' },
     // 工具
     { key: 'weeklyReport', label: '周报', group: '工具', adr: '0118' },
 ];
 
 /** config 里有、但不是“功能开关”的键（配置数值、对象、字符串……）：features.test.ts 用它核对没有开关被漏掉 */
 export const NOT_SWITCHES: readonly string[] = [
-    'llm', 'prompt', 'memory', 'vision', 'bilibiliCommentKeywords', 'bilibiliAtName', 'bilibiliAtUid', 'qzoneVisibility', 'candidates', 'contextTurns', 'contextContacts', 'dataDir',
+    'llm', 'prompt', 'memory', 'vision', 'deviceLinks', 'deviceApps', 'bilibiliCommentKeywords', 'bilibiliAtName', 'bilibiliAtUid', 'qzoneVisibility', 'candidates', 'contextTurns', 'contextContacts', 'dataDir',
     // 下面几个是 config 里的联系人 / 其他结构，不在 DEFAULTS 里也无妨
 ];
 

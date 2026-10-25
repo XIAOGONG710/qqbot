@@ -5,7 +5,7 @@ import { appendFileSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { watchedFacts } from '../watching.ts';
 import type { BotConfig, Contact } from '../config.ts';
-import { createContactResponder, replySkip, type TierCard } from '../contact.ts';
+import { createContactResponder, replySkip, type ContactPipelineOptions, type TierCard } from '../contact.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../sensitive.ts';
 import { withFestivalActivities, withFestivals } from '../festivals.ts';
 import { photoAllowance, photoShelf } from '../photos.ts';
@@ -95,6 +95,8 @@ export interface RunOptions {
     shapeSplit?: boolean;
     /** 「做题式」写法（ADR 0146 实验）：run.ts 的 --frame solve；线上没有 */
     replyFrame?: 'solve';
+    /** 测试注入：设备控制的钩子（ADR 0148）；模拟器命令行不传 */
+    devices?: ContactPipelineOptions['devices'];
     /** 逐条事实检查的档位（ADR 0137，run.ts 的 --fact）：覆盖场景自己写的；不传按场景 */
     factCheck?: 'off' | 'log' | 'fix';
     /** 日记里的世界（ADR 0026）：同学档的卡上的，run.ts 传 */
@@ -440,6 +442,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.pursuits ? { pursuits: () => mergePursuits(scenario.pursuitsFile as Pursuit[]) } : {}),
         ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
         ...(options.replyFrame ? { replyFrame: options.replyFrame } : {}),
+        ...(options.devices ? { devices: options.devices } : {}),
         ...(stickers ? { stickers } : {}),
         ...(photos && scenario.tier === 'boyfriend' ? { photos } : {}),
         ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),

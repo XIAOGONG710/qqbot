@@ -11,6 +11,7 @@
     "feedback-digest": "node src/feedback-digest-cli.ts",
     "bilibili-login": "node src/bilibili-login-cli.ts",
     "platform": "node src/ops/platform-cli.ts",
+    "devices": "node src/ops/devices-cli.ts",
     "blind": "node src/sim/blind.ts",
     "typecheck": "tsc -p .",
     "audit:gate": "node src/ops/audit-gate-cli.ts",

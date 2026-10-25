@@ -24,6 +24,10 @@ import type { StickerEntry, StickerShelf } from '../src/stickers.ts';
 import { photoShelf, type PhotoSource } from '../src/photos.ts';
 import { CRISIS_FALLBACK } from '../src/exit-check.ts';
 import { CRISIS_MARK } from '../src/intent.ts';
+import { createDeviceControl } from '../src/device-actions.ts';
+import type { DeviceService, startDeviceService } from '../src/device-service.ts';
+
+type StartDevices = typeof startDeviceService;
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const SELF = 20000;
@@ -51,7 +55,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, proactiveInvite: false, photos: false, photoShares: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, hisHours: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, foodPhotos: false, memes: false, watching: false, texture: false, biliStickers: false, quoteReply: false, factCheck: 'off', idioms: false, tailCap: false, innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, pursuits: false, shapeSplit: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, proactiveInvite: false, photos: false, photoShares: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, hisHours: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, foodPhotos: false, memes: false, watching: false, texture: false, biliStickers: false, quoteReply: false, factCheck: 'off', idioms: false, tailCap: false, deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, pursuits: false, shapeSplit: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false, shortReplies: false,
         media: true,
@@ -75,7 +79,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; extra?: Partial<Transport> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -111,6 +115,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.mediaTimeouts ? { mediaTimeouts: options.mediaTimeouts } : {}),
         ...(options.bilibiliFetch ? { bilibiliFetch: options.bilibiliFetch } : {}),
         ...(options.bilibiliRequest ? { bilibiliRequest: options.bilibiliRequest } : {}),
+        ...(options.startDevices ? { startDevices: options.startDevices } : {}),
         // 既有测试要核对日志正文和 last-prompt.json，所以默认开着敏感调试；关着的行为在下面单独测
         sensitive: options.sensitive ?? { on: () => true, describe: () => '' },
         pipeline: {
@@ -1796,5 +1801,87 @@ describe('心境（ADR 0102，配置 herFeelings）', () => {
         const down = config({ contacts: bf, herFeelings: true });
         const result = await run(down, '我今天被导师骂了，烦死了');
         assert.match(joined(result.prompts), /有点担心（他说他难受 \/ 不舒服 \/ 累）/);
+    });
+});
+
+describe('设备控制：他的命令在回复器之前截住（ADR 0148）', () => {
+    const bf = [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }];
+
+    /** 假服务：真的控制器 + 假的派发；看屏幕直接给一段“看到了”的描述 */
+    function fakeDevices() {
+        const jobs: string[] = [];
+        const control = createDeviceControl({
+            mode: 'on', context: { links: new Map(), apps: [], maxVolume: 60 },
+            dispatch: async job => { jobs.push(job.action); return { ok: true }; },
+            available: () => ['computer', 'phone'], say: () => undefined, log: () => undefined,
+        });
+        const service: DeviceService = {
+            control, hub: undefined as never, stop: async () => undefined,
+            owner: text => {
+                const action = control.ownerSays(text);
+                if (action.kind === 'none') return { kind: 'none' };
+                if (action.kind === 'reply') return { kind: 'reply', text: action.text };
+                return { kind: 'capture', run: async () => ({ kind: 'message', text: `[他让你看了一眼他的电脑屏幕：一份文档]${action.note ? ` ${action.note}` : ''}` }) };
+            },
+        };
+        const start: StartDevices = async () => service;
+        return { jobs, control, service, start };
+    }
+
+    test('「批准」被截住：执行待批准的动作、回他一行提示、不进聊天记录、她不另外回', async () => {
+        const cfg = config({ contacts: bf, deviceControl: 'on' });
+        const fake = fakeDevices();
+        const { sent } = setup(cfg, {}, { startDevices: fake.start });
+        await new Promise(r => setTimeout(r, 30));
+        fake.control.take('<device:lock>');
+        const { app } = { app: apps.at(-1)! };
+        app.receive(event(10001, 1, '批准'));
+        await until(() => sent.length === 1);
+        assert.equal(sent[0], '10001:（好，锁屏）');
+        assert.deepEqual(fake.jobs, ['lock']);
+        assert.deepEqual(chat(cfg, 10001), [], '命令不进聊天记录');
+    });
+
+    test('「/屏幕 看这个」：看完的描述成了他这一条消息，她照常回；聊天记录里是描述，没有图', async () => {
+        const cfg = config({ contacts: bf, deviceControl: 'on' });
+        const fake = fakeDevices();
+        const { app, sent } = setup(cfg, {}, { startDevices: fake.start });
+        await new Promise(r => setTimeout(r, 30));
+        app.receive(event(10001, 2, '/屏幕 看这个'));
+        await until(() => sent.length === 1);
+        assert.equal(sent[0], '10001:好');
+        assert.deepEqual(chat(cfg, 10001), ['user:[他让你看了一眼他的电脑屏幕：一份文档] 看这个', 'assistant:好']);
+    });
+
+    test('没有待批准时「批准」是普通的话；「屏幕，好亮」这种闲聊也是；都照常回', async () => {
+        const cfg = config({ contacts: bf, deviceControl: 'on' });
+        const fake = fakeDevices();
+        const { app, sent } = setup(cfg, {}, { startDevices: fake.start });
+        await new Promise(r => setTimeout(r, 30));
+        app.receive(event(10001, 3, '批准'));
+        await until(() => sent.length === 1);
+        app.receive(event(10001, 4, '屏幕，好亮'));
+        await until(() => sent.length === 2);
+        assert.deepEqual(chat(cfg, 10001), ['user:批准', 'assistant:好', 'user:屏幕，好亮', 'assistant:好']);
+        assert.deepEqual(fake.jobs, []);
+    });
+
+    test('服务没起来（密钥没配 / 端口占着）：命令当普通消息，不出错', async () => {
+        const cfg = config({ contacts: bf, deviceControl: 'on' });
+        const { app, sent, logs } = setup(cfg, {}, { startDevices: async () => undefined });
+        await new Promise(r => setTimeout(r, 30));
+        app.receive(event(10001, 5, '/屏幕'));
+        await until(() => sent.length === 1);
+        assert.deepEqual(chat(cfg, 10001), ['user:/屏幕', 'assistant:好']);
+        assert.equal(logs.some(l => l.includes('设备控制：启动出错')), false);
+    });
+
+    test('名单里没有男朋友档：不启动，日志里说清；关着（off）时根本不调启动函数', async () => {
+        let started = 0;
+        const start: StartDevices = async () => { started++; return undefined; };
+        const noOwner = setup(config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }], deviceControl: 'on' }), {}, { startDevices: start });
+        assert.ok(noOwner.logs.some(l => l.includes('名单里没有男朋友档的联系人，不启动')));
+        setup(config({ contacts: bf, deviceControl: 'off' }), {}, { startDevices: start });
+        assert.equal(started, 0);
     });
 });

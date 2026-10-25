@@ -73,6 +73,11 @@ export interface ResponderDeps {
     clean: (reply: string) => string;
     /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查 */
     review?: (reply: string, messages: OpenAIMessage[], context?: { allowRepeat?: boolean }) => Promise<string>;
+    /**
+     * 这一轮的回复定下来、马上要开始发送的那一刻（回复路径在拆条之后、主动路径在不是试运行之后）调一次。
+     * 设备指令（ADR 0148）在这里登记并按档处理：回复被丢弃 / 重写时不会走到这里，所以丢弃的草稿不会操作他的设备
+     */
+    beforeSend?: () => void;
     /** 拆好条、发出去之前最后改一下（ADR 0024：打错字再改口）；maxBubbles 是这一轮最多几条；不传就原样发 */
     decorate?: (parts: string[], maxBubbles: number) => string[] | { parts: string[]; recall?: TypoRecall };
     /** replyTo：QQ 引用回复这一条（他的）消息（ADR 0136，配置 quoteReply）；只对文字有意义，不给就是普通的一条 */
@@ -389,6 +394,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         const decorated = deps.decorate ? deps.decorate(split, maxBubbles) : split;
         const parts = Array.isArray(decorated) ? decorated : decorated.parts;
         const recall = Array.isArray(decorated) || !deps.recallOwn ? undefined : decorated.recall;
+        deps.beforeSend?.();
         setPhase({ phase: 'sending' });
         const { timing } = deps;
         // 第一条：生成花掉的时间算在打字时间里
@@ -483,6 +489,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         const recall = Array.isArray(decorated) || !deps.recallOwn ? undefined : decorated.recall;
         request.commit(parts);
         if (request.dryRun) return { result: 'dryRun', parts };
+        deps.beforeSend?.();
 
         const { timing } = deps;
         if (timing) {

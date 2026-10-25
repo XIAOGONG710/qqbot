@@ -82,8 +82,8 @@ export const MODULES: readonly ModuleDef[] = [
     },
     {
         id: 'platform', name: '接入、配置与运维',
-        scope: 'Koishi / NapCat 接入、配置、启动与锁、心跳、日志、网络兜底、功能总表、周报、一致性检查、模块总表、模拟器。',
-        files: ['app.ts', 'main.ts', 'contact.ts', 'config.ts', 'features.ts', 'modules.ts', 'modules-doc.ts', 'weekly-report.ts', 'consistency.ts', 'onebot.ts', 'lock.ts', 'log.ts', 'heartbeat.ts', 'runtime-info.ts', 'dns-fallback.ts', 'qr.ts',
+        scope: 'Koishi / NapCat 接入、配置、启动与锁、心跳、日志、网络兜底、设备控制（电脑 / 手机，ADR 0148）、功能总表、周报、一致性检查、模块总表、模拟器。',
+        files: ['app.ts', 'main.ts', 'contact.ts', 'config.ts', 'features.ts', 'modules.ts', 'modules-doc.ts', 'weekly-report.ts', 'consistency.ts', 'onebot.ts', 'lock.ts', 'log.ts', 'heartbeat.ts', 'runtime-info.ts', 'dns-fallback.ts', 'qr.ts', 'device-actions.ts', 'device-hub.ts', 'device-phone.ts', 'device-service.ts',
             'sensitive.ts', 'ops/', 'sim/', 'vendor/'],
         groups: ['工具'],
         metrics: '控制台「状态」页（ADR 0120）；ops/golive-check-cli；ops/heartbeat-watch-cli',

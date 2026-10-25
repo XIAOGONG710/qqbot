@@ -41,6 +41,9 @@ import { qzoneComposer } from './qzone.ts';
 import { createVideoBrowsing, dmMessageId, fetchHotComments, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
 import { realRequest, type BiliAccount, type BiliRequest } from './bilibili-account.ts';
 import { createAccountSource } from './bilibili-account-source.ts';
+import { stripDeviceTokens } from './device-actions.ts';
+import { CAMERA_VISION_PROMPT, SCREEN_VISION_PROMPT, startDeviceService, type DeviceService } from './device-service.ts';
+import { configuredImageDescriber } from './vision.ts';
 import { BILIBILI_RISK, createBreaker, guardRequest } from './platform-breaker.ts';
 import { commentComposer, replyComposer } from './bilibili-comment.ts';
 import { createReplyWatcher, type ReplyOptions, type ReplyWatcher } from './bilibili-replies.ts';
@@ -201,6 +204,8 @@ export interface AppOptions {
     bilibiliRequest?: BiliRequest;
     /** 测试用：换掉听、看各项的上限 */
     mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>;
+    /** 测试注入：换掉设备控制服务的启动函数（ADR 0148；真的要监听端口、读密钥） */
+    startDevices?: typeof startDeviceService;
     /** 敏感调试开关（ADR 0070 第 8 项）；不传按环境变量 QQBOT_SENSITIVE_LOGS（默认关） */
     sensitive?: SensitiveSwitch;
 }
@@ -210,7 +215,7 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, sensitive = sensitiveSwitch() }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, sensitive = sensitiveSwitch() }: AppOptions): App {
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -412,6 +417,32 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     if (feedback) log(`反馈通道：开（${config.contacts.filter(canGiveFeedback).map(c => c.name).join('、')}对她的话回「假」/「像」，记在数据目录的 feedback/ 里，不当聊天、不回应）`);
     loadChat = qq => history.load(qq);
 
+    // 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；服务是异步起的（要监听端口），
+    // 起来之前她的菜单是空的、回复里的令牌只摘不用
+    let deviceService: DeviceService | undefined;
+    const deviceOwner = config.contacts.find(c => c.tier === 'boyfriend');
+    const deviceHooks: NonNullable<ContactPipelineOptions['devices']> | undefined = config.deviceControl !== 'off' && deviceOwner
+        ? {
+            menu: () => deviceService?.control.menu() ?? '',
+            parse: reply => deviceService?.control.parse(reply) ?? { reply: stripDeviceTokens(reply), proposals: [], rejected: [] },
+            commit: parsed => deviceService?.control.commit(parsed),
+        }
+        : undefined;
+    if (config.deviceControl !== 'off' && !deviceOwner) log('设备控制：开着，但名单里没有男朋友档的联系人，不启动');
+    if (deviceHooks && deviceOwner) {
+        const describers = config.vision
+            ? { screen: configuredImageDescriber(config, SCREEN_VISION_PROMPT), camera: configuredImageDescriber(config, CAMERA_VISION_PROMPT) }
+            : undefined;
+        void (startDevices ?? startDeviceService)({
+            dataDir: config.dataDir, mode: config.deviceControl as 'dryRun' | 'on', links: config.deviceLinks, apps: config.deviceApps, log,
+            say: text => { transport.sendPrivateText(deviceOwner.qq, text).catch(error => log(`设备控制：提示没发出去（${error instanceof Error ? error.message : String(error)}）`)); },
+            ...(describers?.screen && describers.camera ? { describe: { screen: describers.screen, camera: describers.camera } } : {}),
+        }).then(service => {
+            if (stopped) { void service?.stop(); return; }
+            deviceService = service;
+        }).catch(error => log(`设备控制：启动出错（${error instanceof Error ? error.message : String(error)}）`));
+    }
+
     // 长期记忆（Hindsight）：补回之后写一次，之后每隔一段时间把结束了的片段写进去
     const hindsight = config.memory ? new HindsightClient(config.memory.baseUrl, config.memory.timeoutMs) : undefined;
     const memory = config.memory
@@ -526,6 +557,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             candidates: config.candidates,
             ...contextWindowFor(contact),
             ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
+            ...(deviceHooks && contact.tier === 'boyfriend' ? { devices: deviceHooks } : {}),
             ...(photos && contact.tier === 'boyfriend' ? { photos } : {}),
             ...(stickerChance !== undefined ? { stickerChance } : {}),
             ...(config.biliStickers ? { stickerUncued: STICKER_UNCUED_CHANCE } : {}),
@@ -1129,6 +1161,26 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         const feedbackContact = feedback ? config.contacts.find(c => c.qq === event.user_id && canGiveFeedback(c)) : undefined;
         if (feedback && feedbackContact
             && feedback.consume(event.user_id, feedbackContact.tier, event.message, event.message_id, new Date(event.time * 1000), history.load(event.user_id))) return;
+        // 他发的设备命令（ADR 0148）：「批准」「拒绝」「/屏幕」「/摄像头」「/设备」，只认纯文字、只认男朋友档的他；
+        // 命中的算处理完，不进聊天记录、不交给回复器。看屏幕 / 摄像头：看完的描述作为他这一条消息交给回复器，她自然地回
+        if (deviceService && deviceOwner && event.user_id === deviceOwner.qq) {
+            const plain = plainTextOf(event.message);
+            const outcome = plain === undefined ? undefined : deviceService.owner(plain);
+            if (outcome?.kind === 'reply') {
+                void transport.sendPrivateText(event.user_id, outcome.text).catch(error => log(`设备控制：回复没发出去（${error instanceof Error ? error.message : String(error)}）`));
+                return;
+            }
+            if (outcome?.kind === 'capture') {
+                const target = responder;
+                void outcome.run().then(async handled => {
+                    if (stopped) return;
+                    if (handled.kind === 'reply') { await transport.sendPrivateText(event.user_id, handled.text); return; }
+                    target.receive(handled.text, event.message_id, new Date(event.time * 1000));
+                    planners.get(event.user_id)?.poke();
+                }).catch(error => log(`设备控制：看屏幕 / 摄像头出错（${error instanceof Error ? error.message : String(error)}）`));
+                return;
+            }
+        }
         // 只从名单联系人收到的图片表情里挑；看图、判断、下载都在后台串行，不挡住这条消息的正常回复。
         if (collectingStickers && config.contacts.some(contact => contact.qq === event.user_id && contact.tier === 'boyfriend')) {
             void collectingStickers.consider(event.message, { from: event.user_id, messageId: event.message_id });
@@ -1154,6 +1206,13 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         }).catch(error => log(`[${qq}] 处理收到的消息出错：${error instanceof Error ? error.message : String(error)}`));
         inbox.set(qq, job);
         void job.then(() => { if (inbox.get(qq) === job) inbox.delete(qq); });
+    }
+
+    /** 整条消息只有文字段才返回文字（图片、语音、@、引用……一出现就不是命令）；设备命令只认这种 */
+    function plainTextOf(message: Segment[] | string): string | undefined {
+        if (typeof message === 'string') return message;
+        if (message.length === 0 || !message.every(segment => segment.type === 'text' && typeof segment.data.text === 'string')) return undefined;
+        return message.map(segment => segment.data.text as string).join('');
     }
 
     /** 他引用回复时，被引用的那一条在聊天记录里（按 QQ 消息 id；ADR 0081） */
@@ -1378,6 +1437,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             clearTimeout(foodRetryTimer);
             if (jokesTimer) clearInterval(jokesTimer);
             if (idiomsTimer) clearInterval(idiomsTimer);
+            void deviceService?.stop();
             if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);

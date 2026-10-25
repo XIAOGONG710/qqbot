@@ -23,6 +23,7 @@
 | --- | --- | --- |
 | `unlistedFriends` | 名单外的好友也回 |  |
 | `feedbackCommands` | “假 / 像”反馈通道 | [ADR 0073](../adr/0073-feedback-channel.md) |
+| `deviceControl` | 她能操作他的电脑和手机（有限控制）（模式） | [ADR 0148](../adr/0148-device-control.md) |
 
 ## 看它有没有变好
 

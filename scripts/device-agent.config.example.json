@@ -1,0 +1,28 @@
+{
+  "enabled": true,
+  "hub": "http://192.168.139.138:7789",
+  "token": "paste-the-token-printed-by-devices-init",
+  "title": "林梦瑶",
+  "announceText": "林梦瑶看了一眼你的电脑",
+  "maxVolume": 60,
+  "allow": {
+    "notify": true,
+    "timer": true,
+    "media": true,
+    "volume": true,
+    "open_url": true,
+    "open_app": true,
+    "lock": true,
+    "sleep": true,
+    "capture_screen": true,
+    "capture_camera": false
+  },
+  "links": {
+    "音乐": "https://music.163.com/"
+  },
+  "apps": {
+    "记事本": "C:\\Windows\\System32\\notepad.exe"
+  },
+  "ffmpeg": "",
+  "cameraName": ""
+}
