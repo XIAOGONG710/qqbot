@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { AGENDA_SHARE, describeShape, DRAWL_SHARE, FEEL_SHARE, FILLER_SHARE, STRETCH_SHARE, PLAIN_SHARE, planShape, shapeProblems, shapeReply, trimToShape, type ShapePlan } from '../src/shape.ts';
+import { AGENDA_SHARE, DELIBERATE_NOTE, deliberateTurn, describeShape, invitesLong, LONG_CAP, LONG_SHARE, DRAWL_SHARE, FEEL_SHARE, FILLER_SHARE, STRETCH_SHARE, PLAIN_SHARE, planShape, shapeProblems, shapeReply, trimToShape, type ShapePlan } from '../src/shape.ts';
 
 /** 同一句话，靠时间区分每一次抽签（抽签的种子是时间加内容），字数不变 */
 const said = (i: number, text: string) => [{ role: 'user' as const, content: text, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
@@ -465,5 +465,84 @@ describe('被问直接问题时答完再接着说（shapeAsk，ADR 0149）', () 
         assert.ok(!describeShape(on).includes('应一声'), describeShape(on));
         const closing = sample('晚安啦', 300, { intent: '[这一轮你想：顺着他的话收尾，只回一两句]', ask: true });
         assert.ok(closing.every(plan => plan.maxBubbles <= 2));
+    });
+});
+
+describe('被认真问想法时说长一点（shapeLong，ADR 0150）', () => {
+    const ASK = '[这一轮你想：先直接回答他刚问的，不另起话题]';
+    const ABSTRACT = '[这一轮你想：他在问一个很大、很抽象的问题。别总结成一句漂亮话]';
+
+    test('哪些轮次算「认真问她」：很大很抽象的问题；或「先直接回答」的轮次里问的是想法 / 原因，且带问句。问「吃了吗」不算', () => {
+        assert.equal(invitesLong(ABSTRACT, '你说谈恋爱到底是什么样子的？'), true);
+        assert.equal(invitesLong(ASK, '你觉得我该不该去？'), true);
+        assert.equal(invitesLong(ASK, '为什么你不爱我了'), false, '没有问句的标记（吗 / 呢 / ？）');
+        assert.equal(invitesLong(ASK, '你吃了吗'), false);
+        assert.equal(invitesLong(ASK, '你觉得呢'), true);
+        assert.equal(invitesLong(undefined, '你觉得我该不该去？'), false, '没有意图行不算');
+        assert.equal(invitesLong('[这一轮你想：顺着他的话收尾]', '你为什么这样？'), false);
+    });
+
+    test('没开：照旧；开了但不是认真问的轮次：也照旧', () => {
+        const plain = sample('你今天吃了什么呀', 300, { intent: ASK });
+        const flagged = sample('你今天吃了什么呀', 300, { intent: ASK, long: true });
+        assert.deepEqual(flagged, plain);
+        const off = sample('你觉得我该不该去北京？', 300, { intent: ASK });
+        assert.ok(off.every(plan => !plan.long));
+    });
+
+    test(`开了：认真问想法的轮次约 ${LONG_SHARE * 100}% 拉长到每条 ${LONG_CAP} 字、1–3 条；其余照旧`, () => {
+        const on = sample('你觉得我该不该去北京？', 900, { intent: ASK, long: true });
+        const longOnes = on.filter(plan => plan.long);
+        assert.ok(Math.abs(longOnes.length / on.length - LONG_SHARE) < 0.06, `${longOnes.length / on.length}`);
+        assert.ok(longOnes.every(plan => plan.cap === LONG_CAP && plan.maxBubbles >= 1 && plan.maxBubbles <= 3 && !plan.plain));
+        assert.ok(new Set(longOnes.map(plan => plan.maxBubbles)).size === 3, '1、2、3 条都会抽到');
+        const rest = on.filter(plan => !plan.long);
+        assert.ok(rest.every(plan => plan.cap <= 40));
+    });
+
+    test('不拉长：心情安静 / 身体不舒服、亲近、收尾', () => {
+        const low = sample('你觉得我该不该去北京？', 300, { intent: ASK, long: true, low: true });
+        assert.ok(low.every(plan => !plan.long));
+        const closing = sample('你觉得呢？晚安', 300, { intent: '[这一轮你想：顺着他的话收尾，只回一两句]', long: true });
+        assert.ok(closing.every(plan => !plan.long));
+    });
+
+    test('提示词：让她把想法说清楚，不要排比 / 金句 / 讲道理，没想过就说没想过；开了拆条就写分成几条', () => {
+        const plan = sample('你觉得我该不该去北京？', 200, { intent: ASK, long: true, split: true }).find(p => p.long && p.parts)!;
+        const text = describeShape(plan);
+        assert.ok(text.includes('认真在问') && text.includes(`${LONG_CAP} 个字`) && text.includes(`分成 ${plan.parts} 条`), text);
+        assert.ok(text.includes('不要排比') && text.includes('没想过的就说没想过'), text);
+    });
+});
+
+describe('深思（deliberate，ADR 0151）：哪些轮次算「他在认真问她」', () => {
+    const ASK = '[这一轮你想：先直接回答他刚问的，不另起话题]';
+    const ABSTRACT = '[这一轮你想：他在问一个很大、很抽象的问题。别总结成一句漂亮话]';
+    const STALL = '[这一轮你想：他在追你要一个答案，你前面已经推了好几次了]';
+    const CHALLENGE = '[这一轮你想：他在说你的话不像真人、重复或者敷衍。别替自己辩解]';
+
+    test('算：很大很抽象的问题；问想法 / 原因 / 该不该；追着要答案；说她不像真人；他明着让她讲', () => {
+        assert.equal(deliberateTurn(ABSTRACT, '你说谈恋爱到底是什么样子的？', false), true);
+        assert.equal(deliberateTurn(ASK, '你觉得我该不该去北京实习？', false), true);
+        assert.equal(deliberateTurn(ASK, '这件事我该怎么办呢', false), true);
+        assert.equal(deliberateTurn(STALL, '回答我，你愿意吗', false), true);
+        assert.equal(deliberateTurn(CHALLENGE, '你总是这样，敷衍', false), true);
+        assert.equal(deliberateTurn(undefined, '帮我详细讲讲梯度下降', true), true);
+    });
+
+    test('不算：闲聊式的问句（在干嘛、吃了吗、要不要一起吃饭）、没有问句标记的、收尾、没有意图行', () => {
+        assert.equal(deliberateTurn(ASK, '在干嘛呢', false), false);
+        assert.equal(deliberateTurn(ASK, '你吃了吗', false), false);
+        assert.equal(deliberateTurn(ASK, '要不要一起吃饭呀', false), false);
+        assert.equal(deliberateTurn(ASK, '我觉得为什么都这样', false), false, '没有问句标记');
+        assert.equal(deliberateTurn('[这一轮你想：顺着他的话收尾，只回一两句]', '你觉得呢？晚安', false), false);
+        assert.equal(deliberateTurn(undefined, '你觉得我该不该去北京实习？', false), false);
+    });
+
+    test('提示词只说「先想什么」，不说多长、几条；保留不要排比 / 金句 / 编造', () => {
+        assert.doesNotMatch(DELIBERATE_NOTE, /\d+\s*个字|最多\s*\d+\s*条|每条不超过/);
+        assert.match(DELIBERATE_NOTE, /先在心里想清楚/);
+        assert.match(DELIBERATE_NOTE, /别排比/);
+        assert.match(DELIBERATE_NOTE, /不知道就说不知道，别编/);
     });
 });

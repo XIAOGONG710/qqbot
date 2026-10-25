@@ -47,6 +47,8 @@
 | `shapeFiller` | 废话轮次 | [ADR 0095](../adr/0095-filler-turns.md) |
 | `shapeSplit` | 拆成几条 | [ADR 0096](../adr/0096-split-and-share.md) |
 | `shapeAsk` | 被问问题时答完再接着说 | [ADR 0149](../adr/0149-answer-then-continue.md) |
+| `shapeLong` | 被认真问想法时说长一点 | [ADR 0150](../adr/0150-long-answers.md) |
+| `deliberate` | 认真问她时深思（更强的模型、不套字数） | [ADR 0151](../adr/0151-deliberate.md) |
 | `shapeFeel` | 情绪轮（先说自己的小情绪） | [ADR 0099](../adr/0099-too-smooth.md) |
 | `shortReplies` | 说话更短 |  |
 | `rhythm` | 回复节奏（看想 / 打字时间） | [ADR 0075](../adr/0075-reply-rhythm.md) |

@@ -15,6 +15,8 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'shapeFiller', label: '废话轮次', group: '说话', adr: '0095' },
     { key: 'shapeSplit', label: '拆成几条', group: '说话', adr: '0096' },
     { key: 'shapeAsk', label: '被问问题时答完再接着说', group: '说话', adr: '0149' },
+    { key: 'shapeLong', label: '被认真问想法时说长一点', group: '说话', adr: '0150' },
+    { key: 'deliberate', label: '认真问她时深思（更强的模型、不套字数）', group: '说话', adr: '0151' },
     { key: 'shapeFeel', label: '情绪轮（先说自己的小情绪）', group: '说话', adr: '0099' },
     { key: 'shortReplies', label: '说话更短', group: '说话' },
     { key: 'rhythm', label: '回复节奏（看想 / 打字时间）', group: '说话', adr: '0075' },
@@ -95,7 +97,7 @@ export const FEATURES: readonly FeatureDef[] = [
 
 /** config 里有、但不是“功能开关”的键（配置数值、对象、字符串……）：features.test.ts 用它核对没有开关被漏掉 */
 export const NOT_SWITCHES: readonly string[] = [
-    'llm', 'prompt', 'memory', 'vision', 'deviceLinks', 'deviceApps', 'bilibiliCommentKeywords', 'bilibiliAtName', 'bilibiliAtUid', 'qzoneVisibility', 'candidates', 'contextTurns', 'contextContacts', 'dataDir',
+    'llm', 'prompt', 'memory', 'vision', 'deviceLinks', 'deviceApps', 'bilibiliCommentKeywords', 'bilibiliAtName', 'bilibiliAtUid', 'deliberateModel', 'qzoneVisibility', 'candidates', 'contextTurns', 'contextContacts', 'dataDir',
     // 下面几个是 config 里的联系人 / 其他结构，不在 DEFAULTS 里也无妨
 ];
 

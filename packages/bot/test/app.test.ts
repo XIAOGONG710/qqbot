@@ -55,7 +55,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, proactiveInvite: false, photos: false, photoShares: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, hisHours: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, foodPhotos: false, memes: false, watching: false, texture: false, biliStickers: false, quoteReply: false, factCheck: 'off', idioms: false, tailCap: false, deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, pursuits: false, shapeSplit: false, shapeAsk: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, proactiveInvite: false, photos: false, photoShares: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, hisHours: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, foodPhotos: false, memes: false, watching: false, texture: false, biliStickers: false, quoteReply: false, factCheck: 'off', idioms: false, tailCap: false, deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, pursuits: false, shapeSplit: false, shapeAsk: false, shapeLong: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false, shortReplies: false,
         media: true,
@@ -79,7 +79,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[]) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; extra?: Partial<Transport> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -119,7 +119,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         // 既有测试要核对日志正文和 last-prompt.json，所以默认开着敏感调试；关着的行为在下面单独测
         sensitive: options.sensitive ?? { on: () => true, describe: () => '' },
         pipeline: {
-            generate: async messages => options.generate?.(messages) ?? '好', settle: { quietMs: 0, maxMs: 0 },
+            generate: async (messages, _log, use) => options.generate?.(messages, use) ?? '好', settle: { quietMs: 0, maxMs: 0 },
             ...(options.clock ? { now: options.clock.now, waitUntil: options.clock.waitUntil } : {}),
         },
     });
@@ -178,6 +178,31 @@ describe('编排（app.ts）', () => {
         assert.ok(off.logs.every(line => !line.includes('这一轮形状')));
         const crisis = await run(true, '我不想活了');
         assert.doesNotMatch(crisis.prompts[0]!, /每条不超过/, '危机回合不加形状');
+    });
+
+    test('深思（ADR 0151）：认真问她的轮次不套字数和条数、用深思用的模型、提示词只留一句“先想清楚”；闲聊、危机、关着的时候都不动', async () => {
+        const run = async (deliberate: boolean, said: string) => {
+            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], shape: true, shapeAsk: true, shapeLong: true, deliberate });
+            const calls: { prompt: string; model?: string }[] = [];
+            const { app, sent, logs } = setup(cfg, {}, { generate: (messages, use) => { calls.push({ prompt: messages.map(m => m.content).join('\n'), ...(use ? { model: use.model } : {}) }); return '想去就去，不过先想清楚你到底图什么'; } });
+            app.receive(event(10001, 1, said));
+            await until(() => sent.length >= 1);
+            return { calls, sent, logs };
+        };
+        const on = await run(true, '你觉得我该不该去北京实习？');
+        assert.equal(on.calls[0]!.model, 'deepseek-v4-pro', '深思轮次换了模型');
+        assert.match(on.calls[0]!.prompt, /开口前先在心里想清楚/);
+        assert.doesNotMatch(on.calls[0]!.prompt, /每条不超过|先直接回答他刚问的/, '不套字数，也不再有那条只管怎么答的意图行');
+        assert.ok(on.logs.some(line => line.includes('深思：他在认真问她')), on.logs.join('|'));
+        const off = await run(false, '你觉得我该不该去北京实习？');
+        assert.equal(off.calls[0]!.model, undefined);
+        assert.doesNotMatch(off.calls[0]!.prompt, /开口前先在心里想清楚/);
+        const chatty = await run(true, '在干嘛呢');
+        assert.equal(chatty.calls[0]!.model, undefined, '闲聊不深思');
+        assert.doesNotMatch(chatty.calls[0]!.prompt, /开口前先在心里想清楚/);
+        const crisis = await run(true, '我不想活了你觉得我该怎么办');
+        assert.equal(crisis.calls[0]!.model, undefined, '危机回合不换模型');
+        assert.doesNotMatch(crisis.calls[0]!.prompt, /开口前先在心里想清楚/);
     });
 
     test('话说到一半就停了（ADR 0141）：最后一条只剩一句转折的态度，带说明重写一次；重写还是这样就并回前一条；说话的毛病不查（speechCheck: false）时不管；危机回合不管', async () => {

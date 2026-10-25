@@ -30,8 +30,8 @@ import { describeIntent, needsCareText } from './intent.ts';
 import { describeObstacles, meetupDays } from './obstacles.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from './texture.ts';
 import { describeQuote, planQuote, quoteFix, type QuotePlan } from './quote-reply.ts';
-import { alreadyTold, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from './expression.ts';
-import { describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from './shape.ts';
+import { alreadyTold, ASKS_TO_EXPLAIN, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from './expression.ts';
+import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from './shape.ts';
 import { finishReply } from './unfinished.ts';
 import { describeUnsettled } from './open-loops.ts';
 import { describeWorld, lastMealDish, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
@@ -175,7 +175,9 @@ export interface ContactPipelineOptions {
     /** 毫秒时间戳，默认真实时间；模拟器传虚拟时钟 */
     now?: () => number;
     /** 默认调模型接口（llm.ts）；模拟器包一层，在生成中插入对方的消息 */
-    generate?: (messages: OpenAIMessage[], log: Log) => Promise<string>;
+    generate?: (messages: OpenAIMessage[], log: Log, use?: AppConfig['llm']) => Promise<string>;
+    /** 深思（配置 deliberate，ADR 0151）：认真问她的轮次不套字数和条数、用这份更强的模型配置（generate 的第三个参数）、提示词只留一句“先想清楚” */
+    deliberate?: { llm: AppConfig['llm'] };
     /** 连发合并的等待，默认 DEFAULT_SETTLE（测试用短的） */
     settle?: { quietMs: number; maxMs: number };
     /** 按卡上的作息（ADR 0007）：时间块里加一行她现在在干什么，按作息决定什么时候看到、打字多久，收尾后的附和不回。默认否；卡上没有作息时也不按 */
@@ -255,6 +257,8 @@ export interface ContactPipelineOptions {
     shapeSplit?: boolean;
     /** 被问直接问题时答完再接着说（配置 shapeAsk，要 shape 开着，ADR 0149）：不加「应一声、附和」那一句，条数按真人被问问题时的分布抽 */
     shapeAsk?: boolean;
+    /** 被认真问想法 / 原因时说长一点（配置 shapeLong，要 shape 开着，ADR 0150） */
+    shapeLong?: boolean;
     /** 「做题式」写法（ADR 0146 实验，只有模拟器的 --frame solve 用，线上没有这个开关）：不让她演自己，让她推断这个情境里最可能发出的那几条 */
     replyFrame?: 'solve';
     /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；菜单进提示词，回复里的 <device:…> 令牌在发送前登记并按档处理 */
@@ -286,7 +290,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const names = { user: contact.name, char: character.name };
     const now = options.now ?? Date.now;
     const log: Log = message => options.log(`[${contact.qq}] ${message}`);
-    const generate = options.generate ?? ((messages, log) => chatCompletion(llm, messages, { log }));
+    const generate = options.generate ?? ((messages, log, use) => chatCompletion(use ?? llm, messages, { log }));
+    /** 深思轮次用更强的模型（ADR 0151）；别的轮次不传，用默认的 */
+    const useNow = () => (deliberateNow ? options.deliberate?.llm : undefined);
     let stickersAllowed = true;
     /** 这一轮抽到要发图片表情，并带上他这一轮说的话（给货架按它挑）；没抽到就不给她看货架 */
     let stickerContext: { text: string; only?: boolean } | undefined;
@@ -327,6 +333,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let sulkNow = false;
     /** 这一轮的形状（配置 shape）：buildPrompt 按他说的长短定，紧跟着的出口检查按它强制执行；主动找他、收尾、危机回合没有 */
     let shapeNow: ShapePlan | undefined;
+    /** 这一轮是深思轮次（ADR 0151）：生成时用 options.deliberate.llm */
+    let deliberateNow = false;
     /** 这一轮发出去之前加质感用的上下文（ADR 0131）：他这一串说的话、这一轮是不是认真的回合、她最近几次回复里带了几次小黄脸 */
     let textureNow: { said: string; serious: boolean; recentFaces: number; recentTildes: number } | undefined;
     /** 这一轮第一条要引用他的哪一句（ADR 0136，配置 quoteReply）：buildPrompt 按他没回的那一串定，紧跟着发送时现取 */
@@ -651,6 +659,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             stickerContext = stickerDrawn ? { text: saidNow, ...(stickerOnlyNow ? { only: true } : {}) } : undefined;
             if (stickerContext) log(stickerOnlyNow ? '图片表情：这一轮抽到只发表情、不写文字' : '图片表情：这一轮抽到要发一个');
             if (options.stickers && !thinking && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
+            // 深思（ADR 0151）：他是认真在问她的轮次，不套字数和条数、换更强的模型、提示词只留一句“先想清楚”；危机 / 小别扭 / 亲近等别的意图照旧让路
+            deliberateNow = Boolean(options.deliberate) && !initiate && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !grievanceActive
+                && deliberateTurn(intent, saidNow, ASKS_TO_EXPLAIN.test(saidNow));
+            if (deliberateNow) log(`深思：他在认真问她，这一轮不套字数和条数、用 ${options.deliberate!.llm.model}、提示词只留一句“先想清楚”`);
+            // 深思时那条只管“怎么答”的意图行（先直接回答 / 很大很抽象的问题）由深思那一句代替；追着要答案、说她不像真人这类纠偏的意图行保留
+            const intentLine = deliberateNow && intent && /先直接回答他刚问的|他在问一个很大、很抽象的问题/.test(intent) ? undefined : intent;
             // 引用回复（ADR 0136）：他连发里有个不是最后一条的问题，按概率引用它；危机、他难过、主动找他、只发表情 / 照片的回合不引用
             quoteNow = options.quoteReply && !initiate && !thinking && !crisisNow && !stickerOnlyNow && !photoNow && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
                 ? planQuote(options.history.load(contact.qq), contact.qq, options.quoteShare)
@@ -675,7 +689,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
                 ...(mood ? ['心情'] : []),
             ];
-            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
+            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !deliberateNow ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
             // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
             const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
             const crutchLine = crutches.length
@@ -701,9 +715,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     recentTildes: faceContext(options.history.load(contact.qq), contact.tier).recent.slice(-TEXTURE_TILDE_WINDOW).filter(reply => /[～~]\s*$/m.test(reply)).length,
                 }
                 : undefined;
-            const length = crisisNow || shapeNow || stickerOnlyNow || photoNow || interruptLine || thinking ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
+            const length = crisisNow || shapeNow || stickerOnlyNow || photoNow || interruptLine || thinking || deliberateNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
-            if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
+            if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.long ? '，长答' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
             // 想一想：最近的聊天换成一段“回想”放在说明里（不留成对话回合，免得模型把它当成要接着回的话）
@@ -774,7 +788,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(options.devices && !crisisNow && !thinking ? [options.devices.menu()] : []),
                         ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
                         ...(photoNow && options.photos?.prompt(photoNow, photoDishNow) ? [options.photos.prompt(photoNow, photoDishNow)!] : []),
-                        ...(intent ? [intent] : []),
+                        ...(intentLine ? [intentLine] : []),
+                        ...(deliberateNow ? [DELIBERATE_NOTE] : []),
                         ...(length ? [describeLength(length, options.shortReplies)] : []),
                         ...(shapeNow ? [describeShape(shapeNow)] : []),
                         ...(quoteLine ? [quoteLine] : []),
@@ -800,15 +815,15 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return {
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
-                ...(crisisNow ? { maxBubbles: 3 } : ((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) || grievanceActive) ? { maxBubbles: shapeNow ? Math.min(2, shapeNow.maxBubbles) : 2 } : shapeNow ? { maxBubbles: shapeNow.maxBubbles } : {}),
+                ...(crisisNow ? { maxBubbles: 3 } : ((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) || grievanceActive) ? { maxBubbles: shapeNow ? Math.min(2, shapeNow.maxBubbles) : 2 } : shapeNow ? { maxBubbles: shapeNow.maxBubbles } : deliberateNow ? { maxBubbles: DELIBERATE_MAX_BUBBLES } : {}),
                 ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆${summary ? '和前面的要点' : ''}）` } : {}),
             };
         },
         generate: async messages => {
             const rules = pick;
-            if (!rules) return generate(messages, log);
+            if (!rules) return generate(messages, log, useNow());
             // 同一份提示词生成几个，挑扣分最少的（ADR 0041）；返回原文，清理照常在回复器里做
-            const all = await Promise.all(Array.from({ length: options.candidates! }, () => generate(messages, log)));
+            const all = await Promise.all(Array.from({ length: options.candidates! }, () => generate(messages, log, useNow())));
             const { index, scored } = pickBest(all, rules, clean);
             log(describePick(index, scored));
             return all[index]!;
@@ -837,7 +852,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return typo.recall ? { parts: typo.parts, recall: typo.recall } : typo.parts;
         },
         review: async (reply, messages, reviewContext) => {
-            const regenerate = async (note: string) => clean(await generate(postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names), log));
+            const regenerate = async (note: string) => clean(await generate(postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names), log, useNow()));
             // 逐条事实检查（ADR 0137）：先于出口检查——重写出来的话还要过出口检查这一关；危机回合、固定说法（allowRepeat）不查
             const factual = options.factCheck && options.factCheck !== 'off' && !crisisNow && !reviewContext?.allowRepeat && promptSource
                 ? await checkFacts(reply, {

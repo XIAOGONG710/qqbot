@@ -95,6 +95,10 @@ export interface RunOptions {
     shapeSplit?: boolean;
     /** 被问直接问题时答完再接着说（ADR 0149）：run.ts 的 --ask 对所有场景打开，同时打开 shape */
     shapeAsk?: boolean;
+    /** 被认真问想法时说长一点（ADR 0150）：run.ts 的 --long 对所有场景打开，同时打开 shape */
+    shapeLong?: boolean;
+    /** 认真问她时深思（ADR 0151）：run.ts 的 --deliberate；深思轮次用这份模型配置 */
+    deliberateLlm?: BotConfig['llm'];
     /** 「做题式」写法（ADR 0146 实验）：run.ts 的 --frame solve；线上没有 */
     replyFrame?: 'solve';
     /** 测试注入：设备控制的钩子（ADR 0148）；模拟器命令行不传 */
@@ -347,7 +351,9 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     };
     /** 正在主动找他：这时发出的气泡标成主动的（时机的说法） */
     let initiating: string | undefined;
-    const baseGenerate = options.generate ?? ((messages: OpenAIMessage[], log: Log) => chatCompletion(options.llm, messages, { log }));
+    const baseGenerate = (messages: OpenAIMessage[], log: Log, use?: BotConfig['llm']) => (options.generate
+        ? options.generate(messages, log)
+        : chatCompletion(use ?? options.llm, messages, { log }));
 
     if (scenario.mood !== undefined && !character.moods.some(mood => mood.name === scenario.mood)) {
         throw new Error(`场景的 mood「${scenario.mood}」不是卡上的心情（${character.moods.map(mood => mood.name).join('、') || '这一档没有心情'}）`);
@@ -412,7 +418,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.grievance ? { grievance: true } : {}),
         ...(scenario.rhythm ? { rhythm: true } : {}),
         ...(scenario.shortReplies ? { shortReplies: true } : {}),
-        ...(scenario.shape || options.shape || scenario.shapeAgenda || options.shapeAgenda || scenario.shapeFiller || options.shapeFiller || scenario.shapeFeel || options.shapeFeel || scenario.shapeSplit || options.shapeSplit || options.shapeAsk ? { shape: true } : {}),
+        ...(scenario.shape || options.shape || scenario.shapeAgenda || options.shapeAgenda || scenario.shapeFiller || options.shapeFiller || scenario.shapeFeel || options.shapeFeel || scenario.shapeSplit || options.shapeSplit || options.shapeAsk || options.shapeLong ? { shape: true } : {}),
         ...(scenario.shapeAgenda || options.shapeAgenda ? { shapeAgenda: true } : {}),
         ...(scenario.shapeFiller || options.shapeFiller ? { shapeFiller: true } : {}),
         ...(scenario.shapeFeel || options.shapeFeel ? { shapeFeel: true } : {}),
@@ -444,6 +450,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.pursuits ? { pursuits: () => mergePursuits(scenario.pursuitsFile as Pursuit[]) } : {}),
         ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
         ...(options.shapeAsk ? { shapeAsk: true } : {}),
+        ...(options.shapeLong ? { shapeLong: true } : {}),
+        ...(options.deliberateLlm ? { deliberate: { llm: options.deliberateLlm } } : {}),
         ...(options.replyFrame ? { replyFrame: options.replyFrame } : {}),
         ...(options.devices ? { devices: options.devices } : {}),
         ...(stickers ? { stickers } : {}),
@@ -470,9 +478,9 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             }
             return nextMessageId++;
         },
-        generate: async (messages, log) => {
+        generate: async (messages, log, use) => {
             const generation = current.generations.at(-1);
-            const reply = baseGenerate(messages, log);
+            const reply = baseGenerate(messages, log, use);
             if (armed?.during === 'generation') {
                 const it = armed;
                 armed = undefined;

@@ -33,7 +33,19 @@ export interface ShapePlan {
     agendaTopic?: string;
     /** 这一轮要分成几条发（配置 shapeSplit，ADR 0096）：不只是上限，提示词里写“分成 N 条”；没有就按 maxBubbles 当上限 */
     parts?: number;
+    /** 长答（配置 shapeLong，ADR 0150）：他认真问她的想法 / 原因，一句话打发不了；每条上限放到 LONG_CAP，提示词写“把想法说清楚” */
+    long?: boolean;
 }
+
+/**
+ * 长答的轮次占比与每条上限（ADR 0150）。10-25 用户说「她的消息一直都太短，不会有长回复」。线上形状控制开了以后（10-21 起，101 个回复轮次）：
+ * 整轮 ≥30 字占 5.9%（他自己 5.3%，真人女生截图 3.5%），所以和「真人聊天」比并不短；但她只有骰子抽到 wide 档时才可能长，没有一轮是因为他在认真问她想法而长的——
+ * 这 5 天里她最长的几条是一条 B 站私信、一条表情包说明、一条主动开口，对他问「谈恋爱是什么样子」「说清楚一点呀」的回答都在 25 字以内。
+ * 真人聊天里长回复都是有由头的：被认真问「为什么 / 你怎么看」、要讲一件事。他在形状开了之后的 101 轮里，问她想法 / 原因的 18 轮、其中带问句的 10 轮。
+ * 取 0.6：这样的轮次约六成拉长，折成整体约 6–10%
+ */
+export const LONG_SHARE = 0.6;
+export const LONG_CAP = 60;
 
 /**
  * 顺着说的轮次占比。10-21 在他真实发的话上重放：变短之后她的短回复里 12% 以“不好笑”“随你”“想得美”“没你个头”这类驳回开头（真人接话只有 3%），
@@ -131,7 +143,7 @@ const CLOSING_WEIGHTS = [0.4, 0.4, 0.15, 0.05, 0] as const;
 /** 各种轮次的占比（调参用：模拟器的场景里可以改，线上用上面的常量）；不写的用默认 */
 export interface ShapeShares { feel?: number; filler?: number; agenda?: number; plain?: number }
 
-export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'> & { shares?: ShapeShares; agenda?: boolean; filler?: boolean; feel?: boolean; split?: boolean; ask?: boolean; agendaTopics?: readonly string[] };
+export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiating' | 'low' | 'aboutPerson'> & { shares?: ShapeShares; agenda?: boolean; filler?: boolean; feel?: boolean; split?: boolean; ask?: boolean; long?: boolean; agendaTopics?: readonly string[] };
 
 /**
  * 他问了她一个直接的问题（意图行「先直接回答他刚问的」）。配置 shapeAsk（ADR 0149）：这样的轮次不加「顺着他说：应一声、附和」那一句（它和意图行是反的），
@@ -140,6 +152,17 @@ export type ShapeContext = Pick<LengthContext, 'history' | 'intent' | 'initiatin
  * 例：他问「嗯，怎么啦，有问题吗？」，她回「那就好」，意图行要她直接回答，形状却只给 4 个字、还写着「应一声、附和」
  */
 const ASKED_INTENT = /先直接回答他刚问的/;
+
+/** 他在问她的想法 / 原因 / 感觉 / 要她给主意（要她认真说，不是问「吃了吗」「要不要一起吃饭」）：和问句一起出现才算 */
+const OPINION_ASK = /你(?:觉得|怎么看|怎么想)|为什么|为啥|怎么回事|什么感觉|什么样|说说|说清楚|讲讲|告诉我|跟我说|想法|看法|原因|怎么会|是怎么|该不该|怎么办|值不值|应不应该|怎么选|选哪个/;
+const QUESTIONISH = /[？?]|吗|呢/;
+const ABSTRACT_MARK = /他在问一个很大、很抽象的问题/;
+/** 这一轮他是不是在认真问她：很大很抽象的问题（意图行认出来的），或者「先直接回答」的轮次里问的是想法 / 原因 */
+export function invitesLong(intent: string | undefined, said: string): boolean {
+    if (!intent) return false;
+    if (ABSTRACT_MARK.test(intent)) return true;
+    return ASKED_INTENT.test(intent) && OPINION_ASK.test(said) && QUESTIONISH.test(said);
+}
 
 const chars = (text: string) => [...text.replace(/\[[^\]]{1,6}\]/g, '#')].length;
 
@@ -182,6 +205,12 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     if (Boolean(context.feel) && free && his <= FEEL_MAX_HIS && !HIS_LOW.test(said) && unit(`${key} shape feel`) < (context.shares?.feel ?? FEEL_SHARE)) {
         const count = unit(`${key} shape feel count`) < 0.6 ? 1 : 2;
         return { kind: 'short', cap: 10, maxBubbles: count, feel: true, ...(drawl ? { drawl: true } : {}) };
+    }
+    // 长答（ADR 0150）：他认真问她的想法 / 原因，约六成的这类轮次放开到每条 LONG_CAP 字、最多 3 条；心情安静 / 身体不舒服时不拉长
+    if (Boolean(context.long) && !closing && !intimate && !context.low && invitesLong(context.intent, said) && unit(`${key} shape long`) < LONG_SHARE) {
+        const longCount = unit(`${key} shape long count`);
+        const longBubbles = longCount < 0.3 ? 1 : longCount < 0.7 ? 2 : 3;
+        return { kind: 'wide', cap: LONG_CAP, maxBubbles: longBubbles, long: true, ...(Boolean(context.split) && longBubbles >= 2 ? { parts: longBubbles } : {}) };
     }
     // 不马上让步：和情绪轮同一个开关。不是收尾 / 认真接话 / 亲近的轮次，提示词里加一句“他说你的不是时别一本正经认错”
     const pushback = Boolean(context.feel) && !closing && !engaged && !intimate;
@@ -247,8 +276,30 @@ const fillerLine = (kind: FillerKind) => `[这一轮说话：只回一条，不�
  */
 const FEEL_NOTE = '这一轮不用把他的话回应完整，先说你此刻对他的一点小情绪，看他刚说的话挑一种最搭的：他说想你、亲你、抱你，就撒个娇，向他要点亲近或确认（想不想你、想了多少、要不要抱）；他戳到你的短处、拿你开玩笑，就夸张地装崩溃、装可怜（玩笑里的夸张，不是真的难过，更不涉及伤害自己）；他回得短、敷衍、不上心，就小声委屈或赌气地嫌他一句；他夸口、立保证，就不讲理地考验他一下；他夸你、说到让你不好意思的事，就害羞地嘴硬、岔开；他说的话让你有点泄气，就叹一声、算了。不讲道理，不解释，不安慰他，不去追问他；实在和他刚说的话搭不上，就照平常回';
 
+/**
+ * 深思（配置 deliberate，ADR 0151）：他是认真在问她、不是闲聊的轮次——很大很抽象的问题 / 问想法原因 / 要她给主意 / 他明着让她讲 / 追着要答案 / 说她不像真人。
+ * 这样的轮次不套字数和条数（形状、长短提示都不加）、换更强的模型、提示词里只留一句「先想清楚再回」。
+ * 为什么：10-25 用户说「她好像不会思考，是被程序框死的」「能不能像 ds 一样深度思考后再回答」。探针（同一个问题各问两次）：现在用的 deepseek-flash 开着思考，
+ * 不管问什么都只想 110–170 字、2 秒（high 和 max 一样；连「在干嘛」也想 107–168 字）；deepseek-v4-pro 同样的问题想 170–1300 字、3–15 秒。
+ * 而且「你为什么会喜欢我」不加任何形状时模型自己写 107–198 字，线上她只回 25 字以内——长短是程序定的，不是想出来的
+ */
+const DELIBERATE_MARKS = /他在追你要一个答案|他在说你的话不像真人/;
+/** 深思轮次最多几条（不套字数，但气泡数不能没有上限） */
+export const DELIBERATE_MAX_BUBBLES = 4;
+export function deliberateTurn(intent: string | undefined, said: string, explains: boolean): boolean {
+    if (explains) return true;
+    if (intent && DELIBERATE_MARKS.test(intent)) return true;
+    return invitesLong(intent, said);
+}
+
+/**
+ * 深思轮次提示词里唯一的一行。只说「先想什么」，不说「说多长、说几条、怎么说」；保留 ADR 0099 / 0150 里量出来的几处毛病（排比、金句、编造）
+ */
+export const DELIBERATE_NOTE = '[这一轮他是认真在问你、或者认真在跟你说事，不是闲聊。开口前先在心里想清楚：他字面背后真正想问的是什么；你自己实际怎么想、为什么这么想；你知道哪些、不知道哪些（不知道就说不知道，别编）；你们之间发生过什么、他此刻的状态。然后像真人在 QQ 上那样回：长短由内容决定，一两个字能说清就一两个字，需要多说就多说几句，一条写长或者分几条都行；有自己的看法就说出来，不用顺着他，也可以反问或追问；别排比、别对仗、别「不是……而是……」、别总结式的漂亮话、别讲大道理]';
+
 /** 放进提示词的一行；不给台词，只给数字和方向 */
 export function describeShape(plan: ShapePlan): string {
+    if (plan.long) return `[这一轮说话：他是认真在问你的想法 / 原因，一两句话打发不了——把你真实的想法或经过说清楚，可以多写几句：${plan.parts ? `分成 ${plan.parts} 条发，每条是一个意思` : plan.maxBubbles === 1 ? '一条里写完整就行' : `一条写完整或者分成最多 ${plan.maxBubbles} 条都行`}，每条不超过 ${plan.cap} 个字；用平常发 QQ 的口气，想到哪说到哪，可以带点犹豫、改口、拿不准的地方；不要排比、对仗、总结式的漂亮话（「不是……而是……」「其实」），不要给他讲道理；没想过的就说没想过，别编]`;
     if (plan.filler) return `${fillerLine(plan.filler)}${plan.stretch ? STRETCH_NOTE : ''}]`;
     if (plan.feel) return `[这一轮说话：${plan.maxBubbles === 1 ? '只回一条' : `最多 ${plan.maxBubbles} 条`}，每条不超过 ${plan.cap} 个字；${FEEL_NOTE}${plan.drawl ? DRAWL_NOTE : ''}]`;
     const split = plan.parts && !plan.agenda ? splitNote(plan.parts) : '';

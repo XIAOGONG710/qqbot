@@ -102,6 +102,9 @@ export const DEFAULTS = {
     pursuits: false,
     shapeSplit: false,
     shapeAsk: false,
+    shapeLong: false,
+    deliberate: false,
+    deliberateModel: 'deepseek-v4-pro',
     bilibiliAtName: '',
     bilibiliAtUid: 0,
     reactions: false,
@@ -434,6 +437,18 @@ export interface AppConfig {
      * 条数按真人被问问题时的分布抽（52% 一条、平均 2.0 条；线上她 86% 一条、平均 1.19 条）。每条多长不动。默认关
      */
     shapeAsk: boolean;
+    /**
+     * 长答（ADR 0150，要 shape 开着）：他认真问她的想法 / 原因（意图行认出的很大很抽象的问题，或「先直接回答」的轮次里问「你觉得 / 为什么 / 什么感觉」），
+     * 约六成的这类轮次每条放开到 60 字、最多 3 条，提示词写“把想法说清楚、别排比别总结式的漂亮话”。心情安静 / 身体不舒服时不拉长。默认关
+     */
+    shapeLong: boolean;
+    /**
+     * 深思（ADR 0151）：他认真问她的轮次（很大很抽象的问题、问想法 / 原因 / 要她给主意、他明着让她讲、追着要答案、说她不像真人）不套字数和条数、
+     * 换成 deliberateModel 的更强模型（同一个接口，开思考）、提示词只留一句“先想清楚再回”。危机 / 小别扭 / 亲近 / 发图等别的轮次不动。更慢（几秒到十几秒）、更贵。默认关
+     */
+    deliberate: boolean;
+    /** 深思轮次用的模型名，默认 deepseek-v4-pro（和聊天用的同一个接口） */
+    deliberateModel: string;
     /** 要 @ 的人的 B 站昵称 */
     bilibiliAtName: string;
     /** 他的 B 站 uid：@ 评论（要昵称和 uid 两样）和发私信（只要 uid）都用 */
@@ -706,6 +721,9 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         pursuits: bool(file, 'pursuits', '', DEFAULTS.pursuits),
         shapeSplit: bool(file, 'shapeSplit', '', DEFAULTS.shapeSplit),
         shapeAsk: bool(file, 'shapeAsk', '', DEFAULTS.shapeAsk),
+        shapeLong: bool(file, 'shapeLong', '', DEFAULTS.shapeLong),
+        deliberate: bool(file, 'deliberate', '', DEFAULTS.deliberate),
+        deliberateModel: deliberateModel(file.deliberateModel),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
         reactions: bool(file, 'reactions', '', DEFAULTS.reactions),
@@ -759,6 +777,18 @@ function oneOf<T extends string>(value: unknown, name: string, allowed: readonly
     if (value === undefined) return fallback;
     if (!allowed.includes(value as T)) throw new Error(`配置 ${name} 应为 ${allowed.map(v => JSON.stringify(v)).join(' / ')} 之一`);
     return value as T;
+}
+
+function deliberateModel(value: unknown): string {
+    if (value === undefined) return DEFAULTS.deliberateModel;
+    if (typeof value !== 'string' || !/^[A-Za-z0-9._:-]{1,60}$/.test(value.trim())) throw new Error('配置 deliberateModel 应为模型名（字母、数字和 . _ : -，不超过 60 个字符）');
+    return value.trim();
+}
+
+/** 深思轮次用的模型配置（ADR 0151）：同一个接口，换成更强的模型、开思考、留够思考的 token 和时间；去掉聊天用的 reasoning_effort 再设成 high（max 实测不比 high 想得多） */
+export function deliberateLlm(llm: AppConfig['llm'], model: string): AppConfig['llm'] {
+    const { reasoning_effort: _effort, ...rest } = (llm.extraBody ?? {}) as Record<string, unknown>;
+    return { ...llm, model, maxTokens: Math.max(llm.maxTokens, 4000), timeoutMs: Math.max(llm.timeoutMs, 180_000), extraBody: { ...rest, thinking: { type: 'enabled' }, reasoning_effort: 'high' } };
 }
 
 function bilibiliAtName(value: unknown): string {

@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cardKey, loadConfig } from '../config.ts';
+import { cardKey, deliberateLlm, loadConfig } from '../config.ts';
 import { loadTierCard } from '../contact.ts';
 import { unlimitedModelGuard } from '../llm.ts';
 import { HindsightClient } from '../memory/hindsight.ts';
@@ -38,6 +38,11 @@ const filler = flag('--filler');
 const split = flag('--split');
 // 被问直接问题时答完再接着说（ADR 0149）：同时打开 shape
 const ask = flag('--ask');
+// 被认真问想法时说长一点（ADR 0150）：同时打开 shape
+const long = flag('--long');
+// 认真问她时深思（ADR 0151）：--deliberate 用配置的 deliberateModel（默认 deepseek-v4-pro）；--deliberate-model <名> 换别的
+const deliberateModelOption = option('--deliberate-model');
+const deliberate = flag('--deliberate');
 // 情绪轮（ADR 0099）：同时打开 shape
 const feel = flag('--feel');
 // 逐条事实检查（ADR 0137）：对所有场景打开，log 只查只记、fix 查到就重写；不写按场景自己的
@@ -127,8 +132,10 @@ for (const [fileIndex, file] of files.entries()) {
             speechCheck: config.speechCheck,
             herDays: config.herDays,
             candidates: candidatesOption === undefined ? config.candidates : Number(candidatesOption),
-            ...(shape || agenda || filler || feel || split || ask ? { shape: true } : {}),
+            ...(shape || agenda || filler || feel || split || ask || long ? { shape: true } : {}),
             ...(ask ? { shapeAsk: true } : {}),
+            ...(long ? { shapeLong: true } : {}),
+            ...(deliberate || deliberateModelOption !== undefined ? { deliberateLlm: deliberateLlm(config.llm, deliberateModelOption ?? loaded.deliberateModel) } : {}),
             ...(agenda ? { shapeAgenda: true } : {}),
             ...(filler ? { shapeFiller: true } : {}),
             ...(feel ? { shapeFeel: true } : {}),

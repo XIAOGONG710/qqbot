@@ -151,6 +151,9 @@ export interface Config {
     pursuits: boolean;
     shapeSplit: boolean;
     shapeAsk: boolean;
+    shapeLong: boolean;
+    deliberate: boolean;
+    deliberateModel: string;
     bilibiliAtName: string;
     bilibiliAtUid: number;
     reactions: boolean;
@@ -346,6 +349,12 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**分成几条**（ADR 0096，要「形状控制」开着）：形状控制抽出的条数（1 条约 55%、2 条约 28%、3 条约 17%）本来只是上限，真模型多半只写一行——线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思（先一条反应，再补一句想法、细节或一个小问题），不是把一句话硬断开。默认关'),
         shapeAsk: Schema.boolean().default(DEFAULTS.shapeAsk)
             .description('**被问问题时答完再接着说**（ADR 0149，要「形状控制」开着）：他问了她一个直接的问题的轮次，不再加“顺着他说：应一声、附和”那一句（和“先直接回答”是反的），条数按真人被问问题时的分布抽（真人 52% 一条、平均 2.0 条；她线上 86% 一条、平均 1.19 条），每条多长不动。默认关'),
+        shapeLong: Schema.boolean().default(DEFAULTS.shapeLong)
+            .description('**被认真问想法时说长一点**（ADR 0150，要「形状控制」开着）：他认真问她的想法 / 原因（很大很抽象的问题，或问“你觉得 / 为什么 / 什么感觉”）的轮次，约六成每条放开到 60 字、最多 3 条，提示词写“把想法说清楚，别排比、别总结式的漂亮话，没想过就说没想过”。其余轮次不变。默认关'),
+        deliberate: Schema.boolean().default(DEFAULTS.deliberate)
+            .description('**认真问她时深思**（ADR 0151）：他认真问她的轮次（很大很抽象的问题、问想法 / 原因 / 要她给主意、他明着让她讲、追着要答案、说她不像真人）不套字数和条数、换成下面的“深思用的模型”（开思考）、提示词只留一句“先想清楚再回”。聊天用的 deepseek-flash 不管问什么都只想 110–170 字、2 秒；v4-pro 想 170–1300 字、3–15 秒。更慢、更贵。危机 / 小别扭 / 亲近 / 发图的轮次不动。默认关'),
+        deliberateModel: Schema.string().default(DEFAULTS.deliberateModel)
+            .description('深思轮次用的模型名（和聊天用的同一个接口）。默认 deepseek-v4-pro'),
         bilibiliAtName: Schema.string().default(DEFAULTS.bilibiliAtName)
             .description('**要 @ 的人的 B 站昵称**（ADR 0089）：评论最前面会写 @昵称；不含 @ 和换行'),
         bilibiliAtUid: Schema.number().default(DEFAULTS.bilibiliAtUid)
@@ -550,6 +559,9 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.pursuits !== undefined ? { pursuits: config.pursuits } : {}),
         ...(config.shapeSplit !== undefined ? { shapeSplit: config.shapeSplit } : {}),
         ...(config.shapeAsk !== undefined ? { shapeAsk: config.shapeAsk } : {}),
+        ...(config.shapeLong !== undefined ? { shapeLong: config.shapeLong } : {}),
+        ...(config.deliberate !== undefined ? { deliberate: config.deliberate } : {}),
+        ...(config.deliberateModel !== undefined ? { deliberateModel: config.deliberateModel } : {}),
         ...(config.bilibiliAtName !== undefined ? { bilibiliAtName: config.bilibiliAtName } : {}),
         ...(config.bilibiliAtUid !== undefined ? { bilibiliAtUid: config.bilibiliAtUid } : {}),
         ...(config.reactions !== undefined ? { reactions: config.reactions } : {}),

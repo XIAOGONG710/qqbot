@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { canGiveFeedback, cardKey, CONTACT_TIERS, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { canGiveFeedback, cardKey, CONTACT_TIERS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { chatCompletion, forExtraction } from './llm.ts';
 import { acquireLock } from './lock.ts';
 import type { Log } from './log.ts';
@@ -599,6 +599,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.pursuits ? { pursuits: pursuitsReader(config.dataDir, log) } : {}),
             ...(config.shape && config.shapeSplit ? { shapeSplit: true } : {}),
             ...(config.shape && config.shapeAsk ? { shapeAsk: true } : {}),
+            ...(config.shape && config.shapeLong ? { shapeLong: true } : {}),
+            ...(config.deliberate ? { deliberate: { llm: deliberateLlm(config.llm, config.deliberateModel) } } : {}),
             contacts: config.contacts,
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；
             // 超时不重发：可能已经发出去了，再发就重复
