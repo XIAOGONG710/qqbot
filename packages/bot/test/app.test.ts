@@ -731,6 +731,27 @@ describe('主动消息（ADR 0011）', () => {
         assert.deepEqual(chat(cfg, 10002), ['assistant:好']);
     });
 
+    test('「/主动」（ADR 0156）：他发了，她现在就主动找他一次（走整条主动链路）；命令本身不进聊天记录；没开主动时回一句原因', async () => {
+        const clock = new VirtualClock(new Date(2026, 9, 5, 23, 50));
+        const cfg = config({ proactive: 'on', schedule: true, contacts: [boyfriend] });
+        const prompts: string[] = [];
+        const first = setup(cfg, { 10002: [] }, { clock, generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '刚想起一件事'; } });
+        await first.app.connected(SELF);
+        first.app.receive(event(10002, 501, '/主动'));
+        await until(() => first.sent.length > 0, 8000);
+        assert.deepEqual(first.sent, ['10002:刚想起一件事']);
+        assert.ok(prompts.some(p => p.includes('你想起一件自己的小事')), '说明是“想起一件自己的小事”');
+        assert.deepEqual(chat(cfg, 10002), ['assistant:刚想起一件事'], '命令不进聊天记录');
+        first.app.stop();
+
+        const off = setup(config({ proactive: 'off', contacts: [boyfriend] }));
+        await off.app.connected(SELF);
+        off.app.receive(event(10002, 502, '/主动'));
+        await until(() => off.sent.length > 0);
+        assert.deepEqual(off.sent, ['10002:（现在不能主动找你：主动消息没开）']);
+        off.app.stop();
+    });
+
     test('错过的不补：12:00 才启动，早安记成「错过了，不补」', async () => {
         const clock = new VirtualClock(new Date(2026, 9, 5, 12, 0));
         const cfg = config({ proactive: 'on', schedule: true, contacts: [boyfriend] });

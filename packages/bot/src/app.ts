@@ -1164,6 +1164,16 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         const feedbackContact = feedback ? config.contacts.find(c => c.qq === event.user_id && canGiveFeedback(c)) : undefined;
         if (feedback && feedbackContact
             && feedback.consume(event.user_id, feedbackContact.tier, event.message, event.message_id, new Date(event.time * 1000), history.load(event.user_id))) return;
+        // 他发「/主动」（ADR 0156）：让她现在就主动找他一次，只认纯文字、只认男朋友档的他；命中的算处理完，不进聊天记录、不交给回复器。
+        // 她自己发的那条走主动消息的整条链路（人设、事实、记忆）；发不了（危机暂停、他有没回的消息、主动没开）时回一句原因
+        if (event.user_id === deviceOwner?.qq && plainTextOf(event.message)?.trim() === '/主动') {
+            const qq = event.user_id;
+            const planner = planners.get(qq);
+            void (planner ? planner.fireNow() : Promise.resolve('主动消息没开'))
+                .then(reason => (reason ? transport.sendPrivateText(qq, `（现在不能主动找你：${reason}）`) : undefined))
+                .catch(error => log(`[${qq}] 「/主动」出错：${error instanceof Error ? error.message : String(error)}`));
+            return;
+        }
         // 他发的设备命令（ADR 0148）：「批准」「拒绝」「/屏幕」「/摄像头」「/设备」，只认纯文字、只认男朋友档的他；
         // 命中的算处理完，不进聊天记录、不交给回复器。看屏幕 / 摄像头：看完的描述作为他这一条消息交给回复器，她自然地回
         if (deviceService && deviceOwner && event.user_id === deviceOwner.qq) {

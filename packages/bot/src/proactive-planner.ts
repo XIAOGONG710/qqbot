@@ -24,7 +24,7 @@ import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from './memory/episo
 import type { OpenAIMessage } from './prompt.ts';
 import type { MacroNames } from './st/macros.ts';
 import {
-    blockReason, candidateLabel, candidatesOn, counts, DEFAULT_NEWS_KINDS, herDay, MAX_PROACTIVE_BUBBLES, newsKindsOf, occasionNote, PENDING_REASON, planFrom, recallTopic, untoldNews,
+    blockReason, candidateLabel, candidatesOn, counts, CRISIS_PAUSE_REASON, DEFAULT_NEWS_KINDS, herDay, MAX_PROACTIVE_BUBBLES, newsKindsOf, occasionNote, PENDING_REASON, planFrom, recallTopic, untoldNews,
     UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type NewsKind, type ProactiveInput, type RescheduleItem, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
 import type { BodyNow } from './body.ts';
@@ -35,7 +35,7 @@ import type { InitiateOutcome, Responder } from './responder.ts';
 import type { DayWeather } from './weather.ts';
 import { unwellNews, worldNews, type WorldNews, type WorldNow } from './world.ts';
 import { formatDate, stateAt, wakeOn, type Schedule } from './schedule.ts';
-import { pick } from './reply-timing.ts';
+import { pendingMessages, pick } from './reply-timing.ts';
 import {
     innerLine as innerLineOf, parseThought, pendingIntents, THINK_AFTER_CHAT_MS, THINK_AFTER_WAKE_MS, THINK_INTERVAL_MIN, THINK_MAX_PER_DAY, THINK_MIN_GAP_MS, THINK_RETRY_MS, thinkNote, THOUGHTS_KEPT, type InnerState,
 } from './inner.ts';
@@ -198,6 +198,11 @@ export interface Planner {
     syncFollowUps(): Promise<void>;
     stop(): void;
     status(): PlannerStatus;
+    /**
+     * 他发「/主动」：让她现在就主动找他一次（ADR 0156）。不看“他还没回上一条”“夜里了”“一小时内聊过”“每天条数”这些闸，
+     * 只守两条：他最近说过想伤害自己的话时不发；他有没回的消息时不发（回复就好）。返回 undefined = 已经交给回复器去发了；否则是一句不发的原因
+     */
+    fireNow(): Promise<string | undefined>;
     /** 她最近几个钟头心里在想什么，放进聊天提示词的一行（ADR 0101）；没开 innerLife、没有念头就没有 */
     innerLine(): string | undefined;
     /** 跑完当前这一轮（测试用） */
@@ -234,7 +239,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         const reason = '主动消息状态读取或校验失败，已暂停；请修复后重新创建计划器';
         deps.log(`主动：${reason}；原文件未重建（原因：${describeError(error)}）`);
         return {
-            poke() {}, stop() {}, syncFollowUps: async () => {}, running: Promise.resolve(), innerLine: () => undefined,
+            poke() {}, stop() {}, fireNow: async () => reason, syncFollowUps: async () => {}, running: Promise.resolve(), innerLine: () => undefined,
             status: () => ({ mode: deps.mode, paused: reason, today: 0 }),
         };
     }
@@ -428,9 +433,16 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         return `${day} ${clock(candidate.at)} ${candidateLabel(candidate)}`;
     }
 
-    async function fire(candidate: Candidate): Promise<void> {
+    /** 手动让她现在找他（fireNow）时只看这两条：危机暂停、他有没回的消息 */
+    function manualBlock(current: ProactiveInput): string | undefined {
+        if (current.crisisPaused) return CRISIS_PAUSE_REASON;
+        if (pendingMessages([...current.history]).length && !current.skip?.([...current.history])) return PENDING_REASON;
+        return undefined;
+    }
+
+    async function fire(candidate: Candidate, manual = false): Promise<void> {
         const current = input();
-        const reason = blockReason(candidate, now(), current);
+        const reason = manual ? manualBlock(current) : blockReason(candidate, now(), current);
         if (reason) {
             record(candidate, { result: 'skipped', reason });
             deps.log(`主动${tag}：${candidateLabel(candidate)}不发：${reason}`);
@@ -642,6 +654,19 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     return {
         poke() {
             wake?.abort();
+        },
+        async fireNow() {
+            if (stopped) return '主动消息已经停了';
+            const reason = manualBlock(input());
+            if (reason) {
+                deps.log(`主动${tag}：他让她现在找他，但不发：${reason}`);
+                return reason;
+            }
+            const day = formatDate(herDay(deps.schedule, new Date(now())));
+            const candidate: Candidate = { id: `${day}:share:manual-${now()}`, occasion: 'share', day, at: now(), reason: '他让她现在找他' };
+            deps.log(`主动${tag}：他让她现在找他`);
+            await fire(candidate, true);
+            return undefined;
         },
         syncFollowUps() {
             if (stopped) return Promise.resolve();
