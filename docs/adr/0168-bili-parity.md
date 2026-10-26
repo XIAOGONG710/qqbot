@@ -26,6 +26,12 @@
 | 账号运营节奏 | 每动作限流、审计、风控即停 | `bilibili-limit.ts`：每动作滑窗（评论 / 私信 / 动态 / 投稿）+ `logs/bili-audit.jsonl`（动作、对象、结果，不含正文）+ 现有 `bilibili-risk` 熔断 | 跟随各写开关 | 2 |
 | 她是一个人 | — | 不动（角色卡 / 生活 / 关系 / 危机规则） | — | — |
 
+## 第二期（本次已做，只读）
+
+`bilibili-wbi.ts`（混音表 + `mixinKey` + `signParams`）、`bilibili-feed.ts`（`fetchRecommend` / `parseFeedItems` / `stayVerdict` / `planSession` / `sessionSize`）、`bilibili-limit.ts`（评论 / 私信 / 动态 / 投稿四个滑窗 + 审计行）、`ops/bilibili-feed-cli.ts`。
+
+**实测**（2026-10-26，本机直连，未登录）：`ok:true`，rcmd 返回 6 条、会话计划 7 个；签名通过（不签名会 code -352）。发现两处要在接线前补：rcmd 不带 `tname`（分区为空，只能靠标题黑名单兜）+ 生活区以外内容混得多，已把时长上限收到 15 分钟、标题黑名单补了凶案类词。
+
 ## 第一期（本次已做）
 
 - `packages/bot/src/bilibili-view.ts`：`fetchView` / `fetchDanmaku` / `fetchStoryboard` + 纯函数 `parseView` / `parseDanmakuXml` / `danmakuPeaks` / `viewNote`；全部只读、失败返回空 / undefined，不假装；

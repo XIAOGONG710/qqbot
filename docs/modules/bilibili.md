@@ -8,6 +8,9 @@
 
 - `bilibili.ts`
 - `bilibili-view.ts`
+- `bilibili-wbi.ts`
+- `bilibili-feed.ts`
+- `bilibili-limit.ts`
 - `bilibili-account-source.ts`
 - `bilibili-account.ts`
 - `platform-breaker.ts`
