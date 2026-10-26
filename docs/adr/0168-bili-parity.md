@@ -20,7 +20,7 @@
 | 推荐流 | `feed recommend`（账号级个性化）+ 关注动态 + 各榜 | `bilibili-feed.ts`：wbi 签名 + `x/web-interface/wbi/index/top/feed/rcmd` + 「刷」的会话（连续 3–8 个、停留 / 划走、记看过） | `biliFeed` | 2 |
 | 看懂一个视频 | `video watch`：信息 + AI 总结 + 字幕 + 章节 + 热评 + 弹幕高能 + 画面总览 | **`bilibili-view.ts`（已写）**：view + 章节 + 弹幕高能 + 雪碧图；**`bilibili-summary.ts`（已写）**：AI 总结接口，**实测要登录（未登录 code -101）**，所以排到第 3 期随账号一起验 | `biliView` | 1（只读部分完成） |
 | 内容生产 | 动态 / 投稿 / 改稿 / 合集 / 互动弹幕 / 定时 / AI 声明 | `bilibili-create.ts`：同一套 action 包装，先只做「动态」与「投稿（仅自己可见 / 定时）」；AI 声明默认勾；每次发之前 `dryRun` 出一条草稿 | `biliPost`、`biliUpload` | 4（要登录 + 用户在场） |
-| 数据复盘 | 单稿完播率 / 账号数据 / 数据中心 | `bilibili-stats.ts`：单稿 `x/web-interface/archive/stat` + 创作中心（要 Cookie）；先做只读汇总进周报 | `biliStats` | 3 |
+| 数据复盘 | 单稿完播率 / 账号数据 / 数据中心 | `bilibili-stats.ts`：**单稿公开数据已写**（§第 4 期），完播率 / 账号数据 / 数据中心仍要登录 | `biliStats` | 3（公开部分完成） |
 | 社交互动 | 收件箱、真 @、带图、置顶、查折叠、私信实时 | 扩现有 `bilibili-comment/replies/dm`：加「收件箱一次看完 + `--unreplied` + 真 @ + 折叠检查」；`dm` 加轮询式 watch（不接平台推送） | 现有三个开关 | 3 |
 | 工具形态 | 80+ 单命令、JSON + hint、schema、MCP | `ops/bili-*.ts` 统一 `--json`（`{ok,data}` / `{ok:false,error:{code,message,hint}}`）+ `ops/bili-schema.ts` 输出命令表；MCP 先不做 | 无 | **1（CLI 已按此写）** |
 | 账号运营节奏 | 每动作限流、审计、风控即停 | `bilibili-limit.ts`：每动作滑窗（评论 / 私信 / 动态 / 投稿）+ `logs/bili-audit.jsonl`（动作、对象、结果，不含正文）+ 现有 `bilibili-risk` 熔断 | 跟随各写开关 | 2 |
@@ -73,3 +73,9 @@
 - AI 总结要 wbi 签名（B 站改过两次）；ASR 要 Python/GPU（VM 内存 6 GB，装之前要用户点头）。
 - 本章只承诺第一期；后面四期的代码量按 bili-cli 的 80+ 命令估，是「多个开发日」，不是一个提交。
 - 数据接口和投稿接口的字段**没在真机上核对过**，照 B 站网页端历史接口写，第一期先只做只读、有探针可验。
+
+## 第 3 期补充（2026-10-27）：单稿公开数据
+
+`bilibili-stats.ts`：`parseVideoStats` / `perHundred` / `statsLine` + `fetchVideoStats`；`ops/bilibili-stats-cli.ts`（多 BV、`--json`）。
+
+**实测**（未登录）：老的 `archive/stat` 已 404，改从 `view` 的 `stat` 取；`BV1GJ411x7h7` → 播放 1.07 亿、赞 296.4 万、币 128.8 万、藏 155.9 万，每百播 赞 2.8 / 币 1.2 / 藏 1.4 / 评 0.2。完播率、平均观看、3 秒退出率、账号数据仍在创作中心后台（要登录），未做。
