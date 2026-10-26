@@ -51,7 +51,7 @@ describe('存取、过期', () => {
 });
 
 describe('她看一个', () => {
-    const make = (options: { search?: (k: string) => BiliVideo[]; subtitle?: (v: BiliVideo) => { status: 'ok'; lan: string; lines: string[] } | { status: 'none' }; failSearch?: boolean; view?: (v: BiliVideo) => { cid?: number; chapters: { from: number; title: string }[] } | undefined; danmaku?: readonly { at: number; text: string }[] } = {}) => {
+    const make = (options: { search?: (k: string) => BiliVideo[]; subtitle?: (v: BiliVideo) => { status: 'ok'; lan: string; lines: string[] } | { status: 'none' }; failSearch?: boolean; view?: (v: BiliVideo) => { cid?: number; chapters: { from: number; title: string }[] } | undefined; danmaku?: readonly { at: number; text: string }[]; storyboard?: readonly string[]; describeImage?: (url: string) => string | undefined } = {}) => {
         const path = tmp();
         const logs: string[] = [];
         const searched: string[] = [];
@@ -63,6 +63,8 @@ describe('她看一个', () => {
             hotComments: async () => ['热评甲甲甲甲甲甲', '热评乙乙乙乙乙乙', '热评丙丙丙丙丙丙'],
             ...(options.view ? { view: async (v: BiliVideo) => options.view!(v) } : {}),
             ...(options.danmaku ? { danmaku: async () => options.danmaku! } : {}),
+            ...(options.storyboard ? { storyboard: async () => options.storyboard! } : {}),
+            ...(options.describeImage ? { describeImage: async (url: string) => options.describeImage!(url) } : {}),
             sleep: async () => undefined,
         };
         return { deps, path, logs, searched, subtitles: () => subtitles };
@@ -99,6 +101,24 @@ describe('她看一个', () => {
         const plain = loadWatched(bare.path).entries[0]!;
         assert.equal(plain.chapters, undefined);
         assert.equal(plain.peaks, undefined);
+    });
+
+    test('画面总览：雪碧图交给看图模型写了一两句（ADR 0168）；看不成图就不写', async () => {
+        const seen: string[] = [];
+        const rich = make({
+            view: () => ({ cid: 7, chapters: [] }),
+            storyboard: ['https://i0.hdslb.com/bfs/story/s1.jpg', 'https://i0.hdslb.com/bfs/story/s2.jpg'],
+            describeImage: url => { seen.push(url); return url.endsWith('s1.jpg') ? '画面是傍晚的街道，几个路人站在路边' : undefined; },
+        });
+        assert.equal(await watchOne(rich.deps), 'watched');
+        const entry = loadWatched(rich.path).entries[0]!;
+        assert.equal(entry.frames, '画面是傍晚的街道，几个路人站在路边');
+        assert.deepEqual(seen, ['https://i0.hdslb.com/bfs/story/s1.jpg']);
+        assert.match(watchedFacts([entry], at(20))!.text, /画面总览：画面是傍晚的街道/);
+
+        const none = make({ view: () => ({ cid: 7, chapters: [] }), storyboard: [], describeImage: () => '不该被用' });
+        assert.equal(await watchOne(none.deps), 'watched');
+        assert.equal(loadWatched(none.path).entries[0]!.frames, undefined);
     });
 
     test('目录还不存在（线上第一次）：先建目录再存，不抛', async () => {

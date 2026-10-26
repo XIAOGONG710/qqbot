@@ -79,7 +79,7 @@ import { jokeStore, JOKES_CHECK_MS, refreshJokes } from './jokes.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes, type MemeEntry } from './memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from './watching.ts';
 import { feedFactEntry, feedOnce, feedPath, loadFeed } from './feed-browsing.ts';
-import { fetchDanmaku, fetchView } from './bilibili-view.ts';
+import { fetchDanmaku, fetchStoryboard, fetchView } from './bilibili-view.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { togetherNow } from './together.ts';
 import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoSource } from './photos.ts';
@@ -1172,6 +1172,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 // 章节 + 弹幕高能（ADR 0168）：只读公开接口，读不到不影响「看过」
                 view: async video => { try { return await fetchView(viewFetch, video.bvid); } catch { return undefined; } },
                 danmaku: async cid => fetchDanmaku(viewFetch, cid),
+                storyboard: async (bvid, cid) => (await fetchStoryboard(viewFetch, bvid, cid))?.urls ?? [],
+                ...(vision ? { describeImage: async (url: string) => { try { return await vision.describe({ url }); } catch { return undefined; } } } : {}),
                 sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
             });
             watchedEntries = loadWatched(watchedFile, log).entries;

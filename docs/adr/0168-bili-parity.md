@@ -28,7 +28,7 @@
 
 ## 第二期（本次已做，只读）
 
-`watching.ts` 也接上了：她真“看”一个视频时，除了字幕摘录和两条热评，还会取 **分段章节 + 弹幕高能**（只读公开接口，读不到就不写）；进提示词的「最近看过」会带这两层事实（“分段：0:00 开场、1:00 正题；观众反应最强烈：430 秒（218 条弹幕）”）。
+`watching.ts` 也接上了：她真“看”一个视频时，除了字幕摘录和两条热评，还会取 **分段章节 + 弹幕高能 + 画面总览**（雪碧图交给现有的看图模型写一两句；只读公开接口，读不到就不写）；进提示词的「最近看过」会带这两层事实（“分段：0:00 开场、1:00 正题；观众反应最强烈：430 秒（218 条弹幕）”）。
 
 `feed-browsing.ts`：一天一次（14 点后、醒着、按作息）、拿一页 → 排会话 → 记账（`watching/feed.json`，30 天 / seen 300），`dryRun` 只写 `presence/drafts.md`；`app` 里 30 分钟看一眼、随 app 停。**刷到的会进内心**：`feedFactEntry` 接在主动计划器原来「最近看过」的槽上（看过的视频优先，否则用当天刷到的），想过一次就不再反复想同一件。开关 `biliFeed`（插件 schema 里已有说明）。
 `bilibili-wbi.ts`（混音表 + `mixinKey` + `signParams`）、`bilibili-feed.ts`（`fetchRecommend` / `parseFeedItems` / `stayVerdict` / `planSession` / `sessionSize`）、`bilibili-limit.ts`（评论 / 私信 / 动态 / 投稿四个滑窗 + 审计行）、`ops/bilibili-feed-cli.ts`。
