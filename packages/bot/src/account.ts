@@ -56,7 +56,6 @@ export const ACCOUNT_ACTIONS: Readonly<Record<string, AccountActionDef>> = {
     get_group_system_msg: { tier: 'read', target: 'none', label: '读群系统消息' },
     get_group_at_all_remain: { tier: 'read', target: 'group', label: '读 @全体 剩余次数' },
     get_friends_with_category: { tier: 'read', target: 'none', label: '读分组好友' },
-    get_cookies: { tier: 'read', target: 'none', label: '读登录态（排障用）' },
     // 改账号自己的样子
     set_self_longnick: { tier: 'profile', target: 'none', label: '改个性签名' },
     set_qq_profile: { tier: 'profile', target: 'none', label: '改昵称 / 资料' },

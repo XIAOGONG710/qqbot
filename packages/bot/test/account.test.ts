@@ -104,3 +104,13 @@ describe('好友申请怎么处理（ADR 0142）', () => {
         assert.equal(friendRequestVerdict('all', [], 20002), 'reject');
     });
 });
+
+describe('登录态不进控制面（P1）', () => {
+    test('get_cookies 没登记：控制面调不动，qq-admin 即使误调也被拒', async () => {
+        assert.equal('get_cookies' in ACCOUNT_ACTIONS, false);
+        const account = createAccount({ policy: policy({ mode: 'read' }), call: fakeCall() });
+        const verdict = account.check('get_cookies');
+        assert.equal(verdict.allowed, false);
+        await assert.rejects(account.run('get_cookies'), /没登记/);
+    });
+});
