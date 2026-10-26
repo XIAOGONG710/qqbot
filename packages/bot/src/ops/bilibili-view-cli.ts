@@ -4,6 +4,7 @@
 // 读不到（风控 / 接口改了 / 视频不存在）时：--json 下 {"ok":false,"error":{"code":…,"message":…,"hint":…}}。
 
 import { danmakuPeaks, fetchDanmaku, fetchStoryboard, fetchView, viewNote } from '../bilibili-view.ts';
+import { fetchSummary } from '../bilibili-summary.ts';
 
 const args = process.argv.slice(2);
 const bvid = args.find(arg => !arg.startsWith('--'));
@@ -24,12 +25,22 @@ try {
     const points = view.cid ? await fetchDanmaku(fetch, view.cid) : [];
     const peaks = danmakuPeaks(points, { top: peakCount });
     const storyboard = view.cid ? await fetchStoryboard(fetch, id, view.cid) : undefined;
-    const data = { view, peaks, ...(storyboard ? { storyboard } : {}) };
+    const withSummary = args.includes('--summary');
+    const summaryResult = withSummary && view.cid && view.upMid ? await fetchSummary(fetch, { bvid: id, cid: view.cid, upMid: view.upMid }) : { status: 'none' as const };
+    const data = { view, peaks, ...(storyboard ? { storyboard } : {}), ...(withSummary ? { summary: summaryResult.status === 'ok' ? summaryResult.summary : null, summaryStatus: summaryResult.status } : {}) };
     if (json) {
         console.log(JSON.stringify({ ok: true, data }));
     } else {
         console.log(viewNote(view, peaks));
         console.log(`弹幕 ${points.length} 条${storyboard ? `；雪碧图 ${storyboard.urls.length} 张` : '；雪碧图读不到（可能要 wbi）'}`);
+        if (withSummary) {
+            if (summaryResult.status === 'needLogin') console.log('AI 总结：要她的 B 站号登录（这个接口未登录回 code -101）');
+            else if (summaryResult.status === 'none') console.log('AI 总结：没有（短视频 / 新视频可能没有）');
+            else {
+                console.log(`AI 总结：${summaryResult.summary.summary || '（只有大纲）'}`);
+                for (const chapter of summaryResult.summary.chapters) console.log(`  · ${chapter.title}：${chapter.points.map(point => `${point.at}s ${point.text}`).join('；')}`);
+            }
+        }
     }
 } catch (error) {
     fail('network_error', error instanceof Error ? error.message : String(error), '过一会儿重试；连续失败就记一行、别刷', 8);

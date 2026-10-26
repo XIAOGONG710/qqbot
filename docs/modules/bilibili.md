@@ -8,6 +8,7 @@
 
 - `bilibili.ts`
 - `bilibili-view.ts`
+- `bilibili-summary.ts`
 - `bilibili-wbi.ts`
 - `bilibili-feed.ts`
 - `feed-browsing.ts`

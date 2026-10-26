@@ -21,6 +21,8 @@ export interface BiliView {
     /** 秒 */
     duration: number;
     cover?: string;
+    /** UP 主 mid（AI 总结接口要） */
+    upMid?: number;
     chapters: BiliChapter[];
 }
 
@@ -62,6 +64,7 @@ export function parseView(data: unknown): BiliView | undefined {
         desc: str(root.desc),
         duration: num(root.duration),
         ...(str(root.pic) ? { cover: str(root.pic) } : {}),
+        ...(num(asRecord(root.owner)?.mid) ? { upMid: num(asRecord(root.owner)?.mid) } : {}),
         chapters,
     };
 }

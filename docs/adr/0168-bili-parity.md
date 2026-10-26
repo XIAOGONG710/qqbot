@@ -18,7 +18,7 @@
 | 表一的行 | bili-cli 的做法 | 我们的化用 | 开关 | 期 |
 | --- | --- | --- | --- | --- |
 | 推荐流 | `feed recommend`（账号级个性化）+ 关注动态 + 各榜 | `bilibili-feed.ts`：wbi 签名 + `x/web-interface/wbi/index/top/feed/rcmd` + 「刷」的会话（连续 3–8 个、停留 / 划走、记看过） | `biliFeed` | 2 |
-| 看懂一个视频 | `video watch`：信息 + AI 总结 + 字幕 + 章节 + 热评 + 弹幕高能 + 画面总览 | **`bilibili-view.ts`（本期已写）**：view + 章节 + 弹幕高能 + 雪碧图；AI 总结 / ASR 放 2.5 期 | `biliView` | **1（已完成）** |
+| 看懂一个视频 | `video watch`：信息 + AI 总结 + 字幕 + 章节 + 热评 + 弹幕高能 + 画面总览 | **`bilibili-view.ts`（已写）**：view + 章节 + 弹幕高能 + 雪碧图；**`bilibili-summary.ts`（已写）**：AI 总结接口，**实测要登录（未登录 code -101）**，所以排到第 3 期随账号一起验 | `biliView` | 1（只读部分完成） |
 | 内容生产 | 动态 / 投稿 / 改稿 / 合集 / 互动弹幕 / 定时 / AI 声明 | `bilibili-create.ts`：同一套 action 包装，先只做「动态」与「投稿（仅自己可见 / 定时）」；AI 声明默认勾；每次发之前 `dryRun` 出一条草稿 | `biliPost`、`biliUpload` | 4（要登录 + 用户在场） |
 | 数据复盘 | 单稿完播率 / 账号数据 / 数据中心 | `bilibili-stats.ts`：单稿 `x/web-interface/archive/stat` + 创作中心（要 Cookie）；先做只读汇总进周报 | `biliStats` | 3 |
 | 社交互动 | 收件箱、真 @、带图、置顶、查折叠、私信实时 | 扩现有 `bilibili-comment/replies/dm`：加「收件箱一次看完 + `--unreplied` + 真 @ + 折叠检查」；`dm` 加轮询式 watch（不接平台推送） | 现有三个开关 | 3 |
@@ -32,6 +32,12 @@
 `bilibili-wbi.ts`（混音表 + `mixinKey` + `signParams`）、`bilibili-feed.ts`（`fetchRecommend` / `parseFeedItems` / `stayVerdict` / `planSession` / `sessionSize`）、`bilibili-limit.ts`（评论 / 私信 / 动态 / 投稿四个滑窗 + 审计行）、`ops/bilibili-feed-cli.ts`。
 
 **实测**（2026-10-26，本机直连，未登录）：`ok:true`，rcmd 返回 6 条、会话计划 7 个；签名通过（不签名会 code -352）。发现两处要在接线前补：rcmd 不带 `tname`（分区为空，只能靠标题黑名单兜）+ 生活区以外内容混得多，已把时长上限收到 15 分钟、标题黑名单补了凶案类词。
+
+## 第 2.5 期（本次只写了一半：接口 + 解析）
+
+`bilibili-summary.ts`：`fetchSummary` 走 wbi 签名请求 `x/web-interface/view/conclusion/get`，解析 `model_result.summary` + `outline` 章节；返回 `ok / needLogin / none` 三种状态，CLI `--summary` 会显示「要她的 B 站号登录」。
+
+**实测（未登录）**：`code -101 账号未登录` → 这条不是「没总结」，是**要登录**。所以 AI 总结不能在匿名阶段验收，挪到第 3 期（账号恢复后）再验；ASR 仍独立（要 Python，另算）。
 
 ## 第一期（本次已做）
 
