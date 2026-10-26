@@ -51,6 +51,8 @@ describe('浏览器开发者协议连接（ADR 0166）', () => {
     test('命令超时会报错；连接断了，等着的命令全部失败，之后再发也失败', async () => {
         const silent: CdpTransport = { send() { /* 不回话 */ }, close() { /* 无 */ }, onMessage() { /* 无 */ }, onClose() { /* 无 */ } };
         await assert.rejects(createCdpConnection(silent, { commandTimeoutMs: 20 }).send('Page.enable'), /Page\.enable 超时/);
+        // 单条命令自己的超时（读响应体用短的，不拖住整次浏览）
+        await assert.rejects(createCdpConnection(silent, { commandTimeoutMs: 60_000 }).send('Network.getResponseBody', {}, undefined, 15), /Network\.getResponseBody 超时（15 ms）/);
         const fake = fakeBrowser({ 'Never.replies': () => new Promise(() => undefined) });
         const connection = createCdpConnection(fake.transport);
         const waiting = connection.send('Slow');

@@ -21,7 +21,8 @@ export interface CdpTransport {
 }
 
 export interface CdpConnection {
-    send<T = unknown>(method: string, params?: Record<string, unknown>, sessionId?: string): Promise<T>;
+    /** timeoutMs：这一条命令自己的超时（不给就用连接的默认值） */
+    send<T = unknown>(method: string, params?: Record<string, unknown>, sessionId?: string, timeoutMs?: number): Promise<T>;
     on(event: string, listener: (params: any, sessionId: string | undefined) => void): () => void;
     close(): void;
     readonly closed: boolean;
@@ -69,11 +70,12 @@ export function createCdpConnection(transport: CdpTransport, options: { commandT
     transport.onClose(() => { closed = true; failAll('浏览器连接断了'); });
 
     return {
-        send(method, params, sessionId) {
+        send(method, params, sessionId, commandTimeoutMs) {
             if (closed) return Promise.reject(new CdpError('浏览器连接已经关了'));
             const id = ++nextId;
+            const limit = commandTimeoutMs ?? timeoutMs;
             return new Promise((resolve, reject) => {
-                const timer = setTimeout(() => { pending.delete(id); reject(new CdpError(`${method} 超时（${timeoutMs} ms）`)); }, timeoutMs);
+                const timer = setTimeout(() => { pending.delete(id); reject(new CdpError(`${method} 超时（${limit} ms）`)); }, limit);
                 pending.set(id, { resolve, reject, timer });
                 transport.send(JSON.stringify({ id, method, ...(params ? { params } : {}), ...(sessionId ? { sessionId } : {}) }));
             });
@@ -145,9 +147,10 @@ const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 export async function openPage(connection: CdpConnection, options: { viewport?: { width: number; height: number } } = {}): Promise<Page> {
     const { targetId } = await connection.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank' });
     const { sessionId } = await connection.send<{ sessionId: string }>('Target.attachToTarget', { targetId, flatten: true });
-    const call = <T = unknown>(method: string, params?: Record<string, unknown>) => connection.send<T>(method, params, sessionId);
+    const call = <T = unknown>(method: string, params?: Record<string, unknown>, timeoutMs?: number) => connection.send<T>(method, params, sessionId, timeoutMs);
     await call('Page.enable');
-    await call('Network.enable');
+    // 响应体要留得住：默认的缓冲很小，页面里的视频、图片一多，早先的接口响应体就读不出来了
+    await call('Network.enable', { maxTotalBufferSize: 64 * 1024 * 1024, maxResourceBufferSize: 8 * 1024 * 1024 });
     const viewport = options.viewport ?? { width: 1280, height: 860 };
     await call('Emulation.setDeviceMetricsOverride', { width: viewport.width, height: viewport.height, deviceScaleFactor: 1, mobile: false });
 
@@ -182,7 +185,8 @@ export async function openPage(connection: CdpConnection, options: { viewport?: 
         url: response.url,
         status: response.status,
         async body() {
-            const { body, base64Encoded } = await call<{ body: string; base64Encoded: boolean }>('Network.getResponseBody', { requestId: response.requestId });
+            // 读不出来的（被浏览器丢了缓冲）要尽快失败，不能拖住整次浏览
+            const { body, base64Encoded } = await call<{ body: string; base64Encoded: boolean }>('Network.getResponseBody', { requestId: response.requestId }, 8_000);
             return base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body;
         },
     });
