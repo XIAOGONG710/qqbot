@@ -78,7 +78,7 @@ import { idiomStore, IDIOMS_CHECK_MS, refreshIdioms } from './idioms.ts';
 import { jokeStore, JOKES_CHECK_MS, refreshJokes } from './jokes.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes, type MemeEntry } from './memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from './watching.ts';
-import { feedOnce } from './feed-browsing.ts';
+import { feedFactEntry, feedOnce, feedPath, loadFeed } from './feed-browsing.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { togetherNow } from './together.ts';
 import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoSource } from './photos.ts';
@@ -1021,7 +1021,15 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 ...(config.together && contact.tier === 'boyfriend' ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
                 ...(photos && (config.photoShares || config.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),
                 ...(config.innerLife ? { inner: true } : {}),
-                ...(config.innerLife && config.watching && contact.tier === 'boyfriend' ? { watchedFacts: () => watchedFacts(watchedEntries, new Date(pipeline?.now ? pipeline.now() : Date.now())) } : {}),
+                // 最近在 B 站看过 / 今天刷到过（ADR 0130 / 0168）：内心想事情时多一个真事可讲；看过的优先
+                ...(config.innerLife && contact.tier === 'boyfriend' && (config.watching || (config.biliFeed ?? 'off') !== 'off') ? {
+                    watchedFacts: () => {
+                        const when = new Date(pipeline?.now ? pipeline.now() : Date.now());
+                        const watched = config.watching ? watchedFacts(watchedEntries, when) : undefined;
+                        if (watched) return watched;
+                        return (config.biliFeed ?? 'off') !== 'off' ? feedFactEntry(loadFeed(feedPath(config.dataDir), log), when) : undefined;
+                    },
+                } : {}),
                 dates: character.dates,
                 mode: config.proactive,
                 history,

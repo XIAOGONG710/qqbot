@@ -104,6 +104,16 @@ export async function feedOnce(deps: FeedDeps): Promise<FeedOutcome> {
     return 'browsed';
 }
 
+/** 同上，但带 id：给内心用（想过一次就不再反复想同一件） */
+export function feedFactEntry(file: FeedFile, now: Date): { id: string; text: string } | undefined {
+    const text = feedFacts(file, now);
+    if (!text) return undefined;
+    const today = dayText(now);
+    const record = file.days.findLast(day => day.day === today && day.mode === 'on');
+    const entry = record?.stayed[0];
+    return entry ? { id: `feed:${entry.bvid}`, text } : undefined;
+}
+
 /** 她心里想事情时可用的「今天刷到过」；没有就 undefined（一天只给一条，免得她老提同一个） */
 export function feedFacts(file: FeedFile, now: Date): string | undefined {
     const today = dayText(now);

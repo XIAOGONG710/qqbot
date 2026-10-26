@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { feedDue, feedFacts, feedOnce, loadFeed, saveFeed, trimFeed } from '../src/feed-browsing.ts';
+import { feedDue, feedFactEntry, feedFacts, feedOnce, loadFeed, saveFeed, trimFeed } from '../src/feed-browsing.ts';
 import type { BiliFetch } from '../src/bilibili-view.ts';
 
 const dirs: string[] = [];
@@ -71,5 +71,26 @@ describe('她每天刷一小会儿 B 站（ADR 0168）', () => {
         const trimmed = trimFeed(file, at(15));
         assert.equal(trimmed.seen.length, 300);
         assert.deepEqual(trimmed.days.map(day => day.day), ['2026-10-27']);
+    });
+});
+
+describe('刷到的进内心（ADR 0168）', () => {
+    test('带 id、只认当天开着的那条、dryRun 不算', () => {
+        const entry = feedFactEntry({
+            version: 1,
+            seen: [],
+            days: [
+                { day: '2026-10-26', at: 0, mode: 'on', stayed: [{ bvid: 'BVold', title: '昨天的', category: '', seconds: 60 }], skipped: 0 },
+                { day: '2026-10-27', at: 0, mode: 'dryRun', stayed: [{ bvid: 'BVdry', title: '草稿的', category: '', seconds: 60 }], skipped: 0 },
+            ],
+        }, at(16));
+        assert.equal(entry, undefined);
+        const withOn = feedFactEntry({
+            version: 1,
+            seen: [],
+            days: [{ day: '2026-10-27', at: 0, mode: 'on', stayed: [{ bvid: 'BVnow', title: '楼下三花的一天', category: '喵星人', seconds: 90 }], skipped: 1 }],
+        }, at(16));
+        assert.deepEqual(withOn?.id, 'feed:BVnow');
+        assert.match(withOn?.text ?? '', /楼下三花的一天/);
     });
 });
