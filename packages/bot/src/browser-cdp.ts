@@ -138,6 +138,8 @@ export interface Page {
     /** 像人一样滚轮往下滚 */
     wheel(deltaY: number): Promise<void>;
     screenshot(options?: { jpegQuality?: number }): Promise<Buffer>;
+    /** 这些网址下的 cookie **名字**（用来判断登录了没有）；值不读出来、不记录 */
+    cookieNames(urls: string[]): Promise<string[]>;
     url(): Promise<string>;
     close(): Promise<void>;
 }
@@ -223,6 +225,10 @@ export async function openPage(connection: CdpConnection, options: { viewport?: 
         async screenshot({ jpegQuality = 70 } = {}) {
             const { data } = await call<{ data: string }>('Page.captureScreenshot', { format: 'jpeg', quality: jpegQuality });
             return Buffer.from(data, 'base64');
+        },
+        async cookieNames(urls) {
+            const { cookies } = await call<{ cookies: Array<{ name: string }> }>('Network.getCookies', { urls });
+            return [...new Set(cookies.map(cookie => cookie.name))];
         },
         url: () => call<{ result?: { value?: string } }>('Runtime.evaluate', { expression: 'location.href', returnByValue: true }).then(result => String(result.result?.value ?? '')),
         async close() { try { await connection.send('Target.closeTarget', { targetId }); } catch { /* 浏览器已经关了 */ } },
