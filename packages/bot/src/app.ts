@@ -48,7 +48,7 @@ import { withFestivalActivities, withFestivals } from './festivals.ts';
 import { newsKindsOf, dayMatches, withAsk, withBack, withCatPhoto, withCurious, withFoodShares, withInner, withInvite, withReach, withRoom, withSmallNews, type ProactiveMode } from './proactive.ts';
 import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
 import { qzoneComposer } from './qzone.ts';
-import { createVideoBrowsing, dmMessageId, fetchHotComments, videoNewsCard, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
+import { createVideoBrowsing, dmMessageId, fetchHotComments, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
 import { realRequest, type BiliAccount, type BiliRequest } from './bilibili-account.ts';
 import { createAccountSource } from './bilibili-account-source.ts';
 import { stripDeviceTokens } from './device-actions.ts';
@@ -927,18 +927,13 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             initiate: request => responders.get(qq)!.initiate(request),
             // 真链接作为下一条发出去；聊天记录里连标题一起记，她之后知道自己发过什么
             sendLink: async video => {
-                // 优先发「新闻」卡片（旧 QQ 认，小程序卡会提示版本过低）；发不出去就发封面图 + 链接，再不行只发链接
-                let messageId: number;
-                try {
-                    messageId = transport.sendPrivateCard
-                        ? await transport.sendPrivateCard(qq, videoNewsCard(video))
-                        : await transport.sendPrivateText(qq, video.link);
-                } catch {
-                    if (transport.sendPrivateImage && video.cover) {
-                        try { await transport.sendPrivateImage(qq, video.cover, '[视频封面]'); } catch { /* 封面发不了就算了 */ }
-                    }
-                    messageId = await transport.sendPrivateText(qq, video.link);
+                // 这台 QQ（NapCat 里的版本）太旧，json 卡片一律提示「版本过低」，所以不发卡片：
+                // 先发封面图，再发「标题 + 链接」，QQ 自己会把链接展开成预览。
+                if (transport.sendPrivateImage && video.cover) {
+                    try { await transport.sendPrivateImage(qq, video.cover, '[视频封面]'); } catch { /* 封面发不了就算了，链接照发 */ }
                 }
+                const messageId = await transport.sendPrivateText(qq, `${video.title}
+${video.link}`);
                 chatHistory.append(qq, { time: new Date(worldNow()).toISOString(), role: 'assistant', content: `[分享视频]《${video.title}》${video.link}`, messageId });
             },
         });
