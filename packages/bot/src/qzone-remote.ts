@@ -18,9 +18,20 @@ export interface QzoneSession {
     uin?: number;
 }
 
-/** NapCat get_cookies 返回的数组（每项 {name, value, domain}）→ cookie 头；拿不到 p_skey 就当没有登录态 */
+/** 「k=v; k=v」字符串 → {name, value} 列表（NapCat get_cookies 的真实形状：cookies 是这样一整串） */
+function parseCookieString(text: string): { name: string; value: string }[] {
+    const pairs: { name: string; value: string }[] = [];
+    for (const part of text.split(';')) {
+        const at = part.indexOf('=');
+        if (at > 0) pairs.push({ name: part.slice(0, at).trim(), value: part.slice(at + 1).trim() });
+    }
+    return pairs;
+}
+
+/** NapCat get_cookies 返回的 {cookies: 'k=v; k=v', bkn}（也认数组 {name, value, domain} 和裸字符串）→ cookie 头；拿不到 p_skey / skey 就当没有登录态 */
 export function cookieHeader(raw: unknown): string | undefined {
-    const list = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' && Array.isArray((raw as { cookies?: unknown }).cookies) ? (raw as { cookies: unknown[] }).cookies : []);
+    const inner = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as { cookies?: unknown }).cookies : raw;
+    const list = typeof inner === 'string' ? parseCookieString(inner) : (Array.isArray(inner) ? inner : []);
     const pairs = new Map<string, string>();
     for (const entry of list) {
         if (!entry || typeof entry !== 'object') continue;

@@ -84,7 +84,12 @@ export async function runAdmin(args: AdminArgs, connection: Connection, audit: (
         throw new Error('写动作要显式 --mode on --yes（这是故意的）');
     }
     const result = await account.run(args.action, args.params);
-    log(`完成：${args.action}${result === undefined ? '' : ` → ${JSON.stringify(result).slice(0, 300)}`}`);
+    // 登录态类动作即使哪天又被登记回来，也不把值打到终端 / 对话记录里（只报名字和长度）
+    const credentialish = /cookie|csrf|token|skey|ticket/.test(args.action);
+    const shown = credentialish
+        ? `（返回值含登录态，不回显；${Array.isArray(result) ? `${result.length} 项` : '已用'}）`
+        : result === undefined ? '' : ` → ${JSON.stringify(result).slice(0, 300)}`;
+    log(`完成：${args.action}${shown}`);
     return 0;
 }
 

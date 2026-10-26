@@ -93,7 +93,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'signature', label: '个性签名', group: '在 QQ 上的样子', adr: '0083', kind: 'mode' },
     { key: 'qzone', label: '说说', group: '在 QQ 上的样子', adr: '0083', kind: 'mode' },
     { key: 'qzoneBrowse', label: '自己翻空间动态', group: '在 QQ 上的样子', adr: '0142', kind: 'mode' },
-    { key: 'qzonePeek', label: '看好友的空间', group: '在 QQ 上的样子', adr: '0143', kind: 'mode' },
+    { key: 'qzonePeek', label: '刷好友动态（看名单里好友发的说说）', group: '在 QQ 上的样子', adr: '0145', kind: 'mode' },
     { key: 'qzoneStrangers', label: '刷陌生人的空间（学人怎么说话）', group: '在 QQ 上的样子', adr: '0144', kind: 'mode' },
     { key: 'typingStatus', label: '“正在输入…”', group: '在 QQ 上的样子', adr: '0077' },
     { key: 'selfRecall', label: '打错字撤回重发', group: '在 QQ 上的样子', adr: '0086' },

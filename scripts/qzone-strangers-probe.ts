@@ -42,7 +42,8 @@ export async function probeStrangers(connection: Connection, show: boolean, log:
         log('拿不到 qzone 登录态（get_cookies 没有 p_skey / skey）——这条路的前提不成立');
         return 1;
     }
-    log(`登录态：uin ${session.uin ?? '?'}，g_tk ${session.gtk}`);
+    // g_tk 是 CSRF token，和 cookie 等价，不打印（Claude 10-26 建议）
+    log(`登录态：已取到（uin ${session.uin ?? '?'}；g_tk 已算，不打印）`);
     let working = 0;
     for (const endpoint of STRANGER_FEED_ENDPOINTS) {
         try {

@@ -216,6 +216,10 @@ interface PresenceFile {
     /** 她刚看过的某个人（好友）的空间（ADR 0143），同样 6 小时内进提示词 */
     peek?: { at: number; uin: number; count: number; note: string };
     peekAttemptAt?: number;
+    /** 已经「看到过」的好友说说 id（最近 30 条）：同一条不当新的再看一遍 */
+    peekSeen?: string[];
+    /** 读不到时的下次重试时刻（ADR 0145）；原来是「读不到就不再试」，一次断网就永久停用 */
+    peekRetryAt?: number;
     /** 她刷到的陌生人说说（ADR 0144）：6 小时内的这一行进提示词；样本另存 strangers.jsonl */
     strangers?: { at: number; action: string; count: number; note: string };
     strangersAttemptAt?: number;
@@ -275,10 +279,15 @@ export function describeSelf(input: { signature?: { text: string; draft?: boolea
     if (input.signature?.text && !input.signature.draft) parts.push(`个性签名现在是「${input.signature.text}」`);
     const post = input.qzone.findLast(record => record.mode === 'on' && record.at <= now && now - record.at <= 3 * 86_400_000);
     if (post) parts.push(`${agoText(post.at, now)}发了一条说说「${post.text}」${post.photo ? '，配了一张图' : ''}`);
-    if (input.browse && now - input.browse.at <= 6 * 3_600_000) parts.push(input.browse.note);
-    if (input.peek && now - input.peek.at <= 6 * 3_600_000) parts.push(input.peek.note);
-    if (input.strangers && now - input.strangers.at <= 6 * 3_600_000) parts.push(input.strangers.note);
-    return parts.length ? `[你在 QQ 上的样子（他点开你的资料卡、空间能看到的；他问起或提到时照这个说，没写的别编）：${parts.join('；')}]` : undefined;
+    const lines: string[] = [];
+    if (parts.length) lines.push(`[你在 QQ 上的样子（他点开你的资料卡、空间能看到的；他问起或提到时照这个说，没写的别编）：${parts.join('；')}]`);
+    // 她刷空间看到的是别人发的，和上面「他能看到的你」是两回事，分开一行，免得她把别人的话当成自己发的
+    const seen: string[] = [];
+    if (input.browse && now - input.browse.at <= 6 * 3_600_000) seen.push(input.browse.note);
+    if (input.peek && now - input.peek.at <= 6 * 3_600_000) seen.push(input.peek.note);
+    if (input.strangers && now - input.strangers.at <= 6 * 3_600_000) seen.push(input.strangers.note);
+    if (seen.length) lines.push(`[你刚才刷空间看到的（是别人发的，不是你发的；用不上就不提，没写的别编）：${seen.join('；')}]`);
+    return lines.length ? lines.join('\n') : undefined;
 }
 
 export interface Presence {
@@ -538,15 +547,20 @@ export function createPresence(options: PresenceOptions): Presence {
 
     // 看某个好友的空间（ADR 0143）：10:00–22:00、醒着、两次之间至少隔 4 小时；名单里的人按日期轮着看。
     // 读不到（登录态过期 / 不是好友 / 风控）只记一次，不假装看到；正文只进提示词，不进日志。
+    // ADR 0145：读的是她自己的好友动态流（不进对方的空间、不留访客记录），再挑出名单里这个人发的；
+    // 只当新鲜事看 3 天内、没看过的；读不到不再永久停用，6 小时后再试（这台虚拟机断过 17 小时的网）。
     const PEEK_MIN_GAP_MS = 4 * 3_600_000;
-    let peekUnreadable = false;
+    const PEEK_RETRY_MS = 6 * 3_600_000;
+    const PEEK_FRESH_MS = 3 * 86_400_000;
+    const peekDrafted = new Set<string>();
     async function peek(t: number, awake: boolean): Promise<void> {
-        if ((flags.qzonePeek ?? 'off') === 'off' || peekUnreadable) return;
+        if ((flags.qzonePeek ?? 'off') === 'off') return;
         const targets = options.peekTargets ?? [];
         if (!awake || !transport.readUserQzone || !targets.length) return;
         const hour = new Date(t).getHours();
         if (hour < 10 || hour >= 22) return;
         if (state.peekAttemptAt !== undefined && t - state.peekAttemptAt < PEEK_MIN_GAP_MS) return;
+        if (state.peekRetryAt !== undefined && t < state.peekRetryAt) return;
         state.peekAttemptAt = t;
         save();
         const day = formatDate(herDay(schedule, new Date(t)));
@@ -560,21 +574,36 @@ export function createPresence(options: PresenceOptions): Presence {
             return;
         }
         if (!items) {
-            peekUnreadable = true;
-            log('看好友空间：读不到（登录态 / 权限 / 风控），之后不再试');
+            state.peekRetryAt = t + PEEK_RETRY_MS;
+            save();
+            log('看好友空间：读不到（登录态 / 网络 / 风控 / 结构变了），6 小时后再试');
             return;
         }
         recovered('看好友空间');
-        const note = feedDigest({ action: 'user', items }, 2, `你刚才翻了翻${target.name}的空间，看到：`);
-        if (!note) return;
+        delete state.peekRetryAt;
+        const seen = new Set(state.peekSeen ?? []);
+        const fresh = items
+            .filter(item => !seen.has(item.id) && (item.at === undefined || (item.at <= t && t - item.at <= PEEK_FRESH_MS)))
+            .sort((a, b) => (b.at ?? 0) - (a.at ?? 0))
+            .slice(0, 2);
+        if (!fresh.length) { save(); return; }
+        const quotes = fresh.map(item => {
+            const text = item.text.replace(/\s+/g, ' ').trim();
+            return `${target.name}${item.at !== undefined ? agoText(item.at, t) : ''}发了「${text.length > 40 ? `${text.slice(0, 40)}…` : text}」`;
+        });
+        const note = `你刷了会儿 QQ 空间的好友动态，看到${quotes.join('；')}`;
         if (flags.qzonePeek === 'dryRun') {
-            draft(`${new Date(t).toLocaleString('zh-CN')} 看了${target.name}的空间（草稿，没进提示词）`, note);
-            log(`看好友空间（试运行）：${items.length} 条，写了草稿`);
+            const fresh0 = fresh.filter(item => !peekDrafted.has(item.id));
+            if (!fresh0.length) return;
+            for (const item of fresh0) peekDrafted.add(item.id);
+            draft(`${new Date(t).toLocaleString('zh-CN')} 刷到${target.name}的说说（草稿，没进提示词）`, note);
+            log(`看好友空间（试运行）：${fresh.length} 条新的，写了草稿`);
             return;
         }
-        state.peek = { at: t, uin: target.qq, count: items.length, note };
+        state.peek = { at: t, uin: target.qq, count: fresh.length, note };
+        state.peekSeen = [...fresh.map(item => item.id), ...(state.peekSeen ?? [])].slice(0, 30);
         save();
-        log(`看好友空间：${items.length} 条`);
+        log(`看好友空间：${fresh.length} 条新的`);
     }
 
     // 刷陌生人（ADR 0144）：09:00–23:00、醒着、两次之间至少 3 小时；只读，不点赞不评论。
