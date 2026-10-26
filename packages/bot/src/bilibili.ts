@@ -27,6 +27,8 @@ export interface BiliVideo {
     /** 秒 */
     duration: number;
     link: string;
+    /** 封面（分享卡片用） */
+    cover?: string;
 }
 
 /** 和全局 fetch 兼容的最小形状（测试注入假的） */
@@ -55,12 +57,13 @@ export async function fetchPopular(doFetch: BiliFetch, pages = 2): Promise<BiliV
     for (let page = 1; page <= pages; page++) {
         const data = (await getJson(doFetch, `https://api.bilibili.com/x/web-interface/popular?ps=20&pn=${page}`)) as { list?: unknown[] } | null;
         for (const raw of data?.list ?? []) {
-            const item = raw as { bvid?: unknown; aid?: unknown; cid?: unknown; title?: unknown; desc?: unknown; owner?: { name?: unknown }; tname?: unknown; stat?: { view?: unknown; like?: unknown }; duration?: unknown };
+            const item = raw as { bvid?: unknown; aid?: unknown; cid?: unknown; title?: unknown; desc?: unknown; owner?: { name?: unknown }; tname?: unknown; stat?: { view?: unknown; like?: unknown }; duration?: unknown; pic?: unknown };
             const bvid = str(item.bvid);
             if (!/^BV[0-9A-Za-z]{10}$/.test(bvid) || !str(item.title)) continue;
             videos.push({
                 bvid, aid: num(item.aid), ...(num(item.cid) ? { cid: num(item.cid) } : {}), title: str(item.title), desc: str(item.desc), owner: str(item.owner?.name), category: str(item.tname),
                 views: num(item.stat?.view), likes: num(item.stat?.like), duration: num(item.duration), link: `https://www.bilibili.com/video/${bvid}`,
+                ...(typeof item.pic === 'string' && /^https?:/.test(item.pic) ? { cover: item.pic } : {}),
             });
         }
     }
@@ -255,6 +258,30 @@ export interface DmOptions {
     mode: 'dryRun' | 'on';
     /** 收私信的人的 B 站 uid（他要先关注她的号，不然 B 站会限制或拒绝） */
     uid: number;
+}
+
+/**
+ * 分享卡片的 JSON（QQ 的 B 站小程序卡片）：标题、封面、链接；QQ 渲染不出来时调用方退回发链接。
+ * appid 100951776 是 B 站小程序在 QQ 里常用的那个。
+ */
+export function videoShareCard(video: BiliVideo): string {
+    return JSON.stringify({
+        app: 'com.tencent.miniapp_01',
+        desc: '哔哩哔哩',
+        view: 'view',
+        ver: '0.0.0.1',
+        prompt: `[分享]${video.title}`,
+        meta: {
+            detail_1: {
+                title: '哔哩哔哩',
+                desc: video.title,
+                preview: video.cover ?? '',
+                qqdocurl: video.link,
+                jumpUrl: video.link,
+                appid: 100951776,
+            },
+        },
+    });
 }
 
 /** 记进聊天记录的那条私信的 id：不会和真 id、戳一戳（2 ** 41 起）的撞 */

@@ -48,7 +48,7 @@ import { withFestivalActivities, withFestivals } from './festivals.ts';
 import { newsKindsOf, dayMatches, withAsk, withBack, withCatPhoto, withCurious, withFoodShares, withInner, withInvite, withReach, withRoom, withSmallNews, type ProactiveMode } from './proactive.ts';
 import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from './presence.ts';
 import { qzoneComposer } from './qzone.ts';
-import { createVideoBrowsing, dmMessageId, fetchHotComments, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
+import { createVideoBrowsing, dmMessageId, fetchHotComments, videoShareCard, type BiliFetch, type CommentOptions, type DmOptions, type VideoBrowsing } from './bilibili.ts';
 import { realRequest, type BiliAccount, type BiliRequest } from './bilibili-account.ts';
 import { createAccountSource } from './bilibili-account-source.ts';
 import { stripDeviceTokens } from './device-actions.ts';
@@ -100,6 +100,8 @@ export const WEATHER_REFRESH_MS = 30 * 60_000;
 export interface Transport extends PresenceTransport {
     /** 发一条私聊文字，返回 QQ 消息 id；文字里白名单的小黄脸「[捂脸]」发成 face 段（qq-faces.ts textToSegments，ADR 0051） */
     sendPrivateText(userId: number, text: string, replyTo?: number): Promise<number>;
+    /** 发一条 QQ 分享卡片（B 站小程序），返回消息 id；没有就不发卡片、用文字链接 */
+    sendPrivateCard?(userId: number, cardJson: string): Promise<number>;
     /** 标已读（NapCat mark_private_msg_as_read，配置 readReceipts，ADR 0083）；没有就不标 */
     markRead?(userId: number): Promise<void>;
     /** 给某条消息点表情回应（NapCat set_msg_emoji_like，配置 reactions，ADR 0083）；没有就不点 */
@@ -925,8 +927,16 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             initiate: request => responders.get(qq)!.initiate(request),
             // 真链接作为下一条发出去；聊天记录里连标题一起记，她之后知道自己发过什么
             sendLink: async video => {
-                const messageId = await transport.sendPrivateText(qq, video.link);
-                chatHistory.append(qq, { time: new Date(worldNow()).toISOString(), role: 'assistant', content: `${video.link}（《${video.title}》）`, messageId });
+                // 优先发 B 站小程序卡片；卡片发不出去（QQ 不认这个号段的 JSON、客户端不支持）就退回文字链接
+                let messageId: number;
+                try {
+                    messageId = transport.sendPrivateCard
+                        ? await transport.sendPrivateCard(qq, videoShareCard(video))
+                        : await transport.sendPrivateText(qq, video.link);
+                } catch {
+                    messageId = await transport.sendPrivateText(qq, video.link);
+                }
+                chatHistory.append(qq, { time: new Date(worldNow()).toISOString(), role: 'assistant', content: `[分享视频]《${video.title}》${video.link}`, messageId });
             },
         });
         browsing.start();

@@ -294,6 +294,8 @@ export interface BiliAccount {
      * 过长（B 站实测约 500 字）会被拒，调用方自己控制长度
      */
     sendDm(input: { uid: number; text: string }): Promise<void>;
+    /** 读和某个人的私信会话（新的在后）；读不到抛错。旧实现可以没有 */
+    fetchDms?(input: { uid: number; size?: number }): Promise<DmMessage[]>;
 }
 
 /** 私信一条最多这么多字（dsh-bili-scroll 实测 490 字发得出去、更长返回 21007）；留一点余地 */
@@ -310,6 +312,46 @@ export function parseClock(value: unknown): number {
 }
 
 const idOf = (value: unknown): string => (typeof value === 'string' && /^\d+$/.test(value) && value !== '0' ? value : typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? String(value) : '');
+
+export interface DmMessage {
+    id: string;
+    /** 是不是她发的 */
+    fromMe: boolean;
+    /** 毫秒 */
+    at: number;
+    /** 文字；图片 / 分享卡片之类给一个占位 */
+    text: string;
+}
+
+/**
+ * 私信会话（svr_sync/fetch_session_msgs）→ 消息：msg_key 是 id，sender_uid 是她就是她发的，
+ * content 是 JSON 字符串（{\"content\":\"...\"}），别的类型给占位，不猜内容。
+ */
+export function parseDmMessages(data: unknown, selfUid: number): DmMessage[] {
+    const list = Array.isArray(rec(data).messages) ? rec(data).messages as unknown[] : [];
+    const messages: DmMessage[] = [];
+    for (const raw of list) {
+        const entry = rec(raw);
+        // msg_key 是超出 Number.MAX_SAFE_INTEGER 的整数（如 7698774164752566000），转字符串保住位数
+        const id = str(entry.msg_key) || (typeof entry.msg_key === 'number' && Number.isFinite(entry.msg_key) ? String(entry.msg_key) : idOf(entry.msg_key));
+        if (!id) continue;
+        const sender = num(entry.sender_uid);
+        const rawContent = entry.content;
+        let text = '';
+        if (typeof rawContent === 'string') {
+            try {
+                const parsed = JSON.parse(rawContent) as Record<string, unknown>;
+                text = str(parsed.content).trim();
+                if (!text && num(parsed.type) === 2) text = '[图片]';
+            } catch { text = rawContent.trim(); }
+        }
+        if (!text) text = '[非文字消息]';
+        const seconds = num(entry.timestamp);
+        messages.push({ id, fromMe: sender === selfUid, at: seconds > 0 ? (seconds < 1e12 ? seconds * 1000 : seconds) : 0, text: text.slice(0, 500) });
+        if (messages.length >= 50) break;
+    }
+    return messages.sort((a, b) => a.at - b.at);
+}
 
 /**
  * 消息中心「回复我的」（x/msgfeed/reply）→ 回复项：source_id 是这条回复的 rpid，target_id 是被回复的那条，root_id 是那一串的根，
@@ -452,6 +494,17 @@ export async function openAccount(request: BiliRequest, credential: BiliCredenti
                 headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'https://message.bilibili.com', Referer: 'https://message.bilibili.com/' },
                 body: form.toString(),
             });
+        },
+
+        async fetchDms({ uid, size }) {
+            const k = await ensureKeys();
+            const seconds = Math.floor(now() / 1000);
+            const base = { talker_id: uid, session_type: 1, size: size ?? 20, build: 0, mobi_app: 'web' };
+            const query = k ? wbiSign(base, k, seconds) : Object.entries(base).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join('&');
+            const { data } = await call(request, `https://api.vc.bilibili.com/svr_sync/v1/svr_sync/fetch_session_msgs?${query}`, {
+                headers: { ...headers, Referer: 'https://message.bilibili.com/' },
+            });
+            return parseDmMessages(data, num(nav.mid));
         },
 
         async commentVisible({ aid, rpid }) {
