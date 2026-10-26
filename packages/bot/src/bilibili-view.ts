@@ -54,7 +54,10 @@ export function parseView(data: unknown): BiliView | undefined {
     for (const entry of rawChapters) {
         const chapter = asRecord(entry);
         if (!chapter) continue;
-        chapters.push({ from: num(chapter.from), to: num(chapter.to), title: str(chapter.content).slice(0, 30) });
+        // B 站的 view_points 用毫秒；统一换成秒，提示词和测试都用秒
+        const from = num(chapter.from);
+        const to = num(chapter.to);
+        chapters.push({ from: Math.round(from / 1000), to: Math.round(to / 1000), title: str(chapter.content).slice(0, 30) });
     }
     return {
         bvid,

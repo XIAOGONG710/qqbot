@@ -51,7 +51,7 @@ describe('存取、过期', () => {
 });
 
 describe('她看一个', () => {
-    const make = (options: { search?: (k: string) => BiliVideo[]; subtitle?: (v: BiliVideo) => { status: 'ok'; lan: string; lines: string[] } | { status: 'none' }; failSearch?: boolean } = {}) => {
+    const make = (options: { search?: (k: string) => BiliVideo[]; subtitle?: (v: BiliVideo) => { status: 'ok'; lan: string; lines: string[] } | { status: 'none' }; failSearch?: boolean; view?: (v: BiliVideo) => { cid?: number; chapters: { from: number; title: string }[] } | undefined; danmaku?: readonly { at: number; text: string }[] } = {}) => {
         const path = tmp();
         const logs: string[] = [];
         const searched: string[] = [];
@@ -61,6 +61,8 @@ describe('她看一个', () => {
             search: async (k: string) => { searched.push(k); if (options.failSearch) throw new Error('断网'); return options.search ? options.search(k) : [video('BV1aaaaaaaaa'), video('BV1bbbbbbbbb')]; },
             subtitle: async (v: BiliVideo) => { subtitles++; return options.subtitle ? options.subtitle(v) : { status: 'ok' as const, lan: 'zh', lines: [`${v.title}的第一句`, '第二句', '第三句'] }; },
             hotComments: async () => ['热评甲甲甲甲甲甲', '热评乙乙乙乙乙乙', '热评丙丙丙丙丙丙'],
+            ...(options.view ? { view: async (v: BiliVideo) => options.view!(v) } : {}),
+            ...(options.danmaku ? { danmaku: async () => options.danmaku! } : {}),
             sleep: async () => undefined,
         };
         return { deps, path, logs, searched, subtitles: () => subtitles };
@@ -76,6 +78,27 @@ describe('她看一个', () => {
         assert.equal(entries[0]!.hot.length, 2);
         assert.equal(await watchOne(deps), 'done', '今天看过了');
         assert.equal(loadWatched(path).entries.length, 1);
+    });
+
+    test('看的时候多拿章节和弹幕高能（ADR 0168）；读不到就不写', async () => {
+        const rich = make({
+            view: () => ({ cid: 42, chapters: [{ from: 0, title: '开场' }, { from: 60, title: '正题' }] }),
+            danmaku: [{ at: 65, text: '哈哈哈哈' }, { at: 66, text: '笑死' }, { at: 67, text: '前面高能' }],
+        });
+        assert.equal(await watchOne(rich.deps), 'watched');
+        const entry = loadWatched(rich.path).entries[0]!;
+        assert.deepEqual(entry.chapters, [{ from: 0, title: '开场' }, { from: 60, title: '正题' }]);
+        assert.equal(entry.peaks?.[0]?.at, 60);
+        assert.ok((entry.peaks?.[0]?.count ?? 0) >= 3);
+        const facts = watchedFacts([entry], at(20))!.text;
+        assert.match(facts, /分段：0:00 开场、1:00 正题/);
+        assert.match(facts, /观众反应最强烈/);
+
+        const bare = make();
+        assert.equal(await watchOne(bare.deps), 'watched');
+        const plain = loadWatched(bare.path).entries[0]!;
+        assert.equal(plain.chapters, undefined);
+        assert.equal(plain.peaks, undefined);
     });
 
     test('目录还不存在（线上第一次）：先建目录再存，不抛', async () => {

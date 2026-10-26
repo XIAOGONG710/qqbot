@@ -18,8 +18,8 @@ describe('看懂一个视频（ADR 0168）', () => {
         assert.equal(view.cid, 999);
         assert.equal(view.duration, 301);
         assert.deepEqual(view.chapters, [
-            { from: 0, to: 60000, title: '开场：蹲在门口' },
-            { from: 60000, to: 180000, title: '吃饭和晒太阳' },
+            { from: 0, to: 60, title: '开场：蹲在门口' },
+            { from: 60, to: 180, title: '吃饭和晒太阳' },
         ]);
         assert.equal(parseView({}), undefined);
     });
@@ -49,7 +49,7 @@ describe('看懂一个视频（ADR 0168）', () => {
     test('给她的一段事实：有章节和弹幕就都写；没有就不编', () => {
         const note = viewNote(parseView(viewJson)!, danmakuPeaks([{ at: 65, text: '猫猫好可爱' }]));
         assert.match(note, /楼下三花的一天/);
-        assert.match(note, /分段：0:00 开场：蹲在门口/);
+        assert.match(note, /分段：0:00 开场：蹲在门口；1:00 吃饭和晒太阳/);
         assert.match(note, /观众反应最强烈的几段/);
         assert.match(note, /猫猫好可爱/);
         const bare = viewNote(parseView({ bvid: 'BV1', title: '空的', duration: 60, pages: [] })!, []);

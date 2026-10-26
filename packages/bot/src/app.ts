@@ -79,6 +79,7 @@ import { jokeStore, JOKES_CHECK_MS, refreshJokes } from './jokes.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes, type MemeEntry } from './memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from './watching.ts';
 import { feedFactEntry, feedOnce, feedPath, loadFeed } from './feed-browsing.ts';
+import { fetchDanmaku, fetchView } from './bilibili-view.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { togetherNow } from './together.ts';
 import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoSource } from './photos.ts';
@@ -1162,9 +1163,15 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             const account = await source();
             if (!account) return;
             const biliFetch: BiliFetch = bilibiliFetch ?? ((url, init) => fetch(url, init));
+            // view / 弹幕 的 fetch 形状不强制 signal，补一个
+            const viewFetch = (url: string, init: { headers: Record<string, string>; signal?: AbortSignal }) =>
+                biliFetch(url, { headers: init.headers, signal: init.signal ?? new AbortController().signal });
             await watchOne({
                 path: watchedFile, now: () => nowDate, log,
                 search: keyword => account.search(keyword), subtitle: video => account.subtitle(video), hotComments: aid => fetchHotComments(biliFetch, aid, 3),
+                // 章节 + 弹幕高能（ADR 0168）：只读公开接口，读不到不影响「看过」
+                view: async video => { try { return await fetchView(viewFetch, video.bvid); } catch { return undefined; } },
+                danmaku: async cid => fetchDanmaku(viewFetch, cid),
                 sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
             });
             watchedEntries = loadWatched(watchedFile, log).entries;

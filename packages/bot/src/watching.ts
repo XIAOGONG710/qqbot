@@ -15,6 +15,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { subtitleExcerpt, type SubtitleResult } from './bilibili-account.ts';
 import { rankVideos, searchKeyword, SEARCH_KEYWORDS, type BiliVideo } from './bilibili.ts';
+import { danmakuPeaks, type DanmakuPoint } from './bilibili-view.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 
 export interface Watched {
@@ -26,6 +27,10 @@ export interface Watched {
     excerpt: string;
     /** 热评两条（每条 ≤ 40 字） */
     hot: string[];
+    /** 分段章节（ADR 0168）：她自己看的这版比字幕更全一点；读不到就没有 */
+    chapters?: { from: number; title: string }[];
+    /** 弹幕最密的几段（ADR 0168）：观众在哪儿反应最强烈；读不到就没有 */
+    peaks?: { at: number; count: number; samples: string[] }[];
     /** 看的那天 YYYY-MM-DD */
     day: string;
 }
@@ -53,7 +58,17 @@ export function loadWatched(path: string, log: (message: string) => void = () =>
     const raw = readJsonOr<Partial<WatchedFile>>(path, {}, message => log(`她看过的：${message}`));
     const entries = (Array.isArray(raw.entries) ? raw.entries : []).filter((e): e is Watched => Boolean(e) && typeof e.bvid === 'string' && typeof e.title === 'string' && e.title.trim().length > 0
         && typeof e.owner === 'string' && typeof e.tname === 'string' && typeof e.excerpt === 'string' && e.excerpt.trim().length > 0
-        && Array.isArray(e.hot) && e.hot.every(h => typeof h === 'string') && typeof e.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.day));
+        && Array.isArray(e.hot) && e.hot.every(h => typeof h === 'string') && typeof e.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.day))
+        .map(e => {
+            const chapters = Array.isArray(e.chapters)
+                ? e.chapters.filter((chapter): chapter is { from: number; title: string } => Boolean(chapter) && typeof chapter.title === 'string' && Number.isFinite(chapter.from)).slice(0, 8)
+                : [];
+            const peaks = Array.isArray(e.peaks)
+                ? e.peaks.filter(peak => Boolean(peak) && Number.isFinite(peak.at) && Number.isFinite(peak.count)).slice(0, 5)
+                    .map(peak => ({ at: peak.at, count: peak.count, samples: Array.isArray(peak.samples) ? peak.samples.filter((s): s is string => typeof s === 'string').slice(0, 3) : [] }))
+                : [];
+            return { ...e, ...(chapters.length ? { chapters } : {}), ...(peaks.length ? { peaks } : {}) };
+        });
     return { version: 1, entries };
 }
 
@@ -81,6 +96,10 @@ export interface WatchDeps {
     search(keyword: string): Promise<BiliVideo[]>;
     subtitle(video: BiliVideo): Promise<SubtitleResult>;
     hotComments(aid: number): Promise<string[]>;
+    /** 章节（ADR 0168，只读）：读不到返回 undefined */
+    view?(video: BiliVideo): Promise<{ cid?: number; chapters: { from: number; title: string }[] } | undefined>;
+    /** 弹幕（ADR 0168，只读）：读不到返回空数组 */
+    danmaku?(cid: number): Promise<readonly DanmakuPoint[]>;
     sleep(ms: number): Promise<void>;
 }
 
@@ -111,7 +130,27 @@ export async function watchOne(deps: WatchDeps): Promise<'watched' | 'none' | 'd
             if (!excerpt) continue;
             let hot: string[] = [];
             try { hot = (await deps.hotComments(video.aid)).slice(0, 2).map(c => c.slice(0, 40)); } catch { /* 热评读不到也行 */ }
-            const entry: Watched = { bvid: video.bvid, title: video.title.slice(0, 60), owner: video.owner.slice(0, 20), tname: video.category.slice(0, 10), excerpt, hot, day };
+            // 章节 + 弹幕高能（ADR 0168）：两样都是加分项，读不到就不写，不影响「看过」
+            let chapters: { from: number; title: string }[] = [];
+            let peaks: { at: number; count: number; samples: string[] }[] = [];
+            let cid = video.cid;
+            try {
+                const view = await deps.view?.(video);
+                if (view) {
+                    cid = view.cid ?? cid;
+                    chapters = view.chapters.slice(0, 6).map(chapter => ({ from: chapter.from, title: chapter.title.slice(0, 20) }));
+                }
+            } catch { /* 章节读不到就算了 */ }
+            try {
+                if (deps.danmaku && cid) {
+                    const points = await deps.danmaku(cid);
+                    peaks = danmakuPeaks(points, { top: 2 }).map(peak => ({ at: peak.at, count: peak.count, samples: peak.samples.slice(0, 3) }));
+                }
+            } catch { /* 弹幕读不到就算了 */ }
+            const entry: Watched = {
+                bvid: video.bvid, title: video.title.slice(0, 60), owner: video.owner.slice(0, 20), tname: video.category.slice(0, 10), excerpt, hot, day,
+                ...(chapters.length ? { chapters } : {}), ...(peaks.length ? { peaks } : {}),
+            };
             saveWatched(deps.path, { version: 1, entries: trimWatched([...file.entries, entry], now) });
             deps.log(`她看视频：今天看了一个（${video.category}；字幕 ${[...excerpt].length} 字；热评 ${hot.length} 条）`);
             return 'watched';
@@ -128,7 +167,8 @@ const fresh = (entries: readonly Watched[], now: Date) => {
     return [...entries].filter(e => today - dayNumber(e.day) <= WATCHED_FRESH_DAYS).sort((a, b) => b.day.localeCompare(a.day));
 };
 
-const describe = (e: Watched, today: string) => `${e.day === today ? '今天' : `${e.day.slice(5)}`}看的《${e.title}》（UP 主「${e.owner}」，${e.tname}）：字幕大意——${e.excerpt}${e.hot.length ? `；热评里有人说：${e.hot.join(' / ')}` : ''}`;
+const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+const describe = (e: Watched, today: string) => `${e.day === today ? '今天' : `${e.day.slice(5)}`}看的《${e.title}》（UP 主「${e.owner}」，${e.tname}）：字幕大意——${e.excerpt}${e.hot.length ? `；热评里有人说：${e.hot.join(' / ')}` : ''}${e.chapters?.length ? `；分段：${e.chapters.map(chapter => `${clock(chapter.from)} ${chapter.title}`).join('、')}` : ''}${e.peaks?.length ? `；观众反应最强烈：${e.peaks.map(peak => `${peak.at} 秒（${peak.count} 条弹幕）`).join('、')}` : ''}`;
 
 /** 她心里想事情时用的事实（只放最近一条，免得总想同一堆）；id 是这个视频的编号（想过的记下来，不再专门想）；没有就 undefined */
 export function watchedFacts(entries: readonly Watched[], now: Date): { id: string; text: string } | undefined {
