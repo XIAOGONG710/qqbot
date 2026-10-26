@@ -10,6 +10,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { MEDIA_TIMEOUTS } from './media.ts';
 import { FESTIVAL_MODES, type FestivalMode } from './festivals.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from './fact-check.ts';
+import { ACCOUNT_MODES, QQ_FRIEND_GATES, type ControlMode, type FriendGate } from './account.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from './presence.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from './proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from './st/prompt-converters.ts';
@@ -121,6 +122,14 @@ export const DEFAULTS = {
     signature: 'off' as PresenceMode,
     qzone: 'off' as PresenceMode,
     qzoneVisibility: 'friends' as QzoneVisibility,
+    qzoneBrowse: 'off' as PresenceMode,
+    qzonePeek: 'off' as PresenceMode,
+    qzoneStrangers: 'off' as PresenceMode,
+    qqControl: 'off' as ControlMode,
+    qqAllowFriends: [] as readonly number[],
+    qqAllowGroups: [] as readonly number[],
+    qqDangerous: false,
+    qqFriendGate: 'off' as FriendGate,
     typingStatus: false,
     selfRecall: false,
     rhythm: false,
@@ -489,6 +498,22 @@ export interface AppConfig {
     qzone: PresenceMode;
     /** 说说谁能看：friends 仅好友（默认）/ public 所有人（可能进「空友爱看」被陌生人看到） */
     qzoneVisibility: QzoneVisibility;
+    /** 她自己翻空间动态（ADR 0142，「空友爱看」那种混着陌生人的流）：读一页、记下「刚才看到什么」，dryRun 只写草稿。默认关 */
+    qzoneBrowse?: PresenceMode;
+    /** 看名单里好友的空间（ADR 0143，用她自己的登录态走 Qzone 网页接口）：10:00–22:00、每 4 小时最多一次、一次看一个人。默认关 */
+    qzonePeek?: PresenceMode;
+    /** 刷平台推的陌生人说说（ADR 0144，「空友爱看」那种流）：09:00–23:00、每 3 小时最多一次；只读、只留正文样本。默认关 */
+    qzoneStrangers?: PresenceMode;
+    /** 账号控制面（ADR 0142）：off 关 / read 只读盘点 / on 放行写动作。默认 off */
+    qqControl?: ControlMode;
+    /** 允许她动作的好友 QQ 号（写动作的允许清单；空 = 一个都不许） */
+    qqAllowFriends?: readonly number[];
+    /** 允许她动作的群号（同上） */
+    qqAllowGroups?: readonly number[];
+    /** 危险动作闸（踢人 / 禁言 / 删好友 / 群发 / 建群）：默认关 */
+    qqDangerous?: boolean;
+    /** 好友申请怎么处理（ADR 0142）：off 不碰 / allow 名单内自动同意、其余留给人 / all 名单内同意、名单外驳回。默认 off */
+    qqFriendGate?: FriendGate;
     /** 她打字的这段时间，对方的 QQ 上显示「对方正在输入…」（ADR 0077；NapCat 的 set_input_status）。默认关 */
     typingStatus: boolean;
     /** 她打错字想改口时，一部分改成撤回重发（先发打错的，几秒后撤回再发对的；NapCat 的 delete_msg，ADR 0086）。默认关 */
@@ -761,6 +786,14 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         signature: oneOf(file.signature, 'signature', PRESENCE_MODES, DEFAULTS.signature),
         qzone: oneOf(file.qzone, 'qzone', PRESENCE_MODES, DEFAULTS.qzone),
         qzoneVisibility: oneOf(file.qzoneVisibility, 'qzoneVisibility', QZONE_VISIBILITIES, DEFAULTS.qzoneVisibility),
+        qzoneBrowse: oneOf(file.qzoneBrowse, 'qzoneBrowse', PRESENCE_MODES, DEFAULTS.qzoneBrowse),
+        qzonePeek: oneOf(file.qzonePeek, 'qzonePeek', PRESENCE_MODES, DEFAULTS.qzonePeek),
+        qzoneStrangers: oneOf(file.qzoneStrangers, 'qzoneStrangers', PRESENCE_MODES, DEFAULTS.qzoneStrangers),
+        qqControl: oneOf(file.qqControl, 'qqControl', ACCOUNT_MODES, DEFAULTS.qqControl),
+        qqAllowFriends: qqList(file.qqAllowFriends, 'qqAllowFriends'),
+        qqAllowGroups: qqList(file.qqAllowGroups, 'qqAllowGroups'),
+        qqDangerous: bool(file, 'qqDangerous', '', DEFAULTS.qqDangerous),
+        qqFriendGate: oneOf(file.qqFriendGate, 'qqFriendGate', QQ_FRIEND_GATES, DEFAULTS.qqFriendGate),
         typingStatus: bool(file, 'typingStatus', '', DEFAULTS.typingStatus),
         selfRecall: bool(file, 'selfRecall', '', DEFAULTS.selfRecall),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),

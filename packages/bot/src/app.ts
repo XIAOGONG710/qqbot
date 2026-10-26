@@ -8,10 +8,11 @@
 // 他发的语音、图片（ADR 0052）：入口给了 NapCat 的语音转文字、OCR（AppOptions.media）就先听一听、看一看再进聊天记录（media.ts），
 // 每人的消息按收到的顺序一条条进；读的时候不卡别人，读不出来、超时照旧「[语音]」「[图片]」。
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canGiveFeedback, cardKey, CONTACT_TIERS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { createAccount, friendRequestVerdict } from './account.ts';
 import { chatCompletion, forExtraction } from './llm.ts';
 import { Acquaintances, acquaintancesAccount } from './acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from './dormancy.ts';
@@ -111,6 +112,8 @@ export interface Transport extends PresenceTransport {
     sendPrivateImage?(userId: number, file: string, summary: string): Promise<number>;
     /** NapCat 的 get_friend_msg_history：某人最近 count 条私聊（含小号自己发的），从旧到新。没有任何记录时 NapCat 也报错 */
     friendHistory(userId: number, count: number): Promise<HistoryMessage[]>;
+    /** 通用 OneBot 调用（账号控制面用，ADR 0142）：传什么动作就发什么，闸由 account.ts 管；没有就不开控制面 */
+    callAction?(action: string, params: Record<string, unknown>): Promise<unknown>;
 }
 
 export interface App {
@@ -122,6 +125,8 @@ export interface App {
     receivePoke(event: PokeEvent): void;
     /** 名单里的人撤回了一条消息（ADR 0082，配置 recalls）：还没回的话记成「[撤回了一条消息]」；其余的忽略 */
     receiveRecall(event: RecallEvent): void;
+    /** 有人申请加她（ADR 0142，配置 qqFriendGate）：名单内同意；名单外按档留着或驳回。不认识的申请不碰 */
+    receiveFriendRequest(input: { userId: number; flag: string; comment?: string }): void;
     /** 停下：回复器都停掉，不再写记忆，释放锁（Koishi 插件停用或重启时） */
     stop(): void;
     /** 此刻的状态（控制台「林梦瑶」页面，ADR 0010）；不含聊天内容 */
@@ -765,7 +770,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     let presence: Presence | undefined;
     function startPresence(): void {
         if (presence) return;
-        if (!config.onlineStatus && !config.profileLikes && config.signature === 'off' && config.qzone === 'off' && !config.pokeOut) return;
+        if (!config.onlineStatus && !config.profileLikes && config.signature === 'off' && config.qzone === 'off' && (config.qzoneBrowse ?? 'off') === 'off' && (config.qzonePeek ?? 'off') === 'off' && (config.qzoneStrangers ?? 'off') === 'off' && !config.pokeOut) return;
         if (!worldCard?.schedule) {
             log('存在感：没有作息（herDays 关或卡上没有作息），不启动——在线状态、点赞、签名、说说都按她的作息排');
             return;
@@ -796,9 +801,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         if (config.qzone !== 'off' && !qzone) log('存在感：陌生人档和同学档的卡都读不了，不写说说');
         presence = createPresence({
             ...(dormancy ? { paused: () => dormancy.isDormant() } : {}),
-            flags: { onlineStatus: config.onlineStatus, profileLikes: config.profileLikes, signature: config.signature, qzone: qzone ? config.qzone : 'off', qzoneVisibility: config.qzoneVisibility, pokeOut: config.pokeOut },
+            flags: { onlineStatus: config.onlineStatus, profileLikes: config.profileLikes, signature: config.signature, qzone: qzone ? config.qzone : 'off', qzoneVisibility: config.qzoneVisibility, pokeOut: config.pokeOut, qzoneBrowse: config.qzoneBrowse, qzonePeek: config.qzonePeek, qzoneStrangers: config.qzoneStrangers },
             transport, schedule, extraFree,
             likeTargets: config.contacts.filter(c => c.tier === 'boyfriend').map(c => c.qq),
+            // 能看谁的空间：只放用户点名的（qqAllowFriends），名字用于提示词里说是谁的空间
+            peekTargets: config.contacts.filter(c => (config.qqAllowFriends ?? []).includes(c.qq)).map(c => ({ qq: c.qq, name: c.name })),
             pokeTargets: config.contacts.filter(c => c.tier === 'boyfriend').map(c => c.qq),
             // 聊天安静了一阵、最后一条是她说的、不是刚道过晚安，且没在危机暂停里，才戳他（ADR 0087）
             canPokeOut: (qq, now) => !crisisState.pausedAt(qq, now) && quietEnoughToPoke(chatHistory.load(qq), now),
@@ -810,7 +817,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(qzone ? { composeQzone: qzone } : {}),
         });
         presence.start();
-        log(`存在感：${[config.onlineStatus && '在线状态', config.profileLikes && '资料卡点赞', config.pokeOut && '主动戳他', config.signature !== 'off' && `个性签名（${config.signature === 'dryRun' ? '只写草稿' : '真改'}）`, qzone && `说说（${config.qzone === 'dryRun' ? '只写草稿' : '真发'}，${config.qzoneVisibility === 'public' ? '所有人可见' : '仅好友可见'}）`].filter(Boolean).join('、')}`);
+        log(`存在感：${[config.onlineStatus && '在线状态', config.profileLikes && '资料卡点赞', config.pokeOut && '主动戳他', config.signature !== 'off' && `个性签名（${config.signature === 'dryRun' ? '只写草稿' : '真改'}）`, qzone && `说说（${config.qzone === 'dryRun' ? '只写草稿' : '真发'}，${config.qzoneVisibility === 'public' ? '所有人可见' : '仅好友可见'}）`, (config.qzoneBrowse ?? 'off') !== 'off' && `翻空间（${config.qzoneBrowse === 'dryRun' ? '只写草稿' : '记进提示词'}）`, (config.qzonePeek ?? 'off') !== 'off' && `看好友空间（${config.qzonePeek === 'dryRun' ? '只写草稿' : '记进提示词'}）`, (config.qzoneStrangers ?? 'off') !== 'off' && `刷陌生人（${config.qzoneStrangers === 'dryRun' ? '只写草稿' : '记进提示词 + 留样本'}）`].filter(Boolean).join('、')}`);
     }
     /** 她刷 B 站、挑一个真视频发给他（ADR 0084，配置 bilibili）：只发给男朋友档的第一个人；第一次连上才起 */
     let browsing: VideoBrowsing | undefined;
@@ -1499,6 +1506,28 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         }
     }
 
+    // 账号控制面（ADR 0142）：qqControl 开着、入口给了通用 OneBot 调用才建；每个动作都过闸并写审计
+    const accountMode = config.qqControl ?? 'off';
+    const account = accountMode !== 'off' && transport.callAction
+        ? createAccount({
+            policy: {
+                mode: accountMode,
+                friends: config.qqAllowFriends ?? [],
+                groups: config.qqAllowGroups ?? [],
+                perHour: 6,
+                dangerous: config.qqDangerous ?? false,
+            },
+            call: transport.callAction,
+            now: () => Date.now(),
+            log,
+            audit: entry => { try { appendFileSync(join(config.dataDir, 'account-audit.jsonl'), `${JSON.stringify(entry)}
+`); } catch { /* 审计写不进去不影响动作 */ } },
+        })
+        : undefined;
+    if (accountMode !== 'off' && !account) log('账号控制面：入口没给通用 OneBot 调用，控制面没有启动');
+    if ((config.qqFriendGate ?? 'off') !== 'off' && accountMode !== 'on') log('好友申请：要 qqControl 设为 on 才处理，现在没生效');
+    else if ((config.qqFriendGate ?? 'off') !== 'off') log(`好友申请：${config.qqFriendGate === 'all' ? '名单内同意、名单外驳回' : '只自动同意名单内的'}（名单 ${(config.qqAllowFriends ?? []).join('、') || '空'}）`);
+
     return {
         async connected(selfId) {
             if (stopped) return;
@@ -1613,6 +1642,18 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (chatHistory.recall(contact.qq, event.message_id, content => Boolean(detectCrisis(content)))) {
                 log(`[${contact.qq}] 他撤回了一条还没回的消息，记成「撤回了一条消息」`);
             }
+        },
+        receiveFriendRequest({ userId, flag }) {
+            const gate = config.qqFriendGate ?? 'off';
+            if (!account || gate === 'off') return;
+            const verdict = friendRequestVerdict(gate, config.qqAllowFriends ?? [], userId);
+            if (verdict === 'ignore') {
+                log(`[好友申请] ${userId} 不在名单里，留着给你处理`);
+                return;
+            }
+            account.run('set_friend_add_request', { flag, approve: verdict === 'accept' })
+                .then(() => log(`[好友申请] ${userId} ${verdict === 'accept' ? '同意' : '驳回'}`))
+                .catch(error => log(`[好友申请] ${userId} 处理失败：${error instanceof Error ? error.message : String(error)}`));
         },
         stop() {
             if (stopped) return;

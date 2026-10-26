@@ -7,6 +7,8 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { feedDigest, type QzoneFeed, type QzoneItem } from './qzone-feed.ts';
+import { sampleLines, strangerDigest, type StrangerFeed } from './qzone-strangers.ts';
 import { pick } from './reply-timing.ts';
 import { logBody } from './sensitive.ts';
 import { formatDate, herDay, stateAt, type Activity, type ExtraFreeActivity, type Schedule } from './schedule.ts';
@@ -184,6 +186,12 @@ export interface PresenceTransport {
     setSignature?(text: string): Promise<void>;
     /** 发一条说说，返回说说的 id；ugcRight：1 所有人可见 4 好友可见（NapCat send_qzone_msg） */
     postQzone?(post: { content: string; images?: string[]; ugcRight: number }): Promise<string>;
+    /** 读一页空间动态（ADR 0142，「空友爱看」那种流）；这台 NapCat 读不了就返回 undefined */
+    readQzoneFeed?(count: number): Promise<QzoneFeed | undefined>;
+    /** 看某个人（好友）的空间说说（ADR 0143，走她的登录态）；读不到返回 undefined */
+    readUserQzone?(uin: number): Promise<QzoneItem[] | undefined>;
+    /** 平台推的陌生人说说（ADR 0144，「空友爱看」那种推荐流）；读不到返回 undefined */
+    readStrangerFeed?(): Promise<StrangerFeed | undefined>;
 }
 
 export interface QzoneRecord {
@@ -202,6 +210,15 @@ interface PresenceFile {
     signature?: { text: string; at: number; next: number; draft?: boolean };
     qzone: QzoneRecord[];
     qzoneAttemptDay?: string;
+    /** 她刚翻过的空间动态（ADR 0142）：一行「看到什么」，6 小时内的会进提示词 */
+    browse?: { at: number; action: string; count: number; note: string };
+    browseAttemptAt?: number;
+    /** 她刚看过的某个人（好友）的空间（ADR 0143），同样 6 小时内进提示词 */
+    peek?: { at: number; uin: number; count: number; note: string };
+    peekAttemptAt?: number;
+    /** 她刷到的陌生人说说（ADR 0144）：6 小时内的这一行进提示词；样本另存 strangers.jsonl */
+    strangers?: { at: number; action: string; count: number; note: string };
+    strangersAttemptAt?: number;
     photosUsed: string[];
     /** 她主动戳他的时刻（ADR 0087；旧文件没有这一项） */
     pokesOut?: number[];
@@ -211,12 +228,14 @@ interface PresenceFile {
 export interface PresenceOptions {
     /** 休眠中（ADR 0161）：这一次整个不做（在线状态、点赞、签名、说说、戳他都不动） */
     paused?: () => boolean;
-    flags: { onlineStatus: boolean; profileLikes: boolean; signature: PresenceMode; qzone: PresenceMode; qzoneVisibility: QzoneVisibility; pokeOut?: boolean };
+    flags: { onlineStatus: boolean; profileLikes: boolean; signature: PresenceMode; qzone: PresenceMode; qzoneVisibility: QzoneVisibility; pokeOut?: boolean; qzoneBrowse?: PresenceMode; qzonePeek?: PresenceMode; qzoneStrangers?: PresenceMode };
     transport: PresenceTransport;
     schedule: Schedule;
     extraFree?: readonly ExtraFreeActivity[];
     /** 给谁点赞（男朋友档的联系人） */
     likeTargets: readonly number[];
+    /** 可以看她空间的名单（ADR 0143：只放用户点名的人，名字用于提示词里说是谁的空间） */
+    peekTargets?: readonly { qq: number; name: string }[];
     /** 她主动戳谁（男朋友档的联系人；ADR 0087） */
     pokeTargets?: readonly number[];
     /** 这会儿适不适合戳他：聊天安静了一阵、不是刚道过晚安、没在危机暂停里。app 按聊天记录判断 */
@@ -251,11 +270,14 @@ function agoText(at: number, now: number): string {
  * 她自己知道的、他点开资料卡 / 空间能看到的（提示词时间块里的一行）：现在的个性签名（真改了的，不含草稿），3 天内发的说说（真发了的）。
  * 没有就返回 undefined。有了这一行，他提起「我看到你那条说说」她接得住，也不会编一条没发过的
  */
-export function describeSelf(input: { signature?: { text: string; draft?: boolean }; qzone: readonly QzoneRecord[] }, now: number): string | undefined {
+export function describeSelf(input: { signature?: { text: string; draft?: boolean }; qzone: readonly QzoneRecord[]; browse?: { at: number; note: string }; peek?: { at: number; note: string }; strangers?: { at: number; note: string } }, now: number): string | undefined {
     const parts: string[] = [];
     if (input.signature?.text && !input.signature.draft) parts.push(`个性签名现在是「${input.signature.text}」`);
     const post = input.qzone.findLast(record => record.mode === 'on' && record.at <= now && now - record.at <= 3 * 86_400_000);
     if (post) parts.push(`${agoText(post.at, now)}发了一条说说「${post.text}」${post.photo ? '，配了一张图' : ''}`);
+    if (input.browse && now - input.browse.at <= 6 * 3_600_000) parts.push(input.browse.note);
+    if (input.peek && now - input.peek.at <= 6 * 3_600_000) parts.push(input.peek.note);
+    if (input.strangers && now - input.strangers.at <= 6 * 3_600_000) parts.push(input.strangers.note);
     return parts.length ? `[你在 QQ 上的样子（他点开你的资料卡、空间能看到的；他问起或提到时照这个说，没写的别编）：${parts.join('；')}]` : undefined;
 }
 
@@ -477,6 +499,126 @@ export function createPresence(options: PresenceOptions): Presence {
         }
     }
 
+    // 她自己翻空间动态（ADR 0142）：09:00–23:00 之间、醒着、两次之间至少隔 2.5 小时；读一页，摘成一行留给她。
+    // 这台 NapCat 读不了（没有可用的动作）就只记一次，之后不再反复试。
+    const BROWSE_MIN_GAP_MS = 2.5 * 3_600_000;
+    let browseUnreadable = false;
+    async function browse(t: number, awake: boolean): Promise<void> {
+        if (flags.qzoneBrowse === undefined || flags.qzoneBrowse === 'off' || browseUnreadable) return;
+        if (!awake || !transport.readQzoneFeed) return;
+        const hour = new Date(t).getHours();
+        if (hour < 9 || hour >= 23) return;
+        if (state.browseAttemptAt !== undefined && t - state.browseAttemptAt < BROWSE_MIN_GAP_MS) return;
+        state.browseAttemptAt = t;
+        save();
+        let feed: QzoneFeed | undefined;
+        try {
+            feed = await transport.readQzoneFeed(8);
+        } catch (error) {
+            fail('翻空间', error);
+            return;
+        }
+        if (!feed) {
+            browseUnreadable = true;
+            log('翻空间：这台 NapCat 读不了空间动态（候选动作都不通），开关留着，之后不再试');
+            return;
+        }
+        recovered('翻空间');
+        const note = feedDigest(feed);
+        if (!note) return;
+        if (flags.qzoneBrowse === 'dryRun') {
+            draft(`${new Date(t).toLocaleString('zh-CN')} 翻了会儿空间（草稿，没记进提示词）`, note);
+            log(`翻空间（试运行）：读到 ${feed.items.length} 条（${feed.action}），写了草稿`);
+            return;
+        }
+        state.browse = { at: t, action: feed.action, count: feed.items.length, note };
+        save();
+        log(`翻空间：读到 ${feed.items.length} 条（${feed.action}）`);
+    }
+
+    // 看某个好友的空间（ADR 0143）：10:00–22:00、醒着、两次之间至少隔 4 小时；名单里的人按日期轮着看。
+    // 读不到（登录态过期 / 不是好友 / 风控）只记一次，不假装看到；正文只进提示词，不进日志。
+    const PEEK_MIN_GAP_MS = 4 * 3_600_000;
+    let peekUnreadable = false;
+    async function peek(t: number, awake: boolean): Promise<void> {
+        if ((flags.qzonePeek ?? 'off') === 'off' || peekUnreadable) return;
+        const targets = options.peekTargets ?? [];
+        if (!awake || !transport.readUserQzone || !targets.length) return;
+        const hour = new Date(t).getHours();
+        if (hour < 10 || hour >= 22) return;
+        if (state.peekAttemptAt !== undefined && t - state.peekAttemptAt < PEEK_MIN_GAP_MS) return;
+        state.peekAttemptAt = t;
+        save();
+        const day = formatDate(herDay(schedule, new Date(t)));
+        const target = targets[pick(day, 'peek-target', [0, targets.length - 1])];
+        if (!target) return;
+        let items: QzoneItem[] | undefined;
+        try {
+            items = await transport.readUserQzone(target.qq);
+        } catch (error) {
+            fail('看好友空间', error);
+            return;
+        }
+        if (!items) {
+            peekUnreadable = true;
+            log('看好友空间：读不到（登录态 / 权限 / 风控），之后不再试');
+            return;
+        }
+        recovered('看好友空间');
+        const note = feedDigest({ action: 'user', items }, 2, `你刚才翻了翻${target.name}的空间，看到：`);
+        if (!note) return;
+        if (flags.qzonePeek === 'dryRun') {
+            draft(`${new Date(t).toLocaleString('zh-CN')} 看了${target.name}的空间（草稿，没进提示词）`, note);
+            log(`看好友空间（试运行）：${items.length} 条，写了草稿`);
+            return;
+        }
+        state.peek = { at: t, uin: target.qq, count: items.length, note };
+        save();
+        log(`看好友空间：${items.length} 条`);
+    }
+
+    // 刷陌生人（ADR 0144）：09:00–23:00、醒着、两次之间至少 3 小时；只读，不点赞不评论。
+    // 样本（只留正文、时间、图数，不留名字和号）追加到 presence/strangers.jsonl，给她以后观察人怎么说话用。
+    const STRANGERS_GAP_MS = 3 * 3_600_000;
+    const strangersPath = join(dir, 'strangers.jsonl');
+    let strangersUnreadable = false;
+    async function strangers(t: number, awake: boolean): Promise<void> {
+        if ((flags.qzoneStrangers ?? 'off') === 'off' || strangersUnreadable) return;
+        if (!awake || !transport.readStrangerFeed) return;
+        const hour = new Date(t).getHours();
+        if (hour < 9 || hour >= 23) return;
+        if (state.strangersAttemptAt !== undefined && t - state.strangersAttemptAt < STRANGERS_GAP_MS) return;
+        state.strangersAttemptAt = t;
+        save();
+        let feed: StrangerFeed | undefined;
+        try {
+            feed = await transport.readStrangerFeed();
+        } catch (error) {
+            fail('刷陌生人', error);
+            return;
+        }
+        if (!feed) {
+            strangersUnreadable = true;
+            log('刷陌生人：推荐流读不到（接口变了 / 登录态过期 / 风控），之后不再试');
+            return;
+        }
+        recovered('刷陌生人');
+        const note = strangerDigest(feed);
+        if (!note) return;
+        if (flags.qzoneStrangers === 'dryRun') {
+            draft(`${new Date(t).toLocaleString('zh-CN')} 刷了会儿空间（陌生人，草稿）`, note);
+            log(`刷陌生人（试运行）：${feed.items.length} 条（${feed.action}），写了草稿`);
+            return;
+        }
+        state.strangers = { at: t, action: feed.action, count: feed.items.length, note };
+        save();
+        try {
+            appendFileSync(strangersPath, sampleLines(feed, t).map(line => `${line}
+`).join(''));
+        } catch { /* 样本写不进去不影响提示词 */ }
+        log(`刷陌生人：${feed.items.length} 条（${feed.action}）`);
+    }
+
     async function tick(): Promise<void> {
         if (busy || options.paused?.()) return;
         busy = true;
@@ -491,6 +633,9 @@ export function createPresence(options: PresenceOptions): Presence {
             await likes(t, day, awake);
             await signature(t, day, awake);
             await qzone(t, day, awake);
+            await browse(t, awake);
+            await peek(t, awake);
+            await strangers(t, awake);
             await pokeOut(t, day, awake);
         } finally {
             busy = false;

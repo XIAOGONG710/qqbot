@@ -2022,3 +2022,36 @@ describe('设备控制：他的命令在回复器之前截住（ADR 0148）', ()
         assert.equal(started, 0);
     });
 });
+
+describe('账号控制面与好友申请（ADR 0142）', () => {
+    const calls: { action: string; params: Record<string, unknown> }[] = [];
+    const collect = () => async (action: string, params: Record<string, unknown>): Promise<unknown> => { calls.push({ action, params }); return {}; };
+    const settle = () => new Promise(resolve => setTimeout(resolve, 20));
+
+    test('qqControl on + 名单内：自动同意；名单外 allow：留着不动', async () => {
+        calls.length = 0;
+        const cfg = config({ qqControl: 'on', qqAllowFriends: [10001], qqFriendGate: 'allow' });
+        const { app } = setup(cfg, {}, { extra: { callAction: collect() } });
+        app.receiveFriendRequest({ userId: 10001, flag: 'f1' });
+        app.receiveFriendRequest({ userId: 20002, flag: 'f2' });
+        await settle();
+        assert.deepEqual(calls, [{ action: 'set_friend_add_request', params: { flag: 'f1', approve: true } }]);
+    });
+
+    test('qqFriendGate all：名单外驳回；gate off：一个都不发', async () => {
+        calls.length = 0;
+        const all = config({ qqControl: 'on', qqAllowFriends: [10001], qqFriendGate: 'all' });
+        const { app } = setup(all, {}, { extra: { callAction: collect() } });
+        app.receiveFriendRequest({ userId: 20002, flag: 'f3' });
+        await settle();
+        assert.deepEqual(calls, [{ action: 'set_friend_add_request', params: { flag: 'f3', approve: false } }]);
+
+        calls.length = 0;
+        const off = config({ qqControl: 'on', qqAllowFriends: [10001], qqFriendGate: 'off' });
+        const quiet = setup(off, {}, { extra: { callAction: collect() } }).app;
+        quiet.receiveFriendRequest({ userId: 10001, flag: 'f4' });
+        await settle();
+        assert.deepEqual(calls, []);
+    });
+});
+
