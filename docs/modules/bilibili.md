@@ -9,6 +9,7 @@
 - `bilibili.ts`
 - `bilibili-view.ts`
 - `bilibili-summary.ts`
+- `bilibili-inbox.ts`
 - `bilibili-wbi.ts`
 - `bilibili-feed.ts`
 - `feed-browsing.ts`

@@ -35,6 +35,12 @@
 
 **实测**（2026-10-26，本机直连，未登录）：`ok:true`，rcmd 返回 6 条、会话计划 7 个；签名通过（不签名会 code -352）。发现两处要在接线前补：rcmd 不带 `tname`（分区为空，只能靠标题黑名单兜）+ 生活区以外内容混得多，已把时长上限收到 15 分钟、标题黑名单补了凶案类词。
 
+## 第 3 期的只读层（本次已写）
+
+`bilibili-inbox.ts`：`parseMentions` / `parseLikes` / `mergeInbox` / `inboxLine`，以及 `fetchMentionFeed` / `fetchLikeFeed`（`getJson` 注入，测试用假数据）。回复（`msgfeed/reply`）和系统通知已经在 `bilibili-account.ts` 里，四类合成一份清单、按时间去重排序；概览只出数字（「3 条回复、2 个 @」），不出正文。
+
+已知：msgfeed 要登录；未登录返回 `undefined`，调用方记「要登录」，不能当成「没有新消息」。**还没接线到运行时**（回复/私信都要登录态和用户在场）。
+
 ## 第 2.5 期（本次只写了一半：接口 + 解析）
 
 `bilibili-summary.ts`：`fetchSummary` 走 wbi 签名请求 `x/web-interface/view/conclusion/get`，解析 `model_result.summary` + `outline` 章节；返回 `ok / needLogin / none` 三种状态，CLI `--summary` 会显示「要她的 B 站号登录」。
