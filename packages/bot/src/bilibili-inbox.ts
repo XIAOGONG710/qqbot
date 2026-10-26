@@ -96,6 +96,11 @@ export function mergeInbox(entries: readonly InboxEntry[]): InboxEntry[] {
     return [...seen.values()].sort((a, b) => (b.at || 0) - (a.at || 0));
 }
 
+/** 只留还没回过的回复（handled 是她回过的 source_id / rpid 集合）；@ 和赞不过这个筛 */
+export function unreplied<T extends { id: string }>(replies: readonly T[], handled: ReadonlySet<string>): T[] {
+    return replies.filter(reply => !handled.has(reply.id));
+}
+
 /** 一句概览（日志 / 面板用，不含正文）：「3 条回复、2 个 @、5 个赞、1 条系统通知」 */
 export function inboxLine(entries: readonly InboxEntry[]): string {
     const count = (kind: InboxKind): number => entries.filter(entry => entry.kind === kind).length;

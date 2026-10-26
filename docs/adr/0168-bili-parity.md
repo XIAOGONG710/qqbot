@@ -79,3 +79,13 @@
 `bilibili-stats.ts`：`parseVideoStats` / `perHundred` / `statsLine` + `fetchVideoStats`；`ops/bilibili-stats-cli.ts`（多 BV、`--json`）。
 
 **实测**（未登录）：老的 `archive/stat` 已 404，改从 `view` 的 `stat` 取；`BV1GJ411x7h7` → 播放 1.07 亿、赞 296.4 万、币 128.8 万、藏 155.9 万，每百播 赞 2.8 / 币 1.2 / 藏 1.4 / 评 0.2。完播率、平均观看、3 秒退出率、账号数据仍在创作中心后台（要登录），未做。
+
+## 2026-10-27 补充二：命令清单、外部 ASR、未回过滤
+
+- `bilibili-schema.ts`：我们已写命令的机器可读清单（`video view` / `feed recommend` / `stats video` / `inbox mentions|likes|replies` / `comment visible`），每条标只读/写、要不要登录、入口；**没写的命令（投稿、账号数据）不列**，免得按清单调用全是空。
+- `bilibili-asr.ts`：不装引擎、不绑 Python，接外部命令（`QQBOT_ASR_CMD`，`{input}` / `{out}` 占位），跑完读回 SRT/TXT 并清洗；没配 / 失败 / 没输出 → `undefined`，上层照旧只用字幕和热评。
+- `bilibili-inbox.ts` 加 `unreplied(replies, handled)`：只留还没回过的回复（`--unreplied` 的纯函数版）。
+- 折叠检查其实早就有：`bilibili-account.ts` 的 `commentVisible`（发完去公开最新页找）。
+- 测试 `bilibili-extras.test.ts` 5 项；类型检查干净。
+
+**仍然没做**（都卡在登录 / 大工程）：投稿（分片上传）、动态发布、创作中心数据（完播率等）、账号画像、私信实时、MCP。

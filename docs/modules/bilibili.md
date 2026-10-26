@@ -11,6 +11,8 @@
 - `bilibili-summary.ts`
 - `bilibili-stats.ts`
 - `bilibili-inbox.ts`
+- `bilibili-asr.ts`
+- `bilibili-schema.ts`
 - `bilibili-wbi.ts`
 - `bilibili-feed.ts`
 - `feed-browsing.ts`
