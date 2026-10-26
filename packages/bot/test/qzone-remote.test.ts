@@ -20,6 +20,17 @@ describe('看别人的空间（ADR 0143）', () => {
         assert.equal(sessionFromCookies([{ name: 'skey', value: 'x' }])?.gtk, gTk('x'), '没有 p_skey 时退回 skey');
     });
 
+    test('NapCat get_cookies 的真实形状（cookies 是一整串，另给 bkn）也能取到登录态', () => {
+        const real = { cookies: 'uin=o2561299676; skey=@s; p_skey=abc', bkn: '123' };
+        assert.match(cookieHeader(real) ?? '', /p_skey=abc/);
+        const session = sessionFromCookies(real);
+        assert.equal(session?.gtk, gTk('abc'));
+        assert.equal(session?.uin, 2561299676);
+        assert.equal(sessionFromCookies('uin=o1; p_skey=abc')?.gtk, gTk('abc'), '裸字符串也认');
+        assert.equal(sessionFromCookies({ cookies: 'uin=o1', bkn: '' }), undefined, '没有 p_skey / skey 就是没有登录态');
+        assert.equal(sessionFromCookies({ cookies: '', bkn: '' }), undefined);
+    });
+
     test('g_tk：djb2 取低 31 位（固定向量）', () => {
         assert.equal(gTk('abc'), 193485963);
         assert.equal(gTk('p_skey_example'), 2029982555);

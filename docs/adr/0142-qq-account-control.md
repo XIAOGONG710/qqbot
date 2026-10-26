@@ -81,3 +81,9 @@ NapCat 给了约两百个动作：发消息只是其中一小块，账号本身�
 - **封号风险由用户承担**（用户 10-25 明说）。建议顺序：先只读盘点 → 再 `qzoneBrowse: dryRun` 看一周草稿 → 再 `on`；资料类单项开、看一天；社交和危险档最后，且每次一项。
 - 允许清单是「写动作的对象」，不是「她能聊天的人」：她现在跟宝宝聊天不受这里影响。
 - 审计里不写正文，但**对象（QQ 号 / 群号）和时间会留**；这是出事时唯一能回溯的东西。
+
+## 2026-10-25 补记：探针实测（Claude，只读，在线上虚拟机上）
+
+- `qzoneBrowse` 靠的 `get_qzone_msg_list` / `get_qzone_feeds` 在线上 NapCat（4.18.28）里**没有注册**：Qzone 相关的动作只有 `send_qzone_msg` / `delete_qzone_msg`，`get_qzone_msg_list` 只出现在删除动作的参数说明里。四个候选名全部会落空，开关打开后只会记一行「读不了」，**这个开关在这台 NapCat 上没有用**；空间的读取改走 [ADR 0145](0145-qzone-friends-feed.md)（网页接口）。
+- 动作表 54 个里 49 个在这台 NapCat 里存在，缺的是 `get_qzone_msg_list`、`get_qzone_feeds`、`get_group_file_list`、`set_group_notice`、`create_group`。
+- `get_cookies` 的真实返回是 `{cookies: 'k=v; k=v', bkn}`，不是数组；解析已在 ADR 0145 的分支里修好。

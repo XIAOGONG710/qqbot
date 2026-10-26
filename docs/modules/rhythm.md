@@ -19,6 +19,7 @@
 - `presence.ts`
 - `qzone.ts`
 - `qzone-feed.ts`
+- `qzone-feeds3.ts`
 - `qzone-remote.ts`
 - `qzone-strangers.ts`
 - `account.ts`
@@ -47,7 +48,7 @@
 | `signature` | 个性签名（模式） | [ADR 0083](../adr/0083-presence.md) |
 | `qzone` | 说说（模式） | [ADR 0083](../adr/0083-presence.md) |
 | `qzoneBrowse` | 自己翻空间动态（模式） | [ADR 0142](../adr/0142-qq-account-control.md) |
-| `qzonePeek` | 看好友的空间（模式） | [ADR 0143](../adr/0143-qzone-peek.md) |
+| `qzonePeek` | 刷好友动态（看名单里好友发的说说）（模式） | [ADR 0145](../adr/0145-qzone-friends-feed.md) |
 | `qzoneStrangers` | 刷陌生人的空间（学人怎么说话）（模式） | [ADR 0144](../adr/0144-qzone-strangers.md) |
 | `typingStatus` | “正在输入…” | [ADR 0077](../adr/0077-typing-status.md) |
 | `selfRecall` | 打错字撤回重发 | [ADR 0086](../adr/0086-self-recall.md) |
