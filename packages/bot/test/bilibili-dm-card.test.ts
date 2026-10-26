@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { parseDmMessages } from '../src/bilibili-account.ts';
-import { videoShareCard, type BiliVideo } from '../src/bilibili.ts';
+import { videoNewsCard, videoShareCard, type BiliVideo } from '../src/bilibili.ts';
 
 const video: BiliVideo = { bvid: 'BV1xx411c7mD', aid: 1, title: '楼下三花的一天', desc: '', owner: '小雨', category: '喵星人', views: 10, likes: 1, duration: 60, link: 'https://www.bilibili.com/video/BV1xx411c7mD', cover: 'https://i0.hdslb.com/a.jpg' };
 
@@ -35,6 +35,15 @@ describe('B 站私信读取 + 分享卡片（ADR 0168）', () => {
         assert.equal(card.meta.detail_1.preview, video.cover);
         assert.equal(card.meta.detail_1.jumpUrl, video.link);
         assert.equal(card.meta.detail_1.appid, 100951776);
+    });
+
+    test('新闻卡片：structmsg，旧 QQ 也认', () => {
+        const card = JSON.parse(videoNewsCard(video)) as { app: string; meta: { news: { title: string; preview: string; jumpUrl: string; tag: string } } };
+        assert.equal(card.app, 'com.tencent.structmsg');
+        assert.equal(card.meta.news.title, '楼下三花的一天');
+        assert.equal(card.meta.news.tag, '哔哩哔哩');
+        assert.equal(card.meta.news.jumpUrl, video.link);
+        assert.equal(card.meta.news.preview, video.cover);
     });
 
     test('没有封面也能出卡片（preview 空串）', () => {

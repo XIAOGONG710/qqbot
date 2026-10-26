@@ -261,6 +261,30 @@ export interface DmOptions {
 }
 
 /**
+ * 分享卡片的 JSON（QQ 的「新闻」卡片，兼容性比小程序卡好；小程序卡在旧 QQ 上会提示「版本过低」）
+ */
+export function videoNewsCard(video: BiliVideo): string {
+    return JSON.stringify({
+        app: 'com.tencent.structmsg',
+        desc: '新闻',
+        view: 'news',
+        ver: '0.0.0.1',
+        prompt: `[分享]${video.title}`,
+        meta: {
+            news: {
+                title: video.title,
+                desc: video.desc || '哔哩哔哩',
+                preview: video.cover ?? '',
+                jumpUrl: video.link,
+                tag: '哔哩哔哩',
+                appid: 100951776,
+                layout: '1',
+            },
+        },
+    });
+}
+
+/**
  * 分享卡片的 JSON（QQ 的 B 站小程序卡片）：标题、封面、链接；QQ 渲染不出来时调用方退回发链接。
  * appid 100951776 是 B 站小程序在 QQ 里常用的那个。
  */
