@@ -76,10 +76,10 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'bilibili', name: '外部世界：B 站',
         scope: '她的 B 站号：搜视频读字幕、私信、回复评论、话题评论、风险监控。',
-        files: ['bilibili.ts', 'bilibili-account-source.ts', 'bilibili-account.ts', 'platform-breaker.ts', 'bilibili-comment.ts', 'bilibili-login-cli.ts', 'bilibili-login.ts', 'bilibili-probe.ts', 'bilibili-replies.ts', 'bilibili-risk.ts'],
+        files: ['bilibili.ts', 'bilibili-view.ts', 'bilibili-account-source.ts', 'bilibili-account.ts', 'platform-breaker.ts', 'bilibili-comment.ts', 'bilibili-login-cli.ts', 'bilibili-login.ts', 'bilibili-probe.ts', 'bilibili-replies.ts', 'bilibili-risk.ts'],
         groups: ['B 站'],
         metrics: '日志里的 B 站风险监控；presence/drafts.md',
-        adrs: ['0084', '0089', '0090', '0092'],
+        adrs: ['0084', '0089', '0090', '0092', '0168'],
     },
     {
         id: 'platform', name: '接入、配置与运维',

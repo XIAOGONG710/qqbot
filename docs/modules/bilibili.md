@@ -7,6 +7,7 @@
 ## 文件（`packages/bot/src/` 下）
 
 - `bilibili.ts`
+- `bilibili-view.ts`
 - `bilibili-account-source.ts`
 - `bilibili-account.ts`
 - `platform-breaker.ts`
@@ -34,4 +35,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0084](../adr/0084-bilibili-browsing.md)、[ADR 0089](../adr/0089-bilibili-account.md)、[ADR 0090](../adr/0090-bilibili-replies.md)、[ADR 0092](../adr/0092-bilibili-topic-comments.md)
+[ADR 0084](../adr/0084-bilibili-browsing.md)、[ADR 0089](../adr/0089-bilibili-account.md)、[ADR 0090](../adr/0090-bilibili-replies.md)、[ADR 0092](../adr/0092-bilibili-topic-comments.md)、[ADR 0168](../adr/0168-bili-parity.md)
