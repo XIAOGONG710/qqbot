@@ -59,6 +59,7 @@ export const DEFAULTS = {
     readReceipts: false,
     bilibili: 'off' as PresenceMode,
     bilibiliAccount: false,
+    biliFeed: 'off' as PresenceMode,
     bilibiliComment: 'off' as PresenceMode,
     bilibiliDm: 'off' as PresenceMode,
     bilibiliReplies: 'off' as PresenceMode,
@@ -224,6 +225,8 @@ export interface AppConfig {
      * 按口味搜视频、读字幕，让分享更有内容。要 bilibili 也开着；只读，不在 B 站发任何东西。默认关
      */
     bilibiliAccount: boolean;
+    /** 她自己刷 B 站推荐（ADR 0168）：14 点后一天一次，拿一页推荐、排一次会话（停/划走），只记刷到的；dryRun 只写草稿。默认关 */
+    biliFeed?: PresenceMode;
     /** 在她分享的视频下评论并 @ 他（ADR 0089）：要 bilibiliAccount、bilibiliAtName、bilibiliAtUid 都配好；评论公开，用最低隐私档的卡写；dryRun 只写草稿。默认关 */
     bilibiliComment: PresenceMode;
     /**
@@ -723,6 +726,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         readReceipts: bool(file, 'readReceipts', '', DEFAULTS.readReceipts),
         bilibili: oneOf(file.bilibili, 'bilibili', PRESENCE_MODES, DEFAULTS.bilibili),
         bilibiliAccount: bool(file, 'bilibiliAccount', '', DEFAULTS.bilibiliAccount),
+        biliFeed: oneOf(file.biliFeed, 'biliFeed', PRESENCE_MODES, DEFAULTS.biliFeed),
         bilibiliComment: oneOf(file.bilibiliComment, 'bilibiliComment', PRESENCE_MODES, DEFAULTS.bilibiliComment),
         bilibiliDm: oneOf(file.bilibiliDm, 'bilibiliDm', PRESENCE_MODES, DEFAULTS.bilibiliDm),
         bilibiliReplies: oneOf(file.bilibiliReplies, 'bilibiliReplies', PRESENCE_MODES, DEFAULTS.bilibiliReplies),

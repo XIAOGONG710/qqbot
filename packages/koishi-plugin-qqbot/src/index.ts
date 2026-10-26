@@ -111,6 +111,7 @@ export interface Config {
     readReceipts: boolean;
     bilibili: PresenceMode;
     bilibiliAccount: boolean;
+    biliFeed: PresenceMode;
     bilibiliComment: PresenceMode;
     bilibiliDm: PresenceMode;
     bilibiliReplies: PresenceMode;
@@ -277,6 +278,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**撤回**（ADR 0082）：他撤回了一条她还没回的消息，她看到的是「撤回了一条消息」而不是原文（像真人那样问一句「撤回啥了」）；回过的、想伤害自己的话撤回了也照样看到。默认关'),
         bilibili: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.bilibili)
             .description('**刷 B 站**（ADR 0084）：她从 B 站热门榜里按口味挑一个真视频（日常、搞笑、萌宠、美食、音乐、影视、游戏），连热评一起读，发给男朋友档的人并说一句感受，再把真链接发在后面；一周最多 3 个，工作日晚上、周末下午到晚上，睡着、上课、正聊着时不发。只读 B 站公开接口，不登录、不在 B 站发任何东西。选「只写草稿」时存在 presence/drafts.md。默认关'),
+        biliFeed: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.biliFeed)
+            .description('**自己刷 B 站推荐**（ADR 0168）：14 点后一天一次，拿一页推荐、按口味排一次「刷」（停 / 划走），只记刷到的标题和停留秒数；不播放、不点赞、不评论。选「只写草稿」时草稿存 presence/drafts.md。默认关'),
         bilibiliAccount: Schema.boolean().default(DEFAULTS.bilibiliAccount)
             .description('**她的 B 站号**（ADR 0089）：用她自己的 B 站号（数据目录 secrets/bilibili.json，先在命令行跑 `npm run bilibili-login -w @qqbot/bot` 扫码）按口味搜视频（三花猫、王者荣耀、宿舍日常……每天换一个词）并读字幕，分享时她知道视频里讲了什么；前三个候选里挑第一个有字幕的。只读，不在 B 站发任何东西。要上面「刷 B 站」也开着。凭证失效会在日志里说，重新扫码后重启。默认关'),
         bilibiliComment: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.bilibiliComment)
@@ -564,6 +567,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.readReceipts !== undefined ? { readReceipts: config.readReceipts } : {}),
         ...(config.bilibili !== undefined ? { bilibili: config.bilibili } : {}),
         ...(config.bilibiliAccount !== undefined ? { bilibiliAccount: config.bilibiliAccount } : {}),
+        ...(config.biliFeed !== undefined ? { biliFeed: config.biliFeed } : {}),
         ...(config.bilibiliComment !== undefined ? { bilibiliComment: config.bilibiliComment } : {}),
         ...(config.bilibiliDm !== undefined ? { bilibiliDm: config.bilibiliDm } : {}),
         ...(config.bilibiliReplies !== undefined ? { bilibiliReplies: config.bilibiliReplies } : {}),

@@ -28,6 +28,7 @@
 
 ## 第二期（本次已做，只读）
 
+`feed-browsing.ts`：一天一次（14 点后、醒着、按作息）、拿一页 → 排会话 → 记账（`watching/feed.json`，30 天 / seen 300），`dryRun` 只写 `presence/drafts.md`；`app` 里 30 分钟看一眼、随 app 停。开关 `biliFeed`（插件 schema 里已有说明）。
 `bilibili-wbi.ts`（混音表 + `mixinKey` + `signParams`）、`bilibili-feed.ts`（`fetchRecommend` / `parseFeedItems` / `stayVerdict` / `planSession` / `sessionSize`）、`bilibili-limit.ts`（评论 / 私信 / 动态 / 投稿四个滑窗 + 审计行）、`ops/bilibili-feed-cli.ts`。
 
 **实测**（2026-10-26，本机直连，未登录）：`ok:true`，rcmd 返回 6 条、会话计划 7 个；签名通过（不签名会 code -352）。发现两处要在接线前补：rcmd 不带 `tname`（分区为空，只能靠标题黑名单兜）+ 生活区以外内容混得多，已把时长上限收到 15 分钟、标题黑名单补了凶案类词。

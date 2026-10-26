@@ -34,7 +34,7 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined => (value
 const WATCHABLE = /日常|搞笑|动物|喵星人|汪星人|美食|音乐|翻唱|演奏|影视|动漫|单机|手机游戏|网络游戏|科学|技术|运动|出行|摄影|数码|绘画|手工|穿搭|风光|旅游|生活|鬼畜/;
 /** 不停的分区：新闻、社会、赛事、时政、金融 */
 const AVOID = /新闻|资讯|社会|时政|军事|法律|赛事|电竞|股票|财经|汽车|房产/;
-const BLOCKED_TITLE = /广告|商单|恰饭|抽奖|优惠|直播间|政治|战争|军事|事故|死亡|去世|车祸|血腥|恐怖|惊悚|疫情|股票|基金|彩票|赌|凶案|命案|悬案|杀人|尸体|刑侦|受害者/;
+const BLOCKED_TITLE = /广告|商单|恰饭|抽奖|优惠|直播间|政治|战争|军事|事故|死亡|去世|车祸|血腥|恐怖|惊悚|疫情|股票|基金|彩票|赌|凶案|命案|悬案|杀(?:人|一个|死|害)|尸体|刑侦|受害者/;
 
 /** 从 rcmd 的 data.item 里认一页推荐；认不出 bvid 的跳过 */
 export function parseFeedItems(data: unknown): FeedItem[] {

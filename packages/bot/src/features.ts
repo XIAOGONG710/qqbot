@@ -77,6 +77,7 @@ export const FEATURES: readonly FeatureDef[] = [
     // B 站
     { key: 'bilibili', label: '刷 B 站发给他', group: 'B 站', adr: '0084', kind: 'mode' },
     { key: 'bilibiliAccount', label: '她自己的 B 站账号', group: 'B 站', adr: '0089' },
+    { key: 'biliFeed', label: '自己刷 B 站推荐（记下刷到的）', group: 'B 站', adr: '0168', kind: 'mode' },
     { key: 'bilibiliDm', label: 'B 站私信', group: 'B 站', adr: '0089', kind: 'mode' },
     { key: 'bilibiliReplies', label: '回复 B 站评论', group: 'B 站', adr: '0090', kind: 'mode' },
     { key: 'bilibiliComment', label: '话题评论', group: 'B 站', adr: '0092', kind: 'mode' },

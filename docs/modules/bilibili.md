@@ -10,6 +10,7 @@
 - `bilibili-view.ts`
 - `bilibili-wbi.ts`
 - `bilibili-feed.ts`
+- `feed-browsing.ts`
 - `bilibili-limit.ts`
 - `bilibili-account-source.ts`
 - `bilibili-account.ts`
@@ -28,6 +29,7 @@
 | `watching` | 自己在 B 站看东西、有看法 | [ADR 0130](../adr/0130-watching.md) |
 | `bilibili` | 刷 B 站发给他（模式） | [ADR 0084](../adr/0084-bilibili-browsing.md) |
 | `bilibiliAccount` | 她自己的 B 站账号 | [ADR 0089](../adr/0089-bilibili-account.md) |
+| `biliFeed` | 自己刷 B 站推荐（记下刷到的）（模式） | [ADR 0168](../adr/0168-bili-parity.md) |
 | `bilibiliDm` | B 站私信（模式） | [ADR 0089](../adr/0089-bilibili-account.md) |
 | `bilibiliReplies` | 回复 B 站评论（模式） | [ADR 0090](../adr/0090-bilibili-replies.md) |
 | `bilibiliComment` | 话题评论（模式） | [ADR 0092](../adr/0092-bilibili-topic-comments.md) |

@@ -78,6 +78,7 @@ import { idiomStore, IDIOMS_CHECK_MS, refreshIdioms } from './idioms.ts';
 import { jokeStore, JOKES_CHECK_MS, refreshJokes } from './jokes.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes, type MemeEntry } from './memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from './watching.ts';
+import { feedOnce } from './feed-browsing.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { togetherNow } from './together.ts';
 import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoSource } from './photos.ts';
@@ -1165,6 +1166,45 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             watchingRunning = false;
         }
     };
+    // 她每天刷一小会儿 B 站推荐（ADR 0168）：14 点后一天一次；30 分钟看一眼该不该刷；只读、只记账
+    let feedTimer: ReturnType<typeof setInterval> | undefined;
+    let feedRunning = false;
+    const feedJob = async (): Promise<void> => {
+        if (!config.biliFeed || config.biliFeed === 'off' || stopped || feedRunning) return;
+        const rawFetch: BiliFetch = bilibiliFetch ?? ((url, init) => fetch(url, init));
+        // feed 模块的 fetch 形状不强制 signal（只读、单次请求），这里补一个
+        const biliFetch = (url: string, init: { headers: Record<string, string>; signal?: AbortSignal }) =>
+            rawFetch(url, { headers: init.headers, signal: init.signal ?? new AbortController().signal });
+        const nowDate = new Date(pipeline?.now ? pipeline.now() : Date.now());
+        const schedule = worldCard?.schedule;
+        const extraFree = config.herDays && worldCard ? readingActivities(worldCard.books) : [];
+        feedRunning = true;
+        try {
+            await feedOnce({
+                mode: config.biliFeed, path: join(config.dataDir, 'watching', 'feed.json'),
+                now: () => nowDate, fetch: biliFetch, log,
+                draft: (title, body) => {
+                    mkdirSync(join(config.dataDir, 'presence'), { recursive: true });
+                    appendFileSync(join(config.dataDir, 'presence', 'drafts.md'), `## ${title}
+
+${body}
+
+`);
+                },
+                ...(schedule ? {
+                    awake: (date: Date) => {
+                        const kind = stateAt(schedule, date, extraFree).activity.kind;
+                        return (kind === 'free' || kind === 'between') && !asleepSince(schedule, bedtimes(schedule, date.getTime()), date);
+                    },
+                } : {}),
+            });
+        } catch (error) {
+            log(`刷 B 站：这一轮出错（${error instanceof Error ? error.message : String(error)}）`);
+        } finally {
+            feedRunning = false;
+        }
+    };
+
     // 网络热梗（ADR 0129）：每 12 小时一次（30 分钟看一眼该不该刷）；要她的 B 站号，没有就不学，只用库里已有的
     const refreshMemeJob = async (): Promise<void> => {
         if (!config.memes || stopped || memesRunning) return;
@@ -1565,6 +1605,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                         watchingTimer = setInterval(() => void watchJob(), 30 * 60_000);
                         watchingTimer.unref();
                     }
+                    if (config.biliFeed && config.biliFeed !== 'off' && !feedTimer) {
+                        void feedJob();
+                        feedTimer = setInterval(() => void feedJob(), 30 * 60_000);
+                        feedTimer.unref();
+                    }
                     if (config.memes && !memesTimer) {
                         memesTimer = setInterval(() => void refreshMemeJob(), 30 * 60_000);
                         memesTimer.unref();
@@ -1679,6 +1724,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (photoDiscoveryTimer) clearInterval(photoDiscoveryTimer);
             if (memesTimer) clearInterval(memesTimer);
             if (watchingTimer) clearInterval(watchingTimer);
+            if (feedTimer) clearInterval(feedTimer);
             if (foodDiscoveryTimer) clearInterval(foodDiscoveryTimer);
             clearTimeout(foodRetryTimer);
             if (jokesTimer) clearInterval(jokesTimer);
