@@ -6,6 +6,7 @@ export interface FakeEvent { url: string; status: number }
 export interface FakePage extends Page {
     gotos: string[];
     wheels: number[];
+    clicks: Array<{ x: number; y: number }>;
     shots: number;
     events: FakeEvent[];
 }
@@ -21,11 +22,12 @@ export function fakePage(options: {
     bodies?: Array<{ match: RegExp; body: string | (() => Promise<string>) }>;
 }): FakePage {
     const page: FakePage = {
-        gotos: [], wheels: [], shots: 0, events: [],
+        gotos: [], wheels: [], clicks: [], shots: 0, events: [],
+        async click(x, y) { page.clicks.push({ x, y }); },
         async goto(url) { page.gotos.push(url); options.onGoto?.(url, page); },
         async evaluate<T>(expression: string) { return options.evaluate(expression, page) as T; },
         mark: () => page.events.length,
-        async waitForResponse() { return undefined; },
+        async waitForResponse(match, { since = 0 } = {}) { return page.responses(match, since)[0]; },
         responses: (match, since = 0) => page.events.slice(since).filter(event => match.test(event.url)).map(event => ({
             url: event.url, status: event.status,
             body: async () => { const found = options.bodies?.find(entry => entry.match.test(event.url)); if (!found) return ''; return typeof found.body === 'string' ? found.body : found.body(); },

@@ -173,7 +173,7 @@ export function createDouyinReader(deps: ReaderDeps): SocialReader {
             const shots: Buffer[] = [];
             for (let i = 0; i < frames; i++) {
                 await pause(pacing, watchMs / frames * 0.8, watchMs / frames * 1.2);
-                try { shots.push(await page.screenshot({ jpegQuality: 60 })); } catch (error) { log(`抖音截帧失败：${error instanceof Error ? error.message : String(error)}`); break; }
+                try { shots.push(await page.screenshot({ jpegQuality: 60, clipTo: 'video' })); } catch (error) { log(`抖音截帧失败：${error instanceof Error ? error.message : String(error)}`); break; }
             }
             return { post: opened, frames: shots };
         },

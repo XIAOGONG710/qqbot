@@ -79,6 +79,14 @@ describe('页面：读网页自己发出去的请求收到的内容', () => {
         const wheel = fake.sent.find(m => m.method === 'Input.dispatchMouseEvent');
         assert.equal(wheel?.params.type, 'mouseWheel');
         assert.equal(wheel?.sessionId, 'S1');
+        // 点击 = 移过去、按下、松开，三步，都发给这个页面的会话
+        fake.sent.length = 0;
+        await page.click(100, 200);
+        assert.deepEqual(fake.sent.map(m => m.params.type), ['mouseMoved', 'mousePressed', 'mouseReleased']);
+        assert.ok(fake.sent.every(m => m.params.x === 100 && m.params.y === 200 && m.sessionId === 'S1'));
+        // cookie 只拿名字
+        const named = fakeBrowser({ ...pageHandlers, 'Network.getCookies': () => ({ cookies: [{ name: 'a', value: '密钥' }, { name: 'b', value: 'x' }, { name: 'a', value: 'y' }] }) });
+        assert.deepEqual(await (await openPage(createCdpConnection(named.transport))).cookieNames(['https://x/']), ['a', 'b']);
     });
 
     test('等响应：读完才算；按 URL 筛；since 之前的不算；别的会话的不算；读响应体（含 base64）', async () => {

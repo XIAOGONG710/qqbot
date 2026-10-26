@@ -137,7 +137,10 @@ export interface Page {
     responses(match: RegExp, since?: number): Array<{ url: string; status: number; body(): Promise<string> }>;
     /** 像人一样滚轮往下滚 */
     wheel(deltaY: number): Promise<void>;
-    screenshot(options?: { jpegQuality?: number }): Promise<Buffer>;
+    /** 真的鼠标点击（按下、松开），坐标是页面里的像素 */
+    click(x: number, y: number): Promise<void>;
+    /** clipTo：只截这个 CSS 选择器对应的元素（读不到就截整个视口） */
+    screenshot(options?: { jpegQuality?: number; clipTo?: string }): Promise<Buffer>;
     /** 这些网址下的 cookie **名字**（用来判断登录了没有）；值不读出来、不记录 */
     cookieNames(urls: string[]): Promise<string[]>;
     url(): Promise<string>;
@@ -222,8 +225,23 @@ export async function openPage(connection: CdpConnection, options: { viewport?: 
         async wheel(deltaY) {
             await call('Input.dispatchMouseEvent', { type: 'mouseWheel', x: Math.round(viewport.width / 2), y: Math.round(viewport.height / 2), deltaX: 0, deltaY });
         },
-        async screenshot({ jpegQuality = 70 } = {}) {
-            const { data } = await call<{ data: string }>('Page.captureScreenshot', { format: 'jpeg', quality: jpegQuality });
+        async click(x, y) {
+            await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+            await call('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+            await call('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+        },
+        async screenshot({ jpegQuality = 70, clipTo } = {}) {
+            let clip: { x: number; y: number; width: number; height: number; scale: number } | undefined;
+            if (clipTo) {
+                // 只截这个元素（比如正在播的 video）：没有这个元素、或小到看不清，就截整个视口
+                const rect = await call<{ result?: { value?: typeof clip | null } }>('Runtime.evaluate', {
+                    expression: `(() => { const e = document.querySelector(${JSON.stringify(clipTo)}); if (!e) return null; const b = e.getBoundingClientRect();
+                      return b.width > 50 && b.height > 50 ? { x: Math.max(0, b.left), y: Math.max(0, b.top), width: b.width, height: b.height, scale: 1 } : null; })()`,
+                    returnByValue: true,
+                });
+                clip = rect.result?.value ?? undefined;
+            }
+            const { data } = await call<{ data: string }>('Page.captureScreenshot', { format: 'jpeg', quality: jpegQuality, ...(clip ? { clip } : {}) });
             return Buffer.from(data, 'base64');
         },
         async cookieNames(urls) {

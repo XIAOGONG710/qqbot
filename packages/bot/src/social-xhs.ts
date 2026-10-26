@@ -175,7 +175,7 @@ export function createXhsReader(deps: ReaderDeps): SocialReader {
                 // 视频自己在播（访客也自动播）：隔一会儿截一帧；截不到不影响读正文
                 for (let i = 0; i < frames; i++) {
                     await pause(pacing, watchMs / frames * 0.8, watchMs / frames * 1.2);
-                    try { shots.push(await page.screenshot({ jpegQuality: 60 })); } catch (error) { log(`小红书截帧失败：${error instanceof Error ? error.message : String(error)}`); break; }
+                    try { shots.push(await page.screenshot({ jpegQuality: 60, clipTo: 'video' })); } catch (error) { log(`小红书截帧失败：${error instanceof Error ? error.message : String(error)}`); break; }
                 }
             } else {
                 await pause(pacing, 2_000, 5_000);
