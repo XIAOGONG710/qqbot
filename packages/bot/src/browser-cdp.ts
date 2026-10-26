@@ -257,10 +257,22 @@ export interface LaunchOptions {
     offscreen?: boolean;
     /** 用户扫码登录时要看见窗口 */
     visible?: boolean;
+    /** 不加载图片（浏览器自己的「不显示图片」设置）：小红书首页开着要 600 MB，空闲内存掉到 227 MB（10-26 实测），虚拟机只有 6 GB；默认关掉，要看图的页面再开 */
+    images?: boolean;
     startTimeoutMs?: number;
     /** 测试注入 */
     spawnProcess?: typeof spawn;
     connect?: (url: string) => Promise<CdpTransport>;
+}
+
+export function launchArgs(options: Pick<LaunchOptions, 'profileDir' | 'offscreen' | 'visible' | 'images'>): string[] {
+    return [
+        `--user-data-dir=${options.profileDir}`, '--remote-debugging-port=0', '--remote-allow-origins=*',
+        '--no-first-run', '--no-default-browser-check', '--disable-extensions', '--mute-audio', '--disable-gpu',
+        ...(options.images === true ? [] : ['--blink-settings=imagesEnabled=false']),
+        ...(options.visible || options.offscreen === false ? [] : ['--window-position=-2400,-2400', '--window-size=1280,900']),
+        'about:blank',
+    ];
 }
 
 export async function launchBrowser(options: LaunchOptions): Promise<Browser> {
@@ -269,12 +281,9 @@ export async function launchBrowser(options: LaunchOptions): Promise<Browser> {
     mkdirSync(profileDir, { recursive: true });
     const portFile = join(profileDir, 'DevToolsActivePort');
     rmSync(portFile, { force: true });
-    const args = [
-        `--user-data-dir=${profileDir}`, '--remote-debugging-port=0', '--remote-allow-origins=*',
-        '--no-first-run', '--no-default-browser-check', '--disable-extensions', '--mute-audio', '--disable-gpu',
-        ...(options.visible ? [] : options.offscreen === false ? [] : ['--window-position=-2400,-2400', '--window-size=1280,900']),
-        'about:blank',
-    ];
+    // 参数只管省资源和放哪儿，不碰「网站怎么看待这个浏览器」：不加 --headless（UA 会写 HeadlessChrome）、不改 UA、不关 AutomationControlled、不装隐身脚本。
+    // 开着调试端口，网页里 navigator.webdriver 就是 true（10-26 实测）——这是事实，不去改它；被拦了就熔断。
+    const args = launchArgs(options);
     const child: ChildProcess = (options.spawnProcess ?? spawn)(exe, args, { stdio: 'ignore', windowsHide: false, detached: false });
     let exited = false;
     child.once('exit', () => { exited = true; });

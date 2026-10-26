@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
-import { CdpError, createCdpConnection, findBrowserExe, openPage, parseActivePort, type CdpTransport } from '../src/browser-cdp.ts';
+import { CdpError, createCdpConnection, findBrowserExe, launchArgs, launchBrowser, openPage, parseActivePort, type CdpTransport } from '../src/browser-cdp.ts';
 
 /** 假的浏览器：按方法名回话，可以主动推事件 */
 function fakeBrowser(handlers: Record<string, (params: any) => unknown> = {}) {
@@ -111,6 +115,54 @@ describe('页面：读网页自己发出去的请求收到的内容', () => {
         const fake = fakeBrowser({ ...pageHandlers, 'Page.navigate': () => ({ errorText: 'net::ERR_NAME_NOT_RESOLVED' }) });
         const page = await openPage(createCdpConnection(fake.transport));
         await assert.rejects(page.goto('https://www.douyin.com/'), /打不开 www\.douyin\.com：net::ERR_NAME_NOT_RESOLVED/);
+    });
+});
+
+describe('启动浏览器（ADR 0166）', () => {
+    test('启动参数：专用目录、调试端口自动选、默认不加载图片、放到屏幕外；要看见窗口 / 要图片时各自打开', () => {
+        const base = launchArgs({ profileDir: 'D:\\p' });
+        assert.ok(base.includes('--user-data-dir=D:\\p') && base.includes('--remote-debugging-port=0'));
+        assert.ok(base.includes('--blink-settings=imagesEnabled=false') && base.some(a => a.startsWith('--window-position=-')));
+        const visible = launchArgs({ profileDir: 'D:\\p', visible: true, images: true });
+        assert.ok(!visible.includes('--blink-settings=imagesEnabled=false') && !visible.some(a => a.startsWith('--window-position')));
+    });
+
+    test('不带任何伪装参数：无头、改 UA、关自动化标记、反检测都不碰（ADR 0166 的底线，测试锁住）', () => {
+        for (const options of [{ profileDir: 'x' }, { profileDir: 'x', visible: true }, { profileDir: 'x', images: true, offscreen: false }]) {
+            for (const arg of launchArgs(options)) {
+                assert.doesNotMatch(arg, /headless|user-agent|AutomationControlled|disable-blink-features|enable-automation|stealth|disable-web-security/i, arg);
+            }
+        }
+    });
+
+    test('launchBrowser：等到端口文件、连上、开页面；关的时候先让浏览器自己退出', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-cdp-'));
+        try {
+            const child = Object.assign(new EventEmitter(), { pid: 4321 });
+            let spawned: { exe: string; args: string[] } | undefined;
+            const fake = fakeBrowser({ ...pageHandlers, 'Browser.close': () => { queueMicrotask(() => child.emit('exit', 0)); return {}; } });
+            const urls: string[] = [];
+            const browser = await launchBrowser({
+                exe: 'C:\\edge.exe', profileDir: join(dir, 'profile'),
+                spawnProcess: ((exe: string, args: string[]) => { spawned = { exe, args }; writeFileSync(join(dir, 'profile', 'DevToolsActivePort'), '9333\n/devtools/browser/guid-1\n'); return child; }) as never,
+                connect: async url => { urls.push(url); return fake.transport; },
+            });
+            assert.equal(spawned?.exe, 'C:\\edge.exe');
+            assert.deepEqual(urls, ['ws://127.0.0.1:9333/devtools/browser/guid-1']);
+            assert.equal(browser.pid, 4321);
+            await browser.newPage();
+            await browser.close();
+            assert.ok(fake.sent.some(m => m.method === 'Browser.close'));
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
+    test('浏览器一启动就退出：抛错，不一直等', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-cdp-'));
+        try {
+            const child = Object.assign(new EventEmitter(), { pid: 1 });
+            const started = launchBrowser({ exe: 'x', profileDir: join(dir, 'p'), spawnProcess: (() => { queueMicrotask(() => child.emit('exit', 1)); return child; }) as never, connect: async () => fakeBrowser().transport });
+            await assert.rejects(started, /马上退出/);
+        } finally { rmSync(dir, { recursive: true, force: true }); }
     });
 });
 
