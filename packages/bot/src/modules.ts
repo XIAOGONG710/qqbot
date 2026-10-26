@@ -82,6 +82,14 @@ export const MODULES: readonly ModuleDef[] = [
         adrs: ['0084', '0089', '0090', '0092'],
     },
     {
+        id: 'social', name: '外部世界：小红书、抖音',
+        scope: '她的小红书 / 抖音专号：开真浏览器让网页自己发请求，我们只读它收到的内容（不仿造签名）；刷首页、搜、点开读正文和热评、截帧、扫码登录、风控熔断、导航预算。还没有开关、没有接进机器人。',
+        files: ['browser-cdp.ts', 'social.ts', 'social-xhs.ts', 'social-douyin.ts', 'social-login.ts', 'social-session.ts'],
+        groups: [],
+        metrics: 'npm run social -w @qqbot/bot -- status / probe；npm run platform -w @qqbot/bot -- status（熔断）',
+        adrs: ['0147', '0166'],
+    },
+    {
         id: 'platform', name: '接入、配置与运维',
         scope: 'Koishi / NapCat 接入、配置、启动与锁、心跳、日志、网络兜底、设备控制（电脑 / 手机，ADR 0148）、功能总表、周报、一致性检查、模块总表、模拟器。',
         files: ['app.ts', 'main.ts', 'contact.ts', 'config.ts', 'features.ts', 'modules.ts', 'modules-doc.ts', 'weekly-report.ts', 'consistency.ts', 'onebot.ts', 'lock.ts', 'log.ts', 'heartbeat.ts', 'runtime-info.ts', 'dns-fallback.ts', 'qr.ts', 'device-actions.ts', 'device-hub.ts', 'device-phone.ts', 'device-service.ts',
