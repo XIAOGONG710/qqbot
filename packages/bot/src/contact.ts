@@ -224,6 +224,8 @@ export interface ContactPipelineOptions {
     shapeFeel?: boolean;
     /** 她最近心里在想什么（ADR 0101，配置 innerLife）：放进提示词的一行；没有就没有。主动找他、危机回合不放 */
     innerLine?: () => string | undefined;
+    /** 他刚发过「/亲热」（ADR 0170）：接下来几条回复黏一点；每取一次少一条，主动找他、危机回合不取 */
+    intimacyLine?: () => string | undefined;
     /** 心境（ADR 0102，配置 herFeelings）：她那边的事、他的态度、作者写下的事，在她心里留下带来由的感受（开心 / 难过 / 担心……），会慢慢散；只给男朋友档，危机回合不放 */
     herFeelings?: boolean;
     /** 陪玩状态（ADR 0111）：他答应了她的邀约（或她答应了他的）之后两三个小时，她正和他一起玩：回话短、聊局里的事；只对男朋友档 */
@@ -715,6 +717,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她最近心里在想的（ADR 0101）：前后是同一个在想事情的人
             const innerNow = !initiate && !crisisNow ? options.innerLine?.() : undefined;
             if (innerNow) log('内心：这一轮提示词里放了她最近的念头');
+            // 「/亲热」（ADR 0170）：他刚让她黏一点，接下来几条回复里放一行；每生成一条取一次
+            const intimateNow = !initiate && !crisisNow ? options.intimacyLine?.() : undefined;
+            if (intimateNow) log('亲热：他刚发过 /亲热，这一轮提示词里让她黏一点');
             // 质感（ADR 0131）发出去之前用的上下文：只对男朋友档；他难过 / 生病 / 小别扭 / 危机的回合不加
             textureNow = options.texture && contact.tier === 'boyfriend' && !thinking
                 ? {
@@ -807,6 +812,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(toldLine ? [toldLine] : []),
                         ...(openerLine ? [openerLine] : []),
                         ...(innerNow ? [innerNow] : []),
+                        ...(intimateNow ? [intimateNow] : []),
                         ...(transcript ? [transcript] : []),
                         ...(options.replyFrame === 'solve' && !initiate && !crisisNow ? [SOLVE_FRAME_NOTE] : []),
                         ...(initiate ? [initiate.note] : []),

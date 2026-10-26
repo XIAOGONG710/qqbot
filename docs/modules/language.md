@@ -24,6 +24,7 @@
 - `status-line.ts`
 - `time-context.ts`
 - `relationship.ts`
+- `intimacy.ts`
 - `jokes.ts`
 - `idioms.ts`
 - `memes.ts`

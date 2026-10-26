@@ -71,6 +71,7 @@ import { actionQueue, settlingWorld } from './action-queue.ts';
 import { lifeExecutor } from './life-selector.ts';
 import { loadNeedsAnchor } from './needs.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from './diary.ts';
+import { armIntimate, INTIMATE_REPLIES, takeIntimateLine } from './intimacy.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 import { useRealWeather, weatherFetcher } from './weather.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
@@ -686,6 +687,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.shape && config.shapeFeel ? { shapeFeel: true } : {}),
             // 她最近心里在想什么（ADR 0101）：计划器建好之后才有，所以每次现取
             ...(config.innerLife ? { innerLine: () => planners.get(contact.qq)?.innerLine() } : {}),
+            // 他刚发过「/亲热」（ADR 0170）：接下来十条回复黏一点，每生成一条减一
+            ...(contact.tier === 'boyfriend' ? { intimacyLine: () => takeIntimateLine(config.dataDir, contact.qq) } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
             ...(config.together ? { together: true } : {}),
@@ -1353,6 +1356,11 @@ ${body}
                 tellOwner('（她在休眠中，发 /唤醒 叫醒她）');
             }
             return;
+        }
+        // 他发「/亲热」（ADR 0170）：接下来十条回复临时黏一点；这条照常交给她回（回的那条也算一条）
+        if (event.user_id === deviceOwner?.qq && plainTextOf(event.message)?.trim() === '/亲热') {
+            armIntimate(config.dataDir, event.user_id);
+            log(`[${event.user_id}] 收到 /亲热：接下来 ${INTIMATE_REPLIES} 条回复黏一点`);
         }
         // 他发「/主动」（ADR 0156）：让她现在就主动找他一次，只认纯文字、只认男朋友档的他；命中的算处理完，不进聊天记录、不交给回复器。
         // 她自己发的那条走主动消息的整条链路（人设、事实、记忆）；发不了（危机暂停、他有没回的消息、主动没开）时回一句原因
