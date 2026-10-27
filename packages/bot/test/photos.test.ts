@@ -7,7 +7,7 @@ import { inspectReply } from '../src/exit-check.ts';
 import { splitReply } from '../src/reply.ts';
 import {
     PHOTO_GAP_MS, PHOTO_HISTORY_PREFIX, PHOTO_MAX_PER_DAY, photoAllowance, photoIntent, photoShelf, photoWanted,
-} from '../src/photos.ts';
+} from '../src/vision/photos.ts';
 
 // ADR 0109：照片货架。图片内容无所谓，货架只认扩展名、大小和作者写的说明
 const dirs: string[] = [];

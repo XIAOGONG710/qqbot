@@ -27,7 +27,7 @@ import { dueLoops, isFeeling, loopForgotten, type DueLoops, type LoopKind, type 
 import type { OpenAIMessage } from './prompt.ts';
 import { formatDate, herDay, type Schedule } from './schedule.ts';
 import type { MacroNames } from './st/macros.ts';
-import type { WorldActionDraft, WorldActionKind } from './world.ts';
+import type { WorldActionDraft, WorldActionKind } from './world/world.ts';
 
 /** 她答应的一件事 */
 export interface HerPromise {

@@ -7,10 +7,6 @@
 ## 文件（`packages/bot/src/` 下）
 
 - `schedule.ts`
-- `world.ts`
-- `life-selector.ts`
-- `life-events.ts`
-- `action-queue.ts`
 - `actions.ts`
 - `projects.ts`
 - `pursuits.ts`
@@ -21,11 +17,6 @@
 - `day-plan.ts`
 - `everyday.ts`
 - `menu.ts`
-- `weather.ts`
-- `festivals.ts`
-- `npc.ts`
-- `npc-asks.ts`
-- `obstacles.ts`
 - `diary.ts`
 - `biography.ts`
 - `bedtime.ts`

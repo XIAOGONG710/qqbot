@@ -8,7 +8,7 @@ import { createProactivePlanner, type Planner } from '../src/proactive-planner.t
 import type { InitiateRequest } from '../src/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import type { DayWeather } from '../src/weather.ts';
+import type { DayWeather } from '../src/world/weather.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../src/sensitive.ts';
 
 // 这个文件里的测试靠日志里的原文来断言模块的行为；日志默认不写原文的那条由 log-bodies.test.ts 管

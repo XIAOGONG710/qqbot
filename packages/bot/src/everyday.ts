@@ -10,7 +10,7 @@
 import type { FeelingKind } from './emotion/feelings.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { classesOn, formatDate, type ClassToday, type Schedule } from './schedule.ts';
-import type { World, WorldWindow } from './world.ts';
+import type { World, WorldWindow } from './world/world.ts';
 
 export type EventWeather = 'rain' | 'dry' | 'cold' | 'hot';
 export type EventTier = 'boyfriend' | 'bestie' | 'girl_friend' | 'known' | 'classmate' | 'stranger' | 'unlisted';

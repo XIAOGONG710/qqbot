@@ -4,7 +4,7 @@
 //   陈佳宁有考试那几天微信上不怎么互损。林梦瑶知道这些（同专业天天见、和死党天天微信），所以进「你那边」，问到那天也想得起。
 // - 只写事实，不写台词、不写情绪（ADR 0021 决策 3）。
 
-import { formatDate, type Schedule } from './schedule.ts';
+import { formatDate, type Schedule } from '.././schedule.ts';
 
 /** 一个人自己的日子怎么推（资料里没写的块就没有） */
 export interface NpcLife {

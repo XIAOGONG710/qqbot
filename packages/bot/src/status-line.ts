@@ -4,10 +4,10 @@
 import type { BodyNow } from './body.ts';
 import { dayPlan, planNow, revisedSlot, type PlanSlot, type Plans } from './day-plan.ts';
 import type { ReadingBook } from './her-days.ts';
-import type { LifeEvent } from './life-events.ts';
+import type { LifeEvent } from './world/life-events.ts';
 import { chooseProject, type ProjectChoice } from './projects.ts';
 import { herDay, stateAt, type ExtraFreeActivity, type Schedule, type State } from './schedule.ts';
-import { occupationAt, planDates, worldErrands, type WorldNow } from './world.ts';
+import { occupationAt, planDates, worldErrands, type WorldNow } from './world/world.ts';
 
 export interface StatusOptions {
     /** 看书的空闲活动（ADR 0015，readingActivities）。 */

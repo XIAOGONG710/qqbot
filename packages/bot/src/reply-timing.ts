@@ -6,7 +6,7 @@
 
 import { detectCrisis } from './emotion/crisis.ts';
 import type { StoredMessage } from './history.ts';
-import { listenMs, parseVoiceLine } from './media.ts';
+import { listenMs, parseVoiceLine } from './vision/media.ts';
 import { KNOWN_FACE } from './qq-faces.ts';
 import { stateAt, type Schedule } from './schedule.ts';
 

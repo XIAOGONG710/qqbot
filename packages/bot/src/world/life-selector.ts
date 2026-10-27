@@ -6,18 +6,18 @@
 // 聊天里说过的事改写还没过的（ADR 0042）：她说「睡了」、说喂过猫、取了快递、写完作业、和家里视频过了，排着的那件停在那一刻，之后按新的世界接着排；
 // 已经落账的不改。
 
-import { homeworkSprints, type ActionAppointment, type ActionContext, type ActionIntent, type TypedActionKind } from './actions.ts';
+import { homeworkSprints, type ActionAppointment, type ActionContext, type ActionIntent, type TypedActionKind } from '.././actions.ts';
 import type { ActionQueue, QueuedAction } from './action-queue.ts';
-import { asleepSince } from './bedtime.ts';
-import type { BodyNow } from './body.ts';
-import { dayPlan, type Plans } from './day-plan.ts';
-import type { ReadingBook } from './her-days.ts';
-import { bookProgressAt, readingActivities } from './her-days.ts';
+import { asleepSince } from '.././bedtime.ts';
+import type { BodyNow } from '.././body.ts';
+import { dayPlan, type Plans } from '.././day-plan.ts';
+import type { ReadingBook } from '.././her-days.ts';
+import { bookProgressAt, readingActivities } from '.././her-days.ts';
 import type { LifeEvent } from './life-events.ts';
-import { needsAt, type NeedsSnapshot } from './needs.ts';
-import { MEET_LEAD_MINUTES, type Appointment } from './promises.ts';
-import { chooseProject, projectActivity } from './projects.ts';
-import { formatDate, herDay, stateAt, type ExtraFreeActivity, type Schedule } from './schedule.ts';
+import { needsAt, type NeedsSnapshot } from '.././needs.ts';
+import { MEET_LEAD_MINUTES, type Appointment } from '.././promises.ts';
+import { chooseProject, projectActivity } from '.././projects.ts';
+import { formatDate, herDay, stateAt, type ExtraFreeActivity, type Schedule } from '.././schedule.ts';
 import { dateSpan, OCCUPATION_MINUTES, type WorldNow } from './world.ts';
 
 export interface LifeSources {

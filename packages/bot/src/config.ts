@@ -7,8 +7,8 @@
 import { WEB_MODES, type WebMode } from './web.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
-import { MEDIA_TIMEOUTS } from './media.ts';
-import { FESTIVAL_MODES, type FestivalMode } from './festivals.ts';
+import { MEDIA_TIMEOUTS } from './vision/media.ts';
+import { FESTIVAL_MODES, type FestivalMode } from './world/festivals.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from './fact-check.ts';
 import { ACCOUNT_MODES, QQ_FRIEND_GATES, type ControlMode, type FriendGate } from './account.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from './presence.ts';

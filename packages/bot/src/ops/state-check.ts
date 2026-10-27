@@ -6,10 +6,10 @@
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { actionQueue } from '../action-queue.ts';
+import { actionQueue } from '../world/action-queue.ts';
 import { createCrisisState } from '../emotion/crisis-state.ts';
 import { ChatHistory } from '../history.ts';
-import { readLifeEvents } from '../life-events.ts';
+import { readLifeEvents } from '../world/life-events.ts';
 import { loadNeedsAnchor } from '../needs.ts';
 import { TierRecord } from '../tier-record.ts';
 import { readProactiveState } from '../proactive-state.ts';

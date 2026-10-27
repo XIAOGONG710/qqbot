@@ -2,8 +2,8 @@
 // 卡上的重要日子（生日、纪念日）是她和他自己的；这里是人人都过的那些，按年份换算成公历那一天，当成 ImportantDay 并进卡的 dates：
 // 时间块（describeDays）提前几天起「明天是平安夜」，其中一部分到了那天由主动消息（dates 时机）带一句。
 // 农历的日子每年落在不同的公历日，所以每条只在换算出的那一年算（ImportantDay.year）。
-import { lunarMonthDay, type ImportantDay } from './proactive.ts';
-import type { Schedule } from './schedule.ts';
+import { lunarMonthDay, type ImportantDay } from '.././proactive.ts';
+import type { Schedule } from '.././schedule.ts';
 
 /** off 不加；notes 只在时间块里提；greet 再加上挑出来的几个节日由她主动说一句 */
 export const FESTIVAL_MODES = ['off', 'notes', 'greet'] as const;

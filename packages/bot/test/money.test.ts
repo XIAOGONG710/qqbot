@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { depositFor, nextPayday, sideJobOn, spendItems, type Money } from '../src/money.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { describeWorld, recapDay, simulateWorld, worldAt } from '../src/world.ts';
+import { describeWorld, recapDay, simulateWorld, worldAt } from '../src/world/world.ts';
 
 const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
 const boyfriend = card('boyfriend');

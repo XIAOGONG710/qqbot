@@ -10,7 +10,7 @@
 import { expired, firstAsk, partText, whenText, type FollowUp } from './follow-ups.ts';
 import { INNER_DELAY_MIN, INNER_MAX_PER_DAY, type InnerThought } from './inner.ts';
 import type { StoredMessage } from './history.ts';
-import type { ObstacleKind } from './obstacles.ts';
+import type { ObstacleKind } from './world/obstacles.ts';
 import { CURIOUS_ASK_NOTE } from './curious.ts';
 import { mentionsMeetup } from './promises.ts';
 import { pendingMessages, pick } from './reply-timing.ts';

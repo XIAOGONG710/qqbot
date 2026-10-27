@@ -4,11 +4,11 @@
 // DSH 行动复核（10-08）之后：排队时队列里还没结算的计划也算占用；能取消、改时间；事件账不收的挪到死信区，不堵后面的；
 // 结算挂在读世界之前（settlingWorld），和世界用同一个时钟。
 
-import type { ActionContext, ActionIntent, ActionVerdict, TypedActionKind } from './actions.ts';
-import { judgeAction } from './actions.ts';
-import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import type { ActionContext, ActionIntent, ActionVerdict, TypedActionKind } from '.././actions.ts';
+import { judgeAction } from '.././actions.ts';
+import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
 import type { LifeEvent, LifeEventDraft } from './life-events.ts';
-import { formatDate, herDay, type Schedule } from './schedule.ts';
+import { formatDate, herDay, type Schedule } from '.././schedule.ts';
 import type { WorldState } from './world.ts';
 
 export interface QueuedAction {

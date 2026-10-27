@@ -2,7 +2,7 @@
 
 import type { StoredMessage } from './history.ts';
 import type { BodyNow } from './body.ts';
-import type { WorldNow } from './world.ts';
+import type { WorldNow } from './world/world.ts';
 import { classesOn, formatDate, herDay, type ExtraFreeActivity, type Schedule } from './schedule.ts';
 
 /** 判断聊没聊到书只看谁说的、说了什么 */

@@ -12,7 +12,7 @@ import { createProactivePlanner, type Planner } from '../src/proactive-planner.t
 import type { InitiateOutcome, InitiateRequest } from '../src/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { CAT_PHOTO_CHANCE, worldNews, type WorldNow } from '../src/world.ts';
+import { CAT_PHOTO_CHANCE, worldNews, type WorldNow } from '../src/world/world.ts';
 
 // ADR 0110：喂完土豆见到它的日子里，有的天她拍了张照片发给他（news 的新一类 cat_photo，配置 photoShares）
 const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));

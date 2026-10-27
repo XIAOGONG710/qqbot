@@ -3,8 +3,8 @@
 
 import { asleepSince } from '../bedtime.ts';
 import { readingActivities } from '../her-days.ts';
-import { chooseAt, freeAction, type LifeSources } from '../life-selector.ts';
-import type { LifeEvent } from '../life-events.ts';
+import { chooseAt, freeAction, type LifeSources } from '../world/life-selector.ts';
+import type { LifeEvent } from '../world/life-events.ts';
 import { herStatus } from '../status-line.ts';
 import { describeAppointment } from '../promises.ts';
 import type { TypedActionKind } from '../actions.ts';

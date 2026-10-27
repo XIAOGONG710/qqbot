@@ -34,11 +34,27 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'life', name: '她的日子（生活）',
         scope: '她自己的一天：作息、世界账（天气、猫、快递、作业、钱）、日常小事和小测、项目与追求、身体、心情和在读的书、闺蜜、节日、承诺和日记。',
-        files: ['schedule.ts', 'world.ts', 'life-selector.ts', 'life-events.ts', 'action-queue.ts', 'actions.ts', 'projects.ts', 'pursuits.ts', 'money.ts', 'body.ts', 'needs.ts', 'her-days.ts', 'day-plan.ts',
-            'everyday.ts', 'menu.ts', 'weather.ts', 'festivals.ts', 'npc.ts', 'npc-asks.ts', 'obstacles.ts', 'diary.ts', 'biography.ts', 'bedtime.ts', 'people.ts', 'promises.ts', 'promise-state.ts', 'open-loops.ts', 'tastes.ts', 'acquaintances.ts'],
+        files: ['schedule.ts', 'actions.ts', 'projects.ts', 'pursuits.ts', 'money.ts', 'body.ts', 'needs.ts', 'her-days.ts', 'day-plan.ts',
+            'everyday.ts', 'menu.ts', 'diary.ts', 'biography.ts', 'bedtime.ts', 'people.ts', 'promises.ts', 'promise-state.ts', 'open-loops.ts', 'tastes.ts', 'acquaintances.ts'],
         groups: ['她的日子'],
         metrics: '周报「她的日子」；consistency-cli（说的和账对不对）；sim/life-audit',
         adrs: ['0015', '0040', '0045', '0104', '0106', '0162', '0163'],
+    },
+    {
+        id: 'world', name: '她的世界（世界账）',
+        scope: '她那边正在发生的事：天气、节日、NPC、障碍、生活事件与选择、可重放的动作队列；世界状态是所有“她那边”的事实来源。',
+        files: ['world/world.ts', 'world/weather.ts', 'world/festivals.ts', 'world/npc.ts', 'world/npc-asks.ts', 'world/obstacles.ts', 'world/life-events.ts', 'world/life-selector.ts', 'world/action-queue.ts'],
+        groups: ['她的日子'],
+        metrics: '周报「她的日子」里的世界事件；consistency-cli（说的和世界账对不对）',
+        adrs: ['0007', '0026', '0045', '0106'],
+    },
+    {
+        id: 'vision', name: '看（视觉）',
+        scope: '她怎么看图：照片货架、食物照片、图片安全检查、媒体（雪碧图/封面）与看图模型；只负责“看见”，不负责怎么说。',
+        files: ['vision/vision.ts', 'vision/photos.ts', 'vision/photo-sources.ts', 'vision/safe-image.ts', 'vision/media.ts'],
+        groups: ['照片和表情'],
+        metrics: '周报「图片」；vision 相关单测；图片不发外网的比例',
+        adrs: ['0055', '0109', '0128'],
     },
     {
         id: 'emotion', name: '心境与安全',
@@ -68,7 +84,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'rhythm', name: '节奏、图片和在 QQ 上的样子',
         scope: '什么时候看到、打字多久、一次发几条；图片表情和照片货架；戳一戳、已读、在线状态、说说、签名、“正在输入”、撤回；听语音看图。',
-        files: ['responder.ts', 'reply-timing.ts', 'rate-limit.ts', 'async-gate.ts', 'stickers.ts', 'sticker-favorites.ts', 'sticker-sources.ts', 'photos.ts', 'photo-sources.ts', 'pokes.ts', 'presence.ts', 'qzone.ts', 'qzone-feed.ts', 'qzone-feeds3.ts', 'qzone-remote.ts', 'qzone-strangers.ts', 'account.ts', 'quote-reply.ts', 'media.ts', 'safe-image.ts', 'vision.ts'],
+        files: ['responder.ts', 'reply-timing.ts', 'rate-limit.ts', 'async-gate.ts', 'stickers.ts', 'sticker-favorites.ts', 'sticker-sources.ts', 'pokes.ts', 'presence.ts', 'qzone.ts', 'qzone-feed.ts', 'qzone-feeds3.ts', 'qzone-remote.ts', 'qzone-strangers.ts', 'account.ts', 'quote-reply.ts', ],
         groups: ['照片和表情', '在 QQ 上的样子'],
         metrics: '周报「说话的样子」里的延迟、「表情和语气」',
         adrs: ['0063', '0075', '0077', '0083', '0105', '0109', '0136', '0142', '0143', '0144'],

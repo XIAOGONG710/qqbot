@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { festivalActivities, festivalDays, festivalYears, solarTerm, withFestivalActivities, withFestivals, FESTIVAL_MODES } from '../src/festivals.ts';
+import { festivalActivities, festivalDays, festivalYears, solarTerm, withFestivalActivities, withFestivals, FESTIVAL_MODES } from '../src/world/festivals.ts';
 import { stateAt } from '../src/schedule.ts';
 import { candidatesOn, dayMatches, type ImportantDay, type ProactiveInput } from '../src/proactive.ts';
 import { describeDays } from '../src/time-context.ts';

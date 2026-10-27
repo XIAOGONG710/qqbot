@@ -5,8 +5,8 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { dayPlan } from '../src/day-plan.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { dayFrom, firstRealDay, mergeHours, parseOpenMeteo, useRealWeather, weatherFetcher, weatherText, type HourWeather, type RealWeather } from '../src/weather.ts';
-import { describeWeather, describeWorld, worldAt } from '../src/world.ts';
+import { dayFrom, firstRealDay, mergeHours, parseOpenMeteo, useRealWeather, weatherFetcher, weatherText, type HourWeather, type RealWeather } from '../src/world/weather.ts';
+import { describeWeather, describeWorld, worldAt } from '../src/world/world.ts';
 
 const at = (iso: string) => new Date(`${iso}+08:00`);
 const pad = (n: number) => String(n).padStart(2, '0');

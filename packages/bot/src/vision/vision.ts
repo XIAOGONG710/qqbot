@@ -2,11 +2,11 @@
 // 图片只放在 user 消息里；公网 URL 必须先经 safe-image 下载并转成 data URL，模型永远不回源。
 
 import { fetch as undiciFetch } from 'undici';
-import { AsyncGate } from './async-gate.ts';
-import { DEFAULTS, type AppConfig } from './config.ts';
+import { AsyncGate } from '.././async-gate.ts';
+import { DEFAULTS, type AppConfig } from '.././config.ts';
 import type { ImageDescriber } from './media.ts';
-import { modelDispatcher, modelGuard, ModelUnreachable } from './llm.ts';
-import { GuardRejected, type ModelGuard, type ModelPurpose } from './model-guard.ts';
+import { modelDispatcher, modelGuard, ModelUnreachable } from '.././llm.ts';
+import { GuardRejected, type ModelGuard, type ModelPurpose } from '.././model-guard.ts';
 import { fetchRemoteImage, imageDataUrl, REMOTE_IMAGE_MAX_BYTES, validateImageDataUrl } from './safe-image.ts';
 
 export interface DeepSeekVisionOptions {

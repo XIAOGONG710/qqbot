@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
 import { createDeviceControl, jsonlAudit, type AuditEntry, type DeviceControl, type DeviceMode, type DeviceTarget, type DispatchJob, type DispatchResult, type PolicyContext } from './device-actions.ts';
 import { createDeviceHub, type DeviceHub } from './device-hub.ts';
 import { createPhonePublisher } from './device-phone.ts';
-import type { ImageDescriber } from './media.ts';
+import type { ImageDescriber } from './vision/media.ts';
 import { BreakerOpen, createBreaker, guardRequest } from './platform-breaker.ts';
 
 export interface DeviceSecrets {

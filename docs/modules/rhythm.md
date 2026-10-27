@@ -13,8 +13,6 @@
 - `stickers.ts`
 - `sticker-favorites.ts`
 - `sticker-sources.ts`
-- `photos.ts`
-- `photo-sources.ts`
 - `pokes.ts`
 - `presence.ts`
 - `qzone.ts`
@@ -24,9 +22,6 @@
 - `qzone-strangers.ts`
 - `account.ts`
 - `quote-reply.ts`
-- `media.ts`
-- `safe-image.ts`
-- `vision.ts`
 
 ## 开关
 

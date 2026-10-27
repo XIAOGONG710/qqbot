@@ -5,7 +5,7 @@ import { bodyAt } from '../src/body.ts';
 import { readingActivities } from '../src/her-days.ts';
 import { herStatus } from '../src/status-line.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { worldAt } from '../src/world.ts';
+import { worldAt } from '../src/world/world.ts';
 
 const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
 const schedule = card.schedule!;

@@ -7,7 +7,7 @@ import {
     blockReason, candidatesOn, DEFAULT_NEWS_KINDS, newsKindsOf, occasionNote, untoldNews, withFoodShares,
     type Candidate, type NewsItem, type ProactiveInput,
 } from '../src/proactive.ts';
-import { FOOD_PHOTO_CHANCE, lastMealDish, worldAt, worldNews, type WorldNow } from '../src/world.ts';
+import { FOOD_PHOTO_CHANCE, lastMealDish, worldAt, worldNews, type WorldNow } from '../src/world/world.ts';
 
 // ADR 0128：吃饭时拍了张照片发给他（news 的新一类 food_photo，配置 foodPhotos，要 menu 和 photos）
 const pattern = resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-{tier}.json');

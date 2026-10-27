@@ -6,7 +6,7 @@
 // 有任何一样就不收，模型没明确回答“没有”也不收（宁可少收）。
 // 把关：下载后让看图模型回一个 JSON（有没有人脸、有没有水印 / 文字、是不是猫 / 三花 / 以天空为主、清不清晰、一句话描述），代码按规则定收不收；说明里不许带地名、品种名。
 
-import type { AppConfig } from './config.ts';
+import type { AppConfig } from '.././config.ts';
 import { imageDataUrl, fetchRemoteImage } from './safe-image.ts';
 import { configuredImageDescriber, MAX_IMAGE_BYTES } from './vision.ts';
 import { PHOTO_MAX_BYTES, type FoodSource, type PhotoCandidate, type PhotoJudgement, type PhotoKind, type PhotoSource } from './photos.ts';

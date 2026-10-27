@@ -25,17 +25,17 @@ import { sessionFromCookies } from '../../bot/src/qzone-remote.ts';
 import { readStrangerFeed } from '../../bot/src/qzone-strangers.ts';
 import { ACCOUNT_MODES, QQ_FRIEND_GATES, type ControlMode, type FriendGate } from '../../bot/src/account.ts';
 import { assertKernelOk, isFriendRecall, isPokeAtMe, isPrivateFriendMessage, replySegment, type OneBotEvent } from '../../bot/src/onebot.ts';
-import { ocrLines, type MediaReader } from '../../bot/src/media.ts';
+import { ocrLines, type MediaReader } from '../../bot/src/vision/media.ts';
 import { textToSegments } from '../../bot/src/qq-faces.ts';
-import { FESTIVAL_MODES, type FestivalMode } from '../../bot/src/festivals.ts';
+import { FESTIVAL_MODES, type FestivalMode } from '../../bot/src/world/festivals.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from '../../bot/src/proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '../../bot/src/st/prompt-converters.ts';
-import { configuredImageDescriber, STICKER_VISION_PROMPT } from '../../bot/src/vision.ts';
+import { configuredImageDescriber, STICKER_VISION_PROMPT } from '../../bot/src/vision/vision.ts';
 import { stickerDecider, stickerShelf } from '../../bot/src/stickers.ts';
 import { qqFavorites } from '../../bot/src/sticker-favorites.ts';
 import { bqbDiscover } from '../../bot/src/sticker-sources.ts';
 import { biliStickerScreen } from '../../bot/src/bili-stickers.ts';
-import { webFoodSource, webPhotoSource } from '../../bot/src/photo-sources.ts';
+import { webFoodSource, webPhotoSource } from '../../bot/src/vision/photo-sources.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 
 // koishi 的 ESM 入口是坏的（@koishijs/loader/lib/index.mjs 默认导入了一个 CJS 文件）：取 loader 自己用的那份 CJS

@@ -4,10 +4,10 @@
 // - newObstacles：约好之后才出现的（约的时候她不可能知道的）：当天的身体、约好之后才布置的作业；课和别的约约的时候就看得到。
 // - describeObstacles：他提到见面时放进时间块的一行（只给事实，是否推、怎么说由她定）。
 
-import type { BodyNow } from './body.ts';
-import { unwell } from './body.ts';
-import { MEET_LEAD_MINUTES, type Appointment } from './promises.ts';
-import { classesOn, formatDate, herDay, type Schedule } from './schedule.ts';
+import type { BodyNow } from '.././body.ts';
+import { unwell } from '.././body.ts';
+import { MEET_LEAD_MINUTES, type Appointment } from '.././promises.ts';
+import { classesOn, formatDate, herDay, type Schedule } from '.././schedule.ts';
 import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
 
 const DAY_MS = 86_400_000;

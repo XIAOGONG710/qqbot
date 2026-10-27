@@ -5,8 +5,8 @@ import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { Schedule } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { describeWorld, occupationAt, parseWorld, recapDay, simulateWorld, worldAt, worldLogger, worldNews, worldState, type World, type WorldAction } from '../src/world.ts';
-import { busySpans } from '../src/life-selector.ts';
+import { describeWorld, occupationAt, parseWorld, recapDay, simulateWorld, worldAt, worldLogger, worldNews, worldState, type World, type WorldAction } from '../src/world/world.ts';
+import { busySpans } from '../src/world/life-selector.ts';
 
 const cards = resolve(import.meta.dirname, '../../../characters/linmengyao/st');
 const boyfriend = loadCharacterCard(join(cards, 'linmengyao-boyfriend.json'));

@@ -3,11 +3,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { actionQueue, settlingWorld } from '../src/action-queue.ts';
-import type { LifeEventDraft } from '../src/life-events.ts';
-import type { LifeEvent } from '../src/life-events.ts';
+import { actionQueue, settlingWorld } from '../src/world/action-queue.ts';
+import type { LifeEventDraft } from '../src/world/life-events.ts';
+import type { LifeEvent } from '../src/world/life-events.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { worldAt, worldState } from '../src/world.ts';
+import { worldAt, worldState } from '../src/world/world.ts';
 
 const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
 const schedule = card.schedule!;

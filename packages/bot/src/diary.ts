@@ -14,7 +14,7 @@ import type { LongTermMemory } from './memory/long-term.ts';
 import { knowsPeople } from './people.ts';
 import type { OpenAIMessage } from './prompt.ts';
 import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from './schedule.ts';
-import { diaryWorld, worldAt, worldErrands, type World, type WorldNow } from './world.ts';
+import { diaryWorld, worldAt, worldErrands, type World, type WorldNow } from './world/world.ts';
 import { bodyAt, diaryBody } from './body.ts';
 import { dayPlan, describeSlot } from './day-plan.ts';
 

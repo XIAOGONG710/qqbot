@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { cardKey, loadConfig, parseAppConfig } from '../src/config.ts';
-import { MEDIA_TIMEOUTS } from '../src/media.ts';
+import { MEDIA_TIMEOUTS } from '../src/vision/media.ts';
 import { currentTierHistory, TierRecord } from '../src/tier-record.ts';
 import { ChatHistory, type StoredMessage } from '../src/history.ts';
 import { isPrivateFriendMessage, segmentsToText, type MessageEvent } from '../src/onebot.ts';

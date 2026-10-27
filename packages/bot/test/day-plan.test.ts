@@ -6,7 +6,7 @@ import { dayPlan, describePlans, describeSlot, planNow, type PlanFacts, type Pla
 import { readingActivities } from '../src/her-days.ts';
 import { stateAt } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { worldAt, worldErrands, type WorldAction } from '../src/world.ts';
+import { worldAt, worldErrands, type WorldAction } from '../src/world/world.ts';
 
 const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
 const boyfriend = card('boyfriend');

@@ -10,7 +10,7 @@ import {
 import { newsFrom } from '../src/proactive-planner.ts';
 import { wakeOn } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { unwellNews, worldNews, type FriendDate, type WorldNow } from '../src/world.ts';
+import { unwellNews, worldNews, type FriendDate, type WorldNow } from '../src/world/world.ts';
 
 // ADR 0064：她账里的事成为开口的理由（事件类：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天）
 const cardPath = (tier: string) => resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`);

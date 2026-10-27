@@ -1,7 +1,7 @@
 // 生活事件账本（ADR 0029）：记录林梦瑶在聊天之外也真实发生过的事。
 // 账本只追加、不改写既有事件；具体世界如何受影响由 world.ts 投影，避免把“记过”误当成“成功做完”。
 
-import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
 
 export type LifeEventSource = 'conversation' | 'simulation' | 'external';
 export type LifeEventResult = 'succeeded' | 'failed' | 'interrupted';

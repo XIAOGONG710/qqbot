@@ -27,15 +27,15 @@ import { describeMood, moodAt, readingActivities, readingSection } from './her-d
 import { crisisInHistory, type CrisisHit } from './emotion/crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from './emotion/grievance.ts';
 import { describeIntent, needsCareText } from './intent.ts';
-import { describeObstacles, meetupDays } from './obstacles.ts';
+import { describeObstacles, meetupDays } from './world/obstacles.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from './texture.ts';
 import { describeQuote, planQuote, quoteFix, type QuotePlan } from './quote-reply.ts';
 import { alreadyTold, ASKS_TO_EXPLAIN, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from './expression.ts';
 import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from './shape.ts';
 import { finishReply } from './unfinished.ts';
 import { describeUnsettled } from './open-loops.ts';
-import { describeWorld, lastMealDish, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world.ts';
-import { npcMentioned } from './npc.ts';
+import { describeWorld, lastMealDish, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from './world/world.ts';
+import { npcMentioned } from './world/npc.ts';
 import { dayPlan, describePlans, describeSlot } from './day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from './body.ts';
 import { asleepSince, saidBedtimes } from './bedtime.ts';
@@ -62,7 +62,7 @@ import { memeLine, type MemeEntry } from './memes.ts';
 import { watchedLine, type Watched } from './watching.ts';
 import { describeCloseness } from './relationship.ts';
 import { describeTogether, togetherNow } from './together.ts';
-import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from './photos.ts';
+import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from './vision/photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from './stickers.ts';
 
 /**

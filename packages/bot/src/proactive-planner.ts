@@ -28,12 +28,12 @@ import {
     UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type NewsKind, type ProactiveInput, type RescheduleItem, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
 import type { BodyNow } from './body.ts';
-import { newObstacles, obstaclesBetween, OBSTACLE_KINDS, type ObstacleFacts, type ObstacleKind } from './obstacles.ts';
+import { newObstacles, obstaclesBetween, OBSTACLE_KINDS, type ObstacleFacts, type ObstacleKind } from './world/obstacles.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from './promises.ts';
 import { PromiseStateUnavailable } from './promise-state.ts';
 import type { InitiateOutcome, Responder } from './responder.ts';
-import type { DayWeather } from './weather.ts';
-import { unwellNews, worldNews, type WorldNews, type WorldNow } from './world.ts';
+import type { DayWeather } from './world/weather.ts';
+import { unwellNews, worldNews, type WorldNews, type WorldNow } from './world/world.ts';
 import { formatDate, stateAt, wakeOn, type Schedule } from './schedule.ts';
 import { pendingMessages, pick } from './reply-timing.ts';
 import {

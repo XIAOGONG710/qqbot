@@ -7,7 +7,7 @@
 
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { formatDate } from './schedule.ts';
-import type { World } from './world.ts';
+import type { World } from './world/world.ts';
 
 export type MealKind = 'lunch' | 'dinner';
 

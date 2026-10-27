@@ -6,7 +6,7 @@ import { after, describe, test } from 'node:test';
 import {
     imageLine, isSticker, listenMs, LISTEN_DEFAULT_MS, mediaReading, needsReading, OCR_MAX_CHARS, OCR_MAX_IMAGES, ocrLines, parseVoiceLine,
     readMedia, voiceLine, voiceSeconds, type MediaReader,
-} from '../src/media.ts';
+} from '../src/vision/media.ts';
 import { segmentsToText, type Segment } from '../src/onebot.ts';
 
 const dir = mkdtempSync(join(tmpdir(), 'qqbot-media-'));

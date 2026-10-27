@@ -2,9 +2,9 @@
 // B 阶段把课程、摄影和阅读统一成项目组合，仍不另存一个会和事实源漂移的“进度数字”。
 
 import { bookProgressAt, type ReadingBook } from './her-days.ts';
-import type { LifeEvent } from './life-events.ts';
+import type { LifeEvent } from './world/life-events.ts';
 import { herDay, type Schedule } from './schedule.ts';
-import type { WorldNow } from './world.ts';
+import type { WorldNow } from './world/world.ts';
 
 export const PHOTOGRAPHY_PROJECT_ID = 'photography_growth';
 

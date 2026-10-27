@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { chatCompletion, ModelUnreachable } from '../src/llm.ts';
 import { ModelGuard } from '../src/model-guard.ts';
-import { DEFAULT_VISION_PROMPT, deepSeekImageDescriber, STICKER_VISION_PROMPT, type VisionFetch } from '../src/vision.ts';
+import { DEFAULT_VISION_PROMPT, deepSeekImageDescriber, STICKER_VISION_PROMPT, type VisionFetch } from '../src/vision/vision.ts';
 
 const options = {
     baseUrl: 'https://api.deepseek.com/',

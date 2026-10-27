@@ -3,10 +3,10 @@
 // 首刀只把时间当硬资源，不另造一套精力、钱或章节进度，避免和 body.ts、money.ts、her-days.ts 形成双事实源。
 
 import { bookProgressAt, type ReadingBook } from './her-days.ts';
-import type { LifeEvent, LifeEventDraft, LifeEventSource } from './life-events.ts';
+import type { LifeEvent, LifeEventDraft, LifeEventSource } from './world/life-events.ts';
 import { dishNote } from './menu.ts';
 import { atHome, classesOn, formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
-import { OCCUPATION_MINUTES, type WorldNow } from './world.ts';
+import { OCCUPATION_MINUTES, type WorldNow } from './world/world.ts';
 
 export type TypedActionKind = 'sleep' | 'eat' | 'meet' | 'attend_class' | 'study' | 'rest' | 'read_book' | 'leisure' | 'work_on_project' | 'interact_npc';
 export type ActionFailure = 'invalid_time' | 'unavailable' | 'conflict' | 'no_time' | 'missing_target' | 'already_done';

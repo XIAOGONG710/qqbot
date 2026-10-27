@@ -7,7 +7,7 @@ import { parseDates, parseProactive, type ImportantDay, type ProactiveSettings }
 import { PACE_RANGE } from '../reply-timing.ts';
 import { parseSchedule, type Schedule } from '../schedule.ts';
 import { parseBooks, parseMoods, type DailyMood, type ReadingBook } from '../her-days.ts';
-import { parseWorld, type World } from '../world.ts';
+import { parseWorld, type World } from '../world/world.ts';
 import { parseBiography, type Biography } from '../biography.ts';
 import { parseRegexScripts, type RegexScript } from './regex.ts';
 

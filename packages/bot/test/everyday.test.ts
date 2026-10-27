@@ -11,7 +11,7 @@ import {
 } from '../src/everyday.ts';
 import { appraisals, feelingsAt } from '../src/emotion/feelings.ts';
 import { quizRecord } from '../src/pursuits.ts';
-import { simulateWorld, worldAt, type WorldNow } from '../src/world.ts';
+import { simulateWorld, worldAt, type WorldNow } from '../src/world/world.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const pattern = join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json');

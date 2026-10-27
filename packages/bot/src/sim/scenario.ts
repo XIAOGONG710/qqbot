@@ -4,12 +4,12 @@
 import { readFileSync } from 'node:fs';
 import { CONTACT_TIERS, UNLISTED_TIER, type ContactTier, type Tier } from '../config.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from '../fact-check.ts';
-import { FESTIVAL_MODES, type FestivalMode } from '../festivals.ts';
+import { FESTIVAL_MODES, type FestivalMode } from '../world/festivals.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import { NEWS_KINDS, OCCASIONS, type NewsKind, type Occasion } from '../proactive.ts';
-import type { LifeEventResult } from '../life-events.ts';
+import type { LifeEventResult } from '../world/life-events.ts';
 import type { Interruption, TypedActionKind } from '../actions.ts';
-import { imageLine, voiceLine } from '../media.ts';
+import { imageLine, voiceLine } from '../vision/media.ts';
 
 /**
  * 他发的语音、图片（ADR 0052）：按 bot 进聊天记录的写法（media.ts 的 voiceLine / imageLine）变成一行。

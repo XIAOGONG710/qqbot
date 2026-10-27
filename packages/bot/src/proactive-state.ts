@@ -2,7 +2,7 @@
 import type { FollowUp } from './follow-ups.ts';
 import { readJsonOr } from './json-file.ts';
 import { validInnerState, type InnerState } from './inner.ts';
-import { OBSTACLE_KINDS } from './obstacles.ts';
+import { OBSTACLE_KINDS } from './world/obstacles.ts';
 import { OCCASIONS, UNREACHABLE_MAX_TRIES, type ProactiveRecord } from './proactive.ts';
 import { calendarDate, stateObject, stateTimestamp } from './state-schema.ts';
 import { TransientStateError } from './transient-io.ts';

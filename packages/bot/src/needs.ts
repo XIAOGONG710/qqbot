@@ -3,7 +3,7 @@
 
 import { existsSync } from 'node:fs';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
-import type { LifeEvent } from './life-events.ts';
+import type { LifeEvent } from './world/life-events.ts';
 
 export interface NeedsSnapshot {
     at: string;

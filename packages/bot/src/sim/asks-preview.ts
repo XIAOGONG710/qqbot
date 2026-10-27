@@ -4,7 +4,7 @@
 // 和他的见面没有（没有聊天），所以「跟他约好了」这一类不出现。
 
 import { resolve } from 'node:path';
-import { worldAt, type FriendDate } from '../world.ts';
+import { worldAt, type FriendDate } from '../world/world.ts';
 import { loadCharacterCard } from '../st/card.ts';
 
 const [fromText = '2026-11-02', daysText = '28', tier = 'boyfriend'] = process.argv.slice(2);

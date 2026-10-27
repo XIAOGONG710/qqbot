@@ -8,7 +8,7 @@ import {
     blockReason, candidatesOn, DEFAULT_NEWS_KINDS, newsKindsOf, occasionNote, untoldNews, withSmallNews,
     type Candidate, type NewsItem, type ProactiveInput,
 } from '../src/proactive.ts';
-import { SMALL_TELL_CHANCE, SMALL_TELL_GROUPS, worldAt, worldNews, type WorldNow } from '../src/world.ts';
+import { SMALL_TELL_CHANCE, SMALL_TELL_GROUPS, worldAt, worldNews, type WorldNow } from '../src/world/world.ts';
 
 // ADR 0127：她会主动讲今天碰到的一件小事（news 的新一类 small_thing，配置 smallNews，要 everydayLife）
 const pattern = resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-{tier}.json');

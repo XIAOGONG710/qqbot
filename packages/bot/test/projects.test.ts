@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { ReadingBook } from '../src/her-days.ts';
-import type { LifeEvent } from '../src/life-events.ts';
+import type { LifeEvent } from '../src/world/life-events.ts';
 import { activeProjects, chooseProject, describeRecentPhotography, photographyProgress, projectActivity, projectPortfolio, recentPhotography } from '../src/projects.ts';
 import type { Schedule } from '../src/schedule.ts';
-import type { WorldNow } from '../src/world.ts';
+import type { WorldNow } from '../src/world/world.ts';
 
 const event = (id: string, start: string, end: string, result: LifeEvent['result'] = 'succeeded'): LifeEvent => ({
     id, actor: 'linmengyao', kind: 'work_on_project', day: '2026-10-12',

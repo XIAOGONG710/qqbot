@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { availableActions, judgeAction, typedOccupation } from '../src/actions.ts';
-import type { LifeEvent } from '../src/life-events.ts';
+import type { LifeEvent } from '../src/world/life-events.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { formatDate, herDay } from '../src/schedule.ts';
-import { worldAt } from '../src/world.ts';
+import { worldAt } from '../src/world/world.ts';
 
 const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
 const schedule = card.schedule!;

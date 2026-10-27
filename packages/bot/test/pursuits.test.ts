@@ -8,13 +8,13 @@ import { afterEach, describe, test } from 'node:test';
 import { loadTierCard } from '../src/contact.ts';
 import { appraisals, feelingsAt } from '../src/emotion/feelings.ts';
 import { describeIntent, dropsHerThing, holdPursuitIntent } from '../src/intent.ts';
-import type { LifeEvent } from '../src/life-events.ts';
+import type { LifeEvent } from '../src/world/life-events.ts';
 import { PHOTOGRAPHY_PROJECT_ID } from '../src/projects.ts';
 import {
     BUILTIN_PURSUITS, CAMERA_STALL_DAYS, CAMERA_STEPS, CAMERA_THRESHOLDS, cameraProgress, describePursuits, mergePursuits, pursuitViews, pursuitsReader, quizRecord, validPursuits,
     type Pursuit, type PursuitFacts,
 } from '../src/pursuits.ts';
-import type { WorldNow } from '../src/world.ts';
+import type { WorldNow } from '../src/world/world.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const schedule = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend').character.schedule!;

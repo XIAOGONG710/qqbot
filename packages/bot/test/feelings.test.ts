@@ -10,7 +10,7 @@ import {
     type Appraisal, type Felt, type Moment,
 } from '../src/emotion/feelings.ts';
 import { momentsReader } from '../src/emotion/moments.ts';
-import type { WorldNow } from '../src/world.ts';
+import type { WorldNow } from '../src/world/world.ts';
 
 const HOUR = 3_600_000;
 const T0 = Date.parse('2026-10-22T20:00:00+08:00');
