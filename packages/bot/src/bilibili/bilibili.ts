@@ -8,10 +8,10 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { BiliApiError, subtitleExcerpt, type BiliAccount } from './bilibili-account.ts';
 import { isRiskError, type RiskEvent, type RiskGate } from './bilibili-risk.ts';
-import { readJsonOr, writeJsonAtomic } from './json-file.ts';
-import type { InitiateOutcome, InitiateRequest } from './responder.ts';
-import { pick } from './reply-timing.ts';
-import { formatDate, herDay, stateAt, type ExtraFreeActivity, type Schedule } from './schedule.ts';
+import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
+import type { InitiateOutcome, InitiateRequest } from '../social/responder.ts';
+import { pick } from '../social/reply-timing.ts';
+import { formatDate, herDay, stateAt, type ExtraFreeActivity, type Schedule } from '.././schedule.ts';
 
 export interface BiliVideo {
     bvid: string;

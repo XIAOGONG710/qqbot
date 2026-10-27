@@ -6,7 +6,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fetchRecommend, planSession, sessionSize } from './bilibili-feed.ts';
 import type { BiliFetch } from './bilibili-view.ts';
-import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
 
 export interface FeedVisit { bvid: string; title: string; category: string; seconds: number }
 export interface FeedRecord { day: string; at: number; mode: 'dryRun' | 'on'; stayed: FeedVisit[]; skipped: number }

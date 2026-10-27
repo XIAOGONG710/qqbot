@@ -7,7 +7,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { BiliVideo } from './bilibili.ts';
-import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
 
 export interface BiliRequestInit {
     method?: 'GET' | 'POST';

@@ -6,7 +6,7 @@
 
 import type { BiliFetch } from './bilibili-view.ts';
 import { fetchWbiKeys, mixinKey, signParams } from './bilibili-wbi.ts';
-import { pick } from './reply-timing.ts';
+import { pick } from '../social/reply-timing.ts';
 
 export interface FeedItem {
     bvid: string;

@@ -5,7 +5,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { credentialPath, loadCredential, openAccount, qrGenerate, qrPoll, saveCredential, type BiliRequest } from './bilibili-account.ts';
-import { qrSvg, qrTerminal } from './qr.ts';
+import { qrSvg, qrTerminal } from '.././qr.ts';
 
 export interface LoginDeps {
     request: BiliRequest;

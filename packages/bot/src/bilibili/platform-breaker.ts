@@ -6,7 +6,7 @@
 
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
 
 export interface BreakerState {
     platform: string;
