@@ -32,15 +32,15 @@ packages/bot/src/
 | emotion | ✅ `src/emotion/` | 10 | 24 | 2031/2034 |
 | world | ✅ `src/world/` | 9 | — | 2031/2034 |
 | vision | ✅ `src/vision/` | 5 | 66（合计） | 2031/2034 |
-| social（原 rhythm） | ✅ `src/social/` | 16 | 83（合计） | 2030/2034 |
-| bilibili | ✅ `src/bilibili/` | 20 | 同上 | 2030/2034 |
-| language | ⬜ | 32 | | |
-| life | ⬜ | 20 | | |
-| memory | ⬜ | 15 | | |
-| proactive | ⬜ | 6 | | |
-| platform | ⬜ | 25 | | |
-| shared | ⬜ | 5 | | |
-| self | ⬜（随灵魂改造） | 0 | | |
+| social（原 rhythm） | ✅ `src/social/` | 16 | 83（合计） | 2031/2034 |
+| bilibili | ✅ `src/bilibili/` | 20 | 同上 | 2031/2034 |
+| language | ✅ `src/language/` | 32 | 208（合计） | 2034/2034 |
+| life | ✅ `src/life/` | 20 | 同上 | 2034/2034 |
+| memory | ✅ `src/memory/`（文件并入既有目录） | 14 | 同上 | 2034/2034 |
+| proactive | ✅ `src/proactive/` | 6 | 同上 | 2034/2034 |
+| platform | ✅ `src/platform/` | 22 | 90（合计） | 2034/2034 |
+| shared | ⏸ 暂不抽（json-file 等仍在 memory/language） | 5 | — | — |
+| self | ⬜（等 Claude 灵魂改造） | 0 | | |
 
 分支：`refactor/modules-pilot`（`a23175f`，已推送）。
 
