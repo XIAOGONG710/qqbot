@@ -4,7 +4,7 @@
 // 一次最多动一档：只有「小别扭」一档，没有升级、没有冷战；不在他难过 / 生病、说收尾、要她哄、说了想念或道歉的时候出现。
 
 import { warmSignal } from './affect.ts';
-import type { StoredMessage } from '.././history.ts';
+import type { StoredMessage } from '../memory/history.ts';
 
 type Said = Pick<StoredMessage, 'role' | 'content'> & { time?: string | undefined };
 

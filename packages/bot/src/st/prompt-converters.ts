@@ -3,7 +3,7 @@
 // 只实现无工具调用、无多模态、单角色（没有群聊名字）的情况，也没实现 single。
 // 带 name 的只有示例对话：合并时 example_user / example_assistant 换成内容前的“名字: ”，name 去掉；不处理时原样保留 name。
 
-import type { OpenAIMessage } from '../prompt.ts';
+import type { OpenAIMessage } from '../language/prompt.ts';
 import type { MacroNames } from './macros.ts';
 
 export const PROMPT_POST_PROCESSING = ['', 'merge', 'semi', 'strict'] as const;

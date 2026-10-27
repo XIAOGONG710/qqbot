@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { checkConsistency, describeFindings, type SaidRow } from '../src/consistency.ts';
-import { stateAt } from '../src/schedule.ts';
+import { checkConsistency, describeFindings, type SaidRow } from '../src/platform/consistency.ts';
+import { stateAt } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 // ADR 0119：前后一致性检查

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { experiencesFromLife, experiencesFromWatched, Tastes, type Experience, type Taste } from '../src/tastes.ts';
+import { experiencesFromLife, experiencesFromWatched, Tastes, type Experience, type Taste } from '../src/life/tastes.ts';
 
 // ADR 0162：偏好从经历里长出来，每条带证据
 describe('口味', () => {

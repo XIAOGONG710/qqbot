@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { chatCompletion, ModelUnreachable, type Fetch } from '../src/llm.ts';
-import { GuardRejected, ModelGuard } from '../src/model-guard.ts';
+import { chatCompletion, ModelUnreachable, type Fetch } from '../src/language/llm.ts';
+import { GuardRejected, ModelGuard } from '../src/language/model-guard.ts';
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 5));
 const gate = () => {

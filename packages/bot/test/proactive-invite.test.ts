@@ -3,12 +3,12 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import type { StoredMessage } from '../src/history.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
 import {
     blockReason, candidatesOn, INVITE_ACTIVITIES, INVITE_MAX_PER_WEEK, inviteDeclined, occasionNote, OCCASIONS, REACH_DECLINE, withInvite, withReach,
     type Candidate, type ProactiveInput, type ProactiveRecord,
-} from '../src/proactive.ts';
-import { createProactivePlanner, type Planner } from '../src/proactive-planner.ts';
+} from '../src/proactive/proactive.ts';
+import { createProactivePlanner, type Planner } from '../src/proactive/proactive-planner.ts';
 import type { InitiateOutcome, InitiateRequest } from '../src/social/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';

@@ -1,13 +1,13 @@
 // ADR 0042 影子审计：生活事件账里的类型化行动，和同一时刻对外状态行所依据的规则必须一致。
 // 这里只读、只报告，不改变世界；线上真正切换到“从事件账读状态”以前先用模拟器封板。
 
-import { asleepSince } from '../bedtime.ts';
-import { readingActivities } from '../her-days.ts';
+import { asleepSince } from '../life/bedtime.ts';
+import { readingActivities } from '../life/her-days.ts';
 import { chooseAt, freeAction, type LifeSources } from '../world/life-selector.ts';
 import type { LifeEvent } from '../world/life-events.ts';
-import { herStatus } from '../status-line.ts';
-import { describeAppointment } from '../promises.ts';
-import type { TypedActionKind } from '../actions.ts';
+import { herStatus } from '../language/status-line.ts';
+import { describeAppointment } from '../life/promises.ts';
+import type { TypedActionKind } from '../life/actions.ts';
 
 export interface LifeStatusMismatch {
     at: string;

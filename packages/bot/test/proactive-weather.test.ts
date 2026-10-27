@@ -3,13 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import type { StoredMessage } from '../src/history.ts';
-import { createProactivePlanner, type Planner } from '../src/proactive-planner.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
+import { createProactivePlanner, type Planner } from '../src/proactive/proactive-planner.ts';
 import type { InitiateRequest } from '../src/social/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import type { DayWeather } from '../src/world/weather.ts';
-import { SENSITIVE_ON, useSensitiveSwitch } from '../src/sensitive.ts';
+import { SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
 
 // 这个文件里的测试靠日志里的原文来断言模块的行为；日志默认不写原文的那条由 log-bodies.test.ts 管
 useSensitiveSwitch(SENSITIVE_ON);

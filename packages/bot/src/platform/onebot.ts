@@ -1,0 +1,282 @@
+// OneBot 11 WebSocket 客户端（连 NapCat 的“WebSocket 服务端”网络配置）。
+//
+// 协议细节对照 vendor/NapCatQQ/packages/napcat-onebot：
+//   - 连根路径 /：同一条连接既收事件又调 API（/api 只调 API，不推事件）。network/websocket-server.ts
+//   - token：Authorization: Bearer <token>（或 ?access_token=），错了会回 retcode 1403 后断开。同上 authorize()
+//   - 调用：{action, params, echo} → {status, retcode, data, message, echo}。action/OneBotAction.ts
+//   - 私聊消息事件：post_type "message"、message_type "private"；直接私聊 sub_type 恒为 "friend"，
+//     群临时会话为 "group"。api/msg.ts
+// 用 Node 自带的 WebSocket（undici），它支持非标准的 headers 选项。
+
+import { faceText, textToSegments } from '.././language/qq-faces.ts';
+import { logBody } from './sensitive.ts';
+import { FORWARD_TEXT, fileText, shareText } from '.././proactive/shares.ts';
+
+export interface Segment {
+    type: string;
+    data: Record<string, unknown>;
+}
+
+/** 引用回复段（OneBot 11 的 reply）：放在消息最前面，id 是被引用那条的 message_id（ADR 0136） */
+export function replySegment(messageId: number): Segment {
+    return { type: 'reply', data: { id: String(messageId) } };
+}
+
+export interface MessageEvent {
+    post_type: 'message';
+    message_type: 'private' | 'group';
+    sub_type: string;
+    self_id: number;
+    user_id: number;
+    message_id: number;
+    time: number;
+    message: Segment[] | string;
+    raw_message: string;
+    sender: { user_id: number; nickname?: string };
+}
+
+export type OneBotEvent = MessageEvent | { post_type: string; [key: string]: unknown };
+
+interface ApiResponse {
+    status: 'ok' | 'failed';
+    retcode: number;
+    data: unknown;
+    message?: string;
+    wording?: string;
+    echo?: string;
+}
+
+export interface OneBotOptions {
+    url: string;
+    token?: string;
+    onEvent: (event: OneBotEvent) => void;
+    log: (message: string) => void;
+    /** API 调用超时，毫秒 */
+    timeoutMs?: number;
+}
+
+/**
+ * NapCat 有几个动作（表情回应、正在输入）把 QQ 内核的失败放在返回值的 result 里，外层照样回 status ok / retcode 0。
+ * result 不是 0 就当失败。10-20 实测：私聊里 set_msg_emoji_like 外层 ok，data 是 {result: 65011, errMsg: '操作失败，请稍后再试哦'}，
+ * 之前的探针和机器人都只看外层，一直以为点成功了。
+ */
+export function assertKernelOk(action: string, data: unknown): void {
+    if (!data || typeof data !== 'object' || !('result' in data)) return;
+    const { result, errMsg } = data as { result: unknown; errMsg?: unknown };
+    if (typeof result === 'number' && result !== 0) {
+        throw new Error(`${action} 被 QQ 拒绝（result ${result}${typeof errMsg === 'string' && errMsg ? `：${errMsg}` : ''}）`);
+    }
+}
+
+export class OneBotClient {
+    #options: OneBotOptions;
+    #ws: WebSocket | null = null;
+    #pending = new Map<string, { resolve: (data: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
+    #nextEcho = 1;
+    #retryDelay = 1000;
+    #stopped = false;
+
+    constructor(options: OneBotOptions) {
+        this.#options = options;
+    }
+
+    start(): void {
+        this.#stopped = false;
+        this.#connect();
+    }
+
+    stop(): void {
+        this.#stopped = true;
+        this.#ws?.close();
+    }
+
+    #connect(): void {
+        const { url, token, log } = this.#options;
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        const ws = new WebSocket(url, { headers });
+        this.#ws = ws;
+
+        ws.addEventListener('open', () => {
+            this.#retryDelay = 1000;
+            log(`OneBot 已连接 ${url}`);
+        });
+        ws.addEventListener('message', event => this.#onMessage(String(event.data)));
+        ws.addEventListener('error', () => { /* close 事件里统一处理 */ });
+        ws.addEventListener('close', event => {
+            this.#ws = null;
+            for (const [echo, call] of this.#pending) {
+                clearTimeout(call.timer);
+                call.reject(new Error('OneBot 连接已断开'));
+                this.#pending.delete(echo);
+            }
+            if (this.#stopped) return;
+            log(`OneBot 连接断开（code ${event.code}），${this.#retryDelay / 1000} 秒后重连`);
+            setTimeout(() => this.#connect(), this.#retryDelay);
+            this.#retryDelay = Math.min(this.#retryDelay * 2, 30_000);
+        });
+    }
+
+    #onMessage(text: string): void {
+        let payload: Record<string, unknown>;
+        try {
+            payload = JSON.parse(text);
+        } catch {
+            this.#options.log(`OneBot 收到无法解析的数据：${logBody(text.slice(0, 200))}`);
+            return;
+        }
+        if ('post_type' in payload) {
+            this.#options.onEvent(payload as OneBotEvent);
+            return;
+        }
+        const response = payload as unknown as ApiResponse;
+        if (response.retcode === 1403) this.#options.log('OneBot token 验证失败，检查 QQBOT_ONEBOT_TOKEN');
+        const call = response.echo ? this.#pending.get(response.echo) : undefined;
+        if (!call) return;
+        this.#pending.delete(response.echo!);
+        clearTimeout(call.timer);
+        if (response.status === 'ok' && response.retcode === 0) call.resolve(response.data);
+        else call.reject(new Error(`OneBot 调用失败 retcode ${response.retcode}：${response.wording || response.message || ''}`));
+    }
+
+    call<T>(action: string, params: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+        const ws = this.#ws;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error('OneBot 未连接'));
+        if (signal?.aborted) return Promise.reject(signal.reason ?? new DOMException('已取消', 'AbortError'));
+        const echo = String(this.#nextEcho++);
+        return new Promise<T>((resolve, reject) => {
+            const finish = () => signal?.removeEventListener('abort', cancel);
+            const cancel = () => {
+                const pending = this.#pending.get(echo);
+                if (!pending) return;
+                this.#pending.delete(echo);
+                clearTimeout(pending.timer);
+                finish();
+                reject(signal?.reason ?? new DOMException('已取消', 'AbortError'));
+            };
+            const timer = setTimeout(() => {
+                this.#pending.delete(echo);
+                finish();
+                reject(new Error(`OneBot 调用 ${action} 超时`));
+            }, this.#options.timeoutMs ?? 30_000);
+            this.#pending.set(echo, {
+                resolve: data => { finish(); resolve(data as T); },
+                reject: error => { finish(); reject(error); },
+                timer,
+            });
+            signal?.addEventListener('abort', cancel, { once: true });
+            ws.send(JSON.stringify({ action, params, echo }));
+        });
+    }
+
+    /** 发一条私聊：文字里白名单的小黄脸（「[捂脸]」）发成 face 段，和文字拼成一条（ADR 0051）；replyTo 给了就是引用回复那条消息（ADR 0136） */
+    async sendPrivateText(userId: number, text: string, replyTo?: number): Promise<number> {
+        const data = await this.call<{ message_id: number }>('send_private_msg', {
+            user_id: userId,
+            message: replyTo === undefined ? textToSegments(text) : [replySegment(replyTo), ...textToSegments(text)],
+        });
+        return data.message_id;
+    }
+
+    /** 让对方那边显示「正在输入…」（NapCat 的 set_input_status，event_type 1；ADR 0077）。显示几秒就消，要一直显示得隔几秒再发一次 */
+    async setInputStatus(userId: number, eventType = 1): Promise<void> {
+        assertKernelOk('set_input_status', await this.call('set_input_status', { user_id: String(userId), event_type: eventType }));
+    }
+
+    /** 发一张已经落到本机的图片表情（ADR 0063）。 */
+    async sendPrivateImage(userId: number, file: string, summary: string): Promise<number> {
+        const data = await this.call<{ message_id: number }>('send_private_msg', {
+            user_id: userId,
+            message: [{ type: 'image', data: { file, summary, sub_type: 1 } }],
+        });
+        return data.message_id;
+    }
+}
+
+/**
+ * 私聊的戳一戳（NapCat 的 notice/notify/poke，OB11FriendPokeEvent）：user_id 是这段私聊的对方（不论谁戳的），
+ * sender_id 是戳的人，target_id 是被戳的人；所以「他戳了小号」是 target_id === self_id（ADR 0079）
+ */
+export interface PokeEvent {
+    post_type: 'notice';
+    notice_type: 'notify';
+    sub_type: 'poke';
+    self_id: number;
+    user_id: number;
+    target_id: number;
+    time: number;
+    [key: string]: unknown;
+}
+
+/** 别人私聊戳了小号（不是群里的、不是小号自己戳别人） */
+export function isPokeAtMe(event: OneBotEvent): event is PokeEvent {
+    return event.post_type === 'notice' && event.notice_type === 'notify' && event.sub_type === 'poke'
+        && !event.group_id
+        && typeof event.user_id === 'number' && typeof event.self_id === 'number' && typeof event.time === 'number'
+        && event.target_id === event.self_id && event.user_id !== event.self_id;
+}
+
+/** 好友撤回消息（NapCat 的 notice/friend_recall）：user_id 是这段私聊的对方，message_id 是被撤回的那条（他的或她的）；ADR 0082 */
+export interface RecallEvent {
+    post_type: 'notice';
+    notice_type: 'friend_recall';
+    self_id: number;
+    user_id: number;
+    message_id: number;
+    [key: string]: unknown;
+}
+
+export function isFriendRecall(event: OneBotEvent): event is RecallEvent {
+    return event.post_type === 'notice' && event.notice_type === 'friend_recall'
+        && typeof event.user_id === 'number' && typeof event.message_id === 'number' && Number.isSafeInteger(event.message_id);
+}
+
+export function isPrivateFriendMessage(event: OneBotEvent): event is MessageEvent {
+    return event.post_type === 'message' && event.message_type === 'private' && event.sub_type === 'friend';
+}
+
+/** 聊天记录里的一条（引用回复时按消息 id 找到被引用的那一条，ADR 0081） */
+export interface QuotedMessage {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
+export type QuoteLookup = (messageId: number) => QuotedMessage | undefined;
+
+const MAX_QUOTE = 40;
+
+/**
+ * 引用回复段 → 「[引用你说的：「我周三有早八」]」；找不到被引用的那一条（不是经过机器人收发的、已经不在记录里）就什么都不写，和以前一样。
+ * 被引用的那一条自己开头的引用不再套进来，换行压成空格，超过 MAX_QUOTE 个字截短
+ */
+function quoteText(id: unknown, lookup: QuoteLookup | undefined): string {
+    const number = Number(id);
+    const quoted = lookup && Number.isSafeInteger(number) ? lookup(number) : undefined;
+    if (!quoted) return '';
+    const text = quoted.content.replace(/^\[引用.*?」\]/, '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    return `[引用${quoted.role === 'assistant' ? '你说的' : '他之前说的'}：「${text.length > MAX_QUOTE ? `${text.slice(0, MAX_QUOTE)}…` : text}」]`;
+}
+
+/** 把消息段转成给模型看的纯文本；非文字的段用占位符（听过、看过的语音和图片在这之前已经换成一段文字，media.ts，ADR 0052）。quoted 给了就把引用回复的那句话写进去 */
+export function segmentsToText(message: Segment[] | string, quoted?: QuoteLookup): string {
+    if (typeof message === 'string') return message;
+    return message.map(segment => {
+        const data = segment.data ?? {};
+        switch (segment.type) {
+            case 'text': return String(data.text ?? '');
+            // 表情包、商城表情的 summary 是名字，如“[动画表情]”“[是的]”
+            case 'image': return typeof data.summary === 'string' && data.summary ? data.summary : '[图片]';
+            // QQ 小黄脸按 id 换成名字「[捂脸]」，表里没有的照旧「[表情]」（ADR 0051）
+            case 'face': return faceText(data.id);
+            case 'at': return `@${String(data.qq ?? '')} `;
+            case 'reply': return quoteText(data.id, quoted);
+            case 'record': return '[语音]';
+            case 'video': return '[视频]';
+            case 'file': return fileText(data.file);
+            // 分享卡片、转发的聊天记录（ADR 0080）：以前一律是「[json]」「[forward]」，她看不懂
+            case 'json': return shareText(data.data);
+            case 'forward': return FORWARD_TEXT;
+            default: return `[${segment.type}]`;
+        }
+    }).join('');
+}

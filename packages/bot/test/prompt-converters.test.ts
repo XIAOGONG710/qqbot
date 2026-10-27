@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import type { OpenAIMessage } from '../src/prompt.ts';
+import type { OpenAIMessage } from '../src/language/prompt.ts';
 import { PROMPT_PLACEHOLDER, postProcessPrompt } from '../src/st/prompt-converters.ts';
 
 const sys = (content: string): OpenAIMessage => ({ role: 'system', content });

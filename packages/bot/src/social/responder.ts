@@ -37,13 +37,13 @@ export const DEFAULT_SETTLE = { quietMs: 4000, maxMs: 12000 };
 /** 回复失败之后的再试间隔：1 分钟、5 分钟各一次（10-04 与用户确认，不无限重试） */
 export const RETRY_AFTER_MS = [60_000, 300_000];
 
-import type { TypoRecall } from '.././expression.ts';
-import type { ChatHistory, StoredMessage } from '.././history.ts';
-import { ModelUnreachable } from '.././llm.ts';
-import type { ChatMessage, OpenAIMessage, PromptResult } from '.././prompt.ts';
-import { PENDING_REASON } from '.././proactive.ts';
+import type { TypoRecall } from '../language/expression.ts';
+import type { ChatHistory, StoredMessage } from '../memory/history.ts';
+import { ModelUnreachable } from '../language/llm.ts';
+import type { ChatMessage, OpenAIMessage, PromptResult } from '../language/prompt.ts';
+import { PENDING_REASON } from '../proactive/proactive.ts';
 import { pendingMessages, pick, type Seen } from './reply-timing.ts';
-import { MAX_BUBBLES, splitReply } from '.././reply.ts';
+import { MAX_BUBBLES, splitReply } from '../language/reply.ts';
 
 /** 拼好的提示词；note 是给日志的补充；maxBubbles 可让当前对话动作比作息上限更短。 */
 export type BuiltPrompt = PromptResult & { note?: string; maxBubbles?: number };

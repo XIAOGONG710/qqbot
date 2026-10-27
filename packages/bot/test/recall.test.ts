@@ -3,10 +3,10 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { startApp } from '../src/app.ts';
-import type { AppConfig } from '../src/config.ts';
-import { ChatHistory, RECALLED_TEXT } from '../src/history.ts';
-import { isFriendRecall, type MessageEvent } from '../src/onebot.ts';
+import { startApp } from '../src/platform/app.ts';
+import type { AppConfig } from '../src/platform/config.ts';
+import { ChatHistory, RECALLED_TEXT } from '../src/memory/history.ts';
+import { isFriendRecall, type MessageEvent } from '../src/platform/onebot.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
 const dirs: string[] = [];

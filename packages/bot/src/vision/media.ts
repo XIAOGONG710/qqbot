@@ -10,7 +10,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { AsyncGate } from '../social/async-gate.ts';
-import type { Segment } from '.././onebot.ts';
+import type { Segment } from '../platform/onebot.ts';
 
 /** NapCat 那边能做的（入口传进来：main.ts 用自写的 OneBot 客户端，Koishi 插件用 adapter-onebot） */
 export interface MediaReader {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { isPokeAtMe, segmentsToText, type PokeEvent } from '../src/onebot.ts';
+import { isPokeAtMe, segmentsToText, type PokeEvent } from '../src/platform/onebot.ts';
 import { createPokeLimiter, POKE_BACK_CHANCE, POKE_BACK_DELAY_MS, POKE_MAX_IN_WINDOW, POKE_OUT_QUIET_MS, POKE_OUT_TEXT, POKE_TEXT, POKE_WINDOW_MS, pokeBackPlan, pokeMessage, pokeOutMessageId, quietEnoughToPoke } from '../src/social/pokes.ts';
 
 const SELF = 20000;

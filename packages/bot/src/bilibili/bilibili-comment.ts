@@ -6,7 +6,7 @@
 import type { CommentInput } from './bilibili.ts';
 import type { ReplyInput } from './bilibili-replies.ts';
 import { cleanQzoneText } from '../social/presence.ts';
-import type { OpenAIMessage } from '.././prompt.ts';
+import type { OpenAIMessage } from '../language/prompt.ts';
 
 export interface CommentComposerDeps {
     /** 最低隐私档卡上的名字、资料、性格、这一档的禁用词 */

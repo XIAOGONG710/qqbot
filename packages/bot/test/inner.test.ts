@@ -3,18 +3,18 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import type { StoredMessage } from '../src/history.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
 import {
     INNER_LINE_MAX, INNER_MAX_PER_DAY, innerLine, INTENT_WINDOW_MS, parseThought, pendingIntents, similarity, THINK_INTERVAL_MIN, THOUGHT_THEMES, themesFor, thinkNote, validInnerState,
     type InnerThought,
-} from '../src/inner.ts';
-import { blockReason, candidatesOn, occasionNote, withInner, type Candidate, type ProactiveInput, type ProactiveRecord } from '../src/proactive.ts';
-import { createProactivePlanner, type Planner } from '../src/proactive-planner.ts';
+} from '../src/proactive/inner.ts';
+import { blockReason, candidatesOn, occasionNote, withInner, type Candidate, type ProactiveInput, type ProactiveRecord } from '../src/proactive/proactive.ts';
+import { createProactivePlanner, type Planner } from '../src/proactive/proactive-planner.ts';
 import type { InitiateOutcome, InitiateRequest } from '../src/social/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { SENSITIVE_ON, useSensitiveSwitch } from '../src/sensitive.ts';
-import { thinkingTranscript } from '../src/contact.ts';
+import { SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
+import { thinkingTranscript } from '../src/platform/contact.ts';
 
 useSensitiveSwitch(SENSITIVE_ON);
 

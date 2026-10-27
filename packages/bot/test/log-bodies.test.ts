@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
-import { issuesForLog, type ExitIssue } from '../src/exit-check.ts';
-import { logBody, SENSITIVE_OFF, SENSITIVE_ON, sensitiveOn, useSensitiveSwitch } from '../src/sensitive.ts';
+import { issuesForLog, type ExitIssue } from '../src/language/exit-check.ts';
+import { logBody, SENSITIVE_OFF, SENSITIVE_ON, sensitiveOn, useSensitiveSwitch } from '../src/platform/sensitive.ts';
 
 afterEach(() => useSensitiveSwitch(SENSITIVE_OFF));
 

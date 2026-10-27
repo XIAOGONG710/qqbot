@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CRISIS_FALLBACK, CRISIS_IMMINENT_FALLBACK, crisisRewriteNote, inspectCrisisReply, reviewCrisisReply } from '../src/exit-check.ts';
+import { CRISIS_FALLBACK, CRISIS_IMMINENT_FALLBACK, crisisRewriteNote, inspectCrisisReply, reviewCrisisReply } from '../src/language/exit-check.ts';
 
 const options = (regenerated: string[] | Error, logs: string[] = []) => {
     let calls = 0;

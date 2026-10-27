@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { describeInterruption, INTERRUPT_SHARE, INTERRUPT_WINDOW_MS, interruptionNow, LIVE_CHAT_MS, type WorldEventLite } from '../src/interruption.ts';
+import { describeInterruption, INTERRUPT_SHARE, INTERRUPT_WINDOW_MS, interruptionNow, LIVE_CHAT_MS, type WorldEventLite } from '../src/language/interruption.ts';
 
 // ADR 0115：被第三方打断——聊天正在进行时，世界账里她那边恰好发生了一件小事
 const base = new Date(2026, 9, 28, 22, 20).getTime();

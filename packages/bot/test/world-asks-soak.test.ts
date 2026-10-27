@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { classesOn } from '../src/schedule.ts';
+import { classesOn } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { worldAt, type FriendDate } from '../src/world/world.ts';
 

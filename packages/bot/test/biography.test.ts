@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { describePast, parseBiography, pastCue, PAST_CHUNKS, type Biography } from '../src/biography.ts';
+import { describePast, parseBiography, pastCue, PAST_CHUNKS, type Biography } from '../src/life/biography.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const biography: Biography = {

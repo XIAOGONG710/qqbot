@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { cleanUpReply } from '../src/reply.ts';
+import { cleanUpReply } from '../src/language/reply.ts';
 import { loadCharacterCard, parseCharacterCard } from '../src/st/card.ts';
 import { AI_OUTPUT, applyAiOutputScripts, parseRegexScripts, regexFromString, runRegexScript, type RegexScript } from '../src/st/regex.ts';
 

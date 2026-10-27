@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { describeIntent } from '../src/intent.ts';
-import { JEALOUS_COOLDOWN_MS, JEALOUS_INTENT, JEALOUS_SHARE, jealousTurn, mentionsOtherWoman, reassures, SOFTEN_INTENT } from '../src/jealousy.ts';
+import { describeIntent } from '../src/language/intent.ts';
+import { JEALOUS_COOLDOWN_MS, JEALOUS_INTENT, JEALOUS_SHARE, jealousTurn, mentionsOtherWoman, reassures, SOFTEN_INTENT } from '../src/language/jealousy.ts';
 
 // ADR 0123：吃醋，最轻的一档。重点是轨道：不盘问、不要保证、不让他愧疚、不限制他
 const now = new Date(2026, 10, 20, 22, 0).getTime();

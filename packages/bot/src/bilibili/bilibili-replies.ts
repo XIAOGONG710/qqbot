@@ -8,8 +8,8 @@ import { join } from 'node:path';
 import { BiliApiError, type BiliAccount, type ReplyItem } from './bilibili-account.ts';
 import { BLOCKED } from './bilibili.ts';
 import { isRiskError, type RiskGate } from './bilibili-risk.ts';
-import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
-import { formatDate } from '.././schedule.ts';
+import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { formatDate } from '../life/schedule.ts';
 
 /** 多久看一次「回复我的」 */
 export const REPLY_POLL_MS = 10 * 60_000;

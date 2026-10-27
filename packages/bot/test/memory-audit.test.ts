@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { HindsightApi, MemoryItem } from '../src/memory/hindsight.ts';
-import { auditedApi, memoryLedger, recordForget, recordNote, summarize } from '../src/memory-audit.ts';
+import { auditedApi, memoryLedger, recordForget, recordNote, summarize } from '../src/memory/memory-audit.ts';
 
 // ADR 0158：长期记忆的写入、删除和纠错说明都留痕（只记哈希，不记原文）
 describe('记忆账本', () => {

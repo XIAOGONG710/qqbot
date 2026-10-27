@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { inspectReply } from '../src/exit-check.ts';
-import { ODD_BODY_WORDING, ODD_BODY_WORDS } from '../src/expression.ts';
+import { inspectReply } from '../src/language/exit-check.ts';
+import { ODD_BODY_WORDING, ODD_BODY_WORDS } from '../src/language/expression.ts';
 
 // 用户 10-22：「她最近老是说肚子坠着，这不是正常人的语言说话方式」。线上 10-20 到 10-22 四条原话都要被抓住
 describe('医书里的词：出口检查当禁用词', () => {

@@ -8,8 +8,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeJsonAtomic } from '../json-file.ts';
-import { BUILTIN_PURSUITS, mergePursuits, pursuitsPath, validPursuits, type Pursuit, type PursuitStatus } from '../pursuits.ts';
+import { writeJsonAtomic } from '../memory/json-file.ts';
+import { BUILTIN_PURSUITS, mergePursuits, pursuitsPath, validPursuits, type Pursuit, type PursuitStatus } from '../life/pursuits.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);

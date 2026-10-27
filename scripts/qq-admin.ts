@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ACCOUNT_ACTIONS, ACCOUNT_MODES, createAccount, type AccountAuditEntry, type AccountPolicy, type ControlMode } from '../packages/bot/src/account.ts';
+import { ACCOUNT_ACTIONS, ACCOUNT_MODES, createAccount, type AccountAuditEntry, type AccountPolicy, type ControlMode } from '../packages/bot/src/social/account.ts';
 import { connect, serverFromConfig, type Connection } from './napcat-probe.ts';
 
 export interface AdminArgs {

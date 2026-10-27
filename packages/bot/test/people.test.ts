@@ -3,14 +3,14 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { canGiveFeedback, parseAppConfig, type BotConfig, type Contact } from '../src/config.ts';
-import type { Schedule } from '../src/schedule.ts';
-import { loadTierCard } from '../src/contact.ts';
+import { canGiveFeedback, parseAppConfig, type BotConfig, type Contact } from '../src/platform/config.ts';
+import type { Schedule } from '../src/life/schedule.ts';
+import { loadTierCard } from '../src/platform/contact.ts';
 import type { MemoryItem } from '../src/memory/hindsight.ts';
 import {
     askedDay, askedWindow, asksPast, COMMON_LINGER_MS, commonCue, describePerson, holidayWords, knowsPeople, MAX_MENTIONED, mentionedPeople, stillInMind,
-} from '../src/people.ts';
-import type { OpenAIMessage } from '../src/prompt.ts';
+} from '../src/life/people.ts';
+import type { OpenAIMessage } from '../src/language/prompt.ts';
 import { runChecks, runScenario, type SimHindsight } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';

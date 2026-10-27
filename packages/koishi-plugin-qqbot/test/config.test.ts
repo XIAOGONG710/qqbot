@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { DEFAULTS, parseAppConfig } from '../../bot/src/config.ts';
+import { DEFAULTS, parseAppConfig } from '../../bot/src/platform/config.ts';
 import { Config, migrateThinking, thinkingBody, toAppConfigInput } from '../src/index.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');

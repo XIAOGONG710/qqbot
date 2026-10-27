@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { bodyAt } from '../src/body.ts';
-import { readingActivities } from '../src/her-days.ts';
-import { herStatus } from '../src/status-line.ts';
+import { bodyAt } from '../src/life/body.ts';
+import { readingActivities } from '../src/life/her-days.ts';
+import { herStatus } from '../src/language/status-line.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { worldAt } from '../src/world/world.ts';
 

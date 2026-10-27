@@ -8,7 +8,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeJsonAtomic } from '../json-file.ts';
+import { writeJsonAtomic } from '../memory/json-file.ts';
 import { appraisals, FEELING_KINDS, FEELING_NAME, feelingsAt, validMoments, type Moment } from '../emotion/feelings.ts';
 import { momentsPath } from '../emotion/moments.ts';
 

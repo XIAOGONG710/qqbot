@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { createArchive, Dormancy, proposeNote, verifyArchive, wakeNote } from '../src/dormancy.ts';
+import { createArchive, Dormancy, proposeNote, verifyArchive, wakeNote } from '../src/memory/dormancy.ts';
 
 // ADR 0161：自愿休眠 / 封存
 describe('休眠与封存', () => {

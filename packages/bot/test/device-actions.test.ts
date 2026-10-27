@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { createDeviceControl, DEVICE_ACTIONS, deviceMenu, parseDeviceTokens, stripDeviceTokens, type AuditEntry, type DeviceControlDeps, type DispatchJob, type PolicyContext } from '../src/device-actions.ts';
+import { createDeviceControl, DEVICE_ACTIONS, deviceMenu, parseDeviceTokens, stripDeviceTokens, type AuditEntry, type DeviceControlDeps, type DispatchJob, type PolicyContext } from '../src/platform/device-actions.ts';
 
 const context: PolicyContext = { links: new Map([['音乐', 'https://music.example/play']]), apps: ['网易云', '记事本'], maxVolume: 60 };
 

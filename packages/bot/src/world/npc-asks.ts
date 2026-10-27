@@ -4,7 +4,7 @@
 // - 这一版只是事实层（纯函数 + 审计 + 预览，sim/asks-preview.ts）：没接进世界推进、事件账、状态行和提示词（ADR 0061 决策 5「先影子」）。
 // - 只写事实，不写台词、不写情绪（ADR 0021 决策 3）。
 
-import { classesOn, formatDate, type Schedule } from '.././schedule.ts';
+import { classesOn, formatDate, type Schedule } from '../life/schedule.ts';
 import { npcStates, unit, type NpcLife, type NpcStateKind } from './npc.ts';
 
 /** 约在一天的哪一段：午饭、晚饭、晚上、周末下午 */

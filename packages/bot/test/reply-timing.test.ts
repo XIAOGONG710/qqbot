@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import type { StoredMessage } from '../src/history.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
 import {
     arrivedWhileAsleep, isAck, isAckAfterClosing, isReaction, MOODY_CHANCE, MOODY_MAX_CHANCE, moodySkip, legacyTypingMs, pendingMessages, replyDelays, thinkMs, typingMs, wakeUpTime, whenSeen,
 } from '../src/social/reply-timing.ts';

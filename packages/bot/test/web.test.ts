@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { checkUrl, htmlToText, isPublicIp, keyedProvider, planExplicit, readPage, WebLookup, wikipediaProvider, type ChatLine, type Resolver } from '../src/web.ts';
+import { checkUrl, htmlToText, isPublicIp, keyedProvider, planExplicit, readPage, WebLookup, wikipediaProvider, type ChatLine, type Resolver } from '../src/platform/web.ts';
 
 const publicResolver: Resolver = async () => ['93.184.216.34'];
 const page = (html: string, headers: Record<string, string> = {}, status = 200) => new Response(html, { status, headers: { 'content-type': 'text/html; charset=utf-8', ...headers } });

@@ -3,10 +3,10 @@
 
 import { fetch as undiciFetch } from 'undici';
 import { AsyncGate } from '../social/async-gate.ts';
-import { DEFAULTS, type AppConfig } from '.././config.ts';
+import { DEFAULTS, type AppConfig } from '../platform/config.ts';
 import type { ImageDescriber } from './media.ts';
-import { modelDispatcher, modelGuard, ModelUnreachable } from '.././llm.ts';
-import { GuardRejected, type ModelGuard, type ModelPurpose } from '.././model-guard.ts';
+import { modelDispatcher, modelGuard, ModelUnreachable } from '../language/llm.ts';
+import { GuardRejected, type ModelGuard, type ModelPurpose } from '../language/model-guard.ts';
 import { fetchRemoteImage, imageDataUrl, REMOTE_IMAGE_MAX_BYTES, validateImageDataUrl } from './safe-image.ts';
 
 export interface DeepSeekVisionOptions {

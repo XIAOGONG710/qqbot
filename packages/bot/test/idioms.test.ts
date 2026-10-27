@@ -3,14 +3,14 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import type { BotConfig } from '../src/config.ts';
-import { loadTierCard } from '../src/contact.ts';
+import type { BotConfig } from '../src/platform/config.ts';
+import { loadTierCard } from '../src/platform/contact.ts';
 import {
     hisMessages, IDIOM_COOLDOWN_REPLIES, IDIOM_MIN_DAYS, IDIOM_MIN_OCCURRENCES, IDIOM_SHOWN, IDIOM_TURN_SHARE, idiomLine, idiomsPrompt, idiomStore,
     IDIOMS_KEPT, IDIOMS_MIN_MESSAGES, IDIOMS_REFRESH_MS, ownWords, parseIdioms, refreshIdioms, type Idiom,
-} from '../src/idioms.ts';
-import { auditContactPrivacy } from '../src/privacy-audit.ts';
-import type { OpenAIMessage } from '../src/prompt.ts';
+} from '../src/language/idioms.ts';
+import { auditContactPrivacy } from '../src/memory/privacy-audit.ts';
+import type { OpenAIMessage } from '../src/language/prompt.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';

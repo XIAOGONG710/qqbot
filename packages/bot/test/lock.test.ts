@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import { acquireLock, isProcessAlive } from '../src/lock.ts';
+import { acquireLock, isProcessAlive } from '../src/platform/lock.ts';
 
 describe('单实例锁', () => {
     let dir = '';

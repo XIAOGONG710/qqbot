@@ -1,9 +1,9 @@
 // 说别人的事的分寸（ADR 0020）：记得什么和愿意说什么分开。
 // 召回不收紧（ADR 0016 的既有决定）；这里给每条来源标披露上限，再告诉模型如何自然地说或不说。
 
-import type { ChatMessage } from '.././prompt.ts';
+import type { ChatMessage } from '../language/prompt.ts';
 import { EPISODE_GAP_MS } from '.././memory/episodes.ts';
-import { herDay, type Schedule } from '.././schedule.ts';
+import { herDay, type Schedule } from '../life/schedule.ts';
 
 /** 明说：被问可以说大面事实；含糊：被问只能承认个大概；不说：不能透露、确认或暗示。 */
 export type DisclosureMode = 'open' | 'vague' | 'sealed';

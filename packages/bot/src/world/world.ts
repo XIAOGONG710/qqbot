@@ -7,20 +7,20 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Contact } from '.././config.ts';
-import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
-import { dishNote, dishOn, type Menu } from '.././menu.ts';
+import type { Contact } from '../platform/config.ts';
+import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { dishNote, dishOn, type Menu } from '../life/menu.ts';
 import type { Episode } from '.././memory/episodes.ts';
-import { classesOn, formatDate, herDay, wakeOn, type ClassToday, type Schedule } from '.././schedule.ts';
+import { classesOn, formatDate, herDay, wakeOn, type ClassToday, type Schedule } from '../life/schedule.ts';
 import { realWeather, type DayWeather } from './weather.ts';
-import { bodyAt, parseBody, unwell, type Body, type BodyNow } from '.././body.ts';
-import { DEFAULT_NEWS_KINDS, type NewsKind } from '.././proactive.ts';
-import { EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, quizEvents, type EventFeel } from '.././everyday.ts';
+import { bodyAt, parseBody, unwell, type Body, type BodyNow } from '../life/body.ts';
+import { DEFAULT_NEWS_KINDS, type NewsKind } from '../proactive/proactive.ts';
+import { EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, quizEvents, type EventFeel } from '../life/everyday.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
 import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
 import { DEFAULT_ASKS, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
-import type { Plans } from '.././day-plan.ts';
-import { ASK_HOME_TIME, depositFor, lastPayday, MISC_TIME, nextPayday, ORDER_TIME, PAY_TIME, parcelPrice, priceIn, sideJobOn, spendItems, type Money, type MoneyEntry } from '.././money.ts';
+import type { Plans } from '../life/day-plan.ts';
+import { ASK_HOME_TIME, depositFor, lastPayday, MISC_TIME, nextPayday, ORDER_TIME, PAY_TIME, parcelPrice, priceIn, sideJobOn, spendItems, type Money, type MoneyEntry } from '../life/money.ts';
 
 export type WorldWindow = 'morning' | 'afternoon' | 'evening';
 

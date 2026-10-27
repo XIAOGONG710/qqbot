@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkConsistency, describeFindings, type SaidRow } from '../consistency.ts';
+import { checkConsistency, describeFindings, type SaidRow } from '../platform/consistency.ts';
 import { loadCharacterCard } from '../st/card.ts';
 import { worldState } from '../world/world.ts';
 

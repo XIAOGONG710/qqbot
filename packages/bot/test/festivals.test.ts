@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { festivalActivities, festivalDays, festivalYears, solarTerm, withFestivalActivities, withFestivals, FESTIVAL_MODES } from '../src/world/festivals.ts';
-import { stateAt } from '../src/schedule.ts';
-import { candidatesOn, dayMatches, type ImportantDay, type ProactiveInput } from '../src/proactive.ts';
-import { describeDays } from '../src/time-context.ts';
+import { stateAt } from '../src/life/schedule.ts';
+import { candidatesOn, dayMatches, type ImportantDay, type ProactiveInput } from '../src/proactive/proactive.ts';
+import { describeDays } from '../src/language/time-context.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));

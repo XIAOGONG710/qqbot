@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { CURIOUS_ASK_NOTE, CURIOUS_INTENT, CURIOUS_MIN_CHARS, CURIOUS_RECENT, CURIOUS_SHARE, curiousTurn } from '../src/curious.ts';
-import { ENGAGED_INTENT } from '../src/expression.ts';
-import { describeIntent } from '../src/intent.ts';
-import { candidatesOn, occasionNote, withAsk, withCurious, type Candidate, type ProactiveInput } from '../src/proactive.ts';
-import { planShape } from '../src/shape.ts';
+import { CURIOUS_ASK_NOTE, CURIOUS_INTENT, CURIOUS_MIN_CHARS, CURIOUS_RECENT, CURIOUS_SHARE, curiousTurn } from '../src/language/curious.ts';
+import { ENGAGED_INTENT } from '../src/language/expression.ts';
+import { describeIntent } from '../src/language/intent.ts';
+import { candidatesOn, occasionNote, withAsk, withCurious, type Candidate, type ProactiveInput } from '../src/proactive/proactive.ts';
+import { planShape } from '../src/language/shape.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 // ADR 0126：会追问。线上量过：问句率 12%（和真人持平），但问的多是口头语，问他刚说那件事的很少——

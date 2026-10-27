@@ -8,7 +8,7 @@
 
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadMemes, MEME_BLOCK, memesPath, saveMemes, trimMemes, type MemeEntry } from '../memes.ts';
+import { loadMemes, MEME_BLOCK, memesPath, saveMemes, trimMemes, type MemeEntry } from '../language/memes.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);

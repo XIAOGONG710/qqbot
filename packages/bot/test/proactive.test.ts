@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import type { StoredMessage } from '../src/history.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
 import {
     blockReason, candidatesOn, dayMatches, herDay, lunarMonthDay, parseDates, parseProactive, planFrom, unansweredCount,
     candidateLabel, occasionNote, untoldNews, type Candidate, type ProactiveInput, type ProactiveRecord,
-} from '../src/proactive.ts';
-import { rainingAt, rainOf } from '../src/proactive-planner.ts';
+} from '../src/proactive/proactive.ts';
+import { rainingAt, rainOf } from '../src/proactive/proactive-planner.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 // 用转换器生成的真卡：男朋友档有作息、三个日子和主动设置（四种时机 + 待跟进 + 日子，每天 2 条，1 条没回就停）

@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import type { BiliVideo, CommentInput } from '../src/bilibili/bilibili.ts';
 import { commentComposer, commentSystemPrompt, replyComposer, replySystemPrompt } from '../src/bilibili/bilibili-comment.ts';
 import type { ReplyInput } from '../src/bilibili/bilibili-replies.ts';
-import type { OpenAIMessage } from '../src/prompt.ts';
+import type { OpenAIMessage } from '../src/language/prompt.ts';
 
 const character = { name: '林梦瑶', description: '大二女生，住 8 人间宿舍。', personality: '嘴上爱吐槽，心软。', banned: ['男朋友', '宝宝'] };
 const video: BiliVideo = {

@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { MODULES, moduleOf } from '../src/modules.ts';
-import { moduleDocs } from '../src/modules-doc.ts';
+import { MODULES, moduleOf } from '../src/platform/modules.ts';
+import { moduleDocs } from '../src/platform/modules-doc.ts';
 
 // ADR 0122：模块总表——只分类、只写文档，不动运行代码
 const src = resolve(import.meta.dirname, '../src');

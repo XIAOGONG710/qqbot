@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { checkHeartbeat, HEARTBEAT_STALE_MS, watchStep, type AlertSink } from '../heartbeat.ts';
+import { checkHeartbeat, HEARTBEAT_STALE_MS, watchStep, type AlertSink } from '../platform/heartbeat.ts';
 
 const args = process.argv.slice(2);
 const option = (name: string) => { const at = args.indexOf(name); return at >= 0 ? args[at + 1] : undefined; };

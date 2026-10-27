@@ -7,7 +7,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { BiliApiError, DM_MAX_CHARS, type BiliAccount } from './bilibili-account.ts';
-import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
+import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 
 /** 停多久：风险信号出现后公开发言停这么久（可以被单次事件覆盖） */
 export const RISK_HALT_DAYS = 7;

@@ -4,8 +4,8 @@
 // 账本只追加；这里没有删除或改写的入口。账本验不过时，修之前先留着原文件，再让我看。
 
 import { resolve } from 'node:path';
-import { Identity } from '../identity.ts';
-import { memoryLedger, recordNote, summarize } from '../memory-audit.ts';
+import { Identity } from '../memory/identity.ts';
+import { memoryLedger, recordNote, summarize } from '../memory/memory-audit.ts';
 
 const args = process.argv.slice(2);
 const flagValue = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };

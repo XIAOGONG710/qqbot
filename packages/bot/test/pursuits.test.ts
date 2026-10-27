@@ -5,15 +5,15 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { loadTierCard } from '../src/contact.ts';
+import { loadTierCard } from '../src/platform/contact.ts';
 import { appraisals, feelingsAt } from '../src/emotion/feelings.ts';
-import { describeIntent, dropsHerThing, holdPursuitIntent } from '../src/intent.ts';
+import { describeIntent, dropsHerThing, holdPursuitIntent } from '../src/language/intent.ts';
 import type { LifeEvent } from '../src/world/life-events.ts';
-import { PHOTOGRAPHY_PROJECT_ID } from '../src/projects.ts';
+import { PHOTOGRAPHY_PROJECT_ID } from '../src/life/projects.ts';
 import {
     BUILTIN_PURSUITS, CAMERA_STALL_DAYS, CAMERA_STEPS, CAMERA_THRESHOLDS, cameraProgress, describePursuits, mergePursuits, pursuitViews, pursuitsReader, quizRecord, validPursuits,
     type Pursuit, type PursuitFacts,
-} from '../src/pursuits.ts';
+} from '../src/life/pursuits.ts';
 import type { WorldNow } from '../src/world/world.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');

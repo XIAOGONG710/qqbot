@@ -7,15 +7,15 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
-import { logBody } from '.././sensitive.ts';
-import type { AppConfig } from '.././config.ts';
+import { logBody } from '../platform/sensitive.ts';
+import type { AppConfig } from '../platform/config.ts';
 import type { CrisisLevel } from '.././emotion/crisis.ts';
-import type { StoredMessage } from '.././history.ts';
-import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
-import { chatCompletion } from '.././llm.ts';
+import type { StoredMessage } from '../memory/history.ts';
+import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { chatCompletion } from '../language/llm.ts';
 import { isSticker, type ImageDescriber } from '.././vision/media.ts';
-import type { Segment } from '.././onebot.ts';
-import type { OpenAIMessage } from '.././prompt.ts';
+import type { Segment } from '../platform/onebot.ts';
+import type { OpenAIMessage } from '../language/prompt.ts';
 import { detectImageType, fetchRemoteImage, imageDataUrl, type DownloadedImage } from '.././vision/safe-image.ts';
 
 export const STICKER_MAX_BYTES = 5 * 1024 * 1024;

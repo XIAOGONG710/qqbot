@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { inspectReply } from '../src/exit-check.ts';
-import { splitReply } from '../src/reply.ts';
+import { inspectReply } from '../src/language/exit-check.ts';
+import { splitReply } from '../src/language/reply.ts';
 import {
     PHOTO_GAP_MS, PHOTO_HISTORY_PREFIX, PHOTO_MAX_PER_DAY, photoAllowance, photoIntent, photoShelf, photoWanted,
 } from '../src/vision/photos.ts';

@@ -5,10 +5,10 @@
 // 都是纯函数，按聊天记录和时间算；随机的部分按消息 id 定下来，同一串消息重算多少次都一样（调度在 responder.ts，等待期间来新消息会重算）。
 
 import { detectCrisis } from '.././emotion/crisis.ts';
-import type { StoredMessage } from '.././history.ts';
+import type { StoredMessage } from '../memory/history.ts';
 import { listenMs, parseVoiceLine } from '.././vision/media.ts';
-import { KNOWN_FACE } from '.././qq-faces.ts';
-import { stateAt, type Schedule } from '.././schedule.ts';
+import { KNOWN_FACE } from '../language/qq-faces.ts';
+import { stateAt, type Schedule } from '../life/schedule.ts';
 
 /** 她这么久之内发过消息算正聊着，不加冷场延迟 */
 export const HOT_MS = 10 * 60_000;

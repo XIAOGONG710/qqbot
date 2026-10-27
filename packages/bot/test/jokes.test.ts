@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import {
     JOKE_COOLDOWN_MS, JOKE_TURN_SHARE, JOKES_MIN_MESSAGES, JOKES_MIN_NEW, JOKES_REFRESH_MS, jokeLine, jokeStore, parseJokes, refreshJokes, type Joke,
-} from '../src/jokes.ts';
+} from '../src/language/jokes.ts';
 
 // ADR 0114：小梗回头提。梗必须是聊天里原样出现过至少两次的词 / 短句，编的丢掉
 const DAY = 86_400_000;

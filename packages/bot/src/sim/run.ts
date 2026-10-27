@@ -9,9 +9,9 @@
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cardKey, deliberateLlm, loadConfig } from '../config.ts';
-import { loadTierCard } from '../contact.ts';
-import { unlimitedModelGuard } from '../llm.ts';
+import { cardKey, deliberateLlm, loadConfig } from '../platform/config.ts';
+import { loadTierCard } from '../platform/contact.ts';
+import { unlimitedModelGuard } from '../language/llm.ts';
 import { HindsightClient } from '../memory/hindsight.ts';
 import { checkSummary, exitSummary, renderReport } from './report.ts';
 import { runScenario } from './runner.ts';

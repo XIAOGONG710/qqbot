@@ -8,8 +8,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { jsonpBody, sessionFromCookies, type QzoneSession } from '../packages/bot/src/qzone-remote.ts';
-import { extractPosts, STRANGER_FEED_ENDPOINTS } from '../packages/bot/src/qzone-strangers.ts';
+import { jsonpBody, sessionFromCookies, type QzoneSession } from '../packages/bot/src/social/qzone-remote.ts';
+import { extractPosts, STRANGER_FEED_ENDPOINTS } from '../packages/bot/src/social/qzone-strangers.ts';
 import { connect, serverFromConfig, type Connection } from './napcat-probe.ts';
 
 export interface ProbeArgs { config?: string; url?: string; show: boolean }

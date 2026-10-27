@@ -3,8 +3,8 @@
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
-import { bookProgressAt } from '../../packages/bot/src/her-days.ts';
-import { inspectBookProgress } from '../../packages/bot/src/speech-check.ts';
+import { bookProgressAt } from '../../packages/bot/src/life/her-days.ts';
+import { inspectBookProgress } from '../../packages/bot/src/language/speech-check.ts';
 import { loadCharacterCard } from '../../packages/bot/src/st/card.ts';
 
 const root = resolve(import.meta.dirname, '../..');

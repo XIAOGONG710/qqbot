@@ -6,12 +6,12 @@
 
 ## 文件（`packages/bot/src/` 下）
 
-- `proactive.ts`
-- `proactive-planner.ts`
-- `proactive-state.ts`
-- `inner.ts`
-- `shares.ts`
-- `follow-ups.ts`
+- `proactive/proactive.ts`
+- `proactive/proactive-planner.ts`
+- `proactive/proactive-state.ts`
+- `proactive/inner.ts`
+- `proactive/shares.ts`
+- `proactive/follow-ups.ts`
 
 ## 开关
 

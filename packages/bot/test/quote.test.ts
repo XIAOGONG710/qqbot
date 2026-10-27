@@ -3,11 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { startApp } from '../src/app.ts';
-import { toStored } from '../src/backfill.ts';
-import type { AppConfig } from '../src/config.ts';
-import { ChatHistory } from '../src/history.ts';
-import { segmentsToText, type MessageEvent, type QuoteLookup } from '../src/onebot.ts';
+import { startApp } from '../src/platform/app.ts';
+import { toStored } from '../src/memory/backfill.ts';
+import type { AppConfig } from '../src/platform/config.ts';
+import { ChatHistory } from '../src/memory/history.ts';
+import { segmentsToText, type MessageEvent, type QuoteLookup } from '../src/platform/onebot.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
 const reply = (id: string | number) => ({ type: 'reply', data: { id } });

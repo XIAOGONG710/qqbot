@@ -3,15 +3,15 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, describe, test } from 'node:test';
-import { startApp, type Transport } from '../src/app.ts';
-import type { AppConfig } from '../src/config.ts';
-import { faceContext, FACE_WINDOW, FACE_WINDOW_MAX, FACE_WINDOW_MAX_DISTANT, inspectReply, MAX_FACES, reviewReply, rewriteNote, tidyFaces, type FaceContext } from '../src/exit-check.ts';
-import { ChatHistory, type StoredMessage } from '../src/history.ts';
-import { segmentsToText, type MessageEvent } from '../src/onebot.ts';
-import { FACE_NAMES, faceText, facesIn, onlyFaces, SENDABLE_FACES, textToSegments } from '../src/qq-faces.ts';
+import { startApp, type Transport } from '../src/platform/app.ts';
+import type { AppConfig } from '../src/platform/config.ts';
+import { faceContext, FACE_WINDOW, FACE_WINDOW_MAX, FACE_WINDOW_MAX_DISTANT, inspectReply, MAX_FACES, reviewReply, rewriteNote, tidyFaces, type FaceContext } from '../src/language/exit-check.ts';
+import { ChatHistory, type StoredMessage } from '../src/memory/history.ts';
+import { segmentsToText, type MessageEvent } from '../src/platform/onebot.ts';
+import { FACE_NAMES, faceText, facesIn, onlyFaces, SENDABLE_FACES, textToSegments } from '../src/language/qq-faces.ts';
 import { isAck, isReaction, moodySkip } from '../src/social/reply-timing.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
-import { SENSITIVE_ON, useSensitiveSwitch } from '../src/sensitive.ts';
+import { SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
 
 // 这个文件里的测试靠日志里的原文来断言模块的行为；日志默认不写原文的那条由 log-bodies.test.ts 管
 useSensitiveSwitch(SENSITIVE_ON);

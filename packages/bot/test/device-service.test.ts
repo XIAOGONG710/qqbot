@@ -3,10 +3,10 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import type { BotConfig } from '../src/config.ts';
-import { loadTierCard } from '../src/contact.ts';
-import { createDeviceControl, type DeviceControl } from '../src/device-actions.ts';
-import { devicesSecretsPath, linksOf, loadDeviceSecrets, newDeviceSecrets, startDeviceService, validSecrets, type DeviceSecrets, type DeviceService } from '../src/device-service.ts';
+import type { BotConfig } from '../src/platform/config.ts';
+import { loadTierCard } from '../src/platform/contact.ts';
+import { createDeviceControl, type DeviceControl } from '../src/platform/device-actions.ts';
+import { devicesSecretsPath, linksOf, loadDeviceSecrets, newDeviceSecrets, startDeviceService, validSecrets, type DeviceSecrets, type DeviceService } from '../src/platform/device-service.ts';
 import { createBreaker } from '../src/bilibili/platform-breaker.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';

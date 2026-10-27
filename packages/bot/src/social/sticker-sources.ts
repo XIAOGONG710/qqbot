@@ -9,7 +9,7 @@
 
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
+import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 
 export const BQB_BASE = 'https://zhaoolee.com/ChineseBQB/';
 export const BQB_DEFAULT_ALLOW: readonly string[] = [

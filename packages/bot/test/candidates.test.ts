@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { describePick, pickBest, scoreCandidate, type PickRules } from '../src/candidates.ts';
+import { describePick, pickBest, scoreCandidate, type PickRules } from '../src/language/candidates.ts';
 
 const rules = (kind: PickRules['kind'], maxLines: number, heard = ''): PickRules => ({ kind, maxLines, heard, own: ['土豆', '相机', '药屋少女的呢喃', '追剧'], banned: [] });
 

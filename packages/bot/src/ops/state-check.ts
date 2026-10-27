@@ -8,12 +8,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { actionQueue } from '../world/action-queue.ts';
 import { createCrisisState } from '../emotion/crisis-state.ts';
-import { ChatHistory } from '../history.ts';
+import { ChatHistory } from '../memory/history.ts';
 import { readLifeEvents } from '../world/life-events.ts';
-import { loadNeedsAnchor } from '../needs.ts';
-import { TierRecord } from '../tier-record.ts';
-import { readProactiveState } from '../proactive-state.ts';
-import { readPromiseState } from '../promise-state.ts';
+import { loadNeedsAnchor } from '../life/needs.ts';
+import { TierRecord } from '../memory/tier-record.ts';
+import { readProactiveState } from '../proactive/proactive-state.ts';
+import { readPromiseState } from '../life/promise-state.ts';
 
 export interface StateCheck { name: string; file: string; ok: boolean; detail: string }
 

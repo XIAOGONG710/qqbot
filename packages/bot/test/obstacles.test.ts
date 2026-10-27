@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { bodyAt, type Body } from '../src/body.ts';
-import type { Contact } from '../src/config.ts';
-import type { StoredMessage } from '../src/history.ts';
+import { bodyAt, type Body } from '../src/life/body.ts';
+import type { Contact } from '../src/platform/config.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
 import { describeObstacles, knownBy, meetupDays, newObstacles, obstaclesBetween, type Obstacle, type ObstacleFacts } from '../src/world/obstacles.ts';
 import {
     blockReason, candidateLabel, candidatesOn, occasionNote, planFrom, type ProactiveInput, type ProactiveRecord, type RescheduleItem,
-} from '../src/proactive.ts';
-import { allowedReschedules, reschedulesFrom } from '../src/proactive-planner.ts';
-import { meetWindow, mentionsMeetup, type Appointment, type HerPromise } from '../src/promises.ts';
-import { classesOn, formatDate, wakeOn } from '../src/schedule.ts';
+} from '../src/proactive/proactive.ts';
+import { allowedReschedules, reschedulesFrom } from '../src/proactive/proactive-planner.ts';
+import { meetWindow, mentionsMeetup, type Appointment, type HerPromise } from '../src/life/promises.ts';
+import { classesOn, formatDate, wakeOn } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import type { WorldNow } from '../src/world/world.ts';
 

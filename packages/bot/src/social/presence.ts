@@ -6,12 +6,12 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
+import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { feedDigest, type QzoneFeed, type QzoneItem } from './qzone-feed.ts';
 import { sampleLines, strangerDigest, type StrangerFeed } from './qzone-strangers.ts';
 import { pick } from './reply-timing.ts';
-import { logBody } from '.././sensitive.ts';
-import { formatDate, herDay, stateAt, type Activity, type ExtraFreeActivity, type Schedule } from '.././schedule.ts';
+import { logBody } from '../platform/sensitive.ts';
+import { formatDate, herDay, stateAt, type Activity, type ExtraFreeActivity, type Schedule } from '../life/schedule.ts';
 
 /** 关 / 只写草稿不发（签名、说说）/ 开 */
 export const PRESENCE_MODES = ['off', 'dryRun', 'on'] as const;

@@ -7,7 +7,7 @@ import {
     createVideoBrowsing, fetchHotComments, fetchPopular, pickVideo, suitable, videoNote, videoPlan, VIDEO_CHANCE, VIDEO_MIN_GAP_MS, type BiliFetch, type BiliVideo,
 } from '../src/bilibili/bilibili.ts';
 import type { InitiateOutcome, InitiateRequest } from '../src/social/responder.ts';
-import { formatDate, herDay } from '../src/schedule.ts';
+import { formatDate, herDay } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const schedule = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;

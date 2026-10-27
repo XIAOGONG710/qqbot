@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { depositFor, nextPayday, sideJobOn, spendItems, type Money } from '../src/money.ts';
+import { depositFor, nextPayday, sideJobOn, spendItems, type Money } from '../src/life/money.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { describeWorld, recapDay, simulateWorld, worldAt } from '../src/world/world.ts';
 

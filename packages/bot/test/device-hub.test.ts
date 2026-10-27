@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
-import { createDeviceHub, type DeviceHub } from '../src/device-hub.ts';
+import { createDeviceHub, type DeviceHub } from '../src/platform/device-hub.ts';
 
 const TOKEN = 'test-token-0123456789abcdef0123456789abcdef';
 const PNG_B64 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]).toString('base64');

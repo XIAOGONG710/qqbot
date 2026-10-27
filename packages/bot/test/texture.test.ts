@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { facesIn, SENDABLE_FACES } from '../src/qq-faces.ts';
-import { applyTexture, faceFor, TEXTURE_FACE_WINDOW_MAX, TEXTURE_SHARES, TEXTURE_TILDE_WINDOW, type TextureContext } from '../src/texture.ts';
+import { facesIn, SENDABLE_FACES } from '../src/language/qq-faces.ts';
+import { applyTexture, faceFor, TEXTURE_FACE_WINDOW_MAX, TEXTURE_SHARES, TEXTURE_TILDE_WINDOW, type TextureContext } from '../src/language/texture.ts';
 
 // ADR 0131：说话的质感。纯函数，同一句话结果固定；危机和他难过的回合不加
 const ctx = (seed: string, patch: Partial<TextureContext> = {}): TextureContext => ({ seed, said: '', serious: false, recentFaces: 0, ...patch });

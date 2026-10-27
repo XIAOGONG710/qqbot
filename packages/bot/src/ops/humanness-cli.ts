@@ -7,7 +7,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { auc, bubbleFeatures, FEATURE_NAMES, featureEffects, humanProbability, trainModel, type Model } from '../humanness.ts';
+import { auc, bubbleFeatures, FEATURE_NAMES, featureEffects, humanProbability, trainModel, type Model } from '../language/humanness.ts';
 
 const args = process.argv.slice(2);
 const all = (name: string) => args.flatMap((arg, i) => (arg === name && args[i + 1] ? [args[i + 1]!] : []));

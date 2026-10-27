@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { createVideoBrowsing, type BiliFetch } from '../src/bilibili/bilibili.ts';
 import { createPresence, type PresenceTransport } from '../src/social/presence.ts';
-import { stateAt } from '../src/schedule.ts';
+import { stateAt } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 // 长跑（ADR 0083、0084）：把存在感的五项和刷 B 站全开，假时钟每分钟走一次、走 60 天，每隔几天「重启」一次（重新建，读同一份状态文件），

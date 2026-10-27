@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import type { StoredMessage } from '../src/history.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
 import {
     BACK_MIN, blockReason, candidatesOn, occasionNote, planFrom, stepsAway, unansweredCount, usedOn, withBack,
     type Candidate, type ProactiveInput, type ProactiveRecord,
-} from '../src/proactive.ts';
+} from '../src/proactive/proactive.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 // ADR 0112：说了“等下”之后自己回来（配置 comeBack）

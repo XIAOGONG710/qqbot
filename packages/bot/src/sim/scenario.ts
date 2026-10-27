@@ -2,13 +2,13 @@
 // 场景是 JSON：档位、称呼、起始时间，然后一串步骤，见 Step。示例在 packages/bot/sim/。
 
 import { readFileSync } from 'node:fs';
-import { CONTACT_TIERS, UNLISTED_TIER, type ContactTier, type Tier } from '../config.ts';
-import { FACT_CHECK_MODES, type FactCheckMode } from '../fact-check.ts';
+import { CONTACT_TIERS, UNLISTED_TIER, type ContactTier, type Tier } from '../platform/config.ts';
+import { FACT_CHECK_MODES, type FactCheckMode } from '../language/fact-check.ts';
 import { FESTIVAL_MODES, type FestivalMode } from '../world/festivals.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
-import { NEWS_KINDS, OCCASIONS, type NewsKind, type Occasion } from '../proactive.ts';
+import { NEWS_KINDS, OCCASIONS, type NewsKind, type Occasion } from '../proactive/proactive.ts';
 import type { LifeEventResult } from '../world/life-events.ts';
-import type { Interruption, TypedActionKind } from '../actions.ts';
+import type { Interruption, TypedActionKind } from '../life/actions.ts';
 import { imageLine, voiceLine } from '../vision/media.ts';
 
 /**

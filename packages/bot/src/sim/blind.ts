@@ -10,8 +10,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CONTACT_TIERS, loadConfig, type ContactTier } from '../config.ts';
-import { loadTierCard } from '../contact.ts';
+import { CONTACT_TIERS, loadConfig, type ContactTier } from '../platform/config.ts';
+import { loadTierCard } from '../platform/contact.ts';
 import { runScenario, type RunResult } from './runner.ts';
 import { parseScenario, type Scenario } from './scenario.ts';
 

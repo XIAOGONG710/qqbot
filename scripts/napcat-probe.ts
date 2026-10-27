@@ -22,7 +22,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { isFriendRecall, isPokeAtMe, segmentsToText, type OneBotEvent, type Segment } from '../packages/bot/src/onebot.ts';
+import { isFriendRecall, isPokeAtMe, segmentsToText, type OneBotEvent, type Segment } from '../packages/bot/src/platform/onebot.ts';
 
 export const STEPS = ['login', 'packet', 'online', 'like', 'poke', 'typing', 'events', 'selfrecall', 'signature', 'qzone'] as const;
 export type Step = typeof STEPS[number];

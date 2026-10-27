@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { auc, bubbleFeatures, FEATURE_NAMES, featureEffects, humanProbability, trainModel } from '../src/humanness.ts';
+import { auc, bubbleFeatures, FEATURE_NAMES, featureEffects, humanProbability, trainModel } from '../src/language/humanness.ts';
 
 const f = (text: string, name: (typeof FEATURE_NAMES)[number]) => bubbleFeatures(text)[FEATURE_NAMES.indexOf(name)]!;
 

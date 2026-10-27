@@ -3,14 +3,14 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import type { BotConfig } from '../src/config.ts';
-import { loadTierCard } from '../src/contact.ts';
+import type { BotConfig } from '../src/platform/config.ts';
+import { loadTierCard } from '../src/platform/contact.ts';
 import {
     availableBookNodes, bookMention, bookProgressAt, bookProgressOn, describeBooks, describeHerDaySummary, describeMood, herDayLogger,
     moodAt, moodDayConditions, parseBooks, parseMoods, readingActivities, readingActivity, readingSection, unreadBookTopics, type DailyMood,
-} from '../src/her-days.ts';
-import type { StoredMessage } from '../src/history.ts';
-import { describeState, formatDate, herDay, stateAt } from '../src/schedule.ts';
+} from '../src/life/her-days.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
+import { describeState, formatDate, herDay, stateAt } from '../src/life/schedule.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';

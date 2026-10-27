@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { buildJudgePrompt, checkReplies, recentReplies } from '../src/selfcheck.ts';
+import { buildJudgePrompt, checkReplies, recentReplies } from '../src/language/selfcheck.ts';
 
 describe('人格自检（ADR 0167）', () => {
     test('取最近十条她的回复：跳过非文字、跳过他的话', () => {

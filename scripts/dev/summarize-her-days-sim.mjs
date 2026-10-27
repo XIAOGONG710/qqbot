@@ -2,8 +2,8 @@
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
-import { bookMention, bookProgressAt, moodAt } from '../../packages/bot/src/her-days.ts';
-import { inspectBookProgress, inspectSpeech, speechContext } from '../../packages/bot/src/speech-check.ts';
+import { bookMention, bookProgressAt, moodAt } from '../../packages/bot/src/life/her-days.ts';
+import { inspectBookProgress, inspectSpeech, speechContext } from '../../packages/bot/src/language/speech-check.ts';
 import { loadCharacterCard } from '../../packages/bot/src/st/card.ts';
 
 const root = resolve(import.meta.dirname, '../..');

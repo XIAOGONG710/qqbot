@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { loadTierCard } from '../src/contact.ts';
-import { dishOn } from '../src/menu.ts';
+import { loadTierCard } from '../src/platform/contact.ts';
+import { dishOn } from '../src/life/menu.ts';
 import {
     blockReason, candidatesOn, DEFAULT_NEWS_KINDS, newsKindsOf, occasionNote, untoldNews, withFoodShares,
     type Candidate, type NewsItem, type ProactiveInput,
-} from '../src/proactive.ts';
+} from '../src/proactive/proactive.ts';
 import { FOOD_PHOTO_CHANCE, lastMealDish, worldAt, worldNews, type WorldNow } from '../src/world/world.ts';
 
 // ADR 0128：吃饭时拍了张照片发给他（news 的新一类 food_photo，配置 foodPhotos，要 menu 和 photos）

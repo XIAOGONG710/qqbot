@@ -4,7 +4,7 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { measureEdges, perThousandChars, share, type EdgeStats } from '../rough-edges.ts';
+import { measureEdges, perThousandChars, share, type EdgeStats } from '../language/rough-edges.ts';
 
 const args = process.argv.slice(2);
 const all = (name: string) => args.flatMap((arg, i) => (arg === name && args[i + 1] ? [args[i + 1]!] : []));

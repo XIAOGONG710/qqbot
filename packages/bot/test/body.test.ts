@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { bodyAt, describeBody, unwell, type Body } from '../src/body.ts';
+import { bodyAt, describeBody, unwell, type Body } from '../src/life/body.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));

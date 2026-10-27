@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { createPhonePublisher, phoneMessage } from '../src/device-phone.ts';
+import { createPhonePublisher, phoneMessage } from '../src/platform/device-phone.ts';
 
 describe('手机这一头：ntfy 推送（ADR 0148）', () => {
     test('只做通知、定时（延时发送）、找手机；别的动作做不了', () => {

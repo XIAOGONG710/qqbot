@@ -3,9 +3,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import type { Contact } from '../src/config.ts';
-import { DIARY_BACKFILL_DAYS, DIARY_CHAT_CHARS, diaryMaterial, diaryMessages, diaryWriter, type DiarySources } from '../src/diary.ts';
-import type { StoredMessage } from '../src/history.ts';
+import type { Contact } from '../src/platform/config.ts';
+import { DIARY_BACKFILL_DAYS, DIARY_CHAT_CHARS, diaryMaterial, diaryMessages, diaryWriter, type DiarySources } from '../src/life/diary.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
 import type { LongTermMemory } from '../src/memory/long-term.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { classesOn, describeState, inWeeks, parseSchedule, partnerBackLine, stateAt, wakeOn, type Schedule } from '../src/schedule.ts';
+import { classesOn, describeState, inWeeks, parseSchedule, partnerBackLine, stateAt, wakeOn, type Schedule } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 // 用转换器生成的真卡（ADR 0007 决策 1）：学期 2026-08-31（周一）起，国庆 10-01–10-07，10-10 调休没课

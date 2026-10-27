@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { describeShape } from '../src/shape.ts';
-import { applyTexture } from '../src/texture.ts';
-import { endsHanging, findUnfinished, finishReply, repairUnfinished } from '../src/unfinished.ts';
+import { describeShape } from '../src/language/shape.ts';
+import { applyTexture } from '../src/language/texture.ts';
+import { endsHanging, findUnfinished, finishReply, repairUnfinished } from '../src/language/unfinished.ts';
 
 const kinds = (reply: string) => findUnfinished(reply).map(item => `${item.kind}:${reply.split('\n').filter(Boolean)[item.index]}`);
 

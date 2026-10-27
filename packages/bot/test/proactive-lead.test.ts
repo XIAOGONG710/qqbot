@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import type { StoredMessage } from '../src/history.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
 import {
     candidatesOn, LEAD_NOTE, occasionNote, planFrom, withCatPhoto, withFoodShares, withInner, withReach, withSmallNews,
     type Candidate, type NewsItem, type ProactiveInput, type ProactiveRecord,
-} from '../src/proactive.ts';
+} from '../src/proactive/proactive.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 // ADR 0133：主动发的话要有由头、有感觉、有话头；他没回的时候不再一条条报自己的小事

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import type { StoredMessage } from '../src/history.ts';
-import { candidatesOn, HIS_HOURS_DAYS, HIS_HOURS_MIN, hisHourWeights, moveToHisHours, withAsk, withInvite, type ProactiveInput } from '../src/proactive.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
+import { candidatesOn, HIS_HOURS_DAYS, HIS_HOURS_MIN, hisHourWeights, moveToHisHours, withAsk, withInvite, type ProactiveInput } from '../src/proactive/proactive.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 // ADR 0117：按他平时在线的钟头排

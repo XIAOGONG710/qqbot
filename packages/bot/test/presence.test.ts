@@ -7,7 +7,7 @@ import {
     SLEEPING, STUDYING, cleanQzoneText, createPresence, LIKE_CHANCE, LISTENING, ONLINE, onlineStatusFor, pickQzonePhoto, POKE_OUT_CHANCE, POKE_OUT_LATEST, pokeOutPlan, QZONE_CHANCE, QZONE_MAX_CHARS,
     describeSelf, likePlan, qzonePlan, reactionEmoji, SIGNATURES, signatureDueAt, signatureFor, type PresenceOptions, type PresenceTransport,
 } from '../src/social/presence.ts';
-import { formatDate, herDay, stateAt } from '../src/schedule.ts';
+import { formatDate, herDay, stateAt } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const schedule = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;

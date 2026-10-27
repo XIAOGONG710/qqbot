@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { segmentsToText } from '../src/onebot.ts';
-import { fileText, shareText } from '../src/shares.ts';
+import { segmentsToText } from '../src/platform/onebot.ts';
+import { fileText, shareText } from '../src/proactive/shares.ts';
 
 const card = (value: object) => JSON.stringify(value);
 
