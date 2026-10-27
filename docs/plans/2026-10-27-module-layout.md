@@ -32,8 +32,8 @@ packages/bot/src/
 | emotion | ✅ `src/emotion/` | 10 | 24 | 2031/2034 |
 | world | ✅ `src/world/` | 9 | — | 2031/2034 |
 | vision | ✅ `src/vision/` | 5 | 66（合计） | 2031/2034 |
-| social（原 rhythm） | ⬜ | 16 | | |
-| bilibili | ⬜ | 20 | | |
+| social（原 rhythm） | ✅ `src/social/` | 16 | 83（合计） | 2030/2034 |
+| bilibili | ✅ `src/bilibili/` | 20 | 同上 | 2030/2034 |
 | language | ⬜ | 32 | | |
 | life | ⬜ | 20 | | |
 | memory | ⬜ | 15 | | |
