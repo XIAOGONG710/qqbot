@@ -17,8 +17,8 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { detectCrisis } from '../crisis.ts';
-import { ownSourceLabel, sourceLabel } from '../disclosure.ts';
+import { detectCrisis } from '../emotion/crisis.ts';
+import { ownSourceLabel, sourceLabel } from '../emotion/disclosure.ts';
 import type { StoredMessage } from '../history.ts';
 import { MIDNIGHT_RULE } from '../follow-ups.ts';
 import { readJsonOr, writeJsonAtomic } from '../json-file.ts';

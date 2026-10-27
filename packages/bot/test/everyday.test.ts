@@ -9,7 +9,7 @@ import { loadTierCard } from '../src/contact.ts';
 import {
     EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, everydayEventsFor, loadEverydayFrom, quizEvents, quizFeel, quizScore, quizzesOn, withEveryday,
 } from '../src/everyday.ts';
-import { appraisals, feelingsAt } from '../src/feelings.ts';
+import { appraisals, feelingsAt } from '../src/emotion/feelings.ts';
 import { quizRecord } from '../src/pursuits.ts';
 import { simulateWorld, worldAt, type WorldNow } from '../src/world.ts';
 

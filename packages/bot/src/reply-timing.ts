@@ -4,7 +4,7 @@
 // 他发了语音（ADR 0052）：看到之后一条条听完才回，听的时间加在看到的时刻上；在上课不听（看转出来的字，或者让他打字）。
 // 都是纯函数，按聊天记录和时间算；随机的部分按消息 id 定下来，同一串消息重算多少次都一样（调度在 responder.ts，等待期间来新消息会重算）。
 
-import { detectCrisis } from './crisis.ts';
+import { detectCrisis } from './emotion/crisis.ts';
 import type { StoredMessage } from './history.ts';
 import { listenMs, parseVoiceLine } from './media.ts';
 import { KNOWN_FACE } from './qq-faces.ts';

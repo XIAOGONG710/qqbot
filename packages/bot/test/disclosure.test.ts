@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
     disclosureMode, disclosureRules, isClose, ownSourceLabel, sourceLabel, startsConversation, todayStart,
-} from '../src/disclosure.ts';
+} from '../src/emotion/disclosure.ts';
 import type { Schedule } from '../src/schedule.ts';
 
 describe('披露分级（ADR 0020）', () => {

@@ -8,8 +8,8 @@ import { afterEach, describe, test } from 'node:test';
 import {
     appraisals, asksAfterHer, CLEAR, criedRecently, describeFeelings, FAINT, feelingsAt, feelsLow, STRONG, validMoment, validMoments, voicedKinds,
     type Appraisal, type Felt, type Moment,
-} from '../src/feelings.ts';
-import { momentsReader } from '../src/moments.ts';
+} from '../src/emotion/feelings.ts';
+import { momentsReader } from '../src/emotion/moments.ts';
 import type { WorldNow } from '../src/world.ts';
 
 const HOUR = 3_600_000;

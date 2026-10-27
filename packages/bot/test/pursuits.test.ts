@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { loadTierCard } from '../src/contact.ts';
-import { appraisals, feelingsAt } from '../src/feelings.ts';
+import { appraisals, feelingsAt } from '../src/emotion/feelings.ts';
 import { describeIntent, dropsHerThing, holdPursuitIntent } from '../src/intent.ts';
 import type { LifeEvent } from '../src/life-events.ts';
 import { PHOTOGRAPHY_PROJECT_ID } from '../src/projects.ts';

@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, s
 import { basename, join, resolve } from 'node:path';
 import { logBody } from './sensitive.ts';
 import type { AppConfig } from './config.ts';
-import type { CrisisLevel } from './crisis.ts';
+import type { CrisisLevel } from './emotion/crisis.ts';
 import type { StoredMessage } from './history.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { chatCompletion } from './llm.ts';

@@ -1,7 +1,7 @@
 // 对话里的短期情绪惯性（ADR 0028）：不落盘、不写进长期记忆，只从眼前的聊天重算。
 // 明确的关心、安慰、道歉和亲近，会让她接下来两三次回复自然软一点；过了就散。
 
-import type { StoredMessage } from './history.ts';
+import type { StoredMessage } from '.././history.ts';
 
 export type WarmAffectKind = 'repair' | 'comfort' | 'affection';
 

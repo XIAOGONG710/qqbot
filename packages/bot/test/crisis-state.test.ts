@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { CRISIS_PAUSE_MS, createCrisisState } from '../src/crisis-state.ts';
+import { CRISIS_PAUSE_MS, createCrisisState } from '../src/emotion/crisis-state.ts';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });

@@ -7,7 +7,7 @@ import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } fr
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { actionQueue } from '../action-queue.ts';
-import { createCrisisState } from '../crisis-state.ts';
+import { createCrisisState } from '../emotion/crisis-state.ts';
 import { ChatHistory } from '../history.ts';
 import { readLifeEvents } from '../life-events.ts';
 import { loadNeedsAnchor } from '../needs.ts';

@@ -13,7 +13,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Contact } from './config.ts';
 import { logBody } from './sensitive.ts';
-import { detectCrisis } from './crisis.ts';
+import { detectCrisis } from './emotion/crisis.ts';
 import { aboutHer, expired, extractionPrompt, FOLLOW_UP_DAYS, mentions, parseExtraction, partText, tripAlreadyOver, type Extracted, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from './history.ts';
 import { writeJsonAtomic } from './json-file.ts';

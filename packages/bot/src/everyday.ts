@@ -7,7 +7,7 @@
 // 档位只看得到自己该看的（宿舍、闺蜜这些只给亲近档位）。
 // 另有“小测”的一条线：高数 / 概率论 / 专业课每四周一次，前一次课老师说，当天写，两天后出分——分数是她难过或开心的真正来由（数学类偏低，自传：怕数学）。
 
-import type { FeelingKind } from './feelings.ts';
+import type { FeelingKind } from './emotion/feelings.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { classesOn, formatDate, type ClassToday, type Schedule } from './schedule.ts';
 import type { World, WorldWindow } from './world.ts';

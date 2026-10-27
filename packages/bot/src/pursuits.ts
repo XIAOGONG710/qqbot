@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Appraisal } from './feelings.ts';
+import type { Appraisal } from './emotion/feelings.ts';
 import type { LifeEvent } from './life-events.ts';
 import { PHOTOGRAPHY_PROJECT_ID } from './projects.ts';
 import { quizScore, quizzesOn } from './everyday.ts';

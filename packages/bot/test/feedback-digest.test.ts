@@ -3,8 +3,8 @@ import { appendFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
-import type { FeedbackRow } from '../src/feedback.ts';
-import { feedbackDigest, readFeedback } from '../src/feedback-digest.ts';
+import type { FeedbackRow } from '../src/emotion/feedback.ts';
+import { feedbackDigest, readFeedback } from '../src/emotion/feedback-digest.ts';
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true })));

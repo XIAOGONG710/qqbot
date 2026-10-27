@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { ENGAGED_INTENT } from '../src/expression.ts';
-import { describeGrievance, GRIEVANCE_GAP_MS, grievanceNow, ignoredNow, IGNORED_GAP_MS, IGNORED_MAX_MS, isRepairText, MAKEUP_MARK, SULK_MARK } from '../src/grievance.ts';
+import { describeGrievance, GRIEVANCE_GAP_MS, grievanceNow, ignoredNow, IGNORED_GAP_MS, IGNORED_MAX_MS, isRepairText, MAKEUP_MARK, SULK_MARK } from '../src/emotion/grievance.ts';
 import { describeIntent } from '../src/intent.ts';
 
 const NOW = Date.parse('2026-10-16T20:00:00+08:00');

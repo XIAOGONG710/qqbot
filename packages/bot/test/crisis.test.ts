@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { crisisInHistory, detectCrisis } from '../src/crisis.ts';
+import { crisisInHistory, detectCrisis } from '../src/emotion/crisis.ts';
 
 // 全部是虚构的短句。命中表：明确想伤害自己、想结束生命；排除表：夸张、想念、骂别人、说别人和剧情里的事、物价。
 const HITS = [

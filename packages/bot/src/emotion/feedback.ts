@@ -5,8 +5,8 @@
 
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { StoredMessage } from './history.ts';
-import type { Segment } from './onebot.ts';
+import type { StoredMessage } from '.././history.ts';
+import type { Segment } from '.././onebot.ts';
 
 export type FeedbackLabel = 'fake' | 'real';
 

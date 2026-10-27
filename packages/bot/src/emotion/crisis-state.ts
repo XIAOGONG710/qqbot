@@ -2,7 +2,7 @@
 
 import { join } from 'node:path';
 import type { CrisisLevel } from './crisis.ts';
-import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
 
 export const CRISIS_PAUSE_MS = 48 * 3_600_000;
 

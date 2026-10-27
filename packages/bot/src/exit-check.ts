@@ -12,7 +12,7 @@
 // （单独的「[图片]」「[语音]」先被小黄脸那步当白名单外的方括号去掉；带秒数、带字的那种由这一条拦。）
 
 import type { Tier } from './config.ts';
-import type { CrisisLevel } from './crisis.ts';
+import type { CrisisLevel } from './emotion/crisis.ts';
 import type { StoredMessage } from './history.ts';
 import { facesIn, normalizeFaces, onlyFaces, removeFaces } from './qq-faces.ts';
 import { isAck, isReaction } from './reply-timing.ts';

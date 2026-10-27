@@ -2,10 +2,10 @@
 // 只按眼前已有线索给一个方向，不抽签、不额外调模型，也不把它写成能照抄的台词。
 
 import { CURIOUS_INTENT, curiousTurn } from './curious.ts';
-import { describeGrievance, type Grievance } from './grievance.ts';
+import { describeGrievance, type Grievance } from './emotion/grievance.ts';
 import { JEALOUS_INTENT, jealousTurn, SOFTEN_INTENT } from './jealousy.ts';
 import type { StoredMessage } from './history.ts';
-import type { CrisisLevel } from './crisis.ts';
+import type { CrisisLevel } from './emotion/crisis.ts';
 import { isAck, isReaction } from './reply-timing.ts';
 import type { Schedule, State } from './schedule.ts';
 

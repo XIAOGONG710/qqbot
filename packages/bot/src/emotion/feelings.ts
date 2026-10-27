@@ -7,11 +7,11 @@
 // 纯函数；提示词里怎么说、哪些轮次用，在 contact.ts。
 
 import { warmSignal } from './affect.ts';
-import type { StoredMessage } from './history.ts';
+import type { StoredMessage } from '.././history.ts';
 import { ignoredNow, IGNORED_GAP_MS, IGNORED_MAX_MS } from './grievance.ts';
-import { endingText, goodNewsText, needsCareText } from './intent.ts';
-import { worldNews, type WorldNow } from './world.ts';
-import { NEWS_KINDS } from './proactive.ts';
+import { endingText, goodNewsText, needsCareText } from '.././intent.ts';
+import { worldNews, type WorldNow } from '.././world.ts';
+import { NEWS_KINDS } from '.././proactive.ts';
 
 type Said = Pick<StoredMessage, 'role' | 'content'> & { time?: string | undefined };
 
