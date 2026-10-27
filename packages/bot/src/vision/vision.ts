@@ -2,7 +2,7 @@
 // 图片只放在 user 消息里；公网 URL 必须先经 safe-image 下载并转成 data URL，模型永远不回源。
 
 import { fetch as undiciFetch } from 'undici';
-import { AsyncGate } from '.././async-gate.ts';
+import { AsyncGate } from '../social/async-gate.ts';
 import { DEFAULTS, type AppConfig } from '.././config.ts';
 import type { ImageDescriber } from './media.ts';
 import { modelDispatcher, modelGuard, ModelUnreachable } from '.././llm.ts';

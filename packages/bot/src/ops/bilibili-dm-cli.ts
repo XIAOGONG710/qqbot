@@ -3,7 +3,7 @@
 // --json 输出 {"ok":true,"data":{messages:[...]}}；失败 {"ok":false,"error":{code,message,hint}}。
 
 import { resolve } from 'node:path';
-import { credentialPath, loadCredential, openAccount, realRequest } from '../bilibili-account.ts';
+import { credentialPath, loadCredential, openAccount, realRequest } from '../bilibili/bilibili-account.ts';
 
 const args = process.argv.slice(2);
 const one = (name: string): string | undefined => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };

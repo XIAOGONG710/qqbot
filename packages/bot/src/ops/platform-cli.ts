@@ -5,7 +5,7 @@
 
 import { existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { breakerPath, createBreaker } from '../platform-breaker.ts';
+import { breakerPath, createBreaker } from '../bilibili/platform-breaker.ts';
 
 const args = process.argv.slice(2);
 const flagValue = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };

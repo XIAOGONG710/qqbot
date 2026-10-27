@@ -2,7 +2,7 @@ import { lookup as dnsLookup } from 'node:dns';
 import { lookup as dnsLookupPromise } from 'node:dns/promises';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
 import { Agent, fetch as undiciFetch } from 'undici';
-import { AsyncGate } from '.././async-gate.ts';
+import { AsyncGate } from '../social/async-gate.ts';
 
 export type SupportedImageType = 'image/gif' | 'image/jpeg' | 'image/png' | 'image/webp';
 export interface DownloadedImage { bytes: Uint8Array; type: SupportedImageType }

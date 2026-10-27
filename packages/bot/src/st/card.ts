@@ -4,7 +4,7 @@
 
 import { readFileSync } from 'node:fs';
 import { parseDates, parseProactive, type ImportantDay, type ProactiveSettings } from '../proactive.ts';
-import { PACE_RANGE } from '../reply-timing.ts';
+import { PACE_RANGE } from '../social/reply-timing.ts';
 import { parseSchedule, type Schedule } from '../schedule.ts';
 import { parseBooks, parseMoods, type DailyMood, type ReadingBook } from '../her-days.ts';
 import { parseWorld, type World } from '../world/world.ts';

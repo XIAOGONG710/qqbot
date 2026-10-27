@@ -9,7 +9,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { breakerPath, createBreaker } from '../platform-breaker.ts';
+import { breakerPath, createBreaker } from '../bilibili/platform-breaker.ts';
 import { devicesSecretsPath, guessHubHost, loadDeviceSecrets, newDeviceSecrets, writeDeviceSecrets } from '../device-service.ts';
 
 const args = process.argv.slice(2);

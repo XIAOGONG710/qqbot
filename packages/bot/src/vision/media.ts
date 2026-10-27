@@ -9,7 +9,7 @@
 // - 回复节奏：听完才回（reply-timing.ts 按 listenMs 把听的时间加在看到之后）。
 
 import { readFile } from 'node:fs/promises';
-import { AsyncGate } from '.././async-gate.ts';
+import { AsyncGate } from '../social/async-gate.ts';
 import type { Segment } from '.././onebot.ts';
 
 /** NapCat 那边能做的（入口传进来：main.ts 用自写的 OneBot 客户端，Koishi 插件用 adapter-onebot） */

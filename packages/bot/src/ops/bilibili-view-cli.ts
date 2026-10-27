@@ -3,8 +3,8 @@
 // 默认输出人看的摘要；--json 输出 {"ok":true,"data":{...}}（照 bili-cli 的接口形态，给 Agent 用）。
 // 读不到（风控 / 接口改了 / 视频不存在）时：--json 下 {"ok":false,"error":{"code":…,"message":…,"hint":…}}。
 
-import { danmakuPeaks, fetchDanmaku, fetchStoryboard, fetchView, viewNote } from '../bilibili-view.ts';
-import { fetchSummary } from '../bilibili-summary.ts';
+import { danmakuPeaks, fetchDanmaku, fetchStoryboard, fetchView, viewNote } from '../bilibili/bilibili-view.ts';
+import { fetchSummary } from '../bilibili/bilibili-summary.ts';
 
 const args = process.argv.slice(2);
 const bvid = args.find(arg => !arg.startsWith('--'));
