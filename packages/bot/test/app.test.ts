@@ -1580,10 +1580,10 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
         await drive(clock, () => sent.length >= 2);
         assert.equal(sent.length, 2, sent.join('|') + logs.join('|'));
         assert.equal(sent[0], '10001:这个也太真实了');
-        assert.equal(sent[1], '10001:https://www.bilibili.com/video/BV1Jonu6mEwN');
+        assert.equal(sent[1], '10001:一条搞笑视频\nhttps://www.bilibili.com/video/BV1Jonu6mEwN');
         assert.ok(urls.some(u => u.includes('/popular')) && urls.some(u => u.includes('/reply/')));
         const stored = new ChatHistory(cfg.dataDir).load(10001);
-        assert.ok(stored.some(m => m.role === 'assistant' && m.content === 'https://www.bilibili.com/video/BV1Jonu6mEwN（《一条搞笑视频》）'), JSON.stringify(stored));
+        assert.ok(stored.some(m => m.role === 'assistant' && m.content === '[分享视频]《一条搞笑视频》https://www.bilibili.com/video/BV1Jonu6mEwN'), JSON.stringify(stored));
 
         const offUrls: string[] = [];
         const off = setup(config({ contacts: bf, schedule: true, herDays: true }), { 10001: [] }, { clock: new VirtualClock(evening), bilibiliFetch: fetchStub(offUrls) });
@@ -1630,7 +1630,7 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
             });
             await app.connected(SELF);
             await drive(clock, () => sent.length >= 2);
-            assert.equal(sent[1], '10001:https://www.bilibili.com/video/BV1search001', sent.join('|') + logs.join('|'));
+            assert.equal(sent[1], '10001:三花猫日常\nhttps://www.bilibili.com/video/BV1search001', sent.join('|') + logs.join('|'));
             assert.ok(logs.some(l => l.includes('已登录「繁星小窝」')));
             assert.ok(logs.some(l => l.includes('读了字幕')));
             assert.ok(prompts.some(p => p.includes('今天讲讲楼下那只三花猫')), '字幕摘录进了提示词');
@@ -1646,7 +1646,7 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
             const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, bilibiliFetch: fetchStub([]), bilibiliRequest: accountRequest(calls), generate: () => '这个也太真实了' });
             await app.connected(SELF);
             await drive(clock, () => sent.length >= 2);
-            assert.equal(sent[1], '10001:https://www.bilibili.com/video/BV1Jonu6mEwN');
+            assert.equal(sent[1], '10001:一条搞笑视频\nhttps://www.bilibili.com/video/BV1Jonu6mEwN');
             assert.equal(logs.filter(l => l.includes('没有凭证文件')).length, 1);
             assert.deepEqual(calls, [], '没有凭证就不请求 B 站账号接口');
         });
