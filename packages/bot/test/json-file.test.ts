@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
-import { readJsonOr, writeJsonAtomic } from '../src/json-file.ts';
+import { readJsonOr, writeJsonAtomic } from '../src/memory/json-file.ts';
 
 describe('状态文件', () => {
     test('写完不留临时文件，读回来一样；没有文件用初始值', () => {

@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { weeklyReport, writeWeeklyReport } from '../weekly-report.ts';
+import { weeklyReport, writeWeeklyReport } from '../platform/weekly-report.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);

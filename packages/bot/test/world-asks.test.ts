@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { busySpans } from '../src/life-selector.ts';
-import { dayPlan, describePlans } from '../src/day-plan.ts';
-import { herDay } from '../src/schedule.ts';
+import { busySpans } from '../src/world/life-selector.ts';
+import { dayPlan, describePlans } from '../src/life/day-plan.ts';
+import { herDay } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { dateSpan, describeDate, describeWorld, occupationAt, planDates, recapDay, recentWith, worldAt, type FriendDate, type WorldNow } from '../src/world.ts';
+import { dateSpan, describeDate, describeWorld, occupationAt, planDates, recapDay, recentWith, worldAt, type FriendDate, type WorldNow } from '../src/world/world.ts';
 
 const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
 const boyfriend = card('boyfriend');

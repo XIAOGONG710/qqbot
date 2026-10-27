@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { friendsFeedUrl, htmlToText, parseFriendsFeed, parseJsLiteral, postTextFromHtml, readFriendsFeed } from '../src/qzone-feeds3.ts';
+import { friendsFeedUrl, htmlToText, parseFriendsFeed, parseJsLiteral, postTextFromHtml, readFriendsFeed } from '../src/social/qzone-feeds3.ts';
 
 const SELF = 2561299676;
 const BOYFRIEND = 2260168937;

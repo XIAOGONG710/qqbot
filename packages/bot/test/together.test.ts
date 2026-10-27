@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { blockReason, candidatesOn, type Candidate, type ProactiveInput } from '../src/proactive.ts';
-import { activityOf, describeTogether, TOGETHER_MAX_MS, togetherNow } from '../src/together.ts';
+import { blockReason, candidatesOn, type Candidate, type ProactiveInput } from '../src/proactive/proactive.ts';
+import { activityOf, describeTogether, TOGETHER_MAX_MS, togetherNow } from '../src/language/together.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 // ADR 0111：答应邀约之后的两三个小时，她正和他一起玩

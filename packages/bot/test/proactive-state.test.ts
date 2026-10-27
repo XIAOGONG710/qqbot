@@ -3,10 +3,10 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, test } from 'node:test';
-import { fileOps } from '../src/json-file.ts';
-import { createProactivePlanner, type Planner, type PlannerDeps } from '../src/proactive-planner.ts';
-import { emptyProactiveState, readProactiveState, validProactiveState } from '../src/proactive-state.ts';
-import { TRANSIENT_GRACE_MS } from '../src/transient-io.ts';
+import { fileOps } from '../src/memory/json-file.ts';
+import { createProactivePlanner, type Planner, type PlannerDeps } from '../src/proactive/proactive-planner.ts';
+import { emptyProactiveState, readProactiveState, validProactiveState } from '../src/proactive/proactive-state.ts';
+import { TRANSIENT_GRACE_MS } from '../src/memory/transient-io.ts';
 import { checkStates } from '../src/ops/state-check.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 

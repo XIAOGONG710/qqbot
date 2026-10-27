@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { parseVideoStats, perHundred, statsLine } from '../src/bilibili-stats.ts';
+import { parseVideoStats, perHundred, statsLine } from '../src/bilibili/bilibili-stats.ts';
 
 describe('单稿公开数据（ADR 0168 第 3 期只读层）', () => {
     test('认两种形状：data.stat 和扁平 stat', () => {

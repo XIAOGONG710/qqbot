@@ -3,8 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
-import type { LifeEvent } from '../src/life-events.ts';
-import { loadNeedsAnchor, needsAt, NEEDS_RULES_VERSION, type NeedsSnapshot } from '../src/needs.ts';
+import type { LifeEvent } from '../src/world/life-events.ts';
+import { loadNeedsAnchor, needsAt, NEEDS_RULES_VERSION, type NeedsSnapshot } from '../src/life/needs.ts';
 
 const anchor: NeedsSnapshot = { at: '2026-10-01T00:00:00.000Z', energy: 68, hunger: 35, stress: 24 };
 

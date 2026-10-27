@@ -1,7 +1,7 @@
 // 把聊天记录切成片段（ADR 0004 决策 3，调研方案 2.1、5.2）：相邻两条消息隔了 EPISODE_GAP_MS 以上，就是新的一段。
 // 片段是写入 Hindsight 的单位：一个片段一个 document_id，片段变长或改了就整段替换（调研方案 9.7）。
 
-import type { StoredMessage } from '../history.ts';
+import type { StoredMessage } from './history.ts';
 import type { MacroNames } from '../st/macros.ts';
 
 /** 安静这么久算一段对话结束（调研方案 5.2 的起点） */

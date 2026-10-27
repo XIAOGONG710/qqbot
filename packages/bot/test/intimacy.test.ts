@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { armIntimate, INTIMATE_REPLIES, intimateRemaining, takeIntimateLine } from '../src/intimacy.ts';
+import { armIntimate, INTIMATE_REPLIES, intimateRemaining, takeIntimateLine } from '../src/language/intimacy.ts';
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-intimacy-')); dirs.push(d); return d; };

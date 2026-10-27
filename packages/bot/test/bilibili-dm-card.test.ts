@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { parseDmMessages } from '../src/bilibili-account.ts';
-import { videoNewsCard, videoShareCard, type BiliVideo } from '../src/bilibili.ts';
+import { parseDmMessages } from '../src/bilibili/bilibili-account.ts';
+import { videoNewsCard, videoShareCard, type BiliVideo } from '../src/bilibili/bilibili.ts';
 
 const video: BiliVideo = { bvid: 'BV1xx411c7mD', aid: 1, title: '楼下三花的一天', desc: '', owner: '小雨', category: '喵星人', views: 10, likes: 1, duration: 60, link: 'https://www.bilibili.com/video/BV1xx411c7mD', cover: 'https://i0.hdslb.com/a.jpg' };
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CORRECT_CHANCE, describeLength, ENGAGED_INTENT, LEGACY_SHORT_CHANCE, LONG_CHANCE, LONG_MIN_CHARS, lengthHint, maybeTypo, RECALL_SHARE, SHORT_CHANCE, TYPO_CHANCE, TYPOS, WORRIED_TEXT } from '../src/expression.ts';
+import { CORRECT_CHANCE, describeLength, ENGAGED_INTENT, LEGACY_SHORT_CHANCE, LONG_CHANCE, LONG_MIN_CHARS, lengthHint, maybeTypo, RECALL_SHARE, SHORT_CHANCE, TYPO_CHANCE, TYPOS, WORRIED_TEXT } from '../src/language/expression.ts';
 
 const said = (i: number) => [{ role: 'user' as const, content: `第 ${i} 句，今天上班被老板说了一顿`, time: new Date(Date.UTC(2026, 9, 7, 12, 0, i)).toISOString() }];
 

@@ -6,35 +6,26 @@
 
 ## 文件（`packages/bot/src/` 下）
 
-- `schedule.ts`
-- `world.ts`
-- `life-selector.ts`
-- `life-events.ts`
-- `action-queue.ts`
-- `actions.ts`
-- `projects.ts`
-- `pursuits.ts`
-- `money.ts`
-- `body.ts`
-- `needs.ts`
-- `her-days.ts`
-- `day-plan.ts`
-- `everyday.ts`
-- `menu.ts`
-- `weather.ts`
-- `festivals.ts`
-- `npc.ts`
-- `npc-asks.ts`
-- `obstacles.ts`
-- `diary.ts`
-- `biography.ts`
-- `bedtime.ts`
-- `people.ts`
-- `promises.ts`
-- `promise-state.ts`
-- `open-loops.ts`
-- `tastes.ts`
-- `acquaintances.ts`
+- `life/schedule.ts`
+- `life/actions.ts`
+- `life/projects.ts`
+- `life/pursuits.ts`
+- `life/money.ts`
+- `life/body.ts`
+- `life/needs.ts`
+- `life/her-days.ts`
+- `life/day-plan.ts`
+- `life/everyday.ts`
+- `life/menu.ts`
+- `life/diary.ts`
+- `life/biography.ts`
+- `life/bedtime.ts`
+- `life/people.ts`
+- `life/promises.ts`
+- `life/promise-state.ts`
+- `life/open-loops.ts`
+- `life/tastes.ts`
+- `life/acquaintances.ts`
 
 ## 开关
 

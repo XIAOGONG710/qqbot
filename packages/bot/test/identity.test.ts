@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { describeForPrompt, hashIdentityFiles, Identity, type CommitInfo, type GitProbe } from '../src/identity.ts';
+import { describeForPrompt, hashIdentityFiles, Identity, type CommitInfo, type GitProbe } from '../src/memory/identity.ts';
 
 describe('设定账本：醒来核对（ADR 0157）', () => {
     const dirs: string[] = [];

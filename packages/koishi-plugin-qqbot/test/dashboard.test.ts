@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { DEFAULTS } from '../../bot/src/config.ts';
-import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/features.ts';
+import { DEFAULTS } from '../../bot/src/platform/config.ts';
+import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
 import { extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, GROUP_ORDER } from '../client/dashboard.js';
 

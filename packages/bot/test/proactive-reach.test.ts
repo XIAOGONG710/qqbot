@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import type { StoredMessage } from '../src/history.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
 import {
     blockReason, candidatesOn, DEFAULT_REACH, occasionNote, planFrom, REACH_DECLINE, REACH_MAX_PER_DAY, unansweredGate, withReach,
     type Candidate, type ProactiveInput, type ProactiveRecord,
-} from '../src/proactive.ts';
+} from '../src/proactive/proactive.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 // ADR 0100：他没回也继续找他、可以催他一下（配置 proactiveReach）。用转换器生成的真卡（男朋友档）；国庆假期 10-05 没有课，起床 09:30

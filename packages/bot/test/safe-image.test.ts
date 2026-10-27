@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { fetchRemoteImage, imageDataUrl, validateImageDataUrl, type HostResolver, type ImageFetch } from '../src/safe-image.ts';
+import { fetchRemoteImage, imageDataUrl, validateImageDataUrl, type HostResolver, type ImageFetch } from '../src/vision/safe-image.ts';
 
 const png = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10, 1]);
 const publicDns: HostResolver = async () => [{ address: '93.184.216.34', family: 4 }];

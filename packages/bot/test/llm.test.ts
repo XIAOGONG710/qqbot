@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { describe, test } from 'node:test';
-import { chatCompletion, EXTRACT_MAX_TOKENS, forExtraction, ModelUnreachable, RETRY_DELAYS_MS, type LlmOptions } from '../src/llm.ts';
+import { chatCompletion, EXTRACT_MAX_TOKENS, forExtraction, ModelUnreachable, RETRY_DELAYS_MS, type LlmOptions } from '../src/language/llm.ts';
 
 const options: LlmOptions = {
     baseUrl: 'https://llm.example/',

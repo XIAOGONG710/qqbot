@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { loadTierCard } from '../src/contact.ts';
-import { EVERYDAY_EVENT_DEFS } from '../src/everyday.ts';
-import type { StoredMessage } from '../src/history.ts';
+import { loadTierCard } from '../src/platform/contact.ts';
+import { EVERYDAY_EVENT_DEFS } from '../src/life/everyday.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
 import {
     blockReason, candidatesOn, DEFAULT_NEWS_KINDS, newsKindsOf, occasionNote, untoldNews, withSmallNews,
     type Candidate, type NewsItem, type ProactiveInput,
-} from '../src/proactive.ts';
-import { SMALL_TELL_CHANCE, SMALL_TELL_GROUPS, worldAt, worldNews, type WorldNow } from '../src/world.ts';
+} from '../src/proactive/proactive.ts';
+import { SMALL_TELL_CHANCE, SMALL_TELL_GROUPS, worldAt, worldNews, type WorldNow } from '../src/world/world.ts';
 
 // ADR 0127：她会主动讲今天碰到的一件小事（news 的新一类 small_thing，配置 smallNews，要 everydayLife）
 const pattern = resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-{tier}.json');

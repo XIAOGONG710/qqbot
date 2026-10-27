@@ -8,7 +8,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildJudgePrompt, checkReplies, recentReplies } from '../selfcheck.ts';
+import { buildJudgePrompt, checkReplies, recentReplies } from '../language/selfcheck.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);

@@ -3,7 +3,7 @@ import { appendFileSync, mkdtempSync, renameSync, rmSync, writeFileSync } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
-import { ChatHistory } from '../src/history.ts';
+import { ChatHistory } from '../src/memory/history.ts';
 
 describe('聊天记录增量缓存与 schema', () => {
     test('append 同步更新缓存和 message-id 索引，外部改写后自动失效重读', () => {

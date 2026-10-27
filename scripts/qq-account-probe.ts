@@ -12,8 +12,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createAccount, DEFAULT_ACCOUNT_POLICY } from '../packages/bot/src/account.ts';
-import { normalizeQzoneFeed, QZONE_READ_ACTIONS, readQzoneFeed } from '../packages/bot/src/qzone-feed.ts';
+import { createAccount, DEFAULT_ACCOUNT_POLICY } from '../packages/bot/src/social/account.ts';
+import { normalizeQzoneFeed, QZONE_READ_ACTIONS, readQzoneFeed } from '../packages/bot/src/social/qzone-feed.ts';
 import { connect, serverFromConfig, type Connection } from './napcat-probe.ts';
 
 interface Args { config?: string; url?: string; count: number; out?: string }

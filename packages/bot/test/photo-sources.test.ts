@@ -3,8 +3,8 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { COMMONS_USER_AGENT, commonsSearch, judgePhoto, parseCommons, PHOTO_VISION_PROMPT, seriesKey, type CommonsFetch } from '../src/photo-sources.ts';
-import { PHOTO_DISCOVERY_PER_RUN, PHOTO_TARGET, photoShelf, type PhotoCandidate, type PhotoJudgement, type PhotoKind, type PhotoSource } from '../src/photos.ts';
+import { COMMONS_USER_AGENT, commonsSearch, judgePhoto, parseCommons, PHOTO_VISION_PROMPT, seriesKey, type CommonsFetch } from '../src/vision/photo-sources.ts';
+import { PHOTO_DISCOVERY_PER_RUN, PHOTO_TARGET, photoShelf, type PhotoCandidate, type PhotoJudgement, type PhotoKind, type PhotoSource } from '../src/vision/photos.ts';
 
 // ADR 0109（用户 10-22：照片从网上找高清的、记得去水印）：来源只取 CC0 / 公有领域，看图把关，水印 / 人物没有明确说“没有”就不收
 

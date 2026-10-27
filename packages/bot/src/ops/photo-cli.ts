@@ -9,7 +9,7 @@
 
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PHOTO_KINDS, PHOTO_KIND_NAMES, photoShelf, type PhotoKind } from '../photos.ts';
+import { PHOTO_KINDS, PHOTO_KIND_NAMES, photoShelf, type PhotoKind } from '../vision/photos.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);

@@ -3,15 +3,15 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
-import type { Contact } from '../src/config.ts';
-import type { StoredMessage } from '../src/history.ts';
-import { ModelUnreachable } from '../src/llm.ts';
-import type { OpenAIMessage } from '../src/prompt.ts';
+import type { Contact } from '../src/platform/config.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
+import { ModelUnreachable } from '../src/language/llm.ts';
+import type { OpenAIMessage } from '../src/language/prompt.ts';
 import {
     describeAppointment, describePromises, duePromises, forgotten, meetWindow, parsePromises, promiseKeeper, promisePrompt, SHOWN_REPLIES, type HerPromise,
-} from '../src/promises.ts';
-import type { Schedule } from '../src/schedule.ts';
-import { SENSITIVE_OFF, SENSITIVE_ON, useSensitiveSwitch } from '../src/sensitive.ts';
+} from '../src/life/promises.ts';
+import type { Schedule } from '../src/life/schedule.ts';
+import { SENSITIVE_OFF, SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
 
 // 这个文件里的测试靠日志里的原文来断言模块的行为；日志默认不写原文的那条由 log-bodies.test.ts 管
 useSensitiveSwitch(SENSITIVE_ON);

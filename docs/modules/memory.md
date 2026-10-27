@@ -7,20 +7,20 @@
 ## 文件（`packages/bot/src/` 下）
 
 - `memory/`
-- `history.ts`
-- `archive.ts`
-- `backfill.ts`
-- `state-schema.ts`
-- `tier-record.ts`
-- `json-file.ts`
-- `transient-io.ts`
-- `privacy-audit.ts`
-- `privacy-forget.ts`
-- `ledger.ts`
-- `identity.ts`
-- `memory-audit.ts`
-- `timeline.ts`
-- `dormancy.ts`
+- `memory/history.ts`
+- `memory/archive.ts`
+- `memory/backfill.ts`
+- `memory/state-schema.ts`
+- `memory/tier-record.ts`
+- `memory/json-file.ts`
+- `memory/transient-io.ts`
+- `memory/privacy-audit.ts`
+- `memory/privacy-forget.ts`
+- `memory/ledger.ts`
+- `memory/identity.ts`
+- `memory/memory-audit.ts`
+- `memory/timeline.ts`
+- `memory/dormancy.ts`
 
 ## 开关
 

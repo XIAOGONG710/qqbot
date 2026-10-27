@@ -3,13 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import type { BotConfig } from '../src/config.ts';
-import { loadTierCard } from '../src/contact.ts';
-import type { StoredMessage } from '../src/history.ts';
-import { bookProgressOn } from '../src/her-days.ts';
+import type { BotConfig } from '../src/platform/config.ts';
+import { loadTierCard } from '../src/platform/contact.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
+import { bookProgressOn } from '../src/life/her-days.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
-import { inspectBookProgress, inspectSpeech, opener, parseChineseNumber, speechContext, stripOpeners, type SpeechContext, type SpeechKind } from '../src/speech-check.ts';
+import { inspectBookProgress, inspectSpeech, opener, parseChineseNumber, speechContext, stripOpeners, type SpeechContext, type SpeechKind } from '../src/language/speech-check.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
 const none: SpeechContext = { recent: [], his: [] };

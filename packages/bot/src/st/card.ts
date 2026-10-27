@@ -3,12 +3,12 @@
 // 与 public/script.js getCharacterCardFieldsLazy。
 
 import { readFileSync } from 'node:fs';
-import { parseDates, parseProactive, type ImportantDay, type ProactiveSettings } from '../proactive.ts';
-import { PACE_RANGE } from '../reply-timing.ts';
-import { parseSchedule, type Schedule } from '../schedule.ts';
-import { parseBooks, parseMoods, type DailyMood, type ReadingBook } from '../her-days.ts';
-import { parseWorld, type World } from '../world.ts';
-import { parseBiography, type Biography } from '../biography.ts';
+import { parseDates, parseProactive, type ImportantDay, type ProactiveSettings } from '../proactive/proactive.ts';
+import { PACE_RANGE } from '../social/reply-timing.ts';
+import { parseSchedule, type Schedule } from '../life/schedule.ts';
+import { parseBooks, parseMoods, type DailyMood, type ReadingBook } from '../life/her-days.ts';
+import { parseWorld, type World } from '../world/world.ts';
+import { parseBiography, type Biography } from '../life/biography.ts';
 import { parseRegexScripts, type RegexScript } from './regex.ts';
 
 export interface Character {

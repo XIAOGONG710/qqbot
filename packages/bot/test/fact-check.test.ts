@@ -3,13 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import type { BotConfig } from '../src/config.ts';
-import { loadTierCard } from '../src/contact.ts';
+import type { BotConfig } from '../src/platform/config.ts';
+import { loadTierCard } from '../src/platform/contact.ts';
 import {
     auditableText, auditMessages, checkFacts, dropClaimLines, FACT_CHECK_MODES, FACT_MAX_CLAIMS, factRewriteNote, parseClaims,
     type FactCheckOptions, type FactRecord,
-} from '../src/fact-check.ts';
-import type { OpenAIMessage } from '../src/prompt.ts';
+} from '../src/language/fact-check.ts';
+import type { OpenAIMessage } from '../src/language/prompt.ts';
 import { renderReport } from '../src/sim/report.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';

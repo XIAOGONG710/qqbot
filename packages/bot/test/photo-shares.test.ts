@@ -3,16 +3,16 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import type { StoredMessage } from '../src/history.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
 import {
     blockReason, candidatesOn, DEFAULT_NEWS_KINDS, newsKindsOf, occasionNote, untoldNews, withCatPhoto,
     type Candidate, type NewsItem, type ProactiveInput,
-} from '../src/proactive.ts';
-import { createProactivePlanner, type Planner } from '../src/proactive-planner.ts';
-import type { InitiateOutcome, InitiateRequest } from '../src/responder.ts';
+} from '../src/proactive/proactive.ts';
+import { createProactivePlanner, type Planner } from '../src/proactive/proactive-planner.ts';
+import type { InitiateOutcome, InitiateRequest } from '../src/social/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { CAT_PHOTO_CHANCE, worldNews, type WorldNow } from '../src/world.ts';
+import { CAT_PHOTO_CHANCE, worldNews, type WorldNow } from '../src/world/world.ts';
 
 // ADR 0110：喂完土豆见到它的日子里，有的天她拍了张照片发给他（news 的新一类 cat_photo，配置 photoShares）
 const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));

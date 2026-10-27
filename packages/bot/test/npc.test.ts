@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { npcAllows, npcMentioned, npcSpans, npcStates, type NpcLife } from '../src/npc.ts';
+import { npcAllows, npcMentioned, npcSpans, npcStates, type NpcLife } from '../src/world/npc.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { describeWorld, recapDay, recentWith, worldAt } from '../src/world.ts';
+import { describeWorld, recapDay, recentWith, worldAt } from '../src/world/world.ts';
 
 const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
 const boyfriend = card('boyfriend');

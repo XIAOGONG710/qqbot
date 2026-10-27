@@ -6,8 +6,8 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { createVideoBrowsing, type BiliFetch } from '../bilibili.ts';
-import { createPresence } from '../presence.ts';
+import { createVideoBrowsing, type BiliFetch } from '../bilibili/bilibili.ts';
+import { createPresence } from '../social/presence.ts';
 import { loadCharacterCard } from '../st/card.ts';
 
 const [fromText = '2026-11-02', daysText = '7'] = process.argv.slice(2);

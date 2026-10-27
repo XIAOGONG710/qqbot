@@ -6,16 +6,16 @@
 
 ## 文件（`packages/bot/src/` 下）
 
-- `affect.ts`
-- `feelings.ts`
-- `moments.ts`
-- `grievance.ts`
-- `crisis.ts`
-- `crisis-state.ts`
-- `disclosure.ts`
-- `feedback.ts`
-- `feedback-digest.ts`
-- `feedback-digest-cli.ts`
+- `emotion/affect.ts`
+- `emotion/feelings.ts`
+- `emotion/moments.ts`
+- `emotion/grievance.ts`
+- `emotion/crisis.ts`
+- `emotion/crisis-state.ts`
+- `emotion/disclosure.ts`
+- `emotion/feedback.ts`
+- `emotion/feedback-digest.ts`
+- `emotion/feedback-digest-cli.ts`
 
 ## 开关
 

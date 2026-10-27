@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import { createLog } from '../src/log.ts';
+import { createLog } from '../src/platform/log.ts';
 
 describe('日志文件', () => {
     let dir = '';

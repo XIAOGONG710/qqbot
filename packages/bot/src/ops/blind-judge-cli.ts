@@ -9,9 +9,9 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from '../config.ts';
-import { chatCompletion, unlimitedModelGuard } from '../llm.ts';
-import { unit } from '../expression.ts';
+import { loadConfig } from '../platform/config.ts';
+import { chatCompletion, unlimitedModelGuard } from '../language/llm.ts';
+import { unit } from '../language/expression.ts';
 
 unlimitedModelGuard();
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');

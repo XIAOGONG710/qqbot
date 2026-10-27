@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { mixinKey, MIXIN_KEY_TABLE, signParams } from '../src/bilibili-wbi.ts';
-import { parseFeedItems, planSession, sessionSize, stayVerdict, type FeedItem } from '../src/bilibili-feed.ts';
-import { BILI_LIMITS, BiliLimiter, auditLine } from '../src/bilibili-limit.ts';
+import { mixinKey, MIXIN_KEY_TABLE, signParams } from '../src/bilibili/bilibili-wbi.ts';
+import { parseFeedItems, planSession, sessionSize, stayVerdict, type FeedItem } from '../src/bilibili/bilibili-feed.ts';
+import { BILI_LIMITS, BiliLimiter, auditLine } from '../src/bilibili/bilibili-limit.ts';
 
 const item = (patch: Partial<FeedItem> = {}): FeedItem => ({ bvid: 'BV1xx411c7mD', title: '楼下三花的一天', owner: '小雨', category: '喵星人', duration: 120, views: 100, ...patch });
 

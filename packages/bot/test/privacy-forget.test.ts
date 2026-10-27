@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { botRunning, exportContact, forgetContact, type ForgetApi } from '../src/privacy-forget.ts';
+import { botRunning, exportContact, forgetContact, type ForgetApi } from '../src/memory/privacy-forget.ts';
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true })));

@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
     disclosureMode, disclosureRules, isClose, ownSourceLabel, sourceLabel, startsConversation, todayStart,
-} from '../src/disclosure.ts';
-import type { Schedule } from '../src/schedule.ts';
+} from '../src/emotion/disclosure.ts';
+import type { Schedule } from '../src/life/schedule.ts';
 
 describe('披露分级（ADR 0020）', () => {
     test('亲密联系人可听大面事实；低档位对普通来源只能含糊、对亲密来源完全封口', () => {

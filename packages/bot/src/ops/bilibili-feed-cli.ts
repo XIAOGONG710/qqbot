@@ -3,7 +3,7 @@
 // --json 输出 {"ok":true,"data":{size,visited,stayed,skipped}}；失败 {"ok":false,"error":{code,message,hint}}。
 // 不登录、不点赞、不评论；被风控 / 签名变了就返回错误码，别刷第二次。
 
-import { fetchRecommend, planSession, sessionSize, stayVerdict } from '../bilibili-feed.ts';
+import { fetchRecommend, planSession, sessionSize, stayVerdict } from '../bilibili/bilibili-feed.ts';
 
 const args = process.argv.slice(2);
 const json = args.includes('--json');

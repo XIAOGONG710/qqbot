@@ -3,8 +3,8 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
-import { promiseKeeper, parsePromises, type PromiseKeeperOptions } from '../src/promises.ts';
-import { emptyPromiseState, PromiseStateUnavailable, readPromiseState } from '../src/promise-state.ts';
+import { promiseKeeper, parsePromises, type PromiseKeeperOptions } from '../src/life/promises.ts';
+import { emptyPromiseState, PromiseStateUnavailable, readPromiseState } from '../src/life/promise-state.ts';
 import { checkStates } from '../src/ops/state-check.ts';
 
 const dirs: string[] = [];

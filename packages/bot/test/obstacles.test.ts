@@ -1,18 +1,18 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { bodyAt, type Body } from '../src/body.ts';
-import type { Contact } from '../src/config.ts';
-import type { StoredMessage } from '../src/history.ts';
-import { describeObstacles, knownBy, meetupDays, newObstacles, obstaclesBetween, type Obstacle, type ObstacleFacts } from '../src/obstacles.ts';
+import { bodyAt, type Body } from '../src/life/body.ts';
+import type { Contact } from '../src/platform/config.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
+import { describeObstacles, knownBy, meetupDays, newObstacles, obstaclesBetween, type Obstacle, type ObstacleFacts } from '../src/world/obstacles.ts';
 import {
     blockReason, candidateLabel, candidatesOn, occasionNote, planFrom, type ProactiveInput, type ProactiveRecord, type RescheduleItem,
-} from '../src/proactive.ts';
-import { allowedReschedules, reschedulesFrom } from '../src/proactive-planner.ts';
-import { meetWindow, mentionsMeetup, type Appointment, type HerPromise } from '../src/promises.ts';
-import { classesOn, formatDate, wakeOn } from '../src/schedule.ts';
+} from '../src/proactive/proactive.ts';
+import { allowedReschedules, reschedulesFrom } from '../src/proactive/proactive-planner.ts';
+import { meetWindow, mentionsMeetup, type Appointment, type HerPromise } from '../src/life/promises.ts';
+import { classesOn, formatDate, wakeOn } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import type { WorldNow } from '../src/world.ts';
+import type { WorldNow } from '../src/world/world.ts';
 
 // ADR 0066：推掉和改约要有来源（身体、日程、作业、已有的约）
 const cardPath = (tier: string) => resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`);

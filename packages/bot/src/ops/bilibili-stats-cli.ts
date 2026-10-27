@@ -3,7 +3,7 @@
 // --json 输出 {"ok":true,"data":[{bvid,stats,rates}]}；失败 {"ok":false,"error":{code,message,hint}}。
 // 完播率 / 平均观看时长在创作中心后台，要登录，这里不做。
 
-import { fetchVideoStats, perHundred, statsLine, type VideoStats } from '../bilibili-stats.ts';
+import { fetchVideoStats, perHundred, statsLine, type VideoStats } from '../bilibili/bilibili-stats.ts';
 
 const args = process.argv.slice(2);
 const json = args.includes('--json');

@@ -3,14 +3,14 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { BiliApiError, type BiliAccount, type SubtitleResult } from '../src/bilibili-account.ts';
+import { BiliApiError, type BiliAccount, type SubtitleResult } from '../src/bilibili/bilibili-account.ts';
 import {
     COMMENT_CHECK_AFTER_MS, COMMENT_PAUSE_MS, commentPlan, createVideoBrowsing, NUDGE_GIVE_UP_MS, pickVideo, rankVideos, SEARCH_KEYWORDS, TOPIC_MIN_VIEWS, topicSuitable, videoPlan,
     type BiliFetch, type BiliVideo, type CommentInput, type CommentRecord, type DmOptions,
-} from '../src/bilibili.ts';
-import type { RiskEvent, RiskGate } from '../src/bilibili-risk.ts';
-import type { InitiateOutcome, InitiateRequest } from '../src/responder.ts';
-import { formatDate, herDay } from '../src/schedule.ts';
+} from '../src/bilibili/bilibili.ts';
+import type { RiskEvent, RiskGate } from '../src/bilibili/bilibili-risk.ts';
+import type { InitiateOutcome, InitiateRequest } from '../src/social/responder.ts';
+import { formatDate, herDay } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const schedule = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;

@@ -3,16 +3,16 @@ import { mkdtempSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { cardKey, loadConfig, parseAppConfig } from '../src/config.ts';
-import { MEDIA_TIMEOUTS } from '../src/media.ts';
-import { currentTierHistory, TierRecord } from '../src/tier-record.ts';
-import { ChatHistory, type StoredMessage } from '../src/history.ts';
-import { isPrivateFriendMessage, segmentsToText, type MessageEvent } from '../src/onebot.ts';
-import { unlistedName } from '../src/app.ts';
-import type { PromptResult } from '../src/prompt.ts';
-import { cleanUpReply, splitReply } from '../src/reply.ts';
-import { createResponder, DEFAULT_SETTLE, HESITATE_CHANCE, HESITATE_PAUSE_MS, PART_GAP_MS, RETRY_AFTER_MS, TYPING_REFRESH_MS, type InitiateRequest, type ReplyTiming, type ResponderDeps } from '../src/responder.ts';
-import { pick } from '../src/reply-timing.ts';
+import { cardKey, loadConfig, parseAppConfig } from '../src/platform/config.ts';
+import { MEDIA_TIMEOUTS } from '../src/vision/media.ts';
+import { currentTierHistory, TierRecord } from '../src/memory/tier-record.ts';
+import { ChatHistory, type StoredMessage } from '../src/memory/history.ts';
+import { isPrivateFriendMessage, segmentsToText, type MessageEvent } from '../src/platform/onebot.ts';
+import { unlistedName } from '../src/platform/app.ts';
+import type { PromptResult } from '../src/language/prompt.ts';
+import { cleanUpReply, splitReply } from '../src/language/reply.ts';
+import { createResponder, DEFAULT_SETTLE, HESITATE_CHANCE, HESITATE_PAUSE_MS, PART_GAP_MS, RETRY_AFTER_MS, TYPING_REFRESH_MS, type InitiateRequest, type ReplyTiming, type ResponderDeps } from '../src/social/responder.ts';
+import { pick } from '../src/social/reply-timing.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
 

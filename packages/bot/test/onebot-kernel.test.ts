@@ -1,7 +1,7 @@
 // NapCat 有几个动作把 QQ 内核的失败放在返回值的 result 里，外层照样 ok / retcode 0（10-20 实测：私聊表情回应 result 65011）。
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { assertKernelOk } from '../src/onebot.ts';
+import { assertKernelOk } from '../src/platform/onebot.ts';
 
 describe('assertKernelOk：内核结果不是 0 就算失败', () => {
     test('没有 result 的返回值、null、undefined、非对象：照旧当成功（很多动作本来就回 null）', () => {

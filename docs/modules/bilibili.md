@@ -6,26 +6,26 @@
 
 ## 文件（`packages/bot/src/` 下）
 
-- `bilibili.ts`
-- `bilibili-view.ts`
-- `bilibili-summary.ts`
-- `bilibili-stats.ts`
-- `bilibili-inbox.ts`
-- `bilibili-asr.ts`
-- `bilibili-schema.ts`
-- `bilibili-wbi.ts`
-- `bilibili-feed.ts`
-- `feed-browsing.ts`
-- `bilibili-limit.ts`
-- `bilibili-account-source.ts`
-- `bilibili-account.ts`
-- `platform-breaker.ts`
-- `bilibili-comment.ts`
-- `bilibili-login-cli.ts`
-- `bilibili-login.ts`
-- `bilibili-probe.ts`
-- `bilibili-replies.ts`
-- `bilibili-risk.ts`
+- `bilibili/bilibili.ts`
+- `bilibili/bilibili-view.ts`
+- `bilibili/bilibili-summary.ts`
+- `bilibili/bilibili-stats.ts`
+- `bilibili/bilibili-inbox.ts`
+- `bilibili/bilibili-asr.ts`
+- `bilibili/bilibili-schema.ts`
+- `bilibili/bilibili-wbi.ts`
+- `bilibili/bilibili-feed.ts`
+- `bilibili/feed-browsing.ts`
+- `bilibili/bilibili-limit.ts`
+- `bilibili/bilibili-account-source.ts`
+- `bilibili/bilibili-account.ts`
+- `bilibili/platform-breaker.ts`
+- `bilibili/bilibili-comment.ts`
+- `bilibili/bilibili-login-cli.ts`
+- `bilibili/bilibili-login.ts`
+- `bilibili/bilibili-probe.ts`
+- `bilibili/bilibili-replies.ts`
+- `bilibili/bilibili-risk.ts`
 
 ## 开关
 

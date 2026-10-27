@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { AFFECT_REPLIES, describeWarmAffect, warmAffect } from '../src/affect.ts';
-import type { StoredMessage } from '../src/history.ts';
-import { describeUnsettled, type OpenLoop } from '../src/open-loops.ts';
+import { AFFECT_REPLIES, describeWarmAffect, warmAffect } from '../src/emotion/affect.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
+import { describeUnsettled, type OpenLoop } from '../src/life/open-loops.ts';
 
 const message = (role: StoredMessage['role'], content: string): StoredMessage => ({ role, content, time: '2026-10-07T12:00:00.000Z' });
 

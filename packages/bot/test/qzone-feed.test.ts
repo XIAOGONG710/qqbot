@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { feedDigest, normalizeQzoneFeed, readQzoneFeed } from '../src/qzone-feed.ts';
+import { feedDigest, normalizeQzoneFeed, readQzoneFeed } from '../src/social/qzone-feed.ts';
 
 describe('读 QQ 空间动态（ADR 0142）', () => {
     test('认得出常见的数据形状（msgList / list / 裸数组）', () => {

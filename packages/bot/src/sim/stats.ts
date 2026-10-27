@@ -10,7 +10,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
-import { inspectSpeech } from '../speech-check.ts';
+import { inspectSpeech } from '../language/speech-check.ts';
 import type { RunResult } from './runner.ts';
 
 export interface SceneStats {

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { acceptBqbItem, BQB_BASE, BQB_DEFAULT_ALLOW, bqbDiscover, bqbPool } from '../src/sticker-sources.ts';
+import { acceptBqbItem, BQB_BASE, BQB_DEFAULT_ALLOW, bqbDiscover, bqbPool } from '../src/social/sticker-sources.ts';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });

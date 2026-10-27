@@ -5,14 +5,14 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import type { Contact } from '../src/config.ts';
-import type { StoredMessage } from '../src/history.ts';
-import { fileOps, readJsonOr, writeJsonAtomic } from '../src/json-file.ts';
-import { createProactivePlanner, type Planner, type PlannerDeps } from '../src/proactive-planner.ts';
-import { promiseKeeper } from '../src/promises.ts';
-import type { Schedule } from '../src/schedule.ts';
+import type { Contact } from '../src/platform/config.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
+import { fileOps, readJsonOr, writeJsonAtomic } from '../src/memory/json-file.ts';
+import { createProactivePlanner, type Planner, type PlannerDeps } from '../src/proactive/proactive-planner.ts';
+import { promiseKeeper } from '../src/life/promises.ts';
+import type { Schedule } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { createTransientGate, describeError, isTransientIoError, TransientStateError, TRANSIENT_GRACE_MS } from '../src/transient-io.ts';
+import { createTransientGate, describeError, isTransientIoError, TransientStateError, TRANSIENT_GRACE_MS } from '../src/memory/transient-io.ts';
 
 const dirs: string[] = [];
 const restores: Array<() => void> = [];

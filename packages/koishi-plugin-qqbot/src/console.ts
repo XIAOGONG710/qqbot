@@ -7,7 +7,7 @@
 import type { Context } from 'koishi';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
-import type { AppStatus } from '../../bot/src/app.ts';
+import type { AppStatus } from '../../bot/src/platform/app.ts';
 import { buildCharacter, checkPrivacy, writeOutputs, type Problem } from '../../character-tools/src/build.ts';
 import { checkSource, readSource, writeSource, type CharacterSource } from '../../character-tools/src/source.ts';
 

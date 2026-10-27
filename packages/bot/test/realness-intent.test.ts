@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { recentCrutches, repeatedOpener } from '../src/expression.ts';
-import { ABSTRACT_INTENT, CHALLENGE_INTENT, describeIntent, STALL_INTENT } from '../src/intent.ts';
-import { planShape } from '../src/shape.ts';
+import { recentCrutches, repeatedOpener } from '../src/language/expression.ts';
+import { ABSTRACT_INTENT, CHALLENGE_INTENT, describeIntent, STALL_INTENT } from '../src/language/intent.ts';
+import { planShape } from '../src/language/shape.ts';
 
 // 10-22 深夜测试对话（用户：「她现在还是会有 AI 的味道」）量出来的三处：被指出不像真人时自证、被问很抽象的问题时答成金句、被追问答案时原地打转；
 // 再加“最近反复说的字词”那一行。台词都是虚构的，只照真实对话的形状写

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { alreadyTold, TOLD_WINDOW_MS } from '../src/expression.ts';
+import { alreadyTold, TOLD_WINDOW_MS } from '../src/language/expression.ts';
 
 // ADR 0098：她主动跟他说过的、关于她自己的事，一天半里不再自己提（10-20 到 10-21 三个晚上每晚都提「肚子坠着」，他说她会老是重复一件事）。台词是虚构的
 const at = (hoursAgo: number, now: number) => new Date(now - hoursAgo * 3_600_000).toISOString();

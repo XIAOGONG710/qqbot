@@ -3,9 +3,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import type { BiliAccount } from '../src/bilibili-account.ts';
-import type { AuditEntry } from '../src/device-actions.ts';
-import { clip, Timeline, timelineAccount, timelineFromDevice, whenText } from '../src/timeline.ts';
+import type { BiliAccount } from '../src/bilibili/bilibili-account.ts';
+import type { AuditEntry } from '../src/platform/device-actions.ts';
+import { clip, Timeline, timelineAccount, timelineFromDevice, whenText } from '../src/memory/timeline.ts';
 
 // ADR 0159：QQ 以外的地方她做过什么，QQ 聊天里也记得
 describe('跨渠道时间线', () => {

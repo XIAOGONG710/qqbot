@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { fallbackLookup, type DnsFallbackOptions } from '../src/dns-fallback.ts';
+import { fallbackLookup, type DnsFallbackOptions } from '../src/platform/dns-fallback.ts';
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true })));

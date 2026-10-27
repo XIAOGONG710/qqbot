@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CLOSE_DAYS, CLOSE_WINDOW_DAYS, describeCloseness, TALK_DAY_MIN_MESSAGES, talkDays } from '../src/relationship.ts';
+import { CLOSE_DAYS, CLOSE_WINDOW_DAYS, describeCloseness, TALK_DAY_MIN_MESSAGES, talkDays } from '../src/language/relationship.ts';
 
 // ADR 0113：关系阶段——最近 30 天里“真聊过”的天数
 const DAY = 86_400_000;

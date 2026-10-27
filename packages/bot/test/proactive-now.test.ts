@@ -3,13 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import type { StoredMessage } from '../src/history.ts';
-import { CRISIS_PAUSE_REASON, PENDING_REASON } from '../src/proactive.ts';
-import { createProactivePlanner, type Planner } from '../src/proactive-planner.ts';
-import type { InitiateRequest } from '../src/responder.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
+import { CRISIS_PAUSE_REASON, PENDING_REASON } from '../src/proactive/proactive.ts';
+import { createProactivePlanner, type Planner } from '../src/proactive/proactive-planner.ts';
+import type { InitiateRequest } from '../src/social/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { SENSITIVE_ON, useSensitiveSwitch } from '../src/sensitive.ts';
+import { SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
 
 useSensitiveSwitch(SENSITIVE_ON);
 

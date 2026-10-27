@@ -3,7 +3,7 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { canonical, GENESIS_PREV, Ledger } from '../src/ledger.ts';
+import { canonical, GENESIS_PREV, Ledger } from '../src/memory/ledger.ts';
 
 describe('哈希链账本（ADR 0157）', () => {
     const dirs: string[] = [];

@@ -2,7 +2,7 @@
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { moduleDocs } from '../modules-doc.ts';
+import { moduleDocs } from '../platform/modules-doc.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const adrFiles = readdirSync(join(repoRoot, 'docs/adr')).filter(name => name.endsWith('.md'));

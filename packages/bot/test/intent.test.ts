@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { ABOUT_DAY_INTENT, CONTROL_INTENT, DECLINED_INVITE_INTENT, CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, PRESSED_INTENT, saysOwnThing } from '../src/intent.ts';
-import type { Schedule, State } from '../src/schedule.ts';
+import { ABOUT_DAY_INTENT, CONTROL_INTENT, DECLINED_INVITE_INTENT, CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, PRESSED_INTENT, saysOwnThing } from '../src/language/intent.ts';
+import type { Schedule, State } from '../src/life/schedule.ts';
 
 const now = new Date('2026-10-06T20:00:00+08:00');
 const user = (content: string) => ({ role: 'user' as const, content });
@@ -376,7 +376,7 @@ describe('他问她今天过得怎么样（ADR 0106，dayThings 开着才有）'
         assert.notEqual(describeIntent({ history: [assistant('嗯'), user('今天干嘛了')], now, dayThings: true, initiating: true }), ABOUT_DAY_INTENT);
     });
     test('这一轮不压成几个字：长度档位至少是 medium', async () => {
-        const { planShape } = await import('../src/shape.ts');
+        const { planShape } = await import('../src/language/shape.ts');
         for (let i = 0; i < 20; i++) {
             const plan = planShape({ history: [{ role: 'assistant', content: '嗯' }, { role: 'user', content: `今天干嘛了${i}` }], intent: ABOUT_DAY_INTENT, initiating: false })!;
             assert.ok(['medium', 'long', 'wide'].includes(plan.kind), plan.kind);

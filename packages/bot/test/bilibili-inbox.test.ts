@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { fetchLikeFeed, fetchMentionFeed, inboxLine, mergeInbox, parseLikes, parseMentions } from '../src/bilibili-inbox.ts';
+import { fetchLikeFeed, fetchMentionFeed, inboxLine, mergeInbox, parseLikes, parseMentions } from '../src/bilibili/bilibili-inbox.ts';
 
 describe('B 站收件箱（ADR 0168 第 3 期只读层）', () => {
     test('@我的：去 HTML、压空白、拼视频链接、秒转毫秒', () => {

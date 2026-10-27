@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from '../src/backfill.ts';
-import type { StoredMessage } from '../src/history.ts';
+import { CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from '../src/memory/backfill.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
 
 const SELF = 1024;
 const PEER = 2048;

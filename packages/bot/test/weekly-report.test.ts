@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { weeklyReport, weeklyReportDue, weeklyReportName, writeWeeklyReport } from '../src/weekly-report.ts';
+import { weeklyReport, weeklyReportDue, weeklyReportName, writeWeeklyReport } from '../src/platform/weekly-report.ts';
 
 // ADR 0118：周报——只有数字，没有原话
 const dirs: string[] = [];

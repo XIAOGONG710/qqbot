@@ -10,7 +10,7 @@
 // 场景里按步骤开（check 的 noRepeat）：他把同一个问题问两遍时她照答一遍是对的，这种步骤别开。
 // 误伤评估见 ADR 0036「调整（2026-10-09，DSH 复核 P1-5、P2-6、P2-8）」：旧批次 747 次运行、4780 次回复每次都查，命中 56 次，逐条看过。
 
-import type { StoredMessage } from '../history.ts';
+import type { StoredMessage } from '../memory/history.ts';
 
 /** 归一后至少几个字才比 */
 export const MIN_SENTENCE = 4;

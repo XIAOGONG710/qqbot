@@ -5,7 +5,7 @@
 //     不以名字开头的行并入当前这条；内容去掉第一处“名字:”再去首尾空白；role 都是 system，name 标出是谁说的
 // 只实现单角色私聊（没有群聊的名字前缀）。传进来的文本要先做过宏替换（ST 是 baseChatReplace）。
 
-import type { OpenAIMessage } from '../prompt.ts';
+import type { OpenAIMessage } from '../language/prompt.ts';
 import type { MacroNames } from './macros.ts';
 
 export function parseMesExamples(examples: string): string[] {

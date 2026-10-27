@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { describeDays, describeTime, duration, lunarName, when } from '../src/time-context.ts';
+import { describeDays, describeTime, duration, lunarName, when } from '../src/language/time-context.ts';
 import { humanize, timeMacros, type TimedMessage } from '../src/st/time-macros.ts';
 
 const at = (text: string) => new Date(text); // 不带时区，按本地时间

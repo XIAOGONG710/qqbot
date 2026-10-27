@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { bodyAt, type Body } from '../src/body.ts';
-import type { StoredMessage } from '../src/history.ts';
+import { bodyAt, type Body } from '../src/life/body.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
 import {
     blockReason, candidateLabel, candidatesOn, newsKindsOf, NEWS_KINDS, occasionNote, parseProactive, planFrom, unansweredCount, untoldNews, usedOn,
     type NewsItem, type ProactiveInput, type ProactiveRecord,
-} from '../src/proactive.ts';
-import { newsFrom } from '../src/proactive-planner.ts';
-import { wakeOn } from '../src/schedule.ts';
+} from '../src/proactive/proactive.ts';
+import { newsFrom } from '../src/proactive/proactive-planner.ts';
+import { wakeOn } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { unwellNews, worldNews, type FriendDate, type WorldNow } from '../src/world.ts';
+import { unwellNews, worldNews, type FriendDate, type WorldNow } from '../src/world/world.ts';
 
 // ADR 0064：她账里的事成为开口的理由（事件类：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天）
 const cardPath = (tier: string) => resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`);

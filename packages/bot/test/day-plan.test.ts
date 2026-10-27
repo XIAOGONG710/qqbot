@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { bodyAt, type BodyNow } from '../src/body.ts';
-import { dayPlan, describePlans, describeSlot, planNow, type PlanFacts, type Plans } from '../src/day-plan.ts';
-import { readingActivities } from '../src/her-days.ts';
-import { stateAt } from '../src/schedule.ts';
+import { bodyAt, type BodyNow } from '../src/life/body.ts';
+import { dayPlan, describePlans, describeSlot, planNow, type PlanFacts, type Plans } from '../src/life/day-plan.ts';
+import { readingActivities } from '../src/life/her-days.ts';
+import { stateAt } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { worldAt, worldErrands, type WorldAction } from '../src/world.ts';
+import { worldAt, worldErrands, type WorldAction } from '../src/world/world.ts';
 
 const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
 const boyfriend = card('boyfriend');

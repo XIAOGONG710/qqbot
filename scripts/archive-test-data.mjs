@@ -10,7 +10,7 @@
 
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { archiveTestData } from '../packages/bot/src/archive.ts';
+import { archiveTestData } from '../packages/bot/src/memory/archive.ts';
 
 const repoRoot = resolve(fileURLToPath(import.meta.url), '../..');
 const args = process.argv.slice(2);

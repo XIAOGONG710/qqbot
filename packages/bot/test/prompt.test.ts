@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { buildPrompt, ST_DEFAULT_PRESET, type ChatMessage, type OpenAIMessage, type PromptInput } from '../src/prompt.ts';
+import { buildPrompt, ST_DEFAULT_PRESET, type ChatMessage, type OpenAIMessage, type PromptInput } from '../src/language/prompt.ts';
 import { loadCharacterCard, parseCharacterCard, type Character } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, loadWorldInfo, parseWorldInfo } from '../src/st/world-info.ts';
-import { estimateTokens } from '../src/tokens.ts';
+import { estimateTokens } from '../src/language/tokens.ts';
 
 const stDir = resolve(import.meta.dirname, '../../../characters/linmengyao/st');
 const card = loadCharacterCard(resolve(stDir, 'linmengyao-boyfriend.json'));

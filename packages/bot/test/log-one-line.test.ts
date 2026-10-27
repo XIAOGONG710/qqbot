@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
-import { createLog, oneLine } from '../src/log.ts';
+import { createLog, oneLine } from '../src/platform/log.ts';
 
 const LINE_SEPARATOR = String.fromCharCode(0x2028);
 const NUL = String.fromCharCode(0);

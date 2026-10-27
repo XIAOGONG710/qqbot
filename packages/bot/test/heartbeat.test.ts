@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { checkHeartbeat, heartbeatPath, HEARTBEAT_STALE_MS, startHeartbeat, watchStep, type AlertSink, type Heartbeat } from '../src/heartbeat.ts';
+import { checkHeartbeat, heartbeatPath, HEARTBEAT_STALE_MS, startHeartbeat, watchStep, type AlertSink, type Heartbeat } from '../src/platform/heartbeat.ts';
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true })));

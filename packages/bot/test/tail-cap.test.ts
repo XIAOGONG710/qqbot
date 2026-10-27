@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { reviewReply } from '../src/exit-check.ts';
-import type { StoredMessage } from '../src/history.ts';
-import { edgesOf, finalChar, hasTail, measureEdges, perThousandChars, share, tailParticle } from '../src/rough-edges.ts';
-import { SENSITIVE_ON, useSensitiveSwitch } from '../src/sensitive.ts';
-import { describeSpeechIssue, inspectSpeech, speechContext, stripOpeners, stripTailParticle, strippable, TAIL_CAPS, tailRecentOf } from '../src/speech-check.ts';
+import { reviewReply } from '../src/language/exit-check.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
+import { edgesOf, finalChar, hasTail, measureEdges, perThousandChars, share, tailParticle } from '../src/language/rough-edges.ts';
+import { SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
+import { describeSpeechIssue, inspectSpeech, speechContext, stripOpeners, stripTailParticle, strippable, TAIL_CAPS, tailRecentOf } from '../src/language/speech-check.ts';
 
 // 日志默认不写原文；这个文件靠日志里的原文断言
 useSensitiveSwitch(SENSITIVE_ON);

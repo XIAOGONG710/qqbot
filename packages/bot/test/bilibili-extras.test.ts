@@ -3,9 +3,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { cleanTranscript, readTranscript, runAsr, transcribe } from '../src/bilibili-asr.ts';
-import { findCommand, schemaLine, BILI_COMMANDS } from '../src/bilibili-schema.ts';
-import { unreplied } from '../src/bilibili-inbox.ts';
+import { cleanTranscript, readTranscript, runAsr, transcribe } from '../src/bilibili/bilibili-asr.ts';
+import { findCommand, schemaLine, BILI_COMMANDS } from '../src/bilibili/bilibili-schema.ts';
+import { unreplied } from '../src/bilibili/bilibili-inbox.ts';
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-asr-')); dirs.push(d); return d; };

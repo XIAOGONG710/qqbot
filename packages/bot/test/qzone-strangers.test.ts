@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { extractPosts, readStrangerFeed, sampleLines, strangerDigest } from '../src/qzone-strangers.ts';
-import type { QzoneSession } from '../src/qzone-remote.ts';
+import { extractPosts, readStrangerFeed, sampleLines, strangerDigest } from '../src/social/qzone-strangers.ts';
+import type { QzoneSession } from '../src/social/qzone-remote.ts';
 
 const session: QzoneSession = { cookie: 'p_skey=abc; uin=o1', gtk: 42, uin: 1 };
 

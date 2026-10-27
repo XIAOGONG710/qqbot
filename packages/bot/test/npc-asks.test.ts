@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { DEFAULT_ASKS, describeAsk, judgeAsk, npcAsksBetween, npcAsksOn, type AskFacts, type AsksConfig, type NpcAsk } from '../src/npc-asks.ts';
-import { classesOn, formatDate } from '../src/schedule.ts';
-import { npcStates } from '../src/npc.ts';
+import { DEFAULT_ASKS, describeAsk, judgeAsk, npcAsksBetween, npcAsksOn, type AskFacts, type AsksConfig, type NpcAsk } from '../src/world/npc-asks.ts';
+import { classesOn, formatDate } from '../src/life/schedule.ts';
+import { npcStates } from '../src/world/npc.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));

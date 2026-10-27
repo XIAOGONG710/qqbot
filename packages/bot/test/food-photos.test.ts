@@ -3,9 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { DEFAULT_MENU, dishesBetween } from '../src/menu.ts';
-import { FOOD_QUERIES, foodVisionPrompt, judgeFood, parseCommonsFood } from '../src/photo-sources.ts';
-import { FOOD_MISS_RETRY_MS, FOOD_PER_DISH, FOOD_TRIES_PER_DISH, photoIntent, photoShelf, photoWanted, type FoodSource, type PhotoCandidate } from '../src/photos.ts';
+import { DEFAULT_MENU, dishesBetween } from '../src/life/menu.ts';
+import { FOOD_QUERIES, foodVisionPrompt, judgeFood, parseCommonsFood } from '../src/vision/photo-sources.ts';
+import { FOOD_MISS_RETRY_MS, FOOD_PER_DISH, FOOD_TRIES_PER_DISH, photoIntent, photoShelf, photoWanted, type FoodSource, type PhotoCandidate } from '../src/vision/photos.ts';
 
 // ADR 0128：吃的照片。按菜名收（Commons，普通人随手拍的饭），看图把关；这一顿吃的什么就只发这道菜的
 const dirs: string[] = [];

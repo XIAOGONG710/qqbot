@@ -5,13 +5,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { loadTierCard } from '../src/contact.ts';
+import { loadTierCard } from '../src/platform/contact.ts';
 import {
     EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, everydayEventsFor, loadEverydayFrom, quizEvents, quizFeel, quizScore, quizzesOn, withEveryday,
-} from '../src/everyday.ts';
-import { appraisals, feelingsAt } from '../src/feelings.ts';
-import { quizRecord } from '../src/pursuits.ts';
-import { simulateWorld, worldAt, type WorldNow } from '../src/world.ts';
+} from '../src/life/everyday.ts';
+import { appraisals, feelingsAt } from '../src/emotion/feelings.ts';
+import { quizRecord } from '../src/life/pursuits.ts';
+import { simulateWorld, worldAt, type WorldNow } from '../src/world/world.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const pattern = join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json');

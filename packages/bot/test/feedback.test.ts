@@ -3,9 +3,9 @@ import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { createFeedbackChannel, FEEDBACK_WINDOW_MS, FeedbackLog, locateTurn, parseFeedback } from '../src/feedback.ts';
-import type { StoredMessage } from '../src/history.ts';
-import type { Segment } from '../src/onebot.ts';
+import { createFeedbackChannel, FEEDBACK_WINDOW_MS, FeedbackLog, locateTurn, parseFeedback } from '../src/emotion/feedback.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
+import type { Segment } from '../src/platform/onebot.ts';
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true })));

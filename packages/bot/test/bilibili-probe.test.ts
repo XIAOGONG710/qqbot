@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { credentialPath, saveCredential, type BiliCredential, type BiliRequest, type BiliResponse } from '../src/bilibili-account.ts';
-import { PROBE_DM_TEXT, runProbe } from '../src/bilibili-probe.ts';
+import { credentialPath, saveCredential, type BiliCredential, type BiliRequest, type BiliResponse } from '../src/bilibili/bilibili-account.ts';
+import { PROBE_DM_TEXT, runProbe } from '../src/bilibili/bilibili-probe.ts';
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-biliprobe-')); dirs.push(d); return d; };
