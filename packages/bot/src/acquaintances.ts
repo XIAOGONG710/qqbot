@@ -9,7 +9,7 @@
 // 「朋友」只能由用户在命令行里设；对方的评论只存 40 字摘录和昵称 / uid，随时可以删（people-cli forget）。
 
 import { join } from 'node:path';
-import type { BiliAccount } from './bilibili-account.ts';
+import type { BiliAccount } from './bilibili/bilibili-account.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { clip, whenText } from './timeline.ts';
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { parseSummary } from '../src/bilibili-summary.ts';
+import { parseSummary } from '../src/bilibili/bilibili-summary.ts';
 
 describe('B 站 AI 总结（ADR 0168 第 2.5 期）', () => {
     test('认 model_result：summary + outline（章节 + 要点时间戳）', () => {

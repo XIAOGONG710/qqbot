@@ -7,7 +7,7 @@ import type { BotConfig } from '../src/config.ts';
 import { loadTierCard } from '../src/contact.ts';
 import { createDeviceControl, type DeviceControl } from '../src/device-actions.ts';
 import { devicesSecretsPath, linksOf, loadDeviceSecrets, newDeviceSecrets, startDeviceService, validSecrets, type DeviceSecrets, type DeviceService } from '../src/device-service.ts';
-import { createBreaker } from '../src/platform-breaker.ts';
+import { createBreaker } from '../src/bilibili/platform-breaker.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';

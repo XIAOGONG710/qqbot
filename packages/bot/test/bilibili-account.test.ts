@@ -6,7 +6,7 @@ import { afterEach, describe, test } from 'node:test';
 import {
     BiliApiError, cookieHeader, credentialPath, DM_MAX_CHARS, loadCredential, openAccount, parseClock, parseReplyFeed, pickCookies, qrGenerate, qrPoll, saveCredential, subtitleExcerpt,
     wbiKeysFrom, wbiMixinKey, wbiSign, type BiliCredential, type BiliRequest, type BiliResponse,
-} from '../src/bilibili-account.ts';
+} from '../src/bilibili/bilibili-account.ts';
 import { qrMatrix, qrSvg, qrTerminal } from '../src/qr.ts';
 
 const dirs: string[] = [];

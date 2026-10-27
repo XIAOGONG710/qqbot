@@ -15,7 +15,7 @@ import type { Tier } from './config.ts';
 import type { CrisisLevel } from './emotion/crisis.ts';
 import type { StoredMessage } from './history.ts';
 import { facesIn, normalizeFaces, onlyFaces, removeFaces } from './qq-faces.ts';
-import { isAck, isReaction } from './reply-timing.ts';
+import { isAck, isReaction } from './social/reply-timing.ts';
 import { logBody, sensitiveOn } from './sensitive.ts';
 import {
     describeSpeechIssue, inspectBookProgress, inspectSpeech, speechContext, stripOpeners, strippable,

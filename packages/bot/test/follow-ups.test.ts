@@ -8,7 +8,7 @@ import type { StoredMessage } from '../src/history.ts';
 import { ModelUnreachable } from '../src/llm.ts';
 import { blockReason, candidatesOn, occasionNote, type ProactiveInput } from '../src/proactive.ts';
 import { createProactivePlanner, type Planner } from '../src/proactive-planner.ts';
-import type { InitiateRequest, ResponderStatus } from '../src/responder.ts';
+import type { InitiateRequest, ResponderStatus } from '../src/social/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { SENSITIVE_OFF, SENSITIVE_ON, useSensitiveSwitch } from '../src/sensitive.ts';

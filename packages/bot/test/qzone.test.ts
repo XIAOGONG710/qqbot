@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { ImageDescriber } from '../src/vision/media.ts';
 import type { OpenAIMessage } from '../src/prompt.ts';
-import { qzoneComposer, qzoneSystemPrompt, type QzoneComposerDeps } from '../src/qzone.ts';
+import { qzoneComposer, qzoneSystemPrompt, type QzoneComposerDeps } from '../src/social/qzone.ts';
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });

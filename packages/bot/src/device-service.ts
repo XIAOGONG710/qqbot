@@ -12,7 +12,7 @@ import { createDeviceControl, jsonlAudit, type AuditEntry, type DeviceControl, t
 import { createDeviceHub, type DeviceHub } from './device-hub.ts';
 import { createPhonePublisher } from './device-phone.ts';
 import type { ImageDescriber } from './vision/media.ts';
-import { BreakerOpen, createBreaker, guardRequest } from './platform-breaker.ts';
+import { BreakerOpen, createBreaker, guardRequest } from './bilibili/platform-breaker.ts';
 
 export interface DeviceSecrets {
     hub: { host: string; port: number };

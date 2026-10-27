@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { createPresence, describeSelf, type PresenceTransport } from '../src/presence.ts';
+import { createPresence, describeSelf, type PresenceTransport } from '../src/social/presence.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const schedule = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;

@@ -18,18 +18,18 @@ import { heardSinceReply, initiateQuery, PERSON_RECALLED, secondPerson, type Lon
 import { buildPrompt, type ChatMessage, type OpenAIMessage, type PromptResult } from './prompt.ts';
 import { cleanUpReply } from './reply.ts';
 import { stripDeviceTokens, type DeviceControl, type ParsedTokens } from './device-actions.ts';
-import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from './responder.ts';
+import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from './social/responder.ts';
 import { loadCharacterCard, type Character } from './st/card.ts';
 import { postProcessPrompt } from './st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from './st/world-info.ts';
-import { isAckAfterClosing, moodySkip, replyDelays, whenSeen } from './reply-timing.ts';
+import { isAckAfterClosing, moodySkip, replyDelays, whenSeen } from './social/reply-timing.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from './her-days.ts';
 import { crisisInHistory, type CrisisHit } from './emotion/crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from './emotion/grievance.ts';
 import { describeIntent, needsCareText } from './intent.ts';
 import { describeObstacles, meetupDays } from './world/obstacles.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from './texture.ts';
-import { describeQuote, planQuote, quoteFix, type QuotePlan } from './quote-reply.ts';
+import { describeQuote, planQuote, quoteFix, type QuotePlan } from './social/quote-reply.ts';
 import { alreadyTold, ASKS_TO_EXPLAIN, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from './expression.ts';
 import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from './shape.ts';
 import { finishReply } from './unfinished.ts';
@@ -63,7 +63,7 @@ import { watchedLine, type Watched } from './watching.ts';
 import { describeCloseness } from './relationship.ts';
 import { describeTogether, togetherNow } from './together.ts';
 import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from './vision/photos.ts';
-import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from './stickers.ts';
+import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from './social/stickers.ts';
 
 /**
  * 「做题式」写法（ADR 0146 实验）：不是让她演自己，而是让她推断这个情境里最可能真的发出去的那几条。

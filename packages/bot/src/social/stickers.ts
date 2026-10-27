@@ -7,16 +7,16 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
-import { logBody } from './sensitive.ts';
-import type { AppConfig } from './config.ts';
-import type { CrisisLevel } from './emotion/crisis.ts';
-import type { StoredMessage } from './history.ts';
-import { readJsonOr, writeJsonAtomic } from './json-file.ts';
-import { chatCompletion } from './llm.ts';
-import { isSticker, type ImageDescriber } from './vision/media.ts';
-import type { Segment } from './onebot.ts';
-import type { OpenAIMessage } from './prompt.ts';
-import { detectImageType, fetchRemoteImage, imageDataUrl, type DownloadedImage } from './vision/safe-image.ts';
+import { logBody } from '.././sensitive.ts';
+import type { AppConfig } from '.././config.ts';
+import type { CrisisLevel } from '.././emotion/crisis.ts';
+import type { StoredMessage } from '.././history.ts';
+import { readJsonOr, writeJsonAtomic } from '.././json-file.ts';
+import { chatCompletion } from '.././llm.ts';
+import { isSticker, type ImageDescriber } from '.././vision/media.ts';
+import type { Segment } from '.././onebot.ts';
+import type { OpenAIMessage } from '.././prompt.ts';
+import { detectImageType, fetchRemoteImage, imageDataUrl, type DownloadedImage } from '.././vision/safe-image.ts';
 
 export const STICKER_MAX_BYTES = 5 * 1024 * 1024;
 export const STICKER_PROMPT_MAX = 12;

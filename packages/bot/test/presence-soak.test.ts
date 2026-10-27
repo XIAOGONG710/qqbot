@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { createVideoBrowsing, type BiliFetch } from '../src/bilibili.ts';
-import { createPresence, type PresenceTransport } from '../src/presence.ts';
+import { createVideoBrowsing, type BiliFetch } from '../src/bilibili/bilibili.ts';
+import { createPresence, type PresenceTransport } from '../src/social/presence.ts';
 import { stateAt } from '../src/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 

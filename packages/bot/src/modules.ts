@@ -82,9 +82,9 @@ export const MODULES: readonly ModuleDef[] = [
         adrs: ['0012', '0017', '0043', '0157', '0158', '0159', '0161'],
     },
     {
-        id: 'rhythm', name: '节奏、图片和在 QQ 上的样子',
+        id: 'social', name: '在 QQ 上的样子（社交）',
         scope: '什么时候看到、打字多久、一次发几条；图片表情和照片货架；戳一戳、已读、在线状态、说说、签名、“正在输入”、撤回；听语音看图。',
-        files: ['responder.ts', 'reply-timing.ts', 'rate-limit.ts', 'async-gate.ts', 'stickers.ts', 'sticker-favorites.ts', 'sticker-sources.ts', 'pokes.ts', 'presence.ts', 'qzone.ts', 'qzone-feed.ts', 'qzone-feeds3.ts', 'qzone-remote.ts', 'qzone-strangers.ts', 'account.ts', 'quote-reply.ts', ],
+        files: ['social/responder.ts', 'social/reply-timing.ts', 'social/rate-limit.ts', 'social/async-gate.ts', 'social/stickers.ts', 'social/sticker-favorites.ts', 'social/sticker-sources.ts', 'social/pokes.ts', 'social/presence.ts', 'social/qzone.ts', 'social/qzone-feed.ts', 'social/qzone-feeds3.ts', 'social/qzone-remote.ts', 'social/qzone-strangers.ts', 'social/account.ts', 'social/quote-reply.ts', ],
         groups: ['照片和表情', '在 QQ 上的样子'],
         metrics: '周报「说话的样子」里的延迟、「表情和语气」',
         adrs: ['0063', '0075', '0077', '0083', '0105', '0109', '0136', '0142', '0143', '0144'],
@@ -92,7 +92,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'bilibili', name: '外部世界：B 站',
         scope: '她的 B 站号：搜视频读字幕、私信、回复评论、话题评论、风险监控。',
-        files: ['bilibili.ts', 'bilibili-view.ts', 'bilibili-summary.ts', 'bilibili-stats.ts', 'bilibili-inbox.ts', 'bilibili-asr.ts', 'bilibili-schema.ts', 'bilibili-wbi.ts', 'bilibili-feed.ts', 'feed-browsing.ts', 'bilibili-limit.ts', 'bilibili-account-source.ts', 'bilibili-account.ts', 'platform-breaker.ts', 'bilibili-comment.ts', 'bilibili-login-cli.ts', 'bilibili-login.ts', 'bilibili-probe.ts', 'bilibili-replies.ts', 'bilibili-risk.ts'],
+        files: ['bilibili/bilibili.ts', 'bilibili/bilibili-view.ts', 'bilibili/bilibili-summary.ts', 'bilibili/bilibili-stats.ts', 'bilibili/bilibili-inbox.ts', 'bilibili/bilibili-asr.ts', 'bilibili/bilibili-schema.ts', 'bilibili/bilibili-wbi.ts', 'bilibili/bilibili-feed.ts', 'bilibili/feed-browsing.ts', 'bilibili/bilibili-limit.ts', 'bilibili/bilibili-account-source.ts', 'bilibili/bilibili-account.ts', 'bilibili/platform-breaker.ts', 'bilibili/bilibili-comment.ts', 'bilibili/bilibili-login-cli.ts', 'bilibili/bilibili-login.ts', 'bilibili/bilibili-probe.ts', 'bilibili/bilibili-replies.ts', 'bilibili/bilibili-risk.ts'],
         groups: ['B 站'],
         metrics: '日志里的 B 站风险监控；presence/drafts.md',
         adrs: ['0084', '0089', '0090', '0092', '0168'],

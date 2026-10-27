@@ -9,7 +9,7 @@ import { faceContext, FACE_WINDOW, FACE_WINDOW_MAX, FACE_WINDOW_MAX_DISTANT, ins
 import { ChatHistory, type StoredMessage } from '../src/history.ts';
 import { segmentsToText, type MessageEvent } from '../src/onebot.ts';
 import { FACE_NAMES, faceText, facesIn, onlyFaces, SENDABLE_FACES, textToSegments } from '../src/qq-faces.ts';
-import { isAck, isReaction, moodySkip } from '../src/reply-timing.ts';
+import { isAck, isReaction, moodySkip } from '../src/social/reply-timing.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../src/sensitive.ts';
 

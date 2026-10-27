@@ -5,7 +5,7 @@
 // 其余时候不引用：他自己 654 条消息里引用过 1 次（0.15%），所以只在这两种明确的时候、按概率引，不是每次都引。
 // 纯函数，随机的部分按消息 id 定，同一串消息重算多少次都一样（responder 会在新消息来时重算）。
 
-import { RECALLED_TEXT, type StoredMessage } from './history.ts';
+import { RECALLED_TEXT, type StoredMessage } from '.././history.ts';
 import { pick, unansweredMessages } from './reply-timing.ts';
 
 /**

@@ -13,7 +13,7 @@ import type { StoredMessage } from './history.ts';
 import type { ObstacleKind } from './world/obstacles.ts';
 import { CURIOUS_ASK_NOTE } from './curious.ts';
 import { mentionsMeetup } from './promises.ts';
-import { pendingMessages, pick } from './reply-timing.ts';
+import { pendingMessages, pick } from './social/reply-timing.ts';
 import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from './schedule.ts';
 import { logBody } from './sensitive.ts';
 export { herDay } from './schedule.ts';

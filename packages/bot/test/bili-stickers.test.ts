@@ -3,11 +3,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import type { BiliAccount, EmotePack } from '../src/bilibili-account.ts';
+import type { BiliAccount, EmotePack } from '../src/bilibili/bilibili-account.ts';
 import {
     acceptCommentPicture, biliStickerDiscover, biliStickerScreen, BILI_STICKER_PER_DAY, officialStickers, picturesOf, STICKER_UNCUED_CHANCE,
 } from '../src/bili-stickers.ts';
-import { stickerShelf, stickerTurn, type StickerEntry } from '../src/stickers.ts';
+import { stickerShelf, stickerTurn, type StickerEntry } from '../src/social/stickers.ts';
 
 // ADR 0132：她自己在 B 站找表情包；不用或少用小黄脸
 const dirs: string[] = [];

@@ -11,9 +11,9 @@ import type { HistoryMessage } from './backfill.ts';
 import { ocrLines } from './vision/media.ts';
 import { assertKernelOk, isFriendRecall, isPokeAtMe, isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
 import { configuredImageDescriber, STICKER_VISION_PROMPT } from './vision/vision.ts';
-import { stickerDecider, stickerShelf } from './stickers.ts';
-import { qqFavorites } from './sticker-favorites.ts';
-import { bqbDiscover } from './sticker-sources.ts';
+import { stickerDecider, stickerShelf } from './social/stickers.ts';
+import { qqFavorites } from './social/sticker-favorites.ts';
+import { bqbDiscover } from './social/sticker-sources.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const config = loadConfig(repoRoot);

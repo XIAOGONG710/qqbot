@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { StoredMessage } from '../src/history.ts';
 import { createProactivePlanner, type Planner } from '../src/proactive-planner.ts';
-import type { InitiateRequest } from '../src/responder.ts';
+import type { InitiateRequest } from '../src/social/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import type { DayWeather } from '../src/world/weather.ts';

@@ -3,8 +3,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { BiliApiError, type BiliAccount, type SystemNotice } from '../src/bilibili-account.ts';
-import { createRiskMonitor, isRiskError, RISK_ALERT_GAP_MS, RISK_HALT_DAYS, RISK_NOTICE, RISK_POLL_MS } from '../src/bilibili-risk.ts';
+import { BiliApiError, type BiliAccount, type SystemNotice } from '../src/bilibili/bilibili-account.ts';
+import { createRiskMonitor, isRiskError, RISK_ALERT_GAP_MS, RISK_HALT_DAYS, RISK_NOTICE, RISK_POLL_MS } from '../src/bilibili/bilibili-risk.ts';
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-bilirisk-')); dirs.push(d); return d; };

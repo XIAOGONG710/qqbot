@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { ACCOUNT_ACTIONS, createAccount, DEFAULT_ACCOUNT_POLICY, friendRequestVerdict, type AccountPolicy } from '../src/account.ts';
+import { ACCOUNT_ACTIONS, createAccount, DEFAULT_ACCOUNT_POLICY, friendRequestVerdict, type AccountPolicy } from '../src/social/account.ts';
 
 const policy = (patch: Partial<AccountPolicy> = {}): AccountPolicy => ({ ...DEFAULT_ACCOUNT_POLICY, mode: 'on', friends: [10001], groups: [90001], ...patch });
 

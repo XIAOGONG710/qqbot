@@ -6,7 +6,7 @@ import { describeGrievance, type Grievance } from './emotion/grievance.ts';
 import { JEALOUS_INTENT, jealousTurn, SOFTEN_INTENT } from './jealousy.ts';
 import type { StoredMessage } from './history.ts';
 import type { CrisisLevel } from './emotion/crisis.ts';
-import { isAck, isReaction } from './reply-timing.ts';
+import { isAck, isReaction } from './social/reply-timing.ts';
 import type { Schedule, State } from './schedule.ts';
 
 type Said = Pick<StoredMessage, 'role' | 'content'>;

@@ -3,11 +3,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { BiliApiError, type BiliAccount, type ReplyItem } from '../src/bilibili-account.ts';
+import { BiliApiError, type BiliAccount, type ReplyItem } from '../src/bilibili/bilibili-account.ts';
 import {
     CORPUS_FILE, createReplyWatcher, REPLY_DAY_MAX, REPLY_GAP_MS, REPLY_MAX_AGE_MS, REPLY_PAUSE_MS, REPLY_PER_PERSON_DAY_MAX, REPLY_POLL_MS, skipReason,
     type ReplyInput, type ReplyOptions,
-} from '../src/bilibili-replies.ts';
+} from '../src/bilibili/bilibili-replies.ts';
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-bilireply-')); dirs.push(d); return d; };

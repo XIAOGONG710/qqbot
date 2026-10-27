@@ -11,8 +11,8 @@ import { isPrivateFriendMessage, segmentsToText, type MessageEvent } from '../sr
 import { unlistedName } from '../src/app.ts';
 import type { PromptResult } from '../src/prompt.ts';
 import { cleanUpReply, splitReply } from '../src/reply.ts';
-import { createResponder, DEFAULT_SETTLE, HESITATE_CHANCE, HESITATE_PAUSE_MS, PART_GAP_MS, RETRY_AFTER_MS, TYPING_REFRESH_MS, type InitiateRequest, type ReplyTiming, type ResponderDeps } from '../src/responder.ts';
-import { pick } from '../src/reply-timing.ts';
+import { createResponder, DEFAULT_SETTLE, HESITATE_CHANCE, HESITATE_PAUSE_MS, PART_GAP_MS, RETRY_AFTER_MS, TYPING_REFRESH_MS, type InitiateRequest, type ReplyTiming, type ResponderDeps } from '../src/social/responder.ts';
+import { pick } from '../src/social/reply-timing.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
 

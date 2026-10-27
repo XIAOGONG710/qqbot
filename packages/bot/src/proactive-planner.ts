@@ -31,11 +31,11 @@ import type { BodyNow } from './body.ts';
 import { newObstacles, obstaclesBetween, OBSTACLE_KINDS, type ObstacleFacts, type ObstacleKind } from './world/obstacles.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from './promises.ts';
 import { PromiseStateUnavailable } from './promise-state.ts';
-import type { InitiateOutcome, Responder } from './responder.ts';
+import type { InitiateOutcome, Responder } from './social/responder.ts';
 import type { DayWeather } from './world/weather.ts';
 import { unwellNews, worldNews, type WorldNews, type WorldNow } from './world/world.ts';
 import { formatDate, stateAt, wakeOn, type Schedule } from './schedule.ts';
-import { pendingMessages, pick } from './reply-timing.ts';
+import { pendingMessages, pick } from './social/reply-timing.ts';
 import {
     innerLine as innerLineOf, parseThought, pendingIntents, THINK_AFTER_CHAT_MS, THINK_AFTER_WAKE_MS, THINK_INTERVAL_MIN, THINK_MAX_PER_DAY, THINK_MIN_GAP_MS, THINK_RETRY_MS, thinkNote, THOUGHTS_KEPT, type InnerState,
 } from './inner.ts';

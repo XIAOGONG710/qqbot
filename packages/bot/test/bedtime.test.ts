@@ -8,7 +8,7 @@ import type { BotConfig } from '../src/config.ts';
 import { loadTierCard } from '../src/contact.ts';
 import type { StoredMessage } from '../src/history.ts';
 import { blockReason, type ProactiveInput } from '../src/proactive.ts';
-import { whenSeen } from '../src/reply-timing.ts';
+import { whenSeen } from '../src/social/reply-timing.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { loadScenario, parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';

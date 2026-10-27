@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import type { BiliAccount } from '../src/bilibili-account.ts';
+import type { BiliAccount } from '../src/bilibili/bilibili-account.ts';
 import type { AuditEntry } from '../src/device-actions.ts';
 import { clip, Timeline, timelineAccount, timelineFromDevice, whenText } from '../src/timeline.ts';
 

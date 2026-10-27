@@ -9,7 +9,7 @@ import {
     type Candidate, type ProactiveInput, type ProactiveRecord,
 } from '../src/proactive.ts';
 import { createProactivePlanner, type Planner } from '../src/proactive-planner.ts';
-import type { InitiateOutcome, InitiateRequest } from '../src/responder.ts';
+import type { InitiateOutcome, InitiateRequest } from '../src/social/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 

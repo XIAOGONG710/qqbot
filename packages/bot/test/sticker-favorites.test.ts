@@ -4,8 +4,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { qqFavorites, type QqCall } from '../src/sticker-favorites.ts';
-import { stickerShelf, type DownloadedSticker, type StickerFavorites } from '../src/stickers.ts';
+import { qqFavorites, type QqCall } from '../src/social/sticker-favorites.ts';
+import { stickerShelf, type DownloadedSticker, type StickerFavorites } from '../src/social/stickers.ts';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { cookieHeader, gTk, jsonpBody, parseUserFeed, readUserQzone, sessionFromCookies, userFeedUrl } from '../src/qzone-remote.ts';
+import { cookieHeader, gTk, jsonpBody, parseUserFeed, readUserQzone, sessionFromCookies, userFeedUrl } from '../src/social/qzone-remote.ts';
 
 const cookies = [
     { name: 'uin', value: 'o2561299676', domain: 'qzone.qq.com' },

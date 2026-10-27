@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import type { BiliAccount, ReplyItem } from '../src/bilibili-account.ts';
+import type { BiliAccount, ReplyItem } from '../src/bilibili/bilibili-account.ts';
 import { Acquaintances, acquaintancesAccount, classifyKind } from '../src/acquaintances.ts';
 
 // ADR 0163：认识的人

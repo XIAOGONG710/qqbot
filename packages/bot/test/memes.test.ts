@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import type { BiliVideo } from '../src/bilibili.ts';
+import type { BiliVideo } from '../src/bilibili/bilibili.ts';
 import {
     candidatePrompt, EVIDENCE_VIDEOS, explainPrompt, fetchLists, gatherEvidence, loadMemes, MEME_EXPLAIN_PER_RUN, MEME_KEEP_DAYS, MEME_MAX, MEME_TURN_SHARE,
     memeLine, memeUsed, parseBaidu, parseBiliHot, parseCandidates, parseExplain, parsePopular, parseWeibo, refreshDue, refreshMemes, trimMemes,

@@ -13,9 +13,9 @@
 
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { subtitleExcerpt, type SubtitleResult } from './bilibili-account.ts';
-import { rankVideos, searchKeyword, SEARCH_KEYWORDS, type BiliVideo } from './bilibili.ts';
-import { danmakuPeaks, type DanmakuPoint } from './bilibili-view.ts';
+import { subtitleExcerpt, type SubtitleResult } from './bilibili/bilibili-account.ts';
+import { rankVideos, searchKeyword, SEARCH_KEYWORDS, type BiliVideo } from './bilibili/bilibili.ts';
+import { danmakuPeaks, type DanmakuPoint } from './bilibili/bilibili-view.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 
 export interface Watched {

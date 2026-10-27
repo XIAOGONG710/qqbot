@@ -95,7 +95,7 @@ export class Timeline {
 
 // ───────── 各渠道的接线 ─────────
 
-import type { BiliAccount } from './bilibili-account.ts';
+import type { BiliAccount } from './bilibili/bilibili-account.ts';
 import type { AuditEntry } from './device-actions.ts';
 
 /** 设备控制的审计记录 → 时间线：只记真的执行了 / 没做成的，待批准、被拒、限流之类不算「做过」 */

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { SlidingWindowRateLimiter } from '../src/rate-limit.ts';
+import { SlidingWindowRateLimiter } from '../src/social/rate-limit.ts';
 
 describe('名单外好友限流', () => {
     test('分别限制单个联系人和全部名单外好友，窗口过后恢复', () => {

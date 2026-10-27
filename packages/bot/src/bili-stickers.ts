@@ -10,7 +10,7 @@
 //      动漫、游戏、动物、卡通、文字梗照旧收（用户 10-12：「动漫 / 游戏 / 影视 IP 的表情包也行」）。官方表情包不用这道筛。
 // 用的地方：stickers.ts 的 setTrend（运行时换掉公开目录的候选来源）、screen（收之前的筛）、stickerUncued（没有明确反应的允许轮次里也抽一抽，见 contact.ts）。
 
-import type { BiliAccount, EmotePack } from './bilibili-account.ts';
+import type { BiliAccount, EmotePack } from './bilibili/bilibili-account.ts';
 import type { JsonFetch } from './memes.ts';
 import { unit } from './expression.ts';
 

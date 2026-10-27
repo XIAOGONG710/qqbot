@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { SEARCH_KEYWORDS, type BiliVideo } from '../src/bilibili.ts';
+import { SEARCH_KEYWORDS, type BiliVideo } from '../src/bilibili/bilibili.ts';
 import { themesFor, thinkNote, THOUGHT_THEMES, validInnerState, WATCH_THEME } from '../src/inner.ts';
 import {
     keywordsFor, loadWatched, trimWatched, WATCH_FROM_HOUR, WATCH_KEYWORD_TRIES, WATCH_VIDEO_TRIES, watchDue, watchedFacts, watchedLine, watchOne, WATCHED_KEEP_DAYS, WATCHED_MAX,

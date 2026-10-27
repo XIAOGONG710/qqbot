@@ -1,7 +1,7 @@
 // 戳一戳（ADR 0079）：他在 QQ 里戳她一下，NapCat 推一个 notice/notify/poke。
 // 她看到的是一条「[戳了戳你]」——和「[语音]」「[图片]」一样是占位符，之后走原来的回复流程（看到的时刻、打字多久、气泡数都照旧）。
 // 这里只管三件事：戳算不算数（名单里的人、没睡觉没上课、不是旧的、不是连着狂戳）、把戳变成一条消息。
-import type { MessageEvent, PokeEvent } from './onebot.ts';
+import type { MessageEvent, PokeEvent } from '.././onebot.ts';
 import { pick } from './reply-timing.ts';
 
 export const POKE_TEXT = '[戳了戳你]';

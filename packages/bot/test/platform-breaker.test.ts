@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { BILIBILI_RISK, BreakerOpen, breakerPath, createBreaker, guardRequest, type GuardedResponse } from '../src/platform-breaker.ts';
+import { BILIBILI_RISK, BreakerOpen, breakerPath, createBreaker, guardRequest, type GuardedResponse } from '../src/bilibili/platform-breaker.ts';
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-breaker-')); dirs.push(d); return d; };

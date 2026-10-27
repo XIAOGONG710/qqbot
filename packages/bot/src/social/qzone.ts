@@ -4,10 +4,10 @@
 
 import { readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import type { ImageDescriber } from './vision/media.ts';
+import type { ImageDescriber } from '.././vision/media.ts';
 import { cleanQzoneText } from './presence.ts';
-import type { OpenAIMessage } from './prompt.ts';
-import { imageDataUrl, type SupportedImageType } from './vision/safe-image.ts';
+import type { OpenAIMessage } from '.././prompt.ts';
+import { imageDataUrl, type SupportedImageType } from '.././vision/safe-image.ts';
 
 export interface QzoneComposerDeps {
     /** 同学档卡上的名字、资料、性格、这一档的禁用词 */

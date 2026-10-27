@@ -7,7 +7,7 @@
 // 重要的日子（ADR 0011 决策 6）另起一行（describeDays）：提前 7 天起提醒，当天「今天是……」，农历那天提一句。
 
 import { dayMatches, lunarMonthDay, type ImportantDay } from './proactive.ts';
-import { pendingMessages, unansweredMessages } from './reply-timing.ts';
+import { pendingMessages, unansweredMessages } from './social/reply-timing.ts';
 import type { TimedMessage } from './st/time-macros.ts';
 
 /** 回复一直失败（连不上模型）超过这么久才终于发出去，时间块里加一句断网的事实（ADR 0105） */

@@ -14,8 +14,8 @@
 
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { subtitleExcerpt, type SubtitleResult } from './bilibili-account.ts';
-import { BLOCKED, type BiliVideo } from './bilibili.ts';
+import { subtitleExcerpt, type SubtitleResult } from './bilibili/bilibili-account.ts';
+import { BLOCKED, type BiliVideo } from './bilibili/bilibili.ts';
 import { unit } from './expression.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 

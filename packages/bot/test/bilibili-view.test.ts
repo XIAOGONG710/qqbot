@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { danmakuPeaks, parseDanmakuXml, parseView, viewNote } from '../src/bilibili-view.ts';
+import { danmakuPeaks, parseDanmakuXml, parseView, viewNote } from '../src/bilibili/bilibili-view.ts';
 
 const viewJson = {
     bvid: 'BV1xx411c7mD', aid: 12345, title: '楼下三花的一天', desc: '随手拍的', duration: 301, pic: 'http://i0.hdslb.com/a.jpg',

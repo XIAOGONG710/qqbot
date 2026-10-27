@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { imageStickerAllowance, rankStickers, STICKER_ONLY_SHARE, STICKER_SHORTLIST, STICKER_TURN_CHANCE, stickerCued, stickerOnlyTurn, stickerReactionWords, stickerShelf, stickerTurn, stripStickerArtifacts, type DownloadedSticker, type StickerEntry } from '../src/stickers.ts';
+import { imageStickerAllowance, rankStickers, STICKER_ONLY_SHARE, STICKER_SHORTLIST, STICKER_TURN_CHANCE, stickerCued, stickerOnlyTurn, stickerReactionWords, stickerShelf, stickerTurn, stripStickerArtifacts, type DownloadedSticker, type StickerEntry } from '../src/social/stickers.ts';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });

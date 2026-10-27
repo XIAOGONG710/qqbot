@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { feedDue, feedFactEntry, feedFacts, feedOnce, loadFeed, saveFeed, trimFeed } from '../src/feed-browsing.ts';
-import type { BiliFetch } from '../src/bilibili-view.ts';
+import { feedDue, feedFactEntry, feedFacts, feedOnce, loadFeed, saveFeed, trimFeed } from '../src/bilibili/feed-browsing.ts';
+import type { BiliFetch } from '../src/bilibili/bilibili-view.ts';
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-feed-')); dirs.push(d); return d; };
