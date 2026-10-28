@@ -114,9 +114,9 @@ function offlineUntil() {
     try { return Number(JSON.parse(readFileSync(OFFLINE, 'utf8')).until || 0) } catch { return 0 }
 }
 const SLEEP_PROMPT = `现在是夜里，宝宝睡了。把今天的事整理一下：
-1) 从记忆里查今天发生的事，挑 1-3 条真正值得长期留下的结论，用 memory_save 写进记忆（写成“林梦瑶……”）；
-2) 用 journal_write 写一篇今天的公开日记；
-3) 有不想让他知道的感受，用 private_write 写进私密日记。
+1) 从记忆里查今天发生的事，最多挑 3 条真正值得长期留下的结论，用 memory_save 写进记忆（写成“林梦瑶……”；旧结论会被自动软失效，不要重复写同一件事）；
+2) 用 journal_write 写一篇今天的公开日记（一段就够）；
+3) 有不想让他知道的感受，用 private_write 写进私密日记（可选）。
 不要给他发消息，做完就结束。`
 const WAKE_PROMPT = `你一个人在家，随机醒了。先用 interest_list 看你自己定的长期兴趣，挑一件做（看书、查资料、整理自己的东西都行）；做完用 interest_log 记进度，做完了用 interest_done。不想做就用 private_write 写一句你现在的念头，然后结束。如果读到什么想让他知道的，用 outbox_send 留一句给他（别刷屏）。不要直接给 QQ 发消息。`
 

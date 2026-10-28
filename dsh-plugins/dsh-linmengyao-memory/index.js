@@ -84,10 +84,36 @@ function textOf(message) {
 }
 
 function grams(text) {
-  const clean = text.replace(/\s+/g, '')
+  const clean = String(text || '').replace(/\s+/g, '')
   const set = new Set()
   for (let i = 0; i < clean.length - 1; i++) set.add(clean.slice(i, i + 2))
   return set
+}
+
+function similarity(a, b) {
+  const A = grams(a)
+  const B = grams(b)
+  if (!A.size || !B.size) return 0
+  let overlap = 0
+  for (const gram of A) if (B.has(gram)) overlap++
+  return overlap / Math.max(A.size, B.size)
+}
+
+/** 新事实写进来前，把高相似的旧事实软失效（可回滚，不删除） */
+async function invalidateSimilar(cfg, content, bank) {
+  const candidates = await recallBank(cfg, bank, content).catch(() => [])
+  for (const item of candidates) {
+    if (similarity(content, item.text) < 0.5) continue
+    try {
+      await fetch(`${cfg.baseUrl}/v1/default/banks/${encodeURIComponent(bank)}/memories/${encodeURIComponent(item.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: 'invalidated', reason: 'superseded by a newer memory' }),
+        signal: AbortSignal.timeout(3000),
+      })
+      log(cfg, `invalidated ${item.id.slice(0, 8)} similarity=0.5+`)
+    } catch { /* 失效失败不挡写入 */ }
+  }
 }
 
 let bankCache = { at: 0, ids: [] }
@@ -272,7 +298,9 @@ export function apply(ctx, config = {}) {
             render: () => [{ type: 'text', text: '记住了。' }],
           },
           async execute(args) {
-            await retain(cfg, String(args?.content || '').slice(0, 4000), cfg.prefix)
+            const content = String(args?.content || '').slice(0, 4000)
+            await invalidateSimilar(cfg, content, cfg.prefix)
+            await retain(cfg, content, cfg.prefix)
             return { saved: true }
           },
         }))
