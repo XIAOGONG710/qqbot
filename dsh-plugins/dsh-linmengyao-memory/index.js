@@ -11,11 +11,25 @@ const DEFAULTS = {
   presets: ['linmengyao'],
   pick: 6,
   maxChars: 1400,
+  soulFile: 'C:/Users/22601/.dsh/linmengyao/SOUL.md',
   logFile: 'C:/Users/22601/.dsh/linmengyao-memory.log',
 }
 
 function log(cfg, line) {
   try { fs.appendFileSync(cfg.logFile, `${new Date().toISOString()} ${line}\n`) } catch {}
+}
+
+let soulCache = { path: '', at: 0, text: '' }
+function readSoul(cfg) {
+  try {
+    const stat = fs.statSync(cfg.soulFile)
+    if (soulCache.path !== cfg.soulFile || soulCache.at !== stat.mtimeMs) {
+      soulCache = { path: cfg.soulFile, at: stat.mtimeMs, text: fs.readFileSync(cfg.soulFile, 'utf8').trim() }
+    }
+    return soulCache.text
+  } catch {
+    return ''
+  }
 }
 
 function textOf(message) {
@@ -136,7 +150,8 @@ export function apply(ctx, config = {}) {
             const all = await recallAll(cfg, query)
             let text = all.slice(0, cfg.pick).map((item) => `- ${item.text}`).join('\n')
             if (text.length > cfg.maxChars) text = text.slice(0, cfg.maxChars) + '…'
-            cache.text = text
+            const soul = readSoul(cfg)
+            cache.text = [soul ? `[你现在的自我]\n${soul}` : '', text].filter(Boolean).join('\n\n')
             log(cfg, `recall q=${query.slice(0, 40)} items=${all.length} picked=${cache.text.length}chars`)
           }
         } catch (e) { log(cfg, `recall error ${e}`) }
@@ -197,6 +212,45 @@ export function apply(ctx, config = {}) {
           },
           async execute(args) {
             await retain(cfg, String(args?.content || '').slice(0, 4000), cfg.prefix)
+            return { saved: true }
+          },
+        }))
+
+        disposers.push(tools.register({
+          name: 'soul_read',
+          description: '读你自己现在的 SOUL.md（你是谁、在意什么、边界）。',
+          parameters: { type: 'object', properties: {}, additionalProperties: false },
+          output: {
+            schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+            render: (_args, value) => [{ type: 'text', text: String(value?.text || '') }],
+          },
+          async execute() { return { text: readSoul(cfg) } },
+        }))
+
+        disposers.push(tools.register({
+          name: 'soul_update',
+          description: '改你自己的 SOUL.md：只有真的想清楚、值得长期留下的自我认识才写。追加一段，<=800 字符。',
+          parameters: {
+            type: 'object',
+            properties: {
+              content: { type: 'string', description: '要追加的自我认识，<=800 字符' },
+              why: { type: 'string', description: '为什么现在写它' },
+            },
+            required: ['content'],
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { saved: { type: 'boolean' } }, required: ['saved'] },
+            render: () => [{ type: 'text', text: '写进 SOUL 了。' }],
+          },
+          async execute(args) {
+            const content = String(args?.content || '').trim().slice(0, 800)
+            if (!content) return { saved: false }
+            const why = String(args?.why || '').trim().slice(0, 120)
+            const stamp = new Date().toISOString().slice(0, 10)
+            try { fs.copyFileSync(cfg.soulFile, `${cfg.soulFile}.bak`) } catch {}
+            fs.appendFileSync(cfg.soulFile, `\n\n## ${stamp}${why ? `（${why}）` : ''}\n${content}\n`)
+            log(cfg, `soul_update ${content.slice(0, 40)}`)
             return { saved: true }
           },
         }))
