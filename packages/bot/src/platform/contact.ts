@@ -437,6 +437,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             ])).map(you);
             const relationship = remembers ? you(memory.relationship(contact)) : undefined;
             if (recalled || faded[0]?.forgotten) log(`召回长期记忆 ${recalled ? countLines(recalled) : 0} 条${fadeNote(faded[0])}`);
+            // 工作房每轮都查：他问“今天帮我干了什么”时不一定有公共记忆线索
+            const work = remembers ? you(await memory.recallWork(contact, chat, time)) : undefined;
+            if (work) log(`召回工作记忆 ${countLines(work)} 条`);
             let common = freshCommon;
             const commonNote = [`线索：${cue}`, fadeParts(faded[1]).join('，')].filter(Boolean).join('；');
             if (common) {
@@ -768,6 +771,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 afterHistory: [
                     ...(summary ? [summary] : []),
                     ...(recalled ? [recalled] : []),
+                    ...(work ? [work] : []),
                     // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3：放在前面时问「昨天都干嘛了」她照着报喂猫、取快递，想不起那天记得住的麻辣烫，1/3）
                     ...(common ? [common] : []),
                     ...(recap ? [recap.text] : []),

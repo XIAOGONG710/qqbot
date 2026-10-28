@@ -539,16 +539,7 @@ export class LongTermMemory {
         };
         const commonFound = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
         if (!commonFound) return undefined;
-        // 他在 DSH 里让她干的活（工作房）：也一起召回，聊天里的她要知道自己做过什么
-        // 工作房的事实会被 Hindsight 归纳成 observation，公共召回默认不要 observation，这里单独放开；
-        // 工作记录不带 qq-private 标签，所以 tags 清空、tags_match any（含无标签）
-        const workRequest: RecallRequest = { ...request, types: ['world', 'experience', 'observation'], prefer_observations: true, tags: [], tags_match: 'any' as unknown as RecallRequest['tags_match'] };
-        const workRaw = await this.#recall(`${this.#options.bankPrefix}-dsh`, workRequest, `[${contact.qq}] 工作房召回失败（忽略）`);
-        // 工作房的 observation 没有 document_id，补一个标记，后面才能标成“你干过的事”
-        const workFound = workRaw?.map(r => ({ ...r, document_id: r.document_id ?? 'dsh-work' }));
-        const found = workFound?.length
-            ? [...commonFound, ...workFound.filter(r => !commonFound.some(c => c.id === r.id))]
-            : commonFound;
+        const found = commonFound;
         // 问上周、问假期时，周记、阶段总结单独按标签再召回一次（ADR 0026：日记里的事多了以后，周记的条目有时排不进上面那次的名额，3/9 次问上周没想起周记）
         const summaryTag = window?.period === 'week' ? 'week' : window?.period === 'holiday' ? 'phase' : undefined;
         const summaries = summaryTag
@@ -566,11 +557,36 @@ export class LongTermMemory {
         const results = focus.length ? [...inWindow].sort((a, b) => Number(about(b)) - Number(about(a))) : inWindow;
         const own = `${this.#hash(contact)}:`;
         return formatRecalled(results.filter(r => !r.document_id?.startsWith(own)), {
-            header: `[你和名单里别的人聊天时说过、听过的事，以及他让你在电脑里干活时做过的事（从记忆里想起来的，只作参考；不是和${contact.name}聊的，用不上就别提）]`,
+            header: `[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和${contact.name}聊的，用不上就别提）]`,
             limit: SHARED_RECALLED,
             now,
             fade: { ...this.#fade(chat, fade), ...(window ? { window } : {}) },
             source: this.#commonSource(contact, people),
+        });
+    }
+
+    /**
+     * 他在 DSH 里让她干的活（工作房）：每轮都查，不依赖“公共记忆线索”。
+     * 工作房的事实是 observation、且没有 qq-private 标签，所以单独放开类型和标签过滤。
+     */
+    async recallWork(contact: NamedContact, chat: readonly ChatMessage[], now: Date): Promise<string | undefined> {
+        const query = recallQuery(chat);
+        if (!query) return undefined;
+        const request: RecallRequest = {
+            ...recallRequest(query, now),
+            types: ['world', 'experience', 'observation'],
+            prefer_observations: true,
+            tags: [],
+            tags_match: 'any' as unknown as RecallRequest['tags_match'],
+        };
+        const results = await this.#recall(`${this.#options.bankPrefix}-dsh`, request, `[${contact.qq}] 工作记忆召回失败，这次不带`);
+        if (!results?.length) return undefined;
+        return formatRecalled(results.map(result => ({ ...result, document_id: result.document_id ?? 'dsh-work' })), {
+            header: `[你在电脑里帮他干活时做过的事（从记忆里想起来的，只作参考）]`,
+            limit: 3,
+            now,
+            fade: this.#fade(chat, {}),
+            source: () => '你干过的事',
         });
     }
 
