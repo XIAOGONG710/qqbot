@@ -30,7 +30,7 @@ import { describeIntent, needsCareText } from '.././language/intent.ts';
 import { describeObstacles, meetupDays } from '.././world/obstacles.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { describeQuote, planQuote, quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
-import { alreadyTold, ASKS_TO_EXPLAIN, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from '.././language/expression.ts';
+import { alreadyTold, ASKS_TO_EXPLAIN, describeLength, ENGAGED_INTENT, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from '.././language/expression.ts';
 import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from '.././language/shape.ts';
 import { finishReply } from '.././language/unfinished.ts';
 import { describeUnsettled } from '.././life/open-loops.ts';
@@ -177,6 +177,8 @@ export interface ContactPipelineOptions {
     refusalLine?: () => string | undefined;
     /** 他最近给她的评分：影响说话分寸 */
     ratingLine?: () => string | undefined;
+    /** 她现在的连续生活（NOW.md）：此刻在干嘛、身体、心情、关系 */
+    lifeLine?: () => string | undefined;
     /** 记忆由她自己决定：提示词里教她写 <<记住：…>> / <<日记：…>> 标记 */
     selfMemory?: boolean;
     /** 她想查才查（<<查：…>>）：拿到想起来的记忆，再让她重写一次 */
@@ -724,8 +726,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
                 ...(mood ? ['心情'] : []),
             ];
-            // 问他过去的事/工作时不套短句形状，否则她记得也说不出来（8 字上限会把答案压成“回过神了？”）
-            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !deliberateNow && !cue ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
+            // 语言松绑：只有“接情绪/好事/亲近/撒娇/认真”或问过去时给形状；普通闲聊不圈条数字数
+            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !deliberateNow && (Boolean(cue) || Boolean(intent && ENGAGED_INTENT.test(intent))) ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
             // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
             const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
             const crutchLine = crutches.length
@@ -833,6 +835,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(options.selfMemory ? [SELF_MEMORY_NOTE] : []),
                         ...(options.refusalLine?.() ? [options.refusalLine()!] : []),
                         ...(options.ratingLine?.() ? [options.ratingLine()!] : []),
+                        ...(options.lifeLine?.() ? [`[你现在的生活] ${options.lifeLine()!}`] : []),
                         ...(options.workRequest?.() ? [WORK_REQUEST_NOTE] : []),
                         ...(options.workMode?.() ? [WORK_MODE_NOTE] : []),
                         ...(deliberateNow ? [DELIBERATE_NOTE] : []),

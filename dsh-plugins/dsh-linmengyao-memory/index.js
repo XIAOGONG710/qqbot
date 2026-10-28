@@ -20,6 +20,8 @@ const DEFAULTS = {
   interestsFile: 'C:/Users/22601/.dsh/linmengyao/INTERESTS.md',
   outboxFile: 'C:/Users/22601/.dsh/linmengyao/OUTBOX.jsonl',
   offlineFile: 'C:/Users/22601/.dsh/linmengyao/OFFLINE.json',
+  nowFile: 'C:/Users/22601/.dsh/linmengyao/NOW.md',
+  storyFile: 'C:/Users/22601/.dsh/linmengyao/STORY.md',
   ratingFile: 'C:/Users/22601/.dsh/linmengyao/RATINGS.json',
   logFile: 'C:/Users/22601/.dsh/linmengyao-memory.log',
 }
@@ -36,6 +38,32 @@ function readSoul(cfg) {
       soulCache = { path: cfg.soulFile, at: stat.mtimeMs, text: fs.readFileSync(cfg.soulFile, 'utf8').trim() }
     }
     return soulCache.text
+  } catch {
+    return ''
+  }
+}
+
+let nowCache = { path: '', at: 0, text: '' }
+function readNow(cfg) {
+  try {
+    const stat = fs.statSync(cfg.nowFile)
+    if (nowCache.path !== cfg.nowFile || nowCache.at !== stat.mtimeMs) {
+      nowCache = { path: cfg.nowFile, at: stat.mtimeMs, text: fs.readFileSync(cfg.nowFile, 'utf8').trim() }
+    }
+    return nowCache.text
+  } catch {
+    return ''
+  }
+}
+
+let storyCache = { path: '', at: 0, text: '' }
+function readStory(cfg) {
+  try {
+    const stat = fs.statSync(cfg.storyFile)
+    if (storyCache.path !== cfg.storyFile || storyCache.at !== stat.mtimeMs) {
+      storyCache = { path: cfg.storyFile, at: stat.mtimeMs, text: fs.readFileSync(cfg.storyFile, 'utf8').trim() }
+    }
+    return storyCache.text.slice(-1200)
   } catch {
     return ''
   }
@@ -255,7 +283,11 @@ export function apply(ctx, config = {}) {
             if (text.length > cfg.maxChars) text = text.slice(0, cfg.maxChars) + '…'
             const soul = readSoul(cfg)
             const ledger = readLedger(cfg)
+            const now = readNow(cfg)
+            const story = readStory(cfg)
             cache.text = [
+              now ? `[你现在的生活]\n${now}` : '',
+              story ? `[你走到现在的故事]\n${story}` : '',
               soul ? `[你现在的自我]\n${soul}` : '',
               ledger ? `[你的判断账本]\n${ledger}` : '',
               text,

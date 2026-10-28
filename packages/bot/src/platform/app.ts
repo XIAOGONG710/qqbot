@@ -698,6 +698,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 ratingLine: () => ratingSummary(),
             } : {}),
             ...(config.selfDirectedMemory ? { selfMemory: true } : {}),
+            lifeLine: () => {
+                try { return readFileSync('C:/Users/22601/.dsh/linmengyao/NOW.md', 'utf8').trim(); } catch { return undefined; }
+            },
             llm: config.llm,
             prompt: config.prompt,
             schedule: config.schedule,
@@ -1531,6 +1534,12 @@ ${body}
     function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string): void {
         const text = segmentsToText(message, quoteLookup(event.user_id)).trim();
         if (!text) return;
+        // 连续生活：他一句话会改变她的心情/关系（不挡回复）
+        void fetch(process.env.HER_RESIDENT_URL ? `${process.env.HER_RESIDENT_URL}/note` : 'http://127.0.0.1:7777/note', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, from: event.user_id === deviceOwner?.qq ? 'baobao' : 'classmate' }),
+        }).catch(() => {});
         // 工作模式：不进普通聊天回复器，交给 headless 的她干活，干完再回（工具桥）
         if (event.user_id === deviceOwner?.qq && !text.startsWith('/') && readWorkMode(config.dataDir, event.user_id) === 'work') {
             const qq = event.user_id;

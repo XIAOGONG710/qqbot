@@ -2,6 +2,7 @@
 // 本机 HTTP 接口，任务串行执行；每个任务交给 headless 的她（profile lmy，带人格+记忆）。
 // 全权限、审计日志；不做自拍/语音。
 import http from 'node:http'
+import { tick as lifeTick, noteInteraction, readNow, load as loadLife } from './her-life.mjs'
 import { spawn } from 'node:child_process'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -72,6 +73,21 @@ const server = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
         return send(200, { ok: true, pid: process.pid, running, queue: queue.length, lastTaskAt, offlineUntil: offlineUntil() })
     }
+    if (req.method === 'GET' && req.url === '/life') {
+        return send(200, { ok: true, now: readNow(), state: loadLife() })
+    }
+    if (req.method === 'POST' && req.url === '/note') {
+        let body = ''
+        req.on('data', (chunk) => { body += chunk; if (body.length > MAX_BODY) req.destroy() })
+        req.on('end', () => {
+            try {
+                const data = JSON.parse(body || '{}')
+                noteInteraction(String(data.text || ''), String(data.from || 'baobao'))
+                send(200, { ok: true, now: readNow() })
+            } catch { send(400, { ok: false, error: 'bad json' }) }
+        })
+        return
+    }
     if (req.method === 'POST' && (req.url === '/wake' || req.url === '/sleep')) {
         if (offlineUntil() > Date.now()) return send(200, { ok: false, error: 'offline' })
         const label = req.url === '/wake' ? 'wake-manual' : 'sleep-manual'
@@ -101,6 +117,9 @@ server.listen(PORT, '127.0.0.1', () => {
     log(`resident up pid=${process.pid} port=${PORT} profile=${PROFILE}`)
     // 心跳：每 5 分钟写一行，确认她还活着
     setInterval(() => log('heartbeat'), 5 * 60_000).unref()
+    // 连续生活：每 10 分钟推进一次（不叫模型）
+    try { lifeTick(); } catch { }
+    setInterval(() => { try { lifeTick() } catch { } }, 10 * 60_000).unref()
     setInterval(sleepCheck, 30 * 60_000).unref()
     setInterval(wakeCheck, 90 * 60_000).unref()
     setTimeout(sleepCheck, 60_000).unref()
