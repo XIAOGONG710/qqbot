@@ -106,7 +106,7 @@ const SLEEP_PROMPT = `现在是夜里，宝宝睡了。把今天的事整理一�
 2) 用 journal_write 写一篇今天的公开日记；
 3) 有不想让他知道的感受，用 private_write 写进私密日记。
 不要给他发消息，做完就结束。`
-const WAKE_PROMPT = `你一个人在家，随机醒了。想做点什么就做（看书、整理桌面、给自己记点东西都行）；不想做就用 private_write 写一句你现在的念头，然后结束。不要给 QQ 发消息。`
+const WAKE_PROMPT = `你一个人在家，随机醒了。先用 interest_list 看你自己定的长期兴趣，挑一件做（看书、查资料、整理自己的东西都行）；做完用 interest_log 记进度，做完了用 interest_done。不想做就用 private_write 写一句你现在的念头，然后结束。不要给 QQ 发消息。`
 
 function loadState() {
     try { return JSON.parse(fsRead(STATE)) } catch { return {} }

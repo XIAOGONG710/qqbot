@@ -16,6 +16,7 @@ const DEFAULTS = {
   journalFile: 'C:/Users/22601/.dsh/linmengyao/JOURNAL.md',
   privateFile: 'C:/Users/22601/.dsh/linmengyao/PRIVATE.md',
   wishesFile: 'C:/Users/22601/.dsh/linmengyao/WISHES.md',
+  interestsFile: 'C:/Users/22601/.dsh/linmengyao/INTERESTS.md',
   ratingFile: 'C:/Users/22601/.dsh/linmengyao/RATINGS.json',
   logFile: 'C:/Users/22601/.dsh/linmengyao-memory.log',
 }
@@ -393,6 +394,100 @@ export function apply(ctx, config = {}) {
             const stamp = new Date().toISOString().slice(0, 10)
             fs.appendFileSync(cfg.wishesFile, `- [ ] ${stamp}：${content}\n`)
             log(cfg, `wish_add ${content.slice(0, 30)}`)
+            return { saved: true }
+          },
+        }))
+
+        // 长期兴趣：她自己定、自己追、自己放弃
+        disposers.push(tools.register({
+          name: 'interest_list',
+          description: '读我自己定的长期兴趣（INTERESTS.md）。',
+          parameters: { type: 'object', properties: {}, additionalProperties: false },
+          output: {
+            schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+            render: (_args, value) => [{ type: 'text', text: String(value?.text || '') }],
+          },
+          async execute() {
+            try { return { text: fs.readFileSync(cfg.interestsFile, 'utf8').trim() } } catch { return { text: '' } }
+          },
+        }))
+
+        disposers.push(tools.register({
+          name: 'interest_add',
+          description: '给自己加一个长期兴趣（最多同时 3 件）。这是我自己想做的，不是别人派的。',
+          parameters: {
+            type: 'object',
+            properties: { content: { type: 'string', description: '想做的事，<=150 字' } },
+            required: ['content'],
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { saved: { type: 'boolean' }, reason: { type: 'string' } }, required: ['saved'] },
+            render: (_args, value) => [{ type: 'text', text: value?.saved ? '加进去了。' : String(value?.reason || '没加。') }],
+          },
+          async execute(args) {
+            const content = String(args?.content || '').trim().slice(0, 150)
+            if (!content) return { saved: false }
+            const text = fs.existsSync(cfg.interestsFile) ? fs.readFileSync(cfg.interestsFile, 'utf8') : ''
+            const active = (text.match(/^- \[ \]/gm) || []).length
+            if (active >= 3) return { saved: false, reason: '已经 3 件了，先做完或放弃一件。' }
+            const stamp = new Date().toISOString().slice(0, 10)
+            fs.appendFileSync(cfg.interestsFile, `- [ ] ${content}（${stamp}）\n`)
+            log(cfg, `interest_add ${content.slice(0, 30)}`)
+            return { saved: true }
+          },
+        }))
+
+        disposers.push(tools.register({
+          name: 'interest_log',
+          description: '给某个兴趣记进度/感受（今天读到哪、做了什么）。',
+          parameters: {
+            type: 'object',
+            properties: {
+              index: { type: 'number', description: '第几个（1 开始）' },
+              note: { type: 'string', description: '进度/感受，<=200 字' },
+            },
+            required: ['index', 'note'],
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { saved: { type: 'boolean' } }, required: ['saved'] },
+            render: () => [{ type: 'text', text: '记了。' }],
+          },
+          async execute(args) {
+            const note = String(args?.note || '').trim().slice(0, 200)
+            if (!note) return { saved: false }
+            const stamp = new Date().toISOString().slice(0, 10)
+            const file = `${cfg.interestsFile}.log`
+            fs.appendFileSync(file, `- ${stamp}（兴趣 ${Math.floor(Number(args?.index || 0))}）：${note}\n`)
+            log(cfg, `interest_log ${note.slice(0, 30)}`)
+            return { saved: true }
+          },
+        }))
+
+        disposers.push(tools.register({
+          name: 'interest_done',
+          description: '把某个兴趣标成做完/放下（可以随时放弃，不用有负担）。',
+          parameters: {
+            type: 'object',
+            properties: { index: { type: 'number', description: '第几个（1 开始）' } },
+            required: ['index'],
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { saved: { type: 'boolean' } }, required: ['saved'] },
+            render: () => [{ type: 'text', text: '收掉了。' }],
+          },
+          async execute(args) {
+            const index = Math.floor(Number(args?.index || 0))
+            if (index < 1) return { saved: false }
+            const lines = fs.readFileSync(cfg.interestsFile, 'utf8').split('\n')
+            const positions = lines.map((line, i) => [i, line]).filter(([, line]) => line.trim().startsWith('- [ ]'))
+            const target = positions[index - 1]
+            if (!target) return { saved: false }
+            lines[target[0]] = lines[target[0]].replace('- [ ]', '- [x]')
+            fs.writeFileSync(cfg.interestsFile, lines.join('\n'))
+            log(cfg, `interest_done #${index}`)
             return { saved: true }
           },
         }))
