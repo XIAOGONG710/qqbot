@@ -590,6 +590,20 @@ export class LongTermMemory {
         });
     }
 
+    /** 她自己决定要记的事（回复里的 <<记住：…>> / <<日记：…>>）：写进公共库，标 self */
+    async rememberSelfNote(contact: NamedContact, content: string, kind: '记住' | '日记' = '记住'): Promise<void> {
+        const text = content.trim().slice(0, 2000);
+        if (!text || !this.#options.common) return;
+        await this.#options.api.retain(this.commonBankId(), {
+            content: `林梦瑶自己记下的${kind}：${text}`,
+            context: kind,
+            document_id: `${kind === '日记' ? 'diary-self' : 'self'}:${this.#hash(contact)}:${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            tags: ['qq-private', 'self'],
+            metadata: {},
+        });
+    }
+
     /**
      * 今天和名单里别人聊过的（ADR 0020）。只取今天产生的其他联系人片段，不取日记/周记/总结，也不取眼前这个人的。
      * contact.ts 只会在亲密联系人开启一段新对话或她主动找他时调用；这里仍保留通用的权限检查。

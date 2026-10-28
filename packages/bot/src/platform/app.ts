@@ -593,7 +593,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 约定来源已经接上以后再第一次推进生活；否则启动瞬间会把赴约时段排成普通休闲。
     noteHerDay?.(new Date(pipeline?.now?.() ?? Date.now()));
     if (promises) log('她答应的事：名单里的人每段聊天结束后抽一次，到了日子在时间块里提醒');
-    const diaries = memory && diaryCard
+    const diaries = !config.selfDirectedMemory && memory && diaryCard
         ? diaryWriter({
             sources: {
                 charName: diaryCard.name,
@@ -615,13 +615,17 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             log,
         })
         : undefined;
-    if (memory) log(diaries ? `她的日记：她的每一天结束后写一篇存进公共记忆（没聊天的日子也写，停过的补最近 ${DIARY_BACKFILL_DAYS} 天）` : '她的日记：不写（用到的档位卡上都没有作息）');
+    if (memory) log(config.selfDirectedMemory
+        ? '她自己的记忆：自动同步关，等她说 <<记住：…>> / <<日记：…>> 才记'
+        : diaries ? `她的日记：她的每一天结束后写一篇存进公共记忆（没聊天的日子也写，停过的补最近 ${DIARY_BACKFILL_DAYS} 天）` : '她的日记：不写（用到的档位卡上都没有作息）');
     function syncMemory(): void {
         if (!memory) return;
-        for (const contact of config.contacts) {
-            void memory.sync(contact, { user: contact.name, char: cardFor(contact.tier).character.name }, history.load(contact.qq));
+        if (!config.selfDirectedMemory) {
+            for (const contact of config.contacts) {
+                void memory.sync(contact, { user: contact.name, char: cardFor(contact.tier).character.name }, history.load(contact.qq));
+            }
+            void diaries?.catchUp(new Date(pipeline?.now?.() ?? Date.now()));
         }
-        void diaries?.catchUp(new Date(pipeline?.now?.() ?? Date.now()));
         void promises?.sync();
     }
     const memoryTimer = memory ? setInterval(syncMemory, MEMORY_SYNC_MS) : undefined;
@@ -651,6 +655,17 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         };
     }
 
+    /** 她自己决定记不记：剥掉回复末尾的 `<<记住：…>>` / `<<日记：…>>`，返回干净文本和要记的条目 */
+    function takeSelfNotes(input: string): { text: string; notes: Array<{ kind: '记住' | '日记'; text: string }> } {
+        const notes: Array<{ kind: '记住' | '日记'; text: string }> = [];
+        const text = input.replace(/<<(记住|日记)[：:]\s*([\s\S]*?)>>/g, (_, kind: '记住' | '日记', body: string) => {
+            const value = body.trim();
+            if (value) notes.push({ kind, text: value });
+            return '';
+        }).replace(/\n{3,}/g, '\n\n').trim();
+        return { text, notes };
+    }
+
     function createContactResponder(contact: Contact): Responder {
         return createPipeline({
             contact,
@@ -658,6 +673,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             // 危机回合被问是不是真人一律承认（ADR 0068 决策 7）：知道她是程序的联系人这一轮换用承认版的卡
             ...(openCardFor(contact) ? { openCard: openCardFor(contact)! } : {}),
             ...(contact.tier === 'boyfriend' ? { workMode: () => readWorkMode(config.dataDir, contact.qq) === 'work' } : {}),
+            ...(config.selfDirectedMemory ? { selfMemory: true } : {}),
             llm: config.llm,
             prompt: config.prompt,
             schedule: config.schedule,
@@ -727,6 +743,15 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.readReceipts && transport.markRead ? { markRead: (userId: number) => { transport.markRead!(userId).catch(error => failOnce('已读回执', userId, error)); } } : {}),
             ...(config.reactions && transport.reactMessage ? { react: (userId: number, messageId: number, text: string) => { transport.reactMessage!(messageId, reactionEmoji(text, messageId)).then(() => log(`[${userId}] 看到了没回，点了个表情回应`), error => failOnce('表情回应', userId, error)); } } : {}),
             send: async (userId, text, sendOptions) => {
+                const selfNotes = takeSelfNotes(text);
+                text = selfNotes.text;
+                for (const note of selfNotes.notes) {
+                    if (memory) {
+                        void memory.rememberSelfNote(contact, note.text, note.kind)
+                            .catch(error => log(`[${userId}] 她自己记的事没写进记忆：${error instanceof Error ? error.message : String(error)}`));
+                    }
+                }
+                if (!text.trim()) return 0;
                 const photo = contact.tier === 'boyfriend' ? photos?.resolve(text) : undefined;
                 if (photo) {
                     const id = await transport.sendPrivateImage!(userId, photo.file, '[照片]');

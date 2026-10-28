@@ -76,6 +76,9 @@ const DAY_MS = 86_400_000;
 /** 他在 QQ 里切到工作模式（/工作）时加的一行：干活，但说话还是她 */
 const WORK_MODE_NOTE = '他刚把你切到工作模式：这会儿他让你帮忙干活。先说结果，用你平时的口气，别分点汇报、别写“好的/已完成/总结”，过程他追问再说。';
 
+/** 她自己决定记不记：只在这条真的值得长期记住时，回复最后另起一行写标记；标记不会发出去 */
+const SELF_MEMORY_NOTE = '记忆由你自己决定：只有这条真的值得长期记住（约定、他的重要事、你自己想记住的），才在回复最后另起一行写 `<<记住：一句话>>`；想写今天的事就写 `<<日记：一段>>`。这些标记不会发出去。不重要就不写，别每条都记。';
+
 /** 召回整理出来的一段有几条（第一行是标题） */
 const countLines = (text: string) => text.split('\n').length - 1;
 
@@ -165,6 +168,8 @@ export interface ContactPipelineOptions {
     photos?: PhotoShelf;
     /** 他刚在 QQ 里切到工作模式（/工作）：这轮按「帮他干活」说话，语气不变 */
     workMode?: () => boolean;
+    /** 记忆由她自己决定：提示词里教她写 <<记住：…>> / <<日记：…>> 标记 */
+    selfMemory?: boolean;
     /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
     stickerChance?: number;
     /** 抽到发表情的轮次里只发表情不写文字的概率（不写 = 0，不开；app.ts 在 shapeFeel 开着时给 STICKER_ONLY_SHARE；模拟器场景可以调来测，ADR 0099） */
@@ -813,6 +818,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
                         ...(photoNow && options.photos?.prompt(photoNow, photoDishNow) ? [options.photos.prompt(photoNow, photoDishNow)!] : []),
                         ...(intentLine ? [intentLine] : []),
+                        ...(options.selfMemory ? [SELF_MEMORY_NOTE] : []),
                         ...(options.workMode?.() ? [WORK_MODE_NOTE] : []),
                         ...(deliberateNow ? [DELIBERATE_NOTE] : []),
                         ...(length ? [describeLength(length, options.shortReplies)] : []),

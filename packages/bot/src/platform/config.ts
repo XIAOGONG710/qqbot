@@ -133,6 +133,8 @@ export const DEFAULTS = {
     qqFriendGate: 'off' as FriendGate,
     typingStatus: false,
     selfRecall: false,
+    /** 她自己决定记不记：关掉自动记忆同步和自动日记，只认她回复里的标记 */
+    selfDirectedMemory: false,
     rhythm: false,
     shortReplies: false,
     media: true,
@@ -525,6 +527,8 @@ export interface AppConfig {
     rhythm: boolean;
     /** 更短的回复（ADR 0024 的 10-19 调整，候选 5）：约一半的轮次回很短的一句，他在难受、说担心的事、问起她的朋友时让路。默认关（老样子：35%，老措辞） */
     shortReplies: boolean;
+    /** 她自己决定记不记：关掉自动记忆同步和自动日记，只认她回复里的 `<<记住：…>>` / `<<日记：…>>` 标记 */
+    selfDirectedMemory?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -800,6 +804,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         qqFriendGate: oneOf(file.qqFriendGate, 'qqFriendGate', QQ_FRIEND_GATES, DEFAULTS.qqFriendGate),
         typingStatus: bool(file, 'typingStatus', '', DEFAULTS.typingStatus),
         selfRecall: bool(file, 'selfRecall', '', DEFAULTS.selfRecall),
+        selfDirectedMemory: bool(file, 'selfDirectedMemory', '', DEFAULTS.selfDirectedMemory),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
         shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),
         media: bool(file, 'media', '', DEFAULTS.media),
