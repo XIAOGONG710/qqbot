@@ -261,6 +261,8 @@ export function apply(ctx, config = {}) {
     let preset = ''
     try { preset = ctx.get('agentPresets')?.composedPreset?.(agent.ctx) || '' } catch (e) { log(cfg, `created preset error ${e}`) }
     log(cfg, `agent created ${agent.id} preset=${preset || '(empty)'}`)
+    // 只给她的预设挂记忆/灵魂工具；助手窗口（cordis）和其他预设不挂
+    if (allow.size && (!preset || !allow.has(preset))) return
 
     const cache = { text: '', preset, user: '', assistant: '' }
 
