@@ -73,7 +73,7 @@ export const SOLVE_FRAME_NOTE = '这一轮不要去想怎么显得像真人，�
 
 const DAY_MS = 86_400_000;
 
-/** 他在 QQ 里切到工作模式（/工作）时加的一行：干活，但说话还是她 */
+/** 他在 QQ 里切到工作模式（/dsh）时加的一行：干活，但说话还是她 */
 const WORK_MODE_NOTE = '他刚把你切到工作模式：这会儿他让你帮忙干活。先说结果，用你平时的口气，别分点汇报、别写“好的/已完成/总结”，过程他追问再说。';
 
 /** 她自己决定记不记：只在这条真的值得长期记住时，回复最后另起一行写标记；标记不会发出去 */
@@ -171,7 +171,7 @@ export interface ContactPipelineOptions {
     stickers?: StickerShelf;
     /** 照片货架（ADR 0109，配置 photos）：他要看土豆 / 风景 / 她的片子时，货架里有就发；只对男朋友档 */
     photos?: PhotoShelf;
-    /** 他刚在 QQ 里切到工作模式（/工作）：这轮按「帮他干活」说话，语气不变 */
+    /** 他刚在 QQ 里切到工作模式（/dsh）：这轮按「帮他干活」说话，语气不变 */
     workMode?: () => boolean;
     /** 他在求她切工作模式：她可以答应/拒绝/提条件 */
     workRequest?: () => boolean;

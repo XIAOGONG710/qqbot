@@ -1454,11 +1454,11 @@ ${body}
             armIntimate(config.dataDir, event.user_id);
             log(`[${event.user_id}] 收到 /亲热：接下来 ${INTIMATE_REPLIES} 条回复黏一点`);
         }
-        // 他发「/工作」「/回聊」「/模式」：只认男朋友档的他、只认纯文字；命中的算处理完，不进聊天记录
+        // 他发「/dsh」「/QQ」「/模式」：只认男朋友档的他、只认纯文字；命中的算处理完，不进聊天记录
         if (event.user_id === deviceOwner?.qq) {
             const plain = plainTextOf(event.message)?.trim();
             log(`[${event.user_id}] 命令检查：${JSON.stringify(plain)}`);
-            if (plain === '/工作') {
+            if (plain === '/dsh' || plain === '/工作') {
                 // 不机械切换：先挂起，让她自己答应/拒绝/提条件；反复催会让她烦
                 const previous = readWorkMode(config.dataDir, event.user_id);
                 setWorkMode(config.dataDir, event.user_id, 'pending');
@@ -1469,11 +1469,11 @@ ${body}
                         body: JSON.stringify({ text: '他又催我切工作', from: 'baobao', negative: true }),
                     }).catch(() => {});
                 }
-                log(`[${event.user_id}] 收到 /工作：等她决定`);
-            } else if (plain === '/回聊') {
+                log(`[${event.user_id}] 收到 /dsh：等她决定`);
+            } else if (plain === '/QQ' || plain === '/qq' || plain === '/回聊') {
                 setWorkMode(config.dataDir, event.user_id, 'chat');
                 tellOwner('（回聊天模式了）');
-                log(`[${event.user_id}] 收到 /回聊：切回聊天模式`);
+                log(`[${event.user_id}] 收到 /QQ：切回聊天模式`);
                 return;
             } else if (plain === '/模式') {
                 const mode = readWorkMode(config.dataDir, event.user_id);
