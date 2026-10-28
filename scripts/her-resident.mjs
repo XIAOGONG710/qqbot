@@ -82,7 +82,7 @@ const server = http.createServer((req, res) => {
         req.on('end', () => {
             try {
                 const data = JSON.parse(body || '{}')
-                noteInteraction(String(data.text || ''), String(data.from || 'baobao'))
+                noteInteraction(String(data.text || ''), String(data.from || 'baobao'), Boolean(data.negative))
                 send(200, { ok: true, now: readNow() })
             } catch { send(400, { ok: false, error: 'bad json' }) }
         })

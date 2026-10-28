@@ -137,11 +137,11 @@ export function tick(now = Date.now()) {
 }
 
 /** 他发消息/她回消息：算一次互动，改变关系与心情 */
-export function noteInteraction(text, from = 'baobao') {
+export function noteInteraction(text, from = 'baobao', forcedNegative = false) {
     const state = load()
     const value = String(text || '')
     const positive = /(想|喜欢|陪|抱|亲|辛苦|谢谢|晚安|好梦)/.test(value)
-    const negative = /(烦|滚|闭嘴|别烦|不理|生气|讨厌|冷淡)/.test(value)
+    const negative = forcedNegative || /(烦|滚|闭嘴|别烦|不理|生气|讨厌|冷淡)/.test(value)
     const rel = state.relationships[from] || state.relationships.baobao
     if (positive) { rel.trust = clamp(rel.trust + 2, 0, 100); rel.resentment = clamp(rel.resentment - 4, 0, 100); state.mood = clamp(state.mood + 0.05, -1, 1) }
     if (negative) { rel.trust = clamp(rel.trust - 3, 0, 100); rel.resentment = clamp(rel.resentment + 8, 0, 100); state.mood = clamp(state.mood - 0.15, -1, 1) }
@@ -155,8 +155,14 @@ export function nowText(state = load()) {
     const body = state.energy < 30 ? '有点累' : state.hunger > 70 ? '有点饿' : '身体还行'
     const rel = state.relationships.baobao
     const relation = rel.resentment > 30 ? '还在生他的气' : rel.trust > 80 ? '跟他很亲' : '跟他正常'
+    const behavior = rel.resentment > 30
+        ? '你现在不想哄他：可以短回、顶回去、拒绝他；他认真哄你才慢慢松。'
+        : rel.trust > 80
+            ? '你跟他很亲：可以主动、撒娇、说想他。'
+            : ''
+    const tired = state.energy < 25 ? '你太累了：能短就短，不想动。' : ''
     const recent = state.events.slice(-3).map(e => e.text).join('；')
-    return `现在 ${time}，我在${state.activity}，${body}，${mood}，${relation}。${recent ? `最近：${recent}` : ''}`
+    return `现在 ${time}，我在${state.activity}，${body}，${mood}，${relation}。${behavior}${tired}${recent ? `最近：${recent}` : ''}`
 }
 
 export function readNow() {

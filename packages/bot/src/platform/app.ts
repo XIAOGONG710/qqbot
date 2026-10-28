@@ -1441,8 +1441,16 @@ ${body}
             const plain = plainTextOf(event.message)?.trim();
             log(`[${event.user_id}] 命令检查：${JSON.stringify(plain)}`);
             if (plain === '/工作') {
-                // 不机械切换：先挂起，让她自己答应/拒绝/提条件
+                // 不机械切换：先挂起，让她自己答应/拒绝/提条件；反复催会让她烦
+                const previous = readWorkMode(config.dataDir, event.user_id);
                 setWorkMode(config.dataDir, event.user_id, 'pending');
+                if (previous === 'pending') {
+                    void fetch('http://127.0.0.1:7777/note', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: '他又催我切工作', from: 'baobao', negative: true }),
+                    }).catch(() => {});
+                }
                 log(`[${event.user_id}] 收到 /工作：等她决定`);
             } else if (plain === '/回聊') {
                 setWorkMode(config.dataDir, event.user_id, 'chat');
