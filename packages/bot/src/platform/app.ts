@@ -685,6 +685,16 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         return { text, notes };
     }
 
+    /** 存进聊天记录的版本：所有内部标记都剥掉，免得下一轮她又在历史里看见自己写标记 */
+    function historyText(sent: string): string {
+        return takeSelfNotes(sent).text
+            .replace(/<<查[：:][\s\S]*?>>/g, '')
+            .replace(/<<同意工作>>/g, '')
+            .replace(/<<拒绝工作[：:][\s\S]*?>>/g, '')
+            .replace(/\n{2,}/g, '\n')
+            .trim();
+    }
+
     function createContactResponder(contact: Contact): Responder {
         return createPipeline({
             contact,
@@ -719,6 +729,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...((stickerOnlyChance ?? (config.shape && config.shapeFeel ? STICKER_ONLY_SHARE : 0)) > 0 ? { stickerOnlyChance: stickerOnlyChance ?? STICKER_ONLY_SHARE } : {}),
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
             history,
+            historyContent: historyText,
             memory,
             ...(memory && config.selfDirectedMemory ? { pullRecall: (query: string) => memory!.recallPull(contact, query, new Date()) } : {}),
             ...(promises ? { promises } : {}),
