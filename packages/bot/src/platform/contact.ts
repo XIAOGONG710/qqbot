@@ -77,7 +77,7 @@ const DAY_MS = 86_400_000;
 const WORK_MODE_NOTE = '他刚把你切到工作模式：这会儿他让你帮忙干活。先说结果，用你平时的口气，别分点汇报、别写“好的/已完成/总结”，过程他追问再说。';
 
 /** 她自己决定记不记：只在这条真的值得长期记住时，回复最后另起一行写标记；标记不会发出去 */
-const SELF_MEMORY_NOTE = '记忆由你自己决定：只有这条真的值得长期记住（约定、他的重要事、你自己想记住的），才在回复最后另起一行写 `<<记住：一句话>>`；想写今天的事就写 `<<日记：一段>>`。这些标记不会发出去。不重要就不写，别每条都记。';
+const SELF_MEMORY_NOTE = '记忆由你自己决定：只有这条真的值得长期记住（约定、他的重要事、你自己想记住的），才在回复最后另起一行写 `<<记住：一句话>>`；想写今天的事就写 `<<日记：一段>>`。想不起某件事时，别硬编，写 `<<查：关键词>>`，系统会把你想起的东西给你再回。这些标记不会发出去。不重要就不写，别每条都记。';
 
 /** 召回整理出来的一段有几条（第一行是标题） */
 const countLines = (text: string) => text.split('\n').length - 1;
@@ -170,6 +170,8 @@ export interface ContactPipelineOptions {
     workMode?: () => boolean;
     /** 记忆由她自己决定：提示词里教她写 <<记住：…>> / <<日记：…>> 标记 */
     selfMemory?: boolean;
+    /** 她想查才查（<<查：…>>）：拿到想起来的记忆，再让她重写一次 */
+    pullRecall?: (query: string) => Promise<string | undefined>;
     /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
     stickerChance?: number;
     /** 抽到发表情的轮次里只发表情不写文字的概率（不写 = 0，不开；app.ts 在 shapeFeel 开着时给 STICKER_ONLY_SHARE；模拟器场景可以调来测，ADR 0099） */
@@ -894,7 +896,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     regenerate, log, ...(options.onFactCheck ? { onRecord: options.onFactCheck } : {}),
                 })
                 : reply;
-            const reviewed = await (crisisNow
+            let reviewed = await (crisisNow
                 ? (text: string, reviewOptions: ReviewOptions) => reviewCrisisReply(text, reviewOptions, crisisNow!.level)
                 : reviewReply)(factual, {
                 // 角色卡的禁用词 + 医书里的词（“肚子坠着”之类，expression.ts 的 ODD_BODY_WORDS）：出了就让她重写
@@ -909,6 +911,17 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 regenerate,
                 log,
             });
+            // 她想查才查：看到她写 <<查：…>> 才去查，查到就带着结果重写一次；标记不发出去
+            const pull = /<<查[：:]\s*([\s\S]*?)>>/.exec(reviewed);
+            if (pull) {
+                const query = pull[1]!.trim();
+                const recalled = query && options.pullRecall ? await options.pullRecall(query).catch(() => undefined) : undefined;
+                if (recalled) {
+                    log(`她主动查记忆：${query}（${countLines(recalled)} 条）`);
+                    reviewed = await regenerate(`（你刚才想起来了：\n${recalled}\n用这些回答他，不要再写 <<查>> 标记。）`);
+                }
+                reviewed = reviewed.replace(/<<查[：:][\s\S]*?>>/g, '').trim();
+            }
             // 形状控制（配置 shape）：出口检查之后再看字数和条数，超了重写一次、还超就在分句处截断
             const shaped = shapeNow && !crisisNow ? await shapeReply(reviewed, shapeNow, { regenerate, log }) : reviewed;
             // 话说到一半（ADR 0141）：形状之后再看，并回去 / 退回去会让一条变长，放在字数检查前面会被再截一次；危机回合不走

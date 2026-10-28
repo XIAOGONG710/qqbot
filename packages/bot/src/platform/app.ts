@@ -692,6 +692,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
             history,
             memory,
+            ...(memory && config.selfDirectedMemory ? { pullRecall: (query: string) => memory!.recallPull(contact, query, new Date()) } : {}),
             ...(promises ? { promises } : {}),
             ...(sharedWorld ? { worldState: sharedWorld } : {}),
             ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),

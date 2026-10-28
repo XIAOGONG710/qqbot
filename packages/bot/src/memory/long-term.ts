@@ -592,6 +592,38 @@ export class LongTermMemory {
         });
     }
 
+    /** 她想查才查（回复里的 <<查：…>>）：按她给的词，把三个库都查一遍 */
+    async recallPull(contact: NamedContact, query: string, now: Date): Promise<string | undefined> {
+        const q = query.trim().slice(-MAX_QUERY_CHARS);
+        if (!q) return undefined;
+        const request: RecallRequest = {
+            ...recallRequest(q, now),
+            types: ['world', 'experience', 'observation'],
+            prefer_observations: true,
+            tags: [],
+            tags_match: 'any' as unknown as RecallRequest['tags_match'],
+        };
+        const banks = [this.bankId(contact), this.commonBankId(), this.#options.bankPrefix];
+        const settled = await Promise.allSettled(banks.map(bank => this.#recall(bank, request, `[${contact.qq}] 主动查记忆失败：${bank}`)));
+        const seen = new Set<string>();
+        const results: RecallResult[] = [];
+        for (const item of settled) {
+            if (item.status !== 'fulfilled' || !item.value) continue;
+            for (const result of item.value) {
+                if (seen.has(result.id)) continue;
+                seen.add(result.id);
+                results.push(result);
+            }
+        }
+        if (!results.length) return undefined;
+        return formatRecalled(results, {
+            header: `[你刚才想起来的（他问的事，从记忆里查到的）]`,
+            limit: 6,
+            now,
+            fade: this.#fade([], {}),
+        });
+    }
+
     /** 她自己决定要记的事（回复里的 <<记住：…>> / <<日记：…>>）：写进公共库，标 self */
     async rememberSelfNote(contact: NamedContact, content: string, kind: '记住' | '日记' = '记住'): Promise<void> {
         const text = content.trim().slice(0, 2000);
