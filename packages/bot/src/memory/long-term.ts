@@ -540,9 +540,12 @@ export class LongTermMemory {
         const commonFound = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
         if (!commonFound) return undefined;
         // 他在 DSH 里让她干的活（工作房）：也一起召回，聊天里的她要知道自己做过什么
-        // 工作房的事实会被 Hindsight 归纳成 observation，公共召回默认不要 observation，这里单独放开
-        const workRequest: RecallRequest = { ...request, types: ['world', 'experience', 'observation'], prefer_observations: true };
-        const workFound = await this.#recall(`${this.#options.bankPrefix}-dsh`, workRequest, `[${contact.qq}] 工作房召回失败（忽略）`);
+        // 工作房的事实会被 Hindsight 归纳成 observation，公共召回默认不要 observation，这里单独放开；
+        // 工作记录不带 qq-private 标签，所以 tags 清空、tags_match any（含无标签）
+        const workRequest: RecallRequest = { ...request, types: ['world', 'experience', 'observation'], prefer_observations: true, tags: [], tags_match: 'any' as unknown as RecallRequest['tags_match'] };
+        const workRaw = await this.#recall(`${this.#options.bankPrefix}-dsh`, workRequest, `[${contact.qq}] 工作房召回失败（忽略）`);
+        // 工作房的 observation 没有 document_id，补一个标记，后面才能标成“你干过的事”
+        const workFound = workRaw?.map(r => ({ ...r, document_id: r.document_id ?? 'dsh-work' }));
         const found = workFound?.length
             ? [...commonFound, ...workFound.filter(r => !commonFound.some(c => c.id === r.id))]
             : commonFound;
