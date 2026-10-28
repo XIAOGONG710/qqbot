@@ -175,6 +175,8 @@ export interface ContactPipelineOptions {
     workRequest?: () => boolean;
     /** 她最近拒绝过的事：让她记得自己的拒绝 */
     refusalLine?: () => string | undefined;
+    /** 他最近给她的评分：影响说话分寸 */
+    ratingLine?: () => string | undefined;
     /** 记忆由她自己决定：提示词里教她写 <<记住：…>> / <<日记：…>> 标记 */
     selfMemory?: boolean;
     /** 她想查才查（<<查：…>>）：拿到想起来的记忆，再让她重写一次 */
@@ -830,6 +832,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(intentLine ? [intentLine] : []),
                         ...(options.selfMemory ? [SELF_MEMORY_NOTE] : []),
                         ...(options.refusalLine?.() ? [options.refusalLine()!] : []),
+                        ...(options.ratingLine?.() ? [options.ratingLine()!] : []),
                         ...(options.workRequest?.() ? [WORK_REQUEST_NOTE] : []),
                         ...(options.workMode?.() ? [WORK_MODE_NOTE] : []),
                         ...(deliberateNow ? [DELIBERATE_NOTE] : []),

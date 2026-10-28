@@ -42,3 +42,23 @@ export function recentRefusals(): string | undefined {
     if (!items.length) return undefined
     return `你最近拒绝过：${items.map(item => item.text).join('；')}。这次别装没发生过，记得自己拒绝过什么。`
 }
+
+/** 他最近给她的评价：影响她说话的分寸（不是讨好，是知道最近合不合他胃口） */
+export function ratingSummary(): string | undefined {
+    const file = join(soulDir(), 'RATINGS.json')
+    const data = readJsonOr<{ samples?: Array<{ score: number; at: number }> }>(file, {})
+    const samples = (Array.isArray(data.samples) ? data.samples : []).slice(-20)
+    if (samples.length < 3) return undefined
+    let weighted = 0
+    let total = 0
+    for (const sample of samples) {
+        const ageDays = Math.max(0, (Date.now() - Number(sample.at || 0)) / 86_400_000)
+        const decay = Math.pow(0.5, ageDays / 7)
+        weighted += Number(sample.score || 0) * decay
+        total += decay
+    }
+    const score = (weighted / (total || 1) + 1) / 2
+    if (score < 0.35) return '他最近对你的评价偏低：别急着讨好，也别硬凑；先按你自己的判断来，话少一点。'
+    if (score < 0.6) return '他最近对你的评价一般：正常说话，不用刻意表现。'
+    return '他最近挺买你的账：可以放松一点，但别飘。'
+}

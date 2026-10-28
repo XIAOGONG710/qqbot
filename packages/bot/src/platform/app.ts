@@ -39,7 +39,7 @@ import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode } from './work-mode.ts';
 import { runWorkTask, rememberWorkTask } from './work-bridge.ts';
-import { addSoulRating, appendPrivate, addRefusal, recentRefusals } from './soul-rating.ts';
+import { addSoulRating, appendPrivate, addRefusal, recentRefusals, ratingSummary } from './soul-rating.ts';
 import { momentsReader } from '.././emotion/moments.ts';
 import { loadEverydayFrom } from '.././life/everyday.ts';
 import { dishesBetween, loadMenuFrom } from '.././life/menu.ts';
@@ -695,6 +695,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 workMode: () => readWorkMode(config.dataDir, contact.qq) === 'work',
                 workRequest: () => readWorkMode(config.dataDir, contact.qq) === 'pending',
                 refusalLine: () => recentRefusals(),
+                ratingLine: () => ratingSummary(),
             } : {}),
             ...(config.selfDirectedMemory ? { selfMemory: true } : {}),
             llm: config.llm,

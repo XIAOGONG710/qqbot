@@ -81,6 +81,7 @@ const server = http.createServer((req, res) => {
             const task = String(data.task || '').trim().slice(0, 4000)
             if (!task) return send(400, { ok: false, error: 'task required' })
             const context = String(data.context || '').slice(0, 4000)
+            if (offlineUntil() > Date.now()) return send(200, { ok: true, reply: '她这会儿不在电脑前，晚点再说。' })
             queue.push({ task, context, resolve: (result) => send(200, result) })
             log(`task queued: ${task.slice(0, 80)} (queue ${queue.length})`)
             drain()
@@ -101,6 +102,11 @@ server.listen(PORT, '127.0.0.1', () => {
 
 // ───── 睡眠整合 + 自主时间 ─────
 const STATE = join(DIR, 'jobs.json')
+const OFFLINE = join(DIR, 'OFFLINE.json')
+
+function offlineUntil() {
+    try { return Number(JSON.parse(readFileSync(OFFLINE, 'utf8')).until || 0) } catch { return 0 }
+}
 const SLEEP_PROMPT = `现在是夜里，宝宝睡了。把今天的事整理一下：
 1) 从记忆里查今天发生的事，挑 1-3 条真正值得长期留下的结论，用 memory_save 写进记忆（写成“林梦瑶……”）；
 2) 用 journal_write 写一篇今天的公开日记；
@@ -128,6 +134,7 @@ async function idleRun(prompt, label, timeoutMs = 480_000) {
 function sleepCheck() {
     const now = new Date()
     if (now.getHours() < 3) return
+    if (offlineUntil() > Date.now()) return
     const today = now.toISOString().slice(0, 10)
     const state = loadState()
     if (state.sleep === today) return
@@ -138,6 +145,7 @@ function sleepCheck() {
 }
 
 function wakeCheck() {
+    if (offlineUntil() > Date.now()) return
     if (Math.random() > 0.25) return
     void idleRun(WAKE_PROMPT, 'wake', 300_000)
 }

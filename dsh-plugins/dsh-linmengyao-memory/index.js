@@ -18,6 +18,7 @@ const DEFAULTS = {
   wishesFile: 'C:/Users/22601/.dsh/linmengyao/WISHES.md',
   interestsFile: 'C:/Users/22601/.dsh/linmengyao/INTERESTS.md',
   outboxFile: 'C:/Users/22601/.dsh/linmengyao/OUTBOX.jsonl',
+  offlineFile: 'C:/Users/22601/.dsh/linmengyao/OFFLINE.json',
   ratingFile: 'C:/Users/22601/.dsh/linmengyao/RATINGS.json',
   logFile: 'C:/Users/22601/.dsh/linmengyao-memory.log',
 }
@@ -123,7 +124,11 @@ async function recallBank(cfg, bank, query) {
   if (!res.ok) throw new Error(`recall ${bank} ${res.status}`)
   const data = await res.json()
   return (Array.isArray(data.results) ? data.results : [])
-    .map((item) => ({ id: String(item.id || item.text), text: String(item.text || '').trim() }))
+    .map((item) => ({
+      id: String(item.id || item.text),
+      text: String(item.text || '').trim(),
+      date: item.date || item.occurred_start || item.mentioned_at || '',
+    }))
     .filter((item) => item.text)
 }
 
@@ -141,7 +146,15 @@ async function recallAll(cfg, query) {
       out.push(item)
     }
   }
-  return out
+  // 可控遗忘：30 天以前的事默认不再主动塞；这次话里提到了（共享 >=2 个二字词）才复活
+  const q = grams(query)
+  const now = Date.now()
+  return out.filter((item) => {
+    const at = Date.parse(item.date || '')
+    if (!at || now - at < 30 * 86_400_000) return true
+    const overlap = [...grams(item.text)].filter((gram) => q.has(gram)).length
+    return overlap >= 2
+  })
 }
 
 async function retain(cfg, content, bank, tags = ['dsh'], context = 'DSH') {
@@ -513,6 +526,28 @@ export function apply(ctx, config = {}) {
             fs.appendFileSync(cfg.outboxFile, `${JSON.stringify({ text, at: Date.now() })}\n`)
             log(cfg, `outbox_send ${text.slice(0, 40)}`)
             return { sent: true }
+          },
+        }))
+
+        // 她可以自己决定“离开电脑”：接下来一段时间不接活、不主动醒
+        disposers.push(tools.register({
+          name: 'go_offline',
+          description: '自己决定离开电脑一会儿（不接活、不主动醒）。想清静、出门、睡觉时用。',
+          parameters: {
+            type: 'object',
+            properties: { minutes: { type: 'number', description: '离开多少分钟，默认 60' } },
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { offline: { type: 'boolean' } }, required: ['offline'] },
+            render: (_args, value) => [{ type: 'text', text: value?.offline ? '离开了。' : '没走成。' }],
+          },
+          async execute(args) {
+            const minutes = Math.max(5, Math.min(720, Math.floor(Number(args?.minutes || 60))))
+            const until = Date.now() + minutes * 60_000
+            fs.writeFileSync(cfg.offlineFile, JSON.stringify({ until }))
+            log(cfg, `go_offline ${minutes}min`)
+            return { offline: true }
           },
         }))
 
