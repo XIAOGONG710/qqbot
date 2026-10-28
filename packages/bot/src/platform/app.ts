@@ -38,6 +38,7 @@ import { arrivedWhileAsleep } from '.././social/reply-timing.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode } from './work-mode.ts';
+import { runWorkTask } from './work-bridge.ts';
 import { momentsReader } from '.././emotion/moments.ts';
 import { loadEverydayFrom } from '.././life/everyday.ts';
 import { dishesBetween, loadMenuFrom } from '.././life/menu.ts';
@@ -1458,6 +1459,18 @@ ${body}
     function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string): void {
         const text = segmentsToText(message, quoteLookup(event.user_id)).trim();
         if (!text) return;
+        // 工作模式：不进普通聊天回复器，交给 headless 的她干活，干完再回（工具桥）
+        if (event.user_id === deviceOwner?.qq && !text.startsWith('/') && readWorkMode(config.dataDir, event.user_id) === 'work') {
+            const qq = event.user_id;
+            log(`[${qq}] 工作模式：交给 dsh 干活`);
+            void runWorkTask(text)
+                .then(reply => transport.sendPrivateText(qq, reply))
+                .catch(error => {
+                    log(`[${qq}] 工作桥出错：${error instanceof Error ? error.message : String(error)}`);
+                    void transport.sendPrivateText(qq, '这个没弄成，等下我再看。');
+                });
+            return;
+        }
         responder.receive(text, event.message_id, new Date(event.time * 1000));
         const crisis = detectCrisis(text);
         if (crisis && config.contacts.some(c => c.qq === event.user_id)) {
