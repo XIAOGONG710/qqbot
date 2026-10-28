@@ -96,22 +96,28 @@ function similarity(a, b) {
   if (!A.size || !B.size) return 0
   let overlap = 0
   for (const gram of A) if (B.has(gram)) overlap++
-  return overlap / Math.max(A.size, B.size)
+  return overlap / Math.min(A.size, B.size)
 }
 
-/** 新事实写进来前，把高相似的旧事实软失效（可回滚，不删除） */
+/** 新事实写进来前，把高相似的旧原始事实软失效（可回滚，不删除；observation 由 Hindsight 自己剪） */
 async function invalidateSimilar(cfg, content, bank) {
-  const candidates = await recallBank(cfg, bank, content).catch(() => [])
-  for (const item of candidates) {
-    if (similarity(content, item.text) < 0.5) continue
+  let items = []
+  try {
+    const res = await fetch(`${cfg.baseUrl}/v1/default/banks/${encodeURIComponent(bank)}/memories/list?limit=500`, { signal: AbortSignal.timeout(3000) })
+    items = (await res.json()).items || []
+  } catch { return }
+  for (const item of items) {
+    if (item.state === 'invalidated') continue
+    if (item.fact_type === 'observation') continue
+    if (similarity(content, item.text || '') < 0.5) continue
     try {
-      await fetch(`${cfg.baseUrl}/v1/default/banks/${encodeURIComponent(bank)}/memories/${encodeURIComponent(item.id)}`, {
+      const res = await fetch(`${cfg.baseUrl}/v1/default/banks/${encodeURIComponent(bank)}/memories/${encodeURIComponent(item.id)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state: 'invalidated', reason: 'superseded by a newer memory' }),
         signal: AbortSignal.timeout(3000),
       })
-      log(cfg, `invalidated ${item.id.slice(0, 8)} similarity=0.5+`)
+      log(cfg, `invalidate ${String(item.id).slice(0, 8)} -> ${res.status}`)
     } catch { /* 失效失败不挡写入 */ }
   }
 }
@@ -154,6 +160,7 @@ async function recallBank(cfg, bank, query) {
       id: String(item.id || item.text),
       text: String(item.text || '').trim(),
       date: item.date || item.occurred_start || item.mentioned_at || '',
+      type: item.fact_type || item.type || '',
     }))
     .filter((item) => item.text)
 }
