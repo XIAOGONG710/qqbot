@@ -37,6 +37,7 @@ import { HindsightClient } from '.././memory/hindsight.ts';
 import { arrivedWhileAsleep } from '.././social/reply-timing.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
+import { readWorkMode, setWorkMode } from './work-mode.ts';
 import { momentsReader } from '.././emotion/moments.ts';
 import { loadEverydayFrom } from '.././life/everyday.ts';
 import { dishesBetween, loadMenuFrom } from '.././life/menu.ts';
@@ -655,6 +656,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             card: cardFor(cardKey(contact)),
             // 危机回合被问是不是真人一律承认（ADR 0068 决策 7）：知道她是程序的联系人这一轮换用承认版的卡
             ...(openCardFor(contact) ? { openCard: openCardFor(contact)! } : {}),
+            ...(contact.tier === 'boyfriend' ? { workMode: () => readWorkMode(config.dataDir, contact.qq) === 'work' } : {}),
             llm: config.llm,
             prompt: config.prompt,
             schedule: config.schedule,
@@ -1361,6 +1363,27 @@ ${body}
         if (event.user_id === deviceOwner?.qq && plainTextOf(event.message)?.trim() === '/亲热') {
             armIntimate(config.dataDir, event.user_id);
             log(`[${event.user_id}] 收到 /亲热：接下来 ${INTIMATE_REPLIES} 条回复黏一点`);
+        }
+        // 他发「/工作」「/回聊」「/模式」：只认男朋友档的他、只认纯文字；命中的算处理完，不进聊天记录
+        if (event.user_id === deviceOwner?.qq) {
+            const plain = plainTextOf(event.message)?.trim();
+            if (plain === '/工作') {
+                setWorkMode(config.dataDir, event.user_id, 'work');
+                tellOwner('（好，切工作模式了；要聊天就发 /回聊）');
+                log(`[${event.user_id}] 收到 /工作：切到工作模式`);
+                return;
+            }
+            if (plain === '/回聊') {
+                setWorkMode(config.dataDir, event.user_id, 'chat');
+                tellOwner('（回聊天模式了）');
+                log(`[${event.user_id}] 收到 /回聊：切回聊天模式`);
+                return;
+            }
+            if (plain === '/模式') {
+                const mode = readWorkMode(config.dataDir, event.user_id);
+                tellOwner(mode === 'work' ? '（现在：工作模式）' : '（现在：聊天模式）');
+                return;
+            }
         }
         // 他发「/主动」（ADR 0156）：让她现在就主动找他一次，只认纯文字、只认男朋友档的他；命中的算处理完，不进聊天记录、不交给回复器。
         // 她自己发的那条走主动消息的整条链路（人设、事实、记忆）；发不了（危机暂停、他有没回的消息、主动没开）时回一句原因
