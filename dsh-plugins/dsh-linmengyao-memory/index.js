@@ -17,6 +17,7 @@ const DEFAULTS = {
   privateFile: 'C:/Users/22601/.dsh/linmengyao/PRIVATE.md',
   wishesFile: 'C:/Users/22601/.dsh/linmengyao/WISHES.md',
   interestsFile: 'C:/Users/22601/.dsh/linmengyao/INTERESTS.md',
+  outboxFile: 'C:/Users/22601/.dsh/linmengyao/OUTBOX.jsonl',
   ratingFile: 'C:/Users/22601/.dsh/linmengyao/RATINGS.json',
   logFile: 'C:/Users/22601/.dsh/linmengyao-memory.log',
 }
@@ -489,6 +490,29 @@ export function apply(ctx, config = {}) {
             fs.writeFileSync(cfg.interestsFile, lines.join('\n'))
             log(cfg, `interest_done #${index}`)
             return { saved: true }
+          },
+        }))
+
+        // 她想让他知道的事：写进 outbox，Koishi 会发给他
+        disposers.push(tools.register({
+          name: 'outbox_send',
+          description: '有想让他知道的事（比如你刚看了什么、留了个小彩蛋），写一句给他；每轮最多一条，别刷屏。',
+          parameters: {
+            type: 'object',
+            properties: { text: { type: 'string', description: '要发给他的话，<=150 字' } },
+            required: ['text'],
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { sent: { type: 'boolean' } }, required: ['sent'] },
+            render: () => [{ type: 'text', text: '留给他了。' }],
+          },
+          async execute(args) {
+            const text = String(args?.text || '').trim().slice(0, 150)
+            if (!text) return { sent: false }
+            fs.appendFileSync(cfg.outboxFile, `${JSON.stringify({ text, at: Date.now() })}\n`)
+            log(cfg, `outbox_send ${text.slice(0, 40)}`)
+            return { sent: true }
           },
         }))
 

@@ -39,7 +39,7 @@ import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode } from './work-mode.ts';
 import { runWorkTask, rememberWorkTask } from './work-bridge.ts';
-import { addSoulRating, appendPrivate } from './soul-rating.ts';
+import { addSoulRating, appendPrivate, addRefusal, recentRefusals } from './soul-rating.ts';
 import { momentsReader } from '.././emotion/moments.ts';
 import { loadEverydayFrom } from '.././life/everyday.ts';
 import { dishesBetween, loadMenuFrom } from '.././life/menu.ts';
@@ -631,6 +631,25 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const memoryTimer = memory ? setInterval(syncMemory, MEMORY_SYNC_MS) : undefined;
     memoryTimer?.unref();
 
+    // 她自己想让他知道的事：常驻进程/她写进 OUTBOX.jsonl，这里发出去
+    const outboxFile = process.env.QQBOT_OUTBOX ?? 'C:/Users/22601/.dsh/linmengyao/OUTBOX.jsonl';
+    const outboxTimer = setInterval(() => {
+        const owner = deviceOwner;
+        if (!owner || dormancy?.isDormant()) return;
+        let raw = '';
+        try { raw = readFileSync(outboxFile, 'utf8'); } catch { return; }
+        const lines = raw.split('\n').map(line => line.trim()).filter(Boolean);
+        if (!lines.length) return;
+        writeFileSync(outboxFile, '');
+        for (const line of lines) {
+            try {
+                const text = String((JSON.parse(line) as { text?: string }).text ?? '').trim();
+                if (text) void transport.sendPrivateText(owner.qq, text).catch(error => log(`主动留话发不出去：${error instanceof Error ? error.message : String(error)}`));
+            } catch { /* 坏行丢掉 */ }
+        }
+    }, 30_000);
+    outboxTimer.unref();
+
     // 每个联系人一个回复器：聊天记录、生成和重新生成都互不影响
     const responders = new Map<number, Responder>(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
     /** 名单外临时建了回复器的好友（状态页要显示称呼和档位） */
@@ -672,7 +691,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             card: cardFor(cardKey(contact)),
             // 危机回合被问是不是真人一律承认（ADR 0068 决策 7）：知道她是程序的联系人这一轮换用承认版的卡
             ...(openCardFor(contact) ? { openCard: openCardFor(contact)! } : {}),
-            ...(contact.tier === 'boyfriend' ? { workMode: () => readWorkMode(config.dataDir, contact.qq) === 'work' } : {}),
+            ...(contact.tier === 'boyfriend' ? {
+                workMode: () => readWorkMode(config.dataDir, contact.qq) === 'work',
+                workRequest: () => readWorkMode(config.dataDir, contact.qq) === 'pending',
+                refusalLine: () => recentRefusals(),
+            } : {}),
             ...(config.selfDirectedMemory ? { selfMemory: true } : {}),
             llm: config.llm,
             prompt: config.prompt,
@@ -755,6 +778,20 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                         void memory.rememberSelfNote(contact, note.text, note.kind)
                             .catch(error => log(`[${userId}] 她自己记的事没写进记忆：${error instanceof Error ? error.message : String(error)}`));
                     }
+                }
+                // 她答应/拒绝切工作：标记不发出去，但状态要改
+                if (text.includes('<<同意工作>>')) {
+                    setWorkMode(config.dataDir, userId, 'work');
+                    text = text.replace(/<<同意工作>>/g, '').trim();
+                    log(`[${userId}] 她答应了切工作模式`);
+                }
+                const rejected = /<<拒绝工作[：:]\s*([\s\S]*?)>>/.exec(text);
+                if (rejected) {
+                    const reason = (rejected[1] ?? '').trim();
+                    setWorkMode(config.dataDir, userId, 'chat');
+                    addRefusal(reason);
+                    text = text.replace(/<<拒绝工作[：:][\s\S]*?>>/g, '').trim();
+                    log(`[${userId}] 她拒绝了切工作：${reason.slice(0, 40)}`);
                 }
                 if (!text.trim()) return 0;
                 const photo = contact.tier === 'boyfriend' ? photos?.resolve(text) : undefined;
@@ -1400,20 +1437,17 @@ ${body}
             const plain = plainTextOf(event.message)?.trim();
             log(`[${event.user_id}] 命令检查：${JSON.stringify(plain)}`);
             if (plain === '/工作') {
-                setWorkMode(config.dataDir, event.user_id, 'work');
-                tellOwner('（好，切工作模式了；要聊天就发 /回聊）');
-                log(`[${event.user_id}] 收到 /工作：切到工作模式`);
-                return;
-            }
-            if (plain === '/回聊') {
+                // 不机械切换：先挂起，让她自己答应/拒绝/提条件
+                setWorkMode(config.dataDir, event.user_id, 'pending');
+                log(`[${event.user_id}] 收到 /工作：等她决定`);
+            } else if (plain === '/回聊') {
                 setWorkMode(config.dataDir, event.user_id, 'chat');
                 tellOwner('（回聊天模式了）');
                 log(`[${event.user_id}] 收到 /回聊：切回聊天模式`);
                 return;
-            }
-            if (plain === '/模式') {
+            } else if (plain === '/模式') {
                 const mode = readWorkMode(config.dataDir, event.user_id);
-                tellOwner(mode === 'work' ? '（现在：工作模式）' : '（现在：聊天模式）');
+                tellOwner(mode === 'work' ? '（现在：工作模式）' : mode === 'pending' ? '（她还没答应切工作）' : '（现在：聊天模式）');
                 return;
             }
             // 给她的回复打分（决定她能不能改 SOUL）
