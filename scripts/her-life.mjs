@@ -53,6 +53,13 @@ function logEvent(state, text) {
 
 function isNight(hour) { return hour >= 23 || hour < 7 }
 
+function activeInterests() {
+    try {
+        const text = readFileSync(join(DIR, 'INTERESTS.md'), 'utf8')
+        return [...text.matchAll(/^- \[ \] (.+)$/gm)].map(match => match[1].trim()).filter(Boolean)
+    } catch { return [] }
+}
+
 function chooseActivity(state, hour) {
     const weights = []
     const energy = state.energy
@@ -60,7 +67,11 @@ function chooseActivity(state, hour) {
     if (isNight(hour) || energy < 30) weights.push(['睡觉', 6])
     if (hunger > 70) weights.push(['找点吃的', 5])
     if (energy > 45 && !isNight(hour)) weights.push(['看书/追剧', 3], ['刷手机', 2])
-    if (energy > 55) weights.push(['做自己的事（拍照/整理）', 2])
+    const interests = activeInterests()
+    if (energy > 45 && !isNight(hour) && interests.length) {
+        const pick = interests[Math.floor(Math.random() * interests.length)]
+        weights.push([`做自己的事：${pick}`, 5])
+    }
     if (state.relationships.baobao.resentment > 25) weights.push(['生闷气', 1])
     weights.push(['发呆', 1])
     const total = weights.reduce((sum, [, w]) => sum + w, 0)
