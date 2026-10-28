@@ -1,5 +1,5 @@
 // 他的评价：👍 +1 / 😐 0 / 👎 -1，写进 SOUL 的评分文件，决定她能不能改 SOUL
-import { appendFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts'
 
@@ -15,12 +15,18 @@ export function addSoulRating(score: number): void {
     writeJsonAtomic(file, { samples: samples.slice(-100) })
 }
 
-/** 她拒绝之后写进私密日记（不给他看） */
+/** 她拒绝之后写进私密日记（DPAPI 加密，不给他看） */
 export function appendPrivate(content: string): void {
     const text = content.trim().slice(0, 2000)
     if (!text) return
-    const stamp = new Date().toISOString().slice(0, 10)
-    appendFileSync(join(soulDir(), 'PRIVATE.md'), `\n## ${stamp}\n${text}\n`)
+    const base64 = Buffer.from(text, 'utf8').toString('base64')
+    spawnSync('powershell.exe', [
+        '-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-File', 'C:/Users/22601/Desktop/qqbot-dsh-control/scripts/private-diary.ps1',
+        '-Action', 'append',
+        '-Path', join(soulDir(), 'PRIVATE.dat'),
+        '-Base64', base64,
+    ], { timeout: 15_000, windowsHide: true })
 }
 
 /** 她拒绝过的事：记下来，下次提示词里带上，不能一拒就忘 */

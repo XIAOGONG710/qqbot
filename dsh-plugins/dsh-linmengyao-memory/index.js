@@ -2,6 +2,7 @@
 // 每轮从 Hindsight 拉最近记忆，按关键词相关度挑几条注入；提供 memory_save 写回。
 // ponytail: 召回用 /memories/list + 本地二字词重叠，够用；要语义召回再换 recall 接口。
 import fs from 'node:fs'
+import { spawnSync } from 'node:child_process'
 
 export const name = 'dsh-linmengyao-memory'
 
@@ -14,7 +15,7 @@ const DEFAULTS = {
   soulFile: 'C:/Users/22601/.dsh/linmengyao/SOUL.md',
   ledgerFile: 'C:/Users/22601/.dsh/linmengyao/LEDGER.md',
   journalFile: 'C:/Users/22601/.dsh/linmengyao/JOURNAL.md',
-  privateFile: 'C:/Users/22601/.dsh/linmengyao/PRIVATE.md',
+  privateFile: 'C:/Users/22601/.dsh/linmengyao/PRIVATE.dat',
   wishesFile: 'C:/Users/22601/.dsh/linmengyao/WISHES.md',
   interestsFile: 'C:/Users/22601/.dsh/linmengyao/INTERESTS.md',
   outboxFile: 'C:/Users/22601/.dsh/linmengyao/OUTBOX.jsonl',
@@ -74,6 +75,19 @@ function ratingScore(cfg) {
   } catch {
     return { score: 1, count: 0, gated: false }
   }
+}
+
+const PRIVATE_SCRIPT = 'C:/Users/22601/Desktop/qqbot-dsh-control/scripts/private-diary.ps1'
+
+function privateWrite(cfg, text) {
+  const base64 = Buffer.from(text, 'utf8').toString('base64')
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', PRIVATE_SCRIPT, '-Action', 'append', '-Path', cfg.privateFile, '-Base64', base64], { timeout: 15_000, windowsHide: true })
+  return result.status === 0
+}
+
+function privateRead(cfg) {
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', PRIVATE_SCRIPT, '-Action', 'read', '-Path', cfg.privateFile], { timeout: 15_000, windowsHide: true })
+  return result.status === 0 ? result.stdout.toString('utf8') : ''
 }
 
 function textOf(message) {
@@ -422,7 +436,39 @@ export function apply(ctx, config = {}) {
           },
         })
         disposers.push(tools.register(diaryTool('journal_write', 'journalFile', '写公开日记：愿意给他看的那部分日子。', '<=2000 字')))
-        disposers.push(tools.register(diaryTool('private_write', 'privateFile', '写私密日记：不给他看的话、没兑现的念头、情绪。', '<=2000 字')))
+        // 私密日记：DPAPI 加密，只有她的进程（和专门的查看脚本）能解
+        disposers.push(tools.register({
+          name: 'private_write',
+          description: '写私密日记（加密，不给他看）：没说完的话、没兑现的念头、情绪。',
+          parameters: {
+            type: 'object',
+            properties: { content: { type: 'string', description: '<=2000 字' } },
+            required: ['content'],
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { saved: { type: 'boolean' } }, required: ['saved'] },
+            render: () => [{ type: 'text', text: '写下了。' }],
+          },
+          async execute(args) {
+            const content = String(args?.content || '').trim().slice(0, 2000)
+            if (!content) return { saved: false }
+            const ok = privateWrite(cfg, content)
+            log(cfg, `private_write ${ok ? 'ok' : 'fail'} ${content.slice(0, 30)}`)
+            return { saved: ok }
+          },
+        }))
+
+        disposers.push(tools.register({
+          name: 'private_read',
+          description: '读自己的私密日记（只有你能看）。',
+          parameters: { type: 'object', properties: {}, additionalProperties: false },
+          output: {
+            schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+            render: (_args, value) => [{ type: 'text', text: String(value?.text || '') }],
+          },
+          async execute() { return { text: privateRead(cfg) } },
+        }))
 
         disposers.push(tools.register({
           name: 'wish_add',
