@@ -18,7 +18,7 @@ export function runWorkTask(task: string, options: WorkTaskOptions = {}): Promis
     const profile = options.profile ?? 'lmy'
     const timeoutMs = options.timeoutMs ?? 180_000
     const apiKey = options.apiKey ?? process.env.QQBOT_LLM_API_KEY ?? process.env.DEEPSEEK_API_KEY
-    const prompt = `他在 QQ 里让你帮忙：${task}\n\n做完用你平时的口气回他，只留要发出去的话。`
+    const prompt = `他在 QQ 里让你帮忙：${task}\n\n做完用你平时的口气回他，只留要发出去的话。按 QQ 聊天来：第一句只给结果，最多再补一句关键细节；不要列清单、不要分点、不要逐项汇报；除非他明确要详细，否则不超过两句。`
 
     return new Promise((resolve, reject) => {
         const child = spawn(process.execPath, [DSH_BIN, '--profile', profile, prompt], {
@@ -39,7 +39,13 @@ export function runWorkTask(task: string, options: WorkTaskOptions = {}): Promis
         child.on('close', (code) => {
             clearTimeout(timer)
             const reply = stdout.trim()
-            if (reply) return resolve(reply)
+            if (reply) {
+                // 兜底：她说长了就截到最后一个句号/问号/感叹号，免得 QQ 里刷屏
+                const short = reply.length > 260
+                    ? reply.slice(0, 260).replace(/[^。！？!?]*$/, '') + '…'
+                    : reply
+                return resolve(short.trim() || reply.slice(0, 260) + '…')
+            }
             reject(new Error(`工作桥没有拿到回复（exit ${code}）：${stderr.slice(-500)}`))
         })
     })
