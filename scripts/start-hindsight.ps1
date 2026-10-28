@@ -26,7 +26,13 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $root = Join-Path $repoRoot 'runtime\hindsight'
 $venv = Join-Path $root 'venv'
 $pg0 = Join-Path $venv 'Lib\site-packages\pg0\bin\pg0.exe'
-$api = Join-Path $venv 'Scripts\hindsight-api.exe'
+$api = Join-Path $venv 'Scripts\python.exe'
+$apiArgs = @('-c', 'from hindsight_api.main import main; main()')
+if (-not (Test-Path $api)) {
+    # 旧 venv：入口 exe 的 trampoline 绑死绝对路径，搬目录后会失效，退回 exe
+    $api = Join-Path $venv 'Scripts\hindsight-api.exe'
+    $apiArgs = @()
+}
 if (-not (Test-Path $api)) { throw "Hindsight is not installed at $venv (see docs\hindsight.md)" }
 
 # The user-scope variable is the source of truth: a terminal opened before the key was set or changed
@@ -112,7 +118,7 @@ $watchdog = Start-Process -FilePath 'node' -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $watchdogLog -RedirectStandardError "$watchdogLog.err"
 
 try {
-    & $api
+    & $api @apiArgs
     $exitCode = $LASTEXITCODE
 } finally {
     Stop-Process -Id $watchdog.Id -ErrorAction SilentlyContinue
