@@ -70,7 +70,13 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify(body))
     }
     if (req.method === 'GET' && req.url === '/health') {
-        return send(200, { ok: true, pid: process.pid, running, queue: queue.length, lastTaskAt })
+        return send(200, { ok: true, pid: process.pid, running, queue: queue.length, lastTaskAt, offlineUntil: offlineUntil() })
+    }
+    if (req.method === 'POST' && (req.url === '/wake' || req.url === '/sleep')) {
+        if (offlineUntil() > Date.now()) return send(200, { ok: false, error: 'offline' })
+        const label = req.url === '/wake' ? 'wake-manual' : 'sleep-manual'
+        void idleRun(req.url === '/wake' ? WAKE_PROMPT : SLEEP_PROMPT, label, req.url === '/wake' ? 300_000 : 600_000)
+        return send(202, { ok: true, started: label, running, queue: queue.length })
     }
     if (req.method === 'POST' && req.url === '/task') {
         let body = ''
@@ -102,7 +108,7 @@ server.listen(PORT, '127.0.0.1', () => {
 
 // ───── 睡眠整合 + 自主时间 ─────
 const STATE = join(DIR, 'jobs.json')
-const OFFLINE = join(DIR, 'OFFLINE.json')
+const OFFLINE = 'C:/Users/22601/.dsh/linmengyao/OFFLINE.json'
 
 function offlineUntil() {
     try { return Number(JSON.parse(readFileSync(OFFLINE, 'utf8')).until || 0) } catch { return 0 }
