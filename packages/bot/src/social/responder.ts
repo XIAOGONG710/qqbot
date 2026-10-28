@@ -499,6 +499,8 @@ export function createResponder(deps: ResponderDeps): Responder {
         const messageIds: number[] = [];
         const sent: string[] = [];
         for (const [i, part] of parts.entries()) {
+            // 只有内部标记（比如 <<记住>>）的条目不发、也不进记录
+            if (!(deps.historyContent?.(part) ?? part).trim()) continue;
             if (i > 0) {
                 await (timing ? sleepTyping(timing.typingMs(part)) : sleep(PART_GAP_MS));
                 if (deps.history.load(deps.userId).slice(input).some(m => m.role === 'user')) {
@@ -516,10 +518,13 @@ export function createResponder(deps: ResponderDeps): Responder {
             } catch (error) {
                 return { result: 'failed', reason: `发送失败：${error instanceof Error ? error.message : String(error)}`, ...(messageIds.length ? { messageIds } : {}) };
             }
-            deps.history.append(deps.userId, {
-                time: new Date(now()).toISOString(), role: 'assistant',
-                content: deps.historyContent?.(bubble.content) ?? bubble.content, messageId: bubble.messageId,
-            });
+            const historyContent = deps.historyContent?.(bubble.content) ?? bubble.content;
+            if (historyContent.trim()) {
+                deps.history.append(deps.userId, {
+                    time: new Date(now()).toISOString(), role: 'assistant',
+                    content: historyContent, messageId: bubble.messageId,
+                });
+            }
             messageIds.push(bubble.messageId);
             sent.push(bubble.content);
         }
