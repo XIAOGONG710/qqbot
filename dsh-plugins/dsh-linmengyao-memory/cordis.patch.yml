@@ -1,0 +1,4 @@
+- insert:
+    - id: linmengyao-memory
+      name: dsh-linmengyao-memory
+      config: {}
