@@ -37,7 +37,7 @@ export async function rememberWorkTask(task: string, reply: string, bank = 'linm
     } catch { /* 记忆写不进去不挡回复 */ }
 }
 
-export function runWorkTask(task: string, options: WorkTaskOptions = {}): Promise<string> {
+function spawnWorkTask(task: string, options: WorkTaskOptions = {}): Promise<string> {
     const profile = options.profile ?? 'lmy'
     const timeoutMs = options.timeoutMs ?? 180_000
     const apiKey = options.apiKey ?? process.env.QQBOT_LLM_API_KEY ?? process.env.DEEPSEEK_API_KEY
@@ -73,4 +73,22 @@ export function runWorkTask(task: string, options: WorkTaskOptions = {}): Promis
             reject(new Error(`工作桥没有拿到回复（exit ${code}）：${stderr.slice(-500)}`))
         })
     })
+}
+
+/** 优先交给常驻的她（独立进程），没起来再自己起 headless */
+export async function runWorkTask(task: string, options: WorkTaskOptions = {}): Promise<string> {
+    const resident = process.env.HER_RESIDENT_URL ?? 'http://127.0.0.1:7777'
+    try {
+        const res = await fetch(`${resident}/task`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task, context: options.context ?? '' }),
+            signal: AbortSignal.timeout((options.timeoutMs ?? 180_000) + 10_000),
+        })
+        if (res.ok) {
+            const data = await res.json() as { ok?: boolean; reply?: string }
+            if (data?.ok && data.reply) return String(data.reply)
+        }
+    } catch { /* 常驻没起来，走临时 headless */ }
+    return spawnWorkTask(task, options)
 }
