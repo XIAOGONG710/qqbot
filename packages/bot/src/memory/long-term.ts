@@ -540,7 +540,9 @@ export class LongTermMemory {
         const commonFound = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
         if (!commonFound) return undefined;
         // 他在 DSH 里让她干的活（工作房）：也一起召回，聊天里的她要知道自己做过什么
-        const workFound = await this.#recall(`${this.#options.bankPrefix}-dsh`, request, `[${contact.qq}] 工作房召回失败（忽略）`);
+        // 工作房的事实会被 Hindsight 归纳成 observation，公共召回默认不要 observation，这里单独放开
+        const workRequest: RecallRequest = { ...request, types: ['world', 'experience', 'observation'], prefer_observations: true };
+        const workFound = await this.#recall(`${this.#options.bankPrefix}-dsh`, workRequest, `[${contact.qq}] 工作房召回失败（忽略）`);
         const found = workFound?.length
             ? [...commonFound, ...workFound.filter(r => !commonFound.some(c => c.id === r.id))]
             : commonFound;
