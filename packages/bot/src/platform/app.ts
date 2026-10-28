@@ -12,6 +12,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSyn
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canGiveFeedback, cardKey, CONTACT_TIERS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { loadOthers } from '.././social/others.ts';
 import { createAccount, friendRequestVerdict } from '.././social/account.ts';
 import { chatCompletion, forExtraction } from '.././language/llm.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
@@ -243,6 +244,12 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     log(sensitive.describe());
     // 关着的时候不留上次开着时的完整提示词
     if (!sensitive.on()) rmSync(join(config.dataDir, 'last-prompt.json'), { force: true });
+    // 以后要加的人：<dataDir>/others.json，不改代码就能加；重复 QQ 自动跳过
+    const extraContacts = loadOthers(config.dataDir, config.contacts, log);
+    if (extraContacts.length) {
+        config.contacts = [...config.contacts, ...extraContacts];
+        log(`动态联系人：${extraContacts.map(contact => `${contact.name}(${contact.qq})`).join('、')}`);
+    }
     // 每个档位一张角色卡和一本世界书，用到时读一次；不知道她是程序的联系人用「<档位>-open」承认版（ADR 0067，cardKey）
     let typingFailed = false;
     const failedOnce = new Set<string>();
