@@ -537,8 +537,13 @@ export class LongTermMemory {
         const request: RecallRequest = {
             ...recallRequest(query, now, window), types: ['world', 'experience'], prefer_observations: false, ...(window ? { max_tokens: DAY_RECALL_TOKENS } : {}),
         };
-        const found = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
-        if (!found) return undefined;
+        const commonFound = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
+        if (!commonFound) return undefined;
+        // 他在 DSH 里让她干的活（工作房）：也一起召回，聊天里的她要知道自己做过什么
+        const workFound = await this.#recall(`${this.#options.bankPrefix}-dsh`, request, `[${contact.qq}] 工作房召回失败（忽略）`);
+        const found = workFound?.length
+            ? [...commonFound, ...workFound.filter(r => !commonFound.some(c => c.id === r.id))]
+            : commonFound;
         // 问上周、问假期时，周记、阶段总结单独按标签再召回一次（ADR 0026：日记里的事多了以后，周记的条目有时排不进上面那次的名额，3/9 次问上周没想起周记）
         const summaryTag = window?.period === 'week' ? 'week' : window?.period === 'holiday' ? 'phase' : undefined;
         const summaries = summaryTag
@@ -556,7 +561,7 @@ export class LongTermMemory {
         const results = focus.length ? [...inWindow].sort((a, b) => Number(about(b)) - Number(about(a))) : inWindow;
         const own = `${this.#hash(contact)}:`;
         return formatRecalled(results.filter(r => !r.document_id?.startsWith(own)), {
-            header: `[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和${contact.name}聊的，用不上就别提）]`,
+            header: `[你和名单里别的人聊天时说过、听过的事，以及他让你在电脑里干活时做过的事（从记忆里想起来的，只作参考；不是和${contact.name}聊的，用不上就别提）]`,
             limit: SHARED_RECALLED,
             now,
             fade: { ...this.#fade(chat, fade), ...(window ? { window } : {}) },
@@ -603,6 +608,7 @@ export class LongTermMemory {
             if (id.startsWith(DIARY_PREFIX)) return ownSourceLabel('你的日记', listener);
             if (id.startsWith('week:')) return ownSourceLabel('你的周记', listener);
             if (id.startsWith('phase:')) return ownSourceLabel(`你${id.split(':')[1]}的总结`, listener);
+            if (id.startsWith('qq-work-') || id.startsWith('dsh-')) return '你干过的事';
             const owner = owners.get(id.split(':')[0]!);
             return owner ? sourceLabel(owner, listener) : '不能说·来源不明';
         };
