@@ -616,16 +616,15 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         })
         : undefined;
     if (memory) log(config.selfDirectedMemory
-        ? '她自己的记忆：自动同步关，等她说 <<记住：…>> / <<日记：…>> 才记'
+        ? '混合记忆：自动记底账，她写 <<记住：…>> / <<日记：…>> 的另记；自动日记关'
         : diaries ? `她的日记：她的每一天结束后写一篇存进公共记忆（没聊天的日子也写，停过的补最近 ${DIARY_BACKFILL_DAYS} 天）` : '她的日记：不写（用到的档位卡上都没有作息）');
     function syncMemory(): void {
         if (!memory) return;
-        if (!config.selfDirectedMemory) {
-            for (const contact of config.contacts) {
-                void memory.sync(contact, { user: contact.name, char: cardFor(contact.tier).character.name }, history.load(contact.qq));
-            }
-            void diaries?.catchUp(new Date(pipeline?.now?.() ?? Date.now()));
+        // 混合模式：底账照记（自动 episode），她自己标记的另记；自动日记仍关
+        for (const contact of config.contacts) {
+            void memory.sync(contact, { user: contact.name, char: cardFor(contact.tier).character.name }, history.load(contact.qq));
         }
+        if (!config.selfDirectedMemory) void diaries?.catchUp(new Date(pipeline?.now?.() ?? Date.now()));
         void promises?.sync();
     }
     const memoryTimer = memory ? setInterval(syncMemory, MEMORY_SYNC_MS) : undefined;

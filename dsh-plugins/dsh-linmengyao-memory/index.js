@@ -87,13 +87,15 @@ async function recallAll(cfg, query) {
   return out
 }
 
-async function retain(cfg, content, bank) {
+async function retain(cfg, content, bank, tags = ['dsh'], context = 'DSH') {
   const body = {
     items: [{
       content,
-      context: 'DSH 工作',
+      context,
       document_id: `dsh-${bank}-${Date.now()}`,
       timestamp: new Date().toISOString(),
+      tags,
+      metadata: {},
     }],
   }
   const res = await fetch(`${cfg.baseUrl}/v1/default/banks/${encodeURIComponent(bank)}/memories`, {
@@ -115,7 +117,7 @@ export function apply(ctx, config = {}) {
     try { preset = ctx.get('agentPresets')?.composedPreset?.(agent.ctx) || '' } catch (e) { log(cfg, `created preset error ${e}`) }
     log(cfg, `agent created ${agent.id} preset=${preset || '(empty)'}`)
 
-    const cache = { text: '', preset }
+    const cache = { text: '', preset, user: '', assistant: '' }
 
     const off = agent.ctx.effect(() => {
       const disposers = []
@@ -129,6 +131,7 @@ export function apply(ctx, config = {}) {
           }
           if (allow.size && p && !allow.has(p)) { cache.text = ''; log(cfg, `skip preset=${p}`); return next() }
           const query = textOf(payload.messages?.[payload.messages.length - 1]).trim()
+          cache.user = query
           if (query) {
             const all = await recallAll(cfg, query)
             let text = all.slice(0, cfg.pick).map((item) => `- ${item.text}`).join('\n')
@@ -138,6 +141,31 @@ export function apply(ctx, config = {}) {
           }
         } catch (e) { log(cfg, `recall error ${e}`) }
         return next()
+      }))
+
+      disposers.push(agent.ctx.on('agent/assistant-stream', ({ frame }) => {
+        if (frame?.type === 'start') cache.assistant = ''
+        else if (frame?.type === 'chunk' && frame.chunk?.type === 'text-delta') cache.assistant += frame.chunk.text || ''
+      }))
+
+      // 混合记忆：每轮结束自动把这段对话写进 DSH 库
+      disposers.push(agent.ctx.on('agent/turn-stopping', async () => {
+        const user = cache.user
+        const assistant = cache.assistant
+        cache.user = ''
+        cache.assistant = ''
+        if (!user && !assistant) return
+        let p = cache.preset
+        if (!p) {
+          try { p = ctx.get('agentPresets')?.composedPreset?.(agent.ctx) || '' } catch {}
+        }
+        if (allow.size && p && !allow.has(p)) return
+        try {
+          await retain(cfg, `宝宝：${user}\n林梦瑶：${assistant.slice(0, 2000)}`, cfg.prefix, ['dsh'], 'DSH')
+          log(cfg, `auto-saved turn user=${user.slice(0, 20)} assistant=${assistant.length}chars`)
+        } catch (e) {
+          log(cfg, `auto-save error ${e}`)
+        }
       }))
 
       const sp = agent.ctx.get('systemPrompt')
