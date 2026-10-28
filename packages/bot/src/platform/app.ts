@@ -39,6 +39,7 @@ import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode } from './work-mode.ts';
 import { runWorkTask, rememberWorkTask } from './work-bridge.ts';
+import { addSoulRating } from './soul-rating.ts';
 import { momentsReader } from '.././emotion/moments.ts';
 import { loadEverydayFrom } from '.././life/everyday.ts';
 import { dishesBetween, loadMenuFrom } from '.././life/menu.ts';
@@ -1409,6 +1410,12 @@ ${body}
             if (plain === '/模式') {
                 const mode = readWorkMode(config.dataDir, event.user_id);
                 tellOwner(mode === 'work' ? '（现在：工作模式）' : '（现在：聊天模式）');
+                return;
+            }
+            // 给她的回复打分（决定她能不能改 SOUL）
+            if (plain === '/好' || plain === '/一般' || plain === '/差') {
+                addSoulRating(plain === '/好' ? 1 : plain === '/一般' ? 0 : -1);
+                tellOwner(`（记下了：${plain.slice(1)}）`);
                 return;
             }
         }

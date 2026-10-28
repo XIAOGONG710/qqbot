@@ -12,6 +12,8 @@ const DEFAULTS = {
   pick: 6,
   maxChars: 1400,
   soulFile: 'C:/Users/22601/.dsh/linmengyao/SOUL.md',
+  ledgerFile: 'C:/Users/22601/.dsh/linmengyao/LEDGER.md',
+  ratingFile: 'C:/Users/22601/.dsh/linmengyao/RATINGS.json',
   logFile: 'C:/Users/22601/.dsh/linmengyao-memory.log',
 }
 
@@ -29,6 +31,40 @@ function readSoul(cfg) {
     return soulCache.text
   } catch {
     return ''
+  }
+}
+
+let ledgerCache = { path: '', at: 0, text: '' }
+function readLedger(cfg) {
+  try {
+    const stat = fs.statSync(cfg.ledgerFile)
+    if (ledgerCache.path !== cfg.ledgerFile || ledgerCache.at !== stat.mtimeMs) {
+      ledgerCache = { path: cfg.ledgerFile, at: stat.mtimeMs, text: fs.readFileSync(cfg.ledgerFile, 'utf8').trim() }
+    }
+    return ledgerCache.text
+  } catch {
+    return ''
+  }
+}
+
+/** 他的评价：最近 20 条，按 7 天半衰期加权，映射到 [0,1]；样本 <3 不设闸门 */
+function ratingScore(cfg) {
+  try {
+    const data = JSON.parse(fs.readFileSync(cfg.ratingFile, 'utf8'))
+    const samples = (Array.isArray(data.samples) ? data.samples : []).slice(-20)
+    if (samples.length < 3) return { score: 1, count: samples.length, gated: false }
+    let weighted = 0
+    let total = 0
+    for (const sample of samples) {
+      const ageDays = Math.max(0, (Date.now() - Number(sample.at || 0)) / 86_400_000)
+      const decay = Math.pow(0.5, ageDays / 7)
+      weighted += Number(sample.score || 0) * decay
+      total += decay
+    }
+    const raw = total ? weighted / total : 0
+    return { score: (raw + 1) / 2, count: samples.length, gated: true }
+  } catch {
+    return { score: 1, count: 0, gated: false }
   }
 }
 
@@ -151,7 +187,12 @@ export function apply(ctx, config = {}) {
             let text = all.slice(0, cfg.pick).map((item) => `- ${item.text}`).join('\n')
             if (text.length > cfg.maxChars) text = text.slice(0, cfg.maxChars) + '…'
             const soul = readSoul(cfg)
-            cache.text = [soul ? `[你现在的自我]\n${soul}` : '', text].filter(Boolean).join('\n\n')
+            const ledger = readLedger(cfg)
+            cache.text = [
+              soul ? `[你现在的自我]\n${soul}` : '',
+              ledger ? `[你的判断账本]\n${ledger}` : '',
+              text,
+            ].filter(Boolean).join('\n\n')
             log(cfg, `recall q=${query.slice(0, 40)} items=${all.length} picked=${cache.text.length}chars`)
           }
         } catch (e) { log(cfg, `recall error ${e}`) }
@@ -240,17 +281,62 @@ export function apply(ctx, config = {}) {
             additionalProperties: false,
           },
           output: {
-            schema: { type: 'object', properties: { saved: { type: 'boolean' } }, required: ['saved'] },
-            render: () => [{ type: 'text', text: '写进 SOUL 了。' }],
+            schema: { type: 'object', properties: { saved: { type: 'boolean' }, reason: { type: 'string' } }, required: ['saved'] },
+            render: (_args, value) => [{ type: 'text', text: value?.saved ? '写进 SOUL 了。' : String(value?.reason || '没写。') }],
           },
           async execute(args) {
-            const content = String(args?.content || '').trim().slice(0, 800)
+            const rating = ratingScore(cfg)
+            let limit = 800
+            if (rating.gated) {
+              if (rating.score < 0.35) {
+                const reason = `最近评价分 ${rating.score.toFixed(2)}（${rating.count} 条），先不写 SOUL；写日记/账本可以。`
+                log(cfg, `soul_update blocked rating=${rating.score.toFixed(2)}`)
+                return { saved: false, reason }
+              }
+              if (rating.score < 0.6) limit = 300
+            }
+            const content = String(args?.content || '').trim().slice(0, limit)
             if (!content) return { saved: false }
             const why = String(args?.why || '').trim().slice(0, 120)
             const stamp = new Date().toISOString().slice(0, 10)
             try { fs.copyFileSync(cfg.soulFile, `${cfg.soulFile}.bak`) } catch {}
             fs.appendFileSync(cfg.soulFile, `\n\n## ${stamp}${why ? `（${why}）` : ''}\n${content}\n`)
-            log(cfg, `soul_update ${content.slice(0, 40)}`)
+            log(cfg, `soul_update ${content.slice(0, 40)} rating=${rating.score.toFixed(2)}`)
+            return { saved: true }
+          },
+        }))
+
+        disposers.push(tools.register({
+          name: 'ledger_read',
+          description: '读你自己的判断账本 LEDGER.md（事件、判断、立场）。',
+          parameters: { type: 'object', properties: {}, additionalProperties: false },
+          output: {
+            schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+            render: (_args, value) => [{ type: 'text', text: String(value?.text || '') }],
+          },
+          async execute() { return { text: readLedger(cfg) } },
+        }))
+
+        disposers.push(tools.register({
+          name: 'ledger_append',
+          description: '往判断账本追加一条：发生了什么 + 你的判断/立场（<=300 字符）。只记真的改变了你怎么看人事的事。',
+          parameters: {
+            type: 'object',
+            properties: { content: { type: 'string', description: '事件 + 判断，<=300 字符' } },
+            required: ['content'],
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { saved: { type: 'boolean' } }, required: ['saved'] },
+            render: () => [{ type: 'text', text: '记进账本了。' }],
+          },
+          async execute(args) {
+            const content = String(args?.content || '').trim().slice(0, 300)
+            if (!content) return { saved: false }
+            const stamp = new Date().toISOString().slice(0, 10)
+            try { fs.copyFileSync(cfg.ledgerFile, `${cfg.ledgerFile}.bak`) } catch {}
+            fs.appendFileSync(cfg.ledgerFile, `- ${stamp}：${content}\n`)
+            log(cfg, `ledger_append ${content.slice(0, 40)}`)
             return { saved: true }
           },
         }))
