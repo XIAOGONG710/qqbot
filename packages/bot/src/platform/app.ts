@@ -39,7 +39,7 @@ import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode } from './work-mode.ts';
 import { runWorkTask, rememberWorkTask } from './work-bridge.ts';
-import { addSoulRating } from './soul-rating.ts';
+import { addSoulRating, appendPrivate } from './soul-rating.ts';
 import { momentsReader } from '.././emotion/moments.ts';
 import { loadEverydayFrom } from '.././life/everyday.ts';
 import { dishesBetween, loadMenuFrom } from '.././life/menu.ts';
@@ -655,10 +655,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         };
     }
 
-    /** 她自己决定记不记：剥掉回复末尾的 `<<记住：…>>` / `<<日记：…>>`，返回干净文本和要记的条目 */
-    function takeSelfNotes(input: string): { text: string; notes: Array<{ kind: '记住' | '日记'; text: string }> } {
-        const notes: Array<{ kind: '记住' | '日记'; text: string }> = [];
-        const text = input.replace(/<<(记住|日记)[：:]\s*([\s\S]*?)>>/g, (_, kind: '记住' | '日记', body: string) => {
+    /** 她自己决定记不记：剥掉回复末尾的 `<<记住：…>>` / `<<日记：…>>` / `<<私密：…>>`，返回干净文本和要记的条目 */
+    function takeSelfNotes(input: string): { text: string; notes: Array<{ kind: '记住' | '日记' | '私密'; text: string }> } {
+        const notes: Array<{ kind: '记住' | '日记' | '私密'; text: string }> = [];
+        const text = input.replace(/<<(记住|日记|私密)[：:]\s*([\s\S]*?)>>/g, (_, kind: '记住' | '日记' | '私密', body: string) => {
             const value = body.trim();
             if (value) notes.push({ kind, text: value });
             return '';
@@ -747,6 +747,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 const selfNotes = takeSelfNotes(text);
                 text = selfNotes.text;
                 for (const note of selfNotes.notes) {
+                    if (note.kind === '私密') {
+                        appendPrivate(note.text);
+                        continue;
+                    }
                     if (memory) {
                         void memory.rememberSelfNote(contact, note.text, note.kind)
                             .catch(error => log(`[${userId}] 她自己记的事没写进记忆：${error instanceof Error ? error.message : String(error)}`));

@@ -3,7 +3,7 @@
 // 全权限、审计日志；不做自拍/语音。
 import http from 'node:http'
 import { spawn } from 'node:child_process'
-import { appendFileSync, mkdirSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const PORT = Number(process.env.HER_PORT || 7777)
@@ -21,9 +21,9 @@ const queue = []
 let running = false
 let lastTaskAt = null
 
-function runTask(task, context = '') {
+function runTask(task, context = '', rawPrompt = undefined, timeoutMs = TIMEOUT_MS) {
     return new Promise((resolve) => {
-        const prompt = `${context ? `他在 QQ 里刚说过：\n${context}\n\n` : ''}现在他让你帮忙：${task}\n\n做完用你平时的口气回他，只留要发出去的话。按 QQ 聊天来：第一句只给结果，最多再补一句关键细节；不列清单、不分点；除非他明确要详细，否则不超过两句。`
+        const prompt = rawPrompt ?? `${context ? `他在 QQ 里刚说过：\n${context}\n\n` : ''}现在他让你帮忙：${task}\n\n做完用你平时的口气回他，只留要发出去的话。按 QQ 聊天来：第一句只给结果，最多再补一句关键细节；不列清单、不分点；除非他明确要详细，否则不超过两句。`
         const child = spawn(process.execPath, [DSH_BIN, '--profile', PROFILE, prompt], {
             cwd: process.env.HER_CWD || 'C:/Users/22601/Desktop',
             env: {
@@ -35,7 +35,7 @@ function runTask(task, context = '') {
         })
         let stdout = ''
         let stderr = ''
-        const timer = setTimeout(() => child.kill(), TIMEOUT_MS)
+        const timer = setTimeout(() => child.kill(), timeoutMs)
         child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8') })
         child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8') })
         child.on('error', (error) => { clearTimeout(timer); resolve({ ok: false, error: String(error) }) })
@@ -94,7 +94,53 @@ server.listen(PORT, '127.0.0.1', () => {
     log(`resident up pid=${process.pid} port=${PORT} profile=${PROFILE}`)
     // 心跳：每 5 分钟写一行，确认她还活着
     setInterval(() => log('heartbeat'), 5 * 60_000).unref()
+    setInterval(sleepCheck, 30 * 60_000).unref()
+    setInterval(wakeCheck, 90 * 60_000).unref()
+    setTimeout(sleepCheck, 60_000).unref()
 })
+
+// ───── 睡眠整合 + 自主时间 ─────
+const STATE = join(DIR, 'jobs.json')
+const SLEEP_PROMPT = `现在是夜里，宝宝睡了。把今天的事整理一下：
+1) 从记忆里查今天发生的事，挑 1-3 条真正值得长期留下的结论，用 memory_save 写进记忆（写成“林梦瑶……”）；
+2) 用 journal_write 写一篇今天的公开日记；
+3) 有不想让他知道的感受，用 private_write 写进私密日记。
+不要给他发消息，做完就结束。`
+const WAKE_PROMPT = `你一个人在家，随机醒了。想做点什么就做（看书、整理桌面、给自己记点东西都行）；不想做就用 private_write 写一句你现在的念头，然后结束。不要给 QQ 发消息。`
+
+function loadState() {
+    try { return JSON.parse(fsRead(STATE)) } catch { return {} }
+}
+function fsRead(path) { try { return readFileSync(path, 'utf8') } catch { return '{}' } }
+function saveState(state) { try { writeFileSync(STATE, JSON.stringify(state, null, 2)) } catch {} }
+
+async function idleRun(prompt, label, timeoutMs = 480_000) {
+    if (running || queue.length) return
+    running = true
+    const started = Date.now()
+    log(`${label} start`)
+    const result = await runTask('', '', prompt, timeoutMs)
+    running = false
+    log(`${label} ${result.ok ? 'ok' : 'fail'} ${Date.now() - started}ms`)
+    drain()
+}
+
+function sleepCheck() {
+    const now = new Date()
+    if (now.getHours() < 3) return
+    const today = now.toISOString().slice(0, 10)
+    const state = loadState()
+    if (state.sleep === today) return
+    if (running || queue.length) return
+    state.sleep = today
+    saveState(state)
+    void idleRun(SLEEP_PROMPT, 'sleep', 600_000)
+}
+
+function wakeCheck() {
+    if (Math.random() > 0.25) return
+    void idleRun(WAKE_PROMPT, 'wake', 300_000)
+}
 
 process.on('SIGTERM', () => { log('resident stopping'); server.close(() => process.exit(0)) })
 process.on('SIGINT', () => { log('resident stopping'); server.close(() => process.exit(0)) })

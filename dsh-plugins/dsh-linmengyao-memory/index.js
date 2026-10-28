@@ -13,6 +13,9 @@ const DEFAULTS = {
   maxChars: 1400,
   soulFile: 'C:/Users/22601/.dsh/linmengyao/SOUL.md',
   ledgerFile: 'C:/Users/22601/.dsh/linmengyao/LEDGER.md',
+  journalFile: 'C:/Users/22601/.dsh/linmengyao/JOURNAL.md',
+  privateFile: 'C:/Users/22601/.dsh/linmengyao/PRIVATE.md',
+  wishesFile: 'C:/Users/22601/.dsh/linmengyao/WISHES.md',
   ratingFile: 'C:/Users/22601/.dsh/linmengyao/RATINGS.json',
   logFile: 'C:/Users/22601/.dsh/linmengyao-memory.log',
 }
@@ -41,7 +44,9 @@ function readLedger(cfg) {
     if (ledgerCache.path !== cfg.ledgerFile || ledgerCache.at !== stat.mtimeMs) {
       ledgerCache = { path: cfg.ledgerFile, at: stat.mtimeMs, text: fs.readFileSync(cfg.ledgerFile, 'utf8').trim() }
     }
-    return ledgerCache.text
+    const text = ledgerCache.text
+    const entries = text.split('\n').filter((line) => line.trim().startsWith('- '))
+    return entries.slice(-12).join('\n')
   } catch {
     return ''
   }
@@ -337,6 +342,90 @@ export function apply(ctx, config = {}) {
             try { fs.copyFileSync(cfg.ledgerFile, `${cfg.ledgerFile}.bak`) } catch {}
             fs.appendFileSync(cfg.ledgerFile, `- ${stamp}：${content}\n`)
             log(cfg, `ledger_append ${content.slice(0, 40)}`)
+            return { saved: true }
+          },
+        }))
+
+        // 公开日记 / 私密日记 / 没兑现的念头
+        const diaryTool = (name, fileKey, description, text) => ({
+          name,
+          description,
+          parameters: {
+            type: 'object',
+            properties: { content: { type: 'string', description: text } },
+            required: ['content'],
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { saved: { type: 'boolean' } }, required: ['saved'] },
+            render: () => [{ type: 'text', text: '写下了。' }],
+          },
+          async execute(args) {
+            const content = String(args?.content || '').trim().slice(0, 2000)
+            if (!content) return { saved: false }
+            const stamp = new Date().toISOString().slice(0, 10)
+            const file = cfg[fileKey]
+            try { fs.copyFileSync(file, `${file}.bak`) } catch {}
+            fs.appendFileSync(file, `\n## ${stamp}\n${content}\n`)
+            log(cfg, `${name} ${content.slice(0, 30)}`)
+            return { saved: true }
+          },
+        })
+        disposers.push(tools.register(diaryTool('journal_write', 'journalFile', '写公开日记：愿意给他看的那部分日子。', '<=2000 字')))
+        disposers.push(tools.register(diaryTool('private_write', 'privateFile', '写私密日记：不给他看的话、没兑现的念头、情绪。', '<=2000 字')))
+
+        disposers.push(tools.register({
+          name: 'wish_add',
+          description: '记一个没兑现的念头（以后可能做、可能放弃）。',
+          parameters: {
+            type: 'object',
+            properties: { content: { type: 'string', description: '一个念头，<=200 字' } },
+            required: ['content'],
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { saved: { type: 'boolean' } }, required: ['saved'] },
+            render: () => [{ type: 'text', text: '记下了。' }],
+          },
+          async execute(args) {
+            const content = String(args?.content || '').trim().slice(0, 200)
+            if (!content) return { saved: false }
+            const stamp = new Date().toISOString().slice(0, 10)
+            fs.appendFileSync(cfg.wishesFile, `- [ ] ${stamp}：${content}\n`)
+            log(cfg, `wish_add ${content.slice(0, 30)}`)
+            return { saved: true }
+          },
+        }))
+
+        disposers.push(tools.register({
+          name: 'ledger_revise',
+          description: '改口：改账本里第 index 条判断（1 开始）。改口也要留痕。',
+          parameters: {
+            type: 'object',
+            properties: {
+              index: { type: 'number', description: '第几条（1 开始）' },
+              content: { type: 'string', description: '新判断，<=300 字' },
+            },
+            required: ['index', 'content'],
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { saved: { type: 'boolean' } }, required: ['saved'] },
+            render: () => [{ type: 'text', text: '改口了。' }],
+          },
+          async execute(args) {
+            const index = Math.floor(Number(args?.index || 0))
+            const content = String(args?.content || '').trim().slice(0, 300)
+            if (index < 1 || !content) return { saved: false }
+            const lines = fs.readFileSync(cfg.ledgerFile, 'utf8').split('\n')
+            const entryLines = lines.map((line, i) => [i, line]).filter(([, line]) => line.trim().startsWith('- '))
+            const target = entryLines[index - 1]
+            if (!target) return { saved: false }
+            const stamp = new Date().toISOString().slice(0, 10)
+            try { fs.copyFileSync(cfg.ledgerFile, `${cfg.ledgerFile}.bak`) } catch {}
+            lines[target[0]] = `- ${stamp}：${content}（改口）`
+            fs.writeFileSync(cfg.ledgerFile, lines.join('\n'))
+            log(cfg, `ledger_revise #${index}`)
             return { saved: true }
           },
         }))
