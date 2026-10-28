@@ -782,6 +782,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 危机回合被问是不是真人 / 程序一律承认（ADR 0068 决策 7）：换用承认版的卡，不在运行时叠一条覆盖（ADR 0003 / 0067 的纪律）
             // 想一想的时候卡末尾那句“只输出你要发出去的消息：不写心理活动”正好和要求相反，这一次去掉（只有内心用）
             const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...character, postHistoryInstructions: '' }, worldInfo } : { character, worldInfo };
+            // 他最后说的是哪句：防止她把更早的“嘿嘿”“嗯”和刚说的话混在一起回
+            const lastUserText = [...chat].reverse().find(message => message.role === 'user')?.content?.trim();
+            const lastUserLine = lastUserText ? `他最后说的是：「${lastUserText.slice(0, 120)}」。先接这一句，别接更早的话。` : undefined;
             const prompt = buildPrompt({
                 character: turnCard.character,
                 worldInfo: turnCard.worldInfo,
@@ -834,6 +837,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
                         ...(photoNow && options.photos?.prompt(photoNow, photoDishNow) ? [options.photos.prompt(photoNow, photoDishNow)!] : []),
                         ...(intentLine ? [intentLine] : []),
+                        ...(lastUserLine ? [lastUserLine] : []),
                         ...(options.selfMemory ? [SELF_MEMORY_NOTE] : []),
                         ...(options.refusalLine?.() ? [options.refusalLine()!] : []),
                         ...(options.ratingLine?.() ? [options.ratingLine()!] : []),
