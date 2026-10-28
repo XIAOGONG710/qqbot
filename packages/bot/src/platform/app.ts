@@ -38,7 +38,7 @@ import { arrivedWhileAsleep } from '.././social/reply-timing.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode } from './work-mode.ts';
-import { runWorkTask } from './work-bridge.ts';
+import { runWorkTask, rememberWorkTask } from './work-bridge.ts';
 import { momentsReader } from '.././emotion/moments.ts';
 import { loadEverydayFrom } from '.././life/everyday.ts';
 import { dishesBetween, loadMenuFrom } from '.././life/menu.ts';
@@ -1368,6 +1368,7 @@ ${body}
         // 他发「/工作」「/回聊」「/模式」：只认男朋友档的他、只认纯文字；命中的算处理完，不进聊天记录
         if (event.user_id === deviceOwner?.qq) {
             const plain = plainTextOf(event.message)?.trim();
+            log(`[${event.user_id}] 命令检查：${JSON.stringify(plain)}`);
             if (plain === '/工作') {
                 setWorkMode(config.dataDir, event.user_id, 'work');
                 tellOwner('（好，切工作模式了；要聊天就发 /回聊）');
@@ -1462,9 +1463,15 @@ ${body}
         // 工作模式：不进普通聊天回复器，交给 headless 的她干活，干完再回（工具桥）
         if (event.user_id === deviceOwner?.qq && !text.startsWith('/') && readWorkMode(config.dataDir, event.user_id) === 'work') {
             const qq = event.user_id;
-            log(`[${qq}] 工作模式：交给 dsh 干活`);
-            void runWorkTask(text)
-                .then(reply => transport.sendPrivateText(qq, reply))
+            const recent = history.load(qq).slice(-10)
+                .map(message => `${message.role === 'user' ? '他' : '我'}：${message.content}`)
+                .join('\n');
+            log(`[${qq}] 工作模式：交给 dsh 干活（带 ${recent ? '最近对话' : '无'}上下文）`);
+            void runWorkTask(text, { context: recent })
+                .then(async reply => {
+                    await transport.sendPrivateText(qq, reply);
+                    void rememberWorkTask(text, reply);
+                })
                 .catch(error => {
                     log(`[${qq}] 工作桥出错：${error instanceof Error ? error.message : String(error)}`);
                     void transport.sendPrivateText(qq, '这个没弄成，等下我再看。');
