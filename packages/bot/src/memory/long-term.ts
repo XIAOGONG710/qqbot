@@ -570,7 +570,9 @@ export class LongTermMemory {
      * 工作房的事实是 observation、且没有 qq-private 标签，所以单独放开类型和标签过滤。
      */
     async recallWork(contact: NamedContact, chat: readonly ChatMessage[], now: Date): Promise<string | undefined> {
-        const query = recallQuery(chat);
+        // 连发时最后一句可能只是「喂喂喂」，真正的问题在前一条：最近三条用户消息一起当查询
+        const recent = chat.filter(message => message.role === 'user').slice(-3).map(message => message.content).join(' ');
+        const query = (recent || recallQuery(chat) || '').slice(-MAX_QUERY_CHARS);
         if (!query) return undefined;
         const request: RecallRequest = {
             ...recallRequest(query, now),
