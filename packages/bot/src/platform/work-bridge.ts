@@ -26,7 +26,7 @@ export async function rememberWorkTask(task: string, reply: string, bank = 'linm
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 items: [{
-                    content: `他让我：${task}\n我做了：${reply}`,
+                    content: `林梦瑶今天帮宝宝干活：他让她${task}；林梦瑶做了：${reply}`,
                     context: 'DSH 工作',
                     document_id: `qq-work-${Date.now()}`,
                     timestamp: new Date().toISOString(),
