@@ -579,10 +579,10 @@ export class LongTermMemory {
             tags: [],
             tags_match: 'any' as unknown as RecallRequest['tags_match'],
         };
-        const results = await this.#recall(`${this.#options.bankPrefix}-dsh`, request, `[${contact.qq}] 工作记忆召回失败，这次不带`);
+        const results = await this.#recall(`${this.#options.bankPrefix}`, request, `[${contact.qq}] DSH 记忆召回失败，这次不带`);
         if (!results?.length) return undefined;
         return formatRecalled(results.map(result => ({ ...result, document_id: result.document_id ?? 'dsh-work' })), {
-            header: `[你在电脑里帮他干活时做过的事（从记忆里想起来的，只作参考）]`,
+            header: `[你在 DSH 里做过的事（包括帮他干活；从记忆里想起来的，只作参考）]`,
             limit: 3,
             now,
             fade: this.#fade(chat, {}),

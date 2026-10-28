@@ -18,8 +18,8 @@ export interface WorkTaskOptions {
 
 const HINDSIGHT = 'http://127.0.0.1:8888'
 
-/** 把这次活写进工作房，聊天里的她也能看到 */
-export async function rememberWorkTask(task: string, reply: string, bank = 'linmengyao-dsh'): Promise<void> {
+/** 把这次活写进 DSH 记忆库，聊天里的她也能看到 */
+export async function rememberWorkTask(task: string, reply: string, bank = 'linmengyao'): Promise<void> {
     try {
         await fetch(`${HINDSIGHT}/v1/default/banks/${bank}/memories`, {
             method: 'POST',

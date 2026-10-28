@@ -7,12 +7,10 @@ export const name = 'dsh-linmengyao-memory'
 
 const DEFAULTS = {
   baseUrl: 'http://127.0.0.1:8888',
-  chatBanks: ['linmengyao', 'linmengyao-common'],
-  workBank: 'linmengyao-dsh',
+  prefix: 'linmengyao',
   presets: ['linmengyao'],
-  limit: 30,
-  pick: 5,
-  maxChars: 1200,
+  pick: 6,
+  maxChars: 1400,
   logFile: 'C:/Users/22601/.dsh/linmengyao-memory.log',
 }
 
@@ -34,30 +32,59 @@ function grams(text) {
   return set
 }
 
-async function fetchMemories(cfg, bank) {
-  const url = `${cfg.baseUrl}/v1/default/banks/${encodeURIComponent(bank)}/memories/list?limit=${cfg.limit}`
-  const res = await fetch(url, { signal: AbortSignal.timeout(2500) })
-  if (!res.ok) throw new Error(`list ${res.status}`)
+let bankCache = { at: 0, ids: [] }
+
+/** 列出所有她名下的 bank：linmengyao 本身 + linmengyao-common + 各联系人 */
+async function allBanks(cfg) {
+  if (bankCache.ids.length && Date.now() - bankCache.at < 60_000) return bankCache.ids
+  const res = await fetch(`${cfg.baseUrl}/v1/default/banks`, { signal: AbortSignal.timeout(2500) })
+  if (!res.ok) throw new Error(`banks ${res.status}`)
   const data = await res.json()
-  return Array.isArray(data.items) ? data.items : []
+  const ids = (Array.isArray(data.banks) ? data.banks : [])
+    .map((bank) => String(bank.bank_id || ''))
+    .filter((id) => id === cfg.prefix || id.startsWith(`${cfg.prefix}-`))
+  bankCache = { at: Date.now(), ids }
+  return ids
 }
 
-function pickRelevant(items, query, cfg) {
-  const q = grams(query)
-  const scored = []
-  for (const item of items) {
-    const text = String(item.text || '').trim()
-    if (!text) continue
-    let score = 0
-    for (const g of grams(text)) if (q.has(g)) score++
-    scored.push({ text, score })
+async function recallBank(cfg, bank, query) {
+  const res = await fetch(`${cfg.baseUrl}/v1/default/banks/${encodeURIComponent(bank)}/memories/recall`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query,
+      types: ['world', 'experience', 'observation'],
+      prefer_observations: true,
+      budget: 'low',
+      max_tokens: 1200,
+      tags: [],
+      tags_match: 'any',
+      query_timestamp: new Date().toISOString(),
+    }),
+    signal: AbortSignal.timeout(3000),
+  })
+  if (!res.ok) throw new Error(`recall ${bank} ${res.status}`)
+  const data = await res.json()
+  return (Array.isArray(data.results) ? data.results : [])
+    .map((item) => ({ id: String(item.id || item.text), text: String(item.text || '').trim() }))
+    .filter((item) => item.text)
+}
+
+/** 所有库做语义召回，合并去重后取前 pick 条 */
+async function recallAll(cfg, query) {
+  const banks = await allBanks(cfg)
+  const settled = await Promise.allSettled(banks.map((bank) => recallBank(cfg, bank, query)))
+  const seen = new Set()
+  const out = []
+  for (const result of settled) {
+    if (result.status !== 'fulfilled') continue
+    for (const item of result.value) {
+      if (seen.has(item.id)) continue
+      seen.add(item.id)
+      out.push(item)
+    }
   }
-  scored.sort((a, b) => b.score - a.score)
-  const top = scored.filter((x) => x.score > 0).slice(0, cfg.pick)
-  const chosen = top.length ? top : scored.slice(0, 2)
-  let text = chosen.map((x) => `- ${x.text}`).join('\n')
-  if (text.length > cfg.maxChars) text = text.slice(0, cfg.maxChars) + '…'
-  return text
+  return out
 }
 
 async function retain(cfg, content, bank) {
@@ -103,10 +130,10 @@ export function apply(ctx, config = {}) {
           if (allow.size && p && !allow.has(p)) { cache.text = ''; log(cfg, `skip preset=${p}`); return next() }
           const query = textOf(payload.messages?.[payload.messages.length - 1]).trim()
           if (query) {
-            const banks = [...cfg.chatBanks, cfg.workBank]
-            const results = await Promise.allSettled(banks.map((b) => fetchMemories(cfg, b)))
-            const all = results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
-            cache.text = all.length ? pickRelevant(all, query, cfg) : ''
+            const all = await recallAll(cfg, query)
+            let text = all.slice(0, cfg.pick).map((item) => `- ${item.text}`).join('\n')
+            if (text.length > cfg.maxChars) text = text.slice(0, cfg.maxChars) + '…'
+            cache.text = text
             log(cfg, `recall q=${query.slice(0, 40)} items=${all.length} picked=${cache.text.length}chars`)
           }
         } catch (e) { log(cfg, `recall error ${e}`) }
@@ -141,7 +168,7 @@ export function apply(ctx, config = {}) {
             render: () => [{ type: 'text', text: '记住了。' }],
           },
           async execute(args) {
-            await retain(cfg, String(args?.content || '').slice(0, 4000), cfg.workBank)
+            await retain(cfg, String(args?.content || '').slice(0, 4000), cfg.prefix)
             return { saved: true }
           },
         }))
