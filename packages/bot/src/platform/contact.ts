@@ -61,6 +61,7 @@ import { idiomLine, type Idiom } from '.././language/idioms.ts';
 import { jokeLine, type Joke } from '.././language/jokes.ts';
 import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
+import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
 import { describeCloseness } from '.././language/relationship.ts';
 import { describeTogether, togetherNow } from '.././language/together.ts';
@@ -196,6 +197,8 @@ export interface ContactPipelineOptions {
     lifeLine?: () => string | undefined;
     /** 真人例子（ADR 0190，默认关）：他说完这种话，真人是怎么回的 */
     exemplars?: readonly Exemplar[];
+    /** 她自己总结的说话习惯（ADR 0193，默认关）：挑最相关的几条放进提示词；她自己的观察，不是规定 */
+    speechNotes?: () => readonly SpeechNote[];
     /** 梗百科词库（2026-10-29）：他这句里提到一个词，只读地查一眼，不写进她自己的梗库 */
     memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
     /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
@@ -685,6 +688,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     return exemplarLine(pickExemplars(options.exemplars!, last.content, { k: 4 }));
                 })() : undefined;
             if (exemplarNow) log('真人例子：这一轮放了几条真人的回法（日志不记内容）');
+            // 她自己总结的说话习惯（ADR 0193）：口气上的参考，危机 / 只想一想 / 小别扭的轮次不放；主动开口也放（习惯不看有没有他的上一句）
+            const speechNoteNow = options.speechNotes && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
+                ? speechNotesLine(options.speechNotes(), chat.findLast(message => message.role === 'user')?.content) : undefined;
+            if (speechNoteNow) log('说话习惯：这一轮放了几条她自己总结的（日志不记内容）');
             // 梗百科词库（2026-10-29）：她自己的库太小；他提到的词只要词库里有，就把「怎么用/出处/标签」给她。
             // 让路条件和热梗一样；已经在 memeNow 里的不重复给。
             const dictNow = options.memeDict && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance
@@ -895,6 +902,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(memeNow ? [memeNow] : []),
                         ...(dictNow ? [dictNow] : []),
                         ...(exemplarNow ? [exemplarNow] : []),
+                        ...(speechNoteNow ? [speechNoteNow] : []),
                         ...(watchedNow ? [watchedNow] : []),
                         ...continuityLines,
                         ...(interruptLine ? [interruptLine] : []),

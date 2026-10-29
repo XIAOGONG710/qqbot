@@ -143,6 +143,8 @@ export const DEFAULTS = {
     crossRecent: false,
     /** 她自己定追求（ADR 0178）：每晚想一次，自己放下 / 暂停 / 恢复 / 记进度 / 提新的；要同时开 pursuits */
     selfPursuits: false,
+    /** 她每晚自己总结说话习惯（ADR 0193）：22 点以后想一次，写「我发现……」的笔记，挑相关的几条放进提示词；他用 /说话习惯 看 */
+    speechNotes: false,
     rhythm: false,
     shortReplies: false,
     media: true,
@@ -545,6 +547,8 @@ export interface AppConfig {
     crossRecent?: boolean;
     /** 她自己定追求（ADR 0178）：每晚想一次，自己放下 / 暂停 / 恢复（包括作者给的两条）/ 记进度 / 提新的（同时最多 3 件、隔 3 天提一件）；他用 /追求 看，改不了。要同时开 pursuits。默认关 */
     selfPursuits?: boolean;
+    /** 她每晚自己总结说话习惯（ADR 0193）：每晚 22 点以后想一次——看自己这几天说话的样子（一次几条、每条多长、短反应、问号、表情）和真人语料里的样子，写下「我发现……」；挑最相关的几条放进以后的提示词；笔记不能引用他说过的话、不能照抄真人原话、不碰底线；他用 /说话习惯 看，改不了。要名单里有男朋友档；默认关 */
+    speechNotes?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -825,6 +829,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         silenceNotice: bool(file, 'silenceNotice', '', DEFAULTS.silenceNotice),
         crossRecent: bool(file, 'crossRecent', '', DEFAULTS.crossRecent),
         selfPursuits: bool(file, 'selfPursuits', '', DEFAULTS.selfPursuits),
+        speechNotes: bool(file, 'speechNotes', '', DEFAULTS.speechNotes),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
         shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),
         media: bool(file, 'media', '', DEFAULTS.media),
