@@ -33,6 +33,7 @@
 - `platform/device-service.ts`
 - `platform/sensitive.ts`
 - `platform/web.ts`
+- `platform/consent.ts`
 - `ops/`
 - `sim/`
 - `vendor/`

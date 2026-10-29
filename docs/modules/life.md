@@ -27,6 +27,8 @@
 - `life/open-loops.ts`
 - `life/tastes.ts`
 - `life/acquaintances.ts`
+- `life/her-plans.ts`
+- `life/now-export.ts`
 
 ## 开关
 
