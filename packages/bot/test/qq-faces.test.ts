@@ -8,7 +8,7 @@ import type { AppConfig } from '../src/platform/config.ts';
 import { faceContext, FACE_WINDOW, FACE_WINDOW_MAX, FACE_WINDOW_MAX_DISTANT, inspectReply, MAX_FACES, reviewReply, rewriteNote, tidyFaces, type FaceContext } from '../src/language/exit-check.ts';
 import { ChatHistory, type StoredMessage } from '../src/memory/history.ts';
 import { segmentsToText, type MessageEvent } from '../src/platform/onebot.ts';
-import { FACE_NAMES, faceText, facesIn, onlyFaces, SENDABLE_FACES, textToSegments } from '../src/language/qq-faces.ts';
+import { FACE_NAMES, faceText, facesIn, normalizeFaces, onlyFaces, SENDABLE_FACES, textToSegments } from '../src/language/qq-faces.ts';
 import { isAck, isReaction, moodySkip } from '../src/social/reply-timing.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
@@ -271,4 +271,12 @@ describe('QQ 小黄脸：编排（ADR 0051）', () => {
         assert.ok(logs.some(l => l.includes('带小黄脸的消息没发出去（retcode 1200），去掉表情再发一次')));
         assert.deepEqual(attempts.filter(a => a.startsWith('10002:')), ['10002:笑死[捂脸]'], '超时不重发');
     });
+});
+
+// 2026-10-30 00:06：她发「我扛一扛就过去了［睡］」——全角方括号，出口检查认得的是半角，于是原样发成了字
+test('全角方括号的小黄脸也要认：[睡] -> face 段，不是白名单的词原样留着', () => {
+    assert.equal(normalizeFaces('扛一扛就过去了［睡］'), '扛一扛就过去了[睡]');
+    assert.equal(normalizeFaces('［ok］'), '[OK]');
+    assert.equal(normalizeFaces('［随便］'), '［随便］', '不是白名单的词别乱动');
+    assert.deepEqual(textToSegments(normalizeFaces('好吧［睡］')), [{ type: 'text', data: { text: '好吧' } }, { type: 'face', data: { id: '8' } }]);
 });

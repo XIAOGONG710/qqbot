@@ -49,6 +49,8 @@ const SENDABLE_BY_LOWER = new Map(Object.keys(SENDABLE_FACES).map(name => [name.
 
 /** 像小黄脸的方括号：里面是 1–6 个汉字、字母、数字（「[1 2; 3 4]」「[Start a new Chat]」不算） */
 const BRACKET = /\[([\p{Script=Han}A-Za-z0-9]{1,6})\]/gu;
+/** 全角方括号：模型常常写「［睡］」，以前原样发出去，他就看到一串字而不是小黄脸（2026-10-30） */
+const WIDE_BRACKET = /［([\p{Script=Han}A-Za-z0-9]{1,6})］/gu;
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -96,9 +98,11 @@ export function removeFaces(text: string, drop: (face: string | undefined, token
 
 /** 白名单里的名字统一成正式写法：「[ok]」→「[OK]」，全角的「【捂脸】」→「[捂脸]」 */
 export function normalizeFaces(text: string): string {
+    const toFace = (token: string, name: string) => { const face = sendableFace(name); return face ? `[${face}]` : token; };
     return text
-        .replace(/【([\p{Script=Han}A-Za-z0-9]{1,6})】/gu, (token, name: string) => { const face = sendableFace(name); return face ? `[${face}]` : token; })
-        .replace(BRACKET, (token, name: string) => { const face = sendableFace(name); return face ? `[${face}]` : token; });
+        .replace(/【([\p{Script=Han}A-Za-z0-9]{1,6})】/gu, toFace)
+        .replace(WIDE_BRACKET, toFace)
+        .replace(BRACKET, toFace);
 }
 
 /** 去掉小黄脸和标点之后什么都不剩（整条只有表情） */

@@ -22,6 +22,7 @@ const DEFAULTS = {
   // QQ 那边写的「他的 bank 在哪」（ADR 0176）；QQBOT_OWNER_BANK_FILE 可以改，默认是这个仓库的 runtime/bot/memory/owner-bank.json
   ownerBankFile: process.env.QQBOT_OWNER_BANK_FILE || fileURLToPath(new URL('../../runtime/bot/memory/owner-bank.json', import.meta.url)),
   soulFile: soulPath('SOUL.md'),
+  personaFile: soulPath('PERSONA.md'),
   ledgerFile: soulPath('LEDGER.md'),
   journalFile: soulPath('JOURNAL.md'),
   privateFile: soulPath('PRIVATE.dat'),
@@ -30,6 +31,8 @@ const DEFAULTS = {
   outboxFile: soulPath('OUTBOX.jsonl'),
   offlineFile: soulPath('OFFLINE.json'),
   nowFile: soulPath('NOW.md'),
+  /** NOW.md 超过这么久没重写就当过期，不注入（QQ 没在跑的时候别拿旧状态冒充现在） */
+  nowStaleMs: 30 * 60 * 1000,
   storyFile: soulPath('STORY.md'),
   ratingFile: soulPath('RATINGS.json'),
   logFile: path.join(os.homedir(), '.dsh', 'linmengyao-memory.log'),
@@ -407,6 +410,33 @@ async function recallAll(cfg, query) {
   })
 }
 
+let personaCache = { path: '', at: 0, text: '' }
+
+/** 人设（由 QQ 那边的卡渲染出来的 PERSONA.md）：只读，不让她改；文件不在就什么都不注入 */
+function readPersona(cfg) {
+  try {
+    const stat = fs.statSync(cfg.personaFile)
+    if (personaCache.path !== cfg.personaFile || personaCache.at !== stat.mtimeMs) {
+      personaCache = { path: cfg.personaFile, at: stat.mtimeMs, text: fs.readFileSync(cfg.personaFile, 'utf8').trim() }
+    }
+    return personaCache.text
+  } catch { return '' }
+}
+
+/** 「她现在在干嘛」：QQ 那边每 10 分钟渲染一次；超过 nowStaleMs 没更新就不注入，只记一行 */
+function readNowLine(cfg) {
+  try {
+    const text = fs.readFileSync(cfg.nowFile, 'utf8')
+    const m = /generated-at:\s*(\S+?)\s*-->/.exec(text)
+    const at = m ? Date.parse(m[1]) : NaN
+    if (!Number.isFinite(at) || Date.now() - at > cfg.nowStaleMs) {
+      log(cfg, '现在在干嘛：NOW.md 过期（QQ 没在跑？）不注入')
+      return ''
+    }
+    return text.replace(/<!--[\s\S]*?-->/g, '').trim()
+  } catch { return '' }
+}
+
 async function retain(cfg, content, bank, tags = ['dsh'], context = 'DSH') {
   const body = {
     items: [{
@@ -510,6 +540,26 @@ export function apply(ctx, config = {}) {
           order: 90,
           text: () => cache.text || '',
         }))
+        // 人设来自 QQ 那边的卡（ADR 0179 / 任务书 §1）：这里只读渲染物，别的地方不许再写一份
+        disposers.push(sp.context({
+          name: 'linmengyao-persona',
+          order: 10,
+          text: () => {
+            const persona = readPersona(cfg)
+            return persona ? `[她的设定]
+${persona}` : ''
+          },
+        }))
+        disposers.push(sp.context({
+          name: 'linmengyao-now',
+          order: 80,
+          text: () => {
+            const now = readNowLine(cfg)
+            return now ? `[她现在在干嘛]
+${now}` : ''
+          },
+        }))
+        if (cfg.personaFile && !fs.existsSync(cfg.personaFile)) log(cfg, '人设：没有 PERSONA.md（跑 scripts/build-dsh-persona.mjs 生成）')
         log(cfg, `context registered ${agent.id}`)
       } else {
         log(cfg, `systemPrompt missing on ${agent.id}`)

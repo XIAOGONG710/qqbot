@@ -165,6 +165,24 @@ describe('主动消息：到点时能不能发', () => {
     });
     const history = [user(t(10, 11, 22)), her(t(10, 11, 22, 1))];
 
+    test('她自己想说的话（内心）不占每天条数、也不受「他还没回」的闸：要不要找他是她自己决定的', () => {
+        const settings = { ...boyfriend.proactive!, occasions: [...boyfriend.proactive!.occasions, 'inner' as const], room: true };
+        const said = [user(t(10, 12, 12)), her(t(10, 12, 12, 1))];
+        const thought = { id: 'th-1793251439059', at: new Date(t(10, 12, 12, 30)).toISOString(), text: '想跟他说说土豆今天趴我键盘上', goes: 'tell' as const };
+        const inner = at('inner', t(10, 12, 18), { inner: { id: thought.id, text: thought.text, goes: 'tell' } });
+        // 他两条没回：别的时机停了，她自己想说的照旧
+        const two = [record('2026-10-12:morning', t(10, 12, 10)), record('2026-10-12:reach:1', t(10, 12, 15))];
+        assert.equal(blockReason(inner, t(10, 12, 18), input({ settings, history: said, records: two, inner: [thought] })), undefined);
+        assert.equal(blockReason(at('quiet', t(10, 12, 18)), t(10, 12, 18), input({ settings, history: said, records: two, inner: [thought] })), '上一条主动消息他还没回');
+        // 今天四条名额满了：照旧只放开她自己想说的
+        const four = [...two, record('2026-10-12:quiet', t(10, 12, 13)), record('2026-10-12:news:homework', t(10, 12, 14))];
+        assert.equal(blockReason(inner, t(10, 12, 18), input({ settings, history: said, records: four, inner: [thought] })), undefined);
+        assert.equal(blockReason(at('quiet', t(10, 12, 18)), t(10, 12, 18), input({ settings, history: said, records: four, inner: [thought] })), '今天已经主动了 4 条');
+        // 排期也一样：名额满了，inner 仍在 upcoming 里
+        const plan = planFrom(t(10, 12, 12), input({ settings, history: said, records: four, inner: [thought] }));
+        assert.ok(plan.upcoming.some(c => c.occasion === 'inner'), plan.upcoming.map(c => c.occasion).join(','));
+    });
+
     test('他最近说过想伤害自己的话（ADR 0068）：早安、下课、睡前、冷场、事、下雨都暂停；待跟进和重要的日子照旧', () => {
         const calm = [user(t(10, 12, 10)), her(t(10, 12, 10, 1))];
         const when = t(10, 12, 14);
