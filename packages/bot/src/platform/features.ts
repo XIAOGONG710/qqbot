@@ -40,6 +40,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'together', label: '陪玩状态', group: '说话', adr: '0111' },
     { key: 'silenceNotice', label: '没回时告诉他原因（作息 / 她的决定 / 故障）', group: '说话', adr: '0173' },
     { key: 'crossRecent', label: 'QQ 和 DSH 桌面互读最近几轮（同一个她）', group: '记忆和安全', adr: '0177' },
+    { key: 'selfPursuits', label: '她自己定追求（每晚想一次，自己放下 / 提新的）', group: '她的日子', adr: '0178' },
     { key: 'jealousy', label: '吃醋（最轻一档）', group: '说话', adr: '0123' },
     // 她的日子
     { key: 'herDays', label: '每日心情、在读的书', group: '她的日子', adr: '0015' },

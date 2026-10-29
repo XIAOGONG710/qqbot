@@ -27,6 +27,14 @@ export interface Pursuit {
     steps?: PursuitStep[];
     /** 内置的（进度从生活账 / 小测里来）还是作者自己加的（进度靠作者标） */
     builtin?: boolean;
+    /** 她自己定的（ADR 0178，selfPursuits）：进度是她自己记的话，不是作者标的步骤 */
+    source?: 'self';
+    proposedAt?: number;
+    firstStep?: string;
+    notes?: Array<{ at: number; text: string }>;
+    /** 状态上一次改的时刻 / 放下或做完的原因（她自己写的） */
+    changedAt?: number;
+    endedWhy?: string;
 }
 
 export const CAMERA_STEPS = ['熟悉新相机的设置', '拍一组土豆', '拍一组校园的秋天', '挑十来张修好', '挑最满意的几张发到空间里'] as const;
@@ -183,18 +191,22 @@ function customView(pursuit: Pursuit): PursuitView {
     const appraisals: Appraisal[] = steps.flatMap((step, index): Appraisal[] => (step.doneAt && !Number.isNaN(Date.parse(step.doneAt))
         ? [{ id: `pursuit:${pursuit.id}:step:${index + 1}`, at: Date.parse(step.doneAt), kind: 'joy', strength: index === steps.length - 1 ? 2 : 1, cause: `“${pursuit.title}”的“${step.text}”做完了`, source: 'author', halfLifeH: 10 }]
         : []));
-    return { pursuit, text: `${pursuit.title}${pursuit.why ? `——${pursuit.why}` : ''}${progress}`, appraisals };
+    // 她自己定的（ADR 0178）：进度是她自己记的话；还没记过就是她想的第一步
+    const own = pursuit.source === 'self' ? (pursuit.notes?.length ? `；你自己最近记的：${pursuit.notes.at(-1)!.text}` : pursuit.firstStep ? `；你想的第一步：${pursuit.firstStep}` : '') : '';
+    return { pursuit, text: `${pursuit.title}${pursuit.why ? `——${pursuit.why}` : ''}${progress}${own}`, appraisals };
 }
 
 /** 现在在做的（active）每一条的视图；没条件的（相机还没买）不返回 */
 export function pursuitViews(list: readonly Pursuit[], facts: PursuitFacts): PursuitView[] {
     return list.filter(item => item.status === 'active').flatMap((item): PursuitView[] => {
-        if (item.id === 'courses' && item.builtin) return [coursesView(item, facts)];
+        // 她自己记的进度（ADR 0178）：作者给的 / 内置的那几条也能记；自己加的那几条在 customView 里已经带了
+        const own = (view: PursuitView): PursuitView => (item.source !== 'self' && item.notes?.length ? { ...view, text: `${view.text}；你自己最近记的：${item.notes.at(-1)!.text}` } : view);
+        if (item.id === 'courses' && item.builtin) return [own(coursesView(item, facts))];
         if (item.id === 'camera' && item.builtin) {
             const view = cameraView(item, facts);
-            return view ? [view] : [];
+            return view ? [own(view)] : [];
         }
-        return [customView(item)];
+        return [own(customView(item))];
     });
 }
 

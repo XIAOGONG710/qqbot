@@ -611,6 +611,42 @@ describe('编排（app.ts）', () => {
         assert.equal(generatedOn >= 1, true);
     });
 
+    test('/追求（ADR 0178，selfPursuits）：开着时他能看她在追什么（运维提示，不交给她、不进聊天记录）；关着是普通的话；只认男朋友档', async () => {
+        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+        let generatedOff = 0;
+        const off = setup(config({ contacts, pursuits: true }), {}, { generate: () => { generatedOff++; return '好'; } });
+        await off.app.connected(SELF);
+        off.app.receive(event(10002, 1, '/追求', '宝宝'));
+        await until(() => off.sent.length >= 1);
+        assert.equal(off.sent[0], '10002:好', '关着时是普通的话，照常交给她');
+        let generatedOn = 0;
+        const onCfg = config({ contacts, pursuits: true, selfPursuits: true });
+        // 她自己的决定：放下了作者给的拍相机，自己定了一件学吉他——/追求 要读得到
+        writeFileSync(join(onCfg.dataDir, 'pursuits-self.json'), JSON.stringify({
+            pursuits: [{ id: 'self-2026-10-29-1', title: '学吉他', why: '一直想会弹一首完整的歌', status: 'active', source: 'self', proposedAt: Date.now() - 2 * 86_400_000, notes: [{ at: Date.now(), text: '练会了 C 和弦' }] }],
+            overrides: { camera: { status: 'dropped', at: Date.now() - 86_400_000, why: '最近没心思拍' } },
+            rejected: [{ at: Date.now(), title: '准备考研', why: '想换个方向', reason: '人生方向类——作者没定之前不碰' }],
+            lastReflectionAt: Date.now(), lastAttemptAt: Date.now(), lastProposalAt: Date.now(), attempts: { day: '', n: 0 },
+        }));
+        const on = setup(onCfg, {}, { generate: () => { generatedOn++; return '好'; } });
+        await on.app.connected(SELF);
+        assert.ok(on.logs.some(line => line.startsWith('她自己定追求：开')), '启动日志说开了');
+        on.app.receive(event(10002, 1, '/追求', '宝宝'));
+        await until(() => on.sent.length >= 1);
+        assert.match(on.sent[0]!, /^10002:（她现在在追的：\n1\. 别挂科——.*（作者给的）/);
+        assert.match(on.sent[0]!, /你只能看，不能改；她随时可以改主意/);
+        assert.match(on.sent[0]!, /学吉他——一直想会弹一首完整的歌（她自己定的，2 天前）\n {3}她最近记的：练会了 C 和弦/, '她自己定的那件读得到');
+        assert.match(on.sent[0]!, /用新相机拍出自己满意的东西（放下了：最近没心思拍）/, '她放下了作者给的那条，也读得到');
+        assert.match(on.sent[0]!, /她想过、但没成的：\n- 准备考研/);
+        assert.equal(generatedOn, 0, '命令不交给她');
+        assert.deepEqual(chat(onCfg, 10002), [], '命令不进聊天记录');
+        // 同学档发同样的字：不是命令
+        on.app.receive(event(10001, 2, '/追求', '阿明'));
+        await until(() => on.sent.length >= 2);
+        assert.equal(on.sent[1], '10001:好');
+        assert.ok(generatedOn >= 1);
+    });
+
     test('名单外：开关关着时忽略；开着时按 unlisted 档、用 QQ 昵称回复', async () => {
         const off = setup(config());
         off.app.receive(event(99999, 1, '你好', '小周'));

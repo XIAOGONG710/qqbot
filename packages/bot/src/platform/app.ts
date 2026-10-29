@@ -52,6 +52,8 @@ import { loadEverydayFrom } from '.././life/everyday.ts';
 import { dishesBetween, loadMenuFrom } from '.././life/menu.ts';
 import { BILI_STICKER_PER_DAY, biliStickerDiscover, STICKER_UNCUED_CHANCE } from '.././language/bili-stickers.ts';
 import { pursuitsReader } from '.././life/pursuits.ts';
+import { describeForOwner, loadSelfState, reflectIfDue, selfAwareReader } from '.././life/self-pursuits.ts';
+import { substituteMacros } from '.././st/macros.ts';
 import { removeFaces } from '.././language/qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from '.././memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from '.././world/festivals.ts';
@@ -686,6 +688,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     }, 30_000);
     outboxTimer.unref();
 
+    // 追求（ADR 0104）：作者的文件 + 内置；开了 selfPursuits（ADR 0178）再套上她自己的决定、接上她自己加的
+    const authorPursuits = pursuitsReader(config.dataDir, log);
+    const pursuitsNow = config.selfPursuits ? selfAwareReader(config.dataDir, authorPursuits) : authorPursuits;
     // 每个联系人一个回复器：聊天记录、生成和重新生成都互不影响
     const responders = new Map<number, Responder>(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
 
@@ -696,6 +701,30 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         status: () => responders.get(owner.qq)?.status() ?? { phase: 'idle', failures: 0 },
         external: () => ({ dormant: Boolean(dormancy?.isDormant()), working: readWorkMode(config.dataDir, owner.qq) === 'work' }),
     });
+    // 她每晚想一次要不要放下 / 改主意 / 提新的（ADR 0178）：到点才想，失败 2 小时后再试，每天最多试 3 次
+    const selfPursuitTimer = config.selfPursuits && config.pursuits && deviceOwner ? (() => {
+        const owner = deviceOwner;
+        const { character } = cardFor(owner.tier);
+        let busy = false;
+        const tick = () => {
+            if (busy || stopped) return;
+            busy = true;
+            void reflectIfDue({
+                dataDir: config.dataDir,
+                now: () => clockNow().getTime(),
+                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 0.9 }, messages, { log, purpose: 'background' })),
+                base: authorPursuits,
+                chat: () => history.load(owner.qq).slice(-16).map(message => ({ role: message.role, content: message.content })),
+                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
+                names: { char: character.name, user: owner.name },
+                log,
+            }).catch(error => log(`追求：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
+        };
+        const timer = setInterval(tick, 30 * 60_000);
+        timer.unref();
+        return timer;
+    })() : undefined;
+    if (config.selfPursuits) log(config.pursuits && deviceOwner ? '她自己定追求：开（每晚 20 点以后想一次；/追求 随时看）' : '她自己定追求：开着，但 pursuits 没开或名单里没有男朋友档，不启动');
     const silenceTimer = config.silenceNotice && deviceOwner ? (() => {
         const watcher = createSilenceWatcher({ ...silenceDeps(deviceOwner), tell: text => tellOwner(text), log });
         const timer = setInterval(() => { try { watcher.tick(); } catch (error) { log(`没回的原因没能告诉他（${error instanceof Error ? error.message : String(error)}）`); } }, 60_000);
@@ -821,7 +850,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.herNo ? { herNo: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
-            ...(config.pursuits ? { pursuits: pursuitsReader(config.dataDir, log) } : {}),
+            ...(config.pursuits ? { pursuits: pursuitsNow } : {}),
             ...(config.shape && config.shapeSplit ? { shapeSplit: true } : {}),
             ...(config.shape && config.shapeAsk ? { shapeAsk: true } : {}),
             ...(config.shape && config.shapeLong ? { shapeLong: true } : {}),
@@ -1491,6 +1520,8 @@ ${body}
             }
             // 「/为什么」：她为什么没回（ADR 0173）；放在这里是因为这条命令不能算进「没回的消息」里
             if (config.silenceNotice && plain === '/为什么') { tellOwner(answerWhy(silenceDeps(deviceOwner))); return; }
+            // 「/追求」：她现在在追什么、放下过什么、想过没成什么（ADR 0178）；只能看，不能改
+            if (config.selfPursuits && config.pursuits && plain === '/追求') { tellOwner(describeForOwner(pursuitsNow(), loadSelfState(config.dataDir), clockNow().getTime())); return; }
             if (dormancy && plain && /^\/休眠(?:\s|$)/.test(plain)) { void handleDormancyCommand(plain.replace(/^\/休眠\s*/, '')); return; }
             if (dormancy && plain === '/唤醒') { void wakeUp(); return; }
         }
@@ -1954,6 +1985,7 @@ ${body}
             if (watchingTimer) clearInterval(watchingTimer);
             if (feedTimer) clearInterval(feedTimer);
             if (silenceTimer) clearInterval(silenceTimer);
+            if (selfPursuitTimer) clearInterval(selfPursuitTimer);
             clearInterval(outboxTimer);
             if (foodDiscoveryTimer) clearInterval(foodDiscoveryTimer);
             clearTimeout(foodRetryTimer);

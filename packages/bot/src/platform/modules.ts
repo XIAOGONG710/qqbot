@@ -38,7 +38,7 @@ export const MODULES: readonly ModuleDef[] = [
             'life/everyday.ts', 'life/menu.ts', 'life/diary.ts', 'life/biography.ts', 'life/bedtime.ts', 'life/people.ts', 'life/promises.ts', 'life/promise-state.ts', 'life/open-loops.ts', 'life/tastes.ts', 'life/acquaintances.ts'],
         groups: ['她的日子'],
         metrics: '周报「她的日子」；consistency-cli（说的和账对不对）；sim/life-audit',
-        adrs: ['0015', '0040', '0045', '0104', '0106', '0162', '0163'],
+        adrs: ['0015', '0040', '0045', '0104', '0178', '0106', '0162', '0163'],
     },
     {
         id: 'world', name: '她的世界（世界账）',

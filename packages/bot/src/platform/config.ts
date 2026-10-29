@@ -139,6 +139,8 @@ export const DEFAULTS = {
     silenceNotice: false,
     /** 「同一个她」第 2 层（ADR 0177）：QQ 和 DSH 桌面互读最近几轮对话；要开了长期记忆（owner-bank.json）才起作用 */
     crossRecent: false,
+    /** 她自己定追求（ADR 0178）：每晚想一次，自己放下 / 暂停 / 恢复 / 记进度 / 提新的；要同时开 pursuits */
+    selfPursuits: false,
     rhythm: false,
     shortReplies: false,
     media: true,
@@ -537,6 +539,8 @@ export interface AppConfig {
     silenceNotice?: boolean;
     /** 两边互读最近几轮（ADR 0177）：他在 DSH 桌面上刚说过的话 QQ 这边的她知道，他刚在 QQ 上说的话桌面上的她也知道；只给男朋友档，窗口 6 小时。默认关 */
     crossRecent?: boolean;
+    /** 她自己定追求（ADR 0178）：每晚想一次，自己放下 / 暂停 / 恢复（包括作者给的两条）/ 记进度 / 提新的（同时最多 3 件、隔 3 天提一件）；他用 /追求 看，改不了。要同时开 pursuits。默认关 */
+    selfPursuits?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -815,6 +819,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         selfDirectedMemory: bool(file, 'selfDirectedMemory', '', DEFAULTS.selfDirectedMemory),
         silenceNotice: bool(file, 'silenceNotice', '', DEFAULTS.silenceNotice),
         crossRecent: bool(file, 'crossRecent', '', DEFAULTS.crossRecent),
+        selfPursuits: bool(file, 'selfPursuits', '', DEFAULTS.selfPursuits),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
         shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),
         media: bool(file, 'media', '', DEFAULTS.media),
