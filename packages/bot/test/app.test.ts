@@ -157,7 +157,11 @@ describe('编排（app.ts）', () => {
         if (existsSync(queue)) assert.deepEqual(JSON.parse(readFileSync(queue, 'utf8')).items, []);
     });
 
-    test('形状控制（ADR 0091）：开着时提示词里有具体的字数和条数，太长重写一次，发出去的不超过上限；关着没有这一行也不重写；危机回合不受影响', async () => {
+    // 27facc0「语言松绑」改了形状的适用面：只有「先接住他此刻的情绪 / 他刚说了件好事 / 回应他刚说的那件事 /
+    // 只接他刚说的你们两个人的事 / 他在向你要亲近 / 他在撒娇要你哄他 / 他到现在才看到你前面发的」和问到过去的事才给形状，
+    // 普通闲聊（「在干嘛」，意图行是「先直接回答他刚问的」）只留 lengthHint 那句软提示、不圈字数和条数。
+    // 原来的用例拿「在干嘛」当形状生效的样本，所以一直红；改成按新规则分别验两条路。
+    test('形状控制（ADR 0091，27facc0 松绑后）：要认真接的轮次有字数和条数、太长重写一次；普通闲聊只给软提示、不圈数字；关着也没有这一行；危机回合不受影响', async () => {
         const long = '今天真的好累啊，而且还要写作业，烦死了，'.repeat(4);
         const run = async (shape: boolean, said: string) => {
             const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], shape });
@@ -167,12 +171,19 @@ describe('编排（app.ts）', () => {
             await until(() => sent.length >= 1);
             return { prompts, sent, logs };
         };
-        const on = await run(true, '在干嘛');
+        // 他在难受：意图行是「先接住他此刻的情绪」，形状生效（开的形状只落在后三档，最宽 40 字 + 余量也拦得住 88 字）
+        const on = await run(true, '今天好累啊，烦死了');
         assert.match(on.prompts[0]!, /\[这一轮说话：[^\]]*每条不超过 \d+ 个字/);
         assert.ok(on.prompts.some(prompt => prompt.includes('太长了')), '太长，带说明重写了一次');
         assert.deepEqual(on.sent, ['10001:好累啊']);
         assert.ok(on.logs.some(line => line.includes('这一轮形状：每条不超过')) && on.logs.some(line => line.includes('形状：') && line.includes('带说明重写一次')), on.logs.join('|'));
-        const off = await run(false, '在干嘛');
+        // 普通闲聊：软提示有没有、是哪一种按轮抽（shortHint 的 roll 随消息时间变），所以只断言「没有数字、没有重写」
+        const chatty = await run(true, '在干嘛');
+        assert.doesNotMatch(chatty.prompts[0]!, /每条不超过/, '普通闲聊不圈数字');
+        assert.ok(!chatty.prompts.some(prompt => prompt.includes('太长了')), '普通闲聊不按字数重写');
+        assert.ok(chatty.logs.every(line => !line.includes('这一轮形状')));
+        // 关着：同一个要认真接的轮次也没有数字、不重写
+        const off = await run(false, '今天好累啊，烦死了');
         assert.doesNotMatch(off.prompts[0]!, /每条不超过/);
         assert.ok(!off.prompts.some(prompt => prompt.includes('太长了')));
         assert.ok(off.logs.every(line => !line.includes('这一轮形状')));
@@ -867,6 +878,25 @@ describe('主动消息（ADR 0011）', () => {
         await until(() => off.sent.length > 0);
         assert.deepEqual(off.sent, ['10002:（现在不能主动找你：主动消息没开）']);
         off.app.stop();
+    });
+
+    test('主动找他时他半天没说话：旧话不当成“他刚说的”（10-29 13:24 拿两小时前的「都给你」接了「哈哈行，卤蛋记账上了」）', async () => {
+        const clock = new VirtualClock(new Date(2026, 9, 5, 23, 50));
+        const cfg = config({ proactive: 'on', schedule: true, contacts: [boyfriend] });
+        const sec = (hoursAgo: number) => Math.floor(clock.now() / 1000) - hoursAgo * 3600;
+        const prompts: string[] = [];
+        const { app, sent } = setup(cfg, {
+            10002: [
+                { message_id: 501, time: sec(4), sender: { user_id: 10002 }, message: [{ type: 'text', data: { text: '好好好，都给你～' } }] },
+                { message_id: 502, time: sec(3.9), sender: { user_id: SELF }, message: [{ type: 'text', data: { text: '那我可记着了，有一个卤蛋是我的～' } }] },
+            ],
+        }, { clock, generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '作业写完了，刚松口气'; } });
+        await app.connected(SELF);
+        app.receive(event(10002, 503, '/主动'));
+        await until(() => sent.length > 0, 8000);
+        const prompt = prompts.at(-1)!;
+        assert.doesNotMatch(prompt, /他最后说的是：「好好好，都给你～」/, '四小时前的话不能说成他刚说的');
+        assert.match(prompt, /他上一次说话是 4 小时前，那不是刚说的/);
     });
 
     test('「/设定」（ADR 0157 / 0158 / 0161）：设定账本、记忆账本、休眠状态的摘要；不进聊天记录；没开任何一个时当普通话', async () => {
