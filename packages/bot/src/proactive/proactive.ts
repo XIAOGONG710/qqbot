@@ -776,7 +776,7 @@ export const counts = (r: ProactiveRecord) => r.result === 'sent' || r.result ==
 
 /** 她的这一天里已经主动了几条（日子不算） */
 export function usedOn(day: string, records: readonly ProactiveRecord[], settings?: Pick<ProactiveSettings, 'room'>): number {
-    return records.filter(r => r.id.startsWith(`${day}:`) && r.occasion !== 'dates' && r.occasion !== 'back' && !(settings?.room && r.occasion === 'bedtime') && counts(r)).length;
+    return records.filter(r => r.id.startsWith(`${day}:`) && r.occasion !== 'dates' && r.occasion !== 'back' && !(settings?.room && (r.occasion === 'bedtime' || r.occasion === 'inner')) && counts(r)).length;
 }
 
 /** 这一天“随口说件事”已经发了（记录里有） */
@@ -875,13 +875,15 @@ export function planFrom(now: number, input: ProactiveInput): Plan {
         const left = paused ? 0 : Math.max(0, input.settings.dailyMax - reserve - usedAll);
         // 同是「她那边的事」的，按事件类排（相机 > 作业写完 > 不舒服，ADR 0064 决策 5）
         const kindRank = (c: Candidate) => (c.news ? NEWS_KINDS.indexOf(c.news.kind) : 0);
-        const byPriority = open.filter(c => c.occasion !== 'dates' && c.occasion !== 'back' && !(room && c.occasion === 'bedtime'))
+        // 她自己想说出来的时候（内心）和睡前那句不占名额：要不要找他是她自己决定的，不看他今天已经收了几条
+        const free = (c: Candidate) => room && (c.occasion === 'bedtime' || c.occasion === 'inner');
+        const byPriority = open.filter(c => c.occasion !== 'dates' && c.occasion !== 'back' && !free(c))
             .sort((a, b) => OCCASIONS.indexOf(a.occasion) - OCCASIONS.indexOf(b.occasion) || kindRank(a) - kindRank(b));
         // proactiveRoom：别的时机用 left 条，随口说件事用留给它的那一条（总数仍不超过 dailyMax）
         const others = room ? byPriority.filter(c => c.occasion !== 'share') : byPriority;
         const shares = room ? byPriority.filter(c => c.occasion === 'share').slice(0, !paused && usedAll < input.settings.dailyMax ? 1 : 0) : [];
         const chosen = [...others.slice(0, left), ...shares];
-        const kept = new Set([...open.filter(c => c.occasion === 'dates' || c.occasion === 'back' || (room && c.occasion === 'bedtime')), ...chosen]);
+        const kept = new Set([...open.filter(c => c.occasion === 'dates' || c.occasion === 'back' || free(c)), ...chosen]);
         if (offset === 0 && !paused) yielded.push(...byPriority.filter(c => !chosen.includes(c)));
         const upcoming = open.filter(c => kept.has(c));
         if (upcoming.length) return result(upcoming);
@@ -922,15 +924,18 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
     } else if (lastTime !== undefined && now - lastTime < RECENT_MS) {
         return '一小时内聊过';
     }
-    // proactiveRoom：睡前那句晚安不查条数；别的时机留一个名额给“随口说件事”
-    if (!(input.settings.room && candidate.occasion === 'bedtime')) {
+    // proactiveRoom：睡前那句晚安、她自己想说的话（内心）不查条数；别的时机留一个名额给“随口说件事”
+    if (!(input.settings.room && (candidate.occasion === 'bedtime' || candidate.occasion === 'inner'))) {
         const used = usedOn(candidate.day, input.records, input.settings);
         const reserve = input.settings.room && candidate.occasion !== 'share' && input.settings.occasions.includes('share') && !shareSentOn(candidate.day, input.records) ? 1 : 0;
         if (used >= input.settings.dailyMax - reserve) return `今天已经主动了 ${used} 条`;
     }
     const gate = unansweredGate(input, day);
-    if (gate.blocked) return gate.blocked;
-    if (gate.notBefore !== undefined && !gate.replied && now < gate.notBefore) return '他还没回，离上一条主动消息隔得不够久';
+    // 「他还没回」的闸是给时机表用的：她自己想说出来的时候不受它管（念头一天本来就有上限，见 inner.ts 的 INNER_MAX_PER_DAY）
+    if (candidate.occasion !== 'inner') {
+        if (gate.blocked) return gate.blocked;
+        if (gate.notBefore !== undefined && !gate.replied && now < gate.notBefore) return '他还没回，离上一条主动消息隔得不够久';
+    }
     const wake = wakeOn(schedule, day).getTime();
     const userSince = (time: number) => history.some(m => m.role === 'user' && Date.parse(m.time) >= time);
     switch (candidate.occasion) {
