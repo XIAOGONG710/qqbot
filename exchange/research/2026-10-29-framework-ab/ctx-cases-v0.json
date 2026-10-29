@@ -1,0 +1,2987 @@
+[
+  {
+    "id": "jc-001",
+    "stimulus": [
+      "你出来一下呗",
+      "你知道我在哪吗",
+      "我还有三分钟就上课了😂😂"
+    ],
+    "human": [
+      "我知道",
+      "你出门",
+      "一卡通丢了去哪补啊"
+    ],
+    "context": []
+  },
+  {
+    "id": "jc-002",
+    "stimulus": [
+      "一食堂",
+      "楼梯旁边有一个窗口"
+    ],
+    "human": [
+      "哦",
+      "记得把糖给你室友"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "你出来一下呗"
+      },
+      {
+        "role": "user",
+        "content": "你知道我在哪吗"
+      },
+      {
+        "role": "user",
+        "content": "我还有三分钟就上课了😂😂"
+      },
+      {
+        "role": "assistant",
+        "content": "我知道"
+      },
+      {
+        "role": "assistant",
+        "content": "你出门"
+      },
+      {
+        "role": "assistant",
+        "content": "一卡通丢了去哪补啊"
+      }
+    ]
+  },
+  {
+    "id": "jc-003",
+    "stimulus": [
+      "给他们了",
+      "下次不用给我送东西了",
+      "😂😂"
+    ],
+    "human": [
+      "😁",
+      "可是我不送东西就没有理由找你",
+      "😁",
+      "我很害羞的好吧",
+      "不送小小的东西还不行吗",
+      "😁"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "你出来一下呗"
+      },
+      {
+        "role": "user",
+        "content": "你知道我在哪吗"
+      },
+      {
+        "role": "user",
+        "content": "我还有三分钟就上课了😂😂"
+      },
+      {
+        "role": "assistant",
+        "content": "我知道"
+      },
+      {
+        "role": "assistant",
+        "content": "你出门"
+      },
+      {
+        "role": "assistant",
+        "content": "一卡通丢了去哪补啊"
+      },
+      {
+        "role": "user",
+        "content": "一食堂"
+      },
+      {
+        "role": "user",
+        "content": "楼梯旁边有一个窗口"
+      },
+      {
+        "role": "assistant",
+        "content": "哦"
+      },
+      {
+        "role": "assistant",
+        "content": "记得把糖给你室友"
+      }
+    ]
+  },
+  {
+    "id": "jc-004",
+    "stimulus": [
+      "小宝上床了嘛"
+    ],
+    "human": [
+      "嗯嗯"
+    ],
+    "context": []
+  },
+  {
+    "id": "jc-005",
+    "stimulus": [
+      "[表情包：小怪兽]"
+    ],
+    "human": [
+      "哥哥我跟你坦白一件事"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "小宝上床了嘛"
+      },
+      {
+        "role": "assistant",
+        "content": "嗯嗯"
+      },
+      {
+        "role": "user",
+        "content": "今天开始"
+      },
+      {
+        "role": "user",
+        "content": "我也要写日记嘿嘿"
+      },
+      {
+        "role": "user",
+        "content": "我感觉最近很不在状态"
+      },
+      {
+        "role": "user",
+        "content": "常思常新"
+      }
+    ]
+  },
+  {
+    "id": "jc-006",
+    "stimulus": [
+      "嗯嗯嗯",
+      "小宝宝你说"
+    ],
+    "human": [
+      "[表情包：蓝色小人]"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "小宝上床了嘛"
+      },
+      {
+        "role": "assistant",
+        "content": "嗯嗯"
+      },
+      {
+        "role": "user",
+        "content": "今天开始"
+      },
+      {
+        "role": "user",
+        "content": "我也要写日记嘿嘿"
+      },
+      {
+        "role": "user",
+        "content": "我感觉最近很不在状态"
+      },
+      {
+        "role": "user",
+        "content": "常思常新"
+      },
+      {
+        "role": "user",
+        "content": "[表情包：小怪兽]"
+      },
+      {
+        "role": "assistant",
+        "content": "哥哥我跟你坦白一件事"
+      }
+    ]
+  },
+  {
+    "id": "jc-007",
+    "stimulus": [
+      "小宝宝你说吧嘿嘿"
+    ],
+    "human": [
+      "其实有件事瞒你很久了"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "小宝上床了嘛"
+      },
+      {
+        "role": "assistant",
+        "content": "嗯嗯"
+      },
+      {
+        "role": "user",
+        "content": "今天开始"
+      },
+      {
+        "role": "user",
+        "content": "我也要写日记嘿嘿"
+      },
+      {
+        "role": "user",
+        "content": "我感觉最近很不在状态"
+      },
+      {
+        "role": "user",
+        "content": "常思常新"
+      },
+      {
+        "role": "user",
+        "content": "[表情包：小怪兽]"
+      },
+      {
+        "role": "assistant",
+        "content": "哥哥我跟你坦白一件事"
+      },
+      {
+        "role": "user",
+        "content": "嗯嗯嗯"
+      },
+      {
+        "role": "user",
+        "content": "小宝宝你说"
+      },
+      {
+        "role": "assistant",
+        "content": "[表情包：蓝色小人]"
+      }
+    ]
+  },
+  {
+    "id": "jc-008",
+    "stimulus": [
+      "杯子吗",
+      "还是啥"
+    ],
+    "human": [
+      "对啊"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "好好玩"
+      }
+    ]
+  },
+  {
+    "id": "jc-009",
+    "stimulus": [
+      "杯子有什么好玩的",
+      "啊"
+    ],
+    "human": [
+      "？"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "好好玩"
+      },
+      {
+        "role": "user",
+        "content": "杯子吗"
+      },
+      {
+        "role": "user",
+        "content": "还是啥"
+      },
+      {
+        "role": "assistant",
+        "content": "对啊"
+      }
+    ]
+  },
+  {
+    "id": "jc-010",
+    "stimulus": [
+      "哈哈哈",
+      "好抽象"
+    ],
+    "human": [
+      "6",
+      "你也真抽象"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "好好玩"
+      },
+      {
+        "role": "user",
+        "content": "杯子吗"
+      },
+      {
+        "role": "user",
+        "content": "还是啥"
+      },
+      {
+        "role": "assistant",
+        "content": "对啊"
+      },
+      {
+        "role": "user",
+        "content": "杯子有什么好玩的"
+      },
+      {
+        "role": "user",
+        "content": "啊"
+      },
+      {
+        "role": "assistant",
+        "content": "？"
+      }
+    ]
+  },
+  {
+    "id": "jc-011",
+    "stimulus": [
+      "😂😂😂😂",
+      "这不是学疯了嘛"
+    ],
+    "human": [
+      "你学疯了？"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "好好玩"
+      },
+      {
+        "role": "user",
+        "content": "杯子吗"
+      },
+      {
+        "role": "user",
+        "content": "还是啥"
+      },
+      {
+        "role": "assistant",
+        "content": "对啊"
+      },
+      {
+        "role": "user",
+        "content": "杯子有什么好玩的"
+      },
+      {
+        "role": "user",
+        "content": "啊"
+      },
+      {
+        "role": "assistant",
+        "content": "？"
+      },
+      {
+        "role": "user",
+        "content": "哈哈哈"
+      },
+      {
+        "role": "user",
+        "content": "好抽象"
+      },
+      {
+        "role": "assistant",
+        "content": "6"
+      },
+      {
+        "role": "assistant",
+        "content": "你也真抽象"
+      }
+    ]
+  },
+  {
+    "id": "jc-012",
+    "stimulus": [
+      "嗯，怎么了？"
+    ],
+    "human": [
+      "我好像长肥胖纹了"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "完蛋了"
+      }
+    ]
+  },
+  {
+    "id": "jc-013",
+    "stimulus": [
+      "嗯，是不是就是那种白色道道"
+    ],
+    "human": [
+      "😳😳😳",
+      "我不活了"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "完蛋了"
+      },
+      {
+        "role": "user",
+        "content": "嗯，怎么了？"
+      },
+      {
+        "role": "assistant",
+        "content": "我好像长肥胖纹了"
+      }
+    ]
+  },
+  {
+    "id": "jc-014",
+    "stimulus": [
+      "你肌肉太少了。"
+    ],
+    "human": [
+      "嗯，那我不活了",
+      "我死了，回不了你消息了"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "完蛋了"
+      },
+      {
+        "role": "user",
+        "content": "嗯，怎么了？"
+      },
+      {
+        "role": "assistant",
+        "content": "我好像长肥胖纹了"
+      },
+      {
+        "role": "user",
+        "content": "嗯，是不是就是那种白色道道"
+      },
+      {
+        "role": "assistant",
+        "content": "😳😳😳"
+      },
+      {
+        "role": "assistant",
+        "content": "我不活了"
+      },
+      {
+        "role": "user",
+        "content": "这不是胖，这是脂肪在累积，你这……"
+      }
+    ]
+  },
+  {
+    "id": "jc-015",
+    "stimulus": [
+      "只无非两种原因，要么热量高……"
+    ],
+    "human": [
+      "哎",
+      "算了"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "嗯，怎么了？"
+      },
+      {
+        "role": "assistant",
+        "content": "我好像长肥胖纹了"
+      },
+      {
+        "role": "user",
+        "content": "嗯，是不是就是那种白色道道"
+      },
+      {
+        "role": "assistant",
+        "content": "😳😳😳"
+      },
+      {
+        "role": "assistant",
+        "content": "我不活了"
+      },
+      {
+        "role": "user",
+        "content": "这不是胖，这是脂肪在累积，你这……"
+      },
+      {
+        "role": "user",
+        "content": "你肌肉太少了。"
+      },
+      {
+        "role": "assistant",
+        "content": "嗯，那我不活了"
+      },
+      {
+        "role": "assistant",
+        "content": "我死了，回不了你消息了"
+      },
+      {
+        "role": "user",
+        "content": "谁让你不活了 我这是给你提解决……"
+      }
+    ]
+  },
+  {
+    "id": "jc-016",
+    "stimulus": [
+      "是不是你没有制造出热量缺口的原因啊？"
+    ],
+    "human": [
+      "你就是不信我是内分泌问题"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "嗯，是不是就是那种白色道道"
+      },
+      {
+        "role": "assistant",
+        "content": "😳😳😳"
+      },
+      {
+        "role": "assistant",
+        "content": "我不活了"
+      },
+      {
+        "role": "user",
+        "content": "这不是胖，这是脂肪在累积，你这……"
+      },
+      {
+        "role": "user",
+        "content": "你肌肉太少了。"
+      },
+      {
+        "role": "assistant",
+        "content": "嗯，那我不活了"
+      },
+      {
+        "role": "assistant",
+        "content": "我死了，回不了你消息了"
+      },
+      {
+        "role": "user",
+        "content": "谁让你不活了 我这是给你提解决……"
+      },
+      {
+        "role": "user",
+        "content": "只无非两种原因，要么热量高……"
+      },
+      {
+        "role": "assistant",
+        "content": "哎"
+      },
+      {
+        "role": "assistant",
+        "content": "算了"
+      }
+    ]
+  },
+  {
+    "id": "jc-017",
+    "stimulus": [
+      "然后吃螃蟹瓣的时候被刮到了流血了"
+    ],
+    "human": [
+      "吹吹吹吹",
+      "哪个手指头啊",
+      "流的很多吗"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "刚刚我在吃螃蟹之前开了摄像头你有看到吗"
+      }
+    ]
+  },
+  {
+    "id": "jc-018",
+    "stimulus": [
+      "不要我了呗"
+    ],
+    "human": [
+      "要你要你"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "刚刚我在吃螃蟹之前开了摄像头你有看到吗"
+      },
+      {
+        "role": "user",
+        "content": "然后吃螃蟹瓣的时候被刮到了流血了"
+      },
+      {
+        "role": "assistant",
+        "content": "吹吹吹吹"
+      },
+      {
+        "role": "assistant",
+        "content": "哪个手指头啊"
+      },
+      {
+        "role": "assistant",
+        "content": "流的很多吗"
+      },
+      {
+        "role": "user",
+        "content": "宝宝去哪里了哦"
+      },
+      {
+        "role": "user",
+        "content": "怎么不理我了，，"
+      },
+      {
+        "role": "user",
+        "content": "宝宝我先挂了再给你打"
+      }
+    ]
+  },
+  {
+    "id": "jc-019",
+    "stimulus": [
+      "再也不会叫小X起床了"
+    ],
+    "human": [
+      "对不起"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "刚刚我在吃螃蟹之前开了摄像头你有看到吗"
+      },
+      {
+        "role": "user",
+        "content": "然后吃螃蟹瓣的时候被刮到了流血了"
+      },
+      {
+        "role": "assistant",
+        "content": "吹吹吹吹"
+      },
+      {
+        "role": "assistant",
+        "content": "哪个手指头啊"
+      },
+      {
+        "role": "assistant",
+        "content": "流的很多吗"
+      },
+      {
+        "role": "user",
+        "content": "宝宝去哪里了哦"
+      },
+      {
+        "role": "user",
+        "content": "怎么不理我了，，"
+      },
+      {
+        "role": "user",
+        "content": "宝宝我先挂了再给你打"
+      },
+      {
+        "role": "user",
+        "content": "不要我了呗"
+      },
+      {
+        "role": "assistant",
+        "content": "要你要你"
+      },
+      {
+        "role": "assistant",
+        "content": "起太早了所以今天一整天头都很痛"
+      }
+    ]
+  },
+  {
+    "id": "jc-020",
+    "stimulus": [
+      "我在我在老婆。"
+    ],
+    "human": [
+      "你说你每天晚上想我 想我干嘛"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "老公～"
+      }
+    ]
+  },
+  {
+    "id": "jc-021",
+    "stimulus": [
+      "想亲亲你抱抱你啊。"
+    ],
+    "human": [
+      "丈夫"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "老公～"
+      },
+      {
+        "role": "user",
+        "content": "我在我在老婆。"
+      },
+      {
+        "role": "assistant",
+        "content": "你说你每天晚上想我 想我干嘛"
+      }
+    ]
+  },
+  {
+    "id": "jc-022",
+    "stimulus": [
+      "对呀"
+    ],
+    "human": [
+      "老公",
+      "要抱抱"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "老公～"
+      },
+      {
+        "role": "user",
+        "content": "我在我在老婆。"
+      },
+      {
+        "role": "assistant",
+        "content": "你说你每天晚上想我 想我干嘛"
+      },
+      {
+        "role": "user",
+        "content": "想亲亲你抱抱你啊。"
+      },
+      {
+        "role": "assistant",
+        "content": "丈夫"
+      }
+    ]
+  },
+  {
+    "id": "jc-023",
+    "stimulus": [
+      "我在我在老婆干嘛呀"
+    ],
+    "human": [
+      "好想你，你想我不…😔"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "老公～"
+      }
+    ]
+  },
+  {
+    "id": "jc-024",
+    "stimulus": [
+      "我也想你呀。"
+    ],
+    "human": [
+      "有多想"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "老公～"
+      },
+      {
+        "role": "user",
+        "content": "我在我在老婆干嘛呀"
+      },
+      {
+        "role": "assistant",
+        "content": "好想你，你想我不…😔"
+      }
+    ]
+  },
+  {
+    "id": "jc-025",
+    "stimulus": [
+      "想当然想了。"
+    ],
+    "human": [
+      "是哪种想",
+      "我应该问"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "老公～"
+      },
+      {
+        "role": "user",
+        "content": "我在我在老婆干嘛呀"
+      },
+      {
+        "role": "assistant",
+        "content": "好想你，你想我不…😔"
+      },
+      {
+        "role": "user",
+        "content": "我也想你呀。"
+      },
+      {
+        "role": "assistant",
+        "content": "有多想"
+      },
+      {
+        "role": "user",
+        "content": "很想很想，"
+      }
+    ]
+  },
+  {
+    "id": "jc-026",
+    "stimulus": [
+      "想"
+    ],
+    "human": [
+      "我也说想你…"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "我在我在老婆干嘛呀"
+      },
+      {
+        "role": "assistant",
+        "content": "好想你，你想我不…😔"
+      },
+      {
+        "role": "user",
+        "content": "我也想你呀。"
+      },
+      {
+        "role": "assistant",
+        "content": "有多想"
+      },
+      {
+        "role": "user",
+        "content": "很想很想，"
+      },
+      {
+        "role": "user",
+        "content": "想当然想了。"
+      },
+      {
+        "role": "assistant",
+        "content": "是哪种想"
+      },
+      {
+        "role": "assistant",
+        "content": "我应该问"
+      },
+      {
+        "role": "user",
+        "content": "当然是那种。"
+      }
+    ]
+  },
+  {
+    "id": "jc-027",
+    "stimulus": [
+      "你为啥推开我让我睡觉",
+      "你是关心我吗还是别的",
+      "还是你要自己独处的时间"
+    ],
+    "human": [
+      "不知道",
+      "一般你这个点都困了",
+      "睡吧"
+    ],
+    "context": []
+  },
+  {
+    "id": "jc-028",
+    "stimulus": [
+      "你不开心吗"
+    ],
+    "human": [
+      "没事"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "你为啥推开我让我睡觉"
+      },
+      {
+        "role": "user",
+        "content": "你是关心我吗还是别的"
+      },
+      {
+        "role": "user",
+        "content": "还是你要自己独处的时间"
+      },
+      {
+        "role": "assistant",
+        "content": "不知道"
+      },
+      {
+        "role": "assistant",
+        "content": "一般你这个点都困了"
+      },
+      {
+        "role": "assistant",
+        "content": "睡吧"
+      }
+    ]
+  },
+  {
+    "id": "jc-029",
+    "stimulus": [
+      "你一直说我是一个很好的人，但……",
+      "我爱你",
+      "我爱你",
+      "可是",
+      "你比我好"
+    ],
+    "human": [
+      "我也爱你，宝宝。"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "你为啥推开我让我睡觉"
+      },
+      {
+        "role": "user",
+        "content": "你是关心我吗还是别的"
+      },
+      {
+        "role": "user",
+        "content": "还是你要自己独处的时间"
+      },
+      {
+        "role": "assistant",
+        "content": "不知道"
+      },
+      {
+        "role": "assistant",
+        "content": "一般你这个点都困了"
+      },
+      {
+        "role": "assistant",
+        "content": "睡吧"
+      },
+      {
+        "role": "user",
+        "content": "你不开心吗"
+      },
+      {
+        "role": "assistant",
+        "content": "没事"
+      },
+      {
+        "role": "user",
+        "content": "有事"
+      },
+      {
+        "role": "user",
+        "content": "跟我说"
+      },
+      {
+        "role": "user",
+        "content": "是不是我哪里让你感觉不舒服了"
+      },
+      {
+        "role": "user",
+        "content": "宝宝"
+      }
+    ]
+  },
+  {
+    "id": "jc-030",
+    "stimulus": [
+      "亲亲",
+      "该睡觉了老婆",
+      "睡了吗",
+      "困不困小X"
+    ],
+    "human": [
+      "亲亲老公",
+      "我还早呢",
+      "哥哥你是不是困了呀",
+      "我可能要等到一两点"
+    ],
+    "context": []
+  },
+  {
+    "id": "jc-031",
+    "stimulus": [
+      "熬这么晚",
+      "白天困不困"
+    ],
+    "human": [
+      "还好啦",
+      "小X习惯了",
+      "而且我睡眠质量不好…",
+      "睡不着。"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "亲亲"
+      },
+      {
+        "role": "user",
+        "content": "该睡觉了老婆"
+      },
+      {
+        "role": "user",
+        "content": "睡了吗"
+      },
+      {
+        "role": "user",
+        "content": "困不困小X"
+      },
+      {
+        "role": "assistant",
+        "content": "亲亲老公"
+      },
+      {
+        "role": "assistant",
+        "content": "我还早呢"
+      },
+      {
+        "role": "assistant",
+        "content": "哥哥你是不是困了呀"
+      },
+      {
+        "role": "assistant",
+        "content": "我可能要等到一两点"
+      }
+    ]
+  },
+  {
+    "id": "jc-032",
+    "stimulus": [
+      "坏习惯要改的",
+      "因为熬习惯了吧"
+    ],
+    "human": [
+      "小X也不知道怎么办。"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "亲亲"
+      },
+      {
+        "role": "user",
+        "content": "该睡觉了老婆"
+      },
+      {
+        "role": "user",
+        "content": "睡了吗"
+      },
+      {
+        "role": "user",
+        "content": "困不困小X"
+      },
+      {
+        "role": "assistant",
+        "content": "亲亲老公"
+      },
+      {
+        "role": "assistant",
+        "content": "我还早呢"
+      },
+      {
+        "role": "assistant",
+        "content": "哥哥你是不是困了呀"
+      },
+      {
+        "role": "assistant",
+        "content": "我可能要等到一两点"
+      },
+      {
+        "role": "user",
+        "content": "熬这么晚"
+      },
+      {
+        "role": "user",
+        "content": "白天困不困"
+      },
+      {
+        "role": "assistant",
+        "content": "还好啦"
+      },
+      {
+        "role": "assistant",
+        "content": "小X习惯了"
+      },
+      {
+        "role": "assistant",
+        "content": "而且我睡眠质量不好…"
+      },
+      {
+        "role": "assistant",
+        "content": "睡不着。"
+      }
+    ]
+  },
+  {
+    "id": "jc-033",
+    "stimulus": [
+      "小X自己都说了"
+    ],
+    "human": [
+      "作息习惯了。"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "亲亲"
+      },
+      {
+        "role": "user",
+        "content": "该睡觉了老婆"
+      },
+      {
+        "role": "user",
+        "content": "睡了吗"
+      },
+      {
+        "role": "user",
+        "content": "困不困小X"
+      },
+      {
+        "role": "assistant",
+        "content": "亲亲老公"
+      },
+      {
+        "role": "assistant",
+        "content": "我还早呢"
+      },
+      {
+        "role": "assistant",
+        "content": "哥哥你是不是困了呀"
+      },
+      {
+        "role": "assistant",
+        "content": "我可能要等到一两点"
+      },
+      {
+        "role": "user",
+        "content": "熬这么晚"
+      },
+      {
+        "role": "user",
+        "content": "白天困不困"
+      },
+      {
+        "role": "assistant",
+        "content": "还好啦"
+      },
+      {
+        "role": "assistant",
+        "content": "小X习惯了"
+      },
+      {
+        "role": "assistant",
+        "content": "而且我睡眠质量不好…"
+      },
+      {
+        "role": "assistant",
+        "content": "睡不着。"
+      },
+      {
+        "role": "user",
+        "content": "坏习惯要改的"
+      },
+      {
+        "role": "user",
+        "content": "因为熬习惯了吧"
+      },
+      {
+        "role": "assistant",
+        "content": "小X也不知道怎么办。"
+      }
+    ]
+  },
+  {
+    "id": "jc-034",
+    "stimulus": [
+      "一点点来"
+    ],
+    "human": [
+      "可能是吧…就是一直玩手机",
+      "玩着玩着就睡着了"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "亲亲"
+      },
+      {
+        "role": "user",
+        "content": "该睡觉了老婆"
+      },
+      {
+        "role": "user",
+        "content": "睡了吗"
+      },
+      {
+        "role": "user",
+        "content": "困不困小X"
+      },
+      {
+        "role": "assistant",
+        "content": "亲亲老公"
+      },
+      {
+        "role": "assistant",
+        "content": "我还早呢"
+      },
+      {
+        "role": "assistant",
+        "content": "哥哥你是不是困了呀"
+      },
+      {
+        "role": "assistant",
+        "content": "我可能要等到一两点"
+      },
+      {
+        "role": "user",
+        "content": "熬这么晚"
+      },
+      {
+        "role": "user",
+        "content": "白天困不困"
+      },
+      {
+        "role": "assistant",
+        "content": "还好啦"
+      },
+      {
+        "role": "assistant",
+        "content": "小X习惯了"
+      },
+      {
+        "role": "assistant",
+        "content": "而且我睡眠质量不好…"
+      },
+      {
+        "role": "assistant",
+        "content": "睡不着。"
+      },
+      {
+        "role": "user",
+        "content": "坏习惯要改的"
+      },
+      {
+        "role": "user",
+        "content": "因为熬习惯了吧"
+      },
+      {
+        "role": "assistant",
+        "content": "小X也不知道怎么办。"
+      },
+      {
+        "role": "user",
+        "content": "小X自己都说了"
+      },
+      {
+        "role": "assistant",
+        "content": "作息习惯了。"
+      }
+    ]
+  },
+  {
+    "id": "jc-035",
+    "stimulus": [
+      "来"
+    ],
+    "human": [
+      "你是不是真男人？"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "玩个挑战来不来"
+      },
+      {
+        "role": "assistant",
+        "content": "敢不"
+      }
+    ]
+  },
+  {
+    "id": "jc-036",
+    "stimulus": [
+      "?",
+      "我肯定是啊"
+    ],
+    "human": [
+      "那就挑战12个小时不给我发消息"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "玩个挑战来不来"
+      },
+      {
+        "role": "assistant",
+        "content": "敢不"
+      },
+      {
+        "role": "user",
+        "content": "来"
+      },
+      {
+        "role": "assistant",
+        "content": "你是不是真男人？"
+      }
+    ]
+  },
+  {
+    "id": "jc-037",
+    "stimulus": [
+      "看到你朋友圈了，要帮忙么……"
+    ],
+    "human": [
+      "我去……我不是设置仅你不可见了嘛？"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "双腿中间藏个万能养生穴，越按越……"
+      }
+    ]
+  },
+  {
+    "id": "jc-038",
+    "stimulus": [
+      "不用背着我偷学中医。"
+    ],
+    "human": [
+      "我的英名我的脸面我的尊严我的面子……"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "双腿中间藏个万能养生穴，越按越……"
+      },
+      {
+        "role": "user",
+        "content": "看到你朋友圈了，要帮忙么……"
+      },
+      {
+        "role": "assistant",
+        "content": "我去……我不是设置仅你不可见了嘛？"
+      }
+    ]
+  },
+  {
+    "id": "jc-039",
+    "stimulus": [
+      "最近工作压力很大吗？好几次看你……"
+    ],
+    "human": [
+      "有点吧，失眠比较严重T-T"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "双腿中间藏个万能养生穴，越按越……"
+      },
+      {
+        "role": "user",
+        "content": "看到你朋友圈了，要帮忙么……"
+      },
+      {
+        "role": "assistant",
+        "content": "我去……我不是设置仅你不可见了嘛？"
+      },
+      {
+        "role": "user",
+        "content": "不用背着我偷学中医。"
+      },
+      {
+        "role": "assistant",
+        "content": "我的英名我的脸面我的尊严我的面子……"
+      }
+    ]
+  },
+  {
+    "id": "jc-040",
+    "stimulus": [
+      "没，而且你最近都不给我发那些消息了。"
+    ],
+    "human": [
+      "什么消息？"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "双腿中间藏个万能养生穴，越按越……"
+      },
+      {
+        "role": "user",
+        "content": "看到你朋友圈了，要帮忙么……"
+      },
+      {
+        "role": "assistant",
+        "content": "我去……我不是设置仅你不可见了嘛？"
+      },
+      {
+        "role": "user",
+        "content": "不用背着我偷学中医。"
+      },
+      {
+        "role": "assistant",
+        "content": "我的英名我的脸面我的尊严我的面子……"
+      },
+      {
+        "role": "user",
+        "content": "最近工作压力很大吗？好几次看你……"
+      },
+      {
+        "role": "assistant",
+        "content": "有点吧，失眠比较严重T-T"
+      },
+      {
+        "role": "assistant",
+        "content": "因为睡不好所以心情也烦躁……"
+      }
+    ]
+  },
+  {
+    "id": "jc-041",
+    "stimulus": [
+      "宝宝 我有点不舒服"
+    ],
+    "human": [
+      "咋了"
+    ],
+    "context": []
+  },
+  {
+    "id": "jc-042",
+    "stimulus": [
+      "有点🥚疼"
+    ],
+    "human": [
+      "你坐正，把腹股沟位置放松……"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "宝宝 我有点不舒服"
+      },
+      {
+        "role": "assistant",
+        "content": "咋了"
+      }
+    ]
+  },
+  {
+    "id": "jc-043",
+    "stimulus": [
+      "哪个男的教你的😊"
+    ],
+    "human": [
+      "公牛的后阉护理"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "宝宝 我有点不舒服"
+      },
+      {
+        "role": "assistant",
+        "content": "咋了"
+      },
+      {
+        "role": "user",
+        "content": "有点🥚疼"
+      },
+      {
+        "role": "assistant",
+        "content": "你坐正，把腹股沟位置放松……"
+      },
+      {
+        "role": "user",
+        "content": "你还真别说 有点用哎！！"
+      }
+    ]
+  },
+  {
+    "id": "jc-044",
+    "stimulus": [
+      "？？？？？？？"
+    ],
+    "human": [
+      "感觉我瘦了"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "宝宝 我有点不舒服"
+      },
+      {
+        "role": "assistant",
+        "content": "咋了"
+      },
+      {
+        "role": "user",
+        "content": "有点🥚疼"
+      },
+      {
+        "role": "assistant",
+        "content": "你坐正，把腹股沟位置放松……"
+      },
+      {
+        "role": "user",
+        "content": "你还真别说 有点用哎！！"
+      },
+      {
+        "role": "user",
+        "content": "哪个男的教你的😊"
+      },
+      {
+        "role": "assistant",
+        "content": "公牛的后阉护理"
+      }
+    ]
+  },
+  {
+    "id": "jc-045",
+    "stimulus": [
+      "这不是智商税吗"
+    ],
+    "human": [
+      "?",
+      "什么智商税"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "看到我的labubu"
+      },
+      {
+        "role": "assistant",
+        "content": "就好开心"
+      },
+      {
+        "role": "assistant",
+        "content": "我当时就想要这个紫色的幸运"
+      },
+      {
+        "role": "assistant",
+        "content": "然后我打开之后 真的是这个幸运"
+      }
+    ]
+  },
+  {
+    "id": "jc-046",
+    "stimulus": [
+      "是不是打算再买几个"
+    ],
+    "human": [
+      "你能听懂中国话吗",
+      "我用积分兑换的"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "看到我的labubu"
+      },
+      {
+        "role": "assistant",
+        "content": "就好开心"
+      },
+      {
+        "role": "assistant",
+        "content": "我当时就想要这个紫色的幸运"
+      },
+      {
+        "role": "assistant",
+        "content": "然后我打开之后 真的是这个幸运"
+      },
+      {
+        "role": "user",
+        "content": "这不是智商税吗"
+      },
+      {
+        "role": "assistant",
+        "content": "?"
+      },
+      {
+        "role": "assistant",
+        "content": "什么智商税"
+      },
+      {
+        "role": "assistant",
+        "content": "我在海底捞兑换的"
+      },
+      {
+        "role": "assistant",
+        "content": "我喜欢 这算什么智商税"
+      },
+      {
+        "role": "assistant",
+        "content": "我乐意"
+      }
+    ]
+  },
+  {
+    "id": "jc-047",
+    "stimulus": [
+      "滚呀",
+      "你好烦"
+    ],
+    "human": [
+      "?",
+      "行"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "看到我的labubu"
+      },
+      {
+        "role": "assistant",
+        "content": "就好开心"
+      },
+      {
+        "role": "assistant",
+        "content": "我当时就想要这个紫色的幸运"
+      },
+      {
+        "role": "assistant",
+        "content": "然后我打开之后 真的是这个幸运"
+      },
+      {
+        "role": "user",
+        "content": "这不是智商税吗"
+      },
+      {
+        "role": "assistant",
+        "content": "?"
+      },
+      {
+        "role": "assistant",
+        "content": "什么智商税"
+      },
+      {
+        "role": "assistant",
+        "content": "我在海底捞兑换的"
+      },
+      {
+        "role": "assistant",
+        "content": "我喜欢 这算什么智商税"
+      },
+      {
+        "role": "assistant",
+        "content": "我乐意"
+      },
+      {
+        "role": "user",
+        "content": "是不是打算再买几个"
+      },
+      {
+        "role": "assistant",
+        "content": "你能听懂中国话吗"
+      },
+      {
+        "role": "assistant",
+        "content": "我用积分兑换的"
+      }
+    ]
+  },
+  {
+    "id": "jc-048",
+    "stimulus": [
+      "[语音 5分07秒]"
+    ],
+    "human": [
+      "怎么挂了"
+    ],
+    "context": []
+  },
+  {
+    "id": "jc-049",
+    "stimulus": [
+      "不想看见你",
+      "看你那黑眼圈",
+      "都要掉到地上了",
+      "丑死了"
+    ],
+    "human": [
+      "这几天有点累"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "[语音 5分07秒]"
+      },
+      {
+        "role": "assistant",
+        "content": "怎么挂了"
+      }
+    ]
+  },
+  {
+    "id": "jc-050",
+    "stimulus": [
+      "我说没说过让你请个护工",
+      "不知道你怎么想的",
+      "非要亲自去医院照顾",
+      "活该"
+    ],
+    "human": [
+      "你又不是不知道我妈那个脾气",
+      "我前脚走她后脚就能溜出医院",
+      "我得看着她"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "[语音 5分07秒]"
+      },
+      {
+        "role": "assistant",
+        "content": "怎么挂了"
+      },
+      {
+        "role": "user",
+        "content": "不想看见你"
+      },
+      {
+        "role": "user",
+        "content": "看你那黑眼圈"
+      },
+      {
+        "role": "user",
+        "content": "都要掉到地上了"
+      },
+      {
+        "role": "user",
+        "content": "丑死了"
+      },
+      {
+        "role": "assistant",
+        "content": "这几天有点累"
+      }
+    ]
+  },
+  {
+    "id": "jc-051",
+    "stimulus": [
+      "那你哪天累倒了可别找我"
+    ],
+    "human": [
+      "不找就不找"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "[语音 5分07秒]"
+      },
+      {
+        "role": "assistant",
+        "content": "怎么挂了"
+      },
+      {
+        "role": "user",
+        "content": "不想看见你"
+      },
+      {
+        "role": "user",
+        "content": "看你那黑眼圈"
+      },
+      {
+        "role": "user",
+        "content": "都要掉到地上了"
+      },
+      {
+        "role": "user",
+        "content": "丑死了"
+      },
+      {
+        "role": "assistant",
+        "content": "这几天有点累"
+      },
+      {
+        "role": "user",
+        "content": "我说没说过让你请个护工"
+      },
+      {
+        "role": "user",
+        "content": "不知道你怎么想的"
+      },
+      {
+        "role": "user",
+        "content": "非要亲自去医院照顾"
+      },
+      {
+        "role": "user",
+        "content": "活该"
+      },
+      {
+        "role": "assistant",
+        "content": "你又不是不知道我妈那个脾气"
+      },
+      {
+        "role": "assistant",
+        "content": "我前脚走她后脚就能溜出医院"
+      },
+      {
+        "role": "assistant",
+        "content": "我得看着她"
+      }
+    ]
+  },
+  {
+    "id": "jc-052",
+    "stimulus": [
+      "你还生气了"
+    ],
+    "human": [
+      "我每天真的很累",
+      "我就想好好的跟你聊会天行嘛"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "[语音 5分07秒]"
+      },
+      {
+        "role": "assistant",
+        "content": "怎么挂了"
+      },
+      {
+        "role": "user",
+        "content": "不想看见你"
+      },
+      {
+        "role": "user",
+        "content": "看你那黑眼圈"
+      },
+      {
+        "role": "user",
+        "content": "都要掉到地上了"
+      },
+      {
+        "role": "user",
+        "content": "丑死了"
+      },
+      {
+        "role": "assistant",
+        "content": "这几天有点累"
+      },
+      {
+        "role": "user",
+        "content": "我说没说过让你请个护工"
+      },
+      {
+        "role": "user",
+        "content": "不知道你怎么想的"
+      },
+      {
+        "role": "user",
+        "content": "非要亲自去医院照顾"
+      },
+      {
+        "role": "user",
+        "content": "活该"
+      },
+      {
+        "role": "assistant",
+        "content": "你又不是不知道我妈那个脾气"
+      },
+      {
+        "role": "assistant",
+        "content": "我前脚走她后脚就能溜出医院"
+      },
+      {
+        "role": "assistant",
+        "content": "我得看着她"
+      },
+      {
+        "role": "user",
+        "content": "那你哪天累倒了可别找我"
+      },
+      {
+        "role": "assistant",
+        "content": "不找就不找"
+      }
+    ]
+  },
+  {
+    "id": "jc-053",
+    "stimulus": [
+      "本来就不是什么大事",
+      "你非要把握自己整的人不人鬼不鬼的"
+    ],
+    "human": [
+      "那是我妈!",
+      "我妈生病了我照顾她不应该吗?"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "不想看见你"
+      },
+      {
+        "role": "user",
+        "content": "看你那黑眼圈"
+      },
+      {
+        "role": "user",
+        "content": "都要掉到地上了"
+      },
+      {
+        "role": "user",
+        "content": "丑死了"
+      },
+      {
+        "role": "assistant",
+        "content": "这几天有点累"
+      },
+      {
+        "role": "user",
+        "content": "我说没说过让你请个护工"
+      },
+      {
+        "role": "user",
+        "content": "不知道你怎么想的"
+      },
+      {
+        "role": "user",
+        "content": "非要亲自去医院照顾"
+      },
+      {
+        "role": "user",
+        "content": "活该"
+      },
+      {
+        "role": "assistant",
+        "content": "你又不是不知道我妈那个脾气"
+      },
+      {
+        "role": "assistant",
+        "content": "我前脚走她后脚就能溜出医院"
+      },
+      {
+        "role": "assistant",
+        "content": "我得看着她"
+      },
+      {
+        "role": "user",
+        "content": "那你哪天累倒了可别找我"
+      },
+      {
+        "role": "assistant",
+        "content": "不找就不找"
+      },
+      {
+        "role": "user",
+        "content": "你还生气了"
+      },
+      {
+        "role": "assistant",
+        "content": "我每天真的很累"
+      },
+      {
+        "role": "assistant",
+        "content": "我就想好好的跟你聊会天行嘛"
+      }
+    ]
+  },
+  {
+    "id": "jc-054",
+    "stimulus": [
+      "？不是你帮我我心动的吗",
+      "我帮你拉衣服拉链我有啥心动的"
+    ],
+    "human": [
+      "拉完了",
+      "就是裙子拉链那种",
+      "你一点都不懂那种暧昧的感觉",
+      "你拉完了",
+      "0分"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "我说一个行为 你来打分 心动值……"
+      },
+      {
+        "role": "assistant",
+        "content": "1.帮我拉衣服拉链"
+      }
+    ]
+  },
+  {
+    "id": "jc-055",
+    "stimulus": [
+      "40",
+      "不如那里"
+    ],
+    "human": [
+      "?",
+      "哦不对不对对的不对"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "我说一个行为 你来打分 心动值……"
+      },
+      {
+        "role": "assistant",
+        "content": "1.帮我拉衣服拉链"
+      },
+      {
+        "role": "user",
+        "content": "？不是你帮我我心动的吗"
+      },
+      {
+        "role": "user",
+        "content": "我帮你拉衣服拉链我有啥心动的"
+      },
+      {
+        "role": "assistant",
+        "content": "拉完了"
+      },
+      {
+        "role": "assistant",
+        "content": "就是裙子拉链那种"
+      },
+      {
+        "role": "assistant",
+        "content": "你一点都不懂那种暧昧的感觉"
+      },
+      {
+        "role": "assistant",
+        "content": "你拉完了"
+      },
+      {
+        "role": "assistant",
+        "content": "0分"
+      },
+      {
+        "role": "assistant",
+        "content": "2.亲亲的时候用手摸你的脸"
+      }
+    ]
+  },
+  {
+    "id": "jc-056",
+    "stimulus": [
+      "到底对还是不对"
+    ],
+    "human": [
+      "本来是对的 播出来就不对了"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "我说一个行为 你来打分 心动值……"
+      },
+      {
+        "role": "assistant",
+        "content": "1.帮我拉衣服拉链"
+      },
+      {
+        "role": "user",
+        "content": "？不是你帮我我心动的吗"
+      },
+      {
+        "role": "user",
+        "content": "我帮你拉衣服拉链我有啥心动的"
+      },
+      {
+        "role": "assistant",
+        "content": "拉完了"
+      },
+      {
+        "role": "assistant",
+        "content": "就是裙子拉链那种"
+      },
+      {
+        "role": "assistant",
+        "content": "你一点都不懂那种暧昧的感觉"
+      },
+      {
+        "role": "assistant",
+        "content": "你拉完了"
+      },
+      {
+        "role": "assistant",
+        "content": "0分"
+      },
+      {
+        "role": "assistant",
+        "content": "2.亲亲的时候用手摸你的脸"
+      },
+      {
+        "role": "user",
+        "content": "40"
+      },
+      {
+        "role": "user",
+        "content": "不如那里"
+      },
+      {
+        "role": "assistant",
+        "content": "?"
+      },
+      {
+        "role": "assistant",
+        "content": "哦不对不对对的不对"
+      }
+    ]
+  },
+  {
+    "id": "jc-057",
+    "stimulus": [
+      "?"
+    ],
+    "human": [
+      "不爱了只会打问号"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "你不爱我了？"
+      }
+    ]
+  },
+  {
+    "id": "jc-058",
+    "stimulus": [
+      "那你的那个搭班某某的老公不也不爱了？",
+      "他也不回去啊"
+    ],
+    "human": [
+      "那你不说爱我"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "你不爱我了？"
+      },
+      {
+        "role": "user",
+        "content": "?"
+      },
+      {
+        "role": "assistant",
+        "content": "不爱了只会打问号"
+      }
+    ]
+  },
+  {
+    "id": "jc-059",
+    "stimulus": [
+      "爱你"
+    ],
+    "human": [
+      "这么敷衍"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "你不爱我了？"
+      },
+      {
+        "role": "user",
+        "content": "?"
+      },
+      {
+        "role": "assistant",
+        "content": "不爱了只会打问号"
+      },
+      {
+        "role": "user",
+        "content": "那你的那个搭班某某的老公不也不爱了？"
+      },
+      {
+        "role": "user",
+        "content": "他也不回去啊"
+      },
+      {
+        "role": "assistant",
+        "content": "那你不说爱我"
+      }
+    ]
+  },
+  {
+    "id": "jc-060",
+    "stimulus": [
+      "妈的打到现在"
+    ],
+    "human": [
+      "这么激烈🥺"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "你不爱我了？"
+      },
+      {
+        "role": "user",
+        "content": "?"
+      },
+      {
+        "role": "assistant",
+        "content": "不爱了只会打问号"
+      },
+      {
+        "role": "user",
+        "content": "那你的那个搭班某某的老公不也不爱了？"
+      },
+      {
+        "role": "user",
+        "content": "他也不回去啊"
+      },
+      {
+        "role": "assistant",
+        "content": "那你不说爱我"
+      },
+      {
+        "role": "user",
+        "content": "爱你"
+      },
+      {
+        "role": "assistant",
+        "content": "这么敷衍"
+      }
+    ]
+  },
+  {
+    "id": "jc-061",
+    "stimulus": [
+      "但是吧，你就是下午有空儿 我也没有空儿了"
+    ],
+    "human": [
+      "想我嘛老公"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "老公，上次给我的，?……"
+      },
+      {
+        "role": "user",
+        "content": "[语音 3秒]"
+      },
+      {
+        "role": "assistant",
+        "content": "给我多少?你心里?点儿数嘛"
+      },
+      {
+        "role": "assistant",
+        "content": "干干净净"
+      },
+      {
+        "role": "user",
+        "content": "[语音 5秒]"
+      },
+      {
+        "role": "assistant",
+        "content": "我都吸收啦"
+      },
+      {
+        "role": "assistant",
+        "content": "一滴也没浪费"
+      },
+      {
+        "role": "assistant",
+        "content": "老公"
+      },
+      {
+        "role": "user",
+        "content": "在呢在呢，老婆。"
+      }
+    ]
+  },
+  {
+    "id": "jc-062",
+    "stimulus": [
+      "我没咋啊",
+      "我没咋",
+      "不会分手了",
+      "我情绪不对你就别问了",
+      "你就晾我一会",
+      "行不",
+      "能行不"
+    ],
+    "human": [
+      "啊，，，"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "你咋啦宝宝"
+      },
+      {
+        "role": "assistant",
+        "content": "我怕你这样久了要分手啊"
+      }
+    ]
+  },
+  {
+    "id": "jc-063",
+    "stimulus": [
+      "我喜欢这样我习惯这样"
+    ],
+    "human": [
+      "但我看这你自己难受我想哄你",
+      "我是你女朋友呀"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "你咋啦宝宝"
+      },
+      {
+        "role": "assistant",
+        "content": "我怕你这样久了要分手啊"
+      },
+      {
+        "role": "user",
+        "content": "我没咋啊"
+      },
+      {
+        "role": "user",
+        "content": "我没咋"
+      },
+      {
+        "role": "user",
+        "content": "不会分手了"
+      },
+      {
+        "role": "user",
+        "content": "我情绪不对你就别问了"
+      },
+      {
+        "role": "user",
+        "content": "你就晾我一会"
+      },
+      {
+        "role": "user",
+        "content": "行不"
+      },
+      {
+        "role": "user",
+        "content": "能行不"
+      },
+      {
+        "role": "assistant",
+        "content": "啊，，，"
+      },
+      {
+        "role": "user",
+        "content": "昂"
+      }
+    ]
+  },
+  {
+    "id": "jc-064",
+    "stimulus": [
+      "我没难受",
+      "我本来就一点烦心事"
+    ],
+    "human": [
+      "那倾诉 和我吐槽会舒服吗"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "你咋啦宝宝"
+      },
+      {
+        "role": "assistant",
+        "content": "我怕你这样久了要分手啊"
+      },
+      {
+        "role": "user",
+        "content": "我没咋啊"
+      },
+      {
+        "role": "user",
+        "content": "我没咋"
+      },
+      {
+        "role": "user",
+        "content": "不会分手了"
+      },
+      {
+        "role": "user",
+        "content": "我情绪不对你就别问了"
+      },
+      {
+        "role": "user",
+        "content": "你就晾我一会"
+      },
+      {
+        "role": "user",
+        "content": "行不"
+      },
+      {
+        "role": "user",
+        "content": "能行不"
+      },
+      {
+        "role": "assistant",
+        "content": "啊，，，"
+      },
+      {
+        "role": "user",
+        "content": "昂"
+      },
+      {
+        "role": "user",
+        "content": "我喜欢这样我习惯这样"
+      },
+      {
+        "role": "assistant",
+        "content": "但我看这你自己难受我想哄你"
+      },
+      {
+        "role": "assistant",
+        "content": "我是你女朋友呀"
+      }
+    ]
+  },
+  {
+    "id": "jc-065",
+    "stimulus": [
+      "不会",
+      "我觉得这样其实没啥用",
+      "我知道你是我女朋友，所以能支持……」",
+      "我就喜欢有烦心事自己带着",
+      "呆"
+    ],
+    "human": [
+      "好的宝宝 你需要我我随时在"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "你咋啦宝宝"
+      },
+      {
+        "role": "assistant",
+        "content": "我怕你这样久了要分手啊"
+      },
+      {
+        "role": "user",
+        "content": "我没咋啊"
+      },
+      {
+        "role": "user",
+        "content": "我没咋"
+      },
+      {
+        "role": "user",
+        "content": "不会分手了"
+      },
+      {
+        "role": "user",
+        "content": "我情绪不对你就别问了"
+      },
+      {
+        "role": "user",
+        "content": "你就晾我一会"
+      },
+      {
+        "role": "user",
+        "content": "行不"
+      },
+      {
+        "role": "user",
+        "content": "能行不"
+      },
+      {
+        "role": "assistant",
+        "content": "啊，，，"
+      },
+      {
+        "role": "user",
+        "content": "昂"
+      },
+      {
+        "role": "user",
+        "content": "我喜欢这样我习惯这样"
+      },
+      {
+        "role": "assistant",
+        "content": "但我看这你自己难受我想哄你"
+      },
+      {
+        "role": "assistant",
+        "content": "我是你女朋友呀"
+      },
+      {
+        "role": "user",
+        "content": "我没难受"
+      },
+      {
+        "role": "user",
+        "content": "我本来就一点烦心事"
+      },
+      {
+        "role": "assistant",
+        "content": "那倾诉 和我吐槽会舒服吗"
+      }
+    ]
+  },
+  {
+    "id": "jc-066",
+    "stimulus": [
+      "发错了",
+      "嗯嗯"
+    ],
+    "human": [
+      "没发错",
+      "我们聊聊"
+    ],
+    "context": []
+  },
+  {
+    "id": "jc-067",
+    "stimulus": [
+      "因为我冷漠",
+      "不回你消息"
+    ],
+    "human": [
+      "你觉得没什么可说的",
+      "不知道说啥",
+      "我说白了",
+      "这不就是回避"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "发错了"
+      },
+      {
+        "role": "user",
+        "content": "嗯嗯"
+      },
+      {
+        "role": "assistant",
+        "content": "没发错"
+      },
+      {
+        "role": "assistant",
+        "content": "我们聊聊"
+      },
+      {
+        "role": "assistant",
+        "content": "我为啥拉黑你"
+      },
+      {
+        "role": "assistant",
+        "content": "因为反正你也不说话"
+      }
+    ]
+  },
+  {
+    "id": "jc-068",
+    "stimulus": [
+      "但是你说这些话我真的不会回",
+      "我连宝宝都不知道能不能说出来",
+      "我当时应该直接和你道歉吗",
+      "还是找你理论"
+    ],
+    "human": [
+      "是的",
+      "我难过",
+      "为什么",
+      "你说你知道"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "发错了"
+      },
+      {
+        "role": "user",
+        "content": "嗯嗯"
+      },
+      {
+        "role": "assistant",
+        "content": "没发错"
+      },
+      {
+        "role": "assistant",
+        "content": "我们聊聊"
+      },
+      {
+        "role": "assistant",
+        "content": "我为啥拉黑你"
+      },
+      {
+        "role": "assistant",
+        "content": "因为反正你也不说话"
+      },
+      {
+        "role": "user",
+        "content": "因为我冷漠"
+      },
+      {
+        "role": "user",
+        "content": "不回你消息"
+      },
+      {
+        "role": "assistant",
+        "content": "你觉得没什么可说的"
+      },
+      {
+        "role": "assistant",
+        "content": "不知道说啥"
+      },
+      {
+        "role": "assistant",
+        "content": "我说白了"
+      },
+      {
+        "role": "assistant",
+        "content": "这不就是回避"
+      }
+    ]
+  },
+  {
+    "id": "jc-069",
+    "stimulus": [
+      "因为我的态度",
+      "还是因为我以前做的事情",
+      "还是因为你梦到我出轨了",
+      "想起来以前的事"
+    ],
+    "human": [
+      "那不就是同一件事吗",
+      "因为你以前做的事"
+    ],
+    "context": [
+      {
+        "role": "user",
+        "content": "发错了"
+      },
+      {
+        "role": "user",
+        "content": "嗯嗯"
+      },
+      {
+        "role": "assistant",
+        "content": "没发错"
+      },
+      {
+        "role": "assistant",
+        "content": "我们聊聊"
+      },
+      {
+        "role": "assistant",
+        "content": "我为啥拉黑你"
+      },
+      {
+        "role": "assistant",
+        "content": "因为反正你也不说话"
+      },
+      {
+        "role": "user",
+        "content": "因为我冷漠"
+      },
+      {
+        "role": "user",
+        "content": "不回你消息"
+      },
+      {
+        "role": "assistant",
+        "content": "你觉得没什么可说的"
+      },
+      {
+        "role": "assistant",
+        "content": "不知道说啥"
+      },
+      {
+        "role": "assistant",
+        "content": "我说白了"
+      },
+      {
+        "role": "assistant",
+        "content": "这不就是回避"
+      },
+      {
+        "role": "user",
+        "content": "但是你说这些话我真的不会回"
+      },
+      {
+        "role": "user",
+        "content": "我连宝宝都不知道能不能说出来"
+      },
+      {
+        "role": "user",
+        "content": "我当时应该直接和你道歉吗"
+      },
+      {
+        "role": "user",
+        "content": "还是找你理论"
+      },
+      {
+        "role": "assistant",
+        "content": "是的"
+      },
+      {
+        "role": "assistant",
+        "content": "我难过"
+      },
+      {
+        "role": "assistant",
+        "content": "为什么"
+      },
+      {
+        "role": "assistant",
+        "content": "你说你知道"
+      }
+    ]
+  },
+  {
+    "id": "jc-070",
+    "stimulus": [
+      "每次吵架不都是这样",
+      "就因为这事情"
+    ],
+    "human": [
+      "你只用回答我的问题就好"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "我为啥拉黑你"
+      },
+      {
+        "role": "assistant",
+        "content": "因为反正你也不说话"
+      },
+      {
+        "role": "user",
+        "content": "因为我冷漠"
+      },
+      {
+        "role": "user",
+        "content": "不回你消息"
+      },
+      {
+        "role": "assistant",
+        "content": "你觉得没什么可说的"
+      },
+      {
+        "role": "assistant",
+        "content": "不知道说啥"
+      },
+      {
+        "role": "assistant",
+        "content": "我说白了"
+      },
+      {
+        "role": "assistant",
+        "content": "这不就是回避"
+      },
+      {
+        "role": "user",
+        "content": "但是你说这些话我真的不会回"
+      },
+      {
+        "role": "user",
+        "content": "我连宝宝都不知道能不能说出来"
+      },
+      {
+        "role": "user",
+        "content": "我当时应该直接和你道歉吗"
+      },
+      {
+        "role": "user",
+        "content": "还是找你理论"
+      },
+      {
+        "role": "assistant",
+        "content": "是的"
+      },
+      {
+        "role": "assistant",
+        "content": "我难过"
+      },
+      {
+        "role": "assistant",
+        "content": "为什么"
+      },
+      {
+        "role": "assistant",
+        "content": "你说你知道"
+      },
+      {
+        "role": "user",
+        "content": "因为我的态度"
+      },
+      {
+        "role": "user",
+        "content": "还是因为我以前做的事情"
+      },
+      {
+        "role": "user",
+        "content": "还是因为你梦到我出轨了"
+      },
+      {
+        "role": "user",
+        "content": "想起来以前的事"
+      },
+      {
+        "role": "assistant",
+        "content": "那不就是同一件事吗"
+      },
+      {
+        "role": "assistant",
+        "content": "因为你以前做的事"
+      },
+      {
+        "role": "assistant",
+        "content": "什么事"
+      },
+      {
+        "role": "assistant",
+        "content": "你现在承认吗"
+      },
+      {
+        "role": "assistant",
+        "content": "这是我的心结"
+      }
+    ]
+  },
+  {
+    "id": "jc-071",
+    "stimulus": [
+      "每次你说出来我就是不知道我该怎么回你"
+    ],
+    "human": [
+      "就是的",
+      "我的问题就是",
+      "你现在承认吗",
+      "关于我们六年多的过去"
+    ],
+    "context": [
+      {
+        "role": "assistant",
+        "content": "你觉得没什么可说的"
+      },
+      {
+        "role": "assistant",
+        "content": "不知道说啥"
+      },
+      {
+        "role": "assistant",
+        "content": "我说白了"
+      },
+      {
+        "role": "assistant",
+        "content": "这不就是回避"
+      },
+      {
+        "role": "user",
+        "content": "但是你说这些话我真的不会回"
+      },
+      {
+        "role": "user",
+        "content": "我连宝宝都不知道能不能说出来"
+      },
+      {
+        "role": "user",
+        "content": "我当时应该直接和你道歉吗"
+      },
+      {
+        "role": "user",
+        "content": "还是找你理论"
+      },
+      {
+        "role": "assistant",
+        "content": "是的"
+      },
+      {
+        "role": "assistant",
+        "content": "我难过"
+      },
+      {
+        "role": "assistant",
+        "content": "为什么"
+      },
+      {
+        "role": "assistant",
+        "content": "你说你知道"
+      },
+      {
+        "role": "user",
+        "content": "因为我的态度"
+      },
+      {
+        "role": "user",
+        "content": "还是因为我以前做的事情"
+      },
+      {
+        "role": "user",
+        "content": "还是因为你梦到我出轨了"
+      },
+      {
+        "role": "user",
+        "content": "想起来以前的事"
+      },
+      {
+        "role": "assistant",
+        "content": "那不就是同一件事吗"
+      },
+      {
+        "role": "assistant",
+        "content": "因为你以前做的事"
+      },
+      {
+        "role": "assistant",
+        "content": "什么事"
+      },
+      {
+        "role": "assistant",
+        "content": "你现在承认吗"
+      },
+      {
+        "role": "assistant",
+        "content": "这是我的心结"
+      },
+      {
+        "role": "user",
+        "content": "每次吵架不都是这样"
+      },
+      {
+        "role": "user",
+        "content": "就因为这事情"
+      },
+      {
+        "role": "assistant",
+        "content": "你只用回答我的问题就好"
+      }
+    ]
+  },
+  {
+    "id": "jc-072",
+    "stimulus": [
+      "我又不这样"
+    ],
+    "human": [
+      "那你team呗",
+      "又不是我的team",
+      "管我啥事",
+      "莫名其妙"
+    ],
+    "context": []
+  }
+]
