@@ -6,6 +6,7 @@ import { tick as lifeTick, noteInteraction, readNow, load as loadLife } from './
 import { spawn } from 'node:child_process'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { checkRequest, ensureToken, permissionMode } from '../packages/bot/src/platform/resident-guard.ts'
 
 const PORT = Number(process.env.HER_PORT || 7777)
 const PROFILE = process.env.HER_PROFILE || 'lmy'
@@ -17,6 +18,10 @@ const TIMEOUT_MS = 180_000
 
 mkdirSync(DIR, { recursive: true })
 const log = (line) => { try { appendFileSync(LOG, `${new Date().toISOString()} ${line}\n`) } catch {} }
+// 本地接口的共享令牌（ADR 0172）：没有就生成，存在用户目录下；QQ 侧的工作桥读同一个文件
+const TOKEN = ensureToken(DIR)
+// 用户 10-29 给了工作模式整机权限：默认 danger-full-access，要降档设 HER_PERMISSION_MODE（ADR 0172）
+const PERMISSION_MODE = permissionMode()
 
 const queue = []
 let running = false
@@ -29,7 +34,7 @@ function runTask(task, context = '', rawPrompt = undefined, timeoutMs = TIMEOUT_
             cwd: process.env.HER_CWD || 'C:/Users/22601/Desktop',
             env: {
                 ...process.env,
-                DSH_PERMISSION_MODE: 'danger-full-access',
+                DSH_PERMISSION_MODE: PERMISSION_MODE,
                 ...(process.env.QQBOT_LLM_API_KEY ? { DEEPSEEK_API_KEY: process.env.QQBOT_LLM_API_KEY } : {}),
             },
             windowsHide: true,
@@ -69,6 +74,12 @@ const server = http.createServer((req, res) => {
     const send = (status, body) => {
         res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
         res.end(JSON.stringify(body))
+    }
+    // 先过守卫（ADR 0172）：Host / Origin / 令牌 / Content-Type；只有 GET /health 不要令牌
+    const verdict = checkRequest(req, { token: TOKEN, port: PORT })
+    if (!verdict.ok) {
+        log(`rejected ${req.method} ${req.url}: ${verdict.error}`)
+        return send(verdict.status, { ok: false, error: verdict.error })
     }
     if (req.method === 'GET' && req.url === '/health') {
         return send(200, { ok: true, pid: process.pid, running, queue: queue.length, lastTaskAt, offlineUntil: offlineUntil() })

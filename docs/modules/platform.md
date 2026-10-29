@@ -11,6 +11,7 @@
 - `platform/work-bridge.ts`
 - `platform/work-mode.ts`
 - `platform/soul-rating.ts`
+- `platform/resident-guard.ts`
 - `platform/contact.ts`
 - `platform/config.ts`
 - `platform/features.ts`
@@ -48,4 +49,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0002](../adr/0002-standalone-runtime.md)、[ADR 0008](../adr/0008-koishi-runtime.md)、[ADR 0118](../adr/0118-weekly-report.md)、[ADR 0119](../adr/0119-consistency-check.md)、[ADR 0120](../adr/0120-status-dashboard.md)、[ADR 0160](../adr/0160-web-lookup.md)
+[ADR 0002](../adr/0002-standalone-runtime.md)、[ADR 0008](../adr/0008-koishi-runtime.md)、[ADR 0118](../adr/0118-weekly-report.md)、[ADR 0119](../adr/0119-consistency-check.md)、[ADR 0120](../adr/0120-status-dashboard.md)、[ADR 0160](../adr/0160-web-lookup.md)、[ADR 0172](../adr/0172-work-mode-full-access.md)

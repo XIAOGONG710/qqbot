@@ -1,6 +1,7 @@
 // QQ 工作模式的工具桥：把他的话交给 headless 的她去干，拿回一条要发的话。
 // 用 dsh 的 headless profile（lmy：同一套人格补丁），stdout 是最终回复，stderr 是推理（丢掉）。
 import { spawn } from 'node:child_process'
+import { permissionMode, readToken, residentDir, TOKEN_HEADER } from './resident-guard.ts'
 
 const DSH_BIN = 'D:/nodejs/global/node_modules/@deepseek-ai/dsh/lib/bin.js'
 
@@ -49,7 +50,7 @@ function spawnWorkTask(task: string, options: WorkTaskOptions = {}): Promise<str
             cwd: options.cwd ?? process.cwd(),
             env: {
                 ...process.env,
-                DSH_PERMISSION_MODE: 'danger-full-access',
+                DSH_PERMISSION_MODE: permissionMode(),
                 ...(apiKey ? { DEEPSEEK_API_KEY: apiKey } : {}),
             },
             windowsHide: true,
@@ -78,17 +79,23 @@ function spawnWorkTask(task: string, options: WorkTaskOptions = {}): Promise<str
 /** 优先交给常驻的她（独立进程），没起来再自己起 headless */
 export async function runWorkTask(task: string, options: WorkTaskOptions = {}): Promise<string> {
     const resident = process.env.HER_RESIDENT_URL ?? 'http://127.0.0.1:7777'
+    const token = readToken(residentDir())
+    let res: Response | undefined
     try {
-        const res = await fetch(`${resident}/task`, {
+        res = await fetch(`${resident}/task`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...(token ? { [TOKEN_HEADER]: token } : {}) },
             body: JSON.stringify({ task, context: options.context ?? '' }),
             signal: AbortSignal.timeout((options.timeoutMs ?? 180_000) + 10_000),
         })
-        if (res.ok) {
+    } catch { /* 常驻没起来（连不上），走临时 headless */ }
+    // 常驻明确拒绝（令牌不对 / 没有令牌）不能悄悄改走临时 headless：那样会绕过常驻的队列和「她离开电脑」（ADR 0172）
+    if (res && (res.status === 401 || res.status === 403)) throw new Error(`常驻的她拒绝了这次请求（HTTP ${res.status}）：令牌不对或不存在，检查 ${residentDir()}\\RESIDENT_TOKEN`);
+    if (res?.ok) {
+        try {
             const data = await res.json() as { ok?: boolean; reply?: string }
             if (data?.ok && data.reply) return String(data.reply)
-        }
-    } catch { /* 常驻没起来，走临时 headless */ }
+        } catch { /* 读不出来按没回处理 */ }
+    }
     return spawnWorkTask(task, options)
 }
