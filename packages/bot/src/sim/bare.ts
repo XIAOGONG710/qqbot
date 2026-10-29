@@ -17,6 +17,7 @@ import { buildPrompt, type ChatMessage, type OpenAIMessage, type PromptSettings 
 import { splitReply } from '../language/reply.ts';
 import { estimateTokens } from '../language/tokens.ts';
 import type { TierCard } from '../platform/contact.ts';
+import { copiedLines, formatExemplars, pickExemplars, type ExemplarCase } from './exemplars.ts';
 
 export interface BareCase {
     id: string;
@@ -24,6 +25,8 @@ export interface BareCase {
     stimulus: string[];
     /** 更早的聊天（旧到新） */
     context?: Array<{ role: 'user' | 'assistant'; content: string }>;
+    /** 真人在类似的话后面是怎么回的（exemplars.ts 挑的），放在聊天记录之后；不给就是纯「不带框架」 */
+    exemplars?: string;
 }
 
 export interface BareSetup {
@@ -46,6 +49,7 @@ export function bareMessages(setup: BareSetup, item: BareCase): OpenAIMessage[] 
         userName: setup.userName,
         now: setup.now,
         settings: setup.settings,
+        ...(item.exemplars ? { afterHistory: [item.exemplars] } : {}),
         countTokens: estimateTokens,
         random: () => 0.5,
     }).messages;
@@ -90,6 +94,8 @@ async function main(): Promise<void> {
     const limit = option('--limit');
     const parallel = option('--parallel');
     const thinking = option('--thinking');
+    // 实验（exemplars.ts）：不限制字数，只给她 K 条真人在相似的话后面的回法；例子池是同一份题里别的题（留一法）
+    const exemplarsOption = option('--exemplars');
     const casesPath = args[0];
     if (!casesPath || !outPath || (thinking !== undefined && thinking !== 'off')) {
         console.error('用法：node packages/bot/src/sim/bare.ts <cases.json> --out <hers.json> [--limit N] [--parallel N] [--thinking off]');
@@ -107,7 +113,15 @@ async function main(): Promise<void> {
     // 和 make-ctx-variants.cjs 的场景一致：男朋友档、称呼「宝宝」、不知道她是程序的那张卡（-open）
     const card = loadTierCard(config.characterCard, cardKey({ tier: 'boyfriend' }));
     const all = JSON.parse(readFileSync(resolve(casesPath), 'utf8')) as BareCase[];
-    const cases = limit === undefined ? all : all.slice(0, Number(limit));
+    const picked = new Map<string, ExemplarCase[]>();
+    const withExemplars = (item: BareCase): BareCase => {
+        if (exemplarsOption === undefined) return item;
+        const list = pickExemplars(item as unknown as ExemplarCase, all as unknown as ExemplarCase[], Number(exemplarsOption));
+        picked.set(item.id, list);
+        const block = formatExemplars(list);
+        return block ? { ...item, exemplars: block } : item;
+    };
+    const cases = (limit === undefined ? all : all.slice(0, Number(limit))).map(withExemplars);
     console.log(`不带框架：${cases.length} 题，卡 ${config.characterCard.replace('{tier}', cardKey({ tier: 'boyfriend' }))}，模型 ${llm.model}${thinking === 'off' ? '（关思考）' : ''}`);
     const { hers, failed } = await runBare(cases, {
         setup: { card, userName: '宝宝', settings: { ...config.prompt, maxTokens: llm.maxTokens }, now: new Date('2026-10-24T21:00:00+08:00') },
@@ -116,6 +130,11 @@ async function main(): Promise<void> {
         log: message => process.stdout.write(`\r${message}`),
     });
     writeFileSync(resolve(outPath), JSON.stringify(hers, null, 2));
+    if (exemplarsOption !== undefined) {
+        const copied = Object.entries(hers).reduce((sum, [id, reply]) => sum + copiedLines(reply, picked.get(id) ?? []), 0);
+        writeFileSync(`${resolve(outPath)}.exemplars.json`, JSON.stringify(Object.fromEntries([...picked].map(([id, list]) => [id, list.map(item => item.id)])), null, 2));
+        console.log(`\n例子：每题 ${exemplarsOption} 条；她原样抄了例子里的真人回复 ${copied} 句（共 ${Object.values(hers).reduce((sum, reply) => sum + reply.length, 0)} 句）`);
+    }
     console.log(`\n写了 ${Object.keys(hers).length} 题到 ${resolve(outPath)}${failed.length ? `；失败 ${failed.length} 题：${failed.slice(0, 3).map(item => `${item.id} ${item.error}`).join('；')}` : ''}`);
     process.exit(failed.length ? 1 : 0);
 }
