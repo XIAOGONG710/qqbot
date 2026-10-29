@@ -135,7 +135,8 @@ describe('WebLookup：串起来', () => {
         const { lookup, asked, done } = make();
         assert.deepEqual(await lookup.look('量子纠缠是什么'), ['量子纠缠是量子力学里的一种关联现象', '两个粒子的状态会相互关联']);
         assert.equal(asked.length, 1);
-        assert.deepEqual(done, [{ kind: 'search', summary: '她自己上网查了「量子纠缠是什么」', ok: true }]);
+        assert.match(done[0]!.summary, /^她自己上网查了「量子纠缠是什么」/);
+        assert.equal(done[0]!.ok, true);
         assert.equal(await lookup.look('   '), undefined, '空的不查');
     });
 

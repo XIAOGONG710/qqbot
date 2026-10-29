@@ -362,13 +362,18 @@ export class WebLookup {
             this.#options.onDone?.({ kind: 'search', summary: `她自己想查「${clip(q, 16)}」，没查成`, ok: false });
             return undefined;
         }
-        const facts = await this.#extract(q, material.text);
-        this.#options.onDone?.({ kind: 'search', summary: `她自己上网查了「${clip(q, 16)}」`, ok: Boolean(facts) });
+        // 她自己查的时候多走一步：把搜到的第一条读完再摘（ADR 0181）——她不是要一串链接，是要看进去。
+        // 读不成、或没搜索结果长，就用搜索结果（不额外占额度，同一件事算一次）
+        const page = await readPage(material.source, { fetch: this.#fetch, ...(this.#options.resolve ? { resolve: this.#options.resolve } : {}) })
+            .catch((): { ok: false; reason: string } => ({ ok: false, reason: '读不了' }));
+        const deep = page.ok && page.text.length > material.text.length;
+        const facts = await this.#extract(q, deep ? `${page.title}\n${page.text}` : material.text);
+        this.#options.onDone?.({ kind: 'search', summary: `她自己上网查了「${clip(q, 16)}」${deep ? '，读了一个网页' : ''}`, ok: Boolean(facts) });
         if (!facts) {
             this.#options.log?.('上网：她自己查了，但资料里没有和问题有关的');
             return undefined;
         }
-        this.#options.log?.(`上网：她自己查了「${clip(q, 16)}」，摘出 ${facts.length} 条（日志不记内容）`);
+        this.#options.log?.(`上网：她自己查了「${clip(q, 16)}」${deep ? `（读了 ${new URL(material.source).hostname}）` : ''}，摘出 ${facts.length} 条（日志不记内容）`);
         return facts;
     }
 
