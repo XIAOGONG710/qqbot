@@ -71,6 +71,16 @@ function activeInterests() {
     } catch { return [] }
 }
 
+/** 吃一顿之后剩多少饿：她不是永远饿着 */
+export const HUNGER_AFTER_MEAL = 10
+/** 哪些活动算「吃了东西」 */
+export const EAT = /找点吃的|吃饭|吃夜宵|吃了/
+
+/** 换了活动之后饿不饿：去吃东西就饱了，别的照旧 */
+export function hungerAfterActivity(activity, hunger) {
+    return EAT.test(activity) ? HUNGER_AFTER_MEAL : hunger
+}
+
 function chooseActivity(state, hour) {
     const weights = []
     const energy = state.energy
@@ -127,6 +137,9 @@ export function tick(now = Date.now()) {
 
     const next = chooseActivity(state, hour)
     const changed = next !== state.activity
+    // 2026-10-30：饥饿只涨不降，两天就卡在 100，她每晚都得说「饿得睡不着」（00:04 那次）。
+    // 真去吃一顿就该饱：吃完 hunger 回到 10 上下。
+    if (changed) state.hunger = hungerAfterActivity(next, state.hunger)
     if (changed) {
         logEvent(state, `我在${next}。`)
         state.activity = next
@@ -189,3 +202,4 @@ export function readNow() {
 }
 
 export { DIR, STATE, NOW, STORY }
+
