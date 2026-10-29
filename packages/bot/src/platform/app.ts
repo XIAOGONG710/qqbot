@@ -39,8 +39,8 @@ import { arrivedWhileAsleep } from '.././social/reply-timing.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode } from './work-mode.ts';
-import { runWorkTask, rememberWorkTask } from './work-bridge.ts';
-import { addSoulRating, appendPrivate, addRefusal, recentRefusals, ratingSummary } from './soul-rating.ts';
+import { noteResident, runWorkTask, rememberWorkTask } from './work-bridge.ts';
+import { addSoulRating, appendPrivate, addRefusal, recentRefusals, ratingSummary, soulDir } from './soul-rating.ts';
 import { momentsReader } from '.././emotion/moments.ts';
 import { loadEverydayFrom } from '.././life/everyday.ts';
 import { dishesBetween, loadMenuFrom } from '.././life/menu.ts';
@@ -714,11 +714,13 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 workRequest: () => readWorkMode(config.dataDir, contact.qq) === 'pending',
                 refusalLine: () => recentRefusals(),
                 ratingLine: () => ratingSummary(),
+                // 「你现在的生活」（NOW.md）的「最近」一行带着他说过的话的原句（前 40 字）和关系状态（「还在生他的气……」）：
+                // 只给男朋友档，别的联系人的提示词里不能有他的话（ADR 0020 披露分级；10-29 复核）
+                lifeLine: () => {
+                    try { return readFileSync(join(soulDir(), 'NOW.md'), 'utf8').trim(); } catch { return undefined; }
+                },
             } : {}),
             ...(config.selfDirectedMemory ? { selfMemory: true } : {}),
-            lifeLine: () => {
-                try { return readFileSync('C:/Users/22601/.dsh/linmengyao/NOW.md', 'utf8').trim(); } catch { return undefined; }
-            },
             llm: config.llm,
             prompt: config.prompt,
             schedule: config.schedule,
@@ -1463,13 +1465,7 @@ ${body}
                 // 不机械切换：先挂起，让她自己答应/拒绝/提条件；反复催会让她烦
                 const previous = readWorkMode(config.dataDir, event.user_id);
                 setWorkMode(config.dataDir, event.user_id, 'pending');
-                if (previous === 'pending') {
-                    void fetch('http://127.0.0.1:7777/note', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ text: '他又催我切工作', from: 'baobao', negative: true }),
-                    }).catch(() => {});
-                }
+                if (previous === 'pending') void noteResident({ text: '他又催我切工作', from: 'baobao', negative: true });
                 log(`[${event.user_id}] 收到 /dsh：等她决定`);
             } else if (plain === '/QQ' || plain === '/qq' || plain === '/回聊') {
                 setWorkMode(config.dataDir, event.user_id, 'chat');
@@ -1562,11 +1558,7 @@ ${body}
         const text = segmentsToText(message, quoteLookup(event.user_id)).trim();
         if (!text) return;
         // 连续生活：他一句话会改变她的心情/关系（不挡回复）
-        void fetch(process.env.HER_RESIDENT_URL ? `${process.env.HER_RESIDENT_URL}/note` : 'http://127.0.0.1:7777/note', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, from: event.user_id === deviceOwner?.qq ? 'baobao' : 'classmate' }),
-        }).catch(() => {});
+        void noteResident({ text, from: event.user_id === deviceOwner?.qq ? 'baobao' : 'classmate' });
         // 工作模式：不进普通聊天回复器，交给 headless 的她干活，干完再回（工具桥）
         if (event.user_id === deviceOwner?.qq && !text.startsWith('/') && readWorkMode(config.dataDir, event.user_id) === 'work') {
             const qq = event.user_id;

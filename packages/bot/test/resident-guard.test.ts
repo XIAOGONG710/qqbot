@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { checkRequest, ensureToken, permissionMode, readToken, residentDir, TOKEN_FILE, TOKEN_HEADER } from '../src/platform/resident-guard.ts';
-import { runWorkTask } from '../src/platform/work-bridge.ts';
+import { noteResident, runWorkTask } from '../src/platform/work-bridge.ts';
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-resident-')); dirs.push(d); return d; };
@@ -99,6 +99,22 @@ describe('工作桥：带令牌去找常驻的她；被明确拒绝不能悄悄�
         assert.equal(seen[0]!.url.endsWith('/task'), true);
         assert.equal(seen[0]!.headers[TOKEN_HEADER], token);
         assert.equal(seen[0]!.headers['Content-Type'], 'application/json');
+    });
+
+    test('互动记录（/note，生活引擎据此改心情 / 关系）也要带令牌，否则加了守卫之后会被 401 静默丢掉；常驻没起来不抛错', async () => {
+        const dir = tmp();
+        process.env.HER_DIR = dir;
+        const token = ensureToken(dir);
+        const seen: Array<{ url: string; method: string; headers: Record<string, string>; body: string }> = [];
+        globalThis.fetch = (async (url: string, init: { method: string; headers: Record<string, string>; body: string }) => { seen.push({ url, ...init }); return new Response('{"ok":true}', { status: 200 }); }) as never;
+        await noteResident({ text: '他又催我切工作', from: 'baobao', negative: true });
+        assert.equal(seen[0]!.url, 'http://127.0.0.1:7777/note');
+        assert.equal(seen[0]!.method, 'POST');
+        assert.equal(seen[0]!.headers[TOKEN_HEADER], token);
+        assert.equal(seen[0]!.headers['Content-Type'], 'application/json');
+        assert.deepEqual(JSON.parse(seen[0]!.body), { text: '他又催我切工作', from: 'baobao', negative: true });
+        globalThis.fetch = (async () => { throw new Error('ECONNREFUSED'); }) as never;
+        await assert.doesNotReject(noteResident({ text: 'x', from: 'baobao' }));
     });
 
     test('常驻回 401 / 403：抛错并说怎么查，不会改走临时 headless（那样会绕过队列和「她离开电脑」）', async () => {

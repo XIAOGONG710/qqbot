@@ -530,6 +530,30 @@ describe('编排（app.ts）', () => {
         assert.ok(logs.some(l => l.startsWith('[10001] 拉取历史消息失败，跳过补回：') && l.includes('消息不存在')));
     });
 
+    test('「你现在的生活」（NOW.md）带着他说过的话的原句：只给男朋友档，同学档的提示词里不能有（ADR 0020；10-29 复核）', async () => {
+        const soul = mkdtempSync(join(tmpdir(), 'qqbot-soul-'));
+        dirs.push(soul);
+        writeFileSync(join(soul, 'NOW.md'), '现在 19:08，我在宿舍待着，心情一般。最近：宝宝跟我说：这是他私下说的原话标记ZQX');
+        const before = process.env.QQBOT_SOUL_DIR;
+        process.env.QQBOT_SOUL_DIR = soul;
+        try {
+            const prompts: string[] = [];
+            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }, { qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
+            const { app, sent } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
+            await app.connected(SELF);
+            app.receive(event(10001, 1, '在吗', '阿明'));
+            app.receive(event(10002, 2, '在吗', '宝宝'));
+            await until(() => sent.length >= 2);
+            const toBoyfriend = prompts.find(prompt => prompt.includes('宝宝私聊') || prompt.includes('和宝宝'));
+            const toClassmate = prompts.find(prompt => prompt.includes('阿明私聊') || prompt.includes('和阿明'));
+            assert.ok(toBoyfriend && toClassmate, '两个联系人的提示词都要拿到');
+            assert.match(toBoyfriend!, /原话标记ZQX/, '男朋友档照旧带着「你现在的生活」');
+            assert.doesNotMatch(toClassmate!, /ZQX|你现在的生活/, '同学档的提示词里不能有他的话');
+        } finally {
+            if (before === undefined) delete process.env.QQBOT_SOUL_DIR; else process.env.QQBOT_SOUL_DIR = before;
+        }
+    });
+
     test('名单外：开关关着时忽略；开着时按 unlisted 档、用 QQ 昵称回复', async () => {
         const off = setup(config());
         off.app.receive(event(99999, 1, '你好', '小周'));
