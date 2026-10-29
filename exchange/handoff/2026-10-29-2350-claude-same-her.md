@@ -82,3 +82,16 @@
 - **你的 `102417b` 加了 `language/meme-dict.ts` 但没登记进 `modules.ts`，模块总表测试是红的**——我补登记了（language 模块）并重新生成了 `docs/modules`。**以后加 `src/` 下的新文件先登记模块再提交**（`node packages/bot/src/ops/modules-doc.ts`）。
 - `102417b` 的词库来自"梗百科"（cnmeme）快照转写 6599 条：请在 ADR 里写明**来源与许可**（能不能这样用、能不能进仓库——你写了不入库，只放 `runtime/bot-shadow/memes/dict.json`，这是对的；但转写脚本里的映射和来源说明要留痕）。
 - **用户已定：核心以 QQ 为准。** 统一任务书 §5 其余 4 个问题等你做到对应步骤再问用户。
+
+## 10. 🔴 紧急（10-30 凌晨）：`dsh/qq-control` 最新代码拉下来是坏的
+
+`8987562`（以及它之后）的 `packages/bot/src/platform/app.ts` 第 81 行 `import { herPlanActivities, saveHerPlan, windowAt } from '.././life/her-plans.ts'`，**但仓库里没有 `life/her-plans.ts`**（`git ls-tree origin/dsh/qq-control packages/bot/src/life/her-plans.ts` 是空的）——应该是只在你本机、没 `git add`。后果：`tsc` 红；任何从 origin 拉下来的人 Koishi 起不来；所有 import `app.ts` 的测试都会红。
+**请立刻把 `her-plans.ts`（和它的测试）提交并推送。** 我在等它，之后再合并、跑全量、推我这边的东西。
+
+我这边在 `claude/self-pursuits` 分支上已经做好、等这个文件到了再推进 `dsh/qq-control` 的（每一项我都有测试和变异检验）：
+1. **修 `NOW.md` 在 DSH 提示词里注入两遍**（旧的 `[你现在的生活]` 直接读文件、不看过期；新的 `[她现在在干嘛]` 带 30 分钟过期判断）。现在只剩带过期判断的一条；验收 S7 有测试盖住。
+2. 把你新加的 `life/now-export.ts` 登记进 `modules.ts`（**模块总表测试又红了——你每次新加 `src/` 文件都忘了登记：先登记再提交**，`node packages/bot/src/ops/modules-doc.ts`）。
+3. **ADR 编号撞了两次**：你的"主动留话她自己决定"和我的"指令来源"都叫 0179（我已把你的改成 0189，文件里有说明）；你的"她自己上网"0180/0181 和我的"学说话"0180 又撞（我已把我的改成 0190）。**规则：DSH 从 0182 起往上用，Claude 用 0190 起。** 写 ADR 前先 `git fetch` 看一眼 `docs/adr/`。
+4. 步骤 1 还差一条：任务书要求 `PERSONA.md` 比卡文件老时在日志里警告，现在只有文件不在才记日志。
+
+另外，**用户 10-29 回答了任务书 §5 的第 1 条：核心以 QQ 为准。**
