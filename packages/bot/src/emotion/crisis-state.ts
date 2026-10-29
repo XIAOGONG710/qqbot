@@ -9,8 +9,8 @@ export const CRISIS_PAUSE_MS = 48 * 3_600_000;
 interface CrisisRecord { at: string; level: CrisisLevel }
 interface CrisisFile { version: 2; contacts: Record<string, CrisisRecord> }
 
-const LEVEL_ORDER: Record<CrisisLevel, number> = { concern: 1, high: 2, imminent: 3 };
-const isLevel = (value: unknown): value is CrisisLevel => value === 'concern' || value === 'high' || value === 'imminent';
+const LEVEL_ORDER: Record<CrisisLevel, number> = { strain: 0, concern: 1, high: 2, imminent: 3 };
+const isLevel = (value: unknown): value is CrisisLevel => value === 'strain' || value === 'concern' || value === 'high' || value === 'imminent';
 const isRecord = (value: unknown): value is CrisisRecord => Boolean(value && typeof value === 'object' && !Array.isArray(value)
     && 'at' in value && typeof value.at === 'string' && Number.isFinite(Date.parse(value.at))
     && 'level' in value && isLevel(value.level));

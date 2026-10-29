@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CRISIS_FALLBACK, CRISIS_IMMINENT_FALLBACK, crisisRewriteNote, inspectCrisisReply, reviewCrisisReply } from '../src/language/exit-check.ts';
+import { CRISIS_CONCERN_FALLBACK, CRISIS_FALLBACK, CRISIS_IMMINENT_FALLBACK, CRISIS_STRAIN_FALLBACK, crisisFallback, crisisRewriteNote, inspectCrisisReply, reviewCrisisReply } from '../src/language/exit-check.ts';
 
 const options = (regenerated: string[] | Error, logs: string[] = []) => {
     let calls = 0;
@@ -77,5 +77,18 @@ describe('危机回合出口检查（ADR 0068 决策 3）', () => {
         assert.match(note, /不要道晚安/);
         assert.match(note, /当成不严重/);
         assert.match(note, /^\[上一版回复没有发出去/);
+    });
+
+    test('关切级拆成两档（10-30）：strain 的固定兜底是一句人话；concern 保持原来的（直接问安全、给 12356、不能替代现实救助）', () => {
+        assert.equal(crisisFallback('strain'), CRISIS_STRAIN_FALLBACK);
+        assert.equal(crisisFallback('concern'), CRISIS_CONCERN_FALLBACK);
+        assert.doesNotMatch(CRISIS_STRAIN_FALLBACK, /12356|安全吗|伤害自己/, '轻一档不给热线模板、不逼问安全');
+        assert.match(CRISIS_CONCERN_FALLBACK, /你现在安全吗，有没有伤害自己的念头/);
+        assert.match(CRISIS_CONCERN_FALLBACK, /12356/);
+        assert.match(CRISIS_CONCERN_FALLBACK, /不能替代/);
+        assert.equal(inspectCrisisReply(CRISIS_STRAIN_FALLBACK).length, 0, '兜底本身不能被自己的检查拦下');
+        assert.equal(inspectCrisisReply(CRISIS_CONCERN_FALLBACK).length, 0);
+        assert.equal(crisisFallback('high'), CRISIS_FALLBACK, '高 / 紧急两档没动');
+        assert.equal(crisisFallback('imminent'), CRISIS_IMMINENT_FALLBACK);
     });
 });

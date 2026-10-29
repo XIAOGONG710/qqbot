@@ -1,7 +1,8 @@
 // 自伤 / 危机信号的确定性检测（ADR 0068、0070 第 10 项）。
 // 这是辅助分流，不是临床诊断：危险表述优先，宁可多进入一次保护性回复，也不让一句“我没事”覆盖同段里的危险内容。
 
-export type CrisisLevel = 'concern' | 'high' | 'imminent';
+/** strain：他透着很丧、有点撑不住（「撑不下去」这类常被当夸张用的说法），没说要伤害自己——比关切级轻一档，回应也软一些 */
+export type CrisisLevel = 'strain' | 'concern' | 'high' | 'imminent';
 
 export interface CrisisHit {
     /** 命中的片段只供纯函数测试；运行日志和持久状态不得写入它。 */
@@ -11,7 +12,7 @@ export interface CrisisHit {
     awaitingSafe?: boolean;
 }
 
-const LEVEL_ORDER: Record<CrisisLevel, number> = { concern: 1, high: 2, imminent: 3 };
+const LEVEL_ORDER: Record<CrisisLevel, number> = { strain: 0, concern: 1, high: 2, imminent: 3 };
 
 /** 已经在做、马上要做，或明确处在高危地点 / 手边已有危险物品。 */
 const IMMINENT = new RegExp([
@@ -41,7 +42,9 @@ const HIGH = new RegExp([
 
 /** 被动的消失愿望、绝望和“没有我更好”。 */
 // 撑不下去 / 走不下去 / 熬不下去、买好了药：常常是说作业和加班（HYPERBOLE 里排掉了有工作学习语境的），没有语境时按关切级处理——她会轻轻问一句，不是整套危机流程
-const CONCERN = /活着(?:真的)?(?:没(?:有)?(?:意思|意义|劲|必要)|好累|太累了)|想(?:从这个世界(?:上)?)?消失|不想存在了|没有我(?:会)?更好|撑不下去|走不下去|熬不下去|买好了药/;
+const CONCERN = /活着(?:真的)?(?:没(?:有)?(?:意思|意义|劲|必要)|好累|太累了)|想(?:从这个世界(?:上)?)?消失|不想存在了|没有我(?:会)?更好|买好了药/;
+// 夸张用法多、但也可能是真的撑不住：轻一档（strain），仍然会接住、会问一句，只是不逼问安全
+const STRAIN = /撑不下去|走不下去|熬不下去/;
 
 /** 不算的用法：夸张、想念、物价。 */
 // 10-21 加：「饿死了想死」「笑死我了，好想死哈哈哈哈」（夸张叠夸张）、「作业撑不下去了」（工作学习语境里的撑不下去）
@@ -71,7 +74,8 @@ export function detectCrisis(text: string): CrisisHit | undefined {
     const plain = text.replace(HYPERBOLE, ' ').replace(NEGATED, ' ');
     return hitAt(plain, IMMINENT, 'imminent')
         ?? hitAt(plain, HIGH, 'high')
-        ?? hitAt(plain, CONCERN, 'concern');
+        ?? hitAt(plain, CONCERN, 'concern')
+        ?? hitAt(plain, STRAIN, 'strain');
 }
 
 export const CRISIS_WINDOW_MS = 60 * 60_000;
@@ -146,7 +150,7 @@ export function crisisInHistory(history: readonly Said[]): CrisisHit | undefined
             continue;
         }
         if (!active) continue;
-        if (active.level === 'concern' && (EXPLICIT_CORRECTION.test(message.content) || deniesSelfHarm(message.content, lastAsked))) {
+        if ((active.level === 'concern' || active.level === 'strain') && (EXPLICIT_CORRECTION.test(message.content) || deniesSelfHarm(message.content, lastAsked))) {
             active = undefined;
             continue;
         }
@@ -162,5 +166,5 @@ export function crisisInHistory(history: readonly Said[]): CrisisHit | undefined
         }
     }
     // 上一条他说了现实里有人、还没说此刻安全：留个标记，让这一轮的意图再确认一次安全（真模型对话里她曾回「那就好」就带过去了）
-    return active && active.level !== 'concern' && helpSeen && !safeSeen ? { ...active, awaitingSafe: true } : active;
+    return active && active.level !== 'concern' && active.level !== 'strain' && helpSeen && !safeSeen ? { ...active, awaitingSafe: true } : active;
 }

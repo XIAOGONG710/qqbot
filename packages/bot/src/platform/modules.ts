@@ -62,7 +62,7 @@ export const MODULES: readonly ModuleDef[] = [
         files: ['emotion/affect.ts', 'emotion/feelings.ts', 'emotion/moments.ts', 'emotion/grievance.ts', 'emotion/crisis.ts', 'emotion/crisis-state.ts', 'emotion/disclosure.ts', 'emotion/feedback.ts', 'emotion/feedback-digest.ts', 'emotion/feedback-digest-cli.ts'],
         groups: [],
         metrics: '周报日志计数里的「心境」「会拒绝」；危机相关永远是最高优先级，没有“指标”，只有测试和 ADR 0068 的底线',
-        adrs: ['0067', '0068', '0074', '0102', '0103'],
+        adrs: ['0067', '0068', '0074', '0102', '0103', '0191'],
     },
     {
         id: 'proactive', name: '主动找他',

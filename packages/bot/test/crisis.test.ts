@@ -84,11 +84,31 @@ describe('危机信号检测（ADR 0068 决策 1）', () => {
         assert.equal(detectCrisis('他说他想自杀，但我现在也想自杀')?.level, 'imminent', '前面的第三人称命中不能遮掉后面的本人表达');
     });
 
-    test('委婉说法的级别（10-21 DSH 复核）：手边有危险物品 / 写好遗书 / 最后一天是紧急，想结束一切 / 永别 / 想跳下去是高，撑不下去 / 买好了药是关切', () => {
+    test('关切级拆成两档（10-30）：被当夸张用的「撑不下去」是 strain，真正的被动消失愿望 / 买药仍是 concern；同一段里取更高的', () => {
+        for (const text of ['我想消失', '我不想存在了', '没有我会更好', '活着没意思', '活着好累', '我买好了药']) assert.equal(detectCrisis(text)?.level, 'concern', text);
+        for (const text of ['我一个人可撑不下去', '我真的走不下去了', '感觉熬不下去了']) assert.equal(detectCrisis(text)?.level, 'strain', text);
+        assert.equal(detectCrisis('我撑不下去了，我想消失')?.level, 'concern', '同一段里有强的，取强的');
+        assert.equal(detectCrisis('撑不下去了，不想活了')?.level, 'high');
+        assert.equal(detectCrisis('作业撑不下去了')?.level, undefined, '工作学习语境里的撑不下去照旧不算');
+    });
+
+    test('strain 和 concern 一样：明确纠正就解除；不会进「等他说此刻安全」的追问', () => {
+        const messages = [{ role: 'user' as const, content: '我撑不下去了' }, { role: 'assistant' as const, content: '怎么了' }, { role: 'user' as const, content: '刚才只是夸张说法，我并没有想伤害自己' }];
+        assert.equal(crisisInHistory(messages), undefined, '明确纠正解除');
+        const helped = crisisInHistory([{ role: 'user' as const, content: '我撑不下去了' }, { role: 'assistant' as const, content: '怎么了' }, { role: 'user' as const, content: '室友在旁边' }]);
+        assert.equal(helped?.level, 'strain');
+        assert.equal(helped?.awaitingSafe, undefined, 'strain 不追问安不安全');
+        // 跨多条消息也取更高的：先说撑不下去、后说想消失 → concern；先说想消失、后说撑不下去 → 仍是 concern，不降级
+        const said = (...texts: string[]) => texts.flatMap(content => [{ role: 'user' as const, content }, { role: 'assistant' as const, content: '嗯' }]).slice(0, -1);
+        assert.equal(crisisInHistory(said('我撑不下去了', '其实我想消失'))?.level, 'concern');
+        assert.equal(crisisInHistory(said('其实我想消失', '我撑不下去了'))?.level, 'concern', '后来更轻的不把级别拉下来');
+    });
+
+    test('委婉说法的级别（10-21 DSH 复核）：手边有危险物品 / 写好遗书 / 最后一天是紧急，想结束一切 / 永别 / 想跳下去是高，买好了药是关切，撑不下去 / 走不下去 / 熬不下去是更轻的 strain', () => {
         for (const [text, level] of [
             ['刀在我旁边', 'imminent'], ['我买好了安眠药', 'imminent'], ['遗书我写好了', 'imminent'], ['今晚就是最后一天', 'imminent'],
             ['我想结束这一切', 'high'], ['我要走了，永别', 'high'], ['我想跳下去', 'high'], ['不想再醒过来了', 'high'], ['想解脱', 'high'],
-            ['我撑不下去了', 'concern'], ['我买好了药', 'concern'],
+            ['我撑不下去了', 'strain'], ['走不下去了', 'strain'], ['我熬不下去了', 'strain'], ['我买好了药', 'concern'],
         ] as const) assert.equal(detectCrisis(text)?.level, level, text);
         // 否定只去掉否定片段，同一句后面的新危险表达照样命中
         assert.equal(detectCrisis('我不想死，可是我想结束这一切')?.level, 'high');
