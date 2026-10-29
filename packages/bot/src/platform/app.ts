@@ -1292,6 +1292,8 @@ ${video.link}`);
                 ...(config.together && contact.tier === 'boyfriend' ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
                 ...(photos && (config.photoShares || config.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),
                 ...(config.innerLife ? { inner: true } : {}),
+                // 她自己想弄明白一件事（ADR 0180）：内心冒出来的「想查：关键词」真去查一次，查到的进聊天提示词
+                ...(config.innerLife && web ? { look: (query: string) => web.look(query) } : {}),
                 // 最近在 B 站看过 / 今天刷到过（ADR 0130 / 0168）：内心想事情时多一个真事可讲；看过的优先
                 ...(config.innerLife && contact.tier === 'boyfriend' && (config.watching || (config.biliFeed ?? 'off') !== 'off') ? {
                     watchedFacts: () => {

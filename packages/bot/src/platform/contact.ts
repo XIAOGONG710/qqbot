@@ -778,8 +778,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 说过了就不再自己提（ADR 0098）：事实还在时间块里，他问起来照常答
             const toldLine = told.length && !thinking ? `[这些事你已经主动跟他说过了：${told.join('、')}。他不问，就别再自己提]` : undefined;
             if (toldLine) log(`已经主动说过：${told.join('、')}（提示词里让她不再自己提）`);
-            // 她最近心里在想的（ADR 0101）：前后是同一个在想事情的人
-            const innerNow = !initiate && !crisisNow ? options.innerLine?.() : undefined;
+            // 她最近心里在想的（ADR 0101）：前后是同一个在想事情的人；主动找他时也带上（她主动说的常常就是这些念头，
+            // 还有她自己上网查到的，ADR 0180）
+            const innerNow = !crisisNow ? options.innerLine?.() : undefined;
             if (innerNow) log('内心：这一轮提示词里放了她最近的念头');
             // 「/亲热」（ADR 0170）：他刚让她黏一点，接下来几条回复里放一行；每生成一条取一次
             const intimateNow = !initiate && !crisisNow ? options.intimacyLine?.() : undefined;

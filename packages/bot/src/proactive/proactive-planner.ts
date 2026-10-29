@@ -37,7 +37,7 @@ import { unwellNews, worldNews, type WorldNews, type WorldNow } from '.././world
 import { formatDate, stateAt, wakeOn, type Schedule } from '../life/schedule.ts';
 import { pendingMessages, pick } from '.././social/reply-timing.ts';
 import {
-    innerLine as innerLineOf, parseThought, pendingIntents, THINK_AFTER_CHAT_MS, THINK_AFTER_WAKE_MS, THINK_INTERVAL_MIN, THINK_MAX_PER_DAY, THINK_MIN_GAP_MS, THINK_RETRY_MS, thinkNote, THOUGHTS_KEPT, type InnerState,
+    innerLine as innerLineOf, learnedLine, LEARNED_KEPT, parseThought, pendingIntents, THINK_AFTER_CHAT_MS, THINK_AFTER_WAKE_MS, THINK_INTERVAL_MIN, THINK_MAX_PER_DAY, THINK_MIN_GAP_MS, THINK_RETRY_MS, thinkNote, THOUGHTS_KEPT, type InnerState,
 } from './inner.ts';
 
 /** 记录留多少天 */
@@ -179,6 +179,11 @@ export interface PlannerDeps {
     crisisPaused?: (now: number) => boolean;
     /** 内心（ADR 0101，配置 innerLife）：每隔一阵她自己想一想，念头存在状态文件里；想告诉他 / 想问他的变成“心里惦记”的主动消息 */
     inner?: boolean;
+    /**
+     * 她自己想弄明白一件事（ADR 0180，配置 webLookup 开着）：念头里写了「想查：关键词」就调它真去查，
+     * 返回摘出来的几条事实；没查成返回 undefined（她照实说不知道）
+     */
+    look?: (query: string) => Promise<string[] | undefined>;
 }
 
 export interface PlannerStatus {
@@ -579,6 +584,17 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             return;
         }
         inner = { ...inner, thoughts: [...inner.thoughts, parsed.thought].slice(-THOUGHTS_KEPT), ...(forceWatch && watched ? { reflected: [...(inner.reflected ?? []), watched.id].slice(-30) } : {}) };
+        // 她自己想弄明白的事（ADR 0180）：念头里写了「想查：关键词」就真去查一次，查到的存起来，下次聊天里能带到
+        if (parsed.wants && deps.look) {
+            const facts = await deps.look(parsed.wants).catch(() => undefined);
+            if (facts?.length) {
+                const learned = { id: `lk-${started}`, at: new Date(started).toISOString(), query: parsed.wants, facts };
+                inner = { ...inner, learned: [...(inner.learned ?? []), learned].slice(-LEARNED_KEPT) };
+                deps.log(`内心${tag}：想知道「${logBody(parsed.wants)}」，查到了 ${facts.length} 条`);
+            } else {
+                deps.log(`内心${tag}：想知道「${logBody(parsed.wants)}」，没查到`);
+            }
+        }
         save();
         deps.log(`内心${tag}：${logBody(parsed.thought.text)}（${GOES_LABEL[parsed.thought.goes]}）`);
     }
@@ -677,7 +693,9 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             stopped = true;
             wake?.abort();
         },
-        innerLine: () => (deps.inner ? innerLineOf(inner.thoughts, now()) : undefined),
+        innerLine: () => (deps.inner
+            ? [innerLineOf(inner.thoughts, now()), learnedLine(inner.learned, now())].filter(Boolean).join('\n') || undefined
+            : undefined),
         status: () => ({
             mode: deps.mode,
             ...(next ? { next: { at: next.at, label: candidateLabel(next) } } : {}),

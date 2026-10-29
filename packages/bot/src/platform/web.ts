@@ -342,6 +342,36 @@ export class WebLookup {
         return line;
     }
 
+    /**
+     * 她自己想弄明白一件事（ADR 0180）：内心想事的时候冒出来的「想查：关键词」，直接查，不管他那句话里有没有触发词。
+     * 返回摘出来的几条事实；没查成、没额度、资料里没有都返回 undefined（她照实说不知道）。
+     */
+    async look(query: string): Promise<string[] | undefined> {
+        if (!this.enabled) return undefined;
+        const q = clip(String(query || '').trim(), 30);
+        if (q.length < 2) return undefined;
+        const now = this.#options.now?.() ?? new Date();
+        if (this.#usedToday(now) >= (this.#options.dailyLimit ?? DAILY_LIMIT)) {
+            this.#options.log?.('上网：今天的额度用完了，她自己想查的这次先不查');
+            return undefined;
+        }
+        this.#use(now);
+        const material = await this.#gather({ kind: 'search', query: q, explicit: true });
+        if (!material.ok) {
+            this.#options.log?.(`上网：她自己想查「${clip(q, 16)}」，没查成（${material.reason}）`);
+            this.#options.onDone?.({ kind: 'search', summary: `她自己想查「${clip(q, 16)}」，没查成`, ok: false });
+            return undefined;
+        }
+        const facts = await this.#extract(q, material.text);
+        this.#options.onDone?.({ kind: 'search', summary: `她自己上网查了「${clip(q, 16)}」`, ok: Boolean(facts) });
+        if (!facts) {
+            this.#options.log?.('上网：她自己查了，但资料里没有和问题有关的');
+            return undefined;
+        }
+        this.#options.log?.(`上网：她自己查了「${clip(q, 16)}」，摘出 ${facts.length} 条（日志不记内容）`);
+        return facts;
+    }
+
     async #gather(plan: LookupPlan): Promise<{ ok: true; text: string; label: string; source: string } | { ok: false; reason: string }> {
         if (plan.kind === 'read') {
             const page = await readPage(plan.url, { fetch: this.#fetch, ...(this.#options.resolve ? { resolve: this.#options.resolve } : {}) });

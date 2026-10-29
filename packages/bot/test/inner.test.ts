@@ -38,6 +38,15 @@ describe('内心：解析念头', () => {
         assert.equal((parseThought('有点困，想睡又不想睡', [], 1) as { thought: InnerThought }).thought.goes, 'keep', '没写去向 = 自己想想');
     });
 
+    test('第三行「想查：关键词」= 她这会儿想弄明白的事（ADR 0180）；带链接、超过 15 个字的不收', () => {
+        const withWants = parseThought('那部剧到底哪年播的，我怎么想不起来了\n自己想想\n想查：某某剧 播出年份', [], 1) as { thought: InnerThought; wants?: string };
+        assert.equal(withWants.wants, '某某剧播出年份');
+        assert.equal(withWants.thought.text, '那部剧到底哪年播的，我怎么想不起来了');
+        assert.equal((parseThought('随便想想\n自己想想', [], 1) as { wants?: string }).wants, undefined, '没写就不查');
+        assert.equal((parseThought('这个事我一直没弄明白\n自己想想\n想查：https://x.com/a', [], 1) as { wants?: string }).wants, undefined, '带链接的不查');
+        assert.equal((parseThought('这个事我一直没弄明白\n自己想想\n想查：一二三四五六七八九十一二三四五六', [], 1) as { wants?: string }).wants, undefined, '超过 15 个字');
+    });
+
     test('不合格的不留：空的、太短、太长、带链接 / 表情指令 / 表情、和最近的重复', () => {
         assert.deepEqual(parseThought('  \n ', [], 1), { rejected: '空的' });
         assert.deepEqual(parseThought('嗯\n自己想想', [], 1), { rejected: '太短' });
