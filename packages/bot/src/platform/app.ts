@@ -44,7 +44,7 @@ import { inspectReply, summarizeIssues, type ExitIssue } from '.././language/exi
 import { ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
-import { readWorkMode, setWorkMode } from './work-mode.ts';
+import { readWorkMode, setWorkMode, takeWorkMarker, WORK_MARKER } from './work-mode.ts';
 import { noteResident, runWorkTask, rememberWorkTask } from './work-bridge.ts';
 import { addSoulRating, appendPrivate, addRefusal, recentRefusals, ratingSummary, soulDir } from './soul-rating.ts';
 import { momentsReader } from '.././emotion/moments.ts';
@@ -689,6 +689,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 每个联系人一个回复器：聊天记录、生成和重新生成都互不影响
     const responders = new Map<number, Responder>(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
 
+    /** 他这一条原本说的话：她写 `<<用电脑>>` 时，要拿它去干活（标记发出去之前就得留住） */
+    const lastUserText = new Map<number, string>();
+
     // 没回时告诉他原因（ADR 0173）：他连着发了几条都没回、过了一会儿，用「（」开头的运维提示说一次；他也可以随时发 /为什么 问
     const silenceDeps = (owner: Contact) => ({
         dataDir: config.dataDir, qq: owner.qq, now: () => clockNow().getTime(),
@@ -703,6 +706,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         return timer;
     })() : undefined;
     if (config.silenceNotice) log(deviceOwner ? '没回时告诉他原因：开（连着 2 条以上、第一条过 8 分钟还没回就说一次；/为什么 随时问）' : '没回时告诉他原因：开着，但名单里没有男朋友档，不通知');
+
     /** 名单外临时建了回复器的好友（状态页要显示称呼和档位） */
     const unlisted = new Map<number, Contact>();
 
@@ -742,6 +746,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             .replace(/<<查[：:][\s\S]*?>>/g, '')
             .replace(/<<同意工作>>/g, '')
             .replace(/<<拒绝工作[：:][\s\S]*?>>/g, '')
+            .split(WORK_MARKER).join('')
             .replace(/\n{2,}/g, '\n')
             .trim();
     }
@@ -754,6 +759,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(openCardFor(contact) ? { openCard: openCardFor(contact)! } : {}),
             ...(contact.tier === 'boyfriend' ? {
                 workMode: () => readWorkMode(config.dataDir, contact.qq) === 'work',
+                workJudge: () => readWorkMode(config.dataDir, contact.qq) === 'chat',
                 workRequest: () => readWorkMode(config.dataDir, contact.qq) === 'pending',
                 refusalLine: () => recentRefusals(),
                 ratingLine: () => ratingSummary(),
@@ -864,6 +870,32 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     addRefusal(reason);
                     text = text.replace(/<<拒绝工作[：:][\s\S]*?>>/g, '').trim();
                     log(`[${userId}] 她拒绝了切工作：${reason.slice(0, 40)}`);
+                }
+                // 她自己判断这条要动电脑（2026-10-29）：当轮交给 dsh 干，干完把结果单独发回去。
+                // 不落工作模式，所以他不用发 /dsh，也不用事后 /QQ 切回来
+                if (contact.tier === 'boyfriend') {
+                    const judged = takeWorkMarker(text);
+                    if (judged.wanted) {
+                        text = judged.text;
+                        const task = lastUserText.get(userId);
+                        if (task) {
+                            const recent = history.load(userId).slice(-10)
+                                .map(message => `${message.role === 'user' ? '他' : '我'}：${message.content}`)
+                                .join('\n');
+                            log(`[${userId}] 她判断这条要动电脑：${task.slice(0, 60)}`);
+                            void runWorkTask(task, { context: recent })
+                                .then(async reply => {
+                                    await transport.sendPrivateText(userId, reply);
+                                    void rememberWorkTask(task, reply);
+                                })
+                                .catch(error => {
+                                    log(`[${userId}] 她判断要动电脑、没干成：${error instanceof Error ? error.message : String(error)}`);
+                                    void transport.sendPrivateText(userId, '这个没弄成，等下我再看。').catch(() => {});
+                                });
+                        } else {
+                            log(`[${userId}] 她写了 ${WORK_MARKER}，但没留住他这一条`);
+                        }
+                    }
                 }
                 if (!text.trim()) return 0;
                 const photo = contact.tier === 'boyfriend' ? photos?.resolve(text) : undefined;
@@ -1606,6 +1638,7 @@ ${body}
     function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string): void {
         const text = segmentsToText(message, quoteLookup(event.user_id)).trim();
         if (!text) return;
+        lastUserText.set(event.user_id, text);
         // 连续生活：他一句话会改变她的心情/关系（不挡回复）
         void noteResident({ text, from: event.user_id === deviceOwner?.qq ? 'baobao' : 'classmate' });
         // 工作模式：不进普通聊天回复器，交给 headless 的她干活，干完再回（工具桥）

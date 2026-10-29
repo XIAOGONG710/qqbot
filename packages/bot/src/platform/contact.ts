@@ -83,6 +83,9 @@ const SELF_MEMORY_NOTE = '记忆由你自己决定：只有这条真的值得长
 /** 他在求她切工作：答不答应由她，可以提条件 */
 const WORK_REQUEST_NOTE = '他在求你切到工作模式。你可以答应、可以拒绝、也可以提条件（比如先陪你聊十分钟）。答应就在回复最后写 `<<同意工作>>`；拒绝就写 `<<拒绝工作：原因>>`。两个都不写就算没答应，他还在聊天模式。';
 
+/** 她自己决定要不要动电脑：不用他先发 /dsh，也不用事后 /QQ 切回来 */
+const WORK_JUDGE_NOTE = '他这条要是得真动电脑才办得到（跑命令、改代码、看文件、装东西、上网查东西、替他操作软件），就在回复最后另起一行写 `<<用电脑>>`，系统会把这条交给你去做，做完你照结果回他；只是聊天、聊打算、开玩笑、问你觉得——都别写。这个标记不会发出去。';
+
 /** 召回整理出来的一段有几条（第一行是标题） */
 const countLines = (text: string) => text.split('\n').length - 1;
 
@@ -174,6 +177,8 @@ export interface ContactPipelineOptions {
     photos?: PhotoShelf;
     /** 他刚在 QQ 里切到工作模式（/dsh）：这轮按「帮他干活」说话，语气不变 */
     workMode?: () => boolean;
+    /** 她在聊天模式里，由她自己判断这条要不要动电脑（不用他先发 /dsh） */
+    workJudge?: () => boolean;
     /** 他在求她切工作模式：她可以答应/拒绝/提条件 */
     workRequest?: () => boolean;
     /** 她最近拒绝过的事：让她记得自己的拒绝 */
@@ -852,6 +857,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(options.ratingLine?.() ? [options.ratingLine()!] : []),
                         ...(options.lifeLine?.() ? [`[你现在的生活] ${options.lifeLine()!}`] : []),
                         ...(options.workRequest?.() ? [WORK_REQUEST_NOTE] : []),
+                        ...(options.workJudge?.() ? [WORK_JUDGE_NOTE] : []),
                         ...(options.workMode?.() ? [WORK_MODE_NOTE] : []),
                         ...(deliberateNow ? [DELIBERATE_NOTE] : []),
                         ...(length ? [describeLength(length, options.shortReplies)] : []),
