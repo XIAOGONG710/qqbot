@@ -2199,15 +2199,16 @@ describe('设备控制：他的命令在回复器之前截住（ADR 0148）', ()
         assert.deepEqual(chat(cfg, 10001), [], '命令不进聊天记录');
     });
 
-    test('「/屏幕 看这个」：看完的描述成了他这一条消息，她照常回；聊天记录里是描述，没有图', async () => {
+    test('「/屏幕 看这个」：先问她（她有权拒绝，2026-10-30），没点头之前不截屏', async () => {
         const cfg = config({ contacts: bf, deviceControl: 'on' });
         const fake = fakeDevices();
         const { app, sent } = setup(cfg, {}, { startDevices: fake.start });
         await new Promise(r => setTimeout(r, 30));
         app.receive(event(10001, 2, '/屏幕 看这个'));
         await until(() => sent.length === 1);
-        assert.equal(sent[0], '10001:好');
-        assert.deepEqual(chat(cfg, 10001), ['user:[他让你看了一眼他的电脑屏幕：一份文档] 看这个', 'assistant:好']);
+        assert.match(sent[0]!, /我跟她说了/);
+        assert.deepEqual(chat(cfg, 10001), [], '命令不进聊天记录');
+        assert.deepEqual(fake.jobs, [], '她还没答应，什么都不做');
     });
 
     test('没有待批准时「批准」是普通的话；「屏幕，好亮」这种闲聊也是；都照常回', async () => {

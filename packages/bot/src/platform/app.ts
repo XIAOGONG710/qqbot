@@ -105,6 +105,7 @@ import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
 import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
+import { askExpired, askLine, takeConsent } from './consent.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -773,6 +774,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
 
     /** 名单外临时建了回复器的好友（状态页要显示称呼和档位） */
     const unlisted = new Map<number, Contact>();
+    /** 他提给她、等她点头的请求（看屏幕 / 摄像头……）：她写 <<同意>> 才做，写 <<拒绝：原因>> 就作罢（2026-10-30） */
+    const pendingAsk = new Map<number, { label: string; at: number; run: () => Promise<{ kind: string; text?: string }> }>();
 
     /** 最近几轮 + 要点（ADR 0043）：开了 contextTurns、这个人开了记忆、在灰度名单里（空 = 都开）才给；整理好的要点存在 context/<QQ>.json */
     function contextWindowFor(contact: Contact): Pick<ContactPipelineOptions, 'contextWindow'> {
@@ -810,6 +813,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             .replace(/<<查[：:][\s\S]*?>>/g, '')
             .replace(/<<同意工作>>/g, '')
             .replace(/<<拒绝工作[：:][\s\S]*?>>/g, '')
+            .replace(/<<拒绝[：:][\s\S]*?>>/g, '')
+            .replace(/<<同意>>/g, '')
             .split(WORK_MARKER).join('')
             .replace(/\n{2,}/g, '\n')
             .trim();
@@ -824,6 +829,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(contact.tier === 'boyfriend' ? {
                 workMode: () => readWorkMode(config.dataDir, contact.qq) === 'work',
                 workJudge: () => readWorkMode(config.dataDir, contact.qq) === 'chat',
+                ask: (): string | undefined => {
+                    const pending = pendingAsk.get(contact.qq);
+                    if (!pending || askExpired(pending.at, Date.now())) return undefined;
+                    return askLine(pending.label, Math.floor((Date.now() - pending.at) / 60_000));
+                },
                 workRequest: () => readWorkMode(config.dataDir, contact.qq) === 'pending',
                 refusalLine: () => recentRefusals(),
                 ratingLine: () => ratingSummary(),
@@ -981,6 +991,27 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                         } else {
                             log(`[${userId}] 她写了 ${WORK_MARKER}，但他最后那一条不是亲手打的字（ADR 0179），不动电脑`);
                             tellOwner(WANTED_BUT_NOT_TYPED_NOTICE);
+                        }
+                    }
+                }
+                // 他提给她的请求（看屏幕 / 摄像头）：她写了 <<同意>> 就做，写了 <<拒绝：原因>> 就作罢（2026-10-30）
+                if (contact.tier === 'boyfriend') {
+                    const judged = takeConsent(text);
+                    if (judged.refusal !== undefined) {
+                        text = judged.text;
+                        const pending = pendingAsk.get(userId);
+                        pendingAsk.delete(userId);
+                        log(`[${userId}] 她拒绝了：${judged.refusal || '不想'}${pending ? '（撤掉了他的请求）' : ''}`);
+                        void transport.sendPrivateText(userId, `（她说：${judged.refusal || '这个不想'}）`).catch(() => {});
+                    } else if (judged.consent) {
+                        text = judged.text;
+                        const pending = pendingAsk.get(userId);
+                        if (pending && !askExpired(pending.at, Date.now())) {
+                            pendingAsk.delete(userId);
+                            log(`[${userId}] 她答应了：${pending.label}`);
+                            void pending.run().then(async handled => {
+                                if (handled.kind === 'reply' && handled.text) await transport.sendPrivateText(userId, handled.text);
+                            }).catch(error => log(`[${userId}] 她答应了但没做成：${error instanceof Error ? error.message : String(error)}`));
                         }
                     }
                 }
@@ -1687,13 +1718,10 @@ ${body}
                 return;
             }
             if (outcome?.kind === 'capture') {
-                const target = responder;
-                void outcome.run().then(async handled => {
-                    if (stopped) return;
-                    if (handled.kind === 'reply') { await transport.sendPrivateText(event.user_id, handled.text); return; }
-                    target.receive(handled.text, event.message_id, new Date(event.time * 1000));
-                    planners.get(event.user_id)?.poke();
-                }).catch(error => log(`设备控制：看屏幕 / 摄像头出错（${error instanceof Error ? error.message : String(error)}）`));
+                // 她有权拒绝（用户 10-30）：先把请求提给她，不直接做
+                pendingAsk.set(event.user_id, { label: '看你的屏幕或摄像头', at: Date.now(), run: outcome.run });
+                void transport.sendPrivateText(event.user_id, '（我跟她说了，她愿意就给我看）').catch(error => log(`设备控制：话说没发出去：${error instanceof Error ? error.message : String(error)}`));
+                planners.get(event.user_id)?.poke();
                 return;
             }
         }

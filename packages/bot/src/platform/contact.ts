@@ -195,6 +195,8 @@ export interface ContactPipelineOptions {
     lifeLine?: () => string | undefined;
     /** 梗百科词库（2026-10-29）：他这句里提到一个词，只读地查一眼，不写进她自己的梗库 */
     memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
+    /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
+    ask?: () => string | undefined;
     /** 首轮铺底（2026-10-29）：他走了很久回来，第一轮带上她自己写的那段日记；挂着 lifeInPrompt，不是新开关 */
     wakeNote?: () => string | undefined;
     /** 记忆由她自己决定：提示词里教她写 <<记住：…>> / <<日记：…>> 标记 */
@@ -895,6 +897,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(options.ratingLine?.() ? [options.ratingLine()!] : []),
                         ...(options.lifeLine?.() ? [`[你现在的生活] ${options.lifeLine()!}`] : []),
                         ...(options.wakeNote?.() ? [options.wakeNote()!] : []),
+                        ...(options.ask?.() ? [options.ask()!] : []),
                         ...(options.workRequest?.() ? [WORK_REQUEST_NOTE] : []),
                         ...(options.workJudge?.() ? [WORK_JUDGE_NOTE] : []),
                         ...(options.workMode?.() ? [WORK_MODE_NOTE] : []),
