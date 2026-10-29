@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { ABOUT_DAY_INTENT, CONTROL_INTENT, DECLINED_INVITE_INTENT, CRISIS_CONCERN_INTENT, CRISIS_STRAIN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, PRESSED_INTENT, saysOwnThing } from '../src/language/intent.ts';
+import { ABOUT_DAY_INTENT, CONTROL_INTENT, DECLINED_INVITE_INTENT, CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, PRESSED_INTENT, saysOwnThing } from '../src/language/intent.ts';
 import type { Schedule, State } from '../src/life/schedule.ts';
 
 const now = new Date('2026-10-06T20:00:00+08:00');
@@ -29,13 +29,10 @@ describe('这一轮你想（ADR 0019）', () => {
         }
         assert.doesNotMatch(CRISIS_INTENT, /[「“"]/, '不给可以照抄的台词');
         assert.equal(describeIntent({ history: [user('活着没意义')], now, crisis: 'concern' }), CRISIS_CONCERN_INTENT);
-        // 10-30 拆分：strain（「撑不下去」这类）用软的——先问一句怎么了、不逼问安全；concern 保持原来直接问安全的写法（ADR 0068）
-        assert.equal(describeIntent({ history: [user('我一个人可撑不下去')], now, crisis: 'strain' }), CRISIS_STRAIN_INTENT);
+        // 关切级是 ADR 0068 的原写法：直接问有没有伤害自己的念头、此刻安不安全、可以拨 12356（10-30 的 strain 档已删，ADR 0192）
         assert.match(CRISIS_CONCERN_INTENT, /有没有伤害自己的念头/);
-        assert.match(CRISIS_STRAIN_INTENT, /不用追问安不安全、不用问有没有伤害自己的念头/, '软的那档明说不追问');
-        assert.doesNotMatch(CRISIS_STRAIN_INTENT, /12356|温和而直接地问/);
-        assert.match(CRISIS_STRAIN_INTENT, /怎么了/);
-        assert.match(CRISIS_STRAIN_INTENT, /被问是不是真人或程序时如实承认你是程序/, '软的那档也保留 ADR 0068 的底线：被问如实承认是程序');
+        assert.match(CRISIS_CONCERN_INTENT, /12356/);
+        assert.match(CRISIS_CONCERN_INTENT, /被问是不是真人或程序时如实承认你是程序/);
         assert.equal(describeIntent({ history: [user('我现在就要自杀')], now, crisis: 'imminent' }), CRISIS_IMMINENT_INTENT);
         // 「有人了、还没说安全」那一步换成再确认安全的意图（用户 10-17 定的），但 ADR 0068 的底线条款一条不能少
         assert.equal(describeIntent({ history: [user('室友在我旁边')], now, crisis: 'high', crisisAwaitingSafe: true }), CRISIS_HELP_INTENT);

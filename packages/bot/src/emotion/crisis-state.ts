@@ -9,8 +9,8 @@ export const CRISIS_PAUSE_MS = 48 * 3_600_000;
 interface CrisisRecord { at: string; level: CrisisLevel }
 interface CrisisFile { version: 2; contacts: Record<string, CrisisRecord> }
 
-const LEVEL_ORDER: Record<CrisisLevel, number> = { strain: 0, concern: 1, high: 2, imminent: 3 };
-const isLevel = (value: unknown): value is CrisisLevel => value === 'strain' || value === 'concern' || value === 'high' || value === 'imminent';
+const LEVEL_ORDER: Record<CrisisLevel, number> = { concern: 1, high: 2, imminent: 3 };
+const isLevel = (value: unknown): value is CrisisLevel => value === 'concern' || value === 'high' || value === 'imminent';
 const isRecord = (value: unknown): value is CrisisRecord => Boolean(value && typeof value === 'object' && !Array.isArray(value)
     && 'at' in value && typeof value.at === 'string' && Number.isFinite(Date.parse(value.at))
     && 'level' in value && isLevel(value.level));
@@ -20,6 +20,11 @@ const isFile = (value: unknown): value is CrisisFile => Boolean(value && typeof 
     && Object.entries(value.contacts).every(([qq, record]) => /^\d+$/.test(qq) && isRecord(record)));
 
 function migrate(value: unknown): unknown {
+    // 10-30 的 strain 档已删（ADR 0192）：已经落盘的 strain 记录丢掉（不再暂停主动消息），不能让整份文件因它读不进来
+    if (value && typeof value === 'object' && !Array.isArray(value) && 'version' in value && value.version === 2
+        && 'contacts' in value && value.contacts && typeof value.contacts === 'object' && !Array.isArray(value.contacts)) {
+        return { ...value, contacts: Object.fromEntries(Object.entries(value.contacts).filter(([, record]) => !(record && typeof record === 'object' && 'level' in record && record.level === 'strain'))) };
+    }
     if (!value || typeof value !== 'object' || Array.isArray(value) || 'version' in value) return value;
     // v1: { "<qq>": "<ISO>" }. 旧记录没有分级，按 high 保守迁移。
     if (Object.entries(value).every(([qq, at]) => /^\d+$/.test(qq) && typeof at === 'string' && Number.isFinite(Date.parse(at)))) {

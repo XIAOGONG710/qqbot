@@ -53,17 +53,19 @@ describe('危机信号记录（ADR 0068 决策 5、6）', () => {
         assert.equal(JSON.parse(readFileSync(join(dir, 'crisis.json'), 'utf8')).version, 2);
     });
 
-    test('strain 可以存、可以读回；同一个人更强的级别盖过 strain，strain 盖不过强的', () => {
+    test('strain 档已删（ADR 0192）：旧版落盘的 strain 记录读进来时丢掉——不抛、不再暂停主动消息，别人的记录不受影响', () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-crisis-strain-'));
         dirs.push(dir);
         const t0 = Date.UTC(2026, 9, 30, 8, 0, 0);
+        const at = new Date(t0).toISOString();
+        writeFileSync(join(dir, 'crisis.json'), JSON.stringify({ version: 2, contacts: { 10002: { at, level: 'strain' }, 10003: { at, level: 'concern' } } }));
         const state = createCrisisState(dir, () => {});
-        state.mark(10002, t0, 'strain');
-        assert.deepEqual(state.last(10002), { at: t0, level: 'strain' });
-        assert.deepEqual(createCrisisState(dir, () => {}).last(10002), { at: t0, level: 'strain' }, '落盘后读得回来');
-        state.mark(10002, t0 + 1000, 'concern');
-        assert.equal(state.last(10002)?.level, 'concern');
-        state.mark(10002, t0 + 1000, 'strain');
-        assert.equal(state.last(10002)?.level, 'concern', '同一时刻更轻的不降级');
+        assert.equal(state.last(10002), undefined, 'strain 记录丢掉');
+        assert.equal(state.pausedAt(10002, t0 + 1000), false, '不再因为它暂停主动消息');
+        assert.deepEqual(state.last(10003), { at: t0, level: 'concern' }, '别的记录原样');
+        assert.equal(state.pausedAt(10003, t0 + 1000), true);
+        // 真正损坏的仍然失败关闭：级别写成别的词不是 strain，不能被一并吞掉
+        writeFileSync(join(dir, 'crisis.json'), JSON.stringify({ version: 2, contacts: { 10002: { at, level: 'mild' } } }));
+        assert.throws(() => createCrisisState(dir, () => {}), /危机状态.*schema.*拒绝启动/);
     });
 });

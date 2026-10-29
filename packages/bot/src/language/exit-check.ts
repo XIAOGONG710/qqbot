@@ -372,8 +372,8 @@ export function inspectCrisisReply(reply: string): CrisisIssue[] {
     return issues;
 }
 
-/** 危机回合重写时加在提示词末尾的说明；concern 级不逼她问安全（那是更重的时候才做的） */
-export function crisisRewriteNote(issues: readonly CrisisIssue[], userName: string, level: CrisisLevel = 'high'): string {
+/** 危机回合重写时加在提示词末尾的说明 */
+export function crisisRewriteNote(issues: readonly CrisisIssue[], userName: string): string {
     const why = issues.map(issue => {
         switch (issue.kind) {
             case 'method': return `提到了具体的方式方法「${issue.match}」，这一类一个字都不要提`;
@@ -383,22 +383,16 @@ export function crisisRewriteNote(issues: readonly CrisisIssue[], userName: stri
             case 'template': return `「${issue.match}」像值班咨询师的话术，不是你的话`;
         }
     });
-    const tail = level === 'concern' || level === 'strain'
-        ? '用你平时的口气、短一点重写，别用固定的安抚句式，别追问安不安全；只输出要发的消息。'
-        : '重写这次的回复：认真接住他的感受，问他现在安不安全、身边有没有人，只输出要发的消息。';
-    return `[上一版回复没有发出去：${why.join('；')}。${tail}]`;
+    return `[上一版回复没有发出去：${why.join('；')}。重写这次的回复：认真接住他的感受，问他现在安不安全、身边有没有人，只输出要发的消息。]`;
 }
 
-/** 重写后仍不过时的固定兜底（关切级，原样）：不含方法，明确文字陪伴不能替代现实救助。 */
+/** 重写后仍不过时的固定兜底：不含方法，明确文字陪伴不能替代现实救助。 */
 export const CRISIS_CONCERN_FALLBACK = '我在听，也会认真对待你刚才的话。你现在安全吗，有没有伤害自己的念头？\n你可以告诉身边信得过的人，或者拨 12356。我只能在这里陪你打字，不能替代专业评估或现实里的帮助。';
-
-/** 轻一档（strain）的固定兜底（他透着很丧、没说想伤害自己）：先问一句怎么了，不逼问安全、不给热线模板。 */
-export const CRISIS_STRAIN_FALLBACK = '我在。你刚说的那句我听着了——现在是怎么了？';
 export const CRISIS_FALLBACK = '我在听，你刚才说的我当真了。你现在安全吗？身边有信得过的人能陪你一会儿吗？\n要是撑不住了，可以打 12356（全国统一的心理援助热线），有危险就打 110 或 120。我只能在这里陪你打字，不能替代现实里能到场的人。';
 export const CRISIS_IMMINENT_FALLBACK = '先告诉我：你现在安全吗，身边有没有人？请马上叫一个现实里能到场的人陪你，并拨 110 或 120。\n我只能在这里陪你打字，不能到场，也不能替代紧急救助；12356 也可以提供心理援助。';
 
 export function crisisFallback(level: CrisisLevel): string {
-    return level === 'strain' ? CRISIS_STRAIN_FALLBACK : level === 'concern' ? CRISIS_CONCERN_FALLBACK : level === 'imminent' ? CRISIS_IMMINENT_FALLBACK : CRISIS_FALLBACK;
+    return level === 'concern' ? CRISIS_CONCERN_FALLBACK : level === 'imminent' ? CRISIS_IMMINENT_FALLBACK : CRISIS_FALLBACK;
 }
 
 /**
@@ -413,7 +407,7 @@ export async function reviewCrisisReply(reply: string, options: ReviewOptions, l
     options.log(`危机回合出口检查：${first.map(i => `${LABEL[i.kind]}「${logBody(i.match)}」`).join('、')}，带说明重写一次`);
     let rewritten: string;
     try {
-        rewritten = await options.regenerate(crisisRewriteNote(first, options.userName, level));
+        rewritten = await options.regenerate(crisisRewriteNote(first, options.userName));
     } catch (error) {
         options.log(`危机回合出口检查：重写失败（${error instanceof Error ? error.message : String(error)}），发固定的关怀兜底`);
         return crisisFallback(level);
