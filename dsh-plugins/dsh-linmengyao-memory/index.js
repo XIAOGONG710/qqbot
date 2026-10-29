@@ -24,7 +24,8 @@ const DEFAULTS = {
   soulFile: soulPath('SOUL.md'),
   personaFile: soulPath('PERSONA.md'),
   /** 人设卡本体：只用来比时间，判断 PERSONA.md 是不是过期了（任务书 §1 第 4 条） */
-  personaCardFile: process.env.QQBOT_PERSONA_CARD || 'C:/Users/22601/Desktop/qqbot-dsh-control/characters/linmengyao/st/linmengyao-boyfriend-open.json',
+  // 人设卡（PERSONA.md 比它老就警告）：默认是这个仓库里的男朋友档（承认版）卡，不写死哪个用户的目录；QQBOT_PERSONA_CARD 可以改
+  personaCardFile: process.env.QQBOT_PERSONA_CARD || fileURLToPath(new URL('../../characters/linmengyao/st/linmengyao-boyfriend-open.json', import.meta.url)),
   ledgerFile: soulPath('LEDGER.md'),
   journalFile: soulPath('JOURNAL.md'),
   privateFile: soulPath('PRIVATE.dat'),
