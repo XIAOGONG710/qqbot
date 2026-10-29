@@ -38,3 +38,14 @@
 ## 5. 不变的规矩
 
 线上目录只读；上线 / 重启每次要用户当次点头；一次一个开关；边界不进 SOUL.md。
+
+## 6. 追加（深夜）：第 2 层已做——ADR 0177 `crossRecent`（`dsh/qq-control` `4cc397b`，默认关）
+
+用户：「做第 2 层，让两边互读最近几轮。」
+- DSH 插件每个**桌面对话回合**往 `<数据目录>/memory/desktop-recent.jsonl` 追加一行（最近 40 行）；QQ 读最近 3 轮 / 6 小时放进**男朋友档**提示词。
+- DSH 读他的 QQ 聊天尾部（`chats/<QQ>.jsonl`，最近 10 句 / 6 小时，撤回的遮掉）放进桌面提示词。
+- 路径由 QQ 写进 `owner-bank.json`（`chatFile` / `recalledFile` / `desktopFile`）；没开 `crossRecent` 就没有路径，DSH 不读不写。插件只认合规路径（目录名 + 文件名都校验）。
+- **契约：`HER_CHANNEL`。** 机器自己发起的回合不算桌面对话：`work-bridge.ts` 设 `qq-work`；`her-resident.mjs` 带 `rawPrompt`（随机醒来 / 睡眠整合）设 `idle`、否则 `qq-work`。**DSH 以后新增任何自动起 dsh 子进程的地方都要设这个变量**，否则那些回合会被当成桌面对话灌回 QQ。
+- 开：`koishi.yml` 设 `crossRecent: true`，重启 Koishi，再重启 DSH。需要开着长期记忆。
+- 全量 2140 项，2139 过，仅剩你的 ADR 0091 那条红。
+- 没测的：`HER_CHANNEL` 两处设置、真实 Cordis 运行时。
