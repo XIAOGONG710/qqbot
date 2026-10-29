@@ -4,14 +4,19 @@
 import http from 'node:http'
 import { tick as lifeTick, noteInteraction, readNow, load as loadLife } from './her-life.mjs'
 import { spawn } from 'node:child_process'
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { checkRequest, ensureToken, permissionMode } from '../packages/bot/src/platform/resident-guard.ts'
+import { checkRequest, ensureToken, permissionMode, residentDir } from '../packages/bot/src/platform/resident-guard.ts'
+import { localDay, sleepDue, wakeDue } from './her-schedule.mjs'
 
 const PORT = Number(process.env.HER_PORT || 7777)
 const PROFILE = process.env.HER_PROFILE || 'lmy'
-const DSH_BIN = 'D:/nodejs/global/node_modules/@deepseek-ai/dsh/lib/bin.js'
-const DIR = process.env.HER_DIR || 'C:/Users/22601/.dsh/her'
+// dsh 的入口；换机器用环境变量 DSH_BIN 指过去（找不到会在日志里明说，不再静默失败）
+const DSH_BIN = process.env.DSH_BIN || 'D:/nodejs/global/node_modules/@deepseek-ai/dsh/lib/bin.js'
+const DIR = residentDir()
+// 灵魂目录和 packages/bot 的 soulDir()、DSH 插件一致
+const SOUL_DIR = process.env.QQBOT_SOUL_DIR || join(homedir(), '.dsh', 'linmengyao')
 const LOG = join(DIR, 'resident.log')
 const MAX_BODY = 64 * 1024
 const TIMEOUT_MS = 180_000
@@ -29,9 +34,10 @@ let lastTaskAt = null
 
 function runTask(task, context = '', rawPrompt = undefined, timeoutMs = TIMEOUT_MS) {
     return new Promise((resolve) => {
+        if (!existsSync(DSH_BIN)) return resolve({ ok: false, error: `找不到 dsh（${DSH_BIN}）：把环境变量 DSH_BIN 设成它的 lib/bin.js 路径` })
         const prompt = rawPrompt ?? `${context ? `他在 QQ 里刚说过：\n${context}\n\n` : ''}现在他让你帮忙：${task}\n\n做完用你平时的口气回他，只留要发出去的话。按 QQ 聊天来：第一句只给结果，最多再补一句关键细节；不列清单、不分点；除非他明确要详细，否则不超过两句。`
         const child = spawn(process.execPath, [DSH_BIN, '--profile', PROFILE, prompt], {
-            cwd: process.env.HER_CWD || 'C:/Users/22601/Desktop',
+            cwd: process.env.HER_CWD || join(homedir(), 'Desktop'),
             env: {
                 ...process.env,
                 DSH_PERMISSION_MODE: PERMISSION_MODE,
@@ -138,7 +144,7 @@ server.listen(PORT, '127.0.0.1', () => {
 
 // ───── 睡眠整合 + 自主时间 ─────
 const STATE = join(DIR, 'jobs.json')
-const OFFLINE = 'C:/Users/22601/.dsh/linmengyao/OFFLINE.json'
+const OFFLINE = join(SOUL_DIR, 'OFFLINE.json')
 
 function offlineUntil() {
     try { return Number(JSON.parse(readFileSync(OFFLINE, 'utf8')).until || 0) } catch { return 0 }
@@ -169,20 +175,16 @@ async function idleRun(prompt, label, timeoutMs = 480_000) {
 
 function sleepCheck() {
     const now = new Date()
-    if (now.getHours() < 3) return
-    if (offlineUntil() > Date.now()) return
-    const today = now.toISOString().slice(0, 10)
     const state = loadState()
-    if (state.sleep === today) return
+    if (!sleepDue({ now, lastSleepDay: state.sleep, offline: offlineUntil() > Date.now() })) return
     if (running || queue.length) return
-    state.sleep = today
+    state.sleep = localDay(now)
     saveState(state)
     void idleRun(SLEEP_PROMPT, 'sleep', 600_000)
 }
 
 function wakeCheck() {
-    if (offlineUntil() > Date.now()) return
-    if (Math.random() > 0.25) return
+    if (!wakeDue({ now: new Date(), roll: Math.random(), activity: loadLife().activity, offline: offlineUntil() > Date.now() })) return
     void idleRun(WAKE_PROMPT, 'wake', 300_000)
 }
 

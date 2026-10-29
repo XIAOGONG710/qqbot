@@ -1,10 +1,18 @@
 // 他的评价：👍 +1 / 😐 0 / 👎 -1，写进 SOUL 的评分文件，决定她能不能改 SOUL
 import { spawnSync } from 'node:child_process'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts'
 
+/** 她的灵魂目录（SOUL / LEDGER / OUTBOX …）；默认放在当前用户的 ~/.dsh/linmengyao，换机器不会静默失效 */
 export function soulDir(): string {
-    return process.env.QQBOT_SOUL_DIR ?? 'C:/Users/22601/.dsh/linmengyao'
+    return process.env.QQBOT_SOUL_DIR ?? join(homedir(), '.dsh', 'linmengyao')
+}
+
+/** 私密日记的加解密脚本（仓库里的 scripts/private-diary.ps1）；QQBOT_PRIVATE_SCRIPT 可以改 */
+export function privateDiaryScript(): string {
+    return process.env.QQBOT_PRIVATE_SCRIPT ?? fileURLToPath(new URL('../../../../scripts/private-diary.ps1', import.meta.url))
 }
 
 export function addSoulRating(score: number): void {
@@ -22,7 +30,7 @@ export function appendPrivate(content: string): void {
     const base64 = Buffer.from(text, 'utf8').toString('base64')
     spawnSync('powershell.exe', [
         '-NoProfile', '-ExecutionPolicy', 'Bypass',
-        '-File', 'C:/Users/22601/Desktop/qqbot-dsh-control/scripts/private-diary.ps1',
+        '-File', privateDiaryScript(),
         '-Action', 'append',
         '-Path', join(soulDir(), 'PRIVATE.dat'),
         '-Base64', base64,

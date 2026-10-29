@@ -1,9 +1,11 @@
 // QQ 工作模式的工具桥：把他的话交给 headless 的她去干，拿回一条要发的话。
 // 用 dsh 的 headless profile（lmy：同一套人格补丁），stdout 是最终回复，stderr 是推理（丢掉）。
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { permissionMode, readToken, residentDir, TOKEN_HEADER } from './resident-guard.ts'
 
-const DSH_BIN = 'D:/nodejs/global/node_modules/@deepseek-ai/dsh/lib/bin.js'
+/** dsh 的入口脚本；换机器时用环境变量 DSH_BIN 指过去（找不到会在派活时明说，不再静默失败） */
+const dshBin = (): string => process.env.DSH_BIN ?? 'D:/nodejs/global/node_modules/@deepseek-ai/dsh/lib/bin.js'
 
 export interface WorkTaskOptions {
     /** 用哪个 dsh profile 干活；默认 lmy */
@@ -46,7 +48,9 @@ function spawnWorkTask(task: string, options: WorkTaskOptions = {}): Promise<str
     const prompt = `${context}现在他让你帮忙：${task}\n\n做完用你平时的口气回他，只留要发出去的话。按 QQ 聊天来：第一句只给结果，最多再补一句关键细节；不要列清单、不要分点、不要逐项汇报；除非他明确要详细，否则不超过两句。`
 
     return new Promise((resolve, reject) => {
-        const child = spawn(process.execPath, [DSH_BIN, '--profile', profile, prompt], {
+        const bin = dshBin()
+        if (!existsSync(bin)) return reject(new Error(`找不到 dsh（${bin}）：把环境变量 DSH_BIN 设成它的 lib/bin.js 路径`))
+        const child = spawn(process.execPath, [bin, '--profile', profile, prompt], {
             cwd: options.cwd ?? process.cwd(),
             env: {
                 ...process.env,

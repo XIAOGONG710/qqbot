@@ -9,13 +9,14 @@
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 export const TOKEN_HEADER = 'x-her-token';
 export const TOKEN_FILE = 'RESIDENT_TOKEN';
 
 /** 常驻进程自己的目录（日志、令牌）。和 scripts/her-resident.mjs 的 HER_DIR 一致 */
-export const residentDir = (env: NodeJS.ProcessEnv = process.env): string => env.HER_DIR ?? 'C:/Users/22601/.dsh/her';
+export const residentDir = (env: NodeJS.ProcessEnv = process.env): string => env.HER_DIR ?? join(homedir(), '.dsh', 'her');
 
 /** 工作模式 / 常驻进程起智能体用的权限模式：用户 10-29 给的是整机权限；以后要降档只改这一个环境变量 */
 export const permissionMode = (env: NodeJS.ProcessEnv = process.env): string => env.HER_PERMISSION_MODE || 'danger-full-access';

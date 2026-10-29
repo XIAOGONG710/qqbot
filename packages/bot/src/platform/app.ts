@@ -37,6 +37,9 @@ import { currentTierHistory, TierRecord } from '.././memory/tier-record.ts';
 import { HindsightClient } from '.././memory/hindsight.ts';
 import { arrivedWhileAsleep } from '.././social/reply-timing.ts';
 import { answerWhy, createSilenceWatcher, noteFromInfo, recordSilence, type SilenceInfo } from '.././social/silence.ts';
+import { drainOutbox } from '.././social/outbox.ts';
+import { inspectReply, summarizeIssues, type ExitIssue } from '.././language/exit-check.ts';
+import { ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode } from './work-mode.ts';
@@ -640,22 +643,37 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const memoryTimer = memory ? setInterval(syncMemory, MEMORY_SYNC_MS) : undefined;
     memoryTimer?.unref();
 
-    // 她自己想让他知道的事：常驻进程/她写进 OUTBOX.jsonl，这里发出去
-    const outboxFile = process.env.QQBOT_OUTBOX ?? 'C:/Users/22601/.dsh/linmengyao/OUTBOX.jsonl';
+    // 她自己想让他知道的事：常驻进程/她写进 OUTBOX.jsonl，这里发出去（ADR 0174：和别的主动消息守同一套规矩）
+    const outboxFile = process.env.QQBOT_OUTBOX ?? join(soulDir(), 'OUTBOX.jsonl');
+    const OUTBOX_BLOCKING = new Set<ExitIssue['kind']>(['banned', 'promise', 'media', 'script', 'text-intimacy']);
+    let outboxBusy = false;
+    let outboxBlockedBy: string | undefined;
     const outboxTimer = setInterval(() => {
         const owner = deviceOwner;
-        if (!owner || dormancy?.isDormant()) return;
-        let raw = '';
-        try { raw = readFileSync(outboxFile, 'utf8'); } catch { return; }
-        const lines = raw.split('\n').map(line => line.trim()).filter(Boolean);
-        if (!lines.length) return;
-        writeFileSync(outboxFile, '');
-        for (const line of lines) {
-            try {
-                const text = String((JSON.parse(line) as { text?: string }).text ?? '').trim();
-                if (text) void transport.sendPrivateText(owner.qq, text).catch(error => log(`主动留话发不出去：${error instanceof Error ? error.message : String(error)}`));
-            } catch { /* 坏行丢掉 */ }
-        }
+        if (!owner || outboxBusy) return;
+        const { character } = cardFor(owner.tier);
+        outboxBusy = true;
+        void drainOutbox({
+            file: outboxFile,
+            stateFile: join(config.dataDir, 'outbox-state.json'),
+            now: () => clockNow().getTime(),
+            blocked: now => crisisState.pausedAt(owner.qq, now) ? '他最近说过想伤害自己的话，普通主动消息暂停 48 小时'
+                : dormancy?.isDormant() ? '休眠中'
+                : character.schedule && asleepSince(character.schedule, bedtimes(character.schedule, now), new Date(now)) ? '她睡了'
+                : undefined,
+            inspect: text => {
+                const issues = inspectReply(text, [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS]).filter(issue => OUTBOX_BLOCKING.has(issue.kind));
+                return issues.length ? summarizeIssues(issues) : undefined;
+            },
+            send: text => transport.sendPrivateText(owner.qq, text),
+            record: (text, messageId, at) => history.append(owner.qq, { time: new Date(at).toISOString(), role: 'assistant', content: text, messageId }),
+            log,
+        }).then(result => {
+            if (result.blockedBy !== outboxBlockedBy) {
+                outboxBlockedBy = result.blockedBy;
+                if (result.blockedBy) log(`主动留话：先留着不发（${result.blockedBy}）`);
+            }
+        }).catch(error => log(`主动留话出错：${error instanceof Error ? error.message : String(error)}`)).finally(() => { outboxBusy = false; });
     }, 30_000);
     outboxTimer.unref();
 
@@ -1921,6 +1939,7 @@ ${body}
             if (watchingTimer) clearInterval(watchingTimer);
             if (feedTimer) clearInterval(feedTimer);
             if (silenceTimer) clearInterval(silenceTimer);
+            clearInterval(outboxTimer);
             if (foodDiscoveryTimer) clearInterval(foodDiscoveryTimer);
             clearTimeout(foodRetryTimer);
             if (jokesTimer) clearInterval(jokesTimer);

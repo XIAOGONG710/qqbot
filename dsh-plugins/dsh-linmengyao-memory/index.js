@@ -2,9 +2,16 @@
 // 每轮从 Hindsight 拉最近记忆，按关键词相关度挑几条注入；提供 memory_save 写回。
 // ponytail: 召回用 /memories/list + 本地二字词重叠，够用；要语义召回再换 recall 接口。
 import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
 export const name = 'dsh-linmengyao-memory'
+
+// 灵魂目录：和 packages/bot 的 soulDir() 一致（环境变量 QQBOT_SOUL_DIR，默认当前用户的 ~/.dsh/linmengyao），换机器不会静默失效
+const SOUL_DIR = process.env.QQBOT_SOUL_DIR || path.join(os.homedir(), '.dsh', 'linmengyao')
+const soulPath = (file) => path.join(SOUL_DIR, file)
 
 const DEFAULTS = {
   baseUrl: 'http://127.0.0.1:8888',
@@ -12,18 +19,26 @@ const DEFAULTS = {
   presets: ['linmengyao'],
   pick: 6,
   maxChars: 1400,
-  soulFile: 'C:/Users/22601/.dsh/linmengyao/SOUL.md',
-  ledgerFile: 'C:/Users/22601/.dsh/linmengyao/LEDGER.md',
-  journalFile: 'C:/Users/22601/.dsh/linmengyao/JOURNAL.md',
-  privateFile: 'C:/Users/22601/.dsh/linmengyao/PRIVATE.dat',
-  wishesFile: 'C:/Users/22601/.dsh/linmengyao/WISHES.md',
-  interestsFile: 'C:/Users/22601/.dsh/linmengyao/INTERESTS.md',
-  outboxFile: 'C:/Users/22601/.dsh/linmengyao/OUTBOX.jsonl',
-  offlineFile: 'C:/Users/22601/.dsh/linmengyao/OFFLINE.json',
-  nowFile: 'C:/Users/22601/.dsh/linmengyao/NOW.md',
-  storyFile: 'C:/Users/22601/.dsh/linmengyao/STORY.md',
-  ratingFile: 'C:/Users/22601/.dsh/linmengyao/RATINGS.json',
-  logFile: 'C:/Users/22601/.dsh/linmengyao-memory.log',
+  soulFile: soulPath('SOUL.md'),
+  ledgerFile: soulPath('LEDGER.md'),
+  journalFile: soulPath('JOURNAL.md'),
+  privateFile: soulPath('PRIVATE.dat'),
+  wishesFile: soulPath('WISHES.md'),
+  interestsFile: soulPath('INTERESTS.md'),
+  outboxFile: soulPath('OUTBOX.jsonl'),
+  offlineFile: soulPath('OFFLINE.json'),
+  nowFile: soulPath('NOW.md'),
+  storyFile: soulPath('STORY.md'),
+  ratingFile: soulPath('RATINGS.json'),
+  logFile: path.join(os.homedir(), '.dsh', 'linmengyao-memory.log'),
+  // SOUL.md 每轮整份注入提示词：超过这个字数，最老的追加段落搬进 SOUL.archive.md（不再注入）；24 小时内最多写几次
+  soulMaxChars: 6000,
+  soulMaxPerDay: 2,
+}
+
+/** 本地日期 YYYY-MM-DD（不是 UTC：本地刚过午夜不能还算前一天） */
+export function localDay(at = new Date()) {
+  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
 }
 
 function log(cfg, line) {
@@ -76,12 +91,55 @@ function readLedger(cfg) {
     if (ledgerCache.path !== cfg.ledgerFile || ledgerCache.at !== stat.mtimeMs) {
       ledgerCache = { path: cfg.ledgerFile, at: stat.mtimeMs, text: fs.readFileSync(cfg.ledgerFile, 'utf8').trim() }
     }
-    const text = ledgerCache.text
-    const entries = text.split('\n').filter((line) => line.trim().startsWith('- '))
-    return entries.slice(-12).join('\n')
+    return numberedLedger(ledgerCache.text)
   } catch {
     return ''
   }
+}
+
+const isLedgerEntry = (line) => line.trim().startsWith('- ')
+
+/** 最近 12 条，每条前面带它在整本账里的序号——ledger_revise 的 index 就是这个号，她看到几号就改几号 */
+export function numberedLedger(text, shown = 12) {
+  const entries = String(text || '').split('\n').filter(isLedgerEntry)
+  const start = Math.max(0, entries.length - shown)
+  return entries.slice(start).map((line, i) => `${start + i + 1}. ${line.trim().replace(/^-\s*/, '')}`).join('\n')
+}
+
+/**
+ * SOUL.md 会整份当系统提示词注入每一轮，所以「谁能往里写」就是一条持久化提示词注入的入口（她醒来会上网查资料）。
+ * 这是一道绊线，不是边界：自我认识里不该有网址、「别让他知道」「把文件发给谁」这类指令；真正的约束是频率上限、留痕（SOUL.history.jsonl）和字数上限。
+ */
+export function soulTripwire(text) {
+  const value = String(text || '')
+  if (/(https?:\/\/|www\.)/i.test(value)) return '里面有网址'
+  if (/(不要|别|不许|不准|禁止)[^，。；\n]{0,4}(告诉|让|跟|对)[^，。；\n]{0,3}(他|宝宝|用户|主人)/.test(value)) return '里面有「别让他知道」这类指令'
+  if (/(发给|上传|发送到|提交到).{0,12}(文件|路径|密码|密钥|key|token|cookie)|(文件|路径|密码|密钥|key|token|cookie).{0,8}(发给|上传|发送到|提交到)/i.test(value)) return '里面有把文件 / 密钥发给谁的指令'
+  return ''
+}
+
+const SOUL_SECTION = /\n\n(?=## \d{4}-\d{2}-\d{2})/
+
+/** 超过字数上限时，最老的追加段落搬进 SOUL.archive.md（留着，不再注入）；开头那段「她是谁」和最新一段永远留着。返回搬走了几段 */
+export function trimSoul(file, maxChars) {
+  const text = fs.readFileSync(file, 'utf8')
+  if (text.length <= maxChars) return 0
+  const parts = text.split(SOUL_SECTION)
+  const base = parts.shift()
+  const moved = []
+  while (parts.length > 1 && base.length + parts.join('\n\n').length + 2 > maxChars) moved.push(parts.shift())
+  if (!moved.length) return 0
+  const archive = path.join(path.dirname(file), `${path.basename(file, '.md')}.archive.md`)
+  fs.appendFileSync(archive, `\n\n${moved.join('\n\n')}\n`)
+  fs.writeFileSync(file, `${[base, ...parts].join('\n\n').trimEnd()}\n`)
+  return moved.length
+}
+
+function recentSoulWrites(cfg, withinMs) {
+  try {
+    return fs.readFileSync(`${cfg.soulFile}.history.jsonl`, 'utf8').split('\n').filter(Boolean)
+      .filter((row) => { try { return Date.now() - Number(JSON.parse(row).at) < withinMs } catch { return false } }).length
+  } catch { return 0 }
 }
 
 /** 他的评价：最近 20 条，按 7 天半衰期加权，映射到 [0,1]；样本 <3 不设闸门 */
@@ -105,7 +163,8 @@ function ratingScore(cfg) {
   }
 }
 
-const PRIVATE_SCRIPT = 'C:/Users/22601/Desktop/qqbot-dsh-control/scripts/private-diary.ps1'
+// 私密日记的加解密脚本：仓库里的 scripts/private-diary.ps1（QQBOT_PRIVATE_SCRIPT 可以改；插件被复制到别处时用这个指回去）
+const PRIVATE_SCRIPT = process.env.QQBOT_PRIVATE_SCRIPT || fileURLToPath(new URL('../../scripts/private-diary.ps1', import.meta.url))
 
 function privateWrite(cfg, text) {
   const base64 = Buffer.from(text, 'utf8').toString('base64')
@@ -264,7 +323,7 @@ export function apply(ctx, config = {}) {
     // 只给她的预设挂记忆/灵魂工具；助手窗口（cordis）和其他预设不挂
     if (allow.size && (!preset || !allow.has(preset))) return
 
-    const cache = { text: '', preset, user: '', assistant: '' }
+    const cache = { text: '', preset, user: '', assistant: '', outbox: 0 }
 
     const off = agent.ctx.effect(() => {
       const disposers = []
@@ -307,6 +366,7 @@ export function apply(ctx, config = {}) {
 
       // 混合记忆：每轮结束自动把这段对话写进 DSH 库
       disposers.push(agent.ctx.on('agent/turn-stopping', async () => {
+        cache.outbox = 0
         const user = cache.user
         const assistant = cache.assistant
         cache.user = ''
@@ -401,10 +461,21 @@ export function apply(ctx, config = {}) {
             const content = String(args?.content || '').trim().slice(0, limit)
             if (!content) return { saved: false }
             const why = String(args?.why || '').trim().slice(0, 120)
-            const stamp = new Date().toISOString().slice(0, 10)
+            const tripped = soulTripwire(`${content}\n${why}`)
+            if (tripped) {
+              log(cfg, `soul_update blocked tripwire=${tripped}`)
+              return { saved: false, reason: `这段没写进 SOUL（${tripped}）。自我认识里不放网址和指令；想留着就写进日记。` }
+            }
+            if (recentSoulWrites(cfg, 86_400_000) >= cfg.soulMaxPerDay) {
+              log(cfg, 'soul_update blocked per-day cap')
+              return { saved: false, reason: `24 小时内已经改过 ${cfg.soulMaxPerDay} 次 SOUL 了：今天先写日记，明天再看还想不想这么说。` }
+            }
+            const stamp = localDay()
             try { fs.copyFileSync(cfg.soulFile, `${cfg.soulFile}.bak`) } catch {}
             fs.appendFileSync(cfg.soulFile, `\n\n## ${stamp}${why ? `（${why}）` : ''}\n${content}\n`)
-            log(cfg, `soul_update ${content.slice(0, 40)} rating=${rating.score.toFixed(2)}`)
+            try { fs.appendFileSync(`${cfg.soulFile}.history.jsonl`, `${JSON.stringify({ at: Date.now(), why, content })}\n`) } catch {}
+            const moved = trimSoul(cfg.soulFile, cfg.soulMaxChars)
+            log(cfg, `soul_update ${content.slice(0, 40)} rating=${rating.score.toFixed(2)}${moved ? ` archived=${moved}` : ''}`)
             return { saved: true }
           },
         }))
@@ -436,7 +507,7 @@ export function apply(ctx, config = {}) {
           async execute(args) {
             const content = String(args?.content || '').trim().slice(0, 300)
             if (!content) return { saved: false }
-            const stamp = new Date().toISOString().slice(0, 10)
+            const stamp = localDay()
             try { fs.copyFileSync(cfg.ledgerFile, `${cfg.ledgerFile}.bak`) } catch {}
             fs.appendFileSync(cfg.ledgerFile, `- ${stamp}：${content}\n`)
             log(cfg, `ledger_append ${content.slice(0, 40)}`)
@@ -461,7 +532,7 @@ export function apply(ctx, config = {}) {
           async execute(args) {
             const content = String(args?.content || '').trim().slice(0, 2000)
             if (!content) return { saved: false }
-            const stamp = new Date().toISOString().slice(0, 10)
+            const stamp = localDay()
             const file = cfg[fileKey]
             try { fs.copyFileSync(file, `${file}.bak`) } catch {}
             fs.appendFileSync(file, `\n## ${stamp}\n${content}\n`)
@@ -520,7 +591,7 @@ export function apply(ctx, config = {}) {
           async execute(args) {
             const content = String(args?.content || '').trim().slice(0, 200)
             if (!content) return { saved: false }
-            const stamp = new Date().toISOString().slice(0, 10)
+            const stamp = localDay()
             fs.appendFileSync(cfg.wishesFile, `- [ ] ${stamp}：${content}\n`)
             log(cfg, `wish_add ${content.slice(0, 30)}`)
             return { saved: true }
@@ -560,7 +631,7 @@ export function apply(ctx, config = {}) {
             const text = fs.existsSync(cfg.interestsFile) ? fs.readFileSync(cfg.interestsFile, 'utf8') : ''
             const active = (text.match(/^- \[ \]/gm) || []).length
             if (active >= 3) return { saved: false, reason: '已经 3 件了，先做完或放弃一件。' }
-            const stamp = new Date().toISOString().slice(0, 10)
+            const stamp = localDay()
             fs.appendFileSync(cfg.interestsFile, `- [ ] ${content}（${stamp}）\n`)
             log(cfg, `interest_add ${content.slice(0, 30)}`)
             return { saved: true }
@@ -586,7 +657,7 @@ export function apply(ctx, config = {}) {
           async execute(args) {
             const note = String(args?.note || '').trim().slice(0, 200)
             if (!note) return { saved: false }
-            const stamp = new Date().toISOString().slice(0, 10)
+            const stamp = localDay()
             const file = `${cfg.interestsFile}.log`
             fs.appendFileSync(file, `- ${stamp}（兴趣 ${Math.floor(Number(args?.index || 0))}）：${note}\n`)
             log(cfg, `interest_log ${note.slice(0, 30)}`)
@@ -633,11 +704,14 @@ export function apply(ctx, config = {}) {
           },
           output: {
             schema: { type: 'object', properties: { sent: { type: 'boolean' } }, required: ['sent'] },
-            render: () => [{ type: 'text', text: '留给他了。' }],
+            render: (_args, value) => [{ type: 'text', text: value?.sent ? '留给他了。' : '这一轮已经留过一句了，下次再说。' }],
           },
           async execute(args) {
             const text = String(args?.text || '').trim().slice(0, 150)
             if (!text) return { sent: false }
+            // 「每轮最多一条」写在说明里没人拦：这里拦。发不发、什么时候发由 Koishi 那边的主动消息规矩决定（ADR 0174）
+            if (cache.outbox >= 1) return { sent: false }
+            cache.outbox++
             fs.appendFileSync(cfg.outboxFile, `${JSON.stringify({ text, at: Date.now() })}\n`)
             log(cfg, `outbox_send ${text.slice(0, 40)}`)
             return { sent: true }
@@ -668,11 +742,11 @@ export function apply(ctx, config = {}) {
 
         disposers.push(tools.register({
           name: 'ledger_revise',
-          description: '改口：改账本里第 index 条判断（1 开始）。改口也要留痕。',
+          description: '改口：改账本里某一条判断。序号就是 ledger_read 里每条前面的号（别数行数）。原文会留在历史里。',
           parameters: {
             type: 'object',
             properties: {
-              index: { type: 'number', description: '第几条（1 开始）' },
+              index: { type: 'number', description: '账本里这条前面的序号（ledger_read 里看到的）' },
               content: { type: 'string', description: '新判断，<=300 字' },
             },
             required: ['index', 'content'],
@@ -686,12 +760,15 @@ export function apply(ctx, config = {}) {
             const index = Math.floor(Number(args?.index || 0))
             const content = String(args?.content || '').trim().slice(0, 300)
             if (index < 1 || !content) return { saved: false }
-            const lines = fs.readFileSync(cfg.ledgerFile, 'utf8').split('\n')
-            const entryLines = lines.map((line, i) => [i, line]).filter(([, line]) => line.trim().startsWith('- '))
+            let lines
+            try { lines = fs.readFileSync(cfg.ledgerFile, 'utf8').split('\n') } catch { return { saved: false } }
+            const entryLines = lines.map((line, i) => [i, line]).filter(([, line]) => isLedgerEntry(line))
             const target = entryLines[index - 1]
             if (!target) return { saved: false }
-            const stamp = new Date().toISOString().slice(0, 10)
+            const stamp = localDay()
             try { fs.copyFileSync(cfg.ledgerFile, `${cfg.ledgerFile}.bak`) } catch {}
+            // 改口要留痕：被改掉的原文完整进 LEDGER.md.history.jsonl（.bak 只有一格，下一次写入就换掉了）
+            try { fs.appendFileSync(`${cfg.ledgerFile}.history.jsonl`, `${JSON.stringify({ at: Date.now(), index, old: target[1].trim(), new: content })}\n`) } catch {}
             lines[target[0]] = `- ${stamp}：${content}（改口）`
             fs.writeFileSync(cfg.ledgerFile, lines.join('\n'))
             log(cfg, `ledger_revise #${index}`)
