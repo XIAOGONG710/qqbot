@@ -9,7 +9,7 @@
    （`samples*.jsonl` + `closing-turns.jsonl`），**不含用户与她的任何私聊**。生成脚本 `tools/measure/build-cases40.cjs`，重跑字节一致。
 2. **她的回答**：`runtime/blind/20261029-212148-base-1029/answers.json`，用仓库的盲评重放器（`npm run blind`）按同一上下文逐题生成，每题只跑一次、不挑。
    版本标签：**commit `ba82de4`，`dirty: true`**（生成时工作区有未提交改动，读数字时要记住这一点）。
-3. **盲评包**：`blind/2026-10-29-baseline-v2/`，`pairs.md`（39 题，A/B 顺序按 id 哈希、可复现）+ `key.json`（答案，评分人别看）+ `meta.json`（版本标签）。
+3. **盲评包**：`blind/2026-10-29-baseline-v2/`，`pairs.md`（39 题，A/B 顺序按 id 哈希、可复现）+ `key.json`（**已按复核意见挪到 `blind/_keys/`**，评分人别看）+ `meta.json`（版本标签）。
 4. **工具改造**（原 `make-blind-pack.cjs` 读的临时目录已不存在）：
    - `tools/measure/cases-to-blind.cjs`：cases-40 → 盲评题库（题库格式见 `packages/bot/src/sim/blind.ts`）
    - `tools/measure/make-blind-pack.cjs`：cases + answers → 包（A/B 混排、key、meta）
