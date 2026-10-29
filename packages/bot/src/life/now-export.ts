@@ -4,6 +4,9 @@
 // 她会前后矛盾（审查 #9）。
 import { renameSync, writeFileSync } from 'node:fs';
 
+/** 他最后一句在这个时间窗内，就说「和你聊天中」（Xavier 的中断层，2026-10-30） */
+export const CHATTING_WINDOW_MS = 10 * 60_000;
+
 /** 超过这么久没重写就算过期 */
 export const NOW_STALE_MS = 30 * 60_000;
 /** QQ 这边多久重写一次 */
@@ -54,4 +57,15 @@ export function nowFresh(content: string, now: number, staleMs = NOW_STALE_MS): 
     const at = nowGeneratedAt(content);
     if (at === undefined) return false;
     return now - at <= staleMs;
+}
+
+/**
+ * 中断层：他刚说过话的时候，别让她一边回消息一边「在看剧」。
+ * 聊天期间的活动改成「和你聊天中」，聊完（超过窗口）自然回到原来的轨迹——不需要任何状态复原代码，
+ * 因为下一次渲染会重新按作息算。
+ */
+export function activityWithChat(doing: string, lastMessageAt: number | undefined, now: number, windowMs = CHATTING_WINDOW_MS): string {
+    if (lastMessageAt === undefined || !Number.isFinite(lastMessageAt)) return doing;
+    if (now - lastMessageAt > windowMs || now < lastMessageAt) return doing;
+    return `和你聊天中`;
 }

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { NOW_STALE_MS, nowFresh, nowGeneratedAt, renderNow, writeNow } from '../src/life/now-export.ts';
+import { activityWithChat, CHATTING_WINDOW_MS, NOW_STALE_MS, nowFresh, nowGeneratedAt, renderNow, writeNow } from '../src/life/now-export.ts';
 
 const now = Date.parse('2026-10-30T00:10:00+08:00');
 
@@ -31,4 +31,11 @@ test('原子写：写出来的能读回、时间戳对得上', () => {
     assert.ok(content.includes('在食堂吃饭'));
     assert.equal(nowGeneratedAt(content), now);
     try { rmSync(dir, { recursive: true, force: true }); } catch { /* Windows 上可能删不掉 */ }
+});
+
+// 2026-10-30：中断层——他刚说过话，别让她一边回消息一边「在看剧」
+test('中断层：窗口内改成和你聊天中，窗口外回原轨迹，没记录不动', () => {
+    assert.equal(activityWithChat('在宿舍看剧', now - 60_000, now), '和你聊天中');
+    assert.equal(activityWithChat('在宿舍看剧', now - CHATTING_WINDOW_MS - 1, now), '在宿舍看剧');
+    assert.equal(activityWithChat('在宿舍看剧', undefined, now), '在宿舍看剧');
 });

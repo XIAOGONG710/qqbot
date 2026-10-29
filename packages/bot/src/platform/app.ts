@@ -78,6 +78,7 @@ import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner, type P
 import { PromiseStateUnavailable } from '.././life/promise-state.ts';
 import { promiseKeeper, type Appointment } from '.././life/promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from '.././life/her-days.ts';
+import { herPlanActivities, saveHerPlan, windowAt } from '.././life/her-plans.ts';
 import { bodyAt } from '.././life/body.ts';
 import { worldState, type WorldNow } from '.././world/world.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
@@ -103,7 +104,7 @@ import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sen
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
-import { NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
+import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -671,9 +672,13 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         if (!schedule) return;
         try {
             const at = Date.now();
-            const extraFree = config.herDays ? readingActivities(worldCard.books) : [];
+            // 在读的书 + 她自己决定今天想做的（ADR 0182）：状态行里她就是个在做那件事的人
+            const extraFree = config.herDays ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(at), log)] : [];
             const owner = deviceOwner;
-            const doing = describeState(stateAt(schedule, new Date(at), extraFree), schedule, owner ? { userName: owner.name } : {});
+            const base = describeState(stateAt(schedule, new Date(at), extraFree), schedule, owner ? { userName: owner.name } : {});
+            // 中断层：他刚说过话就写「和你聊天中」，聊完下一次渲染自己回到原来的轨迹
+            const lastAt = owner ? Date.parse(history.load(owner.qq).at(-1)?.time ?? '') : NaN;
+            const doing = activityWithChat(base, Number.isFinite(lastAt) ? lastAt : undefined, at);
             writeNow(nowFile, renderNow({ doing, at }));
         } catch (error) {
             log(`「她现在在干嘛」没写出去（${error instanceof Error ? error.message : String(error)}）`);
@@ -884,6 +889,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.shape && config.shapeFeel ? { shapeFeel: true } : {}),
             // 她最近心里在想什么（ADR 0101）：计划器建好之后才有，所以每次现取
             ...(config.innerLife ? { innerLine: () => planners.get(contact.qq)?.innerLine() } : {}),
+            // 她自己决定今天想做什么（ADR 0182）：和「在读的书」一起当额外的空闲活动，每次现取
+            ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
             // 他刚发过「/亲热」（ADR 0170）：接下来十条回复黏一点，每生成一条减一
             ...(contact.tier === 'boyfriend' ? { intimacyLine: () => takeIntimateLine(config.dataDir, contact.qq) } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取
@@ -1042,7 +1049,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             return;
         }
         const schedule = worldCard.schedule;
-        const extraFree = config.herDays ? readingActivities(worldCard.books) : [];
+        const extraFree = config.herDays ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [];
         const dir = join(config.dataDir, 'presence');
         // 说说用最低隐私档的卡来写（陌生人档，没有就同学档）；两张都读不了就不发说说
         let lowest: TierCard | undefined;
@@ -1181,7 +1188,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             } : {}),
             target: { qq, name: target.name },
             schedule: worldCard.schedule,
-            extraFree: config.herDays ? readingActivities(worldCard.books) : [],
+            extraFree: config.herDays ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [],
             dir: join(config.dataDir, 'presence'),
             now: worldNow, log,
             saidSleep: now => Boolean(asleepSince(worldCard.schedule!, bedtimes(worldCard.schedule!, now), new Date(now))),
@@ -1239,7 +1246,7 @@ ${video.link}`);
             log('回复 B 站评论：陌生人档和同学档的卡都读不了，不回复');
             return undefined;
         }
-        const extraFree = config.herDays && worldCard ? readingActivities(worldCard.books) : [];
+        const extraFree = config.herDays && worldCard ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [];
         const gate = bilibiliRisk();
         return {
             mode, account, userUid: config.bilibiliAtUid,
@@ -1294,6 +1301,12 @@ ${video.link}`);
                 ...(config.innerLife ? { inner: true } : {}),
                 // 她自己想弄明白一件事（ADR 0180）：内心冒出来的「想查：关键词」真去查一次，查到的进聊天提示词
                 ...(config.innerLife && web ? { look: (query: string) => web.look(query) } : {}),
+                // 她自己决定今天想干什么（ADR 0182）：写进这一天的打算，状态行和「你今天的打算」都用它
+                ...(config.innerLife ? {
+                    planToday: (todo: string, at: Date) => {
+                        saveHerPlan(config.dataDir, { date: `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`, window: windowAt(at), text: todo, at: at.toISOString() });
+                    },
+                } : {}),
                 // 最近在 B 站看过 / 今天刷到过（ADR 0130 / 0168）：内心想事情时多一个真事可讲；看过的优先
                 ...(config.innerLife && contact.tier === 'boyfriend' && (config.watching || (config.biliFeed ?? 'off') !== 'off') ? {
                     watchedFacts: () => {
@@ -1466,7 +1479,7 @@ ${video.link}`);
             rawFetch(url, { headers: init.headers, signal: init.signal ?? new AbortController().signal });
         const nowDate = new Date(pipeline?.now ? pipeline.now() : Date.now());
         const schedule = worldCard?.schedule;
-        const extraFree = config.herDays && worldCard ? readingActivities(worldCard.books) : [];
+        const extraFree = config.herDays && worldCard ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [];
         feedRunning = true;
         try {
             await feedOnce({
@@ -1756,6 +1769,7 @@ ${body}
             return;
         }
         responder.receive(text, event.message_id, new Date(event.time * 1000));
+        exportNow();
         const crisis = detectCrisis(text);
         if (crisis && config.contacts.some(c => c.qq === event.user_id)) {
             crisisState.mark(event.user_id, event.time * 1000, crisis.level);
@@ -2098,7 +2112,7 @@ ${body}
                 const since = tierRecord.since(contact.qq);
                 const { character } = cardFor(contact.tier);
                 const schedule = config.schedule ? character.schedule : undefined;
-                const extraFree = config.herDays ? readingActivities(character.books) : [];
+                const extraFree = config.herDays ? [...readingActivities(character.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [];
                 return {
                     qq: contact.qq,
                     name: contact.name,
