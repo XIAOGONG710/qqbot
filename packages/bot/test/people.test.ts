@@ -248,9 +248,11 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
                 generate: async messages => { if (isPromises(messages)) return '{"add":[],"resolved":[]}'; prompts.push(messages); return '好呀'; },
             });
             const text = prompts[0]!.map(m => m.content).join('\n');
-            // 公共记忆、鸽鸽的记忆两段都换了（他自己的 bank 还没写过，场景里没有他以前的聊天）
+            // 三段都换了：公共记忆、鸽鸽的记忆，和「你在 DSH 里做过的事」（recallWork，只有男朋友档才有，ADR 0176；这个场景的他是男朋友档，
+            // 假的 Hindsight 对任何 bank 都回同一条）。他自己的 bank 还没写过，场景里没有他以前的聊天
             // 带她名字的那一行里的「她」也是她（ADR 0018 调整 16）
-            assert.equal(text.match(/- (?:（[^）]+）：)?你说你也想去杭州/g)?.length, 2);
+            assert.equal(text.match(/- (?:（[^）]+）：)?你说你也想去杭州/g)?.length, 3);
+            assert.match(text, /你在 DSH 里做过的事[^\n]*\n- (?:（[^）]+）：)?你说你也想去杭州/, 'DSH 那一段也换了');
             assert.doesNotMatch(text, new RegExp(`${card.character.name}说她也想去杭州`));
         } finally {
             rmSync(dir, { recursive: true, force: true });

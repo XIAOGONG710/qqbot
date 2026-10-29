@@ -28,11 +28,12 @@ function boot(extra: Record<string, unknown> = {}) {
     dirs.push(dir);
     const f = (name: string) => join(dir, name);
     const tools: Record<string, Tool> = {};
+    const contexts: Array<{ text: () => string }> = [];
     const handlers: Record<string, (...args: unknown[]) => unknown> = {};
     const agentCtx = {
         effect: (fn: () => unknown) => fn(),
         on: (name: string, fn: (...args: unknown[]) => unknown) => { handlers[name] = fn; return () => undefined; },
-        get: (key: string) => (key === 'tools' ? { register: (tool: Tool) => { tools[tool.name] = tool; return () => undefined; } } : key === 'systemPrompt' ? { context: () => () => undefined } : undefined),
+        get: (key: string) => (key === 'tools' ? { register: (tool: Tool) => { tools[tool.name] = tool; return () => undefined; } } : key === 'systemPrompt' ? { context: (entry: { text: () => string }) => { contexts.push(entry); return () => undefined; } } : undefined),
     };
     const rootCtx = {
         on: (name: string, fn: (...args: unknown[]) => unknown) => { if (name === 'agent/created') handlers.created = fn; },
@@ -45,7 +46,7 @@ function boot(extra: Record<string, unknown> = {}) {
     });
     handlers.created!({ agent: { id: 'a1', ctx: agentCtx } });
     const text = (name: string) => readFileSync(f(name), 'utf8');
-    return { dir, f, tools, handlers, text };
+    return { dir, f, tools, handlers, text, contexts };
 }
 
 describe('账本序号：她看到几号就改几号（原来按整个文件从头数，改到她没见过的那条）', () => {
@@ -192,5 +193,126 @@ describe('不再写死某个用户的路径', () => {
         files.push(...walk(join(root, 'packages/bot/src')));
         const hits = files.filter(file => /Users[\\/]22601/.test(readFileSync(file, 'utf8')));
         assert.deepEqual(hits.map(file => file.slice(root.length)), []);
+    });
+});
+
+// ───────── 同一个她（ADR 0176）：DSH 桌面上的她读写哪些 bank ─────────
+
+interface Call { method: string; url: string; body?: { items: Array<{ document_id: string; content: string }> } }
+function fakeHindsight(options: { banks: string[]; items?: Array<Record<string, unknown>>; recall?: Record<string, Array<Record<string, unknown>>> }) {
+    const calls: Call[] = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: string, init?: { method?: string; body?: string }) => {
+        const method = init?.method ?? 'GET';
+        calls.push({ method, url: String(url), ...(init?.body ? { body: JSON.parse(init.body) } : {}) });
+        const path = new URL(String(url)).pathname;
+        const json = path.endsWith('/banks') ? { banks: options.banks.map(id => ({ bank_id: id })) }
+            : path.endsWith('/memories/list') ? { items: options.items ?? [] }
+            : path.endsWith('/memories/recall') ? { results: options.recall?.[decodeURIComponent(path.split('/')[4]!)] ?? [] }
+            : {};
+        return { ok: true, status: 200, json: async () => json };
+    }) as unknown as typeof fetch;
+    return { calls, restore: () => { globalThis.fetch = original; } };
+}
+const bankOf = (url: string) => /\/banks\/([^/]+)\//.exec(url)?.[1];
+const ALL_BANKS = ['linmengyao', 'linmengyao-common', 'linmengyao-aaaa111122223333', 'linmengyao-bbbb444455556666', 'linmengyao-cccc777788889999', 'other-bank'];
+const OWNER = 'linmengyao-aaaa111122223333';
+let urlCounter = 0;
+const recalledBanks = (calls: Call[]) => calls.filter(call => call.method === 'POST' && call.url.endsWith('/memories/recall')).map(call => bankOf(call.url)).sort();
+function ownerFile(contents: unknown): string {
+    const dir = mkdtempSync(join(tmpdir(), 'qqbot-owner-'));
+    dirs.push(dir);
+    const file = join(dir, 'owner-bank.json');
+    if (contents !== undefined) writeFileSync(file, JSON.stringify(contents));
+    return file;
+}
+
+describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，且读不到别人的私聊（ADR 0176）', () => {
+    test('有 owner-bank.json：只召回他的 bank、公共库、老的 linmengyao，别人的 bank 一个都不碰', async () => {
+        const fake = fakeHindsight({ banks: ALL_BANKS });
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
+            await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '今天吃什么' }] }, async () => undefined);
+            assert.deepEqual(recalledBanks(fake.calls), ['linmengyao', OWNER, 'linmengyao-common'].sort());
+        } finally { fake.restore(); }
+    });
+
+    test('没有 owner-bank.json：只召回老的 linmengyao 和公共库（绝不退回去读所有人的 bank）', async () => {
+        const fake = fakeHindsight({ banks: ALL_BANKS });
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile(undefined) });
+            await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '今天吃什么' }] }, async () => undefined);
+            assert.deepEqual(recalledBanks(fake.calls), ['linmengyao', 'linmengyao-common']);
+        } finally { fake.restore(); }
+    });
+
+    test('公共库只取她自己的日记 / 周记 / 阶段总结；别人的聊天片段和没有 document_id 的整合观察不取', async () => {
+        const result = (id: string, text: string, document_id?: string) => ({ id, text, ...(document_id ? { document_id } : {}), fact_type: 'world', date: new Date().toISOString() });
+        const fake = fakeHindsight({
+            banks: ALL_BANKS,
+            recall: {
+                [OWNER]: [result('o1', '他说想吃火锅', 'ep-1')],
+                'linmengyao-common': [
+                    result('c1', '我今天去了图书馆', 'diary:2026-10-28'),
+                    result('c2', '这周的周记内容', 'week:2026-10-26'),
+                    result('c3', '寒假的总结', 'phase:寒假:2027-02-28'),
+                    result('c4', '鸽鸽私下说他其实很怕挂科', 'bbbb444455556666:ep-9'),
+                    result('c5', '大家好像都在说挂科的事（整合观察，没有来源）'),
+                ],
+            },
+        });
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
+            await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '最近怎么样' }] }, async () => undefined);
+            const injected = h.contexts.map(entry => entry.text()).join('\n');
+            for (const kept of ['他说想吃火锅', '我今天去了图书馆', '这周的周记内容', '寒假的总结']) assert.ok(injected.includes(kept), kept);
+            for (const dropped of ['鸽鸽私下说', '整合观察']) assert.ok(!injected.includes(dropped), dropped);
+        } finally { fake.restore(); }
+    });
+
+    test('owner-bank.json 指向不是她名下的 bank、或带路径：不认', () => {
+        const ownerBanks = (plugin as unknown as { ownerBanks: (cfg: unknown) => unknown }).ownerBanks;
+        const file = ownerFile({ ownerBank: 'someone-elses-bank', commonBank: 'linmengyao-common', legacyBank: 'linmengyao' });
+        assert.equal(ownerBanks({ prefix: 'linmengyao', ownerBankFile: file }), undefined);
+        writeFileSync(file, JSON.stringify({ ownerBank: 'linmengyao-../x', commonBank: 'x', legacyBank: 'y' }));
+        assert.equal(ownerBanks({ prefix: 'linmengyao', ownerBankFile: file }), undefined);
+        writeFileSync(file, JSON.stringify({ ownerBank: OWNER, commonBank: 'evil', legacyBank: 'evil' }));
+        assert.deepEqual(ownerBanks({ prefix: 'linmengyao', ownerBankFile: file }), { owner: OWNER, common: 'linmengyao-common', legacy: 'linmengyao' }, '其余两个不合格就用默认的');
+    });
+
+    test('桌面上的一轮对话写进他的 bank（document_id 以 dsh- 开头）；没有 owner-bank.json 时照旧写 linmengyao', async () => {
+        for (const withOwner of [true, false]) {
+            const fake = fakeHindsight({ banks: ALL_BANKS });
+            try {
+                const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile(withOwner ? { ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' } : undefined) });
+                await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '帮我看看这个文件' }] }, async () => undefined);
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'start' } });
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'chunk', chunk: { type: 'text-delta', text: '好，我看看' } } });
+                await h.handlers['agent/turn-stopping']!();
+                const saves = fake.calls.filter(call => call.method === 'POST' && /\/memories$/.test(call.url));
+                assert.equal(saves.length, 1);
+                assert.equal(bankOf(`${saves[0]!.url}/`), withOwner ? OWNER : 'linmengyao');
+                assert.match(saves[0]!.body!.items[0]!.document_id, /^dsh-/);
+                assert.match(saves[0]!.body!.items[0]!.content, /宝宝：帮我看看这个文件\n林梦瑶：好，我看看/);
+            } finally { fake.restore(); }
+        }
+    });
+
+    test('memory_save 写他的 bank；只把 DSH 自己写的相似旧事实失效，QQ 聊天的片段不动', async () => {
+        const text = '宝宝喜欢吃麻辣烫而且每周都去';
+        const items = [
+            { id: 'q1', text, document_id: 'ep-2026-10-20', state: 'active', fact_type: 'world' },
+            { id: 'd1', text, document_id: `dsh-${OWNER}-1760000000000`, state: 'active', fact_type: 'world' },
+            { id: 'd2', text: '完全无关的另一件事', document_id: 'dsh-linmengyao-1760000000001', state: 'active', fact_type: 'world' },
+        ];
+        const fake = fakeHindsight({ banks: ALL_BANKS, items });
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
+            await h.tools.memory_save!.execute({ content: `${text}，今天又去了` });
+            const patched = fake.calls.filter(call => call.method === 'PATCH').map(call => decodeURIComponent(call.url.split('/').pop()!));
+            assert.deepEqual(patched, ['d1'], 'QQ 的片段 q1 不动，无关的 d2 不动');
+            const saved = fake.calls.find(call => call.method === 'POST' && /\/memories$/.test(call.url))!;
+            assert.ok(saved.url.includes(`/banks/${OWNER}/memories`));
+        } finally { fake.restore(); }
     });
 });

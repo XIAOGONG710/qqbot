@@ -19,6 +19,8 @@ const DEFAULTS = {
   presets: ['linmengyao'],
   pick: 6,
   maxChars: 1400,
+  // QQ 那边写的「他的 bank 在哪」（ADR 0176）；QQBOT_OWNER_BANK_FILE 可以改，默认是这个仓库的 runtime/bot/memory/owner-bank.json
+  ownerBankFile: process.env.QQBOT_OWNER_BANK_FILE || fileURLToPath(new URL('../../runtime/bot/memory/owner-bank.json', import.meta.url)),
   soulFile: soulPath('SOUL.md'),
   ledgerFile: soulPath('LEDGER.md'),
   journalFile: soulPath('JOURNAL.md'),
@@ -210,6 +212,8 @@ async function invalidateSimilar(cfg, content, bank) {
   for (const item of items) {
     if (item.state === 'invalidated') continue
     if (item.fact_type === 'observation') continue
+    // 他的 bank 里还有 QQ 聊天的片段（ep-… 等）：只动 DSH 自己写的（document_id 以 dsh- 开头），别把 QQ 的原话当「旧事实」失效掉
+    if (!String(item.document_id || '').startsWith('dsh-')) continue
     if (similarity(content, item.text || '') < 0.5) continue
     try {
       const res = await fetch(`${cfg.baseUrl}/v1/default/banks/${encodeURIComponent(bank)}/memories/${encodeURIComponent(item.id)}`, {
@@ -225,17 +229,43 @@ async function invalidateSimilar(cfg, content, bank) {
 
 let bankCache = { at: 0, ids: [] }
 
-/** 列出所有她名下的 bank：linmengyao 本身 + linmengyao-common + 各联系人 */
+/**
+ * 「同一个她」（ADR 0176）：QQ 那边把他（男朋友档）的 bank 写进 owner-bank.json。他在 DSH 桌面上和在 QQ 上是同一段关系，用同一个 bank。
+ * 文件没有 / 读不懂返回 undefined（调用方按「只有老的 linmengyao + 公共库」处理，绝不退回去读所有人的 bank）。
+ */
+export function ownerBanks(cfg) {
+  try {
+    const data = JSON.parse(fs.readFileSync(cfg.ownerBankFile, 'utf8'))
+    // 只认她名下的 bank（文件被改成指向别处也不会去读）
+    const ok = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(id) && (id === cfg.prefix || id.startsWith(`${cfg.prefix}-`))
+    if (!ok(data.ownerBank)) return undefined
+    return {
+      owner: data.ownerBank,
+      common: ok(data.commonBank) ? data.commonBank : `${cfg.prefix}-common`,
+      legacy: ok(data.legacyBank) ? data.legacyBank : cfg.prefix,
+    }
+  } catch { return undefined }
+}
+
+/** DSH 桌面上的对话和 memory_save 写到哪：他的 bank；没有 owner-bank.json 就照旧写 linmengyao */
+export const writeBank = (cfg) => ownerBanks(cfg)?.owner ?? cfg.prefix
+
+/**
+ * 召回哪些 bank：他的 bank + 公共库 + 老的 linmengyao（接缝之前的历史）。
+ * 原来是「所有叫 linmengyao-* 的」——包括名单里其他人各自的私聊 bank，等于把别人的私聊讲给他听。
+ */
 async function allBanks(cfg) {
-  if (bankCache.ids.length && Date.now() - bankCache.at < 60_000) return bankCache.ids
-  const res = await fetch(`${cfg.baseUrl}/v1/default/banks`, { signal: AbortSignal.timeout(2500) })
-  if (!res.ok) throw new Error(`banks ${res.status}`)
-  const data = await res.json()
-  const ids = (Array.isArray(data.banks) ? data.banks : [])
-    .map((bank) => String(bank.bank_id || ''))
-    .filter((id) => id === cfg.prefix || id.startsWith(`${cfg.prefix}-`))
-  bankCache = { at: Date.now(), ids }
-  return ids
+  let existing = bankCache.ids
+  if (!existing.length || bankCache.baseUrl !== cfg.baseUrl || Date.now() - bankCache.at >= 60_000) {
+    const res = await fetch(`${cfg.baseUrl}/v1/default/banks`, { signal: AbortSignal.timeout(2500) })
+    if (!res.ok) throw new Error(`banks ${res.status}`)
+    const data = await res.json()
+    existing = (Array.isArray(data.banks) ? data.banks : []).map((bank) => String(bank.bank_id || ''))
+    bankCache = { at: Date.now(), ids: existing, baseUrl: cfg.baseUrl }
+  }
+  const owner = ownerBanks(cfg)
+  const wanted = owner ? [owner.owner, owner.common, owner.legacy] : [cfg.prefix, `${cfg.prefix}-common`]
+  return wanted.filter((id, i) => existing.includes(id) && wanted.indexOf(id) === i)
 }
 
 async function recallBank(cfg, bank, query) {
@@ -262,19 +292,28 @@ async function recallBank(cfg, bank, query) {
       text: String(item.text || '').trim(),
       date: item.date || item.occurred_start || item.mentioned_at || '',
       type: item.fact_type || item.type || '',
+      documentId: String(item.document_id || ''),
     }))
     .filter((item) => item.text)
 }
 
+/**
+ * 公共库里除了她自己的日记 / 周记 / 阶段总结（document_id 以 diary: / week: / phase: 开头），还有名单里每个人的聊天片段副本。
+ * QQ 那边靠 disclosureRules 约束她能对谁说什么；DSH 这边没有这层，所以只取她自己的，别人的片段和没有 document_id 的整合观察（可能混着别人的话）一律不取。
+ */
+export const herOwnCommonDoc = (documentId) => /^(diary|week|phase):/.test(String(documentId || ''))
+
 /** 所有库做语义召回，合并去重后取前 pick 条 */
 async function recallAll(cfg, query) {
   const banks = await allBanks(cfg)
+  const common = ownerBanks(cfg)?.common ?? `${cfg.prefix}-common`
   const settled = await Promise.allSettled(banks.map((bank) => recallBank(cfg, bank, query)))
   const seen = new Set()
   const out = []
-  for (const result of settled) {
+  for (const [index, result] of settled.entries()) {
     if (result.status !== 'fulfilled') continue
     for (const item of result.value) {
+      if (banks[index] === common && !herOwnCommonDoc(item.documentId)) continue
       if (seen.has(item.id)) continue
       seen.add(item.id)
       out.push(item)
@@ -378,7 +417,7 @@ export function apply(ctx, config = {}) {
         }
         if (allow.size && p && !allow.has(p)) return
         try {
-          await retain(cfg, `宝宝：${user}\n林梦瑶：${assistant.slice(0, 2000)}`, cfg.prefix, ['dsh'], 'DSH')
+          await retain(cfg, `宝宝：${user}\n林梦瑶：${assistant.slice(0, 2000)}`, writeBank(cfg), ['dsh'], 'DSH')
           log(cfg, `auto-saved turn user=${user.slice(0, 20)} assistant=${assistant.length}chars`)
         } catch (e) {
           log(cfg, `auto-save error ${e}`)
@@ -414,8 +453,8 @@ export function apply(ctx, config = {}) {
           },
           async execute(args) {
             const content = String(args?.content || '').slice(0, 4000)
-            await invalidateSimilar(cfg, content, cfg.prefix)
-            await retain(cfg, content, cfg.prefix)
+            await invalidateSimilar(cfg, content, writeBank(cfg))
+            await retain(cfg, content, writeBank(cfg))
             return { saved: true }
           },
         }))

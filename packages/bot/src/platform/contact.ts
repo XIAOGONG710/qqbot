@@ -461,7 +461,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const relationship = remembers ? you(memory.relationship(contact)) : undefined;
             if (recalled || faded[0]?.forgotten) log(`召回长期记忆 ${recalled ? countLines(recalled) : 0} 条${fadeNote(faded[0])}`);
             // 工作房每轮都查：他问“今天帮我干了什么”时不一定有公共记忆线索
-            const work = remembers ? you(await memory.recallWork(contact, chat, time)) : undefined;
+            const work = remembers && contact.tier === 'boyfriend' ? you(await memory.recallWork(contact, chat, time)) : undefined;
             if (work) log(`召回工作记忆 ${countLines(work)} 条`);
             let common = freshCommon;
             const commonNote = [`线索：${cue}`, fadeParts(faded[1]).join('，')].filter(Boolean).join('；');
