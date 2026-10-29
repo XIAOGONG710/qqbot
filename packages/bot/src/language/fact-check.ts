@@ -106,6 +106,17 @@ export function dropClaimLines(reply: string, claims: readonly FactClaim[]): str
     return kept.some(line => line.trim()) ? kept.join('\n') : reply;
 }
 
+/**
+ * 删掉的行太多、剩下的撑不住这一轮：这一轮想说的那部分被当成“没依据”删了，只剩个尾巴（10-29 22:14：
+ * 要说的「作业写完了」被删掉，发出去的是两小时前的卤蛋梗）。剩下不到一半才算。主动找他时可以整条不发（宁可少发）。
+ */
+export function dropTooMuch(reply: string, claims: readonly FactClaim[]): boolean {
+    const lines = reply.split('\n').filter(line => line.trim());
+    if (lines.length < 2) return false;
+    const kept = lines.filter(line => !claims.some(claim => line.includes(claim.quote)));
+    return kept.length * 2 < lines.length;
+}
+
 /** 一次检查的记录（模拟器的报告用） */
 export interface FactRecord {
     /** 审稿看的那一版 */
@@ -131,6 +142,8 @@ export interface FactCheckOptions {
     regenerate: (note: string) => Promise<string>;
     log: (message: string) => void;
     onRecord?: (record: FactRecord) => void;
+    /** 删完剩下的撑不住这一轮时返回空串（上层这轮不发）：只在主动找他时开，回复里必须发出去 */
+    mayDropAll?: boolean;
     /** 审稿最多等多久（默认 FACT_TIMEOUT_MS；测试用短的） */
     timeoutMs?: number;
 }
@@ -172,6 +185,10 @@ export async function checkFacts(reply: string, options: FactCheckOptions): Prom
     try {
         rewritten = await options.regenerate(factRewriteNote(claims));
     } catch (error) {
+        if (options.mayDropAll && dropTooMuch(reply, claims)) {
+            options.log(`事实检查：重写失败（${error instanceof Error ? error.message : String(error)}），删完剩下的撑不住这一轮，这轮不发`);
+            return finish('', { action: 'dropped' });
+        }
         const dropped = dropClaimLines(reply, claims);
         options.log(`事实检查：重写失败（${error instanceof Error ? error.message : String(error)}），${dropped === reply ? '照发' : '删掉这几行'}`);
         return finish(dropped, { action: dropped === reply ? 'kept' : 'dropped' });
@@ -189,6 +206,10 @@ export async function checkFacts(reply: string, options: FactCheckOptions): Prom
     if (remaining.length === 0) {
         options.log('事实检查：重写后通过');
         return finish(rewritten, { action: 'rewritten', rewritten });
+    }
+    if (options.mayDropAll && dropTooMuch(rewritten, remaining)) {
+        options.log(`事实检查：重写后仍有 ${describe(remaining)}，删完剩下的撑不住这一轮（想说的被删了），这轮不发`);
+        return finish('', { action: 'dropped', rewritten, again: remaining });
     }
     const dropped = dropClaimLines(rewritten, remaining);
     options.log(`事实检查：重写后仍有 ${describe(remaining)}，${dropped === rewritten ? '删不了，照发' : '删掉这几行'}`);

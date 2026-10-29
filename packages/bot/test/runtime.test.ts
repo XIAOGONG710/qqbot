@@ -785,7 +785,7 @@ describe('回复调度', () => {
             assert.equal(responder.status().phase, 'idle');
         });
 
-        test('allowRepeat 交给出口检查（ADR 0089）：设了就带给 review，没设就不带', async () => {
+        test('allowRepeat 交给出口检查（ADR 0089）：设了就带给 review，没设就不带；主动找他时带 initiating', async () => {
             const contexts: unknown[] = [];
             const { responder } = setup({
                 generate: async () => '宝宝，去看私信',
@@ -793,7 +793,7 @@ describe('回复调度', () => {
             });
             await responder.initiate(request({ allowRepeat: true }));
             await responder.initiate(request());
-            assert.deepEqual(contexts, [{ allowRepeat: true }, undefined]);
+            assert.deepEqual(contexts, [{ initiating: true, allowRepeat: true }, { initiating: true }]);
         });
 
         test('催他回（ADR 0100）：canDecline 时模型只输出「不发」就记成没发、不 commit；没设 canDecline 不认这个；带括号 / 句号也算；夹在句子里的不算', async () => {
