@@ -116,7 +116,7 @@ export function thinkNote(recent: readonly InnerThought[], userName: string, ind
         + `${saw}${watched && forceWatch ? `这一次就想这一件：${WATCH_THEME}。` : `这一次从这两样里挑一样想：①${a}；②${b}。`}别围着“他怎么还没回”转（他忙他的，你有你的事）。`
         + `只写感受和想法，不写新发生的事（上面没写的事实不编，不编${userName}说过的话，不编他身边的人和他那边的事），也不分析自己是不是真人、有没有意识。`
         + `${before}输出两到三行：第一行是心里的话（不超过 30 个字，半句也行，像小声嘀咕；用最平常的口语，别用成语，别写“我服”“我认”“我给满分”这类表态的词，别写成总结或评语）；第二行只写「告诉他」「问他」「自己想想」其中一个，表示这个念头你想不想拿去跟${userName}说：想说给他听选「告诉他」，想问他一件具体的事选「问他」，先放在心里选「自己想想」；想说就别憋着，但也别每个念头都说。`
-        + `第三行可以不写：如果这会儿你特别想弄明白一件具体的事（不查会一直惦记，比如某个东西是什么、哪年的事、这个说法到底啥意思），就写「想查：关键词」（关键词 2–15 个字，要查得准）；不查就不写这行。别拿它查${userName}的事——他的事问他本人。]`;
+        + `第三行可以不写：如果这会儿你特别想弄明白一件具体的事（不查会一直惦记，比如某个东西是什么、哪年的事、这个说法到底啥意思），就写「想查：关键词」（关键词 2–15 个字，要查得准）；如果今天想做点什么（不是他安排的，是你自己想的），就写「想做：一句话」（2–15 个字，说具体的事）；两个都没有就不写这行。别拿它查或者安排${userName}的事——他的事问他本人。]`;
 }
 /** 字对的重合比例（0–1）：两句话的二字组合里共有的占较短那句的比例 */
 export function similarity(a: string, b: string): number {
@@ -138,7 +138,7 @@ const GOES_MARK: readonly [ThoughtGoes, RegExp][] = [['tell', /告诉他/], ['as
  * 模型的输出 → 一个念头；不合格返回原因。第一行是心里的话，第二行是去向；挤在一行里（「……（告诉他）」）也认。
  * 不合格：空的、太短太长、带链接 / 表情指令、和最近的念头重复
  */
-export function parseThought(raw: string, recent: readonly InnerThought[], at: number, callName?: string): { thought: InnerThought; wants?: string } | { rejected: string } {
+export function parseThought(raw: string, recent: readonly InnerThought[], at: number, callName?: string): { thought: InnerThought; wants?: string; todo?: string } | { rejected: string } {
     const lines = raw.replace(/\r/g, '').split('\n').map(line => line.trim()).filter(Boolean);
     if (!lines.length) return { rejected: '空的' };
     let goes: ThoughtGoes = 'keep';
@@ -172,16 +172,24 @@ export function parseThought(raw: string, recent: readonly InnerThought[], at: n
     // 书面腔 / 模型腔（「这思路我服」「头头是道」，ADR 0130 的验证里写出来的）：不收，让调用方换个写法再想一次
     if (stiltedHit(text)) return { rejected: '书面腔' };
     if (recent.some(t => similarity(t.text, text) >= SIMILAR)) return { rejected: '和最近的重复' };
-    // 第三行（可选）：「想查：关键词」——她这会儿想弄明白的事（ADR 0180），planner 会真的去查一次
+    // 第三行（可选）：「想查：关键词」——她这会儿想弄明白的事（ADR 0180），planner 会真的去查一次；
+    // 「想做：一句话」——她今天想做的事（ADR 0182），写成这一天的打算，状态行里她就是个在做那件事的人
     let wants: string | undefined;
+    let todo: string | undefined;
     for (const line of lines) {
-        const hit = /想查[：:]\s*(.+)$/.exec(line);
-        if (!hit) continue;
-        const query = hit[1]!.replace(/[「」“”"'（）()\s]/g, '').trim();
-        if (chars(query) >= 2 && chars(query) <= 15 && !/https?:|<sticker|\[[^\]]{1,6}\]/.test(query)) wants = query;
-        break;
+        const want = /想查[：:]\s*(.+)$/.exec(line);
+        if (want) {
+            const query = want[1]!.replace(/[「」“”"'（）()\s]/g, '').trim();
+            if (chars(query) >= 2 && chars(query) <= 15 && !/https?:|<sticker|\[[^\]]{1,6}\]/.test(query)) wants = query;
+            continue;
+        }
+        const plan = /想做[：:]\s*(.+)$/.exec(line);
+        if (plan) {
+            const text = plan[1]!.replace(/^[「“"『]+|[」”"』]+$/g, '').replace(/[「」“”"'（）()]/g, '').trim();
+            if (chars(text) >= 2 && chars(text) <= 60 && !/https?:|<sticker|\[[^\]]{1,6}\]/.test(text)) todo = text;
+        }
     }
-    return { thought: { id: `th-${at}`, at: new Date(at).toISOString(), text, goes }, ...(wants ? { wants } : {}) };
+    return { thought: { id: `th-${at}`, at: new Date(at).toISOString(), text, goes }, ...(wants ? { wants } : {}), ...(todo ? { todo } : {}) };
 }
 
 /** 放进聊天提示词的一行：最近几个钟头她心里在想的；没有就没有 */

@@ -23,6 +23,8 @@ const DEFAULTS = {
   ownerBankFile: process.env.QQBOT_OWNER_BANK_FILE || fileURLToPath(new URL('../../runtime/bot/memory/owner-bank.json', import.meta.url)),
   soulFile: soulPath('SOUL.md'),
   personaFile: soulPath('PERSONA.md'),
+  /** 人设卡本体：只用来比时间，判断 PERSONA.md 是不是过期了（任务书 §1 第 4 条） */
+  personaCardFile: process.env.QQBOT_PERSONA_CARD || 'C:/Users/22601/Desktop/qqbot-dsh-control/characters/linmengyao/st/linmengyao-boyfriend-open.json',
   ledgerFile: soulPath('LEDGER.md'),
   journalFile: soulPath('JOURNAL.md'),
   privateFile: soulPath('PRIVATE.dat'),
@@ -400,6 +402,21 @@ async function recallAll(cfg, query) {
 let personaCache = { path: '', at: 0, text: '' }
 
 /** 人设（由 QQ 那边的卡渲染出来的 PERSONA.md）：只读，不让她改；文件不在就什么都不注入 */
+let personaStaleWarned = false
+
+/** PERSONA.md 比人设卡老 = 该重跑 scripts/build-dsh-persona.mjs（只警告一次，不挡回复） */
+function warnIfPersonaStale(cfg) {
+  if (personaStaleWarned) return
+  try {
+    const personaAt = fs.statSync(cfg.personaFile).mtimeMs
+    const cardAt = fs.statSync(cfg.personaCardFile).mtimeMs
+    if (cardAt > personaAt) {
+      personaStaleWarned = true
+      log(cfg, '人设过期：PERSONA.md 比卡文件老，跑 scripts/build-dsh-persona.mjs')
+    }
+  } catch { /* 没有卡文件就算了，不吵 */ }
+}
+
 function readPersona(cfg) {
   try {
     const stat = fs.statSync(cfg.personaFile)
@@ -533,6 +550,7 @@ export function apply(ctx, config = {}) {
           order: 10,
           text: () => {
             const persona = readPersona(cfg)
+            if (persona) warnIfPersonaStale(cfg)
             return persona ? `[她的设定]
 ${persona}` : ''
           },

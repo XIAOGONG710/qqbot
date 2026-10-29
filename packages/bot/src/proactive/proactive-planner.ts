@@ -184,6 +184,11 @@ export interface PlannerDeps {
      * 返回摘出来的几条事实；没查成返回 undefined（她照实说不知道）
      */
     look?: (query: string) => Promise<string[] | undefined>;
+    /**
+     * 她自己决定今天想做点什么（ADR 0182）：念头里写了「想做：一句话」就交给它写进这一天的打算；
+     * 之后状态行、「今天的打算」里她就是那个在做这件事的人
+     */
+    planToday?: (todo: string, at: Date) => void;
 }
 
 export interface PlannerStatus {
@@ -594,6 +599,11 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             } else {
                 deps.log(`内心${tag}：想知道「${logBody(parsed.wants)}」，没查到`);
             }
+        }
+        // 她自己决定今天想干什么（ADR 0182）：写进这一天的打算，状态行和「你今天的打算」都用它
+        if (parsed.todo && deps.planToday) {
+            deps.planToday(parsed.todo, new Date(started));
+            deps.log(`内心${tag}：今天想做「${logBody(parsed.todo)}」`);
         }
         save();
         deps.log(`内心${tag}：${logBody(parsed.thought.text)}（${GOES_LABEL[parsed.thought.goes]}）`);

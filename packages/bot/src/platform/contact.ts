@@ -50,7 +50,7 @@ import { describeRecentPhotography, projectActivity, recentPhotography } from '.
 import { describePast, pastCue } from '.././life/biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '.././life/people.ts';
 import { describeAppointment, mentionsMeetup, type PromiseKeeper } from '.././life/promises.ts';
-import { describeState, formatDate, herDay, partnerBackLine } from '.././life/schedule.ts';
+import { describeState, formatDate, herDay, partnerBackLine, type ExtraFreeActivity } from '.././life/schedule.ts';
 import { speechContext, TAIL_CAPS, type BookProgressContext } from '.././language/speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from '.././language/candidates.ts';
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
@@ -195,6 +195,8 @@ export interface ContactPipelineOptions {
     lifeLine?: () => string | undefined;
     /** 梗百科词库（2026-10-29）：他这句里提到一个词，只读地查一眼，不写进她自己的梗库 */
     memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
+    /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
+    ask?: () => string | undefined;
     /** 首轮铺底（2026-10-29）：他走了很久回来，第一轮带上她自己写的那段日记；挂着 lifeInPrompt，不是新开关 */
     wakeNote?: () => string | undefined;
     /** 记忆由她自己决定：提示词里教她写 <<记住：…>> / <<日记：…>> 标记 */
@@ -265,6 +267,8 @@ export interface ContactPipelineOptions {
     shapeFeel?: boolean;
     /** 她最近心里在想什么（ADR 0101，配置 innerLife）：放进提示词的一行；没有就没有。主动找他、危机回合不放 */
     innerLine?: () => string | undefined;
+    /** 她自己决定今天想做的事（ADR 0182）：和「在读的书」一起当额外的空闲活动，状态行和「你今天的打算」都带上 */
+    herPlan?: (at: Date) => ExtraFreeActivity[];
     /** 他刚发过「/亲热」（ADR 0170）：接下来几条回复黏一点；每取一次少一条，主动找他、危机回合不取 */
     intimacyLine?: () => string | undefined;
     /** 心境（ADR 0102，配置 herFeelings）：她那边的事、他的态度、作者写下的事，在她心里留下带来由的感受（开心 / 难过 / 担心……），会慢慢散；只给男朋友档，危机回合不放 */
@@ -409,7 +413,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         const body = bodyThen ? diaryBody(bodyThen) : undefined;
         if (body) lines.push(body);
         // 那天改了的打算（ADR 0034）：照打算做的不写——天天一样的空闲活动排成一列，问「昨天干嘛了」她就照着报，想不起那天记得住的事（调整 3）
-        lines.push(...dayPlan(herSchedule, character.herWorld.plans, dayStart, { rain: then.weather?.rain, ...(then.weather?.rainHours ? { rainHours: then.weather.rainHours } : {}), body: bodyThen, homework: then.homework }, extraFree)
+        lines.push(...dayPlan(herSchedule, character.herWorld.plans, dayStart, { rain: then.weather?.rain, ...(then.weather?.rainHours ? { rainHours: then.weather.rainHours } : {}), body: bodyThen, homework: then.homework }, [...extraFree, ...(options.herPlan?.(dayStart) ?? [])])
             .filter(slot => slot.done !== slot.planned).map(describeSlot));
         if (!lines.length) return undefined;
         const day = `${dayStart.getMonth() + 1}月${dayStart.getDate()}日 ${'日一二三四五六'.split('').map(d => `周${d}`)[dayStart.getDay()]}`;
@@ -533,7 +537,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const meeting = meetings.find(m => m.contact.qq === contact.qq) ?? meetings[0];
             const appointment = meeting ? describeAppointment(meeting, contact, time) : undefined;
             const status = schedule ? herStatus(schedule, time, {
-                extraFree, ...(around ? { world: around } : {}), ...(asleep ? { asleep } : {}), ...(appointment ? { appointment } : {}),
+                extraFree: [...extraFree, ...(options.herPlan?.(time) ?? [])], ...(around ? { world: around } : {}), ...(asleep ? { asleep } : {}), ...(appointment ? { appointment } : {}),
                 ...(herSchedule ? { plans: { plans: character.herWorld?.plans, ...(bodyNow ? { body: bodyNow } : {}) } } : {}),
                 ...(options.projectChoice && options.worldState?.events
                     ? { projectChoice: { events: options.worldState.events(), books: character.books } }
@@ -893,6 +897,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(options.ratingLine?.() ? [options.ratingLine()!] : []),
                         ...(options.lifeLine?.() ? [`[你现在的生活] ${options.lifeLine()!}`] : []),
                         ...(options.wakeNote?.() ? [options.wakeNote()!] : []),
+                        ...(options.ask?.() ? [options.ask()!] : []),
                         ...(options.workRequest?.() ? [WORK_REQUEST_NOTE] : []),
                         ...(options.workJudge?.() ? [WORK_JUDGE_NOTE] : []),
                         ...(options.workMode?.() ? [WORK_MODE_NOTE] : []),
