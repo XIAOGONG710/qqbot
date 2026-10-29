@@ -45,6 +45,11 @@ describe('内心：解析念头', () => {
         assert.equal((parseThought('随便想想\n自己想想', [], 1) as { wants?: string }).wants, undefined, '没写就不查');
         assert.equal((parseThought('这个事我一直没弄明白\n自己想想\n想查：https://x.com/a', [], 1) as { wants?: string }).wants, undefined, '带链接的不查');
         assert.equal((parseThought('这个事我一直没弄明白\n自己想想\n想查：一二三四五六七八九十一二三四五六', [], 1) as { wants?: string }).wants, undefined, '超过 15 个字');
+        // 「想做：一句话」= 她今天想做的事（ADR 0182）
+        const withTodo = parseThought('今天想出去走走，不想闷在宿舍\n自己想想\n想做：去操场走两圈', [], 1) as { todo?: string };
+        assert.equal(withTodo.todo, '去操场走两圈');
+        const both = parseThought('那部剧到底哪年播的\n自己想想\n想查：某剧 播出年份\n想做：晚饭后把那页笔记整理完', [], 1) as { wants?: string; todo?: string };
+        assert.deepEqual([both.wants, both.todo], ['某剧播出年份', '晚饭后把那页笔记整理完']);
     });
 
     test('不合格的不留：空的、太短、太长、带链接 / 表情指令 / 表情、和最近的重复', () => {
