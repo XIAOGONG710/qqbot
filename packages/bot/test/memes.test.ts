@@ -15,7 +15,11 @@ const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-memes-')); dirs.push(d); return join(d, 'memes.json'); };
 const now = new Date(2026, 10, 12, 20, 0);
-const entry = (term: string, patch: Partial<MemeEntry> = {}): MemeEntry => ({ term, meaning: `${term}是一个网络梗，常用来调侃`, example: `这也太${term}了`, confidence: 'mid', firstSeen: '2026-11-10', lastSeen: '2026-11-12', seen: 2, ...patch });
+const entry = (term: string, patch: Partial<MemeEntry> = {}): MemeEntry => ({
+    term, meaning: `${term}是一个网络梗，常用来调侃`, example: `这也太${term}了`, confidence: 'mid',
+    why: '把一个普通的场面说成了不得的事，反差好笑', avoid: '他认真说事的时候别用',
+    firstSeen: '2026-11-10', lastSeen: '2026-11-12', seen: 2, ...patch,
+});
 const video = (title: string, aid = 1, desc = ''): BiliVideo => ({ bvid: 'BV1xx411c7mD', aid, title, desc, owner: 'x', category: '搞笑', views: 100000, likes: 1000, duration: 120, link: 'https://www.bilibili.com/video/BV1xx411c7mD' });
 
 describe('读热榜', () => {
@@ -59,7 +63,7 @@ describe('让模型挑词、写解释：规则在代码里', () => {
         for (const text of ['你还是下去通透吧', '大类魂理论', '人一旦在有地铁的城市待久了', '研究生毕业 不用写论文', '原样摘自标题', '不要：新闻、政治、灾害']) assert.ok(prompt.includes(text), text);
     });
 
-    const good = { 是梗: true, 意思: '调侃某上单选手重回世界第一上单的状态，多用于英雄联盟赛事圈', 例句: '世一上归位，今天真猛', 把握: '高', 适合聊天: true };
+    const good = { 是梗: true, 意思: '调侃某上单选手重回世界第一上单的状态，多用于英雄联盟赛事圈', 例句: '世一上归位，今天真猛', 为什么好笑: '把选手自称的世界第一当真了，反差好笑', 什么时候别用: '他认真说比赛的时候别用来打岔', 把握: '高', 适合聊天: true };
     test('解释：是梗、把握中 / 高、适合聊天才收；意思 6–60 字、例句 ≤ 24 字、不碰敏感词', () => {
         const ok = parseExplain('世一上归位', JSON.stringify(good))!;
         assert.equal(ok.confidence, 'high');
@@ -110,7 +114,7 @@ describe('找证据', () => {
 describe('刷新', () => {
     const lists: MemeLists = { popular: [{ title: '标题', tname: '日常' }], hot: ['热搜'], weibo: [], baidu: [] };
     const jsonLine = (词: string) => JSON.stringify({ 词 });
-    const explainReply = (meaning: string) => JSON.stringify({ 是梗: true, 意思: meaning, 例句: '例句来一个', 把握: '中', 适合聊天: true });
+    const explainReply = (meaning: string) => JSON.stringify({ 是梗: true, 意思: meaning, 例句: '例句来一个', 为什么好笑: '反差和夸张，梗的底子是同一个玩笑', 什么时候别用: '他认真说事的时候别用', 把握: '中', 适合聊天: true });
     const make = (options: { lists?: MemeLists; terms?: string[]; evidence?: (term: string) => string[]; explain?: (term: string) => string } = {}) => {
         const path = tmp();
         const logs: string[] = [];
@@ -215,7 +219,7 @@ describe('放进提示词', () => {
         const hits = Array.from({ length: 400 }, (_, i) => memeLine(entries, chat('在吗', '在呢', `今天吃了拉面${i}`), now.getTime())).filter(Boolean);
         assert.ok(hits.length > 400 * MEME_TURN_SHARE * 0.7 && hits.length < 400 * MEME_TURN_SHARE * 1.3, `400 轮里 ${hits.length}`);
         const sample = hits[0]!;
-        for (const text of ['这一轮挑一个用上', '不解释、不点破', '别硬塞', '他难过或认真说事的时候别用']) assert.ok(sample.includes(text), text);
+        for (const text of ['先判断这场合合不合用', '不解释、不点破', '别硬塞', '他难过或认真说事的时候一律不用', '为什么好笑', '什么时候别用']) assert.ok(sample.includes(text), text);
         assert.equal((sample.match(/「/g) ?? []).length, 3);
         const same = chat('在吗', '在呢', '今天吃了拉面0');
         assert.equal(memeLine(entries, same, now.getTime()), memeLine(entries, same, now.getTime()));
@@ -253,4 +257,13 @@ test('挑梗时把不能用的滤掉：库里只剩真梗才进提示词', () =>
     assert.ok(line?.includes('启动！'), line ?? '空');
     assert.ok(!line?.includes('发哥'), line ?? '空');
     assert.ok(!line?.includes('什么梗'), line ?? '空');
+});
+
+// 2026-10-29：她要理解「为什么有这个梗」「什么时候不该用」，说不出来就不收
+test('解释里没有笑点/失效条件的不收', () => {
+    const base = { 是梗: true, 意思: '调侃某个场面的话，多用于熟人之间', 例句: '这也太离谱了', 把握: '高', 适合聊天: true };
+    assert.equal(parseExplain('x', JSON.stringify(base)), undefined, '缺为什么好笑');
+    assert.ok(parseExplain('x', JSON.stringify({ ...base, 为什么好笑: '把小事说得很夸张，反差好笑' })), '有笑点就收（失效条件可以缺）');
+    const entry = parseExplain('x', JSON.stringify({ ...base, 为什么好笑: '把小事说得很夸张，反差好笑', 什么时候别用: '他家里出事的时候别用' }));
+    assert.equal(entry?.avoid, '他家里出事的时候别用');
 });

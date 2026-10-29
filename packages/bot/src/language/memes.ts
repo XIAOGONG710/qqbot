@@ -9,7 +9,10 @@
 //   4. 代码再过一遍：把握必须是中 / 高、适合聊天必须是 true、意思 6–60 字、例句 ≤ 24 字、不碰敏感词；45 天没再在榜上出现的过期，最多留 40 个。
 // 用在聊天里（只对男朋友档，和小梗一样放进提示词）：
 //   - 他这一句里用了库里的梗：给她这个梗的意思，让她顺着接——别说“没听懂”、别解释梗、别拆梗。
-//   - 没用到的话，约 MEME_TURN_SHARE 的轮次给她 3 个最近的梗当“你最近刷到的”：知道意思，想用就自然地用一个，用得上才用；他难过 / 认真说事时不放。
+//   - 没用到的话，约 MEME_TURN_SHARE 的轮次给她 3 个最近的梗当“你最近刷到的”：每条带「意思 / 为什么好笑 / 什么时候合适 / 什么时候别用」，
+//     让她先判断场合合不合用（2026-10-29 用户：不能只给意思，要理解为什么有这个梗、什么时候不该用）。
+//     只有带 why 和 avoid 的才主动往外用——说不清失效条件的梗只在他自己用的时候给她意思。
+//     参照 QiDouZu/retcon-form：结论是压缩包，要能解压回「它凭什么成立、什么情况下它错」。
 // 她的话里最近原样出现过的梗不再放（别总用同一个）。
 
 import { mkdirSync } from 'node:fs';
@@ -23,6 +26,14 @@ export interface MemeEntry {
     term: string;
     /** 一句话：什么意思、通常在什么情形下用 */
     meaning: string;
+    /** 这个梗从哪来的：哪个事件、哪句话被反复用（2026-10-29，照 retcon-form 的「压缩包要能解压」） */
+    origin?: string;
+    /** 为什么好笑 / 它拧的是哪个预期（"为什么会有这个梗"） */
+    why?: string;
+    /** 什么时候用合适：在谁之间、什么情绪下、多熟的关系 */
+    when?: string;
+    /** **失效条件**：什么时候用它就错了（对他认真的时候、涉及身材/地域、过期了、长辈在场……），缺这条就不主动往外用 */
+    avoid?: string;
     /** 一个聊天里随口说的例句（只给人看，不放进提示词，免得她照抄） */
     example: string;
     confidence: 'high' | 'mid';
@@ -183,12 +194,17 @@ export function parseCandidates(reply: string): string[] {
 export function explainPrompt(term: string, evidence: readonly string[]): string {
     return `词：「${term}」\n下面是 B 站上和这个词有关的视频标题、简介、字幕和热评（可能和这个词无关）：\n${evidence.map(e => `- ${e}`).join('\n')}\n\n`
         + '请只根据上面的文字，判断这是不是一个网络梗 / 流行语，并输出一行 JSON：'
-        + '{"是梗":true/false,"意思":"一句话，说它是什么意思、通常在什么情形下用（不超过 40 字）","例句":"一个像聊天里随口说的例句（不超过 20 字）","把握":"高/中/低（文字里有直接解释才算高；只能猜就是低）","适合聊天":true/false（政治、灾难、案件、低俗、地域或性别攻击、对人的贬称、广告 = false）}。'
+        + '{"是梗":true/false,"意思":"一句话，说它是什么意思、通常在什么情形下用（不超过 40 字）","例句":"一个像聊天里随口说的例句（不超过 20 字）",'
+        + '"来历":"它从哪来的：哪个事件/哪句话被反复用起来的（不超过 40 字，文字里没有出处就留空）",'
+        + '"为什么好笑":"它拧的是哪个预期、凭什么好笑（不超过 40 字，说不出就别编，留空）",'
+        + '"什么时候用":"在谁之间、什么情绪、多熟的关系下用才合适（不超过 30 字）",'
+        + '"什么时候别用":"**失效条件**：什么场合/对什么人用它就错了、会尴尬或冒犯（不超过 30 字；想不出来也要写，比如"他认真说事的时候"）",'
+        + '"把握":"高/中/低（文字里有直接解释才算高；只能猜就是低）","适合聊天":true/false（政治、灾难、案件、低俗、地域或性别攻击、对人的贬称、广告 = false）}。'
         + '文字里看不出意思就写 {"是梗":false}。不要别的字。';
 }
 
 /** 模型回复 → 一条梗（不含出现日期）；不合格返回 undefined。规则在代码里：把握必须中 / 高、适合聊天必须 true */
-export function parseExplain(term: string, reply: string): Pick<MemeEntry, 'term' | 'meaning' | 'example' | 'confidence'> | undefined {
+export function parseExplain(term: string, reply: string): Pick<MemeEntry, 'term' | 'meaning' | 'example' | 'confidence' | 'origin' | 'why' | 'when' | 'avoid'> | undefined {
     const match = /\{[\s\S]*\}/.exec(reply);
     if (!match) return undefined;
     let o: Record<string, unknown>;
@@ -201,7 +217,21 @@ export function parseExplain(term: string, reply: string): Pick<MemeEntry, 'term
     const example = clean(o['例句']);
     if (chars(meaning) < 6 || chars(meaning) > 60 || chars(example) > 24) return undefined;
     if (MEME_BLOCK.test(meaning) || MEME_BLOCK.test(example) || BLOCKED.test(meaning)) return undefined;
-    return { term, meaning, example, confidence };
+    // 来历 / 笑点 / 场合 / 失效条件：能解释清楚才收（2026-10-29 用户：她要理解为什么有这个梗、什么时候不该用）
+    const origin = clean(o['来历']);
+    const why = clean(o['为什么好笑']);
+    const when = clean(o['什么时候用']);
+    const avoid = clean(o['什么时候别用']);
+    if (chars(why) < 6 || chars(why) > 60) return undefined;
+    if (MEME_BLOCK.test(why) || MEME_BLOCK.test(avoid) || BLOCKED.test(why) || BLOCKED.test(avoid)) return undefined;
+    const clip = (text: string, max: number) => (chars(text) <= max ? text : [...text].slice(0, max).join(''));
+    return {
+        term, meaning, example, confidence,
+        ...(chars(origin) >= 4 ? { origin: clip(origin, 40) } : {}),
+        why: clip(why, 40),
+        ...(chars(when) >= 4 ? { when: clip(when, 30) } : {}),
+        ...(chars(avoid) >= 4 ? { avoid: clip(avoid, 30) } : {}),
+    };
 }
 
 // ───────── 找证据（她自己的 B 站号）─────────
@@ -327,16 +357,17 @@ export function memeLine(entries: readonly MemeEntry[], history: readonly Said[]
     if (!entries.length) return undefined;
     const used = memeUsed(entries, history);
     if (used) {
-        return `[他这一句里用了个网上的梗「${used.term}」：${used.meaning}（你大概知道这个梗，别说「没听懂」；顺着他的意思接，别解释梗、别拆梗，也别原样重复他的话）]`;
+        return `[他这一句里用了个网上的梗「${used.term}」：${used.meaning}${used.why ? `（为什么好笑：${used.why}）` : ''}。你大概知道这个梗，别说「没听懂」；顺着他的意思接，别解释梗、别拆梗，也别原样重复他的话]`;
     }
     const lastUser = history.findLast(message => message.role === 'user');
     if (!lastUser || unit(`${lastUser.time ?? ''} ${lastUser.content} meme`) >= MEME_TURN_SHARE) return undefined;
     const today = dayNumber(dayText(new Date(now)));
-    const fresh = entries.filter(e => isUsableMeme(e.term) && today - dayNumber(e.lastSeen) <= MEME_FRESH_DAYS && !usedByHer(e, history, now))
+    const fresh = entries.filter(e => isUsableMeme(e.term) && e.why && e.avoid && today - dayNumber(e.lastSeen) <= MEME_FRESH_DAYS && !usedByHer(e, history, now))
         .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen) || b.seen - a.seen);
     if (!fresh.length) return undefined;
     // 前 6 个里按这一句取 3 个，每次不都是同样的三个
     const pool = fresh.slice(0, 6);
     const picks = [...pool].sort((a, b) => unit(`${lastUser.content} ${a.term}`) - unit(`${lastUser.content} ${b.term}`)).slice(0, 3);
-    return `[你最近在网上刷到的几个流行梗：${picks.map(e => `「${e.term}」${e.meaning}`).join('；')}。这一轮挑一个用上——话赶话正好接得上就带出来（不解释、不点破、不加引号），接不上就不写，别硬塞；他难过或认真说事的时候别用]`;
+    const described = picks.map(e => `「${e.term}」${e.meaning}${e.why ? `；为什么好笑：${e.why}` : ''}${e.when ? `；什么时候合适：${e.when}` : ''}${e.avoid ? `；什么时候别用：${e.avoid}` : ''}`);
+    return `[你最近在网上刷到的几个流行梗：${described.join('｜')}。这一轮先判断这场合合不合用——合适就在一句话里带出来（不解释、不点破、不加引号），**不合适就别用**，宁可不用也别硬塞；他难过或认真说事的时候一律不用]`;
 }
