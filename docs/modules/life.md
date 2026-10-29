@@ -11,6 +11,7 @@
 - `life/projects.ts`
 - `life/pursuits.ts`
 - `life/self-pursuits.ts`
+- `life/now-export.ts`
 - `life/money.ts`
 - `life/body.ts`
 - `life/needs.ts`

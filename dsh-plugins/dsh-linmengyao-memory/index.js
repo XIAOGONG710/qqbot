@@ -63,19 +63,6 @@ function readSoul(cfg) {
   }
 }
 
-let nowCache = { path: '', at: 0, text: '' }
-function readNow(cfg) {
-  try {
-    const stat = fs.statSync(cfg.nowFile)
-    if (nowCache.path !== cfg.nowFile || nowCache.at !== stat.mtimeMs) {
-      nowCache = { path: cfg.nowFile, at: stat.mtimeMs, text: fs.readFileSync(cfg.nowFile, 'utf8').trim() }
-    }
-    return nowCache.text
-  } catch {
-    return ''
-  }
-}
-
 let storyCache = { path: '', at: 0, text: '' }
 function readStory(cfg) {
   try {
@@ -490,10 +477,10 @@ export function apply(ctx, config = {}) {
             if (text.length > cfg.maxChars) text = text.slice(0, cfg.maxChars) + '…'
             const soul = readSoul(cfg)
             const ledger = readLedger(cfg)
-            const now = readNow(cfg)
             const story = readStory(cfg)
+            // 「她现在在干嘛」只从 readNowLine 一条路进（带过期判断，下面的 sp.context）：原来这里还有一条直接读 NOW.md 的，
+            // 同一份状态注入两遍，而且这一条不看过期——QQ 没在跑时旧状态照样冒充现在（任务书 S7）
             cache.text = [
-              now ? `[你现在的生活]\n${now}` : '',
               story ? `[你走到现在的故事]\n${story}` : '',
               qqRecentBlock(cfg),
               soul ? `[你现在的自我]\n${soul}` : '',

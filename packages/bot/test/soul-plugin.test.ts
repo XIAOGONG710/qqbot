@@ -458,3 +458,35 @@ describe('同一个她·第 2 层：DSH 桌面对话回合记给 QQ 读（ADR 01
         });
     });
 });
+
+describe('同一个她·「她现在在干嘛」只从一条路进、过期不注入（任务书 §2、验收 S7）', () => {
+    const nowFile = (generatedAt: Date) => `<!-- 生成的，别手改 -->\n<!-- generated-at: ${generatedAt.toISOString()} -->\n\n她这会儿在图书馆写作业ZQN，有点困。\n`;
+    const injected = async (h: ReturnType<typeof boot>) => {
+        await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '在干嘛' }] }, async () => undefined);
+        return h.contexts.map(entry => entry.text()).join('\n');
+    };
+
+    test('QQ 刚渲染的（几分钟前）：注入，而且只注入一次', async () => {
+        const fake = fakeHindsight({ banks: ALL_BANKS });
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile(undefined) });
+            writeFileSync(h.f('NOW.md'), nowFile(new Date(Date.now() - 5 * 60_000)));
+            const text = await injected(h);
+            assert.equal(text.split('ZQN').length - 1, 1, '同一份状态只出现一次');
+            assert.match(text, /\[她现在在干嘛\]\n她这会儿在图书馆写作业ZQN/);
+            assert.ok(!text.includes('generated-at'), '给机器看的注释不进提示词');
+        } finally { fake.restore(); }
+    });
+
+    test('QQ 没在跑（NOW.md 两小时没更新）：任何一条路都不注入——不拿旧状态冒充现在', async () => {
+        const fake = fakeHindsight({ banks: ALL_BANKS });
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile(undefined) });
+            writeFileSync(h.f('NOW.md'), nowFile(new Date(Date.now() - 2 * 3_600_000)));
+            assert.ok(!(await injected(h)).includes('ZQN'));
+            // 没有生成时间的老格式（her-life.mjs 自己写的）也当过期
+            writeFileSync(h.f('NOW.md'), '现在 19:08，我在宿舍待着ZQN');
+            assert.ok(!(await injected(h)).includes('ZQN'));
+        } finally { fake.restore(); }
+    });
+});
