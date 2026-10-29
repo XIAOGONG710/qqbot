@@ -102,6 +102,7 @@ import { SlidingWindowRateLimiter } from '.././social/rate-limit.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
+import { openMemeDict } from '.././language/meme-dict.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -413,6 +414,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；刷新在下面（要她的 B 站号）
     const memesFile = memesPath(config.dataDir);
     let memeEntries: readonly MemeEntry[] = config.memes ? loadMemes(memesFile, log).entries : [];
+    // 梗百科词库（2026-10-29）：6668 条，只读；文件不在就是没有，不影响自己学的那些
+    const memeDict = config.memes ? openMemeDict(join(config.dataDir, 'memes', 'dict.json'), log) : undefined;
+    if (memeDict) log(`梗百科：词库 ${memeDict.count()} 条（他提到的词查这里，不写进她自己学的库）`);
     // 她自己在 B 站看过的（ADR 0130）：派生数据，存 <数据目录>/watching/watched.json；“看”在下面（要她的 B 站号）
     const watchedFile = watchedPath(config.dataDir);
     let watchedEntries: readonly Watched[] = config.watching ? loadWatched(watchedFile, log).entries : [];
@@ -866,6 +870,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(jokes && contact.tier === 'boyfriend' ? { jokes: () => jokes.load(contact.qq).jokes } : {}),
             ...(idioms && contact.tier === 'boyfriend' ? { idioms: () => idioms.load(contact.qq).items } : {}),
             ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => memeEntries } : {}),
+            ...(memeDict && contact.tier === 'boyfriend' ? { memeDict } : {}),
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),

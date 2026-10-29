@@ -193,6 +193,8 @@ export interface ContactPipelineOptions {
     ratingLine?: () => string | undefined;
     /** 她现在的连续生活（NOW.md）：此刻在干嘛、身体、心情、关系 */
     lifeLine?: () => string | undefined;
+    /** 梗百科词库（2026-10-29）：他这句里提到一个词，只读地查一眼，不写进她自己的梗库 */
+    memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
     /** 首轮铺底（2026-10-29）：他走了很久回来，第一轮带上她自己写的那段日记；挂着 lifeInPrompt，不是新开关 */
     wakeNote?: () => string | undefined;
     /** 记忆由她自己决定：提示词里教她写 <<记住：…>> / <<日记：…>> 标记 */
@@ -668,6 +670,18 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const memeNow = options.memes && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
                 ? memeLine(options.memes(), chat, time.getTime()) : undefined;
             if (memeNow) log('网络热梗：这一轮提示词里放了梗的意思（日志不记内容）');
+            // 梗百科词库（2026-10-29）：她自己的库太小；他提到的词只要词库里有，就把「怎么用/出处/标签」给她。
+            // 让路条件和热梗一样；已经在 memeNow 里的不重复给。
+            const dictNow = options.memeDict && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance
+                && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
+                ? (() => {
+                    const last = chat.findLast(message => message.role === 'user');
+                    if (!last) return undefined;
+                    const hit = options.memeDict!.mention(last.content);
+                    if (!hit || memeNow?.includes(hit.term)) return undefined;
+                    return `[他这句里提到一个网络词「${hit.term}」：怎么用——${hit.meaning}${hit.origin ? `；出处——${hit.origin}` : ''}${hit.tags ? `；标签——${hit.tags}` : ''}。你大概知道这个梗：顺着他的意思接，别科普、别解释梗、别拆穿]`;
+                })() : undefined;
+            if (dictNow) log('梗百科：这一轮查到了他提的词（日志不记内容）');
             // 她在 B 站看过的（ADR 0130）：他问到“最近看了什么 / 刷到什么”才放
             const watchedNow = options.watched && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? watchedLine(options.watched(), chat, time) : undefined;
             if (watchedNow) log('她看视频：这一轮提示词里放了她最近看过的（日志不记内容）');
@@ -863,6 +877,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(jokeNow ? [jokeNow] : []),
                         ...(idiomNow ? [idiomNow] : []),
                         ...(memeNow ? [memeNow] : []),
+                        ...(dictNow ? [dictNow] : []),
                         ...(watchedNow ? [watchedNow] : []),
                         ...continuityLines,
                         ...(interruptLine ? [interruptLine] : []),
