@@ -10,5 +10,5 @@ if (!Number.isFinite(days) || days <= 0) {
     console.error('--days 要是正数');
     process.exit(2);
 }
-const dataDir = resolve(option('--dir') ?? resolve(import.meta.dirname, '../../../runtime/bot'));
+const dataDir = resolve(option('--dir') ?? resolve(import.meta.dirname, '../../../../runtime/bot'));
 console.log(feedbackDigest(readFeedback(dataDir), new Date(), days));
