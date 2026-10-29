@@ -98,6 +98,7 @@ import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } 
 import { SlidingWindowRateLimiter } from '.././social/rate-limit.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
+import { wakeBackfill } from '../memory/wake-backfill.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -768,6 +769,18 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 lifeLine: () => {
                     try { return readFileSync(join(soulDir(), 'NOW.md'), 'utf8').trim(); } catch { return undefined; }
                 },
+                // 首轮铺底：他走了 ≥6 小时回来，第一轮带上她自己写的日记；挂着 lifeInPrompt，不新增开关
+                ...(config.lifeInPrompt ? {
+                    wakeNote: (): string | undefined => {
+                        try {
+                            // 刚收的这条已经进聊天记录了，算间隔要拿它之前的那条（5 分钟内的都当成本轮）
+                            const cutoff = Date.now() - 5 * 60_000;
+                            const older = history.load(contact.qq).filter(message => Date.parse(message.time) < cutoff);
+                            const journal = readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8');
+                            return wakeBackfill({ lastAt: older.at(-1)?.time, now: Date.now(), journal, log });
+                        } catch { return undefined; }
+                    },
+                } : {}),
             } : {}),
             ...(config.selfDirectedMemory ? { selfMemory: true } : {}),
             // 他的消息没有马上回的每一个原因逐条记账（ADR 0173）：只是旁观，记不进去也不影响回复

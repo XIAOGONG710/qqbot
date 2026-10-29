@@ -187,6 +187,8 @@ export interface ContactPipelineOptions {
     ratingLine?: () => string | undefined;
     /** 她现在的连续生活（NOW.md）：此刻在干嘛、身体、心情、关系 */
     lifeLine?: () => string | undefined;
+    /** 首轮铺底（2026-10-29）：他走了很久回来，第一轮带上她自己写的那段日记；挂着 lifeInPrompt，不是新开关 */
+    wakeNote?: () => string | undefined;
     /** 记忆由她自己决定：提示词里教她写 <<记住：…>> / <<日记：…>> 标记 */
     selfMemory?: boolean;
     /** 她想查才查（<<查：…>>）：拿到想起来的记忆，再让她重写一次 */
@@ -856,6 +858,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(options.refusalLine?.() ? [options.refusalLine()!] : []),
                         ...(options.ratingLine?.() ? [options.ratingLine()!] : []),
                         ...(options.lifeLine?.() ? [`[你现在的生活] ${options.lifeLine()!}`] : []),
+                        ...(options.wakeNote?.() ? [options.wakeNote()!] : []),
                         ...(options.workRequest?.() ? [WORK_REQUEST_NOTE] : []),
                         ...(options.workJudge?.() ? [WORK_JUDGE_NOTE] : []),
                         ...(options.workMode?.() ? [WORK_MODE_NOTE] : []),
