@@ -927,8 +927,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                             log(`[${userId}] 她判断这条要动电脑：${task.slice(0, 60)}`);
                             void runWorkTask(task, { context: recent })
                                 .then(async reply => {
-                                    await transport.sendPrivateText(userId, reply);
-                                    void rememberWorkTask(task, reply);
+                                    const messageId = await transport.sendPrivateText(userId, reply);
+                                    // 干完的结果也进聊天记录（和 /dsh 工作模式一样，ADR 0176），活记在他自己的 bank 里
+                                    history.append(userId, { time: clockNow().toISOString(), role: 'assistant', content: reply, messageId });
+                                    void rememberWorkTask(task, reply, memory?.bankId(contact));
                                 })
                                 .catch(error => {
                                     log(`[${userId}] 她判断要动电脑、没干成：${error instanceof Error ? error.message : String(error)}`);
