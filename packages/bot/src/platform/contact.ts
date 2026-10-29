@@ -60,6 +60,7 @@ import { describeInterruption, interruptionNow } from '.././language/interruptio
 import { idiomLine, type Idiom } from '.././language/idioms.ts';
 import { jokeLine, type Joke } from '.././language/jokes.ts';
 import { memeLine, type MemeEntry } from '.././language/memes.ts';
+import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
 import { describeCloseness } from '.././language/relationship.ts';
 import { describeTogether, togetherNow } from '.././language/together.ts';
@@ -193,6 +194,8 @@ export interface ContactPipelineOptions {
     ratingLine?: () => string | undefined;
     /** 她现在的连续生活（NOW.md）：此刻在干嘛、身体、心情、关系 */
     lifeLine?: () => string | undefined;
+    /** 真人例子（ADR 0190，默认关）：他说完这种话，真人是怎么回的 */
+    exemplars?: readonly Exemplar[];
     /** 梗百科词库（2026-10-29）：他这句里提到一个词，只读地查一眼，不写进她自己的梗库 */
     memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
     /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
@@ -674,6 +677,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const memeNow = options.memes && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
                 ? memeLine(options.memes(), chat, time.getTime()) : undefined;
             if (memeNow) log('网络热梗：这一轮提示词里放了梗的意思（日志不记内容）');
+            // 真人例子（ADR 0190）：只给她看「真人怎么回」，不给她定字数
+            const exemplarNow = options.exemplars?.length && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance
+                ? (() => {
+                    const last = chat.findLast(message => message.role === 'user');
+                    if (!last) return undefined;
+                    return exemplarLine(pickExemplars(options.exemplars!, last.content, { k: 4 }));
+                })() : undefined;
+            if (exemplarNow) log('真人例子：这一轮放了几条真人的回法（日志不记内容）');
             // 梗百科词库（2026-10-29）：她自己的库太小；他提到的词只要词库里有，就把「怎么用/出处/标签」给她。
             // 让路条件和热梗一样；已经在 memeNow 里的不重复给。
             const dictNow = options.memeDict && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance
@@ -883,6 +894,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(idiomNow ? [idiomNow] : []),
                         ...(memeNow ? [memeNow] : []),
                         ...(dictNow ? [dictNow] : []),
+                        ...(exemplarNow ? [exemplarNow] : []),
                         ...(watchedNow ? [watchedNow] : []),
                         ...continuityLines,
                         ...(interruptLine ? [interruptLine] : []),

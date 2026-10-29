@@ -104,6 +104,7 @@ import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sen
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
+import { loadExemplars } from '.././language/exemplars.ts';
 import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
 import { askExpired, askLine, takeConsent } from './consent.ts';
 
@@ -419,6 +420,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     let memeEntries: readonly MemeEntry[] = config.memes ? loadMemes(memesFile, log).entries : [];
     // 梗百科词库（2026-10-29）：6668 条，只读；文件不在就是没有，不影响自己学的那些
     const memeDict = config.memes ? openMemeDict(join(config.dataDir, 'memes', 'dict.json'), log) : undefined;
+    // 真人例子（ADR 0190，默认关）：语料由 scripts/build-exemplars.mjs 从已批准的真人语料生成
+    const exemplars = config.exemplars ? loadExemplars(join(config.dataDir, 'exemplars', 'corpus.jsonl'), log) : [];
     if (memeDict) log(`梗百科：词库 ${memeDict.count()} 条（他提到的词查这里，不写进她自己学的库）`);
     // 她自己在 B 站看过的（ADR 0130）：派生数据，存 <数据目录>/watching/watched.json；“看”在下面（要她的 B 站号）
     const watchedFile = watchedPath(config.dataDir);
@@ -913,6 +916,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(jokes && contact.tier === 'boyfriend' ? { jokes: () => jokes.load(contact.qq).jokes } : {}),
             ...(idioms && contact.tier === 'boyfriend' ? { idioms: () => idioms.load(contact.qq).items } : {}),
             ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => memeEntries } : {}),
+            ...(exemplars.length && contact.tier === 'boyfriend' ? { exemplars } : {}),
             ...(memeDict && contact.tier === 'boyfriend' ? { memeDict } : {}),
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
