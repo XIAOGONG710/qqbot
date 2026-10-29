@@ -72,8 +72,8 @@ export interface ResponderDeps {
     buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string; think?: boolean; photo?: 'cat' | 'food'; photoDish?: string }; offlineSince?: number }) => BuiltPrompt | Promise<BuiltPrompt>;
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     clean: (reply: string) => string;
-    /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查 */
-    review?: (reply: string, messages: OpenAIMessage[], context?: { allowRepeat?: boolean }) => Promise<string>;
+    /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查。initiating = 她主动找他（这轮可以整条不发） */
+    review?: (reply: string, messages: OpenAIMessage[], context?: { allowRepeat?: boolean; initiating?: boolean }) => Promise<string>;
     /**
      * 这一轮的回复定下来、马上要开始发送的那一刻（回复路径在拆条之后、主动路径在不是试运行之后）调一次。
      * 设备指令（ADR 0148）在这里登记并按档处理：回复被丢弃 / 重写时不会走到这里，所以丢弃的草稿不会操作他的设备
@@ -489,7 +489,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         // 她想了想决定先不发（ADR 0100）：只有「不发」两个字，带不带括号都算
         if (request.canDecline && /^\s*[（(【[]?\s*不发\s*[）)】\]]?[。.！!]?\s*$/.test(raw)) return { result: 'skipped', reason: '她想了想，先不发' };
         let reply = deps.clean(raw);
-        if (deps.review) reply = await deps.review(reply, prompt.messages, request.allowRepeat ? { allowRepeat: true } : undefined);
+        if (deps.review) reply = await deps.review(reply, prompt.messages, { initiating: true, ...(request.allowRepeat ? { allowRepeat: true } : {}) });
         if (stopped) return { result: 'skipped', reason: '已停止' };
         if (deps.history.load(deps.userId).slice(input).some(m => m.role === 'user')) {
             return { result: 'skipped', reason: '生成期间他来了消息，草稿不发，照常回他' };

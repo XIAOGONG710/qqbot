@@ -6,7 +6,7 @@ import { describe, test } from 'node:test';
 import type { BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
 import {
-    auditableText, auditMessages, checkFacts, dropClaimLines, FACT_CHECK_MODES, FACT_MAX_CLAIMS, factRewriteNote, parseClaims,
+    auditableText, auditMessages, checkFacts, dropClaimLines, dropTooMuch, FACT_CHECK_MODES, FACT_MAX_CLAIMS, factRewriteNote, parseClaims,
     type FactCheckOptions, type FactRecord,
 } from '../src/language/fact-check.ts';
 import type { OpenAIMessage } from '../src/language/prompt.ts';
@@ -73,6 +73,11 @@ describe('审稿的输入输出', () => {
         assert.match(note, /别添上面没写的小动作/);
         assert.equal(dropClaimLines('在逛淘宝\n土豆一见我就跑', [claim('土豆一见我就跑')]), '在逛淘宝');
         assert.equal(dropClaimLines('土豆一见我就跑', [claim('土豆一见我就跑')]), '土豆一见我就跑', '删完一行不剩就原样');
+        // dropTooMuch：删完剩下不到一半才算“想说的被删了”；两行删一行不算，只删一句里的旧梗不算
+        assert.equal(dropTooMuch('哈哈行，卤蛋记账上了\n不过蛋记得留', [claim('哈哈行，卤蛋记账上了'), claim('不过蛋记得留')]), true);
+        assert.equal(dropTooMuch('作业写完了\n那这事我可就记上了', [claim('作业写完了')]), false, '两行删一行还剩一半');
+        assert.equal(dropTooMuch('作业写完了\n泡面也吃完了\n那这事我可就记上了', [claim('作业写完了'), claim('泡面也吃完了')]), true);
+        assert.equal(dropTooMuch('就一句', [claim('就一句')]), false, '单行不判（dropClaimLines 会原样返回）');
         assert.deepEqual(FACT_CHECK_MODES, ['off', 'log', 'fix']);
     });
 });
@@ -149,6 +154,17 @@ describe('checkFacts：按档位处理', () => {
         const only = setup({ audits: [json(claim('土豆一见我就跑')), json(claim('它还回头看我'))], rewrites: ['它还回头看我'] });
         assert.equal(await checkFacts('土豆一见我就跑', only.options), '它还回头看我');
         assert.equal(only.records[0]!.action, 'kept');
+    });
+
+    test('mayDropAll（主动找他）：删完剩下的撑不住这一轮就整条不发，返回空串', async () => {
+        const audits = () => [json(claim('作业写完了')), json(claim('作业写完了'), claim('写了三章'))];
+        const rewrites = () => ['作业写完了\n写了三章\n那这事我可就记上了'];
+        const on = setup({ audits: audits(), rewrites: rewrites() });
+        assert.equal(await checkFacts('作业写完了\n那这事我可就记上了', { ...on.options, mayDropAll: true }), '');
+        assert.equal(on.records[0]!.action, 'dropped');
+
+        const off = setup({ audits: audits(), rewrites: rewrites() });
+        assert.equal(await checkFacts('作业写完了\n那这事我可就记上了', off.options), '那这事我可就记上了', '回复里照旧删行照发');
     });
 
     test('审稿出错 / 重写失败：不挡回复', async () => {
