@@ -10,6 +10,7 @@
 - `life/actions.ts`
 - `life/projects.ts`
 - `life/pursuits.ts`
+- `life/self-pursuits.ts`
 - `life/money.ts`
 - `life/body.ts`
 - `life/needs.ts`
