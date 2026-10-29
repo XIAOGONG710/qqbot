@@ -39,6 +39,7 @@ import { arrivedWhileAsleep } from '.././social/reply-timing.ts';
 import { answerWhy, createSilenceWatcher, noteFromInfo, recordSilence, type SilenceInfo } from '.././social/silence.ts';
 import { drainOutbox } from '.././social/outbox.ts';
 import { writeOwnerBank } from '.././memory/owner-bank.ts';
+import { desktopBlock, desktopRecentPath } from '.././memory/cross-recent.ts';
 import { inspectReply, summarizeIssues, type ExitIssue } from '.././language/exit-check.ts';
 import { ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
 import { startHeartbeat } from './heartbeat.ts';
@@ -585,7 +586,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 同一个她（ADR 0176）：把他的 bank 告诉 DSH 桌面上的她，让两边读写同一份记忆
     if (memory && deviceOwner) {
         try {
-            if (writeOwnerBank(join(config.dataDir, 'memory'), { ownerBank: memory.bankId(deviceOwner), commonBank: memory.commonBankId(), legacyBank: config.memory!.bankPrefix })) log('同一个她：他的记忆 bank 写进 memory/owner-bank.json（DSH 桌面上的她读它）');
+            const crossFiles = config.crossRecent ? { chatFile: join(config.dataDir, 'chats', `${deviceOwner.qq}.jsonl`), recalledFile: join(config.dataDir, 'chats', `${deviceOwner.qq}.recalled.json`), desktopFile: desktopRecentPath(join(config.dataDir, 'memory')) } : {};
+            if (writeOwnerBank(join(config.dataDir, 'memory'), { ownerBank: memory.bankId(deviceOwner), commonBank: memory.commonBankId(), legacyBank: config.memory!.bankPrefix, ...crossFiles })) log(`同一个她：他的记忆 bank 写进 memory/owner-bank.json（DSH 桌面上的她读它）${config.crossRecent ? '；两边互读最近几轮：开' : ''}`);
         } catch (error) { log(`同一个她：owner-bank.json 没写成（${error instanceof Error ? error.message : String(error)}）`); }
     }
     // 她的日记（ADR 0017）：用名单里最亲的、卡上有作息的那一档；herDays 关着时不带心情和书。温度低一点，少编
@@ -775,6 +777,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...contextWindowFor(contact),
             ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
             ...(deviceHooks && contact.tier === 'boyfriend' ? { devices: deviceHooks } : {}),
+            // 他刚才在 DSH 桌面上和她的对话（ADR 0177，crossRecent）：只给男朋友档；文件由 DSH 插件写，没有就没有这一段
+            ...(config.crossRecent && contact.tier === 'boyfriend' ? { desktopRecent: (now: Date) => desktopBlock(desktopRecentPath(join(config.dataDir, 'memory')), now.getTime()) } : {}),
             ...(photos && contact.tier === 'boyfriend' ? { photos } : {}),
             ...(stickerChance !== undefined ? { stickerChance } : {}),
             ...(config.biliStickers ? { stickerUncued: STICKER_UNCUED_CHANCE } : {}),

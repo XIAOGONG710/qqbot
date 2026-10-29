@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, before, describe, test } from 'node:test';
@@ -314,5 +314,147 @@ describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，�
             const saved = fake.calls.find(call => call.method === 'POST' && /\/memories$/.test(call.url))!;
             assert.ok(saved.url.includes(`/banks/${OWNER}/memories`));
         } finally { fake.restore(); }
+    });
+});
+
+// ───────── 同一个她·第 2 层（ADR 0177）：两边互读最近几轮 ─────────
+
+interface CrossApi {
+    qqRecentBlock: (cfg: unknown, now?: number) => string;
+    recordDesktopTurn: (cfg: unknown, user: string, assistant: string, now?: number) => boolean;
+}
+const cross = () => plugin as unknown as CrossApi;
+const T = new Date(2026, 9, 29, 15, 30).getTime();
+const mins = (n: number) => n * 60_000;
+
+/** 临时目录里摆好 chats/、memory/（文件名和目录名要对得上插件的校验），owner-bank.json 指向它们 */
+function crossRoot(options: { withChat?: boolean; withDesktop?: boolean } = { withChat: true, withDesktop: true }) {
+    const root = mkdtempSync(join(tmpdir(), 'qqbot-cross-'));
+    dirs.push(root);
+    mkdirSync(join(root, 'chats'));
+    mkdirSync(join(root, 'memory'));
+    const files = { chatFile: join(root, 'chats', '10002.jsonl'), recalledFile: join(root, 'chats', '10002.recalled.json'), desktopFile: join(root, 'memory', 'desktop-recent.jsonl') };
+    const ownerBankFile = join(root, 'memory', 'owner-bank.json');
+    writeFileSync(ownerBankFile, JSON.stringify({
+        ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao',
+        ...(options.withChat ? { chatFile: files.chatFile, recalledFile: files.recalledFile } : {}),
+        ...(options.withDesktop ? { desktopFile: files.desktopFile } : {}),
+    }));
+    const cfg = { prefix: 'linmengyao', ownerBankFile };
+    const chatRow = (agoMin: number, role: 'user' | 'assistant', content: string, messageId?: number) => `${JSON.stringify({ time: new Date(T - mins(agoMin)).toISOString(), role, content, ...(messageId !== undefined ? { messageId } : {}) })}\n`;
+    return { root, files, cfg, chatRow };
+}
+const withChannel = async (value: string | undefined, run: () => Promise<void> | void) => {
+    const before = process.env.HER_CHANNEL;
+    if (value === undefined) delete process.env.HER_CHANNEL; else process.env.HER_CHANNEL = value;
+    try { await run(); } finally { if (before === undefined) delete process.env.HER_CHANNEL; else process.env.HER_CHANNEL = before; }
+};
+
+describe('同一个她·第 2 层：DSH 读他刚在 QQ 上聊的（ADR 0177）', () => {
+    test('只取 6 小时内的、最多 10 句、带时刻和谁说的；他撤回的遮成「[撤回了一条消息]」', () => {
+        const c = crossRoot();
+        let text = c.chatRow(7 * 60, 'user', '昨晚的话（太久以前）');
+        for (let i = 0; i < 12; i++) text += c.chatRow(60 - i, i % 2 ? 'assistant' : 'user', `第${i}句`, 100 + i);
+        text += c.chatRow(3, 'user', '这句我撤回了', 555);
+        writeFileSync(c.files.chatFile, text);
+        writeFileSync(c.files.recalledFile, JSON.stringify([555]));
+        const block = cross().qqRecentBlock(c.cfg, T);
+        assert.match(block, /^\[你刚才在 QQ 上跟他聊的/);
+        const lines = block.split('\n').slice(1);
+        assert.equal(lines.length, 10, '最多 10 句');
+        assert.match(lines.at(-1)!, /^15:27 他：\[撤回了一条消息\]$/);
+        assert.ok(!block.includes('这句我撤回了'), '撤回的原文不进提示词');
+        assert.ok(!block.includes('昨晚的话'), '超过 6 小时的不放');
+        assert.ok(!block.includes('第0句') && !block.includes('第1句'), '只留最近的');
+        assert.match(lines[0]!, /^\d\d:\d\d 他：第3句|^\d\d:\d\d 你：第3句/);
+    });
+
+    test('只读文件尾部：几百 KB 的聊天记录也只取最后几句', () => {
+        const c = crossRoot();
+        let text = '';
+        for (let i = 0; i < 4000; i++) text += c.chatRow(300 - (i % 200) * 0.01, i % 2 ? 'assistant' : 'user', `旧的第${i}句`.padEnd(60, '。'));
+        text += c.chatRow(2, 'user', '最后一句ZQN', 9999);
+        writeFileSync(c.files.chatFile, text);
+        const block = cross().qqRecentBlock(c.cfg, T);
+        assert.ok(block.endsWith('他：最后一句ZQN'));
+        assert.equal(block.split('\n').length, 11);
+    });
+
+    test('QQ 那边没开 crossRecent（owner-bank.json 里没有 chatFile）、文件不存在、路径不合规：都是空串', () => {
+        const off = crossRoot({ withChat: false, withDesktop: false });
+        assert.equal(cross().qqRecentBlock(off.cfg, T), '');
+        const c = crossRoot();
+        assert.equal(cross().qqRecentBlock(c.cfg, T), '', '文件还没有');
+        // 路径指到别处 / 文件名不对 / 目录名不对：不认。这些文件**真的存在、里面有正常的聊天行**——没有校验的话是读得到的
+        mkdirSync(join(c.root, 'other'));
+        const live = c.chatRow(2, 'user', '不该被读到ZQP', 1);
+        for (const bad of [join(c.root, 'other', '10002.jsonl'), join(c.root, 'chats', 'secret.txt'), join(c.root, 'chats', '..', 'memory', '10002.jsonl'), join(c.root, 'memory', 'owner-bank.json')]) {
+            writeFileSync(bad, live);
+            writeFileSync(c.cfg.ownerBankFile, JSON.stringify({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao', chatFile: bad }));
+            assert.equal(cross().qqRecentBlock(c.cfg, T), '', bad);
+        }
+        // 对照：同样的内容放在合规的位置就读得到（证明上面的空串是校验挡的，不是读不到）
+        writeFileSync(c.files.chatFile, live);
+        writeFileSync(c.cfg.ownerBankFile, JSON.stringify({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao', chatFile: c.files.chatFile }));
+        assert.match(cross().qqRecentBlock(c.cfg, T), /不该被读到ZQP/);
+    });
+
+    test('6 小时窗口：刚好在窗口里的留，超过的丢，时间在未来的也丢', () => {
+        const c = crossRoot();
+        writeFileSync(c.files.chatFile, c.chatRow(6 * 60 + 1, 'user', '超过窗口ZQW') + c.chatRow(6 * 60 - 1, 'user', '刚好在窗口里') + c.chatRow(-30, 'user', '时间在未来ZQF') + c.chatRow(5, 'assistant', '刚才的'));
+        const block = cross().qqRecentBlock(c.cfg, T);
+        assert.ok(block.includes('刚好在窗口里') && block.includes('刚才的'));
+        assert.ok(!block.includes('ZQW'), '超过 6 小时的丢');
+        assert.ok(!block.includes('ZQF'), '时间在未来的丢');
+    });
+});
+
+describe('同一个她·第 2 层：DSH 桌面对话回合记给 QQ 读（ADR 0177）', () => {
+    test('桌面对话记一行 { at, user, assistant }；超长截断；最多留 40 行', async () => {
+        await withChannel(undefined, () => {
+            const c = crossRoot();
+            for (let i = 0; i < 45; i++) assert.equal(cross().recordDesktopTurn(c.cfg, `第${i}句`, i === 44 ? '长'.repeat(900) : '好', T + i), true);
+            const rows = readFileSync(c.files.desktopFile, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line) as { at: number; user: string; assistant: string });
+            assert.equal(rows.length, 40);
+            assert.equal(rows[0]!.user, '第5句', '最老的 5 行被挤掉');
+            assert.equal(rows.at(-1)!.at, T + 44);
+            assert.ok([...rows.at(-1)!.assistant].length <= 601, '超长截断');
+            assert.equal(readdirSync(join(c.root, 'memory')).filter(name => name.endsWith('.tmp')).length, 0, '临时文件不留');
+        });
+    });
+
+    test('机器自己发起的回合（HER_CHANNEL=qq-work / idle）不记；QQ 没开 crossRecent（没有 desktopFile）也不记', async () => {
+        const c = crossRoot();
+        for (const channel of ['qq-work', 'idle']) {
+            await withChannel(channel, () => assert.equal(cross().recordDesktopTurn(c.cfg, '帮我整理文件', '好', T), false, channel));
+        }
+        assert.equal(existsSync(c.files.desktopFile), false);
+        await withChannel(undefined, () => {
+            const off = crossRoot({ withChat: false, withDesktop: false });
+            assert.equal(cross().recordDesktopTurn(off.cfg, '你好', '嗯', T), false);
+            assert.equal(cross().recordDesktopTurn(c.cfg, '', '', T), false, '两边都空不记');
+        });
+    });
+
+    test('整条路径：一轮桌面对话 → desktop-recent.jsonl 多一行；下一轮提示词里带上他刚在 QQ 上聊的', async () => {
+        await withChannel(undefined, async () => {
+            const fake = fakeHindsight({ banks: ALL_BANKS });
+            try {
+                const c = crossRoot();
+                const now = Date.now();
+                writeFileSync(c.files.chatFile, `${JSON.stringify({ time: new Date(now - mins(4)).toISOString(), role: 'user', content: '我今天好累ZQC', messageId: 1 })}\n${JSON.stringify({ time: new Date(now - mins(3)).toISOString(), role: 'assistant', content: '先歇会儿', messageId: 2 })}\n`);
+                const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: c.cfg.ownerBankFile });
+                await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '帮我看看日程' }] }, async () => undefined);
+                const injected = h.contexts.map(entry => entry.text()).join('\n');
+                assert.match(injected, /你刚才在 QQ 上跟他聊的/);
+                assert.match(injected, /他：我今天好累ZQC/);
+                assert.match(injected, /你：先歇会儿/);
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'start' } });
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'chunk', chunk: { type: 'text-delta', text: '今天下午有两个会' } } });
+                await h.handlers['agent/turn-stopping']!();
+                const rows = readFileSync(c.files.desktopFile, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line) as { user: string; assistant: string });
+                assert.deepEqual(rows.map(row => [row.user, row.assistant]), [['帮我看看日程', '今天下午有两个会']]);
+            } finally { fake.restore(); }
+        });
     });
 });

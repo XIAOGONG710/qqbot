@@ -16,6 +16,12 @@ export interface OwnerBankInfo {
     commonBank: string;
     /** 接缝之前 DSH 单独用的 bank（只读，历史） */
     legacyBank: string;
+    /** 第 2 层（ADR 0177，配置 crossRecent）：他的 QQ 聊天记录文件，DSH 读最后几行；没开就没有这一项 */
+    chatFile?: string;
+    /** 撤回过的消息 id 文件（<QQ>.recalled.json）：DSH 读聊天记录时把他撤回的那几条遮掉 */
+    recalledFile?: string;
+    /** DSH 桌面对话回合写、QQ 读的文件（desktop-recent.jsonl） */
+    desktopFile?: string;
     /** 写入时间（ISO），只给人看 */
     writtenAt?: string;
 }
@@ -28,7 +34,8 @@ export const ownerBankPath = (memoryDir: string): string => join(memoryDir, OWNE
 export function writeOwnerBank(memoryDir: string, info: Omit<OwnerBankInfo, 'writtenAt'>, now: () => Date = () => new Date()): boolean {
     const path = ownerBankPath(memoryDir);
     const current = readJsonOr<Partial<OwnerBankInfo>>(path, {});
-    if (current.ownerBank === info.ownerBank && current.commonBank === info.commonBank && current.legacyBank === info.legacyBank) return false;
+    if (current.ownerBank === info.ownerBank && current.commonBank === info.commonBank && current.legacyBank === info.legacyBank
+        && current.chatFile === info.chatFile && current.recalledFile === info.recalledFile && current.desktopFile === info.desktopFile) return false;
     writeJsonAtomic(path, { ...info, writtenAt: now().toISOString() });
     return true;
 }
@@ -36,6 +43,12 @@ export function writeOwnerBank(memoryDir: string, info: Omit<OwnerBankInfo, 'wri
 export function readOwnerBank(memoryDir: string): OwnerBankInfo | undefined {
     const value = readJsonOr<Partial<OwnerBankInfo>>(ownerBankPath(memoryDir), {});
     return typeof value.ownerBank === 'string' && typeof value.commonBank === 'string' && typeof value.legacyBank === 'string'
-        ? { ownerBank: value.ownerBank, commonBank: value.commonBank, legacyBank: value.legacyBank, ...(value.writtenAt ? { writtenAt: value.writtenAt } : {}) }
+        ? {
+            ownerBank: value.ownerBank, commonBank: value.commonBank, legacyBank: value.legacyBank,
+            ...(typeof value.chatFile === 'string' ? { chatFile: value.chatFile } : {}),
+            ...(typeof value.recalledFile === 'string' ? { recalledFile: value.recalledFile } : {}),
+            ...(typeof value.desktopFile === 'string' ? { desktopFile: value.desktopFile } : {}),
+            ...(value.writtenAt ? { writtenAt: value.writtenAt } : {}),
+        }
         : undefined;
 }

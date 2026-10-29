@@ -554,6 +554,34 @@ describe('编排（app.ts）', () => {
         }
     });
 
+    test('两边互读最近几轮（ADR 0177，crossRecent）：他刚在 DSH 桌面上说的，男朋友档的提示词里有、同学档没有；开关关着、或超过 6 小时都没有', async () => {
+        const run = async (crossRecent: boolean, ageMin: number) => {
+            const prompts: string[] = [];
+            const cfg = config({ crossRecent, contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }, { qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
+            mkdirSync(join(cfg.dataDir, 'memory'), { recursive: true });
+            writeFileSync(join(cfg.dataDir, 'memory', 'desktop-recent.jsonl'), `${JSON.stringify({ at: Date.now() - ageMin * 60_000, user: '帮我把桌面上的发票整理一下ZQD', assistant: '好，我分成报销和不报销两个文件夹了' })}\n`);
+            const { app, sent, logs } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
+            await app.connected(SELF);
+            app.receive(event(10001, 1, '在吗', '阿明'));
+            app.receive(event(10002, 2, '在吗', '宝宝'));
+            await until(() => sent.length >= 2);
+            const toBoyfriend = prompts.find(prompt => prompt.includes('宝宝私聊') || prompt.includes('和宝宝'));
+            const toClassmate = prompts.find(prompt => prompt.includes('阿明私聊') || prompt.includes('和阿明'));
+            assert.ok(toBoyfriend && toClassmate, '两个联系人的提示词都要拿到');
+            return { toBoyfriend: toBoyfriend!, toClassmate: toClassmate!, logs };
+        };
+        const on = await run(true, 5);
+        assert.match(on.toBoyfriend, /你刚才在电脑上（DSH）和他的对话/);
+        assert.match(on.toBoyfriend, /他：帮我把桌面上的发票整理一下ZQD/);
+        assert.match(on.toBoyfriend, /你：好，我分成报销和不报销两个文件夹了/);
+        assert.doesNotMatch(on.toClassmate, /ZQD|DSH/, '同学档的提示词里不能有他在桌面上的话');
+        assert.ok(on.logs.some(line => line.includes('带上他刚才在 DSH 桌面上的对话 1 轮')));
+        const off = await run(false, 5);
+        assert.doesNotMatch(off.toBoyfriend, /ZQD/, '开关关着就没有');
+        const stale = await run(true, 7 * 60);
+        assert.doesNotMatch(stale.toBoyfriend, /ZQD/, '超过 6 小时的不放（更早的靠语义召回）');
+    });
+
     test('/为什么（ADR 0173，silenceNotice）：关着时是普通的话、交给她回；开着时是运维命令，不交给她、不进聊天记录；只认男朋友档', async () => {
         const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
         // 关着：照常当话交给她

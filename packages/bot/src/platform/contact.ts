@@ -296,6 +296,8 @@ export interface ContactPipelineOptions {
     replyFrame?: 'solve';
     /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；菜单进提示词，回复里的 <device:…> 令牌在发送前登记并按档处理 */
     devices?: Pick<DeviceControl, 'menu' | 'parse' | 'commit'>;
+    /** 他刚才在 DSH 桌面上和她的对话（ADR 0177，配置 crossRecent）：只给男朋友档；返回一段放进提示词的话，没有就不放 */
+    desktopRecent?: (now: Date) => string | undefined;
     /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
     grievance?: boolean;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
@@ -463,6 +465,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 工作房每轮都查：他问“今天帮我干了什么”时不一定有公共记忆线索
             const work = remembers && contact.tier === 'boyfriend' ? you(await memory.recallWork(contact, chat, time)) : undefined;
             if (work) log(`召回工作记忆 ${countLines(work)} 条`);
+            // 同一个她（ADR 0177）：他刚才在电脑上（DSH）和她说的，QQ 这边接着知道
+            const desktop = options.desktopRecent?.(time);
+            if (desktop) log(`带上他刚才在 DSH 桌面上的对话 ${(desktop.match(/ 他：/g) ?? []).length} 轮`);
             let common = freshCommon;
             const commonNote = [`线索：${cue}`, fadeParts(faded[1]).join('，')].filter(Boolean).join('；');
             if (common) {
@@ -799,6 +804,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     ...(summary ? [summary] : []),
                     ...(recalled ? [recalled] : []),
                     ...(work ? [work] : []),
+                    ...(desktop ? [desktop] : []),
                     // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3：放在前面时问「昨天都干嘛了」她照着报喂猫、取快递，想不起那天记得住的麻辣烫，1/3）
                     ...(common ? [common] : []),
                     ...(recap ? [recap.text] : []),

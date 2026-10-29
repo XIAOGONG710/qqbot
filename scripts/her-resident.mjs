@@ -41,6 +41,8 @@ function runTask(task, context = '', rawPrompt = undefined, timeoutMs = TIMEOUT_
             env: {
                 ...process.env,
                 DSH_PERMISSION_MODE: PERMISSION_MODE,
+                // 带 rawPrompt 的是随机醒来 / 睡眠整合（机器自己发起），否则是 QQ 派的活：都不是他在桌面上和她说话（ADR 0177）
+                HER_CHANNEL: rawPrompt ? 'idle' : 'qq-work',
                 ...(process.env.QQBOT_LLM_API_KEY ? { DEEPSEEK_API_KEY: process.env.QQBOT_LLM_API_KEY } : {}),
             },
             windowsHide: true,

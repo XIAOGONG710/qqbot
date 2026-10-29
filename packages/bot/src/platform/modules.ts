@@ -79,7 +79,7 @@ export const MODULES: readonly ModuleDef[] = [
             'memory/ledger.ts', 'memory/identity.ts', 'memory/memory-audit.ts', 'memory/timeline.ts', 'memory/dormancy.ts'],
         groups: ['记忆和安全'],
         metrics: '状态页「长期记忆」；ops/state-check-cli；ops/continuity-cli（设定账本 / 记忆账本）；聊天里发 /设定',
-        adrs: ['0012', '0017', '0043', '0157', '0158', '0159', '0161', '0176'],
+        adrs: ['0012', '0017', '0043', '0157', '0158', '0159', '0161', '0176', '0177'],
     },
     {
         id: 'social', name: '在 QQ 上的样子（社交）',

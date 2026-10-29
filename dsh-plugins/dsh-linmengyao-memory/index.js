@@ -239,12 +239,89 @@ export function ownerBanks(cfg) {
     // 只认她名下的 bank（文件被改成指向别处也不会去读）
     const ok = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(id) && (id === cfg.prefix || id.startsWith(`${cfg.prefix}-`))
     if (!ok(data.ownerBank)) return undefined
+    // 第 2 层（ADR 0177）：QQ 写的聊天记录 / 撤回 / 桌面对话文件。只认绝对路径、而且目录名和文件名都对得上的，别的一律当没有
+    const file = (value, dirName, namePattern) => (typeof value === 'string' && path.isAbsolute(value) && path.basename(path.dirname(value)) === dirName && namePattern.test(path.basename(value)) ? value : undefined)
     return {
       owner: data.ownerBank,
       common: ok(data.commonBank) ? data.commonBank : `${cfg.prefix}-common`,
       legacy: ok(data.legacyBank) ? data.legacyBank : cfg.prefix,
+      ...Object.fromEntries([
+        ['chatFile', file(data.chatFile, 'chats', /^\d+\.jsonl$/)],
+        ['recalledFile', file(data.recalledFile, 'chats', /^\d+\.recalled\.json$/)],
+        ['desktopFile', file(data.desktopFile, 'memory', /^desktop-recent\.jsonl$/)],
+      ].filter(([, value]) => value !== undefined)),
     }
   } catch { return undefined }
+}
+
+// ───────── 同一个她·第 2 层（ADR 0177）：两边互读最近几轮 ─────────
+
+const CROSS_WINDOW_MS = 6 * 3_600_000
+const CROSS_TAIL_BYTES = 64 * 1024
+const CROSS_LINE_CHARS = 200
+const DESKTOP_KEEP = 40
+
+/** 这一轮是谁发起的：桌面上他自己在和她说话 = desktop；QQ 工作模式派的活 / 随机醒来 / 睡眠整合由派活的一方设 HER_CHANNEL，那些不算「桌面对话」 */
+const channel = () => process.env.HER_CHANNEL || 'desktop'
+
+/** 文件最后 maxBytes 字节里的完整行（头上那一行可能被截断，丢掉）；没有文件 / 读不了返回 [] */
+export function tailLines(file, maxBytes = CROSS_TAIL_BYTES) {
+  try {
+    const size = fs.statSync(file).size
+    const start = Math.max(0, size - maxBytes)
+    const fd = fs.openSync(file, 'r')
+    try {
+      const buffer = Buffer.alloc(size - start)
+      fs.readSync(fd, buffer, 0, buffer.length, start)
+      const lines = buffer.toString('utf8').split('\n')
+      if (start > 0) lines.shift()
+      return lines.map((line) => line.trim()).filter(Boolean)
+    } finally { fs.closeSync(fd) }
+  } catch { return [] }
+}
+
+const hhmm = (at) => `${String(new Date(at).getHours()).padStart(2, '0')}:${String(new Date(at).getMinutes()).padStart(2, '0')}`
+const clipText = (text, max) => { const flat = String(text || '').replace(/\s+/g, ' ').trim(); return [...flat].length > max ? `${[...flat].slice(0, max).join('')}…` : flat }
+
+/** 他的 QQ 聊天记录最后几句（6 小时内、最多 10 句；他撤回的遮成「[撤回了一条消息]」）。QQ 那边没开 crossRecent（owner-bank.json 里没有 chatFile）就是空串 */
+export function qqRecentBlock(cfg, now = Date.now()) {
+  const files = ownerBanks(cfg)
+  if (!files?.chatFile) return ''
+  let hidden = new Set()
+  if (files.recalledFile) {
+    try { const ids = JSON.parse(fs.readFileSync(files.recalledFile, 'utf8')); if (Array.isArray(ids)) hidden = new Set(ids.filter((id) => Number.isSafeInteger(id))) } catch {}
+  }
+  const rows = []
+  for (const line of tailLines(files.chatFile)) {
+    try {
+      const row = JSON.parse(line)
+      const at = Date.parse(row.time)
+      if (!Number.isFinite(at) || now - at > CROSS_WINDOW_MS || at > now + 60_000) continue
+      if ((row.role !== 'user' && row.role !== 'assistant') || typeof row.content !== 'string') continue
+      const revoked = row.role === 'user' && row.messageId !== undefined && hidden.has(row.messageId)
+      rows.push(`${hhmm(at)} ${row.role === 'user' ? '他' : '你'}：${revoked ? '[撤回了一条消息]' : clipText(row.content, CROSS_LINE_CHARS)}`)
+    } catch { /* 坏行 */ }
+  }
+  if (!rows.length) return ''
+  return `[你刚才在 QQ 上跟他聊的（最近几句）——同一个他、同一个你；接着聊就行，不用复述，也别说成「我在 QQ 上看到」]\n${rows.slice(-10).join('\n')}`
+}
+
+/**
+ * 桌面对话回合记一行给 QQ 那边读（<数据目录>/memory/desktop-recent.jsonl，最近 40 行）。
+ * 只记桌面上他自己和她说的话；机器自己发起的回合（HER_CHANNEL 不是 desktop）、QQ 没开 crossRecent（owner-bank.json 里没有 desktopFile）都不记。返回有没有记。
+ */
+export function recordDesktopTurn(cfg, user, assistant, now = Date.now()) {
+  if (channel() !== 'desktop') return false
+  const file = ownerBanks(cfg)?.desktopFile
+  if (!file) return false
+  const row = { at: now, user: clipText(user, 600), assistant: clipText(assistant, 600) }
+  if (!row.user && !row.assistant) return false
+  const keep = tailLines(file).filter((line) => { try { return typeof JSON.parse(line).at === 'number' } catch { return false } }).slice(-(DESKTOP_KEEP - 1))
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  const tmp = `${file}.${process.pid}.tmp`
+  fs.writeFileSync(tmp, `${[...keep, JSON.stringify(row)].join('\n')}\n`)
+  fs.renameSync(tmp, file)
+  return true
 }
 
 /** DSH 桌面上的对话和 memory_save 写到哪：他的 bank；没有 owner-bank.json 就照旧写 linmengyao */
@@ -388,6 +465,7 @@ export function apply(ctx, config = {}) {
             cache.text = [
               now ? `[你现在的生活]\n${now}` : '',
               story ? `[你走到现在的故事]\n${story}` : '',
+              qqRecentBlock(cfg),
               soul ? `[你现在的自我]\n${soul}` : '',
               ledger ? `[你的判断账本]\n${ledger}` : '',
               text,
@@ -416,6 +494,7 @@ export function apply(ctx, config = {}) {
           try { p = ctx.get('agentPresets')?.composedPreset?.(agent.ctx) || '' } catch {}
         }
         if (allow.size && p && !allow.has(p)) return
+        try { recordDesktopTurn(cfg, user, assistant) } catch (e) { log(cfg, `desktop-recent error ${e}`) }
         try {
           await retain(cfg, `宝宝：${user}\n林梦瑶：${assistant.slice(0, 2000)}`, writeBank(cfg), ['dsh'], 'DSH')
           log(cfg, `auto-saved turn user=${user.slice(0, 20)} assistant=${assistant.length}chars`)

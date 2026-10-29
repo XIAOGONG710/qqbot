@@ -55,6 +55,8 @@ function spawnWorkTask(task: string, options: WorkTaskOptions = {}): Promise<str
             env: {
                 ...process.env,
                 DSH_PERMISSION_MODE: permissionMode(),
+                // 这是 QQ 派的活，不是他在桌面上和她说话：DSH 插件不把它记成「桌面对话」（ADR 0177，不然会回头再灌进 QQ 提示词）
+                HER_CHANNEL: 'qq-work',
                 ...(apiKey ? { DEEPSEEK_API_KEY: apiKey } : {}),
             },
             windowsHide: true,
