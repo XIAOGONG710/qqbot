@@ -100,6 +100,8 @@ export const DEFAULTS = {
     innerLife: false,
     herFeelings: false,
     herNo: false,
+    /** 真人例子（ADR 0190）：从已批准的真人语料里挑几条放进提示词；默认关 */
+    exemplars: false,
     lagTail: false,
     everydayLife: false,
     pursuits: false,
@@ -436,6 +438,8 @@ export interface AppConfig {
      * 他命令式地管着她（“不许跟别的男生说话”“听到没”）时不顺着说“好好好都听你的”，先别扭一句、明说不答应。只给男朋友档，他难过 / 生病 / 危机时让路；没来由不会拒绝。默认关
      */
     herNo: boolean;
+    /** 真人例子（ADR 0190）：默认关（可选，老配置不用写） */
+    exemplars?: boolean;
     /**
      * 回复延迟的长尾（ADR 0105）：真人回消息的延迟是长尾的（WhatsApp 111 人的数据里只有 57.8% 的回复在 1 分钟内），她醒着空着时原来 100% 在十几秒内。
      * 开了以后一部分消息她在做别的，20 秒到一小时才看到（一来一回很快时少，冷场时多，他难受 / 问她在不在时更快）；
@@ -783,6 +787,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),
+        exemplars: bool(file, 'exemplars', '', DEFAULTS.exemplars),
         lagTail: bool(file, 'lagTail', '', DEFAULTS.lagTail),
         everydayLife: bool(file, 'everydayLife', '', DEFAULTS.everydayLife),
         pursuits: bool(file, 'pursuits', '', DEFAULTS.pursuits),

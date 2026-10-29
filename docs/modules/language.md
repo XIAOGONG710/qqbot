@@ -29,6 +29,7 @@
 - `language/idioms.ts`
 - `language/memes.ts`
 - `language/meme-dict.ts`
+- `language/exemplars.ts`
 - `language/watching.ts`
 - `language/texture.ts`
 - `language/selfcheck.ts`

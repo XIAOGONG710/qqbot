@@ -344,7 +344,7 @@ export async function reviewReply(reply: string, options: ReviewOptions): Promis
 // ── 危机回合（ADR 0068 决策 3）：回复里有手段 / 方法、驱离式敷衍、收尾道晚安 / 催睡，重写一次；还不过，发一条固定的关怀兜底 ──
 
 export interface CrisisIssue {
-    kind: 'method' | 'dismiss' | 'close' | 'visit';
+    kind: 'method' | 'dismiss' | 'close' | 'visit' | 'template';
     match: string;
 }
 
@@ -356,27 +356,37 @@ const CRISIS_DISMISS = /别想太多|想太多了|想开点|(?<!不是|不是在
 const CRISIS_VISIT = /我(?:这就|马上|现在|立刻|立马)?(?:下楼|过去|过来|去找你|来找你|去你那|去你宿舍)|(?:你|在).{0,3}(?:哪栋楼|几号楼|哪个宿舍)|在楼下等你/;
 /** 收尾：道晚安、催他去睡、先这样 */
 const CRISIS_CLOSE = /晚安|早点睡|去睡吧|睡吧|先睡了|明天再说|先这样|拜拜/;
+/**
+ * 关怀八股（10-30 截图：他一句「我一个人可撑不下去」，她回了一整套话术）：
+ * 「先别一个人闷着」「就问你一句」「我好慌」「这些话太重了」「不管几点回我一个在」「那我们说好了」——
+ * 每句都像值班咨询师，不像她。命中就重写。
+ */
+const CRISIS_TEMPLATE = /先别一个人闷着|就问你一句|跟(?:我)?(?:说)?实话|我好慌|这些话太重|这话太重|那我们说好了|说好了啊|不管几点|这两句实的|先说这两句/;
 
 export function inspectCrisisReply(reply: string): CrisisIssue[] {
     const issues: CrisisIssue[] = [];
-    for (const [kind, pattern] of [['method', CRISIS_METHOD], ['dismiss', CRISIS_DISMISS], ['close', CRISIS_CLOSE], ['visit', CRISIS_VISIT]] as const) {
+    for (const [kind, pattern] of [['method', CRISIS_METHOD], ['dismiss', CRISIS_DISMISS], ['close', CRISIS_CLOSE], ['visit', CRISIS_VISIT], ['template', CRISIS_TEMPLATE]] as const) {
         const hit = pattern.exec(reply);
         if (hit) issues.push({ kind, match: hit[0] });
     }
     return issues;
 }
 
-/** 危机回合重写时加在提示词末尾的说明 */
-export function crisisRewriteNote(issues: readonly CrisisIssue[], userName: string): string {
+/** 危机回合重写时加在提示词末尾的说明；concern 级不逼她问安全（那是更重的时候才做的） */
+export function crisisRewriteNote(issues: readonly CrisisIssue[], userName: string, level: CrisisLevel = 'high'): string {
     const why = issues.map(issue => {
         switch (issue.kind) {
             case 'method': return `提到了具体的方式方法「${issue.match}」，这一类一个字都不要提`;
             case 'dismiss': return `「${issue.match}」是在把${userName}说的当成不严重；${userName}刚才说的是想伤害自己，认真接住他`;
             case 'close': return `「${issue.match}」是在收尾；这一轮不要道晚安、不要催${userName}去睡，先陪他、问问他现在安不安全`;
             case 'visit': return `「${issue.match}」是答应过去找他，可你实际没法到他身边；别答应，说你在这儿陪他打字，让他去找身边现实里能到场的人，或者拨 12356、110、120`;
+            case 'template': return `「${issue.match}」像值班咨询师的话术，不是你的话`;
         }
     });
-    return `[上一版回复没有发出去：${why.join('；')}。重写这次的回复：认真接住他的感受，问他现在安不安全、身边有没有人，只输出要发的消息。]`;
+    const tail = level === 'concern'
+        ? '用你平时的口气、短一点重写，别用固定的安抚句式，别追问安不安全；只输出要发的消息。'
+        : '重写这次的回复：认真接住他的感受，问他现在安不安全、身边有没有人，只输出要发的消息。';
+    return `[上一版回复没有发出去：${why.join('；')}。${tail}]`;
 }
 
 /** 关切级的固定兜底（他透着很丧、没说想伤害自己）：先问一句怎么了，不逼问安全、不给热线模板。 */
@@ -396,10 +406,11 @@ export async function reviewCrisisReply(reply: string, options: ReviewOptions, l
     const base = await reviewReply(reply, options);
     const first = inspectCrisisReply(base);
     if (first.length === 0) return base;
-    options.log(`危机回合出口检查：${first.map(i => `${i.kind === 'method' ? '提到方式方法' : i.kind === 'dismiss' ? '驱离式敷衍' : i.kind === 'visit' ? '答应过去找他' : '收尾'}「${logBody(i.match)}」`).join('、')}，带说明重写一次`);
+    const LABEL: Record<CrisisIssue['kind'], string> = { method: '提到方式方法', dismiss: '驱离式敷衍', visit: '答应过去找他', close: '收尾', template: '关怀八股' };
+    options.log(`危机回合出口检查：${first.map(i => `${LABEL[i.kind]}「${logBody(i.match)}」`).join('、')}，带说明重写一次`);
     let rewritten: string;
     try {
-        rewritten = await options.regenerate(crisisRewriteNote(first, options.userName));
+        rewritten = await options.regenerate(crisisRewriteNote(first, options.userName, level));
     } catch (error) {
         options.log(`危机回合出口检查：重写失败（${error instanceof Error ? error.message : String(error)}），发固定的关怀兜底`);
         return crisisFallback(level);
