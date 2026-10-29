@@ -27,12 +27,23 @@ export interface InnerThought {
     told?: true;
 }
 
+/** 她自己上网查到的（ADR 0180）：念头里写「想查：关键词」时去查，查到的几条事实存这里 */
+export interface InnerLookup {
+    /** lk-<毫秒> */
+    id: string;
+    at: string;
+    query: string;
+    facts: string[];
+}
+
 export interface InnerState {
     thoughts: InnerThought[];
     /** 上一次想的时刻（想砸了、想不出来的也算，免得一直重试） */
     lastThinkAt?: string;
     /** 已经专门想过的 B 站视频（ADR 0130）：每看完一个新的，下一次想事情就专门想这一件，想完记在这里，不会反复想 */
     reflected?: string[];
+    /** 她自己查过的（ADR 0180），只留最近几条 */
+    learned?: InnerLookup[];
 }
 
 /** 两次想之间隔多久（分钟范围，按上一次的时刻取种子）：一天醒着十几个钟头，想八九次 */
@@ -57,6 +68,10 @@ export const INTENT_WINDOW_MS = 6 * HOUR;
 export const INNER_DELAY_MIN: [number, number] = [10, 40];
 /** 一天最多因为念头主动找他几次 */
 export const INNER_MAX_PER_DAY = 2;
+/** 她自己上网查到的：留多久、放几条进聊天提示词、存多少条（ADR 0180） */
+export const LEARNED_WINDOW_MS = 12 * HOUR;
+export const LEARNED_LINE_MAX = 2;
+export const LEARNED_KEPT = 20;
 /** 念头的长度 */
 const MIN_CHARS = 4;
 const MAX_CHARS = 80;
@@ -100,7 +115,8 @@ export function thinkNote(recent: readonly InnerThought[], userName: string, ind
         + `${retry ? '（上一次你写成了对他说话，这次只对自己说。）' : ''}`
         + `${saw}${watched && forceWatch ? `这一次就想这一件：${WATCH_THEME}。` : `这一次从这两样里挑一样想：①${a}；②${b}。`}别围着“他怎么还没回”转（他忙他的，你有你的事）。`
         + `只写感受和想法，不写新发生的事（上面没写的事实不编，不编${userName}说过的话，不编他身边的人和他那边的事），也不分析自己是不是真人、有没有意识。`
-        + `${before}输出两行：第一行是心里的话（不超过 30 个字，半句也行，像小声嘀咕；用最平常的口语，别用成语，别写“我服”“我认”“我给满分”这类表态的词，别写成总结或评语）；第二行只写「告诉他」「问他」「自己想想」其中一个，表示这个念头你想不想拿去跟${userName}说：想说给他听选「告诉他」，想问他一件具体的事选「问他」，先放在心里选「自己想想」；想说就别憋着，但也别每个念头都说。]`;
+        + `${before}输出两到三行：第一行是心里的话（不超过 30 个字，半句也行，像小声嘀咕；用最平常的口语，别用成语，别写“我服”“我认”“我给满分”这类表态的词，别写成总结或评语）；第二行只写「告诉他」「问他」「自己想想」其中一个，表示这个念头你想不想拿去跟${userName}说：想说给他听选「告诉他」，想问他一件具体的事选「问他」，先放在心里选「自己想想」；想说就别憋着，但也别每个念头都说。`
+        + `第三行可以不写：如果这会儿你特别想弄明白一件具体的事（不查会一直惦记，比如某个东西是什么、哪年的事、这个说法到底啥意思），就写「想查：关键词」（关键词 2–15 个字，要查得准）；不查就不写这行。别拿它查${userName}的事——他的事问他本人。]`;
 }
 /** 字对的重合比例（0–1）：两句话的二字组合里共有的占较短那句的比例 */
 export function similarity(a: string, b: string): number {
@@ -122,7 +138,7 @@ const GOES_MARK: readonly [ThoughtGoes, RegExp][] = [['tell', /告诉他/], ['as
  * 模型的输出 → 一个念头；不合格返回原因。第一行是心里的话，第二行是去向；挤在一行里（「……（告诉他）」）也认。
  * 不合格：空的、太短太长、带链接 / 表情指令、和最近的念头重复
  */
-export function parseThought(raw: string, recent: readonly InnerThought[], at: number, callName?: string): { thought: InnerThought } | { rejected: string } {
+export function parseThought(raw: string, recent: readonly InnerThought[], at: number, callName?: string): { thought: InnerThought; wants?: string } | { rejected: string } {
     const lines = raw.replace(/\r/g, '').split('\n').map(line => line.trim()).filter(Boolean);
     if (!lines.length) return { rejected: '空的' };
     let goes: ThoughtGoes = 'keep';
@@ -156,7 +172,16 @@ export function parseThought(raw: string, recent: readonly InnerThought[], at: n
     // 书面腔 / 模型腔（「这思路我服」「头头是道」，ADR 0130 的验证里写出来的）：不收，让调用方换个写法再想一次
     if (stiltedHit(text)) return { rejected: '书面腔' };
     if (recent.some(t => similarity(t.text, text) >= SIMILAR)) return { rejected: '和最近的重复' };
-    return { thought: { id: `th-${at}`, at: new Date(at).toISOString(), text, goes } };
+    // 第三行（可选）：「想查：关键词」——她这会儿想弄明白的事（ADR 0180），planner 会真的去查一次
+    let wants: string | undefined;
+    for (const line of lines) {
+        const hit = /想查[：:]\s*(.+)$/.exec(line);
+        if (!hit) continue;
+        const query = hit[1]!.replace(/[「」“”"'（）()\s]/g, '').trim();
+        if (chars(query) >= 2 && chars(query) <= 15 && !/https?:|<sticker|\[[^\]]{1,6}\]/.test(query)) wants = query;
+        break;
+    }
+    return { thought: { id: `th-${at}`, at: new Date(at).toISOString(), text, goes }, ...(wants ? { wants } : {}) };
 }
 
 /** 放进聊天提示词的一行：最近几个钟头她心里在想的；没有就没有 */
@@ -164,6 +189,14 @@ export function innerLine(thoughts: readonly InnerThought[], now: number): strin
     const recent = thoughts.filter(t => now - Date.parse(t.at) < INNER_LINE_WINDOW_MS && Date.parse(t.at) <= now).slice(-INNER_LINE_MAX);
     if (!recent.length) return undefined;
     return `[你这几个钟头心里在想（是你自己的小心思，不是发生过的事，不用照着念；话题接得上、他问起时才自然带一句，接不上就别硬说）：${recent.map(t => `「${t.text}」`).join('')}]`;
+}
+
+/** 她自己上网查到的（ADR 0180）：她好奇才查的，不是他让查的；明说是网上看到的，别当成自己经历过的事 */
+export function learnedLine(learned: readonly InnerLookup[] | undefined, now: number): string | undefined {
+    const recent = (learned ?? []).filter(item => now - Date.parse(item.at) < LEARNED_WINDOW_MS).slice(-LEARNED_LINE_MAX);
+    if (!recent.length) return undefined;
+    const parts = recent.map(item => `查「${item.query}」查到：${item.facts.join('；')}`);
+    return `[你最近自己上网查过（你自己好奇才查的，不是他让你查的，也不是你亲身经历的）：${parts.join(' ｜ ')}。聊天里接得上时可以用，别当成你亲眼见过、去过的事，也别说“我查了资料”这种话]`;
 }
 
 /** 想告诉他 / 想问他、还没说、没过期的念头 */
@@ -186,5 +219,7 @@ export function validInnerState(value: unknown): value is InnerState {
     if (!isObject(value) || !Array.isArray(value.thoughts) || !value.thoughts.every(validThought)) return false;
     if (new Set(value.thoughts.map(t => (t as InnerThought).id)).size !== value.thoughts.length) return false;
     if (value.reflected !== undefined && !(Array.isArray(value.reflected) && value.reflected.every(id => typeof id === 'string'))) return false;
+    if (value.learned !== undefined && !(Array.isArray(value.learned) && value.learned.every(item => isObject(item) && typeof item.id === 'string' && isTime(item.at)
+        && typeof item.query === 'string' && Array.isArray(item.facts) && item.facts.length > 0 && item.facts.every(fact => typeof fact === 'string')))) return false;
     return value.lastThinkAt === undefined || isTime(value.lastThinkAt);
 }

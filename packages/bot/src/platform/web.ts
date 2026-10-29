@@ -342,6 +342,41 @@ export class WebLookup {
         return line;
     }
 
+    /**
+     * 她自己想弄明白一件事（ADR 0180）：内心想事的时候冒出来的「想查：关键词」，直接查，不管他那句话里有没有触发词。
+     * 返回摘出来的几条事实；没查成、没额度、资料里没有都返回 undefined（她照实说不知道）。
+     */
+    async look(query: string): Promise<string[] | undefined> {
+        if (!this.enabled) return undefined;
+        const q = clip(String(query || '').trim(), 30);
+        if (q.length < 2) return undefined;
+        const now = this.#options.now?.() ?? new Date();
+        if (this.#usedToday(now) >= (this.#options.dailyLimit ?? DAILY_LIMIT)) {
+            this.#options.log?.('上网：今天的额度用完了，她自己想查的这次先不查');
+            return undefined;
+        }
+        this.#use(now);
+        const material = await this.#gather({ kind: 'search', query: q, explicit: true });
+        if (!material.ok) {
+            this.#options.log?.(`上网：她自己想查「${clip(q, 16)}」，没查成（${material.reason}）`);
+            this.#options.onDone?.({ kind: 'search', summary: `她自己想查「${clip(q, 16)}」，没查成`, ok: false });
+            return undefined;
+        }
+        // 她自己查的时候多走一步：把搜到的第一条读完再摘（ADR 0181）——她不是要一串链接，是要看进去。
+        // 读不成、或没搜索结果长，就用搜索结果（不额外占额度，同一件事算一次）
+        const page = await readPage(material.source, { fetch: this.#fetch, ...(this.#options.resolve ? { resolve: this.#options.resolve } : {}) })
+            .catch((): { ok: false; reason: string } => ({ ok: false, reason: '读不了' }));
+        const deep = page.ok && page.text.length > material.text.length;
+        const facts = await this.#extract(q, deep ? `${page.title}\n${page.text}` : material.text);
+        this.#options.onDone?.({ kind: 'search', summary: `她自己上网查了「${clip(q, 16)}」${deep ? '，读了一个网页' : ''}`, ok: Boolean(facts) });
+        if (!facts) {
+            this.#options.log?.('上网：她自己查了，但资料里没有和问题有关的');
+            return undefined;
+        }
+        this.#options.log?.(`上网：她自己查了「${clip(q, 16)}」${deep ? `（读了 ${new URL(material.source).hostname}）` : ''}，摘出 ${facts.length} 条（日志不记内容）`);
+        return facts;
+    }
+
     async #gather(plan: LookupPlan): Promise<{ ok: true; text: string; label: string; source: string } | { ok: false; reason: string }> {
         if (plan.kind === 'read') {
             const page = await readPage(plan.url, { fetch: this.#fetch, ...(this.#options.resolve ? { resolve: this.#options.resolve } : {}) });

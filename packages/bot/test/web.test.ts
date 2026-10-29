@@ -130,6 +130,16 @@ describe('WebLookup：串起来', () => {
         assert.deepEqual(done, [{ kind: 'search', summary: '上网查了「量子纠缠是什么」', ok: true }]);
     });
 
+    test('她自己想查（ADR 0180）：不看触发词、直接搜，返回摘出来的事实；没开就不查', async () => {
+        assert.equal(await make({ mode: 'off' }).lookup.look('量子纠缠'), undefined);
+        const { lookup, asked, done } = make();
+        assert.deepEqual(await lookup.look('量子纠缠是什么'), ['量子纠缠是量子力学里的一种关联现象', '两个粒子的状态会相互关联']);
+        assert.equal(asked.length, 1);
+        assert.match(done[0]!.summary, /^她自己上网查了「量子纠缠是什么」/);
+        assert.equal(done[0]!.ok, true);
+        assert.equal(await lookup.look('   '), undefined, '空的不查');
+    });
+
     test('他发了链接：读网页再摘录；同一个问题 6 小时内不重复查', async () => {
         const { lookup, asked } = make({}, ['青岛啤酒节在八月', '青岛啤酒节在八月']);
         const first = await lookup.line('你看这个 https://example.com/beer');
