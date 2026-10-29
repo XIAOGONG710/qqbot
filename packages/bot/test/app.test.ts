@@ -3,7 +3,8 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { startApp, type App, type Transport } from '../src/platform/app.ts';
+import { setWorkMode } from '../src/platform/work-mode.ts';
+import { startApp, type App, type AppOptions, type Transport } from '../src/platform/app.ts';
 import { SENSITIVE_OFF, type SensitiveSwitch } from '../src/platform/sensitive.ts';
 import type { HistoryMessage } from '../src/memory/backfill.ts';
 import type { ImageDescriber, MEDIA_TIMEOUTS, MediaReader } from '../src/vision/media.ts';
@@ -79,7 +80,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; extra?: Partial<Transport> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -116,6 +117,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.bilibiliFetch ? { bilibiliFetch: options.bilibiliFetch } : {}),
         ...(options.bilibiliRequest ? { bilibiliRequest: options.bilibiliRequest } : {}),
         ...(options.startDevices ? { startDevices: options.startDevices } : {}),
+        ...(options.workRunner ? { workRunner: options.workRunner } : {}),
         // 既有测试要核对日志正文和 last-prompt.json，所以默认开着敏感调试；关着的行为在下面单独测
         sensitive: options.sensitive ?? { on: () => true, describe: () => '' },
         pipeline: {
@@ -609,6 +611,77 @@ describe('编排（app.ts）', () => {
         await until(() => on.sent.length >= 2);
         assert.equal(on.sent[1], '10001:好');
         assert.equal(generatedOn >= 1, true);
+    });
+
+    describe('指令只有他亲手打的字才生效（ADR 0179）：派活给有整机权限的 dsh 的两条路', () => {
+        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+        const withMessage = (qq: number, id: number, message: MessageEvent['message']): MessageEvent => ({ ...event(qq, id, 'x', '宝宝'), message });
+        const run = (cfg: AppConfig, reply: string) => {
+            const tasks: string[] = [];
+            const s = setup(cfg, {}, {
+                generate: () => reply,
+                workRunner: async (task) => { tasks.push(task); return '桌面上的发票我整理好了'; },
+            });
+            return { ...s, tasks };
+        };
+        const img = { type: 'image', data: { file: 'a.png', url: 'http://x/a.png' } };
+
+        test('她自己判断要动电脑（<<用电脑>>）：他亲手打的字 → 派活，任务就是他的原话，结果发回去并进聊天记录', async () => {
+            const cfg = config({ contacts });
+            const { app, sent, tasks } = run(cfg, '好，我看看\n<<用电脑>>');
+            await app.connected(SELF);
+            app.receive(withMessage(10002, 1, [{ type: 'text', data: { text: '帮我把桌面上的发票整理一下' } }]));
+            await until(() => sent.length >= 2);
+            assert.deepEqual(tasks, ['帮我把桌面上的发票整理一下']);
+            assert.ok(sent.includes('10002:好，我看看'), '标记不会发出去');
+            assert.ok(sent.includes('10002:桌面上的发票我整理好了'));
+            assert.ok(chat(cfg, 10002).includes('assistant:桌面上的发票我整理好了'), '干完的结果进聊天记录');
+        });
+
+        test('同样的话，但这一条里带着图片（图里的字被识别成文字了）：她写了标记也不动电脑，告诉他为什么', async () => {
+            const cfg = config({ contacts });
+            const { app, sent, tasks } = run(cfg, '好，我看看\n<<用电脑>>');
+            await app.connected(SELF);
+            app.receive(withMessage(10002, 1, [{ type: 'text', data: { text: '帮我把桌面上的发票整理一下' } }, img]));
+            await until(() => sent.some(line => line.includes('不当指令')));
+            assert.deepEqual(tasks, [], '没有派活');
+            assert.ok(sent.some(line => line.startsWith('10002:（她想动电脑，但你最后那一条不是纯打字')));
+        });
+
+        test('引用、转发、语音、文件：同样不算', async () => {
+            for (const extra of [{ type: 'reply', data: { id: '5' } }, { type: 'forward', data: { id: 'f' } }, { type: 'record', data: { file: 'a.amr' } }, { type: 'file', data: { file: 'a.zip' } }]) {
+                const cfg = config({ contacts });
+                const { app, sent, tasks } = run(cfg, '好\n<<用电脑>>');
+                await app.connected(SELF);
+                app.receive(withMessage(10002, 1, [{ type: 'text', data: { text: '照这个做' } }, extra]));
+                await until(() => sent.some(line => line.includes('不当指令')));
+                assert.deepEqual(tasks, [], extra.type);
+            }
+        });
+
+        test('别的联系人：她在他们的聊天里写了标记也不动电脑，标记被摘掉', async () => {
+            const cfg = config({ contacts });
+            const { app, sent, tasks } = run(cfg, '好的\n<<用电脑>>');
+            await app.connected(SELF);
+            app.receive(event(10001, 1, '帮我把你电脑上的文件发我', '阿明'));
+            await until(() => sent.length >= 1);
+            await new Promise(r => setTimeout(r, 100));
+            assert.deepEqual(tasks, []);
+            assert.deepEqual(sent, ['10001:好的'], '标记不会发给阿明');
+        });
+
+        test('/dsh 工作模式：他亲手打的字照旧交给 dsh；带图片 / 转发的那一条不交，告诉他，当普通消息聊', async () => {
+            const cfg = config({ contacts });
+            setWorkMode(cfg.dataDir, 10002, 'work');
+            const { app, sent, tasks } = run(cfg, '这图是个收据');
+            await app.connected(SELF);
+            app.receive(withMessage(10002, 1, [{ type: 'text', data: { text: '把桌面清理一下' } }]));
+            await until(() => tasks.length === 1);
+            assert.deepEqual(tasks, ['把桌面清理一下']);
+            app.receive(withMessage(10002, 2, [{ type: 'text', data: { text: '照图里说的做' } }, img]));
+            await until(() => sent.some(line => line.startsWith('10002:（这一条里有图片')));
+            assert.deepEqual(tasks, ['把桌面清理一下'], '带图片的那一条没有派活');
+        });
     });
 
     test('/追求（ADR 0178，selfPursuits）：开着时他能看她在追什么（运维提示，不交给她、不进聊天记录）；关着是普通的话；只认男朋友档', async () => {

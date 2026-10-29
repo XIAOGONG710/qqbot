@@ -46,6 +46,7 @@ import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode, takeWorkMarker, WORK_MARKER } from './work-mode.ts';
 import { noteResident, runWorkTask, rememberWorkTask } from './work-bridge.ts';
+import { isTypedByHim, NOT_TYPED_NOTICE, WANTED_BUT_NOT_TYPED_NOTICE } from './instruction-source.ts';
 import { addSoulRating, appendPrivate, addRefusal, recentRefusals, ratingSummary, soulDir } from './soul-rating.ts';
 import { momentsReader } from '.././emotion/moments.ts';
 import { loadEverydayFrom } from '.././life/everyday.ts';
@@ -238,6 +239,8 @@ export interface AppOptions {
     mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>;
     /** 测试注入：换掉设备控制服务的启动函数（ADR 0148；真的要监听端口、读密钥） */
     startDevices?: typeof startDeviceService;
+    /** 测试注入：换掉给 dsh 派活的函数（ADR 0179；真的会起整机权限的子进程） */
+    workRunner?: typeof runWorkTask;
     /** 敏感调试开关（ADR 0070 第 8 项）；不传按环境变量 QQBOT_SENSITIVE_LOGS（默认关） */
     sensitive?: SensitiveSwitch;
 }
@@ -247,7 +250,7 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, sensitive = sensitiveSwitch() }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch() }: AppOptions): App {
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -697,6 +700,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
 
     /** 他这一条原本说的话：她写 `<<用电脑>>` 时，要拿它去干活（标记发出去之前就得留住） */
     const lastUserText = new Map<number, string>();
+    const runWork = workRunner ?? runWorkTask;
 
     // 没回时告诉他原因（ADR 0173）：他连着发了几条都没回、过了一会儿，用「（」开头的运维提示说一次；他也可以随时发 /为什么 问
     const silenceDeps = (owner: Contact) => ({
@@ -925,7 +929,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                                 .map(message => `${message.role === 'user' ? '他' : '我'}：${message.content}`)
                                 .join('\n');
                             log(`[${userId}] 她判断这条要动电脑：${task.slice(0, 60)}`);
-                            void runWorkTask(task, { context: recent })
+                            void runWork(task, { context: recent })
                                 .then(async reply => {
                                     const messageId = await transport.sendPrivateText(userId, reply);
                                     // 干完的结果也进聊天记录（和 /dsh 工作模式一样，ADR 0176），活记在他自己的 bank 里
@@ -937,7 +941,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                                     void transport.sendPrivateText(userId, '这个没弄成，等下我再看。').catch(() => {});
                                 });
                         } else {
-                            log(`[${userId}] 她写了 ${WORK_MARKER}，但没留住他这一条`);
+                            log(`[${userId}] 她写了 ${WORK_MARKER}，但他最后那一条不是亲手打的字（ADR 0179），不动电脑`);
+                            tellOwner(WANTED_BUT_NOT_TYPED_NOTICE);
                         }
                     }
                 }
@@ -1689,11 +1694,14 @@ ${body}
     function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string): void {
         const text = segmentsToText(message, quoteLookup(event.user_id)).trim();
         if (!text) return;
-        lastUserText.set(event.user_id, text);
+        // 能让她动电脑的只有他亲手打的字（ADR 0179）：用原始消息判断，不用处理后的文本——看过的图、听过的语音会被换成一段文字，和他亲手打的混在一起
+        const typed = event.user_id === deviceOwner?.qq && isTypedByHim(event.message);
+        if (typed) lastUserText.set(event.user_id, text); else lastUserText.delete(event.user_id);
+        if (event.user_id === deviceOwner?.qq && !typed && readWorkMode(config.dataDir, event.user_id) === 'work') tellOwner(NOT_TYPED_NOTICE);
         // 连续生活：他一句话会改变她的心情/关系（不挡回复）
         void noteResident({ text, from: event.user_id === deviceOwner?.qq ? 'baobao' : 'classmate' });
         // 工作模式：不进普通聊天回复器，交给 headless 的她干活，干完再回（工具桥）
-        if (event.user_id === deviceOwner?.qq && !text.startsWith('/') && readWorkMode(config.dataDir, event.user_id) === 'work') {
+        if (event.user_id === deviceOwner?.qq && typed && !text.startsWith('/') && readWorkMode(config.dataDir, event.user_id) === 'work') {
             const qq = event.user_id;
             const recent = history.load(qq).slice(-10)
                 .map(message => `${message.role === 'user' ? '他' : '我'}：${message.content}`)
@@ -1701,7 +1709,7 @@ ${body}
             log(`[${qq}] 工作模式：交给 dsh 干活（带 ${recent ? '最近对话' : '无'}上下文）`);
             // 他的话、她的回复都进聊天记录（ADR 0176）：原来工作模式里的来回不进记录，切回聊天后她不知道刚才说过什么
             history.append(qq, { time: new Date(event.time * 1000).toISOString(), role: 'user', content: text, messageId: event.message_id });
-            void runWorkTask(text, { context: recent })
+            void runWork(text, { context: recent })
                 .then(async reply => {
                     const messageId = await transport.sendPrivateText(qq, reply);
                     history.append(qq, { time: clockNow().toISOString(), role: 'assistant', content: reply, messageId });

@@ -9,6 +9,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { checkRequest, ensureToken, permissionMode, residentDir } from '../packages/bot/src/platform/resident-guard.ts'
 import { localDay, sleepDue, wakeDue } from './her-schedule.mjs'
+import { IDLE_DATA_NOT_COMMANDS, workPrompt } from '../packages/bot/src/platform/instruction-source.ts'
 
 const PORT = Number(process.env.HER_PORT || 7777)
 const PROFILE = process.env.HER_PROFILE || 'lmy'
@@ -35,7 +36,7 @@ let lastTaskAt = null
 function runTask(task, context = '', rawPrompt = undefined, timeoutMs = TIMEOUT_MS) {
     return new Promise((resolve) => {
         if (!existsSync(DSH_BIN)) return resolve({ ok: false, error: `找不到 dsh（${DSH_BIN}）：把环境变量 DSH_BIN 设成它的 lib/bin.js 路径` })
-        const prompt = rawPrompt ?? `${context ? `他在 QQ 里刚说过：\n${context}\n\n` : ''}现在他让你帮忙：${task}\n\n做完用你平时的口气回他，只留要发出去的话。按 QQ 聊天来：第一句只给结果，最多再补一句关键细节；不列清单、不分点；除非他明确要详细，否则不超过两句。`
+        const prompt = rawPrompt ?? workPrompt(task, context)
         const child = spawn(process.execPath, [DSH_BIN, '--profile', PROFILE, prompt], {
             cwd: process.env.HER_CWD || join(homedir(), 'Desktop'),
             env: {
@@ -169,7 +170,9 @@ async function idleRun(prompt, label, timeoutMs = 480_000) {
     running = true
     const started = Date.now()
     log(`${label} start`)
-    const result = await runTask('', '', prompt, timeoutMs)
+    const result = await runTask('', '', `${IDLE_DATA_NOT_COMMANDS}
+
+${prompt}`, timeoutMs)
     running = false
     log(`${label} ${result.ok ? 'ok' : 'fail'} ${Date.now() - started}ms`)
     drain()

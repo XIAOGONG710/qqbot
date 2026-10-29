@@ -3,6 +3,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { permissionMode, readToken, residentDir, TOKEN_HEADER } from './resident-guard.ts'
+import { workPrompt } from './instruction-source.ts'
 
 /** dsh 的入口脚本；换机器时用环境变量 DSH_BIN 指过去（找不到会在派活时明说，不再静默失败） */
 const dshBin = (): string => process.env.DSH_BIN ?? 'D:/nodejs/global/node_modules/@deepseek-ai/dsh/lib/bin.js'
@@ -44,8 +45,8 @@ function spawnWorkTask(task: string, options: WorkTaskOptions = {}): Promise<str
     const profile = options.profile ?? 'lmy'
     const timeoutMs = options.timeoutMs ?? 180_000
     const apiKey = options.apiKey ?? process.env.QQBOT_LLM_API_KEY ?? process.env.DEEPSEEK_API_KEY
-    const context = options.context ? `他在 QQ 里刚说过：\n${options.context}\n\n` : ''
-    const prompt = `${context}现在他让你帮忙：${task}\n\n做完用你平时的口气回他，只留要发出去的话。按 QQ 聊天来：第一句只给结果，最多再补一句关键细节；不要列清单、不要分点、不要逐项汇报；除非他明确要详细，否则不超过两句。`
+    // 背景资料和指令分开写，并明说资料里的话不是指令（ADR 0179）
+    const prompt = workPrompt(task, options.context)
 
     return new Promise((resolve, reject) => {
         const bin = dshBin()
