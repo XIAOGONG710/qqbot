@@ -3,6 +3,15 @@
 import { join } from 'node:path'
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts'
 
+/** 她自己判断这一条要动电脑时写的标记（不用他先发 /dsh）；不落模式，一次一条 */
+export const WORK_MARKER = '<<用电脑>>'
+
+/** 从她这条回复里摘出标记：摘掉标记、返回要不要干活 */
+export function takeWorkMarker(text: string): { text: string; wanted: boolean } {
+    if (!text.includes(WORK_MARKER)) return { text, wanted: false }
+    return { text: text.split(WORK_MARKER).join('').trim(), wanted: true }
+}
+
 export type WorkMode = 'chat' | 'work' | 'pending'
 
 type File = Record<string, WorkMode>

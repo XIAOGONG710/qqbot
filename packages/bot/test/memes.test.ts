@@ -6,7 +6,7 @@ import { afterEach, describe, test } from 'node:test';
 import type { BiliVideo } from '../src/bilibili/bilibili.ts';
 import {
     candidatePrompt, EVIDENCE_VIDEOS, explainPrompt, fetchLists, gatherEvidence, loadMemes, MEME_EXPLAIN_PER_RUN, MEME_KEEP_DAYS, MEME_MAX, MEME_TURN_SHARE,
-    memeLine, memeUsed, parseBaidu, parseBiliHot, parseCandidates, parseExplain, parsePopular, parseWeibo, refreshDue, refreshMemes, trimMemes,
+    isUsableMeme, memeLine, memeUsed, parseBaidu, parseBiliHot, parseCandidates, parseExplain, parsePopular, parseWeibo, refreshDue, refreshMemes, trimMemes,
     type MemeEntry, type MemeLists,
 } from '../src/language/memes.ts';
 
@@ -215,7 +215,7 @@ describe('放进提示词', () => {
         const hits = Array.from({ length: 400 }, (_, i) => memeLine(entries, chat('在吗', '在呢', `今天吃了拉面${i}`), now.getTime())).filter(Boolean);
         assert.ok(hits.length > 400 * MEME_TURN_SHARE * 0.7 && hits.length < 400 * MEME_TURN_SHARE * 1.3, `400 轮里 ${hits.length}`);
         const sample = hits[0]!;
-        for (const text of ['你知道意思', '用得上才用', '别硬用、别解释', '他难过或认真说事的时候别用']) assert.ok(sample.includes(text), text);
+        for (const text of ['这一轮挑一个用上', '不解释、不点破', '别硬塞', '他难过或认真说事的时候别用']) assert.ok(sample.includes(text), text);
         assert.equal((sample.match(/「/g) ?? []).length, 3);
         const same = chat('在吗', '在呢', '今天吃了拉面0');
         assert.equal(memeLine(entries, same, now.getTime()), memeLine(entries, same, now.getTime()));
@@ -229,4 +229,28 @@ describe('放进提示词', () => {
         assert.equal(find(chat('在吗', '在呢', 'x'), [entry('老梗', { lastSeen: '2026-09-20' })]), undefined, '太久没在榜上');
         assert.equal(memeLine([], chat('在吗'), now.getTime()), undefined);
     });
+});
+
+// 2026-10-29：库里 14 个梗，她一条都没用过——大部分不是梗（查询残留、人名产品、新闻、通用词）
+test('当梗用不起来的词被挡掉，真梗留着', () => {
+    assert.equal(isUsableMeme('蓝色大肥鱼是什么梗'), false, '查询残留');
+    assert.equal(isUsableMeme('iphone duo'), false, '产品名');
+    assert.equal(isUsableMeme('发哥'), false, '人名');
+    assert.equal(isUsableMeme('代码'), false, '通用词');
+    assert.equal(isUsableMeme('信了贵州辣卤不辣'), false, '新闻');
+    assert.equal(isUsableMeme('启动！'), true);
+    assert.equal(isUsableMeme('省流'), true);
+    assert.equal(isUsableMeme('三年之期已到'), true);
+});
+
+test('挑梗时把不能用的滤掉：库里只剩真梗才进提示词', () => {
+    const entries = [entry('蓝色大肥鱼是什么梗'), entry('发哥'), entry('启动！')];
+    // 约 20% 的轮次才给这一行，多试几句直到抽中
+    let line: string | undefined;
+    for (let i = 0; i < 60 && !line; i++) {
+        line = memeLine(entries, [{ role: 'user', content: `今天好累${i}`, time: '2026-11-12T20:00:00+08:00' }], now.getTime());
+    }
+    assert.ok(line?.includes('启动！'), line ?? '空');
+    assert.ok(!line?.includes('发哥'), line ?? '空');
+    assert.ok(!line?.includes('什么梗'), line ?? '空');
 });

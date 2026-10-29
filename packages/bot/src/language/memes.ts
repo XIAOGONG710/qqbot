@@ -311,6 +311,18 @@ const usedByHer = (entry: MemeEntry, history: readonly Said[], now: number) =>
  * 这一轮给她的梗：他用到了库里的梗就说意思让她接；没用到，约 MEME_TURN_SHARE 的轮次给她 3 个最近的（她最近说过的不再放）。没有就 undefined。
  * 调用方负责这些让路：他难过 / 生病 / 危机 / 小别扭 / 她在想事情 / 主动找他
  */
+/** 当梗用不起来的词：查询残留、人名产品名、新闻、通用词（2026-10-29：库里 14 个，她一条都没用过） */
+const NOT_A_MEME = /梗|iphone|苹果|华为|小米|型号|发哥|主播|UP主|热搜|新闻|通报|大对账|辣卤|太平洋/i;
+const GENERIC = new Set(['代码', '游戏', '视频', '直播', '表情', '表情包', '音乐', '电影']);
+
+/** 这个能不能当聊天里的梗用：短、不像新闻、不像人名产品、不是通用词 */
+export function isUsableMeme(term: string): boolean {
+    const text = term.trim();
+    if (!text || [...text].length > 10) return false;
+    if (NOT_A_MEME.test(text) || GENERIC.has(text)) return false;
+    return true;
+}
+
 export function memeLine(entries: readonly MemeEntry[], history: readonly Said[], now: number): string | undefined {
     if (!entries.length) return undefined;
     const used = memeUsed(entries, history);
@@ -320,11 +332,11 @@ export function memeLine(entries: readonly MemeEntry[], history: readonly Said[]
     const lastUser = history.findLast(message => message.role === 'user');
     if (!lastUser || unit(`${lastUser.time ?? ''} ${lastUser.content} meme`) >= MEME_TURN_SHARE) return undefined;
     const today = dayNumber(dayText(new Date(now)));
-    const fresh = entries.filter(e => today - dayNumber(e.lastSeen) <= MEME_FRESH_DAYS && !usedByHer(e, history, now))
+    const fresh = entries.filter(e => isUsableMeme(e.term) && today - dayNumber(e.lastSeen) <= MEME_FRESH_DAYS && !usedByHer(e, history, now))
         .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen) || b.seen - a.seen);
     if (!fresh.length) return undefined;
     // 前 6 个里按这一句取 3 个，每次不都是同样的三个
     const pool = fresh.slice(0, 6);
     const picks = [...pool].sort((a, b) => unit(`${lastUser.content} ${a.term}`) - unit(`${lastUser.content} ${b.term}`)).slice(0, 3);
-    return `[你最近在网上刷到的几个流行梗（你知道意思；想用就自然地用一个，话赶话正好用得上才用，别硬用、别解释、别连着几轮都用；他难过或认真说事的时候别用）：${picks.map(e => `「${e.term}」${e.meaning}`).join('；')}]`;
+    return `[你最近在网上刷到的几个流行梗：${picks.map(e => `「${e.term}」${e.meaning}`).join('；')}。这一轮挑一个用上——话赶话正好接得上就带出来（不解释、不点破、不加引号），接不上就不写，别硬塞；他难过或认真说事的时候别用]`;
 }
