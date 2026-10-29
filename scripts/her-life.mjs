@@ -49,7 +49,11 @@ export function load() {
 
 function save(state) {
     writeFileSync(STATE, JSON.stringify(state, null, 2))
-    writeFileSync(NOW, nowText(state))
+    // 2026-10-29 起 NOW.md 由 QQ 那边渲染（同一份作息 + 世界 + 心境），这里只在它没接管时才写，
+    // 免得两套规则互相覆盖、她的「现在在干嘛」前后矛盾（任务书 §2）。
+    let owned = false
+    try { owned = readFileSync(NOW, 'utf8').includes('generated-at:') } catch { /* 没有就是没接管 */ }
+    if (!owned) writeFileSync(NOW, nowText(state))
 }
 
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)) }

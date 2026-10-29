@@ -103,6 +103,7 @@ import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sen
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
+import { NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -662,6 +663,26 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const memoryTimer = memory ? setInterval(syncMemory, MEMORY_SYNC_MS) : undefined;
     memoryTimer?.unref();
 
+    // 「她现在在干嘛」只写一份（任务书 §2）：QQ 这边按自己的作息 + 世界 + 心境渲染 NOW.md，
+    // DSH 桌面只读它（超过 30 分钟不注入）。以前这份是 her-life.mjs 自己按另一套规则写的，两边会对不上。
+    const nowFile = join(soulDir(), 'NOW.md');
+    const exportNow = (): void => {
+        const schedule = worldCard?.schedule;
+        if (!schedule) return;
+        try {
+            const at = Date.now();
+            const extraFree = config.herDays ? readingActivities(worldCard.books) : [];
+            const owner = deviceOwner;
+            const doing = describeState(stateAt(schedule, new Date(at), extraFree), schedule, owner ? { userName: owner.name } : {});
+            writeNow(nowFile, renderNow({ doing, at }));
+        } catch (error) {
+            log(`「她现在在干嘛」没写出去（${error instanceof Error ? error.message : String(error)}）`);
+        }
+    };
+    exportNow();
+    const nowTimer = setInterval(exportNow, NOW_REFRESH_MS);
+    nowTimer.unref();
+
     // 她自己想让他知道的事：常驻进程/她写进 OUTBOX.jsonl，这里发出去（ADR 0174：和别的主动消息守同一套规矩）
     const outboxFile = process.env.QQBOT_OUTBOX ?? join(soulDir(), 'OUTBOX.jsonl');
     const OUTBOX_BLOCKING = new Set<ExitIssue['kind']>(['banned', 'promise', 'media', 'script', 'text-intimacy']);
@@ -803,8 +824,13 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 ratingLine: () => ratingSummary(),
                 // 「你现在的生活」（NOW.md）的「最近」一行带着他说过的话的原句（前 40 字）和关系状态（「还在生他的气……」）：
                 // 只给男朋友档，别的联系人的提示词里不能有他的话（ADR 0020 披露分级；10-29 复核）
+                // NOW.md 现在由 QQ 自己渲染（上面 exportNow），内容就是时间块里的那一句：
+                // 再注入一次就是重复，所以带 generated-at 的版本不再往回读（任务书 §2）。
                 lifeLine: () => {
-                    try { return readFileSync(join(soulDir(), 'NOW.md'), 'utf8').trim(); } catch { return undefined; }
+                    try {
+                        const text = readFileSync(join(soulDir(), 'NOW.md'), 'utf8').trim();
+                        return text.includes('generated-at:') ? undefined : text;
+                    } catch { return undefined; }
                 },
                 // 首轮铺底：他走了 ≥6 小时回来，第一轮带上她自己写的日记；挂着 lifeInPrompt，不新增开关
                 ...(config.lifeInPrompt ? {

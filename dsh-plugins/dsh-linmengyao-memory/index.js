@@ -31,6 +31,8 @@ const DEFAULTS = {
   outboxFile: soulPath('OUTBOX.jsonl'),
   offlineFile: soulPath('OFFLINE.json'),
   nowFile: soulPath('NOW.md'),
+  /** NOW.md 超过这么久没重写就当过期，不注入（QQ 没在跑的时候别拿旧状态冒充现在） */
+  nowStaleMs: 30 * 60 * 1000,
   storyFile: soulPath('STORY.md'),
   ratingFile: soulPath('RATINGS.json'),
   logFile: path.join(os.homedir(), '.dsh', 'linmengyao-memory.log'),
@@ -421,6 +423,20 @@ function readPersona(cfg) {
   } catch { return '' }
 }
 
+/** 「她现在在干嘛」：QQ 那边每 10 分钟渲染一次；超过 nowStaleMs 没更新就不注入，只记一行 */
+function readNowLine(cfg) {
+  try {
+    const text = fs.readFileSync(cfg.nowFile, 'utf8')
+    const m = /generated-at:\s*(\S+?)\s*-->/.exec(text)
+    const at = m ? Date.parse(m[1]) : NaN
+    if (!Number.isFinite(at) || Date.now() - at > cfg.nowStaleMs) {
+      log(cfg, '现在在干嘛：NOW.md 过期（QQ 没在跑？）不注入')
+      return ''
+    }
+    return text.replace(/<!--[\s\S]*?-->/g, '').trim()
+  } catch { return '' }
+}
+
 async function retain(cfg, content, bank, tags = ['dsh'], context = 'DSH') {
   const body = {
     items: [{
@@ -532,6 +548,15 @@ export function apply(ctx, config = {}) {
             const persona = readPersona(cfg)
             return persona ? `[她的设定]
 ${persona}` : ''
+          },
+        }))
+        disposers.push(sp.context({
+          name: 'linmengyao-now',
+          order: 80,
+          text: () => {
+            const now = readNowLine(cfg)
+            return now ? `[她现在在干嘛]
+${now}` : ''
           },
         }))
         if (cfg.personaFile && !fs.existsSync(cfg.personaFile)) log(cfg, '人设：没有 PERSONA.md（跑 scripts/build-dsh-persona.mjs 生成）')
