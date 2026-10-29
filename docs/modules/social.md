@@ -7,6 +7,7 @@
 ## 文件（`packages/bot/src/` 下）
 
 - `social/responder.ts`
+- `social/others.ts`
 - `social/reply-timing.ts`
 - `social/rate-limit.ts`
 - `social/async-gate.ts`

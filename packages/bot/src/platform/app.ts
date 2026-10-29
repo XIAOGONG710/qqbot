@@ -453,7 +453,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
 
     // ───────── 连续性（ADR 0157–0163）：设定账本 / 记忆账本 / 时间线 / 搜索 / 休眠 / 口味 / 认识的人 ─────────
     // 都是默认关的开关；账本和时间线只写数据目录里的小文件。出错一律只记日志，不影响聊天
-    const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+    // 这个文件在 packages/bot/src/platform/：往上四层才是仓库根（模块目录重构前在 src/ 下，三层）
+    const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
     const clockNow = () => new Date(pipeline?.now ? pipeline.now() : Date.now());
     /** 连上之后发给用户的运维提示（设定账本验不过、有没登记原因的改动……）：以「（」开头的纯文字，不进她的聊天记录 */
     const ownerNotices: string[] = [];

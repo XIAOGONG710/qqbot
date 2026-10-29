@@ -11,7 +11,7 @@ import { runProbe } from './bilibili-probe.ts';
 const args = process.argv.slice(2);
 const value = (name: string) => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };
 const given = value('--data-dir');
-const dataDir = given ? resolve(process.env.INIT_CWD ?? process.cwd(), given) : resolve(import.meta.dirname, '../../../runtime/bot');
+const dataDir = given ? resolve(process.env.INIT_CWD ?? process.cwd(), given) : resolve(import.meta.dirname, '../../../../runtime/bot');
 const deps = {
     request: realRequest,
     dataDir,

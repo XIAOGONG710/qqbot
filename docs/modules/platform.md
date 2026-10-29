@@ -8,6 +8,9 @@
 
 - `platform/app.ts`
 - `platform/main.ts`
+- `platform/work-bridge.ts`
+- `platform/work-mode.ts`
+- `platform/soul-rating.ts`
 - `platform/contact.ts`
 - `platform/config.ts`
 - `platform/features.ts`
