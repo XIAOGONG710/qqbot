@@ -1,0 +1,10 @@
+{
+  "cases": "C:\\Users\\22601\\Desktop\\qqbot-exchange-wt\\exchange\\research\\2026-10-real-chat\\v2\\cases-40.json",
+  "answers": "C:\\Users\\22601\\Desktop\\qqbot-dsh-control\\runtime\\blind\\20261029-212148-base-1029\\answers.json",
+  "commit": "ba82de4cd60b3e302787e0f872aacaa400e984e0",
+  "dirty": true,
+  "answeredAt": "2026-10-29T13:23:21.712Z",
+  "questions": 39,
+  "droppedNoAnswer": 1,
+  "generatedAt": "2026-10-29T13:23:38.471Z"
+}
