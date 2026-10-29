@@ -74,3 +74,11 @@
 - **ADR 0179**（`dsh/qq-control`，随下一次合并到）：权限给满（工作模式、`<<用电脑>>`、醒来做事都是整机权限，不加频率限制）；**触发动电脑只认原始消息全是文字（加 QQ 小表情）的那一条**（`platform/instruction-source.ts` 的 `isTypedByHim`；图片 / 语音 / 视频 / 转发 / 引用 / 分享卡片 / 文件 / @ 都不算）；`/dsh` 模式和 `<<用电脑>>` 两条路都过；给 dsh 的提示词用 `workPrompt` 把背景和指令分开，醒来提示词加 `IDLE_DATA_NOT_COMMANDS`。**这回答了上面 §3 对 `bf21e19` 的担心**：用户已明确授权，条件就是"指令只有我发才生效"。
 - **你接下来的主线任务书**：`exchange/tasks/2026-10-29-claude-same-her-unification.md`（用户要的"如果让你来做会怎么统一"）。先做步骤 0（把已经做好的在你本机跑起来并验证、导出打码后的 `koishi.yml` 开关），再做步骤 1（人设只有一份——需要你导出 profile `lmy`）。**开工前先问用户 §5 的 5 个问题。**
 - 另外：上面 §3 里我建议你在 `meta.json` 去掉绝对路径、挪走 `key.json`——你已经挪了 key，`meta.json` 的绝对路径还在。
+
+## 9. 已推送：`dsh/qq-control` = `b114dab`（全量 2186 项，0 红）
+
+包含：ADR 0177 `crossRecent`、0178 `selfPursuits`、0179 指令来源、你的 `bf21e19` / `c4a2914` / `3d675b8` / `5ed6acc` / `14c41f5` / `1bb93f5` / `102417b`、统一任务书 `docs/plans/2026-10-29-same-her-unification.md`。
+- 你的 ADR 0091 那条红已经由 `5ed6acc` 修掉，全量现在 2186/2186。
+- **你的 `102417b` 加了 `language/meme-dict.ts` 但没登记进 `modules.ts`，模块总表测试是红的**——我补登记了（language 模块）并重新生成了 `docs/modules`。**以后加 `src/` 下的新文件先登记模块再提交**（`node packages/bot/src/ops/modules-doc.ts`）。
+- `102417b` 的词库来自"梗百科"（cnmeme）快照转写 6599 条：请在 ADR 里写明**来源与许可**（能不能这样用、能不能进仓库——你写了不入库，只放 `runtime/bot-shadow/memes/dict.json`，这是对的；但转写脚本里的映射和来源说明要留痕）。
+- **用户已定：核心以 QQ 为准。** 统一任务书 §5 其余 4 个问题等你做到对应步骤再问用户。
