@@ -554,6 +554,35 @@ describe('编排（app.ts）', () => {
         }
     });
 
+    test('/为什么（ADR 0173，silenceNotice）：关着时是普通的话、交给她回；开着时是运维命令，不交给她、不进聊天记录；只认男朋友档', async () => {
+        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+        // 关着：照常当话交给她
+        let generatedOff = 0;
+        const offCfg = config({ contacts });
+        const off = setup(offCfg, {}, { generate: () => { generatedOff++; return '好'; } });
+        await off.app.connected(SELF);
+        off.app.receive(event(10002, 1, '/为什么', '宝宝'));
+        await until(() => off.sent.length >= 1);
+        assert.equal(off.sent[0], '10002:好');
+        assert.ok(generatedOff >= 1);
+        // 开着：男朋友档发的是命令
+        let generatedOn = 0;
+        const onCfg = config({ contacts, silenceNotice: true });
+        const on = setup(onCfg, {}, { generate: () => { generatedOn++; return '好'; } });
+        await on.app.connected(SELF);
+        assert.ok(on.logs.some(line => line.startsWith('没回时告诉他原因：开')), '启动日志说开了');
+        on.app.receive(event(10002, 1, '/为什么', '宝宝'));
+        await until(() => on.sent.length >= 1);
+        assert.equal(on.sent[0], '10002:（你的消息她都回过了，也没有记录到她没回的情况。）');
+        assert.equal(generatedOn, 0, '命令不交给她');
+        assert.deepEqual(chat(onCfg, 10002), [], '命令不进聊天记录，也就不会被算成一条没回的消息');
+        // 同学档发同样的字：不是命令，照常交给她
+        on.app.receive(event(10001, 2, '/为什么', '阿明'));
+        await until(() => on.sent.length >= 2);
+        assert.equal(on.sent[1], '10001:好');
+        assert.equal(generatedOn >= 1, true);
+    });
+
     test('名单外：开关关着时忽略；开着时按 unlisted 档、用 QQ 昵称回复', async () => {
         const off = setup(config());
         off.app.receive(event(99999, 1, '你好', '小周'));

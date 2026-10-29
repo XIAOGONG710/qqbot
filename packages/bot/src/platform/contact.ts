@@ -23,6 +23,7 @@ import { loadCharacterCard, type Character } from '.././st/card.ts';
 import { postProcessPrompt } from '.././st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from '.././st/world-info.ts';
 import { isAckAfterClosing, moodySkip, replyDelays, whenSeen } from '.././social/reply-timing.ts';
+import type { SilenceInfo } from '.././social/silence.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from '.././life/her-days.ts';
 import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from '.././emotion/grievance.ts';
@@ -307,6 +308,8 @@ export interface ContactPipelineOptions {
     waitUntil?: (at: number, signal: AbortSignal) => Promise<void>;
     /** 回复失败之后隔多久再试，默认 RETRY_AFTER_MS；模拟器传 []（它的时钟是虚拟的，真等几分钟会插进后面的步骤） */
     retryAfterMs?: readonly number[];
+    /** 他的消息没有马上回的每一个原因（ADR 0173）：只是旁观，传给响应器 */
+    onSilence?: (info: SilenceInfo) => void;
     /**
      * 开了长期记忆时原始聊天只放最近几轮、更早的整理成要点（ADR 0043 离线实验，只有模拟器传）。
      * 不传是最近 80 条（ADR 0036 决策 3），线上不传
@@ -963,6 +966,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         now,
         settle: options.settle ?? DEFAULT_SETTLE,
         retryAfterMs: options.retryAfterMs ?? RETRY_AFTER_MS,
+        ...(options.onSilence ? { onSilence: options.onSilence } : {}),
         // 睡着时连着发能把她吵醒的只有男朋友档（决策 6）；冷场时多久看到、打字多久乘这一档的节奏系数（ADR 0013 决策 1）
         timing: schedule && {
             whenSeen: (history, at) => whenSeen(history, at, {

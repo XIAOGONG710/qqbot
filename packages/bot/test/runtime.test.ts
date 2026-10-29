@@ -13,6 +13,7 @@ import type { PromptResult } from '../src/language/prompt.ts';
 import { cleanUpReply, splitReply } from '../src/language/reply.ts';
 import { createResponder, DEFAULT_SETTLE, HESITATE_CHANCE, HESITATE_PAUSE_MS, PART_GAP_MS, RETRY_AFTER_MS, TYPING_REFRESH_MS, type InitiateRequest, type ReplyTiming, type ResponderDeps } from '../src/social/responder.ts';
 import { pick } from '../src/social/reply-timing.ts';
+import type { SilenceInfo } from '../src/social/silence.ts';
 
 const names = { user: '阿明', char: '林梦瑶' };
 
@@ -244,6 +245,58 @@ describe('回复调度', () => {
         await tick();
         await responder.whenIdle();
         assert.deepEqual(sent, ['刚看到']);
+    });
+
+    test('onSilence（ADR 0173）：失败要重试、重试都用完放弃，每一次都通知；放弃时失败次数是 重试数 + 1', async () => {
+        const infos: SilenceInfo[] = [];
+        const { waits, sleep } = manualSleep();
+        const { responder } = setup({
+            now: () => 10_000, retryAfterMs: RETRY_AFTER_MS, sleep,
+            onSilence: info => infos.push(info),
+            generate: async () => { throw new Error('模型接口请求失败（UND_ERR_CONNECT_TIMEOUT）'); },
+        });
+        responder.receive('在吗', 1, new Date());
+        await responder.whenIdle();
+        for (const wait of waits) { wait.release(); await tick(); await responder.whenIdle(); }
+        assert.deepEqual(infos.map(i => i.phase), ['retry', 'retry', 'gaveUp']);
+        assert.deepEqual(infos.map(i => i.failures), [1, 2, 3]);
+        assert.deepEqual(infos.slice(0, 2).map(i => i.retryAt), [10_000 + 60_000, 10_000 + 300_000]);
+        assert.match(infos[2]!.reason, /^回复失败：模型接口请求失败/);
+    });
+
+    test('onSilence（ADR 0173）：等到点才看到时通知原因和几点看到；同一个时刻不重复通知', async () => {
+        const infos: SilenceInfo[] = [];
+        const at = Date.now() + 600_000;
+        const { responder } = setup({
+            onSilence: info => infos.push(info),
+            waitUntil: () => new Promise<void>(() => undefined),
+            timing: { whenSeen: () => ({ at, reason: '在上高数课', maxBubbles: 1 }), typingMs: () => 0, skip: () => undefined },
+        });
+        responder.receive('在吗', 1, new Date());
+        await tick();
+        assert.deepEqual(infos, [{ phase: 'waiting', reason: '在上高数课', seenAt: at }]);
+        assert.equal(responder.status().phase, 'waiting');
+        responder.stop();
+    });
+
+    test('onSilence（ADR 0173）：看到了决定不回时通知原因，而且真的没回', async () => {
+        const infos: SilenceInfo[] = [];
+        const { responder, sent } = setup({
+            onSilence: info => infos.push(info),
+            generate: async () => '不该发出去',
+            timing: { whenSeen: (_history, at) => ({ at, reason: '正聊着' }), typingMs: () => 0, skip: () => '看心情没回：这一串只是「哈哈」「嗯」这类反应' },
+        });
+        responder.receive('哈哈', 1, new Date());
+        await responder.whenIdle();
+        assert.deepEqual(infos, [{ phase: 'skipped', reason: '看心情没回：这一串只是「哈哈」「嗯」这类反应' }]);
+        assert.deepEqual(sent, []);
+    });
+
+    test('没有传 onSilence 时一切照旧（旁观的回调不是必需的）', async () => {
+        const { responder, sent } = setup({ generate: async () => '在呢' });
+        responder.receive('在吗', 1, new Date());
+        await responder.whenIdle();
+        assert.deepEqual(sent, ['在呢']);
     });
 
     test('回复一直失败之后才发出去：生成时知道是从哪一刻起一直失败（断网很久的补回，ADR 0105）；发出去之后清掉', async () => {

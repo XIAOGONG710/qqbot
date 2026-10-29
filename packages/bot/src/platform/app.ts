@@ -36,6 +36,7 @@ import { createContactResponder as createPipeline, loadTierCard, replySkip, type
 import { currentTierHistory, TierRecord } from '.././memory/tier-record.ts';
 import { HindsightClient } from '.././memory/hindsight.ts';
 import { arrivedWhileAsleep } from '.././social/reply-timing.ts';
+import { answerWhy, createSilenceWatcher, noteFromInfo, recordSilence, type SilenceInfo } from '.././social/silence.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode } from './work-mode.ts';
@@ -660,6 +661,21 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
 
     // 每个联系人一个回复器：聊天记录、生成和重新生成都互不影响
     const responders = new Map<number, Responder>(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
+
+    // 没回时告诉他原因（ADR 0173）：他连着发了几条都没回、过了一会儿，用「（」开头的运维提示说一次；他也可以随时发 /为什么 问
+    const silenceDeps = (owner: Contact) => ({
+        dataDir: config.dataDir, qq: owner.qq, now: () => clockNow().getTime(),
+        history: () => history.load(owner.qq),
+        status: () => responders.get(owner.qq)?.status() ?? { phase: 'idle', failures: 0 },
+        external: () => ({ dormant: Boolean(dormancy?.isDormant()), working: readWorkMode(config.dataDir, owner.qq) === 'work' }),
+    });
+    const silenceTimer = config.silenceNotice && deviceOwner ? (() => {
+        const watcher = createSilenceWatcher({ ...silenceDeps(deviceOwner), tell: text => tellOwner(text), log });
+        const timer = setInterval(() => { try { watcher.tick(); } catch (error) { log(`没回的原因没能告诉他（${error instanceof Error ? error.message : String(error)}）`); } }, 60_000);
+        timer.unref();
+        return timer;
+    })() : undefined;
+    if (config.silenceNotice) log(deviceOwner ? '没回时告诉他原因：开（连着 2 条以上、第一条过 8 分钟还没回就说一次；/为什么 随时问）' : '没回时告诉他原因：开着，但名单里没有男朋友档，不通知');
     /** 名单外临时建了回复器的好友（状态页要显示称呼和档位） */
     const unlisted = new Map<number, Contact>();
 
@@ -721,6 +737,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 },
             } : {}),
             ...(config.selfDirectedMemory ? { selfMemory: true } : {}),
+            // 他的消息没有马上回的每一个原因逐条记账（ADR 0173）：只是旁观，记不进去也不影响回复
+            ...(config.silenceNotice ? { onSilence: (info: SilenceInfo) => { try { recordSilence(config.dataDir, contact.qq, noteFromInfo(info, clockNow().getTime())); } catch (error) { log(`没回的原因记不进账（${error instanceof Error ? error.message : String(error)}）`); } } } : {}),
             llm: config.llm,
             prompt: config.prompt,
             schedule: config.schedule,
@@ -1442,6 +1460,8 @@ ${body}
                 tellOwner([identity?.status(), memoryLedgerNow ? summarizeMemoryLedger(memoryLedgerNow) : undefined, dormancy?.status()].filter(Boolean).join('\n\n'));
                 return;
             }
+            // 「/为什么」：她为什么没回（ADR 0173）；放在这里是因为这条命令不能算进「没回的消息」里
+            if (config.silenceNotice && plain === '/为什么') { tellOwner(answerWhy(silenceDeps(deviceOwner))); return; }
             if (dormancy && plain && /^\/休眠(?:\s|$)/.test(plain)) { void handleDormancyCommand(plain.replace(/^\/休眠\s*/, '')); return; }
             if (dormancy && plain === '/唤醒') { void wakeUp(); return; }
         }
@@ -1900,6 +1920,7 @@ ${body}
             if (memesTimer) clearInterval(memesTimer);
             if (watchingTimer) clearInterval(watchingTimer);
             if (feedTimer) clearInterval(feedTimer);
+            if (silenceTimer) clearInterval(silenceTimer);
             if (foodDiscoveryTimer) clearInterval(foodDiscoveryTimer);
             clearTimeout(foodRetryTimer);
             if (jokesTimer) clearInterval(jokesTimer);

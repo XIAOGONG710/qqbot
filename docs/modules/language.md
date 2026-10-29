@@ -65,6 +65,7 @@
 | `tailCap` | 句尾「吧」「呢」封顶（压回真人的水平） | [ADR 0146](../adr/0146-human-videos.md) |
 | `interruptions` | 被第三方打断 | [ADR 0115](../adr/0115-interruptions.md) |
 | `together` | 陪玩状态 | [ADR 0111](../adr/0111-together.md) |
+| `silenceNotice` | 没回时告诉他原因（作息 / 她的决定 / 故障） | [ADR 0173](../adr/0173-silence-reasons.md) |
 | `jealousy` | 吃醋（最轻一档） | [ADR 0123](../adr/0123-jealousy.md) |
 | `texture` | 说话的质感（问号 / ～ / 小黄脸 / 叠字） | [ADR 0131](../adr/0131-texture.md) |
 | `curious` | 会追问（问他刚说的那件事） | [ADR 0126](../adr/0126-curious.md) |

@@ -43,6 +43,7 @@ import { ModelUnreachable } from '../language/llm.ts';
 import type { ChatMessage, OpenAIMessage, PromptResult } from '../language/prompt.ts';
 import { PENDING_REASON } from '../proactive/proactive.ts';
 import { pendingMessages, pick, type Seen } from './reply-timing.ts';
+import type { SilenceInfo } from './silence.ts';
 import { MAX_BUBBLES, splitReply } from '../language/reply.ts';
 
 /** 拼好的提示词；note 是给日志的补充；maxBubbles 可让当前对话动作比作息上限更短。 */
@@ -114,6 +115,11 @@ export interface ResponderDeps {
     timing?: ReplyTiming;
     /** 等到某个时刻（看到消息之前的等待，可能几个小时）；signal 中止时马上返回。默认真实定时器，模拟器换成虚拟时钟上的 */
     waitUntil?: (at: number, signal: AbortSignal) => Promise<void>;
+    /**
+     * 他的消息没有马上回的每一个原因（ADR 0173）：等到几点才看到（在睡觉 / 在上课 / 冷场……）、看到了决定不回、回复失败要重试、失败放弃。
+     * 只是旁观，不影响回复；silence.ts 据此逐条记账、告诉他原因
+     */
+    onSilence?: (info: SilenceInfo) => void;
 }
 
 /**
@@ -310,6 +316,7 @@ export function createResponder(deps: ResponderDeps): Responder {
                 const last = stored.slice(seen).findLast(m => m.role === 'user');
                 if (deps.react && last?.messageId !== undefined && last.messageId < 2 ** 32) deps.react(last.messageId, last.content);
                 skipped = { at: now(), reason: skip };
+                deps.onSilence?.({ phase: 'skipped', reason: skip });
                 seen = stored.length;
                 return null;
             }
@@ -320,7 +327,10 @@ export function createResponder(deps: ResponderDeps): Responder {
                 deps.markRead?.();
                 return decision;
             }
-            if (decision.at !== loggedSeenAt) deps.log(`${decision.reason}，${clock(decision.at)} 看到`);
+            if (decision.at !== loggedSeenAt) {
+                deps.log(`${decision.reason}，${clock(decision.at)} 看到`);
+                deps.onSilence?.({ phase: 'waiting', reason: decision.reason, seenAt: decision.at });
+            }
             loggedSeenAt = decision.at;
             setPhase({ phase: 'waiting', seenAt: decision.at, reason: decision.reason });
             await waitForSeen(decision.at);
@@ -449,10 +459,13 @@ export function createResponder(deps: ResponderDeps): Responder {
                 const delay = retryAfter[failures];
                 if (delay === undefined) {
                     deps.log(retryAfter.length ? `${reason}，等对方下一条消息再回` : reason);
+                    // failures 数的是已排定的重试；放弃时实际失败了 failures + 1 次（第一次 + 每次重试）
+                    deps.onSilence?.({ phase: 'gaveUp', reason, failures: failures + 1 });
                     continue;
                 }
                 failures++;
                 deps.log(`${reason}，${delay / 60_000} 分钟后再试`);
+                deps.onSilence?.({ phase: 'retry', reason, retryAt: now() + delay, failures });
                 const token = ++retryToken;
                 setPhase({ phase: 'retry', retryAt: now() + delay, reason });
                 void sleep(delay).then(() => { if (token === retryToken) schedule(); });

@@ -190,6 +190,7 @@ export interface Config {
     typingStatus: boolean;
     selfRecall: boolean;
     selfDirectedMemory: boolean;
+    silenceNotice: boolean;
     rhythm: boolean;
     shortReplies: boolean;
     candidates: number;
@@ -448,6 +449,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**打错字撤回重发**（ADR 0086）：她打错字想改口时，约一半改成「先发打错的，几秒后撤回，再发对的」，他那边会看到「对方撤回了一条消息」；其余照旧补一条「*对的词」。撤回不了（超过两分钟）就补改口。大约 60 条回复里一次。默认关'),
         selfDirectedMemory: Schema.boolean().default(DEFAULTS.selfDirectedMemory)
             .description('**记忆由她自己决定**：关掉自动记忆同步和自动日记；只有她在回复里写 `<<记住：…>>` / `<<日记：…>>` 时才记，标记不会发出去。默认关'),
+        silenceNotice: Schema.boolean().default(DEFAULTS.silenceNotice)
+            .description('**没回时告诉他原因**（ADR 0173）：他连着发了 2 条以上、第一条过了 8 分钟还没回，就用「（」开头的提示说原因——是作息（睡觉 / 上课 / 在忙）、是她自己的决定（看心情不回、她已收尾）、还是故障（连不上模型），并说清这是谁的决定；一串最多说 3 次、原因变了才再说；也可以随时发 `/为什么` 问。不冒充她说话、不进她的聊天记录。默认关'),
         rhythm: Schema.boolean().default(DEFAULTS.rhythm)
             .description('**回复节奏**（ADR 0075）：打字的时间按字数算（0.6 秒 + 每字 0.18 秒，0.9–9 秒），回之前先「看 + 想」一会儿（多半 0.8–3.5 秒，偶尔几秒到半分钟）；热聊的第一条中位慢约 4 秒。默认关（老样子：0.8 秒 + 每字 0.1 秒，1–4 秒）'),
         shortReplies: Schema.boolean().default(DEFAULTS.shortReplies)
@@ -649,6 +652,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.typingStatus !== undefined ? { typingStatus: config.typingStatus } : {}),
         ...(config.selfRecall !== undefined ? { selfRecall: config.selfRecall } : {}),
         ...(config.selfDirectedMemory !== undefined ? { selfDirectedMemory: config.selfDirectedMemory } : {}),
+        ...(config.silenceNotice !== undefined ? { silenceNotice: config.silenceNotice } : {}),
         ...(config.rhythm !== undefined ? { rhythm: config.rhythm } : {}),
         ...(config.shortReplies !== undefined ? { shortReplies: config.shortReplies } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),

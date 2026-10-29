@@ -7,6 +7,7 @@
 ## 文件（`packages/bot/src/` 下）
 
 - `social/responder.ts`
+- `social/silence.ts`
 - `social/others.ts`
 - `social/reply-timing.ts`
 - `social/rate-limit.ts`
@@ -56,4 +57,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0063](../adr/0063-image-stickers.md)、[ADR 0075](../adr/0075-reply-rhythm.md)、[ADR 0077](../adr/0077-typing-status.md)、[ADR 0083](../adr/0083-presence.md)、[ADR 0105](../adr/0105-reply-lag-tail.md)、[ADR 0109](../adr/0109-photo-shelf.md)、[ADR 0136](../adr/0136-quote-reply.md)、[ADR 0142](../adr/0142-qq-account-control.md)、[ADR 0143](../adr/0143-qzone-peek.md)、[ADR 0144](../adr/0144-qzone-strangers.md)
+[ADR 0063](../adr/0063-image-stickers.md)、[ADR 0075](../adr/0075-reply-rhythm.md)、[ADR 0077](../adr/0077-typing-status.md)、[ADR 0083](../adr/0083-presence.md)、[ADR 0105](../adr/0105-reply-lag-tail.md)、[ADR 0109](../adr/0109-photo-shelf.md)、[ADR 0136](../adr/0136-quote-reply.md)、[ADR 0142](../adr/0142-qq-account-control.md)、[ADR 0143](../adr/0143-qzone-peek.md)、[ADR 0144](../adr/0144-qzone-strangers.md)、[ADR 0173](../adr/0173-silence-reasons.md)

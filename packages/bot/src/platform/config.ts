@@ -135,6 +135,8 @@ export const DEFAULTS = {
     selfRecall: false,
     /** 她自己决定记不记：关掉自动记忆同步和自动日记，只认她回复里的标记 */
     selfDirectedMemory: false,
+    /** 他连着发了几条她都没回、过了一会儿，用「（」开头的运维提示告诉他原因（谁的决定：作息 / 她 / 故障）；也能随时发 /为什么 问（ADR 0173） */
+    silenceNotice: false,
     rhythm: false,
     shortReplies: false,
     media: true,
@@ -529,6 +531,8 @@ export interface AppConfig {
     shortReplies: boolean;
     /** 她自己决定记不记：关掉自动记忆同步和自动日记，只认她回复里的 `<<记住：…>>` / `<<日记：…>>` 标记 */
     selfDirectedMemory?: boolean;
+    /** 没回时告诉他原因（ADR 0173）：他连着发了 2 条以上、第一条过了 8 分钟还没回，就用「（」开头的提示说原因（作息 / 她自己的决定 / 故障），一串最多 3 次、原因变了才再说；发 /为什么 随时问。默认关 */
+    silenceNotice?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -805,6 +809,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         typingStatus: bool(file, 'typingStatus', '', DEFAULTS.typingStatus),
         selfRecall: bool(file, 'selfRecall', '', DEFAULTS.selfRecall),
         selfDirectedMemory: bool(file, 'selfDirectedMemory', '', DEFAULTS.selfDirectedMemory),
+        silenceNotice: bool(file, 'silenceNotice', '', DEFAULTS.silenceNotice),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
         shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),
         media: bool(file, 'media', '', DEFAULTS.media),
