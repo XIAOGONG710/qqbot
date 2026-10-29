@@ -910,6 +910,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                         }
                     }
                 }
+                // 网络热梗：她这条里原样用上了库里的哪个（只记词，不记意思）。用来回答「她会用梗吗」
+                if (config.memes && contact.tier === 'boyfriend') {
+                    const usedMeme = memeEntries.find(entry => entry.term && text.includes(entry.term));
+                    if (usedMeme) log(`[${userId}] 网络热梗：她用了「${usedMeme.term}」`);
+                }
                 if (!text.trim()) return 0;
                 const photo = contact.tier === 'boyfriend' ? photos?.resolve(text) : undefined;
                 if (photo) {
