@@ -11,10 +11,12 @@ export function localDay(at = new Date()) {
 export function isNightHour(hour) { return hour >= 23 || hour < 7 }
 
 /** 睡眠整合（整理今天的事、写日记）：只在本地 03:00–07:00 做，每个本地日一次；她自己离开电脑时不做 */
+/** 睡眠整合该不该做：03:00 之后、当天 21:00 之前、今天还没做成（10-30 用户：夜里没做成就第二天补） */
 export function sleepDue({ now, lastSleepDay, offline = false }) {
     if (offline) return false
     const hour = now.getHours()
-    if (hour < 3 || hour >= 7) return false
+    // 原来只认 03:00–07:00：笔记本一合盖，这一夜就永远错过了（10-30 凌晨 03–07 点一次心跳都没有）
+    if (hour < 3 || hour >= 21) return false
     return lastSleepDay !== localDay(now)
 }
 

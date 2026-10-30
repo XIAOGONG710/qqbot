@@ -49,12 +49,14 @@ describe('作息判断（her-schedule）：原来睡眠整合白天也触发、�
     const schedule = await import(pathToFileURL(join(root, 'scripts/her-schedule.mjs')).href) as Schedule;
     const at = (h: number, m = 0) => new Date(2026, 9, 29, h, m);
 
-    test('睡眠整合只在本地 03:00–07:00，且每个本地日一次', () => {
+    test('睡眠整合 03:00 之后到当天 21:00 都行（夜里没做成就白天补），且每个本地日一次', () => {
         assert.equal(schedule.sleepDue({ now: at(2, 59) }), false);
         assert.equal(schedule.sleepDue({ now: at(3, 0) }), true);
         assert.equal(schedule.sleepDue({ now: at(6, 59) }), true);
-        assert.equal(schedule.sleepDue({ now: at(7, 0) }), false);
-        assert.equal(schedule.sleepDue({ now: at(14, 0) }), false, '白天不再触发（原来 3 点以后任何时间都算）');
+        assert.equal(schedule.sleepDue({ now: at(7, 0) }), true, '10-30 起 7 点以后也能补做（原来只到 7 点，笔记本一睡就永远漏）');
+        assert.equal(schedule.sleepDue({ now: at(14, 0) }), true, '第二天白天补');
+        assert.equal(schedule.sleepDue({ now: at(20, 59) }), true);
+        assert.equal(schedule.sleepDue({ now: at(21, 0) }), false, '太晚了不补，等第二天');
         assert.equal(schedule.sleepDue({ now: at(4, 0), lastSleepDay: '2026-10-29' }), false, '今天已经整合过');
         assert.equal(schedule.sleepDue({ now: at(4, 0), lastSleepDay: '2026-10-28' }), true, '昨天的不算今天的');
         assert.equal(schedule.sleepDue({ now: at(4, 0), offline: true }), false, '她自己离开电脑时不做');
