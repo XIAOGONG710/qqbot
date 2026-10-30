@@ -33,7 +33,7 @@ export const MAX_BUBBLES = 8;
  * 认真解释时一行一条会拆出十几条，超过 maxBubbles 行就按顺序合并成 maxBubbles 条，每条里面换行。
  */
 export function splitReply(text: string, maxBubbles = MAX_BUBBLES): string[] {
-    const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+    const lines = text.split('\n').map(line => line.trim()).filter(Boolean).flatMap(line => splitRunOn(line));
     if (lines.length <= maxBubbles) return lines;
     return lines.some(line => STICKER_LINE.test(line)) ? packAroundStickers(lines, maxBubbles) : packLines(lines, maxBubbles);
 }
@@ -89,4 +89,24 @@ function packLines(lines: string[], count: number): string[] {
         j = i;
     }
     return bubbles;
+}
+
+/** 一句话里该有的停顿（没有这些 = 一口气顶下来） */
+const HARD_PUNCT = /[。！？!?，,；;：:]/;
+
+/**
+ * 把一口气顶下来的长句拆成两条（2026-10-30 线上「行、我听进去了就是这些话别忽然整太多我会晕这个」）。
+ * 只在「超过 limit 个字、而且一个像样的停顿都没有」时动手；有逗号句号的、短句一律不动。
+ */
+export function splitRunOn(line: string, limit = 22): string[] {
+    const chars = [...line];
+    if (chars.length <= limit || HARD_PUNCT.test(line)) return [line];
+    let cut = Math.floor(chars.length / 2);
+    // 找一个靠中间的顿号或空格断开，找不到就正中切
+    for (let i = Math.floor(chars.length / 3); i < chars.length; i++) {
+        if (/[、\s]/.test(chars[i]!)) { cut = i + 1; break; }
+    }
+    const head = chars.slice(0, cut).join('').trim();
+    const tail = chars.slice(cut).join('').replace(/^[、\s]+/, '').trim();
+    return head && tail ? [head, tail] : [line];
 }

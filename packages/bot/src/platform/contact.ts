@@ -916,6 +916,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         describeTime(chat, time, { initiating: Boolean(initiate), ...(options.lagTail && offlineSince !== undefined ? { offlineSince } : {}) }),
                         ...(days ? [days] : []),
                         ...(state ? [describeState(state, schedule!, { userName: contact.name, woken, partnerApart: true })] : []),
+                        // 2026-10-30 线上：她凭空来了一句「今天有点累，就更不想说话了」，他看着莫名其妙——
+                        // 「你现在」那几行是底子不是话题，没人问就别拿它开头。
+                        ...(state || body ? ['（上面「你现在」和身体那几行是你的底子，不是话题：没人问就别主动说你累了、心情怎样，也别把它当成一句话发出去）'] : []),
                         // 心里压着事 / 特别开心的时候，按日期抽的底色（爱笑、话痨……）会和心境打架：以心境为准（ADR 0102）
                         ...(mood && !(feelingLine !== undefined && (feelsLow(feltNow) || feltNow.some(item => item.kind === 'joy' && item.level === 'strong'))) ? [describeMood(mood, contact.name)] : []),
                         ...(body ? [body] : []),
