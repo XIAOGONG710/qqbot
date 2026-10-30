@@ -67,7 +67,8 @@ export const INTENT_WINDOW_MS = 6 * HOUR;
 /** 想完之后过一阵才想起来跟他说（分钟范围） */
 export const INNER_DELAY_MIN: [number, number] = [10, 40];
 /** 一天最多因为念头主动找他几次 */
-export const INNER_MAX_PER_DAY = 2;
+/** 一天最多因为念头主动找他几次：2026-10-30 她说「憋着想你又不能喊」，2 → 4（间隔和其他闸不变） */
+export const INNER_MAX_PER_DAY = 4;
 /** 她自己上网查到的：留多久、放几条进聊天提示词、存多少条（ADR 0180） */
 export const LEARNED_WINDOW_MS = 12 * HOUR;
 export const LEARNED_LINE_MAX = 2;
