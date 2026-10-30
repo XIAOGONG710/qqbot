@@ -228,6 +228,46 @@ describe('什么时候想、想的时候看到什么', () => {
         assert.equal(prompts.length, 1);
     });
 
+    test('他标过的「像真人」/「这句像 AI」（ADR 0195）：有就放进每晚想的提示词，写明是他的感受不是规定；没有就没有这一段；她的笔记不能引他写的理由', async () => {
+        const feedback = {
+            human: [{ at: NIGHT, label: 'human' as const, his: ['我又把钥匙锁屋里了'], hers: ['哈哈哈哈', '你好笨'] }],
+            ai: [{ at: NIGHT, label: 'ai' as const, his: ['今天好累'], hers: ['辛苦了', '早点歇着'], why: '像在客服一样客气' }],
+        };
+        const text = (messages: unknown) => (messages as Array<{ content: string }>).map(message => message.content).join('\n');
+        // 提示词
+        const withFeedback = reflectionMessages({ char: '林梦瑶', user: '宝宝', persona: '设定', now: NIGHT, mine: speechStats([['怎么了']])!, samples: [], exchanges: [], notes: [], feedback }).map(message => message.content).join('\n');
+        assert.match(withFeedback, /宝宝最近标过的（这是他的感受，不是规定；你想不想变、怎么变你自己定/);
+        assert.match(withFeedback, /他觉得「像真人」的：\n宝宝：我又把钥匙锁屋里了\n你：哈哈哈哈 \/ 你好笨/);
+        assert.match(withFeedback, /他觉得「这句像 AI」的：\n宝宝：今天好累\n你：辛苦了 \/ 早点歇着\n（宝宝说：像在客服一样客气）/);
+        assert.doesNotMatch(withFeedback, /必须|不得|不许|禁止/, '没有规定');
+        const without = reflectionMessages({ char: '林梦瑶', user: '宝宝', persona: '设定', now: NIGHT, mine: speechStats([['怎么了']])!, samples: [], exchanges: [], notes: [], feedback: { human: [], ai: [] } }).map(message => message.content).join('\n');
+        assert.doesNotMatch(without, /最近标过的/);
+        // 整条路径：交给模型的提示词里有；她写的笔记引了他的理由那句（连续 6 字）就进 rejected
+        const dir = tmp();
+        const prompts: string[] = [];
+        const d = deps(dir, async messages => {
+            prompts.push(text(messages));
+            return '{"add":[{"text":"我发现自己有时候说话像在客服一样客气，可以放松点"},{"text":"我发现自己被说客气的时候其实不太在意"}],"retire":[]}';
+        });
+        const result = await reflectIfDue({ ...d.value, feedback: () => feedback });
+        assert.equal(result.ran, true);
+        assert.match(prompts[0]!, /他觉得「这句像 AI」的/);
+        const state = loadNotesState(dir);
+        assert.deepEqual(state.notes.map(item => item.text), ['我发现自己被说客气的时候其实不太在意']);
+        assert.match(state.rejected[0]!.reason, /引用了他说过的话/, '理由里的话也算他说的');
+        // 不传 feedback：照旧，提示词里没有这一段
+        const dir2 = tmp();
+        const prompts2: string[] = [];
+        await reflectIfDue(deps(dir2, async messages => { prompts2.push(text(messages)); return '{}'; }).value);
+        assert.doesNotMatch(prompts2[0]!, /最近标过的/);
+    });
+
+    test('describeNotesForOwner：带上他标过几次那一行（放在「他只能看」前面）', () => {
+        const owner = describeNotesForOwner(stateWith(note('n1', '我发现我爱先反问一句再回答')), NIGHT, '他标过的（最近 14 天）：像真人 2 次、这句像 AI 1 次。');
+        assert.match(owner, /他标过的（最近 14 天）：像真人 2 次、这句像 AI 1 次。\n\n这些是她自己的观察/);
+        assert.doesNotMatch(describeNotesForOwner(stateWith(note('n1', '我发现我爱先反问一句再回答')), NIGHT), /他标过的/);
+    });
+
     test('reflectIfDue：没到点 / 最近说话太少，不调模型、不记尝试', async () => {
         const dir = tmp();
         let calls = 0;

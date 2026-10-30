@@ -17,6 +17,7 @@ import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { Exemplar } from './exemplars.ts';
 import type { OpenAIMessage } from './prompt.ts';
+import { feedbackBlock, feedbackCount, feedbackWhys, type FeedbackBundle } from './speech-feedback.ts';
 
 export const SPEECH_NOTES_FILE = 'speech-notes.json';
 export const speechNotesPath = (dataDir: string) => join(dataDir, SPEECH_NOTES_FILE);
@@ -123,7 +124,7 @@ export function speechStats(turns: ReadonlyArray<readonly string[]>): SpeechStat
 }
 
 /** 不是聊天的话（运维写进记录的行）：不算她说话的样子 */
-const NOT_SPEECH = /^\[(?:B 站私信|分享视频|你戳了戳他|撤回了一条消息)/;
+export const NOT_SPEECH = /^\[(?:B 站私信|分享视频|你戳了戳他|撤回了一条消息)/;
 
 /** 聊天记录里，她最近一段时间每一次回的几条（他说话就断开一次）；旧到新 */
 export function herTurns(messages: readonly StoredMessage[], now: number, windowMs = WINDOW_MS): string[][] {
@@ -311,6 +312,8 @@ export interface ReflectInput {
     /** 最近几次「他说了什么、她怎么回」 */
     exchanges: readonly Exchange[];
     notes: readonly SpeechNote[];
+    /** 他最近标过的「像真人」/「这句像 AI」（ADR 0195）；没有就没有 */
+    feedback?: FeedbackBundle;
 }
 
 const statsLine = (stats: SpeechStats) => `一次回 ${stats.perTurn} 条；每条中位 ${stats.medianChars} 个字；两个字以内的短反应占 ${pct(stats.shortShare)}；带问号占 ${pct(stats.questionShare)}；带表情占 ${pct(stats.emojiShare)}`;
@@ -338,9 +341,10 @@ export function reflectionMessages(input: ReflectInput): OpenAIMessage[] {
         ? input.exchanges.map(item => `${input.user}：${item.his.map(text => clip(text, 40)).join(' / ')}\n你：${item.hers.map(text => clip(text, 40)).join(' / ')}`).join('\n\n')
         : '（最近没怎么聊）';
     const notes = input.notes.length ? input.notes.map(note => `- ${note.id}｜${note.text}`).join('\n') : '（现在一条都没有）';
+    const feedback = input.feedback && feedbackCount(input.feedback) ? `\n\n${feedbackBlock(input.feedback, input.user)}` : '';
     return [
         { role: 'system', content: `你是${input.char}。下面是你的设定摘要：\n${input.persona}\n\n现在是 ${d.getMonth() + 1} 月 ${d.getDate()} 日晚上，你一个人安静地想一想：自己这几天是怎么说话的、有什么习惯、哪些像自己、哪些想试着改。这是你自己的事，没有人替你定，也不用让谁满意。` },
-        { role: 'user', content: `你这几天说话的样子（是从你发的 ${input.mine.bubbles} 条消息里数出来的）：\n${statsLine(input.mine)}${real}${samples}\n\n你最近和${input.user}的几次聊天（他的话只是让你想起当时的情形，别学他的说法）：\n${exchanges}\n\n你现在记着的习惯：\n${notes}\n\n你写的这些，他用 /说话习惯 都能看到（他只能看，不能改）。\n\n请只输出一个 JSON 对象（没什么想法就输出 {}），字段都可以省略：\n{"add":[{"text":"我发现……（${NOTE_MIN}–${NOTE_MAX} 字，写你自己怎么说话、想怎么试）"}],"retire":[{"id":"上面某条的 id","why":"为什么不要了"}]}\n\n几条提醒（不是考你）：写的是你自己说话的方式，不写他的口头禅、不引用他的话、不照抄上面真人的句子；这是你自己的观察，不是规定，没有字数线；涉及承认自己是程序、危机、拒绝、骗人的事不通过说话习惯改；一次最多加 ${MAX_ADD} 条、放下 ${MAX_RETIRE} 条；真的没想法就别硬凑。` },
+        { role: 'user', content: `你这几天说话的样子（是从你发的 ${input.mine.bubbles} 条消息里数出来的）：\n${statsLine(input.mine)}${real}${samples}\n\n你最近和${input.user}的几次聊天（他的话只是让你想起当时的情形，别学他的说法）：\n${exchanges}${feedback}\n\n你现在记着的习惯：\n${notes}\n\n你写的这些，他用 /说话习惯 都能看到（他只能看，不能改）。\n\n请只输出一个 JSON 对象（没什么想法就输出 {}），字段都可以省略：\n{"add":[{"text":"我发现……（${NOTE_MIN}–${NOTE_MAX} 字，写你自己怎么说话、想怎么试）"}],"retire":[{"id":"上面某条的 id","why":"为什么不要了"}]}\n\n几条提醒（不是考你）：写的是你自己说话的方式，不写他的口头禅、不引用他的话、不照抄上面真人的句子；这是你自己的观察，不是规定，没有字数线；涉及承认自己是程序、危机、拒绝、骗人的事不通过说话习惯改；一次最多加 ${MAX_ADD} 条、放下 ${MAX_RETIRE} 条；真的没想法就别硬凑。` },
     ];
 }
 
@@ -365,6 +369,8 @@ export interface ReflectDeps {
     corpus: () => readonly Exemplar[];
     persona: () => string;
     names: { char: string; user: string };
+    /** 他最近标过的（ADR 0195）；不传就没有 */
+    feedback?: () => FeedbackBundle;
     log: (message: string) => void;
 }
 
@@ -383,6 +389,7 @@ export async function reflectIfDue(deps: ReflectDeps): Promise<ReflectResult> {
     saveNotesState(deps.dataDir, state);
     try {
         const corpus = deps.corpus();
+        const feedback = deps.feedback?.();
         const real = speechStats(corpus.map(item => item.replied));
         const reply = await deps.generate(reflectionMessages({
             char: deps.names.char, user: deps.names.user, persona: deps.persona(), now, mine,
@@ -390,13 +397,14 @@ export async function reflectIfDue(deps: ReflectDeps): Promise<ReflectResult> {
             samples: pickSamples(corpus, now),
             exchanges: recentExchanges(history, now),
             notes: state.notes,
+            ...(feedback && feedbackCount(feedback) ? { feedback } : {}),
         }));
         const decision = parseNotesDecision(reply);
         if (!decision) throw new Error('回复里没有可用的 JSON');
         const fresh = loadNotesState(deps.dataDir);
         fresh.lastAttemptAt = state.lastAttemptAt;
         fresh.attempts = state.attempts;
-        const applied = applyNotesDecision(fresh, decision, { his: hisLines(history, now), corpus }, now);
+        const applied = applyNotesDecision(fresh, decision, { his: [...hisLines(history, now), ...(feedback ? feedbackWhys(feedback) : [])], corpus }, now);
         fresh.lastReflectionAt = now;
         fresh.lastStats = mine;
         saveNotesState(deps.dataDir, fresh);
@@ -424,13 +432,14 @@ export function speechNotesLine(notes: readonly SpeechNote[], said: string | und
 }
 
 /** /说话习惯 的回复：以「（」开头（运维提示，不进聊天记录）；他只能看，不能改 */
-export function describeNotesForOwner(state: NotesState, now: number): string {
+export function describeNotesForOwner(state: NotesState, now: number, feedbackLine?: string): string {
     const ago = (at: number) => { const days = Math.floor((now - at) / 86_400_000); return days <= 0 ? '今天' : `${days} 天前`; };
     const lines = [
         state.notes.length ? `她自己总结的说话习惯（${state.notes.length} 条）：\n${state.notes.map((note, i) => `${i + 1}. ${note.text}（${ago(note.at)}）`).join('\n')}` : '她还没有记下说话习惯（夜里 22 点到凌晨 3 点之间想一次，最近说话够多才会想）。',
         ...(state.retired.length ? [`她放下的：\n${state.retired.slice(-5).map(item => `- ${item.text}（${item.why}）`).join('\n')}`] : []),
         ...(state.rejected.length ? [`她想写、但没成的：\n${state.rejected.slice(-5).map(item => `- ${item.text}（${item.reason}）`).join('\n')}`] : []),
         ...(state.lastStats ? [`上次想的时候，数出来她这几天说话的样子：${statsLine(state.lastStats)}（${state.lastReflectionAt ? ago(state.lastReflectionAt) : ''}）`] : []),
+        ...(feedbackLine ? [feedbackLine] : []),
         '这些是她自己的观察，你只能看，不能改；她随时可以放下。',
     ];
     return `（${lines.join('\n\n')}）`;

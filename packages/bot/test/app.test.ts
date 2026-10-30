@@ -800,6 +800,82 @@ describe('编排（app.ts）', () => {
         assert.ok(!on.sent.some(line => line.startsWith('10001:（她自己总结')));
     });
 
+    test('/像AI、/像真人（ADR 0195，随 speechNotes）：把她最近一次说的话连着他前面的话记下来；同一次再标覆盖；回执不进聊天记录、不交给她；没有可标的 / 关着 / 同学档都是别的样子', async () => {
+        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+        const seed = (cfg: AppConfig) => {
+            const store = new ChatHistory(cfg.dataDir);
+            const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
+            for (const [qq, rows] of [[10002, [['user', '今天好累', 30], ['assistant', '辛苦了', 29], ['assistant', '早点歇着', 29]]], [10001, [['user', '在吗', 30], ['assistant', '在', 29]]]] as const) {
+                for (const [role, content, ago] of rows) store.append(qq, { time: at(ago), role, content });
+            }
+        };
+        const feedbackOf = (cfg: AppConfig) => (existsSync(join(cfg.dataDir, 'speech-feedback.json')) ? (JSON.parse(readFileSync(join(cfg.dataDir, 'speech-feedback.json'), 'utf8')) as { entries: Array<{ label: string; his: string[]; hers: string[]; why?: string }> }).entries : []);
+        // 开着
+        const cfg = config({ contacts, speechNotes: true });
+        const prompts: string[] = [];
+        const on = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
+        await on.app.connected(SELF);
+        on.app.receive(event(10002, 1, '/像AI', '宝宝'));
+        await until(() => on.sent.length >= 1);
+        assert.equal(on.sent[0], '10002:（她最近 12 小时里没有说过话，没有可标的。）', '还没有她的话');
+        seed(cfg);
+        const before = chat(cfg, 10002);
+        on.app.receive(event(10002, 2, '/像AI 太客气了', '宝宝'));
+        await until(() => on.sent.length >= 2);
+        assert.match(on.sent[1]!, /^10002:（记下了：她刚才的「辛苦了 \/ 早点歇着」标成「这句像 AI」。每晚她想说话习惯的时候会看到——是你的感受，不是规定，变不变她自己定。现在一共记着 1 条。）/);
+        assert.deepEqual(feedbackOf(cfg).map(item => [item.label, item.his, item.hers, item.why]), [['ai', ['今天好累'], ['辛苦了', '早点歇着'], '太客气了']]);
+        on.app.receive(event(10002, 3, '/像真人', '宝宝'));
+        await until(() => on.sent.length >= 3);
+        assert.match(on.sent[2]!, /标成「像真人」.*现在一共记着 1 条/, '同一次说的话再标一次：覆盖');
+        assert.deepEqual(feedbackOf(cfg).map(item => [item.label, item.why]), [['human', undefined]]);
+        on.app.receive(event(10002, 4, '/说话习惯', '宝宝'));
+        await until(() => on.sent.length >= 4);
+        assert.match(on.sent[3]!, /他标过的（最近 14 天）：像真人 1 次、这句像 AI 0 次。/);
+        assert.equal(prompts.length, 0, '命令一条都没交给她');
+        assert.deepEqual(chat(cfg, 10002), before, '命令和回执都不进聊天记录');
+        assert.ok(on.logs.some(line => line === '说话习惯：他把她最近一次说的话标成「像真人」（日志不记内容）'));
+        assert.ok(on.logs.every(line => !line.includes('辛苦了') && !line.includes('太客气了')), '日志不记内容');
+        // 同学档发同样的命令：不是命令，当普通的话交给她，也不记
+        on.app.receive(event(10001, 5, '/像AI', '阿明'));
+        await until(() => prompts.length >= 1);
+        assert.deepEqual(feedbackOf(cfg).length, 1);
+        // 关着：是普通的话
+        const offCfg = config({ contacts });
+        seed(offCfg);
+        const offPrompts: string[] = [];
+        const off = setup(offCfg, {}, { generate: messages => { offPrompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
+        await off.app.connected(SELF);
+        off.app.receive(event(10002, 1, '/像AI', '宝宝'));
+        await until(() => offPrompts.length >= 1);
+        assert.deepEqual(feedbackOf(offCfg), [], '关着不记');
+    });
+
+    test('他标过的话（ADR 0195）进每晚想说话习惯的那一次提示词，不进聊天时的提示词', async t => {
+        const contacts = [{ qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+        const start = new Date(2026, 9, 30, 23, 0);
+        const clock = new VirtualClock(start);
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        const cfg = config({ contacts, speechNotes: true });
+        const store = new ChatHistory(cfg.dataDir);
+        const at = (minutesAgo: number) => new Date(start.getTime() - minutesAgo * 60_000).toISOString();
+        for (const [role, content, ago] of [['user', '在吗', 300], ['assistant', '在', 299], ['assistant', '怎么啦', 299], ['user', '今天好累', 200], ['assistant', '辛苦了', 199], ['assistant', '早点歇着', 199], ['assistant', '别太晚', 198], ['user', '嗯', 100], ['assistant', '晚安', 99]] as const) {
+            store.append(10002, { time: at(ago), role, content });
+        }
+        writeFileSync(join(cfg.dataDir, 'speech-feedback.json'), JSON.stringify({ entries: [
+            { at: start.getTime() - 3_600_000, label: 'ai', his: ['今天好累'], hers: ['辛苦了', '早点歇着'], why: '像在客服' },
+            { at: start.getTime() - 7_200_000, label: 'human', his: ['在吗'], hers: ['在', '怎么啦'] },
+        ] }));
+        const prompts: string[] = [];
+        setup(cfg, {}, { clock, generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '{}'; } });
+        t.mock.timers.tick(30 * 60_000);
+        await until(() => prompts.some(prompt => prompt.includes('你这几天说话的样子')));
+        const night = prompts.find(prompt => prompt.includes('你这几天说话的样子'))!;
+        assert.match(night, /宝宝最近标过的（这是他的感受，不是规定/);
+        assert.match(night, /他觉得「这句像 AI」的：\n宝宝：今天好累\n你：辛苦了 \/ 早点歇着\n（宝宝说：像在客服）/);
+        assert.match(night, /他觉得「像真人」的：\n宝宝：在吗\n你：在 \/ 怎么啦/);
+        assert.ok(prompts.filter(prompt => !prompt.includes('你这几天说话的样子')).every(prompt => !prompt.includes('最近标过的')), '聊天时的提示词里没有');
+    });
+
     test('/自我认识 和提示词里她翻日记时发现的自己（ADR 0194，diaryInsights）：开着时他能看；挑几条放进提示词（只男朋友档、危机回合不放）；关着是普通的话', async () => {
         const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
         const insightsFile = (cfg: AppConfig) => writeFileSync(join(cfg.dataDir, 'diary-insights.json'), JSON.stringify({

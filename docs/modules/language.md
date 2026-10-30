@@ -31,6 +31,7 @@
 - `language/meme-dict.ts`
 - `language/exemplars.ts`
 - `language/speech-notes.ts`
+- `language/speech-feedback.ts`
 - `language/watching.ts`
 - `language/texture.ts`
 - `language/selfcheck.ts`
@@ -69,7 +70,7 @@
 | `interruptions` | 被第三方打断 | [ADR 0115](../adr/0115-interruptions.md) |
 | `together` | 陪玩状态 | [ADR 0111](../adr/0111-together.md) |
 | `silenceNotice` | 没回时告诉他原因（作息 / 她的决定 / 故障） | [ADR 0173](../adr/0173-silence-reasons.md) |
-| `speechNotes` | 她每晚自己总结说话习惯（「我发现……」，挑几条放进提示词） | [ADR 0193](../adr/0193-nightly-speech-notes.md) |
+| `speechNotes` | 她每晚自己总结说话习惯（「我发现……」，挑几条放进提示词；他可以用 /像AI /像真人 标她说的话给她看） | [ADR 0193](../adr/0193-nightly-speech-notes.md) |
 | `exemplars` | 看真人怎么回（从已批准的真人语料挑几条当口气参考） | [ADR 0190](../adr/0190-learn-from-real-chat.md) |
 | `jealousy` | 吃醋（最轻一档） | [ADR 0123](../adr/0123-jealousy.md) |
 | `texture` | 说话的质感（问号 / ～ / 小黄脸 / 叠字） | [ADR 0131](../adr/0131-texture.md) |
@@ -82,4 +83,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0091](../adr/0091-reply-shape.md)、[ADR 0095](../adr/0095-filler-turns.md)、[ADR 0096](../adr/0096-split-and-share.md)、[ADR 0099](../adr/0099-too-smooth.md)、[ADR 0113](../adr/0113-relationship-stage.md)、[ADR 0114](../adr/0114-running-jokes.md)、[ADR 0115](../adr/0115-interruptions.md)、[ADR 0111](../adr/0111-together.md)、[ADR 0121](../adr/0121-odd-words.md)、[ADR 0137](../adr/0137-fact-check.md)、[ADR 0138](../adr/0138-idioms.md)、[ADR 0167](../adr/0167-selfcheck.md)、[ADR 0193](../adr/0193-nightly-speech-notes.md)
+[ADR 0091](../adr/0091-reply-shape.md)、[ADR 0095](../adr/0095-filler-turns.md)、[ADR 0096](../adr/0096-split-and-share.md)、[ADR 0099](../adr/0099-too-smooth.md)、[ADR 0113](../adr/0113-relationship-stage.md)、[ADR 0114](../adr/0114-running-jokes.md)、[ADR 0115](../adr/0115-interruptions.md)、[ADR 0111](../adr/0111-together.md)、[ADR 0121](../adr/0121-odd-words.md)、[ADR 0137](../adr/0137-fact-check.md)、[ADR 0138](../adr/0138-idioms.md)、[ADR 0167](../adr/0167-selfcheck.md)、[ADR 0193](../adr/0193-nightly-speech-notes.md)、[ADR 0195](../adr/0195-speech-feedback.md)

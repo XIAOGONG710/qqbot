@@ -55,6 +55,7 @@ import { BILI_STICKER_PER_DAY, biliStickerDiscover, STICKER_UNCUED_CHANCE } from
 import { pursuitsReader } from '.././life/pursuits.ts';
 import { describeForOwner, loadSelfState, reflectIfDue, selfAwareReader } from '.././life/self-pursuits.ts';
 import { describeNotesForOwner, loadNotesState, reflectIfDue as reflectSpeechNotes, speechNotesReader } from '.././language/speech-notes.ts';
+import { FEEDBACK_NO_TURN, describeFeedbackForOwner, feedbackReceipt, lastTurn, loadFeedback, parseFeedbackCommand, recentFeedback, recordFeedback } from '.././language/speech-feedback.ts';
 import { describeInsightsForOwner, insightsReader, loadInsightsState, recordSelfDiary, reflectIfDue as reflectInsights, writeInsightsExport } from '.././life/diary-insights.ts';
 import { substituteMacros } from '.././st/macros.ts';
 import { removeFaces } from '.././language/qq-faces.ts';
@@ -789,6 +790,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 corpus: () => loadExemplars(join(config.dataDir, 'exemplars', 'corpus.jsonl')),
                 persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
                 names: { char: character.name, user: owner.name },
+                // 他标过的「像真人」/「这句像 AI」（ADR 0195）：只进每晚想的这一次，不进聊天时的提示词
+                feedback: () => recentFeedback(loadFeedback(config.dataDir), clockNow().getTime()),
                 log,
             }).catch(error => log(`说话习惯：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
         };
@@ -1738,7 +1741,27 @@ ${body}
             // 「/追求」：她现在在追什么、放下过什么、想过没成什么（ADR 0178）；只能看，不能改
             if (config.selfPursuits && config.pursuits && plain === '/追求') { tellOwner(describeForOwner(pursuitsNow(), loadSelfState(config.dataDir), clockNow().getTime())); return; }
             // 「/说话习惯」：她自己总结的说话习惯、放下过什么、想写没成什么（ADR 0193）；只能看，不能改
-            if (config.speechNotes && plain === '/说话习惯') { tellOwner(describeNotesForOwner(loadNotesState(config.dataDir), clockNow().getTime())); return; }
+            if (config.speechNotes && plain === '/说话习惯') {
+                const now = clockNow().getTime();
+                tellOwner(describeNotesForOwner(loadNotesState(config.dataDir), now, describeFeedbackForOwner(loadFeedback(config.dataDir), now)));
+                return;
+            }
+            // 「/像AI」「/像真人」（可以跟一句理由）：把她最近那一次说的话连着他前面的话存下来，每晚想说话习惯时她会看到（ADR 0195，随 speechNotes）
+            const feedbackCommand = config.speechNotes ? parseFeedbackCommand(plain) : undefined;
+            if (feedbackCommand) {
+                const now = clockNow().getTime();
+                const turn = lastTurn(history.load(deviceOwner.qq), now);
+                if (!turn) { tellOwner(FEEDBACK_NO_TURN); return; }
+                try {
+                    const total = recordFeedback(config.dataDir, { at: now, label: feedbackCommand.label, his: turn.his, hers: turn.hers, ...(feedbackCommand.why ? { why: feedbackCommand.why } : {}) });
+                    tellOwner(feedbackReceipt(feedbackCommand.label, turn.hers, total));
+                    log(`说话习惯：他把她最近一次说的话标成「${feedbackCommand.label === 'human' ? '像真人' : '这句像 AI'}」（日志不记内容）`);
+                } catch (error) {
+                    tellOwner('（没记下来，等下再试一次。）');
+                    log(`说话习惯：标记没写进去（${error instanceof Error ? error.message : String(error)}）`);
+                }
+                return;
+            }
             // 「/自我认识」：她翻日记时发现的自己、放下过什么、想写没成什么（ADR 0194）；只能看，不能改
             if (config.diaryInsights && plain === '/自我认识') { tellOwner(describeInsightsForOwner(loadInsightsState(config.dataDir), clockNow().getTime())); return; }
             if (dormancy && plain && /^\/休眠(?:\s|$)/.test(plain)) { void handleDormancyCommand(plain.replace(/^\/休眠\s*/, '')); return; }
