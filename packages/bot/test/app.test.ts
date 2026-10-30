@@ -1234,7 +1234,7 @@ describe('编排（app.ts）', () => {
         await app.connected(SELF);
         await until(() => sent.length > 0);
         const prompt = JSON.parse(readFileSync(join(cfg.dataDir, 'last-prompt.json'), 'utf8')) as { messages: { content: string }[] };
-        assert.ok(prompt.messages.some(m => /^\[你今天的心情：/m.test(m.content)));
+        assert.ok(!prompt.messages.some(m => /^\[你今天的心情：/m.test(m.content)));
         assert.ok(!prompt.messages.some(m => m.content.includes('{{user}}')));
         assert.equal(logs.filter(l => l.startsWith('她自己的日子：今天')).length, 1, '同一天第一次生成不再重复写');
         const today = app.status().today!;

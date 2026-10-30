@@ -924,8 +924,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         // 2026-10-30 线上：她凭空来了一句「今天有点累，就更不想说话了」，他看着莫名其妙——
                         // 「你现在」那几行是底子不是话题，没人问就别拿它开头。
                         ...(state || body ? ['（上面「你现在」和身体那几行是你的底子，不是话题：没人问就别主动说你累了、心情怎样，也别把它当成一句话发出去）'] : []),
-                        // 心里压着事 / 特别开心的时候，按日期抽的底色（爱笑、话痨……）会和心境打架：以心境为准（ADR 0102）
-                        ...(mood && !(feelingLine !== undefined && (feelsLow(feltNow) || feltNow.some(item => item.kind === 'joy' && item.level === 'strong'))) ? [describeMood(mood, contact.name)] : []),
+                        // 今天的心情（按日期抽的「爱笑」「安静」）不再注入（10-30 用户：这种替她表态的都清掉）：
+                        // 心情由真实发生的事推出来的 feelingLine 表达。
                         ...(body ? [body] : []),
                         ...(unsettled ? [unsettled] : []),
                         ...(warm ? [warm] : []),
@@ -934,7 +934,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(books ? [books.text] : []),
                         ...(world ? [world] : []),
                         ...(practice ? [practice] : []),
-                        ...(pursuitLine ? [pursuitLine] : []),
+                        // 追求（「别挂科」「用新相机拍出满意的东西」）也不再注入（10-30 同一条）：她想追什么，自己说。
                         ...(selfNote ? [selfNote] : []),
                         ...(plansLine ? [plansLine] : []),
                         ...(promised ? [promised] : []),

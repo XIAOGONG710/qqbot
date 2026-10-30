@@ -222,7 +222,7 @@ describe('接进流水线（ADR 0015 第 5 步，假模型）', () => {
     test('心情行每轮都在；聊到书才有那一段；说错卷数带说明重写一次', async () => {
         const result = await run(true, ['在宿舍躺着', '在看药屋，就翻了前两卷', '在看药屋，看到第七卷了']);
         const [chat, books] = result.steps.filter(step => step.kind === 'say');
-        assert.match(chat!.generations[0]!.timeBlock!, /\n\[你今天的心情：[^\]]+\](\n|$)/);
+        assert.doesNotMatch(chat!.generations[0]!.timeBlock!, /\[你今天的心情：/);
         assert.match(chat!.generations[0]!.timeBlock!, /\n\[你那边（今天到现在的事实[^\]]+土豆（楼下的流浪猫）/, '她的世界跟着她自己的日子（ADR 0021）');
         assert.doesNotMatch(chat!.generations[0]!.timeBlock!, /在读的书/);
         assert.match(books!.generations[0]!.timeBlock!, /\[在读的书：\n- 《药屋少女的呢喃》[^\n]*看到第 7 卷/);
@@ -239,7 +239,7 @@ describe('接进流水线（ADR 0015 第 5 步，假模型）', () => {
         assert.equal(offBooks.generations[0]!.rewrites, undefined);
 
         const quiet = await run(true, ['嗯', '药屋'], { mood: '安静' });
-        assert.match(quiet.steps.find(step => step.kind === 'say')!.generations[0]!.timeBlock!, /\[你今天的心情：安静（/);
+        assert.doesNotMatch(quiet.steps.find(step => step.kind === 'say')!.generations[0]!.timeBlock!, /\[你今天的心情：/);
         await assert.rejects(run(true, [], { mood: '暴躁' }), /不是卡上的心情/);
     });
 });
