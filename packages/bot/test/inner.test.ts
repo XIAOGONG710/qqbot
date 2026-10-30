@@ -188,14 +188,20 @@ describe('内心：心里惦记（主动消息的一个时机）', () => {
 
     test('一天最多 INNER_MAX_PER_DAY 条；到点念头没了（说过了 / 过期了）不发；平时的挡照旧（1 小时内聊过）', () => {
         const record = (id: string, at: number): ProactiveRecord => ({ id, occasion: 'inner', plannedAt: new Date(at).toISOString(), at: new Date(at).toISOString(), result: 'sent' });
-        const two = [record('2026-10-05:inner:th-1', t(10, 5, 11)), record('2026-10-05:inner:th-2', t(10, 5, 12))];
-        assert.equal(INNER_MAX_PER_DAY, 2);
-        assert.equal(innerOf(candidatesOn(day, input({ inner: [pending], records: two }))).length, 0);
+        const sent = (n: number) => Array.from({ length: n }, (_, i) => record(`2026-10-05:inner:th-${i + 1}`, t(10, 5, 8 + i)));
+        const two = sent(2);
+        assert.equal(INNER_MAX_PER_DAY, 4, '2→4 是 DSH 10-30 62a7357（她说「憋着想你又不能喊」）');
+        assert.equal(innerOf(candidatesOn(day, input({ inner: [pending], records: sent(INNER_MAX_PER_DAY - 1) }))).length, 1, '差一条到上限：还排');
+        assert.equal(innerOf(candidatesOn(day, input({ inner: [pending], records: sent(INNER_MAX_PER_DAY) }))).length, 0);
         const [c] = innerOf(candidatesOn(day, input({ inner: [pending] })));
         assert.equal(blockReason(c!, c!.at, input({ inner: [] })), '那个念头已经过去了（说过了，或者过期了）');
         assert.equal(blockReason(c!, c!.at, input({ inner: [pending] })), undefined);
         assert.equal(blockReason(c!, c!.at, input({ inner: [pending], history: [msg(c!.at - 25 * MIN, 'user', '在吗'), msg(c!.at - 24 * MIN, 'assistant', '在')] })), '一小时内聊过');
-        assert.ok(blockReason(c!, c!.at, input({ inner: [pending], records: two })), '已经发了两条（没回）：到点也不发');
+        assert.equal(blockReason(c!, c!.at, input({ inner: [pending], records: two })), undefined, '发了两条（没回）：现在还发（上限是 4）');
+        assert.ok(blockReason(c!, c!.at, input({ inner: [pending], records: sent(INNER_MAX_PER_DAY) })), '发满了（没回）：到点也不发');
+        // proactiveRoom 开着时通用的「今天主动几条」闸不查内心，这时挡住的就是内心自己的上限
+        assert.equal(blockReason(c!, c!.at, input({ inner: [pending], records: sent(INNER_MAX_PER_DAY), settings: { ...on, room: true } })), '今天已经因为心里的事找过他了');
+        assert.equal(blockReason(c!, c!.at, input({ inner: [pending], records: sent(INNER_MAX_PER_DAY - 1), settings: { ...on, room: true } })), undefined);
     });
 
     test('提示词：给她念头原话但让她别照着念；想问的问一个具体的小问题（不是反问）；想说的要有由头和自己的感觉（ADR 0133，不再“说完不用他回应”）；不另外编事实', () => {

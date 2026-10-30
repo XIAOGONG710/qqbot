@@ -10,7 +10,7 @@ import { ChatHistory, type StoredMessage } from '../src/memory/history.ts';
 import { isPrivateFriendMessage, segmentsToText, type MessageEvent } from '../src/platform/onebot.ts';
 import { unlistedName } from '../src/platform/app.ts';
 import type { PromptResult } from '../src/language/prompt.ts';
-import { cleanUpReply, splitReply } from '../src/language/reply.ts';
+import { cleanUpReply, MAX_BUBBLES, splitReply } from '../src/language/reply.ts';
 import { createResponder, DEFAULT_SETTLE, HESITATE_CHANCE, HESITATE_PAUSE_MS, PART_GAP_MS, RETRY_AFTER_MS, TYPING_REFRESH_MS, type InitiateRequest, type ReplyTiming, type ResponderDeps } from '../src/social/responder.ts';
 import { pick } from '../src/social/reply-timing.ts';
 import type { SilenceInfo } from '../src/social/silence.ts';
@@ -55,12 +55,13 @@ describe('回复清理（同 ST cleanUpMessage 默认设置）', () => {
             assert.ok(parts.includes(token));
         }
     });
-    test('超过 5 行按顺序合并成 5 条，字数最多的那条尽量短；5 行以内不变（ADR 0006）', () => {
-        const five = ['一', '二', '三', '四', '五'];
-        assert.deepEqual(splitReply(five.join('\n')), five);
-        const lines = ['aaaa', 'b', 'c', 'dd', 'e', 'ffff', 'g', 'hh'];
+    test('超过 MAX_BUBBLES（8）行按顺序合并成 8 条，字数最多的那条尽量短；8 行以内不变（ADR 0006；上限 5→8 是 DSH 10-30 f3510c1）', () => {
+        assert.equal(MAX_BUBBLES, 8);
+        const eight = ['一', '二', '三', '四', '五', '六', '七', '八'];
+        assert.deepEqual(splitReply(eight.join('\n')), eight);
+        const lines = ['aaaa', 'b', 'c', 'dd', 'e', 'ffff', 'g', 'hh', 'i', 'jj', 'k'];
         const bubbles = splitReply(lines.join('\n'));
-        assert.equal(bubbles.length, 5);
+        assert.equal(bubbles.length, MAX_BUBBLES);
         assert.deepEqual(bubbles.join('\n').split('\n'), lines);
         assert.equal(Math.max(...bubbles.map(b => b.replaceAll('\n', '').length)), 4);
         assert.deepEqual(splitReply(lines.join('\n'), 3).length, 3);
