@@ -555,7 +555,8 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
             assert.deepEqual(logs.filter(line => line.includes('排不上')), []);
             const evening = events.filter(e => Date.parse(e.startedAt) >= at('2026-10-16T18:00:00').getTime() && e.kind !== 'sleep');
             assert.ok(evening.length >= 2);
-            assert.ok(evening.every(e => e.kind !== 'read_book'));
+            // 前三本都停了 / 读完了；DSH 56c6dda 新加的《人间草木》是一周一篇、一直在读的，只许它排上
+            assert.ok(evening.every(e => e.kind !== 'read_book' || e.subject === 'renjiancaomu'));
             assert.ok(events.some(e => e.kind === 'sleep' && e.startedAt === at('2026-10-17T02:00:00').toISOString()));
         } finally {
             rmSync(dir, { recursive: true, force: true });

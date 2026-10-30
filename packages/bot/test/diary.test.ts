@@ -31,7 +31,7 @@ describe('她的日记（ADR 0017）', () => {
         assert.match(text, /^日期：10月9日 周五\n几点起：07:40\n课：08:20–09:40 机房课；09:55–11:15 机房课；13:40–15:00 机房课\n/);
         assert.match(text, /\n空闲时：.*晚上/);
         assert.match(text, /\n心情：安静（今天有早八，起得太早了）/);
-        assert.match(text, /\n在读：《药屋少女的呢喃》看到第 8 卷、《惹金枝》看到第 520 章\n/, '放下的书不写');
+        assert.match(text, /\n在读：《药屋少女的呢喃》看到第 8 卷、《惹金枝》看到第 520 章、《人间草木》看到第 1 篇\n/, '放下的书不写');
         assert.match(text, /\n今天没和名单里的人聊天。$/);
         assert.doesNotMatch(text, /在哪|知行楼|济南|Python|概率论/);
         assert.match(diaryMaterial(sources, new Date(2026, 9, 6), []), /^日期：10月6日 周二（国庆节放假）\n/);

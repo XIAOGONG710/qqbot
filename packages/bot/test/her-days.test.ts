@@ -106,7 +106,7 @@ describe('在读的书（ADR 0015）', () => {
 
     test('提到书只看他的最后 3 条和她最后 2 次回复；能认书名、作者、人物和泛问', () => {
         const message = (role: StoredMessage['role'], content: string, n: number): StoredMessage => ({ role, content, time: new Date(n * 1000).toISOString() });
-        assert.deepEqual(bookMention([message('user', '你在看什么书', 1)], card.books), { mentioned: true, bookIds: ['yaowu', 'rejinzhi', 'jiasi'], named: false });
+        assert.deepEqual(bookMention([message('user', '你在看什么书', 1)], card.books), { mentioned: true, bookIds: ['yaowu', 'rejinzhi', 'jiasi', 'renjiancaomu'], named: false });
         assert.deepEqual(bookMention([message('user', '时不虞后来怎么样', 1)], card.books), { mentioned: true, bookIds: ['rejinzhi'], named: true });
         const old = [message('user', '药屋好看吗', 1), message('user', '一', 2), message('user', '二', 3), message('user', '三', 4), message('user', '四', 5)];
         assert.deepEqual(bookMention(old, card.books), { mentioned: false, bookIds: [], named: false });
@@ -164,7 +164,8 @@ describe('在读的书（ADR 0015）', () => {
         assert.deepEqual(asked.context.focusIds, ['rejinzhi']);
 
         const extra = readingActivities(card.books);
-        assert.deepEqual(extra, [{ window: 'evening', text: '窝在床上看《药屋少女的呢喃》' }]);
+        // DSH 56c6dda（用户 10-30：让她自己决定）书单多了《人间草木》（一周一篇的散文），期望跟着多一本
+        assert.deepEqual(extra, [{ window: 'evening', text: '窝在床上看《药屋少女的呢喃》' }, { window: 'evening', text: '翻两页《人间草木》' }]);
         const evenings = Array.from({ length: 60 }, (_, i) => describeState(stateAt(schedule, new Date(at('2026-10-01T21:00:00').getTime() + i * 86_400_000), extra), schedule));
         assert.ok(evenings.some(line => line.includes('药屋')), '60 个晚上里总有在看书的');
         const without = Array.from({ length: 60 }, (_, i) => describeState(stateAt(schedule, new Date(at('2026-10-01T21:00:00').getTime() + i * 86_400_000)), schedule));
@@ -177,7 +178,7 @@ describe('在读的书（ADR 0015）', () => {
         assert.match(describeMood(choice, '宝宝'), /^\[你今天的心情：黏人（说不上为什么，今天就是这样）。今天有点想宝宝：/);
         assert.equal(moodAt(schedule, card.moods, at('2026-10-14T19:00:00'), '不存在'), undefined);
         assert.match(describeHerDaySummary(schedule, card.moods, card.books, at('2026-10-06T19:00:00'))!,
-            /^今天（10-06）：心情 .+（.+）；在读 药屋少女的呢喃 第 7 卷、惹金枝 第 505 章、恰似寒光遇骄阳 第 300 章（放下了）$/);
+            /^今天（10-06）：心情 .+（.+）；在读 药屋少女的呢喃 第 7 卷、惹金枝 第 505 章、恰似寒光遇骄阳 第 300 章（放下了）、人间草木 第 1 篇$/);
         const lines: string[] = [];
         const note = herDayLogger(schedule, card.moods, card.books, line => lines.push(line));
         note(at('2026-10-06T19:00:00'));

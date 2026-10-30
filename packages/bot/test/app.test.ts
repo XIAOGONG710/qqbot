@@ -1297,7 +1297,7 @@ describe('编排（app.ts）', () => {
         const today = app.status().today!;
         assert.match(today.day, /^\d{4}-\d{2}-\d{2}$/);
         assert.equal(typeof today.mood!.name, 'string');
-        assert.deepEqual(today.books.map(book => [book.title, book.unit, book.putDown]), [['药屋少女的呢喃', '卷', false], ['惹金枝', '章', false], ['恰似寒光遇骄阳', '章', true]]);
+        assert.deepEqual(today.books.map(book => [book.title, book.unit, book.putDown]), [['药屋少女的呢喃', '卷', false], ['惹金枝', '章', false], ['恰似寒光遇骄阳', '章', true], ['人间草木', '篇', false]]);
         assert.equal(app.status().herDays, true);
 
         const off = setup(config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] }));
