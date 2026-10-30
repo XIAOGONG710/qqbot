@@ -312,7 +312,7 @@ export async function reflectIfDue(deps: ReflectDeps): Promise<ReflectResult> {
         fresh.lastReflectionAt = now;
         fresh.lastWindow = { entries: entries.length, dates: dates.size, newest: newestKey(entries) };
         saveInsightsState(deps.dataDir, fresh);
-        deps.log(`自我认识：晚上翻了一次日记（${entries.length} 篇）——加 ${applied.added} 条、放下 ${applied.retired} 条${applied.lines.some(line => line.includes('没成')) ? '、有想写没成的（/自我认识 里看得到原因）' : ''}`);
+        deps.log(`自我认识：晚上翻了一次日记（${entries.length} 篇）——加 ${applied.added} 条、放下 ${applied.retired} 条${applied.lines.some(line => line.includes('没成')) ? '、有想写没成的' : ''}`);
         return { ran: true, applied };
     } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);

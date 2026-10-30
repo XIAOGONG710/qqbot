@@ -14,6 +14,7 @@ import { basename, dirname, join, relative, sep } from 'node:path';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
 import type { MemoryItem } from '../memory/hindsight.ts';
 import { acquireLock, isProcessAlive } from '../platform/lock.ts';
+import { isPrivateFile } from '../platform/private-space.ts';
 
 export const BUNDLE_VERSION = 1;
 /** 同一个人说的同一句话，两边记的时间差在这以内算同一条 */
@@ -264,6 +265,7 @@ export async function exportBundle(options: ExportOptions): Promise<Manifest> {
             const rel = relative(liveDir, path);
             const name = basename(path);
             if (SENSITIVE_NAME.test(name) || SENSITIVE_NAME.test(rel)) { log(`存档跳过（名字像密钥）：${rel}`); continue; }
+            if (isPrivateFile(name)) { log(`存档跳过（她的私人空间，ADR 0200）：${rel}`); continue; }
             const owner = /^(\d{3,})(?:[-.]|$)/.exec(name)?.[1];
             if (options.chats && owner && !options.chats.includes(owner)) { log(`存档跳过（别的联系人的，不在 --chats 里）：${rel}`); continue; }
             if (statSync(path).size > MAX_ARCHIVE_FILE_BYTES) { log(`存档跳过（超过 2 MB）：${rel}`); continue; }

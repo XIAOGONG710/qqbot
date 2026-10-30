@@ -134,6 +134,7 @@ async function makeBundle(): Promise<{ bundleDir: string; liveDir: string }> {
     mkdirSync(join(liveDir, 'memory'), { recursive: true });
     writeFileSync(join(liveDir, 'memory', 'diary.json'), JSON.stringify({ written: { '2026-10-25': 268 }, texts: { '2026-10-25': '今天……' }, weeks: { '2026-10-19': 282 }, phases: {} }));
     writeFileSync(join(liveDir, 'memory', '111-boyfriend.json'), JSON.stringify({ bankId: 'old-prefix-abc', retained: { 'ep-1': 3 } }));
+    writeFileSync(join(liveDir, 'memory', 'speech-notes.json'), '{"notes":["她私人空间里的，不该出现"]}');
     mkdirSync(join(liveDir, 'promises'), { recursive: true });
     writeFileSync(join(liveDir, 'promises', '111-boyfriend.json'), JSON.stringify({ promises: [{ id: 'p1', what: '带她去吃火锅' }] }));
     writeFileSync(join(liveDir, 'promises', '222-classmate.json'), JSON.stringify({ promises: [] }));
@@ -173,7 +174,7 @@ describe('素材包导出 / 读取', () => {
         assert.deepEqual(bundle.manifest.counts.docs, { diary: 1, week: 1 });
         const all = Object.keys(bundle.manifest.files);
         assert.ok(all.includes('archive/promises/111-boyfriend.json') && all.includes('archive/memory/111-boyfriend.json') && all.includes('archive/presence/presence.json'));
-        for (const banned of ['secrets', 'config.json', 'cookie', 'photos']) assert.ok(!all.some(f => f.includes(banned)), banned);
+        for (const banned of ['secrets', 'config.json', 'cookie', 'photos', 'speech-notes']) assert.ok(!all.some(f => f.includes(banned)), banned);
         assert.equal(bundle.manifest.source.dir, bundle.manifest.source.dir.replace(/[\\/]/g, ''), '只记目录名，不带路径');
         assert.ok(!readFileSync(join(bundleDir, 'manifest.json'), 'utf8').includes(tmpdir()), 'manifest 里没有本机的目录路径（只有目录名）');
     });

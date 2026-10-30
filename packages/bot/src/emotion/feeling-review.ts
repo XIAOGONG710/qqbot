@@ -364,7 +364,7 @@ export async function reviewIfDue(deps: ReviewDeps): Promise<ReviewResult> {
         fresh.lastReflectionAt = now;
         fresh.lastWindow = { messages: messages.length, until: messages.at(-1)!.at };
         saveReviewState(deps.dataDir, fresh);
-        deps.log(`心境回想：聊完回想了一次（${messages.length} 条消息）——记下 ${applied.added} 条、放下 ${applied.retired} 条${applied.lines.some(line => line.includes('没成')) ? '、有想记没成的（/心境 里看得到原因）' : ''}`);
+        deps.log(`心境回想：聊完回想了一次（${messages.length} 条消息）——记下 ${applied.added} 条、放下 ${applied.retired} 条${applied.lines.some(line => line.includes('没成')) ? '、有想记没成的' : ''}`);
         return { ran: true, applied };
     } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);

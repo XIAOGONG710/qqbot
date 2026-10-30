@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { after, afterEach, before, describe, test } from 'node:test';
 import { setWorkMode } from '../src/platform/work-mode.ts';
 import { startApp, type App, type AppOptions, type Transport } from '../src/platform/app.ts';
+import { PEEK_OFF_NOTICE } from '../src/platform/private-space.ts';
 import { SENSITIVE_OFF, type SensitiveSwitch } from '../src/platform/sensitive.ts';
 import type { HistoryMessage } from '../src/memory/backfill.ts';
 import type { ImageDescriber, MEDIA_TIMEOUTS, MediaReader } from '../src/vision/media.ts';
@@ -76,6 +77,8 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         contextContacts: [],
         proactive: 'off',
         dataDir,
+        // 线上默认是关（ADR 0200）；这里默认开着，好让下面各条 /追求 /说话习惯 /心境 /自我认识 的测试照旧测「念出来」，关着的情形有专门一条
+        ownerPeek: true,
         ...overrides,
     };
 }
@@ -704,6 +707,51 @@ describe('编排（app.ts）', () => {
             await until(() => sent.some(line => line.startsWith('10002:（这一条里有图片')));
             assert.deepEqual(tasks, ['把桌面清理一下'], '带图片的那一条没有派活');
         });
+    });
+
+    test('她的私人空间（ADR 0200）：ownerPeek 关着时，/追求 /说话习惯 /心境 /自我认识 只回那句固定的话——不念她的东西、不交给她、不进聊天记录；功能没开的还是普通的话；同学档不是命令；/说话趋势 不受影响；开着照念', async () => {
+        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+        const selfFile = (dir: string) => writeFileSync(join(dir, 'pursuits-self.json'), JSON.stringify({
+            pursuits: [{ id: 'self-2026-10-29-1', title: '学吉他', why: '一直想会弹一首完整的歌', status: 'active', source: 'self', proposedAt: Date.now() - 2 * 86_400_000, notes: [] }],
+            overrides: {}, rejected: [], lastReflectionAt: Date.now(), lastAttemptAt: Date.now(), lastProposalAt: Date.now(), attempts: { day: '', n: 0 },
+        }));
+        // 四个功能都开着，ownerPeek 关着（线上默认）
+        let generated = 0;
+        const cfg = config({ contacts, pursuits: true, selfPursuits: true, speechNotes: true, herFeelings: true, diaryInsights: true, ownerPeek: false });
+        selfFile(cfg.dataDir);
+        const closed = setup(cfg, {}, { generate: () => { generated++; return '好'; } });
+        await closed.app.connected(SELF);
+        for (const [i, command] of ['/追求', '/说话习惯', '/心境', '/自我认识'].entries()) {
+            closed.app.receive(event(10002, i + 1, command, '宝宝'));
+            await until(() => closed.sent.length >= i + 1);
+            assert.equal(closed.sent[i], `10002:${PEEK_OFF_NOTICE}`, command);
+        }
+        assert.ok(!closed.sent.join('').includes('学吉他'), '她的东西一个字都没念出来');
+        assert.equal(generated, 0, '不交给她');
+        assert.deepEqual(chat(cfg, 10002), [], '不进聊天记录');
+        // /说话趋势 只有数字，不是她的私人内容：不受这个开关管
+        closed.app.receive(event(10002, 5, '/说话趋势', '宝宝'));
+        await until(() => closed.sent.length >= 5);
+        assert.notEqual(closed.sent[4], `10002:${PEEK_OFF_NOTICE}`);
+        // 同学档发同样的字：不是命令，是普通的话
+        closed.app.receive(event(10001, 6, '/心境', '阿明'));
+        await until(() => closed.sent.length >= 6);
+        assert.equal(closed.sent[5], '10001:好');
+        // 功能没开（herFeelings 关着）：/心境 还是普通的话，不是那句固定的话
+        let generatedOff = 0;
+        const off = setup(config({ contacts, ownerPeek: false }), {}, { generate: () => { generatedOff++; return '好'; } });
+        await off.app.connected(SELF);
+        off.app.receive(event(10002, 1, '/心境', '宝宝'));
+        await until(() => off.sent.length >= 1);
+        assert.equal(off.sent[0], '10002:好');
+        // ownerPeek 开着：照念
+        const openCfg = config({ contacts, pursuits: true, selfPursuits: true, ownerPeek: true });
+        selfFile(openCfg.dataDir);
+        const open = setup(openCfg, {}, { generate: () => '好' });
+        await open.app.connected(SELF);
+        open.app.receive(event(10002, 1, '/追求', '宝宝'));
+        await until(() => open.sent.length >= 1);
+        assert.match(open.sent[0]!, /学吉他——一直想会弹一首完整的歌/);
     });
 
     test('/追求（ADR 0178，selfPursuits）：开着时他能看她在追什么（运维提示，不交给她、不进聊天记录）；关着是普通的话；只认男朋友档', async () => {

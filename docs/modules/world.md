@@ -33,8 +33,9 @@
 | `everydayLife` | 日常小事 / 小测 | [ADR 0106](../adr/0106-everyday-life.md) |
 | `menu` | 每顿吃什么（每天随机） | [ADR 0125](../adr/0125-menu.md) |
 | `pursuits` | 她自己的追求 | [ADR 0104](../adr/0104-pursuits.md) |
-| `herFeelings` | 心境（开心 / 难过 / 流泪；桌面上的她读同一份；/心境 看） | [ADR 0102](../adr/0102-feelings.md) |
+| `herFeelings` | 心境（开心 / 难过 / 流泪；桌面上的她读同一份；ownerPeek 开着时 /心境 看） | [ADR 0102](../adr/0102-feelings.md) |
 | `feelingReview` | 她聊完回想一下，记下有依据的感受（每条要指出是哪几条消息让她有的） | [ADR 0197](../adr/0197-feelings-shared-and-reviewed.md) |
+| `ownerPeek` | 他能不能用 /追求 /说话习惯 /心境 /自我认识 看她自己总结 / 回想出来的东西（默认不能：她的私人空间） | [ADR 0200](../adr/0200-private-space.md) |
 | `grievance` | 小别扭 / 和好 | [ADR 0074](../adr/0074-small-grievance.md) |
 | `npcAsks` | 闺蜜约人 / 改约 | [ADR 0061](../adr/0061-friends-ask-and-back-out.md) |
 | `festivals` | 公共节日（模式） | [ADR 0076](../adr/0076-festivals-and-winter-break.md) |

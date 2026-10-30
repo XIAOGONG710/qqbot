@@ -414,7 +414,7 @@ export async function reflectIfDue(deps: ReflectDeps): Promise<ReflectResult> {
         fresh.lastReflectionAt = now;
         fresh.lastStats = mine;
         saveNotesState(deps.dataDir, fresh);
-        deps.log(`说话习惯：晚上想了一次——加 ${applied.added} 条、放下 ${applied.retired} 条${applied.lines.some(line => line.includes('没成')) ? '、有想写没成的（/说话习惯 里看得到原因）' : ''}`);
+        deps.log(`说话习惯：晚上想了一次——加 ${applied.added} 条、放下 ${applied.retired} 条${applied.lines.some(line => line.includes('没成')) ? '、有想写没成的' : ''}`);
         return { ran: true, applied };
     } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);

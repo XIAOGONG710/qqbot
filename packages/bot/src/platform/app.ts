@@ -114,6 +114,7 @@ import { openMemeDict } from '.././language/meme-dict.ts';
 import { loadExemplars } from '.././language/exemplars.ts';
 import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
 import { askExpired, askLine, takeConsent } from './consent.ts';
+import { PEEK_OFF_NOTICE, peekRefused } from './private-space.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -1798,6 +1799,8 @@ ${body}
             }
             // 「/为什么」：她为什么没回（ADR 0173）；放在这里是因为这条命令不能算进「没回的消息」里
             if (config.silenceNotice && plain === '/为什么') { tellOwner(answerWhy(silenceDeps(deviceOwner))); return; }
+            // 她的私人空间（ADR 0200）：下面 /追求 /说话习惯 /心境 /自我认识 这四条要 ownerPeek 开着才念；没开，回一句固定的话，不进聊天记录、不交给她
+            if (peekRefused(plain, config)) { tellOwner(PEEK_OFF_NOTICE); return; }
             // 「/追求」：她现在在追什么、放下过什么、想过没成什么（ADR 0178）；只能看，不能改
             if (config.selfPursuits && config.pursuits && plain === '/追求') { tellOwner(describeForOwner(pursuitsNow(), loadSelfState(config.dataDir), clockNow().getTime())); return; }
             // 「/说话习惯」：她自己总结的说话习惯、放下过什么、想写没成什么（ADR 0193）；只能看，不能改

@@ -149,6 +149,8 @@ export const DEFAULTS = {
     diaryInsights: false,
     /** 她聊完回想一下、记下有依据的感受（ADR 0197）：要 herFeelings 开着；每条要指出是哪几条消息 / 日记让她有的 */
     feelingReview: false,
+    /** 她的私人空间（ADR 0200）：关着（默认）时，/追求 /说话习惯 /心境 /自我认识 这四条念她私人内容的命令不念，他得到一句固定的话；开着才念 */
+    ownerPeek: false,
     rhythm: false,
     shortReplies: false,
     media: true,
@@ -557,6 +559,8 @@ export interface AppConfig {
     diaryInsights?: boolean;
     /** 她聊完回想一下、记下有依据的感受（ADR 0197）：一段聊天结束半小时后想一次——看最近 36 小时和他的聊天、昨天今天的日记，写下哪些事让她心里有了感受（开心 / 松了口气 / 担心 / 难过 / 烦 / 累）；每一条必须指出是哪几条消息（或日记）让她有的，只有小事和明显两档（大事只有作者能写 moments.json），因为他的态度难过 / 烦的一晚最多一条，来由不能引他的原话、不写别人、不碰底线；散得快。他用 /心境 看，改不了。要 herFeelings 开着、名单里有男朋友档；默认关 */
     feelingReview?: boolean;
+    /** 她的私人空间（ADR 0200）：默认关；开着时他才能用 /追求 /说话习惯 /心境 /自我认识 看她自己总结 / 回想 / 追求出来的东西 */
+    ownerPeek?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -840,6 +844,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         speechNotes: bool(file, 'speechNotes', '', DEFAULTS.speechNotes),
         diaryInsights: bool(file, 'diaryInsights', '', DEFAULTS.diaryInsights),
         feelingReview: bool(file, 'feelingReview', '', DEFAULTS.feelingReview),
+        ownerPeek: bool(file, 'ownerPeek', '', DEFAULTS.ownerPeek),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
         shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),
         media: bool(file, 'media', '', DEFAULTS.media),
