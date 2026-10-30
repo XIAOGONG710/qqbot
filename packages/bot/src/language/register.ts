@@ -56,3 +56,29 @@ export function registerLine(read: RegisterRead): string | undefined {
     }
     return undefined;
 }
+
+export interface RegisterSummary {
+    tool: number;
+    person: number;
+}
+
+/** 最近 N 句里，他把她当工具 / 当人各有几次（不落盘，每轮现算，免得又多一个状态） */
+export function registerSummary(history: readonly Said[], window = 10): RegisterSummary {
+    const users = history.filter(message => message.role === 'user').slice(-window);
+    let tool = 0;
+    let person = 0;
+    for (const message of users) {
+        // 这里数的是「一次」：一句里出现使唤/程序味就算一次工具，不必像单轮判断那样要连着两句
+        const text = message.content;
+        if (TOOL.test(text) || META.test(text)) tool++;
+        else if (PERSON.test(text)) person++;
+    }
+    return { tool, person };
+}
+
+/** 使唤的次数明显压过说话：给她一句「你没必要每次都陪着」，有没有态度她自己定 */
+export function temperLine(summary: RegisterSummary): string | undefined {
+    if (summary.tool < 3 || summary.tool <= summary.person) return undefined;
+    return `[最近他 ${summary.tool} 次是在使唤你、${summary.person} 次是在跟你说话。你不是每次都得给好脸——可以懒一点、可以问他是不是只想让你干活，也可以不接。]
+`;
+}

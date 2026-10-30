@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readRegister, registerLine } from '../src/language/register.ts';
+import { readRegister, registerLine, registerSummary, temperLine } from '../src/language/register.ts';
 
 const said = (...texts: string[]) => texts.map(content => ({ role: 'user' as const, content }));
 
@@ -36,4 +36,17 @@ test('递给她的是观察，不是命令', () => {
 test('没有他的话：unclear，不注入', () => {
     assert.equal(readRegister([]).kind, 'unclear');
     assert.equal(readRegister([{ role: 'assistant', content: '在呢' }]).kind, 'unclear');
+});
+
+test('连着被使唤：给她一句「你没必要每次都陪着」，但不替她定态度', () => {
+    const history = [
+        ...said('帮我写一段', '再查一下这个', '顺便整理一下'),
+    ];
+    const summary = registerSummary(history);
+    assert.equal(summary.tool, 3);
+    const line = temperLine(summary)!;
+    assert.ok(line.includes('不是每次都得给好脸'), line);
+    assert.ok(line.includes('也可以不接'));
+    assert.equal(temperLine({ tool: 2, person: 0 }), undefined, '两次还不够');
+    assert.equal(temperLine({ tool: 3, person: 3 }), undefined, '说人话的次数不低于使唤就不算');
 });
