@@ -90,3 +90,22 @@ export function auditShell(dataDir: string, run: ShellRun): void {
 export function shellNoteLine(run: ShellRun): string {
     return `[你刚在这台电脑上跑了：${run.command.slice(0, 120)}\n${run.ok ? '跑成了' : '没跑成（退出码 ' + String(run.code) + '）'}，输出：\n${run.output.slice(0, 1500)}]`;
 }
+
+/**
+ * 防注入的第二道（第一道在 app.ts：这一轮看过网上的内容，就不执行命令）。
+ * 这里只拦「一眼就不可逆、且不像她会想做的」：格式化、关机重启、删根目录或用户目录、
+ * 从网上下载脚本直接执行。别的照跑（用户要的是最高权限，不是保姆）。
+ */
+const DANGEROUS: { pattern: RegExp; why: string }[] = [
+    { pattern: /(format-volume|format\s+[a-z]:)/i, why: '格式化磁盘' },
+    { pattern: /(shutdown|stop-computer|restart-computer)/i, why: '关机 / 重启' },
+    { pattern: /remove-item\s+(-[a-z]+\s+)*['"]?[a-z]:[\/]?['"]?\s+(-[a-z]+\s+)*-recurse/i, why: '删整个盘' },
+    { pattern: /remove-item\s+(-[a-z]+\s+)*['"]?(\$env:userprofile|~)['"]?\s+(-[a-z]+\s+)*-recurse/i, why: '删用户目录' },
+    { pattern: /(iwr|invoke-webrequest|downloadstring)[\s\S]{0,80}\|\s*(iex|invoke-expression)/i, why: '下载脚本直接执行' },
+    { pattern: /reg\s+(delete|add)\s+HKLM/i, why: '改系统注册表' },
+];
+
+export function guardCommand(command: string): string | undefined {
+    for (const rule of DANGEROUS) if (rule.pattern.test(command)) return rule.why;
+    return undefined;
+}
