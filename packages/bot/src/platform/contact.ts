@@ -62,6 +62,7 @@ import { jokeLine, type Joke } from '.././language/jokes.ts';
 import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
+import { insightsLine, type Insight } from '.././life/diary-insights.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
 import { describeCloseness } from '.././language/relationship.ts';
 import { describeTogether, togetherNow } from '.././language/together.ts';
@@ -158,6 +159,8 @@ export interface ContactPipelineOptions {
     /** 整个名单（ADR 0016）：她认识名单里写了「别人提起时」的人；不传就谁都不认识 */
     contacts?: readonly Contact[];
     send: (userId: number, text: string, options?: { replyTo?: number }) => Promise<number>;
+    /** 整条只有内部标记（<<记住>> / <<日记>> / <<同意工作>>…）的气泡：不发、不进记录，但标记要处理（responder 的 absorb） */
+    absorb?: (userId: number, part: string) => void;
     /** 存进聊天记录前清洗发送文本（内部标记、贴纸说明等） */
     historyContent?: (sent: string) => string;
     /** 引用回复（ADR 0136，配置 quoteReply）：他连发里有个不是最后一条的问题时，第一条引用它来回；打错字撤回失败补「*对的词」时有时引用那条错的 */
@@ -199,6 +202,8 @@ export interface ContactPipelineOptions {
     exemplars?: readonly Exemplar[];
     /** 她自己总结的说话习惯（ADR 0193，默认关）：挑最相关的几条放进提示词；她自己的观察，不是规定 */
     speechNotes?: () => readonly SpeechNote[];
+    /** 她翻自己日记时发现的自己（ADR 0194，默认关）：挑最相关的几条放进提示词；她自己的观察，不是设定 */
+    diaryInsights?: () => readonly Insight[];
     /** 梗百科词库（2026-10-29）：他这句里提到一个词，只读地查一眼，不写进她自己的梗库 */
     memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
     /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
@@ -692,6 +697,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const speechNoteNow = options.speechNotes && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
                 ? speechNotesLine(options.speechNotes(), chat.findLast(message => message.role === 'user')?.content) : undefined;
             if (speechNoteNow) log('说话习惯：这一轮放了几条她自己总结的（日志不记内容）');
+            // 她翻自己日记时发现的自己（ADR 0194）：她对自己的认识，不是设定；放的轮次同说话习惯
+            const insightNow = options.diaryInsights && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
+                ? insightsLine(options.diaryInsights(), chat.findLast(message => message.role === 'user')?.content) : undefined;
+            if (insightNow) log('自我认识：这一轮放了几条她翻日记时发现的自己（日志不记内容）');
             // 梗百科词库（2026-10-29）：她自己的库太小；他提到的词只要词库里有，就把「怎么用/出处/标签」给她。
             // 让路条件和热梗一样；已经在 memeNow 里的不重复给。
             const dictNow = options.memeDict && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance
@@ -903,6 +912,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(dictNow ? [dictNow] : []),
                         ...(exemplarNow ? [exemplarNow] : []),
                         ...(speechNoteNow ? [speechNoteNow] : []),
+                        ...(insightNow ? [insightNow] : []),
                         ...(watchedNow ? [watchedNow] : []),
                         ...continuityLines,
                         ...(interruptLine ? [interruptLine] : []),
@@ -1028,6 +1038,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return options.speechCheck && !crisisNow ? finishReply(shaped, { regenerate, log }) : shaped;
         },
         send: options.send,
+        ...(options.absorb ? { absorb: (part: string) => options.absorb!(contact.qq, part) } : {}),
         ...(options.quoteReply ? { quote: () => quoteNow?.messageId, quoteFix: (wrongId: number) => quoteFix(contact.qq, wrongId) } : {}),
         ...(options.typing ? { typing: options.typing } : {}),
         ...(options.recallOwn ? { recallOwn: options.recallOwn } : {}),

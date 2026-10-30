@@ -99,6 +99,11 @@ export interface ResponderDeps {
     react?: (messageId: number, text: string) => void;
     /** 实际发送内容与聊天记录表示不同时转换（图片表情编号 -> 可读描述）。 */
     historyContent?: (sent: string) => string;
+    /**
+     * 整条只有内部标记（比如单独一行的 <<记住>> / <<日记>> / <<同意工作>>）的气泡：不发、不进记录，但里面的标记要处理，由这里交给调用方。
+     * 10-28 的「只有内部标记的气泡不发」把这类气泡在到发送函数之前就跳过了，标记从此再没被处理过——写在单独一行的 <<日记>> 全丢了
+     */
+    absorb?: (part: string) => void;
     log: (message: string) => void;
     /** 能不能把聊天正文写进日志（ADR 0070 第 8 项）；不传就不写，只记字数 */
     sensitive?: () => boolean;
@@ -228,6 +233,20 @@ export function createResponder(deps: ResponderDeps): Responder {
      * 发一条。recall 有值（打错字又想改口，ADR 0086）：先发打错的那条，过 afterMs 撤回，再「打字」发对的那条；聊天记录里只有对的。
      * 撤回失败（超过两分钟、NapCat 报错）：错的留着，补发「*对的词」，和不撤回时一样，两条都进聊天记录
      */
+    /** 整条只有内部标记（单独一行的 <<记住>> / <<日记>> / <<同意工作>>…）：没有东西可发，也不进聊天记录 */
+    const markerOnly = (part: string) => !(deps.historyContent?.(part) ?? part).trim();
+    /**
+     * 这类气泡里的标记还是要处理（absorb），而且一开始就处理完：不因为中途他插话、后面的不发就丢，也不为它「打字」。
+     * 以前回复路径把它当一条消息发给发送函数（发送函数里处理标记、返回 0）并往聊天记录里留一行空的，还要为它打字；
+     * 主动消息路径 10-28 改成直接跳过，标记从此再没被处理过。
+     */
+    function absorbMarkerOnly(parts: readonly string[]): void {
+        for (const part of parts) {
+            if (!markerOnly(part)) continue;
+            try { deps.absorb?.(part); } catch (error) { deps.log(`内部标记没处理成：${error instanceof Error ? error.message : String(error)}`); }
+        }
+    }
+
     async function sendBubble(part: string, recall: TypoRecall | undefined, replyTo?: number): Promise<{ messageId: number; content: string }> {
         const quoted = replyTo === undefined ? undefined : { replyTo };
         if (!recall) return { messageId: await deps.send(deps.userId, part, quoted), content: part };
@@ -405,6 +424,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         const parts = Array.isArray(decorated) ? decorated : decorated.parts;
         const recall = Array.isArray(decorated) || !deps.recallOwn ? undefined : decorated.recall;
         deps.beforeSend?.();
+        absorbMarkerOnly(parts);
         setPhase({ phase: 'sending' });
         const { timing } = deps;
         // 第一条：生成花掉的时间算在打字时间里
@@ -419,6 +439,8 @@ export function createResponder(deps: ResponderDeps): Responder {
         // 这一轮第一条引用他的某一句（ADR 0136）：只引一次，只在第一条
         const quoteId = deps.quote?.();
         for (const [i, part] of parts.entries()) {
+            // 只有内部标记的不发、不「打字」、不进记录（标记上面已经处理了）
+            if (markerOnly(part)) continue;
             if (i > 0) {
                 await (timing ? sleepTyping(timing.typingMs(part)) : sleep(PART_GAP_MS));
                 if (deps.history.load(deps.userId).slice(input).some(m => m.role === 'user')) {
@@ -503,6 +525,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         request.commit(parts);
         if (request.dryRun) return { result: 'dryRun', parts };
         deps.beforeSend?.();
+        absorbMarkerOnly(parts);
 
         const { timing } = deps;
         if (timing) {
@@ -512,8 +535,8 @@ export function createResponder(deps: ResponderDeps): Responder {
         const messageIds: number[] = [];
         const sent: string[] = [];
         for (const [i, part] of parts.entries()) {
-            // 只有内部标记（比如 <<记住>>）的条目不发、也不进记录
-            if (!(deps.historyContent?.(part) ?? part).trim()) continue;
+            // 只有内部标记（比如 <<记住>>）的条目不发、也不进记录（标记上面已经处理了）
+            if (markerOnly(part)) continue;
             if (i > 0) {
                 await (timing ? sleepTyping(timing.typingMs(part)) : sleep(PART_GAP_MS));
                 if (deps.history.load(deps.userId).slice(input).some(m => m.role === 'user')) {

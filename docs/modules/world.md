@@ -23,6 +23,7 @@
 | `tastes` | 从经历里长出偏好 | [ADR 0162](../adr/0162-tastes.md) |
 | `acquaintances` | 认识的人（B 站上再见到认得） | [ADR 0163](../adr/0163-acquaintances.md) |
 | `selfPursuits` | 她自己定追求（每晚想一次，自己放下 / 提新的） | [ADR 0178](../adr/0178-self-set-pursuits.md) |
+| `diaryInsights` | 她每晚翻自己的日记，写下对自己的认识（「我发现自己……」，要有两天以上的依据） | [ADR 0194](../adr/0194-diary-insights.md) |
 | `herDays` | 每日心情、在读的书 | [ADR 0015](../adr/0015-her-own-days.md) |
 | `schedule` | 作息 | [ADR 0007](../adr/0007-schedule-and-reply-timing.md) |
 | `autonomousLife` | 没人聊天时她一件件过日子 | [ADR 0040](../adr/0040-rule-life-selector.md) |

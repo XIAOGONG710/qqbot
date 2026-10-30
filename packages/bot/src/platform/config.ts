@@ -145,6 +145,8 @@ export const DEFAULTS = {
     selfPursuits: false,
     /** 她每晚自己总结说话习惯（ADR 0193）：22 点以后想一次，写「我发现……」的笔记，挑相关的几条放进提示词；他用 /说话习惯 看 */
     speechNotes: false,
+    /** 她每晚翻自己的日记，写下对自己的认识（ADR 0194）：22 点以后想一次，每条要有两天以上日记做依据；挑相关的几条放进提示词；他用 /自我认识 看 */
+    diaryInsights: false,
     rhythm: false,
     shortReplies: false,
     media: true,
@@ -549,6 +551,8 @@ export interface AppConfig {
     selfPursuits?: boolean;
     /** 她每晚自己总结说话习惯（ADR 0193）：每晚 22 点以后想一次——看自己这几天说话的样子（一次几条、每条多长、短反应、问号、表情）和真人语料里的样子，写下「我发现……」；挑最相关的几条放进以后的提示词；笔记不能引用他说过的话、不能照抄真人原话、不碰底线；他用 /说话习惯 看，改不了。要名单里有男朋友档；默认关 */
     speechNotes?: boolean;
+    /** 她每晚翻自己的日记，写下对自己的认识（ADR 0194）：每晚 22 点以后想一次——看自己最近 14 天的日记（DSH 睡眠整合写的 JOURNAL.md、QQ 自动日记、聊天里写的 <<日记>>；不看私密日记），写下「我发现自己……」，每条要写明日记里真有的日期、至少两个不同的日子；挑最相关的几条放进以后的男朋友档提示词。不能引他说过的话、不能写名单里别人、不能抄日记原句、不碰底线（程序 / 危机 / 事事顺着他 / 骗人 / 名字年龄）；不改 SOUL.md。他用 /自我认识 看，改不了。要名单里有男朋友档；默认关 */
+    diaryInsights?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -830,6 +834,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         crossRecent: bool(file, 'crossRecent', '', DEFAULTS.crossRecent),
         selfPursuits: bool(file, 'selfPursuits', '', DEFAULTS.selfPursuits),
         speechNotes: bool(file, 'speechNotes', '', DEFAULTS.speechNotes),
+        diaryInsights: bool(file, 'diaryInsights', '', DEFAULTS.diaryInsights),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
         shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),
         media: bool(file, 'media', '', DEFAULTS.media),

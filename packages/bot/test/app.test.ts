@@ -790,6 +790,94 @@ describe('编排（app.ts）', () => {
         assert.ok(!on.sent.some(line => line.startsWith('10001:（她自己总结')));
     });
 
+    test('/自我认识 和提示词里她翻日记时发现的自己（ADR 0194，diaryInsights）：开着时他能看；挑几条放进提示词（只男朋友档、危机回合不放）；关着是普通的话', async () => {
+        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+        const insightsFile = (cfg: AppConfig) => writeFileSync(join(cfg.dataDir, 'diary-insights.json'), JSON.stringify({
+            notes: [{ id: 'i-2026-10-29-1', text: '我发现自己一个人安安静静弄东西的时候最踏实', at: Date.now() - 86_400_000, dates: ['2026-10-27', '2026-10-29'] }],
+            retired: [{ at: Date.now(), text: '我发现自己一到周一就没劲', why: '后来几个周一都挺好' }],
+            rejected: [{ at: Date.now(), text: '我发现自己和鸽鸽聊天最放松', reason: '写到了别人（鸽鸽）——这里只写你自己' }],
+            lastWindow: { entries: 3, dates: 3, newest: 'x' }, lastReflectionAt: Date.now(), lastAttemptAt: Date.now(), attempts: { day: '', n: 0 },
+        }));
+        const LINE = '你对自己的了解';
+        // 关着：/自我认识 是普通的话，提示词里没有
+        const offCfg = config({ contacts });
+        insightsFile(offCfg);
+        const offPrompts: string[] = [];
+        const off = setup(offCfg, {}, { generate: messages => { offPrompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
+        await off.app.connected(SELF);
+        off.app.receive(event(10002, 1, '/自我认识', '宝宝'));
+        await until(() => off.sent.length >= 1);
+        assert.equal(off.sent[0], '10002:好', '关着时是普通的话，照常交给她');
+        assert.ok(offPrompts.every(prompt => !prompt.includes(LINE)), '关着时提示词里没有');
+        // 开着
+        const onCfg = config({ contacts, diaryInsights: true });
+        insightsFile(onCfg);
+        const prompts: Array<{ qq: string; text: string }> = [];
+        let current = '';
+        const on = setup(onCfg, {}, { generate: messages => { prompts.push({ qq: current, text: messages.map(message => message.content).join('\n') }); return '好'; } });
+        await on.app.connected(SELF);
+        assert.ok(on.logs.some(line => line.startsWith('她翻自己的日记写对自己的认识：开')), '启动日志说开了');
+        on.app.receive(event(10002, 1, '/自我认识', '宝宝'));
+        await until(() => on.sent.length >= 1);
+        assert.match(on.sent[0]!, /^10002:（她翻日记时发现的自己（1 条）：\n1\. 我发现自己一个人安安静静弄东西的时候最踏实（依据：2026-10-27、2026-10-29；1 天前）/);
+        assert.match(on.sent[0]!, /她放下的：\n- 我发现自己一到周一就没劲（后来几个周一都挺好）/);
+        assert.match(on.sent[0]!, /她想写、但没成的：\n- 我发现自己和鸽鸽聊天最放松（写到了别人（鸽鸽）/);
+        assert.match(on.sent[0]!, /她看的是公开的日记，不看私密日记/);
+        assert.match(on.sent[0]!, /你只能看，不能改；她随时可以放下/);
+        assert.equal(prompts.length, 0, '命令不交给她');
+        assert.deepEqual(chat(onCfg, 10002), [], '命令不进聊天记录');
+        // 男朋友档：他这句话没聊到的不放（原来会放最近的几条，她把它们当成了话题）；聊到了才放；同学档不放
+        current = 'irrelevant';
+        on.app.receive(event(10002, 2, '晚上吃什么呀', '宝宝'));
+        await until(() => prompts.some(item => item.qq === 'irrelevant'));
+        assert.ok(!prompts.find(item => item.qq === 'irrelevant')!.text.includes(LINE), '没聊到相关的事就不放');
+        current = 'bf';
+        on.app.receive(event(10002, 6, '你是不是又在安安静静弄东西', '宝宝'));
+        await until(() => prompts.some(item => item.qq === 'bf'));
+        const bf = prompts.find(item => item.qq === 'bf')!.text;
+        assert.match(bf, /\[你对自己的了解（是你自己慢慢发现的，不是设定/);
+        assert.ok(bf.includes('- 我发现自己一个人安安静静弄东西的时候最踏实'));
+        assert.ok(!bf.includes('翻自己日记'), '提示词里那一行不提日记');
+        assert.ok(on.logs.some(line => line === '[10002] 自我认识：这一轮放了几条她翻日记时发现的自己（日志不记内容）'));
+        assert.ok(on.logs.every(line => !line.includes('最踏实')), '日志不记内容');
+        current = 'cm';
+        on.app.receive(event(10001, 3, '你是不是又在安安静静弄东西', '阿明'));
+        await until(() => prompts.some(item => item.qq === 'cm'));
+        assert.ok(!prompts.find(item => item.qq === 'cm')!.text.includes(LINE), '同学档不放');
+        // 危机回合不放（即使聊到了相关的事）
+        current = 'crisis';
+        on.app.receive(event(10002, 4, `我${CRISIS_MARK}，安安静静弄东西也没用`, '宝宝'));
+        await until(() => prompts.some(item => item.qq === 'crisis'));
+        assert.ok(prompts.filter(item => item.qq === 'crisis').every(item => !item.text.includes(LINE)), '危机回合不放');
+        // 同学档发同样的命令：不是命令
+        on.app.receive(event(10001, 5, '/自我认识', '阿明'));
+        await until(() => on.sent.some(line => line.startsWith('10001:') && !line.startsWith('10001:（')));
+        assert.ok(!on.sent.some(line => line.startsWith('10001:（她翻日记')));
+    });
+
+    test('她在聊天里写的 <<日记：…>>（ADR 0194）：开着时男朋友档那篇在本地留一份供她晚上翻；同学档的不留；关着不留；标记不发出去', async () => {
+        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+        const reply = (note: string) => `好呀\n<<日记：${note}>>`;
+        const run = async (cfg: AppConfig) => {
+            const h = setup(cfg, {}, { generate: messages => (messages.some(message => message.content.includes('同学的话')) ? reply('同学这边写的一篇') : reply('今天陪他聊了很久，我发现自己很怕冷场')) });
+            await h.app.connected(SELF);
+            h.app.receive(event(10002, 1, '今天过得怎么样', '宝宝'));
+            h.app.receive(event(10001, 2, '同学的话', '阿明'));
+            // 两个联系人都回完（含单独一行的标记那一条，它在第一条之后隔一小会儿才轮到）
+            await until(() => h.logs.filter(line => line.includes('已回复')).length >= 2, 5000);
+            return h;
+        };
+        const onCfg = config({ contacts, diaryInsights: true });
+        const on = await run(onCfg);
+        assert.ok(on.sent.every(line => !line.includes('<<')), '标记不发出去');
+        assert.deepEqual(chat(onCfg, 10002), ['user:今天过得怎么样', 'assistant:好呀'], '只有标记的那一条也不进聊天记录（不留一行空的）');
+        const kept =JSON.parse(readFileSync(join(onCfg.dataDir, 'self-diary.json'), 'utf8')) as { entries: Array<{ at: number; text: string }> };
+        assert.deepEqual(kept.entries.map(item => item.text), ['今天陪他聊了很久，我发现自己很怕冷场'], '只留男朋友档那一篇');
+        const offCfg = config({ contacts });
+        await run(offCfg);
+        assert.equal(existsSync(join(offCfg.dataDir, 'self-diary.json')), false, '关着不留');
+    });
+
     test('名单外：开关关着时忽略；开着时按 unlisted 档、用 QQ 昵称回复', async () => {
         const off = setup(config());
         off.app.receive(event(99999, 1, '你好', '小周'));

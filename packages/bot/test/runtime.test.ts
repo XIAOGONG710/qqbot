@@ -758,6 +758,34 @@ describe('回复调度', () => {
         assert.ok(logs.includes('已停止，剩下 2 条不发'));
     });
 
+    test('回复里整条只有内部标记的气泡（单独一行的 <<日记>>）：不发、不「打字」、不往聊天记录留空行；标记交给 absorb 处理一次，不因为中途他插话而丢', async () => {
+        const strip = (text: string) => text.replace(/<<(?:记住|日记|私密)[：:][\s\S]*?>>/g, '').trim();
+        const absorbed: string[] = [];
+        const normal = setup({ generate: async () => '好\n<<日记：写了一篇>>\n嗯', historyContent: strip, absorb: part => { absorbed.push(part); } });
+        normal.responder.receive('在吗', 1, new Date());
+        await normal.responder.whenIdle();
+        assert.deepEqual(normal.sent, ['好', '嗯']);
+        assert.deepEqual(normal.stored.map(m => `${m.role}:${m.content}`), ['user:在吗', 'assistant:好', 'assistant:嗯'], '没有空的一行');
+        assert.deepEqual(absorbed, ['<<日记：写了一篇>>']);
+        assert.equal(normal.gaps.length, 1, '只在「好」和「嗯」之间隔了一次，标记那条没有为它打字');
+        assert.ok(normal.logs.includes('已回复（2 条）：2 字'));
+        // 标记在最后、中途他插话：后面的不发，标记也已经处理了
+        absorbed.length = 0;
+        const interrupted = setup({
+            generate: async () => '好\n嗯\n<<记住：他爱吃辣>>', historyContent: strip, absorb: part => { absorbed.push(part); },
+            sleep: async () => { interrupted.stored.push({ time: new Date().toISOString(), role: 'user', content: '在', messageId: 9 }); },
+        });
+        interrupted.responder.receive('在吗', 1, new Date());
+        await interrupted.responder.whenIdle();
+        assert.deepEqual(interrupted.sent, ['好']);
+        assert.deepEqual(absorbed, ['<<记住：他爱吃辣>>']);
+        // 没有 absorb（模拟器这类）：不处理、不报错，照样不发
+        const bare = setup({ generate: async () => '好\n<<日记：x>>', historyContent: strip });
+        bare.responder.receive('在吗', 1, new Date());
+        await bare.responder.whenIdle();
+        assert.deepEqual(bare.sent, ['好']);
+    });
+
     describe('主动找他（ADR 0011）', () => {
         const request = (patch: Partial<InitiateRequest> = {}): InitiateRequest & { committed: string[][] } => {
             const committed: string[][] = [];
@@ -832,6 +860,45 @@ describe('回复调度', () => {
             assert.deepEqual(req.committed, [['早']]);
             assert.deepEqual(sent, []);
             assert.deepEqual(stored, []);
+        });
+
+        test('整条只有内部标记的气泡（单独一行的 <<日记>>）：不发、不进记录，但标记交给 absorb 处理一次；10-28 的跳过让这类标记在主动消息里再没被处理过', async () => {
+            const absorbed: string[] = [];
+            const logs: string[] = [];
+            const strip = (text: string) => text.replace(/<<(?:记住|日记|私密)[：:][\s\S]*?>>/g, '').trim();
+            const { responder, stored, sent } = setup({
+                generate: async () => '早\n<<日记：今天起得早，心情不错>>\n醒了没',
+                historyContent: strip, absorb: part => { absorbed.push(part); },
+                log: line => { logs.push(line); },
+            });
+            const outcome = await responder.initiate(request({ maxBubbles: 3 }));
+            assert.equal(outcome.result, 'sent');
+            assert.deepEqual(sent, ['早', '醒了没'], '标记那一条不发');
+            assert.deepEqual(stored.map(m => `${m.role}:${m.content}`), ['assistant:早', 'assistant:醒了没'], '也不进记录');
+            assert.deepEqual(absorbed, ['<<日记：今天起得早，心情不错>>'], '标记处理了一次');
+            // 中途他插话、后面的不发：标记也已经处理过了，不因此丢
+            const interrupted = setup({
+                generate: async () => '早\n醒了没\n<<日记：写了一篇>>',
+                historyContent: strip, absorb: part => { absorbed.push(part); },
+                sleep: async () => { interrupted.stored.push({ time: new Date().toISOString(), role: 'user', content: '在', messageId: 9 }); },
+            });
+            absorbed.length = 0;
+            await interrupted.responder.initiate(request({ maxBubbles: 3 }));
+            assert.deepEqual(interrupted.sent, ['早'], '他插话了，后面的不发');
+            assert.deepEqual(absorbed, ['<<日记：写了一篇>>']);
+            // absorb 抛错：记日志、照常发，不影响这一轮
+            const failing = setup({
+                generate: async () => '早\n<<记住：他爱吃辣>>', historyContent: strip,
+                absorb: () => { throw new Error('写不进去'); }, log: line => { logs.push(line); },
+            });
+            assert.equal((await failing.responder.initiate(request({ maxBubbles: 3 }))).result, 'sent');
+            assert.deepEqual(failing.sent, ['早']);
+            assert.ok(logs.some(line => line.includes('内部标记没处理成：写不进去')));
+            // 试运行不处理（没有真的发）
+            absorbed.length = 0;
+            const dry = setup({ generate: async () => '早\n<<日记：试运行>>', historyContent: strip, absorb: part => { absorbed.push(part); } });
+            await dry.responder.initiate(request({ dryRun: true, maxBubbles: 3 }));
+            assert.deepEqual(absorbed, []);
         });
 
         test('正在回消息、有没回的消息时不主动；生成的是空的也不发、不再生成', async () => {

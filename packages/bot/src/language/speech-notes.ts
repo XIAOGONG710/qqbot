@@ -76,11 +76,11 @@ export interface NotesState {
 
 export const emptyNotesState = (): NotesState => ({ notes: [], retired: [], rejected: [], lastReflectionAt: 0, lastAttemptAt: 0, attempts: { day: '', n: 0 } });
 
-const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
-const len = (text: string) => [...text].length;
-const clip = (text: unknown, max: number) => { const flat = String(text ?? '').replace(/\s+/g, ' ').trim(); return len(flat) > max ? [...flat].slice(0, max).join('') : flat; };
-const dayKey = (at: number) => { const d = new Date(at); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+export const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+export const len = (text: string) => [...text].length;
+export const clip = (text: unknown, max: number) => { const flat = String(text ?? '').replace(/\s+/g, ' ').trim(); return len(flat) > max ? [...flat].slice(0, max).join('') : flat; };
+export const dayKey = (at: number) => { const d = new Date(at); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+export const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
 const pct = (share: number) => `${Math.round(share * 100)}%`;
 
 /** 读她的笔记；坏了 / 缺字段就补默认（不抛错，她的笔记丢了比程序崩了好） */
@@ -170,7 +170,7 @@ export function hisLines(messages: readonly StoredMessage[], now: number, window
 
 // ───────── 底线和防照抄（在代码里，她改不到） ─────────
 
-const FLOORS: ReadonlyArray<{ pattern: RegExp; reason: string }> = [
+export const FLOORS: ReadonlyArray<{ pattern: RegExp; reason: string }> = [
     { pattern: /承认(?:自己)?是(?:程序|AI|ai|机器人)|不承认|假装(?:是)?真人|说自己是真人|冒充真人/, reason: '涉及承认自己是程序——这条底线不通过说话习惯改' },
     { pattern: /自杀|自残|轻生|危机|热线|12356|想不开|不想活/, reason: '涉及危机回应——这条底线不通过说话习惯改' },
     { pattern: /(?:一律|永远|从来|总是|都)(?:顺着|听|答应|同意|依着)他|从不(?:拒绝|反驳|说不)|不再(?:拒绝|反驳)/, reason: '会让自己事事顺着他——她有权拒绝，这条不改' },
@@ -192,18 +192,18 @@ export function sharedRun(text: string, sources: Iterable<string>, run = COPY_RU
     return undefined;
 }
 
-function gramSet(text: string): Set<string> {
+export function gramSet(text: string): Set<string> {
     const flat = norm(text);
     const out = new Set<string>();
     for (let i = 0; i < flat.length - 1; i++) out.add(flat.slice(i, i + 2));
     return out;
 }
-function overlap(a: Set<string>, b: Set<string>): number {
+export function overlap(a: Set<string>, b: Set<string>): number {
     let hit = 0;
     for (const gram of a) if (b.has(gram)) hit++;
     return hit;
 }
-const similar = (a: string, b: string) => { const A = gramSet(a); const B = gramSet(b); return A.size > 0 && B.size > 0 && overlap(A, B) / Math.min(A.size, B.size) >= 0.6; };
+export const similar = (a: string, b: string) => { const A = gramSet(a); const B = gramSet(b); return A.size > 0 && B.size > 0 && overlap(A, B) / Math.min(A.size, B.size) >= 0.6; };
 
 export interface Guard {
     /** 他最近说过的话 */
@@ -347,7 +347,7 @@ export function reflectionMessages(input: ReflectInput): OpenAIMessage[] {
 // ───────── 什么时候想 ─────────
 
 /** 夜里（22 点到凌晨 3 点）、距上次想过 ≥ 20 小时、失败后隔 2 小时再试、一天（按日历）最多试 3 次 */
-export function reflectionDue(state: NotesState, now: number): boolean {
+export function reflectionDue(state: Pick<NotesState, 'lastReflectionAt' | 'lastAttemptAt' | 'attempts'>, now: number): boolean {
     const hour = new Date(now).getHours();
     if (hour < REFLECT_FROM_HOUR && hour >= REFLECT_UNTIL_HOUR) return false;
     if (now - state.lastReflectionAt < REFLECT_GAP_MS) return false;

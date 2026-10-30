@@ -55,6 +55,7 @@ import { BILI_STICKER_PER_DAY, biliStickerDiscover, STICKER_UNCUED_CHANCE } from
 import { pursuitsReader } from '.././life/pursuits.ts';
 import { describeForOwner, loadSelfState, reflectIfDue, selfAwareReader } from '.././life/self-pursuits.ts';
 import { describeNotesForOwner, loadNotesState, reflectIfDue as reflectSpeechNotes, speechNotesReader } from '.././language/speech-notes.ts';
+import { describeInsightsForOwner, insightsReader, loadInsightsState, recordSelfDiary, reflectIfDue as reflectInsights } from '.././life/diary-insights.ts';
 import { substituteMacros } from '.././st/macros.ts';
 import { removeFaces } from '.././language/qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from '.././memory/long-term.ts';
@@ -732,6 +733,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const pursuitsNow = config.selfPursuits ? selfAwareReader(config.dataDir, authorPursuits) : authorPursuits;
     // 她自己总结的说话习惯（ADR 0193）：要在创建回复器之前定义（createContactResponder 里用得到）
     const speechNotesNow = config.speechNotes ? speechNotesReader(config.dataDir) : undefined;
+    // 她翻日记时发现的自己（ADR 0194）：同理，要在创建回复器之前定义
+    const diaryInsightsNow = config.diaryInsights ? insightsReader(config.dataDir) : undefined;
     // 每个联系人一个回复器：聊天记录、生成和重新生成都互不影响
     const responders = new Map<number, Responder>(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
 
@@ -794,6 +797,31 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         return timer;
     })() : undefined;
     if (config.speechNotes) log(deviceOwner ? '她自己总结说话习惯：开（每晚 22 点以后想一次；/说话习惯 随时看）' : '她自己总结说话习惯：开着，但名单里没有男朋友档，不启动');
+    // 她每晚翻自己的日记，写下对自己的认识（ADR 0194）：22 点以后想一次，日记够多、有新的才想；失败 2 小时后再试，每天最多试 3 次
+    const diaryInsightsTimer = config.diaryInsights && deviceOwner ? (() => {
+        const owner = deviceOwner;
+        const { character } = cardFor(owner.tier);
+        let busy = false;
+        const tick = () => {
+            if (busy || stopped) return;
+            busy = true;
+            void reflectInsights({
+                dataDir: config.dataDir,
+                soulDir: soulDir(),
+                now: () => clockNow().getTime(),
+                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 0.9 }, messages, { log, purpose: 'background' })),
+                history: () => history.load(owner.qq),
+                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
+                names: { char: character.name, user: owner.name },
+                others: () => config.contacts.filter(contact => contact.qq !== owner.qq).map(contact => contact.name),
+                log,
+            }).catch(error => log(`自我认识：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
+        };
+        const timer = setInterval(tick, 30 * 60_000);
+        timer.unref();
+        return timer;
+    })() : undefined;
+    if (config.diaryInsights) log(deviceOwner ? '她翻自己的日记写对自己的认识：开（每晚 22 点以后想一次；/自我认识 随时看）' : '她翻自己的日记写对自己的认识：开着，但名单里没有男朋友档，不启动');
     const silenceTimer = config.silenceNotice && deviceOwner ? (() => {
         const watcher = createSilenceWatcher({ ...silenceDeps(deviceOwner), tell: text => tellOwner(text), log });
         const timer = setInterval(() => { try { watcher.tick(); } catch (error) { log(`没回的原因没能告诉他（${error instanceof Error ? error.message : String(error)}）`); } }, 60_000);
@@ -851,6 +879,98 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     }
 
     function createContactResponder(contact: Contact): Responder {
+        // 回复里的内部标记（<<记住>> / <<日记>> / <<私密>> / <<同意工作>> / <<拒绝工作>> / <<用电脑>> / <<同意>> / <<拒绝>>）：从文字里剥掉、该办的事办了，返回剩下的文字。
+        // 发出去的气泡走 send 时先过这里；整条只有标记的气泡不发，也要过这里（responder 的 absorb），不然写在单独一行的标记就丢了。
+        const absorbMarkers = (userId: number, input: string): string => {
+            let text = input;
+            const selfNotes = takeSelfNotes(text);
+            text = selfNotes.text;
+            for (const note of selfNotes.notes) {
+                if (note.kind === '私密') {
+                    appendPrivate(note.text);
+                    continue;
+                }
+                // 她翻日记时要读的：他那一档聊天里写的 <<日记>> 在本地也留一份（ADR 0194；Hindsight 里没法按日期整批读）
+                if (note.kind === '日记' && config.diaryInsights && contact.tier === 'boyfriend') {
+                    try { recordSelfDiary(config.dataDir, note.text, clockNow().getTime()); } catch (error) { log(`[${userId}] 她写的日记没能在本地留一份：${error instanceof Error ? error.message : String(error)}`); }
+                }
+                if (memory) {
+                    void memory.rememberSelfNote(contact, note.text, note.kind)
+                        .catch(error => log(`[${userId}] 她自己记的事没写进记忆：${error instanceof Error ? error.message : String(error)}`));
+                }
+            }
+            // 她答应/拒绝切工作：标记不发出去，但状态要改
+            if (text.includes('<<同意工作>>')) {
+                setWorkMode(config.dataDir, userId, 'work');
+                text = text.replace(/<<同意工作>>/g, '').trim();
+                log(`[${userId}] 她答应了切工作模式`);
+            }
+            const rejected = /<<拒绝工作[：:]\s*([\s\S]*?)>>/.exec(text);
+            if (rejected) {
+                const reason = (rejected[1] ?? '').trim();
+                setWorkMode(config.dataDir, userId, 'chat');
+                addRefusal(reason);
+                text = text.replace(/<<拒绝工作[：:][\s\S]*?>>/g, '').trim();
+                log(`[${userId}] 她拒绝了切工作：${reason.slice(0, 40)}`);
+            }
+            // 她自己判断这条要动电脑（2026-10-29）：当轮交给 dsh 干，干完把结果单独发回去。
+            // 不落工作模式，所以他不用发 /dsh，也不用事后 /QQ 切回来
+            if (contact.tier === 'boyfriend') {
+                const judged = takeWorkMarker(text);
+                if (judged.wanted) {
+                    text = judged.text;
+                    const task = lastUserText.get(userId);
+                    if (task) {
+                        const recent = history.load(userId).slice(-10)
+                            .map(message => `${message.role === 'user' ? '他' : '我'}：${message.content}`)
+                            .join('\n');
+                        log(`[${userId}] 她判断这条要动电脑：${task.slice(0, 60)}`);
+                        void runWork(task, { context: recent })
+                            .then(async reply => {
+                                const messageId = await transport.sendPrivateText(userId, reply);
+                                // 干完的结果也进聊天记录（和 /dsh 工作模式一样，ADR 0176），活记在他自己的 bank 里
+                                history.append(userId, { time: clockNow().toISOString(), role: 'assistant', content: reply, messageId });
+                                void rememberWorkTask(task, reply, memory?.bankId(contact));
+                            })
+                            .catch(error => {
+                                log(`[${userId}] 她判断要动电脑、没干成：${error instanceof Error ? error.message : String(error)}`);
+                                void transport.sendPrivateText(userId, '这个没弄成，等下我再看。').catch(() => {});
+                            });
+                    } else {
+                        log(`[${userId}] 她写了 ${WORK_MARKER}，但他最后那一条不是亲手打的字（ADR 0179），不动电脑`);
+                        tellOwner(WANTED_BUT_NOT_TYPED_NOTICE);
+                    }
+                }
+            }
+            // 他提给她的请求（看屏幕 / 摄像头）：她写了 <<同意>> 就做，写了 <<拒绝：原因>> 就作罢（2026-10-30）
+            if (contact.tier === 'boyfriend') {
+                const judged = takeConsent(text);
+                if (judged.refusal !== undefined) {
+                    text = judged.text;
+                    const pending = pendingAsk.get(userId);
+                    pendingAsk.delete(userId);
+                    log(`[${userId}] 她拒绝了：${judged.refusal || '不想'}${pending ? '（撤掉了他的请求）' : ''}`);
+                    void transport.sendPrivateText(userId, `（她说：${judged.refusal || '这个不想'}）`).catch(() => {});
+                } else if (judged.consent) {
+                    text = judged.text;
+                    const pending = pendingAsk.get(userId);
+                    if (pending && !askExpired(pending.at, Date.now())) {
+                        pendingAsk.delete(userId);
+                        log(`[${userId}] 她答应了：${pending.label}`);
+                        void pending.run().then(async handled => {
+                            if (handled.kind === 'reply' && handled.text) await transport.sendPrivateText(userId, handled.text);
+                        }).catch(error => log(`[${userId}] 她答应了但没做成：${error instanceof Error ? error.message : String(error)}`));
+                    }
+                }
+            }
+            // 网络热梗：她这条里原样用上了库里的哪个（只记词，不记意思）。用来回答「她会用梗吗」
+            if (config.memes && contact.tier === 'boyfriend') {
+                const usedMeme = memeEntries.find(entry => entry.term && text.includes(entry.term));
+                if (usedMeme) log(`[${userId}] 网络热梗：她用了「${usedMeme.term}」`);
+            }
+            return text;
+        };
+
         return createPipeline({
             contact,
             card: cardFor(cardKey(contact)),
@@ -945,6 +1065,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => memeEntries } : {}),
             ...(exemplars.length && contact.tier === 'boyfriend' ? { exemplars } : {}),
             ...(speechNotesNow && contact.tier === 'boyfriend' ? { speechNotes: speechNotesNow } : {}),
+            ...(diaryInsightsNow && contact.tier === 'boyfriend' ? { diaryInsights: diaryInsightsNow } : {}),
             ...(memeDict && contact.tier === 'boyfriend' ? { memeDict } : {}),
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
@@ -971,87 +1092,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.readReceipts && transport.markRead ? { markRead: (userId: number) => { transport.markRead!(userId).catch(error => failOnce('已读回执', userId, error)); } } : {}),
             ...(config.reactions && transport.reactMessage ? { react: (userId: number, messageId: number, text: string) => { transport.reactMessage!(messageId, reactionEmoji(text, messageId)).then(() => log(`[${userId}] 看到了没回，点了个表情回应`), error => failOnce('表情回应', userId, error)); } } : {}),
             send: async (userId, text, sendOptions) => {
-                const selfNotes = takeSelfNotes(text);
-                text = selfNotes.text;
-                for (const note of selfNotes.notes) {
-                    if (note.kind === '私密') {
-                        appendPrivate(note.text);
-                        continue;
-                    }
-                    if (memory) {
-                        void memory.rememberSelfNote(contact, note.text, note.kind)
-                            .catch(error => log(`[${userId}] 她自己记的事没写进记忆：${error instanceof Error ? error.message : String(error)}`));
-                    }
-                }
-                // 她答应/拒绝切工作：标记不发出去，但状态要改
-                if (text.includes('<<同意工作>>')) {
-                    setWorkMode(config.dataDir, userId, 'work');
-                    text = text.replace(/<<同意工作>>/g, '').trim();
-                    log(`[${userId}] 她答应了切工作模式`);
-                }
-                const rejected = /<<拒绝工作[：:]\s*([\s\S]*?)>>/.exec(text);
-                if (rejected) {
-                    const reason = (rejected[1] ?? '').trim();
-                    setWorkMode(config.dataDir, userId, 'chat');
-                    addRefusal(reason);
-                    text = text.replace(/<<拒绝工作[：:][\s\S]*?>>/g, '').trim();
-                    log(`[${userId}] 她拒绝了切工作：${reason.slice(0, 40)}`);
-                }
-                // 她自己判断这条要动电脑（2026-10-29）：当轮交给 dsh 干，干完把结果单独发回去。
-                // 不落工作模式，所以他不用发 /dsh，也不用事后 /QQ 切回来
-                if (contact.tier === 'boyfriend') {
-                    const judged = takeWorkMarker(text);
-                    if (judged.wanted) {
-                        text = judged.text;
-                        const task = lastUserText.get(userId);
-                        if (task) {
-                            const recent = history.load(userId).slice(-10)
-                                .map(message => `${message.role === 'user' ? '他' : '我'}：${message.content}`)
-                                .join('\n');
-                            log(`[${userId}] 她判断这条要动电脑：${task.slice(0, 60)}`);
-                            void runWork(task, { context: recent })
-                                .then(async reply => {
-                                    const messageId = await transport.sendPrivateText(userId, reply);
-                                    // 干完的结果也进聊天记录（和 /dsh 工作模式一样，ADR 0176），活记在他自己的 bank 里
-                                    history.append(userId, { time: clockNow().toISOString(), role: 'assistant', content: reply, messageId });
-                                    void rememberWorkTask(task, reply, memory?.bankId(contact));
-                                })
-                                .catch(error => {
-                                    log(`[${userId}] 她判断要动电脑、没干成：${error instanceof Error ? error.message : String(error)}`);
-                                    void transport.sendPrivateText(userId, '这个没弄成，等下我再看。').catch(() => {});
-                                });
-                        } else {
-                            log(`[${userId}] 她写了 ${WORK_MARKER}，但他最后那一条不是亲手打的字（ADR 0179），不动电脑`);
-                            tellOwner(WANTED_BUT_NOT_TYPED_NOTICE);
-                        }
-                    }
-                }
-                // 他提给她的请求（看屏幕 / 摄像头）：她写了 <<同意>> 就做，写了 <<拒绝：原因>> 就作罢（2026-10-30）
-                if (contact.tier === 'boyfriend') {
-                    const judged = takeConsent(text);
-                    if (judged.refusal !== undefined) {
-                        text = judged.text;
-                        const pending = pendingAsk.get(userId);
-                        pendingAsk.delete(userId);
-                        log(`[${userId}] 她拒绝了：${judged.refusal || '不想'}${pending ? '（撤掉了他的请求）' : ''}`);
-                        void transport.sendPrivateText(userId, `（她说：${judged.refusal || '这个不想'}）`).catch(() => {});
-                    } else if (judged.consent) {
-                        text = judged.text;
-                        const pending = pendingAsk.get(userId);
-                        if (pending && !askExpired(pending.at, Date.now())) {
-                            pendingAsk.delete(userId);
-                            log(`[${userId}] 她答应了：${pending.label}`);
-                            void pending.run().then(async handled => {
-                                if (handled.kind === 'reply' && handled.text) await transport.sendPrivateText(userId, handled.text);
-                            }).catch(error => log(`[${userId}] 她答应了但没做成：${error instanceof Error ? error.message : String(error)}`));
-                        }
-                    }
-                }
-                // 网络热梗：她这条里原样用上了库里的哪个（只记词，不记意思）。用来回答「她会用梗吗」
-                if (config.memes && contact.tier === 'boyfriend') {
-                    const usedMeme = memeEntries.find(entry => entry.term && text.includes(entry.term));
-                    if (usedMeme) log(`[${userId}] 网络热梗：她用了「${usedMeme.term}」`);
-                }
+                text = absorbMarkers(userId, text);
                 if (!text.trim()) return 0;
                 const photo = contact.tier === 'boyfriend' ? photos?.resolve(text) : undefined;
                 if (photo) {
@@ -1088,6 +1129,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     return sendText(plain);
                 }
             },
+            // 整条只有内部标记的气泡不发，但里面的标记要处理（responder 的 absorb）
+            absorb: (userId, part) => { absorbMarkers(userId, part); },
             log,
             // last-prompt.json 记录的是后处理之后、实际发给模型的消息
             sensitive: sensitive.on,
@@ -1690,6 +1733,8 @@ ${body}
             if (config.selfPursuits && config.pursuits && plain === '/追求') { tellOwner(describeForOwner(pursuitsNow(), loadSelfState(config.dataDir), clockNow().getTime())); return; }
             // 「/说话习惯」：她自己总结的说话习惯、放下过什么、想写没成什么（ADR 0193）；只能看，不能改
             if (config.speechNotes && plain === '/说话习惯') { tellOwner(describeNotesForOwner(loadNotesState(config.dataDir), clockNow().getTime())); return; }
+            // 「/自我认识」：她翻日记时发现的自己、放下过什么、想写没成什么（ADR 0194）；只能看，不能改
+            if (config.diaryInsights && plain === '/自我认识') { tellOwner(describeInsightsForOwner(loadInsightsState(config.dataDir), clockNow().getTime())); return; }
             if (dormancy && plain && /^\/休眠(?:\s|$)/.test(plain)) { void handleDormancyCommand(plain.replace(/^\/休眠\s*/, '')); return; }
             if (dormancy && plain === '/唤醒') { void wakeUp(); return; }
         }
@@ -2157,6 +2202,7 @@ ${body}
             if (silenceTimer) clearInterval(silenceTimer);
             if (selfPursuitTimer) clearInterval(selfPursuitTimer);
             if (speechNotesTimer) clearInterval(speechNotesTimer);
+            if (diaryInsightsTimer) clearInterval(diaryInsightsTimer);
             clearInterval(outboxTimer);
             if (foodDiscoveryTimer) clearInterval(foodDiscoveryTimer);
             clearTimeout(foodRetryTimer);

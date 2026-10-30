@@ -194,6 +194,7 @@ export interface Config {
     crossRecent: boolean;
     selfPursuits: boolean;
     speechNotes: boolean;
+    diaryInsights: boolean;
     rhythm: boolean;
     shortReplies: boolean;
     candidates: number;
@@ -460,6 +461,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**她自己定追求**（ADR 0178）：她每晚 20 点以后安静地想一次——哪些事还想做、哪些不想了、有没有新的想做的；可以放下 / 暂停 / 恢复任何一条（包括作者给的别挂科、拍相机），记一句进度，提新的（同时最多 3 件、隔 3 天提一件、要说为什么）。你用 `/追求` 看，改不了。花真钱 / 违法 / 骗人 / 碰你的东西 / 人生大方向（考研出国结婚分手等，作者没定）不会成为追求。要同时开 `pursuits`。默认关。'),
         speechNotes: Schema.boolean().default(DEFAULTS.speechNotes)
             .description('**她每晚自己总结说话习惯**（ADR 0193）：每晚 22 点以后她安静地想一次——看自己这几天说话的样子（一次回几条、每条多长、两个字以内的短反应、问号、表情）和真人语料里的样子（只是让她看一眼，不是目标线也不是上限），写下「我发现……」这样的笔记；挑最相关的几条放进以后的提示词。笔记不能引用他说过的话（学她自己的说话方式，不是变成他）、不能照抄真人的原话、不碰承认自己是程序 / 危机 / 事事顺着他这些底线。他用 /说话习惯 能看，改不了。要名单里有男朋友档。默认关；开了要重启 Koishi。'),
+        diaryInsights: Schema.boolean().default(DEFAULTS.diaryInsights)
+            .description('**她每晚翻自己的日记，写下对自己的认识**（ADR 0194）：每晚 22 点以后她安静地翻一次最近 14 天的日记（DSH 睡眠整合写的 JOURNAL.md、QQ 自动日记、聊天里写的 <<日记>>；不看私密日记），写下「我发现自己……」；每条要写明日记里真有的日期、至少两个不同的日子才算发现；挑最相关的几条放进以后的提示词。不能引用他说过的话、不能写名单里别人、不能抄日记原句、不碰承认自己是程序 / 危机 / 事事顺着他 / 骗人 / 设定里的名字年龄这些底线；不改 SOUL.md。他用 /自我认识 能看，改不了。要名单里有男朋友档。默认关；开了要重启 Koishi。'),
         rhythm: Schema.boolean().default(DEFAULTS.rhythm)
             .description('**回复节奏**（ADR 0075）：打字的时间按字数算（0.6 秒 + 每字 0.18 秒，0.9–9 秒），回之前先「看 + 想」一会儿（多半 0.8–3.5 秒，偶尔几秒到半分钟）；热聊的第一条中位慢约 4 秒。默认关（老样子：0.8 秒 + 每字 0.1 秒，1–4 秒）'),
         shortReplies: Schema.boolean().default(DEFAULTS.shortReplies)
@@ -665,6 +668,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.crossRecent !== undefined ? { crossRecent: config.crossRecent } : {}),
         ...(config.selfPursuits !== undefined ? { selfPursuits: config.selfPursuits } : {}),
         ...(config.speechNotes !== undefined ? { speechNotes: config.speechNotes } : {}),
+        ...(config.diaryInsights !== undefined ? { diaryInsights: config.diaryInsights } : {}),
         ...(config.rhythm !== undefined ? { rhythm: config.rhythm } : {}),
         ...(config.shortReplies !== undefined ? { shortReplies: config.shortReplies } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
