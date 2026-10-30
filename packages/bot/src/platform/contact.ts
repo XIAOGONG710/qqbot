@@ -42,6 +42,7 @@ import { bodyAt, describeBody, diaryBody, unwell } from '.././life/body.ts';
 import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
 import { herStatus } from '.././language/status-line.ts';
 import { describeWarmAffect, warmAffect } from '.././emotion/affect.ts';
+import { moodPaceLine, moodShape, tunedMaxBubbles } from '.././emotion/express.ts';
 import { withEveryday } from '.././life/everyday.ts';
 import { withMenu } from '.././life/menu.ts';
 import { describePursuits, pursuitViews, type Pursuit } from '.././life/pursuits.ts';
@@ -767,6 +768,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const feelingLine = feltNow.length && !grievanceActive
                 ? describeFeelings(feltNow, contact.name, { melt: asksAfterHer(hisWords), voiced: voicedKinds(chat, time.getTime()), mayCry: !criedRecently(chat, time.getTime()) })
                 : undefined;
+            // 情绪 → 行为（2026-10-30）：心境不再只是提示词里的一行装饰，它决定这一轮说多说少
+            const moodNow = moodShape(feltNow);
+            const paceLine = feltNow.length && !grievanceActive ? moodPaceLine(moodNow) : undefined;
+            if (paceLine) log('心境：这一轮按她此刻的心情收放了说话的量（日志不记内容）');
             // 桌面上的她读同一份（ADR 0197）：那一行按「没有人正好在关心她」重算（melt 只对 QQ 当下这一句话有意义），小别扭那一轮不交
             if (options.onFeelings && options.herFeelings && contact.tier === 'boyfriend' && !crisisNow) {
                 const neutral = feltNow.length && !grievanceActive
@@ -925,6 +930,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(unsettled ? [unsettled] : []),
                         ...(warm ? [warm] : []),
                         ...(feelingLine ? [feelingLine] : []),
+                        ...(paceLine ? [paceLine] : []),
                         ...(books ? [books.text] : []),
                         ...(world ? [world] : []),
                         ...(practice ? [practice] : []),
@@ -991,7 +997,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return {
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
-                ...(crisisNow ? { maxBubbles: 3 } : ((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) || grievanceActive) ? { maxBubbles: shapeNow ? Math.min(2, shapeNow.maxBubbles) : 2 } : shapeNow ? { maxBubbles: shapeNow.maxBubbles } : deliberateNow ? { maxBubbles: DELIBERATE_MAX_BUBBLES } : {}),
+                ...(crisisNow ? { maxBubbles: 3 } : feltNow.length && !grievanceActive ? { maxBubbles: tunedMaxBubbles(shapeNow ? shapeNow.maxBubbles : 3, moodNow) } : ((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) || grievanceActive) ? { maxBubbles: shapeNow ? Math.min(2, shapeNow.maxBubbles) : 2 } : shapeNow ? { maxBubbles: shapeNow.maxBubbles } : deliberateNow ? { maxBubbles: DELIBERATE_MAX_BUBBLES } : {}),
                 ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆${summary ? '和前面的要点' : ''}）` } : {}),
             };
         },

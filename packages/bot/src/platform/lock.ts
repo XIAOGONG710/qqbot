@@ -61,9 +61,20 @@ function heartbeatFresh(heartbeat?: { path: string; staleMs?: number; now?: numb
     }
 }
 
-/** 持锁进程调它开始/续写心跳（30 秒一次够了） */
-export function startHeartbeat(path: string, intervalMs = 30_000): () => void {
-    const beat = () => { try { writeFileSync(path, String(Date.now())); } catch { /* 写不了就算了，不影响主流程 */ } };
+/**
+ * 持锁进程调它开始/续写心跳（30 秒一次够了）。
+ * lockPath 一起给的话，每次心跳顺带确认锁还在——2026-10-30 线上见到锁文件被别的启动流程删掉、
+ * 进程还在跑，下一次启动就会当成没人持有、起第二个实例（每条消息回两遍）。
+ */
+export function startHeartbeat(path: string, intervalMs = 30_000, lockPath?: string, pid = process.pid): () => void {
+    const beat = () => {
+        try { writeFileSync(path, String(Date.now())); } catch { /* 写不了就算了，不影响主流程 */ }
+        if (!lockPath) return;
+        try {
+            const owner = readOwner(lockPath);
+            if (owner !== pid) writeFileSync(lockPath, String(pid));
+        } catch { /* 锁文件恢复不了也不影响回复 */ }
+    };
     beat();
     const timer = setInterval(beat, intervalMs);
     timer.unref();
