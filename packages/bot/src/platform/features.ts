@@ -41,7 +41,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'silenceNotice', label: '没回时告诉他原因（作息 / 她的决定 / 故障）', group: '说话', adr: '0173' },
     { key: 'crossRecent', label: 'QQ 和 DSH 桌面互读最近几轮（同一个她）', group: '记忆和安全', adr: '0177' },
     { key: 'selfPursuits', label: '她自己定追求（每晚想一次，自己放下 / 提新的）', group: '她的日子', adr: '0178' },
-    { key: 'speechNotes', label: '她每晚自己总结说话习惯（「我发现……」，挑几条放进提示词；他可以用 /像AI /像真人 标她说的话给她看）', group: '说话', adr: '0193' },
+    { key: 'speechNotes', label: '她每晚自己总结说话习惯（「我发现……」，挑几条放进提示词；他可以用 /像AI /像真人 标她说的话给她看；/说话趋势 按周看她说话的数字）', group: '说话', adr: '0193' },
     { key: 'diaryInsights', label: '她每晚翻自己的日记，写下对自己的认识（「我发现自己……」，要有两天以上的依据）', group: '她的日子', adr: '0194' },
     { key: 'exemplars', label: '看真人怎么回（从已批准的真人语料挑几条当口气参考）', group: '说话', adr: '0190' },
     { key: 'selfDirectedMemory', label: '她自己决定记不记（关掉自动记忆同步和自动日记）', group: '记忆和安全', adr: '0171' },

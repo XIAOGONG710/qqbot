@@ -41,7 +41,7 @@ QQ 和 DSH 桌面上的她共用同一个 Hindsight，但接缝是临时拼的�
 - `test/owner-bank.test.ts` 3 项（写读、没变不重写、坏文件）。
 - `test/soul-plugin.test.ts` 新增 6 项：用假的 Hindsight（桩 `fetch`）驱动真插件——有 / 没有 `owner-bank.json` 时分别召回哪些 bank、公共库过滤、`owner-bank.json` 指向别处不认、桌面对话写进他的 bank 和没文件时的回退、`memory_save` 只失效 `dsh-` 的。变异检验 5 处（读所有人 / 写回老 bank / 不过滤 `dsh-` / 不查前缀 / 不过滤公共库），每处都让对应测试变红。
 - `test/people.test.ts` 的 ADR 0018 条目由红转绿（`recallWork` 不再对非男朋友档召回）。
-- **没有测**：`app.ts` 里 `owner-bank.json` 的写入和工作模式记聊天记录这两处接线（只过了类型检查）。
+- **没有测**：`app.ts` 里工作模式记聊天记录这一处接线（只过了类型检查）。`owner-bank.json` 的写入后来补了 app 层测试（ADR 0196 里，含用 DSH 插件自己的读法去读它）。
 
 ## 怎么回滚
 

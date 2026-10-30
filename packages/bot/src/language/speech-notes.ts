@@ -316,7 +316,7 @@ export interface ReflectInput {
     feedback?: FeedbackBundle;
 }
 
-const statsLine = (stats: SpeechStats) => `一次回 ${stats.perTurn} 条；每条中位 ${stats.medianChars} 个字；两个字以内的短反应占 ${pct(stats.shortShare)}；带问号占 ${pct(stats.questionShare)}；带表情占 ${pct(stats.emojiShare)}`;
+export const statsLine = (stats: SpeechStats) => `一次回 ${stats.perTurn} 条；每条中位 ${stats.medianChars} 个字；两个字以内的短反应占 ${pct(stats.shortShare)}；带问号占 ${pct(stats.questionShare)}；带表情占 ${pct(stats.emojiShare)}`;
 
 /** 从语料里按日期挑几条（同一天挑同样的，跨天会换） */
 export function pickSamples(corpus: readonly Exemplar[], now: number, count = 6): Exemplar[] {

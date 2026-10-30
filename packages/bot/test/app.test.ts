@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { after, afterEach, before, describe, test } from 'node:test';
 import { setWorkMode } from '../src/platform/work-mode.ts';
 import { startApp, type App, type AppOptions, type Transport } from '../src/platform/app.ts';
@@ -800,6 +801,42 @@ describe('编排（app.ts）', () => {
         assert.ok(!on.sent.some(line => line.startsWith('10001:（她自己总结')));
     });
 
+    test('同一个她（ADR 0176 / 0177）：启动时把他的 bank 写进 memory/owner-bank.json，DSH 插件自己的读法认得；crossRecent 开着多带两边互读的文件；没有男朋友档 / 没开长期记忆就不写', async () => {
+        const memory = { baseUrl: 'http://127.0.0.1:1', timeoutMs: 50, recallTimeoutMs: 50, bankPrefix: 'test' };
+        const ownerFile = (cfg: AppConfig) => join(cfg.dataDir, 'memory', 'owner-bank.json');
+        const readByPlugin = async (cfg: AppConfig) => {
+            const plugin = await import(pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), '../../../dsh-plugins/dsh-linmengyao-memory/index.js')).href) as { ownerBanks: (cfg: unknown) => Record<string, string> | undefined };
+            return plugin.ownerBanks({ prefix: 'test', ownerBankFile: ownerFile(cfg) });
+        };
+        // 有男朋友档 + 长期记忆
+        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }, { qq: 10002, name: '宝宝', tier: 'boyfriend' }], memory });
+        const app = setup(cfg);
+        const written = JSON.parse(readFileSync(ownerFile(cfg), 'utf8')) as Record<string, string>;
+        assert.match(written.ownerBank!, /^test-[0-9a-f]{16}$/, '他的 bank：前缀 + 哈希，不带 QQ 号');
+        assert.ok(!written.ownerBank!.includes('10002'));
+        assert.equal(written.commonBank, 'test-common');
+        assert.equal(written.legacyBank, 'test');
+        assert.equal(written.chatFile, undefined, 'crossRecent 没开：没有第 2 层的文件');
+        assert.ok(app.logs.some(line => line.startsWith('同一个她：他的记忆 bank 写进 memory/owner-bank.json')));
+        const seen = await readByPlugin(cfg);
+        assert.deepEqual([seen?.owner, seen?.common, seen?.legacy], [written.ownerBank, 'test-common', 'test']);
+        // 第 2 层开着：互读的三个文件路径，DSH 插件的读法也认（目录名 / 文件名都对得上）
+        const crossCfg = config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }], memory, crossRecent: true });
+        setup(crossCfg);
+        const crossSeen = await readByPlugin(crossCfg);
+        assert.equal(crossSeen?.chatFile, join(crossCfg.dataDir, 'chats', '10002.jsonl'));
+        assert.equal(crossSeen?.recalledFile, join(crossCfg.dataDir, 'chats', '10002.recalled.json'));
+        assert.equal(crossSeen?.desktopFile, join(crossCfg.dataDir, 'memory', 'desktop-recent.jsonl'));
+        // 没有男朋友档 / 没开长期记忆：不写
+        const noOwner = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }], memory });
+        const noOwnerApp = setup(noOwner);
+        assert.equal(existsSync(ownerFile(noOwner)), false);
+        assert.ok(!noOwnerApp.logs.some(line => line.includes('owner-bank.json 没写成')), '没有男朋友档是正常情况，不该报「没写成」');
+        const noMemory = config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
+        setup(noMemory);
+        assert.equal(existsSync(ownerFile(noMemory)), false);
+    });
+
     test('/像AI、/像真人（ADR 0195，随 speechNotes）：把她最近一次说的话连着他前面的话记下来；同一次再标覆盖；回执不进聊天记录、不交给她；没有可标的 / 关着 / 同学档都是别的样子', async () => {
         const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
         const seed = (cfg: AppConfig) => {
@@ -848,6 +885,51 @@ describe('编排（app.ts）', () => {
         off.app.receive(event(10002, 1, '/像AI', '宝宝'));
         await until(() => offPrompts.length >= 1);
         assert.deepEqual(feedbackOf(offCfg), [], '关着不记');
+    });
+
+    test('/说话趋势（ADR 0196，随 speechNotes）：她说话的样子按周看，放上真人语料的数字；只读聊天记录不存状态；不交给她、不进聊天记录；关着 / 同学档是普通的话', async () => {
+        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+        const seed = (cfg: AppConfig) => {
+            const store = new ChatHistory(cfg.dataDir);
+            const at = (daysAgo: number, offset = 0) => new Date(Date.now() - daysAgo * 86_400_000 + offset * 1000).toISOString();
+            for (const [daysAgo, texts] of [[1, ['哈', '哈哈', '真的假的', '笑死我了', '你好笨', '😂']], [9, ['辛苦了', '早点歇着呀', '别太晚', '明天见']]] as const) {
+                store.append(10002, { time: at(daysAgo, -5), role: 'user', content: '在吗' });
+                texts.forEach((text, i) => store.append(10002, { time: at(daysAgo, i), role: 'assistant', content: text }));
+            }
+            mkdirSync(join(cfg.dataDir, 'exemplars'), { recursive: true });
+            writeFileSync(join(cfg.dataDir, 'exemplars', 'corpus.jsonl'), [
+                { id: 'c1', source: 't', license: 'test', said: '在吗', replied: ['在', '怎么啦'] }, { id: 'c2', source: 't', license: 'test', said: '晚安', replied: ['嗯'] },
+            ].map(item => JSON.stringify(item)).join('\n'));
+        };
+        const cfg = config({ contacts, speechNotes: true });
+        seed(cfg);
+        const prompts: string[] = [];
+        const on = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
+        await on.app.connected(SELF);
+        const before = chat(cfg, 10002);
+        on.app.receive(event(10002, 1, '/说话趋势', '宝宝'));
+        await until(() => on.sent.length >= 1);
+        assert.match(on.sent[0]!, /^10002:（她说话的样子，按周看/);
+        assert.match(on.sent[0]!, /最近 7 天（6 条）：一次回 6 条；每条中位 3 个字；两个字以内的短反应占 50%/);
+        assert.match(on.sent[0]!, /7–14 天前（4 条）：太少了，数出来的比例不当数/);
+        assert.match(on.sent[0]!, /真人女生的参照（来自 3 条真实语料）：一次回 1.5 条/);
+        assert.match(on.sent[0]!, /没有目标线，不会拿去卡她/);
+        assert.equal(prompts.length, 0, '命令不交给她');
+        assert.deepEqual(chat(cfg, 10002), before, '命令和回复都不进聊天记录');
+        assert.ok(!existsSync(join(cfg.dataDir, 'speech-trend.json')), '不存状态');
+        // 同学档发同样的命令：不是命令
+        on.app.receive(event(10001, 2, '/说话趋势', '阿明'));
+        await until(() => prompts.length >= 1);
+        assert.ok(!on.sent.some(line => line.startsWith('10001:（她说话的样子')));
+        // 关着：是普通的话
+        const offCfg = config({ contacts });
+        seed(offCfg);
+        const offPrompts: string[] = [];
+        const off = setup(offCfg, {}, { generate: messages => { offPrompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
+        await off.app.connected(SELF);
+        off.app.receive(event(10002, 1, '/说话趋势', '宝宝'));
+        await until(() => offPrompts.length >= 1);
+        assert.equal(off.sent[0], '10002:好');
     });
 
     test('他标过的话（ADR 0195）进每晚想说话习惯的那一次提示词，不进聊天时的提示词', async t => {

@@ -54,7 +54,8 @@ import { dishesBetween, loadMenuFrom } from '.././life/menu.ts';
 import { BILI_STICKER_PER_DAY, biliStickerDiscover, STICKER_UNCUED_CHANCE } from '.././language/bili-stickers.ts';
 import { pursuitsReader } from '.././life/pursuits.ts';
 import { describeForOwner, loadSelfState, reflectIfDue, selfAwareReader } from '.././life/self-pursuits.ts';
-import { describeNotesForOwner, loadNotesState, reflectIfDue as reflectSpeechNotes, speechNotesReader } from '.././language/speech-notes.ts';
+import { describeNotesForOwner, loadNotesState, reflectIfDue as reflectSpeechNotes, speechNotesReader, speechStats } from '.././language/speech-notes.ts';
+import { describeTrend, speechTrend } from '.././language/speech-trend.ts';
 import { FEEDBACK_NO_TURN, describeFeedbackForOwner, feedbackReceipt, lastTurn, loadFeedback, parseFeedbackCommand, recentFeedback, recordFeedback } from '.././language/speech-feedback.ts';
 import { describeInsightsForOwner, insightsReader, loadInsightsState, recordSelfDiary, reflectIfDue as reflectInsights, writeInsightsExport } from '.././life/diary-insights.ts';
 import { substituteMacros } from '.././st/macros.ts';
@@ -1744,6 +1745,12 @@ ${body}
             if (config.speechNotes && plain === '/说话习惯') {
                 const now = clockNow().getTime();
                 tellOwner(describeNotesForOwner(loadNotesState(config.dataDir), now, describeFeedbackForOwner(loadFeedback(config.dataDir), now)));
+                return;
+            }
+            // 「/说话趋势」：她说话的样子按周看，放上真人语料的同一组数字；从聊天记录里数，不存状态，只是监测（ADR 0196）
+            if (config.speechNotes && plain === '/说话趋势') {
+                const corpus = loadExemplars(join(config.dataDir, 'exemplars', 'corpus.jsonl'));
+                tellOwner(describeTrend(speechTrend(history.load(deviceOwner.qq), clockNow().getTime()), speechStats(corpus.map(item => item.replied))));
                 return;
             }
             // 「/像AI」「/像真人」（可以跟一句理由）：把她最近那一次说的话连着他前面的话存下来，每晚想说话习惯时她会看到（ADR 0195，随 speechNotes）
