@@ -436,3 +436,22 @@ export function stripInternalMarkers(text: string): string {
         .join('\n')
         .trim();
 }
+
+/**
+ * 陈述句尾巴上的问号（2026-10-30）：她最近 60 条里 14 条带问号，多数是「不过我先不改什么，我这个都快把自己搞乱了？」
+ * 这种——不是真在问，是求确认、把话说虚。判据是机械的：句末有问号，但整句里没有疑问词，就去掉问号。
+ */
+// 判断「真在问」只看真正的疑问成分：语气词「吗/呢」和 AB 不 AB 这类；
+// 「什么/哪」太容易出现在陈述里（「不改什么」），不单独算。
+const QUESTION_WORD = /吗|[呢么][？?]|是不是|要不要|能不能|有没有|会不会|行不行|好不好|对吧|是吧|为什么|怎么|哪里|哪儿|谁|多少/;
+
+export function tidyQuestionMarks(text: string): string {
+    const lines = text.split('\n').map(line => {
+        const trimmed = line.trim();
+        if (!/[？?]$/.test(trimmed)) return line;
+        const body = trimmed.slice(0, -1).trim();
+        if (!body || QUESTION_WORD.test(body)) return line;
+        return body;
+    });
+    return lines.join('\n');
+}

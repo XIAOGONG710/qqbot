@@ -40,7 +40,7 @@ import { answerWhy, createSilenceWatcher, noteFromInfo, recordSilence, type Sile
 import { drainOutbox } from '.././social/outbox.ts';
 import { writeOwnerBank } from '.././memory/owner-bank.ts';
 import { desktopBlock, desktopRecentPath } from '.././memory/cross-recent.ts';
-import { inspectReply, stripInternalMarkers, summarizeIssues, type ExitIssue } from '.././language/exit-check.ts';
+import { inspectReply, stripInternalMarkers, summarizeIssues, tidyQuestionMarks, type ExitIssue } from '.././language/exit-check.ts';
 import { ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
@@ -1161,7 +1161,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             send: async (userId, text, sendOptions) => {
                 text = absorbMarkers(userId, text);
                 // 兜底：她偶尔把提示词里的标记原样写出来（10-30 发过「<<当前时间：…>>」），发送前剥掉
-                text = stripInternalMarkers(text);
+                text = tidyQuestionMarks(stripInternalMarkers(text));
                 if (!text.trim()) return 0;
                 const photo = contact.tier === 'boyfriend' ? photos?.resolve(text) : undefined;
                 if (photo) {

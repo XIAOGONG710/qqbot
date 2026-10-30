@@ -108,5 +108,5 @@ const META_ASK = /你(?:是|是不是)(?:什么|怎么|怎么做到)|怎么(?:�
 export function ackGuardLine(history: readonly Said[]): string | undefined {
     const last = history.filter(message => message.role === 'user').slice(-1)[0]?.content ?? '';
     if (!META_ASK.test(last)) return undefined;
-    return '[他这句问的是很元的东西（你是谁、你怎么做、要不要给你加什么）。别只回「对」「嗯」「行吧」这种空附和——接不上就直接说你接不上，或者把话拉回你身上：说一件你自己这会儿在做的、或者反问他一句。整轮只剩一个「对」比说错还难看]';
+    return '[他这句问的是很元的东西（你是谁、你怎么做、要不要给你加什么）。别只回「对」「嗯」「行吧」这种空附和——接不上就直接说你接不上，或者把话拉回你身上：说一件你自己这会儿在做的。整轮只剩一个「对」比说错还难看]';
 }

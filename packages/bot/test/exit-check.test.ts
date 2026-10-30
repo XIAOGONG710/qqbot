@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
-import { dropLines, inspectReply, reviewReply, rewriteNote, stripInternalMarkers, tidyMarkers } from '../src/language/exit-check.ts';
+import { dropLines, inspectReply, reviewReply, rewriteNote, stripInternalMarkers, tidyMarkers, tidyQuestionMarks } from '../src/language/exit-check.ts';
 import type { OpenAIMessage } from '../src/language/prompt.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
@@ -379,4 +379,13 @@ test('内部标记兜底：<<…>> 一律不进聊天；只剥标记不留空行
     assert.equal(stripInternalMarkers('有信心。\n<<当前时间：2026-10-30 星期五 16:20>>\n就是不知道跟什么较劲。'), '有信心。\n就是不知道跟什么较劲。');
     assert.equal(stripInternalMarkers('<<当前时间：xx>>'), '');
     assert.equal(stripInternalMarkers('正常的话'), '正常的话');
+});
+
+// 2026-10-30：她最近 60 条里 14 条带问号，多数是陈述句尾巴上加的「？」，读起来像在求确认
+test('陈述句尾巴上的问号去掉；真在问的留着', () => {
+    assert.equal(tidyQuestionMarks('不过我先不改什么，我这个都快把自己搞乱了？'), '不过我先不改什么，我这个都快把自己搞乱了');
+    assert.equal(tidyQuestionMarks('我先睡了？'), '我先睡了');
+    assert.equal(tidyQuestionMarks('你吃饭了吗？'), '你吃饭了吗？');
+    assert.equal(tidyQuestionMarks('问谁去啊？'), '问谁去啊？');
+    assert.equal(tidyQuestionMarks('好\n也行？'), '好\n也行');
 });
