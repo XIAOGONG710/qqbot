@@ -1028,6 +1028,19 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             // 危机回合被问是不是真人一律承认（ADR 0068 决策 7）：知道她是程序的联系人这一轮换用承认版的卡
             ...(openCardFor(contact) ? { openCard: openCardFor(contact)! } : {}),
             ...(contact.tier === 'boyfriend' ? {
+                // 她有「自己的下文」吗（2026-10-30 她自己的诊断）：日记最后一段 + 她自己在做的事，用不用她定
+                selfThread: (): string | undefined => {
+                    try {
+                        const journal = selfThreadLine(selfThread(readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8')));
+                        let doing: string | undefined;
+                        try {
+                            const life = JSON.parse(readFileSync(join(soulDir(), 'LIFE.json'), 'utf8')) as { events?: { text?: string }[] };
+                            const own = (life.events ?? []).map(e => String(e.text ?? '')).filter(t => t && !t.includes('跟我说') && !t.startsWith('新的一天')).slice(-2);
+                            if (own.length) doing = `[你这两天自己在做的：${own.map(t => t.replace(/^我在/, '')).join('；').slice(0, 80)}]`;
+                        } catch { /* 没有 LIFE.json 就只有日记那一段 */ }
+                        return [journal, doing].filter(Boolean).join(String.fromCharCode(10)) || undefined;
+                    } catch { return undefined; }
+                },
                 workMode: () => readWorkMode(config.dataDir, contact.qq) === 'work',
                 workJudge: () => readWorkMode(config.dataDir, contact.qq) === 'chat',
                 ask: (): string | undefined => {
