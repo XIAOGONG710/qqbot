@@ -103,8 +103,8 @@ export const MODULES: readonly ModuleDef[] = [
         files: ['platform/app.ts', 'platform/main.ts', 'platform/work-bridge.ts', 'platform/instruction-source.ts', 'platform/work-mode.ts', 'platform/soul-rating.ts', 'platform/resident-guard.ts', 'platform/contact.ts', 'platform/config.ts', 'platform/features.ts', 'platform/modules.ts', 'platform/modules-doc.ts', 'platform/weekly-report.ts', 'platform/consistency.ts', 'platform/onebot.ts', 'platform/lock.ts', 'platform/log.ts', 'platform/heartbeat.ts', 'platform/runtime-info.ts', 'platform/dns-fallback.ts', 'platform/qr.ts', 'platform/device-actions.ts', 'platform/device-hub.ts', 'platform/device-phone.ts', 'platform/device-service.ts',
             'platform/sensitive.ts', 'platform/web.ts', 'platform/consent.ts', 'ops/', 'sim/', 'vendor/'],
         groups: ['工具'],
-        metrics: '控制台「状态」页（ADR 0120）；ops/golive-check-cli；ops/heartbeat-watch-cli',
-        adrs: ['0002', '0008', '0118', '0119', '0120', '0160', '0172', '0174', '0175', '0179', '0190'],
+        metrics: '控制台「状态」页（ADR 0120）；ops/golive-check-cli；ops/heartbeat-watch-cli；ops/history-migrate-cli（一次性迁移，ADR 0199）',
+        adrs: ['0002', '0008', '0118', '0119', '0120', '0160', '0172', '0174', '0175', '0179', '0190', '0199'],
     },
 ];
 
