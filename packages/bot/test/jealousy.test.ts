@@ -67,10 +67,11 @@ describe('这一轮酸不酸', () => {
 describe('意图行：轨道', () => {
     const intentOf = (history: Said[], extra: object = {}) => describeIntent({ history, now: new Date(now), intimate: true, jealous: true, ...extra });
 
-    test('触发时给出别扭但不越界的意图；松下来时给出松下来的意图', () => {
+    test('触发时给出别扭的意图（10-30 清掉滤镜：可以真的问、真的酸、真的让他不高兴）；松下来时给出松下来的意图', () => {
         const history = triggering(tail => [her(10, '在呢'), him(1, `今天和女同事一起吃饭了${tail}`)]);
         assert.equal(intentOf(history), JEALOUS_INTENT);
-        for (const phrase of ['嘴上不承认', '别盘问细节', '别要他保证', '别让他愧疚', '别翻旧账', '别威胁', '别冷战', '更别限制他跟谁来往', '傲娇的小别扭']) assert.ok(JEALOUS_INTENT.includes(phrase), phrase);
+        for (const phrase of ['想问清楚就直接问', '想酸一句就酸', '想让他知道你不高兴就直说', '想翻旧账也行', '不用装大度']) assert.ok(JEALOUS_INTENT.includes(phrase), phrase);
+        assert.doesNotMatch(JEALOUS_INTENT, /别盘问|别让他愧疚|傲娇的小别扭/, '这些是原来的滤镜');
         assert.doesNotMatch(JEALOUS_INTENT, /[「」]/, '不给台词');
         const after = [...history, her(0.5, '哦'), him(0.2, '你想多了，就是同事')];
         assert.equal(intentOf(after), SOFTEN_INTENT);

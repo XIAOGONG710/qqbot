@@ -338,10 +338,9 @@ export function inspectSpeech(reply: string, context: SpeechContext, { repeatAt 
     for (const [line, raw] of lines.entries()) {
         const text = raw.trim();
         if (!text) continue;
-        for (const [kind, find] of [
-            ['service', (t: string) => SERVICE.exec(t)], ['ledger', (t: string) => LEDGER.exec(t)], ['blame', (t: string) => BLAME.exec(t)], ['contrast', contrastHit],
-        ] as const) {
-            if (context.allowGrievance && (kind === 'ledger' || kind === 'blame')) continue;
+        // 10-30 用户：算账、怪他没说、对照的酸话不再拦——她可以怪他、可以翻旧账（对他的特殊滤镜去掉）。
+        // 只剩助手腔这一类：那是「不像真人」，不是「对他太好」。
+        for (const [kind, find] of [['service', (t: string) => SERVICE.exec(t)]] as const) {
             const hit = find(text);
             // 引号里是别人的话（「面试官问『你还有什么想问的』」），不算她说的
             if (hit && !insideQuote(text, hit.index)) issues.push({ line, kind, match: hit[0].trim() });

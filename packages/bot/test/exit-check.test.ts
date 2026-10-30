@@ -284,20 +284,20 @@ describe('出口检查：说话的毛病（ADR 0014）', () => {
         assert.equal(r.notes.length, 0);
         assert.deepEqual(r.logs, ['出口检查：第 1 行开头「行」最近用过 2 次，去掉']);
     });
-    test('算账：带说明重写，说明里说要怎么接；重写后通过就用重写的', async () => {
+    test.skip('算账（10-30 已不再拦）：带说明重写，说明里说要怎么接；重写后通过就用重写的', async () => {
         const r = await run('醒啦？\n这会儿才想起来回我', ['醒啦\n昨晚睡得好不好']);
         assert.equal(r.reply, '醒啦\n昨晚睡得好不好');
         assert.match(r.notes[0]!, /「这会儿才想起来回我」在说阿明隔了这么久才来找你；阿明来找你你是高兴的，直接接话/);
         assert.match(r.notes[0]!, /别的意思不变，重写这次的回复/);
         assert.deepEqual(r.logs, ['出口检查：第 2 行算账「这会儿才想起」，带说明重写一次', '出口检查：重写后通过']);
     });
-    test('对照的酸话（ADR 0019）：带说明重写，说明里说不要比着说委屈', async () => {
+    test.skip('对照的酸话（10-30 已不再拦）：带说明重写，说明里说不要比着说委屈', async () => {
         const r = await run('在呢\n你回青岛舒服了吧，我一个人蹲宿舍', ['在呢\n宿舍今天就我一个，好安静，你那边热闹吗']);
         assert.equal(r.reply, '在呢\n宿舍今天就我一个，好安静，你那边热闹吗');
         assert.match(r.notes[0]!, /在拿阿明和你自己比着说委屈；说你这边的事就说你这边的，阿明那边的事顺着问问/);
         assert.match(r.logs[0]!, /^出口检查：第 2 行对照的酸话「你回青岛舒服」，带说明重写一次$/);
     });
-    test('重写后还在：删掉那一行；只剩那一行就照发', async () => {
+    test.skip('重写后还在（用算账举例，规则已删）：删掉那一行；只剩那一行就照发', async () => {
         assert.equal((await run('醒啦？\n这会儿才想起来回我', ['醒啦\n你终于想起来找我了'])).reply, '醒啦');
         const r = await run('你回青岛了也不说一声', ['你回青岛也不说一声']);
         assert.equal(r.reply, '你回青岛也不说一声');
@@ -310,7 +310,7 @@ describe('出口检查：说话的毛病（ADR 0014）', () => {
         assert.equal(r.reply, '快睡\n明天拍清楚点');
         assert.match(r.logs[1]!, /照发$/);
     });
-    test('和做不到的事一起：一次重写；做不到的事还在照样删', async () => {
+    test.skip('和做不到的事一起（含算账，规则已删）：一次重写；做不到的事还在照样删', async () => {
         const r = await run('一整天没动静\n回去了发你照片', ['我刚在宿舍躺着\n回去了发你照片']);
         assert.equal(r.notes.length, 1);
         assert.match(r.notes[0]!, /「一整天没动静」在说阿明.*；「回去了发你照片」答应或者像是已经给对方发照片/);
@@ -346,16 +346,10 @@ describe('说话的毛病接在流水线里（模拟器，假模型）', () => {
                     generate: async messages => { calls.push(messages); return replies.shift()!; },
                 });
                 const bubbles = result.steps[0]!.bubbles.map(b => b.text);
-                if (speechCheck) {
-                    assert.deepEqual(bubbles, ['回来啦，累不累']);
-                    assert.equal(calls.length, 2);
-                    assert.match(calls[1]!.at(-1)!.content as string, /「哟，还知道回来啊」在说宝宝隔了这么久才来找你/);
-                    assert.deepEqual(result.steps[1]!.checks.map(c => c.ok), [true]);
-                } else {
-                    assert.deepEqual(bubbles, ['哟，还知道回来啊']);
-                    assert.equal(calls.length, 1);
-                    assert.deepEqual(result.steps[1]!.checks.map(c => c.ok), [false]);
-                }
+                // 10-30 算账不再拦：「哟，还知道回来啊」原样发出去，开关开不开都一样
+                assert.deepEqual(bubbles, ['哟，还知道回来啊']);
+                assert.equal(calls.length, 1);
+                assert.deepEqual(result.steps[1]!.checks.map(c => c.ok), [true]);
             } finally {
                 rmSync(dir, { recursive: true, force: true });
             }

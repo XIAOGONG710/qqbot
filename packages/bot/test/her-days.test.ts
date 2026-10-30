@@ -130,13 +130,16 @@ describe('在读的书（ADR 0015）', () => {
         assert.deepEqual(bookMention(chat, card.books), { mentioned: true, bookIds: ['rejinzhi'], named: true }, '最近一条没点名时往前找');
     });
 
-    test('那一段：你的感受、称呼替换；点名的书给全部读到的节点，泛问每本给主角和主线', () => {
+    test('那一段：不给作者的「你的感受」（10-30 去掉这类限制）、称呼替换；点名的书给全部读到的节点，泛问每本给主角和主线', () => {
         const now = at('2026-10-06T19:00:00');
         const named = describeBooks(schedule, [book('rejinzhi')], now, { userText: '那结局呢', userName: '宝宝', named: ['rejinzhi'] })!;
-        assert.match(named.text, /《惹金枝》.*看到第 505 章；全书 550 章；你的感受：/);
+        assert.match(named.text, /《惹金枝》.*看到第 505 章；全书 550 章/);
+        assert.doesNotMatch(named.text, /你的感受/, '设定里那句态度不再塞给她');
+        assert.match(named.text, /你喜不喜欢，按你自己这会儿的感觉说/);
         assert.match(named.text, /成绩与出版：入选/);
         assert.match(named.text, /宝宝问的《惹金枝》结局你还没看到/);
-        assert.match(named.text, /也可以问问宝宝看到哪了。\]$/);
+        assert.match(named.text, /也可以问问宝宝看到哪了。/);
+        assert.match(named.text, /没有想法就说没想法。\]$/);
         assert.doesNotMatch(named.text, /\{\{user\}\}|她的感觉/);
         assert.deepEqual(named.context.focusIds, ['rejinzhi']);
 
@@ -219,7 +222,7 @@ describe('接进流水线（ADR 0015 第 5 步，假模型）', () => {
     test('心情行每轮都在；聊到书才有那一段；说错卷数带说明重写一次', async () => {
         const result = await run(true, ['在宿舍躺着', '在看药屋，就翻了前两卷', '在看药屋，看到第七卷了']);
         const [chat, books] = result.steps.filter(step => step.kind === 'say');
-        assert.match(chat!.generations[0]!.timeBlock!, /\n\[你今天的心情：[^\]]+\](\n|$)/);
+        assert.doesNotMatch(chat!.generations[0]!.timeBlock!, /\[你今天的心情：/);
         assert.match(chat!.generations[0]!.timeBlock!, /\n\[你那边（今天到现在的事实[^\]]+土豆（楼下的流浪猫）/, '她的世界跟着她自己的日子（ADR 0021）');
         assert.doesNotMatch(chat!.generations[0]!.timeBlock!, /在读的书/);
         assert.match(books!.generations[0]!.timeBlock!, /\[在读的书：\n- 《药屋少女的呢喃》[^\n]*看到第 7 卷/);
@@ -236,7 +239,7 @@ describe('接进流水线（ADR 0015 第 5 步，假模型）', () => {
         assert.equal(offBooks.generations[0]!.rewrites, undefined);
 
         const quiet = await run(true, ['嗯', '药屋'], { mood: '安静' });
-        assert.match(quiet.steps.find(step => step.kind === 'say')!.generations[0]!.timeBlock!, /\[你今天的心情：安静（/);
+        assert.doesNotMatch(quiet.steps.find(step => step.kind === 'say')!.generations[0]!.timeBlock!, /\[你今天的心情：/);
         await assert.rejects(run(true, [], { mood: '暴躁' }), /不是卡上的心情/);
     });
 });
