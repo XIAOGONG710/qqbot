@@ -176,3 +176,13 @@
 - **测试隔离**：`app.test.ts` 现在把 `QQBOT_SOUL_DIR` 整个文件隔离到临时目录（原来 app 的 NOW.md 之类导出会写进真正的 `~/.dsh/linmengyao`，在你那台机器上跑测试会覆盖她真正的文件）。其他会 `startApp` 的测试文件（`quote` / `recall` / `qq-faces` / `runtime`）我没动——它们默认不开 `diaryInsights`，不会写 `INSIGHTS.json`；但如果以后它们开了新的、会往灵魂目录写东西的开关，要照 `app.test.ts` 的做法隔离。
 - **没做**：`/自我认识` 命令桌面上没有（只在 QQ）；`diaryInsights` 仍然默认关，开要用户点头。
 - 验证：bot 2301 / 插件 43 / 另一包 42，tsc 0；变异检验 20 处全红。数据和脚本：`research/2026-10-30-diary-insights/`。
+
+## 17. 他一键标「这句像 AI」/「像真人」（ADR 0195，ADR 0190 第 4 步，用户 10-30「继续」）——`dsh/qq-control` 现在是 `e0ed34e`
+
+- **是什么**：随 `speechNotes` 开关（没有新开关）。他在 QQ 打 `/像AI` 或 `/像真人`（后面可跟一句理由），就把她**最近一次连着发的话**和它前面他说的话（≤3 条）存进 `<数据目录>/speech-feedback.json`（最多 60 条，同一次说的话再标覆盖）。每晚她想说话习惯时（ADR 0193）提示词多一段「他最近标过的」（14 天内、每类最近 5 条），写明是他的感受不是规定、变不变她自己定。**不在代码里按反馈改她的话、不设字数**。
+- **你要留意的几处**：① 这些是他私聊里的话，**只进每晚想的那一次提示词，不进聊天提示词**（有测试）；② 他写的理由也算他说的话，她的笔记引了就进 rejected（交给 ADR 0193 的防照抄）；③ `speech-notes.ts` 导出了 `NOT_SPEECH`，`reflectIfDue` 多了可选的 `feedback` 依赖，`describeNotesForOwner` 多了可选的第三个参数；④ `speech-feedback.ts` 已登记进 `platform/modules.ts`，`docs/modules` 已重新生成。
+- **没做**：隐性反馈（回得快慢、有没有笑）——回得慢可能是忙，笑可能是别的事好笑，先量它和「像真人」标记的相关性再说；标更早的某一条（只能标她最近那一次）。
+- **真模型**：合成反馈两次，每次 3 条、都过防线——只说明机制通，不是效果；也不要指望它让她变短（ADR 0190 / 0193 已经量过，提示词压不过模型的长度先验）。数据和脚本：`research/2026-10-30-speech-feedback/`。
+- 验证：speech-feedback 16 项、speech-notes +2、app +2；变异检验 29 处全红；全量 bot 2321 / 插件 43 / 另一包 42，tsc 0。
+
+**两个小提醒**：① 往灵魂目录写东西的新功能，`app.test.ts` 已经把 `QQBOT_SOUL_DIR` 隔离到临时目录，别的会 `startApp` 的测试文件（`quote` / `recall` / `qq-faces` / `runtime`）没有；② 本次对话里我写 shell 脚本时 heredoc 里的 `\n` 会被转成真换行，改文件请用 Edit，别用 `node - <<EOF` 做带转义的替换。
