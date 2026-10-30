@@ -63,9 +63,22 @@ describe('危机信号记录（ADR 0068 决策 5、6）', () => {
         assert.equal(state.last(10002), undefined, 'strain 记录丢掉');
         assert.equal(state.pausedAt(10002, t0 + 1000), false, '不再因为它暂停主动消息');
         assert.deepEqual(state.last(10003), { at: t0, level: 'concern' }, '别的记录原样');
-        assert.equal(state.pausedAt(10003, t0 + 1000), true);
+        assert.equal(state.pausedAt(10003, t0 + 1000), false, '关切级不停主动消息');
         // 真正损坏的仍然失败关闭：级别写成别的词不是 strain，不能被一并吞掉
         writeFileSync(join(dir, 'crisis.json'), JSON.stringify({ version: 2, contacts: { 10002: { at, level: 'mild' } } }));
         assert.throws(() => createCrisisState(dir, () => {}), /危机状态.*schema.*拒绝启动/);
+    });
+
+    test('关切级不停主动消息（10-30：「我一个人可撑不下去」不该让她两天不发早安）', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-crisis-concern-'));
+        dirs.push(dir);
+        const t0 = Date.UTC(2026, 9, 30, 14, 0, 0);
+        const state = createCrisisState(dir, () => {});
+        state.mark(10001, t0, 'concern');
+        assert.equal(state.pausedAt(10001, t0 + 1000), false);
+        state.mark(10002, t0, 'high');
+        assert.equal(state.pausedAt(10002, t0 + 1000), true, '高 / 紧急照旧停');
+        state.mark(10003, t0, 'imminent');
+        assert.equal(state.pausedAt(10003, t0 + 1000), true);
     });
 });

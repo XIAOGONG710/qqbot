@@ -1961,7 +1961,7 @@ ${body}
         const crisis = detectCrisis(text);
         if (crisis && config.contacts.some(c => c.qq === event.user_id)) {
             crisisState.mark(event.user_id, event.time * 1000, crisis.level);
-            log(`[${event.user_id}] 危机信号：${crisis.level} 级（只记级别和时间，不记内容）；普通主动消息暂停 ${CRISIS_PAUSE_MS / 3_600_000} 小时`);
+            log(`[${event.user_id}] 危机信号：${crisis.level} 级（只记级别和时间，不记内容）${crisis.level === 'concern' ? '；关切级不停主动消息' : `；普通主动消息暂停 ${CRISIS_PAUSE_MS / 3_600_000} 小时`}`);
         }
         planners.get(event.user_id)?.poke();
     }
