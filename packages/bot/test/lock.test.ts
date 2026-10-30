@@ -85,3 +85,18 @@ describe('心跳：卡死/PID 复用的进程挡住启动时要能接管（2026-
         stop();
     });
 });
+
+// 2026-10-30 线上：锁文件被别的启动流程删掉、进程还在跑 → 下一次启动会起第二个实例
+test('心跳顺带把锁补回来', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'qqbot-lock-keep-'));
+    const hb = join(dir, 'bot.lock.hb');
+    const lockFile = join(dir, 'bot.lock');
+    const stop = startHeartbeat(hb, 10_000, lockFile, 4242);
+    assert.equal(readFileSync(lockFile, 'utf8'), '4242', '第一次心跳就把锁写上');
+    rmSync(lockFile);
+    stop();
+    const stop2 = startHeartbeat(hb, 10_000, lockFile, 4242);
+    assert.equal(readFileSync(lockFile, 'utf8'), '4242', '锁被删了，下一次心跳补回来');
+    stop2();
+    try { rmSync(dir, { recursive: true, force: true }); } catch { /* Windows 可能删不掉 */ }
+});

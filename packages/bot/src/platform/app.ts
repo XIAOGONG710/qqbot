@@ -462,7 +462,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 心跳：锁文件只记 PID，会被「进程卡死」和「PID 被复用」骗；心跳加一道，3 分钟没写就当它死了
     const lockHeartbeatFile = join(config.dataDir, 'bot.lock.hb');
     const releaseLock = acquireLock(join(config.dataDir, 'bot.lock'), process.pid, undefined, { path: lockHeartbeatFile });
-    const stopLockHeartbeat = startLockHeartbeat(lockHeartbeatFile);
+    const stopLockHeartbeat = startLockHeartbeat(lockHeartbeatFile, 30_000, join(config.dataDir, 'bot.lock'));
     // 心跳（任务书 T3b）：每分钟写 heartbeat.json（只有时间和进程号），ops/heartbeat-watch-cli.ts 看它多久没更新
     let connectedAt: Date | undefined;
     let lastMessageAt: Date | undefined;
