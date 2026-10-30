@@ -9,6 +9,8 @@
 // 别的路径、方法一律 404 / 405。没人取件（60 秒内没来过）时，提交的任务马上失败，不排队。
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { DispatchResult, Params } from './device-actions.ts';
 
@@ -24,6 +26,8 @@ export interface HubOptions {
     pollWaitMaxMs?: number;
     /** 图片最大字节数，默认 6 MB */
     maxImageBytes?: number;
+    /** 手机端伴侣 app 推上来的屏幕帧存这里（不传就不开这个入口） */
+    phoneFramesDir?: string;
 }
 
 export interface DeviceHub {
@@ -57,9 +61,9 @@ const startsWith = (bytes: Uint8Array, magic: readonly number[]) => magic.every(
 
 export function createDeviceHub(options: HubOptions): DeviceHub {
     const now = options.now ?? Date.now;
+    const maxImage = options.maxImageBytes ?? 6 * 1024 * 1024;
     const expected = Buffer.from(options.token);
     const pollMax = options.pollWaitMaxMs ?? 25_000;
-    const maxImage = options.maxImageBytes ?? 6 * 1024 * 1024;
     const queue: Waiting[] = [];
     const inFlight = new Map<string, Waiting>();
     let parked: { res: ServerResponse; timer: ReturnType<typeof setTimeout> } | undefined;
@@ -136,6 +140,33 @@ export function createDeviceHub(options: HubOptions): DeviceHub {
         json(res, 200, { ok: true });
     }
 
+    /**
+     * 手机屏幕帧（2026-10-30「手机端伴侣 app」）：app 主动推上来，存成 latest.jpg / latest.png + latest.json。
+     * 只认令牌、只收 JPEG / PNG、只留最后一帧（不攒历史，免得手机画面在磁盘上越积越多）。
+     */
+    async function handlePhoneFrame(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (!options.phoneFramesDir) { json(res, 404, { error: '没有这个入口' }); return; }
+        const text = await readBody(req);
+        if (text === undefined) { json(res, 413, { error: '太大' }); return; }
+        let body: { mime?: unknown; imageBase64?: unknown; at?: unknown };
+        try { body = JSON.parse(text); } catch { json(res, 400, { error: '不是 JSON' }); return; }
+        const mime = body.mime === 'image/jpeg' ? 'image/jpeg' : body.mime === 'image/png' ? 'image/png' : undefined;
+        const base64 = typeof body.imageBase64 === 'string' && /^[A-Za-z0-9+/=\s]+$/.test(body.imageBase64) ? Buffer.from(body.imageBase64, 'base64') : undefined;
+        if (!mime || !base64 || !base64.length || base64.length > maxImage || !startsWith(base64, mime === 'image/png' ? PNG : JPEG)) {
+            json(res, 422, { error: '这一帧不合格（只收 PNG / JPEG）' });
+            return;
+        }
+        try {
+            mkdirSync(options.phoneFramesDir, { recursive: true });
+            const file = join(options.phoneFramesDir, mime === 'image/png' ? 'latest.png' : 'latest.jpg');
+            writeFileSync(file, base64);
+            writeFileSync(join(options.phoneFramesDir, 'latest.json'), JSON.stringify({ mime, at: typeof body.at === 'number' ? body.at : now(), bytes: base64.length }));
+            json(res, 200, { ok: true });
+        } catch {
+            json(res, 500, { error: '存不下' });
+        }
+    }
+
     const handler = (req: IncomingMessage, res: ServerResponse): void => {
         const url = new URL(req.url ?? '/', 'http://hub.local');
         if (!authorized(req)) {
@@ -147,8 +178,9 @@ export function createDeviceHub(options: HubOptions): DeviceHub {
             return;
         }
         if (req.method === 'GET' && url.pathname === '/poll') { handlePoll(req, res, url); return; }
+        if (req.method === 'POST' && url.pathname === '/frame') { handlePhoneFrame(req, res).catch(() => { try { json(res, 500, { error: '出错了' }); } catch { /* 连接已断 */ } }); return; }
         if (req.method === 'POST' && url.pathname === '/result') { handleResult(req, res).catch(() => { try { json(res, 500, { error: '出错了' }); } catch { /* 连接已断 */ } }); return; }
-        json(res, url.pathname === '/poll' || url.pathname === '/result' ? 405 : 404, { error: '没有这个入口' });
+        json(res, url.pathname === '/poll' || url.pathname === '/result' || url.pathname === '/frame' ? 405 : 404, { error: '没有这个入口' });
     };
 
     return {
