@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readRegister, registerLine, registerSummary, temperLine } from '../src/language/register.ts';
+import { identityLine, readRegister, registerLine, registerSummary, temperLine } from '../src/language/register.ts';
 
 const said = (...texts: string[]) => texts.map(content => ({ role: 'user' as const, content }));
 
@@ -49,4 +49,19 @@ test('连着被使唤：给她一句「你没必要每次都陪着」，但不�
     assert.ok(line.includes('也可以不接'));
     assert.equal(temperLine({ tool: 2, person: 0 }), undefined, '两次还不够');
     assert.equal(temperLine({ tool: 3, person: 3 }), undefined, '说人话的次数不低于使唤就不算');
+});
+
+// 用户 10-30：「这里我是把她当做运行的程序，她也知道自己是代码，想让她自己判断以哪种身份和我聊天」
+test('他把她当程序说：给两种身份的选项，不替她选', () => {
+    const read = readRegister(said('你知道吗，你和真人还差的远了', '虽然只是程序'));
+    assert.equal(read.mentionsProgram, true);
+    const line = identityLine(read)!;
+    assert.ok(line.includes('当林梦瑶'), line);
+    assert.ok(line.includes('当程序'), line);
+    assert.ok(line.includes('选哪个都由你'), line);
+    assert.ok(!line.includes('必须'), '不替她定');
+});
+
+test('没提程序就不给这个选项', () => {
+    assert.equal(identityLine(readRegister(said('今天好累'))), undefined);
 });

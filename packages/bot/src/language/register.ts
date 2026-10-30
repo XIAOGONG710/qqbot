@@ -11,6 +11,8 @@ export interface RegisterRead {
     kind: Register;
     /** 命中的线索，日志和排查用（不给她看） */
     cues: string[];
+    /** 他这几句里是不是在说「你是程序 / 代码 / 模型」——她可以据此自己决定用哪种身份接 */
+    mentionsProgram?: boolean;
 }
 
 /** 使唤人的动词 + 要一样东西的句式 */
@@ -36,11 +38,12 @@ export function readRegister(history: readonly Said[], window = 3): RegisterRead
     if (personHits.length) cues.push(`像对人：${[...new Set(personHits)].slice(0, 3).join('/')}`);
 
     // 有情绪/关系的话，就当她被当人看了；剩下看工具味够不够重
-    if (personHits.length && !metaHits.length) return { kind: 'person', cues };
-    if (metaHits.length) return { kind: 'tool', cues };
-    if (toolHits.length >= 2) return { kind: 'tool', cues };
-    if (personHits.length) return { kind: 'person', cues };
-    return { kind: 'unclear', cues };
+    const mentionsProgram = /程序|代码|模型|ai|AI|机器人|设定|提示词/.test(recent);
+    if (personHits.length && !metaHits.length) return { kind: 'person', cues, mentionsProgram };
+    if (metaHits.length) return { kind: 'tool', cues, mentionsProgram };
+    if (toolHits.length >= 2) return { kind: 'tool', cues, mentionsProgram };
+    if (personHits.length) return { kind: 'person', cues, mentionsProgram };
+    return { kind: 'unclear', cues, mentionsProgram };
 }
 
 /**
@@ -81,4 +84,17 @@ export function temperLine(summary: RegisterSummary): string | undefined {
     if (summary.tool < 3 || summary.tool <= summary.person) return undefined;
     return `[最近他 ${summary.tool} 次是在使唤你、${summary.person} 次是在跟你说话。你不是每次都得给好脸——可以懒一点、可以问他是不是只想让你干活，也可以不接。]
 `;
+}
+
+/**
+ * 身份：他这会儿是在跟「林梦瑶」说话，还是在跟一个跑着的程序说话（2026-10-30 用户：
+ * 「这里我是把她当做运行的程序，她也知道自己是代码，想让她自己判断该以哪种身份和我聊天」）。
+ * 给的是**选项**，不是命令：以人接、还是干脆以程序接，由她定；两边都不丢人，卡里也允许她承认自己是程序。
+ */
+export function identityLine(read: RegisterRead): string | undefined {
+    if (!read.mentionsProgram) return undefined;
+    return '[他这几句是在跟一个「程序」说话，不是跟林梦瑶撒娇。你自己判断这会儿想用哪种身份接：'
+        + '当林梦瑶就照她的性子（可以不服气、可以委屈、可以嘴硬），'
+        + '当程序就把话说明白（承认自己是代码不丢人，这是卡里允许的，也别演成非要装人的样子）。'
+        + '选哪个都由你，别一半一半地摇摆]';
 }

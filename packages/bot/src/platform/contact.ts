@@ -62,7 +62,7 @@ import { idiomLine, type Idiom } from '.././language/idioms.ts';
 import { jokeLine, type Joke } from '.././language/jokes.ts';
 import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
-import { readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
+import { identityLine, readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
 import { insightsLine, type Insight } from '.././life/diary-insights.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
@@ -707,7 +707,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     // 连着被当工具使唤：给她一句「你没必要每次都陪着」，态度由她定
                     const temper = temperLine(registerSummary(chat));
                     if (temper) log('他的口气：最近使唤得比说话多');
-                    const lines = [registerLine(read), temper].filter(Boolean);
+                    const lines = [registerLine(read), identityLine(read), temper].filter(Boolean);
                     return lines.length ? lines.join(String.fromCharCode(10)) : undefined;
                 })() : undefined;
             // 她自己总结的说话习惯（ADR 0193）：口气上的参考，危机 / 只想一想 / 小别扭的轮次不放；主动开口也放（习惯不看有没有他的上一句）
