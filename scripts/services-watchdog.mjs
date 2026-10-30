@@ -182,7 +182,9 @@ async function check() {
     const napcatUp = await portOpen(3001);
     const hindsightUp = await hindsightHealthy();
     const net = await netUp();
-    const koishiProcs = procs.filter(p => p.name === 'node.exe' && /qqbot\\node_modules\\koishi/.test(p.cmd));
+    // 10-30 修：这里原来是 /qqbot\\node_modules\\koishi/，目录改成 qqbot-dsh-control 之后不再匹配——
+    // 守护每分钟都以为「没有 Koishi 进程」，于是不停拉起新实例（最多同时四个），她的回复重复、他的话在记录里也是两遍。
+    const koishiProcs = procs.filter(p => p.name === 'node.exe' && /node_modules[\\/]koishi[\\/]/.test(p.cmd));
     const connection = koishiConnection();
     if (!napcatUp) napcatUpSince = Infinity;
     else if (napcatUpSince === Infinity) napcatUpSince = Date.now();

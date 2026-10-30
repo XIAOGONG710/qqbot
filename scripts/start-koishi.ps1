@@ -52,6 +52,16 @@ try {
 $koishi = Join-Path $repoRoot 'node_modules\koishi\bin.js'
 if (-not (Test-Path $koishi)) { throw "Koishi is not installed - run npm install at the repo root" }
 
+# Only one instance. More than one means every QQ message is handled once per instance (10-30: four were
+# running; her replies and his own messages were duplicated in the chat log).
+$already = Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match 'node_modules[\\/]koishi[\\/]bin\.js' }
+if ($already) {
+    $pids = ($already | ForEach-Object { $_.ProcessId }) -join ', '
+    Write-Host "Koishi is already running (pid $pids) - not starting another one."
+    exit 1
+}
+
 # Koishi's loader reads package.json in the working directory and adds these two if they are missing;
 # the real dependencies are declared in packages/koishi-app.
 $manifest = Join-Path $instance 'package.json'
