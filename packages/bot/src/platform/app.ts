@@ -115,6 +115,7 @@ import { loadExemplars } from '.././language/exemplars.ts';
 import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
 import { askExpired, askLine, takeConsent } from './consent.ts';
 import { PEEK_OFF_NOTICE, peekRefused } from './private-space.ts';
+import { createTurnWeigher, WEIGH_TIMEOUT_MS } from '.././language/turn-weight.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -521,6 +522,16 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const askSmall = (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => (pipeline?.generate
         ? pipeline.generate(messages, log)
         : chatCompletion(quietLlm, messages, { log, purpose: 'background' }));
+    // 语义路由（ADR 0202）：深思开着、而且配置了 depthRouting 才建；小调用不开思考、温度 0、几十个 token，超时由 createTurnWeigher 管
+    const turnWeigher = config.depthRouting && config.deliberate
+        ? createTurnWeigher({
+            ask: messages => (pipeline?.generate
+                ? pipeline.generate(messages, log)
+                : chatCompletion({ ...config.llm, temperature: 0, maxTokens: 80, timeoutMs: WEIGH_TIMEOUT_MS, extraBody: { ...llmExtra, thinking: { type: 'disabled' } } }, messages, { log })),
+            log, now: () => clockNow().getTime(),
+        })
+        : undefined;
+    if (config.depthRouting && !config.deliberate) log('语义路由：depthRouting 开着，但 deliberate 没开——没有地方放，不起作用');
     const web = config.webLookup !== 'off'
         ? new WebLookup({
             mode: config.webLookup, dataDir: config.dataDir, ask: askSmall, now: clockNow, log,
@@ -1148,6 +1159,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.shape && config.shapeAsk ? { shapeAsk: true } : {}),
             ...(config.shape && config.shapeLong ? { shapeLong: true } : {}),
             ...(config.deliberate ? { deliberate: { llm: deliberateLlm(config.llm, config.deliberateModel) } } : {}),
+            ...(turnWeigher ? { turnWeight: turnWeigher } : {}),
             ...(continuity ? { continuity } : {}),
             contacts: config.contacts,
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；

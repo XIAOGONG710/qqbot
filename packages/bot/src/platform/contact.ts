@@ -32,6 +32,7 @@ import { describeObstacles, meetupDays } from '.././world/obstacles.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { describeQuote, planQuote, quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
 import { alreadyTold, ASKS_TO_EXPLAIN, describeLength, ENGAGED_INTENT, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from '.././language/expression.ts';
+import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
 import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from '.././language/shape.ts';
 import { finishReply } from '.././language/unfinished.ts';
 import { describeUnsettled } from '.././life/open-loops.ts';
@@ -238,6 +239,8 @@ export interface ContactPipelineOptions {
     generate?: (messages: OpenAIMessage[], log: Log, use?: AppConfig['llm']) => Promise<string>;
     /** 深思（配置 deliberate，ADR 0151）：认真问她的轮次不套字数和条数、用这份更强的模型配置（generate 的第三个参数）、提示词只留一句“先想清楚” */
     deliberate?: { llm: AppConfig['llm'] };
+    /** 语义路由（配置 depthRouting，ADR 0202；要 deliberate 开着）：关键词没认出来的轮次问一次小模型这一句是轻是重；说值得认真的（沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩）也走深思。只加不减；没分类出来（出错 / 超时）照旧按关键词 */
+    turnWeight?: (input: { history: ChatMessage[]; said: string }) => Promise<TurnWeight | undefined>;
     /**
      * 连续性（ADR 0157–0163，app.ts 提供）：按这一轮他说的话，返回要放进提示词的几行——设定改动的背景、QQ 以外做过的事、
      * 上网查到的资料、自己发现的口味、又见到的人。危机回合、只想一想的轮次不调用。出错 / 超时一律当没有，不挡回复
@@ -412,6 +415,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let shapeNow: ShapePlan | undefined;
     /** 这一轮是深思轮次（ADR 0151）：生成时用 options.deliberate.llm */
     let deliberateNow = false;
+    /** 这一轮是语义路由（ADR 0202）放进深思的：按分类多放的一小句提示（沉重的事 / 质疑 / 问他们俩），不是语义路由放进来的就没有 */
+    let routedHint: string | undefined;
     /** 这一轮发出去之前加质感用的上下文（ADR 0131）：他这一串说的话、这一轮是不是认真的回合、她最近几次回复里带了几次小黄脸 */
     let textureNow: { said: string; serious: boolean; recentFaces: number; recentTildes: number } | undefined;
     /** 这一轮第一条要引用他的哪一句（ADR 0136，配置 quoteReply）：buildPrompt 按他没回的那一串定，紧跟着发送时现取 */
@@ -798,9 +803,19 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (stickerContext) log(stickerOnlyNow ? '图片表情：这一轮抽到只发表情、不写文字' : '图片表情：这一轮抽到要发一个');
             if (options.stickers && !thinking && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
             // 深思（ADR 0151）：他是认真在问她的轮次，不套字数和条数、换更强的模型、提示词只留一句“先想清楚”；危机 / 小别扭 / 亲近等别的意图照旧让路
-            deliberateNow = Boolean(options.deliberate) && !initiate && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !grievanceActive
-                && deliberateTurn(intent, saidNow, ASKS_TO_EXPLAIN.test(saidNow));
-            if (deliberateNow) log(`深思：他在认真问她，这一轮不套字数和条数、用 ${options.deliberate!.llm.model}、提示词只留一句“先想清楚”`);
+            const deliberateEligible = Boolean(options.deliberate) && !initiate && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !grievanceActive;
+            const lexicalDeep = deliberateEligible && deliberateTurn(intent, saidNow, ASKS_TO_EXPLAIN.test(saidNow));
+            // 语义路由（ADR 0202）：关键词没认出来的轮次问一次小模型；只在「关键词说不是、分类说值得认真」时多放行一轮，关键词认出来的照旧
+            const routed = deliberateEligible && !lexicalDeep && options.turnWeight && saidNow.trim()
+                ? await options.turnWeight({ history: chat, said: saidNow }).catch(() => undefined)
+                : undefined;
+            deliberateNow = deliberateEligible && (lexicalDeep || wantsDepth(routed));
+            routedHint = deliberateNow && !lexicalDeep && routed ? ROUTED_HINTS[routed.kind] : undefined;
+            if (deliberateNow) {
+                log(!lexicalDeep && routed
+                    ? `深思：语义路由认为他这一轮是「${KIND_LABEL[routed.kind]}」${routed.why ? `（${routed.why}）` : ''}，这一轮不套字数和条数、用 ${options.deliberate!.llm.model}、提示词只留一句“先想清楚”${routedHint ? '、再加一小句方向' : ''}`
+                    : `深思：他在认真问她，这一轮不套字数和条数、用 ${options.deliberate!.llm.model}、提示词只留一句“先想清楚”`);
+            }
             // 深思时那条只管“怎么答”的意图行（先直接回答 / 很大很抽象的问题）由深思那一句代替；追着要答案、说她不像真人这类纠偏的意图行保留
             const intentLine = deliberateNow && intent && /先直接回答他刚问的|他在问一个很大、很抽象的问题/.test(intent) ? undefined : intent;
             // 引用回复（ADR 0136）：他连发里有个不是最后一条的问题，按概率引用它；危机、他难过、主动找他、只发表情 / 照片的回合不引用
@@ -973,6 +988,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(options.workJudge?.() ? [WORK_JUDGE_NOTE] : []),
                         ...(options.workMode?.() ? [WORK_MODE_NOTE] : []),
                         ...(deliberateNow ? [DELIBERATE_NOTE] : []),
+                        ...(routedHint ? [routedHint] : []),
                         ...(length ? [describeLength(length, options.shortReplies)] : []),
                         ...(shapeNow ? [describeShape(shapeNow)] : []),
                         ...(quoteLine ? [quoteLine] : []),

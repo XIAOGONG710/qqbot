@@ -16,6 +16,7 @@ import { writeJsonAtomic } from '../memory/json-file.ts';
 import { ChatHistory, type StoredMessage } from '../memory/history.ts';
 import type { FactRecord } from '../language/fact-check.ts';
 import { chatCompletion, forExtraction } from '../language/llm.ts';
+import { createTurnWeigher, WEIGH_TIMEOUT_MS } from '../language/turn-weight.ts';
 import type { Log } from '../platform/log.ts';
 import type { HindsightApi } from '../memory/hindsight.ts';
 import { LongTermMemory, RELATIONSHIP_MODEL } from '../memory/long-term.ts';
@@ -99,6 +100,8 @@ export interface RunOptions {
     shapeLong?: boolean;
     /** 认真问她时深思（ADR 0151）：run.ts 的 --deliberate；深思轮次用这份模型配置 */
     deliberateLlm?: BotConfig['llm'];
+    /** 语义路由（ADR 0202）：run.ts 的 --depth；要 deliberateLlm */
+    depthRouting?: boolean;
     /** 「做题式」写法（ADR 0146 实验）：run.ts 的 --frame solve；线上没有 */
     replyFrame?: 'solve';
     /** 测试注入：设备控制的钩子（ADR 0148）；模拟器命令行不传 */
@@ -452,6 +455,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(options.shapeAsk ? { shapeAsk: true } : {}),
         ...(options.shapeLong ? { shapeLong: true } : {}),
         ...(options.deliberateLlm ? { deliberate: { llm: options.deliberateLlm } } : {}),
+        ...(options.depthRouting && options.deliberateLlm ? {
+            turnWeight: createTurnWeigher({
+                ask: messages => (options.generate ? options.generate(messages, log) : chatCompletion({ ...options.llm, temperature: 0, maxTokens: 80, timeoutMs: WEIGH_TIMEOUT_MS, extraBody: { ...(Object.fromEntries(Object.entries(options.llm.extraBody ?? {}).filter(([key]) => key !== 'reasoning_effort'))), thinking: { type: 'disabled' } } }, messages, { log })),
+                log: line => log(line),
+            }),
+        } : {}),
         ...(options.replyFrame ? { replyFrame: options.replyFrame } : {}),
         ...(options.devices ? { devices: options.devices } : {}),
         ...(stickers ? { stickers } : {}),

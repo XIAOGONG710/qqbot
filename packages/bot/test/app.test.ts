@@ -232,6 +232,63 @@ describe('编排（app.ts）', () => {
         assert.doesNotMatch(crisis.calls[0]!.prompt, /开口前先在心里想清楚/);
     });
 
+    test('语义路由（ADR 0202，depthRouting）：关键词没认出来、但意思上是认真的轮次也深思（换模型、不套字数、按类别多一小句方向）；关键词已经认出来的不再问；闲聊、危机、没开、没配深思、问不成的时候都照旧', async () => {
+        const WEIGH = '你只做分类，不回复他';
+        const run = async (patch: Partial<AppConfig>, said: string, router: string | Error) => {
+            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], shape: true, shapeAsk: true, shapeLong: true, deliberate: true, depthRouting: true, ...patch });
+            const calls: { prompt: string; model?: string }[] = [];
+            let asked = 0;
+            const { app, sent, logs } = setup(cfg, {}, { generate: (messages, use) => {
+                const text = messages.map(m => m.content).join('\n');
+                if (text.includes(WEIGH)) { asked++; if (router instanceof Error) throw router; return router; }
+                calls.push({ prompt: text, ...(use ? { model: use.model } : {}) });
+                return '嗯，我在';
+            } });
+            app.receive(event(10001, 1, said));
+            await until(() => sent.length >= 1);
+            return { calls, asked, logs };
+        };
+        // 关键词没认出来（没有「你觉得 / 为什么」），分类说在说沉重的事：深思 + 那一小句方向
+        const heavy = await run({}, '今天回去看了我爷爷，他有点认不得我了', '{"kind":"heavy","why":"亲人"}');
+        assert.equal(heavy.asked, 1);
+        assert.equal(heavy.calls[0]!.model, 'deepseek-v4-pro');
+        assert.match(heavy.calls[0]!.prompt, /开口前先在心里想清楚/);
+        assert.match(heavy.calls[0]!.prompt, /他这一句是在说一件沉重的事：先接住他/);
+        assert.doesNotMatch(heavy.calls[0]!.prompt, /每条不超过/);
+        assert.ok(heavy.logs.some(line => line.includes('语义路由认为他这一轮是「在说沉重的事」（亲人）')), heavy.logs.join('|'));
+        assert.deepEqual(heavy.logs.filter(line => /语义路由|深思/.test(line) && line.includes('爷爷')), [], '路由的日志不记他说的话');
+        // 问她自己：深思，但不多放方向（怎么谈自己由用户定）
+        const aboutHer = await run({}, '你会不会有时候怕自己被关掉', '{"kind":"about-her"}');
+        assert.equal(aboutHer.calls[0]!.model, 'deepseek-v4-pro');
+        assert.doesNotMatch(aboutHer.calls[0]!.prompt, /他这一句是在说一件沉重的事|他在质疑你|他在问他自己或你们俩/);
+        // 分类说闲聊：照旧
+        const light = await run({}, '今天食堂有糖醋排骨', '{"kind":"light"}');
+        assert.equal(light.asked, 1);
+        assert.equal(light.calls[0]!.model, undefined);
+        assert.doesNotMatch(light.calls[0]!.prompt, /开口前先在心里想清楚/);
+        // 关键词已经认出来的：不再花这一次调用，也没有多放的方向
+        const lexical = await run({}, '你觉得我该不该去北京实习？', '{"kind":"heavy"}');
+        assert.equal(lexical.asked, 0);
+        assert.equal(lexical.calls[0]!.model, 'deepseek-v4-pro');
+        assert.doesNotMatch(lexical.calls[0]!.prompt, /他这一句是在说一件沉重的事/);
+        // 问不成（模型出错）：按关键词，这一轮不深思，回复照常发出
+        const broken = await run({}, '今天回去看了我爷爷，他有点认不得我了', new Error('连不上'));
+        assert.equal(broken.calls[0]!.model, undefined);
+        assert.ok(broken.logs.some(line => line.includes('语义路由：没问成')));
+        // 没开 depthRouting：从不问
+        const off = await run({ depthRouting: false }, '今天回去看了我爷爷，他有点认不得我了', '{"kind":"heavy"}');
+        assert.equal(off.asked, 0);
+        assert.equal(off.calls[0]!.model, undefined);
+        // 深思没开：没有地方放，不问，记一行
+        const noDeliberate = await run({ deliberate: false }, '今天回去看了我爷爷，他有点认不得我了', '{"kind":"heavy"}');
+        assert.equal(noDeliberate.asked, 0);
+        assert.ok(noDeliberate.logs.some(line => line.includes('deliberate 没开')));
+        // 危机回合：不问、不深思
+        const crisis = await run({}, '我不想活了', '{"kind":"heavy"}');
+        assert.equal(crisis.asked, 0);
+        assert.equal(crisis.calls[0]!.model, undefined);
+    });
+
     test('话说到一半就停了（ADR 0141）：最后一条只剩一句转折的态度，带说明重写一次；重写还是这样就并回前一条；说话的毛病不查（speechCheck: false）时不管；危机回合不管', async () => {
         const run = async (speechCheck: boolean, said: string, rewrite: string, count = 2) => {
             const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const, knowsBot: true }], speechCheck });
