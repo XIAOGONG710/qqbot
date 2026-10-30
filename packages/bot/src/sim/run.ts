@@ -45,6 +45,8 @@ const deliberateModelOption = option('--deliberate-model');
 const deliberate = flag('--deliberate');
 // 语义路由（ADR 0202）：--depth（要同时 --deliberate）：关键词没认出来的轮次问小模型这一句是轻是重，值得认真的也深思
 const depth = flag('--depth');
+// 事实检查多查一类：她替他说的事（ADR 0203）：--fact-him（要同时 --fact log|fix，或场景里开着 factCheck）
+const factHim = flag('--fact-him');
 // 情绪轮（ADR 0099）：同时打开 shape
 const feel = flag('--feel');
 // 逐条事实检查（ADR 0137）：对所有场景打开，log 只查只记、fix 查到就重写；不写按场景自己的
@@ -139,6 +141,7 @@ for (const [fileIndex, file] of files.entries()) {
             ...(long ? { shapeLong: true } : {}),
             ...(deliberate || deliberateModelOption !== undefined ? { deliberateLlm: deliberateLlm(config.llm, deliberateModelOption ?? loaded.deliberateModel) } : {}),
             ...(depth ? { depthRouting: true } : {}),
+            ...(factHim ? { factHim: true } : {}),
             ...(agenda ? { shapeAgenda: true } : {}),
             ...(filler ? { shapeFiller: true } : {}),
             ...(feel ? { shapeFeel: true } : {}),

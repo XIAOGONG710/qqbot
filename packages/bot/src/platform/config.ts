@@ -155,6 +155,8 @@ export const DEFAULTS = {
     memoryReconcile: false,
     /** 语义路由（ADR 0202）：关键词没认出来的轮次问一次小模型这一句是轻是重，值得认真的也走深思。要 deliberate 开着才起作用 */
     depthRouting: false,
+    /** 事实检查多查一类（ADR 0203）：她替他说的、聊天 / 记忆里没有依据的事（「你数学不差」「你高中刷那么多题」）。要 factCheck 开着 */
+    factHim: false,
     rhythm: false,
     shortReplies: false,
     media: true,
@@ -569,6 +571,8 @@ export interface AppConfig {
     memoryReconcile?: boolean;
     /** 语义路由（ADR 0202）：默认关；要 deliberate 开着。开着时，关键词没认出来的轮次多一次小调用（不开思考、几十个 token、3 秒超时），分类说沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思 */
     depthRouting?: boolean;
+    /** 事实检查多查一类（ADR 0203）：默认关；要 factCheck 开着（log 只记、fix 带说明重写）。审稿是同一次调用，只是多一类规则 */
+    factHim?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -855,6 +859,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         ownerPeek: bool(file, 'ownerPeek', '', DEFAULTS.ownerPeek),
         memoryReconcile: bool(file, 'memoryReconcile', '', DEFAULTS.memoryReconcile),
         depthRouting: bool(file, 'depthRouting', '', DEFAULTS.depthRouting),
+        factHim: bool(file, 'factHim', '', DEFAULTS.factHim),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
         shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),
         media: bool(file, 'media', '', DEFAULTS.media),

@@ -3,10 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import type { BotConfig } from '../src/platform/config.ts';
+import { DEFAULTS, type BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
 import {
-    auditableText, auditMessages, checkFacts, dropClaimLines, dropTooMuch, FACT_CHECK_MODES, FACT_MAX_CLAIMS, factRewriteNote, parseClaims,
+    auditableText, auditMessages, auditRules, checkFacts, dropClaimLines, dropTooMuch, FACT_CHECK_MODES, FACT_MAX_CLAIMS, factRewriteNote, parseClaims,
     type FactCheckOptions, type FactRecord,
 } from '../src/language/fact-check.ts';
 import type { OpenAIMessage } from '../src/language/prompt.ts';
@@ -17,7 +17,7 @@ import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
 // ADR 0137：逐条事实检查。审稿员（模型）的输出用假的；这里测拼提示词、解析、按档位处理
 const names = { user: '阿明', char: '林梦瑶' };
-const claim = (quote: string, kind: 'contradicts' | 'invented' = 'invented', why = '') => ({ quote, kind, why });
+const claim = (quote: string, kind: 'contradicts' | 'invented' | 'about-him' = 'invented', why = '') => ({ quote, kind, why });
 const json = (...claims: ReturnType<typeof claim>[]) => JSON.stringify(claims);
 
 describe('审稿的输入输出', () => {
@@ -79,6 +79,62 @@ describe('审稿的输入输出', () => {
         assert.equal(dropTooMuch('作业写完了\n泡面也吃完了\n那这事我可就记上了', [claim('作业写完了'), claim('泡面也吃完了')]), true);
         assert.equal(dropTooMuch('就一句', [claim('就一句')]), false, '单行不判（dropClaimLines 会原样返回）');
         assert.deepEqual(FACT_CHECK_MODES, ['off', 'log', 'fix']);
+    });
+});
+
+describe('第三类 about-him：她替他说的、没有依据的事（ADR 0203，factHim）', () => {
+    test('默认关', () => {
+        assert.equal(DEFAULTS.factHim, false);
+    });
+
+    test('auditRules：默认只有前两类和原来的输出说明；开着时多一段第三类 + 不该列的几种 + 输出说明里多了 about-him，原来的输出说明只出现一次', () => {
+        const off = auditRules(false);
+        assert.ok(!off.includes('about-him'));
+        const on = auditRules(true);
+        assert.ok(on.startsWith(off.slice(0, 200)), '前两类的规则原样');
+        assert.match(on, /第三类，关于【他本人】/);
+        assert.match(on, /从这次聊天里直接看得出来的观察/);
+        assert.match(on, /"kind":"contradicts" 或 "invented" 或 "about-him"/);
+        assert.equal(on.split('只输出一个 JSON 数组').length - 1, 1);
+        assert.equal(auditMessages([{ role: 'user', content: '在吗' }], '嗯嗯好的呀', names)[0]!.content, off);
+        assert.equal(auditMessages([{ role: 'user', content: '在吗' }], '嗯嗯好的呀', names, { aboutHim: true })[0]!.content, on);
+    });
+
+    test('parseClaims：没开 aboutHim 时模型给的 about-him 当没说；开着才采信', () => {
+        const raw = json(claim('你数学不差', 'about-him', '他没说过'), claim('土豆跑过来', 'invented'));
+        const reply = '你数学不差\n土豆跑过来';
+        assert.deepEqual(parseClaims(raw, reply).map(c => c.kind), ['invented']);
+        assert.deepEqual(parseClaims(raw, reply, { aboutHim: true }).map(c => c.kind), ['about-him', 'invented']);
+    });
+
+    test('factRewriteNote：about-him 的说法写「说的是他的事，上面没有写过」，并多一句别替他说；只有前两类时没有这一句', () => {
+        const note = factRewriteNote([claim('你数学不差', 'about-him', '他没提过数学')]);
+        assert.match(note, /「你数学不差」说的是他的事，上面没有写过（他没提过数学）/);
+        assert.match(note, /别替他说他没说过的事（他的本事、过去、性格）——想说你的感觉就说感觉，想知道就问他/);
+        assert.ok(!factRewriteNote([claim('土豆跑过来')]).includes('别替他说'));
+    });
+
+    test('checkFacts：开着时 fix 档带说明重写，日志写「替他说的」；没开时同样的审稿输出里的 about-him 不当回事，原样发', async () => {
+        const run = async (aboutHim: boolean) => {
+            const calls = { prompts: [] as string[], regenerate: [] as string[] };
+            const logs: string[] = [];
+            const result = await checkFacts('你数学不差，真去考不会差', {
+                mode: 'fix', source: [{ role: 'user', content: '我在纠结要不要考研' }], names,
+                audit: async messages => { calls.prompts.push(messages[0]!.content); return calls.prompts.length === 1 ? json(claim('你数学不差', 'about-him', '他没说过')) : '[]'; },
+                regenerate: async note => { calls.regenerate.push(note); return '我觉得你先想清楚是不是真想读'; },
+                log: line => logs.push(line), ...(aboutHim ? { aboutHim: true } : {}),
+            });
+            return { result, calls, logs };
+        };
+        const on = await run(true);
+        assert.equal(on.result, '我觉得你先想清楚是不是真想读');
+        assert.ok(on.calls.prompts[0]!.includes('about-him'));
+        assert.match(on.calls.regenerate[0]!, /别替他说他没说过的事/);
+        assert.ok(on.logs.some(line => line.includes('替他说的「')), on.logs.join('|'));
+        const off = await run(false);
+        assert.equal(off.result, '你数学不差，真去考不会差');
+        assert.equal(off.calls.regenerate.length, 0);
+        assert.ok(!off.calls.prompts[0]!.includes('about-him'));
     });
 });
 
@@ -230,6 +286,38 @@ describe('模拟器里走一遍（开 / 关）', () => {
             }
         });
     }
+
+    test('factHim 一路走通（模拟器 → contact → 审稿）：开着时审稿的提示词里有第三类、她替他说的被带说明重写；没开时审稿的提示词里没有', async () => {
+        const run = async (factHim: boolean) => {
+            const dir = mkdtempSync(join(tmpdir(), 'qqbot-fact-sim-'));
+            const seen = { audit: [] as string[], rewrite: [] as string[] };
+            try {
+                const result = await runScenario(scenarioOf('fix', '我在纠结要不要考研'), {
+                    runId: 'fact-him', dataDir: dir, card, llm, prompt, ...(factHim ? { factHim: true } : {}),
+                    generate: async (messages: OpenAIMessage[]) => {
+                        if (messages[0]?.content.startsWith('你是审稿员')) {
+                            seen.audit.push(messages[0].content);
+                            const reply = messages[1]!.content.split('## 她准备发出去的回复\n')[1]!;
+                            return reply.includes('你数学不差') ? json(claim('你数学不差', 'about-him', '他没说过')) : '[]';
+                        }
+                        if (messages.at(-1)?.content.includes('上一版回复没有发出去')) { seen.rewrite.push(messages.at(-1)!.content); return '我觉得你先想清楚是不是真想读'; }
+                        return '你数学不差，真去考不会差的';
+                    },
+                });
+                return { said: result.steps.flatMap(step => step.bubbles).map(b => b.text).join('\n'), seen };
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+            }
+        };
+        const on = await run(true);
+        assert.equal(on.said, '我觉得你先想清楚是不是真想读');
+        assert.ok(on.seen.audit[0]!.includes('about-him'));
+        assert.match(on.seen.rewrite[0]!, /别替他说他没说过的事/);
+        const off = await run(false);
+        assert.equal(off.said, '你数学不差，真去考不会差的');
+        assert.ok(off.seen.audit.every(prompt => !prompt.includes('about-him')));
+        assert.equal(off.seen.rewrite.length, 0);
+    });
 
     test('危机回合不查', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-fact-sim-'));

@@ -180,6 +180,8 @@ export interface ContactPipelineOptions {
     quoteReply?: boolean;
     /** 逐条事实检查（ADR 0137，配置 factCheck）：log 只查、记日志；fix 有对不上事实的说法就带说明重写一次。不传 / off 不查 */
     factCheck?: FactCheckMode;
+    /** 事实检查多查一类：她替他说的、没有依据的事（配置 factHim，ADR 0203）；要 factCheck 开着 */
+    factAboutHim?: boolean;
     /** 审稿用的模型调用（默认同一个模型、温度 0；模拟器 / 测试换成自己的） */
     factAudit?: (messages: OpenAIMessage[]) => Promise<string>;
     /** 每次事实检查的记录（模拟器的报告用） */
@@ -1081,7 +1083,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 逐条事实检查（ADR 0137）：先于出口检查——重写出来的话还要过出口检查这一关；危机回合、固定说法（allowRepeat）不查
             const factual = options.factCheck && options.factCheck !== 'off' && !crisisNow && !reviewContext?.allowRepeat && promptSource
                 ? await checkFacts(reply, {
-                    mode: options.factCheck, source: promptSource, names, mayDropAll: Boolean(reviewContext?.initiating),
+                    mode: options.factCheck, source: promptSource, names, mayDropAll: Boolean(reviewContext?.initiating), ...(options.factAboutHim ? { aboutHim: true } : {}),
                     audit: options.factAudit ?? ((auditMessages: OpenAIMessage[]) => chatCompletion({ ...forExtraction(llm), temperature: 0 }, auditMessages, { log })),
                     regenerate, log, ...(options.onFactCheck ? { onRecord: options.onFactCheck } : {}),
                 })

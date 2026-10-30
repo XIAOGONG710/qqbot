@@ -14,7 +14,7 @@ import type { OpenAIMessage } from './prompt.ts';
 export const FACT_CHECK_MODES = ['off', 'log', 'fix'] as const;
 export type FactCheckMode = (typeof FACT_CHECK_MODES)[number];
 
-export type FactKind = 'contradicts' | 'invented';
+export type FactKind = 'contradicts' | 'invented' | 'about-him';
 export interface FactClaim {
     /** 回复里的原话片段 */
     quote: string;
@@ -39,6 +39,21 @@ const AUDIT_RULES = `你是审稿员，只核对事实，不评价文风，也�
 不要列：感受、想法、看法、玩笑和夸张的说法、对他的提问、对他说的话的回应或复述、她在聊天里已经说过的事、泛泛的常识、含糊的口头话（「忙死了」「困」这类和事实不冲突的）。拿不准就不列。
 只输出一个 JSON 数组，没有问题就输出 []。每一项：{"quote":"回复里的原话片段（照抄，尽量短）","kind":"contradicts" 或 "invented","why":"一句话：矛盾在哪 / 事实里没有什么"}`;
 
+/**
+ * 第三类（配置 factHim，ADR 0203）：她替【他】说的事。前两类只管她自己和她身边的世界；深度的探针里（没有记忆撑着时）她会补「你数学不差」
+ * 「你高中刷那么多题」「你又不是坐不住的人」——听着像懂他，其实是编的。有记忆时这些可能有依据（记忆块在设定和事实里），所以审稿员对照的是设定、事实、
+ * 聊天——包括他自己这一次说过的话。
+ */
+const HIM_RULES = `另外还有第三类，关于【他本人】的具体说法：他的本事 / 能力、过去的经历、性格、家里人、喜好、计划、他说过什么——回复把它当成已知的事来说，而设定、事实、聊天（包括他自己这次说过的话）里找不到依据。
+- about-him：没有依据的、关于他的断言（例：他没说过数学，她说「你数学不差」；他没提过高中，她说「你高中刷那么多题」；聊天里没有，她说「你上次说想去北京」；他没说过自己是什么样的人，她说「你本来就不是会放弃的人」「你从小就这样」）
+对 about-him 不要列：从这次聊天里直接看得出来的观察（「你今天老问这些将来的事」「你刚说怕找不到工作」）、问句、带猜测口气的话（「是不是」「可能」「感觉」「该不会」「我猜」）、她自己的感受、常识、没有具体内容的夸或安慰（「你没问题的」）。只列断言式的、具体的。拿不准就不列。`;
+
+const OUTPUT_HIM = '只输出一个 JSON 数组，没有问题就输出 []。每一项：{"quote":"回复里的原话片段（照抄，尽量短）","kind":"contradicts" 或 "invented" 或 "about-him","why":"一句话：矛盾在哪 / 事实里没有什么 / 他哪里没说过"}';
+const OUTPUT_LINE = AUDIT_RULES.slice(AUDIT_RULES.lastIndexOf('只输出一个 JSON 数组'));
+/** 审稿的系统提示：aboutHim 开着时加第三类，输出说明也跟着换 */
+export const auditRules = (aboutHim: boolean): string => (aboutHim ? `${AUDIT_RULES.slice(0, AUDIT_RULES.length - OUTPUT_LINE.length)}${HIM_RULES}
+${OUTPUT_HIM}` : AUDIT_RULES);
+
 /** 回复里值得核对的文字：去掉表情包 / 照片指令行；太短的什么都不返回（不查） */
 export function auditableText(reply: string): string {
     const lines = reply.split('\n').map(line => line.trim()).filter(line => line && !/^<(?:sticker|photo):[a-f0-9]{12}>$/i.test(line));
@@ -50,7 +65,7 @@ export function auditableText(reply: string): string {
  * 审稿用的提示词：设定和事实（拼提示词时的 system 部分，ST 后处理之前的原样——后处理会把后面的 system 改成 user，分不出哪些是事实）、
  * 聊天记录、她准备发的回复。太短的 system 片段（对话分隔、例句）不放
  */
-export function auditMessages(source: readonly OpenAIMessage[], reply: string, names: { user: string; char: string }): OpenAIMessage[] {
+export function auditMessages(source: readonly OpenAIMessage[], reply: string, names: { user: string; char: string }, options: { aboutHim?: boolean } = {}): OpenAIMessage[] {
     const facts: string[] = [];
     const chat: string[] = [];
     for (const message of source) {
@@ -63,13 +78,13 @@ export function auditMessages(source: readonly OpenAIMessage[], reply: string, n
         }
     }
     return [
-        { role: 'system', content: AUDIT_RULES },
+        { role: 'system', content: auditRules(Boolean(options.aboutHim)) },
         { role: 'user', content: `## 设定和这一轮的事实\n${facts.join('\n')}\n\n## 到现在为止的聊天\n${chat.join('\n') || '（还没聊）'}\n\n## 她准备发出去的回复\n${reply}` },
     ];
 }
 
 /** 解析审稿员的输出：容忍代码块、前后多余的字；类型不对的、照抄不出来的片段（不在回复里）丢掉 */
-export function parseClaims(raw: string, reply: string): FactClaim[] {
+export function parseClaims(raw: string, reply: string, options: { aboutHim?: boolean } = {}): FactClaim[] {
     const body = raw.replace(/```(?:json)?/gi, '');
     const start = body.indexOf('[');
     const end = body.lastIndexOf(']');
@@ -85,7 +100,7 @@ export function parseClaims(raw: string, reply: string): FactClaim[] {
     for (const item of data) {
         if (!item || typeof item !== 'object') continue;
         const { quote, kind, why } = item as Record<string, unknown>;
-        if (typeof quote !== 'string' || (kind !== 'contradicts' && kind !== 'invented')) continue;
+        if (typeof quote !== 'string' || (kind !== 'contradicts' && kind !== 'invented' && !(kind === 'about-him' && options.aboutHim))) continue;
         const text = quote.trim();
         if ([...text].length < 2 || !reply.includes(text)) continue;
         claims.push({ quote: text, kind, why: typeof why === 'string' ? why.trim().slice(0, 80) : '' });
@@ -96,8 +111,9 @@ export function parseClaims(raw: string, reply: string): FactClaim[] {
 
 /** 重写时加在提示词末尾的说明（和 exit-check.ts 的 rewriteNote 同一个口气） */
 export function factRewriteNote(claims: readonly FactClaim[]): string {
-    const why = claims.map(claim => `「${claim.quote}」${claim.kind === 'contradicts' ? '和上面写的事实对不上' : '是上面事实里没有的'}${claim.why ? `（${claim.why}）` : ''}`);
-    return `[上一版回复没有发出去：${why.join('；')}。你只能说上面写了的事实，或者说你自己的感觉和想法；别添上面没写的小动作、小场景、别人的举动。意思不变，重写这次的回复，只输出要发的消息。]`;
+    const why = claims.map(claim => `「${claim.quote}」${claim.kind === 'contradicts' ? '和上面写的事实对不上' : claim.kind === 'about-him' ? '说的是他的事，上面没有写过' : '是上面事实里没有的'}${claim.why ? `（${claim.why}）` : ''}`);
+    const him = claims.some(claim => claim.kind === 'about-him') ? '别替他说他没说过的事（他的本事、过去、性格）——想说你的感觉就说感觉，想知道就问他。' : '';
+    return `[上一版回复没有发出去：${why.join('；')}。你只能说上面写了的事实，或者说你自己的感觉和想法；别添上面没写的小动作、小场景、别人的举动。${him}意思不变，重写这次的回复，只输出要发的消息。]`;
 }
 
 /** 把含有这几条说法的行删掉；删完一行不剩就原样返回 */
@@ -146,6 +162,8 @@ export interface FactCheckOptions {
     mayDropAll?: boolean;
     /** 审稿最多等多久（默认 FACT_TIMEOUT_MS；测试用短的） */
     timeoutMs?: number;
+    /** 多查一类：她替他说的、没有依据的事（配置 factHim，ADR 0203） */
+    aboutHim?: boolean;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -154,7 +172,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-const describe = (claims: readonly FactClaim[]) => claims.map(claim => `${claim.kind === 'contradicts' ? '矛盾' : '没依据'}「${logBody(claim.quote)}」`).join('、');
+const describe = (claims: readonly FactClaim[]) => claims.map(claim => `${claim.kind === 'contradicts' ? '矛盾' : claim.kind === 'about-him' ? '替他说的' : '没依据'}「${logBody(claim.quote)}」`).join('、');
 
 export async function checkFacts(reply: string, options: FactCheckOptions): Promise<string> {
     const text = auditableText(reply);
@@ -165,9 +183,9 @@ export async function checkFacts(reply: string, options: FactCheckOptions): Prom
         return result;
     };
     const run = async (body: string): Promise<FactClaim[]> => {
-        const messages = auditMessages(options.source, body, options.names);
+        const messages = auditMessages(options.source, body, options.names, { aboutHim: Boolean(options.aboutHim) });
         record.chars += messages.reduce((total, message) => total + message.content.length, 0);
-        return parseClaims(await withTimeout(options.audit(messages), options.timeoutMs ?? FACT_TIMEOUT_MS), body);
+        return parseClaims(await withTimeout(options.audit(messages), options.timeoutMs ?? FACT_TIMEOUT_MS), body, { aboutHim: Boolean(options.aboutHim) });
     };
     let claims: FactClaim[];
     try {

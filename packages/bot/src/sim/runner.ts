@@ -102,6 +102,8 @@ export interface RunOptions {
     deliberateLlm?: BotConfig['llm'];
     /** 语义路由（ADR 0202）：run.ts 的 --depth；要 deliberateLlm */
     depthRouting?: boolean;
+    /** 事实检查多查一类：她替他说的事（ADR 0203）：run.ts 的 --fact-him；要事实检查开着 */
+    factHim?: boolean;
     /** 「做题式」写法（ADR 0146 实验）：run.ts 的 --frame solve；线上没有 */
     replyFrame?: 'solve';
     /** 测试注入：设备控制的钩子（ADR 0148）；模拟器命令行不传 */
@@ -438,6 +440,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         // 逐条事实检查（ADR 0137）：审稿的调用走场景自己的模型（假模型也行）；每次的记录进这一步，报告里看得到
         ...((options.factCheck ?? scenario.factCheck) !== 'off' ? {
             factCheck: options.factCheck ?? scenario.factCheck,
+            ...(options.factHim ? { factAboutHim: true } : {}),
             factAudit: (messages: OpenAIMessage[]) => (options.generate ? options.generate(messages, log) : chatCompletion({ ...forExtraction(options.llm), temperature: 0 }, messages, { log })),
             onFactCheck: (record: FactRecord) => { (current.facts ??= []).push(record); },
         } : {}),

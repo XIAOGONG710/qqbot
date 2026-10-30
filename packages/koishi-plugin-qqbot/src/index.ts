@@ -199,6 +199,7 @@ export interface Config {
     ownerPeek: boolean;
     memoryReconcile: boolean;
     depthRouting: boolean;
+    factHim: boolean;
     exemplars: boolean;
     rhythm: boolean;
     shortReplies: boolean;
@@ -478,6 +479,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**记忆对账**（ADR 0201）：写进 Hindsight 的片段是异步受理的，后台处理失败（Hindsight 重启、模型出错）不会告诉机器人，进度文件却已经记成写过——那一块记忆就永远不会补。开着时每 6 小时（发现缺了就 10 分钟后再查）读一次 Hindsight 里的文档，记着写过、实际没有的重新排队写；刚写进去 2 小时内的不算缺；读不到列表、或 bank 里一篇都没有就不动；一次最多重排 30 个，同一个片段最多重排 3 次。日志只写数量。'),
         depthRouting: Schema.boolean().default(DEFAULTS.depthRouting)
             .description('**语义路由**（ADR 0202）：深思（deliberate）原来靠关键词认出「他在认真问她」，很多真正需要认真的话没有那些词（「我爷爷认不得我了」「你会不会怕被关掉」「你说的是不是套路」），反而被抽到只回一两个字。开着时，关键词没认出来的轮次多问一次小模型（不开思考、几十个 token、3 秒超时、每小时最多 120 次）：沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思；拿不准、出错、超时都按原来的关键词。要 deliberate 开着才起作用。'),
+        factHim: Schema.boolean().default(DEFAULTS.factHim)
+            .description('**事实检查多查一类：她替他说的事**（ADR 0203，要 factCheck 开着）：原来的事实检查只管她自己和她身边的世界；没有记忆撑着时她会补「你数学不差」「你高中刷那么多题」这种听着像懂他、其实是编的话。开着时，同一次审稿多一类规则：关于他本人的断言（本事、过去、性格、家里人、喜好、计划），设定 / 事实 / 聊天 / 记忆里都找不到依据的，也当作没依据（fix 档带说明重写：别替他说他没说过的事，想说感觉就说感觉，想知道就问他）。从聊天里直接看得出来的观察、问句、猜测的口气不算。'),
         rhythm: Schema.boolean().default(DEFAULTS.rhythm)
             .description('**回复节奏**（ADR 0075）：打字的时间按字数算（0.6 秒 + 每字 0.18 秒，0.9–9 秒），回之前先「看 + 想」一会儿（多半 0.8–3.5 秒，偶尔几秒到半分钟）；热聊的第一条中位慢约 4 秒。默认关（老样子：0.8 秒 + 每字 0.1 秒，1–4 秒）'),
         shortReplies: Schema.boolean().default(DEFAULTS.shortReplies)
@@ -689,6 +692,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.ownerPeek !== undefined ? { ownerPeek: config.ownerPeek } : {}),
         ...(config.memoryReconcile !== undefined ? { memoryReconcile: config.memoryReconcile } : {}),
         ...(config.depthRouting !== undefined ? { depthRouting: config.depthRouting } : {}),
+        ...(config.factHim !== undefined ? { factHim: config.factHim } : {}),
         ...(config.rhythm !== undefined ? { rhythm: config.rhythm } : {}),
         ...(config.shortReplies !== undefined ? { shortReplies: config.shortReplies } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
@@ -762,7 +766,7 @@ export function apply(ctx: Context, config: Config) {
     let appConfig: AppConfig;
     try {
         appConfig = parseAppConfig(toAppConfigInput(config), repoRoot);
-        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting}`);
+        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim}`);
     } catch (error) {
         const plain = plainError('配置有误，插件没有启动', error);
         setConsoleState({ error: plain.message });

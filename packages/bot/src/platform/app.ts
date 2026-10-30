@@ -1153,7 +1153,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
-            ...(config.factCheck !== 'off' ? { factCheck: config.factCheck } : {}),
+            ...(config.factCheck !== 'off' ? { factCheck: config.factCheck, ...(config.factHim ? { factAboutHim: true } : {}) } : {}),
             ...(config.herNo ? { herNo: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
