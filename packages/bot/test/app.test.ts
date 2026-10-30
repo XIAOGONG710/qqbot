@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, test } from 'node:test';
+import { after, afterEach, before, describe, test } from 'node:test';
 import { setWorkMode } from '../src/platform/work-mode.ts';
 import { startApp, type App, type AppOptions, type Transport } from '../src/platform/app.ts';
 import { SENSITIVE_OFF, type SensitiveSwitch } from '../src/platform/sensitive.ts';
@@ -39,6 +39,16 @@ const apps: App[] = [];
 afterEach(() => {
     for (const app of apps.splice(0)) app.stop();
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+// 灵魂目录（NOW.md / INSIGHTS.json / JOURNAL.md 在这里）整个文件隔离到临时目录：不然 app 的导出会写进真正的 ~/.dsh/linmengyao，
+// 在 DSH 的机器上跑测试就会把她真正的文件覆盖成测试内容
+const soulBefore = process.env.QQBOT_SOUL_DIR;
+const isolatedSoul = mkdtempSync(join(tmpdir(), 'qqbot-app-soul-'));
+before(() => { process.env.QQBOT_SOUL_DIR = isolatedSoul; });
+after(() => {
+    if (soulBefore === undefined) delete process.env.QQBOT_SOUL_DIR; else process.env.QQBOT_SOUL_DIR = soulBefore;
+    rmSync(isolatedSoul, { recursive: true, force: true });
 });
 
 function config(overrides: Partial<AppConfig> = {}): AppConfig {
@@ -853,6 +863,92 @@ describe('编排（app.ts）', () => {
         on.app.receive(event(10001, 5, '/自我认识', '阿明'));
         await until(() => on.sent.some(line => line.startsWith('10001:') && !line.startsWith('10001:（')));
         assert.ok(!on.sent.some(line => line.startsWith('10001:（她翻日记')));
+    });
+
+    test('桌面上的她也看得到（ADR 0194）：开着时灵魂目录里有 INSIGHTS.json（带有意义的二字词，不带太常见的）；关着不写；没变且新鲜就不重写', async () => {
+        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+        const target = join(isolatedSoul, 'INSIGHTS.json');
+        const stateFile = (cfg: AppConfig) => writeFileSync(join(cfg.dataDir, 'diary-insights.json'), JSON.stringify({
+            notes: [{ id: 'i-2026-10-29-1', text: '我发现自己一个人安安静静弄东西的时候最踏实', at: Date.now() - 86_400_000, dates: ['2026-10-27', '2026-10-29'] }],
+            retired: [], rejected: [], lastReflectionAt: Date.now(), lastAttemptAt: Date.now(), attempts: { day: '', n: 0 },
+        }));
+        rmSync(target, { force: true });
+        const offCfg = config({ contacts });
+        stateFile(offCfg);
+        setup(offCfg);
+        assert.equal(existsSync(target), false, '关着不写');
+        const onCfg = config({ contacts, diaryInsights: true });
+        stateFile(onCfg);
+        setup(onCfg);
+        const exported = JSON.parse(readFileSync(target, 'utf8')) as { kind: string; generatedAt: string; notes: Array<{ text: string; grams: string[] }> };
+        assert.equal(exported.kind, 'qq-diary-insights');
+        assert.equal(exported.notes.length, 1);
+        assert.equal(exported.notes[0]!.text, '我发现自己一个人安安静静弄东西的时候最踏实');
+        assert.ok(exported.notes[0]!.grams.includes('安静') && exported.notes[0]!.grams.includes('踏实'));
+        assert.ok(!exported.notes[0]!.grams.includes('自己') && !exported.notes[0]!.grams.includes('东西'), '太常见的二字词不带');
+        // 又启动一次：内容没变、时间戳很新，不重写
+        const before = readFileSync(target, 'utf8');
+        setup(onCfg);
+        assert.equal(readFileSync(target, 'utf8'), before);
+    });
+
+    test('桌面那份 INSIGHTS.json 要一直新鲜：定时器每 30 分钟走一次，超过 1 小时没刷新就重写时间戳（桌面超过 6 小时没刷新就不用）', async t => {
+        const contacts = [{ qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+        const target = join(isolatedSoul, 'INSIGHTS.json');
+        rmSync(target, { force: true });
+        const start = new Date(2026, 9, 30, 12, 0);
+        const clock = new VirtualClock(start);
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        const cfg = config({ contacts, diaryInsights: true });
+        writeFileSync(join(cfg.dataDir, 'diary-insights.json'), JSON.stringify({
+            notes: [{ id: 'i-2026-10-29-1', text: '我发现自己一个人安安静静弄东西的时候最踏实', at: Date.now(), dates: ['2026-10-27', '2026-10-29'] }],
+            retired: [], rejected: [], lastReflectionAt: 0, lastAttemptAt: 0, attempts: { day: '', n: 0 },
+        }));
+        setup(cfg, {}, { clock });
+        const stamp = () => Date.parse((JSON.parse(readFileSync(target, 'utf8')) as { generatedAt: string }).generatedAt);
+        const first = stamp();
+        assert.ok(Math.abs(first - start.getTime()) < 5000, '启动时按（虚拟）现在的时间写');
+        clock.advance(20 * 60_000);
+        t.mock.timers.tick(30 * 60_000);
+        await new Promise(r => setTimeout(r, 50)); // 这一下里的「翻日记」是异步的，等它收尾（busy 复位）再走下一下
+        assert.equal(stamp(), first, '才过了 20 分钟、内容没变：不重写');
+        clock.advance(50 * 60_000);
+        t.mock.timers.tick(30 * 60_000);
+        await new Promise(r => setTimeout(r, 50));
+        assert.ok(stamp() >= first + 70 * 60_000 - 1000, '过了 70 分钟：定时器那一下把时间戳刷新了');
+    });
+
+    test('夜里翻完日记写下认识：定时器那一下想完，桌面那份马上跟上（不等下一个小时）；写进去的是通过防线的', async t => {
+        const soul = mkdtempSync(join(tmpdir(), 'qqbot-app-soul2-'));
+        dirs.push(soul);
+        const before = process.env.QQBOT_SOUL_DIR;
+        process.env.QQBOT_SOUL_DIR = soul;
+        try {
+            writeFileSync(join(soul, 'JOURNAL.md'), [
+                '', '## 2026-10-27', '今天把相机里的片子修完了，慢慢调光比，还是喜欢这种安安静静一个人弄东西的时候。',
+                '', '## 2026-10-28', '下午去图书馆还书，在窗边坐了很久，什么都没做，反而很舒服。',
+                '', '## 2026-10-29', '又修了一晚上的片子，改了三遍白平衡。一个人弄东西的时候心里特别踏实。', '',
+            ].join('\n'));
+            const clock = new VirtualClock(new Date(2026, 9, 30, 23, 0));
+            t.mock.timers.enable({ apis: ['setInterval'] });
+            const cfg = config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' as const }], diaryInsights: true });
+            const reply = JSON.stringify({ add: [
+                { text: '我发现自己一个人安安静静弄东西的时候最踏实', dates: ['2026-10-27', '2026-10-29'] },
+                { text: '我发现自己总是编出来的依据', dates: ['2026-10-01', '2026-10-02'] },
+            ] });
+            setup(cfg, {}, { clock, generate: messages => (messages.some(message => message.content.includes('你最近的日记')) ? reply : '好') });
+            const target = join(soul, 'INSIGHTS.json');
+            const exported = () => JSON.parse(readFileSync(target, 'utf8')) as { notes: Array<{ text: string }> };
+            assert.deepEqual(exported().notes, [], '启动时还没有认识');
+            t.mock.timers.tick(30 * 60_000);
+            await until(() => exported().notes.length === 1);
+            assert.equal(exported().notes[0]!.text, '我发现自己一个人安安静静弄东西的时候最踏实');
+            const state = JSON.parse(readFileSync(join(cfg.dataDir, 'diary-insights.json'), 'utf8')) as { notes: Array<{ dates: string[] }>; rejected: Array<{ reason: string }> };
+            assert.deepEqual(state.notes[0]!.dates, ['2026-10-27', '2026-10-29']);
+            assert.match(state.rejected[0]!.reason, /不在你翻的日记里/, '编出来的依据被拦了');
+        } finally {
+            if (before === undefined) delete process.env.QQBOT_SOUL_DIR; else process.env.QQBOT_SOUL_DIR = before;
+        }
     });
 
     test('她在聊天里写的 <<日记：…>>（ADR 0194）：开着时男朋友档那篇在本地留一份供她晚上翻；同学档的不留；关着不留；标记不发出去', async () => {

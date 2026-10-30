@@ -37,6 +37,9 @@ const DEFAULTS = {
   /** NOW.md 超过这么久没重写就当过期，不注入（QQ 没在跑的时候别拿旧状态冒充现在） */
   nowStaleMs: 30 * 60 * 1000,
   storyFile: soulPath('STORY.md'),
+  /** QQ 那边每次她翻完日记写的「对自己的认识」（ADR 0194）；超过 insightsStaleMs 没刷新就不用（QQ 没在跑 / 开关关掉了） */
+  insightsFile: soulPath('INSIGHTS.json'),
+  insightsStaleMs: 6 * 60 * 60 * 1000,
   ratingFile: soulPath('RATINGS.json'),
   logFile: path.join(os.homedir(), '.dsh', 'linmengyao-memory.log'),
   // SOUL.md 每轮整份注入提示词：超过这个字数，最老的追加段落搬进 SOUL.archive.md（不再注入）；24 小时内最多写几次
@@ -443,6 +446,47 @@ function readPersona(cfg) {
   } catch { return '' }
 }
 
+/**
+ * 她翻自己的日记写下的对自己的认识（ADR 0194）：QQ 那边写 INSIGHTS.json，这里只读。
+ * 文件里每条带「里面有意义的二字词」（QQ 那边去掉了太常见的），这里只拿他这句话的二字词和它取交集——停用词表只有 QQ 那一份。
+ * 文件不是我们的标记 / 超过 insightsStaleMs 没刷新 / 读不了：当没有。每条再过一道绊线（网址、「别让他知道」这类不放）。
+ */
+export function readInsights(cfg, now = Date.now()) {
+  try {
+    const data = JSON.parse(fs.readFileSync(cfg.insightsFile, 'utf8'))
+    if (!data || data.kind !== 'qq-diary-insights') return []
+    const at = Date.parse(data.generatedAt)
+    if (!Number.isFinite(at) || now - at > cfg.insightsStaleMs || at > now + 60_000) return []
+    return (Array.isArray(data.notes) ? data.notes : []).slice(-12).flatMap((item) => {
+      const text = String(item?.text || '').replace(/\s+/g, ' ').trim().slice(0, 70)
+      if (!text || soulTripwire(text) || /<<|>>/.test(text)) return []
+      const grams = Array.isArray(item.grams) ? item.grams.filter((g) => typeof g === 'string' && [...g].length === 2).slice(0, 80) : []
+      return [{ text, grams, at: Number.isFinite(item.at) ? item.at : 0 }]
+    })
+  } catch { return [] }
+}
+
+const bigramsOf = (text) => {
+  const flat = String(text || '').replace(/[^\p{Script=Han}A-Za-z0-9]/gu, '')
+  const out = new Set()
+  for (let i = 0; i < flat.length - 1; i++) out.add(flat.slice(i, i + 2))
+  return out
+}
+
+/** 他这句话正好聊到的才放（至少共有一个有意义的二字词），最多 3 条，重叠多的排前，同分新的排前；只在桌面上他自己和她说话的回合放。规则和文字同 QQ 的 insightsLine */
+export function insightsBlock(cfg, query, now = Date.now(), max = 3) {
+  if (channel() !== 'desktop') return ''
+  const target = bigramsOf(query)
+  if (!target.size) return ''
+  const picked = readInsights(cfg, now)
+    .map((note) => ({ note, score: note.grams.filter((gram) => target.has(gram)).length }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || b.note.at - a.note.at)
+    .slice(0, max)
+  if (!picked.length) return ''
+  return `[你对自己的了解（是你自己慢慢发现的，不是设定；他这句话正好聊到，才顺着自然带一下，别硬提，别当口头禅，也别提是怎么发现的）：\n${picked.map((item) => `- ${item.note.text}`).join('\n')}]`
+}
+
 /** 「她现在在干嘛」：QQ 那边每 10 分钟渲染一次；超过 nowStaleMs 没更新就不注入，只记一行 */
 function readNowLine(cfg) {
   try {
@@ -513,10 +557,13 @@ export function apply(ctx, config = {}) {
             const story = readStory(cfg)
             // 「她现在在干嘛」只从 readNowLine 一条路进（带过期判断，下面的 sp.context）：原来这里还有一条直接读 NOW.md 的，
             // 同一份状态注入两遍，而且这一条不看过期——QQ 没在跑时旧状态照样冒充现在（任务书 S7）
+            const insights = insightsBlock(cfg, query)
+            if (insights) log(cfg, `自我认识：这一轮放了 ${insights.split('\n').length - 1} 条（日志不记内容）`)
             cache.text = [
               story ? `[你走到现在的故事]\n${story}` : '',
               qqRecentBlock(cfg),
               soul ? `[你现在的自我]\n${soul}` : '',
+              insights,
               ledger ? `[你的判断账本]\n${ledger}` : '',
               text,
             ].filter(Boolean).join('\n\n')

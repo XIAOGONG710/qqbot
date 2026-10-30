@@ -11,7 +11,7 @@
 //   4. 8–70 字；同时最多 12 条；一晚最多加 2 条、放下 2 条；和已有的太像不收；放下要写理由。
 // 这是一道绊线加几个上限，不是智能审查：绕得过去。真正的保护是「他看得见、她随时可以放下、只放进男朋友档的提示词、不改 SOUL.md、不碰底线」。
 
-import { statSync, readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import type { StoredMessage } from '../memory/history.ts';
@@ -326,10 +326,15 @@ export async function reflectIfDue(deps: ReflectDeps): Promise<ReflectResult> {
 /** 太常见、说明不了「聊到同一件事」的二字词：重叠只有这些的不算相关 */
 const COMMON_GRAMS = new Set('自己 什么 一直 觉得 时候 今天 有些 为什 没有 不是 就是 还是 可以 因为 但是 所以 一个 这个 那个 我们 你们 知道 怎么 感觉 已经 然后 真的 可能 其实 总是 经常 每次 有时 东西 事情 的话 一下 一点 有点 比较 特别 非常 还有 起来 出来 下来 不会 不想 想要 喜欢 开心 难过'.split(' '));
 
+/** 这一条里有意义的二字词（去掉太常见的）。桌面那边拿它和他的话取交集，所以停用词表只有这一份 */
+export function topicalGrams(note: string): string[] {
+    return [...gramSet(note)].filter(gram => !COMMON_GRAMS.has(gram));
+}
+
 /** 他这句话和这一条共有几个有意义的二字词 */
 function topical(target: Set<string>, note: string): number {
     let hit = 0;
-    for (const gram of gramSet(note)) if (target.has(gram) && !COMMON_GRAMS.has(gram)) hit++;
+    for (const gram of topicalGrams(note)) if (target.has(gram)) hit++;
     return hit;
 }
 
@@ -349,6 +354,41 @@ export function insightsLine(notes: readonly Insight[], said: string | undefined
         .map(item => `- ${item.note.text}`);
     if (!picked.length) return undefined;
     return `[你对自己的了解（是你自己慢慢发现的，不是设定；他这句话正好聊到，才顺着自然带一下，别硬提，别当口头禅，也别提是怎么发现的）：\n${picked.join('\n')}]`;
+}
+
+// ───────── 桌面上的她也看得到（同一个她） ─────────
+
+/** 灵魂目录里的文件名：DSH 桌面插件读它（只读）。里面是 JSON，`kind` 是我们自己的标记，删除时只认带这个标记的 */
+export const INSIGHTS_EXPORT_FILE = 'INSIGHTS.json';
+export const INSIGHTS_EXPORT_KIND = 'qq-diary-insights';
+export const insightsExportPath = (soulDir: string) => join(soulDir, INSIGHTS_EXPORT_FILE);
+
+export interface InsightsExport {
+    kind: typeof INSIGHTS_EXPORT_KIND;
+    generatedAt: string;
+    /** 每条：原文 + 里面有意义的二字词（桌面那边拿它和他的话取交集，挑相关的放进提示词，规则同 insightsLine） */
+    notes: Array<{ text: string; grams: string[]; at: number }>;
+}
+
+const exportNotes = (notes: readonly Insight[]): InsightsExport['notes'] =>
+    notes.slice(-MAX_ACTIVE).map(note => ({ text: clip(note.text, INSIGHT_MAX), grams: topicalGrams(note.text).slice(0, 80), at: note.at }));
+
+/** 开着时每隔这么久重写一次时间戳；桌面那边超过 INSIGHTS_STALE_MS 没刷新就不用（QQ 没在跑 / 开关关掉了：别拿旧的冒充现在，和 NOW.md 一个道理） */
+export const INSIGHTS_REFRESH_MS = 3_600_000;
+export const INSIGHTS_STALE_MS = 6 * 3_600_000;
+
+/** 内容变了、或时间戳超过 1 小时没刷新才写；原子写，免得桌面读到半截。返回有没有写 */
+export function writeInsightsExport(soulDir: string, notes: readonly Insight[], now: number): boolean {
+    const path = insightsExportPath(soulDir);
+    const next = exportNotes(notes);
+    const current = readJsonOr<unknown>(path, {});
+    if (isObject(current) && current.kind === INSIGHTS_EXPORT_KIND && JSON.stringify(current.notes) === JSON.stringify(next)) {
+        const written = typeof current.generatedAt === 'string' ? Date.parse(current.generatedAt) : NaN;
+        if (Number.isFinite(written) && now - written < INSIGHTS_REFRESH_MS && written <= now) return false;
+    }
+    const body: InsightsExport = { kind: INSIGHTS_EXPORT_KIND, generatedAt: new Date(now).toISOString(), notes: next };
+    writeJsonAtomic(path, body);
+    return true;
 }
 
 /** /自我认识 的回复：以「（」开头（运维提示，不进聊天记录）；他只能看，不能改 */

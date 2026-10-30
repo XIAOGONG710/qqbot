@@ -55,7 +55,7 @@ import { BILI_STICKER_PER_DAY, biliStickerDiscover, STICKER_UNCUED_CHANCE } from
 import { pursuitsReader } from '.././life/pursuits.ts';
 import { describeForOwner, loadSelfState, reflectIfDue, selfAwareReader } from '.././life/self-pursuits.ts';
 import { describeNotesForOwner, loadNotesState, reflectIfDue as reflectSpeechNotes, speechNotesReader } from '.././language/speech-notes.ts';
-import { describeInsightsForOwner, insightsReader, loadInsightsState, recordSelfDiary, reflectIfDue as reflectInsights } from '.././life/diary-insights.ts';
+import { describeInsightsForOwner, insightsReader, loadInsightsState, recordSelfDiary, reflectIfDue as reflectInsights, writeInsightsExport } from '.././life/diary-insights.ts';
 import { substituteMacros } from '.././st/macros.ts';
 import { removeFaces } from '.././language/qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from '.././memory/long-term.ts';
@@ -798,6 +798,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     })() : undefined;
     if (config.speechNotes) log(deviceOwner ? '她自己总结说话习惯：开（每晚 22 点以后想一次；/说话习惯 随时看）' : '她自己总结说话习惯：开着，但名单里没有男朋友档，不启动');
     // 她每晚翻自己的日记，写下对自己的认识（ADR 0194）：22 点以后想一次，日记够多、有新的才想；失败 2 小时后再试，每天最多试 3 次
+    // 桌面上的她也看得到（同一个她）：写进灵魂目录的 INSIGHTS.json，桌面插件只读；每小时刷新时间戳，6 小时没刷新桌面就不用（关掉开关 / QQ 没在跑）
+    const exportInsights = (): void => {
+        try { writeInsightsExport(soulDir(), loadInsightsState(config.dataDir).notes, clockNow().getTime()); }
+        catch (error) { log(`自我认识：没能写给桌面上的她（${error instanceof Error ? error.message : String(error)}）`); }
+    };
     const diaryInsightsTimer = config.diaryInsights && deviceOwner ? (() => {
         const owner = deviceOwner;
         const { character } = cardFor(owner.tier);
@@ -815,8 +820,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 names: { char: character.name, user: owner.name },
                 others: () => config.contacts.filter(contact => contact.qq !== owner.qq).map(contact => contact.name),
                 log,
-            }).catch(error => log(`自我认识：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
+            }).catch(error => log(`自我认识：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; exportInsights(); });
         };
+        exportInsights();
         const timer = setInterval(tick, 30 * 60_000);
         timer.unref();
         return timer;

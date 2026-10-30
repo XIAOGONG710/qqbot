@@ -6,7 +6,8 @@ import { afterEach, describe, test } from 'node:test';
 import {
     ENTRY_CHARS, MATERIAL_CHARS, MAX_ACTIVE, MAX_ADD, MAX_RETIRE, SELF_DIARY_KEEP, applyInsightsDecision, describeInsightsForOwner, emptyInsightsState,
     fitEntries, insightProblem, insightsLine, insightsPath, insightsReader, loadInsightsState, loadSelfDiary, parseInsightsDecision, parseJournal, readDiaries,
-    recordSelfDiary, reflectIfDue, reflectionMessages, saveInsightsState, selfDiaryPath, type DiaryEntry, type Insight, type InsightGuard, type InsightsState,
+    recordSelfDiary, reflectIfDue, reflectionMessages, saveInsightsState, selfDiaryPath, topicalGrams, writeInsightsExport, insightsExportPath, INSIGHTS_EXPORT_KIND,
+    type DiaryEntry, type Insight, type InsightGuard, type InsightsState,
 } from '../src/life/diary-insights.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
 
@@ -436,5 +437,44 @@ describe('放进提示词 / 给他看', () => {
         assert.deepEqual(state.attempts, { day: '', n: 0 });
         writeFileSync(insightsPath(dataDir), JSON.stringify({ notes: [{ id: 'a', text: '好的一条认识写在这里', at: 1, dates: ['2026-10-27', '不是日期'] }] }));
         assert.deepEqual(loadInsightsState(dataDir).notes[0]!.dates, ['2026-10-27']);
+    });
+});
+
+describe('写给桌面上的她（INSIGHTS.json）', () => {
+    const notes = [
+        insight('i-1', '我发现自己一个人安安静静弄东西的时候最踏实', undefined, NIGHT - 2 * 86_400_000),
+        insight('i-2', '我发现自己下雨天特别想待在窗边发呆', undefined, NIGHT),
+    ];
+
+    test('写出 kind / 生成时间 / 每条原文 + 有意义的二字词（不带太常见的）；最多 12 条', () => {
+        const soulDir = tmp();
+        assert.equal(writeInsightsExport(soulDir, notes, NIGHT), true);
+        const file = JSON.parse(readFileSync(insightsExportPath(soulDir), 'utf8')) as { kind: string; generatedAt: string; notes: Array<{ text: string; grams: string[]; at: number }> };
+        assert.equal(file.kind, INSIGHTS_EXPORT_KIND);
+        assert.equal(file.generatedAt, new Date(NIGHT).toISOString());
+        assert.deepEqual(file.notes.map(item => item.text), notes.map(item => item.text));
+        assert.ok(file.notes[0]!.grams.includes('安静') && file.notes[0]!.grams.includes('踏实'));
+        assert.ok(!file.notes[0]!.grams.includes('自己') && !file.notes[0]!.grams.includes('东西') && !file.notes[0]!.grams.includes('时候'));
+        assert.deepEqual(file.notes[0]!.grams, topicalGrams(notes[0]!.text), '和 QQ 自己挑相关时用的是同一份');
+        const many = Array.from({ length: 20 }, (_, i) => insight(`i-${i}`, `第${i}条互不相同的认识${'甲乙丙丁戊己庚辛壬癸'[i % 10]}${'子丑寅卯辰巳午未申酉'[i % 10]}`));
+        writeInsightsExport(soulDir, many, NIGHT + 1);
+        assert.equal((JSON.parse(readFileSync(insightsExportPath(soulDir), 'utf8')) as { notes: unknown[] }).notes.length, MAX_ACTIVE);
+    });
+
+    test('内容没变且时间戳新鲜（1 小时内）不重写；超过 1 小时刷新时间戳；内容变了马上写；坏文件 / 别人的文件直接覆盖', () => {
+        const soulDir = tmp();
+        assert.equal(writeInsightsExport(soulDir, notes, NIGHT), true);
+        assert.equal(writeInsightsExport(soulDir, notes, NIGHT + 30 * 60_000), false, '半小时后没变：不写');
+        assert.equal(writeInsightsExport(soulDir, notes, NIGHT + 61 * 60_000), true, '超过 1 小时：刷新时间戳');
+        assert.equal((JSON.parse(readFileSync(insightsExportPath(soulDir), 'utf8')) as { generatedAt: string }).generatedAt, new Date(NIGHT + 61 * 60_000).toISOString());
+        assert.equal(writeInsightsExport(soulDir, [notes[0]!], NIGHT + 62 * 60_000), true, '内容变了：马上写');
+        writeFileSync(insightsExportPath(soulDir), '{坏');
+        assert.equal(writeInsightsExport(soulDir, notes, NIGHT + 63 * 60_000), true);
+        writeFileSync(insightsExportPath(soulDir), JSON.stringify({ kind: 'other', notes: [] }));
+        assert.equal(writeInsightsExport(soulDir, notes, NIGHT + 64 * 60_000), true);
+        assert.equal((JSON.parse(readFileSync(insightsExportPath(soulDir), 'utf8')) as { kind: string }).kind, INSIGHTS_EXPORT_KIND);
+        // 文件里的时间在未来（时钟回拨）：也重写
+        writeInsightsExport(soulDir, notes, NIGHT + 10 * 3_600_000);
+        assert.equal(writeInsightsExport(soulDir, notes, NIGHT), true);
     });
 });
