@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
-import { dropLines, inspectReply, reviewReply, rewriteNote, tidyMarkers } from '../src/language/exit-check.ts';
+import { dropLines, inspectReply, reviewReply, rewriteNote, stripInternalMarkers, tidyMarkers } from '../src/language/exit-check.ts';
 import type { OpenAIMessage } from '../src/language/prompt.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
@@ -372,4 +372,11 @@ describe('承认版卡的禁用词（ADR 0067，DSH 10-15 复核问题 3）', ()
         for (const tier of ['unlisted', 'stranger-open', 'classmate-open', 'known-open', 'girl_friend-open', 'bestie-open', 'boyfriend-open']) assert.equal(flagged(tier), true, tier);
         for (const tier of ['stranger', 'classmate', 'known', 'girl_friend', 'bestie', 'boyfriend']) assert.equal(flagged(tier), false, tier);
     });
+});
+
+// 2026-10-30 线上：她的气泡里原样发出了一条「<<当前时间：2026-10-30 星期五 16:20>>」
+test('内部标记兜底：<<…>> 一律不进聊天；只剥标记不留空行', () => {
+    assert.equal(stripInternalMarkers('有信心。\n<<当前时间：2026-10-30 星期五 16:20>>\n就是不知道跟什么较劲。'), '有信心。\n就是不知道跟什么较劲。');
+    assert.equal(stripInternalMarkers('<<当前时间：xx>>'), '');
+    assert.equal(stripInternalMarkers('正常的话'), '正常的话');
 });
