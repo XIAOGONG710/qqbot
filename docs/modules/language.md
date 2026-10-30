@@ -32,6 +32,7 @@
 - `language/exemplars.ts`
 - `language/register.ts`
 - `language/self-thread.ts`
+- `language/reading.ts`
 - `language/speech-notes.ts`
 - `language/speech-feedback.ts`
 - `language/speech-trend.ts`

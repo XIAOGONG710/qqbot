@@ -64,6 +64,7 @@ import { jokeLine, type Joke } from '.././language/jokes.ts';
 import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
 import { ackGuardLine, identityLine, readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
+import { readTurn, readingLine } from '.././language/reading.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
 import { insightsLine, type Insight } from '.././life/diary-insights.ts';
@@ -716,6 +717,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 })() : undefined;
             if (exemplarNow) log('真人例子：这一轮放了几条真人的回法（日志不记内容）');
             // 他是在跟她说话，还是在使唤工具（2026-10-30）：只递观察，怎么回她自己定；情绪回合、危机不放
+            // 他这句到底在说什么（2026-10-30）：连着发的算一句、指代摆出来，先想清楚再回
+            const readingNow = contact.tier === 'boyfriend' && !thinking && !crisisNow ? readingLine(readTurn(chat)) : undefined;
+            if (readingNow) log('他这句：这一轮先把他的话读明白再回（日志不记内容）');
             const selfThreadNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? options.selfThread?.() : undefined;
             const registerNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow
                 ? (() => {
@@ -968,6 +972,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(exemplarNow ? [exemplarNow] : []),
                         ...(registerNow ? [registerNow] : []),
                         ...(selfThreadNow ? [selfThreadNow] : []),
+                        ...(readingNow ? [readingNow] : []),
                         ...(speechNoteNow ? [speechNoteNow] : []),
                         ...(insightNow ? [insightNow] : []),
                         ...(watchedNow ? [watchedNow] : []),
