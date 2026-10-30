@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { Exemplar } from './exemplars.ts';
+import { KNOWN_FACE } from './qq-faces.ts';
 import type { OpenAIMessage } from './prompt.ts';
 import { feedbackBlock, feedbackCount, feedbackWhys, type FeedbackBundle } from './speech-feedback.ts';
 
@@ -104,8 +105,11 @@ export function saveNotesState(dataDir: string, state: NotesState): void {
 // ───────── 数她说话的样子 ─────────
 
 // 聊天记录里的小黄脸存成「[偷笑]」「[捂脸]」，不是 unicode emoji；原来的判法只认 emoji 和字面「[表情]」，
-// 于是线上「带表情」一列全是 0%（Claude 10-30 交接 §18）。白名单里的方括号名也算。
-const EMOJI = /\p{Extended_Pictographic}|\[(?:捂脸|笑哭|doge|偷笑|委屈|可怜|拥抱|飞吻|爱心|大哭|快哭了|白眼|害羞|敲打|OK|睡)\]|\[表情[^\]]*\]/u;
+// 于是线上「带表情」一列全是 0%（Claude 10-30 交接 §18）。已知的 QQ 表情名用 qq-faces 那张表，不在这儿另抄一份白名单。
+const PICTURE = /\p{Extended_Pictographic}/u;
+const FACE_NAME = new RegExp(KNOWN_FACE.source, 'u');
+const EMOJI_ROW = /\[表情[^\]]*\]/u;
+const hasEmoji = (text: string) => PICTURE.test(text) || FACE_NAME.test(text) || EMOJI_ROW.test(text);
 
 /** 一批「一次回的几条」→ 数出来的样子；没有话返回 undefined */
 export function speechStats(turns: ReadonlyArray<readonly string[]>): SpeechStats | undefined {
@@ -121,7 +125,7 @@ export function speechStats(turns: ReadonlyArray<readonly string[]>): SpeechStat
         medianChars: lengths[Math.floor(lengths.length / 2)]!,
         shortShare: share(text => len(text) <= 2),
         questionShare: share(text => /[?？]/.test(text)),
-        emojiShare: share(text => EMOJI.test(text)),
+        emojiShare: share(hasEmoji),
     };
 }
 
