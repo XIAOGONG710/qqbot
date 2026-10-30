@@ -427,7 +427,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 梗百科词库（2026-10-29）：6668 条，只读；文件不在就是没有，不影响自己学的那些
     const memeDict = config.memes ? openMemeDict(join(config.dataDir, 'memes', 'dict.json'), log) : undefined;
     // 真人例子（ADR 0190，默认关）：语料由 scripts/build-exemplars.mjs 从已批准的真人语料生成
-    const exemplars = config.exemplars ? loadExemplars(join(config.dataDir, 'exemplars', 'corpus.jsonl'), log) : [];
+    const exemplarCorpus = join(config.dataDir, 'exemplars', 'corpus.jsonl');
+    const exemplars = config.exemplars ? loadExemplars(exemplarCorpus, log) : [];
+    log(`真人例子：${config.exemplars ? `开（${exemplars.length} 条）` : '关'}${config.exemplars && !exemplars.length ? `——语料没读到（${exemplarCorpus}）` : ''}`);
     if (memeDict) log(`梗百科：词库 ${memeDict.count()} 条（他提到的词查这里，不写进她自己学的库）`);
     // 她自己在 B 站看过的（ADR 0130）：派生数据，存 <数据目录>/watching/watched.json；“看”在下面（要她的 B 站号）
     const watchedFile = watchedPath(config.dataDir);

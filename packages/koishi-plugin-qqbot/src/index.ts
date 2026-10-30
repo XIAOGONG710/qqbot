@@ -196,6 +196,7 @@ export interface Config {
     speechNotes: boolean;
     diaryInsights: boolean;
     feelingReview: boolean;
+    exemplars: boolean;
     rhythm: boolean;
     shortReplies: boolean;
     candidates: number;
@@ -460,6 +461,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**QQ 和 DSH 桌面互读最近几轮**（ADR 0177，「同一个她」第 2 层）：他在 DSH 桌面上刚说过的话（最近 3 轮、6 小时内），QQ 这边的她知道；他刚在 QQ 上说的话，桌面上的她也知道。只给男朋友档；要开了长期记忆。需要 DSH 那边重启插件。默认关。'),
         selfPursuits: Schema.boolean().default(DEFAULTS.selfPursuits)
             .description('**她自己定追求**（ADR 0178）：她每晚 20 点以后安静地想一次——哪些事还想做、哪些不想了、有没有新的想做的；可以放下 / 暂停 / 恢复任何一条（包括作者给的别挂科、拍相机），记一句进度，提新的（同时最多 3 件、隔 3 天提一件、要说为什么）。你用 `/追求` 看，改不了。花真钱 / 违法 / 骗人 / 碰你的东西 / 人生大方向（考研出国结婚分手等，作者没定）不会成为追求。要同时开 `pursuits`。默认关。'),
+        exemplars: Schema.boolean().default(DEFAULTS.exemplars)
+            .description('**看真人怎么回**（ADR 0190）：他说话之后，从已批准的真人语料里挑 4 条「真人遇到类似的话怎么回」放进提示词，让她学口气和长短（不是给她定字数）。不抄原文、不搬情景；危机、小别扭、她在想事情的时候不放。要名单里有男朋友档。默认关。'),
         speechNotes: Schema.boolean().default(DEFAULTS.speechNotes)
             .description('**她每晚自己总结说话习惯**（ADR 0193）：每晚 22 点以后她安静地想一次——看自己这几天说话的样子（一次回几条、每条多长、两个字以内的短反应、问号、表情）和真人语料里的样子（只是让她看一眼，不是目标线也不是上限），写下「我发现……」这样的笔记；挑最相关的几条放进以后的提示词。笔记不能引用他说过的话（学她自己的说话方式，不是变成他）、不能照抄真人的原话、不碰承认自己是程序 / 危机 / 事事顺着他这些底线。他用 /说话习惯 能看，改不了。要名单里有男朋友档。默认关；开了要重启 Koishi。'),
         diaryInsights: Schema.boolean().default(DEFAULTS.diaryInsights)
@@ -671,6 +674,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.crossRecent !== undefined ? { crossRecent: config.crossRecent } : {}),
         ...(config.selfPursuits !== undefined ? { selfPursuits: config.selfPursuits } : {}),
         ...(config.speechNotes !== undefined ? { speechNotes: config.speechNotes } : {}),
+        ...(config.exemplars !== undefined ? { exemplars: config.exemplars } : {}),
         ...(config.diaryInsights !== undefined ? { diaryInsights: config.diaryInsights } : {}),
         ...(config.feelingReview !== undefined ? { feelingReview: config.feelingReview } : {}),
         ...(config.rhythm !== undefined ? { rhythm: config.rhythm } : {}),
@@ -746,6 +750,7 @@ export function apply(ctx: Context, config: Config) {
     let appConfig: AppConfig;
     try {
         appConfig = parseAppConfig(toAppConfigInput(config), repoRoot);
+        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview}`);
     } catch (error) {
         const plain = plainError('配置有误，插件没有启动', error);
         setConsoleState({ error: plain.message });

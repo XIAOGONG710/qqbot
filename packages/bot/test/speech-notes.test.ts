@@ -41,6 +41,9 @@ describe('数她说话的样子', () => {
         assert.equal(speechStats([]), undefined);
         assert.equal(speechStats([[], ['  ']]), undefined, '空白不算一条');
         assert.equal(speechStats([['[表情包：笑哭]', '好']])?.emojiShare, 0.5, '表情包行也算带表情');
+        // QQ 小黄脸在聊天记录里是「[偷笑]」这种方括号名，不是 unicode emoji：线上那列原来是 0%（交接 §18）
+        assert.equal(speechStats([['[偷笑]', '好吧']])?.emojiShare, 0.5, '小黄脸算带表情');
+        assert.equal(speechStats([['[捂脸]']])?.emojiShare, 1);
     });
 
     test('herTurns：她连着回的几条是一次，他说话就断开；窗口外、未来、运维行不算', () => {

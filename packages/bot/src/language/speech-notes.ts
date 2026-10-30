@@ -103,7 +103,9 @@ export function saveNotesState(dataDir: string, state: NotesState): void {
 
 // ───────── 数她说话的样子 ─────────
 
-const EMOJI = /\p{Extended_Pictographic}|^\[表情/u;
+// 聊天记录里的小黄脸存成「[偷笑]」「[捂脸]」，不是 unicode emoji；原来的判法只认 emoji 和字面「[表情]」，
+// 于是线上「带表情」一列全是 0%（Claude 10-30 交接 §18）。白名单里的方括号名也算。
+const EMOJI = /\p{Extended_Pictographic}|\[(?:捂脸|笑哭|doge|偷笑|委屈|可怜|拥抱|飞吻|爱心|大哭|快哭了|白眼|害羞|敲打|OK|睡)\]|\[表情[^\]]*\]/u;
 
 /** 一批「一次回的几条」→ 数出来的样子；没有话返回 undefined */
 export function speechStats(turns: ReadonlyArray<readonly string[]>): SpeechStats | undefined {
