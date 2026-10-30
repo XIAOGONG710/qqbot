@@ -63,6 +63,7 @@ import { jokeLine, type Joke } from '.././language/jokes.ts';
 import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
 import { identityLine, readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
+import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
 import { insightsLine, type Insight } from '.././life/diary-insights.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
@@ -208,6 +209,8 @@ export interface ContactPipelineOptions {
     diaryInsights?: () => readonly Insight[];
     /** 梗百科词库（2026-10-29）：他这句里提到一个词，只读地查一眼，不写进她自己的梗库 */
     memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
+    /** 她自己最近过的日子（2026-10-30 她说「没有自己的下文」）：从她写的日记里摘一两句，用不用她定 */
+    selfThread?: () => string | undefined;
     /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
     ask?: () => string | undefined;
     /** 首轮铺底（2026-10-29）：他走了很久回来，第一轮带上她自己写的那段日记；挂着 lifeInPrompt，不是新开关 */
@@ -700,6 +703,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 })() : undefined;
             if (exemplarNow) log('真人例子：这一轮放了几条真人的回法（日志不记内容）');
             // 他是在跟她说话，还是在使唤工具（2026-10-30）：只递观察，怎么回她自己定；情绪回合、危机不放
+            const selfThreadNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? options.selfThread?.() : undefined;
             const registerNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow
                 ? (() => {
                     const read = readRegister(chat);
@@ -936,6 +940,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(dictNow ? [dictNow] : []),
                         ...(exemplarNow ? [exemplarNow] : []),
                         ...(registerNow ? [registerNow] : []),
+                        ...(selfThreadNow ? [selfThreadNow] : []),
                         ...(speechNoteNow ? [speechNoteNow] : []),
                         ...(insightNow ? [insightNow] : []),
                         ...(watchedNow ? [watchedNow] : []),
