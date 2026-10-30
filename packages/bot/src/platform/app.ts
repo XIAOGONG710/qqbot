@@ -85,6 +85,7 @@ import { PromiseStateUnavailable } from '.././life/promise-state.ts';
 import { promiseKeeper, type Appointment } from '.././life/promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from '.././life/her-days.ts';
 import { herPlanActivities, saveHerPlan, windowAt } from '.././life/her-plans.ts';
+import { isCorrection, recordCorrection, understandingLine } from '.././life/understanding.ts';
 import { bodyAt } from '.././life/body.ts';
 import { worldState, type WorldNow } from '.././world/world.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
@@ -1128,6 +1129,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.innerLife ? { innerLine: () => planners.get(contact.qq)?.innerLine() } : {}),
             // 她自己决定今天想做什么（ADR 0182）：和「在读的书」一起当额外的空闲活动，每次现取
             ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
+            // 她理解人的话（10-30）：他这句话和以前被纠正过的事撞上时提醒她
+            ...(config.selfDirectedMemory ? { understanding: (hisWords: string) => understandingLine(config.dataDir, hisWords) } : {}),
             // 他刚发过「/亲热」（ADR 0170）：接下来十条回复黏一点，每生成一条减一
             ...(contact.tier === 'boyfriend' ? { intimacyLine: () => takeIntimateLine(config.dataDir, contact.qq) } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取
@@ -1989,6 +1992,16 @@ ${body}
             return;
         }
         responder.receive(text, event.message_id, new Date(event.time * 1000));
+        // 他这句在纠正她上一轮的接法（10-30 用户：让她自己学习去理解人说的话）：记下他说的、她接的、他纠正的
+        if (config.selfDirectedMemory && isCorrection(text)) {
+            const chat = chatHistory.load(event.user_id);
+            const lastHer = [...chat].reverse().find(m => m.role === 'assistant');
+            const prevHis = [...chat].reverse().filter(m => m.role === 'user')[1];
+            if (lastHer && prevHis) {
+                recordCorrection(config.dataDir, { his: prevHis.content, her: lastHer.content, fix: text });
+                log(`[${event.user_id}] 理解：他这次是在纠正上一次的接法，记下了（日志不记内容）`);
+            }
+        }
         exportNow();
         const crisis = detectCrisis(text);
         if (crisis && config.contacts.some(c => c.qq === event.user_id)) {

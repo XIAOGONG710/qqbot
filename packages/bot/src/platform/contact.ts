@@ -65,6 +65,7 @@ import { jokeLine, type Joke } from '.././language/jokes.ts';
 import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
 import { ackGuardLine, identityLine, readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
+import { readTurn, readingLine } from '.././language/reading.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
 import { insightsLine, type Insight } from '.././life/diary-insights.ts';
@@ -87,6 +88,13 @@ const DAY_MS = 86_400_000;
  * 那不是刚说的：10-29 13:24 她拿两小时前的「好好好，都给你～」接了一句「哈哈行，卤蛋记账上了」。
  */
 const LAST_USER_LINE_MS = 30 * 60_000;
+
+/**
+ * 作者写的角色设定要不要进提示词（10-30 用户：把我给她加的设定都去掉）。
+ * 关着时 description / personality / scenario / 示例对话都不注入；名字、红线、危机承认版卡、每轮的事实照旧。
+ * 要恢复，改回 true。
+ */
+const INJECT_PERSONA = false;
 
 /** 他在 QQ 里切到工作模式（/dsh）时加的一行：干活，但说话还是她 */
 const WORK_MODE_NOTE = '他刚把你切到工作模式：这会儿他让你帮忙干活。先说结果，用你平时的口气，别分点汇报、别写“好的/已完成/总结”，过程他追问再说。';
@@ -289,6 +297,11 @@ export interface ContactPipelineOptions {
     innerLine?: () => string | undefined;
     /** 她自己决定今天想做的事（ADR 0182）：和「在读的书」一起当额外的空闲活动，状态行和「你今天的打算」都带上 */
     herPlan?: (at: Date) => ExtraFreeActivity[];
+    /**
+     * 她理解人的话（10-30 用户：让她自己学习去理解人说的话）：他这句话和以前被纠正过的事撞上时，
+     * 返回一行「上次你这么理解，他纠正过」；没有就不加
+     */
+    understanding?: (hisWords: string) => string | undefined;
     /** 他刚发过「/亲热」（ADR 0170）：接下来几条回复黏一点；每取一次少一条，主动找他、危机回合不取 */
     intimacyLine?: () => string | undefined;
     /** 心境（ADR 0102，配置 herFeelings）：她那边的事、他的态度、作者写下的事，在她心里留下带来由的感受（开心 / 难过 / 担心……），会慢慢散；只给男朋友档，危机回合不放 */
@@ -709,6 +722,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 })() : undefined;
             if (exemplarNow) log('真人例子：这一轮放了几条真人的回法（日志不记内容）');
             // 他是在跟她说话，还是在使唤工具（2026-10-30）：只递观察，怎么回她自己定；情绪回合、危机不放
+            // 他这句到底在说什么（2026-10-30）：连着发的算一句、指代摆出来，先想清楚再回
+            const readingNow = contact.tier === 'boyfriend' && !thinking && !crisisNow ? readingLine(readTurn(chat)) : undefined;
+            if (readingNow) log('他这句：这一轮先把他的话读明白再回（日志不记内容）');
             const selfThreadNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? options.selfThread?.() : undefined;
             const registerNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow
                 ? (() => {
@@ -896,7 +912,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (thinking) shown = { chat: [], omitted: 0 };
             // 危机回合被问是不是真人 / 程序一律承认（ADR 0068 决策 7）：换用承认版的卡，不在运行时叠一条覆盖（ADR 0003 / 0067 的纪律）
             // 想一想的时候卡末尾那句“只输出你要发出去的消息：不写心理活动”正好和要求相反，这一次去掉（只有内心用）
-            const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...character, postHistoryInstructions: '' }, worldInfo } : { character, worldInfo };
+            // 10-30 用户：把她身上「作者写的设定」拿掉——description / personality / scenario / 示例对话不再进提示词。
+            // 文件都还在（characters/linmengyao/source 与 st/）；要恢复，把 INJECT_PERSONA 改回 true 即可。
+            // 名字、红线（character.banned）、危机承认版卡、每轮拼出来的事实照旧——去掉的是「她该是什么样」，不是「她是谁」。
+            // 只留卡里那段「被问是不是 AI」的说明（承认是程序是底线，不能跟设定一起清掉）；open 卡本来没有这段
+            const admission = (text: string | undefined) => { const at = (text ?? '').indexOf('【被问是不是 AI】'); return at >= 0 ? (text ?? '').slice(at) : ''; };
+            const bare = INJECT_PERSONA ? character : { ...character, description: admission(character.description), personality: '', scenario: '', mesExample: '' };
+            const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...bare, postHistoryInstructions: '' }, worldInfo } : { character: bare, worldInfo };
             // 他最后说的是哪句：防止她把更早的“嘿嘿”“嗯”和刚说的话混在一起回。
             // 只认最近 30 分钟内的；更早的（主动找他时他半天没回）不说是“他刚说的”，改成一句时间提醒。
             const lastUser = [...chat].reverse().find(message => message.role === 'user');
@@ -965,6 +987,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(exemplarNow ? [exemplarNow] : []),
                         ...(registerNow ? [registerNow] : []),
                         ...(selfThreadNow ? [selfThreadNow] : []),
+                        ...(readingNow ? [readingNow] : []),
                         ...(speechNoteNow ? [speechNoteNow] : []),
                         ...(insightNow ? [insightNow] : []),
                         ...(watchedNow ? [watchedNow] : []),
@@ -976,6 +999,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(photoNow && options.photos?.prompt(photoNow, photoDishNow) ? [options.photos.prompt(photoNow, photoDishNow)!] : []),
                         ...(intentLine ? [intentLine] : []),
                         ...(lastUserLine ? [lastUserLine] : []),
+                        // 这件事她以前理解偏过（10-30）：他这句话和以前被纠正过的事撞上时提醒她
+                        ...(!initiate && lastUserText && options.understanding?.(lastUserText) ? [options.understanding(lastUserText)!] : []),
                         // 人称（10-30：他问「我是谁？」，她回「我是谁这还用问」——把「我」当成了自己）
                         ...(!initiate ? ['[人称：他说「我」是他自己、说「你」是叫你；你说「我」是你自己。他问「我是谁」「我算你什么」问的是你们俩是什么关系，别答成你问你自己。]'] : []),
                         ...(options.selfMemory ? [SELF_MEMORY_NOTE] : []),
