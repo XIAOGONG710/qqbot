@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { identityLine, readRegister, registerLine, registerSummary, temperLine } from '../src/language/register.ts';
+import { ackGuardLine, identityLine, readRegister, registerLine, registerSummary, temperLine } from '../src/language/register.ts';
 
 const said = (...texts: string[]) => texts.map(content => ({ role: 'user' as const, content }));
 
@@ -64,4 +64,17 @@ test('他把她当程序说：给两种身份的选项，不替她选', () => {
 
 test('没提程序就不给这个选项', () => {
     assert.equal(identityLine(readRegister(said('今天好累'))), undefined);
+});
+
+// 2026-10-30 线上：“这样你才算是在思考” → 她只回「对」；「……行吧，能让你这么觉的就行」
+test('很元的问题：不让她整轮只剩一个「对」', () => {
+    const line = ackGuardLine(said('这样你才算是在思考'))!;
+    assert.ok(line.includes('别只回'), line);
+    assert.equal(ackGuardLine(said('今天吃什么')), undefined, '普通聊天不管');
+});
+
+test('以程序身份接也保持她的口气、不聊实现细节', () => {
+    const line = identityLine(readRegister(said('你现在用的什么模型，token 够吗')))!;
+    assert.ok(line.includes('口气还是你的'));
+    assert.ok(line.includes('实现细节'));
 });
