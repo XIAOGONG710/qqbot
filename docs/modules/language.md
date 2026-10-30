@@ -30,6 +30,7 @@
 - `language/memes.ts`
 - `language/meme-dict.ts`
 - `language/exemplars.ts`
+- `language/register.ts`
 - `language/speech-notes.ts`
 - `language/speech-feedback.ts`
 - `language/speech-trend.ts`

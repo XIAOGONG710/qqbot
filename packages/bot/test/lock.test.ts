@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import { acquireLock, isProcessAlive } from '../src/platform/lock.ts';
+import { acquireLock, HEARTBEAT_STALE_MS, isProcessAlive, startHeartbeat } from '../src/platform/lock.ts';
 
 describe('单实例锁', () => {
     let dir = '';
@@ -47,5 +47,41 @@ describe('单实例锁', () => {
     test('isProcessAlive：自己活着，不存在的 PID 不活', () => {
         assert.equal(isProcessAlive(process.pid), true);
         assert.equal(isProcessAlive(2 ** 30), false);
+    });
+});
+
+describe('心跳：卡死/PID 复用的进程挡住启动时要能接管（2026-10-30）', () => {
+    let dir = '';
+    let path = '';
+    let beat = '';
+    beforeEach(() => {
+        dir = mkdtempSync(join(tmpdir(), 'qqbot-lock-hb-'));
+        path = join(dir, 'bot.lock');
+        beat = join(dir, 'bot.lock.hb');
+    });
+    afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+    test('PID 活着但心跳过期：接管', () => {
+        writeFileSync(path, '222');
+        writeFileSync(beat, String(Date.now() - HEARTBEAT_STALE_MS - 1000));
+        acquireLock(path, 111, () => true, { path: beat });
+        assert.equal(readFileSync(path, 'utf8'), '111');
+    });
+
+    test('PID 活着、心跳还新：拒绝启动', () => {
+        writeFileSync(path, '222');
+        writeFileSync(beat, String(Date.now()));
+        assert.throws(() => acquireLock(path, 111, () => true, { path: beat }), /已有一个 bot 在运行（PID 222）/);
+    });
+
+    test('还没写过心跳（刚启动的进程）：按活着处理，别抢', () => {
+        writeFileSync(path, '222');
+        assert.throws(() => acquireLock(path, 111, () => true, { path: beat }), /已有一个 bot 在运行/);
+    });
+
+    test('startHeartbeat 会写时间戳', () => {
+        const stop = startHeartbeat(beat, 10_000);
+        assert.ok(Number(readFileSync(beat, 'utf8')) > 0);
+        stop();
     });
 });

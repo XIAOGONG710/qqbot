@@ -62,6 +62,7 @@ import { idiomLine, type Idiom } from '.././language/idioms.ts';
 import { jokeLine, type Joke } from '.././language/jokes.ts';
 import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
+import { readRegister, registerLine } from '.././language/register.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
 import { insightsLine, type Insight } from '.././life/diary-insights.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
@@ -698,6 +699,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     return exemplarLine(pickExemplars(options.exemplars!, last.content, { k: 4 }));
                 })() : undefined;
             if (exemplarNow) log('真人例子：这一轮放了几条真人的回法（日志不记内容）');
+            // 他是在跟她说话，还是在使唤工具（2026-10-30）：只递观察，怎么回她自己定；情绪回合、危机不放
+            const registerNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow
+                ? (() => {
+                    const read = readRegister(chat);
+                    if (read.cues.length) log(`他的口气：${read.kind}（${read.cues.join('；')}）`);
+                    return registerLine(read);
+                })() : undefined;
             // 她自己总结的说话习惯（ADR 0193）：口气上的参考，危机 / 只想一想 / 小别扭的轮次不放；主动开口也放（习惯不看有没有他的上一句）
             const speechNoteNow = options.speechNotes && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
                 ? speechNotesLine(options.speechNotes(), chat.findLast(message => message.role === 'user')?.content) : undefined;
@@ -923,6 +931,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(memeNow ? [memeNow] : []),
                         ...(dictNow ? [dictNow] : []),
                         ...(exemplarNow ? [exemplarNow] : []),
+                        ...(registerNow ? [registerNow] : []),
                         ...(speechNoteNow ? [speechNoteNow] : []),
                         ...(insightNow ? [insightNow] : []),
                         ...(watchedNow ? [watchedNow] : []),
