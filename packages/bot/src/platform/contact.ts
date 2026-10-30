@@ -66,6 +66,7 @@ import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
 import { ackGuardLine, identityLine, readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
 import { readTurn, readingLine } from '.././language/reading.ts';
+import { SHELL_INTENT } from '.././language/intent.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
 import { insightsLine, type Insight } from '.././life/diary-insights.ts';
@@ -237,6 +238,8 @@ export interface ContactPipelineOptions {
     memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
     /** 她自己最近过的日子（2026-10-30 她说「没有自己的下文」）：从她写的日记里摘一两句，用不用她定 */
     selfThread?: () => string | undefined;
+    /** 她上一轮在这台电脑上跑的命令和结果（2026-10-30 用户：把最高权限给她） */
+    shellNote?: () => string | undefined;
     /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
     ask?: () => string | undefined;
     /** 首轮铺底（2026-10-29）：他走了很久回来，第一轮带上她自己写的那段日记；挂着 lifeInPrompt，不是新开关 */
@@ -741,6 +744,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 他这句到底在说什么（2026-10-30）：连着发的算一句、指代摆出来，先想清楚再回
             const readingNow = contact.tier === 'boyfriend' && !thinking && !crisisNow ? readingLine(readTurn(chat)) : undefined;
             if (readingNow) log('他这句：这一轮先把他的话读明白再回（日志不记内容）');
+            const shellNow = contact.tier === 'boyfriend' && !crisisNow ? options.shellNote?.() : undefined;
             const selfThreadNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? options.selfThread?.() : undefined;
             const registerNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow
                 ? (() => {
@@ -1006,6 +1010,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(exemplarNow ? [exemplarNow] : []),
                         ...(registerNow ? [registerNow] : []),
                         ...(selfThreadNow ? [selfThreadNow] : []),
+                        ...(shellNow ? [shellNow] : []),
+                        ...(contact.tier === 'boyfriend' && !crisisNow && !grievanceActive ? [SHELL_INTENT] : []),
                         ...(readingNow ? [readingNow] : []),
                         ...(speechNoteNow ? [speechNoteNow] : []),
                         ...(insightNow ? [insightNow] : []),

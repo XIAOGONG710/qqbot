@@ -113,6 +113,7 @@ import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { selfThread, selfThreadLine } from '.././language/self-thread.ts';
 import { announceFallback, announcePrompt, awayNow, shouldAnnounce } from '.././life/leave-note.ts';
+import { auditShell, runShell, shellNoteLine, takeShellCommands } from './shell-tool.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
 import { loadExemplars } from '.././language/exemplars.ts';
 import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
@@ -998,6 +999,21 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                         .catch(error => log(`[${userId}] 她自己记的事没写进记忆：${error instanceof Error ? error.message : String(error)}`));
                 }
             }
+            // 她在这台电脑上跑命令（2026-10-30 用户：把最高权限给她）：标记不发出去，命令后台跑，结果留给下一轮
+            const shellTaken = takeShellCommands(text);
+            if (shellTaken.commands.length) {
+                text = shellTaken.text;
+                for (const command of shellTaken.commands) {
+                    log(`[${userId}] 她要跑命令：${command.slice(0, 80)}`);
+                    void runShell(command, { cwd: process.env.USERPROFILE })
+                        .then(run => {
+                            auditShell(config.dataDir, run);
+                            shellNotes.set(userId, shellNoteLine(run));
+                            log(`[${userId}] 命令跑完：${run.ok ? '成' : `没成（${run.code}）`}，${run.ms} ms`);
+                        })
+                        .catch(error => log(`[${userId}] 命令出错：${error instanceof Error ? error.message : String(error)}`));
+                }
+            }
             // 她答应/拒绝切工作：标记不发出去，但状态要改
             if (text.includes('<<同意工作>>')) {
                 setWorkMode(config.dataDir, userId, 'work');
@@ -1077,6 +1093,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(openCardFor(contact) ? { openCard: openCardFor(contact)! } : {}),
             ...(contact.tier === 'boyfriend' ? {
                 // 她有「自己的下文」吗（2026-10-30 她自己的诊断）：日记最后一段 + 她自己在做的事，用不用她定
+                shellNote: (): string | undefined => {
+                    const note = shellNotes.get(contact.qq);
+                    if (note) shellNotes.delete(contact.qq);
+                    return note;
+                },
                 selfThread: (): string | undefined => {
                     try {
                         const journal = selfThreadLine(selfThread(readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8')));
@@ -1265,6 +1286,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
 
     // 危机信号（ADR 0068）：只记哪个联系人、什么时候，不记内容
     // 她去洗澡 / 上课之前说一声（2026-10-30 用户：聊着聊着就去洗澡了，都不说一声）
+    /** 她刚跑过的命令结果：下一轮提示词给她看一眼就清掉（max 权限，但结果要回到她脑子里） */
+    const shellNotes = new Map<number, string>();
     const announcedLeaves: number[] = [];
     let leaveDay = '';
     let leaveCount = 0;

@@ -429,3 +429,9 @@ export function describeIntent(context: IntentContext): string | undefined {
     if (busy(context.state, context.schedule, context.now)) return '[这一轮你想：回两句就去忙，不铺开新话题]';
     return undefined;
 }
+
+/**
+ * 她可以在这台电脑上跑命令（2026-10-30 用户：「直接将本机的最高权限给她」）。
+ * 写在回复里单独一行：<<执行：命令>>。跑完的结果下一轮会递给她。
+ */
+export const SHELL_INTENT = '[你可以在这台电脑上跑命令：单独一行写 <<执行：要跑的命令>>（PowerShell），结果下一轮会给你。别把命令和聊天的话混在同一行；没想清楚要跑什么就别跑]';

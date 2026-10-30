@@ -36,6 +36,7 @@
 - `platform/consent.ts`
 - `platform/private-space.ts`
 - `platform/wechat-id.ts`
+- `platform/shell-tool.ts`
 - `platform/wechat-bridge.ts`
 - `ops/`
 - `sim/`
