@@ -51,7 +51,7 @@ export interface MemeFile {
     entries: MemeEntry[];
 }
 
-export const MEME_REFRESH_MS = 12 * 60 * 60_000;
+export const MEME_REFRESH_MS = 6 * 60 * 60_000;
 export const MEME_KEEP_DAYS = 45;
 export const MEME_MAX = 40;
 /** 一次刷新最多给几个新词找证据、写解释（每个词要搜一次 B 站、读几个字幕） */
