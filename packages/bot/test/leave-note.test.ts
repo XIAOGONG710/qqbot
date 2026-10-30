@@ -14,9 +14,16 @@ test('洗澡时段里 = 看不了消息', () => {
     assert.equal(awayNow(world(shower), later), undefined);
 });
 
-test('聊天在进行、今天没说满、这一段没说过 → 说一声', () => {
+test('聊天在进行、今天没说满、这一段没说过 → 说一声（但也不是每次都说）', () => {
     const base = { span, at: at.getTime(), announcedStarts: [], saidToday: 0 };
-    assert.equal(shouldAnnounce({ ...base, lastMessageAt: at.getTime() - 2 * 60_000 }), true);
+    // 她说「别要求得太死」：一部分走开是按时间定死的「安静走」（见 QUIET_LEAVE_SHARE）；
+    // 所以这里找一些 start 落在「该说」那边的时段来验规则，不去断言某一次具体说不说
+    let announced = 0;
+    for (let offset = 0; offset < 40; offset++) {
+        const shifted = { ...span, start: span.start + offset * 60_000, end: span.end + offset * 60_000 };
+        if (shouldAnnounce({ ...base, span: shifted, lastMessageAt: at.getTime() - 2 * 60_000 })) announced++;
+    }
+    assert.ok(announced > 0 && announced < 40, `应该有说也有不说（实际 ${announced}/40）`);
     assert.equal(shouldAnnounce({ ...base, lastMessageAt: at.getTime() - LIVE_CHAT_MS - 1 }), false, '他早就不聊了，不用报备');
     assert.equal(shouldAnnounce({ ...base, lastMessageAt: at.getTime(), announcedStarts: [span.start] }), false, '这一次已经说过');
     assert.equal(shouldAnnounce({ ...base, lastMessageAt: at.getTime(), saidToday: 3 }), false, '一天最多三次');
