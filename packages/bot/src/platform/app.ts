@@ -23,7 +23,7 @@ import { experiencesFromLife, experiencesFromWatched, Tastes } from '.././life/t
 import { readLifeEvents } from '.././world/life-events.ts';
 import { Timeline, timelineAccount, timelineFromDevice } from '.././memory/timeline.ts';
 import { readWebSecrets, WebLookup } from './web.ts';
-import { acquireLock } from './lock.ts';
+import { acquireLock, startHeartbeat as startLockHeartbeat } from './lock.ts';
 import type { Log } from './log.ts';
 import { ChatHistory, type StoredMessage } from '.././memory/history.ts';
 import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
@@ -456,7 +456,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
 
     const chatHistory = new ChatHistory(config.dataDir, log);
     // 放在 ChatHistory 之后：它会建好数据目录
-    const releaseLock = acquireLock(join(config.dataDir, 'bot.lock'));
+    // 心跳：锁文件只记 PID，会被「进程卡死」和「PID 被复用」骗；心跳加一道，3 分钟没写就当它死了
+    const lockHeartbeatFile = join(config.dataDir, 'bot.lock.hb');
+    const releaseLock = acquireLock(join(config.dataDir, 'bot.lock'), process.pid, undefined, { path: lockHeartbeatFile });
+    const stopLockHeartbeat = startLockHeartbeat(lockHeartbeatFile);
     // 心跳（任务书 T3b）：每分钟写 heartbeat.json（只有时间和进程号），ops/heartbeat-watch-cli.ts 看它多久没更新
     let connectedAt: Date | undefined;
     let lastMessageAt: Date | undefined;
@@ -2250,6 +2253,7 @@ ${body}
             if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);
+            stopLockHeartbeat();
             releaseLock();
         },
         status() {
