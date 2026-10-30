@@ -1316,6 +1316,13 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         const day = at.toISOString().slice(0, 10);
         if (day !== leaveDay) { leaveDay = day; leaveCount = 0; }
         if (!shouldAnnounce({ span, lastMessageAt: Number.isFinite(lastAt) ? lastAt : undefined, at: at.getTime(), announcedStarts: announcedLeaves, saidToday: leaveCount })) return;
+        // 10-30：announcedLeaves 只在内存里，插件一重载就清空——同一次洗澡又说一遍
+        //（23:14 / 23:20 / 23:29 三次，每次都在一次「已就绪」之后）。
+        // 改成查聊天记录：这一段开始之后她说过这件事，就不再发。
+        if (history.some(m => m.role === 'assistant' && Date.parse(m.time) >= span!.start && m.content.includes(span!.text))) {
+            announcedLeaves.push(span!.start);
+            return;
+        }
         announcedLeaves.push(span!.start);
         leaveCount += 1;
         let line = '';
