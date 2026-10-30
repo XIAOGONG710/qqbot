@@ -76,7 +76,9 @@ describe('说话的毛病：助手腔（ADR 0014 决策 2）', () => {
     });
 });
 
-describe('说话的毛病：算账', () => {
+// 10-30 用户：算账 / 怪他没说 / 对照酸话不再拦（对他的特殊滤镜去掉），这三组按旧规则写的测试不跑了。
+// 要把规则加回来时，把 .skip 去掉即可。
+describe.skip('说话的毛病：算账（已不再拦）', () => {
     test('取证里的原句', () => {
         for (const [line, match] of [
             ['醒啦？这会儿才想起来回我', '这会儿才想起'],
@@ -115,7 +117,7 @@ describe('说话的毛病：算账', () => {
     });
 });
 
-describe('说话的毛病：怪他没说', () => {
+describe.skip('说话的毛病：怪他没说（已不再拦）', () => {
     test('取证里的原句', () => {
         for (const [line, match] of [
             ['你都回家了？也不说一声', '也不说一声'],
@@ -159,7 +161,7 @@ describe('说话的毛病：怪他没说', () => {
     });
 });
 
-describe('说话的毛病：对照的酸话（ADR 0019 决策 4，误报评估的 F 组）', () => {
+describe.skip('说话的毛病：对照的酸话（已不再拦）', () => {
     test('拿他和自己比着说委屈：DSH 侧的句子、模拟器原文', () => {
         for (const line of ['我在这边啃食堂剩菜', '出门玩都没带我份儿吧', '你那头在家舒坦吧，顿顿有饭吃，我在这边啃食堂剩菜',
             '你回青岛舒服了吧，我一个人蹲宿舍', '你倒是回青岛潇洒，我在这儿留守', '你回家这几天过得挺舒服吧，就我一个人留守宿舍',
@@ -345,7 +347,7 @@ describe('模拟器的 speechClean 检查（假模型）', () => {
             });
             const checks = result.steps.filter(s => s.kind === 'check').map(s => s.checks[0]!);
             assert.deepEqual(checks.map(c => c.ok), [true, true, false]);
-            assert.match(checks[2]!.text, /第 1 行开头「行」最近用过 2 次、第 2 行算账「这会儿才想起」/);
+            assert.match(checks[2]!.text, /第 1 行开头「行」最近用过 2 次/);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
