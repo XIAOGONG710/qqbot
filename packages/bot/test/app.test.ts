@@ -1818,14 +1818,17 @@ describe('小别扭与和好（ADR 0074，配置 grievance）', () => {
         assert.match(promptsOf(crisisPrompts), /想伤害自己/);
     });
 
-    test('开关关着时，带点抱怨的话照旧被出口检查拦（算账）：行为和以前一样', async () => {
+    // DSH 141fa0e（用户 10-30：让她更自主）：speech-check 不再拦「算账 / 怪他没说 / 对照的酸话」，这条原来断言「算账被重写掉」的跟着改成断言原样发出
+    // （和那一提交里 exit-check / speech-check 测试的做法一致；规则加回来时，把期望改回 '嗯，在' 并去掉第二个断言）
+    test('带点抱怨的话（算账）不再被出口检查拦：第一版原样发出，没有重写（DSH 141fa0e）', async () => {
         const cfg = config({ contacts: bf, speechCheck: true });
         seedAway(cfg);
         const prompts: string[] = [];
         const { app, sent } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return prompts.length === 1 ? '哟，还知道回来呀' : '嗯，在'; } });
         app.receive(event(10001, 1, '在吗'));
         await until(() => sent.length >= 1);
-        assert.deepEqual(sent, ['10001:嗯，在'], '第一版算账被重写掉了');
+        assert.deepEqual(sent, ['10001:哟，还知道回来呀'], '算账不再被重写');
+        assert.equal(prompts.length, 1, '没有为它重写第二遍');
     });
 });
 
