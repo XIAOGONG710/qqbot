@@ -26,7 +26,7 @@ export function cleanUpReply(text: string, names: MacroNames, scripts: readonly 
 }
 
 /** 一次回复最多几条气泡（ADR 0006 决策 4） */
-export const MAX_BUBBLES = 5;
+export const MAX_BUBBLES = 8;
 
 /**
  * 按行拆成几条消息：模型用换行表示连发几条（同一气泡里换行在 QQ 上不像真人），空行跳过。

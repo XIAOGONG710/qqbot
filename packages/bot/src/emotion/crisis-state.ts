@@ -60,8 +60,12 @@ export function createCrisisState(dataDir: string, log: (message: string) => voi
         },
         lastAt(qq) { return this.last(qq)?.at; },
         pausedAt(qq, now) {
-            const at = this.lastAt(qq);
-            return at !== undefined && now - at < CRISIS_PAUSE_MS;
+            const last = this.last(qq);
+            if (!last) return false;
+            // 关切级不停主动消息（10-30：他一句「我一个人可撑不下去」，她连着两天不发早安、下课、冷场）。
+            // 只有高 / 紧急才停：那是明确的想伤害自己，这时候还发「下课了」不合适。
+            if (last.level === 'concern') return false;
+            return now - last.at < CRISIS_PAUSE_MS;
         },
     };
 }

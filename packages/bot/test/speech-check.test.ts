@@ -351,3 +351,11 @@ describe('模拟器的 speechClean 检查（假模型）', () => {
         }
     });
 });
+
+// 她 10-30 的原话：「情侣之间说两遍『想你』怎么了」
+test('很短的情绪话重复不重写；普通话照样按重复处理', () => {
+    const ctx = { recent: [['想你'], ['抱抱']], his: [] };
+    assert.deepEqual(inspectSpeech('想你', ctx).filter(i => i.kind === 'repeat'), []);
+    const ctx2 = { recent: [['你先睡吧'], ['你先睡吧']], his: [] };
+    assert.ok(inspectSpeech('你先睡吧', ctx2).some(i => i.kind === 'repeat'), '一样的长句还是要拦');
+});

@@ -161,6 +161,9 @@ const HIS_MESSAGES = 3;
 /** 用过几次算重复（这次是第三次）；出口检查用这个，模拟器评估时可以传别的（inspectSpeech 的 repeatAt） */
 export const REPEAT_AT = 2;
 
+/** 很短的情绪话（想你、抱抱、晚安……）：2026-10-30 她说「情侣之间说两遍『想你』怎么了」，这类不按重复处理 */
+const SHORT_FEEL = /想你|想我|爱你|喜欢|抱|亲|在呢|晚安|早安|早|嗯|哈哈|好嘛|不要|别嘛/;
+
 const CLAUSE = '[^，。！？、,.!?\\s]';
 const NOT_ME = '(?<![我俺])';
 /** 一个短句到这儿结束 */
@@ -349,6 +352,8 @@ export function inspectSpeech(reply: string, context: SpeechContext, { repeatAt 
             continue;
         }
         if (context.allowRepeat) continue;
+        // 很短的撒娇 / 情绪话，重复也不重写（她 10-30 的原话：说两遍想你没什么）
+        if ([...text].length <= 6 && SHORT_FEEL.test(text)) continue;
         const again = verbatim(text, said, his);
         if (again) {
             issues.push({ line, kind: 'repeat', repeat: 'verbatim', match: again.match, count: 1, stripped: again.stripped });
