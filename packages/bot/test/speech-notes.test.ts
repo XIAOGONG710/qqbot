@@ -7,7 +7,7 @@ import type { Exemplar } from '../src/language/exemplars.ts';
 import {
     MAX_ACTIVE, MAX_ADD, MAX_RETIRE, applyNotesDecision, describeNotesForOwner, emptyNotesState, herTurns, hisLines, loadNotesState, noteProblem,
     parseNotesDecision, pickSamples, recentExchanges, reflectIfDue, reflectionDue, reflectionMessages, saveNotesState, sharedRun, speechNotesLine, speechNotesPath,
-    speechNotesReader, speechStats, type Guard, type NotesState, type SpeechNote,
+    speechNotesReader, speechStats, statsLine, type Guard, type NotesState, type SpeechNote,
 } from '../src/language/speech-notes.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
 
@@ -37,13 +37,24 @@ function chatHistory(now = NIGHT): StoredMessage[] {
 describe('数她说话的样子', () => {
     test('speechStats：一次几条、中位字数、两字以内、问号、表情；没有话返回 undefined', () => {
         const stats = speechStats([['在吗', '嗯嗯？'], ['好', '😂', '你呢？']]);
-        assert.deepEqual(stats, { turns: 2, bubbles: 5, perTurn: 2.5, medianChars: 2, shortShare: 0.6, questionShare: 0.4, emojiShare: 0.2 });
+        assert.deepEqual(stats, { turns: 2, bubbles: 5, perTurn: 2.5, medianChars: 2, shortShare: 0.6, questionShare: 0.4, emojiShare: 0.2, tropes: { aphorism: 0, insomnia: 0, sudden: 0 } });
         assert.equal(speechStats([]), undefined);
         assert.equal(speechStats([[], ['  ']]), undefined, '空白不算一条');
         assert.equal(speechStats([['[表情包：笑哭]', '好']])?.emojiShare, 0.5, '表情包行也算带表情');
         // QQ 小黄脸在聊天记录里是「[偷笑]」这种方括号名，不是 unicode emoji：线上那列原来是 0%（交接 §18）
         assert.equal(speechStats([['[偷笑]', '好吧']])?.emojiShare, 0.5, '小黄脸算带表情');
         assert.equal(speechStats([['[捂脸]']])?.emojiShare, 1);
+    });
+
+    test('speechStats 也数几种“AI 腔”说法各占多少；statsLine 只在出现过时多一句，并说明只是数字', () => {
+        const stats = speechStats([['在吗', '不是不想回你，是在忙'], ['好', '突然觉得有点累', '半夜睡不着']]);
+        assert.deepEqual(stats?.tropes, { aphorism: 0.2, insomnia: 0.2, sudden: 0.2 });
+        const line = statsLine(stats!);
+        assert.match(line, /这几种说法占气泡的比例：警句式「不是 X，是 Y」20.0%、「半夜睡不着」一类 20.0%、「突然明白」一类 20.0%/);
+        assert.match(line, /要不要改你自己定/);
+        const clean = statsLine(speechStats([['在吗', '嗯嗯？']])!);
+        assert.doesNotMatch(clean, /这几种说法/, '没出现过就不占行');
+        assert.doesNotMatch(clean, /你自己定/);
     });
 
     test('herTurns：她连着回的几条是一次，他说话就断开；窗口外、未来、运维行不算', () => {
@@ -300,6 +311,18 @@ describe('什么时候想、想的时候看到什么', () => {
         assert.equal(state.attempts.n, 1, '过了零点，新的一天从 1 次算起');
         assert.equal(state.attempts.day, '2026-10-31');
         assert.equal(state.notes.length, 1);
+    });
+
+    test('读状态：lastStats 里的 tropes 读得回来；旧记录（没有 tropes）照常读，也不会凭空多出来', () => {
+        const dir = tmp();
+        const base = { turns: 3, bubbles: 9, perTurn: 3, medianChars: 5, shortShare: 0.2, questionShare: 0.1, emojiShare: 0.1 };
+        writeFileSync(speechNotesPath(dir), JSON.stringify({ notes: [], lastStats: { ...base, tropes: { aphorism: 0.05, insomnia: 'x', sudden: 0.02 } } }));
+        assert.deepEqual(loadNotesState(dir).lastStats?.tropes, { aphorism: 0.05, insomnia: 0, sudden: 0.02 }, '坏字段按 0');
+        writeFileSync(speechNotesPath(dir), JSON.stringify({ notes: [], lastStats: base }));
+        const old = loadNotesState(dir).lastStats;
+        assert.ok(old);
+        assert.equal('tropes' in old, false);
+        assert.doesNotMatch(statsLine(old), /这几种说法/);
     });
 
     test('读状态：坏文件当空；条数和长度被收住', () => {

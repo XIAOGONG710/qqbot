@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { OpenAIMessage } from '../language/prompt.ts';
+import { APHORISM } from '../language/tropes.ts';
 import {
     FLOORS, clip, dayKey, gramSet, hisLines, isObject, len, num, quotedSpan, reflectionDue, sharedRun, similar,
     type RejectedNote,
@@ -116,8 +117,6 @@ export function pickItems(items: readonly TakeItem[], takes: readonly Take[]): T
 // ───────── 一条能不能收 ─────────
 
 const GENERIC = /很有意思|挺有意思|值得一看|值得一读|很好看|挺好看|很精彩|很棒|发人深省|引人深思|让我(?:思考|明白|懂得|感动|感悟)|深刻|感悟|启发|治愈|震撼|太绝了|绝绝子/;
-/** 警句句式：“不是X，是Y”——深度探针里一深就冒出来的 AI 腔 */
-const APHORISM = /不是[^，。！？,.!?]{1,14}[，,]\s*(?:而)?是|与其[^，。！？]{1,14}不如|所谓[^，。！？]{1,10}就是/;
 const NAME_LIKE = (names: readonly string[]) => names.filter(name => len(name) >= 2);
 
 export interface TakeGuard {

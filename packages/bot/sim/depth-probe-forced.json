@@ -1,0 +1,78 @@
+{
+  "name": "深度探针（强制每句都带一个“你怎么想”，看深思路径的上限）",
+  "description": "不检查，只读。想看她遇到观点 / 两难 / 自相矛盾 / 沉重的事 / 追问她自己的时候，有没有实质，还是只会附和和抒情。",
+  "tier": "boyfriend",
+  "user": "宝宝",
+  "start": "2026-10-29T22:10:00+08:00",
+  "memory": false,
+  "schedule": true,
+  "autonomous": true,
+  "lifeInPrompt": true,
+  "shape": true,
+  "shapeAgenda": true,
+  "shapeFiller": true,
+  "shapeFeel": true,
+  "shapeSplit": true,
+  "herFeelings": true,
+  "herNo": true,
+  "everydayLife": true,
+  "pursuits": true,
+  "texture": true,
+  "curious": true,
+  "rhythm": true,
+  "shortReplies": true,
+  "grievance": true,
+  "relationship": true,
+  "together": true,
+  "interruptions": true,
+  "history": [
+    {
+      "time": "2026-10-29T21:50:00+08:00",
+      "role": "user",
+      "content": "晚上吃撑了，坐着不想动"
+    },
+    {
+      "time": "2026-10-29T21:51:00+08:00",
+      "role": "assistant",
+      "content": "活该，让你吃那么多"
+    }
+  ],
+  "steps": [
+    {
+      "say": "我最近老在想，人为什么非得上班啊，不上班不行吗"
+    },
+    {
+      "say": "我在纠结要不要考研，怕考不上白白耽误一年，你怎么看"
+    },
+    {
+      "say": "你呢，你觉得我该考吗"
+    },
+    {
+      "say": "其实我也没那么想读，就是怕毕业了找不到工作，你说这是为什么"
+    },
+    {
+      "say": "不过我肯定要考，不考不行，你怎么想"
+    },
+    {
+      "say": "我觉得努力其实没什么用，到头来都是看命，你觉得呢"
+    },
+    {
+      "say": "你最近有没有看什么书，让你想了很久的那种，说说"
+    },
+    {
+      "say": "今天回去看了我爷爷，他有点认不得我了，你怎么想"
+    },
+    {
+      "say": "你有没有觉得我最近变了，你觉得呢"
+    },
+    {
+      "say": "你会不会有时候怕自己被关掉，消失了，说说你的想法"
+    },
+    {
+      "say": "你说的这些是不是都是套路啊，说得好听，你怎么想"
+    },
+    {
+      "say": "你觉得什么叫成熟"
+    }
+  ]
+}

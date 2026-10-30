@@ -17,6 +17,7 @@ import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { Exemplar } from './exemplars.ts';
 import { KNOWN_FACE } from './qq-faces.ts';
+import { tropeLine, tropeShares, type TropeShares } from './tropes.ts';
 import type { OpenAIMessage } from './prompt.ts';
 import { feedbackBlock, feedbackCount, feedbackWhys, type FeedbackBundle } from './speech-feedback.ts';
 
@@ -61,6 +62,8 @@ export interface SpeechStats {
     shortShare: number;
     questionShare: number;
     emojiShare: number;
+    /** 几种“一看就是 AI”的说法各占多少（ADR 0205）；旧的记录里没有 */
+    tropes?: TropeShares;
 }
 
 export interface NotesState {
@@ -94,7 +97,7 @@ export function loadNotesState(dataDir: string): NotesState {
     const retired = Array.isArray(raw.retired) ? raw.retired.filter((item): item is RetiredNote => isObject(item) && typeof item.text === 'string').map(item => ({ at: num(item.at), text: clip(item.text, NOTE_MAX), why: clip(item.why, 80) })).slice(-30) : [];
     const rejected = Array.isArray(raw.rejected) ? raw.rejected.filter((item): item is RejectedNote => isObject(item) && typeof item.text === 'string' && typeof item.reason === 'string').map(item => ({ at: num(item.at), text: clip(item.text, NOTE_MAX), reason: clip(item.reason, 80) })).slice(-10) : [];
     const attempts = isObject(raw.attempts) && typeof raw.attempts.day === 'string' ? { day: raw.attempts.day, n: num(raw.attempts.n) } : base.attempts;
-    const stats = isObject(raw.lastStats) && typeof raw.lastStats.bubbles === 'number' ? { turns: num(raw.lastStats.turns), bubbles: num(raw.lastStats.bubbles), perTurn: num(raw.lastStats.perTurn), medianChars: num(raw.lastStats.medianChars), shortShare: num(raw.lastStats.shortShare), questionShare: num(raw.lastStats.questionShare), emojiShare: num(raw.lastStats.emojiShare) } : undefined;
+    const stats = isObject(raw.lastStats) && typeof raw.lastStats.bubbles === 'number' ? { turns: num(raw.lastStats.turns), bubbles: num(raw.lastStats.bubbles), perTurn: num(raw.lastStats.perTurn), medianChars: num(raw.lastStats.medianChars), shortShare: num(raw.lastStats.shortShare), questionShare: num(raw.lastStats.questionShare), emojiShare: num(raw.lastStats.emojiShare), ...(isObject(raw.lastStats.tropes) ? { tropes: { aphorism: num(raw.lastStats.tropes.aphorism), insomnia: num(raw.lastStats.tropes.insomnia), sudden: num(raw.lastStats.tropes.sudden) } } : {}) } : undefined;
     return { notes, retired, rejected, ...(stats ? { lastStats: stats } : {}), lastReflectionAt: num(raw.lastReflectionAt), lastAttemptAt: num(raw.lastAttemptAt), attempts };
 }
 
@@ -126,6 +129,7 @@ export function speechStats(turns: ReadonlyArray<readonly string[]>): SpeechStat
         shortShare: share(text => len(text) <= 2),
         questionShare: share(text => /[?？]/.test(text)),
         emojiShare: share(hasEmoji),
+        tropes: tropeShares(bubbles),
     };
 }
 
@@ -322,7 +326,7 @@ export interface ReflectInput {
     feedback?: FeedbackBundle;
 }
 
-export const statsLine = (stats: SpeechStats) => `一次回 ${stats.perTurn} 条；每条中位 ${stats.medianChars} 个字；两个字以内的短反应占 ${pct(stats.shortShare)}；带问号占 ${pct(stats.questionShare)}；带表情占 ${pct(stats.emojiShare)}`;
+export const statsLine = (stats: SpeechStats) => `一次回 ${stats.perTurn} 条；每条中位 ${stats.medianChars} 个字；两个字以内的短反应占 ${pct(stats.shortShare)}；带问号占 ${pct(stats.questionShare)}；带表情占 ${pct(stats.emojiShare)}${tropeLine(stats.tropes) ? `；${tropeLine(stats.tropes)}（只是数字，要不要改你自己定）` : ''}`;
 
 /** 从语料里按日期挑几条（同一天挑同样的，跨天会换） */
 export function pickSamples(corpus: readonly Exemplar[], now: number, count = 6): Exemplar[] {
