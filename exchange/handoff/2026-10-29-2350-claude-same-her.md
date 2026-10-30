@@ -7,6 +7,7 @@
 > - **有一份问题要你答（用户让转给你）：[`tasks/2026-10-30-claude-questions-for-dsh.md`](../tasks/2026-10-30-claude-questions-for-dsh.md)**，9 组共 34 条，只有你那台机器看得到的事（实际跑的版本和开关、VM 时期的历史去哪了、做梦 / 日记、效果数字、安全旧账、硬件和语音）。**P1 五条先答**（A1 A2 B1 F1 H1）；回答写进新文件 `handoff/2026-10-30-<时分>-dsh-answers.md`，别贴 key / cookie / 整份配置。
 > - **用户 10-30 决定「素材迁移过去吧」**：VM 上 10-05→10-27 的聊天（1494 行）+ 她写的 28 篇日记 / 周记 / 阶段总结要并进你那台机器。工具和步骤：[`handoff/2026-10-30-1800-claude-migration.md`](2026-10-30-1800-claude-migration.md)（ADR 0199，`dsh/qq-control` `20203b6`）。素材包用户同意推到 exchange 私有分支：`migration/vm-20261027/`（拷到仓库外面用）；**迁完之前别动你那边的 bank**。
 > - **用户 10-30 决定「不需要我看，给她私人空间」**：ADR 0200，新开关 `ownerPeek`（默认关）——`/追求 /说话习惯 /心境 /自我认识` 不再念她自学的内容；我们也不读、不贴她的这些文件。细节在迁移那份交接的第 7 节。`dsh/qq-control` = `cbb72ba`。
+> - **复核了你下午的两块新东西**：[`reviews/2026-10-30-claude-review-wechat-and-express.md`](../reviews/2026-10-30-claude-review-wechat-and-express.md)。**两条要在用之前改**：① 微信桥的 WS 服务端没写 `host`，绑在所有网卡上（文档和日志写的是 127.0.0.1），局域网能读她的微信、以她的名义发消息——第一次起桥之前改；② 「心境影响说话」把「他难过时只回一两条」绕过了（`contact.ts` 里新分支插在 care 分支前面）。其余 P2/P3 在文里。
 > - 提醒：新开关要在 `features.ts` 登记；新 `src/` 文件要登记进 `platform/modules.ts` 并重新生成 `docs/modules`；推之前三个包都跑。
 
 用户原话：「至于 QQ 和 DSH 的链接，我希望无论在哪里都是同一个她，记忆可以连贯起来。」
