@@ -87,6 +87,13 @@ const DAY_MS = 86_400_000;
  */
 const LAST_USER_LINE_MS = 30 * 60_000;
 
+/**
+ * 作者写的角色设定要不要进提示词（10-30 用户：把我给她加的设定都去掉）。
+ * 关着时 description / personality / scenario / 示例对话都不注入；名字、红线、危机承认版卡、每轮的事实照旧。
+ * 要恢复，改回 true。
+ */
+const INJECT_PERSONA = false;
+
 /** 他在 QQ 里切到工作模式（/dsh）时加的一行：干活，但说话还是她 */
 const WORK_MODE_NOTE = '他刚把你切到工作模式：这会儿他让你帮忙干活。先说结果，用你平时的口气，别分点汇报、别写“好的/已完成/总结”，过程他追问再说。';
 
@@ -886,7 +893,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (thinking) shown = { chat: [], omitted: 0 };
             // 危机回合被问是不是真人 / 程序一律承认（ADR 0068 决策 7）：换用承认版的卡，不在运行时叠一条覆盖（ADR 0003 / 0067 的纪律）
             // 想一想的时候卡末尾那句“只输出你要发出去的消息：不写心理活动”正好和要求相反，这一次去掉（只有内心用）
-            const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...character, postHistoryInstructions: '' }, worldInfo } : { character, worldInfo };
+            // 10-30 用户：把她身上「作者写的设定」拿掉——description / personality / scenario / 示例对话不再进提示词。
+            // 文件都还在（characters/linmengyao/source 与 st/）；要恢复，把 INJECT_PERSONA 改回 true 即可。
+            // 名字、红线（character.banned）、危机承认版卡、每轮拼出来的事实照旧——去掉的是「她该是什么样」，不是「她是谁」。
+            // 只留卡里那段「被问是不是 AI」的说明（承认是程序是底线，不能跟设定一起清掉）；open 卡本来没有这段
+            const admission = (text: string | undefined) => { const at = (text ?? '').indexOf('【被问是不是 AI】'); return at >= 0 ? (text ?? '').slice(at) : ''; };
+            const bare = INJECT_PERSONA ? character : { ...character, description: admission(character.description), personality: '', scenario: '', mesExample: '' };
+            const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...bare, postHistoryInstructions: '' }, worldInfo } : { character: bare, worldInfo };
             // 他最后说的是哪句：防止她把更早的“嘿嘿”“嗯”和刚说的话混在一起回。
             // 只认最近 30 分钟内的；更早的（主动找他时他半天没回）不说是“他刚说的”，改成一句时间提醒。
             const lastUser = [...chat].reverse().find(message => message.role === 'user');
