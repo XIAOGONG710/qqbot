@@ -7,6 +7,7 @@
 ## 文件（`packages/bot/src/` 下）
 
 - `emotion/affect.ts`
+- `emotion/express.ts`
 - `emotion/feelings.ts`
 - `emotion/feeling-export.ts`
 - `emotion/feeling-review.ts`

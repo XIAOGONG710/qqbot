@@ -132,7 +132,8 @@ export function tick(now = Date.now()) {
         state.energy = clamp(state.energy - hours * 2.5, 0, 100)
         state.hunger = clamp(state.hunger + hours * 4, 0, 100)
     }
-    state.mood = clamp(state.mood * 0.98, -1, 1)
+    // 2026-10-30：mood 废弃——QQ 那边的 emotion/feelings.ts 才是心境（有来由、可复算）。
+    // 这里再算一套，就会和提示词里的心境打架（LIFE.json 的 0.77 没人读，却还在漂）。保留字段只为老数据不炸。
     for (const rel of Object.values(state.relationships)) rel.resentment = clamp(rel.resentment - hours, 0, 100)
 
     const next = chooseActivity(state, hour)
@@ -175,15 +176,16 @@ export function noteInteraction(text, from = 'baobao', forcedNegative = false) {
     const positive = isPositiveAtHer(value)
     const negative = forcedNegative || isNegativeAtHer(value)
     const rel = state.relationships[from] || state.relationships.baobao
-    if (positive) { rel.trust = clamp(rel.trust + 2, 0, 100); rel.resentment = clamp(rel.resentment - 4, 0, 100); state.mood = clamp(state.mood + 0.05, -1, 1) }
-    if (negative) { rel.trust = clamp(rel.trust - 3, 0, 100); rel.resentment = clamp(rel.resentment + 8, 0, 100); state.mood = clamp(state.mood - 0.15, -1, 1) }
+    if (positive) { rel.trust = clamp(rel.trust + 2, 0, 100); rel.resentment = clamp(rel.resentment - 4, 0, 100) }
+    if (negative) { rel.trust = clamp(rel.trust - 3, 0, 100); rel.resentment = clamp(rel.resentment + 8, 0, 100) }
     logEvent(state, `${from === 'baobao' ? '宝宝' : from}跟我说：${value.slice(0, 40)}`)
     save(state)
 }
 
 export function nowText(state = load()) {
     const time = new Date(state.at).toTimeString().slice(0, 5)
-    const mood = state.mood > 0.3 ? '心情不错' : state.mood < -0.3 ? '心情不太好' : '心情一般'
+    // 心情这句话不再由这里说：QQ 的心境（feelings.ts）已经写进提示词，两处各说各的就会矛盾
+    const mood = ''
     const body = state.energy < 30 ? '有点累' : state.hunger > 70 ? '有点饿' : '身体还行'
     const rel = state.relationships.baobao
     const relation = rel.resentment > 30 ? '还在生他的气' : rel.trust > 80 ? '跟他很亲' : '跟他正常'
@@ -194,7 +196,7 @@ export function nowText(state = load()) {
             : ''
     const tired = state.energy < 25 ? '你太累了：能短就短，不想动。' : ''
     const recent = state.events.slice(-3).map(e => e.text).join('；')
-    return `现在 ${time}，我在${state.activity}，${body}，${mood}，${relation}。${behavior}${tired}${recent ? `最近：${recent}` : ''}`
+    return `现在 ${time}，我在${state.activity}，${body}，${relation}。${behavior}${tired}${recent ? `最近：${recent}` : ''}`.replace('，，', '，')
 }
 
 export function readNow() {

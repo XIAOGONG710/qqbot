@@ -59,7 +59,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'emotion', name: '心境与安全',
         scope: '她的心境（开心 / 难过 / 流泪）、小别扭和和好、危机最小规则、按联系人披露她是程序、反馈通道、作者写下的大事。',
-        files: ['emotion/affect.ts', 'emotion/feelings.ts', 'emotion/feeling-export.ts', 'emotion/feeling-review.ts', 'emotion/moments.ts', 'emotion/grievance.ts', 'emotion/crisis.ts', 'emotion/crisis-state.ts', 'emotion/disclosure.ts', 'emotion/feedback.ts', 'emotion/feedback-digest.ts', 'emotion/feedback-digest-cli.ts'],
+        files: ['emotion/affect.ts', 'emotion/express.ts', 'emotion/feelings.ts', 'emotion/feeling-export.ts', 'emotion/feeling-review.ts', 'emotion/moments.ts', 'emotion/grievance.ts', 'emotion/crisis.ts', 'emotion/crisis-state.ts', 'emotion/disclosure.ts', 'emotion/feedback.ts', 'emotion/feedback-digest.ts', 'emotion/feedback-digest-cli.ts'],
         groups: [],
         metrics: '周报日志计数里的「心境」「会拒绝」；危机相关永远是最高优先级，没有“指标”，只有测试和 ADR 0068 的底线',
         adrs: ['0067', '0068', '0074', '0102', '0103', '0191', '0192', '0197'],
