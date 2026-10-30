@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createDeviceHub, type DeviceHub } from '../src/platform/device-hub.ts';
 
 const TOKEN = 'test-token-0123456789abcdef0123456789abcdef';
@@ -128,5 +131,31 @@ describe('设备取件中心（ADR 0148）', () => {
         const pending = hub.submit({ action: 'notify', params: { text: 'x' } });
         await hub.stop();
         assert.deepEqual(await pending, { ok: false, error: '取件中心关了' });
+    });
+});
+
+// 2026-10-30：手机端伴侣 app 把屏幕帧推上来，她以后能"看手机"
+describe('手机屏幕帧（伴侣 app 推上来）', () => {
+    test('收一帧 JPEG / PNG：存成 latest + latest.json，不带令牌推不进来', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-frames-'));
+        const { call } = await start({ phoneFramesDir: dir });
+        const ok = await call('/frame', { method: 'POST', body: JSON.stringify({ mime: 'image/png', imageBase64: PNG_B64, at: 1793355000000 }) });
+        assert.equal(ok.status, 200);
+        assert.ok(existsSync(join(dir, 'latest.png')));
+        const meta = JSON.parse(readFileSync(join(dir, 'latest.json'), 'utf8')) as { mime: string; at: number };
+        assert.equal(meta.mime, 'image/png');
+        assert.equal(meta.at, 1793355000000);
+        const denied = await call('/frame', { method: 'POST', body: JSON.stringify({ mime: 'image/png', imageBase64: PNG_B64 }) }, null);
+        assert.equal(denied.status, 401);
+    });
+
+    test('不是图片的文件头不收；没开这个入口就是 404', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-frames-'));
+        const { call } = await start({ phoneFramesDir: dir });
+        const bad = await call('/frame', { method: 'POST', body: JSON.stringify({ mime: 'image/png', imageBase64: Buffer.from('not an image').toString('base64') }) });
+        assert.equal(bad.status, 422);
+        const closed = await start();
+        const notFound = await closed.call('/frame', { method: 'POST', body: JSON.stringify({ mime: 'image/png', imageBase64: PNG_B64 }) });
+        assert.equal(notFound.status, 404);
     });
 });

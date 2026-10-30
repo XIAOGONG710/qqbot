@@ -152,7 +152,7 @@ const OFFLINE = join(SOUL_DIR, 'OFFLINE.json')
 function offlineUntil() {
     try { return Number(JSON.parse(readFileSync(OFFLINE, 'utf8')).until || 0) } catch { return 0 }
 }
-const SLEEP_PROMPT = `现在是夜里，宝宝睡了。把今天的事整理一下：
+const SLEEP_PROMPT = `把今天的事整理一下（不一定是夜里，可能是第二天白天补的）：
 1) 从记忆里查今天发生的事，最多挑 3 条真正值得长期留下的结论，用 memory_save 写进记忆（写成“林梦瑶……”；旧结论会被自动软失效，不要重复写同一件事）；
 2) 用 journal_write 写一篇今天的公开日记（一段就够）；
 3) 有不想让他知道的感受，用 private_write 写进私密日记（可选）。
@@ -176,6 +176,7 @@ ${prompt}`, timeoutMs)
     running = false
     log(`${label} ${result.ok ? 'ok' : 'fail'} ${Date.now() - started}ms`)
     drain()
+    return result.ok
 }
 
 function sleepCheck() {
@@ -183,9 +184,15 @@ function sleepCheck() {
     const state = loadState()
     if (!sleepDue({ now, lastSleepDay: state.sleep, offline: offlineUntil() > Date.now() })) return
     if (running || queue.length) return
-    state.sleep = localDay(now)
-    saveState(state)
-    void idleRun(SLEEP_PROMPT, 'sleep', 600_000)
+    // 她正睡着的时候不叫醒她（白天补做时她多半是醒的）
+    if (loadLife().activity === '睡觉') return
+    // 10-30：做成了才记成做过（原来跑之前就写，崩了当天就不再试）
+    void idleRun(SLEEP_PROMPT, 'sleep', 600_000).then(ok => {
+        if (!ok) return
+        const done = loadState()
+        done.sleep = localDay(now)
+        saveState(done)
+    }, () => {})
 }
 
 function wakeCheck() {

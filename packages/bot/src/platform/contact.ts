@@ -97,6 +97,17 @@ const LAST_USER_LINE_MS = 30 * 60_000;
  */
 const INJECT_PERSONA = false;
 
+/**
+ * 10-30 用户：设定里「她是谁」的事实留下，「她该是什么性格」拿掉。
+ * 卡里的 description 按【段】切开，只留事实段：关系、家、宿舍、专业、朋友、钱、雷区、日常、重要的日子、不接的话题、被问是不是 AI。
+ * 拿掉的是【心事】（怕被冷落、嘴硬心软）、【口癖与称呼】（怎么说话）、【会变】（性格随关系变）。
+ */
+const PERSONA_FACT_SECTIONS = ['和他的关系', '家', '宿舍', '专业', '朋友', '钱', '雷区', '日常', '重要的日子', '不接的话题', '被问是不是 AI'];
+export function personaFacts(description: string | undefined): string {
+    const parts = String(description ?? '').split(/(?=【)/);
+    return parts.filter(part => PERSONA_FACT_SECTIONS.some(head => part.startsWith(`【${head}】`))).join('');
+}
+
 /** 他在 QQ 里切到工作模式（/dsh）时加的一行：干活，但说话还是她 */
 const WORK_MODE_NOTE = '他刚把你切到工作模式：这会儿他让你帮忙干活。先说结果，用你平时的口气，别分点汇报、别写“好的/已完成/总结”，过程他追问再说。';
 
@@ -925,8 +936,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 文件都还在（characters/linmengyao/source 与 st/）；要恢复，把 INJECT_PERSONA 改回 true 即可。
             // 名字、红线（character.banned）、危机承认版卡、每轮拼出来的事实照旧——去掉的是「她该是什么样」，不是「她是谁」。
             // 只留卡里那段「被问是不是 AI」的说明（承认是程序是底线，不能跟设定一起清掉）；open 卡本来没有这段
-            const admission = (text: string | undefined) => { const at = (text ?? '').indexOf('【被问是不是 AI】'); return at >= 0 ? (text ?? '').slice(at) : ''; };
-            const bare = INJECT_PERSONA ? character : { ...character, description: admission(character.description), personality: '', scenario: '', mesExample: '' };
+            const bare = INJECT_PERSONA ? character : { ...character, description: personaFacts(character.description), personality: '', scenario: '', mesExample: '' };
             const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...bare, postHistoryInstructions: '' }, worldInfo } : { character: bare, worldInfo };
             // 他最后说的是哪句：防止她把更早的“嘿嘿”“嗯”和刚说的话混在一起回。
             // 只认最近 30 分钟内的；更早的（主动找他时他半天没回）不说是“他刚说的”，改成一句时间提醒。
