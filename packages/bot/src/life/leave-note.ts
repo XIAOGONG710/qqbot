@@ -18,6 +18,14 @@ const ANNOUNCEABLE = /^(洗澡|上课|开会|和家里视频|取快递)/;
 export const LIVE_CHAT_MS = 30 * 60_000;
 /** 一天最多说这么多次 */
 export const ANNOUNCE_MAX_PER_DAY = 3;
+/** 她说「别要求得太死，有时候真顾不上打字」：安安静静走开不说的比例（按这一次洗澡的时间定，不随机漂） */
+export const QUIET_LEAVE_SHARE = 0.25;
+
+const quietLeave = (start: number): boolean => {
+    let hash = 0x811c9dc5;
+    for (const char of String(start)) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 0x01000193) >>> 0; }
+    return (hash % 100) < QUIET_LEAVE_SHARE * 100;
+};
 
 export interface AwaySpan {
     /** 能直接接在「我去……」后面的话，比如「洗澡」 */
@@ -52,6 +60,7 @@ export function shouldAnnounce(input: {
     if (input.saidToday >= ANNOUNCE_MAX_PER_DAY) return false;
     if (input.announcedStarts.includes(span.start)) return false;
     if (lastMessageAt === undefined || at - lastMessageAt > LIVE_CHAT_MS) return false;
+    if (quietLeave(span.start)) return false;
     return true;
 }
 
