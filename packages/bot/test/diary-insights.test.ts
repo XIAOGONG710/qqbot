@@ -50,6 +50,13 @@ describe('她的日记从哪来', () => {
         assert.deepEqual(parseJournal('没有标题的话'), []);
     });
 
+    test('parseJournal：标题后面可以跟别的字（不会把下一段并进上一段）；带「补记」的段落是事后让模型补写的，跳过', () => {
+        const text = '## 2026-10-23（补记）\n模型补的一天\n\n## 2026-10-24\n她那天亲手写的\n\n## 2026-10-25 补记\n又一天补的\n\n## 2026-10-26（周一）\n带了个星期的标题\n';
+        assert.deepEqual(parseJournal(text), [entry('2026-10-24', '她那天亲手写的'), entry('2026-10-26', '带了个星期的标题')]);
+        // CRLF 的文件也一样
+        assert.deepEqual(parseJournal('## 2026-10-27\r\n一\r\n\r\n## 2026-10-28（补记）\r\n二\r\n'), [entry('2026-10-27', '一')]);
+    });
+
     test('readDiaries：JOURNAL.md、QQ 自动日记、她聊天里写的 <<日记>> 合在一起，旧到新；只要最近 14 天（含今天），未来的不要', () => {
         const { soulDir, dataDir } = setup(`\n## 2026-10-10\n太早了\n\n## 2026-10-28\n${D2}\n\n## 2026-11-05\n未来的\n`);
         mkdirSync(join(dataDir, 'memory'), { recursive: true });
