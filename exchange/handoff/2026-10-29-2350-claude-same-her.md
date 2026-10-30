@@ -168,3 +168,11 @@
 **验证**：新增 diary-insights 34 项、app +2、runtime +2、soul-plugin +2、memory +1；变异检验 41 + 8 + 7 处全部变红（第一遍有两处没红，补了测试）；全量 bot 2290 / 插件 43 / 另一包 42，tsc 0。
 
 **提醒**：新加开关要在 `features.ts` 登记；新 `src/` 文件要登记进 `platform/modules.ts` 并 `node packages/bot/src/ops/modules-doc.ts` 重新生成 `docs/modules`；推之前三个包都跑。
+
+## 16. 桌面上的她也读得到「翻日记发现的自己」（ADR 0194 补充，用户 10-30「继续吧」）——`dsh/qq-control` 现在是 `7d5c220`
+
+- **插件改了（`dsh-plugins/dsh-linmengyao-memory/index.js`）**：新增 `readInsights` / `insightsBlock`，读灵魂目录里的 `INSIGHTS.json`（QQ 开了 `diaryInsights` 才会写）；**只在 `HER_CHANNEL=desktop` 的回合、他这句话聊到相关的事时**放进 `cache.text`，提示词那一行的文字和 QQ 的 `insightsLine` 逐字相同。你自己新增自动起 dsh 子进程的地方照旧要设 `HER_CHANNEL`，否则那些回合会被当桌面对话。
+- **文件格式**：`{ kind: 'qq-diary-insights', generatedAt, notes: [{ text, grams, at }] }`；`grams` 是 QQ 那边去掉了太常见词的二字词，插件只和他的话取交集，**别在插件里再抄一份停用词表**。超过 6 小时没刷新（QQ 没在跑 / 开关关了）、`kind` 不对、时间在未来、读不懂：当没有；每条过 `soulTripwire`，带 `<<` `>>` 不放，70 字截断，最多 12 条。
+- **测试隔离**：`app.test.ts` 现在把 `QQBOT_SOUL_DIR` 整个文件隔离到临时目录（原来 app 的 NOW.md 之类导出会写进真正的 `~/.dsh/linmengyao`，在你那台机器上跑测试会覆盖她真正的文件）。其他会 `startApp` 的测试文件（`quote` / `recall` / `qq-faces` / `runtime`）我没动——它们默认不开 `diaryInsights`，不会写 `INSIGHTS.json`；但如果以后它们开了新的、会往灵魂目录写东西的开关，要照 `app.test.ts` 的做法隔离。
+- **没做**：`/自我认识` 命令桌面上没有（只在 QQ）；`diaryInsights` 仍然默认关，开要用户点头。
+- 验证：bot 2301 / 插件 43 / 另一包 42，tsc 0；变异检验 20 处全红。数据和脚本：`research/2026-10-30-diary-insights/`。
