@@ -1,0 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+const root = process.argv[2];
+const imp = rel => import(pathToFileURL(`${root}/${rel}`).href);
+const { speechTrend, describeTrend } = await imp('packages/bot/src/language/speech-trend.ts');
+const cfg = JSON.parse(readFileSync('C:/Users/XG/Desktop/Project/qqbot/runtime/bot/config.json', 'utf8'));
+const owner = cfg.contacts.find(c => c.tier === 'boyfriend');
+const file = `C:/Users/XG/Desktop/Project/qqbot/runtime/bot/chats/${owner.qq}.jsonl`;
+const rows = readFileSync(file, 'utf8').trim().split('\n').map(l => { try { return JSON.parse(l); } catch { return undefined; } }).filter(Boolean);
+const last = Math.max(...rows.map(r => Date.parse(r.time)));
+console.log('消息', rows.length, '最后一条', new Date(last).toISOString());
+console.log(describeTrend(speechTrend(rows, last)));
