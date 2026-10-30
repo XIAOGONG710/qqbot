@@ -54,8 +54,8 @@ const WIDE_BRACKET = /［([\p{Script=Han}A-Za-z0-9]{1,6})］/gu;
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** 聊天记录里认得的表情：表里的名字，和查不到 id 时的「[表情]」、表情包的「[动画表情]」 */
-export const KNOWN_FACE = new RegExp(`\\[(?:${[...new Set([...Object.values(FACE_NAMES), '表情', '动画表情'])].map(escape).join('|')})\\]`, 'g');
+/** 聊天记录里认得的表情：表里的名字，和查不到 id 时的「[表情]」、表情包的「[动画表情]」「[动画表情：看懂的内容]」（ADR 0206） */
+export const KNOWN_FACE = new RegExp(`\\[(?:${[...new Set([...Object.values(FACE_NAMES), '表情', '动画表情'])].map(escape).join('|')}|动画表情：[^\\]]*)\\]`, 'g');
 
 /** face 段 → 「[捂脸]」；查不到的 id 照旧「[表情]」 */
 export function faceText(id: unknown): string {

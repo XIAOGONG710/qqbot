@@ -132,15 +132,18 @@ export function deepSeekImageDescriber(options: DeepSeekVisionOptions, doFetch: 
     }
 }
 
-/** 两个运行入口共用：没配 vision 就完全不调外部看图接口。`prompt` 给表情包收藏用，聊天里的图片仍用默认要求。 */
-export function configuredImageDescriber(config: Pick<AppConfig, 'llm' | 'vision'>, prompt?: string): ImageDescriber | undefined {
+/**
+ * 两个运行入口共用：没配 vision 就完全不调外部看图接口。`prompt` 给表情包收藏用，聊天里的图片仍用默认要求。
+ * 带 prompt 的默认按后台算（收藏不抢聊天）；读他刚发来的表情包（ADR 0206）是聊天路上的，传 purpose 'chat'。
+ */
+export function configuredImageDescriber(config: Pick<AppConfig, 'llm' | 'vision'>, prompt?: string, purpose?: ModelPurpose): ImageDescriber | undefined {
     if (!config.vision) return;
     return deepSeekImageDescriber({
         baseUrl: config.vision.baseUrl ?? DEFAULTS.vision.baseUrl,
         model: config.vision.model,
         apiKey: config.llm.apiKey,
         timeoutMs: config.vision.timeoutMs,
-        purpose: prompt ? 'background' : 'chat',
+        purpose: purpose ?? (prompt ? 'background' : 'chat'),
         ...(prompt ? { prompt } : {}),
     }, defaultFetch, imageDownloader(Math.min(4000, config.vision.timeoutMs)));
 }

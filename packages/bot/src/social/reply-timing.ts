@@ -79,7 +79,7 @@ export function unansweredMessages<T extends Said>(history: T[]): T[] {
 export function pendingMessages<T extends Said>(history: T[]): T[] {
     const unanswered = unansweredMessages(history);
     if (!closedByHer(history)) return unanswered;
-    const firstNew = unanswered.findIndex(m => !isAck(m.content));
+    const firstNew = unanswered.findIndex(m => !isAck(m.content) || hasReadSticker(m.content));
     return firstNew < 0 ? [] : unanswered.slice(firstNew);
 }
 
@@ -254,6 +254,14 @@ function closedByHer(history: Said[]): boolean {
     return CLOSING.test(history.slice(start, lastReply + 1).map(m => m.content).join('\n'));
 }
 
+/**
+ * 读懂了内容的表情包（ADR 0206：「[动画表情：上面写着「想你」；……]」）。没读懂的表情包只是个「[动画表情]」，代码把它当附和；
+ * 读懂了就不是附和了——「想你」「理理我」「哼，不理你了」是话。收尾之后的附和不回、看心情不回这两处不替她决定，她看了自己定（用户 10-31：最好是让她自己决定）。
+ */
+export function hasReadSticker(text: string): boolean {
+    return /\[动画表情：/.test(text);
+}
+
 export function isAck(text: string): boolean {
     // 语音、图片（ADR 0052）：转出了字的语音按他说的话算（「[语音 2秒：嗯嗯]」是附和，「[语音 5秒：我还有个事]」不是）；
     // 没转出来的语音、照片不知道里面是什么，不算附和，照样回（10-10 模拟器：前一晚道了晚安，第二天上课时来一条语音，被当成附和没回）
@@ -294,7 +302,7 @@ export function moodySkip(history: StoredMessage[], pace = 1, chance = Math.min(
     const first = Date.parse(pending[0]!.time);
     if (first - Date.parse(lastReply.time) > HOT_MS) return undefined;
     if (Date.parse(pending.at(-1)!.time) - first > MOODY_BURST_MS) return undefined;
-    if (!pending.every(m => isReaction(m.content))) return undefined;
+    if (!pending.every(m => isReaction(m.content) && !hasReadSticker(m.content))) return undefined;
     if (unit(`${pending[0]!.messageId ?? pending[0]!.time} moody`) >= chance) return undefined;
     return '看心情没回：这一串只是「哈哈」「嗯」这类反应（隔一分钟以上再来一条一定回）';
 }

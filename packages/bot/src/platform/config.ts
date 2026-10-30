@@ -157,6 +157,8 @@ export const DEFAULTS = {
     depthRouting: false,
     /** 事实检查多查一类（ADR 0203）：她替他说的、聊天 / 记忆里没有依据的事（「你数学不差」「你高中刷那么多题」）。要 factCheck 开着 */
     factHim: false,
+    /** 看懂他发的表情包（ADR 0206）：没有名字的图片表情用看图模型先抄图上的字、再说画面，聊天记录里是「[动画表情：……]」而不是只有「[动画表情]」。要 media 和 vision 开着；只对名单里的人 */
+    readStickers: false,
     /** 她读完 / 看完之后自己想的（ADR 0204）：每晚想一次，有话想说才写一句落在具体情节 / 说法上的看法，存在私人空间里；聊到那本书 / 视频或问起“最近看了什么”才放进提示词 */
     readingTakes: false,
     rhythm: false,
@@ -575,6 +577,8 @@ export interface AppConfig {
     depthRouting?: boolean;
     /** 事实检查多查一类（ADR 0203）：默认关；要 factCheck 开着（log 只记、fix 带说明重写）。审稿是同一次调用，只是多一类规则 */
     factHim?: boolean;
+    /** 看懂他发的表情包（ADR 0206）：默认关；要 media 和看图模型（vision）开着，只对名单里的人。读过的缓存在 stickers/read-cache.json，同一张只读一次 */
+    readStickers?: boolean;
     /** 她读完 / 看完之后自己想的（ADR 0204）：默认关；要名单里有男朋友档。每晚 22 点以后想一次，有话想说才写，没想法就空着；存在 reading-takes.json（她的私人空间，没有命令念给他） */
     readingTakes?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
@@ -864,6 +868,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         memoryReconcile: bool(file, 'memoryReconcile', '', DEFAULTS.memoryReconcile),
         depthRouting: bool(file, 'depthRouting', '', DEFAULTS.depthRouting),
         factHim: bool(file, 'factHim', '', DEFAULTS.factHim),
+        readStickers: bool(file, 'readStickers', '', DEFAULTS.readStickers),
         readingTakes: bool(file, 'readingTakes', '', DEFAULTS.readingTakes),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
         shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),

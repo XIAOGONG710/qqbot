@@ -51,10 +51,10 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'vision', name: '看（视觉）',
         scope: '她怎么看图：照片货架、食物照片、图片安全检查、媒体（雪碧图/封面）与看图模型；只负责“看见”，不负责怎么说。',
-        files: ['vision/vision.ts', 'vision/photos.ts', 'vision/photo-sources.ts', 'vision/safe-image.ts', 'vision/media.ts'],
+        files: ['vision/vision.ts', 'vision/photos.ts', 'vision/photo-sources.ts', 'vision/safe-image.ts', 'vision/media.ts', 'vision/sticker-reads.ts'],
         groups: ['照片和表情'],
         metrics: '周报「图片」；vision 相关单测；图片不发外网的比例',
-        adrs: ['0055', '0109', '0128'],
+        adrs: ['0055', '0109', '0128', '0206'],
     },
     {
         id: 'emotion', name: '心境与安全',

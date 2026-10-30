@@ -200,6 +200,7 @@ export interface Config {
     memoryReconcile: boolean;
     depthRouting: boolean;
     factHim: boolean;
+    readStickers: boolean;
     readingTakes: boolean;
     exemplars: boolean;
     rhythm: boolean;
@@ -480,6 +481,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**记忆对账**（ADR 0201）：写进 Hindsight 的片段是异步受理的，后台处理失败（Hindsight 重启、模型出错）不会告诉机器人，进度文件却已经记成写过——那一块记忆就永远不会补。开着时每 6 小时（发现缺了就 10 分钟后再查）读一次 Hindsight 里的文档，记着写过、实际没有的重新排队写；刚写进去 2 小时内的不算缺；读不到列表、或 bank 里一篇都没有就不动；一次最多重排 30 个，同一个片段最多重排 3 次。日志只写数量。'),
         depthRouting: Schema.boolean().default(DEFAULTS.depthRouting)
             .description('**语义路由**（ADR 0202）：深思（deliberate）原来靠关键词认出「他在认真问她」，很多真正需要认真的话没有那些词（「我爷爷认不得我了」「你会不会怕被关掉」「你说的是不是套路」），反而被抽到只回一两个字。开着时，关键词没认出来的轮次多问一次小模型（不开思考、几十个 token、3 秒超时、每小时最多 120 次）：沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思；拿不准、出错、超时都按原来的关键词。要 deliberate 开着才起作用。'),
+        readStickers: Schema.boolean().default(DEFAULTS.readStickers)
+            .description('**看懂他发的表情包**（ADR 0206，要 media 和看图模型 vision 开着，只对名单里的人）：他的消息里约一成是只发一个表情包，她原来只看到「[动画表情]」四个字，回得出话却不知道图上画的是什么、写了什么字。开着时没有名字的图片表情会先抄图上的字、再说画面（看图模型，约几秒），聊天记录里是「[动画表情：上面写着「……」；……]」；同一张只读一次，读不出来照旧。商城表情自带名字，不读。默认关。'),
         factHim: Schema.boolean().default(DEFAULTS.factHim)
             .description('**事实检查多查一类：她替他说的事**（ADR 0203，要 factCheck 开着）：原来的事实检查只管她自己和她身边的世界；没有记忆撑着时她会补「你数学不差」「你高中刷那么多题」这种听着像懂他、其实是编的话。开着时，同一次审稿多一类规则：关于他本人的断言（本事、过去、性格、家里人、喜好、计划），设定 / 事实 / 聊天 / 记忆里都找不到依据的，也当作没依据（fix 档带说明重写：别替他说他没说过的事，想说感觉就说感觉，想知道就问他）。从聊天里直接看得出来的观察、问句、猜测的口气不算。'),
         readingTakes: Schema.boolean().default(DEFAULTS.readingTakes)
@@ -696,6 +699,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.memoryReconcile !== undefined ? { memoryReconcile: config.memoryReconcile } : {}),
         ...(config.depthRouting !== undefined ? { depthRouting: config.depthRouting } : {}),
         ...(config.factHim !== undefined ? { factHim: config.factHim } : {}),
+        ...(config.readStickers !== undefined ? { readStickers: config.readStickers } : {}),
         ...(config.readingTakes !== undefined ? { readingTakes: config.readingTakes } : {}),
         ...(config.rhythm !== undefined ? { rhythm: config.rhythm } : {}),
         ...(config.shortReplies !== undefined ? { shortReplies: config.shortReplies } : {}),
@@ -842,6 +846,8 @@ export function apply(ctx: Context, config: Config) {
     };
     const vision = configuredImageDescriber(appConfig);
     const stickerVision = configuredImageDescriber(appConfig, STICKER_VISION_PROMPT);
+    // 读他刚发来的表情包（ADR 0206）：同一个要求，但在聊天路上，不排在后台收藏后面
+    const stickerReader = appConfig.readStickers ? configuredImageDescriber(appConfig, STICKER_VISION_PROMPT, 'chat') : undefined;
     const qqFav = qqFavorites((action, params) => mediaBot()._get(action, params));
     const stickers = (appConfig.stickers ?? 'off') !== 'off' && stickerVision ? stickerShelf({
         dir: join(appConfig.dataDir, 'stickers'),
@@ -857,7 +863,7 @@ export function apply(ctx: Context, config: Config) {
     try {
         const photoSource = appConfig.photos ? webPhotoSource(appConfig, log) : undefined;
         const foodSource = appConfig.photos && appConfig.foodPhotos && appConfig.menu ? webFoodSource(appConfig, log) : undefined;
-        app = startApp({ config: appConfig, transport, log, media, vision, ...(stickers ? { stickers } : {}), ...(photoSource ? { photoSource } : {}), ...(foodSource ? { foodSource } : {}) });
+        app = startApp({ config: appConfig, transport, log, media, vision, ...(stickerReader ? { stickerReader } : {}), ...(stickers ? { stickers } : {}), ...(photoSource ? { photoSource } : {}), ...(foodSource ? { foodSource } : {}) });
     } catch (error) {
         const plain = plainError('插件没有启动', error);
         setConsoleState({ error: plain.message });

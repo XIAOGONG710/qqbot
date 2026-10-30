@@ -66,7 +66,7 @@ const TAIL_ELLIPTIC = /^(?:你|我|他|她|那|这|然后|所以|那你|那他|�
 const TAIL_MIN_CHARS = 5;
 const TAIL_FACE = /\[[^\]]{1,6}\]/g;
 const TAIL_TRAILING = /[\s。！!？?，,、～~…\.]+$/u;
-const NON_TEXT_ROW = /^\[(?:图片表情|表情包|sticker|图片|B 站私信)|^<(?:sticker|photo)|^她发了(?:个表情包|张照片)|^https?:\/\//;
+const NON_TEXT_ROW = /^\[(?:图片表情|表情包|sticker|图片|B 站私信|动画表情：)|^<(?:sticker|photo)|^她发了(?:个表情包|张照片)|^https?:\/\//;
 
 /** 这一行句尾那个语气字去掉之后的样子；不是该去的（没挂尾巴 / 固定搭配 / 太短）返回 undefined。标点、拖音、表情记号原样留着 */
 export function stripTailParticle(line: string): string | undefined {

@@ -2,7 +2,7 @@
 // - 语音：NapCat 的 fetch_ptt_text（QQ 自带的语音转文字，按消息 id 找那条语音）；几秒从本地的语音文件（data.path，SILK / AMR）数帧，
 //   OneBot 的消息段里没有时长，文件读不到就不写秒数。转出来是「[语音 8秒：……]」，转不出来是「[语音 8秒]」，秒数也没有就是老样子「[语音]」。
 // - 图片：照片、截图跑 NapCat 的 ocr_image（只有 Windows），有字是「[图片，上面写着：……]」（截到 OCR_MAX_CHARS 个字），没字是「[图片]」；
-//   表情包（sub_type 不是 0，或者 summary 是它的名字）照旧用名字，不跑 OCR。配置了 DeepSeek 看图（vision）再加上看到的样子。
+//   表情包（sub_type 不是 0，或者 summary 是它的名字）照旧用名字，不跑 OCR（开了 readStickers 的话，没有名字的图片表情读成「[动画表情：……]」，ADR 0206）。配置了 DeepSeek 看图（vision）再加上看到的样子。
 // - 都有上限：超时、出错就退回老样子，不卡住回复。没字的图 NapCat 的 OCR 一直不回（10-10 实测：没字的 PNG、照片都等不到回应，有字的 0.3–1.1 秒），
 //   NapCat 启动后第一次 OCR 也可能要一分钟以上：都按超时算，就是「[图片]」。
 // - 聊天记录就是缓存：进了记录的消息（按 QQ 消息 id）不再转（app.ts 先查记录）；同一条正在转的（实时收到的和补回的撞上）共用一次调用（mediaReading）。
@@ -11,6 +11,7 @@
 import { readFile } from 'node:fs/promises';
 import { AsyncGate } from '../social/async-gate.ts';
 import type { Segment } from '../platform/onebot.ts';
+import { STICKER_MAX_PER_MESSAGE, stickerIsNameless, stickerLine, type StickerReads } from './sticker-reads.ts';
 
 /** NapCat 那边能做的（入口传进来：main.ts 用自写的 OneBot 客户端，Koishi 插件用 adapter-onebot） */
 export interface MediaReader {
@@ -31,6 +32,10 @@ export interface ImageDescriber {
 export interface MediaSources {
     reader?: MediaReader;
     vision?: ImageDescriber;
+    /** 读他发来的表情包（ADR 0206，readStickers）：表情包专用的看图要求；不给就照旧「[动画表情]」 */
+    stickerVision?: ImageDescriber;
+    /** 读过的表情包缓存（同一张只读一次）；不给就不缓存 */
+    stickerReads?: StickerReads;
     /** 测试用：换掉各项的上限 */
     timeouts?: Partial<typeof MEDIA_TIMEOUTS>;
 }
@@ -48,6 +53,7 @@ export const LISTEN_DEFAULT_MS = 6000;
 const LISTEN_MAX_MS = 60_000;
 const voiceGate = new AsyncGate(2);
 const ocrGate = new AsyncGate(2);
+const stickerGate = new AsyncGate(2);
 
 /** 表情包、收藏的表情：sub_type 不是 0（NapCat 的 picSubType），或者 summary 是它的名字（「[动画表情]」「[是的]」） */
 export function isSticker(data: Record<string, unknown>): boolean {
@@ -56,9 +62,10 @@ export function isSticker(data: Record<string, unknown>): boolean {
     return (Number.isFinite(sub) && sub !== 0) || (summary !== '' && summary !== '[图片]');
 }
 
-/** 这条消息里有没有要听、要看的（语音、不是表情包的图片） */
-export function needsReading(message: Segment[] | string): boolean {
-    return typeof message !== 'string' && message.some(s => s.type === 'record' || (s.type === 'image' && !isSticker(s.data ?? {})));
+/** 这条消息里有没有要听、要看的（语音、不是表情包的图片；开了 readStickers 再加没有名字的图片表情） */
+export function needsReading(message: Segment[] | string, stickers = false): boolean {
+    return typeof message !== 'string' && message.some(s => s.type === 'record'
+        || (s.type === 'image' && (!isSticker(s.data ?? {}) || (stickers && stickerIsNameless(s.data ?? {})))));
 }
 
 /** 放进方括号里的字：去掉换行和方括号（免得把这一行截断，也免得和别的方括号行混），太长截断 */
@@ -203,16 +210,45 @@ async function look(data: Record<string, unknown>, sources: MediaSources, log: (
     return imageLine({ ...(ocr ? { ocr } : {}), ...(description ? { description } : {}) });
 }
 
+/** 看他发来的一张表情包（ADR 0206）：见过的直接用缓存；读不出来返回 undefined（调用方留着原来的段）。日志只写字数 */
+async function seeSticker(data: Record<string, unknown>, sources: MediaSources, log: (message: string) => void, signal?: AbortSignal): Promise<string | undefined> {
+    const cached = sources.stickerReads?.get(data);
+    if (cached) { log('看表情包：见过这张，不用再读'); return cached; }
+    const url = typeof data.url === 'string' && data.url ? data.url : undefined;
+    if (!url || !sources.stickerVision) return undefined;
+    const limits = { ...MEDIA_TIMEOUTS, ...sources.timeouts };
+    const started = Date.now();
+    try {
+        const raw = await stickerGate.run(() => within(inner => sources.stickerVision!.describe({ url, ...(typeof data.file === 'string' ? { file: data.file } : {}), signal: inner }), limits.vision, signal), signal);
+        const line = stickerLine(String(raw ?? ''));
+        if (!line) { log('看表情包：没读出东西'); return undefined; }
+        sources.stickerReads?.set(data, line);
+        log(`看表情包：读出 ${[...line].length} 个字（${seconds(started)}）`);
+        return line;
+    } catch (error) {
+        log(`看表情包：没读出来（${reason(error)}）`);
+        return undefined;
+    }
+}
+
 /**
  * 听、看这条消息里的语音和图片：读过的段换成一段文字（「[语音 8秒：……]」「[图片，上面写着：……]」），别的段原样。
  * 没有要读的（纯文字、表情包）原样返回；什么都读不到时也换成老样子的那几个字。
+ * 表情包默认不读；给了 stickerVision（readStickers 开着）才读没有名字的图片表情，换成「[动画表情：……]」。
  */
 export async function readMedia(message: Segment[] | string, messageId: number, sources: MediaSources, log: (message: string) => void, signal?: AbortSignal): Promise<Segment[] | string> {
-    if (!needsReading(message)) return message;
+    const readStickers = Boolean(sources.stickerVision);
+    if (!needsReading(message, readStickers)) return message;
     let images = 0;
+    let stickers = 0;
     return Promise.all((message as Segment[]).map(async (segment): Promise<Segment> => {
         const data = segment.data ?? {};
         if (segment.type === 'record') return { type: 'text', data: { text: await hear(data, messageId, sources, log, signal) } };
+        if (segment.type === 'image' && isSticker(data)) {
+            if (!readStickers || !stickerIsNameless(data) || ++stickers > STICKER_MAX_PER_MESSAGE) return segment;
+            const line = await seeSticker(data, sources, log, signal);
+            return line ? { type: 'text', data: { text: line } } : segment;
+        }
         if (segment.type === 'image' && !isSticker(data)) {
             if (++images > OCR_MAX_IMAGES) return segment;
             return { type: 'text', data: { text: await look(data, sources, log, signal) } };
@@ -237,11 +273,12 @@ export interface MediaReading {
 export function mediaReading(sources: MediaSources): MediaReading {
     const reading = new Map<number, Promise<Segment[] | string>>();
     const stopped = new AbortController();
-    const enabled = Boolean(sources.reader?.voiceToText || sources.reader?.ocr || sources.vision);
+    const enabled = Boolean(sources.reader?.voiceToText || sources.reader?.ocr || sources.vision || sources.stickerVision);
+    const stickers = Boolean(sources.stickerVision);
     return {
-        needs: message => enabled && needsReading(message),
+        needs: message => enabled && needsReading(message, stickers),
         read(message, messageId, log) {
-            if (!enabled || !needsReading(message)) return Promise.resolve(message);
+            if (!enabled || !needsReading(message, stickers)) return Promise.resolve(message);
             let task = reading.get(messageId);
             if (!task) {
                 task = readMedia(message, messageId, sources, log, stopped.signal).finally(() => reading.delete(messageId));

@@ -62,6 +62,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'herFeelings', label: '心境（开心 / 难过 / 流泪；桌面上的她读同一份；ownerPeek 开着时 /心境 看）', group: '她的日子', adr: '0102' },
     { key: 'feelingReview', label: '她聊完回想一下，记下有依据的感受（每条要指出是哪几条消息让她有的）', group: '她的日子', adr: '0197' },
     { key: 'readingTakes', label: '她读完 / 看完之后自己想的（每晚一次，有话想说才写；私人空间，聊到那本书 / 视频才放进提示词）', group: '她的日子', adr: '0204' },
+    { key: 'readStickers', label: '看懂他发的表情包（先抄图上的字、再说画面；要看图模型）', group: '照片和表情', adr: '0206' },
     { key: 'factHim', label: '事实检查多查一类：她替他说的、聊天 / 记忆里没有依据的事（要 factCheck 开着）', group: '记忆和安全', adr: '0203' },
     { key: 'depthRouting', label: '语义路由：关键词没认出来的轮次，问小模型这一句是轻是重——沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思（要 deliberate 开着）', group: '说话', adr: '0202' },
     { key: 'memoryReconcile', label: '记忆对账：记着写过、Hindsight 里却查不到的片段，重新排队写（防记忆悄悄少一块）', group: '记忆和安全', adr: '0201' },

@@ -31,6 +31,7 @@
 | 配置 | 功能 | ADR |
 | --- | --- | --- |
 | `biliStickers` | 表情包自己在 B 站找（顶替小黄脸） | [ADR 0132](../adr/0132-bili-stickers.md) |
+| `readStickers` | 看懂他发的表情包（先抄图上的字、再说画面；要看图模型） | ADR 0206 |
 | `foodPhotos` | 吃的照片（这一顿拍给他看） | [ADR 0128](../adr/0128-food-photos.md) |
 | `photos` | 照片货架（网上找高清图） | [ADR 0109](../adr/0109-photo-shelf.md) |
 | `stickers` | 图片表情（模式） | [ADR 0063](../adr/0063-image-stickers.md) |

@@ -30,6 +30,7 @@ import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from '.././memory/backfill.ts';
 import { segmentsToText, type MessageEvent, type PokeEvent, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
 import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
+import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
 import { createContactResponder as createPipeline, loadTierCard, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
@@ -237,6 +238,8 @@ export interface AppOptions {
     media?: MediaReader;
     /** 看图（ADR 0055）：运行入口按配置建；测试也可以直接给假的 */
     vision?: ImageDescriber;
+    /** 读他发来的表情包（ADR 0206，readStickers）：表情包专用的看图要求、聊天优先级；运行入口按配置建，测试可给假的 */
+    stickerReader?: ImageDescriber;
     /** 图片表情收藏（ADR 0063）；运行入口按配置建，测试可给假的。 */
     stickers?: StickerShelf;
     /** 照片货架的网络来源（ADR 0109：她自己从网上找高清图）；运行入口按配置建（看图没配置就没有），测试可给假的 */
@@ -268,7 +271,7 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch() }: AppOptions): App {
+export function startApp({ config, transport, log, pipeline, media, vision, stickerReader, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch() }: AppOptions): App {
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -414,13 +417,17 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     }
     // 听语音、看图上的字（ADR 0052）：配置关了、入口没给就不读
     const mediaLimits = { ...MEDIA_TIMEOUTS, ...(config.vision ? { vision: config.vision.timeoutMs } : {}), ...mediaTimeouts };
-    const reading = config.media ? mediaReading({ ...(media ? { reader: media } : {}), ...(vision ? { vision } : {}), timeouts: mediaLimits }) : undefined;
+    // 他发来的表情包也读（ADR 0206 readStickers）：只对名单里的人（和看图一样，图会发到看图模型）；读过的缓存在 stickers/read-cache.json
+    const readingStickers = Boolean(config.media && config.readStickers && stickerReader);
+    const stickerReading = readingStickers ? { stickerVision: stickerReader!, stickerReads: openStickerReads(join(config.dataDir, 'stickers', 'read-cache.json')) } : {};
+    const reading = config.media ? mediaReading({ ...(media ? { reader: media } : {}), ...(vision ? { vision } : {}), ...stickerReading, timeouts: mediaLimits }) : undefined;
     // 看图只给名单里的人（用户 10-10 22:50：开，只对名单里的人）——图会发到看图模型的服务器；名单外的照旧只认图上的字（OCR 在本机）
     const readingUnlisted = config.media && vision ? mediaReading({ ...(media ? { reader: media } : {}), timeouts: mediaLimits }) : reading;
     const readerFor = (qq: number) => (config.contacts.some(c => c.qq === qq) ? reading : readingUnlisted);
     const canRead = [media?.voiceToText && '语音转文字', media?.ocr && '图上的字（OCR）', vision && '看图（只对名单里的人）'].filter(Boolean).join('、');
     log(`听语音、看图：${!config.media ? '关（配置 media: false），照旧「[语音]」「[图片]」'
         : canRead ? `开（${canRead}；语音最多等 ${mediaLimits.voice / 1000} 秒，OCR ${mediaLimits.ocr / 1000} 秒，看图模型 ${mediaLimits.vision / 1000} 秒，读不出来照旧「[语音]」「[图片]」）` : '开，但入口没给 NapCat 的语音转文字和 OCR，照旧「[语音]」「[图片]」'}`);
+    log(`看他发的表情包：${readingStickers ? '开（名单里的人；先抄图上的字再说画面，同一张只读一次；读不出来照旧「[动画表情]」）' : config.readStickers ? '开着，但没有看图模型或 media 关着，照旧「[动画表情]」' : '关（配置 readStickers: false），照旧「[动画表情]」'}`);
     const stickerMode = config.stickers ?? 'off';
     const collectingStickers = stickerMode !== 'off' ? stickers : undefined;
     const sendingStickers = stickerMode === 'send' && transport.sendPrivateImage ? collectingStickers : undefined;
