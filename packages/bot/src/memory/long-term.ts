@@ -18,7 +18,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { detectCrisis } from '../emotion/crisis.ts';
-import { ownSourceLabel, sourceLabel } from '../emotion/disclosure.ts';
+import { ownNoteLabel, ownSourceLabel, sourceLabel } from '../emotion/disclosure.ts';
 import type { StoredMessage } from './history.ts';
 import { MIDNIGHT_RULE } from '../proactive/follow-ups.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
@@ -222,6 +222,9 @@ export type NamedContact = MemoryContact & { name: string };
 
 /** 日记在公共库里的 document_id 前缀（ADR 0017） */
 export const DIARY_PREFIX = 'diary:';
+
+/** 她在某个人的聊天里自己写的 `<<日记>>` / `<<记住>>` 在公共库里的 document_id（rememberSelfNote）：`diary-self:<写它的联系人的哈希>:<时间>` / `self:…`。DSH 插件认同一个样子 */
+export const SELF_NOTE_ID = /^(?:diary-self|self):([0-9a-f]{16}):/;
 
 interface ContactState {
     bankId: string;
@@ -678,6 +681,14 @@ export class LongTermMemory {
             if (id.startsWith('week:')) return ownSourceLabel('你的周记', listener);
             if (id.startsWith('phase:')) return ownSourceLabel(`你${id.split(':')[1]}的总结`, listener);
             if (id.startsWith('qq-work-') || id.startsWith('dsh-')) return '你干过的事';
+            // 她自己在某个人的聊天里写的 <<日记>> / <<记住>>：按写它的那个人的片段对待（ADR 0020）。
+            // 原来 document_id 的第一段是 diary-self / self，对不上名单里任何人，一律「不能说·来源不明」——连写它的那个人自己的聊天里也不能提
+            const note = SELF_NOTE_ID.exec(id);
+            if (note) {
+                const writer = owners.get(note[1]!);
+                if (!writer) return '不能说·来源不明';
+                return note[1] === this.#hash(listener) ? ownNoteLabel() : sourceLabel(writer, listener);
+            }
             const owner = owners.get(id.split(':')[0]!);
             return owner ? sourceLabel(owner, listener) : '不能说·来源不明';
         };

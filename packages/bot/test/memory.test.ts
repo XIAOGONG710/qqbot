@@ -599,6 +599,44 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
         }
     });
 
+    test('她自己写的 <<日记>> / <<记住>>（diary-self: / self:）：按写它的那个人的片段标披露；写它的人自己的聊天里可明说，原来一律「不能说·来源不明」', async () => {
+        const known = { qq: 4, tier: 'known', name: '小李' };
+        const probe = setupCommon();
+        const bf = hashOf(probe.memory, A);
+        const mate = hashOf(probe.memory, B);
+        const lee = hashOf(probe.memory, known);
+        probe.cleanup();
+        const { memory, cleanup } = setupCommon({ recall: [
+            { id: 'bf-diary', text: '宝宝那天陪我修片', document_id: `diary-self:${bf}:1790000000000` },
+            { id: 'bf-note', text: '宝宝怕黑', document_id: `self:${bf}:1790000000001` },
+            { id: 'mate-note', text: '同学借了我的笔记', document_id: `self:${mate}:1790000000002` },
+            { id: 'lee-note', text: '小李想换工作', document_id: `diary-self:${lee}:1790000000003` },
+            { id: 'ghost', text: '名单里没有的人写的', document_id: 'self:0123456789abcdef:1' },
+            { id: 'fake', text: '长得像但不是的', document_id: `xself:${bf}:1` },
+        ] });
+        try {
+            await memory.sync(A, names, history);
+            const people = [{ ...A, name: '宝宝' }, { ...B, name: '同学' }, known];
+            // 他（男朋友档）听：自己的事可明说；名单里别人的（亲密档听别人的都是可明说）也不再是「来源不明」
+            const toHim = await memory.recallCommon({ ...A, name: '宝宝' }, [{ role: 'user', content: '最近怎么样' }], new Date(now), people);
+            assert.match(toHim!, /（可明说·你自己记下的）：宝宝那天陪我修片/);
+            assert.match(toHim!, /（可明说·你自己记下的）：宝宝怕黑/);
+            assert.match(toHim!, /（可明说·和同学聊的）：同学借了我的笔记/);
+            assert.match(toHim!, /（可明说·和小李聊的）：小李想换工作/);
+            assert.match(toHim!, /（不能说·来源不明）：名单里没有的人写的/);
+            assert.match(toHim!, /（不能说·来源不明）：长得像但不是的/);
+            // 同学档听：男朋友聊天里写的封口且不暴露是谁；普通来源的含糊；写它的人自己（同学）的聊天里可明说
+            const toMate = await memory.recallCommon({ ...B, name: '同学' }, [{ role: 'user', content: '最近怎么样' }], new Date(now), people);
+            assert.match(toMate!, /（不能说·私下聊的）：宝宝那天陪我修片/);
+            assert.match(toMate!, /（不能说·私下聊的）：宝宝怕黑/);
+            assert.doesNotMatch(toMate!, /宝宝聊的/);
+            assert.match(toMate!, /（可明说·你自己记下的）：同学借了我的笔记/);
+            assert.match(toMate!, /（只能含糊·和小李聊的）：小李想换工作/);
+        } finally {
+            cleanup();
+        }
+    });
+
     test('今天和别人聊过的：只取今天产生的其他联系人片段、最多三条，并带披露标签', async () => {
         const probe = setupCommon();
         const self = hashOf(probe.memory, A);

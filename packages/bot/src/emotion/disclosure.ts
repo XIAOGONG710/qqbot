@@ -42,6 +42,11 @@ export function ownSourceLabel(source: string, listener: { tier: string }): stri
     return `${MODE_LABEL[mode]}·${source}`;
 }
 
+/** 她在和眼前这个人聊天时自己记下的（`<<日记>>` / `<<记住>>`）：就是和他的事，对他可明说。 */
+export function ownNoteLabel(): string {
+    return `${MODE_LABEL.open}·你自己记下的`;
+}
+
 /** 提示词里有别人的事时接在后面的统一规则。 */
 export function disclosureRules(listener: { name: string; tier: string }): string {
     const opening = `[说别人的事的分寸：上面的每条别人的事都标了披露上限。`;

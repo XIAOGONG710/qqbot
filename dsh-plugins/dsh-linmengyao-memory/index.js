@@ -367,23 +367,38 @@ async function recallBank(cfg, bank, query) {
     .filter((item) => item.text)
 }
 
+/** owner-bank.json 里他的 bank 是 `<前缀>-<哈希>`；公共库里 QQ 写的 diary-self: / self: 的 document_id 带的就是同一个哈希。没有他的 bank 就没有 */
+export function ownerHash(cfg) {
+  const owner = ownerBanks(cfg)?.owner
+  const head = `${cfg.prefix}-`
+  return owner && owner.startsWith(head) && owner.length > head.length ? owner.slice(head.length) : undefined
+}
+
 /**
  * 公共库里除了她自己的日记 / 周记 / 阶段总结（document_id 以 diary: / week: / phase: 开头），还有名单里每个人的聊天片段副本。
  * QQ 那边靠 disclosureRules 约束她能对谁说什么；DSH 这边没有这层，所以只取她自己的，别人的片段和没有 document_id 的整合观察（可能混着别人的话）一律不取。
+ * 还有一类是她在 QQ 上回复里自己写的 `<<日记：…>>` / `<<记住：…>>`（ADR 0171），document_id 是 diary-self:<哈希>:<时间> / self:<哈希>:<时间>，
+ * 哈希是写它的那个联系人的：只取他的（桌面上的人就是他），名单里别人的不取。原来这类一律被挡在外面，她在 QQ 上写的日记桌面上读不到。
  */
-export const herOwnCommonDoc = (documentId) => /^(diary|week|phase):/.test(String(documentId || ''))
+export const herOwnCommonDoc = (documentId, ownerHashValue) => {
+  const id = String(documentId || '')
+  if (/^(diary|week|phase):/.test(id)) return true
+  const mine = /^(?:diary-self|self):([0-9a-f]{16}):/.exec(id)
+  return Boolean(mine && ownerHashValue && mine[1] === ownerHashValue)
+}
 
 /** 所有库做语义召回，合并去重后取前 pick 条 */
 async function recallAll(cfg, query) {
   const banks = await allBanks(cfg)
   const common = ownerBanks(cfg)?.common ?? `${cfg.prefix}-common`
+  const mineHash = ownerHash(cfg)
   const settled = await Promise.allSettled(banks.map((bank) => recallBank(cfg, bank, query)))
   const seen = new Set()
   const out = []
   for (const [index, result] of settled.entries()) {
     if (result.status !== 'fulfilled') continue
     for (const item of result.value) {
-      if (banks[index] === common && !herOwnCommonDoc(item.documentId)) continue
+      if (banks[index] === common && !herOwnCommonDoc(item.documentId, mineHash)) continue
       if (seen.has(item.id)) continue
       seen.add(item.id)
       out.push(item)

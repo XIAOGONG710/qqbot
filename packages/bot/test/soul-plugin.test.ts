@@ -270,6 +270,53 @@ describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，�
         } finally { fake.restore(); }
     });
 
+    test('她在 QQ 上自己写的 <<日记>> / <<记住>>（diary-self: / self:）：只取他的，名单里别人的和长得像的不取（原来一律挡掉，桌面读不到她在 QQ 写的日记）', async () => {
+        const result = (id: string, text: string, document_id: string) => ({ id, text, document_id, fact_type: 'world', date: new Date().toISOString() });
+        const common = [
+            result('d1', '林梦瑶自己记下的日记：今天把相机里的片子修完了', 'diary-self:aaaa111122223333:1790000000000'),
+            result('d2', '林梦瑶自己记下的记住：他不吃香菜', 'self:aaaa111122223333:1790000000001'),
+            result('x1', '林梦瑶自己记下的日记：鸽鸽跟我说他挂科了', 'diary-self:bbbb444455556666:1790000000002'),
+            result('x2', '林梦瑶自己记下的记住：同学借了我的笔记', 'self:cccc777788889999:1790000000003'),
+            result('x3', '长得像的 id（不是 diary-self 开头）', 'xdiary-self:aaaa111122223333:1'),
+            result('x4', '哈希只有一半', 'self:aaaa1111:1'),
+            result('x5', '哈希后面接了别的字', 'self:aaaa111122223333extra:1'),
+        ];
+        const fake = fakeHindsight({ banks: ALL_BANKS, recall: { 'linmengyao-common': common } });
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
+            await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '最近怎么样' }] }, async () => undefined);
+            const injected = h.contexts.map(entry => entry.text()).join('\n');
+            for (const kept of ['相机里的片子', '他不吃香菜']) assert.ok(injected.includes(kept), kept);
+            for (const dropped of ['挂科', '借了我的笔记', '长得像的', '哈希只有一半', '哈希后面接了']) assert.ok(!injected.includes(dropped), dropped);
+        } finally { fake.restore(); }
+        // 没有 owner-bank.json：不知道谁是他，diary-self / self 一条都不取（和别人的片段一样）
+        const bare = fakeHindsight({ banks: ALL_BANKS, recall: { 'linmengyao-common': common } });
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile(undefined) });
+            await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '最近怎么样' }] }, async () => undefined);
+            const injected = h.contexts.map(entry => entry.text()).join('\n');
+            for (const dropped of ['相机里的片子', '他不吃香菜', '挂科']) assert.ok(!injected.includes(dropped), dropped);
+        } finally { bare.restore(); }
+    });
+
+    test('herOwnCommonDoc / ownerHash 单独看', () => {
+        const mod = plugin as unknown as { herOwnCommonDoc: (id: unknown, hash?: string) => boolean; ownerHash: (cfg: unknown) => string | undefined };
+        const hash = 'aaaa111122223333';
+        assert.equal(mod.herOwnCommonDoc('diary:2026-10-28'), true, '以前的三种不需要哈希');
+        assert.equal(mod.herOwnCommonDoc('week:2026-10-26'), true);
+        assert.equal(mod.herOwnCommonDoc('phase:寒假:2027-02-28'), true);
+        assert.equal(mod.herOwnCommonDoc(`diary-self:${hash}:1`, hash), true);
+        assert.equal(mod.herOwnCommonDoc(`self:${hash}:1`, hash), true);
+        assert.equal(mod.herOwnCommonDoc(`diary-self:${hash}:1`), false, '不知道他是谁就不取');
+        assert.equal(mod.herOwnCommonDoc(`diary-self:bbbb444455556666:1`, hash), false);
+        assert.equal(mod.herOwnCommonDoc(undefined, hash), false);
+        assert.equal(mod.herOwnCommonDoc(`${hash}:ep-1`, hash), false, '聊天片段副本（哈希:id）仍然不取');
+        const file = ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' });
+        assert.equal(mod.ownerHash({ prefix: 'linmengyao', ownerBankFile: file }), hash);
+        assert.equal(mod.ownerHash({ prefix: 'linmengyao', ownerBankFile: ownerFile(undefined) }), undefined);
+        assert.equal(mod.ownerHash({ prefix: 'linmengyao', ownerBankFile: ownerFile({ ownerBank: 'linmengyao', commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) }), undefined, '他的 bank 就是老的 linmengyao：没有哈希');
+    });
+
     test('owner-bank.json 指向不是她名下的 bank、或带路径：不认', () => {
         const ownerBanks = (plugin as unknown as { ownerBanks: (cfg: unknown) => unknown }).ownerBanks;
         const file = ownerFile({ ownerBank: 'someone-elses-bank', commonBank: 'linmengyao-common', legacyBank: 'linmengyao' });
