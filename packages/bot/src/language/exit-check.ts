@@ -422,3 +422,17 @@ export async function reviewCrisisReply(reply: string, options: ReviewOptions, l
     options.log(`危机回合出口检查：重写后仍有${[...again.map(i => `「${logBody(i.match)}」`), ...hard.map(i => `「${logBody(i.match)}」`)].join('、') || '空回复'}，发固定的关怀兜底`);
     return crisisFallback(level);
 }
+
+/**
+ * 兜底：模型偶尔把提示词里的内部标记原样写出来（2026-10-30 线上发过一条「<<当前时间：2026-10-30 星期五 16:20>>」）。
+ * 所有 <<…>> 都是给她看的，不该出现在聊天里；认得的标记上游已经处理过，剩下的在这里剥掉。
+ */
+export function stripInternalMarkers(text: string): string {
+    const cleaned = text.replace(/<<[^<>\n]{1,80}>>/g, '');
+    return cleaned
+        .split('\n')
+        .map(line => line.replace(/[ \t]{2,}/g, ' ').trim())
+        .filter(Boolean)
+        .join('\n')
+        .trim();
+}

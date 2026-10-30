@@ -40,7 +40,7 @@ import { answerWhy, createSilenceWatcher, noteFromInfo, recordSilence, type Sile
 import { drainOutbox } from '.././social/outbox.ts';
 import { writeOwnerBank } from '.././memory/owner-bank.ts';
 import { desktopBlock, desktopRecentPath } from '.././memory/cross-recent.ts';
-import { inspectReply, summarizeIssues, type ExitIssue } from '.././language/exit-check.ts';
+import { inspectReply, stripInternalMarkers, summarizeIssues, type ExitIssue } from '.././language/exit-check.ts';
 import { ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
@@ -917,7 +917,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
 
     /** 存进聊天记录的版本：所有内部标记都剥掉，免得下一轮她又在历史里看见自己写标记 */
     function historyText(sent: string): string {
-        return takeSelfNotes(sent).text
+        return stripInternalMarkers(takeSelfNotes(sent).text)
             .replace(/<<查[：:][\s\S]*?>>/g, '')
             .replace(/<<同意工作>>/g, '')
             .replace(/<<拒绝工作[：:][\s\S]*?>>/g, '')
@@ -1146,6 +1146,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.reactions && transport.reactMessage ? { react: (userId: number, messageId: number, text: string) => { transport.reactMessage!(messageId, reactionEmoji(text, messageId)).then(() => log(`[${userId}] 看到了没回，点了个表情回应`), error => failOnce('表情回应', userId, error)); } } : {}),
             send: async (userId, text, sendOptions) => {
                 text = absorbMarkers(userId, text);
+                // 兜底：她偶尔把提示词里的标记原样写出来（10-30 发过「<<当前时间：…>>」），发送前剥掉
+                text = stripInternalMarkers(text);
                 if (!text.trim()) return 0;
                 const photo = contact.tier === 'boyfriend' ? photos?.resolve(text) : undefined;
                 if (photo) {
