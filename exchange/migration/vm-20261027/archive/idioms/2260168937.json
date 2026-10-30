@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "phrase": "呜呜呜",
+      "kind": "口头禅",
+      "count": 35,
+      "days": 12
+    },
+    {
+      "phrase": "并非",
+      "kind": "网络说法",
+      "count": 6,
+      "days": 5
+    },
+    {
+      "phrase": "悲",
+      "kind": "网络说法",
+      "count": 11,
+      "days": 7
+    },
+    {
+      "phrase": "抱抱",
+      "kind": "口头禅",
+      "count": 11,
+      "days": 6
+    },
+    {
+      "phrase": "mua",
+      "kind": "语气词",
+      "count": 10,
+      "days": 3
+    }
+  ],
+  "updatedAt": "2026-10-26T12:17:29.576Z",
+  "messageCount": 705
+}

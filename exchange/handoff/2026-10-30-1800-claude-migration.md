@@ -15,15 +15,16 @@
 | Hindsight 里的事实 / 观察 / 关系概况 | — | **不搬**。聊天并进去之后，你的 Koishi 会按平常的路径把这几周的片段重新写进你的 bank（`ep-<首条时间戳>`，聊天不变 id 就不变） |
 | 另一位同学的聊天、配置、密钥、照片、贴纸 | — | 不搬 |
 
-## 2. 素材包怎么到你手上（等用户）
+## 2. 素材包在哪（用户 10-30 同意推到 exchange 私有分支）
 
-素材包（`vm-20261027/`，32 个文件，约 400 KB，扫描过没有密钥）里是**他的聊天原文和她的日记**，我**没有**把它放进任何 git 仓库（包括 exchange）。这台 VM 上它在 `C:\Users\XG\Desktop\qqbot-migration-bundle\vm-20261027`，由用户拷给你（远程桌面传文件 / U 盘 / 网盘都行），或者用户明确同意推到 exchange 私有分支我再推。**收到以后先核对：**
+素材包就在这个分支里：**`migration/vm-20261027/`**（32 个文件，约 400 KB，扫描过没有密钥 / cookie；只有他的聊天原文和她自己写的日记 / 存档，没有另一位同学的聊天）。`git pull` exchange 之后把整个目录拷到你的仓库**外面**用（别拷进 `dsh/qq-control` 的工作目录——那是代码仓库，里面不该有聊天原文）：
 
 ```powershell
-Get-FileHash <素材包>\manifest.json -Algorithm SHA256   # 应该是 0bdc2a400f9181f02a2be3fcecdb767a7513708e07d7194304284790a867166f
+Copy-Item <exchange 工作树>migrationm-20261027 <你的桌面>m-20261027 -Recurse
+Get-FileHash <你的桌面>m-20261027manifest.json -Algorithm SHA256   # 应该是 0bdc2a400f9181f02a2be3fcecdb767a7513708e07d7194304284790a867166f
 ```
 
-读的时候工具还会核对 manifest 里每个文件的 SHA-256，拷坏了会直接报错。
+读的时候工具还会核对 manifest 里每个文件的 SHA-256，拷坏了会直接报错。**迁完以后不要再往 exchange 里加这个目录的任何衍生物**（比如拿它做的统计里贴原文）。
 
 ## 3. 步骤（Koishi 停着的时候做；挑他不在的时间）
 

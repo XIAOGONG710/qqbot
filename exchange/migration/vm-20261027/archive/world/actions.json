@@ -1,0 +1,41 @@
+{
+  "actions": [
+    {
+      "id": "2260168937:ep-1791461349067:1:feed_cat",
+      "kind": "feed_cat",
+      "day": "2026-10-08",
+      "at": "2026-10-08T20:14",
+      "contact": 2260168937,
+      "episode": "ep-1791461349067",
+      "seen": true
+    },
+    {
+      "id": "2260168937:ep-1791617418000:1:receive_money",
+      "kind": "receive_money",
+      "day": "2026-10-10",
+      "at": "2026-10-10T15:41",
+      "contact": 2260168937,
+      "episode": "ep-1791617418000",
+      "target": "camera_fund",
+      "amount": 2000
+    },
+    {
+      "id": "2260168937:ep-1791617418000:2:receive_money",
+      "kind": "receive_money",
+      "day": "2026-10-10",
+      "at": "2026-10-10T15:45",
+      "contact": 2260168937,
+      "episode": "ep-1791617418000",
+      "amount": 200
+    },
+    {
+      "id": "2260168937:ep-1792066017594:1:feed_cat",
+      "kind": "feed_cat",
+      "day": "2026-10-15",
+      "at": "2026-10-15T20:16",
+      "contact": 2260168937,
+      "episode": "ep-1792066017594",
+      "seen": true
+    }
+  ]
+}

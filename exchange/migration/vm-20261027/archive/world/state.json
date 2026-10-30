@@ -1,0 +1,143 @@
+{
+  "at": "2026-10-26T16:03:32.880Z",
+  "day": "2026-10-26",
+  "atSchool": true,
+  "parcels": [
+    {
+      "item": "笔记本",
+      "status": "picked_today",
+      "when": "2026-10-26T04:29:00.000Z"
+    },
+    {
+      "item": "数据线",
+      "status": "station",
+      "when": "2026-10-26T02:00:00.000Z",
+      "deadline": "2026-10-28"
+    },
+    {
+      "item": "猫粮",
+      "status": "arriving",
+      "when": "2026-10-27T02:00:00.000Z"
+    }
+  ],
+  "homework": [],
+  "events": [
+    {
+      "id": "quiz_day:Linux操作系统:2026-10-26",
+      "text": "Linux操作系统课上小测，写得一般",
+      "at": "2026-10-26T01:05:00.000Z"
+    },
+    {
+      "id": "ed_rain_no_umbrella",
+      "text": "出门没带伞，淋了一段路",
+      "at": "2026-10-26T05:08:00.000Z",
+      "feel": {
+        "kind": "annoyed",
+        "strength": 1
+      }
+    },
+    {
+      "id": "ed_cat_grass",
+      "text": "土豆身上沾了草屑，帮它摘了好一会儿",
+      "at": "2026-10-26T11:17:00.000Z"
+    },
+    {
+      "id": "ed_game_lose",
+      "text": "晚上打王者连输了好几把，队友太坑",
+      "at": "2026-10-26T12:28:00.000Z",
+      "feel": {
+        "kind": "annoyed",
+        "strength": 1
+      }
+    }
+  ],
+  "weather": {
+    "rain": true,
+    "low": 11,
+    "high": 14,
+    "real": true,
+    "now": {
+      "text": "阴",
+      "temp": 10
+    },
+    "rainHours": [
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ]
+  },
+  "cat": {
+    "name": "土豆",
+    "today": {
+      "fed": "2026-10-26T11:09:00.000Z",
+      "seen": true
+    },
+    "yesterdayFed": true,
+    "foodDays": 2
+  },
+  "cameraFund": {
+    "camera": {
+      "start": "2026-10-11T06:00:00.000Z",
+      "end": "2026-10-11T08:30:00.000Z",
+      "where": "山大路科技市场",
+      "what": "二手索尼 a6100 加 16-50 套机镜头",
+      "price": 4280,
+      "gifts": [
+        {
+          "contact": 2260168937,
+          "amount": 2000
+        }
+      ],
+      "state": "bought"
+    },
+    "saved": 0,
+    "goal": 4500
+  },
+  "routine": {
+    "meals": [
+      {
+        "kind": "lunch",
+        "start": "2026-10-26T03:54:00.000Z",
+        "end": "2026-10-26T04:29:00.000Z",
+        "where": "canteen",
+        "dish": "番茄鸡蛋盖饭"
+      },
+      {
+        "kind": "dinner",
+        "start": "2026-10-26T09:38:00.000Z",
+        "end": "2026-10-26T10:13:00.000Z",
+        "where": "canteen",
+        "dish": "刀削面"
+      }
+    ],
+    "shower": {
+      "start": "2026-10-26T14:49:00.000Z",
+      "end": "2026-10-26T15:16:00.000Z"
+    }
+  },
+  "money": {
+    "balance": 1314,
+    "nextPay": "2026-10-31T16:00:00.000Z",
+    "today": [
+      {
+        "what": "午饭",
+        "amount": 17
+      },
+      {
+        "what": "晚饭",
+        "amount": 16
+      },
+      {
+        "what": "零碎",
+        "amount": 15
+      }
+    ],
+    "askedHome": 0,
+    "detail": true
+  }
+}

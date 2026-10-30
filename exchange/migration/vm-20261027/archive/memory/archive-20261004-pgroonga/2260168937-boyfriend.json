@@ -1,0 +1,12 @@
+{
+  "bankId": "linmengyao-a5db1eb499a38621",
+  "retained": {
+    "ep-1791048551000": 133,
+    "ep-1791097429000": 4,
+    "ep-1791104147000": 4,
+    "ep-1791109588000": 8,
+    "ep-1791114797000": 4
+  },
+  "bankConfigured": "28780cbe8b89",
+  "relationshipModel": true
+}

@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "createdAt": "2026-10-30T09:50:16.427Z",
+  "source": {
+    "dir": "bot",
+    "commonBank": "linmengyao-1006-common"
+  },
+  "counts": {
+    "chats": {
+      "2260168937.jsonl": 1494
+    },
+    "docs": {
+      "diary": 23,
+      "phase": 1,
+      "week": 4
+    },
+    "archiveFiles": 28,
+    "diary": true
+  },
+  "files": {
+    "chats/2260168937.jsonl": {
+      "bytes": 181492,
+      "sha256": "b1fb24b8bdbb5553914069103e049ce0ae274d3e578a9985c9a4c67ace043764"
+    },
+    "docs.jsonl": {
+      "bytes": 29133,
+      "sha256": "a2608a0ad5d7be3d5f59ac5a7d766a640307cd7fa01fd22239fa99aa9ac05511"
+    },
+    "diary.json": {
+      "bytes": 18564,
+      "sha256": "b16b4e79a92c79e9bee790aaea233d60828944609896e0b2e03bf9415359ed37"
+    },
+    "archive/identity/memory.jsonl": {
+      "bytes": 4656,
+      "sha256": "9ddbbb26e15d0eb47a03049399f487af64d5a6cef189aebcd029a414ce853c19"
+    },
+    "archive/identity/memory.jsonl.head": {
+      "bytes": 64,
+      "sha256": "0c088cee389a70c2ac3e14c15ec3932e5e9baad2072e7468ec3a7abb7823dc5f"
+    },
+    "archive/identity/persona.jsonl": {
+      "bytes": 4470,
+      "sha256": "25aa668bb000730a6b146ef7387241029df03f0e4f7629314bc0d55d90098534"
+    },
+    "archive/identity/persona.jsonl.head": {
+      "bytes": 64,
+      "sha256": "2f20e826cfd3588f3cb9c825749ffb4e25cb7d7b039ec9b00cec49823a4a321e"
+    },
+    "archive/idioms/2260168937.json": {
+      "bytes": 610,
+      "sha256": "c354137244c5ddc87f12b04ced3dd65b450b5d700c2c2084b70b04e114a977fc"
+    },
+    "archive/jokes/2260168937.json": {
+      "bytes": 100,
+      "sha256": "7ec3cc6554158e0d2f7aacdf0702cb12c84f977c8b16a08ad26213517991e039"
+    },
+    "archive/promises/2260168937-boyfriend.json": {
+      "bytes": 3568,
+      "sha256": "7f910d9c3db40b3a0265a2d95b0b4ca60f2c07a2ad9a28a1be732c0147420ef7"
+    },
+    "archive/proactive/2260168937-boyfriend.json": {
+      "bytes": 43181,
+      "sha256": "40cf0187cf7e816b9ce0c311a9a347a859bf0f3b9d9e66a86a6752c3957afdde"
+    },
+    "archive/presence/bilibili-corpus.jsonl": {
+      "bytes": 1582,
+      "sha256": "99748cd76206f6d8ea32e18a8600d7e7ed5be7e0187a40cedb4f1c295f0113c5"
+    },
+    "archive/presence/bilibili-replies.json": {
+      "bytes": 431,
+      "sha256": "69ef0864a209d54f3efb76e94a0de257cc40ecf62cf357a791970387ff3f0dd5"
+    },
+    "archive/presence/bilibili.json": {
+      "bytes": 10393,
+      "sha256": "cc412a4b4e336b5fa2c9462c957f681830c51bc1717c5093350f96b6a0e6b7da"
+    },
+    "archive/presence/drafts.md": {
+      "bytes": 625,
+      "sha256": "6011ba9f911c0a5746933ae8fa746f8ad3a51e9b353ec78e589a2aac5342b608"
+    },
+    "archive/presence/presence.json": {
+      "bytes": 932,
+      "sha256": "d9a392bfbbde797028e5bef1f263dddca3d35affb9794c86097b58ab5a0b764e"
+    },
+    "archive/reports/weekly-2026-10-25.md": {
+      "bytes": 1811,
+      "sha256": "bd82c46bf2ce64aef14c6487b718e6259a15e7ec812c573011a5a81efe927d80"
+    },
+    "archive/watching/watched.json": {
+      "bytes": 2032,
+      "sha256": "936f6f027fc30e459276d62f64026fda81ef1cc684811ed0ab1acbd5780d60f2"
+    },
+    "archive/world/action-queue.json": {
+      "bytes": 523,
+      "sha256": "87457db29ce5c9697edddbe04ff11e9aa25f7801f1d4104b78a94d4e73235a84"
+    },
+    "archive/world/actions.json": {
+      "bytes": 1024,
+      "sha256": "c5851c61eb796a80c04149ff2dd108e8c406ffbd78ba4359ba679ad31493ab68"
+    },
+    "archive/world/events.json": {
+      "bytes": 68873,
+      "sha256": "896ff2280647303b1593ee96ea121867936be7f4d3b29b8bd4b76fcda8fc7f1c"
+    },
+    "archive/world/everyday-from.json": {
+      "bytes": 43,
+      "sha256": "b7e53eb76fc3a37a989fc88b13be17f6ccd7f03a6c09e56186b2fb2f91ee4f4a"
+    },
+    "archive/world/menu-from.json": {
+      "bytes": 43,
+      "sha256": "2705f9d5f7bc96d52fe7609fa781d38f4c7fcd320da33cc11718f7366a9cc3ff"
+    },
+    "archive/world/needs-anchor.json": {
+      "bytes": 159,
+      "sha256": "2f9c438ae3f80d79faecd073730eee35ec2cec38044a71986cd45423db999ba7"
+    },
+    "archive/world/state.json": {
+      "bytes": 2928,
+      "sha256": "adbb1f2c915e654f65b54baaedc173ded3d5090519e419c70dc8270e5e99558e"
+    },
+    "archive/memory/2260168937-boyfriend.json": {
+      "bytes": 5009,
+      "sha256": "b8163ea5c46b38599be261b33716b62010a6135b03e3e870f3e0f64ca82e337d"
+    },
+    "archive/memory/archive-20261004-pgroonga/2260168937-boyfriend.json": {
+      "bytes": 268,
+      "sha256": "64a0bc0710cf0db1438aaaa5b3b3e75c87430d3a457a3556cfe22eab99cf5506"
+    },
+    "archive/memory/archive-20261005-before-m5/2260168937-boyfriend.json": {
+      "bytes": 391,
+      "sha256": "832d4bd5556b1cf5732dc2573edf2e2b3a2bc659581f24416b066a73c6a74b78"
+    },
+    "archive/memory/common.json": {
+      "bytes": 77,
+      "sha256": "bc1026f22128aeb54531aec569065cfde1a7d71a962995e702b1634dff067517"
+    },
+    "archive/memory/diary.json": {
+      "bytes": 18564,
+      "sha256": "b16b4e79a92c79e9bee790aaea233d60828944609896e0b2e03bf9415359ed37"
+    },
+    "archive/tiers.json": {
+      "bytes": 179,
+      "sha256": "6cff05c176b3f312698c5764eabbd8693013e3c1dc5021816c45de41ca795609"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "rulesVersion": "needs-v1",
+  "anchor": {
+    "at": "2026-10-09T09:47:22.328Z",
+    "energy": 68,
+    "hunger": 35,
+    "stress": 24
+  }
+}

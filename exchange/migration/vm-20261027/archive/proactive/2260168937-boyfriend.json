@@ -1,0 +1,1451 @@
+{
+  "version": 1,
+  "records": [
+    {
+      "id": "2026-10-05:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-05T01:59:09.070Z",
+      "at": "2026-10-05T07:48:34.092Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-05:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-05T16:25:00.044Z",
+      "at": "2026-10-05T16:25:00.052Z",
+      "result": "skipped",
+      "reason": "一小时内聊过"
+    },
+    {
+      "id": "2026-10-06:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-06T01:41:02.791Z",
+      "at": "2026-10-06T01:41:02.804Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-06:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-06T02:52:52.537Z",
+      "at": "2026-10-06T02:52:52.553Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-06:follow_up",
+      "occasion": "follow_up",
+      "plannedAt": "2026-10-06T10:11:51.489Z",
+      "at": "2026-10-06T10:11:51.501Z",
+      "result": "skipped",
+      "reason": "一小时内聊过"
+    },
+    {
+      "id": "2026-10-06:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-06T15:14:11.461Z",
+      "at": "2026-10-06T15:14:12.738Z",
+      "result": "sent",
+      "messageIds": [
+        245553580,
+        1597510323
+      ]
+    },
+    {
+      "id": "2026-10-07:follow_up",
+      "occasion": "follow_up",
+      "plannedAt": "2026-10-07T02:01:09.510Z",
+      "at": "2026-10-07T02:01:11.175Z",
+      "result": "sent",
+      "messageIds": [
+        1424592372,
+        1179981097
+      ]
+    },
+    {
+      "id": "2026-10-07:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-07T02:01:09.510Z",
+      "at": "2026-10-07T04:42:19.600Z",
+      "result": "skipped",
+      "reason": "没排上"
+    },
+    {
+      "id": "2026-10-07:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-07T16:11:33.958Z",
+      "at": "2026-10-07T16:11:35.605Z",
+      "result": "sent",
+      "messageIds": [
+        1603524567,
+        751928802
+      ]
+    },
+    {
+      "id": "2026-10-08:follow_up",
+      "occasion": "follow_up",
+      "plannedAt": "2026-10-08T01:41:10.981Z",
+      "at": "2026-10-08T01:41:10.997Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-08:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-08T09:33:20.808Z",
+      "at": "2026-10-08T09:33:26.983Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-08:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-08T12:09:06.255Z",
+      "at": "2026-10-08T12:09:08.872Z",
+      "result": "sent",
+      "messageIds": [
+        141638977,
+        2122299840
+      ]
+    },
+    {
+      "id": "2026-10-08:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-08T16:04:19.706Z",
+      "at": "2026-10-08T16:04:21.590Z",
+      "result": "sent",
+      "messageIds": [
+        69688370,
+        1414967411
+      ]
+    },
+    {
+      "id": "2026-10-09:follow_up",
+      "occasion": "follow_up",
+      "plannedAt": "2026-10-09T00:08:56.283Z",
+      "at": "2026-10-09T00:08:58.032Z",
+      "result": "sent",
+      "messageIds": [
+        438123404,
+        1142881979
+      ]
+    },
+    {
+      "id": "2026-10-09:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-09T07:09:45.961Z",
+      "at": "2026-10-09T07:09:47.533Z",
+      "result": "sent",
+      "messageIds": [
+        39555759,
+        165947122
+      ]
+    },
+    {
+      "id": "2026-10-09:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-09T00:08:56.283Z",
+      "at": "2026-10-09T12:18:56.337Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-09:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-09T15:36:25.382Z",
+      "at": "2026-10-09T16:11:50.967Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-10:follow_up",
+      "occasion": "follow_up",
+      "plannedAt": "2026-10-10T02:02:00.890Z",
+      "at": "2026-10-10T02:02:04.592Z",
+      "result": "sent",
+      "messageIds": [
+        500620649,
+        642633787
+      ]
+    },
+    {
+      "id": "2026-10-10:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-10T02:02:00.890Z",
+      "at": "2026-10-10T03:20:09.870Z",
+      "result": "skipped",
+      "reason": "没排上"
+    },
+    {
+      "id": "2026-10-10:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-10T15:33:42.946Z",
+      "at": "2026-10-10T15:33:46.385Z",
+      "result": "sent",
+      "messageIds": [
+        1713748305,
+        654576080
+      ]
+    },
+    {
+      "id": "2026-10-11:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-10T17:30:17.990Z",
+      "at": "2026-10-10T17:30:18.030Z",
+      "result": "skipped",
+      "reason": "夜里了，不打扰"
+    },
+    {
+      "id": "2026-10-11:news:camera",
+      "occasion": "news",
+      "plannedAt": "2026-10-11T08:35:43.051Z",
+      "at": "2026-10-11T08:36:03.539Z",
+      "result": "failed",
+      "reason": "生成失败：模型接口请求失败（UND_ERR_CONNECT_TIMEOUT：Connect Timeout Error (attempted address: api.deepseek.com:443, timeout: 3000ms)）"
+    },
+    {
+      "id": "2026-10-11:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-11T11:52:26.996Z",
+      "at": "2026-10-11T11:52:47.223Z",
+      "result": "failed",
+      "reason": "生成失败：模型接口请求失败（UND_ERR_CONNECT_TIMEOUT：Connect Timeout Error (attempted address: api.deepseek.com:443, timeout: 3000ms)）"
+    },
+    {
+      "id": "2026-10-11:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-11T15:37:22.921Z",
+      "at": "2026-10-11T15:37:27.634Z",
+      "result": "sent",
+      "messageIds": [
+        732443827
+      ]
+    },
+    {
+      "id": "2026-10-12:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-11T23:56:23.735Z",
+      "at": "2026-10-11T23:56:25.207Z",
+      "result": "sent",
+      "messageIds": [
+        1630194423,
+        1686557347
+      ]
+    },
+    {
+      "id": "2026-10-12:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-12T08:40:53.774Z",
+      "at": "2026-10-12T08:58:03.106Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-12:weather",
+      "occasion": "weather",
+      "plannedAt": "2026-10-12T10:18:39.868Z",
+      "at": "2026-10-12T11:26:03.197Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-12:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-12T16:03:17.916Z",
+      "at": "2026-10-12T16:03:21.692Z",
+      "result": "sent",
+      "messageIds": [
+        1230334375,
+        1795158615
+      ]
+    },
+    {
+      "id": "2026-10-13:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-13T01:45:21.644Z",
+      "at": "2026-10-13T02:00:01.508Z",
+      "result": "skipped",
+      "reason": "上一条主动消息他还没回"
+    },
+    {
+      "id": "2026-10-13:weather",
+      "occasion": "weather",
+      "plannedAt": "2026-10-13T01:54:07.339Z",
+      "at": "2026-10-13T02:30:01.542Z",
+      "result": "skipped",
+      "reason": "上一条主动消息他还没回"
+    },
+    {
+      "id": "2026-10-13:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-13T03:22:56.312Z",
+      "at": "2026-10-13T04:00:01.739Z",
+      "result": "skipped",
+      "reason": "上一条主动消息他还没回"
+    },
+    {
+      "id": "2026-10-13:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-13T08:40:53.226Z",
+      "at": "2026-10-13T09:17:35.363Z",
+      "result": "skipped",
+      "reason": "上一条主动消息他还没回"
+    },
+    {
+      "id": "2026-10-13:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-13T15:58:30.696Z",
+      "at": "2026-10-13T15:58:40.930Z",
+      "result": "sent",
+      "messageIds": [
+        1954568955
+      ]
+    },
+    {
+      "id": "2026-10-14:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-14T03:20:55.952Z",
+      "at": "2026-10-14T03:20:56.230Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-14:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-14T03:25:56.269Z",
+      "at": "2026-10-14T03:50:56.528Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-14:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-14T08:45:42.095Z",
+      "at": "2026-10-14T08:45:42.568Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-14:news:homework:2026-10-14",
+      "occasion": "news",
+      "plannedAt": "2026-10-14T14:19:05.424Z",
+      "at": "2026-10-14T14:19:09.502Z",
+      "result": "sent",
+      "messageIds": [
+        655313575
+      ]
+    },
+    {
+      "id": "2026-10-14:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-14T16:19:43.559Z",
+      "at": "2026-10-14T16:19:43.868Z",
+      "result": "skipped",
+      "reason": "已经道过晚安"
+    },
+    {
+      "id": "2026-10-15:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-15T01:48:08.638Z",
+      "at": "2026-10-15T03:45:43.649Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-15:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-15T03:26:11.131Z",
+      "at": "2026-10-15T03:45:43.652Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-15:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-15T12:06:52.864Z",
+      "at": "2026-10-15T12:06:57.378Z",
+      "result": "sent",
+      "messageIds": [
+        540275553
+      ]
+    },
+    {
+      "id": "2026-10-15:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-15T15:15:12.729Z",
+      "at": "2026-10-15T15:31:55.252Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-16:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-16T01:56:48.606Z",
+      "at": "2026-10-16T01:56:48.674Z",
+      "result": "skipped",
+      "reason": "她在上课"
+    },
+    {
+      "id": "2026-10-16:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-16T03:52:09.767Z",
+      "at": "2026-10-16T03:52:34.785Z",
+      "result": "failed",
+      "reason": "生成失败：模型接口请求失败（UND_ERR_CONNECT_TIMEOUT：Connect Timeout Error (attempted address: api.deepseek.com:443, timeout: 3000ms)）",
+      "tries": 3
+    },
+    {
+      "id": "2026-10-16:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-16T07:38:04.456Z",
+      "at": "2026-10-16T07:38:29.868Z",
+      "result": "failed",
+      "reason": "生成失败：模型接口请求失败（UND_ERR_CONNECT_TIMEOUT：Connect Timeout Error (attempted address: api.deepseek.com:443, timeout: 3000ms)）",
+      "tries": 3
+    },
+    {
+      "id": "2026-10-16:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-16T16:25:00.268Z",
+      "at": "2026-10-16T16:25:00.573Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-17:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-17T01:50:47.915Z",
+      "at": "2026-10-17T13:15:49.318Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-17:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-17T02:32:22.924Z",
+      "at": "2026-10-17T13:15:49.323Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-17:weather",
+      "occasion": "weather",
+      "plannedAt": "2026-10-17T12:23:53.778Z",
+      "at": "2026-10-17T13:45:49.652Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-17:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-17T16:00:14.185Z",
+      "at": "2026-10-17T16:00:14.519Z",
+      "result": "skipped",
+      "reason": "今天没聊过"
+    },
+    {
+      "id": "2026-10-18:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-18T02:36:03.676Z",
+      "at": "2026-10-18T02:36:29.293Z",
+      "result": "failed",
+      "reason": "生成失败：模型接口请求失败（UND_ERR_CONNECT_TIMEOUT：Connect Timeout Error (attempted address: api.deepseek.com:443, timeout: 3000ms)）",
+      "tries": 3
+    },
+    {
+      "id": "2026-10-18:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-18T03:07:20.454Z",
+      "at": "2026-10-18T03:07:46.026Z",
+      "result": "failed",
+      "reason": "生成失败：模型接口请求失败（UND_ERR_CONNECT_TIMEOUT：Connect Timeout Error (attempted address: api.deepseek.com:443, timeout: 3000ms)）",
+      "tries": 3
+    },
+    {
+      "id": "2026-10-18:news:homework:2026-10-18",
+      "occasion": "news",
+      "plannedAt": "2026-10-18T14:05:15.048Z",
+      "at": "2026-10-18T14:05:18.289Z",
+      "result": "sent",
+      "messageIds": [
+        1730475786
+      ]
+    },
+    {
+      "id": "2026-10-18:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-18T16:03:43.615Z",
+      "at": "2026-10-18T16:35:19.510Z",
+      "result": "skipped",
+      "reason": "上一条主动消息他还没回"
+    },
+    {
+      "id": "2026-10-19:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-19T00:14:36.876Z",
+      "at": "2026-10-19T00:30:01.525Z",
+      "result": "skipped",
+      "reason": "上一条主动消息他还没回"
+    },
+    {
+      "id": "2026-10-19:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-19T01:52:06.127Z",
+      "at": "2026-10-19T02:30:01.705Z",
+      "result": "skipped",
+      "reason": "上一条主动消息他还没回"
+    },
+    {
+      "id": "2026-10-19:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-19T08:52:00.618Z",
+      "at": "2026-10-19T08:52:03.566Z",
+      "result": "sent",
+      "messageIds": [
+        118122254
+      ]
+    },
+    {
+      "id": "2026-10-19:news:homework:2026-10-19",
+      "occasion": "news",
+      "plannedAt": "2026-10-19T14:08:57.585Z",
+      "at": "2026-10-19T15:08:56.124Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-19:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-19T15:51:55.507Z",
+      "at": "2026-10-19T15:51:57.545Z",
+      "result": "sent",
+      "messageIds": [
+        247050305
+      ]
+    },
+    {
+      "id": "2026-10-20:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-20T03:29:20.619Z",
+      "at": "2026-10-20T03:29:23.863Z",
+      "result": "sent",
+      "messageIds": [
+        196975703
+      ]
+    },
+    {
+      "id": "2026-10-20:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-20T08:48:21.601Z",
+      "at": "2026-10-20T08:59:26.500Z",
+      "result": "skipped",
+      "reason": "上一条主动消息他还没回"
+    },
+    {
+      "id": "2026-10-20:weather",
+      "occasion": "weather",
+      "plannedAt": "2026-10-20T08:49:26.825Z",
+      "at": "2026-10-20T09:29:26.683Z",
+      "result": "skipped",
+      "reason": "上一条主动消息他还没回"
+    },
+    {
+      "id": "2026-10-20:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-20T16:04:11.779Z",
+      "at": "2026-10-20T16:04:12.124Z",
+      "result": "skipped",
+      "reason": "20 分钟内聊过"
+    },
+    {
+      "id": "2026-10-21:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-21T01:58:07.357Z",
+      "at": "2026-10-21T01:58:07.427Z",
+      "result": "skipped",
+      "reason": "她在上课"
+    },
+    {
+      "id": "2026-10-21:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-21T03:26:25.071Z",
+      "at": "2026-10-21T03:58:07.855Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-21:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-21T08:51:20.763Z",
+      "at": "2026-10-21T08:51:21.080Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-21:news:homework:2026-10-21",
+      "occasion": "news",
+      "plannedAt": "2026-10-21T14:16:44.938Z",
+      "at": "2026-10-21T14:16:45.283Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-21:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-21T15:37:53.537Z",
+      "at": "2026-10-21T15:37:56.197Z",
+      "result": "sent",
+      "messageIds": [
+        1309991907
+      ]
+    },
+    {
+      "id": "2026-10-22:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-22T03:21:01.253Z",
+      "at": "2026-10-22T03:21:04.956Z",
+      "result": "sent",
+      "messageIds": [
+        1287276710
+      ]
+    },
+    {
+      "id": "2026-10-22:reach:1",
+      "occasion": "reach",
+      "plannedAt": "2026-10-22T05:19:39.774Z",
+      "at": "2026-10-22T05:19:42.201Z",
+      "result": "sent",
+      "messageIds": [
+        734182213
+      ]
+    },
+    {
+      "id": "2026-10-22:reach:2",
+      "occasion": "reach",
+      "plannedAt": "2026-10-22T07:28:58.205Z",
+      "at": "2026-10-22T07:29:00.158Z",
+      "result": "sent",
+      "messageIds": [
+        324216321
+      ]
+    },
+    {
+      "id": "2026-10-22:share",
+      "occasion": "share",
+      "plannedAt": "2026-10-22T09:59:26.042Z",
+      "at": "2026-10-22T10:18:29.413Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-22:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-22T12:11:42.339Z",
+      "at": "2026-10-22T12:24:23.568Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-22:weather",
+      "occasion": "weather",
+      "plannedAt": "2026-10-22T12:21:41.941Z",
+      "at": "2026-10-22T13:16:35.665Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-22:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-22T15:01:30.048Z",
+      "at": "2026-10-22T15:19:02.437Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-22:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-22T15:58:32.431Z",
+      "at": "2026-10-22T15:58:34.854Z",
+      "result": "sent",
+      "messageIds": [
+        1804488384
+      ]
+    },
+    {
+      "id": "2026-10-23:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-23T03:54:05.687Z",
+      "at": "2026-10-23T03:54:31.014Z",
+      "result": "failed",
+      "reason": "生成失败：模型接口请求失败（UND_ERR_CONNECT_TIMEOUT：Connect Timeout Error (attempted address: api.deepseek.com:443, timeout: 3000ms)）",
+      "tries": 3
+    },
+    {
+      "id": "2026-10-23:reach:1",
+      "occasion": "reach",
+      "plannedAt": "2026-10-23T03:57:10.717Z",
+      "at": "2026-10-23T03:57:35.711Z",
+      "result": "failed",
+      "reason": "生成失败：模型接口请求失败（UND_ERR_CONNECT_TIMEOUT：Connect Timeout Error (attempted address: api.deepseek.com:443, timeout: 3000ms)）",
+      "tries": 3
+    },
+    {
+      "id": "2026-10-23:reach:2",
+      "occasion": "reach",
+      "plannedAt": "2026-10-23T05:32:05.616Z",
+      "at": "2026-10-23T05:32:31.294Z",
+      "result": "failed",
+      "reason": "生成失败：模型接口请求失败（UND_ERR_CONNECT_TIMEOUT：Connect Timeout Error (attempted address: api.deepseek.com:443, timeout: 3000ms)）",
+      "tries": 3
+    },
+    {
+      "id": "2026-10-23:reach:3",
+      "occasion": "reach",
+      "plannedAt": "2026-10-23T07:10:37.892Z",
+      "at": "2026-10-23T07:10:40.708Z",
+      "result": "sent",
+      "messageIds": [
+        1519340935
+      ]
+    },
+    {
+      "id": "2026-10-23:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-23T07:17:19.917Z",
+      "at": "2026-10-23T08:20:49.002Z",
+      "result": "skipped",
+      "reason": "没排上"
+    },
+    {
+      "id": "2026-10-23:inner:th-1792739102421",
+      "occasion": "inner",
+      "plannedAt": "2026-10-23T07:23:29.338Z",
+      "at": "2026-10-23T08:20:49.006Z",
+      "result": "skipped",
+      "reason": "没排上"
+    },
+    {
+      "id": "2026-10-23:inner:th-1792751319595",
+      "occasion": "inner",
+      "plannedAt": "2026-10-23T10:54:48.796Z",
+      "at": "2026-10-23T10:54:51.569Z",
+      "result": "sent",
+      "messageIds": [
+        802008271
+      ]
+    },
+    {
+      "id": "2026-10-23:news:small:2026-10-23:ed_roommate_snack",
+      "occasion": "news",
+      "plannedAt": "2026-10-23T12:57:12.674Z",
+      "at": "2026-10-23T12:57:16.230Z",
+      "result": "sent",
+      "messageIds": [
+        1525778449
+      ]
+    },
+    {
+      "id": "2026-10-24:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-24T02:01:54.004Z",
+      "at": "2026-10-24T02:01:58.413Z",
+      "result": "sent",
+      "messageIds": [
+        695049884
+      ]
+    },
+    {
+      "id": "2026-10-24:inner:th-1792808100000",
+      "occasion": "inner",
+      "plannedAt": "2026-10-24T02:30:39.477Z",
+      "at": "2026-10-24T02:44:48.975Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-24:inner:th-1792809915668",
+      "occasion": "inner",
+      "plannedAt": "2026-10-24T02:59:38.463Z",
+      "at": "2026-10-24T03:15:18.622Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-24:reach:1",
+      "occasion": "reach",
+      "plannedAt": "2026-10-24T04:03:53.134Z",
+      "at": "2026-10-24T04:15:19.212Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-24:news:food_photo:2026-10-24:lunch",
+      "occasion": "news",
+      "plannedAt": "2026-10-24T04:15:49.256Z",
+      "at": "2026-10-24T04:16:11.060Z",
+      "result": "failed",
+      "reason": "发送失败：Error with request send_private_msg, args: {\"user_id\":2260168937,\"message\":[{\"type\":\"image\",\"data\":{\"file\":\"C:\\\\Users\\\\XG\\\\Desktop\\\\Project\\\\qqbot\\\\runtime\\\\bot\\\\photos\\\\files\\\\864e615cffbf.jpg\",\"summary\":\"[照片]\",\"sub_type\":1}}]}, retcode: 1200",
+      "messageIds": [
+        2139465480
+      ]
+    },
+    {
+      "id": "2026-10-24:inner:th-1792820773176",
+      "occasion": "inner",
+      "plannedAt": "2026-10-24T05:56:13.714Z",
+      "at": "2026-10-24T06:06:16.114Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-24:reach:2",
+      "occasion": "reach",
+      "plannedAt": "2026-10-24T07:06:06.237Z",
+      "at": "2026-10-24T07:16:17.592Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-24:inner:th-1792832368005",
+      "occasion": "inner",
+      "plannedAt": "2026-10-24T09:18:34.230Z",
+      "at": "2026-10-24T09:29:31.293Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-24:news:food_photo:2026-10-24:dinner",
+      "occasion": "news",
+      "plannedAt": "2026-10-24T10:04:20.980Z",
+      "at": "2026-10-24T10:04:41.056Z",
+      "result": "failed",
+      "reason": "发送失败：Error with request send_private_msg, args: {\"user_id\":2260168937,\"message\":[{\"type\":\"image\",\"data\":{\"file\":\"C:\\\\Users\\\\XG\\\\Desktop\\\\Project\\\\qqbot\\\\runtime\\\\bot\\\\photos\\\\files\\\\73c7a356c4c2.jpg\",\"summary\":\"[照片]\",\"sub_type\":1}}]}, retcode: 1200",
+      "messageIds": [
+        1661022441
+      ]
+    },
+    {
+      "id": "2026-10-24:reach:3",
+      "occasion": "reach",
+      "plannedAt": "2026-10-24T12:25:19.938Z",
+      "at": "2026-10-24T12:42:59.689Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-24:share",
+      "occasion": "share",
+      "plannedAt": "2026-10-24T12:34:24.374Z",
+      "at": "2026-10-24T12:46:31.929Z",
+      "result": "skipped",
+      "reason": "没排上"
+    },
+    {
+      "id": "2026-10-24:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-24T15:45:19.996Z",
+      "at": "2026-10-24T15:45:24.600Z",
+      "result": "sent",
+      "messageIds": [
+        1531121055
+      ]
+    },
+    {
+      "id": "2026-10-24:inner:th-1792845989365",
+      "occasion": "inner",
+      "plannedAt": "2026-10-24T13:19:31.901Z",
+      "at": "2026-10-24T15:51:22.836Z",
+      "result": "skipped",
+      "reason": "没排上"
+    },
+    {
+      "id": "2026-10-25:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-25T02:19:19.447Z",
+      "at": "2026-10-25T02:19:45.134Z",
+      "result": "failed",
+      "reason": "生成失败：模型接口请求失败（UND_ERR_CONNECT_TIMEOUT：Connect Timeout Error (attempted address: api.deepseek.com:443, timeout: 3000ms)）",
+      "tries": 3
+    },
+    {
+      "id": "2026-10-25:quiet",
+      "occasion": "quiet",
+      "plannedAt": "2026-10-25T03:07:03.841Z",
+      "at": "2026-10-25T03:07:29.729Z",
+      "result": "failed",
+      "reason": "生成失败：模型接口请求失败（UND_ERR_CONNECT_TIMEOUT：Connect Timeout Error (attempted address: api.deepseek.com:443, timeout: 3000ms)）",
+      "tries": 3
+    },
+    {
+      "id": "2026-10-25:inner:th-1792900978432",
+      "occasion": "inner",
+      "plannedAt": "2026-10-25T05:13:32.766Z",
+      "at": "2026-10-25T05:13:58.765Z",
+      "result": "failed",
+      "reason": "生成失败：模型接口请求失败（UND_ERR_CONNECT_TIMEOUT：Connect Timeout Error (attempted address: api.deepseek.com:443, timeout: 3000ms)）",
+      "tries": 3
+    },
+    {
+      "id": "2026-10-25:inner:th-1792911143765",
+      "occasion": "inner",
+      "plannedAt": "2026-10-25T07:10:20.489Z",
+      "at": "2026-10-25T07:10:26.729Z",
+      "result": "sent",
+      "messageIds": [
+        915548489
+      ]
+    },
+    {
+      "id": "2026-10-25:reach:1",
+      "occasion": "reach",
+      "plannedAt": "2026-10-25T09:11:05.235Z",
+      "at": "2026-10-25T09:22:19.934Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-25:reach:2",
+      "occasion": "reach",
+      "plannedAt": "2026-10-25T10:35:48.732Z",
+      "at": "2026-10-25T10:49:24.196Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-25:news:small:2026-10-25:ed_jn_meme",
+      "occasion": "news",
+      "plannedAt": "2026-10-25T11:55:20.464Z",
+      "at": "2026-10-25T11:55:27.732Z",
+      "result": "sent",
+      "messageIds": [
+        650230638
+      ]
+    },
+    {
+      "id": "2026-10-25:news:homework:2026-10-25",
+      "occasion": "news",
+      "plannedAt": "2026-10-25T14:08:08.032Z",
+      "at": "2026-10-25T14:08:14.753Z",
+      "result": "sent",
+      "messageIds": [
+        1888485037
+      ]
+    },
+    {
+      "id": "2026-10-25:share:manual-1792942967847",
+      "occasion": "share",
+      "plannedAt": "2026-10-25T15:42:47.847Z",
+      "at": "2026-10-25T15:42:53.684Z",
+      "result": "sent",
+      "messageIds": [
+        20234660
+      ]
+    },
+    {
+      "id": "2026-10-25:invite",
+      "occasion": "invite",
+      "plannedAt": "2026-10-25T12:38:02.834Z",
+      "at": "2026-10-25T15:43:06.423Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-25:inner:th-1792937455424",
+      "occasion": "inner",
+      "plannedAt": "2026-10-25T14:48:44.726Z",
+      "at": "2026-10-25T15:43:06.427Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-25:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-25T15:05:43.167Z",
+      "at": "2026-10-25T15:43:06.431Z",
+      "result": "skipped",
+      "reason": "错过了，不补"
+    },
+    {
+      "id": "2026-10-26:share:manual-1792954019964",
+      "occasion": "share",
+      "plannedAt": "2026-10-25T18:46:59.964Z",
+      "at": "2026-10-25T18:47:11.503Z",
+      "result": "sent",
+      "messageIds": [
+        219499871,
+        853263248
+      ]
+    },
+    {
+      "id": "2026-10-26:morning",
+      "occasion": "morning",
+      "plannedAt": "2026-10-25T23:56:37.312Z",
+      "at": "2026-10-26T00:09:27.756Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-26:weather",
+      "occasion": "weather",
+      "plannedAt": "2026-10-26T01:54:38.336Z",
+      "at": "2026-10-26T01:54:45.953Z",
+      "result": "sent",
+      "messageIds": [
+        32855030,
+        1591363675
+      ]
+    },
+    {
+      "id": "2026-10-26:reach:1",
+      "occasion": "reach",
+      "plannedAt": "2026-10-26T04:21:36.598Z",
+      "at": "2026-10-26T04:21:40.604Z",
+      "result": "sent",
+      "messageIds": [
+        1837198567
+      ]
+    },
+    {
+      "id": "2026-10-26:inner:th-1792974420010",
+      "occasion": "inner",
+      "plannedAt": "2026-10-26T01:53:33.071Z",
+      "at": "2026-10-26T04:27:13.022Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-26:inner:th-1792981082309",
+      "occasion": "inner",
+      "plannedAt": "2026-10-26T03:25:10.217Z",
+      "at": "2026-10-26T04:27:13.026Z",
+      "result": "skipped",
+      "reason": "没排上"
+    },
+    {
+      "id": "2026-10-26:share",
+      "occasion": "share",
+      "plannedAt": "2026-10-26T06:57:13.000Z",
+      "at": "2026-10-26T06:57:13.480Z",
+      "result": "skipped",
+      "reason": "有没回的消息，回复就好"
+    },
+    {
+      "id": "2026-10-26:ask",
+      "occasion": "ask",
+      "plannedAt": "2026-10-26T07:14:14.115Z",
+      "at": "2026-10-26T07:25:25.394Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-26:after_class",
+      "occasion": "after_class",
+      "plannedAt": "2026-10-26T08:40:10.589Z",
+      "at": "2026-10-26T08:58:50.575Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-26:inner:th-1792998321855",
+      "occasion": "inner",
+      "plannedAt": "2026-10-26T08:46:56.469Z",
+      "at": "2026-10-26T08:58:50.579Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-26:reach:2",
+      "occasion": "reach",
+      "plannedAt": "2026-10-26T09:00:59.017Z",
+      "at": "2026-10-26T09:18:51.015Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-26:follow_up",
+      "occasion": "follow_up",
+      "plannedAt": "2026-10-26T10:09:16.864Z",
+      "at": "2026-10-26T10:28:51.956Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-26:reach:3",
+      "occasion": "reach",
+      "plannedAt": "2026-10-26T10:23:58.535Z",
+      "at": "2026-10-26T10:38:52.182Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-26:inner:th-1793013133345",
+      "occasion": "inner",
+      "plannedAt": "2026-10-26T11:32:48.553Z",
+      "at": "2026-10-26T11:52:19.454Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-26:invite",
+      "occasion": "invite",
+      "plannedAt": "2026-10-26T12:15:20.306Z",
+      "at": "2026-10-26T12:32:20.558Z",
+      "result": "skipped",
+      "reason": "今天的条数留给了别的时机"
+    },
+    {
+      "id": "2026-10-26:news:small:2026-10-26:ed_game_lose",
+      "occasion": "news",
+      "plannedAt": "2026-10-26T12:57:40.791Z",
+      "at": "2026-10-26T12:57:49.294Z",
+      "result": "sent",
+      "messageIds": [
+        1725723391
+      ]
+    },
+    {
+      "id": "2026-10-26:bedtime",
+      "occasion": "bedtime",
+      "plannedAt": "2026-10-26T16:14:43.115Z",
+      "at": "2026-10-26T16:15:13.063Z",
+      "result": "sent",
+      "messageIds": [
+        351875546,
+        2111195151
+      ]
+    }
+  ],
+  "followUps": [
+    {
+      "id": "f-1792942973997-1",
+      "what": "视频作业（把14G素材传到电脑）",
+      "date": "2026-10-26",
+      "time": "afternoon",
+      "episode": "ep-1792942973997"
+    }
+  ],
+  "extracted": {
+    "ep-1791187259000": true,
+    "ep-1791205340000": true,
+    "ep-1791215287000": true,
+    "ep-1791223920000": true,
+    "ep-1791267790000": true,
+    "ep-1791278197000": true,
+    "ep-1791299653347": true,
+    "ep-1791303269000": true,
+    "ep-1791338471537": true,
+    "ep-1791348139000": true,
+    "ep-1791352264000": true,
+    "ep-1791357895000": true,
+    "ep-1791362541000": true,
+    "ep-1791389496044": true,
+    "ep-1791422585000": true,
+    "ep-1791452009374": true,
+    "ep-1791461349067": true,
+    "ep-1791475462680": true,
+    "ep-1791504538342": true,
+    "ep-1791522638000": true,
+    "ep-1791529787743": true,
+    "ep-1791534781000": true,
+    "ep-1791554038000": true,
+    "ep-1791562420000": true,
+    "ep-1791597724766": true,
+    "ep-1791602410000": true,
+    "ep-1791609403000": true,
+    "ep-1791617418000": true,
+    "ep-1791621244000": true,
+    "ep-1791646426621": true,
+    "ep-1791653103000": true,
+    "ep-1791682308001": true,
+    "ep-1791688941000": true,
+    "ep-1791733048002": true,
+    "ep-1791762985361": true,
+    "ep-1791768841000": true,
+    "ep-1791786482000": true,
+    "ep-1791804363000": true,
+    "ep-1791821002055": true,
+    "ep-1791898628000": true,
+    "ep-1791907121259": true,
+    "ep-1791967551200": true,
+    "ep-1791987549849": true,
+    "ep-1792066017594": true,
+    "ep-1792158061000": true,
+    "ep-1792332318624": true,
+    "ep-1792386620000": true,
+    "ep-1792393828000": true,
+    "ep-1792399923866": true,
+    "ep-1792421251000": true,
+    "ep-1792425118072": true,
+    "ep-1792458940000": true,
+    "ep-1792466964743": true,
+    "ep-1792489941000": true,
+    "ep-1792510193000": true,
+    "ep-1792561048000": true,
+    "ep-1792592208302": true,
+    "ep-1792597076375": true,
+    "ep-1792602034000": true,
+    "ep-1792639265571": true,
+    "ep-1792646384228": true,
+    "ep-1792654140308": true,
+    "ep-1792684715857": true,
+    "ep-1792689937000": true,
+    "ep-1792719884745": true,
+    "ep-1792739441066": true,
+    "ep-1792743649000": true,
+    "ep-1792752892957": true,
+    "ep-1792760236429": true,
+    "ep-1792765643514": true,
+    "ep-1792807318957": true,
+    "ep-1792815353919": true,
+    "ep-1792819183000": true,
+    "ep-1792827804193": true,
+    "ep-1792831057000": true,
+    "ep-1792836264374": true,
+    "ep-1792856724768": true,
+    "ep-1792862019000": true,
+    "ep-1792912231992": true,
+    "ep-1792929327946": true,
+    "ep-1792937295096": true,
+    "ep-1792942973997": true,
+    "ep-1792954031698": true,
+    "ep-1792971982845": true,
+    "ep-1792979686103": true,
+    "ep-1792988500813": true,
+    "ep-1792997839112": true,
+    "ep-1793019469618": true
+  },
+  "inner": {
+    "thoughts": [
+      {
+        "id": "th-1792660706607",
+        "at": "2026-10-22T09:18:26.607Z",
+        "text": "在干嘛呢",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792666294186",
+        "at": "2026-10-22T10:51:34.186Z",
+        "text": "人呢，饭吃了没",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792671860223",
+        "at": "2026-10-22T12:24:20.223Z",
+        "text": "（他早上问“活着是为了什么”，我那句“奔着这顿饭去的”是不是太糊弄了，其实我也答不上来。）告诉他",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792680538495",
+        "at": "2026-10-22T14:48:58.495Z",
+        "text": "他是真睡了一下午还是又熬夜了，晚上也不冒个泡，我那条“人呢”白问了",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792688139786",
+        "at": "2026-10-22T16:55:39.786Z",
+        "text": "这么晚了，肚子还饿着，早知道晚饭多吃点了。",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792739102421",
+        "at": "2026-10-23T07:05:02.421Z",
+        "text": "他问我以后想干啥工作，我自己也答不上来，光会嘴硬没用啊。",
+        "goes": "tell"
+      },
+      {
+        "id": "th-1792745621102",
+        "at": "2026-10-23T08:53:41.102Z",
+        "text": "图书馆那张靠窗的座位我盯了半天，最后被人一屁股占了，气。",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792751319595",
+        "at": "2026-10-23T10:28:39.595Z",
+        "text": "他现在应该拍得差不多了吧，博物馆的片子不知道能拍成什么样，有点想看看。",
+        "goes": "tell",
+        "told": true
+      },
+      {
+        "id": "th-1792758302740",
+        "at": "2026-10-23T12:25:02.740Z",
+        "text": "设置还没摸透，作业又那么难，今晚别想早睡了。",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792764219874",
+        "at": "2026-10-23T14:03:39.874Z",
+        "text": "马超一边嫌人不会玩一边还替人挡技能，这人真别扭",
+        "goes": "tell"
+      },
+      {
+        "id": "th-1792772139238",
+        "at": "2026-10-23T16:15:39.238Z",
+        "text": "Linux那个作业，题目我都没完全看懂",
+        "goes": "tell"
+      },
+      {
+        "id": "th-1792808100000",
+        "at": "2026-10-24T02:15:00.000Z",
+        "text": "手机坏了还得跑一趟修，也不知道修好没",
+        "goes": "ask"
+      },
+      {
+        "id": "th-1792809915668",
+        "at": "2026-10-24T02:45:15.668Z",
+        "text": "他那个充电口也不知道修好没，别被修手机的坑了",
+        "goes": "ask"
+      },
+      {
+        "id": "th-1792815927466",
+        "at": "2026-10-24T04:25:27.466Z",
+        "text": "也不知道他手机修得怎么样了，别让人多收钱",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792820773176",
+        "at": "2026-10-24T05:46:13.176Z",
+        "text": "修好了就行，别回来又充不上电",
+        "goes": "tell"
+      },
+      {
+        "id": "th-1792827237848",
+        "at": "2026-10-24T07:33:57.848Z",
+        "text": "修完手机就开始狂，作业倒是没见他写一个字。",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792832368005",
+        "at": "2026-10-24T08:59:28.005Z",
+        "text": "也不知道他作业动没动，光顾着看貂蝉了",
+        "goes": "ask"
+      },
+      {
+        "id": "th-1792840375128",
+        "at": "2026-10-24T11:12:55.128Z",
+        "text": "Linux 也没动，两边都拖着，这可不行",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792845989365",
+        "at": "2026-10-24T12:46:29.365Z",
+        "text": "这都快九点了，也没个动静，手机搁旁边跟块砖似的",
+        "goes": "tell"
+      },
+      {
+        "id": "th-1792858292556",
+        "at": "2026-10-24T16:11:32.556Z",
+        "text": "他应该没睡吧，Linux 还没动呢，我这肚子先叫起来了",
+        "goes": "ask"
+      },
+      {
+        "id": "th-1792863256715",
+        "at": "2026-10-24T17:34:16.715Z",
+        "text": "作业一个字没动，肚子倒先叫起来了",
+        "goes": "tell"
+      },
+      {
+        "id": "th-1792900978432",
+        "at": "2026-10-25T04:02:58.432Z",
+        "text": "作业还摊在那儿没动，脑子跟没开机似的",
+        "goes": "tell"
+      },
+      {
+        "id": "th-1792911143765",
+        "at": "2026-10-25T06:52:23.765Z",
+        "text": "他上回说专门解答我问题、问到一半就没问完，也不知道他自己还记不记得。",
+        "goes": "tell",
+        "told": true
+      },
+      {
+        "id": "th-1792914134865",
+        "at": "2026-10-25T07:42:14.865Z",
+        "text": "这句记着就好，也不知道他是不是真记得。",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792921761359",
+        "at": "2026-10-25T09:49:21.359Z",
+        "text": "这凉皮坨了，吃着有点糊嘴",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792930284994",
+        "at": "2026-10-25T12:11:24.994Z",
+        "text": "这作业拖到这会儿还没动，明天可别真交不上",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792937455424",
+        "at": "2026-10-25T14:10:55.424Z",
+        "text": "相机说明书翻了两页就困，还是明天起来瞎按吧",
+        "goes": "tell"
+      },
+      {
+        "id": "th-1792944986844",
+        "at": "2026-10-25T16:16:26.844Z",
+        "text": "他那碗泡面不会真就没吃吧",
+        "goes": "tell"
+      },
+      {
+        "id": "th-1792950403609",
+        "at": "2026-10-25T17:46:43.609Z",
+        "text": "这么晚了他还没个动静，不会又熬着吧，明天还有课呢。",
+        "goes": "ask"
+      },
+      {
+        "id": "th-1792974420010",
+        "at": "2026-10-26T00:27:00.010Z",
+        "text": "好困，机房这椅子坐得我腰疼",
+        "goes": "tell"
+      },
+      {
+        "id": "th-1792981082309",
+        "at": "2026-10-26T02:18:02.309Z",
+        "text": "这雨下得人更想趴桌上睡了",
+        "goes": "tell"
+      },
+      {
+        "id": "th-1792988060512",
+        "at": "2026-10-26T04:14:20.512Z",
+        "text": "这雨下得，鞋还没干，下午还得去机房，真不想动。",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1792998321855",
+        "at": "2026-10-26T07:05:21.855Z",
+        "text": "他昨天说“明天的事明天说”，到底指的是什么，我还没问呢。",
+        "goes": "ask"
+      },
+      {
+        "id": "th-1793004525707",
+        "at": "2026-10-26T08:48:45.707Z",
+        "text": "相机参数看着看着就想趴下睡了",
+        "goes": "keep"
+      },
+      {
+        "id": "th-1793013133345",
+        "at": "2026-10-26T11:12:13.345Z",
+        "text": "土豆吃到一半抬头看我，尾巴翘得老高，怪可爱的。",
+        "goes": "tell"
+      },
+      {
+        "id": "th-1793020431845",
+        "at": "2026-10-26T13:13:51.845Z",
+        "text": "相机说明书翻了两页就走神了，新相机拍出来的颜色到底对不对啊。",
+        "goes": "tell"
+      },
+      {
+        "id": "th-1793026406420",
+        "at": "2026-10-26T14:53:26.420Z",
+        "text": "洗完澡反而更困了，头发还没吹",
+        "goes": "tell"
+      }
+    ],
+    "lastThinkAt": "2026-10-26T14:53:26.420Z",
+    "reflected": [
+      "BV122n36AEs8",
+      "BV18BjCzPEzN"
+    ]
+  }
+}
