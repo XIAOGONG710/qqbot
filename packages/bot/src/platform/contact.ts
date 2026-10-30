@@ -961,6 +961,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(photoNow && options.photos?.prompt(photoNow, photoDishNow) ? [options.photos.prompt(photoNow, photoDishNow)!] : []),
                         ...(intentLine ? [intentLine] : []),
                         ...(lastUserLine ? [lastUserLine] : []),
+                        // 人称（10-30：他问「我是谁？」，她回「我是谁这还用问」——把「我」当成了自己）
+                        ...(!initiate ? ['[人称：他说「我」是他自己、说「你」是叫你；你说「我」是你自己。他问「我是谁」「我算你什么」问的是你们俩是什么关系，别答成你问你自己。]'] : []),
                         ...(options.selfMemory ? [SELF_MEMORY_NOTE] : []),
                         ...(options.refusalLine?.() ? [options.refusalLine()!] : []),
                         ...(options.ratingLine?.() ? [options.ratingLine()!] : []),
