@@ -31,6 +31,7 @@
 - `life/acquaintances.ts`
 - `life/her-plans.ts`
 - `life/now-export.ts`
+- `life/leave-note.ts`
 - `life/understanding.ts`
 
 ## 开关

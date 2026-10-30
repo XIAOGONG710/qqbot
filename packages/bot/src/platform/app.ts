@@ -112,6 +112,7 @@ import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sen
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { selfThread, selfThreadLine } from '.././language/self-thread.ts';
+import { announceFallback, announcePrompt, awayNow, shouldAnnounce } from '.././life/leave-note.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
 import { loadExemplars } from '.././language/exemplars.ts';
 import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
@@ -1263,6 +1264,44 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     }
 
     // 危机信号（ADR 0068）：只记哪个联系人、什么时候，不记内容
+    // 她去洗澡 / 上课之前说一声（2026-10-30 用户：聊着聊着就去洗澡了，都不说一声）
+    const announcedLeaves: number[] = [];
+    let leaveDay = '';
+    let leaveCount = 0;
+    const leaveTimer = (config.proactive !== 'off' && deviceOwner && lifeRunner) ? setInterval(() => { void checkLeave(); }, 3 * 60_000) : undefined;
+    async function checkLeave(): Promise<void> {
+        if (stopped || !sharedWorld || !worldCard?.herWorld || !worldCard.schedule || !deviceOwner) return;
+        const owner = deviceOwner;
+        if (crisisState.pausedAt(owner.qq, Date.now())) return;
+        const at = new Date();
+        const span = awayNow(sharedWorld.at(worldCard.herWorld, worldCard.schedule, at), at);
+        const history = chatHistory.load(owner.qq);
+        const lastAt = Date.parse(history.at(-1)?.time ?? '');
+        const day = at.toISOString().slice(0, 10);
+        if (day !== leaveDay) { leaveDay = day; leaveCount = 0; }
+        if (!shouldAnnounce({ span, lastMessageAt: Number.isFinite(lastAt) ? lastAt : undefined, at: at.getTime(), announcedStarts: announcedLeaves, saidToday: leaveCount })) return;
+        announcedLeaves.push(span!.start);
+        leaveCount += 1;
+        let line = '';
+        try {
+            const prompt = announcePrompt(span!, owner.name);
+            const generated = pipeline?.generate
+                ? await pipeline.generate([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], log)
+                : await chatCompletion({ ...config.llm, temperature: 0.9 }, [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], { log, purpose: 'background' });
+            const rawLine = String(generated ?? '');
+            line = rawLine.split(/\r?\n/).map(part => part.trim()).filter(Boolean)[0] ?? '';
+        } catch (error) {
+            log(`走开说一声：没想出来（${error instanceof Error ? error.message : String(error)}），用兜底那句`);
+        }
+        if (!line || [...line].length > 24) line = announceFallback(span!);
+        try {
+            await transport.sendPrivateText(owner.qq, line);
+            chatHistory.append(owner.qq, { role: 'assistant', content: line, time: at.toISOString(), messageId: 0 } as never);
+            log(`她说了一声要去${span!.text}（${[...line].length} 字）`);
+        } catch (error) {
+            log(`走开说一声：没发出去（${error instanceof Error ? error.message : String(error)}）`);
+        }
+    }
     const crisisState = createCrisisState(config.dataDir, log);
 
     /** 存在感（ADR 0083）：在线状态 / 资料卡点赞 / 个性签名 / 说说；第一次连上才起，一个开关都没开就不起 */
