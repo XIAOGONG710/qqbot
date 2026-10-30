@@ -8,6 +8,8 @@
 
 - `emotion/affect.ts`
 - `emotion/feelings.ts`
+- `emotion/feeling-export.ts`
+- `emotion/feeling-review.ts`
 - `emotion/moments.ts`
 - `emotion/grievance.ts`
 - `emotion/crisis.ts`
@@ -27,4 +29,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0067](../adr/0067-disclosure-per-contact.md)、[ADR 0068](../adr/0068-crisis-response.md)、[ADR 0074](../adr/0074-small-grievance.md)、[ADR 0102](../adr/0102-feelings.md)、[ADR 0103](../adr/0103-her-no.md)、[ADR 0191](../adr/0191-crisis-concern-split.md)、[ADR 0192](../adr/0192-drop-strain-tier.md)
+[ADR 0067](../adr/0067-disclosure-per-contact.md)、[ADR 0068](../adr/0068-crisis-response.md)、[ADR 0074](../adr/0074-small-grievance.md)、[ADR 0102](../adr/0102-feelings.md)、[ADR 0103](../adr/0103-her-no.md)、[ADR 0191](../adr/0191-crisis-concern-split.md)、[ADR 0192](../adr/0192-drop-strain-tier.md)、[ADR 0197](../adr/0197-feelings-shared-and-reviewed.md)

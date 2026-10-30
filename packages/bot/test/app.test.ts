@@ -2541,6 +2541,132 @@ describe('心境（ADR 0102，配置 herFeelings）', () => {
         assert.match(joined(result.prompts), /想伤害自己/);
     });
 
+    test('桌面上的她读同一份（ADR 0197）：每次给他算完心境就写 FEELINGS.json（感受 + 那一行，不带「他在关心她」的 melt）；没有明显的感受写 null；同学档 / 关着 / 危机回合不写', async () => {
+        const target = join(isolatedSoul, 'FEELINGS.json');
+        const exported = () => JSON.parse(readFileSync(target, 'utf8')) as { kind: string; generatedAt: string; felt: Array<{ kind: string; level: string; cause: string; source: string }>; line: string | null };
+        // 很难过 + 他在关心她：QQ 提示词里是「一直在忍」，导出的那一行不带（只对 QQ 当下这一句话有意义）
+        rmSync(target, { force: true });
+        const cfg = config({ contacts: bf, herFeelings: true });
+        writeMoment(cfg);
+        const { prompts } = await run(cfg, '你怎么了，还好吗');
+        assert.match(joined(prompts), /一直在忍/, 'QQ 这一轮的提示词');
+        const file = exported();
+        assert.equal(file.kind, 'qq-feelings');
+        assert.deepEqual(file.felt.map(item => [item.kind, item.level, item.cause, item.source]), [['sad', 'strong', '高数小测没考好', 'author']]);
+        assert.match(file.line!, /你此刻的心境（有来由的，不是演的）：很难过（高数小测没考好）/);
+        assert.doesNotMatch(file.line!, /一直在忍|这么一问/, '桌面上没有人正好在关心她：不带 QQ 这一句「被一问就绷不住」的那一种写法');
+        assert.ok(Math.abs(Date.parse(file.generatedAt) - Date.now()) < 60_000);
+        // 没有明显的感受：明确写 null，不是不写（桌面上就不会拿上一份冒充现在）
+        const quiet = config({ contacts: bf, herFeelings: true });
+        await run(quiet, '想你了');
+        assert.deepEqual([exported().felt, exported().line], [[], null]);
+        // 关着 / 同学档 / 危机回合：不写
+        rmSync(target, { force: true });
+        const off = config({ contacts: bf });
+        writeMoment(off);
+        await run(off, '在吗');
+        assert.equal(existsSync(target), false, '关着不写');
+        const mate = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }], herFeelings: true });
+        writeMoment(mate);
+        await run(mate, '在吗');
+        assert.equal(existsSync(target), false, '只有男朋友档');
+        const crisis = config({ contacts: bf, herFeelings: true });
+        writeMoment(crisis);
+        await run(crisis, '我不想活了', '我在。你现在安全吗？身边有人吗');
+        assert.equal(existsSync(target), false, '危机回合最优先，不往桌面交她自己的情绪');
+    });
+
+    test('/心境（ADR 0197）：此刻的心境和来由、她聊完自己回想记下的；只读不进聊天记录、不交给她；herFeelings 关着 / 同学档是普通的话', async () => {
+        const cfg = config({ contacts: bf, herFeelings: true, feelingReview: true });
+        writeMoment(cfg);
+        const prompts: string[] = [];
+        const on = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '嗯'; } });
+        await on.app.connected(SELF);
+        on.app.receive(event(10001, 1, '在吗'));
+        await until(() => on.sent.length >= 1);
+        const before = new ChatHistory(cfg.dataDir).load(10001).length;
+        const promptsBefore = prompts.length;
+        on.app.receive(event(10001, 2, '/心境'));
+        await until(() => on.sent.length >= 2);
+        assert.match(on.sent[1]!, /^10001:（她此刻的心境（刚刚算的）：\n- 难过·很重：高数小测没考好（作者写下的事）/);
+        assert.match(on.sent[1]!, /她还没有聊完回想出来的感受/);
+        assert.match(on.sent[1]!, /这些都是从事实里算出来的，不是演的；你只能看，不能改/);
+        assert.equal(prompts.length, promptsBefore, '命令不交给她');
+        assert.equal(new ChatHistory(cfg.dataDir).load(10001).length, before, '命令和回复都不进聊天记录');
+        // herFeelings 关着：是普通的话
+        const off = config({ contacts: bf });
+        const offPrompts: string[] = [];
+        const offApp = setup(off, {}, { generate: messages => { offPrompts.push(messages.map(m => m.content).join('\n')); return '好'; } });
+        await offApp.app.connected(SELF);
+        offApp.app.receive(event(10001, 1, '/心境'));
+        await until(() => offPrompts.length >= 1);
+        assert.equal(offApp.sent[0], '10001:好');
+        // 同学档不是命令
+        const mate = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }], herFeelings: true });
+        const matePrompts: string[] = [];
+        const mateApp = setup(mate, {}, { generate: messages => { matePrompts.push(messages.map(m => m.content).join('\n')); return '好'; } });
+        await mateApp.app.connected(SELF);
+        mateApp.app.receive(event(10001, 1, '/心境'));
+        await until(() => matePrompts.length >= 1);
+        assert.equal(mateApp.sent[0], '10001:好');
+    });
+
+    test('聊完回想（ADR 0197）：一段聊天结束半小时后定时器那一下让她回想一次，记下带依据的感受；下一句她回他时它进心境；编造的依据被拦；关着 feelingReview 不启动', async t => {
+        const clockStart = new Date(2026, 9, 30, 23, 0);
+        const clock = new VirtualClock(clockStart);
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        const cfg = config({ contacts: bf, herFeelings: true, feelingReview: true });
+        const store = new ChatHistory(cfg.dataDir);
+        for (let i = 0; i < 10; i++) {
+            store.append(10001, { time: new Date(clockStart.getTime() - 40 * 60_000 - (9 - i) * 60_000).toISOString(), role: i % 2 === 0 ? 'user' : 'assistant', content: i % 2 === 0 ? `他说的第${i}句话` : `她回的第${i}句` });
+        }
+        const reply = JSON.stringify({ add: [
+            { kind: '难过', strength: 2, cause: '他说话越来越敷衍有点失落', evidence: ['m1', 'm3'], aboutHim: true },
+            { kind: '烦', strength: 1, cause: '编出来的依据让我烦', evidence: ['m1', 'm88'], aboutHim: false },
+        ] });
+        const prompts: string[] = [];
+        const on = setup(cfg, {}, { clock, generate: messages => { const text = messages.map(m => m.content).join('\n'); prompts.push(text); return text.includes('你和他聊完有一阵了') ? reply : '嗯'; } });
+        assert.ok(on.logs.some(line => line.startsWith('她聊完回想一下、记下有依据的感受：开')), '启动日志说开了');
+        t.mock.timers.tick(10 * 60_000);
+        await until(() => existsSync(join(cfg.dataDir, 'feeling-review.json')));
+        const state = JSON.parse(readFileSync(join(cfg.dataDir, 'feeling-review.json'), 'utf8')) as { items: Array<{ cause: string; evidence: string[]; strength: number }>; rejected: Array<{ reason: string }> };
+        assert.deepEqual(state.items.map(i => [i.cause, i.evidence, i.strength]), [['他说话越来越敷衍有点失落', ['m1', 'm3'], 2]]);
+        assert.match(state.rejected[0]!.reason, /m88/, '编造的依据被拦');
+        assert.ok(on.logs.some(line => /^心境回想：聊完回想了一次（10 条消息）——记下 1 条、放下 0 条/.test(line)));
+        assert.ok(on.logs.every(line => !line.includes('敷衍')), '日志不记内容');
+        // 下一句她回他的时候，这条感受已经在心境里（明显、因为他、来源是她自己回想的）
+        on.app.receive(event(10001, 1, '我回来了'));
+        await until(() => on.sent.length >= 1);
+        const turn = prompts.filter(p => !p.includes('你和他聊完有一阵了')).at(-1)!;
+        assert.match(turn, /你此刻的心境（有来由的，不是演的）：有点难过（他说话越来越敷衍有点失落）/);
+        assert.ok(on.logs.some(line => line.includes('心境：难过·明显（她自己回想的）')), on.logs.join('|'));
+    });
+
+    test('聊完回想时看得到心里已经有的感受（刚给他算过的），重复的不再记（ADR 0197）', async t => {
+        const clockStart = new Date(2026, 9, 30, 23, 0);
+        const clock = new VirtualClock(clockStart);
+        t.mock.timers.enable({ apis: ['setInterval'] });
+        const cfg = config({ contacts: bf, herFeelings: true, feelingReview: true });
+        writeMoment(cfg, { at: new Date(clockStart.getTime() - HOUR).toISOString() });
+        const store = new ChatHistory(cfg.dataDir);
+        for (let i = 0; i < 10; i++) {
+            store.append(10001, { time: new Date(clockStart.getTime() - 40 * 60_000 - (9 - i) * 60_000).toISOString(), role: i % 2 === 0 ? 'user' : 'assistant', content: i % 2 === 0 ? `他说的第${i}句话` : `她回的第${i}句` });
+        }
+        const reviewPrompts: string[] = [];
+        const reply = JSON.stringify({ add: [{ kind: '难过', strength: 2, cause: '高数小测没考好心里发堵', evidence: ['m1', 'm3'], aboutHim: false }] });
+        const on = setup(cfg, {}, { clock, generate: messages => { const text = messages.map(m => m.content).join('\n'); if (text.includes('你和他聊完有一阵了')) { reviewPrompts.push(text); return reply; } return '嗯'; } });
+        on.app.receive(event(10001, 1, '在吗'));
+        await until(() => on.sent.length >= 1);
+        clock.advance(40 * 60_000);
+        t.mock.timers.tick(10 * 60_000);
+        await until(() => reviewPrompts.length >= 1);
+        assert.match(reviewPrompts[0]!, /你心里现在已经有的（别处算好的，别重复记）：\n- 难过（高数小测没考好）/);
+        await until(() => existsSync(join(cfg.dataDir, 'feeling-review.json')));
+        const state = JSON.parse(readFileSync(join(cfg.dataDir, 'feeling-review.json'), 'utf8')) as { items: unknown[]; rejected: Array<{ reason: string }> };
+        assert.equal(state.items.length, 0);
+        assert.match(state.rejected[0]!.reason, /这个感受心里已经有了（高数小测没考好）/);
+    });
+
     test('没有作者写下的事、也没有别的来由：什么都不加；moments.json 写坏了不挪走，当作没有', async () => {
         const quiet = config({ contacts: bf, herFeelings: true });
         assert.doesNotMatch(joined((await run(quiet, '在吗')).prompts), /你此刻的心境/);

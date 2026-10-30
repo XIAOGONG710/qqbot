@@ -57,6 +57,8 @@ import { describeForOwner, loadSelfState, reflectIfDue, selfAwareReader } from '
 import { describeNotesForOwner, loadNotesState, reflectIfDue as reflectSpeechNotes, speechNotesReader, speechStats } from '.././language/speech-notes.ts';
 import { describeTrend, speechTrend } from '.././language/speech-trend.ts';
 import { FEEDBACK_NO_TURN, describeFeedbackForOwner, feedbackReceipt, lastTurn, loadFeedback, parseFeedbackCommand, recentFeedback, recordFeedback } from '.././language/speech-feedback.ts';
+import { writeFeelingsExport, type FeelingsReport } from '.././emotion/feeling-export.ts';
+import { describeFeelingsForOwner, loadReviewState, reviewIfDue, reviewReader } from '.././emotion/feeling-review.ts';
 import { describeInsightsForOwner, insightsReader, loadInsightsState, recordSelfDiary, reflectIfDue as reflectInsights, writeInsightsExport } from '.././life/diary-insights.ts';
 import { substituteMacros } from '.././st/macros.ts';
 import { removeFaces } from '.././language/qq-faces.ts';
@@ -737,6 +739,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const speechNotesNow = config.speechNotes ? speechNotesReader(config.dataDir) : undefined;
     // 她翻日记时发现的自己（ADR 0194）：同理，要在创建回复器之前定义
     const diaryInsightsNow = config.diaryInsights ? insightsReader(config.dataDir) : undefined;
+    // 最近一次给他算的心境（ADR 0197）：写给桌面上的她，/心境 也看它；同样要在创建回复器之前定义
+    let lastFeelings: FeelingsReport | undefined;
+    // 她夜里回想、指出了依据的感受（ADR 0197）：作为「别处算好的评估」进心境；要 herFeelings 开着
+    const feelingReviewNow = config.feelingReview && config.herFeelings ? reviewReader(config.dataDir) : undefined;
     // 每个联系人一个回复器：聊天记录、生成和重新生成都互不影响
     const responders = new Map<number, Responder>(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
 
@@ -807,6 +813,35 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         try { writeInsightsExport(soulDir(), loadInsightsState(config.dataDir).notes, clockNow().getTime()); }
         catch (error) { log(`自我认识：没能写给桌面上的她（${error instanceof Error ? error.message : String(error)}）`); }
     };
+    // 她聊完回想一下、记下有依据的感受（ADR 0197）：一段聊天结束半小时后想一次，聊得够多、有新聊天才想；每 10 分钟看一眼，两次尝试至少隔 1 小时，每天最多试 8 次
+    const feelingReviewTimer = config.feelingReview && config.herFeelings && deviceOwner ? (() => {
+        const owner = deviceOwner;
+        const { character } = cardFor(owner.tier);
+        let busy = false;
+        const tick = () => {
+            if (busy || stopped) return;
+            busy = true;
+            void reviewIfDue({
+                dataDir: config.dataDir,
+                soulDir: soulDir(),
+                now: () => clockNow().getTime(),
+                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 0.9 }, messages, { log, purpose: 'background' })),
+                history: () => history.load(owner.qq),
+                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
+                names: { char: character.name, user: owner.name },
+                others: () => config.contacts.filter(contact => contact.qq !== owner.qq).map(contact => contact.name),
+                // 心里已经有的（最近 6 小时内给他算过的明显感受）：别重复记
+                existing: () => (lastFeelings && clockNow().getTime() - lastFeelings.at <= 6 * 3_600_000
+                    ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => ({ kind: item.kind, cause: item.cause }))
+                    : []),
+                log,
+            }).catch(error => log(`心境回想：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
+        };
+        const timer = setInterval(tick, 10 * 60_000);
+        timer.unref();
+        return timer;
+    })() : undefined;
+    if (config.feelingReview) log(config.herFeelings && deviceOwner ? '她聊完回想一下、记下有依据的感受：开（一段聊天结束半小时后想一次；/心境 随时看）' : '她聊完回想一下：feelingReview 开着，但 herFeelings 没开或名单里没有男朋友档，不启动');
     const diaryInsightsTimer = config.diaryInsights && deviceOwner ? (() => {
         const owner = deviceOwner;
         const { character } = cardFor(owner.tier);
@@ -1065,6 +1100,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(contact.tier === 'boyfriend' ? { intimacyLine: () => takeIntimateLine(config.dataDir, contact.qq) } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
+            // 桌面上的她读同一份心境（ADR 0197）：QQ 是唯一算心境的地方，算完写进灵魂目录
+            ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => { lastFeelings = report; writeFeelingsExport(soulDir(), report); } } : {}),
+            ...(feelingReviewNow && contact.tier === 'boyfriend' ? { feelingReview: feelingReviewNow } : {}),
             ...(config.together ? { together: true } : {}),
             ...(config.relationship ? { relationship: true } : {}),
             ...(config.jealousy ? { jealousy: true } : {}),
@@ -1769,6 +1807,8 @@ ${body}
                 }
                 return;
             }
+            // 「/心境」：她此刻的心境和来由、夜里自己回想记下的（带依据）、放下的、想记没成的（ADR 0197）；只能看，不能改
+            if (config.herFeelings && plain === '/心境') { tellOwner(describeFeelingsForOwner(lastFeelings, loadReviewState(config.dataDir), clockNow().getTime(), Boolean(config.feelingReview))); return; }
             // 「/自我认识」：她翻日记时发现的自己、放下过什么、想写没成什么（ADR 0194）；只能看，不能改
             if (config.diaryInsights && plain === '/自我认识') { tellOwner(describeInsightsForOwner(loadInsightsState(config.dataDir), clockNow().getTime())); return; }
             if (dormancy && plain && /^\/休眠(?:\s|$)/.test(plain)) { void handleDormancyCommand(plain.replace(/^\/休眠\s*/, '')); return; }
@@ -2239,6 +2279,7 @@ ${body}
             if (selfPursuitTimer) clearInterval(selfPursuitTimer);
             if (speechNotesTimer) clearInterval(speechNotesTimer);
             if (diaryInsightsTimer) clearInterval(diaryInsightsTimer);
+            if (feelingReviewTimer) clearInterval(feelingReviewTimer);
             clearInterval(outboxTimer);
             if (foodDiscoveryTimer) clearInterval(foodDiscoveryTimer);
             clearTimeout(foodRetryTimer);

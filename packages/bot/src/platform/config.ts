@@ -147,6 +147,8 @@ export const DEFAULTS = {
     speechNotes: false,
     /** 她每晚翻自己的日记，写下对自己的认识（ADR 0194）：22 点以后想一次，每条要有两天以上日记做依据；挑相关的几条放进提示词；他用 /自我认识 看 */
     diaryInsights: false,
+    /** 她聊完回想一下、记下有依据的感受（ADR 0197）：要 herFeelings 开着；每条要指出是哪几条消息 / 日记让她有的 */
+    feelingReview: false,
     rhythm: false,
     shortReplies: false,
     media: true,
@@ -553,6 +555,8 @@ export interface AppConfig {
     speechNotes?: boolean;
     /** 她每晚翻自己的日记，写下对自己的认识（ADR 0194）：每晚 22 点以后想一次——看自己最近 14 天的日记（DSH 睡眠整合写的 JOURNAL.md、QQ 自动日记、聊天里写的 <<日记>>；不看私密日记），写下「我发现自己……」，每条要写明日记里真有的日期、至少两个不同的日子；挑最相关的几条放进以后的男朋友档提示词。不能引他说过的话、不能写名单里别人、不能抄日记原句、不碰底线（程序 / 危机 / 事事顺着他 / 骗人 / 名字年龄）；不改 SOUL.md。他用 /自我认识 看，改不了。要名单里有男朋友档；默认关 */
     diaryInsights?: boolean;
+    /** 她聊完回想一下、记下有依据的感受（ADR 0197）：一段聊天结束半小时后想一次——看最近 36 小时和他的聊天、昨天今天的日记，写下哪些事让她心里有了感受（开心 / 松了口气 / 担心 / 难过 / 烦 / 累）；每一条必须指出是哪几条消息（或日记）让她有的，只有小事和明显两档（大事只有作者能写 moments.json），因为他的态度难过 / 烦的一晚最多一条，来由不能引他的原话、不写别人、不碰底线；散得快。他用 /心境 看，改不了。要 herFeelings 开着、名单里有男朋友档；默认关 */
+    feelingReview?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -835,6 +839,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         selfPursuits: bool(file, 'selfPursuits', '', DEFAULTS.selfPursuits),
         speechNotes: bool(file, 'speechNotes', '', DEFAULTS.speechNotes),
         diaryInsights: bool(file, 'diaryInsights', '', DEFAULTS.diaryInsights),
+        feelingReview: bool(file, 'feelingReview', '', DEFAULTS.feelingReview),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
         shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),
         media: bool(file, 'media', '', DEFAULTS.media),

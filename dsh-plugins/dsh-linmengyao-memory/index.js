@@ -40,6 +40,9 @@ const DEFAULTS = {
   /** QQ 那边每次她翻完日记写的「对自己的认识」（ADR 0194）；超过 insightsStaleMs 没刷新就不用（QQ 没在跑 / 开关关掉了） */
   insightsFile: soulPath('INSIGHTS.json'),
   insightsStaleMs: 6 * 60 * 60 * 1000,
+  /** QQ 那边每次给他算完心境写的（ADR 0197）；超过 feelingsStaleMs 没刷新就不用 */
+  feelingsFile: soulPath('FEELINGS.json'),
+  feelingsStaleMs: 3 * 60 * 60 * 1000,
   ratingFile: soulPath('RATINGS.json'),
   logFile: path.join(os.homedir(), '.dsh', 'linmengyao-memory.log'),
   // SOUL.md 每轮整份注入提示词：超过这个字数，最老的追加段落搬进 SOUL.archive.md（不再注入）；24 小时内最多写几次
@@ -473,6 +476,23 @@ const bigramsOf = (text) => {
   return out
 }
 
+/**
+ * 此刻的心境（ADR 0197）：QQ 那边每次给他生成回复时算好、写进 FEELINGS.json；这里只读，和 QQ 提示词里是同一行。
+ * 文件的 kind 不对 / 超过 feelingsStaleMs 没刷新 / 时间在未来 / 读不懂 / 这一刻没有明显的感受（line 是 null）：当没有。再过一道绊线（网址、「别让他知道」这类不放）。
+ * 只在桌面上他自己和她说话的回合放（醒来 / 睡眠整合 / QQ 派的活不放）。
+ */
+export function feelingsBlock(cfg, now = Date.now()) {
+  if (channel() !== 'desktop') return ''
+  try {
+    const data = JSON.parse(fs.readFileSync(cfg.feelingsFile, 'utf8'))
+    if (!data || data.kind !== 'qq-feelings' || typeof data.line !== 'string') return ''
+    const at = Date.parse(data.generatedAt)
+    if (!Number.isFinite(at) || now - at > cfg.feelingsStaleMs || at > now + 60_000) return ''
+    const line = data.line.trim().slice(0, 1200)
+    return line && !soulTripwire(line) ? line : ''
+  } catch { return '' }
+}
+
 /** 他这句话正好聊到的才放（至少共有一个有意义的二字词），最多 3 条，重叠多的排前，同分新的排前；只在桌面上他自己和她说话的回合放。规则和文字同 QQ 的 insightsLine */
 export function insightsBlock(cfg, query, now = Date.now(), max = 3) {
   if (channel() !== 'desktop') return ''
@@ -558,11 +578,14 @@ export function apply(ctx, config = {}) {
             // 「她现在在干嘛」只从 readNowLine 一条路进（带过期判断，下面的 sp.context）：原来这里还有一条直接读 NOW.md 的，
             // 同一份状态注入两遍，而且这一条不看过期——QQ 没在跑时旧状态照样冒充现在（任务书 S7）
             const insights = insightsBlock(cfg, query)
+            const feelings = feelingsBlock(cfg)
+            if (feelings) log(cfg, '心境：这一轮放了 QQ 那边算的心境（日志不记内容）')
             if (insights) log(cfg, `自我认识：这一轮放了 ${insights.split('\n').length - 1} 条（日志不记内容）`)
             cache.text = [
               story ? `[你走到现在的故事]\n${story}` : '',
               qqRecentBlock(cfg),
               soul ? `[你现在的自我]\n${soul}` : '',
+              feelings,
               insights,
               ledger ? `[你的判断账本]\n${ledger}` : '',
               text,

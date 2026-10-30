@@ -37,7 +37,8 @@ const HALF_LIVES_KEPT = 4;
 /** 聊天记录往回看多久（他做的事引起的感受） */
 const HISTORY_WINDOW_MS = 30 * HOUR;
 
-export type Source = 'world' | 'him' | 'author';
+/** world：她那边的事；him：他的态度；author：作者写下的大事；self：她自己夜里回想、指出了依据的（ADR 0197） */
+export type Source = 'world' | 'him' | 'author' | 'self';
 
 export interface Appraisal {
     /** 稳定的标识：同一件事每次算出来一样 */

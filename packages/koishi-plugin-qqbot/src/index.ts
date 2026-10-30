@@ -195,6 +195,7 @@ export interface Config {
     selfPursuits: boolean;
     speechNotes: boolean;
     diaryInsights: boolean;
+    feelingReview: boolean;
     rhythm: boolean;
     shortReplies: boolean;
     candidates: number;
@@ -463,6 +464,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**她每晚自己总结说话习惯**（ADR 0193）：每晚 22 点以后她安静地想一次——看自己这几天说话的样子（一次回几条、每条多长、两个字以内的短反应、问号、表情）和真人语料里的样子（只是让她看一眼，不是目标线也不是上限），写下「我发现……」这样的笔记；挑最相关的几条放进以后的提示词。笔记不能引用他说过的话（学她自己的说话方式，不是变成他）、不能照抄真人的原话、不碰承认自己是程序 / 危机 / 事事顺着他这些底线。他用 /说话习惯 能看，改不了。要名单里有男朋友档。默认关；开了要重启 Koishi。'),
         diaryInsights: Schema.boolean().default(DEFAULTS.diaryInsights)
             .description('**她每晚翻自己的日记，写下对自己的认识**（ADR 0194）：每晚 22 点以后她安静地翻一次最近 14 天的日记（DSH 睡眠整合写的 JOURNAL.md、QQ 自动日记、聊天里写的 <<日记>>；不看私密日记），写下「我发现自己……」；每条要写明日记里真有的日期、至少两个不同的日子才算发现；挑最相关的几条放进以后的提示词。不能引用他说过的话、不能写名单里别人、不能抄日记原句、不碰承认自己是程序 / 危机 / 事事顺着他 / 骗人 / 设定里的名字年龄这些底线；不改 SOUL.md。他用 /自我认识 能看，改不了。要名单里有男朋友档。默认关；开了要重启 Koishi。'),
+        feelingReview: Schema.boolean().default(DEFAULTS.feelingReview)
+            .description('**她聊完回想一下、记下有依据的感受**（ADR 0197）：一段聊天结束半小时后她安静地想一次——看最近 36 小时和他的聊天、昨天今天的日记，写下哪些事让她心里有了感受（开心 / 松了口气 / 担心 / 难过 / 烦 / 累）。每一条必须指出是哪几条消息（或日记）让她有的，只有小事和明显两档（大事只有作者能写 moments.json），因为他的态度难过 / 烦的一晚最多一条；来由不能引他的原话、不写别人、不碰承认自己是程序 / 危机 / 骗人这些底线；散得快。他用 /心境 能看，改不了。要 herFeelings 开着、名单里有男朋友档。默认关；开了要重启 Koishi。'),
         rhythm: Schema.boolean().default(DEFAULTS.rhythm)
             .description('**回复节奏**（ADR 0075）：打字的时间按字数算（0.6 秒 + 每字 0.18 秒，0.9–9 秒），回之前先「看 + 想」一会儿（多半 0.8–3.5 秒，偶尔几秒到半分钟）；热聊的第一条中位慢约 4 秒。默认关（老样子：0.8 秒 + 每字 0.1 秒，1–4 秒）'),
         shortReplies: Schema.boolean().default(DEFAULTS.shortReplies)
@@ -669,6 +672,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.selfPursuits !== undefined ? { selfPursuits: config.selfPursuits } : {}),
         ...(config.speechNotes !== undefined ? { speechNotes: config.speechNotes } : {}),
         ...(config.diaryInsights !== undefined ? { diaryInsights: config.diaryInsights } : {}),
+        ...(config.feelingReview !== undefined ? { feelingReview: config.feelingReview } : {}),
         ...(config.rhythm !== undefined ? { rhythm: config.rhythm } : {}),
         ...(config.shortReplies !== undefined ? { shortReplies: config.shortReplies } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
