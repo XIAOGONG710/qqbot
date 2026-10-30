@@ -96,7 +96,9 @@ async function notify(kind, minutes) {
 function processes() {
     try {
         const out = execFileSync('powershell.exe', ['-NoProfile', '-Command',
-            "Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='powershell.exe' OR Name='hindsight-api.exe'\" | ForEach-Object { \"$($_.ProcessId)`t$($_.Name)`t$($_.CommandLine)\" }"],
+            // 10-30：加上 python.exe——Hindsight 的 API 是 venv 里的 python 起的（hindsight_api.main），
+            // 不是 hindsight-api.exe；原来只认 exe，于是「进程在」永远成立，/health 挂了也不拉起。
+            "Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='powershell.exe' OR Name='hindsight-api.exe' OR Name='python.exe'\" | ForEach-Object { \"$($_.ProcessId)`t$($_.Name)`t$($_.CommandLine)\" }"],
         { encoding: 'utf8', timeout: 30_000 });
         return out.split(/\r?\n/).filter(Boolean).map(line => {
             const [pid, name, ...rest] = line.split('\t');
@@ -217,8 +219,11 @@ async function check() {
         openWindow('start-napcat.ps1');
         bad.napcat = 0;
     }
-    if (bad.hindsight >= 2 && !procs.some(p => p.name === 'hindsight-api.exe') && allowed('hindsight')) {
-        say('hindsight：/health 两分钟不通，也没有 hindsight-api 进程，拉起 Hindsight（先停掉孤儿守护进程）');
+    // 10-30：判断「进程在不在」改成认 python 起的 hindsight_api（原来只认 hindsight-api.exe，永远判成「在」，
+    // 今天 16:03 API 被停掉、79 分钟没人拉起就是这么来的）
+    const hindsightProcs = procs.filter(p => p.name === 'hindsight-api.exe' || (p.name === 'python.exe' && /hindsight[_-]?api/i.test(p.cmd)));
+    if (bad.hindsight >= 2 && hindsightProcs.length === 0 && allowed('hindsight')) {
+        say('hindsight：/health 两分钟不通，也没有 hindsight_api 进程，拉起 Hindsight（先停掉孤儿守护进程）');
         kill(procs.filter(p => p.name === 'node.exe' && /hindsight-watchdog/.test(p.cmd)).map(p => p.pid));
         openWindow('start-hindsight.ps1');
         bad.hindsight = 0;
