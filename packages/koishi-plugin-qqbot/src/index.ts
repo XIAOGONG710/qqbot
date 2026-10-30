@@ -197,6 +197,7 @@ export interface Config {
     diaryInsights: boolean;
     feelingReview: boolean;
     ownerPeek: boolean;
+    memoryReconcile: boolean;
     exemplars: boolean;
     rhythm: boolean;
     shortReplies: boolean;
@@ -472,6 +473,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**她聊完回想一下、记下有依据的感受**（ADR 0197）：一段聊天结束半小时后她安静地想一次——看最近 36 小时和他的聊天、昨天今天的日记，写下哪些事让她心里有了感受（开心 / 松了口气 / 担心 / 难过 / 烦 / 累）。每一条必须指出是哪几条消息（或日记）让她有的，只有小事和明显两档（大事只有作者能写 moments.json），因为他的态度难过 / 烦的一晚最多一条；来由不能引他的原话、不写别人、不碰承认自己是程序 / 危机 / 骗人这些底线；散得快。他用 /心境 能看，改不了。要 herFeelings 开着、名单里有男朋友档。默认关；开了要重启 Koishi。'),
         ownerPeek: Schema.boolean().default(DEFAULTS.ownerPeek)
             .description('**他能不能看她的私人空间**（ADR 0200）：默认关。关着时，/追求 /说话习惯 /心境 /自我认识 这四条原本会把她自己总结 / 回想 / 追求出来的东西念给他的命令，只回一句「这条是她自己的，现在不给看」（不进聊天记录、不交给她）；打开才念。她的这些东西照样存、照样影响她，只是不再有一扇窗口开给他。/设定（有没有被人悄悄改过的留痕）、/说话趋势（只有数字）、/像AI /像真人（他自己的话）不受这个开关管。'),
+        memoryReconcile: Schema.boolean().default(DEFAULTS.memoryReconcile)
+            .description('**记忆对账**（ADR 0201）：写进 Hindsight 的片段是异步受理的，后台处理失败（Hindsight 重启、模型出错）不会告诉机器人，进度文件却已经记成写过——那一块记忆就永远不会补。开着时每 6 小时（发现缺了就 10 分钟后再查）读一次 Hindsight 里的文档，记着写过、实际没有的重新排队写；刚写进去 2 小时内的不算缺；读不到列表、或 bank 里一篇都没有就不动；一次最多重排 30 个，同一个片段最多重排 3 次。日志只写数量。'),
         rhythm: Schema.boolean().default(DEFAULTS.rhythm)
             .description('**回复节奏**（ADR 0075）：打字的时间按字数算（0.6 秒 + 每字 0.18 秒，0.9–9 秒），回之前先「看 + 想」一会儿（多半 0.8–3.5 秒，偶尔几秒到半分钟）；热聊的第一条中位慢约 4 秒。默认关（老样子：0.8 秒 + 每字 0.1 秒，1–4 秒）'),
         shortReplies: Schema.boolean().default(DEFAULTS.shortReplies)
@@ -681,6 +684,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.diaryInsights !== undefined ? { diaryInsights: config.diaryInsights } : {}),
         ...(config.feelingReview !== undefined ? { feelingReview: config.feelingReview } : {}),
         ...(config.ownerPeek !== undefined ? { ownerPeek: config.ownerPeek } : {}),
+        ...(config.memoryReconcile !== undefined ? { memoryReconcile: config.memoryReconcile } : {}),
         ...(config.rhythm !== undefined ? { rhythm: config.rhythm } : {}),
         ...(config.shortReplies !== undefined ? { shortReplies: config.shortReplies } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
@@ -754,7 +758,7 @@ export function apply(ctx: Context, config: Config) {
     let appConfig: AppConfig;
     try {
         appConfig = parseAppConfig(toAppConfigInput(config), repoRoot);
-        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek}`);
+        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek} memoryReconcile=${appConfig.memoryReconcile}`);
     } catch (error) {
         const plain = plainError('配置有误，插件没有启动', error);
         setConsoleState({ error: plain.message });

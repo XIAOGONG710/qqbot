@@ -31,6 +31,13 @@ import type { BankConfig, HindsightApi, MentalModelRequest, RecallRequest, Recal
 
 /** 进行中的片段每多这么多条就整段重写一次 */
 export const OPEN_EPISODE_STEP = 30;
+
+/** 记忆对账（ADR 0201）：没发现缺的时候多久对一次 / 发现缺了之后多久再对 / 刚提交的多久之内不算缺（Hindsight 在后台慢慢处理）/ 一次最多重排几个 / 同一个片段最多重排几次 */
+export const RECONCILE_EVERY_MS = 6 * 3_600_000;
+export const RECONCILE_RETRY_MS = 10 * 60_000;
+export const RECONCILE_GRACE_MS = 2 * 3_600_000;
+export const RECONCILE_MAX = 30;
+export const RECONCILE_MAX_TRIES = 3;
 /** 关系概况多久重新读一次 */
 export const RELATIONSHIP_REFRESH_MS = 10 * 60_000;
 /**
@@ -238,6 +245,11 @@ interface ContactState {
     retained: Record<string, number>;
     /** 同上，写进公共记忆库的（ADR 0016）；旧的状态文件里没有 */
     common?: Record<string, number>;
+    /** 片段 id → 最近一次提交给 Hindsight 的时间（毫秒）；记忆对账（ADR 0201）用：刚提交的先不算缺。旧的状态文件里没有（没有就当早就提交了） */
+    retainedAt?: Record<string, number>;
+    commonAt?: Record<string, number>;
+    /** 对账发现 Hindsight 里没有、重新排队的次数：「own:ep-…」「common:ep-…」→ 次数；同一个片段排了 RECONCILE_MAX_TRIES 次还没有就不再排 */
+    requeued?: Record<string, number>;
 }
 
 /** 公共记忆库的状态（<dir>/common.json） */
@@ -265,6 +277,8 @@ export interface LongTermMemoryOptions {
     now?: () => number;
     /** 公共记忆库（ADR 0016）：名单里除陌生人档以外的人都写、都召回；默认否 */
     common?: boolean;
+    /** 记忆对账（ADR 0201）：隔一阵读一次 Hindsight 里的文档，进度里记着写过、实际没有的重新排队写；默认否 */
+    reconcile?: boolean;
 }
 
 export class LongTermMemory {
@@ -272,6 +286,8 @@ export class LongTermMemory {
     readonly #now: () => number;
     /** 每个联系人（按 #key）的写入排队，保证串行 */
     readonly #queues = new Map<string, Promise<void>>();
+    /** 每个联系人上一次对账的时间、有没有发现缺的（只在内存里，重启后第一次同步就对一次） */
+    readonly #reconciled = new Map<string, { at: number; found: boolean }>();
     readonly #relationship = new Map<string, { content?: string; fetchedAt: number; fetching?: boolean }>();
     #entities: { names: string[]; fetchedAt?: number } = { names: [] };
     /** 最近一次写入、召回的结果（控制台的状态页，ADR 0010） */
@@ -320,6 +336,7 @@ export class LongTermMemory {
             const closed = this.#now() - episode.end.getTime() >= EPISODE_GAP_MS;
             return closed || episode.messages.length - done >= OPEN_EPISODE_STEP;
         });
+        if (this.#options.reconcile) await this.#reconcile(contact, state, episodes);
         const pending = due(state.retained);
         if (pending.length) await this.#retainOwn(contact, names, state, pending);
         if (!this.#options.common || !knowsPeople(contact.tier)) return;
@@ -357,6 +374,7 @@ export class LongTermMemory {
                 entities: [{ text: names.user, type: 'PERSON' }, { text: names.char, type: 'PERSON' }],
             });
             (state.common ??= {})[episode.id] = episode.messages.length;
+            (state.commonAt ??= {})[episode.id] = this.#now();
             this.#save(contact, state);
             this.#lastWrite = { at: this.#now(), ok: true };
             this.#options.log(`[${contact.qq}] 记忆（公共）：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
@@ -464,10 +482,68 @@ export class LongTermMemory {
                 metadata: { source: 'qq', episode: episode.id, messages: String(episode.messages.length) },
             });
             state.retained[episode.id] = episode.messages.length;
+            (state.retainedAt ??= {})[episode.id] = this.#now();
             this.#save(contact, state);
             this.#lastWrite = { at: this.#now(), ok: true };
             this.#options.log(`[${contact.qq}] 记忆：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
         }
+    }
+
+    /**
+     * 记忆对账（ADR 0201）：进度文件说「写过了」的片段，Hindsight 里真有吗？retain 是异步受理的（async: true），后台处理失败
+     * （Hindsight 重启、模型出错）不会告诉我们，进度却已经记成完成——这样的片段永远不会重写，记忆就悄悄少了一块
+     * （10-30 迁移后 verify 查出 3 个）。这里隔一阵读一次 bank 里的文档 id，对不上的把进度里那一条删掉，后面的 due() 就会重写它。
+     * 保守：刚提交的（RECONCILE_GRACE_MS 内）不算缺；读不到文档列表就不动；Hindsight 里一篇都没有却记着一堆写过的（多半是 bank 不对 / 接口变了）也不动；
+     * 公共库里危机相关的片段本来就不写，不算缺；一次最多重排 RECONCILE_MAX 个，同一个片段最多重排 RECONCILE_MAX_TRIES 次。日志只写数量，不写内容。
+     */
+    async #reconcile(contact: MemoryContact, state: ContactState, episodes: Episode[]): Promise<void> {
+        const api = this.#options.api;
+        if (!api.listDocumentIds) return;
+        const key = this.#key(contact);
+        const now = this.#now();
+        const last = this.#reconciled.get(key);
+        if (last && now - last.at < (last.found ? RECONCILE_RETRY_MS : RECONCILE_EVERY_MS)) return;
+        const sensitive = new Set(episodes.filter(episode => episode.messages.some(message => message.role === 'user' && detectCrisis(message.content))).map(episode => episode.id));
+        const pick = (done: Record<string, number> | undefined, at: Record<string, number> | undefined, skip: ReadonlySet<string>): string[] =>
+            Object.keys(done ?? {}).filter(id => done![id]! > 0 && !skip.has(id) && now - (at?.[id] ?? 0) >= RECONCILE_GRACE_MS);
+        const withCommon = Boolean(this.#options.common && knowsPeople(contact.tier) && state.common);
+        const ownIds = pick(state.retained, state.retainedAt, new Set());
+        const commonIds = withCommon ? pick(state.common, state.commonAt, sensitive) : [];
+        // 还没有够老的可对（刚写进去的都在宽限期里）：不占这一轮，等有了再对
+        if (!ownIds.length && !commonIds.length) return;
+        this.#reconciled.set(key, { at: now, found: false });
+        let budget = RECONCILE_MAX;
+        const check = async (kind: 'own' | 'common', bankId: string, candidates: string[], done: Record<string, number>, at: Record<string, number> | undefined, docId: (id: string) => string): Promise<number> => {
+            if (!candidates.length) return 0;
+            let present: Set<string>;
+            try { present = new Set(await api.listDocumentIds!(bankId)); } catch (error) {
+                this.#options.log(`[${contact.qq}] 记忆对账：读不到${kind === 'own' ? '他的' : '公共'} bank 里的文档（${error instanceof Error ? error.message : String(error)}），这次不对`);
+                return 0;
+            }
+            if (present.size === 0 && candidates.length >= 5) {
+                this.#options.log(`[${contact.qq}] 记忆对账：${kind === 'own' ? '他的' : '公共'} bank 里一篇文档都没有，却记着写过 ${candidates.length} 个——多半是 bank 不对或接口变了，没动`);
+                return 0;
+            }
+            let queued = 0;
+            for (const id of candidates) {
+                if (present.has(docId(id))) continue;
+                const tries = state.requeued?.[`${kind}:${id}`] ?? 0;
+                if (tries >= RECONCILE_MAX_TRIES) continue;
+                if (budget <= 0) break;
+                budget--;
+                delete done[id];
+                if (at) delete at[id];
+                (state.requeued ??= {})[`${kind}:${id}`] = tries + 1;
+                queued++;
+            }
+            return queued;
+        };
+        const own = await check('own', state.bankId, ownIds, state.retained, state.retainedAt, id => id);
+        const common = withCommon ? await check('common', this.commonBankId(), commonIds, state.common!, state.commonAt, id => `${this.#hash(contact)}:${id}`) : 0;
+        if (own + common === 0) return;
+        this.#save(contact, state);
+        this.#reconciled.set(key, { at: now, found: true });
+        this.#options.log(`[${contact.qq}] 记忆对账：记着写过、Hindsight 里却查不到的片段——他的 bank ${own} 个、公共库 ${common} 个，重新排队写（日志不记内容）`);
     }
 
     async #ensureBank(contact: MemoryContact, names: MacroNames, state: ContactState): Promise<void> {

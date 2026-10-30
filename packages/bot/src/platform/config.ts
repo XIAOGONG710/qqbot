@@ -151,6 +151,8 @@ export const DEFAULTS = {
     feelingReview: false,
     /** 她的私人空间（ADR 0200）：关着（默认）时，/追求 /说话习惯 /心境 /自我认识 这四条念她私人内容的命令不念，他得到一句固定的话；开着才念 */
     ownerPeek: false,
+    /** 记忆对账（ADR 0201）：隔一阵读一次 Hindsight 里的文档，进度里记着写过、实际没有的重新排队写（retain 是异步受理的，后台处理失败不会告诉我们） */
+    memoryReconcile: false,
     rhythm: false,
     shortReplies: false,
     media: true,
@@ -561,6 +563,8 @@ export interface AppConfig {
     feelingReview?: boolean;
     /** 她的私人空间（ADR 0200）：默认关；开着时他才能用 /追求 /说话习惯 /心境 /自我认识 看她自己总结 / 回想 / 追求出来的东西 */
     ownerPeek?: boolean;
+    /** 记忆对账（ADR 0201）：默认关；开着时每 6 小时（发现缺了就 10 分钟后再查）对一次，缺的片段重新写；刚写进去的 2 小时内不算缺 */
+    memoryReconcile?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /**
@@ -845,6 +849,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         diaryInsights: bool(file, 'diaryInsights', '', DEFAULTS.diaryInsights),
         feelingReview: bool(file, 'feelingReview', '', DEFAULTS.feelingReview),
         ownerPeek: bool(file, 'ownerPeek', '', DEFAULTS.ownerPeek),
+        memoryReconcile: bool(file, 'memoryReconcile', '', DEFAULTS.memoryReconcile),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
         shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),
         media: bool(file, 'media', '', DEFAULTS.media),

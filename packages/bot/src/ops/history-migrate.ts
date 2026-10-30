@@ -11,7 +11,9 @@
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
-import { EPISODE_GAP_MS } from '../memory/episodes.ts';
+import { detectCrisis } from '../emotion/crisis.ts';
+import { EPISODE_GAP_MS, splitEpisodes } from '../memory/episodes.ts';
+import type { StoredMessage } from '../memory/history.ts';
 import type { MemoryItem } from '../memory/hindsight.ts';
 import { acquireLock, isProcessAlive } from '../platform/lock.ts';
 import { isPrivateFile } from '../platform/private-space.ts';
@@ -326,20 +328,13 @@ export function readBundle(dir: string): Bundle {
  * 聊天并进去之后，机器人按平常的写入路径把「已经结束的片段」（安静 45 分钟以上）写进 Hindsight，一个片段一个 document_id（ep-<首条时间戳>）。
  * 这里算出该有哪些，给 verify 对：和 Hindsight 里实际有的比，缺的就是还没写完（或写失败了，下次同步会补）。
  */
-export function expectedEpisodeIds(rows: ChatRow[], nowMs: number): string[] {
-    const ids: string[] = [];
-    let start: number | undefined;
-    let end = 0;
-    const flush = () => { if (start !== undefined && nowMs - end >= EPISODE_GAP_MS) ids.push(`ep-${start}`); };
-    for (const row of [...rows].sort((a, b) => Date.parse(a.time) - Date.parse(b.time))) {
-        const at = Date.parse(row.time);
-        if (start !== undefined && at - end < EPISODE_GAP_MS) { if (at > end) end = at; continue; }
-        flush();
-        start = at;
-        end = at;
-    }
-    flush();
-    return ids;
+export function expectedEpisodeIds(rows: ChatRow[], nowMs: number, options: { skipCrisis?: boolean } = {}): string[] {
+    const sorted = [...rows].sort((x, y) => Date.parse(x.time) - Date.parse(y.time)) as StoredMessage[];
+    return splitEpisodes(sorted)
+        .filter(episode => nowMs - episode.end.getTime() >= EPISODE_GAP_MS)
+        // 公共库不写危机相关的片段（ADR 0068 决策 8，long-term.ts 的 #sync）：查公共库时这些不算缺
+        .filter(episode => !options.skipCrisis || !episode.messages.some(message => message.role === 'user' && detectCrisis(message.content)))
+        .map(episode => episode.id);
 }
 
 export function memoryGap(expected: string[], present: Iterable<string>, idPrefix = ''): { expected: number; present: number; missing: string[] } {

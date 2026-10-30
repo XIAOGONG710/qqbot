@@ -32,6 +32,7 @@
 | `dormancy` | 自愿休眠 / 封存 | [ADR 0161](../adr/0161-dormancy.md) |
 | `crossRecent` | QQ 和 DSH 桌面互读最近几轮（同一个她） | [ADR 0177](../adr/0177-same-her-recent-turns.md) |
 | `selfDirectedMemory` | 她自己决定记不记（关掉自动记忆同步和自动日记） | [ADR 0171](../adr/0171-self-directed-memory.md) |
+| `memoryReconcile` | 记忆对账：记着写过、Hindsight 里却查不到的片段，重新排队写（防记忆悄悄少一块） | [ADR 0201](../adr/0201-memory-reconcile.md) |
 | `unlistedFriends` | 名单外的好友也回 |  |
 | `feedbackCommands` | “假 / 像”反馈通道 | [ADR 0073](../adr/0073-feedback-channel.md) |
 | `deviceControl` | 她能操作他的电脑和手机（有限控制）（模式） | [ADR 0148](../adr/0148-device-control.md) |
@@ -44,4 +45,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0012](../adr/0012-hindsight-tuning.md)、[ADR 0017](../adr/0017-long-term-memory-like-a-person.md)、[ADR 0043](../adr/0043-context-window-experiment.md)、[ADR 0157](../adr/0157-identity-ledger.md)、[ADR 0158](../adr/0158-memory-ledger.md)、[ADR 0159](../adr/0159-timeline.md)、[ADR 0161](../adr/0161-dormancy.md)、[ADR 0176](../adr/0176-same-her-shared-memory.md)、[ADR 0177](../adr/0177-same-her-recent-turns.md)
+[ADR 0012](../adr/0012-hindsight-tuning.md)、[ADR 0017](../adr/0017-long-term-memory-like-a-person.md)、[ADR 0043](../adr/0043-context-window-experiment.md)、[ADR 0157](../adr/0157-identity-ledger.md)、[ADR 0158](../adr/0158-memory-ledger.md)、[ADR 0159](../adr/0159-timeline.md)、[ADR 0161](../adr/0161-dormancy.md)、[ADR 0176](../adr/0176-same-her-shared-memory.md)、[ADR 0177](../adr/0177-same-her-recent-turns.md)、[ADR 0201](../adr/0201-memory-reconcile.md)

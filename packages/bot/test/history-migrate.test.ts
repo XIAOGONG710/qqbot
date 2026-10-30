@@ -320,6 +320,15 @@ describe('迁完之后：记忆补齐了没有', () => {
         assert.deepEqual(expectedEpisodeIds([], base), []);
     });
 
+    test('公共库不写危机相关的片段（ADR 0068 决策 8）：查公共库时 skipCrisis 把它们从「该有的」里去掉；他的 bank 里照样该有', () => {
+        const rows = [row(at(base), 'user', '今天好累'), row(at(base + 3 * H), 'user', '我不想活了'), row(at(base + 3 * H + 60_000), 'assistant', '我在'), row(at(base + 9 * H), 'user', '早')];
+        const now = base + 20 * H;
+        assert.deepEqual(expectedEpisodeIds(rows, now), [`ep-${base}`, `ep-${base + 3 * H}`, `ep-${base + 9 * H}`]);
+        assert.deepEqual(expectedEpisodeIds(rows, now, { skipCrisis: true }), [`ep-${base}`, `ep-${base + 9 * H}`]);
+        // 只看他说的：她说的里有那几个字不算
+        assert.deepEqual(expectedEpisodeIds([row(at(base), 'assistant', '别说想死'), row(at(base + 1000), 'user', '嗯')], now, { skipCrisis: true }), [`ep-${base}`]);
+    });
+
     test('和 Hindsight 里实际有的比：缺的列出来；公共库的 id 带「哈希:」前缀', () => {
         assert.deepEqual(memoryGap(['ep-1', 'ep-2', 'ep-3'], ['ep-1', 'ep-3', 'diary:2026-10-25']), { expected: 3, present: 2, missing: ['ep-2'] });
         assert.deepEqual(memoryGap(['ep-1', 'ep-2'], ['a5db:ep-1', 'a5db:ep-2'], 'a5db:'), { expected: 2, present: 2, missing: [] });

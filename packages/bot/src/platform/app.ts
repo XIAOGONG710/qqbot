@@ -607,6 +607,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             recallTimeoutMs: config.memory.recallTimeoutMs,
             log,
             common: true,
+            reconcile: config.memoryReconcile,
         })
         : undefined;
     log(memory

@@ -108,6 +108,8 @@ export interface HindsightApi {
     listEntities?(bankId: string, timeoutMs?: number): Promise<string[]>;
     /** 读回一篇写进去的原文（ADR 0018：写周记时读以前的日记）；没有这篇是 undefined；没有这个方法就不读 */
     getDocument?(bankId: string, documentId: string, timeoutMs?: number): Promise<{ original_text?: string | null } | undefined>;
+    /** 一个 bank 里所有文档的 id（分页读）；记忆对账用（ADR 0201）：「记着写过」不等于 Hindsight 里真有，retain 是异步受理的，后台处理失败不会告诉我们；没有这个方法就不对账 */
+    listDocumentIds?(bankId: string, timeoutMs?: number): Promise<string[]>;
 }
 
 /** 写入请求体：后台异步处理（async），一次一个片段 */
@@ -206,6 +208,18 @@ export class HindsightClient implements HindsightApi {
             if (error instanceof HindsightError && error.status === 404) return undefined;
             throw error;
         }
+    }
+
+    async listDocumentIds(bankId: string, timeoutMs = this.#timeoutMs): Promise<string[]> {
+        const ids: string[] = [];
+        // 一页 100 篇；最多读 50 页（5000 篇），再多就是别处出了问题
+        for (let offset = 0; offset < 5000; offset += 100) {
+            const page = await this.#request<{ items?: { id: string }[]; total?: number }>('GET', `${this.#bank(bankId)}/documents?limit=100&offset=${offset}`, undefined, timeoutMs);
+            const items = page.items ?? [];
+            ids.push(...items.map(item => item.id));
+            if (!items.length || ids.length >= (page.total ?? 0)) break;
+        }
+        return ids;
     }
 
     async deleteBank(bankId: string): Promise<void> {
