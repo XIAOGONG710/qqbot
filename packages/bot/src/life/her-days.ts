@@ -245,7 +245,9 @@ export function describeBooks(schedule: Schedule, books: readonly ReadingBook[],
             if (named.has(book.id) || node.keywords.some(keyword => asked.includes(keyword.toLowerCase()))) return [`  ${node.topic}：${node.points.join('；')}`];
             return node.keywords.includes('主角') || node.keywords.includes('主线') ? [`  ${node.topic}：${node.points[0]}`] : [];
         });
-        return [`- 《${book.title}》（${book.author}；${book.kind}；${book.platform}；${book.status}）：${position}${total}；你的感受：${book.attitude}`, ...nodes];
+        // 不再把作者写的「你的感受」塞给她（10-30 用户：把这种类型的限制去掉）——
+        // 喜欢什么书、怎么看，由她自己说；设定里的 attitude 只留下不注入。
+        return [`- 《${book.title}》（${book.author}；${book.kind}；${book.platform}；${book.status}）：${position}${total}`, ...nodes];
     });
     // 点名问了哪本，只提醒那本没看到的地方；泛问时每本都看
     const unread = items.filter(({ book }) => !named.size || named.has(book.id))
@@ -253,7 +255,7 @@ export function describeBooks(schedule: Schedule, books: readonly ReadingBook[],
             .map(topic => `${userName}问的《${book.title}》${topic}你还没看到`));
     return {
         text: ['[在读的书：', ...lines, ...unread,
-            `怎么说：聊书只聊上面这些；${userName}问到这里没有的情节、你还没看到的地方，就说还没看到那儿，或者记不清了，也可以问问${userName}看到哪了。]`,
+            `怎么说：聊书只聊上面这些；${userName}问到这里没有的情节、你还没看到的地方，就说还没看到那儿，或者记不清了，也可以问问${userName}看到哪了。这本书好不好、你喜不喜欢，按你自己这会儿的感觉说，没有想法就说没想法。]`,
         ].join('\n'),
         context: { books: items, focusIds: named.size ? [...named] : books.map(book => book.id) },
     };
