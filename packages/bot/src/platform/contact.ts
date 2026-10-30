@@ -286,6 +286,11 @@ export interface ContactPipelineOptions {
     innerLine?: () => string | undefined;
     /** 她自己决定今天想做的事（ADR 0182）：和「在读的书」一起当额外的空闲活动，状态行和「你今天的打算」都带上 */
     herPlan?: (at: Date) => ExtraFreeActivity[];
+    /**
+     * 她理解人的话（10-30 用户：让她自己学习去理解人说的话）：他这句话和以前被纠正过的事撞上时，
+     * 返回一行「上次你这么理解，他纠正过」；没有就不加
+     */
+    understanding?: (hisWords: string) => string | undefined;
     /** 他刚发过「/亲热」（ADR 0170）：接下来几条回复黏一点；每取一次少一条，主动找他、危机回合不取 */
     intimacyLine?: () => string | undefined;
     /** 心境（ADR 0102，配置 herFeelings）：她那边的事、他的态度、作者写下的事，在她心里留下带来由的感受（开心 / 难过 / 担心……），会慢慢散；只给男朋友档，危机回合不放 */
@@ -961,6 +966,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(photoNow && options.photos?.prompt(photoNow, photoDishNow) ? [options.photos.prompt(photoNow, photoDishNow)!] : []),
                         ...(intentLine ? [intentLine] : []),
                         ...(lastUserLine ? [lastUserLine] : []),
+                        // 这件事她以前理解偏过（10-30）：他这句话和以前被纠正过的事撞上时提醒她
+                        ...(!initiate && lastUserText && options.understanding?.(lastUserText) ? [options.understanding(lastUserText)!] : []),
                         // 人称（10-30：他问「我是谁？」，她回「我是谁这还用问」——把「我」当成了自己）
                         ...(!initiate ? ['[人称：他说「我」是他自己、说「你」是叫你；你说「我」是你自己。他问「我是谁」「我算你什么」问的是你们俩是什么关系，别答成你问你自己。]'] : []),
                         ...(options.selfMemory ? [SELF_MEMORY_NOTE] : []),
