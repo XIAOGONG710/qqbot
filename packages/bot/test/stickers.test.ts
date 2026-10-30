@@ -225,6 +225,9 @@ describe('图片表情：代码定哪几轮发、按他这句话挑一小撮（1
     test('他这句话里有明确的反应才抽签：晚安、哈哈、抱抱、吃、无语、他发来的表情；「知道啦」「哦哦 好」这类没有', () => {
         for (const text of ['晚安', '先睡了啊宝', '哈哈哈哈你完了', '想你了，抱抱', '我先去吃饭了', '真是无语', '[动画表情]', '真的假的！！']) assert.equal(stickerCued(text), true, text);
         for (const text of ['知道啦', '哦哦 好', '图书馆三楼 两点', '反正十二月才正式考', '']) assert.equal(stickerCued(text), false, text);
+        // 方括号没转义时线索成了字符类（/[(?:动画)?表情]/），带「表 情 动 画 ( ) ? :」的话都命中（2026-10-31 修）
+        for (const text of ['今天心情不错', '这件事情我想想', '画画好难', '活动在周三', '你在干嘛?', '到了:']) assert.equal(stickerCued(text), false, text);
+        assert.equal(stickerCued('[表情]'), true);
     });
 
     test('按他这句话排：命中反应词多的在前，同分的少用的在前；没有明确反应时找通用的', () => {
