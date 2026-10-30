@@ -97,6 +97,16 @@ const TILDE_END_SHORT = /[呢吧啊好行]$/;
 const ASKING = /吗|么|啥|什么|怎么|为啥|为什么|哪[里儿个天]?|几[点个天号分]?|多少|谁|是不是|有没有|要不要|能不能|行不行|对不对|好不好|了没|干嘛|咋|多久|多大|多远/;
 /** 感叹的短句：太……了、好……啊、真…… */
 const EXCLAIM = /^(?:太|好|真|这也太|也太)[^，。？?！!]{2,9}$/;
+/**
+ * 他这一串是在问她（先“嗯嗯”一声要避开）：问号、问句常见的词、句尾的「没 / 不」（你吃了没、你去不）。
+ * 10-30 通读（41 句）：「吃的啥啊」她先回了一个「好」再答，「你看过没」前面先冒一个「嗯嗯」——原来的判法只认 ？吗呢吧么 什么 怎么，漏掉了「啥 / 没 / 哪 / 谁 / 是不是……」；
+ * 72 句真人对话里旧判法当成陈述的 47 句，有 9 句其实是在问
+ */
+const SAID_ASKING = new RegExp(`[？?]|[吗呢吧嘛]|${ASKING.source}|(?:没|不)[！!。.~～啊呀]*$`);
+/** 他这句不需要“嗯”一声：道谢、道歉、示爱、问候、道别（「爱你」→「好」、「谢谢你听我说」→「好」都不对） */
+const SAID_NO_ACK = /谢|对不起|抱歉|不好意思|爱你|想你|喜欢你|抱抱|亲亲|啵|mua|晚安|早安|早上好|午安|拜拜|再见|辛苦/i;
+/** 他提了件要一起做 / 约好的事：这时才接「好 / 行」，陈述只接「嗯嗯 / 嗯」（「我今天累死了」→「好」「对」都不对） */
+const SAID_PROPOSAL = /我们|一起|要不|周[一二三四五六日末]|明天|后天|下次|改天|有空|带你|陪你|约/;
 /** 他这一串里的反应线索 → 她可以先单独回一个字的反应（哈哈 / 啊？ / ？） */
 const LAUGH_SAID = /哈哈|笑死|太好笑|绷不住|乐死|搞笑|逗死/;
 const SURPRISE_SAID = /真的假的|不会吧|居然|竟然|没想到|什么鬼|离谱|我天|卧槽|！！/;
@@ -199,7 +209,9 @@ export function applyTexture(parts: readonly string[], ctx: TextureContext): Tex
     if (out.length < (ctx.maxBubbles ?? 3) && !/^(?:哈|啊|？|\?|嗯|哦|真的假的)/.test(out[0]!.trim()) && !UNTOUCHED.test(out[0]!.trim())) {
         const cued = LAUGH_SAID.test(said) ? ['哈哈', '哈哈哈', '笑死'] : SURPRISE_SAID.test(said) ? ['啊？', '？', '真的假的'] : undefined;
         // 没有明显线索：他陈述了件事（不是问句），她第一条又比较长，偶尔先“嗯嗯”一声
-        const acked = !cued && said.trim() && !/[？?吗呢吧么]|什么|怎么|为什么/.test(said) && chars(out[0]!) >= 6 && unit(`${ctx.seed} ack`) < TEXTURE_SHARES.ack ? ['嗯嗯', '嗯', '好', '对'] : undefined;
+        const acked = !cued && said.trim() && !SAID_ASKING.test(said) && !SAID_NO_ACK.test(said) && chars(out[0]!) >= 6 && unit(`${ctx.seed} ack`) < TEXTURE_SHARES.ack
+            ? (SAID_PROPOSAL.test(said) ? ['好', '行'] : ['嗯嗯', '嗯'])
+            : undefined;
         const kinds = cued ?? acked;
         if (kinds && (acked || unit(`${ctx.seed} reaction`) < TEXTURE_SHARES.reaction)) {
             const pick = kinds[Math.floor(unit(`${ctx.seed} reaction which`) * kinds.length)]!;

@@ -140,3 +140,30 @@ describe('小黄脸很少（用户 10-23：不要用或者少用黄豆表情）'
         for (const seed of seeds(300)) assert.ok(!/\[doge\]/.test(applyTexture(['宿舍有人睡了'], ctx(seed)).parts.join('')), '中性的 doge 不带');
     });
 });
+
+describe('先“嗯嗯”一声的判法（10-30 通读：「吃的啥啊」→「好」，「你看过没」→「嗯嗯」）', () => {
+    const LONG = ['那你今天一定很专心吧'];
+    const acked = (said: string, n = 300) => sweep(LONG, { said }, n).filter(r => r.parts.length === 2 && /^(?:嗯嗯|嗯|好|行|对)$/.test(r.parts[0]!));
+
+    test('他是在问的（啥 / 没 / 哪 / 谁 / 是不是 / 嘛 / 句尾的不）：一条都不先应一声', () => {
+        for (const said of ['吃的啥啊', '你看过没', '你吃了没', '哪个男的教你的', '是不是打算再买几个', '你周六有空吗', '你去不', '我在我在老婆干嘛呀', '小宝上床了嘛', '这个怎么弄', '谁知道呢']) {
+            assert.equal(acked(said).length, 0, said);
+        }
+    });
+
+    test('道谢 / 道歉 / 示爱 / 问候 / 道别：不先应一声（「爱你」→「好」不对）', () => {
+        for (const said of ['谢谢你听我说', '爱你', '我也想你呀', '对不起我错了', '晚安', '早安', '辛苦你了', '拜拜']) {
+            assert.equal(acked(said).length, 0, said);
+        }
+    });
+
+    test('陈述只接「嗯嗯 / 嗯」，不接「好 / 对」；他提了件要一起做的事才接「好 / 行」', () => {
+        const statement = acked('我今天去图书馆待了一下午', 600);
+        assert.ok(statement.length > 20, `陈述里还是偶尔会先应一声：${statement.length}`);
+        for (const r of statement) assert.ok(['嗯嗯', '嗯'].includes(r.parts[0]!), r.parts[0]);
+        for (const said of ['我今天累死了', '老板又让我改方案']) for (const r of acked(said, 600)) assert.ok(['嗯嗯', '嗯'].includes(r.parts[0]!), `${said} → ${r.parts[0]}`);
+        const proposal = acked('那就周六晚上一起去吃火锅', 600);
+        assert.ok(proposal.length > 20);
+        for (const r of proposal) assert.ok(['好', '行'].includes(r.parts[0]!), r.parts[0]);
+    });
+});

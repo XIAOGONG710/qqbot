@@ -29,7 +29,7 @@ export const MODULES: readonly ModuleDef[] = [
             'language/status-line.ts', 'language/time-context.ts', 'language/relationship.ts', 'language/intimacy.ts', 'language/jokes.ts', 'language/idioms.ts', 'language/memes.ts', 'language/meme-dict.ts', 'language/exemplars.ts', 'language/register.ts', 'language/speech-notes.ts', 'language/speech-feedback.ts', 'language/speech-trend.ts', 'language/watching.ts', 'language/texture.ts', 'language/selfcheck.ts', 'language/bili-stickers.ts', 'language/interruption.ts', 'language/together.ts', 'language/jealousy.ts', 'language/curious.ts', 'language/llm.ts', 'language/model-guard.ts', 'st/'],
         groups: ['说话'],
         metrics: '周报「说话的样子」「表情和语气」「她的口头禅」；consistency-cli；humanness-cli；rough-edges-cli；blind-judge-cli',
-        adrs: ['0091', '0095', '0096', '0099', '0113', '0114', '0115', '0111', '0121', '0137', '0138', '0167', '0193', '0195', '0196'],
+        adrs: ['0091', '0095', '0096', '0099', '0113', '0114', '0115', '0111', '0121', '0137', '0138', '0167', '0193', '0195', '0196', '0198'],
     },
     {
         id: 'life', name: '她的日子（生活）',

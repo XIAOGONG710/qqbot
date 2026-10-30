@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { ABOUT_DAY_INTENT, CONTROL_INTENT, DECLINED_INVITE_INTENT, CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, PRESSED_INTENT, saysOwnThing } from '../src/language/intent.ts';
+import { ABOUT_DAY_INTENT, CONTROL_INTENT, DECLINED_INVITE_INTENT, CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, PRESSED_INTENT, saysOwnThing, distressCarried, needsCareText, DISTRESS_CARRY_MS } from '../src/language/intent.ts';
 import type { Schedule, State } from '../src/life/schedule.ts';
 
 const now = new Date('2026-10-06T20:00:00+08:00');
@@ -385,5 +385,58 @@ describe('他问她今天过得怎么样（ADR 0106，dayThings 开着才有）'
             const plan = planShape({ history: [{ role: 'assistant', content: '嗯' }, { role: 'user', content: `今天干嘛了${i}` }], intent: ABOUT_DAY_INTENT, initiating: false })!;
             assert.ok(['medium', 'long', 'wide'].includes(plan.kind), plan.kind);
         }
+    });
+});
+
+describe('他的低落往后接着算（10-30 通读：「被领导骂了」之后的「想辞职」「是不是太没用了」她在质疑他）', () => {
+    const at = (minutes: number) => new Date(Date.parse('2026-10-26T22:00:00+08:00') + minutes * 60_000).toISOString();
+    const him = (content: string, minutes: number) => ({ role: 'user' as const, content, time: at(minutes) });
+    const her = (content: string, minutes: number) => ({ role: 'assistant' as const, content, time: at(minutes) });
+
+    test('needsCareText 多认几类难受：心情不好、被说得很难听、想辞职、觉得自己没用、睡不着、压力大；「没用过」是在说东西不算', () => {
+        for (const text of ['我今天心情不好', '他当着全组的面说我方案是垃圾', '我真的有点想辞职', '你说我是不是太没用了', '我真的太没用了', '昨晚又失眠了', '压力好大', '这次考砸了', '我真的不想干了']) {
+            assert.equal(needsCareText(text), true, text);
+        }
+        for (const text of ['这个软件我没用过', '我没用到那个功能', '今天心情不错', '你方案写得不错', '周末想去吃火锅']) assert.equal(needsCareText(text), false, text);
+    });
+
+    test('他先说难受，后面几句单看认不出：这一轮还算在难受里（意图行还是「先接住他此刻的情绪」），不被「只回一个短句」之类的轮次抽走', () => {
+        const history = [
+            him('我今天心情不好，被领导骂了', 0), her('啊？骂你什么了', 1),
+            him('他当着全组的面说我方案是垃圾', 2), her('啊？当着全组的面？', 3),
+            him('我真的有点想辞职', 4), her('诶，被骂几句就想到辞职了？', 5),
+            him('算了不说了', 6),
+        ];
+        assert.equal(needsCareText('算了不说了'), false, '这一句单看不认得');
+        assert.match(describeIntent({ history, now })!, /先接住他此刻的情绪/);
+        assert.equal(distressCarried(history), true);
+    });
+
+    test('他说缓过来了 / 笑了就算过去；隔了半小时以上也算过去；他一直没难受过就没有', () => {
+        const base = [him('我今天心情不好', 0), her('怎么了', 1)];
+        assert.equal(distressCarried([...base, him('好点了', 5)]), false, '他说好点了');
+        assert.equal(distressCarried([...base, him('哈哈哈你猜我吃啥', 5)]), false, '他笑了');
+        assert.equal(distressCarried([...base, him('在吗', 25)]), true, '25 分钟还算');
+        assert.equal(distressCarried([...base, him('在吗', 31)]), false, '31 分钟就过去了');
+        assert.equal(distressCarried([him('今天吃了麻辣烫', 0), her('好吃吗', 1), him('还行', 2)]), false);
+        assert.equal(distressCarried([]), false);
+        assert.equal(distressCarried([her('在吗', 0)]), false, '只有她说话');
+        assert.equal(distressCarried([her('我今天累死了', 0), him('在吗', 1)]), false, '她自己说累不算他在难受');
+    });
+
+    test('只往回看他最近 8 条；没有时间戳的消息只按条数算', () => {
+        const filler = Array.from({ length: 8 }, (_, i) => ({ role: 'user' as const, content: `闲聊第${i}句` }));
+        assert.equal(distressCarried([{ role: 'user' as const, content: '我好难过' }, ...filler]), false, '第 9 条以前的不算');
+        assert.equal(distressCarried([{ role: 'user' as const, content: '我好难过' }, ...filler.slice(0, 7)]), true, '8 条以内还算（没有时间戳不按分钟算）');
+    });
+
+    test('难受延续期间，「讲讲她今天干了什么」这类意图让路（直接问的问题照旧先答）', () => {
+        const calm = [him('今天天气不错', 0), her('是啊', 1), him('今天都干什么了', 2)];
+        assert.equal(describeIntent({ history: calm, now, dayThings: true }), ABOUT_DAY_INTENT, '没在难受时照旧');
+        const low = [him('我今天心情不好，被领导骂了', 0), her('啊？骂你什么了', 1), him('今天都干什么了', 2)];
+        assert.notEqual(describeIntent({ history: low, now, dayThings: true }), ABOUT_DAY_INTENT, '他刚在难受，不先讲自己一天的流水账');
+        // 他后面说的不是问句：先接住他
+        const quiet = [him('我今天心情不好，被领导骂了', 0), her('啊？骂你什么了', 1), him('就是觉得自己挺差劲的', 2)];
+        assert.match(describeIntent({ history: quiet, now, dayThings: true })!, /先接住他此刻的情绪/);
     });
 });

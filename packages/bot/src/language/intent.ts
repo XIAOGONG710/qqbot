@@ -187,7 +187,32 @@ function teasesHer(history: readonly Said[]): boolean {
 
 /** 对方此刻在递情绪，不拿她自己的生活进度把这句话顶掉。只认明确说法，不从普通短句猜心情。 */
 function needsCare(history: readonly Said[]): boolean {
-    return needsCareText(latestUserText(history));
+    return needsCareText(latestUserText(history)) || distressCarried(history);
+}
+
+/** 他的低落往后接着算多久（毫秒）、最多看他最近几条 */
+export const DISTRESS_CARRY_MS = 30 * 60_000;
+export const DISTRESS_CARRY_MESSAGES = 8;
+/** 他自己说缓过来了 / 笑了：低落到这里算过去 */
+const RECOVERED = /好点了|好多了|没事了|没那么|不难过了|不烦了|想开了|缓过来了|哈哈|嘿嘿|hhh/i;
+
+/**
+ * 他刚才在难受，后面又说了几句：情绪不会一句就过去。10-30 通读（一个晚上 41 句）：他先说「我今天心情不好，被领导骂了」，
+ * 接着「他当着全组的面说我方案是垃圾」「我真的有点想辞职」「你说我是不是太没用了」——后面几句单看不一定认得出是在难受，
+ * 她分别回了「被骂几句就想到辞职了？」「被骂一顿就给自己下这种结论啊」（还抽到了「只回一个短句」的轮次）。
+ * 这里往回看他最近几条（半小时内、最多 8 条）：有一条在难受、之后他没说缓过来 / 笑了，这一轮就还算在难受里。
+ */
+export function distressCarried(history: readonly (Said & { time?: string | undefined })[]): boolean {
+    const mine = history.filter(message => message.role === 'user').slice(-DISTRESS_CARRY_MESSAGES);
+    if (!mine.length) return false;
+    const lastAt = Date.parse(mine.at(-1)!.time ?? '');
+    let hit = -1;
+    for (let i = mine.length - 1; i >= 0; i--) {
+        const at = Date.parse(mine[i]!.time ?? '');
+        if (Number.isFinite(lastAt) && Number.isFinite(at) && lastAt - at > DISTRESS_CARRY_MS) break;
+        if (needsCareText(mine[i]!.content)) { hit = i; break; }
+    }
+    return hit >= 0 && !mine.slice(hit + 1).some(message => RECOVERED.test(message.content));
 }
 
 /** 一句话里他是不是在递情绪（难过、烦、累、不舒服）；心境（ADR 0102）按单条消息判断 */
@@ -196,8 +221,15 @@ export function needsCareText(text: string): boolean {
     // 身上不舒服、一般的累（10-10 盲评 N3：「我嗓子疼 / 肿了」不算，她第一句回「你是不是傻」；「今天有点累」也不算，她转去说自己早八）
     return /(?:我)?(?:哭|难过|伤心|委屈|崩溃|焦虑|害怕|紧张|emo)|累死|烦死|好烦|烦躁|郁闷|心累|被(?:导师|老师|老板|领导|我妈|我爸)?骂|难受|不舒服|疼死|(?:^|\n)悲[了伤惨啊呀…~～\s]*(?:$|[，,！!。])/i.test(text.trim())
         || /(?:嗓子|喉咙|头|肚子|胃|牙|腰|背|腿|脚|手|眼睛|脖子)(?:好|有点|特别|巨|超|也|一直)?(?:疼|痛)|发烧|烧到|感冒|咳嗽|生病|病了|拉肚子|闹肚子|头晕|恶心|想吐|吐了|肿了|扭了|崴了|过敏|痛经/.test(text)
-        || /(?:好|有点|特别|太|超|巨|真|挺)累|累(?:了|得|趴|瘫)|没力气|撑不住/.test(text);
+        || /(?:好|有点|特别|太|超|巨|真|挺)累|累(?:了|得|趴|瘫)|没力气|撑不住/.test(text)
+        || DISTRESS_EXTRA.test(text);
 }
+
+/**
+ * 难受的另一类说法：心情不好、被人说得很难听、想辞职、觉得自己没用、睡不着（10-30 通读补；原来只认难过 / 累 / 疼 / 被骂，
+ * 「他当着全组的面说我方案是垃圾」「想辞职」「是不是太没用了」都认不出）。「没用」后面接过 / 到 / 上 / 着 / 完是在说东西（没用过这个）
+ */
+const DISTRESS_EXTRA = /心情(?:很|真的|特别|太)?(?:不好|差|糟)|不开心|低落|失眠|睡不着|想哭|(?:说|骂|嫌)我.{0,10}(?:垃圾|没用|废物|不行|差劲|太差)|(?:我|自己)(?:是不是|真的|太|好|真)?太?(?:没用|废物|差劲|失败)(?![过到上着完])|想辞职|想离职|不想干了|干不下去|被(?:炒|裁)|挂科|考砸|压力(?:好|太|很|真|特别|有点)?大|扛不住|喘不过气/;
 
 /** 想念、喜欢、纪念日或认识多久，是两个人之间的话；不能答完又机械切回猫、书和手头进度。 */
 function isRelationshipBid(history: readonly Said[]): boolean {
