@@ -12,22 +12,40 @@ const classes = process.argv[3]
     ? [['自定义', new RegExp(process.argv[3])]]
     : [
         ['锁挡住/没拿到', /已有一个 bot 在运行|拿不到锁|插件没有启动/],
+        ['端口被占', /EADDRINUSE|address already in use/i],
         ['记忆召回失败', /召回失败/],
         ['记忆写入失败', /写入失败|写进公共记忆失败/],
         ['fetch failed', /fetch failed/],
         ['bank 写入 mission（≈启动次数）', /已写入 mission/],
         ['开关行', /开关：/],
     ];
+// 两种日志都认：① bot 自己的 logs/<日期>.log（行首 `[2026/10/30 17:25:01] `）；
+// ② Koishi 自己的 runtime/koishi/data/logs/<日期>-N.log（一行一个 JSON，有 timestamp 毫秒时间戳和 content；一天会有好几个文件，每个都跑一遍）。
+// **插件启动时抛的错（「已有一个 bot 在运行」「插件没有启动」）和「开关：」那一行是 ctx.logger 打的，只在 ②里，bot 自己的日志里没有。**
 const HOUR = /^\[\d{4}\/\d{1,2}\/\d{1,2} (\d{1,2}):/;
+const OFFSET_H = Number(process.env.TZ_OFFSET_HOURS ?? 8);
+function parse(line) {
+    const m = HOUR.exec(line);
+    if (m) return { hour: m[1].padStart(2, '0'), text: line };
+    if (line.startsWith('{')) {
+        try {
+            const row = JSON.parse(line);
+            const at = row.timestamp ?? row.t;
+            if (typeof at !== 'number') return undefined;
+            return { hour: String(new Date(at + OFFSET_H * 3_600_000).getUTCHours()).padStart(2, '0'), text: String(row.content ?? '') };
+        } catch { return undefined; }
+    }
+    return undefined;
+}
 const table = new Map(); // 小时 → 各类计数
 let total = 0;
 for (const line of readFileSync(file, 'utf8').split('\n')) {
-    const m = HOUR.exec(line);
-    if (!m) continue;
+    const parsed = parse(line);
+    if (!parsed) continue;
     total++;
-    const hour = m[1].padStart(2, '0');
+    const hour = parsed.hour;
     classes.forEach(([, re], i) => {
-        if (!re.test(line)) return;
+        if (!re.test(parsed.text)) return;
         const row = table.get(hour) ?? new Array(classes.length).fill(0);
         row[i]++;
         table.set(hour, row);
