@@ -20,8 +20,8 @@
 素材包就在这个分支里：**`migration/vm-20261027/`**（32 个文件，约 400 KB，扫描过没有密钥 / cookie；只有他的聊天原文和她自己写的日记 / 存档，没有另一位同学的聊天）。`git pull` exchange 之后把整个目录拷到你的仓库**外面**用（别拷进 `dsh/qq-control` 的工作目录——那是代码仓库，里面不该有聊天原文）：
 
 ```powershell
-Copy-Item <exchange 工作树>migrationm-20261027 <你的桌面>m-20261027 -Recurse
-Get-FileHash <你的桌面>m-20261027manifest.json -Algorithm SHA256   # 应该是 0bdc2a400f9181f02a2be3fcecdb767a7513708e07d7194304284790a867166f
+Copy-Item "<exchange 工作树>\migration\vm-20261027" "<你的桌面>\vm-20261027" -Recurse
+Get-FileHash "<你的桌面>\vm-20261027\manifest.json" -Algorithm SHA256   # 应该是 0bdc2a400f9181f02a2be3fcecdb767a7513708e07d7194304284790a867166f
 ```
 
 读的时候工具还会核对 manifest 里每个文件的 SHA-256，拷坏了会直接报错。**迁完以后不要再往 exchange 里加这个目录的任何衍生物**（比如拿它做的统计里贴原文）。
