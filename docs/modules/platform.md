@@ -34,6 +34,8 @@
 - `platform/sensitive.ts`
 - `platform/web.ts`
 - `platform/consent.ts`
+- `platform/wechat-id.ts`
+- `platform/wechat-bridge.ts`
 - `ops/`
 - `sim/`
 - `vendor/`
