@@ -140,7 +140,7 @@ test('每张卡带去掉行首括号的正则和这一档的禁用词（只给�
 test('每日心情和在读的书：只给五个熟悉档位，TextField 和情节节点都按档位裁剪', () => {
     for (const tier of ['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate']) {
         assert.equal(moodsForTier(source, tier)?.length, 4, tier); // 10-07 玩梗、搞怪合并成「爱笑」
-        assert.equal(booksForTier(source, tier)?.length, 3, tier);
+        assert.equal(booksForTier(source, tier)?.length, source.books!.books.length, tier);
     }
     for (const tier of ['stranger', 'unlisted']) {
         assert.equal(moodsForTier(source, tier), undefined, tier);

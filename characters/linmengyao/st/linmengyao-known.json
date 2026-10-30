@@ -798,6 +798,54 @@
                                 ]
                             }
                         ]
+                    },
+                    {
+                        "id": "renjiancaomu",
+                        "title": "人间草木",
+                        "aliases": [
+                            "汪曾祺散文",
+                            "汪曾祺"
+                        ],
+                        "author": "汪曾祺",
+                        "kind": "散文集（写吃、写花、写人）",
+                        "platform": "散文集",
+                        "status": "随笔集，随时可以翻",
+                        "activity": {
+                            "window": "evening",
+                            "text": "翻两页《人间草木》"
+                        },
+                        "progress": {
+                            "startDay": "2026-10-30",
+                            "start": 1,
+                            "everyDays": 7,
+                            "amount": 1,
+                            "unit": "篇",
+                            "max": 40,
+                            "state": "reading"
+                        },
+                        "attitude": "他写吃的写花写人都很平，不使劲，我读着不累；比漂亮的句子有用",
+                        "unreadKeywords": [
+                            "结尾",
+                            "最后一篇",
+                            "结局"
+                        ],
+                        "nodes": [
+                            {
+                                "id": "renjiancaomu-style",
+                                "topic": "这书是什么味道",
+                                "from": 1,
+                                "keywords": [
+                                    "汪曾祺",
+                                    "人间草木",
+                                    "散文"
+                                ],
+                                "points": [
+                                    "写高邮的吃食、花草、旧人旧事",
+                                    "句子短、不用力、不抒情",
+                                    "读着像有人随口讲他小时候的事"
+                                ]
+                            }
+                        ]
                     }
                 ],
                 "world": {
