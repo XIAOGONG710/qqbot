@@ -59,6 +59,7 @@ import { describeTrend, speechTrend } from '.././language/speech-trend.ts';
 import { FEEDBACK_NO_TURN, describeFeedbackForOwner, feedbackReceipt, lastTurn, loadFeedback, parseFeedbackCommand, recentFeedback, recordFeedback } from '.././language/speech-feedback.ts';
 import { writeFeelingsExport, type FeelingsReport } from '.././emotion/feeling-export.ts';
 import { describeFeelingsForOwner, loadReviewState, reviewIfDue, reviewReader } from '.././emotion/feeling-review.ts';
+import { bookItems, reflectIfDue as reflectTakes, takesReader, videoItems } from '.././life/reading-takes.ts';
 import { describeInsightsForOwner, insightsReader, loadInsightsState, recordSelfDiary, reflectIfDue as reflectInsights, writeInsightsExport } from '.././life/diary-insights.ts';
 import { substituteMacros } from '.././st/macros.ts';
 import { removeFaces } from '.././language/qq-faces.ts';
@@ -759,6 +760,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const speechNotesNow = config.speechNotes ? speechNotesReader(config.dataDir) : undefined;
     // 她翻日记时发现的自己（ADR 0194）：同理，要在创建回复器之前定义
     const diaryInsightsNow = config.diaryInsights ? insightsReader(config.dataDir) : undefined;
+    const readingTakesNow = config.readingTakes ? takesReader(config.dataDir) : undefined;
     // 最近一次给他算的心境（ADR 0197）：写给桌面上的她，/心境 也看它；同样要在创建回复器之前定义
     let lastFeelings: FeelingsReport | undefined;
     // 她夜里回想、指出了依据的感受（ADR 0197）：作为「别处算好的评估」进心境；要 herFeelings 开着
@@ -887,6 +889,37 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         return timer;
     })() : undefined;
     if (config.diaryInsights) log(deviceOwner ? '她翻自己的日记写对自己的认识：开（每晚 22 点以后想一次；/自我认识 随时看）' : '她翻自己的日记写对自己的认识：开着，但名单里没有男朋友档，不启动');
+    // 她读完 / 看完之后自己想的（ADR 0204）：22 点以后想一次；今天读到哪儿 / 看了什么视频，有话想说才写一句；私人空间，没有命令念给他
+    const readingTakesTimer = config.readingTakes && deviceOwner ? (() => {
+        const owner = deviceOwner;
+        const { character } = cardFor(owner.tier);
+        let busy = false;
+        const tick = () => {
+            if (busy || stopped) return;
+            busy = true;
+            void reflectTakes({
+                dataDir: config.dataDir,
+                now: () => clockNow().getTime(),
+                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 0.9 }, messages, { log, purpose: 'background' })),
+                items: () => {
+                    const now = clockNow();
+                    return [
+                        ...(character.schedule ? bookItems(character.schedule, character.books, now) : []),
+                        ...videoItems(loadWatched(watchedPath(config.dataDir), log).entries, now),
+                    ];
+                },
+                history: () => history.load(owner.qq),
+                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
+                names: { char: character.name, user: owner.name },
+                others: () => config.contacts.filter(contact => contact.qq !== owner.qq).map(contact => contact.name),
+                log,
+            }).catch(error => log(`读完看完的想法：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
+        };
+        const timer = setInterval(tick, 30 * 60_000);
+        timer.unref();
+        return timer;
+    })() : undefined;
+    if (config.readingTakes) log(deviceOwner ? '她读完看完之后自己想的：开（每晚 22 点以后想一次，有话想说才写；私人空间，没有命令念给他）' : '她读完看完之后自己想的：readingTakes 开着，但名单里没有男朋友档，不起作用');
     const silenceTimer = config.silenceNotice && deviceOwner ? (() => {
         const watcher = createSilenceWatcher({ ...silenceDeps(deviceOwner), tell: text => tellOwner(text), log });
         const timer = setInterval(() => { try { watcher.tick(); } catch (error) { log(`没回的原因没能告诉他（${error instanceof Error ? error.message : String(error)}）`); } }, 60_000);
@@ -1149,6 +1182,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(exemplars.length && contact.tier === 'boyfriend' ? { exemplars } : {}),
             ...(speechNotesNow && contact.tier === 'boyfriend' ? { speechNotes: speechNotesNow } : {}),
             ...(diaryInsightsNow && contact.tier === 'boyfriend' ? { diaryInsights: diaryInsightsNow } : {}),
+            ...(readingTakesNow && contact.tier === 'boyfriend' ? { readingTakes: readingTakesNow } : {}),
             ...(memeDict && contact.tier === 'boyfriend' ? { memeDict } : {}),
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
@@ -2329,6 +2363,7 @@ ${body}
             if (selfPursuitTimer) clearInterval(selfPursuitTimer);
             if (speechNotesTimer) clearInterval(speechNotesTimer);
             if (diaryInsightsTimer) clearInterval(diaryInsightsTimer);
+            if (readingTakesTimer) clearInterval(readingTakesTimer);
             if (feelingReviewTimer) clearInterval(feelingReviewTimer);
             clearInterval(outboxTimer);
             if (foodDiscoveryTimer) clearInterval(foodDiscoveryTimer);

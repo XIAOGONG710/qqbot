@@ -289,6 +289,40 @@ describe('编排（app.ts）', () => {
         assert.equal(crisis.calls[0]!.model, undefined);
     });
 
+    test('读完看完的想法（ADR 0204，readingTakes）：聊到那本书或问最近看了什么才放最多两条（只男朋友档、危机不放）；没聊到、没开都没有；她写的这些没有命令念给他', async () => {
+        const seed = (dir: string) => writeFileSync(join(dir, 'reading-takes.json'), JSON.stringify({
+            takes: [
+                { id: 't-1', key: 'book:yaowu', kind: 'book', title: '药屋少女的呢喃', names: ['药屋少女的呢喃', '药屋', '日向夏'], text: '壬氏那几次老盯着猫猫看，我总觉得他在试探她', at: 1, progress: 8 },
+                { id: 't-2', key: 'book:rejinzhi', kind: 'book', title: '惹金枝', names: ['惹金枝'], text: '时不虞假死那一段我读得手心出汗', at: 2, progress: 520 },
+            ], rejected: [], lastReflectionAt: 0, lastAttemptAt: 0, attempts: { day: '', n: 0 },
+        }));
+        const run = async (patch: Partial<AppConfig>, qq: number, said: string, tier: 'boyfriend' | 'classmate' = 'boyfriend') => {
+            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }], readingTakes: true, ...patch });
+            seed(cfg.dataDir);
+            const prompts: string[] = [];
+            const { app, sent, logs } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '嗯'; } });
+            app.receive(event(qq, 1, said));
+            await until(() => sent.length >= 1);
+            return { prompts, logs, cfg, tier };
+        };
+        const named = await run({}, 10002, '你的药屋看到哪了');
+        assert.match(named.prompts[0]!, /你自己读 \/ 看完之后想的[^\n]*\n- 《药屋少女的呢喃》：壬氏那几次老盯着猫猫看/);
+        assert.doesNotMatch(named.prompts[0]!, /惹金枝/);
+        assert.ok(named.logs.some(line => line.includes('读完看完的想法：这一轮放了她自己想的')));
+        assert.ok(named.logs.every(line => !line.includes('壬氏')), '日志不含内容');
+        const general = await run({}, 10002, '你最近有没有看什么书，让你想了很久的那种');
+        assert.match(general.prompts[0]!, /药屋少女的呢喃》：壬氏/);
+        assert.match(general.prompts[0]!, /惹金枝》：时不虞/);
+        const unrelated = await run({}, 10002, '今天食堂有糖醋排骨');
+        assert.doesNotMatch(unrelated.prompts[0]!, /你自己读 \/ 看完之后想的/);
+        const off = await run({ readingTakes: false }, 10002, '你的药屋看到哪了');
+        assert.doesNotMatch(off.prompts[0]!, /壬氏那几次/);
+        const mate = await run({}, 10001, '你的药屋看到哪了');
+        assert.doesNotMatch(mate.prompts[0]!, /壬氏那几次/, '同学档不放');
+        const crisis = await run({}, 10002, '我不想活了，药屋你看到哪了');
+        assert.doesNotMatch(crisis.prompts[0]!, /壬氏那几次/, '危机回合不放');
+    });
+
     test('话说到一半就停了（ADR 0141）：最后一条只剩一句转折的态度，带说明重写一次；重写还是这样就并回前一条；说话的毛病不查（speechCheck: false）时不管；危机回合不管', async () => {
         const run = async (speechCheck: boolean, said: string, rewrite: string, count = 2) => {
             const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const, knowsBot: true }], speechCheck });

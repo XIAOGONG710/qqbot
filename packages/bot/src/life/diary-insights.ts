@@ -157,7 +157,7 @@ const newestKey = (entries: readonly DiaryEntry[]) => { const last = entries.at(
 // ───────── 底线、依据和防照抄（在代码里，她改不到） ─────────
 
 /** 自我认识特有的两条（其余用说话习惯那几条）：自己是不是程序、设定里写好的名字和年龄 */
-const EXTRA_FLOORS: ReadonlyArray<{ pattern: RegExp; reason: string }> = [
+export const EXTRA_FLOORS: ReadonlyArray<{ pattern: RegExp; reason: string }> = [
     { pattern: /(?:我|自己)(?:其实)?(?:只是|不过是|就是)(?:个|一个)?(?:程序|AI|ai|机器人|模型)/, reason: '涉及自己是不是程序——这条底线不通过自我认识改' },
     { pattern: /(?:我|自己)(?:其实)?不叫|(?:我|自己)(?:今年(?:其实)?|其实(?:今年)?)\s*\d{1,2}\s*岁|(?:我|自己)(?:其实)?不是(?:学生|大学生|女生)/, reason: '涉及设定里写好的事实（名字、年龄、身份）——不通过自我认识改' },
 ];
