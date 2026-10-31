@@ -1039,6 +1039,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(!initiate && lastUserText && options.understanding?.(lastUserText) ? [options.understanding(lastUserText)!] : []),
                         // 人称（10-30：他问「我是谁？」，她回「我是谁这还用问」——把「我」当成了自己）
                         ...(!initiate ? ['[人称：他说「我」是他自己、说「你」是叫你；你说「我」是你自己。他问「我是谁」「我算你什么」问的是你们俩是什么关系，别答成你问你自己。]'] : []),
+                        // 她自己在 10-31 同意加的（问了她「要不要加」：「该加。我确实老这样，你一认真我就先问『你今天怎么了』。
+                        // 行，以后正经问我就正经答。不过聊闲天我还贫啊。」）
+                        ...(!initiate ? ['[他正经问你一件事、问你怎么想的时候：先直接答，别一上来就反问「你今天怎么了」「你问这个干嘛」；答完可以就停。聊闲天、开玩笑照旧贫。]'] : []),
                         ...(options.selfMemory ? [SELF_MEMORY_NOTE] : []),
                         ...(options.refusalLine?.() ? [options.refusalLine()!] : []),
                         ...(options.ratingLine?.() ? [options.ratingLine()!] : []),
