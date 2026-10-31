@@ -368,7 +368,7 @@ describe('编排（app.ts）', () => {
         await say(10002, 4, '今天累死了');
         assert.match(prompts.at(-1)!, /你记得他最近这些事/, '他自己的对话里照放');
         assert.match(prompts.at(-1)!, /他说想我/);
-        assert.ok(!prompts.at(-1)!.includes('喜欢'), '同学档那句「我好喜欢你」没有串进来');
+        assert.doesNotMatch(prompts.at(-1)!, /他说喜欢我/, '同学档那句「我好喜欢你」没有被记成他说的、也没有串进来');
     });
 
     test('话说到一半就停了（ADR 0141）：最后一条只剩一句转折的态度，带说明重写一次；重写还是这样就并回前一条；说话的毛病不查（speechCheck: false）时不管；危机回合不管', async () => {
