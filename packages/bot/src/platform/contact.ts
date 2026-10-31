@@ -68,6 +68,7 @@ import { ackGuardLine, identityLine, readRegister, registerLine, registerSummary
 import { readTurn, readingLine } from '.././language/reading.ts';
 import { readScene } from '.././language/scenes.ts';
 import { thinkHint, UNSURE_LINE } from '.././language/asks.ts';
+import { opinionHint } from '.././language/opinion.ts';
 import { SHELL_INTENT } from '.././language/intent.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
@@ -245,6 +246,8 @@ export interface ContactPipelineOptions {
     selfThread?: () => string | undefined;
     /** 她上一轮在这台电脑上跑的命令和结果（2026-10-30 用户：把最高权限给她） */
     shellNote?: () => string | undefined;
+    /** 她学说话/翻日记时没想通的问题（2026-10-31）：递给她，让他来答 */
+    learningQuestion?: () => string | undefined;
     /** 昨晚做的梦（2026-10-31）：一条心境事实 + 早上递给她的一句话 */
     dreams?: () => { appraisals: Appraisal[]; line?: string };
     /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
@@ -328,6 +331,8 @@ export interface ContactPipelineOptions {
      * 返回一行「上次你这么理解，他纠正过」；没有就不加
      */
     understanding?: (hisWords: string) => string | undefined;
+    /** 他最近说过、做过、答应过的事（10-31 留痕）：聊天时递给她，提不提她自己定 */
+    traces?: () => string | undefined;
     /** 他刚发过「/亲热」（ADR 0170）：接下来几条回复黏一点；每取一次少一条，主动找他、危机回合不取 */
     intimacyLine?: () => string | undefined;
     /** 心境（ADR 0102，配置 herFeelings）：她那边的事、他的态度、作者写下的事，在她心里留下带来由的感受（开心 / 难过 / 担心……），会慢慢散；只给男朋友档，危机回合不放 */
@@ -758,6 +763,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (askNow) log(`问一句：他这句${askNow.why}，给她一个问的方向`);
             const sceneNow = contact.tier === 'boyfriend' && !crisisNow ? readScene(hisLast)?.line : undefined;
             if (sceneNow) log('场景：他这句要特殊接（哄睡 / 报错 / 自我怀疑 / 暗号）');
+            // 要有自己的判断（2026-10-31：实测最近 200 条她没有一条带「我觉得」）
+            const opinionNow = contact.tier === 'boyfriend' && !crisisNow ? opinionHint(hisLast) : undefined;
+            if (opinionNow) log(`表态：他${opinionNow.why}，给一句先表态的方向`);
+            const questionNow = contact.tier === 'boyfriend' && !crisisNow && !thinking ? options.learningQuestion?.() : undefined;
             const shellNow = contact.tier === 'boyfriend' && !crisisNow ? options.shellNote?.() : undefined;
             const dreamsNow = contact.tier === 'boyfriend' && !crisisNow && options.herFeelings ? options.dreams?.() : undefined;
             const selfThreadNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? options.selfThread?.() : undefined;
@@ -1032,6 +1041,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(shellNow ? [shellNow] : []),
                         ...(sceneNow ? [sceneNow] : []),
                         ...(askNow ? [askNow.line] : []),
+                        ...(questionNow ? [questionNow] : []),
+                        ...(opinionNow ? [opinionNow.line] : []),
                         ...(contact.tier === 'boyfriend' && !crisisNow ? [UNSURE_LINE] : []),
                         ...(dreamsNow?.line ? [dreamsNow.line] : []),
                         ...(contact.tier === 'boyfriend' && !crisisNow && !grievanceActive ? [SHELL_INTENT] : []),
@@ -1051,6 +1062,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(lastUserLine ? [lastUserLine] : []),
                         // 这件事她以前理解偏过（10-30）：他这句话和以前被纠正过的事撞上时提醒她
                         ...(!initiate && lastUserText && options.understanding?.(lastUserText) ? [options.understanding(lastUserText)!] : []),
+                        // 他说过、做过、答应过的事（10-31 留痕）：最近的几条，聊到相关的再说，不硬塞
+                        ...(!initiate && options.traces?.() ? [options.traces()!] : []),
                         // 人称（10-30：他问「我是谁？」，她回「我是谁这还用问」——把「我」当成了自己）
                         ...(!initiate ? ['[人称：他说「我」是他自己、说「你」是叫你；你说「我」是你自己。他问「我是谁」「我算你什么」问的是你们俩是什么关系，别答成你问你自己。]'] : []),
                         // 她自己在 10-31 同意加的（问了她「要不要加」：「该加。我确实老这样，你一认真我就先问『你今天怎么了』。

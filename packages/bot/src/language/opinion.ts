@@ -1,0 +1,30 @@
+// 她要有自己的判断（2026-10-31 用户：「我感觉她现在还不会思考」）
+//
+// 实测证据（最近 200 条她说的）：带「我觉得/我认为/其实我/我猜」这种自己判断的 **0 条**；
+// 平均 16 字；31 条以问句收尾。也就是说她只有反应，没有意见——不是不会说话，是不会表态。
+// 这里只补一件事：他在问看法的时候，必须先给出自己的判断，再谈别的。
+export interface OpinionHint {
+    line: string;
+    why: '他在问看法' | '他在让你选' | '他在试探你的态度';
+}
+
+/** 他在征求意见 */
+const ASK_OPINION = /你觉得|你以为|你怎么看|你的看法|你说呢|你觉得呢|你认为|在你看来|你说是不是|你同意吗|你说是吧/;
+/** 让他做选择 */
+const ASK_CHOOSE = /该不该|要不要|选哪|哪个好|帮我选|你选|你说选|先干(?:什么|哪个)|怎么办好/;
+/** 试探她的态度 */
+const PROBE = /你会不会|你喜不喜欢|你介意|你讨厌|你烦不烦|你在乎|你舍不舍得/;
+
+const LINE = '[他在问你的看法：**先给你的判断**（「我觉得…… / 我猜…… / 我不太信……」），可以只有一句，但必须是一个立场，不是反问、不是「看你怎么想」。给完判断再补理由或问他；别把问题原样推回去]';
+const CHOOSE = '[他让你选：先选一个（哪怕说"这两个我选 A，因为…"），别把选择权推回给他；可以说"我选不出来"但要说清卡在哪]';
+const ATTITUDE = '[他在试探你怎么想：直接给态度——喜欢 / 不喜欢 / 介意 / 无所谓，都行，但要有；别用"看情况"糊过去]';
+
+/** 这一轮要不要给她「先表态」的方向 */
+export function opinionHint(hisText: string): OpinionHint | undefined {
+    const said = String(hisText ?? '').trim();
+    if (!said) return undefined;
+    if (ASK_CHOOSE.test(said)) return { why: '他在让你选', line: CHOOSE };
+    if (ASK_OPINION.test(said)) return { why: '他在问看法', line: LINE };
+    if (PROBE.test(said)) return { why: '他在试探你的态度', line: ATTITUDE };
+    return undefined;
+}

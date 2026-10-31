@@ -89,6 +89,7 @@ import { promiseKeeper, type Appointment } from '.././life/promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from '.././life/her-days.ts';
 import { herPlanActivities, saveHerPlan, windowAt } from '.././life/her-plans.ts';
 import { isCorrection, recordCorrection, understandingLine } from '.././life/understanding.ts';
+import { recordTrace, traceOf, tracesLine } from '.././life/traces.ts';
 import { bodyAt } from '.././life/body.ts';
 import { worldState, type WorldNow } from '.././world/world.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
@@ -117,6 +118,7 @@ import { selfThread, selfThreadLine } from '.././language/self-thread.ts';
 import { announceFallback, announcePrompt, awayNow, shouldAnnounce } from '.././life/leave-note.ts';
 import { auditShell, guardCommand, runShell, shellNoteLine, takeShellCommands } from './shell-tool.ts';
 import { appendDream, dreamAppraisals, dreamNoteLine, dreamPrompt, hasDream, inSleepHours, lastInsightAt, latestDream, monthlyInsightPrompt, napPrompt, onlyFragment, recentDreams, saveInsight } from '.././life/dreams.ts';
+import { loadQuestion, questionLine, questionPrompt, saveQuestion } from '.././life/learning-questions.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
 import { loadExemplars } from '.././language/exemplars.ts';
 import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
@@ -1141,6 +1143,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(contact.tier === 'boyfriend' ? {
                 // 她有「自己的下文」吗（2026-10-30 她自己的诊断）：日记最后一段 + 她自己在做的事，用不用她定
                 dreams: () => ({ appraisals: dreamAppraisals(config.dataDir, clockNow().getTime()), line: dreamNoteLine(latestDream(config.dataDir, clockNow().getTime())) }),
+                learningQuestion: () => questionLine(loadQuestion(config.dataDir), clockNow().getTime()),
                 shellNote: (): string | undefined => {
                     const note = shellNotes.get(contact.qq);
                     if (note) shellNotes.delete(contact.qq);
@@ -1234,6 +1237,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
             // 她理解人的话（10-30）：他这句话和以前被纠正过的事撞上时提醒她
             ...(config.selfDirectedMemory ? { understanding: (hisWords: string) => understandingLine(config.dataDir, hisWords) } : {}),
+            // 他说过、做过、答应过的事（10-31 留痕）：最近的几条递给她
+            ...(config.selfDirectedMemory ? { traces: () => tracesLine(config.dataDir) } : {}),
             // 他刚发过「/亲热」（ADR 0170）：接下来十条回复黏一点，每生成一条减一
             ...(contact.tier === 'boyfriend' ? { intimacyLine: () => takeIntimateLine(config.dataDir, contact.qq) } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取
@@ -1338,7 +1343,38 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     /** 她刚跑过的命令结果：下一轮提示词给她看一眼就清掉（max 权限，但结果要回到她脑子里） */
     const shellNotes = new Map<number, string>();
     // 做梦（2026-10-31）：她睡着的那几小时里，把白天的东西糊成一团；一晚一个，存 dreams/DREAMS.jsonl
-    const dreamTimer = deviceOwner && config.herFeelings ? setInterval(() => { void makeDream(); void makeNapDream(); void makeMonthlyInsight(); }, 30 * 60_000) : undefined;
+    const dreamTimer = deviceOwner && config.herFeelings ? setInterval(() => { void makeDream(); void makeNapDream(); void makeMonthlyInsight(); void makeLearningQuestion(); }, 30 * 60_000) : undefined;
+
+    /** 她学说话/翻日记时没想通的地方，挑一个留到聊天里问他（2026-10-31） */
+    async function makeLearningQuestion(): Promise<void> {
+        if (stopped || !deviceOwner) return;
+        const at = clockNow();
+        if (at.getHours() < 20) return;
+        const fresh = loadQuestion(config.dataDir);
+        if (fresh && at.getTime() - fresh.at < 20 * 3_600_000) return;
+        try {
+            let notes = '';
+            try {
+                const state = loadNotesState(config.dataDir);
+                notes = state.notes.map(note => note.text).slice(-8).join('；');
+            } catch { /* 没笔记就只用日记 */ }
+            let journal = '';
+            try { journal = readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8').slice(-800); } catch { /* 没日记 */ }
+            const books = cardFor(deviceOwner.tier).character.books?.map(book => book.title).join('、') ?? '';
+            const prompt = questionPrompt({ notes, journal, books, name: cardFor(deviceOwner.tier).character.name });
+            const raw = pipeline?.generate
+                ? await pipeline.generate([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], log)
+                : await chatCompletion({ ...forExtraction(config.llm), temperature: 0.8 }, [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], { log, purpose: 'background' });
+            const text = String(raw ?? '').trim();
+            if (!text || /^SKIP$/i.test(text)) { log('学习问题：这次没想出来'); return; }
+            const firstLine = text.split(String.fromCharCode(10)).map(part => part.trim()).filter(Boolean)[0] ?? text;
+            saveQuestion(config.dataDir, { at: at.getTime(), question: firstLine.slice(0, 120), from: notes ? '说话笔记' : '日记' });
+            log('学习问题：留了一个，想找机会问他');
+        } catch (error) {
+            log(`学习问题：出错（${error instanceof Error ? error.message : String(error)}）`);
+        }
+    }
+
 
     /** 午睡打盹的小梦（2026-10-31 她说「午后小睡那个也开吧」）：一天最多一个，不每天都有 */
     async function makeNapDream(): Promise<void> {
@@ -2257,6 +2293,11 @@ ${body}
             }
         }
         exportNow();
+        // 他说过的话、做过的事留痕（10-31 用户）：亲密话 / 承诺 / 他自己的事，提炼成一句她记得的事
+        if (config.selfDirectedMemory) {
+            const trace = traceOf(text);
+            if (trace && recordTrace(config.dataDir, trace)) log(`[${event.user_id}] 痕迹：记下${trace.kind === 'affection' ? '他说的话' : trace.kind === 'promise' ? '他答应的事' : '他做过的事'}（日志不记内容）`);
+        }
         const crisis = detectCrisis(text);
         if (crisis && config.contacts.some(c => c.qq === event.user_id)) {
             crisisState.mark(event.user_id, event.time * 1000, crisis.level);

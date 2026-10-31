@@ -21,7 +21,6 @@
 - `life/diary.ts`
 - `life/diary-insights.ts`
 - `life/reading-takes.ts`
-- `life/open-questions.ts`
 - `life/biography.ts`
 - `life/bedtime.ts`
 - `life/people.ts`
@@ -34,6 +33,9 @@
 - `life/now-export.ts`
 - `life/leave-note.ts`
 - `life/dreams.ts`
+- `life/open-questions.ts`
+- `life/learning-questions.ts`
+- `life/traces.ts`
 - `life/understanding.ts`
 
 ## 开关
