@@ -1,31 +1,41 @@
-// 让她多问真问题（2026-10-31 用户：「我希望她能有更多的问题来问我」）
+// 让她问「真在思考」的问题（2026-10-31 用户：「不是这种问题，而是真正的思考的问题」）
 //
-// 注意这不是"多打问号"：之前量过她问号率 17.3%、真人 7.3%，而问题质量差——大量是「那你觉得呢」这种空问。
-// 这里要的是**真的想知道**：问的是他刚才那句话的来由、他今天的事、他在想什么。
-// 做法只在她这句没说什么（太短 / 只是情绪 / 只是结论）时给一句方向，且一轮最多一句。
-export interface AskHint {
-    /** 递给她的一句 */
+// 区别：
+//   打探式（不要）：你今天吃啥 / 怎么了 / 在干嘛 —— 问的是事实，答完就没了。
+//   思考式（要）：她自己先有一个看法或猜想，再把它递给他 ——
+//     「我觉得人累的时候其实不是想歇，是想有人管一下——你会不会也这样」
+//     「你说人为什么非要攒钱买相机，我明明也知道手机也能拍」
+// 两个特征：① 有她自己的判断（不是空问）；② 问的是看法 / 假设 / 记忆，不是日程。
+export interface ThinkHint {
     line: string;
-    /** 为什么给她这句（日志用） */
-    why: '太短' | '只有情绪' | '只有结论';
+    why: '他在收尾' | '轮到了' | '她自己刚说了件事';
 }
 
-const EMOTION_ONLY = /^(好累|累了|烦|好烦|难受|不开心|还行|一般|不知道|没事|没什么|随便|都行|哈哈|嗯|哦|好|行|算了)[。.!！~～…]*$/;
-const CONCLUSION_ONLY = /^(确实|就是|反正|所以|懂了|明白了|知道了|明白了|嗯对)[。.!！~～…]*$/;
+const CLOSING = /^(好累|累了|烦|好烦|难受|不开心|还行|一般|不知道|没事|没什么|随便|都行|哈哈|嗯|哦|好|行|确实|就是|反正|懂了)[。.!！~～…]*$/;
 
-/** 他这句要不要她主动问一句（不要就 undefined） */
-export function askHint(hisText: string): AskHint | undefined {
+/** 按轮次抽：不是每句都问，隔几轮给一次机会（同一段聊天里稳定，不随机漂） */
+export const ASK_EVERY = 5;
+const turnSeed = (history: readonly { role: string; content: string }[]): number => {
+    let hash = 0x811c9dc5;
+    for (const message of history.slice(-6)) {
+        for (const char of `${message.role}:${message.content}`) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 0x01000193) >>> 0; }
+    }
+    return hash % ASK_EVERY;
+};
+
+const THINK = '[这一轮可以问一个你自己真正在想的问题：先说一句你自己的看法或猜想（哪怕不一定对），再把它递给他——「我觉得……你会不会也这样」「你说人为什么……」。要问看法、假设、他记得的事，别问日程（吃啥、在干嘛、怎么了）。一句就够，问完就停，别自问自答]';
+
+/** 要不要给她一个「问思考问题」的方向 */
+export function thinkHint(hisText: string): ThinkHint | undefined {
     const said = String(hisText ?? '').trim();
     if (!said) return undefined;
-    if (/[？?]$/.test(said)) return undefined; // 他在问她，先答再问
-    if (EMOTION_ONLY.test(said)) {
-        return { why: '只有情绪', line: '[他这句只是把情绪丢出来，没说什么事。问一句真的想知道的：今天怎么了、是谁惹的、你哪一步开始的——问具体的，别问"你怎么了"这种能用一个字糊过去的]' };
-    }
-    if (CONCLUSION_ONLY.test(said)) {
-        return { why: '只有结论', line: '[他只给了个结论。想接下去就问他为什么这么想 / 从哪看出来的——你确实想知道的那种问法，一句就够]' };
-    }
-    if ([...said].length <= 6) {
-        return { why: '太短', line: '[他这句很短。你可以问一句你真正好奇的（他在干嘛、刚才那句话什么意思、他今天过得怎么样）——一句，别连着问]' };
-    }
+    if (/[？?]$/.test(said)) return undefined;          // 他在问她，先答
+    if (CLOSING.test(said)) return { why: '他在收尾', line: THINK };
+    if ([...said].length <= 6) return { why: '轮到了', line: THINK };
     return undefined;
+}
+
+/** 一整天没话说、两个人都干着的时候：给她一次机会自己想一个话题 */
+export function idleHint(): string {
+    return '[你们这会儿都没什么话。你要是心里正琢磨着什么事（课上的、书里的、街上看到的、关于人的），可以把它拿出来问他一句——先说你怎么想的，再问他的看法]';
 }
