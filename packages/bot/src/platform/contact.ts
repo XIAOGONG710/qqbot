@@ -240,6 +240,8 @@ export interface ContactPipelineOptions {
     selfThread?: () => string | undefined;
     /** 她上一轮在这台电脑上跑的命令和结果（2026-10-30 用户：把最高权限给她） */
     shellNote?: () => string | undefined;
+    /** 昨晚做的梦（2026-10-31）：一条心境事实 + 早上递给她的一句话 */
+    dreams?: () => { appraisals: Appraisal[]; line?: string };
     /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
     ask?: () => string | undefined;
     /** 首轮铺底（2026-10-29）：他走了很久回来，第一轮带上她自己写的那段日记；挂着 lifeInPrompt，不是新开关 */
@@ -745,6 +747,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const readingNow = contact.tier === 'boyfriend' && !thinking && !crisisNow ? readingLine(readTurn(chat)) : undefined;
             if (readingNow) log('他这句：这一轮先把他的话读明白再回（日志不记内容）');
             const shellNow = contact.tier === 'boyfriend' && !crisisNow ? options.shellNote?.() : undefined;
+            const dreamsNow = contact.tier === 'boyfriend' && !crisisNow && options.herFeelings ? options.dreams?.() : undefined;
             const selfThreadNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? options.selfThread?.() : undefined;
             const registerNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow
                 ? (() => {
@@ -807,7 +810,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 : undefined;
             // 心境（ADR 0102）：事实 → 带来由的评估 → 按半衰期衰减的感受，不落盘、每一轮重算；只给男朋友档，危机回合不算；小别扭 / 和好那一轮由 0074 的态度管，不叠
             const feltNow: Felt[] = options.herFeelings && contact.tier === 'boyfriend' && !crisisNow
-                ? feelingsAt(appraisals({ now: time.getTime(), history: chat, ...(around ? { world: around } : {}), ...(previousAround ? { previousWorld: previousAround } : {}), moments: options.moments?.() ?? [], extra: [...pursuitViewsNow.flatMap(view => view.appraisals), ...(options.feelingReview?.() ?? [])] }), time.getTime())
+                ? feelingsAt(appraisals({ now: time.getTime(), history: chat, ...(around ? { world: around } : {}), ...(previousAround ? { previousWorld: previousAround } : {}), moments: options.moments?.() ?? [], extra: [...pursuitViewsNow.flatMap(view => view.appraisals), ...(options.feelingReview?.() ?? []), ...(dreamsNow?.appraisals ?? [])] }), time.getTime())
                 : [];
             const hisWords = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
             const feelingLine = feltNow.length && !grievanceActive
@@ -1011,6 +1014,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(registerNow ? [registerNow] : []),
                         ...(selfThreadNow ? [selfThreadNow] : []),
                         ...(shellNow ? [shellNow] : []),
+                        ...(dreamsNow?.line ? [dreamsNow.line] : []),
                         ...(contact.tier === 'boyfriend' && !crisisNow && !grievanceActive ? [SHELL_INTENT] : []),
                         ...(readingNow ? [readingNow] : []),
                         ...(speechNoteNow ? [speechNoteNow] : []),

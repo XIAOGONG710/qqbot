@@ -115,6 +115,7 @@ import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { selfThread, selfThreadLine } from '.././language/self-thread.ts';
 import { announceFallback, announcePrompt, awayNow, shouldAnnounce } from '.././life/leave-note.ts';
 import { auditShell, guardCommand, runShell, shellNoteLine, takeShellCommands } from './shell-tool.ts';
+import { appendDream, dreamAppraisals, dreamNoteLine, dreamPrompt, hasDream, inSleepHours, lastNightDream } from '.././life/dreams.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
 import { loadExemplars } from '.././language/exemplars.ts';
 import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
@@ -1111,6 +1112,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(openCardFor(contact) ? { openCard: openCardFor(contact)! } : {}),
             ...(contact.tier === 'boyfriend' ? {
                 // 她有「自己的下文」吗（2026-10-30 她自己的诊断）：日记最后一段 + 她自己在做的事，用不用她定
+                dreams: () => ({ appraisals: dreamAppraisals(config.dataDir, clockNow().getTime()), line: dreamNoteLine(lastNightDream(config.dataDir, clockNow().getTime())) }),
                 shellNote: (): string | undefined => {
                     const note = shellNotes.get(contact.qq);
                     if (note) shellNotes.delete(contact.qq);
@@ -1306,6 +1308,43 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 她去洗澡 / 上课之前说一声（2026-10-30 用户：聊着聊着就去洗澡了，都不说一声）
     /** 她刚跑过的命令结果：下一轮提示词给她看一眼就清掉（max 权限，但结果要回到她脑子里） */
     const shellNotes = new Map<number, string>();
+    // 做梦（2026-10-31）：她睡着的那几小时里，把白天的东西糊成一团；一晚一个，存 dreams/DREAMS.jsonl
+    const dreamTimer = deviceOwner && config.herFeelings ? setInterval(() => { void makeDream(); }, 30 * 60_000) : undefined;
+    async function makeDream(): Promise<void> {
+        if (stopped || !deviceOwner) return;
+        const at = clockNow();
+        const date = at.toISOString().slice(0, 10);
+        if (!inSleepHours(at.getHours()) || hasDream(date, config.dataDir)) return;
+        try {
+            const events = sharedWorld && worldCard?.herWorld && worldCard.schedule
+                ? (sharedWorld.at(worldCard.herWorld, worldCard.schedule, at) ? [] : [])
+                : [];
+            // 白天的事：她自己写的事件（不含「跟我说」）+ 日记尾巴
+            const own = readLifeEvents(join(config.dataDir, 'world', 'events.json'), () => undefined)
+                .map(event => String((event as { text?: string }).text ?? ''))
+                .filter(text => text && !text.includes('跟我说'))
+                .slice(-8);
+            let journal = '';
+            try { journal = readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8').slice(-400); } catch { /* 没日记就算了 */ }
+            const fell = lastFeelings ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => `${item.cause}（${item.kind}）`) : [];
+            const prompt = dreamPrompt({ events: [...own, ...events], feelings: fell, journal, name: cardFor(deviceOwner.tier).character.name });
+            const raw = pipeline?.generate
+                ? await pipeline.generate([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], log)
+                : await chatCompletion({ ...forExtraction(config.llm), temperature: 0.95 }, [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], { log, purpose: 'background' });
+            const text = String(raw ?? '');
+            const match = text.match(/\{[\s\S]*\}/);
+            const parsed = match ? JSON.parse(match[0]) as { dream?: string; feel?: { kind?: string; strength?: number; why?: string } } : { dream: text.trim() };
+            const dream = String(parsed.dream ?? '').trim();
+            if (!dream) { log('做梦：没写出来，明晚再说'); return; }
+            appendDream(config.dataDir, {
+                date, dream: dream.slice(0, 600), at: at.getTime(),
+                ...(parsed.feel?.kind ? { feel: { kind: parsed.feel.kind as never, strength: (parsed.feel.strength === 2 || parsed.feel.strength === 3 ? parsed.feel.strength : 1) as never, ...(parsed.feel.why ? { why: String(parsed.feel.why).slice(0, 80) } : {}) } } : {}),
+            });
+            log(`做梦：1 条（${[...dream].length} 字）`);
+        } catch (error) {
+            log(`做梦：出错（${error instanceof Error ? error.message : String(error)}）`);
+        }
+    }
     /** 这一轮提示词里放了网上的内容（防注入第一道：这种回合不执行她写的命令） */
     const webTurns = new Map<number, number>();
     const announcedLeaves: number[] = [];
@@ -2442,6 +2481,7 @@ ${body}
             replies?.stop();
             risk?.stop();
             if (lifeTimer) clearInterval(lifeTimer);
+            if (dreamTimer) clearInterval(dreamTimer);
             if (weatherTimer) clearInterval(weatherTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
             if (photoDiscoveryTimer) clearInterval(photoDiscoveryTimer);
