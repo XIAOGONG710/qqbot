@@ -173,7 +173,12 @@ export function parseDecision(text: string): Decision | undefined {
 /** 她可能写 id，也可能写题目：先按 id，再按题目原文 */
 const resolveTarget = (list: readonly Pursuit[], key: string): Pursuit | undefined => list.find(item => item.id === key) ?? list.find(item => item.title === key);
 
-export interface Applied { lines: string[]; rejected: SelfRejected[] }
+export interface Applied {
+    lines: string[];
+    rejected: SelfRejected[];
+    /** 今晚各做了几件（只有个数，日志用这个——lines 里有她写的追求原文，不进日志；ADR 0200 私人空间） */
+    counts: { changed: number; noted: number; proposed: number; held: number };
+}
 
 /** 把她的想法落进状态。base = 作者的 / 内置的（不含她的决定），因为要按 id 找；now 毫秒 */
 export function applyDecision(state: SelfState, base: readonly Pursuit[], decision: Decision, now: number): Applied {
@@ -181,6 +186,8 @@ export function applyDecision(state: SelfState, base: readonly Pursuit[], decisi
     const rejected: SelfRejected[] = [];
     const all = (): Pursuit[] => withSelf(base, state);
     let changes = 0;
+    let noted = 0;
+    let proposed = 0;
     for (const kind of KINDS) {
         for (const item of decision[kind]) {
             const target = resolveTarget(all(), item.id);
@@ -210,6 +217,7 @@ export function applyDecision(state: SelfState, base: readonly Pursuit[], decisi
         } else {
             state.notes[target.id] = [...(state.notes[target.id] ?? []), { at: now, text: note.text }].slice(-KEEP_NOTES);
         }
+        noted++;
         lines.push(`记了一句进度（${target.title}）：${note.text}`);
     }
     for (const proposal of decision.propose.slice(0, MAX_PROPOSALS)) {
@@ -223,10 +231,11 @@ export function applyDecision(state: SelfState, base: readonly Pursuit[], decisi
         const id = `self-${dayKey(now)}-${state.pursuits.length + 1}`;
         state.pursuits.push({ id, title: proposal.title.trim(), why: proposal.why.trim(), status: 'active', source: 'self', proposedAt: now, ...(proposal.firstStep ? { firstStep: proposal.firstStep } : {}) } as Pursuit);
         state.lastProposalAt = now;
+        proposed++;
         lines.push(`新定了一件：「${proposal.title}」——${proposal.why}`);
     }
     state.rejected = [...state.rejected, ...rejected].slice(-10);
-    return { lines, rejected };
+    return { lines, rejected, counts: { changed: changes, noted, proposed, held: lines.length - changes - noted - proposed } };
 }
 
 export interface ReflectInput {
@@ -298,7 +307,9 @@ export async function reflectIfDue(deps: ReflectDeps): Promise<ReflectResult> {
         const applied = applyDecision(fresh, base, decision, now);
         fresh.lastReflectionAt = now;
         saveSelfState(deps.dataDir, fresh);
-        deps.log(`追求：晚上想了一次${applied.lines.length ? `——${applied.lines.join('；')}` : '，没什么要改的'}`);
+        // 日志只记个数：lines 里有她定的追求的题目、理由和进度原话，那是她的私人空间（ADR 0200），不进日志
+        const { changed, noted, proposed, held } = applied.counts;
+        deps.log(`追求：晚上想了一次${applied.lines.length ? `——改状态 ${changed}、记进度 ${noted}、新定 ${proposed}${held ? `、有 ${held} 条没成` : ''}` : '，没什么要改的'}`);
         return { ran: true, applied };
     } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);

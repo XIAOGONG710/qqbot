@@ -201,7 +201,9 @@ describe('什么时候想：每晚一次', () => {
         assert.equal(state.lastReflectionAt, NIGHT);
         assert.equal(state.overrides.camera!.status, 'dropped');
         assert.equal(state.pursuits[0]!.title, '学吉他');
-        assert.ok(log.some(line => line.includes('晚上想了一次') && line.includes('学吉他')));
+        // 日志只记个数（ADR 0200 私人空间）：她定的追求的题目、理由、进度原话都不进日志
+        assert.ok(log.some(line => line.includes('晚上想了一次') && line.includes('改状态 1') && line.includes('新定 1')));
+        assert.ok(log.every(line => !line.includes('学吉他') && !line.includes('一直想会弹') && !line.includes('最近没心思拍')), '日志不含她写的内容');
         // 提示词里有她现在的追求和最近的聊天
         const prompt = JSON.stringify(calls[0]);
         assert.ok(prompt.includes('camera') && prompt.includes('今天好累啊') && prompt.includes('别挂科'));
