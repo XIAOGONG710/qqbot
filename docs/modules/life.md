@@ -35,6 +35,7 @@
 - `life/dreams.ts`
 - `life/open-questions.ts`
 - `life/learning-questions.ts`
+- `life/traces.ts`
 - `life/understanding.ts`
 
 ## 开关
