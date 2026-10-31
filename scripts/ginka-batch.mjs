@@ -62,7 +62,7 @@ async function ask(system, prompt) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret.apiKey}` },
                 body: JSON.stringify({
-                    model, temperature: 0.3, max_tokens: 2000,
+                    model, temperature: 0.3, max_tokens: 2400, thinking: { type: 'disabled' },
                     messages: [...(system ? [{ role: 'system', content: system }] : []), { role: 'user', content: prompt }],
                 }),
                 signal: AbortSignal.timeout(120_000),
