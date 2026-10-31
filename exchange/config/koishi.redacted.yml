@@ -1,5 +1,5 @@
 # 线上 Koishi 开关快照（由 scripts/read-switches.mjs 生成，密钥已打码；文件头别手改）
-# 源：runtime/koishi/koishi.yml · 导出时间：2026-10-29T15:50:12.576Z
+# 源：runtime/koishi/koishi.yml · 导出时间：2026-10-31T13:20:39.131Z
 
 plugins:
   server:5sf31h:
@@ -31,6 +31,7 @@ plugins:
     unlistedFriends: false
     schedule: true
     selfDirectedMemory: true
+    openQuestions: true
     dataDir: runtime/bot-shadow
     llm:
       baseUrl: https://api.deepseek.com
@@ -50,8 +51,8 @@ plugins:
     bilibiliAccount: true
     bilibili: 'on'
     bilibiliDm: 'on'
-    bilibiliComment: 'off'
-    bilibiliReplies: 'off'
+    bilibiliComment: 'on'
+    bilibiliReplies: 'on'
     bilibiliAtUid: 1820254296
     bilibiliAtName: 穹P
     watching: true
@@ -71,7 +72,7 @@ plugins:
     npcAsks: true
     festivals: greet
     rhythm: true
-    shortReplies: true
+    shortReplies: false
     typingStatus: true
     pokes: true
     pokeBack: true
@@ -95,8 +96,11 @@ plugins:
     innerLife: true
     herFeelings: true
     herNo: true
+    exemplars: true
+    speechNotes: true
     proactiveInvite: true
     photos: true
+    deviceControl: 'on'
     proactiveRoom: true
     weeklyReport: true
     menu: true
@@ -110,11 +114,12 @@ plugins:
     everydayLife: true
     pursuits: true
     deliberate: true
-    tailCap: true
+    tailCap: false
     identityLedger: true
     memoryAudit: true
     timeline: true
-    webLookup: explicit
+    diaryInsights: true
+    webLookup: auto
     comeBack: true
     interruptions: true
     jokes: true
@@ -124,4 +129,4 @@ plugins:
     reactions: false
     foodPhotos: false
 
-# 开着的开关：autonomousLife, biliStickers, bilibiliAccount, comeBack, curious, deliberate, everydayLife, feedbackCommands, grievance, herFeelings, herNo, identityLedger, idioms, innerLife, interruptions, jokes, lagTail, lifeInPrompt, memes, memoryAudit, menu, npcAsks, onlineStatus, photos, pokeBack, pokeOut, pokes, proactiveAsk, proactiveInvite, proactiveReach, proactiveRoom, profileLikes, projectChoice, pursuits, quoteReply, readReceipts, recalls, relationship, rhythm, schedule, selfDirectedMemory, selfRecall, shape, shapeAgenda, shapeAsk, shapeFeel, shapeFiller, shapeLong, shapeSplit, shortReplies, smallNews, tailCap, texture, timeline, together, typingStatus, watching, weeklyReport
+# 开着的开关：autonomousLife, biliStickers, bilibiliAccount, comeBack, curious, deliberate, diaryInsights, everydayLife, exemplars, feedbackCommands, grievance, herFeelings, herNo, identityLedger, idioms, innerLife, interruptions, jokes, lagTail, lifeInPrompt, memes, memoryAudit, menu, npcAsks, onlineStatus, openQuestions, photos, pokeBack, pokeOut, pokes, proactiveAsk, proactiveInvite, proactiveReach, proactiveRoom, profileLikes, projectChoice, pursuits, quoteReply, readReceipts, recalls, relationship, rhythm, schedule, selfDirectedMemory, selfRecall, shape, shapeAgenda, shapeAsk, shapeFeel, shapeFiller, shapeLong, shapeSplit, smallNews, speechNotes, texture, timeline, together, typingStatus, watching, weeklyReport
