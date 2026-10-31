@@ -26,7 +26,7 @@ test('昨晚的梦变成一条小分量的心境事实（不压过真事）', ()
     assert.equal(list.length, 1);
     assert.equal(list[0]!.source, 'self');
     assert.equal(list[0]!.kind, 'worry');
-    assert.equal(list[0]!.strength, 1);
+    assert.equal(list[0]!.strength, 2, '梦里的事要能进提示词（1 太轻，写不进去）');
     assert.ok(list[0]!.cause.includes('梦见他要走'));
     assert.equal(dreamAppraisals(d, now + 20 * 3_600_000).length, 0, '过了一天就散了');
 });

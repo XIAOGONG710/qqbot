@@ -63,7 +63,7 @@ export function lastNightDream(dataDir: string, now: number, windowMs = 14 * 3_6
 }
 
 /**
- * 「昨晚的梦」→ 一条心境事实。分量故意小：1（0.8，不到「明显」）——梦不能压过真事，
+ * 「昨晚的梦」→ 一条心境事实。分量故意小：最低 2（1.5，“明显”里最轻的一档）——梦不能压过真事，
  * 但会让她早上黏一点、问一句「你会走吗」。半衰期 6 小时，中午就淡了。
  */
 export function dreamAppraisals(dataDir: string, now: number): Appraisal[] {
@@ -71,7 +71,8 @@ export function dreamAppraisals(dataDir: string, now: number): Appraisal[] {
     if (!dream?.feel) return [];
     const fixed: FeelingKind[] = ['joy', 'relief', 'worry', 'sad', 'annoyed', 'tired'];
     const kind = fixed.includes(dream.feel.kind) ? dream.feel.kind : 'worry';
-    const strength = dream.feel.strength === 3 ? 3 : dream.feel.strength === 2 ? 2 : 1;
+    // 1 等于「刚能察觉」——那种分量根本写不进提示词，梦就白做了；所以最低也给 2（明显但不大）
+    const strength = dream.feel.strength === 3 ? 3 : 2;
     return [{
         id: `dream:${dream.date}`,
         at: dream.at,
