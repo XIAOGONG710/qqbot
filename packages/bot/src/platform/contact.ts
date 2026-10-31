@@ -67,7 +67,7 @@ import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exempl
 import { ackGuardLine, identityLine, readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
 import { readTurn, readingLine } from '.././language/reading.ts';
 import { readScene } from '.././language/scenes.ts';
-import { thinkHint } from '.././language/asks.ts';
+import { thinkHint, UNSURE_LINE } from '.././language/asks.ts';
 import { SHELL_INTENT } from '.././language/intent.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
@@ -1032,6 +1032,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(shellNow ? [shellNow] : []),
                         ...(sceneNow ? [sceneNow] : []),
                         ...(askNow ? [askNow.line] : []),
+                        ...(contact.tier === 'boyfriend' && !crisisNow ? [UNSURE_LINE] : []),
                         ...(dreamsNow?.line ? [dreamsNow.line] : []),
                         ...(contact.tier === 'boyfriend' && !crisisNow && !grievanceActive ? [SHELL_INTENT] : []),
                         ...(readingNow ? [readingNow] : []),
