@@ -66,6 +66,7 @@ import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
 import { ackGuardLine, identityLine, readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
 import { readTurn, readingLine } from '.././language/reading.ts';
+import { readScene } from '.././language/scenes.ts';
 import { SHELL_INTENT } from '.././language/intent.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
@@ -746,6 +747,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 他这句到底在说什么（2026-10-30）：连着发的算一句、指代摆出来，先想清楚再回
             const readingNow = contact.tier === 'boyfriend' && !thinking && !crisisNow ? readingLine(readTurn(chat)) : undefined;
             if (readingNow) log('他这句：这一轮先把他的话读明白再回（日志不记内容）');
+            // 场景应答（2026-10-31）：哄睡 / 报错 / 自我怀疑 / 暗号，命中才加一句
+            const hisLast = chat.filter(message => message.role === 'user').slice(-1)[0]?.content ?? '';
+            const sceneNow = contact.tier === 'boyfriend' && !crisisNow ? readScene(hisLast)?.line : undefined;
+            if (sceneNow) log('场景：他这句要特殊接（哄睡 / 报错 / 自我怀疑 / 暗号）');
             const shellNow = contact.tier === 'boyfriend' && !crisisNow ? options.shellNote?.() : undefined;
             const dreamsNow = contact.tier === 'boyfriend' && !crisisNow && options.herFeelings ? options.dreams?.() : undefined;
             const selfThreadNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? options.selfThread?.() : undefined;
@@ -1014,6 +1019,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(registerNow ? [registerNow] : []),
                         ...(selfThreadNow ? [selfThreadNow] : []),
                         ...(shellNow ? [shellNow] : []),
+                        ...(sceneNow ? [sceneNow] : []),
                         ...(dreamsNow?.line ? [dreamsNow.line] : []),
                         ...(contact.tier === 'boyfriend' && !crisisNow && !grievanceActive ? [SHELL_INTENT] : []),
                         ...(readingNow ? [readingNow] : []),
