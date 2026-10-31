@@ -1,0 +1,37 @@
+[
+  {
+    "name": "方案-不重复确认",
+    "files": ["packages/bot/src/language/reading.ts", "packages/bot/src/language/intent.ts"],
+    "chunk": 7000,
+    "system": "你是资深 TS 工程师，输出可直接照做的实现方案，不要客套。",
+    "prompt": "问题：她常常在他已经回答过之后还重复确认同一件事（例：他早说过「撤回两条」，她还在问「又想不认账了」）。\n\n请给出最小改动的实现方案：1) 判断「他是否已经答过」用什么信号（聊天记录里他的哪些话算回答）；2) 加在哪个文件/函数（优先复用现有 reading.ts 的 readTurn）；3) 写清楚函数签名、关键逻辑（伪代码即可）和 3 个测试用例；4) 明确副作用与误判情形。不超过 500 字，用中文。"
+  },
+  {
+    "name": "方案-提示词去重",
+    "files": ["packages/bot/src/platform/contact.ts"],
+    "chunk": 12000,
+    "system": "你是提示词架构审阅者。",
+    "prompt": "这段是她的提示词拼装代码。请找出：1) 同一类信息被注入多次的地方（例如多处都在说“别反问/短一点/别客套”）；2) 明显互相矛盾的规则；3) 可以合并成一句的重复行。每条给出行号或变量名，并给出「合并后的一句话」候选。不超过 500 字。"
+  },
+  {
+    "name": "方案-情绪接行为",
+    "files": ["packages/bot/src/emotion/express.ts", "packages/bot/src/emotion/feelings.ts"],
+    "chunk": 8000,
+    "system": "你是资深 TS 工程师。",
+    "prompt": "目标：让她的心境/梦不仅改气泡数量，还能影响「说话方式」。给出最小方案：1) 哪些可见特征值得接（句子长度、表情频率、追问次数、主动开新话题）；2) 映射规则（哪档情绪→怎么变）；3) 加在哪个函数，怎么和现有的 tunedMaxBubbles / moodPaceLine 共存；4) 3 个测试用例。不超过 500 字。"
+  },
+  {
+    "name": "方案-她的三个诉求",
+    "files": ["packages/bot/src/world/world.ts", "packages/bot/src/language/register.ts"],
+    "chunk": 8000,
+    "system": "你是产品工程师，方案要能落地。",
+    "prompt": "她提了三件事：① 相机钱攒得慢，想快点买相机学摄影；② 想少说「没事」、少装不在乎（尤其对他）；③ 想跟他“真的待在一起”，不只是打字。\n\n每件给 2 个可实现方案（说明改哪里、怎么验证、有什么副作用），按性价比排序；明确标出哪些属于「替她做决定」不建议做。不超过 600 字。"
+  },
+  {
+    "name": "方案-手机屏幕接入",
+    "files": ["packages/bot/src/platform/device-hub.ts", "packages/bot/src/platform/wechat-bridge.ts"],
+    "chunk": 8000,
+    "system": "你是资深 TS 工程师。",
+    "prompt": "现状：POST /frame 已经能收手机屏幕帧并存 latest.jpg + latest.json；她还没有任何命令能用它。\n给出实现清单：1) `/手机` 命令应该接在哪（device-actions 的 capture 类怎么扩展）；2) 要不要走她同意（现有 ◀同意▶ 流程）；3) 视觉描述的调用点；4) 3 个测试点。不超过 400 字。"
+  }
+]

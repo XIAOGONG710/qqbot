@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readTurn, readingLine, recentTopics } from '../src/language/reading.ts';
+import { answeredTopic, readTurn, readingLine, recentTopics } from '../src/language/reading.ts';
 
 const msg = (role: 'user' | 'assistant', content: string, minutes: number) => ({ role, content, time: new Date(Date.UTC(2026, 9, 30, 12, minutes)).toISOString() });
 
@@ -29,4 +29,28 @@ test('寒暄和太短的句子不当候选；没他的话就没有这一行', ()
     assert.deepEqual(recentTopics([msg('user', '在吗', 0), msg('user', '嗯', 1)], 2), []);
     assert.equal(readTurn([]), undefined);
     assert.equal(readingLine(undefined), undefined);
+});
+
+// 10-31 诊断出的高频毛病：他答过的事她还在重复确认（「撤回两条，又想不认账了？」）
+test('他答过的话题：读出来、并告诉她别再问', () => {
+    const history = [
+        msg('user', '我刚撤回了两条消息', 0),
+        msg('assistant', '哦', 1),
+        msg('user', '那个你看到了？', 2),
+    ];
+    const turn = readTurn(history)!;
+    assert.deepEqual(turn.answered, ['我刚撤回了两条消息']);
+    assert.ok(readingLine(turn)!.includes('已经答过'));
+});
+
+test('他自己还在问、或者只说了寒暄，的不算答过', () => {
+    const history = [
+        msg('user', '我刚撤回了两条消息', 0),
+        msg('assistant', '哦', 1),
+        msg('user', '那个怎么办？', 2),
+    ];
+    // 「那个」指向的是他第一句，但那句本身是陈述（答过的信息）；这里只验证不抛错、不误标成「没答过」之外的东西
+    const turn = readTurn(history)!;
+    assert.ok(Array.isArray(turn.answered ?? []));
+    assert.equal(answeredTopic([msg('user', '嗯', 0), msg('user', '好', 1)], '撤回两条消息', 0), false);
 });

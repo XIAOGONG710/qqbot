@@ -62,7 +62,7 @@ async function ask(system, prompt) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret.apiKey}` },
                 body: JSON.stringify({
-                    model, temperature: 0.3, max_tokens: 2000,
+                    model, temperature: 0.3, max_tokens: 2400, thinking: { type: 'disabled' },
                     messages: [...(system ? [{ role: 'system', content: system }] : []), { role: 'user', content: prompt }],
                 }),
                 signal: AbortSignal.timeout(120_000),
@@ -72,7 +72,26 @@ async function ask(system, prompt) {
                 if (response.status === 429) { await new Promise(r => setTimeout(r, 3000 * attempt)); continue; }
                 return { ok: false, ms: Date.now() - started, error: `${response.status} ${JSON.stringify(body).slice(0, 160)}` };
             }
-            return { ok: true, ms: Date.now() - started, text: body.choices?.[0]?.message?.content ?? '', tokens: body.usage?.total_tokens ?? null };
+            const text = body.choices?.[0]?.message?.content ?? '';
+            // 2026-10-31：有几段返回 200 但正文是空的（模型只在 thinking 里想完就被截断）——重试一次，明确要求直接输出
+            if (!text.trim() && attempt < 3) {
+                const retry = await fetch(`${base}/v1/chat/completions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret.apiKey}` },
+                    body: JSON.stringify({
+                        model, temperature: 0.2, max_tokens: 2000,
+                        messages: [...(system ? [{ role: 'system', content: system }] : []), { role: 'user', content: `${prompt}
+
+（不要描述思考过程，直接给结论。）` }],
+                    }),
+                    signal: AbortSignal.timeout(120_000),
+                });
+                const again = await retry.json().catch(() => ({}));
+                const retried = again.choices?.[0]?.message?.content ?? '';
+                if (retried.trim()) return { ok: true, ms: Date.now() - started, text: retried, tokens: again.usage?.total_tokens ?? null };
+                continue;
+            }
+            return { ok: true, ms: Date.now() - started, text, tokens: body.usage?.total_tokens ?? null };
         } catch (error) {
             if (attempt === 3) return { ok: false, ms: Date.now() - started, error: String(error).slice(0, 160) };
             await new Promise(r => setTimeout(r, 2000 * attempt));

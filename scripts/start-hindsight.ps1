@@ -41,6 +41,11 @@ $userKey = [Environment]::GetEnvironmentVariable('QQBOT_LLM_API_KEY', 'User')
 if ($userKey) { $env:QQBOT_LLM_API_KEY = $userKey }
 if (-not $env:QQBOT_LLM_API_KEY) { throw 'QQBOT_LLM_API_KEY is not set (see packages\bot\README.md)' }
 
+# 10-31：启动时模型初始化会卡死——python 进程在、8888 永远不听（今天两次，各几十分钟）。
+# Hindsight 自己的文档里有 HINDSIGHT_API_MODEL_INIT_TIMEOUT：初始化（embeddings / cross-encoder / LLM 校验）超过这个秒数就
+# 明确失败退出，而不是永远挂着。这样至少能看出是卡在哪、守护也能重新拉。
+if (-not $env:HINDSIGHT_API_MODEL_INIT_TIMEOUT) { $env:HINDSIGHT_API_MODEL_INIT_TIMEOUT = '180' }
+
 # Chinese keyword search needs PGroonga in pg0's PostgreSQL (docs/hindsight.md, "PGroonga").
 if (-not (Get-ChildItem "$env:USERPROFILE\.pg0\installation\*\share\extension\pgroonga.control" -ErrorAction SilentlyContinue)) {
     throw 'PGroonga is not installed in pg0''s PostgreSQL (see docs\hindsight.md, section PGroonga)'
