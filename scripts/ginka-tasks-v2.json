@@ -1,0 +1,36 @@
+[
+  {
+    "name": "聊天-重复确认专项",
+    "files": ["runtime/bot-shadow/chats/2260168937.jsonl"],
+    "chunk": 8000,
+    "system": "你是对话分析者。只根据给出的文本判断，不推测没写的东西。",
+    "prompt": "下面是一段真实聊天（JSON 行：role=user 是他，assistant 是她）。只找一类问题：**她已经知道他答过/说过的信息，却还在重复确认、反复问同一点**（例：他说过「撤回两条」她还在问「又想不认账了」）。每条写：他之前说过什么 → 她重复问了什么 → 这一处该怎么接。没有就写「这一段没有」。最多 5 条，不超过 400 字。"
+  },
+  {
+    "name": "代码审阅-contact",
+    "files": ["packages/bot/src/platform/contact.ts"],
+    "chunk": 8000,
+    "system": "你是严谨的 TypeScript 审阅者。只报真实风险。",
+    "prompt": "审查这段提示词拼装代码：1) 有没有规则之间互相打架（同一条要求前后矛盾）；2) 有没有重复注入同一种信息导致提示词膨胀；3) 有没有明显的性能/内存问题（大数组、每轮重复读文件）。每条给函数名或行号，不超过 400 字。"
+  },
+  {
+    "name": "代码审阅-新模块",
+    "files": [
+      "packages/bot/src/life/dreams.ts",
+      "packages/bot/src/language/reading.ts",
+      "packages/bot/src/language/scenes.ts",
+      "packages/bot/src/platform/shell-tool.ts",
+      "packages/bot/src/platform/wechat-bridge.ts"
+    ],
+    "chunk": 6000,
+    "system": "你是严谨的 TypeScript 审阅者。只报真实 bug 和边界情况。",
+    "prompt": "审查这些文件：找真实 bug、边界情况（空数组、NaN、时区、路径、并发）、以及能删掉的复杂度。每条写清文件 + 函数 + 触发条件，不超过 300 字。"
+  },
+  {
+    "name": "她的回复-口吻抽检",
+    "files": ["runtime/bot-shadow/chats/2260168937.jsonl"],
+    "chunk": 12000,
+    "system": "你是中文语感审阅者。",
+    "prompt": "从这段聊天里挑出她说得**最不像真人**的 5 句（太长、太完整、像客服、像作文、像在总结），每句引原文 + 一句话说该怎么改。不要挑他说的。不超过 400 字。"
+  }
+]
