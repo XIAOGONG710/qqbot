@@ -190,6 +190,8 @@ export interface AppConfig {
         promptPostProcessing: PromptPostProcessing;
         /** 同 ST 自定义接口的 Include Body Parameters */
         extraBody: Record<string, unknown>;
+        /** 备用线路（2026-10-31）：免费网关关窗 / 挂掉时退回这条；只从环境变量配，不写进配置 */
+        fallback?: { baseUrl: string; apiKey: string; model?: string };
     };
     /** pinExamples：同 ST 的 Example Messages Behavior 选 Always include examples，默认否（同 ST 默认的逐步挤出） */
     prompt: { maxContext: number; worldInfo: WorldInfoSettings; pinExamples: boolean };
@@ -755,6 +757,13 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
             timeoutMs: num(llm, 'timeoutMs', 'llm', DEFAULTS.llm.timeoutMs),
             promptPostProcessing: postProcessing as PromptPostProcessing,
             extraBody: extraBody as Record<string, unknown>,
+            ...(env.QQBOT_LLM_FALLBACK_BASE_URL?.trim() && env.QQBOT_LLM_FALLBACK_API_KEY?.trim()
+                ? { fallback: {
+                    baseUrl: env.QQBOT_LLM_FALLBACK_BASE_URL.trim(),
+                    apiKey: env.QQBOT_LLM_FALLBACK_API_KEY.trim(),
+                    ...(env.QQBOT_LLM_FALLBACK_MODEL?.trim() ? { model: env.QQBOT_LLM_FALLBACK_MODEL.trim() } : {}),
+                } }
+                : {}),
         },
         prompt: {
             maxContext: num(prompt, 'maxContext', 'prompt', DEFAULTS.prompt.maxContext),

@@ -472,6 +472,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     }
 
     const chatHistory = new ChatHistory(config.dataDir, log);
+    // 模型线路：换线路（免费网关）时要在日志里看得见走的是哪条
+    log(`模型线路：${config.llm.baseUrl.replace(/\/+$/, '')} / ${config.llm.model}${config.llm.fallback ? `（备用：${config.llm.fallback.baseUrl.replace(/\/+$/, '')}${config.llm.fallback.model ? ` / ${config.llm.fallback.model}` : ''}）` : ''}`);
     // 放在 ChatHistory 之后：它会建好数据目录
     // 心跳：锁文件只记 PID，会被「进程卡死」和「PID 被复用」骗；心跳加一道，3 分钟没写就当它死了
     const lockHeartbeatFile = join(config.dataDir, 'bot.lock.hb');

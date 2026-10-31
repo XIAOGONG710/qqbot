@@ -23,6 +23,11 @@ export interface LlmOptions {
     timeoutMs: number;
     /** 例如 DeepSeek 关思考模式：{ "thinking": { "type": "disabled" } } */
     extraBody: Record<string, unknown>;
+    /**
+     * 备用线路（2026-10-31）：免费网关开着的时候让她走免费线路，
+     * 免费组 12:00–14:00 / 23:30 之后关着 —— 那时候自动退回这条。
+     */
+    fallback?: { baseUrl: string; apiKey: string; model?: string };
 }
 
 /** 后台抽取（她答应的事、挂着的事、待跟进的事）的输出上限：开思考时思考也算在 max_tokens 里，4096 偶尔不够，正文就是空的（10-07 线上和模拟器里都有） */
@@ -132,6 +137,23 @@ export async function chatCompletion(
 }
 
 async function complete(
+    options: LlmOptions,
+    messages: OpenAIMessage[],
+    deps: Partial<LlmDeps>,
+    triedFallback = false,
+): Promise<string> {
+    try {
+        return await completeOnce(options, messages, deps);
+    } catch (error) {
+        const fb = options.fallback;
+        if (!fb || triedFallback) throw error;
+        // 主线路不可用（关窗 / 限流 / 挂掉）：退到备用线路再试一次；这条要留日志，不然看不出来她走的是哪条
+        (deps.log ?? ((line: string) => console.warn(line)))(`模型线路不可用（${error instanceof Error ? error.message.slice(0, 80) : String(error)}），退回备用线路`);
+        return complete({ ...options, baseUrl: fb.baseUrl, apiKey: fb.apiKey, ...(fb.model ? { model: fb.model } : {}), fallback: undefined }, messages, deps, true);
+    }
+}
+
+async function completeOnce(
     options: LlmOptions,
     messages: OpenAIMessage[],
     deps: Partial<LlmDeps>,
