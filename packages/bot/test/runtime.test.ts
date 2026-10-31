@@ -974,6 +974,17 @@ describe('配置', () => {
         contacts: [{ qq: 123456, name: '阿明', tier: 'boyfriend' }],
     };
 
+    test('线路可以用环境变量临时换（用免费网关跑批量测试，不动配置）', () => {
+        const config = withConfig(valid, {
+            QQBOT_LLM_API_KEY: 'k', QQBOT_ONEBOT_TOKEN: 't',
+            QQBOT_LLM_BASE_URL: 'https://api.ginka.cloud', QQBOT_LLM_MODEL: 'deepseek-v4-pro',
+        });
+        assert.equal(config.llm.baseUrl, 'https://api.ginka.cloud');
+        assert.equal(config.llm.model, 'deepseek-v4-pro');
+        const plain = withConfig(valid, { QQBOT_LLM_API_KEY: 'k', QQBOT_ONEBOT_TOKEN: 't' });
+        assert.equal(plain.llm.baseUrl, 'https://example.com/v1', '不设环境变量就还是配置里的');
+    });
+
     test('密钥只从环境变量读取，其余默认值同 ST 默认预设', () => {
         const config = withConfig(valid, { QQBOT_LLM_API_KEY: 'k', QQBOT_ONEBOT_TOKEN: 't' });
         assert.equal(config.llm.apiKey, 'k');

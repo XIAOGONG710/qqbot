@@ -746,8 +746,9 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
 
     return {
         llm: {
-            baseUrl: str(llm, 'baseUrl', 'llm'),
-            model: str(llm, 'model', 'llm'),
+            // 允许用环境变量临时换线路（2026-10-31：用免费的 ginka 网关跑批量测试，不动线上配置）
+            baseUrl: env.QQBOT_LLM_BASE_URL?.trim() || str(llm, 'baseUrl', 'llm'),
+            model: env.QQBOT_LLM_MODEL?.trim() || str(llm, 'model', 'llm'),
             apiKey,
             temperature: num(llm, 'temperature', 'llm', DEFAULTS.llm.temperature),
             maxTokens: num(llm, 'maxTokens', 'llm', DEFAULTS.llm.maxTokens),
