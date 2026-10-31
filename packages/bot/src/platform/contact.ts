@@ -67,6 +67,7 @@ import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exempl
 import { ackGuardLine, identityLine, readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
 import { readTurn, readingLine } from '.././language/reading.ts';
 import { readScene } from '.././language/scenes.ts';
+import { askHint } from '.././language/asks.ts';
 import { SHELL_INTENT } from '.././language/intent.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
@@ -749,6 +750,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (readingNow) log('他这句：这一轮先把他的话读明白再回（日志不记内容）');
             // 场景应答（2026-10-31）：哄睡 / 报错 / 自我怀疑 / 暗号，命中才加一句
             const hisLast = chat.filter(message => message.role === 'user').slice(-1)[0]?.content ?? '';
+            // 多问她真的想知道的事（2026-10-31 用户：「我希望她能有更多的问题来问我」）
+            const askNow = contact.tier === 'boyfriend' && !crisisNow && !thinking ? askHint(hisLast) : undefined;
+            if (askNow) log(`问一句：他这句${askNow.why}，给她一个问的方向`);
             const sceneNow = contact.tier === 'boyfriend' && !crisisNow ? readScene(hisLast)?.line : undefined;
             if (sceneNow) log('场景：他这句要特殊接（哄睡 / 报错 / 自我怀疑 / 暗号）');
             const shellNow = contact.tier === 'boyfriend' && !crisisNow ? options.shellNote?.() : undefined;
@@ -1020,6 +1024,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(selfThreadNow ? [selfThreadNow] : []),
                         ...(shellNow ? [shellNow] : []),
                         ...(sceneNow ? [sceneNow] : []),
+                        ...(askNow ? [askNow.line] : []),
                         ...(dreamsNow?.line ? [dreamsNow.line] : []),
                         ...(contact.tier === 'boyfriend' && !crisisNow && !grievanceActive ? [SHELL_INTENT] : []),
                         ...(readingNow ? [readingNow] : []),

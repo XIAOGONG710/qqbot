@@ -35,6 +35,7 @@
 - `language/self-thread.ts`
 - `language/reading.ts`
 - `language/scenes.ts`
+- `language/asks.ts`
 - `language/speech-notes.ts`
 - `language/speech-feedback.ts`
 - `language/speech-trend.ts`
