@@ -6,7 +6,7 @@
 // --pin-examples：只对这次模拟改示例常驻（ADR 0019 决策 6），其余同配置。
 // --context-turns N：开了记忆时原始聊天只放最近 N 轮、更早的整理成要点，代替最近 80 条（ADR 0043 离线实验，线上没有这个开关）；--context-step K：切口每 K 轮挪一次，默认 4。
 
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cardKey, deliberateLlm, loadConfig } from '../platform/config.ts';
@@ -43,6 +43,8 @@ const long = flag('--long');
 // 认真问她时深思（ADR 0151）：--deliberate 用配置的 deliberateModel（默认 deepseek-v4-pro）；--deliberate-model <名> 换别的
 const deliberateModelOption = option('--deliberate-model');
 const deliberate = flag('--deliberate');
+// 换掉深思轮次的那段提示词做对照（ADR 0207 第 2 条的实验）：--deliberate-note <文本文件>；不写就是线上的 DELIBERATE_NOTE
+const deliberateNoteFile = option('--deliberate-note');
 // 语义路由（ADR 0202）：--depth（要同时 --deliberate）：关键词没认出来的轮次问小模型这一句是轻是重，值得认真的也深思
 const depth = flag('--depth');
 // 事实检查多查一类：她替他说的事（ADR 0203）：--fact-him（要同时 --fact log|fix，或场景里开着 factCheck）
@@ -140,6 +142,7 @@ for (const [fileIndex, file] of files.entries()) {
             ...(ask ? { shapeAsk: true } : {}),
             ...(long ? { shapeLong: true } : {}),
             ...(deliberate || deliberateModelOption !== undefined ? { deliberateLlm: deliberateLlm(config.llm, deliberateModelOption ?? loaded.deliberateModel) } : {}),
+            ...(deliberateNoteFile ? { deliberateNote: readFileSync(deliberateNoteFile, 'utf8').trim() } : {}),
             ...(depth ? { depthRouting: true } : {}),
             ...(factHim ? { factHim: true } : {}),
             ...(agenda ? { shapeAgenda: true } : {}),

@@ -272,7 +272,7 @@ export interface ContactPipelineOptions {
     /** 默认调模型接口（llm.ts）；模拟器包一层，在生成中插入对方的消息 */
     generate?: (messages: OpenAIMessage[], log: Log, use?: AppConfig['llm']) => Promise<string>;
     /** 深思（配置 deliberate，ADR 0151）：认真问她的轮次不套字数和条数、用这份更强的模型配置（generate 的第三个参数）、提示词只留一句“先想清楚” */
-    deliberate?: { llm: AppConfig['llm'] };
+    deliberate?: { llm: AppConfig['llm']; /** 换掉深思轮次的那段提示词（只有模拟器的 --deliberate-note 用；线上不传，用 DELIBERATE_NOTE） */ note?: string };
     /** 语义路由（配置 depthRouting，ADR 0202；要 deliberate 开着）：关键词没认出来的轮次问一次小模型这一句是轻是重；说值得认真的（沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩）也走深思。只加不减；没分类出来（出错 / 超时）照旧按关键词 */
     turnWeight?: (input: { history: ChatMessage[]; said: string }) => Promise<TurnWeight | undefined>;
     /**
@@ -1065,7 +1065,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(options.workRequest?.() ? [WORK_REQUEST_NOTE] : []),
                         ...(options.workJudge?.() ? [WORK_JUDGE_NOTE] : []),
                         ...(options.workMode?.() ? [WORK_MODE_NOTE] : []),
-                        ...(deliberateNow ? [DELIBERATE_NOTE] : []),
+                        ...(deliberateNow ? [options.deliberate?.note ?? DELIBERATE_NOTE] : []),
                         ...(routedHint ? [routedHint] : []),
                         ...(length ? [describeLength(length, options.shortReplies)] : []),
                         ...(shapeNow ? [describeShape(shapeNow)] : []),

@@ -102,6 +102,8 @@ export interface RunOptions {
     shapeLong?: boolean;
     /** 认真问她时深思（ADR 0151）：run.ts 的 --deliberate；深思轮次用这份模型配置 */
     deliberateLlm?: BotConfig['llm'];
+    /** 换掉深思轮次的那段提示词（run.ts 的 --deliberate-note <文件>）；不写就用线上的 DELIBERATE_NOTE */
+    deliberateNote?: string;
     /** 语义路由（ADR 0202）：run.ts 的 --depth；要 deliberateLlm */
     depthRouting?: boolean;
     /** 事实检查多查一类：她替他说的事（ADR 0203）：run.ts 的 --fact-him；要事实检查开着 */
@@ -461,7 +463,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
         ...(options.shapeAsk ? { shapeAsk: true } : {}),
         ...(options.shapeLong ? { shapeLong: true } : {}),
-        ...(options.deliberateLlm ? { deliberate: { llm: options.deliberateLlm } } : {}),
+        ...(options.deliberateLlm ? { deliberate: { llm: options.deliberateLlm, ...(options.deliberateNote ? { note: options.deliberateNote } : {}) } } : {}),
         ...(options.depthRouting && options.deliberateLlm ? {
             turnWeight: createTurnWeigher({
                 ask: messages => (options.generate ? options.generate(messages, log) : chatCompletion({ ...options.llm, temperature: 0, maxTokens: 80, timeoutMs: WEIGH_TIMEOUT_MS, extraBody: { ...(Object.fromEntries(Object.entries(options.llm.extraBody ?? {}).filter(([key]) => key !== 'reasoning_effort'))), thinking: { type: 'disabled' } } }, messages, { log })),
