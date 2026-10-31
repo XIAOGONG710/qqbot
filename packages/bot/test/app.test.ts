@@ -700,34 +700,6 @@ describe('编排（app.ts）', () => {
         assert.doesNotMatch(stale.toBoyfriend, /ZQD/, '超过 6 小时的不放（更早的靠语义召回）');
     });
 
-    test('/为什么（ADR 0173，silenceNotice）：关着时是普通的话、交给她回；开着时是运维命令，不交给她、不进聊天记录；只认男朋友档', async () => {
-        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
-        // 关着：照常当话交给她
-        let generatedOff = 0;
-        const offCfg = config({ contacts });
-        const off = setup(offCfg, {}, { generate: () => { generatedOff++; return '好'; } });
-        await off.app.connected(SELF);
-        off.app.receive(event(10002, 1, '/为什么', '宝宝'));
-        await until(() => off.sent.length >= 1);
-        assert.equal(off.sent[0], '10002:好');
-        assert.ok(generatedOff >= 1);
-        // 开着：男朋友档发的是命令
-        let generatedOn = 0;
-        const onCfg = config({ contacts, silenceNotice: true });
-        const on = setup(onCfg, {}, { generate: () => { generatedOn++; return '好'; } });
-        await on.app.connected(SELF);
-        assert.ok(on.logs.some(line => line.startsWith('没回时告诉他原因：开')), '启动日志说开了');
-        on.app.receive(event(10002, 1, '/为什么', '宝宝'));
-        await until(() => on.sent.length >= 1);
-        assert.equal(on.sent[0], '10002:（你的消息她都回过了，也没有记录到她没回的情况。）');
-        assert.equal(generatedOn, 0, '命令不交给她');
-        assert.deepEqual(chat(onCfg, 10002), [], '命令不进聊天记录，也就不会被算成一条没回的消息');
-        // 同学档发同样的字：不是命令，照常交给她
-        on.app.receive(event(10001, 2, '/为什么', '阿明'));
-        await until(() => on.sent.length >= 2);
-        assert.equal(on.sent[1], '10001:好');
-        assert.equal(generatedOn >= 1, true);
-    });
 
     describe('指令只有他亲手打的字才生效（ADR 0179）：派活给有整机权限的 dsh 的两条路', () => {
         const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
@@ -800,145 +772,8 @@ describe('编排（app.ts）', () => {
         });
     });
 
-    test('她的私人空间（ADR 0200）：ownerPeek 关着时，/追求 /说话习惯 /心境 /自我认识 只回那句固定的话——不念她的东西、不交给她、不进聊天记录；功能没开的还是普通的话；同学档不是命令；/说话趋势 不受影响；开着照念', async () => {
-        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
-        const selfFile = (dir: string) => writeFileSync(join(dir, 'pursuits-self.json'), JSON.stringify({
-            pursuits: [{ id: 'self-2026-10-29-1', title: '学吉他', why: '一直想会弹一首完整的歌', status: 'active', source: 'self', proposedAt: Date.now() - 2 * 86_400_000, notes: [] }],
-            overrides: {}, rejected: [], lastReflectionAt: Date.now(), lastAttemptAt: Date.now(), lastProposalAt: Date.now(), attempts: { day: '', n: 0 },
-        }));
-        // 四个功能都开着，ownerPeek 关着（线上默认）
-        let generated = 0;
-        const cfg = config({ contacts, pursuits: true, selfPursuits: true, speechNotes: true, herFeelings: true, diaryInsights: true, ownerPeek: false });
-        selfFile(cfg.dataDir);
-        const closed = setup(cfg, {}, { generate: () => { generated++; return '好'; } });
-        await closed.app.connected(SELF);
-        for (const [i, command] of ['/追求', '/说话习惯', '/心境', '/自我认识'].entries()) {
-            closed.app.receive(event(10002, i + 1, command, '宝宝'));
-            await until(() => closed.sent.length >= i + 1);
-            assert.equal(closed.sent[i], `10002:${PEEK_OFF_NOTICE}`, command);
-        }
-        assert.ok(!closed.sent.join('').includes('学吉他'), '她的东西一个字都没念出来');
-        assert.equal(generated, 0, '不交给她');
-        assert.deepEqual(chat(cfg, 10002), [], '不进聊天记录');
-        // /说话趋势 只有数字，不是她的私人内容：不受这个开关管
-        closed.app.receive(event(10002, 5, '/说话趋势', '宝宝'));
-        await until(() => closed.sent.length >= 5);
-        assert.notEqual(closed.sent[4], `10002:${PEEK_OFF_NOTICE}`);
-        // 同学档发同样的字：不是命令，是普通的话
-        closed.app.receive(event(10001, 6, '/心境', '阿明'));
-        await until(() => closed.sent.length >= 6);
-        assert.equal(closed.sent[5], '10001:好');
-        // 功能没开（herFeelings 关着）：/心境 还是普通的话，不是那句固定的话
-        let generatedOff = 0;
-        const off = setup(config({ contacts, ownerPeek: false }), {}, { generate: () => { generatedOff++; return '好'; } });
-        await off.app.connected(SELF);
-        off.app.receive(event(10002, 1, '/心境', '宝宝'));
-        await until(() => off.sent.length >= 1);
-        assert.equal(off.sent[0], '10002:好');
-        // ownerPeek 开着：照念
-        const openCfg = config({ contacts, pursuits: true, selfPursuits: true, ownerPeek: true });
-        selfFile(openCfg.dataDir);
-        const open = setup(openCfg, {}, { generate: () => '好' });
-        await open.app.connected(SELF);
-        open.app.receive(event(10002, 1, '/追求', '宝宝'));
-        await until(() => open.sent.length >= 1);
-        assert.match(open.sent[0]!, /学吉他——一直想会弹一首完整的歌/);
-    });
 
-    test('/追求（ADR 0178，selfPursuits）：开着时他能看她在追什么（运维提示，不交给她、不进聊天记录）；关着是普通的话；只认男朋友档', async () => {
-        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
-        let generatedOff = 0;
-        const off = setup(config({ contacts, pursuits: true }), {}, { generate: () => { generatedOff++; return '好'; } });
-        await off.app.connected(SELF);
-        off.app.receive(event(10002, 1, '/追求', '宝宝'));
-        await until(() => off.sent.length >= 1);
-        assert.equal(off.sent[0], '10002:好', '关着时是普通的话，照常交给她');
-        let generatedOn = 0;
-        const onCfg = config({ contacts, pursuits: true, selfPursuits: true });
-        // 她自己的决定：放下了作者给的拍相机，自己定了一件学吉他——/追求 要读得到
-        writeFileSync(join(onCfg.dataDir, 'pursuits-self.json'), JSON.stringify({
-            pursuits: [{ id: 'self-2026-10-29-1', title: '学吉他', why: '一直想会弹一首完整的歌', status: 'active', source: 'self', proposedAt: Date.now() - 2 * 86_400_000, notes: [{ at: Date.now(), text: '练会了 C 和弦' }] }],
-            overrides: { camera: { status: 'dropped', at: Date.now() - 86_400_000, why: '最近没心思拍' } },
-            rejected: [{ at: Date.now(), title: '准备考研', why: '想换个方向', reason: '人生方向类——作者没定之前不碰' }],
-            lastReflectionAt: Date.now(), lastAttemptAt: Date.now(), lastProposalAt: Date.now(), attempts: { day: '', n: 0 },
-        }));
-        const on = setup(onCfg, {}, { generate: () => { generatedOn++; return '好'; } });
-        await on.app.connected(SELF);
-        assert.ok(on.logs.some(line => line.startsWith('她自己定追求：开')), '启动日志说开了');
-        on.app.receive(event(10002, 1, '/追求', '宝宝'));
-        await until(() => on.sent.length >= 1);
-        assert.match(on.sent[0]!, /^10002:（她现在在追的：\n1\. 别挂科——.*（作者给的）/);
-        assert.match(on.sent[0]!, /你只能看，不能改；她随时可以改主意/);
-        assert.match(on.sent[0]!, /学吉他——一直想会弹一首完整的歌（她自己定的，2 天前）\n {3}她最近记的：练会了 C 和弦/, '她自己定的那件读得到');
-        assert.match(on.sent[0]!, /用新相机拍出自己满意的东西（放下了：最近没心思拍）/, '她放下了作者给的那条，也读得到');
-        assert.match(on.sent[0]!, /她想过、但没成的：\n- 准备考研/);
-        assert.equal(generatedOn, 0, '命令不交给她');
-        assert.deepEqual(chat(onCfg, 10002), [], '命令不进聊天记录');
-        // 同学档发同样的字：不是命令
-        on.app.receive(event(10001, 2, '/追求', '阿明'));
-        await until(() => on.sent.length >= 2);
-        assert.equal(on.sent[1], '10001:好');
-        assert.ok(generatedOn >= 1);
-    });
 
-    test('/说话习惯 和提示词里的说话习惯（ADR 0193，speechNotes）：开着时他能看她自己总结的；挑几条放进提示词（只男朋友档、危机回合不放）；关着是普通的话', async () => {
-        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
-        const notesFile = (cfg: AppConfig) => writeFileSync(join(cfg.dataDir, 'speech-notes.json'), JSON.stringify({
-            notes: [{ id: 'n-2026-10-29-1', text: '我发现我爱先反问一句再回答', at: Date.now() - 86_400_000 }],
-            retired: [{ at: Date.now(), text: '我发现我总说哈哈', why: '最近不这样了' }],
-            rejected: [{ at: Date.now(), text: '我发现我总学他说', reason: '引用了他说过的话' }],
-            lastReflectionAt: Date.now(), lastAttemptAt: Date.now(), attempts: { day: '', n: 0 },
-        }));
-        const LINE = '你自己总结过的说话习惯';
-        // 关着：/说话习惯 是普通的话，提示词里没有
-        const offCfg = config({ contacts });
-        notesFile(offCfg);
-        const offPrompts: string[] = [];
-        const off = setup(offCfg, {}, { generate: messages => { offPrompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
-        await off.app.connected(SELF);
-        off.app.receive(event(10002, 1, '/说话习惯', '宝宝'));
-        await until(() => off.sent.length >= 1);
-        assert.equal(off.sent[0], '10002:好', '关着时是普通的话，照常交给她');
-        assert.ok(offPrompts.every(prompt => !prompt.includes(LINE)), '关着时提示词里没有');
-        // 开着
-        const onCfg = config({ contacts, speechNotes: true });
-        notesFile(onCfg);
-        const prompts: Array<{ qq: string; text: string }> = [];
-        let current = '';
-        const on = setup(onCfg, {}, { generate: messages => { prompts.push({ qq: current, text: messages.map(message => message.content).join('\n') }); return '好'; } });
-        await on.app.connected(SELF);
-        assert.ok(on.logs.some(line => line.startsWith('她自己总结说话习惯：开')), '启动日志说开了');
-        on.app.receive(event(10002, 1, '/说话习惯', '宝宝'));
-        await until(() => on.sent.length >= 1);
-        assert.match(on.sent[0]!, /^10002:（她自己总结的说话习惯（1 条）：\n1\. 我发现我爱先反问一句再回答（1 天前）/);
-        assert.match(on.sent[0]!, /她放下的：\n- 我发现我总说哈哈（最近不这样了）/);
-        assert.match(on.sent[0]!, /她想写、但没成的：\n- 我发现我总学他说（引用了他说过的话）/);
-        assert.match(on.sent[0]!, /你只能看，不能改；她随时可以放下/);
-        assert.equal(prompts.length, 0, '命令不交给她');
-        assert.deepEqual(chat(onCfg, 10002), [], '命令不进聊天记录');
-        // 男朋友档的普通话：提示词里有她自己的笔记；同学档没有
-        current = 'bf';
-        on.app.receive(event(10002, 2, '晚上吃什么呀', '宝宝'));
-        await until(() => prompts.some(item => item.qq === 'bf'));
-        const bf = prompts.find(item => item.qq === 'bf')!.text;
-        assert.match(bf, /\[你自己总结过的说话习惯（是你自己的观察，不是规定/);
-        assert.ok(bf.includes('- 我发现我爱先反问一句再回答'));
-        assert.ok(on.logs.some(line => line === '[10002] 说话习惯：这一轮放了几条她自己总结的（日志不记内容）'));
-        assert.ok(on.logs.every(line => !line.includes('先反问一句再回答')), '日志不记内容');
-        current = 'cm';
-        on.app.receive(event(10001, 3, '晚上吃什么呀', '阿明'));
-        await until(() => prompts.some(item => item.qq === 'cm'));
-        assert.ok(!prompts.find(item => item.qq === 'cm')!.text.includes(LINE), '同学档不放');
-        // 危机回合不放
-        current = 'crisis';
-        on.app.receive(event(10002, 4, `我${CRISIS_MARK}`, '宝宝'));
-        await until(() => prompts.some(item => item.qq === 'crisis'));
-        assert.ok(prompts.filter(item => item.qq === 'crisis').every(item => !item.text.includes(LINE)), '危机回合不放');
-        // 同学档发同样的命令：不是命令
-        on.app.receive(event(10001, 5, '/说话习惯', '阿明'));
-        await until(() => on.sent.some(line => line.startsWith('10001:') && !line.startsWith('10001:（')));
-        assert.ok(!on.sent.some(line => line.startsWith('10001:（她自己总结')));
-    });
 
     test('同一个她（ADR 0176 / 0177）：启动时把他的 bank 写进 memory/owner-bank.json，DSH 插件自己的读法认得；crossRecent 开着多带两边互读的文件；没有男朋友档 / 没开长期记忆就不写', async () => {
         const memory = { baseUrl: 'http://127.0.0.1:1', timeoutMs: 50, recallTimeoutMs: 50, bankPrefix: 'test' };
@@ -976,100 +811,7 @@ describe('编排（app.ts）', () => {
         assert.equal(existsSync(ownerFile(noMemory)), false);
     });
 
-    test('/像AI、/像真人（ADR 0195，随 speechNotes）：把她最近一次说的话连着他前面的话记下来；同一次再标覆盖；回执不进聊天记录、不交给她；没有可标的 / 关着 / 同学档都是别的样子', async () => {
-        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
-        const seed = (cfg: AppConfig) => {
-            const store = new ChatHistory(cfg.dataDir);
-            const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
-            for (const [qq, rows] of [[10002, [['user', '今天好累', 30], ['assistant', '辛苦了', 29], ['assistant', '早点歇着', 29]]], [10001, [['user', '在吗', 30], ['assistant', '在', 29]]]] as const) {
-                for (const [role, content, ago] of rows) store.append(qq, { time: at(ago), role, content });
-            }
-        };
-        const feedbackOf = (cfg: AppConfig) => (existsSync(join(cfg.dataDir, 'speech-feedback.json')) ? (JSON.parse(readFileSync(join(cfg.dataDir, 'speech-feedback.json'), 'utf8')) as { entries: Array<{ label: string; his: string[]; hers: string[]; why?: string }> }).entries : []);
-        // 开着
-        const cfg = config({ contacts, speechNotes: true });
-        const prompts: string[] = [];
-        const on = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
-        await on.app.connected(SELF);
-        on.app.receive(event(10002, 1, '/像AI', '宝宝'));
-        await until(() => on.sent.length >= 1);
-        assert.equal(on.sent[0], '10002:（她最近 12 小时里没有说过话，没有可标的。）', '还没有她的话');
-        seed(cfg);
-        const before = chat(cfg, 10002);
-        on.app.receive(event(10002, 2, '/像AI 太客气了', '宝宝'));
-        await until(() => on.sent.length >= 2);
-        assert.match(on.sent[1]!, /^10002:（记下了：她刚才的「辛苦了 \/ 早点歇着」标成「这句像 AI」。每晚她想说话习惯的时候会看到——是你的感受，不是规定，变不变她自己定。现在一共记着 1 条。）/);
-        assert.deepEqual(feedbackOf(cfg).map(item => [item.label, item.his, item.hers, item.why]), [['ai', ['今天好累'], ['辛苦了', '早点歇着'], '太客气了']]);
-        on.app.receive(event(10002, 3, '/像真人', '宝宝'));
-        await until(() => on.sent.length >= 3);
-        assert.match(on.sent[2]!, /标成「像真人」.*现在一共记着 1 条/, '同一次说的话再标一次：覆盖');
-        assert.deepEqual(feedbackOf(cfg).map(item => [item.label, item.why]), [['human', undefined]]);
-        on.app.receive(event(10002, 4, '/说话习惯', '宝宝'));
-        await until(() => on.sent.length >= 4);
-        assert.match(on.sent[3]!, /他标过的（最近 14 天）：像真人 1 次、这句像 AI 0 次。/);
-        assert.equal(prompts.length, 0, '命令一条都没交给她');
-        assert.deepEqual(chat(cfg, 10002), before, '命令和回执都不进聊天记录');
-        assert.ok(on.logs.some(line => line === '说话习惯：他把她最近一次说的话标成「像真人」（日志不记内容）'));
-        assert.ok(on.logs.every(line => !line.includes('辛苦了') && !line.includes('太客气了')), '日志不记内容');
-        // 同学档发同样的命令：不是命令，当普通的话交给她，也不记
-        on.app.receive(event(10001, 5, '/像AI', '阿明'));
-        await until(() => prompts.length >= 1);
-        assert.deepEqual(feedbackOf(cfg).length, 1);
-        // 关着：是普通的话
-        const offCfg = config({ contacts });
-        seed(offCfg);
-        const offPrompts: string[] = [];
-        const off = setup(offCfg, {}, { generate: messages => { offPrompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
-        await off.app.connected(SELF);
-        off.app.receive(event(10002, 1, '/像AI', '宝宝'));
-        await until(() => offPrompts.length >= 1);
-        assert.deepEqual(feedbackOf(offCfg), [], '关着不记');
-    });
 
-    test('/说话趋势（ADR 0196，随 speechNotes）：她说话的样子按周看，放上真人语料的数字；只读聊天记录不存状态；不交给她、不进聊天记录；关着 / 同学档是普通的话', async () => {
-        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
-        const seed = (cfg: AppConfig) => {
-            const store = new ChatHistory(cfg.dataDir);
-            const at = (daysAgo: number, offset = 0) => new Date(Date.now() - daysAgo * 86_400_000 + offset * 1000).toISOString();
-            for (const [daysAgo, texts] of [[1, ['哈', '哈哈', '真的假的', '笑死我了', '你好笨', '😂']], [9, ['辛苦了', '早点歇着呀', '别太晚', '明天见']]] as const) {
-                store.append(10002, { time: at(daysAgo, -5), role: 'user', content: '在吗' });
-                texts.forEach((text, i) => store.append(10002, { time: at(daysAgo, i), role: 'assistant', content: text }));
-            }
-            mkdirSync(join(cfg.dataDir, 'exemplars'), { recursive: true });
-            writeFileSync(join(cfg.dataDir, 'exemplars', 'corpus.jsonl'), [
-                { id: 'c1', source: 't', license: 'test', said: '在吗', replied: ['在', '怎么啦'] }, { id: 'c2', source: 't', license: 'test', said: '晚安', replied: ['嗯'] },
-            ].map(item => JSON.stringify(item)).join('\n'));
-        };
-        const cfg = config({ contacts, speechNotes: true });
-        seed(cfg);
-        const prompts: string[] = [];
-        const on = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
-        await on.app.connected(SELF);
-        const before = chat(cfg, 10002);
-        on.app.receive(event(10002, 1, '/说话趋势', '宝宝'));
-        await until(() => on.sent.length >= 1);
-        assert.match(on.sent[0]!, /^10002:（她说话的样子，按周看/);
-        assert.match(on.sent[0]!, /最近 7 天（6 条）：一次回 6 条；每条中位 3 个字；两个字以内的短反应占 50%/);
-        assert.match(on.sent[0]!, /7–14 天前（4 条）：太少了，数出来的比例不当数/);
-        assert.match(on.sent[0]!, /真人女生的参照（来自 3 条真实语料）：一次回 1.5 条/);
-        assert.match(on.sent[0]!, /没有目标线，不会拿去卡她/);
-        assert.equal(prompts.length, 0, '命令不交给她');
-        assert.deepEqual(chat(cfg, 10002), before, '命令和回复都不进聊天记录');
-        assert.ok(!existsSync(join(cfg.dataDir, 'speech-trend.json')), '不存状态');
-        // 同学档发同样的命令：不是命令
-        on.app.receive(event(10001, 2, '/说话趋势', '阿明'));
-        await until(() => prompts.length >= 1);
-        assert.ok(!on.sent.some(line => line.startsWith('10001:（她说话的样子')));
-        // 关着：是普通的话
-        const offCfg = config({ contacts });
-        seed(offCfg);
-        const offPrompts: string[] = [];
-        const off = setup(offCfg, {}, { generate: messages => { offPrompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
-        await off.app.connected(SELF);
-        off.app.receive(event(10002, 1, '/说话趋势', '宝宝'));
-        await until(() => offPrompts.length >= 1);
-        assert.equal(off.sent[0], '10002:好');
-    });
 
     test('他标过的话（ADR 0195）进每晚想说话习惯的那一次提示词，不进聊天时的提示词', async t => {
         const contacts = [{ qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
@@ -1097,70 +839,6 @@ describe('编排（app.ts）', () => {
         assert.ok(prompts.filter(prompt => !prompt.includes('你这几天说话的样子')).every(prompt => !prompt.includes('最近标过的')), '聊天时的提示词里没有');
     });
 
-    test('/自我认识 和提示词里她翻日记时发现的自己（ADR 0194，diaryInsights）：开着时他能看；挑几条放进提示词（只男朋友档、危机回合不放）；关着是普通的话', async () => {
-        const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
-        const insightsFile = (cfg: AppConfig) => writeFileSync(join(cfg.dataDir, 'diary-insights.json'), JSON.stringify({
-            notes: [{ id: 'i-2026-10-29-1', text: '我发现自己一个人安安静静弄东西的时候最踏实', at: Date.now() - 86_400_000, dates: ['2026-10-27', '2026-10-29'] }],
-            retired: [{ at: Date.now(), text: '我发现自己一到周一就没劲', why: '后来几个周一都挺好' }],
-            rejected: [{ at: Date.now(), text: '我发现自己和鸽鸽聊天最放松', reason: '写到了别人（鸽鸽）——这里只写你自己' }],
-            lastWindow: { entries: 3, dates: 3, newest: 'x' }, lastReflectionAt: Date.now(), lastAttemptAt: Date.now(), attempts: { day: '', n: 0 },
-        }));
-        const LINE = '你对自己的了解';
-        // 关着：/自我认识 是普通的话，提示词里没有
-        const offCfg = config({ contacts });
-        insightsFile(offCfg);
-        const offPrompts: string[] = [];
-        const off = setup(offCfg, {}, { generate: messages => { offPrompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
-        await off.app.connected(SELF);
-        off.app.receive(event(10002, 1, '/自我认识', '宝宝'));
-        await until(() => off.sent.length >= 1);
-        assert.equal(off.sent[0], '10002:好', '关着时是普通的话，照常交给她');
-        assert.ok(offPrompts.every(prompt => !prompt.includes(LINE)), '关着时提示词里没有');
-        // 开着
-        const onCfg = config({ contacts, diaryInsights: true });
-        insightsFile(onCfg);
-        const prompts: Array<{ qq: string; text: string }> = [];
-        let current = '';
-        const on = setup(onCfg, {}, { generate: messages => { prompts.push({ qq: current, text: messages.map(message => message.content).join('\n') }); return '好'; } });
-        await on.app.connected(SELF);
-        assert.ok(on.logs.some(line => line.startsWith('她翻自己的日记写对自己的认识：开')), '启动日志说开了');
-        on.app.receive(event(10002, 1, '/自我认识', '宝宝'));
-        await until(() => on.sent.length >= 1);
-        assert.match(on.sent[0]!, /^10002:（她翻日记时发现的自己（1 条）：\n1\. 我发现自己一个人安安静静弄东西的时候最踏实（依据：2026-10-27、2026-10-29；1 天前）/);
-        assert.match(on.sent[0]!, /她放下的：\n- 我发现自己一到周一就没劲（后来几个周一都挺好）/);
-        assert.match(on.sent[0]!, /她想写、但没成的：\n- 我发现自己和鸽鸽聊天最放松（写到了别人（鸽鸽）/);
-        assert.match(on.sent[0]!, /她看的是公开的日记，不看私密日记/);
-        assert.match(on.sent[0]!, /你只能看，不能改；她随时可以放下/);
-        assert.equal(prompts.length, 0, '命令不交给她');
-        assert.deepEqual(chat(onCfg, 10002), [], '命令不进聊天记录');
-        // 男朋友档：他这句话没聊到的不放（原来会放最近的几条，她把它们当成了话题）；聊到了才放；同学档不放
-        current = 'irrelevant';
-        on.app.receive(event(10002, 2, '晚上吃什么呀', '宝宝'));
-        await until(() => prompts.some(item => item.qq === 'irrelevant'));
-        assert.ok(!prompts.find(item => item.qq === 'irrelevant')!.text.includes(LINE), '没聊到相关的事就不放');
-        current = 'bf';
-        on.app.receive(event(10002, 6, '你是不是又在安安静静弄东西', '宝宝'));
-        await until(() => prompts.some(item => item.qq === 'bf'));
-        const bf = prompts.find(item => item.qq === 'bf')!.text;
-        assert.match(bf, /\[你对自己的了解（是你自己慢慢发现的，不是设定/);
-        assert.ok(bf.includes('- 我发现自己一个人安安静静弄东西的时候最踏实'));
-        assert.ok(!bf.includes('翻自己日记'), '提示词里那一行不提日记');
-        assert.ok(on.logs.some(line => line === '[10002] 自我认识：这一轮放了几条她翻日记时发现的自己（日志不记内容）'));
-        assert.ok(on.logs.every(line => !line.includes('最踏实')), '日志不记内容');
-        current = 'cm';
-        on.app.receive(event(10001, 3, '你是不是又在安安静静弄东西', '阿明'));
-        await until(() => prompts.some(item => item.qq === 'cm'));
-        assert.ok(!prompts.find(item => item.qq === 'cm')!.text.includes(LINE), '同学档不放');
-        // 危机回合不放（即使聊到了相关的事）
-        current = 'crisis';
-        on.app.receive(event(10002, 4, `我${CRISIS_MARK}，安安静静弄东西也没用`, '宝宝'));
-        await until(() => prompts.some(item => item.qq === 'crisis'));
-        assert.ok(prompts.filter(item => item.qq === 'crisis').every(item => !item.text.includes(LINE)), '危机回合不放');
-        // 同学档发同样的命令：不是命令
-        on.app.receive(event(10001, 5, '/自我认识', '阿明'));
-        await until(() => on.sent.some(line => line.startsWith('10001:') && !line.startsWith('10001:（')));
-        assert.ok(!on.sent.some(line => line.startsWith('10001:（她翻日记')));
-    });
 
     test('桌面上的她也看得到（ADR 0194）：开着时灵魂目录里有 INSIGHTS.json（带有意义的二字词，不带太常见的）；关着不写；没变且新鲜就不重写', async () => {
         const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
@@ -1472,45 +1150,7 @@ describe('主动消息（ADR 0011）', () => {
         assert.deepEqual(chat(cfg, 10002), ['assistant:好']);
     });
 
-    test('「/主动」（ADR 0156）：他发了，她现在就主动找他一次（走整条主动链路）；命令本身不进聊天记录；没开主动时回一句原因', async () => {
-        const clock = new VirtualClock(new Date(2026, 9, 5, 23, 50));
-        const cfg = config({ proactive: 'on', schedule: true, contacts: [boyfriend] });
-        const prompts: string[] = [];
-        const first = setup(cfg, { 10002: [] }, { clock, generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '刚想起一件事'; } });
-        await first.app.connected(SELF);
-        first.app.receive(event(10002, 501, '/主动'));
-        await until(() => first.sent.length > 0, 8000);
-        assert.deepEqual(first.sent, ['10002:刚想起一件事']);
-        assert.ok(prompts.some(p => p.includes('你想起一件自己的小事')), '说明是“想起一件自己的小事”');
-        assert.deepEqual(chat(cfg, 10002), ['assistant:刚想起一件事'], '命令不进聊天记录');
-        first.app.stop();
 
-        const off = setup(config({ proactive: 'off', contacts: [boyfriend] }));
-        await off.app.connected(SELF);
-        off.app.receive(event(10002, 502, '/主动'));
-        await until(() => off.sent.length > 0);
-        assert.deepEqual(off.sent, ['10002:（现在不能主动找你：主动消息没开）']);
-        off.app.stop();
-    });
-
-    test('主动找他时他半天没说话：旧话不当成“他刚说的”（10-29 13:24 拿两小时前的「都给你」接了「哈哈行，卤蛋记账上了」）', async () => {
-        const clock = new VirtualClock(new Date(2026, 9, 5, 23, 50));
-        const cfg = config({ proactive: 'on', schedule: true, contacts: [boyfriend] });
-        const sec = (hoursAgo: number) => Math.floor(clock.now() / 1000) - hoursAgo * 3600;
-        const prompts: string[] = [];
-        const { app, sent } = setup(cfg, {
-            10002: [
-                { message_id: 501, time: sec(4), sender: { user_id: 10002 }, message: [{ type: 'text', data: { text: '好好好，都给你～' } }] },
-                { message_id: 502, time: sec(3.9), sender: { user_id: SELF }, message: [{ type: 'text', data: { text: '那我可记着了，有一个卤蛋是我的～' } }] },
-            ],
-        }, { clock, generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '作业写完了，刚松口气'; } });
-        await app.connected(SELF);
-        app.receive(event(10002, 503, '/主动'));
-        await until(() => sent.length > 0, 8000);
-        const prompt = prompts.at(-1)!;
-        assert.doesNotMatch(prompt, /他最后说的是：「好好好，都给你～」/, '四小时前的话不能说成他刚说的');
-        assert.match(prompt, /他上一次说话是 4 小时前，那不是刚说的/);
-    });
 
     test('「/设定」（ADR 0157 / 0158 / 0161）：设定账本、记忆账本、休眠状态的摘要；不进聊天记录；没开任何一个时当普通话', async () => {
         const cfg = config({ identityLedger: true, memoryAudit: true, dormancy: true, contacts: [boyfriend] });
@@ -2718,40 +2358,6 @@ describe('心境（ADR 0102，配置 herFeelings）', () => {
         assert.equal(existsSync(target), false, '危机回合最优先，不往桌面交她自己的情绪');
     });
 
-    test('/心境（ADR 0197）：此刻的心境和来由、她聊完自己回想记下的；只读不进聊天记录、不交给她；herFeelings 关着 / 同学档是普通的话', async () => {
-        const cfg = config({ contacts: bf, herFeelings: true, feelingReview: true });
-        writeMoment(cfg);
-        const prompts: string[] = [];
-        const on = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '嗯'; } });
-        await on.app.connected(SELF);
-        on.app.receive(event(10001, 1, '在吗'));
-        await until(() => on.sent.length >= 1);
-        const before = new ChatHistory(cfg.dataDir).load(10001).length;
-        const promptsBefore = prompts.length;
-        on.app.receive(event(10001, 2, '/心境'));
-        await until(() => on.sent.length >= 2);
-        assert.match(on.sent[1]!, /^10001:（她此刻的心境（刚刚算的）：\n- 难过·很重：高数小测没考好（作者写下的事）/);
-        assert.match(on.sent[1]!, /她还没有聊完回想出来的感受/);
-        assert.match(on.sent[1]!, /这些都是从事实里算出来的，不是演的；你只能看，不能改/);
-        assert.equal(prompts.length, promptsBefore, '命令不交给她');
-        assert.equal(new ChatHistory(cfg.dataDir).load(10001).length, before, '命令和回复都不进聊天记录');
-        // herFeelings 关着：是普通的话
-        const off = config({ contacts: bf });
-        const offPrompts: string[] = [];
-        const offApp = setup(off, {}, { generate: messages => { offPrompts.push(messages.map(m => m.content).join('\n')); return '好'; } });
-        await offApp.app.connected(SELF);
-        offApp.app.receive(event(10001, 1, '/心境'));
-        await until(() => offPrompts.length >= 1);
-        assert.equal(offApp.sent[0], '10001:好');
-        // 同学档不是命令
-        const mate = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }], herFeelings: true });
-        const matePrompts: string[] = [];
-        const mateApp = setup(mate, {}, { generate: messages => { matePrompts.push(messages.map(m => m.content).join('\n')); return '好'; } });
-        await mateApp.app.connected(SELF);
-        mateApp.app.receive(event(10001, 1, '/心境'));
-        await until(() => matePrompts.length >= 1);
-        assert.equal(mateApp.sent[0], '10001:好');
-    });
 
     test('聊完回想（ADR 0197）：一段聊天结束半小时后定时器那一下让她回想一次，记下带依据的感受；下一句她回他时它进心境；编造的依据被拦；关着 feelingReview 不启动', async t => {
         const clockStart = new Date(2026, 9, 30, 23, 0);

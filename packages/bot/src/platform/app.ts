@@ -2027,6 +2027,15 @@ ${body}
         // 只认纯文字、只认男朋友档的他；命中的算处理完，不进聊天记录、不交给回复器。休眠中除了这几条，她什么都不回
         if (deviceOwner && event.user_id === deviceOwner.qq) {
             const plain = plainTextOf(event.message)?.trim();
+            // 指令收敛（2026-10-31 用户：「把绝大多数的指令去掉吧，以后也不新增指令」）：
+            // 只留运维必需的四条（休眠/唤醒/模式/设定），别的指令一律当作“不用了”，直接请他用话说。
+            // 想看什么、想让她做什么，都在聊天里说——她会自己判断做不做。
+            const KEEP = new Set(['/设定', '/休眠', '/唤醒', '/模式', '/dsh', '/工作', '/QQ', '/qq', '/回聊', '/屏幕', '/看屏幕', '/摄像头', '/拍照', '/设备', '/批准', '/拒绝']);
+            const head = plain?.startsWith('/') ? plain.split(/\s+/)[0]! : undefined;
+            if (head && !KEEP.has(head)) {
+                tellOwner('（这些指令已经不用了，直接跟我说就行）');
+                return;
+            }
             if (plain === '/设定' && (identity || memoryLedgerNow || dormancy)) {
                 tellOwner([identity?.status(), memoryLedgerNow ? summarizeMemoryLedger(memoryLedgerNow) : undefined, dormancy?.status()].filter(Boolean).join('\n\n'));
                 return;
