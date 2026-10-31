@@ -6,7 +6,7 @@
 //   1. 存梦（dreams/DREAMS.jsonl，一天一条），内容只进提示词、不进长期记忆；
 //   2. 把「昨天那个梦」变成一条心境事实（source: 'self'，分量小、早散），于是她会怕、会黏；
 //   3. 早上递一句「你昨晚梦见……」——用不用由她。
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Appraisal, FeelingKind, Strength } from '../emotion/feelings.ts';
 
@@ -21,6 +21,8 @@ export interface Dream {
     at: number;
     /** 醒来只记得一个画面（真人常这样）：早上那句只说这一小段，后面「记不清了」 */
     fragment?: boolean;
+    /** 午睡打盹的小梦（两三句），不是夜里那个 */
+    nap?: boolean;
 }
 
 export const DREAMS_DIR = 'dreams';
@@ -57,6 +59,11 @@ export function inSleepHours(hour: number): boolean {
     return hour >= 23 || hour < 7;
 }
 
+/** 最近一个梦（夜里或午睡）：早上那句话用它，午睡的梦只留几小时 */
+export function latestDream(dataDir: string, now: number, windowMs = 8 * 3_600_000): Dream | undefined {
+    return readDreams(dataDir).reverse().find(item => now >= item.at && now - item.at <= windowMs);
+}
+
 /** 昨晚那个梦（起床后的 14 小时内还算「昨晚的」） */
 export function lastNightDream(dataDir: string, now: number, windowMs = 14 * 3_600_000): Dream | undefined {
     const dreams = readDreams(dataDir);
@@ -91,7 +98,8 @@ export function dreamNoteLine(dream: Dream | undefined): string | undefined {
     if (!dream) return undefined;
     const feel = dream.feel ? `（醒来心里${dream.feel.kind === 'joy' ? '挺松的' : dream.feel.kind === 'relief' ? '松了口' : dream.feel.kind === 'sad' ? '有点闷' : dream.feel.kind === 'annoyed' ? '有点烦' : dream.feel.kind === 'tired' ? '很累' : '有点慌'}）` : '';
     const body = dream.fragment ? `${dream.dream.split(/(?<=[。！？])/)[0] ?? dream.dream}（后面记不清了，只留着这一个画面）` : dream.dream.slice(0, 200);
-    return `[你昨晚做了个梦：${body}${feel}。那是梦，不是真的事；想跟他说就提一句，不想说就搁着]`;
+    const when = dream.nap ? '你刚才打了个盹' : '你昨晚做了个梦';
+    return `[${when}：${body}${feel}。那是梦，不是真的事；想跟他说就提一句，不想说就搁着]`;
 }
 
 /** 最近几天做过的梦（给「连着梦到同一件事」用） */
@@ -108,6 +116,39 @@ export function onlyFragment(date: string, share = 0.3): boolean {
     let hash = 0x811c9dc5;
     for (const char of date) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 0x01000193) >>> 0; }
     return (hash % 100) < share * 100;
+}
+
+/** 午睡打盹的短梦：两三句，比夜里轻，醒来多半一会就忘 */
+export function napPrompt(materials: { events: readonly string[]; feelings: readonly string[]; name: string }): { system: string; user: string } {
+    return {
+        system: `你是${materials.name}，午后趴在桌上打了个盹。写两到三句梦里闪过去的东西：短、碎，不用讲完整，情绪可以是白天剩下的一点。不要写"这梦说明什么"。只输出梦本身。`,
+        user: `白天的事：${materials.events.slice(0, 5).join('；') || '（没什么）'}；心情：${materials.feelings.join('；') || '（平平）'}。`,
+    };
+}
+
+/** 一个月回头看看自己常梦见什么 → 一段她自己的话 */
+export function monthlyInsightPrompt(dreams: readonly Dream[], name: string): { system: string; user: string } {
+    return {
+        system: `你是${name}。翻一遍自己这个月做过的梦，用你自己的话写一小段（100 字以内）：我好像总在怕什么、总在盼什么。不要分析心理学，不要下结论式的总结，就像自己琢磨出来的一句话。只输出那一段。`,
+        user: dreams.slice(-30).map(item => `- ${item.date}：${item.dream.slice(0, 80)}${item.feel ? `（${item.feel.kind}）` : ''}`).join('\n') || '（这个月没做什么梦）',
+    };
+}
+
+const INSIGHT_FILE = 'INSIGHT.json';
+
+/** 上次按月回看是什么时候（毫秒）；没有就是 0 */
+export function lastInsightAt(dataDir: string): number {
+    try {
+        const path = join(dirPath(dataDir), INSIGHT_FILE);
+        if (!existsSync(path)) return 0;
+        const parsed = JSON.parse(readFileSync(path, 'utf8')) as { at?: number };
+        return typeof parsed.at === 'number' ? parsed.at : 0;
+    } catch { return 0; }
+}
+
+export function saveInsight(dataDir: string, text: string, at: number): void {
+    mkdirSync(dirPath(dataDir), { recursive: true });
+    writeFileSync(join(dirPath(dataDir), INSIGHT_FILE), JSON.stringify({ at, text }, null, 1));
 }
 
 /** 做梦的提示词：素材只取她当天真实有的东西 */

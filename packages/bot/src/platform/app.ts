@@ -115,7 +115,7 @@ import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { selfThread, selfThreadLine } from '.././language/self-thread.ts';
 import { announceFallback, announcePrompt, awayNow, shouldAnnounce } from '.././life/leave-note.ts';
 import { auditShell, guardCommand, runShell, shellNoteLine, takeShellCommands } from './shell-tool.ts';
-import { appendDream, dreamAppraisals, dreamNoteLine, dreamPrompt, hasDream, inSleepHours, lastNightDream, onlyFragment, recentDreams } from '.././life/dreams.ts';
+import { appendDream, dreamAppraisals, dreamNoteLine, dreamPrompt, hasDream, inSleepHours, lastInsightAt, latestDream, monthlyInsightPrompt, napPrompt, onlyFragment, recentDreams, saveInsight } from '.././life/dreams.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
 import { loadExemplars } from '.././language/exemplars.ts';
 import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
@@ -1112,7 +1112,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(openCardFor(contact) ? { openCard: openCardFor(contact)! } : {}),
             ...(contact.tier === 'boyfriend' ? {
                 // 她有「自己的下文」吗（2026-10-30 她自己的诊断）：日记最后一段 + 她自己在做的事，用不用她定
-                dreams: () => ({ appraisals: dreamAppraisals(config.dataDir, clockNow().getTime()), line: dreamNoteLine(lastNightDream(config.dataDir, clockNow().getTime())) }),
+                dreams: () => ({ appraisals: dreamAppraisals(config.dataDir, clockNow().getTime()), line: dreamNoteLine(latestDream(config.dataDir, clockNow().getTime())) }),
                 shellNote: (): string | undefined => {
                     const note = shellNotes.get(contact.qq);
                     if (note) shellNotes.delete(contact.qq);
@@ -1309,7 +1309,59 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     /** 她刚跑过的命令结果：下一轮提示词给她看一眼就清掉（max 权限，但结果要回到她脑子里） */
     const shellNotes = new Map<number, string>();
     // 做梦（2026-10-31）：她睡着的那几小时里，把白天的东西糊成一团；一晚一个，存 dreams/DREAMS.jsonl
-    const dreamTimer = deviceOwner && config.herFeelings ? setInterval(() => { void makeDream(); }, 30 * 60_000) : undefined;
+    const dreamTimer = deviceOwner && config.herFeelings ? setInterval(() => { void makeDream(); void makeNapDream(); void makeMonthlyInsight(); }, 30 * 60_000) : undefined;
+
+    /** 午睡打盹的小梦（2026-10-31 她说「午后小睡那个也开吧」）：一天最多一个，不每天都有 */
+    async function makeNapDream(): Promise<void> {
+        if (stopped || !deviceOwner) return;
+        const at = clockNow();
+        const hour = at.getHours();
+        const date = at.toISOString().slice(0, 10);
+        if (hour < 13 || hour > 15 || hasDream(`${date}-nap`, config.dataDir)) return;
+        // 一周里大概两三天会打盹（按日期定，不随机漂）
+        const seed = `${date}-nap`;
+        let hash = 0x811c9dc5;
+        for (const char of seed) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 0x01000193) >>> 0; }
+        if (hash % 100 >= 45) return;
+        try {
+            const own = readLifeEvents(join(config.dataDir, 'world', 'events.json'), () => undefined)
+                .map(event => String((event as { text?: string }).text ?? ''))
+                .filter(text => text && !text.includes('跟我说')).slice(-5);
+            const fell = lastFeelings ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => `${item.cause}（${item.kind}）`) : [];
+            const prompt = napPrompt({ events: own, feelings: fell, name: cardFor(deviceOwner.tier).character.name });
+            const raw = pipeline?.generate
+                ? await pipeline.generate([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], log)
+                : await chatCompletion({ ...forExtraction(config.llm), temperature: 0.95 }, [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], { log, purpose: 'background' });
+            const dream = String(raw ?? '').trim();
+            if (!dream) return;
+            appendDream(config.dataDir, { date: `${date}-nap`, dream: dream.slice(0, 300), at: at.getTime(), fragment: true, nap: true });
+            log(`做梦：午睡打了个盹（${[...dream].length} 字）`);
+        } catch (error) {
+            log(`做梦：午睡那个没成（${error instanceof Error ? error.message : String(error)}）`);
+        }
+    }
+
+    /** 一个月回头看看自己常梦见什么（她说「我也有点想知道自己到底老在怕什么」） */
+    async function makeMonthlyInsight(): Promise<void> {
+        if (stopped || !deviceOwner) return;
+        const now = clockNow().getTime();
+        if (now - lastInsightAt(config.dataDir) < 25 * 86_400_000) return;
+        const dreams = recentDreams(config.dataDir, 31);
+        if (dreams.length < 5) return;
+        try {
+            const prompt = monthlyInsightPrompt(dreams, cardFor(deviceOwner.tier).character.name);
+            const raw = pipeline?.generate
+                ? await pipeline.generate([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], log)
+                : await chatCompletion({ ...forExtraction(config.llm), temperature: 0.8 }, [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], { log, purpose: 'background' });
+            const text = String(raw ?? '').trim();
+            if (!text) return;
+            saveInsight(config.dataDir, text.slice(0, 400), now);
+            void memory?.rememberSelfNote(deviceOwner, text.slice(0, 400), '记住').catch(error => log(`做梦：这段回看没写进记忆（${error instanceof Error ? error.message : String(error)}）`));
+            log('做梦：这个月的梦回看了一遍（1 段）');
+        } catch (error) {
+            log(`做梦：回看出错（${error instanceof Error ? error.message : String(error)}）`);
+        }
+    }
     async function makeDream(): Promise<void> {
         if (stopped || !deviceOwner) return;
         const at = clockNow();
