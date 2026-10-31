@@ -1330,8 +1330,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             log,
             // last-prompt.json 记录的是后处理之后、实际发给模型的消息
             sensitive: sensitive.on,
+            // 2026-10-31 用户要看「最详细的后台」：每轮把真正发给模型的提示词留在本地（runtime 不入库，不进日志）
             onPrompt: prompt => {
-                if (!sensitive.on()) return;
                 writeFileSync(join(config.dataDir, 'last-prompt.json'), JSON.stringify({ qq: contact.qq, ...prompt }, null, 2));
             },
             ...pipeline,
