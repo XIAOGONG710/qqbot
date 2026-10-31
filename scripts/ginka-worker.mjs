@@ -19,6 +19,21 @@ const secret = JSON.parse(readFileSync(SECRET, 'utf8'));
 const base = secret.baseUrl.replace(/\/+$/, '');
 mkdirSync(OUT, { recursive: true });
 
+import { renameSync } from 'node:fs';
+let writing = Promise.resolve();
+/** 原子写队列：先写临时文件再改名，避免写一半被杀导致 JSON 坏掉 */
+function saveQueue(queue) {
+    writing = writing.then(() => {
+        const tmp = `${QUEUE}.${process.pid}.tmp`;
+        writeFileSync(tmp, JSON.stringify(queue));
+        renameSync(tmp, QUEUE);
+    }).catch(() => undefined);
+    return writing;
+}
+function loadQueue() {
+    try { return JSON.parse(readFileSync(QUEUE, 'utf8')); } catch { return undefined; }
+}
+
 const log = (line) => { try { appendFileSync(LOG, `${new Date().toISOString()} ${line}\n`); } catch { /* 日志写不进去不影响干活 */ } };
 const say = (line) => { console.log(line); log(line); };
 
@@ -75,12 +90,13 @@ function chunks(text, size) {
 
 let round = 0;
 function rebuild() {
+    const previous = loadQueue();
     const tasks = [];
     const add = (name, system, prompt, file, part, of, body) => tasks.push({ id: `${name}|${relative(REPO, file)}|${part}`, name, system, prompt: `${prompt}\n\n=== ${relative(REPO, file)} ${part}/${of} ===\n${body}`, status: 'pending' });
 
     // 每次补活用下一轮预设：同一份代码换角度问，才不会一遍遍重复同样的结论
     let nextRound = 0;
-    try { if (existsSync(QUEUE)) nextRound = (JSON.parse(readFileSync(QUEUE, 'utf8')).round ?? 0) + 1; } catch { nextRound = 0; }
+    try { if (previous) nextRound = (previous.round ?? 0) + 1; } catch { nextRound = 0; }
     const preset = PRESETS[nextRound % PRESETS.length];
     for (const file of walk(join(REPO, 'packages'), n => n.endsWith('.ts') && !n.endsWith('.test.ts'))) {
         const parts = chunks(readFileSync(file, 'utf8'), 3500);
@@ -96,7 +112,7 @@ function rebuild() {
         const parts = chunks(readFileSync(file, 'utf8'), 12000);
         parts.forEach((body, index) => add('语料诊断', '你是中文对话风格分析者。', CORPUS_PROMPT, file, index + 1, parts.length, body));
     }
-    writeFileSync(QUEUE, JSON.stringify({ at: new Date().toISOString(), round: nextRound, tasks }, null, 1));
+    void saveQueue({ at: new Date().toISOString(), round: nextRound, tasks });
     round = nextRound;
     say(`补活：${tasks.length} 段（本轮角度：${preset.name}；ADR 摘要 / 语料诊断随附）`);
     return nextRound;
@@ -131,7 +147,8 @@ async function ask(task) {
 
 const state = { done: 0, failed: 0 };
 async function runOnce() {
-    const queue = JSON.parse(readFileSync(QUEUE, 'utf8'));
+    const queue = loadQueue();
+    if (!queue?.tasks) return 0;
     const pending = queue.tasks.filter(task => task.status === 'pending');
     if (!pending.length) return 0;
     let next = 0;
@@ -155,7 +172,7 @@ async function runOnce() {
             }
             // 每完成一段就落盘，进程被杀也不丢进度
             queue.tasks = queue.tasks.map(item => (item.id === task.id ? task : item));
-            writeFileSync(QUEUE, JSON.stringify(queue, null, 1));
+            await saveQueue(queue);
         }
     }
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, pending.length) }, worker));
@@ -164,7 +181,7 @@ async function runOnce() {
 
 if (process.argv.includes('--rebuild') || !existsSync(QUEUE)) rebuild();
 
-say(`工人上线：模型 ${MODEL}，并发 ${CONCURRENCY}，队列 ${JSON.parse(readFileSync(QUEUE, 'utf8')).tasks.length} 段`);
+say(`工人上线：模型 ${MODEL}，并发 ${CONCURRENCY}，队列 ${loadQueue()?.tasks.length ?? 0} 段`);
 for (;;) {
     if (!windowOpen()) {
         const wait = msToNextWindow();
