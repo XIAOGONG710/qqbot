@@ -67,7 +67,7 @@ import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exempl
 import { ackGuardLine, identityLine, readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
 import { readTurn, readingLine } from '.././language/reading.ts';
 import { readScene } from '.././language/scenes.ts';
-import { askHint } from '.././language/asks.ts';
+import { thinkHint } from '.././language/asks.ts';
 import { SHELL_INTENT } from '.././language/intent.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
@@ -754,7 +754,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 场景应答（2026-10-31）：哄睡 / 报错 / 自我怀疑 / 暗号，命中才加一句
             const hisLast = chat.filter(message => message.role === 'user').slice(-1)[0]?.content ?? '';
             // 多问她真的想知道的事（2026-10-31 用户：「我希望她能有更多的问题来问我」）
-            const askNow = contact.tier === 'boyfriend' && !crisisNow && !thinking ? askHint(hisLast) : undefined;
+            const askNow = contact.tier === 'boyfriend' && !crisisNow && !thinking ? thinkHint(hisLast) : undefined;
             if (askNow) log(`问一句：他这句${askNow.why}，给她一个问的方向`);
             const sceneNow = contact.tier === 'boyfriend' && !crisisNow ? readScene(hisLast)?.line : undefined;
             if (sceneNow) log('场景：他这句要特殊接（哄睡 / 报错 / 自我怀疑 / 暗号）');
