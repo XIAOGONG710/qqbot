@@ -1069,6 +1069,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         // 她自己在 10-31 同意加的（问了她「要不要加」：「该加。我确实老这样，你一认真我就先问『你今天怎么了』。
                         // 行，以后正经问我就正经答。不过聊闲天我还贫啊。」）
                         ...(!initiate ? ['[他正经问你一件事、问你怎么想的时候：先直接答，别一上来就反问「你今天怎么了」「你问这个干嘛」；答完可以就停。聊闲天、开玩笑照旧贫。]'] : []),
+                        // 她自己 10-31 提的：「我老想着接你的话，接得好看点，一使劲反而怪。少想点，别一开口就先想『这句该怎么说』。」
+                        // 追问时她把界限说清了：「小事我张口就来，正经的我会先想一下——但也不会想半天，想太久我就烦了。」
+                        ...(!initiate ? ['[平时聊天别琢磨怎么接才好看——一句话在脑子里过好几遍才发出去，反而怪。想到什么说什么，说岔了也认。他正经问你事的时候可以想一下，但别想半天。]'] : []),
                         ...(options.selfMemory ? [SELF_MEMORY_NOTE] : []),
                         ...(options.refusalLine?.() ? [options.refusalLine()!] : []),
                         ...(options.ratingLine?.() ? [options.ratingLine()!] : []),
