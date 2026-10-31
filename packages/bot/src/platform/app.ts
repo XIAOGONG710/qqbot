@@ -89,6 +89,7 @@ import { promiseKeeper, type Appointment } from '.././life/promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from '.././life/her-days.ts';
 import { herPlanActivities, saveHerPlan, windowAt } from '.././life/her-plans.ts';
 import { isCorrection, recordCorrection, understandingLine } from '.././life/understanding.ts';
+import { recordTrace, traceOf, tracesLine } from '.././life/traces.ts';
 import { bodyAt } from '.././life/body.ts';
 import { worldState, type WorldNow } from '.././world/world.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
@@ -1236,6 +1237,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
             // 她理解人的话（10-30）：他这句话和以前被纠正过的事撞上时提醒她
             ...(config.selfDirectedMemory ? { understanding: (hisWords: string) => understandingLine(config.dataDir, hisWords) } : {}),
+            // 他说过、做过、答应过的事（10-31 留痕）：最近的几条递给她
+            ...(config.selfDirectedMemory ? { traces: () => tracesLine(config.dataDir) } : {}),
             // 他刚发过「/亲热」（ADR 0170）：接下来十条回复黏一点，每生成一条减一
             ...(contact.tier === 'boyfriend' ? { intimacyLine: () => takeIntimateLine(config.dataDir, contact.qq) } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取
@@ -2290,6 +2293,11 @@ ${body}
             }
         }
         exportNow();
+        // 他说过的话、做过的事留痕（10-31 用户）：亲密话 / 承诺 / 他自己的事，提炼成一句她记得的事
+        if (config.selfDirectedMemory) {
+            const trace = traceOf(text);
+            if (trace && recordTrace(config.dataDir, trace)) log(`[${event.user_id}] 痕迹：记下${trace.kind === 'affection' ? '他说的话' : trace.kind === 'promise' ? '他答应的事' : '他做过的事'}（日志不记内容）`);
+        }
         const crisis = detectCrisis(text);
         if (crisis && config.contacts.some(c => c.qq === event.user_id)) {
             crisisState.mark(event.user_id, event.time * 1000, crisis.level);
