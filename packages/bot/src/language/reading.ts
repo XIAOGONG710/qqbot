@@ -22,6 +22,8 @@ export interface ReadTurn {
     referent?: string[];
     /** 很短、又没有主语的补充句 */
     continuation: boolean;
+    /** 他之前已经答过这些话题了（她别再重复确认） */
+    answered?: string[];
 }
 
 /** 把最近几条「他说的」按时间合成一轮 */
@@ -40,11 +42,15 @@ export function readTurn(history: readonly Said[], now?: number): ReadTurn | und
     const said = group.map(message => message.content.trim()).filter(Boolean).join('');
     if (!said) return undefined;
     const referent = DEICTIC.test(said) ? recentTopics(history, lastIndex) : undefined;
+    // 只在他「上一轮之前」的话里找答案：这一轮还在说的事不算已经答过
+    const groupStart = history.length - group.length;
+    const answered = referent?.filter(topic => answeredTopic(history, topic, -1, groupStart));
     return {
         said,
         parts: group.length,
         ...(referent?.length ? { referent } : {}),
         continuation: group.length === 1 && [...said].length <= 4 && CONTINUES.test(said) === false ? true : group.length > 1,
+        ...(answered?.length ? { answered } : {}),
     };
 }
 
@@ -76,6 +82,33 @@ export function readingLine(turn: ReadTurn | undefined): string | undefined {
     const pieces = [`他这一轮说的是：「${turn.said.slice(0, 120)}」`];
     if (turn.parts > 1) pieces.push(`（他分 ${turn.parts} 条发的，按一句看，别只盯最后那几个字）`);
     if (turn.referent?.length) pieces.push(`他说的「这个/那个」可能指：${turn.referent.map(t => `「${t.slice(0, 20)}」`).join('、')}`);
+    if (turn.answered?.length) pieces.push(`「${turn.answered[0]!.slice(0, 20)}」他前面已经答过了，别再问是不是/有没有`);
     pieces.push('先想清楚他这句在说什么、指哪件事，再回；没把握就问他指的是哪件，别猜、别只接最后半句');
     return `[${pieces.join('；')}]`;
+}
+
+/**
+ * 他是不是已经答过这件事了（2026-10-31：免费线路诊断出她常重复确认——
+ * 例：他早说过「撤回两条」，她还在问「又想不认账了」）。
+ * 只看他后续的陈述句里有没有和这个话题重叠的信息；纯疑问/寒暄不算答过。
+ * ponytail: 2 字滑窗重叠，够用但会误判同义词；真出问题再上语义匹配。
+ */
+export function answeredTopic(history: readonly Said[], topic: string, fromIndex = -1, untilIndex = history.length): boolean {
+    const clean = (text: string) => text.replace(/[\s，。！？、,.!?~～…「」『』"']/g, '');
+    const target = clean(topic);
+    if ([...target].length < 2) return false;
+    const grams = new Set<string>();
+    for (let i = 0; i + 1 < [...target].length; i++) grams.add([...target].slice(i, i + 2).join(''));
+    for (let i = fromIndex + 1; i < untilIndex; i++) {
+        const message = history[i]!;
+        if (message.role !== 'user') continue;
+        const said = String(message.content ?? '').trim();
+        if ([...said].length < 5) continue;
+        if (/[？?]$/.test(said)) continue; // 他自己在问，不算答过
+        const body = clean(said);
+        let hits = 0;
+        for (let j = 0; j + 1 < [...body].length; j++) if (grams.has([...body].slice(j, j + 2).join(''))) hits++;
+        if (hits >= 2) return true;
+    }
+    return false;
 }
