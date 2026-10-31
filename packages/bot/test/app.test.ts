@@ -323,6 +323,35 @@ describe('编排（app.ts）', () => {
         assert.doesNotMatch(crisis.prompts[0]!, /壬氏那几次/, '危机回合不放');
     });
 
+    test('没想完的问题（ADR 0207，openQuestions）：他再问到她想过的那件事才放（只男朋友档、危机不放）；没聊到、没开都没有；提示词里不说该不该用、该选哪边；日志不含内容', async () => {
+        const seed = (dir: string) => writeFileSync(join(dir, 'open-questions.json'), JSON.stringify({
+            open: [], seen: [], rejected: [], lastReflectionAt: 0, lastAttemptAt: 0, attempts: { day: '', n: 0 },
+            thoughts: [{ id: 'o-1', q: '你想成为自己想成为的样子，还是我喜欢的样子？', text: '我大概是想先做我自己，但你喜欢的样子里我愿意靠近的那一部分，也算我自己想要的', at: 1 }],
+        }));
+        const run = async (patch: Partial<AppConfig>, qq: number, said: string) => {
+            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }], openQuestions: true, ...patch });
+            seed(cfg.dataDir);
+            const prompts: string[] = [];
+            const { app, sent, logs } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '嗯'; } });
+            app.receive(event(qq, 1, said));
+            await until(() => sent.length >= 1);
+            return { prompts, logs };
+        };
+        const asked = await run({}, 10002, '你到底想成为自己想成为的样子，还是我喜欢的样子啊');
+        assert.match(asked.prompts[0]!, /你自己后来想过的（是你自己想的，不是设定[^\n]*\n- 他问过「你想成为自己想成为的样子[^\n]*你想的是：我大概是想先做我自己/);
+        assert.doesNotMatch(asked.prompts[0]!, /你自己后来想过的[^\n]*(?:必须|一定要|应该选|先选)/);
+        assert.ok(asked.logs.some(line => line.includes('没想完的问题：这一轮放了她自己后来想的')));
+        assert.ok(asked.logs.every(line => !line.includes('先做我自己')), '日志不含内容');
+        const unrelated = await run({}, 10002, '今天食堂有糖醋排骨');
+        assert.doesNotMatch(unrelated.prompts[0]!, /你自己后来想过的/);
+        const off = await run({ openQuestions: false }, 10002, '你想成为自己想成为的样子，还是我喜欢的样子？');
+        assert.doesNotMatch(off.prompts[0]!, /先做我自己/);
+        const mate = await run({}, 10001, '你想成为自己想成为的样子，还是我喜欢的样子？');
+        assert.doesNotMatch(mate.prompts[0]!, /先做我自己/, '同学档不放');
+        const crisis = await run({}, 10002, '我不想活了，你想成为自己想成为的样子，还是我喜欢的样子？');
+        assert.doesNotMatch(crisis.prompts[0]!, /先做我自己/, '危机回合不放');
+    });
+
     test('话说到一半就停了（ADR 0141）：最后一条只剩一句转折的态度，带说明重写一次；重写还是这样就并回前一条；说话的毛病不查（speechCheck: false）时不管；危机回合不管', async () => {
         const run = async (speechCheck: boolean, said: string, rewrite: string, count = 2) => {
             const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const, knowsBot: true }], speechCheck });

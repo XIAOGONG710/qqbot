@@ -13,6 +13,8 @@ import { togetherNow } from '../language/together.ts';
 import { STICKER_ONLY_SHARE, stickerShelf } from '../social/stickers.ts';
 import { MEET_MINUTES, promiseKeeper } from '../life/promises.ts';
 import { writeJsonAtomic } from '../memory/json-file.ts';
+import { ponderIfDue, thoughtsReader } from '../life/open-questions.ts';
+import { substituteMacros } from '../st/macros.ts';
 import { ChatHistory, type StoredMessage } from '../memory/history.ts';
 import type { FactRecord } from '../language/fact-check.ts';
 import { chatCompletion, forExtraction } from '../language/llm.ts';
@@ -450,6 +452,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.watched?.length ? { watched: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); } } : {}),
         ...(scenario.memes?.length ? { memes: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); } } : {}),
         ...(scenario.herNo ? { herNo: true } : {}),
+        // 她没想完的问题（ADR 0207）：想出来的在数据目录的 open-questions.json，每次现取
+        ...(scenario.openQuestions && scenario.tier === 'boyfriend' ? { openQuestions: thoughtsReader(dataDir) } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),
         ...(scenario.everydayLife ? { everydayLife: true } : {}),
         ...(scenario.shapeShares ? { shapeShares: scenario.shapeShares } : {}),
@@ -835,6 +839,24 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 await diaries?.catchUp(new Date(clock.now()));
                 responder.catchUp();
                 await runTimers(clock.now() + AUTO_TIMER_MS);
+            } else if ('ponder' in step) {
+                // 她夜里把没想完的问题想一遍（ADR 0207）：和线上一样用 deliberateModel（模拟里有 --deliberate 就用它）；时间不在 22 点到凌晨 3 点、开关没开、没有可想的，都只记一行
+                await settle();
+                if (!scenario.openQuestions || scenario.tier !== 'boyfriend') {
+                    log('没想完的问题：场景没开 openQuestions，略过');
+                } else {
+                    const result = await ponderIfDue({
+                        dataDir,
+                        now: clock.now,
+                        generate: messages => (options.generate ? options.generate(messages, log) : chatCompletion({ ...(options.deliberateLlm ?? options.llm), temperature: 0.9 }, messages, { log })),
+                        history: () => history.load(contact.qq),
+                        persona: () => substituteMacros(options.card.character.description, { user: names.user, char: names.char }).slice(0, 700),
+                        names,
+                        others: () => others.map(other => other.name),
+                        log,
+                    });
+                    log(result.ran ? `没想完的问题：这一步想了一次${result.error ? `，没想成（${result.error}）` : `（${result.applied?.lines.join('；') || '什么也没想出来'}）`}` : '没想完的问题：这一步没有要想的（时间不对 / 没有答不上来的问题）');
+                }
             } else if ('hindsight' in step) {
                 hindsightDown = step.hindsight === 'down';
                 log(hindsightDown ? 'Hindsight 停了' : 'Hindsight 恢复');

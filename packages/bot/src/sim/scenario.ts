@@ -194,7 +194,9 @@ export type Step =
     /** Hindsight 不可用 / 恢复（T20）：不可用时每个请求都报错 */
     | { hindsight: 'down' | 'up' }
     /** bot 重启（ADR 0039）：聊天记录、记忆、世界、答应的事、日记、回复器、主动消息都丢掉，照 app.ts 启动时从数据目录重新读起 */
-    | { restart: true };
+    | { restart: true }
+    /** 她夜里把没想完的问题想一遍（ADR 0207）：要场景开着 openQuestions，虚拟时间在 22 点到凌晨 3 点之间；想出来的在数据目录的 open-questions.json（模拟用的，不是她真的私人空间） */
+    | { ponder: true };
 
 export interface Scenario {
     name: string;
@@ -250,6 +252,8 @@ export interface Scenario {
     herFeelings: boolean;
     /** 默认 false：会拒绝（ADR 0103，配置 herNo）；只对男朋友档有效 */
     herNo: boolean;
+    /** 默认 false：她没想完的问题（ADR 0207，配置 openQuestions）；只对男朋友档有效。要配 { "ponder": true } 步骤让她夜里想一遍（先 advance 到 22 点以后） */
+    openQuestions: boolean;
     /** 默认 false：回复延迟的长尾（ADR 0105，配置 lagTail） */
     lagTail: boolean;
     /** 默认 false：她每天碰到的小事 + 小测（ADR 0106，配置 everydayLife） */
@@ -461,6 +465,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         innerLife: s.innerLife === true,
         herFeelings: s.herFeelings === true,
         herNo: s.herNo === true,
+        openQuestions: s.openQuestions === true,
         lagTail: s.lagTail === true,
         everydayLife: s.everydayLife === true,
         pursuits: s.pursuits === true,
@@ -544,7 +549,7 @@ function parseHistory(value: unknown, where: string, start: number, fail: (messa
     });
 }
 
-const STEP_KINDS = ['case', 'say', 'life', 'action', 'advance', 'video', 'wait', 'memory', 'refresh', 'check', 'forget', 'hindsight', 'restart'] as const;
+const STEP_KINDS = ['case', 'say', 'life', 'action', 'advance', 'video', 'wait', 'memory', 'refresh', 'check', 'forget', 'hindsight', 'restart', 'ponder'] as const;
 
 function checkStep(step: unknown, where: string): void {
     const fail = (message: string): never => { throw new Error(`${where}：${message}`); };
@@ -607,6 +612,7 @@ function checkStep(step: unknown, where: string): void {
     if ('forget' in s && s.forget !== 'chat') fail('forget 只能是 "chat"');
     if ('hindsight' in s && s.hindsight !== 'down' && s.hindsight !== 'up') fail('hindsight 只能是 "down" 或 "up"');
     if ('restart' in s && s.restart !== true) fail('restart 只能是 true');
+    if ('ponder' in s && s.ponder !== true) fail('ponder 只能是 true');
 }
 
 function isSayItem(item: unknown): boolean {

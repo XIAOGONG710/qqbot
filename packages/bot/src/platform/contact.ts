@@ -72,6 +72,7 @@ import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
 import { insightsLine, type Insight } from '.././life/diary-insights.ts';
 import { takesLine, type Take } from '.././life/reading-takes.ts';
+import { thoughtsLine, type Thought } from '.././life/open-questions.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
 import { describeCloseness } from '.././language/relationship.ts';
 import { describeTogether, togetherNow } from '.././language/together.ts';
@@ -235,6 +236,8 @@ export interface ContactPipelineOptions {
     diaryInsights?: () => readonly Insight[];
     /** 她读完 / 看完之后自己想的（ADR 0204，默认关）：他聊到那本书 / 视频或问“最近看了什么”才放最多两条；她自己的看法，不是设定 */
     readingTakes?: () => readonly Take[];
+    /** 她没想完的问题想出来的（ADR 0207，默认关）：他再问到同一件事才放最多两条；是她自己后来想的，提示词不说该不该用、该选哪边 */
+    openQuestions?: () => readonly Thought[];
     /** 梗百科词库（2026-10-29）：他这句里提到一个词，只读地查一眼，不写进她自己的梗库 */
     memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
     /** 她自己最近过的日子（2026-10-30 她说「没有自己的下文」）：从她写的日记里摘一两句，用不用她定 */
@@ -776,6 +779,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const takesNow = options.readingTakes && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
                 ? takesLine(options.readingTakes(), chat.findLast(message => message.role === 'user')?.content) : undefined;
             if (takesNow) log('读完看完的想法：这一轮放了她自己想的（日志不记内容）');
+            // 她没想完的问题想出来的（ADR 0207）：他再问到同一件事才放；放的轮次同自我认识
+            const thoughtsNow = options.openQuestions && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
+                ? thoughtsLine(options.openQuestions(), chat.findLast(message => message.role === 'user')?.content) : undefined;
+            if (thoughtsNow) log('没想完的问题：这一轮放了她自己后来想的（日志不记内容）');
             // 梗百科词库（2026-10-29）：她自己的库太小；他提到的词只要词库里有，就把「怎么用/出处/标签」给她。
             // 让路条件和热梗一样；已经在 memeNow 里的不重复给。
             const dictNow = options.memeDict && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance
@@ -1026,6 +1033,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(speechNoteNow ? [speechNoteNow] : []),
                         ...(insightNow ? [insightNow] : []),
                         ...(takesNow ? [takesNow] : []),
+                        ...(thoughtsNow ? [thoughtsNow] : []),
                         ...(watchedNow ? [watchedNow] : []),
                         ...continuityLines,
                         ...(interruptLine ? [interruptLine] : []),
