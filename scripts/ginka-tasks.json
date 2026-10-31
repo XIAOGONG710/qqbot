@@ -1,28 +1,19 @@
 [
   {
-    "name": "exemplars-风格提炼",
-    "files": ["runtime/bot-shadow/exemplars/corpus.jsonl"],
-    "chunk": 5000,
-    "system": "你是中文对话风格分析者。只描述看得见的语言事实，不评价、不说教。",
-    "prompt": "下面是一批真实的中文私聊问答（她回他）。请提炼：1) 她说话的句式特征（长度、断句、常用词、表情用法）；2) 这几种回法里哪几类最像真人、哪几类像客服/AI；3) 给 3 条能直接写进提示词的改进建议。要具体到例子，不要空话。用中文，分点，不要超过 600 字。"
-  },
-  {
-    "name": "她的回复-问题诊断",
-    "files": ["runtime/bot-shadow/chats/2260168937.jsonl"],
-    "chunk": 8000,
-    "system": "你是对话数据分析师。只根据文本说话。",
-    "prompt": "下面是一段真实的聊天记录（JSON 行，一行一条，role=user 是他、assistant 是她）。请找出：1) 她哪些回复明显接不上他的话（指代错、答非所问、只接最后半句）；2) 哪些回复太长/太完整、像作文；3) 哪些地方她该追问却没问、或该不问却一直问。每条给一个例子（引原文片段），最后给 3 条最值得优先改的。用中文，不超过 700 字。"
-  },
-  {
     "name": "代码审阅-reply",
-    "files": ["packages/bot/src/language/reply.ts", "packages/bot/src/language/exit-check.ts"],
+    "files": [
+      "packages/bot/src/language/reply.ts",
+      "packages/bot/src/language/exit-check.ts"
+    ],
     "chunk": 6000,
     "system": "你是严谨的 TypeScript 审阅者。只报真实风险，不列风格偏好。",
     "prompt": "审查这段代码：1) 有没有逻辑错误或边界情况没处理；2) 有没有可以删掉/合并的复杂度；3) 有没有性能或内存上的坑。每条给出具体行号或函数名，不要泛泛而谈。不超过 500 字。"
   },
   {
     "name": "研究笔记-可执行项",
-    "files": ["exchange/research"],
+    "files": [
+      "exchange/research"
+    ],
     "chunk": 7000,
     "system": "你是把研究变成工程任务的编辑。",
     "prompt": "读这段材料，提炼出「明天就能动手做」的具体改进项：每项写清 做什么、改哪个模块、怎么验证、预计多久。最多 8 项，按性价比排序。不超过 600 字。"

@@ -14,6 +14,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { readdirSync, statSync } from 'node:fs';
+import { privateReason } from './ginka-guard.mjs';
 
 /** 清单里给目录时，展开成目录里的文本文件（一层，按名字排序） */
 function expand(path) {
@@ -108,6 +109,9 @@ for (const task of tasks) {
         continue;
     }
     for (const file of files.flatMap(expand)) {
+        // 第三方网关不该看到聊天记录 / 私人文件（2026-10-31 用户：「不想让他们读」）：拒绝，不是跳过——要让人看得见
+        const refused = privateReason(file);
+        if (refused) { console.error(`拒绝（${refused}，不给第三方看）：${file}`); continue; }
         if (!existsSync(file)) { console.error(`跳过（没这个文件）：${file}`); continue; }
         const parts = chunks(readFileSync(file, 'utf8'), task.chunk ?? 5000);
         parts.forEach((part, index) => {

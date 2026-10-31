@@ -5,8 +5,9 @@
 //
 //   node scripts/ginka-worker.mjs --rebuild     # 扫一遍仓库补活（源码审阅、ADR 摘要、语料分析…）
 //   node scripts/ginka-worker.mjs               # 常驻：一直干到队列空，然后等窗口
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, appendFileSync, unlinkSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { privateReason, scrubQueue } from './ginka-guard.mjs';
 
 const REPO = join(process.env.USERPROFILE ?? '', 'Desktop', 'qqbot-dsh-control');
 const SECRET = join(REPO, 'runtime', 'bot-shadow', 'secrets', 'ginka.json');
@@ -61,7 +62,6 @@ const PRESETS = [
     { name: '性能与 IO', system: '你是性能审阅者。', prompt: '这份代码有没有每轮重复读文件、大数组遍历、同步 IO 阻塞、没必要的网络请求？每条给函数名和后果。不超过 250 字。' },
 ];
 const ADR_PROMPT = '把这份 ADR 压成三行：① 它决定了什么 ② 为什么 ③ 现在还有效吗（有没有被后来的改动推翻）。不超过 200 字。';
-const CORPUS_PROMPT = '这段是她的真实语料或聊天记录。只找「不像真人」的具体表现（太长、像作文、客服腔、空附和），引原文 + 一句话怎么改。不超过 250 字。';
 
 function walk(dir, filter, out = []) {
     if (!existsSync(dir)) return out;
@@ -107,14 +107,12 @@ function rebuild() {
         if (body.length < 400) continue;
         add('ADR 摘要', '你是技术文档编辑。', ADR_PROMPT, file, 1, 1, body.slice(0, 9000));
     }
-    for (const file of [join(REPO, 'runtime', 'bot-shadow', 'exemplars', 'corpus.jsonl'), join(REPO, 'runtime', 'bot-shadow', 'chats', '2260168937.jsonl')]) {
-        if (!existsSync(file)) continue;
-        const parts = chunks(readFileSync(file, 'utf8'), 12000);
-        parts.forEach((body, index) => add('语料诊断', '你是中文对话风格分析者。', CORPUS_PROMPT, file, index + 1, parts.length, body));
-    }
-    void saveQueue({ at: new Date().toISOString(), round: nextRound, tasks });
+    // 语料诊断（读 exemplars 语料和他们的聊天记录）已取消：2026-10-31 用户「不想让他们读」——第三方网关不该看到聊天记录。
+    // 补活只剩 packages 下的源码和 docs/adr 里的文档；再兜一道：来源是私人的一律丢掉。
+    const clean = tasks.filter(task => !privateReason(task.id.split('|')[1] ?? ''));
+    void saveQueue({ at: new Date().toISOString(), round: nextRound, tasks: clean });
     round = nextRound;
-    say(`补活：${tasks.length} 段（本轮角度：${preset.name}；ADR 摘要 / 语料诊断随附）`);
+    say(`补活：${clean.length} 段（本轮角度：${preset.name}；ADR 摘要随附；不含聊天记录 / 语料）`);
     return nextRound;
 }
 
@@ -146,8 +144,35 @@ async function ask(task) {
 }
 
 const state = { done: 0, failed: 0 };
+/**
+ * 以前排进队列的聊天记录 / 语料任务：队列是落盘的 JSON，聊天原文就嵌在任务的 prompt 里——每次开工前先清掉，不给第三方发
+ * （2026-10-31 用户：「不想让他们读」）。
+ */
+async function loadCleanQueue() {
+    const { queue, removed } = scrubQueue(loadQueue());
+    if (removed) {
+        say(`清掉 ${removed} 段私人来源（聊天记录 / 语料）的排队任务，不发给第三方`);
+        await saveQueue(queue);
+    }
+    return queue;
+}
+
+/** --purge-private：删掉以前跑出来的、读过聊天记录 / 语料的结果文件（本机上的分析，里面引了聊天原文）。要人明说才删 */
+function purgeOutputs() {
+    const dirs = [OUT, join(REPO, 'runtime', 'ginka-batch')];
+    let removed = 0;
+    for (const dir of dirs) {
+        if (!existsSync(dir)) continue;
+        for (const name of readdirSync(dir)) {
+            if (!/语料诊断|聊天-|她的回复-|exemplars-/.test(name)) continue;
+            try { unlinkSync(join(dir, name)); removed++; } catch { /* 删不掉就留着，下次再说 */ }
+        }
+    }
+    say(`--purge-private：删了 ${removed} 个读过聊天记录 / 语料的结果文件`);
+}
+
 async function runOnce() {
-    const queue = loadQueue();
+    const queue = await loadCleanQueue();
     if (!queue?.tasks) return 0;
     const pending = queue.tasks.filter(task => task.status === 'pending');
     if (!pending.length) return 0;
@@ -179,6 +204,7 @@ async function runOnce() {
     return pending.length;
 }
 
+if (process.argv.includes('--purge-private')) purgeOutputs();
 if (process.argv.includes('--rebuild') || !existsSync(QUEUE)) rebuild();
 
 say(`工人上线：模型 ${MODEL}，并发 ${CONCURRENCY}，队列 ${loadQueue()?.tasks.length ?? 0} 段`);
