@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { appendDream, dreamAppraisals, dreamNoteLine, dreamPrompt, hasDream, inSleepHours, lastNightDream, readDreams } from '../src/life/dreams.ts';
+import { appendDream, dreamAppraisals, dreamNoteLine, dreamPrompt, hasDream, inSleepHours, lastNightDream, onlyFragment, readDreams } from '../src/life/dreams.ts';
 
 const dir = () => mkdtempSync(join(tmpdir(), 'qqbot-dream-'));
 const dream = (at: number, date = '2026-10-31') => ({ date, dream: '梦见他在收拾行李，我站在门口没说话。', feel: { kind: 'worry' as const, strength: 1 as const, why: '梦见他要走' }, at });
@@ -45,4 +45,16 @@ test('做梦的提示词：允许荒诞和吵架，不要解析', () => {
     assert.ok(p.system.includes('允许荒诞'));
     assert.ok(p.system.includes('不要写'));
     assert.ok(p.user.includes('上早八'));
+});
+
+// 优化（10-31）：真人会连着梦到同一件事，也常常只记得一个画面
+test('前几天梦到的会带进提示；只剩下一个画面时按日期定', () => {
+    const p = dreamPrompt({ events: [], feelings: [], journal: '', name: '林梦瑶', previous: ['梦见他在收拾行李'] });
+    assert.ok(p.user.includes('梦见他在收拾行李'));
+    assert.equal(onlyFragment('2026-10-31'), onlyFragment('2026-10-31'), '同一天算出来一样');
+    const seen = new Set(['2026-10-31', '2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04'].map(d => onlyFragment(d)));
+    assert.equal(seen.size, 2, '有记得清的也有只剩画面的');
+    const line = dreamNoteLine({ date: '2026-10-31', dream: '梦见你走了。后面很乱。', feel: { kind: 'worry', strength: 2 }, at: Date.now(), fragment: true })!;
+    assert.ok(line.includes('记不清了'));
+    assert.ok(!line.includes('后面很乱'), '只说记得的那一段');
 });

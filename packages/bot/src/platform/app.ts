@@ -115,7 +115,7 @@ import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { selfThread, selfThreadLine } from '.././language/self-thread.ts';
 import { announceFallback, announcePrompt, awayNow, shouldAnnounce } from '.././life/leave-note.ts';
 import { auditShell, guardCommand, runShell, shellNoteLine, takeShellCommands } from './shell-tool.ts';
-import { appendDream, dreamAppraisals, dreamNoteLine, dreamPrompt, hasDream, inSleepHours, lastNightDream } from '.././life/dreams.ts';
+import { appendDream, dreamAppraisals, dreamNoteLine, dreamPrompt, hasDream, inSleepHours, lastNightDream, onlyFragment, recentDreams } from '.././life/dreams.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
 import { loadExemplars } from '.././language/exemplars.ts';
 import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
@@ -1327,7 +1327,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             let journal = '';
             try { journal = readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8').slice(-400); } catch { /* 没日记就算了 */ }
             const fell = lastFeelings ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => `${item.cause}（${item.kind}）`) : [];
-            const prompt = dreamPrompt({ events: [...own, ...events], feelings: fell, journal, name: cardFor(deviceOwner.tier).character.name });
+            const previous = recentDreams(config.dataDir, 3).map(item => item.dream);
+            const prompt = dreamPrompt({ events: [...own, ...events], feelings: fell, journal, name: cardFor(deviceOwner.tier).character.name, previous });
             const raw = pipeline?.generate
                 ? await pipeline.generate([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], log)
                 : await chatCompletion({ ...forExtraction(config.llm), temperature: 0.95 }, [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], { log, purpose: 'background' });
@@ -1338,6 +1339,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             if (!dream) { log('做梦：没写出来，明晚再说'); return; }
             appendDream(config.dataDir, {
                 date, dream: dream.slice(0, 600), at: at.getTime(),
+                fragment: onlyFragment(date),
                 ...(parsed.feel?.kind ? { feel: { kind: parsed.feel.kind as never, strength: (parsed.feel.strength === 2 || parsed.feel.strength === 3 ? parsed.feel.strength : 1) as never, ...(parsed.feel.why ? { why: String(parsed.feel.why).slice(0, 80) } : {}) } } : {}),
             });
             log(`做梦：1 条（${[...dream].length} 字）`);

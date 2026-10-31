@@ -19,6 +19,8 @@ export interface Dream {
     feel?: { kind: FeelingKind; strength: Strength; why?: string };
     /** 写下来的时刻（毫秒） */
     at: number;
+    /** 醒来只记得一个画面（真人常这样）：早上那句只说这一小段，后面「记不清了」 */
+    fragment?: boolean;
 }
 
 export const DREAMS_DIR = 'dreams';
@@ -88,11 +90,28 @@ export function dreamAppraisals(dataDir: string, now: number): Appraisal[] {
 export function dreamNoteLine(dream: Dream | undefined): string | undefined {
     if (!dream) return undefined;
     const feel = dream.feel ? `（醒来心里${dream.feel.kind === 'joy' ? '挺松的' : dream.feel.kind === 'relief' ? '松了口' : dream.feel.kind === 'sad' ? '有点闷' : dream.feel.kind === 'annoyed' ? '有点烦' : dream.feel.kind === 'tired' ? '很累' : '有点慌'}）` : '';
-    return `[你昨晚做了个梦：${dream.dream.slice(0, 200)}${feel}。那是梦，不是真的事；想跟他说就提一句，不想说就搁着]`;
+    const body = dream.fragment ? `${dream.dream.split(/(?<=[。！？])/)[0] ?? dream.dream}（后面记不清了，只留着这一个画面）` : dream.dream.slice(0, 200);
+    return `[你昨晚做了个梦：${body}${feel}。那是梦，不是真的事；想跟他说就提一句，不想说就搁着]`;
+}
+
+/** 最近几天做过的梦（给「连着梦到同一件事」用） */
+export function recentDreams(dataDir: string, days = 3): Dream[] {
+    const cutoff = Date.now() - days * 86_400_000;
+    return readDreams(dataDir).filter(item => item.at >= cutoff);
+}
+
+/**
+ * 这一段梦会不会只留下一个画面：按日期定（同一天每次算出来一样，不随机漂）。
+ * 真人醒来常常只剩一个镜头，这不是"限制"，是记性。
+ */
+export function onlyFragment(date: string, share = 0.3): boolean {
+    let hash = 0x811c9dc5;
+    for (const char of date) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 0x01000193) >>> 0; }
+    return (hash % 100) < share * 100;
 }
 
 /** 做梦的提示词：素材只取她当天真实有的东西 */
-export function dreamPrompt(materials: { events: readonly string[]; feelings: readonly string[]; journal: string; name: string }): { system: string; user: string } {
+export function dreamPrompt(materials: { events: readonly string[]; feelings: readonly string[]; journal: string; name: string; previous?: readonly string[] }): { system: string; user: string } {
     return {
         system: `你是${materials.name}，刚睡下，正在做梦。用你自己的第一人称写一段梦：3–5 句，短句，有画面，允许荒诞（猫说话、教室变成海、人突然换了脸），但情绪要真——梦里怕的就是真怕的。
 
@@ -103,6 +122,7 @@ export function dreamPrompt(materials: { events: readonly string[]; feelings: re
             `今天发生的（你自己的）：${materials.events.slice(0, 8).join('；') || '（没什么特别的）'}`,
             `今天的心境：${materials.feelings.join('；') || '（平平的）'}`,
             `今天日记里写的：${materials.journal.slice(0, 200) || '（没写）'}`,
+            ...(materials.previous?.length ? [`前几天梦到过的：${materials.previous.map(d => d.slice(0, 60)).join(' / ')}（同一件事可以接着梦，也可以完全不相干）`] : []),
             '写这个梦。',
         ].join('\n'),
     };
