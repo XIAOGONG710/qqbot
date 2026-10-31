@@ -27,3 +27,10 @@ SillyTavern 只用来编写、试聊角色并定义数据格式（角色卡 / �
   安装前核对过：zip 的 SHA-256 与 GitHub Release 资产摘要、官方 `checksums.txt` 三者一致；`gh.exe` 的 Authenticode 签名有效（GitHub, Inc.）。
   登录账号须是 XIAOGONG710。
 - 长期记忆服务 Hindsight 装在 `runtime/hindsight/`（Python 3.12 由 uv 安装），来源核对、VC++ 运行库的处理和启动方法见 `docs/hindsight.md`。
+
+## 算力优先级（用户 2026-10-31：记得先用免费的就行）
+
+- **能用免费线路就先走免费线路**（ginka 网关：`https://api.ginka.cloud`，免费组 **10:00–12:00、14:00–23:30** 北京时间；密钥在 DSH 那台的 `runtime/bot-shadow/secrets/ginka.json`，不入库）。
+- 批量活（语料分析、资料摘要、代码审阅、批量生成）一律先丢给它：`node scripts/ginka-batch.mjs --manifest scripts/ginka-tasks.json`，或单条 `node scripts/ginka.mjs --prompt …`。
+- 主线（DeepSeek 官方，就是 DSH 自己）只留给：判断、写代码、和她有关的决策、以及免费组关着的两个小时。
+- 注意：**子代理不继承这条线路**（它们跑主线），免费算力来自它们的 shell 调脚本。
