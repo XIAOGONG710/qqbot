@@ -245,6 +245,8 @@ export interface ContactPipelineOptions {
     selfThread?: () => string | undefined;
     /** 她上一轮在这台电脑上跑的命令和结果（2026-10-30 用户：把最高权限给她） */
     shellNote?: () => string | undefined;
+    /** 她学说话/翻日记时没想通的问题（2026-10-31）：递给她，让他来答 */
+    learningQuestion?: () => string | undefined;
     /** 昨晚做的梦（2026-10-31）：一条心境事实 + 早上递给她的一句话 */
     dreams?: () => { appraisals: Appraisal[]; line?: string };
     /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
@@ -758,6 +760,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (askNow) log(`问一句：他这句${askNow.why}，给她一个问的方向`);
             const sceneNow = contact.tier === 'boyfriend' && !crisisNow ? readScene(hisLast)?.line : undefined;
             if (sceneNow) log('场景：他这句要特殊接（哄睡 / 报错 / 自我怀疑 / 暗号）');
+            const questionNow = contact.tier === 'boyfriend' && !crisisNow && !thinking ? options.learningQuestion?.() : undefined;
             const shellNow = contact.tier === 'boyfriend' && !crisisNow ? options.shellNote?.() : undefined;
             const dreamsNow = contact.tier === 'boyfriend' && !crisisNow && options.herFeelings ? options.dreams?.() : undefined;
             const selfThreadNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? options.selfThread?.() : undefined;
@@ -1032,6 +1035,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(shellNow ? [shellNow] : []),
                         ...(sceneNow ? [sceneNow] : []),
                         ...(askNow ? [askNow.line] : []),
+                        ...(questionNow ? [questionNow] : []),
                         ...(contact.tier === 'boyfriend' && !crisisNow ? [UNSURE_LINE] : []),
                         ...(dreamsNow?.line ? [dreamsNow.line] : []),
                         ...(contact.tier === 'boyfriend' && !crisisNow && !grievanceActive ? [SHELL_INTENT] : []),
