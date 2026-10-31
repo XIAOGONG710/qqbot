@@ -1236,9 +1236,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             // 她自己决定今天想做什么（ADR 0182）：和「在读的书」一起当额外的空闲活动，每次现取
             ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
             // 她理解人的话（10-30）：他这句话和以前被纠正过的事撞上时提醒她
-            ...(config.selfDirectedMemory ? { understanding: (hisWords: string) => understandingLine(config.dataDir, hisWords) } : {}),
+            ...(config.selfDirectedMemory && contact.tier === 'boyfriend' ? { understanding: (hisWords: string) => understandingLine(config.dataDir, hisWords) } : {}),
             // 他说过、做过、答应过的事（10-31 留痕）：最近的几条递给她
-            ...(config.selfDirectedMemory ? { traces: () => tracesLine(config.dataDir) } : {}),
+            ...(config.selfDirectedMemory && contact.tier === 'boyfriend' ? { traces: () => tracesLine(config.dataDir) } : {}),
             // 他刚发过「/亲热」（ADR 0170）：接下来十条回复黏一点，每生成一条减一
             ...(contact.tier === 'boyfriend' ? { intimacyLine: () => takeIntimateLine(config.dataDir, contact.qq) } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取
@@ -2283,7 +2283,8 @@ ${body}
         }
         responder.receive(text, event.message_id, new Date(event.time * 1000));
         // 他这句在纠正她上一轮的接法（10-30 用户：让她自己学习去理解人说的话）：记下他说的、她接的、他纠正的
-        if (config.selfDirectedMemory && isCorrection(text)) {
+        // 只记男朋友档那位的（同学档说的不是“他”；记在同一个文件里会串到别人的对话里）
+        if (config.selfDirectedMemory && deviceOwner && event.user_id === deviceOwner.qq && isCorrection(text)) {
             const chat = chatHistory.load(event.user_id);
             const lastHer = [...chat].reverse().find(m => m.role === 'assistant');
             const prevHis = [...chat].reverse().filter(m => m.role === 'user')[1];
@@ -2294,7 +2295,8 @@ ${body}
         }
         exportNow();
         // 他说过的话、做过的事留痕（10-31 用户）：亲密话 / 承诺 / 他自己的事，提炼成一句她记得的事
-        if (config.selfDirectedMemory) {
+        // 只记男朋友档那位的：traces.json 不分人，同学档说的「我喜欢你」会变成“他说喜欢我”，还会出现在别人的对话里
+        if (config.selfDirectedMemory && deviceOwner && event.user_id === deviceOwner.qq) {
             const trace = traceOf(text);
             if (trace && recordTrace(config.dataDir, trace)) log(`[${event.user_id}] 痕迹：记下${trace.kind === 'affection' ? '他说的话' : trace.kind === 'promise' ? '他答应的事' : '他做过的事'}（日志不记内容）`);
         }

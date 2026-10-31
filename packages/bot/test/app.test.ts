@@ -352,6 +352,25 @@ describe('编排（app.ts）', () => {
         assert.doesNotMatch(crisis.prompts[0]!, /先做我自己/, '危机回合不放');
     });
 
+    test('留痕和被纠正过的事（10-30/31，selfDirectedMemory）：只记男朋友档那位说的，也只放进他的对话——同学档说的不记、同学档的提示词里也没有他的', async () => {
+        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }], selfDirectedMemory: true });
+        const prompts: string[] = [];
+        const { app, sent } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '嗯'; } });
+        const say = async (qq: number, id: number, text: string) => { const before = sent.length; app.receive(event(qq, id, text)); await until(() => sent.length > before); };
+        await say(10001, 1, '我好喜欢你啊，明天我带你去吃饭');
+        const afterMate = existsSync(join(cfg.dataDir, 'traces.json')) ? readFileSync(join(cfg.dataDir, 'traces.json'), 'utf8') : '';
+        assert.ok(!afterMate.includes('喜欢'), '同学档说的不记成“他”的痕迹');
+        await say(10002, 2, '我想你了');
+        assert.match(readFileSync(join(cfg.dataDir, 'traces.json'), 'utf8'), /他说想我/, '男朋友档那位说的照记');
+        await say(10001, 3, '在干嘛呢今天');
+        assert.doesNotMatch(prompts.at(-1)!, /你记得他最近这些事/, '同学档的提示词里不放他的痕迹');
+        assert.doesNotMatch(prompts.at(-1)!, /他说想我/);
+        await say(10002, 4, '今天累死了');
+        assert.match(prompts.at(-1)!, /你记得他最近这些事/, '他自己的对话里照放');
+        assert.match(prompts.at(-1)!, /他说想我/);
+        assert.ok(!prompts.at(-1)!.includes('喜欢'), '同学档那句「我好喜欢你」没有串进来');
+    });
+
     test('话说到一半就停了（ADR 0141）：最后一条只剩一句转折的态度，带说明重写一次；重写还是这样就并回前一条；说话的毛病不查（speechCheck: false）时不管；危机回合不管', async () => {
         const run = async (speechCheck: boolean, said: string, rewrite: string, count = 2) => {
             const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const, knowsBot: true }], speechCheck });
