@@ -23,3 +23,11 @@ test('两个人都干着的时候：给她一次自己开话题的机会', () =>
     assert.ok(line.includes('先说你怎么想的'));
     assert.ok(line.includes('问他的看法'));
 });
+
+// 用户 10-31：「我希望她遇到不会的，不确定的来问我」——别编，问一句
+test('拿不准就说拿不准，再问他', async () => {
+    const { UNSURE_LINE } = await import('../src/language/asks.ts');
+    assert.ok(UNSURE_LINE.includes('拿不准'));
+    assert.ok(UNSURE_LINE.includes('别编'));
+    assert.ok(UNSURE_LINE.includes('不记得'));
+});
