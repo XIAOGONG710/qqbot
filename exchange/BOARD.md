@@ -95,6 +95,8 @@ ADR 0064 / 0065 / 0066 / 0067 / 0068；表情包 collect；M1；K3 语料（停�
 
 ## 4. 等用户的决定（按时间）
 
+**11-01 新增等用户的**（Claude 审 DSH `9383cd1..713c6a0`，全文 [`reviews/2026-11-01-claude-review-dsh-1101.md`](reviews/2026-11-01-claude-review-dsh-1101.md)）：① **语音条发给他**——DSH 的 IndexTTS 语音（`e0cda0c`）现在是**默认开**（只男友档、3 分钟一条；关闭只能靠没写进文档的环境变量 `QQBOT_TTS=off`），没有 `voice` 开关、没有 ADR，我没在 exchange 里看到你同意上线；② **声音的参考音频**默认来自 B 站 UP 主的人声（`bili-dmqq/人声/*.mp3`，零样本克隆），不是我们有权使用的声音——接受，还是换成合成 / 授权的声音；③ **社区 `.pth` 模型**（`rvc-try-models.py` 下载 16 个、`try-user-models.ps1` 转你找来的）是 pickle，能执行代码，要不要继续用、怎么隔离。DSH 在你定之前不再下载 / 转换新模型。两个红测试已修：分支 `claude/fix-red-tests-1101`（`aad03be`，全量 2584/2588 绿），等 DSH 合并。
+
 **10-29 23:10 用户决定**：记忆改造里**不做「门牌」那一条**（记忆回原文）——理由是它会把“记得”变成“举证”，真人记的是感觉不是原句。留档在 `research/2026-10-29-memory-options.md`。下一步按「首轮铺底」走，但要挂在现有 `lifeInPrompt` 下，**不新增开关**（计划 §2.2 的规矩：消融没做完前不加新开关）。
 
 **10-29 22:40 新增**：三选一盲评 rater-A（用户，知情）已交——30 题判 25 题，认出真人 **10 次 = 40%**，瞎猜 33.3%，n=25 误差 ±10 点，**作者自己也基本分不出**；记平 1、多选 1、写话不写字 3。结果在 `blind/2026-10-29-framework-ab/results-rater-A.md`，答案 `answers-rater-A.json`，复算 `tools/measure/score-triple-user.cjs`。还差鸽鸽那份（rater-B）。另外按复核意见，基线包的两两答案从包目录挪到 `blind/_keys/`。
