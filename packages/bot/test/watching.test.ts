@@ -189,7 +189,11 @@ describe('想事情时多一个题目', () => {
         }
         const seen = Array.from({ length: 12 }, (_, i) => themesFor(i, true)).flat();
         assert.ok(seen.includes(WATCH_THEME));
-        assert.ok(seen.filter(t => t === WATCH_THEME).length >= 4, '不是偶尔才有');
+        // 「不是偶尔才有」不看固定次数（题目池每多一个，12 个念头里的次数就会少一点，原来写死的 ≥4 是按 5 个基础题调的）：
+        // 整整一轮（题目数个念头）里，它和别的每个题目出现得一样多——ADR 0130：新视频靠 forceWatch 专门想一次，之后它只是多一个可选题目
+        const themes = [...THOUGHT_THEMES, WATCH_THEME];
+        const cycle = Array.from({ length: themes.length }, (_, i) => themesFor(i, true)).flat();
+        for (const theme of themes) assert.equal(cycle.filter(t => t === theme).length, 2, `一轮里每个题目都该出现两次：${theme.slice(0, 16)}…`);
     });
 
     test('thinkNote：有看过的就写事实（真的看过、想法自己定、不编）；没有就没有这一段，也不会挑到这个题目', () => {

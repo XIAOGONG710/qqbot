@@ -14,3 +14,22 @@ export const VOICE_HINT = '[想让他“听见”你的时候，可以先说一�
 export function voiceHint(roll: number): string | undefined {
     return roll < VOICE_HINT_RATE ? VOICE_HINT : undefined;
 }
+
+/**
+ * 这一轮的随机数（0–1）：按他最后一条的时间和内容定，同一句每次一样，不用 Math.random。
+ * 提示词要和「重启前后一样、模拟重放一样」（ADR 0039，restart.test.ts）；掷出来的骰子进了提示词，就必须稳定。
+ * 没有他的话就返回 1（不给）。
+ */
+export function voiceRoll(history: readonly { role: string; content: string; time?: string }[]): number {
+    const last = history.findLast(message => message.role === 'user');
+    if (!last) return 1;
+    let hash = 0x811c9dc5;
+    for (const char of `${last.time ?? ''} ${last.content} voice`) {
+        hash ^= char.codePointAt(0)!;
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    hash ^= hash >>> 16;
+    hash = Math.imul(hash, 0x85ebca6b) >>> 0;
+    hash ^= hash >>> 13;
+    return (hash >>> 0) / 0x1_0000_0000;
+}
