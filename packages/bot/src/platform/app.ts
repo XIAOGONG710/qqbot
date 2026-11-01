@@ -30,6 +30,7 @@ import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from '.././memory/backfill.ts';
 import { segmentsToText, type MessageEvent, type PokeEvent, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
 import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
+import { createHearing } from '.././vision/hearing.ts';
 import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
@@ -424,7 +425,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     // 他发来的表情包也读（ADR 0206 readStickers）：只对名单里的人（和看图一样，图会发到看图模型）；读过的缓存在 stickers/read-cache.json
     const readingStickers = Boolean(config.media && config.readStickers && stickerReader);
     const stickerReading = readingStickers ? { stickerVision: stickerReader!, stickerReads: openStickerReads(join(config.dataDir, 'stickers', 'read-cache.json')) } : {};
-    const reading = config.media ? mediaReading({ ...(media ? { reader: media } : {}), ...(vision ? { vision } : {}), ...stickerReading, timeouts: mediaLimits }) : undefined;
+    // 「真正听到声音」的实现接上之后，语音旁边会多一段「[声音：…]」（vision/hearing.ts）
+    const hearing = config.media ? createHearing() : undefined;
+    const reading = config.media ? mediaReading({ ...(media ? { reader: media } : {}), ...(vision ? { vision } : {}), ...(hearing ? { hearing } : {}), ...stickerReading, timeouts: mediaLimits }) : undefined;
     // 看图只给名单里的人（用户 10-10 22:50：开，只对名单里的人）——图会发到看图模型的服务器；名单外的照旧只认图上的字（OCR 在本机）
     const readingUnlisted = config.media && vision ? mediaReading({ ...(media ? { reader: media } : {}), timeouts: mediaLimits }) : reading;
     const readerFor = (qq: number) => (config.contacts.some(c => c.qq === qq) ? reading : readingUnlisted);
@@ -1330,8 +1333,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             log,
             // last-prompt.json 记录的是后处理之后、实际发给模型的消息
             sensitive: sensitive.on,
-            // 2026-10-31 用户要看「最详细的后台」：每轮把真正发给模型的提示词留在本地（runtime 不入库，不进日志）
+            // last-prompt.json 记录的是后处理之后、实际发给模型的消息（要 QQBOT_SENSITIVE_LOGS 开着才写，见 docs）
             onPrompt: prompt => {
+                if (!sensitive.on()) return;
                 writeFileSync(join(config.dataDir, 'last-prompt.json'), JSON.stringify({ qq: contact.qq, ...prompt }, null, 2));
             },
             ...pipeline,

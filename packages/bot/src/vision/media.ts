@@ -9,6 +9,7 @@
 // - 回复节奏：听完才回（reply-timing.ts 按 listenMs 把听的时间加在看到之后）。
 
 import { readFile } from 'node:fs/promises';
+import type { AudioHearing } from './hearing.ts';
 import { AsyncGate } from '../social/async-gate.ts';
 import type { Segment } from '../platform/onebot.ts';
 import { STICKER_MAX_PER_MESSAGE, stickerIsNameless, stickerLine, type StickerReads } from './sticker-reads.ts';
@@ -31,6 +32,8 @@ export interface ImageDescriber {
 
 export interface MediaSources {
     reader?: MediaReader;
+    /** 「真正听到声音」（2026-11-01 留的接口，hearing.ts；现在没有实现） */
+    hearing?: AudioHearing;
     vision?: ImageDescriber;
     /** 读他发来的表情包（ADR 0206，readStickers）：表情包专用的看图要求；不给就照旧「[动画表情]」 */
     stickerVision?: ImageDescriber;
@@ -173,7 +176,21 @@ async function hear(data: Record<string, unknown>, messageId: number, sources: M
             : Promise.resolve(undefined),
     ]);
     if (text) log(`听语音：转出 ${[...text].length} 个字${length ? `，${length} 秒` : ''}（${seconds(started)}）`);
-    return voiceLine({ ...(length ? { seconds: length } : {}), ...(text ? { text } : {}) });
+    const line = voiceLine({ ...(length ? { seconds: length } : {}), ...(text ? { text } : {}) });
+    // 声音本身（语气/背景音/音乐）：接口先留着，实现接上之后这一段才会出现
+    if (sources.hearing) {
+        const heard = await within(inner => sources.hearing!.listen({
+            ...(path ? { path } : {}), ...(length ? { seconds: length } : {}), ...(text ? { text } : {}), messageId, signal: inner,
+        }), limits.voice, signal).then(described => inline(String(described ?? ''), VOICE_MAX_CHARS) || undefined, error => {
+            log(`听声音：没听出来（${reason(error)}）`);
+            return undefined;
+        });
+        if (heard) {
+            log(`听声音：听出来一段描述（${[...heard].length} 字）`);
+            return `${line}[声音：${heard}]`;
+        }
+    }
+    return line;
 }
 
 async function look(data: Record<string, unknown>, sources: MediaSources, log: (message: string) => void, signal?: AbortSignal): Promise<string> {
@@ -273,7 +290,7 @@ export interface MediaReading {
 export function mediaReading(sources: MediaSources): MediaReading {
     const reading = new Map<number, Promise<Segment[] | string>>();
     const stopped = new AbortController();
-    const enabled = Boolean(sources.reader?.voiceToText || sources.reader?.ocr || sources.vision || sources.stickerVision);
+    const enabled = Boolean(sources.reader?.voiceToText || sources.reader?.ocr || sources.vision || sources.stickerVision || sources.hearing);
     const stickers = Boolean(sources.stickerVision);
     return {
         needs: message => enabled && needsReading(message, stickers),

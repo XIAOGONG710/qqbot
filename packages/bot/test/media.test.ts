@@ -243,3 +243,35 @@ describe('听语音、看图（ADR 0052）：读消息（假 NapCat）', () => {
         assert.equal(aborted, true);
     });
 });
+
+// 2026-11-01 用户：「我想让她真正听到声音」→「留好接口，之后再做」
+// 这里只验接口：接上 hearing 之后，语音那一行后面会多一段「[声音：…]」；没接就还是原样。
+describe('听声音（留的接口）', () => {
+    test('接上 hearing：转出来的字后面跟一段声音描述', async () => {
+        const path = join(dir, 'hear.silk');
+        writeFileSync(path, silk(400));
+        const { reader } = napcat({ 7: '今天好累' });
+        const heard: (string | undefined)[] = [];
+        const { text, logs } = await read(voice(path), reader, {
+            hearing: {
+                listen: async (input) => {
+                    heard.push(input.path, input.text);
+                    return '语速偏慢，声音低，背景像在下雨';
+                },
+            },
+        });
+        assert.equal(text, '[语音 8秒：今天好累][声音：语速偏慢，声音低，背景像在下雨]');
+        assert.equal(heard[0], path);
+        assert.equal(heard[1], '今天好累');
+        assert.ok(logs.some(line => line.startsWith('听声音：听出来一段描述')));
+    });
+
+    test('没接 hearing 就没有那一段；听不出来也不编', async () => {
+        const path = join(dir, 'hear2.silk');
+        writeFileSync(path, silk(400));
+        const plain = await read(voice(path), napcat({ 7: '在吗' }).reader);
+        assert.equal(plain.text, '[语音 8秒：在吗]');
+        const silent = await read(voice(path), napcat({ 7: '在吗' }).reader, { hearing: { listen: async () => undefined } });
+        assert.equal(silent.text, '[语音 8秒：在吗]');
+    });
+});
