@@ -31,6 +31,7 @@ import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toS
 import { segmentsToText, type MessageEvent, type PokeEvent, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
 import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
 import { createHearing } from '.././vision/hearing.ts';
+import { speakViaWorker, startVoiceWorker, takeVoiceLines } from '.././vision/voice-out.ts';
 import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
@@ -153,6 +154,8 @@ export interface Transport extends PresenceTransport {
     pokeFriend?(userId: number): Promise<void>;
     /** 发本地图片表情；配置 stickers 开时两个入口都提供。 */
     sendPrivateImage?(userId: number, file: string, summary: string): Promise<number>;
+    /** 发一条语音（本机 wav，NapCat 转语音条）；没有就不发语音（2026-11-01） */
+    sendPrivateVoice?(userId: number, file: string): Promise<number>;
     /** NapCat 的 get_friend_msg_history：某人最近 count 条私聊（含小号自己发的），从旧到新。没有任何记录时 NapCat 也报错 */
     friendHistory(userId: number, count: number): Promise<HistoryMessage[]>;
     /** 通用 OneBot 调用（账号控制面用，ADR 0142）：传什么动作就发什么，闸由 account.ts 管；没有就不开控制面 */
@@ -1022,6 +1025,28 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     function createContactResponder(contact: Contact): Responder {
         // 回复里的内部标记（<<记住>> / <<日记>> / <<私密>> / <<同意工作>> / <<拒绝工作>> / <<用电脑>> / <<同意>> / <<拒绝>>）：从文字里剥掉、该办的事办了，返回剩下的文字。
         // 发出去的气泡走 send 时先过这里；整条只有标记的气泡不发，也要过这里（responder 的 absorb），不然写在单独一行的标记就丢了。
+        // 她的声音（2026-11-01）：她写 `<<语音：…>>` 就念出来、发语音条。worker 常驻，一句话 10–15 秒
+        const voiceDir = process.env.QQBOT_TTS_DIR ?? join(process.cwd(), 'runtime', 'indextts');
+        const voiceOn = contact.tier === 'boyfriend' && Boolean(transport.sendPrivateVoice) && process.env.QQBOT_TTS !== 'off';
+        const lastVoiceAt = new Map<number, number>();
+        const speakVoice = (userId: number, line: string): void => {
+            if (!voiceOn) return;
+            const last = lastVoiceAt.get(userId) ?? 0;
+            if (Date.now() - last < 3 * 60_000) {
+                log(`[${userId}] 语音跳过了：三分钟内已经发过`);
+                return;
+            }
+            lastVoiceAt.set(userId, Date.now());
+            void speakViaWorker(line, { dir: voiceDir })
+                .then(async wav => {
+                    if (!wav) { log(`[${userId}] 语音没生成出来`); return; }
+                    const id = await transport.sendPrivateVoice!(userId, wav);
+                    log(`[${userId}] 发了一条语音（${line.slice(0, 20)}…，消息 ${id}）`);
+                })
+                .catch(error => log(`[${userId}] 语音没发出去：${error instanceof Error ? error.message : String(error)}`));
+        };
+        if (voiceOn) startVoiceWorker(voiceDir);
+
         const absorbMarkers = (userId: number, input: string): string => {
             let text = input;
             const selfNotes = takeSelfNotes(text);
@@ -1040,6 +1065,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                         .catch(error => log(`[${userId}] 她自己记的事没写进记忆：${error instanceof Error ? error.message : String(error)}`));
                 }
             }
+            // 她要“说话”（语音条）：标记不发出去，念出来单独发一条
+            const voiced = takeVoiceLines(text);
+            text = voiced.text;
+            for (const line of voiced.lines) speakVoice(userId, line);
             // 她在这台电脑上跑命令（2026-10-30 用户：把最高权限给她）：标记不发出去，命令后台跑，结果留给下一轮
             const shellTaken = takeShellCommands(text);
             if (shellTaken.commands.length) {

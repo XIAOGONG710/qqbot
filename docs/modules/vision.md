@@ -12,6 +12,7 @@
 - `vision/safe-image.ts`
 - `vision/media.ts`
 - `vision/hearing.ts`
+- `vision/voice-out.ts`
 - `vision/sticker-reads.ts`
 
 ## 开关

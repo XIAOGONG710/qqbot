@@ -182,6 +182,15 @@ export class OneBotClient {
         assertKernelOk('set_input_status', await this.call('set_input_status', { user_id: String(userId), event_type: eventType }));
     }
 
+    /** 发一条语音（2026-11-01）：file 是本机的 wav，NapCat 自己转成 QQ 语音条 */
+    async sendPrivateVoice(userId: number, file: string): Promise<number> {
+        const data = await this.call<{ message_id: number }>('send_private_msg', {
+            user_id: userId,
+            message: [{ type: 'record', data: { file: `file:///${file.split('\\').join('/')}` } }],
+        });
+        return data.message_id;
+    }
+
     /** 发一张已经落到本机的图片表情（ADR 0063）。 */
     async sendPrivateImage(userId: number, file: string, summary: string): Promise<number> {
         const data = await this.call<{ message_id: number }>('send_private_msg', {
