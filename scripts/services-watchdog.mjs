@@ -227,6 +227,14 @@ async function check() {
         kill(procs.filter(p => p.name === 'node.exe' && /hindsight-watchdog/.test(p.cmd)).map(p => p.pid));
         openWindow('start-hindsight.ps1');
         bad.hindsight = 0;
+    } else if (bad.hindsight >= 6 && hindsightProcs.length && allowed('hindsight')) {
+        // 2026-11-01：进程卡在模型初始化——python 在、8888 永远不听。以前只看「进程在不在」，
+        // 于是这种「挂着」永远等不到重启，她整晚写不进记忆。连着 6 分钟不通就当它死了。
+        say('hindsight：/health 六分钟不通，但 python 进程还在（卡在初始化），掐掉重拉');
+        kill(hindsightProcs.map(p => p.pid));
+        kill(procs.filter(p => p.name === 'node.exe' && /hindsight-watchdog/.test(p.cmd)).map(p => p.pid));
+        openWindow('start-hindsight.ps1');
+        bad.hindsight = 0;
     }
     if (bad.koishi >= 2 && allowed('koishi')) {
         if (koishiProcs.length) {
