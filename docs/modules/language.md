@@ -37,6 +37,7 @@
 - `language/scenes.ts`
 - `language/asks.ts`
 - `language/opinion.ts`
+- `language/speaking.ts`
 - `language/speech-notes.ts`
 - `language/speech-feedback.ts`
 - `language/speech-trend.ts`

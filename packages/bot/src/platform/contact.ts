@@ -69,6 +69,7 @@ import { readTurn, readingLine } from '.././language/reading.ts';
 import { readScene } from '.././language/scenes.ts';
 import { thinkHint, UNSURE_LINE } from '.././language/asks.ts';
 import { opinionHint } from '.././language/opinion.ts';
+import { voiceHint } from '.././language/speaking.ts';
 import { SHELL_INTENT } from '.././language/intent.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
@@ -766,6 +767,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 要有自己的判断（2026-10-31：实测最近 200 条她没有一条带「我觉得」）
             const opinionNow = contact.tier === 'boyfriend' && !crisisNow ? opinionHint(hisLast) : undefined;
             if (opinionNow) log(`表态：他${opinionNow.why}，给一句先表态的方向`);
+            // 她可以说出来（2026-11-01）：偶尔告诉她「想让他听见就用语音」
+            const voiceNow = contact.tier === 'boyfriend' && !crisisNow && !thinking && !initiate ? voiceHint(Math.random()) : undefined;
+            if (voiceNow) log('说话：这一轮告诉她可以发语音');
             const questionNow = contact.tier === 'boyfriend' && !crisisNow && !thinking ? options.learningQuestion?.() : undefined;
             const shellNow = contact.tier === 'boyfriend' && !crisisNow ? options.shellNote?.() : undefined;
             const dreamsNow = contact.tier === 'boyfriend' && !crisisNow && options.herFeelings ? options.dreams?.() : undefined;
@@ -1041,6 +1045,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(shellNow ? [shellNow] : []),
                         ...(sceneNow ? [sceneNow] : []),
                         ...(askNow ? [askNow.line] : []),
+                        ...(voiceNow ? [voiceNow] : []),
                         ...(questionNow ? [questionNow] : []),
                         ...(opinionNow ? [opinionNow.line] : []),
                         ...(contact.tier === 'boyfriend' && !crisisNow ? [UNSURE_LINE] : []),
