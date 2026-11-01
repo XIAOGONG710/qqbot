@@ -46,6 +46,12 @@ if (-not $env:QQBOT_LLM_API_KEY) { throw 'QQBOT_LLM_API_KEY is not set (see pack
 # 明确失败退出，而不是永远挂着。这样至少能看出是卡在哪、守护也能重新拉。
 if (-not $env:HINDSIGHT_API_MODEL_INIT_TIMEOUT) { $env:HINDSIGHT_API_MODEL_INIT_TIMEOUT = '180' }
 
+# 2026-11-01：隐藏窗口/重定向时控制台是 GBK，Hindsight 启动先打 banner（一堆方块字符），
+# print 直接抛 UnicodeEncodeError 就退出——端口永远不听，看着像“卡死”。
+# 强制 Python 用 UTF-8 输出，顺带让日志文件也不乱码。
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+
 # Chinese keyword search needs PGroonga in pg0's PostgreSQL (docs/hindsight.md, "PGroonga").
 if (-not (Get-ChildItem "$env:USERPROFILE\.pg0\installation\*\share\extension\pgroonga.control" -ErrorAction SilentlyContinue)) {
     throw 'PGroonga is not installed in pg0''s PostgreSQL (see docs\hindsight.md, section PGroonga)'
@@ -85,10 +91,20 @@ $dbPassword = if ($env:QQBOT_HINDSIGHT_DB_PASSWORD) { $env:QQBOT_HINDSIGHT_DB_PA
 if ($dbPassword -ne 'hindsight' -and $dbPassword -notmatch '^[A-Za-z0-9_-]{12,}$') {
     throw 'QQBOT_HINDSIGHT_DB_PASSWORD must be at least 12 characters of A-Z a-z 0-9 _ -'
 }
-$info = & $pg0 info --name $instance 2>&1 | Out-String
-if ($info -notmatch 'is running') {
-    & $pg0 start --name $instance --data-dir $pgData --port $DbPort -u hindsight -P $dbPassword -n hindsight
-    if ($LASTEXITCODE -ne 0) { throw "pg0 start failed (exit $LASTEXITCODE)" }
+# 2026-11-01：pg0 start 在这台机器上会直接「拒绝访问（os error 5）」，怎么也起不来。
+# 只要 5433 已经在听（可能由 pg_ctl 起的），就跳过 pg0；没有再用 pg_ctl 兜底。
+$pgUp = (Get-NetTCPConnection -LocalPort $DbPort -State Listen -ErrorAction SilentlyContinue) -ne $null
+$pgCtl = Join-Path $env:USERPROFILE '.pg0\installation\18.1.0\bin\pg_ctl.exe'
+if (-not $pgUp) {
+    $info = & $pg0 info --name $instance 2>&1 | Out-String
+    if ($info -notmatch 'is running') {
+        & $pg0 start --name $instance --data-dir $pgData --port $DbPort -u hindsight -P $dbPassword -n hindsight
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "pg0 start failed (exit $LASTEXITCODE)，改用 pg_ctl"
+            & $pgCtl -D $pgData -o "-p $DbPort -c listen_addresses=127.0.0.1" -l (Join-Path $root 'pg-ctl.log') start
+            if ($LASTEXITCODE -ne 0) { throw "PostgreSQL 起不来（pg0 和 pg_ctl 都失败）" }
+        }
+    }
 }
 
 $env:HF_HOME = Join-Path $root 'hf'
