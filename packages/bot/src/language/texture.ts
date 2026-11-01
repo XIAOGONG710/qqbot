@@ -95,6 +95,18 @@ const TILDE_END = /[啦呀哦嘛哈嘿哒咯喔耶哇]$/;
 const TILDE_END_SHORT = /[呢吧啊好行]$/;
 /** 看得出是在问的（没带问号时补「？」） */
 const ASKING = /吗|么|啥|什么|怎么|为啥|为什么|哪[里儿个天]?|几[点个天号分]?|多少|谁|是不是|有没有|要不要|能不能|行不行|对不对|好不好|了没|干嘛|咋|多久|多大|多远/;
+/**
+ * 真在问的（补问号用）。只看最后一个小句，疑问词 / 吗嘛 / 了没 / 是不是…… 在里面，且不是陈述里的固定说法。
+ * 为什么不直接用 ASKING：它在整句里找「么 / 啥 / 几 / 谁」，陈述句也命中——「这么晚了还没睡」「我没啥事」「好几天没下雨了」
+ * 「谁知道呢」「什么都行」补「？」的概率和真问句一样（11-01 实测都是 53%），所以陈述句被加了问号、真问句又有一半没有。
+ * 宁可漏补：真人聊天里问句不带问号本来就常见（ADR 0131：她 3 / 他 10 每百条）。
+ */
+const QUESTION_CUE = /吗$|嘛$|了没$|(?:什么|怎么样?|为什么|为啥|干嘛|干吗|咋办|咋样|哪里|哪儿|哪个|哪天|几点|几号|几个|几岁|几次|多少|多久|多大|多远|谁|啥)[啊呀呢]?$|是不是|有没有|要不要|能不能|行不行|对不对|好不好|^(?:你|那你|然后|后来|那)呢$|(?:什么|怎么|为什么|为啥|哪里|哪儿|几点|几号|多少|多久|谁|啥|咋)[^，。！!？?]{0,8}$/;
+const STATEMENT_FRAME = /不知道|不清楚|不确定|不管|无所谓|随便|看你|随你|好几|谁知道|谁说|谁让|没什么|没啥|没多少|哪怕|再说|(?:什么|哪里|哪儿|哪个|谁|怎么|啥|几点|几号|多少|多久)[都也]/;
+export function isQuestion(bubble: string): boolean {
+    const clause = bubble.split(/[，,、；;\s]+/).filter(Boolean).at(-1) ?? bubble;
+    return QUESTION_CUE.test(clause) && !STATEMENT_FRAME.test(bubble);
+}
 /** 感叹的短句：太……了、好……啊、真…… */
 const EXCLAIM = /^(?:太|好|真|这也太|也太)[^，。？?！!]{2,9}$/;
 /**
@@ -150,11 +162,11 @@ export function applyTexture(parts: readonly string[], ctx: TextureContext): Tex
         if (longer && !/[？?]/.test(tail) && unit(`${seed} repeat`) < TEXTURE_SHARES.repeat) { out[i] = `${longer}${tail}`; notes.push(`叠字：${core} → ${longer}`); continue; }
         if (/[…]+$/.test(text) && chars(core) >= 3) {
             // 停在连词 / 假设词上的「……」是故意拖着的，去掉就成了话说到一半（ADR 0141）
-            if (!endsHanging(core) && unit(`${seed} ellipsis`) < TEXTURE_SHARES.ellipsis) { out[i] = ASKING.test(core) && unit(`${seed} q2`) < TEXTURE_SHARES.question ? `${core}？` : core; notes.push('去掉结尾的省略号'); }
+            if (!endsHanging(core) && unit(`${seed} ellipsis`) < TEXTURE_SHARES.ellipsis) { out[i] = isQuestion(core) && unit(`${seed} q2`) < TEXTURE_SHARES.question ? `${core}？` : core; notes.push('去掉结尾的省略号'); }
             continue;
         }
         if (!hasEnding(text) && chars(text) >= 2 && chars(text) <= 24) {
-            if (ASKING.test(core) && !/^[a-z]+$/i.test(core) && unit(`${seed} question`) < TEXTURE_SHARES.question) { out[i] = `${core}？`; notes.push('补问号'); continue; }
+            if (isQuestion(core) && !/^[a-z]+$/i.test(core) && unit(`${seed} question`) < TEXTURE_SHARES.question) { out[i] = `${core}？`; notes.push('补问号'); continue; }
             if (EXCLAIM.test(core) && unit(`${seed} exclaim`) < TEXTURE_SHARES.exclaim) { out[i] = `${core}！`; notes.push('补感叹号'); }
         }
     }

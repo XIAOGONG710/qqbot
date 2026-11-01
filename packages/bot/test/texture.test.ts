@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { facesIn, SENDABLE_FACES } from '../src/language/qq-faces.ts';
-import { applyTexture, faceFor, TEXTURE_FACE_WINDOW_MAX, TEXTURE_SHARES, TEXTURE_TILDE_WINDOW, type TextureContext } from '../src/language/texture.ts';
+import { applyTexture, faceFor, isQuestion, TEXTURE_FACE_WINDOW_MAX, TEXTURE_SHARES, TEXTURE_TILDE_WINDOW, type TextureContext } from '../src/language/texture.ts';
 
 // ADR 0131：说话的质感。纯函数，同一句话结果固定；危机和他难过的回合不加
 const ctx = (seed: string, patch: Partial<TextureContext> = {}): TextureContext => ({ seed, said: '', serious: false, recentFaces: 0, ...patch });
@@ -34,6 +34,21 @@ describe('问号 / 感叹号', () => {
         const hit = share(results, p => p[0] === '你今晚吃什么？');
         assert.ok(hit > TEXTURE_SHARES.question * 0.7 && hit < TEXTURE_SHARES.question * 1.3 + 0.1, `${hit}`);
         for (const bubble of ['你吃了吗？', '你吃了吗。', '你吃了吗～', '你吃了吗！']) for (const r of sweep([bubble], {}, 50)) assert.ok(r.parts[0]!.startsWith(bubble.slice(0, -1)) && !/[？?]{2}/.test(r.parts[0]!), bubble);
+    });
+
+    test('isQuestion：陈述句里带「么 / 啥 / 几 / 谁 / 哪」的固定说法不是问句（11-01 实测：这些陈述句原来和真问句一样，约 53% 被补上「？」）', () => {
+        for (const statement of ['这么晚了还没睡', '我没啥事', '好几天没下雨了', '谁知道呢', '什么都行', '那么远我才不去', '哪怕下雨也去', '哪里都不想去', '怎么都睡不着', '谁也不知道', '我不知道怎么办', '我也不知道是什么', '多久都等你', '没多少钱', '我刚吃完饭', '今天好冷']) {
+            assert.equal(isQuestion(statement), false, statement);
+            assert.ok(sweep([statement], {}, 100).every(r => !/[？?]$/.test(r.parts[0]!)), `${statement} 不该被补问号`);
+        }
+        for (const question of ['你吃了吗', '你在干嘛', '明天几点起', '你是不是困了', '什么时候回来', '你呢', '谁给你买的', '晚饭吃了没', '多少钱啊', '你几点睡', '周末有空吗', '你今晚吃什么', '怎么了这么累']) {
+            assert.equal(isQuestion(question), true, question);
+        }
+        // 真问句补问号的比例没有被误伤：仍然是约 TEXTURE_SHARES.question
+        for (const question of ['明天几点起', '谁给你买的', '你呢']) {
+            const hit = share(sweep([question]), p => p[0] === `${question}？`);
+            assert.ok(hit > TEXTURE_SHARES.question * 0.7 && hit < TEXTURE_SHARES.question * 1.3 + 0.1, `${question} ${hit}`);
+        }
     });
 
     test('不是问句的不补问号；「太……了」一类感叹的补「！」；只有两三个字的反应不补', () => {
