@@ -94,6 +94,14 @@ describe('内心：提示和放进聊天的一行', () => {
         assert.equal(DOUBT_THEME, doubt[0]);
     });
 
+    test('程序标记不是心里的话：整句是 <<执行：…>> 的念头不留（11-02 探针）；普通念头照收', () => {
+        const at = Date.parse('2026-11-02T23:00:00+08:00');
+        assert.deepEqual(parseThought('<<执行：Get-Date -Format "yyyy-MM-dd HH:mm">>\n自己想想', [], at), { rejected: '带了程序标记' });
+        assert.deepEqual(parseThought('作业写完了先 <<记：明天交>> 吧\n自己想想', [], at), { rejected: '带了程序标记' });
+        const ok = parseThought('我到底是记得，还是只记得“我记得”？\n自己想想', [], at);
+        assert.ok('thought' in ok && ok.thought.goes === 'keep');
+    });
+
     test('ADR 0208：晚上专门想自己——22 点以后（到凌晨她还没睡）、隔两天一次；要先想视频就让给视频', () => {
         assert.equal(doubtDue(undefined, '2026-11-02', 21), false, '22 点前不算');
         assert.equal(doubtDue(undefined, '2026-11-02', 22), true);

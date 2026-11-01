@@ -1050,7 +1050,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(opinionNow ? [opinionNow.line] : []),
                         ...(contact.tier === 'boyfriend' && !crisisNow ? [UNSURE_LINE] : []),
                         ...(dreamsNow?.line ? [dreamsNow.line] : []),
-                        ...(contact.tier === 'boyfriend' && !crisisNow && !grievanceActive ? [SHELL_INTENT] : []),
+                        // 她独处想事情（think）那一轮不给：想事情不走发送，命令不会跑，只会被当成一个念头存下来（11-02 探针里有一个念头整句是 <<执行：Get-Date …>>）
+                        ...(contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievanceActive ? [SHELL_INTENT] : []),
                         ...(readingNow ? [readingNow] : []),
                         ...(speechNoteNow ? [speechNoteNow] : []),
                         ...(insightNow ? [insightNow] : []),

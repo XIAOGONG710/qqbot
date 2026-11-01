@@ -193,6 +193,8 @@ export function parseThought(raw: string, recent: readonly InnerThought[], at: n
     if (chars(text) < MIN_CHARS) return { rejected: '太短' };
     if (chars(text) > MAX_CHARS) return { rejected: '太长' };
     if (/https?:|<sticker|\[[^\]]{1,6}\]/.test(text)) return { rejected: '带了链接或表情' };
+    // 程序用的标记（<<执行：…>>、<<记：…>> 这类）不是心里的话（11-02 探针里一个念头整句是 <<执行：Get-Date …>>）
+    if (/<<[^\s<>]/.test(text)) return { rejected: '带了程序标记' };
     // 念头是对自己说的：出现“你”就是写成了对他说话（10-22 线上：「人呢，饭吃了没」「腰好点没，别又逞强」）
     if (text.includes('你')) return { rejected: '对他说话' };
     // 开头叫他的名字（「宝宝，人呢」）也是对他说话
