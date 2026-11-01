@@ -2,7 +2,11 @@
 	path = vendor/SillyTavern
 	url = https://github.com/SillyTavern/SillyTavern.git
 	branch = release
+	shallow = true
+	update = none
 [submodule "vendor/NapCatQQ"]
 	path = vendor/NapCatQQ
 	url = https://github.com/NapNeko/NapCatQQ.git
 	branch = main
+	shallow = true
+	update = none

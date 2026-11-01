@@ -26,16 +26,23 @@ qqbot/
 ## 获取代码
 
 ```powershell
-git clone --recurse-submodules <本仓库地址>
-# 已克隆但缺少子模块时：
-git submodule update --init
+git clone <本仓库地址>
+```
+
+两个上游子模块（`vendor/SillyTavern`、`vendor/NapCatQQ`）只作参考，运行和测试都不用它们，所以默认不拉
+（`.gitmodules` 里 `update = none`，所以 `git clone --recurse-submodules` 也会跳过它们）。需要对照上游源码时再按需拉，
+命令行上要带 `--depth 1`，这样只取锁定的那一个提交（不带的话会拉全部历史，NapCatQQ 约 380 MB）：
+
+```powershell
+git submodule update --init --checkout --depth 1 vendor/NapCatQQ
+git submodule update --init --checkout --depth 1 vendor/SillyTavern
 ```
 
 ## 升级上游
 
 ```powershell
 # 跟到上游分支最新提交
-git submodule update --remote vendor/SillyTavern
+git submodule update --remote --checkout vendor/SillyTavern
 
 # 或切到指定版本
 git -C vendor/SillyTavern fetch --tags
