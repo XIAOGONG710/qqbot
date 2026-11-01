@@ -69,7 +69,7 @@ import { readTurn, readingLine } from '.././language/reading.ts';
 import { readScene } from '.././language/scenes.ts';
 import { thinkHint, UNSURE_LINE } from '.././language/asks.ts';
 import { opinionHint } from '.././language/opinion.ts';
-import { voiceHint } from '.././language/speaking.ts';
+import { voiceHint, voiceRoll } from '.././language/speaking.ts';
 import { SHELL_INTENT } from '.././language/intent.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
@@ -768,7 +768,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const opinionNow = contact.tier === 'boyfriend' && !crisisNow ? opinionHint(hisLast) : undefined;
             if (opinionNow) log(`表态：他${opinionNow.why}，给一句先表态的方向`);
             // 她可以说出来（2026-11-01）：偶尔告诉她「想让他听见就用语音」
-            const voiceNow = contact.tier === 'boyfriend' && !crisisNow && !thinking && !initiate ? voiceHint(Math.random()) : undefined;
+            const voiceNow = contact.tier === 'boyfriend' && !crisisNow && !thinking && !initiate ? voiceHint(voiceRoll(chat)) : undefined;
             if (voiceNow) log('说话：这一轮告诉她可以发语音');
             const questionNow = contact.tier === 'boyfriend' && !crisisNow && !thinking ? options.learningQuestion?.() : undefined;
             const shellNow = contact.tier === 'boyfriend' && !crisisNow ? options.shellNote?.() : undefined;
