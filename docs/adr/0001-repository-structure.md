@@ -55,6 +55,10 @@ qqbot/                 本仓库（自有代码 + 文档）
 ## 后果
 
 - 克隆本仓库需要 `git clone --recurse-submodules`，或事后执行 `git submodule update --init`。
+  - 2026-11-01 更新：代码里对 `vendor/SillyTavern`、`vendor/NapCatQQ` 只有「对照上游」的注释，没有运行时依赖，CI 也早就是 `submodules: false`。
+    完整克隆一次要多拉约 590 MB，所以 `.gitmodules` 加了 `update = none` 和 `shallow = true`：普通克隆不再拉子模块，
+    需要时用 `git submodule update --init --checkout --depth 1 vendor/<名字>`，只取锁定的那个提交
+    （实测 NapCatQQ 子模块的 git 目录 381 MB → 64 MB；`--depth 1` 必须写在命令行上，只靠 `shallow = true` 不够）。锁定的提交指针不变。
 - 升级上游 = 在子模块里切换提交 + 在本仓库提交新指针，可回滚（回退该提交即可）。
 - 子模块里的本地修改无处推送：上游仓库我们没有写权限。
 
