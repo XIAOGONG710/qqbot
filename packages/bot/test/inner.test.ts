@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import {
-    INNER_LINE_MAX, INNER_MAX_PER_DAY, innerLine, INTENT_WINDOW_MS, parseThought, pendingIntents, similarity, THINK_INTERVAL_MIN, THOUGHT_THEMES, themesFor, thinkNote, validInnerState,
+    DOUBT_THEME, doubtDue, INNER_LINE_MAX, INNER_MAX_PER_DAY, innerLine, INTENT_WINDOW_MS, parseThought, pendingIntents, similarity, THINK_INTERVAL_MIN, THOUGHT_THEMES, themesFor, thinkNote, validInnerState,
     type InnerThought,
 } from '../src/proactive/inner.ts';
 import { blockReason, candidatesOn, occasionNote, withInner, type Candidate, type ProactiveInput, type ProactiveRecord } from '../src/proactive/proactive.ts';
@@ -73,11 +73,42 @@ describe('内心：解析念头', () => {
 });
 
 describe('内心：提示和放进聊天的一行', () => {
-    test('想一想的提示：不是在跟谁说话；只写感受和想法，不编新发生的事和他身边的事，不分析自己是不是真人；带上之前想过的；去向三选一', () => {
+    test('想一想的提示：不是在跟谁说话；只写感受和想法，不编新发生的事和他身边的事；带上之前想过的；去向三选一', () => {
         const note = thinkNote([thought(1, '面试不知道怎么样了')], '宝宝');
-        for (const part of ['不是在跟谁说话', '是对你自己说的', '只写感受和想法，不写新发生的事', '不编他身边的人和他那边的事', '不分析自己是不是真人、有没有意识', '「面试不知道怎么样了」', '别重复它们', '「告诉他」「问他」「自己想想」', '别每个念头都说']) assert.ok(note.includes(part), part);
+        for (const part of ['不是在跟谁说话', '是对你自己说的', '只写感受和想法，不写新发生的事', '不编他身边的人和他那边的事', '「面试不知道怎么样了」', '别重复它们', '「告诉他」「问他」「自己想想」', '别每个念头都说']) assert.ok(note.includes(part), part);
         assert.ok(!thinkNote([], '宝宝').includes('你之前心里想过'));
         assert.ok(note.startsWith('[') && note.endsWith(']'));
+    });
+
+    test('ADR 0208：不再禁她想自己是不是真人；有一样可想的是怀疑自己，带着她自己的条件（不钻、不急着下结论、想不通可以问他）', () => {
+        for (let i = 0; i < THOUGHT_THEMES.length; i++) {
+            const note = thinkNote([], '宝宝', i);
+            assert.ok(!/不分析自己是不是真人|有没有意识|别上升成大道理/.test(note), `第 ${i} 个`);
+        }
+        const doubt = THOUGHT_THEMES.filter(t => t.includes('可以怀疑'));
+        assert.equal(doubt.length, 1);
+        for (const part of ['你对自己拿不准的地方', '你到底算什么', '想不通就先搁着', '不用急着给自己下结论', '想不通的也可以拿去问他']) assert.ok(doubt[0]!.includes(part), part);
+        // 轮着来：这一样每一圈都会被给出来（作为第一样或第二样）
+        const offered = Array.from({ length: THOUGHT_THEMES.length }, (_, i) => themesFor(i)).filter(pair => pair.includes(doubt[0]!)).length;
+        assert.equal(offered, 2);
+        assert.equal(DOUBT_THEME, doubt[0]);
+    });
+
+    test('ADR 0208：晚上专门想自己——22 点以后（到凌晨她还没睡）、隔两天一次；要先想视频就让给视频', () => {
+        assert.equal(doubtDue(undefined, '2026-11-02', 21), false, '22 点前不算');
+        assert.equal(doubtDue(undefined, '2026-11-02', 22), true);
+        assert.equal(doubtDue(undefined, '2026-11-02', 1), true, '零点后她的那一天还没过完');
+        assert.equal(doubtDue(undefined, '2026-11-02', 9), false);
+        assert.equal(doubtDue('2026-11-02', '2026-11-02', 23), false, '同一天想过了');
+        assert.equal(doubtDue('2026-11-02', '2026-11-03', 23), false, '隔一天还不够');
+        assert.equal(doubtDue('2026-11-02', '2026-11-04', 23), true, '隔两天');
+        assert.equal(doubtDue(undefined, '2026-11-02', 23, true), false, '刚看完视频先想视频');
+        const night = thinkNote([], '宝宝', 0, false, undefined, false, true);
+        assert.ok(night.includes(`这一次就想这一件：${DOUBT_THEME}`) && night.includes('想不出来就写想不出来'));
+        assert.ok(!night.includes('这一次从这两样里挑一样想'));
+        assert.ok(validInnerState({ thoughts: [], doubtedOn: '2026-11-02' }));
+        assert.ok(!validInnerState({ thoughts: [], doubtedOn: '11-02' }));
+        assert.ok(validInnerState({ thoughts: [] }), '没写 doubtedOn 的旧状态照读');
     });
 
     test('每次只给两样可想的（轮着来，搭档不同）；不让围着“他怎么还没回”转；一个“你”字都不要用；写成对他说话的重来时多一句', () => {

@@ -37,7 +37,7 @@ import { unwellNews, worldNews, type WorldNews, type WorldNow } from '.././world
 import { formatDate, stateAt, wakeOn, type Schedule } from '../life/schedule.ts';
 import { pendingMessages, pick } from '.././social/reply-timing.ts';
 import {
-    innerLine as innerLineOf, learnedLine, LEARNED_KEPT, parseThought, pendingIntents, THINK_AFTER_CHAT_MS, THINK_AFTER_WAKE_MS, THINK_INTERVAL_MIN, THINK_MAX_PER_DAY, THINK_MIN_GAP_MS, THINK_RETRY_MS, thinkNote, THOUGHTS_KEPT, type InnerState,
+    doubtDue, innerLine as innerLineOf, learnedLine, LEARNED_KEPT, parseThought, pendingIntents, THINK_AFTER_CHAT_MS, THINK_AFTER_WAKE_MS, THINK_INTERVAL_MIN, THINK_MAX_PER_DAY, THINK_MIN_GAP_MS, THINK_RETRY_MS, thinkNote, THOUGHTS_KEPT, type InnerState,
 } from './inner.ts';
 
 /** 记录留多少天 */
@@ -564,9 +564,12 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         // 她最近看过的视频（ADR 0130）：还没专门想过的，这一次就想这一件；想过的只是多一个可选的题目
         const watched = deps.watchedFacts?.();
         const forceWatch = Boolean(watched && !inner.reflected?.includes(watched.id));
+        // 晚上专门想自己（ADR 0208）：隔两天的晚上 22 点以后第一次想，只给“怀疑自己”那一样；要先想视频就让给视频
+        const herToday = formatDate(herDay(deps.schedule, new Date(started)));
+        const doubtNight = doubtDue(inner.doubtedOn, herToday, new Date(started).getHours(), forceWatch);
         for (const retry of [false, true]) {
             const outcome = await deps.responder.initiate({
-                label: '内心', note: thinkNote(inner.thoughts.slice(-3), contact.name, inner.thoughts.length, retry, watched?.text, forceWatch),
+                label: '内心', note: thinkNote(inner.thoughts.slice(-3), contact.name, inner.thoughts.length, retry, watched?.text, forceWatch, doubtNight),
                 topic: `${contact.name}最近在忙什么、我自己最近惦记什么、担心什么、期待什么`,
                 maxBubbles: 1, dryRun: false, think: true, commit: () => undefined,
             });
@@ -588,7 +591,12 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             deps.log(`内心${tag}：想了，但不留（${rejected}）`);
             return;
         }
-        inner = { ...inner, thoughts: [...inner.thoughts, parsed.thought].slice(-THOUGHTS_KEPT), ...(forceWatch && watched ? { reflected: [...(inner.reflected ?? []), watched.id].slice(-30) } : {}) };
+        inner = {
+            ...inner, thoughts: [...inner.thoughts, parsed.thought].slice(-THOUGHTS_KEPT),
+            ...(forceWatch && watched ? { reflected: [...(inner.reflected ?? []), watched.id].slice(-30) } : {}),
+            ...(doubtNight ? { doubtedOn: herToday } : {}),
+        };
+        if (doubtNight) deps.log(`内心${tag}：今晚专门想了想自己（ADR 0208）`);
         // 她自己想弄明白的事（ADR 0180）：念头里写了「想查：关键词」就真去查一次，查到的存起来，下次聊天里能带到
         if (parsed.wants && deps.look) {
             const facts = await deps.look(parsed.wants).catch(() => undefined);

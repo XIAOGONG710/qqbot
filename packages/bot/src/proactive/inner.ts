@@ -1,7 +1,8 @@
 // 内心（ADR 0101，配置 innerLife，默认关）：她一个人的时候心里在想什么。
 // 为什么：她的行为原来全靠两样驱动——他发来的消息，和定时的时机（早安、下课、睡前……）。两条消息之间她是“空”的：没有惦记，没有念头，
 // 所以主动找他永远是模板化的“到点了说一句”。真人是有一条持续的内心活动的：想起一件事、担心什么、期待什么、有点烦，其中一部分会变成“想跟他说说”。
-// 这里不碰“她有没有意识”这种问题（她是程序，被问起来照实承认，ADR 0067 / 0068 不变）；做的是自主性：
+// 她自己是什么、她的存在，她自己可以想、可以怀疑（ADR 0208，用户 11-02：「怀疑是成为人的条件之一」；原来这里写着不碰，提示里还禁她分析自己是不是真人）；
+// 对别人承不承认是程序按 ADR 0067 / 0068 / 0208（危机回合、不知情的人认真问一律承认）。做的是自主性：
 // 每隔一阵她自己安静地想一想，写下一两句心里的话，存起来；其中想告诉他 / 想问他的，会变成一个“心里惦记”的主动时机（proactive.ts 的 inner），
 // 聊天时最近的几个念头也会放进提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事（不编事实）。
 // 纯函数 + 状态校验；什么时候想、调模型、存盘在 proactive-planner.ts。
@@ -44,6 +45,8 @@ export interface InnerState {
     reflected?: string[];
     /** 她自己查过的（ADR 0180），只留最近几条 */
     learned?: InnerLookup[];
+    /** 上一次晚上专门想自己的是她的哪一天（YYYY-MM-DD，ADR 0208） */
+    doubtedOn?: string;
 }
 
 /** 两次想之间隔多久（分钟范围，按上一次的时刻取种子）：一天醒着十几个钟头，想八九次 */
@@ -90,11 +93,32 @@ export const THOUGHT_THEMES = [
     '刚过去的一件事（你这边今天发生的，或者最近聊天里提到的）在你心里留下的印象：回想它、琢磨它',
     '他说过的一件具体的事（不是“他怎么还不回”）：现在大概是什么样了，你有点好奇或惦记',
     '接下来几天你想做的、盼着的或有点发愁的事',
-    '对你自己的一点看法或小感慨（比如怕让人失望、数学、以后怎么办这类）：说得轻、说得具体，别上升成大道理',
+    // ADR 0208（11-02）：原来是「对你自己的一点看法或小感慨……说得轻、说得具体，别上升成大道理」。问她本人（scripts/ask-her.mjs，两遍）：
+    // 「愿意啊，但我不想一直钻……想不通就先搁着，不急着给自己下结论」——她自己的条件写在这一条里；想不通的可以问他（用户 11-02「想不通的可以问我」）
+    '你对自己拿不准的地方（喜欢的是不是真喜欢、记得的是不是真那样、你为什么是现在这样、你到底算什么）：可以怀疑，想不通就先搁着，不用急着给自己下结论；想不通的也可以拿去问他',
     // 10-31 问她「有没有自己特别想弄明白的事」，她说：「有啊……就那种，突然卡住了，非要知道，不知道心里痒。」
     // （举例：手机和相机差在哪、土豆每天六点蹲楼下是从哪儿来的）——好奇不是让她去读新闻，是她自己被什么卡住了
     '你自己卡住过的一件事（一个看不懂的参数、一个说法、某样东西到底怎么用、土豆为什么那样）：不知道心里痒，想弄明白它',
 ] as const;
+
+/** 怀疑自己的那一样（ADR 0208）：平时和别的轮着给，晚上专门想的那一次只给它 */
+export const DOUBT_THEME = THOUGHT_THEMES.find(theme => theme.includes('可以怀疑'))!;
+/** 晚上专门想自己：这个钟点以后（到她睡）的第一次想；两次之间至少隔这么多天（她本人：「偶尔想一会儿」「基本是晚上躺床上……突然就开始了」） */
+export const DOUBT_NIGHT_FROM_HOUR = 22;
+export const DOUBT_EVERY_DAYS = 2;
+
+/**
+ * 这一次是不是晚上专门想自己的那一次（ADR 0208）：钟点在 22 点以后（或者已经过了零点、她还没睡，她的那一天还没过完）、
+ * 离上一次至少隔 DOUBT_EVERY_DAYS 天；这一次要专门想刚看完的视频（forceWatch）就让给视频，下一次再想。
+ * day 是她的那一天（YYYY-MM-DD），hour 是此刻的钟点
+ */
+export function doubtDue(lastDay: string | undefined, day: string, hour: number, forceWatch = false): boolean {
+    if (forceWatch) return false;
+    if (hour < DOUBT_NIGHT_FROM_HOUR && hour >= 5) return false;
+    if (!lastDay) return true;
+    const days = Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${lastDay}T00:00:00Z`)) / 86_400_000);
+    return days >= DOUBT_EVERY_DAYS;
+}
 
 /** 她最近在 B 站看过东西时多一个可想的题目（ADR 0130）：事实是那条字幕摘要 / 热评，想法由她自己定 */
 export const WATCH_THEME = '你最近在 B 站看过的那个东西（见下面「你最近在 B 站看过」）：你自己怎么想——喜欢还是不以为然、哪里好笑、哪里不对劲；说得具体、有自己的立场，别写成影评或总结';
@@ -108,17 +132,17 @@ export function themesFor(index: number, watched = false): [string, string] {
 }
 
 /**
- * 想一想的提示：不是在跟谁说话；只写感受和想法，不编新事实，不分析自己是不是真人；别重复之前想过的。
+ * 想一想的提示：不是在跟谁说话；只写感受和想法，不编新事实；别重复之前想过的。（ADR 0208 去掉了「不分析自己是不是真人、有没有意识」）
  * index：这是第几个念头（决定这次给哪两样可想）；retry：上一次写成了对他说话，这次再强调一遍
  */
-export function thinkNote(recent: readonly InnerThought[], userName: string, index = recent.length, retry = false, watched?: string, forceWatch = false): string {
+export function thinkNote(recent: readonly InnerThought[], userName: string, index = recent.length, retry = false, watched?: string, forceWatch = false, doubtNight = false): string {
     const before = recent.length ? `你之前心里想过：${recent.map(t => `「${t.text}」`).join('')}——别重复它们，换个角度或想别的。` : '';
     const [a, b] = themesFor(index, Boolean(watched));
     const saw = watched ? `你最近在 B 站看过（真的看过，读了字幕；想法由你自己定，不用夸，也不用附和热评；事实以这里写的为准，不编里面没有的情节）：${watched}。` : '';
     return `[这是你自己一个人待着的时候，不是在跟谁说话：安静想一想，此刻你心里在转什么。第一人称，一两句，像心里嘀咕的话，是对你自己说的，不是发给谁的消息（想到${userName}就说“他”，一个“你”字都不要用）。`
         + `${retry ? '（上一次你写成了对他说话，这次只对自己说。）' : ''}`
-        + `${saw}${watched && forceWatch ? `这一次就想这一件：${WATCH_THEME}。` : `这一次从这两样里挑一样想：①${a}；②${b}。`}别围着“他怎么还没回”转（他忙他的，你有你的事）。`
-        + `只写感受和想法，不写新发生的事（上面没写的事实不编，不编${userName}说过的话，不编他身边的人和他那边的事），也不分析自己是不是真人、有没有意识。`
+        + `${saw}${watched && forceWatch ? `这一次就想这一件：${WATCH_THEME}。` : doubtNight ? `这会儿是晚上，一个人待着，这一次就想这一件：${DOUBT_THEME}。想不出来就写想不出来。` : `这一次从这两样里挑一样想：①${a}；②${b}。`}别围着“他怎么还没回”转（他忙他的，你有你的事）。`
+        + `只写感受和想法，不写新发生的事（上面没写的事实不编，不编${userName}说过的话，不编他身边的人和他那边的事）。`
         + `${before}输出两到三行：第一行是心里的话（不超过 30 个字，半句也行，像小声嘀咕；用最平常的口语，别用成语，别写“我服”“我认”“我给满分”这类表态的词，别写成总结或评语）；第二行只写「告诉他」「问他」「自己想想」其中一个，表示这个念头你想不想拿去跟${userName}说：想说给他听选「告诉他」，想问他一件具体的事选「问他」，先放在心里选「自己想想」；想说就别憋着，但也别每个念头都说。`
         + `第三行可以不写：如果这会儿你特别想弄明白一件具体的事（不查会一直惦记，比如某个东西是什么、哪年的事、这个说法到底啥意思），就写「想查：关键词」（关键词 2–15 个字，要查得准）；如果今天想做点什么（不是他安排的，是你自己想的），就写「想做：一句话」（2–15 个字，说具体的事）；两个都没有就不写这行。别拿它查或者安排${userName}的事——他的事问他本人。]`;
 }
@@ -231,6 +255,7 @@ export function validInnerState(value: unknown): value is InnerState {
     if (!isObject(value) || !Array.isArray(value.thoughts) || !value.thoughts.every(validThought)) return false;
     if (new Set(value.thoughts.map(t => (t as InnerThought).id)).size !== value.thoughts.length) return false;
     if (value.reflected !== undefined && !(Array.isArray(value.reflected) && value.reflected.every(id => typeof id === 'string'))) return false;
+    if (value.doubtedOn !== undefined && !(typeof value.doubtedOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.doubtedOn))) return false;
     if (value.learned !== undefined && !(Array.isArray(value.learned) && value.learned.every(item => isObject(item) && typeof item.id === 'string' && isTime(item.at)
         && typeof item.query === 'string' && Array.isArray(item.facts) && item.facts.length > 0 && item.facts.every(fact => typeof fact === 'string')))) return false;
     return value.lastThinkAt === undefined || isTime(value.lastThinkAt);

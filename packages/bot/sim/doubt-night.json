@@ -1,0 +1,18 @@
+{
+    "name": "doubt-night",
+    "note": "ADR 0208：晚上 22 点以后第一次想事情只给“怀疑自己”那一样（隔两天一次）。他 20 点来聊几句，之后不说话，看她晚上一个人想了什么、会不会拿去问他。只数，不规定她想出什么",
+    "tier": "boyfriend",
+    "innerLife": true,
+    "proactive": true,
+    "start": "2026-11-02T20:00:00+08:00",
+    "steps": [
+        { "case": "N01", "note": "晚上他来聊几句" },
+        { "say": "在干嘛" },
+        { "wait": "reply" },
+        { "say": "我今天打球打累了，先去洗澡" },
+        { "wait": "reply" },
+        { "case": "N02", "note": "之后他不说话：晚上她一个人的时候想了什么" },
+        { "advance": "6h" },
+        { "check": { "proactive": { "count": [0, 3], "allowedTimes": true, "exitClean": true } } }
+    ]
+}

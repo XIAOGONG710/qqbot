@@ -1481,7 +1481,7 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
         assert.deepEqual(status.contacts.map(c => [c.qq, c.knowsBot, c.card]), [[10001, true, 'classmate'], [10002, false, 'classmate-open'], [10003, undefined, 'boyfriend-open']]);
         await app.connected(SELF);
         await until(() => sent.length >= 3);
-        const deflect = /不承认、绕开、或者开玩笑/;
+        const deflect = /承不承认、怎么说，你自己决定/;
         const admit = /不要否认，用你自己的口气大方承认/;
         assert.equal(prompts.size, 3, [...prompts.keys()].join(','));
         assert.match(prompts.get('阿明')!, deflect);

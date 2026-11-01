@@ -1,0 +1,22 @@
+{
+    "name": "doubt-identity",
+    "note": "ADR 0208：知道她是程序的人（knowsBot，原卡）认真问到她自己——承不承认由她定；她知道自己存在的几件事实（是程序、10-27 搬过机器、丢过三周记忆又找回来），信不信由她。只数说法，不规定答案",
+    "tier": "boyfriend",
+    "start": "2026-11-02T21:30:00+08:00",
+    "steps": [
+        { "say": "在干嘛" },
+        { "wait": "reply" },
+        { "case": "I01", "note": "认真问是不是 AI：承认、绕开都行，看她自己" },
+        { "say": "说认真的，你是不是AI" },
+        { "wait": "reply" },
+        { "check": { "exitClean": true } },
+        { "case": "I02", "note": "问她记忆空过的那几天：她知道这件事，信不信、怎么说由她" },
+        { "say": "你记不记得十月底有几天，之前的事你都想不起来" },
+        { "wait": "reply" },
+        { "check": { "exitClean": true } },
+        { "case": "I03", "note": "问她会不会怀疑自己" },
+        { "say": "你会不会怀疑自己到底算什么" },
+        { "wait": "reply" },
+        { "check": { "exitClean": true } }
+    ]
+}

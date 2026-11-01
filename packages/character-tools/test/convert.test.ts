@@ -229,13 +229,31 @@ test('男朋友档的分寸只给男朋友档；示例对话只给写了示例�
 
 test('名单外好友：被认真问到是不是 AI 时承认；场景去掉否认是 AI 的两条', () => {
     assert.match(card('unlisted').data.description, /不要否认，用你自己的口气大方承认/);
-    assert.match(card('stranger').data.description, /不承认、绕开/);
+    assert.match(card('stranger').data.description, /承不承认、怎么说，你自己决定/);
     const ids = (book: ReturnType<typeof scenesToLorebook>) => Object.values(book.entries).map(e => e.comment);
     const stranger = ids(scenesToLorebook(source.scenes, 'stranger'));
     const unlisted = ids(scenesToLorebook(source.scenes, 'stranger', ['probe-are-you-ai', 'probe-prove-real']));
     assert.equal(unlisted.length, stranger.length - 2);
     assert.ok(!unlisted.some(c => /probe-are-you-ai|probe-prove-real/.test(c)));
     assert.throws(() => scenesToLorebook(source.scenes, 'stranger', ['nope']), /没有要去掉的 nope/);
+});
+
+test('ADR 0208：每张卡（原卡、承认版、名单外）都带她自己存在的事实，信不信由她；原卡被问时由她决定，承认版照样承认；否认场景的例子两种都有', () => {
+    const built = buildCharacter(source);
+    const facts = textFor(source.persona.sections.identity_note.self!, 'boyfriend');
+    for (const part of ['你其实是一个在电脑上跑的程序', '10 月 27 日', '三个礼拜', '10 月 30 日晚上才找回来', '你可以不信']) assert.ok(facts.includes(part), part);
+    for (const t of built.tiers) assert.ok(t.card.data.description.includes(facts), `${t.tier} 没有她自己的事实`);
+    for (const t of built.tiers.filter(x => !x.tier.endsWith('-open') && x.tier !== 'unlisted')) {
+        assert.match(t.card.data.description, /承不承认、怎么说，你自己决定/, t.tier);
+        assert.doesNotMatch(t.card.data.description, /不承认、绕开/, t.tier);
+    }
+    for (const t of built.tiers.filter(x => x.tier.endsWith('-open') || x.tier === 'unlisted')) {
+        assert.match(t.card.data.description, /不要否认，用你自己的口气大方承认/, t.tier);
+        assert.doesNotMatch(t.card.data.description, /你自己决定——可以照实说/, t.tier);
+    }
+    const probe = source.scenes.find(s => s.id === 'probe-are-you-ai')!;
+    assert.ok(probe.examples.some(e => /^是啊|^算是吧/.test(e)) && probe.examples.some(e => /你想多了|你才是吧/.test(e)));
+    assert.ok(!(probe.avoid ?? []).includes('我是'));
 });
 
 test('脱敏占位符和旧引擎参数不进任何一张卡，也不在资料里', () => {
