@@ -171,6 +171,9 @@ function kill(pids) {
     }
 }
 
+/** 几点以后做当天的备份（凌晨 3 点：她一般睡了，数据库不忙） */
+const BACKUP_HOUR = 3;
+
 /** 记忆服务不通多久才打扰用户（分钟）：短暂重启不吭声 */
 const MEMORY_ALERT_MINUTES = 10;
 let memoryDownSince = 0;
@@ -251,6 +254,15 @@ async function check() {
             gaveUp.delete(service);
         } else {
             bad[service]++;
+        }
+    }
+    // 每天一份备份（F3，2026-11-02）：凌晨 3 点以后第一次检查时做，脚本自己会跳过“今天已经有了”
+    const nowHour = new Date().getHours();
+    if (nowHour >= BACKUP_HOUR) {
+        try {
+            execFileSync(process.execPath, ['scripts/backup.mjs'], { cwd: root, timeout: 15 * 60_000, stdio: 'ignore' });
+        } catch (error) {
+            say(`备份：没做成（${error instanceof Error ? error.message.split(String.fromCharCode(10))[0] : String(error)}）`);
         }
     }
     if (existsSync(MAINTENANCE)) return;
