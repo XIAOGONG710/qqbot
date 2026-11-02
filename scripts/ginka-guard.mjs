@@ -17,7 +17,7 @@ const PRIVATE_SEGMENTS = ['/runtime/', '/chats/', '/secrets/', '/migration/', '/
 const DATA_UNLESS_CODE = ['/memory/', '/diary/', '/diaries/', '/dreams/', '/soul/'];
 const CODE_ROOT = /\/(packages|docs|scripts)\//;
 const PRIVATE_NAMES = new Set([
-    'speech-notes.json', 'diary-insights.json', 'feeling-review.json', 'pursuits-self.json', 'insights.json', 'feelings.json', 'reading-takes.json', 'open-questions.json',
+    'speech-notes.json', 'diary-insights.json', 'feeling-review.json', 'pursuits-self.json', 'insights.json', 'feelings.json', 'reading-takes.json', 'open-questions.json', 'her-guesses.json',
     'traces.json', 'journal.md', 'dreams.jsonl', 'owner-bank.json', 'koishi.yml', 'config.json',
 ]);
 

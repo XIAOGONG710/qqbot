@@ -195,6 +195,8 @@ export interface PlannerDeps {
      * names 是她那边的人名（归「朋友和室友」那一类）。不给就没有这一行
      */
     reactions?: { names: readonly string[] };
+    /** 她之前猜的事刚有了结果（ADR 0213，配置 herGuesses，her-guesses.ts 的 freshGuess）：想事情时还没专门想过的，这一次就想这一件 */
+    guessFacts?: () => { id: string; text: string } | undefined;
 }
 
 export interface PlannerStatus {
@@ -580,12 +582,15 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         // 她最近看过的视频（ADR 0130）：还没专门想过的，这一次就想这一件；想过的只是多一个可选的题目
         const watched = deps.watchedFacts?.();
         const forceWatch = Boolean(watched && !inner.reflected?.includes(watched.id));
-        // 晚上专门想自己（ADR 0208）：隔两天的晚上 22 点以后第一次想，只给“怀疑自己”那一样；要先想视频就让给视频
+        // 她之前猜的事刚有了结果（ADR 0213）：还没专门想过的，这一次就想这一件（视频优先）
+        const guess = forceWatch ? undefined : deps.guessFacts?.();
+        const forceGuess = Boolean(guess && !inner.reflected?.includes(guess.id));
+        // 晚上专门想自己（ADR 0208）：隔两天的晚上 22 点以后第一次想，只给“怀疑自己”那一样；要先想视频 / 猜的事就让给它们
         const herToday = formatDate(herDay(deps.schedule, new Date(started)));
-        const doubtNight = doubtDue(inner.doubtedOn, herToday, new Date(started).getHours(), forceWatch);
+        const doubtNight = doubtDue(inner.doubtedOn, herToday, new Date(started).getHours(), forceWatch || forceGuess);
         for (const retry of [false, true]) {
             const outcome = await deps.responder.initiate({
-                label: '内心', note: thinkNote(inner.thoughts.slice(-3), contact.name, inner.thoughts.length, retry, watched?.text, forceWatch, doubtNight),
+                label: '内心', note: thinkNote(inner.thoughts.slice(-3), contact.name, inner.thoughts.length, retry, watched?.text, forceWatch, doubtNight, forceGuess ? guess!.text : undefined),
                 topic: `${contact.name}最近在忙什么、我自己最近惦记什么、担心什么、期待什么`,
                 maxBubbles: 1, dryRun: false, think: true, commit: () => undefined,
             });
@@ -610,8 +615,10 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         inner = {
             ...inner, thoughts: [...inner.thoughts, parsed.thought].slice(-THOUGHTS_KEPT),
             ...(forceWatch && watched ? { reflected: [...(inner.reflected ?? []), watched.id].slice(-30) } : {}),
+            ...(forceGuess && guess ? { reflected: [...(inner.reflected ?? []), guess.id].slice(-30) } : {}),
             ...(doubtNight ? { doubtedOn: herToday } : {}),
         };
+        if (forceGuess) deps.log(`内心${tag}：想了想之前猜的一件事有了结果（ADR 0213）`);
         if (doubtNight) deps.log(`内心${tag}：今晚专门想了想自己（ADR 0208）`);
         // 她自己想弄明白的事（ADR 0180）：念头里写了「想查：关键词」就真去查一次，查到的存起来，下次聊天里能带到
         if (parsed.wants && deps.look) {

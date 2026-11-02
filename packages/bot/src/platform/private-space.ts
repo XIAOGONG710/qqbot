@@ -27,6 +27,6 @@ export function peekRefused(plain: string | undefined, config: AppConfig): boole
  * 没有任何功能读它们；迁移 / 导出 / 存档工具不带它们；日志只记条数，不记内容。
  * （speech-feedback.json 是他自己标的话，不在这里。）
  */
-export const PRIVATE_FILES: readonly string[] = ['speech-notes.json', 'diary-insights.json', 'feeling-review.json', 'pursuits-self.json', 'INSIGHTS.json', 'FEELINGS.json', 'reading-takes.json', 'open-questions.json'];
+export const PRIVATE_FILES: readonly string[] = ['speech-notes.json', 'diary-insights.json', 'feeling-review.json', 'pursuits-self.json', 'INSIGHTS.json', 'FEELINGS.json', 'reading-takes.json', 'open-questions.json', 'her-guesses.json'];
 
 export const isPrivateFile = (name: string): boolean => PRIVATE_FILES.includes(name);

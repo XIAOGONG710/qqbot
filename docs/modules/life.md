@@ -34,6 +34,7 @@
 - `life/leave-note.ts`
 - `life/dreams.ts`
 - `life/open-questions.ts`
+- `life/her-guesses.ts`
 - `life/learning-questions.ts`
 - `life/traces.ts`
 - `life/understanding.ts`
@@ -59,6 +60,7 @@
 | `herFeelings` | 心境（开心 / 难过 / 流泪；桌面上的她读同一份；ownerPeek 开着时 /心境 看） | [ADR 0102](../adr/0102-feelings.md) |
 | `feelingReview` | 她聊完回想一下，记下有依据的感受（每条要指出是哪几条消息让她有的） | [ADR 0197](../adr/0197-feelings-shared-and-reviewed.md) |
 | `readingTakes` | 她读完 / 看完之后自己想的（每晚一次，有话想说才写；私人空间，聊到那本书 / 视频才放进提示词） | [ADR 0204](../adr/0204-reading-takes.md) |
+| `herGuesses` | 她猜的事和后来的结果（每晚她自己挑哪句算数、对照世界账看对没对；私人空间，聊到同一类事才放进提示词） | [ADR 0213](../adr/0213-her-guesses.md) |
 | `openQuestions` | 她没想完的问题（他问她答「不知道」的，夜里她自己想一遍，想出什么写什么；私人空间，他再问到同一件事才放进提示词） | [ADR 0207](../adr/0207-open-questions.md) |
 | `ownerPeek` | 他能不能用 /追求 /说话习惯 /心境 /自我认识 看她自己总结 / 回想出来的东西（默认不能：她的私人空间） | [ADR 0200](../adr/0200-private-space.md) |
 | `grievance` | 小别扭 / 和好 | [ADR 0074](../adr/0074-small-grievance.md) |
@@ -71,4 +73,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0178](../adr/0178-self-set-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0162](../adr/0162-tastes.md)、[ADR 0163](../adr/0163-acquaintances.md)、[ADR 0194](../adr/0194-diary-insights.md)、[ADR 0204](../adr/0204-reading-takes.md)
+[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0178](../adr/0178-self-set-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0162](../adr/0162-tastes.md)、[ADR 0163](../adr/0163-acquaintances.md)、[ADR 0194](../adr/0194-diary-insights.md)、[ADR 0204](../adr/0204-reading-takes.md)、[ADR 0213](../adr/0213-her-guesses.md)

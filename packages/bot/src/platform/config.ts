@@ -165,6 +165,8 @@ export const DEFAULTS = {
     readingTakes: false,
     /** 看他的反应（ADR 0212）：她主动说自己的事时，看一眼他最近对哪类事接着聊、回个嗯、明说过不想听，说什么说多少她自己拿捏；他明说过不想听的那一类照片 / 小事这几天不发 */
     hisReactions: false,
+    /** 她猜的事和后来的结果（ADR 0213）：白天留意她像在猜结果的话（小测、快递、天气、作业），每晚她自己挑哪句算数，对照世界账看对没对，记一句；私人空间 */
+    herGuesses: false,
     /** 她没想完的问题（ADR 0207）：他问了她答不上来的（「不知道」），夜里她自己想一遍、想出什么写什么；他再问到同一件事才把她自己想的放进提示词。私人空间 */
     openQuestions: false,
     rhythm: false,
@@ -600,6 +602,12 @@ export interface AppConfig {
      * 提示词多一行三周内他对各类事的反应（接着聊 / 回个嗯 / 没回 / 明说不想听），不禁话题；他明说过不想听的那一类照片 / 小事 7 天内不发。不落盘，每次从聊天记录重算
      */
     hisReactions?: boolean;
+    /**
+     * 她猜的事和后来的结果（ADR 0213）：默认关；要名单里有男朋友档、要她那边的世界。白天只留意她说的「我猜 / 估计 / 肯定会……」+「小测 / 快递 / 下雨 / 作业……」，
+     * 每晚 22 点以后她自己挑哪几句是真在猜（气话不算），挂着的对照世界账这几天真实发生的事看对没对（结果只能是世界账里的事），7 天没结果的放下；
+     * 刚对上的那件，她下次一个人想事情（innerLife）时想这一件；他聊到同一类事才放进提示词最多两条。存在 her-guesses.json（私人空间，日志只记个数）
+     */
+    herGuesses?: boolean;
     /** 她没想完的问题（ADR 0207）：默认关；要名单里有男朋友档。他问的、她答「不知道」的，夜里（22 点以后）用 deliberateModel 让她自己想，想出什么写什么；存在 open-questions.json（她的私人空间，没有命令念给他）；他再问到同一件事才放进提示词，不说怎么用 */
     openQuestions?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
@@ -910,6 +918,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         readStickers: bool(file, 'readStickers', '', DEFAULTS.readStickers),
         readingTakes: bool(file, 'readingTakes', '', DEFAULTS.readingTakes),
         hisReactions: bool(file, 'hisReactions', '', DEFAULTS.hisReactions),
+        herGuesses: bool(file, 'herGuesses', '', DEFAULTS.herGuesses),
         openQuestions: bool(file, 'openQuestions', '', DEFAULTS.openQuestions),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
         shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),

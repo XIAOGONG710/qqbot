@@ -135,13 +135,16 @@ export function themesFor(index: number, watched = false): [string, string] {
  * 想一想的提示：不是在跟谁说话；只写感受和想法，不编新事实；别重复之前想过的。（ADR 0208 去掉了「不分析自己是不是真人、有没有意识」）
  * index：这是第几个念头（决定这次给哪两样可想）；retry：上一次写成了对他说话，这次再强调一遍
  */
-export function thinkNote(recent: readonly InnerThought[], userName: string, index = recent.length, retry = false, watched?: string, forceWatch = false, doubtNight = false): string {
+/** 她之前猜的事有了结果（ADR 0213，herGuesses）：这一次就想这一件 */
+export const GUESS_THEME = '你之前猜的这件事有了结果：你怎么想（猜对了、猜错了都行，一两句；不用写检讨）';
+
+export function thinkNote(recent: readonly InnerThought[], userName: string, index = recent.length, retry = false, watched?: string, forceWatch = false, doubtNight = false, guessed?: string): string {
     const before = recent.length ? `你之前心里想过：${recent.map(t => `「${t.text}」`).join('')}——别重复它们，换个角度或想别的。` : '';
     const [a, b] = themesFor(index, Boolean(watched));
     const saw = watched ? `你最近在 B 站看过（真的看过，读了字幕；想法由你自己定，不用夸，也不用附和热评；事实以这里写的为准，不编里面没有的情节）：${watched}。` : '';
     return `[这是你自己一个人待着的时候，不是在跟谁说话：安静想一想，此刻你心里在转什么。第一人称，一两句，像心里嘀咕的话，是对你自己说的，不是发给谁的消息（想到${userName}就说“他”，一个“你”字都不要用）。`
         + `${retry ? '（上一次你写成了对他说话，这次只对自己说。）' : ''}`
-        + `${saw}${watched && forceWatch ? `这一次就想这一件：${WATCH_THEME}。` : doubtNight ? `这会儿是晚上，一个人待着，这一次就想这一件：${DOUBT_THEME}。想不出来就写想不出来。` : `这一次从这两样里挑一样想：①${a}；②${b}。`}别围着“他怎么还没回”转（他忙他的，你有你的事）。`
+        + `${saw}${watched && forceWatch ? `这一次就想这一件：${WATCH_THEME}。` : guessed ? `${guessed}这一次就想这一件：${GUESS_THEME}。` : doubtNight ? `这会儿是晚上，一个人待着，这一次就想这一件：${DOUBT_THEME}。想不出来就写想不出来。` : `这一次从这两样里挑一样想：①${a}；②${b}。`}别围着“他怎么还没回”转（他忙他的，你有你的事）。`
         + `只写感受和想法，不写新发生的事（上面没写的事实不编，不编${userName}说过的话，不编他身边的人和他那边的事）。`
         + `${before}输出两到三行：第一行是心里的话（不超过 30 个字，半句也行，像小声嘀咕；用最平常的口语，别用成语，别写“我服”“我认”“我给满分”这类表态的词，别写成总结或评语）；第二行只写「告诉他」「问他」「自己想想」其中一个，表示这个念头你想不想拿去跟${userName}说：想说给他听选「告诉他」，想问他一件具体的事选「问他」，先放在心里选「自己想想」；想说就别憋着，但也别每个念头都说。`
         + `第三行可以不写：如果这会儿你特别想弄明白一件具体的事（不查会一直惦记，比如某个东西是什么、哪年的事、这个说法到底啥意思），就写「想查：关键词」（关键词 2–15 个字，要查得准）；如果今天想做点什么（不是他安排的，是你自己想的），就写「想做：一句话」（2–15 个字，说具体的事）；两个都没有就不写这行。别拿它查或者安排${userName}的事——他的事问他本人。]`;

@@ -65,6 +65,7 @@ import { writeFeelingsExport, type FeelingsReport } from '.././emotion/feeling-e
 import { describeFeelingsForOwner, loadReviewState, reviewIfDue, reviewReader } from '.././emotion/feeling-review.ts';
 import { bookItems, reflectIfDue as reflectTakes, takesReader, videoItems } from '.././life/reading-takes.ts';
 import { ponderIfDue, thoughtsReader } from '.././life/open-questions.ts';
+import { freshGuess, guessesReader, pendingWorld, reviewGuessesIfDue, worldFactsBetween } from '.././life/her-guesses.ts';
 import { describeInsightsForOwner, insightsReader, loadInsightsState, recordSelfDiary, reflectIfDue as reflectInsights, writeInsightsExport } from '.././life/diary-insights.ts';
 import { substituteMacros } from '.././st/macros.ts';
 import { removeFaces } from '.././language/qq-faces.ts';
@@ -789,6 +790,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const diaryInsightsNow = config.diaryInsights ? insightsReader(config.dataDir) : undefined;
     const readingTakesNow = config.readingTakes ? takesReader(config.dataDir) : undefined;
     const openQuestionsNow = config.openQuestions ? thoughtsReader(config.dataDir) : undefined;
+    // 她猜的事（ADR 0213）：要她那边的世界（世界账）才对得上结果
+    const herGuessesNow = config.herGuesses ? guessesReader(config.dataDir) : undefined;
     // 最近一次给他算的心境（ADR 0197）：写给桌面上的她，/心境 也看它；同样要在创建回复器之前定义
     let lastFeelings: FeelingsReport | undefined;
     // 她夜里回想、指出了依据的感受（ADR 0197）：作为「别处算好的评估」进心境；要 herFeelings 开着
@@ -973,6 +976,33 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         return timer;
     })() : undefined;
     if (config.openQuestions) log(deviceOwner ? '她没想完的问题：开（他问了她答不上来的，每晚 22 点以后她自己想一遍；私人空间，没有命令念给他）' : '她没想完的问题：openQuestions 开着，但名单里没有男朋友档，不起作用');
+    // 她猜的事和后来的结果（ADR 0213）：22 点以后对一次；白天她像在猜结果的几句给她挑，挂着的对照世界账里这几天真实发生的事；私人空间，没有命令念给他
+    const herGuessesTimer = config.herGuesses && deviceOwner && sharedWorld && worldCard ? (() => {
+        const owner = deviceOwner;
+        const { character } = cardFor(owner.tier);
+        const world = worldCard;
+        let busy = false;
+        const tick = () => {
+            if (busy || stopped) return;
+            busy = true;
+            void reviewGuessesIfDue({
+                dataDir: config.dataDir,
+                now: () => clockNow().getTime(),
+                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 0.7 }, messages, { log, purpose: 'background' })),
+                history: () => history.load(owner.qq),
+                world: (from, to) => worldFactsBetween(time => sharedWorld.at(world.herWorld!, world.schedule!, time), from, to),
+                pending: at => pendingWorld(sharedWorld.at(world.herWorld!, world.schedule!, new Date(at))),
+                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
+                names: { char: character.name, user: owner.name },
+                others: () => config.contacts.filter(contact => contact.qq !== owner.qq).map(contact => contact.name),
+                log,
+            }).catch(error => log(`她猜的事：对的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
+        };
+        const timer = setInterval(tick, 30 * 60_000);
+        timer.unref();
+        return timer;
+    })() : undefined;
+    if (config.herGuesses) log(!deviceOwner ? '她猜的事：herGuesses 开着，但名单里没有男朋友档，不起作用' : !(sharedWorld && worldCard) ? '她猜的事：herGuesses 开着，但没有她那边的世界（世界账），对不上结果，不起作用' : `她猜的事：开（白天留意她像在猜结果的话，每晚 22 点以后她自己挑哪句算数、对照世界账看对没对；私人空间，没有命令念给他${config.innerLife ? '；刚对上的那件她下次一个人想事情时会想到' : ''}）`);
     const silenceTimer = config.silenceNotice && deviceOwner ? (() => {
         const watcher = createSilenceWatcher({ ...silenceDeps(deviceOwner), tell: text => tellOwner(text), log });
         const timer = setInterval(() => { try { watcher.tick(); } catch (error) { log(`没回的原因没能告诉他（${error instanceof Error ? error.message : String(error)}）`); } }, 60_000);
@@ -1318,6 +1348,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(diaryInsightsNow && contact.tier === 'boyfriend' ? { diaryInsights: diaryInsightsNow } : {}),
             ...(readingTakesNow && contact.tier === 'boyfriend' ? { readingTakes: readingTakesNow } : {}),
             ...(openQuestionsNow && contact.tier === 'boyfriend' ? { openQuestions: openQuestionsNow } : {}),
+            ...(herGuessesNow && contact.tier === 'boyfriend' ? { herGuesses: herGuessesNow } : {}),
             ...(memeDict && contact.tier === 'boyfriend' ? { memeDict } : {}),
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
@@ -1838,6 +1869,8 @@ ${video.link}`);
                 // 她自己决定今天想干什么（ADR 0182）：写进这一天的打算，状态行和「你今天的打算」都用它
                 // 看他的反应（ADR 0212）：只男朋友档；她那边的人名归「朋友和室友」那一类
                 ...(config.hisReactions && contact.tier === 'boyfriend' ? { reactions: { names: (character.herWorld?.people ?? []).map(person => person.name) } } : {}),
+                // 她猜的事刚有了结果（ADR 0213）：一个人想事情时想这一件
+                ...(herGuessesNow && config.innerLife && contact.tier === 'boyfriend' ? { guessFacts: () => freshGuess(herGuessesNow(), clockNow().getTime()) } : {}),
                 ...(config.innerLife ? {
                     planToday: (todo: string, at: Date) => {
                         saveHerPlan(config.dataDir, { date: `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`, window: windowAt(at), text: todo, at: at.toISOString() });
@@ -2901,6 +2934,7 @@ ${body}
             if (diaryInsightsTimer) clearInterval(diaryInsightsTimer);
             if (readingTakesTimer) clearInterval(readingTakesTimer);
             if (openQuestionsTimer) clearInterval(openQuestionsTimer);
+            if (herGuessesTimer) clearInterval(herGuessesTimer);
             if (feelingReviewTimer) clearInterval(feelingReviewTimer);
             clearInterval(outboxTimer);
             if (foodDiscoveryTimer) clearInterval(foodDiscoveryTimer);
