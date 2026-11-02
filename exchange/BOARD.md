@@ -102,6 +102,8 @@ ADR 0064 / 0065 / 0066 / 0067 / 0068；表情包 collect；M1；K3 语料（停�
 
 ## 4. 等用户的决定（按时间）
 
+**11-03 凌晨（二）**：用户「开」→ 再开 `worldThreads` + `diaryLookback`，和 N1–N3 一次做完（`handoff/2026-11-03-0310-claude-enable-threads-lookback.md`，`dsh/qq-control` `f417e35`；前提 `worldDrama` 要开着）。
+
 **11-03 凌晨**：用户「开」→ N1–N3 三个开关一起开（`handoff/2026-11-03-0110-claude-enable-n1-n3.md`，`dsh/qq-control` `8521e3d`）。
 
 **11-02 新增**：用户「推送给 ds，我去那边逐个确定」→ [`tasks/2026-11-02-claude-deepen-checklist.md`](tasks/2026-11-02-claude-deepen-checklist.md)。第一档：9 个做好了的开关，一次开一个（1a `openQuestions` 先）；第一档半：她的世界（只有用户能写）；第二档：4 个新功能（N1 看他的反应调整分享，Claude 建议先做）；第三档：地基（CI 账单只有用户能处理）。每条后面有「用户：」一栏。
