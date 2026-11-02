@@ -579,7 +579,7 @@ export class LongTermMemory {
      */
     async recall(
         contact: MemoryContact, chat: ChatMessage[], now: Date,
-        options: { query?: string; window?: { start: Date; end: Date }; header?: string; limit?: number } & FadeOptions = {},
+        options: { query?: string; window?: { start: Date; end: Date }; header?: string; limit?: number; felt?: (day: Date, text: string) => string | undefined } & FadeOptions = {},
     ): Promise<string | undefined> {
         const state = this.#load(contact);
         if (!state.bankConfigured) return undefined;
@@ -589,7 +589,7 @@ export class LongTermMemory {
         if (!results) return undefined;
         const current = currentEpisodeId(chat);
         return formatRecalled(results.filter(r => !current || r.document_id !== current), {
-            header: options.header, limit: options.limit, now, fade: this.#fade(chat, options),
+            header: options.header, limit: options.limit, now, fade: this.#fade(chat, options), ...(options.felt ? { felt: options.felt } : {}),
         });
     }
 
@@ -980,7 +980,11 @@ export interface FadeRequest {
  */
 export function formatRecalled(
     results: RecallResult[],
-    options: { header?: string; limit?: number; now?: Date; source?: (result: RecallResult) => string | undefined; fade?: FadeRequest } = {},
+    options: {
+        header?: string; limit?: number; now?: Date; source?: (result: RecallResult) => string | undefined; fade?: FadeRequest;
+        /** 回忆带着当时的感觉（ADR 0218）：这条记忆那一天、这条的文字 → 附在括号里的一句（对不上返回 undefined） */
+        felt?: (day: Date, text: string) => string | undefined;
+    } = {},
 ): string | undefined {
     const valid = (iso: string | null | undefined) => {
         const date = iso ? new Date(iso) : undefined;
@@ -1008,10 +1012,12 @@ export function formatRecalled(
         const when = future ? valid(r.mentioned_at)
             : r.type === 'observation' ? valid(r.mentioned_at) ?? valid(r.occurred_start) : valid(r.occurred_start) ?? valid(r.mentioned_at);
         const faded = clarity === 'vague' ? '记不太清了' : clarity === 'recognized' ? '他一提才想起来，记不太清了' : undefined;
-        const notes = [options.source?.(r), future ? `打算 ${day(future)}` : undefined, faded].filter(Boolean);
-        const prefix = `${when ? day(when) : ''}${notes.length ? `（${notes.join('，')}）` : ''}`;
         // 事实后面常带「 | When: … | Involving: …」，日期已经写在前面了；【重要】是给我们看的记号
         const text = withoutMark(r.text.split(' | ')[0]!);
+        // 那时的感觉（ADR 0218）：有日子、不是还没到的计划才附
+        const felt = options.felt && when && !future ? options.felt(when, text) : undefined;
+        const notes = [options.source?.(r), future ? `打算 ${day(future)}` : undefined, faded, felt].filter(Boolean);
+        const prefix = `${when ? day(when) : ''}${notes.length ? `（${notes.join('，')}）` : ''}`;
         return `- ${prefix ? `${prefix}：` : ''}${text.length > 200 ? `${text.slice(0, 200)}…` : text}`;
     });
     if (lines.length === 0) return undefined;

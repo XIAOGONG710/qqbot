@@ -76,6 +76,7 @@ import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts'
 import { insightsLine, type Insight } from '.././life/diary-insights.ts';
 import { takesLine, type Take } from '.././life/reading-takes.ts';
 import { thoughtsLine, type Thought } from '.././life/open-questions.ts';
+import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts';
 import { guessesLine, type Guess } from '.././life/her-guesses.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
 import { describeCloseness } from '.././language/relationship.ts';
@@ -147,9 +148,11 @@ export interface TierCard {
 /**
  * 他问到过去的某一天时（ADR 0032）那一段流水账；written：她那天自己写的日记（ADR 0217，diaryLookback），没有就和原来一字不差
  */
-export function recapText(day: string, lines: readonly string[], written?: string): string {
+export function recapText(day: string, lines: readonly string[], written?: string, felt?: string): string {
     const diaryPart = written ? `${lines.length ? '；' : ''}那天你自己写的日记：「${written}」（你写的，他问到那天，说法对着它，别和它打架；不用照念）` : '';
-    return `[那天（${day}）你那边的流水账（你自己过的，都是真的：他问到具体的事——下没下雨、喂没喂猫、快递拿没拿——照这个说，别说错；泛泛问那天干了什么时，先说上面记得住的事，这里的不用一件件报）：${lines.join('；')}${diaryPart}]`;
+    // 那天的感觉（ADR 0218）
+    const feltPart = felt ? `${lines.length || written ? '；' : ''}${felt}` : '';
+    return `[那天（${day}）你那边的流水账（你自己过的，都是真的：他问到具体的事——下没下雨、喂没喂猫、快递拿没拿——照这个说，别说错；泛泛问那天干了什么时，先说上面记得住的事，这里的不用一件件报）：${lines.join('；')}${diaryPart}${feltPart}]`;
 }
 
 /** 读一个档位的角色卡和它链接的世界书；pattern 是配置里的 characterCard（{tier} 换成档位名，承认版是「<档位>-open」，ADR 0067），世界书在同目录的 <world>.json */
@@ -258,6 +261,8 @@ export interface ContactPipelineOptions {
     memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
     /** 他问到过去的某一天时，她那天自己写的日记（ADR 0217，默认关）：date 是她的那一天 YYYY-MM-DD */
     diaryOn?: (date: string) => string | undefined;
+    /** 回忆带着当时的感觉（ADR 0218，默认关）：想起某一天的事时附一句她那天有依据的感觉；因为他而难过 / 烦 / 担心的不附 */
+    memoryFeelings?: boolean;
     /** 她自己最近过的日子（2026-10-30 她说「没有自己的下文」）：从她写的日记里摘一两句，用不用她定 */
     selfThread?: () => string | undefined;
     /** 她上一轮在这台电脑上跑的命令和结果（2026-10-30 用户：把最高权限给她） */
@@ -488,6 +493,25 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
+    // 那天她心里有依据的感觉（ADR 0218，memoryFeelings）：那天晚上的世界、前一天留下的、作者写下的、她聊完回想记下的；
+    // 因为他而难过 / 烦 / 担心的不算（felt-then.ts 的护栏）；同一天同一个钟头算过的不重算
+    const feltCache = new Map<string, Felt[]>();
+    const feltOnDay = (dayStart: Date): Felt[] => {
+        const from = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate()).getTime();
+        const at = Math.min(new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), 23, 30).getTime(), now());
+        const key = String(Math.floor(at / 3_600_000));
+        const cached = feltCache.get(key);
+        if (cached) return cached;
+        const snapshot = (time: number) => (herSchedule && character.herWorld
+            ? options.worldState?.at(character.herWorld, herSchedule, new Date(time)) ?? worldAt(character.herWorld, herSchedule, new Date(time))
+            : undefined);
+        const world = snapshot(at);
+        const previous = snapshot(new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate()).getTime() - 60_000);
+        const felt = feltDuring(appraisals({ now: at, history: [], ...(world ? { world } : {}), ...(previous ? { previousWorld: previous } : {}), moments: options.moments?.() ?? [], extra: [...(options.feelingReview?.() ?? [])] }), from, at);
+        if (feltCache.size > 30) feltCache.clear();
+        feltCache.set(key, felt);
+        return felt;
+    };
     const recapOf = (dayStart: Date, time: Date): { day: string; lines: string[]; text: string } | undefined => {
         if (!herSchedule || !character.herWorld) return undefined;
         const today = herDay(herSchedule, time);
@@ -505,9 +529,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             .filter(slot => slot.done !== slot.planned).map(describeSlot));
         // 那天她自己写的日记（ADR 0217）：翻回去看得到，说法可以对着它
         const written = options.diaryOn?.(`${dayStart.getFullYear()}-${String(dayStart.getMonth() + 1).padStart(2, '0')}-${String(dayStart.getDate()).padStart(2, '0')}`);
-        if (!lines.length && !written) return undefined;
+        // 那天的感觉（ADR 0218，memoryFeelings）：他问到那一天，整天明显的感觉都算
+        const feltDay = options.memoryFeelings && contact.tier === 'boyfriend' ? feltDayNote(feltOnDay(dayStart)) : undefined;
+        if (!lines.length && !written && !feltDay) return undefined;
         const day = `${dayStart.getMonth() + 1}月${dayStart.getDate()}日 ${'日一二三四五六'.split('').map(d => `周${d}`)[dayStart.getDay()]}`;
-        return { day, lines, text: recapText(day, lines, written) };
+        return { day, lines, text: recapText(day, lines, written, feltDay) };
     };
     return createResponder({
         userId: contact.qq,
@@ -548,6 +574,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const ignore = [character.name, contact.name, ...(options.contacts ?? []).map(c => c.name)];
             const faded: (FadeStats | undefined)[] = [];
             const fade = (i: number) => ({ ignore, onFade: (stats: FadeStats) => { faded[i] = stats; } });
+            // 回忆带着当时的感觉（ADR 0218）：召回的和他的记忆，那天她心里对得上的那种感觉；主动找他时不附
+            const feltForRecall = options.memoryFeelings && contact.tier === 'boyfriend' && !initiate
+                ? (when: Date, text: string) => feltNoteFor(feltOnDay(new Date(when.getFullYear(), when.getMonth(), when.getDate())), text)
+                : undefined;
             // 她今天跟别人聊过的也是她的生活（ADR 0020）：只在亲密联系人开启新一段对话、或她主动找他时想起。
             // 本轮已有明确公共记忆线索时不另查，避免把同一件事放两遍。
             const todayOthers = remembers && !cue && isClose(contact.tier) && (Boolean(initiate) || startsConversation(chat))
@@ -560,7 +590,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     cue === ASKS_PAST ? [] : named.length ? named.map(p => p.name) : [cue]);
             };
             const [recalled, freshCommon, ...aboutPeople] = (await Promise.all([
-                remembers ? memory.recall(contact, chat, time, { ...recallOptions, ...fade(0) }) : undefined,
+                remembers ? memory.recall(contact, chat, time, { ...recallOptions, ...fade(0), ...(feltForRecall ? { felt: feltForRecall } : {}) }) : undefined,
                 remembers && cue ? recallCommon(chat, cue, time) : undefined,
                 ...people.map((person, i) => (remembers
                     ? memory.recall(person, chat, time, {

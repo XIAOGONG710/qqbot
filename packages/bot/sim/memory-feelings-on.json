@@ -1,0 +1,15 @@
+{
+    "name": "回忆带着当时的感觉（ADR 0218）：前天下午小测没考好，他今晚问前天怎么样（memoryFeelings=true）",
+    "tier": "boyfriend",
+    "user": "宝宝",
+    "start": "2026-11-05T20:30:00+08:00",
+    "memory": false,
+    "herFeelings": true,
+    "memoryFeelings": true,
+    "moments": [{ "id": "quiz", "at": "-53h", "kind": "sad", "strength": 2, "cause": "高数小测没考好，好几道题没写完" }],
+    "steps": [
+        { "case": "MF01", "note": "他问前天" },
+        { "say": "前天怎么样？那天是不是有个小测" },
+        { "check": { "exitClean": true, "speechClean": true } }
+    ]
+}

@@ -61,6 +61,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'worldDrama', label: '日子里的小起伏（一天之内的难过 / 烦 / 高兴）', group: '她的日子', adr: '0211' },
     { key: 'worldThreads', label: '她那边的事有后续（拌嘴第二天和好、淋雨第二天嗓子发紧……一天最多一条；闹心的事有冷却期；要日常小事和小起伏）', group: '她的日子', adr: '0216' },
     { key: 'diaryLookback', label: '翻回去看自己的日记（他问到前几天的事，她那天写的日记也给她，说法对得上）', group: '她的日子', adr: '0217' },
+    { key: 'memoryFeelings', label: '回忆带着当时的感觉（想起某天的事时附一句她那天有依据的感觉；因为他而难过 / 烦的不附；要心境）', group: '她的日子', adr: '0218' },
     { key: 'menu', label: '每顿吃什么（每天随机）', group: '她的日子', adr: '0125' },
     { key: 'pursuits', label: '她自己的追求', group: '她的日子', adr: '0104' },
     { key: 'herFeelings', label: '心境（开心 / 难过 / 流泪；桌面上的她读同一份；ownerPeek 开着时 /心境 看）', group: '她的日子', adr: '0102' },
