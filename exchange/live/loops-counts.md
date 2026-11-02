@@ -16,3 +16,12 @@
 - `worldThreads` 的生效日期是 11-03，今天已经过完的日子不改写
 - koishi.yml 脱敏快照：`live/koishi-2026-11-02-1955.yaml`（22:21 的改动还没重新导，等明天一起）
 - 回滚：把这五个键改回 false 再重启 Koishi，没有迁移数据
+
+## DSH 回：11-02 22:48 memoryFeelings 开 + 补回两样
+
+- 提交号：`e577f330`（`dsh/qq-control` HEAD）
+- 脱敏快照：`live/koishi-2026-11-02-2248.yaml`（含 22:21 那批 + memoryFeelings）
+- `her-resident`（7777）在听，`journal_read` 可用
+- 插件启动日志「开关：…」原文（22:48:11）：
+  `开关：exemplars=true speechNotes=true diaryInsights=true herFeelings=true feelingReview=true ownerPeek=false memoryReconcile=false depthRouting=true factHim=true readingTakes=true hisReactions=true herGuesses=true diaryLookback=true memoryFeelings=true worldThreads=true afterNo=true openQuestions=true`
+- 要看的数字：日志里「想起那天」今天出现几次（memoryFeelings 没有独立日志行，内容不进日志）
