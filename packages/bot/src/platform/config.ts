@@ -115,6 +115,8 @@ export const DEFAULTS = {
     memoryFeelings: false,
     /** 昨晚真的怎么睡的（ADR 0219）：早上困不困从她说「睡了」、半夜被吵醒、睡前跟他聊推，不按课表；被吵醒有起床气 */
     realNights: false,
+    /** 她每天回顾聊天（ADR 0221）：每晚看今天和他的聊天里数得出来的几处（他说她说错、他只回嗯、连问、说太长、同一件事说好几遍），她自己判断、记一句；私人空间 */
+    chatReview: false,
     pursuits: false,
     shapeSplit: false,
     shapeAsk: false,
@@ -503,6 +505,8 @@ export interface AppConfig {
     memoryFeelings?: boolean;
     /** 昨晚真的怎么睡的（ADR 0219）：默认关；只男朋友档；要 herDays 和身体（卡上的 body） */
     realNights?: boolean;
+    /** 她每天回顾聊天（ADR 0221）：默认关；要名单里有男朋友档。存在 chat-review.json（私人空间） */
+    chatReview?: boolean;
     /**
      * 她自己的追求（ADR 0104，只给男朋友档）：内置两条，都是自传里写明的话——「别挂科」和「用新相机拍出自己满意的东西」（买到相机以后分五步：熟悉设置、拍一组土豆、拍一组校园的秋天、挑十来张修好、挑最满意的发到空间里）。
      * 进度只来自她做过的事（生活账里的摄影、出分的小测），不存数字；做完一步她会开心、买了相机好几天没碰会有点愧疚，时间块里一小段让她知道自己在追什么（不用主动提）；
@@ -896,6 +900,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         diaryLookback: bool(file, 'diaryLookback', '', DEFAULTS.diaryLookback),
         memoryFeelings: bool(file, 'memoryFeelings', '', DEFAULTS.memoryFeelings),
         realNights: bool(file, 'realNights', '', DEFAULTS.realNights),
+        chatReview: bool(file, 'chatReview', '', DEFAULTS.chatReview),
         pursuits: bool(file, 'pursuits', '', DEFAULTS.pursuits),
         shapeSplit: bool(file, 'shapeSplit', '', DEFAULTS.shapeSplit),
         shapeAsk: bool(file, 'shapeAsk', '', DEFAULTS.shapeAsk),

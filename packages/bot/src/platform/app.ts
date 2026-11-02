@@ -60,6 +60,7 @@ import { BILI_STICKER_PER_DAY, biliStickerDiscover, STICKER_UNCUED_CHANCE } from
 import { pursuitsReader } from '.././life/pursuits.ts';
 import { describeForOwner, loadSelfState, reflectIfDue, selfAwareReader } from '.././life/self-pursuits.ts';
 import { describeNotesForOwner, loadNotesState, reflectIfDue as reflectSpeechNotes, speechNotesReader, speechStats } from '.././language/speech-notes.ts';
+import { reviewChatIfDue, reviewReader as chatReviewReader } from '.././language/chat-review.ts';
 import { describeTrend, speechTrend } from '.././language/speech-trend.ts';
 import { FEEDBACK_NO_TURN, describeFeedbackForOwner, feedbackReceipt, lastTurn, loadFeedback, parseFeedbackCommand, recentFeedback, recordFeedback } from '.././language/speech-feedback.ts';
 import { writeFeelingsExport, type FeelingsReport } from '.././emotion/feeling-export.ts';
@@ -864,6 +865,30 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         return timer;
     })() : undefined;
     if (config.speechNotes) log(deviceOwner ? '她自己总结说话习惯：开（每晚 22 点以后想一次；/说话习惯 随时看）' : '她自己总结说话习惯：开着，但名单里没有男朋友档，不启动');
+    // 她每天回顾聊天、找出内容上的问题、学着改（ADR 0221）：22 点以后看一次今天和他的聊天里数得出来的几处，她自己判断、记一句；私人空间
+    const chatReviewTimer = config.chatReview && deviceOwner ? (() => {
+        const owner = deviceOwner;
+        const { character } = cardFor(owner.tier);
+        let busy = false;
+        const tick = () => {
+            if (busy || stopped) return;
+            busy = true;
+            void reviewChatIfDue({
+                dataDir: config.dataDir,
+                now: () => clockNow().getTime(),
+                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 0.8 }, messages, { log, purpose: 'background' })),
+                history: () => history.load(owner.qq),
+                dayStart: at => (character.schedule ? herDay(character.schedule, new Date(at)).getTime() : new Date(new Date(at).setHours(0, 0, 0, 0)).getTime()),
+                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
+                names: { char: character.name, user: owner.name },
+                log,
+            }).catch(error => log(`聊天回顾：看的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
+        };
+        const timer = setInterval(tick, 30 * 60_000);
+        timer.unref();
+        return timer;
+    })() : undefined;
+    if (config.chatReview) log(deviceOwner ? '她每天回顾聊天：开（每晚 22 点以后看一次今天和他的聊天里数得出来的几处，她自己判断、记一句；私人空间，日志只记个数）' : '她每天回顾聊天：chatReview 开着，但名单里没有男朋友档，不启动');
     // 她每晚翻自己的日记，写下对自己的认识（ADR 0194）：22 点以后想一次，日记够多、有新的才想；失败 2 小时后再试，每天最多试 3 次
     // 桌面上的她也看得到（同一个她）：写进灵魂目录的 INSIGHTS.json，桌面插件只读；每小时刷新时间戳，6 小时没刷新桌面就不用（关掉开关 / QQ 没在跑）
     const exportInsights = (): void => {
@@ -1370,6 +1395,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.afterNo ? { afterNo: true } : {}),
             ...(config.memoryFeelings && config.herFeelings ? { memoryFeelings: true } : {}),
             ...(config.realNights ? { realNights: true } : {}),
+            ...(config.chatReview && contact.tier === 'boyfriend' ? { chatReview: chatReviewReader(config.dataDir) } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
             ...(config.pursuits ? { pursuits: pursuitsNow } : {}),
@@ -2946,6 +2972,7 @@ ${body}
             if (silenceTimer) clearInterval(silenceTimer);
             if (selfPursuitTimer) clearInterval(selfPursuitTimer);
             if (speechNotesTimer) clearInterval(speechNotesTimer);
+            if (chatReviewTimer) clearInterval(chatReviewTimer);
             if (diaryInsightsTimer) clearInterval(diaryInsightsTimer);
             if (readingTakesTimer) clearInterval(readingTakesTimer);
             if (openQuestionsTimer) clearInterval(openQuestionsTimer);

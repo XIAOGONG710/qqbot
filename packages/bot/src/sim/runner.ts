@@ -456,6 +456,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.herNo ? { herNo: true } : {}),
         ...(scenario.afterNo ? { afterNo: true } : {}),
         ...(scenario.memoryFeelings && scenario.herFeelings ? { memoryFeelings: true } : {}),
+        ...(scenario.shapeAll ? { shapeAll: true } : {}),
         // 她没想完的问题（ADR 0207）：想出来的在数据目录的 open-questions.json，每次现取
         ...(scenario.openQuestions && scenario.tier === 'boyfriend' ? { openQuestions: thoughtsReader(dataDir) } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),

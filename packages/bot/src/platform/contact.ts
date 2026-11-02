@@ -78,6 +78,7 @@ import { takesLine, type Take } from '.././life/reading-takes.ts';
 import { thoughtsLine, type Thought } from '.././life/open-questions.ts';
 import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts';
 import { lastNight, withLastNight } from '.././life/nights.ts';
+import { reviewLine, type ReviewNote } from '.././language/chat-review.ts';
 import { guessesLine, type Guess } from '.././life/her-guesses.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
 import { describeCloseness } from '.././language/relationship.ts';
@@ -266,6 +267,10 @@ export interface ContactPipelineOptions {
     memoryFeelings?: boolean;
     /** 昨晚真的怎么睡的（ADR 0219，默认关）：早上困不困从她说「睡了」、半夜被吵醒、睡前跟他聊推，不按课表；被吵醒有起床气 */
     realNights?: boolean;
+    /** 她每天回顾聊天时记下的（ADR 0221，默认关）：最多两条，新的在前；危机 / 想事情 / 小别扭 / 他难过的轮次不放 */
+    chatReview?: () => readonly ReviewNote[];
+    /** 形状对所有轮次都生效（ADR 0220，默认关）：关着时照 DSH 10-28 的松绑，普通闲聊不给形状 */
+    shapeAll?: boolean;
     /** 她自己最近过的日子（2026-10-30 她说「没有自己的下文」）：从她写的日记里摘一两句，用不用她定 */
     selfThread?: () => string | undefined;
     /** 她上一轮在这台电脑上跑的命令和结果（2026-10-30 用户：把最高权限给她） */
@@ -844,6 +849,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const speechNoteNow = options.speechNotes && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
                 ? speechNotesLine(options.speechNotes(), chat.findLast(message => message.role === 'user')?.content) : undefined;
             if (speechNoteNow) log('说话习惯：这一轮放了几条她自己总结的（日志不记内容）');
+            // 她回顾聊天时记下的（ADR 0221）：他在难受时不放（那一轮先接住他，别想着自己的毛病）
+            const reviewNow = options.chatReview && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance && !needsCareText(chat.findLast(message => message.role === 'user')?.content ?? '')
+                ? reviewLine(options.chatReview()) : undefined;
+            if (reviewNow) log('聊天回顾：这一轮放了她自己记下的（日志不记内容）');
             // 她翻自己日记时发现的自己（ADR 0194）：她对自己的认识，不是设定；放的轮次同说话习惯
             const insightNow = options.diaryInsights && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
                 ? insightsLine(options.diaryInsights(), chat.findLast(message => message.role === 'user')?.content) : undefined;
@@ -974,8 +983,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
                 ...(mood ? ['心情'] : []),
             ];
-            // 语言松绑：只有“接情绪/好事/亲近/撒娇/认真”或问过去时给形状；普通闲聊不圈条数字数
-            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !deliberateNow && (Boolean(cue) || Boolean(intent && ENGAGED_INTENT.test(intent))) ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
+            // 语言松绑（DSH 10-28 27facc0）：只有“接情绪/好事/亲近/撒娇/认真”或问过去时给形状；普通闲聊不圈条数字数。
+            // shapeAll（ADR 0220，默认关）：所有轮次都给形状（回到 ADR 0091 的样子），用来量松绑前后的差别
+            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !deliberateNow && (Boolean(options.shapeAll) || Boolean(cue) || Boolean(intent && ENGAGED_INTENT.test(intent))) ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
             // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
             const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
             const crutchLine = crutches.length
@@ -1114,6 +1124,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievanceActive ? [SHELL_INTENT] : []),
                         ...(readingNow ? [readingNow] : []),
                         ...(speechNoteNow ? [speechNoteNow] : []),
+                        ...(reviewNow ? [reviewNow] : []),
                         ...(insightNow ? [insightNow] : []),
                         ...(takesNow ? [takesNow] : []),
                         ...(thoughtsNow ? [thoughtsNow] : []),

@@ -38,6 +38,7 @@
 - `language/asks.ts`
 - `language/opinion.ts`
 - `language/after-no.ts`
+- `language/chat-review.ts`
 - `language/speaking.ts`
 - `language/speech-notes.ts`
 - `language/speech-feedback.ts`
@@ -87,6 +88,7 @@
 | `jealousy` | 吃醋（最轻一档） | [ADR 0123](../adr/0123-jealousy.md) |
 | `texture` | 说话的质感（问号 / ～ / 小黄脸 / 叠字） | [ADR 0131](../adr/0131-texture.md) |
 | `curious` | 会追问（问他刚说的那件事） | [ADR 0126](../adr/0126-curious.md) |
+| `chatReview` | 她每天回顾聊天（每晚看今天数得出来的几处：他说她说错、只回嗯、连问、太长、重复，她自己判断、记一句；私人空间） | [ADR 0221](../adr/0221-chat-review.md) |
 | `depthRouting` | 语义路由：关键词没认出来的轮次，问小模型这一句是轻是重——沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思（要 deliberate 开着） | [ADR 0202](../adr/0202-depth-routing.md) |
 | `memes` | 知道网上的热梗 | [ADR 0129](../adr/0129-memes.md) |
 
@@ -96,4 +98,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0091](../adr/0091-reply-shape.md)、[ADR 0095](../adr/0095-filler-turns.md)、[ADR 0096](../adr/0096-split-and-share.md)、[ADR 0099](../adr/0099-too-smooth.md)、[ADR 0113](../adr/0113-relationship-stage.md)、[ADR 0114](../adr/0114-running-jokes.md)、[ADR 0115](../adr/0115-interruptions.md)、[ADR 0111](../adr/0111-together.md)、[ADR 0121](../adr/0121-odd-words.md)、[ADR 0137](../adr/0137-fact-check.md)、[ADR 0138](../adr/0138-idioms.md)、[ADR 0167](../adr/0167-selfcheck.md)、[ADR 0193](../adr/0193-nightly-speech-notes.md)、[ADR 0195](../adr/0195-speech-feedback.md)、[ADR 0196](../adr/0196-speech-trend.md)、[ADR 0198](../adr/0198-read-through-fixes.md)、[ADR 0202](../adr/0202-depth-routing.md)、[ADR 0205](../adr/0205-trope-shares.md)、[ADR 0203](../adr/0203-fact-check-him.md)、[ADR 0214](../adr/0214-after-no.md)
+[ADR 0091](../adr/0091-reply-shape.md)、[ADR 0095](../adr/0095-filler-turns.md)、[ADR 0096](../adr/0096-split-and-share.md)、[ADR 0099](../adr/0099-too-smooth.md)、[ADR 0113](../adr/0113-relationship-stage.md)、[ADR 0114](../adr/0114-running-jokes.md)、[ADR 0115](../adr/0115-interruptions.md)、[ADR 0111](../adr/0111-together.md)、[ADR 0121](../adr/0121-odd-words.md)、[ADR 0137](../adr/0137-fact-check.md)、[ADR 0138](../adr/0138-idioms.md)、[ADR 0167](../adr/0167-selfcheck.md)、[ADR 0193](../adr/0193-nightly-speech-notes.md)、[ADR 0195](../adr/0195-speech-feedback.md)、[ADR 0196](../adr/0196-speech-trend.md)、[ADR 0198](../adr/0198-read-through-fixes.md)、[ADR 0202](../adr/0202-depth-routing.md)、[ADR 0205](../adr/0205-trope-shares.md)、[ADR 0203](../adr/0203-fact-check-him.md)、[ADR 0214](../adr/0214-after-no.md)、[ADR 0221](../adr/0221-chat-review.md)

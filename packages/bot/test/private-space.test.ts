@@ -8,6 +8,7 @@ import { SPEECH_NOTES_FILE } from '../src/language/speech-notes.ts';
 import { TAKES_FILE } from '../src/life/reading-takes.ts';
 import { QUESTIONS_FILE } from '../src/life/open-questions.ts';
 import { GUESSES_FILE } from '../src/life/her-guesses.ts';
+import { REVIEW_FILE as CHAT_REVIEW_FILE } from '../src/language/chat-review.ts';
 import { SELF_PURSUITS_FILE } from '../src/life/self-pursuits.ts';
 import { DEFAULTS, type AppConfig } from '../src/platform/config.ts';
 import { isPrivateFile, PEEK_COMMANDS, PEEK_OFF_NOTICE, PRIVATE_FILES, peekRefused } from '../src/platform/private-space.ts';
@@ -48,7 +49,7 @@ describe('她的私人空间（ADR 0200）', () => {
     });
 
     test('私人文件清单和各功能真正用的文件名对得上（改了文件名这里会红）；他自己标的话不在里面', () => {
-        assert.deepEqual([...PRIVATE_FILES].sort(), [SPEECH_NOTES_FILE, INSIGHTS_FILE, REVIEW_FILE, SELF_PURSUITS_FILE, INSIGHTS_EXPORT_FILE, FEELINGS_EXPORT_FILE, TAKES_FILE, QUESTIONS_FILE, GUESSES_FILE].sort());
+        assert.deepEqual([...PRIVATE_FILES].sort(), [SPEECH_NOTES_FILE, INSIGHTS_FILE, REVIEW_FILE, SELF_PURSUITS_FILE, INSIGHTS_EXPORT_FILE, FEELINGS_EXPORT_FILE, TAKES_FILE, QUESTIONS_FILE, GUESSES_FILE, CHAT_REVIEW_FILE].sort());
         assert.equal(isPrivateFile(SPEECH_FEEDBACK_FILE), false);
         assert.equal(isPrivateFile('diary.json'), false);
         assert.equal(isPrivateFile(SPEECH_NOTES_FILE), true);

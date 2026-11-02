@@ -63,6 +63,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'diaryLookback', label: '翻回去看自己的日记（他问到前几天的事，她那天写的日记也给她，说法对得上）', group: '她的日子', adr: '0217' },
     { key: 'memoryFeelings', label: '回忆带着当时的感觉（想起某天的事时附一句她那天有依据的感觉；因为他而难过 / 烦的不附；要心境）', group: '她的日子', adr: '0218' },
     { key: 'realNights', label: '昨晚真的怎么睡的（早上困不困看她几点说睡了、半夜有没有被吵醒，不按课表；被吵醒有起床气）', group: '她的日子', adr: '0219' },
+    { key: 'chatReview', label: '她每天回顾聊天（每晚看今天数得出来的几处：他说她说错、只回嗯、连问、太长、重复，她自己判断、记一句；私人空间）', group: '说话', adr: '0221' },
     { key: 'menu', label: '每顿吃什么（每天随机）', group: '她的日子', adr: '0125' },
     { key: 'pursuits', label: '她自己的追求', group: '她的日子', adr: '0104' },
     { key: 'herFeelings', label: '心境（开心 / 难过 / 流泪；桌面上的她读同一份；ownerPeek 开着时 /心境 看）', group: '她的日子', adr: '0102' },
