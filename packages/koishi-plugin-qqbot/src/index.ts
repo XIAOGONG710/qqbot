@@ -205,6 +205,7 @@ export interface Config {
     factHim: boolean;
     readStickers: boolean;
     readingTakes: boolean;
+    hisReactions: boolean;
     openQuestions: boolean;
     exemplars: boolean;
     rhythm: boolean;
@@ -501,6 +502,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**她没想完的问题**（ADR 0207，要名单里有男朋友档）：他问了她答不上来的话（「不知道」「没想好」），她当时没有自己想过的东西可答。开着时：白天只留意这样的一问一答，每晚 22 点以后她自己想一遍（用 deliberateModel，开思考；想出什么写什么——偏向哪边、为什么、卡在哪儿都算，没想出来就留着最多三个晚上，是事实上就不知道的事可以放下），他再问到同一件事才把她自己想的那句放进提示词，提示词不说该不该用、该选哪边。存在 open-questions.json（她的私人空间，没有命令念给他，日志只记个数）。'),
         readingTakes: Schema.boolean().default(DEFAULTS.readingTakes)
             .description('**她读完 / 看完之后自己想的**（ADR 0204，要名单里有男朋友档）：她读书只有情节和进度、说不出自己想了什么（「看完还想了会儿」）。开着时每晚 22 点以后她安静地想一次：今天读到哪儿、看了什么视频，每一项有话想说才写一句——落在一个具体的人 / 情节 / 说法上，说态度和为什么，或者写成她想知道的一件事；没想法就空着。不写空话（很有意思 / 值得一看）、不写警句（不是 X，是 Y）、不剧透她还没读到的、不写他和别人的名字、不碰底线。存在 reading-takes.json（她的私人空间，没有命令念给他，日志只记条数）；只在聊到那本书 / 视频、或他问「最近看了什么」时放进提示词，最多两条。'),
+        hisReactions: Schema.boolean().default(DEFAULTS.hisReactions)
+            .description('**看他的反应**（ADR 0212，只男朋友档，要 proactive 开着）：她主动说自己的事（随口说件事、冷场、小事 / 土豆 / 吃的照片）之后，他是接着聊、回个嗯、没回，还是明说「别老发这个」——按话题（土豆、吃的、课和作业、朋友、看的玩的、买东西、天气）算三周内的，下次她主动开口时提示词多一行事实：「土豆的事他多半会接着聊；课和作业他多半就回个嗯」，说什么、说多说少她自己拿捏，不禁话题。他明说过不想听的那一类照片 / 小事 7 天内不发；话题定了、正好是他不怎么接的小事 / 吃的照片，交给她决定说不说（土豆照发，她本人的条件）。她不舒服、关心他吃饭睡觉的话不进统计。不落盘，每次从聊天记录重算；日志只记话题和次数。'),
         rhythm: Schema.boolean().default(DEFAULTS.rhythm)
             .description('**回复节奏**（ADR 0075）：打字的时间按字数算（0.6 秒 + 每字 0.18 秒，0.9–9 秒），回之前先「看 + 想」一会儿（多半 0.8–3.5 秒，偶尔几秒到半分钟）；热聊的第一条中位慢约 4 秒。默认关（老样子：0.8 秒 + 每字 0.1 秒，1–4 秒）'),
         shortReplies: Schema.boolean().default(DEFAULTS.shortReplies)
@@ -718,6 +721,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.factHim !== undefined ? { factHim: config.factHim } : {}),
         ...(config.readStickers !== undefined ? { readStickers: config.readStickers } : {}),
         ...(config.readingTakes !== undefined ? { readingTakes: config.readingTakes } : {}),
+        ...(config.hisReactions !== undefined ? { hisReactions: config.hisReactions } : {}),
         ...(config.openQuestions !== undefined ? { openQuestions: config.openQuestions } : {}),
         ...(config.rhythm !== undefined ? { rhythm: config.rhythm } : {}),
         ...(config.shortReplies !== undefined ? { shortReplies: config.shortReplies } : {}),
@@ -792,7 +796,7 @@ export function apply(ctx: Context, config: Config) {
     let appConfig: AppConfig;
     try {
         appConfig = parseAppConfig(toAppConfigInput(config), repoRoot);
-        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim} readingTakes=${appConfig.readingTakes} openQuestions=${appConfig.openQuestions}`);
+        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim} readingTakes=${appConfig.readingTakes} hisReactions=${appConfig.hisReactions} openQuestions=${appConfig.openQuestions}`);
     } catch (error) {
         const plain = plainError('配置有误，插件没有启动', error);
         setConsoleState({ error: plain.message });

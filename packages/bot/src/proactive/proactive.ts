@@ -1039,8 +1039,11 @@ export function untoldNews(candidate: Candidate, now: number, input: Pick<Proact
         && !input.history.some(m => Date.parse(m.time) >= item.at));
 }
 
-/** 提示词里的说明（ADR 0011 决策 3）：这次是你主动找他、为什么。userName 是称呼（{{user}}）；untold：没说成的事（untoldNews） */
-export function occasionNote(candidate: Candidate, userName: string, untold: readonly NewsItem[] = []): string {
+/**
+ * 提示词里的说明（ADR 0011 决策 3）：这次是你主动找他、为什么。userName 是称呼（{{user}}）；untold：没说成的事（untoldNews）；
+ * seen：他对她主动说的事的反应（ADR 0212，his-reactions.ts 的 reactionsLine，planner 只在说自己的事的那几个时机给）
+ */
+export function occasionNote(candidate: Candidate, userName: string, untold: readonly NewsItem[] = [], seen?: string): string {
     const names = candidate.importantDays?.map(d => d.name).join('、') ?? '';
     const followUp = candidate.followUp;
     const why: Record<Occasion, () => string> = {
@@ -1116,7 +1119,7 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
     const tail = candidate.occasion === 'reach' ? '只发一两句，像平时随手发的消息。' : '只发一两句，像平时随手发的消息；不抱怨对方没找你、没回你。';
     // 开头别叫名字（10-22 量的：她回话时 2% 以「宝宝」开头，主动开口时线上 32%、模拟里 63%——提示词里“约宝宝……”“找宝宝……”把名字塞进了她嘴里）；重要的日子（生日祝福之类）叫名字是自然的，不管
     const opener = candidate.occasion === 'dates' ? '' : '；开头直接说事，别先叫他的名字或昵称';
-    return `[这次是你主动找${userName}：${why[candidate.occasion]()}${told}${opener}。${tail}]`;
+    return `[这次是你主动找${userName}：${why[candidate.occasion]()}${told}${seen ? `；${seen}` : ''}${opener}。${tail}]`;
 }
 
 /** 主动找他时召回长期记忆想知道什么（ADR 0012 决策 1 第 7 条） */

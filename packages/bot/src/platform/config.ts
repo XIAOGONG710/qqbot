@@ -163,6 +163,8 @@ export const DEFAULTS = {
     readStickers: false,
     /** 她读完 / 看完之后自己想的（ADR 0204）：每晚想一次，有话想说才写一句落在具体情节 / 说法上的看法，存在私人空间里；聊到那本书 / 视频或问起“最近看了什么”才放进提示词 */
     readingTakes: false,
+    /** 看他的反应（ADR 0212）：她主动说自己的事时，看一眼他最近对哪类事接着聊、回个嗯、明说过不想听，说什么说多少她自己拿捏；他明说过不想听的那一类照片 / 小事这几天不发 */
+    hisReactions: false,
     /** 她没想完的问题（ADR 0207）：他问了她答不上来的（「不知道」），夜里她自己想一遍、想出什么写什么；他再问到同一件事才把她自己想的放进提示词。私人空间 */
     openQuestions: false,
     rhythm: false,
@@ -593,6 +595,11 @@ export interface AppConfig {
     readStickers?: boolean;
     /** 她读完 / 看完之后自己想的（ADR 0204）：默认关；要名单里有男朋友档。每晚 22 点以后想一次，有话想说才写，没想法就空着；存在 reading-takes.json（她的私人空间，没有命令念给他） */
     readingTakes?: boolean;
+    /**
+     * 看他的反应（ADR 0212）：默认关；只男朋友档，要 proactive 开着。她主动说自己的事（随口说件事、冷场、小事 / 土豆 / 吃的照片）时，
+     * 提示词多一行三周内他对各类事的反应（接着聊 / 回个嗯 / 没回 / 明说不想听），不禁话题；他明说过不想听的那一类照片 / 小事 7 天内不发。不落盘，每次从聊天记录重算
+     */
+    hisReactions?: boolean;
     /** 她没想完的问题（ADR 0207）：默认关；要名单里有男朋友档。他问的、她答「不知道」的，夜里（22 点以后）用 deliberateModel 让她自己想，想出什么写什么；存在 open-questions.json（她的私人空间，没有命令念给他）；他再问到同一件事才放进提示词，不说怎么用 */
     openQuestions?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
@@ -902,6 +909,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         factHim: bool(file, 'factHim', '', DEFAULTS.factHim),
         readStickers: bool(file, 'readStickers', '', DEFAULTS.readStickers),
         readingTakes: bool(file, 'readingTakes', '', DEFAULTS.readingTakes),
+        hisReactions: bool(file, 'hisReactions', '', DEFAULTS.hisReactions),
         openQuestions: bool(file, 'openQuestions', '', DEFAULTS.openQuestions),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
         shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),

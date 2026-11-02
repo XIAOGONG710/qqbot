@@ -35,6 +35,7 @@ import type { InitiateOutcome, Responder } from '.././social/responder.ts';
 import type { DayWeather } from '.././world/weather.ts';
 import { unwellNews, worldNews, type WorldNews, type WorldNow } from '.././world/world.ts';
 import { formatDate, stateAt, wakeOn, type Schedule } from '../life/schedule.ts';
+import { hisReactions, reactionPlan } from './his-reactions.ts';
 import { pendingMessages, pick } from '.././social/reply-timing.ts';
 import {
     doubtDue, innerLine as innerLineOf, learnedLine, LEARNED_KEPT, parseThought, pendingIntents, THINK_AFTER_CHAT_MS, THINK_AFTER_WAKE_MS, THINK_INTERVAL_MIN, THINK_MAX_PER_DAY, THINK_MIN_GAP_MS, THINK_RETRY_MS, thinkNote, THOUGHTS_KEPT, type InnerState,
@@ -189,6 +190,11 @@ export interface PlannerDeps {
      * 之后状态行、「今天的打算」里她就是那个在做这件事的人
      */
     planToday?: (todo: string, at: Date) => void;
+    /**
+     * 看他的反应（ADR 0212，配置 hisReactions，只男朋友档）：她主动说自己的事时，给她看他最近对哪类事接得多、回个嗯、明说过不想听；
+     * names 是她那边的人名（归「朋友和室友」那一类）。不给就没有这一行
+     */
+    reactions?: { names: readonly string[] };
 }
 
 export interface PlannerStatus {
@@ -463,6 +469,16 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             }
             return;
         }
+        // 看他的反应（ADR 0212）：他明说过不想听这一类的不发；说自己的事时给她看一行他最近的反应（手动 /主动 不看）
+        const seen = deps.reactions && !manual
+            ? reactionPlan(candidate, hisReactions(current.history, records, now(), deps.reactions.names), now(), deps.reactions.names)
+            : {};
+        if (seen.skip) {
+            record(candidate, { result: 'skipped', reason: seen.skip });
+            deps.log(`主动${tag}：${candidateLabel(candidate)}不发：${seen.skip}（${seen.log}）`);
+            return;
+        }
+        if (seen.seen) deps.log(`主动${tag}：${candidateLabel(candidate)}看他的反应——${seen.log}${seen.canDecline ? '；这件正好是他不怎么接的那类，交给她决定说不说' : ''}`);
         let committed: ProactiveRecord | undefined;
         const dryRun = deps.mode === 'dryRun';
         // 她那边的事没说成（ADR 0057 调整）：这一条顺带说
@@ -470,10 +486,10 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         if (untold.length) deps.log(`主动${tag}：${candidateLabel(candidate)}顺带说没说成的事：${untold.map(n => n.what).join('、')}`);
         const outcome: InitiateOutcome = await deps.responder.initiate({
             label: candidateLabel(candidate),
-            note: occasionNote(candidate, contact.name, untold),
+            note: occasionNote(candidate, contact.name, untold, seen.seen),
             topic: recallTopic(candidate, contact.name),
             maxBubbles: MAX_PROACTIVE_BUBBLES,
-            ...(candidate.occasion === 'reach' || candidate.occasion === 'invite' || candidate.occasion === 'ask' ? { canDecline: true } : {}),
+            ...(candidate.occasion === 'reach' || candidate.occasion === 'invite' || candidate.occasion === 'ask' || seen.canDecline ? { canDecline: true } : {}),
             ...(candidate.news?.kind === 'cat_photo' ? { photo: 'cat' as const } : {}),
             ...(candidate.news?.kind === 'food_photo' && candidate.news.dish ? { photo: 'food' as const, photoDish: candidate.news.dish } : {}),
             dryRun,

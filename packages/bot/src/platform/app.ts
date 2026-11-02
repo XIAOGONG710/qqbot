@@ -948,6 +948,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         return timer;
     })() : undefined;
     if (config.readingTakes) log(deviceOwner ? '她读完看完之后自己想的：开（每晚 22 点以后想一次，有话想说才写；私人空间，没有命令念给他）' : '她读完看完之后自己想的：readingTakes 开着，但名单里没有男朋友档，不起作用');
+    if (config.hisReactions) log(`看他的反应：${config.proactive === 'off' ? '开着，但主动消息（proactive）关着，不起作用' : '开（只男朋友档；她主动说自己的事时提示词多一行他三周内对各类事的反应，说什么她自己拿捏；他明说过不想听的那一类照片 / 小事 7 天内不发）'}`);
     // 她没想完的问题（ADR 0207）：22 点以后想一次；他问过、她答「不知道」的，让她自己想（deliberateModel，开思考），想出什么写什么；私人空间，没有命令念给他
     const openQuestionsTimer = config.openQuestions && deviceOwner ? (() => {
         const owner = deviceOwner;
@@ -1835,6 +1836,8 @@ ${video.link}`);
                 // 她自己想弄明白一件事（ADR 0180）：内心冒出来的「想查：关键词」真去查一次，查到的进聊天提示词
                 ...(config.innerLife && web ? { look: (query: string) => web.look(query) } : {}),
                 // 她自己决定今天想干什么（ADR 0182）：写进这一天的打算，状态行和「你今天的打算」都用它
+                // 看他的反应（ADR 0212）：只男朋友档；她那边的人名归「朋友和室友」那一类
+                ...(config.hisReactions && contact.tier === 'boyfriend' ? { reactions: { names: (character.herWorld?.people ?? []).map(person => person.name) } } : {}),
                 ...(config.innerLife ? {
                     planToday: (todo: string, at: Date) => {
                         saveHerPlan(config.dataDir, { date: `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`, window: windowAt(at), text: todo, at: at.toISOString() });

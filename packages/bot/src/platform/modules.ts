@@ -67,10 +67,10 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'proactive', name: '主动找他',
         scope: '她什么时候先开口：早安、下课、睡前、冷场、随口说件事、约他、问意见、喂完土豆拍照、说了等下之后回来、没回也继续、心里的念头、待跟进的事。',
-        files: ['proactive/proactive.ts', 'proactive/proactive-planner.ts', 'proactive/proactive-state.ts', 'proactive/inner.ts', 'proactive/shares.ts', 'proactive/follow-ups.ts'],
+        files: ['proactive/proactive.ts', 'proactive/proactive-planner.ts', 'proactive/proactive-state.ts', 'proactive/inner.ts', 'proactive/shares.ts', 'proactive/follow-ups.ts', 'proactive/his-reactions.ts'],
         groups: ['主动找他'],
         metrics: '周报「主动性」（条数、30 分钟内他回的占比、按时机分）',
-        adrs: ['0011', '0100', '0101', '0107', '0110', '0112', '0116', '0117', '0124'],
+        adrs: ['0011', '0100', '0101', '0107', '0110', '0112', '0116', '0117', '0124', '0212'],
     },
     {
         id: 'memory', name: '记忆与数据',
