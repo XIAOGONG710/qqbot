@@ -18,7 +18,7 @@ export interface BodyNow {
     /** 感冒第几天（共几天） */
     cold?: { day: number; of: number };
     /** morning：早八那天上午；late：过了零点半 */
-    sleepy?: { when: 'morning'; slept: string; woke: string } | { when: 'late' };
+    sleepy?: { when: 'morning'; slept: string; woke: string; /** 真实的昨晚（ADR 0219，nights.ts 的 describeNight）：有它就用它 */ night?: string } | { when: 'late' };
     /** 课多的日子，晚上 */
     tired?: boolean;
     hungry?: 'lunch' | 'dinner' | 'night';
@@ -91,7 +91,7 @@ export function describeBody(now: BodyNow): string | undefined {
         const { day, of } = now.cold;
         parts.push(day === 1 ? '有点感冒，嗓子疼' : day < of ? `感冒第 ${day} 天，鼻塞，说话闷闷的` : '感冒快好了，还有点咳');
     }
-    if (now.sleepy?.when === 'morning') parts.push(`昨晚 ${now.sleepy.slept.replace(/^0/, '')} 睡、今早 ${now.sleepy.woke.replace(/^0/, '')} 起的，上午困`);
+    if (now.sleepy?.when === 'morning') parts.push(now.sleepy.night ?? `昨晚 ${now.sleepy.slept.replace(/^0/, '')} 睡、今早 ${now.sleepy.woke.replace(/^0/, '')} 起的，上午困`);
     if (now.sleepy?.when === 'late') parts.push('过了零点半，有点困了');
     if (now.tired) parts.push('今天课多，这会儿有点累');
     if (now.hungry === 'lunch' || now.hungry === 'dinner') parts.push('快到饭点了，有点饿');

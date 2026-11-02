@@ -77,6 +77,7 @@ import { insightsLine, type Insight } from '.././life/diary-insights.ts';
 import { takesLine, type Take } from '.././life/reading-takes.ts';
 import { thoughtsLine, type Thought } from '.././life/open-questions.ts';
 import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts';
+import { lastNight, withLastNight } from '.././life/nights.ts';
 import { guessesLine, type Guess } from '.././life/her-guesses.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
 import { describeCloseness } from '.././language/relationship.ts';
@@ -263,6 +264,8 @@ export interface ContactPipelineOptions {
     diaryOn?: (date: string) => string | undefined;
     /** 回忆带着当时的感觉（ADR 0218，默认关）：想起某一天的事时附一句她那天有依据的感觉；因为他而难过 / 烦 / 担心的不附 */
     memoryFeelings?: boolean;
+    /** 昨晚真的怎么睡的（ADR 0219，默认关）：早上困不困从她说「睡了」、半夜被吵醒、睡前跟他聊推，不按课表；被吵醒有起床气 */
+    realNights?: boolean;
     /** 她自己最近过的日子（2026-10-30 她说「没有自己的下文」）：从她写的日记里摘一两句，用不用她定 */
     selfThread?: () => string | undefined;
     /** 她上一轮在这台电脑上跑的命令和结果（2026-10-30 用户：把最高权限给她） */
@@ -648,7 +651,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const recap = day && !day.period ? recapOf(day.start, time) : undefined;
             if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
             // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
-            const bodyNow = herSchedule && character.herWorld?.body ? bodyAt(character.herWorld.body, herSchedule, time) : undefined;
+            // 昨晚真的怎么睡的（ADR 0219，realNights）：早上困不困、为什么困，从她说「睡了」、半夜被吵醒、睡前跟他聊到几点推
+            const nightNow = options.realNights && contact.tier === 'boyfriend' && herSchedule
+                ? lastNight(everyone.map(qq => ({ qq, messages: options.history.load(qq) })), contact.qq, herSchedule, time) : undefined;
+            const bodyNow = herSchedule && character.herWorld?.body ? withLastNight(bodyAt(character.herWorld.body, herSchedule, time), nightNow, time, herDay(herSchedule, time)) : undefined;
             // 状态行（status-line.ts，模拟器的状态行影子比对用同一个函数，ADR 0042）：作息 → 说过「睡了」就在睡 →
             // 空闲时世界里有时长的事（ADR 0030）→ 一天的打算改了的写「本来打算 X，Y，Z」（ADR 0034）
             const asleep = schedule ? asleepAt(time) : undefined;
@@ -1066,7 +1072,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     [
                         describeTime(chat, time, { initiating: Boolean(initiate), ...(options.lagTail && offlineSince !== undefined ? { offlineSince } : {}) }),
                         ...(days ? [days] : []),
-                        ...(state ? [describeState(state, schedule!, { userName: contact.name, woken, partnerApart: true })] : []),
+                        ...(state ? [describeState(state, schedule!, { userName: contact.name, woken, partnerApart: true, ...(options.realNights && contact.tier === 'boyfriend' ? { grumpy: true } : {}) })] : []),
                         // 2026-10-30 线上：她凭空来了一句「今天有点累，就更不想说话了」，他看着莫名其妙——
                         // 「你现在」那几行是底子不是话题，没人问就别拿它开头。
                         ...(state || body ? ['（上面「你现在」和身体那几行是你的底子，不是话题：没人问就别主动说你累了、心情怎样，也别把它当成一句话发出去）'] : []),

@@ -251,13 +251,13 @@ export function partnerBackLine(state: State, userName?: string): string | undef
     return state.partnerJustBack && state.partner ? `[${state.partner.replaceAll('{{user}}', userName ?? '他')}]` : undefined;
 }
 
-export function describeState(state: State, schedule: Schedule, options: { woken?: boolean; userName?: string; partnerApart?: boolean } = {}): string {
+export function describeState(state: State, schedule: Schedule, options: { woken?: boolean; userName?: string; partnerApart?: boolean; /** 被吵醒有起床气（ADR 0219，realNights） */ grumpy?: boolean } = {}): string {
     const { activity } = state;
     const course = (lesson: ClassToday) => lesson.name ?? '课';
     let doing: string;
     switch (activity.kind) {
         case 'sleep':
-            doing = options.woken ? `${state.holiday?.home ? '在家' : '在宿舍'}睡觉，被消息震醒了，迷迷糊糊的` : `${state.holiday?.home ? '在家' : '在宿舍'}睡觉，${clock(activity.until)} 起`;
+            doing = options.woken ? `${state.holiday?.home ? '在家' : '在宿舍'}睡觉，被消息震醒了，迷迷糊糊的${options.grumpy ? '，有点起床气：回一两句，没正经事就接着睡' : ''}` : `${state.holiday?.home ? '在家' : '在宿舍'}睡觉，${clock(activity.until)} 起`;
             break;
         case 'class': {
             const { lesson } = activity;

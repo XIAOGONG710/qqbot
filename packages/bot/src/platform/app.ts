@@ -1369,6 +1369,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.herNo ? { herNo: true } : {}),
             ...(config.afterNo ? { afterNo: true } : {}),
             ...(config.memoryFeelings && config.herFeelings ? { memoryFeelings: true } : {}),
+            ...(config.realNights ? { realNights: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
             ...(config.pursuits ? { pursuits: pursuitsNow } : {}),

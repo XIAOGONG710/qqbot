@@ -160,6 +160,7 @@ export interface Config {
     worldThreads: boolean;
     diaryLookback: boolean;
     memoryFeelings: boolean;
+    realNights: boolean;
     pursuits: boolean;
     shapeSplit: boolean;
     shapeAsk: boolean;
@@ -392,6 +393,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         lagTail: Schema.boolean().default(DEFAULTS.lagTail)
             .description('**回复延迟的长尾**（ADR 0105）：真人回消息的延迟是长尾的（公开数据里只有约 58% 的回复在 1 分钟内），她醒着空着时原来几乎全在十几秒内。开了以后一部分消息她在做别的，20 秒到一小时才看到（一来一回很快时少，冷场时多，他难受 / 问她在不在时更快）；回复一直失败（断网）十分钟以上才发出去时，时间块里多一句断网的事实，她可以顺口说一句“刚才网断了”。默认关。'),
         everydayLife: Schema.boolean().default(DEFAULTS.everydayLife),
+        realNights: Schema.boolean().default(DEFAULTS.realNights)
+            .description('**昨晚真的怎么睡的**（ADR 0219，只男朋友档，要 herDays 和身体）：她说「那不是从身上长出来的，是我记着的」「别给我按课表编个『早八所以很累』出来，听着假」。开着时：早上困不困、为什么困，从她前一晚几点说「睡了」（ADR 0042）、半夜有没有被连着发的消息吵醒、睡前是不是在跟他聊推，算睡了几个小时——不够 6.5 小时上午困，不够 5 小时困到下午；睡够了早八也不困。被吵醒那一下有起床气（回一两句，没正经事就接着睡）。只给事实，不给台词，不存东西。'),
         memoryFeelings: Schema.boolean().default(DEFAULTS.memoryFeelings)
             .description('**回忆带着当时的感觉**（ADR 0218，只男朋友档，要 herFeelings）：她说「有些事我记得特别清楚……但就是没有那个『我当时什么感觉』」。开着时：召回到的和他的记忆，括号里附一句她那天有依据的感觉（来自那天世界里带感受的事、作者写下的事、她聊完回想时记下的），要和那条记忆说的是同一件事才附；他问到某一天时，那天整天明显的感觉也附上。因为他而难过 / 烦 / 担心的不附（不翻旧账）；主动找他时不附；写明「是你当时的感觉，现在不一定还这样；不用说出来」。'),
         diaryLookback: Schema.boolean().default(DEFAULTS.diaryLookback)
@@ -690,6 +693,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.worldThreads !== undefined ? { worldThreads: config.worldThreads } : {}),
         ...(config.diaryLookback !== undefined ? { diaryLookback: config.diaryLookback } : {}),
         ...(config.memoryFeelings !== undefined ? { memoryFeelings: config.memoryFeelings } : {}),
+        ...(config.realNights !== undefined ? { realNights: config.realNights } : {}),
         ...(config.pursuits !== undefined ? { pursuits: config.pursuits } : {}),
         ...(config.shapeSplit !== undefined ? { shapeSplit: config.shapeSplit } : {}),
         ...(config.shapeAsk !== undefined ? { shapeAsk: config.shapeAsk } : {}),
@@ -816,7 +820,7 @@ export function apply(ctx: Context, config: Config) {
     let appConfig: AppConfig;
     try {
         appConfig = parseAppConfig(toAppConfigInput(config), repoRoot);
-        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim} readingTakes=${appConfig.readingTakes} hisReactions=${appConfig.hisReactions} herGuesses=${appConfig.herGuesses} diaryLookback=${appConfig.diaryLookback ?? false} memoryFeelings=${appConfig.memoryFeelings ?? false} worldThreads=${appConfig.worldThreads ?? false} afterNo=${appConfig.afterNo ?? false} openQuestions=${appConfig.openQuestions}`);
+        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim} readingTakes=${appConfig.readingTakes} hisReactions=${appConfig.hisReactions} herGuesses=${appConfig.herGuesses} diaryLookback=${appConfig.diaryLookback ?? false} memoryFeelings=${appConfig.memoryFeelings ?? false} realNights=${appConfig.realNights ?? false} worldThreads=${appConfig.worldThreads ?? false} afterNo=${appConfig.afterNo ?? false} openQuestions=${appConfig.openQuestions}`);
     } catch (error) {
         const plain = plainError('配置有误，插件没有启动', error);
         setConsoleState({ error: plain.message });

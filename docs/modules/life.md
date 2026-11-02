@@ -23,6 +23,7 @@
 - `life/reading-takes.ts`
 - `life/biography.ts`
 - `life/bedtime.ts`
+- `life/nights.ts`
 - `life/people.ts`
 - `life/promises.ts`
 - `life/promise-state.ts`
@@ -58,6 +59,7 @@
 | `worldThreads` | 她那边的事有后续（拌嘴第二天和好、淋雨第二天嗓子发紧……一天最多一条；闹心的事有冷却期；要日常小事和小起伏） | [ADR 0216](../adr/0216-world-threads.md) |
 | `diaryLookback` | 翻回去看自己的日记（他问到前几天的事，她那天写的日记也给她，说法对得上） | [ADR 0217](../adr/0217-diary-lookback.md) |
 | `memoryFeelings` | 回忆带着当时的感觉（想起某天的事时附一句她那天有依据的感觉；因为他而难过 / 烦的不附；要心境） | [ADR 0218](../adr/0218-memory-feelings.md) |
+| `realNights` | 昨晚真的怎么睡的（早上困不困看她几点说睡了、半夜有没有被吵醒，不按课表；被吵醒有起床气） | [ADR 0219](../adr/0219-real-nights.md) |
 | `menu` | 每顿吃什么（每天随机） | [ADR 0125](../adr/0125-menu.md) |
 | `pursuits` | 她自己的追求 | [ADR 0104](../adr/0104-pursuits.md) |
 | `herFeelings` | 心境（开心 / 难过 / 流泪；桌面上的她读同一份；ownerPeek 开着时 /心境 看） | [ADR 0102](../adr/0102-feelings.md) |
@@ -76,4 +78,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0178](../adr/0178-self-set-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0162](../adr/0162-tastes.md)、[ADR 0163](../adr/0163-acquaintances.md)、[ADR 0194](../adr/0194-diary-insights.md)、[ADR 0204](../adr/0204-reading-takes.md)、[ADR 0213](../adr/0213-her-guesses.md)
+[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0178](../adr/0178-self-set-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0162](../adr/0162-tastes.md)、[ADR 0163](../adr/0163-acquaintances.md)、[ADR 0194](../adr/0194-diary-insights.md)、[ADR 0204](../adr/0204-reading-takes.md)、[ADR 0213](../adr/0213-her-guesses.md)、[ADR 0219](../adr/0219-real-nights.md)
