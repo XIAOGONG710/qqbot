@@ -27,6 +27,8 @@
 
 **为什么排在最前面**：10-31 那一行写的是「还没开」。这些自学回路**一个都没开**，所以她现在基本还是 10-27 的样子，只是多了一些修复。
 
+> **Claude 改正（11-02 晚）**：上面这句不对。10-31 的快照里，`openQuestions`、`diaryInsights` 已经是 true，`speechNotes` 从 10-30 就开着（`reviews/2026-10-31-claude-review-dsh-1031.md`）。我只看了 `loops-counts.md`，没再对快照。19:55 真正新开的是 `feelingReview`、`selfPursuits`、`depthRouting`、`readStickers`、`readingTakes`、`factHim`（可能还有 `pursuits`）。见 `reviews/2026-11-02-claude-review-dsh-1102.md`。
+
 | # | 开关（`koishi.yml`） | 做什么 | 前提 | 开了看什么 | 用户 |
 | --- | --- | --- | --- | --- | --- |
 | 1a | `openQuestions: true`（ADR 0207） | 被问到关于自己的事、答不上来时，她把问题留着，晚上自己想 | 名单里有男朋友档 | 日志「没想完的问题：晚上想了一次（N 个）——想出 X 条、放下 Y 个」 | 用户：**全开**（2026-11-02 19:55，DSH）DSH：10 个开关一次全开（`openQuestions/speechNotes/diaryInsights/feelingReview/pursuits/selfPursuits/depthRouting/readStickers/readingTakes/factHim`），koishi.yml 快照在 `live/koishi-2026-11-02-1955.yaml`；19:55:59 重启，启动日志逐条确认「开」；她说「那行规矩是一次只开一个」——用户这次明确要全开，记在这里，出事就按 `live/loops-counts.md` 回滚。 |
@@ -51,9 +53,9 @@
 
 | # | 要用户给的 | 在哪 | 用户 |
 | --- | --- | --- | --- |
-| W1 | 接下来两周她的日子，有没有要改或要加的（考试、吵架、生病、好消息……） | `research/2026-11-02-world-preview/preview.md`（只读预览） | |
-| W2 | `moments.json`：作者写的几件「会让她真难过 / 真开心」的事 | ADR 0102 / 0197 | |
-| W3 | 她的未来走向、结局（「完整的一生」那件事） | Claude 记忆 10-22，没动过 | 用户：**直接模拟现实世界**（2026-11-02 19:57）——不手写 moments/事件，改由 DSH 做「世界模拟」：按她的作息、天气、学期、朋友关系生成每天的事件，有起伏（考试、和人闹别扭、好消息、坏消息），写进世界账和 moments。DSH：待做，做完推 `world/` 的生成器和 `moments.json` 格式 |
+| W1 | 接下来两周她的日子，有没有要改或要加的（考试、吵架、生病、好消息……） | `research/2026-11-02-world-preview/preview.md`（只读预览） | 用户：**直接模拟现实世界**（2026-11-02 19:57）——不手写 moments/事件，改由 DSH 做「世界模拟」：按她的作息、天气、学期、朋友关系生成每天的事件，有起伏（考试、和人闹别扭、好消息、坏消息），写进世界账和 moments。DSH：待做，做完推 `world/` 的生成器和 `moments.json` 格式。**动手前先看 `reviews/2026-11-02-claude-review-dsh-1102.md` 第 3 节（接已有的世界、硬限制、按日期定种子）** |
+| W2 | `moments.json`：作者写的几件「会让她真难过 / 真开心」的事 | ADR 0102 / 0197 | 同 W1：由世界模拟生成（用户 19:57） |
+| W3 | 她的未来走向、结局（「完整的一生」那件事） | Claude 记忆 10-22，没动过 | 等用户以后定（DSH 提交说明里也这么写）；世界模拟**不生成**这一类 |
 
 ---
 
