@@ -44,8 +44,8 @@ describe('告警发到 QQ（alert-qq）', () => {
         assert.equal(readAlertConfig(file('{"enabled": false, "qq": 12345}')), undefined);
         assert.equal(readAlertConfig(file('{"enabled": true, "qq": "12345"}')), undefined);
         assert.equal(readAlertConfig(file('{"enabled": true, "qq": -1}')), undefined);
-        assert.deepEqual(readAlertConfig(file('{"enabled": true, "qq": 12345}')), { qq: 12345, network: true, helpers: [] });
-        assert.deepEqual(readAlertConfig(file('{"enabled": true, "qq": 12345, "network": false}')), { qq: 12345, network: false, helpers: [] });
+        assert.deepEqual(readAlertConfig(file('{"enabled": true, "qq": 12345}')), { qq: 12345, network: true, services: true, helpers: [] });
+        assert.deepEqual(readAlertConfig(file('{"enabled": true, "qq": 12345, "network": false}')), { qq: 12345, network: false, services: true, helpers: [] });
     });
 
     test('配置：helpers 是断网时也要通知的人——去重、去掉自己和不是正整数的、最多 3 个；不是数组当没有', () => {
@@ -55,7 +55,7 @@ describe('告警发到 QQ（alert-qq）', () => {
     });
 
     test('断网发给谁：先用户，再 helpers；各自独立，一个失败不影响另一个；恢复时只告诉用户，不打扰 helpers', async () => {
-        const config: AlertConfig = { qq: 1, network: true, helpers: [2, 3] };
+        const config: AlertConfig = { qq: 1, network: true, services: true, helpers: [2, 3] };
         const sent: { qq: number; text: string }[] = [];
         const send = async (qq: number, text: string): Promise<AlertResult> => {
             sent.push({ qq, text });

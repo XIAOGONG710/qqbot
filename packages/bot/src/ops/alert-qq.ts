@@ -15,6 +15,11 @@ export interface AlertConfig {
     /** 外网断了 / 恢复了要不要发（默认发） */
     network: boolean;
     /**
+     * 服务挂了要不要发（2026-11-02，F2）：Hindsight 挂了会失忆，而她没有别的办法知道。
+     * 不给就发（和 network 一样，只受 enabled 控制）
+     */
+    services: boolean;
+    /**
      * 断网时也要通知的人（QQ 号，要是她号的好友）：能动虚拟机 / 宿主机的人（用户 10-26：「以后断网的话用她的号发送简短的通知给鸽鸽，他是可以修改虚拟机的」）。
      * 只收外网断了 / 恢复的两条简短的（不带她的聊天细节），不收别的告警；最多 3 个，去重，不含 qq 本人
      */
@@ -31,7 +36,7 @@ export function readAlertConfig(path: string): AlertConfig | undefined {
         if (!Number.isSafeInteger(value.qq) || (value.qq as number) <= 0) return undefined;
         const qq = value.qq as number;
         const helpers = Array.isArray(value.helpers) ? [...new Set(value.helpers.filter((n): n is number => Number.isSafeInteger(n) && n > 0 && n !== qq))].slice(0, MAX_HELPERS) : [];
-        return { qq, network: value.network !== false, helpers };
+        return { qq, network: value.network !== false, services: value.services !== false, helpers };
     } catch {
         return undefined;
     }
@@ -99,6 +104,15 @@ export function sendAlert(options: SendAlertOptions): Promise<AlertResult> {
 /** 外网断了超过阈值时的一条（minutes：已经断了多久） */
 export function networkDownText(minutes: number, host: string): string {
     return `${OPS_NOTICE_PREFIX}${minutes} 分钟解析不了 ${host}：她连不上模型，现在回不了话、主动消息也发不出。机器人和 NapCat 还在跑。多半是宿主机或虚拟机的网络问题。恢复了我会再说一声。`;
+}
+
+/** 记忆服务（Hindsight）挂掉 / 回来时的两条（2026-11-02） */
+export function memoryDownText(minutes: number): string {
+    return `${OPS_NOTICE_PREFIX}记忆服务（Hindsight）已经 ${minutes} 分钟连不上了：她还能聊天，但这段时间新的事记不住，旧的事也想不起来。我在试着重启，一直不好我再跟你说。`;
+}
+
+export function memoryUpText(minutes: number): string {
+    return `${OPS_NOTICE_PREFIX}记忆服务恢复了（断了大约 ${minutes} 分钟），她又能记住事了。`;
 }
 
 /** 外网恢复时的一条 */

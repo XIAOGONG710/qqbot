@@ -99,6 +99,21 @@ async function notify(kind, minutes) {
     }
 }
 
+/** 记忆服务（Hindsight）挂了 / 回来时告诉用户（2026-11-02，F2）：她都记不住了，用户却看不出来 */
+async function notifyMemory(kind, minutes) {
+    try {
+        const { readAlertConfig, sendAlert, memoryDownText, memoryUpText } = await import('../packages/bot/src/ops/alert-qq.ts');
+        const config = readAlertConfig(ALERT_FILE);
+        if (!config?.services) return;
+        const text = kind === 'down' ? memoryDownText(minutes) : memoryUpText(minutes);
+        const token = process.env.QQBOT_ONEBOT_TOKEN ?? '';
+        const result = await sendAlert({ url: 'ws://127.0.0.1:3001/', token, qq: config.qq, text });
+        say(result.ok ? `hindsight：已通过她的 QQ 告诉用户（${kind === 'down' ? '挂了' : '好了'}）` : `hindsight：QQ 通知没发出去（${result.reason}）`);
+    } catch (error) {
+        say(`hindsight：QQ 通知出错（${error instanceof Error ? error.message : String(error)}）`);
+    }
+}
+
 /** 进程的命令行（Get-CimInstance）；查不了就当没有 */
 function processes() {
     try {
@@ -156,6 +171,11 @@ function kill(pids) {
     }
 }
 
+/** 记忆服务不通多久才打扰用户（分钟）：短暂重启不吭声 */
+const MEMORY_ALERT_MINUTES = 10;
+let memoryDownSince = 0;
+let memoryAlerted = false;
+
 const bad = { napcat: 0, hindsight: 0, koishi: 0 };
 const restarts = { napcat: [], hindsight: [], koishi: [] };
 const gaveUp = new Set();
@@ -198,6 +218,20 @@ async function check() {
     if (!napcatUp) napcatUpSince = Infinity;
     else if (napcatUpSince === Infinity) napcatUpSince = Date.now();
 
+    // 记忆服务：连续多久不通 / 有没有已经通知过（重启会清 bad.hindsight，所以单独记）
+    if (hindsightUp) {
+        if (memoryDownSince) {
+            const minutes = Math.round((Date.now() - memoryDownSince) / 60_000);
+            if (memoryAlerted && minutes >= MEMORY_ALERT_MINUTES) await notifyMemory('up', minutes);
+            memoryDownSince = 0;
+            memoryAlerted = false;
+        }
+    } else if (!memoryDownSince) {
+        memoryDownSince = Date.now();
+    } else if (!memoryAlerted && Date.now() - memoryDownSince >= MEMORY_ALERT_MINUTES * 60_000) {
+        memoryAlerted = true;
+        await notifyMemory('down', Math.round((Date.now() - memoryDownSince) / 60_000));
+    }
     const status = {
         napcat: napcatUp,
         hindsight: hindsightUp,
