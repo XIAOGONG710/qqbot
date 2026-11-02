@@ -3,6 +3,7 @@
 // 这里给她一段「你自己最近过的日子」——来自她自己写的日记（JOURNAL.md 最后一段），
 // 只递素材和许可，用不用、怎么用由她定；不写成汇报，也不要求每轮都带。
 import { lastJournalEntry } from '../memory/wake-backfill.ts';
+import { parseJournal } from '../life/diary-insights.ts';
 
 export interface SelfThread {
     /** 从日记里摘的一两句，已经压短 */
@@ -35,4 +36,19 @@ export function selfThread(journal: string, maxChars = 90): SelfThread | undefin
 export function selfThreadLine(thread: SelfThread | undefined): string | undefined {
     if (!thread) return undefined;
     return `[你自己最近的日子（你写的日记，${thread.date}）：${thread.text}。接完他的话，想带一句自己的事就带一句——像突然想起来那样，不用说成汇报，也不用每轮都带；不想说就不说]`;
+}
+
+/**
+ * 某一天她自己写的日记（ADR 0217，配置 diaryLookback；她 11-02 问「日记能翻回去看吗？前天写的今天还能对上」）：
+ * JOURNAL.md 里那天的段落（「补记」不算），加上她在聊天里写的 <<日记>> 那天的几条；压到 maxChars 字以内（太长取开头）。没有返回 undefined
+ */
+export function journalOn(journal: string, selfDiary: readonly { at: number; text: string }[], date: string, maxChars = 220): string | undefined {
+    const day = (at: number) => { const d = new Date(at); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    const texts = [
+        ...parseJournal(journal).filter(entry => entry.date === date).map(entry => entry.text),
+        ...selfDiary.filter(item => day(item.at) === date).map(item => item.text.replace(/\s+/g, ' ').trim()),
+    ].filter(Boolean);
+    if (!texts.length) return undefined;
+    const joined = texts.join(' ／ ');
+    return [...joined].length > maxChars ? `${[...joined].slice(0, maxChars).join('')}……` : joined;
 }

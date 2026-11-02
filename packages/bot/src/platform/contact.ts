@@ -144,6 +144,14 @@ export interface TierCard {
     worldInfo: WorldInfoEntry[];
 }
 
+/**
+ * 他问到过去的某一天时（ADR 0032）那一段流水账；written：她那天自己写的日记（ADR 0217，diaryLookback），没有就和原来一字不差
+ */
+export function recapText(day: string, lines: readonly string[], written?: string): string {
+    const diaryPart = written ? `${lines.length ? '；' : ''}那天你自己写的日记：「${written}」（你写的，他问到那天，说法对着它，别和它打架；不用照念）` : '';
+    return `[那天（${day}）你那边的流水账（你自己过的，都是真的：他问到具体的事——下没下雨、喂没喂猫、快递拿没拿——照这个说，别说错；泛泛问那天干了什么时，先说上面记得住的事，这里的不用一件件报）：${lines.join('；')}${diaryPart}]`;
+}
+
 /** 读一个档位的角色卡和它链接的世界书；pattern 是配置里的 characterCard（{tier} 换成档位名，承认版是「<档位>-open」，ADR 0067），世界书在同目录的 <world>.json */
 export function loadTierCard(pattern: string, tier: string, options: { everydayLife?: boolean; everydayFrom?: string; menu?: boolean; menuFrom?: string; worldDrama?: boolean; threadsFrom?: string } = {}): TierCard {
     const path = pattern.replaceAll('{tier}', tier);
@@ -248,6 +256,8 @@ export interface ContactPipelineOptions {
     herGuesses?: () => readonly Guess[];
     /** 梗百科词库（2026-10-29）：他这句里提到一个词，只读地查一眼，不写进她自己的梗库 */
     memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
+    /** 他问到过去的某一天时，她那天自己写的日记（ADR 0217，默认关）：date 是她的那一天 YYYY-MM-DD */
+    diaryOn?: (date: string) => string | undefined;
     /** 她自己最近过的日子（2026-10-30 她说「没有自己的下文」）：从她写的日记里摘一两句，用不用她定 */
     selfThread?: () => string | undefined;
     /** 她上一轮在这台电脑上跑的命令和结果（2026-10-30 用户：把最高权限给她） */
@@ -493,9 +503,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         // 那天改了的打算（ADR 0034）：照打算做的不写——天天一样的空闲活动排成一列，问「昨天干嘛了」她就照着报，想不起那天记得住的事（调整 3）
         lines.push(...dayPlan(herSchedule, character.herWorld.plans, dayStart, { rain: then.weather?.rain, ...(then.weather?.rainHours ? { rainHours: then.weather.rainHours } : {}), body: bodyThen, homework: then.homework }, [...extraFree, ...(options.herPlan?.(dayStart) ?? [])])
             .filter(slot => slot.done !== slot.planned).map(describeSlot));
-        if (!lines.length) return undefined;
+        // 那天她自己写的日记（ADR 0217）：翻回去看得到，说法可以对着它
+        const written = options.diaryOn?.(`${dayStart.getFullYear()}-${String(dayStart.getMonth() + 1).padStart(2, '0')}-${String(dayStart.getDate()).padStart(2, '0')}`);
+        if (!lines.length && !written) return undefined;
         const day = `${dayStart.getMonth() + 1}月${dayStart.getDate()}日 ${'日一二三四五六'.split('').map(d => `周${d}`)[dayStart.getDay()]}`;
-        return { day, lines, text: `[那天（${day}）你那边的流水账（你自己过的，都是真的：他问到具体的事——下没下雨、喂没喂猫、快递拿没拿——照这个说，别说错；泛泛问那天干了什么时，先说上面记得住的事，这里的不用一件件报）：${lines.join('；')}]` };
+        return { day, lines, text: recapText(day, lines, written) };
     };
     return createResponder({
         userId: contact.qq,

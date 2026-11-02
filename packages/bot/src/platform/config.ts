@@ -109,6 +109,8 @@ export const DEFAULTS = {
     worldDrama: false,
     /** 她那边的事有后续（ADR 0216）：昨天的事今天可能有个尾巴（拌嘴第二天和好、淋雨第二天嗓子发紧……），一天最多一条；闹心的事有冷却期。要 everydayLife + worldDrama */
     worldThreads: false,
+    /** 翻回去看自己的日记（ADR 0217）：他问到前几天的事时，把她那天自己写的日记（JOURNAL.md 那天的段落 + 聊天里写的 <<日记>>）也给她 */
+    diaryLookback: false,
     pursuits: false,
     shapeSplit: false,
     shapeAsk: false,
@@ -491,6 +493,8 @@ export interface AppConfig {
     worldDrama: boolean;
     /** 她那边的事有后续（ADR 0216）：默认关；要 everydayLife 和 worldDrama 都开着。从第一次开的第二天起才有（world/threads-from.json），已经过完的日子不改写 */
     worldThreads?: boolean;
+    /** 翻回去看自己的日记（ADR 0217）：默认关；只男朋友档。他问到前几天（ADR 0032 的那几天）时，那天她自己写的日记也放进那一段流水账 */
+    diaryLookback?: boolean;
     /**
      * 她自己的追求（ADR 0104，只给男朋友档）：内置两条，都是自传里写明的话——「别挂科」和「用新相机拍出自己满意的东西」（买到相机以后分五步：熟悉设置、拍一组土豆、拍一组校园的秋天、挑十来张修好、挑最满意的发到空间里）。
      * 进度只来自她做过的事（生活账里的摄影、出分的小测），不存数字；做完一步她会开心、买了相机好几天没碰会有点愧疚，时间块里一小段让她知道自己在追什么（不用主动提）；
@@ -881,6 +885,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         everydayLife: bool(file, 'everydayLife', '', DEFAULTS.everydayLife),
         worldDrama: bool(file, 'worldDrama', '', DEFAULTS.worldDrama),
         worldThreads: bool(file, 'worldThreads', '', DEFAULTS.worldThreads),
+        diaryLookback: bool(file, 'diaryLookback', '', DEFAULTS.diaryLookback),
         pursuits: bool(file, 'pursuits', '', DEFAULTS.pursuits),
         shapeSplit: bool(file, 'shapeSplit', '', DEFAULTS.shapeSplit),
         shapeAsk: bool(file, 'shapeAsk', '', DEFAULTS.shapeAsk),

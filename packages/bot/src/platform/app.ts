@@ -67,7 +67,7 @@ import { describeFeelingsForOwner, loadReviewState, reviewIfDue, reviewReader } 
 import { bookItems, reflectIfDue as reflectTakes, takesReader, videoItems } from '.././life/reading-takes.ts';
 import { ponderIfDue, thoughtsReader } from '.././life/open-questions.ts';
 import { freshGuess, guessesReader, pendingWorld, reviewGuessesIfDue, worldFactsBetween } from '.././life/her-guesses.ts';
-import { describeInsightsForOwner, insightsReader, loadInsightsState, recordSelfDiary, reflectIfDue as reflectInsights, writeInsightsExport } from '.././life/diary-insights.ts';
+import { describeInsightsForOwner, insightsReader, loadInsightsState, loadSelfDiary, recordSelfDiary, reflectIfDue as reflectInsights, writeInsightsExport } from '.././life/diary-insights.ts';
 import { substituteMacros } from '.././st/macros.ts';
 import { removeFaces } from '.././language/qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from '.././memory/long-term.ts';
@@ -120,7 +120,7 @@ import { greetingOnly, markSignature, MINOR_NOTICE, minorHint, strangerGuard } f
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
-import { selfThread, selfThreadLine } from '.././language/self-thread.ts';
+import { journalOn, selfThread, selfThreadLine } from '.././language/self-thread.ts';
 import { announceFallback, announcePrompt, awayNow, shouldAnnounce } from '.././life/leave-note.ts';
 import { auditShell, guardCommand, runShell, shellNoteLine, takeShellCommands } from './shell-tool.ts';
 import { appendDream, dreamAppraisals, dreamNoteLine, dreamPrompt, hasDream, inSleepHours, lastInsightAt, latestDream, monthlyInsightPrompt, napPrompt, onlyFragment, recentDreams, saveInsight } from '.././life/dreams.ts';
@@ -1242,6 +1242,14 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                     if (note) shellNotes.delete(contact.qq);
                     return note;
                 },
+                // 他问到过去的某一天时，她那天自己写的日记（ADR 0217，配置 diaryLookback）：JOURNAL.md 那天的段落 + 她在聊天里写的 <<日记>>
+                ...(config.diaryLookback && contact.tier === 'boyfriend' ? {
+                    diaryOn: (date: string): string | undefined => {
+                        let journal = '';
+                        try { journal = readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8'); } catch { /* 还没有日记 */ }
+                        return journalOn(journal, loadSelfDiary(config.dataDir), date);
+                    },
+                } : {}),
                 selfThread: (): string | undefined => {
                     try {
                         const journal = selfThreadLine(selfThread(readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8')));

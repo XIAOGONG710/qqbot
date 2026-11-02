@@ -34,6 +34,7 @@
 | `everydayLife` | 日常小事 / 小测 | [ADR 0106](../adr/0106-everyday-life.md) |
 | `worldDrama` | 日子里的小起伏（一天之内的难过 / 烦 / 高兴） | [ADR 0211](../adr/0211-world-drama.md) |
 | `worldThreads` | 她那边的事有后续（拌嘴第二天和好、淋雨第二天嗓子发紧……一天最多一条；闹心的事有冷却期；要日常小事和小起伏） | [ADR 0216](../adr/0216-world-threads.md) |
+| `diaryLookback` | 翻回去看自己的日记（他问到前几天的事，她那天写的日记也给她，说法对得上） | [ADR 0217](../adr/0217-diary-lookback.md) |
 | `menu` | 每顿吃什么（每天随机） | [ADR 0125](../adr/0125-menu.md) |
 | `pursuits` | 她自己的追求 | [ADR 0104](../adr/0104-pursuits.md) |
 | `herFeelings` | 心境（开心 / 难过 / 流泪；桌面上的她读同一份；ownerPeek 开着时 /心境 看） | [ADR 0102](../adr/0102-feelings.md) |
@@ -52,4 +53,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0007](../adr/0007-schedule-and-reply-timing.md)、[ADR 0026](../adr/0026-diary-of-her-day.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0216](../adr/0216-world-threads.md)
+[ADR 0007](../adr/0007-schedule-and-reply-timing.md)、[ADR 0026](../adr/0026-diary-of-her-day.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0216](../adr/0216-world-threads.md)、[ADR 0217](../adr/0217-diary-lookback.md)

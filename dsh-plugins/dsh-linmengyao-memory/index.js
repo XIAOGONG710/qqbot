@@ -55,6 +55,30 @@ export function localDay(at = new Date()) {
   return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
 }
 
+/**
+ * 翻自己写过的公开日记（ADR 0217；她 11-02 问「日记能翻回去看吗？前天写的今天还能对上」）：只读。
+ * date 给了就只看那一天；不给就看最近 days 天（1–7，默认 2，含今天）。标题带「补记」的段落不算（那是迁移时补的，不是她写的）。
+ * 太长的只留最近的 JOURNAL_READ_MAX 字。
+ */
+export const JOURNAL_READ_MAX = 1500
+export function journalRead(text, { days, date } = {}, now = new Date()) {
+  const parts = String(text || '').split(/^##\s+(\d{4}-\d{2}-\d{2})([^\n]*)$/m)
+  const n = Math.min(7, Math.max(1, Math.round(Number(days) || 2)))
+  const from = localDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - (n - 1)))
+  const wanted = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : undefined
+  const out = []
+  for (let i = 1; i < parts.length; i += 3) {
+    if (/补记/.test(parts[i + 1] || '')) continue
+    const day = parts[i]
+    const body = String(parts[i + 2] || '').trim()
+    if (!body || (wanted ? day !== wanted : day < from)) continue
+    out.push(`## ${day}\n${body}`)
+  }
+  if (!out.length) return wanted ? `（${wanted} 那天没写公开日记）` : `（最近 ${n} 天没写公开日记）`
+  const joined = out.join('\n\n')
+  return joined.length > JOURNAL_READ_MAX ? `……${joined.slice(-JOURNAL_READ_MAX)}` : joined
+}
+
 function log(cfg, line) {
   try { fs.appendFileSync(cfg.logFile, `${new Date().toISOString()} ${line}\n`) } catch {}
 }
@@ -800,6 +824,30 @@ ${now}` : ''
           },
         })
         disposers.push(tools.register(diaryTool('journal_write', 'journalFile', '写公开日记：愿意给他看的那部分日子。', '<=2000 字')))
+        // 翻回去看自己写过的公开日记（ADR 0217）：只读
+        disposers.push(tools.register({
+          name: 'journal_read',
+          description: '翻自己写过的公开日记（只读）：默认看最近两天的；要看某一天就给 date（YYYY-MM-DD）。',
+          parameters: {
+            type: 'object',
+            properties: {
+              days: { type: 'number', description: '看最近几天（1–7，默认 2，含今天）' },
+              date: { type: 'string', description: '只看某一天，YYYY-MM-DD' },
+            },
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+            render: (_args, value) => [{ type: 'text', text: String(value?.text || '') }],
+          },
+          async execute(args) {
+            let text = ''
+            try { text = fs.readFileSync(cfg.journalFile, 'utf8') } catch {}
+            const result = journalRead(text, args || {})
+            log(cfg, `journal_read ${args?.date || `${args?.days || 2}d`} ${result.length}chars`)
+            return { text: result }
+          },
+        }))
         // 私密日记：DPAPI 加密，只有她的进程（和专门的查看脚本）能解
         disposers.push(tools.register({
           name: 'private_write',

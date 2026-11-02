@@ -158,6 +158,7 @@ export interface Config {
     everydayLife: boolean;
     worldDrama: boolean;
     worldThreads: boolean;
+    diaryLookback: boolean;
     pursuits: boolean;
     shapeSplit: boolean;
     shapeAsk: boolean;
@@ -390,6 +391,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         lagTail: Schema.boolean().default(DEFAULTS.lagTail)
             .description('**回复延迟的长尾**（ADR 0105）：真人回消息的延迟是长尾的（公开数据里只有约 58% 的回复在 1 分钟内），她醒着空着时原来几乎全在十几秒内。开了以后一部分消息她在做别的，20 秒到一小时才看到（一来一回很快时少，冷场时多，他难受 / 问她在不在时更快）；回复一直失败（断网）十分钟以上才发出去时，时间块里多一句断网的事实，她可以顺口说一句“刚才网断了”。默认关。'),
         everydayLife: Schema.boolean().default(DEFAULTS.everydayLife),
+        diaryLookback: Schema.boolean().default(DEFAULTS.diaryLookback)
+            .description('**翻回去看自己的日记**（ADR 0217，只男朋友档）：她 11-02 问「日记能翻回去看吗？前天写的今天还能对上」。开着时：他问到前几天的事（「前天干嘛了」「周一那个……」），那天她自己写的日记（DSH 那边的 JOURNAL.md 那天的段落，和她在聊天里写的 <<日记>>）也放进那天的流水账，说法对着它，不用照念。DSH 那边另有只读的 journal_read，睡前写日记前可以翻一眼前两天的（没有开关）。'),
         worldThreads: Schema.boolean().default(DEFAULTS.worldThreads)
             .description('**她那边的事有后续**（ADR 0216，要 everydayLife 和 worldDrama 都开着）：现在她的日子一天一页、第二天翻篇。开着时：昨天和舍友拌了嘴，今天早上搭句话就过去了；昨天淋了雨，今天嗓子有点发紧；水卡丢了，第二天找到或去补办……一天最多一条后续，往收尾走；水卡丢了、被人说冷这类闹心的事有冷却期，不会接二连三。照她本人的话：「拌嘴基本不过夜」「鸡毛蒜皮翻篇就翻篇」「水卡那种别老丢」。从第一次开的第二天起才有（world/threads-from.json），已经过完的日子不改写。'),
         worldDrama: Schema.boolean().default(DEFAULTS.worldDrama).description('她日子里的小起伏（一天之内的难过/烦/高兴）')
@@ -682,6 +685,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.everydayLife !== undefined ? { everydayLife: config.everydayLife } : {}),
         ...(config.worldDrama !== undefined ? { worldDrama: config.worldDrama } : {}),
         ...(config.worldThreads !== undefined ? { worldThreads: config.worldThreads } : {}),
+        ...(config.diaryLookback !== undefined ? { diaryLookback: config.diaryLookback } : {}),
         ...(config.pursuits !== undefined ? { pursuits: config.pursuits } : {}),
         ...(config.shapeSplit !== undefined ? { shapeSplit: config.shapeSplit } : {}),
         ...(config.shapeAsk !== undefined ? { shapeAsk: config.shapeAsk } : {}),
@@ -808,7 +812,7 @@ export function apply(ctx: Context, config: Config) {
     let appConfig: AppConfig;
     try {
         appConfig = parseAppConfig(toAppConfigInput(config), repoRoot);
-        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim} readingTakes=${appConfig.readingTakes} hisReactions=${appConfig.hisReactions} herGuesses=${appConfig.herGuesses} afterNo=${appConfig.afterNo ?? false} openQuestions=${appConfig.openQuestions}`);
+        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim} readingTakes=${appConfig.readingTakes} hisReactions=${appConfig.hisReactions} herGuesses=${appConfig.herGuesses} diaryLookback=${appConfig.diaryLookback ?? false} worldThreads=${appConfig.worldThreads ?? false} afterNo=${appConfig.afterNo ?? false} openQuestions=${appConfig.openQuestions}`);
     } catch (error) {
         const plain = plainError('配置有误，插件没有启动', error);
         setConsoleState({ error: plain.message });
