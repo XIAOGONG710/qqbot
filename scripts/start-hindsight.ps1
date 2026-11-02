@@ -11,11 +11,11 @@
 # Needs the VC++ 2015-2022 redistributable 14.40 or newer installed system-wide: onnxruntime and the bundled
 # PostgreSQL crash (0xC0000005) on an older msvcp140.dll. The script checks this before starting anything.
 #
-# The API listens on 127.0.0.1:8888. Hindsight calls DeepSeek with the bot's key (QQBOT_LLM_API_KEY), thinking off.
+# The API listens on 127.0.0.1:8899 (8888 belongs to Anaconda Jupyter on this machine; 2026-11-02). Hindsight calls DeepSeek with the bot's key (QQBOT_LLM_API_KEY), thinking off.
 # Start this before the bot (scripts/start-bot.ps1) when runtime/bot/config.json has a "memory" section.
 
 param(
-    [int]$Port = 8888,
+    [int]$Port = 8899,
     [int]$DbPort = 5433,
     [string]$Model = 'deepseek-flash'
 )

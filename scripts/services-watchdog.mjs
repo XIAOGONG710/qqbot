@@ -53,13 +53,20 @@ function tcpOpen(host, port, timeoutMs) {
 
 const portOpen = (port) => tcpOpen('127.0.0.1', port, 3000);
 
+// 2026-11-02：端口从 8888 挪到 8899（8888 被 Anaconda 的 Jupyter 占着）；
+// 而且 Hindsight 根本没有 /health（404），以前一直判成“挂了”，白杀过正常进程——改成 /tree。
+const HINDSIGHT_URL = process.env.QQBOT_HINDSIGHT_URL ?? 'http://127.0.0.1:8899';
+
 async function hindsightHealthy() {
-    try {
-        const res = await fetch('http://127.0.0.1:8888/health', { signal: AbortSignal.timeout(5000) });
-        return res.ok;
-    } catch {
-        return false;
+    for (const path of ['/tree', '/health']) {
+        try {
+            const res = await fetch(`${HINDSIGHT_URL}${path}`, { signal: AbortSignal.timeout(5000) });
+            if (res.ok) return true;
+        } catch {
+            // 继续试下一个
+        }
     }
+    return false;
 }
 
 /** 解析得了模型接口的域名（和 bot 一样走系统的 getaddrinfo），而且连得上它的 443 吗 */
@@ -228,7 +235,7 @@ async function check() {
         openWindow('start-hindsight.ps1');
         bad.hindsight = 0;
     } else if (bad.hindsight >= 6 && hindsightProcs.length && allowed('hindsight')) {
-        // 2026-11-01：进程卡在模型初始化——python 在、8888 永远不听。以前只看「进程在不在」，
+        // 2026-11-01：进程卡在模型初始化——python 在、端口永远不听。以前只看「进程在不在」，
         // 于是这种「挂着」永远等不到重启，她整晚写不进记忆。连着 6 分钟不通就当它死了。
         say('hindsight：/health 六分钟不通，但 python 进程还在（卡在初始化），掐掉重拉');
         kill(hindsightProcs.map(p => p.pid));

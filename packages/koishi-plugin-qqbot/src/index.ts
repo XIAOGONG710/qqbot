@@ -81,7 +81,7 @@ const POST_PROCESSING_LABELS: Record<PromptPostProcessing, string> = {
     strict: 'strict：用户开头、角色交替',
 };
 
-const MEMORY_BASE_URL = 'http://127.0.0.1:8888';
+const MEMORY_BASE_URL = 'http://127.0.0.1:8899';
 const CHARACTER_CARD = 'characters/linmengyao/st/linmengyao-{tier}.json';
 /** 不能是空串或只有空白（表单上直接提示） */
 const NOT_BLANK = /\S/;

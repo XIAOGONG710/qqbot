@@ -20,7 +20,7 @@ export interface WorkTaskOptions {
     context?: string
 }
 
-const HINDSIGHT = 'http://127.0.0.1:8888'
+const HINDSIGHT = 'http://127.0.0.1:8899'
 
 /** 把这次活写进 DSH 记忆库，聊天里的她也能看到 */
 export async function rememberWorkTask(task: string, reply: string, bank = 'linmengyao'): Promise<void> {
