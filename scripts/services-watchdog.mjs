@@ -158,13 +158,25 @@ function koishiConnection() {
  * 中间的 powershell 开完窗口就退出，新窗口是它的孙进程，不跟着守护走。
  */
 /** 记忆控制台：Hindsight 起来了它才起（面板只是看记忆的窗口，记忆服务没活就没有可看的） */
+let controlPlaneMissingSaid = false;
 function startControlPlane(hindsightPort) {
+    // 没装就不拉（不然每 5 分钟拉一次、每次都报「起来了」）：装一次 scripts/hindsight/install-control-plane.ps1
+    if (!existsSync(join(root, 'runtime', 'hindsight', 'control-plane', 'bin', 'cli.js'))) {
+        if (!controlPlaneMissingSaid) say('记忆控制台：没装（先跑一次 scripts\\hindsight\\install-control-plane.ps1），不拉');
+        controlPlaneMissingSaid = true;
+        return;
+    }
     const script = join(root, 'scripts', 'start-hindsight-ui.ps1');
     const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-ApiPort', String(hindsightPort)],
         { cwd: root, stdio: 'ignore', windowsHide: true });
     child.on('error', error => say(`记忆控制台：起不来（${error.message}）`));
     child.unref();
-    say('记忆控制台：起来了（http://127.0.0.1:9999）');
+    // 拉起不等于在听：20 秒后再看一眼端口，照实写
+    setTimeout(() => {
+        void tcpOpen('127.0.0.1', CONTROL_PLANE_PORT, 1500).then(up => say(up
+            ? '记忆控制台：起来了（http://127.0.0.1:9999，只本机能开）'
+            : '记忆控制台：拉了，但 20 秒后 9999 还没在听（5 分钟后再试）'));
+    }, 20_000).unref();
 }
 
 function openWindow(script) {
