@@ -1,6 +1,6 @@
 # ADR 0216：她那边的事有后续——昨天的事今天留个尾巴，闹心的事不扎堆（worldThreads）
 
-- 日期：2026-11-03
+- 日期：2026-11-02
 - 状态：**已实现，新开关 `worldThreads`，默认关**；要 `everydayLife` 和 `worldDrama` 都开着。DSH 那台机器拉取、在 `koishi.yml` 里加 `worldThreads: true`、重启 Koishi 才生效。从第一次开的**第二天**起才有（`world/threads-from.json`），已经过完的日子不改写
 - 相关：ADR 0106（日常小事）、ADR 0211（DSH 的日子小起伏 worldDrama，「之后的走向」里写了缺跨天的连续性）、ADR 0102（心境：事件带的感受进心境）、ADR 0039（重启一致）、ADR 0213（她猜的事）
 - 用户：11-02「直接模拟现实世界」；11-03 凌晨「继续开拓」
