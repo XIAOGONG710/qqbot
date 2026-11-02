@@ -13,6 +13,7 @@
 - `social/reply-timing.ts`
 - `social/rate-limit.ts`
 - `social/strangers.ts`
+- `social/group-chat.ts`
 - `social/async-gate.ts`
 - `social/stickers.ts`
 - `social/sticker-favorites.ts`
@@ -50,6 +51,7 @@
 | `qzoneBrowse` | 自己翻空间动态（模式） | [ADR 0142](../adr/0142-qq-account-control.md) |
 | `qzonePeek` | 刷好友动态（看名单里好友发的说说）（模式） | [ADR 0145](../adr/0145-qzone-friends-feed.md) |
 | `qzoneStrangers` | 刷陌生人的空间（学人怎么说话）（模式） | [ADR 0144](../adr/0144-qzone-strangers.md) |
+| `groupChat` | 群聊（只在名单里的群、被叫到才说）（模式） | [ADR 0210](../adr/0210-group-chat.md) |
 | `typingStatus` | “正在输入…” | [ADR 0077](../adr/0077-typing-status.md) |
 | `selfRecall` | 打错字撤回重发 | [ADR 0086](../adr/0086-self-recall.md) |
 | `quoteReply` | 引用回复（他连发里的问题 / 补错字） | [ADR 0136](../adr/0136-quote-reply.md) |
@@ -60,4 +62,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0063](../adr/0063-image-stickers.md)、[ADR 0075](../adr/0075-reply-rhythm.md)、[ADR 0077](../adr/0077-typing-status.md)、[ADR 0083](../adr/0083-presence.md)、[ADR 0105](../adr/0105-reply-lag-tail.md)、[ADR 0109](../adr/0109-photo-shelf.md)、[ADR 0136](../adr/0136-quote-reply.md)、[ADR 0142](../adr/0142-qq-account-control.md)、[ADR 0143](../adr/0143-qzone-peek.md)、[ADR 0144](../adr/0144-qzone-strangers.md)、[ADR 0173](../adr/0173-silence-reasons.md)、[ADR 0174](../adr/0174-soul-module-stop-the-bleeding.md)、[ADR 0209](../adr/0209-strangers.md)
+[ADR 0063](../adr/0063-image-stickers.md)、[ADR 0075](../adr/0075-reply-rhythm.md)、[ADR 0077](../adr/0077-typing-status.md)、[ADR 0083](../adr/0083-presence.md)、[ADR 0105](../adr/0105-reply-lag-tail.md)、[ADR 0109](../adr/0109-photo-shelf.md)、[ADR 0136](../adr/0136-quote-reply.md)、[ADR 0142](../adr/0142-qq-account-control.md)、[ADR 0143](../adr/0143-qzone-peek.md)、[ADR 0144](../adr/0144-qzone-strangers.md)、[ADR 0173](../adr/0173-silence-reasons.md)、[ADR 0174](../adr/0174-soul-module-stop-the-bleeding.md)、[ADR 0209](../adr/0209-strangers.md)、[ADR 0210](../adr/0210-group-chat.md)
