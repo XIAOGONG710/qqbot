@@ -278,7 +278,7 @@ function quoteText(id: unknown, lookup: QuoteLookup | undefined): string {
 }
 
 /** 把消息段转成给模型看的纯文本；非文字的段用占位符（听过、看过的语音和图片在这之前已经换成一段文字，media.ts，ADR 0052）。quoted 给了就把引用回复的那句话写进去 */
-export function segmentsToText(message: Segment[] | string, quoted?: QuoteLookup): string {
+export function segmentsToText(message: Segment[] | string, quoted?: QuoteLookup, forwarded?: ForwardLookup): string {
     if (typeof message === 'string') return message;
     return message.map(segment => {
         const data = segment.data ?? {};
@@ -295,8 +295,82 @@ export function segmentsToText(message: Segment[] | string, quoted?: QuoteLookup
             case 'file': return fileText(data.file);
             // 分享卡片、转发的聊天记录（ADR 0080）：以前一律是「[json]」「[forward]」，她看不懂
             case 'json': return shareText(data.data);
-            case 'forward': return FORWARD_TEXT;
-            default: return `[${segment.type}]`;
+            case 'forward': return forwardText(data, forwarded);
+            default: return otherSegmentText(segment.type, data);
         }
     }).join('');
+}
+
+/**
+ * 合并转发里是谁说了什么（11-02「检查类似的问题」）：原来只写「[转发的聊天记录]」，里面一个字都没有——他转一段别人的聊天问「你看这人说的啥」，
+ * 她和引用丢了时一样只能猜，最容易把别人说的当成他说的。forward 段的 data（NapCat 可能直接带 content，也可能只有 id、要另问 get_forward_msg）
+ * 交给调用方：它知道这段私聊的两个人是谁，拼好一句话；返回 undefined 就照旧只写「[转发的聊天记录]」
+ */
+export type ForwardLookup = (data: Record<string, unknown>) => string | undefined;
+
+function forwardText(data: Record<string, unknown>, forwarded: ForwardLookup | undefined): string {
+    return forwarded?.(data) ?? FORWARD_TEXT;
+}
+
+/** 转发里最多放几条、每条几个字、整段几个字 */
+const FORWARD_LINES = 8;
+const FORWARD_LINE_CHARS = 40;
+const FORWARD_TOTAL_CHARS = 360;
+
+/**
+ * 转发里的消息 → 「[转发的聊天记录（共 12 条，下面是前 8 条）：小王：今晚吃啥／他：随便／……]」。
+ * 每条是 NapCat 的 node 段（data.user_id / nickname / message 或 content）或者一条 OneBot 消息（sender.user_id / nickname，message）。
+ * 说话人交给 who：他就写「他」、她自己就写「你」、别人写昵称——**不把别人的话写成他的**。里面再套的转发只写「[转发的聊天记录]」
+ */
+export function renderForward(items: readonly unknown[], who: (userId: number | undefined, nickname: string) => string): string | undefined {
+    const rec = (value: unknown) => (typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined);
+    const lines: string[] = [];
+    for (const item of items) {
+        const outer = rec(item);
+        if (!outer) continue;
+        const node = rec(outer.data) ?? outer;
+        const sender = rec(node.sender);
+        const rawId = Number(node.user_id ?? sender?.user_id);
+        const nickname = String(node.nickname ?? sender?.card ?? sender?.nickname ?? '').replace(/[\r\n\t[\]【】：:]+/g, ' ').trim().slice(0, 16);
+        const segments = node.message ?? node.content;
+        const text = (typeof segments === 'string' ? segments : Array.isArray(segments) ? segmentsToText(segments as Segment[]) : '').replace(/\s+/g, ' ').trim();
+        if (!text) continue;
+        const name = who(Number.isSafeInteger(rawId) ? rawId : undefined, nickname) || '别人';
+        lines.push(`${name}：${text.length > FORWARD_LINE_CHARS ? `${text.slice(0, FORWARD_LINE_CHARS)}…` : text}`);
+    }
+    if (!lines.length) return undefined;
+    let body = '';
+    let shown = 0;
+    for (const line of lines.slice(0, FORWARD_LINES)) {
+        if (body && body.length + line.length + 1 > FORWARD_TOTAL_CHARS) break;
+        body += `${body ? '／' : ''}${line}`;
+        shown++;
+    }
+    const head = shown < lines.length ? `共 ${lines.length} 条，下面是前 ${shown} 条` : `共 ${lines.length} 条`;
+    return `[转发的聊天记录（${head}）：${body}]`;
+}
+
+/**
+ * 别的消息段（11-02「检查类似的问题」）：原来一律写成英文类型名「[dice]」「[rps]」「[mface]」「[location]」，她看不懂，
+ * 和引用丢了一样只能猜。能写成人话的写成人话；真认不出来的写「[一条特殊消息]」，不写英文
+ */
+export function otherSegmentText(type: string, data: Record<string, unknown>): string {
+    const str = (value: unknown, max = 40) => {
+        if (typeof value !== 'string' && typeof value !== 'number') return '';
+        const text = String(value).replace(/[\r\n\t]+/g, ' ').replace(/[[\]【】]/g, '').replace(/\s+/g, ' ').trim();
+        return text.length > max ? `${text.slice(0, max)}…` : text;
+    };
+    switch (type) {
+        case 'mface': return str(data.summary) ? `[${str(data.summary).replace(/^\[|\]$/g, '')}]` : '[商城表情]';
+        case 'dice': { const n = str(data.result); return /^[1-6]$/.test(n) ? `[掷骰子：${n} 点]` : '[掷骰子]'; }
+        case 'rps': return '[猜拳]';
+        case 'poke': return '[戳一戳]';
+        case 'shake': return '[窗口抖动]';
+        case 'location': { const where = [str(data.title), str(data.content)].filter(Boolean).join(' '); return where ? `[位置：${where}]` : '[位置]'; }
+        case 'contact': return data.type === 'group' ? '[推荐了一个群]' : '[推荐了一个QQ好友]';
+        case 'markdown': { const text = str(data.content, 200); return text ? text.replace(/[#*_`>]+/g, '').trim() : '[一条特殊消息]'; }
+        case 'music': return '[分享音乐]';
+        case 'xml': case 'light_app': case 'ark': return '[分享]';
+        default: return '[一条特殊消息]';
+    }
 }

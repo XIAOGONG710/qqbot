@@ -28,7 +28,7 @@ import type { Log } from './log.ts';
 import { ChatHistory, type StoredMessage } from '.././memory/history.ts';
 import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from '.././memory/backfill.ts';
-import { quotedIds, segmentsToText, type MessageEvent, type PokeEvent, type QuotedMessage, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
+import { quotedIds, renderForward, segmentsToText, type ForwardLookup, type MessageEvent, type PokeEvent, type QuotedMessage, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
 import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
 import { createHearing } from '.././vision/hearing.ts';
 import { speakViaWorker, startVoiceWorker, takeVoiceLines } from '.././vision/voice-out.ts';
@@ -1022,6 +1022,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             .trim();
     }
 
+    /** 动电脑没干成时她回的那句（也记进聊天记录） */
+    const WORK_FAILED_LINE = '这个没弄成，等下我再看。';
+
     function createContactResponder(contact: Contact): Responder {
         // 回复里的内部标记（<<记住>> / <<日记>> / <<私密>> / <<同意工作>> / <<拒绝工作>> / <<用电脑>> / <<同意>> / <<拒绝>>）：从文字里剥掉、该办的事办了，返回剩下的文字。
         // 发出去的气泡走 send 时先过这里；整条只有标记的气泡不发，也要过这里（responder 的 absorb），不然写在单独一行的标记就丢了。
@@ -1029,21 +1032,35 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         const voiceDir = process.env.QQBOT_TTS_DIR ?? join(process.cwd(), 'runtime', 'indextts');
         const voiceOn = contact.tier === 'boyfriend' && Boolean(transport.sendPrivateVoice) && process.env.QQBOT_TTS !== 'off';
         const lastVoiceAt = new Map<number, number>();
+        // 11-02「检查类似的问题」：原来语音那一行从回复里摘掉以后，聊天记录里就没有了（historyText 把 <<语音：…>> 当内部标记剥掉），
+        // 他回「你刚那条语音……」她不知道自己说过什么；三分钟内跳过、没生成出来、发送失败时那句话也直接丢了，他没收到、她也不知道没发出去。
+        // 现在：发出去了记一行「[语音：…]」（带消息 id，他引用也对得上）；没发成语音就改用文字发出去，照样记下
+        const spokenLine = (line: string) => `[语音：${line}]`;
+        const speakAsText = (userId: number, line: string, why: string): void => {
+            log(`[${userId}] 语音${why}，那句话改用文字发`);
+            void transport.sendPrivateText(userId, line)
+                .then(id => chatHistory.append(userId, { time: new Date(worldNow()).toISOString(), role: 'assistant', content: line, messageId: id }))
+                .catch(error => log(`[${userId}] 那句话用文字也没发出去：${error instanceof Error ? error.message : String(error)}`));
+        };
         const speakVoice = (userId: number, line: string): void => {
-            if (!voiceOn) return;
+            if (!voiceOn) { speakAsText(userId, line, '关着'); return; }
             const last = lastVoiceAt.get(userId) ?? 0;
-            if (Date.now() - last < 3 * 60_000) {
-                log(`[${userId}] 语音跳过了：三分钟内已经发过`);
-                return;
-            }
+            if (Date.now() - last < 3 * 60_000) { speakAsText(userId, line, '三分钟内已经发过'); return; }
             lastVoiceAt.set(userId, Date.now());
             void speakViaWorker(line, { dir: voiceDir })
                 .then(async wav => {
-                    if (!wav) { log(`[${userId}] 语音没生成出来`); return; }
-                    const id = await transport.sendPrivateVoice!(userId, wav);
+                    if (!wav) { speakAsText(userId, line, '没生成出来'); return; }
+                    let id: number;
+                    try {
+                        id = await transport.sendPrivateVoice!(userId, wav);
+                    } catch (error) {
+                        speakAsText(userId, line, `没发出去（${error instanceof Error ? error.message : String(error)}）`);
+                        return;
+                    }
+                    chatHistory.append(userId, { time: new Date(worldNow()).toISOString(), role: 'assistant', content: spokenLine(line), messageId: id });
                     log(`[${userId}] 发了一条语音（${line.slice(0, 20)}…，消息 ${id}）`);
                 })
-                .catch(error => log(`[${userId}] 语音没发出去：${error instanceof Error ? error.message : String(error)}`));
+                .catch(error => speakAsText(userId, line, `出错了（${error instanceof Error ? error.message : String(error)}）`));
         };
         if (voiceOn) startVoiceWorker(voiceDir);
 
@@ -1130,7 +1147,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                             })
                             .catch(error => {
                                 log(`[${userId}] 她判断要动电脑、没干成：${error instanceof Error ? error.message : String(error)}`);
-                                void transport.sendPrivateText(userId, '这个没弄成，等下我再看。').catch(() => {});
+                                // 这句也是她说的：记进聊天记录，他问「怎么没弄成」她知道（11-02「检查类似的问题」）
+                                void transport.sendPrivateText(userId, WORK_FAILED_LINE)
+                                    .then(messageId => history.append(userId, { time: clockNow().toISOString(), role: 'assistant', content: WORK_FAILED_LINE, messageId }))
+                                    .catch(() => {});
                             });
                     } else {
                         log(`[${userId}] 她写了 ${WORK_MARKER}，但他最后那一条不是亲手打的字（ADR 0179），不动电脑`);
@@ -2251,7 +2271,8 @@ ${body}
         const reader = readerFor(event.user_id);
         // 引用的那一条不在记录里：先问 NapCat 再交给回复器（和读图、听语音走同一条串行的路）
         const quotesToFetch = missingQuotes(event.user_id, event.message);
-        if (!queued && !reader?.needs(event.message) && !quotesToFetch.length) {
+        const forwardsToFetch = missingForwards(event.message);
+        if (!queued && !reader?.needs(event.message) && !quotesToFetch.length && !forwardsToFetch.length) {
             deliver(responder, event, event.message);
             return;
         }
@@ -2262,6 +2283,7 @@ ${body}
         const job = (queued ?? Promise.resolve()).then(async () => {
             if (stopped || chatHistory.hasMessage(qq, event.message_id)) return;
             if (quotesToFetch.length) await fetchQuotes(qq, quotesToFetch);
+            if (forwardsToFetch.length) await fetchForwards(qq, forwardsToFetch);
             const message = reader
                 ? await reader.read(event.message, event.message_id, message => log(`[${qq}] ${message}`)).catch(() => event.message)
                 : event.message;
@@ -2316,8 +2338,37 @@ ${body}
         }
     }
 
+    /**
+     * 合并转发里的内容（11-02「检查类似的问题」）：forward 段自己带了 content 就用它，只有 id 的问 NapCat（get_forward_msg）；
+     * 写的时候他写「他」、她自己写「你」、别人写昵称（renderForward），不把别人的话写成他的。取不到照旧只写「[转发的聊天记录]」
+     */
+    const fetchedForwards = new Map<string, unknown[]>();
+    function missingForwards(message: Segment[] | string): string[] {
+        if (!transport.callAction || typeof message === 'string') return [];
+        return message.filter(segment => segment.type === 'forward' && !Array.isArray(segment.data?.content))
+            .map(segment => String(segment.data?.id ?? '')).filter(id => id && !fetchedForwards.has(id));
+    }
+    async function fetchForwards(qq: number, ids: readonly string[]): Promise<void> {
+        for (const id of ids) {
+            try {
+                const got = await transport.callAction!('get_forward_msg', { message_id: id }) as { messages?: unknown[] } | undefined;
+                if (!Array.isArray(got?.messages) || !got.messages.length) { log(`[${qq}] 转发的聊天记录问 NapCat 没拿到内容`); continue; }
+                fetchedForwards.set(id, got.messages);
+                if (fetchedForwards.size > 50) fetchedForwards.delete(fetchedForwards.keys().next().value!);
+                log(`[${qq}] 转发的聊天记录问 NapCat 拿到了 ${got.messages.length} 条（日志不记内容）`);
+            } catch (error) {
+                log(`[${qq}] 转发的聊天记录问 NapCat 没拿到：${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
+    }
+    const forwardLookup = (qq: number, self: number = selfIdKnown): ForwardLookup => data => {
+        const items = Array.isArray(data.content) ? data.content as unknown[] : fetchedForwards.get(String(data.id ?? ''));
+        if (!items) return undefined;
+        return renderForward(items, (userId, nickname) => (userId === qq ? '他' : self && userId === self ? '你' : nickname || '别人'));
+    };
+
     function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string): void {
-        const text = segmentsToText(message, quoteLookup(event.user_id)).trim();
+        const text = segmentsToText(message, quoteLookup(event.user_id), forwardLookup(event.user_id)).trim();
         if (!text) return;
         // 能让她动电脑的只有他亲手打的字（ADR 0179）：用原始消息判断，不用处理后的文本——看过的图、听过的语音会被换成一段文字，和他亲手打的混在一起
         const typed = event.user_id === deviceOwner?.qq && isTypedByHim(event.message);
@@ -2343,7 +2394,9 @@ ${body}
                 })
                 .catch(error => {
                     log(`[${qq}] 工作桥出错：${error instanceof Error ? error.message : String(error)}`);
-                    void transport.sendPrivateText(qq, '这个没弄成，等下我再看。');
+                    void transport.sendPrivateText(qq, WORK_FAILED_LINE)
+                        .then(messageId => history.append(qq, { time: clockNow().toISOString(), role: 'assistant', content: WORK_FAILED_LINE, messageId }))
+                        .catch(() => {});
                 });
             return;
         }
@@ -2480,8 +2533,10 @@ ${body}
             // 补回的消息里引用的那一条不在记录里：先问 NapCat（11-02 线上就是补回的这一种）
             const fetchIds = [...new Set(fresh.flatMap(m => missingQuotes(contact.qq, m.message)))];
             if (fetchIds.length) await fetchQuotes(contact.qq, fetchIds, selfId);
+            const forwardIds = [...new Set(fresh.flatMap(m => missingForwards(m.message)))];
+            if (forwardIds.length) await fetchForwards(contact.qq, forwardIds);
             if (stopped) return;
-            const missed = toStored(fresh, selfId, quoteLookup(contact.qq));
+            const missed = toStored(fresh, selfId, quoteLookup(contact.qq), forwardLookup(contact.qq, selfId));
             for (const message of missed) history.append(contact.qq, message);
             // 停机期间他说过想伤害自己的话：补回时也记一笔（只记时间），暂停期从他说话的时候算（ADR 0068）
             for (const message of missed) {

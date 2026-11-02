@@ -10,7 +10,7 @@
 // （bot 运行期间小号在手机上手动发的消息不会推给 bot，也不在这里补，它们比本地最后一条旧。）
 
 import type { StoredMessage } from './history.ts';
-import { segmentsToText, type QuoteLookup, type Segment } from '../platform/onebot.ts';
+import { segmentsToText, type ForwardLookup, type QuoteLookup, type Segment } from '../platform/onebot.ts';
 import { OPS_NOTICE_PREFIX } from '.././ops/alert-qq.ts';
 
 export const BACKFILL_COUNT = 20;
@@ -48,12 +48,12 @@ export function newerThanStored(stored: StoredMessage[], fetched: HistoryMessage
 }
 
 /** findMissed 的后一半：转成聊天记录里的一条（空的不要） */
-export function toStored(messages: HistoryMessage[], selfId: number, quoted?: QuoteLookup): StoredMessage[] {
+export function toStored(messages: HistoryMessage[], selfId: number, quoted?: QuoteLookup, forwarded?: ForwardLookup): StoredMessage[] {
     return messages
         .map((m): StoredMessage => ({
             time: new Date(m.time * 1000).toISOString(),
             role: (m.sender?.user_id ?? m.user_id) === selfId ? 'assistant' : 'user',
-            content: segmentsToText(m.message, quoted).trim(),
+            content: segmentsToText(m.message, quoted, forwarded).trim(),
             messageId: m.message_id,
         }))
         .filter(m => m.content);
