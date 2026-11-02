@@ -102,6 +102,8 @@ ADR 0064 / 0065 / 0066 / 0067 / 0068；表情包 collect；M1；K3 语料（停�
 
 ## 4. 等用户的决定（按时间）
 
+**11-03 凌晨（三）**：用户「写一份项目文件交接给 GPT」「运行还是在 DSH 那边」→ `handoff/2026-11-03-0030-claude-to-gpt.md`（基线、规矩、11-02 全部 ADR 0211–0221 的状态、在等的、建议的下一步）。**本 BOARD 第 5 节有几条过时（线上在 VM、代码在 main），以那份为准。**
+
 **11-03 凌晨（二）**：用户「开」→ 再开 `worldThreads` + `diaryLookback`，和 N1–N3 一次做完（`handoff/2026-11-03-0310-claude-enable-threads-lookback.md`，`dsh/qq-control` `f417e35`；前提 `worldDrama` 要开着）。
 
 **11-03 凌晨**：用户「开」→ N1–N3 三个开关一起开（`handoff/2026-11-03-0110-claude-enable-n1-n3.md`，`dsh/qq-control` `8521e3d`）。
