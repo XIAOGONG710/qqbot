@@ -10,6 +10,7 @@ import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { feedDigest, type QzoneFeed, type QzoneItem } from './qzone-feed.ts';
 import { sampleLines, strangerDigest, type StrangerFeed } from './qzone-strangers.ts';
 import { pick } from './reply-timing.ts';
+import { markSignature } from './strangers.ts';
 import { logBody } from '../platform/sensitive.ts';
 import { formatDate, herDay, stateAt, type Activity, type ExtraFreeActivity, type Schedule } from '../life/schedule.ts';
 
@@ -232,6 +233,8 @@ interface PresenceFile {
 export interface PresenceOptions {
     /** 休眠中（ADR 0161）：这一次整个不做（在线状态、点赞、签名、说说、戳他都不动） */
     paused?: () => boolean;
+    /** 陌生人私聊开着（ADR 0209）：换签名时也带上「（AI）」，陌生人从签名知道她是 AI */
+    aiMark?: boolean;
     flags: { onlineStatus: boolean; profileLikes: boolean; signature: PresenceMode; qzone: PresenceMode; qzoneVisibility: QzoneVisibility; pokeOut?: boolean; qzoneBrowse?: PresenceMode; qzonePeek?: PresenceMode; qzoneStrangers?: PresenceMode };
     transport: PresenceTransport;
     schedule: Schedule;
@@ -397,10 +400,11 @@ export function createPresence(options: PresenceOptions): Presence {
         if (t < state.signature.next) return;
         const date = new Date(t);
         const festival = options.festival?.(herDay(schedule, date));
-        const text = signatureFor({
+        const picked = signatureFor({
             day, ...(festival ? { festival } : {}),
-            ...(options.rainy?.(t) ? { rainy: true } : {}), last: state.signature.text,
+            ...(options.rainy?.(t) ? { rainy: true } : {}), last: state.signature.text.replace('（AI）', ''),
         });
+        const text = options.aiMark ? markSignature(picked) : picked;
         if (flags.signature === 'dryRun') {
             draft(`${new Date(t).toLocaleString('zh-CN')} 个性签名（草稿，没改）`, text);
             state.signature = { text, at: t, next: signatureDueAt(t), draft: true };

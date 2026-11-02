@@ -1005,8 +1005,11 @@ describe('编排（app.ts）', () => {
         assert.ok(off.logs.includes('忽略 QQ 99999 的私聊（不在名单）'));
 
         const cfg = config({ unlistedFriends: true });
-        const on = setup(cfg);
-        on.app.receive(event(99999, 1, '你好', ' 小周 '));
+        const on = setup(cfg, {}, { extra: { setSignature: async () => {} } });
+        // ADR 0209：签名写明是 AI 之后才回陌生人；只打招呼的先不回，所以这里说点什么
+        await on.app.connected(SELF);
+        await until(() => on.logs.some(l => l.includes('个性签名写明了她是 AI')));
+        on.app.receive(event(99999, 1, '你好，想问个事', ' 小周 '));
         await until(() => on.sent.length > 0);
         assert.deepEqual(on.sent, ['99999:好']);
         assert.ok(on.logs.includes('QQ 99999（小周）不在名单，按 unlisted 档回复'));
@@ -1016,7 +1019,9 @@ describe('编排（app.ts）', () => {
     test('名单外：打开后每人 10 分钟最多接收 30 条，超出的不进聊天记录也不调用模型', async () => {
         const cfg = config({ unlistedFriends: true });
         let generated = 0;
-        const on = setup(cfg, {}, { generate: () => { generated++; return '好'; } });
+        const on = setup(cfg, {}, { generate: () => { generated++; return '好'; }, extra: { setSignature: async () => {} } });
+        await on.app.connected(SELF);
+        await until(() => on.logs.some(l => l.includes('个性签名写明了她是 AI')));
         for (let i = 1; i <= 31; i++) on.app.receive(event(99999, i, `第${i}条`, '小周'));
         await until(() => on.logs.some(line => line.includes('名单外好友个人限流')));
         assert.equal(new ChatHistory(cfg.dataDir).load(99999).filter(message => message.role === 'user').length, 30);
@@ -1026,13 +1031,15 @@ describe('编排（app.ts）', () => {
 
     test('状态（控制台用，ADR 0010）：每人的档位、回复器状态、最后一条是谁发的，名单外的好友也在；不含聊天内容；作息开着时有「她现在在干什么」', async () => {
         const cfg = config({ unlistedFriends: true, schedule: true, contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }] });
-        const { app } = setup(cfg);
+        const { app, logs } = setup(cfg, {}, { extra: { setSignature: async () => {} } });
         let status = app.status();
         assert.deepEqual(status.contacts.map(c => [c.qq, c.tier, c.unlisted, c.responder.phase, c.last]), [[10001, 'classmate', false, 'idle', undefined]]);
         assert.equal(typeof status.contacts[0]!.now, 'string');
         assert.equal(status.schedule, true);
         assert.equal(status.memory, undefined);
 
+        await app.connected(SELF);
+        await until(() => logs.some(l => l.includes('个性签名写明了她是 AI')));
         app.receive(event(99999, 1, '你好', '小周'));
         await until(() => app.status().contacts.length === 2);
         status = app.status();
@@ -1410,8 +1417,9 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
         const fake = napcat({}, { 'https://x/cat.jpg': ['猫粮'], 'https://x/dog.jpg': ['狗粮'] });
         const described: string[] = [];
         const vision = { describe: async ({ url }: { url: string }) => { described.push(url); return '一只猫趴在窗台上'; } };
-        const { app, sent } = setup(cfg, { 10001: [], 20002: [] }, { media: fake.media, vision });
+        const { app, sent, logs } = setup(cfg, { 10001: [], 20002: [] }, { media: fake.media, vision, extra: { setSignature: async () => {} } });
         await app.connected(SELF);
+        await until(() => logs.some(l => l.includes('个性签名写明了她是 AI')));
         app.receive(mediaEvent(10001, 1, photoSegment('https://x/cat.jpg')));
         app.receive(mediaEvent(20002, 2, photoSegment('https://x/dog.jpg')));
         await until(() => sent.length >= 2);

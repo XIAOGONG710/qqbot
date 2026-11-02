@@ -113,6 +113,7 @@ import { togetherNow } from '.././language/together.ts';
 import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoSource } from '.././vision/photos.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
 import { SlidingWindowRateLimiter } from '.././social/rate-limit.ts';
+import { greetingOnly, markSignature, MINOR_NOTICE, minorHint, strangerGuard } from '.././social/strangers.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
@@ -1600,6 +1601,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         if (config.qzone !== 'off' && !qzone) log('存在感：陌生人档和同学档的卡都读不了，不写说说');
         presence = createPresence({
             ...(dormancy ? { paused: () => dormancy.isDormant() } : {}),
+            ...(config.unlistedFriends ? { aiMark: true } : {}),
             flags: { onlineStatus: config.onlineStatus, profileLikes: config.profileLikes, signature: config.signature, qzone: qzone ? config.qzone : 'off', qzoneVisibility: config.qzoneVisibility, pokeOut: config.pokeOut, qzoneBrowse: config.qzoneBrowse, qzonePeek: config.qzonePeek, qzoneStrangers: config.qzoneStrangers },
             transport, schedule, extraFree,
             likeTargets: config.contacts.filter(c => c.tier === 'boyfriend').map(c => c.qq),
@@ -2101,6 +2103,26 @@ ${body}
     /** 每人一条：要听、要看的消息读完才进聊天记录，后面来的排在它后面（顺序不乱；读是一收到就开始读，不排队） */
     const inbox = new Map<number, Promise<void>>();
     const unlistedLimiter = new SlidingWindowRateLimiter();
+    /** 陌生人私聊的规矩（ADR 0209）：签名写明是 AI 才回、每天上限、只打招呼先不回、未成年人不陪 */
+    const strangers = config.unlistedFriends ? strangerGuard(config.dataDir, log) : undefined;
+    /** 个性签名里写明她是 AI（用户 11-02：陌生人从签名知道，聊天里不主动说）：每次连上都查一遍，没有就补「（AI）」；改不了就一直不回陌生人 */
+    async function ensureAiSignature(selfId: number): Promise<void> {
+        if (!strangers) return;
+        if (!transport.setSignature) { log('陌生人：这条 QQ 通道改不了个性签名，签名没法写明她是 AI，所以不回陌生人（ADR 0209）'); return; }
+        let current = '';
+        try {
+            const info = await transport.callAction?.('get_stranger_info', { user_id: selfId, no_cache: true }) as { long_nick?: string; longNick?: string } | undefined;
+            current = info?.long_nick ?? info?.longNick ?? '';
+        } catch (error) { log(`陌生人：读不到现在的个性签名（${error instanceof Error ? error.message : String(error)}），按空的补`); }
+        const next = markSignature(current);
+        try {
+            if (next !== current.replace(/s+/g, ' ').trim()) await transport.setSignature(next);
+            strangers.markSigned(worldNow());
+            log(`陌生人：个性签名写明了她是 AI（${next === current.replace(/s+/g, ' ').trim() ? '本来就写着' : '补上了「（AI）」'}）`);
+        } catch (error) {
+            log(`陌生人：个性签名没改成（${error instanceof Error ? error.message : String(error)}），先不回陌生人`);
+        }
+    }
     const pokeLimiter = createPokeLimiter();
     const lastPokeBack = new Map<number, number>();
     const pokeTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -2108,6 +2130,12 @@ ${body}
     function onMessage(event: MessageEvent): void {
         // 补回或入口重投的同一条消息不消耗限额，也不重复处理。
         if (chatHistory.hasMessage(event.user_id, event.message_id)) return;
+        // 陌生人（ADR 0209）：签名还没写明是 AI 的时候不回；看出是未成年人的号不再回
+        const isStranger = !config.contacts.some(c => c.qq === event.user_id);
+        if (isStranger && config.unlistedFriends && strangers) {
+            if (!strangers.signed()) { log(`忽略 QQ ${event.user_id} 的私聊（个性签名还没写明她是 AI，先不回陌生人）`); return; }
+            if (strangers.isMinor(event.user_id)) { log(`忽略 QQ ${event.user_id} 的私聊（之前看出是未成年人，不再回）`); return; }
+        }
         let responder = responders.get(event.user_id);
         if (!responder) {
             if (!config.unlistedFriends) {
@@ -2134,6 +2162,31 @@ ${body}
                 log(`忽略 QQ ${event.user_id} 的私聊（名单外好友${decision.scope === 'contact' ? '个人' : '全局'}限流；约 ${Math.ceil(decision.retryAfterMs / 60_000)} 分钟后恢复）`);
                 return;
             }
+        }
+        // 陌生人（ADR 0209）：未成年人照实说一句、之后不回；只打了招呼的先不回（她本人：「就一句"在吗"那种，我基本不回」）；每天上限
+        if (isStranger && strangers && unlisted.has(event.user_id)) {
+            const qq = event.user_id;
+            const plain = segmentsToText(event.message).trim();
+            const said = { time: new Date(event.time * 1000).toISOString(), role: 'user' as const, content: plain || '[消息]', messageId: event.message_id };
+            if (minorHint(plain)) {
+                strangers.markMinor(qq);
+                history.append(qq, said);
+                log(`陌生人 ${qq} 说了自己是未成年人：照实说一句她是 AI、不陪未成年人聊天，之后不再回`);
+                void transport.sendPrivateText(qq, MINOR_NOTICE)
+                    .then(messageId => history.append(qq, { time: new Date(worldNow()).toISOString(), role: 'assistant', content: MINOR_NOTICE, messageId }))
+                    .catch(error => log(`陌生人 ${qq}：那句没发出去：${error instanceof Error ? error.message : String(error)}`));
+                return;
+            }
+            const stored = history.load(qq);
+            const lastHers = stored.findLastIndex(m => m.role === 'assistant');
+            const waiting = stored.slice(lastHers + 1).filter(m => m.role === 'user').map(m => m.content);
+            if (greetingOnly([...waiting, plain])) {
+                history.append(qq, said);
+                log(`陌生人 ${qq} 只打了个招呼，先不回，等他说点什么`);
+                return;
+            }
+            const daily = strangers.take(qq, worldNow());
+            if (!daily.allowed) { log(`忽略 QQ ${qq} 的私聊（${daily.reason}）`); return; }
         }
         // 他对她的话回「假」/「像」：记下来就算处理完，不进聊天记录、不交给回复器、不触发主动计划（ADR 0073）
         const feedbackContact = feedback ? config.contacts.find(c => c.qq === event.user_id && canGiveFeedback(c)) : undefined;
@@ -2595,6 +2648,7 @@ ${body}
             if (stopped) return;
             connectedAt = new Date();
             selfIdKnown = selfId;
+            if (strangers) void ensureAiSignature(selfId);
             syncing = true;
             try {
                 await syncMissed(selfId);
