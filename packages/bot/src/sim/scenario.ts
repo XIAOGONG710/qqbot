@@ -252,6 +252,8 @@ export interface Scenario {
     herFeelings: boolean;
     /** 默认 false：会拒绝（ADR 0103，配置 herNo）；只对男朋友档有效 */
     herNo: boolean;
+    /** 默认 false：拒绝之后（ADR 0214，配置 afterNo）；只对男朋友档有效 */
+    afterNo: boolean;
     /** 默认 false：她没想完的问题（ADR 0207，配置 openQuestions）；只对男朋友档有效。要配 { "ponder": true } 步骤让她夜里想一遍（先 advance 到 22 点以后） */
     openQuestions: boolean;
     /** 默认 false：回复延迟的长尾（ADR 0105，配置 lagTail） */
@@ -465,6 +467,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         innerLife: s.innerLife === true,
         herFeelings: s.herFeelings === true,
         herNo: s.herNo === true,
+        afterNo: s.afterNo === true,
         openQuestions: s.openQuestions === true,
         lagTail: s.lagTail === true,
         everydayLife: s.everydayLife === true,

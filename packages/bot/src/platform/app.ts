@@ -1355,6 +1355,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.quoteReply ? { quoteReply: true } : {}),
             ...(config.factCheck !== 'off' ? { factCheck: config.factCheck, ...(config.factHim ? { factAboutHim: true } : {}) } : {}),
             ...(config.herNo ? { herNo: true } : {}),
+            ...(config.afterNo ? { afterNo: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
             ...(config.pursuits ? { pursuits: pursuitsNow } : {}),

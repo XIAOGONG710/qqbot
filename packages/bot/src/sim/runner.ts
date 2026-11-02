@@ -454,6 +454,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.watched?.length ? { watched: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); } } : {}),
         ...(scenario.memes?.length ? { memes: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); } } : {}),
         ...(scenario.herNo ? { herNo: true } : {}),
+        ...(scenario.afterNo ? { afterNo: true } : {}),
         // 她没想完的问题（ADR 0207）：想出来的在数据目录的 open-questions.json，每次现取
         ...(scenario.openQuestions && scenario.tier === 'boyfriend' ? { openQuestions: thoughtsReader(dataDir) } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),

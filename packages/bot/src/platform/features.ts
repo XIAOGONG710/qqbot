@@ -29,6 +29,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'rhythm', label: '回复节奏（看想 / 打字时间）', group: '说话', adr: '0075' },
     { key: 'lagTail', label: '回复延迟的长尾', group: '说话', adr: '0105' },
     { key: 'herNo', label: '会拒绝', group: '说话', adr: '0103' },
+    { key: 'afterNo', label: '拒绝之后（他又提同一类请求时记得上次：拒了他只回「行吧」、或者勉强答应了；要不要还是她定）', group: '说话', adr: '0214' },
     { key: 'moody', label: '看心情不回', group: '说话', adr: '0013' },
     { key: 'speechCheck', label: '说话的毛病（出口检查）', group: '说话', adr: '0014' },
     { key: 'factCheck', label: '逐条事实检查（编的说法 / 对不上事实）', group: '说话', adr: '0137', kind: 'mode' },

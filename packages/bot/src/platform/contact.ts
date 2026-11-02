@@ -377,6 +377,8 @@ export interface ContactPipelineOptions {
     lagTail?: boolean;
     /** 会拒绝（ADR 0103，配置 herNo）：她刚推了他、他在磨她时别被磨两句就答应；他在管着她（不许 / 听到没）时不顺着说“都听你的”。只给男朋友档 */
     herNo?: boolean;
+    /** 拒绝之后（ADR 0214，默认关）：他又提同一类请求时，记得上次她推了他只回「行吧」、或者她被磨着勉强答应了；只给男朋友档 */
+    afterNo?: boolean;
     /** 分成几条（配置 shapeSplit，要 shape 开着）：把形状里抽出的条数当目标写进提示词，不只是上限（ADR 0096） */
     shapeSplit?: boolean;
     /** 被问直接问题时答完再接着说（配置 shapeAsk，要 shape 开着，ADR 0149）：不加「应一声、附和」那一句，条数按真人被问问题时的分布抽 */
@@ -697,6 +699,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 books: Boolean(books),
                 initiating: Boolean(initiate),
                 ...(options.herNo ? { refuse: true } : {}),
+                ...(options.afterNo ? { afterNo: true } : {}),
                 ...(options.jealousy ? { jealous: true } : {}),
                 ...(options.curious ? { curious: true } : {}),
                 ...(options.everydayLife && around?.events.length ? { dayThings: true } : {}),

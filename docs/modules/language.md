@@ -37,6 +37,7 @@
 - `language/scenes.ts`
 - `language/asks.ts`
 - `language/opinion.ts`
+- `language/after-no.ts`
 - `language/speaking.ts`
 - `language/speech-notes.ts`
 - `language/speech-feedback.ts`
@@ -70,6 +71,7 @@
 | `rhythm` | 回复节奏（看想 / 打字时间） | [ADR 0075](../adr/0075-reply-rhythm.md) |
 | `lagTail` | 回复延迟的长尾 | [ADR 0105](../adr/0105-reply-lag-tail.md) |
 | `herNo` | 会拒绝 | [ADR 0103](../adr/0103-her-no.md) |
+| `afterNo` | 拒绝之后（他又提同一类请求时记得上次：拒了他只回「行吧」、或者勉强答应了；要不要还是她定） | [ADR 0214](../adr/0214-after-no.md) |
 | `moody` | 看心情不回 | [ADR 0013](../adr/0013-old-project-advice.md) |
 | `speechCheck` | 说话的毛病（出口检查） | [ADR 0014](../adr/0014-speech-habits.md) |
 | `factCheck` | 逐条事实检查（编的说法 / 对不上事实）（模式） | [ADR 0137](../adr/0137-fact-check.md) |
@@ -94,4 +96,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0091](../adr/0091-reply-shape.md)、[ADR 0095](../adr/0095-filler-turns.md)、[ADR 0096](../adr/0096-split-and-share.md)、[ADR 0099](../adr/0099-too-smooth.md)、[ADR 0113](../adr/0113-relationship-stage.md)、[ADR 0114](../adr/0114-running-jokes.md)、[ADR 0115](../adr/0115-interruptions.md)、[ADR 0111](../adr/0111-together.md)、[ADR 0121](../adr/0121-odd-words.md)、[ADR 0137](../adr/0137-fact-check.md)、[ADR 0138](../adr/0138-idioms.md)、[ADR 0167](../adr/0167-selfcheck.md)、[ADR 0193](../adr/0193-nightly-speech-notes.md)、[ADR 0195](../adr/0195-speech-feedback.md)、[ADR 0196](../adr/0196-speech-trend.md)、[ADR 0198](../adr/0198-read-through-fixes.md)、[ADR 0202](../adr/0202-depth-routing.md)、[ADR 0205](../adr/0205-trope-shares.md)、[ADR 0203](../adr/0203-fact-check-him.md)
+[ADR 0091](../adr/0091-reply-shape.md)、[ADR 0095](../adr/0095-filler-turns.md)、[ADR 0096](../adr/0096-split-and-share.md)、[ADR 0099](../adr/0099-too-smooth.md)、[ADR 0113](../adr/0113-relationship-stage.md)、[ADR 0114](../adr/0114-running-jokes.md)、[ADR 0115](../adr/0115-interruptions.md)、[ADR 0111](../adr/0111-together.md)、[ADR 0121](../adr/0121-odd-words.md)、[ADR 0137](../adr/0137-fact-check.md)、[ADR 0138](../adr/0138-idioms.md)、[ADR 0167](../adr/0167-selfcheck.md)、[ADR 0193](../adr/0193-nightly-speech-notes.md)、[ADR 0195](../adr/0195-speech-feedback.md)、[ADR 0196](../adr/0196-speech-trend.md)、[ADR 0198](../adr/0198-read-through-fixes.md)、[ADR 0202](../adr/0202-depth-routing.md)、[ADR 0205](../adr/0205-trope-shares.md)、[ADR 0203](../adr/0203-fact-check-him.md)、[ADR 0214](../adr/0214-after-no.md)

@@ -100,6 +100,8 @@ export const DEFAULTS = {
     innerLife: false,
     herFeelings: false,
     herNo: false,
+    /** 拒绝之后（ADR 0214）：他又提同一类请求、上次她推了他只回「行吧」就不吭声 / 她被磨着勉强答应了，给她一句方向（要不要还是她定，变的是说法）；什么都不存 */
+    afterNo: false,
     /** 真人例子（ADR 0190）：从已批准的真人语料里挑几条放进提示词；默认关 */
     exemplars: false,
     lagTail: false,
@@ -466,6 +468,8 @@ export interface AppConfig {
      * 他命令式地管着她（“不许跟别的男生说话”“听到没”）时不顺着说“好好好都听你的”，先别扭一句、明说不答应。只给男朋友档，他难过 / 生病 / 危机时让路；没来由不会拒绝。默认关
      */
     herNo: boolean;
+    /** 拒绝之后（ADR 0214）：默认关；只男朋友档。每一轮从聊天记录重算，什么都不存 */
+    afterNo?: boolean;
     /** 真人例子（ADR 0190）：默认关（可选，老配置不用写） */
     exemplars?: boolean;
     /**
@@ -867,6 +871,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),
+        afterNo: bool(file, 'afterNo', '', DEFAULTS.afterNo),
         exemplars: bool(file, 'exemplars', '', DEFAULTS.exemplars),
         lagTail: bool(file, 'lagTail', '', DEFAULTS.lagTail),
         everydayLife: bool(file, 'everydayLife', '', DEFAULTS.everydayLife),

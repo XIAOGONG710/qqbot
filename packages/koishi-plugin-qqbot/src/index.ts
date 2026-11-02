@@ -153,6 +153,7 @@ export interface Config {
     innerLife: boolean;
     herFeelings: boolean;
     herNo: boolean;
+    afterNo: boolean;
     lagTail: boolean;
     everydayLife: boolean;
     worldDrama: boolean;
@@ -381,6 +382,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
             .description('**心境**（ADR 0102，只给男朋友档）：她那边的事（闺蜜病了、作业快到期、买到相机）、他的态度（哄她、说他不舒服、她难过时晾了她很久）、作者写进 runtime 数据目录 moments.json 的事，在她心里留下带来由的感受——开心、难过、担心、烦——会累积、会慢慢散，表现在语气上；难过得很的时候可能忍不住哭，被他一问更容易绷不住。不存分数，每一轮从事实重算；危机回合、小别扭那一轮不放。默认关。'),
+        afterNo: Schema.boolean().default(DEFAULTS.afterNo)
+            .description('**拒绝之后**（ADR 0214，只男朋友档）：他又提了同一类请求（打游戏、视频 / 语音、发照片、出去、陪他），而且 7 天里有过一次：她推了、他只回「行吧 / 哦」就半天没吭声；或者她推了、他磨、她勉强答应了——给她一句方向。照她本人的话：要不要还是看事情本身，**跟上次他高不高兴没关系**（不会因为他上次失落就更容易答应）；变的是说法（还是不想就换个说法好好讲、陪他聊会儿），上次勉强答应过的这次不想就直说；别提上次的事。什么都不存，每一轮从聊天记录重算。'),
         herNo: Schema.boolean().default(DEFAULTS.herNo)
             .description('**会拒绝**（ADR 0103，只给男朋友档）：她刚推了他一件事（在上课、很累、没空）、他再磨一句，不会被磨两句就答应——软着再推一次，或者给个折中（下课以后 / 明天 / 就十分钟），他给了新理由才松口；他命令式地管着她（“不许跟别的男生说话”“听到没”）时不顺着说“好好好都听你的”，先别扭一句、明说不答应。他难过 / 生病、危机时让路；关心她的“不许熬夜”不算。默认关。'),
         lagTail: Schema.boolean().default(DEFAULTS.lagTail)
@@ -671,6 +674,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),
+        ...(config.afterNo !== undefined ? { afterNo: config.afterNo } : {}),
         ...(config.lagTail !== undefined ? { lagTail: config.lagTail } : {}),
         ...(config.everydayLife !== undefined ? { everydayLife: config.everydayLife } : {}),
         ...(config.worldDrama !== undefined ? { worldDrama: config.worldDrama } : {}),

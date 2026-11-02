@@ -1,6 +1,7 @@
 // 当天这一层的「这一轮你想」（ADR 0019 决策 2）。
 // 只按眼前已有线索给一个方向，不抽签、不额外调模型，也不把它写成能照抄的台词。
 
+import { afterNoIntent, lastNo } from './after-no.ts';
 import { CURIOUS_INTENT, curiousTurn } from './curious.ts';
 import { describeGrievance, type Grievance } from '.././emotion/grievance.ts';
 import { JEALOUS_INTENT, jealousTurn, SOFTEN_INTENT } from './jealousy.ts';
@@ -39,6 +40,8 @@ export interface IntentContext {
     grievance?: Grievance;
     /** 会拒绝（ADR 0103，配置 herNo）：开了才有“他在磨她”“他在管着她”这两个意图；只有男朋友档 */
     refuse?: boolean;
+    /** 拒绝之后（ADR 0214，配置 afterNo）：他又提同一类请求、上次她推了他只回「行吧」就不吭声 / 上次她被磨着勉强答应了，给她一句方向；只有男朋友档 */
+    afterNo?: boolean;
     /** 吃醋，最轻的一档（ADR 0123，配置 jealousy）：他提到别的女生时嘴上不承认的别扭；只有男朋友档 */
     jealous?: boolean;
     /** 会追问（ADR 0126，配置 curious）：他说了件有细节的事，约六成的情况她回完反应后问一个关于这件事本身的问题；只有男朋友档 */
@@ -391,6 +394,11 @@ export function describeIntent(context: IntentContext): string | undefined {
     if (context.intimate && isIntimateBid(context.history)) return `[这一轮你想：他在向你要亲近或确认你们的感情，只接他刚说的你们两个人的事：先给一个明确的亲密回应，${isPlainAffection(context.history) ? AFFECTION_REPLY : BID_REPLY}。QQ 文字里的抱抱、亲一下和 mua 就是真的在抱、在亲，直接在这一轮用文字回抱回亲，让他收到你的回应；他说难受时先心疼他，他同时报了好消息时先替他高兴再接亲密话，他真要收尾时回应后顺着收尾，他不想你走时能陪就多陪一句]`;
     if (context.refuse && context.intimate && !needsCare(context.history) && pressedAfterRefusing(context.history)) return PRESSED_INTENT;
     if (context.refuse && context.intimate && !needsCare(context.history) && declinedHerInvite(context.history)) return DECLINED_INVITE_INTENT;
+    // 拒绝之后（ADR 0214）：他又提同一类请求；要不要还是她看事情本身，变的只是说法（她本人的话）
+    if (context.afterNo && context.intimate && !needsCare(context.history)) {
+        const found = lastNo(context.history, context.now.getTime());
+        if (found) return afterNoIntent(found);
+    }
     // 吃醋（ADR 0123）：他难过 / 生病的时候已经在前面让路；别盘问、不要保证、不限制他
     if (context.jealous && context.intimate && !needsCare(context.history)) {
         const turn = jealousTurn(context.history, context.now.getTime());
