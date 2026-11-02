@@ -110,11 +110,12 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'qzoneBrowse', label: '自己翻空间动态', group: '在 QQ 上的样子', adr: '0142', kind: 'mode' },
     { key: 'qzonePeek', label: '刷好友动态（看名单里好友发的说说）', group: '在 QQ 上的样子', adr: '0145', kind: 'mode' },
     { key: 'qzoneStrangers', label: '刷陌生人的空间（学人怎么说话）', group: '在 QQ 上的样子', adr: '0144', kind: 'mode' },
+    { key: 'groupChat', label: '群聊（只在名单里的群、被叫到才说）', group: '在 QQ 上的样子', adr: '0210', kind: 'mode' },
     { key: 'typingStatus', label: '“正在输入…”', group: '在 QQ 上的样子', adr: '0077' },
     { key: 'selfRecall', label: '打错字撤回重发', group: '在 QQ 上的样子', adr: '0086' },
     { key: 'quoteReply', label: '引用回复（他连发里的问题 / 补错字）', group: '在 QQ 上的样子', adr: '0136' },
     // 记忆和安全
-    { key: 'unlistedFriends', label: '名单外的好友也回', group: '记忆和安全' },
+    { key: 'unlistedFriends', label: '名单外的好友也回（签名写明是 AI 才回）', group: '记忆和安全', adr: '0209' },
     { key: 'feedbackCommands', label: '“假 / 像”反馈通道', group: '记忆和安全', adr: '0073' },
     { key: 'deviceControl', label: '她能操作他的电脑和手机（有限控制）', group: '记忆和安全', adr: '0148', kind: 'mode' },
     { key: 'qqControl', label: '账号控制面（资料 / 好友 / 群）', group: '记忆和安全', adr: '0142', kind: 'mode' },

@@ -9,7 +9,7 @@ import { loadConfig } from './config.ts';
 import { createLog } from './log.ts';
 import type { HistoryMessage } from '.././memory/backfill.ts';
 import { ocrLines } from '.././vision/media.ts';
-import { assertKernelOk, isFriendRecall, isPokeAtMe, isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
+import { assertKernelOk, isFriendRecall, isGroupMessage, isPokeAtMe, isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
 import { configuredImageDescriber, STICKER_VISION_PROMPT } from '.././vision/vision.ts';
 import { stickerDecider, stickerShelf } from '.././social/stickers.ts';
 import { qqFavorites } from '.././social/sticker-favorites.ts';
@@ -39,6 +39,7 @@ const app = startApp({
     config,
     transport: {
         sendPrivateText: (userId, text, replyTo) => client.sendPrivateText(userId, text, replyTo),
+        sendGroupText: (groupId, text, replyTo) => client.sendGroupText(groupId, text, replyTo),
         sendPrivateImage: (userId, file, summary) => client.sendPrivateImage(userId, file, summary),
         setInputStatus: (userId, eventType) => client.setInputStatus(userId, eventType),
         deleteMessage: async messageId => { await client.call('delete_msg', { message_id: messageId }); },
@@ -74,6 +75,8 @@ function onEvent(event: OneBotEvent): void {
         return;
     }
     if (isPrivateFriendMessage(event)) app.receive(event);
+    // 群消息（ADR 0210）：app 里只认配置 groups 名单里的群，别的群什么都不做
+    else if (isGroupMessage(event)) app.receiveGroup(event);
     else if (isPokeAtMe(event)) app.receivePoke(event);
     else if (isFriendRecall(event)) app.receiveRecall(event);
 }

@@ -128,6 +128,7 @@ export const DEFAULTS = {
     qzoneBrowse: 'off' as PresenceMode,
     qzonePeek: 'off' as PresenceMode,
     qzoneStrangers: 'off' as PresenceMode,
+    groupChat: 'off' as PresenceMode,
     qqControl: 'off' as ControlMode,
     qqAllowFriends: [] as readonly number[],
     qqAllowGroups: [] as readonly number[],
@@ -541,6 +542,10 @@ export interface AppConfig {
     qzonePeek?: PresenceMode;
     /** 刷平台推的陌生人说说（ADR 0144，「空友爱看」那种流）：09:00–23:00、每 3 小时最多一次；只读、只留正文样本。默认关 */
     qzoneStrangers?: PresenceMode;
+    /** 群聊（ADR 0210）：off 关 / dryRun 只写草稿不发 / on 发。只在 groups 名单里的群说话。默认 off */
+    groupChat?: PresenceMode;
+    /** 她能说话的群（用户拉她进去、再加进这里的）；knowsBot：群里的人都知道她是 AI（用户确认过） */
+    groups?: GroupConfig[];
     /** 账号控制面（ADR 0142）：off 关 / read 只读盘点 / on 放行写动作。默认 off */
     qqControl?: ControlMode;
     /** 允许她动作的好友 QQ 号（写动作的允许清单；空 = 一个都不许） */
@@ -625,6 +630,13 @@ export interface AppConfig {
     };
     /** 运行数据目录（聊天记录等） */
     dataDir: string;
+}
+
+/** 一个群（ADR 0210）：群号、叫什么、群里的人是不是都知道她是 AI（不写 = 不知道：认真问到就承认） */
+export interface GroupConfig {
+    id: number;
+    name: string;
+    knowsBot?: boolean;
 }
 
 export interface Contact {
@@ -864,6 +876,8 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         qzoneBrowse: oneOf(file.qzoneBrowse, 'qzoneBrowse', PRESENCE_MODES, DEFAULTS.qzoneBrowse),
         qzonePeek: oneOf(file.qzonePeek, 'qzonePeek', PRESENCE_MODES, DEFAULTS.qzonePeek),
         qzoneStrangers: oneOf(file.qzoneStrangers, 'qzoneStrangers', PRESENCE_MODES, DEFAULTS.qzoneStrangers),
+        groupChat: oneOf(file.groupChat, 'groupChat', PRESENCE_MODES, DEFAULTS.groupChat),
+        groups: parseGroups(file.groups),
         qqControl: oneOf(file.qqControl, 'qqControl', ACCOUNT_MODES, DEFAULTS.qqControl),
         qqAllowFriends: qqList(file.qqAllowFriends, 'qqAllowFriends'),
         qqAllowGroups: qqList(file.qqAllowGroups, 'qqAllowGroups'),
@@ -1019,4 +1033,23 @@ function num(obj: Json, key: string, where: string, fallback?: number): number {
 
 function resolvePath(repoRoot: string, path: string): string {
     return isAbsolute(path) ? path : resolve(repoRoot, path);
+}
+
+/** groups（ADR 0210）：[{ id: 群号, name: 群名, knowsBot?: true }]；没写就是空 */
+export function parseGroups(value: unknown): GroupConfig[] {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value)) throw new Error('配置 groups 应为数组');
+    const groups = value.map((item, i): GroupConfig => {
+        const where = `groups[${i}]`;
+        if (typeof item !== 'object' || item === null) throw new Error(`配置 ${where} 应为对象`);
+        const o = item as Record<string, unknown>;
+        const id = Number(o.id);
+        if (!Number.isSafeInteger(id) || id <= 0) throw new Error(`配置 ${where}.id 应为群号`);
+        if (typeof o.name !== 'string' || !o.name.trim()) throw new Error(`配置 ${where}.name 应为群名`);
+        if (o.knowsBot !== undefined && typeof o.knowsBot !== 'boolean') throw new Error(`配置 ${where}.knowsBot 应为 true 或 false（群里的人都知不知道她是 AI）`);
+        return { id, name: o.name.trim(), ...(o.knowsBot === true ? { knowsBot: true } : {}) };
+    });
+    const dup = groups.find((g, i) => groups.findIndex(h => h.id === g.id) !== i);
+    if (dup) throw new Error(`配置 groups 里群 ${dup.id} 重复`);
+    return groups;
 }

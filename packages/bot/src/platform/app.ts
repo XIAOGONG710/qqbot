@@ -28,14 +28,15 @@ import type { Log } from './log.ts';
 import { ChatHistory, type StoredMessage } from '.././memory/history.ts';
 import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from '.././memory/backfill.ts';
-import { quotedIds, renderForward, segmentsToText, type ForwardLookup, type MessageEvent, type PokeEvent, type QuotedMessage, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
+import { quotedIds, renderForward, segmentsToText, type ForwardLookup, type GroupMessageEvent, type MessageEvent, type PokeEvent, type QuotedMessage, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
 import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
 import { createHearing } from '.././vision/hearing.ts';
 import { speakViaWorker, startVoiceWorker, takeVoiceLines } from '.././vision/voice-out.ts';
 import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
-import { createContactResponder as createPipeline, loadTierCard, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
+import { createContactResponder as createPipeline, loadTierCard, personaFacts, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
+import { GROUP_CONTEXT, groupLine, groupLog, groupNote, groupReply, nameAts, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
 import { currentTierHistory, TierRecord } from '.././memory/tier-record.ts';
 import { HindsightClient } from '.././memory/hindsight.ts';
 import { arrivedWhileAsleep } from '.././social/reply-timing.ts';
@@ -141,6 +142,8 @@ export const WEATHER_REFRESH_MS = 30 * 60_000;
 export interface Transport extends PresenceTransport {
     /** 发一条私聊文字，返回 QQ 消息 id；文字里白名单的小黄脸「[捂脸]」发成 face 段（qq-faces.ts textToSegments，ADR 0051） */
     sendPrivateText(userId: number, text: string, replyTo?: number): Promise<number>;
+    /** 发群消息（ADR 0210，NapCat 的 send_group_msg）；没有就不在群里说话 */
+    sendGroupText?(groupId: number, text: string, replyTo?: number): Promise<number>;
     /** 发一条 QQ 分享卡片（B 站小程序），返回消息 id；没有就不发卡片、用文字链接 */
     sendPrivateCard?(userId: number, cardJson: string): Promise<number>;
     /** 标已读（NapCat mark_private_msg_as_read，配置 readReceipts，ADR 0083）；没有就不标 */
@@ -174,6 +177,8 @@ export interface App {
     receiveRecall(event: RecallEvent): void;
     /** 有人申请加她（ADR 0142，配置 qqFriendGate）：名单内同意；名单外按档留着或驳回。不认识的申请不碰 */
     receiveFriendRequest(input: { userId: number; flag: string; comment?: string }): void;
+    /** 群里别人发的一条（ADR 0210，配置 groupChat + groups）：只在名单里的群看、该开口时才说；不在名单的群什么都不做 */
+    receiveGroup(event: GroupMessageEvent): void;
     /** 停下：回复器都停掉，不再写记忆，释放锁（Koishi 插件停用或重启时） */
     stop(): void;
     /** 此刻的状态（控制台「林梦瑶」页面，ADR 0010）；不含聊天内容 */
@@ -2420,6 +2425,88 @@ ${body}
         return renderForward(items, (userId, nickname) => (userId === qq ? '他' : self && userId === self ? '你' : nickname || '别人'));
     };
 
+    // ───────── 群聊（ADR 0210） ─────────
+    const groupsOn = (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0;
+    const groupLogs = groupsOn ? groupLog(config.dataDir) : undefined;
+    const groupBusy = new Set<number>();
+    /** 每个群今天顺着话题插了几次 */
+    const groupTopics = new Map<number, { day: string; count: number }>();
+    const groupDay = () => new Date(worldNow()).toDateString();
+    function onGroupMessage(event: GroupMessageEvent): void {
+        if (stopped || !groupLogs || !selfIdKnown) return;
+        const group = (config.groups ?? []).find(g => g.id === event.group_id);
+        if (!group) return; // 不在名单的群：不看、不记、不写日志
+        if (groupLogs.has(group.id, event.message_id) || dormancy?.isDormant()) return;
+        const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
+        const entries = groupLogs.load(group.id);
+        // 群里他叫什么就写什么（他的群名片）：提示词里写「宝宝（你男朋友）」时她会当众喊「宝宝」（真模型 2/2），群里收着点
+        const senderCard = (event.sender.card || event.sender.nickname || '').replace(/s+/g, ' ').trim().slice(0, 16);
+        const bfName = boyfriend ? (event.user_id === boyfriend.qq && senderCard ? senderCard : entries.findLast(e => e.from === boyfriend.qq)?.name) ?? boyfriend.name : undefined;
+        const bf = boyfriend ? { qq: boyfriend.qq, name: bfName! } : undefined;
+        const names = new Map<number, string>(entries.filter(e => !e.mine).map(e => [e.from, e.name]));
+        const senderName = (event.sender.card || event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16);
+        names.set(event.user_id, senderName);
+        const herIds = new Set(entries.filter(e => e.mine).map(e => e.messageId));
+        const quoted: QuoteLookup = id => {
+            const hit = entries.findLast(e => e.messageId === id);
+            return hit ? { role: hit.mine ? 'assistant' : 'user', content: hit.content } : undefined;
+        };
+        const text = nameAts(segmentsToText(event.message, quoted).trim(), selfIdKnown, names, bf);
+        if (!text) return;
+        groupLogs.append(group.id, { time: new Date(event.time * 1000).toISOString(), from: event.user_id, name: senderName, content: text, messageId: event.message_id });
+        const topics = groupTopics.get(group.id);
+        const topicToday = topics && topics.day === groupDay() ? topics.count : 0;
+        const bfNames = bf ? [...new Set(entries.filter(e => e.from === bf.qq).map(e => e.name))] : [];
+        const reason = speakReason(event.message, text, event.user_id, event.message_id,
+            { selfId: selfIdKnown, ...(bf ? { boyfriend: bf } : {}), boyfriendNames: bfNames, herMessageIds: herIds, topicToday });
+        if (!reason) return;
+        const budget = withinBudget(entries.filter(e => e.mine), worldNow(), reason);
+        if (!budget.ok) { log(`[群 ${group.id}] 想开口但${budget.why}`); return; }
+        if (groupBusy.has(group.id)) return;
+        if (reason === 'topic') groupTopics.set(group.id, { day: groupDay(), count: topicToday + 1 });
+        groupBusy.add(group.id);
+        void speakInGroup(group, reason, bf)
+            .catch(error => log(`[群 ${group.id}] 说话出错：${error instanceof Error ? error.message : String(error)}`))
+            .finally(() => groupBusy.delete(group.id));
+    }
+    async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean }, reason: SpeakReason, bf: { qq: number; name: string } | undefined): Promise<void> {
+        // 群里的人都知道她是 AI（用户标过）：原卡，被问时由她定；没标：承认版卡，认真问到就承认；有人说想不开：一律承认版（ADR 0067 / 0068 / 0208）
+        const tier = group.knowsBot && reason !== 'crisis' ? 'classmate' : 'classmate-open';
+        let card: TierCard;
+        try {
+            card = cardFor(tier);
+        } catch (error) {
+            log(`[群 ${group.id}] 读不了 ${tier} 档的卡，不说话：${error instanceof Error ? error.message : String(error)}`);
+            return;
+        }
+        const entries = groupLogs!.load(group.id);
+        const boyfriendHere = Boolean(bf && entries.some(e => e.from === bf.qq));
+        const system = `你是${card.character.name}，在 QQ 群里和大家聊天。下面是你的设定。\n${personaFacts(card.character.description)}`;
+        const transcript = entries.slice(-GROUP_CONTEXT).map(e => groupLine(e, bf)).join('\n');
+        const note = groupNote({ groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason });
+        const messages = [{ role: 'system' as const, content: system }, { role: 'user' as const, content: `${transcript}\n\n${note}` }];
+        const raw = pipeline?.generate
+            ? await pipeline.generate(messages, log)
+            : await chatCompletion({ ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages, { log });
+        // 这一档的禁用词（群里叫不出「宝宝」这类黏的叫法）：带了的那条不发
+        const parts = groupReply(raw).filter(part => !inspectReply(part, card.character.banned).some(issue => issue.kind === 'banned'));
+        if (!parts.length) { log(`[群 ${group.id}] 看了一眼，没说话（${reason}）`); return; }
+        if (config.groupChat === 'dryRun' || !transport.sendGroupText) {
+            const dir = join(config.dataDir, 'groups');
+            mkdirSync(dir, { recursive: true });
+            appendFileSync(join(dir, 'drafts.md'), `- ${new Date(worldNow()).toLocaleString('zh-CN')} 群「${group.name}」（${reason}）：${parts.join(' / ')}\n`);
+            log(`[群 ${group.id}] 试运行：写了 ${parts.length} 条草稿，没发（${reason}）`);
+            return;
+        }
+        for (const [i, part] of parts.entries()) {
+            if (i > 0) await new Promise(resolve => setTimeout(resolve, 1200 + part.length * 150));
+            if (stopped) return;
+            const messageId = await transport.sendGroupText(group.id, part);
+            groupLogs!.append(group.id, { time: new Date(worldNow()).toISOString(), from: selfIdKnown, name: '你', content: part, messageId, mine: true });
+        }
+        log(`[群 ${group.id}] 说了 ${parts.length} 条（${reason}；日志不记内容）`);
+    }
+
     function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string): void {
         const text = segmentsToText(message, quoteLookup(event.user_id), forwardLookup(event.user_id)).trim();
         if (!text) return;
@@ -2763,6 +2850,9 @@ ${body}
             if (chatHistory.recall(contact.qq, event.message_id, content => Boolean(detectCrisis(content)))) {
                 log(`[${contact.qq}] 他撤回了一条还没回的消息，记成「撤回了一条消息」`);
             }
+        },
+        receiveGroup(event) {
+            onGroupMessage(event);
         },
         receiveFriendRequest({ userId, flag }) {
             const gate = config.qqFriendGate ?? 'off';

@@ -24,7 +24,7 @@ import { readFriendsFeed } from '../../bot/src/social/qzone-feeds3.ts';
 import { sessionFromCookies } from '../../bot/src/social/qzone-remote.ts';
 import { readStrangerFeed } from '../../bot/src/social/qzone-strangers.ts';
 import { ACCOUNT_MODES, QQ_FRIEND_GATES, type ControlMode, type FriendGate } from '../../bot/src/social/account.ts';
-import { assertKernelOk, isFriendRecall, isPokeAtMe, isPrivateFriendMessage, replySegment, type OneBotEvent } from '../../bot/src/platform/onebot.ts';
+import { assertKernelOk, isFriendRecall, isGroupMessage, isPokeAtMe, isPrivateFriendMessage, replySegment, type OneBotEvent } from '../../bot/src/platform/onebot.ts';
 import { ocrLines, type MediaReader } from '../../bot/src/vision/media.ts';
 import { textToSegments } from '../../bot/src/language/qq-faces.ts';
 import { FESTIVAL_MODES, type FestivalMode } from '../../bot/src/world/festivals.ts';
@@ -179,6 +179,8 @@ export interface Config {
     qzoneBrowse: PresenceMode;
     qzonePeek: PresenceMode;
     qzoneStrangers: PresenceMode;
+    groupChat: PresenceMode;
+    groups: { id: number; name: string; knowsBot?: boolean }[];
     qqControl: ControlMode;
     qqFriendGate: FriendGate;
     qqAllowFriends: number[];
@@ -245,7 +247,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
                 .description('**档位**：按这一档的角色卡回复（ADR 0003）。换档后，之前的聊天记录不再进提示词'),
             persona: Schema.string().role('textarea', { rows: [2, 8] }).description('**他是谁**：一两句，可选'),
             knowsBot: Schema.boolean()
-                .description('**知道她是程序**（ADR 0067）：勾上＝这个人知道，被认真问到是不是 AI 时按原卡（不承认、绕开）；不勾或没写＝按不知道处理，用承认版卡，被认真问到会承认。漏填不会对不知情的人否认'),
+                .description('**知道她是程序**（ADR 0067 / 0208）：勾上＝这个人知道，被认真问到是不是 AI 时说不说由她自己决定；不勾或没写＝按不知道处理，被认真问到时承认'),
             feedback: Schema.boolean()
                 .description('**可以对她的话打分**（ADR 0073）：勾上＝这个人发只有「假」或「像」一个字的消息时，记下她那一轮话是「假」还是「像」，不当聊天、她不回应。男朋友档不用勾；其余档位只对勾了的人生效，要先让他知道有这个功能。还要打开上面的「反馈通道」总开关'),
             intro: Schema.string().role('textarea', { rows: [1, 4] })
@@ -432,6 +434,13 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**刷好友动态**（ADR 0145）：用她自己的登录态（NapCat 的 get_cookies）读她自己的好友动态页，挑出名单里好友 3 天内新发的说说（不进对方空间、不留访客记录），10:00–22:00、每 4 小时最多一次；摘成一行带时间进提示词，6 小时内她可以自己提起。名单是下面「允许动作的好友」；读不到（登录态过期 / 断网 / 风控）6 小时后再试。默认关'),
         qzoneStrangers: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.qzoneStrangers)
             .description('**刷陌生人的空间**（ADR 0144）：用她的登录态读平台推的陌生人说说（「空友爱看」那种流），09:00–23:00、每 3 小时最多一次；只读不互动。摘一句进提示词，样本（只有正文，没有名字和号）留在 presence/strangers.jsonl。接口名没有公开文档，读不到只记一行。默认关'),
+        groupChat: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.groupChat)
+            .description('**群聊**（ADR 0210）：off 关 / dryRun 只写草稿（runtime/bot/groups/drafts.md）不发 / on 发。只在下面「群」里列出的群说话；她基本潜水，被叫到、有人损他、聊到她熟的才开口，一个群一小时最多 6 条、一天 30 条。不主动进群、不接别人的邀请'),
+        groups: Schema.array(Schema.object({
+            id: Schema.natural().required().description('**群号**'),
+            name: Schema.string().required().pattern(NOT_BLANK).description('**群名**：给她看的，比如「宿舍群」'),
+            knowsBot: Schema.boolean().description('**群里的人都知道她是 AI**：勾上＝被认真问是不是 AI 时由她自己决定；不勾＝按不知道，认真问到就承认（ADR 0067 / 0208 / 0210）'),
+        })).default([]).description('**群**（ADR 0210）：你拉她进去、想让她在里面说话的群'),
         qqControl: Schema.union(ACCOUNT_MODES.map(mode => Schema.const(mode).description(mode === 'off' ? '关' : mode === 'read' ? '只读（盘点）' : '放行写动作'))).default(DEFAULTS.qqControl)
             .description('**账号控制面**（ADR 0142）：off 关 / read 只读（盘点好友、群、空间）/ on 放行写动作。写动作只限登记过的那批（改资料、群名片、好友申请、发消息……），并且必须过下面的允许清单和一小时 6 次的限流；踢人、禁言、删好友、群发要再开「危险动作」。每次动作留审计（只记动作和对象，不记正文）。默认关'),
         qqAllowFriends: Schema.array(Schema.number()).default([])
@@ -680,6 +689,8 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.qzoneBrowse !== undefined ? { qzoneBrowse: config.qzoneBrowse } : {}),
         ...(config.qzonePeek !== undefined ? { qzonePeek: config.qzonePeek } : {}),
         ...(config.qzoneStrangers !== undefined ? { qzoneStrangers: config.qzoneStrangers } : {}),
+        ...(config.groupChat !== undefined ? { groupChat: config.groupChat } : {}),
+        ...(config.groups?.length ? { groups: config.groups.map(group => dropUndefined(group)) } : {}),
         ...(config.qqControl !== undefined ? { qqControl: config.qqControl } : {}),
         ...(config.qqAllowFriends !== undefined ? { qqAllowFriends: config.qqAllowFriends } : {}),
         ...(config.qqAllowGroups !== undefined ? { qqAllowGroups: config.qqAllowGroups } : {}),
@@ -802,6 +813,8 @@ export function apply(ctx: Context, config: Config) {
         // 白名单的小黄脸「[捂脸]」发成 face 段（ADR 0051），和 onebot.ts 发的是同一个请求
         sendPrivateText: async (userId, text, replyTo) => Number(await onlineBot().internal.sendPrivateMsg(userId, replyTo === undefined ? textToSegments(text) : [replySegment(replyTo), ...textToSegments(text)])),
         // B 站分享卡片（ADR 0084）：json 段；QQ 不认就抛错，调用方退回发链接
+        // 群消息（ADR 0210）
+        sendGroupText: async (groupId, text, replyTo) => Number(await onlineBot().internal.sendGroupMsg(groupId, replyTo === undefined ? textToSegments(text) : [replySegment(replyTo), ...textToSegments(text)])),
         sendPrivateCard: async (userId, cardJson) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'json', data: { data: cardJson } }])),
         deleteMessage: async messageId => { await onlineBot().internal.deleteMsg(messageId); },
         pokeFriend: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('friend_poke', { user_id: String(userId) }); },
@@ -881,7 +894,10 @@ export function apply(ctx: Context, config: Config) {
 
     ctx.middleware((session, next) => {
         const event = (session as Session & { onebot?: OneBotEvent }).onebot;
-        if (session.platform !== 'onebot' || !event || !isPrivateFriendMessage(event)) return next();
+        if (session.platform !== 'onebot' || !event) return next();
+        // 群消息（ADR 0210）：交给 app，它只认配置 groups 名单里的群；照样往下传（别的插件也能看到）
+        if (isGroupMessage(event)) { app.receiveGroup(event); return next(); }
+        if (!isPrivateFriendMessage(event)) return next();
         app.receive(event);
     }, true);
 

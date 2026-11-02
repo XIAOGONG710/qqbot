@@ -35,7 +35,22 @@ export interface MessageEvent {
     sender: { user_id: number; nickname?: string };
 }
 
-export type OneBotEvent = MessageEvent | { post_type: string; [key: string]: unknown };
+/** 群消息（ADR 0210）：sender.card 是群名片（没设就空），nickname 是 QQ 昵称 */
+export interface GroupMessageEvent {
+    post_type: 'message';
+    message_type: 'group';
+    sub_type: string;
+    self_id: number;
+    user_id: number;
+    group_id: number;
+    message_id: number;
+    time: number;
+    message: Segment[] | string;
+    raw_message: string;
+    sender: { user_id: number; nickname?: string; card?: string; role?: string };
+}
+
+export type OneBotEvent = MessageEvent | GroupMessageEvent | { post_type: string; [key: string]: unknown };
 
 interface ApiResponse {
     status: 'ok' | 'failed';
@@ -169,6 +184,15 @@ export class OneBotClient {
     }
 
     /** 发一条私聊：文字里白名单的小黄脸（「[捂脸]」）发成 face 段，和文字拼成一条（ADR 0051）；replyTo 给了就是引用回复那条消息（ADR 0136） */
+    /** 发群消息（ADR 0210）；replyTo 给了就引用那一条 */
+    async sendGroupText(groupId: number, text: string, replyTo?: number): Promise<number> {
+        const data = await this.call<{ message_id: number }>('send_group_msg', {
+            group_id: groupId,
+            message: replyTo === undefined ? textToSegments(text) : [replySegment(replyTo), ...textToSegments(text)],
+        });
+        return data.message_id;
+    }
+
     async sendPrivateText(userId: number, text: string, replyTo?: number): Promise<number> {
         const data = await this.call<{ message_id: number }>('send_private_msg', {
             user_id: userId,
@@ -237,6 +261,14 @@ export interface RecallEvent {
 export function isFriendRecall(event: OneBotEvent): event is RecallEvent {
     return event.post_type === 'notice' && event.notice_type === 'friend_recall'
         && typeof event.user_id === 'number' && typeof event.message_id === 'number' && Number.isSafeInteger(event.message_id);
+}
+
+/** 群里别人发的消息（不含她自己发的、匿名的）（ADR 0210） */
+export function isGroupMessage(event: OneBotEvent): event is GroupMessageEvent {
+    const e = event as Record<string, unknown>;
+    return e.post_type === 'message' && e.message_type === 'group' && typeof e.group_id === 'number'
+        && typeof e.user_id === 'number' && typeof e.message_id === 'number' && typeof e.time === 'number'
+        && e.user_id !== e.self_id && e.sub_type !== 'anonymous';
 }
 
 export function isPrivateFriendMessage(event: OneBotEvent): event is MessageEvent {
