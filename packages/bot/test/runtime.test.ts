@@ -78,7 +78,7 @@ describe('OneBot 消息', () => {
             { type: 'face', data: { id: '9999' } },
             { type: 'record', data: {} },
             { type: 'poke', data: {} },
-        ]), '你看[动画表情][图片][表情][语音][poke]');
+        ]), '你看[动画表情][图片][表情][语音][戳一戳]'); // 11-02：认不出的段不再写英文类型名
         assert.equal(segmentsToText('纯文本'), '纯文本');
     });
     test('名单外的人用 QQ 昵称称呼，没有昵称叫「对方」', () => {
