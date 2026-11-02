@@ -56,6 +56,7 @@ const portOpen = (port) => tcpOpen('127.0.0.1', port, 3000);
 // 2026-11-02：端口从 8888 挪到 8899（8888 被 Anaconda 的 Jupyter 占着）；
 // 而且 Hindsight 根本没有 /health（404），以前一直判成“挂了”，白杀过正常进程——改成 /tree。
 const HINDSIGHT_URL = process.env.QQBOT_HINDSIGHT_URL ?? 'http://127.0.0.1:8899';
+const HINDSIGHT_PORT = Number(new URL(HINDSIGHT_URL).port || 8899);
 
 async function hindsightHealthy() {
     for (const path of ['/tree', '/health']) {
@@ -156,6 +157,16 @@ function koishiConnection() {
  * 10-12 12:52 在这台 VM 上拿无害脚本试了四种：detached: true 两种都没有窗口，detached: false 两种都开出来了（用户会话 6、可交互）。
  * 中间的 powershell 开完窗口就退出，新窗口是它的孙进程，不跟着守护走。
  */
+/** 记忆控制台：Hindsight 起来了它才起（面板只是看记忆的窗口，记忆服务没活就没有可看的） */
+function startControlPlane(hindsightPort) {
+    const script = join(root, 'scripts', 'start-hindsight-ui.ps1');
+    const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-ApiPort', String(hindsightPort)],
+        { cwd: root, stdio: 'ignore', windowsHide: true });
+    child.on('error', error => say(`记忆控制台：起不来（${error.message}）`));
+    child.unref();
+    say('记忆控制台：起来了（http://127.0.0.1:9999）');
+}
+
 function openWindow(script) {
     const file = join(root, 'scripts', script);
     const child = spawn('powershell.exe', ['-NoProfile', '-Command',
@@ -170,6 +181,10 @@ function kill(pids) {
         try { execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }); } catch { /* 已经没了 */ }
     }
 }
+
+/** 记忆控制台（Hindsight Control Plane）的端口；它只在 Hindsight 活着的时候才有意义 */
+const CONTROL_PLANE_PORT = 9999;
+let controlPlaneTriedAt = 0;
 
 /** 几点以后做当天的备份（凌晨 3 点：她一般睡了，数据库不忙） */
 const BACKUP_HOUR = 3;
@@ -288,6 +303,14 @@ async function check() {
         kill(procs.filter(p => p.name === 'node.exe' && /hindsight-watchdog/.test(p.cmd)).map(p => p.pid));
         openWindow('start-hindsight.ps1');
         bad.hindsight = 0;
+    }
+    // 记忆控制台（2026-11-02 用户：「添加个启动入口」）：Hindsight 活着、9999 没开、五分钟内没试过，就起一次
+    if (hindsightUp && allowed('hindsight')) {
+        const uiUp = await tcpOpen('127.0.0.1', CONTROL_PLANE_PORT, 1500);
+        if (!uiUp && Date.now() - controlPlaneTriedAt > 5 * 60_000) {
+            controlPlaneTriedAt = Date.now();
+            startControlPlane(HINDSIGHT_PORT);
+        }
     }
     if (bad.koishi >= 2 && allowed('koishi')) {
         if (koishiProcs.length) {
