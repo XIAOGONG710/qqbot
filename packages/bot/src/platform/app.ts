@@ -28,7 +28,7 @@ import type { Log } from './log.ts';
 import { ChatHistory, type StoredMessage } from '.././memory/history.ts';
 import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from '.././memory/backfill.ts';
-import { segmentsToText, type MessageEvent, type PokeEvent, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
+import { quotedIds, segmentsToText, type MessageEvent, type PokeEvent, type QuotedMessage, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
 import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
 import { createHearing } from '.././vision/hearing.ts';
 import { speakViaWorker, startVoiceWorker, takeVoiceLines } from '.././vision/voice-out.ts';
@@ -2249,7 +2249,9 @@ ${body}
         }
         const queued = inbox.get(event.user_id);
         const reader = readerFor(event.user_id);
-        if (!queued && !reader?.needs(event.message)) {
+        // 引用的那一条不在记录里：先问 NapCat 再交给回复器（和读图、听语音走同一条串行的路）
+        const quotesToFetch = missingQuotes(event.user_id, event.message);
+        if (!queued && !reader?.needs(event.message) && !quotesToFetch.length) {
             deliver(responder, event, event.message);
             return;
         }
@@ -2259,6 +2261,7 @@ ${body}
         // Starting read() before awaiting `queued` only serialized delivery and still leaked parallel OCR/vision calls.
         const job = (queued ?? Promise.resolve()).then(async () => {
             if (stopped || chatHistory.hasMessage(qq, event.message_id)) return;
+            if (quotesToFetch.length) await fetchQuotes(qq, quotesToFetch);
             const message = reader
                 ? await reader.read(event.message, event.message_id, message => log(`[${qq}] ${message}`)).catch(() => event.message)
                 : event.message;
@@ -2277,11 +2280,41 @@ ${body}
         return message.map(segment => segment.data.text as string).join('');
     }
 
-    /** 他引用回复时，被引用的那一条在聊天记录里（按 QQ 消息 id；ADR 0081） */
+    /** 他引用回复时，被引用的那一条在聊天记录里（按 QQ 消息 id；ADR 0081）；不在记录里的，问过 NapCat 的从 fetchedQuotes 拿 */
     const quoteLookup = (qq: number): QuoteLookup => id => {
         const found = history.load(qq).findLast(message => message.messageId === id);
-        return found ? { role: found.role, content: found.content } : undefined;
+        return found ? { role: found.role, content: found.content } : fetchedQuotes.get(id);
     };
+
+    /**
+     * 引用的那一条不在聊天记录里时问 NapCat（get_msg）补上（11-02 线上：他 11:24 引用她那句自我介绍问「你这是说谁呢」，
+     * 那会儿服务在重启，这条是之后补回的，引用在记录里没对上，她只看到「你这是说谁呢」，答成「说你呢」）。
+     * 只认这段私聊里的两个人：发的人是她自己（小号）就是她说的，是对方就是他说的；认不出来的不猜
+     */
+    const fetchedQuotes = new Map<number, QuotedMessage>();
+    function missingQuotes(qq: number, message: Segment[] | string): number[] {
+        if (!transport.callAction) return [];
+        const ids = quotedIds(message);
+        if (!ids.length) return [];
+        const known = new Set(history.load(qq).map(m => m.messageId));
+        return ids.filter(id => !known.has(id) && !fetchedQuotes.has(id));
+    }
+    async function fetchQuotes(qq: number, ids: readonly number[], self: number = selfIdKnown): Promise<void> {
+        for (const id of ids) {
+            try {
+                const got = await transport.callAction!('get_msg', { message_id: id }) as { user_id?: number; sender?: { user_id?: number }; message?: Segment[] | string } | undefined;
+                const from = got?.sender?.user_id ?? got?.user_id;
+                const role = from === qq ? 'user' : self && from === self ? 'assistant' : undefined;
+                const content = got?.message ? segmentsToText(got.message).replace(/\s+/g, ' ').trim() : '';
+                if (!role || !content) { log(`[${qq}] 引用的那一条记录里没有，问 NapCat 也没认出来`); continue; }
+                fetchedQuotes.set(id, { role, content });
+                if (fetchedQuotes.size > 200) fetchedQuotes.delete(fetchedQuotes.keys().next().value!);
+                log(`[${qq}] 引用的那一条记录里没有，问 NapCat 补上了（${role === 'assistant' ? '她说的' : '他说的'}）`);
+            } catch (error) {
+                log(`[${qq}] 引用的那一条记录里没有，问 NapCat 没拿到：${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
+    }
 
     function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string): void {
         const text = segmentsToText(message, quoteLookup(event.user_id)).trim();
@@ -2444,6 +2477,10 @@ ${body}
                 const known = new Set(history.load(contact.qq).map(m => m.messageId));
                 fresh = fresh.filter(m => !known.has(m.message_id));
             }
+            // 补回的消息里引用的那一条不在记录里：先问 NapCat（11-02 线上就是补回的这一种）
+            const fetchIds = [...new Set(fresh.flatMap(m => missingQuotes(contact.qq, m.message)))];
+            if (fetchIds.length) await fetchQuotes(contact.qq, fetchIds, selfId);
+            if (stopped) return;
             const missed = toStored(fresh, selfId, quoteLookup(contact.qq));
             for (const message of missed) history.append(contact.qq, message);
             // 停机期间他说过想伤害自己的话：补回时也记一笔（只记时间），暂停期从他说话的时候算（ADR 0068）

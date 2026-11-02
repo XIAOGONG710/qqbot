@@ -252,15 +252,26 @@ export interface QuotedMessage {
 export type QuoteLookup = (messageId: number) => QuotedMessage | undefined;
 
 const MAX_QUOTE = 40;
+/** 引用了、但找不到是哪一条时写的（不写「看不到」：真人在 QQ 上总看得见被引用的那句，她照念出来就不像人） */
+export const QUOTE_UNKNOWN = '[引用了一条之前的消息]';
+
+/** 一条消息里引用回复段指向的消息 id（NapCat 的 reply 段，id 可能是数字或字符串） */
+export function quotedIds(message: Segment[] | string): number[] {
+    if (typeof message === 'string') return [];
+    return message.filter(segment => segment.type === 'reply').map(segment => Number(segment.data?.id)).filter(id => Number.isSafeInteger(id));
+}
 
 /**
- * 引用回复段 → 「[引用你说的：「我周三有早八」]」；找不到被引用的那一条（不是经过机器人收发的、已经不在记录里）就什么都不写，和以前一样。
- * 被引用的那一条自己开头的引用不再套进来，换行压成空格，超过 MAX_QUOTE 个字截短
+ * 引用回复段 → 「[引用你说的：「我周三有早八」]」。被引用的那一条自己开头的引用不再套进来，换行压成空格，超过 MAX_QUOTE 个字截短。
+ * 给了查找、却找不到被引用的那一条（记录里没有、问 NapCat 也没拿到）：写一句「[引用了一条之前的消息]」——
+ * 原来什么都不写，11-02 线上他引用她那句自我介绍问「你这是说谁呢」，她只看到这一句，当成在问她刚说的「对你这脾气摸清了」，答「说你呢」（模拟 5/6 答错）。
+ * 没给查找（只要纯文字的地方）照旧什么都不写
  */
 function quoteText(id: unknown, lookup: QuoteLookup | undefined): string {
+    if (!lookup) return '';
     const number = Number(id);
-    const quoted = lookup && Number.isSafeInteger(number) ? lookup(number) : undefined;
-    if (!quoted) return '';
+    const quoted = Number.isSafeInteger(number) ? lookup(number) : undefined;
+    if (!quoted) return QUOTE_UNKNOWN;
     const text = quoted.content.replace(/^\[引用.*?」\]/, '').replace(/\s+/g, ' ').trim();
     if (!text) return '';
     return `[引用${quoted.role === 'assistant' ? '你说的' : '他之前说的'}：「${text.length > MAX_QUOTE ? `${text.slice(0, MAX_QUOTE)}…` : text}」]`;
