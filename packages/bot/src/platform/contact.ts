@@ -145,11 +145,13 @@ export interface TierCard {
 }
 
 /** 读一个档位的角色卡和它链接的世界书；pattern 是配置里的 characterCard（{tier} 换成档位名，承认版是「<档位>-open」，ADR 0067），世界书在同目录的 <world>.json */
-export function loadTierCard(pattern: string, tier: string, options: { everydayLife?: boolean; everydayFrom?: string; menu?: boolean; menuFrom?: string; worldDrama?: boolean } = {}): TierCard {
+export function loadTierCard(pattern: string, tier: string, options: { everydayLife?: boolean; everydayFrom?: string; menu?: boolean; menuFrom?: string; worldDrama?: boolean; threadsFrom?: string } = {}): TierCard {
     const path = pattern.replaceAll('{tier}', tier);
     const loaded = loadCharacterCard(path);
     // 补充的日常小事和小测（ADR 0106，配置 everydayLife）：代码里加进世界的“小事”块，不改角色卡
-    const everyday = options.everydayLife && loaded.herWorld ? { ...loaded, herWorld: withEveryday(loaded.herWorld, tier, options.everydayFrom, options.worldDrama)! } : loaded;
+    const withDays = options.everydayLife && loaded.herWorld ? { ...loaded, herWorld: withEveryday(loaded.herWorld, tier, options.everydayFrom, options.worldDrama)! } : loaded;
+    // 她那边的事有后续（ADR 0216，配置 worldThreads）：从 threadsFrom 起，昨天的事今天可能有个尾巴、闹心的事有冷却期
+    const everyday = options.threadsFrom && withDays.herWorld ? { ...withDays, herWorld: { ...withDays.herWorld, threads: true, threadsFrom: options.threadsFrom } } : withDays;
     // 每顿吃什么（ADR 0125，配置 menu）：菜单放进世界，午饭 / 晚饭才有“吃的是什么”
     const character = options.menu && everyday.herWorld ? { ...everyday, herWorld: withMenu(everyday.herWorld, options.menuFrom)! } : everyday;
     const worldInfo = character.world ? loadWorldInfo(join(dirname(path), `${character.world}.json`), character.world) : [];

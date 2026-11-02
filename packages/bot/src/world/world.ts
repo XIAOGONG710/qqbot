@@ -17,6 +17,7 @@ import { bodyAt, parseBody, unwell, type Body, type BodyNow } from '../life/body
 import { DEFAULT_NEWS_KINDS, type NewsKind } from '../proactive/proactive.ts';
 import { EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, quizEvents, type EventFeel } from '../life/everyday.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
+import { inCooldown, threadStepsFor } from './threads.ts';
 import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
 import { DEFAULT_ASKS, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
 import type { Plans } from '../life/day-plan.ts';
@@ -53,6 +54,9 @@ export interface World {
     quizzes?: boolean;
     /** 补充的小事和小测从这一天起才有（ADR 0106）：她已经过完的日子不被改写、不凭空多出没发生过的小测 */
     everydayFrom?: string;
+    /** 她那边的事有后续（ADR 0216，配置 worldThreads）：昨天的事今天可能有个尾巴；闹心的那几件有冷却期。threadsFrom：从这一天起才有（过完的日子不改写） */
+    threads?: boolean;
+    threadsFrom?: string;
     /** 每顿吃什么（ADR 0125，配置 menu）：菜单；有它，午饭 / 晚饭才有“吃的是什么”（日期的函数，不存状态） */
     menu?: Menu;
     /** 菜单从这一天起才有（ADR 0125）：她已经过完的日子不被改写 */
@@ -416,6 +420,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         const atSchool = !(holiday && world.awayHolidays.includes(holiday.name)) && !(outsideSemester && day > start);
         const record: DayRecord = { date, atSchool, events: [] };
         days.set(date, record);
+        const threadsOn = Boolean(world.threads) && (!world.threadsFrom || date >= world.threadsFrom);
         // 真实天气（ADR 0048）：在学校按济南、放假在家按青岛；没有数据的日子照旧按日期生成
         if (world.weather) record.weather = realWeather()?.day(atSchool ? 'jinan' : 'qingdao', date, until) ?? weatherOn(world.weather, day);
 
@@ -553,6 +558,8 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             if (event.requires === 'cat_seen' && !(record.cat?.fed && record.cat.seen)) continue;
             if (event.requires === 'cat_unseen' && !(record.cat?.fed && record.cat.seen === false)) continue;
             if (event.afterCamera && !camera) continue;
+            // 闹心的那几件有冷却期（ADR 0216，她本人：「别老丢」）
+            if (threadsOn && inCooldown(event.id, k => days.get(formatDate(addDays(day, -k)))?.events.map(e => e.id))) continue;
             if (unit(`${date} ${event.id}`) >= event.chance) continue;
             const person = event.person ? world.people.find(p => p.id === event.person) : undefined;
             if (event.person && !person) continue;
@@ -573,6 +580,15 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             extraCount++;
             record.events.push({ id: event.id, text: event.text, at: time, ...(event.person ? { person: event.person } : {}), ...(event.feel ? { feel: event.feel } : {}) });
             if (event.cost) book(time, -priceIn(event.cost.amount, `${date} ${event.id} cost`), event.cost.what, 'spend');
+        }
+        // 昨天的事今天的尾巴（ADR 0216）：在学校的日子、一天最多一条；时间按那一条的时段取哈希
+        if (threadsOn && atSchool) {
+            const yesterday = days.get(formatDate(addDays(day, -1)));
+            for (const step of yesterday ? threadStepsFor(yesterday.date, yesterday.events.map(e => e.id), unit) : []) {
+                const [from, to] = WINDOWS[step.window];
+                const time = new Date(at(day, from).getTime() + Math.floor(unit(`${date} ${step.id} time`) * (minutes(to) - minutes(from))) * 60_000);
+                record.events.push({ id: step.id, text: step.text, at: time, ...(step.feel ? { feel: step.feel } : {}) });
+            }
         }
         // 小测的一条线（ADR 0106）
         if (world.quizzes && (!world.everydayFrom || date >= world.everydayFrom)) record.events.push(...quizEvents(schedule, day, atSchool));

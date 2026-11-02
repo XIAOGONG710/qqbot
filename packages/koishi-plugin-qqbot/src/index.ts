@@ -157,6 +157,7 @@ export interface Config {
     lagTail: boolean;
     everydayLife: boolean;
     worldDrama: boolean;
+    worldThreads: boolean;
     pursuits: boolean;
     shapeSplit: boolean;
     shapeAsk: boolean;
@@ -389,6 +390,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         lagTail: Schema.boolean().default(DEFAULTS.lagTail)
             .description('**回复延迟的长尾**（ADR 0105）：真人回消息的延迟是长尾的（公开数据里只有约 58% 的回复在 1 分钟内），她醒着空着时原来几乎全在十几秒内。开了以后一部分消息她在做别的，20 秒到一小时才看到（一来一回很快时少，冷场时多，他难受 / 问她在不在时更快）；回复一直失败（断网）十分钟以上才发出去时，时间块里多一句断网的事实，她可以顺口说一句“刚才网断了”。默认关。'),
         everydayLife: Schema.boolean().default(DEFAULTS.everydayLife),
+        worldThreads: Schema.boolean().default(DEFAULTS.worldThreads)
+            .description('**她那边的事有后续**（ADR 0216，要 everydayLife 和 worldDrama 都开着）：现在她的日子一天一页、第二天翻篇。开着时：昨天和舍友拌了嘴，今天早上搭句话就过去了；昨天淋了雨，今天嗓子有点发紧；水卡丢了，第二天找到或去补办……一天最多一条后续，往收尾走；水卡丢了、被人说冷这类闹心的事有冷却期，不会接二连三。照她本人的话：「拌嘴基本不过夜」「鸡毛蒜皮翻篇就翻篇」「水卡那种别老丢」。从第一次开的第二天起才有（world/threads-from.json），已经过完的日子不改写。'),
         worldDrama: Schema.boolean().default(DEFAULTS.worldDrama).description('她日子里的小起伏（一天之内的难过/烦/高兴）')
             .description('**她每天碰到的小事**（ADR 0106）：线上事件账全是课、饭、睡这样的例行。开了以后世界里多约 90 条日常尺度的小事（外卖晚了、老师拖堂、下雨没带伞、舍友的闹钟、晚霞拍了几张、和苏雨桐 / 陈佳宁的来往、土豆的事……），按日期哈希、有天气 / 月份 / 星期条件，一天最多多 4 件；另有“小测”一条线（高数 / 概率论 / 专业课每四周一次，前一次课老师说、当天写、两天后出分，数学类偏低）。不改角色卡。带感受的小事会成为她开心 / 烦 / 担心 / 难过的来由（要开「心境」）。默认关。'),
         pursuits: Schema.boolean().default(DEFAULTS.pursuits)
@@ -678,6 +681,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.lagTail !== undefined ? { lagTail: config.lagTail } : {}),
         ...(config.everydayLife !== undefined ? { everydayLife: config.everydayLife } : {}),
         ...(config.worldDrama !== undefined ? { worldDrama: config.worldDrama } : {}),
+        ...(config.worldThreads !== undefined ? { worldThreads: config.worldThreads } : {}),
         ...(config.pursuits !== undefined ? { pursuits: config.pursuits } : {}),
         ...(config.shapeSplit !== undefined ? { shapeSplit: config.shapeSplit } : {}),
         ...(config.shapeAsk !== undefined ? { shapeAsk: config.shapeAsk } : {}),

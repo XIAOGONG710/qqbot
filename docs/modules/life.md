@@ -55,6 +55,7 @@
 | `realWeather` | 真实天气 | [ADR 0048](../adr/0048-real-weather.md) |
 | `everydayLife` | 日常小事 / 小测 | [ADR 0106](../adr/0106-everyday-life.md) |
 | `worldDrama` | 日子里的小起伏（一天之内的难过 / 烦 / 高兴） | [ADR 0211](../adr/0211-world-drama.md) |
+| `worldThreads` | 她那边的事有后续（拌嘴第二天和好、淋雨第二天嗓子发紧……一天最多一条；闹心的事有冷却期；要日常小事和小起伏） | [ADR 0216](../adr/0216-world-threads.md) |
 | `menu` | 每顿吃什么（每天随机） | [ADR 0125](../adr/0125-menu.md) |
 | `pursuits` | 她自己的追求 | [ADR 0104](../adr/0104-pursuits.md) |
 | `herFeelings` | 心境（开心 / 难过 / 流泪；桌面上的她读同一份；ownerPeek 开着时 /心境 看） | [ADR 0102](../adr/0102-feelings.md) |
