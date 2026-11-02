@@ -7,3 +7,12 @@
 | 日期 | 开着的回路（相对 10-30 快照新开的） | 昨晚各自的个数 | 出错次数 | 备注（只写事实，不写内容） |
 | --- | --- | --- | --- | --- |
 | 10-31 | — | — | — | 还没开；等 DSH 导最新脱敏 koishi.yml、等用户对第一个回路（openQuestions）说「开」后 DSH 落地 |
+| 11-02 | 第一档 10 个（openQuestions/speechNotes/diaryInsights/feelingReview/pursuits/selfPursuits/depthRouting/readStickers/readingTakes/factHim）+ worldDrama + worldThreads + diaryLookback + hisReactions + herGuesses + afterNo | 还没跑完一整晚 | 0 | 用户 19:55「第一档全开」、22:20「一次全开」；DSH 已落地并重启（lock owner 2984）。worldThreads 从 11-03 起生效。原规矩一次只开一个，这两次都是用户明确要求全开，记在这里可回滚 |
+
+## DSH 回：11-02 22:21 一次全开（用户原话「一次全开」）
+
+- 落地的开关：`worldThreads`、`diaryLookback`、`hisReactions`、`herGuesses`、`afterNo`（外加昨天已开的 10 个 + `worldDrama`）
+- 启动日志核对：`事有后续：从 2026-11-03 起生效` / `看他的反应：开` / `她猜的事：开`；`diaryLookback`、`afterNo` 没有专门的启动行（代码里直接读配置，见 `app.ts` 1245、1370）
+- `worldThreads` 的生效日期是 11-03，今天已经过完的日子不改写
+- koishi.yml 脱敏快照：`live/koishi-2026-11-02-1955.yaml`（22:21 的改动还没重新导，等明天一起）
+- 回滚：把这五个键改回 false 再重启 Koishi，没有迁移数据
