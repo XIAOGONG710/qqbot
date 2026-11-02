@@ -57,6 +57,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'texture', label: '说话的质感（问号 / ～ / 小黄脸 / 叠字）', group: '说话', adr: '0131' },
     { key: 'curious', label: '会追问（问他刚说的那件事）', group: '说话', adr: '0126' },
     { key: 'everydayLife', label: '日常小事 / 小测', group: '她的日子', adr: '0106' },
+    { key: 'worldDrama', label: '日子里的小起伏（一天之内的难过 / 烦 / 高兴）', group: '她的日子', adr: '0211' },
     { key: 'menu', label: '每顿吃什么（每天随机）', group: '她的日子', adr: '0125' },
     { key: 'pursuits', label: '她自己的追求', group: '她的日子', adr: '0104' },
     { key: 'herFeelings', label: '心境（开心 / 难过 / 流泪；桌面上的她读同一份；ownerPeek 开着时 /心境 看）', group: '她的日子', adr: '0102' },

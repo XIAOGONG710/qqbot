@@ -155,6 +155,7 @@ export interface Config {
     herNo: boolean;
     lagTail: boolean;
     everydayLife: boolean;
+    worldDrama: boolean;
     pursuits: boolean;
     shapeSplit: boolean;
     shapeAsk: boolean;
@@ -382,7 +383,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**会拒绝**（ADR 0103，只给男朋友档）：她刚推了他一件事（在上课、很累、没空）、他再磨一句，不会被磨两句就答应——软着再推一次，或者给个折中（下课以后 / 明天 / 就十分钟），他给了新理由才松口；他命令式地管着她（“不许跟别的男生说话”“听到没”）时不顺着说“好好好都听你的”，先别扭一句、明说不答应。他难过 / 生病、危机时让路；关心她的“不许熬夜”不算。默认关。'),
         lagTail: Schema.boolean().default(DEFAULTS.lagTail)
             .description('**回复延迟的长尾**（ADR 0105）：真人回消息的延迟是长尾的（公开数据里只有约 58% 的回复在 1 分钟内），她醒着空着时原来几乎全在十几秒内。开了以后一部分消息她在做别的，20 秒到一小时才看到（一来一回很快时少，冷场时多，他难受 / 问她在不在时更快）；回复一直失败（断网）十分钟以上才发出去时，时间块里多一句断网的事实，她可以顺口说一句“刚才网断了”。默认关。'),
-        everydayLife: Schema.boolean().default(DEFAULTS.everydayLife)
+        everydayLife: Schema.boolean().default(DEFAULTS.everydayLife),
+        worldDrama: Schema.boolean().default(DEFAULTS.worldDrama).description('她日子里的小起伏（一天之内的难过/烦/高兴）')
             .description('**她每天碰到的小事**（ADR 0106）：线上事件账全是课、饭、睡这样的例行。开了以后世界里多约 90 条日常尺度的小事（外卖晚了、老师拖堂、下雨没带伞、舍友的闹钟、晚霞拍了几张、和苏雨桐 / 陈佳宁的来往、土豆的事……），按日期哈希、有天气 / 月份 / 星期条件，一天最多多 4 件；另有“小测”一条线（高数 / 概率论 / 专业课每四周一次，前一次课老师说、当天写、两天后出分，数学类偏低）。不改角色卡。带感受的小事会成为她开心 / 烦 / 担心 / 难过的来由（要开「心境」）。默认关。'),
         pursuits: Schema.boolean().default(DEFAULTS.pursuits)
             .description('**她自己的追求**（ADR 0104，只给男朋友档）：内置两条自传里写明的——「别挂科」和「用新相机拍出自己满意的东西」（买到相机之后分五步，进度来自她真的拍过 / 修过几回）。做完一步她会开心、好几天没碰有点愧疚；时间块里一小段让她知道自己在追什么（不用主动提）；配合「会拒绝」，她正在修片时他让她先放下，她可以先弄完这一小段。作者可在数据目录 pursuits.json 里暂停 / 放下 / 加自己的。默认关。'),
@@ -665,6 +667,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),
         ...(config.lagTail !== undefined ? { lagTail: config.lagTail } : {}),
         ...(config.everydayLife !== undefined ? { everydayLife: config.everydayLife } : {}),
+        ...(config.worldDrama !== undefined ? { worldDrama: config.worldDrama } : {}),
         ...(config.pursuits !== undefined ? { pursuits: config.pursuits } : {}),
         ...(config.shapeSplit !== undefined ? { shapeSplit: config.shapeSplit } : {}),
         ...(config.shapeAsk !== undefined ? { shapeAsk: config.shapeAsk } : {}),

@@ -281,3 +281,16 @@ describe('从哪天起才有（她已经过完的日子不改写）', () => {
         }
     });
 });
+
+// 2026-11-02 用户：「直接模拟现实世界」——她得有一天之内的小起伏（难过、烦、高兴）
+describe('起伏这一层（worldDrama）', () => {
+    test('默认不带起伏；开了才多出这批，且强度都是 2–3', async () => {
+        const { everydayEventsFor, DRAMA_EVENT_DEFS } = await import('../src/life/everyday.ts');
+        const world = JSON.parse(JSON.stringify({ people: [], events: [] })) as never;
+        const plain = everydayEventsFor(world, 'boyfriend');
+        const drama = everydayEventsFor(world, 'boyfriend', true);
+        assert.equal(drama.length - plain.length, DRAMA_EVENT_DEFS.length);
+        assert.ok(DRAMA_EVENT_DEFS.every(def => def.feel && def.feel.strength >= 2));
+        assert.ok(DRAMA_EVENT_DEFS.every(def => def.group === 'drama'), '一天最多一件');
+    });
+});

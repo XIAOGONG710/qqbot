@@ -175,15 +175,39 @@ const DEFS: Def[] = [
 const MATH_COURSE = /高等数学|概率论|线性代数|离散/;
 const CORE_COURSE = /数据结构|计算机网络|MySQL|数据库|操作系统|Linux|大数据|数据采集/;
 
+
+// ── 起伏（2026-11-02，用户：「直接模拟现实世界」）─────────────────────────────
+// 原来的小事都是「今天食堂换窗口」这种平的事；10-30 量过她五天里难过、烦、累一次都没有。
+// 这一层只加**一天之内的起伏**（不是家里变故、不是恋爱剧情、不新增有名字的人），
+// 强度都是 2–3：她真的会因为这件事烦一下午或者高兴一晚上。
+// 确定性照旧：按「日期 + 名目」取哈希，同一天重启重放都一样；一天最多一件（group 都是 drama）。
+export const DRAMA_EVENT_DEFS: readonly Def[] = [
+    { id: 'drama_quiz_bad', text: '小测发下来，分数比想的低不少，卷子折了塞进包里，不太想给人看', window: 'afternoon', chance: 0.16, when: 'class_day', group: 'drama', feel: { kind: 'sad', strength: 2 } },
+    { id: 'drama_praise', text: '课上被老师点名夸了一句思路清楚，嘴上说没什么，其实挺高兴', window: 'morning', chance: 0.14, when: 'class_day', group: 'drama', feel: { kind: 'joy', strength: 2 } },
+    { id: 'drama_row', text: '和舍友因为开空调的事绊了两句嘴，谁也没道歉，屋里有点闷', window: 'evening', chance: 0.12, when: 'any', group: 'drama', feel: { kind: 'annoyed', strength: 2 } },
+    { id: 'drama_lost_thing', text: '水卡不知道放哪了，翻遍了书包和外套口袋也没找到，跑了两趟宿管', window: 'afternoon', chance: 0.12, when: 'any', group: 'drama', feel: { kind: 'sad', strength: 2 } },
+    { id: 'drama_late_night_task', text: '专业课的作业比想的多一倍，做到十一点还没弄完，越做越烦', window: 'evening', chance: 0.15, when: 'class_day', group: 'drama', feel: { kind: 'tired', strength: 3 } },
+    { id: 'drama_sunset', text: '从教学楼出来正好赶上晚霞，站着看了两分钟，顺手拍了几张', window: 'evening', chance: 0.13, when: 'any', weather: 'dry', group: 'drama', feel: { kind: 'joy', strength: 2 } },
+    { id: 'drama_caught_rain', text: '没带伞，从食堂跑回宿舍淋了半身，鞋里都是水', window: 'afternoon', chance: 0.2, when: 'any', weather: 'rain', group: 'drama', feel: { kind: 'sad', strength: 2 } },
+    { id: 'drama_good_news_family', text: '家里打电话说点好事，挂了电话心情一直挺好', window: 'evening', chance: 0.1, when: 'any', group: 'drama', feel: { kind: 'joy', strength: 3 } },
+    { id: 'drama_cat_mess', text: '土豆把桌上的笔扒了一地，收拾的时候一边骂一边笑', window: 'evening', chance: 0.1, when: 'any', group: 'drama', feel: { kind: 'joy', strength: 2 } },
+    { id: 'drama_deep_talk', text: '和同专业的同学在楼道聊了半个多小时，聊到以后要做什么，回来有点茫然', window: 'evening', chance: 0.1, when: 'class_day', group: 'drama', feel: { kind: 'sad', strength: 2 } },
+    { id: 'drama_small_win', text: '卡了三天的一段代码终于跑通了，自己在桌边小声“卧槽”了一句', window: 'afternoon', chance: 0.12, when: 'any', group: 'drama', feel: { kind: 'joy', strength: 2 } },
+    { id: 'drama_overheard', text: '在食堂听见隔壁桌说她“挺冷的”，愣了下，也没回头', window: 'afternoon', chance: 0.09, when: 'any', group: 'drama', feel: { kind: 'sad', strength: 2 } },
+];
+
+/** 起伏这一层的开关由调用方决定（配置 worldDrama）；没开就还是原来那批平的小事 */
+export const DRAMA_EVENT_DEFS_FOR_TESTS = DRAMA_EVENT_DEFS;
+
 export const EVERYDAY_EVENT_DEFS: readonly Def[] = DEFS;
 
 /** 档位名去掉承认版的后缀（boyfriend-open → boyfriend） */
 const baseTier = (tier: string): EventTier => tier.replace(/-open$/, '') as EventTier;
 
 /** 一个档位看得到的补充小事；人物不在这一档的世界里（没有这个人）的不要；没有“小事”块的世界（陌生人 / 名单外）原样返回 */
-export function everydayEventsFor(world: World, tier: string): WorldEventDef[] {
+export function everydayEventsFor(world: World, tier: string, drama = false): WorldEventDef[] {
     const visible = baseTier(tier);
-    return DEFS.filter(def => (def.tiers ?? ALL).includes(visible) && (!def.person || world.people.some(person => person.id === def.person)))
+    return [...DEFS, ...(drama ? DRAMA_EVENT_DEFS : [])].filter(def => (def.tiers ?? ALL).includes(visible) && (!def.person || world.people.some(person => person.id === def.person)))
         .map((def): WorldEventDef => ({
             id: def.id, text: def.text, window: def.window, chance: Math.round(def.chance * EVERYDAY_SCALE * 1000) / 1000, when: def.when,
             ...(def.person ? { person: def.person } : {}), ...(def.skipWhen ? { skipWhen: def.skipWhen } : {}), ...(def.onlyWhen ? { onlyWhen: def.onlyWhen } : {}),
@@ -194,9 +218,9 @@ export function everydayEventsFor(world: World, tier: string): WorldEventDef[] {
 }
 
 /** 把补充的小事加进这个世界（档位只看得到自己该看的）；小测的线开着。from：从这一天起才有（她已经过完的日子不改写） */
-export function withEveryday(world: World | undefined, tier: string, from?: string): World | undefined {
+export function withEveryday(world: World | undefined, tier: string, from?: string, drama = false): World | undefined {
     if (!world) return world;
-    return { ...world, events: [...world.events, ...everydayEventsFor(world, tier)], quizzes: CLOSE.includes(baseTier(tier)), ...(from ? { everydayFrom: from } : {}) };
+    return { ...world, events: [...world.events, ...everydayEventsFor(world, tier, drama)], quizzes: CLOSE.includes(baseTier(tier)), ...(from ? { everydayFrom: from } : {}) };
 }
 
 /**

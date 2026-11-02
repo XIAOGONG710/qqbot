@@ -104,6 +104,7 @@ export const DEFAULTS = {
     exemplars: false,
     lagTail: false,
     everydayLife: false,
+    worldDrama: false,
     pursuits: false,
     shapeSplit: false,
     shapeAsk: false,
@@ -476,6 +477,8 @@ export interface AppConfig {
      * 前一次课老师说、当天写、两天后出分，数学类偏低）。其中带感受的会成为她开心 / 烦 / 担心 / 难过的来由（要 herFeelings）。不改角色卡，只给亲近的档位看全。默认关
      */
     everydayLife: boolean;
+    /** 她日子里的小起伏（2026-11-02，用户「直接模拟现实世界」）：一天之内的难过、烦、高兴，强度 2–3 */
+    worldDrama: boolean;
     /**
      * 她自己的追求（ADR 0104，只给男朋友档）：内置两条，都是自传里写明的话——「别挂科」和「用新相机拍出自己满意的东西」（买到相机以后分五步：熟悉设置、拍一组土豆、拍一组校园的秋天、挑十来张修好、挑最满意的发到空间里）。
      * 进度只来自她做过的事（生活账里的摄影、出分的小测），不存数字；做完一步她会开心、买了相机好几天没碰会有点愧疚，时间块里一小段让她知道自己在追什么（不用主动提）；
@@ -852,6 +855,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         exemplars: bool(file, 'exemplars', '', DEFAULTS.exemplars),
         lagTail: bool(file, 'lagTail', '', DEFAULTS.lagTail),
         everydayLife: bool(file, 'everydayLife', '', DEFAULTS.everydayLife),
+        worldDrama: bool(file, 'worldDrama', '', DEFAULTS.worldDrama),
         pursuits: bool(file, 'pursuits', '', DEFAULTS.pursuits),
         shapeSplit: bool(file, 'shapeSplit', '', DEFAULTS.shapeSplit),
         shapeAsk: bool(file, 'shapeAsk', '', DEFAULTS.shapeAsk),
