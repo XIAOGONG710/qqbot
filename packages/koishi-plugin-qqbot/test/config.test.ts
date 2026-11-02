@@ -36,7 +36,7 @@ const before0009 = {
 const before0009AsJson = {
     ...before0009,
     llm: { ...before0009.llm, extraBody: { thinking: { type: 'disabled' } } },
-    memory: { baseUrl: 'http://127.0.0.1:8888' },
+    memory: { baseUrl: 'http://127.0.0.1:8899' }, // 11-02 DSH 6c57e4f：默认端口 8888 → 8899（8888 被 Jupyter 占着）
     characterCard: 'characters/linmengyao/st/linmengyao-{tier}.json',
 };
 
@@ -252,7 +252,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
 
     test('长期记忆打开时才有 memory；世界书只覆盖填了的项', () => {
         const parsed = fromKoishi({ ...minimal, prompt: { worldInfo: { depth: 4 } }, memory: { enabled: true } });
-        assert.deepEqual(parsed.memory, { baseUrl: 'http://127.0.0.1:8888', timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' });
+        assert.deepEqual(parsed.memory, { baseUrl: 'http://127.0.0.1:8899', timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' });
         assert.equal(parsed.prompt.worldInfo.depth, 4);
         assert.equal(parsed.prompt.worldInfo.budgetPercent, 25);
         assert.equal(fromKoishi({ ...minimal, memory: { enabled: false, baseUrl: 'http://x' } }).memory, undefined);
