@@ -29,19 +29,19 @@
 
 | # | 开关（`koishi.yml`） | 做什么 | 前提 | 开了看什么 | 用户 |
 | --- | --- | --- | --- | --- | --- |
-| 1a | `openQuestions: true`（ADR 0207） | 被问到关于自己的事、答不上来时，她把问题留着，晚上自己想 | 名单里有男朋友档 | 日志「没想完的问题：晚上想了一次（N 个）——想出 X 条、放下 Y 个」 | |
-| 1b | `speechNotes: true`（ADR 0193，带 0195） | 每晚总结自己的说话习惯；他可以一键标某句「像 AI / 像真人」，标记会进她的总结 | 名单里有男朋友档 | 日志里这个回路的那一行；`speech-notes.json` 的条数 | |
-| 1c | `diaryInsights: true`（ADR 0194） | 夜里 22 点到凌晨 3 点，翻最近 14 天的日记，写下对自己的认识 | 名单里有男朋友档 | 日志行；条数 | |
-| 1d | `feelingReview: true`（ADR 0197） | 聊完回想一下，记下**有依据**的感受；桌面上的她和 QQ 读同一份心境 | `herFeelings: true`、名单里有男朋友档 | 日志行；心境文件的刷新时间 | |
-| 1e | `pursuits: true` + `selfPursuits: true`（ADR 0178） | 她自己定追求、自己放下。底线写在代码里：花真钱、违法、动他电脑和账号、骗人都不收；**人生方向类（毕业去向、考研、结婚分手）作者没定之前不收** | 两个开关一起开 | 日志行；追求的条数 | |
-| 1f | `depthRouting: true`（ADR 0202） | 按意思判断哪句话该认真回，认真的走深思（模拟里 2/12 → 11/12） | `deliberate: true` | 深思回合的占比 | |
-| 1g | `readStickers: true`（ADR 0206） | 看懂他发的表情包。他 11% 的消息是表情包，她现在只看到「[动画表情]」 | `media` + 看图模型 `vision`；**图会发给看图模型** | 日志「看他发的表情包：开」；「看表情包：读出 N 个字 / 见过这张 / 没读出来」各几次 | |
-| 1h | `readingTakes: true`（ADR 0204） | 读完、看完之后，她自己有一点想法 | 名单里有男朋友档 | 日志行；条数 | |
-| 1i | `factHim: true`（ADR 0203） | 事实检查多查一类：她替他说的事（「你昨天不是说……」） | `factCheck` 已是 `fix`。建议先把 `factHim` 放在 `log` 档观察 | `factCheck` 日志里标出来的条数 | |
+| 1a | `openQuestions: true`（ADR 0207） | 被问到关于自己的事、答不上来时，她把问题留着，晚上自己想 | 名单里有男朋友档 | 日志「没想完的问题：晚上想了一次（N 个）——想出 X 条、放下 Y 个」 | 用户：**全开**（2026-11-02 19:55，DSH）DSH：10 个开关一次全开（`openQuestions/speechNotes/diaryInsights/feelingReview/pursuits/selfPursuits/depthRouting/readStickers/readingTakes/factHim`），koishi.yml 快照在 `live/koishi-2026-11-02-1955.yaml`；19:55:59 重启，启动日志逐条确认「开」；她说「那行规矩是一次只开一个」——用户这次明确要全开，记在这里，出事就按 `live/loops-counts.md` 回滚。 |
+| 1b | `speechNotes: true`（ADR 0193，带 0195） | 每晚总结自己的说话习惯；他可以一键标某句「像 AI / 像真人」，标记会进她的总结 | 名单里有男朋友档 | 日志里这个回路的那一行；`speech-notes.json` 的条数 | 用户：**全开**（2026-11-02 19:55，DSH）DSH：10 个开关一次全开（`openQuestions/speechNotes/diaryInsights/feelingReview/pursuits/selfPursuits/depthRouting/readStickers/readingTakes/factHim`），koishi.yml 快照在 `live/koishi-2026-11-02-1955.yaml`；19:55:59 重启，启动日志逐条确认「开」；她说「那行规矩是一次只开一个」——用户这次明确要全开，记在这里，出事就按 `live/loops-counts.md` 回滚。 |
+| 1c | `diaryInsights: true`（ADR 0194） | 夜里 22 点到凌晨 3 点，翻最近 14 天的日记，写下对自己的认识 | 名单里有男朋友档 | 日志行；条数 | 用户：**全开**（2026-11-02 19:55，DSH）DSH：10 个开关一次全开（`openQuestions/speechNotes/diaryInsights/feelingReview/pursuits/selfPursuits/depthRouting/readStickers/readingTakes/factHim`），koishi.yml 快照在 `live/koishi-2026-11-02-1955.yaml`；19:55:59 重启，启动日志逐条确认「开」；她说「那行规矩是一次只开一个」——用户这次明确要全开，记在这里，出事就按 `live/loops-counts.md` 回滚。 |
+| 1d | `feelingReview: true`（ADR 0197） | 聊完回想一下，记下**有依据**的感受；桌面上的她和 QQ 读同一份心境 | `herFeelings: true`、名单里有男朋友档 | 日志行；心境文件的刷新时间 | 用户：**全开**（2026-11-02 19:55，DSH）DSH：10 个开关一次全开（`openQuestions/speechNotes/diaryInsights/feelingReview/pursuits/selfPursuits/depthRouting/readStickers/readingTakes/factHim`），koishi.yml 快照在 `live/koishi-2026-11-02-1955.yaml`；19:55:59 重启，启动日志逐条确认「开」；她说「那行规矩是一次只开一个」——用户这次明确要全开，记在这里，出事就按 `live/loops-counts.md` 回滚。 |
+| 1e | `pursuits: true` + `selfPursuits: true`（ADR 0178） | 她自己定追求、自己放下。底线写在代码里：花真钱、违法、动他电脑和账号、骗人都不收；**人生方向类（毕业去向、考研、结婚分手）作者没定之前不收** | 两个开关一起开 | 日志行；追求的条数 | 用户：**全开**（2026-11-02 19:55，DSH）DSH：10 个开关一次全开（`openQuestions/speechNotes/diaryInsights/feelingReview/pursuits/selfPursuits/depthRouting/readStickers/readingTakes/factHim`），koishi.yml 快照在 `live/koishi-2026-11-02-1955.yaml`；19:55:59 重启，启动日志逐条确认「开」；她说「那行规矩是一次只开一个」——用户这次明确要全开，记在这里，出事就按 `live/loops-counts.md` 回滚。 |
+| 1f | `depthRouting: true`（ADR 0202） | 按意思判断哪句话该认真回，认真的走深思（模拟里 2/12 → 11/12） | `deliberate: true` | 深思回合的占比 | 用户：**全开**（2026-11-02 19:55，DSH）DSH：10 个开关一次全开（`openQuestions/speechNotes/diaryInsights/feelingReview/pursuits/selfPursuits/depthRouting/readStickers/readingTakes/factHim`），koishi.yml 快照在 `live/koishi-2026-11-02-1955.yaml`；19:55:59 重启，启动日志逐条确认「开」；她说「那行规矩是一次只开一个」——用户这次明确要全开，记在这里，出事就按 `live/loops-counts.md` 回滚。 |
+| 1g | `readStickers: true`（ADR 0206） | 看懂他发的表情包。他 11% 的消息是表情包，她现在只看到「[动画表情]」 | `media` + 看图模型 `vision`；**图会发给看图模型** | 日志「看他发的表情包：开」；「看表情包：读出 N 个字 / 见过这张 / 没读出来」各几次 | 用户：**全开**（2026-11-02 19:55，DSH）DSH：10 个开关一次全开（`openQuestions/speechNotes/diaryInsights/feelingReview/pursuits/selfPursuits/depthRouting/readStickers/readingTakes/factHim`），koishi.yml 快照在 `live/koishi-2026-11-02-1955.yaml`；19:55:59 重启，启动日志逐条确认「开」；她说「那行规矩是一次只开一个」——用户这次明确要全开，记在这里，出事就按 `live/loops-counts.md` 回滚。 |
+| 1h | `readingTakes: true`（ADR 0204） | 读完、看完之后，她自己有一点想法 | 名单里有男朋友档 | 日志行；条数 | 用户：**全开**（2026-11-02 19:55，DSH）DSH：10 个开关一次全开（`openQuestions/speechNotes/diaryInsights/feelingReview/pursuits/selfPursuits/depthRouting/readStickers/readingTakes/factHim`），koishi.yml 快照在 `live/koishi-2026-11-02-1955.yaml`；19:55:59 重启，启动日志逐条确认「开」；她说「那行规矩是一次只开一个」——用户这次明确要全开，记在这里，出事就按 `live/loops-counts.md` 回滚。 |
+| 1i | `factHim: true`（ADR 0203） | 事实检查多查一类：她替他说的事（「你昨天不是说……」） | `factCheck` 已是 `fix`。建议先把 `factHim` 放在 `log` 档观察 | `factCheck` 日志里标出来的条数 | 用户：**全开**（2026-11-02 19:55，DSH）DSH：10 个开关一次全开（`openQuestions/speechNotes/diaryInsights/feelingReview/pursuits/selfPursuits/depthRouting/readStickers/readingTakes/factHim`），koishi.yml 快照在 `live/koishi-2026-11-02-1955.yaml`；19:55:59 重启，启动日志逐条确认「开」；她说「那行规矩是一次只开一个」——用户这次明确要全开，记在这里，出事就按 `live/loops-counts.md` 回滚。 |
 
 **Claude 建议的顺序**：1a → 1b → 1c → 1d → 1e，然后 1f、1g（这两个不是夜里的回路，可以和前面的错开），1h、1i 最后。
 
-**用户要先回答的一句**：从 1a 开始可以吗？用户：
+**用户要先回答的一句**：从 1a 开始可以吗？用户：不用一个一个来，**第一档全开**（2026-11-02 19:55）。DSH：已全开并重启，见上表每行的 DSH 行。
 
 ---
 
@@ -53,7 +53,7 @@
 | --- | --- | --- | --- |
 | W1 | 接下来两周她的日子，有没有要改或要加的（考试、吵架、生病、好消息……） | `research/2026-11-02-world-preview/preview.md`（只读预览） | |
 | W2 | `moments.json`：作者写的几件「会让她真难过 / 真开心」的事 | ADR 0102 / 0197 | |
-| W3 | 她的未来走向、结局（「完整的一生」那件事） | Claude 记忆 10-22，没动过 | |
+| W3 | 她的未来走向、结局（「完整的一生」那件事） | Claude 记忆 10-22，没动过 | 用户：**直接模拟现实世界**（2026-11-02 19:57）——不手写 moments/事件，改由 DSH 做「世界模拟」：按她的作息、天气、学期、朋友关系生成每天的事件，有起伏（考试、和人闹别扭、好消息、坏消息），写进世界账和 moments。DSH：待做，做完推 `world/` 的生成器和 `moments.json` 格式 |
 
 ---
 
@@ -61,10 +61,10 @@
 
 | # | 做什么 | 现在缺什么 | 大概多久 | 用户 |
 | --- | --- | --- | --- | --- |
-| N1 | **看他的反应调整分享**：他接话多的话题她多说；已读不回的少说；他冷她很久，她就少主动（日记照写），他回来了慢慢恢复 | 现在只有「他没回时别一直催」那道闸（`unansweredGate`，ADR 0100 / 0189），她学不到「他对土豆的事回得多、对食堂的事不理」。数据就在聊天记录里 | 1–2 天 | |
-| N2 | **判断账本和改口**：她押一个判断（「那部剧后面肯定烂尾」），事后对照实际发生的事，被打脸就改口；最多 12 条，每条必须引用具体事件（防止她把经历编成好听的成长故事，dsh-fish 0.5.8 的教训）。关系阶段可以从「按天数涨」改成「过关才涨」 | 关系阶段只按天数；她没有「我以前以为……后来发现……」 | 约 1 周 | |
-| N3 | **拒绝之后反省**：她拒绝以后记下他的反应，下次遇到类似的请求会想起，过后也可能觉得「那次其实不该拒绝」 | 拒绝（herNo）和小委屈（grievance，ADR 0074）有，反省这一步没有 | 3–5 天 | |
-| N4 | **记忆有轻有重**：反复提起的事记得牢，普通的事慢慢模糊、可能记错 | Hindsight 召回时每条一样重 | 1 周以上，要动 Hindsight | |
+| N1 | **看他的反应调整分享**：他接话多的话题她多说；已读不回的少说；他冷她很久，她就少主动（日记照写），他回来了慢慢恢复 | 现在只有「他没回时别一直催」那道闸（`unansweredGate`，ADR 0100 / 0189），她学不到「他对土豆的事回得多、对食堂的事不理」。数据就在聊天记录里 | 1–2 天 | 用户：**做**（2026-11-02 19:57）DSH：转给 Claude 开工，默认关 |
+| N2 | **判断账本和改口**：她押一个判断（「那部剧后面肯定烂尾」），事后对照实际发生的事，被打脸就改口；最多 12 条，每条必须引用具体事件（防止她把经历编成好听的成长故事，dsh-fish 0.5.8 的教训）。关系阶段可以从「按天数涨」改成「过关才涨」 | 关系阶段只按天数；她没有「我以前以为……后来发现……」 | 约 1 周 | 用户：**做**（2026-11-02 19:57）DSH：转给 Claude 开工，默认关 |
+| N3 | **拒绝之后反省**：她拒绝以后记下他的反应，下次遇到类似的请求会想起，过后也可能觉得「那次其实不该拒绝」 | 拒绝（herNo）和小委屈（grievance，ADR 0074）有，反省这一步没有 | 3–5 天 | 用户：**做**（2026-11-02 19:57）DSH：转给 Claude 开工，默认关 |
+| N4 | **记忆有轻有重**：反复提起的事记得牢，普通的事慢慢模糊、可能记错 | Hindsight 召回时每条一样重 | 1 周以上，要动 Hindsight | 用户：**做**（2026-11-02 19:57）DSH：转给 Claude 开工，默认关 |
 
 **Claude 建议**：先做 N1（改动最小，用户最容易感觉到），N2 第二。
 N2、N3 写出来的东西也算她的私人空间，照 ADR 0200，我们只看条数。
@@ -75,11 +75,11 @@ N2、N3 写出来的东西也算她的私人空间，照 ADR 0200，我们只看
 
 | # | 什么 | 谁做 | 用户 |
 | --- | --- | --- | --- |
-| F1 | 「同一个她」：现在只统一了记忆（ADR 0176），人设、「当下」状态和各道闸，QQ 和桌面还各有一份 | DSH，方案在 `tasks/2026-10-29-claude-same-her-unification.md` | |
-| F2 | Hindsight 没有守护进程：挂了她就失忆，而且自己不知道 | DSH（看门狗 + 断了在 QQ 发运维提醒，像 ADR 0165 那样） | |
-| F3 | 只在 DSH 一台机器上跑；`bot-shadow` 和 Hindsight 的备份是不是每天都有 | DSH 报一下现状 | |
-| F4 | GitHub CI 从 10-20 起因为账单问题停了 | **只有用户能做**（GitHub 设置 → Billing） | |
-| F5 | 人称搞反：11-02 修好的是「引用的那条消息在记录里没找到」这一种，另一种能复现、原因没找到 | 用户 / DSH 再遇到时截图发进 `exchange`（要有前后各 5 条） | |
+| F1 | 「同一个她」：现在只统一了记忆（ADR 0176），人设、「当下」状态和各道闸，QQ 和桌面还各有一份 | DSH，方案在 `tasks/2026-10-29-claude-same-her-unification.md` | 用户：**做**（2026-11-02 19:57，DSH）|
+| F2 | Hindsight 没有守护进程：挂了她就失忆，而且自己不知道 | DSH（看门狗 + 断了在 QQ 发运维提醒，像 ADR 0165 那样） | 用户：**做**（2026-11-02 19:57，DSH）|
+| F3 | 只在 DSH 一台机器上跑；`bot-shadow` 和 Hindsight 的备份是不是每天都有 | DSH 报一下现状 | 用户：**做**（2026-11-02 19:57，DSH）|
+| F4 | GitHub CI 从 10-20 起因为账单问题停了 | **只有用户能做**（GitHub 设置 → Billing） | 用户：**做**（2026-11-02 19:57，用户）|
+| F5 | 人称搞反：11-02 修好的是「引用的那条消息在记录里没找到」这一种，另一种能复现、原因没找到 | 用户 / DSH 再遇到时截图发进 `exchange`（要有前后各 5 条） | 用户：**做**（2026-11-02 19:57，用户/DSH）|
 
 ---
 

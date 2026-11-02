@@ -1,0 +1,136 @@
+plugins:
+  server:5sf31h:
+    host: 127.0.0.1
+    port: 5140
+  http:hk7wn5: {}
+  proxy-agent:aeu0jj: {}
+  database-sqlite:wgaz1b:
+    path: data/koishi.db
+  console:uum06n:
+    open: false
+  config:5y91q4: {}
+  logger:jpop0q: {}
+  auth:747vqf:
+    admin:
+      username: admin
+      password: <已脱敏> env.QQBOT_KOISHI_PASSWORD }}
+  adapter-onebot:pozroc:
+    protocol: ws
+    endpoint: ws://127.0.0.1:3001
+    selfId: '2561299676'
+    token: <已脱敏>
+  qqbot:hkuy2a:
+    contacts:
+      - qq: 2260168937
+        name: 宝宝
+        tier: boyfriend
+      - qq: 2306669773
+        name: 鸽鸽
+        tier: known
+        persona: 比我们大一点，已经工作，现在在国外；说话比我们稳，别用同学口气。
+    unlistedFriends: false
+    schedule: true
+    selfDirectedMemory: true
+    openQuestions: true
+    dataDir: runtime/bot-shadow
+    llm:
+      baseUrl: https://api.deepseek.com
+      model: deepseek-flash
+      temperature: 1.3
+      promptPostProcessing: semi
+      thinking: 'off'
+    prompt:
+      maxContext: 16384
+      pinExamples: true
+    memory:
+      enabled: true
+      baseUrl: http://127.0.0.1:8899
+      timeoutMs: 30000
+      recallTimeoutMs: 3000
+      bankPrefix: linmengyao
+    bilibiliAccount: true
+    bilibili: 'on'
+    bilibiliDm: 'on'
+    bilibiliComment: 'on'
+    bilibiliReplies: 'on'
+    bilibiliAtUid: 1820254296
+    bilibiliAtName: 穹P
+    watching: true
+    biliFeed: 'on'
+    memes: true
+    biliStickers: true
+    vision:
+      provider: deepseek
+      model: deepseek-flash
+    proactive: 'on'
+    autonomousLife: true
+    projectChoice: true
+    lifeInPrompt: true
+    grievance: true
+    feedbackCommands: true
+    stickers: send
+    npcAsks: true
+    festivals: greet
+    rhythm: true
+    shortReplies: false
+    typingStatus: true
+    pokes: true
+    pokeBack: true
+    recalls: true
+    selfRecall: true
+    pokeOut: true
+    readReceipts: true
+    onlineStatus: true
+    profileLikes: true
+    signature: 'on'
+    qzone: 'on'
+    qzoneVisibility: friends
+    shape: true
+    shapeAgenda: true
+    shapeFiller: true
+    shapeFeel: true
+    shapeSplit: true
+    shapeAsk: true
+    shapeLong: true
+    proactiveReach: true
+    innerLife: true
+    herFeelings: true
+    herNo: true
+    exemplars: true
+    speechNotes: true
+    proactiveInvite: true
+    photos: true
+    deviceControl: 'on'
+    proactiveRoom: true
+    weeklyReport: true
+    menu: true
+    curious: true
+    smallNews: true
+    texture: true
+    quoteReply: true
+    factCheck: fix
+    idioms: true
+    lagTail: true
+    everydayLife: true
+    pursuits: true
+    deliberate: true
+    feelingReview: true
+    selfPursuits: true
+    depthRouting: true
+    readStickers: true
+    readingTakes: true
+    factHim: true
+    tailCap: false
+    identityLedger: true
+    memoryAudit: true
+    timeline: true
+    diaryInsights: true
+    webLookup: auto
+    comeBack: true
+    interruptions: true
+    jokes: true
+    proactiveAsk: true
+    together: true
+    relationship: true
+    reactions: false
+    foodPhotos: false
