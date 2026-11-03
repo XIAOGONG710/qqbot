@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const COMPLETE_MARKER = '.complete.json';
@@ -15,7 +15,7 @@ function readMarker(path) {
     }
 }
 
-export function isCompleteBackup(target) {
+export function isCompleteBackup(target, expectedStateSource) {
     const marker = readMarker(join(target, COMPLETE_MARKER));
     if (marker?.completed !== true) return false;
 
@@ -23,6 +23,8 @@ export function isCompleteBackup(target) {
     const state = marker.components?.state;
     if (database?.ok !== true || state?.ok !== true) return false;
     if (!nonEmptyFile(join(target, 'hindsight.sql'))) return false;
+    if (expectedStateSource === null) return state.skipped === true;
+    if (typeof expectedStateSource === 'string' && state.source !== expectedStateSource) return false;
     return state.skipped === true || nonEmptyFile(join(target, 'her-state.zip'));
 }
 
@@ -33,11 +35,33 @@ export function retryDue(target, now = Date.now(), delayMs = RETRY_DELAY_MS) {
     return !Number.isFinite(attempted) || age < 0 || age >= delayMs;
 }
 
-export function isReusableBackupArtifact(target, component, artifactName) {
+export function isReusableBackupArtifact(target, component, artifactName, expected = {}) {
     const complete = readMarker(join(target, COMPLETE_MARKER));
     const failure = readMarker(join(target, FAILURE_MARKER));
     const marker = complete?.completed === true ? complete : failure;
-    return marker?.components?.[component]?.ok === true && nonEmptyFile(join(target, artifactName));
+    const status = marker?.components?.[component];
+    return status?.ok === true
+        && Object.entries(expected).every(([key, value]) => status[key] === value)
+        && nonEmptyFile(join(target, artifactName));
+}
+
+export function discoverStateBackup(root) {
+    for (const source of ['runtime/bot', 'runtime/bot-shadow']) {
+        const directory = join(root, source);
+        let entries;
+        try {
+            if (!statSync(directory).isDirectory()) continue;
+            entries = readdirSync(directory, { withFileTypes: true });
+        } catch {
+            continue;
+        }
+        const items = entries
+            .filter(entry => !['logs', 'secrets', 'bot.lock', 'last-prompt.json'].includes(entry.name))
+            .filter(entry => !/^config(?:\.|$)/i.test(entry.name))
+            .map(entry => join(directory, entry.name));
+        return { source, items };
+    }
+    return undefined;
 }
 
 export function nonEmptyFile(path) {

@@ -7,6 +7,7 @@ import {
     COMPLETE_MARKER,
     FAILURE_MARKER,
     RETRY_DELAY_MS,
+    discoverStateBackup,
     isCompleteBackup,
     isReusableBackupArtifact,
     nonEmptyFile,
@@ -67,6 +68,24 @@ describe('backup completion policy', () => {
         });
 
         assert.equal(isCompleteBackup(target), true);
+        assert.equal(isCompleteBackup(target, null), true);
+        assert.equal(isCompleteBackup(target, 'runtime/bot'), false);
+    });
+
+    test('completion must match the currently authoritative state directory', () => {
+        const target = fresh();
+        writeFileSync(join(target, 'hindsight.sql'), 'database backup', 'utf8');
+        writeFileSync(join(target, 'her-state.zip'), 'state backup', 'utf8');
+        writeBackupMarker(target, COMPLETE_MARKER, {
+            completed: true,
+            components: {
+                database: { ok: true },
+                state: { ok: true, source: 'runtime/bot-shadow' },
+            },
+        });
+
+        assert.equal(isCompleteBackup(target, 'runtime/bot-shadow'), true);
+        assert.equal(isCompleteBackup(target, 'runtime/bot'), false);
     });
 
     test('an incomplete backup waits before retrying and retries after the delay', () => {
@@ -103,6 +122,43 @@ describe('backup completion policy', () => {
             components: { database: { ok: true }, state: { ok: false } },
         });
         assert.equal(isReusableBackupArtifact(target, 'database', 'hindsight.sql'), true);
+    });
+
+    test('state backup discovers the active data directory and excludes credentials and transient files', () => {
+        const root = fresh();
+        const shadow = join(root, 'runtime', 'bot-shadow');
+        mkdirSync(join(shadow, 'chats'), { recursive: true });
+        mkdirSync(join(shadow, 'secrets'));
+        mkdirSync(join(shadow, 'logs'));
+        writeFileSync(join(shadow, 'config.json'), '{}', 'utf8');
+        writeFileSync(join(shadow, 'bot.lock'), '1', 'utf8');
+        assert.deepEqual(discoverStateBackup(root), {
+            source: 'runtime/bot-shadow',
+            items: [join(shadow, 'chats')],
+        });
+
+        const active = join(root, 'runtime', 'bot');
+        mkdirSync(join(active, 'world'), { recursive: true });
+        assert.deepEqual(discoverStateBackup(root), {
+            source: 'runtime/bot',
+            items: [join(active, 'world')],
+        });
+    });
+
+    test('state archives are not reused after the authoritative data directory changes', () => {
+        const target = fresh();
+        writeFileSync(join(target, 'her-state.zip'), 'state backup', 'utf8');
+        writeBackupMarker(target, FAILURE_MARKER, {
+            completed: false,
+            components: { state: { ok: true, source: 'runtime/bot-shadow' } },
+        });
+
+        assert.equal(isReusableBackupArtifact(
+            target,
+            'state',
+            'her-state.zip',
+            { source: 'runtime/bot' },
+        ), false);
     });
 
     test('missing, empty and non-empty artifacts are distinguished', () => {

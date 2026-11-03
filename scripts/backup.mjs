@@ -14,6 +14,7 @@ import { homedir } from 'node:os';
 import {
     COMPLETE_MARKER,
     FAILURE_MARKER,
+    discoverStateBackup,
     isCompleteBackup,
     isReusableBackupArtifact,
     retryDue,
@@ -57,26 +58,23 @@ function pgDump(reuse) {
     }
 }
 
-function archiveState(reuse) {
+function archiveState(reuse, plan) {
     // 状态和聊天记录（都不大，几百 MB 以内）；日志不备（没价值、还占地方）
-    const items = ['runtime/bot-shadow/chats', 'runtime/bot-shadow/identity', 'runtime/bot-shadow/world',
-        'runtime/bot-shadow/dreams', 'runtime/bot-shadow/presence', 'runtime/bot-shadow/memory'];
-    const present = items.filter(item => existsSync(join(root, item)));
-    if (!present.length) {
+    if (!plan?.items.length) {
         log('没有要打包的状态文件');
         return { ok: true, skipped: true };
     }
     const zip = join(target, 'her-state.zip');
     if (reuse) {
         log('状态已有可用备份，本次只重试缺失部分');
-        return { ok: true, reused: true };
+        return { ok: true, reused: true, source: plan.source };
     }
     try {
         execFileSync('powershell.exe', ['-NoProfile', '-Command',
-            `Compress-Archive -Path ${present.map(item => `'${join(root, item).replace(/'/g, "''")}'`).join(',')} -DestinationPath '${zip}' -Force`],
+            `Compress-Archive -Path ${plan.items.map(item => `'${item.replace(/'/g, "''")}'`).join(',')} -DestinationPath '${zip}' -Force`],
         { timeout: 10 * 60_000, stdio: 'ignore' });
         log(`状态打包好：her-state.zip（${(statSync(zip).size / 1024 / 1024).toFixed(1)} MB）`);
-        return { ok: true };
+        return { ok: true, source: plan.source };
     } catch (error) {
         const reason = error instanceof Error ? error.message.split('\n')[0] : String(error);
         log(`状态打包失败：${reason}`);
@@ -95,7 +93,8 @@ function prune() {
     }
 }
 
-if (!force && isCompleteBackup(target)) {
+const statePlan = discoverStateBackup(root);
+if (!force && isCompleteBackup(target, statePlan?.source ?? null)) {
     log(`今天已经有备份了（${day}），跳过`);
     process.exit(0);
 }
@@ -104,12 +103,17 @@ if (!force && existsSync(target) && !retryDue(target)) {
     process.exit(0);
 }
 const reuseDatabase = !force && isReusableBackupArtifact(target, 'database', 'hindsight.sql');
-const reuseState = !force && isReusableBackupArtifact(target, 'state', 'her-state.zip');
+const reuseState = !force && statePlan && isReusableBackupArtifact(
+    target,
+    'state',
+    'her-state.zip',
+    { source: statePlan.source },
+);
 mkdirSync(target, { recursive: true });
 // 一旦开始新尝试，旧的完成标记就不能再证明即将被覆盖的文件有效。
 rmSync(join(target, COMPLETE_MARKER), { force: true });
 const database = pgDump(reuseDatabase);
-const state = archiveState(reuseState);
+const state = archiveState(reuseState, statePlan);
 const attemptedAt = new Date().toISOString();
 const components = { database, state };
 if (database.ok && state.ok) {
