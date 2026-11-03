@@ -12,7 +12,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSyn
 import { randomBytes } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canGiveFeedback, cardKey, CONTACT_TIERS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { createAccount, friendRequestVerdict } from '.././social/account.ts';
 import { chatCompletion, forExtraction } from '.././language/llm.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
@@ -93,6 +93,7 @@ import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } 
 import { SlidingWindowRateLimiter } from '.././social/rate-limit.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
+import type { ExternalPlatformMode } from '../social/external-platforms.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -193,6 +194,8 @@ export interface AppStatus {
     weather?: WeatherFetcherStatus;
     /** 手机伴侣安全摘要：不含配对码、nonce 或消息正文。 */
     mobileCompanion?: { enabled: boolean; pairedClientId?: string; connected: boolean; queued: number; maxQueuedPerClient: number };
+    /** 外部内容平台接入模式；当前只允许草稿或经过官方授权的适配器继续处理。 */
+    externalPlatforms: { tieba: ExternalPlatformMode; douyin: ExternalPlatformMode; xiaohongshu: ExternalPlatformMode };
     /** 自主生活开启且有需要锚点时的全局真人式状态；不含联系人关系值。 */
     humanValues?: Pick<HumanValues, 'at' | 'energy' | 'hunger' | 'stress' | 'mood' | 'health' | 'loneliness' | 'confidence' | 'curiosity' | 'boredom' | 'motivation' | 'socialBattery' | 'selfEsteem' | 'openness' | 'satisfaction' | 'comfort' | 'frustration'>;
 }
@@ -2022,6 +2025,7 @@ ${body}
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
                 ...(weather ? { weather: weather.status() } : {}),
                 mobileCompanion: mobileCompanion ? { enabled: true, ...mobileCompanion.runtime.status() } : { enabled: false, connected: false, queued: 0, maxQueuedPerClient: 32 },
+                externalPlatforms: config.externalPlatforms ?? DEFAULTS.externalPlatforms,
                 ...(humanValues ? { humanValues } : {}),
             };
         },

@@ -15,6 +15,7 @@ import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibi
 import { PROACTIVE_MODES, type ProactiveMode } from '.././proactive/proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '.././st/prompt-converters.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from '.././st/world-info.ts';
+import { externalPlatformMode, type ExternalPlatformMode } from '.././social/external-platforms.ts';
 
 /** 看图能用的提供方（ADR 0055）。DeepSeek 复用聊天模型的 QQBOT_LLM_API_KEY，不另要 key。 */
 export const VISION_PROVIDERS = ['deepseek'] as const;
@@ -37,6 +38,7 @@ export type Tier = ContactTier | typeof UNLISTED_TIER;
 export const DEFAULTS = {
     llm: { temperature: 1, maxTokens: 300, timeoutMs: 120_000, promptPostProcessing: '' as PromptPostProcessing },
     dsh: { enabled: false },
+    externalPlatforms: { tieba: 'off' as ExternalPlatformMode, douyin: 'off' as ExternalPlatformMode, xiaohongshu: 'off' as ExternalPlatformMode },
     prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
     memory: { timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' },
     vision: { provider: 'deepseek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', timeoutMs: MEDIA_TIMEOUTS.vision },
@@ -166,6 +168,8 @@ export interface AppConfig {
     };
     /** DSH 顾问插件（ADR 0223）：只在显式命令下调用，不自动介入普通 QQ 回复。默认关；地址 / 模型可独立覆盖，key 仍复用 QQBOT_LLM_API_KEY。 */
     dsh: { enabled: boolean; baseUrl?: string; model?: string; timeoutMs?: number };
+    /** 外部内容平台：默认关闭；draft 只生成草稿，authorized 仍需官方授权适配器。 */
+    externalPlatforms?: { tieba: ExternalPlatformMode; douyin: ExternalPlatformMode; xiaohongshu: ExternalPlatformMode };
     /** pinExamples：同 ST 的 Example Messages Behavior 选 Always include examples，默认否（同 ST 默认的逐步挤出） */
     prompt: { maxContext: number; worldInfo: WorldInfoSettings; pinExamples: boolean };
     /** 角色卡路径，{tier} 换成档位名；世界书按卡里的 extensions.world 在同目录找 <world>.json */
@@ -618,6 +622,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
 
     const llm = section(file, 'llm');
     const dsh = file.dsh === undefined ? {} : section(file, 'dsh');
+    const externalPlatforms = file.externalPlatforms === undefined ? {} : section(file, 'externalPlatforms');
     const prompt = (file.prompt ?? {}) as Json;
     const postProcessing = llm.promptPostProcessing ?? DEFAULTS.llm.promptPostProcessing;
     if (!PROMPT_POST_PROCESSING.includes(postProcessing as PromptPostProcessing)) {
@@ -718,6 +723,11 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
                 if (!Number.isInteger(timeoutMs) || timeoutMs < 1) throw new Error('配置 dsh.timeoutMs 应为正整数');
                 return { timeoutMs };
             })()),
+        },
+        externalPlatforms: {
+            tieba: externalPlatformMode(externalPlatforms.tieba),
+            douyin: externalPlatformMode(externalPlatforms.douyin),
+            xiaohongshu: externalPlatformMode(externalPlatforms.xiaohongshu),
         },
         prompt: {
             maxContext: num(prompt, 'maxContext', 'prompt', DEFAULTS.prompt.maxContext),

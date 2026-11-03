@@ -40,6 +40,7 @@ import { bqbDiscover } from '../../bot/src/social/sticker-sources.ts';
 import { biliStickerScreen } from '../../bot/src/language/bili-stickers.ts';
 import { webFoodSource, webPhotoSource } from '../../bot/src/vision/photo-sources.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
+import { EXTERNAL_PLATFORM_MODES, type ExternalPlatformMode } from '../../bot/src/social/external-platforms.ts';
 
 // koishi 的 ESM 入口是坏的（@koishijs/loader/lib/index.mjs 默认导入了一个 CJS 文件）：取 loader 自己用的那份 CJS
 const { Schema } = createRequire(import.meta.url)('koishi') as typeof Koishi;
@@ -108,6 +109,7 @@ const QZONE_LABELS: Record<QzoneVisibility, string> = { friends: '仅好友可�
 const FESTIVAL_LABELS: Record<FestivalMode, string> = { off: '关', notes: '只让她知道今天 / 快到的是什么节', greet: '知道，并在新年零点、除夕、平安夜、情人节等主动说一句' };
 const PROACTIVE_LABELS: Record<ProactiveMode, string> = { off: '关', dryRun: '试运行（只写日志不发）', on: '开' };
 const STICKER_LABELS: Record<StickerMode, string> = { off: '关', collect: '只收藏核对（不发）', send: '收藏并发送' };
+const EXTERNAL_PLATFORM_LABELS: Record<ExternalPlatformMode, string> = { off: '关闭', draft: '只生成草稿', authorized: '官方授权模式（需适配器）' };
 
 const POST_PROCESSING_LABELS: Record<PromptPostProcessing, string> = {
     '': '不处理',
@@ -242,6 +244,7 @@ export interface Config {
         extraBody: string;
     };
     dsh: { enabled: boolean; baseUrl?: string; model?: string; timeoutMs?: number };
+    externalPlatforms: { tieba: ExternalPlatformMode; douyin: ExternalPlatformMode; xiaohongshu: ExternalPlatformMode };
     mobileCompanion: { enabled: boolean; websocketPath: string; httpPath: string };
     prompt: {
         maxContext: number;
@@ -525,6 +528,16 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         }).description('DSH'),
     }),
     Schema.object({
+        externalPlatforms: Schema.object({
+            tieba: Schema.union(EXTERNAL_PLATFORM_MODES.map(mode => Schema.const(mode).description(EXTERNAL_PLATFORM_LABELS[mode]))).default(DEFAULTS.externalPlatforms.tieba)
+                .description('**百度贴吧**：只使用官方开放能力；草稿模式不登录、不发帖，授权模式需先取得合作权限。'),
+            douyin: Schema.union(EXTERNAL_PLATFORM_MODES.map(mode => Schema.const(mode).description(EXTERNAL_PLATFORM_LABELS[mode]))).default(DEFAULTS.externalPlatforms.douyin)
+                .description('**抖音**：只使用官方 OAuth 和已申请权限；草稿模式不发布，授权模式需通过应用审核。'),
+            xiaohongshu: Schema.union(EXTERNAL_PLATFORM_MODES.map(mode => Schema.const(mode).description(EXTERNAL_PLATFORM_LABELS[mode]))).default(DEFAULTS.externalPlatforms.xiaohongshu)
+                .description('**小红书**：使用官方授权 / 分享能力；不抓取公开笔记，授权模式需官方应用能力。'),
+        }).description('外部平台（默认关闭；先草稿，后授权）'),
+    }),
+    Schema.object({
         mobileCompanion: Schema.object({
             enabled: Schema.boolean().default(false)
                 .description('**手机伴侣 WebSocket**（ADR 0224）：明确打开后才在 Koishi server 上挂载受配对保护的连接；必须同时打开 DSH。默认关，不自动监听新端口。'),
@@ -605,6 +618,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
     return {
         llm: dropUndefined({ ...llm, extraBody }),
         ...(config.dsh?.enabled ? { dsh: dropUndefined({ enabled: true, baseUrl: config.dsh.baseUrl, model: config.dsh.model, timeoutMs: config.dsh.timeoutMs }) } : {}),
+        externalPlatforms: { ...DEFAULTS.externalPlatforms, ...(config.externalPlatforms ?? {}) },
         prompt: dropUndefined({ ...config.prompt, worldInfo: dropUndefined(config.prompt?.worldInfo ?? {}) }),
         characterCard: config.characterCard,
         contacts: config.contacts.map(contact => dropUndefined(contact)),

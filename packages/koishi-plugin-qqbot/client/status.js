@@ -101,6 +101,23 @@ function phoneActionsPanel(actions) {
     ]);
 }
 
+function externalPlatformsPanel(platforms) {
+    if (!platforms) return null;
+    const labels = { tieba: '百度贴吧', douyin: '抖音', xiaohongshu: '小红书' };
+    const modes = {
+        off: ['未启用', 'info'],
+        draft: ['只生成草稿', 'warning'],
+        authorized: ['授权模式，等待官方适配器', 'warning'],
+    };
+    return h('details', { class: 'qqbot-features-disclosure', open: false }, [
+        h('summary', { class: 'qqbot-features-summary' }, '外部平台接入'),
+        h('div', { class: 'qqbot-summary' }, Object.entries(labels).map(([key, label]) => {
+            const [text, type] = modes[platforms[key] ?? 'off'] ?? modes.off;
+            return h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, label), tag(text, type)]);
+        })),
+    ]);
+}
+
 /** 功能开关（ADR 0120）：按模块分组，开着的亮绿色、关着的灰色；鼠标放上去看 ADR 编号。页面文件是从仓库直接读的：插件还是旧代码（没重启）时状态里没有 features */
 function featurePanel(status) {
     if (!status.features) return h('p', { class: 'qqbot-muted' }, '功能开关：重启 Koishi 后显示');
@@ -191,6 +208,7 @@ export const StatusTab = defineComponent({
             const features = featurePanel(status);
             const extras = extrasPanel(status);
             const phoneActions = phoneActionsPanel(data.phoneActions);
+            const externalPlatforms = externalPlatformsPanel(status.externalPlatforms);
             const contactToolbar = h('div', { class: 'qqbot-contact-toolbar' }, [
                 h('div', { class: 'qqbot-section-title' }, [h('strong', null, '联系人'), h('span', { class: 'qqbot-muted' }, `显示 ${filteredContacts.value.length}/${counts.contacts}`)]),
                 h(c('el-input'), {
@@ -214,7 +232,7 @@ export const StatusTab = defineComponent({
                     h('div', null, [h('h2', { class: 'qqbot-status-title' }, '她现在的状态'), h('p', { class: 'qqbot-muted' }, `每 5 秒自动更新 · ${clock(data.updatedAt)}`)]),
                     h('div', { class: 'qqbot-status-head-tags' }, [tag(status.schedule ? '按作息运行' : '作息未启用', status.schedule ? 'success' : 'warning'), tag(dshFeature?.on ? '外部顾问已启用' : '外部顾问未启用', dshFeature?.on ? 'success' : 'info')]),
                 ]),
-                kpis, connections, summary, features, phoneActions, extras, contactToolbar, table,
+                kpis, connections, summary, features, phoneActions, externalPlatforms, extras, contactToolbar, table,
             ]);
         };
     },

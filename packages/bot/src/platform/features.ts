@@ -111,7 +111,7 @@ export const FEATURES: readonly FeatureDef[] = [
 
 /** config 里有、但不是“功能开关”的键（配置数值、对象、字符串……）：features.test.ts 用它核对没有开关被漏掉 */
 export const NOT_SWITCHES: readonly string[] = [
-    'llm', 'prompt', 'memory', 'vision', 'deviceLinks', 'deviceApps', 'bilibiliCommentKeywords', 'bilibiliAtName', 'bilibiliAtUid', 'deliberateModel', 'qzoneVisibility', 'candidates', 'contextTurns', 'contextContacts', 'dataDir',
+    'llm', 'prompt', 'memory', 'vision', 'externalPlatforms', 'deviceLinks', 'deviceApps', 'bilibiliCommentKeywords', 'bilibiliAtName', 'bilibiliAtUid', 'deliberateModel', 'qzoneVisibility', 'candidates', 'contextTurns', 'contextContacts', 'dataDir',
     // 账号控制面的两个允许清单和危险闸（ADR 0142）：是 qqControl 的附属配置，不是独立功能开关
     'qqAllowFriends', 'qqAllowGroups', 'qqDangerous',
     // 下面几个是 config 里的联系人 / 其他结构，不在 DEFAULTS 里也无妨
