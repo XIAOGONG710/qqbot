@@ -40,6 +40,8 @@ export class CompanionGateway {
     }
 
     get connected(): boolean {
+        // 状态页本身也必须反映空闲 TTL；不能等下一次媒体上传或 envelope 才把“已连接”改掉。
+        this.expireIdleSession(this.now());
         return Boolean(this.clientId && this.sessionId);
     }
 
@@ -95,7 +97,10 @@ export class CompanionGateway {
                 return { ok: true, clientId: hello.clientId, kind: envelope.kind };
             }
             if (!this.clientId) throw new Error('设备尚未配对');
-            if (this.lastSeenAt && now - this.lastSeenAt >= this.sessionIdleTtlMs) throw new Error('连接会话已过期，请重新配对');
+            if (this.lastSeenAt && now - this.lastSeenAt >= this.sessionIdleTtlMs) {
+                this.expireIdleSession(now);
+                throw new Error('连接会话已过期，请重新配对');
+            }
             if (this.sessionId !== sessionId) throw new Error('连接尚未完成配对');
             if (this.nonces.has(envelope.nonce)) throw new Error('nonce 已经使用');
             this.nonces.add(envelope.nonce);

@@ -145,7 +145,10 @@ describe('手机伴侣协议', () => {
         const gateway = new CompanionGateway(pairing, () => now, { sessionIdleTtlMs: 60_000 });
         const hello = helloEnvelope({ clientId: first.clientId, pairingCode: first.pairingCode, capabilities: ['text'] }, 'req-idle-1', 'nonce-idle-1', new Date(now).toISOString());
         assert.equal(gateway.accept(hello, 'session-old').ok, true);
+        assert.equal(gateway.connected, true);
         now += 60_001;
+        assert.equal(gateway.connected, false, '状态读取应立即清理已过期的空闲会话');
+        assert.equal(gateway.pairedClientId, 'android-idle', '只释放传输会话，仍保留已配对设备身份');
         const stale = gateway.accept({ v: 1, requestId: 'req-idle-2', kind: 'message.send', sentAt: new Date(now).toISOString(), nonce: 'nonce-idle-2', body: { kind: 'text', text: 'stale' } }, 'session-old');
         assert.equal(stale.ok, false);
         const second = pairing.issue('android-idle', now);
