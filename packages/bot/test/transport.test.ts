@@ -46,6 +46,7 @@ describe('现实交通 / 公共服务事实（ADR 0232）', () => {
             assert.ok(logs.some(line => line.includes('青岛') && line.includes('timeout')));
             now += 61_000;
             assert.equal(fetcher.day('jinan', at('2026-11-03T09:00:00')), undefined);
+            assert.equal(fetcher.day('qingdao', at('2026-11-03T09:00:00')), undefined, '另一个地点成功不能延长失败地点的旧观测');
             assert.equal(fetcher.status().locations.jinan!.stale, true);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });

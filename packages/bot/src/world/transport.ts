@@ -127,7 +127,8 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
             const fetchedAt = Date.parse(cached.fetchedAt);
             if (!Number.isFinite(fetchedAt) || now() - fetchedAt > cacheMaxAgeMs) return undefined;
             const fact = cached.facts[location];
-            if (!fact || (until && Date.parse(fact.observedAt) > until.getTime())) return undefined;
+            const observedAt = fact ? Date.parse(fact.observedAt) : NaN;
+            if (!fact || !Number.isFinite(observedAt) || now() - observedAt > cacheMaxAgeMs || (until && observedAt > until.getTime())) return undefined;
             return fact;
         },
         refresh: () => {
