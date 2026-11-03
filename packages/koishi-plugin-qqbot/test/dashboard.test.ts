@@ -50,6 +50,7 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
         const contacts = [
             { name: '小明', qq: 10001, tier: 'classmate', now: '上课', responder: { phase: 'waiting', reason: '等他停下' } },
             { name: '阿瑶', qq: 10002, tier: 'boyfriend', now: '休息', responder: { phase: 'idle' } },
+            { name: '旧状态', qq: 10003, tier: 'known', now: '未知' },
         ];
         assert.deepEqual(filterContacts(contacts, '10002').map((row: { name: string }) => row.name), ['阿瑶']);
         assert.deepEqual(filterContacts(contacts, '男朋友').map((row: { name: string }) => row.name), ['阿瑶']);
@@ -63,10 +64,11 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
                 { responder: { phase: 'retry' } },
                 { responder: { phase: 'idle' } },
                 { responder: { phase: 'generating' } },
+                {},
             ],
             features: [{ key: 'dsh', on: true }, { key: 'shape', on: false }],
         });
-        assert.deepEqual(result, { contacts: 3, busy: 2, retrying: 1, dshOn: true, features: { on: 1, total: 2 } });
+        assert.deepEqual(result, { contacts: 4, busy: 2, retrying: 1, dshOn: true, features: { on: 1, total: 2 } });
     });
 });
 
@@ -107,7 +109,8 @@ describe('客户端的纯函数', () => {
         assert.equal(rows.length, 3);
         assert.match(rows[0].text, /空的/);
         assert.match(rows[1].text, /还没有/);
-        assert.equal(rows[2].text, 'weekly-2026-11-22.md');
+        assert.equal(rows[2].text, '11月22日生成');
+        assert.equal(extrasRows({ report: { name: 'internal-report.dat' } })[0].text, '已生成', '不把内部文件名显示给用户');
         assert.match(extrasRows({ photos: { count: 5, cat: 3, view: 2, work: 0 } })[0].text, /5 张（土豆 3、天空 2）/);
     });
 

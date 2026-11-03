@@ -40,7 +40,7 @@ export function featureTotals(features) {
 export function filterContacts(contacts, query = '', activeOnly = false) {
     const needle = String(query).trim().toLocaleLowerCase();
     return (contacts ?? []).filter(contact => {
-        if (activeOnly && contact.responder?.phase === 'idle') return false;
+        if (activeOnly && (!contact.responder?.phase || contact.responder.phase === 'idle')) return false;
         if (!needle) return true;
         const haystack = [
             contact.name, contact.qq, contact.tier, contact.now,
@@ -54,7 +54,7 @@ export function filterContacts(contacts, query = '', activeOnly = false) {
 /** 一眼看总览卡片用的计数，避免在组件里重复拼业务判断。 */
 export function overviewCounts(status) {
     const contacts = status?.contacts ?? [];
-    const busy = contacts.filter(contact => contact.responder?.phase !== 'idle').length;
+    const busy = contacts.filter(contact => contact.responder?.phase && contact.responder.phase !== 'idle').length;
     const retrying = contacts.filter(contact => contact.responder?.phase === 'retry').length;
     const dsh = status?.features?.find(feature => feature.key === 'dsh');
     return {
@@ -152,6 +152,11 @@ export function extrasRows(extras) {
         rows.push({ label: '照片货架', text: p.count ? `${p.count} 张（土豆 ${p.cat}、天空 ${p.view}${p.work ? `、她的片子 ${p.work}` : ''}${p.food ? `、吃的 ${p.food}` : ''}）` : '空的（她自己去网上找，每 6 小时一次）' });
     }
     if (extras?.jokes !== undefined) rows.push({ label: '小梗', text: extras.jokes ? `${extras.jokes} 个` : '还没有（聊得够多会自己抽）' });
-    if (extras?.report) rows.push({ label: '最近一份周报', text: extras.report.name });
+    if (extras?.report) {
+        const match = /(?:^|\D)(\d{4})-(\d{2})-(\d{2})(?:\D|$)/.exec(String(extras.report.name ?? ''));
+        const month = match ? Number(match[2]) : 0;
+        const day = match ? Number(match[3]) : 0;
+        rows.push({ label: '最近一份周报', text: month >= 1 && month <= 12 && day >= 1 && day <= 31 ? `${month}月${day}日生成` : '已生成' });
+    }
     return rows;
 }
