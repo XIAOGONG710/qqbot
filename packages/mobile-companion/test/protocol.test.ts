@@ -680,5 +680,7 @@ describe('手机伴侣协议', () => {
         const settled = await Promise.all(results);
         assert.equal(settled.filter(result => !result.accepted).length, 1);
         assert.equal(runtime.status().queued, 0);
+        const retry = await runtime.handle(requests.at(-1)!);
+        assert.equal(retry.accepted, true);
     });
 });

@@ -150,6 +150,19 @@ export class CompanionRuntime {
     }
 
     async handle(value: unknown, sessionId = 'default'): Promise<CompanionRuntimeResult> {
+        // 背压是可重试状态，不能先让网关消耗 nonce，否则队列恢复后同一请求会被误判成重放。
+        // 这里只预检协议允许的手机上行类型；无效包、伪造响应和未配对会话仍交给网关按原规则拒绝。
+        try {
+            const envelope = validateEnvelope(value, this.now());
+            if (envelope.kind === 'message.send' || envelope.kind === 'action.request' || envelope.kind === 'action.result') {
+                const clientId = this.gateway.clientForSession(sessionId);
+                if (clientId && (this.queueDepth.get(clientId) ?? 0) >= MAX_QUEUED_PER_CLIENT) {
+                    return { accepted: false, error: '设备请求过多，请稍后重试' };
+                }
+            }
+        } catch {
+            // gateway.accept() 负责返回统一且可审计的校验错误。
+        }
         const accepted = this.gateway.accept(value, sessionId);
         if (!accepted.ok) return { accepted: false, error: accepted.error };
         const generation = this.queueGeneration;
