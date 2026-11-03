@@ -80,8 +80,11 @@ export class Timeline {
     }
 
     recent(now: Date, hours = 24, limit = 5): TimelineEntry[] {
-        const since = now.getTime() - hours * 3_600_000;
-        return this.read().filter(e => Date.parse(e.at) >= since && Date.parse(e.at) <= now.getTime() + 60_000).slice(-limit);
+        const safeHours = Number.isFinite(hours) ? Math.max(0, hours) : 24;
+        const safeLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 5;
+        if (safeLimit === 0) return [];
+        const since = now.getTime() - safeHours * 3_600_000;
+        return this.read().filter(e => Date.parse(e.at) >= since && Date.parse(e.at) <= now.getTime() + 60_000).slice(-safeLimit);
     }
 
     /** 放进聊天提示词的一段；这段时间里 QQ 以外没做过什么就是 undefined */

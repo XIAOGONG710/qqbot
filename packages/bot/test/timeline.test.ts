@@ -36,6 +36,8 @@ describe('跨渠道时间线', () => {
         timeline.record({ at: at(11, 0), channel: 'web', kind: 'search', summary: '查了一个问题：' + '很长'.repeat(60) });
         const recent = timeline.recent(at(12));
         assert.deepEqual(recent.map(e => e.channel), ['bilibili', 'device', 'web']);
+        assert.deepEqual(timeline.recent(at(12), 24, 0), [], 'limit=0 不应退化成返回全部记录');
+        assert.equal(timeline.recent(at(12), 24, Number.NaN).length, 3, '无效 limit 回退到默认值');
         assert.ok(recent[2]!.summary.length <= 80);
         const line = timeline.promptLine(at(12))!;
         assert.match(line, /今天 08:30 在 B 站看了一条视频/);
