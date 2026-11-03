@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { describeHumanState, describeHumanValues, humanValuesAt, humanValuesFromAnchor, HUMAN_VALUE_KEYS, type HumanValues } from '../src/human-values.ts';
-import { needsAt } from '../src/needs.ts';
+import { needsAt } from '../src/life/needs.ts';
 
 const needs = { at: '2026-11-01T00:00:00.000Z', energy: 68, hunger: 35, stress: 24 } as const;
 const message = (role: 'user' | 'assistant', content: string, hours: number) => ({

@@ -4,9 +4,9 @@
 // 现有 needs.ts 提供身体需要，聊天记录提供关系与短期心理信号，生活事件提供活动 / 结果。
 // 数值先用于审计和后续选择器校准，不直接交给模型，避免她把内部状态说成仪表盘。
 
-import type { LifeEvent } from './life-events.ts';
-import { needsAt, type NeedsSnapshot } from './needs.ts';
-import type { StoredMessage } from './history.ts';
+import type { LifeEvent } from './world/life-events.ts';
+import { needsAt, type NeedsSnapshot } from './life/needs.ts';
+import type { StoredMessage } from './memory/history.ts';
 
 export const HUMAN_VALUE_KEYS = [
     'energy', 'hunger', 'stress', 'mood', 'health', 'loneliness',

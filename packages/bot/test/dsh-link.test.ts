@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { createDshLink, dshOptionsFromLlm, sanitizeDshQuestion, type DshState } from '../src/dsh-link.ts';
 import { createMobileCompanion, createMobileDshHandlers } from '../src/mobile-companion-dsh.ts';
 import { helloEnvelope } from '@qqbot/mobile-companion/gateway';
-import type { LlmOptions } from '../src/llm.ts';
+import type { LlmOptions } from '../src/language/llm.ts';
 
 const options: LlmOptions = {
     baseUrl: 'https://dsh.example', model: 'dsh-model', apiKey: 'secret', temperature: 1, maxTokens: 300, timeoutMs: 1000, extraBody: {},

@@ -4,10 +4,10 @@
 // 默认只做探针；不会读取聊天记录，也不会把 key 打到屏幕或日志里。
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from '../config.ts';
+import { loadConfig } from '../platform/config.ts';
 import { createDshLink, dshOptionsFromLlm } from '../dsh-link.ts';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const [command, ...rest] = process.argv.slice(2);
 
 if (command === '--help' || command === '-h') {

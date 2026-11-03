@@ -1,4 +1,4 @@
-import { chatCompletion, type Fetch, type LlmDeps, type LlmOptions } from './llm.ts';
+import { chatCompletion, type Fetch, type LlmDeps, type LlmOptions } from './language/llm.ts';
 import type { HumanValues } from './human-values.ts';
 
 /** DSH 连接层只接收脱敏后的状态，不直接接收聊天记录。 */
