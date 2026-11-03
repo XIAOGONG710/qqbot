@@ -44,7 +44,9 @@ const isPlatform = (value: unknown): value is ExternalPlatform => PLATFORMS.incl
 const isStatus = (value: unknown): value is ExternalDraftStatus => STATUSES.includes(value as ExternalDraftStatus);
 function isSafeMediaRef(value: string): boolean {
     if (value.length > 500) return false;
-    if (/^media:[a-zA-Z0-9._/-]+$/.test(value)) return true;
+    // media: 是素材仓库里的逻辑 ID，不是本地路径。每段必须以字母或数字开头，
+    // 因而不能出现绝对路径、隐藏目录、`.` / `..` 或编码后的路径穿越。
+    if (/^media:[A-Za-z0-9][A-Za-z0-9._-]{0,127}(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,127})*$/.test(value)) return true;
     if (!value.startsWith('https://')) return false;
     try {
         const url = new URL(value);

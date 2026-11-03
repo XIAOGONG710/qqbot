@@ -56,4 +56,15 @@ describe('外部平台草稿队列（ADR 0224）', () => {
         assert.equal(repeated.updatedAt, '2026-11-03T00:01:00.000Z');
         assert.deepEqual(createExternalDraftStore({ dir: root }).list()[0], approved);
     });
+
+    test('本地素材只接受逻辑 media ID，拒绝绝对路径和路径穿越', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
+        const store = createExternalDraftStore({ dir: root });
+        assert.doesNotThrow(() => store.create({
+            platform: 'douyin', title: '标题', body: '正文', media: ['media:photos/cat-01.jpg', 'media:upload_2026'],
+        }));
+        for (const media of ['media:../../secret', 'media:/absolute/path', 'media:photos/../secret', 'media:.hidden/file']) {
+            assert.throws(() => store.create({ platform: 'douyin', title: '标题', body: '正文', media: [media] }), /素材只允许/);
+        }
+    });
 });
