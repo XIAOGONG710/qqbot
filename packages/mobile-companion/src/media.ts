@@ -115,12 +115,21 @@ export class MemoryCompanionMediaStore implements CompanionMediaStore {
 
     private evictFor(clientId: string, incomingBytes: number): void {
         const candidates = [...this.records.values()].sort((a, b) => a.createdAt - b.createdAt);
-        const clientCount = candidates.filter(record => record.clientId === clientId).length;
+        let clientCount = candidates.filter(record => record.clientId === clientId).length;
+        // 先只淘汰当前设备最旧的媒体。不能在遇到别的设备时提前停止，
+        // 否则全局最旧记录属于另一台设备时会绕过每设备上限。
         for (const record of candidates) {
-            const overClient = clientCount >= this.maxItemsPerClient && record.clientId === clientId;
+            if (clientCount < this.maxItemsPerClient) break;
+            if (record.clientId !== clientId) continue;
+            this.remove(record.mediaId);
+            clientCount -= 1;
+        }
+        // 再按全局最旧顺序满足总条目数和总字节数上限。
+        for (const record of candidates) {
+            if (!this.records.has(record.mediaId)) continue;
             const overItems = this.records.size >= this.maxItems;
             const overBytes = this.totalBytes + incomingBytes > this.maxTotalBytes;
-            if (!overClient && !overItems && !overBytes) break;
+            if (!overItems && !overBytes) break;
             this.remove(record.mediaId);
         }
     }

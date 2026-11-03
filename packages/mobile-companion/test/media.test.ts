@@ -30,6 +30,22 @@ test('内存媒体仓库按 TTL、设备归属和大小上限工作', () => {
     assert.equal(store.get('android-b', other.mediaId), undefined);
 });
 
+test('每设备上限只淘汰该设备最旧媒体，不受其他设备的全局顺序影响', () => {
+    let id = 100;
+    const store = new MemoryCompanionMediaStore({
+        maxItems: 10,
+        maxItemsPerClient: 1,
+        maxTotalBytes: 100,
+        id: () => `${(++id).toString(16).padStart(16, '0')}`,
+    });
+    const other = store.put({ clientId: 'android-b', mime: 'image/png', data: Buffer.from('b'), bytes: 1, now: 1 });
+    const first = store.put({ clientId: 'android-a', mime: 'image/png', data: Buffer.from('a1'), bytes: 2, now: 2 });
+    const replacement = store.put({ clientId: 'android-a', mime: 'image/png', data: Buffer.from('a2'), bytes: 2, now: 3 });
+    assert.equal(store.get('android-b', other.mediaId, 3)?.bytes, 1);
+    assert.equal(store.get('android-a', first.mediaId, 3), undefined);
+    assert.equal(store.get('android-a', replacement.mediaId, 3)?.data.toString(), 'a2');
+});
+
 test('媒体 HTTP 上传必须使用已配对 session，并返回短期 mediaId', async () => {
     let now = 10_000;
     const pairing = new MemoryPairingStore(60_000);
