@@ -56,6 +56,15 @@ test('稳定的亲密互动会提高亲密 / 熟悉 / 依恋，冲突会提高�
     assert.ok(cold.relationship.friction > warm.relationship.friction);
 });
 
+test('他说自己压力大、焦虑、难受或很累是在倾诉，不误算成对她的关系冲突', () => {
+    const neutral = valuesAt([message('user', '我今天事情有点多', 20)]);
+    const distressed = valuesAt([message('user', '我今天压力大，又焦虑又难受，真的好累', 20)]);
+    assert.equal(distressed.relationship.friction, neutral.relationship.friction);
+    assert.equal(distressed.relationship.trust, neutral.relationship.trust);
+    assert.equal(distressed.relationship.intimacy, neutral.relationship.intimacy);
+    assert.ok(distressed.mood < neutral.mood, '她仍会感受到他在难受，只是不把倾诉当成冲突');
+});
+
 test('状态是时间可重算的，旧聊天信号会自然衰减', () => {
     const history = [message('user', '我想你了，抱抱', 2), message('assistant', '嗯', 2.1)];
     const near = valuesAt(history, 4);

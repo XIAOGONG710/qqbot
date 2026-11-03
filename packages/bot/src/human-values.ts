@@ -85,7 +85,10 @@ const BASE_RELATIONSHIP: Record<string, RelationshipValues> = {
 
 const POSITIVE = /谢谢|辛苦了|做得好|好厉害|厉害|不错|对的|你说得对|我在呢|抱抱|抱一下|想你|爱你|喜欢你|亲亲|么么|贴贴/;
 const REPAIR = /对不起|抱歉|是我不好|我错了|别生气|原谅我/;
-const NEGATIVE = /不对|错了|太假|不像|烦死|生气|失望|别理我|算了|不想说|压力大|焦虑|难受|累死|好累/;
+/** 会压低她短期心境的负面信号；既包括关系冲突，也包括他在说自己难受。 */
+const NEGATIVE_AFFECT = /不对|错了|太假|不像|烦死|生气|失望|别理我|算了|不想说|压力大|焦虑|难受|累死|好累/;
+/** 只用于两个人的关系摩擦。自述压力、焦虑、难受和疲惫是在向她倾诉，不能反过来扣信任。 */
+const RELATIONSHIP_FRICTION = /不对|错了|太假|不像|烦死|生气|失望|别理我|算了|不想说/;
 const QUESTION = /[?？]|怎么|为什么|咋|哪儿|哪里|谁|什么时候|要不要|是不是/;
 const SHARING = /我今天|刚刚|刚才|我在|我去|我想|我有点|告诉你|给你看/;
 
@@ -132,7 +135,7 @@ function relationshipAt(facts: HumanValueFacts): RelationshipValues {
     const userMessages = recent.filter(message => message.role === 'user');
     const positive = userMessages.filter(message => POSITIVE.test(message.content)).length;
     const repairs = userMessages.filter(message => REPAIR.test(message.content)).length;
-    const friction = userMessages.filter(message => NEGATIVE.test(message.content)).length;
+    const friction = userMessages.filter(message => RELATIONSHIP_FRICTION.test(message.content)).length;
     const sharing = userMessages.filter(message => SHARING.test(message.content)).length;
     const silenceHours = (() => {
         const last = userMessages.map(atOf).filter(Number.isFinite).reduce<number | undefined>(
@@ -232,7 +235,7 @@ function moodAt(facts: HumanValueFacts, recent: readonly MessageLike[]): number 
         const age = Math.max(0, now - atOf(message));
         const weight = Math.pow(0.5, age / (8 * HOUR));
         if (POSITIVE.test(message.content)) score += 4 * weight;
-        if (NEGATIVE.test(message.content)) score -= 4 * weight;
+        if (NEGATIVE_AFFECT.test(message.content)) score -= 4 * weight;
         if (REPAIR.test(message.content)) score += 3 * weight;
     }
     return round(score);
@@ -264,7 +267,7 @@ export function humanValuesAt(facts: HumanValueFacts): HumanValues {
     const silenceHours = lastActivity > 0 ? Math.max(0, (now - lastActivity) / HOUR) : 72;
     const questions = recent.filter(message => message.role === 'user' && QUESTION.test(message.content)).length;
     const positive = recent.filter(message => message.role === 'user' && POSITIVE.test(message.content)).length;
-    const negative = recent.filter(message => message.role === 'user' && NEGATIVE.test(message.content)).length;
+    const negative = recent.filter(message => message.role === 'user' && NEGATIVE_AFFECT.test(message.content)).length;
     const eventCount = events.filter(event => {
         const at = Date.parse(event.endedAt);
         return Number.isFinite(at) && at <= now && now - at <= 24 * HOUR && event.result === 'succeeded';
