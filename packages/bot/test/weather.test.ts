@@ -108,6 +108,8 @@ describe('真实天气（ADR 0048）', () => {
         assert.deepEqual(parseOpenMeteo({ hourly: { time: ['2026-10-16T08:00'], temperature_2m: [18.4], precipitation: [0], weather_code: [2] } }),
             { '2026-10-16T08': { t: 18.4, p: 0, c: 2 } });
         assert.throws(() => parseOpenMeteo({ error: true }), /逐小时/);
+        assert.throws(() => parseOpenMeteo({ hourly: { time: ['2026-10-16T08:00'], temperature_2m: [], precipitation: [0], weather_code: [2] } }), /合法/);
+        assert.throws(() => parseOpenMeteo({ hourly: { time: Array.from({ length: 24 * 14 + 1 }, () => '2026-10-16T08:00'), temperature_2m: Array(24 * 14 + 1).fill(18), precipitation: Array(24 * 14 + 1).fill(0), weather_code: Array(24 * 14 + 1).fill(2) } }), /合法/);
     });
 
     test('取数：目录没有就建；存进去、记下开始用的日子；后来取到的把预报换成实况；取不到留着旧的', async () => {
@@ -142,6 +144,83 @@ describe('真实天气（ADR 0048）', () => {
             await fetcher.refresh();
             assert.ok(logs.some(line => /济南没取到，照旧用存着的（timeout）/.test(line)));
             assert.deepEqual(fetcher.day('jinan', '2026-10-16', at('2026-10-16T14:30:00'))!.rainHours, [9]);
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('并发刷新只请求一次，并能查看缓存新鲜度；失败只留错误摘要', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-weather-dedup-'));
+        const dir = join(root, 'bot', 'weather');
+        let calls = 0;
+        let reject = false;
+        const fetcher = weatherFetcher({
+            dir, log: () => {}, now: () => at('2026-10-16T03:30:00').getTime(),
+            fetchJson: async () => {
+                calls++;
+                await new Promise(resolve => setTimeout(resolve, 5));
+                if (reject) throw new Error('公开天气服务超时');
+                const hours = hoursOf('2026-10-16');
+                const keys = Object.keys(hours);
+                return { hourly: { time: keys.map(k => `${k}:00`), temperature_2m: keys.map(k => hours[k]!.t), precipitation: keys.map(k => hours[k]!.p), weather_code: keys.map(k => hours[k]!.c) } };
+            },
+        });
+        try {
+            await Promise.all([fetcher.refresh(), fetcher.refresh()]);
+            assert.equal(calls, 2, '两个地点各请求一次');
+            const status = fetcher.status();
+            assert.ok(status.fetchedAt);
+            assert.equal(status.places.jinan.hours, 24);
+            reject = true;
+            await fetcher.refresh();
+            assert.equal(fetcher.status().places.jinan.error, '公开天气服务超时');
+            assert.equal(fetcher.status().places.jinan.hours, 24, '失败保留缓存');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('默认 fetch 路径拒绝超大天气响应并保留旧缓存', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-weather-large-'));
+        const dir = join(root, 'bot', 'weather');
+        const originalFetch = globalThis.fetch;
+        const logs: string[] = [];
+        try {
+            globalThis.fetch = (async () => ({ ok: true, text: async () => 'x'.repeat(2 * 1024 * 1024 + 1) })) as unknown as typeof fetch;
+            const fetcher = weatherFetcher({ dir, log: message => logs.push(message), now: () => at('2026-10-16T03:30:00').getTime() });
+            await fetcher.refresh();
+            assert.equal(fetcher.status().places.jinan.error, '天气服务响应过大');
+            assert.equal(fetcher.status().places.jinan.hours, 0);
+            assert.ok(logs.every(message => message.includes('天气服务响应过大')));
+        } finally {
+            globalThis.fetch = originalFetch;
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('可替换供应商：只接收校验后的逐小时值，并标记陈旧缓存', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-weather-provider-'));
+        const calls: string[] = [];
+        let now = at('2026-10-16T03:00:00').getTime();
+        const provider = {
+            id: 'test-provider',
+            async fetchHourly(request: { place: 'jinan' | 'qingdao'; latitude: number; longitude: number; signal: AbortSignal }) {
+                calls.push(`${request.place}:${request.latitude},${request.longitude}`);
+                const hours = hoursOf('2026-10-16');
+                // 供应商可能混入脏数据；weatherFetcher 应过滤非法键和值，而不是把它们写进世界账。
+                return { ...hours, 'not-a-time': { t: 20, p: 0, c: 2 }, '2026-10-16T24': { t: 999, p: 0, c: 2 } };
+            },
+        };
+        const fetcher = weatherFetcher({ dir: join(root, 'weather'), log: () => {}, now: () => now, provider, cacheMaxAgeMs: 1 });
+        try {
+            await fetcher.refresh();
+            now += 5;
+            const status = fetcher.status();
+            assert.equal(status.provider, 'test-provider');
+            assert.equal(calls.length, 2);
+            assert.equal(status.places.jinan.hours, 24);
+            assert.equal(status.places.jinan.stale, true);
+            assert.equal(fetcher.day('jinan', '2026-10-16', at('2026-10-16T12:00:00'))?.real, true);
         } finally {
             rmSync(root, { recursive: true, force: true });
         }

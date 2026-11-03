@@ -61,6 +61,8 @@ export function realWeather(): RealWeather | undefined {
 const RAIN_MM = 0.2;
 /** 一天至少有这么多个钟头的数据才按真实的 */
 const MIN_HOURS = 12;
+const MAX_WEATHER_HOURS = 24 * 14;
+const MAX_WEATHER_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 /** WMO 天况代码 → 说法 */
 export function weatherText(code: number): string {
@@ -162,7 +164,9 @@ export function parseOpenMeteo(data: unknown): Record<string, HourWeather> {
     const t = hourly?.temperature_2m;
     const p = hourly?.precipitation;
     const c = hourly?.weather_code;
-    if (!Array.isArray(times) || !Array.isArray(t) || !Array.isArray(p) || !Array.isArray(c)) throw new Error('回复里没有逐小时数据');
+    if (!Array.isArray(times) || !Array.isArray(t) || !Array.isArray(p) || !Array.isArray(c)
+        || times.length !== t.length || times.length !== p.length || times.length !== c.length
+        || times.length > MAX_WEATHER_HOURS) throw new Error('回复里没有合法的逐小时数据');
     const hours: Record<string, HourWeather> = {};
     times.forEach((time, i) => {
         if (typeof time !== 'string' || typeof t[i] !== 'number' || typeof p[i] !== 'number' || typeof c[i] !== 'number') return;
@@ -178,24 +182,99 @@ export interface WeatherFetcherOptions {
     now?: () => number;
     /** 默认用全局 fetch；测试传假的 */
     fetchJson?: (url: string) => Promise<unknown>;
+    /** 网络请求超时（毫秒）；默认 20 秒，避免天气服务卡住回复和生活执行器。 */
+    timeoutMs?: number;
+    /** 缓存超过这个时间只标记为 stale，仍可作为世界的降级数据；默认 2 小时。 */
+    cacheMaxAgeMs?: number;
+    /** 可替换的公开天气供应商；未提供时使用 Open-Meteo。 */
+    provider?: WeatherProvider;
+}
+
+export interface WeatherProviderRequest {
+    place: Place;
+    latitude: number;
+    longitude: number;
+    signal: AbortSignal;
+}
+
+/** 天气供应商只返回逐小时数值，不接触 QQ、聊天或角色资料。 */
+export interface WeatherProvider {
+    readonly id: string;
+    fetchHourly(request: WeatherProviderRequest): Promise<Record<string, HourWeather>>;
+}
+
+export interface WeatherPlaceStatus {
+    fetchedAt?: string;
+    ageMs?: number;
+    stale?: boolean;
+    hours: number;
+    since?: string;
+    error?: string;
+    /** 最近一次取数失败的时间；用于区分“旧缓存”和“刚刚失败”。 */
+    errorAt?: string;
+}
+
+export interface WeatherFetcherStatus {
+    provider: string;
+    cacheMaxAgeMs: number;
+    places: Record<Place, WeatherPlaceStatus>;
+    fetchedAt?: string;
+}
+
+function validHourly(hours: unknown): Record<string, HourWeather> {
+    if (!hours || typeof hours !== 'object' || Array.isArray(hours)) throw new Error('供应商返回的天气不是对象');
+    const output: Record<string, HourWeather> = {};
+    for (const [key, value] of Object.entries(hours)) {
+        if (Object.keys(output).length >= MAX_WEATHER_HOURS) throw new Error('供应商返回的天气时数过多');
+        if (!/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3])$/.test(key)) continue;
+        const item = value as Partial<HourWeather> | null;
+        if (!item || typeof item !== 'object' || !Number.isFinite(item.t) || !Number.isFinite(item.p) || !Number.isInteger(item.c)) continue;
+        if (item.t! < -100 || item.t! > 100 || item.p! < 0 || item.p! > 1000 || item.c! < 0 || item.c! > 99) continue;
+        output[key] = { t: item.t!, p: item.p!, c: item.c! };
+    }
+    if (!Object.keys(output).length) throw new Error('供应商没有返回有效天气小时');
+    return output;
+}
+
+/** 默认供应商：固定地点请求 Open-Meteo，响应先限大小再解析和校验。 */
+export function openMeteoProvider(options: { fetchJson?: (url: string) => Promise<unknown>; timeoutMs?: number } = {}): WeatherProvider {
+    const timeoutMs = options.timeoutMs ?? 20_000;
+    const fetchJson = options.fetchJson ?? (async (url: string) => {
+        const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const text = await response.text();
+        if (Buffer.byteLength(text, 'utf8') > MAX_WEATHER_RESPONSE_BYTES) throw new Error('天气服务响应过大');
+        return JSON.parse(text) as unknown;
+    });
+    return {
+        id: 'open-meteo',
+        async fetchHourly({ latitude, longitude }: WeatherProviderRequest) {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}`
+                + '&hourly=temperature_2m,precipitation,weather_code&past_days=2&forecast_days=2&timezone=Asia%2FShanghai';
+            return parseOpenMeteo(await fetchJson(url));
+        },
+    };
 }
 
 export interface WeatherFetcher extends RealWeather {
     /** 取一次两个地方；失败只记日志，留着旧的 */
     refresh(): Promise<void>;
+    /** 只返回数据新鲜度和覆盖范围，不返回坐标之外的个人信息。 */
+    status(): WeatherFetcherStatus;
 }
 
 export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
     const now = options.now ?? Date.now;
-    const fetchJson = options.fetchJson ?? (async (url: string) => {
-        const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
-    });
+    const timeoutMs = options.timeoutMs ?? 20_000;
+    const cacheMaxAgeMs = options.cacheMaxAgeMs ?? 2 * 60 * 60_000;
+    const provider = options.provider ?? openMeteoProvider({ fetchJson: options.fetchJson, timeoutMs });
     // 数据目录第一次用时还没有（审查第 1 条：没建目录时每次写盘都失败，真实天气一次都不生效）
     mkdirSync(options.dir, { recursive: true });
     const path = (place: Place) => join(options.dir, `${place}.json`);
     const stores = new Map<Place, Store | undefined>();
+    const errors = new Map<Place, string>();
+    const errorAt = new Map<Place, string>();
+    let inFlight: Promise<void> | undefined;
     const load = (place: Place): Store | undefined => {
         if (!stores.has(place)) {
             const data = readJsonOr<Partial<Store>>(path(place), {}, message => options.log(`真实天气：${message}`));
@@ -208,22 +287,54 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
             const store = load(place);
             return store && date >= store.since ? dayFrom(store.hours, date, until) : undefined;
         },
-        refresh: async () => {
-            for (const place of Object.keys(PLACES) as Place[]) {
-                const { latitude, longitude } = PLACES[place];
-                const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}`
-                    + '&hourly=temperature_2m,precipitation,weather_code&past_days=2&forecast_days=2&timezone=Asia%2FShanghai';
-                try {
-                    const fetched = parseOpenMeteo(await fetchJson(url));
-                    const at = new Date(now());
-                    const old = load(place);
-                    const store: Store = { since: old?.since ?? firstRealDay(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
-                    writeJsonAtomic(path(place), store);
-                    stores.set(place, store);
-                } catch (error) {
-                    options.log(`真实天气：${PLACES[place].name}没取到，照旧用存着的（${error instanceof Error ? error.message : String(error)}）`);
+        refresh: () => {
+            // 心跳和启动可能同时触发刷新；复用同一请求，避免重复打公开接口。
+            if (inFlight) return inFlight;
+            inFlight = (async () => {
+                for (const place of Object.keys(PLACES) as Place[]) {
+                    try {
+                        const { latitude, longitude } = PLACES[place];
+                        const fetched = validHourly(await provider.fetchHourly({ place, latitude, longitude, signal: AbortSignal.timeout(timeoutMs) }));
+                        const at = new Date(now());
+                        const old = load(place);
+                        const store: Store = { since: old?.since ?? firstRealDay(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
+                        writeJsonAtomic(path(place), store);
+                        stores.set(place, store);
+                        errors.delete(place);
+                        errorAt.delete(place);
+                    } catch (error) {
+                        const reason = error instanceof Error ? error.message : String(error);
+                        errors.set(place, reason);
+                        errorAt.set(place, new Date(now()).toISOString());
+                        options.log(`真实天气：${PLACES[place].name}没取到，照旧用存着的（${reason}）`);
+                    }
                 }
+            })().finally(() => { inFlight = undefined; });
+            return inFlight;
+        },
+        status: () => {
+            const places = {} as Record<Place, WeatherPlaceStatus>;
+            let fetchedAt: string | undefined;
+            for (const place of Object.keys(PLACES) as Place[]) {
+                const store = load(place);
+                const item: WeatherPlaceStatus = { hours: Object.keys(store?.hours ?? {}).length };
+                if (store?.fetchedAt) {
+                    item.fetchedAt = store.fetchedAt;
+                    const parsed = Date.parse(store.fetchedAt);
+                    if (Number.isFinite(parsed)) {
+                        item.ageMs = Math.max(0, now() - parsed);
+                        item.stale = item.ageMs > cacheMaxAgeMs;
+                    }
+                    fetchedAt = !fetchedAt || store.fetchedAt > fetchedAt ? store.fetchedAt : fetchedAt;
+                }
+                if (store?.since) item.since = store.since;
+                const error = errors.get(place);
+                if (error) item.error = error;
+                const failedAt = errorAt.get(place);
+                if (failedAt) item.errorAt = failedAt;
+                places[place] = item;
             }
+            return { provider: provider.id, cacheMaxAgeMs, places, ...(fetchedAt ? { fetchedAt } : {}) };
         },
     };
 }

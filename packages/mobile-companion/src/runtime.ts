@@ -1,0 +1,211 @@
+import { randomBytes } from 'node:crypto';
+import { CompanionGateway } from './gateway.ts';
+import { validateAction, validateActionResult, validateEnvelope, validateMessage, type ActionResult, type CompanionEnvelope, type CompanionError, type CompanionMessage, type PhoneActionRequest } from './protocol.ts';
+
+export const MAX_QUEUED_PER_CLIENT = 32;
+export const MAX_DOWNLINK_ACTIONS = 16;
+export const DOWNLINK_ACTION_TTL_MS = 5 * 60_000;
+
+export type CompanionDownlinkListener = (clientId: string, envelope: CompanionEnvelope<PhoneActionRequest>) => void;
+
+export interface CompanionRuntimeHandlers {
+    onMessage: (message: CompanionMessage, clientId: string) => Promise<CompanionMessage>;
+    onAction: (request: PhoneActionRequest, clientId: string, requestId: string) => Promise<ActionResult>;
+    onActionResult?: (result: ActionResult, clientId: string) => Promise<void>;
+    /** 配对撤销时清理宿主侧按设备保存的短期上下文。 */
+    onReset?: (clientId?: string) => void;
+}
+
+export type CompanionRuntimeResult =
+    | { accepted: false; error: string }
+    | { accepted: true; response?: CompanionEnvelope };
+
+export interface CompanionRuntimeStatus {
+    pairedClientId?: string;
+    connected: boolean;
+    queued: number;
+    maxQueuedPerClient: number;
+}
+
+/**
+ * 协议业务层：不监听端口、不执行动作，只把已通过网关的 envelope 分派给宿主。
+ * 因此 QQ、WebSocket、HTTPS 和 Android UI 可以共享相同的消息/动作语义。
+ */
+export class CompanionRuntime {
+    private readonly gateway: CompanionGateway;
+    private readonly handlers: CompanionRuntimeHandlers;
+    private readonly now: () => number;
+    private readonly queues = new Map<string, Promise<void>>();
+    private readonly queueDepth = new Map<string, number>();
+    private readonly downlinks = new Map<string, CompanionEnvelope<PhoneActionRequest>[]>();
+    private readonly pendingDownlinkResults = new Map<string, Map<string, number>>();
+    private readonly downlinkListeners = new Set<CompanionDownlinkListener>();
+    private queueGeneration = 0;
+
+    constructor(gateway: CompanionGateway, handlers: CompanionRuntimeHandlers, now: () => number = Date.now) {
+        this.gateway = gateway;
+        this.handlers = handlers;
+        this.now = now;
+    }
+
+    status(): CompanionRuntimeStatus {
+        return {
+            ...(this.gateway.pairedClientId ? { pairedClientId: this.gateway.pairedClientId } : {}),
+            connected: this.gateway.connected,
+            queued: [...this.queueDepth.values()].reduce((sum, value) => sum + value, 0),
+            maxQueuedPerClient: MAX_QUEUED_PER_CLIENT,
+        };
+    }
+
+    createSession(): string {
+        return `session-${randomBytes(18).toString('hex')}`;
+    }
+
+    releaseSession(sessionId: string): boolean {
+        return this.gateway.releaseSession(sessionId);
+    }
+
+    /** 撤销配对时同时清空所有尚未下发的手机动作，避免旧动作跨会话残留。 */
+    reset(): void {
+        this.gateway.reset();
+        this.downlinks.clear();
+        this.pendingDownlinkResults.clear();
+        // 撤销配对是一个硬边界：不再让旧设备的排队深度继续出现在状态页。
+        // 已经进入宿主的旧请求仍会自然结束，但不会阻塞新配对后的队列。
+        this.queueGeneration++;
+        this.queues.clear();
+        this.queueDepth.clear();
+        this.handlers.onReset?.();
+    }
+
+    clientForSession(sessionId: string): string | undefined {
+        return this.gateway.clientForSession(sessionId);
+    }
+
+    /**
+     * 由宿主显式调用，向已配对手机下发一个受协议校验的白名单动作。
+     * 这里只排队和发送 envelope，不执行任何系统权限；手机端仍需按 decision 决定是否确认。
+     */
+    requestPhoneAction(clientId: string, request: PhoneActionRequest, requestId = `push-${randomBytes(8).toString('hex')}`): CompanionEnvelope<PhoneActionRequest> {
+        if (this.gateway.pairedClientId !== clientId) throw new Error('设备尚未配对');
+        const body = validateAction(request);
+        if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{5,127}$/.test(requestId)) throw new Error('动作 requestId 不合法');
+        const queue = this.downlinks.get(clientId) ?? [];
+        if (queue.length >= MAX_DOWNLINK_ACTIONS) throw new Error('手机动作待发送队列已满');
+        const pending = this.pendingDownlinkResults.get(clientId) ?? new Map<string, number>();
+        if (pending.has(requestId)) throw new Error('动作 requestId 已存在');
+        const envelope: CompanionEnvelope<PhoneActionRequest> = {
+            v: 1,
+            requestId,
+            kind: 'action.request',
+            sentAt: new Date(this.now()).toISOString(),
+            nonce: `push-${randomBytes(12).toString('hex')}`,
+            body,
+        };
+        queue.push(envelope);
+        this.downlinks.set(clientId, queue);
+        pending.set(requestId, this.now());
+        this.pendingDownlinkResults.set(clientId, pending);
+        // 监听器只是实时推送优化；某个传输已经断开或宿主观察器抛错时，
+        // 不能让动作创建对外失败，否则调用方可能重试并产生重复动作。
+        for (const listener of this.downlinkListeners) {
+            try { listener(clientId, envelope); } catch { /* 轮询仍可取出同一个下行动作 */ }
+        }
+        return envelope;
+    }
+
+    subscribeDownlinks(listener: CompanionDownlinkListener): () => void {
+        this.downlinkListeners.add(listener);
+        return () => this.downlinkListeners.delete(listener);
+    }
+
+    takeDownlinks(clientId: string, limit = MAX_DOWNLINK_ACTIONS): CompanionEnvelope<PhoneActionRequest>[] {
+        if (!Number.isInteger(limit) || limit < 1 || limit > MAX_DOWNLINK_ACTIONS) throw new Error('手机动作取出数量不合法');
+        const queue = this.downlinks.get(clientId) ?? [];
+        const cutoff = this.now() - DOWNLINK_ACTION_TTL_MS;
+        const pending = this.pendingDownlinkResults.get(clientId);
+        for (const envelope of queue) if (Date.parse(envelope.sentAt) < cutoff) pending?.delete(envelope.requestId);
+        if (pending) for (const [requestId, issuedAt] of pending) if (this.now() - issuedAt >= DOWNLINK_ACTION_TTL_MS) pending.delete(requestId);
+        if (pending && pending.size === 0) this.pendingDownlinkResults.delete(clientId);
+        const fresh = queue.filter(envelope => Date.parse(envelope.sentAt) >= cutoff);
+        const result = fresh.splice(0, limit);
+        if (fresh.length) this.downlinks.set(clientId, fresh);
+        else this.downlinks.delete(clientId);
+        return result;
+    }
+
+    async handle(value: unknown, sessionId = 'default'): Promise<CompanionRuntimeResult> {
+        const accepted = this.gateway.accept(value, sessionId);
+        if (!accepted.ok) return { accepted: false, error: accepted.error };
+        const generation = this.queueGeneration;
+        const depth = this.queueDepth.get(accepted.clientId) ?? 0;
+        if (depth >= MAX_QUEUED_PER_CLIENT) return { accepted: false, error: '设备请求过多，请稍后重试' };
+        this.queueDepth.set(accepted.clientId, depth + 1);
+        const previous = this.queues.get(accepted.clientId) ?? Promise.resolve();
+        let release!: () => void;
+        const current = new Promise<void>(resolve => { release = resolve; });
+        this.queues.set(accepted.clientId, current);
+        await previous.catch(() => undefined);
+        try {
+            return await this.dispatch(value, accepted.clientId);
+        } finally {
+            release();
+            // reset() 后旧请求仍可能完成；它不能触碰新配对建立的队列映射。
+            if (generation === this.queueGeneration) {
+                if (this.queues.get(accepted.clientId) === current) this.queues.delete(accepted.clientId);
+                const remaining = (this.queueDepth.get(accepted.clientId) ?? 1) - 1;
+                if (remaining > 0) this.queueDepth.set(accepted.clientId, remaining);
+                else this.queueDepth.delete(accepted.clientId);
+            }
+        }
+    }
+
+    private async dispatch(value: unknown, clientId: string): Promise<CompanionRuntimeResult> {
+        let requestId = 'runtime';
+        try {
+            const envelope = validateEnvelope(value, this.now());
+            requestId = envelope.requestId;
+            if (!['hello', 'message.send', 'action.request', 'action.result'].includes(envelope.kind)) throw new Error('客户端不能发送此类响应包');
+            if (envelope.kind === 'message.send') {
+                const responseBody = await this.handlers.onMessage(validateMessage(envelope.body), clientId);
+                return { accepted: true, response: responseEnvelope('message.receive', responseBody, envelope.requestId, this.now()) };
+            }
+            if (envelope.kind === 'action.request') {
+                const result = await this.handlers.onAction(validateAction(envelope.body), clientId, envelope.requestId);
+                return { accepted: true, response: responseEnvelope('action.result', result, envelope.requestId, this.now()) };
+            }
+            if (envelope.kind === 'action.result') {
+                if (!this.handlers.onActionResult) throw new Error('宿主未接入手机动作回执');
+                const result = validateActionResult(envelope.body);
+                const pending = this.pendingDownlinkResults.get(clientId);
+                const issuedAt = pending?.get(result.requestId);
+                if (issuedAt === undefined || this.now() - issuedAt >= DOWNLINK_ACTION_TTL_MS) throw new Error('动作回执没有对应的宿主下发请求');
+                pending!.delete(result.requestId);
+                if (pending!.size === 0) this.pendingDownlinkResults.delete(clientId);
+                await this.handlers.onActionResult(result, clientId);
+                return { accepted: true };
+            }
+            return { accepted: true };
+        } catch (error) {
+            return { accepted: true, response: responseEnvelope('error', { code: 'runtime_error', message: safeError(error) }, requestId, this.now()) };
+        }
+    }
+}
+
+function responseEnvelope<T extends CompanionEnvelope['body']>(kind: CompanionEnvelope['kind'], body: T, requestId: string, now: number): CompanionEnvelope<T> {
+    return {
+        v: 1,
+        requestId: `resp-${requestId}`.slice(0, 128),
+        kind,
+        sentAt: new Date(now).toISOString(),
+        nonce: `resp-${randomBytes(12).toString('hex')}`,
+        body,
+    };
+}
+
+function safeError(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error);
+    return message.replace(/\s+/g, ' ').slice(0, 500) || '处理失败';
+}
+
+export type CompanionRuntimeError = CompanionError;
