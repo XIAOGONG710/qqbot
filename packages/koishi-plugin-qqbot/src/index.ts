@@ -244,6 +244,7 @@ export interface Config {
     qqDangerous: boolean;
     feedbackCommands: boolean;
     realWeather: boolean;
+    realAirQuality?: boolean;
     festivals: FestivalMode;
     typingStatus: boolean;
     selfRecall: boolean;
@@ -537,6 +538,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**反馈通道**（ADR 0073）：男朋友档收到只有「假」或「像」一个字的消息（可带前面的 / 、后面的标点或一个小黄脸、QQ 的回复引用）时，记下她那一轮话是「假」还是「像」，不当聊天、她不回应。记录在数据目录的 feedback/ 里，不进日志正文。默认关'),
         realWeather: Schema.boolean().default(DEFAULTS.realWeather)
             .description('**真实天气**（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成'),
+        realAirQuality: Schema.boolean().default(DEFAULTS.realAirQuality)
+            .description('**真实空气质量**（ADR 0227）：只取济南 / 青岛当前已观测的 AQI、PM2.5、PM10；失败或过期不写进她的世界。默认关'),
         festivals: Schema.union(FESTIVAL_MODES.map(mode => Schema.const(mode).description(FESTIVAL_LABELS[mode]))).default(DEFAULTS.festivals)
             .description('**公共节日**（ADR 0076）：她知道今天是平安夜、除夕、情人节……（时间块提前几天提醒）；选「主动说」时再在新年零点、除夕、平安夜、情人节、元宵、520、七夕、端午、中秋由「重要的日子」时机带一句。默认关'),
         typingStatus: Schema.boolean().default(DEFAULTS.typingStatus)
@@ -815,6 +818,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.qqFriendGate !== undefined ? { qqFriendGate: config.qqFriendGate } : {}),
         ...(config.feedbackCommands !== undefined ? { feedbackCommands: config.feedbackCommands } : {}),
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
+        ...(config.realAirQuality !== undefined ? { realAirQuality: config.realAirQuality } : {}),
         ...(config.festivals !== undefined ? { festivals: config.festivals } : {}),
         ...(config.typingStatus !== undefined ? { typingStatus: config.typingStatus } : {}),
         ...(config.selfRecall !== undefined ? { selfRecall: config.selfRecall } : {}),

@@ -106,6 +106,7 @@ import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/d
 import { armIntimate, INTIMATE_REPLIES, takeIntimateLine } from '.././language/intimacy.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from '.././life/schedule.ts';
 import { useRealWeather, weatherFetcher, type WeatherFetcherStatus } from '.././world/weather.ts';
+import { airQualityFetcher, useRealAirQuality, type AirQualityFetcherStatus } from '.././world/air-quality.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
 import { idiomStore, IDIOMS_CHECK_MS, refreshIdioms } from '.././language/idioms.ts';
 import { jokeStore, JOKES_CHECK_MS, refreshJokes } from '.././language/jokes.ts';
@@ -150,6 +151,8 @@ const LIFE_TICK_MS = 10 * 60_000;
 export const MEMORY_SYNC_MS = 5 * 60_000;
 /** 真实天气多久取一次（ADR 0048） */
 export const WEATHER_REFRESH_MS = 30 * 60_000;
+/** 真实空气质量多久取一次（ADR 0227） */
+export const AIR_QUALITY_REFRESH_MS = 30 * 60_000;
 
 /** 入口提供的收发 */
 export interface Transport extends PresenceTransport {
@@ -250,6 +253,8 @@ export interface AppStatus {
     mobileCompanion?: { enabled: boolean; pairedClientId?: string; connected: boolean; queued: number; maxQueuedPerClient: number };
     /** 真实天气缓存的新鲜度和覆盖范围，不含坐标和请求内容。 */
     weather?: WeatherFetcherStatus;
+    /** 真实空气质量缓存的新鲜度和覆盖范围，不含坐标和请求内容。 */
+    airQuality?: AirQualityFetcherStatus;
     /** 外部内容平台接入模式。 */
     externalPlatforms: { tieba: ExternalPlatformMode; douyin: ExternalPlatformMode; xiaohongshu: ExternalPlatformMode };
     /** 外部平台统一草稿箱的计数摘要。 */
@@ -417,6 +422,12 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const weatherTimer = weather ? setInterval(() => void weather.refresh(), WEATHER_REFRESH_MS) : undefined;
     weatherTimer?.unref();
     if (worldCard) log(`真实天气：${weather ? `开（济南 / 青岛逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；取不到照旧按日期生成）` : '关（配置 realWeather: false），按日期生成'}`);
+    const airQuality = config.realAirQuality === true && worldCard ? airQualityFetcher({ dir: join(config.dataDir, 'air-quality'), log, now: worldNow }) : undefined;
+    useRealAirQuality(airQuality);
+    if (airQuality) void airQuality.refresh();
+    const airQualityTimer = airQuality ? setInterval(() => void airQuality.refresh(), AIR_QUALITY_REFRESH_MS) : undefined;
+    airQualityTimer?.unref();
+    if (worldCard) log(`真实空气质量：${airQuality ? `开（济南 / 青岛当前观测，每 ${AIR_QUALITY_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : '关（配置 realAirQuality: false）'}`);
     // 没人聊天时她一件件过日子（ADR 0040，影子模式）：读世界之前先排到现在、结算到期的；从这次启动排起，以前排过的从事件账接着排
     const lifeQueue = config.autonomousLife && ledgerWorld ? actionQueue(join(config.dataDir, 'world', 'action-queue.json'), log) : undefined;
     const lifeStartedAt = new Date(worldNow());
@@ -3189,6 +3200,7 @@ ${body}
             if (lifeTimer) clearInterval(lifeTimer);
             if (dreamTimer) clearInterval(dreamTimer);
             if (weatherTimer) clearInterval(weatherTimer);
+            if (airQualityTimer) clearInterval(airQualityTimer);
             if (dshInboxTimer) clearInterval(dshInboxTimer);
             if (dshStateTimer) clearInterval(dshStateTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
@@ -3214,6 +3226,7 @@ ${body}
             if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);
+            useRealAirQuality(undefined);
             stopLockHeartbeat();
             releaseLock();
         },
@@ -3284,6 +3297,7 @@ ${body}
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
                 ...(mobileCompanion ? { mobileCompanion: { enabled: true, ...mobileCompanion.runtime.status() } } : { mobileCompanion: { enabled: false, connected: false, queued: 0, maxQueuedPerClient: MAX_QUEUED_PER_CLIENT } }),
                 ...(weather ? { weather: weather.status() } : {}),
+                ...(airQuality ? { airQuality: airQuality.status() } : {}),
                 externalPlatforms: config.externalPlatforms ?? DEFAULTS.externalPlatforms,
                 externalDrafts: externalDraftStore.summary(),
                 ...(currentHumanValues ? { humanValues: currentHumanValues } : {}),

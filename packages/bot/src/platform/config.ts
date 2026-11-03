@@ -58,6 +58,7 @@ export const DEFAULTS = {
     pokeOut: false,
     feedbackCommands: false,
     realWeather: true,
+    realAirQuality: false,
     festivals: 'off' as FestivalMode,
     readReceipts: false,
     bilibili: 'off' as PresenceMode,
@@ -643,6 +644,8 @@ export interface AppConfig {
     openQuestions?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
+    /** 真实空气质量（ADR 0227）：只取当前已观测小时，失败或过期不写进世界；默认关。 */
+    realAirQuality?: boolean;
     /**
      * 听语音、看图上的字（ADR 0052）：他发的语音用 QQ 自带的语音转文字、照片和截图用 NapCat 的 OCR 取上面的字，写进聊天记录；
      * 转不出来、超时照旧「[语音]」「[图片]」。默认是
@@ -876,6 +879,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         pokeOut: bool(file, 'pokeOut', '', DEFAULTS.pokeOut),
         feedbackCommands: bool(file, 'feedbackCommands', '', DEFAULTS.feedbackCommands),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
+        realAirQuality: bool(file, 'realAirQuality', '', DEFAULTS.realAirQuality),
         festivals: festivalMode(file.festivals),
         readReceipts: bool(file, 'readReceipts', '', DEFAULTS.readReceipts),
         bilibili: oneOf(file.bilibili, 'bilibili', PRESENCE_MODES, DEFAULTS.bilibili),
