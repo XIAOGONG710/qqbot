@@ -28,7 +28,7 @@ export function featureLabel(item) {
     const mode = modeName && modeName !== '开' ? `（${modeName}）` : '';
     return `${item.label}${mode}`;
 }
-export const featureTitle = item => item.on ? '已启用' : '未启用';
+export const featureTitle = item => `${item.on ? '已启用' : '未启用'}${item.hint ? `；${item.hint}` : ''}`;
 
 /** 开了几个、一共几个（顶上的一行） */
 export function featureTotals(features) {
