@@ -1,13 +1,27 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { fileOps } from '../src/memory/json-file.ts';
-import { createExternalDraftStore } from '../src/social/external-drafts.ts';
+import { createExternalDraftStore, MAX_EXTERNAL_DRAFTS, type ExternalDraft, type ExternalDraftStatus } from '../src/social/external-drafts.ts';
 
 const roots: string[] = [];
 const originalRename = fileOps.renameSync;
+const seeded = (index: number, status: ExternalDraftStatus): ExternalDraft => {
+    const at = new Date(Date.parse('2026-11-01T00:00:00.000Z') + index * 1000).toISOString();
+    const audit = status === 'pending' ? [{ at, status }]
+        : status === 'rejected' ? [{ at, status: 'pending' as const }, { at, status }]
+            : [{ at, status: 'pending' as const }, { at, status: 'approved' as const }, ...(status === 'approved' ? [] : [{ at, status }])];
+    return {
+        id: `seed-${String(index).padStart(4, '0')}`, platform: 'tieba', title: `标题${index}`, body: `正文${index}`,
+        media: [], createdAt: at, updatedAt: at, status, source: 'manual', audit,
+    };
+};
+const seedStore = (root: string, statuses: ExternalDraftStatus[]) => {
+    writeFileSync(join(root, 'drafts.json'), JSON.stringify({ version: 1, drafts: statuses.map((status, index) => seeded(index, status)) }));
+    return createExternalDraftStore({ dir: root });
+};
 afterEach(() => {
     fileOps.renameSync = originalRename;
     for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -66,5 +80,24 @@ describe('外部平台草稿队列（ADR 0224）', () => {
         for (const media of ['media:../../secret', 'media:/absolute/path', 'media:photos/../secret', 'media:.hidden/file']) {
             assert.throws(() => store.create({ platform: 'douyin', title: '标题', body: '正文', media: [media] }), /素材只允许/);
         }
+    });
+
+    test('队列满时只回收最老的已结束记录，不删除待确认草稿', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
+        const statuses = Array.from({ length: MAX_EXTERNAL_DRAFTS }, (_, index): ExternalDraftStatus => index === 0 ? 'pending' : 'published');
+        const store = seedStore(root, statuses);
+        store.create({ platform: 'douyin', title: '新草稿', body: '等待确认' });
+        assert.equal(store.summary().total, MAX_EXTERNAL_DRAFTS);
+        assert.ok(store.list({ status: 'pending', limit: 100 }).some(item => item.id === 'seed-0000'), '最老的待确认草稿必须保留');
+        const saved = JSON.parse(readFileSync(join(root, 'drafts.json'), 'utf8')) as { drafts: ExternalDraft[] };
+        assert.equal(saved.drafts.some(item => item.id === 'seed-0001'), false, '回收最老的已发布记录');
+    });
+
+    test('队列全是仍需处理的草稿时拒绝新增，不静默丢审计', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
+        const store = seedStore(root, Array.from({ length: MAX_EXTERNAL_DRAFTS }, () => 'pending'));
+        assert.throws(() => store.create({ platform: 'xiaohongshu', title: '超出的草稿', body: '不能覆盖旧草稿' }), /队列已满/);
+        assert.equal(store.summary().total, MAX_EXTERNAL_DRAFTS);
+        assert.equal(store.summary().pending, MAX_EXTERNAL_DRAFTS);
     });
 });

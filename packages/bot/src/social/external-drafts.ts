@@ -36,7 +36,7 @@ export interface ExternalDraftStore {
 interface DraftFile { version: 1; drafts: ExternalDraft[] }
 const PLATFORMS: readonly ExternalPlatform[] = ['tieba', 'douyin', 'xiaohongshu'];
 const STATUSES: readonly ExternalDraftStatus[] = ['pending', 'approved', 'rejected', 'published', 'failed'];
-const MAX_DRAFTS = 500;
+export const MAX_EXTERNAL_DRAFTS = 500;
 const MAX_TITLE = 120;
 const MAX_BODY = 10_000;
 const MAX_MEDIA = 8;
@@ -78,7 +78,7 @@ function validDraft(value: unknown): value is ExternalDraft {
 function validFile(value: unknown): value is DraftFile {
     if (!value || typeof value !== 'object') return false;
     const file = value as Partial<DraftFile>;
-    return file.version === 1 && Array.isArray(file.drafts) && file.drafts.length <= MAX_DRAFTS && file.drafts.every(validDraft);
+    return file.version === 1 && Array.isArray(file.drafts) && file.drafts.length <= MAX_EXTERNAL_DRAFTS && file.drafts.every(validDraft);
 }
 function text(value: string, max: number, label: string): string {
     const result = value.trim();
@@ -111,7 +111,15 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
             if (media.length > MAX_MEDIA || media.some(item => !isSafeMediaRef(item))) throw new Error('外部平台草稿素材只允许 https 链接或 media: 引用');
             const at = (input.at ?? new Date()).toISOString();
             const draft: ExternalDraft = { id: `${Date.now().toString(36)}-${randomBytes(6).toString('hex')}`, platform: input.platform, title, body, media, createdAt: at, updatedAt: at, status: 'pending', source: input.source ?? 'manual', audit: [{ at, status: 'pending' }] };
-            save({ version: 1, drafts: [...file.drafts, draft].slice(-MAX_DRAFTS) });
+            let retained = file.drafts;
+            if (retained.length >= MAX_EXTERNAL_DRAFTS) {
+                // 待确认、已批准和失败待重试都仍需人工处理，不能为了新草稿静默删掉。
+                // 只回收最老的已发布 / 已拒绝记录；没有可回收项时明确施加背压。
+                const recyclable = retained.findIndex(item => item.status === 'published' || item.status === 'rejected');
+                if (recyclable < 0) throw new Error('外部平台草稿队列已满，请先处理现有草稿');
+                retained = retained.filter((_, index) => index !== recyclable);
+            }
+            save({ version: 1, drafts: [...retained, draft] });
             return draft;
         },
         list(filter = {}) {
