@@ -23,4 +23,13 @@ describe('世界里的需要投影（ADR 0229）', () => {
         assert.equal(now.needs, undefined);
         assert.doesNotMatch(summarizeWorld(now), /需要 精力/);
     });
+
+    test('假期作为世界事实进入快照，不只靠 atSchool 反推', () => {
+        const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+        const now = worldAt(card.herWorld!, card.schedule!, at('2026-10-05T14:00'))!;
+        assert.equal(now.holiday?.name, '国庆节');
+        assert.equal(now.holiday?.start, '2026-10-01');
+        assert.equal(typeof now.atSchool, 'boolean', '是否回家是地点事实，不能代替假期名称');
+        assert.match(summarizeWorld(now), /放假 国庆节/);
+    });
 });

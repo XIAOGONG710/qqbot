@@ -46,7 +46,7 @@ export const MODULES: readonly ModuleDef[] = [
         files: ['world/world.ts', 'world/weather.ts', 'world/air-quality.ts', 'world/daylight.ts', 'world/threads.ts', 'world/festivals.ts', 'world/npc.ts', 'world/npc-asks.ts', 'world/obstacles.ts', 'world/life-events.ts', 'world/life-selector.ts', 'world/action-queue.ts'],
         groups: ['她的日子'],
         metrics: '周报「她的日子」里的世界事件；consistency-cli（说的和世界账对不对）',
-        adrs: ['0007', '0026', '0045', '0106', '0216', '0217', '0227', '0228', '0229'],
+        adrs: ['0007', '0026', '0045', '0106', '0216', '0217', '0227', '0228', '0229', '0230'],
     },
     {
         id: 'vision', name: '看（视觉）',
