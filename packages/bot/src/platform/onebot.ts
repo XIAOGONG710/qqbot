@@ -89,23 +89,30 @@ export class OneBotClient {
     #pending = new Map<string, { resolve: (data: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
     #nextEcho = 1;
     #retryDelay = 1000;
-    #stopped = false;
+    #retryTimer: NodeJS.Timeout | null = null;
+    #stopped = true;
 
     constructor(options: OneBotOptions) {
         this.#options = options;
     }
 
     start(): void {
+        if (!this.#stopped) return;
         this.#stopped = false;
         this.#connect();
     }
 
     stop(): void {
         this.#stopped = true;
+        if (this.#retryTimer) {
+            clearTimeout(this.#retryTimer);
+            this.#retryTimer = null;
+        }
         this.#ws?.close();
     }
 
     #connect(): void {
+        if (this.#stopped || this.#ws) return;
         const { url, token, log } = this.#options;
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         const ws = new WebSocket(url, { headers });
@@ -126,7 +133,10 @@ export class OneBotClient {
             }
             if (this.#stopped) return;
             log(`OneBot 连接断开（code ${event.code}），${this.#retryDelay / 1000} 秒后重连`);
-            setTimeout(() => this.#connect(), this.#retryDelay);
+            this.#retryTimer = setTimeout(() => {
+                this.#retryTimer = null;
+                this.#connect();
+            }, this.#retryDelay);
             this.#retryDelay = Math.min(this.#retryDelay * 2, 30_000);
         });
     }
