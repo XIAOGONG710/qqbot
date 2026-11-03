@@ -56,6 +56,7 @@
 | `lifeInPrompt` | 生活账进提示词 | [ADR 0045](../adr/0045-continuous-needs.md) |
 | `realWeather` | 真实天气 | [ADR 0048](../adr/0048-real-weather.md) |
 | `realAirQuality` | 真实空气质量 | [ADR 0227](../adr/0227-real-air-quality.md) |
+| `realDaylight` | 真实日照 | [ADR 0228](../adr/0228-real-daylight.md) |
 | `everydayLife` | 日常小事 / 小测 | [ADR 0106](../adr/0106-everyday-life.md) |
 | `worldDrama` | 日子里的小起伏（一天之内的难过 / 烦 / 高兴） | [ADR 0211](../adr/0211-world-drama.md) |
 | `worldThreads` | 她那边的事有后续（拌嘴第二天和好、淋雨第二天嗓子发紧……一天最多一条；闹心的事有冷却期；要日常小事和小起伏） | [ADR 0216](../adr/0216-world-threads.md) |

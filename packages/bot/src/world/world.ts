@@ -13,6 +13,7 @@ import { dishNote, dishOn, type Menu } from '../life/menu.ts';
 import type { Episode } from '.././memory/episodes.ts';
 import { classesOn, formatDate, herDay, wakeOn, type ClassToday, type Schedule } from '../life/schedule.ts';
 import { realAirQuality, type DayAirQuality } from './air-quality.ts';
+import { realDaylight, type Daylight } from './daylight.ts';
 import { realWeather, type DayWeather } from './weather.ts';
 import { bodyAt, parseBody, unwell, type Body, type BodyNow } from '../life/body.ts';
 import { DEFAULT_NEWS_KINDS, type NewsKind } from '../proactive/proactive.ts';
@@ -162,6 +163,8 @@ export interface WorldNow {
     weather?: DayWeather;
     /** 当前已观测的空气质量；预报没有现成事实时不写。 */
     airQuality?: DayAirQuality;
+    /** 真实日出 / 日落和当前光线阶段；取不到时不写。 */
+    daylight?: Daylight;
     cat?: {
         name: string;
         /** 今天：喂了（几点、见没见到）/ 还没去（几点以后）/ 不去（为什么） */
@@ -784,6 +787,8 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     if (record.weather) result.weather = record.weather;
     const airQuality = realAirQuality()?.day(place, date, now);
     if (airQuality) result.airQuality = airQuality;
+    const daylight = realDaylight()?.day(place, date, now);
+    if (daylight) result.daylight = daylight;
     if (world.cat && record.cat) {
         const c = record.cat;
         const today = c.fed && c.fed <= now ? { fed: c.fed, ...(c.seen !== undefined ? { seen: c.seen } : {}) }
@@ -865,6 +870,7 @@ export function describeWorld(now: WorldNow, at: Date, giver?: (qq: number) => s
     const ahead = (d: Date) => Math.round((startOfDay(d).getTime() - herToday.getTime()) / DAY_MS);
     if (now.weather) parts.push(describeWeather(now.weather));
     if (now.airQuality) parts.push(`空气：AQI ${now.airQuality.aqi}（${now.airQuality.category}），PM2.5 ${now.airQuality.pm25}，PM10 ${now.airQuality.pm10}`);
+    if (now.daylight) parts.push(`日照：${now.daylight.phase}（${now.daylight.sunrise} 日出，${now.daylight.sunset} 日落）`);
     if (now.cat) {
         const { today } = now.cat;
         // 昨天的也写上（第一批：今天喂过时不写昨天，他问「昨天喂了吗」她编了个「昨天没去」）
@@ -1161,6 +1167,7 @@ export function summarizeWorld(now: WorldNow): string {
     const bits = [
         now.weather ? `${now.weather.rain ? '下雨' : '没下雨'} ${now.weather.low}–${now.weather.high}℃` : undefined,
         now.airQuality ? `空气 AQI ${now.airQuality.aqi}（${now.airQuality.category}）` : undefined,
+        now.daylight ? `日照 ${now.daylight.phase}` : undefined,
         now.atSchool ? undefined : '不在学校',
         now.cat ? `${now.cat.name} 猫粮够 ${now.cat.foodDays} 天` : undefined,
         now.parcels.length ? `快递 ${now.parcels.length} 件` : undefined,
