@@ -2734,7 +2734,9 @@ ${body}
         try {
             const events = sharedWorld?.events?.() ?? [];
             const needs = needsAt(needsAnchor, events, at);
-            const values = humanValuesAt({ at, needs, history: [], tier: deviceOwner?.tier ?? 'boyfriend', events });
+            // 只在本地用最近一小段 QQ 记录计算关系数值；传给 DSH 的仍然只有数值和事件类型，不外发原文。
+            const recentHistory = deviceOwner ? history.load(deviceOwner.qq).slice(-24) : [];
+            const values = humanValuesAt({ at, needs, history: recentHistory, tier: deviceOwner?.tier ?? 'boyfriend', events });
             return {
                 at: at.toISOString(),
                 tier: deviceOwner?.tier ?? 'boyfriend',
@@ -3186,7 +3188,8 @@ ${body}
                 try {
                     const events = sharedWorld?.events?.() ?? [];
                     const needs = needsAt(needsAnchor, events, now);
-                    return humanValuesAt({ at: now, needs, history: [], tier: deviceOwner?.tier ?? 'boyfriend', events });
+                    const recentHistory = deviceOwner ? history.load(deviceOwner.qq).slice(-24) : [];
+                    return humanValuesAt({ at: now, needs, history: recentHistory, tier: deviceOwner?.tier ?? 'boyfriend', events });
                 } catch (error) {
                     log(`状态页：真人式状态投影失败（${error instanceof Error ? error.message : String(error)}）`);
                     return undefined;
