@@ -210,6 +210,8 @@ export interface WeatherPlaceStatus {
     hours: number;
     since?: string;
     error?: string;
+    /** 最近一次取数失败的时间；用于区分“旧缓存”和“刚刚失败”。 */
+    errorAt?: string;
 }
 
 export interface WeatherFetcherStatus {
@@ -271,6 +273,7 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
     const path = (place: Place) => join(options.dir, `${place}.json`);
     const stores = new Map<Place, Store | undefined>();
     const errors = new Map<Place, string>();
+    const errorAt = new Map<Place, string>();
     let inFlight: Promise<void> | undefined;
     const load = (place: Place): Store | undefined => {
         if (!stores.has(place)) {
@@ -298,9 +301,11 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
                         writeJsonAtomic(path(place), store);
                         stores.set(place, store);
                         errors.delete(place);
+                        errorAt.delete(place);
                     } catch (error) {
                         const reason = error instanceof Error ? error.message : String(error);
                         errors.set(place, reason);
+                        errorAt.set(place, new Date(now()).toISOString());
                         options.log(`真实天气：${PLACES[place].name}没取到，照旧用存着的（${reason}）`);
                     }
                 }
@@ -325,6 +330,8 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
                 if (store?.since) item.since = store.since;
                 const error = errors.get(place);
                 if (error) item.error = error;
+                const failedAt = errorAt.get(place);
+                if (failedAt) item.errorAt = failedAt;
                 places[place] = item;
             }
             return { provider: provider.id, cacheMaxAgeMs, places, ...(fetchedAt ? { fetchedAt } : {}) };

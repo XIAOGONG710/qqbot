@@ -60,9 +60,10 @@ function weatherLine(weather) {
     const errors = places.filter(place => place.error).length;
     const stale = places.filter(place => place.stale).length;
     const hours = places.reduce((sum, place) => sum + (place.hours ?? 0), 0);
+    const lastErrorAt = places.map(place => place.errorAt).filter(Boolean).sort().at(-1);
     return [
         tag(errors ? `${errors} 个地点失败` : stale ? `${stale} 个地点陈旧` : '正常', errors || stale ? 'warning' : 'success'),
-        h('span', { class: 'qqbot-muted' }, ` 已缓存 ${hours} 小时${weather.fetchedAt ? ` · 最近更新 ${clock(weather.fetchedAt)}` : ''}`),
+        h('span', { class: 'qqbot-muted' }, ` 已缓存 ${hours} 小时${weather.fetchedAt ? ` · 最近更新 ${clock(weather.fetchedAt)}` : ''}${lastErrorAt ? ` · 最近失败 ${clock(lastErrorAt)}` : ''}`),
     ];
 }
 
