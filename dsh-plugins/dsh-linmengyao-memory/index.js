@@ -763,7 +763,7 @@ ${now}` : ''
       if (tools) {
         disposers.push(tools.register({
           name: 'memory_save',
-          description: '把值得记住的事写进林梦瑶的记忆（工作房）。只在有长期价值时用。',
+          description: '把值得记住的事写进林梦瑶的记忆（工作房）。只在有长期价值时用；写入成功会自动记一条不含正文的桌面时间线，不要为同一件事重复调用 timeline_record。',
           parameters: {
             type: 'object',
             properties: { content: { type: 'string', description: '要记住的一句话' } },
@@ -778,6 +778,12 @@ ${now}` : ''
             const content = String(args?.content || '').slice(0, 4000)
             await invalidateSimilar(cfg, content, writeBank(cfg))
             await retain(cfg, content, writeBank(cfg))
+            try {
+              appendInbox(cfg, cfg.timelineInboxFile, {
+                id: `dsh-timeline-memory-${randomUUID()}`,
+                at: new Date().toISOString(), kind: 'memory_save', summary: '记下了一件值得长期记住的事',
+              })
+            } catch (error) { log(cfg, `memory_save timeline error ${error}`) }
             return { saved: true }
           },
         }))
