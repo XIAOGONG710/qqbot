@@ -509,6 +509,28 @@ describe('手机伴侣协议', () => {
         assert.deepEqual(runtime.takeDownlinks('android-downlink'), []);
     });
 
+    test('手机回执必须沿用下发动作的确认策略，不能把需确认动作伪报成自动执行', async () => {
+        const now = 47_000;
+        const pairing = new MemoryPairingStore(60_000);
+        const ticket = pairing.issue('android-receipt-policy', now);
+        const audited: ActionResult[] = [];
+        const runtime = new CompanionRuntime(new CompanionGateway(pairing, () => now), {
+            onMessage: async message => message,
+            onAction: async (_request, _clientId, requestId) => ({ requestId, ok: false, decision: 'deny' }),
+            onActionResult: async result => { audited.push(result); },
+        }, () => now);
+        await runtime.handle(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text'] }, 'req-policy-hello', 'nonce-policy-hello', new Date(now).toISOString()));
+        runtime.requestPhoneAction(ticket.clientId, { action: 'ring', params: { durationMs: 500 }, decision: 'confirm' }, 'push-policy-action');
+
+        const downgraded = await runtime.handle({ v: 1, requestId: 'req-policy-auto', kind: 'action.result', sentAt: new Date(now).toISOString(), nonce: 'nonce-policy-auto', body: { requestId: 'push-policy-action', ok: true, decision: 'auto' } });
+        if (downgraded.accepted) assert.match(String((downgraded.response?.body as { message?: string } | undefined)?.message), /确认级别/);
+        assert.deepEqual(audited, [], '不可信回执不能进入宿主审计');
+
+        const confirmed = await runtime.handle({ v: 1, requestId: 'req-policy-confirm', kind: 'action.result', sentAt: new Date(now).toISOString(), nonce: 'nonce-policy-confirm', body: { requestId: 'push-policy-action', ok: true, decision: 'confirm' } });
+        assert.deepEqual(confirmed, { accepted: true });
+        assert.deepEqual(audited, [{ requestId: 'push-policy-action', ok: true, decision: 'confirm' }]);
+    });
+
     test('宿主审计临时失败时保留动作回执，重试成功后才消费', async () => {
         const now = 45_500;
         const pairing = new MemoryPairingStore(60_000);

@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { CompanionGateway } from './gateway.ts';
 import { validateAction, validateActionResult, validateEnvelope, validateMessage, type ActionResult, type CompanionEnvelope, type CompanionError, type CompanionMessage, type PhoneActionRequest } from './protocol.ts';
+import { actionNeedsConfirmation } from './action-policy.ts';
 
 export const MAX_QUEUED_PER_CLIENT = 32;
 export const MAX_DOWNLINK_ACTIONS = 16;
@@ -27,6 +28,11 @@ export interface CompanionRuntimeStatus {
     maxQueuedPerClient: number;
 }
 
+interface PendingDownlinkResult {
+    issuedAt: number;
+    action: PhoneActionRequest['action'];
+}
+
 /**
  * 协议业务层：不监听端口、不执行动作，只把已通过网关的 envelope 分派给宿主。
  * 因此 QQ、WebSocket、HTTPS 和 Android UI 可以共享相同的消息/动作语义。
@@ -38,7 +44,7 @@ export class CompanionRuntime {
     private readonly queues = new Map<string, Promise<void>>();
     private readonly queueDepth = new Map<string, number>();
     private readonly downlinks = new Map<string, CompanionEnvelope<PhoneActionRequest>[]>();
-    private readonly pendingDownlinkResults = new Map<string, Map<string, number>>();
+    private readonly pendingDownlinkResults = new Map<string, Map<string, PendingDownlinkResult>>();
     private readonly downlinkListeners = new Set<CompanionDownlinkListener>();
     private queueGeneration = 0;
 
@@ -104,7 +110,7 @@ export class CompanionRuntime {
         };
         queue.push(envelope);
         this.downlinks.set(clientId, queue);
-        pending.set(requestId, this.now());
+        pending.set(requestId, { issuedAt: this.now(), action: body.action });
         this.pendingDownlinkResults.set(clientId, pending);
         // 监听器只是实时推送优化；某个传输已经断开或宿主观察器抛错时，
         // 不能让动作创建对外失败，否则调用方可能重试并产生重复动作。
@@ -128,11 +134,11 @@ export class CompanionRuntime {
         return result;
     }
 
-    private pruneDownlinks(clientId: string): { queue: CompanionEnvelope<PhoneActionRequest>[]; pending: Map<string, number> } {
+    private pruneDownlinks(clientId: string): { queue: CompanionEnvelope<PhoneActionRequest>[]; pending: Map<string, PendingDownlinkResult> } {
         const now = this.now();
-        const pending = this.pendingDownlinkResults.get(clientId) ?? new Map<string, number>();
-        for (const [requestId, issuedAt] of pending) {
-            if (now - issuedAt >= DOWNLINK_ACTION_TTL_MS) pending.delete(requestId);
+        const pending = this.pendingDownlinkResults.get(clientId) ?? new Map<string, PendingDownlinkResult>();
+        for (const [requestId, item] of pending) {
+            if (now - item.issuedAt >= DOWNLINK_ACTION_TTL_MS) pending.delete(requestId);
         }
         if (pending.size) this.pendingDownlinkResults.set(clientId, pending);
         else this.pendingDownlinkResults.delete(clientId);
@@ -187,8 +193,11 @@ export class CompanionRuntime {
                 if (!this.handlers.onActionResult) throw new Error('宿主未接入手机动作回执');
                 const result = validateActionResult(envelope.body);
                 const pending = this.pendingDownlinkResults.get(clientId);
-                const issuedAt = pending?.get(result.requestId);
-                if (issuedAt === undefined || this.now() - issuedAt >= DOWNLINK_ACTION_TTL_MS) throw new Error('动作回执没有对应的宿主下发请求');
+                const issued = pending?.get(result.requestId);
+                if (issued === undefined || this.now() - issued.issuedAt >= DOWNLINK_ACTION_TTL_MS) throw new Error('动作回执没有对应的宿主下发请求');
+                if (result.ok && result.decision === 'deny') throw new Error('动作回执不能在拒绝执行时报告成功');
+                const expected = actionNeedsConfirmation(issued.action) ? 'confirm' : 'auto';
+                if (result.decision !== 'deny' && result.decision !== expected) throw new Error('动作回执确认级别与下发策略不一致');
                 await this.handlers.onActionResult(result, clientId);
                 // 宿主通常会在这里写审计记录。只有写入成功后才消费回执；临时失败时保留槽位，允许手机重试。
                 pending!.delete(result.requestId);
