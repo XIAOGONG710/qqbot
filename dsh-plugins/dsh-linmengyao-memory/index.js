@@ -605,7 +605,12 @@ function readStateBlock(cfg, now = Date.now()) {
     }
     const state = data.state && typeof data.state === 'object' ? data.state : null
     if (!state || typeof state.at !== 'string') return ''
-    const lines = [`时间：${state.at}`]
+    const stateAt = Date.parse(state.at)
+    if (!Number.isFinite(stateAt) || stateAt > now + 60 * 1000 || now - stateAt > cfg.stateStaleMs) {
+      log(cfg, '真人式状态：state.at 过期或时间异常，不注入')
+      return ''
+    }
+    const lines = [`时间：${new Date(stateAt).toISOString()}`]
     if (typeof state.tier === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(state.tier)) lines.push(`关系档位：${state.tier}`)
     const numbers = (label, value) => {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return
