@@ -2903,7 +2903,7 @@ ${body}
         voice: dshVoice,
         describeMedia: describeMobileMedia,
         onActionResult: async (result, clientId) => {
-            log(`手机动作回执：设备 ${clientId}，请求 ${result.requestId}，${result.ok ? '成功' : '失败'}，决策 ${result.decision}${result.error ? `（${result.error.replace(/\s+/g, ' ').slice(0, 160)}）` : ''}`);
+            log(`手机动作回执：设备 ${clientId}，请求 ${result.requestId}，${result.ok ? '成功' : '失败'}，决策 ${result.decision}${result.error ? `（${sanitizeDshError(result.error)}）` : ''}`);
         },
     });
 
