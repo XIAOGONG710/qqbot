@@ -51,6 +51,7 @@ function memoryLine(memory) {
     else parts.push(tag('连不上', 'danger'), h('span', { class: 'qqbot-muted' }, ' 请检查记忆服务设置'));
     const event = (label, e) => e && h('span', { class: 'qqbot-muted' }, ` · ${label} ${clock(e.at)} ${e.ok ? `成功${e.items === undefined ? '' : `（${e.items} 条）`}` : '失败，请稍后重试'}`);
     parts.push(event('最近一次写入', memory.lastWrite), event('最近一次召回', memory.lastRecall));
+    if (!memory.lastWrite && !memory.lastRecall) parts.push(h('span', { class: 'qqbot-muted' }, ' · 等待第一次同步'));
     return parts.filter(Boolean);
 }
 
