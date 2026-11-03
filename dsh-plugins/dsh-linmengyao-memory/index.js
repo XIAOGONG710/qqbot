@@ -1,4 +1,4 @@
-// 林梦瑶的 DSH 记忆桥（v0.2，带诊断日志）
+// 林梦瑶的 DSH 记忆桥（v0.3，带状态快照和诊断日志）
 // 每轮从 Hindsight 拉最近记忆，按关键词相关度挑几条注入；提供 memory_save 写回。
 // ponytail: 召回用 /memories/list + 本地二字词重叠，够用；要语义召回再换 recall 接口。
 import fs from 'node:fs'
@@ -36,6 +36,9 @@ const DEFAULTS = {
   nowFile: soulPath('NOW.md'),
   /** NOW.md 超过这么久没重写就当过期，不注入（QQ 没在跑的时候别拿旧状态冒充现在） */
   nowStaleMs: 30 * 60 * 1000,
+  /** QQ 侧真人式数值快照；过期或版本不对时不注入 */
+  stateFile: soulPath('STATE.json'),
+  stateStaleMs: 30 * 60 * 1000,
   storyFile: soulPath('STORY.md'),
   /** QQ 那边每次她翻完日记写的「对自己的认识」（ADR 0194）；超过 insightsStaleMs 没刷新就不用（QQ 没在跑 / 开关关掉了） */
   insightsFile: soulPath('INSIGHTS.json'),
@@ -545,6 +548,38 @@ function readNowLine(cfg) {
   } catch { return '' }
 }
 
+/** QQ 侧唯一计算的真人式状态：这里只读数字和事件类型，坏文件 / 旧文件直接降级。 */
+function readStateBlock(cfg, now = Date.now()) {
+  if (channel() !== 'desktop') return ''
+  try {
+    const data = JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8'))
+    if (!data || data.kind !== 'qq-dsh-state' || data.version !== 1) return ''
+    const generatedAt = Date.parse(String(data.generatedAt || ''))
+    if (!Number.isFinite(generatedAt) || generatedAt > now + 60 * 1000 || now - generatedAt > cfg.stateStaleMs) {
+      log(cfg, '真人式状态：STATE.json 过期或时间异常，不注入')
+      return ''
+    }
+    const state = data.state && typeof data.state === 'object' ? data.state : null
+    if (!state || typeof state.at !== 'string') return ''
+    const lines = [`时间：${state.at}`]
+    if (typeof state.tier === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(state.tier)) lines.push(`关系档位：${state.tier}`)
+    const numbers = (label, value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return
+      const allowed = ['energy', 'hunger', 'stress', 'mood', 'health', 'loneliness', 'motivation', 'boredom', 'socialBattery', 'intimacy', 'trust', 'familiarity', 'attachment', 'friction']
+      const entries = Object.entries(value).filter(([key, item]) => allowed.includes(key) && typeof item === 'number' && Number.isFinite(item) && item >= 0 && item <= 100)
+      if (entries.length) lines.push(`${label}：${entries.map(([key, item]) => `${key}=${Math.round(item)}`).join('，')}`)
+    }
+    numbers('需要值', state.needs)
+    numbers('真人式状态', state.values)
+    numbers('关系状态', state.relationship)
+    if (Array.isArray(state.recentEvents)) {
+      const events = state.recentEvents.filter((item) => typeof item === 'string' && /^[A-Za-z0-9:_-]{1,48}$/.test(item)).slice(-8)
+      if (events.length) lines.push(`最近事件类型：${events.join('、')}`)
+    }
+    return `[QQ 侧实时状态（只读；超过 ${Math.round(cfg.stateStaleMs / 60000)} 分钟不采用）]\n${lines.join('\n')}`
+  } catch { return '' }
+}
+
 async function retain(cfg, content, bank, tags = ['dsh'], context = 'DSH') {
   const body = {
     items: [{
@@ -673,6 +708,11 @@ ${persona}` : ''
             return now ? `[她现在在干嘛]
 ${now}` : ''
           },
+        }))
+        disposers.push(sp.context({
+          name: 'linmengyao-state',
+          order: 75,
+          text: () => readStateBlock(cfg),
         }))
         if (cfg.personaFile && !fs.existsSync(cfg.personaFile)) log(cfg, '人设：没有 PERSONA.md（跑 scripts/build-dsh-persona.mjs 生成）')
         log(cfg, `context registered ${agent.id}`)

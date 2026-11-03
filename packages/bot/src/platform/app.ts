@@ -124,6 +124,7 @@ import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
 import { humanValuesAt, humanValuesFromAnchor, type HumanValues } from '.././human-values.ts';
 import { createDshLink, dshOptionsFromLlm, type DshConversationTurn, type DshState, type DshVoice } from '.././dsh-link.ts';
 import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
+import { writeDshState } from '.././dsh-state-export.ts';
 import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { journalOn, selfThread, selfThreadLine } from '.././language/self-thread.ts';
@@ -2767,6 +2768,26 @@ ${body}
         }
     };
 
+    const dshStateFile = join(soulDir(), 'STATE.json');
+    const exportDshState = (): void => {
+        if (!dshEnabled) return;
+        try {
+            const state = dshState();
+            if (state) writeDshState(dshStateFile, state, Date.now());
+            else rmSync(dshStateFile, { force: true });
+        } catch (error) {
+            log(`DSH：状态快照没写出去（${error instanceof Error ? error.message : String(error)}）`);
+        }
+    };
+    let dshStateTimer: ReturnType<typeof setInterval> | undefined;
+    if (dshEnabled) {
+        exportDshState();
+        dshStateTimer = setInterval(exportDshState, NOW_REFRESH_MS);
+        dshStateTimer.unref();
+    } else {
+        rmSync(dshStateFile, { force: true });
+    }
+
     const dshRecentTurns = () => {
         if (!deviceOwner) return undefined;
         return [...history.load(deviceOwner.qq).slice(-6).map(message => ({ role: message.role, content: message.content })), ...dshConversation].slice(-6);
@@ -3135,6 +3156,7 @@ ${body}
             if (lifeTimer) clearInterval(lifeTimer);
             if (dreamTimer) clearInterval(dreamTimer);
             if (weatherTimer) clearInterval(weatherTimer);
+            if (dshStateTimer) clearInterval(dshStateTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
             if (photoDiscoveryTimer) clearInterval(photoDiscoveryTimer);
             if (memesTimer) clearInterval(memesTimer);
