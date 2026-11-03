@@ -6,6 +6,22 @@ export const GROUP_ORDER = ['说话', '她的日子', '主动找他', '照片和
 const TIER_NAMES = { boyfriend: '男朋友', bestie: '闺蜜', girl_friend: '女生熟人', known: '熟人', classmate: '同学', stranger: '陌生人', unlisted: '名单外好友', group: '群聊' };
 
 const MODE_NAMES = { on: '开', dryRun: '试运行', greet: '问候', send: '会发', collect: '只收藏', true: '开' };
+const RESPONDER_SEARCH_NAMES = {
+    waiting: '等待', settling: '连续消息', generating: '准备回复', sending: '发送回复', retry: '重试', initiating: '主动联系', idle: '空闲',
+};
+
+/** 回复器内部阶段统一翻成页面中文；搜索和表格共用，避免用户看到或输入代码值。 */
+export function responderStatusText(responder = {}) {
+    switch (responder.phase) {
+        case 'waiting': return '等对方停下来';
+        case 'settling': return '对方还在发消息';
+        case 'generating': return '正在准备回复';
+        case 'sending': return '正在发送回复';
+        case 'retry': return '回复遇到问题，稍后再试';
+        case 'initiating': return '正在主动联系';
+        default: return responder.skipped ? '暂时不回复' : '空闲';
+    }
+}
 
 /** features → [{ name, on, total, items }]，每组里开着的排前面，其余照总表顺序 */
 export function featureGroups(features) {
@@ -45,7 +61,8 @@ export function filterContacts(contacts, query = '', activeOnly = false) {
         const haystack = [
             contact.name, contact.qq, contact.tier, contact.now,
             TIER_NAMES[contact.tier],
-            contact.responder?.phase, contact.responder?.reason,
+            responderStatusText(contact.responder),
+            RESPONDER_SEARCH_NAMES[contact.responder?.phase],
         ].filter(value => value !== undefined && value !== null).join(' ').toLocaleLowerCase();
         return haystack.includes(needle);
     });

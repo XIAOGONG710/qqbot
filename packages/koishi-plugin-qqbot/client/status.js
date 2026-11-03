@@ -2,20 +2,7 @@
 import { computed, defineComponent, h, ref } from 'vue';
 import { store } from '@koishijs/client';
 import { c, clock, tag, tierLabel } from './common.js';
-import { dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus } from './dashboard.js';
-
-function phaseText(r) {
-    switch (r.phase) {
-        case 'waiting': return '等对方停下来';
-        case 'settling': return '对方还在发消息';
-        case 'generating': return '正在准备回复';
-        case 'sending': return '正在发送回复';
-        case 'retry': return '回复遇到问题，稍后再试';
-        case 'initiating': return '正在主动联系';
-        // 收尾后的附和、看心情不回：对方再来一条就清掉
-        default: return r.skipped ? '暂时不回复' : '空闲';
-    }
-}
+import { dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from './dashboard.js';
 
 const PROACTIVE_MODES = { off: ['关', 'info'], dryRun: ['试运行（只写日志不发）', 'warning'], on: ['开', 'success'] };
 
@@ -195,7 +182,7 @@ export const StatusTab = defineComponent({
             const table = h(c('el-table'), { data: filteredContacts.value, border: true, stripe: true, size: 'small', emptyText: query.value || activeOnly.value ? '没有符合条件的联系人' : '暂无联系人', style: 'width: 100%; margin-top: 10px' }, () => [
                 h(c('el-table-column'), { label: '称呼', prop: 'name', width: 130 }),
                 h(c('el-table-column'), { label: '关系', width: 100 }, { default: ({ row }) => tierLabel(row.tier) }),
-                h(c('el-table-column'), { label: '当前状态', minWidth: 180 }, { default: ({ row }) => phaseText(row.responder) }),
+                h(c('el-table-column'), { label: '当前状态', minWidth: 180 }, { default: ({ row }) => responderStatusText(row.responder) }),
                 h(c('el-table-column'), { label: '主动联系', minWidth: 180 }, { default: ({ row }) => proactiveText(row.proactive) }),
                 h(c('el-table-column'), { label: '最近联系', width: 120 }, {
                     default: ({ row }) => (row.last ? `${clock(row.last.time)} ${row.last.from === 'user' ? '对方' : '她'}` : '—'),

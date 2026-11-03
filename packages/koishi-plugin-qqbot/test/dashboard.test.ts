@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
-import { dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus } from '../client/dashboard.js';
+import { dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
@@ -48,14 +48,17 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
 
     test('联系人筛选：本地按称呼 / QQ / 档位 / 当前状态过滤，忙碌只排除 idle', () => {
         const contacts = [
-            { name: '小明', qq: 10001, tier: 'classmate', now: '上课', responder: { phase: 'waiting', reason: '等他停下' } },
+            { name: '小明', qq: 10001, tier: 'classmate', now: '上课', responder: { phase: 'waiting', reason: 'internal-secret-code' } },
             { name: '阿瑶', qq: 10002, tier: 'boyfriend', now: '休息', responder: { phase: 'idle' } },
             { name: '旧状态', qq: 10003, tier: 'known', now: '未知' },
         ];
         assert.deepEqual(filterContacts(contacts, '10002').map((row: { name: string }) => row.name), ['阿瑶']);
         assert.deepEqual(filterContacts(contacts, '男朋友').map((row: { name: string }) => row.name), ['阿瑶']);
-        assert.deepEqual(filterContacts(contacts, 'waiting', true).map((row: { name: string }) => row.name), ['小明']);
+        assert.deepEqual(filterContacts(contacts, '等待', true).map((row: { name: string }) => row.name), ['小明']);
+        assert.deepEqual(filterContacts(contacts, 'waiting', true), [], '搜索不要求用户知道内部阶段码');
+        assert.deepEqual(filterContacts(contacts, 'internal-secret-code'), [], '未展示的内部原因不进入搜索索引');
         assert.deepEqual(filterContacts(contacts, '', true).map((row: { name: string }) => row.name), ['小明']);
+        assert.equal(responderStatusText({ phase: 'retry' }), '回复遇到问题，稍后再试');
     });
 
     test('总览计数：联系人、忙碌、重试和 DSH 状态一致', () => {
