@@ -96,4 +96,33 @@ describe('现实交通 / 公共服务事实（ADR 0232）', () => {
             assert.ok(logs.some(message => message.includes('交通缓存') && message.includes('挪到')));
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
+
+    test('明显来自未来的抓取时间或观测时间不会进入世界，并在状态页标为过期', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-transport-future-'));
+        const dir = join(root, 'transport');
+        mkdirSync(dir);
+        const cache = join(dir, 'transport.json');
+        const options = {
+            dir, log: () => {}, locations: [{ id: 'jinan' }], endpoint: 'https://example.test', source: 'test',
+            now: () => at('2026-11-03T09:00:00').getTime(), fetchJson: async () => ({}), cacheMaxAgeMs: 60_000,
+        };
+        try {
+            writeFileSync(cache, JSON.stringify({
+                fetchedAt: '2026-11-03T03:00:00.000Z',
+                facts: { jinan: { location: '济南', status: 'normal', observedAt: '2026-11-03T03:00:00.000Z', source: 'test', real: true } },
+            }));
+            const futureFetch = transportFetcher(options);
+            assert.equal(futureFetch.day('jinan'), undefined);
+            assert.equal(futureFetch.status().stale, true);
+            assert.equal(futureFetch.status().locations.jinan!.stale, true);
+
+            writeFileSync(cache, JSON.stringify({
+                fetchedAt: '2026-11-03T01:00:00.000Z',
+                facts: { jinan: { location: '济南', status: 'normal', observedAt: '2026-11-03T03:00:00.000Z', source: 'test', real: true } },
+            }));
+            const futureObservation = transportFetcher(options);
+            assert.equal(futureObservation.day('jinan'), undefined);
+            assert.equal(futureObservation.status().locations.jinan!.stale, true);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
 });

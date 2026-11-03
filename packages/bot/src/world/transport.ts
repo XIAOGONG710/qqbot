@@ -5,6 +5,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { cacheAgeMs } from './cache-freshness.ts';
 
 export type TransportState = 'normal' | 'delayed' | 'closed' | 'unknown';
 
@@ -105,7 +106,7 @@ export interface TransportFetcherOptions {
 }
 
 export interface TransportLocationStatus { status?: TransportState; observedAt?: string; detail?: string; ageMs?: number; stale?: boolean; error?: string; errorAt?: string }
-export interface TransportFetcherStatus { provider: string; source: string; cacheMaxAgeMs: number; locations: Record<string, TransportLocationStatus>; fetchedAt?: string }
+export interface TransportFetcherStatus { provider: string; source: string; cacheMaxAgeMs: number; locations: Record<string, TransportLocationStatus>; fetchedAt?: string; stale?: boolean }
 export interface TransportFetcher extends RealTransport { refresh(): Promise<void>; status(): TransportFetcherStatus }
 
 export function transportFetcher(options: TransportFetcherOptions): TransportFetcher {
@@ -140,11 +141,13 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
         day: (location, until) => {
             const cached = load();
             if (!cached) return undefined;
-            const fetchedAt = Date.parse(cached.fetchedAt);
-            if (!Number.isFinite(fetchedAt) || now() - fetchedAt > cacheMaxAgeMs) return undefined;
+            const current = now();
+            const fetchedAge = cacheAgeMs(cached.fetchedAt, current);
+            if (fetchedAge === undefined || fetchedAge > cacheMaxAgeMs) return undefined;
             const fact = cached.facts[location];
             const observedAt = fact ? Date.parse(fact.observedAt) : NaN;
-            if (!fact || !Number.isFinite(observedAt) || now() - observedAt > cacheMaxAgeMs || (until && observedAt > until.getTime())) return undefined;
+            const observedAge = fact ? cacheAgeMs(fact.observedAt, current) : undefined;
+            if (!fact || observedAge === undefined || observedAge > cacheMaxAgeMs || (until && observedAt > until.getTime())) return undefined;
             return fact;
         },
         refresh: () => {
@@ -177,14 +180,16 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
         status: () => {
             const cached = load();
             const fetchedAt = cached?.fetchedAt;
-            const fetchedMs = fetchedAt ? Date.parse(fetchedAt) : NaN;
+            const current = now();
+            const fetchedAge = fetchedAt ? cacheAgeMs(fetchedAt, current) : undefined;
             const locationsStatus: Record<string, TransportLocationStatus> = {};
             for (const location of locations) {
                 const fact = cached?.facts[location.id];
                 const item: TransportLocationStatus = fact ? { status: fact.status, observedAt: fact.observedAt, ...(fact.detail ? { detail: fact.detail } : {}) } : {};
                 if (fact) {
-                    const observed = Date.parse(fact.observedAt);
-                    if (Number.isFinite(observed)) { item.ageMs = Math.max(0, now() - observed); item.stale = item.ageMs > cacheMaxAgeMs; }
+                    const age = cacheAgeMs(fact.observedAt, current);
+                    if (age === undefined) item.stale = true;
+                    else { item.ageMs = age; item.stale = age > cacheMaxAgeMs; }
                 }
                 if (errors.has(location.id)) item.error = errors.get(location.id);
                 if (errorAt.has(location.id)) item.errorAt = errorAt.get(location.id);
@@ -193,7 +198,7 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
             return {
                 provider: 'generic-transport', source: options.source, cacheMaxAgeMs, locations: locationsStatus,
                 ...(fetchedAt ? { fetchedAt } : {}),
-                ...(Number.isFinite(fetchedMs) ? { stale: now() - fetchedMs > cacheMaxAgeMs } : {}),
+                ...(fetchedAt ? { stale: fetchedAge === undefined || fetchedAge > cacheMaxAgeMs } : {}),
             };
         },
     };
