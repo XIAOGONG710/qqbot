@@ -16,7 +16,14 @@ function readMarker(path) {
 }
 
 export function isCompleteBackup(target) {
-    return readMarker(join(target, COMPLETE_MARKER))?.completed === true;
+    const marker = readMarker(join(target, COMPLETE_MARKER));
+    if (marker?.completed !== true) return false;
+
+    const database = marker.components?.database;
+    const state = marker.components?.state;
+    if (database?.ok !== true || state?.ok !== true) return false;
+    if (!nonEmptyFile(join(target, 'hindsight.sql'))) return false;
+    return state.skipped === true || nonEmptyFile(join(target, 'her-state.zip'));
 }
 
 export function retryDue(target, now = Date.now(), delayMs = RETRY_DELAY_MS) {

@@ -31,6 +31,40 @@ describe('backup completion policy', () => {
         writeFileSync(join(target, COMPLETE_MARKER), '{broken', 'utf8');
         assert.equal(isCompleteBackup(target), false);
         writeBackupMarker(target, COMPLETE_MARKER, { completed: true });
+        assert.equal(isCompleteBackup(target), false);
+        writeFileSync(join(target, 'hindsight.sql'), 'database backup', 'utf8');
+        writeFileSync(join(target, 'her-state.zip'), 'state backup', 'utf8');
+        writeBackupMarker(target, COMPLETE_MARKER, {
+            completed: true,
+            components: { database: { ok: true }, state: { ok: true } },
+        });
+        assert.equal(isCompleteBackup(target), true);
+    });
+
+    test('a completed marker is invalidated when a required artifact disappears', () => {
+        const target = fresh();
+        const database = join(target, 'hindsight.sql');
+        const state = join(target, 'her-state.zip');
+        writeFileSync(database, 'database backup', 'utf8');
+        writeFileSync(state, 'state backup', 'utf8');
+        writeBackupMarker(target, COMPLETE_MARKER, {
+            completed: true,
+            components: { database: { ok: true }, state: { ok: true } },
+        });
+
+        assert.equal(isCompleteBackup(target), true);
+        rmSync(database);
+        assert.equal(isCompleteBackup(target), false);
+    });
+
+    test('a deliberately skipped empty state does not require an archive', () => {
+        const target = fresh();
+        writeFileSync(join(target, 'hindsight.sql'), 'database backup', 'utf8');
+        writeBackupMarker(target, COMPLETE_MARKER, {
+            completed: true,
+            components: { database: { ok: true }, state: { ok: true, skipped: true } },
+        });
+
         assert.equal(isCompleteBackup(target), true);
     });
 
