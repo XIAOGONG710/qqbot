@@ -7,6 +7,7 @@ import {
     COMPLETE_MARKER,
     FAILURE_MARKER,
     RETRY_DELAY_MS,
+    backupDirectoriesToPrune,
     discoverStateBackup,
     isCompleteBackup,
     isReusableBackupArtifact,
@@ -186,6 +187,33 @@ describe('backup completion policy', () => {
             'her-state.zip',
             { source: 'runtime/bot' },
         ), false);
+    });
+
+    test('retention removes stale incomplete directories but preserves recent days and recovery points', () => {
+        const names = [
+            '2026-09-30',
+            '2026-10-01',
+            '2026-10-02',
+            '2026-10-28',
+            '2026-10-29',
+            '2026-11-03',
+            '2026-11-04',
+            '2026-99-99',
+            'notes',
+        ];
+        assert.deepEqual(backupDirectoriesToPrune(
+            names,
+            ['2026-09-30', '2026-10-01'],
+            '2026-11-04',
+            1,
+        ), ['2026-09-30', '2026-10-02', '2026-10-28', '2026-10-29', '2026-11-03']);
+
+        assert.deepEqual(backupDirectoriesToPrune(
+            names,
+            ['2026-09-30', '2026-10-01'],
+            '2026-11-04',
+            7,
+        ), ['2026-10-02', '2026-10-28']);
     });
 
     test('missing, empty and non-empty artifacts are distinguished', () => {

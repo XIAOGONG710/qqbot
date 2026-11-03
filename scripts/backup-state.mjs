@@ -65,6 +65,36 @@ export function discoverStateBackup(root) {
     return undefined;
 }
 
+export function backupDirectoriesToPrune(names, completeNames, todayName, keepDays = 7) {
+    const today = parseDay(todayName);
+    if (today === undefined || !Number.isSafeInteger(keepDays) || keepDays < 1) return [];
+    const dated = names
+        .map(name => ({ name, day: parseDay(name) }))
+        .filter(entry => entry.day !== undefined)
+        .sort((left, right) => left.name.localeCompare(right.name));
+    const complete = new Set(completeNames.filter(name => parseDay(name) !== undefined));
+    const protectedComplete = new Set(
+        dated.filter(entry => complete.has(entry.name)).slice(-keepDays).map(entry => entry.name),
+    );
+    const recentCutoff = today - (keepDays - 1) * 24 * 60 * 60_000;
+    return dated
+        .filter(entry => entry.day < recentCutoff && !protectedComplete.has(entry.name))
+        .map(entry => entry.name);
+}
+
+function parseDay(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return undefined;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const parsed = Date.UTC(year, month - 1, day);
+    const date = new Date(parsed);
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+        ? parsed
+        : undefined;
+}
+
 export function nonEmptyFile(path) {
     try {
         const stat = statSync(path);

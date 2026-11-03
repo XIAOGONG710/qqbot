@@ -14,6 +14,7 @@ import { homedir } from 'node:os';
 import {
     COMPLETE_MARKER,
     FAILURE_MARKER,
+    backupDirectoriesToPrune,
     discoverStateBackup,
     isCompleteBackup,
     isReusableBackupArtifact,
@@ -86,10 +87,9 @@ function archiveState(reuse, plan) {
 
 function prune() {
     if (!existsSync(backupDir)) return;
-    const dirs = readdirSync(backupDir)
-        .filter(name => /^\d{4}-\d{2}-\d{2}$/.test(name) && isCompleteBackup(join(backupDir, name)))
-        .sort();
-    for (const name of dirs.slice(0, Math.max(0, dirs.length - keepDays))) {
+    const dirs = readdirSync(backupDir).filter(name => /^\d{4}-\d{2}-\d{2}$/.test(name));
+    const complete = dirs.filter(name => isCompleteBackup(join(backupDir, name)));
+    for (const name of backupDirectoriesToPrune(dirs, complete, day, keepDays)) {
         rmSync(join(backupDir, name), { recursive: true, force: true });
         log(`删掉旧备份 ${name}`);
     }
