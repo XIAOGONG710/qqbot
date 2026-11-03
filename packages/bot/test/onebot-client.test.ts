@@ -61,3 +61,22 @@ test('OneBot 发送阶段恰好断线时立即失败，不把调用留到超时'
     await assert.rejects(client.call('get_login_info', {}), /get_login_info 发送失败/);
     client.stop();
 });
+
+test('OneBot 隔离单条事件异常，连接日志不泄露 URL 凭据', () => {
+    Object.defineProperty(globalThis, 'WebSocket', { configurable: true, writable: true, value: FakeWebSocket });
+    const logs: string[] = [];
+    const client = new OneBotClient({
+        url: 'ws://name:password@127.0.0.1:3001/?access_token=secret#fragment',
+        onEvent: () => { throw new Error('聊天正文 secret-message'); },
+        log: message => logs.push(message),
+    });
+    client.start();
+    const socket = FakeWebSocket.instances[0]!;
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.emit('open');
+    assert.doesNotThrow(() => socket.emit('message', { data: JSON.stringify({ post_type: 'notice', notice_type: 'test' }) }));
+    assert.ok(logs.some(line => line === 'OneBot 已连接 ws://127.0.0.1:3001/'));
+    assert.ok(logs.some(line => line === 'OneBot 事件处理失败（Error）'));
+    assert.doesNotMatch(logs.join('\n'), /password|access_token|secret|fragment|聊天正文/);
+    client.stop();
+});

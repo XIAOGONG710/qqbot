@@ -83,6 +83,20 @@ export function assertKernelOk(action: string, data: unknown): void {
     }
 }
 
+/** 日志只保留连接位置；兼容 URL 里的 access_token 时不能把凭据写进日志。 */
+function endpointForLog(value: string): string {
+    try {
+        const url = new URL(value);
+        url.username = '';
+        url.password = '';
+        url.search = '';
+        url.hash = '';
+        return url.toString();
+    } catch {
+        return '[地址无效]';
+    }
+}
+
 export class OneBotClient {
     #options: OneBotOptions;
     #ws: WebSocket | null = null;
@@ -120,7 +134,7 @@ export class OneBotClient {
 
         ws.addEventListener('open', () => {
             this.#retryDelay = 1000;
-            log(`OneBot 已连接 ${url}`);
+            log(`OneBot 已连接 ${endpointForLog(url)}`);
         });
         ws.addEventListener('message', event => this.#onMessage(String(event.data)));
         ws.addEventListener('error', () => { /* close 事件里统一处理 */ });
@@ -150,7 +164,12 @@ export class OneBotClient {
             return;
         }
         if ('post_type' in payload) {
-            this.#options.onEvent(payload as OneBotEvent);
+            try {
+                this.#options.onEvent(payload as OneBotEvent);
+            } catch (error) {
+                // 单条坏事件不能穿透 WebSocket 回调拖垮后续收发；也不记录异常正文，避免夹带聊天内容。
+                this.#options.log(`OneBot 事件处理失败（${error instanceof Error ? error.name : '未知错误'}）`);
+            }
             return;
         }
         const response = payload as unknown as ApiResponse;
