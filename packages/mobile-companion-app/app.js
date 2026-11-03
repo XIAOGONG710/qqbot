@@ -1,5 +1,5 @@
 const $ = id => document.getElementById(id);
-const state = { socket: undefined, transport: 'ws', clientId: '', pairingCode: '', session: '', pending: new Map(), receivedDownlinkNonces: new Set(), recorder: undefined, recordChunks: [], pollTimer: undefined, polling: false };
+const state = { socket: undefined, transport: 'ws', clientId: '', pairingCode: '', session: '', pending: new Map(), receivedDownlinkNonces: new Set(), recorder: undefined, recordChunks: [], pollTimer: undefined, polling: false, pendingTimer: undefined, connecting: false, helloSent: false, activityAt: 0 };
 const id = prefix => `${prefix}-${crypto.randomUUID().replaceAll('-', '')}`;
 const nonce = prefix => `${prefix}-${crypto.randomUUID().replaceAll('-', '')}`;
 const now = () => new Date().toISOString();
@@ -13,7 +13,12 @@ const log = (direction, value) => {
   $('conversation').scrollTop = $('conversation').scrollHeight;
 };
 const system = text => log('system', text);
-const setState = (text, on = false) => { $('state').textContent = text; $('state').className = `pill ${on ? 'on' : 'off'}`; };
+const setState = (text, on = false) => { $('state').textContent = text; $('state').className = `pill ${on ? 'on' : 'off'}`; $('state').title = state.activityAt ? `最近活动：${new Date(state.activityAt).toLocaleTimeString()}` : ''; };
+const setBusy = busy => { state.connecting = busy; $('connect').disabled = busy; $('connect').textContent = busy ? '连接中…' : '配对并连接'; };
+const touch = () => { state.activityAt = Date.now(); setState($('state').textContent, $('state').classList.contains('on')); };
+const pendingId = value => value?.requestId?.replace(/^resp-/, '');
+const expirePending = () => { const cutoff = Date.now() - 45_000; for (const [requestId, entry] of state.pending) if (entry.sentAt < cutoff) { state.pending.delete(requestId); system('请求等待超时，请检查连接后重试'); } };
+const startPendingWatch = () => { if (!state.pendingTimer) state.pendingTimer = window.setInterval(expirePending, 5000); };
 
 function acceptDownlink(value) {
   if (!value || typeof value !== 'object' || value.v !== 1 || value.kind !== 'action.request' || typeof value.nonce !== 'string' || !value.nonce || !value.body || typeof value.body !== 'object') throw new Error('手机动作下行包不合法');
@@ -25,18 +30,19 @@ function acceptDownlink(value) {
 
 function handleIncoming(value) {
   if (!value) return;
-  if (value.error) return system(value.error);
+  touch();
+  if (value.error) { state.pending.delete(pendingId(value)); return system(value.error); }
   if (value.kind === 'action.request') {
     try { void handleDownlink(acceptDownlink(value)); }
     catch (error) { system(error instanceof Error ? error.message : String(error)); }
     return;
   }
   if (value.kind === 'message.receive') {
-    state.pending.delete(value.requestId.replace(/^resp-/, ''));
+    state.pending.delete(pendingId(value));
     return log('in', value.body);
   }
   if (value.kind === 'action.result') {
-    state.pending.delete(value.requestId.replace(/^resp-/, ''));
+    state.pending.delete(pendingId(value));
     return system(value.body.ok ? `动作已处理：${value.body.decision}` : `动作未执行：${value.body.error ?? '被拒绝'}`);
   }
   if (value.kind === 'error') return system(value.body.message ?? '服务端错误');
@@ -128,10 +134,11 @@ async function handleDownlink(value) {
 }
 
 async function send(value) {
-  if (value.kind !== 'hello') state.pending.set(value.requestId, value);
+  if (value.kind !== 'hello') { state.pending.set(value.requestId, { value, sentAt: Date.now() }); startPendingWatch(); }
+  touch();
   if (state.transport === 'ws') {
-    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) throw new Error('尚未连接');
-    state.socket.send(JSON.stringify(value));
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) { state.pending.delete(value.requestId); throw new Error('尚未连接'); }
+    try { state.socket.send(JSON.stringify(value)); } catch (error) { state.pending.delete(value.requestId); throw error; }
     return;
   }
   const headers = { 'content-type': 'application/json' };
@@ -153,32 +160,41 @@ async function send(value) {
 }
 
 async function connect() {
+  if (state.connecting) return;
   if (state.socket) state.socket.close();
   stopActionPolling();
   state.transport = $('transport').value;
   state.clientId = $('clientId').value.trim();
   state.pairingCode = $('pairingCode').value.trim();
   state.session = '';
+  state.helloSent = false;
   state.receivedDownlinkNonces.clear();
   if (!state.clientId || !state.pairingCode) return system('请填写设备 ID 和一次性配对码');
   const hello = envelope('hello', { clientId: state.clientId, pairingCode: state.pairingCode, capabilities: ['text', 'audio', 'image', 'sticker'] });
   state.pending.clear();
+  setBusy(true);
   setState('连接中…');
   if (state.transport === 'http') {
-    try { await send(hello); } catch (error) { setState('连接失败'); system(error instanceof Error ? error.message : String(error)); }
+    try { await send(hello); setState('已连接', true); system('HTTPS 配对成功'); startActionPolling(); }
+    catch (error) { setState('连接失败'); system(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(false); }
     return;
   }
-  const socket = new WebSocket($('endpoint').value.trim());
+  let socket;
+  try { socket = new WebSocket($('endpoint').value.trim()); }
+  catch (error) { setBusy(false); setState('地址无效'); return system(error instanceof Error ? error.message : String(error)); }
   state.socket = socket;
-  socket.addEventListener('open', () => { void send(hello).then(() => { setState('已连接', true); system('已发送配对请求，等待她回复…'); }).catch(error => system(error instanceof Error ? error.message : String(error))); });
+  socket.addEventListener('open', () => { state.helloSent = true; void send(hello).then(() => { setState('已连接', true); system('已发送配对请求，等待她回复…'); }).catch(error => system(error instanceof Error ? error.message : String(error))).finally(() => setBusy(false)); });
   socket.addEventListener('message', event => { let value; try { value = JSON.parse(event.data); } catch { return system('服务端返回了无法解析的内容'); } handleIncoming(value); });
-  socket.addEventListener('close', () => { if (state.socket === socket) { state.socket = undefined; state.pending.clear(); state.receivedDownlinkNonces.clear(); stopActionPolling(); setState('已断开'); system('连接已断开，可重新生成配对码后重连'); } });
+  socket.addEventListener('close', () => { if (state.socket === socket) { state.socket = undefined; state.pending.clear(); state.receivedDownlinkNonces.clear(); stopActionPolling(); setBusy(false); setState('已断开'); system(state.helloSent ? '连接已断开：一次性配对码不能复用，请在 QQ 重新获取配对码后再连接' : '连接尚未完成，可稍后重试'); } });
   socket.addEventListener('error', () => system('连接失败，请确认 Koishi server、路径和 HTTPS/WSS 设置'));
 }
 
 async function uploadFile(file) {
   if (state.transport !== 'http') throw new Error('本地文件上传需要选择 HTTPS 传输');
   if (!state.session) throw new Error('请先完成 HTTPS 配对');
+  if (file.size < 1 || file.size > 8 * 1024 * 1024) throw new Error('媒体大小必须在 1B 到 8MB 之间');
+  if (!(file.type.startsWith('audio/') || file.type.startsWith('image/'))) throw new Error('只允许音频或图片');
   const headers = { 'x-companion-session': state.session, 'x-companion-mime': file.type || $('mediaMime').value.trim() };
   const response = await fetch($('mediaEndpoint').value.trim(), { method: 'POST', headers, body: file });
   const text = await response.text();
@@ -249,7 +265,10 @@ formSubmit('mediaForm', async () => {
   } else {
     const ref = $('mediaRef').value.trim();
     if (!ref) throw new Error('请选择文件，或填写 HTTPS URL / mediaId');
-    media = { mime: $('mediaMime').value.trim(), bytes: Number($('mediaBytes').value), ...(ref.startsWith('https://') ? { url: ref } : { mediaId: ref }) };
+    if (!/^https:\/\//i.test(ref) && !/^[a-f0-9]{16,128}$/i.test(ref)) throw new Error('引用只允许 HTTPS URL 或媒体 ID');
+    const bytes = Number($('mediaBytes').value);
+    if (!Number.isInteger(bytes) || bytes < 1 || bytes > 8 * 1024 * 1024) throw new Error('字节数必须在 1B 到 8MB 之间');
+    media = { mime: $('mediaMime').value.trim(), bytes, ...(ref.startsWith('https://') ? { url: ref } : { mediaId: ref }) };
   }
   await send(envelope('message.send', { kind, media }));
   log('out', `[${kind}]`);
@@ -257,6 +276,7 @@ formSubmit('mediaForm', async () => {
 
 formSubmit('stickerForm', async () => {
   const stickerId = $('stickerId').value.trim();
+  if (!/^[a-f0-9]{16,128}$/i.test(stickerId)) throw new Error('表情必须使用服务端 catalog ID');
   const mediaId = stickerId;
   await send(envelope('message.send', { kind: 'sticker', stickerId, media: { mediaId, mime: $('stickerMime').value.trim(), bytes: Number($('stickerBytes').value) } }));
   log('out', '[表情]');
@@ -281,5 +301,7 @@ $('transport').addEventListener('change', () => {
 });
 $('recordAudio').addEventListener('click', () => void toggleRecording().catch(error => system(error instanceof Error ? error.message : String(error))));
 $('connect').addEventListener('click', () => void connect());
+window.addEventListener('online', () => { if (!state.socket && $('pairingCode').value.trim()) system('网络已恢复，可以重新连接'); });
+window.addEventListener('offline', () => { stopActionPolling(); setState('设备离线'); system('网络已断开，消息不会自动发送'); });
 setState('未连接');
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => undefined);

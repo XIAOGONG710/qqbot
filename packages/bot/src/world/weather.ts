@@ -184,18 +184,74 @@ export interface WeatherFetcherOptions {
     fetchJson?: (url: string) => Promise<unknown>;
     /** 网络请求超时（毫秒）；默认 20 秒，避免天气服务卡住回复和生活执行器。 */
     timeoutMs?: number;
+    /** 缓存超过这个时间只标记为 stale，仍可作为世界的降级数据；默认 2 小时。 */
+    cacheMaxAgeMs?: number;
+    /** 可替换的公开天气供应商；未提供时使用 Open-Meteo。 */
+    provider?: WeatherProvider;
+}
+
+export interface WeatherProviderRequest {
+    place: Place;
+    latitude: number;
+    longitude: number;
+    signal: AbortSignal;
+}
+
+/** 天气供应商只返回逐小时数值，不接触 QQ、聊天或角色资料。 */
+export interface WeatherProvider {
+    readonly id: string;
+    fetchHourly(request: WeatherProviderRequest): Promise<Record<string, HourWeather>>;
 }
 
 export interface WeatherPlaceStatus {
     fetchedAt?: string;
+    ageMs?: number;
+    stale?: boolean;
     hours: number;
     since?: string;
     error?: string;
 }
 
 export interface WeatherFetcherStatus {
+    provider: string;
+    cacheMaxAgeMs: number;
     places: Record<Place, WeatherPlaceStatus>;
     fetchedAt?: string;
+}
+
+function validHourly(hours: unknown): Record<string, HourWeather> {
+    if (!hours || typeof hours !== 'object' || Array.isArray(hours)) throw new Error('供应商返回的天气不是对象');
+    const output: Record<string, HourWeather> = {};
+    for (const [key, value] of Object.entries(hours)) {
+        if (Object.keys(output).length >= MAX_WEATHER_HOURS) throw new Error('供应商返回的天气时数过多');
+        if (!/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3])$/.test(key)) continue;
+        const item = value as Partial<HourWeather> | null;
+        if (!item || typeof item !== 'object' || !Number.isFinite(item.t) || !Number.isFinite(item.p) || !Number.isInteger(item.c)) continue;
+        if (item.t! < -100 || item.t! > 100 || item.p! < 0 || item.p! > 1000 || item.c! < 0 || item.c! > 99) continue;
+        output[key] = { t: item.t!, p: item.p!, c: item.c! };
+    }
+    if (!Object.keys(output).length) throw new Error('供应商没有返回有效天气小时');
+    return output;
+}
+
+/** 默认供应商：固定地点请求 Open-Meteo，响应先限大小再解析和校验。 */
+export function openMeteoProvider(options: { fetchJson?: (url: string) => Promise<unknown>; timeoutMs?: number } = {}): WeatherProvider {
+    const timeoutMs = options.timeoutMs ?? 20_000;
+    const fetchJson = options.fetchJson ?? (async (url: string) => {
+        const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const text = await response.text();
+        if (Buffer.byteLength(text, 'utf8') > MAX_WEATHER_RESPONSE_BYTES) throw new Error('天气服务响应过大');
+        return JSON.parse(text) as unknown;
+    });
+    return {
+        id: 'open-meteo',
+        async fetchHourly({ latitude, longitude }: WeatherProviderRequest) {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}`
+                + '&hourly=temperature_2m,precipitation,weather_code&past_days=2&forecast_days=2&timezone=Asia%2FShanghai';
+            return parseOpenMeteo(await fetchJson(url));
+        },
+    };
 }
 
 export interface WeatherFetcher extends RealWeather {
@@ -208,13 +264,8 @@ export interface WeatherFetcher extends RealWeather {
 export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
     const now = options.now ?? Date.now;
     const timeoutMs = options.timeoutMs ?? 20_000;
-    const fetchJson = options.fetchJson ?? (async (url: string) => {
-        const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const text = await response.text();
-        if (Buffer.byteLength(text, 'utf8') > MAX_WEATHER_RESPONSE_BYTES) throw new Error('天气服务响应过大');
-        return JSON.parse(text) as unknown;
-    });
+    const cacheMaxAgeMs = options.cacheMaxAgeMs ?? 2 * 60 * 60_000;
+    const provider = options.provider ?? openMeteoProvider({ fetchJson: options.fetchJson, timeoutMs });
     // 数据目录第一次用时还没有（审查第 1 条：没建目录时每次写盘都失败，真实天气一次都不生效）
     mkdirSync(options.dir, { recursive: true });
     const path = (place: Place) => join(options.dir, `${place}.json`);
@@ -238,11 +289,9 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
             if (inFlight) return inFlight;
             inFlight = (async () => {
                 for (const place of Object.keys(PLACES) as Place[]) {
-                    const { latitude, longitude } = PLACES[place];
-                    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}`
-                        + '&hourly=temperature_2m,precipitation,weather_code&past_days=2&forecast_days=2&timezone=Asia%2FShanghai';
                     try {
-                        const fetched = parseOpenMeteo(await fetchJson(url));
+                        const { latitude, longitude } = PLACES[place];
+                        const fetched = validHourly(await provider.fetchHourly({ place, latitude, longitude, signal: AbortSignal.timeout(timeoutMs) }));
                         const at = new Date(now());
                         const old = load(place);
                         const store: Store = { since: old?.since ?? firstRealDay(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
@@ -264,13 +313,21 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
             for (const place of Object.keys(PLACES) as Place[]) {
                 const store = load(place);
                 const item: WeatherPlaceStatus = { hours: Object.keys(store?.hours ?? {}).length };
-                if (store?.fetchedAt) { item.fetchedAt = store.fetchedAt; fetchedAt = !fetchedAt || store.fetchedAt > fetchedAt ? store.fetchedAt : fetchedAt; }
+                if (store?.fetchedAt) {
+                    item.fetchedAt = store.fetchedAt;
+                    const parsed = Date.parse(store.fetchedAt);
+                    if (Number.isFinite(parsed)) {
+                        item.ageMs = Math.max(0, now() - parsed);
+                        item.stale = item.ageMs > cacheMaxAgeMs;
+                    }
+                    fetchedAt = !fetchedAt || store.fetchedAt > fetchedAt ? store.fetchedAt : fetchedAt;
+                }
                 if (store?.since) item.since = store.since;
                 const error = errors.get(place);
                 if (error) item.error = error;
                 places[place] = item;
             }
-            return { places, ...(fetchedAt ? { fetchedAt } : {}) };
+            return { provider: provider.id, cacheMaxAgeMs, places, ...(fetchedAt ? { fetchedAt } : {}) };
         },
     };
 }

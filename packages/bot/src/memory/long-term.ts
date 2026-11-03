@@ -58,6 +58,9 @@ export const DAY_RECALL_TOKENS = 2000;
 export const ENTITIES_REFRESH_MS = 10 * 60_000;
 
 const TAGS = ['qq-private'];
+
+/** 只记录不可逆指纹，便于对照同一文档 / 查询是否被重复处理，不把原文写入状态页。 */
+const evidenceFingerprint = (value: string): string => createHash('sha256').update(value).digest('hex').slice(0, 12);
 const RELATIONSHIP_MODEL_ID = 'relationship';
 
 /**
@@ -247,6 +250,11 @@ interface CommonState {
 export interface MemoryEvent {
     at: number;
     ok: boolean;
+    /** 可审计来源摘要；不含聊天正文。旧调用方没有这些字段时仍可读取。 */
+    operation?: 'write' | 'recall';
+    source?: string;
+    items?: number;
+    fingerprint?: string;
     error?: string;
 }
 
@@ -301,7 +309,7 @@ export class LongTermMemory {
         const previous = this.#queues.get(key) ?? Promise.resolve();
         const next = previous.then(() => this.#sync(contact, names, history)).catch(error => {
             const message = error instanceof Error ? error.message : String(error);
-            this.#lastWrite = { at: this.#now(), ok: false, error: message };
+            this.#lastWrite = { at: this.#now(), ok: false, operation: 'write', source: 'contact-sync', error: message };
             this.#options.log(`[${contact.qq}] 记忆写入失败：${message}`);
         });
         this.#queues.set(key, next);
@@ -336,7 +344,7 @@ export class LongTermMemory {
             if (common.length) await this.#retainCommon(contact, names, state, common, bankId);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            this.#lastWrite = { at: this.#now(), ok: false, error: message };
+            this.#lastWrite = { at: this.#now(), ok: false, operation: 'write', source: 'qq-common', error: message };
             this.#options.log(`[${contact.qq}] 记忆（公共）写入失败：${message}`);
         }
     }
@@ -355,7 +363,7 @@ export class LongTermMemory {
             });
             (state.common ??= {})[episode.id] = episode.messages.length;
             this.#save(contact, state);
-            this.#lastWrite = { at: this.#now(), ok: true };
+            this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-common-episode', items: episode.messages.length, fingerprint: evidenceFingerprint(episode.id) };
             this.#options.log(`[${contact.qq}] 记忆（公共）：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
             // 新片段可能带来新的人和事，下一轮重读实体名
             this.#entities.fetchedAt = undefined;
@@ -393,12 +401,12 @@ export class LongTermMemory {
                 metadata: { source: tag, ...(tag === 'diary' ? { date: documentId.slice(DIARY_PREFIX.length) } : { id: documentId }) },
                 entities: [{ text: char, type: 'PERSON' }],
             });
-            this.#lastWrite = { at: this.#now(), ok: true };
+            this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: tag, items: 1, fingerprint: evidenceFingerprint(documentId) };
             this.#entities.fetchedAt = undefined;
             return true;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            this.#lastWrite = { at: this.#now(), ok: false, error: message };
+            this.#lastWrite = { at: this.#now(), ok: false, operation: 'write', source: tag, error: message, fingerprint: evidenceFingerprint(documentId) };
             this.#options.log(`${what} 写进公共记忆失败，下次再写：${message}`);
             return false;
         }
@@ -462,7 +470,7 @@ export class LongTermMemory {
             });
             state.retained[episode.id] = episode.messages.length;
             this.#save(contact, state);
-            this.#lastWrite = { at: this.#now(), ok: true };
+            this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-episode', items: episode.messages.length, fingerprint: evidenceFingerprint(episode.id) };
             this.#options.log(`[${contact.qq}] 记忆：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
         }
     }
@@ -611,11 +619,11 @@ export class LongTermMemory {
     async #recall(bankId: string, request: RecallRequest, failure: string): Promise<RecallResult[] | undefined> {
         try {
             const results = await this.#options.api.recall(bankId, request, this.#options.recallTimeoutMs);
-            this.#lastRecall = { at: this.#now(), ok: true };
+            this.#lastRecall = { at: this.#now(), ok: true, operation: 'recall', source: 'hindsight-recall', items: results.length, fingerprint: evidenceFingerprint(request.query) };
             return results;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            this.#lastRecall = { at: this.#now(), ok: false, error: message };
+            this.#lastRecall = { at: this.#now(), ok: false, operation: 'recall', source: 'hindsight-recall', error: message, fingerprint: evidenceFingerprint(request.query) };
             this.#options.log(`${failure}：${message}`);
             return undefined;
         }

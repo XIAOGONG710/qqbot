@@ -197,6 +197,34 @@ describe('真实天气（ADR 0048）', () => {
             rmSync(root, { recursive: true, force: true });
         }
     });
+
+    test('可替换供应商：只接收校验后的逐小时值，并标记陈旧缓存', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-weather-provider-'));
+        const calls: string[] = [];
+        let now = at('2026-10-16T03:00:00').getTime();
+        const provider = {
+            id: 'test-provider',
+            async fetchHourly(request: { place: 'jinan' | 'qingdao'; latitude: number; longitude: number; signal: AbortSignal }) {
+                calls.push(`${request.place}:${request.latitude},${request.longitude}`);
+                const hours = hoursOf('2026-10-16');
+                // 供应商可能混入脏数据；weatherFetcher 应过滤非法键和值，而不是把它们写进世界账。
+                return { ...hours, 'not-a-time': { t: 20, p: 0, c: 2 }, '2026-10-16T24': { t: 999, p: 0, c: 2 } };
+            },
+        };
+        const fetcher = weatherFetcher({ dir: join(root, 'weather'), log: () => {}, now: () => now, provider, cacheMaxAgeMs: 1 });
+        try {
+            await fetcher.refresh();
+            now += 5;
+            const status = fetcher.status();
+            assert.equal(status.provider, 'test-provider');
+            assert.equal(calls.length, 2);
+            assert.equal(status.places.jinan.hours, 24);
+            assert.equal(status.places.jinan.stale, true);
+            assert.equal(fetcher.day('jinan', '2026-10-16', at('2026-10-16T12:00:00'))?.real, true);
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
 });
 
 describe('真实天气进她的世界（ADR 0048）', () => {
