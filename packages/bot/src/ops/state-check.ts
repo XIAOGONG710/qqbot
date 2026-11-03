@@ -16,6 +16,7 @@ import { readProactiveState } from '../proactive/proactive-state.ts';
 import { readPromiseState } from '../life/promise-state.ts';
 import { readWeatherStore } from '../world/weather.ts';
 import { readAirQualityStore } from '../world/air-quality.ts';
+import { readDaylightStore } from '../world/daylight.ts';
 
 export interface StateCheck { name: string; file: string; ok: boolean; detail: string }
 
@@ -59,7 +60,7 @@ export function checkStates(dataDir: string, now: Date = new Date()): StateCheck
             }
         }
         // 其余只确认是合法 JSON（它们各自的读取函数在对应模块里，坏了会隔离后重建）
-        for (const dir of ['memory', 'proactive', 'promises', 'weather', 'air-quality']) {
+        for (const dir of ['memory', 'proactive', 'promises', 'weather', 'air-quality', 'daylight']) {
             const folder = join(copy, dir);
             if (!existsSync(folder)) continue;
             for (const name of readdirSync(folder).filter(file => file.endsWith('.json'))) {
@@ -69,6 +70,7 @@ export function checkStates(dataDir: string, now: Date = new Date()): StateCheck
                     if (dir === 'promises' && /^[1-9]\d*-[a-z_]+\.json$/.test(name)) { readPromiseState(path); return '承诺 v1 schema 通过'; }
                     if (dir === 'weather' && /^(jinan|qingdao)\.json$/.test(name)) { readWeatherStore(path, undefined, 'throw'); return '天气缓存 schema 通过'; }
                     if (dir === 'air-quality' && /^(jinan|qingdao)\.json$/.test(name)) { readAirQualityStore(path, undefined, 'throw'); return '空气质量缓存 schema 通过'; }
+                    if (dir === 'daylight' && /^(jinan|qingdao)\.json$/.test(name)) { readDaylightStore(path, undefined, 'throw'); return '日照缓存 schema 通过'; }
                     JSON.parse(readFileSync(path, 'utf8'));
                     return '仅 JSON 语法通过（未做运行时 schema 校验）';
                 });

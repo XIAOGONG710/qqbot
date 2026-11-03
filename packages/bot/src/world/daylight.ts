@@ -11,8 +11,8 @@ export type DaylightPhase = '夜间' | '清晨' | '白天' | '傍晚';
 export interface Daylight { sunrise: string; sunset: string; phase: DaylightPhase; real: true }
 export interface RealDaylight { day(place: Place, date: string, at: Date): Daylight | undefined }
 
-interface SolarTimes { sunrise: string; sunset: string }
-interface Store { fetchedAt: string; days: Record<string, SolarTimes> }
+export interface SolarTimes { sunrise: string; sunset: string }
+export interface DaylightStore { fetchedAt: string; days: Record<string, SolarTimes> }
 
 let current: RealDaylight | undefined;
 /** 线上（app.ts）开；模拟器、测试不开。 */
@@ -22,6 +22,41 @@ export function realDaylight(): RealDaylight | undefined { return current; }
 const MAX_DAYS = 31;
 const MAX_RESPONSE_BYTES = 1 * 1024 * 1024;
 const clock = (value: string) => value.slice(11, 16);
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_TIME_MINUTE = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/;
+
+const validCalendarDate = (value: string): boolean => {
+    if (!DATE_ONLY.test(value)) return false;
+    const date = new Date(`${value}T00:00:00Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
+
+function validSolarTimes(date: string, value: unknown): value is SolarTimes {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const times = value as Partial<SolarTimes>;
+    return typeof times.sunrise === 'string' && typeof times.sunset === 'string'
+        && DATE_TIME_MINUTE.test(times.sunrise) && DATE_TIME_MINUTE.test(times.sunset)
+        && times.sunrise.startsWith(`${date}T`) && times.sunset.startsWith(`${date}T`)
+        && times.sunrise < times.sunset;
+}
+
+export function isDaylightStore(value: unknown): value is DaylightStore {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const store = value as Partial<DaylightStore>;
+    if (typeof store.fetchedAt !== 'string' || !Number.isFinite(Date.parse(store.fetchedAt))
+        || !store.days || typeof store.days !== 'object' || Array.isArray(store.days)) return false;
+    const days = Object.entries(store.days);
+    return days.length > 0 && days.length <= MAX_DAYS
+        && days.every(([date, times]) => validCalendarDate(date) && validSolarTimes(date, times));
+}
+
+export function readDaylightStore(path: string, log?: (message: string) => void, invalid: 'quarantine' | 'throw' = 'quarantine'): DaylightStore | undefined {
+    return readJsonOr<DaylightStore | undefined>(path, undefined, log, {
+        validate: (value): value is DaylightStore | undefined => isDaylightStore(value),
+        invalid,
+        label: '日照缓存',
+    });
+}
 
 function minutes(value: string): number {
     const [hour = 0, minute = 0] = value.slice(11, 16).split(':').map(Number);
@@ -50,13 +85,11 @@ export function parseOpenMeteoDaylight(data: unknown): Record<string, SolarTimes
         throw new Error('回复里没有合法的逐日日照数据');
     }
     const output: Record<string, SolarTimes> = {};
-    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-    const timePattern = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/;
     dates.forEach((date, i) => {
-        if (typeof date !== 'string' || !datePattern.test(date) || typeof sunrise[i] !== 'string' || typeof sunset[i] !== 'string') return;
-        if (!timePattern.test(sunrise[i]) || !timePattern.test(sunset[i]) || !sunrise[i].startsWith(`${date}T`) || !sunset[i].startsWith(`${date}T`)) return;
-        if (sunrise[i] >= sunset[i]) return;
-        output[date] = { sunrise: sunrise[i], sunset: sunset[i] };
+        if (typeof date !== 'string' || !validCalendarDate(date)) return;
+        const times = { sunrise: sunrise[i], sunset: sunset[i] };
+        if (!validSolarTimes(date, times)) return;
+        output[date] = times;
     });
     if (!Object.keys(output).length) throw new Error('供应商没有返回有效的逐日日照');
     return output;
@@ -89,14 +122,13 @@ export function daylightFetcher(options: DaylightFetcherOptions): DaylightFetche
     });
     mkdirSync(options.dir, { recursive: true });
     const path = (place: Place) => join(options.dir, `${place}.json`);
-    const stores = new Map<Place, Store | undefined>();
+    const stores = new Map<Place, DaylightStore | undefined>();
     const errors = new Map<Place, string>();
     const errorAt = new Map<Place, string>();
     let inFlight: Promise<void> | undefined;
-    const load = (place: Place): Store | undefined => {
+    const load = (place: Place): DaylightStore | undefined => {
         if (!stores.has(place)) {
-            const data = readJsonOr<Partial<Store>>(path(place), {}, message => options.log(`真实日照：${message}`));
-            stores.set(place, data.fetchedAt && data.days ? { fetchedAt: data.fetchedAt, days: data.days } : undefined);
+            stores.set(place, readDaylightStore(path(place), message => options.log(`真实日照：${message}`)));
         }
         return stores.get(place);
     };
@@ -118,7 +150,7 @@ export function daylightFetcher(options: DaylightFetcherOptions): DaylightFetche
                         const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}`
                             + '&daily=sunrise,sunset&past_days=2&forecast_days=16&timezone=Asia%2FShanghai';
                         const days = parseOpenMeteoDaylight(await fetchJson(url));
-                        const store: Store = { fetchedAt: new Date(now()).toISOString(), days };
+                        const store: DaylightStore = { fetchedAt: new Date(now()).toISOString(), days };
                         writeJsonAtomic(path(place), store);
                         stores.set(place, store);
                         errors.delete(place); errorAt.delete(place);

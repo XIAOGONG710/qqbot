@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -65,5 +65,23 @@ describe('真实日照（ADR 0228）', () => {
         assert.equal(now.daylight?.phase, '傍晚');
         assert.match(describeWorld(now, at('2026-10-20T16:30'))!, /日照：傍晚（06:30 日出，17:20 日落）/);
         assert.ok(now.weather, '天气仍然照旧存在');
+    });
+
+    test('结构损坏的日照缓存会隔离，不把反向日出日落带进世界', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-daylight-invalid-'));
+        const dir = join(root, 'daylight');
+        mkdirSync(dir);
+        writeFileSync(join(dir, 'jinan.json'), JSON.stringify({
+            fetchedAt: '2026-11-03T12:00:00.000Z',
+            days: { '2026-11-03': { sunrise: '2026-11-03T18:00', sunset: '2026-11-03T06:00' } },
+        }));
+        const logs: string[] = [];
+        try {
+            const fetcher = daylightFetcher({ dir, log: message => logs.push(message), now: () => at('2026-11-03T12:00').getTime(), fetchJson: async () => ({}) });
+            assert.equal(fetcher.day('jinan', '2026-11-03', at('2026-11-03T12:00')), undefined);
+            assert.equal(existsSync(join(dir, 'jinan.json')), false);
+            assert.ok(readdirSync(dir).some(name => name.startsWith('jinan.json.corrupt-')));
+            assert.ok(logs.some(message => message.includes('日照缓存') && message.includes('挪到')));
+        } finally { rmSync(root, { recursive: true, force: true }); }
     });
 });
