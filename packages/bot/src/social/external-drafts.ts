@@ -114,7 +114,12 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
             return draft;
         },
         list(filter = {}) {
-            const limit = Math.max(1, Math.min(100, Math.floor(filter.limit ?? 50)));
+            const requestedLimit = filter.limit ?? 50;
+            // 控制台参数可能来自解析失败的输入；NaN 会让 slice(-NaN) 退化成 slice(0)，
+            // 绕过默认的分页上限。无效数字按默认页大小处理，避免一次返回整个队列。
+            const limit = Number.isFinite(requestedLimit)
+                ? Math.max(1, Math.min(100, Math.floor(requestedLimit)))
+                : 50;
             return file.drafts.filter(item => (!filter.platform || item.platform === filter.platform) && (!filter.status || item.status === filter.status)).slice(-limit).reverse();
         },
         updateStatus(id, status, note, at = new Date()) {

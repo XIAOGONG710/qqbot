@@ -35,4 +35,13 @@ describe('外部平台草稿队列（ADR 0224）', () => {
             assert.deepEqual(store.list(), []);
         } finally { fileOps.renameSync = originalRename; }
     });
+
+    test('列表分页遇到无效数字时回退到默认页大小', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
+        const store = createExternalDraftStore({ dir: root });
+        store.create({ platform: 'tieba', title: '标题一', body: '正文一' });
+        store.create({ platform: 'tieba', title: '标题二', body: '正文二' });
+        assert.equal(store.list({ limit: Number.NaN }).length, 2);
+        assert.equal(store.list({ limit: Number.POSITIVE_INFINITY }).length, 2);
+    });
 });
