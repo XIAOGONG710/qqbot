@@ -63,24 +63,36 @@ export interface CompanionServerLike {
     post?(path: string, callback: (ctx: unknown) => Promise<void>): unknown;
 }
 
+/** Koishi 不同版本对路由句柄的返回类型不一致；能关闭就关闭，旧版本没有句柄时保持兼容。 */
+function closeCompanionRoute(handle: unknown): void {
+    if (!handle || typeof handle !== 'object') return;
+    const route = handle as { close?: unknown; dispose?: unknown };
+    if (typeof route.close === 'function') { route.close(); return; }
+    if (typeof route.dispose === 'function') route.dispose();
+}
+
 /** 纯接线函数：便于测试，也避免在插件入口散落端口 / DSH 判断。 */
 export function mountMobileCompanion(server: CompanionServerLike | undefined, companion: MobileCompanionIntegration | undefined, options: { enabled: boolean; websocketPath: string; httpPath?: string }, log: Log): (() => void) | undefined {
     if (!options.enabled) return undefined;
     if (!companion) { log('手机伴侣：开关已开，但 DSH 关闭，未挂载 WebSocket'); return undefined; }
     if (!server) { log('手机伴侣：开关已开，但 Koishi server 服务不可用，未挂载 WebSocket'); return undefined; }
     const layer = server.ws(options.websocketPath, socket => attachCompanionWebSocket(socket, companion.runtime));
+    const routes: unknown[] = [];
     log(`手机伴侣：WebSocket 已挂载到 ${options.websocketPath}（沿用 DSH 配对和动作审计）`);
     if (server.post && options.httpPath) {
-        server.post(options.httpPath, createCompanionKoaEnvelopeHandler(companion.runtime, { path: options.httpPath }) as unknown as (ctx: unknown) => Promise<void>);
+        routes.push(server.post(options.httpPath, createCompanionKoaEnvelopeHandler(companion.runtime, { path: options.httpPath }) as unknown as (ctx: unknown) => Promise<void>));
         const mediaHandler = markNoParseBody(createCompanionKoaMediaHandler(companion.runtime, companion.media, { path: `${options.httpPath}/media` }));
-        server.post(`${options.httpPath}/media`, mediaHandler as unknown as (ctx: unknown) => Promise<void>);
+        routes.push(server.post(`${options.httpPath}/media`, mediaHandler as unknown as (ctx: unknown) => Promise<void>));
         log(`手机伴侣：HTTPS envelope / 媒体上传已挂载到 ${options.httpPath}（沿用 session 和内存媒体仓库）`);
     }
     if (server.get && options.httpPath) {
-        server.get(`${options.httpPath}/actions`, createCompanionKoaActionPollHandler(companion.runtime, { path: `${options.httpPath}/actions` }) as unknown as (ctx: unknown) => Promise<void>);
+        routes.push(server.get(`${options.httpPath}/actions`, createCompanionKoaActionPollHandler(companion.runtime, { path: `${options.httpPath}/actions` }) as unknown as (ctx: unknown) => Promise<void>));
         log(`手机伴侣：HTTPS 动作轮询已挂载到 ${options.httpPath}/actions`);
     }
-    return () => layer.close();
+    return () => {
+        layer.close();
+        for (const route of routes) closeCompanionRoute(route);
+    };
 }
 
 /** Koishi server 默认会先跑 koa-body；媒体路由必须保留原始二进制流给 readBody()。 */
