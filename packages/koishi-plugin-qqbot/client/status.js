@@ -66,6 +66,18 @@ function weatherLine(weather) {
     ];
 }
 
+function humanValuesLine(values) {
+    if (!values) return [tag('自主生活未开启', 'info')];
+    const positiveLevel = value => value >= 75 ? 'success' : value <= 25 ? 'danger' : 'warning';
+    const loadLevel = value => value >= 75 ? 'danger' : value <= 25 ? 'success' : 'warning';
+    return [
+        tag(`精力 ${values.energy}`, positiveLevel(values.energy)),
+        tag(`饥饿 ${values.hunger}`, loadLevel(values.hunger)),
+        tag(`压力 ${values.stress}`, loadLevel(values.stress)),
+        h('span', { class: 'qqbot-muted' }, ` 心情 ${values.mood} · 健康 ${values.health} · 动机 ${values.motivation} · 孤独 ${values.loneliness}`),
+    ];
+}
+
 function mobileCompanionLine(companion) {
     if (!companion?.enabled) return [tag('未开启', 'info')];
     if (!companion.pairedClientId) return [tag('已开启，等待配对', 'warning'), h('span', { class: 'qqbot-muted' }, ` 队列 ${companion.queued}/${companion.maxQueuedPerClient}`)];
@@ -151,6 +163,7 @@ export const StatusTab = defineComponent({
                     : [tag('重启 Koishi 后显示', 'info')]],
                 ['长期记忆', status ? memoryLine(status.memory) : [tag('—', 'info')]],
                 ['实时天气', status ? weatherLine(status.weather) : [tag('—', 'info')]],
+                ['真人式状态', status ? humanValuesLine(status.humanValues) : [tag('—', 'info')]],
                 ['手机伴侣', status ? mobileCompanionLine(status.mobileCompanion) : [tag('—', 'info')]],
                 ['作息', status ? [status.schedule ? tag('按作息', 'success') : tag('关（随时几秒内回）', 'warning')] : [tag('—', 'info')]],
                 ['看心情不回', status ? [status.moody && status.schedule ? tag('开（偶尔不回「哈哈」「嗯」）', 'success') : tag('关', 'info')] : [tag('—', 'info')]],

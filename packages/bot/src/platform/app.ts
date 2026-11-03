@@ -71,7 +71,7 @@ import { worldState, type WorldNow } from '.././world/world.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
 import { lifeExecutor } from '.././world/life-selector.ts';
 import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
-import { humanValuesAt, humanValuesFromAnchor } from '.././human-values.ts';
+import { humanValuesAt, humanValuesFromAnchor, type HumanValues } from '.././human-values.ts';
 import { createDshLink, dshOptionsFromLlm, type DshConversationTurn, type DshState, type DshVoice } from '.././dsh-link.ts';
 import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
 import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
@@ -193,6 +193,8 @@ export interface AppStatus {
     weather?: WeatherFetcherStatus;
     /** 手机伴侣安全摘要：不含配对码、nonce 或消息正文。 */
     mobileCompanion?: { enabled: boolean; pairedClientId?: string; connected: boolean; queued: number; maxQueuedPerClient: number };
+    /** 自主生活开启且有需要锚点时的全局真人式状态；不含联系人关系值。 */
+    humanValues?: Pick<HumanValues, 'at' | 'energy' | 'hunger' | 'stress' | 'mood' | 'health' | 'loneliness' | 'confidence' | 'curiosity' | 'boredom' | 'motivation' | 'socialBattery' | 'selfEsteem' | 'openness' | 'satisfaction' | 'comfort' | 'frustration'>;
 }
 
 /** 状态页的「今天」（ADR 0015） */
@@ -1978,6 +1980,28 @@ ${body}
                     })
                     .finally(() => { probing = false; });
             }
+            const values = needsAnchor && ledgerWorld
+                ? humanValuesFromAnchor({ at: now, anchor: needsAnchor, history: [], tier: 'known', events: ledgerWorld.events() })
+                : undefined;
+            const humanValues = values ? {
+                at: values.at,
+                energy: values.energy,
+                hunger: values.hunger,
+                stress: values.stress,
+                mood: values.mood,
+                health: values.health,
+                loneliness: values.loneliness,
+                confidence: values.confidence,
+                curiosity: values.curiosity,
+                boredom: values.boredom,
+                motivation: values.motivation,
+                socialBattery: values.socialBattery,
+                selfEsteem: values.selfEsteem,
+                openness: values.openness,
+                satisfaction: values.satisfaction,
+                comfort: values.comfort,
+                frustration: values.frustration,
+            } : undefined;
             return {
                 runtime,
                 contacts: [
@@ -1998,6 +2022,7 @@ ${body}
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
                 ...(weather ? { weather: weather.status() } : {}),
                 mobileCompanion: mobileCompanion ? { enabled: true, ...mobileCompanion.runtime.status() } : { enabled: false, connected: false, queued: 0, maxQueuedPerClient: 32 },
+                ...(humanValues ? { humanValues } : {}),
             };
         },
         mobileCompanion: () => mobileCompanion,
