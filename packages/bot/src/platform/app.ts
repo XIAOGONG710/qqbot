@@ -126,7 +126,7 @@ import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sen
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
 import { humanValuesAt, humanValuesFromAnchor, type HumanValues } from '.././human-values.ts';
-import { createDshLink, dshOptionsFromLlm, type DshConversationTurn, type DshProbeResult, type DshState, type DshVoice } from '.././dsh-link.ts';
+import { createDshLink, dshOptionsFromLlm, sanitizeDshError, type DshConversationTurn, type DshProbeResult, type DshState, type DshVoice } from '.././dsh-link.ts';
 import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
 import { writeDshState } from '.././dsh-state-export.ts';
 import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
@@ -2420,7 +2420,7 @@ ${body}
                     dshProbe = result;
                     return tellOwner(result.ok
                         ? `（DSH 已连通：${result.model}，${result.latencyMs}ms）`
-                        : `（DSH 没连上：${result.error ?? '未知错误'}）`);
+                        : `（DSH 没连上：${sanitizeDshError(result.error)}）`);
                 });
                 return;
             }

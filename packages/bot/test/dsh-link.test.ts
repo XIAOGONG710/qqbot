@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { createDshLink, dshOptionsFromLlm, sanitizeDshQuestion, type DshState } from '../src/dsh-link.ts';
+import { createDshLink, dshOptionsFromLlm, sanitizeDshError, sanitizeDshQuestion, type DshState } from '../src/dsh-link.ts';
 import { createMobileCompanion, createMobileDshHandlers } from '../src/mobile-companion-dsh.ts';
 import { helloEnvelope } from '@qqbot/mobile-companion/gateway';
 import type { LlmOptions } from '../src/language/llm.ts';
@@ -24,6 +24,12 @@ describe('DSH 连接层', () => {
         assert.equal(sanitizeDshQuestion('请看 https://example.test/?api_key=sk-url&access_token=access-value&token=secret-value&ok=1'), '请看 https://example.test/?api_key=<redacted>&access_token=<redacted>&token=<redacted>&ok=1');
         assert.equal(sanitizeDshQuestion('   '), '');
         assert.ok(sanitizeDshQuestion('x'.repeat(3000)).length <= 2000);
+    });
+
+    test('探针错误摘要不把凭据或超长上游原文发进 QQ', () => {
+        assert.equal(sanitizeDshError(new Error('HTTP 401 https://dsh.example/?api_key=secret-value')), 'HTTP 401 https://dsh.example/?api_key=<redacted>');
+        assert.equal(sanitizeDshError('   '), '未知错误');
+        assert.ok(sanitizeDshError(new Error('x'.repeat(500))).length <= 160);
     });
 
     test('探针使用独立的最小请求，只接受 OK', async () => {

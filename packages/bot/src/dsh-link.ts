@@ -69,6 +69,12 @@ export function sanitizeDshQuestion(question: string): string {
         .slice(0, 2000);
 }
 
+/** 给 QQ 负责人看的探针错误摘要：隐藏凭据和 URL 查询串，避免把上游原文直接发进聊天。 */
+export function sanitizeDshError(error: unknown): string {
+    const text = error instanceof Error ? error.message : String(error);
+    return sanitizeDshQuestion(text).slice(0, 160) || '未知错误';
+}
+
 function stateText(state: DshState | undefined): string {
     if (!state) return '状态：未提供（只做抽象建议，不推断她的现实情况）。';
     const lines = [`时间：${state.at}`];
