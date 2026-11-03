@@ -241,8 +241,11 @@ function moodAt(facts: HumanValueFacts, recent: readonly MessageLike[]): number 
     return round(score);
 }
 
-function latestAt(messages: readonly { role: 'user' | 'assistant'; time?: string }[], role?: 'user' | 'assistant'): number | undefined {
-    const times = messages.filter(message => role === undefined || message.role === role).map(atOf).filter(Number.isFinite);
+function latestAt(messages: readonly { role: 'user' | 'assistant'; time?: string }[], now: number, role?: 'user' | 'assistant'): number | undefined {
+    const times = messages
+        .filter(message => role === undefined || message.role === role)
+        .map(atOf)
+        .filter(value => Number.isFinite(value) && value <= now);
     return times.length ? Math.max(...times) : undefined;
 }
 
@@ -261,7 +264,7 @@ export function humanValuesAt(facts: HumanValueFacts): HumanValues {
     const recent = recentMessages(facts, 72 * HOUR);
     const relationship = relationshipAt(facts);
     const eventEffects = eventEffectsAt(events, now);
-    const lastUser = latestAt(facts.history, 'user');
+    const lastUser = latestAt(facts.history, now, 'user');
     const eventActivity = events.map(event => Date.parse(event.endedAt)).filter(value => Number.isFinite(value) && value <= now);
     const lastActivity = Math.max(lastUser ?? 0, ...eventActivity);
     const silenceHours = lastActivity > 0 ? Math.max(0, (now - lastActivity) / HOUR) : 72;

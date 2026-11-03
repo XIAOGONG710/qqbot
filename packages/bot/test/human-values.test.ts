@@ -96,6 +96,19 @@ test('未来的异常行动不算刚活动过，也不提前压低孤独和无�
     assert.equal(withFuture.boredom, baseline.boredom);
 });
 
+test('未来时间戳的聊天不算刚互动过，也不提前压低孤独和无聊', () => {
+    const at = new Date('2026-11-01T08:00:00.000Z');
+    const futureMessage = {
+        role: 'user' as const,
+        content: '来自未来的异常消息',
+        time: '2026-11-02T08:00:00.000Z',
+    };
+    const baseline = humanValuesAt({ at, needs, history: [], tier: 'boyfriend', events: [] });
+    const withFuture = humanValuesAt({ at, needs, history: [futureMessage], tier: 'boyfriend', events: [] });
+    assert.equal(withFuture.loneliness, baseline.loneliness);
+    assert.equal(withFuture.boredom, baseline.boredom);
+});
+
 test('摘要只输出数值，不泄露聊天原文', () => {
     const line = describeHumanValues(valuesAt([message('user', '我的秘密是 123', 2)]));
     assert.match(line, /^数值：/);
