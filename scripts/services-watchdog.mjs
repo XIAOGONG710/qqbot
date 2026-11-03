@@ -317,7 +317,9 @@ async function check() {
         bad.hindsight = 0;
     }
     // 记忆控制台（2026-11-02 用户：「添加个启动入口」）：Hindsight 活着、9999 没开、五分钟内没试过，就起一次
-    if (hindsightUp && allowed('hindsight')) {
+    // 注意：这里不能借 allowed('hindsight') 当闸——那是重启预算，控制台每分钟检查一次会把它烧光，
+    // 结果日志每分钟刷「恢复正常 / 拉了 3 次还不行」（2026-11-03 20:37 发现的）。冷却用 controlPlaneTriedAt。
+    if (hindsightUp) {
         const uiUp = await tcpOpen('127.0.0.1', CONTROL_PLANE_PORT, 1500);
         if (!uiUp && Date.now() - controlPlaneTriedAt > 5 * 60_000) {
             controlPlaneTriedAt = Date.now();
