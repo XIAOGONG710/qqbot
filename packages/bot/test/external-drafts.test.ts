@@ -85,6 +85,20 @@ describe('外部平台草稿队列（ADR 0224）', () => {
         assert.deepEqual(createExternalDraftStore({ dir: root }).list()[0], approved);
     });
 
+    test('状态时间不能倒退，拒绝后内存和磁盘仍保留原状态', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
+        const store = createExternalDraftStore({ dir: root });
+        const draft = store.create({ platform: 'tieba', title: '标题', body: '正文', at: new Date('2026-11-03T00:01:00.000Z') });
+        assert.throws(
+            () => store.updateStatus(draft.id, 'approved', '人工确认', new Date('2026-11-03T00:00:00.000Z')),
+            /不能早于上一条审计/,
+        );
+        assert.equal(store.list()[0]!.status, 'pending');
+        const reloaded = createExternalDraftStore({ dir: root }).list()[0]!;
+        assert.equal(reloaded.status, 'pending');
+        assert.equal(reloaded.audit.length, 1);
+    });
+
     test('本地素材只接受逻辑 media ID，拒绝绝对路径和路径穿越', () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
         const store = createExternalDraftStore({ dir: root });

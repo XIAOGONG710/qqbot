@@ -155,6 +155,7 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
             const cleanNote = note?.trim();
             if (cleanNote && cleanNote.length > 240) throw new Error('外部平台草稿备注不能超过 240 字');
             const when = at.toISOString();
+            if (Date.parse(when) < Date.parse(draft.updatedAt)) throw new Error('外部平台草稿状态时间不能早于上一条审计');
             const updated: ExternalDraft = {
                 ...draft,
                 status,
