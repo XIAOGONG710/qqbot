@@ -42,14 +42,20 @@ const RESULTS = new Set<DshWorldInboxEntry['result']>(['succeeded', 'failed', 'i
 const UNSAFE_TEXT = /https?:\/\/|(?:[A-Za-z]:[\\/]|(?:^|\s)\\\\|(?:^|\s)\/(?:Users|home|var|tmp)\b)|(?:api[_-]?key|token|password|密码|令牌)/i;
 
 interface InboxState {
-    version: 1;
+    version: 2;
+    /** 已经扫描过的完整行数；收件箱是只追加文件，避免超过 KEEP_IDS 后重复应用旧事件。 */
+    line: number;
     ids: string[];
 }
 
-const validState = (value: unknown): value is InboxState => Boolean(value && typeof value === 'object'
-    && (value as Partial<InboxState>).version === 1
-    && Array.isArray((value as Partial<InboxState>).ids)
-    && (value as Partial<InboxState>).ids!.every(id => typeof id === 'string' && ID_RE.test(id)));
+const validState = (value: unknown): value is InboxState => {
+    if (!value || typeof value !== 'object') return false;
+    const row = value as { version?: unknown; line?: unknown; ids?: unknown };
+    return (row.version === 1 || row.version === 2)
+        && (row.version === 1 || (Number.isSafeInteger(row.line) && (row.line as number) >= 0))
+        && Array.isArray(row.ids)
+        && row.ids.every(id => typeof id === 'string' && ID_RE.test(id));
+};
 
 const flat = (value: unknown, max: number): string | undefined => {
     if (typeof value !== 'string') return undefined;
@@ -65,22 +71,31 @@ const timeInWindow = (value: unknown, now: number): value is string => {
 };
 
 function readState(path: string, log: (message: string) => void): InboxState {
-    const state = readJsonOr<InboxState>(path, { version: 1, ids: [] }, message => log(`DSH 收件箱状态：${message}`), {
+    const state = readJsonOr<InboxState>(path, { version: 2, line: 0, ids: [] }, message => log(`DSH 收件箱状态：${message}`), {
         label: 'DSH 收件箱状态',
         validate: validState,
     });
-    return { version: 1, ids: state.ids.slice(-KEEP_IDS) };
+    return { version: 2, line: state.version === 2 ? state.line : 0, ids: state.ids.slice(-KEEP_IDS) };
 }
 
 function writeState(path: string, state: InboxState): void {
     mkdirSync(dirname(path), { recursive: true });
-    writeJsonAtomic(path, { version: 1, ids: state.ids.slice(-KEEP_IDS) });
+    writeJsonAtomic(path, { version: 2, line: state.line, ids: state.ids.slice(-KEEP_IDS) });
 }
 
-function lines(path: string): string[] {
-    if (!existsSync(path)) return [];
-    try { return readFileSync(path, 'utf8').split('\n').map(line => line.trim()).filter(Boolean); }
-    catch { return []; }
+function lines(path: string, from: number, log: (message: string) => void): { values: string[]; nextLine: number } {
+    if (!existsSync(path)) return { values: [], nextLine: from };
+    try {
+        const text = readFileSync(path, 'utf8');
+        const parts = text.split('\n');
+        // DSH 可能正在追加最后一行；没有换行结尾的片段留到下一轮，避免半行 JSON 被永久跳过。
+        const complete = text.endsWith('\n') ? parts.slice(0, -1) : parts.slice(0, -1);
+        const start = from <= complete.length ? from : 0;
+        return { values: complete.slice(start).map(line => line.trim()).filter(Boolean), nextLine: complete.length };
+    } catch (error) {
+        log(`DSH 收件箱：读取失败（${error instanceof Error ? error.message : String(error)}）`);
+        return { values: [], nextLine: from };
+    }
 }
 
 function parseTimeline(value: unknown, now: number): DshTimelineInboxEntry | undefined {
@@ -121,8 +136,9 @@ function consume<T extends { id: string }>(path: string, statePath: string, pars
     if (!existsSync(path)) return 0;
     const state = readState(statePath, log);
     const seen = new Set(state.ids);
+    const batch = lines(path, state.line, log);
     let added = 0;
-    for (const line of lines(path)) {
+    for (const line of batch.values) {
         let raw: unknown;
         try { raw = JSON.parse(line); } catch { continue; }
         const entry = parse(raw, now);
@@ -138,7 +154,7 @@ function consume<T extends { id: string }>(path: string, statePath: string, pars
             log(`DSH 收件箱：${id} 应用失败（${error instanceof Error ? error.message : String(error)}）`);
         }
     }
-    if (added) writeState(statePath, { version: 1, ids: [...seen].slice(-KEEP_IDS) });
+    if (added || batch.nextLine !== state.line) writeState(statePath, { version: 2, line: batch.nextLine, ids: [...seen].slice(-KEEP_IDS) });
     return added;
 }
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -46,5 +46,22 @@ describe('DSH 收件箱', () => {
         assert.equal(consumeDshWorldInbox(inbox, state, now, world, () => undefined), 1);
         assert.equal(consumeDshWorldInbox(inbox, state, now, world, () => undefined), 0);
         assert.deepEqual(drafts, [{ id: 'dsh:dsh-world-1', kind: 'study', at: '2026-11-02T23:55:00.000Z', source: 'external', result: 'succeeded', subject: '复习' }]);
+    });
+
+    test('超过去重窗口后仍按收件箱游标只处理新追加的行', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-dsh-inbox-cursor-'));
+        dirs.push(dir);
+        const inbox = join(dir, 'world-inbox.jsonl');
+        const state = join(dir, 'world-state.json');
+        const at = '2026-11-02T23:55:00.000Z';
+        writeFileSync(inbox, `${Array.from({ length: 2_005 }, (_, i) => JSON.stringify({ id: `dsh-world-${String(i).padStart(4, '0')}`, at, kind: 'rest', result: 'succeeded' })).join('\n')}\n`);
+        const drafts: unknown[] = [];
+        const world = { recordEvents: (items: unknown[]) => drafts.push(...items) } as unknown as WorldState;
+        const now = new Date('2026-11-03T00:00:00.000Z');
+        assert.equal(consumeDshWorldInbox(inbox, state, now, world, () => undefined), 2_005);
+        writeFileSync(inbox, `${readFileSync(inbox, 'utf8')}\n${JSON.stringify({ id: 'dsh-world-new', at, kind: 'rest', result: 'succeeded' })}\n`);
+        assert.equal(consumeDshWorldInbox(inbox, state, now, world, () => undefined), 1);
+        assert.equal(drafts.length, 2_006);
+        assert.equal((drafts.at(-1) as { id: string }).id, 'dsh:dsh-world-new');
     });
 });
