@@ -60,20 +60,33 @@ function isSafeMediaRef(value: string): boolean {
 function validAudit(value: unknown): value is ExternalDraftAudit {
     if (!value || typeof value !== 'object') return false;
     const item = value as Partial<ExternalDraftAudit>;
-    return typeof item.at === 'string' && isStatus(item.status) && (item.note === undefined || (typeof item.note === 'string' && item.note.length <= 240));
+    return typeof item.at === 'string' && Number.isFinite(Date.parse(item.at))
+        && isStatus(item.status) && (item.note === undefined || (typeof item.note === 'string' && item.note.length <= 240));
 }
 function validDraft(value: unknown): value is ExternalDraft {
     if (!value || typeof value !== 'object') return false;
     const item = value as Partial<ExternalDraft>;
-    return typeof item.id === 'string' && /^[a-z0-9-]{8,80}$/.test(item.id)
+    const structurallyValid = typeof item.id === 'string' && /^[a-z0-9-]{8,80}$/.test(item.id)
         && isPlatform(item.platform)
-        && typeof item.title === 'string' && item.title.length <= MAX_TITLE
-        && typeof item.body === 'string' && item.body.length <= MAX_BODY
+        && typeof item.title === 'string' && Boolean(item.title.trim()) && item.title.length <= MAX_TITLE
+        && typeof item.body === 'string' && Boolean(item.body.trim()) && item.body.length <= MAX_BODY
         && Array.isArray(item.media) && item.media.length <= MAX_MEDIA && item.media.every(media => typeof media === 'string' && isSafeMediaRef(media))
-        && typeof item.createdAt === 'string' && typeof item.updatedAt === 'string'
+        && typeof item.createdAt === 'string' && Number.isFinite(Date.parse(item.createdAt))
+        && typeof item.updatedAt === 'string' && Number.isFinite(Date.parse(item.updatedAt))
         && isStatus(item.status)
         && (item.source === 'dsh' || item.source === 'qq' || item.source === 'manual' || item.source === 'adapter')
         && Array.isArray(item.audit) && item.audit.length > 0 && item.audit.every(validAudit);
+    if (!structurallyValid) return false;
+    const audit = item.audit!;
+    if (Date.parse(item.createdAt!) > Date.parse(item.updatedAt!)) return false;
+    if (audit[0]!.status !== 'pending' || audit[0]!.at !== item.createdAt) return false;
+    for (let index = 1; index < audit.length; index += 1) {
+        const previous = audit[index - 1]!;
+        const current = audit[index]!;
+        if (Date.parse(previous.at) > Date.parse(current.at) || !transitionAllowed(previous.status, current.status)) return false;
+    }
+    const last = audit.at(-1)!;
+    return last.status === item.status && last.at === item.updatedAt;
 }
 function validFile(value: unknown): value is DraftFile {
     if (!value || typeof value !== 'object') return false;

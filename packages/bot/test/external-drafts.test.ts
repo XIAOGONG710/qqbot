@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -28,6 +28,20 @@ afterEach(() => {
 });
 
 describe('外部平台草稿队列（ADR 0224）', () => {
+    test('持久化状态必须和审计链最后一步一致，损坏的批准状态不能绕过人工确认', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
+        const draft = seeded(0, 'pending');
+        writeFileSync(join(root, 'drafts.json'), JSON.stringify({
+            version: 1,
+            drafts: [{ ...draft, status: 'approved', updatedAt: draft.createdAt }],
+        }));
+        const logs: string[] = [];
+        const store = createExternalDraftStore({ dir: root, log: message => logs.push(message) });
+        assert.deepEqual(store.list(), [], '不把缺少批准审计的记录当成已批准');
+        assert.ok(readdirSync(root).some(name => name.startsWith('drafts.json.corrupt-')), '保留损坏原件供人工核对');
+        assert.match(logs.join('\n'), /schema/);
+    });
+
     test('状态推进写盘成功后才替换内存', () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
         const store = createExternalDraftStore({ dir: root });
