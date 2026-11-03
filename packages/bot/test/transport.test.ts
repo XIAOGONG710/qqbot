@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -67,5 +67,33 @@ describe('现实交通 / 公共服务事实（ADR 0232）', () => {
         const now = worldAt(card.herWorld!, card.schedule!, at('2026-10-20T14:00:00'))!;
         assert.equal(now.transport, undefined);
         assert.ok(now.weather);
+    });
+
+    test('缓存严格校验并绑定当前供应商，旧来源或损坏事实都不复用', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-transport-cache-'));
+        const dir = join(root, 'transport');
+        mkdirSync(dir);
+        const cache = join(dir, 'transport.json');
+        writeFileSync(cache, JSON.stringify({
+            fetchedAt: '2026-11-03T01:00:00.000Z',
+            facts: { jinan: { location: '济南', status: 'normal', observedAt: '2026-11-03T01:00:00.000Z', source: 'old-provider', real: true } },
+        }));
+        const options = {
+            dir, log: () => {}, locations: [{ id: 'jinan' }], endpoint: 'https://example.test', source: 'new-provider',
+            now: () => at('2026-11-03T09:00:00').getTime(), fetchJson: async () => ({}),
+        };
+        try {
+            assert.equal(transportFetcher(options).day('jinan'), undefined, '更换供应商后不能短暂复用旧来源事实');
+            writeFileSync(cache, JSON.stringify({
+                fetchedAt: '2026-11-03T01:00:00.000Z',
+                facts: { jinan: { location: '济南', status: 'normal', observedAt: 'not-a-time', source: 'new-provider', real: true } },
+            }));
+            const logs: string[] = [];
+            const broken = transportFetcher({ ...options, log: message => logs.push(message) });
+            assert.equal(broken.day('jinan'), undefined);
+            assert.equal(existsSync(cache), false);
+            assert.ok(readdirSync(dir).some(name => name.startsWith('transport.json.corrupt-')));
+            assert.ok(logs.some(message => message.includes('交通缓存') && message.includes('挪到')));
+        } finally { rmSync(root, { recursive: true, force: true }); }
     });
 });

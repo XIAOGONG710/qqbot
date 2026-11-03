@@ -27,7 +27,7 @@ export function useRealTransport(source: RealTransport | undefined): void { curr
 export function realTransport(): RealTransport | undefined { return current; }
 
 export interface TransportLocation { id: string; name?: string }
-interface Store { fetchedAt: string; facts: Record<string, TransportFact> }
+export interface TransportStore { fetchedAt: string; facts: Record<string, TransportFact> }
 
 const MAX_LOCATIONS = 50;
 const MAX_DETAIL = 160;
@@ -54,6 +54,21 @@ function validFact(value: unknown): value is TransportFact {
         || value.real !== true || typeof value.source !== 'string' || !value.source.trim()
         || typeof value.observedAt !== 'string' || !DATE_TIME.test(value.observedAt) || !Number.isFinite(Date.parse(value.observedAt))) return false;
     return value.detail === undefined || (typeof value.detail === 'string' && value.detail.length <= MAX_DETAIL);
+}
+
+export function isTransportStore(value: unknown): value is TransportStore {
+    if (!isRecord(value) || typeof value.fetchedAt !== 'string' || !DATE_TIME.test(value.fetchedAt)
+        || !Number.isFinite(Date.parse(value.fetchedAt)) || !isRecord(value.facts)) return false;
+    const facts = Object.entries(value.facts);
+    return facts.length > 0 && facts.every(([key, fact]) => Boolean(key.trim()) && key.length <= 80 && validFact(fact));
+}
+
+export function readTransportStore(path: string, log?: (message: string) => void, invalid: 'quarantine' | 'throw' = 'quarantine'): TransportStore | undefined {
+    return readJsonOr<TransportStore | undefined>(path, undefined, log, {
+        validate: (value): value is TransportStore | undefined => isTransportStore(value),
+        invalid,
+        label: '交通缓存',
+    });
 }
 
 /**
@@ -107,16 +122,17 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
     });
     mkdirSync(options.dir, { recursive: true });
     const cachePath = join(options.dir, 'transport.json');
-    let store: Store | undefined;
+    let store: TransportStore | undefined;
+    let loaded = false;
     const errors = new Map<string, string>();
     const errorAt = new Map<string, string>();
     let inFlight: Promise<void> | undefined;
-    const load = (): Store | undefined => {
-        if (store !== undefined) return store;
-        const data = readJsonOr<Partial<Store>>(cachePath, {}, message => options.log(`现实交通：${message}`));
-        if (!data.fetchedAt || !isRecord(data.facts)) return undefined;
-        const facts: Store['facts'] = {};
-        for (const [key, value] of Object.entries(data.facts)) if (validFact(value)) facts[key] = value;
+    const load = (): TransportStore | undefined => {
+        if (loaded) return store;
+        loaded = true;
+        const data = readTransportStore(cachePath, message => options.log(`现实交通：${message}`));
+        if (!data) return undefined;
+        const facts = Object.fromEntries(Object.entries(data.facts).filter(([, fact]) => fact.source === options.source));
         store = Object.keys(facts).length ? { fetchedAt: data.fetchedAt, facts } : undefined;
         return store;
     };
@@ -152,6 +168,7 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
                 }
                 if (success) {
                     store = { fetchedAt: new Date(now()).toISOString(), facts: merged };
+                    loaded = true;
                     writeJsonAtomic(cachePath, store);
                 }
             })().finally(() => { inFlight = undefined; });
