@@ -11,6 +11,14 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import {
+    COMPLETE_MARKER,
+    FAILURE_MARKER,
+    isCompleteBackup,
+    nonEmptyFile,
+    retryDue,
+    writeBackupMarker,
+} from './backup-state.mjs';
 
 const root = process.cwd();
 const backupDir = join(root, 'runtime', 'backups');
@@ -23,12 +31,16 @@ const force = process.argv.includes('--now');
 const log = (message) => console.log(`[backup] ${message}`);
 
 function pgDump() {
+    const out = join(target, 'hindsight.sql');
+    if (!force && nonEmptyFile(out)) {
+        log('数据库已有可用备份，本次只重试缺失部分');
+        return { ok: true, reused: true };
+    }
     const bin = join(homedir(), '.pg0', 'installation', '18.1.0', 'bin', 'pg_dump.exe');
     if (!existsSync(bin)) {
         log('没找到 pg_dump，跳过数据库（Hindsight 的记忆这次没备份）');
-        return;
+        return { ok: false, reason: 'pg_dump_missing' };
     }
-    const out = join(target, 'hindsight.sql');
     try {
         execFileSync(bin, ['-h', '127.0.0.1', '-p', '5433', '-U', 'hindsight', '-d', 'hindsight', '-f', out], {
             env: { ...process.env, PGPASSWORD: process.env.QQBOT_HINDSIGHT_DB_PASSWORD ?? 'hindsight' },
@@ -37,8 +49,11 @@ function pgDump() {
         });
         const size = (statSync(out).size / 1024 / 1024).toFixed(1);
         log(`数据库备份好：hindsight.sql（${size} MB）`);
+        return { ok: true };
     } catch (error) {
-        log(`数据库备份失败：${error instanceof Error ? error.message.split('\n')[0] : String(error)}`);
+        const reason = error instanceof Error ? error.message.split('\n')[0] : String(error);
+        log(`数据库备份失败：${reason}`);
+        return { ok: false, reason };
     }
 }
 
@@ -49,34 +64,60 @@ function archiveState() {
     const present = items.filter(item => existsSync(join(root, item)));
     if (!present.length) {
         log('没有要打包的状态文件');
-        return;
+        return { ok: true, skipped: true };
     }
     const zip = join(target, 'her-state.zip');
+    if (!force && nonEmptyFile(zip)) {
+        log('状态已有可用备份，本次只重试缺失部分');
+        return { ok: true, reused: true };
+    }
     try {
         execFileSync('powershell.exe', ['-NoProfile', '-Command',
             `Compress-Archive -Path ${present.map(item => `'${join(root, item).replace(/'/g, "''")}'`).join(',')} -DestinationPath '${zip}' -Force`],
         { timeout: 10 * 60_000, stdio: 'ignore' });
         log(`状态打包好：her-state.zip（${(statSync(zip).size / 1024 / 1024).toFixed(1)} MB）`);
+        return { ok: true };
     } catch (error) {
-        log(`状态打包失败：${error instanceof Error ? error.message.split('\n')[0] : String(error)}`);
+        const reason = error instanceof Error ? error.message.split('\n')[0] : String(error);
+        log(`状态打包失败：${reason}`);
+        return { ok: false, reason };
     }
 }
 
 function prune() {
     if (!existsSync(backupDir)) return;
-    const dirs = readdirSync(backupDir).filter(name => /^\d{4}-\d{2}-\d{2}$/.test(name)).sort();
+    const dirs = readdirSync(backupDir)
+        .filter(name => /^\d{4}-\d{2}-\d{2}$/.test(name) && isCompleteBackup(join(backupDir, name)))
+        .sort();
     for (const name of dirs.slice(0, Math.max(0, dirs.length - keepDays))) {
         rmSync(join(backupDir, name), { recursive: true, force: true });
         log(`删掉旧备份 ${name}`);
     }
 }
 
-if (!force && existsSync(target)) {
+if (!force && isCompleteBackup(target)) {
     log(`今天已经有备份了（${day}），跳过`);
     process.exit(0);
 }
+if (!force && existsSync(target) && !retryDue(target)) {
+    log('上次备份不完整，30 分钟后再重试');
+    process.exit(0);
+}
 mkdirSync(target, { recursive: true });
-pgDump();
-archiveState();
+const database = pgDump();
+const state = archiveState();
+const attemptedAt = new Date().toISOString();
+const components = { database, state };
+if (database.ok && state.ok) {
+    writeBackupMarker(target, COMPLETE_MARKER, { completed: true, completedAt: attemptedAt, components });
+    rmSync(join(target, FAILURE_MARKER), { force: true });
+} else {
+    writeBackupMarker(target, FAILURE_MARKER, { completed: false, attemptedAt, components });
+}
 prune();
-log(`完成：${target}`);
+if (database.ok && state.ok) {
+    log(`完成：${target}`);
+} else {
+    log(`未完成：${target}（保留已成功部分，稍后重试）`);
+    process.exitCode = 1;
+}
