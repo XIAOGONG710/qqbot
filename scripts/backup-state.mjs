@@ -29,7 +29,8 @@ export function isCompleteBackup(target) {
 export function retryDue(target, now = Date.now(), delayMs = RETRY_DELAY_MS) {
     const attemptedAt = readMarker(join(target, FAILURE_MARKER))?.attemptedAt;
     const attempted = typeof attemptedAt === 'string' ? Date.parse(attemptedAt) : Number.NaN;
-    return !Number.isFinite(attempted) || now - attempted >= delayMs;
+    const age = now - attempted;
+    return !Number.isFinite(attempted) || age < 0 || age >= delayMs;
 }
 
 export function nonEmptyFile(path) {

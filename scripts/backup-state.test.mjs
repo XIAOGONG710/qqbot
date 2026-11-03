@@ -76,6 +76,16 @@ describe('backup completion policy', () => {
         assert.equal(retryDue(target, attempted + RETRY_DELAY_MS), true);
     });
 
+    test('a future failure marker does not suppress retries after the clock moves back', () => {
+        const target = fresh();
+        const now = Date.parse('2026-11-04T04:00:00+08:00');
+        writeBackupMarker(target, FAILURE_MARKER, {
+            attemptedAt: new Date(now + 24 * 60 * 60_000).toISOString(),
+        });
+
+        assert.equal(retryDue(target, now), true);
+    });
+
     test('missing, empty and non-empty artifacts are distinguished', () => {
         const target = fresh();
         const artifact = join(target, 'hindsight.sql');
