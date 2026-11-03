@@ -995,6 +995,7 @@ describe('配置', () => {
         assert.equal(config.prompt.pinExamples, false);
         assert.equal(config.llm.promptPostProcessing, '');
         assert.deepEqual(config.llm.extraBody, {});
+        assert.equal(config.dsh.enabled, false);
     });
 
     test('听语音、看图（ADR 0052/0055）：默认只听语音和 OCR；DeepSeek 看图复用 LLM key', () => {

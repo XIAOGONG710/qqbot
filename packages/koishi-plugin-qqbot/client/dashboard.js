@@ -3,6 +3,7 @@
 
 /** 模块的显示顺序；总表里出现了这里没有的模块，排在最后 */
 export const GROUP_ORDER = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'];
+const TIER_NAMES = { boyfriend: '男朋友', bestie: '闺蜜', girl_friend: '女生熟人', known: '熟人', classmate: '同学', stranger: '陌生人', unlisted: '名单外好友', group: '群聊' };
 
 const MODE_NAMES = { on: '开', dryRun: '试运行', greet: '问候', send: '会发', collect: '只收藏', true: '开' };
 
@@ -23,15 +24,46 @@ export function featureGroups(features) {
 
 /** 一个开关的小标签：开着的写上模式（试运行 / 问候 / 会发）；ADR 编号放在提示里 */
 export function featureLabel(item) {
-    const mode = item.mode && MODE_NAMES[item.mode] !== '开' ? `（${MODE_NAMES[item.mode] ?? item.mode}）` : '';
+    const modeName = item.mode ? (MODE_NAMES[item.mode] ?? '已启用') : '';
+    const mode = modeName && modeName !== '开' ? `（${modeName}）` : '';
     return `${item.label}${mode}`;
 }
-export const featureTitle = item => `${item.on ? '开着' : '关着'}${item.adr ? `　ADR ${item.adr}` : ''}`;
+export const featureTitle = item => `${item.on ? '已启用' : '未启用'}${item.hint ? `；${item.hint}` : ''}`;
 
 /** 开了几个、一共几个（顶上的一行） */
 export function featureTotals(features) {
     const list = features ?? [];
     return { on: list.filter(item => item.on).length, total: list.length };
+}
+
+/** 联系人列表筛选：控制台只在本地过滤状态摘要，不触碰聊天内容。 */
+export function filterContacts(contacts, query = '', activeOnly = false) {
+    const needle = String(query).trim().toLocaleLowerCase();
+    return (contacts ?? []).filter(contact => {
+        if (activeOnly && contact.responder?.phase === 'idle') return false;
+        if (!needle) return true;
+        const haystack = [
+            contact.name, contact.qq, contact.tier, contact.now,
+            TIER_NAMES[contact.tier],
+            contact.responder?.phase, contact.responder?.reason,
+        ].filter(value => value !== undefined && value !== null).join(' ').toLocaleLowerCase();
+        return haystack.includes(needle);
+    });
+}
+
+/** 一眼看总览卡片用的计数，避免在组件里重复拼业务判断。 */
+export function overviewCounts(status) {
+    const contacts = status?.contacts ?? [];
+    const busy = contacts.filter(contact => contact.responder?.phase !== 'idle').length;
+    const retrying = contacts.filter(contact => contact.responder?.phase === 'retry').length;
+    const dsh = status?.features?.find(feature => feature.key === 'dsh');
+    return {
+        contacts: contacts.length,
+        busy,
+        retrying,
+        dshOn: dsh?.on === true,
+        features: featureTotals(status?.features),
+    };
 }
 
 /** 货架 / 小梗 / 周报：[{ label, text }]；对应的功能没开（没有这一项）就不出现 */

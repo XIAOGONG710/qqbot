@@ -18,6 +18,8 @@ import { STICKER_MAX_PER_MESSAGE, stickerIsNameless, stickerLine, type StickerRe
 export interface MediaReader {
     /** fetch_ptt_text：这条消息里语音转出来的字 */
     voiceToText?(messageId: number, signal?: AbortSignal): Promise<string>;
+    /** 可选：手机伴侣上传的原始音频转文字；不写入磁盘，调用方自行接入 STT。 */
+    voiceDataToText?(data: Uint8Array, mime: string, signal?: AbortSignal): Promise<string>;
     /** ocr_image：图上的字，一行一项（image 是图片的 URL、本地路径或 base64://） */
     ocr?(image: string, signal?: AbortSignal): Promise<string[]>;
 }

@@ -5,6 +5,7 @@
 // - 保存角色资料：先在内存里生成全部档位、做档位隐私检查，不过就不写；过了写 source/ 和 st/，插件按卡文件监听自动重启。
 
 import type { Context } from 'koishi';
+import { PHONE_ACTION_CAPABILITIES, type PhoneActionCapability } from '@qqbot/mobile-companion/protocol';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 import type { AppStatus } from '../../bot/src/platform/app.ts';
@@ -31,6 +32,7 @@ export interface ConsoleData {
     napcat?: { online: boolean; selfId?: string };
     status?: AppStatus;
     character?: { sourceDir: string; stDir: string };
+    phoneActions: readonly PhoneActionCapability[];
     updatedAt: number;
 }
 
@@ -73,6 +75,7 @@ export function consoleData(): ConsoleData {
         ...(napcat ? { napcat: napcat() } : {}),
         ...(status ? { status } : {}),
         ...(state.character ? { character: { sourceDir: state.character.sourceDir, stDir: state.character.stDir } } : {}),
+        phoneActions: PHONE_ACTION_CAPABILITIES,
         updatedAt: Date.now(),
     };
 }

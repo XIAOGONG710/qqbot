@@ -38,6 +38,8 @@
 - `platform/wechat-id.ts`
 - `platform/shell-tool.ts`
 - `platform/wechat-bridge.ts`
+- `dsh-link.ts`
+- `mobile-companion-dsh.ts`
 - `ops/`
 - `sim/`
 - `vendor/`
@@ -48,6 +50,7 @@
 | --- | --- | --- |
 | `webLookup` | 搜索 / 读网页（模式） | [ADR 0160](../adr/0160-web-lookup.md) |
 | `weeklyReport` | 周报 | [ADR 0118](../adr/0118-weekly-report.md) |
+| `dsh` | 外部顾问（按需咨询） | [ADR 0223](../adr/0223-dsh-bridge.md) |
 
 ## 看它有没有变好
 

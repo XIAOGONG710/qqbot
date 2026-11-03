@@ -8,9 +8,24 @@
   "engines": {
     "node": ">=24"
   },
+  "overrides": {
+    "ip-address": "10.7.5",
+    "qs": "6.17.1",
+    "zod": "4.6.7",
+    "koa-body": {
+      "zod": "4.6.7"
+    },
+    "@cordisjs/plugin-proxy-agent": {
+      "undici": "6.29.1"
+    }
+  },
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test --workspaces --if-present"
+    "test": "npm test --workspaces --if-present",
+    "audit:gate": "npm --workspace @qqbot/bot run audit:gate --",
+    "state-check": "npm --workspace @qqbot/bot run state-check --",
+    "golive-check": "npm --workspace @qqbot/bot run golive-check --",
+    "dsh:link": "npm --workspace @qqbot/bot run dsh:link --"
   },
   "devDependencies": {
     "@types/node": "^24.19.1",

@@ -37,6 +37,15 @@ plugins:
       promptPostProcessing: semi
       # 思考：off / low / high / max（关 / 低 / 高 / 最高），不写 = 接口默认
       thinking: 'off'
+    # DSH 顾问：开后男朋友档可用 /dsh 和 /dsh ask <问题>，默认关
+    dsh:
+      enabled: false
+      # baseUrl / model / timeoutMs 可选，只覆盖 DSH；密钥仍复用 QQBOT_LLM_API_KEY
+    # 手机伴侣 WebSocket：必须显式打开，且依赖 DSH 开关；复用 server 的 host / port，不另开端口
+    mobileCompanion:
+      enabled: false
+      websocketPath: /qqbot/companion
+      httpPath: /qqbot/companion/http
     prompt:
       maxContext: 8192
       pinExamples: false

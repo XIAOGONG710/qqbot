@@ -78,9 +78,27 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-napcat.ps1   # 一个�
 powershell -ExecutionPolicy Bypass -File .\scripts\start-bot.ps1      # 另一个终端
 ```
 
+## 手机伴侣
+
+DSH 开启并在 Koishi 中打开 `mobileCompanion.enabled` 后，可在 QQ 发送 `/dsh pair` 获取一次性配对码，设备遗失时用 `/dsh unpair` 立即撤销旧会话。DSH 默认复用主模型配置，也可在 `dsh` 下单独指定兼容接口地址、模型和超时（密钥仍只从 `QQBOT_LLM_API_KEY` 读取）。零依赖 PWA 位于 [`packages/mobile-companion-app`](packages/mobile-companion-app)：用静态服务器托管后，在手机浏览器添加到主屏幕，再填写 Koishi 的 WebSocket 或 HTTPS 地址。它支持文字、麦克风录音、音频 / 图片引用、服务端表情，以及经确认的通知、振动、计时器和 HTTPS 链接动作；若宿主为 `media.voiceDataToText` 接入 STT，手机语音会直接转成文字交给 DSH，否则保留为安全的“收到语音”占位；不提供任意 shell 或系统高权限。
+
 ## 环境要求
 
 - Git
 - Node.js `>= 24`（`packages/` 直接运行 TypeScript；SillyTavern 本身要求 `>= 20`）
 - `scripts/*.ps1` 用 `powershell -ExecutionPolicy Bypass -File <脚本>` 运行：Windows 默认执行策略禁止直接运行脚本，
   这样只对这一次运行放行，不改系统设置。
+
+## 质量检查
+
+根目录提供统一的只读检查入口；参数会转发到 bot 工作区：
+
+```powershell
+npm test
+npm run typecheck
+npm run audit:gate
+npm run state-check -- runtime/bot
+npm run dsh:link -- --help
+```
+
+`golive-check` 只用于上线前审查，不会自动重启、部署或提交改动。

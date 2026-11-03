@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#17151d">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <title>林梦瑶 · 手机伴侣</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="shell">
+    <header><div><h1>林梦瑶</h1><p>手机伴侣 · DSH 连续会话</p></div><span id="state" class="pill off">未连接</span></header>
+    <section class="card pairing">
+      <h2>连接</h2>
+      <label>传输<select id="transport"><option value="ws">WebSocket（实时）</option><option value="http">HTTPS（支持本地媒体上传）</option></select></label>
+      <label>地址<input id="endpoint" value="ws://127.0.0.1:5140/qqbot/companion" autocomplete="url"></label>
+      <label id="mediaEndpointRow" hidden>媒体上传地址<input id="mediaEndpoint" value="http://127.0.0.1:5140/qqbot/companion/http/media" autocomplete="url"></label>
+      <div class="grid"><label>设备 ID<input id="clientId" value="android-pwa" autocomplete="off"></label><label>一次性配对码<input id="pairingCode" placeholder="QQ 中 /dsh pair 获取" autocomplete="one-time-code"></label></div>
+      <button id="connect">配对并连接</button>
+      <small>只使用一次性配对码；页面不会保存配对码。</small>
+    </section>
+    <section id="conversation" class="card conversation" aria-live="polite"></section>
+    <section class="card composer">
+      <form id="textForm"><label>文字<input id="text" placeholder="说点什么…" maxlength="4000" autocomplete="off"></label><button>发送</button></form>
+      <details><summary>发送语音 / 图片 / 表情</summary>
+        <form id="mediaForm"><div class="grid"><label>类型<select id="mediaKind"><option value="audio">语音</option><option value="image">图片</option></select></label><label>MIME<input id="mediaMime" value="audio/ogg"></label></div><label>选择手机文件（HTTPS 模式）<input id="mediaFile" type="file" accept="audio/*,image/*" capture="environment"></label><div class="record-row"><button type="button" id="recordAudio">开始录音</button><span id="recordState">麦克风录音仅在 HTTPS 模式可用</span></div><label>或填 HTTPS URL / mediaId<input id="mediaRef" placeholder="https://… 或 16 位 catalog id"></label><label>字节数（引用媒体时）<input id="mediaBytes" type="number" min="1" value="1"></label><button>发送媒体</button></form>
+        <form id="stickerForm"><label>服务端表情 ID<input id="stickerId" placeholder="catalog id"></label><label>图片 MIME<input id="stickerMime" value="image/webp"></label><label>字节数<input id="stickerBytes" type="number" min="1" value="1"></label><button>发送表情</button></form>
+      </details>
+      <details><summary>手机动作（白名单，敏感动作需确认）</summary>
+        <form id="actionForm"><label>动作<select id="action"><option value="notify">通知</option><option value="timer">计时器</option><option value="ring">响铃（需确认）</option><option value="open_link">打开链接（需确认）</option><option value="media_control">媒体控制（需确认）</option><option value="volume">音量（需确认）</option></select></label><label>参数 JSON<input id="actionParams" value="{}" spellcheck="false"></label><label>理由<input id="actionReason" maxlength="500"></label><label class="check"><input id="confirmAction" type="checkbox"> 我确认执行敏感动作</label><button>请求动作</button></form>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

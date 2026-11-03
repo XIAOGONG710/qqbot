@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
-import { extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, GROUP_ORDER } from '../client/dashboard.js';
+import { extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, overviewCounts } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
@@ -24,7 +24,10 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
             assert.ok(feature.key in (DEFAULTS as object), `${feature.key} 不在 DEFAULTS`);
             assert.ok((FEATURE_GROUPS as readonly string[]).includes(feature.group), `${feature.key} 的模块 ${feature.group}`);
             const value = (DEFAULTS as Record<string, unknown>)[feature.key];
-            assert.equal(typeof value, feature.kind === 'mode' ? 'string' : 'boolean', feature.key);
+            // 大多数 bool 开关直接存 boolean；像 DSH 这类插件分组开关使用
+            // { enabled } 以便控制台继续扩展细项，但状态页仍按 bool 展示。
+            const isBoolSwitch = typeof value === 'boolean' || (typeof value === 'object' && value !== null && typeof (value as { enabled?: unknown }).enabled === 'boolean');
+            assert.equal(feature.kind === 'mode' ? typeof value : isBoolSwitch, feature.kind === 'mode' ? 'string' : true, feature.key);
             assert.ok(feature.label.length > 0);
             if (feature.adr) assert.match(feature.adr, /^\d{4}$/);
         }
@@ -41,6 +44,29 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
         assert.equal(get('festivals').mode, 'greet');
         assert.equal(get('herNo').on, false, '没给的算关');
         assert.equal(status.length, FEATURES.length);
+    });
+
+    test('联系人筛选：本地按称呼 / QQ / 档位 / 当前状态过滤，忙碌只排除 idle', () => {
+        const contacts = [
+            { name: '小明', qq: 10001, tier: 'classmate', now: '上课', responder: { phase: 'waiting', reason: '等他停下' } },
+            { name: '阿瑶', qq: 10002, tier: 'boyfriend', now: '休息', responder: { phase: 'idle' } },
+        ];
+        assert.deepEqual(filterContacts(contacts, '10002').map((row: { name: string }) => row.name), ['阿瑶']);
+        assert.deepEqual(filterContacts(contacts, '男朋友').map((row: { name: string }) => row.name), ['阿瑶']);
+        assert.deepEqual(filterContacts(contacts, 'waiting', true).map((row: { name: string }) => row.name), ['小明']);
+        assert.deepEqual(filterContacts(contacts, '', true).map((row: { name: string }) => row.name), ['小明']);
+    });
+
+    test('总览计数：联系人、忙碌、重试和 DSH 状态一致', () => {
+        const result = overviewCounts({
+            contacts: [
+                { responder: { phase: 'retry' } },
+                { responder: { phase: 'idle' } },
+                { responder: { phase: 'generating' } },
+            ],
+            features: [{ key: 'dsh', on: true }, { key: 'shape', on: false }],
+        });
+        assert.deepEqual(result, { contacts: 3, busy: 2, retrying: 1, dshOn: true, features: { on: 1, total: 2 } });
     });
 });
 

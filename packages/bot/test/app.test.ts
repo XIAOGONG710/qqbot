@@ -58,6 +58,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
     dirs.push(dataDir);
     return {
         llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
+        dsh: { enabled: false },
         prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
         characterCard: join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'),
         contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }],
@@ -156,6 +157,33 @@ async function until(check: () => boolean, ms = 3000): Promise<void> {
 const chat = (cfg: AppConfig, qq: number) => new ChatHistory(cfg.dataDir).load(qq).map(m => `${m.role}:${m.content}`);
 
 describe('编排（app.ts）', () => {
+    test('DSH 关闭时不创建手机伴侣，打开时返回可挂载的运行时', () => {
+        const off = setup(config());
+        assert.equal(off.app.mobileCompanion(), undefined);
+        assert.deepEqual(off.app.status().mobileCompanion, { enabled: false, connected: false, queued: 0, maxQueuedPerClient: 32 });
+        const on = setup(config({ dsh: { enabled: true } }));
+        const companion = on.app.mobileCompanion();
+        assert.ok(companion);
+        assert.deepEqual(on.app.status().mobileCompanion, { enabled: true, connected: false, queued: 0, maxQueuedPerClient: 32 });
+        const ticket = companion.issuePairing('android-app');
+        assert.equal(ticket.clientId, 'android-app');
+        assert.doesNotMatch(JSON.stringify(on.app.status()), new RegExp(ticket.pairingCode));
+        assert.doesNotMatch(JSON.stringify(on.app.status()), /nonce/);
+        const pair = setup(config({ dsh: { enabled: true }, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] }));
+        pair.app.receive(event(10001, 1234, '/dsh pair'));
+        assert.match(pair.sent.at(-1) ?? '', /手机伴侣配对码：s*[A-Z0-9]{4}(?:-[A-Z0-9]{4}){2}/);
+        assert.match(pair.sent.at(-1) ?? '', /设备 ID：android-[a-f0-9]{12}/);
+        const paired = pair.app.mobileCompanion();
+        assert.ok(paired);
+        paired.gateway.accept({ v: 1, requestId: 'req-unpair', kind: 'hello', sentAt: new Date().toISOString(), nonce: 'nonce-unpair', body: { clientId: 'android-test', pairingCode: paired.issuePairing('android-test').pairingCode, capabilities: ['text'] } }, 'session-unpair');
+        const oldMedia = paired.media.put({ clientId: 'android-test', mime: 'image/png', data: Buffer.from('old'), bytes: 3 });
+        assert.ok(paired.media.get('android-test', oldMedia.mediaId));
+        pair.app.receive(event(10001, 1235, '/dsh unpair'));
+        assert.equal(paired.gateway.pairedClientId, undefined);
+        assert.equal(paired.media.get('android-test', oldMedia.mediaId), undefined);
+        assert.match(pair.sent.at(-1) ?? '', /已解除配对/);
+    });
+
     test('承诺状态损坏暂停新增生活安排，但正常聊天继续；约见提示不能把未知当成有空', async () => {
         const cfg = config({ herDays: true, autonomousLife: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }],
             memory: { baseUrl: 'http://127.0.0.1:1', timeoutMs: 50, recallTimeoutMs: 50, bankPrefix: 'test' } });
@@ -1081,7 +1109,7 @@ describe('编排（app.ts）', () => {
         assert.ok(!off.logs.some(l => l.startsWith('没人聊天时她一件件过日子')));
         const cfg = config({ herDays: true, schedule: true, autonomousLife: true, contacts: bf });
         const on = setup(cfg);
-        assert.ok(on.logs.includes('没人聊天时她一件件过日子：开（ADR 0040/0045，影子模式：需要值只改行动账，不进提示词）'));
+        assert.ok(on.logs.includes('没人聊天时她一件件过日子：开（ADR 0040/0045，原始需要值只改行动账；真人式底色按联系人自然语言接入回复）'));
         assert.ok(existsSync(join(cfg.dataDir, 'world', 'needs-anchor.json')));
         // 启动时写当天摘要读过一次世界：排到了现在（这一刻正在上课一半、赶路时跳到下一个边界，可能还没有一件）
         const queue = join(cfg.dataDir, 'world', 'action-queue.json');
@@ -1094,7 +1122,7 @@ describe('编排（app.ts）', () => {
             // 「今天」按她的一天算（02:00 起）：零点到凌晨几点之间跑，不能让这段落到昨天去（原来 03:21 跑会写成「上一回是昨天晚上」）
             const now = Date.now();
             const herDayStart = new Date(now);
-            herDayStart.setHours(2, 5, 0, 0);
+            herDayStart.setHours(2, 0, 0, 0);
             if (herDayStart.getTime() > now) herDayStart.setDate(herDayStart.getDate() - 1);
             const end = new Date(Math.min(Math.max(now - 2 * 3_600_000, herDayStart.getTime() + 30 * 60_000), now - 60_000));
             const start = new Date(Math.max(end.getTime() - 100 * 60_000, herDayStart.getTime()));

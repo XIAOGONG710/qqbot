@@ -229,7 +229,8 @@ export type NamedContact = MemoryContact & { name: string };
 
 /** 日记在公共库里的 document_id 前缀（ADR 0017） */
 export /** 证据指纹（ADR 0226）：id / 查询串的哈希前 12 位，不回显原文 */
-const fingerprint = (value: string): string => createHash('sha256').update(value).digest('hex').slice(0, 12);
+/** 只记录不可逆指纹，便于对照同一文档 / 查询是否被重复处理，不把原文写入状态页。 */
+const evidenceFingerprint = (value: string): string => createHash('sha256').update(value).digest('hex').slice(0, 12);
 
 const DIARY_PREFIX = 'diary:';
 
@@ -387,7 +388,7 @@ export class LongTermMemory {
             (state.common ??= {})[episode.id] = episode.messages.length;
             (state.commonAt ??= {})[episode.id] = this.#now();
             this.#save(contact, state);
-            this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-common-episode', items: episode.messages.length, fingerprint: fingerprint(episode.id) };
+            this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-common-episode', items: episode.messages.length, fingerprint: evidenceFingerprint(episode.id) };
             this.#options.log(`[${contact.qq}] 记忆（公共）：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
             // 新片段可能带来新的人和事，下一轮重读实体名
             this.#entities.fetchedAt = undefined;
@@ -425,7 +426,7 @@ export class LongTermMemory {
                 metadata: { source: tag, ...(tag === 'diary' ? { date: documentId.slice(DIARY_PREFIX.length) } : { id: documentId }) },
                 entities: [{ text: char, type: 'PERSON' }],
             });
-            this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: tag, items: 1, fingerprint: fingerprint(documentId) };
+            this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: tag, items: 1, fingerprint: evidenceFingerprint(documentId) };
             this.#entities.fetchedAt = undefined;
             return true;
         } catch (error) {
@@ -495,7 +496,7 @@ export class LongTermMemory {
             state.retained[episode.id] = episode.messages.length;
             (state.retainedAt ??= {})[episode.id] = this.#now();
             this.#save(contact, state);
-            this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-episode', items: episode.messages.length, fingerprint: fingerprint(episode.id) };
+            this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-episode', items: episode.messages.length, fingerprint: evidenceFingerprint(episode.id) };
             this.#options.log(`[${contact.qq}] 记忆：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
         }
     }
@@ -784,11 +785,11 @@ export class LongTermMemory {
     async #recall(bankId: string, request: RecallRequest, failure: string): Promise<RecallResult[] | undefined> {
         try {
             const results = await this.#options.api.recall(bankId, request, this.#options.recallTimeoutMs);
-            this.#lastRecall = { at: this.#now(), ok: true, operation: 'recall', source: 'hindsight-recall', items: results.length, fingerprint: fingerprint(request.query ?? '') };
+            this.#lastRecall = { at: this.#now(), ok: true, operation: 'recall', source: 'hindsight-recall', items: results.length, fingerprint: evidenceFingerprint(request.query ?? '') };
             return results;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            this.#lastRecall = { at: this.#now(), ok: false, error: message, operation: 'recall', source: 'hindsight-recall', fingerprint: fingerprint(request.query ?? '') };
+            this.#lastRecall = { at: this.#now(), ok: false, error: message, operation: 'recall', source: 'hindsight-recall', fingerprint: evidenceFingerprint(request.query ?? '') };
             this.#options.log(`${failure}：${message}`);
             return undefined;
         }

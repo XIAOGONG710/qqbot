@@ -164,6 +164,15 @@ describe('长期记忆：写入', () => {
             assert.equal(calls.putBank.length, 1);
             assert.equal(calls.createMentalModel.length, 1);
             assert.ok(logs.some(l => l.includes('已提交')));
+            const lastWrite = memory.status().lastWrite;
+            assert.ok(lastWrite);
+            assert.deepEqual({
+                ok: lastWrite.ok,
+                operation: lastWrite.operation,
+                source: lastWrite.source,
+                items: lastWrite.items,
+                fingerprintLength: lastWrite.fingerprint?.length,
+            }, { ok: true, operation: 'write', source: 'qq-episode', items: 2, fingerprintLength: 12 });
 
             await memory.sync(A, names, history);
             assert.equal(calls.retain.length, 1, '没有变化就不重复写');
@@ -336,6 +345,10 @@ describe('长期记忆：召回与关系概况', () => {
             await memory.sync(A, names, [msg(0, 'user', '在吗')]);
             assert.equal(await memory.recall(A, chat, new Date()), undefined);
             assert.ok(logs.some(l => l.includes('记忆召回失败，这次不带记忆：超时')));
+            assert.equal(memory.status().lastRecall?.operation, 'recall');
+            assert.equal(memory.status().lastRecall?.source, 'hindsight-recall');
+            assert.equal(memory.status().lastRecall?.ok, false);
+            assert.equal(memory.status().lastRecall?.fingerprint?.length, 12);
         } finally {
             cleanup();
         }

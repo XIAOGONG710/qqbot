@@ -9,9 +9,10 @@
 // 每人的消息按收到的顺序一条条进；读的时候不卡别人，读不出来、超时照旧「[语音]」「[图片]」。
 
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canGiveFeedback, cardKey, CONTACT_TIERS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { loadOthers } from '.././social/others.ts';
 import { createAccount, friendRequestVerdict } from '.././social/account.ts';
 import { chatCompletion, forExtraction } from '.././language/llm.ts';
@@ -100,7 +101,6 @@ import { bodyAt } from '.././life/body.ts';
 import { worldState, type WorldNow } from '.././world/world.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
 import { lifeExecutor } from '.././world/life-selector.ts';
-import { loadNeedsAnchor } from '.././life/needs.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/diary.ts';
 import { armIntimate, INTIMATE_REPLIES, takeIntimateLine } from '.././language/intimacy.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from '.././life/schedule.ts';
@@ -120,6 +120,11 @@ import { SlidingWindowRateLimiter } from '.././social/rate-limit.ts';
 import { greetingOnly, markSignature, MINOR_NOTICE, minorHint, strangerGuard } from '.././social/strangers.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
+import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
+import { humanValuesAt, humanValuesFromAnchor, type HumanValues } from '.././human-values.ts';
+import { createDshLink, dshOptionsFromLlm, type DshConversationTurn, type DshState, type DshVoice } from '.././dsh-link.ts';
+import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
+import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { journalOn, selfThread, selfThreadLine } from '.././language/self-thread.ts';
 import { announceFallback, announcePrompt, awayNow, shouldAnnounce } from '.././life/leave-note.ts';
@@ -132,6 +137,7 @@ import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life
 import { askExpired, askLine, takeConsent } from './consent.ts';
 import { PEEK_OFF_NOTICE, peekRefused } from './private-space.ts';
 import { createTurnWeigher, WEIGH_TIMEOUT_MS } from '.././language/turn-weight.ts';
+import type { ExternalPlatformMode } from '../social/external-platforms.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -186,6 +192,8 @@ export interface App {
     stop(): void;
     /** 此刻的状态（控制台「林梦瑶」页面，ADR 0010）；不含聊天内容 */
     status(): AppStatus;
+    /** DSH 开启时可供宿主挂 HTTPS / WebSocket 的手机伴侣运行时；默认关闭时为 undefined。 */
+    mobileCompanion(): MobileCompanionIntegration | undefined;
 }
 
 export interface ContactStatus {
@@ -232,6 +240,12 @@ export interface AppStatus {
     extras?: { photos?: { count: number; cat: number; view: number; work: number; food: number }; jokes?: number; report?: { name: string; text: string } };
     /** 长期记忆开着时：服务探测结果（每分钟最多探一次）、最近一次写入和召回 */
     memory?: { baseUrl: string; health?: MemoryEvent; lastWrite?: MemoryEvent; lastRecall?: MemoryEvent };
+    /** 手机伴侣安全摘要：不含配对码、nonce 或消息正文。 */
+    mobileCompanion?: { enabled: boolean; pairedClientId?: string; connected: boolean; queued: number; maxQueuedPerClient: number };
+    /** 外部内容平台接入模式。 */
+    externalPlatforms: { tieba: ExternalPlatformMode; douyin: ExternalPlatformMode; xiaohongshu: ExternalPlatformMode };
+    /** 自主生活开启且有需要锚点时的全局真人式状态。 */
+    humanValues?: Pick<HumanValues, 'at' | 'energy' | 'hunger' | 'stress' | 'mood' | 'health' | 'loneliness' | 'confidence' | 'curiosity' | 'boredom' | 'motivation' | 'socialBattery' | 'selfEsteem' | 'openness' | 'satisfaction' | 'comfort' | 'frustration'>;
 }
 
 /** 状态页的「今天」（ADR 0015） */
@@ -292,6 +306,16 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
+    const dshConfig = config.dsh ?? { enabled: false };
+    const dshLink = createDshLink(dshOptionsFromLlm(config.llm, {
+        ...(dshConfig.baseUrl ? { baseUrl: dshConfig.baseUrl } : {}),
+        ...(dshConfig.model ? { model: dshConfig.model } : {}),
+        ...(dshConfig.timeoutMs === undefined ? {} : { timeoutMs: dshConfig.timeoutMs }),
+    }), { log: message => log(`DSH：${message}`) });
+    const dshEnabled = dshConfig.enabled === true;
+    let dshAskTail: Promise<void> = Promise.resolve();
+    const dshConversation: DshConversationTurn[] = [];
+    log(`DSH 顾问：${dshEnabled ? '开（显式 /dsh ask 或 /dsh probe）' : '关'}`);
     // 关着的时候不留上次开着时的完整提示词
     if (!sensitive.on()) rmSync(join(config.dataDir, 'last-prompt.json'), { force: true });
     // 以后要加的人：<dataDir>/others.json，不改代码就能加；重复 QQ 自动跳过
@@ -397,7 +421,17 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(worldCard.herWorld!.body ? { bodyAt: (time: Date) => bodyAt(worldCard.herWorld!.body!, worldCard.schedule!, time) } : {}),
             bedtimes: () => bedtimes(worldCard.schedule!, worldNow()),
             appointmentsBetween: (from, to) => loadAppointments?.(from, to) ?? [],
-            ...(needsAnchor ? { needsAnchor } : {}),
+            ...(needsAnchor ? {
+                needsAnchor,
+                humanValuesAt: ({ at, needs }) => {
+                    try {
+                        return humanValuesAt({ at, needs, history: [], tier: 'known', events: ledgerWorld.events() });
+                    } catch (error) {
+                        log(`生活选择器：真人式状态投影失败（${error instanceof Error ? error.message : String(error)}）`);
+                        return undefined;
+                    }
+                },
+            } : {}),
         }, lifeQueue, { since: lifeStartedAt, log })
         : undefined;
     const sharedWorld = ledgerWorld && lifeQueue
@@ -1344,6 +1378,17 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
             history,
             historyContent: historyText,
+            ...(needsAnchor && sharedWorld ? {
+                humanValues: ({ contact: valueContact, history: valueHistory, at }: { contact: Contact; history: readonly (Pick<StoredMessage, 'role' | 'content'> & { time?: string })[]; at: Date }) => {
+                    try {
+                        const events = sharedWorld.events?.() ?? [];
+                        return humanValuesFromAnchor({ at, anchor: needsAnchor, history: valueHistory, tier: valueContact.tier, events });
+                    } catch (error) {
+                        log(`[${valueContact.qq}] 数值状态：投影失败（${error instanceof Error ? error.message : String(error)}）`);
+                        return undefined;
+                    }
+                },
+            } : {}),
             memory,
             ...(memory && config.selfDirectedMemory ? { pullRecall: (query: string) => memory!.recallPull(contact, query, new Date()) } : {}),
             ...(promises ? { promises } : {}),
@@ -2278,6 +2323,36 @@ ${body}
         // 只认纯文字、只认男朋友档的他；命中的算处理完，不进聊天记录、不交给回复器。休眠中除了这几条，她什么都不回
         if (deviceOwner && event.user_id === deviceOwner.qq) {
             const plain = plainTextOf(event.message)?.trim();
+            // DSH 工作模式保留裸 /dsh；桥接探针和咨询使用显式子命令，避免改变 DSH 原有语义。
+            if (dshEnabled && plain === '/dsh probe') {
+                void dshLink.probe().then(result => tellOwner(result.ok
+                    ? `（DSH 已连通：${result.model}，${result.latencyMs}ms）`
+                    : `（DSH 没连上：${result.error ?? '未知错误'}）`));
+                return;
+            }
+            if (dshEnabled && plain === '/dsh pair') {
+                if (!mobileCompanion) { tellOwner('（手机伴侣还没开。）'); return; }
+                const clientId = `android-${randomBytes(6).toString('hex')}`;
+                const ticket = mobileCompanion.issuePairing(clientId);
+                tellOwner(`（手机伴侣配对码：${ticket.pairingCode}；设备 ID：${clientId}；${Math.ceil((ticket.expiresAt - Date.now()) / 60_000)} 分钟内有效。不要把配对码发给别人。）`);
+                return;
+            }
+            if (dshEnabled && plain === '/dsh unpair') {
+                if (!mobileCompanion) { tellOwner('（手机伴侣还没开。）'); return; }
+                const oldClientId = mobileCompanion.runtime.status().pairedClientId;
+                mobileCompanion.runtime.reset();
+                if (oldClientId) mobileCompanion.media.clear(oldClientId);
+                tellOwner('（手机伴侣已解除配对，旧连接和媒体会话都失效了。）');
+                return;
+            }
+            if (dshEnabled && plain?.startsWith('/dsh ask ')) {
+                askDsh(plain.slice('/dsh ask '.length).trim());
+                return;
+            }
+            if (dshEnabled && plain?.startsWith('/dsh talk ')) {
+                askDsh(plain.slice('/dsh talk '.length).trim());
+                return;
+            }
             // 指令收敛（2026-10-31 用户：「把绝大多数的指令去掉吧，以后也不新增指令」）：
             // 只留运维必需的四条（休眠/唤醒/模式/设定），别的指令一律当作“不用了”，直接请他用话说。
             // 想看什么、想让她做什么，都在聊天里说——她会自己判断做不做。
@@ -2652,6 +2727,86 @@ ${body}
         transport.sendPrivateText(deviceOwner.qq, text).catch(error => log(`提示没发出去（${error instanceof Error ? error.message : String(error)}）`));
     };
 
+    /** DSH 咨询只拿脱敏状态摘要，不带完整聊天记录。 */
+    const dshState = (): DshState | undefined => {
+        if (!needsAnchor) return undefined;
+        const at = new Date(worldNow());
+        try {
+            const events = sharedWorld?.events?.() ?? [];
+            const needs = needsAt(needsAnchor, events, at);
+            const values = humanValuesAt({ at, needs, history: [], tier: deviceOwner?.tier ?? 'boyfriend', events });
+            return {
+                at: at.toISOString(),
+                tier: deviceOwner?.tier ?? 'boyfriend',
+                needs: { energy: needs.energy, hunger: needs.hunger, stress: needs.stress },
+                values: {
+                    energy: values.energy, hunger: values.hunger, stress: values.stress, mood: values.mood,
+                    health: values.health, loneliness: values.loneliness, motivation: values.motivation,
+                    boredom: values.boredom, socialBattery: values.socialBattery,
+                },
+                relationship: values.relationship,
+                recentEvents: events.slice(-8).map(event => event.kind),
+            };
+        } catch (error) {
+            log(`DSH：读取状态摘要失败（${error instanceof Error ? error.message : String(error)}）`);
+            return undefined;
+        }
+    };
+
+    const dshRecentTurns = () => {
+        if (!deviceOwner) return undefined;
+        return [...history.load(deviceOwner.qq).slice(-6).map(message => ({ role: message.role, content: message.content })), ...dshConversation].slice(-6);
+    };
+
+    const dshVoice = (): DshVoice | undefined => {
+        try {
+            const character = cardFor(deviceOwner?.tier ?? 'boyfriend').character;
+            return { name: character.name, description: character.description, personality: character.personality };
+        } catch (error) {
+            log(`DSH：读取语气档案失败（${error instanceof Error ? error.message : String(error)}）`);
+            return undefined;
+        }
+    };
+
+    let mobileCompanion: MobileCompanionIntegration | undefined;
+    const describeMobileMedia = async (message: CompanionMessage, clientId: string): Promise<string | undefined> => {
+        if (!message.media?.mediaId || !mobileCompanion) return undefined;
+        const record = mobileCompanion.media.get(clientId, message.media.mediaId);
+        if (!record) return undefined;
+        if (message.kind === 'audio') {
+            if (!media?.voiceDataToText) return undefined;
+            return await withTimeout(media.voiceDataToText(record.data, record.mime), MEDIA_TIMEOUTS.voice);
+        }
+        if (!vision || !['image', 'sticker'].includes(message.kind)) return undefined;
+        const dataUrl = `data:${record.mime};base64,${record.data.toString('base64')}`;
+        return await withTimeout(vision.describe({ url: dataUrl, dataUrl }), MEDIA_TIMEOUTS.vision);
+    };
+    if (dshEnabled) mobileCompanion = createMobileCompanion({
+        dsh: dshLink,
+        state: dshState,
+        voice: dshVoice,
+        describeMedia: describeMobileMedia,
+        onActionResult: async (result, clientId) => {
+            log(`手机动作回执：设备 ${clientId}，请求 ${result.requestId}，${result.ok ? '成功' : '失败'}，决策 ${result.decision}${result.error ? `（${result.error.replace(/\s+/g, ' ').slice(0, 160)}）` : ''}`);
+        },
+    });
+
+    const askDsh = (question: string): void => {
+        dshAskTail = dshAskTail.then(async () => {
+            try {
+                const continuity = dshRecentTurns();
+                dshConversation.push({ role: 'user', content: question });
+                const reply = await dshLink.advise({ question, state: dshState(), recentTurns: continuity, voice: dshVoice() });
+                const text = reply.trim() || '我刚才没整理好，你再问我一次。';
+                dshConversation.push({ role: 'assistant', content: text });
+                dshConversation.splice(0, Math.max(0, dshConversation.length - 12));
+                tellOwner(text);
+            } catch (error) {
+                tellOwner(`（DSH 咨询失败：${error instanceof Error ? error.message : String(error)}）`);
+            }
+        });
+    };
+
     /** 「/休眠 [原因]」先商量：让她自己说话（这一条会发给他），记下她的话；「/休眠 确认」才封存并休眠；「/休眠 取消」回到醒着 */
     async function handleDormancyCommand(argument: string): Promise<void> {
         if (!dormancy || !deviceOwner) return;
@@ -2931,6 +3086,7 @@ ${body}
         receiveGroup(event) {
             onGroupMessage(event);
         },
+        mobileCompanion: () => mobileCompanion,
         receiveFriendRequest({ userId, flag }) {
             const gate = config.qqFriendGate ?? 'off';
             if (!account || gate === 'off') return;
@@ -3025,6 +3181,17 @@ ${body}
                     })
                     .finally(() => { probing = false; });
             }
+            const currentHumanValues = (() => {
+                if (!needsAnchor) return undefined;
+                try {
+                    const events = sharedWorld?.events?.() ?? [];
+                    const needs = needsAt(needsAnchor, events, now);
+                    return humanValuesAt({ at: now, needs, history: [], tier: deviceOwner?.tier ?? 'boyfriend', events });
+                } catch (error) {
+                    log(`状态页：真人式状态投影失败（${error instanceof Error ? error.message : String(error)}）`);
+                    return undefined;
+                }
+            })();
             return {
                 runtime,
                 contacts: [
@@ -3043,6 +3210,9 @@ ${body}
                 features: featureStatuses(config),
                 ...(photos || jokes || config.weeklyReport ? { extras: statusExtras() } : {}),
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
+                ...(mobileCompanion ? { mobileCompanion: { enabled: true, ...mobileCompanion.runtime.status() } } : { mobileCompanion: { enabled: false, pairedClientId: undefined, connected: false, queued: 0, maxQueuedPerClient: 0 } }),
+                externalPlatforms: config.externalPlatforms ?? DEFAULTS.externalPlatforms,
+                ...(currentHumanValues ? { humanValues: currentHumanValues } : {}),
             };
         },
     };

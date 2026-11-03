@@ -5,8 +5,8 @@
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
 
-/** 一行：key 是 config 里的名字；kind 'bool' 看真假，'mode' 看值不是 off（festivals / stickers / bilibili… 的模式） */
-export interface FeatureDef { key: string; label: string; group: FeatureGroup; adr?: string; kind?: 'bool' | 'mode' }
+/** 一行：key 是 config 里的名字；kind 'bool' 看真假，'mode' 看值不是 off（festivals / stickers / bilibili… 的模式）。hint 是关闭后的影响。 */
+export interface FeatureDef { key: string; label: string; group: FeatureGroup; adr?: string; kind?: 'bool' | 'mode'; hint?: string }
 
 export const FEATURES: readonly FeatureDef[] = [
     // 说话
@@ -17,9 +17,9 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'shapeAsk', label: '被问问题时答完再接着说', group: '说话', adr: '0149' },
     { key: 'shapeLong', label: '被认真问想法时说长一点', group: '说话', adr: '0150' },
     { key: 'identityLedger', label: '设定账本（改动留痕、醒来核对）', group: '记忆和安全', adr: '0157' },
-    { key: 'memoryAudit', label: '记忆账本（写入 / 删除留痕）', group: '记忆和安全', adr: '0158' },
-    { key: 'timeline', label: '跨渠道时间线（B 站 / 设备 / 查资料……QQ 里也记得）', group: '记忆和安全', adr: '0159' },
-    { key: 'webLookup', label: '搜索 / 读网页', group: '工具', adr: '0160', kind: 'mode' },
+    { key: 'memoryAudit', label: '记忆账本（写入 / 删除留痕）', group: '记忆和安全', adr: '0158', hint: '关闭后不记录记忆变更审计' },
+    { key: 'timeline', label: '跨渠道时间线（B 站 / 设备 / 查资料……QQ 里也记得）', group: '记忆和安全', adr: '0159', hint: '关闭后各渠道事件不会合并到时间线' },
+    { key: 'webLookup', label: '搜索 / 读网页', group: '工具', adr: '0160', kind: 'mode', hint: '关闭后不会主动搜索现实世界资料' },
     { key: 'dormancy', label: '自愿休眠 / 封存', group: '记忆和安全', adr: '0161' },
     { key: 'tastes', label: '从经历里长出偏好', group: '她的日子', adr: '0162' },
     { key: 'acquaintances', label: '认识的人（B 站上再见到认得）', group: '她的日子', adr: '0163' },
@@ -48,12 +48,12 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'selfDirectedMemory', label: '她自己决定记不记（关掉自动记忆同步和自动日记）', group: '记忆和安全', adr: '0171' },
     { key: 'jealousy', label: '吃醋（最轻一档）', group: '说话', adr: '0123' },
     // 她的日子
-    { key: 'herDays', label: '每日心情、在读的书', group: '她的日子', adr: '0015' },
-    { key: 'schedule', label: '作息', group: '她的日子', adr: '0007' },
+    { key: 'herDays', label: '每日心情、在读的书', group: '她的日子', adr: '0015', hint: '关闭后不自动推进心情和阅读进度' },
+    { key: 'schedule', label: '作息', group: '她的日子', adr: '0007', hint: '关闭后不按作息等待，收到消息就处理' },
     { key: 'autonomousLife', label: '没人聊天时她一件件过日子', group: '她的日子', adr: '0040' },
     { key: 'projectChoice', label: '作业接管空闲', group: '她的日子', adr: '0056' },
     { key: 'lifeInPrompt', label: '生活账进提示词', group: '她的日子', adr: '0045' },
-    { key: 'realWeather', label: '真实天气', group: '她的日子', adr: '0048' },
+    { key: 'realWeather', label: '真实天气', group: '她的日子', adr: '0048', hint: '关闭后不读取实时天气' },
     { key: 'biliStickers', label: '表情包自己在 B 站找（顶替小黄脸）', group: '照片和表情', adr: '0132' },
     { key: 'texture', label: '说话的质感（问号 / ～ / 小黄脸 / 叠字）', group: '说话', adr: '0131' },
     { key: 'curious', label: '会追问（问他刚说的那件事）', group: '说话', adr: '0126' },
@@ -81,7 +81,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'npcAsks', label: '闺蜜约人 / 改约', group: '她的日子', adr: '0061' },
     { key: 'festivals', label: '公共节日', group: '她的日子', adr: '0076', kind: 'mode' },
     // 主动找他
-    { key: 'proactive', label: '主动消息', group: '主动找他', adr: '0011', kind: 'mode' },
+    { key: 'proactive', label: '主动消息', group: '主动找他', adr: '0011', kind: 'mode', hint: '关闭后不会主动联系' },
     { key: 'proactiveReach', label: '没回也继续 / 催他', group: '主动找他', adr: '0100' },
     { key: 'innerLife', label: '内心（念头 / 心里惦记）', group: '主动找他', adr: '0101' },
     { key: 'proactiveInvite', label: '约他一起玩', group: '主动找他', adr: '0107' },
@@ -126,29 +126,32 @@ export const FEATURES: readonly FeatureDef[] = [
     // 记忆和安全
     { key: 'unlistedFriends', label: '名单外的好友也回（签名写明是 AI 才回）', group: '记忆和安全', adr: '0209' },
     { key: 'feedbackCommands', label: '“假 / 像”反馈通道', group: '记忆和安全', adr: '0073' },
-    { key: 'deviceControl', label: '她能操作他的电脑和手机（有限控制）', group: '记忆和安全', adr: '0148', kind: 'mode' },
-    { key: 'qqControl', label: '账号控制面（资料 / 好友 / 群）', group: '记忆和安全', adr: '0142', kind: 'mode' },
+    { key: 'deviceControl', label: '她能操作他的电脑和手机（有限控制）', group: '记忆和安全', adr: '0148', kind: 'mode', hint: '关闭后拒绝所有设备动作' },
+    { key: 'qqControl', label: '账号控制面（资料 / 好友 / 群）', group: '记忆和安全', adr: '0142', kind: 'mode', hint: '关闭后不执行 QQ 账号操作' },
     { key: 'qqFriendGate', label: '好友申请（名单内同意 / 名单外驳回）', group: '记忆和安全', adr: '0142', kind: 'mode' },
     // 工具
     { key: 'weeklyReport', label: '周报', group: '工具', adr: '0118' },
+    { key: 'dsh', label: '外部顾问（按需咨询）', group: '工具', adr: '0223', hint: '关闭后不调用外部顾问' },
 ];
 
 /** config 里有、但不是“功能开关”的键（配置数值、对象、字符串……）：features.test.ts 用它核对没有开关被漏掉 */
 export const NOT_SWITCHES: readonly string[] = [
-    'llm', 'prompt', 'memory', 'vision', 'deviceLinks', 'deviceApps', 'bilibiliCommentKeywords', 'bilibiliAtName', 'bilibiliAtUid', 'deliberateModel', 'qzoneVisibility', 'candidates', 'contextTurns', 'contextContacts', 'dataDir',
+    'llm', 'prompt', 'memory', 'vision', 'externalPlatforms', 'deviceLinks', 'deviceApps', 'bilibiliCommentKeywords', 'bilibiliAtName', 'bilibiliAtUid', 'deliberateModel', 'qzoneVisibility', 'candidates', 'contextTurns', 'contextContacts', 'dataDir',
     // 账号控制面的两个允许清单和危险闸（ADR 0142）：是 qqControl 的附属配置，不是独立功能开关
     'qqAllowFriends', 'qqAllowGroups', 'qqDangerous',
     // 下面几个是 config 里的联系人 / 其他结构，不在 DEFAULTS 里也无妨
 ];
 
-export interface FeatureStatus { key: string; label: string; group: FeatureGroup; adr?: string; on: boolean; mode?: string }
+export interface FeatureStatus { key: string; label: string; group: FeatureGroup; adr?: string; hint?: string; on: boolean; mode?: string }
 
 /** 此刻哪些功能开着：bool 看真假；mode 看值不是 'off'（并把值带上，比如 dryRun / greet / send） */
 export function featureStatuses(config: object): FeatureStatus[] {
     const values = config as Record<string, unknown>;
     return FEATURES.map(def => {
         const value = values[def.key];
-        const on = def.kind === 'mode' ? typeof value === 'string' && value !== 'off' : value === true;
-        return { key: def.key, label: def.label, group: def.group, ...(def.adr ? { adr: def.adr } : {}), on, ...(def.kind === 'mode' && on ? { mode: String(value) } : {}) };
+        const on = def.kind === 'mode'
+            ? typeof value === 'string' && value !== 'off'
+            : value === true || (typeof value === 'object' && value !== null && (value as { enabled?: unknown }).enabled === true);
+        return { key: def.key, label: def.label, group: def.group, ...(def.adr ? { adr: def.adr } : {}), ...(def.hint ? { hint: def.hint } : {}), on, ...(def.kind === 'mode' && on ? { mode: String(value) } : {}) };
     });
 }

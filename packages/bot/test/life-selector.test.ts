@@ -148,6 +148,17 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
             '压力高只降低项目效用，不能盖掉学习和截止时间');
     });
 
+    test('真人式动机和无聊会回流到柔性行动；没有回调时保持旧行为', () => {
+        const study = { kind: 'study' as const, subject: '复习' };
+        const rest = { kind: 'rest' as const, subject: '躺会儿' };
+        const needs: NeedsSnapshot = { at: new Date().toISOString(), energy: 60, hunger: 30, stress: 35 };
+        assert.deepEqual(motivate(study, needs, '躺会儿', { motivation: 20, boredom: 20 }).action,
+            rest, '动机过低时先恢复');
+        assert.deepEqual(motivate(rest, needs, '躺会儿', { motivation: 65, boredom: 82 }).action,
+            { kind: 'leisure', subject: '找点轻松的事做' }, '无聊过高时避免继续躺平');
+        assert.deepEqual(motivate(study, needs).action, study, '未接真人式状态时兼容旧选择器');
+    });
+
     test('硬事件仍优先：即使又累又饿又有压力，饭点先吃饭、上课先上课', () => {
         const exhausted: LifeSources = {
             ...plain,

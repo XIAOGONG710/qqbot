@@ -4,7 +4,8 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { DEFAULTS, parseAppConfig } from '../../bot/src/platform/config.ts';
-import { Config, migrateThinking, thinkingBody, toAppConfigInput } from '../src/index.ts';
+import { Config, migrateThinking, mountMobileCompanion, thinkingBody, toAppConfigInput } from '../src/index.ts';
+import type { CompanionWebSocketLike } from '@qqbot/mobile-companion/websocket';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const env = { QQBOT_LLM_API_KEY: 'k' };
@@ -65,6 +66,10 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(config.llm.timeoutMs, DEFAULTS.llm.timeoutMs);
         assert.equal(config.llm.promptPostProcessing, DEFAULTS.llm.promptPostProcessing);
         assert.equal(config.llm.thinking, undefined);
+        assert.equal(config.dsh.enabled, DEFAULTS.dsh.enabled);
+        assert.equal(config.mobileCompanion.enabled, false);
+        assert.equal(config.mobileCompanion.websocketPath, '/qqbot/companion');
+        assert.equal(config.mobileCompanion.httpPath, '/qqbot/companion/http');
         assert.equal(config.prompt.maxContext, DEFAULTS.prompt.maxContext);
         assert.equal(config.prompt.pinExamples, DEFAULTS.prompt.pinExamples);
         assert.deepEqual(config.prompt.worldInfo, DEFAULTS.prompt.worldInfo);
@@ -82,6 +87,16 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(config.memory.timeoutMs, DEFAULTS.memory.timeoutMs);
         assert.equal(config.memory.recallTimeoutMs, DEFAULTS.memory.recallTimeoutMs);
         assert.equal(config.memory.bankPrefix, DEFAULTS.memory.bankPrefix);
+    });
+
+    test('手机伴侣 WebSocket 只有显式开关和合法路径才会进入插件配置', () => {
+        const configured = Config({ ...minimal, mobileCompanion: { enabled: true, websocketPath: '/private/companion-v1', httpPath: '/private/companion-http' } } as never);
+        assert.equal(configured.mobileCompanion.enabled, true);
+        assert.equal(configured.mobileCompanion.websocketPath, '/private/companion-v1');
+        assert.equal(configured.mobileCompanion.httpPath, '/private/companion-http');
+        assert.throws(() => Config({ ...minimal, mobileCompanion: { enabled: true, websocketPath: 'http://0.0.0.0' } } as never));
+        assert.throws(() => Config({ ...minimal, mobileCompanion: { enabled: true, httpPath: 'http://0.0.0.0' } } as never));
+        assert.throws(() => Config({ ...minimal, mobileCompanion: { enabled: true, httpPath: `/${'x'.repeat(111)}` } } as never));
     });
 
     test('ADR 0009 之前存下的写法照常能读，解析结果和 config.json 一样', () => {
@@ -118,6 +133,17 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.throws(() => Config({ ...minimal, proactive: 'yes' } as never));
         // 等于默认值时不写进 koishi.yml
         assert.equal('proactive' in (Config.simplify(Config(minimal as never)) as object), false);
+    });
+
+    test('DSH 顾问（ADR 0223）：默认关闭，打开后写入核心配置，关闭时不写回', () => {
+        assert.equal(fromKoishi(minimal).dsh.enabled, false);
+        assert.equal(fromKoishi({ ...minimal, dsh: { enabled: true } }).dsh.enabled, true);
+        assert.equal('dsh' in (Config.simplify(Config(minimal as never)) as object), false);
+        assert.deepEqual((Config.simplify(Config({ ...minimal, dsh: { enabled: true } } as never)) as { dsh: { enabled: boolean } }).dsh, { enabled: true });
+        const independent = fromKoishi({ ...minimal, dsh: { enabled: true, baseUrl: 'https://dsh.example/v1', model: 'dsh-model', timeoutMs: 12_000 } });
+        assert.deepEqual(independent.dsh, { enabled: true, baseUrl: 'https://dsh.example/v1', model: 'dsh-model', timeoutMs: 12_000 });
+        assert.throws(() => parseAppConfig({ ...toAppConfigInput(Config(minimal as never)), dsh: { enabled: true, baseUrl: ' ' } }, repoRoot, env), /dsh.baseUrl/);
+        assert.throws(() => parseAppConfig({ ...toAppConfigInput(Config(minimal as never)), dsh: { enabled: true, timeoutMs: 0 } }, repoRoot, env), /dsh.timeoutMs/);
     });
 
     test('听语音、看图（ADR 0052）：旧的配置没有这一项时是开；关了照样传过去；等于默认值时不写进 koishi.yml', () => {
@@ -264,6 +290,41 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.throws(() => Config({ ...minimal, contacts: [{ qq: 1, name: 'a', tier: 'unlisted' }] } as never));
         assert.throws(() => fromKoishi({ ...minimal, contacts: [{ qq: 1, name: 'a', tier: 'classmate' }, { qq: 1, name: 'b', tier: 'known' }] }), /重复/);
         assert.throws(() => Config({ ...minimal, llm: { ...minimal.llm, model: ' ' } } as never));
+    });
+});
+
+describe('手机伴侣 WebSocket 挂载', () => {
+    test('默认不挂载；DSH 关闭或 server 不存在时只记录原因', () => {
+        const calls: string[] = [];
+        let mounted = 0;
+        const server = { ws: (_path: string, _callback: (socket: CompanionWebSocketLike) => void) => { mounted++; return { close: () => undefined }; } };
+        const log = (message: string) => calls.push(message);
+        assert.equal(mountMobileCompanion(server, undefined, { enabled: false, websocketPath: '/qqbot/companion' }, log), undefined);
+        assert.equal(mountMobileCompanion(server, undefined, { enabled: true, websocketPath: '/qqbot/companion' }, log), undefined);
+        assert.equal(mountMobileCompanion(undefined, {} as never, { enabled: true, websocketPath: '/qqbot/companion' }, log), undefined);
+        assert.equal(mounted, 0);
+        assert.equal(calls.length, 2);
+        let closed = 0;
+        const stop = mountMobileCompanion({ ws: (_path, _callback) => ({ close: () => { closed++; } }) }, { runtime: {} } as never, { enabled: true, websocketPath: '/qqbot/companion' }, log);
+        assert.ok(stop);
+        stop();
+        assert.equal(closed, 1);
+
+        let posts = 0;
+        let gets = 0;
+        const postHandlers: Array<(...args: any[]) => unknown> = [];
+        const httpServer = {
+            ws: (_path: string, _callback: (socket: CompanionWebSocketLike) => void) => ({ close: () => undefined }),
+            post: (_path: string, callback: (ctx: unknown) => Promise<void>) => { posts++; postHandlers.push(callback as (...args: any[]) => unknown); return {}; },
+            get: (_path: string, _callback: (ctx: unknown) => Promise<void>) => { gets++; return {}; },
+        };
+        const httpLog: string[] = [];
+        const httpStop = mountMobileCompanion(httpServer, { runtime: {}, media: {} } as never, { enabled: true, websocketPath: '/qqbot/companion', httpPath: '/qqbot/companion/http' }, message => httpLog.push(message));
+        assert.ok(httpStop);
+        assert.equal(posts, 2);
+        assert.equal(gets, 1);
+        assert.equal(httpLog.some(message => message.includes('HTTPS envelope')), true);
+        assert.equal((postHandlers[1] as unknown as Record<symbol, unknown>)[Symbol.for('noParseBody')], true);
     });
 });
 
