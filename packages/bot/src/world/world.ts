@@ -813,7 +813,9 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     if (airQuality) result.airQuality = airQuality;
     const daylight = realDaylight()?.day(place, date, now);
     if (daylight) result.daylight = daylight;
-    const transport = realTransport()?.day(place, now);
+    let transport: TransportFact | undefined;
+    try { transport = realTransport()?.day(place, now); }
+    catch { /* 供应商故障不能阻塞世界快照；本轮不写交通事实。 */ }
     if (transport) result.transport = transport;
     const needs = worldNeeds()?.at(now);
     if (needs) result.needs = needs;

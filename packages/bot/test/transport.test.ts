@@ -59,4 +59,12 @@ describe('现实交通 / 公共服务事实（ADR 0232）', () => {
         assert.doesNotMatch(describeWorld(now, at('2026-10-20T14:00:00'))!, /供应商原文/);
         assert.match(summarizeWorld(now), /交通 延误/);
     });
+
+    test('供应商抛错时世界仍照常生成，不把故障冒充交通状态', () => {
+        const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+        useRealTransport({ day: () => { throw new Error('provider down'); } });
+        const now = worldAt(card.herWorld!, card.schedule!, at('2026-10-20T14:00:00'))!;
+        assert.equal(now.transport, undefined);
+        assert.ok(now.weather);
+    });
 });
