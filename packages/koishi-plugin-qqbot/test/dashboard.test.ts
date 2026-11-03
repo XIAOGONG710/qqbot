@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
-import { extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, overviewCounts } from '../client/dashboard.js';
+import { dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, overviewCounts } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
@@ -109,5 +109,12 @@ describe('客户端的纯函数', () => {
         assert.match(rows[1].text, /还没有/);
         assert.equal(rows[2].text, 'weekly-2026-11-22.md');
         assert.match(extrasRows({ photos: { count: 5, cat: 3, view: 2, work: 0 } })[0].text, /5 张（土豆 3、天空 2）/);
+    });
+
+    test('DSH 状态只展示连接结果和时间，不泄露错误原文', () => {
+        assert.deepEqual(dshStatusLine(undefined), { text: '未启用', type: 'info', detail: '' });
+        assert.match(dshStatusLine({ enabled: true }).detail, /连接结果/);
+        assert.equal(dshStatusLine({ enabled: true, lastProbe: { ok: false, at: '2026-11-03T00:00:00.000Z', model: 'm', latencyMs: 12, error: 'secret-token' } }).text, '探测失败');
+        assert.equal(dshStatusLine({ enabled: true, lastProbe: { ok: true, at: '2026-11-03T00:00:00.000Z', model: 'm', latencyMs: 12 } }).detail, '最近探测 2026-11-03T00:00:00.000Z · 12 ms');
     });
 });

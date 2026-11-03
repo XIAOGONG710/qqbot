@@ -66,6 +66,15 @@ export function overviewCounts(status) {
     };
 }
 
+/** DSH 探针摘要：不把外部错误原文带进控制台，只展示是否探测过和最近延迟。 */
+export function dshStatusLine(dsh) {
+    if (!dsh?.enabled) return { text: '未启用', type: 'info', detail: '' };
+    const probe = dsh.lastProbe;
+    if (!probe) return { text: '已启用，尚未探测', type: 'warning', detail: '在 QQ 发送 /dsh probe 后显示连接结果' };
+    if (!probe.ok) return { text: '探测失败', type: 'danger', detail: `最近探测 ${probe.at}` };
+    return { text: '连接正常', type: 'success', detail: `最近探测 ${probe.at} · ${probe.latencyMs} ms` };
+}
+
 /** 货架 / 小梗 / 周报：[{ label, text }]；对应的功能没开（没有这一项）就不出现 */
 export function extrasRows(extras) {
     const rows = [];

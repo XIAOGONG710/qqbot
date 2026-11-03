@@ -2,7 +2,7 @@
 import { computed, defineComponent, h, ref } from 'vue';
 import { store } from '@koishijs/client';
 import { c, clock, tag, tierLabel } from './common.js';
-import { extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, overviewCounts } from './dashboard.js';
+import { dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, overviewCounts } from './dashboard.js';
 
 function phaseText(r) {
     switch (r.phase) {
@@ -179,6 +179,7 @@ export const StatusTab = defineComponent({
             const status = data.status;
             const counts = overviewCounts(status);
             const dshFeature = status?.features?.find(feature => feature.key === 'dsh');
+            const dsh = dshStatusLine(status?.dsh ?? (dshFeature?.on ? { enabled: true } : undefined));
             const rows = [
                 ['插件', data.running
                     ? [tag('运行正常', 'success')]
@@ -194,6 +195,7 @@ export const StatusTab = defineComponent({
                 ['说话检查', status ? [status.speechCheck === false ? tag('未启用', 'info') : tag('已启用', 'success')] : [tag('—', 'info')]],
                 ['陌生好友', status ? [status.unlistedFriends ? tag('也回复', 'warning') : tag('不回复', 'info')] : [tag('—', 'info')]],
                 ['主动联系', status ? [tag(...(PROACTIVE_MODES[status.proactive ?? 'off'] ?? ['未启用', 'info']))] : [tag('—', 'info')]],
+                ['DSH 连接', status ? [tag(dsh.text, dsh.type), dsh.detail ? h('span', { class: 'qqbot-muted' }, ` ${dsh.detail}`) : null] : [tag('—', 'info')]],
             ];
             const summary = h('div', { class: 'qqbot-summary' }, rows.map(([label, value]) => h('div', { class: 'qqbot-summary-row' }, [
                 h('span', { class: 'qqbot-label' }, label), h('span', null, value),
@@ -210,7 +212,7 @@ export const StatusTab = defineComponent({
                 connectionCard('QQ 连接', data.napcat?.online === true, data.napcat?.online ? '消息通道正常' : '等待连接'),
                 connectionCard('长期记忆', Boolean(status.memory?.health?.ok), status.memory ? (status.memory.health?.ok ? '服务正常' : '检查中或不可用') : '功能未开启'),
                 connectionCard('天气', Boolean(status.weather?.fetchedAt), status.weather?.fetchedAt ? '数据正常' : '尚未取数'),
-                connectionCard('外部顾问', dshFeature?.on === true, dshFeature?.on ? '可以按需咨询' : '暂未启用'),
+                connectionCard('外部顾问', dsh.text === '连接正常', dsh.detail || dsh.text),
                 connectionCard('手机伴侣', status.mobileCompanion?.enabled === true && status.mobileCompanion.connected === true, status.mobileCompanion?.enabled ? (status.mobileCompanion.pairedClientId ? (status.mobileCompanion.connected ? '已连接' : '等待重连') : '等待配对') : '暂未启用'),
             ]);
             const features = featurePanel(status);

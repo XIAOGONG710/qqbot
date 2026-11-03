@@ -126,7 +126,7 @@ import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sen
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
 import { humanValuesAt, humanValuesFromAnchor, type HumanValues } from '.././human-values.ts';
-import { createDshLink, dshOptionsFromLlm, type DshConversationTurn, type DshState, type DshVoice } from '.././dsh-link.ts';
+import { createDshLink, dshOptionsFromLlm, type DshConversationTurn, type DshProbeResult, type DshState, type DshVoice } from '.././dsh-link.ts';
 import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
 import { writeDshState } from '.././dsh-state-export.ts';
 import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
@@ -269,6 +269,8 @@ export interface AppStatus {
     externalPlatforms: { tieba: ExternalPlatformMode; douyin: ExternalPlatformMode; xiaohongshu: ExternalPlatformMode };
     /** 外部平台统一草稿箱的计数摘要。 */
     externalDrafts: ExternalDraftSummary;
+    /** DSH 连接摘要；探针只在 QQ 明确发起 /dsh probe 后更新。 */
+    dsh: { enabled: boolean; lastProbe?: Pick<DshProbeResult, 'ok' | 'at' | 'model' | 'latencyMs'> };
     /** 自主生活开启且有需要锚点时的全局真人式状态；关系值也随同一快照提供给 DSH / 控制台。 */
     humanValues?: Pick<HumanValues, 'at' | 'energy' | 'hunger' | 'stress' | 'mood' | 'health' | 'loneliness' | 'confidence' | 'curiosity' | 'boredom' | 'motivation' | 'socialBattery' | 'selfEsteem' | 'openness' | 'satisfaction' | 'comfort' | 'frustration' | 'relationship'>;
 }
@@ -343,6 +345,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         ...(dshConfig.timeoutMs === undefined ? {} : { timeoutMs: dshConfig.timeoutMs }),
     }), { log: message => log(`DSH：${message}`) });
     const dshEnabled = dshConfig.enabled === true;
+    let dshProbe: DshProbeResult | undefined;
     let dshAskTail: Promise<void> = Promise.resolve();
     const dshConversation: DshConversationTurn[] = [];
     log(`DSH 顾问：${dshEnabled ? '开（显式 /dsh ask 或 /dsh probe）' : '关'}`);
@@ -2413,9 +2416,12 @@ ${body}
             const plain = plainTextOf(event.message)?.trim();
             // DSH 工作模式保留裸 /dsh；桥接探针和咨询使用显式子命令，避免改变 DSH 原有语义。
             if (dshEnabled && plain === '/dsh probe') {
-                void dshLink.probe().then(result => tellOwner(result.ok
-                    ? `（DSH 已连通：${result.model}，${result.latencyMs}ms）`
-                    : `（DSH 没连上：${result.error ?? '未知错误'}）`));
+                void dshLink.probe().then(result => {
+                    dshProbe = result;
+                    return tellOwner(result.ok
+                        ? `（DSH 已连通：${result.model}，${result.latencyMs}ms）`
+                        : `（DSH 没连上：${result.error ?? '未知错误'}）`);
+                });
                 return;
             }
             if (dshEnabled && plain === '/dsh pair') {
@@ -3338,6 +3344,7 @@ ${body}
                 ...(calendar ? { calendar: calendar.status() } : {}),
                 externalPlatforms: config.externalPlatforms ?? DEFAULTS.externalPlatforms,
                 externalDrafts: externalDraftStore.summary(),
+                dsh: { enabled: dshEnabled, ...(dshProbe ? { lastProbe: { ok: dshProbe.ok, at: dshProbe.at, model: dshProbe.model, latencyMs: dshProbe.latencyMs } } : {}) },
                 ...(currentHumanValues ? { humanValues: currentHumanValues } : {}),
             };
         },
