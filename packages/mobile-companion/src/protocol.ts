@@ -123,7 +123,17 @@ export function validateMedia(value: unknown): MediaRef {
     if (!MIME.test(String(media.mime))) throw new Error('媒体类型不合法');
     if (!Number.isInteger(media.bytes) || media.bytes! < 1 || media.bytes! > MAX_MEDIA_BYTES) throw new Error('媒体大小超出限制');
     if (Boolean(media.url) === Boolean(media.mediaId)) throw new Error('媒体引用必须在 https URL 和 mediaId 之间二选一');
-    if (media.url && (!/^https:\/\//i.test(media.url) || media.url.length > 2048)) throw new Error('媒体 URL 只允许 https');
+    if (media.url) {
+        if (!/^https:\/\//i.test(media.url) || media.url.length > 2048) throw new Error('媒体 URL 只允许 https');
+        try {
+            const url = new URL(media.url);
+            // URL 中的账号密码会在日志、代理或错误信息里意外暴露凭据。
+            if (url.username || url.password) throw new Error('媒体 URL 不允许携带账号密码');
+        } catch (error) {
+            if (error instanceof Error && error.message === '媒体 URL 不允许携带账号密码') throw error;
+            throw new Error('媒体 URL 只允许 https');
+        }
+    }
     if (media.mediaId && !MEDIA_ID.test(media.mediaId)) throw new Error('mediaId 不合法');
     if (media.durationMs !== undefined && (!Number.isInteger(media.durationMs) || media.durationMs < 0 || media.durationMs > 2 * 60 * 60_000)) throw new Error('媒体时长不合法');
     if (media.width !== undefined && (!Number.isInteger(media.width) || media.width < 1 || media.width > 8192)) throw new Error('媒体宽度不合法');
