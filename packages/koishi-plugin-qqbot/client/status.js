@@ -71,6 +71,21 @@ function mobileCompanionLine(companion) {
     return [tag(companion.connected ? '已连接' : '已配对，等待重连', companion.connected ? 'success' : 'warning'), h('span', { class: 'qqbot-muted' }, ` ${companion.pairedClientId} · 队列 ${companion.queued}/${companion.maxQueuedPerClient}`)];
 }
 
+/** 手机伴侣能力清单：展示确认边界，避免控制台和协议各自维护一份动作说明。 */
+function phoneActionsPanel(actions) {
+    if (!actions?.length) return null;
+    return h('details', { class: 'qqbot-features-disclosure', open: false }, [
+        h('summary', { class: 'qqbot-features-summary' }, `手机伴侣能力　${actions.length} 项`),
+        h('div', { class: 'qqbot-summary' }, actions.map(action => h('div', { class: 'qqbot-summary-row' }, [
+            h('span', { class: 'qqbot-label' }, action.description),
+            h('span', null, [
+                tag(action.requiresConfirmation ? '需确认' : '自动', action.requiresConfirmation ? 'warning' : 'success'),
+                h('span', { class: 'qqbot-muted' }, ` ${action.action} · ${action.reversible ? '可撤回' : '不可撤回'}`),
+            ]),
+        ]))),
+    ]);
+}
+
 /** 功能开关（ADR 0120）：按模块分组，开着的亮绿色、关着的灰色；鼠标放上去看 ADR 编号。页面文件是从仓库直接读的：插件还是旧代码（没重启）时状态里没有 features */
 function featurePanel(status) {
     if (!status.features) return h('p', { class: 'qqbot-muted' }, '功能开关：重启 Koishi 后显示');
@@ -163,6 +178,7 @@ export const StatusTab = defineComponent({
             ]);
             const features = featurePanel(status);
             const extras = extrasPanel(status);
+            const phoneActions = phoneActionsPanel(data.phoneActions);
             const contactToolbar = h('div', { class: 'qqbot-contact-toolbar' }, [
                 h('div', { class: 'qqbot-section-title' }, [h('strong', null, '联系人'), h('span', { class: 'qqbot-muted' }, `显示 ${filteredContacts.value.length}/${counts.contacts}`)]),
                 h(c('el-input'), {
@@ -190,7 +206,7 @@ export const StatusTab = defineComponent({
                     h('div', null, [h('h2', { class: 'qqbot-status-title' }, '运行总览'), h('p', { class: 'qqbot-muted' }, `状态每 5 秒自动刷新 · 最近更新 ${clock(data.updatedAt)}`)]),
                     h('div', { class: 'qqbot-status-head-tags' }, [tag(status.schedule ? '按作息运行' : '不按作息', status.schedule ? 'success' : 'warning'), tag(dshFeature?.on ? 'DSH 已开启' : 'DSH 已关闭', dshFeature?.on ? 'success' : 'info')]),
                 ]),
-                kpis, connections, summary, features, extras, contactToolbar, table,
+                kpis, connections, summary, features, phoneActions, extras, contactToolbar, table,
             ]);
         };
     },

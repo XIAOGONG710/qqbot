@@ -4,7 +4,7 @@ import { MemoryPairingStore, type PairingTicket } from '@qqbot/mobile-companion/
 import type { CompanionRuntimeHandlers } from '@qqbot/mobile-companion/runtime';
 import { CompanionRuntime } from '@qqbot/mobile-companion/runtime';
 import { MemoryCompanionMediaStore } from '@qqbot/mobile-companion/media';
-import type { ActionResult, CompanionMessage, PhoneActionRequest } from '@qqbot/mobile-companion/protocol';
+import { PHONE_ACTION_CAPABILITIES, type ActionResult, type CompanionMessage, type PhoneActionCapability, type PhoneActionRequest } from '@qqbot/mobile-companion/protocol';
 import type { DshConversationTurn, DshLink, DshState, DshVoice } from './dsh-link.ts';
 
 export interface MobileCompanionIntegration {
@@ -12,6 +12,7 @@ export interface MobileCompanionIntegration {
     gateway: CompanionGateway;
     runtime: CompanionRuntime;
     media: MemoryCompanionMediaStore;
+    actionCapabilities: readonly PhoneActionCapability[];
     issuePairing(clientId: string, now?: number): PairingTicket;
 }
 
@@ -63,6 +64,7 @@ export function createMobileCompanion(options: {
         gateway,
         runtime,
         media,
+        actionCapabilities: PHONE_ACTION_CAPABILITIES,
         issuePairing: (clientId, now = options.now?.() ?? Date.now()) => pairing.issue(clientId, now),
     };
 }

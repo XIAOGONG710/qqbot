@@ -36,6 +36,24 @@ export interface CompanionMessage {
 export type PhoneAction = 'notify' | 'timer' | 'ring' | 'open_link' | 'media_control' | 'volume';
 export type ActionDecision = 'auto' | 'confirm' | 'deny';
 
+/** 能力清单是协议、宿主审计和控制台展示共用的唯一动作描述。 */
+export interface PhoneActionCapability {
+    action: PhoneAction;
+    defaultDecision: Exclude<ActionDecision, 'deny'>;
+    requiresConfirmation: boolean;
+    reversible: boolean;
+    description: string;
+}
+
+export const PHONE_ACTION_CAPABILITIES: readonly PhoneActionCapability[] = [
+    { action: 'notify', defaultDecision: 'auto', requiresConfirmation: false, reversible: true, description: '显示一条通知' },
+    { action: 'timer', defaultDecision: 'auto', requiresConfirmation: false, reversible: true, description: '创建一个计时器' },
+    { action: 'ring', defaultDecision: 'confirm', requiresConfirmation: true, reversible: true, description: '让手机响铃一小段时间' },
+    { action: 'open_link', defaultDecision: 'confirm', requiresConfirmation: true, reversible: true, description: '打开白名单里的 HTTPS 链接' },
+    { action: 'media_control', defaultDecision: 'confirm', requiresConfirmation: true, reversible: true, description: '控制正在播放的媒体' },
+    { action: 'volume', defaultDecision: 'confirm', requiresConfirmation: true, reversible: true, description: '调整媒体音量' },
+];
+
 export interface PhoneActionRequest {
     action: PhoneAction;
     /** 由服务端白名单生成；客户端不能自行拼接任意 URL / 命令。 */
@@ -77,7 +95,7 @@ const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{5,127}$/;
 const MIME = /^[\w.+-]+\/[\w.+-]+$/;
 const MEDIA_ID = /^[a-f0-9]{16,128}$/i;
 const PAIRING_CODE = /^[A-Z0-9][A-Z0-9-]{7,63}$/;
-const ALLOWED_ACTIONS = new Set<PhoneAction>(['notify', 'timer', 'ring', 'open_link', 'media_control', 'volume']);
+const ALLOWED_ACTIONS = new Set<PhoneAction>(PHONE_ACTION_CAPABILITIES.map(capability => capability.action));
 
 export function isPhoneAction(value: unknown): value is PhoneAction {
     return typeof value === 'string' && ALLOWED_ACTIONS.has(value as PhoneAction);

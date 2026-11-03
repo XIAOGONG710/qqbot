@@ -51,6 +51,9 @@
 - `media.ts` / `media-http.ts` 提供可选的短期内存媒体上传链路：必须先完成 HTTP session 配对，单设备、单进程和总字节数都有上限；上传返回的 `mediaId` 再进入普通消息包，不把文件写入运行时目录。
 - QQ 侧提供 `/dsh unpair` 显式撤销入口：立即清掉配对身份、连接和 nonce，便于设备遗失或需要立刻换机时止损；重新使用 `/dsh pair` 获取一次性配对码。
 
+动作清单的唯一来源是 `packages/mobile-companion/src/protocol.ts` 中的
+`PHONE_ACTION_CAPABILITIES`。协议白名单、宿主动作策略和 Koishi 控制台都读取它，新增动作时只需扩展一份描述，避免确认规则和页面说明漂移。
+
 ## 当前范围
 
 这次先落地契约、运行时校验和策略测试，避免先做一个无法安全撤回的“全权限 APP”。现有 `device-phone.ts` 仍只通过 ntfy 发通知；下一步接入会话网关时，必须复用本 ADR 的校验和 ADR 0148 的设备闸门。
