@@ -80,3 +80,26 @@ test('OneBot 隔离单条事件异常，连接日志不泄露 URL 凭据', () =>
     assert.doesNotMatch(logs.join('\n'), /password|access_token|secret|fragment|聊天正文/);
     client.stop();
 });
+
+test('OneBot 忽略 JSON 语法合法但顶层不是对象的帧，后续事件仍可处理', () => {
+    Object.defineProperty(globalThis, 'WebSocket', { configurable: true, writable: true, value: FakeWebSocket });
+    const logs: string[] = [];
+    const events: unknown[] = [];
+    const client = new OneBotClient({
+        url: 'ws://127.0.0.1:3001/',
+        onEvent: event => events.push(event),
+        log: message => logs.push(message),
+    });
+    client.start();
+    const socket = FakeWebSocket.instances[0]!;
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.emit('open');
+
+    for (const data of ['null', '42', '"text"', '[]']) {
+        assert.doesNotThrow(() => socket.emit('message', { data }));
+    }
+    socket.emit('message', { data: JSON.stringify({ post_type: 'notice', notice_type: 'test' }) });
+    assert.equal(events.length, 1, '坏帧不能阻断后续事件');
+    assert.equal(logs.filter(line => line.includes('顶层不是对象')).length, 4);
+    client.stop();
+});

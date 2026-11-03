@@ -156,13 +156,20 @@ export class OneBotClient {
     }
 
     #onMessage(text: string): void {
-        let payload: Record<string, unknown>;
+        let parsed: unknown;
         try {
-            payload = JSON.parse(text);
+            parsed = JSON.parse(text);
         } catch {
             this.#options.log(`OneBot 收到无法解析的数据：${logBody(text.slice(0, 200))}`);
             return;
         }
+        // JSON.parse 也会接受 null、数字、字符串和数组；这些都不是 OneBot 事件或 API 响应。
+        // 在它们上面直接使用 `in` 会抛 TypeError，穿透 WebSocket message 回调并影响后续收发。
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            this.#options.log('OneBot 收到格式不合法的数据（顶层不是对象）');
+            return;
+        }
+        const payload = parsed as Record<string, unknown>;
         if ('post_type' in payload) {
             try {
                 this.#options.onEvent(payload as OneBotEvent);
