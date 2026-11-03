@@ -27,7 +27,11 @@ export function writeJsonAtomic(path: string, value: unknown): void {
     // 组件重启的交界处可能有两次写入；固定的 .tmp 会互相覆盖。
     // Windows 上杀毒软件 / 索引器会短暂占住目标文件让 rename 抛 EPERM，内存紧张时 write 会抛 EMFILE / ENOMEM / UNKNOWN：
     // 唯一临时文件加短重试后再放弃；放弃时抛 TransientStateError，别的错误（目录不存在、数据不能序列化）照旧直接抛。
-    const text = JSON.stringify(value, null, 2) + '\n';
+    const serialized = JSON.stringify(value, null, 2);
+    // JSON.stringify 对 undefined / 函数 / Symbol 根值返回 undefined 而不是抛错；
+    // 若直接拼接会把文本 "undefined" 原子替换成正式状态文件，直到下次启动才暴露损坏。
+    if (serialized === undefined) throw new TypeError('状态值不能序列化为 JSON');
+    const text = `${serialized}\n`;
     const tmp = `${path}.tmp-${process.pid}-${++writeSequence}`;
     let failure: unknown;
     for (const delay of fileOps.writeDelaysMs) {

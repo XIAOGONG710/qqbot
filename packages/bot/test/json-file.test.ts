@@ -20,6 +20,21 @@ describe('状态文件', () => {
         }
     });
 
+    test('不可序列化的根值在写盘前拒绝，保留旧状态且不留临时文件', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-json-'));
+        try {
+            const path = join(dir, 'state.json');
+            writeJsonAtomic(path, { records: ['旧状态'] });
+            for (const value of [undefined, () => undefined, Symbol('state')]) {
+                assert.throws(() => writeJsonAtomic(path, value), /不能序列化为 JSON/);
+                assert.deepEqual(readJsonOr(path, {}), { records: ['旧状态'] });
+                assert.deepEqual(readdirSync(dir), ['state.json']);
+            }
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('读坏了：挪到一边、记一行日志、用初始值；之后照常写', () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-json-'));
         try {
