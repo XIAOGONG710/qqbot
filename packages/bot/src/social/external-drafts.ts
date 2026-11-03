@@ -95,7 +95,11 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
     mkdirSync(options.dir, { recursive: true });
     const path = join(options.dir, 'drafts.json');
     let file = readJsonOr<DraftFile>(path, { version: 1, drafts: [] }, options.log, { validate: validFile, label: '外部平台草稿' });
-    const save = () => writeJsonAtomic(path, file);
+    const save = (next: DraftFile) => {
+        // 先落盘、成功后再替换内存；写盘失败时当前进程不能假装状态已经推进。
+        writeJsonAtomic(path, next);
+        file = next;
+    };
     return {
         create(input) {
             if (!isPlatform(input.platform)) throw new Error('不支持的外部平台');
@@ -106,8 +110,7 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
             if (media.length > MAX_MEDIA || media.some(item => !isSafeMediaRef(item))) throw new Error('外部平台草稿素材只允许 https 链接或 media: 引用');
             const at = (input.at ?? new Date()).toISOString();
             const draft: ExternalDraft = { id: `${Date.now().toString(36)}-${randomBytes(6).toString('hex')}`, platform: input.platform, title, body, media, createdAt: at, updatedAt: at, status: 'pending', source: input.source ?? 'manual', audit: [{ at, status: 'pending' }] };
-            file.drafts = [...file.drafts, draft].slice(-MAX_DRAFTS);
-            save();
+            save({ version: 1, drafts: [...file.drafts, draft].slice(-MAX_DRAFTS) });
             return draft;
         },
         list(filter = {}) {
@@ -122,11 +125,14 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
             const cleanNote = note?.trim();
             if (cleanNote && cleanNote.length > 240) throw new Error('外部平台草稿备注不能超过 240 字');
             const when = at.toISOString();
-            draft.status = status;
-            draft.updatedAt = when;
-            draft.audit.push({ at: when, status, ...(cleanNote ? { note: cleanNote } : {}) });
-            save();
-            return draft;
+            const updated: ExternalDraft = {
+                ...draft,
+                status,
+                updatedAt: when,
+                audit: [...draft.audit, { at: when, status, ...(cleanNote ? { note: cleanNote } : {}) }],
+            };
+            save({ version: 1, drafts: file.drafts.map(item => item.id === id ? updated : item) });
+            return updated;
         },
         summary() {
             const byPlatform = { tieba: 0, douyin: 0, xiaohongshu: 0 } satisfies Record<ExternalPlatform, number>;
