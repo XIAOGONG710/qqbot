@@ -21,6 +21,11 @@ export interface RealTransport {
     day(location: string, until?: Date): TransportFact | undefined;
 }
 
+let current: RealTransport | undefined;
+/** 线上由宿主显式接入；没有供应商时世界不写交通事实。 */
+export function useRealTransport(source: RealTransport | undefined): void { current = source; }
+export function realTransport(): RealTransport | undefined { return current; }
+
 export interface TransportLocation { id: string; name?: string }
 interface Store { fetchedAt: string; facts: Record<string, TransportFact> }
 
