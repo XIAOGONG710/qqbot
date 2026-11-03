@@ -94,10 +94,10 @@
 2. `soul_update` 的闸：现在是「评分够高才让改」（把改变自己和讨好他绑在一起）→ 换成**频率限制（已有，ADR 0174）+ 每次改动在 QQ 里用「（」开头的提示告诉他一句**，**不再看评分**。评分功能（👍😐👎）保留给语气，不管她能不能改自己。
 **验收**：`identity.test.ts` 加 extraFiles 用例；`soul-plugin.test.ts` 去掉评分闸门的用例并加"改动会通知"。**回滚**：恢复评分闸。
 
-### 步骤 6：DSH 上做过的事进同一条时间线
+### 步骤 6：DSH 上做过的事进同一条时间线（已完成，2026-11-03）
 
-**做**：`memory/timeline.ts` 的 `CHANNELS` 加 `desktop`；插件在 `memory_save` / 重要工具调用（写文件、联网查）后往 `~/.dsh/linmengyao/timeline-inbox.jsonl` 追加一行摘要（≤80 字，不含文件内容）；QQ 定时器收进时间线。这样她在 QQ 上被问「你今天干了啥」，时间线和日记里都有桌面上的事。
-**验收**：收件箱 → 时间线测试；摘要不含路径以外的内容的测试。
+**做**：`memory/timeline.ts` 的 `CHANNELS` 加 `desktop`；DSH 插件提供 `timeline_record` / `world_event`，只在动作实际完成后往 `~/.dsh/linmengyao/timeline-inbox.jsonl` / `world-inbox.jsonl` 追加脱敏摘要；QQ 每 30 秒在 `dsh.enabled` 开着时消费，分别进入统一时间线和世界事件账。两类收件箱都做字段白名单、时间窗、敏感文本过滤和 2000 条幂等 id 状态，世界事件仍走 QQ 的 `WorldState.recordEvents` 前置条件。
+**验收**：`packages/bot/test/dsh-inbox.test.ts` 覆盖收件箱 → 时间线 / 世界账、坏行、敏感摘要、未知类型、未来时间和重复 id；类型检查、DSH 插件语法检查通过。
 
 ### 步骤 7（可选，长期）：核心服务化
 

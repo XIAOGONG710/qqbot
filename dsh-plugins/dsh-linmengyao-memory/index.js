@@ -1,4 +1,4 @@
-// 林梦瑶的 DSH 记忆桥（v0.3，带状态快照和诊断日志）
+// 林梦瑶的 DSH 记忆桥（v0.4，带状态快照、诊断日志和 QQ 收件箱）
 // 每轮从 Hindsight 拉最近记忆，按关键词相关度挑几条注入；提供 memory_save 写回。
 // ponytail: 召回用 /memories/list + 本地二字词重叠，够用；要语义召回再换 recall 接口。
 import fs from 'node:fs'
@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 
 export const name = 'dsh-linmengyao-memory'
 
@@ -39,6 +40,9 @@ const DEFAULTS = {
   /** QQ 侧真人式数值快照；过期或版本不对时不注入 */
   stateFile: soulPath('STATE.json'),
   stateStaleMs: 30 * 60 * 1000,
+  // DSH 只追加脱敏事实；QQ 侧定时消费并用自己的时间线 / 世界账裁决
+  timelineInboxFile: soulPath('timeline-inbox.jsonl'),
+  worldInboxFile: soulPath('world-inbox.jsonl'),
   storyFile: soulPath('STORY.md'),
   /** QQ 那边每次她翻完日记写的「对自己的认识」（ADR 0194）；超过 insightsStaleMs 没刷新就不用（QQ 没在跑 / 开关关掉了） */
   insightsFile: soulPath('INSIGHTS.json'),
@@ -308,6 +312,36 @@ export function tailLines(file, maxBytes = CROSS_TAIL_BYTES) {
 
 const hhmm = (at) => `${String(new Date(at).getHours()).padStart(2, '0')}:${String(new Date(at).getMinutes()).padStart(2, '0')}`
 const clipText = (text, max) => { const flat = String(text || '').replace(/\s+/g, ' ').trim(); return [...flat].length > max ? `${[...flat].slice(0, max).join('')}…` : flat }
+
+const INBOX_KIND = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/
+const WORLD_EVENT_KINDS = new Set([
+  'sleep', 'eat', 'meet', 'attend_class', 'study', 'rest', 'read_book', 'leisure', 'work_on_project', 'interact_npc',
+  'feed_cat', 'pick_parcel', 'finish_homework', 'family_call', 'receive_money',
+])
+const INBOX_MAX_AGE_MS = 30 * 86_400_000
+
+function appendInbox(cfg, file, row) {
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.appendFileSync(file, `${JSON.stringify(row)}\n`)
+  log(cfg, `inbox append ${path.basename(file)} kind=${row.kind}`)
+}
+
+function inboxText(value, max) {
+  const text = String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim()
+  return text ? [...text].slice(0, max).join('') : ''
+}
+
+function safeInboxText(value, max) {
+  const text = inboxText(value, max)
+  return /https?:\/\/|(?:[A-Za-z]:[\\/]|(?:^|\s)\\\\|(?:^|\s)\/(?:Users|home|var|tmp)\b)|(?:api[_-]?key|token|password|密码|令牌)/i.test(text) ? '' : text
+}
+
+function inboxTime(value, now = Date.now()) {
+  if (value === undefined || value === null || value === '') return new Date(now)
+  const at = Date.parse(String(value))
+  if (!Number.isFinite(at) || at > now + 60_000 || at < now - INBOX_MAX_AGE_MS) throw new Error('时间不在允许范围内')
+  return new Date(at)
+}
 
 /** 他的 QQ 聊天记录最后几句（6 小时内、最多 10 句；他撤回的遮成「[撤回了一条消息]」）。QQ 那边没开 crossRecent（owner-bank.json 里没有 chatFile）就是空串 */
 export function qqRecentBlock(cfg, now = Date.now()) {
@@ -714,6 +748,11 @@ ${now}` : ''
           order: 75,
           text: () => readStateBlock(cfg),
         }))
+        disposers.push(sp.context({
+          name: 'linmengyao-bridge-rules',
+          order: 70,
+          text: () => '[桌面同步规则]\n只有桌面动作已经实际完成后，才可以记录 timeline_record 或 world_event；计划、猜测、模型回复和用户要求本身都不是事实。摘要不写原文、路径、账号、令牌或隐私内容。',
+        }))
         if (cfg.personaFile && !fs.existsSync(cfg.personaFile)) log(cfg, '人设：没有 PERSONA.md（跑 scripts/build-dsh-persona.mjs 生成）')
         log(cfg, `context registered ${agent.id}`)
       } else {
@@ -740,6 +779,96 @@ ${now}` : ''
             await invalidateSimilar(cfg, content, writeBank(cfg))
             await retain(cfg, content, writeBank(cfg))
             return { saved: true }
+          },
+        }))
+
+        disposers.push(tools.register({
+          name: 'timeline_record',
+          description: '记录已经完成的桌面行为，供 QQ 的统一时间线读取。只有动作实际完成后调用；只写动作和结果，不写原文、路径、账号、令牌或隐私内容。',
+          parameters: {
+            type: 'object',
+            properties: {
+              kind: { type: 'string', description: '简短动作类型，如 search、read、action、write' },
+              summary: { type: 'string', description: '不超过 80 字的一句话脱敏摘要' },
+              ok: { type: 'boolean', description: '动作是否完成；省略表示完成' },
+            },
+            required: ['kind', 'summary'],
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { recorded: { type: 'boolean' } }, required: ['recorded'] },
+            render: (_args, value) => [{ type: 'text', text: value?.recorded ? '记进统一时间线了。' : '没记：摘要为空或格式不对。' }],
+          },
+          async execute(args) {
+            const kind = inboxText(args?.kind, 40)
+            const summary = safeInboxText(args?.summary, 80)
+            if (!kind || !INBOX_KIND.test(kind) || !summary) return { recorded: false }
+            appendInbox(cfg, cfg.timelineInboxFile, {
+              id: `dsh-timeline-${randomUUID()}`,
+              at: new Date().toISOString(), kind, summary,
+              ...(args?.ok === false ? { ok: false } : {}),
+            })
+            return { recorded: true }
+          },
+        }))
+
+        disposers.push(tools.register({
+          name: 'world_event',
+          description: '把桌面上确实完成的生活动作交给 QQ 世界账。只有实际发生后调用，不能用来计划、猜测或修改 QQ 事实；QQ 侧仍会按世界前置条件裁决。',
+          parameters: {
+            type: 'object',
+            properties: {
+              kind: { type: 'string', description: '生活动作类型：sleep、eat、meet、study、rest、read_book、leisure、work_on_project、interact_npc 等' },
+              result: { type: 'string', enum: ['succeeded', 'failed', 'interrupted'], description: '实际结果' },
+              subject: { type: 'string', description: '可选，脱敏对象或课程名，不超过 40 字' },
+              reason: { type: 'string', description: '可选，失败 / 中断原因，不超过 80 字' },
+              startedAt: { type: 'string', description: '可选，ISO 开始时间；不早于当前时间窗' },
+              at: { type: 'string', description: '可选，ISO 结束时间；省略使用现在' },
+              meal: { type: 'boolean', description: 'meet 是否同时吃饭' },
+              amount: { type: 'number', description: 'receive_money 的整数金额（元）' },
+              seen: { type: 'boolean', description: 'feed_cat 是否见到猫' },
+            },
+            required: ['kind', 'result'],
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { recorded: { type: 'boolean' } }, required: ['recorded'] },
+            render: (_args, value) => [{ type: 'text', text: value?.recorded ? '交给 QQ 世界账了，等它按规则结算。' : '没记：事件格式不对。' }],
+          },
+          async execute(args) {
+            const kind = inboxText(args?.kind, 40)
+            const result = String(args?.result || '')
+            if (!kind || !INBOX_KIND.test(kind) || !WORLD_EVENT_KINDS.has(kind) || !['succeeded', 'failed', 'interrupted'].includes(result)) return { recorded: false }
+            const now = Date.now()
+            let at
+            let startedAt
+            try {
+              at = inboxTime(args?.at, now)
+              startedAt = args?.startedAt === undefined ? at : inboxTime(args.startedAt, now)
+            } catch (error) {
+              log(cfg, `world_event blocked ${error instanceof Error ? error.message : String(error)}`)
+              return { recorded: false }
+            }
+            if (startedAt.getTime() > at.getTime()) return { recorded: false }
+            const rawSubject = inboxText(args?.subject, 40)
+            const rawReason = inboxText(args?.reason, 80)
+            const subject = safeInboxText(rawSubject, 40)
+            const reason = safeInboxText(rawReason, 80)
+            if ((rawSubject && !subject) || (rawReason && !reason)) return { recorded: false }
+            const amount = args?.amount === undefined ? undefined : Number(args.amount)
+            if (args?.meal !== undefined && typeof args.meal !== 'boolean') return { recorded: false }
+            if (args?.seen !== undefined && typeof args.seen !== 'boolean') return { recorded: false }
+            if (amount !== undefined && (!Number.isSafeInteger(amount) || amount <= 0 || amount > 50_000)) return { recorded: false }
+            if (kind === 'receive_money' && amount === undefined) return { recorded: false }
+            if (kind !== 'receive_money' && amount !== undefined) return { recorded: false }
+            appendInbox(cfg, cfg.worldInboxFile, {
+              id: `dsh-world-${randomUUID()}`,
+              at: at.toISOString(), startedAt: startedAt.toISOString(), kind, result,
+              ...(subject ? { subject } : {}), ...(reason ? { reason } : {}),
+              ...(args?.meal !== undefined ? { meal: args.meal } : {}),
+              ...(amount !== undefined ? { amount } : {}), ...(args?.seen !== undefined ? { seen: args.seen } : {}),
+            })
+            return { recorded: true }
           },
         }))
 

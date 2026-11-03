@@ -9,7 +9,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const CHANNELS = ['bilibili', 'qzone', 'device', 'web', 'identity', 'dormancy', 'people', 'tastes'] as const;
+export const CHANNELS = ['bilibili', 'qzone', 'device', 'web', 'identity', 'dormancy', 'people', 'tastes', 'desktop'] as const;
 export type Channel = (typeof CHANNELS)[number];
 
 export interface TimelineEntry {

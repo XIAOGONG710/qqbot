@@ -39,6 +39,7 @@
 - `platform/shell-tool.ts`
 - `platform/wechat-bridge.ts`
 - `dsh-link.ts`
+- `dsh-state-export.ts`
 - `mobile-companion-dsh.ts`
 - `ops/`
 - `sim/`

@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, test } from 'node:test';
+import { consumeDshTimelineInbox, consumeDshWorldInbox } from '../src/memory/dsh-inbox.ts';
+import { Timeline } from '../src/memory/timeline.ts';
+import type { WorldState } from '../src/world/world.ts';
+
+describe('DSH 收件箱', () => {
+    const dirs: string[] = [];
+    afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+
+    test('时间线只收脱敏合格行，并按 id 幂等', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-dsh-inbox-'));
+        dirs.push(dir);
+        const inbox = join(dir, 'timeline-inbox.jsonl');
+        const state = join(dir, 'timeline-state.json');
+        writeFileSync(inbox, [
+            JSON.stringify({ id: 'dsh-timeline-1', at: '2026-11-02T23:55:00.000Z', kind: 'action', summary: '整理了桌面文件' }),
+            JSON.stringify({ id: 'dsh-timeline-1', at: '2026-11-02T23:56:00.000Z', kind: 'action', summary: '重复的不应再进' }),
+            JSON.stringify({ id: 'bad', at: '2026-11-02T23:57:00.000Z', kind: 'action', summary: 'id 太短' }),
+            JSON.stringify({ id: 'dsh-timeline-unsafe', at: '2026-11-02T23:58:00.000Z', kind: 'action', summary: '打开 C:\\Users\\XG\\secret.txt' }),
+            '{坏行',
+        ].join('\n') + '\n');
+        const timeline = new Timeline(join(dir, 'timeline.jsonl'));
+        const now = new Date('2026-11-03T00:00:00.000Z');
+        assert.equal(consumeDshTimelineInbox(inbox, state, now, timeline, () => undefined), 1);
+        assert.equal(consumeDshTimelineInbox(inbox, state, now, timeline, () => undefined), 0);
+        assert.deepEqual(timeline.read().map(entry => ({ channel: entry.channel, summary: entry.summary })), [{ channel: 'desktop', summary: '整理了桌面文件' }]);
+    });
+
+    test('世界事件只收白名单和时间窗内的行，交给世界账而不是直接改文件', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-dsh-world-inbox-'));
+        dirs.push(dir);
+        const inbox = join(dir, 'world-inbox.jsonl');
+        const state = join(dir, 'world-state.json');
+        writeFileSync(inbox, [
+            JSON.stringify({ id: 'dsh-world-1', at: '2026-11-02T23:55:00.000Z', kind: 'study', result: 'succeeded', subject: '复习' }),
+            JSON.stringify({ id: 'dsh-world-2', at: '2026-11-02T23:56:00.000Z', kind: 'run_shell', result: 'succeeded' }),
+            JSON.stringify({ id: 'dsh-world-3', at: '2026-11-03T00:02:00.000Z', kind: 'rest', result: 'succeeded' }),
+        ].join('\n') + '\n');
+        const drafts: unknown[] = [];
+        const world = { recordEvents: (items: unknown[]) => drafts.push(...items) } as unknown as WorldState;
+        const now = new Date('2026-11-03T00:00:00.000Z');
+        assert.equal(consumeDshWorldInbox(inbox, state, now, world, () => undefined), 1);
+        assert.equal(consumeDshWorldInbox(inbox, state, now, world, () => undefined), 0);
+        assert.deepEqual(drafts, [{ id: 'dsh:dsh-world-1', kind: 'study', at: '2026-11-02T23:55:00.000Z', source: 'external', result: 'succeeded', subject: '复习' }]);
+    });
+});

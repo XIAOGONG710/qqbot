@@ -23,6 +23,7 @@ import { auditedApi, memoryLedger, summarize as summarizeMemoryLedger } from '..
 import { experiencesFromLife, experiencesFromWatched, Tastes } from '.././life/tastes.ts';
 import { readLifeEvents } from '.././world/life-events.ts';
 import { Timeline, timelineAccount, timelineFromDevice } from '.././memory/timeline.ts';
+import { consumeDshTimelineInbox, consumeDshWorldInbox } from '.././memory/dsh-inbox.ts';
 import { readWebSecrets, WebLookup } from './web.ts';
 import { acquireLock, startHeartbeat as startLockHeartbeat } from './lock.ts';
 import type { Log } from './log.ts';
@@ -580,6 +581,37 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const noteTimeline = (entry: Parameters<Timeline['record']>[0]): void => {
         try { timeline?.record(entry); } catch (error) { log(`时间线：写不进去（${error instanceof Error ? error.message : String(error)}）`); }
     };
+    // DSH 只追加脱敏收件箱；QQ 开着 DSH 时用同一条时间线 / 世界账落地，关掉时不启动同步定时器。
+    let dshInboxTimer: ReturnType<typeof setInterval> | undefined;
+    const syncDshInboxes = (): void => {
+        if (!dshEnabled) return;
+        const now = new Date(worldNow());
+        try {
+            if (timeline) {
+                const count = consumeDshTimelineInbox(
+                    join(soulDir(), 'timeline-inbox.jsonl'),
+                    join(config.dataDir, 'memory', 'dsh-timeline-inbox.json'),
+                    now, timeline, log,
+                );
+                if (count) log(`DSH：收进时间线 ${count} 条`);
+            }
+            if (sharedWorld) {
+                const count = consumeDshWorldInbox(
+                    join(soulDir(), 'world-inbox.jsonl'),
+                    join(config.dataDir, 'world', 'dsh-world-inbox.json'),
+                    now, sharedWorld, log,
+                );
+                if (count) log(`DSH：收进世界事件 ${count} 条`);
+            }
+        } catch (error) {
+            log(`DSH：收件箱同步失败（${error instanceof Error ? error.message : String(error)}）`);
+        }
+    };
+    if (dshEnabled && (timeline || sharedWorld)) {
+        syncDshInboxes();
+        dshInboxTimer = setInterval(syncDshInboxes, 30_000);
+        dshInboxTimer.unref();
+    }
     const identity = config.identityLedger ? new Identity({ repoRoot, dataDir: config.dataDir, now: clockNow, log }) : undefined;
     if (identity) {
         try {
@@ -3156,6 +3188,7 @@ ${body}
             if (lifeTimer) clearInterval(lifeTimer);
             if (dreamTimer) clearInterval(dreamTimer);
             if (weatherTimer) clearInterval(weatherTimer);
+            if (dshInboxTimer) clearInterval(dshInboxTimer);
             if (dshStateTimer) clearInterval(dshStateTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
             if (photoDiscoveryTimer) clearInterval(photoDiscoveryTimer);

@@ -27,6 +27,8 @@
 - `social/qzone-strangers.ts`
 - `social/account.ts`
 - `social/quote-reply.ts`
+- `social/external-drafts.ts`
+- `social/external-platforms.ts`
 
 ## 开关
 
