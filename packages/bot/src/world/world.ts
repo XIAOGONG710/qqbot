@@ -16,6 +16,7 @@ import { realAirQuality, type DayAirQuality } from './air-quality.ts';
 import { realDaylight, type Daylight } from './daylight.ts';
 import { realWeather, type DayWeather } from './weather.ts';
 import { bodyAt, parseBody, unwell, type Body, type BodyNow } from '../life/body.ts';
+import type { NeedsSnapshot } from '../life/needs.ts';
 import { DEFAULT_NEWS_KINDS, type NewsKind } from '../proactive/proactive.ts';
 import { EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, quizEvents, type EventFeel } from '../life/everyday.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
@@ -24,6 +25,12 @@ import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcStat
 import { DEFAULT_ASKS, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
 import type { Plans } from '../life/day-plan.ts';
 import { ASK_HOME_TIME, depositFor, lastPayday, MISC_TIME, nextPayday, ORDER_TIME, PAY_TIME, parcelPrice, priceIn, sideJobOn, spendItems, type Money, type MoneyEntry } from '../life/money.ts';
+
+export interface WorldNeedsView { at(time: Date): NeedsSnapshot | undefined }
+let needsView: WorldNeedsView | undefined;
+/** 线上由 app.ts 接入已有 needs 锚点；没有锚点时世界保持旧形状。 */
+export function useWorldNeeds(source: WorldNeedsView | undefined): void { needsView = source; }
+export function worldNeeds(): WorldNeedsView | undefined { return needsView; }
 
 export type WorldWindow = 'morning' | 'afternoon' | 'evening';
 
@@ -165,6 +172,8 @@ export interface WorldNow {
     airQuality?: DayAirQuality;
     /** 真实日出 / 日落和当前光线阶段；取不到时不写。 */
     daylight?: Daylight;
+    /** 由同一份 needs 锚点投影出的身体需要；不另存当前分数。 */
+    needs?: NeedsSnapshot;
     cat?: {
         name: string;
         /** 今天：喂了（几点、见没见到）/ 还没去（几点以后）/ 不去（为什么） */
@@ -789,6 +798,8 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     if (airQuality) result.airQuality = airQuality;
     const daylight = realDaylight()?.day(place, date, now);
     if (daylight) result.daylight = daylight;
+    const needs = worldNeeds()?.at(now);
+    if (needs) result.needs = needs;
     if (world.cat && record.cat) {
         const c = record.cat;
         const today = c.fed && c.fed <= now ? { fed: c.fed, ...(c.seen !== undefined ? { seen: c.seen } : {}) }
@@ -1168,6 +1179,7 @@ export function summarizeWorld(now: WorldNow): string {
         now.weather ? `${now.weather.rain ? '下雨' : '没下雨'} ${now.weather.low}–${now.weather.high}℃` : undefined,
         now.airQuality ? `空气 AQI ${now.airQuality.aqi}（${now.airQuality.category}）` : undefined,
         now.daylight ? `日照 ${now.daylight.phase}` : undefined,
+        now.needs ? `需要 精力 ${now.needs.energy}、饥饿 ${now.needs.hunger}、压力 ${now.needs.stress}` : undefined,
         now.atSchool ? undefined : '不在学校',
         now.cat ? `${now.cat.name} 猫粮够 ${now.cat.foodDays} 天` : undefined,
         now.parcels.length ? `快递 ${now.parcels.length} 件` : undefined,

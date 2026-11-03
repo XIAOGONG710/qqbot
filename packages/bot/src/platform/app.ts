@@ -99,7 +99,7 @@ import { herPlanActivities, saveHerPlan, windowAt } from '.././life/her-plans.ts
 import { isCorrection, recordCorrection, understandingLine } from '.././life/understanding.ts';
 import { recordTrace, traceOf, tracesLine } from '.././life/traces.ts';
 import { bodyAt } from '.././life/body.ts';
-import { worldState, type WorldNow } from '.././world/world.ts';
+import { useWorldNeeds, worldState, type WorldNow } from '.././world/world.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
 import { lifeExecutor } from '.././world/life-selector.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/diary.ts';
@@ -443,6 +443,15 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const lifeQueue = config.autonomousLife && ledgerWorld ? actionQueue(join(config.dataDir, 'world', 'action-queue.json'), log) : undefined;
     const lifeStartedAt = new Date(worldNow());
     const needsAnchor = lifeQueue ? loadNeedsAnchor(join(config.dataDir, 'world', 'needs-anchor.json'), lifeStartedAt, log) : undefined;
+    useWorldNeeds(needsAnchor && ledgerWorld ? {
+        at: time => {
+            try { return needsAt(needsAnchor, ledgerWorld.events(), time); }
+            catch (error) {
+                log(`她的世界：需要投影失败（${error instanceof Error ? error.message : String(error)}）`);
+                return undefined;
+            }
+        },
+    } : undefined);
     // 她在聊天里跟名单里谁说过「睡了」（ADR 0042）：聊天记录在下面才打开，打开之前当没说过（之后读世界时排着的会按它改）
     let loadChat: ((qq: number) => StoredMessage[]) | undefined;
     // promiseKeeper 要等聊天记录打开后才能建；生活执行器先拿稳定代理，真正第一次推进前再接上。
@@ -3240,6 +3249,7 @@ ${body}
             useRealWeather(undefined);
             useRealAirQuality(undefined);
             useRealDaylight(undefined);
+            useWorldNeeds(undefined);
             stopLockHeartbeat();
             releaseLock();
         },
