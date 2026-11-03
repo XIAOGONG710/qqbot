@@ -189,7 +189,17 @@ export class OneBotClient {
                 timer,
             });
             signal?.addEventListener('abort', cancel, { once: true });
-            ws.send(JSON.stringify({ action, params, echo }));
+            try {
+                ws.send(JSON.stringify({ action, params, echo }));
+            } catch {
+                // readyState 检查与实际发送之间仍可能恰好断线；同步发送失败要立刻清掉 pending，
+                // 不能让调用方再等完整个 API 超时。
+                const pending = this.#pending.get(echo);
+                if (!pending) return;
+                this.#pending.delete(echo);
+                clearTimeout(pending.timer);
+                pending.reject(new Error(`OneBot 调用 ${action} 发送失败`));
+            }
         });
     }
 
