@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -66,5 +66,23 @@ describe('真实空气质量（ADR 0227）', () => {
         assert.equal(now.airQuality?.aqi, 42);
         assert.match(describeWorld(now, at('2026-10-20T21:00:00'))!, /空气：AQI 42（优）/);
         assert.ok(now.weather, '天气仍然照旧存在');
+    });
+
+    test('结构损坏的缓存会隔离，不把错误 AQI 带进世界', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-air-quality-invalid-'));
+        const dir = join(root, 'air-quality');
+        mkdirSync(dir);
+        writeFileSync(join(dir, 'jinan.json'), JSON.stringify({
+            since: '2026-11-03', fetchedAt: '2026-11-03T03:30:00.000Z',
+            hours: { '2026-11-03T03': { pm25: -1, pm10: 20, aqi: 30, o: 1 } },
+        }));
+        const logs: string[] = [];
+        try {
+            const fetcher = airQualityFetcher({ dir, log: message => logs.push(message), now: () => at('2026-11-03T03:30:00').getTime(), fetchJson: async () => ({}) });
+            assert.equal(fetcher.day('jinan', '2026-11-03', at('2026-11-03T03:30:00')), undefined);
+            assert.equal(existsSync(join(dir, 'jinan.json')), false);
+            assert.ok(readdirSync(dir).some(name => name.startsWith('jinan.json.corrupt-')));
+            assert.ok(logs.some(message => message.includes('空气质量缓存') && message.includes('挪到')));
+        } finally { rmSync(root, { recursive: true, force: true }); }
     });
 });

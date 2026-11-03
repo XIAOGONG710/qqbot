@@ -11,7 +11,38 @@ export interface HourAirQuality { pm25: number; pm10: number; aqi: number; o?: 1
 export interface DayAirQuality { pm25: number; pm10: number; aqi: number; category: string; observedAt: string; real: true }
 export interface RealAirQuality { day(place: Place, date: string, until: Date): DayAirQuality | undefined }
 
-interface Store { since: string; fetchedAt: string; hours: Record<string, HourAirQuality> }
+export interface AirQualityStore { since: string; fetchedAt: string; hours: Record<string, HourAirQuality> }
+
+const validCalendarDate = (value: unknown): value is string => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const date = new Date(`${value}T00:00:00Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
+
+export function isAirQualityStore(value: unknown): value is AirQualityStore {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const store = value as Partial<AirQualityStore>;
+    if (!validCalendarDate(store.since) || typeof store.fetchedAt !== 'string' || !Number.isFinite(Date.parse(store.fetchedAt))) return false;
+    if (!store.hours || typeof store.hours !== 'object' || Array.isArray(store.hours)) return false;
+    const hours = Object.entries(store.hours);
+    return hours.length > 0 && hours.every(([key, item]) => {
+        if (!/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3])$/.test(key)
+            || !item || typeof item !== 'object' || Array.isArray(item)) return false;
+        const row = item as Partial<HourAirQuality>;
+        return Number.isFinite(row.pm25) && row.pm25! >= 0 && row.pm25! <= 2_000
+            && Number.isFinite(row.pm10) && row.pm10! >= 0 && row.pm10! <= 2_000
+            && Number.isFinite(row.aqi) && row.aqi! >= 0 && row.aqi! <= 500
+            && (row.o === undefined || row.o === 1);
+    });
+}
+
+export function readAirQualityStore(path: string, log?: (message: string) => void, invalid: 'quarantine' | 'throw' = 'quarantine'): AirQualityStore | undefined {
+    return readJsonOr<AirQualityStore | undefined>(path, undefined, log, {
+        validate: (value): value is AirQualityStore | undefined => isAirQualityStore(value),
+        invalid,
+        label: '空气质量缓存',
+    });
+}
 
 let current: RealAirQuality | undefined;
 /** 线上（app.ts）开；模拟器、测试不开。 */
@@ -114,14 +145,13 @@ export function airQualityFetcher(options: AirQualityFetcherOptions): AirQuality
     });
     mkdirSync(options.dir, { recursive: true });
     const path = (place: Place) => join(options.dir, `${place}.json`);
-    const stores = new Map<Place, Store | undefined>();
+    const stores = new Map<Place, AirQualityStore | undefined>();
     const errors = new Map<Place, string>();
     const errorAt = new Map<Place, string>();
     let inFlight: Promise<void> | undefined;
-    const load = (place: Place): Store | undefined => {
+    const load = (place: Place): AirQualityStore | undefined => {
         if (!stores.has(place)) {
-            const data = readJsonOr<Partial<Store>>(path(place), {}, message => options.log(`真实空气质量：${message}`));
-            stores.set(place, data.since && data.hours ? { since: data.since, fetchedAt: data.fetchedAt ?? '', hours: data.hours } : undefined);
+            stores.set(place, readAirQualityStore(path(place), message => options.log(`真实空气质量：${message}`)));
         }
         return stores.get(place);
     };
@@ -144,7 +174,7 @@ export function airQualityFetcher(options: AirQualityFetcherOptions): AirQuality
                         const fetched = validHourly(parseOpenMeteoAirQuality(await fetchJson(url)));
                         const at = new Date(now());
                         const old = load(place);
-                        const store: Store = { since: old?.since ?? firstRealDay(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
+                        const store: AirQualityStore = { since: old?.since ?? firstRealDay(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
                         writeJsonAtomic(path(place), store);
                         stores.set(place, store);
                         errors.delete(place); errorAt.delete(place);

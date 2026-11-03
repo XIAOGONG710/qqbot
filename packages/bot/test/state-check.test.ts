@@ -16,17 +16,20 @@ function fixture() {
 }
 
 describe('状态文件兼容检查（ADR 0070 第 13 项）', () => {
-    test('主动消息和天气缓存检查实际 schema；未知 JSON 仍标出只做语法检查', () => {
+    test('主动消息和现实环境缓存检查实际 schema；未知 JSON 仍标出只做语法检查', () => {
         const dir = fixture();
         mkdirSync(join(dir, 'proactive'));
         mkdirSync(join(dir, 'weather'));
+        mkdirSync(join(dir, 'air-quality'));
         const bad = JSON.stringify({ version: 99 });
         writeFileSync(join(dir, 'proactive', '10001-boyfriend.json'), bad);
         writeFileSync(join(dir, 'weather', 'jinan.json'), JSON.stringify({ since: '2026-10-11', fetchedAt: '2026-10-31T12:36:45.984Z', hours: { '2026-10-11T08': { t: 'cold', p: 0, c: 2 } } }));
         writeFileSync(join(dir, 'weather', 'test.json'), '{}');
+        writeFileSync(join(dir, 'air-quality', 'jinan.json'), JSON.stringify({ since: '2026-10-11', fetchedAt: '2026-10-31T12:36:45.984Z', hours: { '2026-10-11T08': { pm25: -1, pm10: 20, aqi: 30 } } }));
         const checks = checkStates(dir);
         assert.equal(checks.find(c => c.name === 'proactive/10001-boyfriend.json')!.ok, false);
         assert.equal(checks.find(c => c.name === 'weather/jinan.json')!.ok, false);
+        assert.equal(checks.find(c => c.name === 'air-quality/jinan.json')!.ok, false);
         assert.match(checks.find(c => c.name === 'weather/test.json')!.detail, /仅 JSON 语法/);
         assert.equal(readFileSync(join(dir, 'proactive', '10001-boyfriend.json'), 'utf8'), bad, '原目录不动');
     });
