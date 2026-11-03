@@ -228,7 +228,10 @@ export interface FadeOptions {
 export type NamedContact = MemoryContact & { name: string };
 
 /** 日记在公共库里的 document_id 前缀（ADR 0017） */
-export const DIARY_PREFIX = 'diary:';
+export /** 证据指纹（ADR 0226）：id / 查询串的哈希前 12 位，不回显原文 */
+const fingerprint = (value: string): string => createHash('sha256').update(value).digest('hex').slice(0, 12);
+
+const DIARY_PREFIX = 'diary:';
 
 /** 她在某个人的聊天里自己写的 `<<日记>>` / `<<记住>>` 在公共库里的 document_id（rememberSelfNote）：`diary-self:<写它的联系人的哈希>:<时间>` / `self:…`。DSH 插件认同一个样子 */
 export const SELF_NOTE_ID = /^(?:diary-self|self):([0-9a-f]{16}):/;
@@ -263,6 +266,14 @@ export interface MemoryEvent {
     at: number;
     ok: boolean;
     error?: string;
+    /** 下面是证据摘要（ADR 0226，从 GPT 那条线移植）：只用于诊断，不含聊天正文、QQ 号、密钥 */
+    operation?: 'write' | 'recall';
+    /** 来源类别：qq-episode / qq-common-episode / qq-common / contact-sync / diary … */
+    source?: string;
+    /** 这次写进去的片段消息数、或召回回来的条数 */
+    items?: number;
+    /** 文档 id 或查询的 SHA-256 前 12 位：只用来判断是不是重复处理 */
+    fingerprint?: string;
 }
 
 export interface LongTermMemoryOptions {
@@ -320,7 +331,7 @@ export class LongTermMemory {
         const previous = this.#queues.get(key) ?? Promise.resolve();
         const next = previous.then(() => this.#sync(contact, names, history)).catch(error => {
             const message = error instanceof Error ? error.message : String(error);
-            this.#lastWrite = { at: this.#now(), ok: false, error: message };
+            this.#lastWrite = { at: this.#now(), ok: false, error: message, operation: 'write', source: 'contact-sync' };
             this.#options.log(`[${contact.qq}] 记忆写入失败：${message}`);
         });
         this.#queues.set(key, next);
@@ -356,7 +367,7 @@ export class LongTermMemory {
             if (common.length) await this.#retainCommon(contact, names, state, common, bankId);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            this.#lastWrite = { at: this.#now(), ok: false, error: message };
+            this.#lastWrite = { at: this.#now(), ok: false, error: message, operation: 'write', source: 'qq-common' };
             this.#options.log(`[${contact.qq}] 记忆（公共）写入失败：${message}`);
         }
     }
@@ -376,7 +387,7 @@ export class LongTermMemory {
             (state.common ??= {})[episode.id] = episode.messages.length;
             (state.commonAt ??= {})[episode.id] = this.#now();
             this.#save(contact, state);
-            this.#lastWrite = { at: this.#now(), ok: true };
+            this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-common-episode', items: episode.messages.length, fingerprint: fingerprint(episode.id) };
             this.#options.log(`[${contact.qq}] 记忆（公共）：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
             // 新片段可能带来新的人和事，下一轮重读实体名
             this.#entities.fetchedAt = undefined;
@@ -414,7 +425,7 @@ export class LongTermMemory {
                 metadata: { source: tag, ...(tag === 'diary' ? { date: documentId.slice(DIARY_PREFIX.length) } : { id: documentId }) },
                 entities: [{ text: char, type: 'PERSON' }],
             });
-            this.#lastWrite = { at: this.#now(), ok: true };
+            this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: tag, items: 1, fingerprint: fingerprint(documentId) };
             this.#entities.fetchedAt = undefined;
             return true;
         } catch (error) {
@@ -484,7 +495,7 @@ export class LongTermMemory {
             state.retained[episode.id] = episode.messages.length;
             (state.retainedAt ??= {})[episode.id] = this.#now();
             this.#save(contact, state);
-            this.#lastWrite = { at: this.#now(), ok: true };
+            this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-episode', items: episode.messages.length, fingerprint: fingerprint(episode.id) };
             this.#options.log(`[${contact.qq}] 记忆：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
         }
     }
@@ -773,11 +784,11 @@ export class LongTermMemory {
     async #recall(bankId: string, request: RecallRequest, failure: string): Promise<RecallResult[] | undefined> {
         try {
             const results = await this.#options.api.recall(bankId, request, this.#options.recallTimeoutMs);
-            this.#lastRecall = { at: this.#now(), ok: true };
+            this.#lastRecall = { at: this.#now(), ok: true, operation: 'recall', source: 'hindsight-recall', items: results.length, fingerprint: fingerprint(request.query ?? '') };
             return results;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            this.#lastRecall = { at: this.#now(), ok: false, error: message };
+            this.#lastRecall = { at: this.#now(), ok: false, error: message, operation: 'recall', source: 'hindsight-recall', fingerprint: fingerprint(request.query ?? '') };
             this.#options.log(`${failure}：${message}`);
             return undefined;
         }

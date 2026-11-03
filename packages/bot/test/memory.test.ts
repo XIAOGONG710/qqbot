@@ -1001,3 +1001,31 @@ describe('长期记忆：问到某段时间（ADR 0018 决策 3）', () => {
         }
     });
 });
+
+// ADR 0226（从 GPT 那条线移植）：记忆状态多一份「证据摘要」，只用于诊断，不含正文
+describe('记忆证据摘要（ADR 0226）', () => {
+    test('写入成功带来源 / 条数 / 指纹；召回带条数和查询指纹；都不含聊天正文', async () => {
+        const { memory, cleanup } = setup({});
+        try {
+            const contact = { qq: 2, tier: 'classmate' as const };
+            const names = { user: '鸽鸽', char: '林梦瑶' };
+            const history = [msg(0, 'user', '今天加班'), msg(1, 'assistant', '辛苦')];
+            await memory.sync(contact, names, history);
+            const write = memory.status().lastWrite!;
+            assert.equal(write.operation, 'write');
+            assert.ok(write.source, '要有来源类别');
+            assert.equal(typeof write.items, 'number');
+            assert.match(String(write.fingerprint), /^[0-9a-f]{12}$/, '指纹是 SHA-256 前 12 位');
+
+            await memory.recall(contact, history, new Date(T0 + 24 * 60 * MIN), { query: '上周考得怎么样' });
+            const recall = memory.status().lastRecall!;
+            assert.equal(recall.operation, 'recall');
+            assert.equal(recall.source, 'hindsight-recall');
+            assert.match(String(recall.fingerprint), /^[0-9a-f]{12}$/);
+
+            assert.ok(!JSON.stringify({ write, recall }).includes('上周考得怎么样'), '证据里不能回显查询原文');
+        } finally {
+            cleanup();
+        }
+    });
+});
