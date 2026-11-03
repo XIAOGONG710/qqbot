@@ -90,9 +90,9 @@ export class CompanionRuntime {
         if (this.gateway.pairedClientId !== clientId) throw new Error('设备尚未配对');
         const body = validateAction(request);
         if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{5,127}$/.test(requestId)) throw new Error('动作 requestId 不合法');
-        const queue = this.downlinks.get(clientId) ?? [];
+        const { queue, pending } = this.pruneDownlinks(clientId);
         if (queue.length >= MAX_DOWNLINK_ACTIONS) throw new Error('手机动作待发送队列已满');
-        const pending = this.pendingDownlinkResults.get(clientId) ?? new Map<string, number>();
+        if (pending.size >= MAX_DOWNLINK_ACTIONS) throw new Error('手机动作等待回执过多');
         if (pending.has(requestId)) throw new Error('动作 requestId 已存在');
         const envelope: CompanionEnvelope<PhoneActionRequest> = {
             v: 1,
@@ -121,17 +121,26 @@ export class CompanionRuntime {
 
     takeDownlinks(clientId: string, limit = MAX_DOWNLINK_ACTIONS): CompanionEnvelope<PhoneActionRequest>[] {
         if (!Number.isInteger(limit) || limit < 1 || limit > MAX_DOWNLINK_ACTIONS) throw new Error('手机动作取出数量不合法');
-        const queue = this.downlinks.get(clientId) ?? [];
-        const cutoff = this.now() - DOWNLINK_ACTION_TTL_MS;
-        const pending = this.pendingDownlinkResults.get(clientId);
-        for (const envelope of queue) if (Date.parse(envelope.sentAt) < cutoff) pending?.delete(envelope.requestId);
-        if (pending) for (const [requestId, issuedAt] of pending) if (this.now() - issuedAt >= DOWNLINK_ACTION_TTL_MS) pending.delete(requestId);
-        if (pending && pending.size === 0) this.pendingDownlinkResults.delete(clientId);
-        const fresh = queue.filter(envelope => Date.parse(envelope.sentAt) >= cutoff);
-        const result = fresh.splice(0, limit);
-        if (fresh.length) this.downlinks.set(clientId, fresh);
+        const { queue } = this.pruneDownlinks(clientId);
+        const result = queue.splice(0, limit);
+        if (queue.length) this.downlinks.set(clientId, queue);
         else this.downlinks.delete(clientId);
         return result;
+    }
+
+    private pruneDownlinks(clientId: string): { queue: CompanionEnvelope<PhoneActionRequest>[]; pending: Map<string, number> } {
+        const now = this.now();
+        const pending = this.pendingDownlinkResults.get(clientId) ?? new Map<string, number>();
+        for (const [requestId, issuedAt] of pending) {
+            if (now - issuedAt >= DOWNLINK_ACTION_TTL_MS) pending.delete(requestId);
+        }
+        if (pending.size) this.pendingDownlinkResults.set(clientId, pending);
+        else this.pendingDownlinkResults.delete(clientId);
+        // pending 是动作回执的唯一凭据；过期动作不能再下发，否则手机回执必然被拒绝。
+        const queue = (this.downlinks.get(clientId) ?? []).filter(envelope => pending.has(envelope.requestId));
+        if (queue.length) this.downlinks.set(clientId, queue);
+        else this.downlinks.delete(clientId);
+        return { queue, pending };
     }
 
     async handle(value: unknown, sessionId = 'default'): Promise<CompanionRuntimeResult> {

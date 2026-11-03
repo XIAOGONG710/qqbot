@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { actionNeedsConfirmation, decidePhoneAction } from '../src/action-policy.ts';
 import { CompanionGateway, helloEnvelope } from '../src/gateway.ts';
 import { MemoryPairingStore } from '../src/pairing.ts';
-import { CompanionRuntime, DOWNLINK_ACTION_TTL_MS } from '../src/runtime.ts';
+import { CompanionRuntime, DOWNLINK_ACTION_TTL_MS, MAX_DOWNLINK_ACTIONS } from '../src/runtime.ts';
 import { createCompanionHttpHandler } from '../src/http.ts';
 import { attachCompanionWebSocket } from '../src/websocket.ts';
 import { createServer, request as httpRequest } from 'node:http';
@@ -520,6 +520,25 @@ describe('手机伴侣协议', () => {
         const request = { action: 'notify' as const, params: { text: '测试' }, decision: 'auto' as const };
         runtime.requestPhoneAction('android-duplicate', request, 'push-duplicate');
         assert.throws(() => runtime.requestPhoneAction('android-duplicate', request, 'push-duplicate'), /requestId 已存在/);
+    });
+
+    test('宿主限制未回执下行动作，并在过期后释放容量', async () => {
+        let now = 50_000;
+        const pairing = new MemoryPairingStore(60_000);
+        const ticket = pairing.issue('android-pending-limit', now);
+        const runtime = new CompanionRuntime(new CompanionGateway(pairing, () => now), {
+            onMessage: async message => message,
+            onAction: async (_request, _clientId, requestId) => ({ requestId, ok: false, decision: 'deny' }),
+        }, () => now);
+        await runtime.handle(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text'] }, 'req-pending-hello', 'nonce-pending-hello', new Date(now).toISOString()));
+        const request = { action: 'notify' as const, params: { text: '测试' }, decision: 'auto' as const };
+        for (let index = 0; index < MAX_DOWNLINK_ACTIONS; index += 1) {
+            runtime.requestPhoneAction(ticket.clientId, request, `push-pending-${index}`);
+            assert.equal(runtime.takeDownlinks(ticket.clientId).length, 1);
+        }
+        assert.throws(() => runtime.requestPhoneAction(ticket.clientId, request, 'push-pending-overflow'), /等待回执过多/);
+        now += DOWNLINK_ACTION_TTL_MS;
+        assert.doesNotThrow(() => runtime.requestPhoneAction(ticket.clientId, request, 'push-pending-after-expiry'));
     });
 
     test('下行监听器抛错不影响动作入队，避免调用方误重试', async () => {
