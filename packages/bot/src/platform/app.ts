@@ -104,7 +104,7 @@ import { lifeExecutor } from '.././world/life-selector.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/diary.ts';
 import { armIntimate, INTIMATE_REPLIES, takeIntimateLine } from '.././language/intimacy.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from '.././life/schedule.ts';
-import { useRealWeather, weatherFetcher } from '.././world/weather.ts';
+import { useRealWeather, weatherFetcher, type WeatherFetcherStatus } from '.././world/weather.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
 import { idiomStore, IDIOMS_CHECK_MS, refreshIdioms } from '.././language/idioms.ts';
 import { jokeStore, JOKES_CHECK_MS, refreshJokes } from '.././language/jokes.ts';
@@ -138,6 +138,7 @@ import { askExpired, askLine, takeConsent } from './consent.ts';
 import { PEEK_OFF_NOTICE, peekRefused } from './private-space.ts';
 import { createTurnWeigher, WEIGH_TIMEOUT_MS } from '.././language/turn-weight.ts';
 import type { ExternalPlatformMode } from '../social/external-platforms.ts';
+import { createExternalDraftStore, type ExternalDraftStore, type ExternalDraftSummary } from '../social/external-drafts.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -194,6 +195,8 @@ export interface App {
     status(): AppStatus;
     /** DSH 开启时可供宿主挂 HTTPS / WebSocket 的手机伴侣运行时；默认关闭时为 undefined。 */
     mobileCompanion(): MobileCompanionIntegration | undefined;
+    /** 外部平台草稿箱；只保存草稿和审计状态，不执行发布。 */
+    externalDrafts(): ExternalDraftStore;
 }
 
 export interface ContactStatus {
@@ -242,8 +245,12 @@ export interface AppStatus {
     memory?: { baseUrl: string; health?: MemoryEvent; lastWrite?: MemoryEvent; lastRecall?: MemoryEvent };
     /** 手机伴侣安全摘要：不含配对码、nonce 或消息正文。 */
     mobileCompanion?: { enabled: boolean; pairedClientId?: string; connected: boolean; queued: number; maxQueuedPerClient: number };
+    /** 真实天气缓存的新鲜度和覆盖范围，不含坐标和请求内容。 */
+    weather?: WeatherFetcherStatus;
     /** 外部内容平台接入模式。 */
     externalPlatforms: { tieba: ExternalPlatformMode; douyin: ExternalPlatformMode; xiaohongshu: ExternalPlatformMode };
+    /** 外部平台统一草稿箱的计数摘要。 */
+    externalDrafts: ExternalDraftSummary;
     /** 自主生活开启且有需要锚点时的全局真人式状态。 */
     humanValues?: Pick<HumanValues, 'at' | 'energy' | 'hunger' | 'stress' | 'mood' | 'health' | 'loneliness' | 'confidence' | 'curiosity' | 'boredom' | 'motivation' | 'socialBattery' | 'selfEsteem' | 'openness' | 'satisfaction' | 'comfort' | 'frustration'>;
 }
@@ -307,6 +314,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
     const dshConfig = config.dsh ?? { enabled: false };
+    const externalDraftStore = createExternalDraftStore({ dir: join(config.dataDir, 'external-drafts'), log: message => log(`外部草稿：${message}`) });
     const dshLink = createDshLink(dshOptionsFromLlm(config.llm, {
         ...(dshConfig.baseUrl ? { baseUrl: dshConfig.baseUrl } : {}),
         ...(dshConfig.model ? { model: dshConfig.model } : {}),
@@ -3089,6 +3097,7 @@ ${body}
             onGroupMessage(event);
         },
         mobileCompanion: () => mobileCompanion,
+        externalDrafts: () => externalDraftStore,
         receiveFriendRequest({ userId, flag }) {
             const gate = config.qqFriendGate ?? 'off';
             if (!account || gate === 'off') return;
@@ -3214,7 +3223,9 @@ ${body}
                 ...(photos || jokes || config.weeklyReport ? { extras: statusExtras() } : {}),
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
                 ...(mobileCompanion ? { mobileCompanion: { enabled: true, ...mobileCompanion.runtime.status() } } : { mobileCompanion: { enabled: false, pairedClientId: undefined, connected: false, queued: 0, maxQueuedPerClient: 0 } }),
+                ...(weather ? { weather: weather.status() } : {}),
                 externalPlatforms: config.externalPlatforms ?? DEFAULTS.externalPlatforms,
+                externalDrafts: externalDraftStore.summary(),
                 ...(currentHumanValues ? { humanValues: currentHumanValues } : {}),
             };
         },

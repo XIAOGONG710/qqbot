@@ -101,7 +101,7 @@ function phoneActionsPanel(actions) {
     ]);
 }
 
-function externalPlatformsPanel(platforms) {
+function externalPlatformsPanel(platforms, drafts) {
     if (!platforms) return null;
     const labels = { tieba: '百度贴吧', douyin: '抖音', xiaohongshu: '小红书' };
     const modes = {
@@ -109,12 +109,19 @@ function externalPlatformsPanel(platforms) {
         draft: ['只生成草稿', 'warning'],
         authorized: ['授权模式，等待官方适配器', 'warning'],
     };
+    const draftLine = drafts ? h('div', { class: 'qqbot-summary-row' }, [
+        h('span', { class: 'qqbot-label' }, '统一草稿箱'),
+        h('span', null, [
+            tag(`待确认 ${drafts.pending ?? 0}`, drafts.pending ? 'warning' : 'success'),
+            h('span', { class: 'qqbot-muted' }, ` · 共 ${drafts.total ?? 0} 条${drafts.failed ? ` · 失败 ${drafts.failed}` : ''}`),
+        ]),
+    ]) : null;
     return h('details', { class: 'qqbot-features-disclosure', open: false }, [
         h('summary', { class: 'qqbot-features-summary' }, '外部平台接入'),
-        h('div', { class: 'qqbot-summary' }, Object.entries(labels).map(([key, label]) => {
+        h('div', { class: 'qqbot-summary' }, [...Object.entries(labels).map(([key, label]) => {
             const [text, type] = modes[platforms[key] ?? 'off'] ?? modes.off;
             return h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, label), tag(text, type)]);
-        })),
+        }), draftLine].filter(Boolean)),
     ]);
 }
 
@@ -208,7 +215,7 @@ export const StatusTab = defineComponent({
             const features = featurePanel(status);
             const extras = extrasPanel(status);
             const phoneActions = phoneActionsPanel(data.phoneActions);
-            const externalPlatforms = externalPlatformsPanel(status.externalPlatforms);
+            const externalPlatforms = externalPlatformsPanel(status.externalPlatforms, status.externalDrafts);
             const contactToolbar = h('div', { class: 'qqbot-contact-toolbar' }, [
                 h('div', { class: 'qqbot-section-title' }, [h('strong', null, '联系人'), h('span', { class: 'qqbot-muted' }, `显示 ${filteredContacts.value.length}/${counts.contacts}`)]),
                 h(c('el-input'), {
