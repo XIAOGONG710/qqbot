@@ -8,6 +8,7 @@ import {
     FAILURE_MARKER,
     RETRY_DELAY_MS,
     isCompleteBackup,
+    isReusableBackupArtifact,
     nonEmptyFile,
     retryDue,
     writeBackupMarker,
@@ -84,6 +85,24 @@ describe('backup completion policy', () => {
         });
 
         assert.equal(retryDue(target, now), true);
+    });
+
+    test('a partial artifact is reused only after a marker records that component as successful', () => {
+        const target = fresh();
+        writeFileSync(join(target, 'hindsight.sql'), 'possibly partial backup', 'utf8');
+
+        assert.equal(isReusableBackupArtifact(target, 'database', 'hindsight.sql'), false);
+        writeBackupMarker(target, FAILURE_MARKER, {
+            completed: false,
+            components: { database: { ok: false }, state: { ok: true } },
+        });
+        assert.equal(isReusableBackupArtifact(target, 'database', 'hindsight.sql'), false);
+
+        writeBackupMarker(target, FAILURE_MARKER, {
+            completed: false,
+            components: { database: { ok: true }, state: { ok: false } },
+        });
+        assert.equal(isReusableBackupArtifact(target, 'database', 'hindsight.sql'), true);
     });
 
     test('missing, empty and non-empty artifacts are distinguished', () => {

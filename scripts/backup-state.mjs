@@ -33,6 +33,13 @@ export function retryDue(target, now = Date.now(), delayMs = RETRY_DELAY_MS) {
     return !Number.isFinite(attempted) || age < 0 || age >= delayMs;
 }
 
+export function isReusableBackupArtifact(target, component, artifactName) {
+    const complete = readMarker(join(target, COMPLETE_MARKER));
+    const failure = readMarker(join(target, FAILURE_MARKER));
+    const marker = complete?.completed === true ? complete : failure;
+    return marker?.components?.[component]?.ok === true && nonEmptyFile(join(target, artifactName));
+}
+
 export function nonEmptyFile(path) {
     try {
         const stat = statSync(path);

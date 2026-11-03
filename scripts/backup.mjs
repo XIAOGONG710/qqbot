@@ -15,7 +15,7 @@ import {
     COMPLETE_MARKER,
     FAILURE_MARKER,
     isCompleteBackup,
-    nonEmptyFile,
+    isReusableBackupArtifact,
     retryDue,
     writeBackupMarker,
 } from './backup-state.mjs';
@@ -30,9 +30,9 @@ const force = process.argv.includes('--now');
 
 const log = (message) => console.log(`[backup] ${message}`);
 
-function pgDump() {
+function pgDump(reuse) {
     const out = join(target, 'hindsight.sql');
-    if (!force && nonEmptyFile(out)) {
+    if (reuse) {
         log('数据库已有可用备份，本次只重试缺失部分');
         return { ok: true, reused: true };
     }
@@ -57,7 +57,7 @@ function pgDump() {
     }
 }
 
-function archiveState() {
+function archiveState(reuse) {
     // 状态和聊天记录（都不大，几百 MB 以内）；日志不备（没价值、还占地方）
     const items = ['runtime/bot-shadow/chats', 'runtime/bot-shadow/identity', 'runtime/bot-shadow/world',
         'runtime/bot-shadow/dreams', 'runtime/bot-shadow/presence', 'runtime/bot-shadow/memory'];
@@ -67,7 +67,7 @@ function archiveState() {
         return { ok: true, skipped: true };
     }
     const zip = join(target, 'her-state.zip');
-    if (!force && nonEmptyFile(zip)) {
+    if (reuse) {
         log('状态已有可用备份，本次只重试缺失部分');
         return { ok: true, reused: true };
     }
@@ -103,9 +103,13 @@ if (!force && existsSync(target) && !retryDue(target)) {
     log('上次备份不完整，30 分钟后再重试');
     process.exit(0);
 }
+const reuseDatabase = !force && isReusableBackupArtifact(target, 'database', 'hindsight.sql');
+const reuseState = !force && isReusableBackupArtifact(target, 'state', 'her-state.zip');
 mkdirSync(target, { recursive: true });
-const database = pgDump();
-const state = archiveState();
+// 一旦开始新尝试，旧的完成标记就不能再证明即将被覆盖的文件有效。
+rmSync(join(target, COMPLETE_MARKER), { force: true });
+const database = pgDump(reuseDatabase);
+const state = archiveState(reuseState);
 const attemptedAt = new Date().toISOString();
 const components = { database, state };
 if (database.ok && state.ok) {
