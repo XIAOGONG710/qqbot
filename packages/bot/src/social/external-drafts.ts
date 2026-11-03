@@ -42,11 +42,23 @@ const MAX_BODY = 10_000;
 const MAX_MEDIA = 8;
 const isPlatform = (value: unknown): value is ExternalPlatform => PLATFORMS.includes(value as ExternalPlatform);
 const isStatus = (value: unknown): value is ExternalDraftStatus => STATUSES.includes(value as ExternalDraftStatus);
-const isSafeMediaRef = (value: string): boolean => value.length <= 500 && (value.startsWith('https://') || /^media:[a-zA-Z0-9._/-]+$/.test(value));
+function isSafeMediaRef(value: string): boolean {
+    if (value.length > 500) return false;
+    if (/^media:[a-zA-Z0-9._/-]+$/.test(value)) return true;
+    if (!value.startsWith('https://')) return false;
+    try {
+        const url = new URL(value);
+        if (url.username || url.password) return false;
+        for (const key of url.searchParams.keys()) if (/token|secret|cookie|auth|signature|sig|access.?key|api.?key/i.test(key)) return false;
+        return true;
+    } catch {
+        return false;
+    }
+}
 function validAudit(value: unknown): value is ExternalDraftAudit {
     if (!value || typeof value !== 'object') return false;
     const item = value as Partial<ExternalDraftAudit>;
-    return typeof item.at === 'string' && isStatus(item.status) && (item.note === undefined || typeof item.note === 'string');
+    return typeof item.at === 'string' && isStatus(item.status) && (item.note === undefined || (typeof item.note === 'string' && item.note.length <= 240));
 }
 function validDraft(value: unknown): value is ExternalDraft {
     if (!value || typeof value !== 'object') return false;
@@ -79,7 +91,7 @@ function transitionAllowed(from: ExternalDraftStatus, to: ExternalDraftStatus): 
         || from === 'failed' && to === 'approved';
 }
 
-export function createExternalDraftStore(options: { dir: string; log?: (message: string) => void }): ExternalDraftStore {
+export function createExternalDraftStore(options: { dir: string; log?: (message: string) => void; canDraft?: (platform: ExternalPlatform) => boolean }): ExternalDraftStore {
     mkdirSync(options.dir, { recursive: true });
     const path = join(options.dir, 'drafts.json');
     let file = readJsonOr<DraftFile>(path, { version: 1, drafts: [] }, options.log, { validate: validFile, label: '外部平台草稿' });
@@ -87,6 +99,7 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
     return {
         create(input) {
             if (!isPlatform(input.platform)) throw new Error('不支持的外部平台');
+            if (options.canDraft && !options.canDraft(input.platform)) throw new Error('该外部平台当前已关闭，不能创建草稿');
             const title = text(input.title, MAX_TITLE, '标题');
             const body = text(input.body, MAX_BODY, '正文');
             const media = [...new Set((input.media ?? []).map(item => item.trim()).filter(Boolean))];

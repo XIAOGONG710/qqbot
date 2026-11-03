@@ -137,7 +137,7 @@ import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life
 import { askExpired, askLine, takeConsent } from './consent.ts';
 import { PEEK_OFF_NOTICE, peekRefused } from './private-space.ts';
 import { createTurnWeigher, WEIGH_TIMEOUT_MS } from '.././language/turn-weight.ts';
-import type { ExternalPlatformMode } from '../social/external-platforms.ts';
+import { externalPlatformMode, type ExternalPlatformMode } from '../social/external-platforms.ts';
 import { createExternalDraftStore, type ExternalDraftStore, type ExternalDraftSummary } from '../social/external-drafts.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
@@ -314,7 +314,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
     const dshConfig = config.dsh ?? { enabled: false };
-    const externalDraftStore = createExternalDraftStore({ dir: join(config.dataDir, 'external-drafts'), log: message => log(`外部草稿：${message}`) });
+    const externalDraftStore = createExternalDraftStore({
+        dir: join(config.dataDir, 'external-drafts'),
+        log: message => log(`外部草稿：${message}`),
+        canDraft: platform => externalPlatformMode(config.externalPlatforms?.[platform]) !== 'off',
+    });
     const dshLink = createDshLink(dshOptionsFromLlm(config.llm, {
         ...(dshConfig.baseUrl ? { baseUrl: dshConfig.baseUrl } : {}),
         ...(dshConfig.model ? { model: dshConfig.model } : {}),
