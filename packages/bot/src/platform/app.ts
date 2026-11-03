@@ -269,8 +269,8 @@ export interface AppStatus {
     externalPlatforms: { tieba: ExternalPlatformMode; douyin: ExternalPlatformMode; xiaohongshu: ExternalPlatformMode };
     /** 外部平台统一草稿箱的计数摘要。 */
     externalDrafts: ExternalDraftSummary;
-    /** 自主生活开启且有需要锚点时的全局真人式状态。 */
-    humanValues?: Pick<HumanValues, 'at' | 'energy' | 'hunger' | 'stress' | 'mood' | 'health' | 'loneliness' | 'confidence' | 'curiosity' | 'boredom' | 'motivation' | 'socialBattery' | 'selfEsteem' | 'openness' | 'satisfaction' | 'comfort' | 'frustration'>;
+    /** 自主生活开启且有需要锚点时的全局真人式状态；关系值也随同一快照提供给 DSH / 控制台。 */
+    humanValues?: Pick<HumanValues, 'at' | 'energy' | 'hunger' | 'stress' | 'mood' | 'health' | 'loneliness' | 'confidence' | 'curiosity' | 'boredom' | 'motivation' | 'socialBattery' | 'selfEsteem' | 'openness' | 'satisfaction' | 'comfort' | 'frustration' | 'relationship'>;
 }
 
 /** 状态页的「今天」（ADR 0015） */

@@ -72,11 +72,12 @@ function humanValuesLine(values) {
     if (!values) return [tag('自主生活未开启', 'info')];
     const positiveLevel = value => value >= 75 ? 'success' : value <= 25 ? 'danger' : 'warning';
     const loadLevel = value => value >= 75 ? 'danger' : value <= 25 ? 'success' : 'warning';
+    const relationship = values.relationship;
     return [
         tag(`精力 ${values.energy}`, positiveLevel(values.energy)),
         tag(`饥饿 ${values.hunger}`, loadLevel(values.hunger)),
         tag(`压力 ${values.stress}`, loadLevel(values.stress)),
-        h('span', { class: 'qqbot-muted' }, ` 心情 ${values.mood} · 健康 ${values.health} · 动机 ${values.motivation} · 孤独 ${values.loneliness}`),
+        h('span', { class: 'qqbot-muted' }, ` 心情 ${values.mood} · 健康 ${values.health} · 动机 ${values.motivation} · 孤独 ${values.loneliness}${relationship ? ` · 亲密 ${relationship.intimacy} · 信任 ${relationship.trust} · 熟悉 ${relationship.familiarity} · 依恋 ${relationship.attachment} · 摩擦 ${relationship.friction}` : ''}`),
     ];
 }
 

@@ -1111,6 +1111,10 @@ describe('编排（app.ts）', () => {
         const on = setup(cfg);
         assert.ok(on.logs.includes('没人聊天时她一件件过日子：开（ADR 0040/0045，影子模式：需要值只改行动账，不进提示词）'));
         assert.ok(existsSync(join(cfg.dataDir, 'world', 'needs-anchor.json')));
+        const values = on.app.status().humanValues;
+        assert.ok(values, '状态页应提供真人式数值快照');
+        assert.equal(typeof values!.relationship.intimacy, 'number');
+        assert.equal(typeof values!.relationship.trust, 'number');
         // 启动时写当天摘要读过一次世界：排到了现在（这一刻正在上课一半、赶路时跳到下一个边界，可能还没有一件）
         const queue = join(cfg.dataDir, 'world', 'action-queue.json');
         if (existsSync(queue)) assert.ok(JSON.parse(readFileSync(queue, 'utf8')).items.every((item: { id: string }) => item.id.startsWith('life:')));
