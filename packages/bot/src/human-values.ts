@@ -212,10 +212,9 @@ function eventDelta(event: Pick<LifeEvent, 'kind' | 'meal' | 'result'>): { delta
     }
 }
 
-function eventEffectsAt(facts: HumanValueFacts): EventDelta {
-    const now = facts.at.getTime();
+function eventEffectsAt(events: readonly LifeEvent[], now: number): EventDelta {
     const total = { ...EMPTY_DELTA };
-    for (const event of facts.events ?? []) {
+    for (const event of events) {
         const ended = Date.parse(event.endedAt);
         if (!Number.isFinite(ended) || ended > now || now - ended > 4 * DAY) continue;
         const { delta, halfLifeH } = eventDelta(event);
@@ -248,16 +247,24 @@ export function humanValuesAt(facts: HumanValueFacts): HumanValues {
     const now = facts.at.getTime();
     if (!Number.isFinite(now)) throw new RangeError('真人式状态的时间不合法');
     const needs = facts.needs;
+    // 事件账以 id 作为稳定幂等键。身体需要也按同一规则去重，避免一次行动因重试
+    // 重复出现在输入中时，饥饿只结算一次、心理余波却叠加多次。
+    const seenEventIds = new Set<string>();
+    const events = (facts.events ?? []).filter(event => {
+        if (seenEventIds.has(event.id)) return false;
+        seenEventIds.add(event.id);
+        return true;
+    });
     const recent = recentMessages(facts, 72 * HOUR);
     const relationship = relationshipAt(facts);
-    const eventEffects = eventEffectsAt(facts);
+    const eventEffects = eventEffectsAt(events, now);
     const lastUser = latestAt(facts.history, 'user');
-    const lastActivity = Math.max(lastUser ?? 0, ...(facts.events ?? []).map(event => Date.parse(event.endedAt)).filter(Number.isFinite));
+    const lastActivity = Math.max(lastUser ?? 0, ...events.map(event => Date.parse(event.endedAt)).filter(Number.isFinite));
     const silenceHours = lastActivity > 0 ? Math.max(0, (now - lastActivity) / HOUR) : 72;
     const questions = recent.filter(message => message.role === 'user' && QUESTION.test(message.content)).length;
     const positive = recent.filter(message => message.role === 'user' && POSITIVE.test(message.content)).length;
     const negative = recent.filter(message => message.role === 'user' && NEGATIVE.test(message.content)).length;
-    const eventCount = (facts.events ?? []).filter(event => {
+    const eventCount = events.filter(event => {
         const at = Date.parse(event.endedAt);
         return Number.isFinite(at) && at <= now && now - at <= 24 * HOUR && event.result === 'succeeded';
     }).length;

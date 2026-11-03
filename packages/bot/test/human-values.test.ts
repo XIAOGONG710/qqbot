@@ -142,3 +142,16 @@ test('带 meal 标记的见面同时结算社交和吃饭余波', () => {
     assert.ok(withMeal.satisfaction > plain.satisfaction);
     assert.ok(withMeal.loneliness < noAction.loneliness);
 });
+
+test('同一行动 ID 重复出现时，身体与心理数值都只结算一次', () => {
+    const at = new Date('2026-11-01T08:00:00.000Z');
+    const study = {
+        id: 'life:study-once', actor: 'linmengyao' as const, kind: 'study', day: '2026-11-01',
+        startedAt: '2026-11-01T07:00:00.000Z', endedAt: '2026-11-01T08:00:00.000Z',
+        source: 'simulation' as const, result: 'succeeded' as const,
+    };
+    const once = humanValuesFromAnchor({ at, anchor: needs, history: [], tier: 'boyfriend', events: [study] });
+    const conflictingRetry = { ...study, kind: 'rest' };
+    const duplicated = humanValuesFromAnchor({ at, anchor: needs, history: [], tier: 'boyfriend', events: [study, conflictingRetry] });
+    assert.deepEqual(duplicated, once);
+});
