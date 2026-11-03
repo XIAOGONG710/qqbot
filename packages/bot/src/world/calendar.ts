@@ -10,7 +10,7 @@ export type PublicCalendarKind = 'holiday' | 'workday';
 export interface PublicCalendarDay { date: string; name: string; kind: PublicCalendarKind; real: true }
 export interface RealCalendar { day(date: string): PublicCalendarDay | undefined }
 
-interface Store {
+export interface CalendarStore {
     /** 最近任一年成功刷新的时间，供概览展示。 */
     fetchedAt: string;
     /** 每个年份独立的新鲜度，避免某一年成功时给失败年份的旧缓存续期。 */
@@ -32,6 +32,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
+function validCalendarDate(value: string): boolean {
+    if (!DATE_ONLY.test(value)) return false;
+    const date = new Date(`${value}T00:00:00Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function migrateCalendarStore(value: unknown): unknown {
+    if (!isRecord(value) || typeof value.fetchedAt !== 'string' || !isRecord(value.years) || isRecord(value.yearFetchedAt)) return value;
+    return { ...value, yearFetchedAt: Object.fromEntries(Object.keys(value.years).map(year => [year, value.fetchedAt])) };
+}
+
+export function isCalendarStore(value: unknown): value is CalendarStore {
+    if (!isRecord(value) || typeof value.fetchedAt !== 'string' || !Number.isFinite(Date.parse(value.fetchedAt))
+        || !isRecord(value.yearFetchedAt) || !isRecord(value.years)) return false;
+    const yearFetchedAt = value.yearFetchedAt;
+    const years = Object.entries(value.years);
+    if (!years.length) return false;
+    return years.every(([year, rawDays]) => {
+        if (!/^\d{4}$/.test(year) || Number(year) < 2000 || Number(year) > 2200 || !isRecord(rawDays)) return false;
+        const refreshed = yearFetchedAt[year];
+        if (typeof refreshed !== 'string' || !Number.isFinite(Date.parse(refreshed))) return false;
+        const days = Object.entries(rawDays);
+        return days.length > 0 && days.length <= MAX_DAYS && days.every(([date, raw]) => {
+            if (!validCalendarDate(date) || !date.startsWith(`${year}-`) || !isRecord(raw)) return false;
+            return raw.date === date && typeof raw.name === 'string' && Boolean(raw.name.trim()) && raw.name.length <= NAME_MAX
+                && (raw.kind === 'holiday' || raw.kind === 'workday') && raw.real === true;
+        });
+    });
+}
+
+export function readCalendarStore(path: string, log?: (message: string) => void, invalid: 'quarantine' | 'throw' = 'quarantine'): CalendarStore | undefined {
+    return readJsonOr<CalendarStore | undefined>(path, undefined, log, {
+        migrate: migrateCalendarStore,
+        validate: (value): value is CalendarStore | undefined => isCalendarStore(value),
+        invalid,
+        label: '法定日历缓存',
+    });
+}
+
 /** 兼容 holiday.ailcc.com 的 year 接口：holiday[MM-DD] 里 holiday=true/false，date/name 给出日期和名称。 */
 export function parseHolidayApi(data: unknown, year: number): Record<string, PublicCalendarDay> {
     const rows = isRecord(data) && isRecord(data.holiday) ? data.holiday : undefined;
@@ -40,10 +79,10 @@ export function parseHolidayApi(data: unknown, year: number): Record<string, Pub
     for (const [key, raw] of Object.entries(rows)) {
         if (Object.keys(output).length >= MAX_DAYS) throw new Error('供应商返回的法定日历天数过多');
         if (!isRecord(raw)) continue;
-        const date = typeof raw.date === 'string' && DATE_ONLY.test(raw.date) ? raw.date
+        const date = typeof raw.date === 'string' && validCalendarDate(raw.date) ? raw.date
             : /^\d{2}-\d{2}$/.test(key) ? `${year}-${key}` : undefined;
         const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, NAME_MAX) : '';
-        if (!date || !date.startsWith(`${year}-`) || !name) continue;
+        if (!date || !validCalendarDate(date) || !date.startsWith(`${year}-`) || !name) continue;
         const flag = raw.holiday;
         const workday = flag === false || /班|补班|上班/.test(name);
         const holiday = flag === true || (!workday && /假|休|节/.test(name));
@@ -82,23 +121,13 @@ export function calendarFetcher(options: CalendarFetcherOptions): CalendarFetche
     });
     mkdirSync(options.dir, { recursive: true });
     const cachePath = join(options.dir, 'calendar.json');
-    let store: Store | undefined;
+    let store: CalendarStore | undefined;
     let error: string | undefined;
     let errorAt: string | undefined;
     let inFlight: Promise<void> | undefined;
-    const load = (): Store | undefined => {
+    const load = (): CalendarStore | undefined => {
         if (store !== undefined) return store;
-        const data = readJsonOr<Partial<Store>>(cachePath, {}, message => options.log(`现实法定日历：${message}`));
-        if (data.fetchedAt && isRecord(data.years)) {
-            const years = data.years as Store['years'];
-            const storedFreshness = isRecord(data.yearFetchedAt) ? data.yearFetchedAt : {};
-            const yearFetchedAt: Record<string, string> = {};
-            for (const year of Object.keys(years)) {
-                const value = storedFreshness[year];
-                yearFetchedAt[year] = typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : data.fetchedAt;
-            }
-            store = { fetchedAt: data.fetchedAt, yearFetchedAt, years };
-        } else store = undefined;
+        store = readCalendarStore(cachePath, message => options.log(`现实法定日历：${message}`));
         return store;
     };
     return {
