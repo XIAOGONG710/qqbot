@@ -24,10 +24,11 @@ export function featureGroups(features) {
 
 /** 一个开关的小标签：开着的写上模式（试运行 / 问候 / 会发）；ADR 编号放在提示里 */
 export function featureLabel(item) {
-    const mode = item.mode && MODE_NAMES[item.mode] !== '开' ? `（${MODE_NAMES[item.mode] ?? item.mode}）` : '';
+    const modeName = item.mode ? (MODE_NAMES[item.mode] ?? '已启用') : '';
+    const mode = modeName && modeName !== '开' ? `（${modeName}）` : '';
     return `${item.label}${mode}`;
 }
-export const featureTitle = item => `${item.on ? '开着' : '关着'}${item.adr ? `　ADR ${item.adr}` : ''}`;
+export const featureTitle = item => item.on ? '已启用' : '未启用';
 
 /** 开了几个、一共几个（顶上的一行） */
 export function featureTotals(features) {

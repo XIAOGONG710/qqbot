@@ -24,15 +24,15 @@ const Page = defineComponent({
                 default: () => h('div', { class: 'qqbot-page' }, [
                     h(c('el-tabs'), { modelValue: tab.value, 'onUpdate:modelValue': v => { tab.value = v; } }, () => [
                         pane('状态', 'status', () => h(StatusTab)),
-                        pane('人设', 'persona', () => h(PartEditor, { part: 'persona', sections: personaSections, intro: `人设各段：每个字段给哪些档位、某几档用的改写版本。${SAVE_NOTE}` })),
-                        pane('世界书', 'scenes', () => h(ScenesTab)),
-                        pane('作息', 'schedule', () => h(PartEditor, { part: 'schedule', sections: scheduleSections, intro: `作息、课表、假期、空闲活动，以及它们给哪些档位。${SAVE_NOTE}` })),
-                        pane('档位', 'tiers', () => h(PartEditor, { part: 'tiers', sections: tierSections, intro: `每个档位：对方是谁、说话方式、示例对话、禁用词。${SAVE_NOTE}` })),
+                        pane('她是谁', 'persona', () => h(PartEditor, { part: 'persona', sections: personaSections, intro: `人设各段：每个字段给哪些档位、某几档用的改写版本。${SAVE_NOTE}` })),
+                        pane('她的世界', 'scenes', () => h(ScenesTab)),
+                        pane('日程', 'schedule', () => h(PartEditor, { part: 'schedule', sections: scheduleSections, intro: `作息、课表、假期、空闲活动，以及它们给哪些档位。${SAVE_NOTE}` })),
+                        pane('相处方式', 'tiers', () => h(PartEditor, { part: 'tiers', sections: tierSections, intro: `每个档位：对方是谁、说话方式、示例对话、禁用词。${SAVE_NOTE}` })),
                         source?.moods ? pane('心情', 'moods', () => h(PartEditor, {
                             part: 'moods', sections: moodsSections,
                             intro: `每天一个心情：按日期和当天的课表抽，同一天对谁都一样；陌生人、名单外没有。插件配置「她自己的日子」打开才用。${SAVE_NOTE}`,
                         })) : null,
-                        source?.books ? pane('在读的书', 'books', () => h(PartEditor, {
+                        source?.books ? pane('正在看的书', 'books', () => h(PartEditor, {
                             part: 'books', sections: booksSections,
                             intro: `她在看的书：进度按天往前走，只知道看到的地方；聊到书或她正在看书时才放进提示词。${SAVE_NOTE}`,
                         })) : null,
