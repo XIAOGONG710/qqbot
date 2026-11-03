@@ -83,7 +83,7 @@ function writeState(path: string, state: InboxState): void {
     writeJsonAtomic(path, { version: 2, line: state.line, ids: state.ids.slice(-KEEP_IDS) });
 }
 
-function lines(path: string, from: number, log: (message: string) => void): { values: string[]; nextLine: number } {
+function lines(path: string, from: number, log: (message: string) => void): { values: { text: string; line: number }[]; nextLine: number } {
     if (!existsSync(path)) return { values: [], nextLine: from };
     try {
         const text = readFileSync(path, 'utf8');
@@ -91,7 +91,12 @@ function lines(path: string, from: number, log: (message: string) => void): { va
         // DSH 可能正在追加最后一行；没有换行结尾的片段留到下一轮，避免半行 JSON 被永久跳过。
         const complete = text.endsWith('\n') ? parts.slice(0, -1) : parts.slice(0, -1);
         const start = from <= complete.length ? from : 0;
-        return { values: complete.slice(start).map(line => line.trim()).filter(Boolean), nextLine: complete.length };
+        return {
+            values: complete.slice(start)
+                .map((text, index) => ({ text: text.trim(), line: start + index }))
+                .filter(row => Boolean(row.text)),
+            nextLine: complete.length,
+        };
     } catch (error) {
         log(`DSH 收件箱：读取失败（${error instanceof Error ? error.message : String(error)}）`);
         return { values: [], nextLine: from };
@@ -137,10 +142,11 @@ function consume<T extends { id: string }>(path: string, statePath: string, pars
     const state = readState(statePath, log);
     const seen = new Set(state.ids);
     const batch = lines(path, state.line, log);
+    let nextLine = batch.nextLine;
     let added = 0;
-    for (const line of batch.values) {
+    for (const row of batch.values) {
         let raw: unknown;
-        try { raw = JSON.parse(line); } catch { continue; }
+        try { raw = JSON.parse(row.text); } catch { continue; }
         const entry = parse(raw, now);
         if (!entry) continue;
         const id = entry.id;
@@ -152,9 +158,13 @@ function consume<T extends { id: string }>(path: string, statePath: string, pars
             added++;
         } catch (error) {
             log(`DSH 收件箱：${id} 应用失败（${error instanceof Error ? error.message : String(error)}）`);
+            // 已通过校验的事实不能因为一次落账失败永久丢失；停在这一行，下轮从这里重试。
+            // 后续行也先不处理，保持收件箱的提交顺序。
+            nextLine = row.line;
+            break;
         }
     }
-    if (added || batch.nextLine !== state.line) writeState(statePath, { version: 2, line: batch.nextLine, ids: [...seen].slice(-KEEP_IDS) });
+    if (added || nextLine !== state.line) writeState(statePath, { version: 2, line: nextLine, ids: [...seen].slice(-KEEP_IDS) });
     return added;
 }
 

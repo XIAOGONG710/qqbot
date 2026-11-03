@@ -64,4 +64,29 @@ describe('DSH 收件箱', () => {
         assert.equal(drafts.length, 2_006);
         assert.equal((drafts.at(-1) as { id: string }).id, 'dsh:dsh-world-new');
     });
+
+    test('合格事件落账失败时停在该行，下轮按顺序重试而不丢后续事件', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-dsh-inbox-retry-'));
+        dirs.push(dir);
+        const inbox = join(dir, 'world-inbox.jsonl');
+        const state = join(dir, 'world-state.json');
+        const at = '2026-11-02T23:55:00.000Z';
+        writeFileSync(inbox, [
+            '{坏行',
+            JSON.stringify({ id: 'dsh-world-retry', at, kind: 'study', result: 'succeeded' }),
+            JSON.stringify({ id: 'dsh-world-after', at, kind: 'rest', result: 'succeeded' }),
+        ].join('\n') + '\n');
+        const drafts: unknown[] = [];
+        let fail = true;
+        const world = { recordEvents: (items: unknown[]) => {
+            if (fail) { fail = false; throw new Error('temporary write failure'); }
+            drafts.push(...items);
+        } } as unknown as WorldState;
+        const now = new Date('2026-11-03T00:00:00.000Z');
+        assert.equal(consumeDshWorldInbox(inbox, state, now, world, () => undefined), 0);
+        assert.deepEqual(drafts, [], '失败行之后的事件不能越过它先提交');
+        assert.equal(consumeDshWorldInbox(inbox, state, now, world, () => undefined), 2);
+        assert.deepEqual(drafts.map(item => (item as { id: string }).id), ['dsh:dsh-world-retry', 'dsh:dsh-world-after']);
+        assert.equal(consumeDshWorldInbox(inbox, state, now, world, () => undefined), 0);
+    });
 });
