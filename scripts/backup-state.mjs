@@ -22,10 +22,11 @@ export function isCompleteBackup(target, expectedStateSource) {
     const database = marker.components?.database;
     const state = marker.components?.state;
     if (database?.ok !== true || state?.ok !== true) return false;
-    if (!nonEmptyFile(join(target, 'hindsight.sql'))) return false;
+    const requireRecordedSize = expectedStateSource !== undefined;
+    if (!matchesArtifact(join(target, 'hindsight.sql'), database, requireRecordedSize)) return false;
     if (expectedStateSource === null) return state.skipped === true;
     if (typeof expectedStateSource === 'string' && state.source !== expectedStateSource) return false;
-    return state.skipped === true || nonEmptyFile(join(target, 'her-state.zip'));
+    return state.skipped === true || matchesArtifact(join(target, 'her-state.zip'), state, requireRecordedSize);
 }
 
 export function retryDue(target, now = Date.now(), delayMs = RETRY_DELAY_MS) {
@@ -42,7 +43,7 @@ export function isReusableBackupArtifact(target, component, artifactName, expect
     const status = marker?.components?.[component];
     return status?.ok === true
         && Object.entries(expected).every(([key, value]) => status[key] === value)
-        && nonEmptyFile(join(target, artifactName));
+        && matchesArtifact(join(target, artifactName), status, true);
 }
 
 export function discoverStateBackup(root) {
@@ -68,6 +69,17 @@ export function nonEmptyFile(path) {
     try {
         const stat = statSync(path);
         return stat.isFile() && stat.size > 0;
+    } catch {
+        return false;
+    }
+}
+
+function matchesArtifact(path, status, requireRecordedSize) {
+    try {
+        const stat = statSync(path);
+        if (!stat.isFile() || stat.size <= 0) return false;
+        if (Number.isSafeInteger(status?.bytes) && status.bytes > 0) return stat.size === status.bytes;
+        return !requireRecordedSize;
     } catch {
         return false;
     }

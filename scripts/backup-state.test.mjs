@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -64,7 +64,7 @@ describe('backup completion policy', () => {
         writeFileSync(join(target, 'hindsight.sql'), 'database backup', 'utf8');
         writeBackupMarker(target, COMPLETE_MARKER, {
             completed: true,
-            components: { database: { ok: true }, state: { ok: true, skipped: true } },
+            components: { database: { ok: true, bytes: 15 }, state: { ok: true, skipped: true } },
         });
 
         assert.equal(isCompleteBackup(target), true);
@@ -80,9 +80,13 @@ describe('backup completion policy', () => {
             completed: true,
             components: {
                 database: { ok: true },
-                state: { ok: true, source: 'runtime/bot-shadow' },
+                state: { ok: true, source: 'runtime/bot-shadow', bytes: 12 },
             },
         });
+
+        const marker = JSON.parse(readFileSync(join(target, COMPLETE_MARKER), 'utf8'));
+        marker.components.database.bytes = 15;
+        writeBackupMarker(target, COMPLETE_MARKER, marker);
 
         assert.equal(isCompleteBackup(target, 'runtime/bot-shadow'), true);
         assert.equal(isCompleteBackup(target, 'runtime/bot'), false);
@@ -119,9 +123,32 @@ describe('backup completion policy', () => {
 
         writeBackupMarker(target, FAILURE_MARKER, {
             completed: false,
-            components: { database: { ok: true }, state: { ok: false } },
+            components: { database: { ok: true, bytes: 23 }, state: { ok: false } },
         });
         assert.equal(isReusableBackupArtifact(target, 'database', 'hindsight.sql'), true);
+    });
+
+    test('recorded artifact sizes detect a non-empty file that was truncated later', () => {
+        const target = fresh();
+        writeFileSync(join(target, 'hindsight.sql'), 'database backup', 'utf8');
+        writeFileSync(join(target, 'her-state.zip'), 'state backup', 'utf8');
+        writeBackupMarker(target, COMPLETE_MARKER, {
+            completed: true,
+            components: {
+                database: { ok: true, bytes: 15 },
+                state: { ok: true, source: 'runtime/bot', bytes: 12 },
+            },
+        });
+        assert.equal(isCompleteBackup(target, 'runtime/bot'), true);
+
+        writeFileSync(join(target, 'her-state.zip'), 'partial', 'utf8');
+        assert.equal(isCompleteBackup(target, 'runtime/bot'), false);
+        assert.equal(isReusableBackupArtifact(
+            target,
+            'state',
+            'her-state.zip',
+            { source: 'runtime/bot' },
+        ), false);
     });
 
     test('state backup discovers the active data directory and excludes credentials and transient files', () => {
@@ -150,7 +177,7 @@ describe('backup completion policy', () => {
         writeFileSync(join(target, 'her-state.zip'), 'state backup', 'utf8');
         writeBackupMarker(target, FAILURE_MARKER, {
             completed: false,
-            components: { state: { ok: true, source: 'runtime/bot-shadow' } },
+            components: { state: { ok: true, source: 'runtime/bot-shadow', bytes: 12 } },
         });
 
         assert.equal(isReusableBackupArtifact(

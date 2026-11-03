@@ -35,7 +35,7 @@ function pgDump(reuse) {
     const out = join(target, 'hindsight.sql');
     if (reuse) {
         log('数据库已有可用备份，本次只重试缺失部分');
-        return { ok: true, reused: true };
+        return { ok: true, reused: true, bytes: statSync(out).size };
     }
     const bin = join(homedir(), '.pg0', 'installation', '18.1.0', 'bin', 'pg_dump.exe');
     if (!existsSync(bin)) {
@@ -48,9 +48,10 @@ function pgDump(reuse) {
             timeout: 10 * 60_000,
             stdio: 'ignore',
         });
-        const size = (statSync(out).size / 1024 / 1024).toFixed(1);
+        const bytes = statSync(out).size;
+        const size = (bytes / 1024 / 1024).toFixed(1);
         log(`数据库备份好：hindsight.sql（${size} MB）`);
-        return { ok: true };
+        return { ok: true, bytes };
     } catch (error) {
         const reason = error instanceof Error ? error.message.split('\n')[0] : String(error);
         log(`数据库备份失败：${reason}`);
@@ -67,14 +68,15 @@ function archiveState(reuse, plan) {
     const zip = join(target, 'her-state.zip');
     if (reuse) {
         log('状态已有可用备份，本次只重试缺失部分');
-        return { ok: true, reused: true, source: plan.source };
+        return { ok: true, reused: true, source: plan.source, bytes: statSync(zip).size };
     }
     try {
         execFileSync('powershell.exe', ['-NoProfile', '-Command',
             `Compress-Archive -Path ${plan.items.map(item => `'${item.replace(/'/g, "''")}'`).join(',')} -DestinationPath '${zip}' -Force`],
         { timeout: 10 * 60_000, stdio: 'ignore' });
-        log(`状态打包好：her-state.zip（${(statSync(zip).size / 1024 / 1024).toFixed(1)} MB）`);
-        return { ok: true, source: plan.source };
+        const bytes = statSync(zip).size;
+        log(`状态打包好：her-state.zip（${(bytes / 1024 / 1024).toFixed(1)} MB）`);
+        return { ok: true, source: plan.source, bytes };
     } catch (error) {
         const reason = error instanceof Error ? error.message.split('\n')[0] : String(error);
         log(`状态打包失败：${reason}`);
