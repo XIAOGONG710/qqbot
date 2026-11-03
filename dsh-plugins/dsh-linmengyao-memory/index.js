@@ -269,16 +269,25 @@ export function ownerBanks(cfg) {
     // 只认她名下的 bank（文件被改成指向别处也不会去读）
     const ok = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(id) && (id === cfg.prefix || id.startsWith(`${cfg.prefix}-`))
     if (!ok(data.ownerBank)) return undefined
-    // 第 2 层（ADR 0177）：QQ 写的聊天记录 / 撤回 / 桌面对话文件。只认绝对路径、而且目录名和文件名都对得上的，别的一律当没有
-    const file = (value, dirName, namePattern) => (typeof value === 'string' && path.isAbsolute(value) && path.basename(path.dirname(value)) === dirName && namePattern.test(path.basename(value)) ? value : undefined)
+    // 第 2 层（ADR 0177）：路径必须属于这份 owner-bank.json 对应的数据根；仅仅末尾长得像 chats/123.jsonl 不够。
+    const memoryDir = path.resolve(path.dirname(cfg.ownerBankFile))
+    const rootDir = path.dirname(memoryDir)
+    const samePath = (left, right) => {
+      const normalize = (value) => process.platform === 'win32' ? path.resolve(value).toLocaleLowerCase('en-US') : path.resolve(value)
+      return normalize(left) === normalize(right)
+    }
+    const file = (value, expectedDir, namePattern) => (typeof value === 'string' && path.isAbsolute(value) && samePath(path.dirname(value), expectedDir) && namePattern.test(path.basename(value)) ? value : undefined)
+    const chatFile = file(data.chatFile, path.join(rootDir, 'chats'), /^\d+\.jsonl$/)
+    const recalledFile = file(data.recalledFile, path.join(rootDir, 'chats'), /^\d+\.recalled\.json$/)
+    const sameContact = chatFile && recalledFile && path.basename(chatFile, '.jsonl') === path.basename(recalledFile, '.recalled.json')
     return {
       owner: data.ownerBank,
       common: ok(data.commonBank) ? data.commonBank : `${cfg.prefix}-common`,
       legacy: ok(data.legacyBank) ? data.legacyBank : cfg.prefix,
       ...Object.fromEntries([
-        ['chatFile', file(data.chatFile, 'chats', /^\d+\.jsonl$/)],
-        ['recalledFile', file(data.recalledFile, 'chats', /^\d+\.recalled\.json$/)],
-        ['desktopFile', file(data.desktopFile, 'memory', /^desktop-recent\.jsonl$/)],
+        ['chatFile', sameContact ? chatFile : undefined],
+        ['recalledFile', sameContact ? recalledFile : undefined],
+        ['desktopFile', file(data.desktopFile, memoryDir, /^desktop-recent\.jsonl$/)],
       ].filter(([, value]) => value !== undefined)),
     }
   } catch { return undefined }

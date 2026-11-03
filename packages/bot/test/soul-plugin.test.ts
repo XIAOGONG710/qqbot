@@ -436,16 +436,19 @@ describe('同一个她·第 2 层：DSH 读他刚在 QQ 上聊的（ADR 0177）'
         assert.equal(cross().qqRecentBlock(c.cfg, T), '', '文件还没有');
         // 路径指到别处 / 文件名不对 / 目录名不对：不认。这些文件**真的存在、里面有正常的聊天行**——没有校验的话是读得到的
         mkdirSync(join(c.root, 'other'));
+        mkdirSync(join(c.root, 'elsewhere', 'chats'), { recursive: true });
         const live = c.chatRow(2, 'user', '不该被读到ZQP', 1);
-        for (const bad of [join(c.root, 'other', '10002.jsonl'), join(c.root, 'chats', 'secret.txt'), join(c.root, 'chats', '..', 'memory', '10002.jsonl'), join(c.root, 'memory', 'owner-bank.json')]) {
+        for (const bad of [join(c.root, 'other', '10002.jsonl'), join(c.root, 'elsewhere', 'chats', '10002.jsonl'), join(c.root, 'chats', 'secret.txt'), join(c.root, 'chats', '..', 'memory', '10002.jsonl'), join(c.root, 'memory', 'owner-bank.json')]) {
             writeFileSync(bad, live);
-            writeFileSync(c.cfg.ownerBankFile, JSON.stringify({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao', chatFile: bad }));
+            writeFileSync(c.cfg.ownerBankFile, JSON.stringify({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao', chatFile: bad, recalledFile: c.files.recalledFile }));
             assert.equal(cross().qqRecentBlock(c.cfg, T), '', bad);
         }
         // 对照：同样的内容放在合规的位置就读得到（证明上面的空串是校验挡的，不是读不到）
         writeFileSync(c.files.chatFile, live);
-        writeFileSync(c.cfg.ownerBankFile, JSON.stringify({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao', chatFile: c.files.chatFile }));
+        writeFileSync(c.cfg.ownerBankFile, JSON.stringify({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao', chatFile: c.files.chatFile, recalledFile: c.files.recalledFile }));
         assert.match(cross().qqRecentBlock(c.cfg, T), /不该被读到ZQP/);
+        writeFileSync(c.cfg.ownerBankFile, JSON.stringify({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao', chatFile: c.files.chatFile, recalledFile: join(c.root, 'chats', '99999.recalled.json') }));
+        assert.equal(cross().qqRecentBlock(c.cfg, T), '', '聊天与撤回清单不是同一联系人时整组拒绝，避免泄露已撤回内容');
     });
 
     test('6 小时窗口：刚好在窗口里的留，超过的丢，时间在未来的也丢', () => {
