@@ -1,0 +1,61 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { afterEach, describe, test } from 'node:test';
+import { calendarFetcher, parseHolidayApi, useRealCalendar } from '../src/world/calendar.ts';
+import { describeWorld, summarizeWorld, worldAt } from '../src/world/world.ts';
+import { loadCharacterCard } from '../src/st/card.ts';
+
+const at = (iso: string) => new Date(`${iso}+08:00`);
+const payload = () => ({ holiday: {
+    '01-01': { holiday: true, name: '元旦节', date: '2026-01-01' },
+    '01-04': { holiday: false, name: '元旦节（班）', date: '2026-01-04' },
+} });
+
+afterEach(() => useRealCalendar(undefined));
+
+describe('现实法定日历（ADR 0231）', () => {
+    test('识别休假和调休上班，拒绝坏日期', () => {
+        assert.deepEqual(parseHolidayApi(payload(), 2026), {
+            '2026-01-01': { date: '2026-01-01', name: '元旦节', kind: 'holiday', real: true },
+            '2026-01-04': { date: '2026-01-04', name: '元旦节（班）', kind: 'workday', real: true },
+        });
+        assert.throws(() => parseHolidayApi({ holiday: { '01-01': { holiday: true, name: '', date: '2026-01-01' } } }, 2026), /有效/);
+        assert.throws(() => parseHolidayApi({ holiday: { '01-01': { holiday: true, name: '元旦节', date: '2025-01-01' } } }, 2026), /有效/);
+    });
+
+    test('缓存成功读取，失败保留旧值，过期不进入世界', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-calendar-'));
+        let now = at('2026-11-03T12:00').getTime();
+        let fail = false;
+        const logs: string[] = [];
+        const fetcher = calendarFetcher({
+            dir: join(root, 'calendar'), now: () => now, log: message => logs.push(message), cacheMaxAgeMs: 7 * 86_400_000,
+            years: () => [2026], fetchJson: async () => { if (fail) throw new Error('timeout'); return payload(); },
+        });
+        try {
+            await fetcher.refresh();
+            assert.equal(fetcher.day('2026-01-01')?.kind, 'holiday');
+            assert.equal(fetcher.day('2026-01-04')?.kind, 'workday');
+            fail = true;
+            await fetcher.refresh();
+            assert.equal(fetcher.day('2026-01-04')?.kind, 'workday');
+            assert.ok(logs.some(line => line.includes('没取到') && line.includes('timeout')));
+            now += 8 * 86_400_000;
+            assert.equal(fetcher.day('2026-01-04'), undefined);
+            assert.equal(fetcher.status().stale, true);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    test('进入世界，但不改学校课表', () => {
+        const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+        useRealCalendar({ day: date => date === '2026-10-10' ? { date, name: '国庆节（班）', kind: 'workday', real: true } : undefined });
+        const now = worldAt(card.herWorld!, card.schedule!, at('2026-10-10T14:00'))!;
+        assert.equal(now.publicHoliday?.kind, 'workday');
+        assert.equal(now.publicHoliday?.name, '国庆节（班）');
+        assert.match(describeWorld(now, at('2026-10-10T14:00'))!, /法定日历：国庆节（班）（调休上班）/);
+        assert.match(summarizeWorld(now), /法定日历 班/);
+        assert.equal(now.atSchool, true, '全国调休不能代替学校自己的课表');
+    });
+});

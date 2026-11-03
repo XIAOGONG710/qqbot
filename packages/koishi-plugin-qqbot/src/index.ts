@@ -246,6 +246,7 @@ export interface Config {
     realWeather: boolean;
     realAirQuality?: boolean;
     realDaylight?: boolean;
+    realCalendar?: boolean;
     festivals: FestivalMode;
     typingStatus: boolean;
     selfRecall: boolean;
@@ -543,6 +544,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**真实空气质量**（ADR 0227）：只取济南 / 青岛当前已观测的 AQI、PM2.5、PM10；失败或过期不写进她的世界。默认关'),
         realDaylight: Schema.boolean().default(DEFAULTS.realDaylight)
             .description('**真实日照**（ADR 0228）：取济南 / 青岛的日出、日落和当前光线阶段；失败或过期不写进她的世界。默认关'),
+        realCalendar: Schema.boolean().default(DEFAULTS.realCalendar)
+            .description('**法定节假日与调休**（ADR 0231）：读取当前年和下一年的法定休假、调休上班日；失败或过期不写进她的世界，不改学校课表。默认关'),
         festivals: Schema.union(FESTIVAL_MODES.map(mode => Schema.const(mode).description(FESTIVAL_LABELS[mode]))).default(DEFAULTS.festivals)
             .description('**公共节日**（ADR 0076）：她知道今天是平安夜、除夕、情人节……（时间块提前几天提醒）；选「主动说」时再在新年零点、除夕、平安夜、情人节、元宵、520、七夕、端午、中秋由「重要的日子」时机带一句。默认关'),
         typingStatus: Schema.boolean().default(DEFAULTS.typingStatus)
@@ -823,6 +826,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.realWeather !== undefined ? { realWeather: config.realWeather } : {}),
         ...(config.realAirQuality !== undefined ? { realAirQuality: config.realAirQuality } : {}),
         ...(config.realDaylight !== undefined ? { realDaylight: config.realDaylight } : {}),
+        ...(config.realCalendar !== undefined ? { realCalendar: config.realCalendar } : {}),
         ...(config.festivals !== undefined ? { festivals: config.festivals } : {}),
         ...(config.typingStatus !== undefined ? { typingStatus: config.typingStatus } : {}),
         ...(config.selfRecall !== undefined ? { selfRecall: config.selfRecall } : {}),

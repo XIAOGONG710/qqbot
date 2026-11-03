@@ -17,6 +17,7 @@ import { realDaylight, type Daylight } from './daylight.ts';
 import { realWeather, type DayWeather } from './weather.ts';
 import { bodyAt, parseBody, unwell, type Body, type BodyNow } from '../life/body.ts';
 import type { NeedsSnapshot } from '../life/needs.ts';
+import { realCalendar, type PublicCalendarDay } from './calendar.ts';
 import { DEFAULT_NEWS_KINDS, type NewsKind } from '../proactive/proactive.ts';
 import { EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, quizEvents, type EventFeel } from '../life/everyday.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
@@ -174,6 +175,8 @@ export interface WorldNow {
     daylight?: Daylight;
     /** 这一天对应的假期事实；周末和普通无课日不写。 */
     holiday?: { name: string; start: string; end: string; where?: string; home?: boolean };
+    /** 国家法定日历：休假或调休上班；不改学校课表，只作为现实背景。 */
+    publicHoliday?: PublicCalendarDay;
     /** 由同一份 needs 锚点投影出的身体需要；不另存当前分数。 */
     needs?: NeedsSnapshot;
     cat?: {
@@ -799,6 +802,8 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
         const { name, start, end, where, home } = scheduleState.holiday;
         result.holiday = { name, start, end, ...(where ? { where } : {}), ...(home !== undefined ? { home } : {}) };
     }
+    const publicHoliday = realCalendar()?.day(date);
+    if (publicHoliday) result.publicHoliday = publicHoliday;
     const place = record.atSchool ? 'jinan' : 'qingdao';
     if (record.weather) result.weather = record.weather;
     const airQuality = realAirQuality()?.day(place, date, now);
@@ -890,6 +895,9 @@ export function describeWorld(now: WorldNow, at: Date, giver?: (qq: number) => s
     if (now.airQuality) parts.push(`空气：AQI ${now.airQuality.aqi}（${now.airQuality.category}），PM2.5 ${now.airQuality.pm25}，PM10 ${now.airQuality.pm10}`);
     if (now.daylight) parts.push(`日照：${now.daylight.phase}（${now.daylight.sunrise} 日出，${now.daylight.sunset} 日落）`);
     if (now.holiday) parts.push(`放假：${now.holiday.name}（${now.holiday.start} 至 ${now.holiday.end}）`);
+    if (now.publicHoliday) parts.push(now.publicHoliday.kind === 'holiday'
+        ? `法定日历：${now.publicHoliday.name}（休）`
+        : `法定日历：${now.publicHoliday.name}（调休上班）`);
     if (now.cat) {
         const { today } = now.cat;
         // 昨天的也写上（第一批：今天喂过时不写昨天，他问「昨天喂了吗」她编了个「昨天没去」）
@@ -1188,6 +1196,7 @@ export function summarizeWorld(now: WorldNow): string {
         now.airQuality ? `空气 AQI ${now.airQuality.aqi}（${now.airQuality.category}）` : undefined,
         now.daylight ? `日照 ${now.daylight.phase}` : undefined,
         now.holiday ? `放假 ${now.holiday.name}` : undefined,
+        now.publicHoliday ? `法定日历 ${now.publicHoliday.kind === 'holiday' ? '休' : '班'}（${now.publicHoliday.name}）` : undefined,
         now.needs ? `需要 精力 ${now.needs.energy}、饥饿 ${now.needs.hunger}、压力 ${now.needs.stress}` : undefined,
         now.atSchool ? undefined : '不在学校',
         now.cat ? `${now.cat.name} 猫粮够 ${now.cat.foodDays} 天` : undefined,

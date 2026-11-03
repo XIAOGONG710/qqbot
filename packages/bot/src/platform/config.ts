@@ -60,6 +60,7 @@ export const DEFAULTS = {
     realWeather: true,
     realAirQuality: false,
     realDaylight: false,
+    realCalendar: false,
     festivals: 'off' as FestivalMode,
     readReceipts: false,
     bilibili: 'off' as PresenceMode,
@@ -649,6 +650,8 @@ export interface AppConfig {
     realAirQuality?: boolean;
     /** 真实日照（ADR 0228）：只取公开日出 / 日落，失败或过期不写进世界；默认关。 */
     realDaylight?: boolean;
+    /** 现实法定日历（ADR 0231）：只读节假日 / 调休工作日，失败或过期不写进世界；默认关。 */
+    realCalendar?: boolean;
     /**
      * 听语音、看图上的字（ADR 0052）：他发的语音用 QQ 自带的语音转文字、照片和截图用 NapCat 的 OCR 取上面的字，写进聊天记录；
      * 转不出来、超时照旧「[语音]」「[图片]」。默认是
@@ -884,6 +887,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         realAirQuality: bool(file, 'realAirQuality', '', DEFAULTS.realAirQuality),
         realDaylight: bool(file, 'realDaylight', '', DEFAULTS.realDaylight),
+        realCalendar: bool(file, 'realCalendar', '', DEFAULTS.realCalendar),
         festivals: festivalMode(file.festivals),
         readReceipts: bool(file, 'readReceipts', '', DEFAULTS.readReceipts),
         bilibili: oneOf(file.bilibili, 'bilibili', PRESENCE_MODES, DEFAULTS.bilibili),
