@@ -8,9 +8,9 @@ import { describeWorld, summarizeWorld, worldAt } from '../src/world/world.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
 const at = (iso: string) => new Date(`${iso}+08:00`);
-const payload = () => ({ holiday: {
-    '01-01': { holiday: true, name: '元旦节', date: '2026-01-01' },
-    '01-04': { holiday: false, name: '元旦节（班）', date: '2026-01-04' },
+const payload = (year = 2026) => ({ holiday: {
+    '01-01': { holiday: true, name: '元旦节', date: `${year}-01-01` },
+    '01-04': { holiday: false, name: '元旦节（班）', date: `${year}-01-04` },
 } });
 
 afterEach(() => useRealCalendar(undefined));
@@ -45,6 +45,35 @@ describe('现实法定日历（ADR 0231）', () => {
             now += 8 * 86_400_000;
             assert.equal(fetcher.day('2026-01-04'), undefined);
             assert.equal(fetcher.status().stale, true);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    test('部分年份刷新成功时，不给失败年份的旧缓存续期', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-calendar-years-'));
+        let now = at('2026-11-03T12:00').getTime();
+        let failYear: number | undefined;
+        const fetcher = calendarFetcher({
+            dir: join(root, 'calendar'), now: () => now, log: () => {}, cacheMaxAgeMs: 7 * 86_400_000,
+            years: () => [2026, 2027],
+            fetchJson: async url => {
+                const year = Number(url.split('/').at(-1));
+                if (year === failYear) throw new Error('timeout');
+                return payload(year);
+            },
+        });
+        try {
+            await fetcher.refresh();
+            assert.equal(fetcher.day('2027-01-01')?.kind, 'holiday');
+            now += 8 * 86_400_000;
+            failYear = 2027;
+            await fetcher.refresh();
+            assert.equal(fetcher.day('2026-01-01')?.kind, 'holiday');
+            assert.equal(fetcher.day('2027-01-01'), undefined);
+            assert.deepEqual(fetcher.status().staleYears, [2027]);
+            assert.match(fetcher.status().error ?? '', /2027 年/);
+            failYear = 2026;
+            await fetcher.refresh();
+            assert.match(fetcher.status().error ?? '', /2026 年/, '后一个年份成功也不能清掉前一个年份的失败');
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 

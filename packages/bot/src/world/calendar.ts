@@ -9,7 +9,13 @@ export type PublicCalendarKind = 'holiday' | 'workday';
 export interface PublicCalendarDay { date: string; name: string; kind: PublicCalendarKind; real: true }
 export interface RealCalendar { day(date: string): PublicCalendarDay | undefined }
 
-interface Store { fetchedAt: string; years: Record<string, Record<string, PublicCalendarDay>> }
+interface Store {
+    /** 最近任一年成功刷新的时间，供概览展示。 */
+    fetchedAt: string;
+    /** 每个年份独立的新鲜度，避免某一年成功时给失败年份的旧缓存续期。 */
+    yearFetchedAt: Record<string, string>;
+    years: Record<string, Record<string, PublicCalendarDay>>;
+}
 let current: RealCalendar | undefined;
 
 /** 线上（app.ts）开；模拟器、测试不开。 */
@@ -58,7 +64,7 @@ export interface CalendarFetcherOptions {
     years?: (now: Date) => readonly number[];
 }
 
-export interface CalendarStatus { provider: string; cacheMaxAgeMs: number; years: number[]; fetchedAt?: string; ageMs?: number; stale?: boolean; error?: string; errorAt?: string }
+export interface CalendarStatus { provider: string; cacheMaxAgeMs: number; years: number[]; staleYears?: number[]; fetchedAt?: string; ageMs?: number; stale?: boolean; error?: string; errorAt?: string }
 export interface CalendarFetcher extends RealCalendar { refresh(): Promise<void>; status(): CalendarStatus }
 
 export function calendarFetcher(options: CalendarFetcherOptions): CalendarFetcher {
@@ -82,7 +88,16 @@ export function calendarFetcher(options: CalendarFetcherOptions): CalendarFetche
     const load = (): Store | undefined => {
         if (store !== undefined) return store;
         const data = readJsonOr<Partial<Store>>(cachePath, {}, message => options.log(`现实法定日历：${message}`));
-        store = data.fetchedAt && isRecord(data.years) ? { fetchedAt: data.fetchedAt, years: data.years as Store['years'] } : undefined;
+        if (data.fetchedAt && isRecord(data.years)) {
+            const years = data.years as Store['years'];
+            const storedFreshness = isRecord(data.yearFetchedAt) ? data.yearFetchedAt : {};
+            const yearFetchedAt: Record<string, string> = {};
+            for (const year of Object.keys(years)) {
+                const value = storedFreshness[year];
+                yearFetchedAt[year] = typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : data.fetchedAt;
+            }
+            store = { fetchedAt: data.fetchedAt, yearFetchedAt, years };
+        } else store = undefined;
         return store;
     };
     return {
@@ -90,9 +105,10 @@ export function calendarFetcher(options: CalendarFetcherOptions): CalendarFetche
             if (!DATE_ONLY.test(date)) return undefined;
             const cached = load();
             if (!cached) return undefined;
-            const fetchedAt = Date.parse(cached.fetchedAt);
+            const year = date.slice(0, 4);
+            const fetchedAt = Date.parse(cached.yearFetchedAt[year] ?? cached.fetchedAt);
             if (!Number.isFinite(fetchedAt) || now() - fetchedAt > cacheMaxAgeMs) return undefined;
-            return cached.years[date.slice(0, 4)]?.[date];
+            return cached.years[year]?.[date];
         },
         refresh: () => {
             if (inFlight) return inFlight;
@@ -100,22 +116,29 @@ export function calendarFetcher(options: CalendarFetcherOptions): CalendarFetche
                 const at = new Date(now());
                 const wanted = [...new Set(yearsFor(at).filter(year => Number.isInteger(year) && year >= 2000 && year <= 2200))];
                 if (!wanted.length) return;
-                const merged = { ...(load()?.years ?? {}) };
+                const previous = load();
+                const merged = { ...(previous?.years ?? {}) };
+                const yearFetchedAt = { ...(previous?.yearFetchedAt ?? {}) };
                 let success = false;
+                let refreshError: string | undefined;
+                let refreshErrorAt: string | undefined;
                 for (const year of wanted) {
                     try {
                         const url = `https://holiday.ailcc.com/api/holiday/year/${year}`;
                         merged[String(year)] = parseHolidayApi(await fetchJson(url), year);
+                        yearFetchedAt[String(year)] = new Date(now()).toISOString();
                         success = true;
-                        error = undefined; errorAt = undefined;
                     } catch (reason) {
-                        error = reason instanceof Error ? reason.message : String(reason);
-                        errorAt = new Date(now()).toISOString();
-                        options.log(`现实法定日历：${year} 年没取到，照旧不用它（${error}）`);
+                        const message = reason instanceof Error ? reason.message : String(reason);
+                        refreshError = `${year} 年：${message}`;
+                        refreshErrorAt = new Date(now()).toISOString();
+                        options.log(`现实法定日历：${year} 年没取到，照旧不用它（${message}）`);
                     }
                 }
+                error = refreshError;
+                errorAt = refreshErrorAt;
                 if (success) {
-                    store = { fetchedAt: new Date(now()).toISOString(), years: merged };
+                    store = { fetchedAt: new Date(now()).toISOString(), yearFetchedAt, years: merged };
                     writeJsonAtomic(cachePath, store);
                 }
             })().finally(() => { inFlight = undefined; });
@@ -124,12 +147,17 @@ export function calendarFetcher(options: CalendarFetcherOptions): CalendarFetche
         status: () => {
             const cached = load();
             const fetchedAt = cached?.fetchedAt;
-            const parsed = fetchedAt ? Date.parse(fetchedAt) : NaN;
             const years = Object.keys(cached?.years ?? {}).map(Number).filter(Number.isInteger).sort((a, b) => a - b);
+            const ages = years.map(year => now() - Date.parse(cached?.yearFetchedAt[String(year)] ?? '')).filter(Number.isFinite);
+            const staleYears = years.filter(year => {
+                const fetched = Date.parse(cached?.yearFetchedAt[String(year)] ?? '');
+                return !Number.isFinite(fetched) || now() - fetched > cacheMaxAgeMs;
+            });
             return {
                 provider: 'holiday.ailcc.com', cacheMaxAgeMs, years,
+                ...(staleYears.length ? { staleYears } : {}),
                 ...(fetchedAt ? { fetchedAt } : {}),
-                ...(Number.isFinite(parsed) ? { ageMs: Math.max(0, now() - parsed), stale: now() - parsed > cacheMaxAgeMs } : {}),
+                ...(ages.length ? { ageMs: Math.max(0, ...ages), stale: staleYears.length > 0 } : {}),
                 ...(error ? { error } : {}), ...(errorAt ? { errorAt } : {}),
             };
         },
