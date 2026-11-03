@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
-import { dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, overviewCounts } from '../client/dashboard.js';
+import { dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, overviewCounts, realWorldStatus } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
@@ -116,5 +116,26 @@ describe('客户端的纯函数', () => {
         assert.match(dshStatusLine({ enabled: true }).detail, /连接结果/);
         assert.equal(dshStatusLine({ enabled: true, lastProbe: { ok: false, at: '2026-11-03T00:00:00.000Z', model: 'm', latencyMs: 12, error: 'secret-token' } }).text, '探测失败');
         assert.equal(dshStatusLine({ enabled: true, lastProbe: { ok: true, at: '2026-11-03T00:00:00.000Z', model: 'm', latencyMs: 12 } }).detail, '最近探测 2026-11-03T00:00:00.000Z · 12 ms');
+    });
+
+    test('现实世界数据合并成中文摘要，并隐藏供应商错误原文', () => {
+        assert.deepEqual(realWorldStatus(undefined), { text: '未开启', type: 'info', detail: '', healthy: false });
+        const healthy = realWorldStatus({
+            weather: { fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { hours: 24 }, qingdao: { hours: 24 } } },
+            airQuality: { fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { hours: 24 } } },
+            daylight: { fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { days: 16 } } },
+            calendar: { years: [2026, 2027] },
+        });
+        assert.equal(healthy.text, '正常');
+        assert.equal(healthy.healthy, true);
+        assert.match(healthy.detail, /天气正常.*空气质量正常.*日照正常.*法定日历正常/);
+        const warning = realWorldStatus({
+            weather: { places: { jinan: { hours: 0, error: 'secret upstream response' } } },
+            calendar: { years: [2026, 2027], staleYears: [2027], error: 'token=secret' },
+        });
+        assert.equal(warning.text, '2 项需检查');
+        assert.equal(warning.type, 'warning');
+        assert.match(warning.detail, /天气1 个地点失败.*法定日历获取失败/);
+        assert.doesNotMatch(warning.detail, /secret|token/);
     });
 });

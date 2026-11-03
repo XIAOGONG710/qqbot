@@ -2,7 +2,7 @@
 import { computed, defineComponent, h, ref } from 'vue';
 import { store } from '@koishijs/client';
 import { c, clock, tag, tierLabel } from './common.js';
-import { dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, overviewCounts } from './dashboard.js';
+import { dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, overviewCounts, realWorldStatus } from './dashboard.js';
 
 function phaseText(r) {
     switch (r.phase) {
@@ -53,19 +53,6 @@ function memoryLine(memory) {
     parts.push(event('最近一次写入', memory.lastWrite), event('最近一次召回', memory.lastRecall));
     if (!memory.lastWrite && !memory.lastRecall) parts.push(h('span', { class: 'qqbot-muted' }, ' · 等待第一次同步'));
     return parts.filter(Boolean);
-}
-
-function weatherLine(weather) {
-    if (!weather) return [tag('未开启', 'info')];
-    const places = Object.values(weather.places ?? {});
-    const errors = places.filter(place => place.error).length;
-    const stale = places.filter(place => place.stale).length;
-    const hours = places.reduce((sum, place) => sum + (place.hours ?? 0), 0);
-    const lastErrorAt = places.map(place => place.errorAt).filter(Boolean).sort().at(-1);
-    return [
-        tag(errors ? `${errors} 个地点失败` : stale ? `${stale} 个地点陈旧` : '正常', errors || stale ? 'warning' : 'success'),
-        h('span', { class: 'qqbot-muted' }, ` 已缓存 ${hours} 小时${weather.fetchedAt ? ` · 最近更新 ${clock(weather.fetchedAt)}` : ''}${lastErrorAt ? ` · 最近失败 ${clock(lastErrorAt)}` : ''}`),
-    ];
 }
 
 function humanValuesLine(values) {
@@ -180,13 +167,14 @@ export const StatusTab = defineComponent({
             const counts = overviewCounts(status);
             const dshFeature = status?.features?.find(feature => feature.key === 'dsh');
             const dsh = dshStatusLine(status?.dsh ?? (dshFeature?.on ? { enabled: true } : undefined));
+            const worldData = realWorldStatus(status);
             const rows = [
                 ['插件', data.running
                     ? [tag('运行正常', 'success')]
                     : [tag('未运行', 'danger'), h('span', { class: 'qqbot-muted' }, ' 请查看插件设置和日志')]],
                 ['QQ 连接', data.napcat?.online ? [tag('已连接', 'success')] : [tag('未连接', 'danger')]],
                 ['长期记忆', status ? memoryLine(status.memory) : [tag('—', 'info')]],
-                ['天气', status ? weatherLine(status.weather) : [tag('—', 'info')]],
+                ['现实世界数据', status ? [tag(worldData.text, worldData.type), worldData.detail ? h('span', { class: 'qqbot-muted' }, ` ${worldData.detail}`) : null] : [tag('—', 'info')]],
                 ['她的状态', status ? humanValuesLine(status.humanValues) : [tag('—', 'info')]],
                 ['手机伴侣', status ? mobileCompanionLine(status.mobileCompanion) : [tag('—', 'info')]],
                 ['作息', status ? [status.schedule ? tag('按作息运行', 'success') : tag('未启用', 'warning')] : [tag('—', 'info')]],
@@ -211,7 +199,7 @@ export const StatusTab = defineComponent({
                 connectionCard('插件', data.running, data.running ? '正在运行' : '请查看设置和日志'),
                 connectionCard('QQ 连接', data.napcat?.online === true, data.napcat?.online ? '消息通道正常' : '等待连接'),
                 connectionCard('长期记忆', Boolean(status.memory?.health?.ok), status.memory ? (status.memory.health?.ok ? '服务正常' : '检查中或不可用') : '功能未开启'),
-                connectionCard('天气', Boolean(status.weather?.fetchedAt), status.weather?.fetchedAt ? '数据正常' : '尚未取数'),
+                connectionCard('现实世界数据', worldData.healthy, worldData.detail || worldData.text),
                 connectionCard('外部顾问', dsh.text === '连接正常', dsh.detail || dsh.text),
                 connectionCard('手机伴侣', status.mobileCompanion?.enabled === true && status.mobileCompanion.connected === true, status.mobileCompanion?.enabled ? (status.mobileCompanion.pairedClientId ? (status.mobileCompanion.connected ? '已连接' : '等待重连') : '等待配对') : '暂未启用'),
             ]);

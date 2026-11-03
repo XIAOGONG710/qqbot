@@ -75,6 +75,44 @@ export function dshStatusLine(dsh) {
     return { text: '连接正常', type: 'success', detail: `最近探测 ${probe.at} · ${probe.latencyMs} ms` };
 }
 
+/** 现实数据统一摘要：控制台只给中文结论，不展示供应商错误原文或接口细节。 */
+export function realWorldStatus(status) {
+    const modules = [];
+    let issues = 0;
+    const places = (label, data, amountKey, amountLabel) => {
+        if (!data) return;
+        const rows = Object.values(data.places ?? {});
+        const errors = rows.filter(row => row.error).length;
+        const stale = rows.filter(row => row.stale).length;
+        const amount = rows.reduce((sum, row) => sum + (row[amountKey] ?? 0), 0);
+        let state;
+        if (errors) state = `${errors} 个地点失败`;
+        else if (stale) state = `${stale} 个地点陈旧`;
+        else if (!data.fetchedAt && amount === 0) state = '等待取数';
+        else state = `正常${amount ? `（${amount} ${amountLabel}）` : ''}`;
+        if (errors || stale || state === '等待取数') issues += 1;
+        modules.push(`${label}${state}`);
+    };
+    places('天气', status?.weather, 'hours', '小时');
+    places('空气质量', status?.airQuality, 'hours', '小时');
+    places('日照', status?.daylight, 'days', '天');
+    if (status?.calendar) {
+        const staleYears = status.calendar.staleYears ?? [];
+        const state = status.calendar.error ? '获取失败'
+            : staleYears.length ? `${staleYears.join('、')} 年陈旧`
+                : status.calendar.years?.length ? `正常（${status.calendar.years.join('、')} 年）` : '等待取数';
+        if (status.calendar.error || staleYears.length || state === '等待取数') issues += 1;
+        modules.push(`法定日历${state}`);
+    }
+    if (!modules.length) return { text: '未开启', type: 'info', detail: '', healthy: false };
+    return {
+        text: issues ? `${issues} 项需检查` : '正常',
+        type: issues ? 'warning' : 'success',
+        detail: modules.join(' · '),
+        healthy: issues === 0,
+    };
+}
+
 /** 货架 / 小梗 / 周报：[{ label, text }]；对应的功能没开（没有这一项）就不出现 */
 export function extrasRows(extras) {
     const rows = [];
