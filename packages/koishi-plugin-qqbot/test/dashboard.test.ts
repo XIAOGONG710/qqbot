@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
-import { dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, overviewCounts, realWorldStatus } from '../client/dashboard.js';
+import { dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
@@ -115,7 +115,26 @@ describe('客户端的纯函数', () => {
         assert.deepEqual(dshStatusLine(undefined), { text: '未启用', type: 'info', detail: '' });
         assert.match(dshStatusLine({ enabled: true }).detail, /连接结果/);
         assert.equal(dshStatusLine({ enabled: true, lastProbe: { ok: false, at: '2026-11-03T00:00:00.000Z', model: 'm', latencyMs: 12, error: 'secret-token' } }).text, '探测失败');
-        assert.equal(dshStatusLine({ enabled: true, lastProbe: { ok: true, at: '2026-11-03T00:00:00.000Z', model: 'm', latencyMs: 12 } }).detail, '最近探测 2026-11-03T00:00:00.000Z · 12 ms');
+        const detail = dshStatusLine({ enabled: true, lastProbe: { ok: true, at: '2026-11-03T00:00:00.000Z', model: 'm', latencyMs: 12 } }).detail;
+        assert.match(detail, /^最近探测 \d+月\d+日 \d{2}:\d{2} · 12 毫秒$/);
+        assert.doesNotMatch(detail, /2026-|T00|\bms\b/);
+        assert.doesNotMatch(dshStatusLine({ enabled: true, lastProbe: { ok: true, at: 'bad' } }).detail, /undefined|NaN/);
+        assert.equal(dashboardTime('not-a-date'), '时间未知');
+    });
+
+    test('连接摘要把记忆活动和手机积压合并成简短中文', () => {
+        assert.equal(memoryStatusDetail(undefined), '功能未开启');
+        assert.equal(memoryStatusDetail({}), '正在检查');
+        assert.equal(memoryStatusDetail({ health: { ok: false } }), '暂时不可用，请检查设置');
+        const memory = memoryStatusDetail({
+            health: { ok: true },
+            lastWrite: { at: '2026-11-03T00:00:00.000Z', ok: true },
+            lastRecall: { at: '2026-11-03T01:00:00.000Z', ok: false },
+        });
+        assert.match(memory, /^服务正常 · 最近召回失败 \d+月\d+日 \d{2}:\d{2}$/);
+        assert.equal(mobileCompanionStatusDetail(undefined), '暂未启用');
+        assert.equal(mobileCompanionStatusDetail({ enabled: true, queued: 2 }), '等待配对 · 待发送 2 条');
+        assert.equal(mobileCompanionStatusDetail({ enabled: true, pairedClientId: 'phone', connected: false, queued: 1 }), '等待重连 · 待发送 1 条');
     });
 
     test('现实世界数据合并成中文摘要，并隐藏供应商错误原文', () => {

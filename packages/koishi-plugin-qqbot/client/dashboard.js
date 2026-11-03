@@ -66,13 +66,44 @@ export function overviewCounts(status) {
     };
 }
 
+/** 控制台统一使用用户本地时间，不直接展示 ISO 时间串。 */
+export function dashboardTime(value) {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return '时间未知';
+    const pad = number => String(number).padStart(2, '0');
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 /** DSH 探针摘要：不把外部错误原文带进控制台，只展示是否探测过和最近延迟。 */
 export function dshStatusLine(dsh) {
     if (!dsh?.enabled) return { text: '未启用', type: 'info', detail: '' };
     const probe = dsh.lastProbe;
     if (!probe) return { text: '已启用，尚未探测', type: 'warning', detail: '在 QQ 发送 /dsh probe 后显示连接结果' };
-    if (!probe.ok) return { text: '探测失败', type: 'danger', detail: `最近探测 ${probe.at}` };
-    return { text: '连接正常', type: 'success', detail: `最近探测 ${probe.at} · ${probe.latencyMs} ms` };
+    const at = dashboardTime(probe.at);
+    if (!probe.ok) return { text: '探测失败', type: 'danger', detail: `最近探测 ${at}` };
+    const latency = Number.isFinite(probe.latencyMs) ? ` · ${probe.latencyMs} 毫秒` : '';
+    return { text: '连接正常', type: 'success', detail: `最近探测 ${at}${latency}` };
+}
+
+/** 长期记忆连接卡片：保留最近一次活动，但不重复整块明细。 */
+export function memoryStatusDetail(memory) {
+    if (!memory) return '功能未开启';
+    if (!memory.health) return '正在检查';
+    if (!memory.health.ok) return '暂时不可用，请检查设置';
+    const events = [
+        memory.lastWrite && { ...memory.lastWrite, label: '写入' },
+        memory.lastRecall && { ...memory.lastRecall, label: '召回' },
+    ].filter(Boolean).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+    const recent = events[0];
+    if (!recent) return '服务正常，等待第一次同步';
+    return `服务正常 · 最近${recent.label}${recent.ok ? '成功' : '失败'} ${dashboardTime(recent.at)}`;
+}
+
+/** 手机伴侣连接卡片：状态和积压数放在一行，不再另做重复明细。 */
+export function mobileCompanionStatusDetail(companion) {
+    if (!companion?.enabled) return '暂未启用';
+    const state = !companion.pairedClientId ? '等待配对' : companion.connected ? '已连接' : '等待重连';
+    return `${state} · 待发送 ${companion.queued ?? 0} 条`;
 }
 
 /** 现实数据统一摘要：控制台只给中文结论，不展示供应商错误原文或接口细节。 */

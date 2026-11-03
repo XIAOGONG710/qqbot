@@ -2,7 +2,7 @@
 import { computed, defineComponent, h, ref } from 'vue';
 import { store } from '@koishijs/client';
 import { c, clock, tag, tierLabel } from './common.js';
-import { dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, overviewCounts, realWorldStatus } from './dashboard.js';
+import { dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus } from './dashboard.js';
 
 function phaseText(r) {
     switch (r.phase) {
@@ -43,18 +43,6 @@ function todayLine(status) {
     ];
 }
 
-function memoryLine(memory) {
-    if (!memory) return [tag('没开', 'info')];
-    const parts = [];
-    if (!memory.health) parts.push(tag('检查中', 'info'));
-    else if (memory.health.ok) parts.push(tag('连得上', 'success'));
-    else parts.push(tag('连不上', 'danger'), h('span', { class: 'qqbot-muted' }, ' 请检查记忆服务设置'));
-    const event = (label, e) => e && h('span', { class: 'qqbot-muted' }, ` · ${label} ${clock(e.at)} ${e.ok ? `成功${e.items === undefined ? '' : `（${e.items} 条）`}` : '失败，请稍后重试'}`);
-    parts.push(event('最近一次写入', memory.lastWrite), event('最近一次召回', memory.lastRecall));
-    if (!memory.lastWrite && !memory.lastRecall) parts.push(h('span', { class: 'qqbot-muted' }, ' · 等待第一次同步'));
-    return parts.filter(Boolean);
-}
-
 function humanValuesLine(values) {
     if (!values) return [tag('自主生活未开启', 'info')];
     const positiveLevel = value => value >= 75 ? 'success' : value <= 25 ? 'danger' : 'warning';
@@ -66,12 +54,6 @@ function humanValuesLine(values) {
         tag(`压力 ${values.stress}`, loadLevel(values.stress)),
         h('span', { class: 'qqbot-muted' }, ` 心情 ${values.mood} · 健康 ${values.health} · 动机 ${values.motivation} · 孤独 ${values.loneliness}${relationship ? ` · 亲密 ${relationship.intimacy} · 信任 ${relationship.trust} · 熟悉 ${relationship.familiarity} · 依恋 ${relationship.attachment} · 摩擦 ${relationship.friction}` : ''}`),
     ];
-}
-
-function mobileCompanionLine(companion) {
-    if (!companion?.enabled) return [tag('未开启', 'info')];
-    if (!companion.pairedClientId) return [tag('已开启，等待配对', 'warning'), h('span', { class: 'qqbot-muted' }, ` 待发送 ${companion.queued} 条`)];
-    return [tag(companion.connected ? '已连接' : '已配对，等待重连', companion.connected ? 'success' : 'warning'), h('span', { class: 'qqbot-muted' }, ` 待发送 ${companion.queued} 条`)];
 }
 
 /** 手机伴侣能力清单：展示确认边界，避免控制台和协议各自维护一份动作说明。 */
@@ -168,22 +150,17 @@ export const StatusTab = defineComponent({
             const dshFeature = status?.features?.find(feature => feature.key === 'dsh');
             const dsh = dshStatusLine(status?.dsh ?? (dshFeature?.on ? { enabled: true } : undefined));
             const worldData = realWorldStatus(status);
-            const rows = [
-                ['插件', data.running
-                    ? [tag('运行正常', 'success')]
-                    : [tag('未运行', 'danger'), h('span', { class: 'qqbot-muted' }, ' 请查看插件设置和日志')]],
-                ['QQ 连接', data.napcat?.online ? [tag('已连接', 'success')] : [tag('未连接', 'danger')]],
-                ['长期记忆', status ? memoryLine(status.memory) : [tag('—', 'info')]],
-                ['现实世界数据', status ? [tag(worldData.text, worldData.type), worldData.detail ? h('span', { class: 'qqbot-muted' }, ` ${worldData.detail}`) : null] : [tag('—', 'info')]],
+            const rows = status ? [
                 ['她的状态', status ? humanValuesLine(status.humanValues) : [tag('—', 'info')]],
-                ['手机伴侣', status ? mobileCompanionLine(status.mobileCompanion) : [tag('—', 'info')]],
                 ['作息', status ? [status.schedule ? tag('按作息运行', 'success') : tag('未启用', 'warning')] : [tag('—', 'info')]],
                 ['按心情回复', status ? [status.moody && status.schedule ? tag('已启用', 'success') : tag('未启用', 'info')] : [tag('—', 'info')]],
                 ['今天', status ? todayLine(status) : [tag('—', 'info')]],
                 ['说话检查', status ? [status.speechCheck === false ? tag('未启用', 'info') : tag('已启用', 'success')] : [tag('—', 'info')]],
                 ['陌生好友', status ? [status.unlistedFriends ? tag('也回复', 'warning') : tag('不回复', 'info')] : [tag('—', 'info')]],
                 ['主动联系', status ? [tag(...(PROACTIVE_MODES[status.proactive ?? 'off'] ?? ['未启用', 'info']))] : [tag('—', 'info')]],
-                ['DSH 连接', status ? [tag(dsh.text, dsh.type), dsh.detail ? h('span', { class: 'qqbot-muted' }, ` ${dsh.detail}`) : null] : [tag('—', 'info')]],
+            ] : [
+                ['插件', data.running ? [tag('运行正常', 'success')] : [tag('未运行', 'danger')]],
+                ['QQ 连接', data.napcat?.online ? [tag('已连接', 'success')] : [tag('未连接', 'danger')]],
             ];
             const summary = h('div', { class: 'qqbot-summary' }, rows.map(([label, value]) => h('div', { class: 'qqbot-summary-row' }, [
                 h('span', { class: 'qqbot-label' }, label), h('span', null, value),
@@ -198,10 +175,10 @@ export const StatusTab = defineComponent({
             const connections = h('div', { class: 'qqbot-connections' }, [
                 connectionCard('插件', data.running, data.running ? '正在运行' : '请查看设置和日志'),
                 connectionCard('QQ 连接', data.napcat?.online === true, data.napcat?.online ? '消息通道正常' : '等待连接'),
-                connectionCard('长期记忆', Boolean(status.memory?.health?.ok), status.memory ? (status.memory.health?.ok ? '服务正常' : '检查中或不可用') : '功能未开启'),
+                connectionCard('长期记忆', Boolean(status.memory?.health?.ok), memoryStatusDetail(status.memory)),
                 connectionCard('现实世界数据', worldData.healthy, worldData.detail || worldData.text),
                 connectionCard('外部顾问', dsh.text === '连接正常', dsh.detail || dsh.text),
-                connectionCard('手机伴侣', status.mobileCompanion?.enabled === true && status.mobileCompanion.connected === true, status.mobileCompanion?.enabled ? (status.mobileCompanion.pairedClientId ? (status.mobileCompanion.connected ? '已连接' : '等待重连') : '等待配对') : '暂未启用'),
+                connectionCard('手机伴侣', status.mobileCompanion?.enabled === true && status.mobileCompanion.connected === true, mobileCompanionStatusDetail(status.mobileCompanion)),
             ]);
             const features = featurePanel(status);
             const extras = extrasPanel(status);
