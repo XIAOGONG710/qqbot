@@ -2918,7 +2918,7 @@ ${body}
                 dshConversation.splice(0, Math.max(0, dshConversation.length - 12));
                 tellOwner(text);
             } catch (error) {
-                tellOwner(`（DSH 咨询失败：${error instanceof Error ? error.message : String(error)}）`);
+                tellOwner(`（DSH 咨询失败：${sanitizeDshError(error)}）`);
             }
         });
     };
