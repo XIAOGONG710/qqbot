@@ -583,8 +583,9 @@ function readNowLine(cfg) {
     const text = fs.readFileSync(cfg.nowFile, 'utf8')
     const m = /generated-at:\s*(\S+?)\s*-->/.exec(text)
     const at = m ? Date.parse(m[1]) : NaN
-    if (!Number.isFinite(at) || Date.now() - at > cfg.nowStaleMs) {
-      log(cfg, '现在在干嘛：NOW.md 过期（QQ 没在跑？）不注入')
+    const now = Date.now()
+    if (!Number.isFinite(at) || at > now + 60_000 || now - at > cfg.nowStaleMs) {
+      log(cfg, '现在在干嘛：NOW.md 过期或时间异常（QQ 没在跑？）不注入')
       return ''
     }
     return text.replace(/<!--[\s\S]*?-->/g, '').trim()

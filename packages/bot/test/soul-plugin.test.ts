@@ -541,6 +541,15 @@ describe('同一个她·「她现在在干嘛」只从一条路进、过期不�
             assert.ok(!(await injected(h)).includes('ZQN'));
         } finally { fake.restore(); }
     });
+
+    test('NOW.md 的生成时间明显在未来：不注入——时钟回拨或坏文件不能把旧状态长期冒充现在', async () => {
+        const fake = fakeHindsight({ banks: ALL_BANKS });
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile(undefined) });
+            writeFileSync(h.f('NOW.md'), nowFile(new Date(Date.now() + 60 * 60_000)));
+            assert.ok(!(await injected(h)).includes('ZQN'));
+        } finally { fake.restore(); }
+    });
 });
 
 describe('同一个她：桌面上的她也知道自己翻日记发现了什么（ADR 0194，INSIGHTS.json）', () => {
