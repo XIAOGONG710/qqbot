@@ -19,12 +19,43 @@ export const PLACES: Record<Place, { name: string; latitude: number; longitude: 
 /** 一个钟头：气温（℃）、降水（mm，前一小时累计）、天况（WMO 代码）；o：取的时候这个钟头已经到了（实况） */
 export interface HourWeather { t: number; p: number; c: number; o?: 1 }
 
-interface Store {
+export interface WeatherStore {
     /** 第一次取到的日子（她的一天，YYYY-MM-DD）：之前的日子不换 */
     since: string;
     fetchedAt: string;
     /** 'YYYY-MM-DDTHH' → 那个钟头 */
     hours: Record<string, HourWeather>;
+}
+
+const validCalendarDate = (value: unknown): value is string => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const date = new Date(`${value}T00:00:00Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
+
+export function isWeatherStore(value: unknown): value is WeatherStore {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const store = value as Partial<WeatherStore>;
+    if (!validCalendarDate(store.since) || typeof store.fetchedAt !== 'string' || !Number.isFinite(Date.parse(store.fetchedAt))) return false;
+    if (!store.hours || typeof store.hours !== 'object' || Array.isArray(store.hours)) return false;
+    const hours = Object.entries(store.hours);
+    return hours.length > 0 && hours.every(([key, item]) => {
+        if (!/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3])$/.test(key)
+            || !item || typeof item !== 'object' || Array.isArray(item)) return false;
+        const hour = item as Partial<HourWeather>;
+        return Number.isFinite(hour.t) && hour.t! >= -100 && hour.t! <= 100
+            && Number.isFinite(hour.p) && hour.p! >= 0 && hour.p! <= 1000
+            && Number.isInteger(hour.c) && hour.c! >= 0 && hour.c! <= 99
+            && (hour.o === undefined || hour.o === 1);
+    });
+}
+
+export function readWeatherStore(path: string, log?: (message: string) => void, invalid: 'quarantine' | 'throw' = 'quarantine'): WeatherStore | undefined {
+    return readJsonOr<WeatherStore | undefined>(path, undefined, log, {
+        validate: (value): value is WeatherStore | undefined => isWeatherStore(value),
+        invalid,
+        label: '天气缓存',
+    });
 }
 
 /** 世界里一天的天气（world.ts 的 WorldNow.weather）；real 的才有后面几项 */
@@ -272,14 +303,13 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
     // 数据目录第一次用时还没有（审查第 1 条：没建目录时每次写盘都失败，真实天气一次都不生效）
     mkdirSync(options.dir, { recursive: true });
     const path = (place: Place) => join(options.dir, `${place}.json`);
-    const stores = new Map<Place, Store | undefined>();
+    const stores = new Map<Place, WeatherStore | undefined>();
     const errors = new Map<Place, string>();
     const errorAt = new Map<Place, string>();
     let inFlight: Promise<void> | undefined;
-    const load = (place: Place): Store | undefined => {
+    const load = (place: Place): WeatherStore | undefined => {
         if (!stores.has(place)) {
-            const data = readJsonOr<Partial<Store>>(path(place), {}, message => options.log(`真实天气：${message}`));
-            stores.set(place, data.since && data.hours ? { since: data.since, fetchedAt: data.fetchedAt ?? '', hours: data.hours } : undefined);
+            stores.set(place, readWeatherStore(path(place), message => options.log(`真实天气：${message}`)));
         }
         return stores.get(place);
     };
@@ -298,7 +328,7 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
                         const fetched = validHourly(await provider.fetchHourly({ place, latitude, longitude, signal: AbortSignal.timeout(timeoutMs) }));
                         const at = new Date(now());
                         const old = load(place);
-                        const store: Store = { since: old?.since ?? firstRealDay(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
+                        const store: WeatherStore = { since: old?.since ?? firstRealDay(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
                         writeJsonAtomic(path(place), store);
                         stores.set(place, store);
                         errors.delete(place);

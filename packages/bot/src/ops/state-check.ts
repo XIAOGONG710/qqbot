@@ -14,6 +14,7 @@ import { loadNeedsAnchor } from '../life/needs.ts';
 import { TierRecord } from '../memory/tier-record.ts';
 import { readProactiveState } from '../proactive/proactive-state.ts';
 import { readPromiseState } from '../life/promise-state.ts';
+import { readWeatherStore } from '../world/weather.ts';
 
 export interface StateCheck { name: string; file: string; ok: boolean; detail: string }
 
@@ -65,6 +66,7 @@ export function checkStates(dataDir: string, now: Date = new Date()): StateCheck
                     const path = join(folder, name);
                     if (dir === 'proactive' && /^[1-9]\d*-[a-z_]+\.json$/.test(name)) { readProactiveState(path); return '主动消息 v1 schema 通过'; }
                     if (dir === 'promises' && /^[1-9]\d*-[a-z_]+\.json$/.test(name)) { readPromiseState(path); return '承诺 v1 schema 通过'; }
+                    if (dir === 'weather' && /^(jinan|qingdao)\.json$/.test(name)) { readWeatherStore(path, undefined, 'throw'); return '天气缓存 schema 通过'; }
                     JSON.parse(readFileSync(path, 'utf8'));
                     return '仅 JSON 语法通过（未做运行时 schema 校验）';
                 });

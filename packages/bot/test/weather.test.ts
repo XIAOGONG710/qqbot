@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -144,6 +144,26 @@ describe('真实天气（ADR 0048）', () => {
             await fetcher.refresh();
             assert.ok(logs.some(line => /济南没取到，照旧用存着的（timeout）/.test(line)));
             assert.deepEqual(fetcher.day('jinan', '2026-10-16', at('2026-10-16T14:30:00'))!.rainHours, [9]);
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
+    test('合法 JSON 但结构损坏的天气缓存会隔离，不把 NaN 天气带进世界', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-weather-invalid-'));
+        const dir = join(root, 'weather');
+        mkdirSync(dir);
+        writeFileSync(join(dir, 'jinan.json'), JSON.stringify({
+            since: '2026-10-16', fetchedAt: '2026-10-16T03:30:00.000Z',
+            hours: { '2026-10-16T08': { t: 'cold', p: 0, c: 2 } },
+        }));
+        const logs: string[] = [];
+        try {
+            const fetcher = weatherFetcher({ dir, log: message => logs.push(message), provider: { id: 'unused', fetchHourly: async () => ({}) } });
+            assert.equal(fetcher.day('jinan', '2026-10-16', at('2026-10-16T12:00:00')), undefined);
+            assert.equal(existsSync(join(dir, 'jinan.json')), false);
+            assert.ok(readdirSync(dir).some(name => name.startsWith('jinan.json.corrupt-')));
+            assert.ok(logs.some(message => message.includes('天气缓存') && message.includes('挪到')));
         } finally {
             rmSync(root, { recursive: true, force: true });
         }
