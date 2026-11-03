@@ -137,7 +137,7 @@ function parseWorld(value: unknown, now: number): DshWorldInboxEntry | undefined
     };
 }
 
-function consume<T extends { id: string }>(path: string, statePath: string, parse: (value: unknown, now: number) => T | undefined, apply: (entry: T) => void, now: number, log: (message: string) => void): number {
+function consume<T extends { id: string; at: string }>(path: string, statePath: string, parse: (value: unknown, now: number) => T | undefined, apply: (entry: T) => void, now: number, log: (message: string) => void): number {
     if (!existsSync(path)) return 0;
     const state = readState(statePath, log);
     const seen = new Set(state.ids);
@@ -151,6 +151,13 @@ function consume<T extends { id: string }>(path: string, statePath: string, pars
         if (!entry) continue;
         const id = entry.id;
         if (seen.has(id)) continue;
+        // 小范围未来时间只视为两端时钟误差，不能立刻交给世界账：世界账会拒绝尚未发生的事件，
+        // 但 recordEvents 是静默过滤，若这里照常推进游标，这条合格事实会永久丢失。
+        // 停在原行，等它真正到时后再按收件箱顺序应用；超过容差的未来时间已由 parse 丢弃。
+        if (Date.parse(entry.at) > now) {
+            nextLine = row.line;
+            break;
+        }
         try {
             apply(entry);
             seen.add(id);

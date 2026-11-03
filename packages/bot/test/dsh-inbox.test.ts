@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -51,6 +51,26 @@ describe('DSH 收件箱', () => {
         assert.equal(consumeDshWorldInbox(inbox, state, now, world, () => undefined), 1);
         assert.equal(consumeDshWorldInbox(inbox, state, now, world, () => undefined), 0);
         assert.deepEqual(drafts, [{ id: 'dsh:dsh-world-1', kind: 'study', at: '2026-11-02T23:55:00.000Z', source: 'external', result: 'succeeded', subject: '复习' }]);
+    });
+
+    test('容差范围内的未来事件先停在原行，到时后再落账，不因世界账静默拒收而永久丢失', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-dsh-world-clock-skew-'));
+        dirs.push(dir);
+        const inbox = join(dir, 'world-inbox.jsonl');
+        const state = join(dir, 'world-state.json');
+        writeFileSync(inbox, [
+            JSON.stringify({ id: 'dsh-world-skew', at: '2026-11-03T00:00:30.000Z', kind: 'rest', result: 'succeeded' }),
+            JSON.stringify({ id: 'dsh-world-after-skew', at: '2026-11-03T00:00:20.000Z', kind: 'study', result: 'succeeded' }),
+        ].join('\n') + '\n');
+        const drafts: unknown[] = [];
+        const world = { recordEvents: (items: unknown[]) => drafts.push(...items) } as unknown as WorldState;
+
+        assert.equal(consumeDshWorldInbox(inbox, state, new Date('2026-11-03T00:00:00.000Z'), world, () => undefined), 0);
+        assert.deepEqual(drafts, []);
+        assert.equal(existsSync(state) ? JSON.parse(readFileSync(state, 'utf8')).line : 0, 0, '游标停在未来事件原行');
+
+        assert.equal(consumeDshWorldInbox(inbox, state, new Date('2026-11-03T00:00:31.000Z'), world, () => undefined), 2);
+        assert.deepEqual(drafts.map(item => (item as { id: string }).id), ['dsh:dsh-world-skew', 'dsh:dsh-world-after-skew']);
     });
 
     test('超过去重窗口后仍按收件箱游标只处理新追加的行', () => {
