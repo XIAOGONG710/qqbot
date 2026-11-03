@@ -58,6 +58,8 @@ export function herStatus(schedule: Schedule, at: Date, options: StatusOptions =
         ? dayPlan(schedule, options.plans.plans, herDay(schedule, at), {
             rain: options.world.weather?.rain,
             ...(options.world.weather?.rainHours ? { rainHours: options.world.weather.rainHours } : {}),
+            ...(options.world.airQuality ? { airQuality: options.world.airQuality } : {}),
+            ...(options.world.daylight ? { daylight: options.world.daylight } : {}),
             body: options.plans.body,
             homework: options.world.homework,
             errands: worldErrands(options.world),

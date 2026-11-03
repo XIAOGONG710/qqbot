@@ -6,6 +6,8 @@
 
 import type { BodyNow } from './body.ts';
 import { herDay, stateAt, type ExtraFreeActivity, type Schedule } from './schedule.ts';
+import type { DayAirQuality } from '../world/air-quality.ts';
+import type { Daylight } from '../world/daylight.ts';
 
 export type FreeWindow = 'morning' | 'afternoon' | 'evening';
 
@@ -16,11 +18,15 @@ export interface Plans {
     rest: string;
 }
 
-/** 结算要看的事实：那天下没下雨、身上怎么样（按那天 15:00 算）、三天内要交的作业（world.ts 的 WorldNow.homework） */
+/** 结算要看的事实：天气、空气、日照、身上怎么样（按那天 15:00 算）、三天内要交的作业（world.ts 的 WorldNow.homework） */
 export interface PlanFacts {
     rain?: boolean;
     /** 真实天气下过雨的钟头（ADR 0048）：有就按那个时段里下没下，不按一整天 */
     rainHours?: readonly number[];
+    /** 真实空气质量（ADR 0233）：只有重度以上污染才把室外打算换成室内；没取到就不猜。 */
+    airQuality?: Pick<DayAirQuality, 'aqi' | 'category'>;
+    /** 真实日照（ADR 0233）：保留给行动策略，普通晚间计划不因天黑被擅自取消。 */
+    daylight?: Pick<Daylight, 'phase'>;
     body?: BodyNow;
     homework?: readonly { course: string; due: Date; doneAt: Date }[];
     /** 世界里定好了几点去做的事（world.ts 的 worldErrands，买相机那一趟）：那一段就写这件事，不写作息里的空闲活动（10-11 模拟：打算写「下午在图书馆赶作业」，她照着说了） */
@@ -118,6 +124,8 @@ function settle(plans: Plans | undefined, window: FreeWindow, planned: string, d
     const endHour = Math.min(24, Math.ceil((to.getTime() - dayStart) / 3_600_000));
     const rained = facts.rainHours ? facts.rainHours.some(h => h >= fromHour - 1 && h < Math.max(endHour, fromHour + 1)) : facts.rain;
     if (outing && rained) return { done: outing.indoors, because: '下雨了' };
+    // 现实空气质量只在重度以上污染时影响出门；优/良/轻度污染不替她做过度谨慎的决定，取不到也保持原计划。
+    if (outing && facts.airQuality?.aqi !== undefined && facts.airQuality.aqi >= 201) return { done: outing.indoors, because: '空气质量差，不想出门' };
     if (outing && facts.body?.cold) return { done: outing.indoors, because: '感冒了，不想出门' };
     if (outing && period?.cramps) return { done: outing.indoors, because: unwellWord };
     if (window === 'evening' && !plans.study.includes(planned)) {

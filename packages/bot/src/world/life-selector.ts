@@ -370,7 +370,14 @@ function projectBoundaries(at: Date, sources: Pick<LifeSources, 'projectChoice'>
 function planned(at: Date, sources: LifeSources, world: WorldNow | undefined, reading: readonly ExtraFreeActivity[], text: string) {
     const day = herDay(sources.schedule, at);
     const body = sources.bodyAt?.(at);
-    const slots = dayPlan(sources.schedule, sources.plans, day, { rain: world?.weather?.rain, ...(world?.weather?.rainHours ? { rainHours: world.weather.rainHours } : {}), ...(body ? { body } : {}), homework: world?.homework }, reading);
+    const slots = dayPlan(sources.schedule, sources.plans, day, {
+        rain: world?.weather?.rain,
+        ...(world?.weather?.rainHours ? { rainHours: world.weather.rainHours } : {}),
+        ...(world?.airQuality ? { airQuality: world.airQuality } : {}),
+        ...(world?.daylight ? { daylight: world.daylight } : {}),
+        ...(body ? { body } : {}),
+        homework: world?.homework,
+    }, reading);
     const slot = slots.find(s => s.planned === text);
     const done = slot && slot.done !== slot.planned && !(slot.until && at >= slot.until) ? slot.done : text;
     return freeAction(done, at, sources, reading);

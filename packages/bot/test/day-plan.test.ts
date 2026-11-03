@@ -48,6 +48,16 @@ describe('她一天的打算会改（ADR 0034）', () => {
         assert.equal(describePlans(schedule, plain, at(10, 8, 21)), `[你今天的打算（早上起来想的；改了的写了怎么改的，他问起照这个说，不用特意提；跟谁说过实际干了别的，以说过的为准）：${describeSlot(plain[2]!)}]`);
     });
 
+    test('重度空气污染：只把出门打算换成室内，日照和轻度污染不擅自改计划', () => {
+        const fixed: Plans = { outings: [{ text: '去图书馆占座', indoors: '在宿舍写作业' }], study: [], rest: '躺在床上刷手机' };
+        const base = dayPlan(schedule, fixed, day(10, 8), {}, extra)[0]!;
+        assert.equal(base.planned, '去图书馆占座');
+        const polluted = dayPlan(schedule, fixed, day(10, 8), { airQuality: { aqi: 201, category: '重度污染' } }, extra)[0]!;
+        assert.deepEqual({ done: polluted.done, because: polluted.because }, { done: '在宿舍写作业', because: '空气质量差，不想出门' });
+        const light = dayPlan(schedule, fixed, day(10, 8), { airQuality: { aqi: 200, category: '中度污染' }, daylight: { phase: '夜间' } }, extra)[0]!;
+        assert.equal(light.done, light.planned, '边界值和天黑不替她过度决定');
+    });
+
     test('作业明天要交：晚上打算玩的先赶作业，写完回到原来的打算', () => {
         // 10-12（周一）晚上打算打独立游戏，计算机网络技术的作业 10-13 交、22:00 写完
         const slots = planOn(boyfriend, 10, 12);

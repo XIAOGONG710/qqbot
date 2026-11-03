@@ -536,7 +536,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         const body = bodyThen ? diaryBody(bodyThen) : undefined;
         if (body) lines.push(body);
         // 那天改了的打算（ADR 0034）：照打算做的不写——天天一样的空闲活动排成一列，问「昨天干嘛了」她就照着报，想不起那天记得住的事（调整 3）
-        lines.push(...dayPlan(herSchedule, character.herWorld.plans, dayStart, { rain: then.weather?.rain, ...(then.weather?.rainHours ? { rainHours: then.weather.rainHours } : {}), body: bodyThen, homework: then.homework }, [...extraFree, ...(options.herPlan?.(dayStart) ?? [])])
+        lines.push(...dayPlan(herSchedule, character.herWorld.plans, dayStart, {
+            rain: then.weather?.rain,
+            ...(then.weather?.rainHours ? { rainHours: then.weather.rainHours } : {}),
+            ...(then.airQuality ? { airQuality: then.airQuality } : {}),
+            ...(then.daylight ? { daylight: then.daylight } : {}),
+            body: bodyThen,
+            homework: then.homework,
+        }, [...extraFree, ...(options.herPlan?.(dayStart) ?? [])])
             .filter(slot => slot.done !== slot.planned).map(describeSlot));
         // 那天她自己写的日记（ADR 0217）：翻回去看得到，说法可以对着它
         const written = options.diaryOn?.(`${dayStart.getFullYear()}-${String(dayStart.getMonth() + 1).padStart(2, '0')}-${String(dayStart.getDate()).padStart(2, '0')}`);

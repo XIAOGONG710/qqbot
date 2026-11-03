@@ -79,7 +79,15 @@ export function diaryMaterial(
     // （以前这里不并书，日记写「晚上在追剧」，聊天里那晚说的是在看书）
     // 按同学档的作息（worldSchedule）：没有课名、修片和刷摄影区是 cover；没传时（旧调用）作业也去掉课名
     const homework = around?.homework.map(h => (sources.worldSchedule ? h : { ...h, course: '' }));
-    const free = dayPlan(shown, sources.world?.plans, day, { rain: around?.weather?.rain, ...(around?.weather?.rainHours ? { rainHours: around.weather.rainHours } : {}), body: moodBody, homework, errands: around ? worldErrands(around) : [] }, readingActivities(sources.books))
+    const free = dayPlan(shown, sources.world?.plans, day, {
+        rain: around?.weather?.rain,
+        ...(around?.weather?.rainHours ? { rainHours: around.weather.rainHours } : {}),
+        ...(around?.airQuality ? { airQuality: around.airQuality } : {}),
+        ...(around?.daylight ? { daylight: around.daylight } : {}),
+        body: moodBody,
+        homework,
+        errands: around ? worldErrands(around) : [],
+    }, readingActivities(sources.books))
         .map(describeSlot);
     if (free.length) lines.push(`空闲时：${free.join('；')}`);
     const mood = moodAt(schedule, sources.moods, atTime(day, '12:00'), sources.mood, { body: moodBody, world: around });

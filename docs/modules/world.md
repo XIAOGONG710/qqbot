@@ -11,6 +11,7 @@
 - `world/air-quality.ts`
 - `world/daylight.ts`
 - `world/calendar.ts`
+- `world/transport.ts`
 - `world/threads.ts`
 - `world/festivals.ts`
 - `world/npc.ts`
@@ -61,4 +62,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0007](../adr/0007-schedule-and-reply-timing.md)、[ADR 0026](../adr/0026-diary-of-her-day.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0216](../adr/0216-world-threads.md)、[ADR 0217](../adr/0217-diary-lookback.md)、[ADR 0227](../adr/0227-real-air-quality.md)、[ADR 0228](../adr/0228-real-daylight.md)、[ADR 0229](../adr/0229-world-needs-projection.md)、[ADR 0230](../adr/0230-holiday-in-world.md)、[ADR 0231](../adr/0231-real-public-calendar.md)
+[ADR 0007](../adr/0007-schedule-and-reply-timing.md)、[ADR 0026](../adr/0026-diary-of-her-day.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0216](../adr/0216-world-threads.md)、[ADR 0217](../adr/0217-diary-lookback.md)、[ADR 0227](../adr/0227-real-air-quality.md)、[ADR 0228](../adr/0228-real-daylight.md)、[ADR 0229](../adr/0229-world-needs-projection.md)、[ADR 0230](../adr/0230-holiday-in-world.md)、[ADR 0231](../adr/0231-real-public-calendar.md)、[ADR 0232](../adr/0232-real-transport-facts.md)

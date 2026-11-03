@@ -38,15 +38,15 @@ export const MODULES: readonly ModuleDef[] = [
             'life/everyday.ts', 'life/menu.ts', 'life/diary.ts', 'life/diary-insights.ts', 'life/reading-takes.ts', 'life/biography.ts', 'life/bedtime.ts', 'life/nights.ts', 'life/people.ts', 'life/promises.ts', 'life/promise-state.ts', 'life/open-loops.ts', 'life/tastes.ts', 'life/acquaintances.ts', 'life/her-plans.ts', 'life/now-export.ts', 'life/leave-note.ts', 'life/dreams.ts', 'life/open-questions.ts', 'life/her-guesses.ts', 'life/learning-questions.ts', 'life/traces.ts', 'life/understanding.ts', 'human-values.ts'],
         groups: ['她的日子'],
         metrics: '周报「她的日子」；consistency-cli（说的和账对不对）；sim/life-audit',
-        adrs: ['0015', '0040', '0045', '0104', '0178', '0106', '0162', '0163', '0194', '0204', '0213', '0219', '0222'],
+        adrs: ['0015', '0040', '0045', '0104', '0178', '0106', '0162', '0163', '0194', '0204', '0213', '0219', '0222', '0233'],
     },
     {
         id: 'world', name: '她的世界（世界账）',
         scope: '她那边正在发生的事：天气、节日、NPC、障碍、生活事件与选择、可重放的动作队列；世界状态是所有“她那边”的事实来源。',
-        files: ['world/world.ts', 'world/weather.ts', 'world/air-quality.ts', 'world/daylight.ts', 'world/calendar.ts', 'world/threads.ts', 'world/festivals.ts', 'world/npc.ts', 'world/npc-asks.ts', 'world/obstacles.ts', 'world/life-events.ts', 'world/life-selector.ts', 'world/action-queue.ts'],
+        files: ['world/world.ts', 'world/weather.ts', 'world/air-quality.ts', 'world/daylight.ts', 'world/calendar.ts', 'world/transport.ts', 'world/threads.ts', 'world/festivals.ts', 'world/npc.ts', 'world/npc-asks.ts', 'world/obstacles.ts', 'world/life-events.ts', 'world/life-selector.ts', 'world/action-queue.ts'],
         groups: ['她的日子'],
         metrics: '周报「她的日子」里的世界事件；consistency-cli（说的和世界账对不对）',
-        adrs: ['0007', '0026', '0045', '0106', '0216', '0217', '0227', '0228', '0229', '0230', '0231'],
+        adrs: ['0007', '0026', '0045', '0106', '0216', '0217', '0227', '0228', '0229', '0230', '0231', '0232'],
     },
     {
         id: 'vision', name: '看（视觉）',
