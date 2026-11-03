@@ -3,7 +3,7 @@
 // - 写入：聊天记录按片段（episodes.ts）写入，一个片段一个 document_id。片段结束（安静 45 分钟）时写，
 //   还在进行的片段每多 OPEN_EPISODE_STEP 条也整段写一次，免得早先的话被挤出上下文后又还没进记忆。
 //   同一联系人的写入串行执行；每个片段写到第几条记在 runtime/bot/memory/<QQ>-<档位>.json，失败的下次再写。
-//   这个进度文件读坏了就从头写（同一个 document_id 再写一次是覆盖，不会重复，ADR 0013 决策 3）。
+//   进度文件结构损坏时失败关闭：不能把既有提交进度当空白；同一个 document_id 虽可覆盖，但公共库对账和重排次数也在这里。
 // - 召回：生成前用这次对方发的几条（加上她上一句）去查，限时；查不到、超时、出错都不注入。
 //   结果里属于当前片段的去掉（那部分原文已经在上下文里）。
 // - 关系概况：bank 里的 Mental Model「relationship」，后台定期读取，放在 main 之后。
@@ -237,7 +237,7 @@ const DIARY_PREFIX = 'diary:';
 /** 她在某个人的聊天里自己写的 `<<日记>>` / `<<记住>>` 在公共库里的 document_id（rememberSelfNote）：`diary-self:<写它的联系人的哈希>:<时间>` / `self:…`。DSH 插件认同一个样子 */
 export const SELF_NOTE_ID = /^(?:diary-self|self):([0-9a-f]{16}):/;
 
-interface ContactState {
+export interface ContactMemoryState {
     bankId: string;
     /** 已写入的 mission 版本（mission 改了就重新 PUT） */
     bankConfigured?: string;
@@ -257,9 +257,52 @@ interface ContactState {
 }
 
 /** 公共记忆库的状态（<dir>/common.json） */
-interface CommonState {
+export interface CommonMemoryState {
     bankId: string;
     bankConfigured?: string;
+}
+
+const stateRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+const stateString = (value: unknown): value is string => typeof value === 'string' && Boolean(value.trim()) && value.length <= 240;
+const stateMap = (value: unknown, valid: (item: unknown) => boolean): boolean => stateRecord(value)
+    && Object.entries(value).every(([key, item]) => Boolean(key.trim()) && key.length <= 240 && valid(item));
+
+function migrateContactMemoryState(value: unknown): unknown {
+    return stateRecord(value) && value.retained === undefined ? { ...value, retained: {} } : value;
+}
+
+export function isContactMemoryState(value: unknown): value is ContactMemoryState {
+    if (!stateRecord(value) || !stateString(value.bankId)
+        || !stateMap(value.retained, item => Number.isSafeInteger(item) && (item as number) >= 0)) return false;
+    return (value.bankConfigured === undefined || stateString(value.bankConfigured))
+        && (value.relationshipModel === undefined || typeof value.relationshipModel === 'boolean' || stateString(value.relationshipModel))
+        && (value.personModel === undefined || stateString(value.personModel))
+        && (value.common === undefined || stateMap(value.common, item => Number.isSafeInteger(item) && (item as number) >= 0))
+        && (value.retainedAt === undefined || stateMap(value.retainedAt, item => typeof item === 'number' && Number.isFinite(item) && item >= 0))
+        && (value.commonAt === undefined || stateMap(value.commonAt, item => typeof item === 'number' && Number.isFinite(item) && item >= 0))
+        && (value.requeued === undefined || stateMap(value.requeued, item => Number.isSafeInteger(item) && (item as number) >= 0));
+}
+
+export function isCommonMemoryState(value: unknown): value is CommonMemoryState {
+    return stateRecord(value) && stateString(value.bankId)
+        && (value.bankConfigured === undefined || stateString(value.bankConfigured));
+}
+
+export function readContactMemoryState(path: string, log?: (message: string) => void): ContactMemoryState | undefined {
+    return readJsonOr<ContactMemoryState | undefined>(path, undefined, log, {
+        migrate: migrateContactMemoryState,
+        validate: (value): value is ContactMemoryState | undefined => isContactMemoryState(value),
+        invalid: 'throw',
+        label: '联系人记忆进度',
+    });
+}
+
+export function readCommonMemoryState(path: string, log?: (message: string) => void): CommonMemoryState | undefined {
+    return readJsonOr<CommonMemoryState | undefined>(path, undefined, log, {
+        validate: (value): value is CommonMemoryState | undefined => isCommonMemoryState(value),
+        invalid: 'throw',
+        label: '公共记忆进度',
+    });
 }
 
 /** 一次写入或召回的结果 */
@@ -374,7 +417,7 @@ export class LongTermMemory {
     }
 
     /** 写进公共记忆库：document_id 带上是谁的（哈希，不带 QQ 号），原文开头写和谁的私聊 */
-    async #retainCommon(contact: MemoryContact, names: MacroNames, state: ContactState, episodes: Episode[], bankId: string): Promise<void> {
+    async #retainCommon(contact: MemoryContact, names: MacroNames, state: ContactMemoryState, episodes: Episode[], bankId: string): Promise<void> {
         for (const episode of episodes) {
             await this.#options.api.retain(bankId, {
                 content: `和${names.user}的私聊\n${episodeTranscript(episode, names)}`,
@@ -450,7 +493,7 @@ export class LongTermMemory {
     }
 
     /** 公共库里「她眼中的他」：没有就建，设定变了（称呼改了）就改设定、刷新一次 */
-    async #ensurePersonModel(contact: MemoryContact, names: MacroNames, state: ContactState, bankId: string): Promise<void> {
+    async #ensurePersonModel(contact: MemoryContact, names: MacroNames, state: ContactMemoryState, bankId: string): Promise<void> {
         const model = personModel(this.#personModelId(contact), names.user, names.char);
         const version = createHash('sha256').update(JSON.stringify(model)).digest('hex').slice(0, 12);
         if (state.personModel === version) return;
@@ -468,8 +511,8 @@ export class LongTermMemory {
     async #ensureCommonBank(char: string): Promise<string> {
         const path = join(this.#options.dir, 'common.json');
         const bankId = this.commonBankId();
-        const stored = readJsonOr<Partial<CommonState>>(path, {}, message => this.#options.log(message));
-        const state: CommonState = stored.bankId === bankId ? { bankId, ...(stored.bankConfigured ? { bankConfigured: stored.bankConfigured } : {}) } : { bankId };
+        const stored = readCommonMemoryState(path, message => this.#options.log(message));
+        const state: CommonMemoryState = stored?.bankId === bankId ? { bankId, ...(stored.bankConfigured ? { bankConfigured: stored.bankConfigured } : {}) } : { bankId };
         const missions = commonBankMissions(char);
         const version = createHash('sha256').update(JSON.stringify(missions)).digest('hex').slice(0, 12);
         if (state.bankConfigured !== version) {
@@ -480,7 +523,7 @@ export class LongTermMemory {
         return bankId;
     }
 
-    async #retainOwn(contact: MemoryContact, names: MacroNames, state: ContactState, pending: Episode[]): Promise<void> {
+    async #retainOwn(contact: MemoryContact, names: MacroNames, state: ContactMemoryState, pending: Episode[]): Promise<void> {
         await this.#ensureBank(contact, names, state);
         for (const episode of pending) {
             await this.#options.api.retain(state.bankId, {
@@ -508,7 +551,7 @@ export class LongTermMemory {
      * 保守：刚提交的（RECONCILE_GRACE_MS 内）不算缺；读不到文档列表就不动；Hindsight 里一篇都没有却记着一堆写过的（多半是 bank 不对 / 接口变了）也不动；
      * 公共库里危机相关的片段本来就不写，不算缺；一次最多重排 RECONCILE_MAX 个，同一个片段最多重排 RECONCILE_MAX_TRIES 次。日志只写数量，不写内容。
      */
-    async #reconcile(contact: MemoryContact, state: ContactState, episodes: Episode[]): Promise<void> {
+    async #reconcile(contact: MemoryContact, state: ContactMemoryState, episodes: Episode[]): Promise<void> {
         const api = this.#options.api;
         if (!api.listDocumentIds) return;
         const key = this.#key(contact);
@@ -558,7 +601,7 @@ export class LongTermMemory {
         this.#options.log(`[${contact.qq}] 记忆对账：记着写过、Hindsight 里却查不到的片段——他的 bank ${own} 个、公共库 ${common} 个，重新排队写（日志不记内容）`);
     }
 
-    async #ensureBank(contact: MemoryContact, names: MacroNames, state: ContactState): Promise<void> {
+    async #ensureBank(contact: MemoryContact, names: MacroNames, state: ContactMemoryState): Promise<void> {
         const missions = bankMissions(names);
         const version = createHash('sha256').update(JSON.stringify(missions)).digest('hex').slice(0, 12);
         if (state.bankConfigured !== version) {
@@ -620,8 +663,8 @@ export class LongTermMemory {
         focus: readonly string[] = [],
     ): Promise<string | undefined> {
         if (!this.#options.common || !knowsPeople(contact.tier)) return undefined;
-        const stored = readJsonOr<Partial<CommonState>>(join(this.#options.dir, 'common.json'), {}, message => this.#options.log(message));
-        if (stored.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
+        const stored = readCommonMemoryState(join(this.#options.dir, 'common.json'), message => this.#options.log(message));
+        if (stored?.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
         const query = recallQuery(chat);
         if (!query) return undefined;
         // 问的是某一天（ADR 0017）：时间窗只加权，多取一些，只留那天的
@@ -735,8 +778,8 @@ export class LongTermMemory {
      */
     async othersToday(contact: NamedContact, now: Date, people: readonly NamedContact[], start: Date): Promise<string | undefined> {
         if (!this.#options.common || !knowsPeople(contact.tier)) return undefined;
-        const stored = readJsonOr<Partial<CommonState>>(join(this.#options.dir, 'common.json'), {}, message => this.#options.log(message));
-        if (stored.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
+        const stored = readCommonMemoryState(join(this.#options.dir, 'common.json'), message => this.#options.log(message));
+        if (stored?.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
         const own = this.#hash(contact);
         const owners = new Set(people.map(person => this.#hash(person)).filter(hash => hash !== own));
         if (owners.size === 0) return undefined;
@@ -872,16 +915,16 @@ export class LongTermMemory {
         return join(this.#options.dir, `${this.#key(contact)}.json`);
     }
 
-    #load(contact: MemoryContact): ContactState {
+    #load(contact: MemoryContact): ContactMemoryState {
         const path = this.#path(contact);
-        const fresh: ContactState = { bankId: this.bankId(contact), retained: {} };
-        const data = readJsonOr<Partial<ContactState>>(path, {}, message => this.#options.log(`[${contact.qq}] ${message}`));
+        const fresh: ContactMemoryState = { bankId: this.bankId(contact), retained: {} };
+        const data = readContactMemoryState(path, message => this.#options.log(`[${contact.qq}] ${message}`));
         // 换了 bank 前缀：进度是旧 bank 的，新 bank 从头写 mission 和片段（ADR 0012 决策 1 第 9 条）
-        if (data.bankId && data.bankId !== fresh.bankId) return fresh;
-        return { ...fresh, ...data, bankId: fresh.bankId, retained: data.retained ?? {} };
+        if (!data || data.bankId !== fresh.bankId) return fresh;
+        return { ...fresh, ...data, bankId: fresh.bankId };
     }
 
-    #save(contact: MemoryContact, state: ContactState): void {
+    #save(contact: MemoryContact, state: ContactMemoryState): void {
         writeJsonAtomic(this.#path(contact), state);
     }
 }

@@ -283,6 +283,25 @@ describe('长期记忆：写入', () => {
         }
     });
 
+    test('坏的联系人记忆进度失败关闭；旧文件缺 retained 时兼容为空进度', async () => {
+        const first = setup();
+        try {
+            writeFileSync(join(first.dir, '1-boyfriend.json'), JSON.stringify({ bankId: first.memory.bankId(A), retained: 'broken' }));
+            await first.memory.sync(A, names, [msg(0, 'user', '在吗')]);
+            assert.equal(first.calls.retain.length, 0);
+            assert.match(first.memory.status().lastWrite?.error ?? '', /联系人记忆进度.*schema.*拒绝启动/);
+            assert.ok(first.logs.some(line => /记忆写入失败.*联系人记忆进度/.test(line)));
+        } finally { first.cleanup(); }
+
+        const legacy = setup();
+        try {
+            writeFileSync(join(legacy.dir, '1-boyfriend.json'), JSON.stringify({ bankId: legacy.memory.bankId(A) }));
+            await legacy.memory.sync(A, names, [msg(0, 'user', '在吗')]);
+            assert.equal(legacy.calls.retain.length, 1);
+            assert.deepEqual(Object.values(JSON.parse(readFileSync(join(legacy.dir, '1-boyfriend.json'), 'utf8')).retained), [1]);
+        } finally { legacy.cleanup(); }
+    });
+
     test('同一联系人的写入串行；bank ID 不含 QQ 号', async () => {
         const { memory, calls, cleanup } = setup();
         try {
