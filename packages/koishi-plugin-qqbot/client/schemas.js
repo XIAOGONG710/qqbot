@@ -104,7 +104,7 @@ export function tierSections(source) {
         examples: Schema.array(Schema.array(Schema.string()).description('第一行是对方说的，后面是她的几行（每行发成一条 QQ 消息）')).description('**示例对话**'),
         banned: Schema.array(Schema.string()).description('**禁用词**：这一档的卡、作息、世界书正文里不能出现；也是出口检查的词表'),
         pace: Schema.number().min(0.5).max(3).step(0.1)
-            .description('**回复节奏**（ADR 0013）：冷场时多久看到、每条打字多久都乘这个数，越疏越慢；看心情不回的概率也跟着变。空着按 1'),
+            .description('**回复节奏**：冷场时多久看到、每条打字多久都乘这个数，越疏越慢；看心情不回的概率也跟着变。空着按 1'),
         proactive: Schema.object({
             occasions: Schema.array(Schema.union(Object.entries(OCCASION_LABELS).map(([key, label]) => Schema.const(key).description(label)))).role('checkbox')
                 .description('**主动找对方的时机**：一个都不勾 = 不主动。名单外的好友不能勾'),
@@ -113,7 +113,7 @@ export function tierSections(source) {
             news_kinds: Schema.array(Schema.union(Object.entries(NEWS_KIND_LABELS).map(([key, label]) => Schema.const(key).description(label)))).role('checkbox')
                 .description('**「她那边的事」包括哪几类**（要先勾上面的「她那边的事」）：一个都不勾 = 只有买到相机。只给看得到课名和生理期细节的档位'),
             note: note(),
-        }).description('**主动找人**（ADR 0011）：插件配置里的「主动消息」开关打开（或试运行）时才生效'),
+        }).description('**主动找人**：插件配置里的「主动消息」开关打开（或试运行）时才生效'),
         note: note(),
     });
     return [

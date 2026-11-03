@@ -7,7 +7,7 @@ import { ScenesTab } from './scenes.js';
 import { booksSections, moodsSections, personaSections, scheduleSections, tierSections } from './schemas.js';
 import { StatusTab } from './status.js';
 
-const SAVE_NOTE = '保存时先生成全部档位的卡和世界书、做档位隐私检查，不过就不写；过了写进 characters/<角色>/source/，重新生成 st/，插件自动重新读。';
+const SAVE_NOTE = '保存前会检查各档位内容和隐私；检查通过后立即生效。';
 
 // 当前标签放在模块里：控制台重连时页面会重新挂载，回来还停在原来那一页（草稿见 editor.js）
 const tab = ref('status');

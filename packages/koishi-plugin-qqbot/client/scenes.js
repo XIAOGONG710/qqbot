@@ -8,8 +8,8 @@ import { character, loadingView, toolbar, usePart } from './editor.js';
 function sceneSchema(labels) {
     const textarea = () => Schema.string().role('textarea', { rows: [1, 6] });
     return Schema.object({
-        id: Schema.string().description('**id**：档位页「去掉的场景」用它'),
-        kind: Schema.string().description('**标签**：会进提示词（「[场景参考·标签]」），低档位别写这一档不该知道的事'),
+        id: Schema.string().description('**内部名称**：用于保存和引用，不会显示给聊天对象'),
+        kind: Schema.string().description('**场景名称**：会进她的背景资料，低档位别写这一档不该知道的事'),
         tiers: Schema.array(Schema.union(labels.map(label => Schema.const(label).description(tierLabel(label))))).role('checkbox').description('**场景档**'),
         trigger: Schema.array(Schema.string()).description('**触发词**：聊天里出现才注入；不进提示词'),
         examples: Schema.array(textarea()).description('**她可能这样回**'),
@@ -42,7 +42,7 @@ export const ScenesTab = defineComponent({
         function add() {
             const id = newId.value.trim();
             if (!id || state.draft.value.some(s => s.id === id)) return;
-            state.draft.value.push({ id, kind: '新场景', tiers: [label.value || labels.value[0]], trigger: [], examples: [], avoid: [] });
+            state.draft.value.push({ id, kind: id, tiers: [label.value || labels.value[0]], trigger: [], examples: [], avoid: [] });
             selected.value = state.draft.value.length - 1;
             newId.value = '';
         }
@@ -67,7 +67,7 @@ export const ScenesTab = defineComponent({
                     }, () => labels.value.map(l => h(c('el-option'), { value: l, label: tierLabel(l) }))),
                     h(c('el-input'), {
                         modelValue: filter.value, 'onUpdate:modelValue': v => { filter.value = v; },
-                        placeholder: '按 id、标签、触发词、例句筛选', clearable: true,
+                        placeholder: '按场景名称、触发词或例句筛选', clearable: true,
                     }),
                 ]),
                 h(c('el-table'), {
@@ -75,12 +75,11 @@ export const ScenesTab = defineComponent({
                     onRowClick: row => { selected.value = row.index; },
                     rowClassName: ({ row }) => (row.index === selected.value ? 'qqbot-row-selected' : ''),
                 }, () => [
-                    h(c('el-table-column'), { prop: 'id', label: 'id', width: 170 }),
-                    h(c('el-table-column'), { prop: 'kind', label: '标签' }),
+                    h(c('el-table-column'), { prop: 'kind', label: '场景名称', minWidth: 170 }),
                     h(c('el-table-column'), { label: '场景档', width: 150 }, { default: ({ row }) => row.tiers.map(tierLabel).join('、') }),
                 ]),
                 h('div', { class: 'qqbot-list-filters' }, [
-                    h(c('el-input'), { modelValue: newId.value, 'onUpdate:modelValue': v => { newId.value = v; }, placeholder: '新场景的 id（英文、数字、连字符）' }),
+                    h(c('el-input'), { modelValue: newId.value, 'onUpdate:modelValue': v => { newId.value = v; }, placeholder: '新场景名称（建议用中文）' }),
                     h(c('el-button'), { disabled: !newId.value.trim(), onClick: add }, () => '新建'),
                 ]),
                 h('p', { class: 'qqbot-muted' }, `共 ${state.draft.value.length} 个场景，筛出 ${rows.value.length} 个`),
