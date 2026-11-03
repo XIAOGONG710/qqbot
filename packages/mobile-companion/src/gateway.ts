@@ -1,4 +1,6 @@
-import { validateEnvelope, validateHello, type CompanionEnvelope, type CompanionHello } from './protocol.ts';
+import { MAX_CLOCK_SKEW_MS, validateEnvelope, validateHello, type CompanionEnvelope, type CompanionHello } from './protocol.ts';
+
+const MAX_NONCES_PER_SESSION = 4_096;
 
 export interface PairingVerifier {
     /** 消费一次性配对码；成功后该码不得再次使用。 */
@@ -21,7 +23,7 @@ export type GatewayAccept =
 export class CompanionGateway {
     private clientId: string | undefined;
     private sessionId: string | undefined;
-    private readonly nonces = new Set<string>();
+    private readonly nonces = new Map<string, number>();
     private readonly now: () => number;
     private readonly pairing: PairingVerifier;
     private readonly sessionIdleTtlMs: number;
@@ -88,12 +90,12 @@ export class CompanionGateway {
                 if (this.clientId && this.clientId !== hello.clientId) throw new Error('会话已经绑定另一台设备');
                 this.expireIdleSession(now);
                 if (this.sessionId && this.sessionId !== sessionId) throw new Error('会话已经绑定另一条连接');
-                if (this.nonces.has(envelope.nonce)) throw new Error('nonce 已经使用');
+                this.assertNonceAvailable(envelope.nonce, now);
                 if (!this.pairing.consume(hello.clientId, hello.pairingCode, now)) throw new Error('配对码无效、过期或已使用');
                 this.clientId = hello.clientId;
                 this.sessionId = sessionId;
                 this.lastSeenAt = now;
-                this.nonces.add(envelope.nonce);
+                this.nonces.set(envelope.nonce, now);
                 return { ok: true, clientId: hello.clientId, kind: envelope.kind };
             }
             if (!this.clientId) throw new Error('设备尚未配对');
@@ -102,11 +104,9 @@ export class CompanionGateway {
                 throw new Error('连接会话已过期，请重新配对');
             }
             if (this.sessionId !== sessionId) throw new Error('连接尚未完成配对');
-            if (this.nonces.has(envelope.nonce)) throw new Error('nonce 已经使用');
-            this.nonces.add(envelope.nonce);
+            this.assertNonceAvailable(envelope.nonce, now);
+            this.nonces.set(envelope.nonce, now);
             this.lastSeenAt = now;
-            // 只保留最近一小段 nonce，避免长连接运行数日后内存无限增长。
-            if (this.nonces.size > 256) this.nonces.delete(this.nonces.values().next().value!);
             return { ok: true, clientId: this.clientId, kind: envelope.kind };
         } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -119,6 +119,16 @@ export class CompanionGateway {
             this.lastSeenAt = 0;
             this.nonces.clear();
         }
+    }
+
+    private assertNonceAvailable(nonce: string, now: number): void {
+        // nonce 必须覆盖完整的协议时钟偏差窗口；按条数淘汰会让高频设备在窗口内重新接受旧请求。
+        for (const [seenNonce, acceptedAt] of this.nonces) {
+            if (now - acceptedAt > MAX_CLOCK_SKEW_MS) this.nonces.delete(seenNonce);
+        }
+        if (this.nonces.has(nonce)) throw new Error('nonce 已经使用');
+        // 攻击流量也不能让防重放表无限增长。满载时失败关闭，等待旧记录自然过期或重新配对。
+        if (this.nonces.size >= MAX_NONCES_PER_SESSION) throw new Error('nonce 防重放窗口已满，请稍后重试或重新配对');
     }
 }
 

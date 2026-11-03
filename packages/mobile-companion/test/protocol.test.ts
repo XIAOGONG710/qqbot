@@ -90,6 +90,33 @@ describe('手机伴侣协议', () => {
         if (!unpaired.ok) assert.match(unpaired.error, /尚未配对/);
     });
 
+    test('高频请求不会在时钟偏差窗口内淘汰旧 nonce', () => {
+        const now = 20_000;
+        const gateway = new CompanionGateway({ consume: () => true }, () => now);
+        assert.equal(gateway.accept(helloEnvelope({ clientId: 'android-window', pairingCode: 'ABCD-1234', capabilities: ['text'] }, 'req-window-hello', 'nonce-window-hello', new Date(now).toISOString())).ok, true);
+        for (let index = 0; index < 300; index += 1) {
+            const suffix = index.toString().padStart(4, '0');
+            assert.equal(gateway.accept({
+                v: 1,
+                requestId: `req-window-${suffix}`,
+                kind: 'message.send',
+                sentAt: new Date(now).toISOString(),
+                nonce: `nonce-window-${suffix}`,
+                body: { kind: 'text', text: suffix },
+            }).ok, true);
+        }
+        const replay = gateway.accept({
+            v: 1,
+            requestId: 'req-window-replay',
+            kind: 'message.send',
+            sentAt: new Date(now).toISOString(),
+            nonce: 'nonce-window-0000',
+            body: { kind: 'text', text: '重复' },
+        });
+        assert.equal(replay.ok, false);
+        if (!replay.ok) assert.match(replay.error, /nonce/);
+    });
+
     test('默认配对存储支持过期、替换和消费即失效', () => {
         const store = new MemoryPairingStore(10_000);
         const first = store.issue('android-123456', 1_000);
