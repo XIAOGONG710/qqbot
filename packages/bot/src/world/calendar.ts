@@ -4,6 +4,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { cacheAgeMs } from './cache-freshness.ts';
 
 export type PublicCalendarKind = 'holiday' | 'workday';
 export interface PublicCalendarDay { date: string; name: string; kind: PublicCalendarKind; real: true }
@@ -106,8 +107,8 @@ export function calendarFetcher(options: CalendarFetcherOptions): CalendarFetche
             const cached = load();
             if (!cached) return undefined;
             const year = date.slice(0, 4);
-            const fetchedAt = Date.parse(cached.yearFetchedAt[year] ?? cached.fetchedAt);
-            if (!Number.isFinite(fetchedAt) || now() - fetchedAt > cacheMaxAgeMs) return undefined;
+            const age = cacheAgeMs(cached.yearFetchedAt[year] ?? cached.fetchedAt, now());
+            if (age === undefined || age > cacheMaxAgeMs) return undefined;
             return cached.years[year]?.[date];
         },
         refresh: () => {
@@ -146,13 +147,13 @@ export function calendarFetcher(options: CalendarFetcherOptions): CalendarFetche
         },
         status: () => {
             const cached = load();
-            const fetchedAt = cached?.fetchedAt;
             const years = Object.keys(cached?.years ?? {}).map(Number).filter(Number.isInteger).sort((a, b) => a - b);
-            const ages = years.map(year => now() - Date.parse(cached?.yearFetchedAt[String(year)] ?? '')).filter(Number.isFinite);
+            const ages = years.map(year => cacheAgeMs(cached?.yearFetchedAt[String(year)] ?? '', now())).filter((age): age is number => age !== undefined);
             const staleYears = years.filter(year => {
-                const fetched = Date.parse(cached?.yearFetchedAt[String(year)] ?? '');
-                return !Number.isFinite(fetched) || now() - fetched > cacheMaxAgeMs;
+                const age = cacheAgeMs(cached?.yearFetchedAt[String(year)] ?? '', now());
+                return age === undefined || age > cacheMaxAgeMs;
             });
+            const fetchedAt = cached?.fetchedAt && cacheAgeMs(cached.fetchedAt, now()) !== undefined ? cached.fetchedAt : undefined;
             return {
                 provider: 'holiday.ailcc.com', cacheMaxAgeMs, years,
                 ...(staleYears.length ? { staleYears } : {}),

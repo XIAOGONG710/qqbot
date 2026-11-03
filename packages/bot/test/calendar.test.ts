@@ -38,6 +38,11 @@ describe('现实法定日历（ADR 0231）', () => {
             await fetcher.refresh();
             assert.equal(fetcher.day('2026-01-01')?.kind, 'holiday');
             assert.equal(fetcher.day('2026-01-04')?.kind, 'workday');
+            const fetchedAt = now;
+            now -= 120_000;
+            assert.equal(fetcher.day('2026-01-04'), undefined, '缓存时间明显在未来时失败关闭');
+            assert.deepEqual(fetcher.status().staleYears, [2026]);
+            now = fetchedAt;
             fail = true;
             await fetcher.refresh();
             assert.equal(fetcher.day('2026-01-04')?.kind, 'workday');

@@ -4,6 +4,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { cacheAgeMs } from './cache-freshness.ts';
 import { PLACES, type Place } from './weather.ts';
 
 export interface HourAirQuality { pm25: number; pm10: number; aqi: number; o?: 1 }
@@ -128,8 +129,8 @@ export function airQualityFetcher(options: AirQualityFetcherOptions): AirQuality
         day: (place, date, until) => {
             const store = load(place);
             if (!store || date < store.since) return undefined;
-            const fetchedAt = Date.parse(store.fetchedAt);
-            if (!Number.isFinite(fetchedAt) || now() - fetchedAt > cacheMaxAgeMs) return undefined;
+            const age = cacheAgeMs(store.fetchedAt, now());
+            if (age === undefined || age > cacheMaxAgeMs) return undefined;
             return dayFrom(store.hours, date, until);
         },
         refresh: () => {
@@ -164,9 +165,11 @@ export function airQualityFetcher(options: AirQualityFetcherOptions): AirQuality
                 const item: AirQualityPlaceStatus = { hours: Object.keys(store?.hours ?? {}).length };
                 if (store?.fetchedAt) {
                     item.fetchedAt = store.fetchedAt;
-                    const parsed = Date.parse(store.fetchedAt);
-                    if (Number.isFinite(parsed)) { item.ageMs = Math.max(0, now() - parsed); item.stale = item.ageMs > cacheMaxAgeMs; }
-                    fetchedAt = !fetchedAt || store.fetchedAt > fetchedAt ? store.fetchedAt : fetchedAt;
+                    const age = cacheAgeMs(store.fetchedAt, now());
+                    if (age !== undefined) {
+                        item.ageMs = age; item.stale = age > cacheMaxAgeMs;
+                        fetchedAt = !fetchedAt || store.fetchedAt > fetchedAt ? store.fetchedAt : fetchedAt;
+                    } else item.stale = true;
                 }
                 if (store?.since) item.since = store.since;
                 if (errors.has(place)) item.error = errors.get(place);

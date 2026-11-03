@@ -42,6 +42,11 @@ describe('真实日照（ADR 0228）', () => {
         try {
             await fetcher.refresh();
             assert.deepEqual(fetcher.day('jinan', '2026-11-03', at('2026-11-03T12:00')), { sunrise: '06:30', sunset: '17:20', phase: '白天', real: true });
+            const fetchedAt = now;
+            now -= 120_000;
+            assert.equal(fetcher.day('jinan', '2026-11-03', at('2026-11-03T12:00')), undefined, '缓存时间明显在未来时失败关闭');
+            assert.equal(fetcher.status().places.jinan.stale, true);
+            now = fetchedAt;
             fail = true;
             now += 30_000;
             await fetcher.refresh();

@@ -4,6 +4,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { cacheAgeMs } from './cache-freshness.ts';
 import { PLACES, type Place } from './weather.ts';
 
 export type DaylightPhase = '夜间' | '清晨' | '白天' | '傍晚';
@@ -103,8 +104,8 @@ export function daylightFetcher(options: DaylightFetcherOptions): DaylightFetche
         day: (place, date, at) => {
             const store = load(place);
             if (!store) return undefined;
-            const fetchedAt = Date.parse(store.fetchedAt);
-            if (!Number.isFinite(fetchedAt) || now() - fetchedAt > cacheMaxAgeMs) return undefined;
+            const age = cacheAgeMs(store.fetchedAt, now());
+            if (age === undefined || age > cacheMaxAgeMs) return undefined;
             const times = store.days[date];
             return times ? { sunrise: clock(times.sunrise), sunset: clock(times.sunset), phase: daylightPhase(times, at), real: true } : undefined;
         },
@@ -139,9 +140,11 @@ export function daylightFetcher(options: DaylightFetcherOptions): DaylightFetche
                 const item: DaylightPlaceStatus = { days: dates.length, ...(dates.length ? { from: dates[0], to: dates.at(-1) } : {}) };
                 if (store?.fetchedAt) {
                     item.fetchedAt = store.fetchedAt;
-                    const parsed = Date.parse(store.fetchedAt);
-                    if (Number.isFinite(parsed)) { item.ageMs = Math.max(0, now() - parsed); item.stale = item.ageMs > cacheMaxAgeMs; }
-                    fetchedAt = !fetchedAt || store.fetchedAt > fetchedAt ? store.fetchedAt : fetchedAt;
+                    const age = cacheAgeMs(store.fetchedAt, now());
+                    if (age !== undefined) {
+                        item.ageMs = age; item.stale = age > cacheMaxAgeMs;
+                        fetchedAt = !fetchedAt || store.fetchedAt > fetchedAt ? store.fetchedAt : fetchedAt;
+                    } else item.stale = true;
                 }
                 if (errors.has(place)) item.error = errors.get(place);
                 if (errorAt.has(place)) item.errorAt = errorAt.get(place);

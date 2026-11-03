@@ -42,6 +42,11 @@ describe('真实空气质量（ADR 0227）', () => {
             assert.equal(fetcher.day('jinan', '2026-11-04', at('2026-11-04T02:30:00')), undefined, '未来日期没有已观测小时时不写空气质量');
             const first = fetcher.day('jinan', '2026-11-03', at('2026-11-03T03:30:00'))!;
             assert.deepEqual(first, { pm25: 15, pm10: 28, aqi: 38, category: '优', observedAt: '2026-11-03T03:00', real: true });
+            const fetchedAt = now;
+            now -= 120_000;
+            assert.equal(fetcher.day('jinan', '2026-11-03', at('2026-11-03T03:30:00')), undefined, '缓存时间明显在未来时失败关闭');
+            assert.equal(fetcher.status().places.jinan.stale, true);
+            now = fetchedAt;
             now = at('2026-11-03T14:30:00').getTime();
             await fetcher.refresh();
             fail = true;

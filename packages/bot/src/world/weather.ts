@@ -7,6 +7,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { cacheAgeMs } from './cache-freshness.ts';
 
 export type Place = 'jinan' | 'qingdao';
 
@@ -320,12 +321,14 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
                 const item: WeatherPlaceStatus = { hours: Object.keys(store?.hours ?? {}).length };
                 if (store?.fetchedAt) {
                     item.fetchedAt = store.fetchedAt;
-                    const parsed = Date.parse(store.fetchedAt);
-                    if (Number.isFinite(parsed)) {
-                        item.ageMs = Math.max(0, now() - parsed);
+                    const age = cacheAgeMs(store.fetchedAt, now());
+                    if (age !== undefined) {
+                        item.ageMs = age;
                         item.stale = item.ageMs > cacheMaxAgeMs;
+                        fetchedAt = !fetchedAt || store.fetchedAt > fetchedAt ? store.fetchedAt : fetchedAt;
+                    } else {
+                        item.stale = true;
                     }
-                    fetchedAt = !fetchedAt || store.fetchedAt > fetchedAt ? store.fetchedAt : fetchedAt;
                 }
                 if (store?.since) item.since = store.since;
                 const error = errors.get(place);
