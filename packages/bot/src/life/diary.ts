@@ -17,6 +17,7 @@ import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from '.
 import { diaryWorld, worldAt, worldErrands, type World, type WorldNow } from '.././world/world.ts';
 import { bodyAt, diaryBody } from './body.ts';
 import { dayPlan, describeSlot } from './day-plan.ts';
+import { calendarDate } from '../memory/state-schema.ts';
 
 /** bot 停过时往回补几天 */
 export const DIARY_BACKFILL_DAYS = 3;
@@ -179,11 +180,46 @@ export interface DiaryWriterOptions {
 }
 
 /** diary.json：写过的日记（日期 → 字数）、日记原文、写过的周记和阶段总结（id → 字数，0 是没有日记、不写） */
-interface DiaryState {
+export interface DiaryState {
     written: Record<string, number>;
     texts: Record<string, string>;
     weeks: Record<string, number>;
     phases: Record<string, number>;
+}
+
+const stateRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+const countMap = (value: unknown, key: (name: string) => boolean): value is Record<string, number> => stateRecord(value)
+    && Object.entries(value).every(([name, count]) => key(name) && typeof count === 'number' && Number.isSafeInteger(count) && count >= 0);
+
+function migrateDiaryState(value: unknown): unknown {
+    if (!stateRecord(value)) return value;
+    return {
+        ...value,
+        ...(value.written === undefined ? { written: {} } : {}),
+        ...(value.texts === undefined ? { texts: {} } : {}),
+        ...(value.weeks === undefined ? { weeks: {} } : {}),
+        ...(value.phases === undefined ? { phases: {} } : {}),
+    };
+}
+
+export function isDiaryState(value: unknown): value is DiaryState {
+    if (!stateRecord(value) || !countMap(value.written, calendarDate) || !countMap(value.weeks, calendarDate)
+        || !countMap(value.phases, id => {
+            const split = id.lastIndexOf(':');
+            return split > 0 && split <= 80 && calendarDate(id.slice(split + 1));
+        }) || !stateRecord(value.texts)) return false;
+    const written = value.written;
+    return Object.entries(value.texts).every(([date, text]) => calendarDate(date)
+        && Object.hasOwn(written, date) && typeof text === 'string' && text.length <= 100_000);
+}
+
+export function readDiaryState(path: string, log?: (message: string) => void): DiaryState | undefined {
+    return readJsonOr<DiaryState | undefined>(path, undefined, log, {
+        migrate: migrateDiaryState,
+        validate: (value): value is DiaryState | undefined => isDiaryState(value),
+        invalid: 'throw',
+        label: '日记进度',
+    });
 }
 
 /**
@@ -198,8 +234,7 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         writeJsonAtomic(path, state);
     };
     const catchUp = async (now: Date) => {
-        const stored = readJsonOr<Partial<DiaryState>>(path, {}, options.log);
-        const state: DiaryState = { written: stored.written ?? {}, texts: stored.texts ?? {}, weeks: stored.weeks ?? {}, phases: stored.phases ?? {} };
+        const state = readDiaryState(path, options.log) ?? { written: {}, texts: {}, weeks: {}, phases: {} };
         const { written } = state;
         const today = herDay(options.sources.schedule, now);
         for (let back = DIARY_BACKFILL_DAYS; back >= 1; back--) {

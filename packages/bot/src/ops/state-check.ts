@@ -21,6 +21,7 @@ import { readCalendarStore } from '../world/calendar.ts';
 import { readTransportStore } from '../world/transport.ts';
 import { readWorldActions } from '../world/world.ts';
 import { readCommonMemoryState, readContactMemoryState } from '../memory/long-term.ts';
+import { readDiaryState } from '../life/diary.ts';
 
 export interface StateCheck { name: string; file: string; ok: boolean; detail: string }
 
@@ -80,6 +81,7 @@ export function checkStates(dataDir: string, now: Date = new Date()): StateCheck
                     if (dir === 'transport' && name === 'transport.json') { readTransportStore(path, undefined, 'throw'); return '交通缓存 schema 通过'; }
                     if (dir === 'memory' && name === 'common.json') { readCommonMemoryState(path); return '公共记忆进度 schema 通过'; }
                     if (dir === 'memory' && /^[1-9]\d*-[a-z_]+\.json$/.test(name)) { readContactMemoryState(path); return '联系人记忆进度 schema 通过'; }
+                    if (dir === 'memory' && name === 'diary.json') { readDiaryState(path); return '日记进度 schema 通过'; }
                     JSON.parse(readFileSync(path, 'utf8'));
                     return '仅 JSON 语法通过（未做运行时 schema 校验）';
                 });

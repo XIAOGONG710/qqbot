@@ -33,6 +33,7 @@ describe('状态文件兼容检查（ADR 0070 第 13 项）', () => {
         writeFileSync(join(dir, 'calendar', 'calendar.json'), JSON.stringify({ fetchedAt: '2026-10-31T12:36:45.984Z', yearFetchedAt: { 2026: '2026-10-31T12:36:45.984Z' }, years: { 2026: { '2026-02-30': { date: '2026-02-30', name: '不存在的假期', kind: 'holiday', real: true } } } }));
         writeFileSync(join(dir, 'transport', 'transport.json'), JSON.stringify({ fetchedAt: '2026-10-31T12:36:45.984Z', facts: { jinan: { location: '济南', status: 'normal', observedAt: 'not-a-time', source: 'test', real: true } } }));
         writeFileSync(join(dir, 'memory', '10001-boyfriend.json'), JSON.stringify({ bankId: 'memory-bank', retained: 'not-an-object' }));
+        writeFileSync(join(dir, 'memory', 'diary.json'), JSON.stringify({ written: { '2026-02-30': 10 }, texts: {}, weeks: {}, phases: {} }));
         const checks = checkStates(dir);
         assert.equal(checks.find(c => c.name === 'proactive/10001-boyfriend.json')!.ok, false);
         assert.equal(checks.find(c => c.name === 'weather/jinan.json')!.ok, false);
@@ -41,6 +42,7 @@ describe('状态文件兼容检查（ADR 0070 第 13 项）', () => {
         assert.equal(checks.find(c => c.name === 'calendar/calendar.json')!.ok, false);
         assert.equal(checks.find(c => c.name === 'transport/transport.json')!.ok, false);
         assert.equal(checks.find(c => c.name === 'memory/10001-boyfriend.json')!.ok, false);
+        assert.equal(checks.find(c => c.name === 'memory/diary.json')!.ok, false);
         assert.match(checks.find(c => c.name === 'weather/test.json')!.detail, /仅 JSON 语法/);
         assert.equal(readFileSync(join(dir, 'proactive', '10001-boyfriend.json'), 'utf8'), bad, '原目录不动');
     });

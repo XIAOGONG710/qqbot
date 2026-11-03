@@ -14,6 +14,18 @@ const sources: DiarySources = { charName: card.name, schedule: card.schedule!, m
 const at = (iso: string, role: 'user' | 'assistant', content: string): StoredMessage => ({ time: new Date(iso).toISOString(), role, content });
 
 describe('她的日记（ADR 0017）', () => {
+    test('坏的日记进度失败关闭，不把已写记录当空白后重复生成', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-invalid-'));
+        writeFileSync(join(dir, 'diary.json'), JSON.stringify({ written: 'broken', texts: {}, weeks: {}, phases: {} }));
+        const writer = diaryWriter({
+            sources, dir, contacts: [], memory: {} as LongTermMemory, history: { load: () => [] }, log: () => {},
+            generate: async () => assert.fail('坏进度不能继续生成日记'),
+        });
+        try {
+            await assert.rejects(writer.catchUp(new Date('2026-10-08T12:00:00+08:00')), /日记进度.*schema.*拒绝启动/);
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
     test('承诺计划来源失败不当成空计划继续写，不产生未处理拒绝', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-diary-plans-invalid-')); const logs: string[] = [];
         const writer = diaryWriter({ sources, dir, contacts: [], memory: {} as LongTermMemory,
