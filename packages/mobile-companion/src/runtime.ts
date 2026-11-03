@@ -189,9 +189,10 @@ export class CompanionRuntime {
                 const pending = this.pendingDownlinkResults.get(clientId);
                 const issuedAt = pending?.get(result.requestId);
                 if (issuedAt === undefined || this.now() - issuedAt >= DOWNLINK_ACTION_TTL_MS) throw new Error('动作回执没有对应的宿主下发请求');
+                await this.handlers.onActionResult(result, clientId);
+                // 宿主通常会在这里写审计记录。只有写入成功后才消费回执；临时失败时保留槽位，允许手机重试。
                 pending!.delete(result.requestId);
                 if (pending!.size === 0) this.pendingDownlinkResults.delete(clientId);
-                await this.handlers.onActionResult(result, clientId);
                 return { accepted: true };
             }
             return { accepted: true };

@@ -506,6 +506,33 @@ describe('手机伴侣协议', () => {
         assert.deepEqual(runtime.takeDownlinks('android-downlink'), []);
     });
 
+    test('宿主审计临时失败时保留动作回执，重试成功后才消费', async () => {
+        const now = 45_500;
+        const pairing = new MemoryPairingStore(60_000);
+        const ticket = pairing.issue('android-receipt-retry', now);
+        let attempts = 0;
+        const runtime = new CompanionRuntime(new CompanionGateway(pairing, () => now), {
+            onMessage: async message => message,
+            onAction: async (_request, _clientId, requestId) => ({ requestId, ok: false, decision: 'deny' }),
+            onActionResult: async () => {
+                attempts += 1;
+                if (attempts === 1) throw new Error('audit temporarily unavailable');
+            },
+        }, () => now);
+        await runtime.handle(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text'] }, 'req-retry-hello', 'nonce-retry-hello', new Date(now).toISOString()));
+        runtime.requestPhoneAction(ticket.clientId, { action: 'notify', params: { text: '完成了' }, decision: 'auto' }, 'push-receipt-retry');
+        runtime.takeDownlinks(ticket.clientId);
+        const body = { requestId: 'push-receipt-retry', ok: true, decision: 'auto' as const };
+        const first = await runtime.handle({ v: 1, requestId: 'req-receipt-first', kind: 'action.result', sentAt: new Date(now).toISOString(), nonce: 'nonce-receipt-first', body });
+        if (first.accepted) assert.equal(first.response?.kind, 'error');
+        const retry = await runtime.handle({ v: 1, requestId: 'req-receipt-second', kind: 'action.result', sentAt: new Date(now).toISOString(), nonce: 'nonce-receipt-second', body });
+        assert.deepEqual(retry, { accepted: true });
+        assert.equal(attempts, 2);
+        const duplicate = await runtime.handle({ v: 1, requestId: 'req-receipt-third', kind: 'action.result', sentAt: new Date(now).toISOString(), nonce: 'nonce-receipt-third', body });
+        if (duplicate.accepted) assert.match(String((duplicate.response?.body as { message?: string } | undefined)?.message), /没有对应/);
+        assert.equal(attempts, 2, '成功消费后不重复写审计');
+    });
+
     test('宿主下行动作拒绝重复 requestId，避免回执槽位歧义', () => {
         let now = 46_000;
         const pairing = new MemoryPairingStore(60_000);
