@@ -85,7 +85,6 @@ function text(value: string, max: number, label: string): string {
     return result;
 }
 function transitionAllowed(from: ExternalDraftStatus, to: ExternalDraftStatus): boolean {
-    if (from === to) return true;
     return from === 'pending' && (to === 'approved' || to === 'rejected')
         || from === 'approved' && (to === 'published' || to === 'failed')
         || from === 'failed' && to === 'approved';
@@ -126,6 +125,9 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
             if (!isStatus(status)) throw new Error('不支持的外部平台草稿状态');
             const draft = file.drafts.find(item => item.id === id);
             if (!draft) return undefined;
+            // 适配器可能在网络结果不确定时重试状态回写；同状态必须是真正的幂等操作，
+            // 不能反复改 updatedAt 或追加审计记录。
+            if (draft.status === status) return draft;
             if (!transitionAllowed(draft.status, status)) throw new Error(`外部平台草稿不能从 ${draft.status} 变为 ${status}`);
             const cleanNote = note?.trim();
             if (cleanNote && cleanNote.length > 240) throw new Error('外部平台草稿备注不能超过 240 字');

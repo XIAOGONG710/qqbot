@@ -44,4 +44,16 @@ describe('外部平台草稿队列（ADR 0224）', () => {
         assert.equal(store.list({ limit: Number.NaN }).length, 2);
         assert.equal(store.list({ limit: Number.POSITIVE_INFINITY }).length, 2);
     });
+
+    test('适配器重复回写同一状态时保持幂等，不改时间也不追加审计', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
+        const store = createExternalDraftStore({ dir: root });
+        const draft = store.create({ platform: 'xiaohongshu', title: '标题', body: '正文', at: new Date('2026-11-03T00:00:00.000Z') });
+        const approved = store.updateStatus(draft.id, 'approved', '人工确认', new Date('2026-11-03T00:01:00.000Z'))!;
+        const repeated = store.updateStatus(draft.id, 'approved', '适配器重试', new Date('2026-11-03T00:02:00.000Z'))!;
+        assert.deepEqual(repeated, approved);
+        assert.equal(repeated.audit.length, 2);
+        assert.equal(repeated.updatedAt, '2026-11-03T00:01:00.000Z');
+        assert.deepEqual(createExternalDraftStore({ dir: root }).list()[0], approved);
+    });
 });
