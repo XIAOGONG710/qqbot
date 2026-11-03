@@ -127,6 +127,7 @@ import { createDshLink, dshOptionsFromLlm, type DshConversationTurn, type DshSta
 import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
 import { writeDshState } from '.././dsh-state-export.ts';
 import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
+import { MAX_QUEUED_PER_CLIENT } from '@qqbot/mobile-companion/runtime';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { journalOn, selfThread, selfThreadLine } from '.././language/self-thread.ts';
 import { announceFallback, announcePrompt, awayNow, shouldAnnounce } from '.././life/leave-note.ts';
@@ -3281,7 +3282,7 @@ ${body}
                 features: featureStatuses(config),
                 ...(photos || jokes || config.weeklyReport ? { extras: statusExtras() } : {}),
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
-                ...(mobileCompanion ? { mobileCompanion: { enabled: true, ...mobileCompanion.runtime.status() } } : { mobileCompanion: { enabled: false, pairedClientId: undefined, connected: false, queued: 0, maxQueuedPerClient: 0 } }),
+                ...(mobileCompanion ? { mobileCompanion: { enabled: true, ...mobileCompanion.runtime.status() } } : { mobileCompanion: { enabled: false, connected: false, queued: 0, maxQueuedPerClient: MAX_QUEUED_PER_CLIENT } }),
                 ...(weather ? { weather: weather.status() } : {}),
                 externalPlatforms: config.externalPlatforms ?? DEFAULTS.externalPlatforms,
                 externalDrafts: externalDraftStore.summary(),

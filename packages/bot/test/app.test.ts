@@ -1109,7 +1109,7 @@ describe('编排（app.ts）', () => {
         assert.ok(!off.logs.some(l => l.startsWith('没人聊天时她一件件过日子')));
         const cfg = config({ herDays: true, schedule: true, autonomousLife: true, contacts: bf });
         const on = setup(cfg);
-        assert.ok(on.logs.includes('没人聊天时她一件件过日子：开（ADR 0040/0045，原始需要值只改行动账；真人式底色按联系人自然语言接入回复）'));
+        assert.ok(on.logs.includes('没人聊天时她一件件过日子：开（ADR 0040/0045，影子模式：需要值只改行动账，不进提示词）'));
         assert.ok(existsSync(join(cfg.dataDir, 'world', 'needs-anchor.json')));
         // 启动时写当天摘要读过一次世界：排到了现在（这一刻正在上课一半、赶路时跳到下一个边界，可能还没有一件）
         const queue = join(cfg.dataDir, 'world', 'action-queue.json');

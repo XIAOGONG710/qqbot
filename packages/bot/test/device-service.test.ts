@@ -103,7 +103,10 @@ describe('设备控制服务：电脑、手机、他的命令（ADR 0148）', ()
         await until(() => agent.seen.length === 1);
         assert.deepEqual(agent.seen, [{ action: 'notify', params: { text: '该喝水了' } }]);
         agent.stop();
-        const audit = readFileSync(join(t.dataDir, 'devices', 'audit.jsonl'), 'utf8');
+        // 审计是异步追加的：等它落盘再读（以前直接读，整包并发跑时会抢在写入之前，偶发 ENOENT）
+        const auditPath = join(t.dataDir, 'devices', 'audit.jsonl');
+        await until(() => existsSync(auditPath) && readFileSync(auditPath, 'utf8').includes('"action":"notify"'));
+        const audit = readFileSync(auditPath, 'utf8');
         assert.match(audit, /"action":"notify".*"decision":"executed"/);
         assert.equal(audit.includes('喝水'), false);
     });
