@@ -58,6 +58,39 @@ const ADVISOR_SYSTEM = [
     '只给当前问题需要的短回答；不要改变世界账或关系账。',
 ].join(' ');
 
+const STATE_KEY_RE = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+const MAX_STATE_NUMBERS = 32;
+
+function sanitizeNumberRecord(value: unknown): Record<string, number> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const output: Record<string, number> = {};
+    for (const [key, number] of Object.entries(value)) {
+        if (!STATE_KEY_RE.test(key) || typeof number !== 'number' || !Number.isFinite(number)) continue;
+        output[key] = Math.round(number);
+        if (Object.keys(output).length >= MAX_STATE_NUMBERS) break;
+    }
+    return Object.keys(output).length ? output : undefined;
+}
+
+/** DSH 的在线请求和落盘快照共用同一份最小状态白名单。 */
+export function sanitizeDshState(state: DshState): DshState {
+    const parsedAt = typeof state?.at === 'string' ? Date.parse(state.at) : Number.NaN;
+    const needs = sanitizeNumberRecord(state?.needs);
+    const values = sanitizeNumberRecord(state?.values);
+    const relationship = sanitizeNumberRecord(state?.relationship);
+    const recentEvents = Array.isArray(state?.recentEvents)
+        ? state.recentEvents.filter(event => typeof event === 'string' && STATE_KEY_RE.test(event)).slice(-8)
+        : [];
+    return {
+        at: Number.isFinite(parsedAt) ? new Date(parsedAt).toISOString() : '',
+        ...(typeof state?.tier === 'string' && STATE_KEY_RE.test(state.tier) ? { tier: state.tier } : {}),
+        ...(needs ? { needs } : {}),
+        ...(values ? { values: values as DshState['values'] } : {}),
+        ...(relationship ? { relationship: relationship as DshState['relationship'] } : {}),
+        ...(recentEvents.length ? { recentEvents } : {}),
+    };
+}
+
 /** 从外部输入中移除常见的身份和凭据字段；调用者仍应优先传入已脱敏内容。 */
 export function sanitizeDshQuestion(question: string): string {
     return question
@@ -77,12 +110,13 @@ export function sanitizeDshError(error: unknown): string {
 
 function stateText(state: DshState | undefined): string {
     if (!state) return '状态：未提供（只做抽象建议，不推断她的现实情况）。';
-    const lines = [`时间：${state.at}`];
-    if (state.tier) lines.push(`关系档位：${state.tier}`);
-    if (state.needs) lines.push(`需要值：${Object.entries(state.needs).map(([key, value]) => `${key}=${Math.round(value)}`).join('，')}`);
-    if (state.values) lines.push(`真人式状态：${Object.entries(state.values).map(([key, value]) => `${key}=${Math.round(value)}`).join('，')}`);
-    if (state.relationship) lines.push(`关系状态：${Object.entries(state.relationship).map(([key, value]) => `${key}=${Math.round(value)}`).join('，')}`);
-    if (state.recentEvents?.length) lines.push(`最近事件（仅类型摘要）：${state.recentEvents.slice(-8).join('、')}`);
+    const safe = sanitizeDshState(state);
+    const lines = [`时间：${safe.at || '未提供'}`];
+    if (safe.tier) lines.push(`关系档位：${safe.tier}`);
+    if (safe.needs) lines.push(`需要值：${Object.entries(safe.needs).map(([key, value]) => `${key}=${value}`).join('，')}`);
+    if (safe.values) lines.push(`真人式状态：${Object.entries(safe.values).map(([key, value]) => `${key}=${value}`).join('，')}`);
+    if (safe.relationship) lines.push(`关系状态：${Object.entries(safe.relationship).map(([key, value]) => `${key}=${value}`).join('，')}`);
+    if (safe.recentEvents?.length) lines.push(`最近事件（仅类型摘要）：${safe.recentEvents.join('、')}`);
     return lines.join('\n');
 }
 

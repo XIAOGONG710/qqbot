@@ -1,6 +1,6 @@
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { DshState } from './dsh-link.ts';
+import { sanitizeDshState, type DshState } from './dsh-link.ts';
 
 /** QQ → DSH 的只读状态快照版本；过期后 DSH 必须降级，不得拿旧值冒充当前状态。 */
 export const DSH_STATE_EXPORT_VERSION = 1;
@@ -14,17 +14,18 @@ export interface DshStateExport {
 }
 
 export function renderDshState(state: DshState, at = Date.now()): string {
+    const safe = sanitizeDshState(state);
     const output: DshStateExport = {
         kind: 'qq-dsh-state',
         version: DSH_STATE_EXPORT_VERSION,
         generatedAt: new Date(at).toISOString(),
         state: {
-            at: state.at,
-            ...(state.tier ? { tier: state.tier } : {}),
-            ...(state.needs ? { needs: { ...state.needs } } : {}),
-            ...(state.values ? { values: { ...state.values } } : {}),
-            ...(state.relationship ? { relationship: { ...state.relationship } } : {}),
-            ...(state.recentEvents?.length ? { recentEvents: [...state.recentEvents].slice(-8) } : {}),
+            at: safe.at,
+            ...(safe.tier ? { tier: safe.tier } : {}),
+            ...(safe.needs ? { needs: { ...safe.needs } } : {}),
+            ...(safe.values ? { values: { ...safe.values } } : {}),
+            ...(safe.relationship ? { relationship: { ...safe.relationship } } : {}),
+            ...(safe.recentEvents?.length ? { recentEvents: [...safe.recentEvents] } : {}),
         },
     };
     return `${JSON.stringify(output, null, 2)}\n`;
