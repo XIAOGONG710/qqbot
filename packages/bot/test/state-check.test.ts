@@ -64,12 +64,15 @@ describe('状态文件兼容检查（ADR 0070 第 13 项）', () => {
         const dir = fixture();
         const bad = JSON.stringify({ version: 99, items: 'not-a-list' });
         writeFileSync(join(dir, 'world', 'action-queue.json'), bad);
+        writeFileSync(join(dir, 'world', 'actions.json'), JSON.stringify({ actions: [{ id: 'broken' }] }));
         writeFileSync(join(dir, 'tiers.json'), JSON.stringify({ 10001: 'boyfriend' }));
         writeFileSync(join(dir, 'chats', '10001.jsonl'), `${JSON.stringify({ time: '2026-10-13T10:00:00.000Z', role: 'user', content: '虚构的一句' })}\nnot json\n`);
         const checks = checkStates(dir);
         const byName = (name: string) => checks.find(check => check.name === name)!;
         assert.equal(byName('行动队列').ok, false);
         assert.match(byName('行动队列').detail, /拒绝启动/);
+        assert.equal(byName('世界动作投影').ok, false);
+        assert.match(byName('世界动作投影').detail, /拒绝启动/);
         assert.equal(byName('档位记录').ok, true);
         assert.match(byName('聊天记录 10001').detail, /1 条可用，1 行会被跳过/);
         assert.equal(existsSync(join(dir, 'world', 'action-queue.json')), true, '原文件还在原处');

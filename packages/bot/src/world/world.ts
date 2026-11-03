@@ -27,6 +27,7 @@ import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcStat
 import { DEFAULT_ASKS, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
 import type { Plans } from '../life/day-plan.ts';
 import { ASK_HOME_TIME, depositFor, lastPayday, MISC_TIME, nextPayday, ORDER_TIME, PAY_TIME, parcelPrice, priceIn, sideJobOn, spendItems, type Money, type MoneyEntry } from '../life/money.ts';
+import { calendarDate } from '../memory/state-schema.ts';
 
 export interface WorldNeedsView { at(time: Date): NeedsSnapshot | undefined }
 let needsView: WorldNeedsView | undefined;
@@ -1247,7 +1248,7 @@ export function worldLogger(world: World, schedule: Schedule, log: (message: str
 
 // ---------- 说出口的行为回写（W3） ----------
 
-interface WorldActionsFile {
+export interface WorldActionsFile {
     actions: WorldAction[];
 }
 
@@ -1281,8 +1282,7 @@ export function worldState(
     const actionsPath = join(dir, 'actions.json');
     const eventsPath = join(dir, 'events.json');
     const statePath = join(dir, 'state.json');
-    const loaded = readJsonOr<Partial<WorldActionsFile>>(actionsPath, {}, message => log(`她的世界：${message}`));
-    const legacyActions = (Array.isArray(loaded.actions) ? loaded.actions : []).filter(validAction);
+    const legacyActions = readWorldActions(actionsPath, message => log(`她的世界：${message}`));
     let events = readLifeEvents(eventsPath, message => log(`她的生活：${message}`));
     const eventIds = new Set(events.map(event => event.id));
     // 首次升级只在内存合并；下一次真正写事件时再迁移落盘，启动本身不改用户数据。
@@ -1495,16 +1495,34 @@ function compareLifeEvents(a: LifeEvent, b: LifeEvent): number {
 }
 
 function validAction(value: unknown): value is WorldAction {
-    if (!value || typeof value !== 'object') return false;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
     const action = value as Partial<WorldAction>;
-    return typeof action.id === 'string' && typeof action.contact === 'number' && typeof action.episode === 'string'
-        && typeof action.day === 'string' && DATE_ONLY.test(action.day)
-        && typeof action.at === 'string' && LOCAL_MINUTE.test(action.at) && Number.isFinite(new Date(action.at).getTime())
+    return typeof action.id === 'string' && Boolean(action.id.trim()) && action.id.length <= 200
+        // 非聊天来源的成功事件投影为 contact 0；正 QQ 号和这个保留值都合法。
+        && Number.isSafeInteger(action.contact) && action.contact! >= 0
+        && typeof action.episode === 'string' && Boolean(action.episode.trim()) && action.episode.length <= 120
+        && typeof action.day === 'string' && calendarDate(action.day)
+        && typeof action.at === 'string' && LOCAL_MINUTE.test(action.at) && calendarDate(action.at.slice(0, 10)) && Number.isFinite(new Date(action.at).getTime())
         && typeof action.kind === 'string' && ACTION_KINDS.has(action.kind as WorldActionKind)
         && (action.subject === undefined || typeof action.subject === 'string')
         && (action.target === undefined || typeof action.target === 'string')
         && (action.seen === undefined || typeof action.seen === 'boolean')
-        && (action.amount === undefined || (Number.isInteger(action.amount) && action.amount > 0));
+        && (action.amount === undefined || (Number.isInteger(action.amount) && action.amount > 0 && action.amount <= MAX_GIFT))
+        && (action.forCamera === undefined || typeof action.forCamera === 'boolean');
+}
+
+function validWorldActionsFile(value: unknown): value is WorldActionsFile {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const file = value as Partial<WorldActionsFile>;
+    return Array.isArray(file.actions) && file.actions.every(validAction);
+}
+
+export function readWorldActions(path: string, log?: (message: string) => void): WorldAction[] {
+    return readJsonOr<WorldActionsFile | undefined>(path, undefined, log, {
+        validate: (value): value is WorldActionsFile | undefined => validWorldActionsFile(value),
+        invalid: 'throw',
+        label: '世界动作投影',
+    })?.actions ?? [];
 }
 
 function localMinute(date: Date): string {

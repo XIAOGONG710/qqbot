@@ -354,6 +354,19 @@ describe('统一生活事件账本（ADR 0029）', () => {
         }
     });
 
+    test('坏的旧动作投影失败关闭，不把升级前已经发生的生活静默当空白', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'world-actions-schema-'));
+        try {
+            writeFileSync(join(dir, 'actions.json'), JSON.stringify({ actions: [{
+                id: 'legacy-broken', kind: 'feed_cat', day: '2026-02-30', at: '2026-02-30T19:00',
+                contact: 1, episode: 'ep-old',
+            }] }));
+            assert.throws(() => worldState(world, schedule, () => undefined, dir), /世界动作投影.*schema.*拒绝启动/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('旧 actions.json 可直接升级；第一次新增事件时写 events.json，并继续维护旧投影', () => {
         const dir = mkdtempSync(join(tmpdir(), 'world-events-'));
         const legacy: WorldAction = {

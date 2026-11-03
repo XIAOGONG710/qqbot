@@ -19,6 +19,7 @@ import { readAirQualityStore } from '../world/air-quality.ts';
 import { readDaylightStore } from '../world/daylight.ts';
 import { readCalendarStore } from '../world/calendar.ts';
 import { readTransportStore } from '../world/transport.ts';
+import { readWorldActions } from '../world/world.ts';
 
 export interface StateCheck { name: string; file: string; ok: boolean; detail: string }
 
@@ -47,6 +48,7 @@ export function checkStates(dataDir: string, now: Date = new Date()): StateCheck
         run('危机状态', 'crisis.json', log => { createCrisisState(copy, log); });
         run('行动队列', join('world', 'action-queue.json'), log => { actionQueue(join(copy, 'world', 'action-queue.json'), log); });
         run('生活事件账', join('world', 'events.json'), log => `${readLifeEvents(join(copy, 'world', 'events.json'), log).length} 条事件`);
+        run('世界动作投影', join('world', 'actions.json'), log => `${readWorldActions(join(copy, 'world', 'actions.json'), log).length} 条动作`);
         run('需要锚点', join('world', 'needs-anchor.json'), log => { loadNeedsAnchor(join(copy, 'world', 'needs-anchor.json'), now, log); });
 
         const chatDir = join(copy, 'chats');
