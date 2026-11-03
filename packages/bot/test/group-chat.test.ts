@@ -95,6 +95,9 @@ describe('群聊：给她看的样子', () => {
         assert.ok(!isGroupMessage({ ...base, user_id: SELF } as never));
         assert.ok(!isGroupMessage({ ...base, sub_type: 'anonymous' } as never));
         assert.ok(!isGroupMessage({ ...base, message_type: 'private' } as never));
+        assert.ok(!isGroupMessage({ ...base, group_id: Number.NaN } as never));
+        assert.ok(!isGroupMessage({ ...base, sender: { user_id: 999 } } as never));
+        assert.ok(!isGroupMessage({ ...base, message: [{ type: 'text', data: null }] } as never));
     });
 });
 

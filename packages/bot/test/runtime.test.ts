@@ -88,11 +88,25 @@ describe('OneBot 消息', () => {
     });
 
     test('只认直接私聊（sub_type friend），群临时会话和群消息不算', () => {
-        const base = { post_type: 'message', message_type: 'private', sub_type: 'friend', user_id: 1 };
+        const base = {
+            post_type: 'message', message_type: 'private', sub_type: 'friend', self_id: 2, user_id: 1,
+            message_id: 3, time: 1_800_000_000, message: [{ type: 'text', data: { text: '在吗' } }],
+            raw_message: '在吗', sender: { user_id: 1, nickname: '他' },
+        };
         assert.equal(isPrivateFriendMessage(base as never), true);
+        assert.equal(isPrivateFriendMessage({ ...base, message: '纯文本格式也合法' } as never), true);
         assert.equal(isPrivateFriendMessage({ ...base, sub_type: 'group' } as never), false);
         assert.equal(isPrivateFriendMessage({ ...base, message_type: 'group' } as never), false);
         assert.equal(isPrivateFriendMessage({ ...base, post_type: 'message_sent' } as never), false);
+        for (const patch of [
+            { user_id: undefined },
+            { message_id: Number.NaN },
+            { time: '1800000000' },
+            { message: [null] },
+            { message: [{ type: 'text', data: null }] },
+            { raw_message: undefined },
+            { sender: { user_id: 9 } },
+        ]) assert.equal(isPrivateFriendMessage({ ...base, ...patch } as never), false);
     });
 });
 

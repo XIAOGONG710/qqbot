@@ -312,13 +312,38 @@ export function isFriendRecall(event: OneBotEvent): event is RecallEvent {
 /** 群里别人发的消息（不含她自己发的、匿名的）（ADR 0210） */
 export function isGroupMessage(event: OneBotEvent): event is GroupMessageEvent {
     const e = event as Record<string, unknown>;
-    return e.post_type === 'message' && e.message_type === 'group' && typeof e.group_id === 'number'
-        && typeof e.user_id === 'number' && typeof e.message_id === 'number' && typeof e.time === 'number'
+    return e.post_type === 'message' && e.message_type === 'group' && validMessagePayload(e)
+        && typeof e.group_id === 'number' && Number.isSafeInteger(e.group_id) && e.group_id > 0
         && e.user_id !== e.self_id && e.sub_type !== 'anonymous';
 }
 
 export function isPrivateFriendMessage(event: OneBotEvent): event is MessageEvent {
-    return event.post_type === 'message' && event.message_type === 'private' && event.sub_type === 'friend';
+    const e = event as Record<string, unknown>;
+    return e.post_type === 'message' && e.message_type === 'private' && e.sub_type === 'friend'
+        && validMessagePayload(e);
+}
+
+function validMessagePayload(event: Record<string, unknown>): boolean {
+    const sender = event.sender;
+    return typeof event.self_id === 'number' && Number.isSafeInteger(event.self_id) && event.self_id > 0
+        && typeof event.user_id === 'number' && Number.isSafeInteger(event.user_id) && event.user_id > 0
+        && typeof event.message_id === 'number' && Number.isSafeInteger(event.message_id) && event.message_id >= 0
+        && typeof event.time === 'number' && Number.isSafeInteger(event.time) && event.time >= 0
+        && typeof event.raw_message === 'string'
+        && validOneBotMessage(event.message)
+        && Boolean(sender) && typeof sender === 'object' && !Array.isArray(sender)
+        && typeof (sender as Record<string, unknown>).user_id === 'number'
+        && (sender as Record<string, unknown>).user_id === event.user_id;
+}
+
+function validOneBotMessage(message: unknown): boolean {
+    if (typeof message === 'string') return true;
+    return Array.isArray(message) && message.every(segment => {
+        if (!segment || typeof segment !== 'object' || Array.isArray(segment)) return false;
+        const value = segment as Record<string, unknown>;
+        return typeof value.type === 'string' && Boolean(value.data)
+            && typeof value.data === 'object' && !Array.isArray(value.data);
+    });
 }
 
 /** 聊天记录里的一条（引用回复时按消息 id 找到被引用的那一条，ADR 0081） */
