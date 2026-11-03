@@ -4,12 +4,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { consumeDshTimelineInbox, consumeDshWorldInbox } from '../src/memory/dsh-inbox.ts';
+import { fileOps } from '../src/memory/json-file.ts';
 import { Timeline } from '../src/memory/timeline.ts';
 import type { WorldState } from '../src/world/world.ts';
 
 describe('DSH 收件箱', () => {
     const dirs: string[] = [];
-    afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+    const originalRename = fileOps.renameSync;
+    afterEach(() => {
+        fileOps.renameSync = originalRename;
+        for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+    });
 
     test('时间线只收脱敏合格行，并按 id 幂等', () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-dsh-inbox-'));
@@ -88,5 +93,22 @@ describe('DSH 收件箱', () => {
         assert.equal(consumeDshWorldInbox(inbox, state, now, world, () => undefined), 2);
         assert.deepEqual(drafts.map(item => (item as { id: string }).id), ['dsh:dsh-world-retry', 'dsh:dsh-world-after']);
         assert.equal(consumeDshWorldInbox(inbox, state, now, world, () => undefined), 0);
+    });
+
+    test('时间线已追加但游标写盘失败时，重试不会留下重复事件', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-dsh-timeline-state-retry-'));
+        dirs.push(dir);
+        const inbox = join(dir, 'timeline-inbox.jsonl');
+        const state = join(dir, 'timeline-state.json');
+        writeFileSync(inbox, `${JSON.stringify({ id: 'dsh-timeline-retry', at: '2026-11-02T23:55:00.000Z', kind: 'action', summary: '整理了桌面文件' })}\n`);
+        const timeline = new Timeline(join(dir, 'timeline.jsonl'));
+        const now = new Date('2026-11-03T00:00:00.000Z');
+        fileOps.renameSync = (() => { throw new Error('state disk full'); }) as typeof fileOps.renameSync;
+        assert.throws(() => consumeDshTimelineInbox(inbox, state, now, timeline, () => undefined), /state disk full/);
+        assert.equal(timeline.read().length, 1, '事件本身已经落进时间线');
+        fileOps.renameSync = originalRename;
+        assert.equal(consumeDshTimelineInbox(inbox, state, now, timeline, () => undefined), 1);
+        assert.deepEqual(timeline.read().map(item => [item.id, item.summary]), [['dsh:dsh-timeline-retry', '整理了桌面文件']]);
+        assert.equal(consumeDshTimelineInbox(inbox, state, now, timeline, () => undefined), 0);
     });
 });

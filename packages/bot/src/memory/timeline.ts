@@ -13,6 +13,8 @@ export const CHANNELS = ['bilibili', 'qzone', 'device', 'web', 'identity', 'dorm
 export type Channel = (typeof CHANNELS)[number];
 
 export interface TimelineEntry {
+    /** 跨文件收件箱可提供稳定 ID；相同 ID 只记一次。 */
+    id?: string;
     /** ISO 时间 */
     at: string;
     channel: Channel;
@@ -29,6 +31,7 @@ export const SUMMARY_MAX = 80;
 /** 文件超过这么多行就留最近的这么多（文本很小，几千行也只有几百 KB） */
 const KEEP = 1500;
 const TRIM_AT = 2000;
+const TIMELINE_ID_RE = /^[A-Za-z0-9:_-]{8,200}$/;
 
 export const clip = (text: string, max: number): string => {
     const flat = text.replace(/\s+/g, ' ').trim();
@@ -55,9 +58,11 @@ export class Timeline {
     }
 
     record(entry: Omit<TimelineEntry, 'at'> & { at?: Date }): void {
+        if (entry.id !== undefined && !TIMELINE_ID_RE.test(entry.id)) throw new RangeError('时间线事件 ID 不合法');
+        if (entry.id && this.read().some(item => item.id === entry.id)) return;
         const line: TimelineEntry = {
             at: (entry.at ?? this.#now()).toISOString(), channel: entry.channel, kind: entry.kind,
-            summary: clip(entry.summary, SUMMARY_MAX), ...(entry.ok === false ? { ok: false } : {}),
+            summary: clip(entry.summary, SUMMARY_MAX), ...(entry.id ? { id: entry.id } : {}), ...(entry.ok === false ? { ok: false } : {}),
         };
         mkdirSync(dirname(this.#path), { recursive: true });
         appendFileSync(this.#path, `${JSON.stringify(line)}\n`);
@@ -73,7 +78,8 @@ export class Timeline {
             if (!line.trim()) continue;
             try {
                 const value = JSON.parse(line) as TimelineEntry;
-                if (value && typeof value.at === 'string' && typeof value.summary === 'string' && (CHANNELS as readonly string[]).includes(value.channel)) out.push(value);
+                if (value && typeof value.at === 'string' && typeof value.summary === 'string' && (CHANNELS as readonly string[]).includes(value.channel)
+                    && (value.id === undefined || (typeof value.id === 'string' && TIMELINE_ID_RE.test(value.id)))) out.push(value);
             } catch { /* 坏行跳过 */ }
         }
         return out;

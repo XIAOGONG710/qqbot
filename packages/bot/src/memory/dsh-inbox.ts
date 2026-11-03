@@ -170,7 +170,7 @@ function consume<T extends { id: string }>(path: string, statePath: string, pars
 
 export function consumeDshTimelineInbox(path: string, statePath: string, now: Date, timeline: Timeline, log: (message: string) => void): number {
     return consume(path, statePath, (value, at) => parseTimeline(value, at), entry => {
-        timeline.record({ at: new Date(entry.at), channel: 'desktop', kind: entry.kind, summary: entry.summary, ...(entry.ok === false ? { ok: false } : {}) });
+        timeline.record({ id: `dsh:${entry.id}`, at: new Date(entry.at), channel: 'desktop', kind: entry.kind, summary: entry.summary, ...(entry.ok === false ? { ok: false } : {}) });
     }, now.getTime(), log);
 }
 
