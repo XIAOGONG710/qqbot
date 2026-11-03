@@ -49,7 +49,7 @@ function memoryLine(memory) {
     if (!memory.health) parts.push(tag('检查中', 'info'));
     else if (memory.health.ok) parts.push(tag('连得上', 'success'));
     else parts.push(tag('连不上', 'danger'), h('span', { class: 'qqbot-muted' }, ` ${memory.health.error}`));
-    const event = (label, e) => e && h('span', { class: 'qqbot-muted' }, ` · ${label} ${clock(e.at)} ${e.ok ? '成功' : `失败：${e.error}`}`);
+    const event = (label, e) => e && h('span', { class: 'qqbot-muted' }, ` · ${label} ${clock(e.at)} ${e.ok ? `成功${e.source ? `（${e.source}` : ''}${e.items === undefined ? '' : `，${e.items} 条`}${e.source ? '）' : ''}` : `失败：${e.error}`}`);
     parts.push(event('最近一次写入', memory.lastWrite), event('最近一次召回', memory.lastRecall));
     return parts.filter(Boolean);
 }
@@ -58,10 +58,11 @@ function weatherLine(weather) {
     if (!weather) return [tag('未开启', 'info')];
     const places = Object.values(weather.places ?? {});
     const errors = places.filter(place => place.error).length;
+    const stale = places.filter(place => place.stale).length;
     const hours = places.reduce((sum, place) => sum + (place.hours ?? 0), 0);
     return [
-        tag(errors ? `${errors} 个地点失败` : '正常', errors ? 'warning' : 'success'),
-        h('span', { class: 'qqbot-muted' }, ` ${hours} 个小时缓存${weather.fetchedAt ? ` · 最近 ${clock(weather.fetchedAt)}` : ''}`),
+        tag(errors ? `${errors} 个地点失败` : stale ? `${stale} 个地点陈旧` : '正常', errors || stale ? 'warning' : 'success'),
+        h('span', { class: 'qqbot-muted' }, ` ${hours} 个小时缓存${weather.provider ? ` · ${weather.provider}` : ''}${weather.fetchedAt ? ` · 最近 ${clock(weather.fetchedAt)}` : ''}`),
     ];
 }
 
