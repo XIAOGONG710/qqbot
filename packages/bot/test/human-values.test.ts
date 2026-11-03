@@ -74,6 +74,19 @@ test('历史记录无序时仍按最新时间计算沉默时长', () => {
     assert.equal(actual.relationship.attachment, expected.relationship.attachment);
 });
 
+test('未来的异常行动不算刚活动过，也不提前压低孤独和无聊', () => {
+    const at = new Date('2026-11-01T08:00:00.000Z');
+    const future = {
+        id: 'life:future', actor: 'linmengyao' as const, kind: 'leisure', day: '2026-11-02',
+        startedAt: '2026-11-02T07:00:00.000Z', endedAt: '2026-11-02T08:00:00.000Z',
+        source: 'simulation' as const, result: 'succeeded' as const,
+    };
+    const baseline = humanValuesAt({ at, needs, history: [], tier: 'boyfriend', events: [] });
+    const withFuture = humanValuesAt({ at, needs, history: [], tier: 'boyfriend', events: [future] });
+    assert.equal(withFuture.loneliness, baseline.loneliness);
+    assert.equal(withFuture.boredom, baseline.boredom);
+});
+
 test('摘要只输出数值，不泄露聊天原文', () => {
     const line = describeHumanValues(valuesAt([message('user', '我的秘密是 123', 2)]));
     assert.match(line, /^数值：/);

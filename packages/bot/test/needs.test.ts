@@ -55,6 +55,15 @@ describe('连续需要投影（ADR 0045）', () => {
         assert.ok(afterDinner.hunger < afterShow.hunger - 50);
     });
 
+    test('重叠的冲突行动只采用一件，不能在同一时间吃两顿', () => {
+        const first = event('meal-a', 'eat', '2026-10-01T04:00:00.000Z', '2026-10-01T04:30:00.000Z');
+        const conflict = event('meal-b', 'eat', '2026-10-01T04:00:00.000Z', '2026-10-01T04:30:00.000Z');
+        const at = new Date('2026-10-01T05:00:00.000Z');
+        const expected = needsAt(anchor, [first], at);
+        assert.deepEqual(needsAt(anchor, [first, conflict], at), expected);
+        assert.deepEqual(needsAt(anchor, [conflict, first], at), expected, '输入乱序也按稳定 ID 选择同一件');
+    });
+
     test('同一段生活一次推完和中途重启后接着推，结果一致', () => {
         const events = fortnight();
         const middle = new Date('2026-10-08T00:00:00.000Z');

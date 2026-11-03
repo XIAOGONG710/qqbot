@@ -259,7 +259,8 @@ export function humanValuesAt(facts: HumanValueFacts): HumanValues {
     const relationship = relationshipAt(facts);
     const eventEffects = eventEffectsAt(events, now);
     const lastUser = latestAt(facts.history, 'user');
-    const lastActivity = Math.max(lastUser ?? 0, ...events.map(event => Date.parse(event.endedAt)).filter(Number.isFinite));
+    const eventActivity = events.map(event => Date.parse(event.endedAt)).filter(value => Number.isFinite(value) && value <= now);
+    const lastActivity = Math.max(lastUser ?? 0, ...eventActivity);
     const silenceHours = lastActivity > 0 ? Math.max(0, (now - lastActivity) / HOUR) : 72;
     const questions = recent.filter(message => message.role === 'user' && QUESTION.test(message.content)).length;
     const positive = recent.filter(message => message.role === 'user' && POSITIVE.test(message.content)).length;

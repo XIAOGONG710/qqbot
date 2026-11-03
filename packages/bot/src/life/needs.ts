@@ -96,11 +96,13 @@ export function needsAt(anchor: NeedsSnapshot, events: readonly LifeEvent[], at:
     let energy = clamp(anchor.energy);
     let hunger = clamp(anchor.hunger);
     let stress = clamp(anchor.stress);
+    const activeEventIds = new Set<string>();
     for (let i = 0; i < boundaries.length - 1; i++) {
         const from = boundaries[i]!;
         const to = boundaries[i + 1]!;
         if (to <= from) continue;
         const active = relevant.find(item => item.start <= from && item.end >= to)?.event;
+        if (active) activeEventIds.add(active.id);
         const rates = active ? (RATES[active.kind] ?? AWAKE) : AWAKE;
         const hours = (to - from) / 3_600_000;
         energy = clamp(energy + rates.energy * hours);
@@ -110,6 +112,7 @@ export function needsAt(anchor: NeedsSnapshot, events: readonly LifeEvent[], at:
         // 离散后果只在事件真正结束且落在这次投影区间里结算；分段重启不会重复吃饭。
         for (const item of relevant) {
             if (item.end !== to || item.end <= anchorAt || item.end > target) continue;
+            if (!activeEventIds.has(item.event.id)) continue;
             if ((item.event.kind === 'eat' || item.event.meal) && item.event.result === 'succeeded') hunger = clamp(hunger - MEAL_HUNGER_RELIEF);
         }
     }
