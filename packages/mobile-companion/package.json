@@ -1,0 +1,26 @@
+{
+  "name": "@qqbot/mobile-companion",
+  "version": "0.0.0",
+  "private": true,
+  "description": "林梦瑶手机伴侣的 Android-first 协议与安全策略",
+  "type": "module",
+  "exports": {
+    ".": "./src/protocol.ts",
+    "./protocol": "./src/protocol.ts",
+    "./action-policy": "./src/action-policy.ts",
+    "./gateway": "./src/gateway.ts",
+    "./pairing": "./src/pairing.ts",
+    "./runtime": "./src/runtime.ts",
+    "./media": "./src/media.ts",
+    "./media-http": "./src/media-http.ts",
+    "./koa": "./src/koa.ts",
+    "./http": "./src/http.ts",
+    "./websocket": "./src/websocket.ts",
+    "./client": "./src/client.ts",
+    "./dsh-adapter": "./src/dsh-adapter.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "node --test \"test/**/*.test.ts\""
+  }
+}

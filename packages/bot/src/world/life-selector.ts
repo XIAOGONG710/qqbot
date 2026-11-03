@@ -15,6 +15,7 @@ import type { ReadingBook } from '../life/her-days.ts';
 import { bookProgressAt, readingActivities } from '../life/her-days.ts';
 import type { LifeEvent } from './life-events.ts';
 import { needsAt, type NeedsSnapshot } from '../life/needs.ts';
+import type { HumanValues } from '../human-values.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from '../life/promises.ts';
 import { chooseProject, projectActivity } from '../life/projects.ts';
 import { formatDate, herDay, stateAt, type ExtraFreeActivity, type Schedule } from '../life/schedule.ts';
@@ -41,6 +42,8 @@ export interface LifeSources {
      * 上课、饭点、明确约定和截止时间仍按原来的硬规则优先。
      */
     needsAnchor?: NeedsSnapshot;
+    /** 真人式状态（ADR 0222）：只给空闲行动做轻量效用修正；硬事件不读这条回调。 */
+    humanValuesAt?: (context: { at: Date; needs: NeedsSnapshot }) => Pick<HumanValues, 'motivation' | 'boredom'> | undefined;
 }
 
 /** 这一刻：要排的行动，或者跳到哪（赶去上课、洗澡、喂猫这类不记成行动的，和短得排不下的空当） */
@@ -287,9 +290,10 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     const needs = sources.needsAnchor && at.getTime() >= Date.parse(sources.needsAnchor.at)
         ? needsAt(sources.needsAnchor, sources.events(), at)
         : undefined;
+    const humanValues = needs ? sources.humanValuesAt?.({ at, needs }) : undefined;
     const motivated = sprint ? { action: plannedAction, why: '赶作业' }
         : project ? { action: project.action, why: project.why }
-        : motivate(plannedAction, needs, sources.plans?.rest);
+        : motivate(plannedAction, needs, sources.plans?.rest, humanValues);
     const { kind, subject, target } = motivated.action;
     // 打算做到哪（自然地停）：这一段结束、下一顿饭、下一件世界里的事（吃饭去、下楼喂猫），赶作业的写完为止。
     // 下一节课、赶作业那一段是硬事件（ADR 0042）：不在这里截，交给裁判在那一刻打断（interrupted_by_class / _deadline），
@@ -319,6 +323,7 @@ export function motivate(
     action: { kind: TypedActionKind; subject: string; target?: string },
     needs: NeedsSnapshot | undefined,
     restSubject = '躺会儿',
+    humanValues?: Pick<HumanValues, 'motivation' | 'boredom'>,
 ): { action: { kind: TypedActionKind; subject: string; target?: string }; why?: string } {
     if (!needs) return { action };
     if (needs.energy <= 25 && action.kind !== 'rest') {
@@ -326,6 +331,16 @@ export function motivate(
     }
     if (needs.stress >= 75 && action.kind === 'work_on_project') {
         return { action: { kind: 'rest', subject: restSubject }, why: `压力高（${needs.stress}），项目先缓一缓` };
+    }
+    // 只改可推迟的空闲行动：动机很低时先恢复，不把课程 / 饭点 / 明确约定挪走。
+    if (humanValues?.motivation !== undefined && humanValues.motivation <= 22
+        && (action.kind === 'study' || action.kind === 'work_on_project' || action.kind === 'read_book')) {
+        return { action: { kind: 'rest', subject: restSubject }, why: `动机低（${humanValues.motivation}），先缓一缓` };
+    }
+    // 一直躺着会把无聊继续推高；身体尚可时把“休息”换成低负荷休闲，形成自我修复闭环。
+    if (humanValues?.boredom !== undefined && humanValues.boredom >= 78
+        && action.kind === 'rest' && needs.energy > 40 && needs.stress < 70) {
+        return { action: { kind: 'leisure', subject: '找点轻松的事做' }, why: `有点闷（${humanValues.boredom}），换点轻松的事` };
     }
     return { action };
 }

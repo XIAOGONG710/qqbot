@@ -1,4 +1,7 @@
 {
-  "note": "2026-10-13：npm audit 的 18 个 moderate 条目只对应这 2 个公告，都来自 Koishi 的传递依赖。file-type 16.5.4（GHSA-5v7r-6r5c-r473，畸形 ASF 让解析器死循环）只在 @cordisjs/plugin-http 的 http.file() 里用，本项目发出去的图片走文件 / base64，不经过它，收到的消息不经过它；uuid 8.3.2（GHSA-w5hq-g745-h8pq，传入 buf 时缺边界检查）由 Koishi 控制台引入，本项目不调用。npm 给出的修复是把 @koishijs/plugin-database-sqlite 降级，不可取。等 Koishi 上游发兼容版本再升级并清空这里。新增任何公告、或出现 high / critical，CI 不通过。",
-  "advisories": [1114301, 1119441]
+  "note": "2026-11-03：当前 2 个公告都来自 Koishi 的传递依赖。file-type 16.5.4（GHSA-5v7r-6r5c-r473）只在 @cordisjs/plugin-http 的 http.file() 里用；uuid 8.3.2（GHSA-w5hq-g745-h8pq）由 Koishi 控制台引入，本项目不调用。zod 的 GHSA-mrhx-c7xc-m3w5 已通过根级 zod 4.6.7 override 处理，koa-body 的运行时校验测试和完整工作区测试均通过。基线只用于区分已审阅的 moderate 公告，不会放过 high / critical。",
+  "advisories": [
+    1114301,
+    1119441
+  ]
 }

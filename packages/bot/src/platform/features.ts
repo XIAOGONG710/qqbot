@@ -106,6 +106,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'qqFriendGate', label: '好友申请（名单内同意 / 名单外驳回）', group: '记忆和安全', adr: '0142', kind: 'mode' },
     // 工具
     { key: 'weeklyReport', label: '周报', group: '工具', adr: '0118' },
+    { key: 'dsh', label: 'DSH 顾问（显式咨询）', group: '工具', adr: '0223' },
 ];
 
 /** config 里有、但不是“功能开关”的键（配置数值、对象、字符串……）：features.test.ts 用它核对没有开关被漏掉 */
@@ -123,7 +124,9 @@ export function featureStatuses(config: object): FeatureStatus[] {
     const values = config as Record<string, unknown>;
     return FEATURES.map(def => {
         const value = values[def.key];
-        const on = def.kind === 'mode' ? typeof value === 'string' && value !== 'off' : value === true;
+        const on = def.kind === 'mode'
+            ? typeof value === 'string' && value !== 'off'
+            : value === true || (typeof value === 'object' && value !== null && (value as { enabled?: unknown }).enabled === true);
         return { key: def.key, label: def.label, group: def.group, ...(def.adr ? { adr: def.adr } : {}), on, ...(def.kind === 'mode' && on ? { mode: String(value) } : {}) };
     });
 }

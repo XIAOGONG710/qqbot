@@ -1,0 +1,10 @@
+{
+  "name": "林梦瑶·手机伴侣",
+  "short_name": "林梦瑶",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "display": "standalone",
+  "theme_color": "#17151d",
+  "background_color": "#17151d",
+  "icons": []
+}

@@ -18,9 +18,11 @@
     "audit:gate": "node src/ops/audit-gate-cli.ts",
     "golive-check": "node src/ops/golive-check-cli.ts",
     "state-check": "node src/ops/state-check-cli.ts",
+    "dsh:link": "node src/ops/dsh-link-cli.ts",
     "test": "node --test \"test/**/*.test.ts\""
   },
   "dependencies": {
-    "undici": "7.30.0"
+    "@qqbot/mobile-companion": "*",
+    "undici": "7.30.1"
   }
 }

@@ -13,6 +13,7 @@
     "@koishijs/plugin-server": "3.2.9",
     "koishi": "4.18.11",
     "koishi-plugin-adapter-onebot": "6.9.4",
-    "koishi-plugin-qqbot": "*"
+    "koishi-plugin-qqbot": "*",
+    "zod": "4.6.7"
   }
 }

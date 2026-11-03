@@ -184,6 +184,7 @@ describe('QQ 小黄脸：编排（ADR 0051）', () => {
         dirs.push(dataDir);
         const config: AppConfig = {
             llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
+            dsh: { enabled: false },
             prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
             characterCard: join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'),
             contacts: [{ qq: 10001, name: '宝宝', tier: 'boyfriend' }],
@@ -230,6 +231,7 @@ describe('QQ 小黄脸：编排（ADR 0051）', () => {
         dirs.push(dataDir);
         const config: AppConfig = {
             llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
+            dsh: { enabled: false },
             prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
             characterCard: join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'),
             contacts: [{ qq: 10001, name: '宝宝', tier: 'boyfriend' }, { qq: 10002, name: '阿杰', tier: 'boyfriend' }],

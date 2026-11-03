@@ -11,6 +11,69 @@
     gap: 8px;
 }
 
+.qqbot-status-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.qqbot-status-title {
+    margin: 0 0 4px;
+    font-size: 20px;
+}
+
+.qqbot-status-head-tags,
+.qqbot-connections,
+.qqbot-kpis {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.qqbot-kpis {
+    margin: 12px 0;
+}
+
+.qqbot-kpi {
+    min-width: 150px;
+    flex: 1 1 160px;
+    padding: 12px 14px;
+    border: 1px solid var(--k-color-divider, #ddd);
+    border-radius: 8px;
+    background: var(--k-color-surface-1, #f8f8f8);
+}
+
+.qqbot-kpi-label,
+.qqbot-kpi-detail {
+    color: var(--k-text-light);
+    font-size: 12px;
+}
+
+.qqbot-kpi-value {
+    margin: 6px 0;
+}
+
+.qqbot-connection {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    border: 1px solid var(--k-color-divider, #ddd);
+    border-radius: 999px;
+}
+
+.qqbot-health-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--k-color-danger);
+}
+
+.qqbot-health-dot.is-on { background: var(--k-color-success); }
+.qqbot-connection-label { font-weight: 600; }
+
 .qqbot-summary-row {
     display: flex;
     align-items: center;
@@ -30,6 +93,41 @@
 
 .qqbot-error {
     color: var(--k-color-danger);
+}
+
+.qqbot-features-disclosure {
+    margin-top: 16px;
+    border: 1px solid var(--k-color-divider, #ddd);
+    border-radius: 8px;
+    padding: 0 14px 12px;
+}
+
+.qqbot-features-summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 12px 0;
+    font-weight: 600;
+}
+
+.qqbot-features-summary::-webkit-details-marker { display: none; }
+.qqbot-feature-groups { display: grid; gap: 0; }
+
+.qqbot-contact-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.qqbot-section-title {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-right: auto;
+}
+
+.qqbot-contact-search {
+    width: min(320px, 35vw);
 }
 
 /* 表单很长，往下翻时「保存 / 检查 / 还原」留在顶上。Element Plus 的标签页内容是 overflow: hidden，会让 sticky 失效 */
@@ -101,3 +199,21 @@
 .qqbot-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .qqbot-chip { cursor: default; }
 .qqbot-report { margin: 8px 0 0; padding: 10px 12px; max-height: 320px; overflow: auto; white-space: pre-wrap; font-size: 12px; line-height: 1.6; background: var(--k-color-surface-1, #f6f6f6); border-radius: 4px; }
+
+@media (max-width: 900px) {
+    .qqbot-page { padding: 12px 14px; }
+    .qqbot-status-head { flex-direction: column; }
+    .qqbot-contact-toolbar { align-items: stretch; flex-wrap: wrap; }
+    .qqbot-section-title { width: 100%; }
+    .qqbot-contact-search { width: 100%; }
+}
+
+@media (max-width: 700px) {
+    .qqbot-editor { display: block; }
+    .qqbot-nav { width: 100%; margin-bottom: 12px; overflow-x: auto; }
+    .qqbot-nav .el-menu { display: flex; }
+    .qqbot-list { width: 100%; }
+    .qqbot-list-filters { flex-wrap: wrap; }
+    .qqbot-summary-row { align-items: flex-start; }
+    .qqbot-label { width: 84px; }
+}

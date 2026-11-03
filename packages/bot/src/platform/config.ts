@@ -36,6 +36,7 @@ export type Tier = ContactTier | typeof UNLISTED_TIER;
  */
 export const DEFAULTS = {
     llm: { temperature: 1, maxTokens: 300, timeoutMs: 120_000, promptPostProcessing: '' as PromptPostProcessing },
+    dsh: { enabled: false },
     prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
     memory: { timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' },
     vision: { provider: 'deepseek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', timeoutMs: MEDIA_TIMEOUTS.vision },
@@ -163,6 +164,8 @@ export interface AppConfig {
         /** 同 ST 自定义接口的 Include Body Parameters */
         extraBody: Record<string, unknown>;
     };
+    /** DSH 顾问插件（ADR 0223）：只在显式命令下调用，不自动介入普通 QQ 回复。默认关；地址 / 模型可独立覆盖，key 仍复用 QQBOT_LLM_API_KEY。 */
+    dsh: { enabled: boolean; baseUrl?: string; model?: string; timeoutMs?: number };
     /** pinExamples：同 ST 的 Example Messages Behavior 选 Always include examples，默认否（同 ST 默认的逐步挤出） */
     prompt: { maxContext: number; worldInfo: WorldInfoSettings; pinExamples: boolean };
     /** 角色卡路径，{tier} 换成档位名；世界书按卡里的 extensions.world 在同目录找 <world>.json */
@@ -614,6 +617,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
     if (!apiKey) throw new Error('缺少环境变量 QQBOT_LLM_API_KEY');
 
     const llm = section(file, 'llm');
+    const dsh = file.dsh === undefined ? {} : section(file, 'dsh');
     const prompt = (file.prompt ?? {}) as Json;
     const postProcessing = llm.promptPostProcessing ?? DEFAULTS.llm.promptPostProcessing;
     if (!PROMPT_POST_PROCESSING.includes(postProcessing as PromptPostProcessing)) {
@@ -698,6 +702,22 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
             timeoutMs: num(llm, 'timeoutMs', 'llm', DEFAULTS.llm.timeoutMs),
             promptPostProcessing: postProcessing as PromptPostProcessing,
             extraBody: extraBody as Record<string, unknown>,
+        },
+        dsh: {
+            enabled: bool(dsh, 'enabled', 'dsh', DEFAULTS.dsh.enabled),
+            ...(dsh.baseUrl === undefined ? {} : (() => {
+                if (typeof dsh.baseUrl !== 'string' || !dsh.baseUrl.trim()) throw new Error('配置 dsh.baseUrl 应为非空字符串');
+                return { baseUrl: dsh.baseUrl.trim() };
+            })()),
+            ...(dsh.model === undefined ? {} : (() => {
+                if (typeof dsh.model !== 'string' || !dsh.model.trim()) throw new Error('配置 dsh.model 应为非空字符串');
+                return { model: dsh.model.trim() };
+            })()),
+            ...(dsh.timeoutMs === undefined ? {} : (() => {
+                const timeoutMs = num(dsh, 'timeoutMs', 'dsh');
+                if (!Number.isInteger(timeoutMs) || timeoutMs < 1) throw new Error('配置 dsh.timeoutMs 应为正整数');
+                return { timeoutMs };
+            })()),
         },
         prompt: {
             maxContext: num(prompt, 'maxContext', 'prompt', DEFAULTS.prompt.maxContext),

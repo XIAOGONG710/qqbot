@@ -13,6 +13,9 @@ import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startApp, type Transport } from '../../bot/src/platform/app.ts';
+import type { MobileCompanionIntegration } from '../../bot/src/mobile-companion-dsh.ts';
+import { attachCompanionWebSocket, type CompanionWebSocketLike } from '@qqbot/mobile-companion/websocket';
+import { createCompanionKoaActionPollHandler, createCompanionKoaEnvelopeHandler, createCompanionKoaMediaHandler } from '@qqbot/mobile-companion/koa';
 import type { HistoryMessage } from '../../bot/src/memory/backfill.ts';
 import type { WebMode } from '../../bot/src/platform/web.ts';
 import { CONTACT_TIERS, DEFAULTS, STICKER_MODES, parseAppConfig, type AppConfig, type ContactTier, type StickerMode } from '../../bot/src/platform/config.ts';
@@ -52,6 +55,38 @@ export const name = 'qqbot';
 export const reusable = true;
 // Koishi 通用的「过滤器设置」对这个插件没用。不导出 usage：用户不要页面顶部那段说明（10-05）
 export const filter = false;
+
+export interface CompanionServerLike {
+    ws(path: string, callback: (socket: CompanionWebSocketLike) => void): { close(): void };
+    get?(path: string, callback: (ctx: unknown) => Promise<void>): unknown;
+    post?(path: string, callback: (ctx: unknown) => Promise<void>): unknown;
+}
+
+/** 纯接线函数：便于测试，也避免在插件入口散落端口 / DSH 判断。 */
+export function mountMobileCompanion(server: CompanionServerLike | undefined, companion: MobileCompanionIntegration | undefined, options: { enabled: boolean; websocketPath: string; httpPath?: string }, log: Log): (() => void) | undefined {
+    if (!options.enabled) return undefined;
+    if (!companion) { log('手机伴侣：开关已开，但 DSH 关闭，未挂载 WebSocket'); return undefined; }
+    if (!server) { log('手机伴侣：开关已开，但 Koishi server 服务不可用，未挂载 WebSocket'); return undefined; }
+    const layer = server.ws(options.websocketPath, socket => attachCompanionWebSocket(socket, companion.runtime));
+    log(`手机伴侣：WebSocket 已挂载到 ${options.websocketPath}（沿用 DSH 配对和动作审计）`);
+    if (server.post && options.httpPath) {
+        server.post(options.httpPath, createCompanionKoaEnvelopeHandler(companion.runtime, { path: options.httpPath }) as unknown as (ctx: unknown) => Promise<void>);
+        const mediaHandler = markNoParseBody(createCompanionKoaMediaHandler(companion.runtime, companion.media, { path: `${options.httpPath}/media` }));
+        server.post(`${options.httpPath}/media`, mediaHandler as unknown as (ctx: unknown) => Promise<void>);
+        log(`手机伴侣：HTTPS envelope / 媒体上传已挂载到 ${options.httpPath}（沿用 session 和内存媒体仓库）`);
+    }
+    if (server.get && options.httpPath) {
+        server.get(`${options.httpPath}/actions`, createCompanionKoaActionPollHandler(companion.runtime, { path: `${options.httpPath}/actions` }) as unknown as (ctx: unknown) => Promise<void>);
+        log(`手机伴侣：HTTPS 动作轮询已挂载到 ${options.httpPath}/actions`);
+    }
+    return () => layer.close();
+}
+
+/** Koishi server 默认会先跑 koa-body；媒体路由必须保留原始二进制流给 readBody()。 */
+function markNoParseBody<T extends (...args: any[]) => unknown>(handler: T): T {
+    Object.defineProperty(handler, Symbol.for('noParseBody'), { value: true });
+    return handler;
+}
 
 const TIER_LABELS: Record<ContactTier, string> = {
     boyfriend: '男朋友',
@@ -206,6 +241,8 @@ export interface Config {
         /** JSON 文本 */
         extraBody: string;
     };
+    dsh: { enabled: boolean; baseUrl?: string; model?: string; timeoutMs?: number };
+    mobileCompanion: { enabled: boolean; websocketPath: string; httpPath: string };
     prompt: {
         maxContext: number;
         pinExamples: boolean;
@@ -478,6 +515,26 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         }),
     }).description('模型'),
     Schema.object({
+        dsh: Schema.object({
+            enabled: Schema.boolean().default(DEFAULTS.dsh.enabled)
+                .description('**DSH 顾问**（ADR 0223）：打开后男朋友档可用 `/dsh` 探测连接、`/dsh ask <问题>` 咨询；只在显式命令下调用，不自动介入普通 QQ 回复。默认复用主模型设置和 QQBOT_LLM_API_KEY。'),
+            baseUrl: Schema.string().pattern(NOT_BLANK)
+                .description('**独立接口地址（可选）**：只覆盖 DSH，不含 `/chat/completions`；key 仍复用 QQBOT_LLM_API_KEY。'),
+            model: Schema.string().pattern(NOT_BLANK).description('**独立模型名（可选）**：只覆盖 DSH。'),
+            timeoutMs: Schema.natural().min(1).description('**DSH 请求超时（可选）**：毫秒。留空时沿用主模型超时。'),
+        }).description('DSH'),
+    }),
+    Schema.object({
+        mobileCompanion: Schema.object({
+            enabled: Schema.boolean().default(false)
+                .description('**手机伴侣 WebSocket**（ADR 0224）：明确打开后才在 Koishi server 上挂载受配对保护的连接；必须同时打开 DSH。默认关，不自动监听新端口。'),
+            websocketPath: Schema.string().default('/qqbot/companion').pattern(/^\/[A-Za-z0-9/_-]{1,120}$/)
+                .description('**WebSocket 路径**：只允许路径字符；外层 Koishi server 仍由 server.host / server.port 控制。'),
+            httpPath: Schema.string().default('/qqbot/companion/http').pattern(/^\/[A-Za-z0-9/_-]{1,110}$/)
+                .description('**HTTPS 路径**：同一 Koishi server 上的 envelope 路径；媒体上传在其下的 `/media`，宿主下行动作轮询在 `/actions`，都需要已配对 session。'),
+        }).description('手机伴侣'),
+    }),
+    Schema.object({
         // 写法同 plugin-auth 的 admin：开着才多出细项，存的形状不变
         memory: Schema.intersect([
             Schema.object({ enabled: Schema.boolean().default(false).description('**长期记忆**（Hindsight）') }),
@@ -547,6 +604,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
     const { enabled: visionEnabled, ...vision } = config.vision ?? { enabled: false };
     return {
         llm: dropUndefined({ ...llm, extraBody }),
+        ...(config.dsh?.enabled ? { dsh: dropUndefined({ enabled: true, baseUrl: config.dsh.baseUrl, model: config.dsh.model, timeoutMs: config.dsh.timeoutMs }) } : {}),
         prompt: dropUndefined({ ...config.prompt, worldInfo: dropUndefined(config.prompt?.worldInfo ?? {}) }),
         characterCard: config.characterCard,
         contacts: config.contacts.map(contact => dropUndefined(contact)),
@@ -811,6 +869,13 @@ export function apply(ctx: Context, config: Config) {
         throw plain;
     }
     setConsoleState({ running: true, error: undefined, status: () => app.status() });
+    const unmountMobileCompanion = mountMobileCompanion(
+        (ctx as unknown as { server?: CompanionServerLike }).server,
+        app.mobileCompanion(),
+        config.mobileCompanion,
+        log,
+    );
+    if (unmountMobileCompanion) ctx.on('dispose', unmountMobileCompanion);
     ctx.on('dispose', () => {
         app.stop();
         setConsoleState({ running: false, status: undefined });

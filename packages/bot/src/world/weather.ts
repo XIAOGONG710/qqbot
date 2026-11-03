@@ -61,6 +61,8 @@ export function realWeather(): RealWeather | undefined {
 const RAIN_MM = 0.2;
 /** 一天至少有这么多个钟头的数据才按真实的 */
 const MIN_HOURS = 12;
+const MAX_WEATHER_HOURS = 24 * 14;
+const MAX_WEATHER_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 /** WMO 天况代码 → 说法 */
 export function weatherText(code: number): string {
@@ -162,7 +164,9 @@ export function parseOpenMeteo(data: unknown): Record<string, HourWeather> {
     const t = hourly?.temperature_2m;
     const p = hourly?.precipitation;
     const c = hourly?.weather_code;
-    if (!Array.isArray(times) || !Array.isArray(t) || !Array.isArray(p) || !Array.isArray(c)) throw new Error('回复里没有逐小时数据');
+    if (!Array.isArray(times) || !Array.isArray(t) || !Array.isArray(p) || !Array.isArray(c)
+        || times.length !== t.length || times.length !== p.length || times.length !== c.length
+        || times.length > MAX_WEATHER_HOURS) throw new Error('回复里没有合法的逐小时数据');
     const hours: Record<string, HourWeather> = {};
     times.forEach((time, i) => {
         if (typeof time !== 'string' || typeof t[i] !== 'number' || typeof p[i] !== 'number' || typeof c[i] !== 'number') return;
@@ -178,24 +182,45 @@ export interface WeatherFetcherOptions {
     now?: () => number;
     /** 默认用全局 fetch；测试传假的 */
     fetchJson?: (url: string) => Promise<unknown>;
+    /** 网络请求超时（毫秒）；默认 20 秒，避免天气服务卡住回复和生活执行器。 */
+    timeoutMs?: number;
+}
+
+export interface WeatherPlaceStatus {
+    fetchedAt?: string;
+    hours: number;
+    since?: string;
+    error?: string;
+}
+
+export interface WeatherFetcherStatus {
+    places: Record<Place, WeatherPlaceStatus>;
+    fetchedAt?: string;
 }
 
 export interface WeatherFetcher extends RealWeather {
     /** 取一次两个地方；失败只记日志，留着旧的 */
     refresh(): Promise<void>;
+    /** 只返回数据新鲜度和覆盖范围，不返回坐标之外的个人信息。 */
+    status(): WeatherFetcherStatus;
 }
 
 export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
     const now = options.now ?? Date.now;
+    const timeoutMs = options.timeoutMs ?? 20_000;
     const fetchJson = options.fetchJson ?? (async (url: string) => {
-        const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+        const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
+        const text = await response.text();
+        if (Buffer.byteLength(text, 'utf8') > MAX_WEATHER_RESPONSE_BYTES) throw new Error('天气服务响应过大');
+        return JSON.parse(text) as unknown;
     });
     // 数据目录第一次用时还没有（审查第 1 条：没建目录时每次写盘都失败，真实天气一次都不生效）
     mkdirSync(options.dir, { recursive: true });
     const path = (place: Place) => join(options.dir, `${place}.json`);
     const stores = new Map<Place, Store | undefined>();
+    const errors = new Map<Place, string>();
+    let inFlight: Promise<void> | undefined;
     const load = (place: Place): Store | undefined => {
         if (!stores.has(place)) {
             const data = readJsonOr<Partial<Store>>(path(place), {}, message => options.log(`真实天气：${message}`));
@@ -208,22 +233,44 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
             const store = load(place);
             return store && date >= store.since ? dayFrom(store.hours, date, until) : undefined;
         },
-        refresh: async () => {
-            for (const place of Object.keys(PLACES) as Place[]) {
-                const { latitude, longitude } = PLACES[place];
-                const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}`
-                    + '&hourly=temperature_2m,precipitation,weather_code&past_days=2&forecast_days=2&timezone=Asia%2FShanghai';
-                try {
-                    const fetched = parseOpenMeteo(await fetchJson(url));
-                    const at = new Date(now());
-                    const old = load(place);
-                    const store: Store = { since: old?.since ?? firstRealDay(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
-                    writeJsonAtomic(path(place), store);
-                    stores.set(place, store);
-                } catch (error) {
-                    options.log(`真实天气：${PLACES[place].name}没取到，照旧用存着的（${error instanceof Error ? error.message : String(error)}）`);
+        refresh: () => {
+            // 心跳和启动可能同时触发刷新；复用同一请求，避免重复打公开接口。
+            if (inFlight) return inFlight;
+            inFlight = (async () => {
+                for (const place of Object.keys(PLACES) as Place[]) {
+                    const { latitude, longitude } = PLACES[place];
+                    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}`
+                        + '&hourly=temperature_2m,precipitation,weather_code&past_days=2&forecast_days=2&timezone=Asia%2FShanghai';
+                    try {
+                        const fetched = parseOpenMeteo(await fetchJson(url));
+                        const at = new Date(now());
+                        const old = load(place);
+                        const store: Store = { since: old?.since ?? firstRealDay(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
+                        writeJsonAtomic(path(place), store);
+                        stores.set(place, store);
+                        errors.delete(place);
+                    } catch (error) {
+                        const reason = error instanceof Error ? error.message : String(error);
+                        errors.set(place, reason);
+                        options.log(`真实天气：${PLACES[place].name}没取到，照旧用存着的（${reason}）`);
+                    }
                 }
+            })().finally(() => { inFlight = undefined; });
+            return inFlight;
+        },
+        status: () => {
+            const places = {} as Record<Place, WeatherPlaceStatus>;
+            let fetchedAt: string | undefined;
+            for (const place of Object.keys(PLACES) as Place[]) {
+                const store = load(place);
+                const item: WeatherPlaceStatus = { hours: Object.keys(store?.hours ?? {}).length };
+                if (store?.fetchedAt) { item.fetchedAt = store.fetchedAt; fetchedAt = !fetchedAt || store.fetchedAt > fetchedAt ? store.fetchedAt : fetchedAt; }
+                if (store?.since) item.since = store.since;
+                const error = errors.get(place);
+                if (error) item.error = error;
+                places[place] = item;
             }
+            return { places, ...(fetchedAt ? { fetchedAt } : {}) };
         },
     };
 }

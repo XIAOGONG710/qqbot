@@ -61,6 +61,7 @@ import { jokeLine, type Joke } from '.././language/jokes.ts';
 import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
 import { describeCloseness } from '.././language/relationship.ts';
+import { describeHumanState, describeHumanValues, type HumanValues } from '.././human-values.ts';
 import { describeTogether, togetherNow } from '.././language/together.ts';
 import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
@@ -174,6 +175,8 @@ export interface ContactPipelineOptions {
     sensitive?: () => boolean;
     /** 毫秒时间戳，默认真实时间；模拟器传虚拟时钟 */
     now?: () => number;
+    /** 真人式连续数值（ADR 0222）：只记无原文的审计摘要，不把原始分数交给模型。 */
+    humanValues?: (context: { contact: Contact; history: readonly (Pick<StoredMessage, 'role' | 'content'> & { time?: string })[]; at: Date }) => HumanValues | undefined;
     /** 默认调模型接口（llm.ts）；模拟器包一层，在生成中插入对方的消息 */
     generate?: (messages: OpenAIMessage[], log: Log, use?: AppConfig['llm']) => Promise<string>;
     /** 深思（配置 deliberate，ADR 0151）：认真问她的轮次不套字数和条数、用这份更强的模型配置（generate 的第三个参数）、提示词只留一句“先想清楚” */
@@ -375,8 +378,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         history: options.history,
         buildPrompt: async (chat, { woken, initiate, offlineSince }) => {
             const time = new Date(now());
+            const humanValues = options.humanValues?.({ contact, history: chat, at: time });
+            if (humanValues) log(describeHumanValues(humanValues));
             // 只想一想（ADR 0101 内心）：不是在聊天，不要意图行、形状、字数提示、表情；聊天记录当成“回想”放进说明里，不当成要接着回的对话
             const thinking = Boolean(initiate?.think);
+            const humanStateLine = humanValues && !thinking ? describeHumanState(humanValues, contact.tier) : undefined;
             // 长期记忆只给名单里的人；主动找他时没有「他这次说的」：查想知道的事 + 最后两句，带前 3 天到后 2 天的时间窗（ADR 0012 决策 1 第 7 条）
             const remembers = memory && contact.tier !== UNLISTED_TIER;
             const recallOptions = initiate
@@ -689,7 +695,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq), options.tailCap ? { tailCaps: TAIL_CAPS } : {}) } : {}),
             } : undefined;
             // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
-            const low = mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) || (feelingLine !== undefined && feelsLow(feltNow));
+            const low = mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) || (feelingLine !== undefined && feelsLow(feltNow))
+                || Boolean(humanValues && (humanValues.energy <= 30 || humanValues.hunger >= 82 || humanValues.stress >= 78 || humanValues.mood <= 30));
             // 形状控制开着：用具体的字数和条数代替「回短一点」的软提示；不适用的轮次（他明着让她讲、主动找他、收尾）照旧走 lengthHint
             // 她这一天半里已经主动说过的事（ADR 0098）；带自己的事的轮次从她还没说过的事里挑一件说
             const told = !crisisNow ? alreadyTold(chat, time.getTime()) : [];
@@ -778,6 +785,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         // 心里压着事 / 特别开心的时候，按日期抽的底色（爱笑、话痨……）会和心境打架：以心境为准（ADR 0102）
                         ...(mood && !(feelingLine !== undefined && (feelsLow(feltNow) || feltNow.some(item => item.kind === 'joy' && item.level === 'strong'))) ? [describeMood(mood, contact.name)] : []),
                         ...(body ? [body] : []),
+                        ...(humanStateLine ? [humanStateLine] : []),
                         ...(unsettled ? [unsettled] : []),
                         ...(warm ? [warm] : []),
                         ...(feelingLine ? [feelingLine] : []),

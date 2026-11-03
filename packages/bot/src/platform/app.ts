@@ -9,6 +9,7 @@
 // 每人的消息按收到的顺序一条条进；读的时候不卡别人，读不出来、超时照旧「[语音]」「[图片]」。
 
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canGiveFeedback, cardKey, CONTACT_TIERS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
@@ -69,11 +70,15 @@ import { bodyAt } from '.././life/body.ts';
 import { worldState, type WorldNow } from '.././world/world.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
 import { lifeExecutor } from '.././world/life-selector.ts';
-import { loadNeedsAnchor } from '.././life/needs.ts';
+import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
+import { humanValuesAt, humanValuesFromAnchor } from '.././human-values.ts';
+import { createDshLink, dshOptionsFromLlm, type DshConversationTurn, type DshState, type DshVoice } from '.././dsh-link.ts';
+import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
+import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/diary.ts';
 import { armIntimate, INTIMATE_REPLIES, takeIntimateLine } from '.././language/intimacy.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from '.././life/schedule.ts';
-import { useRealWeather, weatherFetcher } from '.././world/weather.ts';
+import { useRealWeather, weatherFetcher, type WeatherFetcherStatus } from '.././world/weather.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
 import { idiomStore, IDIOMS_CHECK_MS, refreshIdioms } from '.././language/idioms.ts';
 import { jokeStore, JOKES_CHECK_MS, refreshJokes } from '.././language/jokes.ts';
@@ -136,6 +141,8 @@ export interface App {
     stop(): void;
     /** 此刻的状态（控制台「林梦瑶」页面，ADR 0010）；不含聊天内容 */
     status(): AppStatus;
+    /** DSH 开启时可供宿主挂 HTTPS / WebSocket 的手机伴侣运行时；默认关闭时为 undefined。 */
+    mobileCompanion(): MobileCompanionIntegration | undefined;
 }
 
 export interface ContactStatus {
@@ -182,6 +189,10 @@ export interface AppStatus {
     extras?: { photos?: { count: number; cat: number; view: number; work: number; food: number }; jokes?: number; report?: { name: string; text: string } };
     /** 长期记忆开着时：服务探测结果（每分钟最多探一次）、最近一次写入和召回 */
     memory?: { baseUrl: string; health?: MemoryEvent; lastWrite?: MemoryEvent; lastRecall?: MemoryEvent };
+    /** 真实天气取数的新鲜度与覆盖范围；不包含坐标、聊天或角色资料。 */
+    weather?: WeatherFetcherStatus;
+    /** 手机伴侣安全摘要：不含配对码、nonce 或消息正文。 */
+    mobileCompanion?: { enabled: boolean; pairedClientId?: string; connected: boolean; queued: number; maxQueuedPerClient: number };
 }
 
 /** 状态页的「今天」（ADR 0015） */
@@ -238,6 +249,21 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
+    // 旧的直接调用方 / 测试夹具可能没有新加的 dsh 字段；缺失时按关闭处理，保持 AppConfig 之前的调用兼容。
+    const dshConfig = config.dsh ?? { enabled: false };
+    // DSH 桥默认只建立对象，不自动发网络请求；插件打开且男朋友显式发 /dsh 才探针或咨询。
+    const dshLink = createDshLink(dshOptionsFromLlm(config.llm, {
+        ...(dshConfig.baseUrl ? { baseUrl: dshConfig.baseUrl } : {}),
+        ...(dshConfig.model ? { model: dshConfig.model } : {}),
+        ...(dshConfig.timeoutMs === undefined ? {} : { timeoutMs: dshConfig.timeoutMs }),
+    }), { log: message => log(`DSH：${message}`) });
+    // 兼容旧的直接调用方/测试夹具：未带 dsh 时按默认关闭处理。
+    const dshEnabled = dshConfig.enabled === true;
+    // DSH 咨询必须按 QQ 到达顺序串行，避免快速连发时后发问题先返回，破坏上下文连续性。
+    let dshAskTail: Promise<void> = Promise.resolve();
+    // DSH 命令不写入普通 QQ 聊天记录，单独保留一个有上限的进程内连续上下文。
+    const dshConversation: DshConversationTurn[] = [];
+    log(`DSH 顾问：${dshEnabled ? '开（仅男朋友档显式 /dsh 命令）' : '关'}`);
     // 关着的时候不留上次开着时的完整提示词
     if (!sensitive.on()) rmSync(join(config.dataDir, 'last-prompt.json'), { force: true });
     // 每个档位一张角色卡和一本世界书，用到时读一次；不知道她是程序的联系人用「<档位>-open」承认版（ADR 0067，cardKey）
@@ -335,6 +361,17 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             bedtimes: () => bedtimes(worldCard.schedule!, worldNow()),
             appointmentsBetween: (from, to) => loadAppointments?.(from, to) ?? [],
             ...(needsAnchor ? { needsAnchor } : {}),
+            ...(needsAnchor ? {
+                humanValuesAt: ({ at, needs }) => {
+                    try {
+                        // 生活选择器只需要全局、与事件账一致的动机 / 无聊底色；联系人聊天仍由各自回复器投影，避免把某人的局部关系误作全局决策。
+                        return humanValuesAt({ at, needs, history: [], tier: 'known', events: ledgerWorld.events() });
+                    } catch (error) {
+                        log(`生活选择器：真人式状态投影失败（${error instanceof Error ? error.message : String(error)}）`);
+                        return undefined;
+                    }
+                },
+            } : {}),
         }, lifeQueue, { since: lifeStartedAt, log })
         : undefined;
     const sharedWorld = ledgerWorld && lifeQueue
@@ -354,7 +391,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         : ledgerWorld;
     if (config.contextTurns) log(`最近几轮 + 要点（ADR 0043）：${config.memory ? `开：原文只放最近 ${config.contextTurns} 轮，更早的在后台整理成要点，没整理好的那一轮照旧最近 80 条；${config.contextContacts.length ? `只对 ${config.contextContacts.join("、")}` : "名单里开了记忆的都开"}` : "配置开了，但长期记忆没开，不开"}`);
     if (config.candidates > 1) log(`挑候选：他难过、说亲密话、收尾时一次生成 ${config.candidates} 个，按规则挑一个（ADR 0041）`);
-    if (config.autonomousLife) log(`没人聊天时她一件件过日子：${lifeRunner ? '开（ADR 0040/0045，影子模式：需要值只改行动账，不进提示词）' : '配置开了，但没有带作息和世界的卡，不开'}`);
+    if (config.autonomousLife) log(`没人聊天时她一件件过日子：${lifeRunner ? '开（ADR 0040/0045，原始需要值只改行动账；真人式底色按联系人自然语言接入回复）' : '配置开了，但没有带作息和世界的卡，不开'}`);
     if (config.projectChoice) log(`项目选择：${lifeRunner ? '开（ADR 0056：三天内作业可接管空闲安排，状态行与行动账共用）' : '配置开了，但生活执行器没开，不生效'}`);
     // 没人找她的时候也每 ${LIFE_TICK_MS / 60_000} 分钟推一次，过完的时段尽快落账
     const lifeTimer = lifeRunner ? setInterval(() => { sharedWorld?.events(); }, LIFE_TICK_MS) : undefined;
@@ -674,6 +711,17 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...((stickerOnlyChance ?? (config.shape && config.shapeFeel ? STICKER_ONLY_SHARE : 0)) > 0 ? { stickerOnlyChance: stickerOnlyChance ?? STICKER_ONLY_SHARE } : {}),
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
             history,
+            ...(needsAnchor && sharedWorld ? {
+                humanValues: ({ contact: valueContact, history: valueHistory, at }: { contact: Contact; history: readonly (Pick<StoredMessage, 'role' | 'content'> & { time?: string })[]; at: Date }) => {
+                    try {
+                        const events = sharedWorld.events?.() ?? [];
+                        return humanValuesFromAnchor({ at, anchor: needsAnchor, history: valueHistory, tier: valueContact.tier, events });
+                    } catch (error) {
+                        log(`[${valueContact.qq}] 数值状态：投影失败（${error instanceof Error ? error.message : String(error)}）`);
+                        return undefined;
+                    }
+                },
+            } : {}),
             memory,
             ...(promises ? { promises } : {}),
             ...(sharedWorld ? { worldState: sharedWorld } : {}),
@@ -1344,6 +1392,44 @@ ${body}
         // 只认纯文字、只认男朋友档的他；命中的算处理完，不进聊天记录、不交给回复器。休眠中除了这几条，她什么都不回
         if (deviceOwner && event.user_id === deviceOwner.qq) {
             const plain = plainTextOf(event.message)?.trim();
+            if (dshEnabled && plain === '/dsh') {
+                void dshLink.probe().then(result => {
+                    tellOwner(result.ok
+                        ? `（DSH 已连通：${result.model}，${result.latencyMs}ms）`
+                        : `（DSH 没连上：${result.error ?? '未知错误'}）`);
+                });
+                return;
+            }
+            if (dshEnabled && plain === '/dsh pair') {
+                if (!mobileCompanion) { tellOwner('（手机伴侣还没开。）'); return; }
+                const clientId = `android-${randomBytes(6).toString('hex')}`;
+                const ticket = mobileCompanion.issuePairing(clientId);
+                tellOwner(`（手机伴侣配对码：${ticket.pairingCode}；设备 ID：${clientId}；${Math.ceil((ticket.expiresAt - Date.now()) / 60_000)} 分钟内有效。不要把配对码发给别人。）`);
+                return;
+            }
+            if (dshEnabled && plain === '/dsh unpair') {
+                if (!mobileCompanion) { tellOwner('（手机伴侣还没开。）'); return; }
+                const oldClientId = mobileCompanion.runtime.status().pairedClientId;
+                mobileCompanion.runtime.reset();
+                if (oldClientId) mobileCompanion.media.clear(oldClientId);
+                tellOwner('（手机伴侣已解除配对，旧连接和媒体会话都失效了。）');
+                return;
+            }
+            if (dshEnabled && plain?.startsWith('/dsh ask ')) {
+                const question = plain.slice('/dsh ask '.length).trim();
+                askDsh(question);
+                return;
+            }
+            // 直写「/dsh 问题」是 /dsh ask 的便捷别名；仍只对男朋友档和显式命令生效。
+            if (dshEnabled && plain?.startsWith('/dsh ')) {
+                const question = plain.slice('/dsh '.length).trim();
+                if (question && question !== 'ask') {
+                    askDsh(question);
+                    return;
+                }
+                tellOwner('（用法：/dsh 探针，/dsh pair，/dsh unpair，/dsh ask <问题>，也可以直接 /dsh <问题>）');
+                return;
+            }
             if (plain === '/设定' && (identity || memoryLedgerNow || dormancy)) {
                 tellOwner([identity?.status(), memoryLedgerNow ? summarizeMemoryLedger(memoryLedgerNow) : undefined, dormancy?.status()].filter(Boolean).join('\n\n'));
                 return;
@@ -1451,6 +1537,94 @@ ${body}
     const tellOwner = (text: string): void => {
         if (!deviceOwner) return;
         transport.sendPrivateText(deviceOwner.qq, text).catch(error => log(`提示没发出去（${error instanceof Error ? error.message : String(error)}）`));
+    };
+
+    /** DSH 咨询只拿她的无原文状态：需要、真人式数值、关系数值和事件类型，不带聊天内容。 */
+    const dshState = (): DshState | undefined => {
+        if (!needsAnchor) return undefined;
+        const at = new Date(worldNow());
+        try {
+            const events = sharedWorld?.events?.() ?? [];
+            const needs = needsAt(needsAnchor, events, at);
+            const values = humanValuesAt({ at, needs, history: [], tier: deviceOwner?.tier ?? 'boyfriend', events });
+            return {
+                at: at.toISOString(),
+                tier: deviceOwner?.tier ?? 'boyfriend',
+                needs: { energy: needs.energy, hunger: needs.hunger, stress: needs.stress },
+                values: {
+                    energy: values.energy, hunger: values.hunger, stress: values.stress, mood: values.mood,
+                    health: values.health, loneliness: values.loneliness, motivation: values.motivation,
+                    boredom: values.boredom, socialBattery: values.socialBattery,
+                },
+                relationship: values.relationship,
+                recentEvents: events.slice(-8).map(event => event.kind),
+            };
+        } catch (error) {
+            log(`DSH：读取状态摘要失败（${error instanceof Error ? error.message : String(error)}）`);
+            return undefined;
+        }
+    };
+
+    /** DSH 只在显式 /dsh ask 时拿最近 6 条，保证 QQ 与 DSH 能接上话但不把整份聊天记录外发。 */
+    const dshRecentTurns = () => {
+        if (!deviceOwner) return undefined;
+        return [...history.load(deviceOwner.qq).slice(-6).map(message => ({ role: message.role, content: message.content })), ...dshConversation].slice(-6);
+    };
+
+    /** 从当前档位卡提取最小语气档案；不把世界书、禁用词或长期记忆交给 DSH。 */
+    const dshVoice = (): DshVoice | undefined => {
+        try {
+            const character = cardFor(deviceOwner?.tier ?? 'boyfriend').character;
+            return {
+                name: character.name,
+                description: character.description,
+                personality: character.personality,
+            };
+        } catch (error) {
+            log(`DSH：读取语气档案失败（${error instanceof Error ? error.message : String(error)}）`);
+            return undefined;
+        }
+    };
+
+    let mobileCompanion: MobileCompanionIntegration | undefined;
+    const describeMobileMedia = async (message: CompanionMessage, clientId: string): Promise<string | undefined> => {
+        if (!message.media?.mediaId || !mobileCompanion) return undefined;
+        const record = mobileCompanion.media.get(clientId, message.media.mediaId);
+        if (!record) return undefined;
+        if (message.kind === 'audio') {
+            if (!media?.voiceDataToText) return undefined;
+            return await withTimeout(media.voiceDataToText(record.data, record.mime), MEDIA_TIMEOUTS.voice);
+        }
+        if (!vision || !['image', 'sticker'].includes(message.kind)) return undefined;
+        const dataUrl = `data:${record.mime};base64,${record.data.toString('base64')}`;
+        return await withTimeout(vision.describe({ url: dataUrl, dataUrl }), MEDIA_TIMEOUTS.vision);
+    };
+    if (dshEnabled) mobileCompanion = createMobileCompanion({
+        dsh: dshLink,
+        state: dshState,
+        voice: dshVoice,
+        describeMedia: describeMobileMedia,
+        onActionResult: async (result, clientId) => {
+            // 只记设备、动作结果和决策，不把参数或媒体内容写入日志；执行仍完全由手机端白名单策略负责。
+            log(`手机动作回执：设备 ${clientId}，请求 ${result.requestId}，${result.ok ? '成功' : '失败'}，决策 ${result.decision}${result.error ? `（${result.error.replace(/\s+/g, ' ').slice(0, 160)}）` : ''}`);
+        },
+    });
+
+    /** 显式咨询才调用 DSH；问答本身留在独立上下文里，下一次 /dsh 可以接着说。 */
+    const askDsh = (question: string): void => {
+        dshAskTail = dshAskTail.then(async () => {
+            try {
+                const continuity = dshRecentTurns();
+                dshConversation.push({ role: 'user', content: question });
+                const reply = await dshLink.advise({ question, state: dshState(), recentTurns: continuity, voice: dshVoice() });
+                const text = reply.trim() || '我刚才没整理好，你再问我一次。';
+                dshConversation.push({ role: 'assistant', content: text });
+                dshConversation.splice(0, Math.max(0, dshConversation.length - 12));
+                tellOwner(text);
+            } catch (error) {
+                tellOwner(`（DSH 咨询失败：${error instanceof Error ? error.message : String(error)}）`);
+            }
+        });
     };
 
     /** 「/休眠 [原因]」先商量：让她自己说话（这一条会发给他），记下她的话；「/休眠 确认」才封存并休眠；「/休眠 取消」回到醒着 */
@@ -1822,8 +1996,11 @@ ${body}
                 features: featureStatuses(config),
                 ...(photos || jokes || config.weeklyReport ? { extras: statusExtras() } : {}),
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
+                ...(weather ? { weather: weather.status() } : {}),
+                mobileCompanion: mobileCompanion ? { enabled: true, ...mobileCompanion.runtime.status() } : { enabled: false, connected: false, queued: 0, maxQueuedPerClient: 32 },
             };
         },
+        mobileCompanion: () => mobileCompanion,
     };
 }
 
