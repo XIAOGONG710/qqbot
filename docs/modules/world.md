@@ -7,6 +7,7 @@
 ## 文件（`packages/bot/src/` 下）
 
 - `world/world.ts`
+- `world/cache-freshness.ts`
 - `world/weather.ts`
 - `world/air-quality.ts`
 - `world/daylight.ts`
