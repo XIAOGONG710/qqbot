@@ -28,6 +28,8 @@ export interface OwnerBankInfo {
 
 export const OWNER_BANK_FILE = 'owner-bank.json';
 
+export type OwnerBankRevocationReason = 'memory_disabled' | 'owner_missing';
+
 export const ownerBankPath = (memoryDir: string): string => join(memoryDir, OWNER_BANK_FILE);
 
 /** 没变就不重写（每次启动都调用，不要白动文件）；返回有没有写 */
@@ -37,6 +39,18 @@ export function writeOwnerBank(memoryDir: string, info: Omit<OwnerBankInfo, 'wri
     if (current.ownerBank === info.ownerBank && current.commonBank === info.commonBank && current.legacyBank === info.legacyBank
         && current.chatFile === info.chatFile && current.recalledFile === info.recalledFile && current.desktopFile === info.desktopFile) return false;
     writeJsonAtomic(path, { ...info, writtenAt: now().toISOString() });
+    return true;
+}
+
+/**
+ * 关闭 DSH 与 owner bank 的派生接缝，不删除聊天、近期回合或 Hindsight bank 本体。
+ * 已撤销或从未写过时不反复改文件；保留短审计状态，避免旧 owner 无限期继续生效。
+ */
+export function revokeOwnerBank(memoryDir: string, reason: OwnerBankRevocationReason, now: () => Date = () => new Date()): boolean {
+    const path = ownerBankPath(memoryDir);
+    const current = readJsonOr<Partial<OwnerBankInfo>>(path, {});
+    if (typeof current.ownerBank !== 'string') return false;
+    writeJsonAtomic(path, { version: 1, revokedAt: now().toISOString(), reason });
     return true;
 }
 

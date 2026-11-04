@@ -29,6 +29,7 @@ import { CRISIS_FALLBACK } from '../src/language/exit-check.ts';
 import { CRISIS_MARK } from '../src/language/intent.ts';
 import { createDeviceControl } from '../src/platform/device-actions.ts';
 import type { DeviceService, startDeviceService } from '../src/platform/device-service.ts';
+import { readOwnerBank } from '../src/memory/owner-bank.ts';
 
 type StartDevices = typeof startDeviceService;
 
@@ -910,7 +911,7 @@ describe('编排（app.ts）', () => {
 
 
 
-    test('同一个她（ADR 0176 / 0177）：启动时把他的 bank 写进 memory/owner-bank.json，DSH 插件自己的读法认得；crossRecent 开着多带两边互读的文件；没有男朋友档 / 没开长期记忆就不写', async () => {
+    test('同一个她（ADR 0176 / 0177）：启用时写 owner bank，关闭记忆或移除 owner 后撤销旧接缝', async () => {
         const memory = { baseUrl: 'http://127.0.0.1:1', timeoutMs: 50, recallTimeoutMs: 50, bankPrefix: 'test' };
         const ownerFile = (cfg: AppConfig) => join(cfg.dataDir, 'memory', 'owner-bank.json');
         const readByPlugin = async (cfg: AppConfig) => {
@@ -944,6 +945,24 @@ describe('编排（app.ts）', () => {
         const noMemory = config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
         setup(noMemory);
         assert.equal(existsSync(ownerFile(noMemory)), false);
+
+        // 同一个数据目录先启用、后移除 owner：旧 bank 和近期文件不能继续被 DSH 使用。
+        const ownerMigration = config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }], memory, crossRecent: true });
+        setup(ownerMigration);
+        const ownerRevoked = config({ dataDir: ownerMigration.dataDir, contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }], memory, crossRecent: true });
+        setup(ownerRevoked);
+        assert.equal(readOwnerBank(join(ownerRevoked.dataDir, 'memory')), undefined);
+        assert.equal(await readByPlugin(ownerRevoked), undefined);
+        assert.equal(JSON.parse(readFileSync(ownerFile(ownerRevoked), 'utf8')).reason, 'owner_missing');
+
+        // 同一个数据目录先启用、后关闭长期记忆，也必须立即切断接缝。
+        const memoryMigration = config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }], memory, crossRecent: true });
+        setup(memoryMigration);
+        const memoryRevoked = config({ dataDir: memoryMigration.dataDir, contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }], crossRecent: true });
+        setup(memoryRevoked);
+        assert.equal(readOwnerBank(join(memoryRevoked.dataDir, 'memory')), undefined);
+        assert.equal(await readByPlugin(memoryRevoked), undefined);
+        assert.equal(JSON.parse(readFileSync(ownerFile(memoryRevoked), 'utf8')).reason, 'memory_disabled');
     });
 
 

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { ownerBankPath, readOwnerBank, writeOwnerBank } from '../src/memory/owner-bank.ts';
+import { ownerBankPath, readOwnerBank, revokeOwnerBank, writeOwnerBank } from '../src/memory/owner-bank.ts';
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-ownerbank-')); dirs.push(d); return d; };
@@ -31,6 +31,20 @@ describe('他的 bank 写给 DSH 桌面上的她（ADR 0176）', () => {
         writeOwnerBank(dir, info);
         assert.equal(writeOwnerBank(dir, { ...info, ownerBank: 'linmengyao-0000000000000000' }), true);
         assert.equal(readOwnerBank(dir)!.ownerBank, 'linmengyao-0000000000000000');
+    });
+
+    test('关闭记忆或移除 owner 时只撤销接缝并保留审计状态', () => {
+        const dir = tmp();
+        assert.equal(revokeOwnerBank(dir, 'memory_disabled'), false, '从未启用时不凭空建文件');
+        writeOwnerBank(dir, info);
+        assert.equal(revokeOwnerBank(dir, 'owner_missing', () => new Date('2026-11-04T05:00:00Z')), true);
+        assert.equal(readOwnerBank(dir), undefined);
+        assert.deepEqual(JSON.parse(readFileSync(ownerBankPath(dir), 'utf8')), {
+            version: 1, revokedAt: '2026-11-04T05:00:00.000Z', reason: 'owner_missing',
+        });
+        assert.equal(revokeOwnerBank(dir, 'memory_disabled'), false, '已撤销时不反复重写');
+        assert.equal(writeOwnerBank(dir, info), true, '重新启用后可以恢复接缝');
+        assert.equal(readOwnerBank(dir)?.ownerBank, info.ownerBank);
     });
 
     test('文件读坏了 / 缺字段：当没有，不抛错', () => {

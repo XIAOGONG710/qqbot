@@ -44,7 +44,7 @@ import { HindsightClient } from '.././memory/hindsight.ts';
 import { arrivedWhileAsleep } from '.././social/reply-timing.ts';
 import { answerWhy, createSilenceWatcher, noteFromInfo, recordSilence, type SilenceInfo } from '.././social/silence.ts';
 import { drainOutbox } from '.././social/outbox.ts';
-import { writeOwnerBank } from '.././memory/owner-bank.ts';
+import { revokeOwnerBank, writeOwnerBank } from '.././memory/owner-bank.ts';
 import { desktopBlock, desktopRecentPath } from '.././memory/cross-recent.ts';
 import { inspectReply, stripInternalMarkers, summarizeIssues, tidyQuestionMarks, type ExitIssue } from '.././language/exit-check.ts';
 import { ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
@@ -807,12 +807,14 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         ? `长期记忆：Hindsight ${config.memory!.baseUrl}（名单里的联系人；公共记忆库 ${memory.commonBankId()}，陌生人档不写不查）`
         : '长期记忆：未启用（配置里没有 memory）');
     // 同一个她（ADR 0176）：把他的 bank 告诉 DSH 桌面上的她，让两边读写同一份记忆
-    if (memory && deviceOwner) {
-        try {
+    try {
+        if (memory && deviceOwner) {
             const crossFiles = config.crossRecent ? { chatFile: join(config.dataDir, 'chats', `${deviceOwner.qq}.jsonl`), recalledFile: join(config.dataDir, 'chats', `${deviceOwner.qq}.recalled.json`), desktopFile: desktopRecentPath(join(config.dataDir, 'memory')) } : {};
             if (writeOwnerBank(join(config.dataDir, 'memory'), { ownerBank: memory.bankId(deviceOwner), commonBank: memory.commonBankId(), legacyBank: config.memory!.bankPrefix, ...crossFiles })) log(`同一个她：他的记忆 bank 写进 memory/owner-bank.json（DSH 桌面上的她读它）${config.crossRecent ? '；两边互读最近几轮：开' : ''}`);
-        } catch (error) { log(`同一个她：owner-bank.json 没写成（${error instanceof Error ? error.message : String(error)}）`); }
-    }
+        } else if (revokeOwnerBank(join(config.dataDir, 'memory'), memory ? 'owner_missing' : 'memory_disabled')) {
+            log(`同一个她：owner-bank.json 已撤销（${memory ? '没有设备 owner' : '长期记忆已关闭'}）`);
+        }
+    } catch (error) { log(`同一个她：owner-bank.json 没更新成（${error instanceof Error ? error.message : String(error)}）`); }
     // 她的日记（ADR 0017）：用名单里最亲的、卡上有作息的那一档；herDays 关着时不带心情和书。温度低一点，少编
     // 日记里的世界按同学档（会召回公共库的档位里最外面的一层，ADR 0026）
     const diaryWorldCard = memory ? cardFor('classmate').character : undefined;
