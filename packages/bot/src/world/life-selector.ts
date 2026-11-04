@@ -155,12 +155,13 @@ function npcFacts(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date) 
     return (dayWorld(sources, at)?.events ?? []).filter(event => event.person);
 }
 
-function targetForMeal(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date): string | undefined {
-    const social = npcFacts(sources, at).find(event => MEAL_SOCIAL.has(event.id))?.person?.id;
+function targetForMeal(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, meal: { start: Date; end: Date }): string | undefined {
+    const social = npcFacts(sources, meal.start).find(event => MEAL_SOCIAL.has(event.id) && event.at >= meal.start && event.at < meal.end)?.person?.id;
     if (social) return social;
     // 闺蜜约的那顿午饭（ADR 0061）：真的发生了的才算
-    const world = dayWorld(sources, at);
-    return world?.dates?.find(d => d.held && d.kind === 'canteen' && formatDate(d.start) === world.day)?.person.id;
+    const world = dayWorld(sources, meal.start);
+    return world?.dates?.find(d => d.held && (d.kind === 'canteen' || d.kind === 'dinner')
+        && dateSpan(d).start < meal.end && dateSpan(d).end > meal.start)?.person.id;
 }
 
 function targetForClass(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date, end: Date): string | undefined {
@@ -250,7 +251,7 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     if (meal && leaving) {
         if (leaving.meal) return { skipTo: leaving.start, why: `等着出去吃（${leaving.subject}）` };
         if (meal.start.getTime() !== at.getTime() || minutesBetween(at, leaving.start) < MIN_MEAL_MINUTES) return { skipTo: leaving.start, why: '要出门了，来不及吃饭' };
-        const target = meal.kind === 'lunch' ? targetForMeal(sources, at) : undefined;
+        const target = targetForMeal(sources, meal);
         return {
             intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at, durationMinutes: minutesBetween(at, leaving.start), ...(target ? { target } : {}) },
             why: `出门前先把${meal.kind === 'lunch' ? '午饭' : '晚饭'}吃了`,
@@ -259,12 +260,13 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     // 落在饭点中间、这顿还没吃（账上没有，也没在约会里一起吃过），还剩 MIN_MEAL_MINUTES 以上：从这一刻吃——忙到 17:48 也照样去吃晚饭。
     // 原来只在饭点开头那一刻排吃饭，落在中间就当「饭吃到一半」跳过：10-09 线上执行器起点带秒（15:07:51），修片记到 17:47:51，晚饭整顿没记上
     if (meal && meal.start < at && minutesBetween(at, meal.end) >= MIN_MEAL_MINUTES && !ateAlready(sources, meal)) {
-        return { intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at }, why: `晚了一点吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}` };
+        const target = targetForMeal(sources, meal);
+        return { intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at, ...(target ? { target } : {}) }, why: `晚了一点吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}` };
     }
     if (meal) {
-        const target = meal.kind === 'lunch' ? targetForMeal(sources, at) : undefined;
+        const target = targetForMeal(sources, meal);
         return meal.start.getTime() === at.getTime()
-            ? { intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at, ...(target ? { target } : {}) }, why: meal.kind === 'lunch' ? '和朋友吃午饭' : '晚饭' }
+            ? { intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at, ...(target ? { target } : {}) }, why: `${target ? '和朋友吃' : ''}${meal.kind === 'lunch' ? '午饭' : '晚饭'}` }
             : { skipTo: meal.end, why: '饭吃到一半' };
     }
     const blocks = dayBusy(sources, at);
