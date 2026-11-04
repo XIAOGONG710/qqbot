@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { helloEnvelope } from './gateway.ts';
-import { validateAction, validateEnvelope, validateMessage, type ActionResult, type CompanionEnvelope, type CompanionError, type CompanionHello, type CompanionMessage, type PhoneActionRequest } from './protocol.ts';
+import { MAX_CLOCK_SKEW_MS, validateAction, validateEnvelope, validateMessage, type ActionResult, type CompanionEnvelope, type CompanionError, type CompanionHello, type CompanionMessage, type PhoneActionRequest } from './protocol.ts';
 
 export const MAX_CLIENT_PENDING = 32;
 const MAX_TRACKED_IDS = 256;
@@ -27,7 +27,7 @@ export class CompanionClient {
     private readonly pending = new Set<string>();
     private readonly usedRequestIds = new Set<string>();
     private readonly sentNonces = new Set<string>();
-    private readonly receivedNonces = new Set<string>();
+    private readonly receivedNonces = new Map<string, number>();
     private sessionId: string | undefined;
 
     constructor(options: CompanionClientOptions) {
@@ -64,22 +64,22 @@ export class CompanionClient {
     }
 
     accept(value: unknown): CompanionEnvelope<CompanionMessage | ActionResult | CompanionError> {
-        const envelope = validateEnvelope(value, this.now());
+        const now = this.now();
+        const envelope = validateEnvelope(value, now);
         if (!['message.receive', 'action.result', 'error'].includes(envelope.kind)) throw new Error('客户端不接受此类响应');
-        if (this.receivedNonces.has(envelope.nonce)) throw new Error('响应 nonce 已经使用');
-        remember(this.receivedNonces, envelope.nonce);
         const requestId = envelope.requestId.startsWith('resp-') ? envelope.requestId.slice(5) : envelope.requestId;
         if (!this.pending.has(requestId)) throw new Error('响应没有对应的请求');
+        rememberReceived(this.receivedNonces, envelope.nonce, now);
         this.pending.delete(requestId);
         return envelope as CompanionEnvelope<CompanionMessage | ActionResult | CompanionError>;
     }
 
     /** 接收宿主主动下发的白名单动作；它不占用客户端 pending requestId。 */
     acceptDownlink(value: unknown): CompanionEnvelope<PhoneActionRequest> {
-        const envelope = validateEnvelope(value, this.now());
+        const now = this.now();
+        const envelope = validateEnvelope(value, now);
         if (envelope.kind !== 'action.request') throw new Error('客户端只接受 action.request 下行包');
-        if (this.receivedNonces.has(envelope.nonce)) throw new Error('响应 nonce 已经使用');
-        remember(this.receivedNonces, envelope.nonce);
+        rememberReceived(this.receivedNonces, envelope.nonce, now);
         return envelope as CompanionEnvelope<PhoneActionRequest>;
     }
 
@@ -140,4 +140,17 @@ export class CompanionClient {
 function remember(set: Set<string>, value: string): void {
     set.add(value);
     if (set.size > MAX_TRACKED_IDS) set.delete(set.values().next().value!);
+}
+
+function rememberReceived(nonces: Map<string, number>, value: string, now: number): void {
+    // 只淘汰协议时钟窗口外的记录；按条数淘汰会让攻击者挤掉合法 nonce 后重放旧动作。
+    for (const [nonce, acceptedAt] of nonces) {
+        const age = now - acceptedAt;
+        if (age > MAX_CLOCK_SKEW_MS) nonces.delete(nonce);
+        else if (age < -MAX_CLOCK_SKEW_MS) throw new Error('响应防重放时钟异常，请重新连接');
+    }
+    if (nonces.has(value)) throw new Error('响应 nonce 已经使用');
+    // 窗口内流量过高时失败关闭，避免降低防重放保障或让内存无限增长。
+    if (nonces.size >= MAX_TRACKED_IDS) throw new Error('响应防重放窗口已满，请重新连接');
+    nonces.set(value, now);
 }

@@ -346,6 +346,19 @@ describe('手机伴侣协议', () => {
         if (result.accepted) assert.match(String(result.response?.body && (result.response.body as { message?: string }).message), /客户端不能发送/);
     });
 
+    test('未知响应不能挤掉客户端已经登记的下行动作 nonce', () => {
+        let now = 35_000;
+        const client = new CompanionClient({ clientId: 'android-replay-window', pairingCode: 'ABCD-1234', capabilities: ['text'], now: () => now });
+        const downlink = { v: 1 as const, requestId: 'push-replay-window', kind: 'action.request' as const, sentAt: new Date(now).toISOString(), nonce: 'server-protected-nonce', body: { action: 'notify' as const, params: { text: '只执行一次' }, decision: 'auto' as const } };
+        client.acceptDownlink(downlink);
+        for (let index = 0; index < 300; index += 1) {
+            assert.throws(() => client.accept({ v: 1, requestId: `resp-unknown-${index}`, kind: 'error', sentAt: new Date(now).toISOString(), nonce: `server-noise-${index}`, body: { code: 'noise-error', message: 'x' } }), /没有对应/);
+        }
+        assert.throws(() => client.acceptDownlink(downlink), /nonce 已经使用/);
+        now += MAX_CLOCK_SKEW_MS + 1;
+        assert.doesNotThrow(() => client.acceptDownlink({ ...downlink, sentAt: new Date(now).toISOString() }));
+    });
+
     test('运行时错误响应保留原始 requestId', async () => {
         let now = 40_000;
         const pairing = new MemoryPairingStore(60_000);
