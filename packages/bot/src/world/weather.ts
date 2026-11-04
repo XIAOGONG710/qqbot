@@ -7,6 +7,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { calendarDate, stateObject, stateTimestamp } from '../memory/state-schema.ts';
 
 export type Place = 'jinan' | 'qingdao';
 
@@ -95,10 +96,14 @@ const dayAfter = (date: string) => dateOf(new Date(Number(date.slice(0, 4)), Num
  * 第 slot 个钟头（slot 点到 slot+1 点）下没下雨。Open-Meteo 逐小时的降水是「前一小时累计」，所以看 slot+1 那个 key 的降水；天况看 slot 那个 key。
  * observed：只看实况（o），预报的不算「下过」
  */
-function wetSlot(hours: Readonly<Record<string, HourWeather>>, date: string, slot: number, observed: boolean): boolean {
-    const precip = hours[slot === 23 ? `${dayAfter(date)}T00` : `${date}T${pad(slot + 1)}`];
-    const code = hours[`${date}T${pad(slot)}`];
-    return Boolean((precip && (!observed || precip.o) && precip.p >= RAIN_MM) || (code && (!observed || code.o) && rainCode(code.c)));
+function wetSlot(hours: Readonly<Record<string, HourWeather>>, date: string, slot: number, observed: boolean, untilKey?: string): boolean {
+    const precipKey = slot === 23 ? `${dayAfter(date)}T00` : `${date}T${pad(slot + 1)}`;
+    const codeKey = `${date}T${pad(slot)}`;
+    const precip = hours[precipKey];
+    const code = hours[codeKey];
+    // 累计降水在下一整点才成为观测；回放 14:00 时不能读取 15:00 的累计值。
+    const available = (key: string, item: HourWeather | undefined) => item && (!observed || (item.o && (!untilKey || key <= untilKey)));
+    return Boolean((available(precipKey, precip) && precip!.p >= RAIN_MM) || (available(codeKey, code) && rainCode(code!.c)));
 }
 
 /**
@@ -112,7 +117,7 @@ export function dayFrom(hours: Readonly<Record<string, HourWeather>>, date: stri
     const temps = known.map(hour => hour.t);
     const untilDate = dateOf(until);
     const nowHour = untilDate === date ? until.getHours() : date < untilDate ? 23 : -1;
-    const rainHours = Array.from({ length: nowHour + 1 }, (_, slot) => slot).filter(slot => wetSlot(hours, date, slot, true));
+    const rainHours = Array.from({ length: nowHour + 1 }, (_, slot) => slot).filter(slot => wetSlot(hours, date, slot, true, hourKey(until)));
     // 「现在」取 until 那个钟头；她的一天过了零点还算这一天（凌晨 5 点前），那时的「现在」在第二天的数据里
     const sameDay = untilDate === date || (untilDate === dayAfter(date) && until.getHours() < 5);
     const current = sameDay ? hours[hourKey(until)] : undefined;
@@ -224,9 +229,10 @@ export interface WeatherFetcherStatus {
 function validHourly(hours: unknown): Record<string, HourWeather> {
     if (!hours || typeof hours !== 'object' || Array.isArray(hours)) throw new Error('供应商返回的天气不是对象');
     const output: Record<string, HourWeather> = {};
-    for (const [key, value] of Object.entries(hours)) {
-        if (Object.keys(output).length >= MAX_WEATHER_HOURS) throw new Error('供应商返回的天气时数过多');
-        if (!/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3])$/.test(key)) continue;
+    const entries = Object.entries(hours);
+    if (entries.length > MAX_WEATHER_HOURS) throw new Error('供应商返回的天气时数过多');
+    for (const [key, value] of entries) {
+        if (!validHourKey(key)) continue;
         const item = value as Partial<HourWeather> | null;
         if (!item || typeof item !== 'object' || !Number.isFinite(item.t) || !Number.isFinite(item.p) || !Number.isInteger(item.c)) continue;
         if (item.t! < -100 || item.t! > 100 || item.p! < 0 || item.p! > 1000 || item.c! < 0 || item.c! > 99) continue;
@@ -236,11 +242,48 @@ function validHourly(hours: unknown): Record<string, HourWeather> {
     return output;
 }
 
+function validHourKey(key: string): boolean {
+    return /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3])$/.test(key) && calendarDate(key.slice(0, 10));
+}
+
+interface LegacyStore extends Omit<Store, 'fetchedAt'> { fetchedAt?: string }
+function validStore(value: unknown): value is LegacyStore {
+    if (!stateObject(value) || typeof value.since !== 'string' || !calendarDate(value.since)
+        || !(value.fetchedAt === undefined || value.fetchedAt === '' || stateTimestamp(value.fetchedAt)) || !stateObject(value.hours)) return false;
+    // 历史缓存不受供应商单次响应 14 天的限制；旧观察不能因轮转而丢失。
+    return Object.entries(value.hours).every(([key, hour]) => validHourKey(key) && stateObject(hour)
+        && typeof hour.t === 'number' && Number.isFinite(hour.t) && hour.t >= -100 && hour.t <= 100
+        && typeof hour.p === 'number' && Number.isFinite(hour.p) && hour.p >= 0 && hour.p <= 1000
+        && typeof hour.c === 'number' && Number.isInteger(hour.c) && hour.c >= 0 && hour.c <= 99
+        && (hour.o === undefined || hour.o === 1));
+}
+
+/** AbortSignal 是协作取消；另设竞速保证不合作的注入供应商也不会永久锁住 inFlight。 */
+async function withWeatherDeadline<T>(work: (signal: AbortSignal) => Promise<T>, timeoutMs: number, parent?: AbortSignal): Promise<T> {
+    const controller = new AbortController();
+    const cancel = () => controller.abort(parent?.reason ?? new Error('天气请求已取消'));
+    if (parent?.aborted) cancel();
+    else parent?.addEventListener('abort', cancel, { once: true });
+    let rejectAbort!: (reason: unknown) => void;
+    const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });
+    const onAbort = () => rejectAbort(controller.signal.reason);
+    controller.signal.addEventListener('abort', onAbort, { once: true });
+    const timer = setTimeout(() => controller.abort(new Error('天气请求超时')), timeoutMs);
+    try {
+        controller.signal.throwIfAborted();
+        return await Promise.race([Promise.resolve().then(() => work(controller.signal)), aborted]);
+    } finally {
+        clearTimeout(timer);
+        parent?.removeEventListener('abort', cancel);
+        controller.signal.removeEventListener('abort', onAbort);
+    }
+}
+
 /** 默认供应商：固定地点请求 Open-Meteo，响应先限大小再解析和校验。 */
 export function openMeteoProvider(options: { fetchJson?: (url: string) => Promise<unknown>; timeoutMs?: number } = {}): WeatherProvider {
     const timeoutMs = options.timeoutMs ?? 20_000;
-    const fetchJson = options.fetchJson ?? (async (url: string) => {
-        const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    const fetchJson: (url: string, signal: AbortSignal) => Promise<unknown> = options.fetchJson ?? (async (url, signal) => {
+        const response = await fetch(url, { signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const text = await response.text();
         if (Buffer.byteLength(text, 'utf8') > MAX_WEATHER_RESPONSE_BYTES) throw new Error('天气服务响应过大');
@@ -248,10 +291,10 @@ export function openMeteoProvider(options: { fetchJson?: (url: string) => Promis
     });
     return {
         id: 'open-meteo',
-        async fetchHourly({ latitude, longitude }: WeatherProviderRequest) {
+        async fetchHourly({ latitude, longitude, signal }: WeatherProviderRequest) {
             const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}`
                 + '&hourly=temperature_2m,precipitation,weather_code&past_days=2&forecast_days=2&timezone=Asia%2FShanghai';
-            return parseOpenMeteo(await fetchJson(url));
+            return withWeatherDeadline(async requestSignal => parseOpenMeteo(await fetchJson(url, requestSignal)), timeoutMs, signal);
         },
     };
 }
@@ -277,15 +320,28 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
     let inFlight: Promise<void> | undefined;
     const load = (place: Place): Store | undefined => {
         if (!stores.has(place)) {
-            const data = readJsonOr<Partial<Store>>(path(place), {}, message => options.log(`真实天气：${message}`));
-            stores.set(place, data.since && data.hours ? { since: data.since, fetchedAt: data.fetchedAt ?? '', hours: data.hours } : undefined);
+            try {
+                const data = readJsonOr<LegacyStore | undefined>(path(place), undefined, undefined, { validate: validStore, invalid: 'throw', label: '天气缓存' });
+                stores.set(place, data ? { ...data, fetchedAt: data.fetchedAt ?? '' } : undefined);
+            } catch {
+                // 不隔离、不重建，也不把 JSON 错误中的原文放进日志；修好后仍可再次读取。
+                throw new Error(`${PLACES[place].name}天气缓存读取或校验失败，保留原文件`);
+            }
         }
         return stores.get(place);
     };
+    const failed = (place: Place, error: unknown) => {
+        const reason = error instanceof Error ? error.message : String(error);
+        if (errors.get(place) !== reason) options.log(`真实天气：${PLACES[place].name}没取到，照旧用存着的（${reason}）`);
+        errors.set(place, reason);
+        errorAt.set(place, new Date(now()).toISOString());
+    };
     return {
         day: (place, date, until) => {
-            const store = load(place);
-            return store && date >= store.since ? dayFrom(store.hours, date, until) : undefined;
+            try {
+                const store = load(place);
+                return store && date >= store.since ? dayFrom(store.hours, date, until) : undefined;
+            } catch (error) { failed(place, error); return undefined; }
         },
         refresh: () => {
             // 心跳和启动可能同时触发刷新；复用同一请求，避免重复打公开接口。
@@ -294,7 +350,7 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
                 for (const place of Object.keys(PLACES) as Place[]) {
                     try {
                         const { latitude, longitude } = PLACES[place];
-                        const fetched = validHourly(await provider.fetchHourly({ place, latitude, longitude, signal: AbortSignal.timeout(timeoutMs) }));
+                        const fetched = validHourly(await withWeatherDeadline(signal => provider.fetchHourly({ place, latitude, longitude, signal }), timeoutMs));
                         const at = new Date(now());
                         const old = load(place);
                         const store: Store = { since: old?.since ?? firstRealDay(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
@@ -303,10 +359,7 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
                         errors.delete(place);
                         errorAt.delete(place);
                     } catch (error) {
-                        const reason = error instanceof Error ? error.message : String(error);
-                        errors.set(place, reason);
-                        errorAt.set(place, new Date(now()).toISOString());
-                        options.log(`真实天气：${PLACES[place].name}没取到，照旧用存着的（${reason}）`);
+                        failed(place, error);
                     }
                 }
             })().finally(() => { inFlight = undefined; });
@@ -316,7 +369,8 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
             const places = {} as Record<Place, WeatherPlaceStatus>;
             let fetchedAt: string | undefined;
             for (const place of Object.keys(PLACES) as Place[]) {
-                const store = load(place);
+                let store: Store | undefined;
+                try { store = load(place); } catch (error) { failed(place, error); }
                 const item: WeatherPlaceStatus = { hours: Object.keys(store?.hours ?? {}).length };
                 if (store?.fetchedAt) {
                     item.fetchedAt = store.fetchedAt;
