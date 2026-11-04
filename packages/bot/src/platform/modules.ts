@@ -54,7 +54,7 @@ export const MODULES: readonly ModuleDef[] = [
         files: ['vision/vision.ts', 'vision/photos.ts', 'vision/photo-sources.ts', 'vision/safe-image.ts', 'vision/media.ts'],
         groups: ['照片和表情'],
         metrics: '周报「图片」；vision 相关单测；图片不发外网的比例',
-        adrs: ['0055', '0109', '0128'],
+        adrs: ['0055', '0109', '0128', '0232'],
     },
     {
         id: 'emotion', name: '心境与安全',

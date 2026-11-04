@@ -28,4 +28,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0055](../adr/0055-deepseek-vision.md)、[ADR 0109](../adr/0109-photo-shelf.md)、[ADR 0128](../adr/0128-food-photos.md)
+[ADR 0055](../adr/0055-deepseek-vision.md)、[ADR 0109](../adr/0109-photo-shelf.md)、[ADR 0128](../adr/0128-food-photos.md)、[ADR 0232](../adr/0232-vision-review-boundaries.md)
