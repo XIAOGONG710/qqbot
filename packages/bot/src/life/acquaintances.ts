@@ -13,6 +13,8 @@ import { createHash } from 'node:crypto';
 import type { BiliAccount } from '.././bilibili/bilibili-account.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { clip, whenText } from '../memory/timeline.ts';
+import { stateObject } from '../memory/state-schema.ts';
+import { TransientStateError } from '../memory/transient-io.ts';
 
 export type PersonKind = 'ai' | 'human' | 'unknown';
 export type PersonStance = 'seen' | 'acquainted' | 'friend';
@@ -38,6 +40,23 @@ export interface Person {
 }
 
 interface PeopleFile { version: 1; people: Person[] }
+
+const validAt = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value));
+const validPerson = (value: unknown): value is Person => stateObject(value)
+    && typeof value.id === 'string' && Boolean(value.id) && typeof value.platform === 'string' && typeof value.uid === 'string'
+    && value.id === `${value.platform}:${value.uid}` && typeof value.name === 'string'
+    && (value.kind === 'ai' || value.kind === 'human' || value.kind === 'unknown')
+    && (value.stance === 'seen' || value.stance === 'acquainted' || value.stance === 'friend')
+    && validAt(value.first) && validAt(value.last) && Date.parse(value.first) <= Date.parse(value.last)
+    && Array.isArray(value.days) && value.days.every(validAt)
+    && Array.isArray(value.encounters) && value.encounters.every((item: unknown) => stateObject(item)
+        && validAt(item.at) && Date.parse(item.at) <= Date.parse(value.last as string) && typeof item.where === 'string' && typeof item.what === 'string')
+    && (value.seenObservations === undefined || Array.isArray(value.seenObservations)
+        && value.seenObservations.every((key: unknown) => typeof key === 'string' && /^[a-f0-9]{64}$/.test(key)))
+    && (value.view === undefined || typeof value.view === 'string');
+const validPeopleFile = (value: unknown): value is PeopleFile => stateObject(value) && value.version === 1
+    && Array.isArray(value.people) && value.people.every(validPerson)
+    && new Set(value.people.map(person => person.id)).size === value.people.length;
 
 export const MAX_PEOPLE = 60;
 const MAX_ENCOUNTERS = 8;
@@ -73,8 +92,14 @@ export class Acquaintances {
     }
 
     #load(): PeopleFile {
-        const value = readJsonOr<PeopleFile>(this.#path, { version: 1, people: [] }, this.#log, { label: '认识的人' });
-        return value && Array.isArray(value.people) ? value : { version: 1, people: [] };
+        try {
+            return readJsonOr<PeopleFile>(this.#path, { version: 1, people: [] }, this.#log, {
+                validate: validPeopleFile, invalid: 'throw', label: '认识的人状态',
+            });
+        } catch (error) {
+            if (error instanceof TransientStateError) throw error;
+            throw new Error(`认识的人状态 ${this.#path} 读取或校验失败；原文件未重建，请修复或从可信备份恢复`);
+        }
     }
 
     list(): Person[] { return this.#load().people; }
@@ -104,9 +129,10 @@ export class Acquaintances {
         } else {
             person.name = clip(o.name, 20) || person.name;
             if (o.kind !== undefined || person.kind === 'unknown') person.kind = kind;
+            if (Date.parse(encounter.at) < Date.parse(person.first)) person.first = encounter.at;
             if (Date.parse(encounter.at) >= Date.parse(person.last)) person.last = encounter.at;
-            if (!person.days.includes(day)) person.days = [...person.days, day].slice(-30);
-            person.encounters = [...person.encounters, encounter].slice(-MAX_ENCOUNTERS);
+            if (!person.days.includes(day)) person.days = [...person.days, day].sort((a, b) => Date.parse(a) - Date.parse(b)).slice(-30);
+            person.encounters = [...person.encounters, encounter].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).slice(-MAX_ENCOUNTERS);
         }
         person.seenObservations = [...(person.seenObservations ?? []), key].slice(-MAX_SEEN_OBSERVATIONS);
         // 在两个不同的日子见过 = 熟了；朋友只能由用户设
@@ -140,7 +166,10 @@ export class Acquaintances {
     /** 放进聊天提示词的一行：3 天内又见到的（见过不止一次的），最多 2 个；没有就没有 */
     promptLine(now: Date = this.#now()): string | undefined {
         const recent = this.list()
-            .filter(p => now.getTime() - Date.parse(p.last) < 3 * 86_400_000 && (p.encounters.length >= 2 || p.stance !== 'seen'))
+            // 名字、身份和看法没有历史快照。只过滤未来摘录仍会泄漏未来元数据，因此回放时保守隐藏整个人。
+            .filter(p => Date.parse(p.last) <= now.getTime() && now.getTime() - Date.parse(p.last) < 3 * 86_400_000
+                && (p.encounters.length >= 2 || p.stance !== 'seen'))
+            .map(person => ({ ...person, encounters: [...person.encounters].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)) }))
             .sort((a, b) => Date.parse(b.last) - Date.parse(a.last))
             .slice(0, 2);
         if (!recent.length) return undefined;
