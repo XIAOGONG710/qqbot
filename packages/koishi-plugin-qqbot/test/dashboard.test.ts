@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
-import { attentionDetail, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
+import { attentionDetail, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
@@ -184,5 +184,39 @@ describe('客户端的纯函数', () => {
         assert.match(warning.detail, /天气1 个地点失败.*交通1 个地点失败.*法定日历获取失败/);
         assert.doesNotMatch(warning.detail, /secret|token|Authorization|供应商原文/);
         assert.match(realWorldStatus({ transport: { locations: {} } }).detail, /交通等待取数/);
+    });
+
+    test('生活卡把事实和数值翻成自然语言，不展示内部字段或凭空补故事', () => {
+        const rows = lifePulse({
+            schedule: true,
+            contacts: [
+                { tier: 'classmate', now: '在上课' },
+                { tier: 'boyfriend', now: '在宿舍休息' },
+            ],
+            humanValues: {
+                energy: 22, hunger: 78, stress: 81,
+                relationship: { intimacy: 82, trust: 74, friction: 12 },
+            },
+            today: {
+                mood: { name: '有点开心', reason: '下午的作业提前写完了' },
+                books: [{ title: '长安的荔枝', amount: 52, unit: '页', finished: false, putDown: false }],
+                highlights: [{ at: '2026-11-04T10:20:00.000Z', text: '喂过土豆，也见到它了' }],
+            },
+        });
+        assert.deepEqual(rows, [
+            { label: '现在', text: '在宿舍休息' },
+            { label: '身体感受', text: '有些累，已经饿了，压力偏高' },
+            { label: '心情', text: '有点开心，下午的作业提前写完了' },
+            { label: '你们之间', text: '和你很亲近，信任稳定' },
+            { label: '在读', text: '《长安的荔枝》第 52 页' },
+            { label: '刚发生', text: '喂过土豆，也见到它了' },
+        ]);
+        assert.doesNotMatch(JSON.stringify(rows), /2026-|T10|intimacy|trust|friction/);
+        assert.deepEqual(lifePulse({ schedule: false, contacts: [], today: { highlights: [] } }), [
+            { label: '现在', text: '作息未启用' },
+            { label: '刚发生', text: '今天还没有已记录的小事' },
+        ]);
+        assert.deepEqual(lifePulse({ schedule: true, contacts: [] }).at(-1), { label: '刚发生', text: '还没有可用的世界记录' });
+        assert.deepEqual(lifePulse(undefined), []);
     });
 });

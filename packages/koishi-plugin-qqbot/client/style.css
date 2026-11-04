@@ -74,6 +74,27 @@
 .qqbot-health-dot.is-on { background: var(--k-color-success); }
 .qqbot-connection-label { font-weight: 600; }
 
+.qqbot-life-card {
+    margin: 16px 0;
+    padding: 14px 16px;
+    border: 1px solid var(--k-color-divider, #ddd);
+    border-left: 4px solid var(--k-color-active, #409eff);
+    border-radius: 8px;
+    background: var(--k-color-surface-1, #f8f8f8);
+}
+
+.qqbot-life-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.qqbot-life-values { margin-top: 10px; color: var(--k-text-light); font-size: 13px; }
+.qqbot-life-values summary { cursor: pointer; }
+.qqbot-life-values-body { margin-top: 8px; }
+
 .qqbot-summary-row {
     display: flex;
     align-items: center;
@@ -216,4 +237,5 @@
     .qqbot-list-filters { flex-wrap: wrap; }
     .qqbot-summary-row { align-items: flex-start; }
     .qqbot-label { width: 84px; }
+    .qqbot-life-head { align-items: flex-start; flex-direction: column; }
 }

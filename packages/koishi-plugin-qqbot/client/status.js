@@ -2,7 +2,7 @@
 import { computed, defineComponent, h, ref } from 'vue';
 import { store } from '@koishijs/client';
 import { c, clock, tag, tierLabel } from './common.js';
-import { attentionDetail, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from './dashboard.js';
+import { attentionDetail, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from './dashboard.js';
 
 const PROACTIVE_MODES = { off: ['关', 'info'], dryRun: ['试运行（只写日志不发）', 'warning'], on: ['开', 'success'] };
 
@@ -16,27 +16,6 @@ function proactiveText(p) {
     return parts.join('；');
 }
 
-/** 她自己的日子（ADR 0015）：今天的心情和原因、每本书的进度 */
-function todayLine(status) {
-    // 页面文件是从仓库直接读的：插件还是旧代码（没重启）时状态里没有这一项
-    if (status.herDays === undefined) return [tag('重启 Koishi 后才有', 'info')];
-    if (status.herDays === false) return [tag('关', 'info')];
-    const today = status.today;
-    if (!today) return [tag('卡上没有心情和书', 'info')];
-    const books = today.books.map(book => `《${book.title}》${book.finished ? '读完了' : `第 ${book.amount} ${book.unit}${book.putDown ? '（放下了）' : book.stopped ? '（先停在这）' : ''}`}`).join('、');
-    return [
-        today.mood ? tag(today.mood.name, 'success') : tag('没有心情', 'info'),
-        h('span', { class: 'qqbot-muted' }, ` ${today.mood ? today.mood.reason : ''}${books ? `；在读 ${books}` : ''}（${today.day.slice(5)}）`),
-    ];
-}
-
-function todayHighlightsLine(status) {
-    const highlights = status.today?.highlights;
-    if (highlights === undefined) return [tag('世界账未启用', 'info')];
-    if (!highlights.length) return [h('span', { class: 'qqbot-muted' }, '今天还没有已记录的小事')];
-    return [h('span', null, highlights.map(item => item.text).join(' · '))];
-}
-
 function humanValuesLine(values) {
     if (!values) return [tag('自主生活未开启', 'info')];
     const positiveLevel = value => value >= 75 ? 'success' : value <= 25 ? 'danger' : 'warning';
@@ -48,6 +27,26 @@ function humanValuesLine(values) {
         tag(`压力 ${values.stress}`, loadLevel(values.stress)),
         h('span', { class: 'qqbot-muted' }, ` 心情 ${values.mood} · 健康 ${values.health} · 动机 ${values.motivation} · 孤独 ${values.loneliness}${relationship ? ` · 亲密 ${relationship.intimacy} · 信任 ${relationship.trust} · 熟悉 ${relationship.familiarity} · 依恋 ${relationship.attachment} · 摩擦 ${relationship.friction}` : ''}`),
     ];
+}
+
+/** 把底层数值、世界账和作息合成一张生活卡；完整数字仍可展开查看。 */
+function lifePulsePanel(status) {
+    const rows = lifePulse(status);
+    if (!rows.length) return null;
+    return h('section', { class: 'qqbot-life-card' }, [
+        h('div', { class: 'qqbot-life-head' }, [
+            h('strong', null, '她此刻的生活'),
+            h('span', { class: 'qqbot-muted' }, '来自作息、世界账和数值投影，不由模型临时编写'),
+        ]),
+        h('div', { class: 'qqbot-summary' }, rows.map(row => h('div', { class: 'qqbot-summary-row' }, [
+            h('span', { class: 'qqbot-label' }, row.label),
+            h('span', null, row.text),
+        ]))),
+        status.humanValues ? h('details', { class: 'qqbot-life-values' }, [
+            h('summary', null, '查看完整数值'),
+            h('div', { class: 'qqbot-life-values-body' }, humanValuesLine(status.humanValues)),
+        ]) : null,
+    ]);
 }
 
 /** 手机伴侣能力清单：展示确认边界，避免控制台和协议各自维护一份动作说明。 */
@@ -147,11 +146,8 @@ export const StatusTab = defineComponent({
             const dsh = dshStatusLine(status?.dsh ?? (dshFeature?.on ? { enabled: true } : undefined));
             const worldData = realWorldStatus(status);
             const rows = status ? [
-                ['她的状态', status ? humanValuesLine(status.humanValues) : [tag('—', 'info')]],
                 ['作息', status ? [status.schedule ? tag('按作息运行', 'success') : tag('未启用', 'warning')] : [tag('—', 'info')]],
                 ['按心情回复', status ? [status.moody && status.schedule ? tag('已启用', 'success') : tag('未启用', 'info')] : [tag('—', 'info')]],
-                ['今天', status ? todayLine(status) : [tag('—', 'info')]],
-                ...(status?.today ? [['今天发生', todayHighlightsLine(status)]] : []),
                 ['说话检查', status ? [status.speechCheck === false ? tag('未启用', 'info') : tag('已启用', 'success')] : [tag('—', 'info')]],
                 ['陌生好友', status ? [status.unlistedFriends ? tag('也回复', 'warning') : tag('不回复', 'info')] : [tag('—', 'info')]],
                 ['主动联系', status ? [tag(...(PROACTIVE_MODES[status.proactive ?? 'off'] ?? ['未启用', 'info']))] : [tag('—', 'info')]],
@@ -182,6 +178,7 @@ export const StatusTab = defineComponent({
             const extras = extrasPanel(status);
             const phoneActions = phoneActionsPanel(data.phoneActions);
             const externalPlatforms = externalPlatformsPanel(status.externalPlatforms, status.externalDrafts);
+            const pulse = lifePulsePanel(status);
             const contactToolbar = h('div', { class: 'qqbot-contact-toolbar' }, [
                 h('div', { class: 'qqbot-section-title' }, [h('strong', null, '联系人'), h('span', { class: 'qqbot-muted' }, `显示 ${filteredContacts.value.length}/${counts.contacts}`)]),
                 h(c('el-input'), {
@@ -205,7 +202,7 @@ export const StatusTab = defineComponent({
                     h('div', null, [h('h2', { class: 'qqbot-status-title' }, '她现在的状态'), h('p', { class: 'qqbot-muted' }, `每 5 秒自动更新 · ${clock(data.updatedAt)}`)]),
                     h('div', { class: 'qqbot-status-head-tags' }, [tag(status.schedule ? '按作息运行' : '作息未启用', status.schedule ? 'success' : 'warning'), tag(dshFeature?.on ? '外部顾问已启用' : '外部顾问未启用', dshFeature?.on ? 'success' : 'info')]),
                 ]),
-                kpis, connections, summary, features, phoneActions, externalPlatforms, extras, contactToolbar, table,
+                kpis, connections, pulse, summary, features, phoneActions, externalPlatforms, extras, contactToolbar, table,
             ]);
         };
     },

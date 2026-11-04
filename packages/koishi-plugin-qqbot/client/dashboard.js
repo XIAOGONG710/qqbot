@@ -191,6 +191,60 @@ export function realWorldStatus(status) {
     };
 }
 
+/**
+ * 把分散的作息、世界事实和连续数值压成用户能直接看懂的生活切片。
+ * 这里只解释现有状态，不调用模型，也不根据缺失数据补故事。
+ */
+export function lifePulse(status) {
+    if (!status) return [];
+    const owner = status.contacts?.find(contact => contact.tier === 'boyfriend') ?? status.contacts?.[0];
+    const values = status.humanValues;
+    const rows = [];
+    rows.push({ label: '现在', text: owner?.now || (status.schedule ? '正在等待作息状态' : '作息未启用') });
+
+    if (values) {
+        const body = [];
+        if (Number.isFinite(values.energy)) {
+            if (values.energy <= 30) body.push('有些累');
+            else if (values.energy >= 75) body.push('精力不错');
+        }
+        if (Number.isFinite(values.hunger)) {
+            if (values.hunger >= 70) body.push('已经饿了');
+            else if (values.hunger <= 20) body.push('还不饿');
+        }
+        if (Number.isFinite(values.stress)) {
+            if (values.stress >= 70) body.push('压力偏高');
+            else if (values.stress <= 25) body.push('比较放松');
+        }
+        const hasBodyValues = [values.energy, values.hunger, values.stress].some(Number.isFinite);
+        if (hasBodyValues) rows.push({ label: '身体感受', text: body.join('，') || '状态比较平稳' });
+    }
+
+    const mood = status.today?.mood;
+    if (mood) rows.push({ label: '心情', text: `${mood.name}${mood.reason ? `，${mood.reason}` : ''}` });
+
+    const relationship = values?.relationship;
+    if (relationship && Number.isFinite(relationship.intimacy) && Number.isFinite(relationship.trust)) {
+        let text = relationship.intimacy >= 75 && relationship.trust >= 65 ? '和你很亲近，信任稳定'
+            : relationship.intimacy >= 50 ? '和你熟悉，也愿意分享自己的事'
+                : relationship.trust >= 50 ? '正在慢慢建立信任' : '还在保持分寸';
+        if (relationship.friction >= 45) text += '，最近有些别扭';
+        rows.push({ label: '你们之间', text });
+    }
+
+    const books = status.today?.books?.filter(book => !book.finished && !book.putDown).slice(0, 2)
+        .map(book => `《${book.title}》第 ${book.amount} ${book.unit}`);
+    if (books?.length) rows.push({ label: '在读', text: books.join('、') });
+
+    const highlights = status.today?.highlights;
+    const recent = highlights?.[0];
+    rows.push({
+        label: '刚发生',
+        text: recent?.text || (highlights === undefined ? '还没有可用的世界记录' : '今天还没有已记录的小事'),
+    });
+    return rows;
+}
+
 /** 货架 / 小梗 / 周报：[{ label, text }]；对应的功能没开（没有这一项）就不出现 */
 export function extrasRows(extras) {
     const rows = [];
