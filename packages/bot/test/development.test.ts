@@ -31,6 +31,7 @@ test('长期人生线从九十天生活事件重算并区分活跃和停滞', ()
     const arcs = lifeArcs([event('p1', 'photography_edit', 1), event('p2', 'photography_shoot', 2), event('s1', 'study', 45)], now);
     assert.deepEqual(arcs.map(arc => [arc.id, arc.state]), [['study', 'stalled'], ['photography', 'active']]);
     assert.ok(arcs.find(arc => arc.id === 'photography')!.progress > 0);
+    assert.equal(arcs.find(arc => arc.id === 'study')!.momentum, 'cooling');
 });
 
 test('自主决策让身体、压力、连接和探索改变柔性计划', () => {
@@ -56,7 +57,9 @@ test('情绪具有来源和惯性，和好不会瞬间归零', () => {
 });
 
 test('主动分享只取未见的真实成功事件，私密事件与低电量会按住', () => {
-    assert.equal(proactiveShare([event('photo', 'photography_finish')], values(), now)?.readiness, 'share');
+    const share = proactiveShare([event('photo-old', 'photography_finish', 0.5), event('photo-new', 'photography_finish')], values(), now);
+    assert.equal(share?.readiness, 'share');
+    assert.equal(share?.sourceEventId, 'photo-new');
     assert.equal(proactiveShare([event('private', 'private_conflict')], values(), now)?.reason, 'too-private');
     assert.equal(proactiveShare([event('photo', 'photography_finish')], values({ energy: 15 }), now)?.reason, 'too-tired');
 });
@@ -74,19 +77,28 @@ test('审美与观点只从她自己明确说过的话形成，不拿用户偏�
 
 test('生活创作只生成待审核意图并绑定真实事件编号', () => {
     const events = [event('photo-1', 'photography_finish')];
-    const drafts = creativeDraftIntents(events, { eventKind: 'photography_finish', readiness: 'share', reason: 'worth-sharing' }, now);
+    const drafts = creativeDraftIntents(events, proactiveShare(events, values(), now), now);
     assert.ok(drafts.some(draft => draft.kind === 'photo'));
     assert.ok(drafts.every(draft => draft.sourceEventId === 'photo-1' && draft.requiresReview));
+    assert.ok(drafts.every(draft => Date.parse(draft.expiresAt) > now.getTime()));
+});
+
+test('同类型事件不会让分享动态绑定到较旧的一条', () => {
+    const events = [event('old', 'photography_finish', 1), event('new', 'photography_finish')];
+    const drafts = creativeDraftIntents(events, proactiveShare(events, values(), now), now);
+    assert.equal(drafts.find(draft => draft.kind === 'status')?.sourceEventId, 'new');
 });
 
 test('共同经历只保存类型、计数和时间，不复制私聊正文', () => {
     const experiences = sharedExperiences([
         { role: 'user', content: '下次我们一起去', time: now.toISOString() },
-        { role: 'assistant', content: '说好了，不许忘', time: now.toISOString() },
+        { role: 'assistant', content: '好啊，说好了，不许忘', time: now.toISOString() },
         { role: 'user', content: '这个老梗又来了', time: now.toISOString() },
+        { role: 'assistant', content: '哈哈，又来了', time: now.toISOString() },
     ]);
     assert.deepEqual(experiences.map(item => item.kind), ['promise', 'plan', 'inside-joke']);
-    assert.ok(experiences.every(item => !('content' in item)));
+    assert.ok(experiences.every(item => item.mutual && !('content' in item)));
+    assert.deepEqual(sharedExperiences([{ role: 'user', content: '下次我们一起去', time: now.toISOString() }]), []);
 });
 
 test('失败、打断、恢复和关系修复会形成有证据的反思', () => {
@@ -109,7 +121,22 @@ test('十项投影共用同一证据，自检通过，并向 QQ/DSH 只给自然
     assert.match(describeDevelopment(snapshot)!, /生活脉络/);
     assert.doesNotMatch(describeDevelopment(snapshot)!, /亲密\s*\d|信任\s*\d/);
     const summary = developmentSummary(snapshot);
+    assert.deepEqual(summary.lifeArcStates.map(item => item.id), ['photography']);
+    assert.deepEqual(summary.creativeDraftKinds.sort(), ['journal', 'photo', 'status', 'voice']);
     const safe = sanitizeDshState({ at: now.toISOString(), development: { ...summary, extraSecret: 'no' } as typeof summary });
     assert.deepEqual(safe.development, summary);
     assert.equal('extraSecret' in (safe.development as object), false);
+});
+
+test('DSH 能读取旧成长摘要，并过滤伪造的明细枚举', () => {
+    const legacy = {
+        activeLifeArcs: 1, autonomyMode: 'maintain', relationshipStage: 'warming', emotionTone: 'steady',
+        shareReady: false, tasteThemes: 1, creativeDrafts: 0, sharedExperienceKinds: 0, reflectionLessons: 0,
+        lifeArcStates: [{ id: 'shell', state: 'active', momentum: 'growing' }],
+        creativeDraftKinds: ['journal', 'execute-code'],
+    };
+    const safe = sanitizeDshState({ at: now.toISOString(), development: legacy as unknown as ReturnType<typeof developmentSummary> });
+    assert.equal(safe.development?.shareState, 'none');
+    assert.deepEqual(safe.development?.lifeArcStates, []);
+    assert.deepEqual(safe.development?.creativeDraftKinds, ['journal']);
 });

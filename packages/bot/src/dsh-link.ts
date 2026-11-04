@@ -79,6 +79,16 @@ const TREND_KEYS = new Set<string>(HUMAN_TREND_KEYS);
 const AUTONOMY_MODES = new Set<DevelopmentSummary['autonomyMode']>(['recover', 'focus', 'explore', 'connect', 'maintain']);
 const RELATIONSHIP_STAGES = new Set<DevelopmentSummary['relationshipStage']>(['guarded', 'warming', 'secure', 'strained', 'repairing']);
 const EMOTION_TONES = new Set<DevelopmentSummary['emotionTone']>(['bright', 'steady', 'low', 'tense', 'recovering']);
+const SHARE_STATES = new Set<DevelopmentSummary['shareState']>(['none', 'hold', 'draft', 'share']);
+const LIFE_ARC_IDS = new Set(['study', 'photography', 'relationships', 'self-care', 'creative']);
+const LIFE_ARC_STATES = new Set(['active', 'steady', 'stalled']);
+const LIFE_ARC_MOMENTUM = new Set(['growing', 'holding', 'cooling']);
+const TASTE_THEMES = new Set(['photography', 'music', 'books', 'games', 'food', 'style']);
+const TASTE_LEANINGS = new Set(['like', 'dislike', 'curious']);
+const TASTE_CONFIDENCE = new Set(['emerging', 'stable', 'strong']);
+const CREATIVE_DRAFT_KINDS = new Set(['journal', 'photo', 'voice', 'status']);
+const SHARED_EXPERIENCE_TYPES = new Set(['anniversary', 'promise', 'plan', 'inside-joke']);
+const REFLECTION_KINDS = new Set(['pace', 'retry', 'rest', 'repair', 'ask-for-help']);
 
 function sanitizeNumberRecord(value: unknown, allowed: ReadonlySet<string>): Record<string, number> | undefined {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
@@ -122,6 +132,8 @@ function sanitizeDevelopment(value: unknown): DevelopmentSummary | undefined {
     const input = value as Record<string, unknown>;
     const count = (key: string) => Number.isInteger(input[key]) && Number(input[key]) >= 0 && Number(input[key]) <= 100 ? Number(input[key]) : undefined;
     const activeLifeArcs = count('activeLifeArcs');
+    const steadyLifeArcs = count('steadyLifeArcs') ?? 0;
+    const stalledLifeArcs = count('stalledLifeArcs') ?? 0;
     const tasteThemes = count('tasteThemes');
     const creativeDrafts = count('creativeDrafts');
     const sharedExperienceKinds = count('sharedExperienceKinds');
@@ -131,16 +143,41 @@ function sanitizeDevelopment(value: unknown): DevelopmentSummary | undefined {
         || !RELATIONSHIP_STAGES.has(input.relationshipStage as DevelopmentSummary['relationshipStage'])
         || !EMOTION_TONES.has(input.emotionTone as DevelopmentSummary['emotionTone'])
         || typeof input.shareReady !== 'boolean') return undefined;
+    const shareState = SHARE_STATES.has(input.shareState as DevelopmentSummary['shareState'])
+        ? input.shareState as DevelopmentSummary['shareState']
+        : input.shareReady ? 'share' : 'none';
+    const lifeArcStates = Array.isArray(input.lifeArcStates) ? input.lifeArcStates.flatMap(value => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+        const item = value as Record<string, unknown>;
+        return LIFE_ARC_IDS.has(String(item.id)) && LIFE_ARC_STATES.has(String(item.state)) && LIFE_ARC_MOMENTUM.has(String(item.momentum))
+            ? [{ id: item.id, state: item.state, momentum: item.momentum } as DevelopmentSummary['lifeArcStates'][number]] : [];
+    }).slice(0, 5) : [];
+    const tasteSignals = Array.isArray(input.tasteSignals) ? input.tasteSignals.flatMap(value => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+        const item = value as Record<string, unknown>;
+        return TASTE_THEMES.has(String(item.theme)) && TASTE_LEANINGS.has(String(item.leaning)) && TASTE_CONFIDENCE.has(String(item.confidence))
+            ? [{ theme: item.theme, leaning: item.leaning, confidence: item.confidence } as DevelopmentSummary['tasteSignals'][number]] : [];
+    }).slice(0, 6) : [];
+    const enumList = <T extends string>(key: string, allowed: ReadonlySet<string>, max: number): T[] => Array.isArray(input[key])
+        ? [...new Set(input[key].filter(item => typeof item === 'string' && allowed.has(item)) as T[])].slice(0, max) : [];
     return {
         activeLifeArcs,
+        steadyLifeArcs,
+        stalledLifeArcs,
         autonomyMode: input.autonomyMode as DevelopmentSummary['autonomyMode'],
         relationshipStage: input.relationshipStage as DevelopmentSummary['relationshipStage'],
         emotionTone: input.emotionTone as DevelopmentSummary['emotionTone'],
         shareReady: input.shareReady,
+        shareState,
         tasteThemes,
         creativeDrafts,
         sharedExperienceKinds,
         reflectionLessons,
+        lifeArcStates,
+        tasteSignals,
+        creativeDraftKinds: enumList('creativeDraftKinds', CREATIVE_DRAFT_KINDS, 4),
+        sharedExperienceTypes: enumList('sharedExperienceTypes', SHARED_EXPERIENCE_TYPES, 4),
+        reflectionKinds: enumList('reflectionKinds', REFLECTION_KINDS, 5),
     };
 }
 
@@ -197,7 +234,12 @@ function stateText(state: DshState | undefined): string {
     if (safe.needs) lines.push(`需要值：${Object.entries(safe.needs).map(([key, value]) => `${key}=${value}`).join('，')}`);
     if (safe.values) lines.push(`真人式状态：${Object.entries(safe.values).map(([key, value]) => `${key}=${value}`).join('，')}`);
     if (safe.relationship) lines.push(`关系状态：${Object.entries(safe.relationship).map(([key, value]) => `${key}=${value}`).join('，')}`);
-    if (safe.development) lines.push(`成长摘要：人生线 ${safe.development.activeLifeArcs}，自主 ${safe.development.autonomyMode}，关系阶段 ${safe.development.relationshipStage}，情绪延续 ${safe.development.emotionTone}，待审核创作 ${safe.development.creativeDrafts}`);
+    if (safe.development) {
+        const autonomy = { recover: '先恢复', focus: '先处理要紧的事', explore: '愿意探索', connect: '愿意靠近', maintain: '保持节奏' } as const;
+        const relationship = { guarded: '谨慎熟悉', warming: '逐渐靠近', secure: '关系稳定', strained: '仍有别扭', repairing: '正在修复' } as const;
+        const emotion = { bright: '明亮', steady: '平稳', low: '偏低', tense: '紧绷', recovering: '缓慢恢复' } as const;
+        lines.push(`成长摘要：活跃人生线 ${safe.development.activeLifeArcs}，自主倾向 ${autonomy[safe.development.autonomyMode]}，关系 ${relationship[safe.development.relationshipStage]}，情绪 ${emotion[safe.development.emotionTone]}，待审核创作 ${safe.development.creativeDrafts}`);
+    }
     if (safe.trends) lines.push(`最近 ${safe.trends.windowMinutes} 分钟变化：${Object.entries(safe.trends.values).map(([key, value]) => `${key}=${Number(value) > 0 ? '+' : ''}${value}`).join('，')}`);
     if (safe.recentEvents?.length) lines.push(`最近事件（仅类型摘要）：${safe.recentEvents.join('、')}`);
     if (safe.photoDrafts) {

@@ -62,6 +62,21 @@ function developmentPanel(development) {
     const autonomy = { recover: '先恢复状态', focus: '处理最要紧的事', explore: '探索新东西', connect: '愿意靠近', maintain: '保持原节奏' };
     const relationship = { guarded: '还在熟悉', warming: '逐渐靠近', secure: '关系稳定', strained: '有些别扭', repairing: '正在和好' };
     const emotion = { bright: '心情明亮', steady: '情绪平稳', low: '情绪偏低', tense: '心里绷着', recovering: '正在缓下来' };
+    const arcNames = { study: '学业', photography: '摄影', relationships: '身边的人', 'self-care': '照顾自己', creative: '创作' };
+    const arcStates = { active: '最近活跃', steady: '稳定维持', stalled: '暂时搁置' };
+    const momentum = { growing: '升温', holding: '持平', cooling: '降温' };
+    const tasteNames = { photography: '摄影', music: '音乐', books: '阅读', games: '游戏', food: '食物', style: '穿搭审美' };
+    const tasteLeanings = { like: '喜欢', dislike: '不喜欢', curious: '好奇' };
+    const confidence = { emerging: '刚形成', stable: '较稳定', strong: '很稳定' };
+    const draftNames = { journal: '日记', photo: '照片', voice: '语音', status: '动态' };
+    const sharedNames = { anniversary: '纪念日', promise: '约定', plan: '共同计划', 'inside-joke': '只有你们懂的梗' };
+    const reflectionNames = { pace: '调整节奏', retry: '失败后重试', rest: '及时休息', repair: '修复关系', 'ask-for-help': '需要时求助' };
+    const shareStates = { none: '没有待分享内容', hold: '暂时按住', draft: '先整理一下', share: '可以自然分享' };
+    const arcs = (development.lifeArcStates ?? []).flatMap(arc => arcNames[arc.id] && arcStates[arc.state] && momentum[arc.momentum]
+        ? [`${arcNames[arc.id]}：${arcStates[arc.state]}，${momentum[arc.momentum]}`] : []);
+    const tastes = (development.tasteSignals ?? []).flatMap(taste => tasteNames[taste.theme] && tasteLeanings[taste.leaning] && confidence[taste.confidence]
+        ? [`${tasteNames[taste.theme]}${tasteLeanings[taste.leaning]}（${confidence[taste.confidence]}）`] : []);
+    const named = (items, names) => (items ?? []).flatMap(item => names[item] ? [names[item]] : []);
     return h('section', { class: 'qqbot-life-card' }, [
         h('div', { class: 'qqbot-life-head' }, [
             h('strong', null, '她最近形成的生活脉络'),
@@ -71,8 +86,13 @@ function developmentPanel(development) {
             h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '自主选择'), h('span', null, autonomy[development.autonomyMode] ?? '暂时无法判断')]),
             h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '关系阶段'), h('span', null, relationship[development.relationshipStage] ?? '暂时无法判断')]),
             h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '情绪延续'), h('span', null, emotion[development.emotionTone] ?? '暂时无法判断')]),
-            h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '长期变化'), h('span', null, `活跃人生线 ${development.activeLifeArcs ?? 0} 条 · 稳定偏好 ${development.tasteThemes ?? 0} 类 · 反思 ${development.reflectionLessons ?? 0} 类`)]),
-            h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '共同与创作'), h('span', null, `共同经历 ${development.sharedExperienceKinds ?? 0} 类 · 待审核创作 ${development.creativeDrafts ?? 0} 项${development.shareReady ? ' · 有真实小事可分享' : ''}`)]),
+            h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '长期变化'), h('span', null, `活跃 ${development.activeLifeArcs ?? 0} 条 · 维持 ${development.steadyLifeArcs ?? 0} 条 · 搁置 ${development.stalledLifeArcs ?? 0} 条`)]),
+            arcs.length ? h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '人生线'), h('span', null, arcs.join('；'))]) : null,
+            h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '分享倾向'), h('span', null, shareStates[development.shareState] ?? (development.shareReady ? '可以自然分享' : '没有待分享内容'))]),
+            tastes.length ? h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '她的偏好'), h('span', null, tastes.join('；'))]) : null,
+            h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '共同经历'), h('span', null, named(development.sharedExperienceTypes, sharedNames).join('、') || '还没有形成稳定证据')]),
+            h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '成长反思'), h('span', null, named(development.reflectionKinds, reflectionNames).join('、') || '暂时没有')]),
+            h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '待审核创作'), h('span', null, named(development.creativeDraftKinds, draftNames).join('、') || '没有')]),
         ]),
     ]);
 }

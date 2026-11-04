@@ -7,8 +7,8 @@ android {
         applicationId = "com.linmengyao.companion"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.3.1"
         val companionUrl = providers.gradleProperty("COMPANION_URL").orElse("https://companion.invalid/").get()
         buildConfigField("String", "COMPANION_URL", "\"${companionUrl.replace("\"", "\\\"")}\"")
     }

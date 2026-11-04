@@ -18,6 +18,7 @@ export interface LifeArc {
     progress: number;
     evidence: number;
     state: 'active' | 'steady' | 'stalled';
+    momentum: 'growing' | 'holding' | 'cooling';
     lastAt?: string;
 }
 
@@ -27,6 +28,7 @@ export interface AutonomyDecision {
     /** 只保留原因类别，不保留聊天原文。 */
     reason: 'body' | 'pressure' | 'curiosity' | 'loneliness' | 'balance';
     mayChangePlan: boolean;
+    horizon: 'now' | 'today';
 }
 
 export type RelationshipStage = 'guarded' | 'warming' | 'secure' | 'strained' | 'repairing';
@@ -35,16 +37,21 @@ export interface RelationshipDevelopment {
     security: number;
     closenessNeed: number;
     repairReadiness: number;
+    pace: 'cautious' | 'open' | 'repair';
 }
 
 export interface EmotionContinuity {
     tone: 'bright' | 'steady' | 'low' | 'tense' | 'recovering';
     inertia: 'rising' | 'stable' | 'falling';
     source: 'body' | 'life' | 'relationship' | 'mixed';
+    carry: 'short' | 'medium' | 'long';
 }
 
 export interface ShareCandidate {
+    sourceEventId: string;
     eventKind: string;
+    occurredAt: string;
+    expiresAt: string;
     readiness: 'hold' | 'draft' | 'share';
     reason: 'too-tired' | 'too-private' | 'worth-sharing' | 'ordinary';
 }
@@ -53,23 +60,29 @@ export interface TasteSignal {
     theme: 'photography' | 'music' | 'books' | 'games' | 'food' | 'style';
     leaning: 'like' | 'dislike' | 'curious';
     evidence: number;
+    confidence: 'emerging' | 'stable' | 'strong';
+    updatedAt?: string;
 }
 
 export interface CreativeDraftIntent {
     kind: 'journal' | 'photo' | 'voice' | 'status';
     sourceEventId: string;
+    reason: 'reflect' | 'record-life' | 'milestone' | 'share';
+    expiresAt: string;
     requiresReview: true;
 }
 
 export interface SharedExperience {
     kind: 'anniversary' | 'promise' | 'plan' | 'inside-joke';
     evidence: number;
+    mutual: true;
     lastAt?: string;
 }
 
 export interface ReflectionLesson {
     kind: 'pace' | 'retry' | 'rest' | 'repair' | 'ask-for-help';
     evidence: number;
+    sourceEventIds: string[];
 }
 
 export interface DevelopmentSnapshot {
@@ -87,14 +100,22 @@ export interface DevelopmentSnapshot {
 
 export interface DevelopmentSummary {
     activeLifeArcs: number;
+    steadyLifeArcs: number;
+    stalledLifeArcs: number;
     autonomyMode: AutonomyMode;
     relationshipStage: RelationshipStage;
     emotionTone: EmotionContinuity['tone'];
     shareReady: boolean;
+    shareState: 'none' | ShareCandidate['readiness'];
     tasteThemes: number;
     creativeDrafts: number;
     sharedExperienceKinds: number;
     reflectionLessons: number;
+    lifeArcStates: Array<Pick<LifeArc, 'id' | 'state' | 'momentum'>>;
+    tasteSignals: Array<Pick<TasteSignal, 'theme' | 'leaning' | 'confidence'>>;
+    creativeDraftKinds: CreativeDraftIntent['kind'][];
+    sharedExperienceTypes: SharedExperience['kind'][];
+    reflectionKinds: ReflectionLesson['kind'][];
 }
 
 export interface DevelopmentFacts {
@@ -129,16 +150,22 @@ export function lifeArcs(events: readonly LifeEvent[], at: Date): LifeArc[] {
         const latest = matching.reduce((best, event) => atOf(event.endedAt) > atOf(best.endedAt) ? event : best);
         const age = now - atOf(latest.endedAt);
         const state = age <= 7 * DAY ? 'active' : age <= 30 * DAY ? 'steady' : 'stalled';
-        return [{ id, progress: clamp(succeeded * 8 + matching.length * 2), evidence: matching.length, state, lastAt: latest.endedAt }];
+        const current = matching.filter(event => now - atOf(event.endedAt) <= 14 * DAY).length;
+        const previous = matching.filter(event => {
+            const eventAge = now - atOf(event.endedAt);
+            return eventAge > 14 * DAY && eventAge <= 28 * DAY;
+        }).length;
+        const momentum = state === 'stalled' || current < previous ? 'cooling' : current > previous ? 'growing' : 'holding';
+        return [{ id, progress: clamp(succeeded * 8 + matching.length * 2), evidence: matching.length, state, momentum, lastAt: latest.endedAt }];
     });
 }
 
 export function autonomyDecision(values: HumanValues): AutonomyDecision {
-    if (values.energy < 30 || values.health < 55 || values.comfort < 35) return { mode: 'recover', reason: 'body', mayChangePlan: true };
-    if (values.stress > 70 || values.frustration > 65) return { mode: 'focus', reason: 'pressure', mayChangePlan: true };
-    if (values.loneliness > 68 && values.socialBattery > 35) return { mode: 'connect', reason: 'loneliness', mayChangePlan: true };
-    if (values.curiosity > 68 && values.motivation > 52) return { mode: 'explore', reason: 'curiosity', mayChangePlan: false };
-    return { mode: 'maintain', reason: 'balance', mayChangePlan: false };
+    if (values.energy < 30 || values.health < 55 || values.comfort < 35) return { mode: 'recover', reason: 'body', mayChangePlan: true, horizon: 'now' };
+    if (values.stress > 70 || values.frustration > 65) return { mode: 'focus', reason: 'pressure', mayChangePlan: true, horizon: 'now' };
+    if (values.loneliness > 68 && values.socialBattery > 35) return { mode: 'connect', reason: 'loneliness', mayChangePlan: true, horizon: 'today' };
+    if (values.curiosity > 68 && values.motivation > 52) return { mode: 'explore', reason: 'curiosity', mayChangePlan: false, horizon: 'today' };
+    return { mode: 'maintain', reason: 'balance', mayChangePlan: false, horizon: 'today' };
 }
 
 const REPAIR = /对不起|抱歉|我错了|别生气|和好|原谅/;
@@ -155,7 +182,8 @@ export function relationshipDevelopment(values: HumanValues, history: Developmen
         ? repairs > 0 || repairReadiness >= 65 ? 'repairing' : 'strained'
         : relation.intimacy >= 75 && relation.trust >= 65 ? 'secure'
             : relation.familiarity >= 45 ? 'warming' : 'guarded';
-    return { stage, security, closenessNeed: clamp(relation.attachment + values.loneliness * 0.2 - values.socialBattery * 0.08), repairReadiness };
+    const pace = stage === 'repairing' ? 'repair' : stage === 'guarded' || stage === 'strained' ? 'cautious' : 'open';
+    return { stage, security, closenessNeed: clamp(relation.attachment + values.loneliness * 0.2 - values.socialBattery * 0.08), repairReadiness, pace };
 }
 
 export function emotionContinuity(values: HumanValues, relation: RelationshipDevelopment, history: DevelopmentFacts['history']): EmotionContinuity {
@@ -163,11 +191,11 @@ export function emotionContinuity(values: HumanValues, relation: RelationshipDev
     const positive = recent.filter(message => WARM.test(message.content)).length;
     const negative = recent.filter(message => /难受|压力|生气|烦|失望|累|吵架/.test(message.content)).length;
     const inertia = positive > negative + 1 ? 'rising' : negative > positive + 1 ? 'falling' : 'stable';
-    if (relation.stage === 'repairing') return { tone: 'recovering', inertia, source: 'relationship' };
-    if (values.stress >= 70 || values.frustration >= 68) return { tone: 'tense', inertia, source: values.energy < 35 ? 'mixed' : 'life' };
-    if (values.mood <= 35) return { tone: 'low', inertia, source: values.energy < 40 ? 'body' : 'mixed' };
-    if (values.mood >= 70 && values.satisfaction >= 55) return { tone: 'bright', inertia, source: 'life' };
-    return { tone: 'steady', inertia, source: values.energy < 35 ? 'body' : 'mixed' };
+    if (relation.stage === 'repairing') return { tone: 'recovering', inertia, source: 'relationship', carry: 'long' };
+    if (values.stress >= 70 || values.frustration >= 68) return { tone: 'tense', inertia, source: values.energy < 35 ? 'mixed' : 'life', carry: 'long' };
+    if (values.mood <= 35) return { tone: 'low', inertia, source: values.energy < 40 ? 'body' : 'mixed', carry: 'medium' };
+    if (values.mood >= 70 && values.satisfaction >= 55) return { tone: 'bright', inertia, source: 'life', carry: 'short' };
+    return { tone: 'steady', inertia, source: values.energy < 35 ? 'body' : 'mixed', carry: 'medium' };
 }
 
 const PRIVATE_EVENT = /crisis|medical|money|receive_money|conflict|private/i;
@@ -178,11 +206,17 @@ export function proactiveShare(events: readonly LifeEvent[], values: HumanValues
         .filter(event => event.result === 'succeeded' && !event.seen)
         .sort((a, b) => atOf(b.endedAt) - atOf(a.endedAt))[0];
     if (!candidate) return undefined;
-    if (PRIVATE_EVENT.test(candidate.kind)) return { eventKind: candidate.kind, readiness: 'hold', reason: 'too-private' };
-    if (values.energy < 25 || values.socialBattery < 20) return { eventKind: candidate.kind, readiness: 'hold', reason: 'too-tired' };
+    const base = {
+        sourceEventId: candidate.id,
+        eventKind: candidate.kind,
+        occurredAt: candidate.endedAt,
+        expiresAt: new Date(atOf(candidate.endedAt) + DAY).toISOString(),
+    };
+    if (PRIVATE_EVENT.test(candidate.kind)) return { ...base, readiness: 'hold', reason: 'too-private' };
+    if (values.energy < 25 || values.socialBattery < 20) return { ...base, readiness: 'hold', reason: 'too-tired' };
     return MEANINGFUL_EVENT.test(`${candidate.kind} ${candidate.subject ?? ''}`)
-        ? { eventKind: candidate.kind, readiness: 'share', reason: 'worth-sharing' }
-        : { eventKind: candidate.kind, readiness: 'draft', reason: 'ordinary' };
+        ? { ...base, readiness: 'share', reason: 'worth-sharing' }
+        : { ...base, readiness: 'draft', reason: 'ordinary' };
 }
 
 const TASTE_THEMES: Record<TasteSignal['theme'], RegExp> = {
@@ -200,15 +234,24 @@ const CURIOUS = /想看看|想试试|没接触过|有点好奇/;
 export function tasteProfile(history: DevelopmentFacts['history']): TasteSignal[] {
     const assistant = history.filter(message => message.role === 'assistant').slice(-120);
     return (Object.entries(TASTE_THEMES) as [TasteSignal['theme'], RegExp][]).flatMap(([theme, pattern]) => {
-        const relevant = assistant.filter(message => pattern.test(message.content));
-        const dislike = relevant.filter(message => DISLIKE.test(message.content)).length;
-        const like = relevant.filter(message => !DISLIKE.test(message.content) && LIKE.test(message.content)).length;
-        const curious = relevant.filter(message => CURIOUS.test(message.content)).length;
-        const evidence = like + dislike + curious;
+        const signals: Array<{ leaning: TasteSignal['leaning']; weight: number; time?: string }> = assistant.flatMap((message, index) => {
+            if (!pattern.test(message.content)) return [];
+            const leaning: TasteSignal['leaning'] | undefined = DISLIKE.test(message.content) ? 'dislike' : CURIOUS.test(message.content) ? 'curious' : LIKE.test(message.content) ? 'like' : undefined;
+            if (!leaning) return [];
+            // 越靠近现在权重越高，让后续反复形成的新看法能逐步修正早期偏好。
+            return [{ leaning, weight: 0.5 + 0.5 * ((index + 1) / Math.max(assistant.length, 1)), time: message.time }];
+        });
+        const evidence = signals.length;
         // 一次随口说的不算稳定偏好；至少两次独立表达，之后的新证据可以改变方向。
         if (evidence < 2) return [];
-        const leaning = dislike > like && dislike >= curious ? 'dislike' : curious > like ? 'curious' : 'like';
-        return [{ theme, leaning, evidence }];
+        const scores = { like: 0, dislike: 0, curious: 0 };
+        for (const signal of signals) scores[signal.leaning] += signal.weight;
+        const ranked = (Object.entries(scores) as [TasteSignal['leaning'], number][]).sort((a, b) => b[1] - a[1]);
+        const leaning = ranked[0]![0];
+        const margin = ranked[0]![1] - ranked[1]![1];
+        const confidence = evidence >= 6 && margin >= 1.5 ? 'strong' : evidence >= 3 && margin >= 0.6 ? 'stable' : 'emerging';
+        const latest = [...signals].reverse().find(signal => Number.isFinite(atOf(signal.time)));
+        return [{ theme, leaning, evidence, confidence, ...(latest?.time ? { updatedAt: latest.time } : {}) }];
     });
 }
 
@@ -217,12 +260,13 @@ export function creativeDraftIntents(events: readonly LifeEvent[], share: ShareC
     const output: CreativeDraftIntent[] = [];
     for (const event of recent.slice(-12).reverse()) {
         const text = `${event.kind} ${event.subject ?? ''}`;
-        const kinds: CreativeDraftIntent['kind'][] = [];
-        if (/photo|camera|拍照|修片/i.test(text)) kinds.push('photo');
-        if (MEANINGFUL_EVENT.test(text)) kinds.push('journal');
-        if (share?.eventKind === event.kind && share.readiness === 'share') kinds.push('status');
-        if (/first|finish|meet|第一次|完成|见面/i.test(text)) kinds.push('voice');
-        for (const kind of kinds) if (!output.some(item => item.kind === kind)) output.push({ kind, sourceEventId: event.id, requiresReview: true });
+        const kinds: Array<[CreativeDraftIntent['kind'], CreativeDraftIntent['reason']]> = [];
+        if (/photo|camera|拍照|修片/i.test(text)) kinds.push(['photo', 'record-life']);
+        if (MEANINGFUL_EVENT.test(text)) kinds.push(['journal', 'reflect']);
+        if (share?.sourceEventId === event.id && share.readiness === 'share') kinds.push(['status', 'share']);
+        if (/first|finish|meet|第一次|完成|见面/i.test(text)) kinds.push(['voice', 'milestone']);
+        const expiresAt = new Date(atOf(event.endedAt) + 3 * DAY).toISOString();
+        for (const [kind, reason] of kinds) if (!output.some(item => item.kind === kind)) output.push({ kind, sourceEventId: event.id, reason, expiresAt, requiresReview: true });
         if (output.length >= 4) break;
     }
     return output;
@@ -237,27 +281,36 @@ const SHARED_PATTERNS: Record<SharedExperience['kind'], RegExp> = {
 
 export function sharedExperiences(history: DevelopmentFacts['history']): SharedExperience[] {
     return (Object.entries(SHARED_PATTERNS) as [SharedExperience['kind'], RegExp][]).flatMap(([kind, pattern]) => {
-        const matches = history.filter(message => pattern.test(message.content));
-        if (!matches.length) return [];
-        const latest = [...matches].reverse().find(message => Number.isFinite(atOf(message.time)));
-        return [{ kind, evidence: matches.length, ...(latest?.time ? { lastAt: latest.time } : {}) }];
+        const anchors = history.map((message, index) => ({ message, index })).filter(item => pattern.test(item.message.content));
+        const mutual = anchors.filter(anchor => history.some((other, index) => {
+            if (other.role === anchor.message.role || Math.abs(index - anchor.index) > 2) return false;
+            return pattern.test(other.content) || /好啊|好呀|可以|行啊|记得|当然|说好|答应|一起|到时候|下次|又来了|哈哈/.test(other.content);
+        }));
+        if (!mutual.length) return [];
+        const latest = [...mutual].reverse().map(item => item.message).find(message => Number.isFinite(atOf(message.time)));
+        return [{ kind, evidence: mutual.length, mutual: true, ...(latest?.time ? { lastAt: latest.time } : {}) }];
     });
 }
 
 export function reflectionLessons(events: readonly LifeEvent[], relation: RelationshipDevelopment, values: HumanValues): ReflectionLesson[] {
     const ordered = [...events].filter(event => Number.isFinite(atOf(event.endedAt))).sort((a, b) => atOf(a.endedAt) - atOf(b.endedAt));
-    const lessons = new Map<ReflectionLesson['kind'], number>();
-    const add = (kind: ReflectionLesson['kind'], amount = 1) => lessons.set(kind, (lessons.get(kind) ?? 0) + amount);
+    const lessons = new Map<ReflectionLesson['kind'], { evidence: number; sourceEventIds: string[] }>();
+    const add = (kind: ReflectionLesson['kind'], sourceEventId?: string) => {
+        const current = lessons.get(kind) ?? { evidence: 0, sourceEventIds: [] };
+        current.evidence++;
+        if (sourceEventId && !current.sourceEventIds.includes(sourceEventId)) current.sourceEventIds.push(sourceEventId);
+        lessons.set(kind, current);
+    };
     for (const [index, event] of ordered.entries()) {
-        if (event.result === 'interrupted') add('pace');
+        if (event.result === 'interrupted') add('pace', event.id);
         if (event.result === 'failed') {
             const recovered = ordered.slice(index + 1).some(next => next.kind === event.kind && next.result === 'succeeded');
-            add(recovered ? 'retry' : 'ask-for-help');
+            add(recovered ? 'retry' : 'ask-for-help', event.id);
         }
     }
     if (values.energy < 30 || values.health < 55) add('rest');
     if (relation.stage === 'repairing') add('repair');
-    return [...lessons].map(([kind, evidence]) => ({ kind, evidence })).sort((a, b) => b.evidence - a.evidence).slice(0, 4);
+    return [...lessons].map(([kind, lesson]) => ({ kind, ...lesson })).sort((a, b) => b.evidence - a.evidence).slice(0, 4);
 }
 
 export function developmentSnapshot(facts: DevelopmentFacts): DevelopmentSnapshot {
@@ -281,14 +334,22 @@ export function developmentSnapshot(facts: DevelopmentFacts): DevelopmentSnapsho
 export function developmentSummary(snapshot: DevelopmentSnapshot): DevelopmentSummary {
     return {
         activeLifeArcs: snapshot.lifeArcs.filter(arc => arc.state === 'active').length,
+        steadyLifeArcs: snapshot.lifeArcs.filter(arc => arc.state === 'steady').length,
+        stalledLifeArcs: snapshot.lifeArcs.filter(arc => arc.state === 'stalled').length,
         autonomyMode: snapshot.autonomy.mode,
         relationshipStage: snapshot.relationship.stage,
         emotionTone: snapshot.emotion.tone,
         shareReady: snapshot.share?.readiness === 'share',
+        shareState: snapshot.share?.readiness ?? 'none',
         tasteThemes: snapshot.tastes.length,
         creativeDrafts: snapshot.creativeDrafts.length,
         sharedExperienceKinds: snapshot.sharedExperiences.length,
         reflectionLessons: snapshot.reflections.length,
+        lifeArcStates: snapshot.lifeArcs.map(({ id, state, momentum }) => ({ id, state, momentum })),
+        tasteSignals: snapshot.tastes.map(({ theme, leaning, confidence }) => ({ theme, leaning, confidence })),
+        creativeDraftKinds: snapshot.creativeDrafts.map(draft => draft.kind),
+        sharedExperienceTypes: snapshot.sharedExperiences.map(item => item.kind),
+        reflectionKinds: snapshot.reflections.map(item => item.kind),
     };
 }
 
@@ -323,8 +384,11 @@ export function auditDevelopment(snapshot: DevelopmentSnapshot, events: readonly
     if (snapshot.lifeArcs.some(arc => arc.evidence < 1 || arc.progress < 0 || arc.progress > 100)) problems.push('人生线证据或进度不合法');
     const ids = new Set(events.map(event => event.id));
     if (snapshot.creativeDrafts.some(draft => !ids.has(draft.sourceEventId))) problems.push('创作草稿没有真实事件来源');
-    if (snapshot.tastes.some(taste => taste.evidence < 1)) problems.push('审美偏好没有证据');
-    if (snapshot.sharedExperiences.some(item => item.evidence < 1)) problems.push('共同经历没有证据');
-    if (snapshot.share && !events.some(event => event.kind === snapshot.share!.eventKind && event.result === 'succeeded')) problems.push('主动分享没有成功事件来源');
+    if (snapshot.creativeDrafts.some(draft => !Number.isFinite(atOf(draft.expiresAt)) || atOf(draft.expiresAt) < atOf(snapshot.at))) problems.push('创作草稿已过期或期限不合法');
+    if (snapshot.tastes.some(taste => taste.evidence < 2)) problems.push('审美偏好没有足够证据');
+    if (snapshot.sharedExperiences.some(item => item.evidence < 1 || item.mutual !== true)) problems.push('共同经历没有双方证据');
+    if (snapshot.reflections.some(item => item.sourceEventIds.some(id => !ids.has(id)))) problems.push('反思引用了不存在的事件');
+    if (snapshot.share && !events.some(event => event.id === snapshot.share!.sourceEventId && event.kind === snapshot.share!.eventKind && event.result === 'succeeded')) problems.push('主动分享没有成功事件来源');
+    if (snapshot.share && (atOf(snapshot.share.expiresAt) <= atOf(snapshot.share.occurredAt) || atOf(snapshot.share.expiresAt) < atOf(snapshot.at))) problems.push('主动分享期限不合法');
     return problems;
 }

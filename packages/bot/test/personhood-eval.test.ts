@@ -21,3 +21,15 @@ test('人格一致性评测只接受受限结构且不回显正文', () => {
     const report = evaluatePersonhood([{ at: '2026-11-01T00:00:00Z', reply: '自然的一句话', stances: { food: 'curious' } }]);
     assert.equal('reply' in report, false);
 });
+
+test('人格一致性评测发现近似复读、模板化开头和时间倒序', () => {
+    const report = evaluatePersonhood([
+        { at: '2026-11-02T00:00:00Z', reply: '我觉得今天还是先把最要紧的事情慢慢做完吧' },
+        { at: '2026-11-01T00:00:00Z', reply: '我觉得今天还是先把最重要的事情认真做完吧' },
+        { at: '2026-11-03T00:00:00Z', reply: '我觉得今天可以换个节奏出去走一走' },
+    ]);
+    assert.ok(report.nearDuplicateRate > 0);
+    assert.ok(report.openingRepeatRate > 0);
+    assert.equal(report.chronologyErrors, 1);
+    assert.equal(report.passed, false);
+});
