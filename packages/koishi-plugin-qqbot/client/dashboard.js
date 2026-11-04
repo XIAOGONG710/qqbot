@@ -75,12 +75,14 @@ export function overviewCounts(status) {
     const retrying = contacts.filter(contact => contact.responder?.phase === 'retry').length;
     const positiveInteger = value => Number.isInteger(value) && value > 0 ? value : 0;
     const drafts = positiveInteger(status?.externalDrafts?.pending);
+    const approved = positiveInteger(status?.externalDrafts?.approved);
     const publishing = positiveInteger(status?.externalDrafts?.publishing);
+    const failed = positiveInteger(status?.externalDrafts?.failed);
     const dsh = status?.features?.find(feature => feature.key === 'dsh');
     return {
         contacts: contacts.length,
         busy,
-        attention: { total: retrying + drafts + publishing, retrying, drafts, publishing },
+        attention: { total: retrying + drafts + approved + publishing + failed, retrying, drafts, approved, publishing, failed },
         dshOn: dsh?.on === true,
         features: featureTotals(status?.features),
     };
@@ -91,7 +93,9 @@ export function attentionDetail(attention = {}) {
     const parts = [];
     if (attention.retrying) parts.push(`回复需重试 ${attention.retrying}`);
     if (attention.drafts) parts.push(`草稿待确认 ${attention.drafts}`);
+    if (attention.approved) parts.push(`已批准待发布 ${attention.approved}`);
     if (attention.publishing) parts.push(`发布待核对 ${attention.publishing}`);
+    if (attention.failed) parts.push(`发布失败待处理 ${attention.failed}`);
     return parts.join(' · ') || '当前没有需要处理的事项';
 }
 

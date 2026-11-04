@@ -70,14 +70,19 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
                 {},
             ],
             features: [{ key: 'dsh', on: true }, { key: 'shape', on: false }],
-            externalDrafts: { pending: 2, publishing: 1 },
+            externalDrafts: { pending: 2, approved: 3, publishing: 1, failed: 4 },
         });
         assert.deepEqual(result, {
-            contacts: 4, busy: 2, attention: { total: 4, retrying: 1, drafts: 2, publishing: 1 },
+            contacts: 4, busy: 2, attention: { total: 11, retrying: 1, drafts: 2, approved: 3, publishing: 1, failed: 4 },
             dshOn: true, features: { on: 1, total: 2 },
         });
-        assert.equal(attentionDetail(result.attention), '回复需重试 1 · 草稿待确认 2 · 发布待核对 1');
-        assert.equal(attentionDetail(overviewCounts({ contacts: [], externalDrafts: { pending: 0, publishing: 0 } }).attention), '当前没有需要处理的事项');
+        assert.equal(attentionDetail(result.attention), '回复需重试 1 · 草稿待确认 2 · 已批准待发布 3 · 发布待核对 1 · 发布失败待处理 4');
+        const approvedAndFailed = overviewCounts({ contacts: [], externalDrafts: { pending: 0, approved: 2, publishing: 0, failed: 1 } }).attention;
+        assert.equal(approvedAndFailed.total, 3);
+        assert.equal(attentionDetail(approvedAndFailed), '已批准待发布 2 · 发布失败待处理 1');
+        const invalid = overviewCounts({ contacts: [], externalDrafts: { pending: -1, approved: NaN, publishing: 1.5, failed: '2' } }).attention;
+        assert.equal(invalid.total, 0);
+        assert.equal(attentionDetail(invalid), '当前没有需要处理的事项');
     });
 });
 
