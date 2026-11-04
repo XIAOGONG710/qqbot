@@ -181,6 +181,28 @@ test('成功喂猫会带来温和的陪伴和满足余波，失败尝试不会�
     assert.ok(after.satisfaction > failedAttempt.satisfaction, `${failedAttempt.satisfaction} -> ${after.satisfaction}`);
 });
 
+test('完成作业提高信心和满足，取到快递带来轻微期待感；失败都不获得正向余波', () => {
+    const at = new Date('2026-11-01T08:00:00.000Z');
+    const event = (id: string, kind: string, result: 'succeeded' | 'failed') => ({
+        id, actor: 'linmengyao' as const, kind, day: '2026-11-01',
+        startedAt: at.toISOString(), endedAt: at.toISOString(),
+        source: 'conversation' as const, result,
+    });
+    const homework = humanValuesAt({ at, needs, history: [], tier: 'boyfriend', events: [event('life:homework', 'finish_homework', 'succeeded')] });
+    const failedHomework = humanValuesAt({ at, needs, history: [], tier: 'boyfriend', events: [event('life:homework-failed', 'finish_homework', 'failed')] });
+    assert.ok(homework.confidence > failedHomework.confidence);
+    assert.ok(homework.selfEsteem > failedHomework.selfEsteem);
+    assert.ok(homework.satisfaction > failedHomework.satisfaction);
+    assert.ok(homework.frustration < failedHomework.frustration);
+
+    const parcel = humanValuesAt({ at, needs, history: [], tier: 'boyfriend', events: [event('life:parcel', 'pick_parcel', 'succeeded')] });
+    const failedParcel = humanValuesAt({ at, needs, history: [], tier: 'boyfriend', events: [event('life:parcel-failed', 'pick_parcel', 'failed')] });
+    assert.ok(parcel.mood > failedParcel.mood);
+    assert.ok(parcel.curiosity > failedParcel.curiosity);
+    assert.ok(parcel.satisfaction > failedParcel.satisfaction);
+    assert.ok(parcel.boredom < failedParcel.boredom);
+});
+
 test('数值会联动：身体负荷会传导到舒适、心情、动机、开放和挫败', () => {
     const at = new Date('2026-11-01T12:00:00.000Z');
     const calm = humanValuesAt({
