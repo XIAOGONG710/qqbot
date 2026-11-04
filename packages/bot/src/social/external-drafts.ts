@@ -24,6 +24,8 @@ export interface ExternalDraftSummary {
     total: number;
     pending: number;
     approved: number;
+    /** Remote outcome may be unknown; this needs reconciliation and must not be retried automatically. */
+    publishing: number;
     failed: number;
     byPlatform: Record<ExternalPlatform, number>;
     lastAt?: string;
@@ -234,7 +236,15 @@ export function createExternalDraftStore(options: {
             const byPlatform = { tieba: 0, douyin: 0, xiaohongshu: 0 } satisfies Record<ExternalPlatform, number>;
             for (const draft of file.drafts) byPlatform[draft.platform]++;
             const lastAt = file.drafts.map(item => item.updatedAt).sort().at(-1);
-            return { total: file.drafts.length, pending: file.drafts.filter(item => item.status === 'pending').length, approved: file.drafts.filter(item => item.status === 'approved').length, failed: file.drafts.filter(item => item.status === 'failed').length, byPlatform, ...(lastAt ? { lastAt } : {}) };
+            return {
+                total: file.drafts.length,
+                pending: file.drafts.filter(item => item.status === 'pending').length,
+                approved: file.drafts.filter(item => item.status === 'approved').length,
+                publishing: file.drafts.filter(item => item.status === 'publishing').length,
+                failed: file.drafts.filter(item => item.status === 'failed').length,
+                byPlatform,
+                ...(lastAt ? { lastAt } : {}),
+            };
         },
     };
 }

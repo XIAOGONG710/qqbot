@@ -70,8 +70,10 @@ function externalPlatformsPanel(platforms, drafts) {
         h('span', { class: 'qqbot-label' }, '统一草稿箱'),
         h('span', null, [
             tag(`待确认 ${drafts.pending ?? 0}`, drafts.pending ? 'warning' : 'success'),
+            drafts.approved ? tag(`已批准 ${drafts.approved}`, 'warning') : null,
+            drafts.publishing ? tag(`发布待核对 ${drafts.publishing}`, 'danger') : null,
             h('span', { class: 'qqbot-muted' }, ` · 共 ${drafts.total ?? 0} 条${drafts.failed ? ` · 失败 ${drafts.failed}` : ''}`),
-        ]),
+        ].filter(Boolean)),
     ]) : null;
     return h('details', { class: 'qqbot-features-disclosure', open: false }, [
         h('summary', { class: 'qqbot-features-summary' }, '外部平台接入'),

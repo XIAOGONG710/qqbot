@@ -168,6 +168,7 @@ describe('外部平台草稿队列（ADR 0224）', () => {
         assert.equal(replay.draft.status, 'publishing');
         assert.equal(replay.draft.publishRequestId, reserved.draft.publishRequestId);
         assert.deepEqual(replay.draft.audit.map(item => item.status), ['pending', 'approved', 'publishing']);
+        assert.equal(afterRestart.summary().publishing, 1);
     });
 
     test('本地素材只接受逻辑 media ID，拒绝绝对路径和路径穿越', () => {
