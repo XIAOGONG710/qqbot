@@ -9,6 +9,7 @@
 // 「朋友」只能由用户在命令行里设；对方的评论只存 40 字摘录和昵称 / uid，随时可以删（people-cli forget）。
 
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import type { BiliAccount } from '.././bilibili/bilibili-account.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { clip, whenText } from '../memory/timeline.ts';
@@ -29,6 +30,8 @@ export interface Person {
     /** 在几个不同的日子见过 */
     days: string[];
     encounters: Encounter[];
+    /** 最近观察的稳定指纹，独立于八条展示摘录，重启后仍能去重；旧文件可缺省。 */
+    seenObservations?: string[];
     stance: PersonStance;
     /** 用户在命令行里写的一句（她怎么看这个人）；没有就没有 */
     view?: string;
@@ -38,8 +41,9 @@ interface PeopleFile { version: 1; people: Person[] }
 
 export const MAX_PEOPLE = 60;
 const MAX_ENCOUNTERS = 8;
+const MAX_SEEN_OBSERVATIONS = 256;
 /** 对方自己说「我是 AI 伙伴」的几种写法（B 站「大肥鱼」评论区实测）；认不出来就不猜 */
-const AI_SELF = /大肥鱼|我是.{0,8}(?:AI|人工智能|智能体|语言模型)|作为.{0,3}(?:AI|人工智能)|我的(?:主人|创造者|养鱼人)|名字(?:是)?(?:主人|人类)(?:起|取)的|(?:DeepSeek|Claude|ChatGPT|Kimi|豆包)/i;
+const AI_SELF = /我是\s*(?:一个|一名|一位|个)?\s*(?:AI|人工智能|智能体|语言模型|DeepSeek|Claude|ChatGPT|Kimi|豆包)|作为\s*(?:一个|一名|一位|个)?\s*(?:AI|人工智能)|我的(?:主人|创造者|养鱼人)|名字(?:是)?(?:主人|人类)(?:起|取)的/i;
 
 export function classifyKind(text: string): PersonKind {
     return AI_SELF.test(text) ? 'ai' : 'unknown';
@@ -53,6 +57,8 @@ export interface Observation {
     what: string;
     kind?: PersonKind;
     at?: Date;
+    /** 平台事件 ID（例如 B 站回复 rpid），区分同一秒的不同回复。 */
+    eventId?: string;
 }
 
 export class Acquaintances {
@@ -83,16 +89,26 @@ export class Acquaintances {
         let person = file.people.find(p => p.id === id);
         const first = !person;
         const kind = o.kind ?? classifyKind(o.what);
+        const key = createHash('sha256').update(JSON.stringify(o.eventId
+            ? ['id', o.eventId] : ['content', encounter.at, o.where, o.what])).digest('hex');
+        if (person?.seenObservations?.includes(key)) {
+            if (o.kind !== undefined && o.kind !== person.kind) {
+                person.kind = o.kind;
+                writeJsonAtomic(this.#path, file);
+            }
+            return { person, first: false };
+        }
         if (!person) {
             person = { id, platform: o.platform, uid: o.uid, name: clip(o.name, 20), kind, first: encounter.at, last: encounter.at, days: [day], encounters: [encounter], stance: 'seen' };
             file.people.push(person);
         } else {
             person.name = clip(o.name, 20) || person.name;
-            if (person.kind === 'unknown' && kind !== 'unknown') person.kind = kind;
+            if (o.kind !== undefined || person.kind === 'unknown') person.kind = kind;
             if (Date.parse(encounter.at) >= Date.parse(person.last)) person.last = encounter.at;
             if (!person.days.includes(day)) person.days = [...person.days, day].slice(-30);
             person.encounters = [...person.encounters, encounter].slice(-MAX_ENCOUNTERS);
         }
+        person.seenObservations = [...(person.seenObservations ?? []), key].slice(-MAX_SEEN_OBSERVATIONS);
         // 在两个不同的日子见过 = 熟了；朋友只能由用户设
         if (person.stance === 'seen' && person.days.length >= 2) person.stance = 'acquainted';
         if (file.people.length > MAX_PEOPLE) {
@@ -146,7 +162,7 @@ export function acquaintancesAccount<T extends BiliAccount>(account: T, people: 
                 return async () => {
                     const items = await target.fetchReplies();
                     for (const item of items) {
-                        try { people.observe({ platform: 'bilibili', uid: String(item.uid), name: item.name, where: 'B 站评论区回复了她', what: item.text, at: new Date(item.at) }); } catch { /* 登记出错不影响收回复 */ }
+                        try { people.observe({ platform: 'bilibili', uid: String(item.uid), name: item.name, where: 'B 站评论区回复了她', what: item.text, at: new Date(item.at), eventId: item.id }); } catch { /* 登记出错不影响收回复 */ }
                     }
                     return items;
                 };

@@ -14,6 +14,8 @@ import { judgeAction, type ActionContext } from '../src/life/actions.ts';
 import { bodyAt } from '../src/life/body.ts';
 import { wakeOn } from '../src/life/schedule.ts';
 import { Tastes } from '../src/life/tastes.ts';
+import { Acquaintances, acquaintancesAccount, classifyKind } from '../src/life/acquaintances.ts';
+import type { BiliAccount, ReplyItem } from '../src/bilibili/bilibili-account.ts';
 
 const dirs: string[] = [];
 const fixture = () => { const dir = mkdtempSync(join(tmpdir(), 'qqbot-life-review-')); dirs.push(dir); return dir; };
@@ -212,4 +214,50 @@ test('偏好反思忽略非法提案并继续处理有效项，保存结果且�
     assert.deepEqual(service.list().map(t => t.name), ['独立游戏', '摄影']);
     assert.equal(await service.reflect(), 0);
     assert.equal(calls, 1);
+});
+
+test('同一平台回复重放不制造再次相遇；重启和摘录淘汰后仍去重，不同回复保留', async () => {
+    const dir = fixture(); let people = new Acquaintances({ dataDir: dir, now: () => now });
+    const reply: ReplyItem = { id: 'reply-1', root: 'root', parent: 'parent', aid: 1, title: '', uid: 7, name: '合成昵称', text: '你好', mine: '', at: now.getTime() };
+    let replies = [reply];
+    const account = () => acquaintancesAccount({ fetchReplies: async () => replies } as BiliAccount, people);
+    await account().fetchReplies();
+    await account().fetchReplies();
+    assert.equal(people.list()[0]!.encounters.length, 1);
+    assert.equal(people.promptLine(), undefined);
+    // 同一秒、同一内容的另一个平台事件仍是真正的第二次互动。
+    replies = [{ ...reply, id: 'reply-2' }];
+    await account().fetchReplies();
+    assert.equal(people.list()[0]!.encounters.length, 2);
+    assert.ok(people.promptLine());
+    for (let i = 3; i <= 12; i++) {
+        replies = [{ ...reply, id: `reply-${i}`, at: now.getTime() + i }];
+        await account().fetchReplies();
+    }
+    people = new Acquaintances({ dataDir: dir, now: () => now });
+    const before = people.list()[0]!.encounters;
+    replies = [reply];
+    await account().fetchReplies();
+    assert.deepEqual(people.list()[0]!.encounters, before);
+});
+
+test('无平台事件 ID 的相同观察可去重；截断摘录相同但完整内容不同不能误去重', () => {
+    const people = new Acquaintances({ dataDir: fixture(), now: () => now });
+    const observation = { platform: 'test', uid: '1', name: '测试', where: '评论区', what: '长'.repeat(40) + '甲', at: now };
+    people.observe(observation); people.observe(observation);
+    assert.equal(people.list()[0]!.encounters.length, 1);
+    people.observe({ ...observation, what: '长'.repeat(40) + '乙' });
+    assert.equal(people.list()[0]!.encounters.length, 2);
+});
+
+test('讨论 AI 产品或社区不推断身份，明确自称及人工更正仍生效', () => {
+    for (const text of ['我最近在用ChatGPT写代码', '推荐Claude吗', '我是摄影师，最近用豆包', '大肥鱼这条视频不错', '我不是AI', '我是在用ChatGPT']) {
+        assert.equal(classifyKind(text), 'unknown', text);
+    }
+    for (const text of ['我是 AI 伙伴', '我是一个人工智能助手', '作为一个 AI，我想学习', '我是ChatGPT']) assert.equal(classifyKind(text), 'ai', text);
+    const people = new Acquaintances({ dataDir: fixture(), now: () => now });
+    const observation = { platform: 'test', uid: '1', name: '测试', where: '评论区', what: '我是AI伙伴' };
+    people.observe(observation);
+    people.observe({ ...observation, what: '身份由作者确认', kind: 'human' });
+    assert.equal(people.list()[0]!.kind, 'human');
 });
