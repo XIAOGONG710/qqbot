@@ -124,6 +124,24 @@ describe('外部平台草稿队列（ADR 0224）', () => {
         assert.equal(reloaded.audit.length, 1);
     });
 
+    test('平台关闭后旧草稿不能批准；发布状态必须有显式授权回调', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
+        let enabled = true;
+        const guarded = createExternalDraftStore({ dir: root, canDraft: () => enabled });
+        const draft = guarded.create({ platform: 'douyin', title: '标题', body: '正文' });
+        enabled = false;
+        assert.throws(() => guarded.updateStatus(draft.id, 'approved'), /当前已关闭/);
+        assert.equal(guarded.list()[0]!.status, 'pending');
+
+        enabled = true;
+        guarded.updateStatus(draft.id, 'approved');
+        assert.throws(() => guarded.updateStatus(draft.id, 'published'), /尚未完成发布授权/);
+        assert.equal(guarded.list()[0]!.status, 'approved');
+
+        const authorized = createExternalDraftStore({ dir: root, canDraft: () => true, canPublish: () => true });
+        assert.equal(authorized.updateStatus(draft.id, 'published')!.status, 'published');
+    });
+
     test('本地素材只接受逻辑 media ID，拒绝绝对路径和路径穿越', () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
         const store = createExternalDraftStore({ dir: root });

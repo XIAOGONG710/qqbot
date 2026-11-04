@@ -114,7 +114,13 @@ function transitionAllowed(from: ExternalDraftStatus, to: ExternalDraftStatus): 
         || from === 'failed' && to === 'approved';
 }
 
-export function createExternalDraftStore(options: { dir: string; log?: (message: string) => void; canDraft?: (platform: ExternalPlatform) => boolean }): ExternalDraftStore {
+export function createExternalDraftStore(options: {
+    dir: string;
+    log?: (message: string) => void;
+    canDraft?: (platform: ExternalPlatform) => boolean;
+    /** 真实适配器必须同时检查官方账号授权、平台模式和本次人工确认；缺省为禁止发布。 */
+    canPublish?: (platform: ExternalPlatform) => boolean;
+}): ExternalDraftStore {
     mkdirSync(options.dir, { recursive: true });
     const path = join(options.dir, 'drafts.json');
     let file = readJsonOr<DraftFile>(path, { version: 1, drafts: [] }, options.log, { validate: validFile, label: '外部平台草稿' });
@@ -169,6 +175,12 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
             // 不能反复改 updatedAt 或追加审计记录。
             if (draft.status === status) return cloneDraft(draft);
             if (!transitionAllowed(draft.status, status)) throw new Error(`外部平台草稿不能从 ${draft.status} 变为 ${status}`);
+            if (status === 'approved' && options.canDraft && !options.canDraft(draft.platform)) {
+                throw new Error('该外部平台当前已关闭，不能批准草稿');
+            }
+            if (status === 'published' && options.canPublish?.(draft.platform) !== true) {
+                throw new Error('该外部平台尚未完成发布授权，不能标记为已发布');
+            }
             const cleanNote = note?.trim();
             if (cleanNote && cleanNote.length > 240) throw new Error('外部平台草稿备注不能超过 240 字');
             const when = at.toISOString();
