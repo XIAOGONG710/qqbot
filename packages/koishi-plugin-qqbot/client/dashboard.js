@@ -116,11 +116,12 @@ export function memoryStatusDetail(memory) {
     return `服务正常 · 最近${recent.label}${recent.ok ? '成功' : '失败'} ${dashboardTime(recent.at)}`;
 }
 
-/** 手机伴侣连接卡片：状态和积压数放在一行，不再另做重复明细。 */
+/** 手机伴侣连接卡片：queued 是手机上行请求的处理队列，不是宿主待发送动作。 */
 export function mobileCompanionStatusDetail(companion) {
     if (!companion?.enabled) return '暂未启用';
     const state = !companion.pairedClientId ? '等待配对' : companion.connected ? '已连接' : '等待重连';
-    return `${state} · 待发送 ${companion.queued ?? 0} 条`;
+    const queued = Number.isInteger(companion.queued) && companion.queued > 0 ? companion.queued : 0;
+    return queued ? `${state} · 正在处理 ${queued} 条` : state;
 }
 
 /** 现实数据统一摘要：控制台只给中文结论，不展示供应商错误原文或接口细节。 */

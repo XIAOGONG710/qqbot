@@ -139,8 +139,9 @@ describe('客户端的纯函数', () => {
         });
         assert.match(memory, /^服务正常 · 最近召回失败 \d+月\d+日 \d{2}:\d{2}$/);
         assert.equal(mobileCompanionStatusDetail(undefined), '暂未启用');
-        assert.equal(mobileCompanionStatusDetail({ enabled: true, queued: 2 }), '等待配对 · 待发送 2 条');
-        assert.equal(mobileCompanionStatusDetail({ enabled: true, pairedClientId: 'phone', connected: false, queued: 1 }), '等待重连 · 待发送 1 条');
+        assert.equal(mobileCompanionStatusDetail({ enabled: true, queued: 2 }), '等待配对 · 正在处理 2 条');
+        assert.equal(mobileCompanionStatusDetail({ enabled: true, pairedClientId: 'phone', connected: false, queued: 1 }), '等待重连 · 正在处理 1 条');
+        assert.equal(mobileCompanionStatusDetail({ enabled: true, pairedClientId: 'phone', connected: true, queued: 0 }), '已连接');
     });
 
     test('现实世界数据合并成中文摘要，并隐藏供应商错误原文', () => {
