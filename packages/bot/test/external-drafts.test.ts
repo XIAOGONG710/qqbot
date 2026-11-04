@@ -124,7 +124,7 @@ describe('外部平台草稿队列（ADR 0224）', () => {
         assert.equal(reloaded.audit.length, 1);
     });
 
-    test('平台关闭后旧草稿不能批准；发布状态必须有显式授权回调', () => {
+    test('平台关闭后旧草稿不能批准；发布必须先持久占位并核对适配器平台', () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
         let enabled = true;
         const guarded = createExternalDraftStore({ dir: root, canDraft: () => enabled });
@@ -135,11 +135,39 @@ describe('外部平台草稿队列（ADR 0224）', () => {
 
         enabled = true;
         guarded.updateStatus(draft.id, 'approved');
-        assert.throws(() => guarded.updateStatus(draft.id, 'published'), /尚未完成发布授权/);
+        assert.throws(() => guarded.beginPublish(draft.id, 'douyin'), /尚未完成发布授权/);
         assert.equal(guarded.list()[0]!.status, 'approved');
 
         const authorized = createExternalDraftStore({ dir: root, canDraft: () => true, canPublish: () => true });
+        assert.throws(() => authorized.beginPublish(draft.id, 'tieba'), /适配器不匹配/);
+        assert.throws(() => authorized.updateStatus(draft.id, 'published'), /不能从 approved/);
+        const reserved = authorized.beginPublish(draft.id, 'douyin')!;
+        assert.equal(reserved.started, true);
+        assert.equal(reserved.draft.status, 'publishing');
+        assert.equal(reserved.draft.publishRequestId, `publish-douyin-${draft.id}`);
         assert.equal(authorized.updateStatus(draft.id, 'published')!.status, 'published');
+    });
+
+    test('发布请求发出后若进程崩溃，重启只返回待核对占位，不会指示适配器再次发布', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
+        const allowed = { canDraft: () => true, canPublish: () => true };
+        const first = createExternalDraftStore({ dir: root, ...allowed });
+        const draft = first.create({ platform: 'xiaohongshu', title: '标题', body: '正文' });
+        first.updateStatus(draft.id, 'approved');
+
+        let publishCalls = 0;
+        const reserved = first.beginPublish(draft.id, 'xiaohongshu')!;
+        if (reserved.started) publishCalls++;
+        // 模拟远端已经接收，但本地尚未回写 published 就崩溃。
+        const afterRestart = createExternalDraftStore({ dir: root, ...allowed });
+        const replay = afterRestart.beginPublish(draft.id, 'xiaohongshu')!;
+        if (replay.started) publishCalls++;
+
+        assert.equal(publishCalls, 1);
+        assert.equal(replay.started, false);
+        assert.equal(replay.draft.status, 'publishing');
+        assert.equal(replay.draft.publishRequestId, reserved.draft.publishRequestId);
+        assert.deepEqual(replay.draft.audit.map(item => item.status), ['pending', 'approved', 'publishing']);
     });
 
     test('本地素材只接受逻辑 media ID，拒绝绝对路径和路径穿越', () => {

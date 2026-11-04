@@ -8,15 +8,17 @@
 
 状态流转只有：
 
-`pending → approved / rejected`，`approved → published / failed`，`failed → approved`。
+`pending → approved / rejected`，`approved → publishing → published / failed`，`failed → approved`。
 
-因此“授权模式”不会绕过人工确认，也不会因为适配器重试而重复发布。控制台显示三个平台的模式和统一草稿箱待确认数；天气状态也由后端一并返回，避免页面显示与实际运行状态脱节。
+适配器调用外部平台前必须用 `beginPublish` 先把 `publishing` 占位原子落盘，并把返回的稳定 `publishRequestId` 作为平台支持的幂等键。`started=false` 表示上一次调用的远端结果不确定，只能人工核对，不能再次发布。这样即使远端已成功、进程却在本地回写前退出，重启也不会自动重复发布。控制台显示三个平台的模式和统一草稿箱待确认数；天气状态也由后端一并返回，避免页面显示与实际运行状态脱节。
 
 ## 适配器边界
 
 - DSH 或 QQ 只负责生成草稿，来源标记为 `dsh` 或 `qq`；
 - 草稿箱创建入口会再次检查平台模式；对应平台为 `off` 时在底层拒绝新草稿；
 - 官方适配器必须先检查平台模式、白名单、限速和人工确认，再把结果写回状态；
+- 官方适配器必须核对自己的平台与草稿平台，只有 `beginPublish(...).started` 为 `true` 才能调用发布接口；平台支持幂等键时必须传入草稿的 `publishRequestId`；
+- `publishing` 表示远端结果可能未知：重启后不得自动重试，需查询官方接口或人工核对后再标记结果；
 - 发布失败只记录 `failed` 和短备注，原草稿保留；
 - 不实现网页抓取、Cookie 登录、模拟点击或绕过平台审核。
 

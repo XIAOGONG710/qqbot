@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import type { ExternalPlatform } from './external-platforms.ts';
 
-export type ExternalDraftStatus = 'pending' | 'approved' | 'rejected' | 'published' | 'failed';
+export type ExternalDraftStatus = 'pending' | 'approved' | 'rejected' | 'publishing' | 'published' | 'failed';
 export interface ExternalDraftAudit { at: string; status: ExternalDraftStatus; note?: string }
 export interface ExternalDraft {
     id: string;
@@ -16,6 +16,8 @@ export interface ExternalDraft {
     updatedAt: string;
     status: ExternalDraftStatus;
     source: 'dsh' | 'qq' | 'manual' | 'adapter';
+    /** A stable key that an official adapter must reuse for every publish attempt. */
+    publishRequestId?: string;
     audit: ExternalDraftAudit[];
 }
 export interface ExternalDraftSummary {
@@ -29,13 +31,15 @@ export interface ExternalDraftSummary {
 export interface ExternalDraftStore {
     create(input: { platform: ExternalPlatform; title: string; body: string; media?: readonly string[]; source?: ExternalDraft['source']; at?: Date }): ExternalDraft;
     list(options?: { platform?: ExternalPlatform; status?: ExternalDraftStatus; limit?: number }): ExternalDraft[];
+    /** Atomically reserves an approved draft before any external side effect. `started=false` requires manual reconciliation, not another publish call. */
+    beginPublish(id: string, platform: ExternalPlatform, at?: Date): { draft: ExternalDraft; started: boolean } | undefined;
     updateStatus(id: string, status: ExternalDraftStatus, note?: string, at?: Date): ExternalDraft | undefined;
     summary(): ExternalDraftSummary;
 }
 
 interface DraftFile { version: 1; drafts: ExternalDraft[] }
 const PLATFORMS: readonly ExternalPlatform[] = ['tieba', 'douyin', 'xiaohongshu'];
-const STATUSES: readonly ExternalDraftStatus[] = ['pending', 'approved', 'rejected', 'published', 'failed'];
+const STATUSES: readonly ExternalDraftStatus[] = ['pending', 'approved', 'rejected', 'publishing', 'published', 'failed'];
 export const MAX_EXTERNAL_DRAFTS = 500;
 const MAX_TITLE = 120;
 const MAX_BODY = 10_000;
@@ -75,6 +79,7 @@ function validDraft(value: unknown): value is ExternalDraft {
         && typeof item.updatedAt === 'string' && Number.isFinite(Date.parse(item.updatedAt))
         && isStatus(item.status)
         && (item.source === 'dsh' || item.source === 'qq' || item.source === 'manual' || item.source === 'adapter')
+        && (item.publishRequestId === undefined || (typeof item.publishRequestId === 'string' && /^publish-(?:tieba|douyin|xiaohongshu)-[a-z0-9-]{8,80}$/.test(item.publishRequestId)))
         && Array.isArray(item.audit) && item.audit.length > 0 && item.audit.every(validAudit);
     if (!structurallyValid) return false;
     const audit = item.audit!;
@@ -83,9 +88,10 @@ function validDraft(value: unknown): value is ExternalDraft {
     for (let index = 1; index < audit.length; index += 1) {
         const previous = audit[index - 1]!;
         const current = audit[index]!;
-        if (Date.parse(previous.at) > Date.parse(current.at) || !transitionAllowed(previous.status, current.status)) return false;
+        if (Date.parse(previous.at) > Date.parse(current.at) || !storedTransitionAllowed(previous.status, current.status)) return false;
     }
     const last = audit.at(-1)!;
+    if ((item.status === 'publishing') && !item.publishRequestId) return false;
     return last.status === item.status && last.at === item.updatedAt;
 }
 function validFile(value: unknown): value is DraftFile {
@@ -110,8 +116,15 @@ function cloneDraft(draft: ExternalDraft): ExternalDraft {
 }
 function transitionAllowed(from: ExternalDraftStatus, to: ExternalDraftStatus): boolean {
     return from === 'pending' && (to === 'approved' || to === 'rejected')
-        || from === 'approved' && (to === 'published' || to === 'failed')
+        || from === 'approved' && to === 'publishing'
+        || from === 'publishing' && (to === 'published' || to === 'failed')
         || from === 'failed' && to === 'approved';
+}
+
+/** Version 1 files created before the publishing reservation step remain readable. */
+function storedTransitionAllowed(from: ExternalDraftStatus, to: ExternalDraftStatus): boolean {
+    return transitionAllowed(from, to)
+        || from === 'approved' && (to === 'published' || to === 'failed');
 }
 
 export function createExternalDraftStore(options: {
@@ -167,6 +180,28 @@ export function createExternalDraftStore(options: {
                 .reverse()
                 .map(cloneDraft);
         },
+        beginPublish(id, platform, at = new Date()) {
+            if (!isPlatform(platform)) throw new Error('不支持的外部平台');
+            const draft = file.drafts.find(item => item.id === id);
+            if (!draft) return undefined;
+            if (draft.platform !== platform) throw new Error('外部平台草稿与发布适配器不匹配');
+            if (options.canPublish?.(platform) !== true) throw new Error('该外部平台尚未完成发布授权，不能开始发布');
+            // A process that restarts after the remote request but before the local result cannot
+            // know whether the platform accepted it. Never issue the side effect again here.
+            if (draft.status === 'publishing') return { draft: cloneDraft(draft), started: false };
+            if (draft.status !== 'approved') throw new Error(`外部平台草稿不能从 ${draft.status} 开始发布`);
+            const when = at.toISOString();
+            if (Date.parse(when) < Date.parse(draft.updatedAt)) throw new Error('外部平台草稿状态时间不能早于上一条审计');
+            const updated: ExternalDraft = {
+                ...draft,
+                status: 'publishing',
+                updatedAt: when,
+                publishRequestId: draft.publishRequestId ?? `publish-${draft.platform}-${draft.id}`,
+                audit: [...draft.audit, { at: when, status: 'publishing' }],
+            };
+            save({ version: 1, drafts: file.drafts.map(item => item.id === id ? updated : item) });
+            return { draft: cloneDraft(updated), started: true };
+        },
         updateStatus(id, status, note, at = new Date()) {
             if (!isStatus(status)) throw new Error('不支持的外部平台草稿状态');
             const draft = file.drafts.find(item => item.id === id);
@@ -174,6 +209,7 @@ export function createExternalDraftStore(options: {
             // 适配器可能在网络结果不确定时重试状态回写；同状态必须是真正的幂等操作，
             // 不能反复改 updatedAt 或追加审计记录。
             if (draft.status === status) return cloneDraft(draft);
+            if (status === 'publishing') throw new Error('开始发布必须使用 beginPublish');
             if (!transitionAllowed(draft.status, status)) throw new Error(`外部平台草稿不能从 ${draft.status} 变为 ${status}`);
             if (status === 'approved' && options.canDraft && !options.canDraft(draft.platform)) {
                 throw new Error('该外部平台当前已关闭，不能批准草稿');
