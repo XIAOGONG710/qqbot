@@ -88,15 +88,19 @@ export function actionQueue(path: string, log: (message: string) => void = () =>
     if (items.length !== raw.length) log(`她的行动队列：忽略 ${raw.length - items.length} 条格式损坏的计划`);
     let dead = (Array.isArray(loaded.dead) ? loaded.dead : []).filter((item): item is DeadAction =>
         validQueuedAction(item) && typeof (item as DeadAction).deadAt === 'string' && typeof (item as DeadAction).why === 'string');
-    const persist = () => writeJsonAtomic(path, { version: 1, items, ...(dead.length ? { dead } : {}) });
+    const commit = (nextItems: QueuedAction[], nextDead = dead) => {
+        writeJsonAtomic(path, { version: 1, items: nextItems, ...(nextDead.length ? { dead: nextDead } : {}) });
+        // 只有原子写入成功才能发布新内存状态，否则同 ID 重试会把未落盘的计划误当成功。
+        items = nextItems;
+        dead = nextDead;
+    };
     /** 裁判时把队列里别的计划也当成占用（schedule 时 judgeAction 只看事件账） */
     const withPlans = (context: ActionContext, except?: string): ActionContext => ({
         ...context,
         events: [...(context.events ?? []), ...items.filter(item => item.id !== except).map(item => planned(item, context.schedule))],
     });
     const replace = (item: QueuedAction) => {
-        items = [...items.filter(other => other.id !== item.id), item].sort(byEnd);
-        persist();
+        commit([...items.filter(other => other.id !== item.id), item].sort(byEnd));
     };
 
     return {
@@ -182,8 +186,7 @@ export function actionQueue(path: string, log: (message: string) => void = () =>
         drop: (id, why) => {
             const item = items.find(other => other.id === id);
             if (!item) return undefined;
-            items = items.filter(other => other.id !== id);
-            persist();
+            commit(items.filter(other => other.id !== id));
             log(`她的行动队列：去掉 ${item.kind}（${item.id}）：${why}`);
             return item;
         },
@@ -198,15 +201,24 @@ export function actionQueue(path: string, log: (message: string) => void = () =>
                     log(`她的行动队列：结算 ${item.kind}（${item.id}）写事件账失败，下次再试：${error instanceof Error ? error.message : String(error)}`);
                     break;
                 }
-                items = items.filter(other => other.id !== item.id);
                 // recordEvents 以 id 幂等、不收的不报错。只有事实账真的有这条才算结算；没收的挪到死信区，不然每次都卡在这一条
-                if (!ledger.events().some(event => event.id === item.id)) {
-                    dead = [...dead, { ...item, deadAt: now.toISOString(), why: '事件账没收' }];
-                    persist();
+                let accepted: boolean;
+                try { accepted = ledger.events().some(event => event.id === item.id); }
+                catch (error) {
+                    log(`她的行动队列：确认 ${item.kind}（${item.id}）事件账失败，下次再试：${error instanceof Error ? error.message : String(error)}`);
+                    break;
+                }
+                const nextItems = items.filter(other => other.id !== item.id);
+                const nextDead = accepted ? dead : [...dead, { ...item, deadAt: now.toISOString(), why: '事件账没收' }];
+                try { commit(nextItems, nextDead); }
+                catch (error) {
+                    log(`她的行动队列：结算 ${item.kind}（${item.id}）队列写入失败，下次再试：${error instanceof Error ? error.message : String(error)}`);
+                    break;
+                }
+                if (!accepted) {
                     log(`她的行动队列：${item.kind}（${item.id}）事件账没收，挪到死信区`);
                     continue;
                 }
-                persist();
                 settled++;
                 log(`她的行动队列：结算 ${item.kind}（${item.event.result}）`);
             }
