@@ -68,6 +68,10 @@ function archiveState(reuse, plan) {
         log('没有状态数据目录，本次只备份数据库');
         return { ok: true, skipped: true };
     }
+    if (disposition === 'invalid') {
+        log(`状态数据路径 ${plan.source} 不是可读取的目录，拒绝把这次备份标成完成`);
+        return { ok: false, source: plan.source, reason: 'state_invalid' };
+    }
     if (disposition === 'empty') {
         log(`状态数据目录 ${plan.source} 是空的，拒绝把这次备份标成完成`);
         return { ok: false, source: plan.source, reason: 'state_empty' };

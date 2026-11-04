@@ -53,10 +53,11 @@ export function discoverStateBackup(root) {
         const directory = join(root, source);
         let entries;
         try {
-            if (!statSync(directory).isDirectory()) continue;
+            if (!statSync(directory).isDirectory()) return { source, items: [], invalid: true };
             entries = readdirSync(directory, { withFileTypes: true });
-        } catch {
-            continue;
+        } catch (error) {
+            if (error && typeof error === 'object' && error.code === 'ENOENT') continue;
+            return { source, items: [], invalid: true };
         }
         const items = entries
             .filter(entry => !['logs', 'secrets', 'bot.lock', 'last-prompt.json'].includes(entry.name))
@@ -73,6 +74,7 @@ export function discoverStateBackup(root) {
  */
 export function stateBackupDisposition(plan) {
     if (plan === undefined) return 'missing';
+    if (plan.invalid === true) return 'invalid';
     return plan.items.length > 0 ? 'ready' : 'empty';
 }
 

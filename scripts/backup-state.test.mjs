@@ -197,6 +197,17 @@ describe('backup completion policy', () => {
         assert.equal(isCompleteBackup(target, 'runtime/bot'), false);
     });
 
+    test('an invalid authoritative state path fails closed instead of falling back or looking missing', () => {
+        const root = fresh();
+        mkdirSync(join(root, 'runtime'), { recursive: true });
+        writeFileSync(join(root, 'runtime', 'bot'), 'not a directory', 'utf8');
+        mkdirSync(join(root, 'runtime', 'bot-shadow', 'chats'), { recursive: true });
+
+        const plan = discoverStateBackup(root);
+        assert.deepEqual(plan, { source: 'runtime/bot', items: [], invalid: true });
+        assert.equal(stateBackupDisposition(plan), 'invalid');
+    });
+
     test('state archives are not reused after the authoritative data directory changes', () => {
         const target = fresh();
         writeFileSync(join(target, 'her-state.zip'), 'state backup', 'utf8');
