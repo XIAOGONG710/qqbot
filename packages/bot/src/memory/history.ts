@@ -1,7 +1,9 @@
 // 每个联系人一份聊天记录：<dataDir>/chats/<QQ 号>.jsonl，一行一条，只追加。
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readSync, statSync, type BigIntStats } from 'node:fs';
 import { join } from 'node:path';
+import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { ioErrorCode } from './transient-io.ts';
 
 export interface StoredMessage {
     /** ISO 时间 */
@@ -16,9 +18,17 @@ export interface StoredMessage {
 export const RECALLED_TEXT = '[撤回了一条消息]';
 const MAX_RECALLED = 200;
 
+/** existsSync会把非ENOENT的探测失败也说成“不在”；历史不能因此变成空白。 */
+function historyStat(path: string): BigIntStats | undefined {
+    try { return statSync(path, { bigint: true }); }
+    catch (error) { if (ioErrorCode(error) === 'ENOENT') return undefined; throw error; }
+}
+
+const historyKey = (stat: BigIntStats) => `${stat.dev}:${stat.ino}:${stat.birthtimeNs}:${stat.ctimeNs}:${stat.mtimeNs}:${stat.size}`;
+
 export class ChatHistory {
     #dir: string;
-    readonly #cache = new Map<number, { size: number; mtimeMs: number; messages: StoredMessage[]; ids: Set<number> }>();
+    readonly #cache = new Map<number, { key: string; messages: StoredMessage[]; ids: Set<number> }>();
     readonly #log: (message: string) => void;
     /** 每人撤回过的消息 id（<QQ 号>.recalled.json，最近 MAX_RECALLED 个） */
     readonly #recalled = new Map<number, number[]>();
@@ -35,7 +45,7 @@ export class ChatHistory {
 
     /** 聊天记录；他撤回的那几条（recall）里的字换成「[撤回了一条消息]」，别的原样 */
     load(userId: number): StoredMessage[] {
-        const messages = this.#loadRaw(userId);
+        const messages = this.#loadRaw(userId).map(message => ({ ...message }));
         const recalled = this.#recalledIds(userId);
         if (recalled.length === 0) return messages;
         const hidden = new Set(recalled);
@@ -49,13 +59,11 @@ export class ChatHistory {
     #recalledIds(userId: number): number[] {
         const known = this.#recalled.get(userId);
         if (known) return known;
-        let ids: number[] = [];
-        try {
-            const value: unknown = JSON.parse(readFileSync(this.#recalledPath(userId), 'utf8'));
-            if (Array.isArray(value)) ids = value.filter((id): id is number => Number.isSafeInteger(id) && id >= 0);
-        } catch {
-            // 没有这个文件、坏了：当作没有撤回过
-        }
+        // 撤回标记损坏不能当成“从没撤回”，否则原文会重新进入提示词。
+        const ids = readJsonOr<number[]>(this.#recalledPath(userId), [], undefined, {
+            validate: (value): value is number[] => Array.isArray(value) && value.every(id => Number.isSafeInteger(id) && id >= 0),
+            invalid: 'throw', label: '聊天撤回状态',
+        });
         this.#recalled.set(userId, ids);
         return ids;
     }
@@ -73,22 +81,22 @@ export class ChatHistory {
         const ids = this.#recalledIds(userId);
         if (ids.includes(messageId)) return false;
         const next = [...ids, messageId].slice(-MAX_RECALLED);
-        writeFileSync(this.#recalledPath(userId), JSON.stringify(next));
+        writeJsonAtomic(this.#recalledPath(userId), next);
         this.#recalled.set(userId, next);
         return true;
     }
 
     #loadRaw(userId: number): StoredMessage[] {
         const path = this.#path(userId);
-        if (!existsSync(path)) {
+        const stat = historyStat(path);
+        if (!stat) {
             this.#cache.delete(userId);
             return [];
         }
-        const stat = statSync(path);
+        const key = historyKey(stat);
         const cached = this.#cache.get(userId);
-        // Callers use this as a point-in-time snapshot (for example, to detect a message arriving
-        // while a reply is generated). Never expose the mutable cache array itself.
-        if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return [...cached.messages];
+        // 只向类内部返回缓存；公开load另做条目级快照，hasMessage不必复制整条历史。
+        if (cached && cached.key === key) return cached.messages;
         const messages: StoredMessage[] = [];
         let rejected = 0;
         for (const line of readFileSync(path, 'utf8').split('\n')) {
@@ -104,38 +112,44 @@ export class ChatHistory {
         }
         if (rejected) this.#log(`聊天记录 ${userId}.jsonl 忽略 ${rejected} 行损坏或不符合 schema 的内容`);
         this.#cache.set(userId, {
-            size: stat.size,
-            mtimeMs: stat.mtimeMs,
+            key,
             messages,
             ids: new Set(messages.flatMap(message => message.messageId === undefined ? [] : [message.messageId])),
         });
-        return [...messages];
+        return messages;
     }
 
     append(userId: number, message: StoredMessage): void {
         if (!validStoredMessage(message)) throw new Error('拒绝写入不符合 schema 的聊天记录');
         const path = this.#path(userId);
         let cached = this.#cache.get(userId);
+        let prefix = '';
         // A chat file can be moved away by privacy/simulation tools while the process is alive.
         // Do not extend that old cache into the newly-created file; refresh external changes too.
-        if (!existsSync(path)) {
+        const before = historyStat(path);
+        if (!before) {
             this.#cache.delete(userId);
             cached = undefined;
-        } else if (cached) {
-            const before = statSync(path);
-            if (cached.size !== before.size || cached.mtimeMs !== before.mtimeMs) {
+        } else {
+            if (cached && cached.key !== historyKey(before)) {
                 this.#loadRaw(userId);
                 cached = this.#cache.get(userId);
             }
+            // 崩溃可能留下半行或没有换行的完整旧行。只补分隔符，不删除旧字节。
+            if (before.size > 0n) {
+                const fd = openSync(path, 'r');
+                try {
+                    const tail = Buffer.alloc(1);
+                    if (readSync(fd, tail, 0, 1, before.size - 1n) === 1 && tail[0] !== 10) prefix = '\n';
+                } finally { closeSync(fd); }
+            }
         }
-        const line = JSON.stringify(message) + '\n';
+        const line = prefix + JSON.stringify(message) + '\n';
         appendFileSync(path, line);
         if (cached) {
-            cached.messages.push(message);
+            cached.messages.push({ ...message });
             if (message.messageId !== undefined) cached.ids.add(message.messageId);
-            const stat = statSync(path);
-            cached.size = stat.size;
-            cached.mtimeMs = stat.mtimeMs;
+            cached.key = historyKey(statSync(path, { bigint: true }));
         }
     }
 

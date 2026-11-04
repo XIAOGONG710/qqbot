@@ -27,7 +27,9 @@ export function writeJsonAtomic(path: string, value: unknown): void {
     // 组件重启的交界处可能有两次写入；固定的 .tmp 会互相覆盖。
     // Windows 上杀毒软件 / 索引器会短暂占住目标文件让 rename 抛 EPERM，内存紧张时 write 会抛 EMFILE / ENOMEM / UNKNOWN：
     // 唯一临时文件加短重试后再放弃；放弃时抛 TransientStateError，别的错误（目录不存在、数据不能序列化）照旧直接抛。
-    const text = JSON.stringify(value, null, 2) + '\n';
+    const serialized = JSON.stringify(value, null, 2);
+    if (serialized === undefined) throw new TypeError('状态文件根值不能序列化为 JSON');
+    const text = serialized + '\n';
     const tmp = `${path}.tmp-${process.pid}-${++writeSequence}`;
     let failure: unknown;
     for (const delay of fileOps.writeDelaysMs) {
@@ -57,7 +59,8 @@ export interface JsonReadOptions<T> {
 }
 
 function invalidState(path: string, error: unknown, fallback: unknown, log: ((message: string) => void) | undefined, mode: 'quarantine' | 'throw', label: string): unknown {
-    const detail = error instanceof Error ? error.message : String(error);
+    // JSON.parse及迁移器的message可能带出文件正文。保留诊断类别，不复制原文。
+    const detail = `JSON/schema 解析或校验失败（${error instanceof SyntaxError ? 'SyntaxError' : 'Error'}）`;
     if (mode === 'throw') throw new Error(`${label} ${path} 无效（${detail}），为避免把真实状态当成空白，拒绝启动；请修复、迁移或明确删除后再启动`);
     const aside = `${path}.corrupt-${Date.now()}`;
     try { renameSync(path, aside); } catch { /* 挪不动也照样用初始值，下次写的时候会覆盖 */ }
