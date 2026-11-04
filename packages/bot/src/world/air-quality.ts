@@ -99,6 +99,13 @@ function validHourly(value: unknown): Record<string, HourAirQuality> {
     return output;
 }
 
+function requireCurrentDayCoverage(hours: Readonly<Record<string, HourAirQuality>>, fetchedAt: Date): void {
+    const date = dateOf(fetchedAt);
+    for (let hour = 0; hour < 24; hour++) {
+        if (!hours[`${date}T${pad(hour)}`]) throw new Error('供应商返回的当前日空气质量不完整');
+    }
+}
+
 function firstRealDay(at: Date): string { return at.getHours() < 5 ? dateOf(at) : dayAfter(dateOf(at)); }
 
 function mergeHours(stored: Readonly<Record<string, HourAirQuality>>, fetched: Readonly<Record<string, HourAirQuality>>, fetchedAt: Date): Record<string, HourAirQuality> {
@@ -171,8 +178,9 @@ export function airQualityFetcher(options: AirQualityFetcherOptions): AirQuality
                         const { latitude, longitude } = PLACES[place];
                         const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${latitude}&longitude=${longitude}`
                             + '&hourly=pm2_5,pm10,us_aqi&past_days=2&forecast_days=2&timezone=Asia%2FShanghai';
-                        const fetched = validHourly(parseOpenMeteoAirQuality(await fetchJson(url)));
                         const at = new Date(now());
+                        const fetched = validHourly(parseOpenMeteoAirQuality(await fetchJson(url)));
+                        requireCurrentDayCoverage(fetched, at);
                         const old = load(place);
                         const store: AirQualityStore = { since: old?.since ?? firstRealDay(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
                         writeJsonAtomic(path(place), store);

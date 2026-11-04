@@ -59,6 +59,29 @@ describe('真实空气质量（ADR 0227）', () => {
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
+    test('截断响应不会给旧缓存续期', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-air-quality-truncated-'));
+        let now = at('2026-11-03T03:30:00').getTime();
+        let truncated = false;
+        const fetcher = airQualityFetcher({
+            dir: join(root, 'air-quality'), now: () => now, log: () => {}, cacheMaxAgeMs: 60 * 60_000,
+            fetchJson: async () => truncated ? {
+                hourly: { time: ['2026-11-03T04:00'], pm2_5: [20], pm10: [30], us_aqi: [40] },
+            } : payload('2026-11-03'),
+        });
+        try {
+            await fetcher.refresh();
+            const firstFetchedAt = fetcher.status().places.jinan.fetchedAt;
+            now = at('2026-11-03T04:00:00').getTime();
+            truncated = true;
+            await fetcher.refresh();
+            const status = fetcher.status().places.jinan;
+            assert.equal(status.fetchedAt, firstFetchedAt, '不完整响应不能刷新旧缓存时间');
+            assert.match(status.error ?? '', /当前日空气质量不完整/);
+            assert.equal(fetcher.day('jinan', '2026-11-03', at('2026-11-03T04:00:00'))?.observedAt, '2026-11-03T03:00');
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
     test('进入世界提示词，但不改变原有天气和生活事件', () => {
         const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
         useRealAirQuality({ day: () => ({ pm25: 18, pm10: 32, aqi: 42, category: '优', observedAt: '2026-10-20T12:00:00', real: true }) });
