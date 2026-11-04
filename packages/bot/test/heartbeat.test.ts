@@ -68,6 +68,8 @@ describe('心跳检查', () => {
         put(dir, T0);
         assert.equal(checkHeartbeat(dir, new Date(T0 + HEARTBEAT_STALE_MS)).state, 'ok', '刚好 15 分钟还算正常');
         assert.equal(checkHeartbeat(dir, new Date(T0 + HEARTBEAT_STALE_MS + 1)).state, 'stale');
+        assert.equal(checkHeartbeat(dir, new Date(T0 - 60_000)).state, 'ok', '一个心跳周期内的校时误差可接受');
+        assert.equal(checkHeartbeat(dir, new Date(T0 - 60_001)).state, 'unreadable', '明显未来的心跳不能掩盖失联');
         assert.equal(checkHeartbeat(dir, new Date(T0 + 3_600_000), { maxAgeMs: 2 * 3_600_000 }).state, 'ok', '阈值可调');
         assert.equal(checkHeartbeat(dir, new Date(T0 + 3_600_000), { maintenance: true }).state, 'maintenance', '维护旗免检');
         writeFileSync(heartbeatPath(dir), 'not json');

@@ -93,6 +93,9 @@ export function checkHeartbeat(dataDir: string, now: Date, options: { maxAgeMs?:
         return { state: 'unreadable' };
     }
     const ageMs = now.getTime() - Date.parse(heartbeat.at);
+    // 写入者和守望者通常在同一台机器；允许一个心跳周期的校时偏差，明显未来则失败关闭。
+    // 否则系统时钟回拨会产生负年龄，把已经停掉的进程长期误判为正常。
+    if (ageMs < -HEARTBEAT_EVERY_MS) return { state: 'unreadable' };
     return { state: ageMs > (options.maxAgeMs ?? HEARTBEAT_STALE_MS) ? 'stale' : 'ok', ageMs, heartbeat };
 }
 
