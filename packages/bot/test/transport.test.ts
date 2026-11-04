@@ -51,6 +51,22 @@ describe('现实交通 / 公共服务事实（ADR 0232）', () => {
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
+    test('按地点端点拒绝明确属于其他地点的唯一结果', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-transport-location-mismatch-'));
+        const logs: string[] = [];
+        const fetcher = transportFetcher({
+            dir: root, log: line => logs.push(line), locations: [{ id: 'jinan', name: '济南' }],
+            endpoint: location => `https://example.test/${location.id}`, source: 'test',
+            fetchJson: async () => ({ data: [{ location: '青岛', status: '正常', updatedAt: '2026-11-03T09:00:00+08:00' }] }),
+        });
+        try {
+            await fetcher.refresh();
+            assert.equal(fetcher.day('jinan'), undefined);
+            assert.match(fetcher.status().locations.jinan!.error ?? '', /没有当前地点/);
+            assert.ok(logs.some(line => line.includes('济南') && line.includes('没有当前地点')));
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
     test('共享端点返回多个地点时按稳定 id 或显示名匹配，不把最后一条状态写给所有地点', async () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-transport-shared-'));
         const now = at('2026-11-03T09:00:00').getTime();

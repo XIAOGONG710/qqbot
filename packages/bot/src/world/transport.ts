@@ -176,9 +176,9 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
             inFlight = (async () => {
                 const merged = { ...(load()?.facts ?? {}) };
                 let success = false;
-                const accept = (location: TransportLocation, facts: readonly TransportFact[], allowImplicitSingle: boolean): void => {
+                const accept = (location: TransportLocation, facts: readonly TransportFact[]): void => {
                     const matched = facts.filter(fact => fact.location === location.id || (location.name !== undefined && fact.location === location.name));
-                    const fact = allowImplicitSingle && facts.length === 1 ? facts[0] : matched.length === 1 ? matched[0] : undefined;
+                    const fact = matched.length === 1 ? matched[0] : undefined;
                     if (!fact) throw new Error(matched.length > 1 ? '供应商返回了多条相同地点的交通事实' : '供应商响应里没有当前地点的交通事实');
                     merged[location.id] = fact;
                     success = true;
@@ -191,7 +191,7 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
                         const fallback = locations.length === 1 ? locations[0]!.id : '';
                         const facts = parseTransportResponse(await fetchJson(options.endpoint), fallback, options.source);
                         for (const location of locations) {
-                            try { accept(location, facts, locations.length === 1); }
+                            try { accept(location, facts); }
                             catch (reason) {
                                 const message = sanitizeTransportError(reason);
                                 errors.set(location.id, message); errorAt.set(location.id, new Date(now()).toISOString());
@@ -209,7 +209,7 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
                     for (const location of locations) {
                         try {
                             const facts = parseTransportResponse(await fetchJson(options.endpoint(location)), location.id, options.source);
-                            accept(location, facts, true);
+                            accept(location, facts);
                         } catch (reason) {
                             const message = sanitizeTransportError(reason);
                             errors.set(location.id, message); errorAt.set(location.id, new Date(now()).toISOString());
