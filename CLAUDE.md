@@ -23,7 +23,9 @@ SillyTavern 只用来编写、试聊角色并定义数据格式（角色卡 / �
   安装前核对过：zip 的 SHA-256 与 `SHASUMS256.txt` 一致；`SHASUMS256.txt.sig` 由 Node 发布者 Antoine du Hamel
   （`5BE8A3F6C8A5C01D106C0AD820B1A390B168D356`，列于 nodejs/node README 的 release keys）签名有效。
   升级：下载新版 zip，按同样步骤核对后替换该目录。SillyTavern 要求 Node `>= 20`。
-- GitHub CLI v2.102.0，官方 `gh_2.102.0_windows_amd64.zip` 解压到 `%LOCALAPPDATA%\Programs\gh`（`bin\` 已加入用户 PATH，新终端生效）。
-  安装前核对过：zip 的 SHA-256 与 GitHub Release 资产摘要、官方 `checksums.txt` 三者一致；`gh.exe` 的 Authenticode 签名有效（GitHub, Inc.）。
-  登录账号须是 XIAOGONG710。
+- GitHub CLI v2.103.3，官方 `gh_2.103.3_windows_amd64.zip` 解压到 `%LOCALAPPDATA%\Programs\gh`（`bin\` 已加入用户 PATH，新终端生效）。
+  安装前核对过：zip 的 SHA-256（`98d0cfa7…0a22e0`）与 GitHub Release 资产摘要、官方 `checksums.txt` 三者一致；`gh.exe` 的 Authenticode 签名有效（GitHub, Inc.）。
+  登录账号须是 XIAOGONG710（令牌存于 Windows 凭据管理器）。
+  注意：从 Claude 桌面应用里的命令写到 `AppData` 下的文件和用户 PATH 会被应用隔离，在普通终端里看不到；
+  装到 `AppData` 下的工具要在用户自己的终端里装（例如在终端面板运行安装脚本）。
 - 长期记忆服务 Hindsight 装在 `runtime/hindsight/`（Python 3.12 由 uv 安装），来源核对、VC++ 运行库的处理和启动方法见 `docs/hindsight.md`。
