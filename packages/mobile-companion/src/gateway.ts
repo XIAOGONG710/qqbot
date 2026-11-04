@@ -1,4 +1,4 @@
-import { MAX_CLOCK_SKEW_MS, validateEnvelope, validateHello, type CompanionEnvelope, type CompanionHello } from './protocol.ts';
+import { MAX_CLOCK_SKEW_MS, validateEnvelope, validateHello, validateMessage, type CompanionEnvelope, type CompanionHello, type MessageKind } from './protocol.ts';
 
 const MAX_NONCES_PER_SESSION = 4_096;
 
@@ -23,6 +23,7 @@ export type GatewayAccept =
 export class CompanionGateway {
     private clientId: string | undefined;
     private sessionId: string | undefined;
+    private capabilities = new Set<MessageKind>();
     private readonly nonces = new Map<string, number>();
     private readonly now: () => number;
     private readonly pairing: PairingVerifier;
@@ -65,6 +66,7 @@ export class CompanionGateway {
     reset(): void {
         this.clientId = undefined;
         this.sessionId = undefined;
+        this.capabilities.clear();
         this.lastSeenAt = 0;
         this.nonces.clear();
     }
@@ -92,6 +94,7 @@ export class CompanionGateway {
                 if (!this.pairing.consume(hello.clientId, hello.pairingCode, now)) throw new Error('配对码无效、过期或已使用');
                 this.clientId = hello.clientId;
                 this.sessionId = sessionId;
+                this.capabilities = new Set(hello.capabilities);
                 this.lastSeenAt = now;
                 this.nonces.set(envelope.nonce, now);
                 return { ok: true, clientId: hello.clientId, kind: envelope.kind };
@@ -102,6 +105,10 @@ export class CompanionGateway {
                 throw new Error('连接会话已过期，请重新配对');
             }
             if (this.sessionId !== sessionId) throw new Error('连接尚未完成配对');
+            if (envelope.kind === 'message.send') {
+                const message = validateMessage(envelope.body);
+                if (!this.capabilities.has(message.kind)) throw new Error(`设备未声明 ${message.kind} 消息能力`);
+            }
             this.assertNonceAvailable(envelope.nonce, now);
             this.nonces.set(envelope.nonce, now);
             this.lastSeenAt = now;

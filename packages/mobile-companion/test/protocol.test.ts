@@ -96,6 +96,21 @@ describe('手机伴侣协议', () => {
         if (!unpaired.ok) assert.match(unpaired.error, /尚未配对/);
     });
 
+    test('配对能力列表参与授权，未声明的媒体类型不能进入宿主', () => {
+        const gateway = new CompanionGateway({ consume: () => true });
+        assert.equal(gateway.accept(helloEnvelope({ clientId: 'android-capability', pairingCode: 'ABCD-1234', capabilities: ['text'] }, 'req-capability-hello', 'nonce-capability-hello')).ok, true);
+        const image = gateway.accept({
+            v: 1, requestId: 'req-capability-image', kind: 'message.send', sentAt: new Date().toISOString(), nonce: 'nonce-capability-image',
+            body: { kind: 'image', media: { mediaId: '0123456789abcdef', mime: 'image/png', bytes: 12 } },
+        });
+        assert.equal(image.ok, false);
+        if (!image.ok) assert.match(image.error, /未声明 image 消息能力/);
+        assert.equal(gateway.accept({
+            v: 1, requestId: 'req-capability-text', kind: 'message.send', sentAt: new Date().toISOString(), nonce: 'nonce-capability-text',
+            body: { kind: 'text', text: '文字仍可用' },
+        }).ok, true);
+    });
+
     test('高频请求不会在时钟偏差窗口内淘汰旧 nonce', () => {
         const now = 20_000;
         const gateway = new CompanionGateway({ consume: () => true }, () => now);
