@@ -19,8 +19,8 @@ const MS_DAY = 86_400_000;
 
 export const feedPath = (dataDir: string): string => join(dataDir, 'watching', 'feed.json');
 
-const dayText = (date: Date): string => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-const dayNumber = (text: string): number => { const [y, m, d] = text.split('-').map(Number) as [number, number, number]; return Math.floor(Date.UTC(y, m - 1, d) / MS_DAY); };
+const dayText = (date: Date): string => `${String(date.getFullYear()).padStart(4, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const dayNumber = (text: string): number => Math.floor(Date.parse(`${text}T00:00:00Z`) / MS_DAY);
 
 export function loadFeed(path: string, log: (message: string) => void = () => undefined): FeedFile {
     const raw = readJsonOr<Partial<FeedFile>>(path, {}, message => log(`刷 B 站：${message}`));
