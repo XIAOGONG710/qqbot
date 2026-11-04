@@ -203,6 +203,18 @@ test('完成作业提高信心和满足，取到快递带来轻微期待感；�
     assert.ok(parcel.boredom < failedParcel.boredom);
 });
 
+test('收到钱只进入财务事实，不机械换算成开心、满足、自尊或亲密', () => {
+    const at = new Date('2026-11-01T08:00:00.000Z');
+    const received = {
+        id: 'life:receive-money', actor: 'linmengyao' as const, kind: 'receive_money', day: '2026-11-01',
+        startedAt: at.toISOString(), endedAt: at.toISOString(), source: 'external' as const, result: 'succeeded' as const,
+        amount: 2_000, target: 'camera_fund',
+    };
+    const baseline = humanValuesAt({ at, needs, history: [], tier: 'boyfriend', events: [] });
+    const after = humanValuesAt({ at, needs, history: [], tier: 'boyfriend', events: [received] });
+    assert.deepEqual(after, baseline);
+});
+
 test('数值会联动：身体负荷会传导到舒适、心情、动机、开放和挫败', () => {
     const at = new Date('2026-11-01T12:00:00.000Z');
     const calm = humanValuesAt({

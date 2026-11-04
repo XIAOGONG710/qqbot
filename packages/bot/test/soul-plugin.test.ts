@@ -44,7 +44,8 @@ function boot(extra: Record<string, unknown> = {}) {
     plugin.apply(rootCtx, {
         soulFile: f('SOUL.md'), ledgerFile: f('LEDGER.md'), journalFile: f('JOURNAL.md'), privateFile: f('PRIVATE.dat'), wishesFile: f('WISHES.md'),
         interestsFile: f('INTERESTS.md'), outboxFile: f('OUTBOX.jsonl'), offlineFile: f('OFFLINE.json'), nowFile: f('NOW.md'), storyFile: f('STORY.md'),
-        ratingFile: f('RATINGS.json'), insightsFile: f('INSIGHTS.json'), feelingsFile: f('FEELINGS.json'), stateFile: f('STATE.json'), logFile: f('plugin.log'), ...extra,
+        ratingFile: f('RATINGS.json'), insightsFile: f('INSIGHTS.json'), feelingsFile: f('FEELINGS.json'), stateFile: f('STATE.json'), logFile: f('plugin.log'),
+        timelineInboxFile: f('timeline-inbox.jsonl'), worldInboxFile: f('world-inbox.jsonl'), ...extra,
     });
     handlers.created!({ agent: { id: 'a1', ctx: agentCtx } });
     const text = (name: string) => readFileSync(f(name), 'utf8');
@@ -175,6 +176,19 @@ describe('outbox_send：「每轮最多一条」写在说明里没人拦', () =>
         await h.handlers['agent/turn-stopping']!();
         assert.deepEqual(await h.tools.outbox_send!.execute({ text: '下一轮的' }), { sent: true });
         assert.equal(h.text('OUTBOX.jsonl').split('\n').filter(Boolean).length, 2);
+    });
+});
+
+describe('world_event：DSH 和 QQ 共用受限的相机基金语义', () => {
+    test('相机用途只允许随 receive_money 写入收件箱', async () => {
+        const h = boot();
+        assert.deepEqual(await h.tools.world_event!.execute({ kind: 'receive_money', result: 'succeeded', amount: 2_000, forCamera: true }), { recorded: true });
+        assert.deepEqual(await h.tools.world_event!.execute({ kind: 'study', result: 'succeeded', forCamera: true }), { recorded: false });
+        const rows = h.text('world-inbox.jsonl').split('\n').filter(Boolean).map(line => JSON.parse(line) as Record<string, unknown>);
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0]!.kind, 'receive_money');
+        assert.equal(rows[0]!.amount, 2_000);
+        assert.equal(rows[0]!.forCamera, true);
     });
 });
 

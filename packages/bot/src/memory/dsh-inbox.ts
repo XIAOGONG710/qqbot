@@ -26,6 +26,7 @@ export interface DshWorldInboxEntry {
     reason?: string;
     meal?: boolean;
     amount?: number;
+    forCamera?: boolean;
     seen?: boolean;
 }
 
@@ -126,13 +127,17 @@ function parseWorld(value: unknown, now: number): DshWorldInboxEntry | undefined
     if (row.startedAt !== undefined && Date.parse(row.startedAt) > Date.parse(row.at!)) return undefined;
     if (row.meal !== undefined && typeof row.meal !== 'boolean') return undefined;
     if (row.seen !== undefined && typeof row.seen !== 'boolean') return undefined;
+    if (row.forCamera !== undefined && typeof row.forCamera !== 'boolean') return undefined;
     if (row.amount !== undefined && (!Number.isSafeInteger(row.amount) || row.amount <= 0 || row.amount > 50_000)) return undefined;
+    if (kind === 'receive_money' && row.amount === undefined) return undefined;
+    if (kind !== 'receive_money' && (row.amount !== undefined || row.forCamera !== undefined)) return undefined;
     return {
         id: row.id, at: row.at!, kind, result: row.result as DshWorldInboxEntry['result'],
         ...(row.startedAt ? { startedAt: row.startedAt } : {}),
         ...(subject ? { subject } : {}), ...(reason ? { reason } : {}),
         ...(row.meal !== undefined ? { meal: row.meal } : {}),
         ...(row.amount !== undefined ? { amount: row.amount } : {}),
+        ...(row.forCamera === true ? { forCamera: true } : {}),
         ...(row.seen !== undefined ? { seen: row.seen } : {}),
     };
 }
@@ -187,7 +192,9 @@ export function consumeDshWorldInbox(path: string, statePath: string, now: Date,
             id: `dsh:${entry.id}`, kind: entry.kind, at: entry.at, source: 'external', result: entry.result,
             ...(entry.startedAt ? { startedAt: entry.startedAt } : {}), ...(entry.subject ? { subject: entry.subject } : {}),
             ...(entry.reason ? { reason: entry.reason } : {}), ...(entry.meal !== undefined ? { meal: entry.meal } : {}),
-            ...(entry.amount !== undefined ? { amount: entry.amount } : {}), ...(entry.seen !== undefined ? { seen: entry.seen } : {}),
+            ...(entry.amount !== undefined ? { amount: entry.amount } : {}),
+            ...(entry.forCamera === true ? { target: 'camera_fund' } : {}),
+            ...(entry.seen !== undefined ? { seen: entry.seen } : {}),
         };
         world.recordEvents([draft]);
     }, now.getTime(), log);

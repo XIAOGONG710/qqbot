@@ -53,6 +53,25 @@ describe('DSH 收件箱', () => {
         assert.deepEqual(drafts, [{ id: 'dsh:dsh-world-1', kind: 'study', at: '2026-11-02T23:55:00.000Z', source: 'external', result: 'succeeded', subject: '复习' }]);
     });
 
+    test('相机基金用途只随 receive_money 进入世界账，不开放任意资金目标', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-dsh-camera-fund-'));
+        dirs.push(dir);
+        const inbox = join(dir, 'world-inbox.jsonl');
+        const state = join(dir, 'world-state.json');
+        writeFileSync(inbox, [
+            JSON.stringify({ id: 'dsh-world-camera', at: '2026-11-02T23:55:00.000Z', kind: 'receive_money', result: 'succeeded', amount: 2_000, forCamera: true }),
+            JSON.stringify({ id: 'dsh-world-bad-target', at: '2026-11-02T23:56:00.000Z', kind: 'study', result: 'succeeded', forCamera: true }),
+            JSON.stringify({ id: 'dsh-world-no-amount', at: '2026-11-02T23:57:00.000Z', kind: 'receive_money', result: 'succeeded', forCamera: true }),
+        ].join('\n') + '\n');
+        const drafts: unknown[] = [];
+        const world = { recordEvents: (items: unknown[]) => drafts.push(...items) } as unknown as WorldState;
+        assert.equal(consumeDshWorldInbox(inbox, state, new Date('2026-11-03T00:00:00.000Z'), world, () => undefined), 1);
+        assert.deepEqual(drafts, [{
+            id: 'dsh:dsh-world-camera', kind: 'receive_money', at: '2026-11-02T23:55:00.000Z', source: 'external',
+            result: 'succeeded', amount: 2_000, target: 'camera_fund',
+        }]);
+    });
+
     test('容差范围内的未来事件先停在原行，到时后再落账，不因世界账静默拒收而永久丢失', () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-dsh-world-clock-skew-'));
         dirs.push(dir);

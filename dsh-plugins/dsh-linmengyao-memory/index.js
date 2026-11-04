@@ -849,6 +849,7 @@ ${now}` : ''
               at: { type: 'string', description: '可选，ISO 结束时间；省略使用现在' },
               meal: { type: 'boolean', description: 'meet 是否同时吃饭' },
               amount: { type: 'number', description: 'receive_money 的整数金额（元）' },
+              forCamera: { type: 'boolean', description: 'receive_money 是否明确用于相机基金；其他动作不能使用' },
               seen: { type: 'boolean', description: 'feed_cat 是否见到猫' },
             },
             required: ['kind', 'result'],
@@ -881,15 +882,18 @@ ${now}` : ''
             const amount = args?.amount === undefined ? undefined : Number(args.amount)
             if (args?.meal !== undefined && typeof args.meal !== 'boolean') return { recorded: false }
             if (args?.seen !== undefined && typeof args.seen !== 'boolean') return { recorded: false }
+            if (args?.forCamera !== undefined && typeof args.forCamera !== 'boolean') return { recorded: false }
             if (amount !== undefined && (!Number.isSafeInteger(amount) || amount <= 0 || amount > 50_000)) return { recorded: false }
             if (kind === 'receive_money' && amount === undefined) return { recorded: false }
             if (kind !== 'receive_money' && amount !== undefined) return { recorded: false }
+            if (kind !== 'receive_money' && args?.forCamera !== undefined) return { recorded: false }
             appendInbox(cfg, cfg.worldInboxFile, {
               id: `dsh-world-${randomUUID()}`,
               at: at.toISOString(), startedAt: startedAt.toISOString(), kind, result,
               ...(subject ? { subject } : {}), ...(reason ? { reason } : {}),
               ...(args?.meal !== undefined ? { meal: args.meal } : {}),
-              ...(amount !== undefined ? { amount } : {}), ...(args?.seen !== undefined ? { seen: args.seen } : {}),
+              ...(amount !== undefined ? { amount } : {}), ...(args?.forCamera === true ? { forCamera: true } : {}),
+              ...(args?.seen !== undefined ? { seen: args.seen } : {}),
             })
             return { recorded: true }
           },
