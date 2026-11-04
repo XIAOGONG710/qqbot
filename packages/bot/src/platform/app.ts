@@ -147,6 +147,7 @@ import { PEEK_OFF_NOTICE, peekRefused } from './private-space.ts';
 import { createTurnWeigher, WEIGH_TIMEOUT_MS } from '.././language/turn-weight.ts';
 import { externalPlatformMode, type ExternalPlatformMode } from '../social/external-platforms.ts';
 import { createExternalDraftStore, type ExternalDraftStore, type ExternalDraftSummary } from '../social/external-drafts.ts';
+import { createCommandReceiptStore } from './command-receipts.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -351,6 +352,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         ...(dshConfig.timeoutMs === undefined ? {} : { timeoutMs: dshConfig.timeoutMs }),
     }), { log: message => log(`DSH：${message}`) });
     const dshEnabled = dshConfig.enabled === true;
+    const commandReceipts = createCommandReceiptStore({
+        dir: join(config.dataDir, 'ingress'),
+        log: message => log(`入口：${message}`),
+    });
     let dshProbe: DshProbeResult | undefined;
     let dshAskTail: Promise<void> = Promise.resolve();
     const dshConversation = new DshConversationContext();
@@ -2445,6 +2450,15 @@ ${body}
         // 只认纯文字、只认男朋友档的他；命中的算处理完，不进聊天记录、不交给回复器。休眠中除了这几条，她什么都不回
         if (deviceOwner && event.user_id === deviceOwner.qq) {
             const plain = plainTextOf(event.message)?.trim();
+            if (plain?.startsWith('/')) {
+                try {
+                    if (!commandReceipts.claim(event.user_id, event.message_id, clockNow())) return;
+                } catch (error) {
+                    log(`入口：QQ 命令 ${event.message_id} 去重收据写入失败，未执行（${error instanceof Error ? error.message : String(error)}）`);
+                    tellOwner('（命令记录暂时写不进去，这次没有执行，等恢复后换一条新消息再试。）');
+                    return;
+                }
+            }
             // DSH 工作模式保留裸 /dsh；桥接探针和咨询使用显式子命令，避免改变 DSH 原有语义。
             if (dshEnabled && plain === '/dsh probe') {
                 void dshLink.probe().then(result => {

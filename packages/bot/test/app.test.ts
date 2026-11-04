@@ -169,13 +169,17 @@ describe('编排（app.ts）', () => {
         assert.equal(ticket.clientId, 'android-app');
         assert.doesNotMatch(JSON.stringify(on.app.status()), new RegExp(ticket.pairingCode));
         assert.doesNotMatch(JSON.stringify(on.app.status()), /nonce/);
-        const pair = setup(config({ dsh: { enabled: true }, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] }));
+        const pairConfig = config({ dsh: { enabled: true }, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        const pair = setup(pairConfig);
         const pairEvent = event(10001, 1234, '/dsh pair');
         pair.app.receive(pairEvent);
         pair.app.receive(pairEvent);
         assert.match(pair.sent.at(-1) ?? '', /手机伴侣配对码：\s*[A-Z0-9]{4}(?:-[A-Z0-9]{4}){2}/);
         assert.match(pair.sent.at(-1) ?? '', /设备 ID：android-[a-f0-9]{12}/);
         assert.equal(pair.sent.filter(line => line.includes('手机伴侣配对码')).length, 1, '同一 QQ 消息重投不能签发第二张配对票');
+        const restarted = setup(pairConfig);
+        restarted.app.receive(pairEvent);
+        assert.equal(restarted.sent.filter(line => line.includes('手机伴侣配对码')).length, 0, '重启后同一 QQ 命令也不能签发第二张配对票');
         const paired = pair.app.mobileCompanion();
         assert.ok(paired);
         paired.gateway.accept({ v: 1, requestId: 'req-unpair', kind: 'hello', sentAt: new Date().toISOString(), nonce: 'nonce-unpair', body: { clientId: 'android-test', pairingCode: paired.issuePairing('android-test').pairingCode, capabilities: ['text'] } }, 'session-unpair');
