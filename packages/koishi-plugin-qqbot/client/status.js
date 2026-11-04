@@ -2,7 +2,7 @@
 import { computed, defineComponent, h, ref } from 'vue';
 import { store } from '@koishijs/client';
 import { c, clock, tag, tierLabel } from './common.js';
-import { dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from './dashboard.js';
+import { attentionDetail, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from './dashboard.js';
 
 const PROACTIVE_MODES = { off: ['关', 'info'], dryRun: ['试运行（只写日志不发）', 'warning'], on: ['开', 'success'] };
 
@@ -160,7 +160,7 @@ export const StatusTab = defineComponent({
                 overviewCard('联系人', counts.contacts, `${counts.busy} 个正在处理`, counts.busy ? 'warning' : 'success'),
                 overviewCard('功能开关', `${counts.features.on}/${counts.features.total}`, '当前实例已启用', counts.features.on ? 'success' : 'info'),
                 overviewCard('外部顾问', counts.dshOn ? '已开启' : '已关闭', counts.dshOn ? '可以按需咨询' : '暂未启用', counts.dshOn ? 'success' : 'info'),
-                overviewCard('待处理', counts.retrying, counts.retrying ? '有回复需要重试' : '当前没有待处理事项', counts.retrying ? 'danger' : 'success'),
+                overviewCard('待处理', counts.attention.total, attentionDetail(counts.attention), counts.attention.total ? 'danger' : 'success'),
             ]);
             const connections = h('div', { class: 'qqbot-connections' }, [
                 connectionCard('插件', data.running, data.running ? '正在运行' : '请查看设置和日志'),

@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
-import { dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
+import { attentionDetail, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
@@ -61,7 +61,7 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
         assert.equal(responderStatusText({ phase: 'retry' }), '回复遇到问题，稍后再试');
     });
 
-    test('总览计数：联系人、忙碌、重试和 DSH 状态一致', () => {
+    test('总览计数：回复重试与外部草稿待办统一进入顶部，不再误报没有待处理', () => {
         const result = overviewCounts({
             contacts: [
                 { responder: { phase: 'retry' } },
@@ -70,8 +70,14 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
                 {},
             ],
             features: [{ key: 'dsh', on: true }, { key: 'shape', on: false }],
+            externalDrafts: { pending: 2, publishing: 1 },
         });
-        assert.deepEqual(result, { contacts: 4, busy: 2, retrying: 1, dshOn: true, features: { on: 1, total: 2 } });
+        assert.deepEqual(result, {
+            contacts: 4, busy: 2, attention: { total: 4, retrying: 1, drafts: 2, publishing: 1 },
+            dshOn: true, features: { on: 1, total: 2 },
+        });
+        assert.equal(attentionDetail(result.attention), '回复需重试 1 · 草稿待确认 2 · 发布待核对 1');
+        assert.equal(attentionDetail(overviewCounts({ contacts: [], externalDrafts: { pending: 0, publishing: 0 } }).attention), '当前没有需要处理的事项');
     });
 });
 

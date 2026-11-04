@@ -73,14 +73,26 @@ export function overviewCounts(status) {
     const contacts = status?.contacts ?? [];
     const busy = contacts.filter(contact => contact.responder?.phase && contact.responder.phase !== 'idle').length;
     const retrying = contacts.filter(contact => contact.responder?.phase === 'retry').length;
+    const positiveInteger = value => Number.isInteger(value) && value > 0 ? value : 0;
+    const drafts = positiveInteger(status?.externalDrafts?.pending);
+    const publishing = positiveInteger(status?.externalDrafts?.publishing);
     const dsh = status?.features?.find(feature => feature.key === 'dsh');
     return {
         contacts: contacts.length,
         busy,
-        retrying,
+        attention: { total: retrying + drafts + publishing, retrying, drafts, publishing },
         dshOn: dsh?.on === true,
         features: featureTotals(status?.features),
     };
+}
+
+/** 顶部待处理卡片只展示用户能理解的来源，不暴露内部状态码。 */
+export function attentionDetail(attention = {}) {
+    const parts = [];
+    if (attention.retrying) parts.push(`回复需重试 ${attention.retrying}`);
+    if (attention.drafts) parts.push(`草稿待确认 ${attention.drafts}`);
+    if (attention.publishing) parts.push(`发布待核对 ${attention.publishing}`);
+    return parts.join(' · ') || '当前没有需要处理的事项';
 }
 
 /** 控制台统一使用用户本地时间，不直接展示 ISO 时间串。 */
