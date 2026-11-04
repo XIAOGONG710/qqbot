@@ -10,6 +10,8 @@ import type { Contact } from '../platform/config.ts';
 import { bookProgressOn, moodAt, readingActivities, type DailyMood, type ReadingBook } from './her-days.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { calendarDate, stateObject } from '../memory/state-schema.ts';
+import { TransientStateError } from '../memory/transient-io.ts';
 import type { LongTermMemory } from '.././memory/long-term.ts';
 import { knowsPeople } from './people.ts';
 import type { OpenAIMessage } from '../language/prompt.ts';
@@ -178,6 +180,21 @@ interface DiaryState {
     phases: Record<string, number>;
 }
 
+/** 旧文件可缺少新增字段，但已经提供的进度不能把数组 / null 当成日期表。 */
+function validDiaryState(value: unknown): value is Partial<DiaryState> {
+    if (!stateObject(value)) return false;
+    const count = (item: unknown) => Number.isSafeInteger(item) && Number(item) >= 0;
+    const map = (field: string, key: (key: string) => boolean, valid: (item: unknown) => boolean) => value[field] === undefined
+        || (stateObject(value[field]) && Object.entries(value[field]).every(([name, item]) => key(name) && valid(item)));
+    return map('written', calendarDate, count)
+        && map('texts', calendarDate, item => typeof item === 'string')
+        && map('weeks', calendarDate, count)
+        && map('phases', key => {
+            const separator = key.lastIndexOf(':');
+            return separator > 0 && calendarDate(key.slice(separator + 1));
+        }, count);
+}
+
 /**
  * 补写还没写的日记：她这一天之前的 DIARY_BACKFILL_DAYS 天，一天一篇，按日期从早到晚；之后补周记、阶段总结（ADR 0018）。同一时间只跑一次
  */
@@ -190,7 +207,16 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         writeJsonAtomic(path, state);
     };
     const catchUp = async (now: Date) => {
-        const stored = readJsonOr<Partial<DiaryState>>(path, {}, options.log);
+        let stored: Partial<DiaryState>;
+        try {
+            stored = readJsonOr<Partial<DiaryState>>(path, {}, options.log, {
+                validate: validDiaryState, invalid: 'throw', label: '日记状态',
+            });
+        } catch (error) {
+            if (error instanceof TransientStateError) throw error;
+            // JSON 语法错误可能带日记正文片段，不把它交给定时器的普通错误日志。
+            throw new Error('日记状态无效或读取失败；原文件未重建，请修复后重试');
+        }
         const state: DiaryState = { written: stored.written ?? {}, texts: stored.texts ?? {}, weeks: stored.weeks ?? {}, phases: stored.phases ?? {} };
         const { written } = state;
         const today = herDay(options.sources.schedule, now);

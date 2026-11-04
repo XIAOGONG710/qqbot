@@ -473,8 +473,16 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 };
                 // 日子在今天之前的不记：晚了才抽到（刚上线补抽以前的片段），那天已经过去了，不该再提醒「打算那天」（10-07 线上日志）
                 if (item.date && daysFrom(item.date, day) > 0) continue;
-                if (forgotten(item, day) || state.promises.some(p => p.what === item.what && p.date === item.date)) continue;
-                if (item.meet && state.promises.some(p => sameMeetup(p, item))) continue;
+                if (forgotten(item, day)) continue;
+                // 同一联系人的约定跨片段改地点也必须更新；先匹配见面身份，再做正文去重。
+                const existing = item.meet ? state.promises.find(p => sameMeetup(p, item)) ?? earlier.find(p => sameMeetup(p, item)) : undefined;
+                if (existing) {
+                    state.promises = state.promises.filter(p => p.id !== existing.id);
+                    state.promises.push({ ...item, id: existing.id });
+                    log(`更新约定「${logBody(item.what)}」（${item.date} ${item.meet!.time}${item.meet!.where ? ` ${logBody(item.meet!.where)}` : ''}）`);
+                    continue;
+                }
+                if (state.promises.some(p => p.what === item.what && p.date === item.date)) continue;
                 state.promises.push(item);
                 log(`记下「${logBody(item.what)}」（${item.date ?? '下次'}${item.meet ? ` ${item.meet.time}${item.meet.where ? ` ${logBody(item.meet.where)}` : ''}` : ''}）`);
             }
@@ -508,6 +516,11 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 const pending = state.promises.filter(p => !earlyIn(open.id)(p));
                 const result = parsePromises(await options.extract(promisePrompt(episodeTranscript(open, names), pending, names, state.loops)));
                 if (paused.has(path(contact))) return;
+                // 旧片段落盘的见面也可以在聊天中立即取消；只在本次抽取成功后释放占用。
+                const resolved = new Set(result.resolved);
+                const canceled = pending.filter(p => p.meet && resolved.has(p.id));
+                const remaining = pending.filter(p => !canceled.includes(p));
+                for (const item of canceled) log(`划掉「${logBody(item.what)}」（见面取消）`);
                 const said = formatDate(today(open.end));
                 const earlier = state.promises.filter(earlyIn(open.id));
                 const next: HerPromise[] = [];
@@ -515,10 +528,13 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                     if (!add.meet || !add.date || daysFrom(add.date, day) > 0) continue;
                     // id 带上这次先抽时的消息数：同一段第二次先抽不会和第一次撞
                     const item: HerPromise = { id: `p-${open.start.getTime()}-m${open.messages.length}-${i + 1}`, what: add.what, date: add.date, said, episode: open.id, meet: add.meet, early: true };
-                    if (pending.some(p => sameMeetup(p, item)) || next.some(p => sameMeetup(p, item))) continue;
+                    if (next.some(p => sameMeetup(p, item))) continue;
+                    const pendingIndex = remaining.findIndex(p => sameMeetup(p, item));
+                    const priorPending = pendingIndex >= 0 ? remaining.splice(pendingIndex, 1)[0] : undefined;
                     // 同一约定沿用 ID，但改地点、正文或时长时采用最新内容；完全没变才复用原对象。
-                    const previous = earlier.find(p => sameMeetup(p, item));
+                    const previous = earlier.find(p => sameMeetup(p, item)) ?? priorPending;
                     next.push(previous && previous.what === item.what && previous.said === item.said
+                        && previous.episode === item.episode && previous.early === item.early
                         && previous.meet?.where === item.meet?.where && previous.meet?.minutes === item.meet?.minutes
                         ? previous : { ...item, id: previous?.id ?? item.id });
                 }
@@ -526,7 +542,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 for (const item of next.filter(p => !earlier.includes(p))) {
                     log(`聊着就约了，先记下「${logBody(item.what)}」（${item.date} ${item.meet!.time}${item.meet!.where ? ` ${logBody(item.meet!.where)}` : ''}）`);
                 }
-                state.promises = [...pending, ...next];
+                state.promises = [...remaining, ...next];
                 state.early[open.id] = open.messages.length;
             } catch (error) {
                 // 没连上模型下一轮再试；别的错这几条消息不再试，片段结束后照常整段抽
