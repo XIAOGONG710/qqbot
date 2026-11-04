@@ -1476,8 +1476,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...contextWindowFor(contact),
             ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
             ...(deviceHooks && contact.tier === 'boyfriend' ? { devices: deviceHooks } : {}),
-            // 他刚才在 DSH 桌面上和她的对话（ADR 0177，crossRecent）：只给男朋友档；文件由 DSH 插件写，没有就没有这一段
-            ...(config.crossRecent && contact.tier === 'boyfriend' ? { desktopRecent: (now: Date) => desktopBlock(desktopRecentPath(join(config.dataDir, 'memory')), now.getTime()) } : {}),
+            // 桌面对话文件只属于唯一 deviceOwner；不能仅按 boyfriend 档放行，否则多个同档联系人会互相看到私聊。
+            ...(config.crossRecent && deviceOwner?.qq === contact.qq ? { desktopRecent: (now: Date) => desktopBlock(desktopRecentPath(join(config.dataDir, 'memory')), now.getTime()) } : {}),
             ...(photos && contact.tier === 'boyfriend' ? { photos } : {}),
             ...(stickerChance !== undefined ? { stickerChance } : {}),
             ...(config.biliStickers ? { stickerUncued: STICKER_UNCUED_CHANCE } : {}),

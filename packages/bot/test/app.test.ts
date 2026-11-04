@@ -806,6 +806,30 @@ describe('编排（app.ts）', () => {
         assert.doesNotMatch(stale.toBoyfriend, /ZQD/, '超过 6 小时的不放（更早的靠语义召回）');
     });
 
+    test('跨端最近对话只属于唯一 deviceOwner，第二个男朋友档也不能看到', async () => {
+        const prompts: string[] = [];
+        const cfg = config({ crossRecent: true, contacts: [
+            { qq: 10001, name: '第一位', tier: 'boyfriend' },
+            { qq: 10002, name: '第二位', tier: 'boyfriend' },
+        ] });
+        mkdirSync(join(cfg.dataDir, 'memory'), { recursive: true });
+        writeFileSync(join(cfg.dataDir, 'memory', 'desktop-recent.jsonl'), `${JSON.stringify({
+            at: Date.now() - 5 * 60_000,
+            user: '只有第一位能看到的桌面对话ZQOWNER',
+            assistant: '这是第一位的私聊内容',
+        })}\n`);
+        const { app, sent } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
+        await app.connected(SELF);
+        app.receive(event(10001, 1, '在吗', '第一位'));
+        app.receive(event(10002, 2, '在吗', '第二位'));
+        await until(() => sent.length >= 2);
+        const toOwner = prompts.find(prompt => prompt.includes('第一位私聊') || prompt.includes('和第一位'));
+        const toOther = prompts.find(prompt => prompt.includes('第二位私聊') || prompt.includes('和第二位'));
+        assert.ok(toOwner && toOther, '两个联系人的提示词都要拿到');
+        assert.match(toOwner!, /ZQOWNER/);
+        assert.doesNotMatch(toOther!, /ZQOWNER|这是第一位的私聊内容|DSH/, '同档联系人也不能读取 deviceOwner 的桌面对话');
+    });
+
 
     describe('指令只有他亲手打的字才生效（ADR 0179）：派活给有整机权限的 dsh 的两条路', () => {
         const contacts = [{ qq: 10001, name: '阿明', tier: 'classmate' as const }, { qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
