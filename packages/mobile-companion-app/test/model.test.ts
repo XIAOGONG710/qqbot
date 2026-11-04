@@ -43,5 +43,7 @@ test('PWA 下行动作先做本地 nonce 防重放，再交给执行层', async 
     assert.match(source, /receivedDownlinkNonces:\s*new Set/);
     assert.match(source, /function acceptDownlink\(value\)/);
     assert.match(source, /手机动作下行包重复/);
+    assert.match(source, /敏感手机动作不能自动执行/);
+    assert.match(source, /action\.decision === 'deny'/);
     assert.match(source, /handleDownlink\(acceptDownlink\(value\)\)/);
 });

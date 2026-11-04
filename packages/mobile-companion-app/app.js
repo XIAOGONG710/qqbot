@@ -19,9 +19,25 @@ const touch = () => { state.activityAt = Date.now(); setState($('state').textCon
 const pendingId = value => value?.requestId?.replace(/^resp-/, '');
 const expirePending = () => { const cutoff = Date.now() - 45_000; for (const [requestId, entry] of state.pending) if (entry.sentAt < cutoff) { state.pending.delete(requestId); system('请求等待超时，请检查连接后重试'); } };
 const startPendingWatch = () => { if (!state.pendingTimer) state.pendingTimer = window.setInterval(expirePending, 5000); };
+const actionDefaults = Object.freeze({ notify: 'auto', timer: 'auto', ring: 'confirm', open_link: 'confirm', media_control: 'confirm', volume: 'confirm' });
+const safeId = /^[A-Za-z0-9][A-Za-z0-9._:-]{5,127}$/;
 
 function acceptDownlink(value) {
-  if (!value || typeof value !== 'object' || value.v !== 1 || value.kind !== 'action.request' || typeof value.nonce !== 'string' || !value.nonce || !value.body || typeof value.body !== 'object') throw new Error('手机动作下行包不合法');
+  if (!value || typeof value !== 'object' || value.v !== 1 || value.kind !== 'action.request' || !safeId.test(value.requestId) || !safeId.test(value.nonce) || !value.body || typeof value.body !== 'object') throw new Error('手机动作下行包不合法');
+  const sentAt = Date.parse(String(value.sentAt));
+  if (!Number.isFinite(sentAt) || Math.abs(Date.now() - sentAt) > 5 * 60_000) throw new Error('手机动作下行包时间异常');
+  const action = value.body;
+  if (typeof action.action !== 'string' || !Object.hasOwn(actionDefaults, action.action)) throw new Error('手机动作或确认级别不合法');
+  const expected = actionDefaults[action.action];
+  if (!['auto', 'confirm', 'deny'].includes(action.decision)) throw new Error('手机动作或确认级别不合法');
+  if (expected === 'confirm' && action.decision === 'auto') throw new Error('敏感手机动作不能自动执行');
+  if (action.targetId !== undefined && (typeof action.targetId !== 'string' || !safeId.test(action.targetId))) throw new Error('手机动作目标不合法');
+  if (action.reason !== undefined && (typeof action.reason !== 'string' || [...action.reason].length > 500)) throw new Error('手机动作理由不合法');
+  if (!action.params || typeof action.params !== 'object' || Array.isArray(action.params) || Object.keys(action.params).length > 32) throw new Error('手机动作参数不合法');
+  for (const [key, item] of Object.entries(action.params)) {
+    if (!/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(key) || ['__proto__', 'constructor', 'prototype'].includes(key)) throw new Error('手机动作参数名不合法');
+    if (typeof item === 'string' ? [...item].length > 512 : typeof item !== 'number' || !Number.isFinite(item)) throw new Error('手机动作参数值不合法');
+  }
   if (state.receivedDownlinkNonces.has(value.nonce)) throw new Error('手机动作下行包重复');
   state.receivedDownlinkNonces.add(value.nonce);
   if (state.receivedDownlinkNonces.size > 256) state.receivedDownlinkNonces.delete(state.receivedDownlinkNonces.values().next().value);
@@ -98,7 +114,9 @@ async function handleDownlink(value) {
   let decision = action.decision;
   let error;
   try {
-    if (action.decision === 'confirm' && !window.confirm(`她请求手机动作：${action.action}\n${action.reason ?? '确认执行吗？'}`)) {
+    if (action.decision === 'deny') {
+      throw new Error('手机动作已被策略拒绝');
+    } else if (action.decision === 'confirm' && !window.confirm(`她请求手机动作：${action.action}\n${action.reason ?? '确认执行吗？'}`)) {
       decision = 'deny';
       error = '用户拒绝了手机动作';
     } else if (action.action === 'ring') {
