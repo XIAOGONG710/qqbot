@@ -100,6 +100,7 @@ import { isCorrection, recordCorrection, understandingLine } from '.././life/und
 import { recordTrace, traceOf, tracesLine } from '.././life/traces.ts';
 import { bodyAt } from '.././life/body.ts';
 import { useWorldNeeds, worldState, type WorldNow } from '.././world/world.ts';
+import { worldHighlights } from '.././world/highlights.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
 import { lifeExecutor } from '.././world/life-selector.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/diary.ts';
@@ -288,6 +289,8 @@ export interface HerDayStatus {
     day: string;
     mood?: { name: string; reason: string };
     books: { title: string; amount: number; unit: string; finished: boolean; stopped: boolean; putDown: boolean }[];
+    /** 世界账里今天已经发生的近期事实；只给控制台看，不含计划和模型猜测。 */
+    highlights?: { at: string; text: string }[];
 }
 
 /** Hindsight 健康检查的间隔 */
@@ -3414,6 +3417,7 @@ function herDayStatus(schedule: NonNullable<TierCard['character']['schedule']>, 
     return {
         day: formatDate(herDay(schedule, now)),
         ...(mood ? { mood: { name: mood.mood.name, reason: mood.reason } } : {}),
+        ...(world ? { highlights: worldHighlights(world, now) } : {}),
         books: character.books.map(book => {
             const progress = bookProgressAt(schedule, book, now);
             return {

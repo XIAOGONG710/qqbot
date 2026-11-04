@@ -30,6 +30,13 @@ function todayLine(status) {
     ];
 }
 
+function todayHighlightsLine(status) {
+    const highlights = status.today?.highlights;
+    if (highlights === undefined) return [tag('世界账未启用', 'info')];
+    if (!highlights.length) return [h('span', { class: 'qqbot-muted' }, '今天还没有已记录的小事')];
+    return [h('span', null, highlights.map(item => item.text).join(' · '))];
+}
+
 function humanValuesLine(values) {
     if (!values) return [tag('自主生活未开启', 'info')];
     const positiveLevel = value => value >= 75 ? 'success' : value <= 25 ? 'danger' : 'warning';
@@ -144,6 +151,7 @@ export const StatusTab = defineComponent({
                 ['作息', status ? [status.schedule ? tag('按作息运行', 'success') : tag('未启用', 'warning')] : [tag('—', 'info')]],
                 ['按心情回复', status ? [status.moody && status.schedule ? tag('已启用', 'success') : tag('未启用', 'info')] : [tag('—', 'info')]],
                 ['今天', status ? todayLine(status) : [tag('—', 'info')]],
+                ...(status?.today ? [['今天发生', todayHighlightsLine(status)]] : []),
                 ['说话检查', status ? [status.speechCheck === false ? tag('未启用', 'info') : tag('已启用', 'success')] : [tag('—', 'info')]],
                 ['陌生好友', status ? [status.unlistedFriends ? tag('也回复', 'warning') : tag('不回复', 'info')] : [tag('—', 'info')]],
                 ['主动联系', status ? [tag(...(PROACTIVE_MODES[status.proactive ?? 'off'] ?? ['未启用', 'info']))] : [tag('—', 'info')]],
