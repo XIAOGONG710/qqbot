@@ -371,7 +371,10 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     });
     let dshProbe: DshProbeResult | undefined;
     let dshAskTail: Promise<void> = Promise.resolve();
-    const dshConversation = new DshConversationContext();
+    const dshConversation = new DshConversationContext({
+        file: join(config.dataDir, 'memory', 'dsh-recent.json'),
+        log: message => log(`DSH：${message}`),
+    });
     log(`DSH 顾问：${dshEnabled ? '开（显式 /dsh ask 或 /dsh probe）' : '关'}`);
     // 关着的时候不留上次开着时的完整提示词
     if (!sensitive.on()) rmSync(join(config.dataDir, 'last-prompt.json'), { force: true });

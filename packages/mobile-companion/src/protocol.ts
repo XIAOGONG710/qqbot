@@ -6,6 +6,7 @@
  */
 
 import { validatePhotoReviewDecisionRequest, validatePhotoReviewDecisionResult, validatePhotoReviewListRequest, validatePhotoReviewListResult } from './photo-review.ts';
+import { validateVoiceSessionCancel, validateVoiceSessionChunk, validateVoiceSessionStart, validateVoiceSessionStop } from './voice-session.ts';
 
 export const PROTOCOL_VERSION = 1;
 export const MAX_TEXT_CHARS = 4000;
@@ -70,6 +71,7 @@ export interface CompanionEnvelope<T = unknown> {
     requestId: string;
     kind: 'hello' | 'message.send' | 'message.receive' | 'action.request' | 'action.result'
         | 'photo.review.list' | 'photo.review.list.result' | 'photo.review.decide' | 'photo.review.decision'
+        | 'voice.session.start' | 'voice.session.chunk' | 'voice.session.stop' | 'voice.session.cancel'
         | 'error';
     sentAt: string;
     nonce: string;
@@ -191,7 +193,7 @@ export function validateEnvelope(value: unknown, now = Date.now()): CompanionEnv
     if (typeof envelope.nonce !== 'string' || !ID.test(envelope.nonce)) throw new Error('nonce 不合法');
     const sentAt = Date.parse(String(envelope.sentAt));
     if (!Number.isFinite(sentAt) || Math.abs(now - sentAt) > MAX_CLOCK_SKEW_MS) throw new Error('请求时间超出允许偏差');
-    if (!['hello', 'message.send', 'message.receive', 'action.request', 'action.result', 'photo.review.list', 'photo.review.list.result', 'photo.review.decide', 'photo.review.decision', 'error'].includes(String(envelope.kind))) throw new Error('未知协议消息');
+    if (!['hello', 'message.send', 'message.receive', 'action.request', 'action.result', 'photo.review.list', 'photo.review.list.result', 'photo.review.decide', 'photo.review.decision', 'voice.session.start', 'voice.session.chunk', 'voice.session.stop', 'voice.session.cancel', 'error'].includes(String(envelope.kind))) throw new Error('未知协议消息');
     switch (envelope.kind) {
         case 'hello': validateHello(envelope.body); break;
         case 'message.send':
@@ -202,6 +204,10 @@ export function validateEnvelope(value: unknown, now = Date.now()): CompanionEnv
         case 'photo.review.list.result': validatePhotoReviewListResult(envelope.body); break;
         case 'photo.review.decide': validatePhotoReviewDecisionRequest(envelope.body); break;
         case 'photo.review.decision': validatePhotoReviewDecisionResult(envelope.body); break;
+        case 'voice.session.start': validateVoiceSessionStart(envelope.body); break;
+        case 'voice.session.chunk': validateVoiceSessionChunk(envelope.body); break;
+        case 'voice.session.stop': validateVoiceSessionStop(envelope.body); break;
+        case 'voice.session.cancel': validateVoiceSessionCancel(envelope.body); break;
         case 'error': validateError(envelope.body); break;
     }
     return envelope as CompanionEnvelope;

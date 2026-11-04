@@ -39,7 +39,7 @@ try {
     { timeout: 10 * 60_000, stdio: 'ignore' });
     const result = verifyRestoredState(target);
     console.log(`[restore-drill] 通过：数据库备份 ${plan.database.bytes} 字节；状态 ${result.files} 个文件；AI 照片草稿 ${result.aiPhotos.present ? `${result.aiPhotos.entries} 条` : '无'}；视觉参考 ${result.aiPhotoReferences.present ? `${result.aiPhotoReferences.entries} 条 / ${result.aiPhotoReferences.localFiles} 张本地图` : '无'}`);
-    console.log('[restore-drill] 本次只验证文件级恢复；数据库仍需在隔离 PostgreSQL 中另做导入演练。');
+    console.log('[restore-drill] 文件级恢复通过；数据库可用 npm run restore:hindsight -- --backup <目录> --database-url <隔离库> --confirm-isolated 演练。');
 } finally {
     if (!process.argv.includes('--keep')) rmSync(target, { recursive: true, force: true });
     else console.log(`[restore-drill] 演练目录保留在 ${target}`);

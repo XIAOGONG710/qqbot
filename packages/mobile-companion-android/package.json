@@ -1,0 +1,10 @@
+{
+  "name": "@qqbot/mobile-companion-android",
+  "version": "0.0.0",
+  "private": true,
+  "description": "林梦瑶手机伴侣的最小 Android WebView 宿主",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

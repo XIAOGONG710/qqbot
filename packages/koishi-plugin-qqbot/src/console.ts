@@ -15,6 +15,8 @@ import { aiPhotoProvidersFromEnv, createAiPhotoProviderPool, type AiPhotoProvide
 import { AI_PHOTO_REFERENCE_KINDS, AI_PHOTO_REFERENCE_MAX_BYTES, aiPhotoReferenceStore, type AiPhotoReferenceKind } from '../../bot/src/vision/ai-photo-references.ts';
 import { PHOTO_MAX_BYTES, photoShelf } from '../../bot/src/vision/photos.ts';
 import { detectImageType, imageDataUrl } from '../../bot/src/vision/safe-image.ts';
+import { createExternalDraftStore, type ExternalDraftStatus } from '../../bot/src/social/external-drafts.ts';
+import type { ExternalPlatform } from '../../bot/src/social/external-platforms.ts';
 import { buildCharacter, checkPrivacy, writeOutputs, type Problem } from '../../character-tools/src/build.ts';
 import { checkSource, readSource, writeSource, type CharacterSource } from '../../character-tools/src/source.ts';
 
@@ -75,6 +77,20 @@ export interface AiPhotoRuntimeStatus {
     drafts?: { total: number; pending: number; approved: number; rejected: number };
     degraded?: string;
 }
+
+export interface ExternalDraftItem {
+    id: string;
+    platform: ExternalPlatform;
+    title: string;
+    body: string;
+    status: ExternalDraftStatus;
+    source: string;
+    createdAt: string;
+    updatedAt: string;
+    mediaCount: number;
+}
+export type ExternalDraftListResult = { ok: true; entries: ExternalDraftItem[] } | { ok: false; error: string };
+export type ExternalDraftReviewResult = { ok: true; status: ExternalDraftStatus } | { ok: false; error: string };
 
 /** moods / books（ADR 0015）是后加的文件：资料里没有这两个文件时页面不显示它们的分页 */
 export type SourcePart = 'persona' | 'scenes' | 'schedule' | 'tiers' | 'moods' | 'books';
@@ -216,6 +232,50 @@ export function removeAiPhotoReference(id: unknown, confirmation: unknown, audit
 function aiPhotoSummary(): { total: number; pending: number; approved: number; rejected: number } | undefined {
     if (!state.dataDir) return undefined;
     try { return photoReviewStores().drafts.status(); } catch { return undefined; }
+}
+
+const EXTERNAL_PLATFORMS = new Set<ExternalPlatform>(['tieba', 'douyin', 'xiaohongshu']);
+const EXTERNAL_STATUSES = new Set<ExternalDraftStatus>(['pending', 'approved', 'rejected', 'publishing', 'published', 'failed']);
+const EXTERNAL_ID = /^[a-z0-9-]{8,80}$/;
+const publicExternalDraftError = '外部平台草稿暂时无法处理，请刷新页面后重试；详细原因见运行日志。';
+
+function externalDrafts() {
+    if (!state.dataDir) throw new Error('外部平台草稿尚未连接到数据目录');
+    const dir = resolve(state.dataDir, 'external-drafts');
+    if (dirname(dir) !== resolve(state.dataDir)) throw new Error('外部平台草稿目录越界');
+    return createExternalDraftStore({
+        dir,
+        canDraft: platform => {
+            try {
+                const mode = state.status?.().externalPlatforms?.[platform];
+                return mode === 'draft' || mode === 'authorized';
+            } catch { return false; }
+        },
+    });
+}
+
+export function listExternalDrafts(platform: unknown, status: unknown, limit: unknown = 50): ExternalDraftListResult {
+    if (platform !== undefined && (typeof platform !== 'string' || !EXTERNAL_PLATFORMS.has(platform as ExternalPlatform))) return { ok: false, error: '请选择有效的平台。' };
+    if (status !== undefined && (typeof status !== 'string' || !EXTERNAL_STATUSES.has(status as ExternalDraftStatus))) return { ok: false, error: '请选择有效的草稿状态。' };
+    const safeLimit = Number.isInteger(limit) ? Math.min(100, Math.max(1, Number(limit))) : 50;
+    try {
+        const entries = externalDrafts().list({ ...(platform ? { platform: platform as ExternalPlatform } : {}), ...(status ? { status: status as ExternalDraftStatus } : {}), limit: safeLimit })
+            .map(item => ({ id: item.id, platform: item.platform, title: item.title, body: item.body, status: item.status, source: item.source, createdAt: item.createdAt, updatedAt: item.updatedAt, mediaCount: item.media.length }));
+        return { ok: true, entries };
+    } catch { return { ok: false, error: publicExternalDraftError }; }
+}
+
+/** 这里只能批准/拒绝，批准后仍需官方适配器另行发布，控制台不会产生外部副作用。 */
+export function reviewExternalDraft(action: unknown, id: unknown, confirmation: unknown, audit?: (message: string) => void): ExternalDraftReviewResult {
+    if ((action !== 'approve' && action !== 'reject') || typeof id !== 'string' || !EXTERNAL_ID.test(id) || confirmation !== 'confirmed') return { ok: false, error: '草稿审核请求无效，请重新确认。' };
+    try {
+        const status: ExternalDraftStatus = action === 'approve' ? 'approved' : 'rejected';
+        const item = externalDrafts().updateStatus(id, status, action === 'approve' ? '控制台人工批准' : '控制台人工拒绝');
+        if (!item) return { ok: false, error: '找不到这条草稿。' };
+        audit?.(`控制台${action === 'approve' ? '批准' : '拒绝'}了外部平台草稿（${item.platform}；${item.id}）`);
+        void service?.refresh();
+        return { ok: true, status: item.status };
+    } catch { return { ok: false, error: publicExternalDraftError }; }
 }
 
 /** 只读运行摘要：不返回模型名、URL、密钥、磁盘路径或供应商错误原文。 */
@@ -422,6 +482,8 @@ export function registerConsole(ctx: Context, repoRoot: string): void {
         api.addListener('qqbot/ai-photo-references/list', () => listAiPhotoReferences(), authority);
         api.addListener('qqbot/ai-photo-references/add', (kind: unknown, image: unknown, referenceId: unknown, nonHumanConfirmed: unknown, confirmation: unknown) => addAiPhotoReference(kind, image, referenceId, nonHumanConfirmed, confirmation, message => root.logger('qqbot').info(message)), authority);
         api.addListener('qqbot/ai-photo-references/remove', (id: unknown, confirmation: unknown) => removeAiPhotoReference(id, confirmation, message => root.logger('qqbot').info(message)), authority);
+        api.addListener('qqbot/external-drafts/list', (platform: unknown, status: unknown, limit: unknown) => listExternalDrafts(platform, status, limit), authority);
+        api.addListener('qqbot/external-drafts/review', (action: unknown, id: unknown, confirmation: unknown) => reviewExternalDraft(action, id, confirmation, message => root.logger('qqbot').info(message)), authority);
     });
 }
 

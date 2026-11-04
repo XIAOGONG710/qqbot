@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { CompanionGateway } from './gateway.ts';
 import { MAX_CLOCK_SKEW_MS, validateAction, validateActionResult, validateEnvelope, validateMessage, type ActionResult, type CompanionEnvelope, type CompanionError, type CompanionMessage, type PhoneActionRequest } from './protocol.ts';
 import { validatePhotoReviewDecisionRequest, validatePhotoReviewDecisionResult, validatePhotoReviewListRequest, validatePhotoReviewListResult, type PhotoReviewDecisionRequest, type PhotoReviewDecisionResult, type PhotoReviewListRequest, type PhotoReviewListResult } from './photo-review.ts';
+import { VoiceSessionGate, validateVoiceSessionCancel, validateVoiceSessionChunk, validateVoiceSessionStart, validateVoiceSessionStop, type VoiceSessionCancel, type VoiceSessionChunk, type VoiceSessionStart, type VoiceSessionStop } from './voice-session.ts';
 
 export const MAX_QUEUED_PER_CLIENT = 32;
 export const MAX_DOWNLINK_ACTIONS = 16;
@@ -19,6 +20,11 @@ export interface CompanionRuntimeHandlers {
     onPhotoReviewList?: (request: PhotoReviewListRequest, clientId: string) => Promise<PhotoReviewListResult>;
     /** 宿主在此回调内完成状态修改和审计；抛错时保留同 requestId 的重试能力。 */
     onPhotoReviewDecision?: (request: PhotoReviewDecisionRequest, clientId: string, requestId: string) => Promise<PhotoReviewDecisionResult>;
+    onVoiceSessionStart?: (request: VoiceSessionStart, clientId: string) => Promise<void>;
+    onVoiceSessionChunk?: (request: VoiceSessionChunk, bytes: Uint8Array, clientId: string) => Promise<void>;
+    /** 停止录音后宿主可返回转写并生成的回复；没有回复时只确认收完。 */
+    onVoiceSessionStop?: (request: VoiceSessionStop, totalBytes: number, clientId: string) => Promise<CompanionMessage | void>;
+    onVoiceSessionCancel?: (request: VoiceSessionCancel, clientId: string) => Promise<void>;
     /** 配对撤销时清理宿主侧按设备保存的短期上下文。 */
     onReset?: (clientId?: string) => void;
 }
@@ -59,6 +65,7 @@ export class CompanionRuntime {
     private readonly pendingDownlinkResults = new Map<string, Map<string, PendingDownlinkResult>>();
     private readonly completedUplinkRequests = new Map<string, Map<string, CompletedUplinkRequest>>();
     private readonly downlinkListeners = new Set<CompanionDownlinkListener>();
+    private readonly voiceSessions = new VoiceSessionGate();
     private queueGeneration = 0;
 
     constructor(gateway: CompanionGateway, handlers: CompanionRuntimeHandlers, now: () => number = Date.now) {
@@ -95,6 +102,7 @@ export class CompanionRuntime {
         this.queueGeneration++;
         this.queues.clear();
         this.queueDepth.clear();
+        this.voiceSessions.reset();
         this.handlers.onReset?.();
     }
 
@@ -169,7 +177,7 @@ export class CompanionRuntime {
         // 这里只预检协议允许的手机上行类型；无效包、伪造响应和未配对会话仍交给网关按原规则拒绝。
         try {
             const envelope = validateEnvelope(value, this.now());
-            if (envelope.kind === 'message.send' || envelope.kind === 'action.request' || envelope.kind === 'action.result' || envelope.kind === 'photo.review.list' || envelope.kind === 'photo.review.decide') {
+            if (envelope.kind === 'message.send' || envelope.kind === 'action.request' || envelope.kind === 'action.result' || envelope.kind === 'photo.review.list' || envelope.kind === 'photo.review.decide' || envelope.kind.startsWith('voice.session.')) {
                 const clientId = this.gateway.clientForSession(sessionId);
                 if (clientId && (this.queueDepth.get(clientId) ?? 0) >= MAX_QUEUED_PER_CLIENT) {
                     return { accepted: false, error: '设备请求过多，请稍后重试' };
@@ -215,7 +223,7 @@ export class CompanionRuntime {
         try {
             const envelope = validateEnvelope(value, this.now());
             requestId = envelope.requestId;
-            if (!['hello', 'message.send', 'action.request', 'action.result', 'photo.review.list', 'photo.review.decide'].includes(envelope.kind)) throw new Error('客户端不能发送此类响应包');
+            if (!['hello', 'message.send', 'action.request', 'action.result', 'photo.review.list', 'photo.review.decide', 'voice.session.start', 'voice.session.chunk', 'voice.session.stop', 'voice.session.cancel'].includes(envelope.kind)) throw new Error('客户端不能发送此类响应包');
             const idempotent = envelope.kind === 'message.send' || envelope.kind === 'action.request' || envelope.kind === 'photo.review.list' || envelope.kind === 'photo.review.decide';
             fingerprint = idempotent ? canonicalRequest(envelope.kind, envelope.body) : undefined;
             if (fingerprint) {
@@ -273,6 +281,31 @@ export class CompanionRuntime {
                 const expected = request.decision === 'approve' ? 'approved' : 'rejected';
                 if (responseBody.status !== expected) throw new Error('照片审核结果状态与请求不一致');
                 result = { accepted: true, response: responseEnvelope('photo.review.decision', responseBody, envelope.requestId, this.now()) };
+            } else if (envelope.kind === 'voice.session.start') {
+                if (!this.handlers.onVoiceSessionStart) throw new Error('宿主未接入实时语音');
+                const request = validateVoiceSessionStart(envelope.body);
+                this.voiceSessions.start(clientId, request, this.now());
+                try { await this.handlers.onVoiceSessionStart(request, clientId); }
+                catch (error) { this.voiceSessions.cancel(clientId, { sessionId: request.sessionId, reason: 'network' }); throw error; }
+                return { accepted: true };
+            } else if (envelope.kind === 'voice.session.chunk') {
+                if (!this.handlers.onVoiceSessionChunk) throw new Error('宿主未接入实时语音');
+                const request = validateVoiceSessionChunk(envelope.body);
+                this.voiceSessions.chunk(clientId, request, this.now());
+                try { await this.handlers.onVoiceSessionChunk(request, new Uint8Array(Buffer.from(request.data, 'base64')), clientId); }
+                catch (error) { this.voiceSessions.cancel(clientId, { sessionId: request.sessionId, reason: 'network' }); throw error; }
+                return { accepted: true };
+            } else if (envelope.kind === 'voice.session.stop') {
+                if (!this.handlers.onVoiceSessionStop) throw new Error('宿主未接入实时语音');
+                const request = validateVoiceSessionStop(envelope.body);
+                const total = this.voiceSessions.stop(clientId, request);
+                const reply = await this.handlers.onVoiceSessionStop(request, total, clientId);
+                return reply ? { accepted: true, response: responseEnvelope('message.receive', validateMessage(reply), envelope.requestId, this.now()) } : { accepted: true };
+            } else if (envelope.kind === 'voice.session.cancel') {
+                const request = validateVoiceSessionCancel(envelope.body);
+                this.voiceSessions.cancel(clientId, request);
+                await this.handlers.onVoiceSessionCancel?.(request, clientId);
+                return { accepted: true };
             } else {
                 return { accepted: true };
             }

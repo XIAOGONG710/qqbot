@@ -109,6 +109,7 @@ export class CompanionGateway {
                 const message = validateMessage(envelope.body);
                 if (!this.capabilities.has(message.kind)) throw new Error(`设备未声明 ${message.kind} 消息能力`);
             }
+            if (envelope.kind.startsWith('voice.session.') && !this.capabilities.has('audio')) throw new Error('设备未声明 audio 消息能力');
             this.assertNonceAvailable(envelope.nonce, now);
             this.nonces.set(envelope.nonce, now);
             this.lastSeenAt = now;

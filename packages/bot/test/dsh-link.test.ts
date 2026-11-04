@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { createDshLink, dshOptionsFromLlm, sanitizeDshError, sanitizeDshQuestion, sanitizeDshState, type DshState } from '../src/dsh-link.ts';
 import { DshConversationContext } from '../src/dsh-continuity.ts';
@@ -31,6 +34,25 @@ describe('DSH 连接层', () => {
             { role: 'user', content: '成功问题' },
             { role: 'assistant', content: '成功回答' },
         ]);
+    });
+
+    test('DSH 私有短上下文可在重启后继续，损坏状态会被隔离', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-dsh-continuity-'));
+        const file = join(dir, 'memory', 'dsh-recent.json');
+        try {
+            const first = new DshConversationContext({ file });
+            first.commit('手机上问的问题', '手机上的回答', 100, 101);
+            assert.deepEqual(new DshConversationContext({ file }).recent([]), [
+                { role: 'user', content: '手机上问的问题' },
+                { role: 'assistant', content: '手机上的回答' },
+            ]);
+            writeFileSync(file, '{not json');
+            const logs: string[] = [];
+            assert.equal(new DshConversationContext({ file, log: line => logs.push(line) }).recent([]), undefined);
+            assert.ok(logs.some(line => line.includes('读不了')));
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     test('独立 DSH 配置只覆盖地址、模型和超时，不复制或暴露密钥', () => {

@@ -4,9 +4,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { readSource } from '../../character-tools/src/source.ts';
-import { addAiPhotoReference, aiPhotoPreview, aiPhotoRuntimeStatus, characterPaths, consoleData, listAiPhotoDrafts, listAiPhotoReferences, publicCharacterError, removeAiPhotoReference, reviewAiPhoto, saveCharacter, setConsoleState } from '../src/console.ts';
+import { addAiPhotoReference, aiPhotoPreview, aiPhotoRuntimeStatus, characterPaths, consoleData, listAiPhotoDrafts, listAiPhotoReferences, listExternalDrafts, publicCharacterError, removeAiPhotoReference, reviewAiPhoto, reviewExternalDraft, saveCharacter, setConsoleState } from '../src/console.ts';
 import { aiPhotoDraftStore } from '../../bot/src/vision/ai-photo-drafts.ts';
 import { photoShelf } from '../../bot/src/vision/photos.ts';
+import { createExternalDraftStore } from '../../bot/src/social/external-drafts.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const dir = mkdtempSync(join(tmpdir(), 'qqbot-console-'));
@@ -110,6 +111,28 @@ describe('控制台的角色资料（ADR 0010）', () => {
         assert.equal(data.status, undefined);
         assert.equal(data.error, '状态读取失败，请查看运行日志；插件可能仍在运行。');
         assert.doesNotMatch(data.error ?? '', /token|secret|private|state\.json/);
+    });
+});
+
+describe('控制台的外部平台草稿中心', () => {
+    test('只列展示字段，人工批准不会触发发布', () => {
+        const dataDir = mkdtempSync(join(tmpdir(), 'qqbot-external-console-'));
+        try {
+            const store = createExternalDraftStore({ dir: join(dataDir, 'external-drafts') });
+            const draft = store.create({ platform: 'tieba', title: '测试草稿', body: '只在审核页显示', media: ['media:photo-1'] });
+            setConsoleState({ dataDir, status: () => ({ externalPlatforms: { tieba: 'draft', douyin: 'off', xiaohongshu: 'off' } }) as never });
+            const listed = listExternalDrafts('tieba', 'pending', 10);
+            assert.equal(listed.ok, true);
+            if (listed.ok) {
+                assert.deepEqual(listed.entries[0], { id: draft.id, platform: 'tieba', title: '测试草稿', body: '只在审核页显示', status: 'pending', source: 'manual', createdAt: draft.createdAt, updatedAt: draft.updatedAt, mediaCount: 1 });
+                assert.doesNotMatch(JSON.stringify(listed), /publishRequestId|audit|media:photo/);
+            }
+            assert.deepEqual(reviewExternalDraft('approve', draft.id, 'confirmed'), { ok: true, status: 'approved' });
+            assert.equal(createExternalDraftStore({ dir: join(dataDir, 'external-drafts') }).list()[0]?.status, 'approved');
+        } finally {
+            rmSync(dataDir, { recursive: true, force: true });
+            setConsoleState({ dataDir: undefined, status: undefined });
+        }
     });
 });
 

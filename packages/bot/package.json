@@ -21,6 +21,7 @@
     "dsh:link": "node src/ops/dsh-link-cli.ts",
     "ai-photo": "node src/ops/ai-photo-cli.ts",
     "ai-photo:audit": "node src/ops/ai-photo-storage-cli.ts",
+    "eval:companion": "node src/ops/companion-eval-cli.ts",
     "test": "node --test \"test/**/*.test.ts\""
   },
   "dependencies": {

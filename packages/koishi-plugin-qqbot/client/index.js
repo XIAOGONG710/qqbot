@@ -8,6 +8,7 @@ import { booksSections, moodsSections, personaSections, scheduleSections, tierSe
 import { StatusTab } from './status.js';
 import { PhotoReviewTab } from './photo-review.js';
 import { PhotoReferencesTab } from './photo-references.js';
+import { ExternalDraftsTab } from './external-drafts.js';
 
 const SAVE_NOTE = '保存前会检查各档位内容和隐私；检查通过后立即生效。';
 
@@ -28,6 +29,7 @@ const Page = defineComponent({
                         pane('状态', 'status', () => h(StatusTab)),
                         pane('照片审核', 'photo-review', () => h(PhotoReviewTab)),
                         pane('视觉参考', 'photo-references', () => h(PhotoReferencesTab)),
+                        pane('外部草稿', 'external-drafts', () => h(ExternalDraftsTab)),
                         pane('她是谁', 'persona', () => h(PartEditor, { part: 'persona', sections: personaSections, intro: `人设各段：每个字段给哪些档位、某几档用的改写版本。${SAVE_NOTE}` })),
                         pane('她的世界', 'scenes', () => h(ScenesTab)),
                         pane('日程', 'schedule', () => h(PartEditor, { part: 'schedule', sections: scheduleSections, intro: `作息、课表、假期、空闲活动，以及它们给哪些档位。${SAVE_NOTE}` })),

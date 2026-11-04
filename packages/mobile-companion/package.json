@@ -19,7 +19,8 @@
     "./client": "./src/client.ts",
     "./photo-review": "./src/photo-review.ts",
     "./photo-review-ui": "./src/photo-review-ui.ts",
-    "./dsh-adapter": "./src/dsh-adapter.ts"
+    "./dsh-adapter": "./src/dsh-adapter.ts",
+    "./voice-session": "./src/voice-session.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",
