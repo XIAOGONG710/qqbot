@@ -72,6 +72,7 @@ export interface PromptInput {
     /**
      * 运行时自己加的内容（时间提示、召回的记忆），每段一条 system 消息，放在聊天记录之后、末尾指令之前。
      * ST 里没有固定对应（相当于作者注放在聊天中 depth 0）；放在后面是因为每次都变，不让前面的前缀缓存失效。
+     * 顺序同时表示预算优先级：前面的较泛，后面的更贴近当前轮次；预算不足时先省略前面的，但始终保留最新聊天。
      */
     afterHistory?: string[];
     /** 时间宏用的当前时间，默认现在 */
@@ -84,6 +85,8 @@ export interface PromptInput {
 export interface PromptResult {
     messages: OpenAIMessage[];
     activatedWorldInfo: WorldInfoEntry[];
+    /** 为保留最新聊天而省略的低优先级运行时背景段数（不含内容） */
+    omittedAfterHistory?: number;
 }
 
 /**
@@ -158,20 +161,41 @@ export function buildPrompt(input: PromptInput): PromptResult {
         system(wi.after),
     ];
     const newChat = system(sub(ST_DEFAULT_PRESET.newChatPrompt));
-    const afterHistory = (input.afterHistory ?? []).map(text => system(text));
+    const afterHistoryCandidates = (input.afterHistory ?? []).map(text => system(text)).filter(message => message.content);
     const tail = [system(jailbreak)];
 
-    // 预算：上下文 - 回复预留 - 回复引导（ST 固定预留 3）- 固定部分；剩下的分给聊天记录和示例对话
+    // 预算：上下文 - 回复预留 - 回复引导（ST 固定预留 3）- 固定部分；剩下的分给运行时背景、聊天记录和示例对话。
+    // 最新一条聊天是这一轮真正要答的内容：先为它留位置，再按从后到前（当前轮次优先）保留运行时背景。
     const cost = (m: OpenAIMessage) =>
         (m.content ? countTokens(m.role) + countTokens(m.content) + (m.name ? countTokens(m.name) : 0) : 0);
-    let remaining = settings.maxContext - settings.maxTokens - 3
-        - [...head, newChat, ...afterHistory, ...tail].reduce((sum, m) => sum + cost(m), 0);
-
-    // 聊天记录隔了一天就插一行日期（ADR 0049，像 QQ 隔天显示时间）：分得清哪句是哪天说的（放完假还以为他在青岛，ADR 0007 调整 2026-10-10）。
-    // 绝对日期，旧消息前面那一行不会变，不影响缓存；放进去的最早一条前面也有一行
     const nowYear = (input.now ?? new Date()).getFullYear();
     const dayOf = (m: ChatMessage | undefined) => (m?.time ? chatDayLabel(new Date(m.time), nowYear) : undefined);
     const marker = (label: string) => system(`[${label}]`);
+    const latest = history.at(-1);
+    const latestMessage = latest ? { role: latest.role, content: latest.content.replace(/\r/g, '') } satisfies OpenAIMessage : undefined;
+    const latestDay = dayOf(latest);
+    const latestReserve = (latestMessage ? cost(latestMessage) : 0) + (latestDay ? cost(marker(latestDay)) : 0);
+    const baseRemaining = settings.maxContext - settings.maxTokens - 3
+        - [...head, newChat, ...tail].reduce((sum, m) => sum + cost(m), 0);
+    let afterHistoryBudget = Math.max(0, baseRemaining - latestReserve);
+    const afterHistory: OpenAIMessage[] = [];
+    let omittedAfterHistory = 0;
+    for (let i = afterHistoryCandidates.length - 1; i >= 0; i--) {
+        const message = afterHistoryCandidates[i]!;
+        const messageCost = cost(message);
+        if (messageCost <= afterHistoryBudget) {
+            afterHistory.unshift(message);
+            afterHistoryBudget -= messageCost;
+        } else {
+            // 优先级是一个整体顺序：更靠后的都保住以前，不用更早、更泛的段落填剩余缝隙。
+            omittedAfterHistory += i + 1;
+            break;
+        }
+    }
+    let remaining = baseRemaining - afterHistory.reduce((sum, message) => sum + cost(message), 0);
+
+    // 聊天记录隔了一天就插一行日期（ADR 0049，像 QQ 隔天显示时间）：分得清哪句是哪天说的（放完假还以为他在青岛，ADR 0007 调整 2026-10-10）。
+    // 绝对日期，旧消息前面那一行不会变，不影响缓存；放进去的最早一条前面也有一行
     const chat: OpenAIMessage[] = [];
     const addHistory = () => {
         // 最早那一条前面的日期行先留出来
@@ -196,18 +220,18 @@ export function buildPrompt(input: PromptInput): PromptResult {
 
     const examples: OpenAIMessage[] = [];
     const newExampleChat = system(sub(ST_DEFAULT_PRESET.newExampleChatPrompt));
-    const addExamples = () => {
+    const addExamples = (reserveLatest = false) => {
         for (const block of parseMesExamples(sub(character.mesExample))) {
             const dialogue = [{ ...newExampleChat }, ...parseExampleIntoIndividual(block, names)];
             const dialogueCost = dialogue.reduce((sum, m) => sum + cost(m), 0);
-            if (dialogueCost > remaining) break;
+            if (dialogueCost > remaining - (reserveLatest ? latestReserve : 0)) break;
             remaining -= dialogueCost;
             examples.push(...dialogue);
         }
     };
 
     if (settings.pinExamples) {
-        addExamples();
+        addExamples(Boolean(latest));
         addHistory();
     } else {
         addHistory();
@@ -216,5 +240,5 @@ export function buildPrompt(input: PromptInput): PromptResult {
 
     // [Start a new Chat] 是隔开示例对话和真聊天的；没有示例时（同学档没写示例）只是一行噪音，像提示词（DSH 诊断 2.3），不放。和 ST 不同
     const messages = [...head, ...examples, ...(examples.length ? [newChat] : []), ...chat, ...afterHistory, ...tail].filter(m => m.content);
-    return { messages, activatedWorldInfo: wi.activated };
+    return { messages, activatedWorldInfo: wi.activated, ...(omittedAfterHistory ? { omittedAfterHistory } : {}) };
 }

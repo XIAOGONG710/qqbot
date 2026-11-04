@@ -1250,6 +1250,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 },
                 countTokens: estimateTokens,
             });
+            if (prompt.omittedAfterHistory) log(`提示词预算：为保留他最后一条消息，省略 ${prompt.omittedAfterHistory} 段较低优先级背景（日志不记内容）`);
             promptSource = prompt.messages;
             return {
                 ...prompt,

@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "0.3.6",
+  "version": "0.3.7",
   "protocol": 1,
-  "androidVersionCode": 9,
+  "androidVersionCode": 10,
   "stateSchemas": {
     "dshContinuity": 1,
     "externalDrafts": 1,

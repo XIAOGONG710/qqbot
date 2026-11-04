@@ -202,6 +202,44 @@ describe('拼装规则', () => {
         assert.deepEqual(messages.slice(1).map(m => m.content), ['今天是星期日', '嗨', '[当前时间：…]', 'phi']);
     });
 
+    test('运行时背景挤满预算时，先省略较泛的前段，始终保留最后一条聊天', () => {
+        const character = minimalCard({ description: 'd', post_history_instructions: 'phi' });
+        const low = '[低优先背景：一条很短的旧记忆]';
+        const middle = `中优先背景：${'日常事实'.repeat(70)}`;
+        const high = '[当前轮次：先回答他最后说的话]';
+        const result = build([
+            { role: 'user', content: '前面很早的话' },
+            { role: 'assistant', content: '嗯' },
+            { role: 'user', content: '这是我刚刚问你的问题，请直接回答' },
+        ], {
+            character,
+            worldInfo: [],
+            afterHistory: [low, middle, high],
+            settings: { ...settings, maxContext: 260, maxTokens: 60, pinExamples: false },
+        });
+        const text = result.messages.map(message => message.content);
+        assert.ok(text.includes('这是我刚刚问你的问题，请直接回答'), '最后一条聊天不能被运行时背景挤掉');
+        assert.ok(text.includes(high), '靠后的当前轮次规则优先保留');
+        assert.ok(!text.includes(low), '中间的高优先段放不下时，不拿更早、更低优先的短背景填缝');
+        assert.ok((result.omittedAfterHistory ?? 0) >= 1);
+        const total = result.messages.reduce((sum, message) => sum + estimateTokens(message.role) + estimateTokens(message.content), 0);
+        assert.ok(total <= 260 - 60 - 3);
+    });
+
+    test('置顶示例也不能挤掉最后一条聊天', () => {
+        const block = (i: number) => `<START>\n{{user}}: 例${i}问，${'一些话'.repeat(12)}\n{{char}}: 例${i}答，${'一些话'.repeat(12)}`;
+        const character = minimalCard({ description: 'd', mes_example: [1, 2, 3, 4].map(block).join('\n') });
+        const latest = '这才是我现在要问的事情';
+        const result = build([{ role: 'user', content: latest }], {
+            character,
+            worldInfo: [],
+            settings: { ...settings, maxContext: 620, maxTokens: 120, pinExamples: true },
+        });
+        assert.ok(result.messages.some(message => message.role === 'user' && message.content === latest));
+        const total = result.messages.reduce((sum, message) => sum + estimateTokens(message.role) + estimateTokens(message.content), 0);
+        assert.ok(total <= 620 - 120 - 3);
+    });
+
     test('不是角色卡的 JSON 报错', () => {
         assert.throws(() => parseCharacterCard({ entries: {} }), /不是角色卡/);
     });
