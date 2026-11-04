@@ -82,11 +82,19 @@ export function needsAt(anchor: NeedsSnapshot, events: readonly LifeEvent[], at:
     if (target < anchorAt) throw new RangeError('需要投影不能早于锚点');
     if (target === anchorAt) return snapshot(at, anchor);
 
-    const relevant = dedupe(events)
+    const ordered = dedupe(events)
         .filter(event => event.result !== 'failed')
         .map(event => ({ event, start: Date.parse(event.startedAt), end: Date.parse(event.endedAt) }))
-        .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end > anchorAt && item.start < target && item.end >= item.start)
+        .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end >= item.start)
         .sort((a, b) => a.start - b.start || a.end - b.end || a.event.id.localeCompare(b.event.id));
+    // needs-v1 原本就规定重叠坏账只取稳定优先级的一件；连续速率已如此，离散后果也不能把被覆盖的饭当完整吃完。
+    // 在完整事件序列上判定，不能因重启锚点已经越过阻挡事件末尾，就忘记后面那顿曾经只执行了一部分。
+    let occupiedUntil = -Infinity;
+    const relevant = ordered.map(item => {
+        const fullyActive = item.start >= occupiedUntil;
+        occupiedUntil = Math.max(occupiedUntil, item.end);
+        return { ...item, fullyActive };
+    }).filter(item => item.end > anchorAt && item.start < target);
     const boundaries = [...new Set([
         anchorAt,
         target,
@@ -110,7 +118,7 @@ export function needsAt(anchor: NeedsSnapshot, events: readonly LifeEvent[], at:
         // 离散后果只在事件真正结束且落在这次投影区间里结算；分段重启不会重复吃饭。
         for (const item of relevant) {
             if (item.end !== to || item.end <= anchorAt || item.end > target) continue;
-            if ((item.event.kind === 'eat' || item.event.meal) && item.event.result === 'succeeded') hunger = clamp(hunger - MEAL_HUNGER_RELIEF);
+            if (item.fullyActive && (item.event.kind === 'eat' || item.event.meal) && item.event.result === 'succeeded') hunger = clamp(hunger - MEAL_HUNGER_RELIEF);
         }
     }
     return snapshot(at, { energy, hunger, stress });
