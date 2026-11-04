@@ -155,22 +155,45 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
             inFlight = (async () => {
                 const merged = { ...(load()?.facts ?? {}) };
                 let success = false;
-                for (const location of locations) {
+                const accept = (location: TransportLocation, facts: readonly TransportFact[], allowImplicitSingle: boolean): void => {
+                    const matched = facts.filter(fact => fact.location === location.id || (location.name !== undefined && fact.location === location.name));
+                    const fact = allowImplicitSingle && facts.length === 1 ? facts[0] : matched.length === 1 ? matched[0] : undefined;
+                    if (!fact) throw new Error(matched.length > 1 ? '供应商返回了多条相同地点的交通事实' : '供应商响应里没有当前地点的交通事实');
+                    merged[location.id] = fact;
+                    success = true;
+                    errors.delete(location.id); errorAt.delete(location.id);
+                };
+                if (typeof options.endpoint === 'string') {
                     try {
-                        const url = typeof options.endpoint === 'string' ? options.endpoint : options.endpoint(location);
-                        const facts = parseTransportResponse(await fetchJson(url), location.id, options.source);
-                        // `location.id` 是稳定查找键；公共端点可能一次返回多个地点，不能把数组最后一条
-                        // 静默写给所有配置地点。单条响应可使用供应商显示名；多条时必须精确匹配 id 或配置名。
-                        const matched = facts.filter(fact => fact.location === location.id || (location.name !== undefined && fact.location === location.name));
-                        const fact = facts.length === 1 ? facts[0] : matched.length === 1 ? matched[0] : undefined;
-                        if (!fact) throw new Error(matched.length > 1 ? '供应商返回了多条相同地点的交通事实' : '供应商响应里没有当前地点的交通事实');
-                        merged[location.id] = fact;
-                        success = true;
-                        errors.delete(location.id); errorAt.delete(location.id);
+                        // 共享端点一轮只请求一次。配置了多个地点时，单条无地点响应不能被
+                        // 猜成每个地点的事实，必须由供应商返回稳定 id 或配置中的显示名。
+                        const fallback = locations.length === 1 ? locations[0]!.id : '';
+                        const facts = parseTransportResponse(await fetchJson(options.endpoint), fallback, options.source);
+                        for (const location of locations) {
+                            try { accept(location, facts, locations.length === 1); }
+                            catch (reason) {
+                                const message = reason instanceof Error ? reason.message : String(reason);
+                                errors.set(location.id, message); errorAt.set(location.id, new Date(now()).toISOString());
+                                options.log(`现实交通：${location.name ?? location.id}没取到，照旧不用它（${message}）`);
+                            }
+                        }
                     } catch (reason) {
                         const message = reason instanceof Error ? reason.message : String(reason);
-                        errors.set(location.id, message); errorAt.set(location.id, new Date(now()).toISOString());
-                        options.log(`现实交通：${location.name ?? location.id}没取到，照旧不用它（${message}）`);
+                        for (const location of locations) {
+                            errors.set(location.id, message); errorAt.set(location.id, new Date(now()).toISOString());
+                            options.log(`现实交通：${location.name ?? location.id}没取到，照旧不用它（${message}）`);
+                        }
+                    }
+                } else {
+                    for (const location of locations) {
+                        try {
+                            const facts = parseTransportResponse(await fetchJson(options.endpoint(location)), location.id, options.source);
+                            accept(location, facts, true);
+                        } catch (reason) {
+                            const message = reason instanceof Error ? reason.message : String(reason);
+                            errors.set(location.id, message); errorAt.set(location.id, new Date(now()).toISOString());
+                            options.log(`现实交通：${location.name ?? location.id}没取到，照旧不用它（${message}）`);
+                        }
                     }
                 }
                 if (success) {

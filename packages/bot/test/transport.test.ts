@@ -54,18 +54,42 @@ describe('现实交通 / 公共服务事实（ADR 0232）', () => {
     test('共享端点返回多个地点时按稳定 id 或显示名匹配，不把最后一条状态写给所有地点', async () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-transport-shared-'));
         const now = at('2026-11-03T09:00:00').getTime();
+        let requests = 0;
         const fetcher = transportFetcher({
             dir: root, log: () => {}, locations: [{ id: 'jinan', name: '济南' }, { id: 'qingdao', name: '青岛' }],
             endpoint: 'https://example.test/all', source: 'test', now: () => now,
-            fetchJson: async () => ({ data: [
-                { location: '济南', status: '延误', updatedAt: '2026-11-03T09:00:00+08:00' },
-                { location: 'qingdao', status: '关闭', updatedAt: '2026-11-03T09:00:00+08:00' },
-            ] }),
+            fetchJson: async () => {
+                requests += 1;
+                return { data: [
+                    { location: '济南', status: '延误', updatedAt: '2026-11-03T09:00:00+08:00' },
+                    { location: 'qingdao', status: '关闭', updatedAt: '2026-11-03T09:00:00+08:00' },
+                ] };
+            },
         });
         try {
             await fetcher.refresh();
+            assert.equal(requests, 1, '共享端点一轮只请求一次，避免重复耗用供应商额度');
             assert.equal(fetcher.day('jinan')?.status, 'delayed');
             assert.equal(fetcher.day('qingdao')?.status, 'closed');
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    test('共享端点服务多个地点时拒绝没有地点标识的单条响应', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-transport-ambiguous-'));
+        const now = at('2026-11-03T09:00:00').getTime();
+        const logs: string[] = [];
+        const fetcher = transportFetcher({
+            dir: root, log: line => logs.push(line), locations: [{ id: 'jinan', name: '济南' }, { id: 'qingdao', name: '青岛' }],
+            endpoint: 'https://example.test/all', source: 'test', now: () => now,
+            fetchJson: async () => ({ data: [{ status: '正常', updatedAt: '2026-11-03T09:00:00+08:00' }] }),
+        });
+        try {
+            await fetcher.refresh();
+            assert.equal(fetcher.day('jinan'), undefined);
+            assert.equal(fetcher.day('qingdao'), undefined);
+            assert.match(fetcher.status().locations.jinan!.error ?? '', /没有当前地点/);
+            assert.match(fetcher.status().locations.qingdao!.error ?? '', /没有当前地点/);
+            assert.equal(logs.filter(line => line.includes('没有当前地点')).length, 2);
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
