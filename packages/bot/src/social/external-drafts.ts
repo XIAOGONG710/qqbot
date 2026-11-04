@@ -99,7 +99,10 @@ function validDraft(value: unknown): value is ExternalDraft {
 function validFile(value: unknown): value is DraftFile {
     if (!value || typeof value !== 'object') return false;
     const file = value as Partial<DraftFile>;
-    return file.version === 1 && Array.isArray(file.drafts) && file.drafts.length <= MAX_EXTERNAL_DRAFTS && file.drafts.every(validDraft);
+    if (file.version !== 1 || !Array.isArray(file.drafts) || file.drafts.length > MAX_EXTERNAL_DRAFTS || !file.drafts.every(validDraft)) return false;
+    // 状态更新按 id 定位；重复 id 会让一次批准 / 发布占用覆盖多条不同平台草稿。
+    // 不能猜测哪条才是真的，整个文件按损坏状态隔离并交给人工核对。
+    return new Set(file.drafts.map(draft => draft.id)).size === file.drafts.length;
 }
 function text(value: string, max: number, label: string): string {
     const result = value.trim();

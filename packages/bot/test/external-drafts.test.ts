@@ -42,6 +42,18 @@ describe('外部平台草稿队列（ADR 0224）', () => {
         assert.match(logs.join('\n'), /schema/);
     });
 
+    test('重复草稿 ID 整体隔离，不能让一次状态更新覆盖不同平台的两条内容', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
+        const first = seeded(0, 'pending');
+        const second = { ...seeded(1, 'pending'), id: first.id, platform: 'douyin' as const, title: '抖音标题', body: '另一条正文' };
+        writeFileSync(join(root, 'drafts.json'), JSON.stringify({ version: 1, drafts: [first, second] }));
+        const logs: string[] = [];
+        const store = createExternalDraftStore({ dir: root, log: message => logs.push(message) });
+        assert.deepEqual(store.list(), []);
+        assert.ok(readdirSync(root).some(name => name.startsWith('drafts.json.corrupt-')), '保留重复 ID 原件供人工核对');
+        assert.match(logs.join('\n'), /schema/);
+    });
+
     test('状态推进写盘成功后才替换内存', () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
         const store = createExternalDraftStore({ dir: root });
