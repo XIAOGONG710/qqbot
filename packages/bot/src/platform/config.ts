@@ -689,11 +689,13 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         if (!VISION_PROVIDERS.some(candidate => candidate === provider)) {
             throw new Error(`配置 vision.provider「${provider}」不认识：应为 ${VISION_PROVIDERS.join(' / ')} 之一`);
         }
+        const timeoutMs = v.timeoutMs === undefined ? MEDIA_TIMEOUTS.vision : v.timeoutMs;
+        if (typeof timeoutMs !== 'number' || !Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new Error('配置 vision.timeoutMs 应为正有限32位整数');
         vision = {
             provider: provider as (typeof VISION_PROVIDERS)[number],
             model: str(v, 'model', 'vision'),
             ...(typeof v.baseUrl === 'string' && v.baseUrl ? { baseUrl: v.baseUrl } : {}),
-            timeoutMs: num(v, 'timeoutMs', 'vision', MEDIA_TIMEOUTS.vision),
+            timeoutMs,
         };
     }
 

@@ -8,6 +8,7 @@ import type { ImageDescriber } from './media.ts';
 import { modelDispatcher, modelGuard, ModelUnreachable } from '../language/llm.ts';
 import { GuardRejected, type ModelGuard, type ModelPurpose } from '../language/model-guard.ts';
 import { fetchRemoteImage, imageDataUrl, REMOTE_IMAGE_MAX_BYTES, validateImageDataUrl } from './safe-image.ts';
+import { stateObject } from '../memory/state-schema.ts';
 
 export interface DeepSeekVisionOptions {
     baseUrl: string;
@@ -30,7 +31,7 @@ export const STICKER_VISION_PROMPT = '这是一张聊天用的表情包。第一
 export type VisionFetch = (
     url: string,
     init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal },
-) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+) => Promise<{ ok: boolean; status: number; body?: ReadableStream<Uint8Array> | null; text(): Promise<string> }>;
 
 const defaultFetch: VisionFetch = (url, init) => undiciFetch(url, { ...init, dispatcher: modelDispatcher });
 /** 聊天图片和后台表情识图共享，避免两个入口合起来打爆视觉接口。 */
@@ -55,40 +56,104 @@ const defaultDownload = (): ImageDownload => (shared ??= imageDownloader(4000));
 
 /** 200 但正文是空的（DSH 对抗审查 10-10：deepseek-flash 低频出现，不是推理吃光预算）：同一张图再问一次，还空才算没看出来 */
 export const EMPTY_RETRIES = 1;
+export const MAX_VISION_RESPONSE_BYTES = 1024 * 1024;
+
+function checkTimeout(timeoutMs: number): void {
+    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new RangeError('vision.timeoutMs 应为正有限32位整数');
+}
+
+/** 每个实际工作阶段都独立响应取消，使外层闸门不会被不合作的供应商占住。 */
+function abortable<T>(work: () => Promise<T>, signal: AbortSignal, late?: (value: T) => void): Promise<T> {
+    signal.throwIfAborted();
+    return new Promise<T>((resolve, reject) => {
+        const cancel = () => reject(signal.reason);
+        signal.addEventListener('abort', cancel, { once: true });
+        Promise.resolve().then(() => { signal.throwIfAborted(); return work(); }).then(value => {
+            if (signal.aborted) { late?.(value); reject(signal.reason); }
+            else resolve(value);
+        }, reject).finally(() => signal.removeEventListener('abort', cancel));
+    });
+}
+
+type VisionResponse = Awaited<ReturnType<VisionFetch>>;
+function cancelBody(response: VisionResponse): void {
+    if (response.body) void response.body.cancel().catch(() => undefined);
+}
+
+async function responseText(response: VisionResponse, signal: AbortSignal): Promise<string> {
+    if (!response.body) {
+        const text = await abortable(() => response.text(), signal);
+        if (Buffer.byteLength(text, 'utf8') > MAX_VISION_RESPONSE_BYTES) throw new Error('看图模型回复过大');
+        return text;
+    }
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    const cancel = () => { void reader.cancel().catch(() => undefined); };
+    signal.addEventListener('abort', cancel, { once: true });
+    try {
+        for (;;) {
+            const { done, value } = await abortable(() => reader.read(), signal);
+            if (done) break;
+            total += value.byteLength;
+            if (total > MAX_VISION_RESPONSE_BYTES) throw new Error('看图模型回复过大');
+            chunks.push(value);
+        }
+        return Buffer.concat(chunks, total).toString('utf8');
+    } finally {
+        cancel();
+        signal.removeEventListener('abort', cancel);
+        reader.releaseLock();
+    }
+}
 
 export function deepSeekImageDescriber(options: DeepSeekVisionOptions, doFetch: VisionFetch = defaultFetch, download?: ImageDownload, guard?: ModelGuard): ImageDescriber {
+    checkTimeout(options.timeoutMs);
     return {
         async describe({ url: original, dataUrl, signal }) {
-            // The model only ever receives bytes that passed the local checks; there is no fallback to the original URL.
-            const url = dataUrl
-                ? validateImageDataUrl(dataUrl, REMOTE_IMAGE_MAX_BYTES)
-                : original.startsWith('data:')
-                    ? validateImageDataUrl(original, REMOTE_IMAGE_MAX_BYTES)
-                    : validateImageDataUrl(await (download ?? defaultDownload())(original, signal), REMOTE_IMAGE_MAX_BYTES);
-            return visionGate.run(async () => {
-                for (let attempt = 0; ; attempt++) {
-                    const text = await ask(url, signal);
-                    if (text) return text;
-                    if (attempt >= EMPTY_RETRIES) throw new Error('看图模型返回里没有文本');
-                }
-            }, signal);
+            signal?.throwIfAborted();
+            const lifetime = new AbortController();
+            const cancel = () => lifetime.abort(signal!.reason);
+            signal?.addEventListener('abort', cancel, { once: true });
+            const timer = setTimeout(() => lifetime.abort(new ModelUnreachable('看图模型暂时不可达或请求超时')), options.timeoutMs);
+            try {
+                // The model only ever receives bytes that passed the local checks; no fallback to the original URL.
+                const url = dataUrl
+                    ? validateImageDataUrl(dataUrl, REMOTE_IMAGE_MAX_BYTES)
+                    : original.startsWith('data:')
+                        ? validateImageDataUrl(original, REMOTE_IMAGE_MAX_BYTES)
+                        : validateImageDataUrl(await abortable(() => (download ?? defaultDownload())(original, lifetime.signal), lifetime.signal), REMOTE_IMAGE_MAX_BYTES);
+                lifetime.signal.throwIfAborted();
+                return await visionGate.run(async () => {
+                    for (let attempt = 0; ; attempt++) {
+                        lifetime.signal.throwIfAborted();
+                        const text = await ask(url, lifetime.signal, signal);
+                        if (text) return text;
+                        if (attempt >= EMPTY_RETRIES) throw new Error('看图模型返回里没有文本');
+                    }
+                }, lifetime.signal);
+            } finally {
+                clearTimeout(timer);
+                signal?.removeEventListener('abort', cancel);
+            }
         },
     };
 
-    async function ask(url: string, parent?: AbortSignal): Promise<string | undefined> {
+    async function ask(url: string, lifetime: AbortSignal, caller?: AbortSignal): Promise<string | undefined> {
         try {
             // 每一次真正的视觉请求（包括空正文重试）单独占预算，下载失败不消耗模型额度。
-            return await (guard ?? modelGuard()).run(options.purpose ?? 'chat', () => askOnce(url, parent), error => error instanceof ModelUnreachable, parent);
+            return await (guard ?? modelGuard()).run(options.purpose ?? 'chat', () => askOnce(url, lifetime), error => error instanceof ModelUnreachable && !caller?.aborted, lifetime);
         } catch (error) {
+            if (caller?.aborted) throw caller.reason;
             if (error instanceof GuardRejected) throw new ModelUnreachable(`看图调用被挡住（${error.message}）`, { cause: error });
             throw error;
         }
     }
 
-    async function askOnce(url: string, parent?: AbortSignal): Promise<string | undefined> {
-        const timeout = AbortSignal.timeout(options.timeoutMs);
+    async function askOnce(url: string, lifetime: AbortSignal): Promise<string | undefined> {
         try {
-            const response = await doFetch(`${options.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+            let response: VisionResponse;
+            try { response = await abortable(() => doFetch(`${options.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -107,22 +172,34 @@ export function deepSeekImageDescriber(options: DeepSeekVisionOptions, doFetch: 
                     stream: false,
                     thinking: { type: 'disabled' },
                 }),
-                signal: parent ? AbortSignal.any([parent, timeout]) : timeout,
-            });
-            const body = await response.text();
+                signal: lifetime,
+            }), lifetime, cancelBody); }
+            catch (error) {
+                if (lifetime.aborted) throw lifetime.reason;
+                throw new ModelUnreachable('看图模型请求失败', { cause: error });
+            }
             if (!response.ok) {
+                cancelBody(response);
                 // 错误正文可能回显图片或其他敏感输入，不把它带进运行日志。
-                const message = `看图模型返回 ${response.status}`;
+                const message = `看图模型返回 ${Number.isInteger(response.status) ? response.status : '未知状态'}`;
                 if (response.status === 429 || response.status >= 500) throw new ModelUnreachable(message);
                 throw new Error(message);
             }
-            let json: { choices?: { message?: { content?: unknown } }[] } | null;
+            let body: string;
+            try { body = await responseText(response, lifetime); }
+            catch (error) {
+                if (lifetime.aborted) throw lifetime.reason;
+                if (error instanceof Error && error.message === '看图模型回复过大') throw error;
+                throw new ModelUnreachable('看图模型回复读取失败', { cause: error });
+            }
+            let json: unknown;
             try { json = JSON.parse(body); }
             catch { throw new Error('看图模型返回无效 JSON'); }
-            const content = json?.choices?.[0]?.message?.content;
+            const choice = stateObject(json) && Array.isArray(json.choices) ? json.choices[0] : undefined;
+            const content = stateObject(choice) && stateObject(choice.message) ? choice.message.content : undefined;
             return typeof content === 'string' && content.trim() ? content.trim() : undefined;
         } catch (error) {
-            if (parent?.aborted) throw parent.reason;
+            if (lifetime.aborted) throw lifetime.reason;
             if (error instanceof ModelUnreachable) throw error;
             if (error instanceof TypeError || (error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name))) {
                 throw new ModelUnreachable('看图模型暂时不可达或请求超时', { cause: error });
