@@ -48,6 +48,7 @@ export function createCompanionMediaHandler(runtime: CompanionRuntime, store: Co
             if (ended) return;
             ended = true;
             try {
+                if (runtime.clientForSession(sessionId) !== clientId) return writeJson(response, 401, { error: 'session_expired' });
                 const record = store.put({ clientId, mime, data: Buffer.concat(chunks), bytes: size, ...metadata.value });
                 writeJson(response, 201, { mediaId: record.mediaId, mime: record.mime, bytes: record.bytes, expiresAt: record.expiresAt, ...(record.durationMs === undefined ? {} : { durationMs: record.durationMs }), ...(record.width === undefined ? {} : { width: record.width }), ...(record.height === undefined ? {} : { height: record.height }) });
             } catch (error) { writeJson(response, 400, { error: error instanceof Error ? error.message : String(error) }); }

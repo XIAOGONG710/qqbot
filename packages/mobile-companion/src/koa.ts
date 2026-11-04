@@ -60,6 +60,7 @@ export function createCompanionKoaMediaHandler(runtime: CompanionRuntime, store:
         if (!metadata.ok) return fail(ctx, 400, metadata.error);
         try {
             const data = await readBody(ctx.req, maxBodyBytes);
+            if (runtime.clientForSession(sessionId) !== clientId) return fail(ctx, 401, 'session_expired');
             const record = store.put({ clientId, mime, data, bytes: data.length, ...metadata.value });
             ctx.status = 201;
             ctx.set('Content-Type', 'application/json; charset=utf-8');

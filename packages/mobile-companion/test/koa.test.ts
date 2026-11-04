@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 import test from 'node:test';
 import { CompanionGateway, helloEnvelope } from '../src/gateway.ts';
 import { createCompanionKoaActionPollHandler, createCompanionKoaEnvelopeHandler, createCompanionKoaMediaHandler, type CompanionKoaContextLike } from '../src/koa.ts';
@@ -74,6 +74,33 @@ test('Koishi Koa 适配器拒绝过大的 envelope 和媒体 body', async () => 
     oversized.path = '/qqbot/companion/http/media';
     await upload(oversized);
     assert.equal(oversized.status, 413);
+});
+
+test('媒体上传读取期间解绑，不会让旧设备媒体在清理后重新出现', async () => {
+    const now = 2_000;
+    const pairing = new MemoryPairingStore(60_000);
+    const ticket = pairing.issue('android-koa-reset', now);
+    const runtime = new CompanionRuntime(new CompanionGateway(pairing, () => now), {
+        onMessage: async message => message,
+        onAction: async (request, _clientId, requestId) => ({ requestId, ok: false, decision: request.decision }),
+    }, () => now);
+    const helloCtx = context(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['image'] }, 'req-koa-reset-hello', 'nonce-koa-reset-hello', new Date(now).toISOString()), {});
+    await createCompanionKoaEnvelopeHandler(runtime)(helloCtx);
+    const session = (helloCtx as CompanionKoaContextLike & { responseHeaders: Record<string, string> }).responseHeaders['x-companion-session']!;
+    const stream = new PassThrough();
+    const uploadCtx = context(undefined, { 'x-companion-session': session, 'x-companion-mime': 'image/png' });
+    uploadCtx.path = '/qqbot/companion/http/media';
+    uploadCtx.req = stream as never;
+    const media = new MemoryCompanionMediaStore({ now: () => now, id: () => 'fedcba9876543210' });
+    const pending = createCompanionKoaMediaHandler(runtime, media)(uploadCtx);
+    stream.write(Buffer.from('old-session-image'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    runtime.reset();
+    stream.end();
+    await pending;
+    assert.equal(uploadCtx.status, 401);
+    assert.deepEqual(uploadCtx.body, { error: 'session_expired' });
+    assert.equal(media.get(ticket.clientId, 'fedcba9876543210'), undefined);
 });
 
 test('Koishi Koa envelope 拒绝空 body 而不抛异常', async () => {
