@@ -715,6 +715,25 @@ describe('编排（app.ts）', () => {
         assert.deepEqual(chat(cfg, 10001), ['user:在吗', 'assistant:在', 'user:吃了吗', 'user:人呢', 'assistant:好']);
     });
 
+    test('同一次重连的并发 connected 合并为一轮补回，不重复拉历史或提前放开实时消息', async () => {
+        const cfg = config();
+        let release!: () => void;
+        const hold = new Promise<void>(resolve => { release = resolve; });
+        const { app, sent, asked } = setup(cfg, {
+            10001: [historyMessage(1, 10001, '停机时发的', 60)],
+        }, { holdHistory: hold });
+        const first = app.connected(SELF);
+        const second = app.connected(SELF);
+        app.receive(event(10001, 2, '重连时发的'));
+        assert.deepEqual(chat(cfg, 10001), [], '任一 connected 都不能提前解除缓冲');
+        release();
+        await Promise.all([first, second]);
+        await until(() => sent.length > 0);
+        assert.deepEqual(asked, [10001], '同一轮重连只拉一次该联系人的历史');
+        assert.deepEqual(sent, ['10001:好']);
+        assert.deepEqual(chat(cfg, 10001), ['user:停机时发的', 'user:重连时发的', 'assistant:好']);
+    });
+
     test('拉不到历史（没有任何记录时 NapCat 也报错）：写日志、跳过这个人，其他人照常补回', async () => {
         const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }, { qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
         const { app, sent, logs } = setup(cfg, { 10002: [historyMessage(7, 10002, '睡了吗', 30)] });

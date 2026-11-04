@@ -2317,6 +2317,7 @@ ${body}
     let probing = false;
     // 补完之前到的新消息先攒着，补完再按顺序处理
     let syncing = false;
+    let syncPromise: Promise<void> | undefined;
     const buffered: MessageEvent[] = [];
 
     /** 每人一条：要听、要看的消息读完才进聊天记录，后面来的排在它后面（顺序不乱；读是一收到就开始读，不排队） */
@@ -3081,13 +3082,19 @@ ${body}
     return {
         async connected(selfId) {
             if (stopped) return;
+            // Koishi / NapCat 可能在同一次重连期间重复发出 ready。共用正在进行的补回，
+            // 避免并发拉两遍历史，并避免其中一轮先把实时消息缓冲提前放开。
+            if (syncPromise) return syncPromise;
             connectedAt = new Date();
             selfIdKnown = selfId;
             if (strangers) void ensureAiSignature(selfId);
             syncing = true;
+            const currentSync = syncMissed(selfId);
+            syncPromise = currentSync;
             try {
-                await syncMissed(selfId);
+                await currentSync;
             } finally {
+                syncPromise = undefined;
                 syncing = false;
                 if (!stopped) {
                     for (const message of buffered.splice(0)) onMessage(message);
