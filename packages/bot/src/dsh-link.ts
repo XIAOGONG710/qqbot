@@ -60,12 +60,15 @@ const ADVISOR_SYSTEM = [
 
 const STATE_KEY_RE = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
 const MAX_STATE_NUMBERS = 32;
+const NEED_KEYS = new Set(['energy', 'hunger', 'stress']);
+const VALUE_KEYS = new Set(['energy', 'hunger', 'stress', 'mood', 'health', 'loneliness', 'motivation', 'boredom', 'socialBattery']);
+const RELATIONSHIP_KEYS = new Set(['intimacy', 'trust', 'familiarity', 'attachment', 'friction']);
 
-function sanitizeNumberRecord(value: unknown): Record<string, number> | undefined {
+function sanitizeNumberRecord(value: unknown, allowed: ReadonlySet<string>): Record<string, number> | undefined {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
     const output: Record<string, number> = {};
     for (const [key, number] of Object.entries(value)) {
-        if (!STATE_KEY_RE.test(key) || typeof number !== 'number' || !Number.isFinite(number)) continue;
+        if (!allowed.has(key) || typeof number !== 'number' || !Number.isFinite(number) || number < 0 || number > 100) continue;
         output[key] = Math.round(number);
         if (Object.keys(output).length >= MAX_STATE_NUMBERS) break;
     }
@@ -75,9 +78,9 @@ function sanitizeNumberRecord(value: unknown): Record<string, number> | undefine
 /** DSH 的在线请求和落盘快照共用同一份最小状态白名单。 */
 export function sanitizeDshState(state: DshState): DshState {
     const parsedAt = typeof state?.at === 'string' ? Date.parse(state.at) : Number.NaN;
-    const needs = sanitizeNumberRecord(state?.needs);
-    const values = sanitizeNumberRecord(state?.values);
-    const relationship = sanitizeNumberRecord(state?.relationship);
+    const needs = sanitizeNumberRecord(state?.needs, NEED_KEYS);
+    const values = sanitizeNumberRecord(state?.values, VALUE_KEYS);
+    const relationship = sanitizeNumberRecord(state?.relationship, RELATIONSHIP_KEYS);
     const recentEvents = Array.isArray(state?.recentEvents)
         ? state.recentEvents.filter(event => typeof event === 'string' && STATE_KEY_RE.test(event)).slice(-8)
         : [];
