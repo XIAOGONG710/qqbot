@@ -94,6 +94,9 @@ export function sanitizeDshState(state: DshState): DshState {
 /** 从外部输入中移除常见的身份和凭据字段；调用者仍应优先传入已脱敏内容。 */
 export function sanitizeDshQuestion(question: string): string {
     return question
+        .replace(/(https?:\/\/)[^/\s:@]+:[^/\s@]+@/gi, '$1<redacted>@')
+        .replace(/\b(authorization|proxy-authorization)\s*[:=]\s*(?:(?:bearer|basic)\s+)?[^\s,，;；]+/gi, '$1=<redacted>')
+        .replace(/\b(cookie|set-cookie|session(?:id)?|refresh[_-]?token)\s*[:=]\s*[^\s,，;；]+/gi, '$1=<redacted>')
         .replace(/(qq|user|uid|id|账号|号码)\s*[:：]?\s*\d{5,}/gi, '$1=<redacted>')
         .replace(/([?&](?:api[_-]?key|access[_-]?token|token|secret|password)=)[^&#\s,，;；]+/gi, '$1<redacted>')
         .replace(/(sk-|api[_-]?key|token|password|密码)\s*[:：=]?\s*[^\s,，;；&#]+/gi, '$1=<redacted>')

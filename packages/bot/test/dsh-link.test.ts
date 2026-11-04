@@ -23,12 +23,16 @@ describe('DSH 连接层', () => {
         const text = sanitizeDshQuestion('QQ: 123456789，api_key=sk-abc123   看看她的状态');
         assert.equal(text, 'QQ=<redacted>，api_key=<redacted> 看看她的状态');
         assert.equal(sanitizeDshQuestion('请看 https://example.test/?api_key=sk-url&access_token=access-value&token=secret-value&ok=1'), '请看 https://example.test/?api_key=<redacted>&access_token=<redacted>&token=<redacted>&ok=1');
+        assert.equal(sanitizeDshQuestion('Authorization: Bearer secret-value Cookie: session=secret-cookie'), 'Authorization=<redacted> Cookie=<redacted>');
+        assert.equal(sanitizeDshQuestion('请求 https://alice:secret-pass@example.test/path'), '请求 https://<redacted>@example.test/path');
+        assert.equal(sanitizeDshQuestion('sessionId=secret-session refresh_token=secret-refresh'), 'sessionId=<redacted> refresh_token=<redacted>');
         assert.equal(sanitizeDshQuestion('   '), '');
         assert.ok(sanitizeDshQuestion('x'.repeat(3000)).length <= 2000);
     });
 
     test('探针错误摘要不把凭据或超长上游原文发进 QQ', () => {
         assert.equal(sanitizeDshError(new Error('HTTP 401 https://dsh.example/?api_key=secret-value')), 'HTTP 401 https://dsh.example/?api_key=<redacted>');
+        assert.equal(sanitizeDshError(new Error('HTTP 401 Authorization: Bearer secret-value')), 'HTTP 401 Authorization=<redacted>');
         assert.equal(sanitizeDshError('   '), '未知错误');
         assert.ok(sanitizeDshError(new Error('x'.repeat(500))).length <= 160);
     });
