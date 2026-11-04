@@ -5,6 +5,8 @@ import { MAX_CLOCK_SKEW_MS, validateAction, validateActionResult, validateEnvelo
 export const MAX_QUEUED_PER_CLIENT = 32;
 export const MAX_DOWNLINK_ACTIONS = 16;
 export const DOWNLINK_ACTION_TTL_MS = 5 * 60_000;
+export const UPLINK_REQUEST_TTL_MS = 5 * 60_000;
+export const MAX_UPLINK_REQUESTS_PER_CLIENT = 64;
 
 export type CompanionDownlinkListener = (clientId: string, envelope: CompanionEnvelope<PhoneActionRequest>) => void;
 
@@ -32,6 +34,12 @@ interface PendingDownlinkResult {
     decision: PhoneActionRequest['decision'];
 }
 
+interface CompletedUplinkRequest {
+    completedAt: number;
+    fingerprint: string;
+    result: CompanionRuntimeResult;
+}
+
 /**
  * 协议业务层：不监听端口、不执行动作，只把已通过网关的 envelope 分派给宿主。
  * 因此 QQ、WebSocket、HTTPS 和 Android UI 可以共享相同的消息/动作语义。
@@ -44,6 +52,7 @@ export class CompanionRuntime {
     private readonly queueDepth = new Map<string, number>();
     private readonly downlinks = new Map<string, CompanionEnvelope<PhoneActionRequest>[]>();
     private readonly pendingDownlinkResults = new Map<string, Map<string, PendingDownlinkResult>>();
+    private readonly completedUplinkRequests = new Map<string, Map<string, CompletedUplinkRequest>>();
     private readonly downlinkListeners = new Set<CompanionDownlinkListener>();
     private queueGeneration = 0;
 
@@ -75,6 +84,7 @@ export class CompanionRuntime {
         this.gateway.reset();
         this.downlinks.clear();
         this.pendingDownlinkResults.clear();
+        this.completedUplinkRequests.clear();
         // 撤销配对是一个硬边界：不再让旧设备的排队深度继续出现在状态页。
         // 已经进入宿主的旧请求仍会自然结束，但不会阻塞新配对后的队列。
         this.queueGeneration++;
@@ -195,19 +205,30 @@ export class CompanionRuntime {
 
     private async dispatch(value: unknown, clientId: string): Promise<CompanionRuntimeResult> {
         let requestId = 'runtime';
+        let fingerprint: string | undefined;
+        let rememberError = false;
         try {
             const envelope = validateEnvelope(value, this.now());
             requestId = envelope.requestId;
             if (!['hello', 'message.send', 'action.request', 'action.result'].includes(envelope.kind)) throw new Error('客户端不能发送此类响应包');
+            const idempotent = envelope.kind === 'message.send' || envelope.kind === 'action.request';
+            fingerprint = idempotent ? canonicalRequest(envelope.kind, envelope.body) : undefined;
+            if (fingerprint) {
+                const cached = this.findCompletedUplink(clientId, envelope.requestId);
+                if (cached) {
+                    if (cached.fingerprint !== fingerprint) throw new Error('requestId 已被不同请求使用');
+                    return replayResult(cached.result, envelope.requestId, this.now());
+                }
+                rememberError = true;
+            }
+            let result: CompanionRuntimeResult;
             if (envelope.kind === 'message.send') {
                 const responseBody = await this.handlers.onMessage(validateMessage(envelope.body), clientId);
-                return { accepted: true, response: responseEnvelope('message.receive', responseBody, envelope.requestId, this.now()) };
-            }
-            if (envelope.kind === 'action.request') {
-                const result = await this.handlers.onAction(validateAction(envelope.body), clientId, envelope.requestId);
-                return { accepted: true, response: responseEnvelope('action.result', result, envelope.requestId, this.now()) };
-            }
-            if (envelope.kind === 'action.result') {
+                result = { accepted: true, response: responseEnvelope('message.receive', responseBody, envelope.requestId, this.now()) };
+            } else if (envelope.kind === 'action.request') {
+                const actionResult = await this.handlers.onAction(validateAction(envelope.body), clientId, envelope.requestId);
+                result = { accepted: true, response: responseEnvelope('action.result', actionResult, envelope.requestId, this.now()) };
+            } else if (envelope.kind === 'action.result') {
                 if (!this.handlers.onActionResult) throw new Error('宿主未接入手机动作回执');
                 const result = validateActionResult(envelope.body);
                 const pending = this.pendingDownlinkResults.get(clientId);
@@ -227,11 +248,35 @@ export class CompanionRuntime {
                 pending!.delete(result.requestId);
                 if (pending!.size === 0) this.pendingDownlinkResults.delete(clientId);
                 return { accepted: true };
+            } else {
+                return { accepted: true };
             }
-            return { accepted: true };
+            if (fingerprint) this.rememberCompletedUplink(clientId, envelope.requestId, fingerprint, result);
+            return result;
         } catch (error) {
-            return { accepted: true, response: responseEnvelope('error', { code: 'runtime_error', message: safeError(error) }, requestId, this.now()) };
+            const result = { accepted: true, response: responseEnvelope('error', { code: 'runtime_error', message: safeError(error) }, requestId, this.now()) } as const;
+            if (fingerprint && rememberError) this.rememberCompletedUplink(clientId, requestId, fingerprint, result);
+            return result;
         }
+    }
+
+    private findCompletedUplink(clientId: string, requestId: string): CompletedUplinkRequest | undefined {
+        const requests = this.completedUplinkRequests.get(clientId);
+        if (!requests) return undefined;
+        const now = this.now();
+        for (const [id, item] of requests) {
+            const age = now - item.completedAt;
+            if (age >= UPLINK_REQUEST_TTL_MS || age < -MAX_CLOCK_SKEW_MS) requests.delete(id);
+        }
+        if (requests.size === 0) this.completedUplinkRequests.delete(clientId);
+        return requests.get(requestId);
+    }
+
+    private rememberCompletedUplink(clientId: string, requestId: string, fingerprint: string, result: CompanionRuntimeResult): void {
+        const requests = this.completedUplinkRequests.get(clientId) ?? new Map<string, CompletedUplinkRequest>();
+        requests.set(requestId, { completedAt: this.now(), fingerprint, result });
+        while (requests.size > MAX_UPLINK_REQUESTS_PER_CLIENT) requests.delete(requests.keys().next().value!);
+        this.completedUplinkRequests.set(clientId, requests);
     }
 }
 
@@ -250,6 +295,20 @@ function responseEnvelope<T extends CompanionEnvelope['body']>(kind: CompanionEn
         nonce: `resp-${randomBytes(12).toString('hex')}`,
         body,
     };
+}
+
+function canonicalRequest(kind: CompanionEnvelope['kind'], body: unknown): string {
+    const sort = (value: unknown): unknown => {
+        if (Array.isArray(value)) return value.map(sort);
+        if (!value || typeof value !== 'object') return value;
+        return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, sort(item)]));
+    };
+    return JSON.stringify([kind, sort(body)]) ?? '';
+}
+
+function replayResult(result: CompanionRuntimeResult, requestId: string, now: number): CompanionRuntimeResult {
+    if (!result.accepted || !result.response) return result;
+    return { accepted: true, response: responseEnvelope(result.response.kind, result.response.body, requestId, now) };
 }
 
 function safeError(error: unknown): string {

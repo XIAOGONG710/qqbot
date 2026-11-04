@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { actionNeedsConfirmation, decidePhoneAction } from '../src/action-policy.ts';
 import { CompanionGateway, helloEnvelope } from '../src/gateway.ts';
 import { MemoryPairingStore } from '../src/pairing.ts';
-import { CompanionRuntime, DOWNLINK_ACTION_TTL_MS, MAX_DOWNLINK_ACTIONS } from '../src/runtime.ts';
+import { CompanionRuntime, DOWNLINK_ACTION_TTL_MS, MAX_DOWNLINK_ACTIONS, UPLINK_REQUEST_TTL_MS } from '../src/runtime.ts';
 import { createCompanionHttpHandler } from '../src/http.ts';
 import { attachCompanionWebSocket } from '../src/websocket.ts';
 import { createServer, request as httpRequest } from 'node:http';
@@ -398,6 +398,56 @@ describe('手机伴侣协议', () => {
         const result = await runtime.handle({ v: 1, requestId: 'req-error-msg', kind: 'message.send', sentAt: new Date(now).toISOString(), nonce: 'nonce-error-msg', body: { kind: 'text', text: 'hi' } });
         assert.equal(result.accepted, true);
         if (result.accepted) assert.equal(result.response?.requestId, 'resp-req-error-msg');
+    });
+
+    test('手机上行按设备和 requestId 幂等，换 nonce 重试不会重复消息或动作', async () => {
+        let now = 45_000;
+        let messages = 0;
+        let actions = 0;
+        const pairing = new MemoryPairingStore(60_000);
+        const ticket = pairing.issue('android-idempotent', now);
+        const gateway = new CompanionGateway(pairing, () => now);
+        const runtime = new CompanionRuntime(gateway, {
+            onMessage: async message => { messages += 1; return { kind: 'text', text: message.text ?? '' }; },
+            onAction: async (request, _clientId, requestId) => { actions += 1; return { requestId, ok: true, decision: request.decision }; },
+        }, () => now);
+        await runtime.handle(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text'] }, 'req-idem-hello', 'nonce-idem-hello', new Date(now).toISOString()));
+
+        const message = (nonce: string, text = '只说一次') => ({
+            v: 1 as const, requestId: 'req-idem-message', kind: 'message.send' as const,
+            sentAt: new Date(now).toISOString(), nonce, body: { kind: 'text' as const, text },
+        });
+        const [first, retry] = await Promise.all([
+            runtime.handle(message('nonce-idem-message-1')),
+            runtime.handle(message('nonce-idem-message-2')),
+        ]);
+        assert.equal(messages, 1);
+        assert.deepEqual(first.accepted && first.response?.body, retry.accepted && retry.response?.body);
+        assert.notEqual(first.accepted && first.response?.nonce, retry.accepted && retry.response?.nonce, '幂等重试仍使用新的服务端 nonce');
+
+        const conflict = await runtime.handle(message('nonce-idem-message-3', '偷换正文'));
+        assert.equal(messages, 1);
+        if (conflict.accepted) assert.match(String((conflict.response?.body as { message?: string } | undefined)?.message), /requestId 已被不同请求使用/);
+
+        const action = (nonce: string) => ({
+            v: 1 as const, requestId: 'req-idem-action', kind: 'action.request' as const,
+            sentAt: new Date(now).toISOString(), nonce,
+            body: { action: 'notify' as const, params: { text: '只执行一次' }, decision: 'auto' as const },
+        });
+        const actionFirst = await runtime.handle(action('nonce-idem-action-1'));
+        const actionRetry = await runtime.handle(action('nonce-idem-action-2'));
+        assert.equal(actions, 1);
+        assert.deepEqual(actionFirst.accepted && actionFirst.response?.body, actionRetry.accepted && actionRetry.response?.body);
+
+        now += UPLINK_REQUEST_TTL_MS;
+        await runtime.handle(action('nonce-idem-action-3'));
+        assert.equal(actions, 2, '幂等窗口过期后允许客户端重新使用 requestId');
+
+        runtime.reset();
+        const replacement = pairing.issue('android-idempotent', ++now);
+        await runtime.handle(helloEnvelope({ clientId: replacement.clientId, pairingCode: replacement.pairingCode, capabilities: ['text'] }, 'req-idem-hello-2', 'nonce-idem-hello-2', new Date(now).toISOString()));
+        await runtime.handle(message('nonce-idem-message-4'));
+        assert.equal(messages, 2, '撤销配对后旧设备的 requestId 缓存必须清空');
     });
 
     test('网关 reset 后旧会话失效，可重新配对', () => {
