@@ -421,14 +421,19 @@ function daySource(c: Checker, value: unknown): DaySource {
     c.keys(o, ['name', 'date', 'lunar', 'midnight']);
     const monthDay = (key: 'date' | 'lunar') => {
         const text = c.at(key).optionalString(o[key]);
-        if (text !== undefined && !MONTH_DAY.test(text)) c.at(key).fail(`应为 MM-DD：${text}`);
+        if (text !== undefined) {
+            if (!MONTH_DAY.test(text)) c.at(key).fail('应为 MM-DD');
+            const [month, day] = text.split('-').map(Number);
+            // 周年日保留公历 02-29；农历不猜具体年份的大小月，但没有三十一日。
+            const limit = key === 'lunar' ? 30 : [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month! - 1]!;
+            if (day! > limit) c.at(key).fail(key === 'lunar' ? '农历一个月最多 30 天，应为有效月日' : '应为有效月日');
+        }
         return text;
     };
     const day: DaySource = { name: c.at('name').string(o.name) };
     const solar = monthDay('date');
     const lunar = monthDay('lunar');
     if (!solar && !lunar) c.fail('公历日期（date）和农历日期（lunar）至少写一个');
-    if (lunar && Number(lunar.slice(3)) > 30) c.at('lunar').fail(`农历一个月最多 30 天：${lunar}`);
     if (solar) day.date = solar;
     if (lunar) day.lunar = lunar;
     if (o.midnight !== undefined && o.midnight !== null && typeof o.midnight !== 'boolean') c.at('midnight').fail('应为 true 或 false');

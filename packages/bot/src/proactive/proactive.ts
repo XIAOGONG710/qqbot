@@ -17,6 +17,7 @@ import { mentionsMeetup } from '../life/promises.ts';
 import { pendingMessages, pick } from '.././social/reply-timing.ts';
 import { classesOn, formatDate, herDay, stateAt, wakeOn, type Schedule } from '../life/schedule.ts';
 import { logBody } from '../platform/sensitive.ts';
+import { calendarDate, stateTimestamp } from '../memory/state-schema.ts';
 export { herDay } from '../life/schedule.ts';
 
 /** 时机，按优先级从高到低 */
@@ -333,10 +334,37 @@ const INVITE_REPLY_MS = 4 * HOUR;
 
 const inviteDay = (record: ProactiveRecord) => record.id.slice(0, 10);
 
+/** OneBot用户时间只有秒。仅在同一源秒桶里，以真实发送ID及追加顺序消除毫秒歧义。
+ * 旧记录没有发送ID、试运行或同秒重复ID都不猜；不把任意较早消息扩成一秒的回复窗口。
+ */
+function sameSecondReply(record: ProactiveRecord, history: readonly StoredMessage[]): StoredMessage | undefined {
+    if (record.result === 'dryRun' || !record.messageIds?.length) return undefined;
+    const sent = Date.parse(record.at);
+    const second = Math.floor(sent / 1000) * 1000;
+    const ids = new Set(record.messageIds);
+    const matches = new Map<number, { index: number; count: number }>();
+    for (const [index, message] of history.entries()) {
+        if (message.role !== 'assistant' || message.messageId === undefined || !ids.has(message.messageId)) continue;
+        const at = Date.parse(message.time);
+        if (!(at >= sent && at < second + 1000)) continue;
+        const previous = matches.get(message.messageId);
+        matches.set(message.messageId, { index, count: (previous?.count ?? 0) + 1 });
+    }
+    const first = Math.min(...[...matches.values()].filter(m => m.count === 1).map(m => m.index));
+    if (!Number.isFinite(first)) return undefined;
+    for (let index = first + 1; index < history.length; index++) {
+        const message = history[index]!;
+        const at = Date.parse(message.time);
+        if (message.role === 'user' && at >= second && at < second + 1000) return message;
+    }
+    return undefined;
+}
+
 /** 上一次约，他回的第一句是不是拒绝 */
 export function inviteDeclined(record: ProactiveRecord, history: readonly StoredMessage[]): boolean {
     const sent = Date.parse(record.at);
-    const reply = history.find(m => m.role === 'user' && Date.parse(m.time) > sent);
+    const sameSecond = sameSecondReply(record, history);
+    const reply = history.find(m => m.role === 'user' && (m === sameSecond || Date.parse(m.time) > sent));
     return Boolean(reply && Date.parse(reply.time) - sent < INVITE_REPLY_MS && INVITE_DECLINE.test(reply.content));
 }
 
@@ -344,7 +372,8 @@ export function inviteDeclined(record: ProactiveRecord, history: readonly Stored
 function inviteOn(day: Date, input: ProactiveInput, seed: (purpose: string) => string): { at: number; activity: (typeof INVITE_ACTIVITIES)[number] } | undefined {
     const dayText = formatDate(day);
     const past = input.records.filter(r => r.occasion === 'invite' && counts(r) && inviteDay(r) < dayText).sort((a, b) => inviteDay(a).localeCompare(inviteDay(b)));
-    const daysSince = (r: ProactiveRecord) => Math.round((startOfDay(day).getTime() - Date.parse(inviteDay(r))) / (24 * HOUR));
+    // 双方都按日号算日序，不能把本地午夜和ISO日号的UTC午夜混减。
+    const daysSince = (r: ProactiveRecord) => (Date.parse(dayText) - Date.parse(inviteDay(r))) / (24 * HOUR);
     if (past.filter(r => daysSince(r) <= 7).length >= INVITE_MAX_PER_WEEK) return undefined;
     const last = past.at(-1);
     if (last && daysSince(last) < (inviteDeclined(last, input.history) ? INVITE_DECLINED_GAP_DAYS : INVITE_MIN_GAP_DAYS)) return undefined;
@@ -375,7 +404,7 @@ const ASK_JITTER_MIN: [number, number] = [0, 150];
 function askOn(day: Date, input: ProactiveInput, seed: (purpose: string) => string): { at: number } | undefined {
     const dayText = formatDate(day);
     const past = input.records.filter(r => r.occasion === 'ask' && counts(r) && r.id.slice(0, 10) < dayText);
-    const daysSince = (r: ProactiveRecord) => Math.round((startOfDay(day).getTime() - Date.parse(r.id.slice(0, 10))) / (24 * HOUR));
+    const daysSince = (r: ProactiveRecord) => (Date.parse(dayText) - Date.parse(r.id.slice(0, 10))) / (24 * HOUR);
     if (past.filter(r => daysSince(r) <= 7).length >= ASK_MAX_PER_WEEK) return undefined;
     if (past.some(r => daysSince(r) < ASK_MIN_GAP_DAYS)) return undefined;
     const weekend = [0, 5, 6].includes(day.getDay());
@@ -430,8 +459,7 @@ export function moveToHisHours(time: number, weights: readonly number[], from: n
     const base = new Date(time);
     for (let hour = 0; hour < 24; hour++) {
         if (weights[hour]! < GOOD_HOUR) continue;
-        const start = localDate(base.getFullYear(), base.getMonth(), base.getDate(), hour, 0).getTime();
-        const target = start + (time % HOUR + HOUR) % HOUR;
+        const target = localDate(base.getFullYear(), base.getMonth(), base.getDate(), hour, base.getMinutes(), base.getSeconds(), base.getMilliseconds()).getTime();
         if (target < from || target >= until) continue;
         const distance = Math.abs(target - time);
         if (!best || distance < best.distance) best = { hour, at: target, distance };
@@ -577,11 +605,18 @@ const hm = (time: number) => {
     return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
+/** 候选会进入持久状态：本地日号和UTC瞬时编码都须留在四位年范围。 */
+function supportedTime(time: number): boolean {
+    const date = new Date(time);
+    return Number.isFinite(date.getTime()) && calendarDate(formatDate(date)) && stateTimestamp(date.toISOString());
+}
+
 /** 她的某一天的全部候选（还没看条件和上限），按时间排好 */
 export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
     const { schedule, settings } = input;
     const enabled = new Set(settings.occasions);
     const dayText = formatDate(day);
+    if (!calendarDate(dayText)) return [];
     const seed = (purpose: string) => `${input.qq} ${dayText} ${purpose}`;
     const wake = wakeOn(schedule, day).getTime();
     const nightFrom = at(addDays(day, 1), NIGHT_FROM).getTime();
@@ -680,7 +715,7 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
     const last = input.history.at(-1);
     // 随口说件自己的事（ADR 0096）：下午起一个时刻（抖动 2.5 小时），聊过之后至少隔 SHARE_QUIET_MS；排到 21:30 以后就这一天没有。一天一次（id 按天）
     if (enabled.has('share')) {
-        const lastTime = last ? Date.parse(last.time) : 0;
+        const lastTime = last ? Date.parse(last.time) : -Infinity;
         const time = Math.max(at(day, SHARE_FROM).getTime() + pick(seed('share'), 'at', minutes(SHARE_JITTER_MIN)), lastTime + SHARE_QUIET_MS, wake + QUIET_AFTER_WAKE_MS);
         if (time < at(day, SHARE_UNTIL).getTime()) add('share', time, '一阵子没说话了');
     }
@@ -709,7 +744,8 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
         // replied：只是聊着聊着他没理她最后一句回复，别的时机（下课、她那边的事……）不受影响
         if (!gate.replied) {
             const notBefore = gate.notBefore + pick(seed('unanswered gate'), 'at', minutes(GATE_JITTER_MIN));
-            for (const candidate of list) if (candidate.occasion !== 'dates' && candidate.at < notBefore) candidate.at = notBefore;
+            // back 是接着刚才的短暂离开，不受未回复节流（ADR 0112）。
+            for (const candidate of list) if (candidate.occasion !== 'dates' && candidate.occasion !== 'back' && candidate.at < notBefore) candidate.at = notBefore;
         }
         let reachAdded = false;
         // 约他一起玩的那条他没回：她不催（约了就是约了，不追着要答复）
@@ -759,12 +795,13 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
     // 落在上课时间里的推到下课后；推完过了夜里的时刻、或者在睡觉的，这一天就没有了
     const kept: Candidate[] = [];
     for (const candidate of list) {
+        if (!supportedTime(candidate.at)) continue;
         const atMidnight = candidate.id.endsWith(':midnight');
         const state = stateAt(schedule, new Date(candidate.at));
         if (!atMidnight && state.activity.kind === 'class') {
             candidate.at = state.activity.lesson.end.getTime() + pick(seed(`${candidate.id} pushed`), 'at', minutes(PUSHED_MIN));
         }
-        if (!atMidnight && candidate.at >= nightFrom) continue;
+        if (!supportedTime(candidate.at) || (!atMidnight && candidate.at >= nightFrom)) continue;
         if (stateAt(schedule, new Date(candidate.at)).activity.kind === 'sleep') continue;
         kept.push(candidate);
     }
@@ -796,7 +833,11 @@ function unansweredRecords(input: Pick<ProactiveInput, 'history' | 'records' | '
     const lastUser = input.history.findLast(m => m.role === 'user');
     const since = lastUser ? Date.parse(lastUser.time) : -Infinity;
     const kind = input.mode === 'on' ? 'sent' : 'dryRun';
-    return input.records.filter(r => r.occasion !== 'back' && (r.result === kind || (kind === 'sent' && partlySent(r))) && Date.parse(r.at) > since);
+    return input.records.filter(r => {
+        const sent = Date.parse(r.at);
+        return r.occasion !== 'back' && (r.result === kind || (kind === 'sent' && partlySent(r))) && sent > since
+            && !(Math.floor(sent / 1000) === Math.floor(since / 1000) && sameSecondReply(r, input.history));
+    });
 }
 
 export function unansweredCount(input: Pick<ProactiveInput, 'history' | 'records' | 'mode'>): number {
@@ -855,6 +896,7 @@ export interface Plan {
  * 这一天没有了就看下一天（状态页显示「明天 09:52 早安」）。
  */
 export function planFrom(now: number, input: ProactiveInput): Plan {
+    if (!supportedTime(now)) throw new RangeError('主动消息查询时间超出支持范围');
     const recorded = new Set(input.records.filter(r => !waitingRetry(r)).map(r => r.id));
     // 没连上模型、等着再试的：还是那个候选，时刻换成再试的时刻
     const retryAt = new Map(input.records.filter(waitingRetry).map(r => [r.id, Date.parse(r.retryAt!)]));
@@ -865,7 +907,7 @@ export function planFrom(now: number, input: ProactiveInput): Plan {
     const result = (upcoming: Candidate[]): Plan => ({ upcoming, missed, yielded, ...(paused ? { paused } : {}) });
     for (const [offset, day] of [today, addDays(today, 1)].entries()) {
         const all = candidatesOn(day, input).filter(c => !recorded.has(c.id))
-            .map(c => (retryAt.has(c.id) ? { ...c, at: retryAt.get(c.id)! } : c))
+            .map(c => (retryAt.has(c.id) ? { ...c, at: retryAt.get(c.id)! } : c)).filter(c => supportedTime(c.at))
             .sort((a, b) => a.at - b.at);
         if (offset === 0) missed.push(...all.filter(c => c.at < now - GRACE_MS));
         const open = all.filter(c => c.at >= now - GRACE_MS);
@@ -979,7 +1021,7 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
             const lately = history.filter(m => m.role === 'user' && now - Date.parse(m.time) < INVITE_LEFT_MS);
             if (lately.some(m => LEFT_FOR_NOW.test(m.content))) return '他刚说过去忙 / 去睡了，不问';
             if (lately.some(m => INVITE_BUSY.test(m.content))) return '他刚说过在忙 / 累了 / 没空，不问';
-            if (input.followUps?.some(f => f.date === candidate.day && (f.time === 'evening' || (/^\d/.test(f.time) && f.time >= '16:00')))) return '他下午 / 晚上有事，不问';
+            if (input.followUps?.some(f => f.date === candidate.day && (f.time === 'afternoon' || f.time === 'evening' || (/^\d/.test(f.time) && f.time >= '16:00')))) return '他下午 / 晚上有事，不问';
             break;
         }
         case 'quiet':
@@ -1150,6 +1192,12 @@ export function parseDates(json: unknown, source: string): ImportantDay[] {
         if (typeof o.name !== 'string' || !o.name) fail(`[${i}].name 应为非空字符串`);
         for (const key of ['date', 'lunar'] as const) {
             if (o[key] !== undefined && !(typeof o[key] === 'string' && MONTH_DAY.test(o[key]))) fail(`[${i}].${key} 应为 MM-DD`);
+            if (typeof o[key] === 'string') {
+                const [month, day] = o[key].split('-').map(Number);
+                // 周年日允许 02-29；农历月份长度随年份变化，但没有三十一日。
+                const limit = key === 'lunar' ? 30 : [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month! - 1]!;
+                if (day! > limit) fail(`[${i}].${key} 应为有效月日`);
+            }
         }
         if (o.date === undefined && o.lunar === undefined) fail(`[${i}] 要有 date 或 lunar`);
         if (o.midnight !== undefined && typeof o.midnight !== 'boolean') fail(`[${i}].midnight 应为 true 或 false`);
@@ -1167,7 +1215,7 @@ export function parseProactive(json: unknown, source: string): ProactiveSettings
     const fail = (what: string): never => { throw new Error(`${source}：extensions.qqbot.proactive${what}`); };
     const o = (typeof json === 'object' && json !== null && !Array.isArray(json) ? json : fail(' 应为对象')) as Record<string, unknown>;
     if (!Array.isArray(o.occasions) || !o.occasions.every(x => OCCASIONS.includes(x as Occasion))) fail(`.occasions 应为 ${OCCASIONS.join(' / ')} 组成的数组`);
-    const count = (key: 'dailyMax' | 'unansweredMax') => (Number.isInteger(o[key]) && (o[key] as number) >= 1 ? o[key] as number : fail(`.${key} 应为正整数`));
+    const count = (key: 'dailyMax' | 'unansweredMax') => (Number.isSafeInteger(o[key]) && (o[key] as number) >= 1 ? o[key] as number : fail(`.${key} 应为正整数`));
     if (o.newsKinds !== undefined && !(Array.isArray(o.newsKinds) && o.newsKinds.every(x => NEWS_KINDS.includes(x as NewsKind)))) fail(`.newsKinds 应为 ${NEWS_KINDS.join(' / ')} 组成的数组`);
     return {
         occasions: o.occasions as Occasion[], dailyMax: count('dailyMax'), unansweredMax: count('unansweredMax'),
