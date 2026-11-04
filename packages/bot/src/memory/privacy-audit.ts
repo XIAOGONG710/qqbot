@@ -1,7 +1,7 @@
 // 联系人隐私审计：只列数据位置、数量和 Hindsight 删除目标，不输出聊天正文，也不改文件。
 
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,6 +21,7 @@ export interface PrivacyAudit {
         banks: string[];
         commonDocuments: string[];
         commonMentalModels: string[];
+        commonTargets?: { bankId: string; documents: string[]; mentalModels: string[] }[];
     };
     limitations: string[];
 }
@@ -29,15 +30,19 @@ type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 const readJson = (path: string): unknown => {
+    if (!existsSync(path)) return undefined;
     try {
+        if (lstatSync(path).isSymbolicLink()) throw new Error('link');
         return JSON.parse(readFileSync(path, 'utf8')) as unknown;
-    } catch { return undefined; }
+    } catch { throw new Error('隐私审计状态读取或校验失败；原文件未修改'); }
 };
 
 function walk(root: string): string[] {
     if (!existsSync(root)) return [];
+    if (lstatSync(root).isSymbolicLink()) throw new Error('隐私数据目录包含链接，拒绝读取根外范围');
     return readdirSync(root, { withFileTypes: true }).flatMap(entry => {
         const path = join(root, entry.name);
+        if (entry.isSymbolicLink()) throw new Error('隐私数据目录包含链接，拒绝读取根外范围');
         return entry.isDirectory() ? walk(path) : [path];
     });
 }
@@ -59,11 +64,13 @@ function countContactRefs(value: unknown, qq: number): number {
 const hash = (qq: number, tier: string) => createHash('sha256').update(`qqbot:${qq}-${tier}`).digest('hex').slice(0, 16);
 
 export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
-    if (!Number.isInteger(qq) || qq <= 0) throw new Error('qq 应为正整数');
+    if (!Number.isSafeInteger(qq) || qq <= 0) throw new Error('qq 应为正整数');
     const root = resolve(dataDir);
     const artifacts: PrivacyArtifact[] = [];
     const add = (path: string, kind: PrivacyArtifact['kind'], note: string, references?: number) => {
-        if (!existsSync(path) || !statSync(path).isFile()) return;
+        if (!existsSync(path)) return;
+        if (lstatSync(path).isSymbolicLink()) throw new Error('隐私数据文件包含链接，拒绝读取');
+        if (!statSync(path).isFile()) return;
         artifacts.push({ path: relative(root, path), kind, bytes: statSync(path).size, ...(references !== undefined ? { references } : {}), note });
     };
 
@@ -117,6 +124,8 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
     const banks = new Set<string>();
     const commonDocuments = new Set<string>();
     const commonMentalModels = new Set<string>();
+    const commonTargets = new Map<string, { bankId: string; documents: string[]; mentalModels: string[] }>();
+    let unresolved = 0;
     for (const path of walk(join(root, 'memory'))) {
         const match = new RegExp(`^${qqText}-([a-z_]+)\\.json$`).exec(basename(path));
         if (!match) continue;
@@ -124,11 +133,15 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
         if (!isObject(state)) continue;
         if (typeof state?.bankId === 'string') banks.add(state.bankId);
         const owner = hash(qq, match[1]!);
+        const bank = typeof state.bankId === 'string' && new RegExp(`^([A-Za-z0-9-]+)-${owner}$`).exec(state.bankId);
+        const target = bank ? commonTargets.get(`${bank[1]}-common`) ?? { bankId: `${bank[1]}-common`, documents: [], mentalModels: [] } : undefined;
+        if (target) commonTargets.set(target.bankId, target);
+        if (!target && (isObject(state.common) && Object.keys(state.common).length || state.personModel !== undefined)) unresolved++;
         const common = state?.common;
         if (common && typeof common === 'object' && !Array.isArray(common)) {
-            for (const episode of Object.keys(common as Json)) commonDocuments.add(`${owner}:${episode}`);
+            for (const episode of Object.keys(common as Json)) { commonDocuments.add(`${owner}:${episode}`); target?.documents.push(`${owner}:${episode}`); }
         }
-        if (state?.personModel !== undefined) commonMentalModels.add(`person-${owner}`);
+        if (state?.personModel !== undefined) { commonMentalModels.add(`person-${owner}`); target?.mentalModels.push(`person-${owner}`); }
     }
 
     return {
@@ -137,12 +150,14 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
         artifacts: artifacts.sort((a, b) => a.path.localeCompare(b.path)),
         hindsight: {
             banks: [...banks].sort(), commonDocuments: [...commonDocuments].sort(), commonMentalModels: [...commonMentalModels].sort(),
+            commonTargets: [...commonTargets.values()].map(target => ({ ...target, documents: [...new Set(target.documents)].sort(), mentalModels: [...new Set(target.mentalModels)].sort() })).sort((a, b) => a.bankId.localeCompare(b.bankId)),
         },
         limitations: [
             '本报告不执行删除；清理时必须先停 bot，并对照 Hindsight API 逐项删除后复查。',
             '公共日记、周记和阶段总结可能用自然语言提到联系人，无法仅靠 QQ 号可靠归属，需要人工复核。',
             '部署配置中的联系人 QQ、称呼和权限位于 dataDir 之外，需要单独修改。',
             'NapCat、Koishi、模型供应商及系统备份位于 dataDir 之外，不在本报告覆盖范围内。',
+            ...(unresolved ? [`未解决：${unresolved} 份旧记忆进度的历史公共库归属无法核实；仅能按传入的当前公共库清理，历史库须人工逐库复查，不代表彻底遗忘。`] : []),
         ],
     };
 }

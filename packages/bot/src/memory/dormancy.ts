@@ -10,14 +10,16 @@
 // 封存里没有的：Hindsight（长期记忆库）是单独的服务，它的数据库不在这份封存里——要连它一起封存，得先停掉 Hindsight 再复制它的数据目录（README 里写了）。
 // 封存里不放的：secrets/（密钥和登录凭证）、logs/（日志）——封存目录不应该成为第二个存放凭证的地方。
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { sha256 } from './ledger.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { stateObject, stateTimestamp } from './state-schema.ts';
 
 export type DormancyState =
     | { state: 'awake' }
-    | { state: 'proposed'; at: string; reason?: string; herNote?: string }
+    | { state: 'proposed'; at: string; token?: string; reason?: string; herNote?: string }
     | { state: 'dormant'; since: string; reason?: string; herNote?: string; archive: string };
 
 export interface ArchiveOptions {
@@ -28,18 +30,31 @@ export interface ArchiveOptions {
     reason?: string;
     herNote?: string;
     gitHead?: string;
+    /** 确认休眠时写入封存副本；live 状态仍由 confirm 在完整清单完成后发布。 */
+    dormantSince?: string;
 }
 
 export interface ArchiveResult { dir: string; files: number; bytes: number }
 
 const SKIP = /(?:^|[\\/])(?:secrets|logs)(?:[\\/]|$)/;
 
+function validDormancyState(value: unknown): value is DormancyState {
+    if (!stateObject(value) || !['awake', 'proposed', 'dormant'].includes(value.state as string)) return false;
+    if (value.state === 'awake') return true;
+    if (value.reason !== undefined && typeof value.reason !== 'string' || value.herNote !== undefined && typeof value.herNote !== 'string') return false;
+    return value.state === 'proposed'
+        ? stateTimestamp(value.at) && (value.token === undefined || typeof value.token === 'string' && /^[0-9a-f-]{36}$/.test(value.token))
+        : stateTimestamp(value.since) && typeof value.archive === 'string' && Boolean(value.archive.trim());
+}
+
 const stamp = (d: Date) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
 
 function walk(root: string, dir = root): string[] {
+    if (lstatSync(dir).isSymbolicLink()) throw new Error('封存包含链接，不能安全核对');
     const out: string[] = [];
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const full = join(dir, entry.name);
+        if (entry.isSymbolicLink()) throw new Error('封存包含链接，不能安全核对');
         if (entry.isDirectory()) out.push(...walk(root, full));
         else if (entry.isFile()) out.push(full);
     }
@@ -47,14 +62,29 @@ function walk(root: string, dir = root): string[] {
 }
 
 export function createArchive(options: ArchiveOptions): ArchiveResult {
+    if (!stateTimestamp(options.now.toISOString())) throw new Error('封存时间无效');
+    if (options.dormantSince !== undefined && !stateTimestamp(options.dormantSince)) throw new Error('休眠封存时间无效');
+    const nested = relative(resolve(options.dataDir), resolve(options.archiveRoot));
+    if (!nested || (!nested.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && nested !== '..' && !isAbsolute(nested))) throw new Error('封存目录不能位于源数据目录内');
     // 同一分钟里封存两次也不能互相覆盖：后面的加序号
     let dir = join(options.archiveRoot, `${stamp(options.now)}-dormancy`);
     for (let n = 2; existsSync(dir); n++) dir = join(options.archiveRoot, `${stamp(options.now)}-dormancy-${n}`);
     mkdirSync(dir, { recursive: true });
-    cpSync(options.dataDir, join(dir, 'bot'), { recursive: true, filter: src => !SKIP.test(relative(options.dataDir, src)) });
+    const filter = (src: string) => {
+        if (SKIP.test(relative(options.dataDir, src))) return false;
+        if (lstatSync(src).isSymbolicLink()) throw new Error('封存源包含链接，已停止复制');
+        return true;
+    };
+    cpSync(options.dataDir, join(dir, 'bot'), { recursive: true, filter });
     for (const sub of ['source', 'st']) {
         const from = join(options.repoRoot, 'characters', 'linmengyao', sub);
-        if (existsSync(from)) cpSync(from, join(dir, 'characters', 'linmengyao', sub), { recursive: true });
+        if (existsSync(from)) cpSync(from, join(dir, 'characters', 'linmengyao', sub), { recursive: true, filter: src => { if (lstatSync(src).isSymbolicLink()) throw new Error('角色封存源包含链接'); return true; } });
+    }
+    if (options.dormantSince !== undefined) {
+        writeJsonAtomic(join(dir, 'bot', 'dormancy.json'), {
+            state: 'dormant', since: options.dormantSince, archive: resolve(dir),
+            ...(options.reason ? { reason: options.reason } : {}), ...(options.herNote ? { herNote: options.herNote } : {}),
+        } satisfies DormancyState);
     }
     writeFileSync(join(dir, 'her-note.md'), `# 她在休眠前留的话\n\n${options.herNote?.trim() || '（她没有留话。）'}\n`);
     writeFileSync(join(dir, 'README.md'), [
@@ -72,7 +102,7 @@ export function createArchive(options: ArchiveOptions): ArchiveResult {
         '## 怎么恢复', '',
         '1. 停掉 Koishi。2. 把 `bot/` 里的内容复制回 `runtime/bot/`（不要覆盖 `secrets/`）。3. 需要的话还原 `characters/`。4. 启动 Koishi，给她发 `/唤醒`。',
     ].filter(line => line !== undefined).join('\n') + '\n');
-    const files = walk(dir).filter(file => !file.endsWith('manifest.json'));
+    const files = walk(dir).filter(file => file !== join(dir, 'manifest.json'));
     const manifest: Record<string, { sha256: string; bytes: number }> = {};
     let bytes = 0;
     for (const file of files) {
@@ -88,7 +118,15 @@ export function verifyArchive(dir: string): { ok: boolean; checked: number; prob
     const problems: string[] = [];
     let manifest: { files: Record<string, { sha256: string }> };
     try {
-        manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as typeof manifest;
+        const raw: unknown = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
+        if (!stateObject(raw) || !stateObject(raw.files)) throw new Error('schema');
+        for (const [name, entry] of Object.entries(raw.files)) {
+            if (!name || name.includes('\\') || name.includes(':') || name.startsWith('/') || name.split('/').some(part => !part || part === '.' || part === '..')
+                || !stateObject(entry) || typeof entry.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(entry.sha256)) throw new Error('schema');
+        }
+        // 检查链接在任何文件读取之前，不能由清单引导读取封存外的文件。
+        walk(dir);
+        manifest = raw as typeof manifest;
     } catch {
         return { ok: false, checked: 0, problems: ['封存的清单（manifest.json）读不了'] };
     }
@@ -96,10 +134,14 @@ export function verifyArchive(dir: string): { ok: boolean; checked: number; prob
     for (const name of names) {
         const file = join(dir, name);
         if (!existsSync(file)) { problems.push(`少了：${name}`); continue; }
-        if (sha256(readFileSync(file)) !== manifest.files[name]!.sha256) problems.push(`被改过：${name}`);
+        try {
+            if (!lstatSync(file).isFile() || sha256(readFileSync(file)) !== manifest.files[name]!.sha256) problems.push(`被改过：${name}`);
+        } catch { problems.push(`读不了：${name}`); }
     }
     const known = new Set(names);
-    for (const file of walk(dir)) {
+    let actual: string[];
+    try { actual = walk(dir); } catch { return { ok: false, checked: names.length, problems: [...problems, '封存文件无法安全核对'] }; }
+    for (const file of actual) {
         const name = relative(dir, file).replace(/\\/g, '/');
         if (name !== 'manifest.json' && !known.has(name)) problems.push(`多出来的：${name}`);
     }
@@ -125,8 +167,18 @@ export class Dormancy {
     }
 
     state(): DormancyState {
-        const value = readJsonOr<DormancyState>(this.#path, { state: 'awake' }, this.#options.log, { label: '休眠状态' });
-        return value && (value.state === 'awake' || value.state === 'proposed' || value.state === 'dormant') ? value : { state: 'awake' };
+        try {
+            return readJsonOr<DormancyState>(this.#path, { state: 'awake' }, undefined, { label: '休眠状态', invalid: 'throw', validate: validDormancyState });
+        } catch { throw new Error('休眠状态读取或校验失败；已保留原文件，请修复后重试'); }
+    }
+
+    #save(value: DormancyState): void {
+        if (!validDormancyState(value)) throw new Error('休眠状态无效，未写入');
+        try { writeJsonAtomic(this.#path, value); }
+        catch {
+            try { if (JSON.stringify(this.state()) === JSON.stringify(value)) return; } catch { /* 保留写入失败事实。 */ }
+            throw new Error('休眠状态未能保存，请检查后重试');
+        }
     }
 
     isDormant(): boolean { return this.state().state === 'dormant'; }
@@ -134,13 +186,23 @@ export class Dormancy {
     #now(): Date { return this.#options.now?.() ?? new Date(); }
 
     /** 商量：记下提议和她的话（还没休眠） */
-    propose(reason: string | undefined, herNote: string | undefined): void {
-        writeJsonAtomic(this.#path, { state: 'proposed', at: this.#now().toISOString(), ...(reason ? { reason } : {}), ...(herNote ? { herNote } : {}) } satisfies DormancyState);
+    propose(reason: string | undefined, herNote: string | undefined): string {
+        if (this.isDormant()) throw new Error('她已经在休眠了，不能重新提议');
+        const token = randomUUID();
+        this.#save({ state: 'proposed', at: this.#now().toISOString(), token, ...(reason ? { reason } : {}), ...(herNote ? { herNote } : {}) });
+        return token;
+    }
+
+    updateProposal(token: string, herNote: string | undefined): boolean {
+        const current = this.state();
+        if (current.state !== 'proposed' || !current.token || current.token !== token) return false;
+        this.#save({ ...current, ...(herNote ? { herNote } : {}) });
+        return true;
     }
 
     cancel(): boolean {
         if (this.state().state !== 'proposed') return false;
-        writeJsonAtomic(this.#path, { state: 'awake' } satisfies DormancyState);
+        this.#save({ state: 'awake' });
         return true;
     }
 
@@ -154,12 +216,13 @@ export class Dormancy {
             const gitHead = this.#options.gitHead?.();
             const archive = createArchive({
                 repoRoot: this.#options.repoRoot, dataDir: this.#options.dataDir, archiveRoot: join(this.#options.dataDir, '..', 'archive'), now,
+                dormantSince: now.toISOString(),
                 ...(current.reason ? { reason: current.reason } : {}), ...(current.herNote ? { herNote: current.herNote } : {}), ...(gitHead ? { gitHead } : {}),
             });
-            writeJsonAtomic(this.#path, { state: 'dormant', since: now.toISOString(), ...(current.reason ? { reason: current.reason } : {}), ...(current.herNote ? { herNote: current.herNote } : {}), archive: archive.dir } satisfies DormancyState);
+            this.#save({ state: 'dormant', since: now.toISOString(), ...(current.reason ? { reason: current.reason } : {}), ...(current.herNote ? { herNote: current.herNote } : {}), archive: archive.dir });
             return { ok: true, archive };
-        } catch (error) {
-            return { ok: false, reason: `封存没做成（${error instanceof Error ? error.message : String(error)}），没有进入休眠` };
+        } catch {
+            return { ok: false, reason: '封存没做成，请检查存储；没有进入休眠' };
         }
     }
 
@@ -168,7 +231,7 @@ export class Dormancy {
         const current = this.state();
         if (current.state !== 'dormant') return { ok: false, reason: '她没在休眠' };
         const check = verifyArchive(current.archive);
-        writeJsonAtomic(this.#path, { state: 'awake' } satisfies DormancyState);
+        this.#save({ state: 'awake' });
         return { ok: true, minutes: Math.max(0, Math.round((this.#now().getTime() - Date.parse(current.since)) / 60_000)), archive: current.archive, check };
     }
 

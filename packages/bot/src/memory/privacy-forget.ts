@@ -3,13 +3,14 @@
 // bot 在跑（单实例锁被活着的进程持有）时拒绝执行；混在别人数据里的文件（日志、生活账、档位记录）不碰，只列出来；
 // Hindsight 的删除目标是这个联系人自己的 bank、公共库里以他的哈希开头的文档和他的印象模型，删完要让人复查。
 
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isProcessAlive } from '../platform/lock.ts';
 import { HindsightClient } from '.././memory/hindsight.ts';
 import { memoryLedger, recordForget } from './memory-audit.ts';
 import { auditContactPrivacy, type PrivacyAudit } from './privacy-audit.ts';
+import { describeError } from './transient-io.ts';
 
 /** Hindsight 里要删的东西的最小接口（测试给假的） */
 export interface ForgetApi {
@@ -24,7 +25,7 @@ export interface ForgetPlan {
     move: string[];
     /** 不碰、需要人复核的混合文件 */
     leave: { path: string; references?: number; note: string }[];
-    hindsight: { banks: string[]; commonBank: string; documents: string[]; mentalModels: string[] };
+    hindsight: { banks: string[]; commonBank: string; documents: string[]; mentalModels: string[]; commonTargets?: { bankId: string; documents: string[]; mentalModels: string[] }[] };
     limitations: string[];
 }
 
@@ -33,19 +34,33 @@ export function planForget(audit: PrivacyAudit, commonBank: string): ForgetPlan 
         qq: audit.qq,
         move: audit.artifacts.filter(item => item.kind === 'direct').map(item => item.path),
         leave: audit.artifacts.filter(item => item.kind === 'mixed').map(item => ({ path: item.path, ...(item.references !== undefined ? { references: item.references } : {}), note: item.note })),
-        hindsight: { banks: audit.hindsight.banks, commonBank, documents: audit.hindsight.commonDocuments, mentalModels: audit.hindsight.commonMentalModels },
+        hindsight: { banks: audit.hindsight.banks, commonBank, documents: audit.hindsight.commonDocuments, mentalModels: audit.hindsight.commonMentalModels, ...(audit.hindsight.commonTargets ? { commonTargets: audit.hindsight.commonTargets } : {}) },
         limitations: audit.limitations,
     };
 }
 
 const stamp = (now: Date) => now.toISOString().replace(/[-:]/g, '').replace(/\..*$/, '');
 
+/** 原子预留独立批次；同秒或并发操作不能覆盖之前的恢复资料。 */
+function batchDir(root: string, name: string): string {
+    const parent = resolve(root);
+    // 不允许调用方的回收/导出目录通过已有链接把写入引到别处。
+    for (let part = parent; part !== dirname(part); part = dirname(part)) {
+        if (existsSync(part) && lstatSync(part).isSymbolicLink()) throw new Error('导出或回收目录包含链接，未执行');
+    }
+    mkdirSync(parent, { recursive: true });
+    for (let n = 1;; n++) {
+        const dir = join(parent, `${name}${n === 1 ? '' : `-${n}`}`);
+        try { mkdirSync(dir); return dir; }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw new Error('导出或回收目录无法创建，未执行'); }
+    }
+}
+
 /** 导出：把这个联系人的本地专属文件原样复制一份，另附清单；不改任何东西 */
 export function exportContact(dataDir: string, qq: number, outDir: string, now = new Date()): { dir: string; files: string[]; audit: PrivacyAudit } {
     const root = resolve(dataDir);
     const audit = auditContactPrivacy(root, qq);
-    const dir = join(resolve(outDir), `${qq}-${stamp(now)}`);
-    mkdirSync(dir, { recursive: true });
+    const dir = batchDir(outDir, `${qq}-${stamp(now)}`);
     const files = audit.artifacts.filter(item => item.kind === 'direct').map(item => item.path);
     for (const file of files) {
         const target = join(dir, file);
@@ -79,7 +94,7 @@ export async function forgetContact(
     if (running !== undefined) throw new Error(`bot 还在运行（PID ${running}）：先停掉再清理，否则它会把数据重新写回去`);
 
     result.applied = true;
-    const trash = join(resolve(options.trashDir), `${qq}-${stamp(options.now ?? new Date())}`);
+    const trash = batchDir(options.trashDir, `${qq}-${stamp(options.now ?? new Date())}`);
     result.trash = trash;
     for (const file of plan.move) {
         try {
@@ -88,7 +103,7 @@ export async function forgetContact(
             renameSync(join(root, file), target);
             result.moved.push(file);
         } catch (error) {
-            result.failures.push(`移动 ${file} 失败：${error instanceof Error ? error.message : String(error)}`);
+            result.failures.push(`移动 ${file} 失败：${describeError(error)}`);
         }
     }
     mkdirSync(trash, { recursive: true });
@@ -99,12 +114,23 @@ export async function forgetContact(
                     await run(item);
                     sink.push(item);
                 } catch (error) {
-                    result.failures.push(`删除${what} ${item} 失败：${error instanceof Error ? error.message : String(error)}`);
+                    const status = error instanceof Error && 'status' in error && Number.isSafeInteger(error.status) ? `HTTP ${error.status}` : describeError(error);
+                    result.failures.push(`删除${what} ${item} 失败：${status}`);
                 }
             }
         };
-        await attempt('文档', plan.hindsight.documents, result.deleted.documents, id => options.api!.deleteDocument(plan.hindsight.commonBank, id));
-        await attempt('印象模型', plan.hindsight.mentalModels, result.deleted.mentalModels, id => options.api!.deleteMentalModel(plan.hindsight.commonBank, id));
+        // 当前库兼容旧审计报告；可证明的历史库额外逐库清理，同一个库内去重。
+        const targets = new Map<string, { documents: Set<string>; mentalModels: Set<string> }>();
+        for (const target of [{ bankId: plan.hindsight.commonBank, documents: plan.hindsight.documents, mentalModels: plan.hindsight.mentalModels }, ...(plan.hindsight.commonTargets ?? [])]) {
+            const found = targets.get(target.bankId) ?? { documents: new Set<string>(), mentalModels: new Set<string>() };
+            for (const id of target.documents) found.documents.add(id);
+            for (const id of target.mentalModels) found.mentalModels.add(id);
+            targets.set(target.bankId, found);
+        }
+        for (const [bank, target] of targets) {
+            await attempt('文档', [...target.documents], result.deleted.documents, id => options.api!.deleteDocument(bank, id));
+            await attempt('印象模型', [...target.mentalModels], result.deleted.mentalModels, id => options.api!.deleteMentalModel(bank, id));
+        }
         await attempt('私人记忆库', plan.hindsight.banks, result.deleted.banks, id => options.api!.deleteBank(id));
     }
     writeFileSync(join(trash, 'forget-report.json'), JSON.stringify({ ...result, plan }, null, 2));

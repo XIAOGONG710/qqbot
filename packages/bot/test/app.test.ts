@@ -1016,6 +1016,42 @@ describe('主动消息（ADR 0011）', () => {
         app.stop();
     });
 
+    test('休眠商量的迟到回复不能撤销用户已经作出的取消或确认', async () => {
+        for (const command of ['取消', '确认']) {
+            const cfg = config({ dormancy: true, contacts: [boyfriend] });
+            let raced = false;
+            const run = setup(cfg, { 10002: [] }, { generate: () => {
+                if (!raced) {
+                    raced = true;
+                    run.app.receive(event(10002, 620, `/休眠 ${command}`));
+                }
+                return '合成迟到留言';
+            } });
+            await run.app.connected(SELF);
+            run.app.receive(event(10002, 619, '/休眠 合成原因'));
+            await until(() => run.sent.some(line => line.includes('合成迟到留言')), 8000);
+            const state = JSON.parse(readFileSync(join(cfg.dataDir, 'dormancy.json'), 'utf8'));
+            assert.equal(state.state, command === '取消' ? 'awake' : 'dormant');
+            assert.ok(!run.sent.some(line => line.includes('她回答了，上面就是她的话')));
+            run.app.stop();
+        }
+    });
+
+    test('停机结束休眠商量后不再发送确认提示', async () => {
+        const cfg = config({ dormancy: true, contacts: [boyfriend] });
+        let generated = false;
+        const run = setup(cfg, { 10002: [] }, { generate: () => {
+            generated = true;
+            run.app.stop();
+            return '合成停机留言';
+        } });
+        await run.app.connected(SELF);
+        run.app.receive(event(10002, 621, '/休眠 合成停机'));
+        await until(() => generated, 8000);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        assert.deepEqual(run.sent, []);
+    });
+
     test('搜索 / 时间线（ADR 0159 / 0160）：他明说“查一下”→ 查百科、摘录成事实放进提示词；时间线里 QQ 以外做过的事也放进去；查资料记进时间线', async () => {
         const realFetch = globalThis.fetch;
         globalThis.fetch = (async () => new Response(JSON.stringify({ query: { pages: { 1: { pageid: 1, title: '量子纠缠', extract: '量子纠缠是量子力学中的一种现象。', index: 1 } } } }))) as typeof fetch;
