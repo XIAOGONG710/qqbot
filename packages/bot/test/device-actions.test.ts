@@ -145,6 +145,18 @@ describe('设备控制器：分档、限额、批准、审计', () => {
         assert.deepEqual(t.audit.map(a => a.decision), ['pending', 'approved', 'executed', 'pending', 'declined', 'pending', 'expired']);
     });
 
+    test('系统时钟明显回拨后待批准动作立即过期', async () => {
+        const t = setup();
+        t.control.take('<device:sleep>');
+        t.tick(-(5 * 60_000 + 1));
+        assert.equal(t.control.pending(), undefined);
+        assert.match((t.control.ownerSays('/设备') as { text: string }).text, /没有待批准的/);
+        assert.deepEqual(t.control.ownerSays('批准'), { kind: 'reply', text: '（已经过期了，她要再提议一次才行）' });
+        await settle();
+        assert.deepEqual(t.jobs, []);
+        assert.deepEqual(t.audit.map(entry => entry.decision), ['pending', 'expired']);
+    });
+
     test('没有待办时「批准」只是一句普通的话；同一时间只有一个待批准', async () => {
         const t = setup();
         assert.deepEqual(t.control.ownerSays('批准'), { kind: 'none' });

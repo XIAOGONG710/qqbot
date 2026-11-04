@@ -257,7 +257,9 @@ export interface DeviceControlDeps {
     limits?: Partial<Limits>;
 }
 
-interface Pending { id: number; proposal: DeviceProposal; expiresAt: number }
+interface Pending { id: number; proposal: DeviceProposal; issuedAt: number; expiresAt: number }
+
+const MAX_CLOCK_ROLLBACK_MS = 5 * 60_000;
 
 export type OwnerAction =
     | { kind: 'none' }
@@ -301,6 +303,7 @@ export function createDeviceControl(deps: DeviceControlDeps): DeviceControl {
     const withinDay = (times: number[]) => { const t = now(); while (times.length && times[0]! <= t - 86_400_000) times.shift(); return times.length; };
     const keyOf = (proposal: DeviceProposal) => `${proposal.action}|${proposal.targets.join(',')}|${JSON.stringify(proposal.params)}`;
     const names = (proposal: DeviceProposal) => DEVICE_ACTIONS[proposal.action]!.label;
+    const pendingExpired = (item: Pending, t: number) => item.expiresAt <= t || t - item.issuedAt < -MAX_CLOCK_ROLLBACK_MS;
 
     async function run(proposal: DeviceProposal, source: 'model' | 'owner'): Promise<boolean> {
         let ok = true;
@@ -342,11 +345,11 @@ export function createDeviceControl(deps: DeviceControlDeps): DeviceControl {
 
     function handleApprove(proposal: DeviceProposal): void {
         const t = now();
-        if (pending && pending.expiresAt <= t) { record({ source: 'model', action: pending.proposal.action, decision: 'expired' }); pending = undefined; }
+        if (pending && pendingExpired(pending, t)) { record({ source: 'model', action: pending.proposal.action, decision: 'expired' }); pending = undefined; }
         if (pending) { record({ source: 'model', action: proposal.action, decision: 'rejected', reason: '已经有一个等他批准的了' }); return; }
         if (withinDay(dayCounts.approve) >= limits.approvePerDay) { record({ source: 'model', action: proposal.action, decision: 'limited', reason: '今天提议太多次了' }); return; }
         dayCounts.approve.push(t);
-        pending = { id: ++sequence, proposal, expiresAt: t + limits.approveTtlMs };
+        pending = { id: ++sequence, proposal, issuedAt: t, expiresAt: t + limits.approveTtlMs };
         record({ source: 'model', action: proposal.action, decision: 'pending' });
         deps.say(`（她想${names(proposal)}。回「批准」就执行，回「拒绝」取消，${Math.round(limits.approveTtlMs / 60_000)} 分钟内有效）`);
     }
@@ -376,7 +379,7 @@ export function createDeviceControl(deps: DeviceControlDeps): DeviceControl {
             if (APPROVE.test(text)) {
                 const t = now();
                 if (!pending) return { kind: 'none' }; // 没有待办：这就是一句普通的话，让她照常回
-                if (pending.expiresAt <= t) { record({ source: 'owner', action: pending.proposal.action, decision: 'expired' }); pending = undefined; return { kind: 'reply', text: '（已经过期了，她要再提议一次才行）' }; }
+                if (pendingExpired(pending, t)) { record({ source: 'owner', action: pending.proposal.action, decision: 'expired' }); pending = undefined; return { kind: 'reply', text: '（已经过期了，她要再提议一次才行）' }; }
                 const { proposal } = pending;
                 pending = undefined;
                 record({ source: 'owner', action: proposal.action, decision: 'approved' });
@@ -392,7 +395,8 @@ export function createDeviceControl(deps: DeviceControlDeps): DeviceControl {
             }
             if (STATUS.test(text)) {
                 const where = deps.available().map(d => (d === 'computer' ? '电脑' : '手机')).join('、') || '都还没连上';
-                return { kind: 'reply', text: `（设备：${deps.mode === 'dryRun' ? '试运行' : '开'}；连着：${where}；${pending ? `等你批准：${names(pending.proposal)}` : '没有待批准的'}）` };
+                const active = pending && !pendingExpired(pending, now()) ? pending : undefined;
+                return { kind: 'reply', text: `（设备：${deps.mode === 'dryRun' ? '试运行' : '开'}；连着：${where}；${active ? `等你批准：${names(active.proposal)}` : '没有待批准的'}）` };
             }
             const screen = SCREEN.exec(text);
             if (screen) return { kind: 'capture', what: 'capture_screen', note: (screen[1] ?? '').trim() };
@@ -419,7 +423,10 @@ export function createDeviceControl(deps: DeviceControlDeps): DeviceControl {
             }
         },
 
-        pending: () => (pending && pending.expiresAt > now() ? { action: pending.proposal.action, expiresAt: pending.expiresAt } : undefined),
+        pending: () => {
+            const item = pending;
+            return item && !pendingExpired(item, now()) ? { action: item.proposal.action, expiresAt: item.expiresAt } : undefined;
+        },
     };
 }
 
