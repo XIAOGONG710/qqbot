@@ -95,6 +95,28 @@
 .qqbot-life-values summary { cursor: pointer; }
 .qqbot-life-values-body { margin-top: 8px; }
 
+.qqbot-capabilities { margin: 16px 0; }
+.qqbot-capability-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+.qqbot-capability-card {
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid var(--k-color-divider, #ddd);
+    border-radius: 8px;
+}
+.qqbot-capability-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.qqbot-capability-items { margin-top: 8px; font-size: 13px; line-height: 1.5; }
+
 .qqbot-summary-row {
     display: flex;
     align-items: center;
@@ -227,6 +249,7 @@
     .qqbot-contact-toolbar { align-items: stretch; flex-wrap: wrap; }
     .qqbot-section-title { width: 100%; }
     .qqbot-contact-search { width: 100%; }
+    .qqbot-capability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 700px) {
@@ -238,4 +261,5 @@
     .qqbot-summary-row { align-items: flex-start; }
     .qqbot-label { width: 84px; }
     .qqbot-life-head { align-items: flex-start; flex-direction: column; }
+    .qqbot-capability-grid { grid-template-columns: 1fr; }
 }

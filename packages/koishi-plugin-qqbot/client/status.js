@@ -2,7 +2,7 @@
 import { computed, defineComponent, h, ref } from 'vue';
 import { store } from '@koishijs/client';
 import { c, clock, tag, tierLabel } from './common.js';
-import { attentionDetail, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from './dashboard.js';
+import { attentionDetail, capabilityBundles, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from './dashboard.js';
 
 const PROACTIVE_MODES = { off: ['关', 'info'], dryRun: ['试运行（只写日志不发）', 'warning'], on: ['开', 'success'] };
 
@@ -103,6 +103,28 @@ function featurePanel(status) {
     ]);
 }
 
+/** 首屏只展示六个体验能力包；完整的技术开关仍在下面折叠区逐项可查。 */
+function capabilityPanel(status) {
+    if (!status.features) return null;
+    return h('section', { class: 'qqbot-capabilities' }, [
+        h('div', { class: 'qqbot-section-title' }, [
+            h('strong', null, '能力概览'),
+            h('span', { class: 'qqbot-muted' }, '只做归类展示，不会批量开启权限'),
+        ]),
+        h('div', { class: 'qqbot-capability-grid' }, capabilityBundles(status.features).map(bundle => h('div', { class: 'qqbot-capability-card' }, [
+            h('div', { class: 'qqbot-capability-head' }, [
+                h('strong', null, bundle.name),
+                tag(bundle.active ? `${bundle.on} 项在用` : '未启用', bundle.active ? 'success' : 'info'),
+            ]),
+            h('div', { class: 'qqbot-muted' }, bundle.description),
+            bundle.highlights.length ? h('div', { class: 'qqbot-capability-items' }, [
+                bundle.highlights.join(' · '),
+                bundle.more ? ` · 另有 ${bundle.more} 项` : '',
+            ]) : h('div', { class: 'qqbot-capability-items qqbot-muted' }, '当前没有启用的功能'),
+        ]))),
+    ]);
+}
+
 /** 照片货架、小梗、最近一份周报（ADR 0120）：对应的功能没开就没有这几行；周报是只有数字的文字 */
 function extrasPanel(status) {
     const rows = extrasRows(status.extras);
@@ -162,7 +184,7 @@ export const StatusTab = defineComponent({
             if (!status) return h('div', null, [summary]);
             const kpis = h('div', { class: 'qqbot-kpis' }, [
                 overviewCard('联系人', counts.contacts, `${counts.busy} 个正在处理`, counts.busy ? 'warning' : 'success'),
-                overviewCard('功能开关', `${counts.features.on}/${counts.features.total}`, '当前实例已启用', counts.features.on ? 'success' : 'info'),
+                overviewCard('生活能力', `${counts.capabilities.on}/${counts.capabilities.total}`, '已启用的能力包', counts.capabilities.on ? 'success' : 'info'),
                 overviewCard('外部顾问', counts.dshOn ? '已开启' : '已关闭', counts.dshOn ? '可以按需咨询' : '暂未启用', counts.dshOn ? 'success' : 'info'),
                 overviewCard('待处理', counts.attention.total, attentionDetail(counts.attention), counts.attention.total ? 'danger' : 'success'),
             ]);
@@ -175,6 +197,7 @@ export const StatusTab = defineComponent({
                 connectionCard('手机伴侣', status.mobileCompanion?.enabled === true && status.mobileCompanion.connected === true, mobileCompanionStatusDetail(status.mobileCompanion)),
             ]);
             const features = featurePanel(status);
+            const capabilities = capabilityPanel(status);
             const extras = extrasPanel(status);
             const phoneActions = phoneActionsPanel(data.phoneActions);
             const externalPlatforms = externalPlatformsPanel(status.externalPlatforms, status.externalDrafts);
@@ -202,7 +225,7 @@ export const StatusTab = defineComponent({
                     h('div', null, [h('h2', { class: 'qqbot-status-title' }, '她现在的状态'), h('p', { class: 'qqbot-muted' }, `每 5 秒自动更新 · ${clock(data.updatedAt)}`)]),
                     h('div', { class: 'qqbot-status-head-tags' }, [tag(status.schedule ? '按作息运行' : '作息未启用', status.schedule ? 'success' : 'warning'), tag(dshFeature?.on ? '外部顾问已启用' : '外部顾问未启用', dshFeature?.on ? 'success' : 'info')]),
                 ]),
-                kpis, connections, pulse, summary, features, phoneActions, externalPlatforms, extras, contactToolbar, table,
+                kpis, connections, pulse, capabilities, summary, features, phoneActions, externalPlatforms, extras, contactToolbar, table,
             ]);
         };
     },

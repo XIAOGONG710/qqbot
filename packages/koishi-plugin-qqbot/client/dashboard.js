@@ -5,6 +5,15 @@
 export const GROUP_ORDER = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'];
 const TIER_NAMES = { boyfriend: '男朋友', bestie: '闺蜜', girl_friend: '女生熟人', known: '熟人', classmate: '同学', stranger: '陌生人', unlisted: '名单外好友', group: '群聊' };
 
+const CAPABILITY_DEFS = [
+    { id: 'conversation', name: '对话与关系', groups: ['说话'], description: '口吻、情绪回应、关系变化和事实检查' },
+    { id: 'life', name: '自主生活', groups: ['她的日子', '主动找他'], description: '作息、世界、连续数值和主动联系' },
+    { id: 'media', name: '图片与语音', groups: ['照片和表情'], description: '看图、听语音、照片和表情表达' },
+    { id: 'social', name: '社交空间', groups: ['B 站', '在 QQ 上的样子'], description: 'B站、QQ空间、群聊和账号形象' },
+    { id: 'continuity', name: '记忆与边界', groups: ['记忆和安全'], description: '长期记忆、跨端连续、隐私和设备权限' },
+    { id: 'tools', name: '外部能力', groups: ['工具'], description: '外部顾问、周报和可审计工具' },
+];
+
 const MODE_NAMES = { on: '开', dryRun: '试运行', greet: '问候', send: '会发', collect: '只收藏', true: '开' };
 const RESPONDER_SEARCH_NAMES = {
     waiting: '等待', settling: '连续消息', generating: '准备回复', sending: '发送回复', retry: '重试', initiating: '主动联系', idle: '空闲',
@@ -52,6 +61,33 @@ export function featureTotals(features) {
     return { on: list.filter(item => item.on).length, total: list.length };
 }
 
+/**
+ * 把技术开关按用户能理解的体验重新归组。这里只做只读投影；能力包本身不是总开关，
+ * 不会绕过底层每一项各自的权限、确认和审计。
+ */
+export function capabilityBundles(features) {
+    const list = features ?? [];
+    return CAPABILITY_DEFS.map(definition => {
+        const items = list.filter(feature => definition.groups.includes(feature.group));
+        const enabled = items.filter(feature => feature.on);
+        return {
+            id: definition.id,
+            name: definition.name,
+            description: definition.description,
+            on: enabled.length,
+            total: items.length,
+            active: enabled.length > 0,
+            highlights: enabled.slice(0, 4).map(feature => feature.label),
+            more: Math.max(0, enabled.length - 4),
+        };
+    });
+}
+
+export function capabilityTotals(features) {
+    const bundles = capabilityBundles(features);
+    return { on: bundles.filter(bundle => bundle.active).length, total: bundles.length };
+}
+
 /** 联系人列表筛选：控制台只在本地过滤状态摘要，不触碰聊天内容。 */
 export function filterContacts(contacts, query = '', activeOnly = false) {
     const needle = String(query).trim().toLocaleLowerCase();
@@ -85,6 +121,7 @@ export function overviewCounts(status) {
         attention: { total: retrying + drafts + approved + publishing + failed, retrying, drafts, approved, publishing, failed },
         dshOn: dsh?.on === true,
         features: featureTotals(status?.features),
+        capabilities: capabilityTotals(status?.features),
     };
 }
 

@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
-import { attentionDetail, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
+import { attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
@@ -69,12 +69,15 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
                 { responder: { phase: 'generating' } },
                 {},
             ],
-            features: [{ key: 'dsh', on: true }, { key: 'shape', on: false }],
+            features: [
+                { key: 'dsh', label: '外部顾问（按需咨询）', group: '工具', on: true },
+                { key: 'shape', label: '形状控制（每条多长、几条）', group: '说话', on: false },
+            ],
             externalDrafts: { pending: 2, approved: 3, publishing: 1, failed: 4 },
         });
         assert.deepEqual(result, {
             contacts: 4, busy: 2, attention: { total: 11, retrying: 1, drafts: 2, approved: 3, publishing: 1, failed: 4 },
-            dshOn: true, features: { on: 1, total: 2 },
+            dshOn: true, features: { on: 1, total: 2 }, capabilities: { on: 1, total: 6 },
         });
         assert.equal(attentionDetail(result.attention), '回复需重试 1 · 草稿待确认 2 · 已批准待发布 3 · 发布待核对 1 · 发布失败待处理 4');
         const approvedAndFailed = overviewCounts({ contacts: [], externalDrafts: { pending: 0, approved: 2, publishing: 0, failed: 1 } }).attention;
@@ -102,6 +105,26 @@ describe('客户端的纯函数', () => {
     test('总表里出现了页面不认识的模块：排在最后，不丢', () => {
         const groups = featureGroups([...features, { key: 'x', label: '新东西', group: '新模块', on: true }]);
         assert.equal(groups.at(-1).name, '新模块');
+    });
+
+    test('能力包把技术开关压成六个体验入口，但不制造新的总开关', () => {
+        const source = featureStatuses({
+            shape: true, speechCheck: true,
+            herDays: true, autonomousLife: true, proactive: 'on',
+            media: true, bilibili: 'dryRun', qzone: 'off',
+            crossRecent: true, dsh: { enabled: true },
+        });
+        const bundles = capabilityBundles(source);
+        assert.deepEqual(bundles.map((bundle: { name: string }) => bundle.name), [
+            '对话与关系', '自主生活', '图片与语音', '社交空间', '记忆与边界', '外部能力',
+        ]);
+        assert.deepEqual(capabilityTotals(source), { on: 6, total: 6 });
+        const social = bundles.find((bundle: { id: string }) => bundle.id === 'social');
+        assert.equal(social.active, true);
+        assert.ok(social.highlights.includes('刷 B 站发给他'));
+        assert.ok(!social.highlights.some((label: string) => label.includes('说说')), '关闭的能力不进入摘要');
+        assert.ok(bundles.every((bundle: { highlights: string[] }) => bundle.highlights.length <= 4));
+        assert.deepEqual(capabilityTotals(undefined), { on: 0, total: 6 });
     });
 
     test('标签：开着的写上模式（试运行 / 会发），“已启用”不重复写；提示里带开关说明', () => {
