@@ -1,3 +1,5 @@
+import { resolveRegisteredLink } from './action-links.js';
+
 const $ = id => document.getElementById(id);
 const state = { socket: undefined, transport: 'ws', clientId: '', pairingCode: '', session: '', pending: new Map(), receivedDownlinkNonces: new Set(), recorder: undefined, recordChunks: [], pollTimer: undefined, polling: false, pendingTimer: undefined, connecting: false, helloSent: false, activityAt: 0 };
 const id = prefix => `${prefix}-${crypto.randomUUID().replaceAll('-', '')}`;
@@ -38,6 +40,7 @@ function acceptDownlink(value) {
     if (!/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(key) || ['__proto__', 'constructor', 'prototype'].includes(key)) throw new Error('手机动作参数名不合法');
     if (typeof item === 'string' ? [...item].length > 512 : typeof item !== 'number' || !Number.isFinite(item)) throw new Error('手机动作参数值不合法');
   }
+  if (action.action === 'open_link') resolveRegisteredLink(action.targetId, window.location.href);
   if (state.receivedDownlinkNonces.has(value.nonce)) throw new Error('手机动作下行包重复');
   state.receivedDownlinkNonces.add(value.nonce);
   if (state.receivedDownlinkNonces.size > 256) state.receivedDownlinkNonces.delete(state.receivedDownlinkNonces.values().next().value);
@@ -110,13 +113,14 @@ function startActionPolling() {
 
 async function handleDownlink(value) {
   const action = value.body;
+  const linkTarget = action.action === 'open_link' ? resolveRegisteredLink(action.targetId, window.location.href) : undefined;
   let ok = false;
   let decision = action.decision;
   let error;
   try {
     if (action.decision === 'deny') {
       throw new Error('手机动作已被策略拒绝');
-    } else if (action.decision === 'confirm' && !window.confirm(`她请求手机动作：${action.action}\n${action.reason ?? '确认执行吗？'}`)) {
+    } else if (action.decision === 'confirm' && !window.confirm(`她请求手机动作：${action.action}${linkTarget ? `\n目标：${linkTarget}` : ''}\n${action.reason ?? '确认执行吗？'}`)) {
       decision = 'deny';
       error = '用户拒绝了手机动作';
     } else if (action.action === 'ring') {
@@ -135,9 +139,7 @@ async function handleDownlink(value) {
       window.setTimeout(() => { system(`计时器结束：${seconds} 秒`); if ('Notification' in window && Notification.permission === 'granted') new Notification('林梦瑶', { body: '计时器结束了' }); }, seconds * 1000);
       ok = true;
     } else if (action.action === 'open_link') {
-      const url = String(action.params.url ?? '');
-      if (!/^https:\/\//i.test(url)) throw new Error('只允许打开 HTTPS 链接');
-      window.open(url, '_blank', 'noopener,noreferrer');
+      window.open(linkTarget, '_blank', 'noopener,noreferrer');
       ok = true;
     } else {
       throw new Error('当前 PWA 不执行此类手机动作');

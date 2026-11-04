@@ -162,6 +162,8 @@ export function validateAction(value: unknown): PhoneActionRequest {
         }
     }
     if (action.targetId !== undefined && (typeof action.targetId !== 'string' || !ID.test(action.targetId))) throw new Error('targetId 不合法');
+    if (action.action === 'open_link' && action.targetId === undefined) throw new Error('打开链接必须使用已登记的 targetId');
+    if (action.action === 'open_link' && Object.hasOwn(params, 'url')) throw new Error('打开链接不能直接携带 URL');
     if (action.reason !== undefined && (typeof action.reason !== 'string' || [...action.reason].length > 500)) throw new Error('动作理由不合法');
     if (!['auto', 'confirm', 'deny'].includes(String(action.decision))) throw new Error('动作决策不合法');
     const defaultDecision = PHONE_ACTION_CAPABILITIES.find(capability => capability.action === action.action)!.defaultDecision;

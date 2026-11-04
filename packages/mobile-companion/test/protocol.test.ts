@@ -56,6 +56,8 @@ describe('手机伴侣协议', () => {
         assert.equal(decidePhoneAction({ action: 'notify', params: { text: '晚安' }, decision: 'confirm' }, false), 'deny');
         assert.equal(decidePhoneAction({ action: 'notify', params: { text: '晚安' }, decision: 'confirm' }, true), 'confirm');
         assert.throws(() => validateAction({ action: 'ring', params: {}, decision: 'auto' }), /不能降级/);
+        assert.throws(() => validateAction({ action: 'open_link', params: { url: 'https://example.com/' }, decision: 'confirm' }), /targetId/);
+        assert.throws(() => validateAction({ action: 'open_link', targetId: 'target-example', params: { url: 'https://example.com/' }, decision: 'confirm' }), /不能直接携带 URL/);
         assert.doesNotThrow(() => validateAction({ action: 'notify', params: {}, decision: 'confirm' }));
         assert.throws(() => validateAction({ action: 'shell', params: { command: 'whoami' }, decision: 'auto' }));
         assert.throws(() => validateAction({ action: 'notify', params: { text: { nested: true } }, decision: 'auto' }));

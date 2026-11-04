@@ -1,5 +1,5 @@
-const CACHE = 'qqbot-companion-static-v2';
-const ASSETS = ['./', './index.html', './app.js', './style.css', './manifest.webmanifest'];
+const CACHE = 'qqbot-companion-static-v3';
+const ASSETS = ['./', './index.html', './app.js', './action-links.js', './style.css', './manifest.webmanifest'];
 const STATIC_URLS = new Set(ASSETS.map(asset => new URL(asset, self.location.href).href));
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS))));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))));

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { CompanionAppModel } from '../src/model.ts';
+import { registeredLinkTargets, resolveRegisteredLink } from '../action-links.js';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -45,5 +46,16 @@ test('PWA 下行动作先做本地 nonce 防重放，再交给执行层', async 
     assert.match(source, /手机动作下行包重复/);
     assert.match(source, /敏感手机动作不能自动执行/);
     assert.match(source, /action\.decision === 'deny'/);
+    assert.match(source, /resolveRegisteredLink\(action\.targetId/);
+    assert.doesNotMatch(source, /action\.params\.url/);
     assert.match(source, /handleDownlink\(acceptDownlink\(value\)\)/);
+});
+
+test('PWA 打开链接只解析本地登记的目标，并拒绝普通局域网 HTTP', () => {
+    assert.deepEqual(registeredLinkTargets('https://companion.example/app/index.html'), {
+        'companion-home': 'https://companion.example/app/',
+    });
+    assert.equal(resolveRegisteredLink('companion-home', 'http://127.0.0.1:5140/companion/index.html'), 'http://127.0.0.1:5140/companion/');
+    assert.throws(() => resolveRegisteredLink('not-registered', 'https://companion.example/app/'), /未在手机端登记/);
+    assert.throws(() => resolveRegisteredLink('companion-home', 'http://192.168.1.8/app/'), /未在手机端登记/);
 });
