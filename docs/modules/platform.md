@@ -21,6 +21,7 @@
 - `platform/weekly-report.ts`
 - `platform/consistency.ts`
 - `platform/onebot.ts`
+- `platform/command-receipts.ts`
 - `platform/lock.ts`
 - `platform/log.ts`
 - `platform/heartbeat.ts`

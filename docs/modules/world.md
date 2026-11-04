@@ -8,6 +8,8 @@
 
 - `world/world.ts`
 - `world/cache-freshness.ts`
+- `world/external-error.ts`
+- `world/highlights.ts`
 - `world/weather.ts`
 - `world/air-quality.ts`
 - `world/daylight.ts`

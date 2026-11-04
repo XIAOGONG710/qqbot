@@ -43,7 +43,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'world', name: '她的世界（世界账）',
         scope: '她那边正在发生的事：天气、节日、NPC、障碍、生活事件与选择、可重放的动作队列；世界状态是所有“她那边”的事实来源。',
-        files: ['world/world.ts', 'world/cache-freshness.ts', 'world/weather.ts', 'world/air-quality.ts', 'world/daylight.ts', 'world/calendar.ts', 'world/transport.ts', 'world/threads.ts', 'world/festivals.ts', 'world/npc.ts', 'world/npc-asks.ts', 'world/obstacles.ts', 'world/life-events.ts', 'world/life-selector.ts', 'world/action-queue.ts'],
+        files: ['world/world.ts', 'world/cache-freshness.ts', 'world/external-error.ts', 'world/highlights.ts', 'world/weather.ts', 'world/air-quality.ts', 'world/daylight.ts', 'world/calendar.ts', 'world/transport.ts', 'world/threads.ts', 'world/festivals.ts', 'world/npc.ts', 'world/npc-asks.ts', 'world/obstacles.ts', 'world/life-events.ts', 'world/life-selector.ts', 'world/action-queue.ts'],
         groups: ['她的日子'],
         metrics: '周报「她的日子」里的世界事件；consistency-cli（说的和世界账对不对）',
         adrs: ['0007', '0026', '0045', '0106', '0216', '0217', '0227', '0228', '0229', '0230', '0231', '0232'],
@@ -100,7 +100,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'platform', name: '接入、配置与运维',
         scope: 'Koishi / NapCat 接入、配置、启动与锁、心跳、日志、网络兜底、设备控制（电脑 / 手机，ADR 0148）、功能总表、周报、一致性检查、模块总表、模拟器。',
-        files: ['platform/app.ts', 'platform/main.ts', 'platform/work-bridge.ts', 'platform/instruction-source.ts', 'platform/work-mode.ts', 'platform/soul-rating.ts', 'platform/resident-guard.ts', 'platform/contact.ts', 'platform/config.ts', 'platform/features.ts', 'platform/modules.ts', 'platform/modules-doc.ts', 'platform/weekly-report.ts', 'platform/consistency.ts', 'platform/onebot.ts', 'platform/lock.ts', 'platform/log.ts', 'platform/heartbeat.ts', 'platform/runtime-info.ts', 'platform/dns-fallback.ts', 'platform/qr.ts', 'platform/device-actions.ts', 'platform/device-hub.ts', 'platform/device-phone.ts', 'platform/device-service.ts',
+        files: ['platform/app.ts', 'platform/main.ts', 'platform/work-bridge.ts', 'platform/instruction-source.ts', 'platform/work-mode.ts', 'platform/soul-rating.ts', 'platform/resident-guard.ts', 'platform/contact.ts', 'platform/config.ts', 'platform/features.ts', 'platform/modules.ts', 'platform/modules-doc.ts', 'platform/weekly-report.ts', 'platform/consistency.ts', 'platform/onebot.ts', 'platform/command-receipts.ts', 'platform/lock.ts', 'platform/log.ts', 'platform/heartbeat.ts', 'platform/runtime-info.ts', 'platform/dns-fallback.ts', 'platform/qr.ts', 'platform/device-actions.ts', 'platform/device-hub.ts', 'platform/device-phone.ts', 'platform/device-service.ts',
             'platform/sensitive.ts', 'platform/web.ts', 'platform/consent.ts', 'platform/private-space.ts', 'platform/wechat-id.ts', 'platform/shell-tool.ts', 'platform/wechat-bridge.ts', 'dsh-link.ts', 'dsh-continuity.ts', 'dsh-state-export.ts', 'mobile-companion-dsh.ts', 'ops/', 'sim/', 'vendor/'],
         groups: ['工具'],
         metrics: '控制台「状态」页（ADR 0120）；ops/golive-check-cli；ops/heartbeat-watch-cli；ops/history-migrate-cli（一次性迁移，ADR 0199）',
