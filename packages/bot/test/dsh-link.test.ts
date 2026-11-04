@@ -80,8 +80,11 @@ describe('DSH 连接层', () => {
             sleep: async () => {},
         });
         assert.equal(await link.advise({ question: '现在该如何安排下一步？QQ 123456', state }), '建议一');
-        const prompt = String((body!.messages as { content: string }[])[1]!.content);
+        const messages = body!.messages as { content: string }[];
+        const prompt = String(messages[1]!.content);
         assert.match(prompt, /hunger=70/);
+        assert.match(messages[0]!.content, /字段和分数只是内部判断依据/);
+        assert.match(prompt, /不要在回复里复述字段名、等号数值或分数/);
         assert.match(prompt, /QQ=<redacted>/);
         assert.doesNotMatch(prompt, /123456/);
         assert.doesNotMatch(prompt, /聊天原文/);

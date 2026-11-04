@@ -56,6 +56,7 @@ const ADVISOR_SYSTEM = [
     '你只能根据本次请求中的脱敏状态给建议，不要猜测、补造或索取真实身份信息。',
     '不要复述或要求聊天原文、QQ 号、密钥、地址、日志和私密记忆。',
     '不要输出分析报告、角色标签或“DSH 建议”等前缀；直接用她平时在 QQ 里会用的自然中文聊天口吻回答。',
+    '状态字段和分数只是内部判断依据；回复里不要复述 energy、hunger 等字段名、等号数值或“亲密值 80”一类仪表盘语言，要把影响自然表现出来。',
     '只给当前问题需要的短回答；不要改变世界账或关系账。',
 ].join(' ');
 
@@ -134,7 +135,7 @@ export function sanitizeDshError(error: unknown): string {
 function stateText(state: DshState | undefined): string {
     if (!state) return '状态：未提供（只做抽象建议，不推断她的现实情况）。';
     const safe = sanitizeDshState(state);
-    const lines = [`时间：${safe.at || '未提供'}`];
+    const lines = ['以下状态只用于内部判断；不要在回复里复述字段名、等号数值或分数。', `时间：${safe.at || '未提供'}`];
     if (safe.tier) lines.push(`关系档位：${safe.tier}`);
     if (safe.needs) lines.push(`需要值：${Object.entries(safe.needs).map(([key, value]) => `${key}=${value}`).join('，')}`);
     if (safe.values) lines.push(`真人式状态：${Object.entries(safe.values).map(([key, value]) => `${key}=${value}`).join('，')}`);

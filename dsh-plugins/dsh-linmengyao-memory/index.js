@@ -633,7 +633,7 @@ function readStateBlock(cfg, now = Date.now()) {
       const events = state.recentEvents.filter((item) => typeof item === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(item)).slice(-8)
       if (events.length) lines.push(`最近事件类型：${events.join('、')}`)
     }
-    return `[QQ 侧实时状态（只读；超过 ${Math.round(cfg.stateStaleMs / 60000)} 分钟不采用）]\n${lines.join('\n')}`
+    return `[QQ 侧实时状态（内部只读；超过 ${Math.round(cfg.stateStaleMs / 60000)} 分钟不采用；只自然表现影响，不要在回复里复述字段名、等号数值或分数）]\n${lines.join('\n')}`
   } catch { return '' }
 }
 

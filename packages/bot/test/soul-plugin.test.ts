@@ -585,6 +585,7 @@ describe('同一个她：DSH 只读取新鲜且结构安全的 QQ 实时状态',
         stateFile(h, now, new Date(now - 60_000).toISOString());
         const valid = context(h);
         assert.match(valid, /QQ 侧实时状态/);
+        assert.match(valid, /只自然表现影响，不要在回复里复述字段名、等号数值或分数/);
         assert.match(valid, /energy=42，hunger=67/);
 
         stateFile(h, now, new Date(now - 60_000).toISOString(), {
