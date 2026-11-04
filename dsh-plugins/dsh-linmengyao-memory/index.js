@@ -666,6 +666,9 @@ export function apply(ctx, config = {}) {
       const disposers = []
 
       disposers.push(agent.ctx.on('agent/pre-step', async (payload, next) => {
+        // 每个模型步骤都重新构造上下文。召回超时、坏文件或空输入时也不能沿用上一轮，
+        // 否则旧问题的 QQ 最近对话 / 记忆会悄悄串进新一轮。
+        cache.text = ''
         try {
           let p = cache.preset
           if (!p) {

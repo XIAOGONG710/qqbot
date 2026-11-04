@@ -248,6 +248,26 @@ describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，�
         } finally { fake.restore(); }
     });
 
+    test('新一轮召回失败时清空上一轮上下文，不把旧问题的记忆串过来', async () => {
+        const marker = '只属于上一轮的问题ZQS';
+        const fake = fakeHindsight({
+            banks: ALL_BANKS,
+            recall: { [OWNER]: [{ id: 'old', text: marker, document_id: 'ep-1', fact_type: 'world', date: new Date().toISOString() }] },
+        });
+        const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
+        try {
+            await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '上一轮问题' }] }, async () => undefined);
+            assert.ok(h.contexts.map(entry => entry.text()).join('\n').includes(marker), '第一轮确实注入了召回内容');
+        } finally { fake.restore(); }
+
+        const original = globalThis.fetch;
+        globalThis.fetch = (async () => { throw new Error('模拟召回服务暂时不可用'); }) as typeof fetch;
+        try {
+            await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '全新的问题' }] }, async () => undefined);
+            assert.ok(!h.contexts.map(entry => entry.text()).join('\n').includes(marker), '失败后不能继续复用上一轮内容');
+        } finally { globalThis.fetch = original; }
+    });
+
     test('公共库只取她自己的日记 / 周记 / 阶段总结；别人的聊天片段和没有 document_id 的整合观察不取', async () => {
         const result = (id: string, text: string, document_id?: string) => ({ id, text, ...(document_id ? { document_id } : {}), fact_type: 'world', date: new Date().toISOString() });
         const fake = fakeHindsight({
