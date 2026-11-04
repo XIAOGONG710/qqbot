@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { MAX_MEDIA_BYTES } from './protocol.ts';
+import { MAX_CLOCK_SKEW_MS, MAX_MEDIA_BYTES } from './protocol.ts';
 
 export interface CompanionMediaRecord {
     mediaId: string;
@@ -108,7 +108,8 @@ export class MemoryCompanionMediaStore implements CompanionMediaStore {
     purge(now = this.now()): number {
         let removed = 0;
         for (const [mediaId, record] of this.records) {
-            if (record.expiresAt <= now) { this.remove(mediaId); removed += 1; }
+            const age = now - record.createdAt;
+            if (record.expiresAt <= now || age < -MAX_CLOCK_SKEW_MS) { this.remove(mediaId); removed += 1; }
         }
         return removed;
     }

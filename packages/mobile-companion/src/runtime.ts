@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { CompanionGateway } from './gateway.ts';
-import { validateAction, validateActionResult, validateEnvelope, validateMessage, type ActionResult, type CompanionEnvelope, type CompanionError, type CompanionMessage, type PhoneActionRequest } from './protocol.ts';
+import { MAX_CLOCK_SKEW_MS, validateAction, validateActionResult, validateEnvelope, validateMessage, type ActionResult, type CompanionEnvelope, type CompanionError, type CompanionMessage, type PhoneActionRequest } from './protocol.ts';
 import { actionNeedsConfirmation } from './action-policy.ts';
 
 export const MAX_QUEUED_PER_CLIENT = 32;
@@ -100,17 +100,18 @@ export class CompanionRuntime {
         if (queue.length >= MAX_DOWNLINK_ACTIONS) throw new Error('手机动作待发送队列已满');
         if (pending.size >= MAX_DOWNLINK_ACTIONS) throw new Error('手机动作等待回执过多');
         if (pending.has(requestId)) throw new Error('动作 requestId 已存在');
+        const issuedAt = this.now();
         const envelope: CompanionEnvelope<PhoneActionRequest> = {
             v: 1,
             requestId,
             kind: 'action.request',
-            sentAt: new Date(this.now()).toISOString(),
+            sentAt: new Date(issuedAt).toISOString(),
             nonce: `push-${randomBytes(12).toString('hex')}`,
             body,
         };
         queue.push(envelope);
         this.downlinks.set(clientId, queue);
-        pending.set(requestId, { issuedAt: this.now(), action: body.action });
+        pending.set(requestId, { issuedAt, action: body.action });
         this.pendingDownlinkResults.set(clientId, pending);
         // 监听器只是实时推送优化；某个传输已经断开或宿主观察器抛错时，
         // 不能让动作创建对外失败，否则调用方可能重试并产生重复动作。
@@ -138,7 +139,7 @@ export class CompanionRuntime {
         const now = this.now();
         const pending = this.pendingDownlinkResults.get(clientId) ?? new Map<string, PendingDownlinkResult>();
         for (const [requestId, item] of pending) {
-            if (now - item.issuedAt >= DOWNLINK_ACTION_TTL_MS) pending.delete(requestId);
+            if (downlinkExpired(item, now)) pending.delete(requestId);
         }
         if (pending.size) this.pendingDownlinkResults.set(clientId, pending);
         else this.pendingDownlinkResults.delete(clientId);
@@ -207,7 +208,13 @@ export class CompanionRuntime {
                 const result = validateActionResult(envelope.body);
                 const pending = this.pendingDownlinkResults.get(clientId);
                 const issued = pending?.get(result.requestId);
-                if (issued === undefined || this.now() - issued.issuedAt >= DOWNLINK_ACTION_TTL_MS) throw new Error('动作回执没有对应的宿主下发请求');
+                if (issued === undefined || downlinkExpired(issued, this.now())) {
+                    if (issued) {
+                        pending!.delete(result.requestId);
+                        if (pending!.size === 0) this.pendingDownlinkResults.delete(clientId);
+                    }
+                    throw new Error('动作回执没有对应的宿主下发请求');
+                }
                 if (result.ok && result.decision === 'deny') throw new Error('动作回执不能在拒绝执行时报告成功');
                 const expected = actionNeedsConfirmation(issued.action) ? 'confirm' : 'auto';
                 if (result.decision !== 'deny' && result.decision !== expected) throw new Error('动作回执确认级别与下发策略不一致');
@@ -222,6 +229,12 @@ export class CompanionRuntime {
             return { accepted: true, response: responseEnvelope('error', { code: 'runtime_error', message: safeError(error) }, requestId, this.now()) };
         }
     }
+}
+
+function downlinkExpired(item: PendingDownlinkResult, now: number): boolean {
+    const age = now - item.issuedAt;
+    // 明显时钟回拨时丢弃旧回执凭据，避免动作长期占用容量或被延迟确认。
+    return age >= DOWNLINK_ACTION_TTL_MS || age < -MAX_CLOCK_SKEW_MS;
 }
 
 function responseEnvelope<T extends CompanionEnvelope['body']>(kind: CompanionEnvelope['kind'], body: T, requestId: string, now: number): CompanionEnvelope<T> {

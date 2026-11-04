@@ -51,10 +51,8 @@ export class CompanionGateway {
         if (this.sessionId !== sessionId) return undefined;
         const now = this.now();
         // HTTP 媒体上传不会经过 accept()，所以查询会话归属时也必须执行同一份空闲 TTL 检查。
-        if (this.lastSeenAt && now - this.lastSeenAt >= this.sessionIdleTtlMs) {
-            this.sessionId = undefined;
-            this.lastSeenAt = 0;
-            this.nonces.clear();
+        if (this.sessionExpired(now)) {
+            this.expireSession();
             return undefined;
         }
         // HTTPS 的动作轮询 / 媒体上传没有 envelope 可供 accept() 更新活跃时间；
@@ -99,8 +97,8 @@ export class CompanionGateway {
                 return { ok: true, clientId: hello.clientId, kind: envelope.kind };
             }
             if (!this.clientId) throw new Error('设备尚未配对');
-            if (this.lastSeenAt && now - this.lastSeenAt >= this.sessionIdleTtlMs) {
-                this.expireIdleSession(now);
+            if (this.sessionExpired(now)) {
+                this.expireSession();
                 throw new Error('连接会话已过期，请重新配对');
             }
             if (this.sessionId !== sessionId) throw new Error('连接尚未完成配对');
@@ -114,11 +112,20 @@ export class CompanionGateway {
     }
 
     private expireIdleSession(now: number): void {
-        if (this.sessionId && this.lastSeenAt && now - this.lastSeenAt >= this.sessionIdleTtlMs) {
-            this.sessionId = undefined;
-            this.lastSeenAt = 0;
-            this.nonces.clear();
-        }
+        if (this.sessionExpired(now)) this.expireSession();
+    }
+
+    private sessionExpired(now: number): boolean {
+        if (!this.sessionId || !this.lastSeenAt) return false;
+        const age = now - this.lastSeenAt;
+        // 小幅校时沿用协议允许的偏差；明显回拨则失败关闭，避免会话寿命被无限延长。
+        return age >= this.sessionIdleTtlMs || age < -MAX_CLOCK_SKEW_MS;
+    }
+
+    private expireSession(): void {
+        this.sessionId = undefined;
+        this.lastSeenAt = 0;
+        this.nonces.clear();
     }
 
     private assertNonceAvailable(nonce: string, now: number): void {

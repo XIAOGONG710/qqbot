@@ -5,6 +5,7 @@ import { CompanionGateway, helloEnvelope } from '../src/gateway.ts';
 import { createCompanionMediaHandler } from '../src/media-http.ts';
 import { MemoryCompanionMediaStore } from '../src/media.ts';
 import { MemoryPairingStore } from '../src/pairing.ts';
+import { MAX_CLOCK_SKEW_MS } from '../src/protocol.ts';
 import { CompanionRuntime } from '../src/runtime.ts';
 
 test('内存媒体仓库按 TTL、设备归属和大小上限工作', () => {
@@ -44,6 +45,14 @@ test('每设备上限只淘汰该设备最旧媒体，不受其他设备的全�
     assert.equal(store.get('android-b', other.mediaId, 3)?.bytes, 1);
     assert.equal(store.get('android-a', first.mediaId, 3), undefined);
     assert.equal(store.get('android-a', replacement.mediaId, 3)?.data.toString(), 'a2');
+});
+
+test('系统时钟明显回拨后清理短期媒体', () => {
+    let now = 1_000_000;
+    const store = new MemoryCompanionMediaStore({ now: () => now, id: () => 'fedcba9876543210' });
+    const record = store.put({ clientId: 'android-clock', mime: 'image/png', data: Buffer.from('x'), bytes: 1 });
+    now -= MAX_CLOCK_SKEW_MS + 1;
+    assert.equal(store.get('android-clock', record.mediaId), undefined);
 });
 
 test('媒体 HTTP 上传必须使用已配对 session，并返回短期 mediaId', async () => {

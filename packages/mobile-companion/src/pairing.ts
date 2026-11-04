@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { PairingVerifier } from './gateway.ts';
+import { MAX_CLOCK_SKEW_MS } from './protocol.ts';
 
 const MAX_PENDING_PAIRINGS = 64;
 
@@ -11,7 +12,7 @@ export interface PairingTicket {
 
 /** 进程内一次性配对码存储：不落盘，过期或成功消费后立即删除。 */
 export class MemoryPairingStore implements PairingVerifier {
-    private readonly entries = new Map<string, { pairingCode: string; expiresAt: number }>();
+    private readonly entries = new Map<string, { pairingCode: string; issuedAt: number; expiresAt: number }>();
     private readonly ttlMs: number;
 
     constructor(ttlMs = 5 * 60_000) {
@@ -31,14 +32,14 @@ export class MemoryPairingStore implements PairingVerifier {
         }
         const pairingCode = formatCode(randomBytes(6).toString('hex').toUpperCase());
         const expiresAt = now + this.ttlMs;
-        this.entries.set(clientId, { pairingCode, expiresAt });
+        this.entries.set(clientId, { pairingCode, issuedAt: now, expiresAt });
         return { clientId, pairingCode, expiresAt };
     }
 
     consume(clientId: string, pairingCode: string, now: number): boolean {
         const entry = this.entries.get(clientId);
-        if (!entry || now >= entry.expiresAt || entry.pairingCode !== pairingCode) {
-            if (entry && now >= entry.expiresAt) this.entries.delete(clientId);
+        if (!entry || entryExpired(entry, now) || entry.pairingCode !== pairingCode) {
+            if (entry && entryExpired(entry, now)) this.entries.delete(clientId);
             return false;
         }
         this.entries.delete(clientId);
@@ -51,9 +52,13 @@ export class MemoryPairingStore implements PairingVerifier {
 
     private prune(now: number): void {
         for (const [clientId, entry] of this.entries) {
-            if (now >= entry.expiresAt) this.entries.delete(clientId);
+            if (entryExpired(entry, now)) this.entries.delete(clientId);
         }
     }
+}
+
+function entryExpired(entry: { issuedAt: number; expiresAt: number }, now: number): boolean {
+    return now >= entry.expiresAt || now - entry.issuedAt < -MAX_CLOCK_SKEW_MS;
 }
 
 function formatCode(value: string): string {

@@ -9,7 +9,7 @@ import { attachCompanionWebSocket } from '../src/websocket.ts';
 import { createServer, request as httpRequest } from 'node:http';
 import { CompanionClient } from '../src/client.ts';
 import { createDshCompanionHandlers } from '../src/dsh-adapter.ts';
-import { validateAction, validateActionResult, validateEnvelope, validateHello, validateMessage, type ActionResult, type CompanionMessage } from '../src/protocol.ts';
+import { MAX_CLOCK_SKEW_MS, validateAction, validateActionResult, validateEnvelope, validateHello, validateMessage, type ActionResult, type CompanionMessage } from '../src/protocol.ts';
 
 describe('手机伴侣协议', () => {
     test('接受文字、语音、图片和服务端表情 id', () => {
@@ -195,6 +195,18 @@ describe('手机伴侣协议', () => {
         assert.equal(gateway.clientForSession('session-poll'), 'android-poll');
         now += 60_001;
         assert.equal(gateway.clientForSession('session-poll'), undefined);
+    });
+
+    test('系统时钟明显回拨后会话和配对码失败关闭', () => {
+        let now = 1_000_000;
+        const pairing = new MemoryPairingStore(60_000);
+        const ticket = pairing.issue('android-clock', now);
+        const gateway = new CompanionGateway(pairing, () => now, { sessionIdleTtlMs: 60_000 });
+        assert.equal(gateway.accept(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text'] }, 'req-clock-hello', 'nonce-clock-hello', new Date(now).toISOString()), 'session-clock').ok, true);
+        now -= MAX_CLOCK_SKEW_MS + 1;
+        assert.equal(gateway.clientForSession('session-clock'), undefined);
+        const replacement = pairing.issue('android-clock-next', 1_000_000);
+        assert.equal(pairing.consume(replacement.clientId, replacement.pairingCode, now), false);
     });
 
     test('HTTP 适配器限制路径、方法、类型和 body 大小', async () => {
@@ -618,6 +630,22 @@ describe('手机伴侣协议', () => {
         assert.throws(() => runtime.requestPhoneAction(ticket.clientId, request, 'push-pending-overflow'), /等待回执过多/);
         now += DOWNLINK_ACTION_TTL_MS;
         assert.doesNotThrow(() => runtime.requestPhoneAction(ticket.clientId, request, 'push-pending-after-expiry'));
+    });
+
+    test('系统时钟明显回拨后丢弃待发送动作和回执凭据', async () => {
+        let now = 1_000_000;
+        const pairing = new MemoryPairingStore(60_000);
+        const ticket = pairing.issue('android-downlink-clock', now);
+        const runtime = new CompanionRuntime(new CompanionGateway(pairing, () => now), {
+            onMessage: async message => message,
+            onAction: async (_request, _clientId, requestId) => ({ requestId, ok: false, decision: 'deny' }),
+            onActionResult: async () => undefined,
+        }, () => now);
+        await runtime.handle(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text'] }, 'req-downlink-clock-hello', 'nonce-downlink-clock-hello', new Date(now).toISOString()));
+        runtime.requestPhoneAction(ticket.clientId, { action: 'notify', params: { text: '不应延迟执行' }, decision: 'auto' }, 'push-downlink-clock');
+        now -= MAX_CLOCK_SKEW_MS + 1;
+        assert.deepEqual(runtime.takeDownlinks(ticket.clientId), []);
+        assert.doesNotThrow(() => runtime.requestPhoneAction(ticket.clientId, { action: 'notify', params: { text: '容量已释放' }, decision: 'auto' }, 'push-downlink-clock-next'));
     });
 
     test('下行监听器抛错不影响动作入队，避免调用方误重试', async () => {
