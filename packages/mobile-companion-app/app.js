@@ -2,7 +2,7 @@ import { resolveRegisteredLink } from './action-links.js';
 import { rememberDownlinkNonce } from './replay-window.js';
 
 const $ = id => document.getElementById(id);
-const state = { socket: undefined, transport: 'ws', clientId: '', pairingCode: '', session: '', pending: new Map(), receivedDownlinkNonces: new Map(), recorder: undefined, recordChunks: [], pollTimer: undefined, polling: false, pendingTimer: undefined, connecting: false, helloSent: false, activityAt: 0 };
+const state = { socket: undefined, transport: 'ws', clientId: '', pairingCode: '', session: '', connectionGeneration: 0, pending: new Map(), receivedDownlinkNonces: new Map(), recorder: undefined, recordChunks: [], pollTimer: undefined, polling: false, pendingTimer: undefined, connecting: false, helloSent: false, activityAt: 0 };
 const id = prefix => `${prefix}-${crypto.randomUUID().replaceAll('-', '')}`;
 const nonce = prefix => `${prefix}-${crypto.randomUUID().replaceAll('-', '')}`;
 const now = () => new Date().toISOString();
@@ -24,6 +24,9 @@ const expirePending = () => { const cutoff = Date.now() - 45_000; for (const [re
 const startPendingWatch = () => { if (!state.pendingTimer) state.pendingTimer = window.setInterval(expirePending, 5000); };
 const actionDefaults = Object.freeze({ notify: 'auto', timer: 'auto', ring: 'confirm', open_link: 'confirm', media_control: 'confirm', volume: 'confirm' });
 const safeId = /^[A-Za-z0-9][A-Za-z0-9._:-]{5,127}$/;
+const isCurrentConnection = (generation, socket, session) => state.connectionGeneration === generation
+  && (socket === undefined || state.socket === socket)
+  && (session === undefined || state.session === session);
 
 function acceptDownlink(value) {
   if (!value || typeof value !== 'object' || value.v !== 1 || value.kind !== 'action.request' || !safeId.test(value.requestId) || !safeId.test(value.nonce) || !value.body || typeof value.body !== 'object') throw new Error('手机动作下行包不合法');
@@ -46,12 +49,12 @@ function acceptDownlink(value) {
   return value;
 }
 
-function handleIncoming(value) {
-  if (!value) return;
+function handleIncoming(value, generation = state.connectionGeneration) {
+  if (!value || !isCurrentConnection(generation)) return;
   touch();
   if (value.error) { state.pending.delete(pendingId(value)); return system(value.error); }
   if (value.kind === 'action.request') {
-    try { void handleDownlink(acceptDownlink(value)); }
+    try { void handleDownlink(acceptDownlink(value), generation); }
     catch (error) { system(error instanceof Error ? error.message : String(error)); }
     return;
   }
@@ -67,7 +70,8 @@ function handleIncoming(value) {
   if (value.kind === undefined) system('配对成功');
 }
 
-async function sendActionResult(requestId, ok, decision, error) {
+async function sendActionResult(requestId, ok, decision, error, generation) {
+  if (!isCurrentConnection(generation)) return;
   const value = envelope('action.result', { requestId, ok, decision, ...(error ? { error } : {}) });
   if (state.transport === 'ws') {
     if (!state.socket || state.socket.readyState !== WebSocket.OPEN) throw new Error('动作回执发送失败：连接已断开');
@@ -75,8 +79,10 @@ async function sendActionResult(requestId, ok, decision, error) {
     return;
   }
   const headers = { 'content-type': 'application/json' };
-  if (state.session) headers['x-companion-session'] = state.session;
+  const session = state.session;
+  if (session) headers['x-companion-session'] = session;
   const response = await fetch($('endpoint').value.trim(), { method: 'POST', headers, body: JSON.stringify(value) });
+  if (!isCurrentConnection(generation, undefined, session)) return;
   state.session = response.headers.get('x-companion-session') ?? state.session;
   if (!response.ok) throw new Error(`动作回执失败（HTTP ${response.status}）`);
 }
@@ -88,16 +94,29 @@ function stopActionPolling() {
 
 async function pollActions() {
   if (state.transport !== 'http' || !state.session || state.polling) return;
+  const generation = state.connectionGeneration;
+  const session = state.session;
   state.polling = true;
   try {
     const endpoint = $('endpoint').value.trim().replace(/\/$/, '') + '/actions';
-    const response = await fetch(endpoint, { headers: { 'x-companion-session': state.session, accept: 'application/json' } });
-    if (response.status === 401) { stopActionPolling(); system('HTTPS 会话已过期，请重新配对'); return; }
+    const response = await fetch(endpoint, { headers: { 'x-companion-session': session, accept: 'application/json' } });
+    if (!isCurrentConnection(generation, undefined, session)) return;
+    if (response.status === 401) {
+      state.connectionGeneration++;
+      state.session = '';
+      state.pending.clear();
+      state.receivedDownlinkNonces.clear();
+      stopActionPolling();
+      setState('会话已过期');
+      system('HTTPS 会话已过期，请重新配对');
+      return;
+    }
     if (!response.ok) throw new Error(`动作轮询失败（HTTP ${response.status}）`);
     const result = await response.json();
-    for (const action of Array.isArray(result.actions) ? result.actions : []) handleIncoming(action);
+    if (!isCurrentConnection(generation, undefined, session)) return;
+    for (const action of Array.isArray(result.actions) ? result.actions : []) handleIncoming(action, generation);
   } catch (error) {
-    system(error instanceof Error ? error.message : String(error));
+    if (isCurrentConnection(generation, undefined, session)) system(error instanceof Error ? error.message : String(error));
   } finally {
     state.polling = false;
   }
@@ -110,7 +129,8 @@ function startActionPolling() {
   void pollActions();
 }
 
-async function handleDownlink(value) {
+async function handleDownlink(value, generation) {
+  if (!isCurrentConnection(generation)) return;
   const action = value.body;
   const linkTarget = action.action === 'open_link' ? resolveRegisteredLink(action.targetId, window.location.href) : undefined;
   let ok = false;
@@ -129,6 +149,7 @@ async function handleDownlink(value) {
     } else if (action.action === 'notify') {
       if (!('Notification' in window)) throw new Error('当前浏览器不支持通知');
       if (Notification.permission !== 'granted') await Notification.requestPermission();
+      if (!isCurrentConnection(generation)) return;
       if (Notification.permission !== 'granted') throw new Error('通知权限未授予');
       new Notification(String(action.params.title ?? '林梦瑶'), { body: String(action.params.text ?? '她有一条新消息') });
       ok = true;
@@ -147,12 +168,14 @@ async function handleDownlink(value) {
     error = cause instanceof Error ? cause.message : String(cause);
     decision = 'deny';
   }
+  if (!isCurrentConnection(generation)) return;
   system(ok ? `已执行手机动作：${action.action}` : `手机动作未执行：${error ?? '被拒绝'}`);
-  try { await sendActionResult(value.requestId, ok, decision, error); }
-  catch (cause) { system(cause instanceof Error ? cause.message : String(cause)); }
+  try { await sendActionResult(value.requestId, ok, decision, error, generation); }
+  catch (cause) { if (isCurrentConnection(generation)) system(cause instanceof Error ? cause.message : String(cause)); }
 }
 
-async function send(value) {
+async function send(value, generation = state.connectionGeneration) {
+  if (!isCurrentConnection(generation)) return;
   if (value.kind !== 'hello') { state.pending.set(value.requestId, { value, sentAt: Date.now() }); startPendingWatch(); }
   touch();
   if (state.transport === 'ws') {
@@ -169,17 +192,21 @@ async function send(value) {
     state.pending.delete(value.requestId);
     throw error;
   }
+  if (!isCurrentConnection(generation)) return;
   state.session = response.headers.get('x-companion-session') ?? state.session;
   const text = await response.text();
   let result;
   if (text) { try { result = JSON.parse(text); } catch { state.pending.delete(value.requestId); throw new Error('服务端返回了无法解析的内容'); } }
   if (!response.ok) { state.pending.delete(value.requestId); throw new Error(result?.error ?? `HTTP ${response.status}`); }
-  if (result) handleIncoming(result);
+  if (result) handleIncoming(result, generation);
 }
 
 async function connect() {
   if (state.connecting) return;
-  if (state.socket) state.socket.close();
+  const generation = ++state.connectionGeneration;
+  const previousSocket = state.socket;
+  state.socket = undefined;
+  if (previousSocket) previousSocket.close();
   stopActionPolling();
   state.transport = $('transport').value;
   state.clientId = $('clientId').value.trim();
@@ -193,19 +220,19 @@ async function connect() {
   setBusy(true);
   setState('连接中…');
   if (state.transport === 'http') {
-    try { await send(hello); setState('已连接', true); system('HTTPS 配对成功'); startActionPolling(); }
-    catch (error) { setState('连接失败'); system(error instanceof Error ? error.message : String(error)); }
-    finally { setBusy(false); }
+    try { await send(hello, generation); if (isCurrentConnection(generation)) { setState('已连接', true); system('HTTPS 配对成功'); startActionPolling(); } }
+    catch (error) { if (isCurrentConnection(generation)) { setState('连接失败'); system(error instanceof Error ? error.message : String(error)); } }
+    finally { if (isCurrentConnection(generation)) setBusy(false); }
     return;
   }
   let socket;
   try { socket = new WebSocket($('endpoint').value.trim()); }
   catch (error) { setBusy(false); setState('地址无效'); return system(error instanceof Error ? error.message : String(error)); }
   state.socket = socket;
-  socket.addEventListener('open', () => { state.helloSent = true; void send(hello).then(() => { setState('已连接', true); system('已发送配对请求，等待她回复…'); }).catch(error => system(error instanceof Error ? error.message : String(error))).finally(() => setBusy(false)); });
-  socket.addEventListener('message', event => { let value; try { value = JSON.parse(event.data); } catch { return system('服务端返回了无法解析的内容'); } handleIncoming(value); });
-  socket.addEventListener('close', () => { if (state.socket === socket) { state.socket = undefined; state.pending.clear(); state.receivedDownlinkNonces.clear(); stopActionPolling(); setBusy(false); setState('已断开'); system(state.helloSent ? '连接已断开：一次性配对码不能复用，请在 QQ 重新获取配对码后再连接' : '连接尚未完成，可稍后重试'); } });
-  socket.addEventListener('error', () => system('连接失败，请确认 Koishi server、路径和 HTTPS/WSS 设置'));
+  socket.addEventListener('open', () => { if (!isCurrentConnection(generation, socket)) return; state.helloSent = true; void send(hello, generation).then(() => { if (isCurrentConnection(generation, socket)) { setState('已连接', true); system('已发送配对请求，等待她回复…'); } }).catch(error => { if (isCurrentConnection(generation, socket)) system(error instanceof Error ? error.message : String(error)); }).finally(() => { if (isCurrentConnection(generation, socket)) setBusy(false); }); });
+  socket.addEventListener('message', event => { if (!isCurrentConnection(generation, socket)) return; let value; try { value = JSON.parse(event.data); } catch { return system('服务端返回了无法解析的内容'); } handleIncoming(value, generation); });
+  socket.addEventListener('close', () => { if (isCurrentConnection(generation, socket)) { state.connectionGeneration++; state.socket = undefined; state.pending.clear(); state.receivedDownlinkNonces.clear(); stopActionPolling(); setBusy(false); setState('已断开'); system(state.helloSent ? '连接已断开：一次性配对码不能复用，请在 QQ 重新获取配对码后再连接' : '连接尚未完成，可稍后重试'); } });
+  socket.addEventListener('error', () => { if (isCurrentConnection(generation, socket)) system('连接失败，请确认 Koishi server、路径和 HTTPS/WSS 设置'); });
 }
 
 async function uploadFile(file) {
