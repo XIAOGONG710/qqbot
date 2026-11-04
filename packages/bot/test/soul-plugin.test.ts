@@ -6,6 +6,7 @@ import { afterEach, before, describe, test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { insightsLine, writeInsightsExport, type Insight } from '../src/life/diary-insights.ts';
 import { writeFeelingsExport } from '../src/emotion/feeling-export.ts';
+import { clarity as qqMemoryClarity } from '../src/memory/fading.ts';
 
 // 林梦瑶的 DSH 记忆桥（dsh-plugins/dsh-linmengyao-memory）：灵魂模块 1245 行里原来一条测试都没有。
 // 这里用一个假的 Cordis 上下文驱动真插件的工具，全部落在临时目录里，不碰她真正的灵魂目录。
@@ -18,6 +19,8 @@ interface Plugin {
     numberedLedger: (text: string, shown?: number) => string;
     soulTripwire: (text: string) => string;
     trimSoul: (file: string, maxChars: number) => number;
+    desktopMemoryClarity: (item: Record<string, unknown>, query?: string, now?: Date) => string;
+    shouldAutoSaveTurn: (user: string, assistant: string) => boolean;
 }
 let plugin: Plugin;
 before(async () => { plugin = await import(pathToFileURL(join(root, 'dsh-plugins/dsh-linmengyao-memory/index.js')).href) as Plugin; });
@@ -214,7 +217,7 @@ describe('不再写死某个用户的路径', () => {
 
 // ───────── 同一个她（ADR 0176）：DSH 桌面上的她读写哪些 bank ─────────
 
-interface Call { method: string; url: string; body?: { items: Array<{ document_id: string; content: string }> } }
+interface Call { method: string; url: string; body?: Record<string, any> }
 function fakeHindsight(options: { banks: string[]; items?: Array<Record<string, unknown>>; recall?: Record<string, Array<Record<string, unknown>>> }) {
     const calls: Call[] = [];
     const original = globalThis.fetch;
@@ -244,12 +247,43 @@ function ownerFile(contents: unknown): string {
 }
 
 describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，且读不到别人的私聊（ADR 0176）', () => {
+    test('DSH 与 QQ 对同一条记忆给出相同清晰度，明确记住和重复事实不会被普通遗忘', () => {
+        const now = new Date(2026, 10, 4, 12);
+        const at = (days: number) => new Date(2026, 10, 4 - days, 12).toISOString();
+        const cases = [
+            { text: '三天前的事', mentionedAt: at(3), entities: [] },
+            { text: '二十天前的事', mentionedAt: at(20), entities: [] },
+            { text: '四十五天前在杭州拍照', mentionedAt: at(45), entities: ['杭州'] },
+            { text: '四十五天前重复提过', mentionedAt: at(45), sourceFactIds: ['a', 'b'], entities: [] },
+            { text: '【重要】一百天前明确要记住', mentionedAt: at(100), entities: [] },
+        ];
+        for (const item of cases) {
+            const query = item.entities?.[0] ? `又说到${item.entities[0]}` : '';
+            const desktop = plugin.desktopMemoryClarity(item, query, now);
+            const qq = qqMemoryClarity({
+                id: item.text, text: item.text, mentioned_at: item.mentionedAt,
+                entities: item.entities, source_fact_ids: item.sourceFactIds,
+            }, { now, heard: query, ignore: ['林梦瑶', '宝宝', '鸽鸽'] });
+            assert.equal(desktop, qq, item.text);
+        }
+        assert.equal(plugin.desktopMemoryClarity({ text: '【长期】日记里的当日状态', documentId: 'diary:2026-08-01' }, '', now), 'forgotten', '日记里的长期标记不应永久化');
+    });
+
+    test('只有双方都是纯寒暄时跳过长期写入，短但有事实的对话仍保留', () => {
+        assert.equal(plugin.shouldAutoSaveTurn('嗯', '好呀'), false);
+        assert.equal(plugin.shouldAutoSaveTurn('晚安', '晚安哦'), false);
+        assert.equal(plugin.shouldAutoSaveTurn('我病了', '怎么了'), true);
+        assert.equal(plugin.shouldAutoSaveTurn('好', '我把明天三点的课记下了'), true);
+    });
+
     test('有 owner-bank.json：只召回他的 bank、公共库、老的 linmengyao，别人的 bank 一个都不碰', async () => {
         const fake = fakeHindsight({ banks: ALL_BANKS });
         try {
             const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
             await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '今天吃什么' }] }, async () => undefined);
             assert.deepEqual(recalledBanks(fake.calls), ['linmengyao', OWNER, 'linmengyao-common'].sort());
+            const recall = fake.calls.find(call => call.method === 'POST' && call.url.endsWith('/memories/recall'))!;
+            assert.deepEqual(recall.body!.include, { entities: { max_tokens: 128 }, source_facts: { max_tokens: 400 } });
         } finally { fake.restore(); }
     });
 
@@ -381,6 +415,18 @@ describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，�
         }
     });
 
+    test('纯寒暄仍进跨端最近对话，但不污染 Hindsight 长期记忆', async () => {
+        const fake = fakeHindsight({ banks: ALL_BANKS });
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
+            await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '嗯' }] }, async () => undefined);
+            await h.handlers['agent/assistant-stream']!({ frame: { type: 'start' } });
+            await h.handlers['agent/assistant-stream']!({ frame: { type: 'chunk', chunk: { type: 'text-delta', text: '好呀' } } });
+            await h.handlers['agent/turn-stopping']!();
+            assert.equal(fake.calls.filter(call => call.method === 'POST' && /\/memories$/.test(call.url)).length, 0);
+        } finally { fake.restore(); }
+    });
+
     test('同一轮工具调用后的 pre-step 不把工具结果误记成他的原话', async () => {
         await withChannel(undefined, async () => {
             const c = crossRoot();
@@ -421,6 +467,8 @@ describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，�
             assert.deepEqual(patched, ['d1'], 'QQ 的片段 q1 不动，无关的 d2 不动');
             const saved = fake.calls.find(call => call.method === 'POST' && /\/memories$/.test(call.url))!;
             assert.ok(saved.url.includes(`/banks/${OWNER}/memories`));
+            assert.match(saved.body!.items[0]!.content, /^【重要】/);
+            assert.deepEqual(saved.body!.items[0]!.tags, ['dsh', 'important']);
         } finally { fake.restore(); }
     });
 });

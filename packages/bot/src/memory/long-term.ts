@@ -763,7 +763,7 @@ export class LongTermMemory {
         const text = content.trim().slice(0, 2000);
         if (!text || !this.#options.common) return;
         await this.#options.api.retain(this.commonBankId(), {
-            content: `林梦瑶自己记下的${kind}：${text}`,
+            content: `${kind === '记住' ? IMPORTANT : ''}林梦瑶自己记下的${kind}：${text}`,
             context: kind,
             document_id: `${kind === '日记' ? 'diary-self' : 'self'}:${this.#hash(contact)}:${Date.now()}`,
             timestamp: new Date().toISOString(),

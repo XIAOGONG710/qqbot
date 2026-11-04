@@ -43,7 +43,7 @@
 
 - 记忆库会因底账持续增长，需要后续加「重要度/变淡」区分自动记录与她标记的记录；
 - `<<查>>` 增加一次生成调用，频率由她决定；
-- DSH 插件每轮写库会产生不少 document，需观察噪声；后续可加夜间 consolidate；
+- DSH 插件会跳过双方都是纯寒暄/确认的回合，实质对话仍自动写入；Hindsight 已在 bank 配置里按 observations mission 做后台整合，不再增加一套重复的夜间调度；
 - 旧库 `linmengyao-dsh` 已删除，迁移脚本不在仓库里（一次性操作）。
 
 ## 涉及文件
@@ -54,11 +54,12 @@
 - `packages/bot/src/platform/work-bridge.ts`：工作结果写 `linmengyao`；
 - `dsh-plugins/dsh-linmengyao-memory/index.js`：全库召回、每轮自动写库、`memory_save` → `linmengyao`。
 
-## 已知缺口
+## 后续状态（2026-11-04）
 
-- 自动记录与她标记的记录还没有权重/变淡差异（下一步）；
-- 没有夜间 consolidate；
-- DSH 自动写库的文本是「宝宝/林梦瑶」拼接，Hindsight 抽取后可能主语不准，需观察。
+- `<<记住>>` 和 DSH `memory_save` 都加【重要】保护；`<<日记>>` 保持时间性，会自然变淡；
+- DSH 与 QQ 使用相同五档清晰度，详见 ADR 0252；
+- Hindsight 已通过 observations mission 和 consolidation trigger 做后台整合，没有另建夜间记忆系统；
+- DSH 自动写库仍使用「宝宝/林梦瑶」显式主语，纯寒暄不写；主语抽取质量继续由回归样本观察。
 
 ## 补记（2026-10-30）：她自己写的日记 / 记住，两边都读不回来
 

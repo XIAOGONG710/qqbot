@@ -1061,3 +1061,21 @@ describe('记忆证据摘要（ADR 0226）', () => {
         }
     });
 });
+
+describe('她主动写下的记忆权重', () => {
+    test('<<记住>> 受重要标记保护，<<日记>> 仍按日期自然变淡', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-'));
+        const { api, calls } = fakeApi();
+        const memory = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: () => {}, common: true });
+        try {
+            const contact = { ...A, name: '阿明' };
+            await memory.rememberSelfNote(contact, '他不吃香菜', '记住');
+            await memory.rememberSelfNote(contact, '今天在操场拍了晚霞', '日记');
+            assert.match(calls.retain[0]!.content, /^【重要】林梦瑶自己记下的记住：/);
+            assert.doesNotMatch(calls.retain[1]!.content, /^【重要】/);
+            assert.match(calls.retain[1]!.content, /^林梦瑶自己记下的日记：/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+});

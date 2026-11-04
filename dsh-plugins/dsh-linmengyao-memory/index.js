@@ -57,6 +57,65 @@ const DEFAULTS = {
   soulMaxPerDay: 2,
 }
 
+// 和 QQ 侧 packages/bot/src/memory/fading.ts 保持同一套遗忘语义，避免她换到桌面后
+// 对同一件事突然记得更牢或更差。这里不能直接 import TS 源码，所以用同一组小而明确的规则并做契约测试。
+export const MEMORY_CLEAR_DAYS = 7
+export const MEMORY_VAGUE_DAYS = 30
+export const MEMORY_IMPORTANT = '【重要】'
+export const MEMORY_LASTING = '【长期】'
+const MEMORY_DAY_MS = 86_400_000
+const MEMORY_DATED_DOCUMENT = /^(diary|week|phase:[^:]+):(\d{4})-(\d{2})-(\d{2})$/
+const MEMORY_MARKS = /^\s*((?:【重要】|【长期】)+)/
+const MEMORY_IGNORED_ENTITIES = ['林梦瑶', '宝宝', '鸽鸽']
+
+const memoryTime = (iso) => {
+  const at = iso ? Date.parse(iso) : Number.NaN
+  return Number.isNaN(at) ? undefined : at
+}
+
+const memoryMarked = (item, mark) => [item.text, ...(item.sources || [])]
+  .some(text => MEMORY_MARKS.exec(String(text || ''))?.[1]?.includes(mark) ?? false)
+
+const memoryLastTouched = (item) => {
+  const document = MEMORY_DATED_DOCUMENT.exec(item.documentId || '')
+  if (document) return new Date(Number(document[2]), Number(document[3]) - 1, Number(document[4]) + (document[1] === 'week' ? 6 : 0))
+  const times = [item.occurredStart, item.occurredEnd, item.mentionedAt, item.date]
+    .map(memoryTime).filter(at => at !== undefined)
+  return times.length ? new Date(Math.max(...times)) : undefined
+}
+
+const memoryDaysBetween = (then, now) => {
+  const day = date => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  return Math.round((day(now) - day(then)) / MEMORY_DAY_MS)
+}
+
+/** lasting / clear / vague / recognized / forgotten，与 QQ 侧 clarity 的核心结果一致。 */
+export function desktopMemoryClarity(item, query = '', now = new Date()) {
+  const important = memoryMarked(item, MEMORY_IMPORTANT)
+  const lasting = !MEMORY_DATED_DOCUMENT.test(item.documentId || '') && memoryMarked(item, MEMORY_LASTING)
+  if (important || lasting) return 'lasting'
+  const occurred = memoryTime(item.occurredStart)
+  if (occurred !== undefined && occurred > now.getTime()) return 'lasting'
+  const touched = memoryLastTouched(item)
+  if (!touched) return 'lasting'
+  const scale = (item.sourceFactIds?.length || 1) >= 2 || /^(week|phase):/.test(item.documentId || '') ? 2 : 1
+  const days = memoryDaysBetween(touched, now)
+  if (days <= MEMORY_CLEAR_DAYS * scale) return 'clear'
+  if (days <= MEMORY_VAGUE_DAYS * scale) return 'vague'
+  const recognized = (item.entities || []).some(name => String(name).length >= 2
+    && !MEMORY_IGNORED_ENTITIES.includes(String(name)) && String(query).includes(String(name)))
+  return recognized ? 'recognized' : 'forgotten'
+}
+
+export const withoutMemoryMarks = text => String(text || '')
+  .replaceAll(MEMORY_IMPORTANT, '').replaceAll(MEMORY_LASTING, '').trim()
+
+/** 纯寒暄/确认不值得单独形成长期事实；只要任一方包含实质内容就保留。 */
+export function shouldAutoSaveTurn(user, assistant) {
+  const trivial = text => /^(?:[嗯哦噢喔啊诶额哈]+|好(?:的|呀|啊|哦)?|(?:行|可以|知道了|收到|在吗|早安|晚安|谢谢(?:你)?|哈哈+|拜拜|再见)(?:呀|啊|哦|啦)?)[！!。.，,？?～~\s]*$/.test(String(text || '').trim())
+  return Boolean(String(user || '').trim() || String(assistant || '').trim()) && !(trivial(user) && trivial(assistant))
+}
+
 /** 本地日期 YYYY-MM-DD（不是 UTC：本地刚过午夜不能还算前一天） */
 export function localDay(at = new Date()) {
   return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
@@ -427,11 +486,13 @@ async function recallBank(cfg, bank, query) {
       tags: [],
       tags_match: 'any',
       query_timestamp: new Date().toISOString(),
+      include: { entities: { max_tokens: 128 }, source_facts: { max_tokens: 400 } },
     }),
     signal: AbortSignal.timeout(3000),
   })
   if (!res.ok) throw new Error(`recall ${bank} ${res.status}`)
   const data = await res.json()
+  const facts = data.source_facts || {}
   return (Array.isArray(data.results) ? data.results : [])
     .map((item) => ({
       id: String(item.id || item.text),
@@ -439,6 +500,14 @@ async function recallBank(cfg, bank, query) {
       date: item.date || item.occurred_start || item.mentioned_at || '',
       type: item.fact_type || item.type || '',
       documentId: String(item.document_id || ''),
+      occurredStart: item.occurred_start || undefined,
+      occurredEnd: item.occurred_end || undefined,
+      mentionedAt: item.mentioned_at || undefined,
+      entities: Array.isArray(item.entities) ? item.entities.map(String) : [],
+      sourceFactIds: Array.isArray(item.source_fact_ids) ? item.source_fact_ids.map(String) : [],
+      sources: Array.isArray(item.source_fact_ids)
+        ? item.source_fact_ids.flatMap(id => facts[id]?.text ? [String(facts[id].text)] : [])
+        : [],
     }))
     .filter((item) => item.text)
 }
@@ -480,14 +549,13 @@ async function recallAll(cfg, query) {
       out.push(item)
     }
   }
-  // 可控遗忘：30 天以前的事默认不再主动塞；这次话里提到了（共享 >=2 个二字词）才复活
-  const q = grams(query)
-  const now = Date.now()
-  return out.filter((item) => {
-    const at = Date.parse(item.date || '')
-    if (!at || now - at < 30 * 86_400_000) return true
-    const overlap = [...grams(item.text)].filter((gram) => q.has(gram)).length
-    return overlap >= 2
+  // 与 QQ 一致的五档记忆：旧事只在明确实体线索下复活；不再用二字词重叠造成误召回。
+  return out.flatMap((item) => {
+    const clarity = desktopMemoryClarity(item, query)
+    if (clarity === 'forgotten') return []
+    const text = withoutMemoryMarks(item.text)
+    const prefix = clarity === 'vague' ? '（记不太清了）' : clarity === 'recognized' ? '（他一提才想起来，记不太清了）' : ''
+    return [{ ...item, text: `${prefix}${text}`, clarity }]
   })
 }
 
@@ -741,12 +809,14 @@ export function apply(ctx, config = {}) {
         }
         if (allow.size && p && !allow.has(p)) return
         try { recordDesktopTurn(cfg, user, assistant) } catch (e) { log(cfg, `desktop-recent error ${e}`) }
-        try {
-          await retain(cfg, `宝宝：${user}\n林梦瑶：${assistant.slice(0, 2000)}`, writeBank(cfg), ['dsh'], 'DSH')
-          log(cfg, `auto-saved turn user=${user.slice(0, 20)} assistant=${assistant.length}chars`)
-        } catch (e) {
-          log(cfg, `auto-save error ${e}`)
-        }
+        if (shouldAutoSaveTurn(user, assistant)) {
+          try {
+            await retain(cfg, `宝宝：${user}\n林梦瑶：${assistant.slice(0, 2000)}`, writeBank(cfg), ['dsh'], 'DSH')
+            log(cfg, `auto-saved turn user=${user.slice(0, 20)} assistant=${assistant.length}chars`)
+          } catch (e) {
+            log(cfg, `auto-save error ${e}`)
+          }
+        } else log(cfg, 'auto-save skipped trivial turn')
       }))
 
       const sp = agent.ctx.get('systemPrompt')
@@ -810,7 +880,7 @@ ${now}` : ''
           async execute(args) {
             const content = String(args?.content || '').slice(0, 4000)
             await invalidateSimilar(cfg, content, writeBank(cfg))
-            await retain(cfg, content, writeBank(cfg))
+            await retain(cfg, `${MEMORY_IMPORTANT}${content}`, writeBank(cfg), ['dsh', 'important'])
             try {
               appendInbox(cfg, cfg.timelineInboxFile, {
                 id: `dsh-timeline-memory-${randomUUID()}`,
