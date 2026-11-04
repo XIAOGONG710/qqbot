@@ -85,6 +85,31 @@ describe('外部平台草稿队列（ADR 0224）', () => {
         assert.deepEqual(createExternalDraftStore({ dir: root }).list()[0], approved);
     });
 
+    test('调用方修改返回的草稿或审计副本时不能绕过状态机', () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
+        const store = createExternalDraftStore({ dir: root });
+        const created = store.create({ platform: 'tieba', title: '原始标题', body: '原始正文', media: ['media:photos/original.jpg'] });
+        created.status = 'published';
+        created.media.push('media:photos/injected.jpg');
+        created.audit[0]!.status = 'published';
+
+        const listed = store.list()[0]!;
+        assert.equal(listed.status, 'pending');
+        assert.deepEqual(listed.media, ['media:photos/original.jpg']);
+        assert.deepEqual(listed.audit.map(item => item.status), ['pending']);
+
+        listed.title = '篡改标题';
+        listed.audit.push({ at: listed.updatedAt, status: 'approved' });
+        const approved = store.updateStatus(created.id, 'approved')!;
+        approved.status = 'published';
+        approved.audit.at(-1)!.status = 'published';
+
+        const reloaded = createExternalDraftStore({ dir: root }).list()[0]!;
+        assert.equal(reloaded.title, '原始标题');
+        assert.equal(reloaded.status, 'approved');
+        assert.deepEqual(reloaded.audit.map(item => item.status), ['pending', 'approved']);
+    });
+
     test('状态时间不能倒退，拒绝后内存和磁盘仍保留原状态', () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
         const store = createExternalDraftStore({ dir: root });

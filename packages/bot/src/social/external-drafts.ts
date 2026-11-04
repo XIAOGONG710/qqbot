@@ -99,6 +99,15 @@ function text(value: string, max: number, label: string): string {
     if (result.length > max) throw new Error(`外部平台草稿${label}不能超过 ${max} 字`);
     return result;
 }
+function cloneDraft(draft: ExternalDraft): ExternalDraft {
+    // 草稿箱会交给控制台和平台适配器；不能让调用方通过修改返回对象绕过状态机，
+    // 或把尚未通过校验的内容带回内存并在下一次保存时污染整个队列。
+    return {
+        ...draft,
+        media: [...draft.media],
+        audit: draft.audit.map(item => ({ ...item })),
+    };
+}
 function transitionAllowed(from: ExternalDraftStatus, to: ExternalDraftStatus): boolean {
     return from === 'pending' && (to === 'approved' || to === 'rejected')
         || from === 'approved' && (to === 'published' || to === 'failed')
@@ -137,7 +146,7 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
                 retained = retained.filter((_, index) => index !== recyclable);
             }
             save({ version: 1, drafts: [...retained, draft] });
-            return draft;
+            return cloneDraft(draft);
         },
         list(filter = {}) {
             const requestedLimit = filter.limit ?? 50;
@@ -146,7 +155,11 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
             const limit = Number.isFinite(requestedLimit)
                 ? Math.max(1, Math.min(100, Math.floor(requestedLimit)))
                 : 50;
-            return file.drafts.filter(item => (!filter.platform || item.platform === filter.platform) && (!filter.status || item.status === filter.status)).slice(-limit).reverse();
+            return file.drafts
+                .filter(item => (!filter.platform || item.platform === filter.platform) && (!filter.status || item.status === filter.status))
+                .slice(-limit)
+                .reverse()
+                .map(cloneDraft);
         },
         updateStatus(id, status, note, at = new Date()) {
             if (!isStatus(status)) throw new Error('不支持的外部平台草稿状态');
@@ -154,7 +167,7 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
             if (!draft) return undefined;
             // 适配器可能在网络结果不确定时重试状态回写；同状态必须是真正的幂等操作，
             // 不能反复改 updatedAt 或追加审计记录。
-            if (draft.status === status) return draft;
+            if (draft.status === status) return cloneDraft(draft);
             if (!transitionAllowed(draft.status, status)) throw new Error(`外部平台草稿不能从 ${draft.status} 变为 ${status}`);
             const cleanNote = note?.trim();
             if (cleanNote && cleanNote.length > 240) throw new Error('外部平台草稿备注不能超过 240 字');
@@ -167,7 +180,7 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
                 audit: [...draft.audit, { at: when, status, ...(cleanNote ? { note: cleanNote } : {}) }],
             };
             save({ version: 1, drafts: file.drafts.map(item => item.id === id ? updated : item) });
-            return updated;
+            return cloneDraft(updated);
         },
         summary() {
             const byPlatform = { tieba: 0, douyin: 0, xiaohongshu: 0 } satisfies Record<ExternalPlatform, number>;
