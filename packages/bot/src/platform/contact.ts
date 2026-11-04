@@ -84,6 +84,7 @@ import { guessesLine, type Guess } from '.././life/her-guesses.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
 import { describeCloseness } from '.././language/relationship.ts';
 import { describeHumanState, describeHumanValues, type HumanValues } from '.././human-values.ts';
+import { auditDevelopment, describeDevelopment, developmentSnapshot, developmentSummary, type DevelopmentSnapshot } from '.././life/development.ts';
 import { describeTogether, togetherNow } from '.././language/together.ts';
 import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
@@ -567,9 +568,25 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const time = new Date(now());
             const humanValues = options.humanValues?.({ contact, history: chat, at: time });
             if (humanValues) log(describeHumanValues(humanValues));
+            let development: DevelopmentSnapshot | undefined;
+            if (humanValues) {
+                try {
+                    const events = options.worldState?.events?.() ?? [];
+                    development = developmentSnapshot({ at: time, values: humanValues, history: chat, events });
+                    const audit = auditDevelopment(development, events);
+                    if (audit.length) log(`人格成长层：自检未通过（${audit.join('；')}）`);
+                    else {
+                        const summary = developmentSummary(development);
+                        log(`人格成长层：人生线 ${summary.activeLifeArcs}，关系 ${summary.relationshipStage}，自主 ${summary.autonomyMode}，创作草稿 ${summary.creativeDrafts}`);
+                    }
+                } catch (error) {
+                    log(`人格成长层：投影失败（${error instanceof Error ? error.message : String(error)}）`);
+                }
+            }
             // 只想一想（ADR 0101 内心）：不是在聊天，不要意图行、形状、字数提示、表情；聊天记录当成“回想”放进说明里，不当成要接着回的对话
             const thinking = Boolean(initiate?.think);
             const humanStateLine = humanValues && !thinking ? describeHumanState(humanValues, contact.tier) : undefined;
+            const developmentLine = development && !thinking ? describeDevelopment(development) : undefined;
             // 长期记忆只给名单里的人；主动找他时没有「他这次说的」：查想知道的事 + 最后两句，带前 3 天到后 2 天的时间窗（ADR 0012 决策 1 第 7 条）
             const remembers = memory && contact.tier !== UNLISTED_TIER;
             const recallOptions = initiate
@@ -1138,6 +1155,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         // 心情由真实发生的事推出来的 feelingLine 表达。
                         ...(body ? [body] : []),
                         ...(humanStateLine ? [humanStateLine] : []),
+                        ...(developmentLine ? [developmentLine] : []),
                         ...(unsettled ? [unsettled] : []),
                         ...(warm ? [warm] : []),
                         ...(feelingLine ? [feelingLine] : []),

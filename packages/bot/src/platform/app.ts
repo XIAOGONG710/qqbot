@@ -133,6 +133,7 @@ import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sen
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
 import { humanValueTrends, humanValuesAt, humanValuesFromAnchor, type HumanValues, type HumanValueTrends } from '.././human-values.ts';
+import { developmentSnapshot, developmentSummary, type DevelopmentSummary } from '.././life/development.ts';
 import { createDshLink, dshOptionsFromLlm, sanitizeDshError, type DshProbeResult, type DshState, type DshVoice } from '.././dsh-link.ts';
 import { DshConversationContext } from '.././dsh-continuity.ts';
 import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
@@ -289,6 +290,8 @@ export interface AppStatus {
     humanValues?: Pick<HumanValues, 'at' | 'energy' | 'hunger' | 'stress' | 'mood' | 'health' | 'loneliness' | 'confidence' | 'curiosity' | 'boredom' | 'motivation' | 'socialBattery' | 'selfEsteem' | 'openness' | 'satisfaction' | 'comfort' | 'frustration' | 'relationship'>;
     /** 由同一事实账重算的一小时变化量，不另存第二套分数。 */
     humanTrends?: HumanValueTrends;
+    /** 人格与生活深化的脱敏派生摘要；不含聊天原文、事件正文或内部评分。 */
+    development?: DevelopmentSummary;
 }
 
 /** 状态页的「今天」（ADR 0015） */
@@ -2953,6 +2956,7 @@ ${body}
             // 只在本地用最近一小段 QQ 记录计算关系数值；传给 DSH 的仍然只有数值和事件类型，不外发原文。
             const recentHistory = deviceOwner ? history.load(deviceOwner.qq).slice(-24) : [];
             const values = humanValuesAt({ at, needs, history: recentHistory, tier: deviceOwner?.tier ?? 'boyfriend', events });
+            const development = developmentSummary(developmentSnapshot({ at, values, history: recentHistory, events }));
             const anchorAt = Date.parse(needsAnchor.at);
             const previousAt = new Date(Math.max(anchorAt, at.getTime() - 60 * 60_000));
             const previous = humanValuesAt({
@@ -2974,6 +2978,7 @@ ${body}
                     boredom: values.boredom, socialBattery: values.socialBattery,
                 },
                 relationship: values.relationship,
+                development,
                 trends: humanValueTrends(values, previous, Math.max(1, Math.round((at.getTime() - previousAt.getTime()) / 60_000))),
                 recentEvents: events.slice(-8).map(event => event.kind),
                 photoDrafts: {
@@ -3516,7 +3521,8 @@ ${body}
                         tier: deviceOwner?.tier ?? 'boyfriend',
                         events,
                     });
-                    return { values, trends: humanValueTrends(values, previous, Math.max(1, Math.round((now.getTime() - previousAt.getTime()) / 60_000))) };
+                    const development = developmentSummary(developmentSnapshot({ at: now, values, history: recentHistory, events }));
+                    return { values, trends: humanValueTrends(values, previous, Math.max(1, Math.round((now.getTime() - previousAt.getTime()) / 60_000))), development };
                 } catch (error) {
                     log(`状态页：真人式状态投影失败（${error instanceof Error ? error.message : String(error)}）`);
                     return undefined;
@@ -3550,7 +3556,7 @@ ${body}
                 externalPlatforms: config.externalPlatforms ?? DEFAULTS.externalPlatforms,
                 externalDrafts: externalDraftStore.summary(),
                 dsh: { enabled: dshEnabled, ...(dshProbe ? { lastProbe: { ok: dshProbe.ok, at: dshProbe.at, model: dshProbe.model, latencyMs: dshProbe.latencyMs } } : {}) },
-                ...(currentHumanState ? { humanValues: currentHumanState.values, humanTrends: currentHumanState.trends } : {}),
+                ...(currentHumanState ? { humanValues: currentHumanState.values, humanTrends: currentHumanState.trends, development: currentHumanState.development } : {}),
             };
         },
     };

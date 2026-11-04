@@ -25,6 +25,7 @@ export function renderDshState(state: DshState, at = Date.now()): string {
             ...(safe.needs ? { needs: { ...safe.needs } } : {}),
             ...(safe.values ? { values: { ...safe.values } } : {}),
             ...(safe.relationship ? { relationship: { ...safe.relationship } } : {}),
+            ...(safe.development ? { development: { ...safe.development } } : {}),
             ...(safe.trends ? { trends: { windowMinutes: safe.trends.windowMinutes, values: { ...safe.trends.values } } } : {}),
             ...(safe.recentEvents?.length ? { recentEvents: [...safe.recentEvents] } : {}),
             ...(safe.photoDrafts ? { photoDrafts: { ...safe.photoDrafts } } : {}),

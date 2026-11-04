@@ -30,6 +30,7 @@
     "golive-check": "npm --workspace @qqbot/bot run golive-check --",
     "dsh:link": "npm --workspace @qqbot/bot run dsh:link --",
     "verify:cross-end": "npm --workspace @qqbot/bot run verify:cross-end",
+    "eval:personhood": "npm --workspace @qqbot/bot run eval:personhood --",
     "release:check": "node scripts/release-check.mjs"
   },
   "devDependencies": {

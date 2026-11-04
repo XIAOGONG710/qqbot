@@ -1,5 +1,6 @@
 import { chatCompletion, type Fetch, type LlmDeps, type LlmOptions } from './language/llm.ts';
 import { HUMAN_TREND_KEYS, type HumanValues, type HumanValueTrends } from './human-values.ts';
+import type { DevelopmentSummary } from './life/development.ts';
 
 /** DSH 连接层只接收脱敏后的状态，不直接接收聊天记录。 */
 export interface DshState {
@@ -8,6 +9,7 @@ export interface DshState {
     needs?: Record<string, number>;
     values?: Pick<HumanValues, 'energy' | 'hunger' | 'stress' | 'mood' | 'health' | 'loneliness' | 'motivation' | 'boredom' | 'socialBattery'>;
     relationship?: Pick<HumanValues['relationship'], 'intimacy' | 'trust' | 'familiarity' | 'attachment' | 'friction'>;
+    development?: DevelopmentSummary;
     trends?: HumanValueTrends;
     recentEvents?: readonly string[];
     /** 只同步数量和最近类型；不把图片、提示词、路径或审核编号交给 DSH。 */
@@ -74,6 +76,9 @@ const NEED_KEYS = new Set(['energy', 'hunger', 'stress']);
 const VALUE_KEYS = new Set(['energy', 'hunger', 'stress', 'mood', 'health', 'loneliness', 'motivation', 'boredom', 'socialBattery']);
 const RELATIONSHIP_KEYS = new Set(['intimacy', 'trust', 'familiarity', 'attachment', 'friction']);
 const TREND_KEYS = new Set<string>(HUMAN_TREND_KEYS);
+const AUTONOMY_MODES = new Set<DevelopmentSummary['autonomyMode']>(['recover', 'focus', 'explore', 'connect', 'maintain']);
+const RELATIONSHIP_STAGES = new Set<DevelopmentSummary['relationshipStage']>(['guarded', 'warming', 'secure', 'strained', 'repairing']);
+const EMOTION_TONES = new Set<DevelopmentSummary['emotionTone']>(['bright', 'steady', 'low', 'tense', 'recovering']);
 
 function sanitizeNumberRecord(value: unknown, allowed: ReadonlySet<string>): Record<string, number> | undefined {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
@@ -112,12 +117,40 @@ function sanitizePhotoDrafts(value: unknown): DshState['photoDrafts'] | undefine
     return { pending, approved, rejected, ...(lastKind ? { lastKind } : {}), ...(lastStatus ? { lastStatus } : {}) };
 }
 
+function sanitizeDevelopment(value: unknown): DevelopmentSummary | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const input = value as Record<string, unknown>;
+    const count = (key: string) => Number.isInteger(input[key]) && Number(input[key]) >= 0 && Number(input[key]) <= 100 ? Number(input[key]) : undefined;
+    const activeLifeArcs = count('activeLifeArcs');
+    const tasteThemes = count('tasteThemes');
+    const creativeDrafts = count('creativeDrafts');
+    const sharedExperienceKinds = count('sharedExperienceKinds');
+    const reflectionLessons = count('reflectionLessons');
+    if (activeLifeArcs === undefined || tasteThemes === undefined || creativeDrafts === undefined || sharedExperienceKinds === undefined || reflectionLessons === undefined) return undefined;
+    if (!AUTONOMY_MODES.has(input.autonomyMode as DevelopmentSummary['autonomyMode'])
+        || !RELATIONSHIP_STAGES.has(input.relationshipStage as DevelopmentSummary['relationshipStage'])
+        || !EMOTION_TONES.has(input.emotionTone as DevelopmentSummary['emotionTone'])
+        || typeof input.shareReady !== 'boolean') return undefined;
+    return {
+        activeLifeArcs,
+        autonomyMode: input.autonomyMode as DevelopmentSummary['autonomyMode'],
+        relationshipStage: input.relationshipStage as DevelopmentSummary['relationshipStage'],
+        emotionTone: input.emotionTone as DevelopmentSummary['emotionTone'],
+        shareReady: input.shareReady,
+        tasteThemes,
+        creativeDrafts,
+        sharedExperienceKinds,
+        reflectionLessons,
+    };
+}
+
 /** DSH 的在线请求和落盘快照共用同一份最小状态白名单。 */
 export function sanitizeDshState(state: DshState): DshState {
     const parsedAt = typeof state?.at === 'string' ? Date.parse(state.at) : Number.NaN;
     const needs = sanitizeNumberRecord(state?.needs, NEED_KEYS);
     const values = sanitizeNumberRecord(state?.values, VALUE_KEYS);
     const relationship = sanitizeNumberRecord(state?.relationship, RELATIONSHIP_KEYS);
+    const development = sanitizeDevelopment(state?.development);
     const trends = sanitizeTrends(state?.trends);
     const recentEvents = Array.isArray(state?.recentEvents)
         ? state.recentEvents.filter(event => typeof event === 'string' && STATE_KEY_RE.test(event)).slice(-8)
@@ -129,6 +162,7 @@ export function sanitizeDshState(state: DshState): DshState {
         ...(needs ? { needs } : {}),
         ...(values ? { values: values as DshState['values'] } : {}),
         ...(relationship ? { relationship: relationship as DshState['relationship'] } : {}),
+        ...(development ? { development } : {}),
         ...(trends ? { trends } : {}),
         ...(recentEvents.length ? { recentEvents } : {}),
         ...(photoDrafts ? { photoDrafts } : {}),
@@ -163,6 +197,7 @@ function stateText(state: DshState | undefined): string {
     if (safe.needs) lines.push(`需要值：${Object.entries(safe.needs).map(([key, value]) => `${key}=${value}`).join('，')}`);
     if (safe.values) lines.push(`真人式状态：${Object.entries(safe.values).map(([key, value]) => `${key}=${value}`).join('，')}`);
     if (safe.relationship) lines.push(`关系状态：${Object.entries(safe.relationship).map(([key, value]) => `${key}=${value}`).join('，')}`);
+    if (safe.development) lines.push(`成长摘要：人生线 ${safe.development.activeLifeArcs}，自主 ${safe.development.autonomyMode}，关系阶段 ${safe.development.relationshipStage}，情绪延续 ${safe.development.emotionTone}，待审核创作 ${safe.development.creativeDrafts}`);
     if (safe.trends) lines.push(`最近 ${safe.trends.windowMinutes} 分钟变化：${Object.entries(safe.trends.values).map(([key, value]) => `${key}=${Number(value) > 0 ? '+' : ''}${value}`).join('，')}`);
     if (safe.recentEvents?.length) lines.push(`最近事件（仅类型摘要）：${safe.recentEvents.join('、')}`);
     if (safe.photoDrafts) {

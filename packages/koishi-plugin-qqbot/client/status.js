@@ -57,6 +57,26 @@ function lifePulsePanel(status) {
     ]);
 }
 
+function developmentPanel(development) {
+    if (!development) return null;
+    const autonomy = { recover: '先恢复状态', focus: '处理最要紧的事', explore: '探索新东西', connect: '愿意靠近', maintain: '保持原节奏' };
+    const relationship = { guarded: '还在熟悉', warming: '逐渐靠近', secure: '关系稳定', strained: '有些别扭', repairing: '正在和好' };
+    const emotion = { bright: '心情明亮', steady: '情绪平稳', low: '情绪偏低', tense: '心里绷着', recovering: '正在缓下来' };
+    return h('section', { class: 'qqbot-life-card' }, [
+        h('div', { class: 'qqbot-life-head' }, [
+            h('strong', null, '她最近形成的生活脉络'),
+            h('span', { class: 'qqbot-muted' }, '由生活账和对话证据重算，不是模型自报'),
+        ]),
+        h('div', { class: 'qqbot-summary' }, [
+            h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '自主选择'), h('span', null, autonomy[development.autonomyMode] ?? '暂时无法判断')]),
+            h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '关系阶段'), h('span', null, relationship[development.relationshipStage] ?? '暂时无法判断')]),
+            h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '情绪延续'), h('span', null, emotion[development.emotionTone] ?? '暂时无法判断')]),
+            h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '长期变化'), h('span', null, `活跃人生线 ${development.activeLifeArcs ?? 0} 条 · 稳定偏好 ${development.tasteThemes ?? 0} 类 · 反思 ${development.reflectionLessons ?? 0} 类`)]),
+            h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '共同与创作'), h('span', null, `共同经历 ${development.sharedExperienceKinds ?? 0} 类 · 待审核创作 ${development.creativeDrafts ?? 0} 项${development.shareReady ? ' · 有真实小事可分享' : ''}`)]),
+        ]),
+    ]);
+}
+
 /** 手机伴侣能力清单：展示确认边界，避免控制台和协议各自维护一份动作说明。 */
 function phoneActionsPanel(actions) {
     if (!actions?.length) return null;
@@ -232,6 +252,7 @@ export const StatusTab = defineComponent({
             const phoneActions = phoneActionsPanel(data.phoneActions);
             const externalPlatforms = externalPlatformsPanel(status.externalPlatforms, status.externalDrafts);
             const pulse = lifePulsePanel(status);
+            const development = developmentPanel(status.development);
             const contactToolbar = h('div', { class: 'qqbot-contact-toolbar' }, [
                 h('div', { class: 'qqbot-section-title' }, [h('strong', null, '联系人'), h('span', { class: 'qqbot-muted' }, `显示 ${filteredContacts.value.length}/${counts.contacts}`)]),
                 h(c('el-input'), {
@@ -255,7 +276,7 @@ export const StatusTab = defineComponent({
                     h('div', null, [h('h2', { class: 'qqbot-status-title' }, '她现在的状态'), h('p', { class: 'qqbot-muted' }, `每 5 秒自动更新 · ${clock(data.updatedAt)}`)]),
                     h('div', { class: 'qqbot-status-head-tags' }, [tag(status.schedule ? '按作息运行' : '作息未启用', status.schedule ? 'success' : 'warning'), tag(dshFeature?.on ? '外部顾问已启用' : '外部顾问未启用', dshFeature?.on ? 'success' : 'info')]),
                 ]),
-                kpis, connections, healthPanel, pulse, capabilities, summary, features, phoneActions, externalPlatforms, extras, contactToolbar, table,
+                kpis, connections, healthPanel, pulse, development, capabilities, summary, features, phoneActions, externalPlatforms, extras, contactToolbar, table,
             ]);
         };
     },
