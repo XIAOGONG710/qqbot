@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { Schedule } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import type { LifeEventDraft } from '../src/world/life-events.ts';
 import { describeWorld, occupationAt, parseWorld, recapDay, simulateWorld, worldAt, worldLogger, worldNews, worldState, type World, type WorldAction } from '../src/world/world.ts';
 import { busySpans } from '../src/world/life-selector.ts';
 
@@ -371,6 +372,30 @@ describe('统一生活事件账本（ADR 0029）', () => {
                 contact: 1, episode: 'ep-old',
             }] }));
             assert.throws(() => worldState(world, schedule, () => undefined, dir), /世界动作投影.*schema.*拒绝启动/);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('运行时拒绝类型损坏的可选字段，不把当前能写、重启即坏的事件落盘', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'world-events-boundary-'));
+        try {
+            const now = at('2026-09-15T22:00:00');
+            const state = worldState(world, schedule, () => undefined, dir, () => now.getTime());
+            const base = { kind: 'rest', at: at('2026-09-15T19:00:00').toISOString(), source: 'external', result: 'succeeded' };
+            const malformed = [
+                { ...base, id: 'bad-meal', meal: 'yes' },
+                { ...base, id: 'bad-amount', amount: Number.NaN },
+                { ...base, id: 'bad-seen', seen: 1 },
+                { ...base, id: 'bad-contact', contact: 0 },
+                { ...base, id: 'bad-episode', episode: '   ' },
+            ] as unknown as LifeEventDraft[];
+            state.recordEvents(malformed);
+            assert.deepEqual(state.events(), []);
+
+            state.recordEvents([{ ...base, id: 'valid-rest' } as LifeEventDraft]);
+            assert.deepEqual(state.events().map(event => event.id), ['valid-rest']);
+            assert.deepEqual(worldState(world, schedule, () => undefined, dir, () => now.getTime()).events().map(event => event.id), ['valid-rest'], '重启仍能读取事件账');
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

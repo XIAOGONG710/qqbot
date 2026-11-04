@@ -1319,7 +1319,14 @@ export function worldState(
             if (!id || !kind || !['conversation', 'simulation', 'external'].includes(draft.source)
                 || !['succeeded', 'failed', 'interrupted'].includes(draft.result)
                 || !Number.isFinite(endedAt.getTime()) || !Number.isFinite(startedAt.getTime())
-                || startedAt > endedAt || endedAt.getTime() > nowFn()) continue;
+                || startedAt > endedAt || endedAt.getTime() > nowFn()
+                // recordEvents 是运行时边界，不能只依赖 TypeScript。坏的可选字段一旦写入，
+                // 当前进程看似正常，下一次启动却会被事件账 schema 拒绝。
+                || (draft.meal !== undefined && typeof draft.meal !== 'boolean')
+                || (draft.amount !== undefined && (!Number.isSafeInteger(draft.amount) || draft.amount <= 0 || draft.amount > MAX_GIFT))
+                || (draft.seen !== undefined && typeof draft.seen !== 'boolean')
+                || (draft.contact !== undefined && (!Number.isSafeInteger(draft.contact) || draft.contact <= 0))
+                || (draft.episode !== undefined && (typeof draft.episode !== 'string' || !draft.episode.trim()))) continue;
             if (events.some(event => event.id === id) || added.some(event => event.id === id)) continue;
             const day = formatDate(herDay(schedule, endedAt));
             if (day < world.startDay) continue;
