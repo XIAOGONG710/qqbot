@@ -676,8 +676,15 @@ export function apply(ctx, config = {}) {
             cache.preset = p
           }
           if (allow.size && p && !allow.has(p)) { cache.text = ''; log(cfg, `skip preset=${p}`); return next() }
-          const query = textOf(payload.messages?.[payload.messages.length - 1]).trim()
-          cache.user = query
+          const messages = Array.isArray(payload.messages) ? payload.messages : []
+          const query = textOf(messages[messages.length - 1]).trim()
+          // pre-step 会在同一轮的每个模型步骤执行。工具调用后的最后一条消息通常是
+          // tool 结果，只能拿来做这一小步的召回查询，不能覆盖本轮真正的用户原话。
+          // cache.user 在 turn-stopping 清空，因此只在本轮首次看到 user 消息时记录。
+          if (!cache.user) {
+            const originalUser = [...messages].reverse().find((message) => message?.role === 'user')
+            cache.user = textOf(originalUser).trim()
+          }
           if (query) {
             const all = await recallAll(cfg, query)
             let text = all.slice(0, cfg.pick).map((item) => `- ${item.text}`).join('\n')

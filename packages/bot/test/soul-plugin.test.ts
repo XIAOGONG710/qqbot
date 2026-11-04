@@ -381,6 +381,31 @@ describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，�
         }
     });
 
+    test('同一轮工具调用后的 pre-step 不把工具结果误记成他的原话', async () => {
+        await withChannel(undefined, async () => {
+            const c = crossRoot();
+            const fake = fakeHindsight({ banks: ALL_BANKS });
+            try {
+                const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: c.cfg.ownerBankFile });
+                const user = { role: 'user', content: '帮我看看今天的日程' };
+                await h.handlers['agent/pre-step']!({ messages: [user] }, async () => undefined);
+                await h.handlers['agent/pre-step']!({
+                    messages: [user, { role: 'assistant', content: '我查一下' }, { role: 'tool', content: '工具结果：下午三点有课' }],
+                }, async () => undefined);
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'start' } });
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'chunk', chunk: { type: 'text-delta', text: '下午三点有课哦' } } });
+                await h.handlers['agent/turn-stopping']!();
+
+                const saved = fake.calls.find(call => call.method === 'POST' && /\/memories$/.test(call.url))!;
+                assert.match(saved.body!.items[0]!.content, /宝宝：帮我看看今天的日程\n林梦瑶：下午三点有课哦/);
+                assert.doesNotMatch(saved.body!.items[0]!.content, /宝宝：工具结果/);
+                const desktop = JSON.parse(readFileSync(c.files.desktopFile, 'utf8').trim()) as { user: string; assistant: string };
+                assert.equal(desktop.user, '帮我看看今天的日程');
+                assert.equal(desktop.assistant, '下午三点有课哦');
+            } finally { fake.restore(); }
+        });
+    });
+
     test('memory_save 写他的 bank；只把 DSH 自己写的相似旧事实失效，QQ 聊天的片段不动', async () => {
         const text = '宝宝喜欢吃麻辣烫而且每周都去';
         const items = [
