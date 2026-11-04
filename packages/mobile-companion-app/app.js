@@ -1,7 +1,8 @@
 import { resolveRegisteredLink } from './action-links.js';
+import { rememberDownlinkNonce } from './replay-window.js';
 
 const $ = id => document.getElementById(id);
-const state = { socket: undefined, transport: 'ws', clientId: '', pairingCode: '', session: '', pending: new Map(), receivedDownlinkNonces: new Set(), recorder: undefined, recordChunks: [], pollTimer: undefined, polling: false, pendingTimer: undefined, connecting: false, helloSent: false, activityAt: 0 };
+const state = { socket: undefined, transport: 'ws', clientId: '', pairingCode: '', session: '', pending: new Map(), receivedDownlinkNonces: new Map(), recorder: undefined, recordChunks: [], pollTimer: undefined, polling: false, pendingTimer: undefined, connecting: false, helloSent: false, activityAt: 0 };
 const id = prefix => `${prefix}-${crypto.randomUUID().replaceAll('-', '')}`;
 const nonce = prefix => `${prefix}-${crypto.randomUUID().replaceAll('-', '')}`;
 const now = () => new Date().toISOString();
@@ -41,9 +42,7 @@ function acceptDownlink(value) {
     if (typeof item === 'string' ? [...item].length > 512 : typeof item !== 'number' || !Number.isFinite(item)) throw new Error('手机动作参数值不合法');
   }
   if (action.action === 'open_link') resolveRegisteredLink(action.targetId, window.location.href);
-  if (state.receivedDownlinkNonces.has(value.nonce)) throw new Error('手机动作下行包重复');
-  state.receivedDownlinkNonces.add(value.nonce);
-  if (state.receivedDownlinkNonces.size > 256) state.receivedDownlinkNonces.delete(state.receivedDownlinkNonces.values().next().value);
+  rememberDownlinkNonce(state.receivedDownlinkNonces, value.nonce, Date.now());
   return value;
 }
 

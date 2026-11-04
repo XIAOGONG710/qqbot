@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { CompanionAppModel } from '../src/model.ts';
 import { registeredLinkTargets, resolveRegisteredLink } from '../action-links.js';
+import { DOWNLINK_NONCE_TTL_MS, rememberDownlinkNonce } from '../replay-window.js';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -42,14 +43,26 @@ test('Service Worker 只缓存明确的静态资源，不拦截动作轮询等�
 
 test('PWA 下行动作先做本地 nonce 防重放，再交给执行层', async () => {
     const source = await readFile(resolve(import.meta.dirname, '..', 'app.js'), 'utf8');
-    assert.match(source, /receivedDownlinkNonces:\s*new Set/);
+    assert.match(source, /receivedDownlinkNonces:\s*new Map/);
     assert.match(source, /function acceptDownlink\(value\)/);
-    assert.match(source, /手机动作下行包重复/);
+    assert.match(source, /rememberDownlinkNonce\(state\.receivedDownlinkNonces/);
     assert.match(source, /敏感手机动作不能自动执行/);
     assert.match(source, /action\.decision === 'deny'/);
     assert.match(source, /resolveRegisteredLink\(action\.targetId/);
     assert.doesNotMatch(source, /action\.params\.url/);
     assert.match(source, /handleDownlink\(acceptDownlink\(value\)\)/);
+});
+
+test('PWA 防重放窗口满时不淘汰仍有效的旧 nonce，过完整时钟窗口后才清理', () => {
+    const nonces = new Map<string, number>();
+    const at = 1_000_000;
+    for (let index = 0; index < 256; index++) rememberDownlinkNonce(nonces, `server-${String(index).padStart(6, '0')}`, at);
+    assert.throws(() => rememberDownlinkNonce(nonces, 'server-overflow', at), /窗口已满/);
+    assert.throws(() => rememberDownlinkNonce(nonces, 'server-000000', at), /重复/);
+    assert.equal(nonces.size, 256, '容量攻击不能挤掉最早的有效 nonce');
+
+    rememberDownlinkNonce(nonces, 'server-after-window', at + DOWNLINK_NONCE_TTL_MS + 1);
+    assert.deepEqual([...nonces.keys()], ['server-after-window']);
 });
 
 test('PWA 打开链接只解析本地登记的目标，并拒绝普通局域网 HTTP', () => {

@@ -13,7 +13,7 @@
 - 服务端 catalog 表情 ID；
 - `notify`、`timer`、`ring`、`open_link`、`media_control`、`volume` 白名单动作；敏感动作必须勾选确认。
 - 宿主下发动作时，PWA 只执行通知、振动响铃、计时器和 HTTPS 链接；媒体控制 / 音量等动作明确回执拒绝。
-- 浏览器侧对宿主下行动作保留最近 256 个 nonce，重复下行只提示错误、不再次执行。
+- 浏览器侧在完整 5 分钟协议窗口内保留最多 256 个下行 nonce；重复下行不再次执行，窗口内流量达到上限时要求重新连接，不会淘汰仍有效的旧 nonce。
 
 开发时直接运行 `npm run serve --workspace @qqbot/mobile-companion-app`（默认只绑定 `127.0.0.1:4173`），WebSocket 地址填写为 Koishi server 的 `/qqbot/companion`，HTTPS 地址填写为 `/qqbot/companion/http`，媒体上传地址填写为其下的 `/media`。生产环境应使用 HTTPS/WSS 或已认证的反向代理，并在 Android WebView 中复用同一页面。
 
