@@ -212,6 +212,34 @@ describe('DSH 连接层', () => {
         assert.equal(calls[0]?.state?.values?.hunger, 70);
     });
 
+    test('QQ、显式 DSH 与手机伴侣按时间共享最近对话，并能跨端往返继续', async () => {
+        let now = 100;
+        const shared = new DshConversationContext();
+        const qqHistory = [{ time: new Date(90).toISOString(), role: 'user' as const, content: 'QQ 上刚说：我明天考试' }];
+        shared.commit('DSH 桌面刚问：资料整理好了吗', '已经整理好了', 91, 92);
+        const seen: Array<readonly { role: string; content: string }[]> = [];
+        const handlers = createMobileDshHandlers({
+            dsh: { advise: async request => { seen.push(request.recentTurns ?? []); return '那今晚先早点睡'; } },
+            now: () => ++now,
+            sharedConversation: {
+                recent: () => shared.recent(qqHistory),
+                commit: (_clientId, question, reply, askedAt, repliedAt) => shared.commit(question, reply, askedAt, repliedAt),
+            },
+        });
+
+        await handlers.onMessage({ kind: 'text', text: '手机上接着说' }, 'android-owner');
+        assert.equal(seen[0]?.some(turn => turn.content.includes('明天考试')), true);
+        assert.equal(seen[0]?.some(turn => turn.content.includes('资料整理好了吗')), true);
+        assert.equal(shared.recent([])?.some(turn => turn.content === '手机上接着说'), true);
+        assert.equal(shared.recent([])?.some(turn => turn.content === '那今晚先早点睡'), true);
+
+        await handlers.onMessage({ kind: 'text', text: '那还要复习吗' }, 'android-owner');
+        assert.equal(seen[1]?.filter(turn => turn.content === '手机上接着说').length, 1, '共享上下文不能和设备本地上下文重复拼接');
+        const backToQq = shared.recent(qqHistory);
+        assert.equal(backToQq?.some(turn => turn.content === '那还要复习吗'), true);
+        assert.equal(backToQq?.some(turn => turn.content === '那今晚先早点睡'), true);
+    });
+
     test('手机伴侣把照片审核列表和明确决定交给 bot 宿主', async () => {
         const calls: string[] = [];
         const handlers = createMobileDshHandlers({

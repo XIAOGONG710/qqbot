@@ -3038,6 +3038,11 @@ ${body}
         dsh: dshLink,
         state: dshState,
         voice: dshVoice,
+        now: worldNow,
+        sharedConversation: {
+            recent: () => dshRecentTurns(),
+            commit: (_clientId, question, reply, askedAt, repliedAt) => dshConversation.commit(question, reply, askedAt, repliedAt),
+        },
         describeMedia: describeMobileMedia,
         onActionResult: async (result, clientId) => {
             log(`手机动作回执：设备 ${clientId}，请求 ${result.requestId}，${result.ok ? '成功' : '失败'}，决策 ${result.decision}${result.error ? `（${sanitizeDshError(result.error)}）` : ''}`);

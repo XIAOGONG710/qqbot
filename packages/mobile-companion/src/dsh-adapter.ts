@@ -19,6 +19,13 @@ export interface DshCompanionAdvisor<TState = unknown, TVoice = unknown> {
     advise(request: DshCompanionRequest<TState, TVoice>): Promise<string>;
 }
 
+export interface DshSharedConversation {
+    /** 返回 QQ、DSH 桌面和其他已授权伴侣端共用的最近上下文。 */
+    recent(clientId: string): readonly DshConversationTurn[] | undefined;
+    /** 只在本轮完整成功且配对仍有效时提交，失败请求不能留下半截上下文。 */
+    commit(clientId: string, question: string, reply: string, askedAt: number, repliedAt: number): void;
+}
+
 export interface DshCompanionAdapterOptions<TState = unknown, TVoice = unknown> {
     advisor: DshCompanionAdvisor<TState, TVoice>;
     state?: (clientId: string) => TState | undefined;
@@ -28,6 +35,9 @@ export interface DshCompanionAdapterOptions<TState = unknown, TVoice = unknown> 
     maxTurns?: number;
     /** 最多保留多少台设备的短期上下文，避免大量临时 clientId 造成内存增长。 */
     maxClients?: number;
+    /** 宿主提供时，伴侣端不再维护孤立上下文，而是接入同一个她的跨端短期上下文。 */
+    sharedConversation?: DshSharedConversation;
+    now?: () => number;
     onAction?: (request: PhoneActionRequest, clientId: string, requestId: string) => Promise<ActionResult>;
 }
 
@@ -38,16 +48,18 @@ export function createDshCompanionHandlers<TState = unknown, TVoice = unknown>(o
     const maxClients = options.maxClients ?? 64;
     if (!Number.isInteger(maxClients) || maxClients < 1 || maxClients > 1024) throw new Error('DSH 伴侣设备上下文上限不合法');
     const conversations = new Map<string, DshConversationTurn[]>();
+    const now = options.now ?? Date.now;
     let resetGeneration = 0;
 
     return {
         async onMessage(message: CompanionMessage, clientId: string): Promise<CompanionMessage> {
             const generation = resetGeneration;
+            const askedAt = now();
             const turns = conversations.get(clientId) ?? [];
             const described = !message.text?.trim() && options.describeMedia ? await options.describeMedia(message, clientId) : undefined;
             const question = message.text?.trim() || described?.trim().slice(0, 4000) || `[收到${message.kind}消息]`;
-            const recentTurns = turns.slice(-Math.min(6, maxTurns));
-            turns.push({ role: 'user', content: question });
+            const recentTurns = (options.sharedConversation?.recent(clientId) ?? turns).slice(-Math.min(6, maxTurns));
+            if (!options.sharedConversation) turns.push({ role: 'user', content: question });
             const reply = (await options.advisor.advise({
                 question,
                 ...(options.state ? { state: options.state(clientId) } : {}),
@@ -57,6 +69,10 @@ export function createDshCompanionHandlers<TState = unknown, TVoice = unknown>(o
             })).trim() || '我刚才没整理好，你再问我一次。';
             // 配对撤销可能发生在模型等待期间；旧请求不应把已清掉的上下文重新写回来，也不应把结果继续交给旧设备。
             if (generation !== resetGeneration) return { kind: 'text', text: '这台设备的配对已失效，请重新配对。' };
+            if (options.sharedConversation) {
+                options.sharedConversation.commit(clientId, question, reply, askedAt, now());
+                return { kind: 'text', text: reply };
+            }
             turns.push({ role: 'assistant', content: reply });
             if (!conversations.has(clientId) && conversations.size >= maxClients) {
                 const oldest = conversations.keys().next().value as string | undefined;

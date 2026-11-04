@@ -21,6 +21,7 @@
 - HTTPS 会话默认 30 分钟无流量自动过期（可通过 `CompanionGateway` 的 `sessionIdleTtlMs` 调整），避免没有 close 事件的 HTTP 长期占住设备；过期后仍需新的配对码才能建立新会话。
 - 通过有效 session 的动作轮询或媒体上传也会刷新“最近活动”；真正超过 TTL 没有任何访问时才回收。
 - 使用 `CompanionClient` 时，可把该响应头交给 `setTransportSession()`，由 HTTP 网络层在后续请求中回传；`reset()` 会同时清理会话。
+- bot 宿主现在给 DSH 伴侣适配器传入共享短期上下文：手机能承接最近 QQ / 显式 DSH 咨询，手机上完整成功的一问一答也会回到同一上下文；失败请求、已撤销配对的旧响应不会提交。独立使用本包且未提供 `sharedConversation` 时，仍保持每台设备各自的有限内存上下文。
 - `dsh-adapter.ts`：把伴侣文字接回 DSH，按 clientId 保留有限上下文并复用状态/语气；动作默认拒绝。可选 `describeMedia(message, clientId)` 可接入 STT / OCR / vision，把经过会话校验的媒体转换成有限文字摘要；未提供时仍只使用占位文本，不自动读取媒体字节。
 - DSH 伴侣上下文默认最多保留 64 台设备，按最近使用淘汰旧设备；可通过 `maxClients` 调整（1–1024）。
 - 若宿主注入 `onAction(request, clientId, requestId)`，回调必须返回同一个 `requestId`；这样动作策略、确认和审计可以保持一一对应。

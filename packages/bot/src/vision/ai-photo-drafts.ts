@@ -254,7 +254,9 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             if (generated.bytes.length > PHOTO_MAX_BYTES) throw new Error('生成图片超过大小上限');
             const id = createHash('sha256').update(generated.bytes).digest('hex').slice(0, 12);
             const sameImage = find(id);
-            if (sameImage) return sameImage;
+            // 不把另一件事件的旧图复用成“刚拍的”。否则新 eventKey 永远找不到，
+            // 后续每次请求都会再次付费生成，并可能把旧时间的图冒充当前照片。
+            if (sameImage) throw new Error('生图服务返回了已经存在的图片，不能把旧图冒充新的当前照片');
             const ext = extension(generated.bytes);
             const file = `${id}.${ext}`;
             writeFileSync(join(filesDir, file), generated.bytes, { flag: 'wx' });

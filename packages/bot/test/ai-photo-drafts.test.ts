@@ -86,6 +86,18 @@ describe('AI 生活照草稿（ADR 0239）', () => {
         assert.equal('prompt' in (reopened.list()[0] as unknown as Record<string, unknown>), false);
     });
 
+    test('不同事件生成相同图片时拒绝复用旧图，避免反复付费和冒充当前照片', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'ai-photo-duplicate-'));
+        const store = aiPhotoDraftStore({ dir, now: () => new Date('2026-11-04T03:00:00.000Z') });
+        await store.generate(context({ eventKey: 'first-event' }), async () => ({ bytes: jpeg(17), model: 'm' }));
+        await assert.rejects(
+            store.generate(context({ eventKey: 'second-event' }), async () => ({ bytes: jpeg(17), model: 'm' })),
+            /旧图冒充新的当前照片/,
+        );
+        assert.equal(store.list().length, 1);
+        assert.equal(store.list()[0]?.eventKey, 'first-event');
+    });
+
     test('拒绝的草稿不能直接通过', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'ai-photo-reject-'));
         const store = aiPhotoDraftStore({ dir });

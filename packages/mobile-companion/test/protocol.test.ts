@@ -503,6 +503,54 @@ describe('手机伴侣协议', () => {
         assert.equal(action.requestId, 'companion-action-request');
     });
 
+    test('宿主可把手机接入跨端共享上下文，失败请求不会提交半截记录', async () => {
+        let now = 100;
+        const shared: Array<{ role: 'user' | 'assistant'; content: string }> = [{ role: 'user', content: '刚在 QQ 说过的事' }];
+        const commits: string[] = [];
+        let fail = false;
+        const handlers = createDshCompanionHandlers({
+            now: () => ++now,
+            sharedConversation: {
+                recent: () => shared,
+                commit: (_clientId, question, reply, askedAt, repliedAt) => {
+                    assert.ok(repliedAt >= askedAt);
+                    commits.push(`${question}|${reply}`);
+                    shared.push({ role: 'user', content: question }, { role: 'assistant', content: reply });
+                },
+            },
+            advisor: {
+                advise: async request => {
+                    assert.equal(request.recentTurns?.some(turn => turn.content === '刚在 QQ 说过的事'), true);
+                    if (fail) throw new Error('上游失败');
+                    return '接着聊';
+                },
+            },
+        });
+        await handlers.onMessage({ kind: 'text', text: '手机上的一句' }, 'android-owner');
+        assert.deepEqual(commits, ['手机上的一句|接着聊']);
+        fail = true;
+        await assert.rejects(handlers.onMessage({ kind: 'text', text: '失败的这一句' }, 'android-owner'), /上游失败/);
+        assert.deepEqual(commits, ['手机上的一句|接着聊']);
+
+        fail = false;
+        let release!: () => void;
+        const waiting = new Promise<void>(resolve => { release = resolve; });
+        const pendingHandlers = createDshCompanionHandlers({
+            now: () => ++now,
+            sharedConversation: {
+                recent: () => shared,
+                commit: (_clientId, question, reply) => commits.push(`${question}|${reply}`),
+            },
+            advisor: { advise: async () => { await waiting; return '过期回复'; } },
+        });
+        const pending = pendingHandlers.onMessage({ kind: 'text', text: '撤销前发的' }, 'android-owner');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        pendingHandlers.onReset?.('android-owner');
+        release();
+        assert.equal((await pending).text, '这台设备的配对已失效，请重新配对。');
+        assert.deepEqual(commits, ['手机上的一句|接着聊']);
+    });
+
     test('DSH 伴侣上下文按设备数量设上限并淘汰最旧设备', async () => {
         const requests: string[] = [];
         const handlers = createDshCompanionHandlers({

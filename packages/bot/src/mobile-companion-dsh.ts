@@ -1,4 +1,4 @@
-import { createDshCompanionHandlers } from '@qqbot/mobile-companion/dsh-adapter';
+import { createDshCompanionHandlers, type DshSharedConversation } from '@qqbot/mobile-companion/dsh-adapter';
 import { CompanionGateway } from '@qqbot/mobile-companion/gateway';
 import { MemoryPairingStore, type PairingTicket } from '@qqbot/mobile-companion/pairing';
 import type { CompanionRuntimeHandlers } from '@qqbot/mobile-companion/runtime';
@@ -15,7 +15,7 @@ export interface MobileCompanionIntegration {
     media: MemoryCompanionMediaStore;
     actionCapabilities: readonly PhoneActionCapability[];
     issuePairing(clientId: string, now?: number): PairingTicket;
-    /** 解除全部待配对票据、当前会话、队列、短期上下文和媒体。 */
+    /** 解除全部待配对票据、当前会话、队列、设备本地上下文和媒体；宿主共享的跨端上下文不在此处删除。 */
     reset(): void;
 }
 
@@ -28,6 +28,8 @@ export function createMobileDshHandlers(options: {
     onAction?: (request: PhoneActionRequest, clientId: string, requestId: string) => Promise<ActionResult>;
     maxTurns?: number;
     maxClients?: number;
+    sharedConversation?: DshSharedConversation;
+    now?: () => number;
     onActionResult?: (result: ActionResult, clientId: string) => Promise<void>;
     onPhotoReviewList?: (request: PhotoReviewListRequest, clientId: string) => Promise<PhotoReviewListResult>;
     onPhotoReviewDecision?: (request: PhotoReviewDecisionRequest, clientId: string, requestId: string) => Promise<PhotoReviewDecisionResult>;
@@ -43,6 +45,8 @@ export function createMobileDshHandlers(options: {
         ...(options.onActionResult ? { onActionResult: options.onActionResult } : {}),
         ...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),
         ...(options.maxClients === undefined ? {} : { maxClients: options.maxClients }),
+        ...(options.sharedConversation ? { sharedConversation: options.sharedConversation } : {}),
+        ...(options.now ? { now: options.now } : {}),
     });
     return {
         ...handlers,
@@ -63,6 +67,7 @@ export function createMobileCompanion(options: {
     onPhotoReviewDecision?: (request: PhotoReviewDecisionRequest, clientId: string, requestId: string) => Promise<PhotoReviewDecisionResult>;
     maxTurns?: number;
     maxClients?: number;
+    sharedConversation?: DshSharedConversation;
     pairingTtlMs?: number;
     sessionIdleTtlMs?: number;
     now?: () => number;
