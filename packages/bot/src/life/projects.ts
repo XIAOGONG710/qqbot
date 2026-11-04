@@ -77,9 +77,10 @@ export function projectActivity(text: string): ProjectActivity | undefined {
 }
 
 /** 成功或做到一半被硬事件打断的时间都算真实投入；失败候选不算。 */
-export function photographyProgress(events: readonly LifeEvent[]): ProjectProgress {
+export function photographyProgress(events: readonly LifeEvent[], until?: Date): ProjectProgress {
     const work = events
-        .filter(event => event.kind === 'work_on_project' && event.target === PHOTOGRAPHY_PROJECT_ID && event.result !== 'failed')
+        .filter(event => event.kind === 'work_on_project' && event.target === PHOTOGRAPHY_PROJECT_ID && event.result !== 'failed'
+            && Number.isFinite(Date.parse(event.endedAt)) && Date.parse(event.endedAt) <= (until?.getTime() ?? Infinity))
         .sort((a, b) => a.endedAt.localeCompare(b.endedAt));
     const minutes = work.reduce((sum, event) => sum + Math.max(0, Math.round((Date.parse(event.endedAt) - Date.parse(event.startedAt)) / 60_000)), 0);
     const recentSteps = [...new Set(work.map(event => event.subject).filter((step): step is string => Boolean(step)))].slice(-3);
@@ -116,7 +117,7 @@ export function projectPortfolio({ events, world, schedule, books, now }: Projec
         });
     }
 
-    const photography = photographyProgress(events);
+    const photography = photographyProgress(events, now);
     const camera = world?.cameraFund?.camera;
     const cameraReady = camera?.state === 'bought';
     const recentStep = photography.recentSteps.at(-1);

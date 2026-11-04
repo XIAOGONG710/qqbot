@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import type { Appraisal } from '.././emotion/feelings.ts';
 import type { LifeEvent } from '.././world/life-events.ts';
 import { PHOTOGRAPHY_PROJECT_ID } from './projects.ts';
-import { quizScore, quizzesOn } from './everyday.ts';
+import { quizReleaseAt, quizScore, quizzesOn } from './everyday.ts';
 import { formatDate, type Schedule } from './schedule.ts';
 import type { WorldNow } from '.././world/world.ts';
 
@@ -130,7 +130,9 @@ export function quizRecord(schedule: Schedule, now: Date, from?: string): { cour
     const start = from && new Date(`${from}T00:00:00`) > semesterStart ? new Date(`${from}T00:00:00`) : semesterStart;
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     for (let day = start; day.getTime() <= today.getTime() - 2 * DAY_MS; day = new Date(day.getTime() + DAY_MS)) {
-        for (const quiz of quizzesOn(schedule, day)) out.push({ course: quiz.course, score: quizScore(quiz, formatDate(day)), date: formatDate(day) });
+        for (const quiz of quizzesOn(schedule, day)) {
+            if (quizReleaseAt(quiz.course, day) <= now) out.push({ course: quiz.course, score: quizScore(quiz, formatDate(day)), date: formatDate(day) });
+        }
     }
     return out;
 }
@@ -176,11 +178,12 @@ function cameraView(pursuit: Pursuit, facts: PursuitFacts): PursuitView | undefi
     return { pursuit, text: `${pursuit.title}——${pursuit.why}；${now}${done}；${lastText}`, appraisals };
 }
 
-function customView(pursuit: Pursuit): PursuitView {
+function customView(pursuit: Pursuit, now: Date): PursuitView {
     const steps = pursuit.steps ?? [];
-    const open = steps.findIndex(step => !step.doneAt);
+    const completed = (step: { doneAt?: string }) => Boolean(step.doneAt && Date.parse(step.doneAt) <= now.getTime());
+    const open = steps.findIndex(step => !completed(step));
     const progress = !steps.length ? '' : open < 0 ? '；这几步都做完了' : `；现在在第 ${open + 1} 步（${steps[open]!.text}）${open ? `，做完的有：${steps.slice(0, open).map(step => step.text).join('、')}` : ''}`;
-    const appraisals: Appraisal[] = steps.flatMap((step, index): Appraisal[] => (step.doneAt && !Number.isNaN(Date.parse(step.doneAt))
+    const appraisals: Appraisal[] = steps.flatMap((step, index): Appraisal[] => (step.doneAt && completed(step)
         ? [{ id: `pursuit:${pursuit.id}:step:${index + 1}`, at: Date.parse(step.doneAt), kind: 'joy', strength: index === steps.length - 1 ? 2 : 1, cause: `“${pursuit.title}”的“${step.text}”做完了`, source: 'author', halfLifeH: 10 }]
         : []));
     return { pursuit, text: `${pursuit.title}${pursuit.why ? `——${pursuit.why}` : ''}${progress}`, appraisals };
@@ -194,7 +197,7 @@ export function pursuitViews(list: readonly Pursuit[], facts: PursuitFacts): Pur
             const view = cameraView(item, facts);
             return view ? [view] : [];
         }
-        return [customView(item)];
+        return [customView(item, facts.now)];
     });
 }
 

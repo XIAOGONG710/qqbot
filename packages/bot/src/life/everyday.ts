@@ -267,13 +267,13 @@ function computeQuizzesOn(schedule: Schedule, day: Date): Quiz[] {
     if (outsideSemester) return [];
     const week = weekOf(schedule, day);
     const out: Quiz[] = [];
-    for (const lesson of lessons) {
+    for (const lesson of [...lessons].sort((a, b) => a.start.getTime() - b.start.getTime())) {
         const category = categoryOf(lesson.name);
         if (!category || !quizWeek(lesson.name!, week, schedule.semester.weeks, category)) continue;
         // 每门课那一周的第一次课：前面几天里没有同名的课
         const earlier = Array.from({ length: 6 }, (_, i) => classesOn(schedule, new Date(day.getTime() - (i + 1) * DAY_MS)))
             .some(({ lessons: before }, i) => weekOf(schedule, new Date(day.getTime() - (i + 1) * DAY_MS)) === week && before.some(l => l.name === lesson.name));
-        if (!earlier) out.push({ course: lesson.name!, category, lesson });
+        if (!earlier && !out.some(quiz => quiz.course === lesson.name)) out.push({ course: lesson.name!, category, lesson });
     }
     return out;
 }
@@ -303,12 +303,17 @@ export function quizFeel(score: number, category: Quiz['category']): EventFeel |
 
 const SCORE_WORD = (score: number) => (score >= 90 ? '考得不错' : score >= 80 ? '还可以' : score >= 70 ? '中规中矩' : score >= 60 ? '刚过及格线附近' : '没考好');
 
+/** 同一成绩的世界事件和追求视图共用公布时刻，不能只按出分日期提前知道成绩。 */
+export function quizReleaseAt(course: string, quizDay: Date): Date {
+    const day = new Date(quizDay.getFullYear(), quizDay.getMonth(), quizDay.getDate() + 2);
+    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), 20, 10 + Math.floor(unitOf(`${formatDate(day)} ${course} score time`) * 40));
+}
+
 /** 小测这条线在某一天发生的事：前一次课老师说要小测、当天小测、两天后出分；day 是她的这一天（0 点） */
 export function quizEvents(schedule: Schedule, day: Date, atSchool: boolean): { id: string; text: string; at: Date; feel?: EventFeel }[] {
     if (!atSchool) return [];
     const date = formatDate(day);
     const events: { id: string; text: string; at: Date; feel?: EventFeel }[] = [];
-    const clock = (base: Date, h: number, m: number) => new Date(base.getFullYear(), base.getMonth(), base.getDate(), h, m);
     // 今天的小测
     for (const quiz of quizzesOn(schedule, day)) {
         const score = quizScore(quiz, date);
@@ -319,7 +324,7 @@ export function quizEvents(schedule: Schedule, day: Date, atSchool: boolean): { 
     for (const quiz of quizzesOn(schedule, back)) {
         const score = quizScore(quiz, formatDate(back));
         const feel = quizFeel(score, quiz.category);
-        events.push({ id: `quiz_score:${quiz.course}:${formatDate(back)}`, text: `${quiz.course}小测的分数出来了，${score} 分（${SCORE_WORD(score)}）`, at: clock(day, 20, 10 + Math.floor(unitOf(`${date} ${quiz.course} score time`) * 40)), ...(feel ? { feel } : {}) });
+        events.push({ id: `quiz_score:${quiz.course}:${formatDate(back)}`, text: `${quiz.course}小测的分数出来了，${score} 分（${SCORE_WORD(score)}）`, at: quizReleaseAt(quiz.course, back), ...(feel ? { feel } : {}) });
     }
     // 明天有小测：今天最后一次同名课上老师说了（课后）
     const next = new Date(day.getTime() + DAY_MS);

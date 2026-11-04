@@ -136,9 +136,10 @@ export function bookProgressOn(book: ReadingBook, day: Date): BookProgress {
     const days = Math.max(0, calendarDays(start, day));
     const advanced = book.progress.state === 'put_down' ? 0 : Math.floor(days / book.progress.everyDays) * book.progress.amount;
     const raw = book.progress.start + advanced;
-    const amount = book.progress.max === undefined ? raw : Math.min(raw, book.progress.max);
+    const total = book.total?.unit === book.progress.unit ? book.total.amount : Infinity;
+    const amount = Math.min(raw, book.progress.max ?? Infinity, total);
     const finished = book.total !== undefined && book.total.unit === book.progress.unit && amount >= book.total.amount;
-    const stopped = book.progress.state === 'put_down' || (book.progress.max !== undefined && amount >= book.progress.max);
+    const stopped = finished || book.progress.state === 'put_down' || (book.progress.max !== undefined && amount >= book.progress.max);
     return { amount, unit: book.progress.unit, finished, stopped };
 }
 
@@ -381,6 +382,7 @@ export function parseBooks(value: unknown, source: string): ReadingBook[] {
             const item = object(book.total, `[${i}].total`);
             total = { amount: integer(item.amount, `[${i}].total.amount`, 1), unit: text(item.unit, `[${i}].total.unit`) };
             if (total.unit !== unit) fail(`[${i}].total.unit 要和 progress.unit 一样`);
+            if (progress.start > total.amount) fail(`[${i}].progress.start 不能大于 total.amount`);
         }
         const nodes = array(book.nodes, `[${i}].nodes`).map((rawNode, j) => {
             const node = object(rawNode, `[${i}].nodes[${j}]`);
