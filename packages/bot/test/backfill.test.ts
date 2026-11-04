@@ -66,6 +66,8 @@ describe('补回漏掉的消息', () => {
         const pending = [...answered, { time: at(CATCH_UP_WINDOW_MS + 60_000), role: 'user' as const, content: '很久以前' }];
         assert.equal(shouldCatchUp(pending, now), false);
         assert.equal(shouldCatchUp([...pending, { time: at(60_000), role: 'user', content: '刚才' }], now), true);
+        assert.equal(shouldCatchUp([...pending, { time: new Date(now.getTime() + 30_000).toISOString(), role: 'user', content: '轻微校时误差' }], now), true);
+        assert.equal(shouldCatchUp([...pending, { time: new Date(now.getTime() + 120_000).toISOString(), role: 'user', content: '未来记录' }], now), false);
         assert.equal(CATCH_UP_WINDOW_MS, 3 * 60 * 60 * 1000);
     });
 });

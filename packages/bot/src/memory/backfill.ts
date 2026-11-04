@@ -16,6 +16,7 @@ import { OPS_NOTICE_PREFIX } from '.././ops/alert-qq.ts';
 export const BACKFILL_COUNT = 20;
 /** 最后一条没回的消息在这段时间内才回复，更早的只补记录（时间感知在 M3 之前，隔太久再接话会很怪） */
 export const CATCH_UP_WINDOW_MS = 3 * 60 * 60 * 1000;
+const CATCH_UP_FUTURE_GRACE_MS = 60_000;
 
 export interface HistoryMessage {
     message_id: number;
@@ -64,5 +65,8 @@ export function shouldCatchUp(stored: StoredMessage[], now: Date, windowMs = CAT
     const lastReply = stored.findLastIndex(m => m.role === 'assistant');
     const unanswered = stored.slice(lastReply + 1).filter(m => m.role === 'user');
     const latest = unanswered.at(-1);
-    return latest !== undefined && now.getTime() - Date.parse(latest.time) <= windowMs;
+    if (!latest) return false;
+    const age = now.getTime() - Date.parse(latest.time);
+    // NapCat 和本机允许一分钟校时偏差；明显未来的记录不能被当成“刚才没回”而触发回复。
+    return Number.isFinite(age) && age >= -CATCH_UP_FUTURE_GRACE_MS && age <= windowMs;
 }
