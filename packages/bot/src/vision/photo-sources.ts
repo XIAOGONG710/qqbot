@@ -7,6 +7,7 @@
 // 把关：下载后让看图模型回一个 JSON（有没有人脸、有没有水印 / 文字、是不是猫 / 三花 / 以天空为主、清不清晰、一句话描述），代码按规则定收不收；说明里不许带地名、品种名。
 
 import type { AppConfig } from '../platform/config.ts';
+import { stateObject } from '../memory/state-schema.ts';
 import { imageDataUrl, fetchRemoteImage } from './safe-image.ts';
 import { configuredImageDescriber, MAX_IMAGE_BYTES } from './vision.ts';
 import { PHOTO_MAX_BYTES, type FoodSource, type PhotoCandidate, type PhotoJudgement, type PhotoKind, type PhotoSource } from './photos.ts';
@@ -38,7 +39,22 @@ export function seriesKey(title: string): string {
     return title.replace(/^File:/i, '').replace(/\.[a-z0-9]{3,4}$/i, '').replace(/[\s_(-]*\d+\)?$/, '').trim();
 }
 
-const stripHtml = (value: unknown) => String(value ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+function stripHtml(value: unknown): string {
+    if (typeof value !== 'string') return '';
+    const parts: string[] = [];
+    let from = 0;
+    let scan = 0;
+    for (;;) {
+        const open = value.indexOf('<', scan);
+        if (open < 0) break;
+        const close = value.indexOf('>', open + 1);
+        if (close < 0) break; // 未闭合的剩余部分保留，不在每个 '<' 上重新扫描。
+        if (close > open + 1) { parts.push(value.slice(from, open)); from = close + 1; }
+        scan = close + 1; // '<>' 不匹配旧正则，原样保留；嵌套 '<' 属于标签内容。
+    }
+    parts.push(value.slice(from));
+    return parts.join('').replace(/\s+/g, ' ').trim();
+}
 
 interface CommonsPage {
     title?: string;
@@ -49,25 +65,42 @@ interface CommonsPage {
     }[];
 }
 
+function commonsPages(body: unknown): CommonsPage[] {
+    if (!stateObject(body) || !stateObject(body.query) || !stateObject(body.query.pages)) return [];
+    return Object.values(body.query.pages).filter(stateObject).slice(0, PAGE_SIZE) as CommonsPage[];
+}
+
+function sourcePage(title: string, value: unknown): string | undefined {
+    try {
+        if (value === undefined) return `https://commons.wikimedia.org/wiki/${encodeURIComponent(title)}`;
+        if (typeof value !== 'string') return undefined;
+        const url = new URL(value);
+        return url.protocol === 'https:' && url.hostname === 'commons.wikimedia.org' && !url.port && !url.username && !url.password ? value : undefined;
+    } catch { return undefined; }
+}
+
 /** Commons 的搜索结果 → 候选（只留 jpeg、够大、比例正常、CC0 / 公有领域的）。纯函数，测试用 */
 export function parseCommons(kind: PhotoKind, body: unknown): PhotoCandidate[] {
-    const pages = Object.values((body as { query?: { pages?: Record<string, CommonsPage> } } | undefined)?.query?.pages ?? {});
+    if (kind !== 'cat' && kind !== 'view') return [];
+    const pages = commonsPages(body);
     const out: PhotoCandidate[] = [];
     for (const page of pages) {
-        const info = page.imageinfo?.[0];
-        if (!page.title || !info || info.mime !== 'image/jpeg') continue;
+        const info = Array.isArray(page.imageinfo) ? page.imageinfo[0] : undefined;
+        if (typeof page.title !== 'string' || !page.title.trim() || !info || info.mime !== 'image/jpeg') continue;
         const width = info.width ?? 0;
         const height = info.height ?? 0;
-        if (width < MIN_WIDTH || height < MIN_HEIGHT) continue;
+        if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < MIN_WIDTH || height < MIN_HEIGHT) continue;
         const aspect = width / height;
         if (aspect < MIN_ASPECT || aspect > MAX_ASPECT) continue;
         const license = stripHtml(info.extmetadata?.LicenseShortName?.value);
         if (!LICENSE_OK.test(license)) continue;
         const imageUrl = info.thumburl ?? info.url;
-        if (!imageUrl || !/^https:\/\/upload\.wikimedia\.org\//.test(imageUrl)) continue;
+        if (typeof imageUrl !== 'string' || !/^https:\/\/upload\.wikimedia\.org\//.test(imageUrl)) continue;
+        const pageUrl = sourcePage(page.title, info.descriptionurl);
+        if (!pageUrl) continue;
         out.push({
-            kind, title: page.title, pageUrl: info.descriptionurl ?? '', imageUrl, width, height, license,
-            artist: stripHtml(info.extmetadata?.Artist?.value).slice(0, 60), series: seriesKey(page.title),
+            kind, title: page.title, pageUrl, imageUrl, width, height, license,
+            artist: stripHtml(info.extmetadata?.Artist?.value), series: seriesKey(page.title),
         });
     }
     return out;
@@ -80,25 +113,89 @@ export interface CommonsOptions {
     timeoutMs?: number;
 }
 
+/** 搜索页最多30项；原始JSON也限流读取，不能先把任意大正文放进内存。 */
+export const COMMONS_MAX_BYTES = 2 * 1024 * 1024;
+const defaultCommonsFetch: CommonsFetch = async (url, init) => {
+    const response = await fetch(url, init);
+    if (init.signal.aborted) {
+        void response.body?.cancel().catch(() => undefined);
+        init.signal.throwIfAborted();
+    }
+    if (!response.ok) {
+        await response.body?.cancel();
+        return { ok: false, status: response.status, json: async () => undefined };
+    }
+    return { ok: true, status: response.status, json: async () => {
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('Commons 回复没有正文');
+        const chunks: Uint8Array[] = [];
+        let total = 0;
+        const cancel = () => { void reader.cancel().catch(() => undefined); };
+        init.signal.addEventListener('abort', cancel, { once: true });
+        try {
+            init.signal.throwIfAborted();
+            for (;;) {
+                const { done, value } = await reader.read();
+                init.signal.throwIfAborted();
+                if (done) break;
+                total += value.byteLength;
+                if (total > COMMONS_MAX_BYTES) throw new Error('Commons 回复过大');
+                chunks.push(value);
+            }
+            return JSON.parse(Buffer.concat(chunks, total).toString('utf8')) as unknown;
+        } finally {
+            // 不等待不合作流的cancel，超时竞速仍须能释放调用方。
+            void reader.cancel().catch(() => undefined);
+            init.signal.removeEventListener('abort', cancel);
+            reader.releaseLock();
+        }
+    } };
+};
+
+async function searchBody(params: URLSearchParams, options: CommonsOptions): Promise<unknown> {
+    const timeoutMs = options.timeoutMs ?? 12_000;
+    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new RangeError('Commons 超时配置无效');
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+            controller.abort();
+            reject(new Error('Commons 搜索超时 (timeout)'));
+        }, timeoutMs);
+    });
+    try {
+        return await Promise.race([timeout, (async () => {
+            let response: Awaited<ReturnType<CommonsFetch>>;
+            try { response = await (options.fetch ?? defaultCommonsFetch)(`${COMMONS_API}?${params}`, { headers: { 'user-agent': COMMONS_USER_AGENT, accept: 'application/json' }, signal: controller.signal }); }
+            catch { throw new Error('Commons 搜索请求失败 (fetch failed)'); }
+            if (!response.ok) throw new Error(`Commons 搜索返回 ${Number.isInteger(response.status) ? response.status : '未知状态'}${response.status >= 500 ? ' (fetch failed)' : ''}`);
+            let body: unknown;
+            try { body = await response.json(); } catch { throw new Error('Commons 回复读取或解析失败'); }
+            if (stateObject(body) && body.error !== undefined) {
+                const code = stateObject(body.error) ? body.error.code : undefined;
+                const transient = typeof code === 'string' && ['maxlag', 'ratelimited', 'readonly'].includes(code);
+                throw new Error(`Commons 搜索接口返回错误${transient ? ' (fetch failed)' : ''}`);
+            }
+            return body;
+        })()]);
+    } finally { clearTimeout(timer); }
+}
+
+function checkOffset(offset: number): void {
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new RangeError('Commons 翻页起点无效');
+}
+
 /** 搜一类的候选；offset 是翻页的起点（0、30、60……） */
 export function commonsSearch(options: CommonsOptions = {}): (kind: PhotoKind, offset?: number) => Promise<PhotoCandidate[]> {
-    const doFetch: CommonsFetch = options.fetch ?? ((url, init) => fetch(url, init) as unknown as ReturnType<CommonsFetch>);
     return async (kind, offset = 0) => {
-        const query = (QUERIES as Record<string, string | undefined>)[kind];
+        const query = Object.hasOwn(QUERIES, kind) ? (QUERIES as Record<string, string | undefined>)[kind] : undefined;
         if (!query) return [];
+        checkOffset(offset);
         const params = new URLSearchParams({
             action: 'query', format: 'json', generator: 'search', gsrnamespace: '6', gsrlimit: String(PAGE_SIZE), gsroffset: String(offset),
             gsrsearch: query, prop: 'imageinfo', iiprop: 'url|size|mime|extmetadata', iiurlwidth: '2560',
         });
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(new Error('Commons 搜索超时')), options.timeoutMs ?? 12_000);
-        try {
-            const response = await doFetch(`${COMMONS_API}?${params}`, { headers: { 'user-agent': COMMONS_USER_AGENT, accept: 'application/json' }, signal: controller.signal });
-            if (!response.ok) throw new Error(`Commons 搜索返回 ${response.status}`);
-            return parseCommons(kind, await response.json());
-        } finally {
-            clearTimeout(timer);
-        }
+        return parseCommons(kind, await searchBody(params, options));
     };
 }
 
@@ -118,7 +215,7 @@ export function judgePhoto(kind: PhotoKind, reply: string): PhotoJudgement {
     if (!match) return { keep: false, caption: '', reason: '看图没给出 JSON' };
     let o: Record<string, unknown>;
     try { o = JSON.parse(match[0]) as Record<string, unknown>; } catch { return { keep: false, caption: '', reason: 'JSON 解析不了' }; }
-    const caption = String(o['说明'] ?? '').replace(/\s+/g, '').trim();
+    const caption = typeof o['说明'] === 'string' ? o['说明'].replace(/\s+/g, '').trim() : '';
     // 水印和人物必须明确回答“没有”才收：没回答、答得含糊都不收
     if (!isNo(o['水印'])) return { keep: false, caption, reason: bool(o['水印']) ? '有水印 / 文字 / 相框' : '没明确说没有水印' };
     if (!isNo(o['人物'])) return { keep: false, caption, reason: bool(o['人物']) ? '画面里有人' : '没明确说没有人' };
@@ -188,23 +285,25 @@ const FOOD_MIN_HEIGHT = 1000;
 
 /** Commons 的搜索结果 → 吃的候选（jpeg、够大、比例正常、许可可用）。纯函数，测试用 */
 export function parseCommonsFood(dish: string, body: unknown): PhotoCandidate[] {
-    const pages = Object.values((body as { query?: { pages?: Record<string, CommonsPage> } } | undefined)?.query?.pages ?? {});
+    const pages = commonsPages(body);
     const out: PhotoCandidate[] = [];
     for (const page of pages) {
-        const info = page.imageinfo?.[0];
-        if (!page.title || !info || info.mime !== 'image/jpeg') continue;
+        const info = Array.isArray(page.imageinfo) ? page.imageinfo[0] : undefined;
+        if (typeof page.title !== 'string' || !page.title.trim() || !info || info.mime !== 'image/jpeg') continue;
         const width = info.width ?? 0;
         const height = info.height ?? 0;
-        if (width < FOOD_MIN_WIDTH || height < FOOD_MIN_HEIGHT) continue;
+        if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < FOOD_MIN_WIDTH || height < FOOD_MIN_HEIGHT) continue;
         const aspect = width / height;
         if (aspect < 0.6 || aspect > 1.8) continue;
         const license = stripHtml(info.extmetadata?.LicenseShortName?.value);
         if (!FOOD_LICENSE_OK.test(license)) continue;
         const imageUrl = info.thumburl ?? info.url;
-        if (!imageUrl || !/^https:\/\/upload\.wikimedia\.org\//.test(imageUrl)) continue;
+        if (typeof imageUrl !== 'string' || !/^https:\/\/upload\.wikimedia\.org\//.test(imageUrl)) continue;
+        const pageUrl = sourcePage(page.title, info.descriptionurl);
+        if (!pageUrl) continue;
         out.push({
-            kind: 'food', title: page.title, pageUrl: info.descriptionurl ?? '', imageUrl, width, height, license,
-            artist: stripHtml(info.extmetadata?.Artist?.value).slice(0, 60), series: dish,
+            kind: 'food', title: page.title, pageUrl, imageUrl, width, height, license,
+            artist: stripHtml(info.extmetadata?.Artist?.value), series: dish,
         });
     }
     return out;
@@ -212,25 +311,17 @@ export function parseCommonsFood(dish: string, body: unknown): PhotoCandidate[] 
 
 /** 搜一道菜的候选；offset 是翻页的起点。这道菜没有搜索词 = 没有 */
 export function commonsFoodSearch(options: CommonsOptions = {}): (dish: string, offset?: number) => Promise<PhotoCandidate[]> {
-    const doFetch: CommonsFetch = options.fetch ?? ((url, init) => fetch(url, init) as unknown as ReturnType<CommonsFetch>);
     return async (dish, offset = 0) => {
-        const queries = FOOD_QUERIES[dish];
+        const queries = Object.hasOwn(FOOD_QUERIES, dish) ? FOOD_QUERIES[dish] : undefined;
         if (!queries?.length) return [];
+        checkOffset(offset);
         const merged: PhotoCandidate[] = [];
         for (const query of queries) {
             const params = new URLSearchParams({
                 action: 'query', format: 'json', generator: 'search', gsrnamespace: '6', gsrlimit: String(PAGE_SIZE), gsroffset: String(offset),
                 gsrsearch: `${query} filetype:bitmap filew:>${FOOD_MIN_WIDTH} fileh:>${FOOD_MIN_HEIGHT}`, prop: 'imageinfo', iiprop: 'url|size|mime|extmetadata', iiurlwidth: '1600',
             });
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(new Error('Commons 搜索超时')), options.timeoutMs ?? 12_000);
-            try {
-                const response = await doFetch(`${COMMONS_API}?${params}`, { headers: { 'user-agent': COMMONS_USER_AGENT, accept: 'application/json' }, signal: controller.signal });
-                if (!response.ok) throw new Error(`Commons 搜索返回 ${response.status}`);
-                for (const candidate of parseCommonsFood(dish, await response.json())) if (!merged.some(c => c.title === candidate.title)) merged.push(candidate);
-            } finally {
-                clearTimeout(timer);
-            }
+            for (const candidate of parseCommonsFood(dish, await searchBody(params, options))) if (!merged.some(c => c.title === candidate.title)) merged.push(candidate);
             // 第一个搜索词有够多的就不用下一个（少打 Commons）
             if (merged.length >= 6) break;
         }
@@ -252,7 +343,7 @@ export function judgeFood(dish: string, reply: string): PhotoJudgement {
     if (!match) return { keep: false, caption: '', reason: '看图没给出 JSON' };
     let o: Record<string, unknown>;
     try { o = JSON.parse(match[0]) as Record<string, unknown>; } catch { return { keep: false, caption: '', reason: 'JSON 解析不了' }; }
-    const caption = String(o['说明'] ?? '').replace(/\s+/g, '').trim();
+    const caption = typeof o['说明'] === 'string' ? o['说明'].replace(/\s+/g, '').trim() : '';
     if (!isNo(o['人脸'])) return { keep: false, caption, reason: bool(o['人脸']) ? '有人脸' : '没明确说没有人脸' };
     if (!isNo(o['水印'])) return { keep: false, caption, reason: bool(o['水印']) ? '有水印 / 文字 / 相框' : '没明确说没有水印' };
     if (!isNo(o['招牌'])) return { keep: false, caption, reason: bool(o['招牌']) ? '有清晰的招牌 / 店名' : '没明确说没有招牌' };
