@@ -176,6 +176,11 @@ export class CompanionRuntime {
         this.queues.set(accepted.clientId, current);
         await previous.catch(() => undefined);
         try {
+            // 请求虽然已经通过认证，但仍可能在同设备队列里等待。解绑 / 关闭伴侣是硬边界：
+            // reset 之后尚未开始的旧消息和动作不能再进入宿主处理器。
+            if (generation !== this.queueGeneration) {
+                return { accepted: false, error: '设备配对已失效，请重新配对' };
+            }
             return await this.dispatch(value, accepted.clientId);
         } finally {
             release();

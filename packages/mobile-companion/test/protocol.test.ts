@@ -490,6 +490,36 @@ describe('手机伴侣协议', () => {
         assert.equal(runtime.status().queued, 0);
     });
 
+    test('reset 后尚未开始的旧会话请求不会进入宿主处理器', async () => {
+        const now = 66_000;
+        let releaseFirst!: () => void;
+        const firstPending = new Promise<void>(resolve => { releaseFirst = resolve; });
+        const handled: string[] = [];
+        const pairing = new MemoryPairingStore(60_000);
+        const ticket = pairing.issue('android-reset-pending', now);
+        const runtime = new CompanionRuntime(new CompanionGateway(pairing, () => now), {
+            onMessage: async message => {
+                handled.push(message.text ?? '');
+                if (handled.length === 1) await firstPending;
+                return message;
+            },
+            onAction: async (_request, _clientId, requestId) => ({ requestId, ok: true, decision: 'auto' }),
+        }, () => now);
+        await runtime.handle(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text'] }, 'req-reset-pending-hello', 'nonce-reset-pending-hello', new Date(now).toISOString()));
+        const first = runtime.handle({ v: 1, requestId: 'req-reset-pending-1', kind: 'message.send', sentAt: new Date(now).toISOString(), nonce: 'nonce-reset-pending-1', body: { kind: 'text', text: '已经开始' } });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const waiting = runtime.handle({ v: 1, requestId: 'req-reset-pending-2', kind: 'message.send', sentAt: new Date(now).toISOString(), nonce: 'nonce-reset-pending-2', body: { kind: 'text', text: '不应开始' } });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        assert.equal(runtime.status().queued, 2);
+
+        runtime.reset();
+        releaseFirst();
+        assert.equal((await first).accepted, true, '已经进入宿主的请求只能自然结束');
+        assert.deepEqual(await waiting, { accepted: false, error: '设备配对已失效，请重新配对' });
+        assert.deepEqual(handled, ['已经开始']);
+        assert.equal(runtime.status().queued, 0);
+    });
+
     test('模型等待期间撤销配对不会把旧请求写回新的 DSH 上下文', async () => {
         let release!: (value: string) => void;
         const pending = new Promise<string>(resolve => { release = resolve; });
