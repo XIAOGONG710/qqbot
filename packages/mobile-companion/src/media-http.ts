@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { CompanionMediaStore } from './media.ts';
 import type { CompanionRuntime } from './runtime.ts';
+import { isAllowedMediaMime } from './protocol.ts';
 
 export interface CompanionMediaHttpOptions {
     path?: string;
@@ -23,7 +24,7 @@ export function createCompanionMediaHandler(runtime: CompanionRuntime, store: Co
         const clientId = runtime.clientForSession(sessionId);
         if (!clientId) return writeJson(response, 401, { error: 'session_required' });
         const mime = String(request.headers['x-companion-mime'] ?? request.headers['content-type'] ?? '').split(';', 1)[0]!.trim().toLowerCase();
-        if (!/^(audio|image)\/[\w.+-]+$/.test(mime)) return writeJson(response, 415, { error: 'audio_or_image_required' });
+        if (!isAllowedMediaMime(mime)) return writeJson(response, 415, { error: 'media_type_not_allowed' });
         const metadata = readMetadata(request.headers);
         if (!metadata.ok) return writeJson(response, 400, { error: metadata.error });
 

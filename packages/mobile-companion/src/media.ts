@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { MAX_CLOCK_SKEW_MS, MAX_MEDIA_BYTES } from './protocol.ts';
+import { isAllowedMediaMime, MAX_CLOCK_SKEW_MS, MAX_MEDIA_BYTES } from './protocol.ts';
 
 export interface CompanionMediaRecord {
     mediaId: string;
@@ -31,7 +31,6 @@ export interface MemoryCompanionMediaStoreOptions {
     id?: () => string;
 }
 
-const MIME = /^[\w.+-]+\/[\w.+-]+$/;
 const DEFAULT_TTL_MS = 10 * 60_000;
 const DEFAULT_MAX_ITEMS = 128;
 const DEFAULT_MAX_ITEMS_PER_CLIENT = 16;
@@ -60,9 +59,11 @@ export class MemoryCompanionMediaStore implements CompanionMediaStore {
     put(input: Omit<CompanionMediaRecord, 'mediaId' | 'createdAt' | 'expiresAt'> & { now?: number }): CompanionMediaRecord {
         const now = input.now ?? this.now();
         if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{5,127}$/.test(input.clientId)) throw new Error('媒体设备标识不合法');
-        if (!MIME.test(input.mime) || (!input.mime.toLowerCase().startsWith('audio/') && !input.mime.toLowerCase().startsWith('image/'))) throw new Error('只允许音频或图片媒体');
+        const mime = input.mime.trim().toLowerCase();
+        if (!isAllowedMediaMime(mime)) throw new Error('媒体类型不在允许列表');
         if (!Buffer.isBuffer(input.data) || input.data.length < 1 || input.data.length > MAX_MEDIA_BYTES) throw new Error('媒体大小超出限制');
         if (input.bytes !== input.data.length) throw new Error('媒体字节数不一致');
+        if (!matchesMediaSignature(mime, input.data)) throw new Error('媒体内容与声明类型不一致');
         validateOptionalNumber(input.durationMs, 0, 2 * 60 * 60_000, '媒体时长');
         validateOptionalNumber(input.width, 1, 8192, '媒体宽度');
         validateOptionalNumber(input.height, 1, 8192, '媒体高度');
@@ -73,7 +74,7 @@ export class MemoryCompanionMediaStore implements CompanionMediaStore {
         const record: CompanionMediaRecord = {
             mediaId,
             clientId: input.clientId,
-            mime: input.mime.toLowerCase(),
+            mime,
             bytes: input.data.length,
             data: Buffer.from(input.data),
             createdAt: now,
@@ -148,6 +149,24 @@ export class MemoryCompanionMediaStore implements CompanionMediaStore {
             if (/^[a-f0-9]{16,128}$/i.test(value) && !this.records.has(value)) return value;
         }
         throw new Error('媒体 ID 生成器重复返回');
+    }
+}
+
+/** Cheap container signatures prevent arbitrary bytes or SVG from reaching image/STT decoders. */
+export function matchesMediaSignature(mime: string, data: Buffer): boolean {
+    const ascii = (start: number, end: number) => data.subarray(start, end).toString('ascii');
+    const starts = (...bytes: number[]) => data.length >= bytes.length && bytes.every((byte, index) => data[index] === byte);
+    switch (mime.toLowerCase()) {
+        case 'image/jpeg': return starts(0xff, 0xd8, 0xff);
+        case 'image/png': return starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+        case 'image/webp': return data.length >= 12 && ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP';
+        case 'image/gif': return data.length >= 6 && (ascii(0, 6) === 'GIF87a' || ascii(0, 6) === 'GIF89a');
+        case 'audio/ogg': return ascii(0, 4) === 'OggS';
+        case 'audio/mpeg': return ascii(0, 3) === 'ID3' || (data.length >= 2 && data[0] === 0xff && (data[1]! & 0xe0) === 0xe0);
+        case 'audio/wav': return data.length >= 12 && ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WAVE';
+        case 'audio/webm': return starts(0x1a, 0x45, 0xdf, 0xa3);
+        case 'audio/mp4': return data.length >= 12 && ascii(4, 8) === 'ftyp';
+        default: return false;
     }
 }
 

@@ -93,6 +93,15 @@ export interface CompanionError {
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{5,127}$/;
 const MIME = /^[\w.+-]+\/[\w.+-]+$/;
+export const ALLOWED_MEDIA_MIMES = [
+    'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+    'audio/ogg', 'audio/mpeg', 'audio/wav', 'audio/webm', 'audio/mp4',
+] as const;
+const ALLOWED_MEDIA_MIME_SET = new Set<string>(ALLOWED_MEDIA_MIMES);
+
+export function isAllowedMediaMime(value: string): boolean {
+    return ALLOWED_MEDIA_MIME_SET.has(value.trim().toLowerCase());
+}
 const MEDIA_ID = /^[a-f0-9]{16,128}$/i;
 const PAIRING_CODE = /^[A-Z0-9][A-Z0-9-]{7,63}$/;
 const ALLOWED_ACTIONS = new Set<PhoneAction>(PHONE_ACTION_CAPABILITIES.map(capability => capability.action));
@@ -120,7 +129,7 @@ export function validateMessage(value: unknown): CompanionMessage {
 export function validateMedia(value: unknown): MediaRef {
     if (!value || typeof value !== 'object') throw new Error('媒体消息缺少 media');
     const media = value as Partial<MediaRef>;
-    if (!MIME.test(String(media.mime))) throw new Error('媒体类型不合法');
+    if (!MIME.test(String(media.mime)) || !isAllowedMediaMime(String(media.mime))) throw new Error('媒体类型不在允许列表');
     if (!Number.isInteger(media.bytes) || media.bytes! < 1 || media.bytes! > MAX_MEDIA_BYTES) throw new Error('媒体大小超出限制');
     if (Boolean(media.url) === Boolean(media.mediaId)) throw new Error('媒体引用必须在 https URL 和 mediaId 之间二选一');
     if (media.url) {

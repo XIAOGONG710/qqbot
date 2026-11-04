@@ -1,6 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import type { CompanionMediaStore } from './media.ts';
 import type { CompanionRuntime } from './runtime.ts';
+import { isAllowedMediaMime } from './protocol.ts';
 
 export interface CompanionKoaContextLike {
     path: string;
@@ -55,7 +56,7 @@ export function createCompanionKoaMediaHandler(runtime: CompanionRuntime, store:
         const clientId = runtime.clientForSession(sessionId);
         if (!clientId) return fail(ctx, 401, 'session_required');
         const mime = (header(ctx.request.headers, 'x-companion-mime') || header(ctx.request.headers, 'content-type')).split(';', 1)[0]!.trim().toLowerCase();
-        if (!/^(audio|image)\/[\w.+-]+$/.test(mime)) return fail(ctx, 415, 'audio_or_image_required');
+        if (!isAllowedMediaMime(mime)) return fail(ctx, 415, 'media_type_not_allowed');
         const metadata = readMetadata(ctx.request.headers);
         if (!metadata.ok) return fail(ctx, 400, metadata.error);
         try {

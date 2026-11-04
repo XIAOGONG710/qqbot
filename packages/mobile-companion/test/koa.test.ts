@@ -7,6 +7,8 @@ import { MemoryCompanionMediaStore } from '../src/media.ts';
 import { MemoryPairingStore } from '../src/pairing.ts';
 import { CompanionRuntime } from '../src/runtime.ts';
 
+const png = (tail = '') => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(tail)]);
+
 function context(body: unknown, headers: Record<string, string>, raw = Buffer.alloc(0)): CompanionKoaContextLike {
     const responseHeaders: Record<string, string> = {};
     return {
@@ -46,11 +48,16 @@ test('Koishi Koa 适配器复用 envelope session，并能上传媒体', async (
     emptyPoll.method = 'GET';
     await poll(emptyPoll);
     assert.deepEqual((emptyPoll.body as { actions: unknown[] }).actions, []);
-    const uploadCtx = context(undefined, { 'x-companion-session': helloHeaders['x-companion-session']!, 'x-companion-mime': 'image/png' }, Buffer.from('koa-image'));
+    const uploadData = png('koa-image');
+    const uploadCtx = context(undefined, { 'x-companion-session': helloHeaders['x-companion-session']!, 'x-companion-mime': 'image/png' }, uploadData);
     uploadCtx.path = '/qqbot/companion/http/media';
     await upload(uploadCtx);
     assert.equal(uploadCtx.status, 201);
-    assert.equal(media.get('android-koa', '0123456789abcdef')?.data.toString(), 'koa-image');
+    assert.deepEqual(media.get('android-koa', '0123456789abcdef')?.data, uploadData);
+    const svgCtx = context(undefined, { 'x-companion-session': helloHeaders['x-companion-session']!, 'x-companion-mime': 'image/svg+xml' }, Buffer.from('<svg/>'));
+    svgCtx.path = '/qqbot/companion/http/media';
+    await upload(svgCtx);
+    assert.equal(svgCtx.status, 415);
 });
 
 test('Koishi Koa 适配器拒绝过大的 envelope 和媒体 body', async () => {

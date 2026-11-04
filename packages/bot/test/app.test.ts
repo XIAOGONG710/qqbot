@@ -183,7 +183,8 @@ describe('编排（app.ts）', () => {
         const paired = pair.app.mobileCompanion();
         assert.ok(paired);
         paired.gateway.accept({ v: 1, requestId: 'req-unpair', kind: 'hello', sentAt: new Date().toISOString(), nonce: 'nonce-unpair', body: { clientId: 'android-test', pairingCode: paired.issuePairing('android-test').pairingCode, capabilities: ['text'] } }, 'session-unpair');
-        const oldMedia = paired.media.put({ clientId: 'android-test', mime: 'image/png', data: Buffer.from('old'), bytes: 3 });
+        const oldMediaBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        const oldMedia = paired.media.put({ clientId: 'android-test', mime: 'image/png', data: oldMediaBytes, bytes: oldMediaBytes.length });
         assert.ok(paired.media.get('android-test', oldMedia.mediaId));
         pair.app.receive(event(10001, 1235, '/dsh unpair'));
         assert.equal(paired.gateway.pairedClientId, undefined);

@@ -29,6 +29,8 @@ describe('手机伴侣协议', () => {
         assert.throws(() => validateMessage({ kind: 'audio', media: { mediaId: 'abcdef0123456789', mime: 'audio/ogg', bytes: 12, durationMs: 2 * 60 * 60_000 + 1 } }));
         assert.throws(() => validateMessage({ kind: 'audio', media: { mediaId: 'abcdef0123456789', mime: 'image/png', bytes: 12 } }));
         assert.throws(() => validateMessage({ kind: 'image', media: { mediaId: 'abcdef0123456789', mime: 'audio/ogg', bytes: 12 } }));
+        assert.throws(() => validateMessage({ kind: 'image', media: { mediaId: 'abcdef0123456789', mime: 'image/svg+xml', bytes: 12 } }), /允许列表/);
+        assert.throws(() => validateMessage({ kind: 'audio', media: { mediaId: 'abcdef0123456789', mime: 'audio/x-custom', bytes: 12 } }), /允许列表/);
     });
 
     test('协议包检查时间、nonce 和类型', () => {
