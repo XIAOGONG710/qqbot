@@ -41,3 +41,10 @@ test('晚饭食堂约不变成午饭同伴，迟到吃饭也关联实际那顿�
     assert.equal(target('17:50', s), 'dated-friend');
     assert.equal(target('18:00', s), 'dated-friend');
 });
+
+test('饭后叙事钟点不等于实际饭点，显式午饭事实仍进入午饭且不串到晚饭', () => {
+    const s = sources([{ ...social('lunch_with_friend', '16:00', 'lunch-friend'), mealKind: 'lunch' }]);
+    assert.equal(target('12:00', s), 'lunch-friend');
+    assert.equal(target('12:10', s), 'lunch-friend');
+    assert.equal(target('17:50', s), undefined);
+});

@@ -155,8 +155,9 @@ function npcFacts(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date) 
     return (dayWorld(sources, at)?.events ?? []).filter(event => event.person);
 }
 
-function targetForMeal(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, meal: { start: Date; end: Date }): string | undefined {
-    const social = npcFacts(sources, meal.start).find(event => MEAL_SOCIAL.has(event.id) && event.at >= meal.start && event.at < meal.end)?.person?.id;
+function targetForMeal(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, meal: { kind: 'lunch' | 'dinner'; start: Date; end: Date }): string | undefined {
+    const social = npcFacts(sources, meal.start).find(event => MEAL_SOCIAL.has(event.id)
+        && (event.mealKind ? event.mealKind === meal.kind : event.at >= meal.start && event.at < meal.end))?.person?.id;
     if (social) return social;
     // 闺蜜约的那顿午饭（ADR 0061）：真的发生了的才算
     const world = dayWorld(sources, meal.start);

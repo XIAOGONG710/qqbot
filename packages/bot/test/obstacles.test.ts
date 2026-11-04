@@ -47,7 +47,7 @@ describe('障碍：obstaclesBetween（ADR 0066 决策 1）', () => {
         const worldAt = () => world([hw('数据结构', t(10, 14, 22), t(10, 15, 8))]);
         const found = obstaclesBetween(t(10, 14, 20, 30), t(10, 14, 21, 30), facts({ worldAt }));
         assert.deepEqual(found.map(o => o.kind), ['homework']);
-        assert.equal(found[0]!.id, `homework:${t(10, 15, 8).getTime()}`);
+        assert.match(found[0]!.id, new RegExp(`^homework:${t(10, 15, 8).getTime()}:${t(10, 14, 22).getTime()}:[a-f0-9]{16}$`));
         assert.match(found[0]!.text, /要赶作业（数据结构），22:00 左右写完/);
         assert.deepEqual(obstaclesBetween(t(10, 14, 12), t(10, 14, 13), facts({ worldAt })), [], '中午她还没开始赶');
         assert.deepEqual(obstaclesBetween(t(10, 14, 22, 10), t(10, 14, 23), facts({ worldAt })), [], '写完以后');

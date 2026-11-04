@@ -5,6 +5,7 @@
 // - describeObstacles：他提到见面时放进时间块的一行（只给事实，是否推、怎么说由她定）。
 
 import type { BodyNow } from '../life/body.ts';
+import { createHash } from 'node:crypto';
 import { unwell } from '../life/body.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from '../life/promises.ts';
 import { classesOn, formatDate, herDay, type Schedule } from '../life/schedule.ts';
@@ -19,7 +20,7 @@ export type ObstacleKind = (typeof OBSTACLE_KINDS)[number];
 
 export interface Obstacle {
     kind: ObstacleKind;
-    /** 事实 id：`class:<日期>:<课>`、`homework:<到期时刻>`、`unwell:<日期>`、`meet:<约的 id>` */
+    /** 事实 id：class / homework / unwell / meet 前缀；作业含到期与完成时刻及来源指纹，不包含原始课程名。 */
     id: string;
     /** 一句事实，不带时间（「有课（机房课）」）；日志和说明里用 */
     text: string;
@@ -86,8 +87,9 @@ export function obstaclesBetween(from: Date, to: Date, facts: ObstacleFacts, exc
             if (h.done || h.due.getTime() - h.doneAt.getTime() > DAY_MS) continue;
             const start = new Date(h.doneAt.getTime() - OCCUPATION_MINUTES.homework * 60_000);
             if (!overlaps(start, h.doneAt, from, to)) continue;
+            const identity = createHash('sha256').update(JSON.stringify([h.course ?? '', h.assigned ?? ''])).digest('hex').slice(0, 16);
             put({
-                kind: 'homework', id: `homework:${h.due.getTime()}`, start, end: h.doneAt, ...(h.assigned ? { assigned: h.assigned } : {}),
+                kind: 'homework', id: `homework:${h.due.getTime()}:${h.doneAt.getTime()}:${identity}`, start, end: h.doneAt, ...(h.assigned ? { assigned: h.assigned } : {}),
                 text: `要赶作业${h.course ? `（${h.course}）` : ''}，${clock(h.doneAt)} 左右写完`,
             });
         }

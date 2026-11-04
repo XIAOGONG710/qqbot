@@ -5,6 +5,7 @@
 // - 只写事实，不写台词、不写情绪（ADR 0021 决策 3）。
 
 import { formatDate, type Schedule } from '../life/schedule.ts';
+import { stateObject } from '../memory/state-schema.ts';
 
 /** 一个人自己的日子怎么推（资料里没写的块就没有） */
 export interface NpcLife {
@@ -26,9 +27,34 @@ export type NpcState =
 
 /** 往回找一段病、一段忙的起点最多找几天（比资料里最长的一段长就行） */
 const MAX_SPAN = 14;
+/** 月排程的资源边界：最多 31 个起点；不是把段数解释成每天发病的概率。 */
+export const MAX_NPC_MONTHLY_SPANS = 31;
+
+/** 配置加载和直接事实投影共用校验，防止坏次数形成无界循环；持续范围沿用 MAX_SPAN 的既有上限。 */
+export function validateNpcLife(value: unknown, fail: (message: string) => never = message => { throw new RangeError(`NPC生活配置${message}`); }): asserts value is NpcLife | undefined {
+    if (value === undefined) return;
+    if (!stateObject(value)) fail('应为对象');
+    for (const kind of ['sick', 'busy'] as const) {
+        const span = value[kind];
+        if (span === undefined) continue;
+        if (!stateObject(span)) fail(`.${kind} 应为对象`);
+        if (typeof span.perMonth !== 'number' || !Number.isFinite(span.perMonth) || span.perMonth < 0 || span.perMonth > MAX_NPC_MONTHLY_SPANS) fail(`.${kind}.perMonth 应为 0–${MAX_NPC_MONTHLY_SPANS} 内的有限数`);
+        if (!Array.isArray(span.days) || span.days.length !== 2
+            || !span.days.every(day => Number.isInteger(day) && day >= 1 && day <= MAX_SPAN)
+            || span.days[0] > span.days[1]) fail(`.${kind}.days 应为 1–${MAX_SPAN} 内递增的整数范围`);
+        if (kind === 'busy' && (!Array.isArray(span.labels) || !span.labels.length || !span.labels.every(label => typeof label === 'string' && Boolean(label.trim())))) fail('.busy.labels 应为非空字符串数组');
+    }
+    if (value.home !== undefined) {
+        const home = value.home;
+        if (!stateObject(home) || typeof home.weekendChance !== 'number' || !Number.isFinite(home.weekendChance)
+            || home.weekendChance < 0 || home.weekendChance > 1 || typeof home.holidays !== 'boolean') fail('.home 的概率应在 0–1 之间，holidays 应为布尔值');
+    }
+}
 
 /** 她这一天的状态（几种可以同时有：感冒了又赶上回家）；放假不忙 */
 export function npcStates(id: string, life: NpcLife | undefined, schedule: Schedule, day: Date): NpcState[] {
+    validateNpcLife(life);
+    if (!Number.isFinite(day.getTime())) throw new RangeError('NPC 日期不合法');
     if (!life) return [];
     const date = formatDate(day);
     const holiday = schedule.holidays.some(h => h.start <= date && date <= h.end);

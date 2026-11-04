@@ -17,8 +17,8 @@ import { bodyAt, parseBody, unwell, type Body, type BodyNow } from '../life/body
 import { DEFAULT_NEWS_KINDS, type NewsKind } from '../proactive/proactive.ts';
 import { EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, quizEvents, type EventFeel } from '../life/everyday.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
-import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
-import { DEFAULT_ASKS, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
+import { describeNpc, npcAllows, npcSpans, npcStates, validateNpcLife, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
+import { coordinateNpcDates, DEFAULT_ASKS, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
 import type { Plans } from '../life/day-plan.ts';
 import { ASK_HOME_TIME, depositFor, lastPayday, MISC_TIME, nextPayday, ORDER_TIME, PAY_TIME, parcelPrice, priceIn, sideJobOn, spendItems, type Money, type MoneyEntry } from '../life/money.ts';
 
@@ -88,6 +88,8 @@ export interface Homework {
     id: string;
     course: string;
     assigned: string;
+    /** 最早从本次课开始才成为她已知的作业，不猜测课内具体布置分钟。 */
+    assignedAt: Date;
     due: Date;
     done: Date;
 }
@@ -180,7 +182,7 @@ export interface WorldNow {
     /** 她这一天的日常（ADR 0031）：午饭、晚饭在哪吃、几点到几点；洗澡几点到几点（不洗的日子没有） */
     routine?: { meals: { kind: 'lunch' | 'dinner'; start: Date; end: Date; where: 'canteen' | 'takeout' | 'home'; /** 吃的是什么（ADR 0125，配置 menu） */ dish?: string }[]; shower?: { start: Date; end: Date } };
     /** 今天已经发生的小事（text 已换好人名） */
-    events: { id: string; text: string; at: Date; person?: { id: string; name: string; relation: string }; feel?: EventFeel }[];
+    events: { id: string; text: string; at: Date; person?: { id: string; name: string; relation: string }; feel?: EventFeel; mealKind?: 'lunch' | 'dinner' }[];
     /** 她身边的人今天怎么样（ADR 0033）：只有有事的（病了、忙、回家了） */
     people?: { name: string; relation: string; states: NpcState[] }[];
     /** 她的钱（ADR 0035）：手上还有多少、下次几号到账、今天到现在花的；detail 是这一档说得出口 */
@@ -445,6 +447,19 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
                 parcels.push({ id: `${date}:${item}`, item, ordered: date, arrive, deadline: formatDate(addDays(arrive, p.keepDays - 1)) });
         }
 
+        // 先兑现实际取件时刻，喂猫才能使用当时已经取回的猫粮；没有自动取件计划时也要补库存。
+        for (const action of todayActions.filter(a => a.kind === 'pick_parcel')) {
+            const time = new Date(action.at);
+            const available = parcels.filter(parcel => !parcel.returned && parcel.arrive <= time && (!parcel.picked || parcel.picked > time));
+            const matched = action.target ? available.find(parcel => parcel.id === action.target) : action.subject
+                ? available.find(parcel => parcel.item.includes(action.subject!) || action.subject!.includes(parcel.item))
+                : available[0];
+            if (matched) {
+                if (matched.food && !matched.picked && world.cat) food += world.cat.food.bagDays;
+                matched.picked = time;
+            }
+        }
+
         // 楼下的猫：晚上空的时候下楼；下雨、不在学校、猫粮没了不去；晚上有课就下课后去，窗口里都在上课就不去
         if (world.cat) {
             const cat = world.cat;
@@ -456,7 +471,8 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             if (blocking) time = new Date(blocking.end.getTime() + 10 * 60_000);
             // 真实天气按喂猫那个钟头和前一个钟头下没下（ADR 0048）：还没到点不知道，过了点照实际；生成的天气照旧按一整天
             const rainy = record.weather?.rainHours ? record.weather.rainHours.some(h => h >= time.getHours() - 1 && h <= time.getHours()) : record.weather?.rain;
-            const skipped = !atSchool ? 'away' : rainy ? 'rain' : food <= 0 ? 'no_food' : time > at(day, to) ? 'class' : undefined;
+            const pendingFood = parcels.filter(p => p.food && p.picked && sameDay(p.picked, day) && p.picked > time).length * cat.food.bagDays;
+            const skipped = !atSchool ? 'away' : rainy ? 'rain' : food - pendingFood <= 0 ? 'no_food' : time > at(day, to) ? 'class' : undefined;
             if (skipped) record.cat = { skipped, foodAfter: food };
             else {
                 food -= 1;
@@ -494,13 +510,13 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
                 // 晚上的课下课比 21:30 还晚时，写完的时刻往后挪到下课后一小时
                 homework.push({
                     id: `${date}:${lesson.id!}`,
-                    course: lesson.name ?? '', assigned: date, due, done: new Date(Math.max(done.getTime(), lesson.end.getTime() + 3_600_000)),
+                    course: lesson.name ?? '', assigned: date, assignedAt: lesson.start, due, done: new Date(Math.max(done.getTime(), lesson.end.getTime() + 3_600_000)),
                 });
             }
             // W3：只改已经存在、当时还没交的作业；说清课名时优先对那一份。
             for (const action of todayActions.filter(a => a.kind === 'finish_homework')) {
                 const time = new Date(action.at);
-                const available = homework.filter(item => item.assigned <= date && item.due > time && item.done > time);
+                const available = homework.filter(item => item.assignedAt <= time && item.due > time && item.done > time);
                 const matched = action.target ? available.find(item => item.id === action.target) : action.subject
                     ? available.find(item => item.course.includes(action.subject!) || action.subject!.includes(item.course))
                     : available[0];
@@ -512,16 +528,6 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         if (world.familyCall && atSchool && (day.getDay() || 7) === world.familyCall.weekday) record.call = at(day, world.familyCall.time);
         const called = todayActions.filter(a => a.kind === 'family_call').at(-1);
         if (world.familyCall && called) record.call = new Date(called.at);
-
-        // W3：她说已经取了快递，只能对上确实已经到站、没有退回的那一件；不凭一句话凭空造包裹。
-        for (const action of todayActions.filter(a => a.kind === 'pick_parcel')) {
-            const time = new Date(action.at);
-            const available = parcels.filter(parcel => !parcel.returned && parcel.arrive <= time && (!parcel.picked || parcel.picked > time));
-            const matched = action.target ? available.find(parcel => parcel.id === action.target) : action.subject
-                ? available.find(parcel => parcel.item.includes(action.subject!) || action.subject!.includes(parcel.item))
-                : available[0];
-            if (matched) matched.picked = time;
-        }
 
         // 学校和宿舍里的小事
         for (const event of world.events) {
@@ -597,7 +603,10 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         // 他给的钱（10-10 用户裁决：打字发的「［转账］」也当真）：记一笔收入；说了是买相机的存进相机基金，存满目标为止，多的留在手上
         const purchase = world.cameraFund?.purchase?.date === date ? world.cameraFund.purchase : undefined;
         const tripStart = purchase ? at(day, purchase.from) : undefined;
+        let purchaseDecided = false;
         const buyCamera = () => {
+            if (purchaseDecided) return;
+            purchaseDecided = true;
             // 攒够以后去买（用户 10-10）：钱从相机基金出，剩下的回到手上；之后不再存
             if (!purchase || !tripStart || camera || saved < purchase.price) return;
             const end = new Date(tripStart.getTime() + purchase.minutes * 60_000);
@@ -610,7 +619,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         const gifts = todayActions.filter(a => a.kind === 'receive_money' && a.amount).sort((a, b) => a.at.localeCompare(b.at));
         for (const action of gifts) {
             const time = new Date(action.at);
-            if (tripStart && time >= tripStart) buyCamera();
+            if (tripStart && time > tripStart) buyCamera();
             book(time, action.amount!, '收到的钱', 'income');
             if (action.target === CAMERA_FUND_TARGET && world.cameraFund && !camera && saved < world.cameraFund.goal) {
                 const put = Math.min(action.amount!, world.cameraFund.goal - saved);
@@ -676,14 +685,13 @@ function friendDatesFor(world: World, schedule: Schedule, now: Date, days: reado
             out.push(friendDate(world, schedule, ask, timeline, detail));
         }
     }
-    return out.sort((a, b) => a.start.getTime() - b.start.getTime());
+    return coordinateNpcDates(out);
 }
 
 function friendDate(world: World, schedule: Schedule, ask: NpcAsk, timeline: Timeline, detail: boolean): FriendDate {
     const person = world.people.find(p => p.id === ask.person)!;
     const day = new Date(`${ask.day}T00:00`);
-    const askedOn = formatDate(startOfDay(ask.askedAt));
-    const due = timeline.homework.filter(h => h.assigned <= askedOn && h.due > ask.askedAt && h.done > ask.askedAt).sort((a, b) => a.due.getTime() - b.due.getTime())[0]?.due;
+    const due = timeline.homework.filter(h => h.assignedAt <= ask.askedAt && h.due > ask.askedAt && h.done > ask.askedAt).sort((a, b) => a.due.getTime() - b.due.getTime())[0]?.due;
     const facts: AskFacts = {
         classes: classesOn(schedule, day).lessons.map(l => ({ start: l.start, end: l.end })),
         meetups: [],
@@ -768,7 +776,8 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
             : c.fed ? { later: world.cat.feed[0] }
                 : { skipped: c.skipped! };
         // 还没去的时候，猫粮按昨天晚上的算
-        const foodDays = c.fed && c.fed > now ? c.foodAfter + 1 : c.foodAfter;
+        const futureFood = timeline.parcels.filter(p => p.food && p.picked && sameDay(p.picked, day) && p.picked > now).length * world.cat.food.bagDays;
+        const foodDays = Math.max(0, (c.fed && c.fed > now ? c.foodAfter + 1 : c.foodAfter) - futureFood);
         result.cat = { name: world.cat.name, today, yesterdayFed: Boolean(yesterday?.cat?.fed), foodDays };
     }
     for (const parcel of timeline.parcels) {
@@ -798,7 +807,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
         };
     }
     for (const item of timeline.homework) {
-        if (item.assigned > date || item.due <= now || item.due.getTime() - startOfDay(now).getTime() > 3 * DAY_MS) continue;
+        if (item.assignedAt > now || item.due <= now || item.due.getTime() - startOfDay(now).getTime() > 3 * DAY_MS) continue;
         result.homework.push({ course: item.course, due: item.due, done: item.done <= now, doneAt: item.done, assigned: item.assigned });
     }
     if (record.call) result.familyCall = { at: record.call, done: record.call <= now };
@@ -806,7 +815,10 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     for (const event of record.events) {
         if (event.at > now) continue;
         const person = event.person ? world.people.find(p => p.id === event.person) : undefined;
-        result.events.push({ id: event.id, text: event.text.replaceAll('{person}', person?.name ?? '朋友'), at: event.at, ...(person ? { person: { id: person.id, name: person.name, relation: person.relation } } : {}), ...(event.feel ? { feel: event.feel } : {}) });
+        // 卡上的饭后叙事在整个 afternoon/evening 窗口取时刻，不能把叙事钟点误当成吃饭开始。
+        const window = ['lunch_with_friend', 'spicy_noodles'].includes(event.id) ? world.events.find(def => def.id === event.id)?.window : undefined;
+        const mealKind = window === 'afternoon' ? 'lunch' as const : window === 'evening' ? 'dinner' as const : undefined;
+        result.events.push({ id: event.id, text: event.text.replaceAll('{person}', person?.name ?? '朋友'), at: event.at, ...(person ? { person: { id: person.id, name: person.name, relation: person.relation } } : {}), ...(event.feel ? { feel: event.feel } : {}), ...(mealKind ? { mealKind } : {}) });
     }
     const people = world.people.map(p => ({ name: p.name, relation: p.relation, states: npcStates(p.id, p.life, schedule, day) })).filter(p => p.states.length);
     if (people.length) result.people = people;
@@ -1210,6 +1222,8 @@ export function worldState(
     events = [...events, ...legacyActions.filter(action => !eventIds.has(action.id)).map(actionToLifeEvent)]
         .sort(compareLifeEvents);
     let actions = projectWorldActions(events);
+    const projectionFingerprint = (items: readonly WorldAction[]) => JSON.stringify(items.map(actionToLifeEvent).sort(compareLifeEvents));
+    let projectionDirty = projectionFingerprint(legacyActions) !== projectionFingerprint(actions);
     let logged: string | undefined;
 
     const persistState = (now: Date) => {
@@ -1221,18 +1235,28 @@ export function worldState(
         catch (error) { log(`她的世界：${what}失败（${error instanceof Error ? error.message : String(error)}）`); }
     };
 
+    const repairProjection = () => {
+        if (!projectionDirty) return;
+        writeJsonAtomic(actionsPath, { actions });
+        projectionDirty = false;
+    };
     const persist = (nextEvents: LifeEvent[]) => {
         const nextActions = projectWorldActions(nextEvents);
         // 事件先落盘；旧投影失败时抛出，让上层重试。重试由事件 id 幂等，不会重复执行。
         writeLifeEvents(eventsPath, nextEvents);
-        writeJsonAtomic(actionsPath, { actions: nextActions });
         events = nextEvents;
         actions = nextActions;
+        projectionDirty = true;
+        repairProjection();
     };
 
     const append = (drafts: readonly LifeEventDraft[]): LifeEvent[] => {
+        repairProjection();
         const added: LifeEvent[] = [];
         for (const draft of drafts) {
+            if (typeof draft.id !== 'string' || typeof draft.kind !== 'string'
+                || (draft.amount !== undefined && (!Number.isSafeInteger(draft.amount) || draft.amount <= 0))
+                || (draft.contact !== undefined && (!Number.isSafeInteger(draft.contact) || draft.contact < 0))) continue;
             const id = draft.id.trim();
             const kind = draft.kind.trim();
             const endedAt = new Date(draft.at);
@@ -1262,7 +1286,7 @@ export function worldState(
                         if (matched) target = matched.id;
                         else result = 'failed';
                     } else {
-                        const available = timeline.homework.filter(item => item.assigned <= day && item.due > endedAt && item.done > endedAt);
+                        const available = timeline.homework.filter(item => item.assignedAt <= endedAt && item.due > endedAt && item.done > endedAt);
                         const matched = target ? available.find(item => item.id === target)
                             : subject ? available.find(item => item.course.includes(subject) || subject.includes(item.course)) : available[0];
                         if (matched) target = matched.id;
@@ -1301,6 +1325,7 @@ export function worldState(
             safely(() => persistState(now), 'state.json 写入');
         },
         record: (contact, episode, drafts) => {
+            repairProjection();
             const assistant = episode.messages.filter(message => message.role === 'assistant');
             if (!assistant.length || !drafts.length) return;
             const added: WorldAction[] = [];
@@ -1342,7 +1367,7 @@ export function worldState(
                         if (!matched) continue;
                         target = matched.id;
                     } else {
-                        const available = timeline.homework.filter(item => item.assigned <= day && item.due > at && item.done > at);
+                        const available = timeline.homework.filter(item => item.assignedAt <= at && item.due > at && item.done > at);
                         const matched = subject
                             ? available.find(item => item.course.includes(subject) || subject.includes(item.course))
                             : available[0];
@@ -1452,6 +1477,12 @@ export function parseWorld(value: unknown, source: string): World | undefined {
     const w = obj(value, '');
     if (typeof w.startDay !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(w.startDay)) fail('.startDay 应为 YYYY-MM-DD');
     if (!Array.isArray(w.awayHolidays) || !Array.isArray(w.events) || !Array.isArray(w.people)) fail(' 缺 awayHolidays / people / events');
+    for (const [i, p] of (w.people as unknown[]).entries()) {
+        const person = obj(p, `.people[${i}]`);
+        if (typeof person.id !== 'string' || !person.id.trim() || typeof person.name !== 'string' || !person.name.trim()
+            || typeof person.relation !== 'string') fail(`.people[${i}] 要有 id、name、relation`);
+        validateNpcLife(person.life, message => fail(`.people[${i}].life${message}`));
+    }
     for (const [i, e] of (w.events as unknown[]).entries()) {
         const event = obj(e, `.events[${i}]`);
         if (typeof event.text !== 'string' || !(String(event.window) in WINDOWS) || typeof event.chance !== 'number') fail(`.events[${i}] 格式不对`);
