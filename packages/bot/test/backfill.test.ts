@@ -36,7 +36,7 @@ describe('补回漏掉的消息', () => {
         ];
         assert.deepEqual(findMissed(stored, fetched, SELF), [
             { time: t(101), role: 'user', content: '同一秒发的', messageId: 3 },
-            { time: t(200), role: 'assistant', content: '我先去洗澡', messageId: 4 },
+            { time: t(200), role: 'assistant', content: '我先去洗澡', messageId: 4, sourceTime: 200 },
             { time: t(300), role: 'user', content: '睡了吗', messageId: 5 },
         ]);
     });

@@ -189,7 +189,7 @@ export type InitiateOutcome =
     | { result: 'failed'; reason: string; messageIds?: number[]; unreachable?: true };
 
 export interface Responder {
-    receive(text: string, messageId: number, time: Date): void;
+    receive(text: string, messageId: number, time: Date, messageSeq?: string): void;
     /** 此刻在干什么（只读） */
     status(): ResponderStatus;
     /** 不记新消息，直接按现有聊天记录回复一次（补回漏掉的消息之后用） */
@@ -598,9 +598,9 @@ export function createResponder(deps: ResponderDeps): Responder {
     }
 
     return {
-        receive(text, messageId, time) {
+        receive(text, messageId, time, messageSeq) {
             if (stopped) return;
-            deps.history.append(deps.userId, { time: time.toISOString(), role: 'user', content: text, messageId });
+            deps.history.append(deps.userId, { time: time.toISOString(), role: 'user', content: text, messageId, ...(messageSeq ? { messageSeq } : {}) });
             deps.log(`收到：${deps.sensitive?.() ? text : `${[...text].length} 字`}`);
             lastReceived = now();
             burstStart ??= lastReceived;

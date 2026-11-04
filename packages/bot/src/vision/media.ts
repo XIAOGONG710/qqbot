@@ -12,6 +12,7 @@ import { open } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { AsyncGate } from '../social/async-gate.ts';
 import type { Segment } from '../platform/onebot.ts';
+import { sameMessage, type MessageIdentity } from '../memory/history.ts';
 
 /** NapCat 那边能做的（入口传进来：main.ts 用自写的 OneBot 客户端，Koishi 插件用 adapter-onebot） */
 export interface MediaReader {
@@ -281,33 +282,39 @@ export async function readMedia(message: Segment[] | string, messageId: number, 
     }));
 }
 
+export type MediaSourceIdentity = MessageIdentity & { peer: number };
 export interface MediaReading {
     /** 这条要不要等（有要读的、而且有得读） */
     needs(message: Segment[] | string): boolean;
     /** 读这条（同一条正在读就等那一次的结果） */
-    read(message: Segment[] | string, messageId: number, log: (message: string) => void): Promise<Segment[] | string>;
+    read(message: Segment[] | string, messageId: number, log: (message: string) => void, source?: MediaSourceIdentity): Promise<Segment[] | string>;
     /** Stop queued/in-flight work during shutdown. */
     stop(): void;
 }
 
 /**
- * readMedia 加上「同一条只读一次」：按 QQ 消息 id，正在读的共用一个结果（实时收到的和补回的撞上），读完就放掉（之后靠聊天记录去重）。
+ * readMedia 加上「同一条只读一次」：按来源身份，正在读的共用一个结果（实时收到的和补回的撞上），读完就放掉。
+ * 未提供来源的旧调用方仍使用显式弱ID兼容，不能把它和来源明确的另一条混用。
  * 没有 reader 也没有 vision 时不读（老样子）。
  */
 export function mediaReading(sources: MediaSources): MediaReading {
-    const reading = new Map<number, Promise<Segment[] | string>>();
+    const reading = new Map<number, { source?: MediaSourceIdentity; task: Promise<Segment[] | string> }[]>();
     const stopped = new AbortController();
     const enabled = Boolean(sources.reader?.voiceToText || sources.reader?.ocr || sources.vision);
     return {
         needs: message => enabled && needsReading(message),
-        read(message, messageId, log) {
+        read(message, messageId, log, source) {
             if (!enabled || !needsReading(message)) return Promise.resolve(message);
-            let task = reading.get(messageId);
-            if (!task) {
-                task = readMedia(message, messageId, sources, log, stopped.signal).finally(() => reading.delete(messageId));
-                reading.set(messageId, task);
-            }
-            return task;
+            const entries = reading.get(messageId) ?? [];
+            const known = entries.find(entry => source && entry.source ? source.peer === entry.source.peer && sameMessage(source, entry.source) : !source && !entry.source);
+            if (known) return known.task;
+            const entry = { ...(source ? { source: { ...source } } : {}), task: Promise.resolve(message) };
+            entry.task = readMedia(message, messageId, sources, log, stopped.signal).finally(() => {
+                const remaining = reading.get(messageId)?.filter(candidate => candidate !== entry) ?? [];
+                if (remaining.length) reading.set(messageId, remaining); else reading.delete(messageId);
+            });
+            entries.push(entry); reading.set(messageId, entries);
+            return entry.task;
         },
         stop() { stopped.abort(new Error('媒体读取已停止')); },
     };

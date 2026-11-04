@@ -25,7 +25,8 @@ import { Timeline, timelineAccount, timelineFromDevice } from '.././memory/timel
 import { readWebSecrets, WebLookup } from './web.ts';
 import { acquireLock } from './lock.ts';
 import type { Log } from './log.ts';
-import { ChatHistory, type StoredMessage } from '.././memory/history.ts';
+import { ChatHistory, sourceMessageSeq, type StoredMessage } from '.././memory/history.ts';
+import { stateTimestamp } from '../memory/state-schema.ts';
 import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from '.././memory/backfill.ts';
 import { segmentsToText, type MessageEvent, type PokeEvent, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
@@ -1397,9 +1398,19 @@ ${body}
     const lastPokeBack = new Map<number, number>();
     const pokeTimers = new Set<ReturnType<typeof setTimeout>>();
 
+    const eventIdentity = (event: MessageEvent) => ({ role: 'user' as const, time: new Date(event.time * 1000).toISOString(), messageSeq: sourceMessageSeq(event.real_seq) });
     function onMessage(event: MessageEvent): void {
+        if (!Number.isSafeInteger(event.user_id) || event.user_id <= 0 || !Number.isSafeInteger(event.message_id) || event.message_id < 0
+            || !Number.isSafeInteger(event.time)) {
+            log('收到的私聊来源身份无效，已忽略');
+            return;
+        }
+        const at = new Date(event.time * 1000);
+        if (!Number.isFinite(at.getTime()) || !stateTimestamp(at.toISOString())) { log('收到的私聊来源身份无效，已忽略'); return; }
+        event = { ...event };
+        const sourceIdentity = eventIdentity(event);
         // 补回或入口重投的同一条消息不消耗限额，也不重复处理。
-        if (chatHistory.hasMessage(event.user_id, event.message_id)) return;
+        if (chatHistory.hasMessage(event.user_id, event.message_id, sourceIdentity)) return;
         let responder = responders.get(event.user_id);
         if (!responder) {
             if (!config.unlistedFriends) {
@@ -1516,7 +1527,7 @@ ${body}
                 void outcome.run().then(async handled => {
                     if (stopped) return;
                     if (handled.kind === 'reply') { await transport.sendPrivateText(event.user_id, handled.text); return; }
-                    target.receive(handled.text, event.message_id, new Date(event.time * 1000));
+                    target.receive(handled.text, event.message_id, new Date(event.time * 1000), sourceMessageSeq(event.real_seq));
                     planners.get(event.user_id)?.poke();
                 }).catch(error => log(`设备控制：看屏幕 / 摄像头出错（${error instanceof Error ? error.message : String(error)}）`));
                 return;
@@ -1537,12 +1548,12 @@ ${body}
         // Defer media work until the previous message has fully entered the contact pipeline.
         // Starting read() before awaiting `queued` only serialized delivery and still leaked parallel OCR/vision calls.
         const job = (queued ?? Promise.resolve()).then(async () => {
-            if (stopped || chatHistory.hasMessage(qq, event.message_id)) return;
+            if (stopped || chatHistory.hasMessage(qq, event.message_id, sourceIdentity)) return;
             const message = reader
-                ? await reader.read(event.message, event.message_id, message => log(`[${qq}] ${message}`)).catch(() => event.message)
+                ? await reader.read(event.message, event.message_id, message => log(`[${qq}] ${message}`), { ...sourceIdentity, messageId: event.message_id, peer: qq }).catch(() => event.message)
                 : event.message;
             // 读的时候补回可能已经记下了这条
-            if (stopped || chatHistory.hasMessage(qq, event.message_id)) return;
+            if (stopped || chatHistory.hasMessage(qq, event.message_id, sourceIdentity)) return;
             deliver(target, event, message);
         }).catch(error => log(`[${qq}] 处理收到的消息出错：${error instanceof Error ? error.message : String(error)}`));
         inbox.set(qq, job);
@@ -1565,7 +1576,7 @@ ${body}
     function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string): void {
         const text = segmentsToText(message, quoteLookup(event.user_id)).trim();
         if (!text) return;
-        responder.receive(text, event.message_id, new Date(event.time * 1000));
+        responder.receive(text, event.message_id, new Date(event.time * 1000), sourceMessageSeq(event.real_seq));
         const crisis = detectCrisis(text);
         if (crisis && config.contacts.some(c => c.qq === event.user_id)) {
             markCrisis(event.user_id, event.time * 1000, crisis.level);
@@ -1757,7 +1768,7 @@ ${body}
                 continue;
             }
             if (stopped) return;
-            let fresh = newerThanStored(history.load(contact.qq), fetched, tierRecord.since(contact.qq));
+            let fresh = newerThanStored(history.load(contact.qq), fetched, tierRecord.since(contact.qq), selfId);
             // 停机期间他回的「假」/「像」：记下来，不当聊天补回（ADR 0073）
             if (feedback && canGiveFeedback(contact)) {
                 const stored = history.load(contact.qq);
@@ -1773,10 +1784,15 @@ ${body}
             }
             if (backReader && fresh.some(m => backReader.needs(m.message))) {
                 const contactLog = (message: string) => log(`[${contact.qq}] ${message}`);
-                fresh = await Promise.all(fresh.map(async m => ({ ...m, message: await backReader.read(m.message, m.message_id, contactLog).catch(() => m.message) })));
+                fresh = await Promise.all(fresh.map(async m => ({ ...m, message: await backReader.read(m.message, m.message_id, contactLog, {
+                    messageId: m.message_id, peer: contact.qq, role: (m.sender?.user_id ?? m.user_id) === selfId ? 'assistant' : 'user',
+                    time: new Date(m.time * 1000).toISOString(), sourceTime: m.time, messageSeq: sourceMessageSeq(m.real_seq),
+                }).catch(() => m.message) })));
                 if (stopped) return;
-                const known = new Set(history.load(contact.qq).map(m => m.messageId));
-                fresh = fresh.filter(m => !known.has(m.message_id));
+                fresh = fresh.filter(m => !chatHistory.hasMessage(contact.qq, m.message_id, {
+                    role: (m.sender?.user_id ?? m.user_id) === selfId ? 'assistant' : 'user',
+                    time: new Date(m.time * 1000).toISOString(), sourceTime: m.time, messageSeq: sourceMessageSeq(m.real_seq),
+                }));
             }
             const missed = toStored(fresh, selfId, quoteLookup(contact.qq));
             for (const message of missed) history.append(contact.qq, message);

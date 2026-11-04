@@ -711,11 +711,12 @@ describe('编排（app.ts）', () => {
         const cfg = config();
         let release!: () => void;
         const hold = new Promise<void>(r => { release = r; });
+        const repeated = historyMessage(3, 10001, '吃了吗', 40);
         const { app, sent } = setup(cfg, {
-            10001: [historyMessage(1, 10001, '在吗', 60), historyMessage(2, SELF, '在', 50), historyMessage(3, 10001, '吃了吗', 40)],
+            10001: [historyMessage(1, 10001, '在吗', 60), historyMessage(2, SELF, '在', 50), repeated],
         }, { holdHistory: hold });
         const connected = app.connected(SELF);
-        app.receive(event(10001, 3, '吃了吗'));
+        app.receive({ ...event(10001, 3, '吃了吗'), time: repeated.time });
         app.receive(event(10001, 4, '人呢'));
         assert.deepEqual(chat(cfg, 10001), [], '补完之前不处理');
         release();
@@ -1150,14 +1151,15 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
 
     test('补回：漏掉的语音、截图读过再记；补的时候实时又收到同一条语音，只转一次、只记一次', async () => {
         const cfg = config();
+        const sourceAt = nowSec() - 30;
         const fake = napcat({ 5: '你下课了吗' }, { 'https://x/shot.png': ['期中考试安排'] });
         const { app, sent } = setup(cfg, { 10001: [
-            { message_id: 5, time: nowSec() - 30, sender: { user_id: 10001 }, message: voiceSegment },
+            { message_id: 5, time: sourceAt, sender: { user_id: 10001 }, message: voiceSegment },
             { message_id: 6, time: nowSec() - 20, sender: { user_id: 10001 }, message: photoSegment('https://x/shot.png') },
         ] }, { media: fake.media });
         // 断线前实时收到的那条还在转，这时连上了、补回也拿到它
         fake.hold();
-        app.receive(mediaEvent(10001, 5, voiceSegment));
+        app.receive({ ...mediaEvent(10001, 5, voiceSegment), time: sourceAt });
         const connected = app.connected(SELF);
         await new Promise(r => setTimeout(r, 20));
         fake.release();
@@ -1167,6 +1169,70 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
         assert.deepEqual(fake.calls.voice, [5]);
         assert.deepEqual(fake.calls.ocr, ['https://x/shot.png']);
         assert.deepEqual(chat(cfg, 10001).filter(m => m.startsWith('user:')), ['user:[语音：你下课了吗]', 'user:[图片，上面写着：期中考试安排]']);
+    });
+
+    test('短ID复用：live按来源去重，同秒不同原始序号都进入历史', async () => {
+        const cfg = config(); const run = setup(cfg, { 10001: [] });
+        await run.app.connected(SELF);
+        const first = { ...event(10001, 700, '第一条'), real_seq: '9007199254740992' };
+        run.app.receive(first); run.app.receive(first);
+        run.app.receive({ ...first, time: first.time + 1, real_seq: '9007199254740993', message: [{ type: 'text', data: { text: '后一秒' } }] });
+        run.app.receive({ ...first, real_seq: '9007199254740994', message: [{ type: 'text', data: { text: '同秒另一条' } }] });
+        const rows = new ChatHistory(cfg.dataDir).load(10001).filter(row => row.role === 'user');
+        assert.deepEqual(rows.map(row => row.content), ['第一条', '后一秒', '同秒另一条']);
+        assert.deepEqual(rows.map(row => row.messageSeq), ['9007199254740992', '9007199254740993', '9007199254740994']);
+        run.app.stop();
+    });
+
+    test('畸形来源时间在实时和同步补回排队入口安全忽略，不能降级成弱身份', async () => {
+        const cfg = config(); let release!: () => void;
+        const holdHistory = new Promise<void>(resolve => { release = resolve; });
+        const run = setup(cfg, { 10001: [] }, { holdHistory });
+        const incoming = { ...event(99999, 700, '合成畸形来源'), time: 1e100 };
+        assert.doesNotThrow(() => run.app.receive(incoming));
+        const connected = run.app.connected(SELF);
+        await until(() => run.asked.length > 0);
+        run.app.receive(incoming);
+        run.app.receive({ ...incoming, user_id: 10001 });
+        release(); await assert.doesNotReject(connected);
+        assert.deepEqual(new ChatHistory(cfg.dataDir).load(10001), []);
+        assert.equal(run.sent.length, 0);
+        assert.ok(run.logs.some(line => line.includes('来源身份无效')));
+        run.app.stop();
+    });
+
+    test('两个联系人同短ID同源秒同序号，媒体解析结果仍按联系人隔离', async () => {
+        const cfg = config({ contacts: [{ qq: 10001, name: '合成甲', tier: 'boyfriend' }, { qq: 10002, name: '合成乙', tier: 'classmate' }] });
+        const fake = napcat({}, { 'https://x/peer-a.png': ['甲的图'], 'https://x/peer-b.png': ['乙的图'] });
+        const run = setup(cfg, { 10001: [], 10002: [] }, { media: fake.media });
+        await run.app.connected(SELF); fake.hold();
+        const sourceAt = nowSec();
+        run.app.receive({ ...mediaEvent(10001, 700, photoSegment('https://x/peer-a.png')), time: sourceAt, real_seq: '1' });
+        run.app.receive({ ...mediaEvent(10002, 700, photoSegment('https://x/peer-b.png')), time: sourceAt, real_seq: '1' });
+        await until(() => fake.calls.ocr.length === 2);
+        fake.release();
+        await until(() => chat(cfg, 10001).some(line => line.startsWith('user:')) && chat(cfg, 10002).some(line => line.startsWith('user:')));
+        assert.deepEqual(chat(cfg, 10001).filter(line => line.startsWith('user:')), ['user:[图片，上面写着：甲的图]']);
+        assert.deepEqual(chat(cfg, 10002).filter(line => line.startsWith('user:')), ['user:[图片，上面写着：乙的图]']);
+        run.app.stop();
+    });
+
+    test('媒体补回等待期间live复用短ID，两个源图片不合并也不被等待后的ID过滤吞掉', async () => {
+        const cfg = config(); const sourceAt = nowSec();
+        new ChatHistory(cfg.dataDir).append(10001, { role: 'user', time: new Date((sourceAt - 10) * 1000).toISOString(), messageId: 700, messageSeq: '1', content: '旧事实' });
+        const fake = napcat({}, { 'https://x/first.png': ['图一'], 'https://x/second.png': ['图二'] });
+        const run = setup(cfg, { 10001: [
+            { message_id: 700, real_seq: '2', time: sourceAt - 5, sender: { user_id: 10001 }, message: photoSegment('https://x/first.png') },
+            { message_id: 700, real_seq: '3', time: sourceAt, sender: { user_id: 10001 }, message: photoSegment('https://x/second.png') },
+        ] }, { media: fake.media });
+        fake.hold(); const connected = run.app.connected(SELF);
+        await until(() => fake.calls.ocr.length === 2);
+        run.app.receive({ ...event(10001, 700, '实时新事实'), real_seq: '4', time: sourceAt + 1 });
+        fake.release(); await connected;
+        const rows = new ChatHistory(cfg.dataDir).load(10001).filter(row => row.role === 'user');
+        assert.deepEqual(new Set(rows.map(row => row.content)), new Set(['旧事实', '实时新事实', '[图片，上面写着：图一]', '[图片，上面写着：图二]']));
+        assert.equal(rows.length, 4);
+        run.app.stop();
     });
 
     test('读的时候后面来的话排在后面，顺序不乱；没字的图（NapCat 不回）超时退回「[图片]」，回复不卡住', async () => {
@@ -2225,10 +2291,11 @@ describe('设备控制：他的命令在回复器之前截住（ADR 0148）', ()
         const fake = fakeDevices();
         const { app, sent } = setup(cfg, {}, { startDevices: fake.start });
         await new Promise(r => setTimeout(r, 30));
-        app.receive(event(10001, 2, '/屏幕 看这个'));
+        app.receive({ ...event(10001, 2, '/屏幕 看这个'), real_seq: '9007199254740993' });
         await until(() => sent.length === 1);
         assert.equal(sent[0], '10001:好');
         assert.deepEqual(chat(cfg, 10001), ['user:[他让你看了一眼他的电脑屏幕：一份文档] 看这个', 'assistant:好']);
+        assert.equal(new ChatHistory(cfg.dataDir).load(10001)[0]!.messageSeq, '9007199254740993');
     });
 
     test('没有待批准时「批准」是普通的话；「屏幕，好亮」这种闲聊也是；都照常回', async () => {
