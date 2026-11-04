@@ -1198,6 +1198,19 @@ describe('编排（app.ts）', () => {
         if (existsSync(queue)) assert.ok(JSON.parse(readFileSync(queue, 'utf8')).items.every((item: { id: string }) => item.id.startsWith('life:')));
     });
 
+    test('私有生活片段：控制台和 DSH 的 NOW.md 使用同一组已发生世界事实', () => {
+        const clock = new VirtualClock(new Date(2026, 10, 4, 23, 0));
+        const run = setup(config({
+            herDays: true, schedule: true,
+            contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }],
+        }), {}, { clock });
+        const highlights = run.app.status().today?.highlights ?? [];
+        assert.ok(highlights.length > 0, '测试时刻应有已经发生的生活事实');
+        const now = readFileSync(join(isolatedSoul, 'NOW.md'), 'utf8');
+        for (const highlight of highlights) assert.ok(now.includes(highlight.text), highlight.text);
+        assert.doesNotMatch(now, /晚上才会发生|未来计划/);
+    });
+
     test('生活账进提示词（lifeInPrompt，默认关）：她这几天练拍照修图写一行，只有开着、账上真有才写', async () => {
         const bf = [{ qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
         const seed = (cfg: AppConfig) => {

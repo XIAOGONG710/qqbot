@@ -2,7 +2,7 @@
 import { computed, defineComponent, h, ref } from 'vue';
 import { store } from '@koishijs/client';
 import { c, clock, tag, tierLabel } from './common.js';
-import { attentionDetail, capabilityBundles, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from './dashboard.js';
+import { attentionDetail, capabilityBundles, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, lifeMoments, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from './dashboard.js';
 
 const PROACTIVE_MODES = { off: ['关', 'info'], dryRun: ['试运行（只写日志不发）', 'warning'], on: ['开', 'success'] };
 
@@ -33,6 +33,7 @@ function humanValuesLine(values) {
 function lifePulsePanel(status) {
     const rows = lifePulse(status);
     if (!rows.length) return null;
+    const moments = lifeMoments(status);
     return h('section', { class: 'qqbot-life-card' }, [
         h('div', { class: 'qqbot-life-head' }, [
             h('strong', null, '她此刻的生活'),
@@ -42,6 +43,13 @@ function lifePulsePanel(status) {
             h('span', { class: 'qqbot-label' }, row.label),
             h('span', null, row.text),
         ]))),
+        moments.length > 1 ? h('details', { class: 'qqbot-life-moments' }, [
+            h('summary', null, `今天的生活片段（${moments.length}）`),
+            h('div', { class: 'qqbot-life-moment-list' }, moments.map(moment => h('div', { class: 'qqbot-life-moment' }, [
+                h('span', { class: 'qqbot-muted' }, clock(moment.at)),
+                h('span', null, moment.text),
+            ]))),
+        ]) : null,
         status.humanValues ? h('details', { class: 'qqbot-life-values' }, [
             h('summary', null, '查看完整数值'),
             h('div', { class: 'qqbot-life-values-body' }, humanValuesLine(status.humanValues)),

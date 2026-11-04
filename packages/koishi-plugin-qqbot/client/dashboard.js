@@ -282,6 +282,14 @@ export function lifePulse(status) {
     return rows;
 }
 
+/** 私有生活片段只接受带合法时间和非空文字的世界账摘要。 */
+export function lifeMoments(status) {
+    return (status?.today?.highlights ?? [])
+        .filter(item => item && typeof item.text === 'string' && item.text.trim() && Number.isFinite(Date.parse(item.at)))
+        .slice(0, 6)
+        .map(item => ({ at: item.at, text: item.text.trim() }));
+}
+
 /** 货架 / 小梗 / 周报：[{ label, text }]；对应的功能没开（没有这一项）就不出现 */
 export function extrasRows(extras) {
     const rows = [];

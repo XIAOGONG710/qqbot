@@ -94,6 +94,10 @@
 .qqbot-life-values { margin-top: 10px; color: var(--k-text-light); font-size: 13px; }
 .qqbot-life-values summary { cursor: pointer; }
 .qqbot-life-values-body { margin-top: 8px; }
+.qqbot-life-moments { margin-top: 10px; font-size: 13px; }
+.qqbot-life-moments summary { cursor: pointer; color: var(--k-text-light); }
+.qqbot-life-moment-list { display: grid; gap: 6px; margin-top: 8px; }
+.qqbot-life-moment { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; }
 
 .qqbot-capabilities { margin: 16px 0; }
 .qqbot-capability-grid {

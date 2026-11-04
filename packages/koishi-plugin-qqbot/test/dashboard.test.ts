@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
-import { attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
+import { attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifeMoments, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
@@ -241,5 +241,18 @@ describe('客户端的纯函数', () => {
         ]);
         assert.deepEqual(lifePulse({ schedule: true, contacts: [] }).at(-1), { label: '刚发生', text: '还没有可用的世界记录' });
         assert.deepEqual(lifePulse(undefined), []);
+    });
+
+    test('私有生活片段只取合法的世界账摘要并限制数量', () => {
+        const moments = lifeMoments({ today: { highlights: [
+            { at: '2026-11-04T10:20:00.000Z', text: '  喂过土豆  ' },
+            { at: 'bad-time', text: '坏时间' },
+            { at: '2026-11-04T09:00:00.000Z', text: '' },
+            ...Array.from({ length: 8 }, (_, index) => ({ at: `2026-11-04T0${index}:00:00.000Z`, text: `片段${index}` })),
+        ] } });
+        assert.equal(moments.length, 6);
+        assert.deepEqual(moments[0], { at: '2026-11-04T10:20:00.000Z', text: '喂过土豆' });
+        assert.ok(moments.every((moment: { text: string }) => !moment.text.includes('坏')));
+        assert.deepEqual(lifeMoments(undefined), []);
     });
 });

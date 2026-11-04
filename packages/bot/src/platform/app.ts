@@ -887,15 +887,21 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         const schedule = worldCard?.schedule;
         if (!schedule) return;
         try {
-            const at = Date.now();
+            const at = worldNow();
+            const now = new Date(at);
             // 在读的书 + 她自己决定今天想做的（ADR 0182）：状态行里她就是个在做那件事的人
-            const extraFree = config.herDays ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(at), log)] : [];
+            const extraFree = config.herDays ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, now, log)] : [];
             const owner = deviceOwner;
-            const base = describeState(stateAt(schedule, new Date(at), extraFree), schedule, owner ? { userName: owner.name } : {});
+            const base = describeState(stateAt(schedule, now, extraFree), schedule, owner ? { userName: owner.name } : {});
             // 中断层：他刚说过话就写「和你聊天中」，聊完下一次渲染自己回到原来的轨迹
             const lastAt = owner ? Date.parse(history.load(owner.qq).at(-1)?.time ?? '') : NaN;
             const doing = activityWithChat(base, Number.isFinite(lastAt) ? lastAt : undefined, at);
-            writeNow(nowFile, renderNow({ doing, at }));
+            // 私有生活片段（ADR 0236）：和控制台使用同一确定性投影，只写已经发生的世界事实。
+            // 不放聊天原文、未来计划，也不调用模型生成“朋友圈”。
+            const recent = worldCard.herWorld && sharedWorld
+                ? worldHighlights(sharedWorld.at(worldCard.herWorld, schedule, now), now).map(item => item.text)
+                : [];
+            writeNow(nowFile, renderNow({ doing, at, ...(recent.length ? { recent } : {}) }));
         } catch (error) {
             log(`「她现在在干嘛」没写出去（${error instanceof Error ? error.message : String(error)}）`);
         }
@@ -3332,13 +3338,15 @@ ${body}
             releaseLock();
         },
         status() {
-            const now = new Date();
+            // 控制台、测试时钟和导给 DSH 的 NOW.md 必须共用同一个“现在”。
+            // 否则使用虚拟时钟（或宿主注入时钟）时，两端会看到不同的生活片段。
+            const now = new Date(worldNow());
             const contactStatus = (contact: Contact, isUnlisted: boolean): ContactStatus => {
                 const last = history.load(contact.qq).at(-1);
                 const since = tierRecord.since(contact.qq);
                 const { character } = cardFor(contact.tier);
                 const schedule = config.schedule ? character.schedule : undefined;
-                const extraFree = config.herDays ? [...readingActivities(character.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [];
+                const extraFree = config.herDays ? [...readingActivities(character.books), ...herPlanActivities(config.dataDir, now, log)] : [];
                 return {
                     qq: contact.qq,
                     name: contact.name,
