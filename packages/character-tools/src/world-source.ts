@@ -353,12 +353,23 @@ class At {
     }
 }
 
+function validCalendarDate(value: string): boolean {
+    const time = Date.parse(`${value}T00:00:00Z`);
+    return DATE.test(value) && Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
+}
+
+/** UTC 仅作与机器时区无关的民用日期运算；四位日期边界不能只靠 JS Date 是否有限判断。 */
+function checkCivilResult(time: number, at: At): void {
+    const result = new Date(time);
+    if (!Number.isFinite(result.getTime()) || !validCalendarDate(result.toISOString().slice(0, 10))) at.fail('超出支持的四位日期范围');
+}
+
 export function checkWorld(raw: unknown): WorldSource {
     const root = new At('world.yml');
     const o = root.object(raw);
     root.keys(o, ['start_day', 'away_holidays', 'weather', 'cat', 'parcels', 'camera_fund', 'homework', 'family_call', 'people', 'events', 'body', 'routine', 'plans', 'money', 'note']);
     const startDay = root.at('start_day').string(o.start_day);
-    if (!DATE.test(startDay)) root.at('start_day').fail(`应为 YYYY-MM-DD：${startDay}`);
+    if (!validCalendarDate(startDay)) root.at('start_day').fail('应为真实 YYYY-MM-DD 日期');
 
     const w = root.at('weather');
     const weather = w.object(o.weather);
@@ -384,7 +395,7 @@ export function checkWorld(raw: unknown): WorldSource {
     const parcels = p.object(o.parcels);
     p.keys(parcels, ['tiers', 'per_week', 'arrive_days', 'keep_days', 'items', 'after_meal_from', 'note']);
     const afterMealFrom = parcels.after_meal_from === undefined ? undefined : p.at('after_meal_from').string(parcels.after_meal_from);
-    if (afterMealFrom !== undefined && !DATE.test(afterMealFrom)) p.at('after_meal_from').fail(`应为 YYYY-MM-DD：${afterMealFrom}`);
+    if (afterMealFrom !== undefined && !validCalendarDate(afterMealFrom)) p.at('after_meal_from').fail('应为真实 YYYY-MM-DD 日期');
 
     const f = root.at('camera_fund');
     const fund = f.object(o.camera_fund);
@@ -393,7 +404,7 @@ export function checkWorld(raw: unknown): WorldSource {
     const purchase = fund.purchase === undefined ? undefined : fp.object(fund.purchase);
     if (purchase) {
         fp.keys(purchase, ['date', 'from', 'minutes', 'where', 'what', 'price']);
-        if (typeof purchase.date !== 'string' || !DATE.test(purchase.date)) fp.at('date').fail(`应为 YYYY-MM-DD：${String(purchase.date)}`);
+        if (typeof purchase.date !== 'string' || !validCalendarDate(purchase.date)) fp.at('date').fail('应为真实 YYYY-MM-DD 日期');
     }
 
     const h = root.at('homework');
@@ -401,8 +412,7 @@ export function checkWorld(raw: unknown): WorldSource {
     h.keys(homework, ['tiers', 'kinds', 'chance', 'early_chance', 'grouped_from', 'note']);
     const groupedFrom = homework.grouped_from === undefined ? undefined : h.at('grouped_from').string(homework.grouped_from);
     if (groupedFrom !== undefined) {
-        const at = Date.parse(`${groupedFrom}T00:00:00Z`);
-        if (!DATE.test(groupedFrom) || !Number.isFinite(at) || new Date(at).toISOString().slice(0, 10) !== groupedFrom) h.at('grouped_from').fail('应为真实 YYYY-MM-DD 日期');
+        if (!validCalendarDate(groupedFrom)) h.at('grouped_from').fail('应为真实 YYYY-MM-DD 日期');
     }
     const kinds = h.at('kinds').strings(homework.kinds, false);
     for (const kind of kinds) if (!COURSE_KINDS.includes(kind)) h.at('kinds').fail(`${kind} 不是课型（${COURSE_KINDS.join(' / ')}）`);
@@ -540,6 +550,23 @@ export function checkWorld(raw: unknown): WorldSource {
         ...(money ? { money } : {}),
         ...root.at('note').note(o.note),
     };
+    const civilStart = Date.parse(`${result.start_day}T00:00:00Z`);
+    if (result.parcels.per_week > 0 && result.parcels.tiers.length) {
+        checkCivilResult(civilStart + result.parcels.arrive_days[1] * 86_400_000, p.at('arrive_days'));
+        checkCivilResult(civilStart + (result.parcels.arrive_days[1] + result.parcels.keep_days - 1) * 86_400_000, p.at('keep_days'));
+    }
+    if (result.cat.tiers.length && result.cat.food.left <= result.cat.food.reorder_at + 1) {
+        // 与运行时一致：首日可能补货时，两天到货，沿用快递保管天数。
+        // 猫可见而 parcels 被裁掉的档位会使用默认三天，不能只检查完整档的期限。
+        const usesDefault = result.cat.tiers.some(tier => !result.parcels.tiers.includes(tier));
+        const usesShared = result.cat.tiers.some(tier => result.parcels.tiers.includes(tier));
+        const keep = Math.max(usesShared ? result.parcels.keep_days : 0, usesDefault ? 3 : 0);
+        checkCivilResult(civilStart + (2 + keep - 1) * 86_400_000, c.at('food'));
+    }
+    if (result.camera_fund.purchase) {
+        const trip = result.camera_fund.purchase;
+        checkCivilResult(Date.parse(`${trip.date}T${trip.from}:00Z`) + trip.minutes * 60_000, fp.at('minutes'));
+    }
     // 吃完饭再取快递（ADR 0042）：看得到快递的档位都要看得到饭点，不然各档取件的时刻不一样
     if (result.parcels.after_meal_from) {
         for (const tier of result.parcels.tiers) if (!result.routine?.tiers.includes(tier)) root.at('parcels.after_meal_from').fail(`看得到快递的 ${tier} 也要看得到 routine（取件的时刻要一样）`);
@@ -672,7 +699,7 @@ function checkBody(b: At, value: unknown): BodySource {
         const raw = p.object(body.period);
         p.keys(raw, ['first', 'cycle', 'days', 'cramps_chance', 'detail_tiers']);
         const first = p.at('first').string(raw.first);
-        if (!DATE.test(first)) p.at('first').fail(`应为 YYYY-MM-DD：${first}`);
+        if (!validCalendarDate(first)) p.at('first').fail('应为真实 YYYY-MM-DD 日期');
         const detail = p.at('detail_tiers').strings(raw.detail_tiers);
         for (const tier of detail) if (!tiers.includes(tier)) p.at('detail_tiers').fail(`${tier} 不在 body.tiers 里`);
         period = { first, cycle: p.at('cycle').range(raw.cycle, 20, 45, true), days: p.at('days').integer(raw.days, 1, 10), cramps_chance: p.at('cramps_chance').number(raw.cramps_chance, 0, 1), detail_tiers: detail };

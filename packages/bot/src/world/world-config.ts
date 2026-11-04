@@ -33,7 +33,9 @@ export function validateWorldConfig(value: unknown, fail: (message: string) => n
     const start = date(w.startDay, '.startDay');
     const startTime = Date.parse(`${start}T00:00:00Z`);
     const dateOffset = (days: number, path: string) => {
-        if (!Number.isFinite(new Date(startTime + days * 86_400_000).getTime())) fail(`${path} 超出可表示日期`);
+        const result = new Date(startTime + days * 86_400_000);
+        // UTC 在这里仅编码民用日历做中立运算，不把本地日期当成某个时区的真实时刻。
+        if (!Number.isFinite(result.getTime()) || !calendarDate(result.toISOString().slice(0, 10))) fail(`${path} 超出支持的四位日期范围`);
     };
     strings(w.awayHolidays, '.awayHolidays');
     const people = array(w.people, '.people');
@@ -62,9 +64,12 @@ export function validateWorldConfig(value: unknown, fail: (message: string) => n
         const parcels = object(w.parcels, '.parcels');
         const perWeek = number(parcels.perWeek, '.parcels.perWeek', 0, 14, false); // 沿用源资料校验的上限。
         const arrive = range(parcels.arriveDays, '.parcels.arriveDays');
-        dateOffset(arrive[1], '.parcels.arriveDays');
         const keep = number(parcels.keepDays, '.parcels.keepDays', 1);
-        dateOffset(arrive[1] + keep, '.parcels.keepDays');
+        if (perWeek > 0) {
+            dateOffset(arrive[1], '.parcels.arriveDays');
+            // 到货当天已经是保管第一天，与实际 deadline 的 +keepDays-1 保持一致。
+            dateOffset(arrive[1] + keep - 1, '.parcels.keepDays');
+        }
         strings(parcels.items, '.parcels.items', perWeek > 0);
         if (parcels.afterMealFrom !== undefined) date(parcels.afterMealFrom, '.parcels.afterMealFrom');
     }
@@ -76,7 +81,8 @@ export function validateWorldConfig(value: unknown, fail: (message: string) => n
             const purchase = object(fund.purchase, '.cameraFund.purchase');
             const day = date(purchase.date, '.cameraFund.purchase.date'); const from = clock(purchase.from, '.cameraFund.purchase.from');
             const minutes = number(purchase.minutes, '.cameraFund.purchase.minutes', 1, 600); // 源资料的行程上限为 600 分钟。
-            if (!Number.isFinite(new Date(Date.parse(`${day}T${from}:00Z`) + minutes * 60_000).getTime())) fail('.cameraFund.purchase.minutes 超出可表示日期');
+            const end = new Date(Date.parse(`${day}T${from}:00Z`) + minutes * 60_000);
+            if (!Number.isFinite(end.getTime()) || !calendarDate(end.toISOString().slice(0, 10))) fail('.cameraFund.purchase.minutes 超出支持的四位日期范围');
             text(purchase.where, '.cameraFund.purchase.where'); text(purchase.what, '.cameraFund.purchase.what'); number(purchase.price, '.cameraFund.purchase.price', 1);
         }
     }
@@ -152,5 +158,13 @@ export function validateWorldConfig(value: unknown, fail: (message: string) => n
     }
     if (w.menu !== undefined) {
         const menu = object(w.menu, '.menu'); strings(menu.lunch, '.menu.lunch'); strings(menu.dinner, '.menu.dinner');
+    }
+    if (w.cat !== undefined) {
+        const food = object(object(w.cat, '.cat').food, '.cat.food');
+        // 首日库存喂一顿后就可能触发补货。只检查确有可能发生的首批订单；后续投影另行守界。
+        if ((food.reorderAt as number) >= 0 && (food.left as number) <= (food.reorderAt as number) + 1) {
+            const keepDays = w.parcels === undefined ? 3 : object(w.parcels, '.parcels').keepDays as number;
+            dateOffset(2 + keepDays - 1, '.cat.food');
+        }
     }
 }

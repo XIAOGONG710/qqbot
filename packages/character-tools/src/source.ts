@@ -495,7 +495,8 @@ function time(c: Checker, value: unknown): string {
 
 function date(c: Checker, value: unknown): string {
     const text = c.string(value);
-    if (!DATE.test(text)) c.fail(`应为 YYYY-MM-DD：${text}`);
+    const at = Date.parse(`${text}T00:00:00Z`);
+    if (!DATE.test(text) || !Number.isFinite(at) || new Date(at).toISOString().slice(0, 10) !== text) c.fail('应为真实 YYYY-MM-DD 日期');
     return text;
 }
 
