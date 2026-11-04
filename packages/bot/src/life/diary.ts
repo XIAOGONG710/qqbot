@@ -238,16 +238,20 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
             const date = formatDate(day);
             if (state.written[date] === undefined) continue;
             let text = state.texts[date];
-            if (text === undefined) {
+            if (!text?.trim()) {
                 try {
                     text = await options.memory.readDiary(date);
                 } catch (error) {
                     options.log(`她的日记：从公共记忆读 ${date} 的日记失败，周记下次再写：${error instanceof Error ? error.message : String(error)}`);
                     return undefined;
                 }
-                if (text !== undefined) state.texts[date] = text;
+                if (text?.trim()) state.texts[date] = text;
             }
-            if (text) found.push({ date: day, text });
+            if (!text?.trim()) {
+                options.log(`她的日记：${date} 已写但原文暂时读不到，周记和阶段总结下次再写`);
+                return undefined;
+            }
+            found.push({ date: day, text });
         }
         return found;
     };

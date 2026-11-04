@@ -138,8 +138,20 @@ export interface ExtractedPromises {
 export function parsePromises(text: string): ExtractedPromises {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
-    if (start < 0 || end < start) throw new Error(`模型输出里没有 JSON：${text.slice(0, 80).replace(/\s*\n\s*/g, ' / ')}`);
-    const data = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+    if (start < 0 || end < start) throw new Error('模型输出里没有 JSON');
+    const array = text.indexOf('[');
+    if (array >= 0 && array < start) throw new Error('抽取结果必须是 JSON 对象');
+    let parsed: unknown;
+    try { parsed = JSON.parse(text.slice(start, end + 1)); }
+    catch { throw new Error('模型输出里的 JSON 无法解析'); }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('抽取结果必须是 JSON 对象');
+    const data = parsed as Record<string, unknown>;
+    // 兼容只返回某一类结果的旧格式；错误对象不能伪装成“没有发现”，否则会标已抽并清除提前约定。
+    const fields = ['add', 'waiting', 'unanswered', 'unsettled', 'resolved', 'world'];
+    if (!fields.some(field => Object.hasOwn(data, field))
+        || fields.some(field => Object.hasOwn(data, field) && !Array.isArray(data[field]))) {
+        throw new Error('抽取结果缺少有效的结果数组');
+    }
     const items = (value: unknown) => (Array.isArray(value) ? value : []).flatMap(item => {
         const o = (item ?? {}) as Record<string, unknown>;
         const what = typeof o.what === 'string' ? o.what.trim() : '';
@@ -399,7 +411,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         for (const item of state.promises.filter(p => forgotten(p, day))) log(`过了日子没做，忘了「${logBody(item.what)}」`);
         state.promises = state.promises.filter(p => !forgotten(p, day));
         const loopsBefore = state.loops.length;
-        for (const loop of state.loops.filter(l => loopForgotten(l, day))) loopLog(`过了几天，放下「${loop.what}」`);
+        for (const loop of state.loops.filter(l => loopForgotten(l, day))) loopLog(`过了几天，放下「${logBody(loop.what)}」`);
         state.loops = state.loops.filter(l => !loopForgotten(l, day));
         let changed = state.promises.length !== before || state.loops.length !== loopsBefore;
         const closed = splitEpisodes(options.history.load(contact.qq))
@@ -450,7 +462,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 const loop = state.loops.find(l => l.id === id);
                 if (loop) {
                     state.loops = state.loops.filter(l => l.id !== id);
-                    loopLog(`了结「${loop.what}」`);
+                    loopLog(`了结「${logBody(loop.what)}」`);
                 }
             }
             const earlier = state.promises.filter(earlyIn(episode.id));
