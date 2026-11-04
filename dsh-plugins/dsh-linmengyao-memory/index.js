@@ -620,6 +620,15 @@ function readStateBlock(cfg, now = Date.now()) {
     numbers('需要值', state.needs, ['energy', 'hunger', 'stress'])
     numbers('真人式状态', state.values, ['energy', 'hunger', 'stress', 'mood', 'health', 'loneliness', 'motivation', 'boredom', 'socialBattery'])
     numbers('关系状态', state.relationship, ['intimacy', 'trust', 'familiarity', 'attachment', 'friction'])
+    if (state.trends && typeof state.trends === 'object' && !Array.isArray(state.trends)) {
+      const windowMinutes = state.trends.windowMinutes
+      const values = state.trends.values
+      if (typeof windowMinutes === 'number' && Number.isFinite(windowMinutes) && windowMinutes >= 1 && windowMinutes <= 1440 && values && typeof values === 'object' && !Array.isArray(values)) {
+        const allowed = ['energy', 'hunger', 'stress', 'mood', 'health', 'loneliness', 'motivation', 'boredom', 'socialBattery']
+        const entries = Object.entries(values).filter(([key, item]) => allowed.includes(key) && typeof item === 'number' && Number.isFinite(item) && item >= -100 && item <= 100 && Math.abs(item) >= 0.5)
+        if (entries.length) lines.push(`最近 ${Math.round(windowMinutes)} 分钟变化：${entries.map(([key, item]) => `${key}=${item > 0 ? '+' : ''}${Math.round(item * 10) / 10}`).join('，')}`)
+      }
+    }
     if (Array.isArray(state.recentEvents)) {
       const events = state.recentEvents.filter((item) => typeof item === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(item)).slice(-8)
       if (events.length) lines.push(`最近事件类型：${events.join('、')}`)

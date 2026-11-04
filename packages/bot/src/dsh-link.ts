@@ -1,5 +1,5 @@
 import { chatCompletion, type Fetch, type LlmDeps, type LlmOptions } from './language/llm.ts';
-import type { HumanValues } from './human-values.ts';
+import { HUMAN_TREND_KEYS, type HumanValues, type HumanValueTrends } from './human-values.ts';
 
 /** DSH 连接层只接收脱敏后的状态，不直接接收聊天记录。 */
 export interface DshState {
@@ -8,6 +8,7 @@ export interface DshState {
     needs?: Record<string, number>;
     values?: Pick<HumanValues, 'energy' | 'hunger' | 'stress' | 'mood' | 'health' | 'loneliness' | 'motivation' | 'boredom' | 'socialBattery'>;
     relationship?: Pick<HumanValues['relationship'], 'intimacy' | 'trust' | 'familiarity' | 'attachment' | 'friction'>;
+    trends?: HumanValueTrends;
     recentEvents?: readonly string[];
 }
 
@@ -63,6 +64,7 @@ const MAX_STATE_NUMBERS = 32;
 const NEED_KEYS = new Set(['energy', 'hunger', 'stress']);
 const VALUE_KEYS = new Set(['energy', 'hunger', 'stress', 'mood', 'health', 'loneliness', 'motivation', 'boredom', 'socialBattery']);
 const RELATIONSHIP_KEYS = new Set(['intimacy', 'trust', 'familiarity', 'attachment', 'friction']);
+const TREND_KEYS = new Set<string>(HUMAN_TREND_KEYS);
 
 function sanitizeNumberRecord(value: unknown, allowed: ReadonlySet<string>): Record<string, number> | undefined {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
@@ -75,12 +77,26 @@ function sanitizeNumberRecord(value: unknown, allowed: ReadonlySet<string>): Rec
     return Object.keys(output).length ? output : undefined;
 }
 
+function sanitizeTrends(value: unknown): HumanValueTrends | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const input = value as { windowMinutes?: unknown; values?: unknown };
+    if (typeof input.windowMinutes !== 'number' || !Number.isFinite(input.windowMinutes) || input.windowMinutes < 1 || input.windowMinutes > 1_440) return undefined;
+    if (!input.values || typeof input.values !== 'object' || Array.isArray(input.values)) return undefined;
+    const values: HumanValueTrends['values'] = {};
+    for (const [key, delta] of Object.entries(input.values)) {
+        if (!TREND_KEYS.has(key) || typeof delta !== 'number' || !Number.isFinite(delta) || delta < -100 || delta > 100 || Math.abs(delta) < 0.5) continue;
+        values[key as keyof HumanValueTrends['values']] = Math.round(delta * 10) / 10;
+    }
+    return Object.keys(values).length ? { windowMinutes: Math.round(input.windowMinutes), values } : undefined;
+}
+
 /** DSH 的在线请求和落盘快照共用同一份最小状态白名单。 */
 export function sanitizeDshState(state: DshState): DshState {
     const parsedAt = typeof state?.at === 'string' ? Date.parse(state.at) : Number.NaN;
     const needs = sanitizeNumberRecord(state?.needs, NEED_KEYS);
     const values = sanitizeNumberRecord(state?.values, VALUE_KEYS);
     const relationship = sanitizeNumberRecord(state?.relationship, RELATIONSHIP_KEYS);
+    const trends = sanitizeTrends(state?.trends);
     const recentEvents = Array.isArray(state?.recentEvents)
         ? state.recentEvents.filter(event => typeof event === 'string' && STATE_KEY_RE.test(event)).slice(-8)
         : [];
@@ -90,6 +106,7 @@ export function sanitizeDshState(state: DshState): DshState {
         ...(needs ? { needs } : {}),
         ...(values ? { values: values as DshState['values'] } : {}),
         ...(relationship ? { relationship: relationship as DshState['relationship'] } : {}),
+        ...(trends ? { trends } : {}),
         ...(recentEvents.length ? { recentEvents } : {}),
     };
 }
@@ -122,6 +139,7 @@ function stateText(state: DshState | undefined): string {
     if (safe.needs) lines.push(`需要值：${Object.entries(safe.needs).map(([key, value]) => `${key}=${value}`).join('，')}`);
     if (safe.values) lines.push(`真人式状态：${Object.entries(safe.values).map(([key, value]) => `${key}=${value}`).join('，')}`);
     if (safe.relationship) lines.push(`关系状态：${Object.entries(safe.relationship).map(([key, value]) => `${key}=${value}`).join('，')}`);
+    if (safe.trends) lines.push(`最近 ${safe.trends.windowMinutes} 分钟变化：${Object.entries(safe.trends.values).map(([key, value]) => `${key}=${Number(value) > 0 ? '+' : ''}${value}`).join('，')}`);
     if (safe.recentEvents?.length) lines.push(`最近事件（仅类型摘要）：${safe.recentEvents.join('、')}`);
     return lines.join('\n');
 }

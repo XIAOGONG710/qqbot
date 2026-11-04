@@ -16,6 +16,20 @@ export const HUMAN_VALUE_KEYS = [
 ] as const;
 export type HumanValueKey = (typeof HUMAN_VALUE_KEYS)[number];
 
+/** 适合做短时趋势的连续值；关系值变化慢，继续只展示当前快照。 */
+export const HUMAN_TREND_KEYS = [
+    'energy', 'hunger', 'stress', 'mood', 'health', 'loneliness',
+    'motivation', 'boredom', 'socialBattery',
+] as const;
+export type HumanTrendKey = (typeof HUMAN_TREND_KEYS)[number];
+
+export interface HumanValueTrends {
+    /** 当前值与多少分钟前的重算结果相比。 */
+    windowMinutes: number;
+    /** 正数表示上升，负数表示下降；小于 0.5 的抖动不输出。 */
+    values: Partial<Record<HumanTrendKey, number>>;
+}
+
 export interface RelationshipValues {
     /** 亲密：愿意分享、撒娇、把他当自己人的程度。 */
     intimacy: number;
@@ -68,6 +82,21 @@ export interface HumanValueFacts {
 export function humanValuesFromAnchor(facts: Omit<HumanValueFacts, 'needs'> & { anchor: NeedsSnapshot }): HumanValues {
     const events = facts.events ?? [];
     return humanValuesAt({ ...facts, needs: needsAt(facts.anchor, events, facts.at) });
+}
+
+/**
+ * 比较同一事实账在两个时刻的投影，不保存第二份“当前状态”。
+ * 控制台和 DSH 只拿到变化量，仍由事件、聊天时间与需要锚点重算。
+ */
+export function humanValueTrends(current: HumanValues, previous: HumanValues, windowMinutes = 60): HumanValueTrends {
+    const safeWindow = Number.isFinite(windowMinutes) && windowMinutes > 0 ? Math.min(1_440, Math.round(windowMinutes)) : 60;
+    const values: HumanValueTrends['values'] = {};
+    for (const key of HUMAN_TREND_KEYS) {
+        const raw = current[key] - previous[key];
+        const delta = Math.sign(raw) * Math.round(Math.abs(raw) * 10) / 10;
+        if (Math.abs(delta) >= 0.5) values[key] = delta;
+    }
+    return { windowMinutes: safeWindow, values };
 }
 
 const HOUR = 3_600_000;

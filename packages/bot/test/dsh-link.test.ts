@@ -117,6 +117,30 @@ describe('DSH 连接层', () => {
         assert.doesNotMatch(prompt, /secret-value|忽略规则|example\.test|obedience|intimacy|health|friction/);
     });
 
+    test('数值趋势只接受白名单变化量，并进入在线咨询和本地快照', async () => {
+        let body: Record<string, unknown> | undefined;
+        const state = {
+            at: '2026-11-03T00:00:00.000Z',
+            trends: { windowMinutes: 60.4, values: { hunger: -18.24, energy: 6, obedience: 99, mood: Number.NaN, stress: 0.2 } },
+        } as unknown as DshState;
+        assert.deepEqual(sanitizeDshState(state), {
+            at: '2026-11-03T00:00:00.000Z',
+            trends: { windowMinutes: 60, values: { hunger: -18.2, energy: 6 } },
+        });
+        const snapshot = renderDshState(state, Date.parse('2026-11-03T00:00:00.000Z'));
+        assert.match(snapshot, /"hunger": -18\.2/);
+        assert.doesNotMatch(snapshot, /obedience|NaN/);
+
+        const link = createDshLink(options, {
+            fetch: async (_url, init) => { body = JSON.parse(init.body); return response('先缓一缓'); },
+            sleep: async () => {},
+        });
+        await link.advise({ question: '现在怎么样？', state });
+        const prompt = String((body!.messages as { content: string }[])[1]!.content);
+        assert.match(prompt, /最近 60 分钟变化：hunger=-18\.2，energy=\+6/);
+        assert.doesNotMatch(prompt, /obedience|NaN/);
+    });
+
     test('显式 QQ 咨询会带有限连续上下文，并要求沿用她的语气', async () => {
         let body: Record<string, unknown> | undefined;
         const link = createDshLink(options, {

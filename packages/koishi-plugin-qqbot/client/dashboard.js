@@ -257,6 +257,9 @@ export function lifePulse(status) {
         if (hasBodyValues) rows.push({ label: '身体感受', text: body.join('，') || '状态比较平稳' });
     }
 
+    const trend = lifeTrend(status);
+    if (trend) rows.push(trend);
+
     const mood = status.today?.mood;
     if (mood) rows.push({ label: '心情', text: `${mood.name}${mood.reason ? `，${mood.reason}` : ''}` });
 
@@ -280,6 +283,31 @@ export function lifePulse(status) {
         text: recent?.text || (highlights === undefined ? '还没有可用的世界记录' : '今天还没有已记录的小事'),
     });
     return rows;
+}
+
+/** 把内部字段变化翻成中文趋势；未知字段不展示，避免控制台出现代码串。 */
+export function lifeTrend(status) {
+    const trend = status?.humanTrends;
+    const window = trend?.windowMinutes;
+    if (!Number.isFinite(window) || window < 1 || !trend?.values || typeof trend.values !== 'object') return undefined;
+    const words = {
+        energy: ['精力', '恢复', '下降'],
+        hunger: ['饥饿感', '增加', '减轻'],
+        stress: ['压力', '上升', '缓解'],
+        mood: ['心情', '变好', '走低'],
+        health: ['身体状态', '好转', '下降'],
+        loneliness: ['孤独感', '增加', '减轻'],
+        motivation: ['行动意愿', '增强', '减弱'],
+        boredom: ['无聊感', '增加', '减轻'],
+        socialBattery: ['社交电量', '恢复', '消耗'],
+    };
+    const parts = Object.entries(trend.values)
+        .filter(([key, value]) => words[key] && Number.isFinite(value) && Math.abs(value) >= 0.5)
+        .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+        .slice(0, 4)
+        .map(([key, value]) => `${words[key][0]}${value > 0 ? words[key][1] : words[key][2]} ${Math.abs(Math.round(value * 10) / 10)}`);
+    if (!parts.length) return undefined;
+    return { label: window === 60 ? '近一小时' : `近 ${Math.round(window)} 分钟`, text: parts.join('，') };
 }
 
 /** 私有生活片段只接受带合法时间和非空文字的世界账摘要。 */

@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
-import { attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifeMoments, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
+import { attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifeMoments, lifePulse, lifeTrend, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
@@ -220,6 +220,7 @@ describe('客户端的纯函数', () => {
                 energy: 22, hunger: 78, stress: 81,
                 relationship: { intimacy: 82, trust: 74, friction: 12 },
             },
+            humanTrends: { windowMinutes: 60, values: { hunger: -18.2, energy: 6, stress: -4.5, unknown: 99 } },
             today: {
                 mood: { name: '有点开心', reason: '下午的作业提前写完了' },
                 books: [{ title: '长安的荔枝', amount: 52, unit: '页', finished: false, putDown: false }],
@@ -229,6 +230,7 @@ describe('客户端的纯函数', () => {
         assert.deepEqual(rows, [
             { label: '现在', text: '在宿舍休息' },
             { label: '身体感受', text: '有些累，已经饿了，压力偏高' },
+            { label: '近一小时', text: '饥饿感减轻 18.2，精力恢复 6，压力缓解 4.5' },
             { label: '心情', text: '有点开心，下午的作业提前写完了' },
             { label: '你们之间', text: '和你很亲近，信任稳定' },
             { label: '在读', text: '《长安的荔枝》第 52 页' },
@@ -241,6 +243,8 @@ describe('客户端的纯函数', () => {
         ]);
         assert.deepEqual(lifePulse({ schedule: true, contacts: [] }).at(-1), { label: '刚发生', text: '还没有可用的世界记录' });
         assert.deepEqual(lifePulse(undefined), []);
+        assert.deepEqual(lifeTrend({ humanTrends: { windowMinutes: 30, values: { mood: 2, socialBattery: -3 } } }), { label: '近 30 分钟', text: '社交电量消耗 3，心情变好 2' });
+        assert.equal(lifeTrend({ humanTrends: { windowMinutes: 60, values: { unknown: 9 } } }), undefined);
     });
 
     test('私有生活片段只取合法的世界账摘要并限制数量', () => {

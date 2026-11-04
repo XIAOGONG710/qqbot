@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { describeHumanState, describeHumanValues, humanValuesAt, humanValuesFromAnchor, HUMAN_VALUE_KEYS, type HumanValues } from '../src/human-values.ts';
+import { describeHumanState, describeHumanValues, humanValueTrends, humanValuesAt, humanValuesFromAnchor, HUMAN_VALUE_KEYS, type HumanValues } from '../src/human-values.ts';
 import { effectiveLifeEvents, needsAt } from '../src/life/needs.ts';
 
 const needs = { at: '2026-11-01T00:00:00.000Z', energy: 68, hunger: 35, stress: 24 } as const;
@@ -144,6 +144,21 @@ test('行动结算会改变对应数值：吃饭降饥饿，社交降孤独，�
     assert.ok(after.confidence > before.confidence, `${before.confidence} -> ${after.confidence}`);
     assert.ok(after.mood > before.mood, `${before.mood} -> ${after.mood}`);
     assert.deepEqual(fromAnchor, after);
+    const trend = humanValueTrends(after, before);
+    assert.ok((trend.values.hunger ?? 0) < 0, `hunger=${trend.values.hunger}`);
+    assert.ok((trend.values.loneliness ?? 0) < 0, `loneliness=${trend.values.loneliness}`);
+    assert.ok((trend.values.mood ?? 0) > 0, `mood=${trend.values.mood}`);
+    assert.equal(trend.windowMinutes, 60);
+});
+
+test('趋势只保留可感知变化并限制比较窗口，不制造另一份状态', () => {
+    const current = valuesAt([], 30);
+    const previous = { ...current, energy: current.energy - 0.4, hunger: current.hunger + 7.25, stress: current.stress - 2 };
+    const trend = humanValueTrends(current, previous, 2_000);
+    assert.equal(trend.windowMinutes, 1_440);
+    assert.equal(trend.values.energy, undefined, '小于 0.5 的浮动不展示');
+    assert.equal(trend.values.hunger, -7.3);
+    assert.equal(trend.values.stress, 2);
 });
 
 test('成功的瞬时家庭视频保留为事实：缓解孤独、略提心情并消耗少量社交电量', () => {

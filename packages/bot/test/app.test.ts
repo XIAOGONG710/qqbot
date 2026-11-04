@@ -1193,6 +1193,8 @@ describe('编排（app.ts）', () => {
         assert.ok(values, '状态页应提供真人式数值快照');
         assert.equal(typeof values!.relationship.intimacy, 'number');
         assert.equal(typeof values!.relationship.trust, 'number');
+        const trendWindow = on.app.status().humanTrends?.windowMinutes;
+        assert.ok(trendWindow !== undefined && trendWindow >= 1 && trendWindow <= 60, '新锚点不足一小时只比较已有时段');
         // 启动时写当天摘要读过一次世界：排到了现在（这一刻正在上课一半、赶路时跳到下一个边界，可能还没有一件）
         const queue = join(cfg.dataDir, 'world', 'action-queue.json');
         if (existsSync(queue)) assert.ok(JSON.parse(readFileSync(queue, 'utf8')).items.every((item: { id: string }) => item.id.startsWith('life:')));

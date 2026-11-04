@@ -127,7 +127,7 @@ import { greetingOnly, markSignature, MINOR_NOTICE, minorHint, strangerGuard } f
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
-import { humanValuesAt, humanValuesFromAnchor, type HumanValues } from '.././human-values.ts';
+import { humanValueTrends, humanValuesAt, humanValuesFromAnchor, type HumanValues, type HumanValueTrends } from '.././human-values.ts';
 import { createDshLink, dshOptionsFromLlm, sanitizeDshError, type DshProbeResult, type DshState, type DshVoice } from '.././dsh-link.ts';
 import { DshConversationContext } from '.././dsh-continuity.ts';
 import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
@@ -281,6 +281,8 @@ export interface AppStatus {
     dsh: { enabled: boolean; lastProbe?: Pick<DshProbeResult, 'ok' | 'at' | 'model' | 'latencyMs'> };
     /** 自主生活开启且有需要锚点时的全局真人式状态；关系值也随同一快照提供给 DSH / 控制台。 */
     humanValues?: Pick<HumanValues, 'at' | 'energy' | 'hunger' | 'stress' | 'mood' | 'health' | 'loneliness' | 'confidence' | 'curiosity' | 'boredom' | 'motivation' | 'socialBattery' | 'selfEsteem' | 'openness' | 'satisfaction' | 'comfort' | 'frustration' | 'relationship'>;
+    /** 由同一事实账重算的一小时变化量，不另存第二套分数。 */
+    humanTrends?: HumanValueTrends;
 }
 
 /** 状态页的「今天」（ADR 0015） */
@@ -2888,6 +2890,15 @@ ${body}
             // 只在本地用最近一小段 QQ 记录计算关系数值；传给 DSH 的仍然只有数值和事件类型，不外发原文。
             const recentHistory = deviceOwner ? history.load(deviceOwner.qq).slice(-24) : [];
             const values = humanValuesAt({ at, needs, history: recentHistory, tier: deviceOwner?.tier ?? 'boyfriend', events });
+            const anchorAt = Date.parse(needsAnchor.at);
+            const previousAt = new Date(Math.max(anchorAt, at.getTime() - 60 * 60_000));
+            const previous = humanValuesAt({
+                at: previousAt,
+                needs: needsAt(needsAnchor, events, previousAt),
+                history: recentHistory,
+                tier: deviceOwner?.tier ?? 'boyfriend',
+                events,
+            });
             return {
                 at: at.toISOString(),
                 tier: deviceOwner?.tier ?? 'boyfriend',
@@ -2898,6 +2909,7 @@ ${body}
                     boredom: values.boredom, socialBattery: values.socialBattery,
                 },
                 relationship: values.relationship,
+                trends: humanValueTrends(values, previous, Math.max(1, Math.round((at.getTime() - previousAt.getTime()) / 60_000))),
                 recentEvents: events.slice(-8).map(event => event.kind),
             };
         } catch (error) {
@@ -2911,7 +2923,7 @@ ${body}
         if (!dshEnabled) return;
         try {
             const state = dshState();
-            if (state) writeDshState(dshStateFile, state, Date.now());
+            if (state) writeDshState(dshStateFile, state, worldNow());
             else rmSync(dshStateFile, { force: true });
         } catch (error) {
             log(`DSH：状态快照没写出去（${error instanceof Error ? error.message : String(error)}）`);
@@ -3374,13 +3386,23 @@ ${body}
                     })
                     .finally(() => { probing = false; });
             }
-            const currentHumanValues = (() => {
+            const currentHumanState = (() => {
                 if (!needsAnchor) return undefined;
                 try {
                     const events = sharedWorld?.events?.() ?? [];
                     const needs = needsAt(needsAnchor, events, now);
                     const recentHistory = deviceOwner ? history.load(deviceOwner.qq).slice(-24) : [];
-                    return humanValuesAt({ at: now, needs, history: recentHistory, tier: deviceOwner?.tier ?? 'boyfriend', events });
+                    const values = humanValuesAt({ at: now, needs, history: recentHistory, tier: deviceOwner?.tier ?? 'boyfriend', events });
+                    const anchorAt = Date.parse(needsAnchor.at);
+                    const previousAt = new Date(Math.max(anchorAt, now.getTime() - 60 * 60_000));
+                    const previous = humanValuesAt({
+                        at: previousAt,
+                        needs: needsAt(needsAnchor, events, previousAt),
+                        history: recentHistory,
+                        tier: deviceOwner?.tier ?? 'boyfriend',
+                        events,
+                    });
+                    return { values, trends: humanValueTrends(values, previous, Math.max(1, Math.round((now.getTime() - previousAt.getTime()) / 60_000))) };
                 } catch (error) {
                     log(`状态页：真人式状态投影失败（${error instanceof Error ? error.message : String(error)}）`);
                     return undefined;
@@ -3413,7 +3435,7 @@ ${body}
                 externalPlatforms: config.externalPlatforms ?? DEFAULTS.externalPlatforms,
                 externalDrafts: externalDraftStore.summary(),
                 dsh: { enabled: dshEnabled, ...(dshProbe ? { lastProbe: { ok: dshProbe.ok, at: dshProbe.at, model: dshProbe.model, latencyMs: dshProbe.latencyMs } } : {}) },
-                ...(currentHumanValues ? { humanValues: currentHumanValues } : {}),
+                ...(currentHumanState ? { humanValues: currentHumanState.values, humanTrends: currentHumanState.trends } : {}),
             };
         },
     };
