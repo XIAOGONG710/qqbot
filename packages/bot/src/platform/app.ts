@@ -88,7 +88,7 @@ import { feedFactEntry, feedOnce, feedPath, loadFeed } from '.././bilibili/feed-
 import { fetchDanmaku, fetchStoryboard, fetchView } from '.././bilibili/bilibili-view.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { togetherNow } from '.././language/together.ts';
-import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoSource } from '.././vision/photos.ts';
+import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_HISTORY_PREFIX, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoSource } from '.././vision/photos.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
 import { SlidingWindowRateLimiter } from '.././social/rate-limit.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
@@ -437,7 +437,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const watchedFile = watchedPath(config.dataDir);
     let watchedEntries: readonly Watched[] = config.watching ? loadWatched(watchedFile, log).entries : [];
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
-    const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, ...(photoSource ? { source: photoSource } : {}), ...(config.foodPhotos && foodSource ? { foodSource } : {}) }) : undefined;
+    const photoDiscovery = new AbortController();
+    const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, signal: photoDiscovery.signal, ...(photoSource ? { source: photoSource } : {}), ...(config.foodPhotos && foodSource ? { foodSource } : {}) }) : undefined;
     if (config.photos) {
         const have = photos?.status();
         log(photos ? `照片货架：开（本地 ${have!.count} 张：土豆 ${have!.byKind.cat}、风景 ${have!.byKind.view}、她的片子 ${have!.byKind.work}；${photoSource ? '她自己去网上找（CC0 / 公有领域，看图把关，每 6 小时一次）' : '网络来源没开（看图没配置），只有手动加的'}；只对男朋友档；没有照片就什么都不做）` : '照片货架：配置开着，但发图片的通道没准备好，不工作');
@@ -693,6 +694,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     }
 
     function createContactResponder(contact: Contact): Responder {
+        // 仅保存已确认、待写聊天历史的发送快照；按消息ID绑定，不受同照片并发发送完成顺序影响。
+        const sentPhotoHistory = new Map<number, { token: string; content: string }>();
         return createPipeline({
             contact,
             card: cardFor(cardKey(contact)),
@@ -710,6 +713,12 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
             ...(deviceHooks && contact.tier === 'boyfriend' ? { devices: deviceHooks } : {}),
             ...(photos && contact.tier === 'boyfriend' ? { photos } : {}),
+            ...(photos && contact.tier === 'boyfriend' ? { sentHistory: (text: string, messageId: number) => {
+                const snapshot = sentPhotoHistory.get(messageId);
+                if (!snapshot || snapshot.token !== text.trim().toLowerCase()) return undefined;
+                sentPhotoHistory.delete(messageId);
+                return snapshot.content;
+            } } : {}),
             ...(stickerChance !== undefined ? { stickerChance } : {}),
             ...(config.biliStickers ? { stickerUncued: STICKER_UNCUED_CHANCE } : {}),
             // 抽到发表情的轮次里一半只发表情（ADR 0099）：跟着情绪轮的开关走；测试可以直接给概率
@@ -783,6 +792,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 if (!photo && /^<photo:[a-f0-9]{12}>$/i.test(text.trim())) throw new Error('照片发送前已不可用；本轮未发送照片');
                 if (photo) {
                     const id = await transport.sendPrivateImage!(userId, photo.file, '[照片]');
+                    sentPhotoHistory.set(id, { token: `<photo:${photo.id}>`, content: `${PHOTO_HISTORY_PREFIX}${photo.caption}` });
+                    // 正常历史转换立即消费；撤回成功或异常中断留下的快照最多保留128项。
+                    if (sentPhotoHistory.size > 128) sentPhotoHistory.delete(sentPhotoHistory.keys().next().value!);
                     // 传输确认的消息 ID 是发送事实；副索引失败不能把成功改判成失败而重发。
                     try { photos!.used(photo.id); }
                     catch { log('照片货架：照片已发送，使用记录写入失败；保留发送结果，不重发'); }
@@ -1920,6 +1932,7 @@ ${body}
         stop() {
             if (stopped) return;
             stopped = true;
+            photoDiscovery.abort();
             for (const timer of pokeTimers) clearTimeout(timer);
             pokeTimers.clear();
             heartbeat.stop();

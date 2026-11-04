@@ -3,6 +3,7 @@
 //   add <图片文件> --kind <cat|view|work|food> --caption "<照片里是什么>" [--dish "<菜名>"]   food 要写菜名（ADR 0128）
 //   remove <编号>
 // 照片放在 <数据目录>/photos/（默认 runtime/bot）：files/ 里是复制进去的原图，index.json 是清单。配置 photos 开了才会发；没有照片什么都不做。
+// 写入使用 index.coordination.sqlite 协调活 bot/CLI（ADR 0233）；繁忙稍后重试，运行中不要删除协调文件。升级时先停止旧写者。
 // 种类：cat 土豆（楼下的流浪猫）、view 窗外 / 路上的风景、work 她自己拍的片子、food 指定菜名的饭；不收本人自拍（ADR 0109/0128）。
 // 说明写事实（“土豆趴在宿舍楼下的自行车棚顶上晒太阳”），不要写她的台词或情绪；照片都按“以前拍的”说，说明里别带“今天 / 刚刚”。
 // 只收 jpg / png / webp，不超过 PHOTO_MAX_BYTES（当前 12 MiB）；同一张图重复加返回已有条目，缺失的缓存会恢复。

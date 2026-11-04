@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { photoAllowance, photoShelf, PHOTO_HISTORY_PREFIX, PHOTO_MAX_BYTES, PHOTO_TARGET, type PhotoCandidate, type PhotoSource } from '../src/vision/photos.ts';
+import { fileOps } from '../src/memory/json-file.ts';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -48,18 +49,28 @@ test('公开列表和添加返回值不能直接改写货架内部条目', () =>
 
 test('used写盘失败保持内存原计数，恢复后只计一次', () => {
     const f = fixture(); const shelf = f.make(); const entry = shelf.add(f.file(1), 'cat', '合成猫');
-    const backup = join(f.root, 'backup.json'); const before = readFileSync(f.path, 'utf8');
-    renameSync(f.path, backup); mkdirSync(f.path);
-    assert.throws(() => shelf.used(entry.id)); assert.equal(shelf.list()[0]!.used, 0);
-    assert.equal(readFileSync(backup, 'utf8'), before);
-    rmSync(f.path, { recursive: true }); renameSync(backup, f.path); shelf.used(entry.id);
+    const before = readFileSync(f.path, 'utf8'); const original = fileOps.renameSync; const delays = fileOps.writeDelaysMs;
+    fileOps.writeDelaysMs = [0]; fileOps.renameSync = ((from, to) => {
+        if (String(to) === f.path) throw Object.assign(new Error('synthetic write failure'), { code: 'EIO' });
+        return original(from, to);
+    }) as typeof original;
+    try {
+        assert.throws(() => shelf.used(entry.id)); assert.equal(shelf.list()[0]!.used, 0);
+        assert.equal(readFileSync(f.path, 'utf8'), before);
+    } finally { fileOps.renameSync = original; fileOps.writeDelaysMs = delays; }
+    shelf.used(entry.id);
     assert.equal(shelf.list()[0]!.used, 1); assert.equal(f.make().list()[0]!.used, 1);
 });
 
 test('发现照片提交失败不标记seen，恢复或重启后仍可重新收取', async () => {
-    const f = fixture(source()); const shelf = f.make(); mkdirSync(f.root); mkdirSync(f.path);
-    await assert.rejects(shelf.discover()); assert.equal(shelf.list().length, 0);
-    rmSync(f.path, { recursive: true }); await shelf.discover(); assert.equal(shelf.list('cat').length, 2);
+    const f = fixture(source()); const shelf = f.make(); const original = fileOps.renameSync; const delays = fileOps.writeDelaysMs;
+    fileOps.writeDelaysMs = [0]; fileOps.renameSync = ((from, to) => {
+        if (String(to) === f.path) throw Object.assign(new Error('synthetic write failure'), { code: 'EIO' });
+        return original(from, to);
+    }) as typeof original;
+    try { await assert.rejects(shelf.discover()); assert.equal(shelf.list().length, 0); }
+    finally { fileOps.renameSync = original; fileOps.writeDelaysMs = delays; }
+    await shelf.discover(); assert.equal(shelf.list('cat').length, 2);
     assert.equal(f.make().list('cat').length, 2);
 });
 
@@ -111,12 +122,10 @@ test('旧有效索引可省略seen，未知顶层与条目字段在正常写回�
     const saved = JSON.parse(readFileSync(f.path, 'utf8')); assert.deepEqual(saved.extension, { keep: true }); assert.equal(saved.entries[0].extension, 'keep');
 });
 
-test('两个货架实例顺序修改时陈旧写明确冲突，不覆盖另一实例已提交的索引', () => {
+test('两个货架实例顺序修改时基于最新索引合并，不覆盖另一实例已提交的条目', () => {
     const f = fixture(); const first = f.make(); const stale = f.make(); first.add(f.file(1), 'cat', '合成猫甲');
-    const before = readFileSync(f.path, 'utf8');
-    assert.throws(() => stale.add(f.file(2), 'cat', '合成猫乙'), /更新|冲突/);
-    assert.equal(readFileSync(f.path, 'utf8'), before); assert.equal(stale.list().length, 0);
-    const fresh = f.make(); fresh.add(f.file(2), 'cat', '合成猫乙'); assert.equal(f.make().list().length, 2);
+    assert.doesNotThrow(() => stale.add(f.file(2), 'cat', '合成猫乙'));
+    assert.equal(first.list().length, 2); assert.equal(stale.list().length, 2); assert.equal(f.make().list().length, 2);
 });
 
 test('下载和看图的HTTP 5xx不永久耗掉候选，恢复后可以重试', async () => {

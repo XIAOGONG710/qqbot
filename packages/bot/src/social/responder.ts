@@ -97,7 +97,7 @@ export interface ResponderDeps {
     /** 她看到了却决定不回（看心情不回、收尾后的附和）：给他最后一条消息点个表情回应（ADR 0083，配置 reactions）；不传就什么都不做 */
     react?: (messageId: number, text: string) => void;
     /** 实际发送内容与聊天记录表示不同时转换（图片表情编号 -> 可读描述）。 */
-    historyContent?: (sent: string) => string;
+    historyContent?: (sent: string, messageId?: number) => string;
     log: (message: string) => void;
     /** 能不能把聊天正文写进日志（ADR 0070 第 8 项）；不传就不写，只记字数 */
     sensitive?: () => boolean;
@@ -233,7 +233,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             deps.log(`撤回自己打错的那条失败，补一条改口：${error instanceof Error ? error.message : String(error)}`);
             deps.history.append(deps.userId, {
                 time: new Date(now()).toISOString(), role: 'assistant',
-                content: deps.historyContent?.(recall.wrong) ?? recall.wrong, messageId: wrongId,
+                content: deps.historyContent?.(recall.wrong, wrongId) ?? recall.wrong, messageId: wrongId,
             });
             // 补「*对的词」：有时引用刚才那条错的（ADR 0136）
             const fixQuote = deps.quoteFix?.(wrongId) ? { replyTo: wrongId } : undefined;
@@ -423,7 +423,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             const { messageId, content } = await sendBubble(part, recall?.index === i ? recall : undefined, i === 0 ? quoteId : undefined);
             deps.history.append(deps.userId, {
                 time: new Date(now()).toISOString(), role: 'assistant',
-                content: deps.historyContent?.(content) ?? content, messageId,
+                content: deps.historyContent?.(content, messageId) ?? content, messageId,
             });
             sent.push(content);
         }
@@ -519,7 +519,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             }
             deps.history.append(deps.userId, {
                 time: new Date(now()).toISOString(), role: 'assistant',
-                content: deps.historyContent?.(bubble.content) ?? bubble.content, messageId: bubble.messageId,
+                content: deps.historyContent?.(bubble.content, bubble.messageId) ?? bubble.content, messageId: bubble.messageId,
             });
             messageIds.push(bubble.messageId);
             sent.push(bubble.content);

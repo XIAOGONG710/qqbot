@@ -139,6 +139,8 @@ export interface ContactPipelineOptions {
     /** 整个名单（ADR 0016）：她认识名单里写了「别人提起时」的人；不传就谁都不认识 */
     contacts?: readonly Contact[];
     send: (userId: number, text: string, options?: { replyTo?: number }) => Promise<number>;
+    /** 已确认消息的发送快照；缺省仍用照片/表情货架转换，旧调用方不受影响。 */
+    sentHistory?: (sent: string, messageId: number) => string | undefined;
     /** 引用回复（ADR 0136，配置 quoteReply）：他连发里有个不是最后一条的问题时，第一条引用它来回；打错字撤回失败补「*对的词」时有时引用那条错的 */
     quoteReply?: boolean;
     /** 逐条事实检查（ADR 0137，配置 factCheck）：log 只查、记日志；fix 有对不上事实的说法就带说明重写一次。不传 / off 不查 */
@@ -929,7 +931,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         ...(options.recallOwn ? { recallOwn: options.recallOwn } : {}),
         ...(options.markRead ? { markRead: () => options.markRead!(contact.qq) } : {}),
         ...(options.react ? { react: (messageId: number, text: string) => options.react!(contact.qq, messageId, text) } : {}),
-        ...(options.stickers || options.photos ? { historyContent: (sent: string) => { const withSticker = options.stickers ? options.stickers.history(sent) : sent; return withSticker === sent && options.photos ? options.photos.history(sent) : withSticker; } } : {}),
+        ...(options.stickers || options.photos || options.sentHistory ? { historyContent: (sent: string, messageId?: number) => {
+            const snapshot = messageId === undefined ? undefined : options.sentHistory?.(sent, messageId);
+            if (snapshot !== undefined) return snapshot;
+            const withSticker = options.stickers ? options.stickers.history(sent) : sent;
+            return withSticker === sent && options.photos ? options.photos.history(sent) : withSticker;
+        } } : {}),
         log,
         now,
         settle: options.settle ?? DEFAULT_SETTLE,

@@ -12,6 +12,7 @@ import { lstatSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, w
 import { basename, extname, join } from 'node:path';
 import { writeJsonAtomic } from '../memory/json-file.ts';
 import { stateObject, stateTimestamp } from '../memory/state-schema.ts';
+import { PhotoIndexLockError, withPhotoIndexLock } from './photo-index-lock.ts';
 
 export const PHOTO_KINDS = ['cat', 'view', 'work', 'food'] as const;
 export type PhotoKind = (typeof PHOTO_KINDS)[number];
@@ -164,6 +165,8 @@ export interface PhotoShelfOptions {
     dir: string;
     log: (message: string) => void;
     now?: () => Date;
+    /** 停止后台发现；不合作的来源可晚返回，但不能再推进或发布结果。 */
+    signal?: AbortSignal;
     /** 网络来源（photo-sources.ts + 下载 + 看图）；不给就只有作者手动加的 */
     source?: PhotoSource;
     /** 吃的照片的来源（ADR 0128，photo-sources.ts 的 webFoodSource）；不给就没有吃的照片 */
@@ -192,12 +195,11 @@ function validIndex(value: unknown): value is PhotoIndex {
 }
 
 class PhotoStateWriteError extends Error {
-    constructor(cause: unknown) { super('照片货架存储写入失败；内存未发布，请恢复存储后重试', { cause }); }
+    constructor(cause: unknown) {
+        super(cause instanceof PhotoIndexLockError && cause.retryable ? '照片货架索引协调锁繁忙，请稍后重试' : '照片货架存储写入失败；内存未发布，请恢复存储后重试', { cause });
+    }
 }
-
-class PhotoStateConflict extends PhotoStateWriteError {
-    constructor() { super(undefined); this.message = '照片货架索引已由其它实例更新；本实例未写入，请重新打开货架'; }
-}
+const retryableLock = (error: unknown) => error instanceof PhotoStateWriteError && error.cause instanceof PhotoIndexLockError && error.cause.retryable;
 
 function readIndex(file: string): PhotoIndex {
     let text: string;
@@ -217,23 +219,35 @@ function readIndex(file: string): PhotoIndex {
 
 export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
     const now = options.now ?? (() => new Date());
+    const stopped = () => options.signal?.aborted === true;
     const filesDir = join(options.dir, 'files');
     const indexFile = join(options.dir, 'index.json');
     let index = readIndex(indexFile);
 
-    // 只保护已经发生的顺序陈旧写；独立进程同时读改写仍需要独占锁协议。
-    const assertCurrent = () => {
-        try { if (JSON.stringify(readIndex(indexFile)) !== JSON.stringify(index)) throw new PhotoStateConflict(); }
-        catch (error) { throw error instanceof PhotoStateWriteError ? error : new PhotoStateWriteError(error); }
-    };
-    const persist = (next: PhotoIndex) => {
-        if (!validIndex(next)) throw new Error('照片货架更新无效；未修改索引');
-        assertCurrent();
+    const refresh = () => (index = readIndex(indexFile));
+    const mutate = <T>(delta: (fresh: PhotoIndex) => { next?: PhotoIndex; value: T }): T => {
+        let published: PhotoIndex | undefined;
         try {
-            mkdirSync(options.dir, { recursive: true });
-            writeJsonAtomic(indexFile, next);
-        } catch (error) { throw new PhotoStateWriteError(error); }
-        index = next;
+            const applied = withPhotoIndexLock(options.dir, () => {
+                const fresh = readIndex(indexFile);
+                const result = delta(fresh);
+                const next = result.next ?? fresh;
+                if (result.next) {
+                    if (!validIndex(next)) throw new Error('照片货架更新无效；未修改索引');
+                    try { writeJsonAtomic(indexFile, next); }
+                    catch (error) {
+                        // rename可能已发布却报告失败；同锁读回，避免重放used等增量。
+                        let committed = false;
+                        try { committed = JSON.stringify(readIndex(indexFile)) === JSON.stringify(next); } catch { /* 保留原始写失败。 */ }
+                        if (!committed) throw error;
+                    }
+                }
+                published = next;
+                return { value: result.value };
+            }, () => options.log('照片货架协调锁释放异常；已应用的结果保留'));
+            index = published!;
+            return applied.value;
+        } catch (error) { throw error instanceof PhotoStateWriteError ? error : new PhotoStateWriteError(error); }
     };
     const available = (entry: PhotoEntry) => {
         try { const file = lstatSync(join(filesDir, entry.file)); return file.isFile() && file.size > 0 && file.size <= PHOTO_MAX_BYTES; }
@@ -253,39 +267,60 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
     const present = (kind?: PhotoKind, dish?: string) => index.entries.filter(entry => (!kind || entry.kind === kind) && (kind !== 'food' || (dish !== undefined && entry.dish === dish)) && available(entry));
     const publicOf = (entry: PhotoEntry): PublicPhoto => ({ ...structuredClone(entry), file: join(filesDir, entry.file) });
     const byId = (id: string) => index.entries.find(entry => entry.id === id.toLowerCase() && available(entry));
+    const receipts = new Map<string, string>();
 
     let discovering = false;
     let discoveringFood = false;
     const foodMissAt = new Map<string, number>();
     const extFor = (type: string) => (type === 'image/png' ? '.png' : type === 'image/webp' ? '.webp' : type === 'image/gif' ? '.gif' : '.jpg');
-    const markSeen = (title: string) => {
-        persist({ ...index, seen: [...index.seen.filter(t => t !== title), title].slice(-SEEN_KEPT) });
+    const withSeen = (fresh: PhotoIndex, title: string): PhotoIndex => ({ ...fresh, seen: [...fresh.seen.filter(t => t !== title), title].slice(-SEEN_KEPT) });
+    const markSeen = (title: string) => mutate(fresh => ({ next: withSeen(fresh, title), value: undefined }));
+    const eligible = (fresh: PhotoIndex, candidate: PhotoCandidate, key: string) => {
+        const sameTitle = fresh.entries.filter(entry => entry.origin?.title === candidate.title);
+        return !sameTitle.some(available) && (!fresh.seen.includes(key) || sameTitle.some(entry => !available(entry)));
     };
+    const commitCandidate = (entry: PhotoEntry, candidate: PhotoCandidate, bytes: Uint8Array, key: string, target: number) => mutate<'added' | 'duplicate' | 'skipped'>(fresh => {
+        if (!eligible(fresh, candidate, key)) return { value: 'skipped' };
+        if (entry.kind === 'cat') {
+            const series = new Set(fresh.entries.filter(item => item.kind === 'cat').map(item => item.origin?.series).filter(Boolean));
+            if (series.size && !series.has(candidate.series)) return { value: 'skipped' };
+        }
+        const existing = fresh.entries.find(item => item.id === entry.id);
+        if (!existing || !available(existing)) {
+            const count = fresh.entries.filter(item => item.kind === entry.kind && (entry.kind !== 'food' || item.dish === entry.dish) && available(item)).length;
+            if (count >= target) return { value: 'skipped' };
+            storeImage(existing?.file ?? entry.file, bytes);
+        }
+        return { next: withSeen(existing ? fresh : { ...fresh, entries: [...fresh.entries, entry] }, key), value: existing ? 'duplicate' : 'added' };
+    });
 
     return {
         async discover() {
             const source = options.source;
-            if (!source || discovering) return 'done';
+            if (!source || discovering || stopped()) return 'done';
             discovering = true;
             let outcome: 'done' | 'retry' = 'done';
             let downloaded = 0;
             try {
                 for (const kind of PHOTO_KINDS) {
+                    if (stopped()) return 'done';
+                    refresh();
                     const target = PHOTO_TARGET[kind];
                     if (!target || present(kind).length >= target) continue;
-                    const seen = new Set(index.seen);
-                    const owned = new Set(index.entries.filter(available).map(entry => entry.origin?.title).filter((t): t is string => Boolean(t)));
-                    const missing = new Set(index.entries.filter(entry => !available(entry)).map(entry => entry.origin?.title));
                     let fresh: PhotoCandidate[] = [];
                     for (const offset of PAGE_OFFSETS) {
+                        if (stopped()) return 'done';
                         let found: PhotoCandidate[];
                         try { found = await source.search(kind, offset); } catch (error) {
+                            if (stopped()) return 'done';
                             const reason = error instanceof Error ? error.message : String(error);
                             options.log(`照片货架：找${kind}失败（${reason}），下次再试`);
                             if (TRANSIENT.test(reason)) outcome = 'retry';
                             break;
                         }
-                        fresh = found.filter(c => c.kind === kind && (!seen.has(c.title) || missing.has(c.title)) && !owned.has(c.title));
+                        if (stopped()) return 'done';
+                        refresh();
+                        fresh = found.filter(c => c.kind === kind && eligible(index, c, c.title));
                         if (fresh.length) break;
                     }
                     if (!fresh.length) continue;
@@ -304,33 +339,32 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                     }
                     let tried = 0;
                     for (const candidate of fresh) {
+                        if (stopped()) return 'done';
                         if (tried >= PHOTO_DISCOVERY_PER_RUN || present(kind).length >= target) break;
                         if (tried > 0 || downloaded > 0) await new Promise(resolve => setTimeout(resolve, options.pauseMs ?? PHOTO_DOWNLOAD_GAP_MS));
+                        if (stopped()) return 'done';
                         tried++;
                         downloaded++;
                         try {
                             const image = await source.download(candidate.imageUrl);
+                            if (stopped()) return 'done';
                             if (image.bytes.length < MIN_BYTES) { markSeen(candidate.title); options.log(`照片货架：${candidate.title} 文件太小（${Math.round(image.bytes.length / 1024)} KB），不收`); continue; }
                             if (image.bytes.length > PHOTO_MAX_BYTES) { markSeen(candidate.title); options.log(`照片货架：${candidate.title} 太大，不收`); continue; }
                             const judged = await source.judge(image, kind);
+                            if (stopped()) return 'done';
                             if (judged.keep !== true) { markSeen(candidate.title); options.log(`照片货架：不收 ${candidate.title}（${judged.reason ?? '没通过'}）`); continue; }
                             if (typeof judged.caption !== 'string' || !judged.caption.trim()) throw new Error('照片说明无效');
-                            if (present(kind).length >= target) break;
                             const id = createHash('sha256').update(image.bytes).digest('hex').slice(0, 12);
-                            const existing = index.entries.find(entry => entry.id === id);
-                            if (existing) {
-                                if (!available(existing)) storeImage(existing.file, image.bytes);
-                                markSeen(candidate.title); continue;
-                            }
                             const file = `${id}${extFor(image.type)}`;
-                            storeImage(file, image.bytes);
                             const entry: PhotoEntry = {
                                 id, file, kind, caption: judged.caption, addedAt: now().toISOString(), used: 0,
                                 origin: { title: candidate.title, page: candidate.pageUrl, license: candidate.license, artist: candidate.artist, series: candidate.series },
                             };
-                            persist({ ...index, entries: [...index.entries, entry], seen: [...index.seen.filter(t => t !== candidate.title), candidate.title].slice(-SEEN_KEPT) });
-                            options.log(`照片货架：收了一张 ${kind}（${id}；${candidate.width}×${candidate.height}，${candidate.license}；${candidate.title}）`);
+                            if (commitCandidate(entry, candidate, image.bytes, candidate.title, target) === 'added') {
+                                options.log(`照片货架：收了一张 ${kind}（${id}；${candidate.width}×${candidate.height}，${candidate.license}；${candidate.title}）`);
+                            }
                         } catch (error) {
+                            if (stopped()) return 'done';
                             if (error instanceof PhotoStateWriteError) throw error;
                             const reason = error instanceof Error ? error.message : String(error);
                             if (TRANSIENT.test(reason)) {
@@ -343,68 +377,75 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                     }
                 }
                 return outcome;
+            } catch (error) {
+                if (stopped()) return 'done';
+                if (!retryableLock(error)) throw error;
+                options.log('照片货架：索引协调锁繁忙，本轮稍后重试');
+                return 'retry';
             } finally {
                 discovering = false;
             }
         },
         async discoverFood(dishes) {
             const source = options.foodSource;
-            if (!source || discoveringFood) return 'done';
+            if (!source || discoveringFood || stopped()) return 'done';
             discoveringFood = true;
             let outcome: 'done' | 'retry' = 'done';
             let downloaded = 0;
             try {
                 for (const dish of [...new Set(dishes)]) {
+                    if (stopped()) return 'done';
+                    refresh();
                     if (present('food', dish).length >= FOOD_PER_DISH) continue;
                     const missedAt = foodMissAt.get(dish);
                     if (missedAt !== undefined && now().getTime() - missedAt < FOOD_MISS_RETRY_MS) continue;
-                    const seen = new Set(index.seen);
-                    const owned = new Set(index.entries.filter(available).map(entry => entry.origin?.title).filter((t): t is string => Boolean(t)));
-                    const missing = new Set(index.entries.filter(entry => !available(entry)).map(entry => entry.origin?.title));
                     const seenKey = (title: string) => `${dish}|${title}`;
                     let fresh: PhotoCandidate[] = [];
                     for (const offset of PAGE_OFFSETS) {
+                        if (stopped()) return 'done';
                         let found: PhotoCandidate[];
                         try { found = await source.search(dish, offset); } catch (error) {
+                            if (stopped()) return 'done';
                             const reason = error instanceof Error ? error.message : String(error);
                             options.log(`照片货架：找「${dish}」的照片失败（${reason}），下次再试`);
                             if (TRANSIENT.test(reason)) outcome = 'retry';
                             break;
                         }
-                        fresh = found.filter(c => (!seen.has(seenKey(c.title)) || missing.has(c.title)) && !owned.has(c.title));
+                        if (stopped()) return 'done';
+                        refresh();
+                        fresh = found.filter(c => eligible(index, c, seenKey(c.title)));
                         if (fresh.length) break;
                         if (!found.length) break;
                     }
                     if (!fresh.length) { if (outcome !== 'retry') foodMissAt.set(dish, now().getTime()); continue; }
                     let tried = 0;
                     for (const candidate of fresh) {
+                        if (stopped()) return 'done';
                         if (tried >= FOOD_TRIES_PER_DISH || present('food', dish).length >= FOOD_PER_DISH) break;
                         if (downloaded > 0) await new Promise(resolve => setTimeout(resolve, options.pauseMs ?? PHOTO_DOWNLOAD_GAP_MS));
+                        if (stopped()) return 'done';
                         tried++;
                         downloaded++;
                         try {
                             const image = await source.download(candidate.imageUrl);
+                            if (stopped()) return 'done';
                             if (image.bytes.length < MIN_BYTES / 2) { markSeen(seenKey(candidate.title)); options.log(`照片货架：${candidate.title} 文件太小，不收`); continue; }
                             if (image.bytes.length > PHOTO_MAX_BYTES) { markSeen(seenKey(candidate.title)); options.log(`照片货架：${candidate.title} 太大，不收`); continue; }
                             const judged = await source.judge(image, dish);
+                            if (stopped()) return 'done';
                             if (judged.keep !== true) { markSeen(seenKey(candidate.title)); options.log(`照片货架：不收 ${candidate.title}（${dish}：${judged.reason ?? '没通过'}）`); continue; }
                             if (typeof judged.caption !== 'string' || !judged.caption.trim()) throw new Error('照片说明无效');
-                            if (present('food', dish).length >= FOOD_PER_DISH) break;
                             const id = createHash('sha256').update(image.bytes).digest('hex').slice(0, 12);
-                            const existing = index.entries.find(entry => entry.id === id);
-                            if (existing) {
-                                if (!available(existing)) storeImage(existing.file, image.bytes);
-                                markSeen(seenKey(candidate.title)); continue;
-                            }
                             const file = `${id}${extFor(image.type)}`;
-                            storeImage(file, image.bytes);
                             const entry: PhotoEntry = {
                                 id, file, kind: 'food', dish, caption: judged.caption, addedAt: now().toISOString(), used: 0,
                                 origin: { title: candidate.title, page: candidate.pageUrl, license: candidate.license, artist: candidate.artist, series: dish },
                             };
-                            persist({ ...index, entries: [...index.entries, entry], seen: [...index.seen.filter(t => t !== seenKey(candidate.title)), seenKey(candidate.title)].slice(-SEEN_KEPT) });
-                            options.log(`照片货架：收了一张「${dish}」（${id}；${candidate.width}×${candidate.height}，${candidate.license}；${candidate.title}）`);
+                            if (commitCandidate(entry, candidate, image.bytes, seenKey(candidate.title), FOOD_PER_DISH) === 'added') {
+                                options.log(`照片货架：收了一张「${dish}」（${id}；${candidate.width}×${candidate.height}，${candidate.license}；${candidate.title}）`);
+                            }
                         } catch (error) {
+                            if (stopped()) return 'done';
                             if (error instanceof PhotoStateWriteError) throw error;
                             const reason = error instanceof Error ? error.message : String(error);
                             if (TRANSIENT.test(reason)) {
@@ -417,12 +458,16 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                     }
                 }
                 return outcome;
+            } catch (error) {
+                if (stopped()) return 'done';
+                if (!retryableLock(error)) throw error;
+                options.log('照片货架：索引协调锁繁忙，吃的照片稍后重试');
+                return 'retry';
             } finally {
                 discoveringFood = false;
             }
         },
         add(source, kind, caption, dish) {
-            assertCurrent();
             if (!PHOTO_KINDS.includes(kind)) throw new Error(`种类只能是 ${PHOTO_KINDS.join(' / ')}`);
             const text = caption.trim();
             if (!text) throw new Error('要写一句照片里是什么');
@@ -435,27 +480,30 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
             const bytes = readFileSync(source);
             if (!bytes.length || bytes.length > PHOTO_MAX_BYTES) throw new Error('照片文件大小超出范围');
             const id = createHash('sha256').update(bytes).digest('hex').slice(0, 12);
-            const existing = index.entries.find(entry => entry.id === id);
-            if (existing) {
-                if (!available(existing)) storeImage(existing.file, bytes);
-                return structuredClone(existing);
-            }
             const file = `${id}${extension === '.jpeg' ? '.jpg' : extension}`;
-            storeImage(file, bytes);
             const entry: PhotoEntry = { id, file, kind, caption: text, addedAt: now().toISOString(), used: 0, ...(kind === 'food' && dish ? { dish } : {}) };
-            persist({ ...index, entries: [...index.entries, entry] });
-            options.log(`照片货架：加了一张 ${kind}（${id}；来自 ${basename(source)}）`);
-            return structuredClone(entry);
+            const result = mutate(fresh => {
+                const existing = fresh.entries.find(item => item.id === id);
+                if (existing) {
+                    if (!available(existing)) storeImage(existing.file, bytes);
+                    return { value: { entry: structuredClone(existing), added: false } };
+                }
+                storeImage(file, bytes);
+                return { next: { ...fresh, entries: [...fresh.entries, entry] }, value: { entry: structuredClone(entry), added: true } };
+            });
+            if (result.added) options.log(`照片货架：加了一张 ${kind}（${id}；来自 ${basename(source)}）`);
+            return result.entry;
         },
         remove(id) {
-            const entries = index.entries.filter(entry => entry.id !== id.toLowerCase());
-            if (entries.length === index.entries.length) return false;
-            persist({ ...index, entries });
-            return true;
+            return mutate(fresh => {
+                const entries = fresh.entries.filter(entry => entry.id !== id.toLowerCase());
+                return entries.length === fresh.entries.length ? { value: false } : { next: { ...fresh, entries }, value: true };
+            });
         },
-        list: (kind, dish) => structuredClone(present(kind, dish)),
-        has: (kind, dish) => present(kind, dish).length > 0,
+        list(kind, dish) { refresh(); return structuredClone(present(kind, dish)); },
+        has(kind, dish) { refresh(); return present(kind, dish).length > 0; },
         prompt(kind, dish) {
+            refresh();
             const list = present(kind, dish)
                 .sort((a, b) => a.used - b.used || Date.parse(a.lastUsedAt ?? a.addedAt) - Date.parse(b.lastUsedAt ?? b.addedAt))
                 .slice(0, PHOTO_SHORTLIST);
@@ -466,6 +514,12 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                 + list.map(entry => `- <photo:${entry.id}>：${entry.caption}`).join('\n');
         },
         clean(reply, allow = true, scope) {
+            if (!allow) {
+                if (/<photo:/i.test(reply)) options.log('照片货架：去掉这一轮不该发的发送指令');
+                return stripPhotoArtifacts(reply);
+            }
+            if (!/<photo:[a-f0-9]{12}>/i.test(reply)) return stripPhotoArtifacts(reply);
+            refresh();
             let kept = false;
             return reply.split('\n').flatMap(line => {
                 const hits = [...line.matchAll(TOKEN)];
@@ -484,21 +538,33 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
         },
         resolve(text) {
             const match = EXACT_TOKEN.exec(text.trim());
+            if (!match) return undefined;
+            refresh();
             const entry = match ? byId(match[1]!) : undefined;
+            if (entry) {
+                receipts.delete(entry.id); receipts.set(entry.id, entry.caption);
+                if (receipts.size > 128) receipts.delete(receipts.keys().next().value!);
+            }
             return entry ? publicOf(entry) : undefined;
         },
         history(text) {
             const match = EXACT_TOKEN.exec(text.trim());
+            if (!match) return text;
+            const id = match?.[1]?.toLowerCase();
+            if (id && receipts.has(id)) return `${PHOTO_HISTORY_PREFIX}${receipts.get(id)!}`;
+            refresh();
             // 这里描述已经发出的事实；发送后的缓存丢失不应改写聊天历史或绕过配额。
             const entry = match ? index.entries.find(item => item.id === match[1]!.toLowerCase()) : undefined;
             return entry ? `${PHOTO_HISTORY_PREFIX}${entry.caption}` : text;
         },
         used(id) {
-            const entry = index.entries.find(item => item.id === id.toLowerCase());
-            if (!entry) return;
-            persist({ ...index, entries: index.entries.map(item => item === entry ? { ...item, used: item.used + 1, lastUsedAt: now().toISOString() } : item) });
+            mutate(fresh => {
+                const entry = fresh.entries.find(item => item.id === id.toLowerCase());
+                return { ...(entry ? { next: { ...fresh, entries: fresh.entries.map(item => item === entry ? { ...item, used: item.used + 1, lastUsedAt: now().toISOString() } : item) } } : {}), value: undefined };
+            });
         },
         status() {
+            refresh();
             const byKind = { cat: 0, view: 0, work: 0, food: 0 } as Record<PhotoKind, number>;
             for (const entry of present()) byKind[entry.kind]++;
             return { count: present().length, byKind };

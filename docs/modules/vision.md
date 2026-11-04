@@ -8,6 +8,7 @@
 
 - `vision/vision.ts`
 - `vision/photos.ts`
+- `vision/photo-index-lock.ts`
 - `vision/photo-sources.ts`
 - `vision/safe-image.ts`
 - `vision/media.ts`
@@ -28,4 +29,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0055](../adr/0055-deepseek-vision.md)、[ADR 0109](../adr/0109-photo-shelf.md)、[ADR 0128](../adr/0128-food-photos.md)、[ADR 0232](../adr/0232-vision-review-boundaries.md)
+[ADR 0055](../adr/0055-deepseek-vision.md)、[ADR 0109](../adr/0109-photo-shelf.md)、[ADR 0128](../adr/0128-food-photos.md)、[ADR 0232](../adr/0232-vision-review-boundaries.md)、[ADR 0233](../adr/0233-photo-index-process-coordination.md)

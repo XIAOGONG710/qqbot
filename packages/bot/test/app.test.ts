@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
+import { execFileSync } from 'node:child_process';
 import { startApp, type App, type Transport } from '../src/platform/app.ts';
 import { SENSITIVE_OFF, type SensitiveSwitch } from '../src/platform/sensitive.ts';
 import type { HistoryMessage } from '../src/memory/backfill.ts';
@@ -95,7 +96,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.reactMessage ? { reactMessage: options.reactMessage } : {}),
         ...(options.extra ?? {}),
         sendPrivateText: async (userId, text) => { sent.push(`${userId}:${text}`); return nextId++; },
-        sendPrivateImage: async (userId, file, summary) => { images.push(`${userId}:${file}:${summary}`); return nextId++; },
+        sendPrivateImage: async (userId, file, summary) => { images.push(`${userId}:${file}:${summary}`); return options.extra?.sendPrivateImage ? options.extra.sendPrivateImage(userId, file, summary) : nextId++; },
         ...(options.pokeFriend ? { pokeFriend: options.pokeFriend } : {}),
         friendHistory: async (userId, count) => {
             asked.push(userId);
@@ -381,6 +382,27 @@ describe('编排（app.ts）', () => {
         assert.ok(second.sent.every(m => !m.includes('<photo')));
     });
 
+    test('活bot无需重启即可发现独立photo-cli新增的照片并发送', async () => {
+        const cfg = config({ photos: true, contacts: [{ qq: 10001, name: '合成人', tier: 'boyfriend' }] });
+        const source = join(cfg.dataDir, 'synthetic-live-cat.jpg'); writeFileSync(source, 'synthetic-live-cat');
+        let photoId = ''; let prompt = '';
+        const { app, images } = setup(cfg, { 10001: [] }, { generate: messages => {
+            prompt = messages.map(message => message.content).join('\n'); return `<photo:${photoId}>`;
+        } });
+        try {
+            await app.connected(SELF);
+            execFileSync(process.execPath, [resolve(import.meta.dirname, '../src/ops/photo-cli.ts'), 'add', source,
+                '--dir', cfg.dataDir, '--kind', 'cat', '--caption', '合成新增猫照'], { encoding: 'utf8', timeout: 10_000 });
+            photoId = (JSON.parse(readFileSync(join(cfg.dataDir, 'photos', 'index.json'), 'utf8')) as { entries: { id: string }[] }).entries[0]!.id;
+            app.receive(event(10001, 204, '发张土豆的照片我看看'));
+            await until(() => prompt !== '');
+            assert.ok(prompt.includes(`<photo:${photoId}>`), '候选从独立CLI最新索引读取，不沿用启动时空货架');
+            await until(() => images.length === 1);
+            assert.match(images[0]!, new RegExp(photoId));
+            await until(() => chat(cfg, 10001).some(line => line.includes('她发了张照片：合成新增猫照')));
+        } finally { app.stop(); }
+    });
+
     test('照片清理后打字时缓存丢失明确失败，不发内部指令或伪造图片历史', async () => {
         const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
         const cfg = config({ photos: true, schedule: true, typingStatus: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
@@ -452,6 +474,67 @@ describe('编排（app.ts）', () => {
         await new Promise(r => setTimeout(r, 120));
         assert.equal(searches, before, '收到了就不再重试');
         app.stop();
+    });
+
+    test('同ID照片并发发送按本次确认消息保存说明，CLI改说明后正序/乱序完成不串历史', async () => {
+        for (const order of [[10002, 10001], [10001, 10002]]) {
+            const clock = new VirtualClock(new Date(2026, 10, 5, 15));
+            const cfg = config({ photos: true, contacts: [{ qq: 10001, name: '合成人甲', tier: 'boyfriend' }, { qq: 10002, name: '合成人乙', tier: 'boyfriend' }] });
+            cfg.characterCard = join(cfg.dataDir, 'synthetic-{tier}.json');
+            for (const tier of ['boyfriend', 'boyfriend-open']) writeFileSync(join(cfg.dataDir, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
+            const source = join(cfg.dataDir, 'synthetic-receipt.jpg'); writeFileSync(source, 'synthetic-receipt-photo');
+            const root = join(cfg.dataDir, 'photos'); const cli = photoShelf({ dir: root, log: () => {} });
+            const entry = cli.add(source, 'cat', '合成说明甲'); const token = `<photo:${entry.id}>`;
+            const held = new Map<number, () => void>();
+            const { app, logs, images } = setup(cfg, { 10001: [], 10002: [] }, { clock, retryAfterMs: [], generate: () => token,
+                extra: { sendPrivateImage: userId => new Promise(resolve => held.set(userId, () => resolve(userId + 1000))) },
+            });
+            const pump = async (check: () => boolean) => {
+                const deadline = Date.now() + 6000;
+                while (!check() && Date.now() < deadline) { await new Promise(resolve => setTimeout(resolve, 10)); const next = clock.nextTimer(); if (next !== undefined) clock.advanceTo(next); }
+                assert.ok(check(), '受控并发发送/历史检查未完成');
+            };
+            try {
+                await app.connected(SELF);
+                app.receive({ ...event(10001, 301, '发张土豆的照片我看看'), time: Math.floor(clock.now() / 1000) });
+                await pump(() => held.has(10001));
+                cli.remove(entry.id); cli.add(source, 'cat', '合成说明乙');
+                app.receive({ ...event(10002, 302, '发张土豆的照片我看看'), time: Math.floor(clock.now() / 1000) });
+                await pump(() => held.has(10002));
+                // 两次发送已经取得各自快照；其后删除、损坏索引也不能改变已确认图片历史。
+                cli.remove(entry.id); writeFileSync(join(root, 'index.json'), 'PRIVATE_BROKEN_INDEX');
+                for (const qq of order) {
+                    held.get(qq)!();
+                    await pump(() => new ChatHistory(cfg.dataDir).load(qq).some(message => message.role === 'assistant'));
+                }
+                for (const [qq, caption] of [[10001, '合成说明甲'], [10002, '合成说明乙']] as const) {
+                    const sent = new ChatHistory(cfg.dataDir).load(qq).filter(message => message.role === 'assistant');
+                    assert.deepEqual(sent.map(message => [message.messageId, message.content]), [[qq + 1000, `她发了张照片：${caption}`]]);
+                }
+                assert.equal(images.length, 2);
+                assert.ok(logs.every(line => !line.includes('PRIVATE_BROKEN_INDEX')));
+            } finally { for (const release of held.values()) release(); app.stop(); }
+        }
+    });
+
+    test('app停止后在途找图晚返回不下载或写入货架', async () => {
+        const cfg = config({ photos: true });
+        let release!: () => void; let searched = false; let downloads = 0;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const source: PhotoSource = {
+            search: async kind => { searched = true; await gate; return [{ kind, title: 'synthetic-late', pageUrl: 'https://example.org/page', imageUrl: 'https://example.org/photo', width: 3000, height: 2000, license: 'CC0', artist: '', series: 'synthetic' }]; },
+            download: async () => { downloads++; return { bytes: new Uint8Array(150 * 1024), type: 'image/jpeg' }; },
+            judge: async () => ({ keep: true, caption: '合成晚返回照片' }),
+        };
+        const { app } = setup(cfg, { 10001: [] }, { photoSource: source });
+        try {
+            await app.connected(SELF); await until(() => searched);
+            app.stop(); release();
+            await new Promise<void>(resolve => setImmediate(resolve));
+            assert.equal(downloads, 0);
+            assert.equal(existsSync(join(cfg.dataDir, 'photos', 'index.json')), false);
+            assert.equal(existsSync(join(cfg.dataDir, 'photos', 'files')), false);
+        } finally { release(); app.stop(); }
     });
 
     test('照片货架没开 / 货架空：他要看照片也不发图（照旧走“先不发”）', async () => {
