@@ -1,8 +1,8 @@
-// 模块总表（ADR 0122，A14 的第一步：只分类、只写文档，不动任何运行代码）：`packages/bot/src` 的每个文件属于哪个模块、每个模块管什么、有哪些开关。
-// 为什么：src 下 115 个平铺的文件，app.ts / contact.ts 各自拼几十个 import，想知道“记忆这块有哪些文件”“主动这块有哪些开关”只能靠记。
+// 模块总表（始于 ADR 0122 的分类与文档）：`packages/bot/src` 的每个文件属于哪个模块、每个模块管什么、有哪些开关。
+// 最初针对 src 下 115 个平铺文件建立清单；目前多数源文件已迁入职责对应的子目录，清单持续维护当前归属。
 // 这里是唯一的清单：modules.test.ts 核对 ① src 下每个 .ts 文件恰好属于一个模块 ② 清单里的文件都真实存在 ③ docs/modules/ 里生成的文档和这份清单一致（改了清单忘了重新生成会红）。
 // 重新生成文档：node packages/bot/src/ops/modules-doc.ts
-// 后续的步骤（把文件真的挪进子目录、每个模块自己的配置段、提示词由各模块“贡献”）见 docs/modules/README.md「接下来」，都没做。
+// 目录整理已完成；后续的模块配置段与提示词贡献计划见 docs/modules/README.md「接下来」。
 
 import type { FeatureGroup } from './features.ts';
 
@@ -38,7 +38,7 @@ export const MODULES: readonly ModuleDef[] = [
             'life/everyday.ts', 'life/menu.ts', 'life/diary.ts', 'life/biography.ts', 'life/bedtime.ts', 'life/people.ts', 'life/promises.ts', 'life/promise-state.ts', 'life/open-loops.ts', 'life/tastes.ts', 'life/acquaintances.ts', 'human-values.ts'],
         groups: ['她的日子'],
         metrics: '周报「她的日子」；consistency-cli（说的和账对不对）；sim/life-audit',
-        adrs: ['0015', '0040', '0045', '0104', '0106', '0162', '0163', '0222'],
+        adrs: ['0015', '0040', '0045', '0104', '0106', '0162', '0163', '0222', '0228'],
     },
     {
         id: 'world', name: '她的世界（世界账）',

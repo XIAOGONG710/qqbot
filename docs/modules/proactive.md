@@ -1,6 +1,6 @@
 # 模块：主动找他
 
-> 由 `packages/bot/src/modules.ts` 生成（`node packages/bot/src/ops/modules-doc.ts`），不要手改；改清单后重新生成。
+> 由 `packages/bot/src/platform/modules.ts` 清单生成（`node packages/bot/src/ops/modules-doc.ts`），不要手改；改清单后重新生成。
 
 **管什么**：她什么时候先开口：早安、下课、睡前、冷场、随口说件事、约他、问意见、喂完土豆拍照、说了等下之后回来、没回也继续、心里的念头、待跟进的事。
 

@@ -1,6 +1,6 @@
 # 模块：外部世界：B 站
 
-> 由 `packages/bot/src/modules.ts` 生成（`node packages/bot/src/ops/modules-doc.ts`），不要手改；改清单后重新生成。
+> 由 `packages/bot/src/platform/modules.ts` 清单生成（`node packages/bot/src/ops/modules-doc.ts`），不要手改；改清单后重新生成。
 
 **管什么**：她的 B 站号：搜视频读字幕、私信、回复评论、话题评论、风险监控。
 

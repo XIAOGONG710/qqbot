@@ -1,6 +1,6 @@
 # 模块：她的日子（生活）
 
-> 由 `packages/bot/src/modules.ts` 生成（`node packages/bot/src/ops/modules-doc.ts`），不要手改；改清单后重新生成。
+> 由 `packages/bot/src/platform/modules.ts` 清单生成（`node packages/bot/src/ops/modules-doc.ts`），不要手改；改清单后重新生成。
 
 **管什么**：她自己的一天：作息、世界账（天气、猫、快递、作业、钱）、日常小事和小测、项目与追求、身体、心情和在读的书、真人式连续数值、闺蜜、节日、承诺和日记。
 
@@ -54,4 +54,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0162](../adr/0162-tastes.md)、[ADR 0163](../adr/0163-acquaintances.md)、[ADR 0222](../adr/0222-human-values.md)
+[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0162](../adr/0162-tastes.md)、[ADR 0163](../adr/0163-acquaintances.md)、[ADR 0222](../adr/0222-human-values.md)、[ADR 0228](../adr/0228-life-review-fixes.md)
