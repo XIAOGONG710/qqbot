@@ -81,6 +81,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(config.moody, DEFAULTS.moody);
         assert.equal(config.speechCheck, DEFAULTS.speechCheck);
         assert.equal(config.herDays, DEFAULTS.herDays);
+        assert.equal(config.realTransport.enabled, false);
         assert.equal(config.projectChoice, DEFAULTS.projectChoice);
         assert.equal(config.proactive, DEFAULTS.proactive);
         assert.equal(config.dataDir, DEFAULTS.dataDir);
@@ -111,6 +112,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
             { ...minimal, memory: { enabled: true, baseUrl: 'http://127.0.0.1:9999', recallTimeoutMs: 5000 }, prompt: { worldInfo: { depth: 4, caseSensitive: true } } },
             { ...minimal, memory: { enabled: false }, schedule: false, dataDir: 'runtime/bot-test' },
             { ...minimal, proactive: 'dryRun' },
+            { ...minimal, realTransport: { enabled: true, endpoint: 'https://transport.example.test/status?city=all', source: '城市公共交通' } },
             { ...minimal, moody: false },
             { ...minimal, speechCheck: false },
             { ...minimal, herDays: false },
@@ -144,6 +146,28 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.deepEqual(independent.dsh, { enabled: true, baseUrl: 'https://dsh.example/v1', model: 'dsh-model', timeoutMs: 12_000 });
         assert.throws(() => parseAppConfig({ ...toAppConfigInput(Config(minimal as never)), dsh: { enabled: true, baseUrl: ' ' } }, repoRoot, env), /dsh.baseUrl/);
         assert.throws(() => parseAppConfig({ ...toAppConfigInput(Config(minimal as never)), dsh: { enabled: true, timeoutMs: 0 } }, repoRoot, env), /dsh.timeoutMs/);
+    });
+
+    test('现实交通默认关闭；显式开启后传给核心，关闭时不写回', () => {
+        assert.deepEqual(fromKoishi(minimal).realTransport, { enabled: false });
+        assert.equal('realTransport' in (Config.simplify(Config(minimal as never)) as object), false);
+
+        const input = {
+            ...minimal,
+            realTransport: { enabled: true, endpoint: 'https://transport.example.test/status?city=all', source: '城市公共交通' },
+        };
+        assert.deepEqual(fromKoishi(input).realTransport, input.realTransport);
+        assert.deepEqual(
+            (Config.simplify(Config(input as never)) as { realTransport: object }).realTransport,
+            input.realTransport,
+        );
+
+        for (const endpoint of [
+            'http://transport.example.test/status',
+            'https://localhost/status',
+            'https://transport.example.test/status?token=secret',
+        ]) assert.throws(() => fromKoishi({ ...minimal, realTransport: { enabled: true, endpoint, source: '测试' } }), /realTransport\.endpoint/);
+        assert.throws(() => fromKoishi({ ...minimal, realTransport: { enabled: true, endpoint: 'https://transport.example.test', source: 'bad/source' } }), /realTransport\.source/);
     });
 
     test('听语音、看图（ADR 0052）：旧的配置没有这一项时是开；关了照样传过去；等于默认值时不写进 koishi.yml', () => {
