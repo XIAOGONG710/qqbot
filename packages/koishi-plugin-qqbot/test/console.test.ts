@@ -90,10 +90,11 @@ describe('控制台的角色资料（ADR 0010）', () => {
     });
 
     test('页面的数据：插件没在跑时带上原因', () => {
-        setConsoleState({ running: false, error: '配置有误，插件没有启动：x' });
+        setConsoleState({ running: false, error: '配置有误，插件没有启动：apiKey=secret C:\\private\\config.json' });
         const data = consoleData();
         assert.equal(data.running, false);
-        assert.equal(data.error, '配置有误，插件没有启动：x');
+        assert.equal(data.error, '配置有误，插件没有启动。请检查插件设置；详细原因见运行日志。');
+        assert.doesNotMatch(data.error ?? '', /secret|apiKey|private|config\.json/);
         assert.equal(data.status, undefined);
     });
 });

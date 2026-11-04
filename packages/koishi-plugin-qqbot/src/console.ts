@@ -71,13 +71,20 @@ export function consoleData(): ConsoleData {
     }
     return {
         running: state.running,
-        ...(state.error ? { error: state.error } : {}),
+        ...(state.error ? { error: publicConsoleError(state.error) } : {}),
         ...(napcat ? { napcat: napcat() } : {}),
         ...(status ? { status } : {}),
         ...(state.character ? { character: { sourceDir: state.character.sourceDir, stDir: state.character.stDir } } : {}),
         phoneActions: PHONE_ACTION_CAPABILITIES,
         updatedAt: Date.now(),
     };
+}
+
+/** 控制台只给处理方向；原始异常可能带路径、配置值或技术字段，完整内容留在受控运行日志。 */
+function publicConsoleError(error: string): string {
+    return error.includes('配置有误')
+        ? '配置有误，插件没有启动。请检查插件设置；详细原因见运行日志。'
+        : '插件没有启动。请查看运行日志中的详细原因。';
 }
 
 function character() {

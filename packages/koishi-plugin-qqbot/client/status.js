@@ -148,6 +148,7 @@ export const StatusTab = defineComponent({
             ] : [
                 ['插件', data.running ? [tag('运行正常', 'success')] : [tag('未运行', 'danger')]],
                 ['QQ 连接', data.napcat?.online ? [tag('已连接', 'success')] : [tag('未连接', 'danger')]],
+                ...(data.error ? [['处理建议', [h('span', { class: 'qqbot-muted' }, data.error)]]] : []),
             ];
             const summary = h('div', { class: 'qqbot-summary' }, rows.map(([label, value]) => h('div', { class: 'qqbot-summary-row' }, [
                 h('span', { class: 'qqbot-label' }, label), h('span', null, value),
