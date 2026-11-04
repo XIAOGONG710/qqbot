@@ -11,9 +11,11 @@
 // 不做的：不防有管理员权限又同时改账本的人；不记设定的内容，只记哈希和提交说明。
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Ledger, sha256, type LedgerEntry, type VerifyResult } from './ledger.ts';
+import { writeJsonAtomic } from './json-file.ts';
+import { stateObject } from './state-schema.ts';
 
 /** 算哈希的目录（相对仓库根）：人设源文件、生成出来的角色卡和世界书 */
 export const IDENTITY_DIRS = ['characters/linmengyao/source', 'characters/linmengyao/st'] as const;
@@ -154,6 +156,7 @@ export class Identity {
             log?.('设定账本：完整性校验未通过；本次不追加、不更新基线，原断点保留');
             return { chain, first: false, changes: [], unexplained: [] };
         }
+        this.#state();
         const entries = this.ledger.read();
         const current = hashIdentityFiles(repoRoot);
         const head = git.head();
@@ -186,12 +189,26 @@ export class Identity {
     }
 
     /** 还没「告诉她」的改动（醒来核对时发现的）；她被问起设定时才用 */
-    #state(): { toldSeq: number } {
+    #state(): Record<string, unknown> & { toldSeq: number; toldHash?: string } {
+        if (!this.ledger.verify().ok) throw new Error('设定告知状态无法与账本核对；完整性未通过，原文件保留');
+        let text: string;
         try {
-            const value = JSON.parse(readFileSync(this.#statePath, 'utf8')) as { toldSeq?: unknown };
-            return { toldSeq: typeof value.toldSeq === 'number' ? value.toldSeq : -1 };
+            text = readFileSync(this.#statePath, 'utf8');
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { toldSeq: -1 };
+            throw new Error('设定告知状态读取失败；原文件保留，请恢复存储后重试');
+        }
+        try {
+            const value: unknown = JSON.parse(text);
+            if (!stateObject(value) || typeof value.toldSeq !== 'number' || !Number.isSafeInteger(value.toldSeq) || value.toldSeq < -1) throw new Error('schema');
+            const entries = this.ledger.read();
+            if (value.toldSeq >= entries.length) throw new Error('history');
+            if (value.toldHash !== undefined && (typeof value.toldHash !== 'string' || !/^[a-f0-9]{64}$/.test(value.toldHash)
+                || value.toldSeq < 0 || entries[value.toldSeq]?.hash !== value.toldHash)) throw new Error('history');
+            // 旧版只有 toldSeq；新状态以对应条目的 hash 绑定历史，后续正常追加不会失效。
+            return value as Record<string, unknown> & { toldSeq: number; toldHash?: string };
         } catch {
-            return { toldSeq: -1 };
+            throw new Error('设定告知状态无效或与账本不一致；原文件保留，请核对后重试');
         }
     }
 
@@ -211,10 +228,16 @@ export class Identity {
     }
 
     markTold(): void {
+        const state = this.#state();
         const last = this.ledger.last();
         if (!last) return;
-        mkdirSync(join(this.#options.dataDir, 'identity'), { recursive: true });
-        writeFileSync(this.#statePath, JSON.stringify({ toldSeq: last.seq }));
+        const next = { ...state, toldSeq: last.seq, toldHash: last.hash };
+        try { writeJsonAtomic(this.#statePath, next); }
+        catch {
+            let published = false;
+            try { published = JSON.stringify(JSON.parse(readFileSync(this.#statePath, 'utf8'))) === JSON.stringify(next); } catch { /* 无法确认发布，保留旧状态。 */ }
+            if (!published) throw new Error('设定告知状态写入未确认；原文件保留，请恢复存储后重试');
+        }
     }
 
     /** 放进提示词的一段背景；没有新改动就是 undefined */
