@@ -306,6 +306,11 @@ export class LongTermMemory {
 
     /** 把还没写入的片段写进 Hindsight；同一联系人排队执行，返回这一次排进去的任务 */
     sync(contact: MemoryContact, names: MacroNames, history: StoredMessage[]): Promise<void> {
+        // Queue ownership begins now: later history edits must not change the
+        // evidence that this particular task was asked to retain.
+        contact = { ...contact };
+        names = { ...names };
+        history = structuredClone(history);
         const key = this.#key(contact);
         const previous = this.#queues.get(key) ?? Promise.resolve();
         const next = previous.then(() => this.#sync(contact, names, history)).catch(error => {
@@ -314,6 +319,8 @@ export class LongTermMemory {
             this.#options.log(`[${contact.qq}] 记忆写入失败：${message}`);
         });
         this.#queues.set(key, next);
+        const release = () => { if (this.#queues.get(key) === next) this.#queues.delete(key); };
+        void next.then(release, release);
         return next;
     }
 

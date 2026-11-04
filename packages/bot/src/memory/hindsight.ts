@@ -12,6 +12,12 @@
 //   DELETE /v1/default/banks/{bank_id}                             删掉测试 bank
 // 出错（连不上、超时、非 2xx）一律抛 HindsightError，由调用方记日志，不在这里吞掉。
 
+import { describeError } from './transient-io.ts';
+import { stateObject } from './state-schema.ts';
+
+/** Transport ceiling, independent of the server's token budgets. */
+export const HINDSIGHT_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
+
 export class HindsightError extends Error {
     readonly status?: number;
     constructor(message: string, status?: number) {
@@ -141,10 +147,18 @@ export class HindsightClient implements HindsightApi {
         const data = await this.#request<{ results?: RecallResult[]; source_facts?: Record<string, { text?: string }> | null }>(
             'POST', `${this.#bank(bankId)}/memories/recall`, request, timeoutMs,
         );
+        if (!stateObject(data)) throw new HindsightError('记忆服务召回响应格式无效');
         const facts = data.source_facts ?? {};
-        return (data.results ?? []).map(result => (result.source_fact_ids?.length
-            ? { ...result, sources: result.source_fact_ids.flatMap(id => (facts[id]?.text ? [facts[id].text] : [])) }
-            : result));
+        if (!Array.isArray(data.results ?? []) || !stateObject(facts)
+            || !(data.results ?? []).every(result => stateObject(result) && typeof result.id === 'string' && typeof result.text === 'string'
+                && ['type', 'occurred_start', 'occurred_end', 'mentioned_at', 'document_id'].every(key => result[key] == null || typeof result[key] === 'string')
+                && ['entities', 'source_fact_ids'].every(key => result[key] == null || Array.isArray(result[key]) && result[key].every((item: unknown) => typeof item === 'string')))) {
+            throw new HindsightError('记忆服务召回响应格式无效');
+        }
+        return (data.results ?? []).map(({ sources: _untrusted, ...result }) => ({
+            ...result,
+            ...(result.source_fact_ids?.length ? { sources: result.source_fact_ids.flatMap(id => (Object.hasOwn(facts, id) && typeof facts[id]?.text === 'string' ? [facts[id].text] : [])) } : {}),
+        }));
     }
 
     async getMentalModel(bankId: string, id: string): Promise<MentalModel | undefined> {
@@ -239,22 +253,61 @@ export class HindsightClient implements HindsightApi {
     }
 
     async #request<T>(method: string, path: string, body?: unknown, timeoutMs = this.#timeoutMs): Promise<T> {
-        let response: Response;
+        if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new HindsightError('记忆服务超时配置无效');
+        const controller = new AbortController();
+        let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+        const timeout = new HindsightError(`记忆服务超时（${timeoutMs} ms）`);
+        let timer: ReturnType<typeof setTimeout>;
+        const expired = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+                controller.abort();
+                void reader?.cancel().catch(() => undefined);
+                reject(timeout);
+            }, timeoutMs);
+        });
         try {
-            response = await fetch(`${this.#baseUrl}${path}`, {
-                method,
-                headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
-                body: body === undefined ? undefined : JSON.stringify(body),
-                signal: AbortSignal.timeout(timeoutMs),
-            });
+            return await Promise.race([expired, (async () => {
+                const response = await fetch(`${this.#baseUrl}${path}`, {
+                    method,
+                    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+                    body: body === undefined ? undefined : JSON.stringify(body),
+                    signal: controller.signal,
+                });
+                if (controller.signal.aborted) { void response.body?.cancel().catch(() => undefined); throw timeout; }
+                if (!response.ok) {
+                    void response.body?.cancel().catch(() => undefined);
+                    throw new HindsightError(`记忆服务返回 HTTP ${response.status}`, response.status);
+                }
+                let text: string;
+                if (response.body) {
+                    reader = response.body.getReader();
+                    const chunks: Uint8Array[] = [];
+                    let size = 0;
+                    try {
+                        for (;;) {
+                            const next = await reader.read();
+                            if (controller.signal.aborted) throw timeout;
+                            if (next.done) break;
+                            size += next.value.byteLength;
+                            if (size > HINDSIGHT_MAX_RESPONSE_BYTES) throw new HindsightError('记忆服务响应过大');
+                            chunks.push(next.value);
+                        }
+                        text = Buffer.concat(chunks, size).toString('utf8');
+                    } finally {
+                        void reader.cancel().catch(() => undefined);
+                        reader.releaseLock();
+                    }
+                } else {
+                    text = await response.text();
+                    if (Buffer.byteLength(text, 'utf8') > HINDSIGHT_MAX_RESPONSE_BYTES) throw new HindsightError('记忆服务响应过大');
+                }
+                return (text ? JSON.parse(text) : {}) as T;
+            })()]);
         } catch (error) {
-            const reason = error instanceof Error && error.name === 'TimeoutError' ? `超时（${timeoutMs} ms）` : String(error instanceof Error ? error.message : error);
-            throw new HindsightError(`${method} ${path} 失败：${reason}`);
+            if (error instanceof HindsightError) throw error;
+            throw new HindsightError(`记忆服务请求失败：${describeError(error)}`);
+        } finally {
+            clearTimeout(timer!);
         }
-        const text = await response.text();
-        if (!response.ok) {
-            throw new HindsightError(`${method} ${path} 返回 ${response.status}：${text.slice(0, 300)}`, response.status);
-        }
-        return (text ? JSON.parse(text) : {}) as T;
     }
 }
