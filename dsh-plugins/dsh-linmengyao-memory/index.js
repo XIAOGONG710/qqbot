@@ -611,18 +611,17 @@ function readStateBlock(cfg, now = Date.now()) {
       return ''
     }
     const lines = [`时间：${new Date(stateAt).toISOString()}`]
-    if (typeof state.tier === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(state.tier)) lines.push(`关系档位：${state.tier}`)
-    const numbers = (label, value) => {
+    if (typeof state.tier === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(state.tier)) lines.push(`关系档位：${state.tier}`)
+    const numbers = (label, value, allowed) => {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return
-      const allowed = ['energy', 'hunger', 'stress', 'mood', 'health', 'loneliness', 'motivation', 'boredom', 'socialBattery', 'intimacy', 'trust', 'familiarity', 'attachment', 'friction']
       const entries = Object.entries(value).filter(([key, item]) => allowed.includes(key) && typeof item === 'number' && Number.isFinite(item) && item >= 0 && item <= 100)
       if (entries.length) lines.push(`${label}：${entries.map(([key, item]) => `${key}=${Math.round(item)}`).join('，')}`)
     }
-    numbers('需要值', state.needs)
-    numbers('真人式状态', state.values)
-    numbers('关系状态', state.relationship)
+    numbers('需要值', state.needs, ['energy', 'hunger', 'stress'])
+    numbers('真人式状态', state.values, ['energy', 'hunger', 'stress', 'mood', 'health', 'loneliness', 'motivation', 'boredom', 'socialBattery'])
+    numbers('关系状态', state.relationship, ['intimacy', 'trust', 'familiarity', 'attachment', 'friction'])
     if (Array.isArray(state.recentEvents)) {
-      const events = state.recentEvents.filter((item) => typeof item === 'string' && /^[A-Za-z0-9:_-]{1,48}$/.test(item)).slice(-8)
+      const events = state.recentEvents.filter((item) => typeof item === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(item)).slice(-8)
       if (events.length) lines.push(`最近事件类型：${events.join('、')}`)
     }
     return `[QQ 侧实时状态（只读；超过 ${Math.round(cfg.stateStaleMs / 60000)} 分钟不采用）]\n${lines.join('\n')}`
