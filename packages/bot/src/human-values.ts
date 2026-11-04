@@ -207,6 +207,7 @@ function eventDelta(event: Pick<LifeEvent, 'kind' | 'meal' | 'result'>): { delta
         case 'meet':
         case 'interact_npc': return { delta: withMeal({ ...EMPTY_DELTA, mood: 3, loneliness: -18, confidence: 0.8, boredom: -12, socialBattery: -12, openness: 2, satisfaction: 3, motivation: 1 }), halfLifeH: 12 };
         case 'family_call': return { delta: withMeal({ ...EMPTY_DELTA, mood: 1.5, loneliness: -8, boredom: -3, socialBattery: -3, openness: 1, satisfaction: 1.5, comfort: 2, frustration: -0.5 }), halfLifeH: 10 };
+        case 'feed_cat': return { delta: withMeal({ ...EMPTY_DELTA, mood: 1.2, loneliness: -3, boredom: -2, motivation: 0.5, satisfaction: 2, comfort: 2, frustration: -0.5 }), halfLifeH: 8 };
         case 'leisure': return { delta: withMeal({ ...EMPTY_DELTA, mood: 1, loneliness: -2, boredom: -14, socialBattery: -2, satisfaction: 2, motivation: 1 }), halfLifeH: 10 };
         case 'read_book': return { delta: withMeal({ ...EMPTY_DELTA, mood: 0.8, curiosity: 3, confidence: 0.4, boredom: -9, selfEsteem: 0.4, satisfaction: 2, motivation: 1 }), halfLifeH: 12 };
         case 'study': return { delta: withMeal({ ...EMPTY_DELTA, confidence: 2, curiosity: 2, boredom: -3, selfEsteem: 2, satisfaction: 3, motivation: 3, frustration: -1 }), halfLifeH: 14 };

@@ -165,6 +165,22 @@ test('成功的瞬时家庭视频保留为事实：缓解孤独、略提心情�
     assert.ok(after.socialBattery < failedAttempt.socialBattery, `${failedAttempt.socialBattery} -> ${after.socialBattery}`);
 });
 
+test('成功喂猫会带来温和的陪伴和满足余波，失败尝试不会得到奖励', () => {
+    const at = new Date('2026-11-01T08:00:00.000Z');
+    const fed = {
+        id: 'life:feed-cat', actor: 'linmengyao' as const, kind: 'feed_cat', day: '2026-11-01',
+        startedAt: at.toISOString(), endedAt: at.toISOString(),
+        source: 'conversation' as const, result: 'succeeded' as const, seen: true,
+    };
+    const failed = { ...fed, id: 'life:feed-cat-failed', result: 'failed' as const, reason: '下雨，没见到猫' };
+    const after = humanValuesAt({ at, needs, history: [], tier: 'boyfriend', events: [fed] });
+    const failedAttempt = humanValuesAt({ at, needs, history: [], tier: 'boyfriend', events: [failed] });
+    assert.ok(after.loneliness < failedAttempt.loneliness, `${failedAttempt.loneliness} -> ${after.loneliness}`);
+    assert.ok(after.mood > failedAttempt.mood, `${failedAttempt.mood} -> ${after.mood}`);
+    assert.ok(after.comfort > failedAttempt.comfort, `${failedAttempt.comfort} -> ${after.comfort}`);
+    assert.ok(after.satisfaction > failedAttempt.satisfaction, `${failedAttempt.satisfaction} -> ${after.satisfaction}`);
+});
+
 test('数值会联动：身体负荷会传导到舒适、心情、动机、开放和挫败', () => {
     const at = new Date('2026-11-01T12:00:00.000Z');
     const calm = humanValuesAt({
