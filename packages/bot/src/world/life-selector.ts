@@ -74,7 +74,7 @@ function mealDate(sources: Pick<LifeSources, 'worldAt'>, appointment: Appointmen
 }
 
 /** 一次约定对应一个稳定行动；联系人自己的 promise id 只在该联系人内唯一，所以把 QQ 一起放进幂等键。 */
-function appointmentActions(sources: LifeSources, from: Date, to: Date): ActionAppointment[] {
+function appointmentActions(sources: LifeSources, from: Date, to: Date): (ActionAppointment & { meetingAt: Date })[] {
     const saidBedtimes = sources.bedtimes?.() ?? [];
     return (sources.appointmentsBetween?.(from, to) ?? []).flatMap(appointment => {
         const lead = new Date(appointment.start.getTime() - MEET_LEAD_MINUTES * 60_000);
@@ -94,6 +94,7 @@ function appointmentActions(sources: LifeSources, from: Date, to: Date): ActionA
         return segments.filter(segment => segment.start < to && segment.end > from).map(segment => ({
             id: `${lifeActionId(segment.start, 'meet')}:${appointment.contact.qq}:${appointment.promise.id}`,
             ...segment,
+            meetingAt: appointment.start,
             subject: appointment.promise.what,
             target: `contact:${appointment.contact.qq}`,
             // 只有真正走到约定结束的最后一段才算把这顿饭吃完；被课或睡觉截断的前段不结算饱腹。
@@ -458,21 +459,24 @@ export function lifeExecutor(sources: LifeSources, queue: ActionQueue, options: 
 
 /**
  * 排着的见面按现在的约定再看一遍（G1，审查 P1-1）：ADR 0047 起聊着就会改时间、取消。行动 id 里带着出门时刻和约定 id，
- * 改了时间 id 就变了。约定还在、时段没变——不动；约定取消了或改了时间——还没出门的去掉（从来没发生，之后按新的约定排），
+ * 改了时间 id 就变了。约定还在则重验时段并同步内容；约定取消了或改了时间——还没出门的去掉（从来没发生，之后按新的约定排），
  * 已经出门的停在这一刻（她出去了一趟，这段算数）；改成提前结束的，停在新的结束时刻
  */
 function reviseMeet(item: QueuedAction, sources: LifeSources, queue: ActionQueue, now: Date): void {
-    if (item.event.result === 'failed') return;
+    if (item.event.result === 'failed' || item.meetingCancelled) return;
     const start = new Date(item.event.startedAt ?? item.event.at);
     const end = new Date(item.event.at);
     const still = appointmentActions(sources, start, end).find(other => other.id === item.id);
-    if (still && still.end.getTime() >= end.getTime()) return;
     if (still) {
-        queue.shorten(item.id, still.end, '约好的见面改成早点结束');
+        queue.refreshMeeting(still, { schedule: sources.schedule, books: sources.books, events: sources.events() });
         return;
     }
     if (now.getTime() <= start.getTime()) queue.drop(item.id, '约好的见面改了时间或取消了，还没出门');
-    else if (now.getTime() < end.getTime()) queue.shorten(item.id, now, '约好的见面中途取消了');
+    else if (now.getTime() < end.getTime()) queue.shorten(item.id, now, '约好的见面中途取消了', {
+        // 只有明确保存了约见时刻且尚未到点，才能确定只是出门准备、没有吃完这顿饭。
+        ...(item.meetingAt && now.getTime() < Date.parse(item.meetingAt) ? { meal: false } : {}),
+        meetingCancelled: true,
+    });
 }
 
 /** 灵活的行动：聊天里说过的事能让它提前停；睡觉、吃饭、上课不动 */
