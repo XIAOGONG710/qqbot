@@ -8,8 +8,9 @@ export const PHONE_ACTION_POLICY: Readonly<Record<PhoneAction, ActionDecision>> 
 export function decidePhoneAction(request: PhoneActionRequest, confirmed: boolean): ActionDecision {
     const expected = PHONE_ACTION_POLICY[request.action];
     if (!expected) return 'deny';
-    if (expected === 'auto') return request.decision === 'deny' ? 'deny' : 'auto';
-    return confirmed && request.decision !== 'deny' ? 'confirm' : 'deny';
+    if (request.decision === 'deny') return 'deny';
+    if (expected === 'confirm' || request.decision === 'confirm') return confirmed ? 'confirm' : 'deny';
+    return 'auto';
 }
 
 export function actionNeedsConfirmation(action: PhoneAction): boolean {

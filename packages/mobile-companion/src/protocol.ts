@@ -164,6 +164,8 @@ export function validateAction(value: unknown): PhoneActionRequest {
     if (action.targetId !== undefined && (typeof action.targetId !== 'string' || !ID.test(action.targetId))) throw new Error('targetId 不合法');
     if (action.reason !== undefined && (typeof action.reason !== 'string' || [...action.reason].length > 500)) throw new Error('动作理由不合法');
     if (!['auto', 'confirm', 'deny'].includes(String(action.decision))) throw new Error('动作决策不合法');
+    const defaultDecision = PHONE_ACTION_CAPABILITIES.find(capability => capability.action === action.action)!.defaultDecision;
+    if (defaultDecision === 'confirm' && action.decision === 'auto') throw new Error('敏感动作不能降级为自动执行');
     return action as PhoneActionRequest;
 }
 

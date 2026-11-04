@@ -53,6 +53,10 @@ describe('手机伴侣协议', () => {
         assert.equal(decidePhoneAction(request, false), 'deny');
         assert.equal(decidePhoneAction(request, true), 'confirm');
         assert.equal(decidePhoneAction({ action: 'notify', params: { text: '晚安' }, decision: 'auto' }, false), 'auto');
+        assert.equal(decidePhoneAction({ action: 'notify', params: { text: '晚安' }, decision: 'confirm' }, false), 'deny');
+        assert.equal(decidePhoneAction({ action: 'notify', params: { text: '晚安' }, decision: 'confirm' }, true), 'confirm');
+        assert.throws(() => validateAction({ action: 'ring', params: {}, decision: 'auto' }), /不能降级/);
+        assert.doesNotThrow(() => validateAction({ action: 'notify', params: {}, decision: 'confirm' }));
         assert.throws(() => validateAction({ action: 'shell', params: { command: 'whoami' }, decision: 'auto' }));
         assert.throws(() => validateAction({ action: 'notify', params: { text: { nested: true } }, decision: 'auto' }));
         assert.throws(() => validateAction({ action: 'notify', params: { 'bad key': 'x' }, decision: 'auto' }));

@@ -1,7 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { CompanionGateway } from './gateway.ts';
 import { MAX_CLOCK_SKEW_MS, validateAction, validateActionResult, validateEnvelope, validateMessage, type ActionResult, type CompanionEnvelope, type CompanionError, type CompanionMessage, type PhoneActionRequest } from './protocol.ts';
-import { actionNeedsConfirmation } from './action-policy.ts';
 
 export const MAX_QUEUED_PER_CLIENT = 32;
 export const MAX_DOWNLINK_ACTIONS = 16;
@@ -30,7 +29,7 @@ export interface CompanionRuntimeStatus {
 
 interface PendingDownlinkResult {
     issuedAt: number;
-    action: PhoneActionRequest['action'];
+    decision: PhoneActionRequest['decision'];
 }
 
 /**
@@ -111,7 +110,7 @@ export class CompanionRuntime {
         };
         queue.push(envelope);
         this.downlinks.set(clientId, queue);
-        pending.set(requestId, { issuedAt, action: body.action });
+        pending.set(requestId, { issuedAt, decision: body.decision });
         this.pendingDownlinkResults.set(clientId, pending);
         // 监听器只是实时推送优化；某个传输已经断开或宿主观察器抛错时，
         // 不能让动作创建对外失败，否则调用方可能重试并产生重复动作。
@@ -221,7 +220,7 @@ export class CompanionRuntime {
                     throw new Error('动作回执没有对应的宿主下发请求');
                 }
                 if (result.ok && result.decision === 'deny') throw new Error('动作回执不能在拒绝执行时报告成功');
-                const expected = actionNeedsConfirmation(issued.action) ? 'confirm' : 'auto';
+                const expected = issued.decision;
                 if (result.decision !== 'deny' && result.decision !== expected) throw new Error('动作回执确认级别与下发策略不一致');
                 await this.handlers.onActionResult(result, clientId);
                 // 宿主通常会在这里写审计记录。只有写入成功后才消费回执；临时失败时保留槽位，允许手机重试。
