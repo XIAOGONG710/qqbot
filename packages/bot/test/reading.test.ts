@@ -22,7 +22,33 @@ test('指代词：把他前面说过的事摆出来当候选', () => {
     assert.deepEqual(turn?.referent, ['今天面试被拒了']);
     const line = readingLine(turn)!;
     assert.ok(line.includes('面试被拒'));
-    assert.ok(line.includes('先想清楚'));
+    assert.ok(line.includes('唯一候选'));
+    assert.ok(line.includes('能确定就直接回'));
+    assert.ok(line.includes('别把整轮只回成反问'));
+});
+
+test('他说清楚的问题直接答，不为了保险反问指哪件事', () => {
+    const turn = readTurn([msg('user', '你想成为自己想成为的样子，还是我喜欢的样子？', 0)]);
+    const line = readingLine(turn)!;
+    assert.equal(turn?.referent, undefined);
+    assert.ok(line.includes('直接回应他已经说清的部分'));
+    assert.ok(line.includes('别为了保险反问'));
+    assert.ok(!line.includes('没把握就问'));
+});
+
+test('有多个指代候选时只在确实无法区分时确认，并先回明确部分', () => {
+    const turn = readTurn([
+        msg('user', '明天上午去面试', 0),
+        msg('assistant', '记着呢', 1),
+        msg('user', '下午还要去医院复查', 2),
+        msg('assistant', '好', 3),
+        msg('user', '那个你陪我一起准备吧', 4),
+    ]);
+    const line = readingLine(turn)!;
+    assert.deepEqual(turn?.referent, ['明天上午去面试', '下午还要去医院复查']);
+    assert.ok(line.includes('只有确实无法区分这些候选时才简短确认'));
+    assert.ok(line.includes('先回应已经说清的部分'));
+    assert.ok(line.includes('别把整轮只回成反问'));
 });
 
 test('寒暄和太短的句子不当候选；没他的话就没有这一行', () => {

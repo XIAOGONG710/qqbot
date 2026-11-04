@@ -83,7 +83,13 @@ export function readingLine(turn: ReadTurn | undefined): string | undefined {
     if (turn.parts > 1) pieces.push(`（他分 ${turn.parts} 条发的，按一句看，别只盯最后那几个字）`);
     if (turn.referent?.length) pieces.push(`他说的「这个/那个」可能指：${turn.referent.map(t => `「${t.slice(0, 20)}」`).join('、')}`);
     if (turn.answered?.length) pieces.push(`「${turn.answered[0]!.slice(0, 20)}」他前面已经答过了，别再问是不是/有没有`);
-    pieces.push('先想清楚他这句在说什么、指哪件事，再回；没把握就问他指的是哪件，别猜、别只接最后半句');
+    if (!turn.referent?.length) {
+        pieces.push('把这一轮当成完整一句来理解，直接回应他已经说清的部分；别为了保险反问「你指哪件」，也别只接最后半句');
+    } else if (turn.referent.length === 1) {
+        pieces.push('结合上面的唯一候选理解，能确定就直接回；只有仍有两种以上合理解释时才简短确认，同时先回应已经说清的部分，别把整轮只回成反问');
+    } else {
+        pieces.push('先按上下文判断最可能的指向；只有确实无法区分这些候选时才简短确认，同时先回应已经说清的部分，别把整轮只回成反问');
+    }
     return `[${pieces.join('；')}]`;
 }
 

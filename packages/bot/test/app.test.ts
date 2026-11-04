@@ -385,6 +385,8 @@ describe('编排（app.ts）', () => {
         const asked = await run({}, 10002, '你到底想成为自己想成为的样子，还是我喜欢的样子啊');
         assert.match(asked.prompts[0]!, /你自己后来想过的（是你自己想的，不是设定[^\n]*\n- 他问过「你想成为自己想成为的样子[^\n]*你想的是：我大概是想先做我自己/);
         assert.doesNotMatch(asked.prompts[0]!, /你自己后来想过的[^\n]*(?:必须|一定要|应该选|先选)/);
+        assert.match(asked.prompts[0]!, /直接回应他已经说清的部分/);
+        assert.doesNotMatch(asked.prompts[0]!, /没把握就问他指的是哪件/);
         assert.ok(asked.logs.some(line => line.includes('没想完的问题：这一轮放了她自己后来想的')));
         assert.ok(asked.logs.every(line => !line.includes('先做我自己')), '日志不含内容');
         const unrelated = await run({}, 10002, '今天食堂有糖醋排骨');
