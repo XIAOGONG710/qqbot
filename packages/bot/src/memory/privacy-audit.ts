@@ -4,6 +4,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { FEEDBACK_MONTH_FILE, isFeedbackRow } from '../emotion/feedback.ts';
+import { ACCOUNT_ACTIONS } from '../social/account.ts';
+import { CONTACT_TIERS, UNLISTED_TIER } from '../platform/config.ts';
 
 export interface PrivacyArtifact {
     path: string;
@@ -63,10 +66,31 @@ function countContactRefs(value: unknown, qq: number): number {
 
 const hash = (qq: number, tier: string) => createHash('sha256').update(`qqbot:${qq}-${tier}`).digest('hex').slice(0, 16);
 
+/** 只检查结构化归属，不在聊天/摘要原文中搜索号码；坏行只计为审计局限。 */
+function scanJsonLines(path: string, inspect: (value: unknown) => void): number {
+    let text: string;
+    try {
+        if (lstatSync(path).isSymbolicLink()) throw new Error('link');
+        text = readFileSync(path, 'utf8');
+    } catch { throw new Error('隐私审计记录读取失败；原文件未修改'); }
+    let bad = 0;
+    for (let offset = 0; offset < text.length;) {
+        const end = text.indexOf('\n', offset);
+        const line = text.slice(offset, end < 0 ? text.length : end).trim();
+        offset = end < 0 ? text.length : end + 1;
+        if (!line) continue;
+        let value: unknown;
+        try { value = JSON.parse(line); } catch { bad++; continue; }
+        inspect(value);
+    }
+    return bad;
+}
+
 export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
     if (!Number.isSafeInteger(qq) || qq <= 0) throw new Error('qq 应为正整数');
     const root = resolve(dataDir);
     const artifacts: PrivacyArtifact[] = [];
+    const inventoryLimitations: string[] = [];
     const add = (path: string, kind: PrivacyArtifact['kind'], note: string, references?: number) => {
         if (!existsSync(path)) return;
         if (lstatSync(path).isSymbolicLink()) throw new Error('隐私数据文件包含链接，拒绝读取');
@@ -82,6 +106,40 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
                 add(path, 'direct', `${area} 中只属于这个联系人的文件`);
             }
         }
+    }
+
+    // 反馈月文件包含多位联系人及旧无来源行，绝不能当作某个人的整份专属文件移走。
+    let unknownFeedback = 0; let badFeedback = 0;
+    for (const path of walk(join(root, 'feedback')).filter(path => FEEDBACK_MONTH_FILE.test(basename(path)))) {
+        let references = 0;
+        const malformed = scanJsonLines(path, value => {
+            if (!isFeedbackRow(value)) { badFeedback++; return; }
+            if (value.contact === undefined) unknownFeedback++;
+            else if (value.contact === qq) references++;
+        });
+        badFeedback += malformed;
+        if (references) add(path, 'mixed', '多联系人反馈月文件；仅已标明 contact 的行可归属，需逐行复核', references);
+    }
+    if (unknownFeedback || badFeedback) inventoryLimitations.push(`反馈中有 ${unknownFeedback} 条旧无来源记录、${badFeedback} 条坏行或无效记录，无法归属联系人，需人工复核；未猜测分配。`);
+
+    const intimacy = join(root, 'intimacy.json');
+    const intimacyState = readJson(intimacy);
+    if (isObject(intimacyState) && Object.hasOwn(intimacyState, qqText)) add(intimacy, 'mixed', '按 QQ 分开的临时亲热状态；同文件可能含其他联系人', 1);
+
+    // peek.uin 的写入源是 QQ 好友 target.qq，不把 B 站 uid 或摘要中的号码当作 QQ。
+    walk(join(root, 'presence'));
+    const presence = join(root, 'presence', 'presence.json');
+    const presenceState = readJson(presence);
+    if (isObject(presenceState) && isObject(presenceState.peek) && presenceState.peek.uin === qq) add(presence, 'mixed', '全局存在感中的 QQ 好友空间缓存，需复核对应 peek 记录', 1);
+
+    const account = join(root, 'account-audit.jsonl');
+    if (existsSync(account)) {
+        let references = 0;
+        const bad = scanJsonLines(account, row => {
+            if (isObject(row) && typeof row.action === 'string' && ACCOUNT_ACTIONS[row.action]?.target === 'friend' && row.target === qq) references++;
+        });
+        if (references) add(account, 'mixed', '账号动作审计中明确以好友为对象的记录；同号群操作不归属此联系人', references);
+        if (bad) inventoryLimitations.push('账号动作审计存在坏行，无法完整判定联系人归属，需人工复核。');
     }
 
     for (const name of (existsSync(root) ? readdirSync(root, { withFileTypes: true }) : [])
@@ -144,6 +202,31 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
         if (state?.personModel !== undefined) { commonMentalModels.add(`person-${owner}`); target?.mentalModels.push(`person-${owner}`); }
     }
 
+    walk(join(root, 'identity'));
+    const ledger = join(root, 'identity', 'memory.jsonl');
+    if (existsSync(ledger)) {
+        const owners = [...CONTACT_TIERS, UNLISTED_TIER].map(tier => hash(qq, tier));
+        const privateBank = new RegExp(`^[A-Za-z0-9-]+-(?:${owners.join('|')})$`);
+        const document = new RegExp(`^(?:${owners.join('|')}):ep--?\\d+$`);
+        const models = new Set(owners.map(owner => `person-${owner}`));
+        const forgotten = createHash('sha256').update(qqText).digest('hex').slice(0, 12);
+        let references = 0;
+        const bad = scanJsonLines(ledger, row => {
+            if (!isObject(row) || !isObject(row.data)) return;
+            const data = row.data;
+            if ((row.kind === 'forget' || row.kind === 'forget-dry-run') && data.contact === forgotten
+                || ['retain', 'model-create', 'model-update'].includes(row.kind as string) && (
+                    typeof data.bank === 'string' && privateBank.test(data.bank)
+                    || typeof data.document === 'string' && document.test(data.document)
+                    || typeof data.model === 'string' && models.has(data.model))) references++;
+        });
+        if (references) {
+            add(ledger, 'mixed', '共享记忆哈希链账本中的明确库、文档、模型或遗忘记录；不可逐行删改而破坏链', references);
+            add(`${ledger}.head`, 'mixed', '共享记忆账本的末尾校验点；随整条链复核，不单独删除');
+        }
+        if (bad) inventoryLimitations.push('共享记忆账本存在坏行，无法完整判定联系人归属，需人工复核。');
+    }
+
     return {
         qq,
         dataDir: root,
@@ -157,6 +240,7 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
             '公共日记、周记和阶段总结可能用自然语言提到联系人，无法仅靠 QQ 号可靠归属，需要人工复核。',
             '部署配置中的联系人 QQ、称呼和权限位于 dataDir 之外，需要单独修改。',
             'NapCat、Koishi、模型供应商及系统备份位于 dataDir 之外，不在本报告覆盖范围内。',
+            ...inventoryLimitations,
             ...(unresolved ? [`未解决：${unresolved} 份旧记忆进度的历史公共库归属无法核实；仅能按传入的当前公共库清理，历史库须人工逐库复查，不代表彻底遗忘。`] : []),
         ],
     };
