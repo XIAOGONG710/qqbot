@@ -73,6 +73,7 @@ export function scheduleForTier(schedule: ScheduleSource, tier: string): CardSch
             slot: c.slot,
             weeks: c.weeks,
             kind: c.kind,
+            ...(c.course_group !== undefined ? { groupId: c.course_group } : {}),
             ...(detail ? { name: c.name, room: c.room } : {}),
             ...(practice ? { practice } : {}),
         };

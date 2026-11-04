@@ -84,12 +84,14 @@ makeups:
       以后的调休日（国家公布之后）问用户补星期几，写进这里。
 courses:
   - name: Linux操作系统
+    course_group: cg-0b68490871f061afdd0f91c8df3f6629
     day: 1
     slot: 1-2
     room: 知行楼612
     kind: machine
     weeks: 1-16
   - name: 大数据应用技术
+    course_group: cg-2cc55f9fbff0da6790df03cdd891b6dc
     day: 1
     slot: 3-4
     room: 知行楼303
@@ -98,6 +100,7 @@ courses:
     practice: 9
     practice_room: 知行楼303（机房）
   - name: MySQL数据库应用
+    course_group: cg-94d974c71a3c3a80f424083000691e2c
     day: 1
     slot: 8-9
     room: 知行楼509
@@ -106,12 +109,14 @@ courses:
     practice: 13
     practice_room: 知行楼509（机房）
   - name: 体育（羽毛球）
+    course_group: cg-27bf3a4e2ac7e4183bdaee948743ad87
     day: 2
     slot: 3-4
     room: 东体育馆
     kind: pe
     weeks: 1-16
   - name: 计算机网络技术
+    course_group: cg-80776d18bc64ecfa8654ebd30cb6f11a
     day: 2
     slot: 8-9
     room: 知行楼503
@@ -120,30 +125,35 @@ courses:
     practice: 13
     practice_room: 知行楼503（机房）
   - name: 形势与政策Ⅲ
+    course_group: cg-8e218ab7597ef5bb480e7b6186f3ff17
     day: 3
     slot: 1-2
     room: 笃行楼305
     kind: water
     weeks: 9-12
   - name: 高等数学
+    course_group: cg-026744267a5bb8ae6ba2f5485ae7deff
     day: 3
     slot: 3-4
     room: 知行楼704
     kind: water
     weeks: 1-16
   - name: 大学生创业基础
+    course_group: cg-4b6883044d9470fc98b1fae004a4a119
     day: 3
     slot: 6-7
     room: 笃行楼414
     kind: water
     weeks: 1-2,4-16,18
   - name: 习近平新时代中国特色社会主义思想概论
+    course_group: cg-78763f347cc7e750e353b035f93034a1
     day: 3
     slot: 8-9
     room: 知行楼303
     kind: water
     weeks: 1-16
   - name: 数据结构
+    course_group: cg-5f4241e396823ccb539562fe03f86d1c
     day: 4
     slot: 3-4
     room: 知行楼305
@@ -152,18 +162,21 @@ courses:
     practice: 9
     practice_room: 知行楼305（机房）
   - name: Python编程基础
+    course_group: cg-020b856f1c387c95dfa0c906679e6d72
     day: 5
     slot: 1-2
     room: 知行楼612
     kind: machine
     weeks: 1-6
   - name: 概率论与数理统计
+    course_group: cg-8ba86d2fe318cf4e3631a9f4f0063630
     day: 5
     slot: 3-4
     room: 知行楼704
     kind: machine
     weeks: 1-16
   - name: 数据采集与处理
+    course_group: cg-dfad1ebf2d2f9a3a21051c2d055e765e
     day: 5
     slot: 6-7
     room: 知行楼303
@@ -172,6 +185,7 @@ courses:
     practice: 9
     practice_room: 知行楼303（机房）
   - name: Python数据分析
+    course_group: cg-e75d75579479d5e62d8afdae2ff40a3a
     day: 4
     slot: 10-11
     room: 知行楼303

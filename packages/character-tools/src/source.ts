@@ -244,7 +244,9 @@ export interface ScheduleSource {
     holidays: { name: string; start: string; end: string; where?: ByTier[]; partner?: string; partner_back?: string; home?: boolean; note?: string }[];
     /** 调休补课：补星期几（1–7，0 = 没定，按没课） */
     makeups: { date: string; as_day: number; note?: string }[];
-    courses: { name: string; day: number; slot: string; room: string; kind: CourseKind; weeks: string; practice?: number; practice_room?: string }[];
+    courses: { name: string; day: number; slot: string; room: string; kind: CourseKind; weeks: string; practice?: number; practice_room?: string;
+        /** 一次分配后持久保存的匿名同课程身份；不得从课程名哈希或每次按数组位置重编号。 */
+        course_group?: string }[];
     /** 空闲时做什么；tiers 没写 = 所有档位都能看到 */
     /** cover：看不到这条的档位换成这句（ADR 0034：各档的列表一样长，同一时刻挑到同一格，不会男朋友看到「修片」、同学看到「打游戏」） */
     /** from：从这一天起才有（ADR 0053 之后：买了相机才有的活动；那天以前的抽签列表不变，过去的日子不被改写） */
@@ -643,7 +645,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         courses: h.at('courses').array(schedule.courses).map((value, i) => {
             const c = h.at(`courses[${i}]`);
             const o = c.object(value);
-            c.keys(o, ['name', 'day', 'slot', 'room', 'kind', 'weeks', 'practice', 'practice_room']);
+            c.keys(o, ['name', 'day', 'slot', 'room', 'kind', 'weeks', 'practice', 'practice_room', 'course_group']);
             const kind = c.at('kind').string(o.kind) as CourseKind;
             if (!KINDS.includes(kind)) c.at('kind').fail(`${kind} 不是课型（${KINDS.join(' / ')}）`);
             const slot = c.at('slot').string(o.slot);
@@ -652,6 +654,11 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
                 name: c.at('name').string(o.name), day: c.at('day').integer(o.day, 1, 7), slot,
                 room: c.at('room').string(o.room), kind, weeks: c.at('weeks').string(o.weeks),
             };
+            if (o.course_group !== undefined) {
+                const group = c.at('course_group').string(o.course_group);
+                if (!/^cg-[0-9a-f]{32}$/.test(group)) c.at('course_group').fail('应为 cg- 后接 32 个小写十六进制字符的匿名令牌');
+                course.course_group = group;
+            }
             if (o.practice !== undefined && o.practice !== null) {
                 course.practice = c.at('practice').integer(o.practice, 1, 60);
                 course.practice_room = c.at('practice_room').string(o.practice_room);

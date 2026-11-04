@@ -61,6 +61,8 @@ export interface HomeworkSource {
     kinds: string[];
     chance: number;
     early_chance: number;
+    /** 从这天布置的作业才按匿名课程组找下次课；旧日作业继续使用旧身份规则。 */
+    grouped_from?: string;
     note?: string;
 }
 
@@ -240,7 +242,8 @@ export function worldForTier(world: WorldSource | undefined, tier: string): Card
                 ...(world.camera_fund.purchase ? { purchase: { ...world.camera_fund.purchase } } : {}),
             },
         } : {}),
-        ...(sees(world.homework.tiers) ? { homework: { kinds: [...world.homework.kinds], chance: world.homework.chance, earlyChance: world.homework.early_chance } } : {}),
+        ...(sees(world.homework.tiers) ? { homework: { kinds: [...world.homework.kinds], chance: world.homework.chance, earlyChance: world.homework.early_chance,
+            ...(world.homework.grouped_from !== undefined ? { groupedFrom: world.homework.grouped_from } : {}) } } : {}),
         ...(sees(world.family_call.tiers) ? { familyCall: { weekday: world.family_call.weekday, time: world.family_call.time } } : {}),
         people: world.people.filter(person => sees(person.tiers)).map(person => ({
             id: person.id, name: sees(person.named_tiers) ? person.name : person.label, relation: person.relation,
@@ -395,7 +398,12 @@ export function checkWorld(raw: unknown): WorldSource {
 
     const h = root.at('homework');
     const homework = h.object(o.homework);
-    h.keys(homework, ['tiers', 'kinds', 'chance', 'early_chance', 'note']);
+    h.keys(homework, ['tiers', 'kinds', 'chance', 'early_chance', 'grouped_from', 'note']);
+    const groupedFrom = homework.grouped_from === undefined ? undefined : h.at('grouped_from').string(homework.grouped_from);
+    if (groupedFrom !== undefined) {
+        const at = Date.parse(`${groupedFrom}T00:00:00Z`);
+        if (!DATE.test(groupedFrom) || !Number.isFinite(at) || new Date(at).toISOString().slice(0, 10) !== groupedFrom) h.at('grouped_from').fail('应为真实 YYYY-MM-DD 日期');
+    }
     const kinds = h.at('kinds').strings(homework.kinds, false);
     for (const kind of kinds) if (!COURSE_KINDS.includes(kind)) h.at('kinds').fail(`${kind} 不是课型（${COURSE_KINDS.join(' / ')}）`);
 
@@ -515,6 +523,7 @@ export function checkWorld(raw: unknown): WorldSource {
             kinds,
             chance: h.at('chance').number(homework.chance, 0, 1),
             early_chance: h.at('early_chance').number(homework.early_chance, 0, 1),
+            ...(groupedFrom === undefined ? {} : { grouped_from: groupedFrom }),
             ...h.at('note').note(homework.note),
         },
         family_call: {

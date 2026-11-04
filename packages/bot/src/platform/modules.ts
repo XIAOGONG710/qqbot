@@ -43,10 +43,10 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'world', name: '她的世界（世界账）',
         scope: '她那边正在发生的事：天气、节日、NPC、障碍、生活事件与选择、可重放的动作队列；世界状态是所有“她那边”的事实来源。',
-        files: ['world/world.ts', 'world/weather.ts', 'world/festivals.ts', 'world/npc.ts', 'world/npc-asks.ts', 'world/obstacles.ts', 'world/life-events.ts', 'world/life-selector.ts', 'world/action-queue.ts'],
+        files: ['world/world.ts', 'world/world-config.ts', 'world/weather.ts', 'world/festivals.ts', 'world/npc.ts', 'world/npc-asks.ts', 'world/obstacles.ts', 'world/life-events.ts', 'world/life-selector.ts', 'world/action-queue.ts'],
         groups: ['她的日子'],
         metrics: '周报「她的日子」里的世界事件；consistency-cli（说的和世界账对不对）',
-        adrs: ['0007', '0026', '0045', '0106', '0229'],
+        adrs: ['0007', '0026', '0045', '0106', '0229', '0230'],
     },
     {
         id: 'vision', name: '看（视觉）',

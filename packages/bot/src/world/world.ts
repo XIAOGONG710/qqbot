@@ -21,6 +21,7 @@ import { describeNpc, npcAllows, npcSpans, npcStates, validateNpcLife, type NpcL
 import { coordinateNpcDates, DEFAULT_ASKS, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
 import type { Plans } from '../life/day-plan.ts';
 import { ASK_HOME_TIME, depositFor, lastPayday, MISC_TIME, nextPayday, ORDER_TIME, PAY_TIME, parcelPrice, priceIn, sideJobOn, spendItems, type Money, type MoneyEntry } from '../life/money.ts';
+import { validateWorldConfig } from './world-config.ts';
 
 export type WorldWindow = 'morning' | 'afternoon' | 'evening';
 
@@ -36,7 +37,11 @@ export interface World {
         /** 攒够以后哪天去买（用户 10-10「这周末去买」）：那天 from 出门 minutes 分钟，去 where 买 what，花 price；那天钱不够就不买 */
         purchase?: { date: string; from: string; minutes: number; where: string; what: string; price: number };
     };
-    homework?: { kinds: string[]; chance: number; earlyChance: number };
+    homework?: {
+        kinds: string[]; chance: number; earlyChance: number;
+        /** 从这天新布置的作业起按完整课程组找下次课；旧作业与旧无组格式保留原规则。 */
+        groupedFrom?: string;
+    };
     familyCall?: { weekday: number; time: string };
     /** life：她们自己的日子（ADR 0033，npc.ts） */
     people: { id: string; name: string; relation: string; life?: NpcLife }[];
@@ -410,6 +415,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
     let camera: CameraTrip | undefined;
     const start = parseDate(world.startDay);
     const end = startOfDay(until);
+    const completeCourseGroups = schedule.courses.length > 0 && schedule.courses.every(course => Boolean(course.groupId));
     for (let day = start; day <= end; day = addDays(day, 1)) {
         const date = formatDate(day);
         const todayActions = actions.filter(action => action.day === date && new Date(action.at) <= until);
@@ -503,7 +509,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             const hw = world.homework;
             for (const lesson of lessons) {
                 if (!hw.kinds.includes(lesson.kind) || unit(`${date} ${clock(lesson.start)} homework`) >= hw.chance) continue;
-                const due = nextLesson(schedule, lesson, day);
+                const due = nextLesson(schedule, lesson, day, completeCourseGroups && hw.groupedFrom !== undefined && date >= hw.groupedFrom);
                 if (!due) continue;
                 const early = unit(`${date} ${clock(lesson.start)} homework early`) < hw.earlyChance;
                 const done = early ? at(day, '21:30') : at(addDays(startOfDay(due), -1), '22:00');
@@ -1475,6 +1481,7 @@ export function parseWorld(value: unknown, source: string): World | undefined {
     const fail = (what: string): never => { throw new Error(`${source}：extensions.qqbot.world${what}`); };
     const obj = (v: unknown, where: string) => (typeof v === 'object' && v !== null && !Array.isArray(v) ? v as Record<string, unknown> : fail(`${where} 应为对象`));
     const w = obj(value, '');
+    validateWorldConfig(value, fail);
     if (typeof w.startDay !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(w.startDay)) fail('.startDay 应为 YYYY-MM-DD');
     if (!Array.isArray(w.awayHolidays) || !Array.isArray(w.events) || !Array.isArray(w.people)) fail(' 缺 awayHolidays / people / events');
     for (const [i, p] of (w.people as unknown[]).entries()) {
@@ -1525,14 +1532,15 @@ function weatherOn(weather: NonNullable<World['weather']>, day: Date): DayWeathe
     const [low, high] = weather.temps[String(day.getMonth() + 1)]!;
     const shift = Math.floor(unit(`${date} temp`) * 5) - 2;
     const rain = unit(`${date} rain`) < weather.rainChance;
-    return { rain, low: low + shift, high: high + shift - (rain ? 3 : 0) };
+    // 只修复降温把窄区间上限压到低温以下的情况；原来有序的历史结果保持不变。
+    return { rain, low: low + shift, high: Math.max(low + shift, high + shift - (rain ? 3 : 0)) };
 }
 
-/** 同一门课下一次上（有课名按课名，没有按星期几和开始时间），三周内找不到就不留 */
-function nextLesson(schedule: Schedule, lesson: ClassToday, day: Date): Date | undefined {
+/** 下一日的同组课；旧规则仅按课表条目身份，三周内找不到就不留。组身份不使用可见课名。 */
+function nextLesson(schedule: Schedule, lesson: ClassToday, day: Date, grouped = false): Date | undefined {
     for (let i = 1; i <= 21; i++) {
         const next = addDays(day, i);
-        const found = classesOn(schedule, next).lessons.find(l => l.id === lesson.id);
+        const found = classesOn(schedule, next).lessons.find(l => grouped ? l.groupId === lesson.groupId : l.id === lesson.id);
         if (found) return found.start;
     }
     return undefined;

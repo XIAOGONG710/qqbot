@@ -8,6 +8,8 @@
 export type CourseKind = 'hard' | 'machine' | 'water' | 'pe';
 
 export interface Course {
+    /** 持久匿名课程组，跨课表条目/披露档一致；不把课名或其裸哈希当身份。 */
+    groupId?: string;
     day: number;
     slot: string;
     weeks: string;
@@ -47,6 +49,8 @@ export interface Schedule {
 export interface ClassToday {
     /** 课表数组里的稳定位置；各档即使看不到课名也一致。 */
     id?: string;
+    /** 内部匿名分组；和 id 一样不进入枚举快照与提示词。 */
+    groupId?: string;
     kind: CourseKind;
     name?: string;
     room?: string;
@@ -142,6 +146,7 @@ export function classesOn(schedule: Schedule, day: Date): { lessons: ClassToday[
             };
             // 内部稳定标识不进日志、提示词或测试快照；各档课表数组顺序相同。
             Object.defineProperty(lesson, 'id', { value: `course-${index + 1}`, enumerable: false });
+            if (c.groupId) Object.defineProperty(lesson, 'groupId', { value: c.groupId, enumerable: false });
             return lesson;
         })
         .sort((a, b) => a.start.getTime() - b.start.getTime());
@@ -353,6 +358,7 @@ export function parseSchedule(json: unknown, source: string): Schedule {
         courses: arr(s.courses, '.courses').map((c, i): Course => {
             const o = obj(c, `.courses[${i}]`);
             const at = `.courses[${i}]`;
+            if (o.groupId !== undefined && (typeof o.groupId !== 'string' || !/^cg-[0-9a-f]{32}$/.test(o.groupId))) fail(`${at}.groupId 应为匿名课程令牌`);
             const slot = str(o.slot, `${at}.slot`);
             if (!(slot in periods)) fail(`${at}.slot ${slot} 不在 periods 里`);
             const kind = str(o.kind, `${at}.kind`) as CourseKind;
@@ -366,6 +372,7 @@ export function parseSchedule(json: unknown, source: string): Schedule {
                 slot,
                 weeks: str(o.weeks, `${at}.weeks`, /^\d+(-\d+)?(,\d+(-\d+)?)*$/),
                 kind,
+                ...(o.groupId !== undefined ? { groupId: o.groupId as string } : {}),
                 ...(o.name !== undefined ? { name: str(o.name, `${at}.name`) } : {}),
                 ...(o.room !== undefined ? { room: str(o.room, `${at}.room`) } : {}),
                 ...(practice ? { practice } : {}),

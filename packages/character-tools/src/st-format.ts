@@ -59,7 +59,7 @@ export interface CardWorld {
         goal: number; saved: number; weekly: number; depositDay: number;
         purchase?: { date: string; from: string; minutes: number; where: string; what: string; price: number };
     };
-    homework?: { kinds: string[]; chance: number; earlyChance: number };
+    homework?: { kinds: string[]; chance: number; earlyChance: number; groupedFrom?: string };
     familyCall?: { weekday: number; time: string };
     /** 她世界里的人（NPC）：name 已按档位换成这一档的叫法 */
     people: {
@@ -163,7 +163,9 @@ export interface CardSchedule {
     /** label：课型的叫法；seeAfterMin：上这种课时过多少分钟才看到消息；maxBubbles：最多回几条 */
     kinds: Record<CourseKind, { label?: string; seeAfterMin?: [number, number]; maxBubbles?: number }>;
     /** day 1–7 是周一到周日；weeks 如 "1-2,4-16,18"；practice：从第几周起转机房实训（按机房课算） */
-    courses: { day: number; slot: string; weeks: string; kind: CourseKind; name?: string; room?: string; practice?: { fromWeek: number; room?: string } }[];
+    courses: { day: number; slot: string; weeks: string; kind: CourseKind; name?: string; room?: string; practice?: { fromWeek: number; room?: string };
+        /** 与披露档无关的持久匿名课程身份，仅供内部事实排程使用。 */
+        groupId?: string }[];
     /** 没课时在干什么：上午（起床到 afternoonFrom）、下午（到 eveningFrom）、晚上（到睡觉）各几条，同一天同一时段固定一条 */
     free: {
         morning: string[]; afternoon: string[]; evening: string[]; afternoonFrom: string; eveningFrom: string;

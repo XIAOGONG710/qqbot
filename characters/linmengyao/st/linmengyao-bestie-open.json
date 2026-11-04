@@ -151,6 +151,7 @@
                             "slot": "1-2",
                             "weeks": "1-16",
                             "kind": "machine",
+                            "groupId": "cg-0b68490871f061afdd0f91c8df3f6629",
                             "name": "Linux操作系统",
                             "room": "知行楼612"
                         },
@@ -159,6 +160,7 @@
                             "slot": "3-4",
                             "weeks": "1-16",
                             "kind": "hard",
+                            "groupId": "cg-2cc55f9fbff0da6790df03cdd891b6dc",
                             "name": "大数据应用技术",
                             "room": "知行楼303",
                             "practice": {
@@ -171,6 +173,7 @@
                             "slot": "8-9",
                             "weeks": "1-16",
                             "kind": "hard",
+                            "groupId": "cg-94d974c71a3c3a80f424083000691e2c",
                             "name": "MySQL数据库应用",
                             "room": "知行楼509",
                             "practice": {
@@ -183,6 +186,7 @@
                             "slot": "3-4",
                             "weeks": "1-16",
                             "kind": "pe",
+                            "groupId": "cg-27bf3a4e2ac7e4183bdaee948743ad87",
                             "name": "体育（羽毛球）",
                             "room": "东体育馆"
                         },
@@ -191,6 +195,7 @@
                             "slot": "8-9",
                             "weeks": "1-16",
                             "kind": "hard",
+                            "groupId": "cg-80776d18bc64ecfa8654ebd30cb6f11a",
                             "name": "计算机网络技术",
                             "room": "知行楼503",
                             "practice": {
@@ -203,6 +208,7 @@
                             "slot": "1-2",
                             "weeks": "9-12",
                             "kind": "water",
+                            "groupId": "cg-8e218ab7597ef5bb480e7b6186f3ff17",
                             "name": "形势与政策Ⅲ",
                             "room": "笃行楼305"
                         },
@@ -211,6 +217,7 @@
                             "slot": "3-4",
                             "weeks": "1-16",
                             "kind": "water",
+                            "groupId": "cg-026744267a5bb8ae6ba2f5485ae7deff",
                             "name": "高等数学",
                             "room": "知行楼704"
                         },
@@ -219,6 +226,7 @@
                             "slot": "6-7",
                             "weeks": "1-2,4-16,18",
                             "kind": "water",
+                            "groupId": "cg-4b6883044d9470fc98b1fae004a4a119",
                             "name": "大学生创业基础",
                             "room": "笃行楼414"
                         },
@@ -227,6 +235,7 @@
                             "slot": "8-9",
                             "weeks": "1-16",
                             "kind": "water",
+                            "groupId": "cg-78763f347cc7e750e353b035f93034a1",
                             "name": "习近平新时代中国特色社会主义思想概论",
                             "room": "知行楼303"
                         },
@@ -235,6 +244,7 @@
                             "slot": "3-4",
                             "weeks": "1-16",
                             "kind": "hard",
+                            "groupId": "cg-5f4241e396823ccb539562fe03f86d1c",
                             "name": "数据结构",
                             "room": "知行楼305",
                             "practice": {
@@ -247,6 +257,7 @@
                             "slot": "1-2",
                             "weeks": "1-6",
                             "kind": "machine",
+                            "groupId": "cg-020b856f1c387c95dfa0c906679e6d72",
                             "name": "Python编程基础",
                             "room": "知行楼612"
                         },
@@ -255,6 +266,7 @@
                             "slot": "3-4",
                             "weeks": "1-16",
                             "kind": "machine",
+                            "groupId": "cg-8ba86d2fe318cf4e3631a9f4f0063630",
                             "name": "概率论与数理统计",
                             "room": "知行楼704"
                         },
@@ -263,6 +275,7 @@
                             "slot": "6-7",
                             "weeks": "1-16",
                             "kind": "machine",
+                            "groupId": "cg-dfad1ebf2d2f9a3a21051c2d055e765e",
                             "name": "数据采集与处理",
                             "room": "知行楼303",
                             "practice": {
@@ -275,6 +288,7 @@
                             "slot": "10-11",
                             "weeks": "1-16",
                             "kind": "water",
+                            "groupId": "cg-e75d75579479d5e62d8afdae2ff40a3a",
                             "name": "Python数据分析",
                             "room": "知行楼303"
                         }
@@ -895,7 +909,8 @@
                             "machine"
                         ],
                         "chance": 0.5,
-                        "earlyChance": 0.2
+                        "earlyChance": 0.2,
+                        "groupedFrom": "2026-11-05"
                     },
                     "familyCall": {
                         "weekday": 7,
