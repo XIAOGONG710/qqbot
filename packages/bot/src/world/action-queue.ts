@@ -27,6 +27,8 @@ export interface DeadAction extends QueuedAction {
     why: string;
 }
 
+export const MAX_DEAD_ACTIONS = 200;
+
 export interface Ledger {
     recordEvents(events: readonly LifeEventDraft[]): void;
     events(): readonly LifeEvent[];
@@ -81,7 +83,7 @@ export function actionQueue(path: string, log: (message: string) => void = () =>
     let items = raw.filter(validQueuedAction).sort(byEnd);
     if (items.length !== raw.length) log(`她的行动队列：忽略 ${raw.length - items.length} 条格式损坏的计划`);
     let dead = (Array.isArray(loaded.dead) ? loaded.dead : []).filter((item): item is DeadAction =>
-        validQueuedAction(item) && typeof (item as DeadAction).deadAt === 'string' && typeof (item as DeadAction).why === 'string');
+        validQueuedAction(item) && typeof (item as DeadAction).deadAt === 'string' && typeof (item as DeadAction).why === 'string').slice(-MAX_DEAD_ACTIONS);
     const persist = () => writeJsonAtomic(path, { version: 1, items, ...(dead.length ? { dead } : {}) });
     /** 裁判时把队列里别的计划也当成占用（schedule 时 judgeAction 只看事件账） */
     const withPlans = (context: ActionContext, except?: string): ActionContext => ({
@@ -174,7 +176,7 @@ export function actionQueue(path: string, log: (message: string) => void = () =>
                 items = items.filter(other => other.id !== item.id);
                 // recordEvents 以 id 幂等、不收的不报错。只有事实账真的有这条才算结算；没收的挪到死信区，不然每次都卡在这一条
                 if (!ledger.events().some(event => event.id === item.id)) {
-                    dead = [...dead, { ...item, deadAt: now.toISOString(), why: '事件账没收' }];
+                    dead = [...dead, { ...item, deadAt: now.toISOString(), why: '事件账没收' }].slice(-MAX_DEAD_ACTIONS);
                     persist();
                     log(`她的行动队列：${item.kind}（${item.id}）事件账没收，挪到死信区`);
                     continue;

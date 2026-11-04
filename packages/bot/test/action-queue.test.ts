@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { actionQueue, settlingWorld } from '../src/world/action-queue.ts';
+import { actionQueue, MAX_DEAD_ACTIONS, settlingWorld } from '../src/world/action-queue.ts';
 import type { LifeEventDraft } from '../src/world/life-events.ts';
 import type { LifeEvent } from '../src/world/life-events.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
@@ -115,6 +115,27 @@ describe('可重放行动队列（ADR 0037、0038）', () => {
         assert.match(logs.join('\n'), /rest（rest）事件账没收，挪到死信区/);
         assert.equal(actionQueue(path).dead().length, 1);
         assert.equal(queue.settleDue(at('2026-10-12T17:00:00'), ledger), 0, '死信不再重试');
+    }));
+
+    test('死信只保留最近固定数量，避免行动队列状态无限膨胀', () => withDir(dir => {
+        const path = join(dir, 'queue.json');
+        const seed = actionQueue(path);
+        const start = at('2026-10-12T14:00:00');
+        seed.schedule({ id: 'template', kind: 'rest', startedAt: start }, context(start));
+        const template = JSON.parse(readFileSync(path, 'utf8')).items[0];
+        const dead = Array.from({ length: MAX_DEAD_ACTIONS + 5 }, (_, index) => ({
+            ...template,
+            id: `dead-${String(index).padStart(3, '0')}`,
+            event: { ...template.event, id: `dead-${String(index).padStart(3, '0')}` },
+            deadAt: new Date(start.getTime() + index * 1000).toISOString(),
+            why: '事件账没收',
+        }));
+        writeFileSync(path, JSON.stringify({ version: 1, items: [], dead }));
+        const queue = actionQueue(path);
+        assert.equal(queue.dead().length, MAX_DEAD_ACTIONS);
+        assert.equal(queue.dead()[0]!.id, 'dead-005');
+        assert.equal(queue.schedule({ id: 'live', kind: 'rest', startedAt: start }, context(start)).ok, true);
+        assert.equal(JSON.parse(readFileSync(path, 'utf8')).dead.length, MAX_DEAD_ACTIONS);
     }));
 
     test('排队时队列里还没结算的计划也算占用：撞在计划中间的不行，撞到后面计划的提前停（DSH 行动复核 1.1）', () => withDir(dir => {
