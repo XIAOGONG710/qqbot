@@ -113,6 +113,27 @@ describe('现实交通 / 公共服务事实（ADR 0232）', () => {
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
+    test('默认请求拒绝跟随供应商重定向，不能绕过已确认端点', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-transport-redirect-'));
+        const now = at('2026-11-03T09:00:00').getTime();
+        let redirect: RequestInit['redirect'];
+        const fetcher = transportFetcher({
+            dir: root, log: () => {}, locations: [{ id: 'jinan' }],
+            endpoint: 'https://example.test/status', source: 'test', now: () => now,
+            request: async (_url, init) => {
+                redirect = init.redirect;
+                return new Response(JSON.stringify({ data: [{ status: '正常', updatedAt: '2026-11-03T09:00:00+08:00' }] }), {
+                    status: 200, headers: { 'content-type': 'application/json' },
+                });
+            },
+        });
+        try {
+            await fetcher.refresh();
+            assert.equal(redirect, 'error');
+            assert.equal(fetcher.day('jinan')?.status, 'normal');
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
     test('可显式投影进世界，但不把供应商详情原样送进提示词', () => {
         const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
         useRealTransport({ day: location => ({ location, status: 'delayed', observedAt: '2026-10-20T05:00:00.000Z', source: 'test', real: true, detail: '供应商原文不应进入提示词' }) });

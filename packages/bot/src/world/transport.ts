@@ -118,6 +118,7 @@ export interface TransportFetcherOptions {
     source: string;
     now?: () => number;
     fetchJson?: (url: string) => Promise<unknown>;
+    request?: (url: string, init: RequestInit) => Promise<Response>;
     timeoutMs?: number;
     cacheMaxAgeMs?: number;
 }
@@ -131,8 +132,11 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
     const timeoutMs = options.timeoutMs ?? 20_000;
     const cacheMaxAgeMs = options.cacheMaxAgeMs ?? 30 * 60_000;
     const locations = [...options.locations].slice(0, MAX_LOCATIONS);
+    const request = options.request ?? fetch;
     const fetchJson = options.fetchJson ?? (async (url: string) => {
-        const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+        // 配置校验只覆盖起始端点；禁止自动跟随重定向，避免供应商把请求转去
+        // 本机、私网或另一个未经确认的来源。
+        const response = await request(url, { signal: AbortSignal.timeout(timeoutMs), redirect: 'error' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const text = await response.text();
         if (Buffer.byteLength(text, 'utf8') > MAX_RESPONSE_BYTES) throw new Error('交通 / 公共服务响应过大');
