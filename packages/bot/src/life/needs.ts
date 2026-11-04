@@ -131,9 +131,15 @@ function dedupe(events: readonly LifeEvent[]): LifeEvent[] {
  */
 export function effectiveLifeEvents(events: readonly LifeEvent[]): LifeEvent[] {
     const unique = dedupe(events);
-    const candidates = unique
+    const parsed = unique
         .filter(event => event.result !== 'failed')
-        .map(event => ({ event, start: Date.parse(event.startedAt), end: Date.parse(event.endedAt) }))
+        .map(event => ({ event, start: Date.parse(event.startedAt), end: Date.parse(event.endedAt) }));
+    // 对话抽取的已完成事实（例如“刚和家里视频了”）没有可推断的耗时，会以同一开始/结束
+    // 时间入账。它不占时间轴，也不改变精力/饥饿的持续速率，但仍应保留给心理余波结算。
+    const instants = new Set(parsed
+        .filter(item => item.event.result === 'succeeded' && Number.isFinite(item.start) && item.end === item.start)
+        .map(item => item.event.id));
+    const candidates = parsed
         .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end > item.start)
         .sort((a, b) => a.start - b.start || a.end - b.end || a.event.id.localeCompare(b.event.id));
     const boundaries = [...new Set(candidates.flatMap(item => [item.start, item.end]))].sort((a, b) => a - b);
@@ -144,7 +150,7 @@ export function effectiveLifeEvents(events: readonly LifeEvent[]): LifeEvent[] {
         const winner = candidates.find(item => item.start <= from && item.end >= to);
         if (winner) active.add(winner.event.id);
     }
-    return unique.filter(event => event.result === 'failed' || active.has(event.id));
+    return unique.filter(event => event.result === 'failed' || instants.has(event.id) || active.has(event.id));
 }
 
 function snapshot(at: Date, values: Pick<NeedsSnapshot, 'energy' | 'hunger' | 'stress'>): NeedsSnapshot {

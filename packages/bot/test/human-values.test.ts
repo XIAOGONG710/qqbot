@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { describeHumanState, describeHumanValues, humanValuesAt, humanValuesFromAnchor, HUMAN_VALUE_KEYS, type HumanValues } from '../src/human-values.ts';
-import { needsAt } from '../src/life/needs.ts';
+import { effectiveLifeEvents, needsAt } from '../src/life/needs.ts';
 
 const needs = { at: '2026-11-01T00:00:00.000Z', energy: 68, hunger: 35, stress: 24 } as const;
 const message = (role: 'user' | 'assistant', content: string, hours: number) => ({
@@ -144,6 +144,25 @@ test('行动结算会改变对应数值：吃饭降饥饿，社交降孤独，�
     assert.ok(after.confidence > before.confidence, `${before.confidence} -> ${after.confidence}`);
     assert.ok(after.mood > before.mood, `${before.mood} -> ${after.mood}`);
     assert.deepEqual(fromAnchor, after);
+});
+
+test('成功的瞬时家庭视频保留为事实：缓解孤独、略提心情并消耗少量社交电量', () => {
+    const at = new Date('2026-11-01T08:00:00.000Z');
+    const call = {
+        id: 'life:family-call', actor: 'linmengyao' as const, kind: 'family_call', day: '2026-11-01',
+        startedAt: at.toISOString(), endedAt: at.toISOString(),
+        source: 'conversation' as const, result: 'succeeded' as const,
+    };
+    assert.deepEqual(effectiveLifeEvents([call]), [call], '零时长事实不占时间轴，但不能被心理投影过滤');
+    assert.deepEqual(needsAt(needs, [call], at), needsAt(needs, [], at), '零时长事实不改变精力、饥饿和压力的持续速率');
+
+    const failed = { ...call, id: 'life:family-call-failed', result: 'failed' as const, reason: '世界设定里没有家庭联系' };
+    const after = humanValuesAt({ at, needs, history: [], tier: 'boyfriend', events: [call] });
+    const failedAttempt = humanValuesAt({ at, needs, history: [], tier: 'boyfriend', events: [failed] });
+    assert.ok(after.loneliness < failedAttempt.loneliness, `${failedAttempt.loneliness} -> ${after.loneliness}`);
+    assert.ok(after.mood > failedAttempt.mood, `${failedAttempt.mood} -> ${after.mood}`);
+    assert.ok(after.comfort > failedAttempt.comfort, `${failedAttempt.comfort} -> ${after.comfort}`);
+    assert.ok(after.socialBattery < failedAttempt.socialBattery, `${failedAttempt.socialBattery} -> ${after.socialBattery}`);
 });
 
 test('数值会联动：身体负荷会传导到舒适、心情、动机、开放和挫败', () => {
