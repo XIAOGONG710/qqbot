@@ -2319,6 +2319,19 @@ ${body}
     let syncing = false;
     let syncPromise: Promise<void> | undefined;
     const buffered: MessageEvent[] = [];
+    // OneBot may redeliver an event before it reaches chat history. Commands intentionally do not
+    // enter chat history, so keep a bounded ingress index for them and for other in-flight events.
+    const recentIngress = new Set<string>();
+    const rememberIngress = (event: MessageEvent): boolean => {
+        const key = `${event.user_id}:${event.message_id}`;
+        if (recentIngress.has(key)) return false;
+        recentIngress.add(key);
+        if (recentIngress.size > 4_096) {
+            const oldest = recentIngress.values().next().value as string | undefined;
+            if (oldest !== undefined) recentIngress.delete(oldest);
+        }
+        return true;
+    };
 
     /** 每人一条：要听、要看的消息读完才进聊天记录，后面来的排在它后面（顺序不乱；读是一收到就开始读，不排队） */
     const inbox = new Map<number, Promise<void>>();
@@ -3157,6 +3170,7 @@ ${body}
         },
         receive(event) {
             if (stopped) return;
+            if (!rememberIngress(event)) return;
             lastMessageAt = new Date();
             if (syncing) buffered.push(event);
             else onMessage(event);
