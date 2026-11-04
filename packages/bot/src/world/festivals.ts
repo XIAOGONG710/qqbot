@@ -4,6 +4,7 @@
 // 农历的日子每年落在不同的公历日，所以每条只在换算出的那一年算（ImportantDay.year）。
 import { lunarMonthDay, type ImportantDay } from '../proactive/proactive.ts';
 import { formatDate, wakeOn, type Schedule } from '../life/schedule.ts';
+import { localDate } from '../local-date.ts';
 
 /** off 不加；notes 只在时间块里提；greet 再加上挑出来的几个节日由她主动说一句 */
 export const FESTIVAL_MODES = ['off', 'notes', 'greet'] as const;
@@ -119,7 +120,7 @@ function lunarCalendar(year: number): Map<string, string> {
     const cached = lunarYears.get(year);
     if (cached) return cached;
     const days = new Map<string, string>();
-    for (let date = new Date(year, 0, 1); date.getFullYear() === year; date = new Date(year, date.getMonth(), date.getDate() + 1)) {
+    for (let date = localDate(year, 0, 1); date.getFullYear() === year; date = localDate(year, date.getMonth(), date.getDate() + 1)) {
         const lunar = lunarMonthDay(date);
         // 腊月的日子在一个公历年里可能出现两次（年初是上一个农历年的腊月，年末是下一个的头几天）：留下先出现的
         if (lunar && !days.has(lunar)) days.set(lunar, monthDay(date));
@@ -136,13 +137,14 @@ function dateIn(year: number, rule: Rule, lunarDays: ReadonlyMap<string, string>
     const spring = SPRING_FESTIVAL[year] ?? lunarDays.get('01-01');
     if (!spring) return undefined;
     const [month, day] = spring.split('-').map(Number) as [number, number];
-    return monthDay(new Date(year, month - 1, day + rule.spring));
+    return monthDay(localDate(year, month - 1, day + rule.spring));
 }
 
 /** 这些年的公共节日（ImportantDay，带 year，公历那天）。mode 为 off 时没有 */
 export function festivalDays(years: readonly number[], mode: FestivalMode): ImportantDay[] {
     if (mode !== 'notes' && mode !== 'greet') return [];
     return years.flatMap(year => {
+        if (!Number.isInteger(year) || year < 0 || year > 9999) throw new RangeError('节日年份超出支持范围');
         const lunarDays = lunarCalendar(year);
         return FESTIVALS.flatMap((festival): (ImportantDay & GeneratedFestival)[] => {
             const date = dateIn(year, festival.rule, lunarDays);
@@ -160,18 +162,20 @@ export function festivalDays(years: readonly number[], mode: FestivalMode): Impo
 
 /** 今年起三年（够一次开着跑很久） */
 export function festivalYears(now: Date): number[] {
-    return [now.getFullYear(), now.getFullYear() + 1, now.getFullYear() + 2];
+    const year = now.getFullYear();
+    if (!Number.isFinite(now.getTime()) || year < 0 || year > 9999) throw new RangeError('节日年份超出支持范围');
+    return [year, year + 1, year + 2].filter(value => value <= 9999);
 }
 
 /** 把公共节日并进一档的重要的日子（读卡时用）；同一个角色对象并两次不会重复（模拟器几次运行共用一张卡） */
 export function withFestivals(dates: readonly ImportantDay[], now: Date, mode: FestivalMode): ImportantDay[] {
     const today = formatDate(now);
     const haveGenerated = dates.some(generated);
-    const keep = dates.filter(day => !generated(day) || (day.year !== undefined && `${day.year}-${day.date}` < today));
+    const keep = dates.filter(day => !generated(day) || (day.year !== undefined && `${String(day.year).padStart(4, '0')}-${day.date}` < today));
     const have = new Set(keep.filter(day => day.year !== undefined).map(day => `${day.name}:${day.year}`));
     return [...keep, ...festivalDays(festivalYears(now), mode).filter(day => !have.has(`${day.name}:${day.year}`)
         // 首次构造沿用完整年历；对已有生成项的模式切换不倒填、改写已经过去的日期。
-        && (!haveGenerated || `${day.year}-${day.date}` >= today))];
+        && (!haveGenerated || `${String(day.year).padStart(4, '0')}-${day.date}` >= today))];
 }
 
 /** 节日这一天某个时段她在做的事（Schedule.free.on 用的格式：公历那天）；notes 和 greet 都有，off 没有 */
@@ -179,7 +183,7 @@ export function festivalActivities(years: readonly number[], mode: FestivalMode)
     if (mode !== 'notes' && mode !== 'greet') return [];
     return festivalDays(years, 'notes').flatMap(day => (DOING[day.name] ?? []).map(item => ({
         __qqbotFestival: 1 as const,
-        date: `${day.year}-${day.date}`, window: item.window, text: item.text, ...(item.home !== undefined ? { home: item.home } : {}),
+        date: `${String(day.year).padStart(4, '0')}-${day.date}`, window: item.window, text: item.text, ...(item.home !== undefined ? { home: item.home } : {}),
     })));
 }
 

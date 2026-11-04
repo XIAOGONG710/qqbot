@@ -8,6 +8,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { calendarDate, stateObject, stateTimestamp } from '../memory/state-schema.ts';
+import { localDate } from '../local-date.ts';
 
 export type Place = 'jinan' | 'qingdao';
 
@@ -88,9 +89,12 @@ export function weatherText(code: number): string {
 const rainCode = (code: number) => code >= 51 && code <= 99;
 const pad = (n: number) => String(n).padStart(2, '0');
 /** 本地时间的 'YYYY-MM-DDTHH' */
-const hourKey = (time: Date) => `${time.getFullYear()}-${pad(time.getMonth() + 1)}-${pad(time.getDate())}T${pad(time.getHours())}`;
+const hourKey = (time: Date) => `${String(time.getFullYear()).padStart(4, '0')}-${pad(time.getMonth() + 1)}-${pad(time.getDate())}T${pad(time.getHours())}`;
 const dateOf = (time: Date) => hourKey(time).slice(0, 10);
-const dayAfter = (date: string) => dateOf(new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)) + 1));
+const dayAfter = (date: string): string | undefined => {
+    const next = localDate(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)) + 1);
+    return next.getFullYear() >= 0 && next.getFullYear() <= 9999 ? dateOf(next) : undefined;
+};
 
 /**
  * 第 slot 个钟头（slot 点到 slot+1 点）下没下雨。Open-Meteo 逐小时的降水是「前一小时累计」，所以看 slot+1 那个 key 的降水；天况看 slot 那个 key。
@@ -99,7 +103,7 @@ const dayAfter = (date: string) => dateOf(new Date(Number(date.slice(0, 4)), Num
 function wetSlot(hours: Readonly<Record<string, HourWeather>>, date: string, slot: number, observed: boolean, untilKey?: string): boolean {
     const precipKey = slot === 23 ? `${dayAfter(date)}T00` : `${date}T${pad(slot + 1)}`;
     const codeKey = `${date}T${pad(slot)}`;
-    const precip = hours[precipKey];
+    const precip = slot === 23 && !dayAfter(date) ? undefined : hours[precipKey];
     const code = hours[codeKey];
     // 累计降水在下一整点才成为观测；回放 14:00 时不能读取 15:00 的累计值。
     const available = (key: string, item: HourWeather | undefined) => item && (!observed || (item.o && (!untilKey || key <= untilKey)));
@@ -159,7 +163,16 @@ export function mergeHours(stored: Readonly<Record<string, HourWeather>>, fetche
 
 /** 第一次取到数据时从哪天开始用真实的：凌晨 5 点前取到就是今天（她还没起床），之后取到就从明天起，免得今天一半生成一半真实 */
 export function firstRealDay(fetchedAt: Date): string {
-    return fetchedAt.getHours() < 5 ? dateOf(fetchedAt) : dayAfter(dateOf(fetchedAt));
+    const first = fetchedAt.getHours() < 5 ? dateOf(fetchedAt) : dayAfter(dateOf(fetchedAt));
+    if (!first || !calendarDate(first)) throw new RangeError('天气日期超出支持范围');
+    return first;
+}
+
+/** 缓存同时使用本地日历键和 UTC 瞬时；两者都必须处于四位年范围。 */
+function weatherTimestamp(at: Date): string | undefined {
+    if (!Number.isFinite(at.getTime()) || at.getFullYear() < 0 || at.getFullYear() > 9999) return undefined;
+    const timestamp = at.toISOString();
+    return stateTimestamp(timestamp) ? timestamp : undefined;
 }
 
 /** Open-Meteo 的回复 → 钟头（它按 timezone=Asia/Shanghai 给本地时间 'YYYY-MM-DDTHH:00'） */
@@ -334,7 +347,9 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
         const reason = error instanceof Error ? error.message : String(error);
         if (errors.get(place) !== reason) options.log(`真实天气：${PLACES[place].name}没取到，照旧用存着的（${reason}）`);
         errors.set(place, reason);
-        errorAt.set(place, new Date(now()).toISOString());
+        const timestamp = weatherTimestamp(new Date(now()));
+        if (timestamp) errorAt.set(place, timestamp);
+        else errorAt.delete(place);
     };
     return {
         day: (place, date, until) => {
@@ -352,8 +367,10 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
                         const { latitude, longitude } = PLACES[place];
                         const fetched = validHourly(await withWeatherDeadline(signal => provider.fetchHourly({ place, latitude, longitude, signal }), timeoutMs));
                         const at = new Date(now());
+                        const fetchedAt = weatherTimestamp(at);
+                        if (!fetchedAt) throw new RangeError('天气刷新时钟超出支持范围');
                         const old = load(place);
-                        const store: Store = { since: old?.since ?? firstRealDay(at), fetchedAt: at.toISOString(), hours: mergeHours(old?.hours ?? {}, fetched, at) };
+                        const store: Store = { since: old?.since ?? firstRealDay(at), fetchedAt, hours: mergeHours(old?.hours ?? {}, fetched, at) };
                         writeJsonAtomic(path(place), store);
                         stores.set(place, store);
                         errors.delete(place);
@@ -375,8 +392,9 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
                 if (store?.fetchedAt) {
                     item.fetchedAt = store.fetchedAt;
                     const parsed = Date.parse(store.fetchedAt);
-                    if (Number.isFinite(parsed)) {
-                        item.ageMs = Math.max(0, now() - parsed);
+                    const age = now() - parsed;
+                    if (Number.isFinite(age)) {
+                        item.ageMs = Math.max(0, age);
                         item.stale = item.ageMs > cacheMaxAgeMs;
                     }
                     fetchedAt = !fetchedAt || store.fetchedAt > fetchedAt ? store.fetchedAt : fetchedAt;

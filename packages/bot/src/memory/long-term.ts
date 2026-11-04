@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 长期记忆（ADR 0004 决策 3）：名单里的联系人每人每个档位一个 Hindsight bank（ADR 0003「实现时的调整」第 3 条：
 // 降档后不会召回高档位时的记忆）。
 // - 写入：聊天记录按片段（episodes.ts）写入，一个片段一个 document_id。片段结束（安静 45 分钟）时写，
@@ -394,7 +395,7 @@ export class LongTermMemory {
             await this.#options.api.retain(bankId, {
                 content: `${title}\n${text}`,
                 // 日记是睡前写的：时间写那天晚上
-                timestamp: localIso(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 22)),
+                timestamp: localIso(localDate(day.getFullYear(), day.getMonth(), day.getDate(), 22)),
                 context: `${char}自己写的${tag === 'diary' ? '日记' : tag === 'week' ? '周记' : '阶段总结'}`,
                 document_id: documentId,
                 tags: [...TAGS, tag],
@@ -744,13 +745,13 @@ export function initiateQuery(chat: ChatMessage[], topic: string): string {
 /** 周记、阶段总结按那篇的日子算在不在这段时间里（Hindsight 给抽出来的事实标的日子可能在外面） */
 function summaryIn(result: RecallResult, window: { start: Date; end: Date }): boolean {
     const day = isSummary(result) ? lastTouched(result) : undefined;
-    return day !== undefined && day >= new Date(window.start.getFullYear(), window.start.getMonth(), window.start.getDate()) && day < window.end;
+    return day !== undefined && day >= localDate(window.start.getFullYear(), window.start.getMonth(), window.start.getDate()) && day < window.end;
 }
 
 /** 那段时间里写的日记 */
 function diaryIn(result: RecallResult, window: { start: Date; end: Date }): boolean {
     const day = result.document_id?.startsWith(DIARY_PREFIX) ? lastTouched(result) : undefined;
-    return day !== undefined && day >= new Date(window.start.getFullYear(), window.start.getMonth(), window.start.getDate()) && day < window.end;
+    return day !== undefined && day >= localDate(window.start.getFullYear(), window.start.getMonth(), window.start.getDate()) && day < window.end;
 }
 
 /** 召回结果是不是那天的事：发生的时间，没有就用说起的时间 */

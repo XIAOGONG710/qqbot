@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 主动消息的计划器（ADR 0011 决策 2、4、5、7）：一个联系人一个。按 proactive.ts 算下一次，等到点，再查一遍条件，交给回复器的 initiate。
 // - 记录文件 <数据目录>/proactive/<QQ>-<档位>.json：每个候选到点后记一条（发了、试运行、没发及原因、出错），记过的不再排；
 //   发之前先记（initiate 的 commit），之后崩溃、断线都不重发；只留 30 天。
@@ -65,7 +66,7 @@ export function rainOf(seen: { day: string; weather?: DayWeather } | undefined, 
     const weather = seen?.weather;
     if (!seen || !weather?.real) return undefined;
     const [y, m, d] = seen.day.split('-').map(Number);
-    const hourOf = (h: number) => new Date(y!, m! - 1, d, h).getTime();
+    const hourOf = (h: number) => localDate(y!, m! - 1, d, h).getTime();
     if (rainingAt(weather, at)) {
         let start = weather.rainHours!.includes(at.getHours()) ? at.getHours() : at.getHours() - 1;
         while (weather.rainHours!.includes(start - 1)) start--;
@@ -88,7 +89,7 @@ export function newsFrom(
     return now => {
         const days = [now, now + DAY_MS].map(time => herDay(schedule, new Date(time)));
         const dayTexts = new Set(days.map(formatDate));
-        const evening = (day: Date) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59);
+        const evening = (day: Date) => localDate(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59);
         const found: WorldNews[] = [];
         for (const seen of [...days.map(day => worldAt(evening(day))), worldAt(new Date(now + DAY_MS))]) {
             if (seen) found.push(...worldNews(seen, kinds));
@@ -514,7 +515,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     const MIN = 60_000;
     /** 睡着（作息上 / 说过睡了）的时刻不想 */
     const thinkAsleep = (time: number) => stateAt(deps.schedule, new Date(time)).activity.kind === 'sleep' || Boolean(deps.asleep?.(time));
-    const dayAfter = (day: Date) => new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+    const dayAfter = (day: Date) => localDate(day.getFullYear(), day.getMonth(), day.getDate() + 1);
 
     /** 下一次什么时候想：上一次之后隔 90–150 分钟（按上一次的时刻取种子）；聊完一段（他说过话、之后 20 分钟没人说话）就早一点；睡着的推到起床后；一天最多 THINK_MAX_PER_DAY 次 */
     function nextThinkAt(): number {
@@ -623,7 +624,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             }
             // 没有要发的：等到下一天开始再算
             const day = herDay(deps.schedule, new Date(now()));
-            const untilTomorrow = next?.at ?? new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, ...deps.schedule.sleep.split(':').map(Number) as [number, number], 1).getTime();
+            const untilTomorrow = next?.at ?? localDate(day.getFullYear(), day.getMonth(), day.getDate() + 1, ...deps.schedule.sleep.split(':').map(Number) as [number, number], 1).getTime();
             // 有真实天气时最多睡这么久就重算：预报会变，雨可能提前、推后（ADR 0050）
             const withWeather = deps.weather ? Math.min(untilTomorrow, now() + RAIN_REPLAN_MS) : untilTomorrow;
             const planned = deps.settings.reach ? Math.min(withWeather, now() + REACH_REPLAN_MS) : withWeather;

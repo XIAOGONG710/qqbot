@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 回复时机（ADR 0007 决策 4–7）：没回的消息她什么时候看到、每条打字多久、收尾之后的附和不回。
 // 档位的节奏系数（ADR 0013 决策 1）：冷场时多久看到、打字多久乘它，越疏越慢；正聊着照样马上看到。
 // 看心情不回（ADR 0013 决策 4）：正聊着、对方这一串只是「哈哈」「嗯」这类反应，按概率不回；隔一分钟以上再来一条一定回。
@@ -310,7 +311,7 @@ export function arrivedWhileAsleep(history: StoredMessage[], now: number, schedu
 /** 当天的 HH:MM */
 function atTime(day: Date, time: string): number {
     const [h, m] = time.split(':').map(Number);
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m).getTime();
+    return localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m).getTime();
 }
 
 /** 按种子在范围里取一个值（主动消息的时刻也用它，ADR 0011） */

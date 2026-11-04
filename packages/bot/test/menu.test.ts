@@ -63,7 +63,7 @@ describe('菜是日期的函数', () => {
 });
 
 describe('“从哪天起”', () => {
-    test('第一次开定下第二天并存起来，以后重启读同一个；文件坏了用明天，不改写过去', () => {
+    test('第一次开定下第二天并存起来，以后重启读同一个；文件坏了保留锚点并失败关闭', () => {
         const dir = mkdtempSync(join(tmpdir(), 'menu-from-'));
         try {
             const path = join(dir, 'menu-from.json');
@@ -72,7 +72,8 @@ describe('“从哪天起”', () => {
             assert.equal(loadMenuFrom(path, new Date(2026, 9, 29, 9, 0)), '2026-10-24', '以后读同一个');
             assert.match(readFileSync(path, 'utf8'), /2026-10-24/);
             writeFileSync(path, '{坏了');
-            assert.equal(loadMenuFrom(path, new Date(2026, 10, 2, 9, 0)), '2026-11-03');
+            assert.throws(() => loadMenuFrom(path, new Date(2026, 10, 2, 9, 0)), /菜单启用状态无效或读取失败/);
+            assert.equal(readFileSync(path, 'utf8'), '{坏了', '加固策略：保留原路径和内容，由用户明确修复或删除后重新启用');
             assert.ok(logs.some(l => l.includes('2026-10-24')));
         } finally {
             rmSync(dir, { recursive: true, force: true });

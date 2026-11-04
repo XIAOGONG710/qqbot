@@ -3,6 +3,7 @@
 // 相机基金每周那天存「留够到下次到账每天 keepPerDay 以后剩下的」。价钱、哪天接单都按「日期 + 名目」取哈希，重放一样，不存状态。
 // 不因为钱少就少吃少喝：persona.yml「生活费两千多，宽裕」「从不亏自己」——钱紧只体现在存得少。
 
+import { localDate } from '../local-date.ts';
 import { formatDate } from './schedule.ts';
 
 export interface Money {
@@ -51,14 +52,14 @@ export function parcelPrice(money: Money, item: string, food: boolean): number {
 
 /** day 之后（不含 day）下一次到账是哪天 */
 export function nextPayday(money: Money, day: Date): Date {
-    const thisMonth = new Date(day.getFullYear(), day.getMonth(), money.payday);
-    return thisMonth > day ? thisMonth : new Date(day.getFullYear(), day.getMonth() + 1, money.payday);
+    const thisMonth = localDate(day.getFullYear(), day.getMonth(), money.payday);
+    return thisMonth > day ? thisMonth : localDate(day.getFullYear(), day.getMonth() + 1, money.payday);
 }
 
 /** day 那天或之前最近一次到账是哪天 */
 export function lastPayday(money: Money, day: Date): Date {
-    const thisMonth = new Date(day.getFullYear(), day.getMonth(), money.payday);
-    return thisMonth <= day ? thisMonth : new Date(day.getFullYear(), day.getMonth() - 1, money.payday);
+    const thisMonth = localDate(day.getFullYear(), day.getMonth(), money.payday);
+    return thisMonth <= day ? thisMonth : localDate(day.getFullYear(), day.getMonth() - 1, money.payday);
 }
 
 /** 这天接没接线上单：按月排（平均每月 perMonth 个，整数部分一定有），哪天、什么活、多少钱按哈希 */
@@ -68,7 +69,7 @@ export function sideJobOn(money: Money, day: Date): { kind: string; pay: number 
     if (!Number.isFinite(day.getTime())) throw new RangeError('接单日期不合法');
     if (!Number.isFinite(jobs.perMonth) || jobs.perMonth < 0 || jobs.perMonth > 28) throw new RangeError('每月线上单数量须在 0–28 之间（单日最多一单）');
     const month = formatDate(day).slice(0, 7);
-    const length = new Date(day.getFullYear(), day.getMonth() + 1, 0).getDate();
+    const length = localDate(day.getFullYear(), day.getMonth() + 1, 0).getDate();
     const count = Math.floor(jobs.perMonth) + (unit(`${month} side job extra`) < jobs.perMonth % 1 ? 1 : 0);
     // 先保留旧算法每个日期的第一单（日期、种类和工资不变），只给被碰撞挤掉的单另找空日。
     const assigned = new Map<number, number>();
@@ -89,7 +90,7 @@ export function sideJobOn(money: Money, day: Date): { kind: string; pay: number 
 
 /** 这周存多少：手上的钱留够到下次到账前每天 keepPerDay，剩下的按 step 往下取整，最多 max，不超过离目标还差的 */
 export function depositFor(money: Money, balance: number, day: Date, toGoal: number): number {
-    const daysLeft = Math.round((nextPayday(money, day).getTime() - new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()) / 86_400_000) - 1;
+    const daysLeft = Math.round((nextPayday(money, day).getTime() - localDate(day.getFullYear(), day.getMonth(), day.getDate()).getTime()) / 86_400_000) - 1;
     const spare = balance - Math.max(0, daysLeft) * money.saving.keepPerDay;
     return Math.max(0, Math.min(money.saving.max, toGoal, Math.floor(spare / money.saving.step) * money.saving.step));
 }

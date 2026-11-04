@@ -6,6 +6,7 @@
 // - 进提示词的只有事实和约束（describeWorld），不写能原样照抄的整句（DSH 原则 1）；到「现在」为止发生了的才写，没发生的不写。
 
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { localDate } from '../local-date.ts';
 import { join } from 'node:path';
 import type { Contact } from '../platform/config.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
@@ -314,7 +315,9 @@ function newsHomework(now: WorldNow): WorldNews[] {
  * 不舒服（unwell）不在这里：身体不在世界快照里，见 unwellNews
  */
 export function worldNews(now: WorldNow, kinds: readonly NewsKind[] = DEFAULT_NEWS_KINDS): WorldNews[] {
-    return [...(kinds.includes('food_photo') ? newsFoodPhoto(now) : []), ...(kinds.includes('small_thing') ? newsSmallThing(now) : []), ...(kinds.includes('cat_photo') ? newsCatPhoto(now) : []), ...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : []), ...(kinds.includes('friend_sick') ? newsFriendSick(now) : [])];
+    const news = [...(kinds.includes('food_photo') ? newsFoodPhoto(now) : []), ...(kinds.includes('small_thing') ? newsSmallThing(now) : []), ...(kinds.includes('cat_photo') ? newsCatPhoto(now) : []), ...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : []), ...(kinds.includes('friend_sick') ? newsFriendSick(now) : [])];
+    assertWorldDates(news);
+    return news;
 }
 
 /**
@@ -358,7 +361,7 @@ function newsFriend(now: WorldNow): WorldNews[] {
  * bodyAt 由调用方按这一档的卡给，说得出口的程度（生理期细节）跟着档位
  */
 export function unwellNews(day: Date, schedule: Schedule, bodyAt: (time: Date) => BodyNow): WorldNews[] {
-    const noon = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 15);
+    const noon = localDate(day.getFullYear(), day.getMonth(), day.getDate(), 15);
     const today = bodyAt(noon);
     if (!unwell(today) || unwell(bodyAt(new Date(noon.getTime() - DAY_MS)))) return [];
     const parts: string[] = [];
@@ -396,6 +399,7 @@ interface Timeline {
 
 /** 从 startDay 推到 until（含），按天记下发生的事；纯函数，同样的输入同样的输出 */
 export function simulateWorld(world: World, schedule: Schedule, until: Date, actions: readonly WorldAction[] = []): Timeline {
+    assertWorldDates(until);
     const days = new Map<string, DayRecord>();
     const parcels: Parcel[] = [];
     const homework: Homework[] = [];
@@ -450,7 +454,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             const item = p.items[Math.floor(unit(`${date} parcel item`) * p.items.length)]!;
             const wait = p.arriveDays[0] + Math.floor(unit(`${date} parcel days`) * (p.arriveDays[1] - p.arriveDays[0] + 1));
             const arrive = at(addDays(day, wait), '10:00');
-                parcels.push({ id: `${date}:${item}`, item, ordered: date, arrive, deadline: formatDate(addDays(arrive, p.keepDays - 1)) });
+                parcels.push({ id: `${date}:${item}`, item, ordered: date, arrive, deadline: worldDate(addDays(arrive, p.keepDays - 1)) });
         }
 
         // 先兑现实际取件时刻，喂猫才能使用当时已经取回的猫粮；没有自动取件计划时也要补库存。
@@ -487,7 +491,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             // 剩得少了就下单（没有在路上的）
             if (food <= cat.food.reorderAt && !parcels.some(p => p.food && !p.picked && !p.returned)) {
                 const arrive = at(addDays(day, FOOD_ARRIVE_DAYS), '10:00');
-                parcels.push({ id: `${date}:猫粮`, item: '猫粮', ordered: date, arrive, deadline: formatDate(addDays(arrive, (world.parcels?.keepDays ?? 3) - 1)), food: true });
+                parcels.push({ id: `${date}:猫粮`, item: '猫粮', ordered: date, arrive, deadline: worldDate(addDays(arrive, (world.parcels?.keepDays ?? 3) - 1)), food: true });
             }
             // W3：她已经说自己喂过，就以实际说出的动作为准；原计划当天也会喂时不重复扣猫粮。
             const action = todayActions.filter(a => a.kind === 'feed_cat').at(-1);
@@ -514,10 +518,12 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
                 const early = unit(`${date} ${clock(lesson.start)} homework early`) < hw.earlyChance;
                 const done = early ? at(day, '21:30') : at(addDays(startOfDay(due), -1), '22:00');
                 // 晚上的课下课比 21:30 还晚时，写完的时刻往后挪到下课后一小时
-                homework.push({
+                const assignment: Homework = {
                     id: `${date}:${lesson.id!}`,
                     course: lesson.name ?? '', assigned: date, assignedAt: lesson.start, due, done: new Date(Math.max(done.getTime(), lesson.end.getTime() + 3_600_000)),
-                });
+                };
+                assertWorldDates(assignment);
+                homework.push(assignment);
             }
             // W3：只改已经存在、当时还没交的作业；说清课名时优先对那一份。
             for (const action of todayActions.filter(a => a.kind === 'finish_homework')) {
@@ -581,6 +587,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             if (extraCount >= EVERYDAY_MAX_PER_DAY) break;
             const group = event.group ?? event.id;
             if (groupsToday.has(`group:${group}`)) continue;
+            assertWorldDates(time);
             groupsToday.add(`group:${group}`);
             extraCount++;
             record.events.push({ id: event.id, text: event.text, at: time, ...(event.person ? { person: event.person } : {}), ...(event.feel ? { feel: event.feel } : {}) });
@@ -616,6 +623,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             // 攒够以后去买（用户 10-10）：钱从相机基金出，剩下的回到手上；之后不再存
             if (!purchase || !tripStart || camera || saved < purchase.price) return;
             const end = new Date(tripStart.getTime() + purchase.minutes * 60_000);
+            assertWorldDates(end);
             camera = { start: tripStart, end, where: purchase.where, what: purchase.what, price: purchase.price, ...(fundGifts.length ? { gifts: fundGifts } : {}) };
             if (saved > purchase.price) book(end, saved - purchase.price, '买完相机剩下的', 'income');
             saved = 0;
@@ -843,6 +851,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
             detail: world.money.detail,
         };
     }
+    assertWorldDates(result);
     return result;
 }
 
@@ -981,6 +990,7 @@ function routineOn(routine: NonNullable<World['routine']>, schedule: Schedule, d
         const plan = routine[kind];
         const start = new Date(at(day, plan.from).getTime() + Math.floor(unit(`${date} ${kind}`) * (plan.spread + 1)) * 60_000);
         const end = new Date(start.getTime() + plan.minutes * 60_000);
+        assertWorldDates([start, end]);
         if (lessons.some(l => l.start < end && start < l.end)) return [];
         const where = !atSchool ? 'home' as const : off && unit(`${date} ${kind} takeout`) < routine.takeoutChance ? 'takeout' as const : 'canteen' as const;
         const dish = menu && (!menu.from || date >= menu.from) ? dishOn(date, kind, menu.menu) : undefined;
@@ -990,6 +1000,7 @@ function routineOn(routine: NonNullable<World['routine']>, schedule: Schedule, d
     const [min, max] = routine.shower.minutes;
     const start = new Date(at(day, routine.shower.from).getTime() + Math.floor(unit(`${date} shower at`) * (routine.shower.spread + 1)) * 60_000);
     const end = new Date(start.getTime() + (min + Math.floor(unit(`${date} shower long`) * (max - min + 1))) * 60_000);
+    assertWorldDates([start, end]);
     return { meals, shower: { start, end } };
 }
 
@@ -1270,7 +1281,10 @@ export function worldState(
             if (!id || !kind || !['conversation', 'simulation', 'external'].includes(draft.source)
                 || !['succeeded', 'failed', 'interrupted'].includes(draft.result)
                 || !Number.isFinite(endedAt.getTime()) || !Number.isFinite(startedAt.getTime())
-                || startedAt > endedAt || endedAt.getTime() > nowFn()) continue;
+                || startedAt > endedAt || endedAt.getTime() > nowFn()
+                || endedAt.getFullYear() < 0 || endedAt.getFullYear() > 9999
+                || startedAt.getFullYear() < 0 || startedAt.getFullYear() > 9999
+                || !/^\d{4}-/.test(endedAt.toISOString()) || !/^\d{4}-/.test(startedAt.toISOString())) continue;
             if (events.some(event => event.id === id) || added.some(event => event.id === id)) continue;
             const day = formatDate(herDay(schedule, endedAt));
             if (day < world.startDay) continue;
@@ -1452,6 +1466,7 @@ function validAction(value: unknown): value is WorldAction {
     return typeof action.id === 'string' && typeof action.contact === 'number' && typeof action.episode === 'string'
         && typeof action.day === 'string' && DATE_ONLY.test(action.day)
         && typeof action.at === 'string' && LOCAL_MINUTE.test(action.at) && Number.isFinite(new Date(action.at).getTime())
+        && /^\d{4}-/.test(new Date(action.at).toISOString())
         && typeof action.kind === 'string' && ACTION_KINDS.has(action.kind as WorldActionKind)
         && (action.subject === undefined || typeof action.subject === 'string')
         && (action.target === undefined || typeof action.target === 'string')
@@ -1461,7 +1476,7 @@ function validAction(value: unknown): value is WorldAction {
 
 function localMinute(date: Date): string {
     const pad = (value: number) => String(value).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return `${formatDate(date)}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function actionLabel(action: WorldAction, world: World): string {
@@ -1536,10 +1551,27 @@ function weatherOn(weather: NonNullable<World['weather']>, day: Date): DayWeathe
     return { rain, low: low + shift, high: Math.max(low + shift, high + shift - (rain ? 3 : 0)) };
 }
 
+/** 持久世界只支持四位本地公历年及四位 UTC 瞬时编码；纯循环控制临时日期不限。 */
+function worldDate(date: Date): string {
+    if (!Number.isFinite(date.getTime()) || date.getFullYear() < 0 || date.getFullYear() > 9999) throw new RangeError('世界投影日期超出支持范围');
+    return formatDate(date);
+}
+
+function assertWorldDates(value: unknown, seen = new WeakSet<object>()): void {
+    if (value instanceof Date) {
+        if (!Number.isFinite(value.getTime()) || value.getFullYear() < 0 || value.getFullYear() > 9999
+            || !/^\d{4}-/.test(value.toISOString())) throw new RangeError('世界投影日期超出支持范围');
+    } else if (value && typeof value === 'object' && !seen.has(value)) {
+        seen.add(value);
+        for (const item of Object.values(value)) assertWorldDates(item, seen);
+    }
+}
+
 /** 下一日的同组课；旧规则仅按课表条目身份，三周内找不到就不留。组身份不使用可见课名。 */
 function nextLesson(schedule: Schedule, lesson: ClassToday, day: Date, grouped = false): Date | undefined {
     for (let i = 1; i <= 21; i++) {
         const next = addDays(day, i);
+        if (next.getFullYear() < 0 || next.getFullYear() > 9999) break;
         const found = classesOn(schedule, next).lessons.find(l => grouped ? l.groupId === lesson.groupId : l.id === lesson.id);
         if (found) return found.start;
     }
@@ -1587,22 +1619,24 @@ function clock(date: Date): string {
 
 function at(day: Date, time: string): Date {
     const [h, m] = time.split(':').map(Number);
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+    const result = localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+    assertWorldDates(result);
+    return result;
 }
 
 function startOfDay(date: Date): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    return localDate(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 function endOfDay(date: Date): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59);
+    return localDate(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59);
 }
 
 function addDays(date: Date, days: number): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+    return localDate(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }
 
 function parseDate(text: string): Date {
     const [y, m, d] = text.split('-').map(Number);
-    return new Date(y!, m! - 1, d);
+    return localDate(y!, m! - 1, d);
 }

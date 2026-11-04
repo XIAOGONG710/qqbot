@@ -11,6 +11,7 @@
 //   存在同一个状态文件的 loops 里，生命周期和用法见 open-loops.ts。
 // 每个人一个状态文件 <数据目录>/promises/<QQ>-<档位>.json。
 
+import { localDate } from '../local-date.ts';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Contact } from '../platform/config.ts';
@@ -215,7 +216,7 @@ export function meetWindow(item: HerPromise): { start: Date; end: Date } | undef
     if (!item.meet || !item.date) return undefined;
     const [hour, minute] = item.meet.time.split(':').map(Number);
     const day = parseDay(item.date);
-    const start = new Date(day.getFullYear(), day.getMonth(), day.getDate() + (hour! < 5 ? 1 : 0), hour, minute);
+    const start = localDate(day.getFullYear(), day.getMonth(), day.getDate() + (hour! < 5 ? 1 : 0), hour, minute);
     return { start, end: new Date(start.getTime() + item.meet.minutes * 60_000) };
 }
 
@@ -262,7 +263,7 @@ export function mentionsMeetup(messages: readonly { content: string }[]): boolea
 
 function parseDay(date: string): Date {
     const [y, m, d] = date.split('-').map(Number);
-    return new Date(y!, m! - 1, d);
+    return localDate(y!, m! - 1, d);
 }
 
 const daysFrom = (date: string, day: Date) => Math.round((day.getTime() - parseDay(date).getTime()) / DAY_MS);
@@ -398,7 +399,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         if (!available()) throw new PromiseStateUnavailable('约定来源不可用，不能将未知约定当成空日历继续安排');
         return knownAppointments(from, to);
     };
-    const today = (at: Date) => (options.schedule ? herDay(options.schedule, at) : new Date(at.getFullYear(), at.getMonth(), at.getDate()));
+    const today = (at: Date) => (options.schedule ? herDay(options.schedule, at) : localDate(at.getFullYear(), at.getMonth(), at.getDate()));
 
     async function syncContact(contact: Contact): Promise<void> {
         const state = load(contact);

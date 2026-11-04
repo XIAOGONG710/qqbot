@@ -5,6 +5,7 @@
 // 进度只来自她做过的事（生活账里的摄影 work_on_project、出分的小测），不存一个会漂的数字；作者可以在 <数据目录>/pursuits.json 里暂停 / 放下 / 加自己的（不会被代码改）。
 // 毕业以后做什么、家里的期待这类悬着的问题**不是追求**，作者没定之前不碰（persona：「毕业打算还没想好，被问就避」）。
 
+import { localDate } from '../local-date.ts';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Appraisal } from '.././emotion/feelings.ts';
@@ -119,7 +120,7 @@ export interface PursuitView {
 
 const DAY_MS = 86_400_000;
 const clockDay = (at: Date, now: Date) => {
-    const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime()) / DAY_MS);
+    const days = Math.round((localDate(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - localDate(at.getFullYear(), at.getMonth(), at.getDate()).getTime()) / DAY_MS);
     return days <= 0 ? '今天' : days === 1 ? '昨天' : days === 2 ? '前天' : `${at.getMonth() + 1} 月 ${at.getDate()} 日`;
 };
 
@@ -128,7 +129,7 @@ export function quizRecord(schedule: Schedule, now: Date, from?: string): { cour
     const out: { course: string; score: number; date: string }[] = [];
     const semesterStart = new Date(`${schedule.semester.start}T00:00:00`);
     const start = from && new Date(`${from}T00:00:00`) > semesterStart ? new Date(`${from}T00:00:00`) : semesterStart;
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const today = localDate(now.getFullYear(), now.getMonth(), now.getDate());
     for (let day = start; day.getTime() <= today.getTime() - 2 * DAY_MS; day = new Date(day.getTime() + DAY_MS)) {
         for (const quiz of quizzesOn(schedule, day)) {
             if (quizReleaseAt(quiz.course, day) <= now) out.push({ course: quiz.course, score: quizScore(quiz, formatDate(day)), date: formatDate(day) });

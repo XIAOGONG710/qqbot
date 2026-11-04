@@ -5,6 +5,8 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { localDate } from '../local-date.ts';
+import { formatDate } from '../life/schedule.ts';
 
 const DAY = 86_400_000;
 const pct = (n: number, d: number) => (d ? `${(100 * n / d).toFixed(0)}%` : 'n/a');
@@ -138,7 +140,7 @@ export function weeklyReport(input: WeeklyReportInput): string {
             for (const line of readFileSync(join(logDir, file), 'utf8').split('\n')) {
                 const m = /^\[(\d{4})\/(\d\d)\/(\d\d) (\d\d):(\d\d):(\d\d)\]/.exec(line);
                 if (m) {
-                    const t = new Date(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!).getTime();
+                    const t = localDate(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!).getTime();
                     if (t < since) continue;
                     if (line.includes('回复失败') || line.includes('没连上模型')) failures.push(t);
                 }
@@ -161,9 +163,8 @@ export function weeklyReport(input: WeeklyReportInput): string {
 
 /** 这周的周报文件名：以“本周日”的本地日期命名（周日晚上出的那份） */
 export function weeklyReportName(date: Date): string {
-    const sunday = new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
-    const p = (n: number) => String(n).padStart(2, '0');
-    return `weekly-${sunday.getFullYear()}-${p(sunday.getMonth() + 1)}-${p(sunday.getDate())}.md`;
+    const sunday = localDate(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
+    return `weekly-${formatDate(sunday)}.md`;
 }
 
 /** 该不该出这周的了：周日 21:30 以后、这周的文件还没有 */

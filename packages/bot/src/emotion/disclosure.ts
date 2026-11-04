@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 说别人的事的分寸（ADR 0020）：记得什么和愿意说什么分开。
 // 召回不收紧（ADR 0016 的既有决定）；这里给每条来源标披露上限，再告诉模型如何自然地说或不说。
 
@@ -77,8 +78,8 @@ export function startsConversation(chat: readonly Pick<ChatMessage, 'role' | 'ti
 
 /** 她今天从睡觉分界算起；没作息时从本地 00:00 算。 */
 export function todayStart(schedule: Schedule | undefined, now: Date): Date {
-    if (!schedule) return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (!schedule) return localDate(now.getFullYear(), now.getMonth(), now.getDate());
     const day = herDay(schedule, now);
     const [hour, minute] = schedule.sleep.split(':').map(Number);
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, minute);
+    return localDate(day.getFullYear(), day.getMonth(), day.getDate(), hour, minute);
 }

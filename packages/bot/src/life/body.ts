@@ -4,6 +4,7 @@
 // - 小感冒按概率，几天里从嗓子疼到快好了。
 // - 和世界一样按「日期 + 名目」取哈希，同一天对所有人一样，不存状态。进提示词的只有事实和一句约束（describeBody），不写台词。
 
+import { localDate } from '../local-date.ts';
 import { ODD_BODY_WORDING } from '../language/expression.ts';
 import { classesOn, formatDate, herDay, wakeTime, type Schedule } from './schedule.ts';
 import { calendarDate, stateObject } from '../memory/state-schema.ts';
@@ -181,10 +182,10 @@ function toMinutes(time: string): number {
 }
 
 function addDays(date: Date, days: number): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+    return localDate(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }
 
 function parseDate(text: string): Date {
     const [y, m, d] = text.split('-').map(Number);
-    return new Date(y!, m! - 1, d);
+    return localDate(y!, m! - 1, d);
 }

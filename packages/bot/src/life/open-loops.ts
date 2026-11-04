@@ -9,6 +9,7 @@
 // - 忘：有日子的 waiting 过了那天 WAITING_DAYS 天、没日子的过了说的那天 NEXT_TIME_DAYS 天；unanswered、unsettled 过了说的那天
 //   UNANSWERED_DAYS、UNSETTLED_DAYS 天（之后它们还在长期记忆里，只是不再挂在当天这一层）。
 
+import { localDate } from '../local-date.ts';
 import { splitEpisodes } from '.././memory/episodes.ts';
 
 export type LoopKind = 'waiting' | 'unanswered' | 'unsettled';
@@ -51,7 +52,7 @@ const DAY_MS = 86_400_000;
 
 function parseDay(date: string): Date {
     const [y, m, d] = date.split('-').map(Number);
-    return new Date(y!, m! - 1, d);
+    return localDate(y!, m! - 1, d);
 }
 
 const daysFrom = (date: string, day: Date) => Math.round((day.getTime() - parseDay(date).getTime()) / DAY_MS);

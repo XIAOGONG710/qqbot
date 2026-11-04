@@ -7,6 +7,9 @@
 // 档位只看得到自己该看的（宿舍、闺蜜这些只给亲近档位）。
 // 另有“小测”的一条线：高数 / 概率论 / 专业课每四周一次，前一次课老师说，当天写，两天后出分——分数是她难过或开心的真正来由（数学类偏低，自传：怕数学）。
 
+import { localDate } from '../local-date.ts';
+import { calendarDate, stateObject } from '../memory/state-schema.ts';
+import { TransientStateError } from '../memory/transient-io.ts';
 import type { FeelingKind } from '.././emotion/feelings.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { classesOn, formatDate, type ClassToday, type Schedule } from './schedule.ts';
@@ -201,13 +204,26 @@ export function withEveryday(world: World | undefined, tier: string, from?: stri
 
 /**
  * 第一次开 everydayLife 时定下“从哪天起”并存进文件，以后重启都读同一个（和 needs-anchor.json 一个办法）：从第二天起，今天已经过的不改。
- * 文件读不了就用今天之后的一天，不去改写已经过的日子
+ * 只有文件不存在时创建；已有文件读不了则保留并明确失败，不去改写已经过的日子
  */
 export function loadEverydayFrom(path: string, now: Date, log: (message: string) => void = () => undefined): string {
-    const existing = readJsonOr<{ version?: number; from?: string }>(path, {}, message => log(`日常小事：${message}`));
-    if (existing.version === 1 && typeof existing.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(existing.from)) return existing.from;
-    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    // 仅 ENOENT 使用缺省值；损坏的已有锚点不能重算，否则会改写历史生效范围。
+    let existing: { version: 1; from: string } | undefined;
+    try {
+        existing = readJsonOr<{ version: 1; from: string } | undefined>(path, undefined, undefined, {
+            validate: (value): value is { version: 1; from: string } => stateObject(value)
+                && value.version === 1 && typeof value.from === 'string' && calendarDate(value.from),
+            invalid: 'throw', label: '日常小事启用状态',
+        });
+    } catch (error) {
+        if (error instanceof TransientStateError) throw error;
+        // JSON 解析异常可能含文件正文，不将原异常交给普通启动日志。
+        throw new Error('日常小事启用状态无效或读取失败；原文件未重建，请修复后重试');
+    }
+    if (existing) return existing.from;
+    const tomorrow = localDate(now.getFullYear(), now.getMonth(), now.getDate() + 1);
     const from = formatDate(tomorrow);
+    if (!calendarDate(from)) throw new RangeError('日常启用日期超出支持范围');
     writeJsonAtomic(path, { version: 1, from });
     log(`日常小事：从 ${from} 起生效（已经过完的日子不改）`);
     return from;
@@ -231,7 +247,7 @@ const unitOf = (text: string): number => {
     h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
     return (h >>> 0) / 2 ** 32;
 };
-const startOf = (day: Date) => new Date(day.getFullYear(), day.getMonth(), day.getDate());
+const startOf = (day: Date) => localDate(day.getFullYear(), day.getMonth(), day.getDate());
 const weekOf = (schedule: Schedule, day: Date) => Math.floor((startOf(day).getTime() - new Date(`${schedule.semester.start}T00:00:00`).getTime()) / (7 * DAY_MS)) + 1;
 
 function categoryOf(name: string | undefined): Quiz['category'] | undefined {
@@ -305,8 +321,8 @@ const SCORE_WORD = (score: number) => (score >= 90 ? '考得不错' : score >= 8
 
 /** 同一成绩的世界事件和追求视图共用公布时刻，不能只按出分日期提前知道成绩。 */
 export function quizReleaseAt(course: string, quizDay: Date): Date {
-    const day = new Date(quizDay.getFullYear(), quizDay.getMonth(), quizDay.getDate() + 2);
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), 20, 10 + Math.floor(unitOf(`${formatDate(day)} ${course} score time`) * 40));
+    const day = localDate(quizDay.getFullYear(), quizDay.getMonth(), quizDay.getDate() + 2);
+    return localDate(day.getFullYear(), day.getMonth(), day.getDate(), 20, 10 + Math.floor(unitOf(`${formatDate(day)} ${course} score time`) * 40));
 }
 
 /** 小测这条线在某一天发生的事：前一次课老师说要小测、当天小测、两天后出分；day 是她的这一天（0 点） */

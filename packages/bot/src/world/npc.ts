@@ -5,6 +5,7 @@
 // - 只写事实，不写台词、不写情绪（ADR 0021 决策 3）。
 
 import { formatDate, type Schedule } from '../life/schedule.ts';
+import { localDate } from '../local-date.ts';
 import { stateObject } from '../memory/state-schema.ts';
 
 /** 一个人自己的日子怎么推（资料里没写的块就没有） */
@@ -119,9 +120,9 @@ export function npcSpans(states: readonly { day: Date; states: readonly NpcState
 function spanOn(key: string, perMonth: number, [min, max]: [number, number], day: Date): { start: Date; day: number; of: number } | undefined {
     let found: { start: Date; day: number; of: number } | undefined;
     // 上个月开始的可能拖到这个月（一段最长 MAX_SPAN 天）
-    for (const first of [new Date(day.getFullYear(), day.getMonth() - 1, 1), new Date(day.getFullYear(), day.getMonth(), 1)]) {
+    for (const first of [localDate(day.getFullYear(), day.getMonth() - 1, 1), localDate(day.getFullYear(), day.getMonth(), 1)]) {
         const month = formatDate(first).slice(0, 7);
-        const length = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+        const length = localDate(first.getFullYear(), first.getMonth() + 1, 0).getDate();
         const count = Math.floor(perMonth) + (unit(`${month} ${key} extra`) < perMonth % 1 ? 1 : 0);
         for (let k = 0; k < count; k++) {
             const start = addDays(first, Math.floor(unit(`${month} ${key} ${k} start`) * length));
@@ -149,5 +150,5 @@ export function unit(text: string): number {
 }
 
 function addDays(date: Date, days: number): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+    return localDate(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }

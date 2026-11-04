@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 待跟进的事（ADR 0011 第 9 节）：他说过的、之后会发生的事（面试、考试……），到时候问一次，问过就忘。
 // - 记下：一段聊天结束（安静 45 分钟，和长期记忆写入同一个片段）后，用模型从这一段里抽，输出 JSON；
 //   同时把还没问的几件给模型，这一段里他已经说了结果（或者取消了）的标成了结。
@@ -124,14 +125,14 @@ export function tripAlreadyOver(item: Pick<FollowUp, 'what' | 'date' | 'time'>, 
     if (!TRIP.test(item.what)) return false;
     const day = parseDay(item.date);
     const [h, m] = TIME.test(item.time) ? item.time.split(':').map(Number) : [item.time === 'morning' ? 12 : item.time === 'afternoon' ? 18 : 23, 0];
-    const after = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h!, m!).getTime() + 3_600_000;
+    const after = localDate(day.getFullYear(), day.getMonth(), day.getDate(), h!, m!).getTime() + 3_600_000;
     return his.some(message => Date.parse(message.time) > after);
 }
 
 /** 本地的某天 */
 export function parseDay(date: string): Date {
     const [y, m, d] = date.split('-').map(Number);
-    return new Date(y!, m! - 1, d);
+    return localDate(y!, m! - 1, d);
 }
 
 /**
@@ -140,7 +141,7 @@ export function parseDay(date: string): Date {
  */
 export function firstAsk(item: FollowUp): number | undefined {
     const day = parseDay(item.date);
-    const at = (h: number, m = 0) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m).getTime();
+    const at = (h: number, m = 0) => localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m).getTime();
     if (item.time === 'morning') return at(12);
     if (item.time === 'afternoon') return at(18);
     if (item.time === 'evening') return undefined;
@@ -151,7 +152,7 @@ export function firstAsk(item: FollowUp): number | undefined {
 /** 这件事过期了吗：她的这一天已经在那天 FOLLOW_UP_DAYS 天之后 */
 export function expired(item: FollowUp, herDay: Date): boolean {
     const last = parseDay(item.date);
-    return herDay.getTime() > new Date(last.getFullYear(), last.getMonth(), last.getDate() + FOLLOW_UP_DAYS).getTime();
+    return herDay.getTime() > localDate(last.getFullYear(), last.getMonth(), last.getDate() + FOLLOW_UP_DAYS).getTime();
 }
 
 /** 「今天下午」「昨天下午」「10月9日下午」（相对她的某一天） */

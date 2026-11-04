@@ -19,6 +19,7 @@ import type { HumanValues } from '../human-values.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from '../life/promises.ts';
 import { chooseProject, projectActivity } from '../life/projects.ts';
 import { formatDate, herDay, stateAt, type ExtraFreeActivity, type Schedule } from '../life/schedule.ts';
+import { localDate } from '../local-date.ts';
 import { dateSpan, OCCUPATION_MINUTES, type WorldNow } from './world.ts';
 
 export interface LifeSources {
@@ -177,7 +178,7 @@ function directNpcFacts(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: 
 function herDayEvening(schedule: Schedule, at: Date): Date {
     const day = herDay(schedule, at);
     const [h, m] = schedule.free.eveningFrom.split(':').map(Number);
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+    return localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
 }
 
 /** 那一天要赶的作业：写完之前那一段在赶（ADR 0030 的 OCCUPATION_MINUTES.homework） */
@@ -202,7 +203,7 @@ function windowEnd(schedule: Schedule, at: Date): Date {
     const day = herDay(schedule, at);
     const time = (hhmm: string, offset = 0) => {
         const [h, m] = hhmm.split(':').map(Number);
-        return new Date(day.getFullYear(), day.getMonth(), day.getDate() + offset, h, m);
+        return localDate(day.getFullYear(), day.getMonth(), day.getDate() + offset, h, m);
     };
     return [time(schedule.free.afternoonFrom), time(schedule.free.eveningFrom), time(schedule.sleep, 1)].find(end => end > at)!;
 }

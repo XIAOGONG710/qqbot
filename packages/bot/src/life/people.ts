@@ -2,6 +2,7 @@
 // 他最后 3 条、或她最后 2 次回复里出现了名单里另一个人的称呼，而那个人写了「别人提起时」（intro），这一轮就放一段介绍；
 // 开了长期记忆时，contact.ts 再从那个人自己的 bank 召回几条接在后面。陌生人档、名单外的人提起时不给。
 
+import { localDate } from '../local-date.ts';
 import { UNLISTED_TIER, type Contact, type Tier } from '../platform/config.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import { herDay, type Schedule } from './schedule.ts';
@@ -159,14 +160,14 @@ function askedDate(line: string, today: Date): Date | null | undefined {
         const target = weekday[2] === '天' ? 7 : WEEKDAY_INDEX.indexOf(weekday[2]!) + 1;
         const index = (today.getDay() + 6) % 7 + 1;
         const back = weekday[1] ? index - target + 7 : (index - target + 7) % 7;
-        return new Date(today.getFullYear(), today.getMonth(), today.getDate() - back);
+        return localDate(today.getFullYear(), today.getMonth(), today.getDate() - back);
     }
     const date = line.match(DATE_OF_MONTH);
     if (date) {
         const d = Number(date[1]);
         if (d < 1 || d > 31) return null;
         const month = LAST_MONTH.test(line) || d > today.getDate() ? today.getMonth() - 1 : today.getMonth();
-        const first = new Date(today.getFullYear(), month, 1);
+        const first = localDate(today.getFullYear(), month, 1);
         return calendarDay(first.getFullYear(), first.getMonth() + 1, d);
     }
     return undefined;
@@ -203,10 +204,10 @@ function asked(history: readonly Said[], now: Date, schedule: Schedule | undefin
     const said = history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content);
     const today = schedule ? herDay(schedule, now) : now;
     const [h, m] = schedule ? schedule.sleep.split(':').map(Number) : [0, 0];
-    const day = (date: Date, offset = 0) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + offset);
+    const day = (date: Date, offset = 0) => localDate(date.getFullYear(), date.getMonth(), date.getDate() + offset);
     /** start 那天 0 点到 last 第二天她睡觉 */
     const span = (start: Date, last: Date, period?: AskedWindow['period']): AskedWindow => ({
-        start: day(start), end: new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1, h, m), ...(period ? { period } : {}),
+        start: day(start), end: localDate(last.getFullYear(), last.getMonth(), last.getDate() + 1, h, m), ...(period ? { period } : {}),
     });
     for (const line of said.toReversed()) {
         if (FUTURE.test(line)) continue;
@@ -218,7 +219,7 @@ function asked(history: readonly Said[], now: Date, schedule: Schedule | undefin
         if (offset !== undefined) return span(day(today, offset), day(today, offset));
         if (!periods) continue;
         const holidays = schedule?.holidays ?? [];
-        const parse = (date: string) => { const [y, mo, d] = date.split('-').map(Number); return new Date(y!, mo! - 1, d); };
+        const parse = (date: string) => { const [y, mo, d] = date.split('-').map(Number); return localDate(y!, mo! - 1, d); };
         const named = holidays.find(h => holidayWords({ ...schedule!, holidays: [h] }).some(name => line.includes(name)));
         const latest = ANY_HOLIDAY.test(line)
             ? holidays.filter(h => parse(h.start) <= today).sort((a, b) => b.start.localeCompare(a.start))[0]
@@ -231,7 +232,7 @@ function asked(history: readonly Said[], now: Date, schedule: Schedule | undefin
             return span(monday, day(monday, 6), 'week');
         }
         if (LAST_MONTH.test(line)) {
-            return span(new Date(today.getFullYear(), today.getMonth() - 1, 1), new Date(today.getFullYear(), today.getMonth(), 0), 'month');
+            return span(localDate(today.getFullYear(), today.getMonth() - 1, 1), localDate(today.getFullYear(), today.getMonth(), 0), 'month');
         }
     }
     return undefined;

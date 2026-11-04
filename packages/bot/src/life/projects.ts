@@ -1,6 +1,7 @@
 // 长期项目的事实投影（ADR 0044 / 0056）：摄影进展只从已经落账的类型化行动派生；
 // B 阶段把课程、摄影和阅读统一成项目组合，仍不另存一个会和事实源漂移的“进度数字”。
 
+import { localDate } from '../local-date.ts';
 import { bookProgressAt, type ReadingBook } from './her-days.ts';
 import type { LifeEvent } from '.././world/life-events.ts';
 import { herDay, type Schedule } from './schedule.ts';
@@ -192,7 +193,7 @@ function compareProjects(a: LongTermProject, b: LongTermProject): number {
 
 /** 她的哪一天：给了作息按作息日（02:00 前算前一天），没给按日历日 */
 function herDayOf(at: Date, schedule: Schedule | undefined): Date {
-    return schedule ? herDay(schedule, at) : new Date(at.getFullYear(), at.getMonth(), at.getDate());
+    return schedule ? herDay(schedule, at) : localDate(at.getFullYear(), at.getMonth(), at.getDate());
 }
 
 function clock(at: Date): string {

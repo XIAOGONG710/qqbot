@@ -5,6 +5,7 @@
 // - 只写事实，不写台词、不写情绪（ADR 0021 决策 3）。
 
 import { classesOn, formatDate, type Schedule } from '../life/schedule.ts';
+import { localDate } from '../local-date.ts';
 import { MAX_NPC_MONTHLY_SPANS, npcStates, unit, type NpcLife, type NpcStateKind } from './npc.ts';
 
 /** 约在一天的哪一段：午饭、晚饭、晚上、周末下午 */
@@ -188,8 +189,8 @@ export const DEFAULT_ASKS: Record<string, AsksConfig> = {
 
 export interface AskPerson { id: string; name: string; life?: NpcLife }
 
-const at =(day: Date, minutes: number) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, minutes);
-const addDays = (day: Date, n: number) => new Date(day.getFullYear(), day.getMonth(), day.getDate() + n);
+const at =(day: Date, minutes: number) => localDate(day.getFullYear(), day.getMonth(), day.getDate(), 0, minutes);
+const addDays = (day: Date, n: number) => localDate(day.getFullYear(), day.getMonth(), day.getDate() + n);
 const clock = (text: string) => { const [h, m] = text.split(':').map(Number); return h! * 60 + m!; };
 const holidayOn = (schedule: Schedule, day: Date) => { const date = formatDate(day); return schedule.holidays.some(h => h.start <= date && date <= h.end); };
 
@@ -225,7 +226,7 @@ const stateOf = (person: AskPerson, schedule: Schedule, day: Date) => npcStates(
 function monthAsks(person: AskPerson, config: AsksConfig, schedule: Schedule, first: Date, anchors?: AskAnchors): NpcAsk[] {
     if (!Number.isFinite(config.perMonth) || config.perMonth < 0 || config.perMonth > MAX_NPC_MONTHLY_SPANS) throw new RangeError(`NPC每月邀请次数应为 0–${MAX_NPC_MONTHLY_SPANS} 内的有限数`);
     const month = formatDate(first).slice(0, 7);
-    const length = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    const length = localDate(first.getFullYear(), first.getMonth() + 1, 0).getDate();
     const count = Math.floor(config.perMonth) + (unit(`${month} ${person.id} ask extra`) < config.perMonth % 1 ? 1 : 0);
     const taken = new Set<string>();
     const asks: NpcAsk[] = [];
@@ -290,7 +291,7 @@ function settle(ask: NpcAsk, person: AskPerson, config: AsksConfig, schedule: Sc
 
 /** 约的那天是 day 的所有约（按原定开始排）；没写配置的人没有约 */
 export function npcAsksOn(people: readonly AskPerson[], schedule: Schedule, day: Date, configs: Record<string, AsksConfig> = DEFAULT_ASKS, anchors?: AskAnchors): NpcAsk[] {
-    const first = new Date(day.getFullYear(), day.getMonth(), 1);
+    const first = localDate(day.getFullYear(), day.getMonth(), 1);
     const date = formatDate(day);
     return people.flatMap(person => (configs[person.id] ? monthAsks(person, configs[person.id]!, schedule, first, anchors) : []))
         .filter(ask => ask.day === date)

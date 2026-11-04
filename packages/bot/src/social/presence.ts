@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 她在 QQ 上「有个人在」的几处对外可见的小事（ADR 0083）：在线状态、给他的资料卡点赞、个性签名、QQ 空间说说。
 // 都是 NapCat 的扩展动作（set_online_status / send_like / set_self_longnick / send_qzone_msg），都有各自的开关，默认关。
 // 这个文件是纯规则 + 一个每分钟看一眼的小循环（createPresence）；「回复他的消息时」的两件事（已读、表情回应）在 responder 里。
@@ -103,7 +104,7 @@ export const SIGNATURE_HOURS: [number, number] = [10, 22];
 export function signatureDueAt(lastChangedAt: number): number {
     const days = pick(String(lastChangedAt), 'signature-gap', [3, 5]);
     const day = new Date(lastChangedAt);
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate() + days,
+    return localDate(day.getFullYear(), day.getMonth(), day.getDate() + days,
         pick(String(lastChangedAt), 'signature-hour', SIGNATURE_HOURS), pick(String(lastChangedAt), 'signature-minute', [0, 59])).getTime();
 }
 
@@ -264,7 +265,7 @@ export interface PresenceOptions {
 function agoText(at: number, now: number): string {
     const a = new Date(at);
     const b = new Date(now);
-    const days = Math.round((new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime() - new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime()) / 86_400_000);
+    const days = Math.round((localDate(b.getFullYear(), b.getMonth(), b.getDate()).getTime() - localDate(a.getFullYear(), a.getMonth(), a.getDate()).getTime()) / 86_400_000);
     const hour = a.getHours();
     const part = hour < 6 ? '凌晨' : hour < 12 ? '上午' : hour < 18 ? '下午' : '晚上';
     return days <= 0 ? `今天${part}` : days === 1 ? `昨天${part}` : `${days} 天前`;

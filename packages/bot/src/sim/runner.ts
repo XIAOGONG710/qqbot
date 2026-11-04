@@ -2,6 +2,7 @@
 // 对方的消息由场景给出，按虚拟时间记录；她发出的每一条、每次生成的提示词、调度日志都按步骤记下来，最后写成报告。
 
 import { appendFileSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { localDate } from '../local-date.ts';
 import { join } from 'node:path';
 import { watchedFacts } from '../language/watching.ts';
 import type { BotConfig, Contact } from '../platform/config.ts';
@@ -441,8 +442,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.interruptions ? { interruptions: true } : {}),
         ...(scenario.jokes?.length ? { jokes: () => scenario.jokes! } : {}),
         ...(scenario.idioms?.length ? { idioms: () => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), ...(scenario.idiomShare !== undefined ? { idiomShare: scenario.idiomShare } : {}) } : {}),
-        ...(scenario.watched?.length ? { watched: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); } } : {}),
-        ...(scenario.memes?.length ? { memes: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); } } : {}),
+        ...(scenario.watched?.length ? { watched: () => { const d = new Date(clock.now()); const day = formatDate(d); return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); } } : {}),
+        ...(scenario.memes?.length ? { memes: () => { const d = new Date(clock.now()); const day = formatDate(d); return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); } } : {}),
         ...(scenario.herNo ? { herNo: true } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),
         ...(scenario.everydayLife ? { everydayLife: true } : {}),
@@ -527,7 +528,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             schedule: character.schedule,
             settings: proactiveSettings,
             ...(scenario.innerLife ? { inner: true } : {}),
-            ...(scenario.innerLife && scenario.watched?.length ? { watchedFacts: () => { const d = new Date(clock.now()); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return watchedFacts(scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })), d); } } : {}),
+            ...(scenario.innerLife && scenario.watched?.length ? { watchedFacts: () => { const d = new Date(clock.now()); const day = formatDate(d); return watchedFacts(scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })), d); } } : {}),
             ...(scenario.hisHours ? { hisHours: true } : {}),
             ...(scenario.together ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
             ...(photos && (scenario.photoShares || scenario.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),
@@ -1041,7 +1042,7 @@ export function proactiveChecks(checks: ProactiveChecks, steps: StepRecord[], ca
         const bad = sends.filter(s => {
             const kind = stateAt(schedule, new Date(s.time)).activity.kind;
             const day = herDay(schedule, new Date(s.time));
-            const night = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, 0, 30).getTime();
+            const night = localDate(day.getFullYear(), day.getMonth(), day.getDate() + 1, 0, 30).getTime();
             return kind === 'sleep' || kind === 'class' || (s.label !== '重要的日子' && s.time >= night);
         });
         results.push({ ok: bad.length === 0, text: `都不在睡觉、上课、夜里${bad.length ? `（${bad.map(s => `${fmt(s.time)} ${s.label}`).join('、')}）` : ''}` });

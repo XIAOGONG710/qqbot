@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 一位联系人的回复流水线：召回长期记忆 → 按 ST 顺序拼提示词 → 后处理 → 生成 → 清理（含卡上的 ST 正则）→ 出口检查 → 拆条发送（responder.ts 调度）。
 // 出口检查带上聊天记录里她最近几次回复和对方最近几条，查说话的毛病（ADR 0014，配置 speechCheck）。
 // 她自己的日子（ADR 0015，配置 herDays）：时间块里状态行下面加今天的心情，聊到书或她正在看书时再加「在读的书」，那一轮出口检查顺带查进度数字。
@@ -364,7 +365,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         const today = herDay(herSchedule, time);
         const back = Math.round((today.getTime() - dayStart.getTime()) / 86_400_000);
         if (back < 1 || back > RECAP_DAYS) return undefined;
-        const at = (h: number, m: number) => new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), h, m);
+        const at = (h: number, m: number) => localDate(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), h, m);
         const then = options.worldState?.at(character.herWorld, herSchedule, at(23, 30)) ?? worldAt(character.herWorld, herSchedule, at(23, 30));
         if (!then) return undefined;
         const lines = recapDay(then);

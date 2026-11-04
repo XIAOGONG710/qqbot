@@ -1,5 +1,6 @@
 // 她自己的日子（ADR 0015）：每日心情和在读的书。这里都是纯函数；接进时间块和出口检查在 contact.ts，日志和开关在 app.ts。
 
+import { localDate } from '../local-date.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { BodyNow } from './body.ts';
 import type { WorldNow } from '.././world/world.ts';
@@ -313,12 +314,16 @@ function specificBookTerms(book: ReadingBook): string[] {
 }
 
 function calendarDays(from: Date, to: Date): number {
-    return Math.floor((Date.UTC(to.getFullYear(), to.getMonth(), to.getDate()) - Date.UTC(from.getFullYear(), from.getMonth(), from.getDate())) / DAY_MS);
+    const start = new Date(0);
+    const end = new Date(0);
+    start.setUTCFullYear(from.getFullYear(), from.getMonth(), from.getDate());
+    end.setUTCFullYear(to.getFullYear(), to.getMonth(), to.getDate());
+    return Math.floor((end.getTime() - start.getTime()) / DAY_MS);
 }
 
 function parseDate(text: string): Date {
     const [year, month, day] = text.split('-').map(Number);
-    return new Date(year!, month! - 1, day);
+    return localDate(year!, month! - 1, day);
 }
 
 /** FNV-1a，和作息固定选空闲活动的算法一致。 */

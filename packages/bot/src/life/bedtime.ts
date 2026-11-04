@@ -6,6 +6,7 @@
 // - 只在那一晚入睡时刻（02:00）前 EARLY_BED_MINUTES（22:30 起）到起床之间算，和裁判的早睡一样（ADR 0038 调整 5）；白天说「睡了」是午睡，不改作息。
 // - 能从聊天记录推出来，不另存（ADR 0039）：重启以后照样知道她已经睡了；过去已经落账的不改。
 
+import { localDate } from '../local-date.ts';
 import { EARLY_BED_MINUTES } from './actions.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import { stateAt, type Schedule } from './schedule.ts';
@@ -31,11 +32,11 @@ export function isBedtimeLine(text: string): boolean {
 /** 那一晚：入睡时刻（02:00）、从几点起说「睡了」算数（早 EARLY_BED_MINUTES）、几点起 */
 export function nightOf(schedule: Schedule, at: Date): { from: Date; bed: Date; until: Date } | undefined {
     const [hour, minute] = schedule.sleep.split(':').map(Number);
-    const today = new Date(at.getFullYear(), at.getMonth(), at.getDate(), hour, minute);
+    const today = localDate(at.getFullYear(), at.getMonth(), at.getDate(), hour, minute);
     // 入睡时刻之前是这一晚；过了入睡时刻、还没起是刚过去的这一晚；起了以后是今晚
     const bed = at < today || stateAt(schedule, at).activity.kind === 'sleep'
         ? today
-        : new Date(at.getFullYear(), at.getMonth(), at.getDate() + 1, hour, minute);
+        : localDate(at.getFullYear(), at.getMonth(), at.getDate() + 1, hour, minute);
     const from = new Date(bed.getTime() - EARLY_BED_MINUTES * 60_000);
     if (at < from) return undefined;
     const night = stateAt(schedule, bed).activity;

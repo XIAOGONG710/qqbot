@@ -58,6 +58,8 @@ export function localIso(date: Date): string {
     const pad = (n: number) => String(Math.trunc(Math.abs(n))).padStart(2, '0');
     const offset = -date.getTimezoneOffset();
     const sign = offset >= 0 ? '+' : '-';
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+    const encoded = `${String(date.getFullYear()).padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
         + `${sign}${pad(offset / 60)}:${pad(offset % 60)}`;
+    // 历史时区可能有秒级偏移，getTimezoneOffset 只返回分钟；回退 UTC，避免编码后变成另一时刻。
+    return Date.parse(encoded) === Math.floor(date.getTime() / 1000) * 1000 ? encoded : date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }

@@ -4,6 +4,7 @@
 // - 规则驱动、按日期可重放，不调模型、不存状态；不写进生活事件账（ADR 0029）：能从日期和世界推出来，不另立事实源。
 // - 进提示词的只有事实：状态行、「你今天的打算」、问到那天时（ADR 0032）、日记（ADR 0026）。
 
+import { localDate } from '../local-date.ts';
 import type { BodyNow } from './body.ts';
 import { herDay, stateAt, type ExtraFreeActivity, type Schedule } from './schedule.ts';
 
@@ -113,7 +114,7 @@ function settle(plans: Plans | undefined, window: FreeWindow, planned: string, d
     const outing = plans.outings.find(o => o.text === planned);
     // 真实天气（ADR 0048）：那个时段里（从开始前一个钟头起）下过才改；下午才下的雨不改上午的打算，还没到的时段不知道
     // 钟头从那天零点算：晚上那段到第二天凌晨 2 点，按 to.getHours() 算会只剩一两个钟头（审查第 3 条）
-    const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+    const dayStart = localDate(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
     const fromHour = Math.floor((from.getTime() - dayStart) / 3_600_000);
     const endHour = Math.min(24, Math.ceil((to.getTime() - dayStart) / 3_600_000));
     const rained = facts.rainHours ? facts.rainHours.some(h => h >= fromHour - 1 && h < Math.max(endHour, fromHour + 1)) : facts.rain;
@@ -121,7 +122,7 @@ function settle(plans: Plans | undefined, window: FreeWindow, planned: string, d
     if (outing && facts.body?.cold) return { done: outing.indoors, because: '感冒了，不想出门' };
     if (outing && period?.cramps) return { done: outing.indoors, because: unwellWord };
     if (window === 'evening' && !plans.study.includes(planned)) {
-        const tomorrow = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+        const tomorrow = localDate(day.getFullYear(), day.getMonth(), day.getDate() + 1);
         const due = (facts.homework ?? []).filter(h => sameDay(h.due, tomorrow) && h.doneAt > from).sort((a, b) => b.doneAt.getTime() - a.doneAt.getTime());
         if (due.length) {
             const courses = [...new Set(due.map(h => h.course).filter(Boolean))];
@@ -139,7 +140,7 @@ function clock(at: Date): string {
 function windowsOf(schedule: Schedule, day: Date): [FreeWindow, Date, Date][] {
     const at = (time: string, offset = 0) => {
         const [h, m] = time.split(':').map(Number);
-        return new Date(day.getFullYear(), day.getMonth(), day.getDate() + offset, h, m);
+        return localDate(day.getFullYear(), day.getMonth(), day.getDate() + offset, h, m);
     };
     return [
         ['morning', at('05:00'), at(schedule.free.afternoonFrom)],

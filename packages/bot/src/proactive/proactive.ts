@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 主动消息（ADR 0011 决策 2、6）：她什么时候主动找人。都是纯函数，按作息、聊天记录、发送记录和时间算；
 // 随机的部分按「联系人 + 她的那一天 + 时机」取种子，重启后算出同一个时刻。定时、记录文件和发送在计划器里（app.ts）。
 //
@@ -429,7 +430,7 @@ export function moveToHisHours(time: number, weights: readonly number[], from: n
     const base = new Date(time);
     for (let hour = 0; hour < 24; hour++) {
         if (weights[hour]! < GOOD_HOUR) continue;
-        const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hour, 0).getTime();
+        const start = localDate(base.getFullYear(), base.getMonth(), base.getDate(), hour, 0).getTime();
         const target = start + (time % HOUR + HOUR) % HOUR;
         if (target < from || target >= until) continue;
         const distance = Math.abs(target - time);
@@ -534,15 +535,15 @@ const minutes = ([a, b]: [number, number]): [number, number] => [a * MIN, b * MI
 /** 某一天的 HH:MM（本地时间） */
 function at(day: Date, time: string): Date {
     const [h, m] = time.split(':').map(Number);
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+    return localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
 }
 
 function startOfDay(date: Date): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    return localDate(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 function addDays(day: Date, n: number): Date {
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate() + n);
+    return localDate(day.getFullYear(), day.getMonth(), day.getDate() + n);
 }
 
 const pad = (n: number | string) => String(n).padStart(2, '0');
@@ -550,7 +551,7 @@ const LUNAR = new Intl.DateTimeFormat('zh-CN-u-ca-chinese', { month: 'numeric', 
 
 /** 农历的 MM-DD；闰月返回 undefined（闰月里不过生日） */
 export function lunarMonthDay(date: Date): string | undefined {
-    const parts = LUNAR.formatToParts(new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12));
+    const parts = LUNAR.formatToParts(localDate(date.getFullYear(), date.getMonth(), date.getDate(), 12));
     const month = parts.find(p => p.type === 'month')?.value ?? '';
     const day = parts.find(p => p.type === 'day')?.value ?? '';
     if (!/^\d+$/.test(month) || !/^\d+$/.test(day)) return undefined;

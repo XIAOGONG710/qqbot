@@ -5,6 +5,7 @@
 // 都存进公共库（week:<周一的日期>、phase:<假期名>:<最后一天>）。日记原文本地也存一份（写周记要用），以前的从 Hindsight 读回来。
 // 停过的补最近 WEEK_BACKFILL 周、最近 PHASE_BACKFILL_DAYS 天里结束的假期；一篇日记都没有的不写。
 
+import { localDate } from '../local-date.ts';
 import { join } from 'node:path';
 import type { Contact } from '../platform/config.ts';
 import { bookProgressOn, moodAt, readingActivities, type DailyMood, type ReadingBook } from './her-days.ts';
@@ -37,7 +38,7 @@ const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '�
 const hm = (date: Date) => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 const atTime = (day: Date, time: string) => {
     const [h, m] = time.split(':').map(Number);
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+    return localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
 };
 
 export interface DiarySources {
@@ -202,7 +203,7 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
     const path = join(options.dir, 'diary.json');
     let running: Promise<void> | undefined;
     const save = (state: DiaryState, today: Date) => {
-        const keepFrom = formatDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - KEEP_TEXT_DAYS));
+        const keepFrom = formatDate(localDate(today.getFullYear(), today.getMonth(), today.getDate() - KEEP_TEXT_DAYS));
         for (const date of Object.keys(state.texts)) if (date < keepFrom) delete state.texts[date];
         writeJsonAtomic(path, state);
     };
@@ -221,8 +222,9 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         const { written } = state;
         const today = herDay(options.sources.schedule, now);
         for (let back = DIARY_BACKFILL_DAYS; back >= 1; back--) {
-            const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() - back);
+            const day = localDate(today.getFullYear(), today.getMonth(), today.getDate() - back);
             const date = formatDate(day);
+            if (!calendarDate(date)) continue;
             if (written[date] !== undefined) continue;
             const chats = options.contacts.filter(contact => knowsPeople(contact.tier)).map(contact => ({
                 name: contact.name,
@@ -300,12 +302,13 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
 
     /** 周记：她这一周之前的 WEEK_BACKFILL 周（周一到周日）；全都处理完返回 true */
     const catchUpWeeks = async (state: DiaryState, today: Date): Promise<boolean> => {
-        const thisMonday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
+        const thisMonday = localDate(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
         for (let back = WEEK_BACKFILL; back >= 1; back--) {
-            const monday = new Date(thisMonday.getFullYear(), thisMonday.getMonth(), thisMonday.getDate() - 7 * back);
+            const monday = localDate(thisMonday.getFullYear(), thisMonday.getMonth(), thisMonday.getDate() - 7 * back);
             const id = formatDate(monday);
+            if (!calendarDate(id)) continue;
             if (state.weeks[id] !== undefined) continue;
-            const days = Array.from({ length: 7 }, (_, i) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i));
+            const days = Array.from({ length: 7 }, (_, i) => localDate(monday.getFullYear(), monday.getMonth(), monday.getDate() + i));
             const diaries = await diariesOn(days, state);
             if (!diaries) return false;
             if (diaries.length) {
@@ -326,13 +329,13 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
     /** 阶段总结：作息里结束了 PHASE_BACKFILL_DAYS 天以内的假期 */
     const catchUpPhases = async (state: DiaryState, today: Date): Promise<void> => {
         const todayText = formatDate(today);
-        const recent = formatDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - PHASE_BACKFILL_DAYS));
+        const recent = formatDate(localDate(today.getFullYear(), today.getMonth(), today.getDate() - PHASE_BACKFILL_DAYS));
         for (const holiday of options.sources.schedule.holidays.filter(h => h.end < todayText && h.end >= recent)) {
             const id = `${holiday.name}:${holiday.end}`;
             if (state.phases[id] !== undefined) continue;
-            const [start, end] = [holiday.start, holiday.end].map(date => { const [y, m, d] = date.split('-').map(Number); return new Date(y!, m! - 1, d); });
+            const [start, end] = [holiday.start, holiday.end].map(date => { const [y, m, d] = date.split('-').map(Number); return localDate(y!, m! - 1, d); });
             const days: Date[] = [];
-            for (let day = start!; day <= end!; day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1)) days.push(day);
+            for (let day = start!; day <= end!; day = localDate(day.getFullYear(), day.getMonth(), day.getDate() + 1)) days.push(day);
             const diaries = await diariesOn(days, state);
             if (!diaries) return;
             if (diaries.length) {

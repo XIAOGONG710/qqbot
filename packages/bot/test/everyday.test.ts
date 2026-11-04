@@ -1,7 +1,7 @@
 // 她每天碰到的小事和小测（ADR 0106）：目录要干净、条件要满足、频率要合理、小测的线要连得上、带感受的要进心境。
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
@@ -266,7 +266,7 @@ describe('从哪天起才有（她已经过完的日子不改写）', () => {
         assert.equal(quizRecord(schedule, new Date('2026-10-25T20:00:00+08:00'), from).length, 0, '才过了两天，还没有出分的');
     });
 
-    test('第一次开的时候定下“第二天”并存进文件，以后重启读同一个；文件坏了也不往前改', () => {
+    test('第一次开的时候定下“第二天”并存进文件，以后重启读同一个；文件坏了失败关闭', () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-everyday-'));
         try {
             const path = join(dir, 'everyday-from.json');
@@ -275,7 +275,8 @@ describe('从哪天起才有（她已经过完的日子不改写）', () => {
             assert.ok(logs.some(line => line.includes('从 2026-10-23 起生效')));
             assert.equal(loadEverydayFrom(path, new Date('2026-11-30T10:00:00+08:00')), '2026-10-23', '重启后读同一个');
             writeFileSync(path, '{ 坏了');
-            assert.equal(loadEverydayFrom(path, new Date('2026-11-30T10:00:00+08:00')), '2026-12-01', '读不了就用今天之后的一天，不去改写已经过的日子');
+            assert.throws(() => loadEverydayFrom(path, new Date('2026-11-30T10:00:00+08:00')), /日常小事启用状态无效或读取失败/);
+            assert.equal(readFileSync(path, 'utf8'), '{ 坏了', '加固策略：保留原路径和内容，等待明确修复或删除');
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
