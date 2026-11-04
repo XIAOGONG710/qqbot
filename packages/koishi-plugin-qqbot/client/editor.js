@@ -3,7 +3,7 @@
 // 保存时服务端先生成全部档位、做档位隐私检查，不过就不写，逐条返回问题（src/console.ts 的 saveCharacter）。
 import { computed, defineComponent, effectScope, h, ref, watch } from 'vue';
 import { message, send, store } from '@koishijs/client';
-import { c, clone, firstLine, tierLabel } from './common.js';
+import { c, clone, tierLabel } from './common.js';
 
 /** 整份角色资料（服务端 readSource 的结果）；保存成功后只换掉存的那一部分，别的页没保存的草稿不受影响 */
 export const character = { source: ref(null), error: ref(''), loading: false };
@@ -20,7 +20,7 @@ async function loadCharacter() {
         character.source.value = source;
         character.error.value = '';
     } catch (error) {
-        character.error.value = firstLine(error);
+        character.error.value = '暂时无法连接控制台，请刷新页面或检查登录状态。';
     } finally {
         character.loading = false;
     }
@@ -76,7 +76,7 @@ function createPart(part) {
                 character.source.value = { ...character.source.value, [part]: source[part] };
             }
         } catch (error) {
-            result.value = { ok: false, error: firstLine(error), saved: save };
+            result.value = { ok: false, error: '请求没有完成，请刷新页面后重试。', saved: save };
         } finally {
             busy.value = false;
         }

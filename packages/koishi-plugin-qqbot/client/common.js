@@ -37,6 +37,3 @@ export function tag(text, type = 'info') {
 
 /** 深拷贝（编辑草稿用） */
 export const clone = value => JSON.parse(JSON.stringify(value));
-
-/** 监听器返回的错误是字符串（含调用栈），只留第一行 */
-export const firstLine = error => String(error).split('\n')[0];

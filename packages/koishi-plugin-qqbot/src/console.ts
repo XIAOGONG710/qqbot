@@ -31,7 +31,6 @@ export interface ConsoleData {
     error?: string;
     napcat?: { online: boolean; selfId?: string };
     status?: AppStatus;
-    character?: { sourceDir: string; stDir: string };
     phoneActions: readonly PhoneActionCapability[];
     updatedAt: number;
 }
@@ -64,20 +63,37 @@ export function characterPaths(characterCard: string): ConsoleState['character']
 /** 页面要看的数据：插件情况 + app 状态（不含聊天内容） */
 export function consoleData(): ConsoleData {
     let status: AppStatus | undefined;
+    let napcatStatus: ConsoleData['napcat'];
     try {
         status = state.status?.();
     } catch {
         status = undefined;
     }
+    try {
+        napcatStatus = napcat?.();
+    } catch {
+        napcatStatus = undefined;
+    }
     return {
         running: state.running,
         ...(state.error ? { error: publicConsoleError(state.error) } : {}),
-        ...(napcat ? { napcat: napcat() } : {}),
+        ...(napcatStatus ? { napcat: napcatStatus } : {}),
         ...(status ? { status } : {}),
-        ...(state.character ? { character: { sourceDir: state.character.sourceDir, stDir: state.character.stDir } } : {}),
         phoneActions: PHONE_ACTION_CAPABILITIES,
         updatedAt: Date.now(),
     };
+}
+
+/** 编辑页只返回用户能据此修改的中文提示，不把 YAML 路径、字段名或输入值当成错误串展示。 */
+export function publicCharacterError(error: unknown): string {
+    const text = error instanceof Error ? error.message : String(error);
+    if (/HH:MM|(?:schedule\.yml\.)?(?:sleep|wake)|时间格式/i.test(text)) {
+        return '时间格式不正确，请按“时:分”填写，例如 08:30。';
+    }
+    if (/persona\.yml|tiers\.yml|引用|不存在|没有/.test(text)) {
+        return '资料中有一项引用不存在，请重新选择相关的说话方式、场景档或条目。';
+    }
+    return '资料格式不正确，请检查当前页面的必填项和选择项。';
 }
 
 /** 控制台只给处理方向；原始异常可能带路径、配置值或技术字段，完整内容留在受控运行日志。 */
@@ -100,13 +116,13 @@ export function saveCharacter(part: SourcePart, value: unknown, dryRun = false):
         const current = readSource(paths.sourceDir);
         source = checkSource({ ...current, [part]: value });
     } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        return { ok: false, error: publicCharacterError(error) };
     }
     let built: ReturnType<typeof buildCharacter>;
     try {
         built = buildCharacter(source, paths.prefix);
     } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        return { ok: false, error: publicCharacterError(error) };
     }
     const problems = checkPrivacy(built, source);
     if (problems.length) return { ok: false, problems };

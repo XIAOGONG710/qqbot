@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { readSource } from '../../character-tools/src/source.ts';
-import { characterPaths, consoleData, saveCharacter, setConsoleState } from '../src/console.ts';
+import { characterPaths, consoleData, publicCharacterError, saveCharacter, setConsoleState } from '../src/console.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const dir = mkdtempSync(join(tmpdir(), 'qqbot-console-'));
@@ -56,9 +56,11 @@ describe('控制台的角色资料（ADR 0010）', () => {
     test('结构写错、引用写错：不写，返回一句话的错误', () => {
         const source = readSource(paths.sourceDir);
         const bad = saveCharacter('tiers', { ...source.tiers, tiers: [{ ...source.tiers.tiers[0]!, social: 'nobody' }, ...source.tiers.tiers.slice(1)] });
-        assert.deepEqual(bad, { ok: false, error: 'tiers.yml 档位 boyfriend 的 social「nobody」在 persona.yml 的 social 里没有' });
+        assert.deepEqual(bad, { ok: false, error: '资料中有一项引用不存在，请重新选择相关的说话方式、场景档或条目。' });
         const shape = saveCharacter('schedule', { ...source.schedule, sleep: '2点' });
-        assert.ok(!shape.ok && /schedule\.yml\.sleep 应为 HH:MM/.test(shape.error!));
+        assert.deepEqual(shape, { ok: false, error: '时间格式不正确，请按“时:分”填写，例如 08:30。' });
+        assert.doesNotMatch(`${bad.ok ? '' : bad.error} ${shape.ok ? '' : shape.error}`, /yml|boyfriend|social|nobody|HH:MM/);
+        assert.equal(publicCharacterError(new Error('C:\\private\\source.yml token=secret')), '资料格式不正确，请检查当前页面的必填项和选择项。');
     });
 
     test('心情和在读的书（ADR 0015）：没变不写；改了重新生成带它们的卡；清空的可选项当作没写；书的内容也过档位隐私检查', () => {
@@ -96,5 +98,6 @@ describe('控制台的角色资料（ADR 0010）', () => {
         assert.equal(data.error, '配置有误，插件没有启动。请检查插件设置；详细原因见运行日志。');
         assert.doesNotMatch(data.error ?? '', /secret|apiKey|private|config\.json/);
         assert.equal(data.status, undefined);
+        assert.equal('character' in data, false, '状态数据不应暴露角色资料的绝对磁盘路径');
     });
 });
