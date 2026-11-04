@@ -3125,12 +3125,15 @@ ${body}
             if (argument === '取消') { tellOwner(dormancy.cancel() ? '（不休眠了，她还醒着。）' : '（没有在商量的休眠。）'); return; }
             if (dormancy.isDormant()) { tellOwner('（她已经在休眠了。）'); return; }
             const reason = argument.trim() || undefined;
-            dormancy.propose(reason, undefined);
+            const proposalToken = dormancy.propose(reason, undefined);
             const outcome = await responders.get(deviceOwner.qq)!.initiate({ label: '休眠前商量', note: proposeNote(reason), topic: '休眠前她想对他说什么', maxBubbles: 3, dryRun: false, commit: () => undefined });
+            if (stopped) return;
             if (outcome.result === 'sent') {
-                dormancy.propose(reason, outcome.parts.join('\n'));
+                if (!dormancy.updateProposal(proposalToken, outcome.parts.join('\n'))) return;
                 tellOwner('（她回答了，上面就是她的话，已经记进封存。要继续就发「/休眠 确认」，改主意发「/休眠 取消」。）');
             } else {
+                const current = dormancy.state();
+                if (current.state !== 'proposed' || current.token !== proposalToken) return;
                 tellOwner(`（没能让她回答${outcome.result === 'failed' || outcome.result === 'skipped' ? `：${outcome.reason}` : ''}。你可以直接发「/休眠 确认」（她的留言会是空的），或「/休眠 取消」。）`);
             }
         } catch (error) {

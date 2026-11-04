@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { botRunning, exportContact, forgetContact, type ForgetApi } from '../src/memory/privacy-forget.ts';
+import { HindsightError } from '../src/memory/hindsight.ts';
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true })));
@@ -78,13 +79,14 @@ describe('联系人数据导出与遗忘（ADR 0070 第 9 项）', () => {
         await assert.rejects(() => forgetContact(dir, 10001, { apply: true, trashDir: join(base, 'trash'), commonBank: 'c', isAlive: () => true }), /还在运行/);
         assert.ok(existsSync(join(dir, 'chats', '10001.jsonl')), '拒绝时什么都没动');
         const failing: ForgetApi = {
-            deleteBank: async () => { throw new Error('503'); },
+            deleteBank: async () => { throw new HindsightError('SYNTHETIC_PRIVATE_SERVER_BODY', 503); },
             deleteDocument: async () => {},
             deleteMentalModel: async () => {},
         };
         const result = await forgetContact(dir, 10001, { apply: true, trashDir: join(base, 'trash'), commonBank: 'c', api: failing, isAlive: () => false });
         assert.equal(result.failures.length, 1);
-        assert.match(result.failures[0]!, /私人记忆库 demo-private 失败：503/);
+        assert.match(result.failures[0]!, /私人记忆库 demo-private 失败：HTTP 503/);
+        assert.doesNotMatch(JSON.stringify(result), /SYNTHETIC_PRIVATE_SERVER_BODY/);
         assert.deepEqual(result.deleted.banks, []);
     });
 });

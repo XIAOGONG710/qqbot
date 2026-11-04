@@ -4,10 +4,12 @@
 // 3. koishi.yml、config.json 里的 bank 前缀换成新的：新 bank 是空的，旧 bank 留在 Hindsight 里不删、不再读。
 // 要求 bot 停着（数据目录的锁没有活着的持有者）：在跑的插件手里有聊天记录和换档记录，改了会被它写回去。
 
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { writeJsonAtomic } from './json-file.ts';
 import { isProcessAlive, type IsAlive } from '../platform/lock.ts';
+import { CONTACT_TIERS, UNLISTED_TIER } from '../platform/config.ts';
+import { stateObject, stateTimestamp } from './state-schema.ts';
 
 export interface ArchiveOptions {
     /** 数据目录（runtime/bot） */
@@ -41,6 +43,16 @@ const YAML_MEMORY_ON = /^(\s*)memory:[ \t]*\r?\n(\1\s+)enabled:[ \t]*true[ \t]*$
 export function archiveTestData(options: ArchiveOptions): ArchiveResult {
     const now = options.now ?? new Date();
     const { dataDir } = options;
+    const checkPath = (path: string) => {
+        const root = resolve(dataDir); const target = resolve(path); const rel = relative(root, target);
+        if (rel === '..' || rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(rel)) throw new Error('归档路径超出数据范围');
+        for (let part = target;; part = dirname(part)) {
+            if (existsSync(part) && lstatSync(part).isSymbolicLink()) throw new Error('归档路径包含链接，未执行');
+            if (part === root) break;
+        }
+    };
+    checkPath(dataDir);
+    if (!Number.isFinite(now.getTime()) || !stateTimestamp(now.toISOString())) throw new Error('归档时间无效');
     const lock = join(dataDir, 'bot.lock');
     if (existsSync(lock)) {
         const pid = Number.parseInt(readFileSync(lock, 'utf8'), 10);
@@ -53,13 +65,27 @@ export function archiveTestData(options: ArchiveOptions): ArchiveResult {
 
     // 换档记录：每人记起点，档位不变
     const tiersPath = join(dataDir, 'tiers.json');
-    const tiers: Record<string, { tier: string; since?: string } | string> = existsSync(tiersPath) ? JSON.parse(readFileSync(tiersPath, 'utf8')) : {};
+    checkPath(tiersPath);
+    let tiers: Record<string, { tier: string; since?: string } | string>;
+    try {
+        const raw: unknown = existsSync(tiersPath) ? JSON.parse(readFileSync(tiersPath, 'utf8')) : {};
+        const allowed: readonly string[] = [...CONTACT_TIERS, UNLISTED_TIER];
+        if (!stateObject(raw) || !Object.entries(raw).every(([qq, entry]) => /^[1-9]\d*$/.test(qq) && Number.isSafeInteger(Number(qq))
+            && (typeof entry === 'string' ? allowed.includes(entry) : stateObject(entry) && typeof entry.tier === 'string' && allowed.includes(entry.tier)
+                && (entry.since === undefined || stateTimestamp(entry.since))))) throw new Error('schema');
+        tiers = raw as typeof tiers;
+    } catch { throw new Error('档位记录读取或校验失败，未执行归档'); }
     const tierOf = (qq: string) => { const entry = tiers[qq]; return typeof entry === 'string' ? entry : entry?.tier; };
 
-    const files = (dir: string, ext: string) => (existsSync(dir)
-        ? readdirSync(dir).filter(f => f.endsWith(ext) && statSync(join(dir, f)).isFile()).sort()
-        : []);
+    const files = (dir: string, ext: string) => {
+        checkPath(dir);
+        return existsSync(dir) ? readdirSync(dir).filter(f => {
+            const path = join(dir, f); checkPath(path);
+            return f.endsWith(ext) && statSync(path).isFile();
+        }).sort() : [];
+    };
     const plan = (from: string, to: string) => {
+        checkPath(from); checkPath(to);
         let target = to;
         for (let i = 2; existsSync(target) || result.moves.some(m => m.to === target); i++) target = to.replace(/(\.[^.]+)$/, `-${i}$1`);
         result.moves.push({ from, to: target });
@@ -77,14 +103,18 @@ export function archiveTestData(options: ArchiveOptions): ArchiveResult {
     // 新前缀
     const configs = options.configFiles.filter(f => existsSync(f));
     for (const f of options.configFiles.filter(f => !existsSync(f))) result.skipped.push({ file: f, reason: '没有这个文件' });
-    const current = configs.map(f => currentPrefix(f)).find(Boolean);
+    let current: string | undefined;
+    try { current = configs.map(f => currentPrefix(f)).find(Boolean); }
+    catch { throw new Error('归档配置读取或校验失败，未执行归档'); }
     const prefix = options.prefix ?? `${(current ?? 'linmengyao').replace(/(-\d+)+$/, '')}-${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
     if (!PREFIX.test(prefix)) throw new Error(`bank 前缀只能有字母、数字、短横线：${prefix}`);
     if (prefix === current) throw new Error(`新前缀和现在的一样（${prefix}），换一个`);
     const edits: { file: string; text: string }[] = [];
     for (const file of configs) {
         const text = readFileSync(file, 'utf8');
-        const edited = file.endsWith('.json') ? editJson(text, prefix) : editYaml(text, prefix);
+        let edited: ReturnType<typeof editJson>;
+        try { edited = file.endsWith('.json') ? editJson(text, prefix) : editYaml(text, prefix); }
+        catch { throw new Error('归档配置读取或校验失败，未执行归档'); }
         if ('reason' in edited) result.skipped.push({ file, reason: edited.reason });
         else {
             result.prefix.push({ file, ...(edited.from ? { from: edited.from } : {}), to: prefix });
@@ -97,9 +127,12 @@ export function archiveTestData(options: ArchiveOptions): ArchiveResult {
 
     // 先记起点、挪文件，再改前缀（ADR 0011 第 10 节：顺序反了，插件重启时会把最近的消息从 QQ 补回来）
     if (existsSync(tiersPath)) {
-        result.tiersBackup = join(dataDir, `tiers.before-${stamp}.json`);
-        copyFileSync(tiersPath, result.tiersBackup);
-        writeJsonAtomic(tiersPath, Object.fromEntries(Object.keys(tiers).map(qq => [qq, { tier: tierOf(qq), since: now.toISOString() }])));
+        for (let n = 1;; n++) {
+            const backup = join(dataDir, `tiers.before-${stamp}${n === 1 ? '' : `-${n}`}.json`);
+            try { copyFileSync(tiersPath, backup, constants.COPYFILE_EXCL); result.tiersBackup = backup; break; }
+            catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw new Error('档位恢复快照无法保存，未执行归档'); }
+        }
+        writeJsonAtomic(tiersPath, Object.fromEntries(Object.keys(tiers).map(qq => [qq, { ...(typeof tiers[qq] === 'object' ? tiers[qq] : {}), tier: tierOf(qq), since: now.toISOString() }])));
     }
     for (const { from, to } of result.moves) {
         mkdirSync(dirname(to), { recursive: true });
@@ -136,6 +169,7 @@ function editYaml(text: string, prefix: string): { text: string; from?: string }
 function editJson(text: string, prefix: string): { text: string; from?: string } | { reason: string } {
     const config = JSON.parse(text) as { memory?: Record<string, unknown> };
     if (!config.memory) return { reason: '没有 memory 一节（长期记忆没开），不用换前缀' };
+    if (!stateObject(config.memory)) throw new Error('memory schema');
     const from = typeof config.memory.bankPrefix === 'string' ? config.memory.bankPrefix : undefined;
     config.memory.bankPrefix = prefix;
     const indent = /^\{\r?\n( +)/.exec(text)?.[1]?.length ?? 2;
