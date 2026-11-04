@@ -7,12 +7,21 @@ android {
         applicationId = "com.linmengyao.companion"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         val companionUrl = providers.gradleProperty("COMPANION_URL").orElse("https://companion.invalid/").get()
         buildConfigField("String", "COMPANION_URL", "\"${companionUrl.replace("\"", "\\\"")}\"")
     }
     buildFeatures { buildConfig = true }
+}
+
+gradle.taskGraph.whenReady {
+    if (allTasks.any { it.name.contains("release", ignoreCase = true) }) {
+        val companionUrl = providers.gradleProperty("COMPANION_URL").orElse("").get()
+        require(companionUrl.startsWith("https://") && !companionUrl.contains(".invalid")) {
+            "release 构建必须通过 -PCOMPANION_URL 提供正式 HTTPS 地址"
+        }
+    }
 }
 
 dependencies {

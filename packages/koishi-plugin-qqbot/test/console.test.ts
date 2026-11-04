@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { readSource } from '../../character-tools/src/source.ts';
-import { addAiPhotoReference, aiPhotoPreview, aiPhotoRuntimeStatus, characterPaths, consoleData, listAiPhotoDrafts, listAiPhotoReferences, listExternalDrafts, publicCharacterError, removeAiPhotoReference, reviewAiPhoto, reviewExternalDraft, saveCharacter, setConsoleState } from '../src/console.ts';
+import { addAiPhotoReference, aiPhotoPreview, aiPhotoRuntimeStatus, characterPaths, consoleData, listAiPhotoDrafts, listAiPhotoReferences, listExternalDrafts, publicCharacterError, removeAiPhotoReference, reviewAiPhoto, reviewExternalDraft, runConsoleHealthCheck, saveCharacter, setConsoleState } from '../src/console.ts';
 import { aiPhotoDraftStore } from '../../bot/src/vision/ai-photo-drafts.ts';
 import { photoShelf } from '../../bot/src/vision/photos.ts';
 import { createExternalDraftStore } from '../../bot/src/social/external-drafts.ts';
@@ -20,6 +20,20 @@ setConsoleState({ character: paths });
 const mtimes = () => Object.fromEntries(readdirSync(join(dir, 'st')).map(f => [f, statSync(join(dir, 'st', f)).mtimeMs]));
 
 describe('控制台的角色资料（ADR 0010）', () => {
+    test('一键体检只返回中文安全摘要，不回显内部地址和错误', () => {
+        const report = runConsoleHealthCheck({
+            running: true, napcat: { online: true }, phoneActions: [], updatedAt: Date.now(),
+            status: {
+                runtime: { commit: 'abc', branch: 'test', dirty: false, startedAt: new Date().toISOString() }, contacts: [], unlistedFriends: false, schedule: true, moody: false, speechCheck: true, herDays: false, proactive: 'off', features: [],
+                memory: { baseUrl: 'http://secret.internal', health: { ok: false, at: Date.now(), error: 'token=secret' } },
+                externalPlatforms: { tieba: 'off', douyin: 'off', xiaohongshu: 'off' }, externalDrafts: { total: 1, pending: 1, approved: 0, publishing: 0, failed: 0, byPlatform: { tieba: 1, douyin: 0, xiaohongshu: 0 } },
+                dsh: { enabled: true }, mobileCompanion: { enabled: true, connected: false, queued: 0, maxQueuedPerClient: 32 },
+            },
+        });
+        assert.equal(report.ok, false);
+        assert.ok(report.attentionCount >= 3);
+        assert.doesNotMatch(JSON.stringify(report), /secret|token|internal|http/);
+    });
     test('从角色卡路径推出资料目录和文件名前缀', () => {
         assert.deepEqual(paths, { stDir: join(dir, 'st'), sourceDir: join(dir, 'source'), prefix: 'linmengyao' });
     });

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { androidPreflight } from '../preflight.mjs';
 
 const root = new URL('..', import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/, value => value.slice(1));
 const read = path => readFileSync(join(root, path), 'utf8');
@@ -17,4 +18,10 @@ test('Android 壳禁止明文、文件访问和任意 JavaScript 桥', () => {
     assert.match(activity, /handler\.cancel\(\)/);
     assert.doesNotMatch(activity, /addJavascriptInterface/);
     assert.match(activity, /target\.host != configured\.host/);
+});
+
+test('正式包预检拒绝占位域名和明文地址', () => {
+    assert.equal(androidPreflight({ url: 'http://phone.example.com', release: false }).ready, false);
+    assert.equal(androidPreflight({ url: 'https://companion.invalid/', release: false }).ready, false);
+    assert.equal(androidPreflight({ url: 'https://phone.example.com/', release: false }).ready, true);
 });

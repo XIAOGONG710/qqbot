@@ -3047,6 +3047,13 @@ ${body}
             commit: (_clientId, question, reply, askedAt, repliedAt) => dshConversation.commit(question, reply, askedAt, repliedAt),
         },
         describeMedia: describeMobileMedia,
+        ...(media?.voiceDataToText ? {
+            transcribeVoice: async (data: Uint8Array, mime: 'audio/ogg' | 'audio/webm' | 'audio/wav' | 'audio/mp4') => {
+                const transcript = await withTimeout(media.voiceDataToText!(data, mime), MEDIA_TIMEOUTS.voice);
+                if (!transcript?.trim()) throw new Error('没有听清这段语音');
+                return transcript;
+            },
+        } : {}),
         onActionResult: async (result, clientId) => {
             log(`手机动作回执：设备 ${clientId}，请求 ${result.requestId}，${result.ok ? '成功' : '失败'}，决策 ${result.decision}${result.error ? `（${sanitizeDshError(result.error)}）` : ''}`);
         },

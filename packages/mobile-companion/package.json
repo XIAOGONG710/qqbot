@@ -20,7 +20,8 @@
     "./photo-review": "./src/photo-review.ts",
     "./photo-review-ui": "./src/photo-review-ui.ts",
     "./dsh-adapter": "./src/dsh-adapter.ts",
-    "./voice-session": "./src/voice-session.ts"
+    "./voice-session": "./src/voice-session.ts",
+    "./voice-conversation": "./src/voice-conversation.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",

@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "version": "0.2.0",
+  "protocol": 1,
+  "androidVersionCode": 2,
+  "stateSchemas": {
+    "dshContinuity": 1,
+    "externalDrafts": 1,
+    "aiPhotoDrafts": 1
+  },
+  "requiresBackup": true,
+  "minimumNode": 24
+}

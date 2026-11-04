@@ -1,6 +1,7 @@
 // 只向名称受限的隔离 PostgreSQL 数据库导入；不会覆盖在线 Hindsight，也不会自动删除目标库。
 import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { writeFileSync } from 'node:fs';
+import { basename, resolve } from 'node:path';
 import { restoreDrillPlan } from './restore-drill-state.mjs';
 import { isolatedDatabaseTarget, psqlConnectionArgs, safeSqlArtifact } from './hindsight-restore-state.mjs';
 
@@ -30,3 +31,8 @@ execFileSync(psql, [...connection, '-v', 'ON_ERROR_STOP=1', '-f', artifact.path]
 const restored = Number(scalar("SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema')"));
 if (!Number.isInteger(restored) || restored < 1) throw new Error('导入结束但没有发现业务表');
 console.log(`[hindsight-restore] 通过：隔离库中发现 ${restored} 张业务表。目标库已保留供人工核验，不会自动删除。`);
+const report = one('--report');
+if (report) {
+    // 回执故意不记录连接串、主机、用户名或密码。
+    writeFileSync(resolve(report), `${JSON.stringify({ version: 1, passed: true, checkedAt: new Date().toISOString(), backup: basename(resolve(backup)), isolatedDatabase: target.database, businessTables: restored }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+}

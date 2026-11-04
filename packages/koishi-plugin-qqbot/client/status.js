@@ -1,6 +1,6 @@
 // 状态页：插件在不在跑、NapCat / Hindsight 连没连上、名单里每人现在在等什么（ADR 0010）。不显示聊天内容。
 import { computed, defineComponent, h, ref } from 'vue';
-import { store } from '@koishijs/client';
+import { send, store } from '@koishijs/client';
 import { c, clock, tag, tierLabel } from './common.js';
 import { attentionDetail, capabilityBundles, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, lifeMoments, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from './dashboard.js';
 
@@ -163,6 +163,14 @@ export const StatusTab = defineComponent({
     setup() {
         const query = ref('');
         const activeOnly = ref(false);
+        const health = ref(undefined);
+        const checking = ref(false);
+        async function runHealth() {
+            checking.value = true;
+            try { health.value = await send('qqbot/health/run'); }
+            catch { health.value = { ok: false, attentionCount: 1, items: [{ label: '体检', status: 'attention', detail: '暂时无法完成，请稍后重试' }] }; }
+            finally { checking.value = false; }
+        }
         const filteredContacts = computed(() => {
             const status = store.qqbot?.status;
             return filterContacts(status?.contacts, query.value, activeOnly.value);
@@ -204,6 +212,20 @@ export const StatusTab = defineComponent({
                 connectionCard('外部顾问', dsh.text === '连接正常', dsh.detail || dsh.text),
                 connectionCard('手机伴侣', status.mobileCompanion?.enabled === true && status.mobileCompanion.connected === true, mobileCompanionStatusDetail(status.mobileCompanion)),
             ]);
+            const healthPanel = h('section', { class: 'qqbot-life-card' }, [
+                h('div', { class: 'qqbot-life-head' }, [
+                    h('strong', null, '系统体检'),
+                    h(c('el-button'), { type: 'primary', size: 'small', loading: checking.value, onClick: runHealth }, () => checking.value ? '检查中' : '一键体检'),
+                ]),
+                !health.value ? h('div', { class: 'qqbot-muted' }, '只读检查连接、记忆、现实数据、照片和待处理草稿，不会发送消息或重启。')
+                    : h('div', { class: 'qqbot-summary' }, [
+                        h('div', { class: 'qqbot-summary-row' }, [h('span', { class: 'qqbot-label' }, '结论'), tag(health.value.ok ? '全部正常' : `${health.value.attentionCount} 项需处理`, health.value.ok ? 'success' : 'warning')]),
+                        ...health.value.items.map(item => h('div', { class: 'qqbot-summary-row' }, [
+                            h('span', { class: 'qqbot-label' }, item.label),
+                            h('span', null, [tag(item.status === 'ok' ? '正常' : item.status === 'off' ? '未启用' : '需检查', item.status === 'ok' ? 'success' : item.status === 'off' ? 'info' : 'warning'), h('span', { class: 'qqbot-muted' }, ` ${item.detail}`)]),
+                        ])),
+                    ]),
+            ]);
             const features = featurePanel(status);
             const capabilities = capabilityPanel(status);
             const extras = extrasPanel(status);
@@ -233,7 +255,7 @@ export const StatusTab = defineComponent({
                     h('div', null, [h('h2', { class: 'qqbot-status-title' }, '她现在的状态'), h('p', { class: 'qqbot-muted' }, `每 5 秒自动更新 · ${clock(data.updatedAt)}`)]),
                     h('div', { class: 'qqbot-status-head-tags' }, [tag(status.schedule ? '按作息运行' : '作息未启用', status.schedule ? 'success' : 'warning'), tag(dshFeature?.on ? '外部顾问已启用' : '外部顾问未启用', dshFeature?.on ? 'success' : 'info')]),
                 ]),
-                kpis, connections, pulse, capabilities, summary, features, phoneActions, externalPlatforms, extras, contactToolbar, table,
+                kpis, connections, healthPanel, pulse, capabilities, summary, features, phoneActions, externalPlatforms, extras, contactToolbar, table,
             ]);
         };
     },

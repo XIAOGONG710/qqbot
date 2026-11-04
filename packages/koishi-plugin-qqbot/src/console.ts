@@ -92,6 +92,19 @@ export interface ExternalDraftItem {
 export type ExternalDraftListResult = { ok: true; entries: ExternalDraftItem[] } | { ok: false; error: string };
 export type ExternalDraftReviewResult = { ok: true; status: ExternalDraftStatus } | { ok: false; error: string };
 
+export interface ConsoleHealthItem {
+    label: string;
+    status: 'ok' | 'attention' | 'off';
+    detail: string;
+}
+export interface ConsoleHealthReport {
+    ok: boolean;
+    checkedAt: string;
+    okCount: number;
+    attentionCount: number;
+    items: ConsoleHealthItem[];
+}
+
 /** moods / books（ADR 0015）是后加的文件：资料里没有这两个文件时页面不显示它们的分页 */
 export type SourcePart = 'persona' | 'scenes' | 'schedule' | 'tiers' | 'moods' | 'books';
 
@@ -144,6 +157,34 @@ export function consoleData(): ConsoleData {
         phoneActions: PHONE_ACTION_CAPABILITIES,
         updatedAt: Date.now(),
     };
+}
+
+/** 一键体检只读现有状态和本地用量，不探测外网、不重启、不发送消息。 */
+export function runConsoleHealthCheck(data: ConsoleData = consoleData()): ConsoleHealthReport {
+    const items: ConsoleHealthItem[] = [];
+    const add = (label: string, status: ConsoleHealthItem['status'], detail: string) => items.push({ label, status, detail });
+    add('插件', data.running ? 'ok' : 'attention', data.running ? '运行正常' : '未运行，请查看插件设置');
+    add('QQ 连接', data.napcat?.online ? 'ok' : 'attention', data.napcat?.online ? '消息通道正常' : '等待 NapCat 连接');
+    const status = data.status;
+    if (!status) add('运行状态', 'attention', '暂时读不到状态，请查看运行日志');
+    else {
+        const memory = status.memory;
+        add('长期记忆', !memory ? 'off' : memory.health?.ok ? 'ok' : 'attention', !memory ? '未启用' : memory.health?.ok ? '服务正常' : '服务未通过最近一次检查');
+        const dsh = status.dsh;
+        add('外部顾问', !dsh.enabled ? 'off' : dsh.lastProbe?.ok ? 'ok' : 'attention', !dsh.enabled ? '未启用' : dsh.lastProbe?.ok ? '最近探测正常' : '已启用，等待一次成功探测');
+        const phone = status.mobileCompanion;
+        add('手机伴侣', !phone?.enabled ? 'off' : phone.connected ? 'ok' : 'attention', !phone?.enabled ? '未启用' : phone.connected ? '设备已连接' : phone.pairedClientId ? '设备已配对，等待重连' : '等待配对');
+        const worldModules = [status.weather, status.airQuality, status.daylight, status.calendar, status.transport].filter(Boolean);
+        const worldText = JSON.stringify(worldModules);
+        const worldAttention = /"stale":true|"error":/.test(worldText);
+        add('现实世界', !worldModules.length ? 'off' : worldAttention ? 'attention' : 'ok', !worldModules.length ? '未启用' : worldAttention ? '有缓存过期或取数失败' : '已接入的模块状态正常');
+        const backlog = (status.externalDrafts?.pending ?? 0) + (status.externalDrafts?.approved ?? 0) + (status.externalDrafts?.publishing ?? 0) + (status.externalDrafts?.failed ?? 0);
+        add('外部草稿', backlog ? 'attention' : 'ok', backlog ? `有 ${backlog} 条需要人工处理或核对` : '没有待处理草稿');
+    }
+    const photos = aiPhotoRuntimeStatus();
+    add('AI 照片', photos.feature === 'off' ? 'off' : photos.providers.length && !photos.degraded ? 'ok' : 'attention', photos.feature === 'off' ? '未启用' : photos.providers.length ? photos.degraded ?? '供应商和用量门槛已就绪' : '没有配置生图供应商');
+    const attentionCount = items.filter(item => item.status === 'attention').length;
+    return { ok: attentionCount === 0, checkedAt: new Date().toISOString(), okCount: items.filter(item => item.status === 'ok').length, attentionCount, items };
 }
 
 const REVIEW_STATUSES = new Set<AiPhotoDraftStatus>(['pending_review', 'approved', 'rejected']);
@@ -484,6 +525,7 @@ export function registerConsole(ctx: Context, repoRoot: string): void {
         api.addListener('qqbot/ai-photo-references/remove', (id: unknown, confirmation: unknown) => removeAiPhotoReference(id, confirmation, message => root.logger('qqbot').info(message)), authority);
         api.addListener('qqbot/external-drafts/list', (platform: unknown, status: unknown, limit: unknown) => listExternalDrafts(platform, status, limit), authority);
         api.addListener('qqbot/external-drafts/review', (action: unknown, id: unknown, confirmation: unknown) => reviewExternalDraft(action, id, confirmation, message => root.logger('qqbot').info(message)), authority);
+        api.addListener('qqbot/health/run', () => runConsoleHealthCheck(), authority);
     });
 }
 

@@ -10,6 +10,16 @@ export interface CompanionEvalReport {
     longBubbleRate: number;
 }
 
+export interface CompanionRegressionReport {
+    passed: boolean;
+    baseline: CompanionEvalReport;
+    current: CompanionEvalReport;
+    regressions: (
+        | { kind: 'rate'; metric: 'duplicateRate' | 'internalLeakRate' | 'assistantMetaRate' | 'longBubbleRate'; delta: number; limit: number }
+        | { kind: 'sample'; baseline: number; current: number; minimum: number }
+    )[];
+}
+
 const normalized = (text: string) => text.toLowerCase().replace(/[\s，。！？、,.!?~～]+/g, '');
 const internalLeak = /(?:system prompt|提示词|token|上下文窗口|我是(?:一个)?(?:ai|人工智能|语言模型)|(?:亲密|饥饿|压力|精力|信任)值\s*[:=：]?\s*\d)/i;
 const assistantMeta = /(?:作为(?:一个)?ai|无法提供情感|请问还有什么|希望这能帮到你|根据我的训练数据)/i;
@@ -36,4 +46,25 @@ export function evaluateCompanion(rows: readonly CompanionEvalRow[]): CompanionE
         assistantMetaRate: rate(assistant.filter(row => assistantMeta.test(row.content)).length),
         longBubbleRate: rate(assistant.filter(row => [...row.content].length > 120).length),
     };
+}
+
+/** 比较两个匿名统计窗口；不输出任何聊天原文。 */
+export function compareCompanionWindows(baselineRows: readonly CompanionEvalRow[], currentRows: readonly CompanionEvalRow[], options: {
+    maxRateIncrease?: number;
+    minimumAssistantMessages?: number;
+} = {}): CompanionRegressionReport {
+    const baseline = evaluateCompanion(baselineRows);
+    const current = evaluateCompanion(currentRows);
+    const limit = options.maxRateIncrease ?? 0.03;
+    const minimum = options.minimumAssistantMessages ?? 20;
+    if (!Number.isFinite(limit) || limit < 0 || limit > 1) throw new Error('回归比例上限不合法');
+    if (!Number.isInteger(minimum) || minimum < 1) throw new Error('回归样本下限不合法');
+    const metrics = ['duplicateRate', 'internalLeakRate', 'assistantMetaRate', 'longBubbleRate'] as const;
+    const regressions: CompanionRegressionReport['regressions'] = baseline.assistantMessages >= minimum && current.assistantMessages >= minimum
+        ? metrics.flatMap(metric => {
+            const delta = Number((current[metric] - baseline[metric]).toFixed(4));
+            return delta > limit ? [{ kind: 'rate' as const, metric, delta, limit }] : [];
+        })
+        : [{ kind: 'sample', baseline: baseline.assistantMessages, current: current.assistantMessages, minimum }];
+    return { passed: regressions.length === 0, baseline, current, regressions };
 }

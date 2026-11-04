@@ -13,6 +13,7 @@ import android.webkit.WebViewClient
 import android.net.http.SslError
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.OnBackPressedCallback
 
 class MainActivity : AppCompatActivity() {
     private lateinit var web: WebView
@@ -57,6 +58,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
         web.loadUrl(configured.toString())
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (web.canGoBack()) web.goBack() else finish()
+            }
+        })
     }
 
     override fun onDestroy() {

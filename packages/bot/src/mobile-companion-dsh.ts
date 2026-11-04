@@ -6,6 +6,8 @@ import { CompanionRuntime } from '@qqbot/mobile-companion/runtime';
 import { MemoryCompanionMediaStore } from '@qqbot/mobile-companion/media';
 import { PHONE_ACTION_CAPABILITIES, type ActionResult, type CompanionMessage, type PhoneActionCapability, type PhoneActionRequest } from '@qqbot/mobile-companion/protocol';
 import type { PhotoReviewDecisionRequest, PhotoReviewDecisionResult, PhotoReviewListRequest, PhotoReviewListResult } from '@qqbot/mobile-companion/photo-review';
+import { withBufferedVoiceConversation } from '@qqbot/mobile-companion/voice-conversation';
+import type { VoiceSessionStart } from '@qqbot/mobile-companion/voice-session';
 import type { DshConversationTurn, DshLink, DshState, DshVoice } from './dsh-link.ts';
 
 export interface MobileCompanionIntegration {
@@ -33,6 +35,7 @@ export function createMobileDshHandlers(options: {
     onActionResult?: (result: ActionResult, clientId: string) => Promise<void>;
     onPhotoReviewList?: (request: PhotoReviewListRequest, clientId: string) => Promise<PhotoReviewListResult>;
     onPhotoReviewDecision?: (request: PhotoReviewDecisionRequest, clientId: string, requestId: string) => Promise<PhotoReviewDecisionResult>;
+    transcribeVoice?: (data: Uint8Array, mime: VoiceSessionStart['mime'], clientId: string) => Promise<string>;
 }): CompanionRuntimeHandlers {
     const handlers = createDshCompanionHandlers<DshState, DshVoice>({
         advisor: {
@@ -48,11 +51,14 @@ export function createMobileDshHandlers(options: {
         ...(options.sharedConversation ? { sharedConversation: options.sharedConversation } : {}),
         ...(options.now ? { now: options.now } : {}),
     });
-    return {
+    const combined = {
         ...handlers,
         ...(options.onPhotoReviewList ? { onPhotoReviewList: options.onPhotoReviewList } : {}),
         ...(options.onPhotoReviewDecision ? { onPhotoReviewDecision: options.onPhotoReviewDecision } : {}),
     };
+    return options.transcribeVoice
+        ? withBufferedVoiceConversation(combined, { transcribe: options.transcribeVoice })
+        : combined;
 }
 
 /** 在 bot 进程内把手机伴侣真正接到 DSH；传输层仍由宿主选择 HTTPS 或 WebSocket。 */
@@ -65,6 +71,7 @@ export function createMobileCompanion(options: {
     onActionResult?: (result: ActionResult, clientId: string) => Promise<void>;
     onPhotoReviewList?: (request: PhotoReviewListRequest, clientId: string) => Promise<PhotoReviewListResult>;
     onPhotoReviewDecision?: (request: PhotoReviewDecisionRequest, clientId: string, requestId: string) => Promise<PhotoReviewDecisionResult>;
+    transcribeVoice?: (data: Uint8Array, mime: VoiceSessionStart['mime'], clientId: string) => Promise<string>;
     maxTurns?: number;
     maxClients?: number;
     sharedConversation?: DshSharedConversation;

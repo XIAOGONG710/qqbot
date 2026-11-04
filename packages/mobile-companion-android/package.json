@@ -5,6 +5,8 @@
   "description": "林梦瑶手机伴侣的最小 Android WebView 宿主",
   "type": "module",
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "preflight": "node preflight.mjs",
+    "preflight:release": "node preflight.mjs --release"
   }
 }

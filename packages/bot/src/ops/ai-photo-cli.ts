@@ -1,6 +1,6 @@
 // AI 生活照草稿（ADR 0239）：generate 只生成待审核草稿；approve 才进入照片货架；这里不负责发 QQ。
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { aiPhotoDraftStore, AI_PHOTO_KINDS, generateAiPhoto, type AiPhotoContext, type AiPhotoDraftStatus, type AiPhotoKind } from '../vision/ai-photo-drafts.ts';
@@ -97,6 +97,21 @@ async function run(): Promise<void> {
             console.log('结果停在待审核区；没有进入照片货架，也没有发送 QQ');
             const usageStatus = pool.status();
             console.log(`今日调用 ${usageStatus.attempts} 次，剩余 ${usageStatus.remaining} 次`);
+            const report = one('--report');
+            if (report) writeFileSync(resolve(report), `${JSON.stringify({
+                version: 1,
+                passed: true,
+                checkedAt: new Date().toISOString(),
+                draft: {
+                    id: result.id,
+                    kind: result.kind,
+                    status: result.status,
+                    mime: result.mime,
+                    bytes: result.bytes,
+                    expiresAt: result.expiresAt,
+                },
+                usage: { attempts: usageStatus.attempts, remaining: usageStatus.remaining },
+            }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
             return;
         }
         const entry = await drafts().generate(context, generator);
