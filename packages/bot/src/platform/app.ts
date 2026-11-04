@@ -216,7 +216,7 @@ export interface AppOptions {
     transport: Transport;
     log: Log;
     /** 测试用：替换每个回复器的生成、连发合并等待等 */
-    pipeline?: Partial<Pick<ContactPipelineOptions, 'generate' | 'settle' | 'now' | 'waitUntil'>>;
+    pipeline?: Partial<Pick<ContactPipelineOptions, 'generate' | 'settle' | 'now' | 'waitUntil' | 'retryAfterMs'>>;
     /** NapCat 的语音转文字、OCR（ADR 0052）；不给就不听不看，照旧「[语音]」「[图片]」 */
     media?: MediaReader;
     /** 看图（ADR 0055）：运行入口按配置建；测试也可以直接给假的 */
@@ -779,9 +779,13 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             ...(config.reactions && transport.reactMessage ? { react: (userId: number, messageId: number, text: string) => { transport.reactMessage!(messageId, reactionEmoji(text, messageId)).then(() => log(`[${userId}] 看到了没回，点了个表情回应`), error => failOnce('表情回应', userId, error)); } } : {}),
             send: async (userId, text, sendOptions) => {
                 const photo = contact.tier === 'boyfriend' ? photos?.resolve(text) : undefined;
+                // A cleaned photo can lose its cache before transmission; never send its control token as text.
+                if (!photo && /^<photo:[a-f0-9]{12}>$/i.test(text.trim())) throw new Error('照片发送前已不可用；本轮未发送照片');
                 if (photo) {
                     const id = await transport.sendPrivateImage!(userId, photo.file, '[照片]');
-                    photos!.used(photo.id);
+                    // 传输确认的消息 ID 是发送事实；副索引失败不能把成功改判成失败而重发。
+                    try { photos!.used(photo.id); }
+                    catch { log('照片货架：照片已发送，使用记录写入失败；保留发送结果，不重发'); }
                     return id;
                 }
                 const sticker = contact.tier === 'boyfriend' ? sendingStickers?.resolve(text) : undefined;

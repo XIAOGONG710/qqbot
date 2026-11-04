@@ -64,7 +64,7 @@ import { watchedLine, type Watched } from '.././language/watching.ts';
 import { describeCloseness } from '.././language/relationship.ts';
 import { describeHumanState, describeHumanValues, type HumanValues } from '.././human-values.ts';
 import { describeTogether, togetherNow } from '.././language/together.ts';
-import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
+import { photoAllowance, photoIntent, photoWanted, stripPhotoArtifacts, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
 
 /**
@@ -319,7 +319,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         const devices = options.devices?.parse(reply);
         const text = cleanUpReply(devices ? devices.reply : stripDeviceTokens(reply), names, character.regexScripts);
         const stickered = options.stickers?.clean(text, stickersAllowed) ?? stripStickerArtifacts(text);
-        const cleaned = options.photos ? options.photos.clean(stickered, photoNow !== undefined) : stickered;
+        const cleaned = options.photos ? options.photos.clean(stickered, photoNow !== undefined, photoNow ? { kind: photoNow, ...(photoDishNow ? { dish: photoDishNow } : {}) } : undefined) : stripPhotoArtifacts(stickered);
         if (!stickerOnlyNow) return { text: cleaned, devices };
         const only = cleaned.split('\n').map(line => line.trim()).filter(line => /^<sticker:[a-f0-9]{12}>$/i.test(line));
         return { text: only.length ? only.join('\n') : cleaned, devices };

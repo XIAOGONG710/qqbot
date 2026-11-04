@@ -9,6 +9,7 @@ import type { HistoryMessage } from '../src/memory/backfill.ts';
 import type { ImageDescriber, MEDIA_TIMEOUTS, MediaReader } from '../src/vision/media.ts';
 import type { AppConfig } from '../src/platform/config.ts';
 import { ChatHistory } from '../src/memory/history.ts';
+import { fileOps } from '../src/memory/json-file.ts';
 import type { MessageEvent, PokeEvent } from '../src/platform/onebot.ts';
 import { POKE_BACK_DELAY_MS, POKE_OUT_TEXT, pokeBackPlan } from '../src/social/pokes.ts';
 import { pokeOutPlan } from '../src/social/presence.ts';
@@ -21,7 +22,7 @@ import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import type { StickerEntry, StickerShelf } from '../src/social/stickers.ts';
-import { photoShelf, type PhotoSource } from '../src/vision/photos.ts';
+import { photoAllowance, photoShelf, type PhotoSource } from '../src/vision/photos.ts';
 import { CRISIS_FALLBACK } from '../src/language/exit-check.ts';
 import { CRISIS_MARK } from '../src/language/intent.ts';
 import { createDeviceControl } from '../src/platform/device-actions.ts';
@@ -80,7 +81,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; extra?: Partial<Transport> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; holdHistory?: Promise<void>; clock?: VirtualClock; retryAfterMs?: readonly number[]; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -121,6 +122,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         sensitive: options.sensitive ?? { on: () => true, describe: () => '' },
         pipeline: {
             generate: async (messages, _log, use) => options.generate?.(messages, use) ?? '好', settle: { quietMs: 0, maxMs: 0 },
+            ...(options.retryAfterMs ? { retryAfterMs: options.retryAfterMs } : {}),
             ...(options.clock ? { now: options.clock.now, waitUntil: options.clock.waitUntil } : {}),
         },
     });
@@ -377,6 +379,56 @@ describe('编排（app.ts）', () => {
         await until(() => second.sent.length >= 1);
         assert.equal(second.images.length, 0);
         assert.ok(second.sent.every(m => !m.includes('<photo')));
+    });
+
+    test('照片清理后打字时缓存丢失明确失败，不发内部指令或伪造图片历史', async () => {
+        const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
+        const cfg = config({ photos: true, schedule: true, typingStatus: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        const input = join(cfg.dataDir, 'synthetic-late-cat.jpg'); writeFileSync(input, 'synthetic-late-photo');
+        const entry = photoShelf({ dir: join(cfg.dataDir, 'photos'), log: () => {} }).add(input, 'cat', '合成缓存猫');
+        const cache = join(cfg.dataDir, 'photos', 'files', entry.file); let generated = false; let removedAfterClean = false;
+        const { app, images, sent, logs } = setup(cfg, { 10001: [] }, { clock, retryAfterMs: [],
+            generate: () => { generated = true; assert.ok(existsSync(cache)); return `这是之前翻到的那张合成照片\n<photo:${entry.id}>`; },
+            setInputStatus: async () => { if (!removedAfterClean) { assert.ok(generated); rmSync(cache); removedAfterClean = true; } },
+        });
+        try {
+            await app.connected(SELF);
+            app.receive({ ...event(10001, 202, '发张土豆的照片我看看'), time: Math.floor(clock.now() / 1000) });
+            const deadline = Date.now() + 12_000;
+            while (!sent.some(line => /<photo:/i.test(line)) && !logs.some(line => /回复失败/.test(line)) && Date.now() < deadline) {
+                await new Promise(resolve => setTimeout(resolve, 20)); const next = clock.nextTimer(); if (next !== undefined) clock.advanceTo(next);
+            }
+            assert.ok(removedAfterClean, '由打字回调确定性地在清理后移除缓存');
+            assert.equal(images.length, 0);
+            assert.ok(sent.every(line => !/<photo:/i.test(line)));
+            assert.ok(chat(cfg, 10001).every(line => !line.includes('她发了张照片：')));
+            assert.ok(logs.some(line => /照片发送前已不可用/.test(line)));
+        } finally { app.stop(); }
+    });
+
+    test('照片已发送后使用次数提交失败仍保留成功ID和可读历史，不触发重发', async () => {
+        const cfg = config({ photos: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        const source = join(cfg.dataDir, 'synthetic-cat.jpg'); writeFileSync(source, 'synthetic-photo-bytes');
+        const entry = photoShelf({ dir: join(cfg.dataDir, 'photos'), log: () => {} }).add(source, 'cat', '合成猫趴在地面上');
+        const indexFile = join(cfg.dataDir, 'photos', 'index.json'); const originalIndex = readFileSync(indexFile, 'utf8');
+        const { app, images, logs } = setup(cfg, { 10001: [] }, { generate: () => `<photo:${entry.id}>` });
+        await app.connected(SELF);
+        const originalRename = fileOps.renameSync; let failedCommits = 0;
+        fileOps.renameSync = (from, to) => { if (to === indexFile) { failedCommits++; throw new Error('PRIVATE_PHOTO_INDEX_FAILURE'); } return originalRename(from, to); };
+        try {
+            app.receive(event(10001, 201, '发张土豆的照片我看看'));
+            await until(() => images.length === 1);
+            const stored = new ChatHistory(cfg.dataDir).load(10001);
+            const sent = stored.filter(message => message.role === 'assistant');
+            assert.equal(failedCommits, 1, '注入仅命中成功发送后的使用次数提交');
+            assert.equal(images.length, 1);
+            assert.deepEqual(sent.map(message => [message.content, message.messageId]), [['她发了张照片：合成猫趴在地面上', 900]]);
+            assert.equal(readFileSync(indexFile, 'utf8'), originalIndex, '副索引提交失败保持原文件');
+            assert.equal(photoAllowance(stored, Date.now()).allowed, false, '重复间隔取自已发送聊天事实，不依赖used计数');
+            assert.ok(logs.some(line => /使用记录.*失败/.test(line)));
+            assert.ok(logs.every(line => !line.includes('PRIVATE_PHOTO_INDEX_FAILURE')));
+            assert.ok(logs.every(line => !/回复失败/.test(line)));
+        } finally { fileOps.renameSync = originalRename; }
     });
 
     test('照片货架：第一次找被限流（429）→ 过一会儿自己再来一次，最多 PHOTO_RETRY_MAX 次；找到就不再重试', async () => {

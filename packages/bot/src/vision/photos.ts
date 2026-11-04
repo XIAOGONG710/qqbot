@@ -7,9 +7,11 @@
 // 用法同表情包：模型要发就单独一行 <photo:编号>；代码清理（未知的 / 混在文字里的 / 一轮多张的都去掉）、解析、发送、聊天记录里写成可读的一句。
 // 照片都是“以前拍的”：提示词要求别说成“刚拍的”，免得和她当下在做的事对不上。
 
-import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { lstatSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
+import { writeJsonAtomic } from '../memory/json-file.ts';
+import { stateObject, stateTimestamp } from '../memory/state-schema.ts';
 
 export const PHOTO_KINDS = ['cat', 'view', 'work', 'food'] as const;
 export type PhotoKind = (typeof PHOTO_KINDS)[number];
@@ -38,7 +40,7 @@ const PAGE_OFFSETS = [0, 30, 60] as const;
 /** 两次下载之间歇一下：Wikimedia 对快速连续的请求回 429 */
 export const PHOTO_DOWNLOAD_GAP_MS = 2000;
 /** 这类错误是暂时的（限流、超时、断网）：停这一轮，不把这张标成“看过” */
-const TRANSIENT = /\b429\b|\b503\b|timed out|timeout|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|aborted/i;
+const TRANSIENT = /\b429\b|\b5\d{2}\b|timed out|timeout|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|aborted/i;
 /** 太小的当废图（不是高清） */
 const MIN_BYTES = 120 * 1024;
 /** 已看过的标题只留最近这么多 */
@@ -56,6 +58,12 @@ export const PHOTO_SHORTLIST = 5;
 const TOKEN = /<photo:([a-f0-9]{12})>/gi;
 const EXACT_TOKEN = /^<photo:([a-f0-9]{12})>$/i;
 const INDEX_VERSION = 1;
+
+/** Internal photo syntax is never plain chat text, even when photos are disabled or a token is malformed. */
+export function stripPhotoArtifacts(reply: string): string {
+    return reply.split(/\r\n?|\n/).map(line => line.replace(/<photo:[^>\r\n]*(?:>|$)/gi, '').trim()).filter(Boolean).join('\n').trim();
+}
+
 
 /** 网络来源的出处（只存给作者看，不进提示词） */
 export interface PhotoOrigin {
@@ -139,7 +147,7 @@ export interface PhotoShelf {
     /** 给回复模型看的这一类的候选清单（最久没发的在前）；没有就 undefined。food 要给菜名 */
     prompt(kind: PhotoKind, dish?: string): string | undefined;
     /** 清掉未知的、混在文字里的、同一轮第二张；allow 为 false 时全清掉 */
-    clean(reply: string, allow?: boolean): string;
+    clean(reply: string, allow?: boolean, scope?: { kind?: PhotoKind; dish?: string }): string;
     /** 一整个气泡是不是一张可发送的照片 */
     resolve(text: string): PublicPhoto | undefined;
     /** 真实发出后写入聊天记录的可读内容；普通文字原样返回 */
@@ -166,20 +174,44 @@ export interface PhotoShelfOptions {
 
 const emptyIndex = (): PhotoIndex => ({ version: INDEX_VERSION, entries: [], seen: [] });
 
-function readIndex(file: string, log: (message: string) => void): PhotoIndex {
-    if (!existsSync(file)) return emptyIndex();
+function validIndex(value: unknown): value is PhotoIndex {
+    if (!stateObject(value) || value.version !== INDEX_VERSION || !Array.isArray(value.entries)
+        || (value.seen !== undefined && (!Array.isArray(value.seen) || !value.seen.every(title => typeof title === 'string')))) return false;
+    const ids = new Set<string>();
+    return value.entries.every(entry => {
+        if (!stateObject(entry) || typeof entry.id !== 'string' || !/^[a-f0-9]{12}$/.test(entry.id) || ids.has(entry.id)
+            || typeof entry.file !== 'string' || !new RegExp(`^${entry.id}\\.(?:jpg|jpeg|png|webp|gif)$`).test(entry.file)
+            || !PHOTO_KINDS.includes(entry.kind as PhotoKind) || typeof entry.caption !== 'string' || !entry.caption.trim()
+            || !Number.isSafeInteger(entry.used) || Number(entry.used) < 0 || !stateTimestamp(entry.addedAt)
+            || (entry.lastUsedAt !== undefined && !stateTimestamp(entry.lastUsedAt))
+            || (entry.dish !== undefined && typeof entry.dish !== 'string')) return false;
+        if (entry.origin !== undefined && (!stateObject(entry.origin)
+            || !['title', 'page', 'license', 'artist', 'series'].every(key => typeof (entry.origin as Record<string, unknown>)[key] === 'string'))) return false;
+        ids.add(entry.id); return true;
+    });
+}
+
+class PhotoStateWriteError extends Error {
+    constructor(cause: unknown) { super('照片货架存储写入失败；内存未发布，请恢复存储后重试', { cause }); }
+}
+
+class PhotoStateConflict extends PhotoStateWriteError {
+    constructor() { super(undefined); this.message = '照片货架索引已由其它实例更新；本实例未写入，请重新打开货架'; }
+}
+
+function readIndex(file: string): PhotoIndex {
+    let text: string;
+    try { text = readFileSync(file, 'utf8'); }
+    catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return emptyIndex();
+        throw new Error('照片货架索引读取失败；原文件未重建，请修复后重试');
+    }
     try {
-        const value = JSON.parse(readFileSync(file, 'utf8')) as PhotoIndex;
-        if (value?.version !== INDEX_VERSION || !Array.isArray(value.entries)) throw new Error('版本或结构不对');
-        const entries = value.entries.filter(entry => typeof entry?.id === 'string' && /^[a-f0-9]{12}$/.test(entry.id)
-            && typeof entry.file === 'string' && PHOTO_KINDS.includes(entry.kind) && typeof entry.caption === 'string' && entry.caption.trim()
-            && typeof entry.used === 'number' && (entry.dish === undefined || typeof entry.dish === 'string'));
-        if (entries.length !== value.entries.length) log(`照片货架：${value.entries.length - entries.length} 条记录不合格，已忽略`);
-        const seen = Array.isArray(value.seen) ? value.seen.filter((title): title is string => typeof title === 'string') : [];
-        return { version: INDEX_VERSION, entries, seen };
-    } catch (error) {
-        log(`照片货架：索引读不了（${error instanceof Error ? error.message : String(error)}），当作空的；原文件不动`);
-        return emptyIndex();
+        const value: unknown = JSON.parse(text);
+        if (!validIndex(value)) throw new Error('schema');
+        return { ...value, seen: value.seen ?? [] };
+    } catch {
+        throw new Error('照片货架索引无效；原文件未重建，请修复后重试');
     }
 }
 
@@ -187,26 +219,47 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
     const now = options.now ?? (() => new Date());
     const filesDir = join(options.dir, 'files');
     const indexFile = join(options.dir, 'index.json');
-    let index = readIndex(indexFile, options.log);
+    let index = readIndex(indexFile);
 
-    const persist = () => {
-        mkdirSync(options.dir, { recursive: true });
-        const tmp = `${indexFile}.tmp`;
-        writeFileSync(tmp, `${JSON.stringify(index, null, 2)}\n`, 'utf8');
-        renameSync(tmp, indexFile);
+    // 只保护已经发生的顺序陈旧写；独立进程同时读改写仍需要独占锁协议。
+    const assertCurrent = () => {
+        try { if (JSON.stringify(readIndex(indexFile)) !== JSON.stringify(index)) throw new PhotoStateConflict(); }
+        catch (error) { throw error instanceof PhotoStateWriteError ? error : new PhotoStateWriteError(error); }
+    };
+    const persist = (next: PhotoIndex) => {
+        if (!validIndex(next)) throw new Error('照片货架更新无效；未修改索引');
+        assertCurrent();
+        try {
+            mkdirSync(options.dir, { recursive: true });
+            writeJsonAtomic(indexFile, next);
+        } catch (error) { throw new PhotoStateWriteError(error); }
+        index = next;
+    };
+    const available = (entry: PhotoEntry) => {
+        try { const file = lstatSync(join(filesDir, entry.file)); return file.isFile() && file.size > 0 && file.size <= PHOTO_MAX_BYTES; }
+        catch { return false; }
+    };
+    const storeImage = (file: string, bytes: Uint8Array) => {
+        const temporary = join(filesDir, `${file}.tmp-${randomUUID()}`);
+        try {
+            mkdirSync(filesDir, { recursive: true });
+            writeFileSync(temporary, bytes, { flag: 'wx' });
+            renameSync(temporary, join(filesDir, file));
+        }
+        catch (error) { throw new PhotoStateWriteError(error); }
+        finally { try { unlinkSync(temporary); } catch { /* 保留最初错误，未发布的临时文件不在索引里。 */ } }
     };
     // food 一类只算同一道菜的：没给菜名就是没有（不会拿别的菜的照片说是这一顿）
-    const present = (kind?: PhotoKind, dish?: string) => index.entries.filter(entry => (!kind || entry.kind === kind) && (kind !== 'food' || (dish !== undefined && entry.dish === dish)) && existsSync(join(filesDir, entry.file)));
-    const publicOf = (entry: PhotoEntry): PublicPhoto => ({ ...entry, file: join(filesDir, entry.file) });
-    const byId = (id: string) => index.entries.find(entry => entry.id === id.toLowerCase() && existsSync(join(filesDir, entry.file)));
+    const present = (kind?: PhotoKind, dish?: string) => index.entries.filter(entry => (!kind || entry.kind === kind) && (kind !== 'food' || (dish !== undefined && entry.dish === dish)) && available(entry));
+    const publicOf = (entry: PhotoEntry): PublicPhoto => ({ ...structuredClone(entry), file: join(filesDir, entry.file) });
+    const byId = (id: string) => index.entries.find(entry => entry.id === id.toLowerCase() && available(entry));
 
     let discovering = false;
     let discoveringFood = false;
     const foodMissAt = new Map<string, number>();
     const extFor = (type: string) => (type === 'image/png' ? '.png' : type === 'image/webp' ? '.webp' : type === 'image/gif' ? '.gif' : '.jpg');
     const markSeen = (title: string) => {
-        index = { ...index, seen: [...index.seen.filter(t => t !== title), title].slice(-SEEN_KEPT) };
-        persist();
+        persist({ ...index, seen: [...index.seen.filter(t => t !== title), title].slice(-SEEN_KEPT) });
     };
 
     return {
@@ -221,7 +274,8 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                     const target = PHOTO_TARGET[kind];
                     if (!target || present(kind).length >= target) continue;
                     const seen = new Set(index.seen);
-                    const owned = new Set(index.entries.map(entry => entry.origin?.title).filter((t): t is string => Boolean(t)));
+                    const owned = new Set(index.entries.filter(available).map(entry => entry.origin?.title).filter((t): t is string => Boolean(t)));
+                    const missing = new Set(index.entries.filter(entry => !available(entry)).map(entry => entry.origin?.title));
                     let fresh: PhotoCandidate[] = [];
                     for (const offset of PAGE_OFFSETS) {
                         let found: PhotoCandidate[];
@@ -231,13 +285,14 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                             if (TRANSIENT.test(reason)) outcome = 'retry';
                             break;
                         }
-                        fresh = found.filter(c => c.kind === kind && !seen.has(c.title) && !owned.has(c.title));
+                        fresh = found.filter(c => c.kind === kind && (!seen.has(c.title) || missing.has(c.title)) && !owned.has(c.title));
                         if (fresh.length) break;
                     }
                     if (!fresh.length) continue;
                     // 猫：同一只（同一系列）的照片放一起——已经有的系列优先；还没有就取候选最多的那个系列
                     if (kind === 'cat') {
-                        const have = new Set(present('cat').map(entry => entry.origin?.series).filter((t): t is string => Boolean(t)));
+                        // 缓存是否还在只决定可发送，不能把已经登记的猫身份清空。
+                        const have = new Set(index.entries.filter(entry => entry.kind === 'cat').map(entry => entry.origin?.series).filter((t): t is string => Boolean(t)));
                         const groups = new Map<string, PhotoCandidate[]>();
                         for (const c of fresh) groups.set(c.series, [...(groups.get(c.series) ?? []), c]);
                         // 已经有了一只猫的照片，就只收同一系列的——土豆只有一只；那个系列收完了就停，不换另一只猫
@@ -249,7 +304,7 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                     }
                     let tried = 0;
                     for (const candidate of fresh) {
-                        if (tried >= PHOTO_DISCOVERY_PER_RUN) break;
+                        if (tried >= PHOTO_DISCOVERY_PER_RUN || present(kind).length >= target) break;
                         if (tried > 0 || downloaded > 0) await new Promise(resolve => setTimeout(resolve, options.pauseMs ?? PHOTO_DOWNLOAD_GAP_MS));
                         tried++;
                         downloaded++;
@@ -258,21 +313,25 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                             if (image.bytes.length < MIN_BYTES) { markSeen(candidate.title); options.log(`照片货架：${candidate.title} 文件太小（${Math.round(image.bytes.length / 1024)} KB），不收`); continue; }
                             if (image.bytes.length > PHOTO_MAX_BYTES) { markSeen(candidate.title); options.log(`照片货架：${candidate.title} 太大，不收`); continue; }
                             const judged = await source.judge(image, kind);
-                            markSeen(candidate.title);
-                            if (!judged.keep) { options.log(`照片货架：不收 ${candidate.title}（${judged.reason ?? '没通过'}）`); continue; }
+                            if (judged.keep !== true) { markSeen(candidate.title); options.log(`照片货架：不收 ${candidate.title}（${judged.reason ?? '没通过'}）`); continue; }
+                            if (typeof judged.caption !== 'string' || !judged.caption.trim()) throw new Error('照片说明无效');
+                            if (present(kind).length >= target) break;
                             const id = createHash('sha256').update(image.bytes).digest('hex').slice(0, 12);
-                            if (index.entries.some(entry => entry.id === id)) continue;
-                            mkdirSync(filesDir, { recursive: true });
+                            const existing = index.entries.find(entry => entry.id === id);
+                            if (existing) {
+                                if (!available(existing)) storeImage(existing.file, image.bytes);
+                                markSeen(candidate.title); continue;
+                            }
                             const file = `${id}${extFor(image.type)}`;
-                            writeFileSync(join(filesDir, file), image.bytes);
+                            storeImage(file, image.bytes);
                             const entry: PhotoEntry = {
                                 id, file, kind, caption: judged.caption, addedAt: now().toISOString(), used: 0,
                                 origin: { title: candidate.title, page: candidate.pageUrl, license: candidate.license, artist: candidate.artist, series: candidate.series },
                             };
-                            index = { ...index, entries: [...index.entries, entry] };
-                            persist();
+                            persist({ ...index, entries: [...index.entries, entry], seen: [...index.seen.filter(t => t !== candidate.title), candidate.title].slice(-SEEN_KEPT) });
                             options.log(`照片货架：收了一张 ${kind}（${id}；${candidate.width}×${candidate.height}，${candidate.license}；${candidate.title}）`);
                         } catch (error) {
+                            if (error instanceof PhotoStateWriteError) throw error;
                             const reason = error instanceof Error ? error.message : String(error);
                             if (TRANSIENT.test(reason)) {
                                 options.log(`照片货架：处理 ${candidate.title} 时遇到暂时的错误（${reason}），这一轮先停，下次再来`);
@@ -300,7 +359,8 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                     const missedAt = foodMissAt.get(dish);
                     if (missedAt !== undefined && now().getTime() - missedAt < FOOD_MISS_RETRY_MS) continue;
                     const seen = new Set(index.seen);
-                    const owned = new Set(index.entries.map(entry => entry.origin?.title).filter((t): t is string => Boolean(t)));
+                    const owned = new Set(index.entries.filter(available).map(entry => entry.origin?.title).filter((t): t is string => Boolean(t)));
+                    const missing = new Set(index.entries.filter(entry => !available(entry)).map(entry => entry.origin?.title));
                     const seenKey = (title: string) => `${dish}|${title}`;
                     let fresh: PhotoCandidate[] = [];
                     for (const offset of PAGE_OFFSETS) {
@@ -311,7 +371,7 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                             if (TRANSIENT.test(reason)) outcome = 'retry';
                             break;
                         }
-                        fresh = found.filter(c => !seen.has(seenKey(c.title)) && !owned.has(c.title));
+                        fresh = found.filter(c => (!seen.has(seenKey(c.title)) || missing.has(c.title)) && !owned.has(c.title));
                         if (fresh.length) break;
                         if (!found.length) break;
                     }
@@ -327,21 +387,25 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                             if (image.bytes.length < MIN_BYTES / 2) { markSeen(seenKey(candidate.title)); options.log(`照片货架：${candidate.title} 文件太小，不收`); continue; }
                             if (image.bytes.length > PHOTO_MAX_BYTES) { markSeen(seenKey(candidate.title)); options.log(`照片货架：${candidate.title} 太大，不收`); continue; }
                             const judged = await source.judge(image, dish);
-                            markSeen(seenKey(candidate.title));
-                            if (!judged.keep) { options.log(`照片货架：不收 ${candidate.title}（${dish}：${judged.reason ?? '没通过'}）`); continue; }
+                            if (judged.keep !== true) { markSeen(seenKey(candidate.title)); options.log(`照片货架：不收 ${candidate.title}（${dish}：${judged.reason ?? '没通过'}）`); continue; }
+                            if (typeof judged.caption !== 'string' || !judged.caption.trim()) throw new Error('照片说明无效');
+                            if (present('food', dish).length >= FOOD_PER_DISH) break;
                             const id = createHash('sha256').update(image.bytes).digest('hex').slice(0, 12);
-                            if (index.entries.some(entry => entry.id === id)) continue;
-                            mkdirSync(filesDir, { recursive: true });
+                            const existing = index.entries.find(entry => entry.id === id);
+                            if (existing) {
+                                if (!available(existing)) storeImage(existing.file, image.bytes);
+                                markSeen(seenKey(candidate.title)); continue;
+                            }
                             const file = `${id}${extFor(image.type)}`;
-                            writeFileSync(join(filesDir, file), image.bytes);
+                            storeImage(file, image.bytes);
                             const entry: PhotoEntry = {
                                 id, file, kind: 'food', dish, caption: judged.caption, addedAt: now().toISOString(), used: 0,
                                 origin: { title: candidate.title, page: candidate.pageUrl, license: candidate.license, artist: candidate.artist, series: dish },
                             };
-                            index = { ...index, entries: [...index.entries, entry] };
-                            persist();
+                            persist({ ...index, entries: [...index.entries, entry], seen: [...index.seen.filter(t => t !== seenKey(candidate.title)), seenKey(candidate.title)].slice(-SEEN_KEPT) });
                             options.log(`照片货架：收了一张「${dish}」（${id}；${candidate.width}×${candidate.height}，${candidate.license}；${candidate.title}）`);
                         } catch (error) {
+                            if (error instanceof PhotoStateWriteError) throw error;
                             const reason = error instanceof Error ? error.message : String(error);
                             if (TRANSIENT.test(reason)) {
                                 options.log(`照片货架：处理 ${candidate.title} 时遇到暂时的错误（${reason}），这一轮先停，下次再来`);
@@ -358,33 +422,38 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
             }
         },
         add(source, kind, caption, dish) {
+            assertCurrent();
             if (!PHOTO_KINDS.includes(kind)) throw new Error(`种类只能是 ${PHOTO_KINDS.join(' / ')}`);
             const text = caption.trim();
             if (!text) throw new Error('要写一句照片里是什么');
             const extension = extname(source).toLowerCase();
             if (!ALLOWED_EXT.has(extension)) throw new Error(`只收 ${[...ALLOWED_EXT].join(' / ')}`);
-            const size = statSync(source).size;
+            const stat = statSync(source);
+            if (!stat.isFile() || stat.size === 0) throw new Error('照片应为非空普通文件');
+            const size = stat.size;
             if (size > PHOTO_MAX_BYTES) throw new Error(`文件太大（${Math.round(size / 1024 / 1024)} MB，上限 ${PHOTO_MAX_BYTES / 1024 / 1024} MB）`);
-            const id = createHash('sha256').update(readFileSync(source)).digest('hex').slice(0, 12);
+            const bytes = readFileSync(source);
+            if (!bytes.length || bytes.length > PHOTO_MAX_BYTES) throw new Error('照片文件大小超出范围');
+            const id = createHash('sha256').update(bytes).digest('hex').slice(0, 12);
             const existing = index.entries.find(entry => entry.id === id);
-            if (existing) return existing;
-            mkdirSync(filesDir, { recursive: true });
+            if (existing) {
+                if (!available(existing)) storeImage(existing.file, bytes);
+                return structuredClone(existing);
+            }
             const file = `${id}${extension === '.jpeg' ? '.jpg' : extension}`;
-            copyFileSync(source, join(filesDir, file));
+            storeImage(file, bytes);
             const entry: PhotoEntry = { id, file, kind, caption: text, addedAt: now().toISOString(), used: 0, ...(kind === 'food' && dish ? { dish } : {}) };
-            index = { ...index, entries: [...index.entries, entry] };
-            persist();
+            persist({ ...index, entries: [...index.entries, entry] });
             options.log(`照片货架：加了一张 ${kind}（${id}；来自 ${basename(source)}）`);
-            return entry;
+            return structuredClone(entry);
         },
         remove(id) {
-            const before = index.entries.length;
-            index = { ...index, entries: index.entries.filter(entry => entry.id !== id.toLowerCase()) };
-            if (index.entries.length === before) return false;
-            persist();
+            const entries = index.entries.filter(entry => entry.id !== id.toLowerCase());
+            if (entries.length === index.entries.length) return false;
+            persist({ ...index, entries });
             return true;
         },
-        list: (kind, dish) => present(kind, dish),
+        list: (kind, dish) => structuredClone(present(kind, dish)),
         has: (kind, dish) => present(kind, dish).length > 0,
         prompt(kind, dish) {
             const list = present(kind, dish)
@@ -396,18 +465,19 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
             return `[你手机里${PHOTO_KIND_NAMES[kind]}的照片（${when}；只能从下面选，编号不解释，一轮最多发一张）：发就另起一行单独写 <photo:编号>，这一行必须有，别的字不要塞在这一行里]\n`
                 + list.map(entry => `- <photo:${entry.id}>：${entry.caption}`).join('\n');
         },
-        clean(reply, allow = true) {
+        clean(reply, allow = true, scope) {
             let kept = false;
             return reply.split('\n').flatMap(line => {
                 const hits = [...line.matchAll(TOKEN)];
-                if (!hits.length) return [line];
+                if (!hits.length) { const plain = stripPhotoArtifacts(line); return plain ? [plain] : []; }
                 const exact = EXACT_TOKEN.exec(line.trim());
                 const known = exact && byId(exact[1]!);
-                if (allow && known && !kept) {
+                const inScope = known && (!scope || (scope.kind === known.kind && (known.kind !== 'food' || (scope.dish !== undefined && scope.dish === known.dish))));
+                if (allow && inScope && !kept) {
                     kept = true;
                     return [`<photo:${exact![1]!.toLowerCase()}>`];
                 }
-                const plain = line.replace(TOKEN, '').trim();
+                const plain = stripPhotoArtifacts(line);
                 options.log(`照片货架：去掉${!allow && known ? '这一轮不该发的' : known ? '同一轮多出的' : '未知或混在文字里的'}发送指令「${hits.map(hit => hit[0]).join('、')}」`);
                 return plain ? [plain] : [];
             }).join('\n').trim();
@@ -419,15 +489,14 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
         },
         history(text) {
             const match = EXACT_TOKEN.exec(text.trim());
-            const entry = match ? byId(match[1]!) : undefined;
+            // 这里描述已经发出的事实；发送后的缓存丢失不应改写聊天历史或绕过配额。
+            const entry = match ? index.entries.find(item => item.id === match[1]!.toLowerCase()) : undefined;
             return entry ? `${PHOTO_HISTORY_PREFIX}${entry.caption}` : text;
         },
         used(id) {
             const entry = index.entries.find(item => item.id === id.toLowerCase());
             if (!entry) return;
-            entry.used++;
-            entry.lastUsedAt = now().toISOString();
-            persist();
+            persist({ ...index, entries: index.entries.map(item => item === entry ? { ...item, used: item.used + 1, lastUsedAt: now().toISOString() } : item) });
         },
         status() {
             const byKind = { cat: 0, view: 0, work: 0, food: 0 } as Record<PhotoKind, number>;
@@ -472,7 +541,9 @@ export function photoAllowance(
 ): { allowed: boolean; reason?: string } {
     if (crisis) return { allowed: false, reason: '危机辅助响应' };
     if (woken) return { allowed: false, reason: '刚被消息吵醒' };
-    const sent = history.filter((message): message is typeof message & { time: string } => message.role === 'assistant' && message.content.startsWith(PHOTO_HISTORY_PREFIX) && message.time !== undefined);
+    const sent = history.filter((message): message is typeof message & { time: string } => message.role === 'assistant' && message.content.startsWith(PHOTO_HISTORY_PREFIX)
+        && message.time !== undefined && Number.isFinite(Date.parse(message.time)) && Date.parse(message.time) <= now)
+        .toSorted((a, b) => Date.parse(a.time) - Date.parse(b.time));
     const last = sent.at(-1);
     if (last && now - Date.parse(last.time) < PHOTO_GAP_MS) return { allowed: false, reason: '刚发过一张' };
     const today = new Date(now);
