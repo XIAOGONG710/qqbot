@@ -516,8 +516,11 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                     // id 带上这次先抽时的消息数：同一段第二次先抽不会和第一次撞
                     const item: HerPromise = { id: `p-${open.start.getTime()}-m${open.messages.length}-${i + 1}`, what: add.what, date: add.date, said, episode: open.id, meet: add.meet, early: true };
                     if (pending.some(p => sameMeetup(p, item)) || next.some(p => sameMeetup(p, item))) continue;
-                    // 和上次先记下的是同一个约就留着原来那条（id 不变）
-                    next.push(earlier.find(p => sameMeetup(p, item)) ?? item);
+                    // 同一约定沿用 ID，但改地点、正文或时长时采用最新内容；完全没变才复用原对象。
+                    const previous = earlier.find(p => sameMeetup(p, item));
+                    next.push(previous && previous.what === item.what && previous.said === item.said
+                        && previous.meet?.where === item.meet?.where && previous.meet?.minutes === item.meet?.minutes
+                        ? previous : { ...item, id: previous?.id ?? item.id });
                 }
                 for (const item of earlier.filter(p => !next.includes(p))) log(`划掉先记下的「${logBody(item.what)}」（${item.date} ${item.meet!.time}；改了或者不去了）`);
                 for (const item of next.filter(p => !earlier.includes(p))) {

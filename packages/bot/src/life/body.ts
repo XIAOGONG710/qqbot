@@ -45,13 +45,14 @@ export function bodyAt(body: Body, schedule: Schedule, now: Date): BodyNow {
     const { lessons } = classesOn(schedule, day);
     const minutesOfDay = now.getHours() * 60 + now.getMinutes();
     const woke = wakeTime(schedule, day, lessons);
-    const early = woke.getHours() * 60 + woke.getMinutes() === toMinutes(schedule.wake.early);
+    const earlyPeriod = schedule.periods[schedule.wake.earlySlot];
+    const early = earlyPeriod !== undefined && lessons.some(lesson => lesson.start.getHours() * 60 + lesson.start.getMinutes() === toMinutes(earlyPeriod.start));
     // 她的一天到 02:00 才结束：零点以后的「现在」在日历上是第二天
     const afterMidnight = now.getTime() - day.getTime() >= DAY_MS;
     if (afterMidnight) {
         if (minutesOfDay >= 30) result.sleepy = { when: 'late' };
     } else if (early && now >= woke && minutesOfDay < 12 * 60) {
-        result.sleepy = { when: 'morning', slept: schedule.sleep, woke: schedule.wake.early };
+        result.sleepy = { when: 'morning', slept: schedule.sleep, woke: woke.toTimeString().slice(0, 5) };
     }
     const classMinutes = lessons.reduce((sum, lesson) => sum + (lesson.end.getTime() - lesson.start.getTime()) / 60_000, 0);
     if (classMinutes >= BUSY_MINUTES && !afterMidnight && minutesOfDay >= 18 * 60) result.tired = true;

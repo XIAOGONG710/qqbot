@@ -109,7 +109,9 @@ export class Tastes {
         if (!Array.isArray(proposals)) return 0;
         const byRef = new Map(experiences.map(e => [e.ref, e]));
         let accepted = 0;
-        for (const item of proposals.slice(0, MAX_NEW_PER_REFLECTION)) {
+        for (const item of proposals) {
+            if (accepted >= MAX_NEW_PER_REFLECTION) break;
+            if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
             const p = item as Record<string, unknown>;
             const name = clean(p.name, 10);
             const why = clean(p.why, 40);

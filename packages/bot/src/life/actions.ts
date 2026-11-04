@@ -79,6 +79,7 @@ const FLEXIBLE: Record<'study' | 'rest' | 'read_book' | 'leisure' | 'work_on_pro
 export function judgeAction(intent: ActionIntent, context: ActionContext): ActionVerdict {
     const start = intent.startedAt;
     if (!intent.id.trim() || !Number.isFinite(start.getTime())) return failed(intent, 'invalid_time');
+    if (intent.durationMinutes !== undefined && (!Number.isInteger(intent.durationMinutes) || intent.durationMinutes <= 0)) return failed(intent, 'invalid_time');
     if (context.events?.some(event => event.id === intent.id.trim())) return failed(intent, 'already_done');
 
     if (intent.kind === 'sleep') return fixedAction(intent, sleepSpan(start, context.schedule), atHome(context.schedule, herDay(context.schedule, start)) ? '在家睡觉' : '在宿舍睡觉', context);
@@ -182,6 +183,7 @@ export function typedOccupation(event: LifeEvent, at: Date, books: readonly Read
 function fixedAction(intent: ActionIntent, span: { start: Date; end: Date } | undefined, occupation: string,
     context: ActionContext, ignoresFlexible = false): ActionVerdict {
     if (!span || !sameInstant(span.start, intent.startedAt)) return failed(intent, 'unavailable');
+    if (!Number.isFinite(span.end.getTime()) || span.end <= span.start) return failed(intent, 'invalid_time');
     if (!ignoresFlexible && firstExistingCollision(span.start, span.end, context.events)) return failed(intent, 'conflict');
     const minutes = minutesBetween(span.start, span.end);
     return succeeded(intent, span.end, occupation, minutes, minutes, 'succeeded');

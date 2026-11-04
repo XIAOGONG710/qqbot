@@ -10,6 +10,10 @@ import type { Schedule } from '../src/life/schedule.ts';
 import type { LongTermMemory } from '../src/memory/long-term.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
 import { SENSITIVE_OFF, SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
+import { judgeAction, type ActionContext } from '../src/life/actions.ts';
+import { bodyAt } from '../src/life/body.ts';
+import { wakeOn } from '../src/life/schedule.ts';
+import { Tastes } from '../src/life/tastes.ts';
 
 const dirs: string[] = [];
 const fixture = () => { const dir = mkdtempSync(join(tmpdir(), 'qqbot-life-review-')); dirs.push(dir); return dir; };
@@ -129,4 +133,83 @@ test('周记已完成时，阶段总结也会等待缺失日记并在恢复后�
     recovered = true;
     await service.catchUp(now);
     assert.deepEqual(summaries, ['phase:测试假期:2026-11-03']);
+});
+
+test('提前约定改地点和正文保留 ID 并采用新内容；未变化时不重复记录', async () => {
+    const dir = fixture(); const logs: string[] = [];
+    const chat: StoredMessage[] = [
+        { role: 'user', content: '今晚六点一起吃饭', time: '2026-11-05T11:50:00+08:00' },
+        { role: 'assistant', content: '好呀，六点东门见面', time: '2026-11-05T11:51:00+08:00' },
+    ];
+    let calls = 0;
+    const service = keeper(dir, logs, async () => JSON.stringify({ add: [{ what: ++calls === 1 ? '东门吃饭' : '西门吃饭', date: '2026-11-05',
+        meet: { time: '18:00', where: calls === 1 ? '东门' : '西门' } }] }), chat);
+    await service.sync();
+    const old = (JSON.parse(readFileSync(statePath(dir), 'utf8')) as PromiseState).promises[0]!;
+    chat.push({ role: 'user', content: '改成六点西门见面，吃一个小时', time: '2026-11-05T11:55:00+08:00' });
+    await service.sync();
+    const changed = (JSON.parse(readFileSync(statePath(dir), 'utf8')) as PromiseState).promises;
+    assert.equal(changed.length, 1);
+    assert.equal(changed[0]!.id, old.id);
+    assert.equal(changed[0]!.what, '西门吃饭');
+    assert.deepEqual(changed[0]!.meet, { time: '18:00', where: '西门', minutes: 90 });
+    const logged = logs.length;
+    chat.push({ role: 'assistant', content: '好，六点一起吃饭', time: '2026-11-05T11:56:00+08:00' });
+    await service.sync();
+    assert.equal(calls, 3);
+    assert.equal(logs.length, logged);
+});
+
+test('所有行动拒绝非法显式时长，固定时段也必须有限且正向', () => {
+    const start = new Date('2026-11-05T12:00:00+08:00'); const end = new Date('2026-11-05T12:30:00+08:00');
+    const context = { schedule, world: { routine: { meals: [{ kind: 'lunch', start, end, where: 'canteen' }] } } } as ActionContext;
+    for (const durationMinutes of [-10, 0, NaN, Infinity, -Infinity, 0.01]) {
+        for (const kind of ['eat', 'sleep', 'attend_class', 'meet', 'rest'] as const) {
+            const verdict = judgeAction({ id: 'bad', kind, startedAt: start, durationMinutes }, context);
+            assert.equal(verdict.ok, false, `${kind}: ${durationMinutes}`);
+            if (!verdict.ok) assert.equal(verdict.reason, 'invalid_time');
+        }
+    }
+    const good = judgeAction({ id: 'meal', kind: 'eat', startedAt: start, durationMinutes: 10 }, context);
+    assert.equal(good.ok, true);
+    if (good.ok) assert.equal(good.actualMinutes, 10);
+    const defaultMeal = judgeAction({ id: 'default', kind: 'eat', startedAt: start }, context);
+    assert.equal(defaultMeal.ok, true);
+    if (defaultMeal.ok) assert.equal(defaultMeal.actualMinutes, 30);
+    for (const invalidEnd of [start, new Date(start.getTime() - 1), new Date(NaN)]) {
+        const verdict = judgeAction({ id: 'meet', kind: 'meet', startedAt: start }, { schedule,
+            appointments: [{ id: 'meet', start, end: invalidEnd, subject: '见面', target: 'user', meal: false }] });
+        assert.equal(verdict.ok, false);
+        if (!verdict.ok) assert.equal(verdict.reason, 'invalid_time');
+    }
+});
+
+test('早课困倦不受起床抖动影响，描述采用真实起床时间；无早课不误判', () => {
+    const early: Schedule = { ...schedule, wake: { ...schedule.wake, jitter: { from: '2026-09-01', spreadMin: 10, weekendMin: 0 } },
+        courses: [1, 2, 3, 4, 5].map(day => ({ day, slot: 'one', weeks: '1-20', kind: 'hard', name: '高等数学' })) };
+    const signs = new Set<number>();
+    for (let offset = 0; offset < 28; offset++) {
+        const date = new Date(2026, 10, 2 + offset, 10);
+        if (date.getDay() === 0 || date.getDay() === 6) { assert.equal(bodyAt({}, early, date).sleepy, undefined); continue; }
+        const woke = wakeOn(early, date);
+        const baseline = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 7, 40);
+        signs.add(Math.sign(woke.getTime() - baseline.getTime()));
+        const sleepy = bodyAt({}, early, date).sleepy;
+        assert.equal(sleepy?.when, 'morning');
+        if (sleepy?.when === 'morning') assert.equal(sleepy.woke, woke.toTimeString().slice(0, 5));
+        assert.equal(bodyAt({}, early, new Date(woke.getTime() - 1)).sleepy, undefined);
+    }
+    assert.ok(signs.has(-1) && signs.has(1));
+});
+
+test('偏好反思忽略非法提案并继续处理有效项，保存结果且维持每日上限', async () => {
+    const dir = fixture(); let calls = 0;
+    const valid = (name: string) => ({ name, why: '多次真实体验', stance: 'like', refs: ['e0', 'e1'] });
+    const service = new Tastes({ dataDir: dir, now: () => now,
+        experiences: () => Array.from({ length: 6 }, (_, i) => ({ ref: `e${i}`, at: now.toISOString(), kind: '休闲', text: '玩游戏' })),
+        ask: async () => { calls++; return JSON.stringify([null, [], '错误', false, valid('独立游戏'), valid('摄影'), valid('阅读')]); } });
+    assert.equal(await service.reflect(), 2);
+    assert.deepEqual(service.list().map(t => t.name), ['独立游戏', '摄影']);
+    assert.equal(await service.reflect(), 0);
+    assert.equal(calls, 1);
 });
