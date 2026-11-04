@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { createDshLink, dshOptionsFromLlm, sanitizeDshError, sanitizeDshQuestion, sanitizeDshState, type DshState } from '../src/dsh-link.ts';
+import { DshConversationContext } from '../src/dsh-continuity.ts';
 import { renderDshState } from '../src/dsh-state-export.ts';
 import { createMobileCompanion, createMobileDshHandlers } from '../src/mobile-companion-dsh.ts';
 import { helloEnvelope } from '@qqbot/mobile-companion/gateway';
@@ -12,6 +13,26 @@ const options: LlmOptions = {
 const response = (text: string) => new Response(JSON.stringify({ choices: [{ message: { content: text }, finish_reason: 'stop' }] }));
 
 describe('DSH 连接层', () => {
+    test('DSH 旧问答不会盖住时间更新的 QQ 消息，且只提交完整成功问答', () => {
+        const context = new DshConversationContext();
+        for (let index = 0; index < 3; index += 1) {
+            context.commit(`旧问题 ${index}`, `旧回答 ${index}`, index * 2 + 1, index * 2 + 2);
+        }
+        const recent = context.recent([{ time: new Date(10).toISOString(), role: 'user', content: 'QQ 新消息：我明天考试' }]);
+        assert.equal(recent?.length, 6);
+        assert.ok(recent?.some(turn => turn.content === 'QQ 新消息：我明天考试'));
+        assert.ok(!recent?.some(turn => turn.content === '旧问题 0'), '最旧咨询应给更新的 QQ 消息让位');
+
+        const afterFailure = new DshConversationContext();
+        // 模型失败时调用方不 commit；下一次咨询不能看到只有问题、没有回答的半截上下文。
+        assert.equal(afterFailure.recent([]), undefined);
+        afterFailure.commit('成功问题', '成功回答', 20, 21);
+        assert.deepEqual(afterFailure.recent([]), [
+            { role: 'user', content: '成功问题' },
+            { role: 'assistant', content: '成功回答' },
+        ]);
+    });
+
     test('独立 DSH 配置只覆盖地址、模型和超时，不复制或暴露密钥', () => {
         const overridden = dshOptionsFromLlm(options, { baseUrl: 'https://advisor.example/v1', model: 'advisor-model', timeoutMs: 2_500 });
         assert.deepEqual(overridden, { ...options, baseUrl: 'https://advisor.example/v1', model: 'advisor-model', timeoutMs: 2_500 });

@@ -126,7 +126,8 @@ import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sen
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
 import { humanValuesAt, humanValuesFromAnchor, type HumanValues } from '.././human-values.ts';
-import { createDshLink, dshOptionsFromLlm, sanitizeDshError, type DshConversationTurn, type DshProbeResult, type DshState, type DshVoice } from '.././dsh-link.ts';
+import { createDshLink, dshOptionsFromLlm, sanitizeDshError, type DshProbeResult, type DshState, type DshVoice } from '.././dsh-link.ts';
+import { DshConversationContext } from '.././dsh-continuity.ts';
 import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
 import { writeDshState } from '.././dsh-state-export.ts';
 import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
@@ -347,7 +348,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const dshEnabled = dshConfig.enabled === true;
     let dshProbe: DshProbeResult | undefined;
     let dshAskTail: Promise<void> = Promise.resolve();
-    const dshConversation: DshConversationTurn[] = [];
+    const dshConversation = new DshConversationContext();
     log(`DSH 顾问：${dshEnabled ? '开（显式 /dsh ask 或 /dsh probe）' : '关'}`);
     // 关着的时候不留上次开着时的完整提示词
     if (!sensitive.on()) rmSync(join(config.dataDir, 'last-prompt.json'), { force: true });
@@ -2871,7 +2872,7 @@ ${body}
 
     const dshRecentTurns = () => {
         if (!deviceOwner) return undefined;
-        return [...history.load(deviceOwner.qq).slice(-6).map(message => ({ role: message.role, content: message.content })), ...dshConversation].slice(-6);
+        return dshConversation.recent(history.load(deviceOwner.qq));
     };
 
     const dshVoice = (): DshVoice | undefined => {
@@ -2908,14 +2909,13 @@ ${body}
     });
 
     const askDsh = (question: string): void => {
+        const askedAt = worldNow();
         dshAskTail = dshAskTail.then(async () => {
             try {
                 const continuity = dshRecentTurns();
-                dshConversation.push({ role: 'user', content: question });
                 const reply = await dshLink.advise({ question, state: dshState(), recentTurns: continuity, voice: dshVoice() });
                 const text = reply.trim() || '我刚才没整理好，你再问我一次。';
-                dshConversation.push({ role: 'assistant', content: text });
-                dshConversation.splice(0, Math.max(0, dshConversation.length - 12));
+                dshConversation.commit(question, text, askedAt, worldNow());
                 tellOwner(text);
             } catch (error) {
                 tellOwner(`（DSH 咨询失败：${sanitizeDshError(error)}）`);
