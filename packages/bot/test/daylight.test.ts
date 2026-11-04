@@ -34,10 +34,11 @@ describe('真实日照（ADR 0228）', () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-daylight-'));
         let now = at('2026-11-03T12:00').getTime();
         let fail = false;
+        let partial = false;
         const logs: string[] = [];
         const fetcher = daylightFetcher({
             dir: join(root, 'daylight'), now: () => now, log: message => logs.push(message), cacheMaxAgeMs: 60_000,
-            fetchJson: async () => { if (fail) throw new Error('timeout'); return payload(['2026-11-03', '2026-11-04']); },
+            fetchJson: async () => { if (fail) throw new Error('timeout'); return payload(partial ? ['2026-11-03'] : ['2026-11-03', '2026-11-04']); },
         });
         try {
             await fetcher.refresh();
@@ -47,8 +48,13 @@ describe('真实日照（ADR 0228）', () => {
             assert.equal(fetcher.day('jinan', '2026-11-03', at('2026-11-03T12:00')), undefined, '缓存时间明显在未来时失败关闭');
             assert.equal(fetcher.status().places.jinan.stale, true);
             now = fetchedAt;
-            fail = true;
+            partial = true;
             now += 30_000;
+            await fetcher.refresh();
+            assert.ok(fetcher.day('jinan', '2026-11-04', at('2026-11-04T12:00')), '截断响应不能覆盖旧缓存里的次日数据');
+            assert.ok(logs.some(line => line.includes('返回不完整')));
+            partial = false;
+            fail = true;
             await fetcher.refresh();
             assert.equal(fetcher.day('jinan', '2026-11-03', at('2026-11-03T16:30'))?.phase, '傍晚');
             assert.ok(logs.some(line => line.includes('没取到') && line.includes('timeout')));

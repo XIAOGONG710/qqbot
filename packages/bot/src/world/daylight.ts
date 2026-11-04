@@ -22,6 +22,9 @@ export function realDaylight(): RealDaylight | undefined { return current; }
 const MAX_DAYS = 31;
 const MAX_RESPONSE_BYTES = 1 * 1024 * 1024;
 const clock = (value: string) => value.slice(11, 16);
+const pad = (value: number) => String(value).padStart(2, '0');
+const dateOf = (value: Date) => `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+const dayAfter = (value: Date) => dateOf(new Date(value.getFullYear(), value.getMonth(), value.getDate() + 1));
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const DATE_TIME_MINUTE = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/;
 
@@ -150,7 +153,11 @@ export function daylightFetcher(options: DaylightFetcherOptions): DaylightFetche
                         const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}`
                             + '&daily=sunrise,sunset&past_days=2&forecast_days=16&timezone=Asia%2FShanghai';
                         const days = parseOpenMeteoDaylight(await fetchJson(url));
-                        const store: DaylightStore = { fetchedAt: new Date(now()).toISOString(), days };
+                        const at = new Date(now());
+                        // 请求的是过去 2 天 + 未来 16 天；若连当前日和次日都不全，视为截断响应，
+                        // 不能用它覆盖仍然可用的完整缓存。
+                        if (!days[dateOf(at)] || !days[dayAfter(at)]) throw new Error('日照服务返回不完整（缺少当前日或次日）');
+                        const store: DaylightStore = { fetchedAt: at.toISOString(), days };
                         writeJsonAtomic(path(place), store);
                         stores.set(place, store);
                         errors.delete(place); errorAt.delete(place);
