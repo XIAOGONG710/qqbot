@@ -29,6 +29,7 @@ export interface MessageEvent {
     self_id: number;
     user_id: number;
     message_id: number;
+    real_seq?: string;
     time: number;
     message: Segment[] | string;
     raw_message: string;

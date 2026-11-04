@@ -27,7 +27,8 @@ import { consumeDshTimelineInbox, consumeDshWorldInbox } from '.././memory/dsh-i
 import { readWebSecrets, WebLookup } from './web.ts';
 import { acquireLock, startHeartbeat as startLockHeartbeat } from './lock.ts';
 import type { Log } from './log.ts';
-import { ChatHistory, type StoredMessage } from '.././memory/history.ts';
+import { ChatHistory, sourceMessageSeq, type StoredMessage } from '.././memory/history.ts';
+import { stateTimestamp } from '../memory/state-schema.ts';
 import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from '.././memory/backfill.ts';
 import { quotedIds, renderForward, segmentsToText, type ForwardLookup, type GroupMessageEvent, type MessageEvent, type PokeEvent, type QuotedMessage, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
@@ -2470,9 +2471,19 @@ ${body}
         }
     }
 
+    const eventIdentity = (event: MessageEvent) => ({ role: 'user' as const, time: new Date(event.time * 1000).toISOString(), messageSeq: sourceMessageSeq(event.real_seq) });
     function onMessage(event: MessageEvent): void {
+        if (!Number.isSafeInteger(event.user_id) || event.user_id <= 0 || !Number.isSafeInteger(event.message_id) || event.message_id < 0
+            || !Number.isSafeInteger(event.time)) {
+            log('收到的私聊来源身份无效，已忽略');
+            return;
+        }
+        const at = new Date(event.time * 1000);
+        if (!Number.isFinite(at.getTime()) || !stateTimestamp(at.toISOString())) { log('收到的私聊来源身份无效，已忽略'); return; }
+        event = { ...event };
+        const sourceIdentity = eventIdentity(event);
         // 补回或入口重投的同一条消息不消耗限额，也不重复处理。
-        if (chatHistory.hasMessage(event.user_id, event.message_id)) return;
+        if (chatHistory.hasMessage(event.user_id, event.message_id, sourceIdentity)) return;
         // 陌生人（ADR 0209）：签名还没写明是 AI 的时候不回；看出是未成年人的号不再回
         const isStranger = !config.contacts.some(c => c.qq === event.user_id);
         if (isStranger && config.unlistedFriends && strangers) {
@@ -2710,14 +2721,14 @@ ${body}
         // Defer media work until the previous message has fully entered the contact pipeline.
         // Starting read() before awaiting `queued` only serialized delivery and still leaked parallel OCR/vision calls.
         const job = (queued ?? Promise.resolve()).then(async () => {
-            if (stopped || chatHistory.hasMessage(qq, event.message_id)) return;
+            if (stopped || chatHistory.hasMessage(qq, event.message_id, sourceIdentity)) return;
             if (quotesToFetch.length) await fetchQuotes(qq, quotesToFetch);
             if (forwardsToFetch.length) await fetchForwards(qq, forwardsToFetch);
             const message = reader
-                ? await reader.read(event.message, event.message_id, message => log(`[${qq}] ${message}`)).catch(() => event.message)
+                ? await reader.read(event.message, event.message_id, message => log(`[${qq}] ${message}`), { ...sourceIdentity, messageId: event.message_id, peer: qq }).catch(() => event.message)
                 : event.message;
             // 读的时候补回可能已经记下了这条
-            if (stopped || chatHistory.hasMessage(qq, event.message_id)) return;
+            if (stopped || chatHistory.hasMessage(qq, event.message_id, sourceIdentity)) return;
             deliver(target, event, message);
         }).catch(error => log(`[${qq}] 处理收到的消息出错：${error instanceof Error ? error.message : String(error)}`));
         inbox.set(qq, job);
@@ -2911,7 +2922,7 @@ ${body}
                 });
             return;
         }
-        responder.receive(text, event.message_id, new Date(event.time * 1000));
+        responder.receive(text, event.message_id, new Date(event.time * 1000), sourceMessageSeq(event.real_seq));
         // 他这句在纠正她上一轮的接法（10-30 用户：让她自己学习去理解人说的话）：记下他说的、她接的、他纠正的
         // 只记男朋友档那位的（同学档说的不是“他”；记在同一个文件里会串到别人的对话里）
         if (config.selfDirectedMemory && deviceOwner && event.user_id === deviceOwner.qq && isCorrection(text)) {
@@ -3187,7 +3198,7 @@ ${body}
                 continue;
             }
             if (stopped) return;
-            let fresh = newerThanStored(history.load(contact.qq), fetched, tierRecord.since(contact.qq));
+            let fresh = newerThanStored(history.load(contact.qq), fetched, tierRecord.since(contact.qq), selfId);
             // 停机期间他回的「假」/「像」：记下来，不当聊天补回（ADR 0073）
             if (feedback && canGiveFeedback(contact)) {
                 const stored = history.load(contact.qq);
@@ -3203,10 +3214,15 @@ ${body}
             }
             if (backReader && fresh.some(m => backReader.needs(m.message))) {
                 const contactLog = (message: string) => log(`[${contact.qq}] ${message}`);
-                fresh = await Promise.all(fresh.map(async m => ({ ...m, message: await backReader.read(m.message, m.message_id, contactLog).catch(() => m.message) })));
+                fresh = await Promise.all(fresh.map(async m => ({ ...m, message: await backReader.read(m.message, m.message_id, contactLog, {
+                    messageId: m.message_id, peer: contact.qq, role: (m.sender?.user_id ?? m.user_id) === selfId ? 'assistant' : 'user',
+                    time: new Date(m.time * 1000).toISOString(), sourceTime: m.time, messageSeq: sourceMessageSeq(m.real_seq),
+                }).catch(() => m.message) })));
                 if (stopped) return;
-                const known = new Set(history.load(contact.qq).map(m => m.messageId));
-                fresh = fresh.filter(m => !known.has(m.message_id));
+                fresh = fresh.filter(m => !chatHistory.hasMessage(contact.qq, m.message_id, {
+                    role: (m.sender?.user_id ?? m.user_id) === selfId ? 'assistant' : 'user',
+                    time: new Date(m.time * 1000).toISOString(), sourceTime: m.time, messageSeq: sourceMessageSeq(m.real_seq),
+                }));
             }
             // 补回的消息里引用的那一条不在记录里：先问 NapCat（11-02 线上就是补回的这一种）
             const fetchIds = [...new Set(fresh.flatMap(m => missingQuotes(contact.qq, m.message)))];

@@ -3,13 +3,13 @@
 // 对照 vendor/NapCatQQ/packages/napcat-onebot/action/go-cqhttp/GetFriendMsgHistory.ts：
 //   - 不带 message_seq 时取最新的 count 条，从旧到新
 //   - message_id 是 md5(msgId|chatType|peerUid) 的前 31 位（napcat-common/src/message-unique.ts），
-//     NapCat 重启后不变，和事件里、send_private_msg 返回的是同一个，所以按它去重
+//     NapCat 重启后不变，和事件/ACK一致，但可能碰撞或重用；明确来源还要比较角色、源秒、real_seq。
 //   - 小号自己发的消息 post_type 为 message_sent，sender.user_id 是小号自己
 //
 // 只补比本地最后一条更新的消息：漏掉的只会出现在最后一条之后。
 // （bot 运行期间小号在手机上手动发的消息不会推给 bot，也不在这里补，它们比本地最后一条旧。）
 
-import type { StoredMessage } from './history.ts';
+import { sameMessage, sourceMessageSeq, type StoredMessage } from './history.ts';
 import { segmentsToText, type ForwardLookup, type QuoteLookup, type Segment } from '../platform/onebot.ts';
 import { OPS_NOTICE_PREFIX } from '.././ops/alert-qq.ts';
 import { stateObject, stateTimestamp } from './state-schema.ts';
@@ -23,6 +23,7 @@ export interface HistoryMessage {
     message_id: number;
     /** 秒 */
     time: number;
+    real_seq?: string;
     user_id?: number;
     sender?: { user_id?: number };
     message: Segment[] | string;
@@ -44,23 +45,27 @@ function validHistoryMessage(value: unknown): value is HistoryMessage {
  * notBefore：换档的时间（tier-record.ts）。降档后旧记录归档了，本地是空的，不设下限会把 QQ 里换档前的消息又补回来。
  */
 export function findMissed(stored: StoredMessage[], fetched: HistoryMessage[], selfId: number, notBefore?: Date): StoredMessage[] {
-    return toStored(newerThanStored(stored, fetched, notBefore), selfId);
+    return toStored(newerThanStored(stored, fetched, notBefore, selfId), selfId);
 }
 
 /** findMissed 的前一半：还没转成文字的原始记录（他发的语音、图片先听一听、看一看再转，ADR 0052） */
-export function newerThanStored(stored: StoredMessage[], fetched: HistoryMessage[], notBefore?: Date): HistoryMessage[] {
-    const known = new Set(stored.map(m => m.messageId).filter(id => id !== undefined));
+export function newerThanStored(stored: StoredMessage[], fetched: HistoryMessage[], notBefore?: Date, selfId?: number): HistoryMessage[] {
+    const known = new Map<number, StoredMessage[]>();
+    for (const message of stored) if (message.messageId !== undefined) { const rows = known.get(message.messageId) ?? []; rows.push(message); known.set(message.messageId, rows); }
     const last = stored.at(-1);
     const since = last ? Date.parse(last.time) : -Infinity;
     const fetchedIds = new Set<string>();
     return fetched
         .filter(validHistoryMessage)
         .filter(m => {
-            const key = JSON.stringify([m.message_id, m.time, m.sender?.user_id ?? m.user_id]);
+            const key = JSON.stringify([m.message_id, m.time, m.sender?.user_id ?? m.user_id, sourceMessageSeq(m.real_seq)]);
             if (fetchedIds.has(key)) return false;
             fetchedIds.add(key); return true;
         })
-        .filter(m => !known.has(m.message_id) && m.time * 1000 >= Math.floor(since / 1000) * 1000)
+        .filter(m => !(known.get(m.message_id) ?? []).some(row => sameMessage(row, {
+            messageId: m.message_id, role: selfId === undefined ? row.role : (m.sender?.user_id ?? m.user_id) === selfId ? 'assistant' : 'user',
+            time: new Date(m.time * 1000).toISOString(), sourceTime: m.time, messageSeq: sourceMessageSeq(m.real_seq),
+        })) && m.time * 1000 >= Math.floor(since / 1000) * 1000)
         // 运维提醒（外网断了 / 恢复了，用她的号发给用户，ops/alert-qq.ts）不是她说的话，不补进聊天记录
         .filter(m => !segmentsToText(m.message).trim().startsWith(OPS_NOTICE_PREFIX))
         .filter(m => !notBefore || m.time * 1000 >= notBefore.getTime())
@@ -76,6 +81,8 @@ export function toStored(messages: HistoryMessage[], selfId: number, quoted?: Qu
             role: (m.sender?.user_id ?? m.user_id) === selfId ? 'assistant' : 'user',
             content: segmentsToText(m.message, quoted, forwarded).trim(),
             messageId: m.message_id,
+            ...((m.sender?.user_id ?? m.user_id) === selfId ? { sourceTime: m.time } : {}),
+            ...(sourceMessageSeq(m.real_seq) ? { messageSeq: sourceMessageSeq(m.real_seq)! } : {}),
         }))
         .filter(m => m.content);
 }
