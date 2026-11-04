@@ -26,6 +26,8 @@ export function isCompleteBackup(target, expectedStateSource) {
     if (!matchesArtifact(join(target, 'hindsight.sql'), database, requireRecordedSize)) return false;
     if (expectedStateSource === null) return state.skipped === true;
     if (typeof expectedStateSource === 'string' && state.source !== expectedStateSource) return false;
+    // 已知存在权威状态目录时必须真的有状态归档；skipped 只适用于没有数据目录的安装。
+    if (typeof expectedStateSource === 'string' && state.skipped === true) return false;
     return state.skipped === true || matchesArtifact(join(target, 'her-state.zip'), state, requireRecordedSize);
 }
 
@@ -63,6 +65,15 @@ export function discoverStateBackup(root) {
         return { source, items };
     }
     return undefined;
+}
+
+/**
+ * 数据目录根本不存在时允许只备份数据库；但目录存在却没有任何可备份状态，
+ * 更可能是路径配错或数据丢失，不能把这种情况标成一次成功的完整备份。
+ */
+export function stateBackupDisposition(plan) {
+    if (plan === undefined) return 'missing';
+    return plan.items.length > 0 ? 'ready' : 'empty';
 }
 
 export function backupDirectoriesToPrune(names, completeNames, todayName, keepDays = 7) {

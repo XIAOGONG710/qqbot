@@ -19,6 +19,7 @@ import {
     isCompleteBackup,
     isReusableBackupArtifact,
     retryDue,
+    stateBackupDisposition,
     writeBackupMarker,
 } from './backup-state.mjs';
 
@@ -62,9 +63,14 @@ function pgDump(reuse) {
 
 function archiveState(reuse, plan) {
     // 状态和聊天记录（都不大，几百 MB 以内）；日志不备（没价值、还占地方）
-    if (!plan?.items.length) {
-        log('没有要打包的状态文件');
+    const disposition = stateBackupDisposition(plan);
+    if (disposition === 'missing') {
+        log('没有状态数据目录，本次只备份数据库');
         return { ok: true, skipped: true };
+    }
+    if (disposition === 'empty') {
+        log(`状态数据目录 ${plan.source} 是空的，拒绝把这次备份标成完成`);
+        return { ok: false, source: plan.source, reason: 'state_empty' };
     }
     const zip = join(target, 'her-state.zip');
     if (reuse) {

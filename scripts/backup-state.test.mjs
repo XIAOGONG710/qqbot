@@ -13,6 +13,7 @@ import {
     isReusableBackupArtifact,
     nonEmptyFile,
     retryDue,
+    stateBackupDisposition,
     writeBackupMarker,
 } from './backup-state.mjs';
 
@@ -171,6 +172,29 @@ describe('backup completion policy', () => {
             source: 'runtime/bot',
             items: [join(active, 'world')],
         });
+    });
+
+    test('an existing but empty state directory is a failure, not a successful skipped backup', () => {
+        const root = fresh();
+        const active = join(root, 'runtime', 'bot');
+        mkdirSync(active, { recursive: true });
+        const plan = discoverStateBackup(root);
+
+        assert.deepEqual(plan, { source: 'runtime/bot', items: [] });
+        assert.equal(stateBackupDisposition(plan), 'empty');
+        assert.equal(stateBackupDisposition(undefined), 'missing');
+        assert.equal(stateBackupDisposition({ source: 'runtime/bot', items: [join(active, 'chats')] }), 'ready');
+
+        const target = fresh();
+        writeFileSync(join(target, 'hindsight.sql'), 'database backup', 'utf8');
+        writeBackupMarker(target, COMPLETE_MARKER, {
+            completed: true,
+            components: {
+                database: { ok: true, bytes: 15 },
+                state: { ok: true, skipped: true, source: 'runtime/bot' },
+            },
+        });
+        assert.equal(isCompleteBackup(target, 'runtime/bot'), false);
     });
 
     test('state archives are not reused after the authoritative data directory changes', () => {
