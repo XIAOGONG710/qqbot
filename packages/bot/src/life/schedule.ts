@@ -377,6 +377,20 @@ export function parseSchedule(json: unknown, source: string): Schedule {
             evening: texts(free.evening, '.free.evening'),
             afternoonFrom: str(free.afternoonFrom, '.free.afternoonFrom', TIME),
             eveningFrom: str(free.eveningFrom, '.free.eveningFrom', TIME),
+            ...(free.on !== undefined ? {
+                on: arr(free.on, '.free.on').map((v, i) => {
+                    const path = `.free.on[${i}]`;
+                    const o = obj(v, path);
+                    const date = str(o.date, `${path}.date`, DATE);
+                    if (formatDate(new Date(`${date}T00:00:00`)) !== date) fail(`${path}.date 不是有效日期`);
+                    const window = str(o.window, `${path}.window`) as 'morning' | 'afternoon' | 'evening';
+                    if (!['morning', 'afternoon', 'evening'].includes(window)) fail(`${path}.window 无效`);
+                    const text = str(o.text, `${path}.text`).trim();
+                    if (!text) fail(`${path}.text 不能为空`);
+                    if (o.home !== undefined && typeof o.home !== 'boolean') fail(`${path}.home 应为布尔值`);
+                    return { date, window, text, ...(o.home === undefined ? {} : { home: o.home as boolean }) };
+                }),
+            } : {}),
             ...(free.home !== undefined ? (() => {
                 const home = obj(free.home, '.free.home');
                 return { home: { morning: texts(home.morning, '.free.home.morning'), afternoon: texts(home.afternoon, '.free.home.afternoon'), evening: texts(home.evening, '.free.home.evening') } };

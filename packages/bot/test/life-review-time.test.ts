@@ -5,7 +5,8 @@ import { projectPortfolio } from '../src/life/projects.ts';
 import { bookProgressOn, parseBooks, type ReadingBook } from '../src/life/her-days.ts';
 import { pursuitViews, quizRecord, type Pursuit } from '../src/life/pursuits.ts';
 import { quizzesOn, quizEvents } from '../src/life/everyday.ts';
-import { formatDate, type Schedule } from '../src/life/schedule.ts';
+import { formatDate, parseSchedule, stateAt, type Schedule } from '../src/life/schedule.ts';
+import { sideJobOn, type Money } from '../src/life/money.ts';
 import type { LifeEvent } from '../src/world/life-events.ts';
 
 const now = new Date('2026-11-05T12:00:00+08:00');
@@ -84,4 +85,41 @@ test('同日多节同名课仅首次生成周测，事件 ID 唯一，课表输�
         checked++;
     }
     assert.ok(checked > 0);
+});
+
+const money: Money = { allowance: 2000, payday: 1, start: 1000, askHome: 1000, detail: false,
+    prices: { canteen: [10, 10], takeout: [15, 15], misc: [5, 5], catFood: 10, parcels: {} },
+    saving: { keepPerDay: 50, step: 50, max: 100 }, sideJobs: { perMonth: 10, pay: [10, 50], kinds: ['测试'] } };
+test('每月接单不因同日碰撞丢单，含闰月和极限月单量；重算稳定并保持已有非碰撞收入', () => {
+    for (let year = 2024; year <= 2027; year++) for (let month = 0; month < 12; month++) for (const count of [0, 1, 2, 10, 28, 1.5]) {
+        const config = { ...money, sideJobs: { ...money.sideJobs!, perMonth: count } };
+        const days = new Date(year, month + 1, 0).getDate();
+        const jobs = Array.from({ length: days }, (_, i) => sideJobOn(config, new Date(year, month, i + 1)));
+        const actual = jobs.filter(Boolean).length;
+        assert.ok(actual === Math.floor(count) || actual === Math.ceil(count), `${year}-${month + 1}: ${count} -> ${actual}`);
+        assert.deepEqual(jobs, Array.from({ length: days }, (_, i) => sideJobOn(config, new Date(year, month, i + 1))));
+    }
+    // 修改前的合成账锚点：修复只补被碰撞挤掉的单，不重抽已有单的日期或工资。
+    for (const [day, pay] of [[1, 16], [8, 40], [10, 41], [11, 24], [14, 32], [22, 29], [24, 19], [27, 10], [30, 12]]) {
+        assert.deepEqual(sideJobOn(money, new Date(2026, 0, day!)), { kind: '测试', pay });
+    }
+});
+
+test('单日最多一单时，无法保证所有月份的月单量配置明确报错', () => {
+    assert.throws(() => sideJobOn(money, new Date(NaN)), RangeError);
+    for (const perMonth of [-1, 29, NaN, Infinity]) {
+        assert.throws(() => sideJobOn({ ...money, sideJobs: { ...money.sideJobs!, perMonth } }, now), RangeError);
+    }
+});
+
+test('指定日期活动解析往返后仍生效，保留 home=false 并校验字段', () => {
+    const on = [{ date: '2026-11-05', window: 'evening', text: '合成生日聚会', home: false }];
+    const config = { ...schedule, courses: [], free: { ...schedule.free, on } };
+    const parsed = parseSchedule(config, '合成资料');
+    assert.deepEqual(parsed.free.on, on);
+    assert.deepEqual(parseSchedule(JSON.parse(JSON.stringify(parsed)), '合成资料'), parsed);
+    assert.deepEqual(stateAt(parsed, new Date('2026-11-05T19:00:00+08:00')).activity, { kind: 'free', text: '合成生日聚会' });
+    for (const bad of [{ ...on[0], date: '2026-02-30' }, { ...on[0], window: 'night' }, { ...on[0], home: 'false' }, { ...on[0], text: '  ' }]) {
+        assert.throws(() => parseSchedule({ ...config, free: { ...config.free, on: [bad] } }, '合成资料'));
+    }
 });

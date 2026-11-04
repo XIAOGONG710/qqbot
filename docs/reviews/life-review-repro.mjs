@@ -1,4 +1,5 @@
 // Read-only source audit: assertions confirm defects in the reviewed baseline.
+// Historical baseline: 53dbaf2c. On repaired code use test/life-review*.test.ts instead.
 // Only synthetic fixtures under the system temporary directory are written.
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';

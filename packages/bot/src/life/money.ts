@@ -13,6 +13,7 @@ export interface Money {
     askHome: number;
     /** misc：在学校每天的零碎（零食饮料、日用品） */
     prices: { canteen: [number, number]; takeout: [number, number]; misc: [number, number]; catFood: number; parcels: Record<string, number> };
+    /** 单日最多一单；perMonth 在 0–28 之间，保证二月也能排下。 */
     sideJobs?: { perMonth: number; pay: [number, number]; kinds: string[] };
     saving: { keepPerDay: number; step: number; max: number };
     /** 这一档说得出口余额、花了多少（和 persona.yml family.money 一样只给男朋友、闺蜜） */
@@ -63,14 +64,26 @@ export function lastPayday(money: Money, day: Date): Date {
 export function sideJobOn(money: Money, day: Date): { kind: string; pay: number } | undefined {
     const jobs = money.sideJobs;
     if (!jobs || !jobs.kinds.length) return undefined;
+    if (!Number.isFinite(day.getTime())) throw new RangeError('接单日期不合法');
+    if (!Number.isFinite(jobs.perMonth) || jobs.perMonth < 0 || jobs.perMonth > 28) throw new RangeError('每月线上单数量须在 0–28 之间（单日最多一单）');
     const month = formatDate(day).slice(0, 7);
     const length = new Date(day.getFullYear(), day.getMonth() + 1, 0).getDate();
     const count = Math.floor(jobs.perMonth) + (unit(`${month} side job extra`) < jobs.perMonth % 1 ? 1 : 0);
+    // 先保留旧算法每个日期的第一单（日期、种类和工资不变），只给被碰撞挤掉的单另找空日。
+    const assigned = new Map<number, number>();
+    const collisions: number[] = [];
     for (let k = 0; k < count; k++) {
-        if (1 + Math.floor(unit(`${month} side job ${k} day`) * length) !== day.getDate()) continue;
-        return { kind: jobs.kinds[Math.floor(unit(`${month} side job ${k} kind`) * jobs.kinds.length)]!, pay: priceIn(jobs.pay, `${month} side job ${k} pay`) };
+        const preferred = 1 + Math.floor(unit(`${month} side job ${k} day`) * length);
+        if (assigned.has(preferred)) collisions.push(k);
+        else assigned.set(preferred, k);
     }
-    return undefined;
+    for (const k of collisions) {
+        let available = 1 + Math.floor(unit(`${month} side job ${k} collision`) * length);
+        while (assigned.has(available)) available = available % length + 1;
+        assigned.set(available, k);
+    }
+    const k = assigned.get(day.getDate());
+    return k === undefined ? undefined : { kind: jobs.kinds[Math.floor(unit(`${month} side job ${k} kind`) * jobs.kinds.length)]!, pay: priceIn(jobs.pay, `${month} side job ${k} pay`) };
 }
 
 /** 这周存多少：手上的钱留够到下次到账前每天 keepPerDay，剩下的按 step 往下取整，最多 max，不超过离目标还差的 */
