@@ -8,6 +8,7 @@ import { localDate } from '../local-date.ts';
 
 import type { OpenAIMessage } from '../language/prompt.ts';
 import type { MacroNames } from '.././st/macros.ts';
+import { calendarDate, stateObject } from '../memory/state-schema.ts';
 
 /** 一件待跟进的事 */
 export interface FollowUp {
@@ -28,12 +29,11 @@ export interface FollowUp {
 export const FOLLOW_UP_DAYS = 3;
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PARTS: Record<string, string> = { morning: '上午', afternoon: '下午', evening: '晚上' };
 
 /** 「上午」「下午」「晚上」「14:00」 */
 export function partText(time: string): string {
-    return PARTS[time] ?? time;
+    return Object.hasOwn(PARTS, time) ? PARTS[time]! : time;
 }
 
 /**
@@ -72,18 +72,22 @@ export interface Extracted {
 export function parseExtraction(text: string): Extracted {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
-    if (start < 0 || end < start) throw new Error(`模型输出里没有 JSON：${text.slice(0, 80).replace(/\s*\n\s*/g, ' / ')}`);
-    const data = JSON.parse(text.slice(start, end + 1)) as { add?: unknown; resolved?: unknown };
-    const add = (Array.isArray(data.add) ? data.add : []).flatMap(item => {
-        const o = item as Record<string, unknown>;
+    if (start < 0 || end < start) throw new Error('模型输出里没有 JSON');
+    let data: unknown;
+    try { data = JSON.parse(text.slice(start, end + 1)); }
+    catch { throw new Error('待跟进模型输出不是有效 JSON'); }
+    if (!stateObject(data) || !Array.isArray(data.add) || !Array.isArray(data.resolved)) throw new Error('待跟进模型输出格式无效');
+    const add = data.add.flatMap(item => {
+        if (!stateObject(item)) return [];
+        const o = item;
         const what = typeof o.what === 'string' ? o.what.trim() : '';
         const date = typeof o.date === 'string' ? o.date.trim() : '';
         let time = typeof o.time === 'string' ? o.time.trim() : 'afternoon';
-        if (!(time in PARTS) && !TIME.test(time)) time = 'afternoon';
+        if (!Object.hasOwn(PARTS, time) && !TIME.test(time)) time = 'afternoon';
         // 说不出哪天的不记
-        return what && DATE.test(date) ? [{ what: what.slice(0, 40), date, time }] : [];
+        return what && calendarDate(date) ? [{ what: what.slice(0, 40), date, time }] : [];
     });
-    const resolved = (Array.isArray(data.resolved) ? data.resolved : []).filter((id): id is string => typeof id === 'string');
+    const resolved = data.resolved.filter((id): id is string => typeof id === 'string');
     return { add, resolved };
 }
 
@@ -131,6 +135,7 @@ export function tripAlreadyOver(item: Pick<FollowUp, 'what' | 'date' | 'time'>, 
 
 /** 本地的某天 */
 export function parseDay(date: string): Date {
+    if (!calendarDate(date)) throw new RangeError('待跟进日期无效');
     const [y, m, d] = date.split('-').map(Number);
     return localDate(y!, m! - 1, d);
 }

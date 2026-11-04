@@ -29,7 +29,7 @@ function validRecord(value: unknown): value is ProactiveRecord {
     const [date, occasion] = value.id.split(':');
     return calendarDate(date!) && OCCASIONS.includes(value.occasion as ProactiveRecord['occasion']) && occasion === value.occasion
         && stateTimestamp(value.plannedAt) && stateTimestamp(value.at)
-        && ['sent', 'dryRun', 'skipped', 'failed'].includes(String(value.result))
+        && typeof value.result === 'string' && ['sent', 'dryRun', 'skipped', 'failed'].includes(value.result)
         && optional(value.reason, v => typeof v === 'string')
         && optional(value.messageIds, v => Array.isArray(v) && v.every(Number.isSafeInteger))
         && optional(value.tries, v => value.result === 'failed' && integer(v, 1, UNREACHABLE_MAX_TRIES))
