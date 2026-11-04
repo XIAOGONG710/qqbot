@@ -85,7 +85,10 @@ export function parseExtraction(text: string): Extracted {
         let time = typeof o.time === 'string' ? o.time.trim() : 'afternoon';
         if (!Object.hasOwn(PARTS, time) && !TIME.test(time)) time = 'afternoon';
         // 说不出哪天的不记
-        return what && calendarDate(date) ? [{ what: what.slice(0, 40), date, time }] : [];
+        if (!what || !calendarDate(date)) return [];
+        let clipped = ''; let count = 0;
+        for (const char of what) { if (count++ === 40) break; clipped += char; }
+        return [{ what: clipped, date, time }];
     });
     const resolved = data.resolved.filter((id): id is string => typeof id === 'string');
     return { add, resolved };

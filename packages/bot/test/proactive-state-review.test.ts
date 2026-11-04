@@ -22,6 +22,12 @@ test('畸形提取项不拖垮合法项，日历真实、继承时段键按未�
  assert.throws(() => parseDay('2026-02-30'), RangeError);
 });
 
+test('跟进事实按40代码点截断，不能把emoji切成单独代理项', () => {
+ const what = '合'.repeat(39) + '😀剩余';
+ const parsed = parseExtraction(JSON.stringify({ add: [{ what, date: '2026-11-05', time: 'afternoon' }], resolved: [] }));
+ assert.equal(parsed.add[0]!.what, '合'.repeat(39) + '😀');
+});
+
 test('纯窗口计算保留数学范围，合法现代/低年跟进保持原来的两小时规则', () => {
  const item = (date: string, time: string): FollowUp => ({ id: 'f-synthetic', what: '合成面试', date, time, episode: 'ep-0' });
  assert.equal(new Date(firstAsk(item('9999-12-31', '23:30'))!).getFullYear(), 10000);

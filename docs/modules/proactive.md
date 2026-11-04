@@ -34,4 +34,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0011](../adr/0011-proactive-messages.md)、[ADR 0100](../adr/0100-reach-when-unanswered.md)、[ADR 0101](../adr/0101-inner-life.md)、[ADR 0107](../adr/0107-invite-to-play.md)、[ADR 0110](../adr/0110-photo-shares.md)、[ADR 0112](../adr/0112-come-back.md)、[ADR 0116](../adr/0116-ask-opinion.md)、[ADR 0117](../adr/0117-his-hours.md)、[ADR 0124](../adr/0124-proactive-room.md)
+[ADR 0011](../adr/0011-proactive-messages.md)、[ADR 0080](../adr/0080-share-cards.md)、[ADR 0100](../adr/0100-reach-when-unanswered.md)、[ADR 0101](../adr/0101-inner-life.md)、[ADR 0107](../adr/0107-invite-to-play.md)、[ADR 0110](../adr/0110-photo-shares.md)、[ADR 0112](../adr/0112-come-back.md)、[ADR 0116](../adr/0116-ask-opinion.md)、[ADR 0117](../adr/0117-his-hours.md)、[ADR 0124](../adr/0124-proactive-room.md)、[ADR 0156](../adr/0156-proactive-now.md)、[ADR 0236](../adr/0236-proactive-commit-and-cancellation.md)

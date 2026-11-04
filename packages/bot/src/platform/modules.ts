@@ -73,7 +73,7 @@ export const MODULES: readonly ModuleDef[] = [
         files: ['proactive/proactive.ts', 'proactive/proactive-planner.ts', 'proactive/proactive-state.ts', 'proactive/inner.ts', 'proactive/shares.ts', 'proactive/follow-ups.ts'],
         groups: ['主动找他'],
         metrics: '周报「主动性」（条数、30 分钟内他回的占比、按时机分）',
-        adrs: ['0011', '0100', '0101', '0107', '0110', '0112', '0116', '0117', '0124'],
+        adrs: ['0011', '0080', '0100', '0101', '0107', '0110', '0112', '0116', '0117', '0124', '0156', '0236'],
     },
     {
         id: 'memory', name: '记忆与数据',
