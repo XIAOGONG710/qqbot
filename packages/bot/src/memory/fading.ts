@@ -87,7 +87,7 @@ export function withoutMark(text: string): string {
  */
 export function lastTouched(result: RecallResult): Date | undefined {
     const document = DATED_DOCUMENT.exec(result.document_id ?? '');
-    if (document) return new Date(Number(document[2]), Number(document[3]) - 1, Number(document[4]) + (document[1] === 'week' ? 6 : 0));
+    if (document) return localDate(Number(document[2]), Number(document[3]) - 1, Number(document[4]) + (document[1] === 'week' ? 6 : 0));
     const times = [result.occurred_start, result.occurred_end, result.mentioned_at].map(time).filter(t => t !== undefined);
     return times.length ? new Date(Math.max(...times)) : undefined;
 }
