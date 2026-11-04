@@ -133,7 +133,7 @@ function capabilityPanel(status) {
     ]);
 }
 
-/** 照片货架、小梗、最近一份周报（ADR 0120）：对应的功能没开就没有这几行；周报是只有数字的文字 */
+/** 照片货架、AI 照片草稿、小梗、最近一份周报：对应的功能没开就没有这几行。 */
 function extrasPanel(status) {
     const rows = extrasRows(status.extras);
     if (!rows.length) return null;

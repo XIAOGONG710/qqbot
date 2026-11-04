@@ -9,6 +9,7 @@
 - `vision/vision.ts`
 - `vision/photos.ts`
 - `vision/photo-sources.ts`
+- `vision/ai-photo-drafts.ts`
 - `vision/safe-image.ts`
 - `vision/media.ts`
 - `vision/hearing.ts`
@@ -32,4 +33,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0055](../adr/0055-deepseek-vision.md)、[ADR 0109](../adr/0109-photo-shelf.md)、[ADR 0128](../adr/0128-food-photos.md)、[ADR 0206](../adr/0206-read-his-stickers.md)
+[ADR 0055](../adr/0055-deepseek-vision.md)、[ADR 0109](../adr/0109-photo-shelf.md)、[ADR 0128](../adr/0128-food-photos.md)、[ADR 0206](../adr/0206-read-his-stickers.md)、[ADR 0239](../adr/0239-ai-photo-drafts.md)

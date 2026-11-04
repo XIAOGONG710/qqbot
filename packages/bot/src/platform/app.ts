@@ -84,6 +84,7 @@ import { createAccountSource } from '.././bilibili/bilibili-account-source.ts';
 import { stripDeviceTokens } from './device-actions.ts';
 import { CAMERA_VISION_PROMPT, SCREEN_VISION_PROMPT, startDeviceService, type DeviceService } from './device-service.ts';
 import { configuredImageDescriber } from '.././vision/vision.ts';
+import { aiPhotoDraftStore } from '.././vision/ai-photo-drafts.ts';
 import { BILIBILI_RISK, createBreaker, guardRequest } from '.././bilibili/platform-breaker.ts';
 import { commentComposer, replyComposer } from '.././bilibili/bilibili-comment.ts';
 import { createReplyWatcher, type ReplyOptions, type ReplyWatcher } from '.././bilibili/bilibili-replies.ts';
@@ -257,8 +258,8 @@ export interface AppStatus {
     proactive: ProactiveMode;
     /** 每个功能开关此刻开没开（ADR 0120）：状态页按模块分组画 */
     features: FeatureStatus[];
-    /** 照片货架 / 小梗 / 最近一份周报（ADR 0120）；对应的功能没开就没有 */
-    extras?: { photos?: { count: number; cat: number; view: number; work: number; food: number }; jokes?: number; report?: { name: string; text: string } };
+    /** 照片货架 / AI 照片草稿 / 小梗 / 最近一份周报；对应的功能没开就没有。 */
+    extras?: { photos?: { count: number; cat: number; view: number; work: number; food: number }; aiPhotoDrafts?: { total: number; pending: number; approved: number; rejected: number }; jokes?: number; report?: { name: string; text: string } };
     /** 长期记忆开着时：服务探测结果（每分钟最多探一次）、最近一次写入和召回 */
     memory?: { baseUrl: string; health?: MemoryEvent; lastWrite?: MemoryEvent; lastRecall?: MemoryEvent };
     /** 手机伴侣安全摘要：不含配对码、nonce 或消息正文。 */
@@ -351,6 +352,8 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
         log: message => log(`外部草稿：${message}`),
         canDraft: platform => externalPlatformMode(config.externalPlatforms?.[platform]) !== 'off',
     });
+    // 生图仍由显式 CLI 发起；运行时只读取草稿摘要给中文控制台看，不调用外部服务。
+    const aiPhotoDrafts = aiPhotoDraftStore({ dir: join(config.dataDir, 'ai-photo-drafts'), log: message => log(`AI 照片草稿：${message}`) });
     const dshLink = createDshLink(dshOptionsFromLlm(config.llm, {
         ...(dshConfig.baseUrl ? { baseUrl: dshConfig.baseUrl } : {}),
         ...(dshConfig.model ? { model: dshConfig.model } : {}),
@@ -2177,6 +2180,8 @@ ${video.link}`);
     const statusExtras = (): NonNullable<AppStatus['extras']> => {
         const extras: NonNullable<AppStatus['extras']> = {};
         if (photos) { const s = photos.status(); extras.photos = { count: s.count, cat: s.byKind.cat, view: s.byKind.view, work: s.byKind.work, food: s.byKind.food }; }
+        const aiDraftStatus = aiPhotoDrafts.status();
+        if (aiDraftStatus.total) extras.aiPhotoDrafts = aiDraftStatus;
         if (jokes) extras.jokes = config.contacts.filter(c => c.tier === 'boyfriend').reduce((n, c) => n + jokes.load(c.qq).jokes.length, 0);
         if (config.weeklyReport) {
             try {
@@ -3408,6 +3413,7 @@ ${body}
                     return undefined;
                 }
             })();
+            const extras = statusExtras();
             return {
                 runtime,
                 contacts: [
@@ -3424,7 +3430,7 @@ ${body}
                     herDaysCard.herWorld && sharedWorld ? sharedWorld.at(herDaysCard.herWorld, herDaysCard.schedule!, now) : undefined) } : {}),
                 proactive: config.proactive,
                 features: featureStatuses(config),
-                ...(photos || jokes || config.weeklyReport ? { extras: statusExtras() } : {}),
+                ...(Object.keys(extras).length ? { extras } : {}),
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
                 ...(mobileCompanion ? { mobileCompanion: { enabled: true, ...mobileCompanion.runtime.status() } } : { mobileCompanion: { enabled: false, connected: false, queued: 0, maxQueuedPerClient: MAX_QUEUED_PER_CLIENT } }),
                 ...(weather ? { weather: weather.status() } : {}),

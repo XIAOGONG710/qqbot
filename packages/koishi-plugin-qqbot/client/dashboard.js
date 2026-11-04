@@ -18,6 +18,7 @@ const MODE_NAMES = { on: '开', dryRun: '试运行', greet: '问候', send: '会
 const RESPONDER_SEARCH_NAMES = {
     waiting: '等待', settling: '连续消息', generating: '准备回复', sending: '发送回复', retry: '重试', initiating: '主动联系', idle: '空闲',
 };
+const positiveInteger = value => Number.isInteger(value) && value > 0 ? value : 0;
 
 /** 回复器内部阶段统一翻成页面中文；搜索和表格共用，避免用户看到或输入代码值。 */
 export function responderStatusText(responder = {}) {
@@ -109,16 +110,16 @@ export function overviewCounts(status) {
     const contacts = status?.contacts ?? [];
     const busy = contacts.filter(contact => contact.responder?.phase && contact.responder.phase !== 'idle').length;
     const retrying = contacts.filter(contact => contact.responder?.phase === 'retry').length;
-    const positiveInteger = value => Number.isInteger(value) && value > 0 ? value : 0;
     const drafts = positiveInteger(status?.externalDrafts?.pending);
     const approved = positiveInteger(status?.externalDrafts?.approved);
     const publishing = positiveInteger(status?.externalDrafts?.publishing);
     const failed = positiveInteger(status?.externalDrafts?.failed);
+    const aiPhotos = positiveInteger(status?.extras?.aiPhotoDrafts?.pending);
     const dsh = status?.features?.find(feature => feature.key === 'dsh');
     return {
         contacts: contacts.length,
         busy,
-        attention: { total: retrying + drafts + approved + publishing + failed, retrying, drafts, approved, publishing, failed },
+        attention: { total: retrying + drafts + approved + publishing + failed + aiPhotos, retrying, drafts, approved, publishing, failed, aiPhotos },
         dshOn: dsh?.on === true,
         features: featureTotals(status?.features),
         capabilities: capabilityTotals(status?.features),
@@ -133,6 +134,7 @@ export function attentionDetail(attention = {}) {
     if (attention.approved) parts.push(`已批准待发布 ${attention.approved}`);
     if (attention.publishing) parts.push(`发布待核对 ${attention.publishing}`);
     if (attention.failed) parts.push(`发布失败待处理 ${attention.failed}`);
+    if (attention.aiPhotos) parts.push(`AI 照片待审核 ${attention.aiPhotos}`);
     return parts.join(' · ') || '当前没有需要处理的事项';
 }
 
@@ -324,6 +326,14 @@ export function extrasRows(extras) {
     if (extras?.photos) {
         const p = extras.photos;
         rows.push({ label: '照片货架', text: p.count ? `${p.count} 张（土豆 ${p.cat}、天空 ${p.view}${p.work ? `、她的片子 ${p.work}` : ''}${p.food ? `、吃的 ${p.food}` : ''}）` : '空的（她自己去网上找，每 6 小时一次）' });
+    }
+    if (extras?.aiPhotoDrafts) {
+        const p = extras.aiPhotoDrafts;
+        const total = positiveInteger(p.total);
+        const pending = positiveInteger(p.pending);
+        const approved = positiveInteger(p.approved);
+        const rejected = positiveInteger(p.rejected);
+        rows.push({ label: 'AI 照片草稿', text: pending ? `${pending} 张待审核（共 ${total} 张；已通过 ${approved}、已拒绝 ${rejected}）` : `没有待审核（共 ${total} 张；已通过 ${approved}、已拒绝 ${rejected}）` });
     }
     if (extras?.jokes !== undefined) rows.push({ label: '小梗', text: extras.jokes ? `${extras.jokes} 个` : '还没有（聊得够多会自己抽）' });
     if (extras?.report) {

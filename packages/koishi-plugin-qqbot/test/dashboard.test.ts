@@ -74,17 +74,19 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
                 { key: 'shape', label: '形状控制（每条多长、几条）', group: '说话', on: false },
             ],
             externalDrafts: { pending: 2, approved: 3, publishing: 1, failed: 4 },
+            extras: { aiPhotoDrafts: { total: 5, pending: 2, approved: 2, rejected: 1 } },
         });
         assert.deepEqual(result, {
-            contacts: 4, busy: 2, attention: { total: 11, retrying: 1, drafts: 2, approved: 3, publishing: 1, failed: 4 },
+            contacts: 4, busy: 2, attention: { total: 13, retrying: 1, drafts: 2, approved: 3, publishing: 1, failed: 4, aiPhotos: 2 },
             dshOn: true, features: { on: 1, total: 2 }, capabilities: { on: 1, total: 6 },
         });
-        assert.equal(attentionDetail(result.attention), '回复需重试 1 · 草稿待确认 2 · 已批准待发布 3 · 发布待核对 1 · 发布失败待处理 4');
+        assert.equal(attentionDetail(result.attention), '回复需重试 1 · 草稿待确认 2 · 已批准待发布 3 · 发布待核对 1 · 发布失败待处理 4 · AI 照片待审核 2');
         const approvedAndFailed = overviewCounts({ contacts: [], externalDrafts: { pending: 0, approved: 2, publishing: 0, failed: 1 } }).attention;
         assert.equal(approvedAndFailed.total, 3);
         assert.equal(attentionDetail(approvedAndFailed), '已批准待发布 2 · 发布失败待处理 1');
         const invalid = overviewCounts({ contacts: [], externalDrafts: { pending: -1, approved: NaN, publishing: 1.5, failed: '2' } }).attention;
         assert.equal(invalid.total, 0);
+        assert.equal(invalid.aiPhotos, 0);
         assert.equal(attentionDetail(invalid), '当前没有需要处理的事项');
     });
 });
@@ -139,7 +141,7 @@ describe('客户端的纯函数', () => {
         assert.equal(featureTitle({ on: true, hint: 'ADR 0109' }), '已启用；ADR 0109');
     });
 
-    test('货架 / 小梗 / 周报那几行：没有这一项就不出现；货架空着写清楚', () => {
+    test('货架 / AI 草稿 / 小梗 / 周报那几行：没有这一项就不出现；待审核数用中文写清楚', () => {
         assert.deepEqual(extrasRows(undefined), []);
         assert.deepEqual(extrasRows({}), []);
         const rows = extrasRows({ photos: { count: 0, cat: 0, view: 0, work: 0 }, jokes: 0, report: { name: 'weekly-2026-11-22.md', text: '...' } });
@@ -149,6 +151,11 @@ describe('客户端的纯函数', () => {
         assert.equal(rows[2].text, '11月22日生成');
         assert.equal(extrasRows({ report: { name: 'internal-report.dat' } })[0].text, '已生成', '不把内部文件名显示给用户');
         assert.match(extrasRows({ photos: { count: 5, cat: 3, view: 2, work: 0 } })[0].text, /5 张（土豆 3、天空 2）/);
+        assert.deepEqual(extrasRows({ aiPhotoDrafts: { total: 4, pending: 2, approved: 1, rejected: 1 } }), [
+            { label: 'AI 照片草稿', text: '2 张待审核（共 4 张；已通过 1、已拒绝 1）' },
+        ]);
+        assert.match(extrasRows({ aiPhotoDrafts: { total: 3, pending: 0, approved: 3, rejected: 0 } })[0].text, /没有待审核/);
+        assert.match(extrasRows({ aiPhotoDrafts: { total: -1, pending: NaN, approved: 1.5, rejected: '2' } })[0].text, /共 0 张/);
     });
 
     test('DSH 状态只展示连接结果和时间，不泄露错误原文', () => {
