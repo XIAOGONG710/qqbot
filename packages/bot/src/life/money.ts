@@ -45,7 +45,8 @@ export function priceIn([min, max]: readonly [number, number], key: string): num
 }
 
 export function parcelPrice(money: Money, item: string, food: boolean): number {
-    return food ? money.prices.catFood : money.prices.parcels[item] ?? DEFAULT_PRICE;
+    // 合法物品名也可能是 constructor/toString；继承成员不是作者配置的价格。
+    return food ? money.prices.catFood : (Object.hasOwn(money.prices.parcels, item) ? money.prices.parcels[item] : undefined) ?? DEFAULT_PRICE;
 }
 
 /** day 之后（不含 day）下一次到账是哪天 */
