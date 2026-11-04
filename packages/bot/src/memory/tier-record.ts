@@ -5,7 +5,7 @@
 // 10-04 尾号 73 降档时，聊天记录还没归档 bot 就启动了一次，旧片段直接写进了同学档的 bank：只靠手动归档不够。
 // 写的时候先写临时文件再改名（ADR 0013 决策 3）；读坏了照样报错、不启动：丢了换档时间，换档前的消息会重新进提示词和新档位的记忆。
 
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { CONTACT_TIERS, UNLISTED_TIER, type Tier } from '../platform/config.ts';
 import type { ChatHistory } from './history.ts';
 import { writeJsonAtomic } from './json-file.ts';
@@ -28,19 +28,17 @@ function validTierState(value: unknown): value is Record<string, string | Entry>
 
 export class TierRecord {
     readonly #path: string;
-    readonly #tiers: Record<string, Entry>;
+    #tiers: Record<string, Entry>;
 
     constructor(path: string) {
         this.#path = path;
         let data: Record<string, string | Entry> = {};
         try {
-            if (existsSync(path)) {
-                const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
-                if (!validTierState(parsed)) throw new Error('档位状态内容不符合 schema');
-                data = parsed;
-            }
+            const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+            if (!validTierState(parsed)) throw new Error('schema');
+            data = parsed;
         } catch (error) {
-            throw new Error(`${path} 读不了（${error instanceof Error ? error.message : String(error)}）：它记着每个联系人换档的时间，` +
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error('tiers.json 读不了（读取或 schema 校验失败）：它记着每个联系人换档的时间，' +
                 '当成空的会让换档前的消息重新进提示词和记忆，所以不启动；修好或删掉它（删掉 = 都当没换过档）再启动');
         }
         // 旧格式只存档位名
@@ -49,11 +47,17 @@ export class TierRecord {
 
     /** 记下这次的档位；和上次不同时返回提示文字 */
     update(qq: number, tier: Tier, now: Date = new Date()): string | undefined {
-        if (!Number.isSafeInteger(qq) || qq <= 0 || !ORDER.includes(tier) || !Number.isFinite(now.getTime())) throw new Error('拒绝写入不符合 schema 的档位记录');
+        if (!Number.isSafeInteger(qq) || qq <= 0 || !ORDER.includes(tier) || !Number.isFinite(now.getTime()) || !stateTimestamp(now.toISOString())) throw new Error('拒绝写入不符合 schema 的档位记录');
         const previous = this.#tiers[String(qq)]?.tier;
         if (previous === tier) return undefined;
-        this.#tiers[String(qq)] = previous === undefined ? { tier } : { tier, since: now.toISOString() };
-        writeJsonAtomic(this.#path, this.#tiers);
+        const next = { ...this.#tiers, [String(qq)]: previous === undefined ? { tier } : { ...this.#tiers[String(qq)], tier, since: now.toISOString() } };
+        try { writeJsonAtomic(this.#path, next); }
+        catch {
+            let committed = false;
+            try { committed = JSON.stringify(JSON.parse(readFileSync(this.#path, 'utf8'))) === JSON.stringify(next); } catch { /* 不能确认提交。 */ }
+            if (!committed) throw new Error('档位记录写入失败；内存未发布，请恢复存储后重试');
+        }
+        this.#tiers = next;
         return previous === undefined ? undefined : tierChangeWarning(qq, previous, tier);
     }
 

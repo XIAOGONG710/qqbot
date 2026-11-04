@@ -7,8 +7,10 @@ import { localDate } from '../local-date.ts';
 // 做法：这些渠道做完一件事就往这里记一行（时间、渠道、一句话、结果），QQ 聊天的提示词里放最近 24 小时里 QQ 以外的几条。
 // 只记「做了什么、结果如何」的一句话，不记评论、私信、网页的原文；一句话里的标题截到 24 字。
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { stateObject, stateTimestamp } from './state-schema.ts';
 
 export const CHANNELS = ['bilibili', 'qzone', 'device', 'web', 'identity', 'dormancy', 'people', 'tastes'] as const;
 export type Channel = (typeof CHANNELS)[number];
@@ -32,9 +34,22 @@ const KEEP = 1500;
 const TRIM_AT = 2000;
 
 export const clip = (text: string, max: number): string => {
-    const flat = text.replace(/\s+/g, ' ').trim();
-    return [...flat].length > max ? `${[...flat].slice(0, max - 1).join('')}…` : flat;
+    if (typeof text !== 'string' || !Number.isSafeInteger(max) || max < 1) throw new Error('时间线文本或长度无效');
+    const chars: string[] = []; let space = false;
+    const add = (char: string) => { chars.push(char); return chars.length > max; };
+    for (const char of text) {
+        if (/\s/u.test(char)) { if (chars.length) space = true; continue; }
+        if ((space && add(' ')) || add(char)) return `${chars.slice(0, max - 1).join('')}…`;
+        space = false;
+    }
+    return chars.join('');
 };
+
+function validTimeline(value: unknown): value is TimelineEntry {
+    return stateObject(value) && stateTimestamp(value.at) && CHANNELS.includes(value.channel as Channel)
+        && typeof value.kind === 'string' && Boolean(value.kind.trim()) && typeof value.summary === 'string' && Boolean(value.summary.trim())
+        && (value.ok === undefined || typeof value.ok === 'boolean');
+}
 
 const two = (n: number) => String(n).padStart(2, '0');
 const hm = (d: Date) => `${two(d.getHours())}:${two(d.getMinutes())}`;
@@ -60,29 +75,42 @@ export class Timeline {
             at: (entry.at ?? this.#now()).toISOString(), channel: entry.channel, kind: entry.kind,
             summary: clip(entry.summary, SUMMARY_MAX), ...(entry.ok === false ? { ok: false } : {}),
         };
+        if (!validTimeline(line) || (entry.ok !== undefined && typeof entry.ok !== 'boolean')) throw new Error('时间线记录无效');
         mkdirSync(dirname(this.#path), { recursive: true });
-        appendFileSync(this.#path, `${JSON.stringify(line)}\n`);
-        const text = readFileSync(this.#path, 'utf8');
-        const lines = text.split('\n').filter(Boolean);
-        if (lines.length > TRIM_AT) writeFileSync(this.#path, `${lines.slice(-KEEP).join('\n')}\n`);
+        let previous = '';
+        try { previous = readFileSync(this.#path, 'utf8'); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error('时间线读取失败；未写入'); }
+        const payload = `${previous && !previous.endsWith('\n') ? '\n' : ''}${JSON.stringify(line)}\n`;
+        try { appendFileSync(this.#path, payload); }
+        catch { let committed = false; try { committed = readFileSync(this.#path, 'utf8') === previous + payload; } catch { /* 未确认写入。 */ } if (!committed) throw new Error('时间线写入失败'); }
+        // 裁剪是派生维护；已追加的事实不能因维护失败而被调用方重放。
+        const temporary = `${this.#path}.tmp-${randomUUID()}`;
+        try {
+            const lines = readFileSync(this.#path, 'utf8').split('\n').filter(Boolean);
+            if (lines.length > TRIM_AT) { writeFileSync(temporary, `${lines.slice(-KEEP).join('\n')}\n`, { flag: 'wx' }); renameSync(temporary, this.#path); }
+        } catch { /* 下次写入时再裁剪，保留已确认的追加。 */ }
+        finally { try { unlinkSync(temporary); } catch { /* 不覆盖追加结果。 */ } }
     }
 
     read(): TimelineEntry[] {
-        if (!existsSync(this.#path)) return [];
+        let text: string;
+        try { text = readFileSync(this.#path, 'utf8'); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw new Error('时间线读取失败'); }
         const out: TimelineEntry[] = [];
-        for (const line of readFileSync(this.#path, 'utf8').split('\n')) {
+        for (const line of text.split('\n')) {
             if (!line.trim()) continue;
             try {
-                const value = JSON.parse(line) as TimelineEntry;
-                if (value && typeof value.at === 'string' && typeof value.summary === 'string' && (CHANNELS as readonly string[]).includes(value.channel)) out.push(value);
+                const value: unknown = JSON.parse(line);
+                if (validTimeline(value)) out.push({ ...value, summary: clip(value.summary, SUMMARY_MAX) });
             } catch { /* 坏行跳过 */ }
         }
         return out;
     }
 
     recent(now: Date, hours = 24, limit = 5): TimelineEntry[] {
+        if (!Number.isFinite(now.getTime())) return [];
+        if (!Number.isSafeInteger(limit) || limit < 0 || !Number.isFinite(hours) || hours <= 0 || !Number.isFinite(hours * 3_600_000)) throw new RangeError('时间线窗口无效');
+        if (!limit) return [];
         const since = now.getTime() - hours * 3_600_000;
-        return this.read().filter(e => Date.parse(e.at) >= since && Date.parse(e.at) <= now.getTime() + 60_000).slice(-limit);
+        return this.read().filter(e => Date.parse(e.at) >= since && Date.parse(e.at) <= now.getTime()).sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).slice(-limit);
     }
 
     /** 放进聊天提示词的一段；这段时间里 QQ 以外没做过什么就是 undefined */
@@ -108,7 +136,7 @@ export function timelineFromDevice(timeline: Timeline): (entry: AuditEntry) => v
     return entry => {
         if (entry.decision !== 'executed' && entry.decision !== 'failed') return;
         const where = entry.target === 'phone' ? '他的手机上' : '他的电脑上';
-        timeline.record({ channel: 'device', kind: entry.action, summary: `在${where}${LABEL[entry.action] ?? entry.action}`, ok: entry.decision === 'executed' });
+        try { timeline.record({ at: new Date(entry.at), channel: 'device', kind: entry.action, summary: `在${where}${Object.hasOwn(LABEL, entry.action) ? LABEL[entry.action] : entry.action}`, ok: entry.decision === 'executed' }); } catch { /* 派生时间线失败不能改变已执行的设备结果。 */ }
     };
 }
 
@@ -117,13 +145,14 @@ export function timelineAccount<T extends BiliAccount>(account: T, timeline: Tim
     const safe = (entry: Omit<TimelineEntry, 'at'>) => { try { timeline.record(entry); } catch { /* 时间线出错不影响 B 站动作 */ } };
     const wrap = <A extends unknown[], R>(fn: (...args: A) => Promise<R>, describe: (...args: A) => { kind: string; summary: string; failed: string }) =>
         async (...args: A): Promise<R> => {
-            const d = describe(...args);
+            let d: ReturnType<typeof describe> | undefined;
+            try { d = describe(...args); } catch { /* 不可信显示元数据不应阻止主操作。 */ }
             try {
                 const result = await fn(...args);
-                safe({ channel: 'bilibili', kind: d.kind, summary: d.summary });
+                if (d) safe({ channel: 'bilibili', kind: d.kind, summary: d.summary });
                 return result;
             } catch (error) {
-                safe({ channel: 'bilibili', kind: d.kind, summary: d.failed, ok: false });
+                if (d) safe({ channel: 'bilibili', kind: d.kind, summary: d.failed, ok: false });
                 throw error;
             }
         };
