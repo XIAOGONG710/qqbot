@@ -128,7 +128,11 @@ export function createExternalDraftStore(options: { dir: string; log?: (message:
             if (retained.length >= MAX_EXTERNAL_DRAFTS) {
                 // 待确认、已批准和失败待重试都仍需人工处理，不能为了新草稿静默删掉。
                 // 只回收最老的已发布 / 已拒绝记录；没有可回收项时明确施加背压。
-                const recyclable = retained.findIndex(item => item.status === 'published' || item.status === 'rejected');
+                const recyclable = retained.reduce((oldest, item, index) => {
+                    if (item.status !== 'published' && item.status !== 'rejected') return oldest;
+                    if (oldest < 0) return index;
+                    return Date.parse(item.createdAt) < Date.parse(retained[oldest]!.createdAt) ? index : oldest;
+                }, -1);
                 if (recyclable < 0) throw new Error('外部平台草稿队列已满，请先处理现有草稿');
                 retained = retained.filter((_, index) => index !== recyclable);
             }

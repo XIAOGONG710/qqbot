@@ -113,12 +113,15 @@ describe('外部平台草稿队列（ADR 0224）', () => {
     test('队列满时只回收最老的已结束记录，不删除待确认草稿', () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-external-drafts-')); roots.push(root);
         const statuses = Array.from({ length: MAX_EXTERNAL_DRAFTS }, (_, index): ExternalDraftStatus => index === 0 ? 'pending' : 'published');
-        const store = seedStore(root, statuses);
+        // 模拟迁移或人工核对后文件顺序被倒置；回收不能依赖数组位置。
+        writeFileSync(join(root, 'drafts.json'), JSON.stringify({ version: 1, drafts: statuses.map((status, index) => seeded(index, status)).reverse() }));
+        const store = createExternalDraftStore({ dir: root });
         store.create({ platform: 'douyin', title: '新草稿', body: '等待确认' });
         assert.equal(store.summary().total, MAX_EXTERNAL_DRAFTS);
         assert.ok(store.list({ status: 'pending', limit: 100 }).some(item => item.id === 'seed-0000'), '最老的待确认草稿必须保留');
         const saved = JSON.parse(readFileSync(join(root, 'drafts.json'), 'utf8')) as { drafts: ExternalDraft[] };
         assert.equal(saved.drafts.some(item => item.id === 'seed-0001'), false, '回收最老的已发布记录');
+        assert.equal(saved.drafts.some(item => item.id === `seed-${String(MAX_EXTERNAL_DRAFTS - 1).padStart(4, '0')}`), true, '不能误删文件里排在前面的最新记录');
     });
 
     test('队列全是仍需处理的草稿时拒绝新增，不静默丢审计', () => {
