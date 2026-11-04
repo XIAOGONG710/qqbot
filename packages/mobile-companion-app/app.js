@@ -176,7 +176,6 @@ async function send(value) {
   if (text) { try { result = JSON.parse(text); } catch { state.pending.delete(value.requestId); throw new Error('服务端返回了无法解析的内容'); } }
   if (!response.ok) { state.pending.delete(value.requestId); throw new Error(result?.error ?? `HTTP ${response.status}`); }
   if (result) handleIncoming(result);
-  if (value.kind === 'hello') { setState('已连接', true); system('HTTPS 配对成功'); startActionPolling(); }
 }
 
 async function connect() {
@@ -307,7 +306,8 @@ formSubmit('actionForm', async () => {
   const needs = ['ring', 'open_link', 'media_control', 'volume'].includes(action);
   if (needs && !$('confirmAction').checked) throw new Error('该动作需要先勾选确认');
   const params = JSON.parse($('actionParams').value || '{}');
-  await send(envelope('action.request', { action, params, decision: needs ? 'confirm' : 'auto', reason: $('actionReason').value.trim() || undefined }));
+  const targetId = action === 'open_link' ? 'companion-home' : undefined;
+  await send(envelope('action.request', { action, params, decision: needs ? 'confirm' : 'auto', ...(targetId ? { targetId } : {}), reason: $('actionReason').value.trim() || undefined }));
   system(`已请求动作：${action}`);
 });
 

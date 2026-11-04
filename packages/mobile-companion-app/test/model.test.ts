@@ -15,6 +15,7 @@ test('伴侣 UI 状态层构造文字、媒体、表情和受限动作', () => {
     assert.equal(app.sticker('b'.repeat(16), { mediaId: 'c'.repeat(16), mime: 'image/webp', bytes: 100 }).body.kind, 'sticker');
     assert.equal(app.action('ring', {}).needsConfirmation, true);
     assert.equal(app.action('notify', {}).needsConfirmation, false);
+    assert.equal(app.action('open_link', {}, '', 'companion-home').request.body.targetId, 'companion-home');
     const downlink = app.acceptDownlink({ v: 1, requestId: 'push-model-action', kind: 'action.request', sentAt: new Date(10_000).toISOString(), nonce: 'server-model-action', body: { action: 'ring', params: { durationMs: 200 }, decision: 'confirm' } });
     assert.equal(downlink.body.action, 'ring');
     assert.equal(app.conversation.length, 4);
@@ -58,4 +59,10 @@ test('PWA 打开链接只解析本地登记的目标，并拒绝普通局域网 
     assert.equal(resolveRegisteredLink('companion-home', 'http://127.0.0.1:5140/companion/index.html'), 'http://127.0.0.1:5140/companion/');
     assert.throws(() => resolveRegisteredLink('not-registered', 'https://companion.example/app/'), /未在手机端登记/);
     assert.throws(() => resolveRegisteredLink('companion-home', 'http://192.168.1.8/app/'), /未在手机端登记/);
+});
+
+test('HTTPS 配对成功只由连接流程展示一次，登记链接请求携带 targetId', async () => {
+    const source = await readFile(resolve(import.meta.dirname, '..', 'app.js'), 'utf8');
+    assert.equal(source.match(/HTTPS 配对成功/g)?.length, 1);
+    assert.match(source, /action === 'open_link' \? 'companion-home' : undefined/);
 });

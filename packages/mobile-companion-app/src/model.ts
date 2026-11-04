@@ -48,9 +48,9 @@ export class CompanionAppModel {
         return this.outgoing({ kind: 'sticker', stickerId, media, ...(text ? { text } : {}) });
     }
 
-    action(action: PhoneAction, params: Record<string, string | number>, reason = ''): { request: ReturnType<CompanionClient['requestAction']>; needsConfirmation: boolean } {
+    action(action: PhoneAction, params: Record<string, string | number>, reason = '', targetId?: string): { request: ReturnType<CompanionClient['requestAction']>; needsConfirmation: boolean } {
         const needsConfirmation = actionNeedsConfirmation(action);
-        const request: PhoneActionRequest = { action, params, decision: needsConfirmation ? 'confirm' : 'auto', ...(reason ? { reason } : {}) };
+        const request: PhoneActionRequest = { action, params, decision: needsConfirmation ? 'confirm' : 'auto', ...(targetId ? { targetId } : {}), ...(reason ? { reason } : {}) };
         return { request: this.client.requestAction(request), needsConfirmation };
     }
 

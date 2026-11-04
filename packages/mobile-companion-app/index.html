@@ -28,7 +28,7 @@
         <form id="stickerForm"><label>服务端表情 ID<input id="stickerId" placeholder="catalog id"></label><label>图片 MIME<input id="stickerMime" value="image/webp"></label><label>字节数<input id="stickerBytes" type="number" min="1" value="1"></label><button>发送表情</button></form>
       </details>
       <details><summary>手机动作（白名单，敏感动作需确认）</summary>
-        <form id="actionForm"><label>动作<select id="action"><option value="notify">通知</option><option value="timer">计时器</option><option value="ring">响铃（需确认）</option><option value="open_link">打开链接（需确认）</option><option value="media_control">媒体控制（需确认）</option><option value="volume">音量（需确认）</option></select></label><label>参数 JSON<input id="actionParams" value="{}" spellcheck="false"></label><label>理由<input id="actionReason" maxlength="500"></label><label class="check"><input id="confirmAction" type="checkbox"> 我确认执行敏感动作</label><button>请求动作</button></form>
+        <form id="actionForm"><label>动作<select id="action"><option value="notify">通知</option><option value="timer">计时器</option><option value="ring">响铃（需确认）</option><option value="open_link">打开伴侣首页（需确认）</option><option value="media_control">媒体控制（需确认）</option><option value="volume">音量（需确认）</option></select></label><label>参数 JSON<input id="actionParams" value="{}" spellcheck="false"></label><label>理由<input id="actionReason" maxlength="500"></label><label class="check"><input id="confirmAction" type="checkbox"> 我确认执行敏感动作</label><button>请求动作</button></form>
       </details>
     </section>
   </main>
