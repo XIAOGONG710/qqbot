@@ -82,7 +82,7 @@ export function needsAt(anchor: NeedsSnapshot, events: readonly LifeEvent[], at:
     if (target < anchorAt) throw new RangeError('需要投影不能早于锚点');
     if (target === anchorAt) return snapshot(at, anchor);
 
-    const relevant = dedupe(events)
+    const relevant = effectiveLifeEvents(events)
         .filter(event => event.result !== 'failed')
         .map(event => ({ event, start: Date.parse(event.startedAt), end: Date.parse(event.endedAt) }))
         .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end > anchorAt && item.start < target && item.end >= item.start)
@@ -123,6 +123,28 @@ function dedupe(events: readonly LifeEvent[]): LifeEvent[] {
     const byId = new Map<string, LifeEvent>();
     for (const event of events) if (!byId.has(event.id)) byId.set(event.id, event);
     return [...byId.values()];
+}
+
+/**
+ * 选出冲突时间轴上真正生效的行动。不同 ID 的重叠事实也只能占用同一段现实时间；
+ * 稳定顺序与需要投影一致。失败尝试没有占用时段，但仍保留给心理余波结算。
+ */
+export function effectiveLifeEvents(events: readonly LifeEvent[]): LifeEvent[] {
+    const unique = dedupe(events);
+    const candidates = unique
+        .filter(event => event.result !== 'failed')
+        .map(event => ({ event, start: Date.parse(event.startedAt), end: Date.parse(event.endedAt) }))
+        .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end > item.start)
+        .sort((a, b) => a.start - b.start || a.end - b.end || a.event.id.localeCompare(b.event.id));
+    const boundaries = [...new Set(candidates.flatMap(item => [item.start, item.end]))].sort((a, b) => a - b);
+    const active = new Set<string>();
+    for (let index = 0; index < boundaries.length - 1; index++) {
+        const from = boundaries[index]!;
+        const to = boundaries[index + 1]!;
+        const winner = candidates.find(item => item.start <= from && item.end >= to);
+        if (winner) active.add(winner.event.id);
+    }
+    return unique.filter(event => event.result === 'failed' || active.has(event.id));
 }
 
 function snapshot(at: Date, values: Pick<NeedsSnapshot, 'energy' | 'hunger' | 'stress'>): NeedsSnapshot {

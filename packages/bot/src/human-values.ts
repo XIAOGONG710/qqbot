@@ -5,7 +5,7 @@
 // 数值先用于审计和后续选择器校准，不直接交给模型，避免她把内部状态说成仪表盘。
 
 import type { LifeEvent } from './world/life-events.ts';
-import { needsAt, type NeedsSnapshot } from './life/needs.ts';
+import { effectiveLifeEvents, needsAt, type NeedsSnapshot } from './life/needs.ts';
 import type { StoredMessage } from './memory/history.ts';
 
 export const HUMAN_VALUE_KEYS = [
@@ -255,12 +255,11 @@ export function humanValuesAt(facts: HumanValueFacts): HumanValues {
     const needs = facts.needs;
     // 事件账以 id 作为稳定幂等键。身体需要也按同一规则去重，避免一次行动因重试
     // 重复出现在输入中时，饥饿只结算一次、心理余波却叠加多次。
-    const seenEventIds = new Set<string>();
-    const events = (facts.events ?? []).filter(event => {
-        if (seenEventIds.has(event.id)) return false;
-        seenEventIds.add(event.id);
-        return true;
-    });
+    // 未来事件不应抢占已经结束的事实；同一时间的冲突行动与身体需要共用稳定选择规则。
+    const events = effectiveLifeEvents((facts.events ?? []).filter(event => {
+        const ended = Date.parse(event.endedAt);
+        return Number.isFinite(ended) && ended <= now;
+    }));
     const recent = recentMessages(facts, 72 * HOUR);
     const relationship = relationshipAt(facts);
     const eventEffects = eventEffectsAt(events, now);

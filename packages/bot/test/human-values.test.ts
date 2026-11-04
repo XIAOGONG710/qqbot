@@ -190,3 +190,23 @@ test('同一行动 ID 重复出现时，身体与心理数值都只结算一次'
     const duplicated = humanValuesFromAnchor({ at, anchor: needs, history: [], tier: 'boyfriend', events: [study, conflictingRetry] });
     assert.deepEqual(duplicated, once);
 });
+
+test('不同 ID 的重叠冲突行动，身体与心理都只采用稳定选中的一件', () => {
+    const at = new Date('2026-11-01T08:00:00.000Z');
+    const first = {
+        id: 'life:meet-a', actor: 'linmengyao' as const, kind: 'meet', day: '2026-11-01',
+        startedAt: '2026-11-01T06:00:00.000Z', endedAt: '2026-11-01T07:00:00.000Z',
+        source: 'simulation' as const, result: 'succeeded' as const, meal: true,
+    };
+    const conflict = { ...first, id: 'life:meet-b' };
+    const expected = humanValuesFromAnchor({ at, anchor: { ...needs, hunger: 85 }, history: [], tier: 'boyfriend', events: [first] });
+    const combined = humanValuesFromAnchor({ at, anchor: { ...needs, hunger: 85 }, history: [], tier: 'boyfriend', events: [first, conflict] });
+    const reversed = humanValuesFromAnchor({ at, anchor: { ...needs, hunger: 85 }, history: [], tier: 'boyfriend', events: [conflict, first] });
+    assert.deepEqual(combined, expected);
+    assert.deepEqual(reversed, expected, '输入乱序也必须选择稳定 ID，而不是叠加两次社交和吃饭余波');
+
+    const failed = { ...first, id: 'life:failed-study', kind: 'study', meal: false, result: 'failed' as const };
+    const withFailedAttempt = humanValuesFromAnchor({ at, anchor: { ...needs, hunger: 85 }, history: [], tier: 'boyfriend', events: [first, failed] });
+    assert.equal(withFailedAttempt.hunger, expected.hunger, '失败尝试不产生身体或吃饭收益');
+    assert.ok(withFailedAttempt.frustration > expected.frustration, '失败尝试仍保留挫败余波');
+});
