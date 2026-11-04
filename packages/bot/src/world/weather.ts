@@ -8,6 +8,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { cacheAgeMs } from './cache-freshness.ts';
+import { sanitizeExternalError } from './external-error.ts';
 
 export type Place = 'jinan' | 'qingdao';
 
@@ -335,7 +336,7 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
                         errors.delete(place);
                         errorAt.delete(place);
                     } catch (error) {
-                        const reason = error instanceof Error ? error.message : String(error);
+                        const reason = sanitizeExternalError(error);
                         errors.set(place, reason);
                         errorAt.set(place, new Date(now()).toISOString());
                         options.log(`真实天气：${PLACES[place].name}没取到，照旧用存着的（${reason}）`);

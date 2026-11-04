@@ -5,6 +5,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { cacheAgeMs } from './cache-freshness.ts';
+import { sanitizeExternalError } from './external-error.ts';
 
 export type PublicCalendarKind = 'holiday' | 'workday';
 export interface PublicCalendarDay { date: string; name: string; kind: PublicCalendarKind; real: true }
@@ -159,8 +160,8 @@ export function calendarFetcher(options: CalendarFetcherOptions): CalendarFetche
                         yearFetchedAt[String(year)] = new Date(now()).toISOString();
                         success = true;
                     } catch (reason) {
-                        const message = reason instanceof Error ? reason.message : String(reason);
-                        refreshError = `${year} 年：${message}`;
+                        const message = sanitizeExternalError(reason);
+                        refreshError = sanitizeExternalError(`${year} 年：${message}`);
                         refreshErrorAt = new Date(now()).toISOString();
                         options.log(`现实法定日历：${year} 年没取到，照旧不用它（${message}）`);
                     }

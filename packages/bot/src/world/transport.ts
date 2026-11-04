@@ -6,6 +6,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { cacheAgeMs } from './cache-freshness.ts';
+import { sanitizeExternalError } from './external-error.ts';
 
 export type TransportState = 'normal' | 'delayed' | 'closed' | 'unknown';
 
@@ -32,7 +33,6 @@ export interface TransportStore { fetchedAt: string; facts: Record<string, Trans
 
 const MAX_LOCATIONS = 50;
 const MAX_DETAIL = 160;
-const MAX_ERROR = 160;
 const MAX_RESPONSE_BYTES = 512 * 1024;
 const DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:?\d{2})$/;
 
@@ -49,21 +49,8 @@ function stateOf(value: unknown): TransportState | undefined {
     return undefined;
 }
 
-/** 供应商异常只保留短诊断摘要；日志和状态都不能带出 URL 凭据、令牌或 Cookie。 */
-export function sanitizeTransportError(reason: unknown): string {
-    const raw = reason instanceof Error ? reason.message : String(reason);
-    const safe = raw
-        .replace(/(https?:\/\/)[^/\s:@]+:[^/\s@]+@/gi, '$1<redacted>@')
-        .replace(/\b(authorization|proxy-authorization)\s*[:=]\s*(?:(?:bearer|basic)\s+)?[^\s,，;；]+/gi, '$1=<redacted>')
-        .replace(/\b(cookie|set-cookie)\s*[:=]\s*[^\r\n]+/gi, '$1=<redacted>')
-        .replace(/\b(session(?:id)?|refresh[_-]?token)\s*[:=]\s*[^\s,，;；]+/gi, '$1=<redacted>')
-        .replace(/(https?:\/\/[^\s?#]+)\?[^\s#]*/gi, '$1?<redacted>')
-        .replace(/\b(api[_-]?key|access[_-]?token|token|secret|password|密码)\s*[:：=]\s*[^\s,，;；&#]+/gi, '$1=<redacted>')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, MAX_ERROR);
-    return safe || '未知错误';
-}
+/** 兼容原有导出；现实数据模块现在共用同一条异常脱敏边界。 */
+export const sanitizeTransportError = sanitizeExternalError;
 
 function validFact(value: unknown): value is TransportFact {
     const status = isRecord(value) ? value.status : undefined;

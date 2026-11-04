@@ -5,6 +5,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { cacheAgeMs } from './cache-freshness.ts';
+import { sanitizeExternalError } from './external-error.ts';
 import { PLACES, type Place } from './weather.ts';
 
 export type DaylightPhase = '夜间' | '清晨' | '白天' | '傍晚';
@@ -162,7 +163,7 @@ export function daylightFetcher(options: DaylightFetcherOptions): DaylightFetche
                         stores.set(place, store);
                         errors.delete(place); errorAt.delete(place);
                     } catch (error) {
-                        const reason = error instanceof Error ? error.message : String(error);
+                        const reason = sanitizeExternalError(error);
                         errors.set(place, reason); errorAt.set(place, new Date(now()).toISOString());
                         options.log(`真实日照：${PLACES[place].name}没取到，照旧不写进世界（${reason}）`);
                     }
