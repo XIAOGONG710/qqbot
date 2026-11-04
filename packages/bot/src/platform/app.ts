@@ -2381,6 +2381,16 @@ ${body}
     const lastPokeBack = new Map<number, number>();
     const pokeTimers = new Set<ReturnType<typeof setTimeout>>();
 
+    function claimOwnerCommand(event: MessageEvent): boolean {
+        try {
+            return commandReceipts.claim(event.user_id, event.message_id, clockNow());
+        } catch (error) {
+            log(`入口：QQ 命令 ${event.message_id} 去重收据写入失败，未执行（${error instanceof Error ? error.message : String(error)}）`);
+            tellOwner('（命令记录暂时写不进去，这次没有执行，等恢复后换一条新消息再试。）');
+            return false;
+        }
+    }
+
     function onMessage(event: MessageEvent): void {
         // 补回或入口重投的同一条消息不消耗限额，也不重复处理。
         if (chatHistory.hasMessage(event.user_id, event.message_id)) return;
@@ -2450,15 +2460,7 @@ ${body}
         // 只认纯文字、只认男朋友档的他；命中的算处理完，不进聊天记录、不交给回复器。休眠中除了这几条，她什么都不回
         if (deviceOwner && event.user_id === deviceOwner.qq) {
             const plain = plainTextOf(event.message)?.trim();
-            if (plain?.startsWith('/')) {
-                try {
-                    if (!commandReceipts.claim(event.user_id, event.message_id, clockNow())) return;
-                } catch (error) {
-                    log(`入口：QQ 命令 ${event.message_id} 去重收据写入失败，未执行（${error instanceof Error ? error.message : String(error)}）`);
-                    tellOwner('（命令记录暂时写不进去，这次没有执行，等恢复后换一条新消息再试。）');
-                    return;
-                }
-            }
+            if (plain?.startsWith('/') && !claimOwnerCommand(event)) return;
             // DSH 工作模式保留裸 /dsh；桥接探针和咨询使用显式子命令，避免改变 DSH 原有语义。
             if (dshEnabled && plain === '/dsh probe') {
                 void dshLink.probe().then(result => {
@@ -2597,6 +2599,7 @@ ${body}
         // 命中的算处理完，不进聊天记录、不交给回复器。看屏幕 / 摄像头：看完的描述作为他这一条消息交给回复器，她自然地回
         if (deviceService && deviceOwner && event.user_id === deviceOwner.qq) {
             const plain = plainTextOf(event.message);
+            if (plain !== undefined && !plain.trim().startsWith('/') && deviceService.isOwnerCommand(plain) && !claimOwnerCommand(event)) return;
             const outcome = plain === undefined ? undefined : deviceService.owner(plain);
             if (outcome?.kind === 'reply') {
                 void transport.sendPrivateText(event.user_id, outcome.text).catch(error => log(`设备控制：回复没发出去（${error instanceof Error ? error.message : String(error)}）`));

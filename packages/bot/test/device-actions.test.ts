@@ -159,9 +159,13 @@ describe('设备控制器：分档、限额、批准、审计', () => {
 
     test('没有待办时「批准」只是一句普通的话；同一时间只有一个待批准', async () => {
         const t = setup();
+        assert.equal(t.control.isOwnerCommand('批准'), false);
         assert.deepEqual(t.control.ownerSays('批准'), { kind: 'none' });
         assert.deepEqual(t.control.ownerSays('批准吧'), { kind: 'none' }, '必须整句就是「批准」');
         t.control.take('<device:lock>'); t.control.take('<device:sleep>');
+        assert.equal(t.control.isOwnerCommand('批准'), true);
+        assert.equal(t.control.isOwnerCommand('拒绝'), true);
+        assert.equal(t.control.isOwnerCommand('/设备'), true);
         assert.equal(t.control.pending()?.action, 'lock');
         assert.equal(t.audit.at(-1)!.decision, 'rejected');
         assert.equal(t.said.length, 1);

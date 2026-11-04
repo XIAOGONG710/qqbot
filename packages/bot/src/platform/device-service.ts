@@ -80,6 +80,7 @@ export interface DeviceService {
     control: DeviceControl;
     hub: DeviceHub;
     /** 他发来的一条纯文字消息是不是设备命令 */
+    isOwnerCommand(text: string): boolean;
     owner(text: string): OwnerOutcome;
     stop(): Promise<void>;
 }
@@ -170,6 +171,7 @@ export async function startDeviceService(options: DeviceServiceOptions): Promise
 
     return {
         control, hub,
+        isOwnerCommand: text => control.isOwnerCommand(text),
         owner(text) {
             const action = control.ownerSays(text);
             if (action.kind === 'none') return { kind: 'none' };

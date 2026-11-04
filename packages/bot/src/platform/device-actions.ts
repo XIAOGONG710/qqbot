@@ -275,7 +275,9 @@ export interface DeviceControl {
     take(reply: string): string;
     /** 给她看的菜单；手机配好了才提手机 */
     menu(): string;
-    /** 他发来的一条消息是不是设备命令（批准 / 拒绝 / 看屏幕 / 摄像头 / 设备） */
+    /** 无副作用地判断他发来的一条消息是不是设备命令。 */
+    isOwnerCommand(text: string): boolean;
+    /** 处理设备命令（批准 / 拒绝 / 看屏幕 / 摄像头 / 设备）。 */
     ownerSays(text: string): OwnerAction;
     /** 他触发了看屏幕 / 摄像头：限额、派发、审计；返回图片 */
     capture(what: 'capture_screen' | 'capture_camera'): Promise<DispatchResult>;
@@ -374,6 +376,11 @@ export function createDeviceControl(deps: DeviceControlDeps): DeviceControl {
         },
         // 一个设备都没连上就不给她菜单：她开口提了也做不成，白白让她觉得自己能做
         menu: () => deviceMenu(deps.context, deps.available()),
+
+        isOwnerCommand(text) {
+            if (APPROVE.test(text) || DECLINE.test(text)) return pending !== undefined;
+            return STATUS.test(text) || SCREEN.test(text) || CAMERA.test(text);
+        },
 
         ownerSays(text) {
             if (APPROVE.test(text)) {

@@ -2595,6 +2595,7 @@ describe('设备控制：他的命令在回复器之前截住（ADR 0148）', ()
         });
         const service: DeviceService = {
             control, hub: undefined as never, stop: async () => undefined,
+            isOwnerCommand: text => control.isOwnerCommand(text),
             owner: text => {
                 const action = control.ownerSays(text);
                 if (action.kind === 'none') return { kind: 'none' };
@@ -2618,6 +2619,9 @@ describe('设备控制：他的命令在回复器之前截住（ADR 0148）', ()
         assert.equal(sent[0], '10001:（好，锁屏）');
         assert.deepEqual(fake.jobs, ['lock']);
         assert.deepEqual(chat(cfg, 10001), [], '命令不进聊天记录');
+        const receipts = readFileSync(join(cfg.dataDir, 'ingress', 'commands.json'), 'utf8');
+        assert.match(receipts, /"messageId": 1/);
+        assert.doesNotMatch(receipts, /批准|锁屏/);
     });
 
     test('「/屏幕 看这个」：先问她（她有权拒绝，2026-10-30），没点头之前不截屏', async () => {
