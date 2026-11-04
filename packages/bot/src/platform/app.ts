@@ -842,6 +842,28 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
 
     // 危机信号（ADR 0068）：只记哪个联系人、什么时候，不记内容
     const crisisState = createCrisisState(config.dataDir, log);
+    let crisisSaveTimer: ReturnType<typeof setTimeout> | undefined;
+    let crisisSaveDelay = 1000;
+    function retryCrisisSave(): void {
+        if (stopped || crisisSaveTimer) return;
+        crisisSaveTimer = setTimeout(() => {
+            crisisSaveTimer = undefined;
+            if (stopped) return;
+            try { crisisState.flush(); crisisSaveDelay = 1000; }
+            catch { crisisSaveDelay = Math.min(crisisSaveDelay * 2, 60_000); retryCrisisSave(); }
+        }, crisisSaveDelay);
+        crisisSaveTimer.unref();
+    }
+    function markCrisis(qq: number, at: number, level: CrisisLevel): void {
+        if (stopped) return;
+        try {
+            crisisState.mark(qq, at, level);
+            clearTimeout(crisisSaveTimer); crisisSaveTimer = undefined; crisisSaveDelay = 1000;
+        } catch {
+            if (!crisisSaveTimer) log('危机状态暂未保存；已观察信号仍暂停普通主动消息，后台重试（不记原文）');
+            retryCrisisSave();
+        }
+    }
 
     /** 存在感（ADR 0083）：在线状态 / 资料卡点赞 / 个性签名 / 说说；第一次连上才起，一个开关都没开就不起 */
     let presence: Presence | undefined;
@@ -1546,7 +1568,7 @@ ${body}
         responder.receive(text, event.message_id, new Date(event.time * 1000));
         const crisis = detectCrisis(text);
         if (crisis && config.contacts.some(c => c.qq === event.user_id)) {
-            crisisState.mark(event.user_id, event.time * 1000, crisis.level);
+            markCrisis(event.user_id, event.time * 1000, crisis.level);
             log(`[${event.user_id}] 危机信号：${crisis.level} 级（只记级别和时间，不记内容）；普通主动消息暂停 ${CRISIS_PAUSE_MS / 3_600_000} 小时`);
         }
         planners.get(event.user_id)?.poke();
@@ -1713,10 +1735,20 @@ ${body}
 
     async function syncMissed(selfId: number): Promise<void> {
         for (const contact of config.contacts) {
+            if (stopped) return;
+            // 聊天先于副状态保存：上次中断可能已存同ID消息，不能只等NapCat重新补回。
+            const recoveredAt = Date.now();
+            for (const message of history.load(contact.qq)) {
+                const at = Date.parse(message.time);
+                if (message.role !== 'user' || !Number.isFinite(at) || at > recoveredAt || recoveredAt - at >= CRISIS_PAUSE_MS) continue;
+                const hit = detectCrisis(message.content);
+                if (hit) markCrisis(contact.qq, at, hit.level);
+            }
             let fetched: HistoryMessage[] = [];
             try {
                 fetched = await transport.friendHistory(contact.qq, BACKFILL_COUNT);
             } catch (error) {
+                if (stopped) return;
                 // 没有任何聊天记录时 NapCat 也报错（“消息…不存在”）
                 log(`[${contact.qq}] 拉取历史消息失败，跳过补回：${error instanceof Error ? error.message : String(error)}`);
                 continue;
@@ -1749,7 +1781,7 @@ ${body}
             for (const message of missed) {
                 if (message.role !== 'user') continue;
                 const crisis = detectCrisis(message.content);
-                if (crisis) crisisState.mark(contact.qq, Date.parse(message.time), crisis.level);
+                if (crisis) markCrisis(contact.qq, Date.parse(message.time), crisis.level);
             }
             if (missed.length) {
                 const lines = sensitive.on()
@@ -1933,6 +1965,7 @@ ${body}
             if (stopped) return;
             stopped = true;
             photoDiscovery.abort();
+            clearTimeout(crisisSaveTimer);
             for (const timer of pokeTimers) clearTimeout(timer);
             pokeTimers.clear();
             heartbeat.stop();

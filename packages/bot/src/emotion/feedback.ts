@@ -3,10 +3,11 @@
 // 这是工具，不是行为：命中的消息不进聊天记录、不交给回复器、不进长期记忆、不触发主动计划，她也不回应；
 // 记录只落在数据目录的 feedback/YYYY-MM.jsonl（runtime/ 被忽略，不进仓库），日志里只写「反馈：假（本月第 N 条）」，不写内容。
 
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, closeSync, fstatSync, mkdirSync, openSync, readSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { StoredMessage } from '../memory/history.ts';
 import type { Segment } from '../platform/onebot.ts';
+import { stateObject, stateTimestamp } from '../memory/state-schema.ts';
 
 export type FeedbackLabel = 'fake' | 'real';
 
@@ -34,13 +35,17 @@ export function parseFeedback(message: Segment[] | string): FeedbackCommand | un
         const match = COMMAND.exec(message);
         return match ? { label: LABELS[match[1]!]! } : undefined;
     }
+    if (!Array.isArray(message)) return undefined;
     let text = '';
     let replyTo: number | undefined;
     let faces = 0;
     for (const segment of message) {
+        if (!stateObject(segment) || !stateObject(segment.data)) return undefined;
         if (segment.type === 'text') {
-            text += String(segment.data.text ?? '');
+            if (typeof segment.data.text !== 'string') return undefined;
+            text += segment.data.text;
         } else if (segment.type === 'reply') {
+            if (typeof segment.data.id !== 'string' && typeof segment.data.id !== 'number') return undefined;
             const id = Number(segment.data.id);
             if (replyTo !== undefined || !Number.isSafeInteger(id) || id <= 0) return undefined;
             replyTo = id;
@@ -69,12 +74,16 @@ export interface FeedbackTurn {
  * history 是这个人的聊天记录（反馈这条消息本身不在里面）。
  */
 export function locateTurn(history: readonly StoredMessage[], at: Date, replyTo?: number): FeedbackTurn | undefined {
+    if (!Number.isFinite(at.getTime())) return undefined;
+    // OneBot反馈时刻只有整秒，聊天发送事实有毫秒；同一秒不能误判为未来。
+    const endOfSecond = Math.floor(at.getTime() / 1000) * 1000 + 1000;
+    const occurred = (message: StoredMessage) => Number.isFinite(Date.parse(message.time)) && Date.parse(message.time) < endOfSecond;
     let anchor = -1;
     if (replyTo !== undefined) {
-        anchor = history.findIndex(message => message.role === 'assistant' && message.messageId === replyTo);
+        anchor = history.findIndex(message => message.role === 'assistant' && message.messageId === replyTo && occurred(message));
     } else {
         for (let i = history.length - 1; i >= 0; i--) {
-            if (history[i]!.role === 'assistant') { anchor = i; break; }
+            if (history[i]!.role === 'assistant' && occurred(history[i]!)) { anchor = i; break; }
         }
         if (anchor >= 0) {
             const age = at.getTime() - Date.parse(history[anchor]!.time);
@@ -83,10 +92,10 @@ export function locateTurn(history: readonly StoredMessage[], at: Date, replyTo?
     }
     if (anchor < 0) return undefined;
     let start = anchor;
-    while (start > 0 && history[start - 1]!.role === 'assistant') start--;
+    while (start > 0 && history[start - 1]!.role === 'assistant' && occurred(history[start - 1]!)) start--;
     let end = anchor;
-    while (end + 1 < history.length && history[end + 1]!.role === 'assistant') end++;
-    return { her: history.slice(start, end + 1), context: history.slice(Math.max(0, start - FEEDBACK_CONTEXT), start) };
+    while (end + 1 < history.length && history[end + 1]!.role === 'assistant' && occurred(history[end + 1]!)) end++;
+    return { her: history.slice(start, end + 1), context: history.slice(0, start).filter(occurred).slice(-FEEDBACK_CONTEXT) };
 }
 
 export interface FeedbackRow {
@@ -94,6 +103,8 @@ export interface FeedbackRow {
     label: FeedbackLabel;
     /** 他发的那条「假」/「像」的消息 id，重投和补回时用来去重 */
     messageId: number;
+    /** 私有反馈事实的联系人范围；旧记录缺省时只能按来源时刻与短ID保守匹配。 */
+    contact?: number;
     /** 被评价的那条（有引用）或那一轮最后一条她的消息 id */
     herMessageId: number;
     her: string[];
@@ -101,12 +112,31 @@ export interface FeedbackRow {
     tier: string;
 }
 
-const monthOf = (at: Date) => `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}`;
+const monthOf = (at: Date) => `${String(at.getFullYear()).padStart(4, '0')}-${String(at.getMonth() + 1).padStart(2, '0')}`;
+export const FEEDBACK_MONTH_FILE = /^\d{4}-(?:0[1-9]|1[0-2])\.jsonl$/;
+export function isFeedbackRow(value: unknown): value is FeedbackRow {
+    return stateObject(value) && stateTimestamp(value.at) && (value.label === 'fake' || value.label === 'real')
+        && Number.isSafeInteger(value.messageId) && Number(value.messageId) > 0
+        && (value.contact === undefined || (Number.isSafeInteger(value.contact) && Number(value.contact) > 0))
+        && Number.isSafeInteger(value.herMessageId) && Number(value.herMessageId) >= 0
+        && Array.isArray(value.her) && value.her.length > 0 && value.her.every(text => typeof text === 'string')
+        && Array.isArray(value.context) && value.context.every(line => stateObject(line) && (line.role === 'user' || line.role === 'assistant') && typeof line.text === 'string')
+        && typeof value.tier === 'string' && Boolean(value.tier.trim());
+}
+const feedbackTimeKey = (row: Pick<FeedbackRow, 'at' | 'messageId'>) => `${row.messageId}:${Date.parse(row.at)}`;
+/** 同一联系人、同一来源瞬时的短ID才代表同一事实；ISO偏移写法不影响身份。 */
+export const feedbackKey = (row: Pick<FeedbackRow, 'contact' | 'at' | 'messageId'>): string => `${row.contact ?? 'legacy'}:${feedbackTimeKey(row)}`;
+function supportedDate(at: Date): boolean {
+    return Number.isFinite(at.getTime()) && at.getFullYear() >= 0 && at.getFullYear() <= 9999 && stateTimestamp(at.toISOString());
+}
 
 /** feedback/YYYY-MM.jsonl，一行一条；只追加 */
 export class FeedbackLog {
     readonly #dir: string;
     #known: Set<number> | undefined;
+    readonly #facts = new Set<string>();
+    readonly #legacy = new Set<string>();
+    readonly #times = new Set<string>();
     #counts = new Map<string, number>();
 
     constructor(dataDir: string) {
@@ -116,14 +146,23 @@ export class FeedbackLog {
     #load(): Set<number> {
         if (this.#known) return this.#known;
         const known = new Set<number>();
-        if (existsSync(this.#dir)) {
-            for (const name of readdirSync(this.#dir).filter(file => /^\d{4}-\d{2}\.jsonl$/.test(file))) {
+        this.#facts.clear(); this.#legacy.clear(); this.#times.clear(); this.#counts.clear();
+        let files: string[];
+        try { files = readdirSync(this.#dir); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') files = []; else throw new Error('反馈记录目录读取失败'); }
+        {
+            for (const name of files.filter(file => FEEDBACK_MONTH_FILE.test(file))) {
                 let count = 0;
-                for (const line of readFileSync(join(this.#dir, name), 'utf8').split('\n')) {
+                let text: string;
+                try { text = readFileSync(join(this.#dir, name), 'utf8'); }
+                catch { throw new Error('反馈记录读取失败'); }
+                for (const line of text.split('\n')) {
                     if (!line.trim()) continue;
                     try {
-                        const row = JSON.parse(line) as Partial<FeedbackRow>;
-                        if (typeof row.messageId === 'number') known.add(row.messageId);
+                        const row: unknown = JSON.parse(line);
+                        if (!isFeedbackRow(row)) continue;
+                        if (this.#facts.has(feedbackKey(row))) continue;
+                        this.#remember(row, known);
                         count++;
                     } catch { /* 坏行不挡路，也不算数 */ }
                 }
@@ -137,13 +176,40 @@ export class FeedbackLog {
         return this.#load().has(messageId);
     }
 
+    #remember(row: FeedbackRow, known: Set<number>): void {
+        known.add(row.messageId); this.#facts.add(feedbackKey(row)); this.#times.add(feedbackTimeKey(row));
+        if (row.contact === undefined) this.#legacy.add(feedbackTimeKey(row));
+    }
+
+    hasFact(row: Pick<FeedbackRow, 'contact' | 'at' | 'messageId'>): boolean {
+        this.#load();
+        return row.contact === undefined ? this.#times.has(feedbackTimeKey(row))
+            : this.#facts.has(feedbackKey(row)) || this.#legacy.has(feedbackTimeKey(row));
+    }
+
     /** 追加一条，返回这个月的第几条 */
     record(row: FeedbackRow, at: Date): number {
+        if (!supportedDate(at) || !isFeedbackRow(row)) throw new Error('反馈记录或日期无效；未写入');
         const known = this.#load();
-        mkdirSync(this.#dir, { recursive: true });
         const month = monthOf(at);
-        appendFileSync(join(this.#dir, `${month}.jsonl`), `${JSON.stringify(row)}\n`, 'utf8');
-        known.add(row.messageId);
+        if (this.hasFact(row)) return this.#counts.get(month) ?? 0;
+        try {
+            mkdirSync(this.#dir, { recursive: true });
+            const file = openSync(join(this.#dir, `${month}.jsonl`), 'a+');
+            try {
+                const size = fstatSync(file).size;
+                const last = Buffer.alloc(1);
+                if (size) readSync(file, last, 0, 1, size - 1);
+                appendFileSync(file, `${size && last[0] !== 10 ? '\n' : ''}${JSON.stringify(row)}\n`, 'utf8');
+            } finally { closeSync(file); }
+        } catch {
+            // 追加/关闭可能已成功后才报错；以完整落盘行确认，不能因重投重复采样。
+            this.#known = undefined;
+            this.#counts.clear();
+            try { if (this.hasFact(row)) return this.#counts.get(month) ?? 0; } catch { /* 未能确认写入，不发布成功。 */ }
+            throw new Error('反馈记录写入失败；请恢复存储后重试');
+        }
+        this.#remember(row, known);
         const count = (this.#counts.get(month) ?? 0) + 1;
         this.#counts.set(month, count);
         return count;
@@ -162,9 +228,10 @@ export function createFeedbackChannel(dataDir: string, log: (message: string) =>
     const store = new FeedbackLog(dataDir);
     return {
         consume(qq, tier, message, messageId, time, history) {
+            if (!Number.isSafeInteger(messageId) || messageId <= 0 || !Number.isSafeInteger(qq) || qq <= 0 || !supportedDate(time)) return false;
             const command = parseFeedback(message);
             if (!command) return false;
-            if (store.has(messageId)) return true;
+            if (store.hasFact({ contact: qq, messageId, at: time.toISOString() })) return true;
             const turn = locateTurn(history, time, command.replyTo);
             if (!turn) return false;
             const last = turn.her[turn.her.length - 1]!;
@@ -172,6 +239,7 @@ export function createFeedbackChannel(dataDir: string, log: (message: string) =>
                 at: time.toISOString(),
                 label: command.label,
                 messageId,
+                contact: qq,
                 herMessageId: command.replyTo ?? last.messageId ?? 0,
                 her: turn.her.map(message => message.content),
                 context: turn.context.map(message => ({ role: message.role, text: message.content })),

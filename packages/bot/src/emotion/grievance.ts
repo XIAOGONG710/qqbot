@@ -3,7 +3,7 @@
 // 和 ADR 0028 一样不落盘：每一轮都从聊天记录里的时间戳和原话重算，重启、隔几天之后得到的是同一个结果；没有「她生气了」这样的字段。
 // 一次最多动一档：只有「小别扭」一档，没有升级、没有冷战；不在他难过 / 生病、说收尾、要她哄、说了想念或道歉的时候出现。
 
-import { warmSignal } from './affect.ts';
+import { hasAffirmedSignal, warmSignal } from './affect.ts';
 import type { StoredMessage } from '../memory/history.ts';
 
 type Said = Pick<StoredMessage, 'role' | 'content'> & { time?: string | undefined };
@@ -40,7 +40,7 @@ const EXTRA_REPAIR = /不好意思|怪我|我的错|错了错了/;
 
 /** 他这句话是不是在道歉 / 解释 / 哄 / 说想念——任何一样都算修补 */
 export function isRepairText(text: string): boolean {
-    return warmSignal(text) !== undefined || EXPLAIN.test(text) || EXTRA_REPAIR.test(text);
+    return warmSignal(text) !== undefined || hasAffirmedSignal(text, EXPLAIN) || hasAffirmedSignal(text, EXTRA_REPAIR);
 }
 
 const DAY_MS = 86_400_000;
@@ -50,12 +50,13 @@ const BURST_GAP_MS = 20 * 60_000;
 /**
  * 这段间隔里她发出去、没人回的有几串：第一串是对他最后一句话的回复，不算；之后另起一串（她主动发的）才是发了没人回。
  */
-function unansweredBursts(between: readonly Said[]): number {
+function unansweredBursts(between: readonly Said[], from: number, to: number): number {
     let bursts = 0;
     let last = -Infinity;
     for (const message of between) {
         if (message.role !== 'assistant') continue;
         const time = at(message);
+        if (!Number.isFinite(time) || time < from || time > to) continue;
         if (!(time - last <= BURST_GAP_MS)) bursts++;
         last = time;
     }
@@ -81,7 +82,7 @@ export function grievanceNow(history: readonly Said[]): Grievance | undefined {
         const after = history[users[k]!]!;
         const span = at(after) - at(before);
         if (!(span >= GRIEVANCE_GAP_MS)) continue;
-        const leftHanging = unansweredBursts(history.slice(users[k - 1]! + 1, users[k]!)) > 0;
+        const leftHanging = unansweredBursts(history.slice(users[k - 1]! + 1, users[k]!), at(before), at(after)) > 0;
         // 只看最近的那一次大间隔：它不成立，更早的就更不相干
         if (!leftHanging) return undefined;
         const notified = users.slice(Math.max(0, k - 3), k).some(index => NOTICE.test(history[index]!.content));
@@ -94,7 +95,8 @@ export function grievanceNow(history: readonly Said[]): Grievance | undefined {
 
     // 隔了一阵再来的，不接着上一次的别扭
     const latest = history.at(-1)!;
-    if (!(at(latest) - at(history[back]!) <= GRIEVANCE_WINDOW_MS)) return undefined;
+    const sinceBack = at(latest) - at(history[back]!);
+    if (!(sinceBack >= 0 && sinceBack <= GRIEVANCE_WINDOW_MS)) return undefined;
 
     // 3 天 23 小时说「4 天」，3 天零几小时说「3 天」
     const days = Math.round(gap / DAY_MS);
@@ -117,6 +119,7 @@ export function grievanceNow(history: readonly Said[]): Grievance | undefined {
     }
     const repairedNow = repairs.some(index => index >= turnStart);
     const repairedBefore = repairs.some(index => index < turnStart);
+    if (rounds >= GRIEVANCE_ROUNDS) return undefined;
     if (repairedNow) return repairedBefore ? undefined : { stage: 'makeup', days, round: rounds };
     if (repairedBefore) return undefined;
     return rounds < GRIEVANCE_ROUNDS ? { stage: 'sulk', days, round: rounds } : undefined;
@@ -147,7 +150,10 @@ export function ignoredNow(history: readonly Said[]): Grievance | undefined {
     // 她连着发出去、没人回的一串
     let start = lastReply;
     while (start > 0 && history[start - 1]!.role === 'assistant') start--;
-    const stretch = history.slice(start, lastReply + 1);
+    const stretch = history.slice(start, lastReply + 1).filter(message => {
+        const age = at(first) - at(message);
+        return age >= 0 && age <= IGNORED_MAX_MS;
+    });
     if (stretch.length < 2) return undefined;
     if (!(at(first) - at(stretch[0]!) <= IGNORED_MAX_MS)) return undefined;
     if (!stretch.some(message => FEELING.test(message.content))) return undefined;
@@ -155,7 +161,7 @@ export function ignoredNow(history: readonly Said[]): Grievance | undefined {
     // 只认道歉和安慰，不认「没看手机」「在忙」这类解释——解释多半是借口（10-20 留出题 h01：他说「刚才跟人开黑没看手机」，
     // 被 isRepairText 当成已经在解释，她没发火还答歪了）；真有正当理由（手机没电、在医院）模型读他的话自然会软下来
     const comingBack = history.slice(turnStart).filter(message => message.role === 'user');
-    if (comingBack.some(message => APOLOGY_OR_COMFORT.test(message.content))) return undefined;
+    if (comingBack.some(message => hasAffirmedSignal(message.content, APOLOGY_OR_COMFORT))) return undefined;
     return { stage: 'sulk', days: 0, round: 0, cause: 'ignored' };
 }
 

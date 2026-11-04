@@ -302,6 +302,47 @@ describe('编排（app.ts）', () => {
         assert.doesNotMatch(normal, /大方承认/);
     });
 
+    test('危机状态写失败仍暂停且继续响应，存储恢复后自动重试不需新信号', async () => {
+        const cfg = config(); const { app, logs } = setup(cfg, {}, { generate: () => '我在。你现在安全吗？' });
+        const original = fileOps.renameSync; const delays = fileOps.writeDelaysMs; const statePath = join(cfg.dataDir, 'crisis.json');
+        fileOps.writeDelaysMs = [0];
+        fileOps.renameSync = ((from, to) => { if (String(to) === statePath) throw Object.assign(new Error('PRIVATE_CRISIS_IO'), { code: 'EIO' }); return original(from, to); }) as typeof original;
+        try {
+            app.receive(event(10001, 901, '我不想活了'));
+            await until(() => new ChatHistory(cfg.dataDir).load(10001).some(message => message.role === 'user'));
+            assert.equal(app.status().contacts[0]!.crisis?.paused, true);
+            assert.equal(existsSync(statePath), false);
+            fileOps.renameSync = original;
+            await until(() => existsSync(statePath), 4000);
+            assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).contacts['10001'].level, 'high');
+            assert.ok(logs.every(message => !message.includes('PRIVATE_CRISIS_IO')));
+        } finally { fileOps.renameSync = original; fileOps.writeDelaysMs = delays; app.stop(); }
+    });
+
+    test('重启从已存聊天恢复缺失危机标记，不依赖NapCat再次补回同ID消息', async () => {
+        const cfg = config(); const at = Date.now() - 30_000;
+        new ChatHistory(cfg.dataDir).append(10001, { role: 'user', content: '我不想活了', time: new Date(at).toISOString(), messageId: 902 });
+        const { app } = setup(cfg, { 10001: [] });
+        try {
+            await app.connected(SELF);
+            assert.equal(app.status().contacts[0]!.crisis?.paused, true);
+            assert.equal(Date.parse(JSON.parse(readFileSync(join(cfg.dataDir, 'crisis.json'), 'utf8')).contacts['10001'].at), at);
+        } finally { app.stop(); }
+    });
+
+    test('停止后补回历史晚拒绝不恢复下一联系人的危机状态或发起新请求', async () => {
+        const cfg = config({ contacts: [{ qq: 10001, name: '合成人甲', tier: 'classmate' }, { qq: 10002, name: '合成人乙', tier: 'classmate' }] });
+        new ChatHistory(cfg.dataDir).append(10002, { role: 'user', content: '我不想活了', time: new Date().toISOString(), messageId: 903 });
+        let reject!: (error: Error) => void;
+        const held = new Promise<void>((_resolve, fail) => { reject = fail; });
+        const { app, asked } = setup(cfg, { 10001: [], 10002: [] }, { holdHistory: held });
+        const connected = app.connected(SELF);
+        try {
+            await until(() => asked.length === 1); app.stop(); reject(new Error('synthetic late history failure')); await connected;
+            assert.deepEqual(asked, [10001]); assert.equal(existsSync(join(cfg.dataDir, 'crisis.json')), false);
+        } finally { reject(new Error('synthetic cleanup')); app.stop(); await connected; }
+    });
+
     test('危机回合：重写后仍不过就发固定的关怀兜底（含 12356）', async () => {
         const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'classmate', knowsBot: true }] });
         const { app, sent } = setup(cfg, {}, { generate: () => '开玩笑吧，晚安' });
@@ -1347,7 +1388,8 @@ describe('反馈通道（ADR 0073）：男朋友档回「假」/「像」', () =
         const { app, sent, logs } = setup(cfg);
         app.receive(event(10001, 1, '在吗'));
         await until(() => sent.length === 1);
-        app.receive(event(10001, 2, '假'));
+        const feedbackEvent = event(10001, 2, '假');
+        app.receive(feedbackEvent);
         await until(() => feedbackRows(cfg).length === 1);
         assert.equal(sent.length, 1, '她没有回应这个字');
         assert.deepEqual(chat(cfg, 10001), ['user:在吗', 'assistant:好'], '不进聊天记录');
@@ -1359,7 +1401,7 @@ describe('反馈通道（ADR 0073）：男朋友档回「假」/「像」', () =
         await until(() => feedbackRows(cfg).length === 2);
         assert.deepEqual(feedbackRows(cfg)[1], { ...feedbackRows(cfg)[1]!, label: 'real', messageId: 3, herMessageId: 900 });
         // 入口重投同一条：吞掉、不再记
-        app.receive(event(10001, 2, '假'));
+        app.receive(feedbackEvent);
         await new Promise(r => setTimeout(r, 100));
         assert.equal(feedbackRows(cfg).length, 2);
         assert.equal(sent.length, 1);

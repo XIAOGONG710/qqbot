@@ -15,6 +15,8 @@ export interface ModuleDef {
     files: readonly string[];
     /** 这个模块的开关在状态页上属于哪几个分组（features.ts 的 FEATURE_GROUPS） */
     groups: readonly FeatureGroup[];
+    /** 跨状态页分组的模块可明确列出自己的开关，避免被误写成全部永远启用。 */
+    featureKeys?: readonly string[];
     /** 看它有没有变好，该看周报 / 工具里的哪些数字 */
     metrics: string;
     /** 最相关的几份 ADR */
@@ -58,11 +60,12 @@ export const MODULES: readonly ModuleDef[] = [
     },
     {
         id: 'emotion', name: '心境与安全',
-        scope: '她的心境（开心 / 难过 / 流泪）、小别扭和和好、危机最小规则、按联系人披露她是程序、反馈通道、作者写下的大事。',
+        scope: '她的心境（开心 / 难过 / 流泪）、小别扭和和好、危机最小规则、按联系人披露她是程序、反馈通道、作者写下的大事。心境、别扭、拒绝与反馈受下列配置控制；危机与身份披露底线不设关闭开关。',
         files: ['emotion/affect.ts', 'emotion/feelings.ts', 'emotion/moments.ts', 'emotion/grievance.ts', 'emotion/crisis.ts', 'emotion/crisis-state.ts', 'emotion/disclosure.ts', 'emotion/feedback.ts', 'emotion/feedback-digest.ts', 'emotion/feedback-digest-cli.ts'],
         groups: [],
+        featureKeys: ['herFeelings', 'grievance', 'herNo', 'feedbackCommands'],
         metrics: '周报日志计数里的「心境」「会拒绝」；危机相关永远是最高优先级，没有“指标”，只有测试和 ADR 0068 的底线',
-        adrs: ['0067', '0068', '0074', '0102', '0103'],
+        adrs: ['0067', '0068', '0073', '0074', '0102', '0103', '0234', '0235'],
     },
     {
         id: 'proactive', name: '主动找他',

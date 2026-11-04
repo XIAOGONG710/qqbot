@@ -73,7 +73,8 @@ test('两独立moment-cli写者发布区互斥，明确忙后重试保留两件�
         }
         writeFileSync(join(dir, 'go'), 'go');
         const exits = await Promise.all(children.map(item => item.done));
-        assert.equal(overlap, false, 'two authors passed into publication concurrently');
+        const durableCount = JSON.parse(readFileSync(join(dir, 'moments.json'), 'utf8')).moments.length;
+        assert.equal(overlap, false, `two authors passed into publication concurrently: ${JSON.stringify({ exits, durableCount })}`);
         for (let i = 0; i < children.length; i++) {
             if (exits[i] === 2) {
                 assert.match(children[i]!.stderr(), /繁忙/);

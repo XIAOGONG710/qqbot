@@ -9,8 +9,10 @@ const adrLink = (number: string, adrFiles: readonly string[]) => {
     return file ? `[ADR ${number}](../adr/${file})` : `ADR ${number}`;
 };
 
+const moduleFeatures = (module: ModuleDef) => FEATURES.filter(feature => module.featureKeys ? module.featureKeys.includes(feature.key) : module.groups.includes(feature.group));
+
 function moduleDoc(module: ModuleDef, adrFiles: readonly string[]): string {
-    const switches = FEATURES.filter(feature => module.groups.includes(feature.group));
+    const switches = moduleFeatures(module);
     const lines = [
         `# 模块：${module.name}`,
         '',
@@ -66,7 +68,7 @@ export function moduleDocs(adrFiles: readonly string[]): Record<string, string> 
         '',
         '| 模块 | 管什么 | 开关数 |',
         '| --- | --- | --- |',
-        ...MODULES.map(module => `| [${module.name}](${module.id}.md) | ${module.scope} | ${FEATURES.filter(feature => module.groups.includes(feature.group)).length} |`),
+        ...MODULES.map(module => `| [${module.name}](${module.id}.md) | ${module.scope} | ${moduleFeatures(module).length} |`),
         '',
         '## 加一个新功能时',
         '',
