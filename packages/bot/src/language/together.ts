@@ -16,6 +16,8 @@ const SHE_ANSWERS_MS = 10 * MIN;
 
 /** 他在邀她：游戏的字眼 + 问句，或者“来不来 / 上不上” */
 const HIS_INVITE = /(?:王者|开黑|双排|峡谷|我的世界|联机|上号|打两把|玩两把|来两把|来一把|来一局).{0,12}(?:吗|嘛|不|吧|[？?])|来不来|上不上|玩不玩|打不打/;
+const GAME_CONTEXT = /王者|开黑|双排|峡谷|我的世界|联机|上号|打两把|玩两把|来两把|来一把|来一局|一起玩|游戏|排位|\bMC\b/i;
+const GAME_SHORT_INVITE = /^(?:来不来|上不上|玩不玩|打不打)[啊呀嘛吗吧？?！!～~\s]*$/;
 /** 一起玩结束了 */
 const ENDS = /下了|下线|不玩了|不打了|睡了|晚安|散了|先下|打完了|玩够了|我去忙|洗澡去|去睡/;
 /** 她答应他：开头是来 / 好 / 行 / 可以 / 走 / 上 / 没问题，并且前面几个字里没有推掉的话 */
@@ -46,6 +48,9 @@ export function togetherNow(history: readonly Said[], now: number): Together | u
         const invite = recent[i]!;
         const byHer = invite.role === 'assistant';
         if (!(byHer ? HER_INVITE : HIS_INVITE).test(invite.content)) continue;
+        // 泛邀约（喝奶茶、吃饭等）不代表游戏；短邀约只继承紧邻的游戏上下文。
+        if (!GAME_CONTEXT.test(invite.content) && !(GAME_SHORT_INVITE.test(invite.content.trim())
+            && GAME_CONTEXT.test(recent.slice(Math.max(0, i - 3), i).map(message => message.content).join('\n')))) continue;
         const answerIndex = recent.findIndex((message, j) => j > i && message.role !== invite.role);
         const answer = recent[answerIndex];
         if (!answer || answer.at - invite.at > (byHer ? HE_ANSWERS_MS : SHE_ANSWERS_MS)) continue;

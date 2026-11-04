@@ -76,4 +76,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0091](../adr/0091-reply-shape.md)、[ADR 0095](../adr/0095-filler-turns.md)、[ADR 0096](../adr/0096-split-and-share.md)、[ADR 0099](../adr/0099-too-smooth.md)、[ADR 0113](../adr/0113-relationship-stage.md)、[ADR 0114](../adr/0114-running-jokes.md)、[ADR 0115](../adr/0115-interruptions.md)、[ADR 0111](../adr/0111-together.md)、[ADR 0121](../adr/0121-odd-words.md)、[ADR 0137](../adr/0137-fact-check.md)、[ADR 0138](../adr/0138-idioms.md)、[ADR 0167](../adr/0167-selfcheck.md)
+[ADR 0091](../adr/0091-reply-shape.md)、[ADR 0095](../adr/0095-filler-turns.md)、[ADR 0096](../adr/0096-split-and-share.md)、[ADR 0099](../adr/0099-too-smooth.md)、[ADR 0113](../adr/0113-relationship-stage.md)、[ADR 0114](../adr/0114-running-jokes.md)、[ADR 0115](../adr/0115-interruptions.md)、[ADR 0111](../adr/0111-together.md)、[ADR 0121](../adr/0121-odd-words.md)、[ADR 0137](../adr/0137-fact-check.md)、[ADR 0138](../adr/0138-idioms.md)、[ADR 0167](../adr/0167-selfcheck.md)、[ADR 0227](../adr/0227-language-review.md)

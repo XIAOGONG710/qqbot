@@ -8,10 +8,10 @@
 import { dirname, join } from 'node:path';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { disclosureRules, isClose, sourceLabel, startsConversation, todayStart } from '.././emotion/disclosure.ts';
-import { faceContext, reviewCrisisReply, reviewReply, type ReviewOptions } from '.././language/exit-check.ts';
+import { crisisFallback, faceContext, finalizeReply, reviewCrisisReply, reviewReply, type ReviewOptions } from '.././language/exit-check.ts';
 import type { ChatHistory, StoredMessage } from '.././memory/history.ts';
 import { checkFacts, type FactCheckMode, type FactRecord } from '.././language/fact-check.ts';
-import { chatCompletion, forExtraction } from '.././language/llm.ts';
+import { chatCompletion, completionMaxTokens, forExtraction } from '.././language/llm.ts';
 import type { Log } from './log.ts';
 import { CLEAR_DAYS, recentChat, type FadeStats } from '.././memory/fading.ts';
 import { heardSinceReply, initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from '.././memory/long-term.ts';
@@ -30,7 +30,7 @@ import { describeIntent, needsCareText } from '.././language/intent.ts';
 import { describeObstacles, meetupDays } from '.././world/obstacles.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { describeQuote, planQuote, quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
-import { alreadyTold, ASKS_TO_EXPLAIN, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from '.././language/expression.ts';
+import { alreadyTold, asksToExplain, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from '.././language/expression.ts';
 import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from '.././language/shape.ts';
 import { finishReply } from '.././language/unfinished.ts';
 import { describeUnsettled } from '.././life/open-loops.ts';
@@ -312,16 +312,21 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let photoNow: PhotoKind | undefined;
     /** 吃的照片是哪道菜（ADR 0128）；只有 photoNow 是 food 时有 */
     let photoDishNow: string | undefined;
-    /** 这一轮回复里摘出来的设备令牌（ADR 0148）：最后一次 clean 对应最终要发的那份；发送前由 beforeSend 登记。没开设备控制的一律只摘不用 */
+    /** 当前被选中草稿的动作；废弃的重写稿只解析，不替换这里。 */
     let deviceNow: ParsedTokens | undefined;
-    const clean = (reply: string) => {
-        deviceNow = options.devices ? options.devices.parse(reply) : undefined;
-        const text = cleanUpReply(deviceNow ? deviceNow.reply : stripDeviceTokens(reply), names, character.regexScripts);
+    const prepareReply = (reply: string): { text: string; devices: ParsedTokens | undefined } => {
+        const devices = options.devices?.parse(reply);
+        const text = cleanUpReply(devices ? devices.reply : stripDeviceTokens(reply), names, character.regexScripts);
         const stickered = options.stickers?.clean(text, stickersAllowed) ?? stripStickerArtifacts(text);
         const cleaned = options.photos ? options.photos.clean(stickered, photoNow !== undefined) : stickered;
-        if (!stickerOnlyNow) return cleaned;
+        if (!stickerOnlyNow) return { text: cleaned, devices };
         const only = cleaned.split('\n').map(line => line.trim()).filter(line => /^<sticker:[a-f0-9]{12}>$/i.test(line));
-        return only.length ? only.join('\n') : cleaned;
+        return { text: only.length ? only.join('\n') : cleaned, devices };
+    };
+    const clean = (reply: string) => {
+        const draft = prepareReply(reply);
+        deviceNow = draft.devices;
+        return draft.text;
     };
     const schedule = options.schedule ? character.schedule : undefined;
     const herSchedule = options.herDays ? character.schedule : undefined;
@@ -377,6 +382,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         userId: contact.qq,
         history: options.history,
         buildPrompt: async (chat, { woken, initiate, offlineSince }) => {
+            deviceNow = undefined;
             const time = new Date(now());
             const humanValues = options.humanValues?.({ contact, history: chat, at: time });
             if (humanValues) log(describeHumanValues(humanValues));
@@ -678,7 +684,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (options.stickers && !thinking && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
             // 深思（ADR 0151）：他是认真在问她的轮次，不套字数和条数、换更强的模型、提示词只留一句“先想清楚”；危机 / 小别扭 / 亲近等别的意图照旧让路
             deliberateNow = Boolean(options.deliberate) && !initiate && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !grievanceActive
-                && deliberateTurn(intent, saidNow, ASKS_TO_EXPLAIN.test(saidNow));
+                && deliberateTurn(intent, saidNow, asksToExplain(saidNow));
             if (deliberateNow) log(`深思：他在认真问她，这一轮不套字数和条数、用 ${options.deliberate!.llm.model}、提示词只留一句“先想清楚”`);
             // 深思时那条只管“怎么答”的意图行（先直接回答 / 很大很抽象的问题）由深思那一句代替；追着要答案、说她不像真人这类纠偏的意图行保留
             const intentLine = deliberateNow && intent && /先直接回答他刚问的|他在问一个很大、很抽象的问题/.test(intent) ? undefined : intent;
@@ -829,13 +835,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 now: time,
                 settings: {
                     maxContext: options.prompt.maxContext,
-                    maxTokens: llm.maxTokens,
+                    maxTokens: completionMaxTokens(useNow() ?? llm),
                     worldInfo: options.prompt.worldInfo,
                     pinExamples: options.prompt.pinExamples,
                 },
                 countTokens: estimateTokens,
             });
             promptSource = prompt.messages;
+            if (prompt.fallbackReply && crisisNow) prompt.fallbackReply = crisisFallback(crisisNow.level);
             return {
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
@@ -876,18 +883,20 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return typo.recall ? { parts: typo.parts, recall: typo.recall } : typo.parts;
         },
         review: async (reply, messages, reviewContext) => {
-            const regenerate = async (note: string) => clean(await generate(postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names), log, useNow()));
+            let rewrittenDraft: ReturnType<typeof prepareReply> | undefined;
+            const regenerate = async (note: string) => {
+                rewrittenDraft = prepareReply(await generate(postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names), log, useNow()));
+                return rewrittenDraft.text;
+            };
+            const onRewriteAccepted = () => { deviceNow = rewrittenDraft?.devices; };
+            const factOptions = options.factCheck && options.factCheck !== 'off' && !crisisNow && !reviewContext?.allowRepeat && promptSource ? {
+                mode: options.factCheck, source: promptSource, names,
+                audit: options.factAudit ?? ((auditMessages: OpenAIMessage[]) => chatCompletion({ ...forExtraction(llm), temperature: 0 }, auditMessages, { log })),
+                regenerate, onRewriteAccepted, log, ...(options.onFactCheck ? { onRecord: options.onFactCheck } : {}),
+            } : undefined;
             // 逐条事实检查（ADR 0137）：先于出口检查——重写出来的话还要过出口检查这一关；危机回合、固定说法（allowRepeat）不查
-            const factual = options.factCheck && options.factCheck !== 'off' && !crisisNow && !reviewContext?.allowRepeat && promptSource
-                ? await checkFacts(reply, {
-                    mode: options.factCheck, source: promptSource, names,
-                    audit: options.factAudit ?? ((auditMessages: OpenAIMessage[]) => chatCompletion({ ...forExtraction(llm), temperature: 0 }, auditMessages, { log })),
-                    regenerate, log, ...(options.onFactCheck ? { onRecord: options.onFactCheck } : {}),
-                })
-                : reply;
-            const reviewed = await (crisisNow
-                ? (text: string, reviewOptions: ReviewOptions) => reviewCrisisReply(text, reviewOptions, crisisNow!.level)
-                : reviewReply)(factual, {
+            const factual = factOptions ? await checkFacts(reply, factOptions) : reply;
+            const reviewOptions: ReviewOptions = {
                 // 角色卡的禁用词 + 医书里的词（“肚子坠着”之类，expression.ts 的 ODD_BODY_WORDS）：出了就让她重写
                 banned: [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS],
                 userName: contact.name,
@@ -898,12 +907,20 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(textIntimacy ? { textIntimacy: true } : {}),
                 ...(options.stickers ? { imageStickers: true } : {}),
                 regenerate,
+                onRewriteAccepted,
                 log,
-            });
+            };
+            const reviewed = crisisNow ? await reviewCrisisReply(factual, reviewOptions, crisisNow.level) : await reviewReply(factual, reviewOptions);
+            if (crisisNow) {
+                deviceNow = undefined;
+                return reviewed;
+            }
             // 形状控制（配置 shape）：出口检查之后再看字数和条数，超了重写一次、还超就在分句处截断
-            const shaped = shapeNow && !crisisNow ? await shapeReply(reviewed, shapeNow, { regenerate, log }) : reviewed;
+            const shaped = shapeNow ? await shapeReply(reviewed, shapeNow, { regenerate, onRewriteAccepted, log }) : reviewed;
             // 话说到一半（ADR 0141）：形状之后再看，并回去 / 退回去会让一条变长，放在字数检查前面会被再截一次；危机回合不走
-            return options.speechCheck && !crisisNow ? finishReply(shaped, { regenerate, log }) : shaped;
+            const finished = options.speechCheck ? await finishReply(shaped, { regenerate, onRewriteAccepted, log }) : shaped;
+            const final = finalizeReply(finished, reviewOptions);
+            return factOptions && final !== factual ? checkFacts(final, { ...factOptions, finalOnly: true }) : final;
         },
         send: options.send,
         ...(options.quoteReply ? { quote: () => quoteNow?.messageId, quoteFix: (wrongId: number) => quoteFix(contact.qq, wrongId) } : {}),

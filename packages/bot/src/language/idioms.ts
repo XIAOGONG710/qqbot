@@ -8,6 +8,7 @@
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { detectCrisis } from '.././emotion/crisis.ts';
 import { pick } from '.././social/reply-timing.ts';
 
@@ -30,6 +31,8 @@ export interface IdiomState {
     updatedAt?: string;
     /** 上一次学时他的消息一共多少条 */
     messageCount?: number;
+    /** 上次处理的末条消息摘要，不保存聊天正文。 */
+    messageCursor?: string;
 }
 
 /** 多久看一眼该不该学（学不学由下面的条件定） */
@@ -60,6 +63,7 @@ export const IDIOM_FRESH_DAYS = 14;
 export const IDIOM_COOLDOWN_REPLIES = 3;
 
 type Said = { role: 'user' | 'assistant'; content: string; time?: string };
+const cursorOf = (message: { content: string; time?: string }) => createHash('sha256').update(JSON.stringify([message.time, message.content])).digest('hex');
 
 /** 太泛的：每个人每天都在说，不算“他的习惯” */
 const GENERIC = new Set(['嗯', '嗯嗯', '哦', '哦哦', '啊', '呀', '吧', '呢', '吗', '嘛', '的', '了', '好', '好的', '好吧', '行', '可以', '是', '对', '不', '没', '我', '你', '他', '她', '哈哈', '哈哈哈', '哈哈哈哈', '在', '在吗', '呃', '额', '哎', '诶']);
@@ -175,7 +179,9 @@ export async function refreshIdioms(options: RefreshIdiomsOptions): Promise<bool
     const his = hisMessages(options.history, now);
     if (his.length < IDIOMS_MIN_MESSAGES) return false;
     if (state.updatedAt && now - Date.parse(state.updatedAt) < IDIOMS_REFRESH_MS) return false;
-    if (state.messageCount !== undefined && his.length - state.messageCount < IDIOMS_MIN_NEW) return false;
+    const lastProcessed = state.messageCursor ? his.findLastIndex(message => cursorOf(message) === state.messageCursor) : -1;
+    const added = state.messageCursor ? his.length - lastProcessed - 1 : state.updatedAt ? his.filter(message => Date.parse(message.time) > Date.parse(state.updatedAt!)).length : his.length;
+    if (added < IDIOMS_MIN_NEW) return false;
     const lines = his.slice(-300).map(message => message.content.replace(/\s+/g, ' ').slice(0, 60)).join('\n');
     const reply = await options.extract([{ role: 'user', content: idiomsPrompt(options.userName, options.charName, lines) }]);
     const fresh = parseIdioms(reply, his, options.blocked);
@@ -185,7 +191,7 @@ export async function refreshIdioms(options: RefreshIdiomsOptions): Promise<bool
         return again ? [again] : [];
     });
     const items = [...stillThere, ...fresh.filter(idiom => !stillThere.some(old => old.phrase === idiom.phrase))].slice(0, IDIOMS_KEPT);
-    store.save(qq, { version: 1, items, updatedAt: new Date(now).toISOString(), messageCount: his.length });
+    store.save(qq, { version: 1, items, updatedAt: new Date(now).toISOString(), messageCount: his.length, messageCursor: cursorOf(his.at(-1)!) });
     options.log(`口头习惯：学了一次，现在有 ${items.length} 个（新增 ${items.length - stillThere.length}；日志不记内容）`);
     return true;
 }

@@ -57,6 +57,7 @@ export function auditMessages(source: readonly OpenAIMessage[], reply: string, n
         const content = (message.content ?? '').trim();
         if (!content) continue;
         if (message.role === 'system') {
+            if (message.name === 'example_user' || message.name === 'example_assistant') continue;
             if (content.length >= 20 && !content.includes('[Start a new Chat]')) facts.push(content);
         } else {
             chat.push(`${message.role === 'user' ? names.user : names.char}：${content}`);
@@ -102,7 +103,18 @@ export function factRewriteNote(claims: readonly FactClaim[]): string {
 
 /** 把含有这几条说法的行删掉；删完一行不剩就原样返回 */
 export function dropClaimLines(reply: string, claims: readonly FactClaim[]): string {
-    const kept = reply.split('\n').filter(line => !claims.some(claim => line.includes(claim.quote)));
+    const bad = new Set<number>();
+    for (const claim of claims) {
+        if (!claim.quote) continue;
+        let from = 0;
+        for (let at = reply.indexOf(claim.quote, from); at >= 0; at = reply.indexOf(claim.quote, from)) {
+            const first = reply.slice(0, at).split('\n').length - 1;
+            const last = first + claim.quote.split('\n').length - 1;
+            for (let line = first; line <= last; line++) bad.add(line);
+            from = at + claim.quote.length;
+        }
+    }
+    const kept = reply.split('\n').filter((_, index) => !bad.has(index));
     return kept.some(line => line.trim()) ? kept.join('\n') : reply;
 }
 
@@ -129,6 +141,9 @@ export interface FactCheckOptions {
     /** 把审稿的提示词交给模型，返回它的原文 */
     audit: (messages: OpenAIMessage[]) => Promise<string>;
     regenerate: (note: string) => Promise<string>;
+    onRewriteAccepted?: () => void;
+    /** 最后一次只审查/删行，不能再生成一个未经后续审查的新版本。 */
+    finalOnly?: boolean;
     log: (message: string) => void;
     onRecord?: (record: FactRecord) => void;
     /** 审稿最多等多久（默认 FACT_TIMEOUT_MS；测试用短的） */
@@ -165,12 +180,18 @@ export async function checkFacts(reply: string, options: FactCheckOptions): Prom
     }
     record.claims = claims;
     if (claims.length === 0) return finish(reply);
-    options.log(`事实检查：${claims.length} 条说法对不上事实——${describe(claims)}${options.mode === 'log' ? '（只记录，照发）' : '，带说明重写一次'}`);
+    options.log(`事实检查：${claims.length} 条说法对不上事实——${describe(claims)}${options.mode === 'log' ? '（只记录，照发）' : options.finalOnly ? '，最后一次核对，删掉有问题的行' : '，带说明重写一次'}`);
     if (options.mode === 'log') return finish(reply, { action: 'logged' });
+    if (options.finalOnly) {
+        const dropped = dropClaimLines(reply, claims);
+        return finish(dropped, { action: dropped === reply ? 'kept' : 'dropped' });
+    }
 
     let rewritten: string;
     try {
         rewritten = await options.regenerate(factRewriteNote(claims));
+        if (!rewritten.trim()) throw new Error('重写正文为空');
+        options.onRewriteAccepted?.();
     } catch (error) {
         const dropped = dropClaimLines(reply, claims);
         options.log(`事实检查：重写失败（${error instanceof Error ? error.message : String(error)}），${dropped === reply ? '照发' : '删掉这几行'}`);

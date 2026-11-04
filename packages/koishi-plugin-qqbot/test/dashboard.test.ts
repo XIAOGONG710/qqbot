@@ -88,14 +88,15 @@ describe('客户端的纯函数', () => {
         assert.equal(groups.at(-1).name, '新模块');
     });
 
-    test('标签：开着的写上模式（试运行 / 会发），“开”不重复写；提示里写开关和 ADR', () => {
+    test('标签保留模式；提示使用已启用/未启用和功能说明，不显示内部 ADR 编号', () => {
         const proactive = features.find(f => f.key === 'proactive')!;
         const stickers = features.find(f => f.key === 'stickers')!;
         assert.ok(!featureLabel(proactive).includes('（'), '主动消息 on 不加括号');
         assert.ok(featureLabel(stickers).endsWith('（会发）'), featureLabel(stickers));
         assert.ok(featureLabel(featureStatuses({ proactive: 'dryRun' }).find(f => f.key === 'proactive')!).endsWith('（试运行）'));
-        assert.equal(featureTitle({ on: true, adr: '0109' }), '开着　ADR 0109');
-        assert.equal(featureTitle({ on: false }), '关着');
+        assert.equal(featureTitle({ on: true, adr: '0109' }), '已启用');
+        assert.equal(featureTitle({ on: false }), '未启用');
+        assert.equal(featureTitle({ on: true, hint: '允许发送照片', adr: '0109' }), '已启用；允许发送照片');
     });
 
     test('货架 / 小梗 / 周报那几行：没有这一项就不出现；货架空着写清楚', () => {

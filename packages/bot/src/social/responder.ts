@@ -372,8 +372,8 @@ export function createResponder(deps: ResponderDeps): Responder {
             const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
             deps.log(`生成回复：${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}${prompt.note ? `，${prompt.note}` : ''}`);
 
-            reply = deps.clean(await deps.generate(prompt.messages));
-            if (deps.review) reply = await deps.review(reply, prompt.messages);
+            reply = prompt.fallbackReply ?? deps.clean(await deps.generate(prompt.messages));
+            if (deps.review && !prompt.fallbackReply) reply = await deps.review(reply, prompt.messages);
             if (stopped) {
                 deps.log('已停止，这次生成的回复不发');
                 return;
@@ -468,6 +468,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         const startedAt = now();
         setPhase({ phase: 'initiating', reason: request.label });
         const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { initiate: { note: request.note, topic: request.topic, ...(request.think ? { think: true } : {}), ...(request.photo ? { photo: request.photo } : {}), ...(request.photoDish ? { photoDish: request.photoDish } : {}) } });
+        if (prompt.fallbackReply) return { result: 'skipped', reason: '提示词超出预算' };
         deps.onPrompt?.(prompt);
         const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
         deps.log(`主动找他（${request.label}）：生成，${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);

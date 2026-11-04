@@ -84,6 +84,8 @@ export interface PromptInput {
 export interface PromptResult {
     messages: OpenAIMessage[];
     activatedWorldInfo: WorldInfoEntry[];
+    /** 预算放不下固定内容或当前消息时直接回复，不调用缺少当前问题的模型。 */
+    fallbackReply?: string;
 }
 
 /**
@@ -172,6 +174,15 @@ export function buildPrompt(input: PromptInput): PromptResult {
     const nowYear = (input.now ?? new Date()).getFullYear();
     const dayOf = (m: ChatMessage | undefined) => (m?.time ? chatDayLabel(new Date(m.time), nowYear) : undefined);
     const marker = (label: string) => system(`[${label}]`);
+    const latest = history.at(-1);
+    const latestDay = dayOf(latest);
+    const required = latest?.role === 'user' ? cost(latest) + (latestDay ? cost(marker(latestDay)) : 0) : 0;
+    if (remaining < 0 || required > remaining) {
+        return {
+            messages: [], activatedWorldInfo: [],
+            fallbackReply: remaining < 0 ? '我这会儿没处理过来，稍后再试一下' : '这条消息太长了，分几段发给我吧',
+        };
+    }
     const chat: OpenAIMessage[] = [];
     const addHistory = () => {
         // 最早那一条前面的日期行先留出来
@@ -196,18 +207,18 @@ export function buildPrompt(input: PromptInput): PromptResult {
 
     const examples: OpenAIMessage[] = [];
     const newExampleChat = system(sub(ST_DEFAULT_PRESET.newExampleChatPrompt));
-    const addExamples = () => {
+    const addExamples = (reserve = 0) => {
         for (const block of parseMesExamples(sub(character.mesExample))) {
             const dialogue = [{ ...newExampleChat }, ...parseExampleIntoIndividual(block, names)];
             const dialogueCost = dialogue.reduce((sum, m) => sum + cost(m), 0);
-            if (dialogueCost > remaining) break;
+            if (dialogueCost > remaining - reserve) break;
             remaining -= dialogueCost;
             examples.push(...dialogue);
         }
     };
 
     if (settings.pinExamples) {
-        addExamples();
+        addExamples(required);
         addHistory();
     } else {
         addHistory();

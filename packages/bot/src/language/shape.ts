@@ -5,7 +5,7 @@
 // 数字不是编的：气泡字数档按真人聊天（情侣截图 482 个气泡 + 他自己发的话）的分布取，档的权重再按他这一轮的长短挪一挪。
 // 不适用：主动找他、收尾、他明着让她讲、危机回合（调用方不传）。他在难受、报大事、等安慰、问起她认识的人时只用长的几档（不会只回两个字）。
 
-import { ASKS_TO_EXPLAIN, saidSinceReply, unit, WORRIED_TEXT, type LengthContext } from './expression.ts';
+import { asksToExplain, saidSinceReply, unit, WORRIED_TEXT, type LengthContext } from './expression.ts';
 
 export type ShapeKind = 'micro' | 'short' | 'medium' | 'long' | 'wide';
 
@@ -171,8 +171,8 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     if (context.initiating) return undefined;
     const last = context.history.findLast(message => message.role === 'user');
     if (!last) return undefined;
-    if (ASKS_TO_EXPLAIN.test(last.content)) return undefined;
     const said = saidSinceReply(context.history);
+    if (asksToExplain(said)) return undefined;
     const his = chars(said);
     const closing = Boolean(context.intent && CLOSING_INTENT.test(context.intent));
     const engaged = !closing && Boolean((context.intent && SUBSTANTIVE_INTENT.test(context.intent)) || WORRIED_TEXT.test(said) || context.aboutPerson);
@@ -368,6 +368,7 @@ export function trimToShape(reply: string, plan: ShapePlan): { reply: string; no
 export interface ShapeDeps {
     /** 在原来的提示词末尾加上这句说明重新生成，返回清理过的回复 */
     regenerate: (note: string) => Promise<string>;
+    onRewriteAccepted?: () => void;
     log: (message: string) => void;
 }
 
@@ -391,7 +392,7 @@ export async function shapeReply(reply: string, plan: ShapePlan, deps: ShapeDeps
     ];
     try {
         const rewritten = await deps.regenerate(`[上一版回复没有发出去：${reasons.join('；另外')}，只输出要发的消息。]`);
-        if (lines(rewritten).length > 0) current = rewritten;
+        if (lines(rewritten).length > 0) { current = rewritten; deps.onRewriteAccepted?.(); }
     } catch (error) {
         deps.log(`形状：重写失败（${error instanceof Error ? error.message : String(error)}），直接截断`);
     }

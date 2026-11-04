@@ -29,11 +29,11 @@ export const MODULES: readonly ModuleDef[] = [
             'language/status-line.ts', 'language/time-context.ts', 'language/relationship.ts', 'language/intimacy.ts', 'language/jokes.ts', 'language/idioms.ts', 'language/memes.ts', 'language/watching.ts', 'language/texture.ts', 'language/selfcheck.ts', 'language/bili-stickers.ts', 'language/interruption.ts', 'language/together.ts', 'language/jealousy.ts', 'language/curious.ts', 'language/llm.ts', 'language/model-guard.ts', 'st/'],
         groups: ['说话'],
         metrics: '周报「说话的样子」「表情和语气」「她的口头禅」；consistency-cli；humanness-cli；rough-edges-cli；blind-judge-cli',
-        adrs: ['0091', '0095', '0096', '0099', '0113', '0114', '0115', '0111', '0121', '0137', '0138', '0167'],
+        adrs: ['0091', '0095', '0096', '0099', '0113', '0114', '0115', '0111', '0121', '0137', '0138', '0167', '0227'],
     },
     {
         id: 'life', name: '她的日子（生活）',
-        scope: '她自己的一天：作息、世界账（天气、猫、快递、作业、钱）、日常小事和小测、项目与追求、身体、心情和在读的书、闺蜜、节日、承诺和日记。',
+        scope: '她自己的一天：作息、世界账（天气、猫、快递、作业、钱）、日常小事和小测、项目与追求、身体、心情和在读的书、真人式连续数值、闺蜜、节日、承诺和日记。',
         files: ['life/schedule.ts', 'life/actions.ts', 'life/projects.ts', 'life/pursuits.ts', 'life/money.ts', 'life/body.ts', 'life/needs.ts', 'life/her-days.ts', 'life/day-plan.ts',
             'life/everyday.ts', 'life/menu.ts', 'life/diary.ts', 'life/biography.ts', 'life/bedtime.ts', 'life/people.ts', 'life/promises.ts', 'life/promise-state.ts', 'life/open-loops.ts', 'life/tastes.ts', 'life/acquaintances.ts', 'human-values.ts'],
         groups: ['她的日子'],
@@ -84,7 +84,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'social', name: '在 QQ 上的样子（社交）',
         scope: '什么时候看到、打字多久、一次发几条；图片表情和照片货架；戳一戳、已读、在线状态、说说、签名、“正在输入”、撤回；听语音看图。',
-        files: ['social/responder.ts', 'social/reply-timing.ts', 'social/rate-limit.ts', 'social/async-gate.ts', 'social/stickers.ts', 'social/sticker-favorites.ts', 'social/sticker-sources.ts', 'social/pokes.ts', 'social/presence.ts', 'social/qzone.ts', 'social/qzone-feed.ts', 'social/qzone-feeds3.ts', 'social/qzone-remote.ts', 'social/qzone-strangers.ts', 'social/account.ts', 'social/quote-reply.ts', ],
+        files: ['social/responder.ts', 'social/reply-timing.ts', 'social/rate-limit.ts', 'social/async-gate.ts', 'social/stickers.ts', 'social/sticker-favorites.ts', 'social/sticker-sources.ts', 'social/pokes.ts', 'social/presence.ts', 'social/qzone.ts', 'social/qzone-feed.ts', 'social/qzone-feeds3.ts', 'social/qzone-remote.ts', 'social/qzone-strangers.ts', 'social/account.ts', 'social/quote-reply.ts', 'social/external-platforms.ts'],
         groups: ['照片和表情', '在 QQ 上的样子'],
         metrics: '周报「说话的样子」里的延迟、「表情和语气」',
         adrs: ['0063', '0075', '0077', '0083', '0105', '0109', '0136', '0142', '0143', '0144'],

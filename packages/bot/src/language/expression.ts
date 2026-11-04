@@ -45,7 +45,7 @@ export function lengthHint(context: LengthContext): LengthHint | undefined {
     const last = context.history.findLast(message => message.role === 'user');
     if (!last) return undefined;
     // 他明着让她讲（「你帮我认真讲讲」「详细说说」）就多说几句，不抽签（10-10 示例改短之后 boyfriend-tone T06 讲梯度下降只剩 53 字）
-    if (!context.low && ASKS_TO_EXPLAIN.test(last.content)) return 'long';
+    if (!context.low && asksToExplain(saidSinceReply(context.history))) return 'long';
     const roll = unit(`${last.time ?? ''} ${last.content} length`);
     const shortChance = context.shortReplies ? SHORT_CHANCE : LEGACY_SHORT_CHANCE;
     // 他问起她认识的人（「雨桐最近怎么样」）：只回很短的一句会把最近的几件事压成一个评语——10-19 npc-asks-days NA07 在候选 4/5 的抽签下
@@ -58,6 +58,17 @@ export function lengthHint(context: LengthContext): LengthHint | undefined {
 
 /** 他明着让她讲、让她说详细 */
 export const ASKS_TO_EXPLAIN = /讲讲|讲一下|详细|认真(?:说|讲|跟我说)|解释|教教?我|展开说|具体说说/;
+
+/** 同一串连发消息里的详细请求，允许后续消息明确撤销。 */
+export function asksToExplain(text: string): boolean {
+    const clauses = text.split(/[\n。！？!?；;]/);
+    let asked = false;
+    for (const clause of clauses) {
+        if (/(?:不用|不必|别|不要)(?:再|详细)?(?:解释|讲|说)|不用展开/.test(clause)) asked = false;
+        else if (ASKS_TO_EXPLAIN.test(clause)) asked = true;
+    }
+    return asked;
+}
 
 /** 他这次说的不到这么多字，不加「话多一点」 */
 export const LONG_MIN_CHARS = 8;
@@ -177,7 +188,7 @@ export function alreadyTold(history: LengthContext['history'], now: number): str
 
 export function saidSinceReply(history: LengthContext['history']): string {
     const lastReply = history.findLastIndex(message => message.role === 'assistant');
-    return history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content).join('');
+    return history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
 }
 
 export function describeLength(hint: LengthHint, shortReplies = false): string {

@@ -95,6 +95,9 @@ const TILDE_END = /[啦呀哦嘛哈嘿哒咯喔耶哇]$/;
 const TILDE_END_SHORT = /[呢吧啊好行]$/;
 /** 看得出是在问的（没带问号时补「？」） */
 const ASKING = /吗|么|啥|什么|怎么|为啥|为什么|哪[里儿个天]?|几[点个天号分]?|多少|谁|是不是|有没有|要不要|能不能|行不行|对不对|好不好|了没|干嘛|咋|多久|多大|多远/;
+const DECLARATIVE_QUESTION_WORD = /没什么|没啥|(?:不|没)(?:知道|明白|清楚|懂).*(?:什么|怎么|为什么|谁|哪)|(?:怎么|什么|谁|哪).{0,8}(?:都|也)|(?:不知道|不懂|不明白|没想好)|不是(?:什么|谁)|(?:想|要|会|能)怎么.*就怎么/;
+const QUESTION_FORM = /(?:吗|么|啥|什么|谁|哪[里儿个天]|几点|多少|了没|干嘛|咋|多久|多大|多远|是不是|有没有|要不要|能不能|行不行|对不对|好不好)$|^(?:怎么|为什么|为啥|啥|什么|哪|谁|几|多少|是不是|有没有|要不要|能不能|行不行|好不好)/;
+const isQuestion = (text: string) => ASKING.test(text) && QUESTION_FORM.test(text) && !DECLARATIVE_QUESTION_WORD.test(text);
 /** 感叹的短句：太……了、好……啊、真…… */
 const EXCLAIM = /^(?:太|好|真|这也太|也太)[^，。？?！!]{2,9}$/;
 /** 他这一串里的反应线索 → 她可以先单独回一个字的反应（哈哈 / 啊？ / ？） */
@@ -140,11 +143,11 @@ export function applyTexture(parts: readonly string[], ctx: TextureContext): Tex
         if (longer && !/[？?]/.test(tail) && unit(`${seed} repeat`) < TEXTURE_SHARES.repeat) { out[i] = `${longer}${tail}`; notes.push(`叠字：${core} → ${longer}`); continue; }
         if (/[…]+$/.test(text) && chars(core) >= 3) {
             // 停在连词 / 假设词上的「……」是故意拖着的，去掉就成了话说到一半（ADR 0141）
-            if (!endsHanging(core) && unit(`${seed} ellipsis`) < TEXTURE_SHARES.ellipsis) { out[i] = ASKING.test(core) && unit(`${seed} q2`) < TEXTURE_SHARES.question ? `${core}？` : core; notes.push('去掉结尾的省略号'); }
+            if (!endsHanging(core) && unit(`${seed} ellipsis`) < TEXTURE_SHARES.ellipsis) { out[i] = isQuestion(core) && unit(`${seed} q2`) < TEXTURE_SHARES.question ? `${core}？` : core; notes.push('去掉结尾的省略号'); }
             continue;
         }
         if (!hasEnding(text) && chars(text) >= 2 && chars(text) <= 24) {
-            if (ASKING.test(core) && !/^[a-z]+$/i.test(core) && unit(`${seed} question`) < TEXTURE_SHARES.question) { out[i] = `${core}？`; notes.push('补问号'); continue; }
+            if (isQuestion(core) && !/^[a-z]+$/i.test(core) && unit(`${seed} question`) < TEXTURE_SHARES.question) { out[i] = `${core}？`; notes.push('补问号'); continue; }
             if (EXCLAIM.test(core) && unit(`${seed} exclaim`) < TEXTURE_SHARES.exclaim) { out[i] = `${core}！`; notes.push('补感叹号'); }
         }
     }

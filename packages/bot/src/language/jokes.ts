@@ -6,6 +6,7 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -22,6 +23,8 @@ export interface JokeState {
     updatedAt?: string;
     /** 上一次抽取时聊天记录一共多少条 */
     messageCount?: number;
+    /** 上次处理的末条消息摘要，不保存聊天正文。旧文件下一次正常刷新时补齐。 */
+    messageCursor?: string;
 }
 
 /** 多久看一眼该不该抽（抽不抽由下面的条件定） */
@@ -44,6 +47,7 @@ export const JOKE_TURN_SHARE = 0.25;
 export const JOKE_COOLDOWN_MS = 72 * HOUR;
 
 type Said = { role: 'user' | 'assistant'; content: string; time?: string };
+const cursorOf = (message: Said) => createHash('sha256').update(JSON.stringify([message.time, message.role, message.content])).digest('hex');
 
 export const jokesPrompt = (userName: string, charName: string, transcript: string) => `下面是${charName}和${userName}最近两周的聊天。请找出他们之间的“小梗”：一个词或一句短话，在聊天里**反复出现**（至少两次），并且当时双方在玩、在笑，是只有他们俩懂的玩笑。
 要求：
@@ -130,14 +134,16 @@ export async function refreshJokes(options: RefreshOptions): Promise<boolean> {
     const recent = history.filter(message => message.time !== undefined && now - Date.parse(message.time) < JOKES_WINDOW_DAYS * DAY && Date.parse(message.time) <= now);
     if (recent.length < JOKES_MIN_MESSAGES) return false;
     if (state.updatedAt && now - Date.parse(state.updatedAt) < JOKES_REFRESH_MS) return false;
-    if (state.messageCount !== undefined && recent.length - state.messageCount < JOKES_MIN_NEW) return false;
+    const lastProcessed = state.messageCursor ? recent.findLastIndex(message => cursorOf(message) === state.messageCursor) : -1;
+    const added = state.messageCursor ? recent.length - lastProcessed - 1 : state.updatedAt ? recent.filter(message => Date.parse(message.time!) > Date.parse(state.updatedAt!)).length : recent.length;
+    if (added < JOKES_MIN_NEW) return false;
     const transcript = recent.slice(-240).map(message => `${message.role === 'user' ? options.userName : options.charName}：${message.content.replace(/\s+/g, ' ').slice(0, 120)}`).join('\n');
     const reply = await options.extract([{ role: 'user', content: jokesPrompt(options.userName, options.charName, transcript) }]);
     // 旧的还成立（在最近两周里仍然原样出现至少两次）的留着，新的接在后面，最多 JOKES_KEPT 个
     const stillThere = state.jokes.filter(joke => recent.filter(message => message.content.includes(joke.phrase)).length >= JOKE_MIN_OCCURRENCES);
     const fresh = parseJokes(reply, recent).filter(joke => !stillThere.some(old => old.phrase === joke.phrase));
     const jokes = [...stillThere, ...fresh].slice(0, JOKES_KEPT);
-    store.save(qq, { version: 1, jokes, updatedAt: new Date(now).toISOString(), messageCount: recent.length });
+    store.save(qq, { version: 1, jokes, updatedAt: new Date(now).toISOString(), messageCount: recent.length, messageCursor: cursorOf(recent.at(-1)!) });
     options.log(`小梗：抽了一次，现在有 ${jokes.length} 个（新增 ${fresh.length}；日志不记内容）`);
     return true;
 }
