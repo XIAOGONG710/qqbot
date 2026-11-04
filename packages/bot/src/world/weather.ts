@@ -316,7 +316,8 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
     return {
         day: (place, date, until) => {
             const store = load(place);
-            return store && date >= store.since ? dayFrom(store.hours, date, until) : undefined;
+            if (!store || date < store.since || cacheAgeMs(store.fetchedAt, now()) === undefined) return undefined;
+            return dayFrom(store.hours, date, until);
         },
         refresh: () => {
             // 心跳和启动可能同时触发刷新；复用同一请求，避免重复打公开接口。

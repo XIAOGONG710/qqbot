@@ -236,6 +236,7 @@ describe('真实天气（ADR 0048）', () => {
             await fetcher.refresh();
             now -= 120_000;
             assert.equal(fetcher.status().places.jinan.stale, true, '缓存时间明显在未来时标为陈旧');
+            assert.equal(fetcher.day('jinan', '2026-10-16', at('2026-10-16T12:00:00')), undefined, '未来缓存不能进入世界');
             now += 120_005;
             const status = fetcher.status();
             assert.equal(status.provider, 'test-provider');
