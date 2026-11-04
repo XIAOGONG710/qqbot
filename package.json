@@ -22,7 +22,7 @@
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test:scripts && npm test --workspaces --if-present",
-    "test:scripts": "node --test scripts/backup-state.test.mjs",
+    "test:scripts": "node --test scripts/*.test.mjs",
     "audit:gate": "npm --workspace @qqbot/bot run audit:gate --",
     "state-check": "npm --workspace @qqbot/bot run state-check --",
     "golive-check": "npm --workspace @qqbot/bot run golive-check --",
