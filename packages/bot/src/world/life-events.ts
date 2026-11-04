@@ -2,6 +2,7 @@
 // 账本只追加、不改写既有事件；具体世界如何受影响由 world.ts 投影，避免把“记过”误当成“成功做完”。
 
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { calendarDate, stateTimestamp } from '../memory/state-schema.ts';
 
 export type LifeEventSource = 'conversation' | 'simulation' | 'external';
 export type LifeEventResult = 'succeeded' | 'failed' | 'interrupted';
@@ -61,7 +62,6 @@ interface LifeEventsFile {
 
 const SOURCES = new Set<LifeEventSource>(['conversation', 'simulation', 'external']);
 const RESULTS = new Set<LifeEventResult>(['succeeded', 'failed', 'interrupted']);
-const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 export function readLifeEvents(path: string, log: (message: string) => void): LifeEvent[] {
     const loaded = readJsonOr<LifeEventsFile | undefined>(path, undefined, log, {
@@ -81,12 +81,12 @@ export function writeLifeEvents(path: string, events: readonly LifeEvent[]): voi
 export function validLifeEvent(value: unknown): value is LifeEvent {
     if (!value || typeof value !== 'object') return false;
     const event = value as Partial<LifeEvent>;
-    const start = typeof event.startedAt === 'string' ? Date.parse(event.startedAt) : NaN;
-    const end = typeof event.endedAt === 'string' ? Date.parse(event.endedAt) : NaN;
+    const start = stateTimestamp(event.startedAt) ? Date.parse(event.startedAt) : NaN;
+    const end = stateTimestamp(event.endedAt) ? Date.parse(event.endedAt) : NaN;
     return typeof event.id === 'string' && event.id.length > 0
         && event.actor === 'linmengyao'
         && typeof event.kind === 'string' && event.kind.length > 0
-        && typeof event.day === 'string' && DATE_ONLY.test(event.day)
+        && typeof event.day === 'string' && calendarDate(event.day)
         && Number.isFinite(start) && Number.isFinite(end) && start <= end
         && typeof event.source === 'string' && SOURCES.has(event.source as LifeEventSource)
         && typeof event.result === 'string' && RESULTS.has(event.result as LifeEventResult)
@@ -96,6 +96,6 @@ export function validLifeEvent(value: unknown): value is LifeEvent {
         && (event.meal === undefined || typeof event.meal === 'boolean')
         && (event.amount === undefined || (Number.isInteger(event.amount) && event.amount > 0))
         && (event.seen === undefined || typeof event.seen === 'boolean')
-        && (event.contact === undefined || typeof event.contact === 'number')
+        && (event.contact === undefined || (Number.isSafeInteger(event.contact) && event.contact > 0))
         && (event.episode === undefined || typeof event.episode === 'string');
 }

@@ -349,6 +349,15 @@ describe('统一生活事件账本（ADR 0029）', () => {
             assert.throws(() => worldState(world, schedule, () => undefined, dir), /生活事件账.*schema.*拒绝启动/);
             writeFileSync(path, JSON.stringify({ version: 1, events: [{ id: 'broken' }] }));
             assert.throws(() => worldState(world, schedule, () => undefined, dir), /生活事件账.*schema.*拒绝启动/);
+            const event = {
+                id: 'bad-date', actor: 'linmengyao', kind: 'eat', day: '2026-02-30',
+                startedAt: '2026-02-30T12:00:00.000Z', endedAt: '2026-02-30T12:30:00.000Z',
+                source: 'simulation', result: 'succeeded',
+            };
+            writeFileSync(path, JSON.stringify({ version: 1, events: [event] }));
+            assert.throws(() => worldState(world, schedule, () => undefined, dir), /生活事件账.*schema.*拒绝启动/);
+            writeFileSync(path, JSON.stringify({ version: 1, events: [{ ...event, day: '2026-02-28', startedAt: 'February 28, 2026 12:00', endedAt: 'February 28, 2026 12:30' }] }));
+            assert.throws(() => worldState(world, schedule, () => undefined, dir), /生活事件账.*schema.*拒绝启动/);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
