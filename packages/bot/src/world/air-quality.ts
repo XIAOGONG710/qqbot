@@ -110,8 +110,16 @@ function firstRealDay(at: Date): string { return at.getHours() < 5 ? dateOf(at) 
 
 function mergeHours(stored: Readonly<Record<string, HourAirQuality>>, fetched: Readonly<Record<string, HourAirQuality>>, fetchedAt: Date): Record<string, HourAirQuality> {
     const nowKey = hourKey(fetchedAt);
+    const today = dateOf(fetchedAt);
     const merged: Record<string, HourAirQuality> = { ...stored };
-    for (const [key, row] of Object.entries(fetched)) if (!merged[key]?.o) merged[key] = key <= nowKey ? { ...row, o: 1 } : { ...row };
+    const storedPerDay = new Map<string, number>();
+    for (const key of Object.keys(stored)) storedPerDay.set(key.slice(0, 10), (storedPerDay.get(key.slice(0, 10)) ?? 0) + 1);
+    for (const [key, row] of Object.entries(fetched)) {
+        if (merged[key]?.o) continue;
+        const date = key.slice(0, 10);
+        if (date < today && (storedPerDay.get(date) ?? 0) < MIN_HOURS) continue;
+        merged[key] = key <= nowKey ? { ...row, o: 1 } : { ...row };
+    }
     return merged;
 }
 

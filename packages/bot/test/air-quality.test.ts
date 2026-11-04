@@ -13,6 +13,10 @@ const payload = (date: string) => {
     const time = hours(date);
     return { hourly: { time, pm2_5: time.map((_, h) => 12 + h), pm10: time.map((_, h) => 25 + h), us_aqi: time.map((_, h) => 35 + h) } };
 };
+const combinedPayload = (...dates: string[]) => {
+    const time = dates.flatMap(hours);
+    return { hourly: { time, pm2_5: time.map((_, h) => 12 + h), pm10: time.map((_, h) => 25 + h), us_aqi: time.map((_, h) => 35 + h) } };
+};
 
 afterEach(() => useRealAirQuality(undefined));
 
@@ -79,6 +83,26 @@ describe('真实空气质量（ADR 0227）', () => {
             assert.equal(status.fetchedAt, firstFetchedAt, '不完整响应不能刷新旧缓存时间');
             assert.match(status.error ?? '', /当前日空气质量不完整/);
             assert.equal(fetcher.day('jinan', '2026-11-03', at('2026-11-03T04:00:00'))?.observedAt, '2026-11-03T03:00');
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
+    test('断网缺失的过去日期不会在恢复后回填', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-air-quality-history-'));
+        let now = at('2026-11-03T03:30:00').getTime();
+        let response = payload('2026-11-03');
+        const fetcher = airQualityFetcher({
+            dir: join(root, 'air-quality'), now: () => now, log: () => {},
+            fetchJson: async () => response,
+        });
+        try {
+            await fetcher.refresh();
+            now = at('2026-11-05T03:30:00').getTime();
+            response = combinedPayload('2026-11-04', '2026-11-05');
+            await fetcher.refresh();
+            assert.equal(fetcher.day('jinan', '2026-11-04', at('2026-11-04T23:00:00')), undefined,
+                '已经按缺失数据度过的历史日不能事后变成真实空气质量');
+            assert.equal(fetcher.day('jinan', '2026-11-05', at('2026-11-05T03:30:00'))?.observedAt, '2026-11-05T03:00',
+                '联网恢复后的当前日仍应正常接入');
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
