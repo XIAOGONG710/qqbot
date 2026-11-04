@@ -57,8 +57,8 @@ export const MEME_FRESH_DAYS = 30;
 export const MEME_BLOCK = /政|党|总统|领导人|战争|军事|地震|灾|死|杀|案|警方|疫情|台独|港独|辱|骂|黑人|女拳|男拳|直男癌|拳师|屌|逼|操|草泥马|傻[逼比]|nmsl|cnm|[Ss][Bb]|婊|嫖|约炮|成人|涉黄|脱衣/;
 
 const MS_DAY = 86_400_000;
-const dayText = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-const dayNumber = (text: string) => { const [y, m, d] = text.split('-').map(Number) as [number, number, number]; return Math.floor(Date.UTC(y, m - 1, d) / MS_DAY); };
+const dayText = (date: Date) => `${String(date.getFullYear()).padStart(4, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const dayNumber = (text: string) => Math.floor(Date.parse(`${text}T00:00:00Z`) / MS_DAY);
 const chars = (text: string) => [...text].length;
 const clean = (value: unknown) => String(value ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 

@@ -51,8 +51,8 @@ export const WATCH_VIDEO_TRIES = 4;
 export const WATCHED_FRESH_DAYS = 3;
 const MS_DAY = 86_400_000;
 
-const dayText = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-const dayNumber = (text: string) => { const [y, m, d] = text.split('-').map(Number) as [number, number, number]; return Math.floor(Date.UTC(y, m - 1, d) / MS_DAY); };
+const dayText = (date: Date) => `${String(date.getFullYear()).padStart(4, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const dayNumber = (text: string) => Math.floor(Date.parse(`${text}T00:00:00Z`) / MS_DAY);
 
 export const watchedPath = (dataDir: string): string => join(dataDir, 'watching', 'watched.json');
 
