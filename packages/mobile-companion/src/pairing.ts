@@ -50,6 +50,13 @@ export class MemoryPairingStore implements PairingVerifier {
         this.entries.delete(clientId);
     }
 
+    /** 宿主解除配对或关闭伴侣时撤销全部尚未使用的票据。 */
+    clear(): number {
+        const removed = this.entries.size;
+        this.entries.clear();
+        return removed;
+    }
+
     private prune(now: number): void {
         for (const [clientId, entry] of this.entries) {
             if (entryExpired(entry, now)) this.entries.delete(clientId);

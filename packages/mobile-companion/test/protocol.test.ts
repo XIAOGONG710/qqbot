@@ -131,6 +131,11 @@ describe('手机伴侣协议', () => {
         const revoked = store.issue('android-revoke', 4_000);
         store.revoke('android-revoke');
         assert.equal(store.consume('android-revoke', revoked.pairingCode, 4_001), false);
+        const pendingA = store.issue('android-pending-a', 5_000);
+        const pendingB = store.issue('android-pending-b', 5_001);
+        assert.equal(store.clear(), 2);
+        assert.equal(store.consume(pendingA.clientId, pendingA.pairingCode, 5_002), false);
+        assert.equal(store.consume(pendingB.clientId, pendingB.pairingCode, 5_002), false);
     });
 
     test('未使用配对码有数量上限，重复点配对不会无限增长', () => {

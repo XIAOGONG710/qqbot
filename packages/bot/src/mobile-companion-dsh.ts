@@ -14,6 +14,8 @@ export interface MobileCompanionIntegration {
     media: MemoryCompanionMediaStore;
     actionCapabilities: readonly PhoneActionCapability[];
     issuePairing(clientId: string, now?: number): PairingTicket;
+    /** 解除全部待配对票据、当前会话、队列、短期上下文和媒体。 */
+    reset(): void;
 }
 
 /** 让手机伴侣复用 QQ 侧同一条 DSH 连接、状态摘要和角色语气。 */
@@ -59,12 +61,26 @@ export function createMobileCompanion(options: {
     const gateway = new CompanionGateway(pairing, options.now, options.sessionIdleTtlMs === undefined ? {} : { sessionIdleTtlMs: options.sessionIdleTtlMs });
     const runtime = new CompanionRuntime(gateway, createMobileDshHandlers(options), options.now);
     const media = new MemoryCompanionMediaStore({ now: options.now });
+    const issuedClients = new Set<string>();
     return {
         pairing,
         gateway,
         runtime,
         media,
         actionCapabilities: PHONE_ACTION_CAPABILITIES,
-        issuePairing: (clientId, now = options.now?.() ?? Date.now()) => pairing.issue(clientId, now),
+        issuePairing: (clientId, now = options.now?.() ?? Date.now()) => {
+            const ticket = pairing.issue(clientId, now);
+            issuedClients.add(clientId);
+            return ticket;
+        },
+        reset: () => {
+            // 兼容尚未带 clear() 的旧伴侣包：已知票据逐张撤销，升级后则一次清空。
+            const clear = (pairing as MemoryPairingStore & { clear?: () => number }).clear;
+            if (clear) clear.call(pairing);
+            else for (const clientId of issuedClients) pairing.revoke(clientId);
+            issuedClients.clear();
+            runtime.reset();
+            media.clear();
+        },
     };
 }

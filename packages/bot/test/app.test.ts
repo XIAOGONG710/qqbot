@@ -185,6 +185,14 @@ describe('编排（app.ts）', () => {
         assert.equal(paired.gateway.pairedClientId, undefined);
         assert.equal(paired.media.get('android-test', oldMedia.mediaId), undefined);
         assert.match(pair.sent.at(-1) ?? '', /已解除配对/);
+        const issuedLine = pair.sent.find(line => line.includes('手机伴侣配对码')) ?? '';
+        const oldCode = /配对码：\s*([A-Z0-9-]+)/.exec(issuedLine)?.[1] ?? '';
+        const oldClient = /设备 ID：([A-Za-z0-9._:-]+)/.exec(issuedLine)?.[1] ?? '';
+        const reused = paired.gateway.accept({
+            v: 1, requestId: 'req-old-ticket', kind: 'hello', sentAt: new Date().toISOString(), nonce: 'nonce-old-ticket',
+            body: { clientId: oldClient, pairingCode: oldCode, capabilities: ['text'] },
+        }, 'session-old-ticket');
+        assert.equal(reused.ok, false, '解除配对必须同时撤销尚未使用的旧配对码');
     });
 
     test('承诺状态损坏暂停新增生活安排，但正常聊天继续；约见提示不能把未知当成有空', async () => {

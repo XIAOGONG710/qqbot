@@ -2448,9 +2448,7 @@ ${body}
             }
             if (dshEnabled && plain === '/dsh unpair') {
                 if (!mobileCompanion) { tellOwner('（手机伴侣还没开。）'); return; }
-                const oldClientId = mobileCompanion.runtime.status().pairedClientId;
-                mobileCompanion.runtime.reset();
-                if (oldClientId) mobileCompanion.media.clear(oldClientId);
+                mobileCompanion.reset();
                 tellOwner('（手机伴侣已解除配对，旧连接和媒体会话都失效了。）');
                 return;
             }
