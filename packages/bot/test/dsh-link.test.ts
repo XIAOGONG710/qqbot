@@ -9,6 +9,7 @@ import { renderDshState } from '../src/dsh-state-export.ts';
 import { createMobileCompanion, createMobileDshHandlers } from '../src/mobile-companion-dsh.ts';
 import { helloEnvelope } from '@qqbot/mobile-companion/gateway';
 import type { LlmOptions } from '../src/language/llm.ts';
+import { fileOps } from '../src/memory/json-file.ts';
 
 const options: LlmOptions = {
     baseUrl: 'https://dsh.example', model: 'dsh-model', apiKey: 'secret', temperature: 1, maxTokens: 300, timeoutMs: 1000, extraBody: {},
@@ -51,6 +52,40 @@ describe('DSH 连接层', () => {
             assert.equal(new DshConversationContext({ file, log: line => logs.push(line) }).recent([]), undefined);
             assert.ok(logs.some(line => line.includes('读不了')));
         } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('DSH 连续上下文写盘失败时不留下幽灵问答，并约束可重载的数据边界', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-dsh-continuity-transaction-'));
+        const file = join(dir, 'memory', 'dsh-recent.json');
+        const originalRename = fileOps.renameSync;
+        const originalDelays = fileOps.writeDelaysMs;
+        try {
+            const context = new DshConversationContext({ file });
+            context.commit('已确认问题', '已确认回答', 10, 11);
+            fileOps.writeDelaysMs = [0];
+            fileOps.renameSync = () => { throw Object.assign(new Error('disk full'), { code: 'ENOSPC' }); };
+            assert.throws(() => context.commit('未落盘问题', '未落盘回答', 12, 13), /暂时写不进（ENOSPC）/);
+            assert.deepEqual(context.recent([]), [
+                { role: 'user', content: '已确认问题' },
+                { role: 'assistant', content: '已确认回答' },
+            ]);
+            fileOps.renameSync = originalRename;
+            assert.deepEqual(new DshConversationContext({ file }).recent([]), [
+                { role: 'user', content: '已确认问题' },
+                { role: 'assistant', content: '已确认回答' },
+            ]);
+
+            assert.throws(() => context.commit('   ', '回答', 20, 21), /问题不能为空/);
+            assert.throws(() => context.commit('问题', '回答', -1, 21), /时间不合法/);
+            context.commit(`  ${'问'.repeat(5_000)}  `, `  ${'答'.repeat(5_000)}  `, 20, 21);
+            const recent = context.recent([])!;
+            assert.equal(recent.at(-2)!.content.length, 4_000);
+            assert.equal(recent.at(-1)!.content.length, 4_000);
+        } finally {
+            fileOps.renameSync = originalRename;
+            fileOps.writeDelaysMs = originalDelays;
             rmSync(dir, { recursive: true, force: true });
         }
     });

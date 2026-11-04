@@ -13,6 +13,8 @@ interface ContinuityFile {
     turns: TimedTurn[];
 }
 
+const MAX_TURN_CONTENT = 4_000;
+
 export interface DshConversationContextOptions {
     file?: string;
     maxTurns?: number;
@@ -24,8 +26,14 @@ function validFile(value: unknown): value is ContinuityFile {
     const input = value as Partial<ContinuityFile>;
     return input.version === 1 && Array.isArray(input.turns) && input.turns.length <= 80
         && input.turns.every(turn => turn && (turn.role === 'user' || turn.role === 'assistant')
-            && typeof turn.content === 'string' && turn.content.length > 0 && turn.content.length <= 4_000
+            && typeof turn.content === 'string' && turn.content.length > 0 && turn.content.length <= MAX_TURN_CONTENT
             && Number.isFinite(turn.at) && turn.at >= 0);
+}
+
+function normalizeContent(value: string, label: string): string {
+    const content = value.trim().slice(0, MAX_TURN_CONTENT);
+    if (!content) throw new Error(`DSH ${label}不能为空`);
+    return content;
 }
 
 /**
@@ -66,15 +74,17 @@ export class DshConversationContext {
 
     /** 只在 DSH 成功返回后提交完整问答；失败请求不会污染下一轮上下文。 */
     commit(question: string, reply: string, askedAt: number, repliedAt: number): void {
-        if (!Number.isFinite(askedAt) || !Number.isFinite(repliedAt)) throw new Error('DSH 对话时间不合法');
-        this.#turns.push(
-            { role: 'user', content: question, at: askedAt },
-            { role: 'assistant', content: reply, at: Math.max(askedAt, repliedAt) },
-        );
-        this.#turns.splice(0, Math.max(0, this.#turns.length - this.#maxTurns));
+        if (!Number.isFinite(askedAt) || askedAt < 0 || !Number.isFinite(repliedAt) || repliedAt < 0) throw new Error('DSH 对话时间不合法');
+        const next = [
+            ...this.#turns,
+            { role: 'user' as const, content: normalizeContent(question, '问题'), at: askedAt },
+            { role: 'assistant' as const, content: normalizeContent(reply, '回答'), at: Math.max(askedAt, repliedAt) },
+        ].slice(-this.#maxTurns);
         if (this.#file) {
             mkdirSync(dirname(this.#file), { recursive: true });
-            writeJsonAtomic(this.#file, { version: 1, turns: this.#turns } satisfies ContinuityFile);
+            // 先落盘再替换内存：写盘失败时，调用方会向用户报告失败，下一轮也不能看到这次未完成提交的“幽灵问答”。
+            writeJsonAtomic(this.#file, { version: 1, turns: next } satisfies ContinuityFile);
         }
+        this.#turns.splice(0, this.#turns.length, ...next);
     }
 }

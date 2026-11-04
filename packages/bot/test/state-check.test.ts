@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -56,6 +56,23 @@ describe('状态文件兼容检查（ADR 0070 第 13 项）', () => {
         assert.equal(check.ok, false);
         assert.match(check.detail, /拒绝启动/);
         assert.equal(readFileSync(join(dir, 'promises', '10001-boyfriend.json'), 'utf8'), bad);
+    });
+
+    test('DSH 连续上下文按运行时 schema 检查，坏文件只在副本中隔离', () => {
+        const dir = fixture();
+        const bad = JSON.stringify({ version: 1, turns: [{ role: 'system', content: '不允许的角色', at: 1 }] });
+        const path = join(dir, 'memory', 'dsh-recent.json');
+        writeFileSync(path, bad);
+        const check = checkStates(dir).find(c => c.name === 'memory/dsh-recent.json')!;
+        assert.equal(check.ok, false);
+        assert.match(check.detail, /会被隔离/);
+        assert.equal(readFileSync(path, 'utf8'), bad, '原目录不动');
+        assert.ok(!readdirSync(join(dir, 'memory')).some(name => name.startsWith('dsh-recent.json.corrupt-')));
+
+        writeFileSync(path, JSON.stringify({ version: 1, turns: [{ role: 'user', content: '合法问题', at: 1 }] }));
+        const valid = checkStates(dir).find(c => c.name === 'memory/dsh-recent.json')!;
+        assert.equal(valid.ok, true);
+        assert.match(valid.detail, /DSH 连续上下文 schema 通过/);
     });
 
     test('什么文件都没有：全部按空状态开始，通过', () => {

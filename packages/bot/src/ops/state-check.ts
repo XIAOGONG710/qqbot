@@ -23,6 +23,7 @@ import { readWorldActions } from '../world/world.ts';
 import { readCommonMemoryState, readContactMemoryState } from '../memory/long-term.ts';
 import { readDiaryState } from '../life/diary.ts';
 import { auditAiPhotoStorage } from '../vision/ai-photo-storage.ts';
+import { DshConversationContext } from '../dsh-continuity.ts';
 
 export interface StateCheck { name: string; file: string; ok: boolean; detail: string }
 
@@ -82,7 +83,7 @@ export function checkStates(dataDir: string, now: Date = new Date()): StateCheck
             const folder = join(copy, dir);
             if (!existsSync(folder)) continue;
             for (const name of readdirSync(folder).filter(file => file.endsWith('.json'))) {
-                run(`${dir}/${name}`, join(dir, name), () => {
+                run(`${dir}/${name}`, join(dir, name), log => {
                     const path = join(folder, name);
                     if (dir === 'proactive' && /^[1-9]\d*-[a-z_]+\.json$/.test(name)) { readProactiveState(path); return '主动消息 v1 schema 通过'; }
                     if (dir === 'promises' && /^[1-9]\d*-[a-z_]+\.json$/.test(name)) { readPromiseState(path); return '承诺 v1 schema 通过'; }
@@ -94,6 +95,10 @@ export function checkStates(dataDir: string, now: Date = new Date()): StateCheck
                     if (dir === 'memory' && name === 'common.json') { readCommonMemoryState(path); return '公共记忆进度 schema 通过'; }
                     if (dir === 'memory' && /^[1-9]\d*-[a-z_]+\.json$/.test(name)) { readContactMemoryState(path); return '联系人记忆进度 schema 通过'; }
                     if (dir === 'memory' && name === 'diary.json') { readDiaryState(path); return '日记进度 schema 通过'; }
+                    if (dir === 'memory' && name === 'dsh-recent.json') {
+                        new DshConversationContext({ file: path, maxTurns: 80, log });
+                        return 'DSH 连续上下文 schema 通过';
+                    }
                     JSON.parse(readFileSync(path, 'utf8'));
                     return '仅 JSON 语法通过（未做运行时 schema 校验）';
                 });
