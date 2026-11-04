@@ -100,4 +100,13 @@ describe('控制台的角色资料（ADR 0010）', () => {
         assert.equal(data.status, undefined);
         assert.equal('character' in data, false, '状态数据不应暴露角色资料的绝对磁盘路径');
     });
+
+    test('状态采集失败时给中文处理建议，不再误显示为运行正常或泄露异常原文', () => {
+        setConsoleState({ running: true, error: undefined, status: () => { throw new Error('token=secret C:\\private\\state.json'); } });
+        const data = consoleData();
+        assert.equal(data.running, true);
+        assert.equal(data.status, undefined);
+        assert.equal(data.error, '状态读取失败，请查看运行日志；插件可能仍在运行。');
+        assert.doesNotMatch(data.error ?? '', /token|secret|private|state\.json/);
+    });
 });

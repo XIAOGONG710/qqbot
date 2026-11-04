@@ -64,10 +64,12 @@ export function characterPaths(characterCard: string): ConsoleState['character']
 export function consoleData(): ConsoleData {
     let status: AppStatus | undefined;
     let napcatStatus: ConsoleData['napcat'];
+    let statusUnavailable = false;
     try {
         status = state.status?.();
     } catch {
         status = undefined;
+        statusUnavailable = true;
     }
     try {
         napcatStatus = napcat?.();
@@ -76,7 +78,8 @@ export function consoleData(): ConsoleData {
     }
     return {
         running: state.running,
-        ...(state.error ? { error: publicConsoleError(state.error) } : {}),
+        ...(state.error ? { error: publicConsoleError(state.error) }
+            : statusUnavailable ? { error: '状态读取失败，请查看运行日志；插件可能仍在运行。' } : {}),
         ...(napcatStatus ? { napcat: napcatStatus } : {}),
         ...(status ? { status } : {}),
         phoneActions: PHONE_ACTION_CAPABILITIES,
