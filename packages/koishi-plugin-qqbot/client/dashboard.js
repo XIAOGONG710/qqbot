@@ -43,23 +43,24 @@ export function featureGroups(features) {
     const names = [...GROUP_ORDER.filter(name => byGroup.has(name)), ...[...byGroup.keys()].filter(name => !GROUP_ORDER.includes(name))];
     return names.map(name => {
         const items = byGroup.get(name);
-        const ordered = [...items.filter(item => item.on), ...items.filter(item => !item.on)];
-        return { name, on: items.filter(item => item.on).length, total: items.length, items: ordered };
+        const ordered = [...items.filter(item => item.on), ...items.filter(item => item.configured && !item.on), ...items.filter(item => !item.on && !item.configured)];
+        return { name, on: items.filter(item => item.on).length, blocked: items.filter(item => item.configured && !item.on).length, total: items.length, items: ordered };
     });
 }
 
 /** 一个开关的小标签：开着的写上模式（试运行 / 问候 / 会发）；ADR 编号放在提示里 */
 export function featureLabel(item) {
+    if (item.configured && !item.on) return `${item.label}（还需开启其他功能）`;
     const modeName = item.mode ? (MODE_NAMES[item.mode] ?? '已启用') : '';
     const mode = modeName && modeName !== '开' ? `（${modeName}）` : '';
     return `${item.label}${mode}`;
 }
-export const featureTitle = item => `${item.on ? '已启用' : '未启用'}${item.hint ? `；${item.hint}` : ''}`;
+export const featureTitle = item => `${item.on ? '已启用' : item.configured ? `已开启但尚未生效${item.missing?.length ? `；还需启用：${item.missing.join('、')}` : ''}` : '未启用'}${item.hint ? `；${item.hint}` : ''}`;
 
 /** 开了几个、一共几个（顶上的一行） */
 export function featureTotals(features) {
     const list = features ?? [];
-    return { on: list.filter(item => item.on).length, total: list.length };
+    return { on: list.filter(item => item.on).length, blocked: list.filter(item => item.configured && !item.on).length, total: list.length };
 }
 
 /**

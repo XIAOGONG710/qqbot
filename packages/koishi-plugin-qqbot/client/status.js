@@ -141,12 +141,12 @@ function externalPlatformsPanel(platforms, drafts) {
 /** 功能开关（ADR 0120）：按模块分组，开着的亮绿色、关着的灰色；鼠标放上去看 ADR 编号。页面文件是从仓库直接读的：插件还是旧代码（没重启）时状态里没有 features */
 function featurePanel(status) {
     if (!status.features) return h('p', { class: 'qqbot-muted' }, '功能开关：重启 Koishi 后显示');
-    const { on, total } = featureTotals(status.features);
+    const { on, blocked, total } = featureTotals(status.features);
     return h('details', { class: 'qqbot-features-disclosure', open: false }, [
-        h('summary', { class: 'qqbot-features-summary' }, `功能开关　已开启 ${on} / ${total}`),
+        h('summary', { class: 'qqbot-features-summary' }, `功能开关　已生效 ${on} / ${total}${blocked ? ` · ${blocked} 项未生效` : ''}`),
         h('div', { class: 'qqbot-feature-groups' }, featureGroups(status.features).map(group => h('div', { class: 'qqbot-feature-group' }, [
-            h('span', { class: 'qqbot-label' }, `${group.name} ${group.on}/${group.total}`),
-            h('span', { class: 'qqbot-chips' }, group.items.map(item => h('span', { class: 'qqbot-chip', title: featureTitle(item) }, [tag(featureLabel(item), item.on ? 'success' : 'info')]))),
+            h('span', { class: 'qqbot-label' }, `${group.name} ${group.on}/${group.total}${group.blocked ? `（${group.blocked} 项未生效）` : ''}`),
+            h('span', { class: 'qqbot-chips' }, group.items.map(item => h('span', { class: 'qqbot-chip', title: featureTitle(item) }, [tag(featureLabel(item), item.on ? 'success' : item.configured ? 'warning' : 'info')]))),
         ]))),
     ]);
 }

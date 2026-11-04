@@ -5,8 +5,8 @@
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
 
-/** 一行：key 是 config 里的名字；kind 'bool' 看真假，'mode' 看值不是 off（festivals / stickers / bilibili… 的模式）。hint 是关闭后的影响。 */
-export interface FeatureDef { key: string; label: string; group: FeatureGroup; adr?: string; kind?: 'bool' | 'mode'; hint?: string }
+/** 一行：key 是 config 里的名字；requires 是要让本项真正生效还必须开启的其他功能。 */
+export interface FeatureDef { key: string; label: string; group: FeatureGroup; adr?: string; kind?: 'bool' | 'mode'; hint?: string; requires?: readonly string[] }
 
 export const FEATURES: readonly FeatureDef[] = [
     // 说话
@@ -62,22 +62,22 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'curious', label: '会追问（问他刚说的那件事）', group: '说话', adr: '0126' },
     { key: 'everydayLife', label: '日常小事 / 小测', group: '她的日子', adr: '0106' },
     { key: 'worldDrama', label: '日子里的小起伏（一天之内的难过 / 烦 / 高兴）', group: '她的日子', adr: '0211' },
-    { key: 'worldThreads', label: '她那边的事有后续（拌嘴第二天和好、淋雨第二天嗓子发紧……一天最多一条；闹心的事有冷却期；要日常小事和小起伏）', group: '她的日子', adr: '0216' },
+    { key: 'worldThreads', label: '她那边的事有后续（拌嘴第二天和好、淋雨第二天嗓子发紧……一天最多一条；闹心的事有冷却期；要日常小事和小起伏）', group: '她的日子', adr: '0216', requires: ['everydayLife', 'worldDrama'] },
     { key: 'diaryLookback', label: '翻回去看自己的日记（他问到前几天的事，她那天写的日记也给她，说法对得上）', group: '她的日子', adr: '0217' },
-    { key: 'memoryFeelings', label: '回忆带着当时的感觉（想起某天的事时附一句她那天有依据的感觉；因为他而难过 / 烦的不附；要心境）', group: '她的日子', adr: '0218' },
+    { key: 'memoryFeelings', label: '回忆带着当时的感觉（想起某天的事时附一句她那天有依据的感觉；因为他而难过 / 烦的不附；要心境）', group: '她的日子', adr: '0218', requires: ['herFeelings'] },
     { key: 'realNights', label: '昨晚真的怎么睡的（早上困不困看她几点说睡了、半夜有没有被吵醒，不按课表；被吵醒有起床气）', group: '她的日子', adr: '0219' },
     { key: 'chatReview', label: '她每天回顾聊天（每晚看今天数得出来的几处：他说她说错、只回嗯、连问、太长、重复，她自己判断、记一句；私人空间）', group: '说话', adr: '0221' },
     { key: 'menu', label: '每顿吃什么（每天随机）', group: '她的日子', adr: '0125' },
     { key: 'pursuits', label: '她自己的追求', group: '她的日子', adr: '0104' },
     { key: 'herFeelings', label: '心境（开心 / 难过 / 流泪；桌面上的她读同一份；ownerPeek 开着时 /心境 看）', group: '她的日子', adr: '0102' },
-    { key: 'feelingReview', label: '她聊完回想一下，记下有依据的感受（每条要指出是哪几条消息让她有的）', group: '她的日子', adr: '0197' },
+    { key: 'feelingReview', label: '她聊完回想一下，记下有依据的感受（每条要指出是哪几条消息让她有的）', group: '她的日子', adr: '0197', requires: ['herFeelings'] },
     { key: 'readingTakes', label: '她读完 / 看完之后自己想的（每晚一次，有话想说才写；私人空间，聊到那本书 / 视频才放进提示词）', group: '她的日子', adr: '0204' },
     { key: 'herGuesses', label: '她猜的事和后来的结果（每晚她自己挑哪句算数、对照世界账看对没对；私人空间，聊到同一类事才放进提示词）', group: '她的日子', adr: '0213' },
     { key: 'hisReactions', label: '看他的反应（她主动说自己的事时看一眼他对哪类事接得多、回个嗯、明说不想听；说什么她自己拿捏）', group: '主动找他', adr: '0212' },
     { key: 'openQuestions', label: '她没想完的问题（他问她答「不知道」的，夜里她自己想一遍，想出什么写什么；私人空间，他再问到同一件事才放进提示词）', group: '她的日子', adr: '0207' },
     { key: 'readStickers', label: '看懂他发的表情包（先抄图上的字、再说画面；要看图模型）', group: '照片和表情', adr: '0206' },
-    { key: 'factHim', label: '事实检查多查一类：她替他说的、聊天 / 记忆里没有依据的事（要 factCheck 开着）', group: '记忆和安全', adr: '0203' },
-    { key: 'depthRouting', label: '语义路由：关键词没认出来的轮次，问小模型这一句是轻是重——沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思（要 deliberate 开着）', group: '说话', adr: '0202' },
+    { key: 'factHim', label: '事实检查多查一类：她替他说的、聊天 / 记忆里没有依据的事（要 factCheck 开着）', group: '记忆和安全', adr: '0203', requires: ['factCheck'] },
+    { key: 'depthRouting', label: '语义路由：关键词没认出来的轮次，问小模型这一句是轻是重——沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思（要 deliberate 开着）', group: '说话', adr: '0202', requires: ['deliberate'] },
     { key: 'memoryReconcile', label: '记忆对账：记着写过、Hindsight 里却查不到的片段，重新排队写（防记忆悄悄少一块）', group: '记忆和安全', adr: '0201' },
     { key: 'ownerPeek', label: '他能不能用 /追求 /说话习惯 /心境 /自我认识 看她自己总结 / 回想出来的东西（默认不能：她的私人空间）', group: '她的日子', adr: '0200' },
     { key: 'grievance', label: '小别扭 / 和好', group: '她的日子', adr: '0074' },
@@ -146,16 +146,32 @@ export const NOT_SWITCHES: readonly string[] = [
     // 下面几个是 config 里的联系人 / 其他结构，不在 DEFAULTS 里也无妨
 ];
 
-export interface FeatureStatus { key: string; label: string; group: FeatureGroup; adr?: string; hint?: string; on: boolean; mode?: string }
+export interface FeatureStatus { key: string; label: string; group: FeatureGroup; adr?: string; hint?: string; on: boolean; mode?: string; configured?: boolean; missing?: string[] }
+
+function configured(def: FeatureDef, values: Record<string, unknown>): boolean {
+    const value = values[def.key];
+    return def.kind === 'mode'
+        ? typeof value === 'string' && value !== 'off'
+        : value === true || (typeof value === 'object' && value !== null && (value as { enabled?: unknown }).enabled === true);
+}
+
+const dependencyLabel = (def: FeatureDef): string => def.label.replace(/[（(].*$/, '').trim();
 
 /** 此刻哪些功能开着：bool 看真假；mode 看值不是 'off'（并把值带上，比如 dryRun / greet / send） */
 export function featureStatuses(config: object): FeatureStatus[] {
     const values = config as Record<string, unknown>;
+    const byKey = new Map(FEATURES.map(def => [def.key, def]));
+    const requested = new Map(FEATURES.map(def => [def.key, configured(def, values)]));
     return FEATURES.map(def => {
         const value = values[def.key];
-        const on = def.kind === 'mode'
-            ? typeof value === 'string' && value !== 'off'
-            : value === true || (typeof value === 'object' && value !== null && (value as { enabled?: unknown }).enabled === true);
-        return { key: def.key, label: def.label, group: def.group, ...(def.adr ? { adr: def.adr } : {}), ...(def.hint ? { hint: def.hint } : {}), on, ...(def.kind === 'mode' && on ? { mode: String(value) } : {}) };
+        const wantsOn = requested.get(def.key) === true;
+        const missing = wantsOn ? (def.requires ?? []).filter(key => requested.get(key) !== true).map(key => dependencyLabel(byKey.get(key)!)) : [];
+        const on = wantsOn && missing.length === 0;
+        return {
+            key: def.key, label: def.label, group: def.group,
+            ...(def.adr ? { adr: def.adr } : {}), ...(def.hint ? { hint: def.hint } : {}), on,
+            ...(wantsOn && !on ? { configured: true, missing } : {}),
+            ...(def.kind === 'mode' && wantsOn ? { mode: String(value) } : {}),
+        };
     });
 }

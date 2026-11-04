@@ -30,6 +30,10 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
             assert.equal(feature.kind === 'mode' ? typeof value : isBoolSwitch, feature.kind === 'mode' ? 'string' : true, feature.key);
             assert.ok(feature.label.length > 0);
             if (feature.adr) assert.match(feature.adr, /^\d{4}$/);
+            for (const required of feature.requires ?? []) {
+                assert.notEqual(required, feature.key, `${feature.key} 不能依赖自己`);
+                assert.ok(keys.includes(required), `${feature.key} 依赖了没有登记的功能 ${required}`);
+            }
         }
     });
 
@@ -44,6 +48,21 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
         assert.equal(get('festivals').mode, 'greet');
         assert.equal(get('herNo').on, false, '没给的算关');
         assert.equal(status.length, FEATURES.length);
+    });
+
+    test('开关打开但依赖缺失时不冒充已生效，并只返回中文依赖名', () => {
+        const status = featureStatuses({ worldThreads: true, depthRouting: true, factHim: true, memoryFeelings: true });
+        const get = (key: string) => status.find(s => s.key === key)!;
+        assert.equal(get('worldThreads').on, false);
+        assert.equal(get('worldThreads').configured, true);
+        assert.deepEqual(get('worldThreads').missing, ['日常小事 / 小测', '日子里的小起伏']);
+        assert.deepEqual(get('depthRouting').missing, ['认真问她时深思']);
+        assert.deepEqual(get('factHim').missing, ['逐条事实检查']);
+        assert.deepEqual(get('memoryFeelings').missing, ['心境']);
+        const ready = featureStatuses({ worldThreads: true, everydayLife: true, worldDrama: true }).find(s => s.key === 'worldThreads')!;
+        assert.equal(ready.on, true);
+        assert.equal(ready.configured, undefined);
+        assert.equal(ready.missing, undefined);
     });
 
     test('联系人筛选：本地按称呼 / QQ / 档位 / 当前状态过滤，忙碌只排除 idle', () => {
@@ -78,7 +97,7 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
         });
         assert.deepEqual(result, {
             contacts: 4, busy: 2, attention: { total: 13, retrying: 1, drafts: 2, approved: 3, publishing: 1, failed: 4, aiPhotos: 2 },
-            dshOn: true, features: { on: 1, total: 2 }, capabilities: { on: 1, total: 6 },
+            dshOn: true, features: { on: 1, blocked: 0, total: 2 }, capabilities: { on: 1, total: 6 },
         });
         assert.equal(attentionDetail(result.attention), '回复需重试 1 · 草稿待确认 2 · 已批准待发布 3 · 发布待核对 1 · 发布失败待处理 4 · AI 照片待审核 2');
         const approvedAndFailed = overviewCounts({ contacts: [], externalDrafts: { pending: 0, approved: 2, publishing: 0, failed: 1 } }).attention;
@@ -100,7 +119,7 @@ describe('客户端的纯函数', () => {
         const speak = groups.find((g: { name: string }) => g.name === '说话');
         assert.ok(speak.items[0].on && speak.items.slice(0, speak.on).every((i: { on: boolean }) => i.on) && speak.items.slice(speak.on).every((i: { on: boolean }) => !i.on));
         assert.equal(speak.total, FEATURES.filter(f => f.group === '说话').length);
-        assert.deepEqual(featureTotals(features), { on: 5, total: FEATURES.length });
+        assert.deepEqual(featureTotals(features), { on: 5, blocked: 0, total: FEATURES.length });
         assert.deepEqual(featureGroups(undefined), []);
     });
 
@@ -139,6 +158,9 @@ describe('客户端的纯函数', () => {
         assert.equal(featureTitle({ on: true }), '已启用');
         assert.equal(featureTitle({ on: false }), '未启用');
         assert.equal(featureTitle({ on: true, hint: 'ADR 0109' }), '已启用；ADR 0109');
+        const blocked = featureStatuses({ worldThreads: true }).find(f => f.key === 'worldThreads')!;
+        assert.ok(featureLabel(blocked).endsWith('（还需开启其他功能）'));
+        assert.match(featureTitle(blocked), /已开启但尚未生效；还需启用：日常小事 \/ 小测、日子里的小起伏/);
     });
 
     test('货架 / AI 草稿 / 小梗 / 周报那几行：没有这一项就不出现；待审核数用中文写清楚', () => {
