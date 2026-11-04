@@ -87,10 +87,34 @@ test('解压结果检查 AI 照片索引、文件哈希和敏感目录', () => {
         version: 1,
         entries: [{ id, file: `${id}.jpg` }],
     }));
-    assert.deepEqual(verifyRestoredState(root), { files: 2, aiPhotos: { present: true, entries: 1 } });
+    assert.deepEqual(verifyRestoredState(root), {
+        files: 2,
+        aiPhotos: { present: true, entries: 1 },
+        aiPhotoReferences: { present: false, entries: 0, localFiles: 0 },
+    });
 
     mkdirSync(join(root, 'secrets'));
     writeFileSync(join(root, 'secrets', 'token'), 'secret');
     assert.throws(() => verifyRestoredState(root), /敏感或临时内容/);
+});
+
+test('解压结果同时校验视觉参考索引、原图哈希和孤立文件', () => {
+    const root = fresh();
+    const bytes = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from('reference-image')]);
+    const hash = createHash('sha256').update(bytes).digest('hex');
+    const id = hash.slice(0, 12);
+    mkdirSync(join(root, 'ai-photo-references', 'files'), { recursive: true });
+    writeFileSync(join(root, 'ai-photo-references', 'files', `${id}.jpg`), bytes);
+    writeFileSync(join(root, 'ai-photo-references', 'index.json'), JSON.stringify({
+        version: 1,
+        entries: [{ id, kind: 'cat', contentHash: hash, referenceId: 'potato-v1', addedAt: '2026-11-04T00:00:00.000Z', file: `${id}.jpg` }],
+    }));
+    assert.deepEqual(verifyRestoredState(root), {
+        files: 2,
+        aiPhotos: { present: false, entries: 0 },
+        aiPhotoReferences: { present: true, entries: 1, localFiles: 1 },
+    });
+    writeFileSync(join(root, 'ai-photo-references', 'files', 'orphan.jpg'), bytes);
+    assert.throws(() => verifyRestoredState(root), /孤立或未知文件/);
 });
 

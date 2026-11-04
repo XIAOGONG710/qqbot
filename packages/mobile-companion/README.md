@@ -4,6 +4,7 @@
 
 - `protocol.ts`：文字、语音、图片、表情、动作请求和 envelope 校验；
 - `photo-review.ts`：AI 生活照草稿的安全摘要和审核契约；只使用短期缩略图 `mediaId`，通过/拒绝必须明确确认，并由宿主回调完成审计；
+- `photo-review-ui.ts`：Android / Flutter / PWA 可直接消费的中文审核页面状态机；页面模型不包含草稿编号、`mediaId`、路径或提示词，通过/拒绝先进入确认态，服务端错误只显示固定中文提示；
 - DSH 适配器复用 QQ 侧同一份脱敏状态快照和语气回调；状态过期时不会自动补造当前数值；
 - `pairing.ts`：进程内短期一次性配对码；
 - 未使用配对码最多保留 64 条，重复点配对不会让进程内票据表无限增长；
@@ -14,7 +15,7 @@
 - `http.ts`：严格 JSON POST 适配器，不自动监听端口。
 - `websocket.ts`：兼容 `ws` 风格连接的严格文本帧适配器，不自动监听端口。
 - `media.ts`：有 TTL、设备归属和总大小上限的内存媒体仓库，生成短期 `mediaId`。
-- `media-http.ts`：必须带已配对 HTTP session 的音频 / 图片上传适配器，不写磁盘、不开放 CORS。
+- `media-http.ts`：必须带已配对 HTTP session 的音频 / 图片上传适配器，以及仅限设备本人读取短期安全图片的 GET；不写磁盘、不开放 CORS，跨设备或过期引用统一不可读。
 - `client.ts`：客户端构造 hello、消息和动作请求，并校验响应是否对应已发出的 requestId。
 - HTTP 首次 hello 成功后会在 `x-companion-session` 响应头返回连接会话；后续请求必须回带该值。WebSocket 连接会自动绑定独立会话，断线后会释放绑定，重新配对即可恢复。
 - HTTPS 会话默认 30 分钟无流量自动过期（可通过 `CompanionGateway` 的 `sessionIdleTtlMs` 调整），避免没有 close 事件的 HTTP 长期占住设备；过期后仍需新的配对码才能建立新会话。
@@ -48,8 +49,10 @@ bot 编排已经提供同一条 DSH 链路：当配置 `dsh.enabled` 为 `true` 
 `{ pairing, gateway, runtime, media, issuePairing }`。宿主应先调用 `issuePairing(clientId)` 生成短期一次性配对码，
 再把 `runtime` 交给本适配器；不要把 `pairingCode` 写入普通日志，也不要绕过 `gateway`。
 
-若使用 HTTPS 传输，可把 `createCompanionMediaHandler(runtime, media)` 挂到同一认证服务的另一路径；上传成功返回的 `mediaId` 再放入 `message.send` 的 `media.mediaId`。Koishi 插件打开 `mobileCompanion.enabled` 后会在已有 server 上同时挂 `/qqbot/companion/http`、`/qqbot/companion/http/media` 和 `/qqbot/companion/http/actions`（可配置），无需新增端口。PWA 会在 HTTPS 模式轮询 actions 路径；媒体只在内存中短暂保留，宿主应在需要时读取并在 DSH / QQ 侧完成转码或审计。
+若使用 HTTPS 传输，可把 `createCompanionMediaHandler(runtime, media)` 挂到同一认证服务的另一路径；上传成功返回的 `mediaId` 再放入 `message.send` 的 `media.mediaId`。同一路径的 GET 必须同时携带 `x-companion-session` 和 `x-companion-media-id`，且只返回当前设备仍在 TTL 内的 JPEG / PNG / WebP。Koishi 插件打开 `mobileCompanion.enabled` 后会在已有 server 上同时挂 `/qqbot/companion/http`、`/qqbot/companion/http/media` 和 `/qqbot/companion/http/actions`（可配置），无需新增端口。PWA 会在 HTTPS 模式轮询 actions 路径；媒体只在内存中短暂保留，宿主应在需要时读取并在 DSH / QQ 侧完成转码或审计。
 
 不要把这个适配器直接绑定到公网，也不要在 `onAction` 中绕过现有设备白名单、确认、熔断和审计层。原生 Android UI 可以用 HTTPS 或 WebSocket，但必须复用同一个 `CompanionGateway` 和 `CompanionRuntime`；WebSocket 宿主只需把连接交给 `attachCompanionWebSocket`。
 
 AI 生活照审核使用 `photo.review.list` / `photo.review.decide`。宿主只能返回 `PhotoDraftSummary`，缩略图应先放入现有的短期、设备归属媒体仓库；不要返回草稿文件路径或提示词。`onPhotoReviewDecision` 必须在写入审核审计后才返回成功，且审核本身不会自动发送 QQ。
+
+客户端界面可创建 `PhotoReviewUiController`，把 `refresh()` / `confirmDecision()` 返回的 envelope 交给现有 HTTPS 或 WebSocket 传输层，再把响应交给 `accept()`。渲染时只使用 `view()`；需要加载缩略图时才用条目的内部 `key` 调用 `thumbnailFor()`，不要把返回的 `mediaId` 当作文字展示。原生端必须在本地确认弹窗后才调用 `confirmDecision()`，不能自行构造 `confirmation` 字段。

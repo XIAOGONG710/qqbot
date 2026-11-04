@@ -50,7 +50,7 @@ test('PWA 下行动作先做本地 nonce 防重放，再交给执行层', async 
     assert.match(source, /action\.decision === 'deny'/);
     assert.match(source, /resolveRegisteredLink\(action\.targetId/);
     assert.doesNotMatch(source, /action\.params\.url/);
-    assert.match(source, /handleDownlink\(acceptDownlink\(value\)\)/);
+    assert.match(source, /handleDownlink\(acceptDownlink\(value\), generation\)/);
 });
 
 test('PWA 防重放窗口满时不淘汰仍有效的旧 nonce，过完整时钟窗口后才清理', () => {

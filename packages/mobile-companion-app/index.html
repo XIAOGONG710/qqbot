@@ -21,6 +21,12 @@
       <small>只使用一次性配对码；页面不会保存配对码。</small>
     </section>
     <section id="conversation" class="card conversation" aria-live="polite"></section>
+    <section class="card photo-review" aria-labelledby="photoReviewTitle">
+      <div class="section-head"><div><h2 id="photoReviewTitle">生活照审核</h2><small>审核不会自动发送到 QQ</small></div><button id="photoRefresh" type="button" disabled>刷新</button></div>
+      <label class="compact-label">筛选<select id="photoFilter"><option value="pending_review">待审核</option><option value="approved">已通过</option><option value="rejected">已拒绝</option><option value="all">全部</option></select></label>
+      <p id="photoNotice" class="review-notice" role="status" hidden></p>
+      <div id="photoReviewList" class="photo-list" aria-live="polite"><p class="photo-empty">连接后可查看生活照草稿</p></div>
+    </section>
     <section class="card composer">
       <form id="textForm"><label>文字<input id="text" placeholder="说点什么…" maxlength="4000" autocomplete="off"></label><button>发送</button></form>
       <details><summary>发送语音 / 图片 / 表情</summary>
@@ -32,6 +38,13 @@
       </details>
     </section>
   </main>
+  <dialog id="photoConfirm" class="confirm-dialog" aria-labelledby="photoConfirmTitle">
+    <form method="dialog">
+      <h2 id="photoConfirmTitle">确认审核</h2>
+      <p id="photoConfirmMessage"></p>
+      <div class="dialog-actions"><button id="photoCancel" type="button" class="secondary">再看看</button><button id="photoConfirmAction" type="button">确认</button></div>
+    </form>
+  </dialog>
   <script type="module" src="./app.js"></script>
 </body>
 </html>

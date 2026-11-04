@@ -2,7 +2,7 @@
 import { defineComponent, h, onMounted, ref } from 'vue';
 import { message, send } from '@koishijs/client';
 import { c, tag } from './common.js';
-import { dashboardTime } from './dashboard.js';
+import { aiPhotoRuntimeRows, dashboardTime } from './dashboard.js';
 
 const FILTERS = [
     { value: 'pending_review', label: '待审核' },
@@ -21,6 +21,7 @@ export const PhotoReviewTab = defineComponent({
         const loading = ref(false);
         const acting = ref([]);
         const error = ref('');
+        const runtime = ref(undefined);
         let generation = 0;
 
         async function refresh() {
@@ -28,7 +29,11 @@ export const PhotoReviewTab = defineComponent({
             loading.value = true;
             error.value = '';
             try {
-                const result = await send('qqbot/ai-photos/list', filter.value, 24);
+                const [result, runtimeResult] = await Promise.all([
+                    send('qqbot/ai-photos/list', filter.value, 24),
+                    send('qqbot/ai-photos/runtime').catch(() => undefined),
+                ]);
+                runtime.value = runtimeResult;
                 if (!result?.ok) {
                     if (token === generation) error.value = result?.error || '暂时无法读取照片草稿。';
                     return;
@@ -90,6 +95,16 @@ export const PhotoReviewTab = defineComponent({
                 ]),
                 h(c('el-button'), { disabled: loading.value, onClick: refresh }, () => '刷新'),
             ]),
+            h('section', { class: 'qqbot-photo-runtime' }, [
+                h('div', { class: 'qqbot-photo-runtime-title' }, [
+                    h('strong', null, '运行与费用'),
+                    h('span', { class: 'qqbot-muted' }, '只读摘要，不会在这里打开功能或触发生图'),
+                ]),
+                h('div', { class: 'qqbot-summary' }, aiPhotoRuntimeRows(runtime.value).map(row => h('div', { class: 'qqbot-summary-row' }, [
+                    h('span', { class: 'qqbot-label' }, row.label),
+                    h('span', null, row.text),
+                ]))),
+            ]),
             h('div', { class: 'qqbot-photo-filters' }, FILTERS.map(item => h(c('el-button'), {
                 type: filter.value === item.value ? 'primary' : undefined,
                 plain: filter.value !== item.value,
@@ -111,12 +126,16 @@ export const PhotoReviewTab = defineComponent({
                         h('div', { class: 'qqbot-photo-card-tags' }, [
                             tag(KIND_NAMES[entry.kind] ?? '生活照'),
                             tag(STATUS_NAMES[entry.status] ?? '未知', STATUS_TYPES[entry.status] ?? 'info'),
+                            entry.expired ? tag('已过期', 'danger') : null,
                         ]),
                         h('div', { class: 'qqbot-photo-caption' }, entry.caption),
                         h('div', { class: 'qqbot-muted' }, `画面时间：${dashboardTime(entry.at)}`),
                         h('div', { class: 'qqbot-muted' }, `${entry.reviewedAt ? '审核时间' : '生成时间'}：${dashboardTime(entry.reviewedAt ?? entry.createdAt)}`),
+                        entry.expired
+                            ? h(c('el-alert'), { type: 'warning', title: '这张照片已过期，不能再作为“现在的照片”通过。', showIcon: true, closable: false })
+                            : h('div', { class: 'qqbot-muted' }, `有效到：${dashboardTime(entry.expiresAt)}`),
                         entry.status === 'pending_review' ? h('div', { class: 'qqbot-photo-actions' }, [
-                            h(c('el-button'), { type: 'success', disabled: waiting, onClick: () => void review(entry, 'approve') }, () => '通过'),
+                            h(c('el-button'), { type: 'success', disabled: waiting || entry.expired, onClick: () => void review(entry, 'approve') }, () => entry.expired ? '已过期' : '通过'),
                             h(c('el-button'), { disabled: waiting, onClick: () => void review(entry, 'reject') }, () => '拒绝'),
                         ]) : null,
                     ]),

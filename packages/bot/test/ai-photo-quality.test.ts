@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
@@ -76,6 +77,33 @@ describe('AI 生活照自动质量门（ADR 0242）', () => {
         assert.doesNotMatch(failed.reasons.join(''), /secret/);
     });
 
+    test('调用方伪造的参考图在视觉请求前失败关闭', async () => {
+        let calls = 0;
+        const result = await assessAiPhotoQuality({
+            bytes: png(), facts: facts(),
+            referenceImages: [{ id: 'abcdef012345', bytes: png(), type: 'image/jpeg' }],
+            reviewer: async () => { calls++; return cleanReview(); },
+        });
+        assert.equal(calls, 0);
+        assert.match(result.reasons.join('；'), /视觉参考图片格式或尺寸不合法/);
+
+        const large = (tail: number) => {
+            const value = Buffer.alloc(5 * 1024 * 1024);
+            value.set(png(), 0); value[value.length - 1] = tail;
+            return new Uint8Array(value);
+        };
+        const oversized = await assessAiPhotoQuality({
+            bytes: png(), facts: facts(),
+            referenceImages: [
+                { id: '111111111111', bytes: large(1), type: 'image/png' },
+                { id: '222222222222', bytes: large(2), type: 'image/png' },
+            ],
+            reviewer: async () => { calls++; return cleanReview(); },
+        });
+        assert.equal(calls, 0);
+        assert.match(oversized.reasons.join('；'), /视觉参考总大小超过上限/);
+    });
+
     test('人物、手、文字、水印、地标、棚拍感和事实不符都会给中文原因', async () => {
         const result = await assessAiPhotoQuality({
             bytes: png(), facts: facts({ kind: 'food', dish: '番茄鸡蛋面' }), referenceIds: ['bowl-v1'],
@@ -103,7 +131,7 @@ describe('AI 生活照自动质量门（ADR 0242）', () => {
 });
 
 describe('非人物视觉参考资料（ADR 0242）', () => {
-    test('只持久化内容哈希和引用 ID；同一内容不重复', () => {
+    test('参考原图留在受控目录并真实可读；索引不嵌入图片且同一内容不重复', () => {
         const dir = mkdtempSync(join(tmpdir(), 'ai-photo-ref-'));
         const file = join(dir, 'references.json');
         const store = aiPhotoReferenceStore({ file, now: () => new Date('2026-11-04T00:00:00.000Z') });
@@ -111,15 +139,21 @@ describe('非人物视觉参考资料（ADR 0242）', () => {
         const again = store.add({ kind: 'cat', bytes: png(), referenceId: 'potato-v2', nonHumanSubject: true });
         assert.equal(again.id, first.id);
         assert.deepEqual(store.idsFor('cat'), ['potato-v1']);
+        const images = store.imagesFor('cat');
+        assert.equal(images.length, 1);
+        assert.equal(images[0]!.type, 'image/png');
+        assert.deepEqual(images[0]!.bytes, png());
         const stored = readFileSync(file, 'utf8');
         assert.doesNotMatch(stored, /137,80,78|data:image|subject|label|path/);
         assert.match(stored, /"contentHash"/);
         assert.match(stored, /"referenceId": "potato-v1"/);
+        assert.equal(existsSync(join(dir, 'files', `${first.id}.png`)), true);
 
         const reopened = aiPhotoReferenceStore({ file });
         assert.equal(reopened.list('cat').length, 1);
         assert.equal(reopened.remove(first.id), true);
         assert.equal(reopened.list().length, 0);
+        assert.equal(existsSync(join(dir, 'files', `${first.id}.png`)), false);
     });
 
     test('拒绝人物引用、自由文本式 ID 和损坏状态', () => {
@@ -131,5 +165,65 @@ describe('非人物视觉参考资料（ADR 0242）', () => {
         assert.throws(() => store.add({ kind: 'cat', bytes: png(), referenceId: 'cat-v1', nonHumanSubject: false } as never), /不含人物/);
         writeFileSync(file, '{"version":1,"entries":[{"freeText":"face"}]}');
         assert.throws(() => aiPhotoReferenceStore({ file }), /拒绝启动/);
+        writeFileSync(file, JSON.stringify({ version: 1, entries: Array.from({ length: 5 }, (_, index) => ({
+            id: String(index + 1).repeat(12), kind: 'cat', contentHash: String(index + 1).repeat(64),
+            referenceId: `cat-${index}`, addedAt: '2026-11-04T00:00:00.000Z',
+        })) }));
+        assert.throws(() => aiPhotoReferenceStore({ file }), /拒绝启动/);
+    });
+
+    test('旧版只有外部编号的索引可读但不冒充真实参考图，再登记时迁移本地文件', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'ai-photo-ref-legacy-'));
+        const file = join(dir, 'index.json');
+        const bytes = png();
+        const hash = createHash('sha256').update(bytes).digest('hex');
+        writeFileSync(file, JSON.stringify({ version: 1, entries: [{
+            id: hash.slice(0, 12), kind: 'cat', contentHash: hash, referenceId: 'potato-v1', addedAt: '2026-11-04T00:00:00.000Z',
+        }] }));
+        const store = aiPhotoReferenceStore({ file });
+        assert.deepEqual(store.imagesFor('cat'), []);
+        store.add({ kind: 'cat', bytes, referenceId: 'potato-v1', nonHumanSubject: true });
+        assert.equal(store.imagesFor('cat').length, 1);
+    });
+
+    test('每类最多四张且文件被替换时失败关闭', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'ai-photo-ref-limit-'));
+        const file = join(dir, 'index.json');
+        const store = aiPhotoReferenceStore({ file });
+        const entries = Array.from({ length: 4 }, (_, index) => {
+            const bytes = png(); bytes[29] = index + 1;
+            return store.add({ kind: 'cat', bytes, referenceId: `potato-${index}`, nonHumanSubject: true });
+        });
+        const fifth = png(); fifth[29] = 9;
+        assert.throws(() => store.add({ kind: 'cat', bytes: fifth, referenceId: 'potato-5', nonHumanSubject: true }), /达到上限/);
+        writeFileSync(join(dir, 'files', entries[0]!.file!), png(800, 800));
+        assert.throws(() => store.remove(entries[0]!.id), /内容与索引不一致/);
+        assert.equal(store.list('cat').length, 4, '校验失败时不能先从索引删除条目');
+        assert.throws(() => aiPhotoReferenceStore({ file }), /内容与索引不一致/);
+    });
+
+    test('图片哈希和参考名称分别命中不同条目时拒绝合并', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'ai-photo-ref-conflict-'));
+        const store = aiPhotoReferenceStore({ file: join(dir, 'index.json') });
+        const first = png(); first[29] = 1;
+        const second = png(); second[29] = 2;
+        store.add({ kind: 'cat', bytes: first, referenceId: 'potato-a', nonHumanSubject: true });
+        store.add({ kind: 'cat', bytes: second, referenceId: 'potato-b', nonHumanSubject: true });
+        assert.throws(() => store.add({ kind: 'cat', bytes: first, referenceId: 'potato-b', nonHumanSubject: true }), /不同条目/);
+        assert.throws(() => store.add({ kind: 'cat', bytes: png(900, 900), referenceId: 'potato-a', nonHumanSubject: true }), /另一张图片/);
+        assert.throws(() => store.add({ kind: 'desk', bytes: first, referenceId: 'desk-a', nonHumanSubject: true }), /另一种类别/);
+    });
+
+    test('参考图片目录不能是符号链接或目录联接', t => {
+        const dir = mkdtempSync(join(tmpdir(), 'ai-photo-ref-link-'));
+        const outside = mkdtempSync(join(tmpdir(), 'ai-photo-ref-outside-'));
+        mkdirSync(dir, { recursive: true });
+        try { symlinkSync(outside, join(dir, 'files'), 'junction'); }
+        catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'EPERM') return t.skip('当前 Windows 账户没有创建目录联接的权限');
+            throw error;
+        }
+        const store = aiPhotoReferenceStore({ file: join(dir, 'index.json') });
+        assert.throws(() => store.add({ kind: 'cat', bytes: png(), referenceId: 'potato-v1', nonHumanSubject: true }), /目录不安全/);
     });
 });

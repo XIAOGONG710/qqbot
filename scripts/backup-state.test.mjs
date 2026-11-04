@@ -174,16 +174,21 @@ describe('backup completion policy', () => {
         });
     });
 
-    test('state backup includes the complete AI photo draft directory for index and file recovery', () => {
+    test('state backup includes complete AI photo draft and reference directories for index and file recovery', () => {
         const root = fresh();
         const active = join(root, 'runtime', 'bot');
         const drafts = join(active, 'ai-photo-drafts');
         mkdirSync(join(drafts, 'files'), { recursive: true });
         writeFileSync(join(drafts, 'index.json'), JSON.stringify({ version: 1, entries: [] }), 'utf8');
         writeFileSync(join(drafts, 'files', '111111111111.jpg'), 'image', 'utf8');
+        const references = join(active, 'ai-photo-references');
+        mkdirSync(join(references, 'files'), { recursive: true });
+        writeFileSync(join(references, 'index.json'), JSON.stringify({ version: 1, entries: [] }), 'utf8');
+        writeFileSync(join(references, 'files', '222222222222.png'), 'reference', 'utf8');
 
         const plan = discoverStateBackup(root);
         assert.ok(plan.items.includes(drafts));
+        assert.ok(plan.items.includes(references));
         assert.equal(plan.items.some(item => item.endsWith('index.json')), false, '整目录入归档，恢复时不会漏掉 files');
     });
 

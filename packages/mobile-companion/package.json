@@ -18,6 +18,7 @@
     "./websocket": "./src/websocket.ts",
     "./client": "./src/client.ts",
     "./photo-review": "./src/photo-review.ts",
+    "./photo-review-ui": "./src/photo-review-ui.ts",
     "./dsh-adapter": "./src/dsh-adapter.ts"
   },
   "scripts": {

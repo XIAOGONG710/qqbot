@@ -79,7 +79,7 @@ test('媒体 HTTP 上传必须使用已配对 session，并返回短期 mediaId'
     const session = 'session-upload';
     const hello = helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text', 'image'] }, 'req-upload-hello', 'nonce-upload-hello', new Date(now).toISOString());
     assert.equal((await runtime.handle(hello, session)).accepted, true);
-    const store = new MemoryCompanionMediaStore({ now: () => now, id: () => '0123456789abcdef' });
+    const store = new MemoryCompanionMediaStore({ ttlMs: 10_000, now: () => now, id: () => '0123456789abcdef' });
     const server = createServer(createCompanionMediaHandler(runtime, store));
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
     const address = server.address();
@@ -97,6 +97,27 @@ test('媒体 HTTP 上传必须使用已配对 session，并返回短期 mediaId'
         assert.equal(result.width, 32);
         assert.equal(result.height, 24);
         assert.deepEqual(store.get('android-upload', result.mediaId)?.data, uploadData);
+        const unauthenticatedRead = await fetch(`${base}/companion/v1/media`, { headers: { 'x-companion-media-id': result.mediaId } });
+        assert.equal(unauthenticatedRead.status, 401);
+        const read = await fetch(`${base}/companion/v1/media`, { headers: { 'x-companion-session': session, 'x-companion-media-id': result.mediaId } });
+        assert.equal(read.status, 200);
+        assert.equal(read.headers.get('content-type'), 'image/png');
+        assert.equal(read.headers.get('cache-control'), 'private, no-store, max-age=0');
+        assert.equal(read.headers.get('x-content-type-options'), 'nosniff');
+        assert.deepEqual(Buffer.from(await read.arrayBuffer()), uploadData);
+        const otherServer = createServer(createCompanionMediaHandler({ clientForSession: (value: string) => value === 'session-upload-other' ? 'android-upload-other' : undefined } as never, store));
+        await new Promise<void>(resolve => otherServer.listen(0, '127.0.0.1', () => resolve()));
+        const otherAddress = otherServer.address();
+        assert.ok(otherAddress && typeof otherAddress === 'object');
+        try {
+            const crossDevice = await fetch(`http://127.0.0.1:${otherAddress.port}/companion/v1/media`, { headers: { 'x-companion-session': 'session-upload-other', 'x-companion-media-id': result.mediaId } });
+            assert.equal(crossDevice.status, 404);
+        } finally {
+            await new Promise<void>(resolve => otherServer.close(() => resolve()));
+        }
+        now += 10_001;
+        const expiredRead = await fetch(`${base}/companion/v1/media`, { headers: { 'x-companion-session': session, 'x-companion-media-id': result.mediaId } });
+        assert.equal(expiredRead.status, 404);
         const badMime = await fetch(`${base}/companion/v1/media`, { method: 'POST', headers: { 'x-companion-session': session, 'x-companion-mime': 'application/zip' }, body: Buffer.from('x') });
         assert.equal(badMime.status, 415);
         const svg = await fetch(`${base}/companion/v1/media`, { method: 'POST', headers: { 'x-companion-session': session, 'x-companion-mime': 'image/svg+xml' }, body: Buffer.from('<svg/>') });

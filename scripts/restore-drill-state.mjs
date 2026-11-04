@@ -74,6 +74,13 @@ function walk(directory, root, files) {
     }
 }
 
+function detectedImageExtension(bytes) {
+    return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff ? 'jpg'
+        : bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ? 'png'
+            : bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP' ? 'webp'
+                : undefined;
+}
+
 function verifyAiPhotoDrafts(root) {
     const directory = join(root, 'ai-photo-drafts');
     if (!existsSync(directory)) return { present: false, entries: 0 };
@@ -95,13 +102,59 @@ function verifyAiPhotoDrafts(root) {
         const bytes = readFileSync(file);
         const digest = createHash('sha256').update(bytes).digest('hex').slice(0, 12);
         if (digest !== entry.id) throw new Error(`AI 照片草稿哈希不一致：${entry.id}`);
-        const extension = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff ? 'jpg'
-            : bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ? 'png'
-                : bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP' ? 'webp'
-                    : undefined;
+        const extension = detectedImageExtension(bytes);
         if (!extension || !entry.file.endsWith(`.${extension}`)) throw new Error(`AI 照片草稿格式不一致：${entry.id}`);
     }
     return { present: true, entries: index.entries.length };
+}
+
+function verifyAiPhotoReferences(root) {
+    const directory = join(root, 'ai-photo-references');
+    if (!existsSync(directory)) return { present: false, entries: 0, localFiles: 0 };
+    let index;
+    try { index = JSON.parse(readFileSync(join(directory, 'index.json'), 'utf8')); }
+    catch { throw new Error('AI 视觉参考索引无法读取'); }
+    if (index?.version !== 1 || !Array.isArray(index.entries) || index.entries.length > 16) throw new Error('AI 视觉参考索引格式不受支持');
+    const ids = new Set();
+    const hashes = new Set();
+    const references = new Set();
+    const files = new Set();
+    const perKind = new Map();
+    for (const entry of index.entries) {
+        if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string' || !/^[a-f0-9]{12}$/.test(entry.id)
+            || !['cat', 'desk', 'tableware', 'view'].includes(entry.kind)
+            || typeof entry.contentHash !== 'string' || !/^[a-f0-9]{64}$/.test(entry.contentHash)
+            || typeof entry.referenceId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(entry.referenceId)
+            || typeof entry.addedAt !== 'string' || !Number.isFinite(Date.parse(entry.addedAt))
+            || ids.has(entry.id) || hashes.has(entry.contentHash) || references.has(entry.referenceId)) {
+            throw new Error('AI 视觉参考索引含无效条目');
+        }
+        ids.add(entry.id);
+        hashes.add(entry.contentHash);
+        references.add(entry.referenceId);
+        const kindCount = (perKind.get(entry.kind) ?? 0) + 1;
+        if (kindCount > 4) throw new Error('AI 视觉参考单类数量超过上限');
+        perKind.set(entry.kind, kindCount);
+        if (entry.file === undefined) continue; // 兼容旧版仅外部引用，不冒充本地图像。
+        if (typeof entry.file !== 'string' || !new RegExp(`^${entry.id}\\.(?:jpg|png|webp)$`).test(entry.file) || files.has(entry.file)) {
+            throw new Error('AI 视觉参考文件名无效或重复');
+        }
+        files.add(entry.file);
+        const path = join(directory, 'files', entry.file);
+        let info;
+        try { info = lstatSync(path); } catch { throw new Error(`AI 视觉参考缺少文件：${entry.id}`); }
+        if (info.isSymbolicLink() || !info.isFile() || info.size < 1 || info.size > 5 * 1024 * 1024) throw new Error(`AI 视觉参考文件不安全：${entry.id}`);
+        const bytes = readFileSync(path);
+        if (createHash('sha256').update(bytes).digest('hex') !== entry.contentHash) throw new Error(`AI 视觉参考哈希不一致：${entry.id}`);
+        const extension = detectedImageExtension(bytes);
+        if (!extension || !entry.file.endsWith(`.${extension}`)) throw new Error(`AI 视觉参考格式不一致：${entry.id}`);
+    }
+    const filesDir = join(directory, 'files');
+    if (existsSync(filesDir)) {
+        const actual = readdirSync(filesDir, { withFileTypes: true });
+        if (actual.some(item => !item.isFile() || !files.has(item.name)) || actual.length !== files.size) throw new Error('AI 视觉参考目录含孤立或未知文件');
+    } else if (files.size) throw new Error('AI 视觉参考文件目录不存在');
+    return { present: true, entries: index.entries.length, localFiles: files.size };
 }
 
 /** 对已解压的状态做只读完整性检查，不会把内容放回在线目录。 */
@@ -115,6 +168,6 @@ export function verifyRestoredState(target) {
     const files = [];
     walk(root, root, files);
     if (!files.length) throw new Error('恢复演练结果为空');
-    return { files: files.length, aiPhotos: verifyAiPhotoDrafts(root) };
+    return { files: files.length, aiPhotos: verifyAiPhotoDrafts(root), aiPhotoReferences: verifyAiPhotoReferences(root) };
 }
 

@@ -1,10 +1,15 @@
 // AI 生活照的质量门（ADR 0242）：先做本地结构检查，再让可注入的视觉审查器核对人物、文字和世界事实。
 // 任何一步拿不准都不通过；这个模块只给出结论，不发送、不批准草稿。
 
+import { createHash } from 'node:crypto';
+
 export const AI_PHOTO_MIN_EDGE = 512;
 export const AI_PHOTO_MAX_EDGE = 8192;
 export const AI_PHOTO_MAX_PIXELS = 24_000_000;
 export const AI_PHOTO_MAX_BYTES = 12 * 1024 * 1024;
+export const AI_PHOTO_REFERENCE_MAX_BYTES = 5 * 1024 * 1024;
+export const AI_PHOTO_REFERENCE_MAX_COUNT = 4;
+export const AI_PHOTO_REFERENCE_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
 
 export type AiPhotoSceneKind = 'cat' | 'food' | 'desk' | 'view';
 export type AiPhotoTimeOfDay = 'dawn' | 'day' | 'dusk' | 'night';
@@ -41,8 +46,16 @@ export interface AiPhotoVisualReviewInput {
     width: number;
     height: number;
     facts: AiPhotoWorldFacts;
-    /** 只传供应商能识别的引用 ID，不传参考图、路径或人物描述。 */
+    /** 兼容旧调用的外部引用 ID；运行时真实比较优先使用下面的受控本地图像。 */
     referenceIds: readonly string[];
+    /** 受控本地非人物参考图；只在本次视觉审查内存中使用。 */
+    referenceImages?: readonly AiPhotoVisualReference[];
+}
+
+export interface AiPhotoVisualReference {
+    id: string;
+    bytes: Uint8Array;
+    type: 'image/jpeg' | 'image/png' | 'image/webp';
 }
 
 export type AiPhotoVisualReviewer = (input: AiPhotoVisualReviewInput) => Promise<AiPhotoVisualReview>;
@@ -143,10 +156,25 @@ export async function assessAiPhotoQuality(input: {
     facts: AiPhotoWorldFacts;
     reviewer?: AiPhotoVisualReviewer;
     referenceIds?: readonly string[];
+    referenceImages?: readonly AiPhotoVisualReference[];
 }): Promise<AiPhotoQualityResult> {
     const reasons = validFacts(input.facts);
     if (!input.bytes.length) reasons.push('图片文件为空');
     if (input.bytes.length > AI_PHOTO_MAX_BYTES) reasons.push('图片文件超过 12 MB');
+    const references = input.referenceImages ?? [];
+    if (references.length > AI_PHOTO_REFERENCE_MAX_COUNT) reasons.push('视觉参考数量超过上限');
+    if (references.reduce((sum, reference) => sum + reference.bytes.length, 0) > AI_PHOTO_REFERENCE_MAX_TOTAL_BYTES) reasons.push('视觉参考总大小超过上限');
+    const referenceIds = new Set<string>();
+    for (const reference of references) {
+        if (!/^[a-f0-9]{12}$/.test(reference.id) || referenceIds.has(reference.id)) reasons.push('视觉参考编号无效或重复');
+        referenceIds.add(reference.id);
+        if (!reference.bytes.length || reference.bytes.length > AI_PHOTO_REFERENCE_MAX_BYTES) { reasons.push('视觉参考图片大小不合法'); continue; }
+        if (createHash('sha256').update(reference.bytes).digest('hex').slice(0, 12) !== reference.id) reasons.push('视觉参考编号与内容不一致');
+        const parsed = aiPhotoDimensions(reference.bytes);
+        if (!parsed || parsed.type !== reference.type || Math.min(parsed.width, parsed.height) < 64 || Math.max(parsed.width, parsed.height) > 8192) {
+            reasons.push('视觉参考图片格式或尺寸不合法');
+        }
+    }
     const image = aiPhotoDimensions(input.bytes);
     if (!image) reasons.push('图片结构损坏或格式不受支持');
     if (image) {
@@ -160,7 +188,10 @@ export async function assessAiPhotoQuality(input: {
 
     let review: AiPhotoVisualReview;
     try {
-        review = await input.reviewer({ ...image, bytes: input.bytes, facts: input.facts, referenceIds: input.referenceIds ?? [] });
+        review = await input.reviewer({
+            ...image, bytes: input.bytes, facts: input.facts, referenceIds: input.referenceIds ?? [],
+            ...(input.referenceImages?.length ? { referenceImages: input.referenceImages } : {}),
+        });
     } catch {
         return { passed: false, reasons: ['视觉审查失败，请稍后重试'], ...image };
     }
@@ -177,6 +208,8 @@ export async function assessAiPhotoQuality(input: {
     if (input.facts.kind === 'food' && review.dishMatches !== true) reasons.push('菜品与这一顿不一致');
     if (input.facts.weather?.trim() && review.weatherMatches !== true) reasons.push('天气与世界事实不一致');
     if (input.facts.timeOfDay && review.timeMatches !== true) reasons.push('光线时段与世界时间不一致');
-    if ((input.referenceIds?.length ?? 0) > 0 && review.referenceMatches !== true) reasons.push('主体或环境与既有视觉设定不一致');
+    if ((input.referenceIds?.length ?? 0) > 0 || (input.referenceImages?.length ?? 0) > 0) {
+        if (review.referenceMatches !== true) reasons.push('主体或环境与既有视觉设定不一致');
+    }
     return { passed: reasons.length === 0, reasons, ...image, review };
 }

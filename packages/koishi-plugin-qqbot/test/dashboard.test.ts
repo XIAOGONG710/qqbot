@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
-import { attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifeMoments, lifePulse, lifeTrend, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
+import { aiPhotoRuntimeRows, attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifeMoments, lifePulse, lifeTrend, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
@@ -156,6 +156,27 @@ describe('客户端的纯函数', () => {
         ]);
         assert.match(extrasRows({ aiPhotoDrafts: { total: 3, pending: 0, approved: 3, rejected: 0 } })[0].text, /没有待审核/);
         assert.match(extrasRows({ aiPhotoDrafts: { total: -1, pending: NaN, approved: 1.5, rejected: '2' } })[0].text, /共 0 张/);
+    });
+
+    test('AI 照片运行卡只显示中文角色和合法计数，异常值安全降级', () => {
+        assert.deepEqual(aiPhotoRuntimeRows({
+            feature: 'on', providers: ['local', 'primary', 'fallback'],
+            usage: { attempts: 3, generated: 2, failed: 1, remaining: 1 },
+            drafts: { pending: 2, approved: 4, rejected: 1 },
+        }), [
+            { label: '功能状态', text: '已开启（仍需人工审核）' },
+            { label: '生图服务', text: '本地服务、主服务、备用服务' },
+            { label: '今日用量', text: '尝试 3 次，成功 2 次，失败 1 次，剩余 1 次' },
+            { label: '照片草稿', text: '待审核 2 张，已通过 4 张，已拒绝 1 张' },
+        ]);
+        const degraded = aiPhotoRuntimeRows({ feature: 'secret-code', providers: ['secret-provider'], degraded: 'token=C:\\private', drafts: { pending: -1 } });
+        assert.deepEqual(degraded, [
+            { label: '功能状态', text: '状态暂不可用' },
+            { label: '生图服务', text: '未配置' },
+            { label: '今日用量', text: '暂时无法读取' },
+            { label: '照片草稿', text: '暂时无法读取' },
+        ]);
+        assert.doesNotMatch(JSON.stringify(degraded), /secret|private|token|\\/);
     });
 
     test('DSH 状态只展示连接结果和时间，不泄露错误原文', () => {

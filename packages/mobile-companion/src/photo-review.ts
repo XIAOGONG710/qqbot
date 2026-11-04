@@ -27,6 +27,8 @@ export interface PhotoDraftSummary {
     status: PhotoDraftReviewStatus;
     caption: string;
     createdAt: string;
+    /** 当前照片的有效期；过期草稿只能查看或拒绝，不能通过。 */
+    expiresAt?: string;
     reviewedAt?: string;
     thumbnail?: PhotoDraftThumbnail;
 }
@@ -85,12 +87,13 @@ export function validatePhotoDraftSummary(value: unknown): PhotoDraftSummary {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('照片草稿摘要不合法');
     const input = value as Record<string, unknown>;
     // 严格拒绝 path / prompt / eventKey 等多余字段，避免宿主误把完整索引直接回传手机。
-    exactKeys(input, ['id', 'kind', 'status', 'caption', 'createdAt', 'reviewedAt', 'thumbnail'], '照片草稿摘要');
+    exactKeys(input, ['id', 'kind', 'status', 'caption', 'createdAt', 'expiresAt', 'reviewedAt', 'thumbnail'], '照片草稿摘要');
     if (typeof input.id !== 'string' || !DRAFT_ID.test(input.id)) throw new Error('照片草稿编号不合法');
     if (!KINDS.has(input.kind as PhotoDraftKind)) throw new Error('照片草稿类型不合法');
     if (!STATUSES.has(input.status as PhotoDraftReviewStatus)) throw new Error('照片草稿状态不合法');
     if (typeof input.caption !== 'string' || !input.caption.trim() || [...input.caption].length > 200 || /[\u0000-\u001f\u007f]/.test(input.caption)) throw new Error('照片草稿说明不合法');
     date(input.createdAt, '照片草稿创建时间');
+    if (input.expiresAt !== undefined) date(input.expiresAt, '照片草稿过期时间');
     if (input.reviewedAt !== undefined) date(input.reviewedAt, '照片草稿审核时间');
     if (input.thumbnail !== undefined) validatePhotoDraftThumbnail(input.thumbnail);
     return input as unknown as PhotoDraftSummary;

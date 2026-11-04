@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { readSource } from '../../character-tools/src/source.ts';
-import { aiPhotoPreview, characterPaths, consoleData, listAiPhotoDrafts, publicCharacterError, reviewAiPhoto, saveCharacter, setConsoleState } from '../src/console.ts';
+import { addAiPhotoReference, aiPhotoPreview, aiPhotoRuntimeStatus, characterPaths, consoleData, listAiPhotoDrafts, listAiPhotoReferences, publicCharacterError, removeAiPhotoReference, reviewAiPhoto, saveCharacter, setConsoleState } from '../src/console.ts';
 import { aiPhotoDraftStore } from '../../bot/src/vision/ai-photo-drafts.ts';
 import { photoShelf } from '../../bot/src/vision/photos.ts';
 
@@ -125,14 +125,16 @@ describe('控制台的 AI 照片审核（ADR 0239）', () => {
             kind: 'cat', eventKey: 'console-cat', subject: '土豆蹲在车棚边', caption: '土豆蹲在车棚边看落叶', at: '2026-11-04T18:20:00+08:00',
         }, async () => ({ bytes: jpeg(1), model: 'secret-model-name' }));
 
-        const listed = listAiPhotoDrafts('pending_review', 24);
+        const listed = listAiPhotoDrafts('pending_review', 24, new Date('2026-11-04T10:00:00.000Z'));
         assert.equal(listed.ok, true);
         if (!listed.ok) return;
         assert.deepEqual(listed.entries, [{
             id: draft.id, kind: 'cat', caption: '土豆蹲在车棚边看落叶', at: '2026-11-04T10:20:00.000Z',
-            createdAt: '2026-11-04T10:00:00.000Z', status: 'pending_review',
+            createdAt: '2026-11-04T10:00:00.000Z', expiresAt: '2026-11-04T16:20:00.000Z', expired: false, status: 'pending_review',
         }]);
         assert.doesNotMatch(JSON.stringify(listed), /secret-model|console-cat|promptHash|\\|ai-photo-drafts/);
+        const expired = listAiPhotoDrafts('pending_review', 24, new Date('2026-11-04T16:20:00.000Z'));
+        assert.ok(expired.ok && expired.entries[0]?.expired === true);
         const preview = aiPhotoPreview(draft.id);
         assert.ok(preview.ok && preview.dataUrl.startsWith('data:image/jpeg;base64,'));
         assert.deepEqual(aiPhotoPreview('../../windows'), { ok: false, error: '找不到这张照片草稿。' });
@@ -158,5 +160,90 @@ describe('控制台的 AI 照片审核（ADR 0239）', () => {
         assert.equal(photoShelf({ dir: join(dataDir, 'photos'), log: () => {} }).status().count, 1);
         assert.deepEqual(listAiPhotoDrafts('pending_review', 24), { ok: true, entries: [] });
         assert.deepEqual(reviewAiPhoto('send', pending.ok ? pending.entries[0]!.id : '', 'confirmed'), { ok: false, error: '审核请求无效，请重新确认后再试。' });
+    });
+});
+
+describe('控制台的 AI 照片运行与费用摘要', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'qqbot-photo-runtime-'));
+    after(() => rmSync(dataDir, { recursive: true, force: true }));
+
+    test('只返回开关、供应商角色、今日计数和草稿数', () => {
+        const now = new Date();
+        const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const usageDir = join(dataDir, 'ai-photo-usage');
+        mkdirSync(usageDir, { recursive: true });
+        writeFileSync(join(usageDir, 'usage.json'), JSON.stringify({
+            version: 1, days: [{ day, attempts: 3, generated: 2, failed: 1, byProvider: { local: { attempts: 1, generated: 1, failed: 0 }, primary: { attempts: 2, generated: 1, failed: 1 } } }],
+        }));
+        setConsoleState({ dataDir, status: () => ({ features: [{ key: 'aiPhotos', on: true }] }) as never });
+        const result = aiPhotoRuntimeStatus({
+            QQBOT_IMAGE_LOCAL_BASE_URL: 'http://127.0.0.1:8188/v1/',
+            QQBOT_IMAGE_API_KEY: 'secret-primary',
+            QQBOT_IMAGE_FALLBACK_BASE_URL: 'https://fallback.example/v1/',
+            QQBOT_IMAGE_FALLBACK_API_KEY: 'secret-fallback',
+        });
+        assert.equal(result.feature, 'on');
+        assert.deepEqual(result.providers, ['local', 'primary', 'fallback']);
+        assert.deepEqual(result.usage, { day, attempts: 3, generated: 2, failed: 1, remaining: 1 });
+        assert.doesNotMatch(JSON.stringify(result), /secret|example|127\.0\.0\.1|gpt|usage\.json|\\/);
+    });
+
+    test('用量文件损坏时只降级当前卡片，不暴露错误原文', () => {
+        writeFileSync(join(dataDir, 'ai-photo-usage', 'usage.json'), '{"token":"secret","path":"C:\\\\private"}');
+        setConsoleState({ dataDir, status: () => { throw new Error('secret status'); } });
+        const result = aiPhotoRuntimeStatus({});
+        assert.equal(result.feature, 'unknown');
+        assert.equal(result.usage, undefined);
+        assert.equal(result.degraded, '今日用量暂时无法读取。');
+        assert.doesNotMatch(JSON.stringify(result), /secret|private|token|path|\\/);
+    });
+});
+
+describe('控制台的非人物视觉参考（ADR 0242）', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'qqbot-photo-references-'));
+    after(() => rmSync(dataDir, { recursive: true, force: true }));
+    const png = Buffer.alloc(33);
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(png);
+    png.writeUInt32BE(13, 8); png.write('IHDR', 12, 'ascii'); png.writeUInt32BE(1024, 16); png.writeUInt32BE(1024, 20);
+    png[24] = 8; png[25] = 2;
+    const image = `data:image/png;base64,${png.toString('base64')}`;
+
+    test('必须明确确认不含人物，列表不暴露哈希、服务编号和路径', () => {
+        setConsoleState({ dataDir });
+        assert.equal(addAiPhotoReference('cat', image, 'potato-v1', false, 'confirmed').ok, false);
+        assert.equal(addAiPhotoReference('cat', image, 'potato-v1', true, undefined).ok, false);
+        const added = addAiPhotoReference('cat', image, 'potato-v1', true, 'confirmed');
+        assert.ok(added.ok && added.entry?.kind === 'cat');
+
+        const listed = listAiPhotoReferences();
+        assert.ok(listed.ok && listed.entries.length === 1);
+        assert.doesNotMatch(JSON.stringify(listed), /potato-v1|contentHash|data:image|ai-photo-references|\\|\//);
+    });
+
+    test('拒绝伪造图片、人物引用和未确认删除', () => {
+        setConsoleState({ dataDir });
+        assert.deepEqual(addAiPhotoReference('desk', 'data:image/png;base64,AAAA', 'desk-v1', true, 'confirmed'), {
+            ok: false, error: '请选择 5 MB 以内的 JPEG、PNG 或 WebP 图片。',
+        });
+        const human = addAiPhotoReference('cat', image, 'selfie-face-v1', true, 'confirmed');
+        assert.equal(human.ok, false);
+        assert.doesNotMatch(JSON.stringify(human), /selfie|face|index\.json|\\|\//);
+
+        const listed = listAiPhotoReferences();
+        assert.ok(listed.ok && listed.entries.length === 1);
+        const id = listed.ok ? listed.entries[0]!.id : '';
+        assert.equal(removeAiPhotoReference(id, undefined).ok, false);
+        assert.deepEqual(removeAiPhotoReference(id, 'confirmed'), { ok: true });
+        assert.deepEqual(listAiPhotoReferences(), { ok: true, entries: [] });
+    });
+
+    test('索引不是普通文件时失败关闭，不暴露本地信息', () => {
+        const unsafe = mkdtempSync(join(tmpdir(), 'qqbot-photo-references-unsafe-'));
+        mkdirSync(join(unsafe, 'ai-photo-references', 'index.json'), { recursive: true });
+        setConsoleState({ dataDir: unsafe });
+        const result = listAiPhotoReferences();
+        assert.equal(result.ok, false);
+        assert.doesNotMatch(JSON.stringify(result), /index\.json|unsafe|tmp|\\|\//);
+        rmSync(unsafe, { recursive: true, force: true });
     });
 });

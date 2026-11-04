@@ -86,8 +86,10 @@ export function mountMobileCompanion(server: CompanionServerLike | undefined, co
         log(`手机伴侣：HTTPS envelope / 媒体上传已挂载到 ${options.httpPath}（沿用 session 和内存媒体仓库）`);
     }
     if (server.get && options.httpPath) {
+        const mediaReadHandler = createCompanionKoaMediaHandler(companion.runtime, companion.media, { path: `${options.httpPath}/media` });
+        routes.push(server.get(`${options.httpPath}/media`, mediaReadHandler as unknown as (ctx: unknown) => Promise<void>));
         routes.push(server.get(`${options.httpPath}/actions`, createCompanionKoaActionPollHandler(companion.runtime, { path: `${options.httpPath}/actions` }) as unknown as (ctx: unknown) => Promise<void>));
-        log(`手机伴侣：HTTPS 动作轮询已挂载到 ${options.httpPath}/actions`);
+        log(`手机伴侣：HTTPS 缩略图读取 / 动作轮询已挂载（仅限已配对设备）`);
     }
     return () => {
         layer.close();

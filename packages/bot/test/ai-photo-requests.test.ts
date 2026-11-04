@@ -72,6 +72,21 @@ test('失败后进入持久冷却且日志不包含供应商错误正文', async
     assert.equal(logs.some(line => line.includes('provider secret response')), false);
 });
 
+test('过期世界事件在调用供应商前跳过，不占生成次数或每日额度', async () => {
+    const now = new Date('2026-11-04T18:00:00.000Z');
+    let generated = 0;
+    const store = fakeStore([]);
+    const original = store.generate;
+    store.generate = async (...args) => { generated++; return original(...args); };
+    const service = aiPhotoRequestService({
+        store, generator: async () => { throw new Error('不应调用'); },
+        stateFile: join(mkdtempSync(join(tmpdir(), 'qqbot-ai-photo-expired-')), 'state.json'), now: () => now,
+    });
+    assert.equal(await service.request(context('world:old-view', new Date('2026-11-04T10:00:00.000Z'))), 'expired');
+    assert.equal(generated, 0);
+    assert.equal(store.list().length, 0);
+});
+
 test('世界照片事件只在发生后建立带稳定事件键的事实上下文', () => {
     let found: AiPhotoContext | undefined;
     for (let day = 1; day <= 31 && !found; day++) {
@@ -120,4 +135,21 @@ test('QQ 当前照片请求不拿旧图：无审核图先请求，有精确审�
     const tomorrow = currentAiPhotoContext('food', { ...world, day: '2026-11-05' }, new Date('2026-11-05T12:30:00+08:00'), '番茄鸡蛋');
     assert.notEqual(tomorrow?.eventKey, entries[0]!.eventKey);
     assert.match(tomorrow?.eventKey ?? '', /^qq-current:food:2026-11-05:12:番茄鸡蛋$/);
+});
+
+test('已批准但已过期的精确照片也不能作为当前照片发送', () => {
+    const at = new Date('2026-11-04T12:30:00+08:00');
+    const world: WorldNow = { day: '2026-11-04', atSchool: true, parcels: [], homework: [], events: [] };
+    const current = currentAiPhotoContext('view', world, at)!;
+    const entries: AiPhotoDraft[] = [{
+        ...draft(current), status: 'approved', shelfId: 'fedcba987654',
+        expiresAt: '2026-11-04T04:29:59.000Z',
+    }];
+    const service = aiPhotoRequestService({
+        store: fakeStore(entries), generator: async () => { throw new Error('unused'); },
+        stateFile: join(mkdtempSync(join(tmpdir(), 'qqbot-ai-photo-')), 'state.json'), now: () => at,
+    });
+    assert.deepEqual(requestCurrentAiPhoto(service, 'view', world, at), {
+        state: 'unavailable', eventKey: current.eventKey,
+    });
 });

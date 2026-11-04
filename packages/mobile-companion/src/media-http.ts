@@ -3,12 +3,15 @@ import type { CompanionMediaStore } from './media.ts';
 import type { CompanionRuntime } from './runtime.ts';
 import { isAllowedMediaMime } from './protocol.ts';
 
+const MEDIA_ID = /^[a-f0-9]{16,128}$/i;
+const REVIEW_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
 export interface CompanionMediaHttpOptions {
     path?: string;
     maxBodyBytes?: number;
 }
 
-/** 严格的二进制媒体上传适配器：必须带已配对的 HTTP session，不写磁盘，不开放 CORS。 */
+/** 严格的短期媒体适配器：上传和图片读取都必须带已配对 session，不写磁盘、不开放 CORS。 */
 export function createCompanionMediaHandler(runtime: CompanionRuntime, store: CompanionMediaStore, options: CompanionMediaHttpOptions = {}) {
     const path = options.path ?? '/companion/v1/media';
     const maxBodyBytes = options.maxBodyBytes ?? 8 * 1024 * 1024;
@@ -18,11 +21,26 @@ export function createCompanionMediaHandler(runtime: CompanionRuntime, store: Co
     return (request: IncomingMessage, response: ServerResponse): void => {
         const [requestPath = ''] = (request.url ?? '').split('?', 1);
         if (requestPath !== path) return writeJson(response, 404, { error: 'not_found' });
-        if (request.method !== 'POST') { response.setHeader('Allow', 'POST'); return writeJson(response, 405, { error: 'method_not_allowed' }); }
         const session = request.headers['x-companion-session'];
         const sessionId = typeof session === 'string' ? session : '';
         const clientId = runtime.clientForSession(sessionId);
         if (!clientId) return writeJson(response, 401, { error: 'session_required' });
+        if (request.method === 'GET') {
+            const rawMediaId = request.headers['x-companion-media-id'];
+            const mediaId = typeof rawMediaId === 'string' ? rawMediaId : '';
+            if (!MEDIA_ID.test(mediaId)) return writeJson(response, 404, { error: 'media_not_found' });
+            const record = store.get(clientId, mediaId);
+            if (!record || !REVIEW_IMAGE_MIMES.has(record.mime)) return writeJson(response, 404, { error: 'media_not_found' });
+            if (runtime.clientForSession(sessionId) !== clientId) return writeJson(response, 401, { error: 'session_expired' });
+            response.statusCode = 200;
+            response.setHeader('Content-Type', record.mime);
+            response.setHeader('Content-Length', record.bytes);
+            response.setHeader('Cache-Control', 'private, no-store, max-age=0');
+            response.setHeader('X-Content-Type-Options', 'nosniff');
+            response.end(Buffer.from(record.data));
+            return;
+        }
+        if (request.method !== 'POST') { response.setHeader('Allow', 'GET, POST'); return writeJson(response, 405, { error: 'method_not_allowed' }); }
         const mime = String(request.headers['x-companion-mime'] ?? request.headers['content-type'] ?? '').split(';', 1)[0]!.trim().toLowerCase();
         if (!isAllowedMediaMime(mime)) return writeJson(response, 415, { error: 'media_type_not_allowed' });
         const metadata = readMetadata(request.headers);

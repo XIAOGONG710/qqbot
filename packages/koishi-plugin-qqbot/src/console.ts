@@ -7,10 +7,12 @@
 import type { Context } from 'koishi';
 import { PHONE_ACTION_CAPABILITIES, type PhoneActionCapability } from '@qqbot/mobile-companion/protocol';
 import { createRequire } from 'node:module';
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import type { AppStatus } from '../../bot/src/platform/app.ts';
-import { aiPhotoDraftStore, type AiPhotoDraftStatus } from '../../bot/src/vision/ai-photo-drafts.ts';
+import { aiPhotoDraftFreshness, aiPhotoDraftStore, type AiPhotoDraftStatus } from '../../bot/src/vision/ai-photo-drafts.ts';
+import { aiPhotoProvidersFromEnv, createAiPhotoProviderPool, type AiPhotoProvider } from '../../bot/src/vision/ai-photo-provider.ts';
+import { AI_PHOTO_REFERENCE_KINDS, AI_PHOTO_REFERENCE_MAX_BYTES, aiPhotoReferenceStore, type AiPhotoReferenceKind } from '../../bot/src/vision/ai-photo-references.ts';
 import { PHOTO_MAX_BYTES, photoShelf } from '../../bot/src/vision/photos.ts';
 import { detectImageType, imageDataUrl } from '../../bot/src/vision/safe-image.ts';
 import { buildCharacter, checkPrivacy, writeOutputs, type Problem } from '../../character-tools/src/build.ts';
@@ -47,6 +49,8 @@ export interface AiPhotoReviewItem {
     caption: string;
     at: string;
     createdAt: string;
+    expiresAt: string;
+    expired: boolean;
     status: AiPhotoDraftStatus;
     reviewedAt?: string;
 }
@@ -54,6 +58,23 @@ export interface AiPhotoReviewItem {
 export type AiPhotoListResult = { ok: true; entries: AiPhotoReviewItem[] } | { ok: false; error: string };
 export type AiPhotoPreviewResult = { ok: true; dataUrl: string } | { ok: false; error: string };
 export type AiPhotoReviewResult = { ok: true; status: AiPhotoDraftStatus } | { ok: false; error: string };
+
+export interface AiPhotoReferenceItem {
+    id: string;
+    kind: AiPhotoReferenceKind;
+    addedAt: string;
+}
+
+export type AiPhotoReferenceListResult = { ok: true; entries: AiPhotoReferenceItem[] } | { ok: false; error: string };
+export type AiPhotoReferenceChangeResult = { ok: true; entry?: AiPhotoReferenceItem } | { ok: false; error: string };
+
+export interface AiPhotoRuntimeStatus {
+    feature: 'on' | 'off' | 'unknown';
+    providers: readonly AiPhotoProvider['id'][];
+    usage?: { day: string; attempts: number; generated: number; failed: number; remaining: number };
+    drafts?: { total: number; pending: number; approved: number; rejected: number };
+    degraded?: string;
+}
 
 /** moods / books（ADR 0015）是后加的文件：资料里没有这两个文件时页面不显示它们的分页 */
 export type SourcePart = 'persona' | 'scenes' | 'schedule' | 'tiers' | 'moods' | 'books';
@@ -112,6 +133,7 @@ export function consoleData(): ConsoleData {
 const REVIEW_STATUSES = new Set<AiPhotoDraftStatus>(['pending_review', 'approved', 'rejected']);
 const REVIEW_ID = /^[a-f0-9]{12}$/;
 const publicPhotoReviewError = '照片审核暂时无法完成，请刷新页面后重试；详细原因见运行日志。';
+const publicPhotoReferenceError = '视觉参考暂时无法修改，请刷新页面后重试；详细原因见运行日志。';
 
 function photoReviewStores() {
     if (!state.dataDir) throw new Error('照片审核尚未连接到数据目录');
@@ -123,28 +145,142 @@ function photoReviewStores() {
     };
 }
 
+/** 参考资料只能使用 dataDir 下的固定索引；拒绝符号链接、目录替身和非普通文件。 */
+function photoReferenceStore() {
+    if (!state.dataDir) throw new Error('视觉参考尚未连接到数据目录');
+    const dataDir = resolve(state.dataDir);
+    const referenceDir = resolve(dataDir, 'ai-photo-references');
+    const indexFile = resolve(referenceDir, 'index.json');
+    if (dirname(referenceDir) !== dataDir || dirname(indexFile) !== referenceDir) throw new Error('视觉参考目录越界');
+    if (existsSync(referenceDir)) {
+        const directory = lstatSync(referenceDir);
+        if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error('视觉参考目录不安全');
+    }
+    if (existsSync(indexFile)) {
+        const file = lstatSync(indexFile);
+        if (!file.isFile() || file.isSymbolicLink() || dirname(realpathSync(indexFile)) !== realpathSync(referenceDir)) throw new Error('视觉参考索引不安全');
+    }
+    return aiPhotoReferenceStore({ file: indexFile });
+}
+
+function referenceBytes(value: unknown): Uint8Array | undefined {
+    if (typeof value !== 'string' || value.length > Math.ceil(AI_PHOTO_REFERENCE_MAX_BYTES * 4 / 3) + 64) return undefined;
+    const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+    if (!match) return undefined;
+    const bytes = new Uint8Array(Buffer.from(match[2]!, 'base64'));
+    if (!bytes.length || bytes.length > AI_PHOTO_REFERENCE_MAX_BYTES || detectImageType(bytes) !== match[1]) return undefined;
+    return bytes;
+}
+
+/** 页面不返回内容哈希、供应商引用编号或磁盘路径。 */
+export function listAiPhotoReferences(): AiPhotoReferenceListResult {
+    try {
+        const entries = photoReferenceStore().list()
+            .sort((a, b) => Date.parse(b.addedAt) - Date.parse(a.addedAt))
+            .map(entry => ({ id: entry.id, kind: entry.kind, addedAt: entry.addedAt }));
+        return { ok: true, entries };
+    } catch {
+        return { ok: false, error: publicPhotoReferenceError };
+    }
+}
+
+export function addAiPhotoReference(kind: unknown, image: unknown, referenceId: unknown, nonHumanConfirmed: unknown, confirmation: unknown, audit?: (message: string) => void): AiPhotoReferenceChangeResult {
+    if (typeof kind !== 'string' || !AI_PHOTO_REFERENCE_KINDS.includes(kind as AiPhotoReferenceKind)
+        || typeof referenceId !== 'string' || nonHumanConfirmed !== true || confirmation !== 'confirmed') {
+        return { ok: false, error: '请选择参考类型、确认画面不含人物，并重新确认本次登记。' };
+    }
+    const bytes = referenceBytes(image);
+    if (!bytes) return { ok: false, error: '请选择 5 MB 以内的 JPEG、PNG 或 WebP 图片。' };
+    try {
+        const entry = photoReferenceStore().add({ kind: kind as AiPhotoReferenceKind, bytes, referenceId, nonHumanSubject: true });
+        audit?.(`控制台登记了非人物 AI 照片参考（${entry.kind}；${entry.id}）`);
+        return { ok: true, entry: { id: entry.id, kind: entry.kind, addedAt: entry.addedAt } };
+    } catch {
+        return { ok: false, error: publicPhotoReferenceError };
+    }
+}
+
+export function removeAiPhotoReference(id: unknown, confirmation: unknown, audit?: (message: string) => void): AiPhotoReferenceChangeResult {
+    if (typeof id !== 'string' || !REVIEW_ID.test(id) || confirmation !== 'confirmed') return { ok: false, error: '删除请求无效，请重新确认后再试。' };
+    try {
+        const store = photoReferenceStore();
+        const entry = store.list().find(item => item.id === id);
+        if (!entry || !store.remove(id)) return { ok: false, error: '找不到这项视觉参考。' };
+        audit?.(`控制台删除了 AI 照片参考（${entry.kind}；${entry.id}）`);
+        return { ok: true };
+    } catch {
+        return { ok: false, error: publicPhotoReferenceError };
+    }
+}
+
 function aiPhotoSummary(): { total: number; pending: number; approved: number; rejected: number } | undefined {
     if (!state.dataDir) return undefined;
     try { return photoReviewStores().drafts.status(); } catch { return undefined; }
 }
 
+/** 只读运行摘要：不返回模型名、URL、密钥、磁盘路径或供应商错误原文。 */
+export function aiPhotoRuntimeStatus(env: NodeJS.ProcessEnv = process.env): AiPhotoRuntimeStatus {
+    let feature: AiPhotoRuntimeStatus['feature'] = 'unknown';
+    try {
+        const item = state.status?.().features.find(candidate => candidate.key === 'aiPhotos');
+        if (item) feature = item.on ? 'on' : 'off';
+    } catch { /* 状态服务失败不阻断照片页 */ }
+
+    let providers: readonly AiPhotoProvider['id'][] = [];
+    try { providers = aiPhotoProvidersFromEnv(env).map(provider => provider.id); } catch { /* 环境配置不向页面暴露 */ }
+    const drafts = aiPhotoSummary();
+    if (!state.dataDir) return { feature, providers, ...(drafts ? { drafts } : {}), degraded: '用量统计尚未连接。' };
+
+    try {
+        const dataDir = resolve(state.dataDir);
+        const usageDir = resolve(dataDir, 'ai-photo-usage');
+        const usageFile = resolve(usageDir, 'usage.json');
+        if (dirname(usageDir) !== dataDir || dirname(usageFile) !== usageDir) throw new Error('用量目录越界');
+        if (existsSync(usageDir)) {
+            const directory = lstatSync(usageDir);
+            if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error('用量目录不安全');
+        }
+        if (existsSync(usageFile)) {
+            const file = lstatSync(usageFile);
+            if (!file.isFile() || file.isSymbolicLink() || dirname(realpathSync(usageFile)) !== realpathSync(usageDir)) throw new Error('用量索引不安全');
+        }
+        const status = createAiPhotoProviderPool({
+            dir: usageDir,
+            providers: aiPhotoProvidersFromEnv(env),
+            dailyLimit: Number(env.QQBOT_IMAGE_DAILY_LIMIT ?? 4),
+        }).status();
+        return {
+            feature, providers: status.providers,
+            usage: { day: status.day, attempts: status.attempts, generated: status.generated, failed: status.failed, remaining: status.remaining },
+            ...(drafts ? { drafts } : {}),
+        };
+    } catch {
+        return { feature, providers, ...(drafts ? { drafts } : {}), degraded: '今日用量暂时无法读取。' };
+    }
+}
+
 /** 控制台只拿展示需要的字段，不返回磁盘路径、事件键、模型名或提示词哈希。 */
-export function listAiPhotoDrafts(status: unknown = 'pending_review', limit: unknown = 24): AiPhotoListResult {
+export function listAiPhotoDrafts(status: unknown = 'pending_review', limit: unknown = 24, now: Date = new Date()): AiPhotoListResult {
     if (typeof status !== 'string' || !REVIEW_STATUSES.has(status as AiPhotoDraftStatus)) return { ok: false, error: '请选择有效的审核状态。' };
     const safeLimit = Number.isInteger(limit) ? Math.min(30, Math.max(1, Number(limit))) : 24;
     try {
         const entries = photoReviewStores().drafts.list(status as AiPhotoDraftStatus)
             .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
             .slice(0, safeLimit)
-            .map(entry => ({
-                id: entry.id,
-                kind: entry.kind,
-                caption: entry.caption,
-                at: entry.at,
-                createdAt: entry.createdAt,
-                status: entry.status,
-                ...(entry.reviewedAt ? { reviewedAt: entry.reviewedAt } : {}),
-            }));
+            .map(entry => {
+                const freshness = aiPhotoDraftFreshness(entry, now);
+                return {
+                    id: entry.id,
+                    kind: entry.kind,
+                    caption: entry.caption,
+                    at: entry.at,
+                    createdAt: entry.createdAt,
+                    expiresAt: freshness.expiresAt,
+                    expired: !freshness.fresh,
+                    status: entry.status,
+                    ...(entry.reviewedAt ? { reviewedAt: entry.reviewedAt } : {}),
+                };
+            });
         return { ok: true, entries };
     } catch {
         return { ok: false, error: publicPhotoReviewError };
@@ -282,6 +418,10 @@ export function registerConsole(ctx: Context, repoRoot: string): void {
         api.addListener('qqbot/ai-photos/list', (status: unknown, limit: unknown) => listAiPhotoDrafts(status, limit), authority);
         api.addListener('qqbot/ai-photos/preview', (id: unknown) => aiPhotoPreview(id), authority);
         api.addListener('qqbot/ai-photos/review', (action: unknown, id: unknown, confirmation: unknown) => reviewAiPhoto(action, id, confirmation, message => root.logger('qqbot').info(message)), authority);
+        api.addListener('qqbot/ai-photos/runtime', () => aiPhotoRuntimeStatus(), authority);
+        api.addListener('qqbot/ai-photo-references/list', () => listAiPhotoReferences(), authority);
+        api.addListener('qqbot/ai-photo-references/add', (kind: unknown, image: unknown, referenceId: unknown, nonHumanConfirmed: unknown, confirmation: unknown) => addAiPhotoReference(kind, image, referenceId, nonHumanConfirmed, confirmation, message => root.logger('qqbot').info(message)), authority);
+        api.addListener('qqbot/ai-photo-references/remove', (id: unknown, confirmation: unknown) => removeAiPhotoReference(id, confirmation, message => root.logger('qqbot').info(message)), authority);
     });
 }
 

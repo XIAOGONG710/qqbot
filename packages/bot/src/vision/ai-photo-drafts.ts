@@ -35,6 +35,8 @@ export interface AiPhotoDraft {
     caption: string;
     at: string;
     createdAt: string;
+    /** 作为“当下照片”有效到什么时候；旧索引没有该字段时按事件时间和种类推导。 */
+    expiresAt?: string;
     file: string;
     status: AiPhotoDraftStatus;
     model: string;
@@ -43,6 +45,28 @@ export interface AiPhotoDraft {
     dish?: string;
     reviewedAt?: string;
     shelfId?: string;
+}
+
+const AI_PHOTO_FRESH_MS: Record<AiPhotoKind, number> = {
+    cat: 6 * 60 * 60_000,
+    food: 3 * 60 * 60_000,
+    desk: 2 * 60 * 60_000,
+    view: 2 * 60 * 60_000,
+};
+
+export type AiPhotoDraftFreshness = { fresh: true; expiresAt: string } | { fresh: false; expiresAt: string; reason: string };
+
+/** 过期只影响“当下照片”的批准/发送资格，文件仍保留给人工审计。 */
+export function aiPhotoDraftFreshness(entry: Pick<AiPhotoDraft, 'kind' | 'at' | 'expiresAt'>, at: Date = new Date()): AiPhotoDraftFreshness {
+    const fallback = Date.parse(entry.at) + AI_PHOTO_FRESH_MS[entry.kind];
+    const expires = entry.expiresAt ? Date.parse(entry.expiresAt) : fallback;
+    if (!Number.isFinite(expires) || !Number.isFinite(at.getTime())) {
+        return { fresh: false, expiresAt: '', reason: '这张照片的时效信息无效，不能作为当前照片使用' };
+    }
+    const expiresAt = new Date(expires).toISOString();
+    return at.getTime() < expires
+        ? { fresh: true, expiresAt }
+        : { fresh: false, expiresAt, reason: `这张照片已于 ${expiresAt} 过期，不能再作为当前照片使用` };
 }
 
 interface AiPhotoIndex { version: 1; entries: AiPhotoDraft[] }
@@ -81,6 +105,7 @@ const validEntry = (value: unknown): value is AiPhotoDraft => {
         && typeof x.caption === 'string' && Boolean(clean(x.caption))
         && typeof x.at === 'string' && validDate(x.at)
         && typeof x.createdAt === 'string' && validDate(x.createdAt)
+        && (x.expiresAt === undefined || (typeof x.expiresAt === 'string' && validDate(x.expiresAt)))
         && typeof x.file === 'string' && new RegExp(`^${x.id}\\.(?:jpg|png|webp)$`).test(x.file)
         && ['pending_review', 'approved', 'rejected'].includes(x.status ?? '')
         && typeof x.model === 'string' && Boolean(clean(x.model))
@@ -235,7 +260,8 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             writeFileSync(join(filesDir, file), generated.bytes, { flag: 'wx' });
             const entry: AiPhotoDraft = {
                 id, eventKey, kind: context.kind, subject: clean(context.subject)!, caption: clean(context.caption)!,
-                at: new Date(context.at).toISOString(), createdAt: now().toISOString(), file,
+                at: new Date(context.at).toISOString(), createdAt: now().toISOString(),
+                expiresAt: new Date(Date.parse(context.at) + AI_PHOTO_FRESH_MS[context.kind]).toISOString(), file,
                 status: 'pending_review', model: clean(generated.model) || 'unknown',
                 promptHash: createHash('sha256').update(prompt).digest('hex'),
                 ...(clean(context.dish) ? { dish: clean(context.dish) } : {}),
@@ -259,6 +285,8 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             if (!entry) throw new Error('找不到这张草稿');
             if (entry.status === 'rejected') throw new Error('已拒绝的草稿不能直接通过');
             if (entry.status === 'approved') return { ...entry };
+            const freshness = aiPhotoDraftFreshness(entry, now());
+            if (!freshness.fresh) throw new Error(freshness.reason);
             const source = checkedSource(entry);
             const added = shelf.add(source, shelfKind[entry.kind], entry.caption, entry.dish);
             const approved = { ...entry, status: 'approved' as const, reviewedAt: now().toISOString(), shelfId: added.id };

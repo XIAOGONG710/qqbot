@@ -1,8 +1,9 @@
 import { resolveRegisteredLink } from './action-links.js';
+import { PhotoReviewViewModel } from './photo-review-view.js';
 import { rememberDownlinkNonce } from './replay-window.js';
 
 const $ = id => document.getElementById(id);
-const state = { socket: undefined, transport: 'ws', clientId: '', pairingCode: '', session: '', connectionGeneration: 0, pending: new Map(), receivedDownlinkNonces: new Map(), recorder: undefined, recordChunks: [], pollTimer: undefined, polling: false, pendingTimer: undefined, connecting: false, helloSent: false, activityAt: 0 };
+const state = { socket: undefined, transport: 'ws', clientId: '', pairingCode: '', session: '', connectionGeneration: 0, pending: new Map(), receivedDownlinkNonces: new Map(), recorder: undefined, recordChunks: [], pollTimer: undefined, polling: false, pendingTimer: undefined, connecting: false, connected: false, helloSent: false, activityAt: 0, photoReview: new PhotoReviewViewModel(), photoObjectUrls: new Map(), photoRenderGeneration: 0 };
 const id = prefix => `${prefix}-${crypto.randomUUID().replaceAll('-', '')}`;
 const nonce = prefix => `${prefix}-${crypto.randomUUID().replaceAll('-', '')}`;
 const now = () => new Date().toISOString();
@@ -16,7 +17,7 @@ const log = (direction, value) => {
   $('conversation').scrollTop = $('conversation').scrollHeight;
 };
 const system = text => log('system', text);
-const setState = (text, on = false) => { $('state').textContent = text; $('state').className = `pill ${on ? 'on' : 'off'}`; $('state').title = state.activityAt ? `最近活动：${new Date(state.activityAt).toLocaleTimeString()}` : ''; };
+const setState = (text, on = false) => { const changed = state.connected !== on; state.connected = on; $('state').textContent = text; $('state').className = `pill ${on ? 'on' : 'off'}`; $('state').title = state.activityAt ? `最近活动：${new Date(state.activityAt).toLocaleTimeString()}` : ''; if (changed) renderPhotoReview(); };
 const setBusy = busy => { state.connecting = busy; $('connect').disabled = busy; $('connect').textContent = busy ? '连接中…' : '配对并连接'; };
 const touch = () => { state.activityAt = Date.now(); setState($('state').textContent, $('state').classList.contains('on')); };
 const pendingId = value => value?.requestId?.replace(/^resp-/, '');
@@ -66,7 +67,31 @@ function handleIncoming(value, generation = state.connectionGeneration) {
     state.pending.delete(pendingId(value));
     return system(value.body.ok ? `动作已处理：${value.body.decision}` : `动作未执行：${value.body.error ?? '被拒绝'}`);
   }
-  if (value.kind === 'error') return system(value.body.message ?? '服务端错误');
+  if (value.kind === 'photo.review.list.result') {
+    state.pending.delete(pendingId(value));
+    try { state.photoReview.replace(value.body); }
+    catch { state.photoReview.fail(); }
+    renderPhotoReview();
+    return;
+  }
+  if (value.kind === 'photo.review.decision') {
+    state.pending.delete(pendingId(value));
+    try { state.photoReview.applyDecision(value.body); }
+    catch { state.photoReview.fail(); }
+    if ($('photoConfirm').open) $('photoConfirm').close();
+    renderPhotoReview();
+    return;
+  }
+  if (value.kind === 'error') {
+    const pending = state.pending.get(pendingId(value));
+    state.pending.delete(pendingId(value));
+    if (pending?.value?.kind === 'photo.review.list' || pending?.value?.kind === 'photo.review.decide') {
+      state.photoReview.fail();
+      renderPhotoReview();
+      return system('照片审核操作未完成，请稍后重试');
+    }
+    return system(value.body.message ?? '服务端错误');
+  }
   if (value.kind === undefined) system('配对成功');
 }
 
@@ -106,6 +131,7 @@ async function pollActions() {
       state.session = '';
       state.pending.clear();
       state.receivedDownlinkNonces.clear();
+      state.photoReview.reset();
       stopActionPolling();
       setState('会话已过期');
       system('HTTPS 会话已过期，请重新配对');
@@ -214,6 +240,7 @@ async function connect() {
   state.session = '';
   state.helloSent = false;
   state.receivedDownlinkNonces.clear();
+  state.photoReview.reset();
   if (!state.clientId || !state.pairingCode) return system('请填写设备 ID 和一次性配对码');
   const hello = envelope('hello', { clientId: state.clientId, pairingCode: state.pairingCode, capabilities: ['text', 'audio', 'image', 'sticker'] });
   state.pending.clear();
@@ -231,7 +258,7 @@ async function connect() {
   state.socket = socket;
   socket.addEventListener('open', () => { if (!isCurrentConnection(generation, socket)) return; state.helloSent = true; void send(hello, generation).then(() => { if (isCurrentConnection(generation, socket)) { setState('已连接', true); system('已发送配对请求，等待她回复…'); } }).catch(error => { if (isCurrentConnection(generation, socket)) system(error instanceof Error ? error.message : String(error)); }).finally(() => { if (isCurrentConnection(generation, socket)) setBusy(false); }); });
   socket.addEventListener('message', event => { if (!isCurrentConnection(generation, socket)) return; let value; try { value = JSON.parse(event.data); } catch { return system('服务端返回了无法解析的内容'); } handleIncoming(value, generation); });
-  socket.addEventListener('close', () => { if (isCurrentConnection(generation, socket)) { state.connectionGeneration++; state.socket = undefined; state.pending.clear(); state.receivedDownlinkNonces.clear(); stopActionPolling(); setBusy(false); setState('已断开'); system(state.helloSent ? '连接已断开：一次性配对码不能复用，请在 QQ 重新获取配对码后再连接' : '连接尚未完成，可稍后重试'); } });
+  socket.addEventListener('close', () => { if (isCurrentConnection(generation, socket)) { state.connectionGeneration++; state.socket = undefined; state.pending.clear(); state.receivedDownlinkNonces.clear(); state.photoReview.reset(); stopActionPolling(); setBusy(false); setState('已断开'); system(state.helloSent ? '连接已断开：一次性配对码不能复用，请在 QQ 重新获取配对码后再连接' : '连接尚未完成，可稍后重试'); } });
   socket.addEventListener('error', () => { if (isCurrentConnection(generation, socket)) system('连接失败，请确认 Koishi server、路径和 HTTPS/WSS 设置'); });
 }
 
@@ -281,6 +308,151 @@ async function toggleRecording() {
     }).catch(error => system(error instanceof Error ? error.message : String(error))).finally(() => { $('recordState').textContent = '麦克风录音仅在 HTTPS 模式可用'; });
   }, { once: true });
   recorder.start();
+}
+
+function renderPhotoReview() {
+  revokePhotoThumbnails();
+  const renderGeneration = ++state.photoRenderGeneration;
+  const view = state.photoReview.view();
+  $('photoRefresh').disabled = !state.connected || view.busy;
+  $('photoRefresh').textContent = view.phase === 'loading' ? '正在刷新…' : '刷新';
+  $('photoFilter').disabled = view.busy;
+  $('photoFilter').value = view.filter;
+  $('photoNotice').hidden = !view.notice;
+  $('photoNotice').textContent = view.notice ?? '';
+  const list = $('photoReviewList');
+  list.replaceChildren();
+  if (!state.connected && view.phase === 'idle') {
+    const empty = document.createElement('p');
+    empty.className = 'photo-empty';
+    empty.textContent = '连接后可查看生活照草稿';
+    list.append(empty);
+    return;
+  }
+  if (!view.items.length) {
+    const empty = document.createElement('p');
+    empty.className = 'photo-empty';
+    empty.textContent = view.emptyText;
+    list.append(empty);
+    return;
+  }
+  for (const item of view.items) {
+    const card = document.createElement('article');
+    card.className = 'photo-item';
+    const thumbnail = document.createElement('div');
+    thumbnail.className = 'photo-thumb';
+    thumbnail.textContent = item.hasThumbnail ? (!state.connected ? '重新连接后查看缩略图' : state.transport === 'http' ? '正在读取缩略图…' : '切换到 HTTPS 查看缩略图') : '暂无缩略图';
+    const copy = document.createElement('div');
+    copy.className = 'photo-copy';
+    const meta = document.createElement('div');
+    meta.className = 'photo-meta';
+    const kind = document.createElement('span');
+    kind.textContent = item.kindLabel;
+    const status = document.createElement('span');
+    status.className = 'photo-status';
+    status.textContent = item.statusLabel;
+    const at = document.createElement('span');
+    at.textContent = item.timeLabel;
+    meta.append(kind, status, at);
+    if (item.expiryLabel) {
+      const expiry = document.createElement('span');
+      expiry.textContent = item.expiryLabel;
+      meta.append(expiry);
+    }
+    const caption = document.createElement('p');
+    caption.className = 'photo-caption';
+    caption.textContent = item.caption;
+    copy.append(meta, caption);
+    if (item.canApprove || item.canReject) {
+      const actions = document.createElement('div');
+      actions.className = 'photo-actions';
+      const approve = document.createElement('button');
+      approve.type = 'button';
+      approve.textContent = '通过';
+      approve.disabled = view.busy || !state.connected || !item.canApprove;
+      approve.addEventListener('click', () => openPhotoDecision(item.key, 'approve'));
+      const reject = document.createElement('button');
+      reject.type = 'button';
+      reject.className = 'reject';
+      reject.textContent = '拒绝';
+      reject.disabled = view.busy || !state.connected || !item.canReject;
+      reject.addEventListener('click', () => openPhotoDecision(item.key, 'reject'));
+      actions.append(approve, reject);
+      copy.append(actions);
+    }
+    card.append(thumbnail, copy);
+    list.append(card);
+    if (item.hasThumbnail && state.connected && state.transport === 'http') void loadPhotoThumbnail(item.key, thumbnail, renderGeneration);
+  }
+}
+
+function revokePhotoThumbnails() {
+  for (const url of state.photoObjectUrls.values()) URL.revokeObjectURL(url);
+  state.photoObjectUrls.clear();
+}
+
+async function loadPhotoThumbnail(key, container, renderGeneration) {
+  const thumbnail = state.photoReview.thumbnailFor(key);
+  const session = state.session;
+  const connectionGeneration = state.connectionGeneration;
+  if (!thumbnail || !session || state.transport !== 'http') { container.textContent = '缩略图暂不可用'; return; }
+  try {
+    const response = await fetch($('mediaEndpoint').value.trim(), {
+      method: 'GET',
+      headers: { 'x-companion-session': session, 'x-companion-media-id': thumbnail.mediaId, accept: thumbnail.mime },
+      cache: 'no-store',
+    });
+    if (!isCurrentConnection(connectionGeneration, undefined, session) || renderGeneration !== state.photoRenderGeneration) return;
+    if (!response.ok) throw new Error('thumbnail_unavailable');
+    const mime = String(response.headers.get('content-type') ?? '').split(';', 1)[0].toLowerCase();
+    if (mime !== thumbnail.mime || !['image/jpeg', 'image/png', 'image/webp'].includes(mime)) throw new Error('thumbnail_type_mismatch');
+    const blob = await response.blob();
+    if (!isCurrentConnection(connectionGeneration, undefined, session) || renderGeneration !== state.photoRenderGeneration) return;
+    if (blob.size < 1 || blob.size > 1024 * 1024) throw new Error('thumbnail_size_invalid');
+    const url = URL.createObjectURL(blob);
+    if (renderGeneration !== state.photoRenderGeneration) { URL.revokeObjectURL(url); return; }
+    state.photoObjectUrls.set(key, url);
+    const image = document.createElement('img');
+    image.alt = '生活照草稿缩略图';
+    image.loading = 'lazy';
+    image.src = url;
+    container.replaceChildren(image);
+  } catch {
+    if (renderGeneration === state.photoRenderGeneration) container.textContent = '缩略图已过期或不可用';
+  }
+}
+
+function openPhotoDecision(key, decision) {
+  try {
+    state.photoReview.requestDecision(key, decision);
+    const confirmation = state.photoReview.view().confirmation;
+    if (!confirmation) throw new Error('照片确认信息不可用');
+    $('photoConfirmTitle').textContent = confirmation.title;
+    $('photoConfirmMessage').textContent = confirmation.message;
+    $('photoConfirmAction').textContent = confirmation.confirmLabel;
+    $('photoConfirmAction').className = confirmation.tone === 'danger' ? 'reject' : '';
+    $('photoConfirm').showModal();
+    renderPhotoReview();
+  } catch (error) {
+    system(error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function refreshPhotoReview() {
+  if (!state.connected) throw new Error('请先配对并连接');
+  const body = state.photoReview.beginRefresh($('photoFilter').value);
+  renderPhotoReview();
+  try { await send(envelope('photo.review.list', body)); }
+  catch (error) { state.photoReview.fail(); renderPhotoReview(); throw error; }
+}
+
+async function confirmPhotoDecision() {
+  if (!state.connected) throw new Error('请先配对并连接');
+  const body = state.photoReview.confirmDecision();
+  $('photoConfirm').close();
+  renderPhotoReview();
+  try { await send(envelope('photo.review.decide', body)); }
+  catch (error) { state.photoReview.fail(); renderPhotoReview(); throw error; }
 }
 
 function formSubmit(form, fn) {
@@ -347,6 +519,11 @@ $('transport').addEventListener('change', () => {
 });
 $('recordAudio').addEventListener('click', () => void toggleRecording().catch(error => system(error instanceof Error ? error.message : String(error))));
 $('connect').addEventListener('click', () => void connect());
+$('photoRefresh').addEventListener('click', () => void refreshPhotoReview().catch(error => system(error instanceof Error ? error.message : String(error))));
+$('photoFilter').addEventListener('change', () => { if (state.connected) void refreshPhotoReview().catch(error => system(error instanceof Error ? error.message : String(error))); });
+$('photoCancel').addEventListener('click', () => { state.photoReview.cancelDecision(); $('photoConfirm').close(); renderPhotoReview(); });
+$('photoConfirmAction').addEventListener('click', () => void confirmPhotoDecision().catch(error => system(error instanceof Error ? error.message : String(error))));
+$('photoConfirm').addEventListener('cancel', event => { event.preventDefault(); state.photoReview.cancelDecision(); $('photoConfirm').close(); renderPhotoReview(); });
 window.addEventListener('online', () => { if (!state.socket && $('pairingCode').value.trim()) system('网络已恢复，可以重新连接'); });
 window.addEventListener('offline', () => { stopActionPolling(); setState('设备离线'); system('网络已断开，消息不会自动发送'); });
 setState('未连接');

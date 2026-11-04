@@ -6,12 +6,12 @@ import { mkdirSync } from 'node:fs';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { lastMealDish, worldNews, type WorldNow } from '../world/world.ts';
 import type { PhotoKind } from '../vision/photos.ts';
-import type { AiPhotoContext, AiPhotoDraft, AiPhotoDraftStore, AiPhotoGenerator, AiPhotoKind } from '../vision/ai-photo-drafts.ts';
+import { aiPhotoDraftFreshness, type AiPhotoContext, type AiPhotoDraft, type AiPhotoDraftStore, type AiPhotoGenerator, type AiPhotoKind } from '../vision/ai-photo-drafts.ts';
 
 export const AI_PHOTO_DAILY_MAX = 3;
 export const AI_PHOTO_FAILURE_COOLDOWN_MS = 30 * 60_000;
 
-export type AiPhotoRequestOutcome = 'generated' | 'existing' | 'daily_limit' | 'cooldown' | 'in_flight' | 'failed';
+export type AiPhotoRequestOutcome = 'generated' | 'existing' | 'expired' | 'daily_limit' | 'cooldown' | 'in_flight' | 'failed';
 
 interface RequestState {
     version: 1;
@@ -127,9 +127,11 @@ export function aiPhotoRequestService(options: AiPhotoRequestServiceOptions): Ai
     const service: AiPhotoRequestService = {
         find,
         async request(context) {
+            const at = now();
+            // 首次启用时世界账可能含数小时前的历史事件；在调用可能计费的供应商前跳过。
+            if (!aiPhotoDraftFreshness(context, at).fresh) return 'expired';
             if (find(context.eventKey)) return 'existing';
             if (inFlight.has(context.eventKey)) return 'in_flight';
-            const at = now();
             if (state.lastFailureAt && at.getTime() - Date.parse(state.lastFailureAt) < cooldownMs) return 'cooldown';
             const createdToday = options.store.list().filter(entry => /^(?:world|qq-current):/.test(entry.eventKey) && sameLocalDay(new Date(entry.createdAt), at)).length;
             if (createdToday >= dailyMax) return 'daily_limit';
@@ -164,8 +166,11 @@ export type CurrentAiPhotoResult =
 export function requestCurrentAiPhoto(service: AiPhotoRequestService, kind: PhotoKind, world: WorldNow, at: Date, dish?: string): CurrentAiPhotoResult {
     const context = currentAiPhotoContext(kind, world, at, dish);
     if (!context) return { state: 'unavailable' };
+    if (!aiPhotoDraftFreshness(context, at).fresh) return { state: 'unavailable', eventKey: context.eventKey };
     const existing = service.find(context.eventKey);
-    if (existing?.status === 'approved' && existing.shelfId) return { state: 'approved', eventKey: context.eventKey, shelfId: existing.shelfId };
+    if (existing?.status === 'approved' && existing.shelfId && aiPhotoDraftFreshness(existing, at).fresh) {
+        return { state: 'approved', eventKey: context.eventKey, shelfId: existing.shelfId };
+    }
     if (existing) return { state: existing.status === 'pending_review' ? 'pending' : 'unavailable', eventKey: context.eventKey };
     void service.request(context);
     return { state: 'requested', eventKey: context.eventKey };

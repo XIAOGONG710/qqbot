@@ -344,3 +344,30 @@ export function extrasRows(extras) {
     }
     return rows;
 }
+
+/** AI 照片运行摘要：只把有限枚举和非负整数翻成中文，其他内容不展示。 */
+export function aiPhotoRuntimeRows(value) {
+    const feature = value?.feature === 'on' ? '已开启（仍需人工审核）'
+        : value?.feature === 'off' ? '已关闭' : '状态暂不可用';
+    const providerNames = { local: '本地服务', primary: '主服务', fallback: '备用服务' };
+    const providers = Array.isArray(value?.providers)
+        ? [...new Set(value.providers.filter(item => providerNames[item]))].map(item => providerNames[item]) : [];
+    const rows = [
+        { label: '功能状态', text: feature },
+        { label: '生图服务', text: providers.length ? providers.join('、') : '未配置' },
+    ];
+    const usage = value?.usage;
+    if (usage && [usage.attempts, usage.generated, usage.failed, usage.remaining].every(item => Number.isInteger(item) && item >= 0)) {
+        rows.push({ label: '今日用量', text: `尝试 ${usage.attempts} 次，成功 ${usage.generated} 次，失败 ${usage.failed} 次，剩余 ${usage.remaining} 次` });
+    } else {
+        const degraded = ['用量统计尚未连接。', '今日用量暂时无法读取。'].includes(value?.degraded) ? value.degraded : '暂时无法读取';
+        rows.push({ label: '今日用量', text: degraded });
+    }
+    const drafts = value?.drafts;
+    if (drafts && [drafts.pending, drafts.approved, drafts.rejected].every(item => Number.isInteger(item) && item >= 0)) {
+        rows.push({ label: '照片草稿', text: `待审核 ${drafts.pending} 张，已通过 ${drafts.approved} 张，已拒绝 ${drafts.rejected} 张` });
+    } else {
+        rows.push({ label: '照片草稿', text: '暂时无法读取' });
+    }
+    return rows;
+}

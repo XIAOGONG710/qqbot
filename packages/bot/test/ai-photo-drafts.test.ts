@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, renameSync, symlinkSync, writeFil
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
-import { aiPhotoDraftStore, buildAiPhotoPrompt, generateAiPhoto, type AiPhotoContext } from '../src/vision/ai-photo-drafts.ts';
+import { aiPhotoDraftFreshness, aiPhotoDraftStore, buildAiPhotoPrompt, generateAiPhoto, type AiPhotoContext } from '../src/vision/ai-photo-drafts.ts';
 
 const context = (patch: Partial<AiPhotoContext> = {}): AiPhotoContext => ({
     kind: 'cat', eventKey: 'cat:2026-11-04:evening', subject: '土豆蹲在自行车棚旁边',
@@ -59,7 +59,7 @@ describe('AI 生活照草稿（ADR 0239）', () => {
 
     test('同一事件只生成一次；审核通过后才导入照片货架', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'ai-photo-'));
-        const clock = () => new Date('2026-11-04T10:00:00.000Z');
+        const clock = () => new Date('2026-11-04T03:00:00.000Z');
         const store = aiPhotoDraftStore({ dir, now: clock });
         let calls = 0;
         const first = await store.generate(context(), async () => { calls++; return { bytes: jpeg(7), model: 'image-model' }; });
@@ -92,6 +92,32 @@ describe('AI 生活照草稿（ADR 0239）', () => {
         const draft = await store.generate(context({ eventKey: 'reject-me' }), async () => ({ bytes: jpeg(9), model: 'm' }));
         assert.equal(store.reject(draft.id).status, 'rejected');
         assert.throws(() => store.approve(draft.id, { add: () => ({ id: 'abc123abc123' }) as never }), /不能直接通过/);
+    });
+
+    test('新草稿写入明确过期时间，过期后保留预览但拒绝批准', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'ai-photo-expiry-'));
+        let clock = new Date('2026-11-04T10:30:00.000Z');
+        const store = aiPhotoDraftStore({ dir, now: () => clock });
+        const draft = await store.generate(context({ kind: 'food', eventKey: 'food-expiry', dish: '番茄鸡蛋' }), async () => ({ bytes: jpeg(14), model: 'm' }));
+        assert.equal(draft.expiresAt, '2026-11-04T13:20:00.000Z');
+        assert.equal(aiPhotoDraftFreshness(draft, clock).fresh, true);
+        clock = new Date('2026-11-04T13:20:00.000Z');
+        const freshness = aiPhotoDraftFreshness(draft, clock);
+        assert.equal(freshness.fresh, false);
+        assert.match(freshness.fresh ? '' : freshness.reason, /过期.*不能再作为当前照片/);
+        assert.deepEqual(store.preview(draft.id), { bytes: jpeg(14), type: 'image/jpeg' });
+        assert.throws(() => store.approve(draft.id, { add: () => ({ id: 'abc123abc123' }) as never }), /已于.*过期/);
+    });
+
+    test('旧索引没有 expiresAt 时按事件时间和种类推导时效', () => {
+        const old = { kind: 'view' as const, at: '2026-11-04T02:00:00.000Z' };
+        assert.deepEqual(aiPhotoDraftFreshness(old, new Date('2026-11-04T03:59:59.999Z')), {
+            fresh: true, expiresAt: '2026-11-04T04:00:00.000Z',
+        });
+        assert.equal(aiPhotoDraftFreshness(old, new Date('2026-11-04T04:00:00.000Z')).fresh, false);
+        assert.deepEqual(aiPhotoDraftFreshness({ kind: 'view', at: 'bad', expiresAt: 'also-bad' }, new Date('bad')), {
+            fresh: false, expiresAt: '', reason: '这张照片的时效信息无效，不能作为当前照片使用',
+        });
     });
 
     test('审核前复核文件编号、内容和普通文件类型，拒绝替换图与目录', async () => {

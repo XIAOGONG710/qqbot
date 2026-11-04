@@ -348,7 +348,7 @@ describe('手机伴侣 WebSocket 挂载', () => {
         const httpStop = mountMobileCompanion(httpServer, { runtime: {}, media: {} } as never, { enabled: true, websocketPath: '/qqbot/companion', httpPath: '/qqbot/companion/http' }, message => httpLog.push(message));
         assert.ok(httpStop);
         assert.equal(posts, 2);
-        assert.equal(gets, 1);
+        assert.equal(gets, 2);
         assert.equal(httpLog.some(message => message.includes('HTTPS envelope')), true);
         assert.equal((postHandlers[1] as unknown as Record<symbol, unknown>)[Symbol.for('noParseBody')], true);
     });

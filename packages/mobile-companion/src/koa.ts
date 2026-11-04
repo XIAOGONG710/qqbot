@@ -3,6 +3,9 @@ import type { CompanionMediaStore } from './media.ts';
 import type { CompanionRuntime } from './runtime.ts';
 import { isAllowedMediaMime } from './protocol.ts';
 
+const MEDIA_ID = /^[a-f0-9]{16,128}$/i;
+const REVIEW_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
 export interface CompanionKoaContextLike {
     path: string;
     method: string;
@@ -43,7 +46,7 @@ export function createCompanionKoaEnvelopeHandler(runtime: CompanionRuntime, opt
     };
 }
 
-/** 适配 Koishi 已有 server 端口的媒体上传路由；只读取音频 / 图片原始流。 */
+/** 适配 Koishi 已有 server 端口的媒体路由；GET 仅返回本设备的短期安全图片。 */
 export function createCompanionKoaMediaHandler(runtime: CompanionRuntime, store: CompanionMediaStore, options: CompanionKoaRouteOptions = {}) {
     const path = options.path ?? '/qqbot/companion/http/media';
     const maxBodyBytes = options.maxBodyBytes ?? 8 * 1024 * 1024;
@@ -51,10 +54,24 @@ export function createCompanionKoaMediaHandler(runtime: CompanionRuntime, store:
     if (!Number.isInteger(maxBodyBytes) || maxBodyBytes < 1024 || maxBodyBytes > 8 * 1024 * 1024) throw new Error('媒体 HTTPS body 上限不合法');
     return async (ctx: CompanionKoaContextLike): Promise<void> => {
         if (ctx.path !== path) return fail(ctx, 404, 'not_found');
-        if (ctx.method !== 'POST') { ctx.set('Allow', 'POST'); return fail(ctx, 405, 'method_not_allowed'); }
         const sessionId = header(ctx.request.headers, 'x-companion-session');
         const clientId = runtime.clientForSession(sessionId);
         if (!clientId) return fail(ctx, 401, 'session_required');
+        if (ctx.method === 'GET') {
+            const mediaId = header(ctx.request.headers, 'x-companion-media-id');
+            if (!MEDIA_ID.test(mediaId)) return fail(ctx, 404, 'media_not_found');
+            const record = store.get(clientId, mediaId);
+            if (!record || !REVIEW_IMAGE_MIMES.has(record.mime)) return fail(ctx, 404, 'media_not_found');
+            if (runtime.clientForSession(sessionId) !== clientId) return fail(ctx, 401, 'session_expired');
+            ctx.status = 200;
+            ctx.set('Content-Type', record.mime);
+            ctx.set('Content-Length', String(record.bytes));
+            ctx.set('Cache-Control', 'private, no-store, max-age=0');
+            ctx.set('X-Content-Type-Options', 'nosniff');
+            ctx.body = Buffer.from(record.data);
+            return;
+        }
+        if (ctx.method !== 'POST') { ctx.set('Allow', 'GET, POST'); return fail(ctx, 405, 'method_not_allowed'); }
         const mime = (header(ctx.request.headers, 'x-companion-mime') || header(ctx.request.headers, 'content-type')).split(';', 1)[0]!.trim().toLowerCase();
         if (!isAllowedMediaMime(mime)) return fail(ctx, 415, 'media_type_not_allowed');
         const metadata = readMetadata(ctx.request.headers);

@@ -29,7 +29,7 @@ export interface MediaReader {
  * 配置里有 vision 才有（config.ts）；运行时现在接 DeepSeek，测试可以给假的。
  */
 export interface ImageDescriber {
-    describe(image: { url: string; file?: string; dataUrl?: string; signal?: AbortSignal }): Promise<string>;
+    describe(image: { url: string; file?: string; dataUrl?: string; referenceDataUrls?: readonly string[]; signal?: AbortSignal }): Promise<string>;
 }
 
 export interface MediaSources {

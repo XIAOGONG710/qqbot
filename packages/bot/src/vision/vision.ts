@@ -45,6 +45,8 @@ export type ImageDownload = (url: string, signal?: AbortSignal) => Promise<strin
 
 /** 单张最多这么大（字节）；更大的、下不来的就不看（不再把原始地址交给模型） */
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+export const VISION_REFERENCE_MAX_COUNT = 4;
+export const VISION_REFERENCE_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
 
 export function imageDownloader(timeoutMs: number): ImageDownload {
     return async (url, signal) => imageDataUrl(await fetchRemoteImage(url, { timeoutMs, maxBytes: MAX_IMAGE_BYTES, ...(signal ? { signal } : {}) }));
@@ -58,16 +60,23 @@ export const EMPTY_RETRIES = 1;
 
 export function deepSeekImageDescriber(options: DeepSeekVisionOptions, doFetch: VisionFetch = defaultFetch, download?: ImageDownload, guard?: ModelGuard): ImageDescriber {
     return {
-        async describe({ url: original, dataUrl, signal }) {
+        async describe({ url: original, dataUrl, referenceDataUrls, signal }) {
             // The model only ever receives bytes that passed the local checks; there is no fallback to the original URL.
             const url = dataUrl
                 ? validateImageDataUrl(dataUrl, REMOTE_IMAGE_MAX_BYTES)
                 : original.startsWith('data:')
                     ? validateImageDataUrl(original, REMOTE_IMAGE_MAX_BYTES)
                     : validateImageDataUrl(await (download ?? defaultDownload())(original, signal), REMOTE_IMAGE_MAX_BYTES);
+            if ((referenceDataUrls?.length ?? 0) > VISION_REFERENCE_MAX_COUNT) throw new Error('too many reference images');
+            const references = (referenceDataUrls ?? []).map(value => validateImageDataUrl(value, REMOTE_IMAGE_MAX_BYTES));
+            const referenceBytes = references.reduce((sum, value) => {
+                const encoded = value.slice(value.indexOf(',') + 1);
+                return sum + Buffer.from(encoded, 'base64').length;
+            }, 0);
+            if (referenceBytes > VISION_REFERENCE_MAX_TOTAL_BYTES) throw new Error('reference images are too large');
             return visionGate.run(async () => {
                 for (let attempt = 0; ; attempt++) {
-                    const text = await ask(url, signal);
+                    const text = await ask(url, references, signal);
                     if (text) return text;
                     if (attempt >= EMPTY_RETRIES) throw new Error('看图模型返回里没有文本');
                 }
@@ -75,17 +84,17 @@ export function deepSeekImageDescriber(options: DeepSeekVisionOptions, doFetch: 
         },
     };
 
-    async function ask(url: string, parent?: AbortSignal): Promise<string | undefined> {
+    async function ask(url: string, references: readonly string[], parent?: AbortSignal): Promise<string | undefined> {
         try {
             // 每一次真正的视觉请求（包括空正文重试）单独占预算，下载失败不消耗模型额度。
-            return await (guard ?? modelGuard()).run(options.purpose ?? 'chat', () => askOnce(url, parent), error => error instanceof ModelUnreachable, parent);
+            return await (guard ?? modelGuard()).run(options.purpose ?? 'chat', () => askOnce(url, references, parent), error => error instanceof ModelUnreachable, parent);
         } catch (error) {
             if (error instanceof GuardRejected) throw new ModelUnreachable(`看图调用被挡住（${error.message}）`, { cause: error });
             throw error;
         }
     }
 
-    async function askOnce(url: string, parent?: AbortSignal): Promise<string | undefined> {
+    async function askOnce(url: string, references: readonly string[], parent?: AbortSignal): Promise<string | undefined> {
         const timeout = AbortSignal.timeout(options.timeoutMs);
         try {
             const response = await doFetch(`${options.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
@@ -101,6 +110,7 @@ export function deepSeekImageDescriber(options: DeepSeekVisionOptions, doFetch: 
                         content: [
                             { type: 'text', text: options.prompt ?? DEFAULT_VISION_PROMPT },
                             { type: 'image_url', image_url: { url } },
+                            ...references.map(reference => ({ type: 'image_url' as const, image_url: { url: reference } })),
                         ],
                     }],
                     max_tokens: 200,

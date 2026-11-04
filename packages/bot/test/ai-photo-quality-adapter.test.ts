@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { describe, test } from 'node:test';
 import {
     aiPhotoQualityFacts, aiPhotoReviewModelFromImageDescriber, aiPhotoTimeOfDay, createAiPhotoVisualReviewer,
@@ -13,6 +14,11 @@ function png(width = 1024, height = 1024): Uint8Array {
     b[24] = 8; b[25] = 2;
     return new Uint8Array(b);
 }
+
+const referenceImage = () => {
+    const bytes = png();
+    return { id: createHash('sha256').update(bytes).digest('hex').slice(0, 12), bytes, type: 'image/png' as const };
+};
 
 const context: AiPhotoContext = {
     kind: 'cat', eventKey: 'cat:1', subject: '土豆在自行车棚旁边', caption: '土豆在路边待着',
@@ -36,24 +42,31 @@ describe('AI 照片质量适配器（ADR 0242）', () => {
     });
 
     test('生成安全 data URL 并把世界事实作为不可信 JSON 交给模型', async () => {
-        let received: { dataUrl: string; prompt: string } | undefined;
+        let received: { dataUrl: string; referenceDataUrls?: readonly string[]; prompt: string } | undefined;
         const reviewer = createAiPhotoVisualReviewer({
             review: async input => { received = input; return review(); },
         });
-        const result = await reviewer({ bytes: png(), type: 'image/png', width: 1024, height: 1024, facts: aiPhotoQualityFacts(context), referenceIds: ['potato-v1'] });
+        const result = await reviewer({
+            bytes: png(), type: 'image/png', width: 1024, height: 1024, facts: aiPhotoQualityFacts(context), referenceIds: [],
+            referenceImages: [referenceImage()],
+        });
         assert.equal(result.subjectMatches, true);
         assert.match(received!.dataUrl, /^data:image\/png;base64,/);
+        assert.equal(received!.referenceDataUrls?.length, 1);
+        assert.match(received!.referenceDataUrls?.[0] ?? '', /^data:image\/png;base64,/);
         assert.match(received!.prompt, /FACTS=.*土豆在自行车棚旁边/);
         assert.match(received!.prompt, /不可信数据/);
     });
 
     test('模型错误和畸形正文不会被质量门回显', async () => {
+        let generated = 0;
         const generator = qualityCheckedAiPhotoGenerator({
-            context, generate: async () => ({ bytes: png(), model: 'image-model' }),
+            context, generate: async () => { generated++; return { bytes: png(), model: 'image-model' }; },
             reviewer: createAiPhotoVisualReviewer({ review: async () => { throw new Error('SECRET raw output'); } }),
         });
         await assert.rejects(generator('PRIVATE PROMPT'), error => error instanceof Error
             && /视觉审查失败/.test(error.message) && !/SECRET|PRIVATE/.test(error.message));
+        assert.equal(generated, 1);
     });
 
     test('通过才把生成结果交回草稿仓库，并按种类取非人物参考 ID', async () => {
@@ -61,14 +74,43 @@ describe('AI 照片质量适配器（ADR 0242）', () => {
         const generated = { bytes: png(), model: 'image-model' };
         const generator = qualityCheckedAiPhotoGenerator({
             context, generate: async prompt => { assert.equal(prompt, 'safe prompt'); return generated; },
-            references: { idsFor: kind => { kinds.push(kind); return ['potato-v1']; } },
+            references: { imagesFor: kind => { kinds.push(kind); return [referenceImage()]; } },
             reviewer: async input => {
-                assert.deepEqual(input.referenceIds, ['potato-v1']);
+                assert.equal(input.referenceImages?.length, 1);
                 return parseAiPhotoVisualReview(review());
             },
         });
         assert.equal(await generator('safe prompt'), generated);
         assert.deepEqual(kinds, ['cat']);
+    });
+
+    test('质量拒绝只重生成一次，第二张通过后返回且留下安全审计日志', async () => {
+        let generated = 0;
+        let reviewed = 0;
+        const logs: string[] = [];
+        const generator = qualityCheckedAiPhotoGenerator({
+            context,
+            generate: async () => ({ bytes: png(), model: `image-${++generated}` }),
+            reviewer: async () => parseAiPhotoVisualReview(review({ subjectMatches: ++reviewed > 1 })),
+            maxQualityRegenerations: 8,
+            log: message => logs.push(message),
+        });
+        assert.equal((await generator('safe prompt')).model, 'image-2');
+        assert.equal(generated, 2);
+        assert.equal(reviewed, 2);
+        assert.deepEqual(logs, ['AI 照片：质量检查未通过，按限制重生成 1 次；不会自动发送']);
+    });
+
+    test('连续质量拒绝后停止，不会进行第三次生成', async () => {
+        let generated = 0;
+        const generator = qualityCheckedAiPhotoGenerator({
+            context,
+            generate: async () => ({ bytes: png(), model: `image-${++generated}` }),
+            reviewer: async () => parseAiPhotoVisualReview(review({ readableText: true })),
+            maxQualityRegenerations: 1,
+        });
+        await assert.rejects(generator('safe prompt'), /质量检查未通过.*可读文字/);
+        assert.equal(generated, 2);
     });
 
     test('时段按世界账时区计算，非法日期和时区明确拒绝', () => {

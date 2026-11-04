@@ -94,13 +94,14 @@ describe('DeepSeek 看图（ADR 0055）', () => {
             return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: ' 一只橘猫趴在窗台上。 ' } }] }) };
         };
         const vision = deepSeekImageDescriber(options, fetch, okDownload);
-        assert.equal(await vision.describe({ url: 'https://gchat.qpic.cn/a.jpg' }), '一只橘猫趴在窗台上。');
+        assert.equal(await vision.describe({ url: 'https://gchat.qpic.cn/a.jpg', referenceDataUrls: [pngUrl] }), '一只橘猫趴在窗台上。');
         assert.equal(seenUrl, 'https://api.deepseek.com/chat/completions');
         assert.equal(seenInit.headers.Authorization, 'Bearer secret');
         const body = JSON.parse(seenInit.body);
         assert.equal(body.model, 'deepseek-flash');
         assert.deepEqual(body.thinking, { type: 'disabled' });
         assert.deepEqual(body.messages[0].content[1], { type: 'image_url', image_url: { url: pngUrl } });
+        assert.deepEqual(body.messages[0].content[2], { type: 'image_url', image_url: { url: pngUrl } });
     });
 
     test('HTTP 错误和没有正文都失败，让 media.ts 退回只有「[图片]」', async () => {
@@ -152,6 +153,17 @@ describe('DeepSeek 看图（ADR 0055）', () => {
         await assert.rejects(() => deepSeekImageDescriber(options, fetch, download).describe({
             url: 'https://x/a.jpg', dataUrl: 'data:image/png;base64,AAAA',
         }), /content does not match/);
+        assert.equal(calls, 0);
+
+        const large = Buffer.alloc(5 * 1024 * 1024);
+        Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(large);
+        const largeUrl = `data:image/png;base64,${large.toString('base64')}`;
+        await assert.rejects(() => deepSeekImageDescriber(options, fetch, download).describe({
+            url: pngUrl, dataUrl: pngUrl, referenceDataUrls: [largeUrl, largeUrl],
+        }), /reference images are too large/);
+        await assert.rejects(() => deepSeekImageDescriber(options, fetch, download).describe({
+            url: pngUrl, dataUrl: pngUrl, referenceDataUrls: [pngUrl, pngUrl, pngUrl, pngUrl, pngUrl],
+        }), /too many reference images/);
         assert.equal(calls, 0);
     });
 });

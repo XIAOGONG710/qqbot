@@ -84,7 +84,7 @@ import { createAccountSource } from '.././bilibili/bilibili-account-source.ts';
 import { stripDeviceTokens } from './device-actions.ts';
 import { CAMERA_VISION_PROMPT, SCREEN_VISION_PROMPT, startDeviceService, type DeviceService } from './device-service.ts';
 import { configuredImageDescriber } from '.././vision/vision.ts';
-import { aiPhotoDraftStore, generateAiPhoto } from '.././vision/ai-photo-drafts.ts';
+import { aiPhotoDraftFreshness, aiPhotoDraftStore, generateAiPhoto } from '.././vision/ai-photo-drafts.ts';
 import { aiPhotoProvidersFromEnv, createAiPhotoProviderPool } from '.././vision/ai-photo-provider.ts';
 import { aiPhotoReferenceStore } from '.././vision/ai-photo-references.ts';
 import { aiPhotoReviewModelFromImageDescriber, createAiPhotoVisualReviewer, qualityCheckedAiPhotoGenerator } from '.././vision/ai-photo-quality-adapter.ts';
@@ -562,6 +562,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
                 now: () => new Date(worldNow()), log,
                 generator: (prompt, context) => qualityCheckedAiPhotoGenerator({
                     context, reviewer, references, generate: value => providerPool.generate(value),
+                    maxQualityRegenerations: 1, log,
                 })(prompt),
             });
         } catch {
@@ -3056,7 +3057,8 @@ ${body}
                 } catch { /* 文件异常时只不给预览；审核动作仍会再次失败关闭。 */ }
                 return {
                     id: entry.id, kind: entry.kind, status: entry.status, caption: entry.caption,
-                    createdAt: entry.createdAt, ...(entry.reviewedAt ? { reviewedAt: entry.reviewedAt } : {}),
+                    createdAt: entry.createdAt, expiresAt: aiPhotoDraftFreshness(entry, new Date(worldNow())).expiresAt,
+                    ...(entry.reviewedAt ? { reviewedAt: entry.reviewedAt } : {}),
                     ...(thumbnail ? { thumbnail } : {}),
                 };
             });
