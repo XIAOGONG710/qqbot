@@ -150,18 +150,28 @@ describe('客户端的纯函数', () => {
             weather: { fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { hours: 24 }, qingdao: { hours: 24 } } },
             airQuality: { fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { hours: 24 } } },
             daylight: { fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { days: 16 } } },
+            transport: { fetchedAt: '2026-11-03T00:00:00.000Z', source: 'secret-provider', locations: {
+                jinan: { status: 'normal', observedAt: '2026-11-03T00:00:00.000Z', detail: '内部线路详情' },
+                qingdao: { status: 'delayed', observedAt: '2026-11-03T00:00:00.000Z' },
+            } },
             calendar: { years: [2026, 2027] },
         });
         assert.equal(healthy.text, '正常');
         assert.equal(healthy.healthy, true);
-        assert.match(healthy.detail, /天气正常.*空气质量正常.*日照正常.*法定日历正常/);
+        assert.match(healthy.detail, /天气正常.*空气质量正常.*日照正常.*交通正常（2 个地点）.*法定日历正常/);
+        assert.doesNotMatch(healthy.detail, /secret-provider|内部线路详情|delayed/);
         const warning = realWorldStatus({
             weather: { places: { jinan: { hours: 0, error: 'secret upstream response' } } },
+            transport: { source: 'token=provider-secret', locations: {
+                jinan: { error: 'Authorization: Bearer secret-token', detail: '供应商原文' },
+                qingdao: { status: 'normal', observedAt: '2026-11-02T00:00:00.000Z', stale: true },
+            } },
             calendar: { years: [2026, 2027], staleYears: [2027], error: 'token=secret' },
         });
-        assert.equal(warning.text, '2 项需检查');
+        assert.equal(warning.text, '3 项需检查');
         assert.equal(warning.type, 'warning');
-        assert.match(warning.detail, /天气1 个地点失败.*法定日历获取失败/);
-        assert.doesNotMatch(warning.detail, /secret|token/);
+        assert.match(warning.detail, /天气1 个地点失败.*交通1 个地点失败.*法定日历获取失败/);
+        assert.doesNotMatch(warning.detail, /secret|token|Authorization|供应商原文/);
+        assert.match(realWorldStatus({ transport: { locations: {} } }).detail, /交通等待取数/);
     });
 });

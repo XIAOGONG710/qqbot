@@ -145,6 +145,19 @@ export function realWorldStatus(status) {
     places('天气', status?.weather, 'hours', '小时');
     places('空气质量', status?.airQuality, 'hours', '小时');
     places('日照', status?.daylight, 'days', '天');
+    if (status?.transport) {
+        const rows = Object.values(status.transport.locations ?? {});
+        const errors = rows.filter(row => row.error).length;
+        const stale = rows.filter(row => row.stale).length;
+        const observed = rows.filter(row => row.status && row.observedAt).length;
+        let state;
+        if (errors) state = `${errors} 个地点失败`;
+        else if (stale || status.transport.stale) state = `${stale || rows.length || 1} 个地点陈旧`;
+        else if (!status.transport.fetchedAt && observed === 0) state = '等待取数';
+        else state = `正常${observed ? `（${observed} 个地点）` : ''}`;
+        if (errors || stale || status.transport.stale || state === '等待取数') issues += 1;
+        modules.push(`交通${state}`);
+    }
     if (status?.calendar) {
         const staleYears = status.calendar.staleYears ?? [];
         const state = status.calendar.error ? '获取失败'

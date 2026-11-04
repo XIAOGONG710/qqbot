@@ -109,6 +109,7 @@ import { useRealWeather, weatherFetcher, type WeatherFetcherStatus } from '.././
 import { airQualityFetcher, useRealAirQuality, type AirQualityFetcherStatus } from '.././world/air-quality.ts';
 import { daylightFetcher, useRealDaylight, type DaylightFetcherStatus } from '.././world/daylight.ts';
 import { calendarFetcher, useRealCalendar, type CalendarStatus } from '.././world/calendar.ts';
+import { transportFetcher, useRealTransport, type TransportFetcherStatus } from '.././world/transport.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
 import { idiomStore, IDIOMS_CHECK_MS, refreshIdioms } from '.././language/idioms.ts';
 import { jokeStore, JOKES_CHECK_MS, refreshJokes } from '.././language/jokes.ts';
@@ -160,6 +161,8 @@ export const AIR_QUALITY_REFRESH_MS = 30 * 60_000;
 export const DAYLIGHT_REFRESH_MS = 6 * 60 * 60_000;
 /** 现实法定日历多久取一次（ADR 0231） */
 export const CALENDAR_REFRESH_MS = 12 * 60 * 60_000;
+/** 现实交通刷新周期；供应商失败时继续使用仍在有效期内的旧缓存。 */
+export const TRANSPORT_REFRESH_MS = 30 * 60_000;
 
 /** 入口提供的收发 */
 export interface Transport extends PresenceTransport {
@@ -266,6 +269,8 @@ export interface AppStatus {
     daylight?: DaylightFetcherStatus;
     /** 现实法定日历缓存的新鲜度和覆盖年份。 */
     calendar?: CalendarStatus;
+    /** 现实交通缓存的新鲜度和地点摘要；不含端点和凭据。 */
+    transport?: TransportFetcherStatus;
     /** 外部内容平台接入模式。 */
     externalPlatforms: { tieba: ExternalPlatformMode; douyin: ExternalPlatformMode; xiaohongshu: ExternalPlatformMode };
     /** 外部平台统一草稿箱的计数摘要。 */
@@ -454,6 +459,17 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     const calendarTimer = calendar ? setInterval(() => void calendar.refresh(), CALENDAR_REFRESH_MS) : undefined;
     calendarTimer?.unref();
     if (worldCard) log(`现实法定日历：${calendar ? `开（当前年和下一年，每 ${CALENDAR_REFRESH_MS / 60_000} 小时取一次；取不到不写进世界）` : '关（配置 realCalendar: false）'}`);
+    const transportConfig = config.realTransport ?? DEFAULTS.realTransport;
+    const worldTransport = transportConfig.enabled && worldCard ? transportFetcher({
+        dir: join(config.dataDir, 'transport'), log, now: worldNow,
+        locations: [{ id: 'jinan', name: '济南' }, { id: 'qingdao', name: '青岛' }],
+        endpoint: transportConfig.endpoint, source: transportConfig.source,
+    }) : undefined;
+    useRealTransport(worldTransport);
+    if (worldTransport) void worldTransport.refresh();
+    const transportTimer = worldTransport ? setInterval(() => void worldTransport.refresh(), TRANSPORT_REFRESH_MS) : undefined;
+    transportTimer?.unref();
+    if (worldCard) log(`现实交通：${worldTransport ? `开（济南 / 青岛，每 ${TRANSPORT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : '关（配置 realTransport.enabled: false）'}`);
     // 没人聊天时她一件件过日子（ADR 0040，影子模式）：读世界之前先排到现在、结算到期的；从这次启动排起，以前排过的从事件账接着排
     const lifeQueue = config.autonomousLife && ledgerWorld ? actionQueue(join(config.dataDir, 'world', 'action-queue.json'), log) : undefined;
     const lifeStartedAt = new Date(worldNow());
@@ -3259,6 +3275,7 @@ ${body}
             if (airQualityTimer) clearInterval(airQualityTimer);
             if (daylightTimer) clearInterval(daylightTimer);
             if (calendarTimer) clearInterval(calendarTimer);
+            if (transportTimer) clearInterval(transportTimer);
             if (dshInboxTimer) clearInterval(dshInboxTimer);
             if (dshStateTimer) clearInterval(dshStateTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
@@ -3287,6 +3304,7 @@ ${body}
             useRealAirQuality(undefined);
             useRealDaylight(undefined);
             useRealCalendar(undefined);
+            useRealTransport(undefined);
             useWorldNeeds(undefined);
             stopLockHeartbeat();
             releaseLock();
@@ -3361,6 +3379,7 @@ ${body}
                 ...(airQuality ? { airQuality: airQuality.status() } : {}),
                 ...(daylight ? { daylight: daylight.status() } : {}),
                 ...(calendar ? { calendar: calendar.status() } : {}),
+                ...(worldTransport ? { transport: worldTransport.status() } : {}),
                 externalPlatforms: config.externalPlatforms ?? DEFAULTS.externalPlatforms,
                 externalDrafts: externalDraftStore.summary(),
                 dsh: { enabled: dshEnabled, ...(dshProbe ? { lastProbe: { ok: dshProbe.ok, at: dshProbe.at, model: dshProbe.model, latencyMs: dshProbe.latencyMs } } : {}) },

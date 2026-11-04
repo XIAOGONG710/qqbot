@@ -32,6 +32,7 @@ export interface TransportStore { fetchedAt: string; facts: Record<string, Trans
 
 const MAX_LOCATIONS = 50;
 const MAX_DETAIL = 160;
+const MAX_ERROR = 160;
 const MAX_RESPONSE_BYTES = 512 * 1024;
 const DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:?\d{2})$/;
 
@@ -46,6 +47,22 @@ function stateOf(value: unknown): TransportState | undefined {
     if (value === '关闭' || value === '停运') return 'closed';
     if (value === '未知') return 'unknown';
     return undefined;
+}
+
+/** 供应商异常只保留短诊断摘要；日志和状态都不能带出 URL 凭据、令牌或 Cookie。 */
+export function sanitizeTransportError(reason: unknown): string {
+    const raw = reason instanceof Error ? reason.message : String(reason);
+    const safe = raw
+        .replace(/(https?:\/\/)[^/\s:@]+:[^/\s@]+@/gi, '$1<redacted>@')
+        .replace(/\b(authorization|proxy-authorization)\s*[:=]\s*(?:(?:bearer|basic)\s+)?[^\s,，;；]+/gi, '$1=<redacted>')
+        .replace(/\b(cookie|set-cookie)\s*[:=]\s*[^\r\n]+/gi, '$1=<redacted>')
+        .replace(/\b(session(?:id)?|refresh[_-]?token)\s*[:=]\s*[^\s,，;；]+/gi, '$1=<redacted>')
+        .replace(/(https?:\/\/[^\s?#]+)\?[^\s#]*/gi, '$1?<redacted>')
+        .replace(/\b(api[_-]?key|access[_-]?token|token|secret|password|密码)\s*[:：=]\s*[^\s,，;；&#]+/gi, '$1=<redacted>')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, MAX_ERROR);
+    return safe || '未知错误';
 }
 
 function validFact(value: unknown): value is TransportFact {
@@ -172,13 +189,13 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
                         for (const location of locations) {
                             try { accept(location, facts, locations.length === 1); }
                             catch (reason) {
-                                const message = reason instanceof Error ? reason.message : String(reason);
+                                const message = sanitizeTransportError(reason);
                                 errors.set(location.id, message); errorAt.set(location.id, new Date(now()).toISOString());
                                 options.log(`现实交通：${location.name ?? location.id}没取到，照旧不用它（${message}）`);
                             }
                         }
                     } catch (reason) {
-                        const message = reason instanceof Error ? reason.message : String(reason);
+                        const message = sanitizeTransportError(reason);
                         for (const location of locations) {
                             errors.set(location.id, message); errorAt.set(location.id, new Date(now()).toISOString());
                             options.log(`现实交通：${location.name ?? location.id}没取到，照旧不用它（${message}）`);
@@ -190,7 +207,7 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
                             const facts = parseTransportResponse(await fetchJson(options.endpoint(location)), location.id, options.source);
                             accept(location, facts, true);
                         } catch (reason) {
-                            const message = reason instanceof Error ? reason.message : String(reason);
+                            const message = sanitizeTransportError(reason);
                             errors.set(location.id, message); errorAt.set(location.id, new Date(now()).toISOString());
                             options.log(`现实交通：${location.name ?? location.id}没取到，照旧不用它（${message}）`);
                         }

@@ -93,6 +93,26 @@ describe('现实交通 / 公共服务事实（ADR 0232）', () => {
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
+    test('供应商异常在日志和状态中隐藏凭据并限制长度', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-transport-error-'));
+        const logs: string[] = [];
+        const secret = 'supplier-secret-value';
+        const fetcher = transportFetcher({
+            dir: root, log: line => logs.push(line), locations: [{ id: 'jinan', name: '济南' }],
+            endpoint: 'https://example.test/current', source: 'test',
+            fetchJson: async () => { throw new Error(`HTTP 401 https://alice:password@example.test/feed?api_key=${secret}&ok=1 Authorization: Bearer bearer-value Cookie: sid=cookie-value ${'x'.repeat(300)}`); },
+        });
+        try {
+            await fetcher.refresh();
+            const error = fetcher.status().locations.jinan!.error ?? '';
+            assert.match(error, /HTTP 401/);
+            assert.match(error, /<redacted>/);
+            assert.ok(error.length <= 160);
+            assert.doesNotMatch(error, /supplier-secret-value|password@example|bearer-value|cookie-value/);
+            assert.doesNotMatch(logs.join('\n'), /supplier-secret-value|password@example|bearer-value|cookie-value/);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
     test('可显式投影进世界，但不把供应商详情原样送进提示词', () => {
         const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
         useRealTransport({ day: location => ({ location, status: 'delayed', observedAt: '2026-10-20T05:00:00.000Z', source: 'test', real: true, detail: '供应商原文不应进入提示词' }) });

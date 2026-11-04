@@ -1107,6 +1107,28 @@ describe('配置', () => {
         assert.throws(() => withConfig(rest, { QQBOT_LLM_API_KEY: 'k' }), /配置缺少 onebot/);
     });
 
+    test('现实交通默认关闭；开启时只接受不含凭据的公网 HTTPS 端点', () => {
+        const { onebot: _, ...rest } = valid;
+        const env = { QQBOT_LLM_API_KEY: 'k' };
+        assert.deepEqual(parseAppConfig(rest, 'C:/repo', env).realTransport, { enabled: false });
+        assert.deepEqual(parseAppConfig({ ...rest, realTransport: {
+            enabled: true, endpoint: 'https://transport.example.test/status?city=all', source: '公共交通源',
+        } }, 'C:/repo', env).realTransport, {
+            enabled: true, endpoint: 'https://transport.example.test/status?city=all', source: '公共交通源',
+        });
+        for (const endpoint of [
+            'http://transport.example.test/status',
+            'https://user:pass@transport.example.test/status',
+            'https://transport.example.test/status#secret',
+            'https://transport.example.test/status?api_key=secret',
+            'https://localhost/status',
+            'https://127.0.0.1/status',
+            'https://192.168.1.2/status',
+            'https://[::1]/status',
+        ]) assert.throws(() => parseAppConfig({ ...rest, realTransport: { enabled: true, endpoint, source: '测试' } }, 'C:/repo', env), /realTransport\.endpoint/);
+        assert.throws(() => parseAppConfig({ ...rest, realTransport: { enabled: true, endpoint: 'https://transport.example.test', source: 'bad/source' } }, 'C:/repo', env), /realTransport\.source/);
+    });
+
     test('B 站账号层（ADR 0089）：默认全关、昵称和 uid 空；写了就读进来；类型不对报错', () => {
         const { onebot: _, ...rest } = valid;
         const env = { QQBOT_LLM_API_KEY: 'k' };

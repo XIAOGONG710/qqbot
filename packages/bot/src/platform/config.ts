@@ -24,6 +24,11 @@ export const VISION_PROVIDERS = ['deepseek'] as const;
 export const STICKER_MODES = ['off', 'collect', 'send'] as const;
 export type StickerMode = (typeof STICKER_MODES)[number];
 
+/** 现实交通只允许宿主显式配置可信 HTTPS 端点；默认关闭。 */
+export type RealTransportConfig =
+    | { enabled: false }
+    | { enabled: true; endpoint: string; source: string };
+
 /** 名单里能用的档位（ADR 0003），从亲到疏 */
 export const CONTACT_TIERS = ['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger'] as const;
 export type ContactTier = (typeof CONTACT_TIERS)[number];
@@ -61,6 +66,7 @@ export const DEFAULTS = {
     realAirQuality: false,
     realDaylight: false,
     realCalendar: false,
+    realTransport: { enabled: false } as RealTransportConfig,
     festivals: 'off' as FestivalMode,
     readReceipts: false,
     bilibili: 'off' as PresenceMode,
@@ -652,6 +658,8 @@ export interface AppConfig {
     realDaylight?: boolean;
     /** 现实法定日历（ADR 0231）：只读节假日 / 调休工作日，失败或过期不写进世界；默认关。 */
     realCalendar?: boolean;
+    /** 现实交通（ADR 0232）：显式可信 HTTPS 结构化端点；默认关，失败或过期不写进世界。 */
+    realTransport?: RealTransportConfig;
     /**
      * 听语音、看图上的字（ADR 0052）：他发的语音用 QQ 自带的语音转文字、照片和截图用 NapCat 的 OCR 取上面的字，写进聊天记录；
      * 转不出来、超时照旧「[语音]」「[图片]」。默认是
@@ -888,6 +896,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         realAirQuality: bool(file, 'realAirQuality', '', DEFAULTS.realAirQuality),
         realDaylight: bool(file, 'realDaylight', '', DEFAULTS.realDaylight),
         realCalendar: bool(file, 'realCalendar', '', DEFAULTS.realCalendar),
+        realTransport: realTransportConfig(file.realTransport),
         festivals: festivalMode(file.festivals),
         readReceipts: bool(file, 'readReceipts', '', DEFAULTS.readReceipts),
         bilibili: oneOf(file.bilibili, 'bilibili', PRESENCE_MODES, DEFAULTS.bilibili),
@@ -1004,6 +1013,44 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         ...(memory ? { memory } : {}),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : DEFAULTS.dataDir),
     };
+}
+
+function realTransportConfig(value: unknown): RealTransportConfig {
+    if (value === undefined) return DEFAULTS.realTransport;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('配置 realTransport 应为对象');
+    const input = value as Json;
+    const enabled = bool(input, 'enabled', 'realTransport', false);
+    if (!enabled) return { enabled: false };
+    const endpoint = str(input, 'endpoint', 'realTransport').trim();
+    const source = str(input, 'source', 'realTransport').trim();
+    if (endpoint.length > 2048) throw new Error('配置 realTransport.endpoint 过长');
+    if (!source || source.length > 40 || !/^[\p{L}\p{N}._ -]+$/u.test(source)) {
+        throw new Error('配置 realTransport.source 应为 1–40 个中文、字母、数字、空格、点、横线或下划线');
+    }
+    let url: URL;
+    try { url = new URL(endpoint); }
+    catch { throw new Error('配置 realTransport.endpoint 应为合法 HTTPS 地址'); }
+    if (url.protocol !== 'https:' || !url.hostname || url.username || url.password || url.hash) {
+        throw new Error('配置 realTransport.endpoint 只允许无账号、密码和片段的 HTTPS 地址');
+    }
+    if ([...url.searchParams.keys()].some(key => /^(?:api[_-]?key|access[_-]?token|token|secret|password)$/i.test(key))) {
+        throw new Error('配置 realTransport.endpoint 不能在地址中携带密钥');
+    }
+    const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)?.slice(1).map(Number);
+    const privateIpv4 = ipv4 && ipv4.every(part => part <= 255) && (
+        ipv4[0] === 0 || ipv4[0] === 10 || ipv4[0] === 127 || ipv4[0]! >= 224
+        || (ipv4[0] === 100 && ipv4[1]! >= 64 && ipv4[1]! <= 127)
+        || (ipv4[0] === 169 && ipv4[1] === 254)
+        || (ipv4[0] === 172 && ipv4[1]! >= 16 && ipv4[1]! <= 31)
+        || (ipv4[0] === 192 && ipv4[1] === 168)
+        || (ipv4[0] === 198 && (ipv4[1] === 18 || ipv4[1] === 19))
+    );
+    const privateIpv6 = hostname === '::1' || hostname === '::' || /^(?:fc|fd|fe[89ab])/i.test(hostname);
+    if (hostname === 'localhost' || hostname.endsWith('.localhost') || privateIpv4 || privateIpv6) {
+        throw new Error('配置 realTransport.endpoint 不能指向本机或私有网络');
+    }
+    return { enabled: true, endpoint, source };
 }
 
 function candidateCount(value: unknown): number {
