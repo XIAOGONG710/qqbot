@@ -231,19 +231,21 @@ describe('客户端的纯函数', () => {
     test('现实世界数据合并成中文摘要，并隐藏供应商错误原文', () => {
         assert.deepEqual(realWorldStatus(undefined), { text: '未开启', type: 'info', detail: '', healthy: false });
         const healthy = realWorldStatus({
-            weather: { fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { hours: 24 }, qingdao: { hours: 24 } } },
-            airQuality: { fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { hours: 24 } } },
-            daylight: { fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { days: 16 } } },
-            transport: { fetchedAt: '2026-11-03T00:00:00.000Z', source: 'secret-provider', locations: {
+            weather: { provider: 'open-meteo', fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { hours: 24 }, qingdao: { hours: 24 } } },
+            airQuality: { provider: 'open-meteo-air-quality', fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { hours: 24 } } },
+            daylight: { provider: 'open-meteo-daylight', fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { days: 16 } } },
+            transport: { provider: 'generic-transport', fetchedAt: '2026-11-03T00:00:00.000Z', source: 'secret-provider', locations: {
                 jinan: { status: 'normal', observedAt: '2026-11-03T00:00:00.000Z', detail: '内部线路详情' },
                 qingdao: { status: 'delayed', observedAt: '2026-11-03T00:00:00.000Z' },
             } },
-            calendar: { years: [2026, 2027] },
+            calendar: { provider: 'holiday.ailcc.com', fetchedAt: '2026-11-03T00:00:00.000Z', years: [2026, 2027] },
         });
         assert.equal(healthy.text, '正常');
         assert.equal(healthy.healthy, true);
-        assert.match(healthy.detail, /天气正常.*空气质量正常.*日照正常.*交通正常（2 个地点）.*法定日历正常/);
-        assert.doesNotMatch(healthy.detail, /secret-provider|内部线路详情|delayed/);
+        assert.match(healthy.detail, /天气正常（济南、青岛；48 小时；来源 Open-Meteo；更新 \d+月\d+日 \d{2}:\d{2}）/);
+        assert.match(healthy.detail, /交通正常（济南、青岛；来源 自定义交通数据；更新 \d+月\d+日 \d{2}:\d{2}）/);
+        assert.match(healthy.detail, /法定日历正常（覆盖 2026、2027 年；来源 法定日历服务；更新 \d+月\d+日 \d{2}:\d{2}）/);
+        assert.doesNotMatch(healthy.detail, /secret-provider|内部线路详情|delayed|2026-11-03|T00/);
         const warning = realWorldStatus({
             weather: { places: { jinan: { hours: 0, error: 'secret upstream response' } } },
             transport: { source: 'token=provider-secret', locations: {
@@ -257,6 +259,11 @@ describe('客户端的纯函数', () => {
         assert.match(warning.detail, /天气1 个地点失败.*交通1 个地点失败.*法定日历获取失败/);
         assert.doesNotMatch(warning.detail, /secret|token|Authorization|供应商原文/);
         assert.match(realWorldStatus({ transport: { locations: {} } }).detail, /交通等待取数/);
+        const unknown = realWorldStatus({
+            weather: { provider: 'token=hidden-provider', fetchedAt: 'bad-time', places: { private_site: { hours: 1 } } },
+        });
+        assert.equal(unknown.detail, '天气正常（1 小时）');
+        assert.doesNotMatch(unknown.detail, /hidden|private|bad-time|时间未知/);
     });
 
     test('生活卡把事实和数值翻成自然语言，不展示内部字段或凭空补故事', () => {

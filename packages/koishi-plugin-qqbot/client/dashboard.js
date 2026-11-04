@@ -180,6 +180,22 @@ export function mobileCompanionStatusDetail(companion) {
     return queued ? `${state} · 正在处理 ${queued} 条` : state;
 }
 
+const REAL_WORLD_SOURCES = {
+    'open-meteo': 'Open-Meteo',
+    'open-meteo-air-quality': 'Open-Meteo',
+    'open-meteo-daylight': 'Open-Meteo',
+    'holiday.ailcc.com': '法定日历服务',
+    'generic-transport': '自定义交通数据',
+};
+const REAL_WORLD_PLACES = { jinan: '济南', qingdao: '青岛' };
+const safeSource = provider => REAL_WORLD_SOURCES[provider];
+const safeUpdatedAt = value => Number.isFinite(Date.parse(value)) ? `更新 ${dashboardTime(value)}` : undefined;
+const coveragePlaces = rows => Object.keys(rows ?? {}).flatMap(key => REAL_WORLD_PLACES[key] ? [REAL_WORLD_PLACES[key]] : []).join('、');
+const withMeta = (state, parts) => {
+    const safe = parts.filter(Boolean);
+    return safe.length ? `${state}（${safe.join('；')}）` : state;
+};
+
 /** 现实数据统一摘要：控制台只给中文结论，不展示供应商错误原文或接口细节。 */
 export function realWorldStatus(status) {
     const modules = [];
@@ -194,9 +210,14 @@ export function realWorldStatus(status) {
         if (errors) state = `${errors} 个地点失败`;
         else if (stale) state = `${stale} 个地点陈旧`;
         else if (!data.fetchedAt && amount === 0) state = '等待取数';
-        else state = `正常${amount ? `（${amount} ${amountLabel}）` : ''}`;
+        else state = '正常';
         if (errors || stale || state === '等待取数') issues += 1;
-        modules.push(`${label}${state}`);
+        modules.push(`${label}${withMeta(state, [
+            coveragePlaces(data.places),
+            amount ? `${amount} ${amountLabel}` : undefined,
+            safeSource(data.provider) ? `来源 ${safeSource(data.provider)}` : undefined,
+            safeUpdatedAt(data.fetchedAt),
+        ])}`);
     };
     places('天气', status?.weather, 'hours', '小时');
     places('空气质量', status?.airQuality, 'hours', '小时');
@@ -210,17 +231,25 @@ export function realWorldStatus(status) {
         if (errors) state = `${errors} 个地点失败`;
         else if (stale || status.transport.stale) state = `${stale || rows.length || 1} 个地点陈旧`;
         else if (!status.transport.fetchedAt && observed === 0) state = '等待取数';
-        else state = `正常${observed ? `（${observed} 个地点）` : ''}`;
+        else state = '正常';
         if (errors || stale || status.transport.stale || state === '等待取数') issues += 1;
-        modules.push(`交通${state}`);
+        modules.push(`交通${withMeta(state, [
+            coveragePlaces(status.transport.locations),
+            safeSource(status.transport.provider) ? `来源 ${safeSource(status.transport.provider)}` : undefined,
+            safeUpdatedAt(status.transport.fetchedAt),
+        ])}`);
     }
     if (status?.calendar) {
         const staleYears = status.calendar.staleYears ?? [];
         const state = status.calendar.error ? '获取失败'
             : staleYears.length ? `${staleYears.join('、')} 年陈旧`
-                : status.calendar.years?.length ? `正常（${status.calendar.years.join('、')} 年）` : '等待取数';
+                : status.calendar.years?.length ? '正常' : '等待取数';
         if (status.calendar.error || staleYears.length || state === '等待取数') issues += 1;
-        modules.push(`法定日历${state}`);
+        modules.push(`法定日历${withMeta(state, [
+            status.calendar.years?.length ? `覆盖 ${status.calendar.years.join('、')} 年` : undefined,
+            safeSource(status.calendar.provider) ? `来源 ${safeSource(status.calendar.provider)}` : undefined,
+            safeUpdatedAt(status.calendar.fetchedAt),
+        ])}`);
     }
     if (!modules.length) return { text: '未开启', type: 'info', detail: '', healthy: false };
     return {
