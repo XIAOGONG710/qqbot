@@ -5,6 +5,7 @@ import type { CompanionRuntimeHandlers } from '@qqbot/mobile-companion/runtime';
 import { CompanionRuntime } from '@qqbot/mobile-companion/runtime';
 import { MemoryCompanionMediaStore } from '@qqbot/mobile-companion/media';
 import { PHONE_ACTION_CAPABILITIES, type ActionResult, type CompanionMessage, type PhoneActionCapability, type PhoneActionRequest } from '@qqbot/mobile-companion/protocol';
+import type { PhotoReviewDecisionRequest, PhotoReviewDecisionResult, PhotoReviewListRequest, PhotoReviewListResult } from '@qqbot/mobile-companion/photo-review';
 import type { DshConversationTurn, DshLink, DshState, DshVoice } from './dsh-link.ts';
 
 export interface MobileCompanionIntegration {
@@ -28,8 +29,10 @@ export function createMobileDshHandlers(options: {
     maxTurns?: number;
     maxClients?: number;
     onActionResult?: (result: ActionResult, clientId: string) => Promise<void>;
+    onPhotoReviewList?: (request: PhotoReviewListRequest, clientId: string) => Promise<PhotoReviewListResult>;
+    onPhotoReviewDecision?: (request: PhotoReviewDecisionRequest, clientId: string, requestId: string) => Promise<PhotoReviewDecisionResult>;
 }): CompanionRuntimeHandlers {
-    return createDshCompanionHandlers<DshState, DshVoice>({
+    const handlers = createDshCompanionHandlers<DshState, DshVoice>({
         advisor: {
             advise: (request: { question: string; state?: DshState; recentTurns?: readonly DshConversationTurn[]; voice?: DshVoice }) => options.dsh.advise(request),
         },
@@ -41,6 +44,11 @@ export function createMobileDshHandlers(options: {
         ...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),
         ...(options.maxClients === undefined ? {} : { maxClients: options.maxClients }),
     });
+    return {
+        ...handlers,
+        ...(options.onPhotoReviewList ? { onPhotoReviewList: options.onPhotoReviewList } : {}),
+        ...(options.onPhotoReviewDecision ? { onPhotoReviewDecision: options.onPhotoReviewDecision } : {}),
+    };
 }
 
 /** 在 bot 进程内把手机伴侣真正接到 DSH；传输层仍由宿主选择 HTTPS 或 WebSocket。 */
@@ -51,6 +59,8 @@ export function createMobileCompanion(options: {
     describeMedia?: (message: CompanionMessage, clientId: string) => Promise<string | undefined>;
     onAction?: (request: PhoneActionRequest, clientId: string, requestId: string) => Promise<ActionResult>;
     onActionResult?: (result: ActionResult, clientId: string) => Promise<void>;
+    onPhotoReviewList?: (request: PhotoReviewListRequest, clientId: string) => Promise<PhotoReviewListResult>;
+    onPhotoReviewDecision?: (request: PhotoReviewDecisionRequest, clientId: string, requestId: string) => Promise<PhotoReviewDecisionResult>;
     maxTurns?: number;
     maxClients?: number;
     pairingTtlMs?: number;

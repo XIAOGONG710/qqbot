@@ -13,6 +13,7 @@
 - `proactive/shares.ts`
 - `proactive/follow-ups.ts`
 - `proactive/his-reactions.ts`
+- `proactive/ai-photo-requests.ts`
 
 ## 开关
 
@@ -36,4 +37,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0011](../adr/0011-proactive-messages.md)、[ADR 0100](../adr/0100-reach-when-unanswered.md)、[ADR 0101](../adr/0101-inner-life.md)、[ADR 0107](../adr/0107-invite-to-play.md)、[ADR 0110](../adr/0110-photo-shares.md)、[ADR 0112](../adr/0112-come-back.md)、[ADR 0116](../adr/0116-ask-opinion.md)、[ADR 0117](../adr/0117-his-hours.md)、[ADR 0124](../adr/0124-proactive-room.md)、[ADR 0212](../adr/0212-his-reactions.md)
+[ADR 0011](../adr/0011-proactive-messages.md)、[ADR 0100](../adr/0100-reach-when-unanswered.md)、[ADR 0101](../adr/0101-inner-life.md)、[ADR 0107](../adr/0107-invite-to-play.md)、[ADR 0110](../adr/0110-photo-shares.md)、[ADR 0112](../adr/0112-come-back.md)、[ADR 0116](../adr/0116-ask-opinion.md)、[ADR 0117](../adr/0117-his-hours.md)、[ADR 0124](../adr/0124-proactive-room.md)、[ADR 0212](../adr/0212-his-reactions.md)、[ADR 0240](../adr/0240-world-and-qq-ai-photo-requests.md)

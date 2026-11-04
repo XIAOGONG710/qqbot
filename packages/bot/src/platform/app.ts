@@ -84,7 +84,11 @@ import { createAccountSource } from '.././bilibili/bilibili-account-source.ts';
 import { stripDeviceTokens } from './device-actions.ts';
 import { CAMERA_VISION_PROMPT, SCREEN_VISION_PROMPT, startDeviceService, type DeviceService } from './device-service.ts';
 import { configuredImageDescriber } from '.././vision/vision.ts';
-import { aiPhotoDraftStore } from '.././vision/ai-photo-drafts.ts';
+import { aiPhotoDraftStore, generateAiPhoto } from '.././vision/ai-photo-drafts.ts';
+import { aiPhotoProvidersFromEnv, createAiPhotoProviderPool } from '.././vision/ai-photo-provider.ts';
+import { aiPhotoReferenceStore } from '.././vision/ai-photo-references.ts';
+import { aiPhotoReviewModelFromImageDescriber, createAiPhotoVisualReviewer, qualityCheckedAiPhotoGenerator } from '.././vision/ai-photo-quality-adapter.ts';
+import { aiPhotoRequestService, defaultAiPhotoStateFile, requestCurrentAiPhoto, type AiPhotoRequestService } from '.././proactive/ai-photo-requests.ts';
 import { BILIBILI_RISK, createBreaker, guardRequest } from '.././bilibili/platform-breaker.ts';
 import { commentComposer, replyComposer } from '.././bilibili/bilibili-comment.ts';
 import { createReplyWatcher, type ReplyOptions, type ReplyWatcher } from '.././bilibili/bilibili-replies.ts';
@@ -121,7 +125,7 @@ import { feedFactEntry, feedOnce, feedPath, loadFeed } from '.././bilibili/feed-
 import { fetchDanmaku, fetchStoryboard, fetchView } from '.././bilibili/bilibili-view.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { togetherNow } from '.././language/together.ts';
-import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoSource } from '.././vision/photos.ts';
+import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
 import { SlidingWindowRateLimiter } from '.././social/rate-limit.ts';
 import { greetingOnly, markSignature, MINOR_NOTICE, minorHint, strangerGuard } from '.././social/strangers.ts';
@@ -134,6 +138,7 @@ import { DshConversationContext } from '.././dsh-continuity.ts';
 import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
 import { writeDshState } from '.././dsh-state-export.ts';
 import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
+import { PHOTO_REVIEW_MAX_THUMBNAIL_BYTES } from '@qqbot/mobile-companion/photo-review';
 import { MAX_QUEUED_PER_CLIENT } from '@qqbot/mobile-companion/runtime';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { journalOn, selfThread, selfThreadLine } from '.././language/self-thread.ts';
@@ -539,12 +544,58 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             }
         } : undefined)
         : ledgerWorld;
+    const imageProviders = aiPhotoProvidersFromEnv();
+    let aiPhotoSetupFailed = false;
+    let aiPhotoRequests: AiPhotoRequestService | undefined;
+    if (config.aiPhotos === true && imageProviders.length && config.vision) {
+        try {
+            const providerPool = createAiPhotoProviderPool({
+                dir: join(config.dataDir, 'ai-photo-usage'), providers: imageProviders,
+                dailyLimit: Number(process.env.QQBOT_IMAGE_DAILY_LIMIT ?? 4),
+                now: () => new Date(worldNow()), log, generate: generateAiPhoto,
+            });
+            const references = aiPhotoReferenceStore({ file: join(config.dataDir, 'ai-photo-references', 'index.json'), now: () => new Date(worldNow()), log });
+            const reviewer = createAiPhotoVisualReviewer(aiPhotoReviewModelFromImageDescriber(prompt => configuredImageDescriber(config, prompt, 'background')!));
+            aiPhotoRequests = aiPhotoRequestService({
+                store: aiPhotoDrafts,
+                stateFile: defaultAiPhotoStateFile(config.dataDir),
+                now: () => new Date(worldNow()), log,
+                generator: (prompt, context) => qualityCheckedAiPhotoGenerator({
+                    context, reviewer, references, generate: value => providerPool.generate(value),
+                })(prompt),
+            });
+        } catch {
+            aiPhotoSetupFailed = true;
+            log('AI 照片草稿：初始化失败，已保持关闭（错误正文不写日志）');
+        }
+    }
+    const observeAiPhotoWorld = aiPhotoRequests && sharedWorld && worldCard?.herWorld && worldCard.schedule
+        ? () => {
+            const at = new Date(worldNow());
+            const snapshot = sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, at);
+            return snapshot ? aiPhotoRequests.observeWorld(snapshot, at) : Promise.resolve([]);
+        }
+        : undefined;
+    const scanAiPhotoWorld = observeAiPhotoWorld ? () => {
+        void observeAiPhotoWorld().catch(() => log('AI 生活照草稿：本轮读取或写入状态失败，跳过；错误正文不写日志'));
+    } : undefined;
+    log(`AI 生活照草稿：${!config.aiPhotos ? '关（配置 aiPhotos: false）'
+        : !imageProviders.length ? '配置已开，但没有可用的本地/主/备用生图服务，不生成'
+            : !config.vision ? '配置已开，但没有视觉审查服务；质量门失败关闭，不生成'
+                : aiPhotoSetupFailed ? '初始化失败，已保持关闭'
+                    : observeAiPhotoWorld ? '开（先过视觉质量门，只生成待审核草稿；不自动审核、不自动发送）'
+                        : '配置已开且质量门可用，但没有世界账；只响应 QQ 的当前照片请求'}`);
     if (config.contextTurns) log(`最近几轮 + 要点（ADR 0043）：${config.memory ? `开：原文只放最近 ${config.contextTurns} 轮，更早的在后台整理成要点，没整理好的那一轮照旧最近 80 条；${config.contextContacts.length ? `只对 ${config.contextContacts.join("、")}` : "名单里开了记忆的都开"}` : "配置开了，但长期记忆没开，不开"}`);
     if (config.candidates > 1) log(`挑候选：他难过、说亲密话、收尾时一次生成 ${config.candidates} 个，按规则挑一个（ADR 0041）`);
     if (config.autonomousLife) log(`没人聊天时她一件件过日子：${lifeRunner ? '开（ADR 0040/0045，影子模式：需要值只改行动账，不进提示词）' : '配置开了，但没有带作息和世界的卡，不开'}`);
     if (config.projectChoice) log(`项目选择：${lifeRunner ? '开（ADR 0056：三天内作业可接管空闲安排，状态行与行动账共用）' : '配置开了，但生活执行器没开，不生效'}`);
     // 没人找她的时候也每 ${LIFE_TICK_MS / 60_000} 分钟推一次，过完的时段尽快落账
-    const lifeTimer = lifeRunner ? setInterval(() => { sharedWorld?.events(); }, LIFE_TICK_MS) : undefined;
+    scanAiPhotoWorld?.();
+    const lifeTimer = lifeRunner || observeAiPhotoWorld ? setInterval(() => {
+        sharedWorld?.events();
+        scanAiPhotoWorld?.();
+    }, LIFE_TICK_MS) : undefined;
+    lifeTimer?.unref();
     const noteMoodAndBooks = herDaysCard ? herDayLogger(
         herDaysCard.schedule!, herDaysCard.moods, herDaysCard.books, log, undefined,
         now => ({
@@ -1500,6 +1551,9 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
             // 桌面对话文件只属于唯一 deviceOwner；不能仅按 boyfriend 档放行，否则多个同档联系人会互相看到私聊。
             ...(config.crossRecent && deviceOwner?.qq === contact.qq ? { desktopRecent: (now: Date) => desktopBlock(desktopRecentPath(join(config.dataDir, 'memory')), now.getTime()) } : {}),
             ...(photos && contact.tier === 'boyfriend' ? { photos } : {}),
+            ...(aiPhotoRequests && contact.tier === 'boyfriend' ? {
+                currentAiPhoto: ({ kind, dish, at, world }: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => requestCurrentAiPhoto(aiPhotoRequests, kind, world, at, dish),
+            } : {}),
             ...(stickerChance !== undefined ? { stickerChance } : {}),
             ...(config.biliStickers ? { stickerUncued: STICKER_UNCUED_CHANCE } : {}),
             // 抽到发表情的轮次里一半只发表情（ADR 0099）：跟着情绪轮的开关走；测试可以直接给概率
@@ -2904,6 +2958,8 @@ ${body}
                 tier: deviceOwner?.tier ?? 'boyfriend',
                 events,
             });
+            const photoStatus = aiPhotoDrafts.status();
+            const latestPhoto = aiPhotoDrafts.list().at(-1);
             return {
                 at: at.toISOString(),
                 tier: deviceOwner?.tier ?? 'boyfriend',
@@ -2916,6 +2972,12 @@ ${body}
                 relationship: values.relationship,
                 trends: humanValueTrends(values, previous, Math.max(1, Math.round((at.getTime() - previousAt.getTime()) / 60_000))),
                 recentEvents: events.slice(-8).map(event => event.kind),
+                photoDrafts: {
+                    pending: photoStatus.pending,
+                    approved: photoStatus.approved,
+                    rejected: photoStatus.rejected,
+                    ...(latestPhoto ? { lastKind: latestPhoto.kind, lastStatus: latestPhoto.status } : {}),
+                },
             };
         } catch (error) {
             log(`DSH：读取状态摘要失败（${error instanceof Error ? error.message : String(error)}）`);
@@ -2978,6 +3040,36 @@ ${body}
         describeMedia: describeMobileMedia,
         onActionResult: async (result, clientId) => {
             log(`手机动作回执：设备 ${clientId}，请求 ${result.requestId}，${result.ok ? '成功' : '失败'}，决策 ${result.decision}${result.error ? `（${sanitizeDshError(result.error)}）` : ''}`);
+        },
+        onPhotoReviewList: async (request, clientId) => {
+            const matching = aiPhotoDrafts.list(request.status);
+            const items = matching.slice(-Math.min(request.limit ?? 20, 50)).reverse().map(entry => {
+                let thumbnail: { mediaId: string; mime: 'image/jpeg' | 'image/png' | 'image/webp'; bytes: number } | undefined;
+                try {
+                    const preview = aiPhotoDrafts.preview(entry.id);
+                    if (preview.bytes.length <= PHOTO_REVIEW_MAX_THUMBNAIL_BYTES && mobileCompanion) {
+                        const record = mobileCompanion.media.put({
+                            clientId, mime: preview.type, data: Buffer.from(preview.bytes), bytes: preview.bytes.length,
+                        });
+                        thumbnail = { mediaId: record.mediaId, mime: preview.type, bytes: record.bytes };
+                    }
+                } catch { /* 文件异常时只不给预览；审核动作仍会再次失败关闭。 */ }
+                return {
+                    id: entry.id, kind: entry.kind, status: entry.status, caption: entry.caption,
+                    createdAt: entry.createdAt, ...(entry.reviewedAt ? { reviewedAt: entry.reviewedAt } : {}),
+                    ...(thumbnail ? { thumbnail } : {}),
+                };
+            });
+            return { items, total: matching.length };
+        },
+        onPhotoReviewDecision: async (request, clientId, requestId) => {
+            const shelf = photos ?? photoShelf({ dir: join(config.dataDir, 'photos'), log });
+            const entry = request.decision === 'approve'
+                ? aiPhotoDrafts.approve(request.draftId, shelf)
+                : aiPhotoDrafts.reject(request.draftId);
+            if (!entry.reviewedAt || (entry.status !== 'approved' && entry.status !== 'rejected')) throw new Error('照片审核没有完成');
+            log(`手机照片审核：设备 ${clientId}，请求 ${requestId}，${entry.id} ${entry.status === 'approved' ? '已通过' : '已拒绝'}；不会自动发送`);
+            return { draftId: entry.id, status: entry.status, reviewedAt: entry.reviewedAt };
         },
     });
 

@@ -36,7 +36,8 @@ import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././lang
 import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from '.././language/shape.ts';
 import { finishReply } from '.././language/unfinished.ts';
 import { describeUnsettled } from '.././life/open-loops.ts';
-import { describeWorld, lastMealDish, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from '.././world/world.ts';
+import { describeWorld, lastMealDish, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
+import { isExplicitCurrentPhotoRequest, type CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
 import { npcMentioned } from '.././world/npc.ts';
 import { dayPlan, describePlans, describeSlot } from '.././life/day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from '.././life/body.ts';
@@ -236,6 +237,8 @@ export interface ContactPipelineOptions {
     stickers?: StickerShelf;
     /** 照片货架（ADR 0109，配置 photos）：他要看土豆 / 风景 / 她的片子时，货架里有就发；只对男朋友档 */
     photos?: PhotoShelf;
+    /** AI 生活照（ADR 0240）：只解析“现在/刚刚”的明确请求；新图只建待审核草稿，返回 approved 才能发匹配编号。 */
+    currentAiPhoto?: (request: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => CurrentAiPhotoResult;
     /** 他刚在 QQ 里切到工作模式（/dsh）：这轮按「帮他干活」说话，语气不变 */
     workMode?: () => boolean;
     /** 她在聊天模式里，由她自己判断这条要不要动电脑（不用他先发 /dsh） */
@@ -460,6 +463,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let photoNow: PhotoKind | undefined;
     /** 吃的照片是哪道菜（ADR 0128）；只有 photoNow 是 food 时有 */
     let photoDishNow: string | undefined;
+    /** AI 草稿审核通过后只给模型这一张精确匹配的照片，禁止从同类旧图里随便挑。 */
+    let photoPromptNow: string | undefined;
+    /** 明确索要“现在”的照片但没有已审核匹配图：告诉模型如实说发不了，不能拿旧图冒充。 */
+    let currentPhotoUnavailableNow = false;
     /** 这一轮回复里摘出来的设备令牌（ADR 0148）：最后一次 clean 对应最终要发的那份；发送前由 beforeSend 登记。没开设备控制的一律只摘不用 */
     let deviceNow: ParsedTokens | undefined;
     const clean = (reply: string) => {
@@ -784,12 +791,35 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 没有明确对象（只说“发张照片”）取手上有的第一类；要的是她本人（自拍）不在货架里，照旧走“先不发”
             photoNow = undefined;
             photoDishNow = undefined;
-            if (options.photos && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))) {
-                const wanted = initiate ? initiate.photo : photoWanted(chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n'));
-                const kind = wanted === 'any' ? PHOTO_KINDS.find(k => options.photos!.has(k)) : wanted;
+            photoPromptNow = undefined;
+            currentPhotoUnavailableNow = false;
+            if ((options.photos || options.currentAiPhoto) && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))) {
+                const photoRequestText = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
+                const wanted = initiate ? initiate.photo : photoWanted(photoRequestText);
+                const kind = wanted === 'any' ? PHOTO_KINDS.find(k => options.photos?.has(k)) : wanted;
                 // 吃的（ADR 0128）：只拿她最近吃的那一顿那道菜的；主动那条自己带着菜名
                 const dish = kind === 'food' ? (initiate?.photoDish ?? (around ? lastMealDish(around, time)?.dish : undefined)) : undefined;
-                if (kind && options.photos.has(kind, dish)) {
+                const wantsCurrent = !initiate && Boolean(wanted) && isExplicitCurrentPhotoRequest(photoRequestText);
+                const currentKind = wanted === 'any' ? (around && lastMealDish(around, time)?.dish ? 'food' : 'view') : wanted;
+                if (wantsCurrent && currentKind && around && options.currentAiPhoto) {
+                    const currentDish = currentKind === 'food' ? lastMealDish(around, time)?.dish : undefined;
+                    const resolved = options.currentAiPhoto({ kind: currentKind, ...(currentDish ? { dish: currentDish } : {}), at: time, world: around });
+                    const exact = resolved.state === 'approved'
+                        ? options.photos?.list(currentKind, currentDish).find(entry => entry.id === resolved.shelfId)
+                        : undefined;
+                    if (exact) {
+                        const allowance = photoAllowance(chat, time.getTime(), false, Boolean(woken));
+                        if (allowance.allowed) {
+                            photoNow = currentKind;
+                            photoDishNow = currentDish;
+                            photoPromptNow = `[和他这次“现在的照片”请求精确对应、已经人工审核过的照片（只能发这一张，编号不解释）：先用一句话带一下，然后另起一行只写 <photo:${exact.id}>]\n- <photo:${exact.id}>：${exact.caption}`;
+                            log(`AI 照片草稿：当前请求已有审核通过的匹配照片 ${exact.id}，这一轮可发`);
+                        } else log(`AI 照片草稿：当前请求已有匹配照片，但这一轮不发（${allowance.reason}）`);
+                    } else {
+                        currentPhotoUnavailableNow = true;
+                        log(`AI 照片草稿：当前请求没有已审核匹配照片（${resolved.state}），不拿旧图冒充`);
+                    }
+                } else if (kind && options.photos?.has(kind, dish)) {
                     const allowance = photoAllowance(chat, time.getTime(), false, Boolean(woken));
                     if (allowance.allowed) { photoNow = kind; photoDishNow = dish; log(`照片货架：他想看${kind}${dish ? `（${dish}）` : ''}，货架里有，这一轮发一张`); }
                     else log(`照片货架：这一轮不发（${allowance.reason}）`);
@@ -899,7 +929,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (watchedNow) log('她看视频：这一轮提示词里放了她最近看过的（日志不记内容）');
             // 主动发的那条（喂完土豆拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
             // 被打断的这一轮（ADR 0115）：不带“先直接回答他刚问的”这类意图、不套形状 / 长短提示——它们和“先接他的话、顺带说一声刚被什么岔了一下”冲突，模型会按更紧的那条来、把打断吞掉（模拟 5/5 没提）
-            const intent = photoNow && !initiate ? photoIntent(photoNow) : interruptLine ? undefined : baseIntent;
+            const intent = photoNow && !initiate
+                ? (photoPromptNow ? '[这一轮你想：他明确要看现在的照片，你有一张与此刻匹配、已经审核过的：自然带一句后发这一张；别换成别的照片]' : photoIntent(photoNow))
+                : currentPhotoUnavailableNow
+                    ? '[这一轮你想：他明确要看现在的照片，但现在没有一张已经审核且与此刻匹配的；如实说这会儿发不了，别拿以前的图冒充“现在”，也别承诺马上补发]'
+                    : interruptLine ? undefined : baseIntent;
             const grievanceActive = Boolean(grievance && intent === describeGrievance(grievance));
             sulkNow = grievanceActive && grievance!.stage === 'sulk';
             if (grievanceActive) log(grievance!.cause === 'ignored'
@@ -1150,7 +1184,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给
                         ...(options.devices && !crisisNow && !thinking ? [options.devices.menu()] : []),
                         ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
-                        ...(photoNow && options.photos?.prompt(photoNow, photoDishNow) ? [options.photos.prompt(photoNow, photoDishNow)!] : []),
+                        ...(photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? [photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)!] : []),
                         ...(intentLine ? [intentLine] : []),
                         ...(lastUserLine ? [lastUserLine] : []),
                         // 这件事她以前理解偏过（10-30）：他这句话和以前被纠正过的事撞上时提醒她

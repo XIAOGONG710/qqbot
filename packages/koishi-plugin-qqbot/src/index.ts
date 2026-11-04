@@ -173,6 +173,7 @@ export interface Config {
     proactiveReach: boolean;
     proactiveInvite: boolean;
     photos: boolean;
+    aiPhotos: boolean;
     photoShares: boolean;
     together: boolean;
     comeBack: boolean;
@@ -387,6 +388,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**约他一起玩**（ADR 0107，要「主动消息」开着）：晚上（19:30 以后）她想起你们的固定节目——卡上写着的我的世界存档、王者双排——随口约他一句。一周最多 3 次、两次之间至少隔 2 天（他回的第一句像拒绝就隔 4 天）；他没回不催；他说过去忙 / 去睡了、他今晚有事、她自己很累 / 不舒服 / 心情不好，就不约。默认关。'),
         photos: Schema.boolean().default(DEFAULTS.photos)
             .description('**照片货架**（ADR 0109）：他要看土豆（楼下的流浪猫）/ 天空时，货架里有就发一张高清照片（只对男朋友档）。照片由她自己从网上找：Wikimedia Commons 里 CC0 / 公有领域的原图（不用署名），看图模型逐张把关——有人脸、有水印 / 文字 / 相框、不清晰、不是三花猫 / 天空的都不收；猫只收同一只（同一个系列）。需要「看图」开着才会去找；货架空着这个开关什么都不做。她本人的自拍、吃的不在里面。默认关。'),
+        aiPhotos: Schema.boolean().default(DEFAULTS.aiPhotos)
+            .description('**AI 生活照草稿**（ADR 0240）：世界事件或明确索要“现在的照片”时尝试生成不露脸的土豆、饭、书桌或窗景；必须另配生图服务和看图审查。只进入待审核区，不自动通过、不自动发送。默认关。'),
         photoShares: Schema.boolean().default(DEFAULTS.photoShares)
             .description('**她主动发照片**（ADR 0110，要「照片货架」和「主动消息」开着）：喂完土豆、见到它的日子里，约三分之一的天她拍了张照片，过十来分钟发给他、配一句话（不用他回应）。货架里没有土豆的照片就不发；刚发过 / 今天发够了也不发。默认关。'),
         together: Schema.boolean().default(DEFAULTS.together)
@@ -770,6 +773,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.proactiveReach !== undefined ? { proactiveReach: config.proactiveReach } : {}),
         ...(config.proactiveInvite !== undefined ? { proactiveInvite: config.proactiveInvite } : {}),
         ...(config.photos !== undefined ? { photos: config.photos } : {}),
+        ...(config.aiPhotos !== undefined ? { aiPhotos: config.aiPhotos } : {}),
         ...(config.photoShares !== undefined ? { photoShares: config.photoShares } : {}),
         ...(config.together !== undefined ? { together: config.together } : {}),
         ...(config.comeBack !== undefined ? { comeBack: config.comeBack } : {}),
@@ -929,7 +933,7 @@ export function apply(ctx: Context, config: Config) {
     // 控制台的「林梦瑶」页面（ADR 0010）：注册一次，插件失败时也在
     registerConsole(ctx, repoRoot);
     const card = config.characterCard ?? CHARACTER_CARD;
-    setConsoleState({ running: false, error: undefined, status: undefined, character: characterPaths(isAbsolute(card) ? card : resolve(repoRoot, card)) });
+    setConsoleState({ running: false, error: undefined, status: undefined, dataDir: undefined, character: characterPaths(isAbsolute(card) ? card : resolve(repoRoot, card)) });
 
     const migrated = migrateThinking(config);
     if (migrated) {
@@ -942,6 +946,7 @@ export function apply(ctx: Context, config: Config) {
     let appConfig: AppConfig;
     try {
         appConfig = parseAppConfig(toAppConfigInput(config), repoRoot);
+        setConsoleState({ dataDir: appConfig.dataDir });
         ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim} readingTakes=${appConfig.readingTakes} hisReactions=${appConfig.hisReactions} herGuesses=${appConfig.herGuesses} diaryLookback=${appConfig.diaryLookback ?? false} memoryFeelings=${appConfig.memoryFeelings ?? false} realNights=${appConfig.realNights ?? false} chatReview=${appConfig.chatReview ?? false} worldThreads=${appConfig.worldThreads ?? false} afterNo=${appConfig.afterNo ?? false} openQuestions=${appConfig.openQuestions}`);
     } catch (error) {
         const plain = plainError('配置有误，插件没有启动', error);

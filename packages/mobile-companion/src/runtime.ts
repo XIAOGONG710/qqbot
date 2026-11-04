@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { CompanionGateway } from './gateway.ts';
 import { MAX_CLOCK_SKEW_MS, validateAction, validateActionResult, validateEnvelope, validateMessage, type ActionResult, type CompanionEnvelope, type CompanionError, type CompanionMessage, type PhoneActionRequest } from './protocol.ts';
+import { validatePhotoReviewDecisionRequest, validatePhotoReviewDecisionResult, validatePhotoReviewListRequest, validatePhotoReviewListResult, type PhotoReviewDecisionRequest, type PhotoReviewDecisionResult, type PhotoReviewListRequest, type PhotoReviewListResult } from './photo-review.ts';
 
 export const MAX_QUEUED_PER_CLIENT = 32;
 export const MAX_DOWNLINK_ACTIONS = 16;
@@ -14,6 +15,10 @@ export interface CompanionRuntimeHandlers {
     onMessage: (message: CompanionMessage, clientId: string) => Promise<CompanionMessage>;
     onAction: (request: PhoneActionRequest, clientId: string, requestId: string) => Promise<ActionResult>;
     onActionResult?: (result: ActionResult, clientId: string) => Promise<void>;
+    /** 只返回安全摘要和短期缩略图 mediaId；宿主不能直接返回草稿索引对象。 */
+    onPhotoReviewList?: (request: PhotoReviewListRequest, clientId: string) => Promise<PhotoReviewListResult>;
+    /** 宿主在此回调内完成状态修改和审计；抛错时保留同 requestId 的重试能力。 */
+    onPhotoReviewDecision?: (request: PhotoReviewDecisionRequest, clientId: string, requestId: string) => Promise<PhotoReviewDecisionResult>;
     /** 配对撤销时清理宿主侧按设备保存的短期上下文。 */
     onReset?: (clientId?: string) => void;
 }
@@ -164,7 +169,7 @@ export class CompanionRuntime {
         // 这里只预检协议允许的手机上行类型；无效包、伪造响应和未配对会话仍交给网关按原规则拒绝。
         try {
             const envelope = validateEnvelope(value, this.now());
-            if (envelope.kind === 'message.send' || envelope.kind === 'action.request' || envelope.kind === 'action.result') {
+            if (envelope.kind === 'message.send' || envelope.kind === 'action.request' || envelope.kind === 'action.result' || envelope.kind === 'photo.review.list' || envelope.kind === 'photo.review.decide') {
                 const clientId = this.gateway.clientForSession(sessionId);
                 if (clientId && (this.queueDepth.get(clientId) ?? 0) >= MAX_QUEUED_PER_CLIENT) {
                     return { accepted: false, error: '设备请求过多，请稍后重试' };
@@ -210,8 +215,8 @@ export class CompanionRuntime {
         try {
             const envelope = validateEnvelope(value, this.now());
             requestId = envelope.requestId;
-            if (!['hello', 'message.send', 'action.request', 'action.result'].includes(envelope.kind)) throw new Error('客户端不能发送此类响应包');
-            const idempotent = envelope.kind === 'message.send' || envelope.kind === 'action.request';
+            if (!['hello', 'message.send', 'action.request', 'action.result', 'photo.review.list', 'photo.review.decide'].includes(envelope.kind)) throw new Error('客户端不能发送此类响应包');
+            const idempotent = envelope.kind === 'message.send' || envelope.kind === 'action.request' || envelope.kind === 'photo.review.list' || envelope.kind === 'photo.review.decide';
             fingerprint = idempotent ? canonicalRequest(envelope.kind, envelope.body) : undefined;
             if (fingerprint) {
                 const cached = this.findCompletedUplink(clientId, envelope.requestId);
@@ -219,7 +224,9 @@ export class CompanionRuntime {
                     if (cached.fingerprint !== fingerprint) throw new Error('requestId 已被不同请求使用');
                     return replayResult(cached.result, envelope.requestId, this.now());
                 }
-                rememberError = true;
+                // 审核决定的宿主回调通常把状态变更和审计放在同一事务；临时失败不能被缓存，
+                // 否则手机重试相同 requestId 时永远拿不到真正结果。
+                rememberError = envelope.kind !== 'photo.review.decide';
             }
             let result: CompanionRuntimeResult;
             if (envelope.kind === 'message.send') {
@@ -248,6 +255,24 @@ export class CompanionRuntime {
                 pending!.delete(result.requestId);
                 if (pending!.size === 0) this.pendingDownlinkResults.delete(clientId);
                 return { accepted: true };
+            } else if (envelope.kind === 'photo.review.list') {
+                if (!this.handlers.onPhotoReviewList) throw new Error('宿主未接入照片审核列表');
+                let raw: PhotoReviewListResult;
+                try { raw = await this.handlers.onPhotoReviewList(validatePhotoReviewListRequest(envelope.body), clientId); }
+                catch { throw new Error('照片审核列表暂时不可用'); }
+                const responseBody = validatePhotoReviewListResult(raw);
+                result = { accepted: true, response: responseEnvelope('photo.review.list.result', responseBody, envelope.requestId, this.now()) };
+            } else if (envelope.kind === 'photo.review.decide') {
+                if (!this.handlers.onPhotoReviewDecision) throw new Error('宿主未接入照片审核决定');
+                const request = validatePhotoReviewDecisionRequest(envelope.body);
+                let raw: PhotoReviewDecisionResult;
+                try { raw = await this.handlers.onPhotoReviewDecision(request, clientId, envelope.requestId); }
+                catch { throw new Error('照片审核暂时不可用，请稍后重试'); }
+                const responseBody = validatePhotoReviewDecisionResult(raw);
+                if (responseBody.draftId !== request.draftId) throw new Error('照片审核结果编号与请求不一致');
+                const expected = request.decision === 'approve' ? 'approved' : 'rejected';
+                if (responseBody.status !== expected) throw new Error('照片审核结果状态与请求不一致');
+                result = { accepted: true, response: responseEnvelope('photo.review.decision', responseBody, envelope.requestId, this.now()) };
             } else {
                 return { accepted: true };
             }

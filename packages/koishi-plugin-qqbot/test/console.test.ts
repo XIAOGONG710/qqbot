@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { readSource } from '../../character-tools/src/source.ts';
-import { characterPaths, consoleData, publicCharacterError, saveCharacter, setConsoleState } from '../src/console.ts';
+import { aiPhotoPreview, characterPaths, consoleData, listAiPhotoDrafts, publicCharacterError, reviewAiPhoto, saveCharacter, setConsoleState } from '../src/console.ts';
+import { aiPhotoDraftStore } from '../../bot/src/vision/ai-photo-drafts.ts';
+import { photoShelf } from '../../bot/src/vision/photos.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 const dir = mkdtempSync(join(tmpdir(), 'qqbot-console-'));
@@ -108,5 +110,53 @@ describe('控制台的角色资料（ADR 0010）', () => {
         assert.equal(data.status, undefined);
         assert.equal(data.error, '状态读取失败，请查看运行日志；插件可能仍在运行。');
         assert.doesNotMatch(data.error ?? '', /token|secret|private|state\.json/);
+    });
+});
+
+describe('控制台的 AI 照片审核（ADR 0239）', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'qqbot-photo-review-'));
+    after(() => rmSync(dataDir, { recursive: true, force: true }));
+    const jpeg = (marker: number) => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, marker, 0, 1, 2, 3]);
+
+    test('只返回页面需要的中文资料，缩略图只能按合法编号读取', async () => {
+        setConsoleState({ dataDir });
+        const store = aiPhotoDraftStore({ dir: join(dataDir, 'ai-photo-drafts'), now: () => new Date('2026-11-04T10:00:00.000Z') });
+        const draft = await store.generate({
+            kind: 'cat', eventKey: 'console-cat', subject: '土豆蹲在车棚边', caption: '土豆蹲在车棚边看落叶', at: '2026-11-04T18:20:00+08:00',
+        }, async () => ({ bytes: jpeg(1), model: 'secret-model-name' }));
+
+        const listed = listAiPhotoDrafts('pending_review', 24);
+        assert.equal(listed.ok, true);
+        if (!listed.ok) return;
+        assert.deepEqual(listed.entries, [{
+            id: draft.id, kind: 'cat', caption: '土豆蹲在车棚边看落叶', at: '2026-11-04T10:20:00.000Z',
+            createdAt: '2026-11-04T10:00:00.000Z', status: 'pending_review',
+        }]);
+        assert.doesNotMatch(JSON.stringify(listed), /secret-model|console-cat|promptHash|\\|ai-photo-drafts/);
+        const preview = aiPhotoPreview(draft.id);
+        assert.ok(preview.ok && preview.dataUrl.startsWith('data:image/jpeg;base64,'));
+        assert.deepEqual(aiPhotoPreview('../../windows'), { ok: false, error: '找不到这张照片草稿。' });
+    });
+
+    test('通过才进入照片货架；拒绝后不能直接通过；错误不泄露内部路径', async () => {
+        setConsoleState({ dataDir });
+        const drafts = aiPhotoDraftStore({ dir: join(dataDir, 'ai-photo-drafts') });
+        const rejected = await drafts.generate({
+            kind: 'view', eventKey: 'console-view', subject: '阴天的窗外', caption: '窗外灰白的云压得很低', at: '2026-11-04T11:00:00.000Z',
+        }, async () => ({ bytes: jpeg(2), model: 'm' }));
+        assert.deepEqual(reviewAiPhoto('reject', rejected.id, undefined), { ok: false, error: '审核请求无效，请重新确认后再试。' });
+        assert.equal(aiPhotoDraftStore({ dir: join(dataDir, 'ai-photo-drafts') }).list().find(item => item.id === rejected.id)?.status, 'pending_review');
+        assert.deepEqual(reviewAiPhoto('reject', rejected.id, 'confirmed'), { ok: true, status: 'rejected' });
+        const retry = reviewAiPhoto('approve', rejected.id, 'confirmed');
+        assert.equal(retry.ok, false);
+        assert.doesNotMatch(JSON.stringify(retry), /ai-photo-drafts|runtime|\\|rejected|status/);
+
+        const pending = listAiPhotoDrafts('pending_review', 24);
+        assert.ok(pending.ok && pending.entries.length === 1);
+        const approved = reviewAiPhoto('approve', pending.ok ? pending.entries[0]!.id : '', 'confirmed');
+        assert.deepEqual(approved, { ok: true, status: 'approved' });
+        assert.equal(photoShelf({ dir: join(dataDir, 'photos'), log: () => {} }).status().count, 1);
+        assert.deepEqual(listAiPhotoDrafts('pending_review', 24), { ok: true, entries: [] });
+        assert.deepEqual(reviewAiPhoto('send', pending.ok ? pending.entries[0]!.id : '', 'confirmed'), { ok: false, error: '审核请求无效，请重新确认后再试。' });
     });
 });

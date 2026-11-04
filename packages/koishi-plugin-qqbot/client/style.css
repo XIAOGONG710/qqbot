@@ -247,6 +247,20 @@
 .qqbot-chip { cursor: default; }
 .qqbot-report { margin: 8px 0 0; padding: 10px 12px; max-height: 320px; overflow: auto; white-space: pre-wrap; font-size: 12px; line-height: 1.6; background: var(--k-color-surface-1, #f6f6f6); border-radius: 4px; }
 
+/* AI 照片草稿审核：只展示用户看得懂的说明，不显示编号、路径、模型名或提示词。 */
+.qqbot-photo-review { padding-top: 4px; }
+.qqbot-photo-review-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.qqbot-photo-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
+.qqbot-photo-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.qqbot-photo-card { min-width: 0; overflow: hidden; border: 1px solid var(--k-color-divider, #ddd); border-radius: 9px; background: var(--k-color-surface-1, #f8f8f8); }
+.qqbot-photo-image { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--k-hover-bg); }
+.qqbot-photo-placeholder { display: grid; place-items: center; color: var(--k-text-light); font-size: 13px; }
+.qqbot-photo-card-body { display: grid; gap: 7px; padding: 12px; }
+.qqbot-photo-card-tags, .qqbot-photo-actions { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.qqbot-photo-caption { line-height: 1.5; overflow-wrap: anywhere; }
+.qqbot-photo-actions { margin-top: 4px; }
+.qqbot-photo-empty { padding: 32px 16px; text-align: center; color: var(--k-text-light); border: 1px dashed var(--k-color-divider, #ddd); border-radius: 8px; }
+
 @media (max-width: 900px) {
     .qqbot-page { padding: 12px 14px; }
     .qqbot-status-head { flex-direction: column; }
@@ -254,6 +268,7 @@
     .qqbot-section-title { width: 100%; }
     .qqbot-contact-search { width: 100%; }
     .qqbot-capability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .qqbot-photo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 700px) {
@@ -266,4 +281,5 @@
     .qqbot-label { width: 84px; }
     .qqbot-life-head { align-items: flex-start; flex-direction: column; }
     .qqbot-capability-grid { grid-template-columns: 1fr; }
+    .qqbot-photo-grid { grid-template-columns: 1fr; }
 }

@@ -144,6 +144,33 @@ describe('DSH 连接层', () => {
         assert.doesNotMatch(prompt, /obedience|NaN/);
     });
 
+    test('AI 照片状态只给 DSH 数量和类型，不暴露图片、路径或提示词', async () => {
+        let body: Record<string, unknown> | undefined;
+        const state = {
+            at: '2026-11-04T08:00:00.000Z',
+            photoDrafts: { pending: 2, approved: 4, rejected: 1, lastKind: 'cat', lastStatus: 'pending_review', file: 'C:/secret/cat.jpg', prompt: 'PRIVATE PROMPT' },
+        } as unknown as DshState;
+        assert.deepEqual(sanitizeDshState(state), {
+            at: '2026-11-04T08:00:00.000Z',
+            photoDrafts: { pending: 2, approved: 4, rejected: 1, lastKind: 'cat', lastStatus: 'pending_review' },
+        });
+        const snapshot = renderDshState(state, Date.parse('2026-11-04T08:00:00.000Z'));
+        assert.match(snapshot, /"pending": 2/);
+        assert.doesNotMatch(snapshot, /secret|PRIVATE|prompt|file/i);
+
+        const link = createDshLink(options, {
+            fetch: async (_url, init) => { body = JSON.parse(init.body); return response('我先看看草稿箱'); },
+            sleep: async () => {},
+        });
+        await link.advise({ question: '照片准备得怎么样？', state });
+        const prompt = String((body!.messages as { content: string }[])[1]!.content);
+        assert.match(prompt, /AI 照片草稿：待审核 2，已通过 4，已拒绝 1；最近是土豆（待审核）/);
+        assert.doesNotMatch(prompt, /secret|PRIVATE|C:\//i);
+
+        const invalid = { at: state.at, photoDrafts: { pending: -1, approved: 1.5, rejected: '2', lastKind: 'selfie', lastStatus: 'sent' } } as unknown as DshState;
+        assert.deepEqual(sanitizeDshState(invalid), { at: '2026-11-04T08:00:00.000Z' });
+    });
+
     test('显式 QQ 咨询会带有限连续上下文，并要求沿用她的语气', async () => {
         let body: Record<string, unknown> | undefined;
         const link = createDshLink(options, {
@@ -183,6 +210,24 @@ describe('DSH 连接层', () => {
         assert.equal(calls[0]?.voice?.name, '林梦瑶');
         assert.equal(calls[1]?.recentTurns?.length, 2);
         assert.equal(calls[0]?.state?.values?.hunger, 70);
+    });
+
+    test('手机伴侣把照片审核列表和明确决定交给 bot 宿主', async () => {
+        const calls: string[] = [];
+        const handlers = createMobileDshHandlers({
+            dsh: { advise: async () => '好' },
+            onPhotoReviewList: async (_request, clientId) => {
+                calls.push(`list:${clientId}`);
+                return { items: [], total: 0 };
+            },
+            onPhotoReviewDecision: async (request, clientId, requestId) => {
+                calls.push(`decide:${clientId}:${requestId}:${request.decision}`);
+                return { draftId: request.draftId, status: 'rejected', reviewedAt: '2026-11-04T00:00:00.000Z' };
+            },
+        });
+        assert.deepEqual(await handlers.onPhotoReviewList?.({ status: 'pending_review', limit: 10 }, 'android-review'), { items: [], total: 0 });
+        assert.equal((await handlers.onPhotoReviewDecision?.({ draftId: '0123456789ab', decision: 'reject', confirmation: 'confirmed' }, 'android-review', 'request-review'))?.status, 'rejected');
+        assert.deepEqual(calls, ['list:android-review', 'decide:android-review:request-review:reject']);
     });
 
     test('bot 工厂把配对、网关和 DSH 运行时连成一条链', async () => {

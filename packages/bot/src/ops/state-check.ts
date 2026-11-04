@@ -22,6 +22,7 @@ import { readTransportStore } from '../world/transport.ts';
 import { readWorldActions } from '../world/world.ts';
 import { readCommonMemoryState, readContactMemoryState } from '../memory/long-term.ts';
 import { readDiaryState } from '../life/diary.ts';
+import { auditAiPhotoStorage } from '../vision/ai-photo-storage.ts';
 
 export interface StateCheck { name: string; file: string; ok: boolean; detail: string }
 
@@ -52,6 +53,17 @@ export function checkStates(dataDir: string, now: Date = new Date()): StateCheck
         run('生活事件账', join('world', 'events.json'), log => `${readLifeEvents(join(copy, 'world', 'events.json'), log).length} 条事件`);
         run('世界动作投影', join('world', 'actions.json'), log => `${readWorldActions(join(copy, 'world', 'actions.json'), log).length} 条动作`);
         run('需要锚点', join('world', 'needs-anchor.json'), log => { loadNeedsAnchor(join(copy, 'world', 'needs-anchor.json'), now, log); });
+
+        const aiPhotoDir = join(copy, 'ai-photo-drafts');
+        const aiPhoto = auditAiPhotoStorage(aiPhotoDir, { now });
+        checks.push({
+            name: 'AI 照片草稿存储',
+            file: 'ai-photo-drafts',
+            ok: aiPhoto.issues.length === 0,
+            detail: aiPhoto.issues.length
+                ? `${aiPhoto.issues.length} 个问题（${[...new Set(aiPhoto.issues.map(issue => issue.code))].join('、')}）`
+                : aiPhoto.indexPresent ? `${aiPhoto.entries} 条索引、${aiPhoto.files} 个文件` : '没有这个目录（按空状态开始）',
+        });
 
         const chatDir = join(copy, 'chats');
         if (existsSync(chatDir)) {

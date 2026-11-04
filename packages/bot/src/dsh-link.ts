@@ -10,6 +10,14 @@ export interface DshState {
     relationship?: Pick<HumanValues['relationship'], 'intimacy' | 'trust' | 'familiarity' | 'attachment' | 'friction'>;
     trends?: HumanValueTrends;
     recentEvents?: readonly string[];
+    /** 只同步数量和最近类型；不把图片、提示词、路径或审核编号交给 DSH。 */
+    photoDrafts?: {
+        pending: number;
+        approved: number;
+        rejected: number;
+        lastKind?: 'cat' | 'food' | 'desk' | 'view';
+        lastStatus?: 'pending_review' | 'approved' | 'rejected';
+    };
 }
 
 export interface DshAdviceRequest {
@@ -91,6 +99,19 @@ function sanitizeTrends(value: unknown): HumanValueTrends | undefined {
     return Object.keys(values).length ? { windowMinutes: Math.round(input.windowMinutes), values } : undefined;
 }
 
+function sanitizePhotoDrafts(value: unknown): DshState['photoDrafts'] | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const input = value as Record<string, unknown>;
+    const count = (key: string) => Number.isInteger(input[key]) && Number(input[key]) >= 0 && Number(input[key]) <= 10_000 ? Number(input[key]) : undefined;
+    const pending = count('pending');
+    const approved = count('approved');
+    const rejected = count('rejected');
+    if (pending === undefined || approved === undefined || rejected === undefined) return undefined;
+    const lastKind = ['cat', 'food', 'desk', 'view'].includes(String(input.lastKind)) ? input.lastKind as NonNullable<DshState['photoDrafts']>['lastKind'] : undefined;
+    const lastStatus = ['pending_review', 'approved', 'rejected'].includes(String(input.lastStatus)) ? input.lastStatus as NonNullable<DshState['photoDrafts']>['lastStatus'] : undefined;
+    return { pending, approved, rejected, ...(lastKind ? { lastKind } : {}), ...(lastStatus ? { lastStatus } : {}) };
+}
+
 /** DSH 的在线请求和落盘快照共用同一份最小状态白名单。 */
 export function sanitizeDshState(state: DshState): DshState {
     const parsedAt = typeof state?.at === 'string' ? Date.parse(state.at) : Number.NaN;
@@ -101,6 +122,7 @@ export function sanitizeDshState(state: DshState): DshState {
     const recentEvents = Array.isArray(state?.recentEvents)
         ? state.recentEvents.filter(event => typeof event === 'string' && STATE_KEY_RE.test(event)).slice(-8)
         : [];
+    const photoDrafts = sanitizePhotoDrafts(state?.photoDrafts);
     return {
         at: Number.isFinite(parsedAt) ? new Date(parsedAt).toISOString() : '',
         ...(typeof state?.tier === 'string' && STATE_KEY_RE.test(state.tier) ? { tier: state.tier } : {}),
@@ -109,6 +131,7 @@ export function sanitizeDshState(state: DshState): DshState {
         ...(relationship ? { relationship: relationship as DshState['relationship'] } : {}),
         ...(trends ? { trends } : {}),
         ...(recentEvents.length ? { recentEvents } : {}),
+        ...(photoDrafts ? { photoDrafts } : {}),
     };
 }
 
@@ -142,6 +165,12 @@ function stateText(state: DshState | undefined): string {
     if (safe.relationship) lines.push(`关系状态：${Object.entries(safe.relationship).map(([key, value]) => `${key}=${value}`).join('，')}`);
     if (safe.trends) lines.push(`最近 ${safe.trends.windowMinutes} 分钟变化：${Object.entries(safe.trends.values).map(([key, value]) => `${key}=${Number(value) > 0 ? '+' : ''}${value}`).join('，')}`);
     if (safe.recentEvents?.length) lines.push(`最近事件（仅类型摘要）：${safe.recentEvents.join('、')}`);
+    if (safe.photoDrafts) {
+        const kindNames = { cat: '土豆', food: '食物', desk: '书桌', view: '窗外' } as const;
+        const statusNames = { pending_review: '待审核', approved: '已通过', rejected: '已拒绝' } as const;
+        const latest = safe.photoDrafts.lastKind && safe.photoDrafts.lastStatus ? `；最近是${kindNames[safe.photoDrafts.lastKind]}（${statusNames[safe.photoDrafts.lastStatus]}）` : '';
+        lines.push(`AI 照片草稿：待审核 ${safe.photoDrafts.pending}，已通过 ${safe.photoDrafts.approved}，已拒绝 ${safe.photoDrafts.rejected}${latest}`);
+    }
     return lines.join('\n');
 }
 

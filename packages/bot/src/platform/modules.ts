@@ -51,10 +51,10 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'vision', name: '看（视觉）',
         scope: '她怎么看图：照片货架、食物照片、图片安全检查、媒体（雪碧图/封面）与看图模型；只负责“看见”，不负责怎么说。',
-        files: ['vision/vision.ts', 'vision/photos.ts', 'vision/photo-sources.ts', 'vision/ai-photo-drafts.ts', 'vision/safe-image.ts', 'vision/media.ts', 'vision/hearing.ts', 'vision/voice-out.ts', 'vision/sticker-reads.ts'],
+        files: ['vision/vision.ts', 'vision/photos.ts', 'vision/photo-sources.ts', 'vision/ai-photo-drafts.ts', 'vision/ai-photo-provider.ts', 'vision/ai-photo-quality.ts', 'vision/ai-photo-quality-adapter.ts', 'vision/ai-photo-references.ts', 'vision/ai-photo-storage.ts', 'vision/safe-image.ts', 'vision/media.ts', 'vision/hearing.ts', 'vision/voice-out.ts', 'vision/sticker-reads.ts'],
         groups: ['照片和表情'],
         metrics: '周报「图片」；vision 相关单测；图片不发外网的比例',
-        adrs: ['0055', '0109', '0128', '0206', '0239'],
+        adrs: ['0055', '0109', '0128', '0206', '0239', '0242', '0244', '0246'],
     },
     {
         id: 'emotion', name: '心境与安全',
@@ -67,10 +67,10 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'proactive', name: '主动找他',
         scope: '她什么时候先开口：早安、下课、睡前、冷场、随口说件事、约他、问意见、喂完土豆拍照、说了等下之后回来、没回也继续、心里的念头、待跟进的事。',
-        files: ['proactive/proactive.ts', 'proactive/proactive-planner.ts', 'proactive/proactive-state.ts', 'proactive/inner.ts', 'proactive/shares.ts', 'proactive/follow-ups.ts', 'proactive/his-reactions.ts'],
+        files: ['proactive/proactive.ts', 'proactive/proactive-planner.ts', 'proactive/proactive-state.ts', 'proactive/inner.ts', 'proactive/shares.ts', 'proactive/follow-ups.ts', 'proactive/his-reactions.ts', 'proactive/ai-photo-requests.ts'],
         groups: ['主动找他'],
         metrics: '周报「主动性」（条数、30 分钟内他回的占比、按时机分）',
-        adrs: ['0011', '0100', '0101', '0107', '0110', '0112', '0116', '0117', '0124', '0212'],
+        adrs: ['0011', '0100', '0101', '0107', '0110', '0112', '0116', '0117', '0124', '0212', '0240'],
     },
     {
         id: 'memory', name: '记忆与数据',
@@ -104,7 +104,7 @@ export const MODULES: readonly ModuleDef[] = [
             'platform/sensitive.ts', 'platform/web.ts', 'platform/consent.ts', 'platform/private-space.ts', 'platform/wechat-id.ts', 'platform/shell-tool.ts', 'platform/wechat-bridge.ts', 'dsh-link.ts', 'dsh-continuity.ts', 'dsh-state-export.ts', 'mobile-companion-dsh.ts', 'ops/', 'sim/', 'vendor/'],
         groups: ['工具'],
         metrics: '控制台「状态」页（ADR 0120）；ops/golive-check-cli；ops/heartbeat-watch-cli；ops/history-migrate-cli（一次性迁移，ADR 0199）',
-        adrs: ['0002', '0008', '0118', '0119', '0120', '0160', '0172', '0174', '0175', '0179', '0190', '0199', '0200'],
+        adrs: ['0002', '0008', '0118', '0119', '0120', '0160', '0172', '0174', '0175', '0179', '0190', '0199', '0200', '0243'],
     },
 ];
 

@@ -99,6 +99,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'proactiveRoom', label: '给主动名额留余地（晚安不占、留一个给随口说）', group: '主动找他', adr: '0124' },
     // 照片和表情
     { key: 'photos', label: '照片货架（网上找高清图）', group: '照片和表情', adr: '0109' },
+    { key: 'aiPhotos', label: 'AI 生活照草稿（人工审核后才可用）', group: '照片和表情', adr: '0240', hint: '关闭后不会从世界事件或“现在的照片”请求生成草稿' },
     { key: 'stickers', label: '图片表情', group: '照片和表情', adr: '0063', kind: 'mode' },
     { key: 'media', label: '听语音、看图', group: '照片和表情', adr: '0052' },
     // B 站

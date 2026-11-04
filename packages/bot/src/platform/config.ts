@@ -83,6 +83,7 @@ export const DEFAULTS = {
     proactiveReach: false,
     proactiveInvite: false,
     photos: false,
+    aiPhotos: false,
     photoShares: false,
     together: false,
     comeBack: false,
@@ -345,6 +346,11 @@ export interface AppConfig {
      * 要看图开着才找）；作者也能用 photo-cli 手动加。货架空着这个开关什么都不做。只对男朋友档；她本人的自拍、吃的不在第一版里。默认关
      */
     photos: boolean;
+    /**
+     * AI 生活照草稿（ADR 0240）：世界事件和明确的“现在发张照片”请求可以建立待审核草稿；
+     * 还必须配置独立生图服务与视觉审查；图片先过质量门。不会自动审核或自动发送。默认关
+     */
+    aiPhotos?: boolean;
     /**
      * 她主动发照片（ADR 0110，要 photos 和主动消息开着）：喂完土豆见到它的日子里，有的天（约 35%）她拍了张照片，过十来分钟发给他，配一句话；货架里没有土豆的照片就不发。默认关
      */
@@ -913,6 +919,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         proactiveReach: bool(file, 'proactiveReach', '', DEFAULTS.proactiveReach),
         proactiveInvite: bool(file, 'proactiveInvite', '', DEFAULTS.proactiveInvite),
         photos: bool(file, 'photos', '', DEFAULTS.photos),
+        aiPhotos: bool(file, 'aiPhotos', '', DEFAULTS.aiPhotos),
         photoShares: bool(file, 'photoShares', '', DEFAULTS.photoShares),
         together: bool(file, 'together', '', DEFAULTS.together),
         comeBack: bool(file, 'comeBack', '', DEFAULTS.comeBack),

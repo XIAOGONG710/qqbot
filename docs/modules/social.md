@@ -38,6 +38,7 @@
 | `readStickers` | 看懂他发的表情包（先抄图上的字、再说画面；要看图模型） | [ADR 0206](../adr/0206-read-his-stickers.md) |
 | `foodPhotos` | 吃的照片（这一顿拍给他看） | [ADR 0128](../adr/0128-food-photos.md) |
 | `photos` | 照片货架（网上找高清图） | [ADR 0109](../adr/0109-photo-shelf.md) |
+| `aiPhotos` | AI 生活照草稿（人工审核后才可用） | [ADR 0240](../adr/0240-world-and-qq-ai-photo-requests.md) |
 | `stickers` | 图片表情（模式） | [ADR 0063](../adr/0063-image-stickers.md) |
 | `media` | 听语音、看图 | [ADR 0052](../adr/0052-voice-and-images.md) |
 | `pokes` | 被戳会回 | [ADR 0079](../adr/0079-poke.md) |

@@ -84,6 +84,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(config.realTransport.enabled, false);
         assert.equal(config.projectChoice, DEFAULTS.projectChoice);
         assert.equal(config.proactive, DEFAULTS.proactive);
+        assert.equal(config.aiPhotos, DEFAULTS.aiPhotos);
         assert.equal(config.dataDir, DEFAULTS.dataDir);
         assert.equal(config.memory.timeoutMs, DEFAULTS.memory.timeoutMs);
         assert.equal(config.memory.recallTimeoutMs, DEFAULTS.memory.recallTimeoutMs);
@@ -112,6 +113,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
             { ...minimal, memory: { enabled: true, baseUrl: 'http://127.0.0.1:9999', recallTimeoutMs: 5000 }, prompt: { worldInfo: { depth: 4, caseSensitive: true } } },
             { ...minimal, memory: { enabled: false }, schedule: false, dataDir: 'runtime/bot-test' },
             { ...minimal, proactive: 'dryRun' },
+            { ...minimal, aiPhotos: true },
             { ...minimal, realTransport: { enabled: true, endpoint: 'https://transport.example.test/status?city=all', source: '城市公共交通' } },
             { ...minimal, moody: false },
             { ...minimal, speechCheck: false },

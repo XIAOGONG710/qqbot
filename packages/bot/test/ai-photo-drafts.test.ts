@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
@@ -67,6 +67,7 @@ describe('AI 生活照草稿（ADR 0239）', () => {
         assert.equal(calls, 1);
         assert.equal(second.id, first.id);
         assert.equal(store.status().pending, 1);
+        assert.deepEqual(store.preview(first.id), { bytes: jpeg(7), type: 'image/jpeg' });
 
         let imported: { source: string; kind: string; caption: string; dish?: string } | undefined;
         const approved = store.approve(first.id, {
@@ -91,5 +92,49 @@ describe('AI 生活照草稿（ADR 0239）', () => {
         const draft = await store.generate(context({ eventKey: 'reject-me' }), async () => ({ bytes: jpeg(9), model: 'm' }));
         assert.equal(store.reject(draft.id).status, 'rejected');
         assert.throws(() => store.approve(draft.id, { add: () => ({ id: 'abc123abc123' }) as never }), /不能直接通过/);
+    });
+
+    test('审核前复核文件编号、内容和普通文件类型，拒绝替换图与目录', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'ai-photo-integrity-'));
+        const store = aiPhotoDraftStore({ dir });
+        const draft = await store.generate(context({ eventKey: 'integrity' }), async () => ({ bytes: jpeg(10), model: 'm' }));
+        const source = join(dir, 'files', draft.file);
+        writeFileSync(source, jpeg(11));
+        assert.throws(() => store.approve(draft.id, { add: () => ({ id: 'abc123abc123' }) as never }), /内容与编号不一致/);
+
+        writeFileSync(source, jpeg(10));
+        renameSync(source, `${source}.old`);
+        mkdirSync(source);
+        assert.throws(() => store.approve(draft.id, { add: () => ({ id: 'abc123abc123' }) as never }), /文件不安全/);
+    });
+
+    test('拒绝符号链接索引', t => {
+        const outside = mkdtempSync(join(tmpdir(), 'ai-photo-link-outside-'));
+        const indexDir = mkdtempSync(join(tmpdir(), 'ai-photo-link-index-'));
+        writeFileSync(join(outside, 'index.json'), JSON.stringify({ version: 1, entries: [] }));
+        try { symlinkSync(join(outside, 'index.json'), join(indexDir, 'index.json'), 'file'); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === 'EPERM') return t.skip('当前 Windows 环境不允许创建符号链接'); throw error; }
+        assert.throws(() => aiPhotoDraftStore({ dir: indexDir }), /索引不能是符号链接/);
+    });
+
+    test('拒绝符号链接图片目录', async () => {
+        const outside = mkdtempSync(join(tmpdir(), 'ai-photo-link-outside-'));
+        const filesDir = mkdtempSync(join(tmpdir(), 'ai-photo-link-files-'));
+        symlinkSync(outside, join(filesDir, 'files'), 'junction');
+        const store = aiPhotoDraftStore({ dir: filesDir });
+        let calls = 0;
+        await assert.rejects(store.generate(context({ eventKey: 'link-dir' }), async () => { calls++; return { bytes: jpeg(12), model: 'm' }; }), /文件目录不安全/);
+        assert.equal(calls, 0);
+    });
+
+    test('损坏索引中的编号与文件名错配会拒绝启动', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'ai-photo-bad-index-'));
+        const entry = {
+            id: 'aaaaaaaaaaaa', eventKey: 'bad', kind: 'cat', subject: '猫', caption: '猫',
+            at: '2026-11-04T00:00:00.000Z', createdAt: '2026-11-04T00:00:00.000Z',
+            file: 'bbbbbbbbbbbb.jpg', status: 'pending_review', model: 'm', promptHash: 'c'.repeat(64),
+        };
+        writeFileSync(join(dir, 'index.json'), JSON.stringify({ version: 1, entries: [entry] }));
+        assert.throws(() => aiPhotoDraftStore({ dir }), /拒绝启动/);
     });
 });

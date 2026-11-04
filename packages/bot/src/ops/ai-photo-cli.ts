@@ -4,6 +4,11 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { aiPhotoDraftStore, AI_PHOTO_KINDS, generateAiPhoto, type AiPhotoContext, type AiPhotoDraftStatus, type AiPhotoKind } from '../vision/ai-photo-drafts.ts';
 import { photoShelf } from '../vision/photos.ts';
+import { aiPhotoProvidersFromEnv, createAiPhotoProviderPool } from '../vision/ai-photo-provider.ts';
+import { aiPhotoReferenceStore } from '../vision/ai-photo-references.ts';
+import { aiPhotoReviewModelFromImageDescriber, createAiPhotoVisualReviewer, qualityCheckedAiPhotoGenerator } from '../vision/ai-photo-quality-adapter.ts';
+import { configuredImageDescriber } from '../vision/vision.ts';
+import { loadConfig } from '../platform/config.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
@@ -20,7 +25,8 @@ const usage = () => [
     '  approve <编号> [--dir <数据目录>]',
     '  reject <编号> [--dir <数据目录>]',
     '',
-    'generate 需要环境变量 QQBOT_IMAGE_API_KEY；可选 QQBOT_IMAGE_BASE_URL、QQBOT_IMAGE_MODEL。',
+    'generate 至少需要一个生图服务：QQBOT_IMAGE_LOCAL_BASE_URL 或 QQBOT_IMAGE_API_KEY；也可配置备用服务。',
+    'QQBOT_IMAGE_DAILY_LIMIT 控制每日总尝试次数（默认 4，失败与降级也计数）。',
     '生成结果只在本地等待审核，不会自动发送。',
 ].join('\n');
 
@@ -39,12 +45,18 @@ async function run(): Promise<void> {
             ...(one('--place') ? { place: one('--place') } : {}),
             ...(one('--activity') ? { activity: one('--activity') } : {}),
         };
-        const apiKey = process.env.QQBOT_IMAGE_API_KEY ?? '';
-        const model = process.env.QQBOT_IMAGE_MODEL ?? 'gpt-image-2.5-flare';
-        const baseUrl = process.env.QQBOT_IMAGE_BASE_URL ?? 'https://api.openai.com/v1/';
-        const entry = await drafts.generate(context, prompt => generateAiPhoto(prompt, { apiKey, model, baseUrl }));
+        const providers = aiPhotoProvidersFromEnv();
+        const dailyLimit = Number(process.env.QQBOT_IMAGE_DAILY_LIMIT ?? 4);
+        const pool = createAiPhotoProviderPool({ dir: resolve(baseDir, 'ai-photo-usage'), providers, dailyLimit, log: line => console.log(line), generate: generateAiPhoto });
+        const config = loadConfig(repoRoot);
+        if (!config.vision) throw new Error('没有配置视觉审查服务，质量门已阻止生成草稿');
+        const references = aiPhotoReferenceStore({ file: resolve(baseDir, 'ai-photo-references/index.json'), log: line => console.log(line) });
+        const reviewer = createAiPhotoVisualReviewer(aiPhotoReviewModelFromImageDescriber(prompt => configuredImageDescriber(config, prompt, 'background')!));
+        const entry = await drafts.generate(context, qualityCheckedAiPhotoGenerator({ context, reviewer, references, generate: prompt => pool.generate(prompt) }));
         console.log(`待审核：${entry.id}  ${entry.kind}  ${entry.caption}`);
         console.log(`图片：${resolve(baseDir, 'ai-photo-drafts/files', entry.file)}`);
+        const usageStatus = pool.status();
+        console.log(`今日调用 ${usageStatus.attempts} 次，剩余 ${usageStatus.remaining} 次`);
         return;
     }
     if (command === 'list') {

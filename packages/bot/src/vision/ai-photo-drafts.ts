@@ -2,7 +2,7 @@
 // 审核通过后才复制进现有照片货架；生图密钥与聊天模型密钥分开。
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { detectImageType } from './safe-image.ts';
@@ -61,6 +61,8 @@ export interface ImageGenerationOptions {
 export interface AiPhotoDraftStore {
     generate(context: AiPhotoContext, generator: AiPhotoGenerator): Promise<AiPhotoDraft>;
     list(status?: AiPhotoDraftStatus): AiPhotoDraft[];
+    /** 给受控审核界面读取；每次都重新校验普通文件、内容哈希和真实格式。 */
+    preview(id: string): { bytes: Uint8Array; type: 'image/jpeg' | 'image/png' | 'image/webp' };
     approve(id: string, shelf: Pick<PhotoShelf, 'add'>): AiPhotoDraft;
     reject(id: string): AiPhotoDraft;
     status(): { total: number; pending: number; approved: number; rejected: number };
@@ -79,7 +81,7 @@ const validEntry = (value: unknown): value is AiPhotoDraft => {
         && typeof x.caption === 'string' && Boolean(clean(x.caption))
         && typeof x.at === 'string' && validDate(x.at)
         && typeof x.createdAt === 'string' && validDate(x.createdAt)
-        && typeof x.file === 'string' && /^[a-f0-9]{12}\.(?:jpg|png|webp)$/.test(x.file)
+        && typeof x.file === 'string' && new RegExp(`^${x.id}\\.(?:jpg|png|webp)$`).test(x.file)
         && ['pending_review', 'approved', 'rejected'].includes(x.status ?? '')
         && typeof x.model === 'string' && Boolean(clean(x.model))
         && typeof x.promptHash === 'string' && /^[a-f0-9]{64}$/.test(x.promptHash)
@@ -91,7 +93,10 @@ const validEntry = (value: unknown): value is AiPhotoDraft => {
 const validIndex = (value: unknown): value is AiPhotoIndex => {
     if (!value || typeof value !== 'object') return false;
     const x = value as Partial<AiPhotoIndex>;
-    return x.version === 1 && Array.isArray(x.entries) && x.entries.every(validEntry);
+    return x.version === 1 && Array.isArray(x.entries) && x.entries.every(validEntry)
+        && new Set(x.entries.map(entry => entry.id)).size === x.entries.length
+        && new Set(x.entries.map(entry => entry.eventKey)).size === x.entries.length
+        && new Set(x.entries.map(entry => entry.file)).size === x.entries.length;
 };
 
 const kindScene: Record<AiPhotoKind, string> = {
@@ -148,7 +153,7 @@ function decodeBase64(value: unknown): Uint8Array {
 
 /** 调用兼容 /v1/images/generations 的服务；错误不读取响应正文，避免供应商把输入或密钥回显进日志。 */
 export async function generateAiPhoto(prompt: string, options: ImageGenerationOptions): Promise<GeneratedAiPhoto> {
-    if (!options.apiKey.trim()) throw new Error('缺少 QQBOT_IMAGE_API_KEY');
+    if (!options.apiKey.trim()) throw new Error('缺少生图服务密钥');
     if (!options.model.trim()) throw new Error('缺少生图模型名称');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('生图超时')), options.timeoutMs ?? 90_000);
@@ -182,7 +187,28 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
     const now = options.now ?? (() => new Date());
     const indexFile = join(options.dir, 'index.json');
     const filesDir = join(options.dir, 'files');
+    if (existsSync(indexFile) && lstatSync(indexFile).isSymbolicLink()) throw new Error('AI 照片草稿索引不能是符号链接');
     let index = readJsonOr<AiPhotoIndex>(indexFile, { version: 1, entries: [] }, options.log, { validate: validIndex, invalid: 'throw', label: 'AI 照片草稿' });
+    const ensureFilesDir = () => {
+        mkdirSync(filesDir, { recursive: true });
+        const info = lstatSync(filesDir);
+        if (info.isSymbolicLink() || !info.isDirectory()) throw new Error('AI 照片草稿文件目录不安全');
+    };
+    const checkedSource = (entry: AiPhotoDraft) => {
+        if (!new RegExp(`^${entry.id}\\.(?:jpg|png|webp)$`).test(entry.file)) throw new Error('草稿图片文件名与编号不一致');
+        if (!existsSync(filesDir)) throw new Error('草稿图片文件不存在');
+        const dirInfo = lstatSync(filesDir);
+        if (dirInfo.isSymbolicLink() || !dirInfo.isDirectory()) throw new Error('AI 照片草稿文件目录不安全');
+        const source = join(filesDir, entry.file);
+        if (!existsSync(source)) throw new Error('草稿图片文件不存在');
+        const info = lstatSync(source);
+        if (info.isSymbolicLink() || !info.isFile() || info.size <= 0 || info.size > PHOTO_MAX_BYTES) throw new Error('草稿图片文件不安全');
+        const bytes = readFileSync(source);
+        if (createHash('sha256').update(bytes).digest('hex').slice(0, 12) !== entry.id) throw new Error('草稿图片内容与编号不一致');
+        const expected = extension(bytes);
+        if (!entry.file.endsWith(`.${expected}`)) throw new Error('草稿图片格式与文件名不一致');
+        return source;
+    };
     const persist = () => { mkdirSync(options.dir, { recursive: true }); writeJsonAtomic(indexFile, index); };
     const find = (id: string) => index.entries.find(entry => entry.id === id.toLowerCase());
     const update = (entry: AiPhotoDraft) => {
@@ -196,6 +222,8 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             if (!eventKey) throw new Error('事件键不能为空');
             const existing = index.entries.find(entry => entry.eventKey === eventKey);
             if (existing) return existing;
+            // 先检查落盘目录，再调用可能计费的生图服务；目录异常时不浪费一次额度。
+            ensureFilesDir();
             const prompt = buildAiPhotoPrompt(context);
             const generated = await generator(prompt);
             if (generated.bytes.length > PHOTO_MAX_BYTES) throw new Error('生成图片超过大小上限');
@@ -203,7 +231,6 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             const sameImage = find(id);
             if (sameImage) return sameImage;
             const ext = extension(generated.bytes);
-            mkdirSync(filesDir, { recursive: true });
             const file = `${id}.${ext}`;
             writeFileSync(join(filesDir, file), generated.bytes, { flag: 'wx' });
             const entry: AiPhotoDraft = {
@@ -219,13 +246,20 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             return entry;
         },
         list: status => index.entries.filter(entry => !status || entry.status === status).map(entry => ({ ...entry })),
+        preview(id) {
+            const entry = find(id);
+            if (!entry) throw new Error('找不到这张草稿');
+            const bytes = new Uint8Array(readFileSync(checkedSource(entry)));
+            const type = detectImageType(bytes);
+            if (!type || type === 'image/gif') throw new Error('草稿图片格式不受支持');
+            return { bytes, type };
+        },
         approve(id, shelf) {
             const entry = find(id);
             if (!entry) throw new Error('找不到这张草稿');
             if (entry.status === 'rejected') throw new Error('已拒绝的草稿不能直接通过');
             if (entry.status === 'approved') return { ...entry };
-            const source = join(filesDir, entry.file);
-            if (!existsSync(source)) throw new Error('草稿图片文件不存在');
+            const source = checkedSource(entry);
             const added = shelf.add(source, shelfKind[entry.kind], entry.caption, entry.dish);
             const approved = { ...entry, status: 'approved' as const, reviewedAt: now().toISOString(), shelfId: added.id };
             options.log?.(`AI 照片草稿：审核通过 ${entry.id}，进入照片货架 ${added.id}`);

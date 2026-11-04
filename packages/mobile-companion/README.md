@@ -3,6 +3,7 @@
 这是手机伴侣的传输无关协议与安全边界，当前包含：
 
 - `protocol.ts`：文字、语音、图片、表情、动作请求和 envelope 校验；
+- `photo-review.ts`：AI 生活照草稿的安全摘要和审核契约；只使用短期缩略图 `mediaId`，通过/拒绝必须明确确认，并由宿主回调完成审计；
 - DSH 适配器复用 QQ 侧同一份脱敏状态快照和语气回调；状态过期时不会自动补造当前数值；
 - `pairing.ts`：进程内短期一次性配对码；
 - 未使用配对码最多保留 64 条，重复点配对不会让进程内票据表无限增长；
@@ -50,3 +51,5 @@ bot 编排已经提供同一条 DSH 链路：当配置 `dsh.enabled` 为 `true` 
 若使用 HTTPS 传输，可把 `createCompanionMediaHandler(runtime, media)` 挂到同一认证服务的另一路径；上传成功返回的 `mediaId` 再放入 `message.send` 的 `media.mediaId`。Koishi 插件打开 `mobileCompanion.enabled` 后会在已有 server 上同时挂 `/qqbot/companion/http`、`/qqbot/companion/http/media` 和 `/qqbot/companion/http/actions`（可配置），无需新增端口。PWA 会在 HTTPS 模式轮询 actions 路径；媒体只在内存中短暂保留，宿主应在需要时读取并在 DSH / QQ 侧完成转码或审计。
 
 不要把这个适配器直接绑定到公网，也不要在 `onAction` 中绕过现有设备白名单、确认、熔断和审计层。原生 Android UI 可以用 HTTPS 或 WebSocket，但必须复用同一个 `CompanionGateway` 和 `CompanionRuntime`；WebSocket 宿主只需把连接交给 `attachCompanionWebSocket`。
+
+AI 生活照审核使用 `photo.review.list` / `photo.review.decide`。宿主只能返回 `PhotoDraftSummary`，缩略图应先放入现有的短期、设备归属媒体仓库；不要返回草稿文件路径或提示词。`onPhotoReviewDecision` 必须在写入审核审计后才返回成功，且审核本身不会自动发送 QQ。

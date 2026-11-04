@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { helloEnvelope } from './gateway.ts';
 import { MAX_CLOCK_SKEW_MS, validateAction, validateEnvelope, validateMessage, type ActionResult, type CompanionEnvelope, type CompanionError, type CompanionHello, type CompanionMessage, type PhoneActionRequest } from './protocol.ts';
+import { validatePhotoReviewDecisionRequest, validatePhotoReviewListRequest, type PhotoReviewDecisionRequest, type PhotoReviewDecisionResult, type PhotoReviewListRequest, type PhotoReviewListResult } from './photo-review.ts';
 
 export const MAX_CLIENT_PENDING = 32;
 const MAX_TRACKED_IDS = 256;
@@ -63,15 +64,33 @@ export class CompanionClient {
         return envelope;
     }
 
-    accept(value: unknown): CompanionEnvelope<CompanionMessage | ActionResult | CompanionError> {
+    listPhotoDrafts(request: PhotoReviewListRequest = {}, requestId = this.newRequestId('photo-list')): CompanionEnvelope<PhotoReviewListRequest> {
+        const body = validatePhotoReviewListRequest(request);
+        if (this.pending.size >= MAX_CLIENT_PENDING) throw new Error('待处理请求过多，请等待已有请求完成');
+        this.reserveRequestId(requestId);
+        const envelope = this.envelope('photo.review.list', body, requestId);
+        this.pending.add(requestId);
+        return envelope;
+    }
+
+    decidePhotoDraft(request: PhotoReviewDecisionRequest, requestId = this.newRequestId('photo-decision')): CompanionEnvelope<PhotoReviewDecisionRequest> {
+        const body = validatePhotoReviewDecisionRequest(request);
+        if (this.pending.size >= MAX_CLIENT_PENDING) throw new Error('待处理请求过多，请等待已有请求完成');
+        this.reserveRequestId(requestId);
+        const envelope = this.envelope('photo.review.decide', body, requestId);
+        this.pending.add(requestId);
+        return envelope;
+    }
+
+    accept(value: unknown): CompanionEnvelope<CompanionMessage | ActionResult | PhotoReviewListResult | PhotoReviewDecisionResult | CompanionError> {
         const now = this.now();
         const envelope = validateEnvelope(value, now);
-        if (!['message.receive', 'action.result', 'error'].includes(envelope.kind)) throw new Error('客户端不接受此类响应');
+        if (!['message.receive', 'action.result', 'photo.review.list.result', 'photo.review.decision', 'error'].includes(envelope.kind)) throw new Error('客户端不接受此类响应');
         const requestId = envelope.requestId.startsWith('resp-') ? envelope.requestId.slice(5) : envelope.requestId;
         if (!this.pending.has(requestId)) throw new Error('响应没有对应的请求');
         rememberReceived(this.receivedNonces, envelope.nonce, now);
         this.pending.delete(requestId);
-        return envelope as CompanionEnvelope<CompanionMessage | ActionResult | CompanionError>;
+        return envelope as CompanionEnvelope<CompanionMessage | ActionResult | PhotoReviewListResult | PhotoReviewDecisionResult | CompanionError>;
     }
 
     /** 接收宿主主动下发的白名单动作；它不占用客户端 pending requestId。 */

@@ -5,6 +5,8 @@
  * 仍然复用现有的安全边界。协议只描述对话媒体和受控设备动作，不提供 shell。
  */
 
+import { validatePhotoReviewDecisionRequest, validatePhotoReviewDecisionResult, validatePhotoReviewListRequest, validatePhotoReviewListResult } from './photo-review.ts';
+
 export const PROTOCOL_VERSION = 1;
 export const MAX_TEXT_CHARS = 4000;
 export const MAX_MEDIA_BYTES = 8 * 1024 * 1024;
@@ -66,7 +68,9 @@ export interface PhoneActionRequest {
 export interface CompanionEnvelope<T = unknown> {
     v: typeof PROTOCOL_VERSION;
     requestId: string;
-    kind: 'hello' | 'message.send' | 'message.receive' | 'action.request' | 'action.result' | 'error';
+    kind: 'hello' | 'message.send' | 'message.receive' | 'action.request' | 'action.result'
+        | 'photo.review.list' | 'photo.review.list.result' | 'photo.review.decide' | 'photo.review.decision'
+        | 'error';
     sentAt: string;
     nonce: string;
     body: T;
@@ -187,13 +191,17 @@ export function validateEnvelope(value: unknown, now = Date.now()): CompanionEnv
     if (typeof envelope.nonce !== 'string' || !ID.test(envelope.nonce)) throw new Error('nonce 不合法');
     const sentAt = Date.parse(String(envelope.sentAt));
     if (!Number.isFinite(sentAt) || Math.abs(now - sentAt) > MAX_CLOCK_SKEW_MS) throw new Error('请求时间超出允许偏差');
-    if (!['hello', 'message.send', 'message.receive', 'action.request', 'action.result', 'error'].includes(String(envelope.kind))) throw new Error('未知协议消息');
+    if (!['hello', 'message.send', 'message.receive', 'action.request', 'action.result', 'photo.review.list', 'photo.review.list.result', 'photo.review.decide', 'photo.review.decision', 'error'].includes(String(envelope.kind))) throw new Error('未知协议消息');
     switch (envelope.kind) {
         case 'hello': validateHello(envelope.body); break;
         case 'message.send':
         case 'message.receive': validateMessage(envelope.body); break;
         case 'action.request': validateAction(envelope.body); break;
         case 'action.result': validateActionResult(envelope.body); break;
+        case 'photo.review.list': validatePhotoReviewListRequest(envelope.body); break;
+        case 'photo.review.list.result': validatePhotoReviewListResult(envelope.body); break;
+        case 'photo.review.decide': validatePhotoReviewDecisionRequest(envelope.body); break;
+        case 'photo.review.decision': validatePhotoReviewDecisionResult(envelope.body); break;
         case 'error': validateError(envelope.body); break;
     }
     return envelope as CompanionEnvelope;
@@ -235,5 +243,7 @@ export function auditLabel(kind: CompanionEnvelope['kind'], body: unknown): stri
         return `message:${message.kind}`;
     }
     if (kind === 'action.request') return `action:${validateAction(body).action}`;
+    if (kind === 'photo.review.list') return 'photo-review:list';
+    if (kind === 'photo.review.decide') return `photo-review:${validatePhotoReviewDecisionRequest(body).decision}`;
     return kind;
 }

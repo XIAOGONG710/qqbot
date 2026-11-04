@@ -7,8 +7,12 @@
 import type { Context } from 'koishi';
 import { PHONE_ACTION_CAPABILITIES, type PhoneActionCapability } from '@qqbot/mobile-companion/protocol';
 import { createRequire } from 'node:module';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import type { AppStatus } from '../../bot/src/platform/app.ts';
+import { aiPhotoDraftStore, type AiPhotoDraftStatus } from '../../bot/src/vision/ai-photo-drafts.ts';
+import { PHOTO_MAX_BYTES, photoShelf } from '../../bot/src/vision/photos.ts';
+import { detectImageType, imageDataUrl } from '../../bot/src/vision/safe-image.ts';
 import { buildCharacter, checkPrivacy, writeOutputs, type Problem } from '../../character-tools/src/build.ts';
 import { checkSource, readSource, writeSource, type CharacterSource } from '../../character-tools/src/source.ts';
 
@@ -24,6 +28,8 @@ export interface ConsoleState {
     status?: () => AppStatus;
     /** 角色资料：source/ 和 st/ 所在的目录、st/ 文件名的前缀（由插件配置的 characterCard 推出） */
     character?: { sourceDir: string; stDir: string; prefix: string };
+    /** AI 照片草稿和照片货架所在的数据目录；只留在服务端，不通过 ConsoleData 暴露。 */
+    dataDir?: string;
 }
 
 export interface ConsoleData {
@@ -34,6 +40,20 @@ export interface ConsoleData {
     phoneActions: readonly PhoneActionCapability[];
     updatedAt: number;
 }
+
+export interface AiPhotoReviewItem {
+    id: string;
+    kind: 'cat' | 'food' | 'desk' | 'view';
+    caption: string;
+    at: string;
+    createdAt: string;
+    status: AiPhotoDraftStatus;
+    reviewedAt?: string;
+}
+
+export type AiPhotoListResult = { ok: true; entries: AiPhotoReviewItem[] } | { ok: false; error: string };
+export type AiPhotoPreviewResult = { ok: true; dataUrl: string } | { ok: false; error: string };
+export type AiPhotoReviewResult = { ok: true; status: AiPhotoDraftStatus } | { ok: false; error: string };
 
 /** moods / books（ADR 0015）是后加的文件：资料里没有这两个文件时页面不显示它们的分页 */
 export type SourcePart = 'persona' | 'scenes' | 'schedule' | 'tiers' | 'moods' | 'books';
@@ -67,6 +87,8 @@ export function consoleData(): ConsoleData {
     let statusUnavailable = false;
     try {
         status = state.status?.();
+        const aiPhotos = aiPhotoSummary();
+        if (status && aiPhotos) status = { ...status, extras: { ...status.extras, aiPhotoDrafts: aiPhotos } };
     } catch {
         status = undefined;
         statusUnavailable = true;
@@ -85,6 +107,83 @@ export function consoleData(): ConsoleData {
         phoneActions: PHONE_ACTION_CAPABILITIES,
         updatedAt: Date.now(),
     };
+}
+
+const REVIEW_STATUSES = new Set<AiPhotoDraftStatus>(['pending_review', 'approved', 'rejected']);
+const REVIEW_ID = /^[a-f0-9]{12}$/;
+const publicPhotoReviewError = '照片审核暂时无法完成，请刷新页面后重试；详细原因见运行日志。';
+
+function photoReviewStores() {
+    if (!state.dataDir) throw new Error('照片审核尚未连接到数据目录');
+    const dataDir = resolve(state.dataDir);
+    return {
+        drafts: aiPhotoDraftStore({ dir: join(dataDir, 'ai-photo-drafts') }),
+        shelf: photoShelf({ dir: join(dataDir, 'photos'), log: () => {} }),
+        filesDir: resolve(dataDir, 'ai-photo-drafts', 'files'),
+    };
+}
+
+function aiPhotoSummary(): { total: number; pending: number; approved: number; rejected: number } | undefined {
+    if (!state.dataDir) return undefined;
+    try { return photoReviewStores().drafts.status(); } catch { return undefined; }
+}
+
+/** 控制台只拿展示需要的字段，不返回磁盘路径、事件键、模型名或提示词哈希。 */
+export function listAiPhotoDrafts(status: unknown = 'pending_review', limit: unknown = 24): AiPhotoListResult {
+    if (typeof status !== 'string' || !REVIEW_STATUSES.has(status as AiPhotoDraftStatus)) return { ok: false, error: '请选择有效的审核状态。' };
+    const safeLimit = Number.isInteger(limit) ? Math.min(30, Math.max(1, Number(limit))) : 24;
+    try {
+        const entries = photoReviewStores().drafts.list(status as AiPhotoDraftStatus)
+            .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+            .slice(0, safeLimit)
+            .map(entry => ({
+                id: entry.id,
+                kind: entry.kind,
+                caption: entry.caption,
+                at: entry.at,
+                createdAt: entry.createdAt,
+                status: entry.status,
+                ...(entry.reviewedAt ? { reviewedAt: entry.reviewedAt } : {}),
+            }));
+        return { ok: true, entries };
+    } catch {
+        return { ok: false, error: publicPhotoReviewError };
+    }
+}
+
+/** 缩略图按编号单独取；编号和索引文件名都校验，不能借这个入口读任意本地文件。 */
+export function aiPhotoPreview(id: unknown): AiPhotoPreviewResult {
+    if (typeof id !== 'string' || !REVIEW_ID.test(id)) return { ok: false, error: '找不到这张照片草稿。' };
+    try {
+        const { drafts, filesDir } = photoReviewStores();
+        const entry = drafts.list().find(item => item.id === id);
+        if (!entry) return { ok: false, error: '找不到这张照片草稿。' };
+        if (!entry.file.startsWith(`${entry.id}.`)) return { ok: false, error: '找不到这张照片草稿。' };
+        const target = resolve(filesDir, entry.file);
+        if (dirname(target) !== filesDir) return { ok: false, error: '找不到这张照片草稿。' };
+        if (lstatSync(target).isSymbolicLink() || dirname(realpathSync(target)) !== realpathSync(filesDir)) return { ok: false, error: '找不到这张照片草稿。' };
+        const bytes = new Uint8Array(readFileSync(target));
+        if (!bytes.length || bytes.length > PHOTO_MAX_BYTES) return { ok: false, error: '这张图片无法预览。' };
+        const type = detectImageType(bytes);
+        if (type !== 'image/jpeg' && type !== 'image/png' && type !== 'image/webp') return { ok: false, error: '这张图片无法预览。' };
+        return { ok: true, dataUrl: imageDataUrl({ bytes, type }) };
+    } catch {
+        return { ok: false, error: '这张图片暂时无法预览。' };
+    }
+}
+
+/** 通过后只进入照片货架；这里没有发送 QQ 的能力。 */
+export function reviewAiPhoto(action: unknown, id: unknown, confirmation: unknown, audit?: (message: string) => void): AiPhotoReviewResult {
+    if ((action !== 'approve' && action !== 'reject') || typeof id !== 'string' || !REVIEW_ID.test(id) || confirmation !== 'confirmed') return { ok: false, error: '审核请求无效，请重新确认后再试。' };
+    try {
+        const { drafts, shelf } = photoReviewStores();
+        const entry = action === 'approve' ? drafts.approve(id, shelf) : drafts.reject(id);
+        audit?.(`控制台${action === 'approve' ? '通过' : '拒绝'}了 AI 照片草稿（${id}；${entry.kind}）`);
+        void service?.refresh();
+        return { ok: true, status: entry.status };
+    } catch {
+        return { ok: false, error: publicPhotoReviewError };
+    }
 }
 
 /** 编辑页只返回用户能据此修改的中文提示，不把 YAML 路径、字段名或输入值当成错误串展示。 */
@@ -180,6 +279,9 @@ export function registerConsole(ctx: Context, repoRoot: string): void {
             if (result.ok) root.logger('qqbot').info(`控制台保存了角色资料（${part}），重新生成 ${result.written.length} 个文件：${result.written.join('、') || '无变化'}`);
             return result;
         }, authority);
+        api.addListener('qqbot/ai-photos/list', (status: unknown, limit: unknown) => listAiPhotoDrafts(status, limit), authority);
+        api.addListener('qqbot/ai-photos/preview', (id: unknown) => aiPhotoPreview(id), authority);
+        api.addListener('qqbot/ai-photos/review', (action: unknown, id: unknown, confirmation: unknown) => reviewAiPhoto(action, id, confirmation, message => root.logger('qqbot').info(message)), authority);
     });
 }
 

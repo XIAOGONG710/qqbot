@@ -174,6 +174,19 @@ describe('backup completion policy', () => {
         });
     });
 
+    test('state backup includes the complete AI photo draft directory for index and file recovery', () => {
+        const root = fresh();
+        const active = join(root, 'runtime', 'bot');
+        const drafts = join(active, 'ai-photo-drafts');
+        mkdirSync(join(drafts, 'files'), { recursive: true });
+        writeFileSync(join(drafts, 'index.json'), JSON.stringify({ version: 1, entries: [] }), 'utf8');
+        writeFileSync(join(drafts, 'files', '111111111111.jpg'), 'image', 'utf8');
+
+        const plan = discoverStateBackup(root);
+        assert.ok(plan.items.includes(drafts));
+        assert.equal(plan.items.some(item => item.endsWith('index.json')), false, '整目录入归档，恢复时不会漏掉 files');
+    });
+
     test('an existing but empty state directory is a failure, not a successful skipped backup', () => {
         const root = fresh();
         const active = join(root, 'runtime', 'bot');
