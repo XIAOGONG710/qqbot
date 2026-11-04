@@ -47,6 +47,23 @@ describe('连续需要投影（ADR 0045）', () => {
         assert.equal(withInterrupted.hunger, noMeal.hunger, '饭被打断，不能当作已经吃饱');
     });
 
+    test('零时长的成功吃饭事实也只结算一次，失败、中断和跨锚点都不重放', () => {
+        const hungry = { ...anchor, hunger: 90 };
+        const at = '2026-10-01T01:00:00.000Z';
+        const meal = event('instant-meal', 'eat', at, at);
+        const failed = event('failed-instant-meal', 'eat', at, at, 'failed');
+        const interrupted = event('interrupted-instant-meal', 'eat', at, at, 'interrupted');
+        const middle = new Date('2026-10-01T02:00:00.000Z');
+        const end = new Date('2026-10-01T03:00:00.000Z');
+
+        const none = needsAt(hungry, [], middle);
+        const once = needsAt(hungry, [meal], middle);
+        assert.ok(once.hunger < none.hunger - 50, `${none.hunger} -> ${once.hunger}`);
+        assert.deepEqual(needsAt(hungry, [meal, meal], middle), once, '同 ID 重放不重复吃饭');
+        assert.deepEqual(needsAt(hungry, [failed, interrupted], middle), none, '没成功的零时长饭不产生饱腹');
+        assert.deepEqual(needsAt(once, [meal], end), needsAt(hungry, [meal], end), '锚点推进后不再次结算旧饭');
+    });
+
     test('出去吃饭的赴约在完成后也会结算饱腹', () => {
         const dinner = { ...event('meet-dinner', 'meet', '2026-10-01T10:00:00.000Z', '2026-10-01T11:30:00.000Z'), meal: true };
         const social = event('meet-show', 'meet', '2026-10-01T10:00:00.000Z', '2026-10-01T11:30:00.000Z');

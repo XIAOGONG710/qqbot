@@ -85,7 +85,10 @@ export function needsAt(anchor: NeedsSnapshot, events: readonly LifeEvent[], at:
     const relevant = effectiveLifeEvents(events)
         .filter(event => event.result !== 'failed')
         .map(event => ({ event, start: Date.parse(event.startedAt), end: Date.parse(event.endedAt) }))
-        .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end > anchorAt && item.start < target && item.end >= item.start)
+        .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end >= item.start
+            && (item.end === item.start
+                ? item.end > anchorAt && item.end <= target
+                : item.end > anchorAt && item.start < target))
         .sort((a, b) => a.start - b.start || a.end - b.end || a.event.id.localeCompare(b.event.id));
     const boundaries = [...new Set([
         anchorAt,
@@ -112,7 +115,10 @@ export function needsAt(anchor: NeedsSnapshot, events: readonly LifeEvent[], at:
         // 离散后果只在事件真正结束且落在这次投影区间里结算；分段重启不会重复吃饭。
         for (const item of relevant) {
             if (item.end !== to || item.end <= anchorAt || item.end > target) continue;
-            if (!activeEventIds.has(item.event.id)) continue;
+            // 对话或 DSH 上报的“刚吃完”事实可能没有可靠耗时，会以零时长入账。
+            // 它不改变持续速率，但成功结束的这一顿仍应结算一次饱腹；同 ID 已在
+            // effectiveLifeEvents 去重，锚点之后的严格时间窗也保证分段投影不重放。
+            if (item.start !== item.end && !activeEventIds.has(item.event.id)) continue;
             if ((item.event.kind === 'eat' || item.event.meal) && item.event.result === 'succeeded') hunger = clamp(hunger - MEAL_HUNGER_RELIEF);
         }
     }
