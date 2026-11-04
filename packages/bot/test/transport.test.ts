@@ -51,6 +51,24 @@ describe('现实交通 / 公共服务事实（ADR 0232）', () => {
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
+    test('共享端点返回多个地点时按稳定 id 或显示名匹配，不把最后一条状态写给所有地点', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-transport-shared-'));
+        const now = at('2026-11-03T09:00:00').getTime();
+        const fetcher = transportFetcher({
+            dir: root, log: () => {}, locations: [{ id: 'jinan', name: '济南' }, { id: 'qingdao', name: '青岛' }],
+            endpoint: 'https://example.test/all', source: 'test', now: () => now,
+            fetchJson: async () => ({ data: [
+                { location: '济南', status: '延误', updatedAt: '2026-11-03T09:00:00+08:00' },
+                { location: 'qingdao', status: '关闭', updatedAt: '2026-11-03T09:00:00+08:00' },
+            ] }),
+        });
+        try {
+            await fetcher.refresh();
+            assert.equal(fetcher.day('jinan')?.status, 'delayed');
+            assert.equal(fetcher.day('qingdao')?.status, 'closed');
+        } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+
     test('可显式投影进世界，但不把供应商详情原样送进提示词', () => {
         const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
         useRealTransport({ day: location => ({ location, status: 'delayed', observedAt: '2026-10-20T05:00:00.000Z', source: 'test', real: true, detail: '供应商原文不应进入提示词' }) });

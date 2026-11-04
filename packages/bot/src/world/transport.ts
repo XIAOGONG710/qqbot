@@ -159,8 +159,12 @@ export function transportFetcher(options: TransportFetcherOptions): TransportFet
                     try {
                         const url = typeof options.endpoint === 'string' ? options.endpoint : options.endpoint(location);
                         const facts = parseTransportResponse(await fetchJson(url), location.id, options.source);
-                        // `location.id` is the stable lookup key; a provider may return a display name in fact.location.
-                        for (const fact of facts) merged[location.id] = fact;
+                        // `location.id` 是稳定查找键；公共端点可能一次返回多个地点，不能把数组最后一条
+                        // 静默写给所有配置地点。单条响应可使用供应商显示名；多条时必须精确匹配 id 或配置名。
+                        const matched = facts.filter(fact => fact.location === location.id || (location.name !== undefined && fact.location === location.name));
+                        const fact = facts.length === 1 ? facts[0] : matched.length === 1 ? matched[0] : undefined;
+                        if (!fact) throw new Error(matched.length > 1 ? '供应商返回了多条相同地点的交通事实' : '供应商响应里没有当前地点的交通事实');
+                        merged[location.id] = fact;
                         success = true;
                         errors.delete(location.id); errorAt.delete(location.id);
                     } catch (reason) {
