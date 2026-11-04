@@ -150,6 +150,10 @@ export class Identity {
         const git = this.#options.git ?? realGit(repoRoot);
         const now = this.#options.now?.() ?? new Date();
         const chain = this.ledger.verify();
+        if (!chain.ok) {
+            log?.('设定账本：完整性校验未通过；本次不追加、不更新基线，原断点保留');
+            return { chain, first: false, changes: [], unexplained: [] };
+        }
         const entries = this.ledger.read();
         const current = hashIdentityFiles(repoRoot);
         const head = git.head();
@@ -170,7 +174,7 @@ export class Identity {
         const commits = head ? git.commits(baseline.gitHead, head, changedPaths) : [];
         const dirty = git.dirty(IDENTITY_DIRS);
         const covered = (path: string) => commits.some(c => c.files.includes(path));
-        const explained = dirty.length === 0 && files.every(f => f.kind === 'removed' ? true : covered(f.path)) && commits.length > 0;
+        const explained = dirty.length === 0 && files.every(f => covered(f.path)) && commits.length > 0;
         const entry = this.ledger.append('change', {
             gitHead: head, snapshot, files, explained, dirty,
             commits: commits.map(({ files: _files, ...rest }) => rest),
@@ -192,6 +196,7 @@ export class Identity {
     }
 
     changes(limit = 5): IdentityChange[] {
+        if (!this.ledger.verify().ok) return [];
         return this.ledger.read().filter(e => e.kind === 'change').slice(-limit).map(e => ({
             seq: e.seq, at: e.at,
             ...(typeof e.data.gitHead === 'string' ? { gitHead: e.data.gitHead } : {}),
@@ -221,6 +226,7 @@ export class Identity {
     /** 用户发 /设定 看到的 */
     status(): string {
         const chain = this.ledger.verify();
+        if (!chain.ok) return `设定自检：账本验不过——${chain.reason}（从第 ${chain.brokenAt} 条起），共 ${chain.count} 条；历史状态不可信，原文件保留`;
         const last = this.ledger.last();
         const lines = [`设定自检：账本${chain.ok ? '验过了' : `验不过——${chain.reason}（从第 ${chain.brokenAt} 条起）`}，共 ${chain.count} 条${last ? `，最后一条 ${monthDayTime(last.at)}（${last.kind}）` : ''}`];
         const changes = this.changes(4);

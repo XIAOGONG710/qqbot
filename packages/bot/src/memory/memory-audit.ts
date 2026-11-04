@@ -19,12 +19,15 @@ export interface AuditOptions {
 }
 
 /** 写账本出错（磁盘满、被占用）不能让记忆写入失败：记日志，照常写 */
-function safeAppend(ledger: Ledger, kind: string, data: Record<string, unknown>, options: AuditOptions): void {
+function warn(options: AuditOptions): void { try { options.log?.('记忆账本：记录准备或写入失败，这一条没留痕'); } catch { /* 派生审计不能把主写入改判失败。 */ } }
+function snapshot(build: () => Record<string, unknown>): Record<string, unknown> | undefined {
+    try { return JSON.parse(JSON.stringify(build())) as Record<string, unknown>; } catch { return undefined; }
+}
+function safeAppend(ledger: Ledger, kind: string, data: Record<string, unknown> | undefined, options: AuditOptions): void {
+    if (!data) { warn(options); return; }
     try {
         ledger.append(kind, data, options.now?.() ?? new Date());
-    } catch (error) {
-        options.log?.(`记忆账本：写不进去（${error instanceof Error ? error.message : String(error)}），这一条没留痕`);
-    }
+    } catch { warn(options); }
 }
 
 /** 把记忆接口包一层：写入成功之后留痕，其余方法原样转发 */
@@ -34,18 +37,20 @@ export function auditedApi<T extends HindsightApi>(api: T, ledger: Ledger, optio
             const value = Reflect.get(target, prop, target) as unknown;
             if (prop === 'retain') {
                 return async (bankId: string, item: MemoryItem) => {
+                    const data = snapshot(() => {
+                        let chars = 0; for (const _ of item.content) chars++;
+                        return { bank: bankId, document: item.document_id, tags: item.tags, occurred: item.timestamp, chars, sha: sha256(item.content).slice(0, 16) };
+                    });
                     await (value as T['retain']).call(target, bankId, item);
-                    safeAppend(ledger, 'retain', {
-                        bank: bankId, document: item.document_id, tags: item.tags, occurred: item.timestamp,
-                        chars: [...item.content].length, sha: sha256(item.content).slice(0, 16),
-                    }, options);
+                    safeAppend(ledger, 'retain', data, options);
                 };
             }
             if (prop === 'createMentalModel' || prop === 'updateMentalModel') {
                 return async (bankId: string, ...rest: unknown[]) => {
-                    await (value as (...args: unknown[]) => Promise<void>).call(target, bankId, ...rest);
                     const request = (prop === 'createMentalModel' ? rest[0] : rest[1]) as MentalModelRequest;
-                    safeAppend(ledger, prop === 'createMentalModel' ? 'model-create' : 'model-update', { bank: bankId, model: request.id, name: request.name, query: sha256(request.source_query).slice(0, 16) }, options);
+                    const data = snapshot(() => ({ bank: bankId, model: request.id, name: request.name, query: sha256(request.source_query).slice(0, 16) }));
+                    await (value as (...args: unknown[]) => Promise<void>).call(target, bankId, ...rest);
+                    safeAppend(ledger, prop === 'createMentalModel' ? 'model-create' : 'model-update', data, options);
                 };
             }
             return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
