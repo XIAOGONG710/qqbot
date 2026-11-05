@@ -262,3 +262,33 @@ ADR0244记录范围、固定版本依据和恢复限制。代码本地提交`342
 - **M30b，遗忘全过程互斥与续跑**：两独立进程临时复现：forget已move联系人state、停在fake deleteDocument时，另进程真实acquireLock(bot.lock)仍成功并重写聊天。此时强杀没有report，普通重跑已丢历史old-bank目标、远端0次且failures空；正常首轮远端全部503也同样第一轮5失败，第二轮普通重跑0调用且空失败。旧目标仍可在trash/report人工恢复，但没有持久不可变job/自动或显式resume。本大类此前已列open，现补确证；应分全过程真实锁与删除计划/checkpoint恢复两个可验证单元，不能只检查bot.lock或在move后才保存计划。仅临时合成数据、假删除API与子进程，无真实删除。
 
 后续仍在记忆模块内按风险独立推进上述可修单元，同时保留观察/公共日记协议工作；已保护能力不等于所有已确认缺陷已修。用户追问速度后明确要求继续最高标准，不降低审查或验证深度，不转模块/社区比较。
+
+## 第十批：遗忘恢复、未来事实视图与民用日调用链
+
+### M30b：整个维护过程互斥与原计划恢复
+
+forget apply改为审计之前取得真实目录租约，覆盖所有移动、远端请求、报告与CLI审计后才释放。首次move之前在maintenance/forget-jobs/UUID.json持久保存不可变原计划、文件指纹、QQ/根目录、trash和CLI endpoint摘要；逐项记录移动及远端派发/确认，--resume只恢复原目标，不因state已move而生成空清单。真实子进程在rename成功、checkpoint前退出，可按目标hash确认旧移动并继续历史bank。原件改变、QQ/endpoint不符、路径/计划篡改或坏JSON停止，不覆盖恢复资料。
+
+强杀或网络/503等远端未知并未变成自动重放：dispatching/uncertain保留原任务、原目标和启动屏障，resume准确报告未确认；404或真实成功才done。5xx可来自网关，不能证明上游已停止，未增加布尔人工解锁。旧shared derived守卫/账本依原政策保留。API默认不另改共享审计链；CLI在锁内记只含元数据的审计。结果complete仅指该任务请求的步骤，local-only没有冒充外部删除。
+
+主代理实证原PID检查/unlink间存在新写者时，两租约能同时成功；新增bot.coordination.sqlite的长生命周期OS事务，PID仅诊断且尊重旧活写者，同PID租约保护保留。独立进程争stale PID、强杀接管、PID被删/坏而仍有OS持有者、坏coord、发布IO及释放均验证。旧lock夹具模拟“旧进程死亡”时补释放OS租约，没有放宽活租约安全。App在构造/任何prompt或世界修改前查全部未完成job；archive实际操作也全过程持锁、拒绝未完成job，不能通过换bank绕过。OS租约与JSON job分别解决活并发及崩溃后意图，不冒充全目录多文件事务。
+
+恢复日志及实际tmp按严格plan.qq纳隐私mixed清单、不可自动移动或复制整个journal；坏tmp只报告归属未知。交叉复核补修Windows同物理目录大小写别名被误判坏job，以及broken junction的existsSync=false绕过：root身份规范化比较、不改原hash；路径检查直接lstat，仅ENOENT可视缺失。维护目录/coord被外部整体删除或替换仍属不合作写者边界，运行中不可删换，50ms仅争锁预算。
+
+### M35：固定事实视图、来源进度与未知历史重分片
+
+每轮固定now，完整校验后只让已发生消息参与分片、阈值、敏感判断、修订及repair；每await后的实时钟回拨阻未派工作，已派ACK保存真实count并建立时间屏障。新增可选sourceTimes和不可变pending来源证据，旧无字段兼容，not_found仅能核对原前缀后重交原请求。普通未来首/中/尾到时可同步；未来crisis不再提前删除公共旧ep。
+
+继续复核发现首次实现raw先分片会被48小时未来中插截断过去30条为12条，后18条不足阈值失去远端覆盖，已正式红例修复：先筛事实再分片，未发生行不影响45分钟边界；既有ID用已完成/immutable来源首成员锚点保留。时钟追上后若真实重分片造成旧count归属不足/重复ID，保原文档和精确屏障暂停，不猜迁移；含legacy无sourceTimes的同类路径。此病态历史重分片的自动迁移仍待独立证据，不能称已自动恢复。真正过去正文编辑、撤回、stop/restart、known ACK和clock rollback均另有对照。
+
+### M29b：civil日与实际日期出口
+
+lastTouchedDay与civilDayNumber使用UTC中立日序表达民用日期，不强迫Apia不存在的2011-12-30成为当地Date。clarity、summary/diary窗口改用civil，保午夜exclusive、02:00与DST23/25小时规则；旧lastTouched Date只为兼容。providerTime贯通fading、onDay、mentionedOnDay及最终label，坏ISO日历不再滚到另一查询日，合法mentioned可回退。交叉补Z/UTC后缀、空白/小写t前缀绕过；合法RFC/offset/低年/epoch0仍兼容。
+
+### 验证与边界检查点
+
+新增45项正式：CLI恢复11、目录租约6、启动/归档4、维护隐私2、未来事实15、civil helper5、实际日期caller2，记忆审查累计新增387项。旧红证据包括M35首5、M29 helper及两真实caller、CLI原两行为及alias/link、锁3条、App/archive的HEAD运行时替换3条；未把脚本装载错误当源码失败。相关43项日期/未来/lifecycle整合、42项CLI相关、目录租约与模块检查均通过，全仓类型通过；最终完整3042/3042通过（bot2895、转换61、Koishi47、移动35、PWA4），模块登记4项和Git差异检查通过。
+
+原future-history/future-crisis/Apia诊断已改为正确行为探针，与正式回归分开，不能再用旧坏行为断言证明未修。本批ADR0246/0247分别记录恢复及时间协议，代码提交`b9adc611`（遗忘意图/维护租约）与`94352a7a`（事实视图/civil调用链）；只用合成聊天、假API、临时文件/真实子进程和IO注入，没有读取或删除真实运行时、聊天/角色或外部服务数据，没有部署或推送，AGENTS.md保持原未跟踪。
+
+M32b历史观察和公共日记/总结来源协议仍open；本批没有解除那些守卫。旧弱ID、未持久观察/legacy before、未知远端DELETE、病态历史重分片、非合作写者、fsync/网络FS与多文件非事务限制保持。记忆模块仍未完成，不转下一模块或社区比较。
