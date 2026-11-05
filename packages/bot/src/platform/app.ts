@@ -1052,12 +1052,24 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
             // 超时不重发：可能已经发出去了，再发就重复
             // 她打字的这段时间对方那边显示「正在输入…」（ADR 0077，配置 typingStatus，默认关）；出错只记一次日志，不影响发送
             ...(config.selfRecall && transport.deleteMessage ? { recallOwn: (messageId: number) => transport.deleteMessage!(messageId) } : {}),
-            ...(config.typingStatus && transport.setInputStatus ? { typing: (userId: number) => { transport.setInputStatus!(userId).catch(error => { if (!typingFailed) { typingFailed = true; log(`[${userId}] 显示「正在输入」失败（之后不再记）：${error instanceof Error ? error.message : String(error)}`); } }); } } : {}),
+            ...(config.typingStatus && transport.setInputStatus ? { typing: (userId: number) => {
+                void sendOwnedNotice(() => transport.setInputStatus!(userId), () => {}, error => {
+                    if (!typingFailed) {
+                        typingFailed = true;
+                        log(`[${userId}] 显示「正在输入」失败（之后不再记）：${error instanceof Error ? error.message : String(error)}`);
+                    }
+                });
+            } } : {}),
             // 她在 QQ 上的样子（签名、最近发的说说）进时间块（ADR 0083）
             selfNote: (now: number) => presence?.selfNote(now),
             // 已读回执 / 表情回应（ADR 0083）：失败只记第一次，不影响回复
-            ...(config.readReceipts && transport.markRead ? { markRead: (userId: number) => { transport.markRead!(userId).catch(error => failOnce('已读回执', userId, error)); } } : {}),
-            ...(config.reactions && transport.reactMessage ? { react: (userId: number, messageId: number, text: string) => { transport.reactMessage!(messageId, reactionEmoji(text, messageId)).then(() => log(`[${userId}] 看到了没回，点了个表情回应`), error => failOnce('表情回应', userId, error)); } } : {}),
+            ...(config.readReceipts && transport.markRead ? { markRead: (userId: number) => {
+                void sendOwnedNotice(() => transport.markRead!(userId), () => {}, error => failOnce('已读回执', userId, error));
+            } } : {}),
+            ...(config.reactions && transport.reactMessage ? { react: (userId: number, messageId: number, text: string) => {
+                void sendOwnedNotice(() => transport.reactMessage!(messageId, reactionEmoji(text, messageId)),
+                    () => log(`[${userId}] 看到了没回，点了个表情回应`), error => failOnce('表情回应', userId, error));
+            } } : {}),
             send: async (userId, text, sendOptions) => {
                 const photo = contact.tier === 'boyfriend' ? photos?.resolve(text) : undefined;
                 // A cleaned photo can lose its cache before transmission; never send its control token as text.
