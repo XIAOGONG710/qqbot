@@ -5,8 +5,8 @@ import { isDeepStrictEqual } from 'node:util';
 import { CONTACT_TIERS, UNLISTED_TIER } from '../platform/config.ts';
 import { PHOTO_INDEX_LOCK_FILE, withPhotoIndexLock } from '../vision/photo-index-lock.ts';
 import { fileOps, writeJsonAtomic } from './json-file.ts';
-import { isFinalEvidence, isRepairCheckpointEvidence, isRepairJournal, isRepairLease, repairCompareTimestamps, repairHash, repairSourceManifestHash, REPAIR_PHASES,
-    type FinalEvidence, type RepairCheckpointEvidence, type RepairJournal, type RepairLease, type RepairOwner, type RepairPhase, type RepairReceipt, type RepairSourceDocument } from './derived-repair-protocol.ts';
+import { isFinalEvidence, isRefreshSettlementEvidence, isRepairCheckpointEvidence, isRepairJournal, isRepairLease, repairCompareTimestamps, repairHash, repairSourceManifestHash, REPAIR_PHASES,
+    type FinalEvidence, type RefreshSettlementEvidence, type RepairCheckpointEvidence, type RepairJournal, type RepairLease, type RepairOwner, type RepairPhase, type RepairReceipt, type RepairSourceDocument } from './derived-repair-protocol.ts';
 
 export interface DerivedOwner { qq: number; tier: string; allDocuments: boolean }
 export interface DerivedSnapshot {
@@ -34,7 +34,7 @@ const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(valu
 const active = (bank: Bank) => Object.entries(bank.events).filter(([, event]) => event.status === 'active').sort(([a], [b]) => a.localeCompare(b));
 const eventHash = (bank: Bank) => hash(active(bank).map(([id, event]) => [id, event.owner, event.documents]));
 const unresolvedRepairs = (bank: Bank): string[] => Object.entries(bank.journals ?? {}).filter(([, journal]) =>
-    ['pause-dispatched', 'clear-dispatched', 'refresh-dispatched', 'refresh-pending', 'restore-dispatched', 'blocked'].includes(journal.phase)).map(([id]) => id).sort();
+    !journal.settlement && ['pause-dispatched', 'clear-dispatched', 'refresh-dispatched', 'refresh-pending', 'restore-dispatched', 'blocked'].includes(journal.phase)).map(([id]) => id).sort();
 const put = <T>(target: Record<string, T>, key: string, value: T) => Object.defineProperty(target, key, { value, enumerable: true, configurable: true, writable: true });
 const validManifest = (value: unknown): value is RepairSourceDocument[] => Array.isArray(value) && new Set(value.map(doc => object(doc) ? doc.documentId : undefined)).size === value.length
     && value.every(doc => object(doc) && Object.keys(doc).every(key => ['documentId', 'episodeDigest', 'contentHash', 'count'].includes(key))
@@ -44,6 +44,11 @@ const validRepairBank = (bank: Record<string, unknown>, bankId: string): boolean
         && journal.lease.bankId === bankId && object(journal) && object(journal.owner) && owner({ ...journal.owner, allDocuments: false }) && validManifest(journal.sourceManifest)
         && repairSourceManifestHash(journal.sourceManifest) === journal.lease.sourceManifestHash))) return false;
     if (bank.currentRepair !== undefined && (typeof bank.currentRepair !== 'string' || !object(bank.journals) || !Object.hasOwn(bank.journals, bank.currentRepair))) return false;
+    const operationOwners = new Set<string>();
+    for (const journal of Object.values(bank.journals ?? {}) as Journal[]) {
+        const operationId = journal.evidence.refreshOperationId?.toLowerCase();
+        if (operationId) { if (operationOwners.has(operationId)) return false; operationOwners.add(operationId); }
+    }
     if (bank.receipts !== undefined && (!object(bank.receipts) || !Object.entries(bank.receipts).every(([id, receipt]) => object(receipt) && isRepairLease(receipt.lease)
         && receipt.lease.bankId === bankId && receipt.lease.repairId === id && isFinalEvidence(receipt.evidence) && uuid(receipt.generation)
         && object(bank.journals) && Object.hasOwn(bank.journals, id)))) return false;
@@ -111,6 +116,26 @@ export class DerivedState {
         return this.#access(bankId);
     }
 
+    /** Fresh metadata only, including obsolete settled leases needed to explain paused configuration. */
+    repairJournals(bankId: string): readonly RepairJournal[] {
+        if (!text(bankId)) throw new Error('派生记忆屏障输入无效');
+        return this.#access(bankId, state => Object.values(Object.hasOwn(state.banks, bankId) ? state.banks[bankId]?.journals ?? {} : {}).map(journal =>
+            structuredClone({ lease: journal.lease, phase: journal.phase, evidence: journal.evidence, ...(journal.settlement ? { settlement: journal.settlement } : {}) })));
+    }
+
+    settleRefresh(lease: RepairLease, evidence: RefreshSettlementEvidence): void {
+        if (!isRepairLease(lease) || !isRefreshSettlementEvidence(evidence)) throw new Error('派生旧任务收尾证据无效');
+        this.#access(lease.bankId, state => {
+            const bank = Object.hasOwn(state.banks, lease.bankId) ? state.banks[lease.bankId] : undefined;
+            const journal = bank?.journals?.[lease.repairId];
+            if (!bank || !journal || !isDeepStrictEqual(journal.lease, lease)) throw new Error('租约未知');
+            if (journal.settlement) { if (!isDeepStrictEqual(journal.settlement, evidence)) throw new Error('收尾证据不可改绑'); return; }
+            if (bank.generation !== evidence.observedGeneration || bank.generation === lease.generation
+                || !isRepairJournal({ ...journal, settlement: evidence })) throw new Error('旧任务或世代不匹配');
+            journal.settlement = structuredClone(evidence);
+        });
+    }
+
     beginRepair(bankId: string, input: BeginRepair): RepairLease {
         if (!text(bankId) || !object(input) || !uuid(input.expectedGeneration) || !repairHash(input.eventSetHash) || !repairHash(input.progressHash)
             || !owner({ ...input.owner, allDocuments: false }) || !validManifest(input.sourceManifest) || repairSourceManifestHash(input.sourceManifest) !== input.sourceManifestHash) throw new Error('派生修订证据无效');
@@ -134,9 +159,12 @@ export class DerivedState {
         this.#access(lease.bankId, state => {
             const journal = state.banks[lease.bankId]?.journals?.[lease.repairId];
             if (!journal || !isDeepStrictEqual(journal.lease, lease)) throw new Error('租约未知');
+            if (journal.settlement) throw new Error('旧任务已经收尾');
             const sequence: readonly RepairPhase[] = REPAIR_PHASES.filter(step => step !== 'blocked');
             if (journal.phase === 'blocked' && phase !== 'blocked' || phase !== 'blocked' && (sequence.indexOf(phase) < sequence.indexOf(journal.phase) || sequence.indexOf(phase) > sequence.indexOf(journal.phase) + 1)) throw new Error('检查点顺序无效');
             const provided = Object.fromEntries(Object.entries(evidence).filter(([, value]) => value !== undefined)) as RepairCheckpointEvidence;
+            if (provided.refreshOperationId && Object.entries(state.banks[lease.bankId]!.journals ?? {}).some(([id, other]) => id !== lease.repairId
+                && other.evidence.refreshOperationId?.toLowerCase() === provided.refreshOperationId!.toLowerCase())) throw new Error('任务身份已有其他派发归属');
             for (const [key, value] of Object.entries(provided)) if (Object.hasOwn(journal.evidence, key) && journal.evidence[key as keyof RepairCheckpointEvidence] !== value) throw new Error('证据不可改绑');
             const merged = { ...journal.evidence, ...structuredClone(provided) };
             const fields: (keyof RepairCheckpointEvidence)[] = ['initialWatermark', 'inventoryHash', 'modelIdentityHash', 'originalAutomatic', 'originalCadence'];
@@ -246,7 +274,7 @@ export class DerivedState {
                 return { value: structuredClone({ generation: bank.generation, dirty: events.length > 0, documents: bank.documents.filter(document => documents.has(document)), owners,
                     allOwners: bank.owners.map(({ qq, tier, allDocuments }) => ({ qq, tier, allDocuments })), activeEventIds: events.map(([id]) => id), eventSetHash: eventHash(bank),
                     unresolvedRepairIds: unresolvedRepairs(bank),
-                    ...(repair ? { repair: { lease: repair.lease, phase: repair.phase, evidence: repair.evidence } } : {}) }) as T };
+                    ...(repair ? { repair: { lease: repair.lease, phase: repair.phase, evidence: repair.evidence, ...(repair.settlement ? { settlement: repair.settlement } : {}) } } : {}) }) as T };
             });
             return access.value;
         } catch { throw new Error('派生记忆屏障不可用；拒绝使用未确认的派生内容'); }

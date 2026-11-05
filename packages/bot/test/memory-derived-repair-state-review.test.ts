@@ -3,10 +3,10 @@ import { test } from 'node:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { DerivedState } from '../src/memory/derived-state.ts';
+import { DerivedState, isDerivedState } from '../src/memory/derived-state.ts';
 import { createHash } from 'node:crypto';
 import { fileOps } from '../src/memory/json-file.ts';
-import { repairSourceManifestHash, type FinalEvidence, type RepairCheckpointEvidence, type RepairLease, type RepairPhase } from '../src/memory/derived-repair-protocol.ts';
+import { repairSourceManifestHash, type FinalEvidence, type RefreshSettlementEvidence, type RepairCheckpointEvidence, type RepairLease, type RepairPhase } from '../src/memory/derived-repair-protocol.ts';
 const owner = { qq: 10001, tier: 'boyfriend' };
 function fixture() { const dir = mkdtempSync(join(tmpdir(), 'qqbot-derived-repair-state-')); return { dir, path: join(dir, 'derived.json'), store: new DerivedState(dir) }; }
 function cleanup(dir: string) { assert.equal(dirname(resolve(dir)), resolve(tmpdir())); assert.ok(basename(dir).startsWith('qqbot-derived-repair-state-')); rmSync(dir, { recursive: true, force: true }); }
@@ -27,6 +27,16 @@ function begin(store: DerivedState) { const state = store.snapshot(bank); return
 function finish(store: DerivedState, lease: RepairLease, after: RepairPhase = 'baseline'): FinalEvidence {
  for (const [phase, proof] of steps.slice(after === 'baseline' ? 0 : steps.findIndex(([phase]) => phase === after) + 1)) store.checkpoint(lease, phase, proof);
  return { ...evidence, sourceManifestHash: lease.sourceManifestHash, progressHash: lease.progressHash, eventSetHash: lease.eventSetHash } as FinalEvidence;
+}
+function pendingSettlement() {
+ const f = fixture(); f.store.mark(bank, { ...owner, documents: ['ep-1'], eventKey: 'first' }); const lease = begin(f.store);
+ for (const [phase, proof] of steps) { f.store.checkpoint(lease, phase, proof); if (phase === 'refresh-pending') break; }
+ f.store.mark(bank, { ...owner, documents: ['ep-1'], eventKey: 'second' });
+ const proof: RefreshSettlementEvidence = { observedGeneration: f.store.snapshot(bank).generation, operationId: evidence.refreshOperationId!, operationType: 'refresh_mental_model',
+  modelId: 'relationship', status: 'completed', outcome: 'content_written', quiescentWatermark: evidence.initialWatermark!,
+  operations: { pending: 0, processing: 0, failed: 0, cancelled: 0 }, pendingConsolidation: 0, failedConsolidation: 0,
+  modelIdentityHash: evidence.modelIdentityHash!, configurationHash: evidence.safeConfigHash! };
+ return { ...f, lease, proof };
 }
 
 test('相同稳定event重放不推进generation，新事件即使同doc仍推进', () => {
@@ -165,5 +175,88 @@ test('公共scope不能以私人candidate修复；篡改已修事件收据不能
   const data = JSON.parse(readFileSync(f.path, 'utf8')); data.banks[bank].events.stable.documents = ['ep-2'];
   const corrupt = JSON.stringify(data); writeFileSync(f.path, corrupt);
   assert.throws(() => new DerivedState(f.dir).snapshot(bank)); assert.equal(readFileSync(f.path, 'utf8'), corrupt);
+ } finally { cleanup(f.dir); }
+});
+
+test('旧known UUID只凭绑定的completed与fresh静止证据收尾，保留新污染和原派发事实', () => {
+ const f = fixture();
+ try { f.store.mark(bank, { ...owner, documents: ['ep-1'], eventKey: 'first' }); const old = begin(f.store);
+  for (const [phase, proof] of steps) { f.store.checkpoint(old, phase, proof); if (phase === 'refresh-pending') break; }
+  f.store.mark(bank, { ...owner, documents: ['ep-1'], eventKey: 'second' }); const before = f.store.snapshot(bank);
+  const settlement = { observedGeneration: before.generation, operationId: evidence.refreshOperationId!, operationType: 'refresh_mental_model' as const,
+   modelId: 'relationship' as const, status: 'completed' as const, outcome: 'content_written' as const,
+   quiescentWatermark: evidence.initialWatermark!, operations: { pending: 0 as const, processing: 0 as const, failed: 0 as const, cancelled: 0 as const },
+   pendingConsolidation: 0 as const, failedConsolidation: 0 as const, modelIdentityHash: evidence.modelIdentityHash!, configurationHash: evidence.safeConfigHash! };
+  const journal = f.store.repairJournals(bank)[0]!;
+  assert.throws(() => f.store.settleRefresh(old, { ...settlement, operationId: '22345678-1234-4123-8123-123456789012' }));
+  assert.throws(() => f.store.settleRefresh(old, { ...settlement, observedGeneration: old.generation }));
+  assert.throws(() => f.store.settleRefresh(old, { ...settlement, operations: { ...settlement.operations, pending: 1 } } as never));
+  f.store.settleRefresh(old, settlement); const settled = new DerivedState(f.dir);
+  assert.equal(settled.snapshot(bank).generation, before.generation); assert.equal(settled.snapshot(bank).dirty, true);
+  assert.deepEqual(settled.snapshot(bank).activeEventIds, before.activeEventIds); assert.deepEqual(settled.snapshot(bank).unresolvedRepairIds, []);
+  const after = settled.repairJournals(bank)[0]!; assert.equal(after.phase, journal.phase); assert.deepEqual(after.evidence, journal.evidence); assert.deepEqual(after.settlement, settlement);
+  const bytes = readFileSync(f.path, 'utf8'); settled.settleRefresh(old, settlement); assert.equal(readFileSync(f.path, 'utf8'), bytes);
+  assert.throws(() => settled.settleRefresh(old, { ...settlement, quiescentWatermark: '2026-11-05T12:00:01Z' }));
+  after.evidence.refreshOperationId = 'mutated'; assert.equal(settled.repairJournals(bank)[0]!.evidence.refreshOperationId, evidence.refreshOperationId);
+  const next = begin(settled); assert.notEqual(next.repairId, old.repairId); assert.throws(() => settled.commitVerifiedRepair(old, finish(settled, old, 'refresh-pending')));
+ } finally { cleanup(f.dir); }
+});
+
+test('非完成/不成功outcome、错误模型类型/配置、坏水位或不静止不能收尾且不改原件', () => {
+ const f = pendingSettlement();
+ try { const before = readFileSync(f.path, 'utf8');
+  const bad = [{ status: 'failed' }, { status: 'cancelled' }, { status: 'not_found' }, { outcome: 'content_preserved_no_new_facts' },
+   { operationType: 'retain' }, { modelId: 'person:other' }, { configurationHash: h('different') }, { modelIdentityHash: h('other') },
+   { quiescentWatermark: '2026-02-30T00:00:00Z' }, { pendingConsolidation: 1 }, { failedConsolidation: 1 }, { operations: { pending: 0, processing: 0, failed: 0 } },
+   { operations: { pending: 0, processing: 0, failed: 0, cancelled: 0, hidden: 0 } }];
+  for (const delta of bad) { assert.throws(() => f.store.settleRefresh(f.lease, { ...f.proof, ...delta } as unknown as RefreshSettlementEvidence)); assert.equal(readFileSync(f.path, 'utf8'), before); }
+  assert.throws(() => f.store.settleRefresh(f.lease, true as unknown as RefreshSettlementEvidence));
+  assert.throws(() => f.store.settleRefresh({ ...f.lease, bankId: 'other' }, f.proof));
+ } finally { cleanup(f.dir); }
+});
+
+test('收尾与新撤回CAS竞态失败关闭，未知UUID不能借补造证据解除，已收尾journal不能再派发', () => {
+ const f = pendingSettlement();
+ try { f.store.mark(bank, { ...owner, documents: ['ep-1'], eventKey: 'third' });
+  assert.throws(() => f.store.settleRefresh(f.lease, f.proof)); assert.throws(() => begin(f.store));
+  f.store.settleRefresh(f.lease, { ...f.proof, observedGeneration: f.store.snapshot(bank).generation });
+  assert.throws(() => f.store.checkpoint(f.lease, 'restore-dispatched', steps.find(([phase]) => phase === 'restore-dispatched')![1]));
+  assert.equal(f.store.snapshot(bank).dirty, true);
+ } finally { cleanup(f.dir); }
+ const unknown = fixture();
+ try { unknown.store.mark(bank, { ...owner, documents: ['ep-1'] }); const lease = begin(unknown.store);
+  for (const [phase, proof] of steps) { unknown.store.checkpoint(lease, phase, proof); if (phase === 'refresh-dispatched') break; }
+  unknown.store.mark(bank, { ...owner, documents: ['ep-1'] });
+  assert.throws(() => unknown.store.settleRefresh(lease, { ...f.proof, observedGeneration: unknown.store.snapshot(bank).generation }));
+  assert.throws(() => begin(unknown.store));
+ } finally { cleanup(unknown.dir); }
+});
+
+test('收尾发布前IO失败保屏障，rename后错误精确读回幂等，坏持久settlement拒读不覆盖', () => {
+ const f = pendingSettlement(), rename = fileOps.renameSync, delays = fileOps.writeDelaysMs;
+ try { const before = readFileSync(f.path, 'utf8'); fileOps.writeDelaysMs = [0]; fileOps.renameSync = () => { throw new Error('before publish'); };
+  assert.throws(() => f.store.settleRefresh(f.lease, f.proof)); assert.equal(readFileSync(f.path, 'utf8'), before);
+  fileOps.renameSync = (from, to) => { rename(from, to); throw new Error('after publish'); };
+  f.store.settleRefresh(f.lease, f.proof); fileOps.renameSync = rename;
+  const restarted = new DerivedState(f.dir); assert.deepEqual(restarted.snapshot(bank).unresolvedRepairIds, []); restarted.settleRefresh(f.lease, f.proof);
+  const data = JSON.parse(readFileSync(f.path, 'utf8')); data.banks[bank].journals[f.lease.repairId].settlement.operationId = '22345678-1234-4123-8123-123456789012';
+  const broken = JSON.stringify(data); writeFileSync(f.path, broken); assert.throws(() => restarted.snapshot(bank)); assert.equal(readFileSync(f.path, 'utf8'), broken);
+ } finally { fileOps.renameSync = rename; fileOps.writeDelaysMs = delays; cleanup(f.dir); }
+});
+
+test('同bank任务UUID只能归属一个lease，同lease重投ACK幂等，复用旧UUID保新unknown派发', () => {
+ const f = pendingSettlement();
+ try { f.store.checkpoint(f.lease, 'refresh-pending', { refreshOperationId: f.proof.operationId });
+  f.store.settleRefresh(f.lease, f.proof); const next = begin(f.store);
+  for (const [phase, proof] of steps) { f.store.checkpoint(next, phase, proof); if (phase === 'refresh-dispatched') break; }
+  const before = readFileSync(f.path, 'utf8');
+  assert.throws(() => f.store.checkpoint(next, 'refresh-pending', { refreshOperationId: f.proof.operationId }));
+  assert.equal(readFileSync(f.path, 'utf8'), before); assert.equal(f.store.snapshot(bank).repair!.phase, 'refresh-dispatched');
+  assert.equal(f.store.snapshot(bank).dirty, true);
+  const tampered = JSON.parse(before), journal = tampered.banks[bank].journals[next.repairId];
+  journal.phase = 'refresh-pending'; journal.evidence.refreshOperationId = f.proof.operationId;
+  assert.equal(isDerivedState(tampered), false, '落盘重复任务owner必须拒绝，不能按对象顺序挑旧完成证据');
+  const raw = JSON.stringify(tampered); writeFileSync(f.path, raw);
+  assert.throws(() => new DerivedState(f.dir).snapshot(bank)); assert.equal(readFileSync(f.path, 'utf8'), raw);
  } finally { cleanup(f.dir); }
 });

@@ -28,7 +28,7 @@ function fixture() {
     const initial = store.snapshot(bank);
     const candidate: RepairCandidate = { bankId: bank, owner, generation: initial.generation, eventSetHash: initial.eventSetHash, sourceManifest, sourceManifestHash: repairSourceManifestHash(sourceManifest),
         progressHash: hash('synthetic confirmed retain progress'), modelIdentityHash: repairModelIdentityHash(model), expectedAutomatic: true, expectedCadence: 1800 };
-    const calls: string[] = []; let status: 'pending' | 'completed' = 'pending', outcome: RepairRefreshOutcome = 'content_written'; const operation = randomUUID();
+    const calls: string[] = []; let status: 'pending' | 'completed' = 'pending', outcome: RepairRefreshOutcome = 'content_written', operation = randomUUID();
     const documents = [{ id: 'ep-1', bank_id: bank, content_hash: sourceManifest[0]!.contentHash, tags: ['qq-private'] }];
     let unsafeJobs = false;
     function configured(automatic: boolean, cadence = 1800) {
@@ -46,15 +46,22 @@ function fixture() {
         repairModel: async () => { calls.push('model'); return structuredClone(model); },
         repairConfigureModel: async () => { calls.push('configure'); return configured(false); },
         repairClearModel: async () => { calls.push('clear'); model.content = ''; return structuredClone(model); },
-        repairRefreshModel: async () => { calls.push('refresh'); return operation; },
+        repairRefreshModel: async () => { if (calls.includes('refresh')) operation = randomUUID(); calls.push('refresh'); return operation; },
         repairRefreshOperation: async () => { calls.push('operation'); if (status === 'completed') { model.content = '合成已重建关系'; model.last_refreshed_at = REFRESHED; } return { operation_id: operation, operation_type: 'refresh_mental_model', mental_model_id: 'relationship', status, outcome: status === 'completed' ? outcome : null }; },
         repairRestoreAutomatic: async (_bank, _id, cadence, automatic = true) => { calls.push('restore'); return configured(automatic, cadence); },
     };
     const current = () => { const live = store.snapshot(bank); return live.generation === candidate.generation && live.eventSetHash === candidate.eventSetHash; };
     const worker = () => new DerivedRepair({ api, store });
-    return { dir, bank, owner, store, candidate, api, calls, documents, current, worker, configured, operation,
+    return { dir, bank, owner, store, candidate, api, calls, documents, current, worker, configured, get operation() { return operation; },
         completed: (value: RepairRefreshOutcome = 'content_written') => { status = 'completed'; outcome = value; },
         unsafeJobs: () => { unsafeJobs = true; }, model: () => model };
+}
+async function superseded(f: ReturnType<typeof fixture>) {
+    await f.worker().step(f.candidate, f.current);
+    const lease = f.store.snapshot(f.bank).repair!.lease;
+    f.store.mark(f.bank, { ...f.owner, documents: ['ep-1'], eventKey: `superseded:${randomUUID()}` });
+    const live = f.store.snapshot(f.bank); f.candidate.generation = live.generation; f.candidate.eventSetHash = live.eventSetHash;
+    return lease;
 }
 
 test('真实store持久分步：pending不解封，重启核对完成并恢复原auto，收据不含原始模型', async () => {
@@ -164,12 +171,117 @@ test('新generation不能绕过旧refresh无UUID的不确定派发证据', async
     assert.equal(f.store.snapshot(f.bank).dirty, true);
 });
 
-test('边界：旧generation已知UUID仍pending时不靠新lease绕过，即使后来服务端完成仍待人工核实', async () => {
+test('旧generation已知UUID完成后只结旧事实，新lease独立重新清空刷新并恢复原自动设置', async () => {
     const f = fixture(); await f.worker().step(f.candidate, f.current); assert.equal(f.store.snapshot(f.bank).repair?.phase, 'refresh-pending');
+    const oldRepair = f.store.snapshot(f.bank).repair!, oldOperation = f.operation;
     f.store.mark(f.bank, { ...f.owner, documents: ['ep-1'], eventKey: 'new-generation-after-known-operation' });
     const live = f.store.snapshot(f.bank); f.candidate.generation = live.generation; f.candidate.eventSetHash = live.eventSetHash;
-    f.completed(); const queries = f.calls.filter(call => call === 'operation').length;
-    assert.equal(await f.worker().step(f.candidate, f.current), 'blocked');
-    assert.equal(f.calls.filter(call => call === 'operation').length, queries, '本轮尚无旧generation operation仲裁器，不伪称自动恢复');
-    assert.equal(f.store.snapshot(f.bank).dirty, true); assert.equal(f.calls.filter(call => call === 'refresh').length, 1);
+    f.completed();
+    assert.equal(await f.worker().step(f.candidate, f.current), 'repaired');
+    assert.equal(f.store.snapshot(f.bank).dirty, false);
+    assert.equal(f.calls.filter(call => call === 'clear').length, 2);
+    assert.equal(f.calls.filter(call => call === 'refresh').length, 2);
+    assert.equal(f.calls.filter(call => call === 'restore').length, 1, '不能先执行旧lease的restore');
+    assert.equal(f.model().trigger.refresh_after_consolidation, true);
+    const old = JSON.parse(readFileSync(join(f.dir, 'derived.json'), 'utf8')).banks[f.bank].journals[oldRepair.lease.repairId];
+    assert.equal(old.phase, 'refresh-pending'); assert.equal(old.settlement.operationId, oldOperation); assert.notEqual(f.operation, oldOperation);
+});
+
+test('settlement仅结旧任务：新污染和generation保留，开始新配置时stop仍只确认新ACK', async () => {
+    const f = fixture(), old = await superseded(f); f.completed();
+    const held = gate<RepairModelEvidence>(); f.api.repairConfigureModel = async () => { f.calls.push('new-configure'); return held.promise; };
+    const worker = f.worker(), job = worker.step(f.candidate, f.current); await until(() => f.calls.includes('new-configure'));
+    const live = f.store.snapshot(f.bank), previous = f.store.repairJournals(f.bank).find(journal => journal.lease.repairId === old.repairId)!;
+    assert.equal(live.generation, f.candidate.generation); assert.equal(live.dirty, true); assert.ok(previous.settlement); assert.equal(previous.phase, 'refresh-pending');
+    assert.equal(f.calls.filter(call => call === 'clear').length, 1); assert.ok(!f.calls.includes('restore'));
+    const drain = worker.stop(); assert.ok(drain instanceof Promise); held.release(f.configured(false)); await drain; await job;
+    assert.equal(f.store.snapshot(f.bank).dirty, true); assert.equal(f.store.snapshot(f.bank).repair?.phase, 'paused'); assert.ok(!f.calls.includes('restore'));
+});
+
+test('旧UUID仅pending/processing/failed/cancelled/notfound/preserved或绑定不符都不settle', async () => {
+    const cases: Awaited<ReturnType<RepairApi['repairRefreshOperation']>>[] = [
+        ...(['pending', 'processing', 'failed', 'cancelled', 'not_found'] as const).map(status => ({ operation_id: '', operation_type: 'refresh_mental_model' as const, mental_model_id: 'relationship', status, outcome: null })),
+        { operation_id: '', operation_type: 'refresh_mental_model', mental_model_id: 'relationship', status: 'completed', outcome: 'content_preserved_no_new_facts' },
+        { operation_id: '', operation_type: null, mental_model_id: 'relationship', status: 'completed', outcome: 'content_written' },
+        { operation_id: '', operation_type: 'refresh_mental_model', mental_model_id: 'foreign-model', status: 'completed', outcome: 'content_written' },
+    ];
+    for (const response of cases) {
+        const f = fixture(); await superseded(f);
+        f.api.repairRefreshOperation = async () => ({ ...response, operation_id: f.operation });
+        assert.notEqual(await f.worker().step(f.candidate, f.current), 'repaired');
+        assert.equal(f.store.snapshot(f.bank).dirty, true); assert.equal(f.store.repairJournals(f.bank).filter(journal => journal.settlement).length, 0);
+        assert.equal(f.calls.filter(call => call === 'refresh').length, 1); assert.ok(!f.calls.includes('restore'));
+    }
+});
+
+test('旧job completed仍需fresh consolidation/四态任务静止和原safe paused配置证据', async () => {
+    for (const reason of ['pending-consolidation', 'failed-consolidation', 'cancelled-job', 'changed-config'] as const) {
+        const f = fixture(); await superseded(f); f.completed();
+        if (reason === 'cancelled-job') f.unsafeJobs();
+        else if (reason === 'changed-config') f.configured(false, 3600);
+        else f.api.repairStats = async () => ({ pending_consolidation: reason === 'pending-consolidation' ? 1 : 0, failed_consolidation: reason === 'failed-consolidation' ? 1 : 0, last_memory_write_at: WATERMARK });
+        assert.notEqual(await f.worker().step(f.candidate, f.current), 'repaired');
+        assert.equal(f.store.repairJournals(f.bank).filter(journal => journal.settlement).length, 0); assert.equal(f.calls.filter(call => call === 'refresh').length, 1);
+    }
+});
+
+test('仲裁纯GET期间stop立即收束，晚completed不能写settlement或派发新配置', async () => {
+    const f = fixture(), old = await superseded(f), held = gate<Awaited<ReturnType<RepairApi['repairRefreshOperation']>>>();
+    f.api.repairRefreshOperation = async () => { f.calls.push('held-settlement'); return held.promise; };
+    const worker = f.worker(), job = worker.step(f.candidate, f.current); await until(() => f.calls.includes('held-settlement'));
+    assert.equal(worker.stop(), undefined); assert.equal(await job, 'stopped');
+    held.release({ operation_id: f.operation, operation_type: 'refresh_mental_model', mental_model_id: 'relationship', status: 'completed', outcome: 'content_written' });
+    await new Promise(done => setImmediate(done));
+    assert.equal(f.store.repairJournals(f.bank).find(journal => journal.lease.repairId === old.repairId)!.settlement, undefined);
+    assert.equal(f.calls.filter(call => call === 'configure').length, 1);
+});
+
+test('仲裁GET held时再次新dirty令旧观察失效，新generation不被晚证据结算', async () => {
+    const f = fixture(), old = await superseded(f), held = gate<Awaited<ReturnType<RepairApi['repairRefreshOperation']>>>();
+    f.api.repairRefreshOperation = async () => { f.calls.push('held-settlement'); return held.promise; };
+    const job = f.worker().step(f.candidate, f.current); await until(() => f.calls.includes('held-settlement'));
+    f.store.mark(f.bank, { ...f.owner, documents: ['ep-1'], eventKey: 'third-dirty-during-settlement' });
+    const generation = f.store.snapshot(f.bank).generation;
+    held.release({ operation_id: f.operation, operation_type: 'refresh_mental_model', mental_model_id: 'relationship', status: 'completed', outcome: 'content_written' });
+    assert.equal(await job, 'stale'); assert.equal(f.store.snapshot(f.bank).generation, generation);
+    assert.equal(f.store.repairJournals(f.bank).find(journal => journal.lease.repairId === old.repairId)!.settlement, undefined);
+    assert.equal(f.calls.filter(call => call === 'configure').length, 1);
+});
+
+test('settlement发布前/发布后EIO都不重派旧刷新，重启依据完整JSON继续新repair', async () => {
+    for (const published of [false, true]) {
+        const f = fixture(), old = await superseded(f); f.completed();
+        const rename = fileOps.renameSync, delays = fileOps.writeDelaysMs;
+        let first = true;
+        try {
+            fileOps.writeDelaysMs = [0]; fileOps.renameSync = (from, to) => {
+                if (first && String(to) === join(f.dir, 'derived.json')) {
+                    first = false; if (published) rename(from, to); throw Object.assign(new Error('SYNTHETIC_SECRET_EIO'), { code: 'EIO' });
+                }
+                return rename(from, to);
+            };
+            const result = await f.worker().step(f.candidate, f.current);
+            assert.equal(result, published ? 'repaired' : 'unavailable');
+        } finally { fileOps.renameSync = rename; fileOps.writeDelaysMs = delays; }
+        const restarted = new DerivedRepair({ api: f.api, store: new DerivedState(f.dir) });
+        const result = await restarted.step(f.candidate, f.current); assert.ok(result === 'repaired' || result === 'clean');
+        assert.equal(f.calls.filter(call => call === 'refresh').length, 2);
+        const previous = f.store.repairJournals(f.bank).find(journal => journal.lease.repairId === old.repairId)!;
+        assert.ok(previous.settlement); assert.equal(previous.phase, 'refresh-pending');
+    }
+});
+
+test('新refresh复用旧UUID不能拿旧completed证据解封，保未知意图且不重POST', async () => {
+    const f = fixture(); await superseded(f); const oldOperation = f.operation; f.completed();
+    const original = f.api.repairRefreshOperation; let reads = 0;
+    f.api.repairRefreshOperation = async (bank, id) => {
+        if (++reads === 1) return original(bank, id); // Only the old completed job actually wrote content.
+        return { operation_id: oldOperation, operation_type: 'refresh_mental_model', mental_model_id: 'relationship', status: 'completed', outcome: 'content_written' };
+    };
+    f.api.repairRefreshModel = async () => { f.calls.push('refresh'); return oldOperation; };
+    assert.notEqual(await f.worker().step(f.candidate, f.current), 'repaired');
+    assert.equal(f.store.snapshot(f.bank).dirty, true); assert.equal(f.store.snapshot(f.bank).repair?.phase, 'refresh-dispatched');
+    assert.notEqual(await f.worker().step(f.candidate, f.current), 'repaired');
+    assert.equal(f.calls.filter(call => call === 'refresh').length, 2, '第二次POST已派发结果未知，不能补发第三次');
+    assert.equal(f.calls.filter(call => call === 'restore').length, 0);
 });
