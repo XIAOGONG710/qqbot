@@ -4,13 +4,16 @@
 // Hindsight 的删除目标是这个联系人自己的 bank、公共库里以他的哈希开头的文档和他的印象模型，删完要让人复查。
 
 import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isProcessAlive } from '../platform/lock.ts';
+import { acquireLock, isProcessAlive } from '../platform/lock.ts';
 import { HindsightClient } from '.././memory/hindsight.ts';
 import { memoryLedger, recordForget } from './memory-audit.ts';
 import { auditContactPrivacy, type PrivacyAudit } from './privacy-audit.ts';
 import { describeError } from './transient-io.ts';
+import { writeJsonAtomic } from './json-file.ts';
+import { assertForgetPath, createForgetJob, forgetFilePath, loadForgetJob, sameForgetFile, saveForgetJob, unfinishedForgetJobs, type ForgetJob } from './forget-job.ts';
 
 /** Hindsight 里要删的东西的最小接口（测试给假的） */
 export interface ForgetApi {
@@ -59,6 +62,7 @@ function batchDir(root: string, name: string): string {
 /** 导出：把这个联系人的本地专属文件原样复制一份，另附清单；不改任何东西 */
 export function exportContact(dataDir: string, qq: number, outDir: string, now = new Date()): { dir: string; files: string[]; audit: PrivacyAudit } {
     const root = resolve(dataDir);
+    unfinishedForgetJobs(root);
     const audit = auditContactPrivacy(root, qq);
     const dir = batchDir(outDir, `${qq}-${stamp(now)}`);
     const files = audit.artifacts.filter(item => item.kind === 'direct').map(item => item.path);
@@ -71,7 +75,7 @@ export function exportContact(dataDir: string, qq: number, outDir: string, now =
     return { dir, files, audit };
 }
 
-export interface ForgetResult { plan: ForgetPlan; applied: boolean; trash?: string; moved: string[]; deleted: { banks: string[]; documents: string[]; mentalModels: string[] }; failures: string[] }
+export interface ForgetResult { plan: ForgetPlan; applied: boolean; trash?: string; jobId?: string; complete?: boolean; moved: string[]; deleted: { banks: string[]; documents: string[]; mentalModels: string[] }; failures: string[] }
 
 /** 被活着的 bot 持有的锁：有就不执行（数据目录里的 bot.lock） */
 export function botRunning(dataDir: string, isAlive = isProcessAlive): number | undefined {
@@ -84,57 +88,102 @@ export function botRunning(dataDir: string, isAlive = isProcessAlive): number | 
 export async function forgetContact(
     dataDir: string,
     qq: number,
-    options: { apply: boolean; trashDir: string; commonBank: string; api?: ForgetApi; now?: Date; isAlive?: (pid: number) => boolean },
+    options: { apply: boolean; trashDir: string; commonBank: string; api?: ForgetApi; now?: Date; isAlive?: (pid: number) => boolean;
+        /** Resume exactly this durable plan, without discovering new targets. */
+        resume?: string;
+        /** CLI endpoint binding. Hash only; no URL/key is stored in the job. */
+        remoteScope?: string;
+        /** CLI audit must finish while the maintenance lock is still held. */
+        recordAudit?: boolean },
 ): Promise<ForgetResult> {
     const root = resolve(dataDir);
-    const plan = planForget(auditContactPrivacy(root, qq), options.commonBank);
-    const result: ForgetResult = { plan, applied: false, moved: [], deleted: { banks: [], documents: [], mentalModels: [] }, failures: [] };
-    if (!options.apply) return result;
+    const empty = (plan: ForgetPlan): ForgetResult => ({ plan, applied: false, moved: [], deleted: { banks: [], documents: [], mentalModels: [] }, failures: [] });
+    if (!Number.isSafeInteger(qq) || qq <= 0) throw new Error('qq 应为正整数');
+    if (!options.apply) {
+        // Read-only does not need a lease, but must not silently ignore corrupt jobs.
+        unfinishedForgetJobs(root);
+        if (options.resume) {
+            const job = loadForgetJob(root, options.resume);
+            if (job.plan.qq !== qq) throw new Error('遗忘任务联系人不匹配，未执行');
+            return { ...empty(job.plan), jobId: job.id, trash: job.trash, complete: job.complete };
+        }
+        return empty(planForget(auditContactPrivacy(root, qq), options.commonBank));
+    }
+    assertForgetPath(root); mkdirSync(root, { recursive: true });
     const running = botRunning(root, options.isAlive);
     if (running !== undefined) throw new Error(`bot 还在运行（PID ${running}）：先停掉再清理，否则它会把数据重新写回去`);
-
-    result.applied = true;
-    const trash = batchDir(options.trashDir, `${qq}-${stamp(options.now ?? new Date())}`);
-    result.trash = trash;
-    for (const file of plan.move) {
-        try {
-            const target = join(trash, file);
-            mkdirSync(dirname(target), { recursive: true });
-            renameSync(join(root, file), target);
-            result.moved.push(file);
-        } catch (error) {
-            result.failures.push(`移动 ${file} 失败：${describeError(error)}`);
+    // Atomic lease is the authority. The preceding check only preserves the old
+    // friendly diagnostic; audit and every mutation happen after acquiring it.
+    const release = acquireLock(join(root, 'bot.lock'), process.pid, options.isAlive);
+    try {
+        const pending = unfinishedForgetJobs(root);
+        let job: ForgetJob;
+        if (options.resume) {
+            job = loadForgetJob(root, options.resume);
+            if (job.plan.qq !== qq || job.remoteScope !== options.remoteScope) throw new Error('遗忘任务联系人或远端绑定不匹配，未执行');
+            if (pending.some(id => id !== job.id)) throw new Error('存在其他未完成遗忘任务；请先按原任务恢复');
+            if (job.remoteEnabled && !options.api) throw new Error('此遗忘任务需要原远端接口，未执行');
+        } else {
+            if (pending.length) throw new Error(`存在未完成遗忘任务（${pending.join(',')}）；请使用 --resume 原任务UUID，不重新生成目标`);
+            const plan = planForget(auditContactPrivacy(root, qq), options.commonBank);
+            const trash = batchDir(options.trashDir, `${qq}-${stamp(options.now ?? new Date())}`);
+            job = createForgetJob(root, plan, trash, options.api !== undefined, options.remoteScope);
         }
-    }
-    mkdirSync(trash, { recursive: true });
-    if (options.api) {
-        const attempt = async (what: string, list: string[], sink: string[], run: (item: string) => Promise<void>) => {
-            for (const item of list) {
-                try {
-                    await run(item);
-                    sink.push(item);
-                } catch (error) {
-                    const status = error instanceof Error && 'status' in error && Number.isSafeInteger(error.status) ? `HTTP ${error.status}` : describeError(error);
-                    result.failures.push(`删除${what} ${item} 失败：${status}`);
-                }
+        const result: ForgetResult = { ...empty(job.plan), applied: true, trash: job.trash, jobId: job.id, complete: job.complete };
+        const refreshResult = () => {
+            result.moved = [...job.moved]; result.complete = job.complete;
+            result.deleted = { banks: [], documents: [], mentalModels: [] };
+            for (const item of job.remote.filter(r => r.state === 'done')) {
+                (item.kind === 'bank' ? result.deleted.banks : item.kind === 'document' ? result.deleted.documents : result.deleted.mentalModels).push(item.id ?? item.bank);
             }
         };
-        // 当前库兼容旧审计报告；可证明的历史库额外逐库清理，同一个库内去重。
-        const targets = new Map<string, { documents: Set<string>; mentalModels: Set<string> }>();
-        for (const target of [{ bankId: plan.hindsight.commonBank, documents: plan.hindsight.documents, mentalModels: plan.hindsight.mentalModels }, ...(plan.hindsight.commonTargets ?? [])]) {
-            const found = targets.get(target.bankId) ?? { documents: new Set<string>(), mentalModels: new Set<string>() };
-            for (const id of target.documents) found.documents.add(id);
-            for (const id of target.mentalModels) found.mentalModels.add(id);
-            targets.set(target.bankId, found);
+        if (job.complete) { refreshResult(); return result; }
+        for (const file of job.files) {
+            try {
+                const source = forgetFilePath(root, file.path), target = forgetFilePath(job.trash, file.path);
+                if (existsSync(source)) {
+                    if (job.moved.includes(file.path) || existsSync(target) || !sameForgetFile(source, file)) throw new Error('原件已变化或恢复目标冲突');
+                    mkdirSync(dirname(target), { recursive: true }); renameSync(source, target);
+                }
+                // Confirms a rename that completed before crash/checkpoint failure.
+                if (!existsSync(target) || !sameForgetFile(target, file)) throw new Error('恢复资料缺失或已变化');
+                if (!job.moved.includes(file.path)) { job.moved.push(file.path); saveForgetJob(root, job); }
+            } catch (error) { result.failures.push(`移动 ${file.path} 失败：${describeError(error)}`); }
         }
-        for (const [bank, target] of targets) {
-            await attempt('文档', [...target.documents], result.deleted.documents, id => options.api!.deleteDocument(bank, id));
-            await attempt('印象模型', [...target.mentalModels], result.deleted.mentalModels, id => options.api!.deleteMentalModel(bank, id));
+        // A failed move must not turn a fresh source into an orphaned remote delete.
+        if (result.failures.length === 0) for (const item of job.remote) {
+            if (item.state === 'done') continue;
+            const what = item.kind === 'bank' ? '私人记忆库' : item.kind === 'document' ? '文档' : '印象模型';
+            if (item.state !== 'pending') {
+                result.failures.push(`删除${what} ${item.id ?? item.bank} 结果未确认；原任务保留，不能安全自动重试`); continue;
+            }
+            item.state = 'dispatching'; saveForgetJob(root, job);
+            let failure: unknown; let failed = false;
+            try {
+                if (item.kind === 'bank') await options.api!.deleteBank(item.bank);
+                else if (item.kind === 'document') await options.api!.deleteDocument(item.bank, item.id!);
+                else await options.api!.deleteMentalModel(item.bank, item.id!);
+            } catch (error) { failed = true; failure = error; }
+            const status = failure instanceof Error && 'status' in failure && Number.isSafeInteger(failure.status) ? failure.status as number : undefined;
+            if (!failed || status === 404) item.state = 'done';
+            else {
+                // 5xx may originate in a proxy while upstream still executes.
+                // Neither timeout nor a status alone proves that DELETE stopped.
+                item.state = 'uncertain';
+                result.failures.push(`删除${what} ${item.id ?? item.bank} 失败：${status === undefined ? describeError(failure) : `HTTP ${status}`}；结果未确认，原任务保留`);
+            }
+            saveForgetJob(root, job);
         }
-        await attempt('私人记忆库', plan.hindsight.banks, result.deleted.banks, id => options.api!.deleteBank(id));
-    }
-    writeFileSync(join(trash, 'forget-report.json'), JSON.stringify({ ...result, plan }, null, 2));
-    return result;
+        refreshResult();
+        const report = join(job.trash, 'forget-report.json'); assertForgetPath(report);
+        writeJsonAtomic(report, result);
+        if (options.recordAudit) recordForget(memoryLedger(root), qq, result);
+        if (result.failures.length === 0 && job.moved.length === job.files.length && job.remote.every(r => r.state === 'done')) {
+            job.complete = true; saveForgetJob(root, job); result.complete = true;
+            writeJsonAtomic(report, result);
+        }
+        return result;
+    } finally { release(); }
 }
 
 function main(): void {
@@ -144,7 +193,7 @@ function main(): void {
     const dataDir = option('--data');
     const qq = Number(option('--qq'));
     if (!['export', 'forget'].includes(command ?? '') || !dataDir || !Number.isInteger(qq) || qq <= 0) {
-        console.error('用法：\n  node src/privacy-forget.ts export --data <数据目录> --qq <QQ号> [--out <导出目录>]\n  node src/privacy-forget.ts forget --data <数据目录> --qq <QQ号> [--trash <回收目录>] [--hindsight <地址>] [--bank-prefix <前缀>] [--apply]\n默认只演练；forget --apply 要先停 bot；带 --hindsight 才会动 Hindsight。');
+        console.error('用法：\n  node src/privacy-forget.ts export --data <数据目录> --qq <QQ号> [--out <导出目录>]\n  node src/privacy-forget.ts forget --data <数据目录> --qq <QQ号> [--trash <回收目录>] [--hindsight <地址>] [--bank-prefix <前缀>] [--resume <原任务UUID>] [--apply]\n默认只演练；forget --apply 要先停 bot；带 --hindsight 才会动 Hindsight。结果未知的远端删除保留屏障，不能盲目重试。');
         process.exitCode = 2;
         return;
     }
@@ -164,11 +213,12 @@ function main(): void {
         trashDir: resolve(base, option('--trash') ?? join(data, '..', 'privacy-trash')),
         commonBank: `${prefix}-common`,
         ...(api ? { api } : {}),
+        ...(url ? { remoteScope: createHash('sha256').update(url.replace(/\/+$/, '')).digest('hex') } : {}),
+        ...(option('--resume') ? { resume: option('--resume')! } : {}),
+        recordAudit: true,
     }).then(result => {
-        // 真删了的才记进记忆账本（ADR 0158）：只记 id 和数量，不记内容
-        if (result.applied) recordForget(memoryLedger(data), qq, result);
         console.log(JSON.stringify(result, null, 2));
-        console.log(result.applied ? `已处理；本地文件移到 ${result.trash}，要恢复就挪回去。Hindsight 删完请再跑一次 privacy-audit 和 recall 复查。` : '这是演练，什么都没动；确认清单后加 --apply（先停 bot）。');
+        console.log(result.applied ? `${result.complete ? '已处理' : '尚未完成，原任务与启动屏障保留'}；本地恢复资料在 ${result.trash}。恢复前请核实原任务及远端结果，仅挪回文件不代表未确认删除已经停止。Hindsight 删完请再跑一次 privacy-audit 和 recall 复查。` : '这是演练，什么都没动；确认清单后加 --apply（先停 bot）。');
         if (result.failures.length) process.exitCode = 1;
     }).catch(error => {
         console.error(error instanceof Error ? error.message : String(error));

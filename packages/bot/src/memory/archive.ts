@@ -7,7 +7,8 @@
 import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { writeJsonAtomic } from './json-file.ts';
-import { isProcessAlive, type IsAlive } from '../platform/lock.ts';
+import { acquireLock, isProcessAlive, type IsAlive } from '../platform/lock.ts';
+import { unfinishedForgetJobs } from './forget-job.ts';
 import { CONTACT_TIERS, UNLISTED_TIER } from '../platform/config.ts';
 import { stateObject, stateTimestamp } from './state-schema.ts';
 
@@ -60,101 +61,106 @@ export function archiveTestData(options: ArchiveOptions): ArchiveResult {
             throw new Error(`bot 还在跑（${lock} 的持有者 PID ${pid}）：先停掉 Koishi（或 main.ts）再归档`);
         }
     }
-    const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
-    const result: ArchiveResult = { stamp, moves: [], since: [], prefix: [], skipped: [] };
-
-    // 换档记录：每人记起点，档位不变
-    const tiersPath = join(dataDir, 'tiers.json');
-    checkPath(tiersPath);
-    let tiers: Record<string, { tier: string; since?: string } | string>;
+    if (!options.dryRun) mkdirSync(dataDir, { recursive: true });
+    const release = options.dryRun ? undefined : acquireLock(lock, process.pid, options.isAlive ?? isProcessAlive);
     try {
-        const raw: unknown = existsSync(tiersPath) ? JSON.parse(readFileSync(tiersPath, 'utf8')) : {};
-        const allowed: readonly string[] = [...CONTACT_TIERS, UNLISTED_TIER];
-        if (!stateObject(raw) || !Object.entries(raw).every(([qq, entry]) => /^[1-9]\d*$/.test(qq) && Number.isSafeInteger(Number(qq))
-            && (typeof entry === 'string' ? allowed.includes(entry) : stateObject(entry) && typeof entry.tier === 'string' && allowed.includes(entry.tier)
-                && (entry.since === undefined || stateTimestamp(entry.since))))) throw new Error('schema');
-        tiers = raw as typeof tiers;
-    } catch { throw new Error('档位记录读取或校验失败，未执行归档'); }
-    const tierOf = (qq: string) => { const entry = tiers[qq]; return typeof entry === 'string' ? entry : entry?.tier; };
+        if (!options.dryRun && unfinishedForgetJobs(dataDir).length) throw new Error('有未完成遗忘任务，不能归档或更换记忆前缀；请先按原任务恢复');
+        const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+        const result: ArchiveResult = { stamp, moves: [], since: [], prefix: [], skipped: [] };
 
-    const files = (dir: string, ext: string) => {
-        checkPath(dir);
-        return existsSync(dir) ? readdirSync(dir).filter(f => {
-            const path = join(dir, f); checkPath(path);
-            return f.endsWith(ext) && statSync(path).isFile();
-        }).sort() : [];
-    };
-    const plan = (from: string, to: string) => {
-        checkPath(from); checkPath(to);
-        let target = to;
-        for (let i = 2; existsSync(target) || result.moves.some(m => m.to === target); i++) target = to.replace(/(\.[^.]+)$/, `-${i}$1`);
-        result.moves.push({ from, to: target });
-    };
-    const chats = join(dataDir, 'chats');
-    for (const file of files(chats, '.jsonl')) {
-        const qq = basename(file, '.jsonl');
-        plan(join(chats, file), join(chats, 'archive', `${qq}-${tierOf(qq) ?? 'unknown'}-${stamp}.jsonl`));
-    }
-    // 尚未进聊天的入站正文同样必须归档；不能依赖对应 jsonl 存在。
-    // 精确覆盖 json-file.ts 的崩溃临时文件和旧隔离文件，归档名仍以 QQ- 开头供隐私审计归属。
-    for (const file of files(chats, '')) {
-        const qq = /^([1-9]\d*)\.recalled\.json(?:\.tmp-\d+-\d+|\.corrupt-\d+)?$/.exec(file)?.[1];
-        if (!qq || !Number.isSafeInteger(Number(qq))) continue;
-        plan(join(chats, file), join(chats, 'archive', `${qq}-${tierOf(qq) ?? 'unknown'}-${stamp}${file.slice(qq.length)}`));
-    }
-    for (const sub of ['memory', 'proactive']) {
-        const dir = join(dataDir, sub);
-        for (const file of files(dir, '.json')) {
-            // 全bank守卫必须与活目录的协调见证一起保留。移走JSON会使新bank
-            // 失败关闭；连见证一起移走又会令切回旧bank时丢失禁止读取的依据。
-            if (sub === 'memory' && file === 'derived.json') {
-                result.skipped.push({ file: join(dir, file), reason: '共享的全bank派生屏障与协调见证保留原位；换前缀不解除旧bank守卫' });
-                continue;
+        // 换档记录：每人记起点，档位不变
+        const tiersPath = join(dataDir, 'tiers.json');
+        checkPath(tiersPath);
+        let tiers: Record<string, { tier: string; since?: string } | string>;
+        try {
+            const raw: unknown = existsSync(tiersPath) ? JSON.parse(readFileSync(tiersPath, 'utf8')) : {};
+            const allowed: readonly string[] = [...CONTACT_TIERS, UNLISTED_TIER];
+            if (!stateObject(raw) || !Object.entries(raw).every(([qq, entry]) => /^[1-9]\d*$/.test(qq) && Number.isSafeInteger(Number(qq))
+                && (typeof entry === 'string' ? allowed.includes(entry) : stateObject(entry) && typeof entry.tier === 'string' && allowed.includes(entry.tier)
+                    && (entry.since === undefined || stateTimestamp(entry.since))))) throw new Error('schema');
+            tiers = raw as typeof tiers;
+        } catch { throw new Error('档位记录读取或校验失败，未执行归档'); }
+        const tierOf = (qq: string) => { const entry = tiers[qq]; return typeof entry === 'string' ? entry : entry?.tier; };
+
+        const files = (dir: string, ext: string) => {
+            checkPath(dir);
+            return existsSync(dir) ? readdirSync(dir).filter(f => {
+                const path = join(dir, f); checkPath(path);
+                return f.endsWith(ext) && statSync(path).isFile();
+            }).sort() : [];
+        };
+        const plan = (from: string, to: string) => {
+            checkPath(from); checkPath(to);
+            let target = to;
+            for (let i = 2; existsSync(target) || result.moves.some(m => m.to === target); i++) target = to.replace(/(\.[^.]+)$/, `-${i}$1`);
+            result.moves.push({ from, to: target });
+        };
+        const chats = join(dataDir, 'chats');
+        for (const file of files(chats, '.jsonl')) {
+            const qq = basename(file, '.jsonl');
+            plan(join(chats, file), join(chats, 'archive', `${qq}-${tierOf(qq) ?? 'unknown'}-${stamp}.jsonl`));
+        }
+        // 尚未进聊天的入站正文同样必须归档；不能依赖对应 jsonl 存在。
+        // 精确覆盖 json-file.ts 的崩溃临时文件和旧隔离文件，归档名仍以 QQ- 开头供隐私审计归属。
+        for (const file of files(chats, '')) {
+            const qq = /^([1-9]\d*)\.recalled\.json(?:\.tmp-\d+-\d+|\.corrupt-\d+)?$/.exec(file)?.[1];
+            if (!qq || !Number.isSafeInteger(Number(qq))) continue;
+            plan(join(chats, file), join(chats, 'archive', `${qq}-${tierOf(qq) ?? 'unknown'}-${stamp}${file.slice(qq.length)}`));
+        }
+        for (const sub of ['memory', 'proactive']) {
+            const dir = join(dataDir, sub);
+            for (const file of files(dir, '.json')) {
+                // 全bank守卫必须与活目录的协调见证一起保留。移走JSON会使新bank
+                // 失败关闭；连见证一起移走又会令切回旧bank时丢失禁止读取的依据。
+                if (sub === 'memory' && file === 'derived.json') {
+                    result.skipped.push({ file: join(dir, file), reason: '共享的全bank派生屏障与协调见证保留原位；换前缀不解除旧bank守卫' });
+                    continue;
+                }
+                plan(join(dir, file), join(dir, `archive-${stamp}`, file));
             }
-            plan(join(dir, file), join(dir, `archive-${stamp}`, file));
         }
-    }
 
-    // 新前缀
-    const configs = options.configFiles.filter(f => existsSync(f));
-    for (const f of options.configFiles.filter(f => !existsSync(f))) result.skipped.push({ file: f, reason: '没有这个文件' });
-    let current: string | undefined;
-    try { current = configs.map(f => currentPrefix(f)).find(Boolean); }
-    catch { throw new Error('归档配置读取或校验失败，未执行归档'); }
-    const prefix = options.prefix ?? `${(current ?? 'linmengyao').replace(/(-\d+)+$/, '')}-${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
-    if (!PREFIX.test(prefix)) throw new Error(`bank 前缀只能有字母、数字、短横线：${prefix}`);
-    if (prefix === current) throw new Error(`新前缀和现在的一样（${prefix}），换一个`);
-    const edits: { file: string; text: string }[] = [];
-    for (const file of configs) {
-        const text = readFileSync(file, 'utf8');
-        let edited: ReturnType<typeof editJson>;
-        try { edited = file.endsWith('.json') ? editJson(text, prefix) : editYaml(text, prefix); }
+        // 新前缀
+        const configs = options.configFiles.filter(f => existsSync(f));
+        for (const f of options.configFiles.filter(f => !existsSync(f))) result.skipped.push({ file: f, reason: '没有这个文件' });
+        let current: string | undefined;
+        try { current = configs.map(f => currentPrefix(f)).find(Boolean); }
         catch { throw new Error('归档配置读取或校验失败，未执行归档'); }
-        if ('reason' in edited) result.skipped.push({ file, reason: edited.reason });
-        else {
-            result.prefix.push({ file, ...(edited.from ? { from: edited.from } : {}), to: prefix });
-            edits.push({ file, text: edited.text });
+        const prefix = options.prefix ?? `${(current ?? 'linmengyao').replace(/(-\d+)+$/, '')}-${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
+        if (!PREFIX.test(prefix)) throw new Error(`bank 前缀只能有字母、数字、短横线：${prefix}`);
+        if (prefix === current) throw new Error(`新前缀和现在的一样（${prefix}），换一个`);
+        const edits: { file: string; text: string }[] = [];
+        for (const file of configs) {
+            const text = readFileSync(file, 'utf8');
+            let edited: ReturnType<typeof editJson>;
+            try { edited = file.endsWith('.json') ? editJson(text, prefix) : editYaml(text, prefix); }
+            catch { throw new Error('归档配置读取或校验失败，未执行归档'); }
+            if ('reason' in edited) result.skipped.push({ file, reason: edited.reason });
+            else {
+                result.prefix.push({ file, ...(edited.from ? { from: edited.from } : {}), to: prefix });
+                edits.push({ file, text: edited.text });
+            }
         }
-    }
-    for (const qq of Object.keys(tiers)) result.since.push({ qq, tier: tierOf(qq)! });
+        for (const qq of Object.keys(tiers)) result.since.push({ qq, tier: tierOf(qq)! });
 
-    if (options.dryRun) return result;
+        if (options.dryRun) return result;
 
-    // 先记起点、挪文件，再改前缀（ADR 0011 第 10 节：顺序反了，插件重启时会把最近的消息从 QQ 补回来）
-    if (existsSync(tiersPath)) {
-        for (let n = 1;; n++) {
-            const backup = join(dataDir, `tiers.before-${stamp}${n === 1 ? '' : `-${n}`}.json`);
-            try { copyFileSync(tiersPath, backup, constants.COPYFILE_EXCL); result.tiersBackup = backup; break; }
-            catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw new Error('档位恢复快照无法保存，未执行归档'); }
+        // 先记起点、挪文件，再改前缀（ADR 0011 第 10 节：顺序反了，插件重启时会把最近的消息从 QQ 补回来）
+        if (existsSync(tiersPath)) {
+            for (let n = 1;; n++) {
+                const backup = join(dataDir, `tiers.before-${stamp}${n === 1 ? '' : `-${n}`}.json`);
+                try { copyFileSync(tiersPath, backup, constants.COPYFILE_EXCL); result.tiersBackup = backup; break; }
+                catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw new Error('档位恢复快照无法保存，未执行归档'); }
+            }
+            writeJsonAtomic(tiersPath, Object.fromEntries(Object.keys(tiers).map(qq => [qq, { ...(typeof tiers[qq] === 'object' ? tiers[qq] : {}), tier: tierOf(qq), since: now.toISOString() }])));
         }
-        writeJsonAtomic(tiersPath, Object.fromEntries(Object.keys(tiers).map(qq => [qq, { ...(typeof tiers[qq] === 'object' ? tiers[qq] : {}), tier: tierOf(qq), since: now.toISOString() }])));
-    }
-    for (const { from, to } of result.moves) {
-        mkdirSync(dirname(to), { recursive: true });
-        renameSync(from, to);
-    }
-    for (const { file, text } of edits) writeFileSync(file, text);
-    return result;
+        for (const { from, to } of result.moves) {
+            mkdirSync(dirname(to), { recursive: true });
+            renameSync(from, to);
+        }
+        for (const { file, text } of edits) writeFileSync(file, text);
+        return result;
+    } finally { release?.(); }
 }
 
 function currentPrefix(file: string): string | undefined {

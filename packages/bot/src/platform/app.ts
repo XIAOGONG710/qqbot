@@ -24,6 +24,7 @@ import { readLifeEvents } from '.././world/life-events.ts';
 import { Timeline, timelineAccount, timelineFromDevice } from '.././memory/timeline.ts';
 import { readWebSecrets, WebLookup } from './web.ts';
 import { acquireLock } from './lock.ts';
+import { unfinishedForgetJobs } from '../memory/forget-job.ts';
 import type { Log } from './log.ts';
 import { ChatHistory, sourceMessageSeq, type StoredMessage } from '.././memory/history.ts';
 import { stateTimestamp } from '../memory/state-schema.ts';
@@ -255,7 +256,10 @@ export function unlistedName(nickname: string | undefined): string {
 export function startApp(options: AppOptions): App {
     mkdirSync(options.config.dataDir, { recursive: true });
     const release = acquireLock(join(options.config.dataDir, 'bot.lock'));
-    try { return createApp(options, release); }
+    try {
+        if (unfinishedForgetJobs(options.config.dataDir).length) throw new Error('数据目录有未完成遗忘任务；保留原记录，请先按原任务 --resume 核实恢复，再启动 bot');
+        return createApp(options, release);
+    }
     catch (error) { release(); throw error; }
 }
 

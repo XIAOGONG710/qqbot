@@ -29,12 +29,14 @@ describe('单实例锁', () => {
 
     test('持有者已经不在了（被强杀留下的锁）或锁文件写坏了：接管', () => {
         writeFileSync(path, '222');
-        acquireLock(path, 111, () => false);
+        const first = acquireLock(path, 111, () => false);
         assert.equal(readFileSync(path, 'utf8'), '111');
+        first(); // Simulate the previous process exiting, including its OS lease.
 
         writeFileSync(path, 'garbage');
-        acquireLock(path, 333, () => true);
+        const second = acquireLock(path, 333, () => true);
         assert.equal(readFileSync(path, 'utf8'), '333');
+        second();
     });
 
     test('锁已经被别人接管时，释放不会删掉别人的锁', () => {
