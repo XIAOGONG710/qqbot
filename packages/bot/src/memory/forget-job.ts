@@ -41,12 +41,19 @@ function pathParts(path: string): string[] {
     if (parts.some(p => !p || p === '.' || p === '..')) throw safeError();
     return parts;
 }
+/** Only suffixes actually emitted by these per-contact cache writers. Keep
+ * audit discovery and durable forget-plan validation on the same boundary. */
+export function isContactJsonResidue(area: string, name: string, qq: number): boolean {
+    if (area === 'context') return /^([1-9]\d*)\.json(?:\.tmp-[1-9]\d*-[1-9]\d*|\.corrupt-\d+)$/.exec(name)?.[1] === String(qq);
+    return (area === 'jokes' || area === 'idioms') && name === `${qq}.json.tmp`;
+}
 function ownedPath(path: string, qq: number): boolean {
     let parts: string[]; try { parts = pathParts(path); } catch { return false; }
     if (parts.length === 1) return parts[0] === 'last-prompt.json';
     if (!['chats', 'memory', 'promises', 'proactive', 'context', 'jokes', 'idioms'].includes(parts[0]!)) return false;
     const name = parts.at(-1)!;
     return name === `${qq}.json` || name === `${qq}.jsonl` || name.startsWith(`${qq}-`)
+        || isContactJsonResidue(parts[0]!, name, qq)
         || parts[0] === 'chats' && new RegExp(`^${qq}\\.recalled\\.json(?:\\.tmp-\\d+-\\d+|\\.corrupt-\\d+)?$`).test(name);
 }
 /** Validate every existing ancestor, including the data root and trash root. */

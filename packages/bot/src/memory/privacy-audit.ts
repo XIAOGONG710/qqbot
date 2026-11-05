@@ -8,7 +8,7 @@ import { FEEDBACK_MONTH_FILE, isFeedbackRow } from '../emotion/feedback.ts';
 import { ACCOUNT_ACTIONS } from '../social/account.ts';
 import { CONTACT_TIERS, UNLISTED_TIER } from '../platform/config.ts';
 import { isDerivedState } from './derived-state.ts';
-import { FORGET_JOBS_DIRECTORY, isForgetJob } from './forget-job.ts';
+import { FORGET_JOBS_DIRECTORY, isContactJsonResidue, isForgetJob } from './forget-job.ts';
 import { ARCHIVE_JOBS_DIRECTORY, isArchiveJob } from './archive-job.ts';
 
 export interface PrivacyArtifact {
@@ -118,7 +118,7 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
             // recalled.json 现在也保存尚未解码/已准备的私密入站正文。
             // 后缀只接受 json-file.ts 实际生成的临时/旧隔离文件名，不按号码前缀猜归属。
             const recalled = area === 'chats' && /^([1-9]\d*)\.recalled\.json(?:\.tmp-\d+-\d+|\.corrupt-\d+)?$/.exec(name)?.[1] === qqText;
-            if (name === `${qqText}.json` || name === `${qqText}.jsonl` || name.startsWith(`${qqText}-`) || recalled) {
+            if (name === `${qqText}.json` || name === `${qqText}.jsonl` || name.startsWith(`${qqText}-`) || recalled || isContactJsonResidue(area, name, qq)) {
                 add(path, 'direct', `${area} 中只属于这个联系人的文件`);
             }
         }
