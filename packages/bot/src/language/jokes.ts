@@ -125,12 +125,51 @@ export interface RefreshOptions {
     extract: (messages: { role: 'user'; content: string }[]) => Promise<string>;
     now: number;
     log: (message: string) => void;
+    /** Owner cancellation closes local work; an uncooperative model may finish later. */
+    signal?: AbortSignal;
+    /** Re-read the same contact/tier view. Appends are safe; changed or missing
+     * source messages invalidate this extraction before dispatch or commit. */
+    freshHistory?: () => readonly Said[];
+}
+
+/** Background host owner. Stop closes entry synchronously and drains the local
+ * jobs after their model waits are cancelled, without waiting for the provider. */
+export function jokeRefresher() {
+    const lifetime = new AbortController(), jobs = new Set<Promise<boolean>>();
+    let drain: Promise<void> | undefined;
+    return {
+        refresh(options: RefreshOptions): Promise<boolean> {
+            if (lifetime.signal.aborted) return Promise.resolve(false);
+            const signal = options.signal ? AbortSignal.any([lifetime.signal, options.signal]) : lifetime.signal;
+            const frozen = { ...options, history: options.history.map(message => ({ ...message })), signal };
+            const task = Promise.resolve().then(() => refreshJokes(frozen)).finally(() => { jobs.delete(task); });
+            jobs.add(task);
+            return task;
+        },
+        stop(): Promise<void> | undefined {
+            if (lifetime.signal.aborted) return drain;
+            lifetime.abort();
+            if (jobs.size) drain = Promise.allSettled([...jobs]).then(() => {});
+            return drain;
+        },
+    };
 }
 
 /** 该不该抽、抽一次；返回是否真的调了模型 */
 export async function refreshJokes(options: RefreshOptions): Promise<boolean> {
-    const { qq, history, store, now } = options;
+    const { qq, store, now, signal } = options;
+    if (signal?.aborted) return false;
+    const history = options.history.map(message => ({ ...message }));
+    const sourceCurrent = () => {
+        if (!options.freshHistory) return true;
+        const current = options.freshHistory();
+        return current.length >= history.length && history.every((message, index) => {
+            const fresh = current[index]!;
+            return fresh.role === message.role && fresh.time === message.time && fresh.content === message.content;
+        });
+    };
     const state = store.load(qq);
+    if (signal?.aborted) return false;
     const recent = history.filter(message => message.time !== undefined && now - Date.parse(message.time) < JOKES_WINDOW_DAYS * DAY && Date.parse(message.time) <= now);
     if (recent.length < JOKES_MIN_MESSAGES) return false;
     if (state.updatedAt && now - Date.parse(state.updatedAt) < JOKES_REFRESH_MS) return false;
@@ -138,13 +177,25 @@ export async function refreshJokes(options: RefreshOptions): Promise<boolean> {
     const added = state.messageCursor ? recent.length - lastProcessed - 1 : state.updatedAt ? recent.filter(message => Date.parse(message.time!) > Date.parse(state.updatedAt!)).length : recent.length;
     if (added < JOKES_MIN_NEW) return false;
     const transcript = recent.slice(-240).map(message => `${message.role === 'user' ? options.userName : options.charName}：${message.content.replace(/\s+/g, ' ').slice(0, 120)}`).join('\n');
-    const reply = await options.extract([{ role: 'user', content: jokesPrompt(options.userName, options.charName, transcript) }]);
+    let cancel: (() => void) | undefined;
+    const cancelled = signal ? new Promise<undefined>(resolve => { cancel = () => resolve(undefined); signal.addEventListener('abort', cancel, { once: true }); }) : undefined;
+    let reply: string | undefined;
+    try {
+        const pending = Promise.resolve().then(() => {
+            if (signal?.aborted || !sourceCurrent() || signal?.aborted) return undefined;
+            return options.extract([{ role: 'user', content: jokesPrompt(options.userName, options.charName, transcript) }]);
+        });
+        reply = await (cancelled ? Promise.race([pending, cancelled]) : pending);
+    } catch (error) { if (signal?.aborted) return false; throw error; }
+    finally { if (cancel) signal?.removeEventListener('abort', cancel); }
+    if (reply === undefined || signal?.aborted || !sourceCurrent() || signal?.aborted) return false;
     // 旧的还成立（在最近两周里仍然原样出现至少两次）的留着，新的接在后面，最多 JOKES_KEPT 个
     const stillThere = state.jokes.filter(joke => recent.filter(message => message.content.includes(joke.phrase)).length >= JOKE_MIN_OCCURRENCES);
     const fresh = parseJokes(reply, recent).filter(joke => !stillThere.some(old => old.phrase === joke.phrase));
     const jokes = [...stillThere, ...fresh].slice(0, JOKES_KEPT);
+    if (signal?.aborted) return false;
     store.save(qq, { version: 1, jokes, updatedAt: new Date(now).toISOString(), messageCount: recent.length, messageCursor: cursorOf(recent.at(-1)!) });
-    options.log(`小梗：抽了一次，现在有 ${jokes.length} 个（新增 ${fresh.length}；日志不记内容）`);
+    if (!signal?.aborted) options.log(`小梗：抽了一次，现在有 ${jokes.length} 个（新增 ${fresh.length}；日志不记内容）`);
     return true;
 }
 

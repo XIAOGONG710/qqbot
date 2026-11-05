@@ -12,8 +12,8 @@ try{
  const history=new ChatHistory(dataDir);for(let i=0;i<42;i++)history.append(10001,{role:i%2?'assistant':'user',content:`星云土豆 合成对话${i}`,time:new Date(now-(42-i)*1000).toISOString(),messageId:i+1});
  globalThis.fetch=async()=>{throw Error('unexpected synthetic network request');};
  app=startApp({config,log:line=>logs.push(line),sensitive:{on:()=>false,describe:()=>''},transport:{friendHistory:async()=>[],sendPrivateText:async()=>1},pipeline:{now:()=>now,generate:async messages=>{if(messages[0]?.content.includes('小梗')){entered++;return held;}return '合成回应';}}});
- await app.connected(20000);assert.equal(entered,1);const file=join(dataDir,'jokes','10001.json');assert.equal(existsSync(file),false);
+ await app.connected(20000);await new Promise(done=>setImmediate(done));assert.equal(entered,1);const file=join(dataDir,'jokes','10001.json');assert.equal(existsSync(file),false);
  await app.stop();const before=logs.length;assert.equal(existsSync(join(dataDir,'bot.lock')),false);release('[{"梗":"星云土豆","来历":"合成聊天玩笑"}]');for(let i=0;i<5;i++)await new Promise(done=>setImmediate(done));
- const stored=existsSync(file)?JSON.parse(readFileSync(file,'utf8')):null;
- console.log(JSON.stringify({entered,lockReleased:true,lateFileExists:existsSync(file),lateJokeCount:stored?.jokes?.length,lateLogs:logs.slice(before)}));
+ assert.equal(existsSync(file),false,'stopped joke extraction cannot save after the lease is released');assert.deepEqual(logs.slice(before),[]);
+ console.log(JSON.stringify({correctnessProbe:true,entered,lockReleased:true,lateFileExists:false,lateLogs:logs.slice(before)}));
 }finally{release?.('[]');await app?.stop();for(let i=0;i<5;i++)await new Promise(done=>setImmediate(done));globalThis.fetch=oldFetch;assert.equal(dirname(resolve(root)),resolve(tmpdir()));assert.ok(basename(root).startsWith('qqbot-app-jokes-owner-'));rmSync(root,{recursive:true,force:true});}
