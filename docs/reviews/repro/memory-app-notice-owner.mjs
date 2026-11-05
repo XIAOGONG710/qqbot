@@ -1,5 +1,4 @@
-// Synthetic real-App failure diagnostic. Exit 0 reports facts, not correctness.
-// Examines only an already-dispatched delayed poke-back transport operation.
+// Synthetic real-App correctness probe for an already-dispatched poke-back.
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -39,8 +38,11 @@ async function observe(failure) {
   assert.equal(typeof callback, 'function'); clearTimeout(timer); callback(); assert.equal(entered, true);
   let stopped = false; const drain = Promise.resolve(app.stop()).then(() => { stopped = true; }); await settle();
   const leaseWhilePokeHeld = existsSync(join(dataDir, 'bot.lock')), stopResolvedWhilePokeHeld = stopped, count = logs.length;
+  assert.equal(leaseWhilePokeHeld, true); assert.equal(stopResolvedWhilePokeHeld, false);
   release(); await drain; await settle();
-  console.log(JSON.stringify({ failureDiagnostic: true, failure, entered, leaseWhilePokeHeld, stopResolvedWhilePokeHeld, actualPokeSettled: completed, lateLogs: logs.slice(count) }));
+  const outcomeLogs = logs.slice(count); assert.equal(completed, true); assert.equal(outcomeLogs.length, 1);
+  assert.match(outcomeLogs[0], failure ? /戳回去失败.*SYNTHETIC_LATE_POKE_FAILURE/ : /戳回去了/);
+  console.log(JSON.stringify({ correctnessProbe: true, failure, entered, leaseWhilePokeHeld, stopResolvedWhilePokeHeld, actualPokeSettled: completed, outcomeLogs }));
  } finally {
   release(); clearTimeout(timer); await app?.stop(); await settle(); for (const handle of fakeClockHandles) clearTimeout(handle); globalThis.fetch = oldFetch; globalThis.setTimeout = oldTimeout;
   assert.equal(dirname(resolve(root)), resolve(tmpdir())); assert.ok(basename(root).startsWith('qqbot-app-notice-owner-')); rmSync(root, { recursive: true, force: true });
