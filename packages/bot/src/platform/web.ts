@@ -92,7 +92,7 @@ export function htmlToText(html: string): { title: string; text: string } {
     return { title: decode(title).replace(/\s+/g, ' ').trim(), text };
 }
 
-export interface PageDeps { fetch: typeof fetch; resolve?: Resolver }
+export interface PageDeps { fetch: typeof fetch; resolve?: Resolver; signal?: AbortSignal }
 
 export type PageResult = { ok: true; url: string; title: string; text: string } | { ok: false; reason: string };
 
@@ -100,14 +100,17 @@ export type PageResult = { ok: true; url: string; title: string; text: string } 
 export async function readPage(raw: string, deps: PageDeps): Promise<PageResult> {
     let current = raw;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+        if (deps.signal?.aborted) return { ok: false, reason: '已取消' };
         const checked = await checkUrl(current, deps.resolve);
+        if (deps.signal?.aborted) return { ok: false, reason: '已取消' };
         if (!checked.ok) return { ok: false, reason: checked.reason };
         let response: Response;
         try {
-            response = await deps.fetch(checked.url, { redirect: 'manual', headers: { 'User-Agent': UA, Accept: 'text/html,text/plain,application/json;q=0.8', 'Accept-Language': 'zh-CN,zh;q=0.9' }, signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
+            response = await deps.fetch(checked.url, { redirect: 'manual', headers: { 'User-Agent': UA, Accept: 'text/html,text/plain,application/json;q=0.8', 'Accept-Language': 'zh-CN,zh;q=0.9' }, signal: requestSignal(deps.signal) });
         } catch {
             return { ok: false, reason: '打不开（超时或连不上）' };
         }
+        if (deps.signal?.aborted) return { ok: false, reason: '已取消' };
         if (response.status >= 300 && response.status < 400) {
             const location = response.headers.get('location');
             if (!location) return { ok: false, reason: '重定向没有去向' };
@@ -151,7 +154,7 @@ async function readCapped(response: Response): Promise<Uint8Array | undefined> {
 
 // ───────── 搜索 ─────────
 
-export interface SearchProvider { name: string; search(query: string): Promise<WebResult[]> }
+export interface SearchProvider { name: string; search(query: string, signal?: AbortSignal): Promise<WebResult[]> }
 
 export interface WebSecrets { provider: 'tavily' | 'brave' | 'bocha'; apiKey: string }
 
@@ -174,9 +177,9 @@ async function json(response: Response): Promise<any> {
 export function wikipediaProvider(fetcher: typeof fetch): SearchProvider {
     return {
         name: '中文维基百科',
-        async search(query) {
+        async search(query, signal) {
             const url = `https://zh.wikipedia.org/w/api.php?action=query&format=json&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=3&prop=extracts&exintro=1&explaintext=1&exchars=500&redirects=1`;
-            const data = await json(await fetcher(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(READ_TIMEOUT_MS) }));
+            const data = await json(await fetcher(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: requestSignal(signal) }));
             const pages = Object.values((data?.query?.pages ?? {}) as Record<string, { pageid: number; title: string; extract?: string; index?: number }>).sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
             return pages.filter(p => p.extract).map(p => ({ title: text(p.title, 60), url: `https://zh.wikipedia.org/?curid=${p.pageid}`, snippet: text(p.extract, 500) }));
         },
@@ -184,12 +187,11 @@ export function wikipediaProvider(fetcher: typeof fetch): SearchProvider {
 }
 
 export function keyedProvider(secrets: WebSecrets, fetcher: typeof fetch): SearchProvider {
-    const signal = () => AbortSignal.timeout(READ_TIMEOUT_MS);
     if (secrets.provider === 'tavily') {
         return {
             name: 'Tavily',
-            async search(query) {
-                const data = await json(await fetcher('https://api.tavily.com/search', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secrets.apiKey}` }, body: JSON.stringify({ query, max_results: 4, search_depth: 'basic' }), signal: signal() }));
+            async search(query, signal) {
+                const data = await json(await fetcher('https://api.tavily.com/search', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secrets.apiKey}` }, body: JSON.stringify({ query, max_results: 4, search_depth: 'basic' }), signal: requestSignal(signal) }));
                 return ((data?.results ?? []) as any[]).map(r => ({ title: text(r.title, 60), url: text(r.url, 200), snippet: text(r.content, 400) })).filter(r => r.url);
             },
         };
@@ -197,16 +199,16 @@ export function keyedProvider(secrets: WebSecrets, fetcher: typeof fetch): Searc
     if (secrets.provider === 'brave') {
         return {
             name: 'Brave Search',
-            async search(query) {
-                const data = await json(await fetcher(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=4&search_lang=zh-hans`, { headers: { Accept: 'application/json', 'X-Subscription-Token': secrets.apiKey }, signal: signal() }));
+            async search(query, signal) {
+                const data = await json(await fetcher(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=4&search_lang=zh-hans`, { headers: { Accept: 'application/json', 'X-Subscription-Token': secrets.apiKey }, signal: requestSignal(signal) }));
                 return ((data?.web?.results ?? []) as any[]).map(r => ({ title: text(r.title, 60), url: text(r.url, 200), snippet: text(r.description, 400) })).filter(r => r.url);
             },
         };
     }
     return {
         name: '博查',
-        async search(query) {
-            const data = await json(await fetcher('https://api.bochaai.com/v1/web-search', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secrets.apiKey}` }, body: JSON.stringify({ query, freshness: 'noLimit', summary: true, count: 4 }), signal: signal() }));
+        async search(query, signal) {
+            const data = await json(await fetcher('https://api.bochaai.com/v1/web-search', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secrets.apiKey}` }, body: JSON.stringify({ query, freshness: 'noLimit', summary: true, count: 4 }), signal: requestSignal(signal) }));
             return ((data?.data?.webPages?.value ?? data?.webPages?.value ?? []) as any[]).map(r => ({ title: text(r.name, 60), url: text(r.url, 200), snippet: text(r.summary || r.snippet, 400) })).filter(r => r.url);
         },
     };
@@ -295,22 +297,25 @@ export class WebLookup {
         writeFileSync(this.#statePath, JSON.stringify({ day: now.toDateString(), count: this.#usedToday(now) + 1 }));
     }
 
-    async #plan(said: string): Promise<LookupPlan | undefined> {
+    async #plan(said: string, signal?: AbortSignal): Promise<LookupPlan | undefined> {
+        if (signal?.aborted) return undefined;
         const explicit = planExplicit(said);
         if (explicit || this.#options.mode !== 'auto') return explicit;
         const text = said.trim();
         if (text.length < 6 || !/[？?]|是什么|是谁|多少|哪年|怎么|为什么|什么时候|有没有|推荐/.test(text)) return undefined;
         try {
             const raw = await this.#options.ask([{ role: 'system', content: CLASSIFY_SYSTEM }, { role: 'user', content: clip(text, 120) }]);
+            if (signal?.aborted) return undefined;
             const query = (JSON.parse(/\{[\s\S]*\}/.exec(raw)?.[0] ?? '{}') as { search?: unknown }).search;
             return typeof query === 'string' && query.trim().length >= 2 ? { kind: 'search', query: clip(query.trim(), 30), explicit: false } : undefined;
         } catch { return undefined; }
     }
 
     /** 这一轮要放进提示词的一行；不用查就是 undefined */
-    async line(said: string): Promise<string | undefined> {
-        if (!this.enabled) return undefined;
-        const plan = await this.#plan(said);
+    async line(said: string, signal?: AbortSignal): Promise<string | undefined> {
+        if (!this.enabled || signal?.aborted) return undefined;
+        const plan = await this.#plan(said, signal);
+        if (signal?.aborted) return undefined;
         if (!plan) return undefined;
         const now = this.#options.now?.() ?? new Date();
         const key = plan.kind === 'read' ? plan.url : plan.query;
@@ -320,15 +325,18 @@ export class WebLookup {
             this.#options.log?.('上网：今天的额度用完了，这一轮不查');
             return plan.kind === 'read' || plan.explicit ? NOT_FOUND('今天查得太多了') : undefined;
         }
+        if (signal?.aborted) return undefined;
         this.#use(now);
-        const material = await this.#gather(plan);
+        const material = await this.#gather(plan, signal);
+        if (signal?.aborted) return undefined;
         const explicit = plan.kind === 'read' || plan.explicit;
         if (!material.ok) {
             this.#options.log?.(`上网：没查成（${material.reason}）`);
             this.#options.onDone?.({ kind: plan.kind === 'read' ? 'read' : 'search', summary: plan.kind === 'read' ? `想读一个网页，没读成（${material.reason}）` : `想查「${clip(plan.query, 16)}」，没查成`, ok: false });
             return explicit ? NOT_FOUND(material.reason) : undefined;
         }
-        const facts = await this.#extract(said, material.text);
+        const facts = await this.#extract(said, material.text, signal);
+        if (signal?.aborted) return undefined;
         const done = plan.kind === 'read' ? `读了一个网页（${new URL(material.source).hostname}）` : `上网查了「${clip(plan.query, 16)}」`;
         if (!facts) {
             this.#options.log?.('上网：查到了资料，但里面没有和问题有关的');
@@ -377,16 +385,19 @@ export class WebLookup {
         return facts;
     }
 
-    async #gather(plan: LookupPlan): Promise<{ ok: true; text: string; label: string; source: string } | { ok: false; reason: string }> {
+    async #gather(plan: LookupPlan, signal?: AbortSignal): Promise<{ ok: true; text: string; label: string; source: string } | { ok: false; reason: string }> {
+        if (signal?.aborted) return { ok: false, reason: '已取消' };
         if (plan.kind === 'read') {
-            const page = await readPage(plan.url, { fetch: this.#fetch, ...(this.#options.resolve ? { resolve: this.#options.resolve } : {}) });
+            const page = await readPage(plan.url, { fetch: this.#fetch, ...(this.#options.resolve ? { resolve: this.#options.resolve } : {}), ...(signal ? { signal } : {}) });
             return page.ok ? { ok: true, text: `${page.title}\n${page.text}`, label: new URL(page.url).hostname, source: page.url } : page;
         }
         const providers: SearchProvider[] = [...(this.#options.secrets ? [keyedProvider(this.#options.secrets, this.#fetch)] : []), wikipediaProvider(this.#fetch)];
         let lastError = '搜不到';
         for (const provider of providers) {
+            if (signal?.aborted) return { ok: false, reason: '已取消' };
             try {
-                const results = await provider.search(plan.query);
+                const results = await provider.search(plan.query, signal);
+                if (signal?.aborted) return { ok: false, reason: '已取消' };
                 if (results.length) return { ok: true, text: results.map(r => `${r.title}\n${r.snippet}`).join('\n\n'), label: provider.name, source: results[0]!.url };
             } catch (error) {
                 lastError = `${provider.name}出错：${error instanceof Error ? error.message : String(error)}`;
@@ -395,9 +406,11 @@ export class WebLookup {
         return { ok: false, reason: lastError };
     }
 
-    async #extract(question: string, material: string): Promise<string[] | undefined> {
+    async #extract(question: string, material: string, signal?: AbortSignal): Promise<string[] | undefined> {
         try {
+            if (signal?.aborted) return undefined;
             const raw = await this.#options.ask([{ role: 'system', content: EXTRACT_SYSTEM }, { role: 'user', content: `问题：${clip(question, 160)}\n\n资料：\n${material.slice(0, 5000)}` }]);
+            if (signal?.aborted) return undefined;
             const lines = raw.split('\n').map(l => l.replace(/^[\s\-*•\d.、)）]+/, '').replace(/[\[\]]/g, '').trim()).filter(Boolean);
             if (!lines.length || (lines.length === 1 && /^无[。.]?$/.test(lines[0]!))) return undefined;
             return lines.slice(0, 3).map(l => clip(l.replace(/https?:\/\/\S+/g, ''), 60)).filter(l => l.length >= 4);
@@ -406,3 +419,9 @@ export class WebLookup {
 }
 
 const NOT_FOUND = (reason: string) => `[你想上网查一下，但没查成（${reason}）：别编答案，老实说没查到 / 一会儿再看看]`;
+
+/** 同时服从调用方生命周期和单次网络预算；底层不合作时，后继副作用仍由调用方信号截断。 */
+function requestSignal(signal?: AbortSignal): AbortSignal {
+    const timeout = AbortSignal.timeout(READ_TIMEOUT_MS);
+    return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}

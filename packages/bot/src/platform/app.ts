@@ -1013,9 +1013,10 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     if (config.depthRouting && !config.deliberate) log('语义路由：depthRouting 开着，但 deliberate 没开——没有地方放，不起作用');
     const web = config.webLookup !== 'off'
         ? new WebLookup({
-            mode: config.webLookup, dataDir: config.dataDir, ask: askSmall, now: clockNow, log,
+            mode: config.webLookup, dataDir: config.dataDir, ask: askSmall, now: clockNow,
+            log: message => { if (!stopped && !passiveLifetime.signal.aborted) log(message); },
             ...(readWebSecrets(join(config.dataDir, 'secrets', 'web.json')) ? { secrets: readWebSecrets(join(config.dataDir, 'secrets', 'web.json'))! } : {}),
-            onDone: e => noteTimeline({ channel: 'web', kind: e.kind, summary: e.summary, ok: e.ok }),
+            onDone: e => { if (!stopped && !passiveLifetime.signal.aborted) noteTimeline({ channel: 'web', kind: e.kind, summary: e.summary, ok: e.ok }); },
         })
         : undefined;
     const tastesLog: Log = message => { if (!stopped) log(message); };
@@ -1059,6 +1060,19 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         timer.unref?.();
         promise.then(value => { clearTimeout(timer); resolveTimeout(value); }, () => { clearTimeout(timer); resolveTimeout(undefined); });
     });
+    const untilCancelled = <T,>(promise: Promise<T>, signal: AbortSignal): Promise<T | undefined> => new Promise(resolve => {
+        if (signal.aborted) { resolve(undefined); return; }
+        let settled = false;
+        const finish = (value: T | undefined) => {
+            if (settled) return;
+            settled = true;
+            signal.removeEventListener('abort', cancel);
+            resolve(value);
+        };
+        const cancel = () => finish(undefined);
+        signal.addEventListener('abort', cancel, { once: true });
+        promise.then(value => finish(value), () => finish(undefined));
+    });
     /** 给每个联系人流水线的一组“连续性”提示词行（ADR 0157–0163）：只给男朋友档 */
     const continuity: ContactPipelineOptions['continuity'] | undefined = identity || timeline || web || tastes || acquaintances
         ? async ({ contact, said, initiating, now }) => {
@@ -1066,7 +1080,20 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             const lines: string[] = [];
             const note = contact.knowsBot ? identity?.promptLine() : undefined;
             if (note) { lines.push(note); identity!.markTold(); }
-            const looked = web && !initiating && said.trim() ? await withTimeout(web.line(said), 25_000) : undefined;
+            let looked: string | undefined;
+            if (web && !initiating && said.trim() && !passiveLifetime.signal.aborted) {
+                // 25 秒只限制这一轮 continuity；超时产生的孤儿任务也必须拿到取消信号，
+                // 否则它会在替代实例接管目录后继续摘录、写时间线和缓存。
+                const deadline = new AbortController();
+                const timer = setTimeout(() => deadline.abort(), 25_000);
+                timer.unref?.();
+                const signal = AbortSignal.any([passiveLifetime.signal, deadline.signal]);
+                try { looked = await untilCancelled(web.line(said, signal), signal); }
+                finally { clearTimeout(timer); }
+                // deadline 只是不放 Web 资料，仍照常回复；App stop 则终止整次提示词构建，
+                // 避免孤儿 continuity 在目录租约释放后继续写日志或派模型。
+                if (passiveLifetime.signal.aborted) throw new DOMException('App 已停止', 'AbortError');
+            }
             if (looked) { lines.push(looked); webTurns.set(contact.qq, Date.now()); }
             for (const line of [timeline?.promptLine(now), tastes?.promptLine(), acquaintances?.promptLine(now)]) if (line) lines.push(line);
             return lines;

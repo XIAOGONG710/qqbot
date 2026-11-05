@@ -997,7 +997,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
             // 连续性（ADR 0157–0163）：设定改动的背景 / QQ 以外做过的事 / 上网查到的 / 自己发现的口味 / 又见到的人；出错当没有，不挡回复
             const continuityLines = options.continuity && !crisisNow && !thinking
-                ? await options.continuity({ contact, said: saidNow, initiating: Boolean(initiate), now: time }).catch(error => { log(`连续性：出错，这一轮不放（${error instanceof Error ? error.message : String(error)}）`); return [] as string[]; })
+                ? await options.continuity({ contact, said: saidNow, initiating: Boolean(initiate), now: time }).catch(error => {
+                    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+                    log(`连续性：出错，这一轮不放（${error instanceof Error ? error.message : String(error)}）`);
+                    return [] as string[];
+                })
                 : [];
             // 没有明确反应的轮次也抽一抽（ADR 0132）：她拿不到小黄脸以后，表情包得顶上；抽签的种子和有反应的那条路分开
             const stickerDrawn = stickersAllowed && (stickerCued(saidNow)
