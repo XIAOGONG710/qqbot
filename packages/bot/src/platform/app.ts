@@ -2501,6 +2501,7 @@ ${body}
             }
         },
         receiveFriendRequest({ userId, flag }) {
+            if (stopped) return;
             const gate = config.qqFriendGate ?? 'off';
             if (!account || gate === 'off') return;
             const verdict = friendRequestVerdict(gate, config.qqAllowFriends ?? [], userId);
@@ -2508,9 +2509,9 @@ ${body}
                 log(`[好友申请] ${userId} 不在名单里，留着给你处理`);
                 return;
             }
-            account.run('set_friend_add_request', { flag, approve: verdict === 'accept' })
-                .then(() => log(`[好友申请] ${userId} ${verdict === 'accept' ? '同意' : '驳回'}`))
-                .catch(error => log(`[好友申请] ${userId} 处理失败：${error instanceof Error ? error.message : String(error)}`));
+            void sendOwnedNotice(() => account.run('set_friend_add_request', { flag, approve: verdict === 'accept' }),
+                () => log(`[好友申请] ${userId} ${verdict === 'accept' ? '同意' : '驳回'}`),
+                error => log(`[好友申请] ${userId} 处理失败：${error instanceof Error ? error.message : String(error)}`));
         },
         stop() {
             if (stopped) return stopDrain;

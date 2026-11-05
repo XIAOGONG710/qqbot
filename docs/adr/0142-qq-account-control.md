@@ -52,6 +52,8 @@ NapCat 给了约两百个动作：发消息只是其中一小块，账号本身�
 
 要 `qqControl: on` 才生效（`social` 档）；每条都过 allowlist 和审计，日志只写 QQ 号和处理结果。`friendRequestVerdict` 是纯函数，4 组用例覆盖三种档。
 
+2026-11-05 停止所有权复核补强：好友申请动作一旦交给`callAction`，App会持有运行目录租约，直到真实成功/失败、控制面审计落盘和一次结果诊断都完成；公开transport同步重入stop或同步抛错也不会漏掉本次收尾。App已经停止后不再处理新申请。这里只保证当前进程正常停机，没有持久mutation outbox、强杀重放、跨进程exactly-once或QQ动作与审计文件的原子事务；不合作transport可阻塞drain。
+
 ### 4. 控制面在机器人里的实例与审计
 
 `startApp` 在 `qqControl !== 'off'` 且入口给了 `callAction`（插件用 `_get` 实现）时创建一个实例；审计逐行追加到 `<dataDir>/account-audit.jsonl`（时间、动作、对象、放行与否、原因，不含正文）。入口没有 `callAction` 就一行日志说明控制面没起，不影响聊天。
