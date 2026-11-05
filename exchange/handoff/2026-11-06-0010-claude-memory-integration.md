@@ -7,7 +7,7 @@
 
 ## 验证结果（本检查点，未经手工挑选）
 
-- bot 完整测试：**3849 项，3830 通过，8 失败，11 跳过**（`--test-timeout=60000`，TZ=Asia/Shanghai 预加载）。
+- bot 完整测试：**3849 项，3833 通过，5 失败，11 跳过**（`--test-timeout=60000`，TZ=Asia/Shanghai 预加载；`c85efdd0` 之后。最初是 8 失败）。
 - 全仓 `npm run typecheck`：0 个错误。
 - character-tools 44、koishi-plugin 67、mobile-companion 65、PWA 12：全部通过。
 - 对照：GPT 检查点（+2 提交）完整跑是 3527 项、39 失败；main 自己单跑 `diary.test.ts` 也有 3 项失败。
@@ -16,15 +16,25 @@
   **不在这条线上**；Git Bash 里 `TZ=... node` 对 Windows 版 Node 无效，用 PowerShell 的 `$env:TZ` 或 `--import` 预加载。
 - `node --test` 默认不设单测超时，一条永远等不到的测试会把整套挂住（这次真的发生过）。跑完整测试请加 `--test-timeout=60000`。
 
-## 仍然失败的 8 项（真实源码缺口，这些测试在 main 上通过）
+## 仍然失败的 5 项（真实源码缺口，这些测试在 main 上通过）
 
 1. `memory-responder-drain-review`（5）：错字「先删后更正」、发送 ACK 事务、副索引转换回调。
    依赖 main 的 `4c1c2b94`（主动消息发送意图原子落盘，改 `responder.ts` 102 行 + `proactive-planner.ts` 233 行）
    和 `0a4b3614`（照片写入协调 + 发送生命周期事实）。试合冲突都在 DSH 敏感核心（`photos.ts`、`proactive-planner.ts`、
    `responder.ts` 双方都改过），没有硬合，需要 DSH 评审后再做。
-2. `memory-long-term-state-review`（3）：联系人 / 公共记忆进度文件的 schema 校验与 bank 身份兼容。
-   整合线的 `long-term.ts` 与 main 的行为不一致（例如坏联系人进度现在由更早一道关报「记忆修订观察未确认」），
-   还没逐条分析。
+（原第 2 项 `memory-long-term-state-review` 的 3 条已处理，见下一节。）
+
+## 坏记忆进度文件：保留 DSH 的失败关闭，修了一个会让她不回消息的缺陷（`c85efdd0`）
+
+- 两条线策略相反：main 把坏进度改名成 `.corrupt-*` 隔离、用空进度继续写；DSH 失败关闭（`invalid: 'throw'`，不重写、不派发、等人修复）。
+  **用户 2026-11-06 选定保留 DSH 的策略**，main 的三条测试改成断言 DSH 的行为。
+- 缺陷：DSH 的读路径（recall / recallCommon / othersToday / relationship / impression）也直接抛错。`relationship()` 是同步调用、
+  `contact.ts` 里没人接，进度一坏每轮回复都失败——**她不再回这个人的消息**。真实 App 端到端复现：联系人进度写成 `[]` 后发「在吗」，
+  修复前 8 秒内不回，修复后照常回复、坏文件原样保留。
+- 修法：读路径进度不可信时这一轮不带记忆（返回 undefined，固定文字诊断、只记一次）；写路径不动。反向检查：撤掉修复，新测试和端到端都会变红。
+- **线上 `dsh/qq-control` 有同样的隐患**（`#load` 用失败关闭的读取器，`relationship()` 同步调用它，`contact.ts:647` 没接）。
+  写入是原子的，文件坏掉不常见，但一旦发生影响很大。要不要单独给 `dsh/qq-control` 打一个小补丁，请 DSH 决定。
+- 顺带的差异：DSH 重写进度时不保留未知扩展字段（main 会保留）。只在两个版本交替读写同一份数据时才有影响，没改源码。
 
 ## 本轮搬进来的（均为 main 的修复，按原提交标题）
 
@@ -71,6 +81,6 @@ DSH 的入口去重 `rememberIngress` 只用 `用户:消息ID`；ADR 0238 确认
 ## 建议下一步
 
 1. DSH 评审 `4c1c2b94` / `0a4b3614`，决定怎么并进 `responder.ts`、`proactive-planner.ts`、`photos.ts`，修掉 responder-drain 的 5 项。
-2. 分析 `long-term.ts` 的进度 schema 差异，修掉 long-term-state 的 3 项。
+2. 决定是否把 `c85efdd0`（坏进度不再让她不回消息）单独先给 `dsh/qq-control`。
 3. 对着 DSH 的 mobile-companion 重做停止所有权。
 4. 以上做完后重跑完整测试（含 `--test-timeout`）、类型检查、模块清单检查，再决定合进 `dsh/qq-control`。
