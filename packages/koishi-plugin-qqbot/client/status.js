@@ -2,7 +2,7 @@
 import { computed, defineComponent, h, ref } from 'vue';
 import { store } from '@koishijs/client';
 import { c, clock, tag, tierLabel } from './common.js';
-import { extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, overviewCounts } from './dashboard.js';
+import { extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, overviewCounts, timeZoneLine } from './dashboard.js';
 
 function phaseText(r) {
     switch (r.phase) {
@@ -181,6 +181,8 @@ export const StatusTab = defineComponent({
                 ['她的状态', status ? humanValuesLine(status.humanValues) : [tag('—', 'info')]],
                 ['手机伴侣', status ? mobileCompanionLine(status.mobileCompanion) : [tag('—', 'info')]],
                 ['作息', status ? [status.schedule ? tag('按作息运行', 'success') : tag('未启用', 'warning')] : [tag('—', 'info')]],
+                // 页面文件是从仓库直接读的：插件还是旧代码（没重启）时状态里没有时区这一项
+                ['她的时区', status ? (timeZoneLine(status.timeZone, data.updatedAt) ? [h('span', null, timeZoneLine(status.timeZone, data.updatedAt))] : [tag('重启 Koishi 后才有', 'info')]) : [tag('—', 'info')]],
                 ['按心情回复', status ? [status.moody && status.schedule ? tag('已启用', 'success') : tag('未启用', 'info')] : [tag('—', 'info')]],
                 ['今天', status ? todayLine(status) : [tag('—', 'info')]],
                 ['说话检查', status ? [status.speechCheck === false ? tag('未启用', 'info') : tag('已启用', 'success')] : [tag('—', 'info')]],

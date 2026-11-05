@@ -97,6 +97,7 @@ import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } 
 import { SlidingWindowRateLimiter } from '.././social/rate-limit.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
+import { processTimeZone } from './time-zone.ts';
 import type { ExternalPlatformMode } from '../social/external-platforms.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
@@ -176,6 +177,8 @@ export interface ContactStatus {
 export interface AppStatus {
     /** 正在运行的提交、分支和启动时间；由启动脚本注入，不再靠 ADR 猜线上版本。 */
     runtime: RuntimeInfo;
+    /** 进程此刻实际在用的时区（ADR 0248）：作息、饭点、日界都按它算；状态页据此显示她那边的本地时间 */
+    timeZone: string;
     contacts: ContactStatus[];
     unlistedFriends: boolean;
     schedule: boolean;
@@ -2678,6 +2681,7 @@ ${body}
             } : undefined;
             return {
                 runtime,
+                timeZone: processTimeZone(),
                 contacts: [
                     ...config.contacts.map(contact => contactStatus(contact, false)),
                     ...[...unlisted.values()].map(contact => contactStatus(contact, true)),

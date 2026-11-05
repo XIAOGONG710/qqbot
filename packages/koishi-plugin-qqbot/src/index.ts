@@ -41,7 +41,7 @@ import { biliStickerScreen } from '../../bot/src/language/bili-stickers.ts';
 import { webFoodSource, webPhotoSource } from '../../bot/src/vision/photo-sources.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 import { EXTERNAL_PLATFORM_MODES, type ExternalPlatformMode } from '../../bot/src/social/external-platforms.ts';
-import { applyTimeZone, DEFAULT_TIME_ZONE } from '../../bot/src/platform/time-zone.ts';
+import { claimTimeZone, DEFAULT_TIME_ZONE, timeZoneChoices } from '../../bot/src/platform/time-zone.ts';
 
 // koishi 的 ESM 入口是坏的（@koishijs/loader/lib/index.mjs 默认导入了一个 CJS 文件）：取 loader 自己用的那份 CJS
 const { Schema } = createRequire(import.meta.url)('koishi') as typeof Koishi;
@@ -282,8 +282,12 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**名单外的好友**：默认关闭。打开后私聊按 unlisted 档回复（被认真问到时承认是 AI）；每人 10 分钟最多 30 条，全部名单外好友合计最多 100 条'),
         schedule: Schema.boolean().default(DEFAULTS.schedule)
             .description('**作息**：按角色卡上的作息，凌晨睡觉不回、上课晚回、打字有时间。深夜测试时关掉'),
-        timeZone: Schema.string().default(DEFAULT_TIME_ZONE)
-            .description('**她的时区**（ADR 0248，一般不用改）：作息、饭点、日记的日界都按这个时区算，跟机器的系统时区无关。IANA 写法，例如 Asia/Shanghai'),
+        timeZone: Schema.union([
+            ...timeZoneChoices().map(choice => Schema.const(choice.zone).description(choice.label)),
+            Schema.string().description('其他（填 IANA 时区名）'),
+        ]).default(DEFAULT_TIME_ZONE)
+            .description('**她的时区**（ADR 0248，一般不用改）：作息、饭点、日记的日界都按这个时区算，跟机器的系统时区无关。'
+                + '下拉里是全部 IANA 时区（常用的在前，其余按 UTC 偏移排，括号里是此刻的偏移，夏令时由系统自己换）；列表里没有的选「其他」手填'),
         media: Schema.boolean().default(DEFAULTS.media)
             .description('**听语音、看图上的字**（ADR 0052）：他发的语音用 QQ 自带的语音转文字，照片、截图用 NapCat 的 OCR 取上面的字（只有 Windows），她就着内容回，听完语音才回。'
                 + '转不出来、没字、超时（5 秒）照旧只知道是语音、图片；表情包照旧用名字'),
@@ -793,15 +797,21 @@ export function apply(ctx: Context, config: Config) {
     }
 
     let appConfig: AppConfig;
+    let releaseTimeZone: () => void = () => {};
     try {
         appConfig = parseAppConfig(toAppConfigInput(config), repoRoot);
-        // 她的时区（ADR 0248）：整个 Koishi 进程跟着她的时区走，作息和日界不再取决于机器设置
-        applyTimeZone(appConfig.timeZone);
+        // 她的时区（ADR 0248）：整个 Koishi 进程跟着她的时区走，作息和日界不再取决于机器设置；
+        // 插件停用或重载时还原（还原只在没有更新的实例占用时才做，见 claimTimeZone）
+        releaseTimeZone = claimTimeZone(appConfig.timeZone);
     } catch (error) {
         const plain = plainError('配置有误，插件没有启动', error);
         setConsoleState({ error: plain.message });
         throw plain;
     }
+    // 兜底：占用成功后立刻登记。apply 在后面注册正式的 dispose 之前抛错（图片表情索引不可用、手机伴侣挂载失败……）时，
+    // Koishi 只会跑已经登记的 dispose，这一条保证进程时区仍然被还原；正式的 dispose 登记时会接手释放（要等收尾做完）。
+    const timeZoneLease = { handedOver: false };
+    ctx.on('dispose', () => { if (!timeZoneLease.handedOver) releaseTimeZone(); });
     // 同一份按天日志（runtime/bot/logs），grep 的核对方式不变；控制台里看 ctx.logger 那份
     const fileLog = createLog(join(appConfig.dataDir, 'logs'), undefined, () => {});
     const logger = ctx.logger('qqbot');
@@ -885,6 +895,7 @@ export function apply(ctx: Context, config: Config) {
         const foodSource = appConfig.photos && appConfig.foodPhotos && appConfig.menu ? webFoodSource(appConfig, log) : undefined;
         app = startApp({ config: appConfig, transport, log, media, vision, ...(stickers ? { stickers } : {}), ...(photoSource ? { photoSource } : {}), ...(foodSource ? { foodSource } : {}) });
     } catch (error) {
+        releaseTimeZone();
         const plain = plainError('插件没有启动', error);
         setConsoleState({ error: plain.message });
         throw plain;
@@ -897,9 +908,20 @@ export function apply(ctx: Context, config: Config) {
         log,
     );
     if (unmountMobileCompanion) ctx.on('dispose', unmountMobileCompanion);
+    timeZoneLease.handedOver = true; // 从这里起由下面的 dispose 释放（兜底那条在它之前登记，先跑，所以要在登记时就交接）
     ctx.on('dispose', () => {
-        const drained = app.stop();
+        let drained: Promise<void> | undefined;
+        try { drained = app.stop(); }
+        catch (error) {
+            // stop 同步抛错也要把控制台状态和时区收拾好
+            setConsoleState({ running: false, status: undefined });
+            releaseTimeZone();
+            throw error;
+        }
         setConsoleState({ running: false, status: undefined });
+        // 收尾还在按她的时区算日期，等做完再还原进程时区
+        if (drained) return Promise.resolve(drained).finally(releaseTimeZone);
+        releaseTimeZone();
         return drained;
     });
 

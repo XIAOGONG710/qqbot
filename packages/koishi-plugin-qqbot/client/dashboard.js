@@ -77,3 +77,22 @@ export function extrasRows(extras) {
     if (extras?.report) rows.push({ label: '最近一份周报', text: extras.report.name });
     return rows;
 }
+
+/**
+ * 状态页「她的时区」一行：实际在用的 IANA 时区、此刻的 UTC 偏移、她那边现在几点（作息、饭点、日界都按它算，
+ * 浏览器所在的时区不影响这个）。没有这个字段（插件还是旧代码）返回 undefined，页面提示重启。
+ */
+export function timeZoneLine(zone, nowMs) {
+    if (typeof zone !== 'string' || !zone) return undefined;
+    const at = new Date(nowMs);
+    try {
+        const part = (options, type) => new Intl.DateTimeFormat('en-US', { timeZone: zone, ...options }).formatToParts(at).find(item => item.type === type)?.value;
+        const match = /^GMT(?:([+-])(\d{1,2})(?::(\d{2}))?)?$/.exec(part({ timeZoneName: 'longOffset' }, 'timeZoneName') ?? 'GMT');
+        const minutes = match?.[1] ? (match[1] === '-' ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3] ?? 0)) : 0;
+        const offset = minutes ? `UTC${minutes < 0 ? '-' : '+'}${String(Math.floor(Math.abs(minutes) / 60)).padStart(2, '0')}:${String(Math.abs(minutes) % 60).padStart(2, '0')}` : 'UTC±00:00';
+        const time = new Intl.DateTimeFormat('zh-CN', { timeZone: zone, hour: '2-digit', minute: '2-digit', hour12: false }).format(at);
+        return `${zone}（${offset}），她那边现在 ${time}`;
+    } catch {
+        return zone;
+    }
+}

@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
-import { extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, overviewCounts } from '../client/dashboard.js';
+import { extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, overviewCounts, timeZoneLine } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
@@ -108,5 +108,20 @@ describe('客户端的纯函数', () => {
         assert.match(rows[1].text, /还没有/);
         assert.equal(rows[2].text, 'weekly-2026-11-22.md');
         assert.match(extrasRows({ photos: { count: 5, cat: 3, view: 2, work: 0 } })[0].text, /5 张（土豆 3、天空 2）/);
+    });
+});
+
+describe('状态页「她的时区」一行（ADR 0248）', () => {
+    const at = Date.parse('2026-11-06T06:05:00Z');
+    test('时区、此刻的 UTC 偏移、她那边现在几点；同一时刻不同时区各算各的', () => {
+        assert.equal(timeZoneLine('Asia/Shanghai', at), 'Asia/Shanghai（UTC+08:00），她那边现在 14:05');
+        assert.equal(timeZoneLine('America/New_York', at), 'America/New_York（UTC-05:00），她那边现在 01:05');
+        assert.equal(timeZoneLine('Asia/Kolkata', at), 'Asia/Kolkata（UTC+05:30），她那边现在 11:35');
+        assert.equal(timeZoneLine('UTC', at), 'UTC（UTC±00:00），她那边现在 06:05');
+    });
+    test('没有这个字段（插件还是旧代码）返回 undefined，页面提示重启；坏的时区名不让页面崩', () => {
+        assert.equal(timeZoneLine(undefined, at), undefined);
+        assert.equal(timeZoneLine('', at), undefined);
+        assert.equal(timeZoneLine('Mars/Olympus', at), 'Mars/Olympus');
     });
 });
