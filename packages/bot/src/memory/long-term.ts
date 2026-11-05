@@ -32,7 +32,8 @@ import { knowsPeople } from '../life/people.ts';
 import type { ChatMessage } from '../language/prompt.ts';
 import type { MacroNames } from '../st/macros.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes, type Episode } from './episodes.ts';
-import { clarity, IMPORTANT, isSummary, LASTING, lastTouched, withoutMark, type Clarity, type FadeStats } from './fading.ts';
+import { clarity, IMPORTANT, isSummary, LASTING, lastTouchedDay, withoutMark, type Clarity, type FadeStats } from './fading.ts';
+import { civilDayInWindow, providerTime } from './civil-time.ts';
 import type { BankConfig, HindsightApi, MemoryItem, MentalModelRequest, RecallRequest, RecallResult } from './hindsight.ts';
 
 /** 进行中的片段每多这么多条就整段重写一次 */
@@ -249,13 +250,15 @@ interface ContactState {
     /** 实际确认提交的转写摘要；旧只有 count 的进度不推定已同步当前内容。 */
     retainedDigests?: Record<string, string>;
     commonDigests?: Record<string, string>;
+    retainedSourceTimes?: Record<string, string[]>;
+    commonSourceTimes?: Record<string, string[]>;
     /** 私人安全片段未公开/旧公共文档已确认删除的内容摘要。 */
     commonSkipped?: Record<string, string>;
     pendingOwn?: Record<string, PendingRetain>;
     pendingCommon?: Record<string, PendingRetain>;
 }
 
-interface PendingRetain { operationId: string; bankId: string; digest: string; count: number; item: MemoryItem; requestHash: string; revision?: boolean }
+interface PendingRetain { operationId: string; bankId: string; digest: string; count: number; item: MemoryItem; requestHash: string; revision?: boolean; sourceTimes?: string[] }
 const requestHash = (item: MemoryItem) => createHash('sha256').update(JSON.stringify(item)).digest('hex');
 const hashValue = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 function pendingMap(value: unknown): boolean {
@@ -264,7 +267,8 @@ function pendingMap(value: unknown): boolean {
             || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(entry.operationId)
             || typeof entry.bankId !== 'string' || !entry.bankId || !hashValue(entry.digest) || !hashValue(entry.requestHash)
             || entry.revision !== undefined && typeof entry.revision !== 'boolean'
-            || typeof entry.count !== 'number' || !Number.isSafeInteger(entry.count) || entry.count < 0 || !stateObject(entry.item)) return false;
+            || typeof entry.count !== 'number' || !Number.isSafeInteger(entry.count) || entry.count < 0 || !stateObject(entry.item)
+            || entry.sourceTimes !== undefined && (!Array.isArray(entry.sourceTimes) || entry.sourceTimes.length !== entry.count || !entry.sourceTimes.every(stateTimestamp))) return false;
         const item = entry.item;
         if (typeof item.content !== 'string' || !stateTimestamp(item.timestamp) || typeof item.context !== 'string' || typeof item.document_id !== 'string'
             || !Array.isArray(item.tags) || !item.tags.every(tag => typeof tag === 'string') || !stateObject(item.metadata)
@@ -294,9 +298,12 @@ const contentRevision = (episode: Episode, names: MacroNames, written: Record<st
     return done !== undefined && (digests[episode.id] === undefined || done > episode.messages.length || episodeDigest(episode, names, done) !== digests[episode.id]);
 };
 function contactState(value: unknown): value is ContactState {
+    const times = (field: unknown, counts: unknown) => field === undefined || stateObject(field) && stateObject(counts)
+        && Object.entries(field).every(([id, rows]) => Array.isArray(rows) && rows.length === counts[id] && rows.every(stateTimestamp));
     return stateObject(value) && typeof value.bankId === 'string' && Boolean(value.bankId) && progressMap(value.retained)
         && (value.common === undefined || progressMap(value.common)) && digestMap(value.retainedDigests) && digestMap(value.commonDigests) && digestMap(value.commonSkipped)
         && pendingMap(value.pendingOwn) && pendingMap(value.pendingCommon)
+        && times(value.retainedSourceTimes, value.retained) && times(value.commonSourceTimes, value.common)
         && versionValue(value.bankConfigured) && versionValue(value.personModel)
         && (typeof value.relationshipModel === 'boolean' || versionValue(value.relationshipModel));
 }
@@ -336,7 +343,7 @@ export class LongTermMemory {
     readonly #now: () => number;
     readonly #derived: DerivedState;
     readonly #repair?: DerivedRepair;
-    readonly #repairInputs = new Map<string, { contact: MemoryContact; names: MacroNames; history: StoredMessage[] }>();
+    readonly #repairInputs = new Map<string, { contact: MemoryContact; names: MacroNames; history: StoredMessage[]; at: number }>();
     readonly #derivedErrors = new Set<string>();
     /** 每个联系人（按 #key）的写入排队，保证串行 */
     readonly #queues = new Map<string, Promise<void>>();
@@ -436,8 +443,65 @@ export class LongTermMemory {
         finally { if (before !== this.#derivedSnapshot(this.bankId(contact))?.generation) { this.#invalidateContactModels(contact); this.#invalidateEntities(); } }
     }
 
-    #markRecalls(contact: MemoryContact, history: StoredMessage[]): void {
-        for (const episode of splitEpisodes(history)) {
+    #facts(history: StoredMessage[], at: number): StoredMessage[] {
+        if (!Number.isFinite(at)) throw new RangeError('记忆事实时间无效');
+        // Validate the complete source even when a row is not visible yet.
+        splitEpisodes(history);
+        return history.filter(message => Date.parse(message.time) <= at);
+    }
+
+    #factEpisodes(contact: MemoryContact, history: StoredMessage[], at: number): Episode[] {
+        if (!Number.isFinite(at)) throw new RangeError('记忆事实时间无效');
+        const visible = this.#facts(history, at), state = this.#load(contact);
+        const anchors = new Map<number, string[]>();
+        const anchor = (id: string, time?: string) => {
+            const stamp = time === undefined ? Number(id.slice(3)) : Date.parse(time);
+            if (Number.isFinite(stamp)) anchors.set(stamp, [...anchors.get(stamp) ?? [], id]);
+        };
+        for (const [id] of [...Object.entries(state.retained), ...Object.entries(state.common ?? {})]) {
+            const time = state.retainedSourceTimes?.[id]?.[0] ?? state.commonSourceTimes?.[id]?.[0];
+            anchor(id, time);
+        }
+        for (const pending of [state.pendingOwn, state.pendingCommon]) for (const [id, item] of Object.entries(pending ?? {})) anchor(id, item.sourceTimes?.[0]);
+        return splitEpisodes(visible).map(source => {
+            let prior: string | undefined;
+            for (const message of source.messages) { prior = anchors.get(Date.parse(message.time))?.[0]; if (prior !== undefined) break; }
+            return { ...source, id: prior ?? source.id };
+        });
+    }
+
+    #temporalConflicts(contact: MemoryContact, names: MacroNames | undefined, raw: StoredMessage[], visible: StoredMessage[], at: number): Set<string> {
+        const state = this.#load(contact), original = new Map(splitEpisodes(raw).map(episode => [episode.id, episode])), groups = this.#factEpisodes(contact, raw, at), facts = new Map(groups.map(episode => [episode.id, episode]));
+        const blocked = new Set<string>();
+        const seen = new Set<string>();
+        for (const episode of groups) { if (seen.has(episode.id)) blocked.add(episode.id); seen.add(episode.id); }
+        const check = (id: string, count: number, digest?: string, sourceTimes?: string[]) => {
+            const current = facts.get(id);
+            if (current && current.messages.length < count) { blocked.add(id); return; }
+            if (sourceTimes && sourceTimes.length === count) {
+                if (sourceTimes.some(time => Date.parse(time) > at) || !current || current.messages.length < count) blocked.add(id);
+                return;
+            }
+            if (names && digest && current && count <= current.messages.length && episodeDigest(current, names, count) === digest) return;
+            if (original.get(id)?.messages.slice(0, count).some(message => Date.parse(message.time) > at)) blocked.add(id);
+        };
+        for (const [id, count] of Object.entries(state.retained)) check(id, count, state.retainedDigests?.[id], state.retainedSourceTimes?.[id]);
+        for (const [id, count] of Object.entries(state.common ?? {})) check(id, count, state.commonDigests?.[id] ?? state.commonSkipped?.[id], state.commonSourceTimes?.[id]);
+        for (const pending of [state.pendingOwn, state.pendingCommon]) for (const [id, item] of Object.entries(pending ?? {})) check(id, item.count, item.digest, item.sourceTimes);
+        return blocked;
+    }
+
+    #markTemporal(contact: MemoryContact, ids: Set<string>): void {
+        for (const id of ids) {
+            const snapshot = this.#derivedSnapshot(this.bankId(contact));
+            if (snapshot?.dirty && (snapshot.documents.includes(id) || snapshot.owners.some(owner => owner.allDocuments))) continue;
+            // A second clock rollback after a verified repair is a new visibility observation.
+            this.#markDocuments(contact, [id], `temporal:${repairFingerprint([this.#key(contact), id, snapshot?.generation])}`);
+        }
+    }
+
+    #markRecalls(contact: MemoryContact, history: StoredMessage[], episodes = splitEpisodes(history)): void {
+        for (const episode of episodes) {
             const withdrawn = episode.messages.filter(message => message.recalled === true).map(({ role, time, messageId, messageSeq, sourceTime }) => ({ role, time, messageId, messageSeq, sourceTime }));
             if (withdrawn.length) this.#markDocuments(contact, [episode.id], `recall:${repairFingerprint([this.#key(contact), episode.id, withdrawn])}`);
         }
@@ -448,13 +512,16 @@ export class LongTermMemory {
         if (this.#stopped) return;
         const input = this.#repairInputs.get(this.#key(contact));
         if (snapshot === undefined) this.#repairInputs.delete(this.#key(contact));
-        else if (input) this.#repairInputs.set(this.#key(contact), { ...input, history: structuredClone(snapshot) });
-        const ids = snapshot === undefined ? undefined : this.#recalledDocuments(snapshot);
+        else if (input) this.#repairInputs.set(this.#key(contact), { ...input, history: structuredClone(snapshot), at: this.#now() });
+        const at = this.#now(), visible = snapshot === undefined ? undefined : this.#facts(snapshot, at);
+        if (snapshot && visible) this.#markTemporal(contact, this.#temporalConflicts(contact, input?.names, snapshot, visible, at));
+        const episodes = snapshot === undefined ? undefined : this.#factEpisodes(contact, snapshot, at);
+        const ids = episodes === undefined ? undefined : episodes.filter(episode => episode.messages.some(message => message.recalled)).map(episode => episode.id);
         if (ids === undefined || ids.length) {
             // 即使屏障写失败，已经接受的撤回也不能让旧任务继续派发原文。
             this.#latest.set(this.#key(contact), Symbol('recall observed'));
             if (snapshot === undefined) this.#markDocuments(contact, undefined, `unknown:${this.#key(contact)}`);
-            else this.#markRecalls(contact, snapshot);
+            else this.#markRecalls(contact, visible!, episodes);
         }
     }
 
@@ -462,10 +529,11 @@ export class LongTermMemory {
         return splitEpisodes(history).filter(episode => episode.messages.some(message => message.recalled === true)).map(episode => episode.id);
     }
 
-    #observeRevisions(contact: MemoryContact, names: MacroNames, history: StoredMessage[]): void {
-        this.#markRecalls(contact, history);
+    #observeRevisions(contact: MemoryContact, names: MacroNames, history: StoredMessage[], temporal: Set<string> = new Set(), episodes = splitEpisodes(history)): void {
+        this.#markRecalls(contact, history, episodes);
         const state = this.#load(contact);
-        const changed = splitEpisodes(history).filter(episode => {
+        const changed = episodes.filter(episode => {
+            if (temporal.has(episode.id)) return false;
             const different = (counts: Record<string, number> = {}, digests: Record<string, string> = {}) => counts[episode.id] !== undefined
                 && (counts[episode.id]! > episode.messages.length || digests[episode.id] !== undefined && contentRevision(episode, names, counts, digests));
             return different(state.retained, state.retainedDigests) || different(state.common, state.commonDigests)
@@ -510,8 +578,12 @@ export class LongTermMemory {
         if (field === 'pendingOwn') { state.retained[id] = pending.count; (state.retainedDigests ??= {})[id] = pending.digest; }
         else { (state.common ??= {})[id] = pending.count; (state.commonDigests ??= {})[id] = pending.digest; if (state.commonSkipped) delete state.commonSkipped[id]; this.#invalidateEntities(); }
         delete state[field]![id];
+        const sourceField = field === 'pendingOwn' ? 'retainedSourceTimes' : 'commonSourceTimes';
+        if (pending.sourceTimes) (state[sourceField] ??= {})[id] = [...pending.sourceTimes];
+        else if (state[sourceField]) delete state[sourceField]![id];
         if (pending.revision) this.#invalidateContactModels(contact);
         this.#save(contact, state);
+        if (pending.sourceTimes?.some(time => Date.parse(time) > this.#now())) this.#markTemporal(contact, new Set([id]));
     }
 
     async #reconcilePending(contact: MemoryContact, names: MacroNames, state: ContactState, episodes: Episode[], current: () => boolean): Promise<boolean> {
@@ -524,7 +596,12 @@ export class LongTermMemory {
             let status = await this.#read(() => this.#options.api.retentionStatus!(pending.bankId, pending.operationId));
             if (status === 'not_found') {
                 const episode = episodes.find(episode => episode.id === id);
-                const unchanged = episode && episode.messages.length >= pending.count && episodeDigest(episode, names, pending.count) === pending.digest
+                const times = new Map<string, number>();
+                for (const time of pending.sourceTimes ?? []) times.set(time, (times.get(time) ?? 0) + 1);
+                const original = pending.sourceTimes ? episode?.messages.filter(message => {
+                    const left = times.get(message.time) ?? 0; if (!left) return false; times.set(message.time, left - 1); return true;
+                }) : episode?.messages.slice(0, pending.count);
+                const unchanged = episode && original?.length === pending.count && episodeDigest({ ...episode, messages: original }, names) === pending.digest
                     && (field === 'pendingOwn' || !episode.messages.some(message => message.role === 'user' && detectCrisis(message.content)));
                 if (!unchanged) throw new Error('记忆旧派发结果未知且来源已变；不重发旧正文，保留核对屏障');
                 if (!current()) return false;
@@ -543,7 +620,8 @@ export class LongTermMemory {
         digest: string, bankId: string, item: MemoryItem, current: () => boolean, revision: boolean): Promise<boolean> {
         if (!current()) return false;
         if (!this.#advanced()) { await this.#mutate(() => this.#options.api.retain(bankId, item)); return true; }
-        const pending: PendingRetain = { operationId: randomUUID(), bankId, digest, count: episode.messages.length, item: structuredClone(item), requestHash: requestHash(item), revision };
+        const pending: PendingRetain = { operationId: randomUUID(), bankId, digest, count: episode.messages.length, item: structuredClone(item), requestHash: requestHash(item), revision,
+            sourceTimes: episode.messages.map(message => message.time) };
         (state[field] ??= {})[episode.id] = pending;
         this.#save(contact, state); // 不可变意图确认落盘后才派发；失败不发请求。
         if (!current()) return false;
@@ -586,27 +664,41 @@ export class LongTermMemory {
         contact = { ...contact };
         names = { ...names };
         history = structuredClone(history);
+        const at = this.#now(), raw = history;
         const key = this.#key(contact);
         const revision = Symbol('sync revision');
         this.#latest.set(key, revision);
-        const current = () => !this.#stopped && this.#latest.get(key) === revision;
-        try { this.#observeRevisions(contact, names, history); }
+        const current = () => !this.#stopped && this.#latest.get(key) === revision && history.every(message => Date.parse(message.time) <= this.#now());
+        let temporal: Set<string>;
+        let episodes: Episode[];
+        try {
+            history = this.#facts(raw, at);
+            episodes = this.#factEpisodes(contact, raw, at);
+            temporal = this.#temporalConflicts(contact, names, raw, history, at);
+            this.#markTemporal(contact, temporal);
+            this.#observeRevisions(contact, names, history, temporal, episodes);
+        }
         catch {
             this.#lastWrite = { at: this.#now(), ok: false, operation: 'write', source: 'contact-sync', error: '记忆修订观察未确认；未派发' };
             this.#options.log('记忆修订观察未确认；保留状态，本轮未派发');
             if (!this.#queues.has(key) && this.#latest.get(key) === revision) this.#latest.delete(key);
             return Promise.resolve();
         }
-        if (this.#repair && this.#derivedSnapshot(this.bankId(contact))?.dirty) this.#repairInputs.set(key, { contact, names, history });
+        if (this.#repair && this.#derivedSnapshot(this.bankId(contact))?.dirty) this.#repairInputs.set(key, { contact, names, history: raw, at });
         const previous = this.#queues.get(key) ?? Promise.resolve();
         const next = previous.then(async () => {
             if (!current()) return;
             try {
+                if (temporal.size) {
+                    // Preserve confirmed/immutable progress; a shorter time view is not a deletion.
+                    await this.#reconcilePending(contact, names, this.#load(contact), episodes, current);
+                    return;
+                }
                 const snapshot = this.#derivedSnapshot(this.bankId(contact));
                 // Once source evidence is frozen, ordinary appends remain local until
                 // this repair has a verified receipt. A new pollution generation
                 // invalidates the old lease and must first publish its new sources.
-                if (!snapshot?.dirty || !snapshot.repair || snapshot.repair.lease.generation !== snapshot.generation) await this.#sync(contact, names, history, current);
+                if (!snapshot?.dirty || !snapshot.repair || snapshot.repair.lease.generation !== snapshot.generation) await this.#sync(contact, names, history, current, episodes);
             } finally { if (!this.#stopped) await this.#repairContact(contact); }
         }).catch(error => {
             if (error === MEMORY_STOPPED) return;
@@ -627,7 +719,9 @@ export class LongTermMemory {
             || snapshot.owners[0]!.qq !== contact.qq || snapshot.owners[0]!.tier !== contact.tier) return undefined;
         const state = this.#load(contact);
         if (!state.relationshipModel || Object.keys(state.pendingOwn ?? {}).length) return undefined;
-        const episodes = new Map(splitEpisodes(input.history).map(episode => [episode.id, episode]));
+        const at = Math.min(input.at, this.#now()), visible = this.#facts(input.history, at);
+        if (this.#temporalConflicts(contact, input.names, input.history, visible, at).size) return undefined;
+        const episodes = new Map(this.#factEpisodes(contact, input.history, at).map(episode => [episode.id, episode]));
         const sourceManifest: RepairCandidate['sourceManifest'][number][] = [];
         for (const [documentId, count] of Object.entries(state.retained)) {
             const episode = episodes.get(documentId), digest = state.retainedDigests?.[documentId];
@@ -661,9 +755,8 @@ export class LongTermMemory {
         }
     }
 
-    async #sync(contact: MemoryContact, names: MacroNames, history: StoredMessage[], current: () => boolean): Promise<void> {
+    async #sync(contact: MemoryContact, names: MacroNames, history: StoredMessage[], current: () => boolean, episodes = splitEpisodes(history)): Promise<void> {
         const state = this.#load(contact);
-        const episodes = splitEpisodes(history);
         if (episodes.some(episode => contentRevision(episode, names, state.retained, state.retainedDigests)
             || contentRevision(episode, names, state.common, { ...state.commonDigests, ...state.commonSkipped })
             || [state.pendingOwn?.[episode.id], state.pendingCommon?.[episode.id]].some(pending => pending && (pending.count > episode.messages.length || pending.digest !== episodeDigest(episode, names, pending.count))))) this.#invalidateContactModels(contact);
@@ -703,6 +796,7 @@ export class LongTermMemory {
                 }
                 (state.common ??= {})[episode.id] = episode.messages.length;
                 (state.commonSkipped ??= {})[episode.id] = digest;
+                (state.commonSourceTimes ??= {})[episode.id] = episode.messages.map(message => message.time);
                 if (state.commonDigests) delete state.commonDigests[episode.id];
                 this.#save(contact, state);
             } else common.push(episode);
@@ -739,9 +833,11 @@ export class LongTermMemory {
             }, current, revision))) return;
             (state.common ??= {})[episode.id] = episode.messages.length;
             (state.commonDigests ??= {})[episode.id] = digest;
+            (state.commonSourceTimes ??= {})[episode.id] = episode.messages.map(message => message.time);
             if (state.commonSkipped) delete state.commonSkipped[episode.id];
             if (revision) this.#invalidateContactModels(contact);
             this.#save(contact, state);
+            if (episode.messages.some(message => Date.parse(message.time) > this.#now())) this.#markTemporal(contact, new Set([episode.id]));
             this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-common-episode', items: episode.messages.length, fingerprint: evidenceFingerprint(episode.id) };
             this.#options.log(`[${contact.qq}] 记忆（公共）：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
             // 新片段可能带来新的人和事，下一轮重读实体名
@@ -862,8 +958,10 @@ export class LongTermMemory {
             }, current, revision))) return;
             state.retained[episode.id] = episode.messages.length;
             (state.retainedDigests ??= {})[episode.id] = digest;
+            (state.retainedSourceTimes ??= {})[episode.id] = episode.messages.map(message => message.time);
             if (revision) this.#invalidateContactModels(contact);
             this.#save(contact, state);
+            if (episode.messages.some(message => Date.parse(message.time) > this.#now())) this.#markTemporal(contact, new Set([episode.id]));
             this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-episode', items: episode.messages.length, fingerprint: evidenceFingerprint(episode.id) };
             this.#options.log(`[${contact.qq}] 记忆：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
         }
@@ -1178,26 +1276,26 @@ export function initiateQuery(chat: ChatMessage[], topic: string): string {
 
 /** 周记、阶段总结按那篇的日子算在不在这段时间里（Hindsight 给抽出来的事实标的日子可能在外面） */
 function summaryIn(result: RecallResult, window: { start: Date; end: Date }): boolean {
-    const day = isSummary(result) ? lastTouched(result) : undefined;
-    return day !== undefined && day >= localDate(window.start.getFullYear(), window.start.getMonth(), window.start.getDate()) && day < window.end;
+    const day = isSummary(result) ? lastTouchedDay(result) : undefined;
+    return day !== undefined && civilDayInWindow(day, window);
 }
 
 /** 那段时间里写的日记 */
 function diaryIn(result: RecallResult, window: { start: Date; end: Date }): boolean {
-    const day = result.document_id?.startsWith(DIARY_PREFIX) ? lastTouched(result) : undefined;
-    return day !== undefined && day >= localDate(window.start.getFullYear(), window.start.getMonth(), window.start.getDate()) && day < window.end;
+    const day = result.document_id?.startsWith(DIARY_PREFIX) ? lastTouchedDay(result) : undefined;
+    return day !== undefined && civilDayInWindow(day, window);
 }
 
 /** 召回结果是不是那天的事：发生的时间，没有就用说起的时间 */
 function onDay(result: RecallResult, start: Date, end: Date): boolean {
-    const time = Date.parse(result.occurred_start ?? result.mentioned_at ?? '');
-    return !Number.isNaN(time) && time >= start.getTime() && time < end.getTime();
+    const time = providerTime(result.occurred_start) ?? providerTime(result.mentioned_at);
+    return time !== undefined && time >= start.getTime() && time < end.getTime();
 }
 
 /** 「今天聊过」看说起这件事的时间；没有 mentioned_at 才退回事情发生的时间。 */
 function mentionedOnDay(result: RecallResult, start: Date, end: Date): boolean {
-    const time = Date.parse(result.mentioned_at ?? result.occurred_start ?? '');
-    return !Number.isNaN(time) && time >= start.getTime() && time < end.getTime();
+    const time = providerTime(result.mentioned_at) ?? providerTime(result.occurred_start);
+    return time !== undefined && time >= start.getTime() && time < end.getTime();
 }
 
 /**
@@ -1264,8 +1362,8 @@ export function formatRecalled(
     options: { header?: string; limit?: number; now?: Date; source?: (result: RecallResult) => string | undefined; fade?: FadeRequest } = {},
 ): string | undefined {
     const valid = (iso: string | null | undefined) => {
-        const date = iso ? new Date(iso) : undefined;
-        return date && !Number.isNaN(date.getTime()) ? date : undefined;
+        const time = providerTime(iso);
+        return time === undefined ? undefined : new Date(time);
     };
     const day = (date: Date) => `${date.getMonth() + 1}月${date.getDate()}日`;
     const { fade, now } = options;

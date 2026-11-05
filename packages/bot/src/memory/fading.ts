@@ -12,6 +12,7 @@ import { localDate } from '../local-date.ts';
 import { EPISODE_GAP_MS } from './episodes.ts';
 import type { RecallResult } from './hindsight.ts';
 import { calendarDate } from './state-schema.ts';
+import { civilDayInWindow, civilDayNumber, providerTime } from './civil-time.ts';
 
 /** 只提过一次的：几天以内清楚、几天以内记个大概 */
 export const CLEAR_DAYS = 7;
@@ -55,13 +56,7 @@ export function isSummary(result: RecallResult): boolean {
     return /^(week|phase):/.test(result.document_id ?? '');
 }
 
-const time = (iso: string | null | undefined): number | undefined => {
-    // 保留供应商既有合法时间格式；带ISO日期前缀的来源不能把2月30日滚成3月。
-    const prefix = typeof iso === 'string' ? /^(\d{4}-\d{2}-\d{2})(?:[T ]|$)/.exec(iso) : undefined;
-    if (prefix && !calendarDate(prefix[1]!)) return undefined;
-    const t = iso ? Date.parse(iso) : Number.NaN;
-    return Number.isFinite(t) ? t : undefined;
-};
+const time = providerTime;
 
 /** 开头的记号（两个都标时是「【重要】【长期】」） */
 const MARKS = /^\s*((?:【重要】|【长期】)+)/;
@@ -99,17 +94,15 @@ export function lastTouched(result: RecallResult): Date | undefined {
     return times.length ? new Date(Math.max(...times)) : undefined;
 }
 
-const startOf = (date: Date) => localDate(date.getFullYear(), date.getMonth(), date.getDate());
-
-/** 从 then 那天到 now 那天隔了几天（本地日历日） */
-function daysBetween(then: Date, now: Date): number {
-    const day = (date: Date) => {
-        // UTC只编码民用日序，不作时区转换；setUTCFullYear避免0–99年1900偏移。
-        const civil = new Date(0);
-        civil.setUTCFullYear(date.getFullYear(), date.getMonth(), date.getDate());
-        return civil.getTime();
-    };
-    return (day(now) - day(then)) / DAY_MS;
+/** Document dates are civil labels, including dates absent from the host timezone. */
+export function lastTouchedDay(result: RecallResult): number | undefined {
+    const document = DATED_DOCUMENT.exec(result.document_id ?? '');
+    if (document) {
+        const day = civilDayNumber(`${document[2]}-${document[3]}-${document[4]}`);
+        if (day !== undefined) return day + (document[1] === 'week' ? 6 : 0);
+    }
+    const touched = lastTouched(result);
+    return touched ? civilDayNumber(touched) : undefined;
 }
 
 /** 他这次的话里有没有这条的某个实体名 */
@@ -128,14 +121,14 @@ export function clarity(result: RecallResult, options: FadeOptions): Clarity {
     // 还没到日子的计划
     const occurred = time(result.occurred_start);
     if (occurred !== undefined && occurred > options.now.getTime()) return 'lasting';
-    const touched = lastTouched(result);
-    if (!touched) return 'lasting';
-    const days = daysBetween(touched, options.now);
+    const touched = lastTouchedDay(result), today = civilDayNumber(options.now);
+    if (touched === undefined || today === undefined) return 'lasting';
+    const days = today - touched;
     const scale = (result.source_fact_ids?.length ?? 1) >= 2 || isSummary(result) ? 2 : 1;
     if (days <= CLEAR_DAYS * scale) return 'clear';
     if (days <= VAGUE_DAYS * scale) return 'vague';
     const { window } = options;
-    const asked = window && isSummary(result) && touched >= startOf(window.start) && touched < window.end;
+    const asked = window && isSummary(result) && civilDayInWindow(touched, window);
     return asked || recognizes(result, options) ? 'recognized' : 'forgotten';
 }
 

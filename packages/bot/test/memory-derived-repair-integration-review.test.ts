@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { LongTermMemory, RELATIONSHIP_MODEL } from '../src/memory/long-term.ts';
 import { ChatHistory } from '../src/memory/history.ts';
 import { DerivedState } from '../src/memory/derived-state.ts';
+import { localDate } from '../src/local-date.ts';
 import { isSafeRepairModel, repairModelConfigHash, repairDocumentContentHash, type HindsightApi, type DerivedRepairApi, type RepairModelEvidence, type MemoryItem } from '../src/memory/hindsight.ts';
 
 const roots: string[] = [];
@@ -228,4 +229,26 @@ test('供应商复用旧刷新UUID不能以旧completed冒充新重建，保未�
         await f.sync(); assert.equal(f.calls.filter(call => call === 'refresh').length, 2);
         assert.equal(f.store.snapshot(f.memory.bankId(contact)).dirty, true);
     } finally { await f.memory.stop(); }
+});
+
+test('供应商不实日历不滚入另一查询窗口，合法mentioned日期仍可回退展示', async () => {
+    const f = fixture();
+    try {
+        await f.sync(); f.api.recall = async () => [{ id: 'bad-calendar', type: 'world', text: '【重要】SYNTHETIC_BAD_CALENDAR', document_id: 'diary:2026-02-01', occurred_start: '2026-02-30T12:00:00Z', mentioned_at: '2026-02-01T12:00:00Z' }];
+        const person = { ...contact, name: '合成甲' }, query = [{ role: 'user' as const, content: '合成日期查询' }];
+        const wrong = await f.memory.recallCommon(person, query, new Date('2026-03-02T13:00:00Z'), [person], { start: new Date('2026-03-02T00:00:00Z'), end: new Date('2026-03-03T00:00:00Z') });
+        assert.ok(!wrong?.includes('SYNTHETIC_BAD_CALENDAR'));
+        const right = await f.memory.recallCommon(person, query, new Date('2026-02-01T13:00:00Z'), [person], { start: new Date('2026-02-01T00:00:00Z'), end: new Date('2026-02-02T00:00:00Z') });
+        assert.ok(right?.includes('SYNTHETIC_BAD_CALENDAR')); assert.ok(!right?.includes('3月2日'));
+    } finally { await f.memory.stop(); }
+});
+
+test('真实日记窗口按Apia缺日的civil身份，不滚到exclusive end的31日', async () => {
+    const previous = process.env.TZ; process.env.TZ = 'Pacific/Apia'; const f = fixture();
+    try {
+        await f.sync(); f.api.recall = async () => [{ id: 'missing-civil', type: 'world', text: '【重要】SYNTHETIC_APIA_DIARY', document_id: 'diary:2011-12-30' }];
+        const person = { ...contact, name: '合成甲' };
+        const result = await f.memory.recallCommon(person, [{ role: 'user', content: '那几天呢' }], localDate(2011, 11, 31, 12), [person], { start: localDate(2011, 11, 29), end: localDate(2011, 11, 31) });
+        assert.ok(result?.includes('SYNTHETIC_APIA_DIARY'));
+    } finally { await f.memory.stop(); if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous; }
 });
