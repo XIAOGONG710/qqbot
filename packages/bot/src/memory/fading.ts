@@ -8,7 +8,6 @@
 // - 想不起来的，他这次的话（她上次回复之后的）里出现了这条的某个实体名（至少 2 个字，不算她和名单里的称呼）就想起来，细节按记个大概说；
 //   问到那一周、那个假期（window）时，那段时间的周记、阶段总结也算一提就想起。
 
-import { localDate } from '../local-date.ts';
 import { EPISODE_GAP_MS } from './episodes.ts';
 import type { RecallResult } from './hindsight.ts';
 import { calendarDate } from './state-schema.ts';
@@ -99,6 +98,12 @@ export function lastTouched(result: RecallResult): Date | undefined {
     return times.length ? new Date(Math.max(...times)) : undefined;
 }
 
+const localDate = (year: number, month: number, day: number) => {
+    const value = new Date(0);
+    value.setFullYear(year, month, day);
+    value.setHours(0, 0, 0, 0);
+    return value;
+};
 const startOf = (date: Date) => localDate(date.getFullYear(), date.getMonth(), date.getDate());
 
 /** 从 then 那天到 now 那天隔了几天（本地日历日） */
