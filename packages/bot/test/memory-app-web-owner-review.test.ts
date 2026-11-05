@@ -50,7 +50,7 @@ test('真实App停机取消已派Web gather，迟到结果不再摘录、写时�
     let app: App | undefined, releaseFetch!: () => void, fetchCalls = 0, extractCalls = 0;
     const held = new Promise<void>(done => { releaseFetch = done; });
     try {
-        globalThis.fetch = async input => { fetchCalls++; assert.match(String(input), /wikipedia/); await held; return wiki(); };
+        globalThis.fetch = async input => { if (!/wikipedia/.test(String(input))) throw new Error("synthetic network off"); fetchCalls++; await held; return wiki(); };
         app = startApp({ config: config(root, dataDir), log: line => logs.push(line), sensitive: { on: () => false, describe: () => '' },
             transport: { friendHistory: async () => [], sendPrivateText: async (_qq, text) => { sent.push(text); return 1; } },
             pipeline: { now: () => NOW, settle: { quietMs: 0, maxMs: 0 }, generate: async messages => {
@@ -81,7 +81,7 @@ test('Web deadline产生的孤儿结果不污染已经接管目录的替代实�
     const held = new Promise<void>(done => { releaseFetch = done; });
     try {
         globalThis.setTimeout = ((callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => oldSetTimeout(callback, ms === 25_000 ? 5 : ms, ...args)) as typeof setTimeout;
-        globalThis.fetch = async input => { fetchCalls++; assert.match(String(input), /wikipedia/); await held; return wiki(); };
+        globalThis.fetch = async input => { if (!/wikipedia/.test(String(input))) throw new Error("synthetic network off"); fetchCalls++; await held; return wiki(); };
         const parsed = config(root, dataDir);
         app1 = startApp({ config: parsed, log: line => logs1.push(line), sensitive: { on: () => false, describe: () => '' },
             transport: { friendHistory: async () => [], sendPrivateText: async (_qq, text) => { sent1.push(text); return 11; } },
@@ -123,7 +123,7 @@ test('Web正常完成仍会摘录、写时间线并在同实例复用缓存', as
     const oldFetch = globalThis.fetch, logs: string[] = [], sent: string[] = [], prompts: string[] = [];
     let app: App | undefined, fetchCalls = 0, extractCalls = 0;
     try {
-        globalThis.fetch = async input => { fetchCalls++; assert.match(String(input), /wikipedia/); return wiki(); };
+        globalThis.fetch = async input => { if (!/wikipedia/.test(String(input))) throw new Error("synthetic network off"); fetchCalls++; return wiki(); };
         app = startApp({ config: config(root, dataDir), log: line => logs.push(line), sensitive: { on: () => false, describe: () => '' },
             transport: { friendHistory: async () => [], sendPrivateText: async (_qq, text) => { sent.push(text); return sent.length; } },
             pipeline: { now: () => NOW, settle: { quietMs: 0, maxMs: 0 }, generate: async messages => {

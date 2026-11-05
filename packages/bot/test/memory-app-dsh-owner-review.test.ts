@@ -11,7 +11,7 @@ const linkKey = Symbol.for('qqbot.synthetic.dsh-owner-review-link');
 const globals = globalThis as unknown as Record<symbol, unknown>;
 const dshUrl = new URL('../src/dsh-link.ts', import.meta.url).href;
 const hooks = registerHooks({ load(url, context, next) {
-    if (url === dshUrl) return { format: 'module', shortCircuit: true, source: `export const dshOptionsFromLlm=(o,p={})=>({...o,...p});export const createDshLink=()=>globalThis[Symbol.for('qqbot.synthetic.dsh-owner-review-link')]();` };
+    if (url === dshUrl) return { format: 'module', shortCircuit: true, source: `export const dshOptionsFromLlm=(o,p={})=>({...o,...p});export const createDshLink=()=>globalThis[Symbol.for('qqbot.synthetic.dsh-owner-review-link')]();export const sanitizeDshState=s=>s;export const sanitizeDshError=e=>e instanceof Error?e.message:String(e);` };
     return next(url, context);
 } });
 const { startApp } = await import('../src/platform/app.ts'); hooks.deregister();

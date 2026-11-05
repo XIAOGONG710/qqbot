@@ -14,7 +14,7 @@ const linkKey = Symbol.for('qqbot.synthetic.tell-owner-link');
 const globals = globalThis as unknown as Record<symbol, unknown>;
 const dshUrl = new URL('../src/dsh-link.ts', import.meta.url).href;
 const hooks = registerHooks({ load(url, context, next) {
-    if (url === dshUrl) return { format: 'module', shortCircuit: true, source: `export const dshOptionsFromLlm=(o,p={})=>({...o,...p});export const createDshLink=()=>globalThis[Symbol.for('qqbot.synthetic.tell-owner-link')]();` };
+    if (url === dshUrl) return { format: 'module', shortCircuit: true, source: `export const dshOptionsFromLlm=(o,p={})=>({...o,...p});export const createDshLink=()=>globalThis[Symbol.for('qqbot.synthetic.tell-owner-link')]();export const sanitizeDshState=s=>s;export const sanitizeDshError=e=>e instanceof Error?e.message:String(e);` };
     return next(url, context);
 } });
 const { startApp } = await import('../src/platform/app.ts'); hooks.deregister();
@@ -48,7 +48,7 @@ async function fixture(mode: 'held' | 'reentrant' | 'throw' | 'probe' | 'advice'
         });
         await app.connected(20000);
     } catch (error) { await cleanup(); throw error; }
-    const command = mode === 'probe' ? '/dsh' : mode === 'advice' ? '/dsh ask 合成问题' : '/设定';
+    const command = mode === 'probe' ? '/dsh probe' : mode === 'advice' ? '/dsh ask 合成问题' : '/设定';
     return { app, dataDir, logs, sends, release, entered: () => entered, leaseInsideTransport: () => leaseInsideTransport, history: () => new ChatHistory(dataDir).load(10001),
         receive() { app!.receive({ post_type: 'message', message_type: 'private', sub_type: 'friend', self_id: 20000, user_id: 10001, message_id: 1, real_seq: '100001', time: now / 1000,
             raw_message: '', sender: { user_id: 10001 }, message: [{ type: 'text', data: { text: command } }] }); }, cleanup };
