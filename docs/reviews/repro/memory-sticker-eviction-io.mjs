@@ -1,4 +1,4 @@
-// Synthetic failure diagnostic. Exit 0 reports observed facts, not correctness.
+// Synthetic correctness probe: failed index publication preserves the old image.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
@@ -18,6 +18,9 @@ try {
  fileOps.writeDelaysMs=[0];
  fileOps.writeFileSync=(target,...args)=>{if(String(target).startsWith(`${path}.tmp-`))throw Object.assign(Error('synthetic index failure'),{code:'EROFS'});return originalWrite(target,...args);};
  await shelf.consider([{type:'image',data:{url:'https://synthetic.invalid/new.png',sub_type:1}}],{from:10001,messageId:1});
+ assert.equal(readFileSync(path,'utf8'),before);
+ assert.equal(existsSync(image),true);
+ assert.equal(JSON.parse(readFileSync(path,'utf8')).entries[0].id,id);
  console.log(JSON.stringify({indexUnchanged:readFileSync(path,'utf8')===before,committedOldImageStillExists:existsSync(image),oldEntryStillCommitted:JSON.parse(readFileSync(path,'utf8')).entries[0].id===id}));
 }finally{
  fileOps.writeFileSync=originalWrite;fileOps.writeDelaysMs=delays;
