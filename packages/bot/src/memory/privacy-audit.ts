@@ -246,6 +246,7 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
         const privateBank = new RegExp(`^[A-Za-z0-9-]+-(?:${owners.join('|')})$`);
         const document = new RegExp(`^(?:${owners.join('|')}):ep--?\\d+$`);
         const models = new Set(owners.map(owner => `person-${owner}`));
+        const repairKinds = new Set(['model-repair-configure', 'model-repair-clear', 'model-repair-refresh-submit', 'model-repair-restore']);
         const forgotten = createHash('sha256').update(qqText).digest('hex').slice(0, 12);
         let references = 0;
         const bad = scanJsonLines(ledger, row => {
@@ -255,7 +256,10 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
                 || ['retain', 'model-create', 'model-update'].includes(row.kind as string) && (
                     typeof data.bank === 'string' && privateBank.test(data.bank)
                     || typeof data.document === 'string' && document.test(data.document)
-                    || typeof data.model === 'string' && models.has(data.model))) references++;
+                    || typeof data.model === 'string' && models.has(data.model))
+                || repairKinds.has(row.kind as string) && typeof data.bank === 'string' && (
+                    privateBank.test(data.bank)
+                    || /^[A-Za-z0-9-]+-common$/.test(data.bank) && typeof data.model === 'string' && models.has(data.model))) references++;
         });
         if (references) {
             add(ledger, 'mixed', '共享记忆哈希链账本中的明确库、文档、模型或遗忘记录；不可逐行删改而破坏链', references);
