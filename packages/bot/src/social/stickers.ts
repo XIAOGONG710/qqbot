@@ -6,13 +6,14 @@
 
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { logBody } from '../platform/sensitive.ts';
 import type { AppConfig } from '../platform/config.ts';
 import type { CrisisLevel } from '.././emotion/crisis.ts';
 import type { StoredMessage } from '../memory/history.ts';
-import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { fileOps, readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { calendarDate, stateObject, stateTimestamp } from '../memory/state-schema.ts';
 import { chatCompletion } from '../language/llm.ts';
 import { isSticker, type ImageDescriber } from '.././vision/media.ts';
 import type { Segment } from '../platform/onebot.ts';
@@ -253,8 +254,26 @@ export interface StickerShelf {
     status(): { count: number };
 }
 
-const localDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const localDay = (d: Date) => `${String(d.getFullYear()).padStart(4, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const emptyIndex = (): StickerIndex => ({ version: INDEX_VERSION, entries: [], seen: [] });
+/** Fault injection boundary for image publication; index IO uses json-file.fileOps. */
+export const stickerFileOps = { writeFileSync, renameSync, unlinkSync };
+let imageSequence = 0;
+const safeCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+function validIndex(value: unknown): value is StickerIndex {
+    if (!stateObject(value) || value.version !== INDEX_VERSION || !Array.isArray(value.entries) || !Array.isArray(value.seen)) return false;
+    if (!value.seen.every(key => typeof key === 'string' && /^[a-f0-9]{24}$/.test(key))) return false;
+    if (value.trend !== undefined && (!stateObject(value.trend) || typeof value.trend.day !== 'string' || !calendarDate(value.trend.day) || !safeCount(value.trend.count))) return false;
+    return value.entries.every(entry => stateObject(entry) && typeof entry.id === 'string' && /^[a-f0-9]{12}$/.test(entry.id)
+        && typeof entry.file === 'string' && new RegExp(`^${entry.id}\\.(?:png|jpg|gif|webp)$`).test(entry.file)
+        && typeof entry.description === 'string' && Array.isArray(entry.tags) && entry.tags.every(tag => typeof tag === 'string')
+        && stateObject(entry.source) && ['received', 'qq-custom', 'inbox', 'web', 'bqb', 'bili'].includes(String(entry.source.kind))
+        && (entry.source.from === undefined || safeCount(entry.source.from)) && (entry.source.messageId === undefined || Number.isSafeInteger(entry.source.messageId))
+        && (entry.source.name === undefined || typeof entry.source.name === 'string')
+        && stateTimestamp(entry.createdAt) && safeCount(entry.used) && (entry.lastUsedAt === undefined || stateTimestamp(entry.lastUsedAt))
+        && (entry.qq === undefined || stateObject(entry.qq) && typeof entry.qq.md5 === 'string' && /^[A-Fa-f0-9]{32}$/.test(entry.qq.md5)))
+        && new Set(value.entries.map(entry => entry.id)).size === value.entries.length;
+}
 
 /** 图片 URL 可能带短期 rkey；只把它作为本次去重线索，不写进提示词和聊天记录。 */
 function sourceKey(url: string): string {
@@ -292,8 +311,15 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
     mkdirSync(join(inboxDir, 'wechat'), { recursive: true });
     mkdirSync(join(inboxDir, 'web'), { recursive: true });
     const indexPath = join(options.dir, 'index.json');
-    const loaded = readJsonOr<StickerIndex>(indexPath, emptyIndex(), options.log);
-    const index: StickerIndex = loaded.version === INDEX_VERSION && Array.isArray(loaded.entries) && Array.isArray(loaded.seen) ? loaded : emptyIndex();
+    let witnessedIndex = false;
+    const readIndex = (): StickerIndex => {
+        try { const stat = lstatSync(indexPath); if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('unsafe index'); witnessedIndex = true; }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || witnessedIndex) throw new Error('图片表情索引不可用；保留原文件并停止写入'); return emptyIndex(); }
+        const result = readJsonOr<StickerIndex | undefined>(indexPath, undefined, undefined, { validate: validIndex, invalid: 'throw', label: '图片表情索引' });
+        if (!result) throw new Error('图片表情索引消失；保留现场并停止写入');
+        return result;
+    };
+    let index = readIndex(), uncertain = false;
     const now = options.now ?? (() => new Date());
     const download = options.download ?? downloadSticker;
     const pending = new Map<string, object>();
@@ -307,11 +333,30 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
     const note = (work: StickerWork, message: string, confirmed = false) => { if (confirmed || !work.signal?.aborted) { try { options.log(message); } catch { /* Diagnostics cannot change a confirmed operation. */ } } };
     const inWork = async (work: StickerWorkOptions | undefined, run: (context: StickerWork) => Promise<void>) => {
         const context: StickerWork = { signal: work?.signal, mirrors: [] };
-        try { active(context); await run(context); } catch (error) { if (!context.signal?.aborted) throw error; }
+        try { active(context); ensureIndex(); if (pendingAcks.size) commit(() => {}); await run(context); } catch (error) { if (!context.signal?.aborted) throw error; }
         finally { await Promise.all(context.mirrors); }
     };
 
-    const persist = () => writeJsonAtomic(indexPath, index);
+    const pendingAcks = new Map<string, string>();
+    const ensureIndex = () => { if (uncertain) { index = readIndex(); uncertain = false; } };
+    const commit = (change: (next: StickerIndex) => void) => {
+        ensureIndex();
+        const next: StickerIndex = structuredClone(index);
+        change(next);
+        for (const entry of next.entries) { const ack = pendingAcks.get(entry.id); if (ack) entry.qq = { md5: ack }; }
+        if (!validIndex(next)) throw new Error('图片表情索引更新无效；保留已确认状态');
+        const bytes = `${JSON.stringify(next, null, 2)}\n`;
+        try { writeJsonAtomic(indexPath, next); }
+        catch (error) {
+            try { if (fileOps.readFileSync(indexPath, 'utf8') !== bytes) throw error; }
+            catch { uncertain = true; throw error; }
+        }
+        index = next; witnessedIndex = true;
+        for (const [id, md5] of pendingAcks) { if (!index.entries.some(entry => entry.id === id && entry.qq?.md5 !== md5)) pendingAcks.delete(id); }
+    };
+    const present = (entry: StickerEntry) => {
+        try { const stat = lstatSync(join(options.dir, entry.file)); return stat.isFile() && !stat.isSymbolicLink(); } catch { return false; }
+    };
     // QQ 收藏的操作串行、隔几秒一个：一张张存，不一股脑发；失败只记日志，本地收藏不受影响，下次发现时补。
     let favQueue = Promise.resolve();
     const favGap = options.favoritesGapMs ?? 2000;
@@ -341,18 +386,24 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
     };
     // batch：补同步时一批里有一张失败（比如 QQ 收藏满了），这一批剩下的就不再试，免得一小时刷十条同样的失败日志
     const mirror = (entry: StickerEntry, work: StickerWork, batch?: { halted: boolean }) => favorite(work, async dispatched => {
-        if (!options.favorites || entry.qq || batch?.halted || !index.entries.includes(entry)) return;
+        ensureIndex();
+        // A known remote ACK must be durably recovered before another mutation.
+        if (pendingAcks.size) commit(() => {});
+        const current = index.entries.find(item => item.id === entry.id);
+        if (!options.favorites || current?.qq || batch?.halted || !current) return;
         const file = resolve(options.dir, entry.file);
-        if (!existsSync(file)) return;
+        if (!present(current)) return;
         active(work);
         try {
             dispatched();
-            entry.qq = { md5: (await options.favorites.add(file)).toUpperCase() };
+            const md5 = (await options.favorites.add(file)).toUpperCase();
+            if (!/^[A-F0-9]{32}$/.test(md5)) throw new Error('QQ 收藏回执无效');
+            pendingAcks.set(entry.id, md5);
         } catch (error) {
             if (batch) batch.halted = true;
             throw error;
         }
-        persist();
+        commit(() => {});
         note(work, `图片表情：已加进 QQ 收藏（${entry.id}）`, true);
     });
     const inboxKey = (path: string) => {
@@ -366,6 +417,7 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
     });
     const queued = async (key: string, work: StickerWork, run: () => Promise<void>) => {
         active(work);
+        ensureIndex();
         if (pending.has(key) || index.seen.includes(key)) return Promise.resolve();
         const token = {}; pending.set(key, token); let started = false;
         const release = () => { if (pending.get(key) === token) pending.delete(key); };
@@ -408,54 +460,74 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
     }
 
     function keep(key: string, image: DownloadedSticker, decision: StickerDecision, source: StickerSource, work: StickerWork): void {
+        ensureIndex();
         const hash = createHash('sha256').update(image.bytes).digest('hex');
         const id = hash.slice(0, 12);
         const existing = index.entries.find(entry => entry.id === id);
         const createdAt = now().toISOString(); active(work);
-        if (existing) {
-            markSeen(key);
-            persist();
-            note(work, `图片表情：已经收藏过 ${existing.description}`);
-            return;
-        }
-        let eviction: string | undefined;
-        if (index.entries.length >= libraryMax) {
-            const victim = [...index.entries].sort((a, b) => Date.parse(a.lastUsedAt ?? a.createdAt) - Date.parse(b.lastUsedAt ?? b.createdAt))[0]!;
-            index.entries.splice(index.entries.indexOf(victim), 1);
-            rmSync(join(options.dir, victim.file), { force: true });
-            eviction = `图片表情：收藏已到 ${libraryMax} 个，淘汰最久没用的 ${victim.description}（${victim.id}）`;
+        let victim: StickerEntry | undefined;
+        if (!existing && index.entries.length >= libraryMax) {
+            victim = [...index.entries].sort((a, b) => Date.parse(a.lastUsedAt ?? a.createdAt) - Date.parse(b.lastUsedAt ?? b.createdAt))[0]!;
         }
         const name = `${id}.${extension[image.type]}`;
         const target = join(options.dir, name);
-        if (!existsSync(target)) {
-            const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
-            writeFileSync(tmp, image.bytes);
-            renameSync(tmp, target);
+        let existingImage = false;
+        try {
+            const stat = lstatSync(target);
+            if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('图片表情目标不是安全普通文件');
+            if (!Buffer.from(readFileSync(target)).equals(Buffer.from(image.bytes))) throw new Error('图片表情编号与已有文件不一致');
+            existingImage = true;
+        } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+        if (!existingImage) {
+            const tmp = `${target}.tmp-${process.pid}-${++imageSequence}`;
+            try { stickerFileOps.writeFileSync(tmp, image.bytes, { flag: 'wx' }); stickerFileOps.renameSync(tmp, target); }
+            catch (error) {
+                let confirmed = false;
+                try { const stat = lstatSync(target); confirmed = stat.isFile() && !stat.isSymbolicLink() && Buffer.from(readFileSync(target)).equals(Buffer.from(image.bytes)); } catch { /* Unknown image publication is not a committed index. */ }
+                // Preserve unknown temporary publication remnants. In particular,
+                // an EEXIST from wx is not permission to delete another file.
+                if (!confirmed) throw error;
+            }
+        }
+        active(work);
+        if (existing) {
+            commit(next => markSeen(next, key));
+            note(work, `图片表情：已经收藏过 ${existing.description}`);
+            return;
         }
         const entry: StickerEntry = {
             id, file: name, description: decision.description, tags: decision.tags, source,
             createdAt, used: 0,
         };
-        index.entries.push(entry);
-        markSeen(key);
-        persist();
+        commit(next => {
+            if (victim) next.entries = next.entries.filter(item => item.id !== victim!.id);
+            next.entries.push(entry); markSeen(next, key);
+        });
+        // JSON publication is the commit point. A crash before this cleanup only
+        // leaves an orphan; an index failure must never delete a committed image.
+        if (victim && !index.entries.some(item => item.file === victim!.file)) {
+            try { if (present(victim)) stickerFileOps.unlinkSync(join(options.dir, victim.file)); }
+            catch { /* Known obsolete image may remain; do not roll back confirmed JSON. */ }
+        }
         if (options.favorites && !work.signal?.aborted) void mirror(entry, work);
-        if (eviction) note(work, eviction);
+        if (victim) note(work, `图片表情：收藏已到 ${libraryMax} 个，淘汰最久没用的 ${victim.description}（${victim.id}）`);
         note(work, `图片表情：收藏 ${decision.description}（${id}${decision.tags.length ? `；${decision.tags.join('、')}` : ''}）`);
     }
 
     function reject(key: string, why: string, work: StickerWork): void {
         active(work);
-        markSeen(key);
-        persist();
+        commit(next => markSeen(next, key));
         note(work, `图片表情：${why}`);
     }
 
-    function markSeen(key: string): void {
-        index.seen = [...index.seen.filter(item => item !== key), key].slice(-500);
+    function markSeen(next: StickerIndex, key: string): void {
+        next.seen = [...next.seen.filter(item => item !== key), key].slice(-500);
     }
 
-    const publicEntry = (entry: StickerEntry): StickerEntry => ({ ...entry, file: join(options.dir, entry.file) });
+    const publicEntry = (entry: StickerEntry): StickerEntry => {
+        const ack = pendingAcks.get(entry.id);
+        return { ...structuredClone(entry), ...(ack ? { qq: { md5: ack } } : {}), file: join(options.dir, entry.file) };
+    };
     return {
         consider(message, source, work) {
             return inWork(work, async context => {
@@ -517,8 +589,7 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                 const fresh = [...new Set(urls)].filter(url => typeof url === 'string' && /^https?:\/\//i.test(url) && !index.seen.includes(sourceKey(url)));
                 for (const url of fresh.slice(0, Math.min(remaining, trendLeft))) {
                     active(context);
-                    index.trend = { day, count: (index.trend?.day === day ? index.trend.count : 0) + 1 };
-                    persist();
+                    commit(next => { next.trend = { day, count: (next.trend?.day === day ? next.trend.count : 0) + 1 }; });
                     // B 站的图都在 hdslb.com：官方表情包在 /bfs/emote/，评论区图片在别处（ADR 0132）
                     await enqueue(url, undefined, /(?:^|\.)hdslb\.com\//.test(url.replace(/^https?:\/\//, '')) ? { kind: 'bili', name: url.includes('/bfs/emote/') ? 'emote' : 'comment' } : { kind: 'bqb', name: 'ChineseBQB' }, context);
                     active(context);
@@ -546,10 +617,11 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             return () => { layer.active = false; trendLayer = activeLayer(trendLayer); };
         },
         prompt(context) {
+            ensureIndex();
             if (!index.entries.length) return undefined;
-            const present = index.entries.filter(entry => existsSync(join(options.dir, entry.file)));
+            const available = index.entries.filter(present);
             if (context) {
-                const shortlist = rankStickers(present, context.text).slice(0, STICKER_SHORTLIST);
+                const shortlist = rankStickers(available, context.text).slice(0, STICKER_SHORTLIST);
                 if (!shortlist.length) return undefined;
                 const heading = context.only
                     ? '[这一轮你只发一个图片表情，不写任何文字：回复里只有一行 <sticker:编号>（这一行必须有，别的什么都不写），从下面按他这句话挑出来的几张里选最贴的一张，编号只能从下面选，不解释编号]\n'
@@ -557,13 +629,14 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                 return heading
                     + shortlist.map(entry => `- <sticker:${entry.id}>：${entry.description}${entry.tags.length ? `（${entry.tags.join('、')}）` : ''}`).join('\n');
             }
-            const entries = present
+            const entries = available
                 .sort((a, b) => a.used - b.used || Date.parse(a.lastUsedAt ?? a.createdAt) - Date.parse(b.lastUsedAt ?? b.createdAt))
                 .slice(0, STICKER_PROMPT_MAX);
             return `[你收藏的图片表情：只有这轮真的合适时才用；不要在他认真难过、生病或讲正事时只发表情。要发就单独输出一行 <sticker:编号>，编号只能从下面选，一轮最多一个，不解释编号]\n`
                 + entries.map(entry => `- <sticker:${entry.id}>：${entry.description}${entry.tags.length ? `（${entry.tags.join('、')}）` : ''}`).join('\n');
         },
         clean(reply, allow = true) {
+            ensureIndex();
             let kept = false;
             return reply.split('\n').flatMap(line => {
                 if (FAKE_STICKER_DESCRIPTION.test(line)) {
@@ -584,23 +657,25 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             }).join('\n').trim();
         },
         resolve(text) {
+            ensureIndex();
             const match = EXACT_TOKEN.exec(text.trim());
             const entry = match ? index.entries.find(item => item.id === match[1]!.toLowerCase()) : undefined;
-            return entry ? publicEntry(entry) : undefined;
+            return entry && present(entry) ? publicEntry(entry) : undefined;
         },
         history(text) {
+            ensureIndex();
             const match = EXACT_TOKEN.exec(text.trim());
             const entry = match ? index.entries.find(item => item.id === match[1]!.toLowerCase()) : undefined;
             return entry ? `${STICKER_HISTORY_PREFIX}${entry.description}` : text;
         },
         used(id) {
+            ensureIndex();
             const entry = index.entries.find(item => item.id === id);
             if (!entry) return;
-            entry.used++;
-            entry.lastUsedAt = now().toISOString();
-            persist();
+            const usedAt = now().toISOString();
+            commit(next => { const current = next.entries.find(item => item.id === id)!; current.used++; current.lastUsedAt = usedAt; });
         },
-        status: () => ({ count: index.entries.length }),
+        status: () => { ensureIndex(); return { count: index.entries.length }; },
     };
 }
 

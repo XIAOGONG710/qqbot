@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FEEDBACK_MONTH_FILE, isFeedbackRow } from '../emotion/feedback.ts';
 import { ACCOUNT_ACTIONS } from '../social/account.ts';
@@ -263,9 +263,46 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
         if (references) add(path, 'mixed', note, references);
     }
 
-    const stickersPath = join(root, 'stickers', 'index.json');
-    const stickerReferences = countContactRefs(readJson(stickersPath), qq);
-    if (stickerReferences) add(stickersPath, 'mixed', '图片表情收藏中记录的发送来源', stickerReferences);
+    const stickerDir = join(root, 'stickers'), stickerImages = new Set<string>(), knownStickerImages = new Set<string>();
+    const stickerFiles = walk(stickerDir).filter(path => dirname(path) === stickerDir);
+    const stickerIndexes = stickerFiles.filter(path => /^index\.json(?:\.tmp-[1-9]\d*-[1-9]\d*|\.corrupt-\d+)?$/.test(basename(path)));
+    for (const path of stickerIndexes) {
+        let value: unknown;
+        try { value = readJson(path); }
+        catch (error) {
+            if (basename(path) === 'index.json') throw error;
+            add(path, 'mixed', '表情索引实际残留无法解析，可能含私密描述与来源；归属未知，保留原位人工核实');
+            inventoryLimitations.push('存在无法解析的表情索引残留，不能推定联系人归属或自动删除');
+            continue;
+        }
+        if (isObject(value) && Array.isArray(value.entries)) for (const entry of value.entries) {
+            if (isObject(entry) && typeof entry.file === 'string' && /^[^\\/:]+\.(?:png|jpg|jpeg|gif|webp)$/i.test(entry.file)) knownStickerImages.add(join(stickerDir, entry.file));
+        }
+        const references = countContactRefs(value, qq);
+        if (!references) continue;
+        add(path, 'mixed', '共享图片表情索引或实际写入残留中的明确来源；不按单一联系人整份导出或遗忘', references);
+        if (!isObject(value) || !Array.isArray(value.entries)) continue;
+        for (const entry of value.entries) {
+            if (!isObject(entry) || !countContactRefs(entry.source, qq)) continue;
+            const name = entry.file;
+            if (typeof name !== 'string' || !/^[^\\/:]+\.(?:png|jpg|jpeg|gif|webp)$/i.test(name) || name === '.' || name === '..') {
+                inventoryLimitations.push('表情索引含无法安全定位的图片路径，未跨出货架读取，保留人工核实');
+                continue;
+            }
+            const image = join(stickerDir, name);
+            if (stickerImages.has(image)) continue;
+            stickerImages.add(image);
+            add(image, 'mixed', '明确来源关联的共享表情图片；内容可能被多个来源收藏，不猜独占，不整份导出或遗忘');
+        }
+    }
+    for (const path of stickerFiles) {
+        const name = basename(path);
+        if (/^[a-f0-9]{12}\.(?:png|jpg|gif|webp)\.tmp-[1-9]\d*-[1-9]\d*$/.test(name)
+            || /^[a-f0-9]{12}\.(?:png|jpg|gif|webp)$/.test(name) && !knownStickerImages.has(path)) {
+            add(path, 'mixed', '表情图片发布残留或无索引图片，来源未知；不读取内容猜归属，不整份导出或遗忘');
+            inventoryLimitations.push('存在来源未知的表情图片或发布残留，保留原位人工核实');
+        }
+    }
 
     const banks = new Set<string>();
     const commonDocuments = new Set<string>();
