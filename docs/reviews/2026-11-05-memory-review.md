@@ -666,3 +666,15 @@ stop现在同步清除probing；health成功、失败及finally只有App仍活�
 新增12项正式回归（每条动作各覆盖成功、失败、同步重入stop、同步重入后throw），记忆累计897。三份诊断已改成正确行为探针；定向12/12与三份probe通过。最终核实合成集1007项=1006通过/1既有Windows符号链接权限skip/0失败，全仓类型实际exit0、模块和差异检查通过。不是全仓全量；没有运行未核角色卡依赖suite，也未访问真实角色、runtime、QQ、外部模型/服务、数据库或部署。
 
 边界：只保证当前进程中已经派发transport动作的ACK与诊断归当前App租约；没有持久动作outbox、强杀恢复、跨进程exactly-once或QQ动作与本地历史事务。不合作transport可持续阻塞drain。下一轮继续按证据复核剩余直接发送/后台owner，不把相邻调用一概批量改写。M32b公共diary/week/phase旧远端派生及历史observation清理/独立证据解封仍未完成；客户端保护不解，不以版本、布尔、live inventory、未知DELETE或删guard/改generation冒充服务端净化，也不访问真实部署/数据库。记忆模块未完成，不转下一模块或社区比较。
+
+## 第三十七批：好友申请控制面mutation与邻近绿边界（2026-11-05）
+
+代码007b1fb0，ADR0142补记。真实App、临时合成卡与fake `callAction`证明：名单内好友申请的`set_friend_add_request`已派并held时，旧stop已经返回且bot.lock消失；晚成功/失败随后把控制面审计追加到`account-audit.jsonl`并写结果日志。App停止后入口也没有总生命周期检查，仍可派发新申请。公开transport函数体同步重入stop时，本次`account.run`尚未进入旧停机快照。
+
+好友申请入口现在停止即拒绝新事件；允许执行的mutation复用调用前预登记的settlement，覆盖`account.run`内部真实ACK、审计追加以及外层一次成功/失败诊断。同步throw和同步重入stop同样先登记后执行。原`off/allow/all`、允许名单、一小时额度、审计字段和不写聊天历史政策保持，没有新增自动重试。新增5项覆盖成功、失败、停止后拒新、同步重入及同步throw；诊断改为正确行为探针。
+
+本批同时把两个相邻候选单独证伪并留下correctness probes。其一，`selfRecall→deleteMessage`位于Responder `sendBubble`拥有的整段`emitBubble`内：held成功/失败和同步重入stop均保持租约；成功撤回不留已撤助手消息，失败/同步throw保留实际已发错字，停止后不补发修正或晚写失败诊断。其二，`connected→friendHistory`是纯读取；stop可立即释放租约，但2247/2252的停止检查会使晚成功/失败不写history、日志、模型或发送，同目录replacement实例也不受旧结果污染。构造阶段不会派该读取。没有为这两个绿边界做生产重构。
+
+新增5项，记忆累计902。正式5/5及三份correctness probe通过；最终核实合成集1012项=1011通过/1既有Windows符号链接权限skip/0失败，全仓类型实际exit0、模块和差异检查通过。不是全仓全量；未访问真实角色、runtime、QQ、外部模型/服务、数据库或部署。
+
+边界：好友申请仅有当前进程正常停机所有权，没有持久mutation outbox、强杀重放、跨进程exactly-once或QQ mutation与本地审计的原子事务；不合作`callAction`可阻塞drain。`friendHistory`不合作实现可令旧`connected()` Promise长期pending，但本地副作用已被停止守卫隔离。下一轮继续按证据复核其它直接transport/控制面和后台owner。M32b远端公共旧派生/历史observation清理与独立证据解封仍未完成，客户端保护保持，记忆模块未完成不转模块。

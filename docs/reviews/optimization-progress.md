@@ -440,3 +440,11 @@ M32b远端公共旧派生/历史observation清理及证据解封仍未完，保�
 新增12项（已读4、正在输入4、表情4），记忆累计897。定向12/12及三份correctness probe通过；最终核实合成集1007项=1006通过/1既有Windows权限skip/0失败，全仓类型实际exit0、模块与差异检查通过，非全仓全量。只使用临时合成卡/fake transport，无真实QQ、角色、runtime、网络服务、数据库或部署推送。
 
 **下一检查点：记忆模块仍未完成。** 继续以真实App合成证据逐条盘点剩余直接transport与后台owner，不从相邻代码猜缺陷、不重复已修chat action/device/notice/DSH链。M32b公共diary/week/phase旧远端派生及历史observation清理/独立证据解封仍缺可信writer fence、完整四态任务静止和实际store一致性证据；当前客户端屏障保持，不用版本、布尔、live=0、未知DELETE或删guard/改generation伪造净化，不访问真实部署/数据库。全部记忆工作覆盖充分前不转下一模块或社区比较。
+
+第三十七批完成好友申请控制面mutation停止所有权及两条疑似链排除（007b1fb0，ADR0142）：真实App合成确认`set_friend_add_request`已派held时旧stop先释放bot.lock，ACK后控制面审计文件和成功/失败日志在租约外落下；App停止后仍可接收新申请，公开`callAction`同步重入stop也漏本次mutation。现入口停止即拒新，已派动作在调用前预登记settlement，QQ结果、控制面审计和一次结果诊断完成后才释放租约；同步throw/重入同样收尾。保原allow/all策略、限流与审计字段，不新增重试。
+
+并行用独立correctness probes排除两个邻近候选：`selfRecall→deleteMessage`已由Responder的整段send owner覆盖，成功/失败/同步重入均持锁到撤回结果并按真实发送事实保留或移除历史；`friendHistory`补回是纯读取，stop后2247/2252守卫会丢弃晚成功/失败，不写history、日志或派模型，同目录replacement也不受污染，因此不为它延长租约。底层不合作读取仍可令旧connected Promise长期pending，作为资源边界保留。
+
+新增5项好友申请正式回归，记忆累计902；定向5/5、三份correctness probe通过。最终核实合成集1012项=1011通过/1既有Windows权限skip/0失败，全仓类型实际exit0、模块与差异检查通过，非全仓全量。仅使用临时合成卡/fake transport，无真实QQ、角色、runtime、网络服务、数据库或部署推送。
+
+**下一检查点：记忆模块仍未完成。** 继续基于证据盘点剩余直接transport、控制面与后台owner；已审好友申请/selfRecall/backfill及此前chat action链不重复。M32b远端公共旧派生/observation清理阻点保持，不以客户端drain或局部任务完成冒充服务端worker静止/整库净化，不访问真实部署DB。全部记忆工作覆盖充分前不转模块或社区比较。
