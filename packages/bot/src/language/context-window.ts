@@ -77,6 +77,11 @@ export interface Summarizer {
     idle(): Promise<void>;
 }
 
+export interface OwnedSummarizer extends Summarizer {
+    /** Permanently stop new work and drain cancellation, without waiting for an uncooperative model. */
+    stop(): Promise<void> | undefined;
+}
+
 /** 整理一次最多等这么久，超时算失败（ADR 0043 上线门槛：摘要不能拖住回复，也不能一直挂着） */
 export const SUMMARY_TIMEOUT_MS = 60_000;
 /** 整理失败以后，同一段隔这么久再试 */
@@ -96,13 +101,14 @@ export function contextSummarizer(options: {
     file?: string;
     now?: () => number;
     timeoutMs?: number;
-}): Summarizer {
+}): OwnedSummarizer {
     const now = options.now ?? Date.now;
     const saved = options.file ? readJsonOr<{ key?: unknown; text?: unknown } | undefined>(options.file, undefined, options.log) : undefined;
     let cached: { key: string; text: string | undefined } | undefined = typeof saved?.key === 'string'
         ? { key: saved.key, text: typeof saved.text === 'string' ? saved.text : undefined }
         : undefined;
-    let running: { key: string; done: Promise<void> } | undefined;
+    let running: { key: string; done: Promise<void>; cancel: () => void } | undefined;
+    let stopped = false, drain: Promise<void> | undefined;
     const failedAt = new Map<string, number>();
 
     function start(key: string, request: OpenAIMessage[], count: number): void {
@@ -111,7 +117,13 @@ export function contextSummarizer(options: {
         const timeoutMs = options.timeoutMs ?? SUMMARY_TIMEOUT_MS;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`超过 ${Math.round(timeoutMs / 1000)} 秒`)), timeoutMs); });
-        const done = Promise.race([Promise.resolve().then(() => options.generate(request)), timeout]).then(output => {
+        let cancel!: () => void;
+        const cancelled = new Promise<never>((_, reject) => { cancel = () => reject(new Error('上下文整理已停止')); });
+        const done = Promise.race([Promise.resolve().then(() => {
+            if (stopped) throw new Error('上下文整理已停止');
+            return options.generate(request);
+        }), timeout, cancelled]).then(output => {
+            if (stopped) return;
             const rows = output.trim().split('\n').map(line => line.trim()).filter(Boolean);
             const empty = rows.length === 1 && /^[-•]\s*无$/.test(rows[0]!);
             const points = rows.filter(line => /^[-•]\s*\S/.test(line) && !/^[-•]\s*无$/.test(line));
@@ -124,6 +136,7 @@ export function contextSummarizer(options: {
             failedAt.delete(key);
             options.log(`上下文要点：较早的 ${count} 条整理成 ${points.length} 条（请求约 ${tokens} token，用了 ${((now() - began) / 1000).toFixed(1)} 秒）`);
         }).catch(error => {
+            if (stopped) return;
             // 整理失败：这一段过一会儿再试；在那之前照旧放原文
             failedAt.set(key, now());
             options.log(`上下文要点整理失败（${SUMMARY_RETRY_MS / 60_000} 分钟后再试，这期间照旧放最近 80 条）：${error instanceof Error ? error.message : String(error)}`);
@@ -131,10 +144,11 @@ export function contextSummarizer(options: {
             clearTimeout(timer);
             if (running?.key === key) running = undefined;
         });
-        running = { key, done };
+        running = { key, done, cancel };
     }
 
     const summarize = ((older: readonly ChatMessage[]): SummaryState => {
+        if (stopped) return { ready: false };
         const request = summaryRequest(older, options.names);
         const key = summaryKey(request);
         if (cached?.key === key) return { ready: true, text: cached.text };
@@ -144,9 +158,16 @@ export function contextSummarizer(options: {
             options.log('上下文要点：切口挪了，后台在整理，这一轮照旧放最近 80 条');
         }
         return { ready: false };
-    }) as Summarizer;
+    }) as OwnedSummarizer;
     summarize.idle = async () => {
         while (running) await running.done;
+    };
+    summarize.stop = () => {
+        if (stopped) return drain;
+        stopped = true;
+        drain = running?.done;
+        running?.cancel();
+        return drain;
     };
     return summarize;
 }
