@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { FEEDBACK_MONTH_FILE, isFeedbackRow } from '../emotion/feedback.ts';
 import { ACCOUNT_ACTIONS } from '../social/account.ts';
 import { CONTACT_TIERS, UNLISTED_TIER } from '../platform/config.ts';
+import { isDerivedState } from './derived-state.ts';
 
 export interface PrivacyArtifact {
     path: string;
@@ -128,6 +129,39 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
     const intimacy = join(root, 'intimacy.json');
     const intimacyState = readJson(intimacy);
     if (isObject(intimacyState) && Object.hasOwn(intimacyState, qqText)) add(intimacy, 'mixed', '按 QQ 分开的临时亲热状态；同文件可能含其他联系人', 1);
+
+    // derived.json包含所有bank的守卫，不是当前bank前缀或某个QQ的专属文件。
+    // 审计只读明确owner.qq；不调用DerivedState.snapshot，避免创建/刷新状态。
+    const derivedPath = join(root, 'memory', 'derived.json');
+    const derived = readJson(derivedPath);
+    let derivedOwned = false;
+    if (derived !== undefined) {
+        if (!isDerivedState(derived)) {
+            throw new Error('隐私审计派生屏障归属格式无效；原文件未修改');
+        }
+        const references = Object.values(derived.banks).reduce<number>((total, bank) => total
+            + bank.owners.filter(owner => owner.qq === qq).length, 0);
+        if (references) {
+            derivedOwned = true;
+            add(derivedPath, 'mixed', '全bank派生屏障中的明确owner.qq元数据；共享状态须保留，遗忘不整份删除或解除旧守卫', references);
+        }
+    }
+    // writeJsonAtomic写失败且unlink失败会留下实际.tmp-PID-seq，不虚构
+    // critical状态的corrupt隔离后缀，也不泛收derived前缀的其他文件。
+    let unknownDerivedResidues = 0;
+    for (const path of walk(join(root, 'memory')).filter(path => /^derived\.json\.tmp-[1-9]\d*-[1-9]\d*$/.test(basename(path)))) {
+        let value: unknown;
+        try { value = readJson(path); } catch { unknownDerivedResidues++; continue; }
+        if (!isDerivedState(value)) { unknownDerivedResidues++; continue; }
+        const references = Object.values(value.banks).reduce<number>((total, bank) => total
+            + bank.owners.filter(owner => owner.qq === qq).length, 0);
+        if (references) {
+            derivedOwned = true;
+            add(path, 'mixed', '原子写失败留下的共享派生屏障临时资料；仅按明确owner.qq归属，保留原件，不整份遗忘', references);
+        }
+    }
+    if (derivedOwned) add(join(root, 'memory', 'index.coordination.sqlite'), 'mixed', '派生屏障的共享协调与缺失见证；不存聊天正文，不单独移走或删除');
+    if (unknownDerivedResidues) inventoryLimitations.push(`派生屏障临时残留有 ${unknownDerivedResidues} 份读不了或schema无效，无法归属联系人；属于共享未确认资料，保留原件并需人工复核，未按正文号码猜测分配。`);
 
     // peek.uin 的写入源是 QQ 好友 target.qq，不把 B 站 uid 或摘要中的号码当作 QQ。
     walk(join(root, 'presence'));

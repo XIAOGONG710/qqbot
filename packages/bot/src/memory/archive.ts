@@ -104,7 +104,15 @@ export function archiveTestData(options: ArchiveOptions): ArchiveResult {
     }
     for (const sub of ['memory', 'proactive']) {
         const dir = join(dataDir, sub);
-        for (const file of files(dir, '.json')) plan(join(dir, file), join(dir, `archive-${stamp}`, file));
+        for (const file of files(dir, '.json')) {
+            // 全bank守卫必须与活目录的协调见证一起保留。移走JSON会使新bank
+            // 失败关闭；连见证一起移走又会令切回旧bank时丢失禁止读取的依据。
+            if (sub === 'memory' && file === 'derived.json') {
+                result.skipped.push({ file: join(dir, file), reason: '共享的全bank派生屏障与协调见证保留原位；换前缀不解除旧bank守卫' });
+                continue;
+            }
+            plan(join(dir, file), join(dir, `archive-${stamp}`, file));
+        }
     }
 
     // 新前缀
