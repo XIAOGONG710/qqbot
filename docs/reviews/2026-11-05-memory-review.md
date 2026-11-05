@@ -510,3 +510,15 @@ A在途来源另有真实App红：42条同长度消息，未回复的两条唯�
 运行node docs/reviews/repro/memory-app-jokes-revision.mjs可比较两mode：held现在storedJokes0/promptHasOrigin=false；completed-restart仍storedJokes1/promptHasOrigin=true、extracts1。B先完成写入（origin唯一来自一条未回复消息，phrase另两条仍出现），撤回唯一origin来源，stop/restart且20小时窗口内不重抽，fresh历史已无origin，但旧文件供给实际prompt仍含origin。探针exit0只是报告事实，尤其B仍是未修缺陷。不能以phrase仍有两次或简单清RAM宣称解决；需持久完整来源/读口、重启及旧无manifest兼容，保已回复/危机语义，不猜迁移或删除全部既有事实。
 
 下一批优先该B，再按风险接idioms/watch/feed/memes/stickers源码候选（尚未逐项确证）。M32b远端公共旧派生/历史observation清理和独立证据解封仍未完成。现有保护保留；固定官方API/live inventory不能代替真实store一致性与可信writer/task fence，未知DELETE不盲重试。仅合成卡/聊天/fakeAPI/temp，未读真角色/runtime或访问外部服务，未部署推送。
+
+## 第二十二批：小梗已完成来历的持久来源与重启（2026-11-05）
+
+代码c777db5a，ADR0114补记。B真实App正式先红：完成保存后撤回origin唯一来源、phrase仍有另外两条，重启20h内不重抽，但旧origin进实际prompt。现每份缓存存source版本、完整历史前缀count/historyHash、派发前固定requestHash及jokesHash。生产提示词读口及状态可用数均fresh核验；前缀修改/截短/来源撤回遮盖整份派生内容，保原文件。新请求传副本，provider改参数不篡改本地指纹；请求hash不是远端回执。正常尾追加、已回复忽略撤回、危机keep未改事实均保持，未强迫危机轮显示小梗。
+
+旧无manifest保原暂避；显式坏source/集合hash不匹配拒读及刷新。保原20h冷却和40条窗口门槛，来源失效/legacy到期可绕MIN_NEW与旧cursor重新提取，不能永久等不到新消息；旧origin仅在原source有效时才能carry，新完整前缀包含全部继承依赖。失效/legacy旧内容不能借新hash洗白。sim作者明确预置梗接口不变。未新增原文/绝对路径/sidefile，现jokes/QQ.json与精确.tmp隐私规则仍覆盖。
+
+交叉故障核验另确证badJSON、readEIO、invalid-source诊断抛错会落原catch空白legacy，实际modelCalls1/refreshedtrue覆盖旧bytes；现除明确ENOENT外未知读取/schema状态统一source:null，诊断失败不绕屏障，原文件不动。最初all-log-throws只证明异常逃逸，不算覆盖缺陷；定向invalid诊断抛错才确证wash，最终回归更强为所有log抛错仍拒覆写。ENOENT正常首次写是正对照，不算缺陷。
+
+新增16（core12/App4），记忆累计591；最终643/643核实合成集、全仓类型实际exit0、模块和差异全部通过。仅memory*.test.ts+纯bilibili-dm-card+modules，不是新全仓全量。两mode memory-app-jokes-revision.mjs已改正确断言：A不落盘不进prompt；B保原1条及字节但不进prompt，extracts均1。勿再把B旧坏断言当当前未修。未跑旧真实角色suite，无外部服务/部署/推送。
+
+下一轮：优先合成验证idioms的后台owner与在途/已完成来源依赖（目前仍源码候选，不冒称已确证）；小梗重叠刷新RMW尚未作为本批覆盖，按具体证据补查。watch/feed/memes/stickers仍候选。记忆模块尚未完成，M32b远端公共旧派生/历史observation清理及独立完成证据仍未打通，现保护不解，不能以本地hash/source/stop等同远端净化。既有真实部署不可访问、未知DELETE、旧weakID/legacybefore/未持久观察、跨时区pending、多文件非事务及不合作写者边界保持。

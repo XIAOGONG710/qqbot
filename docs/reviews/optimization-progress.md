@@ -350,3 +350,7 @@ Commons 严格响应/尺寸/元数据与自有词表参数，保存完整作者�
 第二十一批完成小梗owner与在途来源（6e76e4f8，ADR0114补记）：真实App停止后成功写文件/失败及授予log晚写两项真红→绿，jokeRefresher冻结来源/拥有任务、永久stop取消本地纯模型等待并drain，App构造/正常stop接线。另真实App42条同长度两条撤回后旧结果仍进prompt确证，freshHistory在派发前及await后核完整原前缀role/time/content；允许追加，EIO/修改拒旧提交，公开回调同步stop守界。新增16（core13/App3），记忆累计575；最终627/627核实合成集、全仓类型实际exit0、模块/差异通过，不是新全仓全量。正确owner探针已更新。
 
 下一轮优先新确证B：docs/reviews/repro/memory-app-jokes-revision.mjs的completed-restart，已完成保存的origin唯一来源撤回后，重启20h间隔内仍从旧文件供给origin到实际prompt；phrase另两条有效不证明origin安全，fresh历史已无origin、extracts1。该probe held模式现A绿(stored0/promptOriginfalse)，B仍坏(stored1/true)，exit0非修复回归。须贯通持久来源依赖/读口与legacy兼容，不只清RAM/检查phrase，不猜撤回取消全部已回复事实。其它idioms/watch/feed/memes/stickers仍源码候选；M32b远端旧派生/observation证据清理未完、保护不解，记忆未完不转模块或社区比较。仅合成数据假服务，不访问真角色/runtime/部署/服务，保持现有协议边界。
+
+第二十二批完成小梗已保存origin持久来源（c777db5a，ADR0114补记）：真实AppB撤回唯一origin来源后重启漏进prompt先红后绿。每份缓存完整历史前缀count/hash、实际请求hash、jokes集合hash；生产读口/状态数fresh核验，正常append/已回复/危机keep保持。旧无manifest保原暂避，20h冷却和40条门槛保持，到期可绕MIN_NEW/cursor重建；失效旧origin不carry，不以新hash洗白。明确坏source/坏JSON/readEIO/诊断抛错均source:null拒覆盖，ENOENT首次正常对照。无新原文/路径/sidefile，原隐私清单覆盖。新增16（core12/App4），记忆累计591；最终643/643核实合成集、全仓类型实际exit0、模块/差异绿，非新全仓全量。memory-app-jokes-revision.mjs两mode现正确行为探针，B保原1条但不进prompt，勿重做旧坏断言。
+
+下一轮先合成验证idioms后台停止及在途/已完成来源候选，不假定同结构就是确证；小梗重叠刷新RMW、watch/feed/memes/stickers仍待按证据复核。M32b远端公共旧派生/历史observation清理及独立证据解封仍未完成，现保护不解，记忆未完不转模块。仅合成数据假服务临时文件，不访问真角色/runtime/部署/服务；保旧weakID/legacybefore/未知DELETE/不合作写者/多文件远端非事务边界。
