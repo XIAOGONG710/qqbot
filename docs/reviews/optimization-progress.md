@@ -362,3 +362,9 @@ Commons 严格响应/尺寸/元数据与自有词表参数，保存完整作者�
 第二十四批已修watch/feed owner（90cbec56，ADR0130/0168补记）：真实App heldnav后继请求/字幕晚落watched、推荐nav及body/推荐body晚落feed和dryRun draft先红后绿。App派发前登记本体/stop取消纯read-model及sleep/drain，watchOne全await、BiliAccount单次search/subtitle signal内部nav/view/player/body链贯通；timeline字幕晚记录守宿主，mutation ACK保持。生产真实guard另2合成红（不注入request、fake globalfetch429/-352）：旧租约释放后写breaker，现完整guard请求派发前登记settlement，stop/构造等持久风险事实再释放；此类不合作请求可阻drain，不能和纯读取消混称。公开awake/Date分类及最终提交重入也经真红后修。
 
 新增49（watch26/feed19/timeline4），记忆累计670；预类型3处问题真实exit1后修默认参数/closure mode/readonly夹具，最终完整722/722核实合成集、全仓类型实际exit0、模块/差异绿，非新全仓全量。仅临时合成卡/凭证假服务，不读真runtime账号或外发，无部署推送。下一轮先真实App合成验证refreshMemeJob的held source/fetchLists/model/gather stop后续派/落盘候选，尤其共享source返回后新guard不等于停止时已派快照自动覆盖；stickers/replies/risk等owner待证。B站/社交未整体审，记忆未完不转模块；M32b远端旧派生/观察清理和证据解封仍阻在可信store/writer/task证据，保护不解。
+
+第二十五批完成热梗后台停止所有权（08ef50fd，ADR0129补记）：真实App7项先6红1绿，held首账号来源停止后旧代码仍派11个后继请求（总12），列表body/候选模型/搜索证据/解释模型晚返回仍落memes，失败及授予日志也晚写；正常完成并重启12h冷却是绿对照。App复用ownPassiveRead登记本体，逐层signal贯通fetchLists的fetch/json、模型、gatherEvidence的search/sleep/subtitle/hotComments以及最终提交，stop拒后继请求/文件/RAM/日志。已有生产guard持久风险settlement仍等待收尾，不把纯读取消与已派风险事实混称；已确认文件保留，原来源/配额/12h政策不改。
+
+新增24（core17/App7），记忆累计694；最终746/746核实合成集、全仓类型实际exit0、模块/差异绿，非新全仓全量。仅临时合成卡/凭证/事件、fake fetch/API，无真实账号/runtime/外网服务、无部署推送。
+
+下一轮优先已确证作者CLI与后台刷新竞争：docs/reviews/repro/memory-meme-author-race.mjs使用临时目录及真实meme-cli remove，删除成功文件0条，释放旧候选模型后刷新把原条目写回；当前输出cliRemoved=true、authorRemovalPreserved=false，exit0只是未修事实诊断。需贯通bot/CLI原子跨进程读改写与作者删除意图，覆盖冲突重读/崩溃/IO，不以无锁版本比较冒称跨进程CAS。热梗停止旧反例已修，不能把本批当并发删除已修。stickers/replies/risk仍待证据盘点，B站/社交未整体审；M32b远端公共旧派生/历史观察清理及独立证据解封仍未完成，现保护不解、真实部署DB不访问，记忆未完不转模块。

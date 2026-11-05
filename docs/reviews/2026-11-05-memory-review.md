@@ -546,3 +546,15 @@ A在途来源另有真实App红：42条同长度消息，未回复的两条唯�
 新增49（观看core22/App4、推荐流core12/App7、timeline4），记忆累计670。提前类型检查真实exit1发现ensureKeys新增required参数破坏旧mutation调用、closure丢mode narrowing、readonly text测试赋值；修为默认request/入口mode快照/defineProperty。最终完整722/722核实合成集、全仓类型实际exit0、模块/差异绿。仅memory*.test.ts+纯bilibili-dm-card+modules，不是新全仓全量，未跑旧卡suite。全部临时合成卡/凭证/聊天/假fetch/API，不访问真实账号/runtime/外网服务，不部署推送。
 
 下一轮先真实App合成验证refreshMemeJob：held accountSource/fetchLists/ask/gather后stop是否继续新请求、落memes或RAM/日志；目前源码候选，不冒称已确认。优先核其共享账号来源返回后新派guard不在前一stop已派快照的问题；不以本批guard登记假称全部后台任务已经关闭。stickers/replies/risk仍需直接owner证据盘点；B站/社交未整体审，photo/food及本批watch/feed旧反例不重复。M32b远端公共旧派生/历史observation清理与独立证据解封仍未完成，当前保护不解、不访问真部署DB，记忆未完不转模块。
+
+## 第二十五批：热梗后台读取与停止所有权（2026-11-05）
+
+代码08ef50fd，ADR0129补记。真实App7项先6红1绿，使用fake globalfetch经过真实realRequest/guardRequest而不注入绕过breaker的request。初始accountSource held后stop，旧代码从1次请求继续到12次（popular三页、hotword、weibo、baidu、搜索、view、player、字幕与热评），并晚落memes；列表JSON body、候选模型、gather搜索、解释模型分别held也能晚落盘，失败与授予模型logger可晚输出。正常完成后重启遵守12h间隔是绿对照。held账号/search的已派生产guard依旧按stop→释放响应→await drain收尾，不能误把必要的持久风险等待算取消失败。
+
+App refreshMemeJob复用ownPassiveRead/passiveRead/passiveLifetime，派发前登记任务，停止同步拒后续入口并取消本地纯模型/读取等待，scoped logger及最终RAM重新加载守停止。memes.ts新增可选signal：fetchLists逐fetch/json/分页/来源循环，gatherEvidence逐search/sleep/subtitle/hotComments，refreshMemes逐模型、来源格式化、日期与提交检查；catch不吞取消后继续下一来源。最终待保存对象先计算再检查，已确认保存事实不回滚。账号search/subtitle单次signal透传；公共热评使用passiveFetch。既有guard的完整持久风险settlement仍归宿主drain，不全局中止mutation。保持四来源、候选与证据限额及12h策略，不新增重试。
+
+新增24（核心17/App7），其中边界对照不是24组缺陷；核心覆盖四个held阶段真实旧落盘、fetch/json/间隔/字幕/热评、普通失败降级、日期回调同步停止以及提交后停止保事实。最终746/746核实合成集、全仓类型实际exit0、模块/差异检查通过。只执行memory*.test.ts+纯bilibili-dm-card+modules，不是全仓全量；所有卡/凭证/事件均临时合成，API/HTTP均假服务，不访问真实角色/runtime/账号/服务，不推送部署。
+
+独立确证尚未修复：memory-meme-author-race.mjs启动真实作者CLI（显式--dir临时绝对目录），后台候选模型held期间remove成功、文件0条；释放旧模型后原缓存条目被bump并保存回来。当前cliRemoved=true、afterRefresh含合成喵梗、authorRemovalPreserved=false；exit0仅事实报告，不是正确性回归。下轮先贯通后台和CLI原子跨进程读改写/作者意图、冲突重读、崩溃及IO，不以无锁状态摘要检查假称跨进程协议。CLI缺--dir值可能回默认路径仅源码候选，未执行可能触及真实默认目录的命令，不计确证缺陷。
+
+本批不涵盖该并发删除、不宣称远端请求已物理取消；不合作生产guard可持续阻drain。stickers/replies/risk直接owner仍待实证，B站/社交未整体审。M32b远端旧公共派生与历史observation清理/独立证据解封仍受既有可信store/writer/task证据边界保护；本地source/完成/停止不证明远端净化，不访问真部署DB。记忆模块未完成，继续本模块。
