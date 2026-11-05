@@ -454,3 +454,9 @@ M32b远端公共旧派生/历史observation清理及证据解封仍未完，保�
 第三十九批完成Web continuity停止/deadline隔离（d367c625，ADR0160）：真实App stop后旧Wikipedia读取原会继续摘录、写时间线/日志；25秒超时孤儿还能污染已接管目录的新实例prompt。现App stop+deadline合并signal，Web分类/读取/全部provider/摘录/缓存/日志/时间线逐段守界；不合作底层晚结果只吸收。deadline照常回复，stop用AbortError终止提示词构建且不记回复故障；正常完成、时间线与6小时缓存保持。新增3项，累计909。
 
 最终核实允许合成集1018项=1017通过/1既有Windows符号链接权限skip/0失败，全仓Bot类型、模块登记、差异检查通过；未运行未核真实卡suite，未访问真runtime/QQ/模型/外部服务/DB，无部署推送。下一轮优先真实App+fake DSH验证手机伴侣runtime/media/action-result与App.stop/Koishi卸载owner候选；未复现前不称缺陷。M32b远端公共派生/历史observation可信净化证据仍缺，客户端保护不解，记忆未完不转模块或社区比较。
+
+第四十批完成手机伴侣完整停止所有权（`1318e5a8` / `d46c21c0`，ADR0224）：真实App+fake DSH确证旧stop先释放bot.lock后，held手机消息仍返回正文、旧集成仍paired/connected、可再收消息和签配对码。现runtime永久stop，纯DSH/媒体读本地取消，已派动作drain保ACK；App正常/构造回滚都等收尾再放锁，并隐藏旧对象。配对库/媒体库同样永久关闭，残留Koa envelope/上传/轮询路由只拒绝，不复活会话或私密媒体。新增8项，记忆累计917。
+
+定向手机伴侣50/50通过；最终允许合成集1021项=1020通过/1旧Windows权限skip/0失败，全workspace类型、模块登记、差异通过。只合成卡/消息/媒体、fake DSH/HTTP/temp，无真runtime/QQ/外部模型/服务/DB或部署推送。不宣称远端DSH计算取消、持久outbox、强杀恢复或任意网络exactly-once。
+
+**下一检查点：记忆模块仍未完成。** 手机伴侣stop链已完成，跳过旧候选。继续记忆直接调用/后台owner剩余盘点与资源故障注入。M32b公共旧diary/week/phase派生及历史observation净化仍缺可信writer fence、四态任务静止、实际store一致性与未知DELETE停止证据；客户端屏障保持，不读真部署DB、不伪解封。记忆覆盖充分前不转下一模块或社区比较。

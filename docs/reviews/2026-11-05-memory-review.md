@@ -694,3 +694,17 @@ stop现在同步清除probing；health成功、失败及finally只有App仍活�
 新增3项真实App正式回归，记忆累计909。定向Web 16项、两份correctness probe通过；最终核实允许的合成集1018项=1017通过、1项既有Windows符号链接权限skip、0失败。全仓Bot类型、模块登记与差异检查通过；没有运行未经核实的真实角色卡suite，没有访问真runtime、QQ、外部模型、服务或数据库，无部署推送。
 
 **下一检查点：记忆模块仍未完成。** 下一轮先用真实App、fake DSH/传输验证手机伴侣`runtime.handle`、媒体读取、动作回执与App.stop/Koishi卸载的完整owner边界；当前`mobileCompanion()`对象在stop后仍可见，属于待证候选，未复现前不称缺陷。随后继续其它直接transport/后台owner与资源证据。M32b远端公共diary/week/phase旧派生及历史observation净化仍缺可信writer fence、完整四态任务静止、实际store一致性和未知DELETE停止证据；客户端屏障保持，不用版本、布尔、live=0、删UUID或改generation伪解封，不访问真实部署DB。记忆覆盖充分前不转社交/B站/平台模块或社区比较。
+
+## 第四十批：手机伴侣完整停止所有权（2026-11-05）
+
+代码 `1318e5a8` / `d46c21c0`，ADR0224补记。`memory-app-mobile-companion-owner.mjs`用真实App、临时合成角色卡和fake DSH确证：手机消息已进入held advice时，旧`App.stop()`先释放`bot.lock`，集成对象仍暴露且保持paired/connected；释放模型后旧请求返回正文，并可继续处理第二条消息和签发新配对码。
+
+`CompanionRuntime.stop()`现为永久边界：同步拒绝新会话/消息/下行动作，清配对、nonce、队列和监听器；纯读/DSH处理获得`AbortSignal`并取消本地等待，迟到结果不写短期上下文或交给旧设备；已派动作不伪装未发生，drain等它自然确认。媒体摘要等待期间unpair也不再派后续DSH。App正常停止和构造回滚都接线该drain，然后才释放目录租约，并不再从`mobileCompanion()`暴露旧对象。
+
+交叉复核发现旧对象还可直接调`pairing.issue()`和`media.put()`绕过集成层；第二提交使两个底层存储也永久stop，撤销待用凭证、清内存媒体并拒绝新写。残留Koishi Koa路由的envelope、媒体上传和动作轮询均只返回已停止/未授权，不复活会话；适配器后置调用不抛同步异常。
+
+新增8项回归（真实App 3、运行时/媒体摘要 3、媒体存储 1、Koa残留路由 1），记忆累计917。定向手机伴侣组50/50通过；最终允许合成集1021项=1020通过、1项既有Windows符号链接权限skip、0失败；全workspace类型、模块登记与差异检查通过。正确性probe现断言停止后不暴露、旧/新消息都拒绝、旧底层存储拒绝新写且迟到日志为0。只用合成卡/消息/媒体、fake DSH/HTTP和temp，未访问真实runtime、QQ、外部模型/服务/DB，未部署推送。
+
+边界：本地abort不等于远端DSH计算已取消；不合作的已派动作可阻drain；无持久手机动作outbox、强杀恢复或任意网络exactly-once。M32b远端公共旧派生/历史observation净化仍缺可信writer fence、四态任务静止、实际store一致性和未知DELETE停止证据；客户端屏障保持，不读真部署DB，不伪解封。
+
+**下一检查点：记忆模块仍未完成。** 手机伴侣App/runtime/media/pairing/Koishi停止链已覆盖，不重做旧候选。继续对记忆直接调用与后台owner做剩余盘点、资源故障注入和调用链回看；尚未证实的不批量重构。记忆覆盖充分前不转下一模块或社区比较。
