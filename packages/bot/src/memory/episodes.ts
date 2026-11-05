@@ -3,6 +3,12 @@
 
 import type { StoredMessage } from './history.ts';
 import type { MacroNames } from '../st/macros.ts';
+import { stateTimestamp } from './state-schema.ts';
+
+function messageDate(time: string): Date {
+    if (!stateTimestamp(time)) throw new RangeError('聊天片段来源时间无效或超出支持范围');
+    return new Date(time);
+}
 
 /** 安静这么久算一段对话结束（调研方案 5.2 的起点） */
 export const EPISODE_GAP_MS = 45 * 60_000;
@@ -18,7 +24,7 @@ export interface Episode {
 export function splitEpisodes(history: StoredMessage[]): Episode[] {
     const episodes: Episode[] = [];
     for (const message of history) {
-        const time = new Date(message.time);
+        const time = messageDate(message.time);
         const current = episodes.at(-1);
         if (current && time.getTime() - current.end.getTime() < EPISODE_GAP_MS) {
             current.messages.push(message);
@@ -41,7 +47,7 @@ export function episodeTranscript(episode: Episode, names: MacroNames): string {
     const lines: string[] = [];
     let day = '';
     for (const m of episode.messages) {
-        const time = new Date(m.time);
+        const time = messageDate(m.time);
         const date = `—— ${time.getFullYear()}年${time.getMonth() + 1}月${time.getDate()}日 ${WEEKDAYS[time.getDay()]} ——`;
         if (date !== day) {
             lines.push(date);
@@ -55,6 +61,9 @@ export function episodeTranscript(episode: Episode, names: MacroNames): string {
 
 /** 2026-10-01T20:00:00+08:00：本机时区 */
 export function localIso(date: Date): string {
+    if (!Number.isFinite(date.getTime()) || date.getFullYear() < 0 || date.getFullYear() > 9999 || !stateTimestamp(date.toISOString())) {
+        throw new RangeError('记忆持久时间超出支持范围');
+    }
     const pad = (n: number) => String(Math.trunc(Math.abs(n))).padStart(2, '0');
     const offset = -date.getTimezoneOffset();
     const sign = offset >= 0 ? '+' : '-';
