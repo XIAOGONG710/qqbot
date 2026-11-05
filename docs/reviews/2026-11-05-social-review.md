@@ -1,0 +1,22 @@
+# “在 QQ 上的样子（社交）”深入审查（2026-11-05）
+
+状态：进行中。记忆模块完成检查点`547d7615`后按模块顺序开始；未进入B站整体审查、社区比较或新功能阶段。
+
+## 范围清单
+
+模块登记共17个源文件：`responder.ts`、`reply-timing.ts`、`rate-limit.ts`、`async-gate.ts`、`stickers.ts`、`sticker-favorites.ts`、`sticker-sources.ts`、`pokes.ts`、`presence.ts`、`qzone.ts`、`qzone-feed.ts`、`qzone-feeds3.ts`、`qzone-remote.ts`、`qzone-strangers.ts`、`account.ts`、`quote-reply.ts`、`external-platforms.ts`。
+
+直接链路纳入：`platform/app.ts`、`platform/contact.ts`、独立入口与Koishi插件、主动消息/B站复用Responder、视觉媒体与安全下载、聊天历史/危机/作息、账号控制面审计、空间网页读取、模拟器及运维入口。既有记忆审查已经覆盖的停止owner回归作为基线，不重复冒充本模块已审完。
+
+产品约定已复核：相关能力默认关闭；不擅改回复概率/节奏、空间可见性、联系人权限、危机策略或上线状态；空间/账号动作只用合成服务验证，不访问真实QQ、登录态、空间、角色运行时或外部模型。
+
+## 第一批：存在感持久状态与未来事实
+
+确认并修复：
+
+1. `presence.json`是外部动作进度而非普通缓存。旧schema只浅验两个数组，`likedDay`等错误类型可直接绕过；坏JSON/schema又会隔离为新空状态，可能重复点赞、说说、戳人或其它公开动作。现完整校验全部已消费字段，合法最小v1及既有可选字段兼容，非法状态保留原件并失败关闭。
+2. `browse`、`peek`、`strangers`的未来时间戳原会因只检查“距今不超过6小时”而提前进入提示词。现要求事实时间不晚于当前时间。
+
+新增5项全合成回归：坏JSON保原且拒启动、畸形字段拒启动、最小v1兼容、完整合法v1兼容、三类未来空间事实不投影并保当前事实正对照。定向5/5、Bot类型、模块登记和差异检查通过；全仓类型在提交前复核。未运行依赖仓库角色卡的旧`presence.test.ts`/`qzone-browse.test.ts`，不把历史测试结果冒充本批验证。
+
+下一步：继续审查回复节奏/限流资源、空间解析与网络边界、表情持久链及账号控制面；先用合成故障证明确认问题，再修复。模块未完成。

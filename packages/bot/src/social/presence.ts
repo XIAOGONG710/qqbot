@@ -284,9 +284,9 @@ export function describeSelf(input: { signature?: { text: string; draft?: boolea
     if (parts.length) lines.push(`[你在 QQ 上的样子（他点开你的资料卡、空间能看到的；他问起或提到时照这个说，没写的别编）：${parts.join('；')}]`);
     // 她刷空间看到的是别人发的，和上面「他能看到的你」是两回事，分开一行，免得她把别人的话当成自己发的
     const seen: string[] = [];
-    if (input.browse && now - input.browse.at <= 6 * 3_600_000) seen.push(input.browse.note);
-    if (input.peek && now - input.peek.at <= 6 * 3_600_000) seen.push(input.peek.note);
-    if (input.strangers && now - input.strangers.at <= 6 * 3_600_000) seen.push(input.strangers.note);
+    if (input.browse && input.browse.at <= now && now - input.browse.at <= 6 * 3_600_000) seen.push(input.browse.note);
+    if (input.peek && input.peek.at <= now && now - input.peek.at <= 6 * 3_600_000) seen.push(input.peek.note);
+    if (input.strangers && input.strangers.at <= now && now - input.strangers.at <= 6 * 3_600_000) seen.push(input.strangers.note);
     if (seen.length) lines.push(`[你刚才刷空间看到的（是别人发的，不是你发的；用不上就不提，没写的别编）：${seen.join('；')}]`);
     return lines.length ? lines.join('\n') : undefined;
 }
@@ -303,9 +303,63 @@ export interface Presence {
 }
 
 const STATE_VERSION = 1;
-const validFile = (value: unknown): value is PresenceFile =>
-    typeof value === 'object' && value !== null && (value as PresenceFile).version === STATE_VERSION
-    && Array.isArray((value as PresenceFile).qzone) && Array.isArray((value as PresenceFile).photosUsed);
+const stateRecord = (value: unknown): Record<string, unknown> | undefined =>
+    typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const text = (value: unknown, max = 10_000): value is string => typeof value === 'string' && value.length <= max;
+const optional = (value: unknown, check: (candidate: unknown) => boolean): boolean => value === undefined || check(value);
+const stringList = (value: unknown, maxItems: number, maxLength: number): value is string[] =>
+    Array.isArray(value) && value.length <= maxItems && value.every(item => text(item, maxLength));
+const numberList = (value: unknown, maxItems: number): value is number[] =>
+    Array.isArray(value) && value.length <= maxItems && value.every(finite);
+const attemptDay = (value: unknown): value is string => text(value, 32);
+
+function validSignature(value: unknown): boolean {
+    const record = stateRecord(value);
+    return Boolean(record && text(record.text, 1_000) && finite(record.at) && finite(record.next)
+        && optional(record.draft, (candidate): candidate is boolean => typeof candidate === 'boolean'));
+}
+
+function validQzoneRecord(value: unknown): boolean {
+    const record = stateRecord(value);
+    return Boolean(record && finite(record.at) && text(record.text, 1_000)
+        && optional(record.photo, (candidate): candidate is string => text(candidate, 255))
+        && optional(record.tid, (candidate): candidate is string => text(candidate, 1_000))
+        && (record.mode === 'dryRun' || record.mode === 'on'));
+}
+
+function validSeen(value: unknown, kind: 'browse' | 'peek' | 'strangers'): boolean {
+    const record = stateRecord(value);
+    if (!record || !finite(record.at) || !Number.isSafeInteger(record.count) || (record.count as number) < 0 || !text(record.note, 20_000)) return false;
+    if (kind === 'peek') return Number.isSafeInteger(record.uin) && (record.uin as number) > 0;
+    return text(record.action, 1_000);
+}
+
+/**
+ * presence.json is durable progress for externally visible actions, not a disposable cache.  A
+ * partially-shaped value must not turn "already liked/posted/poked today" into "not done".
+ * Unknown extra keys remain forward-compatible, but every field we consume is checked here.
+ */
+const validFile = (value: unknown): value is PresenceFile => {
+    const record = stateRecord(value);
+    if (!record || record.version !== STATE_VERSION) return false;
+    if (!Array.isArray(record.qzone) || record.qzone.length > 1_000 || !record.qzone.every(validQzoneRecord)) return false;
+    if (!stringList(record.photosUsed, 10_000, 255)) return false;
+    if (!optional(record.status, candidate => {
+        const status = stateRecord(candidate);
+        return Boolean(status && text(status.label, 100) && finite(status.at));
+    })) return false;
+    if (!optional(record.likedDay, attemptDay) || !optional(record.signature, (candidate): candidate is PresenceFile['signature'] => validSignature(candidate))) return false;
+    if (!optional(record.qzoneAttemptDay, attemptDay) || !optional(record.pokeOutAttemptDay, attemptDay)) return false;
+    if (!optional(record.browse, (candidate): candidate is PresenceFile['browse'] => validSeen(candidate, 'browse'))
+        || !optional(record.peek, (candidate): candidate is PresenceFile['peek'] => validSeen(candidate, 'peek'))
+        || !optional(record.strangers, (candidate): candidate is PresenceFile['strangers'] => validSeen(candidate, 'strangers'))) return false;
+    if (!optional(record.browseAttemptAt, finite) || !optional(record.peekAttemptAt, finite)
+        || !optional(record.peekRetryAt, finite) || !optional(record.strangersAttemptAt, finite)) return false;
+    if (!optional(record.peekSeen, (candidate): candidate is string[] => stringList(candidate, 1_000, 1_000))) return false;
+    if (!optional(record.pokesOut, (candidate): candidate is number[] => numberList(candidate, 1_000))) return false;
+    return true;
+};
 
 export const PRESENCE_TICK_MS = 60_000;
 
@@ -314,7 +368,11 @@ export function createPresence(options: PresenceOptions): Presence {
     mkdirSync(dir, { recursive: true });
     const statePath = join(dir, 'presence.json');
     const draftsPath = join(dir, 'drafts.md');
-    const state = readJsonOr<PresenceFile>(statePath, { version: STATE_VERSION, qzone: [], photosUsed: [] }, log, { validate: validFile, label: '存在感状态' });
+    const state = readJsonOr<PresenceFile>(statePath, { version: STATE_VERSION, qzone: [], photosUsed: [] }, log, {
+        validate: validFile,
+        invalid: 'throw',
+        label: '存在感状态',
+    });
     const save = () => writeJsonAtomic(statePath, state);
     const failed = new Set<string>();
     const fail = (what: string, error: unknown) => {
