@@ -648,3 +648,11 @@ sendOwnedNotice现返回已预登记settlement，既有忽略返回值的直接�
 新增9项，记忆累计882。正式覆盖停止后新receive、即时成功/失败、同步stop/throw、capture来源held、capture发送成功/失败及同步stop；两个probe改为正确行为断言。最终核实合成集992项=991通过/1既有Windows符号链接权限skip/0失败，全仓类型实际exit0、模块/差异检查通过。全部使用临时合成卡、fake DeviceService/transport，无真实屏幕、摄像头、QQ、runtime、网络或部署。
 
 限制：这里只保证当前进程已派transport和随后的本地预约提交在租约内收尾；没有持久通知outbox、强杀恢复或QQ ACK+JSON原子事务，不合作transport可持续阻塞drain。capture本体停止后晚结果直接放弃，不持久恢复。下一轮继续盘点剩余直接发送和后台owner；M32b公共旧派生/历史observation远端清理和独立完成证据仍未解决，客户端保护保持，记忆模块未完成，不转下一模块或社区比较。
+
+## 第三十五批：状态页健康探针晚结果（2026-11-05）
+
+代码1854f67b，ADR0010补记。真实App临时memory配置与fake `/health` 证明：status()派发健康读取后，stop同步释放bot.lock；晚成功仍把已停止实例的`memory.health`从空改为ok。第二实例有独立closure，未发生跨重启污染，也无文件或日志晚写，因此按真实影响修复而不夸大成持久数据损坏。
+
+stop现在同步清除probing；health成功、失败及finally只有App仍活跃才提交RAM。纯读请求不加入drain，不等待不合作HTTP；底层HindsightClient无signal，网络请求仍可能运行但结果被放弃。活跃成功仍更新一次并保持一分钟限频。新增3项，记忆累计885；定向3/3及双实例correctness probe通过，最终核实合成集995项=994通过/1既有Windows权限skip/0失败，全仓类型实际exit0、模块/差异绿。仅合成卡/temp/fake fetch，无真实memory服务/runtime访问。
+
+并行下一证据已确认markRead已派ACK不属于stop drain，晚失败会在释放租约后写日志；只确认已读回执，未外推typing/react。下一批从该精确链继续。M32b远端公共旧派生/历史observation清理仍未完成，保护不解，记忆模块未完成不转模块。

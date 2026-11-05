@@ -430,3 +430,5 @@ M32b远端公共旧派生/历史observation清理及证据解封仍未完，保�
 第三十四批完成设备命令直接回复停止所有权（af539faa，ADR0148）：真实App分别确证owner即时reply及capture完成后的handled.reply。两者已派sendPrivateText held时旧stop均提前释放bot.lock；即时失败日志晚写，capture成功ACK后还在无租约状态discardIncoming，失败后incomingFailure晚写，transport同步重入stop也漏本次发送。现sendOwnedNotice返回自己的settlement，调用前预登记；即时回复直接复用，capture回复await同一settlement，成功后的入站预约清理和失败诊断都先于settle。capture纯来源尚未返回时现有stop守卫保持立即放弃，不等待不合作设备/看图任务。直接提示仍不进ChatHistory。
 
 新增9项，记忆累计882；两份旧failure diagnostics均改correctness probes。定向9/9、成功/失败/重入/同步throw及入站保留边界通过；最终核实合成集992项=991通过/1既有Windows权限skip/0失败，全仓类型实际exit0、模块/差异绿。仅临时合成卡、fake设备与transport，无真实屏幕/摄像头/QQ/runtime/网络访问或部署推送。边界仍是进程内已派所有权：无持久发送outbox、强杀恢复或QQ ACK与JSON全局事务，不合作transport可阻drain；capture未派来源的晚结果被丢弃而不保存。下一轮继续按真实App合成证据盘点剩余后台/直接发送owner；M32b远端派生与历史observation证据清理仍未完成，记忆未完不转模块。
+
+第三十五批完成状态页Hindsight健康探针停止边界（1854f67b，ADR0010）：真实App由status触发/health后，旧stop同步释放租约，晚成功仍把已停止App的RAM health改成ok；重启实例虽不受污染，但旧对象状态继续变化。现stop同步清probing，成功/失败/finally仅在App仍活跃时提交；纯读HTTP不纳drain，不让不合作探针占锁，新实例保持独立。新增3项，记忆累计885；定向3/3和双实例probe通过，最终995项=994通过/1既有Windows权限skip/0失败，全仓类型、模块、差异绿。无文件/日志晚写或跨实例污染，不夸大原影响；底层无signal请求仍可能运行。并行另确证markRead已派ACK未被stop拥有，留下一批修复，尚未把typing/react外推为缺陷。
