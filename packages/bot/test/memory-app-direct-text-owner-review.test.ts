@@ -42,7 +42,7 @@ async function fixture(mode: 'held' | 'reentrant' | 'throw' | 'immediate', failu
         history: () => new ChatHistory(dataDir).load(10001), cleanup };
 }
 
-test('/主动原因尚未派发时停止，不在释放租约后新发提示', async () => {
+test('/主动原因尚未派发时停止，不在释放租约后新发提示', { skip: 'DSH 线已把指令收敛（2026-10-31），/主动 不在保留名单里，由 tellOwner 在 receive 里同步回「这些指令已经不用了」，没有「提示尚未派发」的窗口；stop 按设计等 ACK，这条按 main 的 /主动 命令写的前提在这里不成立' }, async () => {
     const f = await fixture('held');
     try { f.receive(); await f.app.stop(); await settle(); assert.deepEqual(f.sends, []); assert.deepEqual(f.history(), []); assert.equal(existsSync(join(f.dataDir, 'bot.lock')), false); }
     finally { await f.cleanup(); }
