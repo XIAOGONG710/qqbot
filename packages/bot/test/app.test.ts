@@ -67,6 +67,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         contextContacts: [],
         proactive: 'off',
         dataDir,
+        timeZone: 'Asia/Shanghai',
         ...overrides,
     };
 }

@@ -41,6 +41,7 @@ import { biliStickerScreen } from '../../bot/src/language/bili-stickers.ts';
 import { webFoodSource, webPhotoSource } from '../../bot/src/vision/photo-sources.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 import { EXTERNAL_PLATFORM_MODES, type ExternalPlatformMode } from '../../bot/src/social/external-platforms.ts';
+import { applyTimeZone, DEFAULT_TIME_ZONE } from '../../bot/src/platform/time-zone.ts';
 
 // koishi 的 ESM 入口是坏的（@koishijs/loader/lib/index.mjs 默认导入了一个 CJS 文件）：取 loader 自己用的那份 CJS
 const { Schema } = createRequire(import.meta.url)('koishi') as typeof Koishi;
@@ -131,6 +132,7 @@ export interface Config {
     contacts: { qq: number; name: string; tier: ContactTier; persona?: string; intro?: string; knowsBot?: boolean; feedback?: boolean }[];
     unlistedFriends: boolean;
     schedule: boolean;
+    timeZone?: string;
     media: boolean;
     stickers: StickerMode;
     vision: { enabled: boolean; baseUrl?: string; model?: string; timeoutMs?: number };
@@ -280,6 +282,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**名单外的好友**：默认关闭。打开后私聊按 unlisted 档回复（被认真问到时承认是 AI）；每人 10 分钟最多 30 条，全部名单外好友合计最多 100 条'),
         schedule: Schema.boolean().default(DEFAULTS.schedule)
             .description('**作息**：按角色卡上的作息，凌晨睡觉不回、上课晚回、打字有时间。深夜测试时关掉'),
+        timeZone: Schema.string().default(DEFAULT_TIME_ZONE)
+            .description('**她的时区**（ADR 0248，一般不用改）：作息、饭点、日记的日界都按这个时区算，跟机器的系统时区无关。IANA 写法，例如 Asia/Shanghai'),
         media: Schema.boolean().default(DEFAULTS.media)
             .description('**听语音、看图上的字**（ADR 0052）：他发的语音用 QQ 自带的语音转文字，照片、截图用 NapCat 的 OCR 取上面的字（只有 Windows），她就着内容回，听完语音才回。'
                 + '转不出来、没字、超时（5 秒）照旧只知道是语音、图片；表情包照旧用名字'),
@@ -624,6 +628,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         contacts: config.contacts.map(contact => dropUndefined(contact)),
         unlistedFriends: config.unlistedFriends,
         schedule: config.schedule,
+        ...(config.timeZone !== undefined ? { timeZone: config.timeZone } : {}),
         // 旧的 koishi.yml 没有这几项：parseAppConfig 按默认值（看心情不回开、说话的毛病开、她自己的日子开、主动消息关）
         ...(config.moody !== undefined ? { moody: config.moody } : {}),
         ...(config.speechCheck !== undefined ? { speechCheck: config.speechCheck } : {}),
@@ -790,6 +795,8 @@ export function apply(ctx: Context, config: Config) {
     let appConfig: AppConfig;
     try {
         appConfig = parseAppConfig(toAppConfigInput(config), repoRoot);
+        // 她的时区（ADR 0248）：整个 Koishi 进程跟着她的时区走，作息和日界不再取决于机器设置
+        applyTimeZone(appConfig.timeZone);
     } catch (error) {
         const plain = plainError('配置有误，插件没有启动', error);
         setConsoleState({ error: plain.message });

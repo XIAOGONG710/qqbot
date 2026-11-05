@@ -27,6 +27,7 @@
 - `platform/device-phone.ts`
 - `platform/device-service.ts`
 - `platform/sensitive.ts`
+- `platform/time-zone.ts`
 - `platform/web.ts`
 - `dsh-link.ts`
 - `mobile-companion-dsh.ts`
@@ -48,4 +49,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0002](../adr/0002-standalone-runtime.md)、[ADR 0008](../adr/0008-koishi-runtime.md)、[ADR 0118](../adr/0118-weekly-report.md)、[ADR 0119](../adr/0119-consistency-check.md)、[ADR 0120](../adr/0120-status-dashboard.md)、[ADR 0160](../adr/0160-web-lookup.md)、[ADR 0246](../adr/0246-forget-intent-and-data-lease.md)
+[ADR 0002](../adr/0002-standalone-runtime.md)、[ADR 0008](../adr/0008-koishi-runtime.md)、[ADR 0118](../adr/0118-weekly-report.md)、[ADR 0119](../adr/0119-consistency-check.md)、[ADR 0120](../adr/0120-status-dashboard.md)、[ADR 0160](../adr/0160-web-lookup.md)、[ADR 0246](../adr/0246-forget-intent-and-data-lease.md)、[ADR 0248](../adr/0248-her-time-zone.md)

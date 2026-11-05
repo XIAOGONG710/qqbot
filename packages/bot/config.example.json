@@ -31,6 +31,7 @@
     ],
     "unlistedFriends": false,
     "schedule": true,
+    "timeZone": "Asia/Shanghai",
     "memory": {
         "baseUrl": "http://127.0.0.1:8888"
     },

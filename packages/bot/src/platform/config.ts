@@ -16,6 +16,7 @@ import { PROACTIVE_MODES, type ProactiveMode } from '.././proactive/proactive.ts
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '.././st/prompt-converters.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from '.././st/world-info.ts';
 import { externalPlatformMode, type ExternalPlatformMode } from '.././social/external-platforms.ts';
+import { applyTimeZone, canonicalTimeZone, DEFAULT_TIME_ZONE } from './time-zone.ts';
 
 /** 看图能用的提供方（ADR 0055）。DeepSeek 复用聊天模型的 QQBOT_LLM_API_KEY，不另要 key。 */
 export const VISION_PROVIDERS = ['deepseek'] as const;
@@ -570,6 +571,8 @@ export interface AppConfig {
     };
     /** 运行数据目录（聊天记录等） */
     dataDir: string;
+    /** 她的时区（ADR 0248）：作息、日界、饭点都按它算；入口用 applyTimeZone 设给进程。默认 Asia/Shanghai */
+    timeZone: string;
 }
 
 export interface Contact {
@@ -604,6 +607,7 @@ export function cardKey(contact: Pick<Contact, 'tier' | 'knowsBot'>): string {
 
 type Json = Record<string, unknown>;
 
+/** 读 config.json（独立入口和命令行工具用）；读完就把进程时区设成配置的 timeZone（ADR 0248） */
 export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.env): BotConfig {
     const path = resolvePath(repoRoot, env.QQBOT_CONFIG || 'runtime/bot/config.json');
     if (!existsSync(path)) {
@@ -611,6 +615,7 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
     }
     const file = JSON.parse(readFileSync(path, 'utf8')) as Json;
     const app = parseAppConfig(file, repoRoot, env);
+    applyTimeZone(app.timeZone);
     const onebot = section(file, 'onebot');
     return { onebot: { url: str(onebot, 'url', 'onebot'), token: env.QQBOT_ONEBOT_TOKEN ?? '' }, ...app };
 }
@@ -843,6 +848,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         proactive: proactiveMode(file.proactive),
         ...(memory ? { memory } : {}),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : DEFAULTS.dataDir),
+        timeZone: file.timeZone === undefined ? DEFAULT_TIME_ZONE : canonicalTimeZone(file.timeZone),
     };
 }
 
