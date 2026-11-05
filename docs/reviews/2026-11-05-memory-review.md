@@ -558,3 +558,17 @@ App refreshMemeJob复用ownPassiveRead/passiveRead/passiveLifetime，派发前�
 独立确证尚未修复：memory-meme-author-race.mjs启动真实作者CLI（显式--dir临时绝对目录），后台候选模型held期间remove成功、文件0条；释放旧模型后原缓存条目被bump并保存回来。当前cliRemoved=true、afterRefresh含合成喵梗、authorRemovalPreserved=false；exit0仅事实报告，不是正确性回归。下轮先贯通后台和CLI原子跨进程读改写/作者意图、冲突重读、崩溃及IO，不以无锁状态摘要检查假称跨进程协议。CLI缺--dir值可能回默认路径仅源码候选，未执行可能触及真实默认目录的命令，不计确证缺陷。
 
 本批不涵盖该并发删除、不宣称远端请求已物理取消；不合作生产guard可持续阻drain。stickers/replies/risk直接owner仍待实证，B站/社交未整体审。M32b远端旧公共派生与历史observation清理/独立证据解封仍受既有可信store/writer/task证据边界保护；本地source/完成/停止不证明远端净化，不访问真部署DB。记忆模块未完成，继续本模块。
+
+## 第二十六批：热梗作者并发与实际读口（2026-11-05）
+
+代码74ecf5dc，ADR0129补记；新增meme-store.ts归语言模块，派生及作者混合缓存沿记忆直接链继续审查。生产写入清单只有refreshMemes与meme-cli；saveMemes显式替换也统一上锁，不遗漏未来调用。原真实CLI remove/add/update与两个ABA及发布后EIO共6行为红；两个App实际prompt原仍带作者已删/修的旧解释，另2真红。只锁最终rename或无锁hash比较无法解决这组问题。
+
+短SQLite OS锁在完整同步RMW期间持有，JSON为事实源；锁外模型结果提交时fresh重读，按作者世代+条目身份合并仍有效的旧词观察，旧删除不复活、旧解释不覆盖、独立新增保留。无界墓碑改为全局作者世代保护未知新词，作者介入则旧轮新学习保守延后；较旧轮迟到保持较新的refreshedAt。删除后下一全新榜单轮仍可按原政策学习，不额外发明永久禁用。旧合法v1缺revision字段视0，坏schema/JSON/计数溢出/坏协调库保原拒绝，不静默隔离成空白。所有写者须升级、运行中不能删换coord或手改JSON，无非合作旧写者/人工删库/断电fsync/networkFS保证。
+
+测试正式16并发/恢复项覆盖两进程各6次增量、busy回调不执行、强杀持锁进程、rename前后强杀、发布前EROFS与后EIO、ABA、legacy/坏库/安全整数上限及旧轮时间不回退。发布后异常锁内精确bytes读回承认事实，不能把已成功的作者动作伪报失败并自动重试；未知状态不盲重发。强杀夹具最初closure读取重写后的argv，在执行前复核改冻结变量，不计产品缺陷；新增API缺失也不计旧缺陷。边界绿与故障对照数量不等缺陷数量。
+
+App移除启动/刷新后RAM热梗快照，每次实际男友档提示词fresh读作者提交；2真实App新测试先因合成QQ时间小数被忽略而超时，改合法整数源秒后才取得旧解释断言真正失败，修后绿，不把夹具超时当原缺陷。新严格读取暴露refreshDue入口在try外，真实App坏库connected抛错，交叉追加1回归修为保原跳过后台；不是把新兼容余波混成既有严重问题。CLI缺--dir值旧fallback通过无IO原parser表达式证实；新纯parser5项覆盖拒缺/flag/空白/重复未知、合法选项和原默认行为，解析先于路径解析/任何读取。没有运行可能触及真实默认runtime的旧坏命令。
+
+新增24（并发16/App读口2/参数5/App坏库1），记忆累计718。初全仓类型实际exit1为schema字符串与closure narrowing，已显式typeof及局部const修复。最终787/787核实合成集：memory*.test.ts+纯bilibili-dm-card+modules共770，另本次完整核实memes.test.ts17项全temp和假API，无角色卡/外部读取，坏库旧1断言按有意协议加固更新且其余不弱化。全仓类型实际exit0、模块/差异全部通过，非全仓全量。正确行为probe现在断言CLI删除保持，原结果已不再是未修证据。未访问真角色/runtime/账号/服务/DB，无部署推送。
+
+新coord只承载OS协调不存正文/联系人，JSON只增整数元数据，不猜新增联系人归属；共享memes及残留不能按号码整份遗忘。本轮不解决远端M32b公共旧派生或历史观察清理，可信store/writer/task冻结与独立完成证据仍缺，既有屏障保持。下一轮从App discoverStickers/消息collect真实合成held链验证借用owner和停止：trend/favorites/download/describe/decide纯读取与favorites.add远端mutation ACK必须区别；只读候选尚未确证，不盲给外部共享StickerShelf加全局stop。replies/risk与其它性能继续按证据审，B站/社交未整体审，记忆模块未完成。

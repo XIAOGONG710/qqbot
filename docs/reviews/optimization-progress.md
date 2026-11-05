@@ -368,3 +368,11 @@ Commons 严格响应/尺寸/元数据与自有词表参数，保存完整作者�
 新增24（core17/App7），记忆累计694；最终746/746核实合成集、全仓类型实际exit0、模块/差异绿，非新全仓全量。仅临时合成卡/凭证/事件、fake fetch/API，无真实账号/runtime/外网服务、无部署推送。
 
 下一轮优先已确证作者CLI与后台刷新竞争：docs/reviews/repro/memory-meme-author-race.mjs使用临时目录及真实meme-cli remove，删除成功文件0条，释放旧候选模型后刷新把原条目写回；当前输出cliRemoved=true、authorRemovalPreserved=false，exit0只是未修事实诊断。需贯通bot/CLI原子跨进程读改写与作者删除意图，覆盖冲突重读/崩溃/IO，不以无锁版本比较冒称跨进程CAS。热梗停止旧反例已修，不能把本批当并发删除已修。stickers/replies/risk仍待证据盘点，B站/社交未整体审；M32b远端公共旧派生/历史观察清理及独立证据解封仍未完成，现保护不解、真实部署DB不访问，记忆未完不转模块。
+
+第二十六批完成热梗作者并发意图与读口（74ecf5dc，ADR0129补记）：真实CLI remove/add/改同词、删后原文重加和新词等待期间add→remove均真红后修；meme-store短SQLite OS锁内fresh JSON及同步增量，作者revision/条目authorRevision防旧结果复活/覆盖，独立新增与观察并存，较旧轮不回退刷新时间。所有生产写者统一，JSON唯一事实源；不持锁跨模型/网络，不靠无锁CAS。发布前失败保原、rename后异常精确读回确认已发生事实，真实子进程busy/强杀/两进程验证。旧合法v1缺字段按0兼容；坏JSON/schema/锁/计数溢出保原拒写，不再猜空白。
+
+另真实App作者CLI删除/修改后下一轮仍从RAM给旧解释两项真红→绿：生产读口fresh读取，不动模拟作者预置入口。CLI显式--dir缺值回默认由无IO原表达式确证，单次parser在resolve前拒缺值/下一flag/空白/重复未知/位置错误；未执行会触及真实默认目录的旧CLI坏参数。新严格读余波使connected入口坏库抛错，追加真实App红绿后捕获跳过后台，保原文件。旧memes.test.ts经核实全temp/fake，无角色依赖，更新1项坏库策略断言，不弱化其它17项原测试。
+
+新增24（并发/恢复16、App作者读口2、参数5、App坏库1），记忆累计718；初类型收窄错误真实exit1已修。最终787/787核实合成集=原允许范围新增后770+本次额外核实旧memes17，全仓类型实际exit0、模块/差异绿，非全仓全量。memory-meme-author-race.mjs现正确行为探针，cliRemoved=true、afterRefresh=[]、authorRemovalPreserved=true；不重做旧坏断言。只合成卡/数据/假服务/临时子进程，无真实runtime/服务/推送部署。
+
+下一轮先真实App合成验证discoverStickers及消息collect链的停止/构造/借用owner边界：App注入StickerShelf，不能凭猜测stop共享借用对象；检查held trend/favorites/download/describe/decide和镜像favorites.add已派ACK分别处理，未确证勿当缺陷。replies/risk仍待owner证据，B站/社交未整体审。M32b远端旧公共派生/历史observation独立清理及证据解封仍未完成，不以本地协议/完成/drain当整库净化。记忆未完不转模块。相关写者统一升级，运行中不删换coord或手改JSON，50ms仅争锁预算；无任意retry exactly-once/fsync/networkFS/旧写者保证。作者删除防本轮旧结果复活，不擅自添加永久禁用词政策。
