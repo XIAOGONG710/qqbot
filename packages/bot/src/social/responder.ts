@@ -519,11 +519,12 @@ export function createResponder(deps: ResponderDeps): Responder {
                 failures = 0;
             } catch (error) {
                 const reason = `回复失败：${error instanceof Error ? error.message : String(error)}`;
-                failingSince ??= now();
                 if (stopped) {
-                    deps.log(`${reason}（已停止，不再试）`);
+                    // App 生命周期主动取消提示词构建不是回复故障，也不能在租约释放后留下诊断。
+                    if (!(error instanceof DOMException && error.name === 'AbortError')) deps.log(`${reason}（已停止，不再试）`);
                     continue;
                 }
+                failingSince ??= now();
                 const delay = retryAfter[failures];
                 if (delay === undefined) {
                     deps.log(retryAfter.length ? `${reason}，等对方下一条消息再回` : reason);
