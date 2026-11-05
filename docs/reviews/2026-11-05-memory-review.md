@@ -482,3 +482,17 @@ core新增5正式；旧文件registerHooks控制4项真实效果红（晚落盘/
 新增13项（设备9/天气4）：设备最初4和补重入3真红→绿，另startup/stop拒绝2为边界验证；天气最初3真红→绿+同步fetch1边界绿。相关20/8定向通过，最终605/605核实合成集、全仓类型实际exit0/模块/差异通过。代码a9f64d95，ADR0259补正常停止约定；记忆累计553项。仅合成卡、假timer/fetch/service/transport/temp，不访问真实角色/runtime/QQ/天气/模型/DB，不推送部署，AGENTS.md保原未跟踪。
 
 边界：不合作startup/service.stop/transport可阻drain，保证退出等待不等于强杀可恢复；无持久通知outbox、跨QQ+JSON事务或任意重试exactly-once，全局weather多实例隔离未解决。后续统一盘点App其余与记忆相关后台工作（优先tastes.reflect的定时启动、模型await后持久及stop链），用合成证据确认后修；尚未验证，不称新缺陷。M32b公共旧派生/历史observation远端清理与独立证据解封仍未完成，不以已完成owner工作代替该保证，不转下一模块。
+
+## 第二十批：偏好反思停止所有权与后台任务盘点（2026-11-05）
+
+真实 App、临时合成卡、六条合成 watched 经历、假 120 秒 timer 和 held generate 复现两条旧行为：stop/目录租约释放后成功结果写 tastes.json/lastReflectAt/时间线；失败及授予模型的 log 晚写日志。不是清 timer 就能完成的停止。代码 8d796d31：Tastes 登记每次任务，停止同步拒新、取消纯模型 race 并 drain 本体；微任务派发和 await 后复查，迟到结果不再写。App 正常 stop/构造回滚均登记；timer、模型 log、onChange 额外守宿主停止。原已确认文件、新实例读取和既有反思间隔保留，不改偏好证据/频率策略。底层不合作纯模型无需等完，但不声称远端已取消或任意模型自身副作用被终止；未扩展为并发 RMW 协议。
+
+新增 6 项正式回归：App 两项先红后绿；核心四项包括派发前停止、held 成功/失败、重复 drain、已确认文件与新实例。最终 611/611 核实合成集通过，全仓类型实际 exit 0、模块及 git diff --check 通过。记忆累计新增 559 项。仅 memory*.test.ts + 纯 bilibili-dm-card + modules；没有运行旧真实角色依赖 suite，也不是新全仓全量结果。
+
+### 本轮盘点及下一确证
+
+- 已有取消提交守卫：照片/食物发现共享 photoDiscovery.signal，core 每 await/提交前复查；周报同步入口，无待收尾异步任务。本轮不重做旧视觉缺陷。
+- 新确证未修：小梗后台提取。node docs/reviews/repro/memory-app-jokes-owner.mjs 用真实 App、42 条合成 history、临时两张合成卡与假 API，connected 派发 held extractor；stop 释放 bot.lock 时小梗文件尚不存在，释放结果后 lateFileExists=true、lateJokeCount=1、late 成功日志 1。退出 0 只是报告坏行为，不是正确性回归。App refreshAllJokes 只有入口 stopped，jokes await 后 save/log；下一批优先贯通 owner、取消和 fresh 来源核验及 stop/restart，先增加正式红绿回归。
+- 仅源码风险，尚未复现：口头习惯 await 后 save；watch/feed/memes 的 connected/interval 异步链以及 stickers queue/discover/mirror 无统一 stop/drain。不能将这些称已确认缺陷；图片表情收藏等已派 mutation ACK 需保真实事实，与纯读取/模型取消分开。B站/社交模块仍未整体审。
+
+M32b 远端公共 diary/week/phase 旧派生与历史 observation 清理/独立证据解封仍未完成。现有保护不解；本地任务取消不证明服务端 worker 静止。官方固定版 HTTP 及 live inventory 不能替代实际 store、可信 writer/task fence 和独立完成证据，未知 DELETE 不盲重试/猜成功。不访问真部署/角色/runtime/服务，记忆未完不转模块。

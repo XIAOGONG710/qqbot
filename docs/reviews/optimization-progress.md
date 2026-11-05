@@ -342,3 +342,7 @@ Commons 严格响应/尺寸/元数据与自有词表参数，保存完整作者�
 第十九批完成正常App.stop设备/天气收尾（a9f64d95，ADR0259补记）。真实App pending startup/service.stop/通知ACK和held天气初/后刷新均确证提前释放租约；现stopDevices幂等聚合，late service停一次、通知发送前预登记收尾以覆盖公开transport同步stop，成功/失败/同步throw均settle，停止后拒新回调。weather统一入口跟踪完整singleflight两城市轮次，stop拒新、等待已派落盘/失败收尾，构造同样allSettled。fake fetch内同步stop验证已有微任务边界安全，无额外重入缺陷/重构。新增13（设备9/天气4），记忆累计553；最终605/605确认合成集、全仓类型实际exit0、模块/差异绿，仅fake服务/temp，无真实卡/runtime/外网、无推送。
 
 下一轮统一盘点App剩余与记忆相关后台任务的启动/停止/持久所有权，优先tastes.reflect定时入口与模型await后写入；先真实合成复现，未验证不称缺陷。已完成正常/构造device/weather、context和sim旧清单跳过。M32b公共旧派生/历史observation独立清理/证据解封仍未完，现保护不解、不访问真部署DB，记忆未完不转模块。无持久通知outbox，不合作请求可阻drain，globalweather多实例隔离与多文件/远端非事务边界保持。
+
+第二十批已修 Tastes 反思 owner（8d796d31，ADR0162补记）：真实App合成held模型在stop/目录释放后旧成功写偏好/时间线、旧失败/授予log晚写，两项先红后绿。Tastes永久stop拒新/微任务派发，取消内部纯模型等待并复用drain；App构造/正常stop统一接线，晚结果/入口/日志关闭，已确认文件及新实例原间隔保留。不声称取消远端请求或跨实例事务。新增6（core4/App2），记忆累计559；最终611/611核实合成集、全仓类型实际exit0、模块/差异绿，非全仓全量，未跑旧角色依赖suite。
+
+下一批先修新确证小梗后台提取owner：docs/reviews/repro/memory-app-jokes-owner.mjs真实App、42条合成history/fakeAPI，stop已释放bot.lock后旧held结果仍落jokes/10001.json并记录成功日志；exit0只是未修缺陷诊断。接续正式红绿复现及纯模型取消、持久来源/停止/重启。idioms/watch/feed/memes/stickers仅源码风险未确证，区分已派mutation ACK事实与未派工作；photo/food已有signal提交守卫、周报同步，勿重做。M32b公共旧派生/历史observation远端清理及独立证据解封仍未完成，旧保护/真实服务不可访问边界保持，记忆未完不转模块或社区比较。
