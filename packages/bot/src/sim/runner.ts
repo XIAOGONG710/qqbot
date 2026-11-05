@@ -934,24 +934,27 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
 }
 
 /** 包一层：停了的时候每个请求都报错，和连不上一样 */
-function switchable(api: SimHindsight, down: () => boolean): SimHindsight {
+export function switchable(api: SimHindsight, down: () => boolean): SimHindsight {
     const guard = <T>(call: () => Promise<T>): Promise<T> =>
         (down() ? Promise.reject(new Error('fetch failed（模拟 Hindsight 停了）')) : call());
-    return {
-        putBank: (...a) => guard(() => api.putBank(...a)),
-        retain: (...a) => guard(() => api.retain(...a)),
-        recall: (...a) => guard(() => api.recall(...a)),
-        getMentalModel: (...a) => guard(() => api.getMentalModel(...a)),
-        createMentalModel: (...a) => guard(() => api.createMentalModel(...a)),
-        updateMentalModel: (...a) => guard(() => api.updateMentalModel(...a)),
-        activeOperations: (...a) => guard(() => api.activeOperations(...a)),
-        operationStatus: (...a) => guard(() => api.operationStatus(...a)),
-        refreshMentalModel: (...a) => guard(() => api.refreshMentalModel(...a)),
-        // 公共库的实体名（ADR 0017 的线索）：没转发的话模拟器里永远是空的
-        ...(api.listEntities ? { listEntities: (...a: Parameters<NonNullable<SimHindsight['listEntities']>>) => guard(() => api.listEntities!(...a)) } : {}),
-        ...(api.getDocument ? { getDocument: (...a: Parameters<NonNullable<SimHindsight['getDocument']>>) => guard(() => api.getDocument!(...a)) } : {}),
-        deleteBank: (...a) => api.deleteBank(...a),
-    };
+    const methods = new Map<PropertyKey, { source: unknown; call: (...args: unknown[]) => unknown }>();
+    // Forward actual capabilities, including future SDK additions. A separate
+    // proxy target also permits wrapping a frozen custom API without violating
+    // non-configurable own-method invariants. Getter/private-field this is api.
+    return new Proxy({} as SimHindsight, {
+        get(_target, name) {
+            const source: unknown = Reflect.get(api, name, api);
+            if (typeof source !== 'function') return source;
+            const cached = methods.get(name); if (cached?.source === source) return cached.call;
+            const call = (...args: unknown[]) => {
+                const invoke = () => Reflect.apply(source, api, args) as Promise<unknown>;
+                // Cleanup must still remove synthetic banks after a down step.
+                return name === 'deleteBank' ? invoke() : guard(invoke);
+            };
+            methods.set(name, { source, call }); return call;
+        },
+        has: (_target, name) => Reflect.has(api, name),
+    });
 }
 
 function newStep(kind: StepRecord['kind'], time: number): StepRecord {
