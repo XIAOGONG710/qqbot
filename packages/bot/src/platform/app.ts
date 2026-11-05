@@ -27,6 +27,7 @@ import { acquireLock } from './lock.ts';
 import type { Log } from './log.ts';
 import { ChatHistory, sourceMessageSeq, type StoredMessage } from '.././memory/history.ts';
 import { stateTimestamp } from '../memory/state-schema.ts';
+import { describeError } from '../memory/transient-io.ts';
 import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from '.././memory/backfill.ts';
 import { segmentsToText, type MessageEvent, type PokeEvent, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
@@ -662,10 +663,11 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     function syncMemory(): void {
         if (!memory) return;
         for (const contact of config.contacts) {
-            void memory.sync(contact, { user: contact.name, char: cardFor(contact.tier).character.name }, history.load(contact.qq));
+            try { void memory.sync(contact, { user: contact.name, char: cardFor(contact.tier).character.name }, history.load(contact.qq)).catch(incomingFailure); }
+            catch (error) { incomingFailure(error); }
         }
-        void diaries?.catchUp(new Date(pipeline?.now?.() ?? Date.now()));
-        void promises?.sync();
+        void diaries?.catchUp(new Date(pipeline?.now?.() ?? Date.now())).catch(incomingFailure);
+        void promises?.sync().catch(incomingFailure);
     }
     const memoryTimer = memory ? setInterval(syncMemory, MEMORY_SYNC_MS) : undefined;
     memoryTimer?.unref();
@@ -1397,17 +1399,67 @@ ${body}
     const pokeLimiter = createPokeLimiter();
     const lastPokeBack = new Map<number, number>();
     const pokeTimers = new Set<ReturnType<typeof setTimeout>>();
+    const activeIncoming = new Map<string, number>();
+    const claimIncoming = (id: string) => activeIncoming.set(id, (activeIncoming.get(id) ?? 0) + 1);
+    const releaseIncoming = (id: string) => { const count = activeIncoming.get(id) ?? 0; if (count > 1) activeIncoming.set(id, count - 1); else activeIncoming.delete(id); };
+    const bufferedIncoming = new WeakMap<MessageEvent, string>();
+    const bufferedIncomingIds = new Set<string>();
+    let incomingRetryTimer: ReturnType<typeof setTimeout> | undefined;
+    let incomingRetryRunning = false;
+    let incomingRetryLogged = false;
 
     const eventIdentity = (event: MessageEvent) => ({ role: 'user' as const, time: new Date(event.time * 1000).toISOString(), messageSeq: sourceMessageSeq(event.real_seq) });
-    function onMessage(event: MessageEvent): void {
+    function validIncomingEvent(event: MessageEvent): boolean {
         if (!Number.isSafeInteger(event.user_id) || event.user_id <= 0 || !Number.isSafeInteger(event.message_id) || event.message_id < 0
-            || !Number.isSafeInteger(event.time)) {
-            log('收到的私聊来源身份无效，已忽略');
-            return;
-        }
+            || !Number.isSafeInteger(event.time)) return false;
         const at = new Date(event.time * 1000);
-        if (!Number.isFinite(at.getTime()) || !stateTimestamp(at.toISOString())) { log('收到的私聊来源身份无效，已忽略'); return; }
-        event = { ...event };
+        return Number.isFinite(at.getTime()) && stateTimestamp(at.toISOString());
+    }
+    const tracksIncoming = (qq: number) => config.recalls && config.contacts.some(contact => contact.qq === qq);
+    function stageEvent(event: MessageEvent): string | undefined {
+        return tracksIncoming(event.user_id) ? chatHistory.stageIncoming(event.user_id, {
+            source: { ...eventIdentity(event), messageId: event.message_id }, message: event.message,
+        }) : undefined;
+    }
+    function incomingFailure(error: unknown): void {
+        if (!incomingRetryLogged) { log(`入站处理未完成，保留已知状态并重试（${describeError(error)}）`); incomingRetryLogged = true; }
+        scheduleIncomingRetry();
+    }
+    function scheduleIncomingRetry(): void {
+        if (stopped || incomingRetryTimer) return;
+        incomingRetryTimer = setTimeout(() => {
+            incomingRetryTimer = undefined;
+            if (stopped || syncing || incomingRetryRunning) { if (!stopped) scheduleIncomingRetry(); return; }
+            incomingRetryRunning = true;
+            void (async () => {
+                let failed = false;
+                for (const contact of config.contacts) {
+                    if (stopped) return;
+                    try {
+                        chatHistory.flushIncoming(contact.qq);
+                        const count = await queueIncomingRecovery(contact.qq);
+                        if (count && !dormancy?.isDormant() && shouldCatchUp(history.load(contact.qq), new Date())) responders.get(contact.qq)?.catchUp();
+                    } catch (error) { failed = true; incomingFailure(error); }
+                }
+                if (!failed) incomingRetryLogged = false;
+            })().catch(incomingFailure).finally(() => { incomingRetryRunning = false; });
+        }, 1000);
+        incomingRetryTimer.unref?.();
+    }
+    function onMessage(event: MessageEvent): void {
+        if (!validIncomingEvent(event)) { log('收到的私聊来源身份无效，已忽略'); return; }
+        const reservation = { id: bufferedIncoming.get(event), owned: false };
+        if (reservation.id) bufferedIncomingIds.delete(reservation.id);
+        let handled = false;
+        try { processMessage({ ...event }, reservation); handled = true; }
+        catch (error) { incomingFailure(error); }
+        finally {
+            if (handled && reservation.id && !reservation.owned) {
+                try { chatHistory.discardIncoming(event.user_id, reservation.id); } catch (error) { incomingFailure(error); }
+            }
+        }
+    }
+    function processMessage(event: MessageEvent, reservation: { id?: string; owned: boolean }): void {
         const sourceIdentity = eventIdentity(event);
         // 补回或入口重投的同一条消息不消耗限额，也不重复处理。
         if (chatHistory.hasMessage(event.user_id, event.message_id, sourceIdentity)) return;
@@ -1524,12 +1576,22 @@ ${body}
             }
             if (outcome?.kind === 'capture') {
                 const target = responder;
+                reservation.owned = true;
+                reservation.id ??= stageEvent(event);
+                const receipt = reservation.id;
+                if (receipt) claimIncoming(receipt);
                 void outcome.run().then(async handled => {
                     if (stopped) return;
-                    if (handled.kind === 'reply') { await transport.sendPrivateText(event.user_id, handled.text); return; }
-                    target.receive(handled.text, event.message_id, new Date(event.time * 1000), sourceMessageSeq(event.real_seq));
+                    if (handled.kind === 'reply') {
+                        await transport.sendPrivateText(event.user_id, handled.text);
+                        if (receipt) chatHistory.discardIncoming(event.user_id, receipt);
+                        return;
+                    }
+                    const accepted = prepareReceived(event, handled.text, receipt);
+                    if (dormancy?.isDormant()) return;
+                    target.receive(accepted.content, event.message_id, new Date(accepted.time), accepted.messageSeq, accepted.incomingId);
                     planners.get(event.user_id)?.poke();
-                }).catch(error => log(`设备控制：看屏幕 / 摄像头出错（${error instanceof Error ? error.message : String(error)}）`));
+                }).catch(incomingFailure).finally(() => { if (receipt) releaseIncoming(receipt); });
                 return;
             }
         }
@@ -1537,14 +1599,22 @@ ${body}
         if (collectingStickers && config.contacts.some(contact => contact.qq === event.user_id && contact.tier === 'boyfriend')) {
             void collectingStickers.consider(event.message, { from: event.user_id, messageId: event.message_id });
         }
-        const queued = inbox.get(event.user_id);
         const reader = readerFor(event.user_id);
+        reservation.owned = true;
+        reservation.id ??= stageEvent(event);
+        const receipt = reservation.id;
+        // A recovered storage failure must be delivered before a later live
+        // conversation message, using the same per-contact inbox owner.
+        if (tracksIncoming(event.user_id) && chatHistory.pendingIncoming(event.user_id).some(entry => entry.id !== receipt
+            && !activeIncoming.has(entry.id) && !bufferedIncomingIds.has(entry.id))) void queueIncomingRecovery(event.user_id).catch(incomingFailure);
+        const queued = inbox.get(event.user_id);
         if (!queued && !reader?.needs(event.message)) {
-            deliver(responder, event, event.message);
+            deliver(responder, event, event.message, receipt);
             return;
         }
         const qq = event.user_id;
         const target = responder;
+        if (receipt) claimIncoming(receipt);
         // Defer media work until the previous message has fully entered the contact pipeline.
         // Starting read() before awaiting `queued` only serialized delivery and still leaked parallel OCR/vision calls.
         const job = (queued ?? Promise.resolve()).then(async () => {
@@ -1554,8 +1624,8 @@ ${body}
                 : event.message;
             // 读的时候补回可能已经记下了这条
             if (stopped || chatHistory.hasMessage(qq, event.message_id, sourceIdentity)) return;
-            deliver(target, event, message);
-        }).catch(error => log(`[${qq}] 处理收到的消息出错：${error instanceof Error ? error.message : String(error)}`));
+            deliver(target, event, message, receipt);
+        }).catch(incomingFailure).finally(() => { if (receipt) releaseIncoming(receipt); });
         inbox.set(qq, job);
         void job.then(() => { if (inbox.get(qq) === job) inbox.delete(qq); });
     }
@@ -1573,11 +1643,67 @@ ${body}
         return found ? { role: found.role, content: found.content } : undefined;
     };
 
-    function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string): void {
+    function prepareReceived(event: MessageEvent, text: string, receipt?: string): StoredMessage {
+        const decoded: StoredMessage = { ...eventIdentity(event), messageId: event.message_id, content: text };
+        return receipt ? chatHistory.prepareIncoming(event.user_id, receipt, decoded, content => Boolean(detectCrisis(content))) : decoded;
+    }
+    /** Recovery never reruns an interrupted operational command or device action. */
+    function interruptedCommand(qq: number, message: Segment[] | string): boolean {
+        if (qq !== deviceOwner?.qq) return false;
+        const plain = plainTextOf(message)?.trim();
+        return Boolean(plain && (/^\/(?:dsh|休眠|屏幕|摄像头|设备)(?:\s|$)/.test(plain)
+            || ['/设定', '/唤醒', '/主动', '批准', '拒绝'].includes(plain)));
+    }
+    async function recoverIncoming(qq: number): Promise<number> {
+        if (!tracksIncoming(qq) || stopped || dormancy?.isDormant()) return 0;
+        let added = 0;
+        const since = tierRecord.since(qq);
+        for (const entry of chatHistory.pendingIncoming(qq)) {
+            if (stopped || dormancy?.isDormant()) break;
+            if (activeIncoming.has(entry.id) || bufferedIncomingIds.has(entry.id)) continue;
+            // A tier boundary limits disclosure, not ownership of old private
+            // data. Keep the receipt for explicit archive/export/forget.
+            if (since && Date.parse(entry.source.time) < since.getTime()) continue;
+            claimIncoming(entry.id);
+            try {
+                let decoded = entry.prepared;
+                if (!decoded) {
+                    // This restores a conversation receipt, not an authority to
+                    // repeat a command whose external outcome is unknown.
+                    if (!entry.withdrawn && interruptedCommand(qq, entry.message)) continue;
+                    const reader = readerFor(qq);
+                    const message = reader?.needs(entry.message)
+                        ? await reader.read(entry.message, entry.source.messageId!, message => log(`[${qq}] ${message}`), { ...entry.source, peer: qq }).catch(() => entry.message)
+                        : entry.message;
+                    if (stopped) break;
+                    const text = segmentsToText(message, quoteLookup(qq)).trim();
+                    if (!text) { chatHistory.discardIncoming(qq, entry.id); continue; }
+                    decoded = { ...entry.source, role: 'user', content: text };
+                }
+                const accepted = chatHistory.prepareIncoming(qq, entry.id, decoded, content => Boolean(detectCrisis(content)));
+                if (stopped || dormancy?.isDormant()) break;
+                history.append(qq, accepted);
+                const hit = detectCrisis(accepted.content);
+                if (hit) markCrisis(qq, Date.parse(accepted.time), hit.level);
+                added++;
+            } finally { releaseIncoming(entry.id); }
+        }
+        return added;
+    }
+    function queueIncomingRecovery(qq: number): Promise<number> {
+        const work = (inbox.get(qq) ?? Promise.resolve()).then(() => recoverIncoming(qq));
+        const owned = work.then(() => undefined, () => undefined);
+        inbox.set(qq, owned);
+        void owned.then(() => { if (inbox.get(qq) === owned) inbox.delete(qq); });
+        return work;
+    }
+    function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string, receipt?: string): void {
         const text = segmentsToText(message, quoteLookup(event.user_id)).trim();
-        if (!text) return;
-        responder.receive(text, event.message_id, new Date(event.time * 1000), sourceMessageSeq(event.real_seq));
-        const crisis = detectCrisis(text);
+        if (!text) { if (receipt) chatHistory.discardIncoming(event.user_id, receipt); return; }
+        const accepted = prepareReceived(event, text, receipt);
+        if (stopped || dormancy?.isDormant()) return;
+        responder.receive(accepted.content, event.message_id, new Date(accepted.time), accepted.messageSeq, accepted.incomingId);
+        const crisis = detectCrisis(accepted.content);
         if (crisis && config.contacts.some(c => c.qq === event.user_id)) {
             markCrisis(event.user_id, event.time * 1000, crisis.level);
             log(`[${event.user_id}] 危机信号：${crisis.level} 级（只记级别和时间，不记内容）；普通主动消息暂停 ${CRISIS_PAUSE_MS / 3_600_000} 小时`);
@@ -1750,79 +1876,112 @@ ${body}
     async function syncMissed(selfId: number): Promise<void> {
         for (const contact of config.contacts) {
             if (stopped) return;
-            // 聊天先于副状态保存：上次中断可能已存同ID消息，不能只等NapCat重新补回。
-            const recoveredAt = Date.now();
-            for (const message of history.load(contact.qq)) {
-                const at = Date.parse(message.time);
-                if (message.role !== 'user' || !Number.isFinite(at) || at > recoveredAt || recoveredAt - at >= CRISIS_PAUSE_MS) continue;
-                const hit = detectCrisis(message.content);
-                if (hit) markCrisis(contact.qq, at, hit.level);
-            }
-            let fetched: HistoryMessage[] = [];
             try {
-                fetched = await transport.friendHistory(contact.qq, BACKFILL_COUNT);
-            } catch (error) {
+                const beforeRecovery = history.load(contact.qq);
+                try { await recoverIncoming(contact.qq); } catch (error) { incomingFailure(error); }
                 if (stopped) return;
-                // 没有任何聊天记录时 NapCat 也报错（“消息…不存在”）
-                log(`[${contact.qq}] 拉取历史消息失败，跳过补回：${error instanceof Error ? error.message : String(error)}`);
-                continue;
-            }
-            if (stopped) return;
-            let fresh = newerThanStored(history.load(contact.qq), fetched, tierRecord.since(contact.qq), selfId);
-            // 停机期间他回的「假」/「像」：记下来，不当聊天补回（ADR 0073）
-            if (feedback && canGiveFeedback(contact)) {
-                const stored = history.load(contact.qq);
-                fresh = fresh.filter(m => (m.sender?.user_id ?? m.user_id) === selfId
-                    || !feedback.consume(contact.qq, contact.tier, m.message, m.message_id, new Date(m.time * 1000), stored));
-            }
-            // 他发的语音、图片先听一听、看一看（ADR 0052）；读的时候实时收到的那条可能已经记下了，按 id 再筛一遍
-            const backReader = readerFor(contact.qq);
-            if (collectingStickers && contact.tier === 'boyfriend') {
-                for (const message of fresh.filter(message => (message.sender?.user_id ?? message.user_id) !== selfId)) {
-                    void collectingStickers.consider(message.message, { from: contact.qq, messageId: message.message_id });
+                // 聊天先于副状态保存：上次中断可能已存同ID消息，不能只等NapCat重新补回。
+                const recoveredAt = Date.now();
+                for (const message of history.load(contact.qq)) {
+                    const at = Date.parse(message.time);
+                    if (message.role !== 'user' || !Number.isFinite(at) || at > recoveredAt || recoveredAt - at >= CRISIS_PAUSE_MS) continue;
+                    const hit = detectCrisis(message.content);
+                    if (hit) markCrisis(contact.qq, at, hit.level);
                 }
-            }
-            if (backReader && fresh.some(m => backReader.needs(m.message))) {
-                const contactLog = (message: string) => log(`[${contact.qq}] ${message}`);
-                fresh = await Promise.all(fresh.map(async m => ({ ...m, message: await backReader.read(m.message, m.message_id, contactLog, {
-                    messageId: m.message_id, peer: contact.qq, role: (m.sender?.user_id ?? m.user_id) === selfId ? 'assistant' : 'user',
-                    time: new Date(m.time * 1000).toISOString(), sourceTime: m.time, messageSeq: sourceMessageSeq(m.real_seq),
-                }).catch(() => m.message) })));
+                let fetched: HistoryMessage[] = [];
+                try {
+                    fetched = await transport.friendHistory(contact.qq, BACKFILL_COUNT);
+                } catch (error) {
+                    if (stopped) return;
+                    // 没有任何聊天记录时 NapCat 也报错（“消息…不存在”）
+                    log(`[${contact.qq}] 拉取历史消息失败，跳过补回：${error instanceof Error ? error.message : String(error)}`);
+                    continue;
+                }
                 if (stopped) return;
-                fresh = fresh.filter(m => !chatHistory.hasMessage(contact.qq, m.message_id, {
-                    role: (m.sender?.user_id ?? m.user_id) === selfId ? 'assistant' : 'user',
-                    time: new Date(m.time * 1000).toISOString(), sourceTime: m.time, messageSeq: sourceMessageSeq(m.real_seq),
+                let fresh = newerThanStored(beforeRecovery, fetched, tierRecord.since(contact.qq), selfId);
+                fresh = fresh.filter(message => !chatHistory.hasMessage(contact.qq, message.message_id, {
+                    role: (message.sender?.user_id ?? message.user_id) === selfId ? 'assistant' : 'user',
+                    time: new Date(message.time * 1000).toISOString(), sourceTime: message.time, messageSeq: sourceMessageSeq(message.real_seq),
                 }));
-            }
-            const missed = toStored(fresh, selfId, quoteLookup(contact.qq));
-            for (const message of missed) history.append(contact.qq, message);
-            // 停机期间他说过想伤害自己的话：补回时也记一笔（只记时间），暂停期从他说话的时候算（ADR 0068）
-            for (const message of missed) {
-                if (message.role !== 'user') continue;
-                const crisis = detectCrisis(message.content);
-                if (crisis) markCrisis(contact.qq, Date.parse(message.time), crisis.level);
-            }
-            if (missed.length) {
-                const lines = sensitive.on()
-                    ? missed.map(m => `${m.role === 'user' ? '对方' : '她'}：${m.content}`).join(' / ')
-                    : `${missed.filter(m => m.role === 'user').length} 条是对方的，${missed.filter(m => m.role !== 'user').length} 条是她的（共 ${missed.reduce((total, m) => total + [...m.content].length, 0)} 字）`;
-                log(`[${contact.qq}] 补回 ${missed.length} 条漏掉的消息：${lines}`);
-            }
+                // 停机期间他回的「假」/「像」：记下来，不当聊天补回（ADR 0073）
+                if (feedback && canGiveFeedback(contact)) {
+                    const stored = history.load(contact.qq);
+                    fresh = fresh.filter(m => (m.sender?.user_id ?? m.user_id) === selfId
+                        || !feedback.consume(contact.qq, contact.tier, m.message, m.message_id, new Date(m.time * 1000), stored));
+                }
+                // Reserve all user sources before the first asynchronous decode.
+                // A live buffered receipt has its own owner and is drained later.
+                let staged = fresh.map(message => {
+                    try {
+                        return { ...message, blocked: false, incomingId: tracksIncoming(contact.qq) && (message.sender?.user_id ?? message.user_id) !== selfId
+                            ? chatHistory.stageIncoming(contact.qq, { source: {
+                                messageId: message.message_id, role: 'user', time: new Date(message.time * 1000).toISOString(), messageSeq: sourceMessageSeq(message.real_seq),
+                            }, message: message.message }) : undefined };
+                    } catch (error) { incomingFailure(error); return { ...message, blocked: true, incomingId: undefined }; }
+                }).filter(message => !message.blocked);
+                staged = staged.filter(message => !message.incomingId || !activeIncoming.has(message.incomingId) && !bufferedIncomingIds.has(message.incomingId));
+                const acquired = staged.flatMap(message => message.incomingId ? [message.incomingId] : []);
+                for (const id of acquired) claimIncoming(id);
+                try {
+                    // 他发的语音、图片先听一听、看一看（ADR 0052）；读的时候实时收到的那条可能已经记下了，按 id 再筛一遍
+                    const backReader = readerFor(contact.qq);
+                    if (collectingStickers && contact.tier === 'boyfriend') {
+                        for (const message of staged.filter(message => (message.sender?.user_id ?? message.user_id) !== selfId)) {
+                            void collectingStickers.consider(message.message, { from: contact.qq, messageId: message.message_id });
+                        }
+                    }
+                    if (backReader && staged.some(m => backReader.needs(m.message))) {
+                        const contactLog = (message: string) => log(`[${contact.qq}] ${message}`);
+                        staged = await Promise.all(staged.map(async m => ({ ...m, message: await backReader.read(m.message, m.message_id, contactLog, {
+                            messageId: m.message_id, peer: contact.qq, role: (m.sender?.user_id ?? m.user_id) === selfId ? 'assistant' : 'user',
+                            time: new Date(m.time * 1000).toISOString(), sourceTime: m.time, messageSeq: sourceMessageSeq(m.real_seq),
+                        }).catch(() => m.message) })));
+                        if (stopped) return;
+                        staged = staged.filter(m => !chatHistory.hasMessage(contact.qq, m.message_id, {
+                            role: (m.sender?.user_id ?? m.user_id) === selfId ? 'assistant' : 'user',
+                            time: new Date(m.time * 1000).toISOString(), sourceTime: m.time, messageSeq: sourceMessageSeq(m.real_seq),
+                        }));
+                    }
+                    const missed: StoredMessage[] = [];
+                    for (const raw of staged) {
+                        const decoded = toStored([raw], selfId, quoteLookup(contact.qq))[0];
+                        if (!decoded) { if (raw.incomingId) chatHistory.discardIncoming(contact.qq, raw.incomingId); continue; }
+                        if (chatHistory.hasMessage(contact.qq, decoded.messageId!, decoded)) continue;
+                        const accepted = raw.incomingId ? chatHistory.prepareIncoming(contact.qq, raw.incomingId, decoded, content => Boolean(detectCrisis(content))) : decoded;
+                        history.append(contact.qq, accepted); missed.push(accepted);
+                    }
+                    // 停机期间他说过想伤害自己的话：补回时也记一笔（只记时间），暂停期从他说话的时候算（ADR 0068）
+                    for (const message of missed) {
+                        if (message.role !== 'user') continue;
+                        const crisis = detectCrisis(message.content);
+                        if (crisis) markCrisis(contact.qq, Date.parse(message.time), crisis.level);
+                    }
+                    if (missed.length) {
+                        const lines = sensitive.on()
+                            ? missed.map(m => `${m.role === 'user' ? '对方' : '她'}：${m.content}`).join(' / ')
+                            : `${missed.filter(m => m.role === 'user').length} 条是对方的，${missed.filter(m => m.role !== 'user').length} 条是她的（共 ${missed.reduce((total, m) => total + [...m.content].length, 0)} 字）`;
+                        log(`[${contact.qq}] 补回 ${missed.length} 条漏掉的消息：${lines}`);
+                    }
+                } catch (error) { incomingFailure(error); }
+                finally { for (const id of acquired) releaseIncoming(id); }
+            } catch (error) { incomingFailure(error); }
         }
     }
 
     function catchUpAll(): void {
         const now = new Date();
         for (const contact of config.contacts) {
-            const stored = history.load(contact.qq);
-            // 按作息时：她睡着时来的消息，起床后照样回（ADR 0007 决策 4）；还在睡就由回复器等到起床
-            const schedule = config.schedule ? cardFor(contact.tier).character.schedule : undefined;
-            if (shouldCatchUp(stored, now) || (schedule && arrivedWhileAsleep(stored, now.getTime(), schedule))) {
-                log(`[${contact.qq}] 有没回的消息，回复`);
-                responders.get(contact.qq)!.catchUp();
-            } else if (stored.at(-1)?.role === 'user') {
-                log(`[${contact.qq}] 没回的消息已超过 ${CATCH_UP_WINDOW_MS / 3_600_000} 小时，只补记录，等对方下一条消息时一起回`);
-            }
+            try {
+                const stored = history.load(contact.qq);
+                // 按作息时：她睡着时来的消息，起床后照样回（ADR 0007 决策 4）；还在睡就由回复器等到起床
+                const schedule = config.schedule ? cardFor(contact.tier).character.schedule : undefined;
+                if (shouldCatchUp(stored, now) || (schedule && arrivedWhileAsleep(stored, now.getTime(), schedule))) {
+                    log(`[${contact.qq}] 有没回的消息，回复`);
+                    responders.get(contact.qq)!.catchUp();
+                } else if (stored.at(-1)?.role === 'user') {
+                    log(`[${contact.qq}] 没回的消息已超过 ${CATCH_UP_WINDOW_MS / 3_600_000} 小时，只补记录，等对方下一条消息时一起回`);
+                }
+            } catch (error) { incomingFailure(error); }
         }
     }
 
@@ -1920,7 +2079,14 @@ ${body}
         receive(event) {
             if (stopped) return;
             lastMessageAt = new Date();
-            if (syncing) buffered.push(event);
+            if (syncing) {
+                const snapshot = { ...event };
+                if (validIncomingEvent(snapshot)) {
+                    try { const receipt = stageEvent(snapshot); if (receipt) { bufferedIncoming.set(snapshot, receipt); bufferedIncomingIds.add(receipt); } }
+                    catch (error) { incomingFailure(error); }
+                }
+                buffered.push(snapshot);
+            }
             else onMessage(event);
         },
         receivePoke(event) {
@@ -1964,9 +2130,10 @@ ${body}
             const contact = config.contacts.find(c => c.qq === event.user_id);
             if (!contact) return;
             // 想伤害自己的话撤回了也照样看到（安全比像人优先，ADR 0068）；回过的她已经看过
-            if (chatHistory.recall(contact.qq, event.message_id, content => Boolean(detectCrisis(content)))) {
-                log(`[${contact.qq}] 他撤回了一条还没回的消息，记成「撤回了一条消息」`);
-            }
+            try { if (chatHistory.recall(contact.qq, event.message_id, content => Boolean(detectCrisis(content)))) {
+                const pending = chatHistory.pendingIncoming(contact.qq).some(entry => entry.withdrawn && entry.source.messageId === event.message_id);
+                log(pending ? `[${contact.qq}] 他撤回了一条待处理消息，已保存撤回意图` : `[${contact.qq}] 他撤回了一条还没回的消息，记成「撤回了一条消息」`);
+            } } catch (error) { incomingFailure(error); }
         },
         receiveFriendRequest({ userId, flag }) {
             const gate = config.qqFriendGate ?? 'off';
@@ -1983,6 +2150,8 @@ ${body}
         stop() {
             if (stopped) return;
             stopped = true;
+            clearTimeout(incomingRetryTimer);
+            try { chatHistory.flushIncoming(); } catch (error) { log(`停止时入站状态仍未确认持久（${describeError(error)}）`); }
             photoDiscovery.abort();
             clearTimeout(crisisSaveTimer);
             for (const timer of pokeTimers) clearTimeout(timer);
