@@ -390,3 +390,27 @@ offset分页没有snapshot token，也不能排除同ID改文；live0不证明in
 独立本地提交：`ba66ad1d`（持续来源/读口）、`6fb3456b`（归档原计划/恢复/隐私/互斥）、`248eb426`（只读live证据及模块映射）。App的两处独立接线按index hunk分开提交，没有把未提交依赖混进前一个任务。未跟踪AGENTS.md保留，未部署或推送。
 
 下一轮优先复核完整公共文档来源到远端修订/任务静止的证据协议，观察清理仍不可用live0、稳定total或布尔适配冒证。当前所有已知污染保保护，不能说整库已净。可独立继续writer关闭/来源配置移除的启动迁移、长历史持续验证资源成本、归档各阶段强杀覆盖与外层发送失败持久outbox；这些本轮未声称完成，不重复旧bug列表或为凑数猜重构。
+
+## 第十四批：已知作者意图的来源覆盖及同步资源成本
+
+### M32b：关闭writer与丢失来源文件
+
+两路子代理分别负责真实调用链缺口及实际资源计数，主代理整合宿主/元数据接口并追直接调用方。合成advanced completed→真实App移除全部schedule/since剪旧史，实际readDiary仍读出旧正文；另保留outbox completed但删除diary.json，重建writer把空confirmed当clean，也实际读出旧body。两个反例均先红，不是只断言缺少hook。
+
+App现在明确注册writer验证或null无来源模式。当前bank有已知作者意图却无writer时动态拒公共派生读取，无作者意图的正常QQ事实和私人bank不变，不把功能关闭永久标为污染。writer核每个current document/UUID对应prepared或confirmed及fresh来源；缺来源动态false，恢复正确原件后可核。confirmed不伪造旧requestHash，其UUID→不可变请求映射由store保证，现存正文另核bodyHash。pending日记/总结同步local-only重算，不远端补原文，不因prepare本身自锁；源真正变更仍按原持久屏障，旧ACK结算与完成事实保留。
+
+直接调用方搜索另发现sim/runner也拥有LongTerm/writer，初始和restart均漏新接线。新增真实模拟宿主合成卡/假API反例，旧运行后actual marker仍可读，现两个实例均保护。早期contacts为空、characterCard缺模板以及捕获实例计数的夹具失败均不算源码红证据；修好夹具后才记录实际正文泄漏红→绿。没有执行旧sim.test或仓库角色卡。
+
+### M32b资源：fresh字节与必要投影
+
+实际3650条/9.45MB合成outbox，三次查询读28.36MB并做21900次SHA，同步约424ms。现仍每次OS锁内读完整新字节、核路径与marker；只有与已完整验证的bytes完全相同才复用私有不可变metadata，对外副本。RMW仍全读/全验，dirty先flush，IO/hash/coord/见证坏不能回退cache。正式计数验证重复parse/SHA为0；同mtime同长度改字节、跨实例/子进程、缓存对象修改及失败RMW污染均覆盖。主代理同规模复测约55ms，agent约51ms，仍读同样完整字节；不是生产SLA或常数时间承诺。
+
+365篇confirmed及5万条无关早期历史，三次来源复核约902ms；可读口单次公共召回原有5次核验。现在仍校验每条旧timestamp，但实际瞬时早于最早所需当地日时省herDay投影，5000旧行正式计数由5104→104；UTC前一日的当地02点有效源仍纳入。同步过滤复用同栈已有结果，保所有await/格式化回调后的fresh检查，实际公共召回最多4次。没有mtime/TTL或world/计划输出缓存。复测同规模约652ms；全历史时间戳校验、文件字节读取及所有confirmed材料重算仍有线性成本，不能声称资源审查完结。
+
+性能探针已保存为可移植的memory-source-resource.mjs及memory-source-resource-diary.mjs；它们报告合成测量，不替代正确性回归。新元数据接口只返回doc/UUID/hash/phase和保护清单，不增加持久隐私文件；旧mixed清单/协调约定保持。ADR0256/0257记录协议。没有服务端观察清理/公共派生重建或解封，没有真实API/部署/运行时访问。
+
+### 第十四批验证与提交
+
+新增18项正式：来源缺失/覆盖及早期历史8、fresh-byte资源8、同步核验次数1、真实模拟宿主1；记忆审查累计新增502项。主553集通过后补模拟直接调用方，最终554/554确认合成集通过；随后类型检查指出undefined/null分支已返回、函数条件恒真，删除冗余条件后15项关联与全仓类型再绿，Git差异/模块登记及生成文档通过。未把过程中的类型错误或夹具错误冒称通过，未运行未经核实的全仓npm test/旧真实卡用例。
+
+独立本地代码提交`0f23a99a`（fresh-byte元数据复用）、`aaf33c17`（已知意图覆盖、App/模拟宿主与资源调用链）。AGENTS.md保持原未跟踪，未推送或部署。接续重点仍为M32b公共原文到远端旧派生的证据修订/清理；新source覆盖不是远端旧观察已净，保持ADR0251/0255的能力、历史行及未知DELETE边界。其余资源/生命周期/多文件恢复按风险证据继续，模块尚未完成。
