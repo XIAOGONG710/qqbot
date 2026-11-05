@@ -708,3 +708,34 @@ stop现在同步清除probing；health成功、失败及finally只有App仍活�
 边界：本地abort不等于远端DSH计算已取消；不合作的已派动作可阻drain；无持久手机动作outbox、强杀恢复或任意网络exactly-once。M32b远端公共旧派生/历史observation净化仍缺可信writer fence、四态任务静止、实际store一致性和未知DELETE停止证据；客户端屏障保持，不读真部署DB，不伪解封。
 
 **下一检查点：记忆模块仍未完成。** 手机伴侣App/runtime/media/pairing/Koishi停止链已覆盖，不重做旧候选。继续对记忆直接调用与后台owner做剩余盘点、资源故障注入和调用链回看；尚未证实的不批量重构。记忆覆盖充分前不转下一模块或社区比较。
+
+## 第四十一批：危机停机持久化、回复等待资源收尾与模块闭环（2026-11-05）
+
+代码 `414145cf`。最终停机盘点确证两项遗漏：
+
+1. 危机状态首次原子发布失败后，RAM 已按真实观察暂停主动消息并排了退避重试；正常停机若恰好发生在存储恢复但定时器尚未触发的窗口，旧代码只取消定时器并释放目录租约，重启会丢掉这次尚未落盘的安全观察。现在 `App.stop()` 在释放租约前做最后一次同步 `crisisState.flush()`；仍失败时保原文件和失败关闭边界，只写固定、不含底层错误正文的诊断，不伪造成功。
+2. 普通回复正处于 4 秒连发安静窗口时，旧 `Responder.stop()` 只让后续分支忽略结果，没有清默认定时器；进一步把定时器改成随生命周期中止后，冻结时钟又会让 `waitForQuiet` 在已停止状态立即 resolve 后忙循环。现在默认安静/重试/打字/气泡间隔定时器归实例生命周期并实际清理，`waitForQuiet` 停止后直接结束；纯等待不制造 mutation drain，已经派发的传输仍按 ADR0240 等 ACK 与本地事实收尾。注入的不合作 `sleep` 仍只能本地放弃，不能强杀底层实现。
+
+新增2项正式回归，记忆累计919：`memory-app-crisis-stop-review.test.ts` 覆盖发布失败→存储恢复→重试窗口内正常停机，`memory-responder-drain-review.test.ts` 覆盖默认4秒定时器被真正清除且冻结时钟不忙循环。定向11/11通过；最终允许的合成集1023项=1022通过/1项既有Windows符号链接权限跳过/0失败，全workspace类型、模块登记和差异检查通过。没有运行未核实的真实角色卡suite，没有访问真实runtime、QQ、模型服务、Hindsight数据库或私密资料，也未部署/推送。
+
+## 记忆与数据模块本轮完成检查点
+
+本轮已逐文件覆盖 `memory/` 的25个自有源文件，并复核直接调用与数据流；下表是最终覆盖闭环，不表示证明以后不会出现新缺陷：
+
+| 范围 | 已覆盖源文件与链路 | 主要证据 |
+| --- | --- | --- |
+| 输入、历史与时间 | `history.ts`、`backfill.ts`、`episodes.ts`、`fading.ts`、`civil-time.ts`、`tier-record.ts` | QQ来源身份/撤回/待媒体、补回与重启、未来历史过滤、低年份/DST/缺失民用日、档位副状态；坏行、同秒复用、IO与停止故障注入 |
+| 本地状态与审计 | `json-file.ts`、`state-schema.ts`、`transient-io.ts`、`ledger.ts`、`timeline.ts`、`identity.ts`、`memory-audit.ts` | schema失败关闭、原子发布前后异常、协调锁/多进程、账本hash、时间线、身份告知副状态、审计不复制正文及停止后的晚写保护 |
+| 长期与派生记忆 | `hindsight.ts`、`long-term.ts`、`derived-repair-protocol.ts`、`derived-repair.ts`、`derived-state.ts`、`written-retain.ts` | 请求大小/超时/形状、Contact/Common完整进度、稳定文档修订、撤回污染世代、私人relationship修复证据、旧UUID仲裁、日记/周记/阶段摘要prepared/confirmed/来源manifest和停止收尾 |
+| 维护、隐私与封存 | `archive.ts`、`archive-job.ts`、`forget-job.ts`、`privacy-audit.ts`、`privacy-forget.ts`、`dormancy.ts` | 全过程目录租约、不可变job与恢复、强杀/rename后异常、混合共享文件清单、精确导出/遗忘、链接守界、休眠封存与启动屏障 |
+
+直接调用链已覆盖配置解析、`platform/app.ts`/`contact.ts`/`main.ts`、Responder、Koishi dispose、独立宿主、sim restart/final、状态/连续性/归档/遗忘CLI，以及日记、承诺、世界、主动、B站、设备、Web和手机伴侣等会读写记忆或影响目录租约的后台所有者。配置、持久化、重复/并发、重启/失败恢复、撤回与来源、权限/隐私、停止/资源及实际线性开销均有针对性复现或边界记录。
+
+### 保留且不伪装成已修的边界
+
+- M32b 的公共 diary/week/phase 旧派生和历史 observation 服务端净化仍没有可安全自动完成的独立证据。固定 Hindsight v0.10.2 的公开 version/config/stats、live inventory、`live=0`、一次 DELETE/refresh ACK 都不能证明实际 backend/store、未知旧请求已停止或 observation history 孤儿已清。当前客户端持续按 bank/来源世代失败关闭：污染公共派生及历史观察不读、不再生成；私人 relationship 只在完整证据下修复。不能为“完成”而删 guard、改 generation、猜 PG 或访问真实部署数据库。
+- 旧无来源/弱message ID、未成功持久的崩溃前观察、legacy promise `before`、自然语言公共日记和旧无来源反馈不能凭空精确归属或自动迁移；审计会列限制，遗忘不会猜删共享资料。
+- JSONL/head、维护多文件与远端服务不是全局事务；SQLite只作本机OS协调锁，相关写者必须统一升级，运行中不能删换协调文件。50ms只表示争锁预算，不承诺网络文件系统、断电fsync或任意重试exactly-once。
+- 当前进程的正常stop会等待已派mutation/transport ACK及本地收尾；不合作外部实现可能持续阻塞drain，强杀且无持久outbox的QQ/外部ACK不能自动恢复。这些属于明确运维边界，不是用测试假造出来的保证。
+
+据此，“记忆与数据”本轮深入审查与已确认缺陷修复完成；后续若出现新证据仍回修，不声称证明无缺陷。按模块顺序，下一个尚未开始的模块是“在 QQ 上的样子（社交）”；本检查点不自动进入下一模块或社区比较。

@@ -460,3 +460,11 @@ M32b远端公共旧派生/历史observation清理及证据解封仍未完，保�
 定向手机伴侣50/50通过；最终允许合成集1021项=1020通过/1旧Windows权限skip/0失败，全workspace类型、模块登记、差异通过。只合成卡/消息/媒体、fake DSH/HTTP/temp，无真runtime/QQ/外部模型/服务/DB或部署推送。不宣称远端DSH计算取消、持久outbox、强杀恢复或任意网络exactly-once。
 
 **下一检查点：记忆模块仍未完成。** 手机伴侣stop链已完成，跳过旧候选。继续记忆直接调用/后台owner剩余盘点与资源故障注入。M32b公共旧diary/week/phase派生及历史observation净化仍缺可信writer fence、四态任务静止、实际store一致性与未知DELETE停止证据；客户端屏障保持，不读真部署DB、不伪解封。记忆覆盖充分前不转下一模块或社区比较。
+
+第四十一批完成危机状态停机flush及Responder纯等待资源收尾（`414145cf`）。危机原子发布失败、存储恢复但退避尚未触发时，正常stop现于释放目录租约前最后持久一次；持续失败保原并用固定无正文诊断，不冒充成功。Responder默认安静/重试/打字/气泡间隔定时器现随实例生命周期实际清理，停止后的`waitForQuiet`直接结束，修复4秒残留与冻结时钟忙循环；已派发送ACK协议不变。新增2项，记忆累计919；最终允许合成集1023项=1022通过/1项既有Windows权限跳过/0失败，全workspace类型、模块登记与差异通过。
+
+**记忆与数据模块本轮深入审查完成。** 已覆盖`memory/`全部25个源文件，及config/app/contact/responder/main/Koishi、sim、维护CLI、日记/承诺/世界/主动、B站/设备/Web/手机伴侣等直接读写、停止和目录租约链；已确认缺陷均已处理并有回归。详见`docs/reviews/2026-11-05-memory-review.md`第四十一批与最终覆盖表。
+
+保留边界不作伪修：M32b公共旧diary/week/phase派生与历史observation服务端净化缺可信writer fence、完整四态静止、实际store一致性及unknown DELETE停止证据；客户端继续失败关闭，不读污染派生、不删guard/改generation/猜backend，不访问真实部署DB。旧弱身份/未持久观察/legacy before不能凭空恢复；多文件/远端非事务、SQLite仅OS锁、50ms仅争锁、无强杀outbox/网络FS/fsync/exactly-once保证。后续新证据仍回修，不声称无缺陷。
+
+下一模块为“在 QQ 上的样子（社交）”，尚未开始；按用户当前要求先停在已完善的记忆模块检查点，不提前进入社区比较或新功能阶段。
