@@ -612,3 +612,11 @@ replies/risk完整已知schema、坏JSON/IO保原拒空白；合法旧v1最小�
 下一轮优先新确证延迟戳回owner：docs/reviews/repro/memory-app-notice-owner.mjs真实App合成卡/fake timer/pokeFriend，已派请求held时stop已resolved且bot.lock=false；释放后成功/失败日志各晚写1。两模式最终诊断正常exit0仅报告未修坏事实，不是正确回归；前两次诊断自己timer残留导致进程中断不算产品缺陷或通过，已只清理诊断创建的handles。需派发前登记settlement覆盖同步重入stop/throw、等已派ACK/诊断后release，未派timer仍取消，保原不记录聊天历史政策。tellOwner通知只读候选未验证，不一并冒称确证。
 
 M32b远端公共旧派生/历史observation独立清理及有证据解封仍未完，现保护不解，不读真实部署DB；记忆未完不转模块或社区比较。B站/社交仍非整体审完。无多实例CAS、持久通知outbox/强杀恢复或全局事务；旧已seen缺until不能猜迁移，未持久观察崩溃不可凭空恢复。既有协调文件/弱ID/未知DELETE边界及拒清理合成temp保持。
+
+第三十一批完成直接提示/戳回停止所有权（2c9895cb，ADR0079/0161）：真实App合成确认延迟pokeFriend已派并held时，旧stop已释放bot.lock，ACK成功/失败日志随后晚写；主人设定审计等tellOwner提示也未等待已派sendPrivateText。统一sendOwnedNotice在调用transport前预登记settlement，覆盖同步重入stop、同步throw和诊断回调throw；App停止等待已派ACK及结果日志后才释放租约。未派戳回timer仍清除，停止后的晚DSH probe/advice结果被tellOwner入口拒新发送；成功/失败均不新增助手聊天历史，保运维提示不进history政策。
+
+新增15项（poke7、tellOwner8），记忆累计862用例含原Windows链接skip1；定向15/15及两个correctness probes通过。最终核实合成集972项=971通过/1原权限skip/0失败，全仓类型实际exit0、模块/差异绿，非全仓全量。仅合成卡/temp/fake transport及内存DSH hook，无真实角色/runtime/QQ/模型/服务或部署推送。旧poke诊断已改正确断言，held时stop未完成且lease仍在；早期诊断自有timer中断不算产品失败或通过。
+
+协议只保证当前进程已派运输和诊断收尾，没有持久通知outbox、强杀恢复或跨运输/历史事务；不合作transport可持续阻塞drain。DSH顾问底层任务、配对/封存文件操作不因tellOwner统一出口自动成为同一事务，须逐链取证。下一轮按证据复核仍绕过统一出口的直接sendPrivateText链，以及DSH底层晚任务；尚未确证的不冒称缺陷。
+
+M32b远端公共旧派生/历史observation清理及证据解封仍未完，保护不解、不访问真部署DB；记忆未完不转模块/社区比较，B站/社交仍未整体审完。既有弱身份/未知DELETE/多文件远端非事务/协调文件和拒清理合成temp边界保持。
