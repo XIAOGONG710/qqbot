@@ -1306,6 +1306,7 @@ ${video.link}`);
      */
     let risk: RiskMonitor | undefined;
     function bilibiliRisk(): RiskMonitor | undefined {
+        if (stopped) return undefined;
         if (risk) return risk;
         if (config.bilibiliComment === 'off' && config.bilibiliReplies === 'off') return undefined;
         const account = bilibiliAccountSource();
@@ -1343,8 +1344,12 @@ ${video.link}`);
             ...(gate ? { risk: gate } : {}),
             compose: replyComposer({
                 character: { name: lowest.character.name, description: lowest.character.description, personality: lowest.character.personality, banned: lowest.character.banned },
-                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 1.1 }, messages, { log, purpose: 'background' })),
-                log,
+                generate: (messages, signal) => {
+                    signal?.throwIfAborted();
+                    const scoped: Log = message => { if (!stopped && !signal?.aborted) log(message); };
+                    return pipeline?.generate ? pipeline.generate(messages, scoped) : chatCompletion({ ...config.llm, temperature: 1.1 }, messages, { log: scoped, purpose: 'background', signal });
+                },
+                log: message => { if (!stopped) log(message); },
             }),
             dir: join(config.dataDir, 'presence'),
             now: worldNow, log,
@@ -1359,7 +1364,7 @@ ${video.link}`);
     }
 
     function startReplies(): void {
-        if (replies) return;
+        if (stopped || replies) return;
         const options = bilibiliReplyOptions();
         if (!options) return;
         replies = createReplyWatcher(options);
@@ -2465,8 +2470,8 @@ ${body}
             if (followUpTimer) clearInterval(followUpTimer);
             const presenceDrain = presence?.stop();
             const browsingDrain = browsing?.stop();
-            replies?.stop();
-            risk?.stop();
+            const repliesDrain = replies?.stop();
+            const riskDrain = risk?.stop();
             if (lifeTimer) clearInterval(lifeTimer);
             if (weatherTimer) clearInterval(weatherTimer);
             if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
@@ -2482,7 +2487,7 @@ ${body}
             if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);
-            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, deviceDrain, ...accountGuardDrains, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
+            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...accountGuardDrains, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
                     for (const result of results) if (result.status === 'rejected') {

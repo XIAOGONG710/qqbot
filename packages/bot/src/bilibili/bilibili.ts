@@ -560,15 +560,17 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
             log(`刷 B 站（试运行，没发）：《${video.title}》下的评论写进了 drafts.md`);
             return;
         }
+        let dispatched = false;
         try {
             check();
+            dispatched = true;
             const { rpid } = await account.postComment({ aid: video.aid, bvid: video.bvid, text, at: comment.at });
             state.commentFailures = 0;
             state.comments = [...records, { at: t, bvid: video.bvid, aid: video.aid, rpid, text, checkAt: t + COMMENT_CHECK_AFTER_MS[0] }].slice(-100);
             save();
             log(`刷 B 站：在《${video.title}》下评论并 @ 了 ${comment.at.name}（rpid ${rpid}），稍后复核是不是公开可见`);
         } catch (error) {
-            check();
+            if (!dispatched) check();
             if (error instanceof BiliApiError && error.code === COMMENT_CLOSED_CODE) {
                 log(`刷 B 站：《${video.title}》的评论区关了，这次不评论`);
                 return;
@@ -580,7 +582,11 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
             if (state.commentFailures >= COMMENT_FAILURES_MAX) commentHalted = true;
             log(`刷 B 站：评论没发出去（连着第 ${state.commentFailures} 次${commentHalted ? '，到重启前不再评论' : '，停 24 小时'}）：${reason(error)}`);
             // 验证码、风控、账号受限一类：立刻改成私信告诉他，公开发言（评论和回复）都先停
-            if (isRiskError(error)) await options.risk?.trip({ why: `评论被 B 站拦了（${reason(error)}）`, wanted: text, link: video.link });
+            if (isRiskError(error)) {
+                const event = { why: `评论被 B 站拦了（${reason(error)}）`, wanted: text, link: video.link };
+                if (stopped && options.risk?.record) await options.risk.record(event);
+                else await options.risk?.trip(event);
+            }
         }
     }
 
@@ -625,7 +631,10 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
         }
         save();
         // 找不到可能是在审核 / 被屏蔽：公开发言先停，话改成私信告诉他（热门视频的评论区刷得快、被挤出第一页也会这样，措辞里说的是「可能」）
-        if (hidden) await options.risk?.trip(hidden);
+        if (hidden) {
+            if (stopped && options.risk?.record) await options.risk.record(hidden);
+            else await options.risk?.trip(hidden);
+        }
     }
 
     /** 写一条给他的话，不发 QQ（走和聊天一样的生成：卡、记忆、出口检查）；返回正文，或说明为什么没有 */

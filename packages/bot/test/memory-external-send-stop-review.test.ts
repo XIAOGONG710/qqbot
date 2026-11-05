@@ -7,6 +7,7 @@ import { createPresence, pokeOutPlan, qzonePlan, type PresenceOptions } from '..
 import { createVideoBrowsing, videoPlan, type VideoBrowsingOptions } from '../src/bilibili/bilibili.ts';
 import { formatDate, type Schedule } from '../src/life/schedule.ts';
 import type { BiliAccount } from '../src/bilibili/bilibili-account.ts';
+import { BiliApiError } from '../src/bilibili/bilibili-account.ts';
 import type { InitiateOutcome } from '../src/social/responder.ts';
 const schedule: Schedule = { sleep: '02:00', wake: { early: '08:00', lazy: '08:00', earlySlot: '1' }, periods: {}, semester: { start: '2026-09-01', weeks: 52 },
  holidays: [], makeups: [], kinds: { hard: {}, water: {}, machine: {}, pe: {} }, courses: [], free: { morning: ['合成休闲'], afternoon: ['合成休闲'], evening: ['合成休闲'], afternoonFrom: '12:00', eveningFrom: '18:00' }, where: '合成地点' };
@@ -80,6 +81,15 @@ test('B站纯模型尚未commit时stop立即取消，晚sent也不再发链接�
 });
 
 const account = (patch: Record<string, unknown> = {}): BiliAccount => ({ search: async () => [], subtitle: async () => ({ status: 'none' }), ...patch }) as unknown as BiliAccount;
+test('B站已派评论停机后返回风险失败，仍保存暂停且只记录风险不新发私信', async () => {
+ const dir = temp(), held = gate<void>(); let entered = false, recorded = 0, alerts = 0;
+ const b = browsing(dir, { account: account({ postComment: async () => { entered = true; await held.promise; throw new BiliApiError('synthetic risk', -352); } }),
+  risk: { halted: () => false, trip: async () => { alerts++; }, record: async () => { recorded++; } },
+  comment: { mode: 'on', at: { name: '合成联系人', uid: 10002 }, compose: async () => '合成评论' } });
+ try { const job = b.tick(); await until(() => entered); const drain = b.stop(); held.release(); await drain; await job;
+  assert.equal(recorded, 1); assert.equal(alerts, 0); assert.equal(JSON.parse(readFileSync(join(dir, 'bilibili.json'), 'utf8')).commentFailures, 1);
+ } finally { held.release(); await b.stop(); clean(dir); }
+});
 test('B站已派DM等ACK和recordDm后结束drain，不再启动QQ提醒', async () => {
  const dir = temp(), held = gate<void>(); let entered = false, recorded = 0, generations = 0;
  const b = browsing(dir, { account: account({ sendDm: async () => { entered = true; await held.promise; } }), dm: { mode: 'on', uid: 10002 },
