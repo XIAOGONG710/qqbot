@@ -51,13 +51,17 @@ test('读取旧日记可取消，晚返回不缓存原文或启动周记生成',
  finally { held.resolve(undefined); await task; rmSync(f.dir, { recursive: true, force: true }); }
 });
 
-test('retain已ACK但本地写失败时drain明确失败，保留旧状态且不生成下一篇', async () => {
+test('retain已ACK但本地写失败时drain明确失败，保留已派prepared且完成记录不推进', async () => {
  const held = gate<boolean>(); const f = fixture({ retainDiary: () => held.promise }); const original = fileOps.writeFileSync;
  const before = JSON.stringify({ written: {}, texts: {}, weeks: {}, phases: {} }); writeFileSync(f.path, before);
  const task = f.writer.catchUp(now); void task.catch(() => {});
- try { await until(() => f.calls.diary === 1); const drain = stop(f.writer); assert.ok(drain instanceof Promise);
+ try { await until(() => f.calls.diary === 1); const dispatched = readFileSync(f.path, 'utf8'), pending = JSON.parse(dispatched);
+  assert.deepEqual(pending.written, {}); assert.deepEqual(pending.texts, {}); assert.deepEqual(pending.confirmed, {});
+  const entries = Object.values(pending.prepared) as { phase: string; body: string; operationId: string }[];
+  assert.equal(entries.length, 1); assert.equal(entries[0]!.phase, 'dispatched'); assert.equal(entries[0]!.body, '合成日记正文'); assert.match(entries[0]!.operationId, /^[a-f0-9-]{36}$/);
+  const drain = stop(f.writer); assert.ok(drain instanceof Promise);
   fileOps.writeFileSync = () => { throw new Error('synthetic disk failure'); }; held.resolve(true);
-  await assert.rejects(drain, /synthetic disk failure/); assert.equal(readFileSync(f.path, 'utf8'), before); assert.equal(f.calls.generate, 1); assert.equal(f.calls.diary, 1);
+  await assert.rejects(drain, /synthetic disk failure/); assert.equal(readFileSync(f.path, 'utf8'), dispatched); assert.equal(f.calls.generate, 1); assert.equal(f.calls.diary, 1);
  } finally { held.resolve(false); await task.catch(() => {}); fileOps.writeFileSync = original; rmSync(f.dir, { recursive: true, force: true }); }
 });
 

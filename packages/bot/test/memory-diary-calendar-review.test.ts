@@ -48,7 +48,7 @@ async function child(kind: string) {
         if (kind === 'spring') assert.deepEqual(dates, ['2026-03-06', '2026-03-07', '2026-03-08']);
         if (kind === 'fall') assert.deepEqual(dates, ['2026-10-30', '2026-10-31', '2026-11-01']);
         if (kind === 'low') assert.deepEqual(dates, ['0000-01-01', '0000-01-02']);
-        if (kind === 'late-gap') { assert.equal(worldTimes.length, 3); assert.ok(worldTimes.every(at => format(at) < '2024-03-31'), '23点缺时不能把当天日记世界材料推到次日'); }
+        if (kind === 'late-gap') { assert.deepEqual([...new Set(worldTimes.map(format))].sort(), ['2024-03-28', '2024-03-29', '2024-03-30']); assert.ok(worldTimes.every(at => format(at) < '2024-03-31'), '23点缺时不能把当天日记世界材料推到次日'); }
         assert.equal(new Set(dates).size, dates.length); assert.ok(dates.every(date => date < now.slice(0, 10)));
     } finally {
         await writer.stop(); assert.equal(dirname(resolve(root)), resolve(tmpdir())); assert.ok(basename(root).startsWith('qqbot-diary-calendar-')); rmSync(root, { recursive: true, force: true });

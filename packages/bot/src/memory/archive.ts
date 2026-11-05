@@ -9,6 +9,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { writeJsonAtomic } from './json-file.ts';
 import { acquireLock, isProcessAlive, type IsAlive } from '../platform/lock.ts';
 import { unfinishedForgetJobs } from './forget-job.ts';
+import { isWrittenRetainState, WRITTEN_RETAIN_FILE, WRITTEN_RETAIN_MARKER } from './written-retain.ts';
 import { CONTACT_TIERS, UNLISTED_TIER } from '../platform/config.ts';
 import { stateObject, stateTimestamp } from './state-schema.ts';
 
@@ -65,6 +66,14 @@ export function archiveTestData(options: ArchiveOptions): ArchiveResult {
     const release = options.dryRun ? undefined : acquireLock(lock, process.pid, options.isAlive ?? isProcessAlive);
     try {
         if (!options.dryRun && unfinishedForgetJobs(dataDir).length) throw new Error('有未完成遗忘任务，不能归档或更换记忆前缀；请先按原任务恢复');
+        const writtenPath = join(dataDir, 'memory', WRITTEN_RETAIN_FILE);
+        checkPath(writtenPath); checkPath(join(dataDir, 'memory', WRITTEN_RETAIN_MARKER));
+        if (existsSync(writtenPath)) {
+            let state: unknown;
+            try { state = JSON.parse(readFileSync(writtenPath, 'utf8')); } catch { throw new Error('日记提交意图无法核验，未执行归档'); }
+            if (!isWrittenRetainState(state)) throw new Error('日记提交意图格式无效，未执行归档');
+            if (Object.values(state.operations).some(operation => operation.phase !== 'completed')) throw new Error('有未完成日记提交，不能归档或更换前缀；请先核对原任务');
+        } else if (existsSync(join(dataDir, 'memory', WRITTEN_RETAIN_MARKER))) throw new Error('日记提交意图丢失但存在见证，未执行归档');
         const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
         const result: ArchiveResult = { stamp, moves: [], since: [], prefix: [], skipped: [] };
 
@@ -112,8 +121,8 @@ export function archiveTestData(options: ArchiveOptions): ArchiveResult {
             for (const file of files(dir, '.json')) {
                 // 全bank守卫必须与活目录的协调见证一起保留。移走JSON会使新bank
                 // 失败关闭；连见证一起移走又会令切回旧bank时丢失禁止读取的依据。
-                if (sub === 'memory' && file === 'derived.json') {
-                    result.skipped.push({ file: join(dir, file), reason: '共享的全bank派生屏障与协调见证保留原位；换前缀不解除旧bank守卫' });
+                if (sub === 'memory' && (file === 'derived.json' || file === WRITTEN_RETAIN_FILE)) {
+                    result.skipped.push({ file: join(dir, file), reason: file === WRITTEN_RETAIN_FILE ? '日记提交原意图、完成回执与独立协调见证保留原位；换前缀不丢失旧请求身份' : '共享的全bank派生屏障与协调见证保留原位；换前缀不解除旧bank守卫' });
                     continue;
                 }
                 plan(join(dir, file), join(dir, `archive-${stamp}`, file));
