@@ -332,3 +332,9 @@ Commons 严格响应/尺寸/元数据与自有词表参数，保存完整作者�
 第十七批完成App上下文摘要停止与联系人缓存残留。真实App在stop/目录锁释放后旧held摘要仍落context文件或日志，两项先红后绿；OwnedSummarizer永久stop同步拒新/旧缓存供给、取消内部等待并drain、不等不合作模型，晚结果不落文件/log；App统一持有并等待收尾，授予模型log另守stopped。代码52c72e39。实际context tmp/corrupt及jokes/idioms固定tmp含私密正文却漏审计，现audit与forget-job共享精确目录/后缀规则，导出/apply/resume贯通；共享/他人/伪suffix和链接守界，archive保留政策不变但后续可识别（1cbd042e，ADR0043/0246补记）。新增12（core5/App2/privacy5），记忆累计535；最终587/587确认合成集，全仓类型真实exit0、模块/差异通过。未读真实角色/runtime，不推送部署。
 
 下一轮：先合成核startApp构造失败路径是否只release租约而留下已创建memoryTimer/owner（createApp后续context读失败等，假timer/fake API，尚未确证）。既有App.stop摘要、sim生命周期、sourcehash和残留清单不重做。M32b公共旧派生/历史observation远端清理与独立证据解封仍未完成，缺可信writer/task fence和实际store证明时保护不解，记忆未完不转模块。
+
+第十八批已修App构造失败资源泄漏（3ce7d0bc，ADR0259）：context读EIO时旧memoryTimer/实例仍活且租约释放；设备late startup遇stopped TDZ、不关闭还可say外发，均真实合成确认。新构造scope逐项登记，顶层初始化stopped，失败先停全部已建资源，再等已派weather首刷新/设备startup及late stop等收尾后释放租约；原同步构造错误保留，已发生事实不回滚。正常构造commit清登记，不改原正常App.stop策略。设备晚log/say/onAudit守界；天气首refresh成功缓存写仍持锁，失败不造缓存；未假取消其后继城市。
+
+新增5（构造1/设备2/天气2），记忆累计540；最终592/592核实合成集、全仓类型实际exit0、模块4项及差异绿。仅合成卡/fake timers/API/fetch/temp，不访问真实角色/runtime/外部服务，不部署推送。
+
+下一轮优先独立验证正常App.stop的设备/天气owner：held初始与interval刷新、pending设备启动/服务stop/已派通知ACK是否在目录租约释放后仍写/发送；构造失败scope不代表正常stop已保证。根据真实合成证据修，未验证项不得冒称缺陷。M32b远端公共旧派生/历史observation清理/证据解封仍未完成，保护及既有不合作请求/多文件远端非事务边界不变，记忆未完不转模块。

@@ -458,3 +458,15 @@ core新增5正式；旧文件registerHooks控制4项真实效果红（晚落盘/
 最终587/587核实合成集、全仓类型实际exit0、模块登记及差异检查通过。本批新增12（core5/App2/privacy5），记忆累计535。只合成卡/聊天、假API、temp，未跑旧角色依赖suite，未推送/部署，AGENTS.md仍原未跟踪。
 
 下一步候选：startApp catch构造异常仅release租约，createApp内部在返回App对象前已创建memoryTimer和其它owner；若后续context文件读取等构造失败，可能旧任务仍持活，须假timer/真实App合成复现，未确证前不可称漏写或修复。M32b远端旧公共派生/历史observation清理与独立证据解封仍受已记录服务端证据限制；本批不提供远端清除保证，不转下一模块。
+
+## 第十八批：App构造失败资源收尾
+
+候选已真实合成确证：context文件EIO在memoryTimer创建后令startApp抛错；旧bot.lock被移除且同目录租约可重取，timer未clear、LongTerm仍可派发。独立设备probe进一步证明late startup访问未初始化stopped导致TDZ，service.stop零次，授予say仍外发。两者都是构造失败路径，不重复第十七批正常stop摘要缺陷。
+
+新增构造收尾scope，stopped在任何资源前初始化。每项取得后登记失败关闭，构造成功commit清登记；失败先同步停止所有已建资源，再等实际异步收尾后释放租约，保持同步抛原错误。登记天气首refresh/全局天气/interval、生活timer、双media、photoAbort、heartbeat、tastes两timer、pending设备及late服务stop、memory/promises/diary/context/responders与memoryTimer。presence/browsing/risk/replies/planner仅connected后启动，不能把不存在实例算遗漏。设备授予log/say/onAudit门控，late stop拒绝原promise交allSettled诊断，不吞成成功。
+
+天气无stop接口，首refresh已派请求不能靠clearInterval撤回。保存完整首刷新promise，故障关闭全局读口/定时器后仍持租约，让原两城市刷新成功缓存或失败正常收尾。正式假fetch成功两份原子写时锁均存在，失败不造缓存；未猜取消内部后继请求。未回滚构造期间已发生同步有效写入，不承诺多文件事务。正常stop设备/天气完整drain仍须独立验证；不合作startup/stop可使租约持续保留，global天气多实例隔离无新增保证。
+
+正式新增5（context构造EIO1，设备2，天气成功/失败2），均旧源真红→新源绿；设备/天气4用registerHooks仅换e8d67bdd App得到4/4红。相关13项先绿，最终592/592确认合成集，全仓类型实际exit0、模块新增ADR后4项再绿、差异通过。代码3ce7d0bc，ADR0259。记忆累计540项；未读真实卡/runtime、未外联QQ/天气/模型/DB、未部署推送，AGENTS.md未跟踪保留。
+
+下一轮：正常成功构造后的App.stop目前仍只void deviceService.stop/清weatherTimer，需复用合法合成天气/设备fixture独立验证held首刷新、后续interval刷新、设备startup/stop以及已派通知ACK与释放租约顺序，再按证据修（不能假定构造scope也覆盖正常stop）。M32b公共旧派生/历史observation独立清理与有证据解封仍受远端证据阻点，记忆尚未完成，不跳模块。
