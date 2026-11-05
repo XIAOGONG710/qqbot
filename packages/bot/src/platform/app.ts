@@ -27,6 +27,7 @@ import { consumeDshTimelineInbox, consumeDshWorldInbox } from '.././memory/dsh-i
 import { readWebSecrets, WebLookup } from './web.ts';
 import { acquireLock } from './lock.ts';
 import { unfinishedForgetJobs } from '../memory/forget-job.ts';
+import { unfinishedArchiveJobs } from '../memory/archive-job.ts';
 import type { Log } from './log.ts';
 import { ChatHistory, sourceMessageSeq, type StoredMessage } from '.././memory/history.ts';
 import { stateTimestamp } from '../memory/state-schema.ts';
@@ -358,6 +359,7 @@ export function startApp(options: AppOptions): App {
     const release = acquireLock(join(options.config.dataDir, 'bot.lock'));
     try {
         if (unfinishedForgetJobs(options.config.dataDir).length) throw new Error('数据目录有未完成遗忘任务；保留原记录，请先按原任务 --resume 核实恢复，再启动 bot');
+        if (unfinishedArchiveJobs(options.config.dataDir).length) throw new Error('数据目录有未完成归档任务；保留原计划，请先 --resume 原归档任务恢复，再启动 bot');
         return createApp(options, release);
     }
     catch (error) { release(); throw error; }

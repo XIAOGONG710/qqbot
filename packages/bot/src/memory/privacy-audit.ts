@@ -9,6 +9,7 @@ import { ACCOUNT_ACTIONS } from '../social/account.ts';
 import { CONTACT_TIERS, UNLISTED_TIER } from '../platform/config.ts';
 import { isDerivedState } from './derived-state.ts';
 import { FORGET_JOBS_DIRECTORY, isForgetJob } from './forget-job.ts';
+import { ARCHIVE_JOBS_DIRECTORY, isArchiveJob } from './archive-job.ts';
 
 export interface PrivacyArtifact {
     path: string;
@@ -190,6 +191,28 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
     }
     if (forgetOwned) add(join(root, 'bot.coordination.sqlite'), 'mixed', '全目录运行/维护协调租约；不存聊天正文，运行中不可删换');
     if (unknownForgetJobs) inventoryLimitations.push(`遗忘维护目录有 ${unknownForgetJobs} 份未知或无效记录，无法安全归属联系人；保留原件核实，未按正文猜测。`);
+
+    // Archive recovery includes shared configuration text. Even a partial or
+    // invalid journal is sensitive; exclusive ownership cannot be inferred.
+    let unknownArchiveJobs = 0, archiveOwned = false;
+    const archiveResidues = new Set<string>();
+    for (const path of walk(join(root, ARCHIVE_JOBS_DIRECTORY))) {
+        archiveOwned = true;
+        add(path, 'mixed', '共享归档恢复意图或原子写残留，可能含配置正文和密钥；不按号码猜归属，保留原位，不整份导出');
+        const match = /^([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\.json(?:\.tmp-[1-9]\d*-[1-9]\d*)?$/.exec(basename(path));
+        let value: unknown;
+        try { value = readJson(path); } catch { unknownArchiveJobs++; continue; }
+        if (!match || !isArchiveJob(value, root, match[1]!)) { unknownArchiveJobs++; continue; }
+        for (const [index, step] of value.steps.entries()) if (step.kind === 'replace') {
+            const temp = `${step.target}.archive-${value.id}-${index}.tmp`;
+            if (!archiveResidues.has(temp)) {
+                archiveResidues.add(temp);
+                add(temp, 'mixed', '原归档计划精确定位的配置/档位文本临时文件；可能含私密正文，保留人工核实，不复制或移动给单联系人');
+            }
+        }
+    }
+    if (archiveOwned && !forgetOwned) add(join(root, 'bot.coordination.sqlite'), 'mixed', '全目录运行/归档协调租约；运行中不可删换');
+    if (unknownArchiveJobs) inventoryLimitations.push(`归档维护目录有 ${unknownArchiveJobs} 份未知或无效记录；保留共享原件，无法推定其外部配置残留位置或单一联系人归属。`);
 
     // peek.uin 的写入源是 QQ 好友 target.qq，不把 B 站 uid 或摘要中的号码当作 QQ。
     walk(join(root, 'presence'));

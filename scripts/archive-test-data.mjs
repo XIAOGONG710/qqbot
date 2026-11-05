@@ -2,6 +2,7 @@
 //
 //   node scripts/archive-test-data.mjs --dry-run        先看要做什么
 //   node scripts/archive-test-data.mjs                  归档：聊天记录、记忆写入进度、主动消息记录挪进 archive，tiers.json 记起点，换 bank 前缀
+//   node scripts/archive-test-data.mjs --resume <UUID>  中断后继续原计划；不会重新发现目标或改变原前缀
 //
 // 选项：--prefix <新前缀>（默认旧前缀接上月日时分）、--data <数据目录>（默认 runtime/bot）、
 //      --koishi <实例目录>（默认 QQBOT_KOISHI_DIR 或 runtime/koishi，改其中 koishi.yml 的 bank 前缀）、
@@ -14,12 +15,17 @@ import { archiveTestData } from '../packages/bot/src/memory/archive.ts';
 
 const repoRoot = resolve(fileURLToPath(import.meta.url), '../..');
 const args = process.argv.slice(2);
+const resumeAt = args.indexOf('--resume');
+if (resumeAt >= 0 && (!args[resumeAt + 1] || args[resumeAt + 1].startsWith('--'))) {
+    console.error('--resume 需要原归档任务UUID；不会创建新任务。'); process.exit(2);
+}
 const flag = name => { const i = args.indexOf(name); if (i >= 0) args.splice(i, 1); return i >= 0; };
 const option = name => { const i = args.indexOf(name); if (i < 0) return undefined; const [, value] = args.splice(i, 2); return value; };
 
 const dryRun = flag('--dry-run');
 const noConfig = flag('--no-config');
 const prefix = option('--prefix');
+const resume = option('--resume');
 const dataDir = resolve(repoRoot, option('--data') ?? 'runtime/bot');
 const koishiDir = resolve(repoRoot, option('--koishi') ?? process.env.QQBOT_KOISHI_DIR ?? 'runtime/koishi');
 const configJson = resolve(repoRoot, option('--config') ?? 'runtime/bot/config.json');
@@ -36,6 +42,7 @@ try {
         dataDir,
         configFiles: [resolve(koishiDir, 'koishi.yml'), ...(noConfig ? [] : [configJson])],
         ...(prefix ? { prefix } : {}),
+        ...(resume ? { resume } : {}),
         dryRun,
     });
 } catch (error) {
@@ -44,6 +51,7 @@ try {
 }
 
 console.log(dryRun ? `（试一下，什么都没动）归档 ${result.stamp}：` : `归档 ${result.stamp}：`);
+if (result.jobId) console.log(`  归档任务：${result.jobId}（${result.complete ? '已完成' : '未完成；请用 --resume 原任务UUID 恢复'}）`);
 console.log(`  记起点：${result.since.map(s => `…${s.qq.slice(-2)}（${s.tier}）`).join('、') || '没有 tiers.json，不记'}`);
 if (result.tiersBackup) console.log(`  旧的换档记录另存为 ${rel(result.tiersBackup)}`);
 for (const { from, to } of result.moves) console.log(`  挪 ${rel(from)} → ${rel(to)}`);
