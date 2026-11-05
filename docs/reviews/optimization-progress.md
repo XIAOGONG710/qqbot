@@ -346,3 +346,7 @@ Commons 严格响应/尺寸/元数据与自有词表参数，保存完整作者�
 第二十批已修 Tastes 反思 owner（8d796d31，ADR0162补记）：真实App合成held模型在stop/目录释放后旧成功写偏好/时间线、旧失败/授予log晚写，两项先红后绿。Tastes永久stop拒新/微任务派发，取消内部纯模型等待并复用drain；App构造/正常stop统一接线，晚结果/入口/日志关闭，已确认文件及新实例原间隔保留。不声称取消远端请求或跨实例事务。新增6（core4/App2），记忆累计559；最终611/611核实合成集、全仓类型实际exit0、模块/差异绿，非全仓全量，未跑旧角色依赖suite。
 
 下一批先修新确证小梗后台提取owner：docs/reviews/repro/memory-app-jokes-owner.mjs真实App、42条合成history/fakeAPI，stop已释放bot.lock后旧held结果仍落jokes/10001.json并记录成功日志；exit0只是未修缺陷诊断。接续正式红绿复现及纯模型取消、持久来源/停止/重启。idioms/watch/feed/memes/stickers仅源码风险未确证，区分已派mutation ACK事实与未派工作；photo/food已有signal提交守卫、周报同步，勿重做。M32b公共旧派生/历史observation远端清理及独立证据解封仍未完成，旧保护/真实服务不可访问边界保持，记忆未完不转模块或社区比较。
+
+第二十一批完成小梗owner与在途来源（6e76e4f8，ADR0114补记）：真实App停止后成功写文件/失败及授予log晚写两项真红→绿，jokeRefresher冻结来源/拥有任务、永久stop取消本地纯模型等待并drain，App构造/正常stop接线。另真实App42条同长度两条撤回后旧结果仍进prompt确证，freshHistory在派发前及await后核完整原前缀role/time/content；允许追加，EIO/修改拒旧提交，公开回调同步stop守界。新增16（core13/App3），记忆累计575；最终627/627核实合成集、全仓类型实际exit0、模块/差异通过，不是新全仓全量。正确owner探针已更新。
+
+下一轮优先新确证B：docs/reviews/repro/memory-app-jokes-revision.mjs的completed-restart，已完成保存的origin唯一来源撤回后，重启20h间隔内仍从旧文件供给origin到实际prompt；phrase另两条有效不证明origin安全，fresh历史已无origin、extracts1。该probe held模式现A绿(stored0/promptOriginfalse)，B仍坏(stored1/true)，exit0非修复回归。须贯通持久来源依赖/读口与legacy兼容，不只清RAM/检查phrase，不猜撤回取消全部已回复事实。其它idioms/watch/feed/memes/stickers仍源码候选；M32b远端旧派生/observation证据清理未完、保护不解，记忆未完不转模块或社区比较。仅合成数据假服务，不访问真角色/runtime/部署/服务，保持现有协议边界。

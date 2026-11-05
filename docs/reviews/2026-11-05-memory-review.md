@@ -496,3 +496,17 @@ core新增5正式；旧文件registerHooks控制4项真实效果红（晚落盘/
 - 仅源码风险，尚未复现：口头习惯 await 后 save；watch/feed/memes 的 connected/interval 异步链以及 stickers queue/discover/mirror 无统一 stop/drain。不能将这些称已确认缺陷；图片表情收藏等已派 mutation ACK 需保真实事实，与纯读取/模型取消分开。B站/社交模块仍未整体审。
 
 M32b 远端公共 diary/week/phase 旧派生与历史 observation 清理/独立证据解封仍未完成。现有保护不解；本地任务取消不证明服务端 worker 静止。官方固定版 HTTP 及 live inventory 不能替代实际 store、可信 writer/task fence 和独立完成证据，未知 DELETE 不盲重试/猜成功。不访问真部署/角色/runtime/服务，记忆未完不转模块。
+
+## 第二十一批：小梗后台所有权与在途来源保护（2026-11-05）
+
+代码6e76e4f8，ADR0114补记。真实App停机成功/失败两项先红后绿：旧held extractor在目录租约释放后写jokes文件或授予log及catch日志。独立jokeRefresher拥有本地任务，调用时冻结source，微任务前登记，stop同步拒新并取消纯模型race、复用drain；App构造与正常停止等待本体，模型授予日志另守宿主。已确认文件及新owner/standalone原刷新间隔保留；取消不表示provider远端停止。
+
+A在途来源另有真实App红：42条同长度消息，未回复的两条唯一phrase来源被撤回占位，旧提取仍保存并进入下一轮实际prompt。现在App freshHistory贯通；微任务派发前及await后按完整原前缀role/time/content复查（回调后再守stop），正常尾追加允许但进度仅记实际消耗42条。改写、截短或fresh读取EIO不提交旧结果。独立调用不提供freshHistory只有快照语义。实际A新源绿，提示词未再含phrase/origin。夹具起初按connected立即假定extracts1，不适应新增微任务owner，已改until真实派发；不把夹具extract0算缺陷。
+
+新增16项正式回归（核心13/Appstop2/Apprecall1），记忆累计575；最终627/627核实合成集、全仓类型实际exit0、模块及差异全部通过。合成集仍是memory*.test.ts + 纯bilibili-dm-card + modules，不是新全仓全量，未运行旧真实角色suite。旧memory-app-jokes-owner.mjs已变正确stop探针，不再用旧坏断言。
+
+### 下一检查点：已完成小梗来历的持久依赖仍未修
+
+运行node docs/reviews/repro/memory-app-jokes-revision.mjs可比较两mode：held现在storedJokes0/promptHasOrigin=false；completed-restart仍storedJokes1/promptHasOrigin=true、extracts1。B先完成写入（origin唯一来自一条未回复消息，phrase另两条仍出现），撤回唯一origin来源，stop/restart且20小时窗口内不重抽，fresh历史已无origin，但旧文件供给实际prompt仍含origin。探针exit0只是报告事实，尤其B仍是未修缺陷。不能以phrase仍有两次或简单清RAM宣称解决；需持久完整来源/读口、重启及旧无manifest兼容，保已回复/危机语义，不猜迁移或删除全部既有事实。
+
+下一批优先该B，再按风险接idioms/watch/feed/memes/stickers源码候选（尚未逐项确证）。M32b远端公共旧派生/历史observation清理和独立证据解封仍未完成。现有保护保留；固定官方API/live inventory不能代替真实store一致性与可信writer/task fence，未知DELETE不盲重试。仅合成卡/聊天/fakeAPI/temp，未读真角色/runtime或访问外部服务，未部署推送。
