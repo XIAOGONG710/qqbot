@@ -12,6 +12,7 @@ import { bookProgressOn, moodAt, readingActivities, type DailyMood, type Reading
 import type { StoredMessage } from '../memory/history.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { calendarDate, stateObject } from '../memory/state-schema.ts';
+import { civilDayNumber } from '../memory/civil-time.ts';
 import { TransientStateError } from '../memory/transient-io.ts';
 import type { LongTermMemory } from '.././memory/long-term.ts';
 import { knowsPeople } from './people.ts';
@@ -35,10 +36,36 @@ export const PHASE_BACKFILL_DAYS = 14;
 const KEEP_TEXT_DAYS = 120;
 
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const CIVIL_DAY_MS = 86_400_000;
+const civilText = (day: number): string | undefined => {
+    if (!Number.isSafeInteger(day) || !Number.isFinite(day * CIVIL_DAY_MS)) return undefined;
+    const date = new Date(day * CIVIL_DAY_MS);
+    if (!Number.isFinite(date.getTime())) return undefined;
+    const text = date.toISOString().slice(0, 10);
+    return calendarDate(text) ? text : undefined;
+};
+/** A skipped local day has no Date representation; never borrow the following day's identity. */
+const localCivilDay = (day: number): Date | undefined => {
+    const text = civilText(day);
+    if (!text) return undefined;
+    const utc = new Date(day * CIVIL_DAY_MS);
+    const local = localDate(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
+    return formatDate(local) === text && civilDayNumber(local) === day ? local : undefined;
+};
+const civilMonthDay = (day: number): string => {
+    const text = civilText(day)!;
+    return `${Number(text.slice(5, 7))}月${Number(text.slice(8, 10))}日`;
+};
 const hm = (date: Date) => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 const atTime = (day: Date, time: string) => {
     const [h, m] = time.split(':').map(Number);
-    return localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+    const target = formatDate(day), at = localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+    if (formatDate(at) === target) return at;
+    // An evening DST gap can end this civil day before 23:30. Use its last real
+    // instant for the end-of-day snapshot, instead of reading the following day.
+    const end = new Date(localDate(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime() - 1);
+    if (formatDate(end) !== target) throw new Error('日记日期无法安全表示');
+    return end;
 };
 
 export interface DiarySources {
@@ -228,7 +255,7 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         });
     };
     const save = (state: DiaryState, today: Date) => {
-        const keepFrom = formatDate(localDate(today.getFullYear(), today.getMonth(), today.getDate() - KEEP_TEXT_DAYS));
+        const keepFrom = civilText(civilDayNumber(today)! - KEEP_TEXT_DAYS) ?? '0000-01-01';
         for (const date of Object.keys(state.texts)) if (date < keepFrom) delete state.texts[date];
         writeJsonAtomic(path, state);
     };
@@ -247,9 +274,12 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         const state: DiaryState = { written: stored.written ?? {}, texts: stored.texts ?? {}, weeks: stored.weeks ?? {}, phases: stored.phases ?? {} };
         const { written } = state;
         const today = herDay(options.sources.schedule, now);
+        const todayDay = civilDayNumber(today);
+        if (todayDay === undefined || !civilText(todayDay)) return;
         for (let back = DIARY_BACKFILL_DAYS; back >= 1; back--) {
             if (!derivedReady()) return;
-            const day = localDate(today.getFullYear(), today.getMonth(), today.getDate() - back);
+            const target = todayDay - back, day = localCivilDay(target);
+            if (!day || target >= todayDay) continue;
             const date = formatDate(day);
             if (!calendarDate(date)) continue;
             if (written[date] !== undefined) continue;
@@ -340,20 +370,20 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
 
     /** 周记：她这一周之前的 WEEK_BACKFILL 周（周一到周日）；全都处理完返回 true */
     const catchUpWeeks = async (state: DiaryState, today: Date): Promise<boolean> => {
-        const thisMonday = localDate(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
+        const todayDay = civilDayNumber(today)!;
+        const thisMonday = todayDay - ((new Date(todayDay * CIVIL_DAY_MS).getUTCDay() + 6) % 7);
         for (let back = WEEK_BACKFILL; back >= 1; back--) {
             if (!derivedReady()) return false;
-            const monday = localDate(thisMonday.getFullYear(), thisMonday.getMonth(), thisMonday.getDate() - 7 * back);
-            const id = formatDate(monday);
-            if (!calendarDate(id)) continue;
+            const monday = thisMonday - 7 * back, end = monday + 6, id = civilText(monday);
+            if (!id || end >= todayDay) continue;
             if (state.weeks[id] !== undefined) continue;
-            const days = Array.from({ length: 7 }, (_, i) => localDate(monday.getFullYear(), monday.getMonth(), monday.getDate() + i));
+            const days = Array.from({ length: 7 }, (_, i) => localCivilDay(monday + i)).filter((day): day is Date => day !== undefined);
             const diaries = await diariesOn(days, state);
             if (!derivedReady() || !diaries) return false;
             if (diaries.length) {
-                const period = `这周（${md(days[0]!)}–${md(days[6]!)}）`;
+                const period = `这周（${civilMonthDay(monday)}–${civilMonthDay(end)}）`;
                 const length = await summarize(`周记（${id} 那周）`, period, diaries,
-                    text => options.memory.retainSummary(`week:${id}`, days[6]!, `${options.sources.charName}的周记（${md(days[0]!)}–${md(days[6]!)}）`, text, options.sources.charName, 'week'));
+                    text => options.memory.retainSummary(`week:${id}`, days.at(-1)!, `${options.sources.charName}的周记（${civilMonthDay(monday)}–${civilMonthDay(end)}）`, text, options.sources.charName, 'week'));
                 if (length === undefined) return false;
                 state.weeks[id] = length;
                 options.log(`她的周记：${id} 那周已写（${length} 字，用了 ${diaries.length} 篇日记），存进公共记忆`);
@@ -367,21 +397,24 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
 
     /** 阶段总结：作息里结束了 PHASE_BACKFILL_DAYS 天以内的假期 */
     const catchUpPhases = async (state: DiaryState, today: Date): Promise<void> => {
-        const todayText = formatDate(today);
-        const recent = formatDate(localDate(today.getFullYear(), today.getMonth(), today.getDate() - PHASE_BACKFILL_DAYS));
-        for (const holiday of options.sources.schedule.holidays.filter(h => h.end < todayText && h.end >= recent)) {
+        const todayDay = civilDayNumber(today)!, recent = todayDay - PHASE_BACKFILL_DAYS;
+        for (const holiday of options.sources.schedule.holidays.filter(h => {
+            const end = civilDayNumber(h.end); return end !== undefined && end < todayDay && end >= recent;
+        })) {
             if (!derivedReady()) return;
             const id = `${holiday.name}:${holiday.end}`;
             if (state.phases[id] !== undefined) continue;
-            const [start, end] = [holiday.start, holiday.end].map(date => { const [y, m, d] = date.split('-').map(Number); return localDate(y!, m! - 1, d); });
-            const days: Date[] = [];
-            for (let day = start!; day <= end!; day = localDate(day.getFullYear(), day.getMonth(), day.getDate() + 1)) days.push(day);
+            const start = civilDayNumber(holiday.start), end = civilDayNumber(holiday.end);
+            if (start === undefined || end === undefined || start > end) continue;
+            // Only written dates can contribute; do not enumerate a potentially enormous author range.
+            const days = Object.keys(state.written).filter(date => date >= holiday.start && date <= holiday.end).sort()
+                .map(date => localCivilDay(civilDayNumber(date)!)).filter((day): day is Date => day !== undefined && civilDayNumber(day)! < todayDay);
             const diaries = await diariesOn(days, state);
             if (!derivedReady() || !diaries) return;
             if (diaries.length) {
-                const span = `${md(start!)}–${md(end!)}`;
+                const span = `${civilMonthDay(start)}–${civilMonthDay(end)}`;
                 const length = await summarize(`${holiday.name}总结`, `这个${holiday.name}（${span}）`, diaries,
-                    text => options.memory.retainSummary(`phase:${id}`, end!, `${options.sources.charName}的${holiday.name}总结（${span}）`, text, options.sources.charName, 'phase'));
+                    text => options.memory.retainSummary(`phase:${id}`, localCivilDay(end) ?? days.at(-1)!, `${options.sources.charName}的${holiday.name}总结（${span}）`, text, options.sources.charName, 'phase'));
                 if (length === undefined) return;
                 state.phases[id] = length;
                 options.log(`她的${holiday.name}总结已写（${length} 字，用了 ${diaries.length} 篇日记），存进公共记忆`);

@@ -55,4 +55,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0162](../adr/0162-tastes.md)、[ADR 0163](../adr/0163-acquaintances.md)、[ADR 0222](../adr/0222-human-values.md)、[ADR 0228](../adr/0228-life-review-fixes.md)、[ADR 0231](../adr/0231-local-calendar-boundaries.md)、[ADR 0243](../adr/0243-promise-source-effects-and-world-identity.md)
+[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0162](../adr/0162-tastes.md)、[ADR 0163](../adr/0163-acquaintances.md)、[ADR 0222](../adr/0222-human-values.md)、[ADR 0228](../adr/0228-life-review-fixes.md)、[ADR 0231](../adr/0231-local-calendar-boundaries.md)、[ADR 0243](../adr/0243-promise-source-effects-and-world-identity.md)、[ADR 0250](../adr/0250-diary-civil-targets.md)
