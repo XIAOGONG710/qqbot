@@ -254,18 +254,52 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
+/** Construction can throw before the App exposes stop(). Register each acquired
+ * resource immediately; synchronous failure stops all owners before awaiting
+ * any already-dispatched work, and retains the directory lease until it drains. */
+function appConstruction(release: () => void, log: Log) {
+    let phase: 'building' | 'committed' | 'failed' = 'building';
+    const cleanups: (() => void | Promise<void> | undefined)[] = [];
+    return {
+        onFailure(cleanup: () => void | Promise<void> | undefined): void { if (phase === 'building') cleanups.push(cleanup); },
+        commit(): void { phase = 'committed'; cleanups.length = 0; },
+        rollback(): void {
+            if (phase !== 'building') return;
+            phase = 'failed';
+            const drains: Promise<void>[] = [];
+            for (const cleanup of cleanups) {
+                try { const drain = cleanup(); if (drain) drains.push(drain); }
+                catch (error) { drains.push(Promise.reject(error)); }
+            }
+            cleanups.length = 0;
+            if (!drains.length) { release(); return; }
+            void Promise.allSettled(drains).then(results => {
+                for (const result of results) if (result.status === 'rejected') {
+                    try { log(`启动失败时后台收尾未确认（${describeError(result.reason)}）`); } catch { /* 保留最初的构造错误。 */ }
+                }
+                release();
+            });
+        },
+    };
+}
+
 export function startApp(options: AppOptions): App {
     mkdirSync(options.config.dataDir, { recursive: true });
     const release = acquireLock(join(options.config.dataDir, 'bot.lock'));
+    const construction = appConstruction(release, options.log);
     try {
         if (unfinishedForgetJobs(options.config.dataDir).length) throw new Error('数据目录有未完成遗忘任务；保留原记录，请先按原任务 --resume 核实恢复，再启动 bot');
         if (unfinishedArchiveJobs(options.config.dataDir).length) throw new Error('数据目录有未完成归档任务；保留原计划，请先 --resume 原归档任务恢复，再启动 bot');
-        return createApp(options, release);
+        const app = createApp(options, release, construction);
+        construction.commit();
+        return app;
     }
-    catch (error) { release(); throw error; }
+    catch (error) { construction.rollback(); throw error; }
 }
 
-function createApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, sensitive = sensitiveSwitch() }: AppOptions, releaseLock: () => void): App {
+function createApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, sensitive = sensitiveSwitch() }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
+    let stopped = false;
+    construction.onFailure(() => { stopped = true; });
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -357,8 +391,10 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     // 真实天气（ADR 0048）：世界里的天气按济南 / 青岛实际的；取不到、开始取之前的日子照旧按日期生成
     const weather = config.realWeather && worldCard ? weatherFetcher({ dir: join(config.dataDir, 'weather'), log, now: worldNow }) : undefined;
     useRealWeather(weather);
-    if (weather) void weather.refresh();
+    const firstWeatherRefresh = weather?.refresh();
+    construction.onFailure(() => { useRealWeather(undefined); return firstWeatherRefresh; });
     const weatherTimer = weather ? setInterval(() => void weather.refresh(), WEATHER_REFRESH_MS) : undefined;
+    construction.onFailure(() => clearInterval(weatherTimer));
     weatherTimer?.unref();
     if (worldCard) log(`真实天气：${weather ? `开（济南 / 青岛逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；取不到照旧按日期生成）` : '关（配置 realWeather: false），按日期生成'}`);
     // 没人聊天时她一件件过日子（ADR 0040，影子模式）：读世界之前先排到现在、结算到期的；从这次启动排起，以前排过的从事件账接着排
@@ -415,6 +451,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     if (config.projectChoice) log(`项目选择：${lifeRunner ? '开（ADR 0056：三天内作业可接管空闲安排，状态行与行动账共用）' : '配置开了，但生活执行器没开，不生效'}`);
     // 没人找她的时候也每 ${LIFE_TICK_MS / 60_000} 分钟推一次，过完的时段尽快落账
     const lifeTimer = lifeRunner ? setInterval(() => { sharedWorld?.events(); }, LIFE_TICK_MS) : undefined;
+    construction.onFailure(() => clearInterval(lifeTimer));
     const noteMoodAndBooks = herDaysCard ? herDayLogger(
         herDaysCard.schedule!, herDaysCard.moods, herDaysCard.books, log, undefined,
         now => ({
@@ -432,8 +469,10 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     // 听语音、看图上的字（ADR 0052）：配置关了、入口没给就不读
     const mediaLimits = { ...MEDIA_TIMEOUTS, ...(config.vision ? { vision: config.vision.timeoutMs } : {}), ...mediaTimeouts };
     const reading = config.media ? mediaReading({ ...(media ? { reader: media } : {}), ...(vision ? { vision } : {}), timeouts: mediaLimits }) : undefined;
+    construction.onFailure(() => reading?.stop());
     // 看图只给名单里的人（用户 10-10 22:50：开，只对名单里的人）——图会发到看图模型的服务器；名单外的照旧只认图上的字（OCR 在本机）
     const readingUnlisted = config.media && vision ? mediaReading({ ...(media ? { reader: media } : {}), timeouts: mediaLimits }) : reading;
+    construction.onFailure(() => { if (readingUnlisted !== reading) readingUnlisted?.stop(); });
     const readerFor = (qq: number) => (config.contacts.some(c => c.qq === qq) ? reading : readingUnlisted);
     const canRead = [media?.voiceToText && '语音转文字', media?.ocr && '图上的字（OCR）', vision && '看图（只对名单里的人）'].filter(Boolean).join('、');
     log(`听语音、看图：${!config.media ? '关（配置 media: false），照旧「[语音]」「[图片]」'
@@ -453,6 +492,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     let watchedEntries: readonly Watched[] = config.watching ? loadWatched(watchedFile, log).entries : [];
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
     const photoDiscovery = new AbortController();
+    construction.onFailure(() => photoDiscovery.abort());
     const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, signal: photoDiscovery.signal, ...(photoSource ? { source: photoSource } : {}), ...(config.foodPhotos && foodSource ? { foodSource } : {}) }) : undefined;
     if (config.photos) {
         const have = photos?.status();
@@ -480,6 +520,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     let connectedAt: Date | undefined;
     let lastMessageAt: Date | undefined;
     const heartbeat = startHeartbeat({ dataDir: config.dataDir, log, state: () => ({ connectedAt, lastMessageAt }) });
+    construction.onFailure(() => heartbeat.stop());
 
     const tierRecord = new TierRecord(join(config.dataDir, 'tiers.json'));
     for (const contact of config.contacts) {
@@ -555,8 +596,10 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
         : undefined;
     // 回头看一天最多一次（tastes.ts 里有间隔）：每小时来看一眼要不要看，启动两分钟后先看一次
     const tastesTimer = tastes ? setInterval(() => void tastes.reflect().catch(error => log(`口味：出错（${error instanceof Error ? error.message : String(error)}）`)), 3_600_000) : undefined;
+    construction.onFailure(() => clearInterval(tastesTimer));
     tastesTimer?.unref();
     const tastesFirst = tastes ? setTimeout(() => void tastes.reflect().catch(error => log(`口味：出错（${error instanceof Error ? error.message : String(error)}）`)), 120_000) : undefined;
+    construction.onFailure(() => clearTimeout(tastesFirst));
     tastesFirst?.unref();
     const acquaintances = config.acquaintances ? new Acquaintances({ dataDir: config.dataDir, now: clockNow, log }) : undefined;
     const dormancy = config.dormancy && deviceOwner ? new Dormancy({ dataDir: config.dataDir, repoRoot, now: clockNow, gitHead: () => realGit(repoRoot).head(), log }) : undefined;
@@ -598,15 +641,20 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
         const describers = config.vision
             ? { screen: configuredImageDescriber(config, SCREEN_VISION_PROMPT), camera: configuredImageDescriber(config, CAMERA_VISION_PROMPT) }
             : undefined;
-        void (startDevices ?? startDeviceService)({
-            dataDir: config.dataDir, mode: config.deviceControl as 'dryRun' | 'on', links: config.deviceLinks, apps: config.deviceApps, log,
-            ...(timeline ? { onAudit: timelineFromDevice(timeline) } : {}),
-            say: text => { transport.sendPrivateText(deviceOwner.qq, text).catch(error => log(`设备控制：提示没发出去（${error instanceof Error ? error.message : String(error)}）`)); },
+        const startingDevice = (startDevices ?? startDeviceService)({
+            dataDir: config.dataDir, mode: config.deviceControl as 'dryRun' | 'on', links: config.deviceLinks, apps: config.deviceApps,
+            log: message => { if (!stopped) log(message); },
+            ...(timeline ? { onAudit: (entry: Parameters<NonNullable<Parameters<typeof startDeviceService>[0]['onAudit']>>[0]) => { if (!stopped) timelineFromDevice(timeline)(entry); } } : {}),
+            say: text => { if (!stopped) transport.sendPrivateText(deviceOwner.qq, text).catch(error => { if (!stopped) log(`设备控制：提示没发出去（${error instanceof Error ? error.message : String(error)}）`); }); },
             ...(describers?.screen && describers.camera ? { describe: { screen: describers.screen, camera: describers.camera } } : {}),
-        }).then(service => {
-            if (stopped) { void service?.stop(); return; }
+        }).then(async service => {
+            if (stopped) { await service?.stop(); return; }
             deviceService = service;
-        }).catch(error => log(`设备控制：启动出错（${error instanceof Error ? error.message : String(error)}）`));
+        }, error => { if (!stopped) log(`设备控制：启动出错（${error instanceof Error ? error.message : String(error)}）`); });
+        // The constructor rollback observes the original drain (including a
+        // late service.stop rejection); keep normal startup rejection handled.
+        void startingDevice.catch(() => {});
+        construction.onFailure(() => deviceService ? deviceService.stop() : startingDevice);
     }
 
     // 长期记忆（Hindsight）：补回之后写一次，之后每隔一段时间把结束了的片段写进去
@@ -621,6 +669,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
             common: true,
         })
         : undefined;
+    construction.onFailure(() => memory?.stop());
     log(memory
         ? `长期记忆：Hindsight ${config.memory!.baseUrl}（名单里的联系人；公共记忆库 ${memory.commonBankId()}，陌生人档不写不查）`
         : '长期记忆：未启用（配置里没有 memory）');
@@ -644,6 +693,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
             ...(sharedWorld ? { onWorldActions: sharedWorld.record } : {}),
         })
         : undefined;
+    construction.onFailure(() => promises?.stop());
     loadAppointments = promises?.appointmentsBetween;
     appointmentsAvailable = () => promises?.available() ?? true;
     // 约定来源已经接上以后再第一次推进生活；否则启动瞬间会把赴约时段排成普通休闲。
@@ -672,6 +722,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
             log,
         })
         : undefined;
+    construction.onFailure(() => diaries?.stop());
     if (memory) log(diaries ? `她的日记：她的每一天结束后写一篇存进公共记忆（没聊天的日子也写，停过的补最近 ${DIARY_BACKFILL_DAYS} 天）` : '她的日记：不写（用到的档位卡上都没有作息）');
     if (memory) {
         memory.setWrittenSourceVerifier(diaries ? intents => diaries.verifySources(new Date(pipeline?.now?.() ?? Date.now()), intents) : null);
@@ -727,6 +778,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
         void promises?.sync().catch(incomingFailure);
     }
     const memoryTimer = memory ? setInterval(syncMemory, MEMORY_SYNC_MS) : undefined;
+    construction.onFailure(() => clearInterval(memoryTimer));
     memoryTimer?.unref();
 
     const contextSummaries = new Set<ReturnType<typeof contextSummarizer>>();
@@ -750,6 +802,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
             file: join(dir, `${contact.qq}.json`),
         });
         contextSummaries.add(summarize);
+        construction.onFailure(() => summarize.stop());
         return {
             contextWindow: {
                 turns: config.contextTurns,
@@ -762,7 +815,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     function createContactResponder(contact: Contact): Responder {
         // 仅保存已确认、待写聊天历史的发送快照；按消息ID绑定，不受同照片并发发送完成顺序影响。
         const sentPhotoHistory = new Map<number, { token: string; content: string }>();
-        return createPipeline({
+        const responder = createPipeline({
             contact,
             card: cardFor(cardKey(contact)),
             // 危机回合被问是不是真人一律承认（ADR 0068 决策 7）：知道她是程序的联系人这一轮换用承认版的卡
@@ -904,6 +957,8 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
             },
             ...pipeline,
         });
+        construction.onFailure(() => responder.stop());
+        return responder;
     }
 
     // 危机信号（ADR 0068）：只记哪个联系人、什么时候，不记内容
@@ -1260,7 +1315,6 @@ ${video.link}`);
         for (const planner of planners.values()) void planner.syncFollowUps();
     }
 
-    let stopped = false;
     let stopDrain: Promise<void> | undefined;
     let stickerDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
     let photoDiscoveryTimer: ReturnType<typeof setInterval> | undefined;

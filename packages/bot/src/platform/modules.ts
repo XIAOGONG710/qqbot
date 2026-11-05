@@ -82,7 +82,7 @@ export const MODULES: readonly ModuleDef[] = [
             'memory/ledger.ts', 'memory/identity.ts', 'memory/memory-audit.ts', 'memory/timeline.ts', 'memory/dormancy.ts'],
         groups: ['记忆和安全'],
         metrics: '状态页「长期记忆」；ops/state-check-cli；ops/continuity-cli（设定账本 / 记忆账本）；聊天里发 /设定',
-        adrs: ['0012', '0017', '0043', '0157', '0158', '0159', '0161', '0237', '0238', '0239', '0240', '0241', '0242', '0243', '0244', '0245', '0246', '0247', '0249', '0250', '0251', '0252', '0253', '0254', '0255', '0256', '0257', '0258'],
+        adrs: ['0012', '0017', '0043', '0157', '0158', '0159', '0161', '0237', '0238', '0239', '0240', '0241', '0242', '0243', '0244', '0245', '0246', '0247', '0249', '0250', '0251', '0252', '0253', '0254', '0255', '0256', '0257', '0258', '0259'],
     },
     {
         id: 'social', name: '在 QQ 上的样子（社交）',
@@ -107,7 +107,7 @@ export const MODULES: readonly ModuleDef[] = [
             'platform/sensitive.ts', 'platform/time-zone.ts', 'platform/web.ts', 'dsh-link.ts', 'mobile-companion-dsh.ts', 'ops/', 'sim/', 'vendor/'],
         groups: ['工具'],
         metrics: '控制台「状态」页（ADR 0120）；ops/golive-check-cli；ops/heartbeat-watch-cli',
-        adrs: ['0002', '0008', '0118', '0119', '0120', '0160', '0246', '0248', '0249', '0254', '0257', '0258'],
+        adrs: ['0002', '0008', '0118', '0119', '0120', '0160', '0246', '0248', '0249', '0254', '0257', '0258', '0259'],
     },
 ];
 
