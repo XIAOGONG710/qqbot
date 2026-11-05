@@ -24,7 +24,7 @@ function items(value: unknown): FavoriteItem[] {
 export function qqFavorites(call: QqCall): {
     favorites: StickerFavorites;
     /** 给收藏库的 discover：QQ 收藏池里还没被我们同步过的那些（也就是别处加进来的） */
-    discover: (knownMd5: ReadonlySet<string>) => Promise<string[]>;
+    discover: (knownMd5: ReadonlySet<string>, signal?: AbortSignal) => Promise<string[]>;
 } {
     const list = async (count: number) => items(await call('fetch_custom_face_detail', { count }));
     return {
@@ -35,8 +35,15 @@ export function qqFavorites(call: QqCall): {
                 return md5;
             },
         },
-        async discover(knownMd5) {
-            return (await list(48)).filter(item => item.url && !knownMd5.has(item.md5)).map(item => item.url!);
+        async discover(knownMd5, signal) {
+            signal?.throwIfAborted();
+            let abort: (() => void) | undefined;
+            const cancelled = signal ? new Promise<never>((_, reject) => { abort = () => reject(signal.reason); signal.addEventListener('abort', abort, { once: true }); }) : undefined;
+            try {
+                const pending = Promise.resolve().then(() => { signal?.throwIfAborted(); return list(48); });
+                const found = await (cancelled ? Promise.race([pending, cancelled]) : pending); signal?.throwIfAborted();
+                return found.filter(item => item.url && !knownMd5.has(item.md5)).map(item => item.url!);
+            } finally { if (abort) signal?.removeEventListener('abort', abort); }
         },
     };
 }

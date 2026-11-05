@@ -5,6 +5,7 @@
 // - 收藏任务后台串行，不挡住正常收消息和回复。
 
 import { createHash } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { logBody } from '../platform/sensitive.ts';
@@ -199,20 +200,22 @@ export interface StickerDecision {
 }
 
 export type DownloadedSticker = DownloadedImage;
+export interface StickerWorkOptions { signal?: AbortSignal }
+export type StickerTrendSource = (signal?: AbortSignal) => Promise<string[]>;
 
 export interface StickerShelfOptions {
     dir: string;
     describe: ImageDescriber['describe'];
-    decide: (description: string, summary?: string) => Promise<StickerDecision>;
-    download?: (url: string) => Promise<DownloadedSticker>;
+    decide: (description: string, summary?: string, signal?: AbortSignal) => Promise<StickerDecision>;
+    download?: (url: string, signal?: AbortSignal) => Promise<DownloadedSticker>;
     /** 持续更新的公开网络候选源；与导入箱、QQ 自定义表情共用每小时预算。 */
-    trendDiscover?: () => Promise<string[]>;
+    trendDiscover?: StickerTrendSource;
     trendPerDay?: number;
     /** 看完描述、做收藏判断之前的筛（ADR 0132：B 站评论区图片里的真人照片 / 截图 / 广告）；返回不收的原因，通过返回 undefined */
     screen?: (description: string, source: StickerSource) => string | undefined;
     /** QQ 账号已有的自定义表情。 */
     /** knownMd5：已经同步进 QQ 收藏的那些（大写 md5）；QQ 收藏池里有它们，别再当新候选看一遍 */
-    discover?: (knownMd5: ReadonlySet<string>) => Promise<string[]>;
+    discover?: (knownMd5: ReadonlySet<string>, signal?: AbortSignal) => Promise<string[]>;
     /** 她收藏的每一张同步进 QQ 账号的「收藏的表情」（只加不删）；不给就只存本地 */
     favorites?: StickerFavorites;
     /** 两次 QQ 收藏操作之间隔多久（毫秒），像人一样一张张存 */
@@ -228,11 +231,11 @@ export interface StickerShelfOptions {
 
 export interface StickerShelf {
     /** 从一条收到的 OneBot 消息里挑图片表情；后台调用方不用等。 */
-    consider(message: Segment[] | string, source: Omit<StickerSource, 'kind'>): Promise<void>;
+    consider(message: Segment[] | string, source: Omit<StickerSource, 'kind'>, work?: StickerWorkOptions): Promise<void>;
     /** 从导入箱、公开网络候选源和 QQ 自定义表情池看几个新的候选。 */
-    discover(): Promise<void>;
+    discover(work?: StickerWorkOptions): Promise<void>;
     /** 运行时换掉“持续更新的公开网络候选源”（ADR 0132：app 起来、她的 B 站号能用了以后换成 B 站）；make 拿到原来的来源，可以当兜底。perDay 不给就沿用 */
-    setTrend?(make: (previous?: () => Promise<string[]>) => () => Promise<string[]>, perDay?: number): void;
+    setTrend?(make: (previous?: StickerTrendSource) => StickerTrendSource, perDay?: number): void | (() => void);
     /**
      * 给回复模型看的本地收藏清单。不传 context：旧办法，最久没用的 12 张；
      * 传 context（他这一轮说的话）：抽到发表情的这一轮，按他这句话挑 STICKER_SHORTLIST 张最合适的，并写明这一轮要发一个。
@@ -256,9 +259,19 @@ function sourceKey(url: string): string {
     return createHash('sha256').update(url).digest('hex').slice(0, 24);
 }
 
-export async function downloadSticker(url: string): Promise<DownloadedSticker> {
-    return fetchRemoteImage(url, { timeoutMs: 8000, maxBytes: STICKER_MAX_BYTES });
+export async function downloadSticker(url: string, signal?: AbortSignal): Promise<DownloadedSticker> {
+    return fetchRemoteImage(url, { timeoutMs: 8000, maxBytes: STICKER_MAX_BYTES, signal });
 }
+
+async function stickerRead<T>(signal: AbortSignal | undefined, run: () => Promise<T>): Promise<T> {
+    signal?.throwIfAborted();
+    let abort: (() => void) | undefined;
+    const cancelled = signal ? new Promise<never>((_, reject) => { abort = () => reject(signal.reason); signal.addEventListener('abort', abort, { once: true }); }) : undefined;
+    try { const task = Promise.resolve().then(() => { signal?.throwIfAborted(); return run(); }); const result = await (cancelled ? Promise.race([task, cancelled]) : task); signal?.throwIfAborted(); return result; }
+    finally { if (abort) signal?.removeEventListener('abort', abort); }
+}
+
+interface StickerWork { signal?: AbortSignal; mirrors: Promise<void>[] }
 
 const extension: Record<DownloadedSticker['type'], string> = {
     'image/gif': 'gif', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
@@ -281,35 +294,64 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
     const index: StickerIndex = loaded.version === INDEX_VERSION && Array.isArray(loaded.entries) && Array.isArray(loaded.seen) ? loaded : emptyIndex();
     const now = options.now ?? (() => new Date());
     const download = options.download ?? downloadSticker;
-    const pending = new Set<string>();
+    const pending = new Map<string, object>();
     let queue = Promise.resolve();
     let lastDiscoveredAt: number | undefined;
     const libraryMax = options.libraryMax ?? STICKER_LIBRARY_MAX;
-    let trendSource = options.trendDiscover;
-    let trendPerDay = options.trendPerDay;
+    interface TrendLayer { source?: StickerTrendSource; perDay?: number; active: boolean; previous?: TrendLayer }
+    let trendLayer: TrendLayer = { source: options.trendDiscover, perDay: options.trendPerDay, active: true };
+    const activeLayer = (layer: TrendLayer): TrendLayer => { while (!layer.active && layer.previous) layer = layer.previous; return layer; };
+    const active = (work: StickerWork) => work.signal?.throwIfAborted();
+    const note = (work: StickerWork, message: string, confirmed = false) => { if (confirmed || !work.signal?.aborted) { try { options.log(message); } catch { /* Diagnostics cannot change a confirmed operation. */ } } };
+    const inWork = async (work: StickerWorkOptions | undefined, run: (context: StickerWork) => Promise<void>) => {
+        const context: StickerWork = { signal: work?.signal, mirrors: [] };
+        try { active(context); await run(context); } catch (error) { if (!context.signal?.aborted) throw error; }
+        finally { await Promise.all(context.mirrors); }
+    };
 
     const persist = () => writeJsonAtomic(indexPath, index);
     // QQ 收藏的操作串行、隔几秒一个：一张张存，不一股脑发；失败只记日志，本地收藏不受影响，下次发现时补。
     let favQueue = Promise.resolve();
     const favGap = options.favoritesGapMs ?? 2000;
-    const favorite = (task: () => Promise<void>) => {
-        favQueue = favQueue.then(task).catch(error => options.log(`图片表情：QQ 收藏操作失败（${error instanceof Error ? error.message : String(error)}）`))
-            .then(() => favGap > 0 ? new Promise<void>(resolve => setTimeout(resolve, favGap)) : undefined);
-        return favQueue;
+    let favoriteReadyAt = 0;
+    const favorite = (work: StickerWork, task: (dispatched: () => void) => Promise<void>) => {
+        let dispatched = false, settle!: () => void;
+        const completed = new Promise<void>(resolve => { settle = resolve; });
+        const cancelled = () => { if (!dispatched) settle(); };
+        work.signal?.addEventListener('abort', cancelled, { once: true });
+        work.mirrors.push(completed);
+        favQueue = favQueue.then(async () => {
+            try {
+                active(work);
+                const delay = favoriteReadyAt - performance.now();
+                if (delay > 0) {
+                    let timer: ReturnType<typeof setTimeout> | undefined;
+                    try { await stickerRead(work.signal, () => new Promise<void>(resolve => { timer = setTimeout(resolve, delay); })); }
+                    finally { clearTimeout(timer); }
+                }
+                active(work);
+                await task(() => { dispatched = true; work.signal?.removeEventListener('abort', cancelled); });
+            } catch (error) { note(work, `图片表情：QQ 收藏操作失败（${error instanceof Error ? error.message : String(error)}）`, dispatched); }
+            finally { if (dispatched) favoriteReadyAt = performance.now() + favGap; work.signal?.removeEventListener('abort', cancelled); settle(); }
+        });
+        if (work.signal?.aborted) cancelled();
+        return completed;
     };
     // batch：补同步时一批里有一张失败（比如 QQ 收藏满了），这一批剩下的就不再试，免得一小时刷十条同样的失败日志
-    const mirror = (entry: StickerEntry, batch?: { halted: boolean }) => favorite(async () => {
+    const mirror = (entry: StickerEntry, work: StickerWork, batch?: { halted: boolean }) => favorite(work, async dispatched => {
         if (!options.favorites || entry.qq || batch?.halted || !index.entries.includes(entry)) return;
         const file = resolve(options.dir, entry.file);
         if (!existsSync(file)) return;
+        active(work);
         try {
+            dispatched();
             entry.qq = { md5: (await options.favorites.add(file)).toUpperCase() };
         } catch (error) {
             if (batch) batch.halted = true;
             throw error;
         }
         persist();
-        options.log(`图片表情：已加进 QQ 收藏（${entry.id}）`);
+        note(work, `图片表情：已加进 QQ 收藏（${entry.id}）`, true);
     });
     const inboxKey = (path: string) => {
         const stats = statSync(path);
@@ -320,65 +362,66 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
         if (item.isDirectory()) return inboxFiles(path);
         return item.isFile() && item.name.toLowerCase() !== 'urls.txt' ? [path] : [];
     });
-    const enqueue = (url: string, summary: string | undefined, source: StickerSource) => {
-        const key = sourceKey(url);
+    const queued = async (key: string, work: StickerWork, run: () => Promise<void>) => {
+        active(work);
         if (pending.has(key) || index.seen.includes(key)) return Promise.resolve();
-        pending.add(key);
-        const task = queue.then(() => considerOne(url, summary, source))
-            .catch(error => options.log(`图片表情：候选处理失败（${error instanceof Error ? error.message : String(error)}）`))
-            .finally(() => pending.delete(key));
+        const token = {}; pending.set(key, token); let started = false;
+        const release = () => { if (pending.get(key) === token) pending.delete(key); };
+        const task = queue.then(() => { active(work); started = true; return run(); })
+            .catch(error => note(work, `图片表情：候选处理失败（${error instanceof Error ? error.message : String(error)}）`))
+            .finally(release);
         queue = task;
-        return task;
+        try { await stickerRead(work.signal, () => task); }
+        finally { if (started) await task; else if (work.signal?.aborted) release(); }
     };
+    const enqueue = (url: string, summary: string | undefined, source: StickerSource, work: StickerWork) => queued(sourceKey(url), work, () => considerOne(url, summary, source, work));
 
-    async function considerOne(url: string, summary: string | undefined, source: StickerSource): Promise<void> {
+    async function considerOne(url: string, summary: string | undefined, source: StickerSource, work: StickerWork): Promise<void> {
         const key = sourceKey(url);
         // Download once through the SSRF/size guard; the model sees the same bytes we may keep.
-        const image = await download(url);
-        const description = (await options.describe({ url, dataUrl: imageDataUrl(image) })).replace(/\s+/g, ' ').trim().slice(0, 120);
-        if (!description) return reject(key, '看不清内容');
+        const image = await stickerRead(work.signal, () => download(url, work.signal));
+        const description = (await stickerRead(work.signal, () => options.describe({ url, dataUrl: imageDataUrl(image), signal: work.signal }))).replace(/\s+/g, ' ').trim().slice(0, 120);
+        if (!description) return reject(key, '看不清内容', work);
         const screened = options.screen?.(description, source);
-        if (screened) return reject(key, `${screened}（${description}）`);
-        const decision = normalizedDecision(await options.decide(description, summary));
-        if (!decision.keep) return reject(key, `不收（${decision.description || description}）`);
-        keep(key, image, decision, source);
+        active(work);
+        if (screened) return reject(key, `${screened}（${description}）`, work);
+        const decision = normalizedDecision(await stickerRead(work.signal, () => options.decide(description, summary, work.signal)));
+        if (!decision.keep) return reject(key, `不收（${decision.description || description}）`, work);
+        keep(key, image, decision, source, work);
     }
 
-    async function considerInbox(path: string): Promise<void> {
+    async function considerInbox(path: string, work: StickerWork): Promise<void> {
         const key = inboxKey(path);
-        if (pending.has(key) || index.seen.includes(key)) return;
-        pending.add(key);
-        try {
+        active(work);
             const bytes = new Uint8Array(readFileSync(path));
-            if (!bytes.length || bytes.length > STICKER_MAX_BYTES) return reject(key, `${basename(path)} 为空或超过 5 MB`);
+            if (!bytes.length || bytes.length > STICKER_MAX_BYTES) return reject(key, `${basename(path)} 为空或超过 5 MB`, work);
             const type = detectImageType(bytes);
-            if (!type) return reject(key, `${basename(path)} 不是支持的 PNG/JPEG/GIF/WebP`);
+            if (!type) return reject(key, `${basename(path)} 不是支持的 PNG/JPEG/GIF/WebP`, work);
             const dataUrl = `data:${type};base64,${Buffer.from(bytes).toString('base64')}`;
-            const description = (await options.describe({ url: dataUrl, file: path, dataUrl })).replace(/\s+/g, ' ').trim().slice(0, 120);
-            if (!description) return reject(key, `${basename(path)} 看不清内容`);
-            const decision = normalizedDecision(await options.decide(description, basename(path)));
-            if (!decision.keep) return reject(key, `不收 ${basename(path)}（${decision.description || description}）`);
-            keep(key, { bytes, type }, decision, { kind: 'inbox', name: basename(path) });
-        } finally {
-            pending.delete(key);
-        }
+            const description = (await stickerRead(work.signal, () => options.describe({ url: dataUrl, file: path, dataUrl, signal: work.signal }))).replace(/\s+/g, ' ').trim().slice(0, 120);
+            if (!description) return reject(key, `${basename(path)} 看不清内容`, work);
+            const decision = normalizedDecision(await stickerRead(work.signal, () => options.decide(description, basename(path), work.signal)));
+            if (!decision.keep) return reject(key, `不收 ${basename(path)}（${decision.description || description}）`, work);
+            keep(key, { bytes, type }, decision, { kind: 'inbox', name: basename(path) }, work);
     }
 
-    function keep(key: string, image: DownloadedSticker, decision: StickerDecision, source: StickerSource): void {
+    function keep(key: string, image: DownloadedSticker, decision: StickerDecision, source: StickerSource, work: StickerWork): void {
         const hash = createHash('sha256').update(image.bytes).digest('hex');
         const id = hash.slice(0, 12);
         const existing = index.entries.find(entry => entry.id === id);
+        const createdAt = now().toISOString(); active(work);
         if (existing) {
             markSeen(key);
             persist();
-            options.log(`图片表情：已经收藏过 ${existing.description}`);
+            note(work, `图片表情：已经收藏过 ${existing.description}`);
             return;
         }
+        let eviction: string | undefined;
         if (index.entries.length >= libraryMax) {
             const victim = [...index.entries].sort((a, b) => Date.parse(a.lastUsedAt ?? a.createdAt) - Date.parse(b.lastUsedAt ?? b.createdAt))[0]!;
             index.entries.splice(index.entries.indexOf(victim), 1);
             rmSync(join(options.dir, victim.file), { force: true });
-            options.log(`图片表情：收藏已到 ${libraryMax} 个，淘汰最久没用的 ${victim.description}（${victim.id}）`);
+            eviction = `图片表情：收藏已到 ${libraryMax} 个，淘汰最久没用的 ${victim.description}（${victim.id}）`;
         }
         const name = `${id}.${extension[image.type]}`;
         const target = join(options.dir, name);
@@ -389,19 +432,21 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
         }
         const entry: StickerEntry = {
             id, file: name, description: decision.description, tags: decision.tags, source,
-            createdAt: now().toISOString(), used: 0,
+            createdAt, used: 0,
         };
         index.entries.push(entry);
         markSeen(key);
         persist();
-        if (options.favorites) void mirror(entry);
-        options.log(`图片表情：收藏 ${decision.description}（${id}${decision.tags.length ? `；${decision.tags.join('、')}` : ''}）`);
+        if (options.favorites && !work.signal?.aborted) void mirror(entry, work);
+        if (eviction) note(work, eviction);
+        note(work, `图片表情：收藏 ${decision.description}（${id}${decision.tags.length ? `；${decision.tags.join('、')}` : ''}）`);
     }
 
-    function reject(key: string, why: string): void {
+    function reject(key: string, why: string, work: StickerWork): void {
+        active(work);
         markSeen(key);
         persist();
-        options.log(`图片表情：${why}`);
+        note(work, `图片表情：${why}`);
     }
 
     function markSeen(key: string): void {
@@ -410,7 +455,8 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
 
     const publicEntry = (entry: StickerEntry): StickerEntry => ({ ...entry, file: join(options.dir, entry.file) });
     return {
-        consider(message, source) {
+        consider(message, source, work) {
+            return inWork(work, async context => {
             if (typeof message === 'string') return Promise.resolve();
             const tasks = message.flatMap(segment => {
                 const data = segment.data ?? {};
@@ -418,12 +464,15 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                 const url = typeof data.url === 'string' && data.url ? data.url : undefined;
                 if (!url) return [];
                 const summary = typeof data.summary === 'string' && data.summary ? data.summary : undefined;
-                return [enqueue(url, summary, { kind: 'received', ...source })];
+                return [enqueue(url, summary, { kind: 'received', ...source }, context)];
             });
-            return Promise.all(tasks).then(() => undefined);
+            await Promise.all(tasks);
+            });
         },
-        async discover() {
+        discover(work) {
+            return inWork(work, async context => {
             const at = now().getTime();
+            active(context);
             const interval = options.discoveryIntervalMs ?? STICKER_DISCOVERY_INTERVAL_MS;
             if (lastDiscoveredAt !== undefined && at - lastDiscoveredAt < interval) return;
             lastDiscoveredAt = at;
@@ -431,17 +480,15 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
             // 还没进 QQ 收藏的（上线前就收了的、上次失败的）每次补几张，不一次全塞
             if (options.favorites) {
                 const batch = { halted: false };
-                for (const entry of index.entries.filter(item => !item.qq).slice(0, options.favoritesPerSync ?? STICKER_FAVORITES_PER_SYNC)) void mirror(entry, batch);
+                for (const entry of index.entries.filter(item => !item.qq).slice(0, options.favoritesPerSync ?? STICKER_FAVORITES_PER_SYNC)) void mirror(entry, context, batch);
             }
 
             const local = inboxFiles(inboxDir).filter(path => {
                 try { return !index.seen.includes(inboxKey(path)); } catch { return false; }
             }).sort();
             for (const path of local.slice(0, remaining)) {
-                const task = queue.then(() => considerInbox(path))
-                    .catch(error => options.log(`图片表情：导入 ${basename(path)} 失败（${error instanceof Error ? error.message : String(error)}）`));
-                queue = task;
-                await task;
+                await queued(inboxKey(path), context, () => considerInbox(path, context));
+                active(context);
                 remaining--;
             }
 
@@ -452,37 +499,49 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
                 : [];
             for (const url of [...new Set(webUrls)].filter(url => !index.seen.includes(sourceKey(url))).slice(0, remaining)) {
                 const name = (() => { try { return new URL(url).hostname; } catch { return 'urls.txt'; } })();
-                await enqueue(url, undefined, { kind: 'web', name });
+                await enqueue(url, undefined, { kind: 'web', name }, context);
+                active(context);
                 remaining--;
             }
 
             // 公开目录的候选每天最多审看 trendPerDay 个（跨重启也算）：每小时 3 个的话，收藏一天多就被整批换掉，
             // 她就没有「自己的」表情包了。导入箱和 QQ 自定义表情不受这条限制（量本来就小）。
             const day = localDay(now());
+            active(context);
+            const trend = activeLayer(trendLayer), trendPerDay = trend.perDay, trendSource = trend.source;
             const trendLeft = (trendPerDay ?? STICKER_TREND_PER_DAY) - (index.trend?.day === day ? index.trend.count : 0);
             if (remaining > 0 && trendLeft > 0 && trendSource) {
-                const urls = await trendSource();
+                const urls = await stickerRead(context.signal, () => trendSource(context.signal));
                 const fresh = [...new Set(urls)].filter(url => typeof url === 'string' && /^https?:\/\//i.test(url) && !index.seen.includes(sourceKey(url)));
                 for (const url of fresh.slice(0, Math.min(remaining, trendLeft))) {
+                    active(context);
                     index.trend = { day, count: (index.trend?.day === day ? index.trend.count : 0) + 1 };
                     persist();
                     // B 站的图都在 hdslb.com：官方表情包在 /bfs/emote/，评论区图片在别处（ADR 0132）
-                    await enqueue(url, undefined, /(?:^|\.)hdslb\.com\//.test(url.replace(/^https?:\/\//, '')) ? { kind: 'bili', name: url.includes('/bfs/emote/') ? 'emote' : 'comment' } : { kind: 'bqb', name: 'ChineseBQB' });
+                    await enqueue(url, undefined, /(?:^|\.)hdslb\.com\//.test(url.replace(/^https?:\/\//, '')) ? { kind: 'bili', name: url.includes('/bfs/emote/') ? 'emote' : 'comment' } : { kind: 'bqb', name: 'ChineseBQB' }, context);
+                    active(context);
                     remaining--;
                 }
             }
 
             if (remaining > 0 && options.discover) {
-                const urls = await options.discover(new Set(index.entries.flatMap(entry => entry.qq ? [entry.qq.md5] : [])));
+                const urls = await stickerRead(context.signal, () => options.discover!(new Set(index.entries.flatMap(entry => entry.qq ? [entry.qq.md5] : [])), context.signal));
                 const fresh = [...new Set(urls)].filter(url => typeof url === 'string' && /^https?:\/\//i.test(url) && !index.seen.includes(sourceKey(url)));
                 for (const url of fresh.slice(0, remaining)) {
-                    await enqueue(url, undefined, { kind: 'qq-custom' });
+                    await enqueue(url, undefined, { kind: 'qq-custom' }, context);
+                    active(context);
                 }
             }
+            });
         },
         setTrend(make, perDay) {
-            trendSource = make(trendSource);
-            if (perDay !== undefined) trendPerDay = perDay;
+            const previous = activeLayer(trendLayer);
+            const fallback: StickerTrendSource | undefined = previous.source ? signal => {
+                const layer = activeLayer(previous); return layer.source ? layer.source(signal) : Promise.resolve([]);
+            } : undefined;
+            const layer: TrendLayer = { source: make(fallback), perDay: perDay ?? previous.perDay, active: true, previous };
+            trendLayer = layer;
+            return () => { layer.active = false; trendLayer = activeLayer(trendLayer); };
         },
         prompt(context) {
             if (!index.entries.length) return undefined;
@@ -556,7 +615,9 @@ function jsonObject(text: string): Record<string, unknown> {
  * 这是稳定品味，不让每个联系人把她的收藏偏好改来改去。
  */
 export function stickerDecider(llm: AppConfig['llm'], log: (message: string) => void): StickerShelfOptions['decide'] {
-    return async (description, summary) => {
+    return async (description, summary, signal) => {
+        signal?.throwIfAborted();
+        const scoped = (message: string) => { if (!signal?.aborted) log(message); };
         const messages: OpenAIMessage[] = [
             { role: 'system', content: '你替大学女生林梦瑶整理私人 QQ 图片表情收藏。她喜欢可爱、好笑、欠欠的、轻微无语和能自然回朋友的表情；不收藏广告、二维码、政治、色情、猎奇血腥、攻击特定群体、私人照片、只有大段文字或意思看不清的图。真实的政治人物和新闻时政（哪怕配的是玩笑文字、写成反差搞笑）、疫情、战争、宗教、拿枪拿刀指着人或动物、辱骂和脏话、性暗示的图也一律不收；描述里点了真人的名字或头衔，就是真人，不收。只返回 JSON：{"keep":true或false,"description":"不超过30字的客观描述","tags":["1到5个短场景词"]}。不要因为来源于别人就偏爱。' },
             { role: 'user', content: `图片描述：${description}${summary ? `\nQQ 摘要：${summary}` : ''}` },
@@ -564,10 +625,10 @@ export function stickerDecider(llm: AppConfig['llm'], log: (message: string) => 
         try {
             const extraBody: Record<string, unknown> = { ...llm.extraBody, thinking: { type: 'disabled' } };
             delete extraBody.reasoning_effort;
-            const raw = await chatCompletion({
+            const raw = await stickerRead(signal, () => chatCompletion({
                 ...llm, temperature: 0.2, maxTokens: 180,
                 extraBody,
-            }, messages, { log, purpose: 'background' });
+            }, messages, { log: scoped, purpose: 'background', signal }));
             const value = jsonObject(raw);
             return normalizedDecision({
                 keep: value.keep === true,
@@ -575,7 +636,8 @@ export function stickerDecider(llm: AppConfig['llm'], log: (message: string) => 
                 tags: Array.isArray(value.tags) ? value.tags.filter((tag): tag is string => typeof tag === 'string') : [],
             });
         } catch (error) {
-            log(`图片表情：收藏判断失败（${error instanceof Error ? error.message : String(error)}），这张不收`);
+            signal?.throwIfAborted();
+            scoped(`图片表情：收藏判断失败（${error instanceof Error ? error.message : String(error)}），这张不收`);
             return { keep: false, description, tags: [] };
         }
     };

@@ -91,3 +91,15 @@ ADR 0051 让她能发送 QQ 自带小黄脸，ADR 0052 / 0055 让她能读取普
 - 单元：`stickers.test.ts` 14 项（反应识别、排序、抽签频率、提示词），`app.test.ts` 通过；`stickers-boyfriend`（`stickerChance: 1`）27/27 ×3、`qq-faces-boyfriend` 21/21 ×3。
 
 **没做**：货架里的描述是图片模型写的、标签是它自己起的，质量决定能挑到多贴的——现在 29 张来自 ChineseBQB 的动漫风居多，63 张用户发来的更像他们的聊天；要让她更像「一个 20 岁的女生」，货架的来源和筛选（用户 10-12 说的「当下的梗」）仍然是上限。**上线要用户看过 `shelf.html` 并点头，把 `stickers` 从 `collect` 改成 `send`**。
+
+## 2026-11-05：后台收藏按宿主调用归属收尾（记忆审查第二十七批）
+
+真实App注入真实合成货架，held trend/QQ来源/download/describe/decide在stop后仍继续派发、写图片/index和日志；favorites.add已派未回时目录锁提前释放，释放首ACK后还会派第二次add。收藏库是注入资源，不能通过永久全局stop误停其它使用者。新增可选StickerWorkOptions.signal，App派发前登记自身consider/discover（含补回），构造失败和正常stop先abort本scope再等待本scope返回Promise，最后释放目录锁。自定义不合作货架若忽略signal，仍须等它返回，不承诺终止第三方副作用。
+
+货架纯读取/模型队列本地取消、每await后和最后提交前核signal，待处理key以token清理避免旧回调吞掉新调用。调用返回Promise包括由它产生的已派QQ收藏ACK及index收尾；未派mutation取消、不再派队列第二张，已派成功/失败/同步throw都保真实结局。QQ写间隔仍按2秒elapsed，失败批次仍停止后续，未新增重试或收藏策略。没有持久mutation outbox，不把ACK后index写失败或强杀声称原子事务。
+
+BQB目录、下载、实际视觉/判断器、QQ纯发现与B站候选逐层传signal；BQB晚结果不再发布catalog/log，B站account/emote/popular/body/comment/gap/fallback全部守取消。已完成有效缓存不回滚，新的调用仍可重用来源。setTrend返回可选归还函数，活跃层与动态previous代理防旧App停止覆盖后来安装者、也防后来者结束时复活已结束前任；App正常/构造收尾都归还自己安装的来源，不永久关闭共享货架。原频率、来源筛选、收藏配额、发送权限及抽签保持。
+
+本轮新确认但尚未处理：容量淘汰先删旧图片，后写index遇EROFS时，磁盘index仍引用已经删除的旧图。memory-sticker-eviction-io.mjs只报告该合成故障事实，exit0不是正确性回归；需要独立图片/index/RAM发布与失败恢复设计，不将本次生命周期修复等同持久事务修复。
+
+整合时类型检查揭示判断器传入signal而共用LlmDeps原未支持。追加4项合成fetch/body/retry等待/预取消真红及1项默认退避取消回归：chatCompletion新增可选signal，排队进入complete前/每次派发/每await后/错误重试前守取消，实际fetch合并超时与宿主信号，默认退避可清计时器。未传signal调用保持原行为，不把本地取消当远端worker已停止；不合作注入fetch/sleep的任意副作用不受此协议保证。

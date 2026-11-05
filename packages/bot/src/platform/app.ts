@@ -336,6 +336,29 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
         return passiveDrain;
     };
     construction.onFailure(stopPassiveReads);
+    // The injected shelf may be shared. Own only calls initiated by this App;
+    // their promises include already-dispatched favorite mutations and receipts.
+    const stickerLifetime = new AbortController(), stickerJobs = new Set<Promise<void>>();
+    let stickerDrain: Promise<void> | undefined;
+    let releaseStickerTrend: (() => void) | undefined;
+    const ownStickerWork = (work: (signal: AbortSignal) => Promise<void>): Promise<void> => {
+        if (stopped || stickerLifetime.signal.aborted) return Promise.resolve();
+        const task = Promise.resolve().then(() => {
+            if (!stopped && !stickerLifetime.signal.aborted) return work(stickerLifetime.signal);
+        }).catch(error => {
+            if (!stopped && !stickerLifetime.signal.aborted) log(`图片表情：后台处理失败（${describeError(error)}）`);
+        }).finally(() => { stickerJobs.delete(task); });
+        stickerJobs.add(task); return task;
+    };
+    const stopStickerWork = () => {
+        if (stickerLifetime.signal.aborted) return stickerDrain;
+        stickerLifetime.abort();
+        try { releaseStickerTrend?.(); } catch (error) { try { log(`图片表情：归还来源失败（${describeError(error)}）`); } catch { /* Continue draining owned work. */ } }
+        releaseStickerTrend = undefined;
+        if (stickerJobs.size) stickerDrain = Promise.allSettled([...stickerJobs]).then(() => {});
+        return stickerDrain;
+    };
+    construction.onFailure(stopStickerWork);
     // The real account transport also persists breaker observations. Even a
     // nominal GET must retain its complete guard settlement while stopping.
     const accountGuardSettlements = new Set<Promise<void>>();
@@ -1177,7 +1200,10 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     if (config.biliStickers && stickers?.setTrend) {
         const source = bilibiliAccountSource();
         if (!source) log('B 站表情包：biliStickers 开着，但要 bilibiliAccount 也开着，还用原来的公开目录');
-        else stickers.setTrend(previous => biliStickerDiscover({ account: source, fetch: (url, init) => fetch(url, init) as never, now: () => new Date(worldNow()), log }, previous), BILI_STICKER_PER_DAY);
+        else {
+            const release = stickers.setTrend(previous => biliStickerDiscover({ account: source, fetch: (url, init) => fetch(url, init) as never, now: () => new Date(worldNow()), log: message => { if (!stopped) log(message); } }, previous), BILI_STICKER_PER_DAY);
+            if (typeof release === 'function') releaseStickerTrend = release;
+        }
     }
 
     /** 分享之后在视频下评论并 @ 他（ADR 0089，配置 bilibiliComment）：没配好就记一行日志、不评论 */
@@ -1630,8 +1656,7 @@ ${body}
             foodRetryTimer.unref();
         }).catch(error => log(`照片货架：找吃的照片出错（${error instanceof Error ? error.message : String(error)}）`));
     };
-    const discoverStickers = () => void collectingStickers?.discover()
-        .catch(error => log(`图片表情：读取导入箱和 QQ 自定义表情失败（${error instanceof Error ? error.message : String(error)}）`));
+    const discoverStickers = () => { if (collectingStickers) void ownStickerWork(signal => collectingStickers.discover({ signal })); };
     /** Hindsight 健康检查的结果（状态页用到时才探，见 status()） */
     let health: MemoryEvent | undefined;
     let probing = false;
@@ -1844,7 +1869,7 @@ ${body}
         }
         // 只从名单联系人收到的图片表情里挑；看图、判断、下载都在后台串行，不挡住这条消息的正常回复。
         if (collectingStickers && config.contacts.some(contact => contact.qq === event.user_id && contact.tier === 'boyfriend')) {
-            void collectingStickers.consider(event.message, { from: event.user_id, messageId: event.message_id });
+            void ownStickerWork(signal => collectingStickers.consider(event.message, { from: event.user_id, messageId: event.message_id }, { signal }));
         }
         const reader = readerFor(event.user_id);
         reservation.owned = true;
@@ -2178,7 +2203,7 @@ ${body}
                     const backReader = readerFor(contact.qq);
                     if (collectingStickers && contact.tier === 'boyfriend') {
                         for (const message of staged.filter(message => (message.sender?.user_id ?? message.user_id) !== selfId)) {
-                            void collectingStickers.consider(message.message, { from: contact.qq, messageId: message.message_id });
+                            void ownStickerWork(signal => collectingStickers.consider(message.message, { from: contact.qq, messageId: message.message_id }, { signal }));
                         }
                     }
                     if (backReader && staged.some(m => backReader.needs(m.message))) {
@@ -2419,6 +2444,7 @@ ${body}
             const jokesDrain = jokesOwner?.stop();
             const idiomsDrain = idiomsOwner?.stop();
             const passiveReadDrain = stopPassiveReads();
+            const stickerWorkDrain = stopStickerWork();
             const accountGuardDrains = [...accountGuardSettlements];
             const weatherDrains = [...weatherRefreshes];
             const contextDrains = [...contextSummaries].map(summarize => summarize.stop());
@@ -2456,7 +2482,7 @@ ${body}
             if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);
-            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, passiveReadDrain, presenceDrain, browsingDrain, deviceDrain, ...accountGuardDrains, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
+            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, deviceDrain, ...accountGuardDrains, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
                     for (const result of results) if (result.status === 'rejected') {

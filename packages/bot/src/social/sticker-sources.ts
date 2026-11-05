@@ -47,17 +47,26 @@ export interface BqbOptions {
     pool?: number;
     /** 目录缓存多久重新取一次 */
     maxAgeMs?: number;
-    fetchJson?: (url: string) => Promise<unknown>;
+    fetchJson?: (url: string, signal?: AbortSignal) => Promise<unknown>;
     now?: () => Date;
     log: (message: string) => void;
 }
 
 const plain = (title: string) => title.replace(/[^\p{L}\p{N}]/gu, '');
 
-async function defaultFetchJson(url: string): Promise<unknown> {
-    const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+async function sourceRead<T>(signal: AbortSignal | undefined, run: () => Promise<T>): Promise<T> {
+    signal?.throwIfAborted();
+    let abort: (() => void) | undefined;
+    const cancelled = signal ? new Promise<never>((_, reject) => { abort = () => reject(signal.reason); signal.addEventListener('abort', abort, { once: true }); }) : undefined;
+    try { const pending = Promise.resolve().then(() => { signal?.throwIfAborted(); return run(); }); const value = await (cancelled ? Promise.race([pending, cancelled]) : pending); signal?.throwIfAborted(); return value; }
+    finally { if (abort) signal?.removeEventListener('abort', abort); }
+}
+
+async function defaultFetchJson(url: string, signal?: AbortSignal): Promise<unknown> {
+    const timeout = AbortSignal.timeout(20_000);
+    const response = await sourceRead(signal, () => fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout }));
     if (!response.ok) throw new Error(`目录返回 ${response.status}`);
-    return response.json();
+    return sourceRead(signal, () => response.json());
 }
 
 /** 目录里的一项是不是我们能用的：类别在名单内、不在黑名单，大小合适 */
@@ -112,37 +121,41 @@ export function bqbPool(items: readonly BqbItem[], day: string, pool: number): s
 const localDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** 给收藏库的 discover：返回当天的候选图地址 */
-export function bqbDiscover(options: BqbOptions): () => Promise<string[]> {
+export function bqbDiscover(options: BqbOptions): (signal?: AbortSignal) => Promise<string[]> {
     const allow = options.allow ?? BQB_DEFAULT_ALLOW;
     const now = options.now ?? (() => new Date());
     const maxAge = options.maxAgeMs ?? 7 * 86_400_000;
     const fetchJson = options.fetchJson ?? defaultFetchJson;
     const cachePath = join(options.dir, 'bqb-catalog.json');
-    return async () => {
+    return async signal => {
+        signal?.throwIfAborted();
         mkdirSync(options.dir, { recursive: true });
         let cache = readJsonOr<BqbCache | undefined>(cachePath, undefined, options.log);
         const allowKey = allow.join('|');
         const fresh = cache && cache.version === CACHE_VERSION && cache.allowKey === allowKey && now().getTime() - cache.fetchedAt < maxAge;
+        signal?.throwIfAborted();
         if (!fresh) {
             try {
-                const raw = await fetchJson(`${BQB_BASE}catalog/search.json`);
+                const raw = await sourceRead(signal, () => fetchJson(`${BQB_BASE}catalog/search.json`, signal));
                 if (!Array.isArray(raw)) throw new Error('目录格式不对');
                 const items = raw.map(item => acceptBqbItem(item, allow)).filter((item): item is BqbItem => !!item);
                 if (!items.length) throw new Error('目录里没有符合名单的图');
                 const categories = [...new Set(raw.map(item => (item && typeof item === 'object' && typeof (item as Record<string, unknown>).categoryTitle === 'string' ? plain((item as Record<string, string>).categoryTitle!) : '')).filter(Boolean))].sort();
                 const added = cache?.categories ? categories.filter(name => !cache!.categories!.includes(name)) : [];
                 cache = { version: CACHE_VERSION, fetchedAt: now().getTime(), allowKey, items, categories };
+                signal?.throwIfAborted();
                 writeJsonAtomic(cachePath, cache);
-                options.log(`表情来源 bqb：目录更新，${items.length} 张可用`);
+                if (!signal?.aborted) options.log(`表情来源 bqb：目录更新，${items.length} 张可用`);
                 // 维护者加了新类别（热门的新梗常常是新类别）：不自动收，只记一行，等人看过再进名单
-                if (added.length) options.log(`表情来源 bqb：目录里出现新类别（没在名单内，不会收）：${added.join('、')}`);
+                if (added.length && !signal?.aborted) options.log(`表情来源 bqb：目录里出现新类别（没在名单内，不会收）：${added.join('、')}`);
             } catch (error) {
+                signal?.throwIfAborted();
                 if (!cache?.items?.length) throw error;
                 options.log(`表情来源 bqb：目录更新失败（${error instanceof Error ? error.message : String(error)}），继续用旧缓存`);
             }
         }
         // 缓存里的项在读出时再过一遍闸门：名单收紧、黑名单加词都立刻生效，不用等缓存过期
         const items = cache!.items.filter(item => acceptBqbItem({ ...item, categoryTitle: item.category, width: MIN_SIDE, height: MIN_SIDE }, allow));
-        return bqbPool(items, localDay(now()), options.pool ?? 40);
+        const pool = bqbPool(items, localDay(now()), options.pool ?? 40); signal?.throwIfAborted(); return pool;
     };
 }
