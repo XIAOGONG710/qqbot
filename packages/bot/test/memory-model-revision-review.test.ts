@@ -48,19 +48,19 @@ function revised(f: ReturnType<typeof fixture>) {
     return f.memory.sync(a, names(a.name), f.history.load(a.qq));
 }
 
-test('正文revision后首次getter不返回旧缓存，后台可读供应商fresh；其他联系人缓存保留', async () => {
+test('正文revision后模型保持派生屏障；其他私人库可用，公共第三人模型也受保护', async () => {
     const f = fixture();
     try {
         for (const person of [a, b]) { f.append(person.qq); await f.memory.sync(person, names(person.name), f.history.load(person.qq)); }
         f.setModels(OLD); await warm(f, a); await warm(f, b);
-        const otherRelationship = f.memory.relationship(b), otherImpression = f.memory.impression(b), reads = f.reads.length;
+        const otherRelationship = f.memory.relationship(b), reads = f.reads.length;
         f.setModels(FRESH); await revised(f);
         assert.ok([...f.documents].filter(([key]) => key.startsWith(f.memory.bankId(a) + '/')).every(([, item]) => !item.content.includes(OLD)));
-        assert.equal(f.memory.relationship(b), otherRelationship); assert.equal(f.memory.impression(b), otherImpression);
-        assert.equal(f.reads.length, reads, 'revision不使其他联系人缓存重取');
-        assert.ok(!f.memory.relationship(a)?.includes(OLD)); assert.ok(!f.memory.impression(a)?.includes(OLD));
+        assert.equal(f.memory.relationship(b), otherRelationship); assert.equal(f.memory.impression(b), undefined);
+        assert.equal(f.reads.length, reads, '无关私人模型不重取，脏公共模型不读取');
+        assert.equal(f.memory.relationship(a), undefined); assert.equal(f.memory.impression(a), undefined);
         await tick(); await tick();
-        assert.ok(f.memory.relationship(a)?.includes(FRESH)); assert.ok(f.memory.impression(a)?.includes(FRESH));
+        assert.equal(f.memory.relationship(a), undefined); assert.equal(f.memory.impression(a), undefined);
     } finally { f.release(); await f.memory.stop(); }
 });
 
@@ -75,12 +75,12 @@ test('revision前已派发旧model读取晚返回不能重新填入旧正文', a
         f.unhold();
         assert.ok(!f.memory.relationship(a)?.includes(OLD)); assert.ok(!f.memory.impression(a)?.includes(OLD));
         await tick(); await tick();
-        assert.ok(f.memory.relationship(a)?.includes(FRESH)); assert.ok(f.memory.impression(a)?.includes(FRESH));
+        assert.equal(f.memory.relationship(a), undefined); assert.equal(f.memory.impression(a), undefined);
         f.release(); await tick(); await tick();
         assert.equal(pending, 2);
         assert.ok(!f.memory.relationship(a)?.includes(OLD)); assert.ok(!f.memory.impression(a)?.includes(OLD));
         await tick(); await tick();
-        assert.ok(f.memory.relationship(a)?.includes(FRESH)); assert.ok(f.memory.impression(a)?.includes(FRESH));
+        assert.equal(f.memory.relationship(a), undefined); assert.equal(f.memory.impression(a), undefined);
     } finally { f.release(); await f.memory.stop(); }
 });
 

@@ -941,6 +941,25 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         ? '混合记忆：自动记底账，她写 <<记住：…>> / <<日记：…>> 的另记；自动日记关'
         : diaries ? `她的日记：她的每一天结束后写一篇存进公共记忆（没聊天的日子也写，停过的补最近 ${DIARY_BACKFILL_DAYS} 天）` : '她的日记：不写（用到的档位卡上都没有作息）');
     const recalledMemoryPending = new Set<number>();
+    // 旧进度可能已覆盖文档而供应商模型仍旧；在回复器能读模型前恢复持久屏障。
+    if (memory) for (const contact of config.contacts) {
+        let snapshot: StoredMessage[];
+        try { snapshot = history.load(contact.qq); }
+        catch (error) {
+            memory.noteRecall(contact);
+            log(`记忆历史来源尚未确认，派生读取保留屏障（${describeError(error)}）`);
+            continue;
+        }
+        if (snapshot.some(message => message.recalled)) memory.noteRecall(contact, snapshot);
+    }
+    function observeRecalledMemory(contact: Contact): void {
+        if (!memory) return;
+        recalledMemoryPending.add(contact.qq);
+        let snapshot: StoredMessage[];
+        try { snapshot = history.load(contact.qq); }
+        catch (error) { memory.noteRecall(contact); throw error; }
+        memory.noteRecall(contact, snapshot);
+    }
     function syncContactMemory(contact: Contact): void {
         if (!memory || stopped) return;
         try {
@@ -3608,14 +3627,16 @@ ${body}
             // 想伤害自己的话撤回了也照样看到（安全比像人优先，ADR 0068）；回过的她已经看过
             try {
                 if (chatHistory.recall(contact.qq, event.message_id, content => Boolean(detectCrisis(content)))) {
-                    if (memory) recalledMemoryPending.add(contact.qq);
+                    observeRecalledMemory(contact);
                     const pending = chatHistory.pendingIncoming(contact.qq).some(entry => entry.withdrawn && entry.source.messageId === event.message_id);
                     log(pending ? `[${contact.qq}] 他撤回了一条待处理消息，已保存撤回意图` : `[${contact.qq}] 他撤回了一条还没回的消息，记成「撤回了一条消息」`);
                 }
                 syncRecalledMemory(contact.qq);
             } catch (error) {
                 // 只有RAM已经接受的新观察才需要记忆更新；单纯读错不能授权同步旧正文。
-                if (memory && chatHistory.recallRevision(contact.qq) !== before) recalledMemoryPending.add(contact.qq);
+                if (memory && chatHistory.recallRevision(contact.qq) !== before) {
+                    try { observeRecalledMemory(contact); } catch (guardError) { incomingFailure(guardError); }
+                }
                 incomingFailure(error);
             }
         },
