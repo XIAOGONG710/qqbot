@@ -3083,8 +3083,11 @@ ${body}
             const qq = event.user_id;
             const planner = planners.get(qq);
             void (planner ? planner.fireNow() : Promise.resolve('主动消息没开'))
-                .then(reason => (reason ? transport.sendPrivateText(qq, `（现在不能主动找你：${reason}）`) : undefined))
-                .catch(error => log(`[${qq}] 「/主动」出错：${error instanceof Error ? error.message : String(error)}`));
+                .then(reason => {
+                    if (!reason || stopped) return;
+                    sendOwnedNotice(() => transport.sendPrivateText(qq, `（现在不能主动找你：${reason}）`), () => {},
+                        error => log(`[${qq}] 「/主动」出错：${error instanceof Error ? error.message : String(error)}`));
+                }, error => { if (!stopped) log(`[${qq}] 「/主动」出错：${error instanceof Error ? error.message : String(error)}`); });
             return;
         }
         // 他发的设备命令（ADR 0148）：「批准」「拒绝」「/屏幕」「/摄像头」「/设备」，只认纯文字、只认男朋友档的他；
