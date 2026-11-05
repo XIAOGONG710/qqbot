@@ -7,13 +7,18 @@
 //   POST /v1/default/banks/{bank_id}/mental-models/{id}/refresh    设定改了之后手动刷新一次
 //   GET  /v1/default/banks/{bank_id}/entities                     公共库的实体名（ADR 0017）
 //   GET  /v1/default/banks/{bank_id}/documents/{document_id}      读回以前的日记（ADR 0018 周记）
-// 只有模拟器（sim/，ADR 0005）用的：
+// 模拟器与有持久屏障的派生修复使用：
 //   GET    /v1/default/banks/{bank_id}/operations[/{id}]           后台任务（等抽取、整合、刷新做完）
+//   GET    /v1/default/banks/{bank_id}/stats?refresh=true           鲜统计证据
+//   GET    /v1/default/banks/{bank_id}/documents                  完整来源清单
+//   POST   /v1/default/banks/{bank_id}/mental-models/{id}/clear   清已归属模型正文
+// 仅模拟器清理或显式隐私遗忘使用：
 //   DELETE /v1/default/banks/{bank_id}                             删掉测试 bank
 // 出错（连不上、超时、非 2xx）一律抛 HindsightError，由调用方记日志，不在这里吞掉。
 
 import { describeError } from './transient-io.ts';
-import { stateObject } from './state-schema.ts';
+import { stateObject, stateTimestamp } from './state-schema.ts';
+import { createHash } from 'node:crypto';
 
 /** Transport ceiling, independent of the server's token budgets. */
 export const HINDSIGHT_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
@@ -91,7 +96,9 @@ export interface MentalModelRequest {
     tags: string[];
     max_tokens: number;
     /** budget：刷新时检索、迭代的预算（不写是 mid） */
-    trigger: { refresh_after_consolidation: boolean; min_refresh_interval_seconds: number; budget?: 'low' | 'mid' | 'high' };
+    trigger: { refresh_after_consolidation: boolean; min_refresh_interval_seconds: number; budget?: 'low' | 'mid' | 'high';
+        mode?: 'full' | 'delta'; exclude_mental_models?: boolean; fact_types?: ('world' | 'experience' | 'observation')[];
+        include_chunks?: boolean; tag_groups?: RepairTagGroup[] | null; tags_match?: 'all_strict'; refresh_cron?: string | null };
 }
 
 export interface MentalModel {
@@ -104,7 +111,58 @@ export type RetentionStatus = 'not_found' | 'pending' | 'processing' | 'complete
 const RETENTION_STATUSES: readonly string[] = ['not_found', 'pending', 'processing', 'completed', 'failed', 'cancelled'];
 const operationUuid = (value: string): boolean => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
-export interface HindsightApi {
+export type RepairTagGroup = { tags: string[]; match: 'all_strict' | 'any_strict'; resolve?: 'exact' } | { not: RepairTagGroup };
+export interface RepairStats { pending_consolidation: number; failed_consolidation: number; last_memory_write_at: string | null }
+export interface RepairOperation { operation_id: string; task_type: string; status: 'pending' | 'processing' | 'failed' | 'cancelled'; mental_model_id: string | null }
+export interface RepairModelMetadata { id: string; bank_id: string; name: string; tags: string[]; last_memory_seen_at: string | null; last_refreshed_at: string | null }
+export interface RepairModelEvidence extends RepairModelMetadata {
+    content: string | null; source_query: string; trigger: Record<string, unknown>; is_stale: boolean;
+    /** 客户端计算的证据字段，不是供应商返回字段；safe_configuration仅指暂停自动刷新时的硬配置。 */
+    safe_configuration: boolean; configuration_hash: string;
+}
+export interface RepairDocument { id: string; bank_id: string; content_hash: string | null; tags: string[] }
+export type RepairRefreshOutcome = 'content_written' | 'content_unchanged' | 'content_preserved_no_new_facts'
+    | 'refresh_failed_empty_candidate' | 'refresh_failed_delta_not_applied' | 'refresh_failed_structured_output' | 'refresh_failed_error';
+export interface RepairRefreshOperation { operation_id: string; operation_type: 'refresh_mental_model' | null; mental_model_id: string | null; status: RetentionStatus; outcome: RepairRefreshOutcome | null }
+export interface DerivedRepairApi {
+    repairStats(bankId: string): Promise<RepairStats>;
+    repairActiveOperations(bankId: string): Promise<RepairOperation[]>;
+    repairModels(bankId: string): Promise<RepairModelMetadata[]>;
+    repairDocuments(bankId: string): Promise<RepairDocument[]>;
+    repairModel(bankId: string, modelId: string): Promise<RepairModelEvidence>;
+    repairConfigureModel(bankId: string, modelId: string): Promise<RepairModelEvidence>;
+    repairClearModel(bankId: string, modelId: string): Promise<RepairModelEvidence>;
+    repairRefreshModel(bankId: string, modelId: string): Promise<string>;
+    repairRefreshOperation(bankId: string, operationId: string): Promise<RepairRefreshOperation>;
+    repairRestoreAutomatic(bankId: string, modelId: string, cadence: number, autoEnabled?: boolean): Promise<RepairModelEvidence>;
+}
+const repairText = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && !/[\x00-\x1f\x7f]/.test(value);
+const repairCount = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0;
+const repairTime = (value: unknown) => value == null || stateTimestamp(value);
+const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical) : stateObject(value)
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+const repairGroups: RepairTagGroup[] = [{ tags: ['qq-private'], match: 'all_strict', resolve: 'exact' },
+    { not: { tags: ['diary', 'week', 'phase'], match: 'any_strict', resolve: 'exact' } }];
+export function isSafeRepairModel(model: Pick<RepairModelEvidence, 'trigger'>, automatic = false): boolean {
+    const t = model.trigger;
+    return t.mode === 'full' && t.exclude_mental_models === true && t.include_chunks === false
+        && Array.isArray(t.fact_types) && t.fact_types.length === 2 && t.fact_types.includes('world') && t.fact_types.includes('experience')
+        && t.refresh_after_consolidation === automatic && t.refresh_cron == null && repairCount(t.min_refresh_interval_seconds)
+        && t.tags_match === 'all_strict' && JSON.stringify(canonical(t.tag_groups)) === JSON.stringify(canonical(repairGroups));
+}
+export function repairModelConfigHash(model: Pick<RepairModelEvidence, 'id' | 'name' | 'source_query' | 'tags' | 'trigger'>): string {
+    return createHash('sha256').update(JSON.stringify(canonical({ id: model.id, name: model.name, source_query: model.source_query, tags: model.tags, trigger: model.trigger }))).digest('hex');
+}
+/** v0.10.2 sanitize_text + SHA256(UTF8), one MemoryItem per document; 保留合法emoji码点。 */
+export function repairDocumentContentHash(content: string): string {
+    let sanitized = '';
+    for (const point of content) { const code = point.codePointAt(0)!;
+        if (!(code <= 8 || code === 11 || code === 12 || code >= 14 && code <= 31 || code === 127 || code >= 0xd800 && code <= 0xdfff)) sanitized += point;
+    }
+    return createHash('sha256').update(sanitized, 'utf8').digest('hex');
+}
+
+export interface HindsightApi extends Partial<DerivedRepairApi> {
     putBank(bankId: string, config: BankConfig): Promise<void>;
     retain(bankId: string, item: MemoryItem): Promise<void>;
     /** 可恢复的异步提交：调用方须先持久UUID与不可变请求；成功仅代表受理，不代表完成。 */
@@ -145,6 +203,112 @@ export class HindsightClient implements HindsightApi {
     constructor(baseUrl: string, timeoutMs: number) {
         this.#baseUrl = baseUrl.replace(/\/+$/, '');
         this.#timeoutMs = timeoutMs;
+    }
+
+    #repairRemaining(): () => number {
+        if (!Number.isSafeInteger(this.#timeoutMs) || this.#timeoutMs <= 0 || this.#timeoutMs > 2_147_483_647) throw new HindsightError('记忆修复超时配置无效');
+        const deadline = performance.now() + this.#timeoutMs;
+        return () => { const left = Math.ceil(deadline - performance.now()); if (left <= 0) throw new HindsightError('记忆修复证据请求超时'); return left; };
+    }
+    #repairError(): never { throw new HindsightError('记忆修复证据格式无效'); }
+    #repairMetadata(value: unknown, bank: string): RepairModelMetadata {
+        if (!stateObject(value) || !repairText(value.id) || value.bank_id !== bank || typeof value.name !== 'string' || !value.name.trim()
+            || !Array.isArray(value.tags) || !value.tags.every(repairText) || !repairTime(value.last_memory_seen_at) || !repairTime(value.last_refreshed_at)) return this.#repairError();
+        return { id: value.id, bank_id: bank, name: value.name, tags: [...value.tags], last_memory_seen_at: value.last_memory_seen_at as string ?? null,
+            last_refreshed_at: value.last_refreshed_at as string ?? null };
+    }
+    #repairEvidence(value: unknown, bank: string, id: string): RepairModelEvidence {
+        const metadata = this.#repairMetadata(value, bank);
+        if (!stateObject(value) || metadata.id !== id || !(value.content == null || typeof value.content === 'string')
+            || typeof value.source_query !== 'string' || !value.source_query.trim() || !stateObject(value.trigger) || typeof value.is_stale !== 'boolean') return this.#repairError();
+        const result = { ...metadata, content: value.content as string ?? null, source_query: value.source_query, trigger: structuredClone(value.trigger),
+            is_stale: value.is_stale, safe_configuration: false, configuration_hash: '' };
+        result.safe_configuration = isSafeRepairModel(result); result.configuration_hash = repairModelConfigHash(result); return result;
+    }
+    async #repairPages<T extends { id?: string; operation_id?: string }>(path: string, field: 'items' | 'operations', parse: (row: unknown) => T, remaining: () => number, bank?: string): Promise<T[]> {
+        const out: T[] = [], seen = new Set<string>(); let total: number | undefined;
+        for (let offset = 0;;) {
+            const page: unknown = await this.#request('GET', `${path}${path.includes('?') ? '&' : '?'}limit=100&offset=${offset}`, undefined, remaining());
+            if (!stateObject(page) || !repairCount(page.total) || page.limit !== 100 || page.offset !== offset
+                || bank !== undefined && page.bank_id !== bank || !Array.isArray(page[field])
+                || total !== undefined && page.total !== total || page[field].length !== Math.min(100, page.total - offset)) return this.#repairError();
+            total = page.total;
+            for (const value of page[field]) { const row = parse(value), id = row.operation_id ?? row.id!;
+                if (seen.has(id)) return this.#repairError(); seen.add(id); out.push(row); }
+            offset += page[field].length;
+            if (offset === total) return out;
+        }
+    }
+    async repairStats(bankId: string): Promise<RepairStats> {
+        const remaining = this.#repairRemaining();
+        const value: unknown = await this.#request('GET', `${this.#bank(bankId)}/stats?refresh=true`, undefined, remaining());
+        if (!stateObject(value) || value.bank_id !== bankId || !repairCount(value.pending_consolidation) || !repairCount(value.failed_consolidation)
+            || !repairTime(value.last_memory_write_at)) return this.#repairError();
+        return { pending_consolidation: value.pending_consolidation, failed_consolidation: value.failed_consolidation, last_memory_write_at: value.last_memory_write_at as string ?? null };
+    }
+    async repairActiveOperations(bankId: string): Promise<RepairOperation[]> {
+        const remaining = this.#repairRemaining(), out: RepairOperation[] = [];
+        // cancelled/failed不是“worker已停止”的证据，旧取消任务也不能作为空闲跳过。
+        for (const status of ['pending', 'processing', 'failed', 'cancelled'] as const) out.push(...await this.#repairPages(`${this.#bank(bankId)}/operations?status=${status}&exclude_parents=false`, 'operations', value => {
+            if (!stateObject(value) || typeof value.operation_id !== 'string' || !operationUuid(value.operation_id) || !repairText(value.task_type)
+                || value.status !== status || value.operation_type != null && value.operation_type !== value.task_type
+                || !(value.mental_model_id == null || repairText(value.mental_model_id))) return this.#repairError();
+            return { operation_id: value.operation_id, task_type: value.task_type, status, mental_model_id: value.mental_model_id as string ?? null };
+        }, remaining, bankId));
+        if (new Set(out.map(row => row.operation_id)).size !== out.length) return this.#repairError();
+        return out;
+    }
+    async repairModels(bankId: string): Promise<RepairModelMetadata[]> {
+        return this.#repairPages(`${this.#bank(bankId)}/mental-models?detail=metadata`, 'items', row => this.#repairMetadata(row, bankId), this.#repairRemaining());
+    }
+    async repairDocuments(bankId: string): Promise<RepairDocument[]> {
+        return this.#repairPages(`${this.#bank(bankId)}/documents`, 'items', row => {
+            if (!stateObject(row) || !repairText(row.id) || row.bank_id !== bankId || !(row.content_hash == null || typeof row.content_hash === 'string' && /^[a-f0-9]{64}$/.test(row.content_hash))
+                || !Array.isArray(row.tags) || !row.tags.every(repairText)) return this.#repairError();
+            return { id: row.id, bank_id: bankId, content_hash: row.content_hash as string ?? null, tags: [...row.tags] };
+        }, this.#repairRemaining());
+    }
+    async repairModel(bankId: string, modelId: string): Promise<RepairModelEvidence> {
+        const value = await this.#request('GET', `${this.#bank(bankId)}/mental-models/${encodeURIComponent(modelId)}`, undefined, this.#repairRemaining()());
+        return this.#repairEvidence(value, bankId, modelId);
+    }
+    async #repairConfigure(bankId: string, modelId: string, automatic: boolean, cadence?: number): Promise<RepairModelEvidence> {
+        if (cadence !== undefined && !repairCount(cadence) || typeof automatic !== 'boolean') return this.#repairError();
+        const trigger = { mode: 'full', exclude_mental_models: true, fact_types: ['world', 'experience'], include_chunks: false,
+            refresh_after_consolidation: automatic, refresh_cron: null, tag_groups: repairGroups, tags_match: 'all_strict',
+            ...(cadence !== undefined ? { min_refresh_interval_seconds: cadence } : {}) };
+        const value = await this.#request('PATCH', `${this.#bank(bankId)}/mental-models/${encodeURIComponent(modelId)}`, { trigger }, this.#repairRemaining()());
+        const model = this.#repairEvidence(value, bankId, modelId);
+        if (!isSafeRepairModel(model, automatic) || cadence !== undefined && model.trigger.min_refresh_interval_seconds !== cadence) return this.#repairError();
+        return model;
+    }
+    repairConfigureModel(bankId: string, modelId: string): Promise<RepairModelEvidence> { return this.#repairConfigure(bankId, modelId, false); }
+    repairRestoreAutomatic(bankId: string, modelId: string, cadence: number, autoEnabled = true): Promise<RepairModelEvidence> { return this.#repairConfigure(bankId, modelId, autoEnabled, cadence); }
+    async repairClearModel(bankId: string, modelId: string): Promise<RepairModelEvidence> {
+        const value = await this.#request('POST', `${this.#bank(bankId)}/mental-models/${encodeURIComponent(modelId)}/clear`, undefined, this.#repairRemaining()());
+        const model = this.#repairEvidence(value, bankId, modelId);
+        if (model.content !== '' || !isSafeRepairModel(model)) return this.#repairError(); return model;
+    }
+    async repairRefreshModel(bankId: string, modelId: string): Promise<string> {
+        const value: unknown = await this.#request('POST', `${this.#bank(bankId)}/mental-models/${encodeURIComponent(modelId)}/refresh`, undefined, this.#repairRemaining()());
+        if (!stateObject(value) || value.status !== 'queued' || typeof value.operation_id !== 'string' || !operationUuid(value.operation_id)) return this.#repairError();
+        return value.operation_id;
+    }
+    async repairRefreshOperation(bankId: string, operationId: string): Promise<RepairRefreshOperation> {
+        if (!operationUuid(operationId)) return this.#repairError();
+        const value: unknown = await this.#request('GET', `${this.#bank(bankId)}/operations/${encodeURIComponent(operationId)}`, undefined, this.#repairRemaining()());
+        if (!stateObject(value) || value.operation_id !== operationId || typeof value.status !== 'string' || !RETENTION_STATUSES.includes(value.status)) return this.#repairError();
+        if (value.status === 'not_found') {
+            if (value.operation_type != null || value.mental_model_id != null) return this.#repairError();
+            return { operation_id: operationId, operation_type: null, mental_model_id: null, status: 'not_found', outcome: null };
+        }
+        if (value.operation_type !== 'refresh_mental_model' || !repairText(value.mental_model_id)) return this.#repairError();
+        const outcomes: readonly string[] = ['content_written', 'content_unchanged', 'content_preserved_no_new_facts', 'refresh_failed_empty_candidate',
+            'refresh_failed_delta_not_applied', 'refresh_failed_structured_output', 'refresh_failed_error'];
+        if (value.details != null && (!stateObject(value.details) || value.details.operation_type !== 'refresh_mental_model' || !outcomes.includes(String(value.details.outcome)))) return this.#repairError();
+        const outcome = stateObject(value.details) ? value.details.outcome as RepairRefreshOutcome : null;
+        if (value.status === 'completed' && !['content_written', 'content_unchanged', 'content_preserved_no_new_facts'].includes(outcome ?? '')) return this.#repairError();
+        return { operation_id: operationId, operation_type: 'refresh_mental_model', mental_model_id: value.mental_model_id, status: value.status as RetentionStatus, outcome };
     }
 
     async putBank(bankId: string, config: BankConfig): Promise<void> {

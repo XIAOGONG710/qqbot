@@ -54,6 +54,30 @@ export function auditedApi<T extends HindsightApi>(api: T, ledger: Ledger, optio
                     safeAppend(ledger, 'document-delete', snapshot(() => ({ bank: bankId, document: documentId })), options);
                 };
             }
+            const repairKinds: Record<string, string> = {
+                repairConfigureModel: 'model-repair-configure', repairClearModel: 'model-repair-clear',
+                repairRefreshModel: 'model-repair-refresh-submit', repairRestoreAutomatic: 'model-repair-restore',
+            };
+            if (typeof prop === 'string' && Object.hasOwn(repairKinds, prop)) {
+                if (typeof value !== 'function') return value;
+                return async (bankId: string, modelId: string, ...rest: unknown[]) => {
+                    // 不检查/序列化返回的模型正文；审计是副结果，必须原样交还真实ACK。
+                    const data = snapshot(() => ({ bank: bankId, model: modelId,
+                        stage: prop === 'repairRefreshModel' ? 'accepted' : 'acknowledged',
+                        ...(prop === 'repairRestoreAutomatic' ? {
+                            ...(Number.isSafeInteger(rest[0]) && Number(rest[0]) >= 0 ? { cadence: rest[0] } : {}),
+                            ...(rest[1] === undefined || typeof rest[1] === 'boolean' ? { automatic: rest[1] ?? true } : {}),
+                        } : {}),
+                    }));
+                    const receipt = await (value as (...args: unknown[]) => Promise<unknown>).call(target, bankId, modelId, ...rest);
+                    const recorded = prop === 'repairRefreshModel' && data ? snapshot(() => {
+                        if (typeof receipt !== 'string') throw new Error('invalid operation receipt');
+                        return { ...data, operation: sha256(receipt).slice(0, 16) };
+                    }) : data;
+                    safeAppend(ledger, repairKinds[prop]!, recorded, options);
+                    return receipt;
+                };
+            }
             if (prop === 'createMentalModel' || prop === 'updateMentalModel') {
                 return async (bankId: string, ...rest: unknown[]) => {
                     const request = (prop === 'createMentalModel' ? rest[0] : rest[1]) as MentalModelRequest;
@@ -109,4 +133,6 @@ export function summarize(ledger: Ledger): string {
 
 const LABELS: Record<string, string> = {
     retain: '写入', 'retain-submit': '异步受理', 'document-delete': '删除文档', 'model-create': '建印象模型', 'model-update': '改印象模型', forget: '忘掉联系人', 'forget-dry-run': '忘掉联系人（只演练）', note: '说明',
+    'model-repair-configure': '暂停模型自动刷新', 'model-repair-clear': '清理模型正文',
+    'model-repair-refresh-submit': '受理模型重建', 'model-repair-restore': '恢复模型刷新配置',
 };

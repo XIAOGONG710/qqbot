@@ -88,7 +88,7 @@ test('原型形状bank身份按字面存取，坏输入不创建私密正文状�
 });
 
 test('初始化必须发布空JSON；曾有状态被删时live与重启均不能猜clean', () => {
-    const f = fixture(); assert.equal(f.store.snapshot('a').dirty, false); assert.equal(JSON.parse(readFileSync(f.path, 'utf8')).version, 1);
+    const f = fixture(); assert.equal(f.store.snapshot('a').dirty, false); assert.equal(JSON.parse(readFileSync(f.path, 'utf8')).version, 2);
     f.store.mark('a', A); unlinkSync(f.path);
     assert.throws(() => f.store.snapshot('a'), /屏障不可用/);
     assert.throws(() => new DerivedState(f.dir).snapshot('a'), /屏障不可用/);

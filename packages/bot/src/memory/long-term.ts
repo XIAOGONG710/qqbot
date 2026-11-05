@@ -24,6 +24,9 @@ import { MIDNIGHT_RULE } from '../proactive/follow-ups.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 import { stateObject, stateTimestamp } from './state-schema.ts';
 import { DerivedState, type DerivedSnapshot } from './derived-state.ts';
+import { DerivedRepair } from './derived-repair.ts';
+import { repairFingerprint, repairModelIdentityHash, repairSourceManifestHash, type RepairCandidate } from './derived-repair-protocol.ts';
+import { repairDocumentContentHash, type DerivedRepairApi } from './hindsight.ts';
 import { knowsPeople } from '../life/people.ts';
 import type { ChatMessage } from '../language/prompt.ts';
 import type { MacroNames } from '../st/macros.ts';
@@ -190,7 +193,9 @@ export const RELATIONSHIP_MODEL: MentalModelRequest = {
     ].join(''),
     tags: TAGS,
     max_tokens: 256,
-    trigger: { refresh_after_consolidation: true, min_refresh_interval_seconds: 1800, budget: 'low' },
+    trigger: { refresh_after_consolidation: true, min_refresh_interval_seconds: 1800, budget: 'low', mode: 'full',
+        exclude_mental_models: true, fact_types: ['world', 'experience'], include_chunks: false, tags_match: 'all_strict', refresh_cron: null,
+        tag_groups: [{ tags: ['qq-private'], match: 'all_strict', resolve: 'exact' }, { not: { tags: ['diary', 'week', 'phase'], match: 'any_strict', resolve: 'exact' } }] },
 };
 
 /**
@@ -386,14 +391,16 @@ export class LongTermMemory {
     readonly #options: LongTermMemoryOptions;
     readonly #now: () => number;
     readonly #derived: DerivedState;
+    readonly #repair?: DerivedRepair;
+    readonly #repairInputs = new Map<string, { contact: MemoryContact; names: MacroNames; history: StoredMessage[] }>();
     readonly #derivedErrors = new Set<string>();
     /** 每个联系人（按 #key）的写入排队，保证串行 */
     readonly #queues = new Map<string, Promise<void>>();
     /** 每个联系人上一次对账的时间、有没有发现缺的（只在内存里，重启后第一次同步就对一次） */
     readonly #reconciled = new Map<string, { at: number; found: boolean }>();
     readonly #latest = new Map<string, symbol>();
-    readonly #relationship = new Map<string, { content?: string; fetchedAt: number; fetching?: boolean }>();
-    #entities: { names: string[]; fetchedAt?: number } = { names: [] };
+    readonly #relationship = new Map<string, { content?: string; fetchedAt: number; fetching?: boolean; generation: string }>();
+    #entities: { names: string[]; fetchedAt?: number; generation?: string } = { names: [] };
     #entitiesVersion = 0;
     #entitiesFlight?: { version: number; promise: Promise<readonly string[]> };
     #stopped = false;
@@ -410,15 +417,22 @@ export class LongTermMemory {
         this.#now = options.now ?? Date.now;
         mkdirSync(options.dir, { recursive: true });
         this.#derived = new DerivedState(options.dir);
+        const methods: (keyof DerivedRepairApi)[] = ['repairStats', 'repairActiveOperations', 'repairModels', 'repairDocuments', 'repairModel',
+            'repairConfigureModel', 'repairClearModel', 'repairRefreshModel', 'repairRefreshOperation', 'repairRestoreAutomatic'];
+        if (this.#advanced() && methods.every(method => typeof options.api[method] === 'function')) {
+            this.#repair = new DerivedRepair({ api: options.api as HindsightApi & DerivedRepairApi, store: this.#derived, log: options.log });
+        }
     }
 
     /** 不再派发工作；已派发的写请求确认后仍保存进度，调用方须等 drain 后释放运行锁。 */
     stop(): Promise<void> | undefined {
         if (this.#stopped) return this.#drain;
         this.#stopped = true;
+        this.#repairInputs.clear();
+        const repairDrain = this.#repair?.stop();
         for (const cancel of this.#cancelReads) cancel();
         this.#cancelReads.clear();
-        if (this.#writeJobs.size) this.#drain = Promise.allSettled([...this.#writeJobs]).then(() => {});
+        if (this.#writeJobs.size || repairDrain) this.#drain = Promise.allSettled([...this.#writeJobs, ...(repairDrain ? [repairDrain] : [])]).then(() => {});
         return this.#drain;
     }
 
@@ -469,24 +483,36 @@ export class LongTermMemory {
         return Boolean(snapshot && !snapshot.dirty && (generation === undefined || snapshot.generation === generation));
     }
 
-    #markDocuments(contact: MemoryContact, ids?: readonly string[]): void {
-        const marks = [{ bankId: this.bankId(contact), qq: contact.qq, tier: contact.tier, ...(ids === undefined ? {} : { documents: ids }) }];
+    #markDocuments(contact: MemoryContact, ids?: readonly string[], eventKey?: string): void {
+        const before = this.#derivedSnapshot(this.bankId(contact))?.generation;
+        const marks = [{ bankId: this.bankId(contact), qq: contact.qq, tier: contact.tier, eventKey, ...(ids === undefined ? {} : { documents: ids }) }];
         if (this.#options.common && knowsPeople(contact.tier)) {
-            marks.push({ bankId: this.commonBankId(), qq: contact.qq, tier: contact.tier, ...(ids === undefined ? {} : { documents: ids.map(id => `${this.#hash(contact)}:${id}`) }) });
+            marks.push({ bankId: this.commonBankId(), qq: contact.qq, tier: contact.tier, eventKey, ...(ids === undefined ? {} : { documents: ids.map(id => `${this.#hash(contact)}:${id}`) }) });
         }
         try { this.#derived.markMany(marks); }
         catch { throw new Error('记忆派生修订观察未确认；保留屏障，不读取旧输出'); }
-        finally { this.#invalidateContactModels(contact); this.#invalidateEntities(); }
+        finally { if (before !== this.#derivedSnapshot(this.bankId(contact))?.generation) { this.#invalidateContactModels(contact); this.#invalidateEntities(); } }
+    }
+
+    #markRecalls(contact: MemoryContact, history: StoredMessage[]): void {
+        for (const episode of splitEpisodes(history)) {
+            const withdrawn = episode.messages.filter(message => message.recalled === true).map(({ role, time, messageId, messageSeq, sourceTime }) => ({ role, time, messageId, messageSeq, sourceTime }));
+            if (withdrawn.length) this.#markDocuments(contact, [episode.id], `recall:${repairFingerprint([this.#key(contact), episode.id, withdrawn])}`);
+        }
     }
 
     /** 接受撤回后同步建立读屏障；未知视图仅扩大该来源owner，不扩大其他来源的原始文档。 */
     noteRecall(contact: MemoryContact, snapshot?: StoredMessage[]): void {
         if (this.#stopped) return;
+        const input = this.#repairInputs.get(this.#key(contact));
+        if (snapshot === undefined) this.#repairInputs.delete(this.#key(contact));
+        else if (input) this.#repairInputs.set(this.#key(contact), { ...input, history: structuredClone(snapshot) });
         const ids = snapshot === undefined ? undefined : this.#recalledDocuments(snapshot);
         if (ids === undefined || ids.length) {
             // 即使屏障写失败，已经接受的撤回也不能让旧任务继续派发原文。
             this.#latest.set(this.#key(contact), Symbol('recall observed'));
-            this.#markDocuments(contact, ids);
+            if (snapshot === undefined) this.#markDocuments(contact, undefined, `unknown:${this.#key(contact)}`);
+            else this.#markRecalls(contact, snapshot);
         }
     }
 
@@ -495,21 +521,26 @@ export class LongTermMemory {
     }
 
     #observeRevisions(contact: MemoryContact, names: MacroNames, history: StoredMessage[]): void {
-        const recalled = this.#recalledDocuments(history);
-        if (recalled.length) this.#markDocuments(contact, recalled);
+        this.#markRecalls(contact, history);
         const state = this.#load(contact);
         const changed = splitEpisodes(history).filter(episode => {
             const different = (counts: Record<string, number> = {}, digests: Record<string, string> = {}) => counts[episode.id] !== undefined
                 && (counts[episode.id]! > episode.messages.length || digests[episode.id] !== undefined && contentRevision(episode, names, counts, digests));
             return different(state.retained, state.retainedDigests) || different(state.common, state.commonDigests)
-                || [state.pendingOwn?.[episode.id], state.pendingCommon?.[episode.id]].some(pending => pending && pending.digest !== episodeDigest(episode, names));
+                || [state.pendingOwn?.[episode.id], state.pendingCommon?.[episode.id]].some(pending => pending && (pending.count > episode.messages.length || pending.digest !== episodeDigest(episode, names, pending.count)));
         });
-        if (changed.length) this.#markDocuments(contact, changed.map(episode => episode.id));
+        for (const episode of changed) this.#markDocuments(contact, [episode.id], `revision:${repairFingerprint([this.#key(contact), episode.id, episodeDigest(episode, names)])}`);
     }
 
     #filterDerived(bankId: string, results: RecallResult[], snapshot = this.#derivedSnapshot(bankId)): RecallResult[] {
         if (!snapshot) return [];
-        if (!snapshot.dirty) return results;
+        // A relationship-model receipt proves that model, not the removal of
+        // every historical consolidation observation. Repaired banks continue
+        // using their verified raw episode facts until that separate protocol
+        // has independent evidence. Unaffected banks retain ordinary recall.
+        if (!snapshot.dirty) return snapshot.allOwners.length
+            ? results.filter(result => (result.type === 'world' || result.type === 'experience') && Boolean(result.document_id && /^ep--?\d+$/.test(result.document_id)))
+            : results;
         const blocked = new Set(snapshot.documents), common = bankId === this.commonBankId();
         return results.filter(result => {
             if (result.type !== 'world' && result.type !== 'experience' || !result.document_id || blocked.has(result.document_id)) return false;
@@ -551,7 +582,7 @@ export class LongTermMemory {
             let status = await this.#read(() => this.#options.api.retentionStatus!(pending.bankId, pending.operationId));
             if (status === 'not_found') {
                 const episode = episodes.find(episode => episode.id === id);
-                const unchanged = episode && episodeDigest(episode, names) === pending.digest
+                const unchanged = episode && episode.messages.length >= pending.count && episodeDigest(episode, names, pending.count) === pending.digest
                     && (field === 'pendingOwn' || !episode.messages.some(message => message.role === 'user' && detectCrisis(message.content)));
                 if (!unchanged) throw new Error('记忆旧派发结果未知且来源已变；不重发旧正文，保留核对屏障');
                 if (!current()) return false;
@@ -624,8 +655,18 @@ export class LongTermMemory {
             if (!this.#queues.has(key) && this.#latest.get(key) === revision) this.#latest.delete(key);
             return Promise.resolve();
         }
+        if (this.#repair && this.#derivedSnapshot(this.bankId(contact))?.dirty) this.#repairInputs.set(key, { contact, names, history });
         const previous = this.#queues.get(key) ?? Promise.resolve();
-        const next = previous.then(() => { if (current()) return this.#sync(contact, names, history, current); }).catch(error => {
+        const next = previous.then(async () => {
+            if (!current()) return;
+            try {
+                const snapshot = this.#derivedSnapshot(this.bankId(contact));
+                // Once source evidence is frozen, ordinary appends remain local until
+                // this repair has a verified receipt. A new pollution generation
+                // invalidates the old lease and must first publish its new sources.
+                if (!snapshot?.dirty || !snapshot.repair || snapshot.repair.lease.generation !== snapshot.generation) await this.#sync(contact, names, history, current);
+            } finally { if (!this.#stopped) await this.#repairContact(contact); }
+        }).catch(error => {
             if (error === MEMORY_STOPPED) return;
             const message = error instanceof Error ? error.message : String(error);
             this.#lastWrite = { at: this.#now(), ok: false, error: message, operation: 'write', source: 'contact-sync' };
@@ -637,12 +678,53 @@ export class LongTermMemory {
         return this.#trackWrite(next);
     }
 
+    #repairCandidate(contact: MemoryContact): RepairCandidate | undefined {
+        const input = this.#repairInputs.get(this.#key(contact));
+        const snapshot = this.#derivedSnapshot(this.bankId(contact));
+        if (!input || !snapshot?.dirty || snapshot.owners.length !== 1 || snapshot.owners[0]!.allDocuments
+            || snapshot.owners[0]!.qq !== contact.qq || snapshot.owners[0]!.tier !== contact.tier) return undefined;
+        const state = this.#load(contact);
+        if (!state.relationshipModel || Object.keys(state.pendingOwn ?? {}).length) return undefined;
+        const episodes = new Map(splitEpisodes(input.history).map(episode => [episode.id, episode]));
+        const sourceManifest: RepairCandidate['sourceManifest'][number][] = [];
+        for (const [documentId, count] of Object.entries(state.retained)) {
+            const episode = episodes.get(documentId), digest = state.retainedDigests?.[documentId];
+            if (!episode || !/^ep--?\d+$/.test(documentId) || count < 1 || count > episode.messages.length || !digest
+                || digest !== episodeDigest(episode, input.names, count)) return undefined;
+            sourceManifest.push({ documentId, count, episodeDigest: digest,
+                contentHash: repairDocumentContentHash(episodeTranscript({ ...episode, messages: episode.messages.slice(0, count) }, input.names)) });
+        }
+        if (!sourceManifest.length || snapshot.documents.some(id => !sourceManifest.some(source => source.documentId === id))) return undefined;
+        const sourceManifestHash = repairSourceManifestHash(sourceManifest);
+        return { bankId: state.bankId, owner: { qq: contact.qq, tier: contact.tier }, generation: snapshot.generation,
+            eventSetHash: snapshot.eventSetHash, sourceManifest, sourceManifestHash,
+            progressHash: repairFingerprint({ bankId: state.bankId, sourceManifestHash }),
+            modelIdentityHash: repairModelIdentityHash(RELATIONSHIP_MODEL),
+            expectedAutomatic: RELATIONSHIP_MODEL.trigger.refresh_after_consolidation, expectedCadence: RELATIONSHIP_MODEL.trigger.min_refresh_interval_seconds };
+    }
+
+    async #repairContact(contact: MemoryContact): Promise<void> {
+        if (!this.#repair || this.#stopped) return;
+        const candidate = this.#repairCandidate(contact);
+        if (!candidate) return;
+        const current = () => {
+            if (this.#stopped) return false;
+            const fresh = this.#repairCandidate(contact);
+            return Boolean(fresh && fresh.generation === candidate.generation && fresh.eventSetHash === candidate.eventSetHash
+                && fresh.sourceManifestHash === candidate.sourceManifestHash && fresh.progressHash === candidate.progressHash);
+        };
+        if (await this.#repair.step(candidate, current) === 'repaired') {
+            this.#invalidateContactModels(contact);
+            this.#repairInputs.delete(this.#key(contact));
+        }
+    }
+
     async #sync(contact: MemoryContact, names: MacroNames, history: StoredMessage[], current: () => boolean): Promise<void> {
         const state = this.#load(contact);
         const episodes = splitEpisodes(history);
         if (episodes.some(episode => contentRevision(episode, names, state.retained, state.retainedDigests)
             || contentRevision(episode, names, state.common, { ...state.commonDigests, ...state.commonSkipped })
-            || [state.pendingOwn?.[episode.id], state.pendingCommon?.[episode.id]].some(pending => pending && pending.digest !== episodeDigest(episode, names)))) this.#invalidateContactModels(contact);
+            || [state.pendingOwn?.[episode.id], state.pendingCommon?.[episode.id]].some(pending => pending && (pending.count > episode.messages.length || pending.digest !== episodeDigest(episode, names, pending.count))))) this.#invalidateContactModels(contact);
         if (!(await this.#reconcilePending(contact, names, state, episodes, current))) return;
         const due = (written: Record<string, number> = {}, digests: Record<string, string> = {}) => episodes.filter(episode => {
             const done = written[episode.id] ?? 0;
@@ -1134,7 +1216,7 @@ export class LongTermMemory {
         try {
             const snapshot = this.#derivedSnapshot(bankId);
             if (!snapshot) return undefined;
-            const guarded = snapshot.dirty ? { ...request, types: ['world', 'experience'] as RecallRequest['types'], prefer_observations: false } : request;
+            const guarded = snapshot.dirty || snapshot.allOwners.length ? { ...request, types: ['world', 'experience'] as RecallRequest['types'], prefer_observations: false } : request;
             const results = await this.#read(() => this.#options.api.recall(bankId, guarded, this.#options.recallTimeoutMs));
             if (this.#stopped) return undefined;
             this.#lastRecall = { at: this.#now(), ok: true, operation: 'recall', source: 'hindsight-recall', items: results.length, fingerprint: evidenceFingerprint(request.query ?? '') };
@@ -1159,18 +1241,18 @@ export class LongTermMemory {
         if (!snapshot || snapshot.dirty) return [];
         const generation = snapshot.generation;
         const cached = this.#entities;
-        if (cached.fetchedAt !== undefined && this.#now() - cached.fetchedAt < ENTITIES_REFRESH_MS) return this.#modelsAllowed(this.commonBankId(), generation) ? [...cached.names] : [];
+        if (cached.generation === generation && cached.fetchedAt !== undefined && this.#now() - cached.fetchedAt < ENTITIES_REFRESH_MS) return this.#modelsAllowed(this.commonBankId(), generation) ? [...cached.names] : [];
         const version = this.#entitiesVersion;
         if (this.#entitiesFlight?.version === version) return this.#entitiesFlight.promise.then(names => this.#modelsAllowed(this.commonBankId(), generation) ? [...names] : []);
         const promise = (async () => {
             try {
                 const names = await this.#read(() => list.call(this.#options.api, this.commonBankId(), this.#options.recallTimeoutMs));
-                if (!this.#stopped && version === this.#entitiesVersion && this.#modelsAllowed(this.commonBankId(), generation)) this.#entities = { names: [...names], fetchedAt: this.#now() };
+                if (!this.#stopped && version === this.#entitiesVersion && this.#modelsAllowed(this.commonBankId(), generation)) this.#entities = { names: [...names], fetchedAt: this.#now(), generation };
             } catch (error) {
                 if (error !== MEMORY_STOPPED && !this.#stopped && version === this.#entitiesVersion && this.#modelsAllowed(this.commonBankId(), generation)) {
                     // 公共库还没建是 404，不用记；只延长当前世代的已有缓存。
                     if ((error as { status?: number }).status !== 404) this.#options.log(`读取公共记忆的实体失败，用上一次的：${error instanceof Error ? error.message : String(error)}`);
-                    this.#entities = { names: this.#entities.names, fetchedAt: this.#now() };
+                    this.#entities = { names: this.#entities.generation === generation ? this.#entities.names : [], fetchedAt: this.#now(), generation };
                 }
             }
             return this.#stopped || !this.#modelsAllowed(this.commonBankId(), generation) ? [] : [...this.#entities.names];
@@ -1190,9 +1272,10 @@ export class LongTermMemory {
         if (!snapshot || snapshot.dirty || !this.#load(person).personModel) return undefined;
         const generation = snapshot.generation;
         const key = `person:${this.#key(person)}`;
-        const cached = this.#relationship.get(key);
+        const stored = this.#relationship.get(key);
+        const cached = stored?.generation === generation ? stored : undefined;
         if (!cached || (!cached.fetching && this.#now() - cached.fetchedAt >= RELATIONSHIP_REFRESH_MS)) {
-            const entry = { content: cached?.content, fetchedAt: cached?.fetchedAt ?? 0, fetching: true };
+            const entry = { content: cached?.content, fetchedAt: cached?.fetchedAt ?? 0, fetching: true, generation };
             this.#relationship.set(key, entry);
             this.#read(() => this.#options.api.getMentalModel(this.commonBankId(), this.#personModelId(person)))
                 .then(model => { if (!this.#stopped && this.#modelsAllowed(this.commonBankId(), generation)) entry.content = withoutMark(model?.content ?? '') || undefined; })
@@ -1217,9 +1300,10 @@ export class LongTermMemory {
         if (!state.relationshipModel || !snapshot || snapshot.dirty) return undefined;
         const generation = snapshot.generation;
         const key = this.#key(contact);
-        const cached = this.#relationship.get(key);
+        const stored = this.#relationship.get(key);
+        const cached = stored?.generation === generation ? stored : undefined;
         if (!cached || (!cached.fetching && this.#now() - cached.fetchedAt >= RELATIONSHIP_REFRESH_MS)) {
-            const entry = { content: cached?.content, fetchedAt: cached?.fetchedAt ?? 0, fetching: true };
+            const entry = { content: cached?.content, fetchedAt: cached?.fetchedAt ?? 0, fetching: true, generation };
             this.#relationship.set(key, entry);
             this.#read(() => this.#options.api.getMentalModel(state.bankId, RELATIONSHIP_MODEL_ID))
                 .then(model => { if (!this.#stopped && this.#modelsAllowed(state.bankId, generation)) entry.content = withoutMark(model?.content ?? '') || undefined; })
