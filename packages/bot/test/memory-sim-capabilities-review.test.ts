@@ -78,7 +78,7 @@ test('包装保持可选能力真实存在性、原API this和全部参数身份
 test('模拟down守卫覆盖新增能力，保留deleteBank清理例外并可恢复', async () => {
     const api = minimal(); let down = true, calls = 0, deletes = 0;
     api.submitRetain = async () => { calls++; }; api.retentionStatus = async () => { calls++; return 'pending'; }; api.repairObservationInventory = async () => { calls++; return []; }; api.deleteBank = async () => { deletes++; };
-    const proxy = wrapped(api, () => down), item: MemoryItem = { content: 'Synthetic', timestamp: '2026-11-04T12:00:00Z' };
+    const proxy = wrapped(api, () => down), item: MemoryItem = { content: 'Synthetic', timestamp: '2026-11-04T12:00:00Z', context: 'Synthetic', document_id: 'diary:synthetic', tags: [], metadata: {} };
     await assert.rejects(proxy.submitRetain!('bank', item, UUID), /模拟 Hindsight 停了/); await assert.rejects(proxy.retentionStatus!('bank', UUID), /模拟 Hindsight 停了/); await assert.rejects(proxy.repairObservationInventory!('bank'), /模拟 Hindsight 停了/); assert.equal(calls, 0);
     await proxy.deleteBank('bank'); assert.equal(deletes, 1); down = false; await proxy.submitRetain!('bank', item, UUID); assert.equal(await proxy.retentionStatus!('bank', UUID), 'pending'); assert.deepEqual(await proxy.repairObservationInventory!('bank'), []); assert.equal(calls, 3);
 });
@@ -90,7 +90,7 @@ test('真实SDK final guard的超时/AbortSignal经包装仍生效，不能丢op
         if (url.pathname.endsWith('/operations')) return Response.json({ bank_id: 'synthetic', operations: [], total: 0 });
         if (init?.method === 'POST') posts++; return Response.json({}); };
     try { const api = wrapped(new HindsightClient('http://synthetic.invalid', 50), () => false);
-        await assert.rejects(api.submitRetain!('synthetic', { content: 'Synthetic', timestamp: '2026-11-04T12:00:00Z' }, UUID, { canSubmit: signal => {
+        await assert.rejects(api.submitRetain!('synthetic', { content: 'Synthetic', timestamp: '2026-11-04T12:00:00Z', context: 'Synthetic', document_id: 'diary:synthetic', tags: [], metadata: {} }, UUID, { canSubmit: signal => {
             signal.addEventListener('abort', () => aborted = true); return new Promise<boolean>(() => {});
         } }), /超时/); assert.equal(aborted, true); assert.equal(posts, 0);
     } finally { globalThis.fetch = originalFetch; }
