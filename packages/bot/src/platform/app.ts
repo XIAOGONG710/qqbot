@@ -122,7 +122,7 @@ import { calendarFetcher, useRealCalendar, type CalendarStatus } from '.././worl
 import { transportFetcher, useRealTransport, type TransportFetcherStatus } from '.././world/transport.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
 import { idiomStore, IDIOMS_CHECK_MS, refreshIdioms } from '.././language/idioms.ts';
-import { jokeStore, JOKES_CHECK_MS, refreshJokes } from '.././language/jokes.ts';
+import { jokeRefresher, jokeStore, JOKES_CHECK_MS } from '.././language/jokes.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes, type MemeEntry } from '.././language/memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from '.././language/watching.ts';
 import { feedFactEntry, feedOnce, feedPath, loadFeed } from '.././bilibili/feed-browsing.ts';
@@ -757,6 +757,8 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     const sendingStickers = stickerMode === 'send' && transport.sendPrivateImage ? collectingStickers : undefined;
     // 小梗（ADR 0114）：派生数据，存 <数据目录>/jokes/<QQ>.json
     const jokes = config.jokes ? jokeStore({ dir: join(config.dataDir, 'jokes'), log }) : undefined;
+    const jokesOwner = jokes ? jokeRefresher() : undefined;
+    construction.onFailure(() => jokesOwner?.stop());
     // 他的口头习惯（ADR 0138）：派生数据，存 <数据目录>/idioms/<QQ>.json
     const idioms = config.idioms ? idiomStore({ dir: join(config.dataDir, 'idioms'), log }) : undefined;
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；刷新在下面（要她的 B 站号）
@@ -2491,11 +2493,13 @@ ${video.link}`);
     const refreshAllJokes = () => {
         if (!jokes || stopped) return;
         for (const contact of config.contacts.filter(c => c.tier === 'boyfriend')) {
-            void refreshJokes({
+            const scoped: Log = message => { if (!stopped) log(message); };
+            void jokesOwner!.refresh({
                 qq: contact.qq, userName: contact.name, charName: cardFor(contact.tier).character.name, history: history.load(contact.qq), store: jokes,
-                extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
-                now: pipeline?.now ? pipeline.now() : Date.now(), log: message => log(`[${contact.qq}] ${message}`),
-            }).catch(error => log(`[${contact.qq}] 小梗：抽取出错（${error instanceof Error ? error.message : String(error)}）`));
+                freshHistory: () => history.load(contact.qq),
+                extract: messages => (pipeline?.generate ? pipeline.generate(messages, scoped) : chatCompletion(forExtraction(config.llm), messages, { log: scoped, purpose: 'background' })),
+                now: pipeline?.now ? pipeline.now() : Date.now(), log: message => scoped(`[${contact.qq}] ${message}`),
+            }).catch(error => scoped(`[${contact.qq}] 小梗：抽取出错（${error instanceof Error ? error.message : String(error)}）`));
         }
     };
     // 他的口头习惯（ADR 0138）：隔一阵从他最近的话里学；出错只记日志。不收进去的词：联系人和角色的名字、卡上的禁用词
@@ -3843,6 +3847,7 @@ ${body}
             const promisesDrain = promises?.stop();
             const memoryDrain = memory?.stop();
             const tastesDrain = tastes?.stop();
+            const jokesDrain = jokesOwner?.stop();
             const weatherDrains = [...weatherRefreshes];
             const airQualityDrains = [...airQualityRefreshes];
             const daylightDrains = [...daylightRefreshes];
@@ -3904,7 +3909,7 @@ ${body}
             useRealTransport(undefined);
             useWorldNeeds(undefined);
             const drains = [
-                diaryDrain, promisesDrain, memoryDrain, tastesDrain, presenceDrain, browsingDrain, deviceDrain,
+                diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, presenceDrain, browsingDrain, deviceDrain,
                 ...weatherDrains, ...airQualityDrains, ...daylightDrains, ...calendarDrains, ...transportDrains,
                 ...contextDrains, ...responderDrains,
             ].filter((task): task is Promise<void> => task !== undefined);
