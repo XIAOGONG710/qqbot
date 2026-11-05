@@ -43,4 +43,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0007](../adr/0007-schedule-and-reply-timing.md)、[ADR 0026](../adr/0026-diary-of-her-day.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0229](../adr/0229-world-review-fixes.md)、[ADR 0230](../adr/0230-course-groups-and-world-config.md)、[ADR 0231](../adr/0231-local-calendar-boundaries.md)
+[ADR 0007](../adr/0007-schedule-and-reply-timing.md)、[ADR 0026](../adr/0026-diary-of-her-day.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0229](../adr/0229-world-review-fixes.md)、[ADR 0230](../adr/0230-course-groups-and-world-config.md)、[ADR 0231](../adr/0231-local-calendar-boundaries.md)、[ADR 0243](../adr/0243-promise-source-effects-and-world-identity.md)

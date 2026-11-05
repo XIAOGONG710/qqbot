@@ -1,9 +1,8 @@
 /**
- * M33 pending defect diagnostic (not a correct-behavior regression).
+ * M33 correct-behavior probe; formal regressions live in packages/bot/test/.
  * Run from any directory: node docs/reviews/repro/memory-promise-recall.mjs
  * Requires the repository's Node version with TypeScript stripping.
- * Exit 0 means all six currently defective observations were reproduced.
- * After a fix these assertions should fail; replace them with correct-behavior tests.
+ * Exit 0 confirms late stale extraction is rejected and the fresh source is re-extracted.
  *
  * Contracts: [ADR0082](../../adr/0082-recalls.md),
  * [ADR0047](../../adr/0047-meetups-in-her-day.md).
@@ -13,11 +12,12 @@
  * Everything is synthetic: no cards, runtime data, models, QQ, or network access.
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ChatHistory, RECALLED_TEXT } from '../../../packages/bot/src/memory/history.ts';
 import { promiseKeeper } from '../../../packages/bot/src/life/promises.ts';
+import { readPromiseState } from '../../../packages/bot/src/life/promise-state.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'qqbot-promise-recall-'));
 const contact = { qq: 10001, tier: 'boyfriend', name: '合成联系人' };
@@ -45,7 +45,11 @@ const options = {
 };
 const keeper = promiseKeeper({
     ...options,
-    extract: async () => { calls++; entered = true; return held; },
+    extract: async () => {
+        calls++;
+        if (calls === 1) { entered = true; return held; }
+        return JSON.stringify({ add: [], resolved: [] });
+    },
 });
 let restarted;
 try {
@@ -65,28 +69,25 @@ try {
     }));
     await job;
 
-    // Fact 2: the stale result is still durably stored as an early appointment.
-    const saved = JSON.parse(readFileSync(join(dir, '10001-boyfriend.json'), 'utf8'));
-    assert.equal(saved.promises[0].early, true);
-    assert.equal(saved.promises[0].what, '与合成联系人去门口吃饭');
-    // Facts 3 and 4: diary plans and appointment consumers still receive it.
-    assert.deepEqual(keeper.plansOn('2026-11-05'), ['与合成联系人去门口吃饭']);
-    assert.equal(keeper.appointmentsAt(at('18:10')).length, 1);
-    // Fact 5: masking changed content but not message count; sync does not re-extract.
+    const saved = readPromiseState(join(dir, '10001-boyfriend.json'));
+    assert.equal(saved.promises.length, 0, '陈旧结果不能保存约见');
+    assert.deepEqual(keeper.plansOn('2026-11-05'), []);
+    assert.equal(keeper.appointmentsAt(at('18:10')).length, 0);
+    // A fresh request uses the masked source even though its message count is unchanged.
     await keeper.sync();
-    assert.equal(calls, 1);
-    assert.equal(keeper.appointmentsAt(at('18:10')).length, 1);
-    // Fact 6: a fresh keeper still exposes the saved appointment after restart.
+    assert.equal(calls, 2);
+    assert.equal(keeper.appointmentsAt(at('18:10')).length, 0);
     restarted = promiseKeeper({ ...options, extract: async () => { throw new Error('unexpected synthetic extraction'); } });
-    assert.equal(restarted.appointmentsAt(at('18:10')).length, 1);
+    assert.equal(restarted.appointmentsAt(at('18:10')).length, 0);
+    await restarted.sync();
     console.log(JSON.stringify({
-        diagnostic: 'M33 unresolved defect reproduced; exit 0 is not a correctness pass',
+        diagnostic: 'M33-source-revision-protected',
         unansweredRecallAccepted: true,
-        lateExtractPersistedEarlyMeet: true,
-        diaryPlansContainMeet: true,
-        appointmentsContainMeet: true,
-        sameCountSyncDoesNotReextract: true,
-        restartStillUsesMeet: true,
+        lateExtractPersistedEarlyMeet: false,
+        diaryPlansContainMeet: false,
+        appointmentsContainMeet: false,
+        sameCountSyncReextracts: true,
+        restartStillUsesMeet: false,
     }));
 } finally {
     release('{}');
