@@ -534,3 +534,15 @@ A在途来源另有真实App红：42条同长度消息，未回复的两条唯�
 新增30（小梗重叠2、口头习惯core18/App8/重叠2），记忆累计621。先671/671及类型绿后新增idioms重叠修复，最后完整重跑673/673、全仓类型实际exit0、模块/差异绿；最终结果覆盖最后代码，不沿用前一版。仍仅核实memory*.test.ts+纯bilibili-dm-card+modules，非新全仓全量，未跑旧真实卡suite。
 
 下一轮先真实App合成验证watchJob/feedJob的停止所有权、已派响应后落watched/feed/历史与后继外部请求；尚源码候选，未确证勿称缺陷。memes/stickers也待风险复核，照片/食物已取消守卫不重做；B站/社交模块未整体审。本轮小梗/idioms具体旧覆盖反例已修，不重复旧清单。M32b远端公共旧派生/历史observation清理及独立证据解封仍未完成，真实部署/服务不可访问，现保护不解，不把本地source/stop当远端净化。记忆仍未完成不转模块。
+
+## 第二十四批：观看/推荐流停止与持久风险收尾（2026-11-05）
+
+代码90cbec56，ADR0130/0168补记。观看真实App两项先红：held账号nav在stop后继续search/view/player/subtitle后继请求，held字幕stop后写watched。timeline:true确认字幕装饰器晚成功/失败副写；核心另两红后修，评论mutation ACK及signal/receiver透传作正对照。App ownPassiveRead派发前登记，watch/feed各自running与统一lifetime，构造/正常stop取消本地纯读/模型等待、sleep及后继派发，等待任务本体再释放目录。watchOne内部8段等待与BiliAccount search/subtitle的nav钥匙/view/player/字幕fetch/text全部贯通单次signal；不全局中止共享mutation，已确认观看文件不回滚。
+
+推荐流真实App7项先5红2绿：nav fetch/body与推荐fetch/body held均晚写feed，dryRun晚写draft；已同步完成on/dryRun保原是绿对照。feedOnce逐层取消request/text且保response this，晚nav不能派推荐；cancelled与done区分。公开awake/Date回调同步stop的分类、toLocaleString后draft、trim/getFullYear后save另实证并守最后提交；watchDue/trim同类单独真红后修。不能将所有新边界case都算独立缺陷。
+
+生产特有余波另2真红：不注入bilibiliRequest（该注入原会绕过breaker），使用fake全局fetch持有初nav HTTP429或200体-352，旧App heldLease=false后才写实际breaker。现真实guard完整请求在派发前登记settlement，正常/构造stop等待持久风险观察后才释放租约；保已派风险事实，不一律丢弃。纯假read/model仍可本地取消不等不合作provider，但带持久副作用guard若不合作可阻drain。只保证已派guard与本轮watch/feed链路，未接owner的其它任务将来再发请求不是该快照自动覆盖的保证。
+
+新增49（观看core22/App4、推荐流core12/App7、timeline4），记忆累计670。提前类型检查真实exit1发现ensureKeys新增required参数破坏旧mutation调用、closure丢mode narrowing、readonly text测试赋值；修为默认request/入口mode快照/defineProperty。最终完整722/722核实合成集、全仓类型实际exit0、模块/差异绿。仅memory*.test.ts+纯bilibili-dm-card+modules，不是新全仓全量，未跑旧卡suite。全部临时合成卡/凭证/聊天/假fetch/API，不访问真实账号/runtime/外网服务，不部署推送。
+
+下一轮先真实App合成验证refreshMemeJob：held accountSource/fetchLists/ask/gather后stop是否继续新请求、落memes或RAM/日志；目前源码候选，不冒称已确认。优先核其共享账号来源返回后新派guard不在前一stop已派快照的问题；不以本批guard登记假称全部后台任务已经关闭。stickers/replies/risk仍需直接owner证据盘点；B站/社交未整体审，photo/food及本批watch/feed旧反例不重复。M32b远端公共旧派生/历史observation清理与独立证据解封仍未完成，当前保护不解、不访问真部署DB，记忆未完不转模块。

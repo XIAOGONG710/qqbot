@@ -358,3 +358,7 @@ Commons 严格响应/尺寸/元数据与自有词表参数，保存完整作者�
 第二十三批完成口头习惯owner/来源及两类重叠提交：真实App8项先4红4绿，已证stop晚落盘/日志、在途来源撤回、部分撤回只余1次仍按旧4次3日分类进prompt；全撤原鲜度已挡是正对照。bd0cf0ad/ADR0138接owner stop/drain、fresh前缀、持久request/history/items/blocked哈希与统一blocked读口；保20h/60/20/30日/4次3日/300x60及正常append/已回复/危机keep，legacy保原到期重学，坏状态拒覆盖。小梗42→54→42、idioms64→84→64真实文件重叠均另确证并修：提交前重读原状态摘要比较，拒旧结果回退，发布失败对照不伪造进度。小梗代码fff7b97b，idioms合入bd0cf0ad；非跨进程CAS、不消除重复模型成本。
 
 新增30（jokes2+idioms28），记忆累计621；先671绿后补idioms重叠，再最终完整673/673核实合成集、全仓类型实际exit0、模块/差异绿。非新全仓全量，未跑旧真实角色suite，无真实服务/部署/推送。下一轮先真实App合成验证watchJob/feedJob停止owner及响应落盘/后继请求候选，memes/stickers仍候选，B站/社交未整体审；已修小梗/idioms旧清单不重做。M32b远端旧派生/observation独立清理/证据解封仍未完成，保护不解，记忆未完不转模块。
+
+第二十四批已修watch/feed owner（90cbec56，ADR0130/0168补记）：真实App heldnav后继请求/字幕晚落watched、推荐nav及body/推荐body晚落feed和dryRun draft先红后绿。App派发前登记本体/stop取消纯read-model及sleep/drain，watchOne全await、BiliAccount单次search/subtitle signal内部nav/view/player/body链贯通；timeline字幕晚记录守宿主，mutation ACK保持。生产真实guard另2合成红（不注入request、fake globalfetch429/-352）：旧租约释放后写breaker，现完整guard请求派发前登记settlement，stop/构造等持久风险事实再释放；此类不合作请求可阻drain，不能和纯读取消混称。公开awake/Date分类及最终提交重入也经真红后修。
+
+新增49（watch26/feed19/timeline4），记忆累计670；预类型3处问题真实exit1后修默认参数/closure mode/readonly夹具，最终完整722/722核实合成集、全仓类型实际exit0、模块/差异绿，非新全仓全量。仅临时合成卡/凭证假服务，不读真runtime账号或外发，无部署推送。下一轮先真实App合成验证refreshMemeJob的held source/fetchLists/model/gather stop后续派/落盘候选，尤其共享source返回后新guard不等于停止时已派快照自动覆盖；stickers/replies/risk等owner待证。B站/社交未整体审，记忆未完不转模块；M32b远端旧派生/观察清理和证据解封仍阻在可信store/writer/task证据，保护不解。
