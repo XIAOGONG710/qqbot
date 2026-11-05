@@ -33,6 +33,7 @@ import type { MacroNames } from '../st/macros.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes, type Episode } from './episodes.ts';
 import { clarity, IMPORTANT, isSummary, LASTING, lastTouchedDay, withoutMark, type Clarity, type FadeStats } from './fading.ts';
 import { civilDayInWindow, providerTime } from './civil-time.ts';
+import { WrittenRetainStore, writtenRequestHash, type WrittenOperation, type WrittenRetainOptions } from './written-retain.ts';
 import type { BankConfig, HindsightApi, MemoryItem, MentalModelRequest, RecallRequest, RecallResult } from './hindsight.ts';
 
 /** 进行中的片段每多这么多条就整段重写一次 */
@@ -410,6 +411,8 @@ export class LongTermMemory {
     #stopped = false;
     readonly #writeJobs = new Set<Promise<unknown>>();
     readonly #cancelReads = new Set<() => void>();
+    readonly #written: WrittenRetainStore;
+    readonly #writtenQueues = new Map<string, Promise<boolean>>();
     #drain?: Promise<void>;
     /** 最近一次写入、召回的结果（控制台的状态页，ADR 0010） */
     #lastWrite?: MemoryEvent;
@@ -420,6 +423,7 @@ export class LongTermMemory {
         this.#options = options;
         this.#now = options.now ?? Date.now;
         mkdirSync(options.dir, { recursive: true });
+        this.#written = new WrittenRetainStore(options.dir);
         this.#derived = new DerivedState(options.dir);
         const methods: (keyof DerivedRepairApi)[] = ['repairStats', 'repairActiveOperations', 'repairModels', 'repairDocuments', 'repairModel',
             'repairConfigureModel', 'repairClearModel', 'repairRefreshModel', 'repairRefreshOperation', 'repairRestoreAutomatic'];
@@ -484,7 +488,20 @@ export class LongTermMemory {
 
     #modelsAllowed(bankId: string, generation?: string): boolean {
         const snapshot = this.#derivedSnapshot(bankId);
+        if (this.#writtenBlocked(bankId)) return false;
         return Boolean(snapshot && !snapshot.dirty && (generation === undefined || snapshot.generation === generation));
+    }
+
+    #writtenBlocked(bankId: string): boolean {
+        if (bankId !== this.commonBankId()) return false;
+        try { return this.#written.blockedDocuments(bankId).length > 0; }
+        catch { return true; }
+    }
+
+    /** Public written sources have no reliable QQ owner. Keep a separate monotonic bank guard. */
+    noteWrittenSourceChanged(documentId: string): void {
+        try { this.#written.markSourceChanged(this.commonBankId(), documentId); }
+        finally { this.#invalidateEntities(); }
     }
 
     #markDocuments(contact: MemoryContact, ids?: readonly string[], eventKey?: string): void {
@@ -603,7 +620,7 @@ export class LongTermMemory {
         // every historical consolidation observation. Repaired banks continue
         // using their verified raw episode facts until that separate protocol
         // has independent evidence. Unaffected banks retain ordinary recall.
-        if (!snapshot.dirty) return snapshot.allOwners.length
+        if (!snapshot.dirty && !this.#writtenBlocked(bankId)) return snapshot.allOwners.length
             ? results.filter(result => (result.type === 'world' || result.type === 'experience') && Boolean(result.document_id && /^ep--?\d+$/.test(result.document_id)))
             : results;
         const blocked = new Set(snapshot.documents), common = bankId === this.commonBankId();
@@ -906,27 +923,41 @@ export class LongTermMemory {
      * 她的日记（ADR 0017）写进公共库：document_id 是 diary:<日期>（同一天再写是覆盖），标签多一个 diary。
      * 成功返回 true；失败记日志、返回 false（下次再写）
      */
-    async retainDiary(date: string, day: Date, text: string, char: string): Promise<boolean> {
-        if (!this.derivedAvailable()) return false;
-        return this.#trackWrite(this.#retainWritten(`${DIARY_PREFIX}${date}`, day, `${char}的日记（${date}）`, text, char, 'diary', `她的日记：${date}`));
+    async retainDiary(date: string, day: Date, text: string, char: string, options: WrittenRetainOptions = {}): Promise<boolean> {
+        return this.#queueWritten(`${DIARY_PREFIX}${date}`, () => this.#retainWritten(`${DIARY_PREFIX}${date}`, day, `${char}的日记（${date}）`, text, char, 'diary', `她的日记：${date}`, options));
     }
 
     /**
      * 周记、阶段总结（ADR 0018 决策 3）写进公共库：document_id 是 week:<周一>、phase:<假期名>:<最后一天>，标签多一个 week / phase，
      * 时间写最后那天晚上。title 是正文前面那一行（「林梦瑶的周记（10月5日–10月11日）」）
      */
-    async retainSummary(documentId: string, lastDay: Date, title: string, text: string, char: string, tag: 'week' | 'phase'): Promise<boolean> {
-        if (!this.derivedAvailable()) return false;
-        return this.#trackWrite(this.#retainWritten(documentId, lastDay, title, text, char, tag, `她的${tag === 'week' ? '周记' : '阶段总结'}：${documentId}`));
+    async retainSummary(documentId: string, lastDay: Date, title: string, text: string, char: string, tag: 'week' | 'phase', options: WrittenRetainOptions = {}): Promise<boolean> {
+        return this.#queueWritten(documentId, () => this.#retainWritten(documentId, lastDay, title, text, char, tag, `她的${tag === 'week' ? '周记' : '阶段总结'}：${documentId}`, options));
+    }
+
+    #queueWritten(documentId: string, work: () => Promise<boolean>): Promise<boolean> {
+        if (this.#stopped) return Promise.resolve(false);
+        const key = JSON.stringify([this.commonBankId(), documentId]);
+        const previous = this.#writtenQueues.get(key) ?? Promise.resolve(false);
+        const task = previous.catch(() => false).then(work);
+        this.#writtenQueues.set(key, task);
+        void task.finally(() => { if (this.#writtenQueues.get(key) === task) this.#writtenQueues.delete(key); }).catch(() => {});
+        return this.#trackWrite(task);
+    }
+
+    async #writtenStatus(operation: WrittenOperation): Promise<string> {
+        if (operation.phase === 'completed') return 'completed';
+        const status = await this.#read(() => this.#options.api.retentionStatus!(operation.bankId, operation.operationId));
+        if (status === 'completed') this.#written.phase(operation.operationId, 'completed');
+        return status;
     }
 
     /** 她自己写的东西存进公共库；成功返回 true，失败记日志、返回 false（下次再写） */
-    async #retainWritten(documentId: string, day: Date, title: string, text: string, char: string, tag: string, what: string): Promise<boolean> {
-        if (!this.derivedAvailable()) return false;
+    async #retainWritten(documentId: string, day: Date, title: string, text: string, char: string, tag: string, what: string, options: WrittenRetainOptions): Promise<boolean> {
+        if (this.#stopped || !this.#options.common) return false;
         try {
-            const bankId = await this.#ensureCommonBank(char);
-            if (!this.derivedAvailable()) return false;
-            await this.#mutate(() => this.#options.api.retain(bankId, {
+            const bankId = this.commonBankId();
+            const item: MemoryItem = {
                 content: `${title}\n${text}`,
                 // 日记是睡前写的：时间写那天晚上
                 timestamp: localIso(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 22)),
@@ -935,14 +966,68 @@ export class LongTermMemory {
                 tags: [...TAGS, tag],
                 metadata: { source: tag, ...(tag === 'diary' ? { date: documentId.slice(DIARY_PREFIX.length) } : { id: documentId }) },
                 entities: [{ text: char, type: 'PERSON' }],
-            }));
+            };
+            const requestHash = writtenRequestHash(item);
+            const canSubmit = async (signal?: AbortSignal): Promise<boolean> => {
+                if (signal?.aborted || options.allowSubmit === false || !this.derivedAvailable()) return false;
+                if (options.canSubmit) {
+                    const controller = new AbortController();
+                    let rejectAbort!: (error: unknown) => void;
+                    const aborted = new Promise<never>((_, reject) => { rejectAbort = reject; });
+                    const cancel = () => { controller.abort(); rejectAbort(MEMORY_STOPPED); };
+                    this.#cancelReads.add(cancel); signal?.addEventListener('abort', cancel, { once: true });
+                    try {
+                        if (signal?.aborted || this.#stopped) return false;
+                        const allowed = await this.#read(() => Promise.race([Promise.resolve(options.canSubmit!(controller.signal)), aborted]));
+                        if (allowed !== true || controller.signal.aborted) return false;
+                    } finally { this.#cancelReads.delete(cancel); signal?.removeEventListener('abort', cancel); }
+                }
+                return !signal?.aborted && this.derivedAvailable();
+            };
+            let current = this.#written.current(bankId, documentId);
+            if (this.#advanced()) {
+                let operation = options.operationId ? this.#written.operation(options.operationId) : current;
+                if (operation && (operation.bankId !== bankId || operation.documentId !== documentId || operation.requestHash !== requestHash)) {
+                    if (options.operationId) return false;
+                    operation = undefined;
+                }
+                if (!operation && current?.phase !== 'completed' && current) {
+                    // Observe the old version; never return its ACK as success for this body.
+                    if (await this.#writtenStatus(current) !== 'completed') return false;
+                    current = this.#written.current(bankId, documentId);
+                }
+                if (!operation) {
+                    if (!await canSubmit()) return false;
+                    operation = this.#written.prepare(bankId, item, options.operationId);
+                }
+                let status = await this.#writtenStatus(operation);
+                if (status !== 'completed') {
+                    if (status !== 'not_found' || !await canSubmit()) return false;
+                    await this.#ensureCommonBank(char);
+                    if (!await canSubmit()) return false;
+                    this.#written.phase(operation.operationId, 'dispatched');
+                    await this.#mutate(() => this.#options.api.submitRetain!(bankId, structuredClone(operation.item), operation.operationId, { canSubmit }));
+                    if (this.#stopped) return false;
+                    status = await this.#writtenStatus(operation);
+                    if (status !== 'completed') return false;
+                }
+            } else {
+                // A capability downgrade must not turn an unresolved advanced RPC into a new legacy write.
+                if (current && current.phase !== 'completed' || !await canSubmit()) return false;
+                await this.#ensureCommonBank(char);
+                if (!await canSubmit()) return false;
+                await this.#mutate(() => this.#options.api.retain(bankId, item));
+            }
             this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: tag, items: 1, fingerprint: evidenceFingerprint(documentId) };
             this.#invalidateEntities();
             return true;
         } catch (error) {
             if (error === MEMORY_STOPPED) return false;
-            const message = error instanceof Error ? error.message : String(error);
-            this.#lastWrite = { at: this.#now(), ok: false, error: message };
+            // Keep the old fixed status diagnostic without echoing arbitrary
+            // provider/parser messages or submitted diary text.
+            const message = error instanceof Error && /^Hindsight 返回 [1-5]\d{2}$/.test(error.message)
+                ? error.message : '提交结果或协议状态未确认';
+            this.#lastWrite = { at: this.#now(), ok: false, operation: 'write', source: tag, error: message, fingerprint: evidenceFingerprint(documentId) };
             this.#options.log(`${what} 写进公共记忆失败，下次再写：${message}`);
             return false;
         }
@@ -955,7 +1040,7 @@ export class LongTermMemory {
         const get = this.#options.api.getDocument;
         if (this.#stopped || !this.#options.common || !get) return undefined;
         const snapshot = this.#derivedSnapshot(this.commonBankId());
-        if (!snapshot || snapshot.dirty) return undefined;
+        if (!snapshot || snapshot.dirty || !this.#modelsAllowed(this.commonBankId())) return undefined;
         const generation = snapshot.generation;
         let document;
         try { document = await this.#read(() => get.call(this.#options.api, this.commonBankId(), `${DIARY_PREFIX}${date}`, this.#options.recallTimeoutMs)); }
@@ -1311,7 +1396,7 @@ export class LongTermMemory {
         try {
             const snapshot = this.#derivedSnapshot(bankId);
             if (!snapshot) return undefined;
-            const guarded = snapshot.dirty || snapshot.allOwners.length ? { ...request, types: ['world', 'experience'] as RecallRequest['types'], prefer_observations: false } : request;
+            const guarded = snapshot.dirty || snapshot.allOwners.length || this.#writtenBlocked(bankId) ? { ...request, types: ['world', 'experience'] as RecallRequest['types'], prefer_observations: false } : request;
             const results = await this.#read(() => this.#options.api.recall(bankId, guarded, this.#options.recallTimeoutMs));
             if (this.#stopped) return undefined;
             this.#lastRecall = { at: this.#now(), ok: true, operation: 'recall', source: 'hindsight-recall', items: results.length, fingerprint: evidenceFingerprint(request.query ?? '') };
@@ -1333,7 +1418,7 @@ export class LongTermMemory {
         const list = this.#options.api.listEntities;
         if (this.#stopped || !this.#options.common || !list) return [];
         const snapshot = this.#derivedSnapshot(this.commonBankId());
-        if (!snapshot || snapshot.dirty) return [];
+        if (!snapshot || snapshot.dirty || this.#writtenBlocked(this.commonBankId())) return [];
         const generation = snapshot.generation;
         const cached = this.#entities;
         if (cached.generation === generation && cached.fetchedAt !== undefined && this.#now() - cached.fetchedAt < ENTITIES_REFRESH_MS) return this.#modelsAllowed(this.commonBankId(), generation) ? [...cached.names] : [];
@@ -1364,7 +1449,7 @@ export class LongTermMemory {
     impression(person: NamedContact): string | undefined {
         if (this.#stopped || !this.#options.common || !knowsPeople(person.tier)) return undefined;
         const snapshot = this.#derivedSnapshot(this.commonBankId());
-        if (!snapshot || snapshot.dirty || !this.#load(person).personModel) return undefined;
+        if (!snapshot || snapshot.dirty || this.#writtenBlocked(this.commonBankId()) || !this.#load(person).personModel) return undefined;
         const generation = snapshot.generation;
         const key = `person:${this.#key(person)}`;
         const stored = this.#relationship.get(key);

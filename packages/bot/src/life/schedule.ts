@@ -5,6 +5,9 @@
 // - 空闲：上午（起床到 afternoonFrom）、下午（到 eveningFrom）、晚上（到睡觉）各从活动里按日期固定挑一条；
 //   起床或下课之后不到 45 分钟就有下一节的，算赶去上课 / 课间。
 
+import { localDate } from '../local-date.ts';
+import { calendarDate } from '../memory/state-schema.ts';
+
 export type CourseKind = 'hard' | 'machine' | 'water' | 'pe';
 
 export interface Course {
@@ -117,7 +120,7 @@ export function stateAt(schedule: Schedule, now: Date, extraFree: readonly Extra
 /** 这一刻属于她的哪一天：睡觉时刻（02:00）之前算前一天。心情、读书进度、主动消息都用这一条。 */
 export function herDay(schedule: Schedule, now: Date): Date {
     const date = startOfDay(now);
-    return now < at(date, schedule.sleep) ? new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1) : date;
+    return now < at(date, schedule.sleep) ? localDate(date.getFullYear(), date.getMonth(), date.getDate() - 1) : date;
 }
 
 /** 某一天要上的课，按开始时间排好 */
@@ -217,23 +220,25 @@ function hash(text: string): number {
 }
 
 function startOfDay(date: Date): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    return localDate(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 /** 某天的 HH:MM */
 function at(day: Date, time: string): Date {
     const [h, m] = time.split(':').map(Number);
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+    return localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
 }
 
 function parseDate(text: string): Date {
     const [y, m, d] = text.split('-').map(Number);
-    return new Date(y!, m! - 1, d);
+    return localDate(y!, m! - 1, d);
 }
 
 export function formatDate(date: Date): string {
     const pad = (n: number) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    const year = date.getFullYear();
+    const text = year >= 0 && year <= 9999 ? String(year).padStart(4, '0') : String(year);
+    return `${text}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 // ---------- 状态行（ADR 0007 决策 3） ----------
@@ -295,7 +300,10 @@ const KINDS: CourseKind[] = ['hard', 'machine', 'water', 'pe'];
 export function parseSchedule(json: unknown, source: string): Schedule {
     const fail = (what: string): never => { throw new Error(`${source}：extensions.qqbot.schedule${what}`); };
     const obj = (v: unknown, at: string): Record<string, unknown> => (typeof v === 'object' && v !== null && !Array.isArray(v) ? v as Record<string, unknown> : fail(`${at} 应为对象`));
-    const str = (v: unknown, at: string, re?: RegExp): string => (typeof v === 'string' && (!re || re.test(v)) ? v : fail(`${at} 格式不对：${String(v)}`));
+    const str = (v: unknown, at: string, re?: RegExp): string => {
+        if (re === DATE) return typeof v === 'string' && calendarDate(v) ? v : fail(`${at} 不是有效日期`);
+        return typeof v === 'string' && (!re || re.test(v)) ? v : fail(`${at} 格式不对：${String(v)}`);
+    };
     const arr = (v: unknown, at: string): unknown[] => (Array.isArray(v) ? v : fail(`${at} 应为数组`));
     const int = (v: unknown, at: string): number => (Number.isInteger(v) ? v as number : fail(`${at} 应为整数`));
     const opt = <T>(v: unknown, read: (v: unknown) => T): T | undefined => (v === undefined ? undefined : read(v));

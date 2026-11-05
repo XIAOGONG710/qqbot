@@ -101,6 +101,16 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
     };
 
     const qqText = String(qq);
+    // These are shared authored documents, not per-QQ stores. Their bodies
+    // cannot establish an exclusive owner, so never copy or move them for one contact.
+    for (const file of ['diary.json', 'written-retain.json', 'written-retain.initialized']) {
+        const path = join(root, 'memory', file);
+        add(path, 'mixed', '共享日记/异步提交恢复资料；可能包含正文，不能按号码猜归属，保留原位人工复核');
+    }
+    add(join(root, 'memory', 'written-retain-coordination', 'index.coordination.sqlite'), 'mixed', '共享日记提交意图的独立OS协调文件，不存正文，运行中不可删换');
+    for (const path of walk(join(root, 'memory')).filter(path => /^(?:diary|written-retain)\.json\.tmp-[1-9]\d*-[1-9]\d*$/.test(basename(path)))) {
+        add(path, 'mixed', '共享日记或提交意图的实际原子写残留，可能含正文；归属未知，不能按单一联系人移动或导出');
+    }
     for (const area of ['chats', 'memory', 'promises', 'proactive', 'context', 'jokes', 'idioms']) {
         for (const path of walk(join(root, area))) {
             const name = basename(path);

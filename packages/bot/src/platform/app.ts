@@ -927,6 +927,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
                 ...(sharedWorld ? { resolveWorld: sharedWorld.at } : {}),
             },
             contacts: config.contacts,
+            sourceSince: contact => tierRecord.since(contact.qq)?.toISOString(),
             history,
             memory,
             ...(promises ? { plans: promises.plansOn } : {}),

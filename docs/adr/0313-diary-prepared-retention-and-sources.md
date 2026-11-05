@@ -1,0 +1,32 @@
+# ADR 0313：日记的固定提交意图、实际完成回执与来源清单
+
+状态：接受，2026-11-05。接续 ADR 0017/0018、0303/0304/0305。
+
+## 问题与证据
+
+真实DiaryWriter→LongTermMemory→HindsightClient链路在假HTTP下收到async accepted即发布written/texts；远端任务仍pending，重启也不查询。仅将LongTerm改为返回false会让writer重新生成不同正文，再冒认旧请求的完成。独立复核另确认：新confirmed日记的来源后来变化，总结仍信旧receipt；writer验证以后、建库await期间改变档位起点，捕获的allowSubmit布尔不能阻止旧正文派发。
+
+所有复现与验证使用临时目录、合成材料和假HTTP/API。未访问真实角色、聊天、运行时、模型服务或数据库；旧角色依赖测试未用于本批验证。
+
+## 协议
+
+1. writer生成后在diary.json先保存prepared：固定正文、角色/标题/日期/最后实际日、UUID、正文和身份摘要、材料/提示词摘要及来源manifest。模型await后与持久发布后重新读取实际来源；未派草稿失效即可丢弃重生成，已派原请求必须保留核对。不得把旧UUID用于另一正文或角色身份。
+2. LongTerm在独立written-retain.json保存完整不可变MemoryItem、canonical requestHash、bank/document/UUID与prepared/dispatched/completed阶段。JSON为事实源，written-retain.initialized是存在见证；坏状态或见证存在而JSON丢失均保原失败关闭。独立written-retain-coordination目录的SQLite仅协调短JSON增量，不能与derived.json共用初始化见证。
+3. 高级SDK只在匹配UUID的父任务及非空children全completed后返回完成；accepted/pending不推进writer。重启先查询原UUID、原body；failed/cancelled/未知状态保留，缺失任务只可在原文原UUID和授权仍有效时依既有SDK幂等契约重交。不把旧版本ACK当新版本成功。队列与每次实际派发前重新核验来源，允许dirty时仅查询已知旧任务，不允许通过查询路径建库或新派发。
+4. writer只有实际完成后发布written/texts/confirmed；收据绑定bodyHash和sourceHash。停止取消纯生成/读取，已派HTTP等ACK保真实意图，重启再核完成。发布后IO异常可读回确认；发布前失败不得跳过intent直接发请求。多文件及远端并非原子事务。
+
+## 来源与总结
+
+manifest记录真正进入材料的1500代码点聊天尾部之消息身份/片段摘要、QQ/档位/档位起点，以及世界/计划/角色上下文和实际提示词摘要。App明确传入TierRecord起点；callback缺失为unknown，callback返回undefined为已知无起点，不用当前时间伪造历史边界。manifest不复制原聊天，但prepared及transport意图含完整生成正文，仍属私密共享资料。
+
+周记/阶段总结绑定所用每篇diary的bodyHash及已确认sourceHash。新收据必须sourceVerified且fresh核对当前来源，不仅核对本地正文；变化先持久公共bank屏障，不生成新总结。生成期间或派发前依赖变化也阻旧稿。已派旧body最终完成可如实记written和sourceVerified=false，保留已发生事实，不能再供总结使用。
+
+旧written/texts不猜测迁移或删除。旧材料可按既有兼容政策用于总结，但依赖明确标legacy并绑定实际bodyHash，绝不伪造旧completed/source证据。新pending或已知污染材料不能冒充legacy绕过。未知新版或坏prepared拒读，不隔离重建成空状态。
+
+## 公共保护与运维
+
+来源变化即使没有可归属QQ，也在written-retain.json持久单调blockedBanks/document；不能虚构QQ所有者。受污染公共bank的模型、实体、观察及diary/week/phase读/再生成暂避，仍可用未污染标准QQ原始world/experience事实及其他私人bank。旧请求的query-only结算不解除屏障；实际历史观察清理、旧公共派生修订与有证据解封仍未完成。
+
+diary.json、written-retain.json、marker、独立协调文件及精确实际tmp残留列共享mixed；审计不把整份共享正文复制到单联系人导出或自动遗忘。归档在租约内先查所有未完成written operation，未结或坏状态拒绝换前缀；完成后的原意图/回执/屏障及marker保留活目录，不因移动或换bank丢掉旧身份。
+
+所有写者需统一升级，运行中不可删除或替换协调文件。50ms仅争锁预算。旧无manifest的远端已接受任务不能凭空追认；pending期间跨运行时区若重算出的MemoryItem不匹配原hash，会拒绝而非猜测迁移。未持久观察/强杀、外部不合作写者、网络FS/fsync与任意请求exactly-once没有新保证。本协议证明固定原请求的实际完成及客户端来源保护，不证明服务端派生事实已全部清除。

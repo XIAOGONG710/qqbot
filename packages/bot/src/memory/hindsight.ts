@@ -108,6 +108,10 @@ export interface MentalModel {
 }
 
 export type RetentionStatus = 'not_found' | 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export interface RetainSubmitOptions {
+    /** Runs after all SDK preflight awaits, immediately before the first POST. */
+    canSubmit?: (signal: AbortSignal) => boolean | Promise<boolean>;
+}
 const RETENTION_STATUSES: readonly string[] = ['not_found', 'pending', 'processing', 'completed', 'failed', 'cancelled'];
 const operationUuid = (value: string): boolean => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
@@ -181,7 +185,7 @@ export interface HindsightApi extends Partial<DerivedRepairApi>, Partial<Observa
     putBank(bankId: string, config: BankConfig): Promise<void>;
     retain(bankId: string, item: MemoryItem): Promise<void>;
     /** 可恢复的异步提交：调用方须先持久UUID与不可变请求；成功仅代表受理，不代表完成。 */
-    submitRetain?(bankId: string, item: MemoryItem, operationId: string): Promise<void>;
+    submitRetain?(bankId: string, item: MemoryItem, operationId: string, options?: RetainSubmitOptions): Promise<void>;
     /** 精确异步任务状态；只有completed能证明对应retain管线已完成。 */
     retentionStatus?(bankId: string, operationId: string): Promise<RetentionStatus>;
     recall(bankId: string, request: RecallRequest, timeoutMs?: number): Promise<RecallResult[]>;
@@ -399,7 +403,7 @@ export class HindsightClient implements HindsightApi {
     }
 
     /** 持久UUID由调用方管理；不在此处把异步受理冒认为文档完成。 */
-    async submitRetain(bankId: string, item: MemoryItem, operationId: string): Promise<void> {
+    async submitRetain(bankId: string, item: MemoryItem, operationId: string, options: RetainSubmitOptions = {}): Promise<void> {
         if (!operationUuid(operationId)) throw new HindsightError('记忆服务任务身份无效');
         const snapshot = structuredClone(item);
         const deadline = performance.now() + this.#timeoutMs;
@@ -426,6 +430,19 @@ export class HindsightClient implements HindsightApi {
             }
             if ((page.total as number) > 0) throw new HindsightError('记忆服务尚有未完成写入，暂缓新的文档任务');
         }
+        if (options.canSubmit) {
+            const controller = new AbortController();
+            const guardTimeout = new HindsightError('记忆服务提交超时');
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            try {
+                const expired = new Promise<never>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(guardTimeout); }, remaining()); });
+                let allowed: boolean;
+                try { allowed = await Promise.race([Promise.resolve().then(() => options.canSubmit!(controller.signal)), expired]); }
+                catch (error) { if (error === guardTimeout) throw error; throw new HindsightError('记忆服务提交来源未确认'); }
+                if (allowed !== true || controller.signal.aborted) throw new HindsightError('记忆服务提交已暂停，来源未确认');
+            } finally { if (timer !== undefined) clearTimeout(timer); }
+        }
+        // A guard may itself await source reads; the original shared budget still applies.
         const receipt: unknown = await this.#request('POST', `${this.#bank(bankId)}/memories`, { ...retainBody(snapshot), operation_id: operationId }, remaining());
         if (!stateObject(receipt) || receipt.success !== true || receipt.async !== true || receipt.bank_id !== bankId
             || receipt.items_count !== 1 || receipt.operation_id !== operationId
