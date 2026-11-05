@@ -77,4 +77,22 @@ describe('认识的人', () => {
         assert.deepEqual(await account.search('x'), []);
         assert.equal(account.name, '梦瑶不熬夜');
     });
+
+    test('B 站回复读取透传取消信号，等待期间取消后不登记旧结果', async () => {
+        const people = make();
+        const controller = new AbortController();
+        let received: AbortSignal | undefined;
+        const raw = {
+            fetchReplies: async (signal?: AbortSignal) => {
+                received = signal;
+                controller.abort();
+                return [{ id: 'late', root: '1', parent: '2', aid: 1, title: '', uid: 7, name: '迟到用户', text: '旧结果', mine: '她的话', at: at(25).getTime() }];
+            },
+        } as unknown as BiliAccount;
+
+        const items = await acquaintancesAccount(raw, people).fetchReplies(controller.signal);
+        assert.equal(items.length, 1, '包装层不篡改底层已返回的读取结果');
+        assert.equal(received, controller.signal, '取消信号必须贯通到底层账号读取');
+        assert.deepEqual(people.list(), [], '取消后不把旧读取写入认识的人状态');
+    });
 });

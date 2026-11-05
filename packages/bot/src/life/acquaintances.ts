@@ -188,8 +188,12 @@ export function acquaintancesAccount<T extends BiliAccount>(account: T, people: 
         get(target, prop) {
             const value = Reflect.get(target, prop, target) as unknown;
             if (prop === 'fetchReplies') {
-                return async () => {
-                    const items = await target.fetchReplies();
+                return async (signal?: AbortSignal) => {
+                    const items = await target.fetchReplies(signal);
+                    // App 停止会取消 ReplyWatcher 的纯读取。包装层必须沿用同一信号，
+                    // 并在等待结束后再核一次；否则旧请求虽然不再生成回复，仍会把
+                    // 已取消的远端结果写进 people.json，甚至污染同目录的新实例。
+                    if (signal?.aborted) return items;
                     for (const item of items) {
                         try { people.observe({ platform: 'bilibili', uid: String(item.uid), name: item.name, where: 'B 站评论区回复了她', what: item.text, at: new Date(item.at), eventId: item.id }); } catch { /* 登记出错不影响收回复 */ }
                     }
