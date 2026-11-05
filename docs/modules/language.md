@@ -29,6 +29,7 @@
 - `language/jokes.ts`
 - `language/idioms.ts`
 - `language/memes.ts`
+- `language/meme-store.ts`
 - `language/meme-dict.ts`
 - `language/exemplars.ts`
 - `language/register.ts`

@@ -15,12 +15,12 @@
 //     参照 QiDouZu/retcon-form：结论是压缩包，要能解压回「它凭什么成立、什么情况下它错」。
 // 她的话里最近原样出现过的梗不再放（别总用同一个）。
 
-import { mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { subtitleExcerpt, type SubtitleResult } from '.././bilibili/bilibili-account.ts';
 import { BLOCKED, type BiliVideo } from '.././bilibili/bilibili.ts';
 import { unit } from './expression.ts';
-import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { commitMemeRefresh, readMemeFile, replaceMemes } from './meme-store.ts';
+export { updateMemes, withMemeStoreLock, MemeStoreLockError } from './meme-store.ts';
 
 export interface MemeEntry {
     term: string;
@@ -42,6 +42,8 @@ export interface MemeEntry {
     lastSeen: string;
     /** 在榜上出现过几次（每次刷新算一次） */
     seen: number;
+    /** Last cooperating author edit, distinct from background observations. */
+    authorRevision?: number;
 }
 
 export interface MemeFile {
@@ -49,6 +51,8 @@ export interface MemeFile {
     /** 上一次刷新的时间（ISO） */
     refreshedAt?: string;
     entries: MemeEntry[];
+    revision?: number;
+    authorRevision?: number;
 }
 
 export const MEME_REFRESH_MS = 6 * 60 * 60_000;
@@ -86,18 +90,13 @@ async function memeRead<T>(signal: AbortSignal | undefined, run: () => Promise<T
 
 // ───────── 存取 ─────────
 
-export function loadMemes(path: string, log: (message: string) => void = () => undefined): MemeFile {
-    const raw = readJsonOr<Partial<MemeFile>>(path, {}, message => log(`网络热梗：${message}`));
-    const entries = (Array.isArray(raw.entries) ? raw.entries : []).filter((e): e is MemeEntry => Boolean(e) && typeof e.term === 'string' && e.term.trim().length > 0
-        && typeof e.meaning === 'string' && e.meaning.trim().length > 0 && typeof e.example === 'string' && (e.confidence === 'high' || e.confidence === 'mid')
-        && typeof e.firstSeen === 'string' && typeof e.lastSeen === 'string' && typeof e.seen === 'number');
-    return { version: 1, ...(typeof raw.refreshedAt === 'string' ? { refreshedAt: raw.refreshedAt } : {}), entries };
+export function loadMemes(path: string, _log: (message: string) => void = () => undefined): MemeFile {
+    return readMemeFile(path);
 }
 
 /** 存盘；目录不存在先建（writeJsonAtomic 不建目录——上线第一次存 memes/memes.json 就因为这个失败过） */
 export function saveMemes(path: string, file: MemeFile): void {
-    mkdirSync(dirname(path), { recursive: true });
-    writeJsonAtomic(path, file);
+    replaceMemes(path, file);
 }
 export const memesPath = (dataDir: string): string => join(dataDir, 'memes', 'memes.json');
 
@@ -342,8 +341,10 @@ export async function refreshMemes(deps: RefreshDeps): Promise<RefreshResult> {
     entries = trimMemes(entries, now);
     const next: MemeFile = { version: 1, refreshedAt: now.toISOString(), entries };
     signal?.throwIfAborted();
-    saveMemes(deps.path, next);
-    const message = `网络热梗：榜上挑出 ${terms.length} 个词，新学会 ${added} 个、老的又出现 ${bumped} 个，现在共 ${entries.length} 个`;
+    const committed = commitMemeRefresh(deps.path, file, { terms, learned: entries.filter(entry => !file.entries.some(old => old.term === entry.term)), today,
+        refreshedAt: next.refreshedAt!, keepDays: MEME_KEEP_DAYS, max: MEME_MAX, signal });
+    added = committed.added; bumped = committed.bumped;
+    const message = `网络热梗：榜上挑出 ${terms.length} 个词，新学会 ${added} 个、老的又出现 ${bumped} 个，现在共 ${committed.file.entries.length} 个`;
     if (!signal?.aborted) deps.log(message);
     return { added, bumped, tried };
     } catch (error) { if (signal?.aborted) return { added: 0, bumped: 0, tried: 0, skipped: 'cancelled' }; throw error; }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -193,12 +193,15 @@ describe('刷新', () => {
         assert.equal(loadMemes(nested).entries.length, 2);
     });
 
-    test('库文件坏了 / 有不合格的条目：当空的 / 忽略不合格的', () => {
+    test('库文件坏了 / 有不合格的条目：保原拒读，不把作者意图猜为空白', () => {
         const path = tmp();
         writeFileSync(path, '{坏了');
-        assert.deepEqual(loadMemes(path).entries, []);
+        assert.throws(() => loadMemes(path));
+        assert.equal(readFileSync(path, 'utf8'), '{坏了');
         writeFileSync(path, JSON.stringify({ version: 1, entries: [entry('好的'), { term: '缺字段' }, { ...entry('把握不对'), confidence: 'low' }] }));
-        assert.deepEqual(loadMemes(path).entries.map(e => e.term), ['好的']);
+        const before = readFileSync(path, 'utf8');
+        assert.throws(() => loadMemes(path));
+        assert.equal(readFileSync(path, 'utf8'), before);
     });
 });
 
