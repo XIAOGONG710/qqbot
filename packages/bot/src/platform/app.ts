@@ -374,8 +374,8 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     // Direct notices have no chat-history entry, but their already dispatched
     // transport and outcome diagnostics still belong to this App's lease.
     const noticeSettlements = new Set<Promise<void>>();
-    const sendOwnedNotice = (send: () => Promise<unknown>, success: () => void, failure: (error: unknown) => void): void => {
-        if (stopped) return;
+    const sendOwnedNotice = (send: () => Promise<unknown>, success: () => void, failure: (error: unknown) => void): Promise<void> => {
+        if (stopped) return Promise.resolve();
         let settle!: () => void;
         const pending = new Promise<void>(resolve => { settle = resolve; });
         noticeSettlements.add(pending);
@@ -383,6 +383,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
         const report = (callback: () => void) => { try { callback(); } catch { /* Diagnostics cannot change a confirmed outcome or strand shutdown. */ } finally { finish(); } };
         try { Promise.resolve(send()).then(() => report(success), error => report(() => failure(error))); }
         catch (error) { report(() => failure(error)); }
+        return pending;
     };
     construction.onFailure(() => noticeSettlements.size ? Promise.allSettled([...noticeSettlements]).then(() => {}) : undefined);
     const runtime = runtimeInfo();
@@ -1880,7 +1881,8 @@ ${body}
             const plain = plainTextOf(event.message);
             const outcome = plain === undefined ? undefined : deviceService.owner(plain);
             if (outcome?.kind === 'reply') {
-                void transport.sendPrivateText(event.user_id, outcome.text).catch(error => log(`设备控制：回复没发出去（${error instanceof Error ? error.message : String(error)}）`));
+                void sendOwnedNotice(() => transport.sendPrivateText(event.user_id, outcome.text), () => {},
+                    error => log(`设备控制：回复没发出去（${error instanceof Error ? error.message : String(error)}）`));
                 return;
             }
             if (outcome?.kind === 'capture') {
@@ -1892,8 +1894,12 @@ ${body}
                 void outcome.run().then(async handled => {
                     if (stopped) return;
                     if (handled.kind === 'reply') {
-                        await transport.sendPrivateText(event.user_id, handled.text);
-                        if (receipt) chatHistory.discardIncoming(event.user_id, receipt);
+                        await sendOwnedNotice(() => transport.sendPrivateText(event.user_id, handled.text),
+                            () => {
+                                if (!receipt) return;
+                                try { chatHistory.discardIncoming(event.user_id, receipt); }
+                                catch (error) { incomingFailure(error); }
+                            }, incomingFailure);
                         return;
                     }
                     const accepted = prepareReceived(event, handled.text, receipt);
