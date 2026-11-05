@@ -426,3 +426,7 @@ M32b远端公共旧派生/历史observation清理及证据解封仍未完，保�
 新增4项，记忆累计873。首次完整983项运行发现无DSH工作时也返回Promise，破坏idle同步释放并连锁两项锁回归；修为仅dshAskPending非零时纳入drain，相关28项重跑全绿。同期一次buffer测试清理临时目录遇Windows EPERM，单项重跑通过，不冒称产品修复。最终重新完整核实983项=982通过/1原权限skip/0失败，全仓类型实际exit0、模块/差异绿。仅合成卡/temp、fake transport和内存DSH hook，无真实角色/runtime/QQ/模型/部署访问。
 
 边界：sendOwnedNotice/DSH只保证当前进程本地所有权；无持久通知outbox、强杀恢复、跨transport/历史事务。DshLink没有signal，已派远端请求可能继续运行，本批只放弃其结果；`/dsh` probe和手机伴侣有独立生命周期，未冒称覆盖。下一轮按证据复核设备命令等仍直接调用sendPrivateText的链及其它后台所有者；M32b远端公共旧派生/历史observation清理和证据解封仍未完，保护不解、不访问真部署DB。记忆未完，不转模块或社区比较，B站/社交仍未整体审完。
+
+第三十四批完成设备命令直接回复停止所有权（af539faa，ADR0148）：真实App分别确证owner即时reply及capture完成后的handled.reply。两者已派sendPrivateText held时旧stop均提前释放bot.lock；即时失败日志晚写，capture成功ACK后还在无租约状态discardIncoming，失败后incomingFailure晚写，transport同步重入stop也漏本次发送。现sendOwnedNotice返回自己的settlement，调用前预登记；即时回复直接复用，capture回复await同一settlement，成功后的入站预约清理和失败诊断都先于settle。capture纯来源尚未返回时现有stop守卫保持立即放弃，不等待不合作设备/看图任务。直接提示仍不进ChatHistory。
+
+新增9项，记忆累计882；两份旧failure diagnostics均改correctness probes。定向9/9、成功/失败/重入/同步throw及入站保留边界通过；最终核实合成集992项=991通过/1既有Windows权限skip/0失败，全仓类型实际exit0、模块/差异绿。仅临时合成卡、fake设备与transport，无真实屏幕/摄像头/QQ/runtime/网络访问或部署推送。边界仍是进程内已派所有权：无持久发送outbox、强杀恢复或QQ ACK与JSON全局事务，不合作transport可阻drain；capture未派来源的晚结果被丢弃而不保存。下一轮继续按真实App合成证据盘点剩余后台/直接发送owner；M32b远端派生与历史observation证据清理仍未完成，记忆未完不转模块。

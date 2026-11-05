@@ -638,3 +638,13 @@ DSH问答新增独立AbortController和pending计数。队列任务在执行前�
 协议限制：DshLink当前不接signal，已经派到远端的请求可能继续计算，本批只保证本地放弃结果；不宣称远端取消、持久上下文恢复、强杀安全或exactly-once。`/dsh`连通性probe与手机伴侣各有独立owner，未由QQ咨询队列自动覆盖。直接通知仍无持久outbox，不合作transport可阻止drain。下一轮继续对设备命令等绕过统一通知出口的直接发送链和其它后台任务逐条用真实App合成取证；尚未证实的不批量重构。
 
 M32b公共diary/week/phase旧远端派生和历史observation独立清理/证据解封仍未完成；客户端屏障保持，不使用版本、布尔、live=0或未知DELETE假造净化证明，不访问真实部署/数据库。记忆模块未完成，不转下一模块或社区比较；B站/社交仍未整体审完。
+
+## 第三十四批：设备命令直接回复与入站收尾（2026-11-05）
+
+代码af539faa，ADR0148补记。两路真实App诊断分别覆盖设备`owner()`即时reply，以及`capture.run()`完成后的handled.reply。即时回复已派held时旧stop释放bot.lock，失败日志晚写；同步重入stop同样漏本次send，同步throw只走泛化入口错误。capture来源尚未返回时旧`if(stopped)`已正确丢弃晚结果，是保留的绿边界；但结果已经返回并派send后，旧stop仍立即释放，成功ACK后在无租约状态discardIncoming，失败ACK后incomingFailure晚写，transport同步重入也提前结束。
+
+sendOwnedNotice现返回已预登记settlement，既有忽略返回值的直接提示策略不变。即时设备提示复用该owner；capture提示await同一个settlement，成功回调内完成入站预约清理，清理IO错误和发送失败都交给既有incomingFailure后再结束settlement。这样stop快照看得到公开transport同步重入派发；未派capture来源仍不纳入drain，不让不合作看图任务永久占锁。直接提示继续不进普通聊天历史，失败预约仍保留给既有恢复链。
+
+新增9项，记忆累计882。正式覆盖停止后新receive、即时成功/失败、同步stop/throw、capture来源held、capture发送成功/失败及同步stop；两个probe改为正确行为断言。最终核实合成集992项=991通过/1既有Windows符号链接权限skip/0失败，全仓类型实际exit0、模块/差异检查通过。全部使用临时合成卡、fake DeviceService/transport，无真实屏幕、摄像头、QQ、runtime、网络或部署。
+
+限制：这里只保证当前进程已派transport和随后的本地预约提交在租约内收尾；没有持久通知outbox、强杀恢复或QQ ACK+JSON原子事务，不合作transport可持续阻塞drain。capture本体停止后晚结果直接放弃，不持久恢复。下一轮继续盘点剩余直接发送和后台owner；M32b公共旧派生/历史observation远端清理和独立完成证据仍未解决，客户端保护保持，记忆模块未完成，不转下一模块或社区比较。
