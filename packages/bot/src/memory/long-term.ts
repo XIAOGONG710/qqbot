@@ -409,6 +409,28 @@ export class LongTermMemory {
     #entitiesVersion = 0;
     #entitiesFlight?: { version: number; promise: Promise<readonly string[]> };
     #stopped = false;
+    /** 读路径里进度不可信、已经记过诊断的（避免每一轮都刷一行）；读成功一次就清掉 */
+    readonly #unreadable = new Set<string>();
+
+    /**
+     * 读路径（召回、印象、关系概况、她今天跟别人聊过的）：进度文件不可信时这一轮不带记忆，返回 undefined。
+     * 写路径照旧失败关闭（不重写坏文件、不派发，等人修复，见 readContactMemoryState / readCommonMemoryState 的 invalid: 'throw'）。
+     * 以前读路径也直接抛：relationship() 是同步调用、没人接，进度文件一坏每一轮回复都会失败，她就不回消息了。
+     * 诊断只记固定文字，不带文件内容或聊天正文。
+     */
+    #readable<T>(what: string, read: () => T): T | undefined {
+        try {
+            const value = read();
+            this.#unreadable.delete(what);
+            return value;
+        } catch {
+            if (!this.#unreadable.has(what)) {
+                this.#unreadable.add(what);
+                this.#options.log(`${what}：记忆进度不可信，这一轮不带记忆（写入仍暂停，修复进度文件后恢复）`);
+            }
+            return undefined;
+        }
+    }
     readonly #writeJobs = new Set<Promise<unknown>>();
     readonly #cancelReads = new Set<() => void>();
     readonly #written: WrittenRetainStore;
@@ -1228,8 +1250,8 @@ export class LongTermMemory {
         options: { query?: string; window?: { start: Date; end: Date }; header?: string; limit?: number; felt?: (day: Date, text: string) => string | undefined } & FadeOptions = {},
     ): Promise<string | undefined> {
         if (this.#stopped) return undefined;
-        const state = this.#load(contact);
-        if (!state.bankConfigured) return undefined;
+        const state = this.#readable(`[${contact.qq}] 记忆召回`, () => this.#load(contact));
+        if (!state?.bankConfigured) return undefined;
         const query = options.query ?? recallQuery(chat);
         if (!query) return undefined;
         const results = await this.#recall(state.bankId, recallRequest(query, now, options.window), `[${contact.qq}] 记忆召回失败，这次不带记忆`);
@@ -1255,7 +1277,7 @@ export class LongTermMemory {
         focus: readonly string[] = [],
     ): Promise<string | undefined> {
         if (this.#stopped || !this.#options.common || !knowsPeople(contact.tier)) return undefined;
-        const stored = readCommonMemoryState(join(this.#options.dir, 'common.json'), message => this.#options.log(message));
+        const stored = this.#readable('公共记忆召回', () => readCommonMemoryState(join(this.#options.dir, 'common.json'), message => this.#options.log(message)));
         if (stored?.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
         const query = recallQuery(chat);
         if (!query) return undefined;
@@ -1370,7 +1392,7 @@ export class LongTermMemory {
      */
     async othersToday(contact: NamedContact, now: Date, people: readonly NamedContact[], start: Date): Promise<string | undefined> {
         if (this.#stopped || !this.#options.common || !knowsPeople(contact.tier)) return undefined;
-        const stored = readCommonMemoryState(join(this.#options.dir, 'common.json'), message => this.#options.log(message));
+        const stored = this.#readable('她今天跟别人聊过的', () => readCommonMemoryState(join(this.#options.dir, 'common.json'), message => this.#options.log(message)));
         if (stored?.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
         const own = this.#hash(contact);
         const owners = new Set(people.map(person => this.#hash(person)).filter(hash => hash !== own));
@@ -1474,7 +1496,7 @@ export class LongTermMemory {
     impression(person: NamedContact): string | undefined {
         if (this.#stopped || !this.#options.common || !knowsPeople(person.tier)) return undefined;
         const snapshot = this.#derivedSnapshot(this.commonBankId());
-        if (!snapshot || snapshot.dirty || this.#writtenBlocked(this.commonBankId()) || !this.#load(person).personModel) return undefined;
+        if (!snapshot || snapshot.dirty || this.#writtenBlocked(this.commonBankId()) || !this.#readable(`[${person.qq}] 对人的印象`, () => this.#load(person))?.personModel) return undefined;
         const generation = snapshot.generation;
         const key = `person:${this.#key(person)}`;
         const stored = this.#relationship.get(key);
@@ -1500,7 +1522,8 @@ export class LongTermMemory {
     /** 关系概况：返回缓存，过期了在后台重新读 */
     relationship(contact: MemoryContact): string | undefined {
         if (this.#stopped) return undefined;
-        const state = this.#load(contact);
+        const state = this.#readable(`[${contact.qq}] 关系概况`, () => this.#load(contact));
+        if (!state) return undefined;
         const snapshot = this.#derivedSnapshot(state.bankId);
         if (!state.relationshipModel || !snapshot || snapshot.dirty) return undefined;
         const generation = snapshot.generation;
