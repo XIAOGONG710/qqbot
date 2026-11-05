@@ -100,9 +100,17 @@ export interface MentalModel {
     last_refreshed_at?: string | null;
 }
 
+export type RetentionStatus = 'not_found' | 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+const RETENTION_STATUSES: readonly string[] = ['not_found', 'pending', 'processing', 'completed', 'failed', 'cancelled'];
+const operationUuid = (value: string): boolean => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
 export interface HindsightApi {
     putBank(bankId: string, config: BankConfig): Promise<void>;
     retain(bankId: string, item: MemoryItem): Promise<void>;
+    /** 可恢复的异步提交：调用方须先持久UUID与不可变请求；成功仅代表受理，不代表完成。 */
+    submitRetain?(bankId: string, item: MemoryItem, operationId: string): Promise<void>;
+    /** 精确异步任务状态；只有completed能证明对应retain管线已完成。 */
+    retentionStatus?(bankId: string, operationId: string): Promise<RetentionStatus>;
     recall(bankId: string, request: RecallRequest, timeoutMs?: number): Promise<RecallResult[]>;
     getMentalModel(bankId: string, id: string): Promise<MentalModel | undefined>;
     createMentalModel(bankId: string, request: MentalModelRequest): Promise<void>;
@@ -114,6 +122,8 @@ export interface HindsightApi {
     listEntities?(bankId: string, timeoutMs?: number): Promise<string[]>;
     /** 读回一篇写进去的原文（ADR 0018：写周记时读以前的日记）；没有这篇是 undefined；没有这个方法就不读 */
     getDocument?(bankId: string, documentId: string, timeoutMs?: number): Promise<{ original_text?: string | null } | undefined>;
+    /** 删除明确归属的稳定文档；旧自定义API可缺省，但不能冒认清理成功。 */
+    deleteDocument?(bankId: string, documentId: string): Promise<void>;
 }
 
 /** 写入请求体：后台异步处理（async），一次一个片段 */
@@ -141,6 +151,65 @@ export class HindsightClient implements HindsightApi {
 
     async retain(bankId: string, item: MemoryItem): Promise<void> {
         await this.#request('POST', `${this.#bank(bankId)}/memories`, retainBody(item));
+    }
+
+    async retentionStatus(bankId: string, operationId: string): Promise<RetentionStatus> {
+        return this.#retentionStatus(bankId, operationId, this.#timeoutMs);
+    }
+
+    async #retentionStatus(bankId: string, operationId: string, timeoutMs: number): Promise<RetentionStatus> {
+        if (!operationUuid(operationId)) throw new HindsightError('记忆服务任务身份无效');
+        let data: unknown;
+        try { data = await this.#request('GET', `${this.#bank(bankId)}/operations/${encodeURIComponent(operationId)}`, undefined, timeoutMs); }
+        catch (error) { if (error instanceof HindsightError && error.status === 404) return 'not_found'; throw error; }
+        if (!stateObject(data) || data.operation_id !== operationId || typeof data.status !== 'string' || !RETENTION_STATUSES.includes(data.status)) {
+            throw new HindsightError('记忆服务任务响应格式无效');
+        }
+        if (data.status !== 'not_found' && data.operation_type !== 'batch_retain' && data.task_type !== 'batch_retain') {
+            throw new HindsightError('记忆服务任务类型无效');
+        }
+        // 父任务空child可能被服务端all([])误判完成；取消也不证明worker已停。
+        if (data.status === 'completed' && (!Array.isArray(data.child_operations) || !data.child_operations.length
+            || !data.child_operations.every(child => stateObject(child) && child.status === 'completed'))) {
+            throw new HindsightError('记忆服务任务完成证据无效');
+        }
+        return data.status as RetentionStatus;
+    }
+
+    /** 持久UUID由调用方管理；不在此处把异步受理冒认为文档完成。 */
+    async submitRetain(bankId: string, item: MemoryItem, operationId: string): Promise<void> {
+        if (!operationUuid(operationId)) throw new HindsightError('记忆服务任务身份无效');
+        const snapshot = structuredClone(item);
+        const deadline = performance.now() + this.#timeoutMs;
+        const remaining = () => {
+            const ms = Math.ceil(deadline - performance.now());
+            if (ms <= 0) throw new HindsightError('记忆服务提交超时');
+            return ms;
+        };
+        const known = await this.#retentionStatus(bankId, operationId, remaining());
+        if (known !== 'not_found') return;
+        // 升级前未跟踪的旧任务也可能迟到覆盖新正文。先保守等待bank写入静止；
+        // 带type过滤和total，不能用首100条中恰好没有retain证明没有旧任务。
+        for (const status of ['pending', 'processing']) for (const type of ['retain', 'batch_retain', 'file_convert_retain']) {
+            let page: unknown;
+            try {
+                page = await this.#request('GET', `${this.#bank(bankId)}/operations?status=${status}&type=${type}&limit=1&offset=0&exclude_parents=false`, undefined, remaining());
+            } catch (error) {
+                if (error instanceof HindsightError && error.status === 404) continue;
+                throw error;
+            }
+            if (!stateObject(page) || page.bank_id !== bankId || !Number.isSafeInteger(page.total) || (page.total as number) < 0
+                || !Array.isArray(page.operations) || page.operations.length > 1 || ((page.total === 0) !== (page.operations.length === 0))) {
+                throw new HindsightError('记忆服务任务列表响应格式无效');
+            }
+            if ((page.total as number) > 0) throw new HindsightError('记忆服务尚有未完成写入，暂缓新的文档任务');
+        }
+        const receipt: unknown = await this.#request('POST', `${this.#bank(bankId)}/memories`, { ...retainBody(snapshot), operation_id: operationId }, remaining());
+        if (!stateObject(receipt) || receipt.success !== true || receipt.async !== true || receipt.bank_id !== bankId
+            || receipt.items_count !== 1 || receipt.operation_id !== operationId
+            || !(receipt.operation_ids == null || Array.isArray(receipt.operation_ids) && receipt.operation_ids.length === 1 && receipt.operation_ids[0] === operationId)) {
+            throw new HindsightError('记忆服务提交确认格式无效');
+        }
     }
 
     async recall(bankId: string, request: RecallRequest, timeoutMs?: number): Promise<RecallResult[]> {
