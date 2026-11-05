@@ -474,8 +474,8 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     // Direct notices have no chat-history entry, but their already dispatched
     // transport and outcome diagnostics still belong to this App's lease.
     const noticeSettlements = new Set<Promise<void>>();
-    const sendOwnedNotice = (send: () => Promise<unknown>, success: () => void, failure: (error: unknown) => void): void => {
-        if (stopped) return;
+    const sendOwnedNotice = (send: () => Promise<unknown>, success: () => void, failure: (error: unknown) => void): Promise<void> => {
+        if (stopped) return Promise.resolve();
         let settle!: () => void;
         const pending = new Promise<void>(resolve => { settle = resolve; });
         noticeSettlements.add(pending);
@@ -483,6 +483,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         const report = (callback: () => void) => { try { callback(); } catch { /* Diagnostics cannot change a confirmed outcome or strand shutdown. */ } finally { finish(); } };
         try { Promise.resolve(send()).then(() => report(success), error => report(() => failure(error))); }
         catch (error) { report(() => failure(error)); }
+        return pending;
     };
     construction.onFailure(() => noticeSettlements.size ? Promise.allSettled([...noticeSettlements]).then(() => {}) : undefined);
     const runtime = runtimeInfo();
@@ -1776,8 +1777,14 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
                     if (pending && !askExpired(pending.at, Date.now())) {
                         pendingAsk.delete(userId);
                         log(`[${userId}] 她答应了：${pending.label}`);
+                        // 停止后不再发晚到的结果；已交给 transport 的回复由 App 持有到成功或失败确认，之后才释放租约（ADR 0148）
                         void pending.run().then(async handled => {
-                            if (handled.kind === 'reply' && handled.text) await transport.sendPrivateText(userId, handled.text);
+                            if (stopped) return;
+                            if (handled.kind === 'reply' && handled.text) {
+                                const text = handled.text;
+                                await sendOwnedNotice(() => transport.sendPrivateText(userId, text), () => {},
+                                    error => log(`[${userId}] 她答应了，结果没发出去：${error instanceof Error ? error.message : String(error)}`));
+                            }
                         }).catch(error => log(`[${userId}] 她答应了但没做成：${error instanceof Error ? error.message : String(error)}`));
                     }
                 }
@@ -3099,7 +3106,8 @@ ${body}
             if (plain !== undefined && !plain.trim().startsWith('/') && deviceService.isOwnerCommand(plain) && !claimOwnerCommand(event)) return;
             const outcome = plain === undefined ? undefined : deviceService.owner(plain);
             if (outcome?.kind === 'reply') {
-                void transport.sendPrivateText(event.user_id, outcome.text).catch(error => log(`设备控制：回复没发出去（${error instanceof Error ? error.message : String(error)}）`));
+                void sendOwnedNotice(() => transport.sendPrivateText(event.user_id, outcome.text), () => {},
+                    error => log(`设备控制：回复没发出去（${error instanceof Error ? error.message : String(error)}）`));
                 return;
             }
             if (outcome?.kind === 'capture') {
