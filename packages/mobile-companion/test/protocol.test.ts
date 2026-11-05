@@ -477,6 +477,19 @@ describe('手机伴侣协议', () => {
         assert.deepEqual(requests, [{ question: '设备 android-media 发来一张图片', media: { mediaId: 'abcdef0123456789', mime: 'image/png' } }]);
     });
 
+    test('媒体摘要等待期间撤销配对不再派发后续 DSH 模型', async () => {
+        let release!: () => void, advice = 0;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const handlers = createDshCompanionHandlers({
+            advisor: { advise: async () => { advice++; return '不应派发'; } },
+            describeMedia: async () => { await held; return '迟到的安全摘要'; },
+        });
+        const pending = handlers.onMessage({ kind: 'image', media: { mediaId: 'abcdef0123456789', mime: 'image/png', bytes: 12 } }, 'android-media-reset');
+        await new Promise(resolve => setImmediate(resolve)); handlers.onReset?.(); release();
+        assert.deepEqual(await pending, { kind: 'text', text: '这台设备的配对已失效，请重新配对。' });
+        assert.equal(advice, 0);
+    });
+
     test('宿主可下发白名单动作，手机回执交给宿主审计', async () => {
         let now = 45_000;
         const pairing = new MemoryPairingStore(60_000);
@@ -580,5 +593,43 @@ describe('手机伴侣协议', () => {
         const settled = await Promise.all(results);
         assert.equal(settled.filter(result => !result.accepted).length, 1);
         assert.equal(runtime.status().queued, 0);
+    });
+
+    test('运行时停止会取消可取消的纯读处理，清理会话并拒绝新请求', async () => {
+        const now = 80_000, pairing = new MemoryPairingStore(60_000), ticket = pairing.issue('android-stop-read', now);
+        let entered = false;
+        const runtime = new CompanionRuntime(new CompanionGateway(pairing, () => now), {
+            onMessage: async (_message, _clientId, signal) => {
+                entered = true;
+                await new Promise<void>((_resolve, reject) => signal?.addEventListener('abort', () => reject(signal.reason), { once: true }));
+                return { kind: 'text', text: '不应返回' };
+            },
+            onAction: async (_request, _clientId, requestId) => ({ requestId, ok: true, decision: 'auto' }),
+        }, () => now);
+        await runtime.handle(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text'] }, 'req-stop-read-hello', 'nonce-stop-read-hello', new Date(now).toISOString()));
+        const pending = runtime.handle({ v: 1, requestId: 'req-stop-read-message', kind: 'message.send', sentAt: new Date(now).toISOString(), nonce: 'nonce-stop-read-message', body: { kind: 'text', text: '等待' } });
+        await new Promise(resolve => setImmediate(resolve)); assert.equal(entered, true);
+        await runtime.stop();
+        assert.deepEqual(await pending, { accepted: false, error: '手机伴侣已经停止' });
+        assert.deepEqual(runtime.status(), { connected: false, queued: 0, maxQueuedPerClient: 32 });
+        assert.deepEqual(await runtime.handle({ v: 1, requestId: 'req-stop-read-after', kind: 'message.send', sentAt: new Date(now).toISOString(), nonce: 'nonce-stop-read-after', body: { kind: 'text', text: '新请求' } }), { accepted: false, error: '手机伴侣已经停止' });
+    });
+
+    test('运行时停止会等待已派发动作确认，不把取消伪装成未发生', async () => {
+        const now = 90_000, pairing = new MemoryPairingStore(60_000), ticket = pairing.issue('android-stop-action', now);
+        let release!: () => void, entered = false, committed = false, drained = false;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const runtime = new CompanionRuntime(new CompanionGateway(pairing, () => now), {
+            onMessage: async message => message,
+            onAction: async (_request, _clientId, requestId) => { entered = true; await held; committed = true; return { requestId, ok: true, decision: 'auto' }; },
+        }, () => now);
+        await runtime.handle(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text'] }, 'req-stop-action-hello', 'nonce-stop-action-hello', new Date(now).toISOString()));
+        const pending = runtime.handle({ v: 1, requestId: 'req-stop-action-run', kind: 'action.request', sentAt: new Date(now).toISOString(), nonce: 'nonce-stop-action-run', body: { action: 'notify', params: { text: '已派发' }, decision: 'auto' } });
+        await new Promise(resolve => setImmediate(resolve)); assert.equal(entered, true);
+        const drain = runtime.stop(); assert.ok(drain); void drain.then(() => { drained = true; });
+        await new Promise(resolve => setImmediate(resolve)); assert.equal(drained, false); assert.equal(committed, false);
+        release(); await drain;
+        assert.equal(committed, true); assert.equal(drained, true);
+        assert.deepEqual(await pending, { accepted: false, error: '手机伴侣已经停止' });
     });
 });

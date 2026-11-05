@@ -9,9 +9,9 @@ export const DOWNLINK_ACTION_TTL_MS = 5 * 60_000;
 export type CompanionDownlinkListener = (clientId: string, envelope: CompanionEnvelope<PhoneActionRequest>) => void;
 
 export interface CompanionRuntimeHandlers {
-    onMessage: (message: CompanionMessage, clientId: string) => Promise<CompanionMessage>;
-    onAction: (request: PhoneActionRequest, clientId: string, requestId: string) => Promise<ActionResult>;
-    onActionResult?: (result: ActionResult, clientId: string) => Promise<void>;
+    onMessage: (message: CompanionMessage, clientId: string, signal?: AbortSignal) => Promise<CompanionMessage>;
+    onAction: (request: PhoneActionRequest, clientId: string, requestId: string, signal?: AbortSignal) => Promise<ActionResult>;
+    onActionResult?: (result: ActionResult, clientId: string, signal?: AbortSignal) => Promise<void>;
     /** 配对撤销时清理宿主侧按设备保存的短期上下文。 */
     onReset?: (clientId?: string) => void;
 }
@@ -40,6 +40,10 @@ export class CompanionRuntime {
     private readonly downlinks = new Map<string, CompanionEnvelope<PhoneActionRequest>[]>();
     private readonly pendingDownlinkResults = new Map<string, Map<string, number>>();
     private readonly downlinkListeners = new Set<CompanionDownlinkListener>();
+    private readonly lifetime = new AbortController();
+    private readonly operations = new Set<Promise<CompanionRuntimeResult>>();
+    private stopped = false;
+    private stopDrain: Promise<void> | undefined;
     private queueGeneration = 0;
 
     constructor(gateway: CompanionGateway, handlers: CompanionRuntimeHandlers, now: () => number = Date.now) {
@@ -58,11 +62,29 @@ export class CompanionRuntime {
     }
 
     createSession(): string {
+        if (this.stopped) throw new Error('手机伴侣已经停止');
         return `session-${randomBytes(18).toString('hex')}`;
     }
 
     releaseSession(sessionId: string): boolean {
+        if (this.stopped) return false;
         return this.gateway.releaseSession(sessionId);
+    }
+
+    /**
+     * 永久关闭当前运行时。纯读取处理器可通过 signal 立即退出；已经派发的动作则由
+     * 宿主自然确认，返回的 drain 会在这些工作全部收尾后完成。
+     */
+    stop(): Promise<void> | undefined {
+        if (this.stopped) return this.stopDrain;
+        this.stopped = true;
+        this.lifetime.abort(new Error('手机伴侣已经停止'));
+        this.reset();
+        this.downlinkListeners.clear();
+        const pending = [...this.operations];
+        if (!pending.length) return undefined;
+        this.stopDrain = Promise.allSettled(pending).then(() => undefined);
+        return this.stopDrain;
     }
 
     /** 撤销配对时同时清空所有尚未下发的手机动作，避免旧动作跨会话残留。 */
@@ -79,6 +101,7 @@ export class CompanionRuntime {
     }
 
     clientForSession(sessionId: string): string | undefined {
+        if (this.stopped) return undefined;
         return this.gateway.clientForSession(sessionId);
     }
 
@@ -87,6 +110,7 @@ export class CompanionRuntime {
      * 这里只排队和发送 envelope，不执行任何系统权限；手机端仍需按 decision 决定是否确认。
      */
     requestPhoneAction(clientId: string, request: PhoneActionRequest, requestId = `push-${randomBytes(8).toString('hex')}`): CompanionEnvelope<PhoneActionRequest> {
+        if (this.stopped) throw new Error('手机伴侣已经停止');
         if (this.gateway.pairedClientId !== clientId) throw new Error('设备尚未配对');
         const body = validateAction(request);
         if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{5,127}$/.test(requestId)) throw new Error('动作 requestId 不合法');
@@ -115,12 +139,14 @@ export class CompanionRuntime {
     }
 
     subscribeDownlinks(listener: CompanionDownlinkListener): () => void {
+        if (this.stopped) return () => undefined;
         this.downlinkListeners.add(listener);
         return () => this.downlinkListeners.delete(listener);
     }
 
     takeDownlinks(clientId: string, limit = MAX_DOWNLINK_ACTIONS): CompanionEnvelope<PhoneActionRequest>[] {
         if (!Number.isInteger(limit) || limit < 1 || limit > MAX_DOWNLINK_ACTIONS) throw new Error('手机动作取出数量不合法');
+        if (this.stopped) return [];
         const queue = this.downlinks.get(clientId) ?? [];
         const cutoff = this.now() - DOWNLINK_ACTION_TTL_MS;
         const pending = this.pendingDownlinkResults.get(clientId);
@@ -135,27 +161,37 @@ export class CompanionRuntime {
     }
 
     async handle(value: unknown, sessionId = 'default'): Promise<CompanionRuntimeResult> {
+        if (this.stopped) return { accepted: false, error: '手机伴侣已经停止' };
         const accepted = this.gateway.accept(value, sessionId);
         if (!accepted.ok) return { accepted: false, error: accepted.error };
+        const operation = this.handleAccepted(value, accepted.clientId);
+        this.operations.add(operation);
+        try { return await operation; }
+        finally { this.operations.delete(operation); }
+    }
+
+    private async handleAccepted(value: unknown, clientId: string): Promise<CompanionRuntimeResult> {
         const generation = this.queueGeneration;
-        const depth = this.queueDepth.get(accepted.clientId) ?? 0;
+        const depth = this.queueDepth.get(clientId) ?? 0;
         if (depth >= MAX_QUEUED_PER_CLIENT) return { accepted: false, error: '设备请求过多，请稍后重试' };
-        this.queueDepth.set(accepted.clientId, depth + 1);
-        const previous = this.queues.get(accepted.clientId) ?? Promise.resolve();
+        this.queueDepth.set(clientId, depth + 1);
+        const previous = this.queues.get(clientId) ?? Promise.resolve();
         let release!: () => void;
         const current = new Promise<void>(resolve => { release = resolve; });
-        this.queues.set(accepted.clientId, current);
+        this.queues.set(clientId, current);
         await previous.catch(() => undefined);
         try {
-            return await this.dispatch(value, accepted.clientId);
+            if (this.stopped) return { accepted: false, error: '手机伴侣已经停止' };
+            const result = await this.dispatch(value, clientId);
+            return this.stopped ? { accepted: false, error: '手机伴侣已经停止' } : result;
         } finally {
             release();
             // reset() 后旧请求仍可能完成；它不能触碰新配对建立的队列映射。
             if (generation === this.queueGeneration) {
-                if (this.queues.get(accepted.clientId) === current) this.queues.delete(accepted.clientId);
-                const remaining = (this.queueDepth.get(accepted.clientId) ?? 1) - 1;
-                if (remaining > 0) this.queueDepth.set(accepted.clientId, remaining);
-                else this.queueDepth.delete(accepted.clientId);
+                if (this.queues.get(clientId) === current) this.queues.delete(clientId);
+                const remaining = (this.queueDepth.get(clientId) ?? 1) - 1;
+                if (remaining > 0) this.queueDepth.set(clientId, remaining);
+                else this.queueDepth.delete(clientId);
             }
         }
     }
@@ -167,11 +203,11 @@ export class CompanionRuntime {
             requestId = envelope.requestId;
             if (!['hello', 'message.send', 'action.request', 'action.result'].includes(envelope.kind)) throw new Error('客户端不能发送此类响应包');
             if (envelope.kind === 'message.send') {
-                const responseBody = await this.handlers.onMessage(validateMessage(envelope.body), clientId);
+                const responseBody = await this.handlers.onMessage(validateMessage(envelope.body), clientId, this.lifetime.signal);
                 return { accepted: true, response: responseEnvelope('message.receive', responseBody, envelope.requestId, this.now()) };
             }
             if (envelope.kind === 'action.request') {
-                const result = await this.handlers.onAction(validateAction(envelope.body), clientId, envelope.requestId);
+                const result = await this.handlers.onAction(validateAction(envelope.body), clientId, envelope.requestId, this.lifetime.signal);
                 return { accepted: true, response: responseEnvelope('action.result', result, envelope.requestId, this.now()) };
             }
             if (envelope.kind === 'action.result') {
@@ -182,7 +218,7 @@ export class CompanionRuntime {
                 if (issuedAt === undefined || this.now() - issuedAt >= DOWNLINK_ACTION_TTL_MS) throw new Error('动作回执没有对应的宿主下发请求');
                 pending!.delete(result.requestId);
                 if (pending!.size === 0) this.pendingDownlinkResults.delete(clientId);
-                await this.handlers.onActionResult(result, clientId);
+                await this.handlers.onActionResult(result, clientId, this.lifetime.signal);
                 return { accepted: true };
             }
             return { accepted: true };

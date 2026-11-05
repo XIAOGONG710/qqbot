@@ -49,6 +49,11 @@ export class MemoryPairingStore implements PairingVerifier {
         this.entries.delete(clientId);
     }
 
+    /** 宿主永久停止时撤销所有尚未使用的一次性凭证。 */
+    clear(): void {
+        this.entries.clear();
+    }
+
     private prune(now: number): void {
         for (const [clientId, entry] of this.entries) {
             if (now >= entry.expiresAt) this.entries.delete(clientId);

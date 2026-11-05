@@ -14,6 +14,7 @@ export interface MobileCompanionIntegration {
     media: MemoryCompanionMediaStore;
     actionCapabilities: readonly PhoneActionCapability[];
     issuePairing(clientId: string, now?: number): PairingTicket;
+    stop(): Promise<void> | undefined;
 }
 
 /** 让手机伴侣复用 QQ 侧同一条 DSH 连接、状态摘要和角色语气。 */
@@ -59,12 +60,23 @@ export function createMobileCompanion(options: {
     const gateway = new CompanionGateway(pairing, options.now, options.sessionIdleTtlMs === undefined ? {} : { sessionIdleTtlMs: options.sessionIdleTtlMs });
     const runtime = new CompanionRuntime(gateway, createMobileDshHandlers(options), options.now);
     const media = new MemoryCompanionMediaStore({ now: options.now });
+    let stopped = false;
     return {
         pairing,
         gateway,
         runtime,
         media,
         actionCapabilities: PHONE_ACTION_CAPABILITIES,
-        issuePairing: (clientId, now = options.now?.() ?? Date.now()) => pairing.issue(clientId, now),
+        issuePairing: (clientId, now = options.now?.() ?? Date.now()) => {
+            if (stopped) throw new Error('手机伴侣已经停止');
+            return pairing.issue(clientId, now);
+        },
+        stop: () => {
+            if (stopped) return runtime.stop();
+            stopped = true;
+            pairing.clear();
+            media.clear();
+            return runtime.stop();
+        },
     };
 }

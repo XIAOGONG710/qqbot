@@ -2136,16 +2136,23 @@ ${body}
         const dataUrl = `data:${record.mime};base64,${record.data.toString('base64')}`;
         return await withTimeout(vision.describe({ url: dataUrl, dataUrl }), MEDIA_TIMEOUTS.vision);
     };
-    if (dshEnabled) mobileCompanion = createMobileCompanion({
-        dsh: dshLink,
-        state: dshState,
-        voice: dshVoice,
-        describeMedia: describeMobileMedia,
-        onActionResult: async (result, clientId) => {
-            // 只记设备、动作结果和决策，不把参数或媒体内容写入日志；执行仍完全由手机端白名单策略负责。
-            log(`手机动作回执：设备 ${clientId}，请求 ${result.requestId}，${result.ok ? '成功' : '失败'}，决策 ${result.decision}${result.error ? `（${result.error.replace(/\s+/g, ' ').slice(0, 160)}）` : ''}`);
-        },
-    });
+    if (dshEnabled) {
+        const ownedCompanion = createMobileCompanion({
+            dsh: dshLink,
+            state: dshState,
+            voice: dshVoice,
+            describeMedia: describeMobileMedia,
+            onActionResult: async (result, clientId) => {
+                // 只记设备、动作结果和决策，不把参数或媒体内容写入日志；执行仍完全由手机端白名单策略负责。
+                log(`手机动作回执：设备 ${clientId}，请求 ${result.requestId}，${result.ok ? '成功' : '失败'}，决策 ${result.decision}${result.error ? `（${result.error.replace(/\s+/g, ' ').slice(0, 160)}）` : ''}`);
+            },
+        });
+        mobileCompanion = ownedCompanion;
+        construction.onFailure(() => {
+            if (mobileCompanion === ownedCompanion) mobileCompanion = undefined;
+            return ownedCompanion.stop();
+        });
+    }
 
     /** 显式咨询才调用 DSH；问答本身留在独立上下文里，下一次 /dsh 可以接着说。 */
     const askDsh = (question: string): void => {
@@ -2550,6 +2557,8 @@ ${body}
             const jokesDrain = jokesOwner?.stop();
             const idiomsDrain = idiomsOwner?.stop();
             const dshDrain = stopDshAsks();
+            const mobileCompanionDrain = mobileCompanion?.stop();
+            mobileCompanion = undefined;
             probing = false;
             const passiveReadDrain = stopPassiveReads();
             const stickerWorkDrain = stopStickerWork();
@@ -2591,7 +2600,7 @@ ${body}
             if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);
-            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, dshDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
+            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, dshDrain, mobileCompanionDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
                     for (const result of results) if (result.status === 'rejected') {
