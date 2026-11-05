@@ -572,3 +572,17 @@ App移除启动/刷新后RAM热梗快照，每次实际男友档提示词fresh�
 新增24（并发16/App读口2/参数5/App坏库1），记忆累计718。初全仓类型实际exit1为schema字符串与closure narrowing，已显式typeof及局部const修复。最终787/787核实合成集：memory*.test.ts+纯bilibili-dm-card+modules共770，另本次完整核实memes.test.ts17项全temp和假API，无角色卡/外部读取，坏库旧1断言按有意协议加固更新且其余不弱化。全仓类型实际exit0、模块/差异全部通过，非全仓全量。正确行为probe现在断言CLI删除保持，原结果已不再是未修证据。未访问真角色/runtime/账号/服务/DB，无部署推送。
 
 新coord只承载OS协调不存正文/联系人，JSON只增整数元数据，不猜新增联系人归属；共享memes及残留不能按号码整份遗忘。本轮不解决远端M32b公共旧派生或历史观察清理，可信store/writer/task冻结与独立完成证据仍缺，既有屏障保持。下一轮从App discoverStickers/消息collect真实合成held链验证借用owner和停止：trend/favorites/download/describe/decide纯读取与favorites.add远端mutation ACK必须区别；只读候选尚未确证，不盲给外部共享StickerShelf加全局stop。replies/risk与其它性能继续按证据审，B站/社交未整体审，记忆模块未完成。
+
+## 第二十七批：表情收藏调用所有权与来源归还（2026-11-05）
+
+代码9c0c77e1，ADR0063补记。核对social/stickers.ts完整队列、favorites/BQB/Bili来源、App三个consider/discover入口、main与Koishi工厂及sim借用调用。main/Koishi各造货架但App注入接口不保证独占，不能永久stop整个货架。真实App12原case10红2绿：8个held纯阶段停机晚续派/落index/image/log、晚模型失败日志、已派收藏ACK提前释放目录并派第二add；正常事实及共享借用继续使用为绿对照。扩展3项验证同URL重试、失败ACK与transport同步stop+throw，不把绿对照全计缺陷数。
+
+per-call StickerWorkOptions.signal贯通串行纯任务，取消本地等待、最终提交守signal、pending token防旧回调删新任务身份。自身mirror ACK在调用返回前收尾，排队未派可取消、已派不race掉事实；App同步登记任务后才微任务派发，stop/构造abort本scope并drain后放目录租约。既有QQ写间隔保elapsed 2秒，失败batch仍停；不合作借用实现忽略signal会阻drain，不伪称中止任意外部工作。生命周期修复不保证index IO失败后的持久ACK恢复或远端exactly-once。
+
+来源独立9项：Bili7旧取消入口/各await/fallback真红后绿，缓存已完成部分保留，未完成不冒充新缓存；BQB晚成功原会写catalog/log真红，晚失败原就拒绝为绿对照。download/describe/decide实际参数和QQ只读来源传signal；默认判断器模型调用层另发现signal接口未接，不仅删除类型错误字段：共用LLM4红验证fetch/body/retry/预取消，新增可选信号阻止排队后新派、重试和旧正文交付，默认退避取消补1项。保旧无signal路径，不能承诺不合作自定义fetch/sleep自身副作用取消。
+
+借用来源2项：真实App仅构造安装Bili、不connected即stop，外部shelf.discover原仍由旧App闭包发出fake网络请求1次，现归还原来源；多层setTrend用活跃层/动态previous代理，A后B安装后先dispose A，再dispose B，不覆盖B、不复活A。构造与正常stop均登记归还。未新增权限或配额策略，未改变收藏/发送概率、来源筛选、同类默认频率。
+
+新增31（App15、来源9、借用2、LLM5），记忆累计749。首854合成测试绿但类型实际exit1（signal不属于LlmDeps），不是最终全绿；补实际LLM支持并最终完整859/859，类型实际exit0及模块/差异绿。859为已允许memory*+纯bili-card+modules801、此前核实memes17、新核实四个sticker相关旧suite41；四个源均逐一确认临时合成文件和fake fetch/API，无角色卡/真实runtime/外部请求。不是全仓全量，历史真实卡测试不冒称全合成。测试代理一次中间态等待中断留下全合成%TEMP%/qqbot-app-stickers-owner-vqFkxW，清理在核实无bot.lock/活测试进程后仍被自动审批以blocked by policy拒绝，未给具体原因，已保留并停止替代重试；此工具阻碍不等项目修复失败，也不计中间态为产品缺陷。
+
+新独立确证下一步：memory-sticker-eviction-io.mjs在临时货架容量1时，fake新图/描述判断后注入index.tmp写EROFS。现indexUnchanged=true且oldEntryStillCommitted=true，但旧图片exists=false；先删victim再提交index使失败后原已确认收藏悬空。诊断exit0只报告事实，尚未修。下一轮需要图片/索引/RAM/seen发布失败、重启、淘汰时机和已经确认QQ收藏事实的完整协议，不以本批cancel/drain当多文件事务；不猜删未知孤儿。M32b远端旧公共派生/历史observation清理与可信store/writer/task独立证据解封仍未完成，现屏障保持，不访问真实部署DB。记忆未完，不转模块或社区比较。

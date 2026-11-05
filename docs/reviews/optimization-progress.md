@@ -376,3 +376,11 @@ Commons 严格响应/尺寸/元数据与自有词表参数，保存完整作者�
 新增24（并发/恢复16、App作者读口2、参数5、App坏库1），记忆累计718；初类型收窄错误真实exit1已修。最终787/787核实合成集=原允许范围新增后770+本次额外核实旧memes17，全仓类型实际exit0、模块/差异绿，非全仓全量。memory-meme-author-race.mjs现正确行为探针，cliRemoved=true、afterRefresh=[]、authorRemovalPreserved=true；不重做旧坏断言。只合成卡/数据/假服务/临时子进程，无真实runtime/服务/推送部署。
 
 下一轮先真实App合成验证discoverStickers及消息collect链的停止/构造/借用owner边界：App注入StickerShelf，不能凭猜测stop共享借用对象；检查held trend/favorites/download/describe/decide和镜像favorites.add已派ACK分别处理，未确证勿当缺陷。replies/risk仍待owner证据，B站/社交未整体审。M32b远端旧公共派生/历史observation独立清理及证据解封仍未完成，不以本地协议/完成/drain当整库净化。记忆未完不转模块。相关写者统一升级，运行中不删换coord或手改JSON，50ms仅争锁预算；无任意retry exactly-once/fsync/networkFS/旧写者保证。作者删除防本轮旧结果复活，不擅自添加永久禁用词政策。
+
+第二十七批完成图片表情按App调用归属的停止/借用协议（9c0c77e1，ADR0063补记）：真实App旧12项10红2绿，trend/QQ来源/download/describe/decide晚结果续派/落index及图片/log；已派favorites.add时提前放锁且取消后派第二add。新增per-call signal而非全局shelf.stop，App派发前登记consider/discover（含补回），构造/正常stop取消纯阶段，等待本call已派mutation ACK/本地收尾后放锁；未派取消、已派成功/失败/同步throw保真，不等其它borrower。pending token允许取消后同URL被新调用重试。BQB目录晚写、Bili account/emote/popular/body/comment/gap/fallback逐层取消；setTrend归还活跃层+动态previous防借用App停后仍留旧网络来源与逆序释放复活。
+
+初类型实际exit1揭示stickerDecider传signal但LlmDeps未接；追加4项fetch/body/retry/预取消真红+1默认退避取消回归，chatCompletion可选signal接排队后/派发/await/重试及实际fetch，默认退避清timer；未传者保持原行为。新增31（App15/来源9/借用来源2/LLM5），记忆累计749。首854测试绿但类型未过不算最终；修后最终完整859/859核实合成集=memory*等801+此前memes17+本次核实stickers/sticker-favorites/sticker-sources/bili-stickers41，全仓类型实际exit0、模块/差异绿，非全仓全量。旧4suite逐一核对全temp/fake无角色卡；没有运行未核真实卡suite、真实服务或部署推送。
+
+下一轮优先已确证淘汰IO：node docs/reviews/repro/memory-sticker-eviction-io.mjs仅temp合成图、fake模型、index临时写注入EROFS，输出indexUnchanged=true/oldEntryStillCommitted=true/committedOldImageStillExists=false。旧实现先删满额victim图片再写index，失败已确认旧条目悬空；exit0只是坏行为诊断。需图片/index/RAM/seen/eviction发布失败与重启恢复协议，保真实收藏ACK，不把本轮owner当多文件事务；不盲删未知孤儿或真实资料。B站/社交未整体审，replies/risk等尚需证据盘点；M32b远端公共旧派生/历史观察清理及独立证据解封仍未完成，现保护不解，记忆未完不转模块。
+
+验证中断残余：测试代理在App已加drain而货架仍编辑的中间态停止试跑，新增3秒bounded等待后重测；该中间态不计产品新缺陷。留下全合成%TEMP%/qqbot-app-stickers-owner-vqFkxW，已核无bot.lock/该测试活进程，清理被自动审批以“blocked by policy”拒绝（无具体理由），已保留不换途径重试。无真实runtime影响。仍不保证不合作自定义API副作用取消/任意mutation强杀恢复或持久outbox、全局事务。
