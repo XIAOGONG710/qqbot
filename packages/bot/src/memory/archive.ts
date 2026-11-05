@@ -95,6 +95,13 @@ export function archiveTestData(options: ArchiveOptions): ArchiveResult {
         const qq = basename(file, '.jsonl');
         plan(join(chats, file), join(chats, 'archive', `${qq}-${tierOf(qq) ?? 'unknown'}-${stamp}.jsonl`));
     }
+    // 尚未进聊天的入站正文同样必须归档；不能依赖对应 jsonl 存在。
+    // 精确覆盖 json-file.ts 的崩溃临时文件和旧隔离文件，归档名仍以 QQ- 开头供隐私审计归属。
+    for (const file of files(chats, '')) {
+        const qq = /^([1-9]\d*)\.recalled\.json(?:\.tmp-\d+-\d+|\.corrupt-\d+)?$/.exec(file)?.[1];
+        if (!qq || !Number.isSafeInteger(Number(qq))) continue;
+        plan(join(chats, file), join(chats, 'archive', `${qq}-${tierOf(qq) ?? 'unknown'}-${stamp}${file.slice(qq.length)}`));
+    }
     for (const sub of ['memory', 'proactive']) {
         const dir = join(dataDir, sub);
         for (const file of files(dir, '.json')) plan(join(dir, file), join(dir, `archive-${stamp}`, file));
