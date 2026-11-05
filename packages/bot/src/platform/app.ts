@@ -84,7 +84,7 @@ import { armIntimate, INTIMATE_REPLIES, takeIntimateLine } from '.././language/i
 import { describeState, formatDate, herDay, stateAt, type Schedule } from '.././life/schedule.ts';
 import { useRealWeather, weatherFetcher, type WeatherFetcherStatus } from '.././world/weather.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
-import { idiomStore, IDIOMS_CHECK_MS, refreshIdioms } from '.././language/idioms.ts';
+import { idiomRefresher, idiomStore, IDIOMS_CHECK_MS, verifiedIdioms } from '.././language/idioms.ts';
 import { jokeRefresher, jokeStore, JOKES_CHECK_MS, verifiedJokes } from '.././language/jokes.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes, type MemeEntry } from '.././language/memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from '.././language/watching.ts';
@@ -503,6 +503,12 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     construction.onFailure(() => jokesOwner?.stop());
     // 他的口头习惯（ADR 0138）：派生数据，存 <数据目录>/idioms/<QQ>.json
     const idioms = config.idioms ? idiomStore({ dir: join(config.dataDir, 'idioms'), log }) : undefined;
+    const idiomsOwner = idioms ? idiomRefresher() : undefined;
+    construction.onFailure(() => idiomsOwner?.stop());
+    const idiomBlockedFor = (contact: Contact) => {
+        const character = cardFor(contact.tier).character;
+        return [contact.name, character.name, ...config.contacts.map(person => person.name), ...character.banned];
+    };
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；刷新在下面（要她的 B 站号）
     const memesFile = memesPath(config.dataDir);
     let memeEntries: readonly MemeEntry[] = config.memes ? loadMemes(memesFile, log).entries : [];
@@ -938,7 +944,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
             ...(config.curious ? { curious: true } : {}),
             ...(config.interruptions ? { interruptions: true } : {}),
             ...(jokes && contact.tier === 'boyfriend' ? { jokes: () => verifiedJokes(jokes.load(contact.qq), history.load(contact.qq)) } : {}),
-            ...(idioms && contact.tier === 'boyfriend' ? { idioms: () => idioms.load(contact.qq).items } : {}),
+            ...(idioms && contact.tier === 'boyfriend' ? { idioms: () => verifiedIdioms(idioms.load(contact.qq), history.load(contact.qq), idiomBlockedFor(contact)) } : {}),
             ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => memeEntries } : {}),
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
@@ -1432,12 +1438,13 @@ ${video.link}`);
         if (!idioms || stopped) return;
         for (const contact of config.contacts.filter(c => c.tier === 'boyfriend')) {
             const character = cardFor(contact.tier).character;
-            void refreshIdioms({
+            const scoped: Log = message => { if (!stopped) log(message); };
+            void idiomsOwner!.refresh({
                 qq: contact.qq, userName: contact.name, charName: character.name, history: history.load(contact.qq), store: idioms,
-                blocked: [contact.name, character.name, ...config.contacts.map(c => c.name), ...character.banned],
-                extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
-                now: pipeline?.now ? pipeline.now() : Date.now(), log: message => log(`[${contact.qq}] ${message}`),
-            }).catch(error => log(`[${contact.qq}] 口头习惯：学习出错（${error instanceof Error ? error.message : String(error)}）`));
+                freshHistory: () => history.load(contact.qq), blocked: idiomBlockedFor(contact),
+                extract: messages => (pipeline?.generate ? pipeline.generate(messages, scoped) : chatCompletion(forExtraction(config.llm), messages, { log: scoped, purpose: 'background' })),
+                now: pipeline?.now ? pipeline.now() : Date.now(), log: message => scoped(`[${contact.qq}] ${message}`),
+            }).catch(error => scoped(`[${contact.qq}] 口头习惯：学习出错（${error instanceof Error ? error.message : String(error)}）`));
         }
     };
     // 她自己看一个视频（ADR 0130）：每天一次，14 点以后；30 分钟看一眼该不该看；要她的 B 站号
@@ -2354,6 +2361,7 @@ ${body}
             const memoryDrain = memory?.stop();
             const tastesDrain = tastes?.stop();
             const jokesDrain = jokesOwner?.stop();
+            const idiomsDrain = idiomsOwner?.stop();
             const weatherDrains = [...weatherRefreshes];
             const contextDrains = [...contextSummaries].map(summarize => summarize.stop());
             clearTimeout(incomingRetryTimer);
@@ -2390,7 +2398,7 @@ ${body}
             if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);
-            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, presenceDrain, browsingDrain, deviceDrain, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
+            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, presenceDrain, browsingDrain, deviceDrain, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
                     for (const result of results) if (result.status === 'rejected') {
