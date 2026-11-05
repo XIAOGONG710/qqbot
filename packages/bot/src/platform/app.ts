@@ -2823,7 +2823,9 @@ ${body}
     // enter chat history, so keep a bounded ingress index for them and for other in-flight events.
     const recentIngress = new Set<string>();
     const rememberIngress = (event: MessageEvent): boolean => {
-        const key = `${event.user_id}:${event.message_id}`;
+        // QQ 的 message_id 不保证全局唯一（ADR 0238：会被不同消息重用）：重投的同一条消息 id、序号、秒数都相同，
+        // 同 id 但序号或秒数不同的是另一条，不能被入口吞掉。
+        const key = `${event.user_id}:${event.message_id}:${event.real_seq ?? ''}:${event.time}`;
         if (recentIngress.has(key)) return false;
         recentIngress.add(key);
         if (recentIngress.size > 4_096) {
