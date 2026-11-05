@@ -400,6 +400,8 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     const dshEnabled = dshConfig.enabled === true;
     // DSH 咨询必须按 QQ 到达顺序串行，避免快速连发时后发问题先返回，破坏上下文连续性。
     let dshAskTail: Promise<void> = Promise.resolve();
+    let dshAskPending = 0;
+    const dshAskLifetime = new AbortController();
     // DSH 命令不写入普通 QQ 聊天记录，单独保留一个有上限的进程内连续上下文。
     const dshConversation: DshConversationTurn[] = [];
     log(`DSH 顾问：${dshEnabled ? '开（仅男朋友档显式 /dsh 命令）' : '关'}`);
@@ -2102,19 +2104,39 @@ ${body}
 
     /** 显式咨询才调用 DSH；问答本身留在独立上下文里，下一次 /dsh 可以接着说。 */
     const askDsh = (question: string): void => {
+        dshAskPending++;
         dshAskTail = dshAskTail.then(async () => {
+            if (stopped || dshAskLifetime.signal.aborted) return;
             try {
                 const continuity = dshRecentTurns();
                 dshConversation.push({ role: 'user', content: question });
-                const reply = await dshLink.advise({ question, state: dshState(), recentTurns: continuity, voice: dshVoice() });
+                const request = Promise.resolve(dshLink.advise({ question, state: dshState(), recentTurns: continuity, voice: dshVoice() }))
+                    .then(reply => ({ kind: 'reply' as const, reply }), error => ({ kind: 'error' as const, error }));
+                let onAbort: (() => void) | undefined;
+                const cancelled = new Promise<{ kind: 'cancelled' }>(resolve => {
+                    if (dshAskLifetime.signal.aborted) resolve({ kind: 'cancelled' });
+                    else {
+                        onAbort = () => resolve({ kind: 'cancelled' });
+                        dshAskLifetime.signal.addEventListener('abort', onAbort, { once: true });
+                    }
+                });
+                const outcome = await Promise.race([request, cancelled]);
+                if (onAbort) dshAskLifetime.signal.removeEventListener('abort', onAbort);
+                if (outcome.kind === 'cancelled' || stopped || dshAskLifetime.signal.aborted) return;
+                if (outcome.kind === 'error') throw outcome.error;
+                const reply = outcome.reply;
                 const text = reply.trim() || '我刚才没整理好，你再问我一次。';
                 dshConversation.push({ role: 'assistant', content: text });
                 dshConversation.splice(0, Math.max(0, dshConversation.length - 12));
                 tellOwner(text);
             } catch (error) {
-                tellOwner(`（DSH 咨询失败：${error instanceof Error ? error.message : String(error)}）`);
+                if (!stopped && !dshAskLifetime.signal.aborted) tellOwner(`（DSH 咨询失败：${error instanceof Error ? error.message : String(error)}）`);
             }
-        });
+        }).finally(() => { dshAskPending--; });
+    };
+    const stopDshAsks = (): Promise<void> | undefined => {
+        dshAskLifetime.abort();
+        return dshAskPending ? dshAskTail : undefined;
     };
 
     /** 「/休眠 [原因]」先商量：让她自己说话（这一条会发给他），记下她的话；「/休眠 确认」才封存并休眠；「/休眠 取消」回到醒着 */
@@ -2481,6 +2503,7 @@ ${body}
             const tastesDrain = tastes?.stop();
             const jokesDrain = jokesOwner?.stop();
             const idiomsDrain = idiomsOwner?.stop();
+            const dshDrain = stopDshAsks();
             const passiveReadDrain = stopPassiveReads();
             const stickerWorkDrain = stopStickerWork();
             const accountGuardDrains = [...accountGuardSettlements];
@@ -2521,7 +2544,7 @@ ${body}
             if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);
-            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
+            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, dshDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
                     for (const result of results) if (result.status === 'rejected') {
