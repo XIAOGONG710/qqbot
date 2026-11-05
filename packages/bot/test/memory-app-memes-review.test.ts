@@ -12,7 +12,7 @@ async function until(check: () => boolean) { const deadline = Date.now() + 3000;
 type Stage = 'account' | 'lists-body' | 'candidate-model' | 'gather-search' | 'explain-model' | 'none';
 const term = '霓虹土豆';
 const login = { code: 0, data: { isLogin: true, uname: '合成账号', mid: 123, wbi_img: { img_url: `https://synthetic.invalid/${'a'.repeat(32)}.png`, sub_url: `https://synthetic.invalid/${'b'.repeat(32)}.png` } } };
-const explanation = JSON.stringify({ 是梗: true, 意思: '表示遇到有趣小事时的合成玩笑', 例句: '这波霓虹土豆', 把握: '高', 适合聊天: true });
+const explanation = JSON.stringify({ 是梗: true, 意思: '表示遇到有趣小事时的合成玩笑', 例句: "这波霓虹土豆", 为什么好笑: "拿土豆的平常和霓虹的夸张硬凑在一起", 什么时候别用: "对方认真难过的时候", 把握: "高", 适合聊天: true });
 
 async function fixture(stage: Stage, failModel = false) {
     const root = mkdtempSync(join(tmpdir(), 'qqbot-app-memes-review-')), dataDir = join(root, 'data'); mkdirSync(join(dataDir, 'secrets'), { recursive: true });
@@ -90,7 +90,7 @@ test('热梗晚模型失败与授出logger不在停止后复活日志', async ()
     } finally { await f.cleanup(); }
 });
 
-test('热梗已确认成功事实跨停止重启保留，12小时内不重抓或重问模型', async () => {
+test('热梗已确认成功事实跨停止重启保留，6小时内不重抓或重问模型', async () => {
     const f = await fixture('none');
     try {
         await until(() => existsSync(f.file)); const bytes = readFileSync(f.file, 'utf8'); assert.ok(bytes.includes(term));

@@ -7,7 +7,7 @@ import { emptyLists, fetchLists, gatherEvidence, loadMemes, refreshDue, refreshM
 import { fileOps } from '../src/memory/json-file.ts';
 
 const tick = () => new Promise<void>(done => setImmediate(done));
-const term = '星云土豆', candidates = '{"词":"星云土豆","来源":"合成热搜"}', explanation = '{"是梗":true,"意思":"朋友间形容轻松快乐的状态","例句":"今天真是星云土豆","把握":"高","适合聊天":true}';
+const term = '星云土豆', candidates = '{"词":"星云土豆","来源":"合成热搜"}', explanation = '{"是梗":true,"意思":"朋友间形容轻松快乐的状态","例句":"今天真是星云土豆","为什么好笑":"把宇宙和土豆硬凑在一起的反差","什么时候别用":"对方认真难过的时候","把握":"高","适合聊天":true}';
 function fixture() {
     const root = mkdtempSync(join(tmpdir(), 'qqbot-memes-owner-')), path = join(root, 'memes.json'), controller = new AbortController(), calls: string[] = [], logs: string[] = [];
     saveMemes(path, { version: 1, refreshedAt: '2026-11-04T00:00:00Z', entries: [{ term: '合成旧梗', meaning: '合成且已经确认的解释', example: '合成例句', confidence: 'high', firstSeen: '2026-11-01', lastSeen: '2026-11-04', seen: 1 }] });
@@ -77,11 +77,11 @@ for (const stage of ['search', 'sleep', 'subtitle', 'hotComments'] as const) tes
     } finally { release(results[stage]); await outcome; }
 });
 
-test('热梗正常新词/旧词事实与12小时策略保留，已确认提交不因停止回滚', async () => {
+test('热梗正常新词/旧词事实与6小时策略保留，已确认提交不因停止回滚', async () => {
     const f = fixture();
     try {
         assert.deepEqual(await refreshMemes(f.deps), { added: 1, bumped: 0, tried: 1 }); const saved = readFileSync(f.path, 'utf8'), file = loadMemes(f.path);
-        assert.equal(file.entries.length, 2); assert.equal(refreshDue(file, new Date('2026-11-06T07:59:59+08:00')), false); assert.equal(refreshDue(file, new Date('2026-11-06T08:00:00+08:00')), true);
+        assert.equal(file.entries.length, 2); assert.equal(refreshDue(file, new Date('2026-11-06T01:59:59+08:00')), false); assert.equal(refreshDue(file, new Date('2026-11-06T02:00:00+08:00')), true);
         f.controller.abort(); assert.equal((await refreshMemes(f.deps)).skipped, 'cancelled'); assert.equal(readFileSync(f.path, 'utf8'), saved);
         const next = new AbortController(); const result = await refreshMemes({ ...f.deps, signal: next.signal, ask: async () => candidates, gather: async () => { assert.fail('已知词不得再找证据'); } });
         assert.deepEqual(result, { added: 0, bumped: 1, tried: 0 }); assert.equal(loadMemes(f.path).entries.find(entry => entry.term === term)?.seen, 2);
