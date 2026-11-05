@@ -354,3 +354,7 @@ Commons 严格响应/尺寸/元数据与自有词表参数，保存完整作者�
 第二十二批完成小梗已保存origin持久来源（c777db5a，ADR0114补记）：真实AppB撤回唯一origin来源后重启漏进prompt先红后绿。每份缓存完整历史前缀count/hash、实际请求hash、jokes集合hash；生产读口/状态数fresh核验，正常append/已回复/危机keep保持。旧无manifest保原暂避，20h冷却和40条门槛保持，到期可绕MIN_NEW/cursor重建；失效旧origin不carry，不以新hash洗白。明确坏source/坏JSON/readEIO/诊断抛错均source:null拒覆盖，ENOENT首次正常对照。无新原文/路径/sidefile，原隐私清单覆盖。新增16（core12/App4），记忆累计591；最终643/643核实合成集、全仓类型实际exit0、模块/差异绿，非新全仓全量。memory-app-jokes-revision.mjs两mode现正确行为探针，B保原1条但不进prompt，勿重做旧坏断言。
 
 下一轮先合成验证idioms后台停止及在途/已完成来源候选，不假定同结构就是确证；小梗重叠刷新RMW、watch/feed/memes/stickers仍待按证据复核。M32b远端公共旧派生/历史observation清理及独立证据解封仍未完成，现保护不解，记忆未完不转模块。仅合成数据假服务临时文件，不访问真角色/runtime/部署/服务；保旧weakID/legacybefore/未知DELETE/不合作写者/多文件远端非事务边界。
+
+第二十三批完成口头习惯owner/来源及两类重叠提交：真实App8项先4红4绿，已证stop晚落盘/日志、在途来源撤回、部分撤回只余1次仍按旧4次3日分类进prompt；全撤原鲜度已挡是正对照。bd0cf0ad/ADR0138接owner stop/drain、fresh前缀、持久request/history/items/blocked哈希与统一blocked读口；保20h/60/20/30日/4次3日/300x60及正常append/已回复/危机keep，legacy保原到期重学，坏状态拒覆盖。小梗42→54→42、idioms64→84→64真实文件重叠均另确证并修：提交前重读原状态摘要比较，拒旧结果回退，发布失败对照不伪造进度。小梗代码fff7b97b，idioms合入bd0cf0ad；非跨进程CAS、不消除重复模型成本。
+
+新增30（jokes2+idioms28），记忆累计621；先671绿后补idioms重叠，再最终完整673/673核实合成集、全仓类型实际exit0、模块/差异绿。非新全仓全量，未跑旧真实角色suite，无真实服务/部署/推送。下一轮先真实App合成验证watchJob/feedJob停止owner及响应落盘/后继请求候选，memes/stickers仍候选，B站/社交未整体审；已修小梗/idioms旧清单不重做。M32b远端旧派生/observation独立清理/证据解封仍未完成，保护不解，记忆未完不转模块。

@@ -522,3 +522,15 @@ A在途来源另有真实App红：42条同长度消息，未回复的两条唯�
 新增16（core12/App4），记忆累计591；最终643/643核实合成集、全仓类型实际exit0、模块和差异全部通过。仅memory*.test.ts+纯bilibili-dm-card+modules，不是新全仓全量。两mode memory-app-jokes-revision.mjs已改正确断言：A不落盘不进prompt；B保原1条及字节但不进prompt，extracts均1。勿再把B旧坏断言当当前未修。未跑旧真实角色suite，无外部服务/部署/推送。
 
 下一轮：优先合成验证idioms的后台owner与在途/已完成来源依赖（目前仍源码候选，不冒称已确证）；小梗重叠刷新RMW尚未作为本批覆盖，按具体证据补查。watch/feed/memes/stickers仍候选。记忆模块尚未完成，M32b远端公共旧派生/历史observation清理及独立完成证据仍未打通，现保护不解，不能以本地hash/source/stop等同远端净化。既有真实部署不可访问、未知DELETE、旧weakID/legacybefore/未持久观察、跨时区pending、多文件非事务及不合作写者边界保持。
+
+## 第二十三批：口头习惯停止/来源与重叠提交（2026-11-05）
+
+真实App使用临时合成卡、64条用户消息跨4日、假模型/transport/network拒真实访问；8项正式先4红4绿：停机后held成功写文件、失败/授予log晚写；在途4条依据撤回仍保存；已完成撤回3/4仅余一次，重启actual prompt仍称“平时爱说”。全撤时原idiomLine鲜度检查已拦，是绿对照，不冒称该场景泄漏。已回复忽略撤回、危机keep、正常append正对照保持。
+
+代码bd0cf0ad（ADR0138）：idiomRefresher拥有所有本地任务，微任务前登记/停止拒新、纯模型等待可取消且drain，App构造/正常stop接线及model log守界。freshHistory前缀核验贯通派发前/await后；持久source绑定完整role/time/content、请求指纹、items及blocked集合hash，生产提取/读口同idiomBlockedFor。旧分类来源失效暂避保原，legacy到期重学不被旧cursor永久挡，坏source/JSON/IO及诊断失败保原拒覆盖。原20h/60消息/20新消息/30日/4次3日/300x60输入与展示概率不改。无新raw/路径/sidefile，现idioms精确文件隐私链继续覆盖。独立低层调用不提供freshHistory仍只有自身快照，不宣称任意外部来源一致。
+
+并行实际文件确证两组重叠提交：小梗旧42条held，54条新结果先提交后旧结果把进度回退42；口头习惯64/84同样回退64。小梗fff7b97b先独立27定向+全仓类型+diff绿后提交，口头习惯随后正式先红再修入bd0cf0ad。保存前重读比较派发时状态摘要，改变则弃旧结果；新发布失败的对照仍允许旧任务正常提交，不伪造已发生事实。同步读比写依赖App目录单写者，非跨进程原子CAS，不消除重复模型成本，不泛称全并发已证明。
+
+新增30（小梗重叠2、口头习惯core18/App8/重叠2），记忆累计621。先671/671及类型绿后新增idioms重叠修复，最后完整重跑673/673、全仓类型实际exit0、模块/差异绿；最终结果覆盖最后代码，不沿用前一版。仍仅核实memory*.test.ts+纯bilibili-dm-card+modules，非新全仓全量，未跑旧真实卡suite。
+
+下一轮先真实App合成验证watchJob/feedJob的停止所有权、已派响应后落watched/feed/历史与后继外部请求；尚源码候选，未确证勿称缺陷。memes/stickers也待风险复核，照片/食物已取消守卫不重做；B站/社交模块未整体审。本轮小梗/idioms具体旧覆盖反例已修，不重复旧清单。M32b远端公共旧派生/历史observation清理及独立证据解封仍未完成，真实部署/服务不可访问，现保护不解，不把本地source/stop当远端净化。记忆仍未完成不转模块。
