@@ -68,24 +68,58 @@ export interface FeedDeps {
     draft?: (title: string, body: string) => void;
     /** 这会儿方不方便刷（睡着 / 上课返回 false）；不给就一直方便 */
     awake?: (now: Date) => boolean;
+    /** Host lifetime. Cancels local read waits and prevents later publication. */
+    signal?: AbortSignal;
 }
 
-export type FeedOutcome = 'browsed' | 'done' | 'skipped';
+export type FeedOutcome = 'browsed' | 'done' | 'skipped' | 'cancelled';
 
 /** 刷一次：拿一页推荐、排会话、记账。读不到返回 'skipped'（由调用方记一行） */
 export async function feedOnce(deps: FeedDeps): Promise<FeedOutcome> {
+    const { signal } = deps;
+    if (signal?.aborted) return 'cancelled';
+    // A transport may ignore AbortSignal, including while reading its body.
+    // Cancel each wait so the old nav chain cannot dispatch the next request.
+    const read = async <T,>(work: () => Promise<T>): Promise<T> => {
+        signal?.throwIfAborted();
+        if (!signal) return work();
+        let cancel!: () => void;
+        const cancelled = new Promise<never>((_resolve, reject) => {
+            cancel = () => reject(signal.reason);
+            signal.addEventListener('abort', cancel, { once: true });
+        });
+        try {
+            return await Promise.race([Promise.resolve().then(() => { signal.throwIfAborted(); return work(); }), cancelled]);
+        } finally { signal.removeEventListener('abort', cancel); }
+    };
+    const fetch: BiliFetch = async (url, init) => {
+        const requestSignal = signal && init.signal && init.signal !== signal ? AbortSignal.any([signal, init.signal]) : signal ?? init.signal;
+        const response = await read(() => deps.fetch(url, { ...init, ...(requestSignal ? { signal: requestSignal } : {}) }));
+        signal?.throwIfAborted();
+        return { ok: response.ok, status: response.status, text: () => read(() => response.text()) };
+    };
     const now = deps.now();
+    if (signal?.aborted) return 'cancelled';
     const file = loadFeed(deps.path, deps.log);
-    if (!feedDue(file, now)) return 'done';
-    if (deps.awake && !deps.awake(now)) return 'done';
+    if (signal?.aborted) return 'cancelled';
+    const due = feedDue(file, now);
+    if (signal?.aborted) return 'cancelled';
+    if (!due) return 'done';
+    if (deps.awake) {
+        const awake = deps.awake(now);
+        if (signal?.aborted) return 'cancelled';
+        if (!awake) return 'done';
+    }
     const day = dayText(now);
     let items;
     try {
-        items = await fetchRecommend(deps.fetch, { count: 8 });
+        items = await read(() => fetchRecommend(fetch, { count: 8 }));
     } catch (error) {
+        if (signal?.aborted) return 'cancelled';
         deps.log(`刷 B 站：推荐读不到（${error instanceof Error ? error.message : String(error)}）`);
         return 'skipped';
     }
+    if (signal?.aborted) return 'cancelled';
     const session = planSession(items, file.seen, day, sessionSize(day));
     if (!session.stayed.length) {
         deps.log(`刷 B 站：这一页没有对口的（${session.visited.length} 个都划走了）`);
@@ -94,13 +128,17 @@ export async function feedOnce(deps: FeedDeps): Promise<FeedOutcome> {
     const stayed: FeedVisit[] = session.stayed.map(entry => ({ bvid: entry.item.bvid, title: entry.item.title.slice(0, 60), category: entry.item.category.slice(0, 10), seconds: entry.seconds }));
     if (deps.mode === 'dryRun') {
         const body = stayed.map(entry => `- 停 ${entry.seconds} 秒：《${entry.title}》${entry.category ? `（${entry.category}）` : ''}`).join('\n');
-        deps.draft?.(`${now.toLocaleString('zh-CN')} 刷 B 站（草稿，不记录）`, body);
-        deps.log(`刷 B 站（试运行）：停 ${stayed.length} 个，写了草稿`);
+        const title = `${now.toLocaleString('zh-CN')} 刷 B 站（草稿，不记录）`;
+        if (signal?.aborted) return 'cancelled';
+        deps.draft?.(title, body);
+        if (!signal?.aborted) deps.log(`刷 B 站（试运行）：停 ${stayed.length} 个，写了草稿`);
         return 'browsed';
     }
     const record: FeedRecord = { day, at: now.getTime(), mode: 'on', stayed, skipped: session.skipped.length };
-    saveFeed(deps.path, trimFeed({ version: 1, seen: [...file.seen, ...session.visited.map(item => item.bvid)], days: [...file.days, record] }, now));
-    deps.log(`刷 B 站：今天停了 ${stayed.length} 个（划走 ${session.skipped.length} 个），记下了`);
+    const next = trimFeed({ version: 1, seen: [...file.seen, ...session.visited.map(item => item.bvid)], days: [...file.days, record] }, now);
+    if (signal?.aborted) return 'cancelled';
+    saveFeed(deps.path, next);
+    if (!signal?.aborted) deps.log(`刷 B 站：今天停了 ${stayed.length} 个（划走 ${session.skipped.length} 个），记下了`);
     return 'browsed';
 }
 

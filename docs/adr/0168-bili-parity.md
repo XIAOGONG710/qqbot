@@ -89,3 +89,9 @@
 - 测试 `bilibili-extras.test.ts` 5 项；类型检查干净。
 
 **仍然没做**（都卡在登录 / 大工程）：投稿（分片上传）、动态发布、创作中心数据（完播率等）、账号画像、私信实时、MCP。
+
+## 2026-11-05：推荐流读取取消（记忆审查第二十四批）
+
+真实合成App在nav fetch/body和推荐fetch/body held时stop，旧结果仍写feed；dryRun同样晚写draft。feedOnce现在支持宿主signal与cancelled结果，nav/推荐派发和body逐层取消、阻止晚nav继续派推荐，保response.text原receiver。App登记任务本体与构造/正常stop收尾，取消后不写草稿、状态和日志；已经同步完成save/draft的事实保留。公开awake/Date格式化回调之后再次守取消，避免guard后格式化发生同步停止却仍进入提交。
+
+只运行合成卡/假HTTP及临时目录回归，不改变原14点后/每天一次/推荐选择策略；没有点赞、评论等远端mutation。不把本地取消等同底层不合作服务已停止；观看账号带持久熔断的请求由独立完整settlement持锁，详见ADR0130本次补记。

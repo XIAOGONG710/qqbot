@@ -147,18 +147,19 @@ export function timelineFromDevice(timeline: Timeline): (entry: AuditEntry) => v
 }
 
 /** 包一层 B 站账号：评论 / 回复 / 私信 / 看字幕做完（或没做成）记一行；其余原样转发 */
-export function timelineAccount<T extends BiliAccount>(account: T, timeline: Timeline): T {
+export function timelineAccount<T extends BiliAccount>(account: T, timeline: Timeline, options: { acceptRead?: () => boolean } = {}): T {
     const safe = (entry: Omit<TimelineEntry, 'at'>) => { try { timeline.record(entry); } catch { /* 时间线出错不影响 B 站动作 */ } };
-    const wrap = <A extends unknown[], R>(fn: (...args: A) => Promise<R>, describe: (...args: A) => { kind: string; summary: string; failed: string }) =>
+    const canRecord = (read: boolean) => { try { return !read || options.acceptRead?.() !== false; } catch { return false; } };
+    const wrap = <A extends unknown[], R>(fn: (...args: A) => Promise<R>, describe: (...args: A) => { kind: string; summary: string; failed: string }, read = false) =>
         async (...args: A): Promise<R> => {
             let d: ReturnType<typeof describe> | undefined;
             try { d = describe(...args); } catch { /* 不可信显示元数据不应阻止主操作。 */ }
             try {
                 const result = await fn(...args);
-                if (d) safe({ channel: 'bilibili', kind: d.kind, summary: d.summary });
+                if (d && canRecord(read)) safe({ channel: 'bilibili', kind: d.kind, summary: d.summary });
                 return result;
             } catch (error) {
-                if (d) safe({ channel: 'bilibili', kind: d.kind, summary: d.failed, ok: false });
+                if (d && canRecord(read)) safe({ channel: 'bilibili', kind: d.kind, summary: d.failed, ok: false });
                 throw error;
             }
         };
@@ -168,7 +169,7 @@ export function timelineAccount<T extends BiliAccount>(account: T, timeline: Tim
             if (prop === 'postComment') return wrap(target.postComment.bind(target), input => ({ kind: 'comment', summary: `在 B 站视频 ${input.bvid} 下评论了`, failed: `想在 B 站视频 ${input.bvid} 下评论，没成` }));
             if (prop === 'postReply') return wrap(target.postReply.bind(target), input => ({ kind: 'reply', summary: `在 B 站评论区回复了 ${clip(input.to.name, 12)}`, failed: `想在 B 站回复 ${clip(input.to.name, 12)}，没成` }));
             if (prop === 'sendDm') return wrap(target.sendDm.bind(target), (_input: { uid: number; text: string }) => ({ kind: 'dm', summary: '在 B 站发了一条私信', failed: '想在 B 站发私信，没成' }));
-            if (prop === 'subtitle') return wrap(target.subtitle.bind(target), video => ({ kind: 'watch', summary: `在 B 站看了一条视频（${video.bvid}）`, failed: `想看 B 站视频 ${video.bvid}，没成` }));
+            if (prop === 'subtitle') return wrap(target.subtitle.bind(target), video => ({ kind: 'watch', summary: `在 B 站看了一条视频（${video.bvid}）`, failed: `想看 B 站视频 ${video.bvid}，没成` }), true);
             return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
         },
     });

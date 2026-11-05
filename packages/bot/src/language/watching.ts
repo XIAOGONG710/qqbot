@@ -108,6 +108,7 @@ export interface WatchDeps {
     /** 看一张图（ADR 0168）：给雪碧图写一两句；没有看图能力就不给 */
     describeImage?(url: string): Promise<string | undefined>;
     sleep(ms: number): Promise<void>;
+    signal?: AbortSignal;
 }
 
 /** 关键词：当天的那个，搜不到合适的就换下一个（按顺序往后数） */
@@ -117,65 +118,87 @@ export function keywordsFor(day: string): string[] {
 }
 
 /** 看一个：搜 → 排序（跳过看过的、不合口味的）→ 读字幕，有字幕的就是它 → 存下来。没看成返回 'none'，已经看过今天的返回 'done' */
-export async function watchOne(deps: WatchDeps): Promise<'watched' | 'none' | 'done'> {
+export async function watchOne(deps: WatchDeps): Promise<'watched' | 'none' | 'done' | 'cancelled'> {
+    const active = () => deps.signal?.throwIfAborted();
+    const read = async <T>(run: () => Promise<T> | T): Promise<T> => {
+        active();
+        let abort: (() => void) | undefined;
+        const cancelled = deps.signal ? new Promise<never>((_, reject) => {
+            abort = () => reject(deps.signal!.reason); deps.signal!.addEventListener('abort', abort, { once: true });
+        }) : undefined;
+        try {
+            const task = Promise.resolve().then(() => { active(); return run(); });
+            const value = await (cancelled ? Promise.race([task, cancelled]) : task); active(); return value;
+        } finally { if (abort) deps.signal?.removeEventListener('abort', abort); }
+    };
+    try {
+    active();
     const now = deps.now();
+    active();
     const file = loadWatched(deps.path, deps.log);
-    if (!watchDue(file.entries, now)) return 'done';
+    active();
+    const due = watchDue(file.entries, now); active();
+    if (!due) return 'done';
     const day = dayText(now);
     const seen = file.entries.map(e => e.bvid);
     for (const keyword of keywordsFor(day)) {
         let found: BiliVideo[];
-        try { found = await deps.search(keyword); } catch (error) {
+        try { found = await read(() => deps.search(keyword)); } catch (error) {
+            active();
             deps.log(`她看视频：搜「${keyword}」失败（${error instanceof Error ? error.message : String(error)}）`);
             return 'none';
         }
         const ranked = rankVideos(found, day, seen).slice(0, WATCH_VIDEO_TRIES);
         for (const video of ranked) {
-            await deps.sleep(800);
+            await read(() => deps.sleep(800));
             let excerpt = '';
-            try { const result = await deps.subtitle(video); if (result.status === 'ok') excerpt = subtitleExcerpt(result.lines, 220); } catch { /* 这个读不到就换下一个 */ }
+            try { const result = await read(() => deps.subtitle(video)); if (result.status === 'ok') excerpt = subtitleExcerpt(result.lines, 220); } catch { active(); /* 这个读不到就换下一个 */ }
             if (!excerpt) continue;
             let hot: string[] = [];
-            try { hot = (await deps.hotComments(video.aid)).slice(0, 2).map(c => c.slice(0, 40)); } catch { /* 热评读不到也行 */ }
+            try { hot = (await read(() => deps.hotComments(video.aid))).slice(0, 2).map(c => c.slice(0, 40)); } catch { active(); /* 热评读不到也行 */ }
             // 章节 + 弹幕高能（ADR 0168）：两样都是加分项，读不到就不写，不影响「看过」
             let chapters: { from: number; title: string }[] = [];
             let peaks: { at: number; count: number; samples: string[] }[] = [];
             let cid = video.cid;
             try {
-                const view = await deps.view?.(video);
+                const view = await read(() => deps.view?.(video));
                 if (view) {
                     cid = view.cid ?? cid;
                     chapters = view.chapters.slice(0, 6).map(chapter => ({ from: chapter.from, title: chapter.title.slice(0, 20) }));
                 }
-            } catch { /* 章节读不到就算了 */ }
+            } catch { active(); /* 章节读不到就算了 */ }
             try {
                 if (deps.danmaku && cid) {
-                    const points = await deps.danmaku(cid);
+                    const points = await read(() => deps.danmaku!(cid!));
                     peaks = danmakuPeaks(points, { top: 2 }).map(peak => ({ at: peak.at, count: peak.count, samples: peak.samples.slice(0, 3) }));
                 }
-            } catch { /* 弹幕读不到就算了 */ }
+            } catch { active(); /* 弹幕读不到就算了 */ }
             // 画面总览（ADR 0168）：雪碧图地址 → 交给看图模型写一两句；看不成图就不写
             let frames: string | undefined;
             try {
                 if (deps.storyboard && deps.describeImage && cid) {
-                    const urls = await deps.storyboard(video.bvid, cid);
+                    const urls = await read(() => deps.storyboard!(video.bvid, cid!));
                     for (const url of urls.slice(0, 2)) {
-                        const described = await deps.describeImage(url);
+                        const described = await read(() => deps.describeImage!(url));
                         if (described && described.trim()) { frames = described.trim().slice(0, 240); break; }
                     }
                 }
-            } catch { /* 画面看不成就算了 */ }
+            } catch { active(); /* 画面看不成就算了 */ }
             const entry: Watched = {
                 bvid: video.bvid, title: video.title.slice(0, 60), owner: video.owner.slice(0, 20), tname: video.category.slice(0, 10), excerpt, hot, day,
                 ...(chapters.length ? { chapters } : {}), ...(peaks.length ? { peaks } : {}), ...(frames ? { frames } : {}),
             };
-            saveWatched(deps.path, { version: 1, entries: trimWatched([...file.entries, entry], now) });
-            deps.log(`她看视频：今天看了一个（${video.category}；字幕 ${[...excerpt].length} 字；热评 ${hot.length} 条）`);
+            const next: WatchedFile = { version: 1, entries: trimWatched([...file.entries, entry], now) };
+            active();
+            saveWatched(deps.path, next);
+            const message = `她看视频：今天看了一个（${video.category}；字幕 ${[...excerpt].length} 字；热评 ${hot.length} 条）`;
+            if (!deps.signal?.aborted) deps.log(message);
             return 'watched';
         }
     }
-    deps.log('她看视频：今天没找到合适的（搜了几个词，都没有能读字幕的新视频）');
+    active(); deps.log('她看视频：今天没找到合适的（搜了几个词，都没有能读字幕的新视频）');
     return 'none';
+    } catch (error) { if (deps.signal?.aborted) return 'cancelled'; throw error; }
 }
 
 // ───────── 放进提示词 ─────────

@@ -400,6 +400,54 @@ export function startApp(options: AppOptions): App {
 function createApp({ config, transport, log, pipeline, media, vision, stickerReader, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch() }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
     let stopped = false;
     construction.onFailure(() => { stopped = true; });
+    // Watching and feed are pure background reads. Own the complete local
+    // chain before its first dispatch, independently of account mutations.
+    const passiveLifetime = new AbortController(), passiveJobs = new Set<Promise<void>>();
+    let passiveDrain: Promise<void> | undefined;
+    const passiveRead = async <T>(run: () => Promise<T>): Promise<T> => {
+        const signal = passiveLifetime.signal; signal.throwIfAborted();
+        let abort!: () => void;
+        const cancelled = new Promise<never>((_, reject) => { abort = () => reject(signal.reason); signal.addEventListener('abort', abort, { once: true }); });
+        try { const value = await Promise.race([Promise.resolve().then(() => { signal.throwIfAborted(); return run(); }), cancelled]); signal.throwIfAborted(); return value; }
+        finally { signal.removeEventListener('abort', abort); }
+    };
+    const passiveFetch = (raw: BiliFetch): BiliFetch => async (url, init) => {
+        const response = await passiveRead(() => raw(url, { ...init, signal: AbortSignal.any([passiveLifetime.signal, init.signal]) }));
+        return new Proxy(response, { get(target, property) {
+            if (property === 'text') return () => passiveRead(() => target.text());
+            return Reflect.get(target, property, target) as unknown;
+        } });
+    };
+    const passiveSleep = (ms: number) => new Promise<void>((resolve, reject) => {
+        const signal = passiveLifetime.signal; if (signal.aborted) { reject(signal.reason); return; }
+        const abort = () => { clearTimeout(timer); reject(signal.reason); };
+        const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, ms);
+        signal.addEventListener('abort', abort, { once: true });
+    });
+    const ownPassiveRead = (work: () => Promise<void>, done: () => void): Promise<void> => {
+        if (stopped || passiveLifetime.signal.aborted) { done(); return Promise.resolve(); }
+        const task = Promise.resolve().then(() => { if (!stopped && !passiveLifetime.signal.aborted) return work(); }).finally(() => { done(); passiveJobs.delete(task); });
+        passiveJobs.add(task); return task;
+    };
+    const stopPassiveReads = () => {
+        if (passiveLifetime.signal.aborted) return passiveDrain;
+        passiveLifetime.abort();
+        if (passiveJobs.size) passiveDrain = Promise.allSettled([...passiveJobs]).then(() => {});
+        return passiveDrain;
+    };
+    construction.onFailure(stopPassiveReads);
+    // The real account transport also persists breaker observations. Even a
+    // nominal GET must retain its complete guard settlement while stopping.
+    const accountGuardSettlements = new Set<Promise<void>>();
+    const ownAccountGuard = (request: BiliRequest): BiliRequest => (url, init) => {
+        let settle!: () => void;
+        const pending = new Promise<void>(resolve => { settle = resolve; });
+        accountGuardSettlements.add(pending);
+        const done = () => { accountGuardSettlements.delete(pending); settle(); };
+        try { return request(url, init).then(response => { done(); return response; }, error => { done(); throw error; }); }
+        catch (error) { done(); return Promise.reject(error); }
+    };
+    construction.onFailure(() => accountGuardSettlements.size ? Promise.allSettled([...accountGuardSettlements]).then(() => {}) : undefined);
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -964,7 +1012,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     const decorateAccounts = (source: () => Promise<BiliAccount | undefined>): (() => Promise<BiliAccount | undefined>) => (!timeline && !acquaintances ? source : async () => {
         const account = await source();
         if (!account) return account;
-        const recorded = timeline ? timelineAccount(account, timeline) : account;
+        const recorded = timeline ? timelineAccount(account, timeline, { acceptRead: () => !stopped }) : account;
         return acquaintances ? acquaintancesAccount(recorded, acquaintances) : recorded;
     });
     const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T | undefined> => new Promise(resolveTimeout => {
@@ -2182,7 +2230,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         if (!config.bilibiliAccount) return undefined;
         // 刷视频和回复评论共用一个来源：凭证只读一次、失败只记一次日志
         // 真实请求外面包一层持久熔断（ADR 0147）：碰到 B 站的风控信号就整体停，要人在本机 `npm run platform -w @qqbot/bot -- resume bilibili --acknowledge-account-risk` 才恢复；测试注入的假请求不包
-        accountSource ??= decorateAccounts(createAccountSource({ dataDir: config.dataDir, request: bilibiliRequest ?? guardRequest(realRequest, createBreaker({ dataDir: config.dataDir, platform: 'bilibili', log }), BILIBILI_RISK), now: worldNow, log }));
+        accountSource ??= decorateAccounts(createAccountSource({ dataDir: config.dataDir, request: bilibiliRequest ?? ownAccountGuard(guardRequest(realRequest, createBreaker({ dataDir: config.dataDir, platform: 'bilibili', log }), BILIBILI_RISK)), now: worldNow, log: message => { if (!stopped) log(message); } }));
         return accountSource;
     }
 
@@ -2523,43 +2571,45 @@ ${video.link}`);
         }
     };
     // 她自己看一个视频（ADR 0130）：每天一次，14 点以后；30 分钟看一眼该不该看；要她的 B 站号
-    const watchJob = async (): Promise<void> => {
-        if (!config.watching || stopped || watchingRunning) return;
+    const watchJob = (): Promise<void> => {
+        if (!config.watching || stopped || watchingRunning) return Promise.resolve();
         const source = bilibiliAccountSource();
-        if (!source) return;
+        if (!source) return Promise.resolve();
         const nowDate = new Date(pipeline?.now ? pipeline.now() : Date.now());
-        if (nowDate.getHours() < 14) return;
+        if (nowDate.getHours() < 14) return Promise.resolve();
         watchingRunning = true;
+        return ownPassiveRead(async () => {
         try {
-            const account = await source();
+            const account = await passiveRead(source);
             if (!account) return;
-            const biliFetch: BiliFetch = bilibiliFetch ?? ((url, init) => fetch(url, init));
+            const signal = passiveLifetime.signal, scoped: Log = message => { if (!stopped && !signal.aborted) log(message); };
+            const biliFetch = passiveFetch(bilibiliFetch ?? ((url, init) => fetch(url, init)));
             // view / 弹幕 的 fetch 形状不强制 signal，补一个
             const viewFetch = (url: string, init: { headers: Record<string, string>; signal?: AbortSignal }) =>
                 biliFetch(url, { headers: init.headers, signal: init.signal ?? new AbortController().signal });
             await watchOne({
-                path: watchedFile, now: () => nowDate, log,
-                search: keyword => account.search(keyword), subtitle: video => account.subtitle(video), hotComments: aid => fetchHotComments(biliFetch, aid, 3),
+                path: watchedFile, now: () => nowDate, log: scoped, signal,
+                search: keyword => account.search(keyword, undefined, signal), subtitle: video => account.subtitle(video, signal), hotComments: aid => fetchHotComments(biliFetch, aid, 3),
                 // 章节 + 弹幕高能（ADR 0168）：只读公开接口，读不到不影响「看过」
                 view: async video => { try { return await fetchView(viewFetch, video.bvid); } catch { return undefined; } },
                 danmaku: async cid => fetchDanmaku(viewFetch, cid),
                 storyboard: async (bvid, cid) => (await fetchStoryboard(viewFetch, bvid, cid))?.urls ?? [],
-                ...(vision ? { describeImage: async (url: string) => { try { return await vision.describe({ url }); } catch { return undefined; } } } : {}),
-                sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+                ...(vision ? { describeImage: async (url: string) => { try { return await vision.describe({ url, signal }); } catch { return undefined; } } } : {}),
+                sleep: passiveSleep,
             });
-            watchedEntries = loadWatched(watchedFile, log).entries;
+            if (!stopped && !signal.aborted) watchedEntries = loadWatched(watchedFile, scoped).entries;
         } catch (error) {
-            log(`她看视频：这一轮出错（${error instanceof Error ? error.message : String(error)}）`);
-        } finally {
-            watchingRunning = false;
+            if (!stopped) log(`她看视频：这一轮出错（${error instanceof Error ? error.message : String(error)}）`);
         }
+        }, () => { watchingRunning = false; });
     };
     // 她每天刷一小会儿 B 站推荐（ADR 0168）：14 点后一天一次；30 分钟看一眼该不该刷；只读、只记账
     let feedTimer: ReturnType<typeof setInterval> | undefined;
     let feedRunning = false;
-    const feedJob = async (): Promise<void> => {
-        if (!config.biliFeed || config.biliFeed === 'off' || stopped || feedRunning) return;
-        const rawFetch: BiliFetch = bilibiliFetch ?? ((url, init) => fetch(url, init));
+    const feedJob = (): Promise<void> => {
+        const mode = config.biliFeed;
+        if (!mode || mode === 'off' || stopped || feedRunning) return Promise.resolve();
+        const rawFetch = passiveFetch(bilibiliFetch ?? ((url, init) => fetch(url, init)));
         // feed 模块的 fetch 形状不强制 signal（只读、单次请求），这里补一个
         const biliFetch = (url: string, init: { headers: Record<string, string>; signal?: AbortSignal }) =>
             rawFetch(url, { headers: init.headers, signal: init.signal ?? new AbortController().signal });
@@ -2567,11 +2617,13 @@ ${video.link}`);
         const schedule = worldCard?.schedule;
         const extraFree = config.herDays && worldCard ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [];
         feedRunning = true;
+        return ownPassiveRead(async () => {
         try {
             await feedOnce({
-                mode: config.biliFeed, path: join(config.dataDir, 'watching', 'feed.json'),
-                now: () => nowDate, fetch: biliFetch, log,
+                mode, path: join(config.dataDir, 'watching', 'feed.json'),
+                now: () => nowDate, fetch: biliFetch, signal: passiveLifetime.signal, log: message => { if (!stopped) log(message); },
                 draft: (title, body) => {
+                    if (stopped || passiveLifetime.signal.aborted) return;
                     mkdirSync(join(config.dataDir, 'presence'), { recursive: true });
                     appendFileSync(join(config.dataDir, 'presence', 'drafts.md'), `## ${title}
 
@@ -2587,10 +2639,9 @@ ${body}
                 } : {}),
             });
         } catch (error) {
-            log(`刷 B 站：这一轮出错（${error instanceof Error ? error.message : String(error)}）`);
-        } finally {
-            feedRunning = false;
+            if (!stopped) log(`刷 B 站：这一轮出错（${error instanceof Error ? error.message : String(error)}）`);
         }
+        }, () => { feedRunning = false; });
     };
 
     // 网络热梗（ADR 0129）：每 12 小时一次（30 分钟看一眼该不该刷）；要她的 B 站号，没有就不学，只用库里已有的
@@ -3856,6 +3907,8 @@ ${body}
             const tastesDrain = tastes?.stop();
             const jokesDrain = jokesOwner?.stop();
             const idiomsDrain = idiomsOwner?.stop();
+            const passiveReadDrain = stopPassiveReads();
+            const accountGuardDrains = [...accountGuardSettlements];
             const weatherDrains = [...weatherRefreshes];
             const airQualityDrains = [...airQualityRefreshes];
             const daylightDrains = [...daylightRefreshes];
@@ -3917,9 +3970,7 @@ ${body}
             useRealTransport(undefined);
             useWorldNeeds(undefined);
             const drains = [
-                diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, presenceDrain, browsingDrain, deviceDrain,
-                ...weatherDrains, ...airQualityDrains, ...daylightDrains, ...calendarDrains, ...transportDrains,
-                ...contextDrains, ...responderDrains,
+                diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, passiveReadDrain, presenceDrain, browsingDrain, deviceDrain, ...accountGuardDrains, ...weatherDrains, ...airQualityDrains, ...daylightDrains, ...calendarDrains, ...transportDrains, ...contextDrains, ...responderDrains,
             ].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
