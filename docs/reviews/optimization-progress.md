@@ -384,3 +384,8 @@ Commons 严格响应/尺寸/元数据与自有词表参数，保存完整作者�
 下一轮优先已确证淘汰IO：node docs/reviews/repro/memory-sticker-eviction-io.mjs仅temp合成图、fake模型、index临时写注入EROFS，输出indexUnchanged=true/oldEntryStillCommitted=true/committedOldImageStillExists=false。旧实现先删满额victim图片再写index，失败已确认旧条目悬空；exit0只是坏行为诊断。需图片/index/RAM/seen/eviction发布失败与重启恢复协议，保真实收藏ACK，不把本轮owner当多文件事务；不盲删未知孤儿或真实资料。B站/社交未整体审，replies/risk等尚需证据盘点；M32b远端公共旧派生/历史观察清理及独立证据解封仍未完成，现保护不解，记忆未完不转模块。
 
 验证中断残余：测试代理在App已加drain而货架仍编辑的中间态停止试跑，新增3秒bounded等待后重测；该中间态不计产品新缺陷。留下全合成%TEMP%/qqbot-app-stickers-owner-vqFkxW，已核无bot.lock/该测试活进程，清理被自动审批以“blocked by policy”拒绝（无具体理由），已保留不换途径重试。无真实runtime影响。仍不保证不合作自定义API副作用取消/任意mutation强杀恢复或持久outbox、全局事务。
+第二十八批完成表情淘汰IO与索引发布恢复（0c58f868，ADR0063补记）：旧先删victim后index EROFS造成已确认收藏悬空，经正式故障注入和真实子进程强杀验证。现在新图先发布、完整候选index确认后才清本次已知旧图，失败不删已确认图片；全部keep/seen/used/trend/QQ回执提交成功才换RAM，rename后异常精确bytes读回，未知时供给/写入封闭至fresh恢复。已派QQ ACK保内存事实，下次工作/后继add前先补持久；无持久outbox，不保证强杀ACK→JSON恢复或跨实例RMW。坏schema/路径/非普通文件拒猜空白；wx冲突不删未知tmp，已提交后清理失败不回滚。
+
+隐私清单补index实际tmp/corrupt、明确来源图片及规范名称无索引图片/图片tmp，混合或未知归属原位保留，不整份导出/遗忘、不读图猜来源；其它联系人已知图片不误列本人。新增22项（持久17含真实链接权限跳过1、隐私5），记忆累计771项新增用例（含本批1项平台跳过，不能称全部已执行通过）。最终核实合成集881项：880通过、1跳过、0失败；全仓类型实际exit0、模块与差异通过，非全仓全量。链接因Windows EPERM未验证，不伪绿；所有数据temp/fake，没有真实角色/runtime/服务访问、部署推送。memory-sticker-eviction-io.mjs现正确探针三项true，勿重做旧坏断言。原自动审批拒清理的qqbot-app-stickers-owner-vqFkxW仍未重试。
+
+下一轮先盘点replies/risk后台与记忆持久的启动/停止所有权，真实App合成held API/timer先证后修；目前只是待核候选，不能声称已存在缺陷。表情多独立实例写入、持久QQ outbox及未知孤儿归属未保证，不扩大为已修事务。B站/社交尚未整体审。M32b公共旧diary/week/phase远端派生和历史observation独立清理/证据解封仍未完成，客户端保护不解、不访问真实部署DB，记忆未完不转模块或社区比较。继续保留旧weakID/legacybefore/未持久观察、未知DELETE及可信writer/store/task证据要求，不以读取零/版本/布尔/删guard假解封。
