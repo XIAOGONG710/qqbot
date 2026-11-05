@@ -328,3 +328,7 @@ Commons 严格响应/尺寸/元数据与自有词表参数，保存完整作者�
 新增14项（摘要3/能力4/生命周期7），记忆累计523。最终575/575确认合成集通过；夹具修正后4项及全仓类型实际exit0，模块与差异通过。仅合成卡/假API/临时目录，未跑旧角色依赖suite；未推送部署。
 
 下一轮仍为记忆模块：先合成验证App contextWindowFor的contextSummarizer未接App.stop的候选（held摘要在stop/目录锁释放后是否写context文件和日志），再按证据修复；不要将只读候选当确证。M32b旧公共派生/历史observation清理与有证据解封未完，缺可信远端writer/task fence及实际store证据时保持保护，不访问真部署/数据库，不以live inventory/refresh ACK猜解封。模拟停止只保本地已派请求收尾，不证明远端worker全部静止；不合作mutation可阻drain，global weather并发隔离未承诺。
+
+第十七批完成App上下文摘要停止与联系人缓存残留。真实App在stop/目录锁释放后旧held摘要仍落context文件或日志，两项先红后绿；OwnedSummarizer永久stop同步拒新/旧缓存供给、取消内部等待并drain、不等不合作模型，晚结果不落文件/log；App统一持有并等待收尾，授予模型log另守stopped。代码52c72e39。实际context tmp/corrupt及jokes/idioms固定tmp含私密正文却漏审计，现audit与forget-job共享精确目录/后缀规则，导出/apply/resume贯通；共享/他人/伪suffix和链接守界，archive保留政策不变但后续可识别（1cbd042e，ADR0043/0246补记）。新增12（core5/App2/privacy5），记忆累计535；最终587/587确认合成集，全仓类型真实exit0、模块/差异通过。未读真实角色/runtime，不推送部署。
+
+下一轮：先合成核startApp构造失败路径是否只release租约而留下已创建memoryTimer/owner（createApp后续context读失败等，假timer/fake API，尚未确证）。既有App.stop摘要、sim生命周期、sourcehash和残留清单不重做。M32b公共旧派生/历史observation远端清理与独立证据解封仍未完成，缺可信writer/task fence和实际store证明时保护不解，记忆未完不转模块。

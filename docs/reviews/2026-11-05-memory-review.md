@@ -446,3 +446,15 @@ M32b来源覆盖补查：合成completed outbox保留operations/marker，仅丢c
 类型验证更正：d013e5b0提交前主代理将npm类型输出重定向后接git diff --check，后者成功覆盖shell退出码，误报类型通过；实际两处新MemoryItem夹具缺context/document_id/tags/metadata。补齐必填字段提交76010813，相关4项重新通过，全仓类型实际exit0。没有修改生产协议规避类型。99dd4017的独立类型检查当时通过。最终575/575核实合成集绿，夹具修正后4项及全仓类型重新绿、差异/模块通过；不是全仓角色依赖测试全量。本批新增14（context3/capability4/lifecycle7），记忆累计523。
 
 后续：M32b公共diary/week/phase旧远端派生和历史observation清理/独立证据解封仍未实现，已有阻点不变；本批客户端来源和模拟owner不替代远端静止证明。新只读线索：App contextWindowFor创建的contextSummarizer有idle但无stop，App.stop尚未统一持有它，需用真实App合成held模型验证停止后是否仍写context/<QQ>.json/日志；这是候选，不能当已确证。之后按证据续审其它维护多文件和资源边界，记忆未完，不跳模块。未访问真实卡/runtime/部署/外部模型或数据库，AGENTS.md保原未跟踪。
+
+## 第十七批：App摘要停止与联系人缓存残留
+
+真实App+合成card/history/假generate证明：摘要held时await stop并释放bot.lock，随后旧成功仍写context/10001.json，旧失败和授予generate的log回调仍记日志。两条正式先红后绿，额外断言重复stop复用drain。core返回OwnedSummarizer，保原纯读取Summarizer类型；同步永久停止新派发/缓存读取，取消race与计时器后idle/drain可结束，不等不合作底层模型，晚成功/失败不写文件/cache/retry/log。派发微任务也复查stopped。已确认文件不删除，新实例仍按完整请求hash复用。App持有全部实际摘要实例并合并stop drain，再释放目录锁，另守授予模型的log。模拟器既有可重启adapter不误套永久stop。
+
+core新增5正式；旧文件registerHooks控制4项真实效果红（晚落盘/晚错误日志/微任务新派/停止后缓存供给），另1项仅新增API契约红，不算旧功能反例。App新增2，相关13项及随后582合成集/全仓类型绿；代码52c72e39。App responder集合只初始化与缺席时新增，没有现行同实例替换路径，交叉审的“替换时需失效”假设未列确证或阻点。
+
+隐私同类确认：真实writeJsonAtomic rename EIO且cleanup EPERM产context/QQ.json.tmp-PID-seq，真实坏JSON隔离产QQ.json.corrupt-time，两者含合成正文却audit artifacts为空；jokes/idioms实际失败写入产QQ.json.tmp同样漏。审计与forget-job ownedPath新增共享精确匹配，避免只加清单后apply schema拒绝；仅各目录真实命名，他人/近似号码/伪suffix/shared不纳入个人删除。新5正式覆盖真实残留/导出/完整apply+resume/归档后清单/链接；旧4业务红，链接案例初版empty-dir清理夹具错误已修，不计源缺陷。现有archive保留context/jokes/idioms政策不变，保留项仍能隐私审计/导出/遗忘。代码1cbd042e；ADR0043及0246补说明。
+
+最终587/587核实合成集、全仓类型实际exit0、模块登记及差异检查通过。本批新增12（core5/App2/privacy5），记忆累计535。只合成卡/聊天、假API、temp，未跑旧角色依赖suite，未推送/部署，AGENTS.md仍原未跟踪。
+
+下一步候选：startApp catch构造异常仅release租约，createApp内部在返回App对象前已创建memoryTimer和其它owner；若后续context文件读取等构造失败，可能旧任务仍持活，须假timer/真实App合成复现，未确证前不可称漏写或修复。M32b远端旧公共派生/历史observation清理与独立证据解封仍受已记录服务端证据限制；本批不提供远端清除保证，不转下一模块。
