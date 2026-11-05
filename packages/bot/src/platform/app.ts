@@ -4006,6 +4006,7 @@ ${body}
             const jokesDrain = jokesOwner?.stop();
             const idiomsDrain = idiomsOwner?.stop();
             const dshDrain = stopDshAsks();
+            probing = false;
             const passiveReadDrain = stopPassiveReads();
             const stickerWorkDrain = stopStickerWork();
             const accountGuardDrains = [...accountGuardSettlements];
@@ -4117,10 +4118,10 @@ ${body}
             if (hindsight && !stopped && !probing && (!health || now.getTime() - health.at >= HEALTH_PROBE_MS)) {
                 probing = true;
                 hindsight.health()
-                    .then(() => { health = { at: Date.now(), ok: true }; }, error => {
-                        health = { at: Date.now(), ok: false, error: error instanceof Error ? error.message : String(error) };
+                    .then(() => { if (!stopped) health = { at: Date.now(), ok: true }; }, error => {
+                        if (!stopped) health = { at: Date.now(), ok: false, error: error instanceof Error ? error.message : String(error) };
                     })
-                    .finally(() => { probing = false; });
+                    .finally(() => { if (!stopped) probing = false; });
             }
             const currentHumanState = (() => {
                 if (!needsAnchor) return undefined;
