@@ -14,7 +14,7 @@
 // - 记忆会变淡（ADR 0018，fading.ts）：三处召回整理前都按记得多清楚筛，想不起来的不放、记个大概的标出来，他一提实体名又想起；
 //   写入说明让 Hindsight 给重要的事标【重要】，召回带上观察背后的事实回查。
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { detectCrisis } from '../emotion/crisis.ts';
@@ -22,13 +22,13 @@ import { ownNoteLabel, ownSourceLabel, sourceLabel } from '../emotion/disclosure
 import type { StoredMessage } from './history.ts';
 import { MIDNIGHT_RULE } from '../proactive/follow-ups.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
-import { stateObject } from './state-schema.ts';
+import { stateObject, stateTimestamp } from './state-schema.ts';
 import { knowsPeople } from '../life/people.ts';
 import type { ChatMessage } from '../language/prompt.ts';
 import type { MacroNames } from '../st/macros.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes, type Episode } from './episodes.ts';
 import { clarity, IMPORTANT, isSummary, LASTING, lastTouched, withoutMark, type Clarity, type FadeStats } from './fading.ts';
-import type { BankConfig, HindsightApi, MentalModelRequest, RecallRequest, RecallResult } from './hindsight.ts';
+import type { BankConfig, HindsightApi, MemoryItem, MentalModelRequest, RecallRequest, RecallResult } from './hindsight.ts';
 
 /** 进行中的片段每多这么多条就整段重写一次 */
 export const OPEN_EPISODE_STEP = 30;
@@ -255,6 +255,34 @@ export interface ContactMemoryState {
     commonAt?: Record<string, number>;
     /** 对账发现 Hindsight 里没有、重新排队的次数：「own:ep-…」「common:ep-…」→ 次数；同一个片段排了 RECONCILE_MAX_TRIES 次还没有就不再排 */
     requeued?: Record<string, number>;
+    /** 实际确认提交的转写摘要；旧只有 count 的进度不推定已同步当前内容。 */
+    retainedDigests?: Record<string, string>;
+    commonDigests?: Record<string, string>;
+    /** 私人安全片段未公开/旧公共文档已确认删除的内容摘要。 */
+    commonSkipped?: Record<string, string>;
+    pendingOwn?: Record<string, PendingRetain>;
+    pendingCommon?: Record<string, PendingRetain>;
+}
+
+interface PendingRetain { operationId: string; bankId: string; digest: string; count: number; item: MemoryItem; requestHash: string; revision?: boolean }
+const requestHash = (item: MemoryItem) => createHash('sha256').update(JSON.stringify(item)).digest('hex');
+const hashValue = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+function pendingMap(value: unknown): boolean {
+    return value === undefined || stateObject(value) && Object.entries(value).every(([id, entry]) => {
+        if (!/^ep--?\d+$/.test(id) || !stateObject(entry) || typeof entry.operationId !== 'string'
+            || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(entry.operationId)
+            || typeof entry.bankId !== 'string' || !entry.bankId || !hashValue(entry.digest) || !hashValue(entry.requestHash)
+            || entry.revision !== undefined && typeof entry.revision !== 'boolean'
+            || typeof entry.count !== 'number' || !Number.isSafeInteger(entry.count) || entry.count < 0 || !stateObject(entry.item)) return false;
+        const item = entry.item;
+        if (typeof item.content !== 'string' || !stateTimestamp(item.timestamp) || typeof item.context !== 'string' || typeof item.document_id !== 'string'
+            || !Array.isArray(item.tags) || !item.tags.every(tag => typeof tag === 'string') || !stateObject(item.metadata)
+            || !Object.values(item.metadata).every(value => typeof value === 'string')
+            || item.entities !== undefined && (!Array.isArray(item.entities) || !item.entities.every(entity => stateObject(entity) && typeof entity.text === 'string'
+                && (entity.type === undefined || typeof entity.type === 'string')))) return false;
+        return item.metadata.episode === id && item.metadata.messages === String(entry.count)
+            && requestHash(item as unknown as MemoryItem) === entry.requestHash;
+    });
 }
 
 /** 公共记忆库的状态（<dir>/common.json） */
@@ -272,6 +300,18 @@ function migrateContactMemoryState(value: unknown): unknown {
     return stateRecord(value) && value.retained === undefined ? { ...value, retained: {} } : value;
 }
 
+const versionValue = (value: unknown): boolean => value === undefined || typeof value === 'string' && value.length > 0;
+const progressMap = (value: unknown): boolean => stateObject(value) && Object.entries(value).every(([id, count]) => /^ep--?\d+$/.test(id)
+    && typeof count === 'number' && Number.isSafeInteger(count) && count >= 0);
+const digestMap = (value: unknown): boolean => value === undefined || stateObject(value) && Object.entries(value).every(([id, digest]) => /^ep--?\d+$/.test(id)
+    && typeof digest === 'string' && /^[a-f0-9]{64}$/.test(digest));
+const episodeDigest = (episode: Episode, names: MacroNames, count = episode.messages.length) => createHash('sha256')
+    .update(JSON.stringify([names.char, names.user, episodeTranscript({ ...episode, messages: episode.messages.slice(0, count) }, names)])).digest('hex');
+const contentRevision = (episode: Episode, names: MacroNames, written: Record<string, number> = {}, digests: Record<string, string> = {}) => {
+    const done = written[episode.id];
+    return done !== undefined && (digests[episode.id] === undefined || done > episode.messages.length || episodeDigest(episode, names, done) !== digests[episode.id]);
+};
+
 export function isContactMemoryState(value: unknown): value is ContactMemoryState {
     if (!stateRecord(value) || !stateString(value.bankId)
         || !stateMap(value.retained, item => Number.isSafeInteger(item) && (item as number) >= 0)) return false;
@@ -281,7 +321,10 @@ export function isContactMemoryState(value: unknown): value is ContactMemoryStat
         && (value.common === undefined || stateMap(value.common, item => Number.isSafeInteger(item) && (item as number) >= 0))
         && (value.retainedAt === undefined || stateMap(value.retainedAt, item => typeof item === 'number' && Number.isFinite(item) && item >= 0))
         && (value.commonAt === undefined || stateMap(value.commonAt, item => typeof item === 'number' && Number.isFinite(item) && item >= 0))
-        && (value.requeued === undefined || stateMap(value.requeued, item => Number.isSafeInteger(item) && (item as number) >= 0));
+        && (value.requeued === undefined || stateMap(value.requeued, item => Number.isSafeInteger(item) && (item as number) >= 0))
+        && digestMap(value.retainedDigests) && digestMap(value.commonDigests) && digestMap(value.commonSkipped)
+        && pendingMap(value.pendingOwn) && pendingMap(value.pendingCommon)
+        && versionValue(value.bankConfigured) && versionValue(value.personModel);
 }
 
 export function isCommonMemoryState(value: unknown): value is CommonMemoryState {
@@ -345,6 +388,7 @@ export class LongTermMemory {
     readonly #queues = new Map<string, Promise<void>>();
     /** 每个联系人上一次对账的时间、有没有发现缺的（只在内存里，重启后第一次同步就对一次） */
     readonly #reconciled = new Map<string, { at: number; found: boolean }>();
+    readonly #latest = new Map<string, symbol>();
     readonly #relationship = new Map<string, { content?: string; fetchedAt: number; fetching?: boolean }>();
     #entities: { names: string[]; fetchedAt?: number } = { names: [] };
     #entitiesVersion = 0;
@@ -358,6 +402,7 @@ export class LongTermMemory {
     #lastRecall?: MemoryEvent;
 
     constructor(options: LongTermMemoryOptions) {
+        if (Boolean(options.api.submitRetain) !== Boolean(options.api.retentionStatus)) throw new Error('记忆异步派发与状态查询能力必须成对提供');
         this.#options = options;
         this.#now = options.now ?? Date.now;
         mkdirSync(options.dir, { recursive: true });
@@ -405,6 +450,66 @@ export class LongTermMemory {
         this.#entities.fetchedAt = undefined;
     }
 
+    #advanced(): boolean { return Boolean(this.#options.api.submitRetain && this.#options.api.retentionStatus); }
+
+    #invalidateContactModels(contact: MemoryContact): void {
+        this.#relationship.delete(this.#key(contact));
+        this.#relationship.delete(`person:${this.#key(contact)}`);
+    }
+
+    #confirmPending(contact: MemoryContact, state: ContactMemoryState, field: 'pendingOwn' | 'pendingCommon', id: string, pending: PendingRetain): void {
+        if (field === 'pendingOwn') { state.retained[id] = pending.count; (state.retainedDigests ??= {})[id] = pending.digest; }
+        else { (state.common ??= {})[id] = pending.count; (state.commonDigests ??= {})[id] = pending.digest; if (state.commonSkipped) delete state.commonSkipped[id]; this.#invalidateEntities(); }
+        delete state[field]![id];
+        if (pending.revision) this.#invalidateContactModels(contact);
+        this.#save(contact, state);
+    }
+
+    async #reconcilePending(contact: MemoryContact, names: MacroNames, state: ContactMemoryState, episodes: Episode[], current: () => boolean): Promise<boolean> {
+        if (!this.#advanced()) {
+            if (Object.keys(state.pendingOwn ?? {}).length || Object.keys(state.pendingCommon ?? {}).length) throw new Error('记忆尚有未确认异步派发；当前服务缺少核对能力，保留协议状态');
+            return true;
+        }
+        for (const field of ['pendingOwn', 'pendingCommon'] as const) for (const [id, pending] of Object.entries(state[field] ?? {})) {
+            if (!current()) return false;
+            let status = await this.#read(() => this.#options.api.retentionStatus!(pending.bankId, pending.operationId));
+            if (status === 'not_found') {
+                const episode = episodes.find(episode => episode.id === id);
+                const unchanged = episode && episodeDigest(episode, names) === pending.digest
+                    && (field === 'pendingOwn' || !episode.messages.some(message => message.role === 'user' && detectCrisis(message.content)));
+                if (!unchanged) throw new Error('记忆旧派发结果未知且来源已变；不重发旧正文，保留核对屏障');
+                if (!current()) return false;
+                await this.#mutate(() => this.#options.api.submitRetain!(pending.bankId, structuredClone(pending.item), pending.operationId));
+                if (this.#stopped) return false;
+                status = await this.#read(() => this.#options.api.retentionStatus!(pending.bankId, pending.operationId));
+            }
+            if (status === 'completed') this.#confirmPending(contact, state, field, id, pending);
+            else if (status === 'failed' || status === 'cancelled') throw new Error('记忆异步派发未确认全部工作完成；保留核对屏障，不自动重放');
+            else return false;
+        }
+        return current();
+    }
+
+    async #submitEpisode(contact: MemoryContact, state: ContactMemoryState, field: 'pendingOwn' | 'pendingCommon', episode: Episode,
+        digest: string, bankId: string, item: MemoryItem, current: () => boolean, revision: boolean): Promise<boolean> {
+        if (!current()) return false;
+        if (!this.#advanced()) { await this.#mutate(() => this.#options.api.retain(bankId, item)); return true; }
+        const pending: PendingRetain = { operationId: randomUUID(), bankId, digest, count: episode.messages.length, item: structuredClone(item), requestHash: requestHash(item), revision };
+        (state[field] ??= {})[episode.id] = pending;
+        this.#save(contact, state); // 不可变意图确认落盘后才派发；失败不发请求。
+        if (!current()) return false;
+        await this.#mutate(() => this.#options.api.submitRetain!(bankId, structuredClone(pending.item), pending.operationId));
+        if (this.#stopped) return false;
+        const status = await this.#read(() => this.#options.api.retentionStatus!(bankId, pending.operationId));
+        if (status !== 'completed') {
+            if (status === 'failed' || status === 'cancelled') throw new Error('记忆异步派发未确认全部工作完成；保留核对屏障，不自动重放');
+            return false;
+        }
+        // 与实际摘要在调用方同一次发布；发布失败时磁盘仍留原意图供重启核对。
+        delete state[field]![episode.id];
+        return true;
+    }
+
     /** 这次启动以来最近一次写入、召回的结果；还没发生过就没有 */
     status(): { lastWrite?: MemoryEvent; lastRecall?: MemoryEvent } {
         return { lastWrite: this.#lastWrite, lastRecall: this.#lastRecall };
@@ -428,47 +533,76 @@ export class LongTermMemory {
         names = { ...names };
         history = structuredClone(history);
         const key = this.#key(contact);
+        const revision = Symbol('sync revision');
+        this.#latest.set(key, revision);
+        const current = () => !this.#stopped && this.#latest.get(key) === revision;
         const previous = this.#queues.get(key) ?? Promise.resolve();
-        const next = previous.then(() => { if (!this.#stopped) return this.#sync(contact, names, history); }).catch(error => {
+        const next = previous.then(() => { if (current()) return this.#sync(contact, names, history, current); }).catch(error => {
             if (error === MEMORY_STOPPED) return;
             const message = error instanceof Error ? error.message : String(error);
             this.#lastWrite = { at: this.#now(), ok: false, error: message, operation: 'write', source: 'contact-sync' };
             this.#options.log(`[${contact.qq}] 记忆写入失败：${message}`);
         });
         this.#queues.set(key, next);
-        const release = () => { if (this.#queues.get(key) === next) this.#queues.delete(key); };
+        const release = () => { if (this.#queues.get(key) === next) { this.#queues.delete(key); this.#latest.delete(key); } };
         void next.then(release, release);
         return this.#trackWrite(next);
     }
 
-    async #sync(contact: MemoryContact, names: MacroNames, history: StoredMessage[]): Promise<void> {
+    async #sync(contact: MemoryContact, names: MacroNames, history: StoredMessage[], current: () => boolean): Promise<void> {
         const state = this.#load(contact);
         const episodes = splitEpisodes(history);
-        const due = (written: Record<string, number> = {}) => episodes.filter(episode => {
+        if (episodes.some(episode => contentRevision(episode, names, state.retained, state.retainedDigests)
+            || contentRevision(episode, names, state.common, { ...state.commonDigests, ...state.commonSkipped })
+            || [state.pendingOwn?.[episode.id], state.pendingCommon?.[episode.id]].some(pending => pending && pending.digest !== episodeDigest(episode, names)))) this.#invalidateContactModels(contact);
+        if (!(await this.#reconcilePending(contact, names, state, episodes, current))) return;
+        const due = (written: Record<string, number> = {}, digests: Record<string, string> = {}) => episodes.filter(episode => {
             const done = written[episode.id] ?? 0;
+            if (contentRevision(episode, names, written, digests)) return true;
             if (done === episode.messages.length) return false;
             const closed = this.#now() - episode.end.getTime() >= EPISODE_GAP_MS;
             return closed || episode.messages.length - done >= OPEN_EPISODE_STEP;
         });
         if (this.#options.reconcile) await this.#reconcile(contact, state, episodes);
-        const pending = due(state.retained);
-        if (pending.length) await this.#retainOwn(contact, names, state, pending);
-        if (this.#stopped) return;
+        const pending = due(state.retained, state.retainedDigests);
+        if (pending.length) await this.#retainOwn(contact, names, state, pending, current);
+        if (Object.keys(state.pendingOwn ?? {}).length) return;
+        if (!current()) return;
         if (!this.#options.common || !knowsPeople(contact.tier)) return;
         // 危机相关的片段不写进公共记忆库（ADR 0068 决策 8）：私人库保留事实本身，公共库不留
-        const common = due(state.common).filter(episode => {
+        const common: Episode[] = [];
+        const commonDue = new Set(due(state.common, { ...state.commonDigests, ...state.commonSkipped }));
+        for (const episode of episodes) {
+            if (!current()) return;
             const sensitive = episode.messages.some(message => message.role === 'user' && detectCrisis(message.content));
+            // 新增不足 OPEN_STEP 的危机内容也不能让先前公开的旧片段继续留在公共库。
+            if (!commonDue.has(episode) && !(sensitive && state.common?.[episode.id] !== undefined
+                && state.commonSkipped?.[episode.id] !== episodeDigest(episode, names))) continue;
             if (sensitive) {
+                const digest = episodeDigest(episode, names);
+                const mayHavePublicDocument = state.commonDigests?.[episode.id] !== undefined
+                    || state.common?.[episode.id] !== undefined && state.commonSkipped?.[episode.id] === undefined;
+                if (mayHavePublicDocument) {
+                    const remove = this.#options.api.deleteDocument;
+                    if (!remove) throw new Error('公共记忆旧文档删除能力不可用；未确认清理，不发布安全跳过进度');
+                    try { await this.#mutate(() => remove.call(this.#options.api, this.commonBankId(), `${this.#hash(contact)}:${episode.id}`)); }
+                    catch (error) { if ((error as { status?: number })?.status !== 404) throw error; }
+                    this.#invalidateEntities();
+                    this.#invalidateContactModels(contact);
+                }
                 (state.common ??= {})[episode.id] = episode.messages.length;
+                (state.commonSkipped ??= {})[episode.id] = digest;
+                if (state.commonDigests) delete state.commonDigests[episode.id];
                 this.#save(contact, state);
-            }
-            return !sensitive;
-        });
+            } else common.push(episode);
+        }
+        if (!current()) return;
         try {
             // 印象（ADR 0017）不等新片段：聊天早就都写进公共库的人（10-06 的鸽鸽），不然一直建不起来
             const bankId = await this.#ensureCommonBank(names.char);
+            if (!current()) return;
             await this.#ensurePersonModel(contact, names, state, bankId);
-            if (common.length) await this.#retainCommon(contact, names, state, common, bankId);
+            if (common.length) await this.#retainCommon(contact, names, state, common, bankId, current);
         } catch (error) {
             if (error === MEMORY_STOPPED) return;
             const message = error instanceof Error ? error.message : String(error);
@@ -478,9 +612,12 @@ export class LongTermMemory {
     }
 
     /** 写进公共记忆库：document_id 带上是谁的（哈希，不带 QQ 号），原文开头写和谁的私聊 */
-    async #retainCommon(contact: MemoryContact, names: MacroNames, state: ContactMemoryState, episodes: Episode[], bankId: string): Promise<void> {
+    async #retainCommon(contact: MemoryContact, names: MacroNames, state: ContactMemoryState, episodes: Episode[], bankId: string, current: () => boolean): Promise<void> {
         for (const episode of episodes) {
-            await this.#mutate(() => this.#options.api.retain(bankId, {
+            if (!current()) return;
+            const digest = episodeDigest(episode, names);
+            const revision = contentRevision(episode, names, state.common, { ...state.commonDigests, ...state.commonSkipped });
+            if (!(await this.#submitEpisode(contact, state, 'pendingCommon', episode, digest, bankId, {
                 content: `和${names.user}的私聊\n${episodeTranscript(episode, names)}`,
                 timestamp: localIso(episode.start),
                 context: `QQ 私聊：${names.char}（AI 扮演）和${names.user}`,
@@ -488,9 +625,12 @@ export class LongTermMemory {
                 tags: TAGS,
                 metadata: { source: 'qq', episode: episode.id, messages: String(episode.messages.length) },
                 entities: [{ text: names.user, type: 'PERSON' }, { text: names.char, type: 'PERSON' }],
-            }));
+            }, current, revision))) return;
             (state.common ??= {})[episode.id] = episode.messages.length;
             (state.commonAt ??= {})[episode.id] = this.#now();
+            (state.commonDigests ??= {})[episode.id] = digest;
+            if (state.commonSkipped) delete state.commonSkipped[episode.id];
+            if (revision) this.#invalidateContactModels(contact);
             this.#save(contact, state);
             this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-common-episode', items: episode.messages.length, fingerprint: evidenceFingerprint(episode.id) };
             this.#options.log(`[${contact.qq}] 记忆（公共）：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
@@ -590,10 +730,13 @@ export class LongTermMemory {
         return bankId;
     }
 
-    async #retainOwn(contact: MemoryContact, names: MacroNames, state: ContactMemoryState, pending: Episode[]): Promise<void> {
+    async #retainOwn(contact: MemoryContact, names: MacroNames, state: ContactMemoryState, pending: Episode[], current: () => boolean): Promise<void> {
         await this.#ensureBank(contact, names, state);
         for (const episode of pending) {
-            await this.#mutate(() => this.#options.api.retain(state.bankId, {
+            if (!current()) return;
+            const digest = episodeDigest(episode, names);
+            const revision = contentRevision(episode, names, state.retained, state.retainedDigests);
+            if (!(await this.#submitEpisode(contact, state, 'pendingOwn', episode, digest, state.bankId, {
                 content: episodeTranscript(episode, names),
                 // 带本机时区：抽取时按这个时间的日期、星期换算「明天」（ADR 0012 决策 1 第 2 条）
                 timestamp: localIso(episode.start),
@@ -602,9 +745,11 @@ export class LongTermMemory {
                 document_id: episode.id,
                 tags: TAGS,
                 metadata: { source: 'qq', episode: episode.id, messages: String(episode.messages.length) },
-            }));
+            }, current, revision))) return;
             state.retained[episode.id] = episode.messages.length;
             (state.retainedAt ??= {})[episode.id] = this.#now();
+            (state.retainedDigests ??= {})[episode.id] = digest;
+            if (revision) this.#invalidateContactModels(contact);
             this.#save(contact, state);
             this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-episode', items: episode.messages.length, fingerprint: evidenceFingerprint(episode.id) };
             this.#options.log(`[${contact.qq}] 记忆：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
@@ -999,9 +1144,18 @@ export class LongTermMemory {
         const path = this.#path(contact);
         const fresh: ContactMemoryState = { bankId: this.bankId(contact), retained: {} };
         const data = readContactMemoryState(path, message => this.#options.log(`[${contact.qq}] ${message}`));
+        if (!data) return fresh;
+        const pendingValid = (!(Object.keys(data.pendingOwn ?? {}).length || Object.keys(data.pendingCommon ?? {}).length) || data.bankId.endsWith(`-${this.#hash(contact)}`))
+            && Object.entries(data.pendingOwn ?? {}).every(([id, pending]) => pending.bankId === data.bankId && pending.item.document_id === id)
+            && Object.entries(data.pendingCommon ?? {}).every(([id, pending]) => pending.bankId === `${data.bankId.slice(0, -this.#hash(contact).length - 1)}-common`
+                && pending.item.document_id === `${this.#hash(contact)}:${id}`);
+        if (!pendingValid) throw new Error('记忆派发协议状态归属无效；保留原状态并停止');
         // 换了 bank 前缀：进度是旧 bank 的，新 bank 从头写 mission 和片段（ADR 0012 决策 1 第 9 条）
-        if (!data || data.bankId !== fresh.bankId) return fresh;
-        return { ...fresh, ...data, bankId: fresh.bankId };
+        if (data.bankId && data.bankId !== fresh.bankId) {
+            if (Object.keys(data.pendingOwn ?? {}).length || Object.keys(data.pendingCommon ?? {}).length) throw new Error('记忆库前缀变更但仍有未确认派发；保留原协议状态，请先核对完成');
+            return fresh;
+        }
+        return { ...fresh, ...data, bankId: fresh.bankId, retained: data.retained ?? {} };
     }
 
     #save(contact: MemoryContact, state: ContactMemoryState): void {
