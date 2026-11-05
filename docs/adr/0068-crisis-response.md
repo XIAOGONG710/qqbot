@@ -117,6 +117,14 @@ DSH 的 `exchange/reviews/2026-10-15-dsh-review-0064-0068-impl.md` 对 `crisis.t
 
 **验证**：`crisis.test.ts` 命中 / 不命中句子扩充，探针 27/29 符合预期（剩的两句是上面第 4 条）；真模型模拟 8 个场景 × 2 次重跑（`crisis-regress`，结果见进度文档）。
 
+## 2026-11-05：正常停机前收尾未持久的安全观察
+
+`crisis.json` 发布失败时，进程内状态仍按已经观察到的风险暂停普通主动消息，并由定时器退避重试。正常停机过去只清掉这个定时器；如果存储已经恢复、但下一次重试尚未触发，释放数据目录租约会丢掉这次仍在 RAM 里的安全观察。
+
+`App.stop()` 现在在取消重试定时器之后、释放目录租约之前显式 `flush()` 一次。成功就把已有观察持久化；仍失败则保持原文件和失败关闭边界，只写不含底层错误正文的固定诊断，不把未确认写入冒充成功，也不让诊断异常阻止其余停止收尾。这不提供强杀恢复或磁盘持续故障下的持久保证。
+
+合成真实 App 回归 `memory-app-crisis-stop-review.test.ts` 覆盖首次发布失败、存储在正常停机前恢复、停机发生于后台重试窗口内的路径，并断言 `crisis.json` 在 `bot.lock` 释放前保存 `high` 级别。
+
 ## 2026-10-21 附：主动消息规划不再被约定来源的异常整个停掉（ADR 0066，复核“问题 0”）
 
 `reschedulesFrom` 经 `promises.appointmentsBetween` 读约定，来源不可用时抛 `PromiseStateUnavailable`；它在 `proactive-planner.ts` 的 `input()` 里被调用，没人接，一路冒到 `loop().catch → halt()`，这个联系人的主动消息就此全停，直到重启。`app.ts` 的生活安排那边早就有同样的保护。现在 `input()` 里包了一层 `reschedulesNow()`：只接 `PromiseStateUnavailable`，这一段不排改约、日志记一次，来源回来后记一次恢复；其他异常照旧往上冒。测试：`proactive-retry.test.ts`「约定来源暂时读不到」。

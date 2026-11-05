@@ -237,7 +237,11 @@ export function createResponder(deps: ResponderDeps): Responder {
     /** 每排定一次再试加一；等待期间来了新消息也加一，等到的那次就不再触发 */
     let retryToken = 0;
     const retryAfter = deps.retryAfterMs ?? [];
-    const sleep = deps.sleep ?? (ms => new Promise<void>(resolve => setTimeout(resolve, ms)));
+    // The real timer belongs to this responder instance.  Aborting the
+    // lifecycle must clear it, not merely let the surrounding async branch
+    // ignore its eventual result (which would keep shutdown/test processes
+    // alive for the full quiet/retry/typing delay).
+    const sleep = deps.sleep ?? (ms => waitUntilReal(Date.now() + ms, lifecycle.signal));
     /**
      * 打字的这段时间：对方那边显示「正在输入…」（ADR 0077）。QQ 的输入状态几秒就消，所以每 TYPING_REFRESH_MS 补发一次；
      * 太短的（不到 TYPING_MIN_MS）不显示，真人也不会有「刚显示就收到」的闪一下；发出那条消息，状态自己消失
@@ -405,6 +409,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         if (!deps.settle || lastReceived === undefined || burstStart === undefined) return;
         const { quietMs, maxMs } = deps.settle;
         for (;;) {
+            if (stopped || lifecycle.signal.aborted) return;
             const t = now();
             const quiet = t - lastReceived;
             const waited = t - burstStart;

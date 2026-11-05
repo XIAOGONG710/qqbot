@@ -2570,6 +2570,12 @@ ${body}
             try { chatHistory.flushIncoming(); } catch (error) { log(`停止时入站状态仍未确认持久（${describeError(error)}）`); }
             photoDiscovery.abort();
             clearTimeout(crisisSaveTimer);
+            // A safety observation can be newer than crisis.json when the
+            // background retry timer has not fired yet.  Normal shutdown is
+            // the last in-process chance to publish that already-observed
+            // fact before releasing the directory lease.
+            try { crisisState.flush(); }
+            catch { try { log('停止时危机状态仍未确认持久；保留原文件和失败关闭边界，未记录原文'); } catch { /* diagnostics cannot change shutdown */ } }
             for (const timer of pokeTimers) clearTimeout(timer);
             pokeTimers.clear();
             heartbeat.stop();
