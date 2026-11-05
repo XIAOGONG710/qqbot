@@ -11,6 +11,8 @@ export const WRITTEN_RETAIN_MARKER = 'written-retain.initialized';
 export const WRITTEN_RETAIN_COORDINATION_DIRECTORY = 'written-retain-coordination';
 export interface WrittenRetainOptions { operationId?: string; allowSubmit?: boolean; canSubmit?: (signal?: AbortSignal) => boolean | Promise<boolean> }
 export interface WrittenOperation { bankId: string; documentId: string; operationId: string; requestHash: string; item: MemoryItem; phase: 'prepared' | 'dispatched' | 'completed' }
+export type WrittenSourceIntent = Pick<WrittenOperation, 'documentId' | 'operationId' | 'requestHash' | 'phase'>;
+export interface WrittenGuardState { blockedDocuments: string[]; intents: WrittenSourceIntent[] }
 export interface WrittenRetainState { version: 1; operations: Record<string, WrittenOperation>; current: Record<string, string>; blockedBanks: Record<string, { documents: string[] }> }
 const uuid = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(v);
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && !/[\x00-\x1f\x7f]/.test(v);
@@ -44,20 +46,26 @@ const put = <T>(o: Record<string, T>, k: string, value: T) => Object.definePrope
 export class WrittenRetainStore {
     readonly #dir: string;
     readonly #observed = new Map<string, Set<string>>();
+    #guardCache?: { bytes: string | undefined; banks: ReadonlyMap<string, Readonly<{ blockedDocuments: readonly string[]; intents: readonly Readonly<WrittenSourceIntent>[] }>> };
     constructor(dir: string) { this.#dir = dir; }
     #regular(path: string): boolean {
         try { const stat = lstatSync(path); if (!stat.isFile() || stat.isSymbolicLink()) throw fail(); return true; }
         catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; throw fail(); }
     }
-    #read(): WrittenRetainState {
+    #readBytes(): string | undefined {
         const path = join(this.#dir, WRITTEN_RETAIN_FILE), marker = join(this.#dir, WRITTEN_RETAIN_MARKER);
         try {
             const marked = this.#regular(marker);
             if (marked && lstatSync(marker).size !== 0) throw fail();
-            if (!this.#regular(path)) { if (marked) throw fail(); return empty(); }
-            const value: unknown = JSON.parse(fileOps.readFileSync(path, 'utf8'));
-            if (!isWrittenRetainState(value)) throw fail(); return value;
+            if (!this.#regular(path)) { if (marked) throw fail(); return undefined; }
+            return fileOps.readFileSync(path, 'utf8');
         } catch { throw fail(); }
+    }
+    #read(): WrittenRetainState {
+        const bytes = this.#readBytes();
+        if (bytes === undefined) return empty();
+        try { const value: unknown = JSON.parse(bytes); if (!isWrittenRetainState(value)) throw fail(); return value; }
+        catch { throw fail(); }
     }
     #save(state: WrittenRetainState): void {
         if (!isWrittenRetainState(state)) throw fail();
@@ -68,24 +76,27 @@ export class WrittenRetainStore {
         try { if (!this.#regular(marker)) writeFileSync(marker, '', { flag: 'wx' }); }
         catch { throw fail(); }
     }
-    #with<T>(work: (state: WrittenRetainState) => { result: T; changed?: boolean }): T {
+    #locked<T>(work: () => T): T {
         try {
             for (const path of [this.#dir, join(this.#dir, WRITTEN_RETAIN_COORDINATION_DIRECTORY)]) {
                 try { const stat = lstatSync(path); if (!stat.isDirectory() || stat.isSymbolicLink()) throw fail(); }
                 catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw fail(); }
             }
             mkdirSync(this.#dir, { recursive: true });
-            return withPhotoIndexLock(join(this.#dir, WRITTEN_RETAIN_COORDINATION_DIRECTORY), () => {
-                const state = this.#read(); let dirty = false;
-                for (const [bank, docs] of this.#observed) {
-                    const old = state.blockedBanks[bank]?.documents ?? [], merged = [...new Set([...old, ...docs])].sort();
-                    if (JSON.stringify(old) !== JSON.stringify(merged)) { put(state.blockedBanks, bank, { documents: merged }); dirty = true; }
-                }
-                const { result, changed } = work(state);
-                if (dirty || changed) this.#save(state);
-                this.#observed.clear(); return { value: result };
-            }).value;
+            return withPhotoIndexLock(join(this.#dir, WRITTEN_RETAIN_COORDINATION_DIRECTORY), () => ({ value: work() })).value;
         } catch { throw fail(); }
+    }
+    #with<T>(work: (state: WrittenRetainState) => { result: T; changed?: boolean }): T {
+        return this.#locked(() => {
+            const state = this.#read(); let dirty = false;
+            for (const [bank, docs] of this.#observed) {
+                const old = state.blockedBanks[bank]?.documents ?? [], merged = [...new Set([...old, ...docs])].sort();
+                if (JSON.stringify(old) !== JSON.stringify(merged)) { put(state.blockedBanks, bank, { documents: merged }); dirty = true; }
+            }
+            const { result, changed } = work(state);
+            if (dirty || changed) this.#save(state);
+            this.#observed.clear(); return result;
+        });
     }
     snapshot(): WrittenRetainState { return this.#with(state => ({ result: structuredClone(state) })); }
     current(bank: string, document: string): WrittenOperation | undefined {
@@ -115,5 +126,35 @@ export class WrittenRetainStore {
         const docs = this.#observed.get(bank) ?? new Set<string>(); docs.add(document); this.#observed.set(bank, docs);
         this.#with(() => ({ result: undefined }));
     }
-    blockedDocuments(bank: string): string[] { return this.#with(state => ({ result: [...state.blockedBanks[bank]?.documents ?? []] })); }
+    /** Fresh bytes remain authoritative. Only immutable derived metadata is reused, never mutable RMW state. */
+    guardState(bank: string): WrittenGuardState {
+        if (!text(bank)) throw fail();
+        // A privacy observation cannot be satisfied from a previously clean read.
+        if (this.#observed.size) this.#with(() => ({ result: undefined }));
+        return this.#locked(() => {
+            const bytes = this.#readBytes();
+            if (!this.#guardCache || this.#guardCache.bytes !== bytes) {
+                let state: WrittenRetainState;
+                if (bytes === undefined) state = empty();
+                else { const value: unknown = JSON.parse(bytes); if (!isWrittenRetainState(value)) throw fail(); state = value; }
+                const metadata = new Map<string, WrittenGuardState>();
+                const at = (id: string): WrittenGuardState => {
+                    let entry = metadata.get(id); if (!entry) { entry = { blockedDocuments: [], intents: [] }; metadata.set(id, entry); } return entry;
+                };
+                for (const [id, block] of Object.entries(state.blockedBanks)) at(id).blockedDocuments = [...block.documents];
+                for (const id of Object.values(state.current)) {
+                    const op = state.operations[id]!;
+                    at(op.bankId).intents.push({ documentId: op.documentId, operationId: op.operationId, requestHash: op.requestHash, phase: op.phase });
+                }
+                const banks = new Map([...metadata].map(([id, entry]) => [id, Object.freeze({
+                    blockedDocuments: Object.freeze(entry.blockedDocuments), intents: Object.freeze(entry.intents.map(row => Object.freeze(row))),
+                })]));
+                this.#guardCache = { bytes, banks };
+            }
+            const value = this.#guardCache.banks.get(bank);
+            return value ? { blockedDocuments: [...value.blockedDocuments], intents: value.intents.map(row => ({ ...row })) } : { blockedDocuments: [], intents: [] };
+        });
+    }
+    sourceIntents(bank: string): WrittenSourceIntent[] { return this.guardState(bank).intents; }
+    blockedDocuments(bank: string): string[] { return this.guardState(bank).blockedDocuments; }
 }
