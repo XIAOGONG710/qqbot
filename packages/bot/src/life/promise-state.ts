@@ -11,7 +11,17 @@ export interface PromiseState {
     loops: OpenLoop[];
     extracted: Record<string, true | number>;
     early: Record<string, number>;
+    sources?: Record<string, PromiseSourceEvidence>;
+    attemptSources?: Record<string, { count: number; digest: string }>;
+    promiseVersions?: Record<string, string>;
+    loopVersions?: Record<string, string>;
+    uncertainSources?: Record<string, true>;
 }
+
+export interface SourceEffect<T> { id: string; before?: T; after?: T; version: string; beforeVersion?: string }
+export type PromiseEffect = SourceEffect<HerPromise>;
+export type LoopEffect = SourceEffect<OpenLoop>;
+export interface PromiseSourceEvidence { phase: 'early' | 'closed'; count: number; digest: string; promiseEffects?: PromiseEffect[]; loopEffects?: LoopEffect[] }
 
 export class PromiseStateUnavailable extends Error {}
 export const emptyPromiseState = (): PromiseState => ({ version: 1, promises: [], loops: [], extracted: {}, early: {} });
@@ -22,6 +32,7 @@ const episodeId = (value: unknown): value is string => typeof value === 'string'
 const count = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0;
 const dated = (value: unknown): value is string => typeof value === 'string' && calendarDate(value);
 const optional = (value: unknown, valid: (value: unknown) => boolean) => value === undefined || valid(value);
+const uuid = (value: unknown) => typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value);
 const base = (value: unknown): value is Record<string, unknown> => stateObject(value)
     && id(value.id) && text(value.what) && dated(value.said) && episodeId(value.episode) && optional(value.date, dated);
 
@@ -43,6 +54,26 @@ const validLoop = (value: unknown): value is OpenLoop => base(value)
 export function validPromiseState(value: unknown): value is PromiseState {
     if (!stateObject(value) || value.version !== 1 || !Array.isArray(value.promises) || !value.promises.every(validPromise)
         || !Array.isArray(value.loops) || !value.loops.every(validLoop) || !stateObject(value.extracted) || !stateObject(value.early)) return false;
+    for (const versions of [value.promiseVersions, value.loopVersions]) if (versions !== undefined && (!stateObject(versions) || !Object.entries(versions).every(([key, version]) => id(key) && uuid(version)))) return false;
+    const evidence = (source: unknown): source is Record<string, unknown> => stateObject(source) && count(source.count) && typeof source.digest === 'string' && /^[a-f0-9]{64}$/.test(source.digest);
+    const effects = (items: unknown, row: (item: unknown) => item is HerPromise | OpenLoop): boolean => items === undefined || Array.isArray(items)
+        && new Set(items.map(effect => stateObject(effect) ? effect.id : undefined)).size === items.length
+        && items.every(effect => stateObject(effect) && id(effect.id) && uuid(effect.version) && optional(effect.beforeVersion, uuid) && effect.beforeVersion !== effect.version
+            && (effect.before !== undefined || effect.after !== undefined)
+            && optional(effect.before, item => row(item) && item.id === effect.id) && optional(effect.after, item => row(item) && item.id === effect.id));
+    if (value.sources !== undefined && (!stateObject(value.sources) || !Object.entries(value.sources).every(([key, source]) => episodeId(key)
+        && evidence(source) && (source.phase === 'early' || source.phase === 'closed') && effects(source.promiseEffects, validPromise) && effects(source.loopEffects, validLoop)))) return false;
+    // 同一行的一次mutation只能有一个来源owner；重复version的矛盾before不能靠JSON键顺序猜恢复。
+    const owners = new Set<string>();
+    for (const source of Object.values(value.sources ?? {}) as PromiseSourceEvidence[]) for (const [kind, changes] of [
+        ['promise', source.promiseEffects ?? []], ['loop', source.loopEffects ?? []],
+    ] as const) for (const effect of changes) {
+        const owner = JSON.stringify([kind, effect.id, effect.version]);
+        if (owners.has(owner)) return false;
+        owners.add(owner);
+    }
+    if (value.attemptSources !== undefined && (!stateObject(value.attemptSources) || !Object.entries(value.attemptSources).every(([key, source]) => episodeId(key) && evidence(source)))) return false;
+    if (value.uncertainSources !== undefined && (!stateObject(value.uncertainSources) || !Object.entries(value.uncertainSources).every(([key, flag]) => episodeId(key) && flag === true))) return false;
     const ids = [...value.promises, ...value.loops].map(item => item.id);
     return new Set(ids).size === ids.length
         && Object.entries(value.extracted).every(([key, attempts]) => episodeId(key) && (attempts === true || (count(attempts) && Number(attempts) <= 2)))
