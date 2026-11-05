@@ -2,20 +2,26 @@
 // 只在终端打印，不写仓库：记录里有聊天原文，只该留在 runtime/。
 // 用法：npm run feedback-digest -w packages/bot -- [--days 7] [--dir <数据目录，默认 runtime/bot>]
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { FeedbackRow } from './feedback.ts';
+import { FEEDBACK_MONTH_FILE, feedbackKey, isFeedbackRow, type FeedbackRow } from './feedback.ts';
 
 export function readFeedback(dataDir: string): FeedbackRow[] {
     const dir = join(dataDir, 'feedback');
-    if (!existsSync(dir)) return [];
+    let files: string[];
+    try { files = readdirSync(dir); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw new Error('反馈目录读取失败'); }
     const rows: FeedbackRow[] = [];
-    for (const name of readdirSync(dir).filter(file => /^\d{4}-\d{2}\.jsonl$/.test(file)).sort()) {
-        for (const line of readFileSync(join(dir, name), 'utf8').split('\n')) {
+    const seen = new Set<string>();
+    for (const name of files.filter(file => FEEDBACK_MONTH_FILE.test(file)).sort()) {
+        let text: string;
+        try { text = readFileSync(join(dir, name), 'utf8'); }
+        catch { throw new Error('反馈文件读取失败'); }
+        for (const line of text.split('\n')) {
             if (!line.trim()) continue;
             try {
-                const row = JSON.parse(line) as FeedbackRow;
-                if ((row.label === 'fake' || row.label === 'real') && Number.isFinite(Date.parse(row.at)) && Array.isArray(row.her)) rows.push(row);
+                const row: unknown = JSON.parse(line);
+                if (isFeedbackRow(row) && !seen.has(feedbackKey(row))) { seen.add(feedbackKey(row)); rows.push(row); }
             } catch { /* 坏行跳过 */ }
         }
     }
@@ -24,13 +30,29 @@ export function readFeedback(dataDir: string): FeedbackRow[] {
 
 const dayOf = (iso: string) => {
     const date = new Date(iso);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return `${String(date.getFullYear()).padStart(4, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
-const clip = (text: string, max = 80) => { const chars = [...text.replace(/\s+/g, ' ')]; return chars.length > max ? `${chars.slice(0, max).join('')}…` : chars.join(''); };
+const clip = (text: string, max = 80): string => {
+    const chars: string[] = []; let inSpace = false;
+    for (const raw of text) {
+        const space = /\s/u.test(raw);
+        if (space && inSpace) continue;
+        inSpace = space;
+        if (chars.length === max) return `${chars.join('')}…`;
+        chars.push(space ? ' ' : raw);
+    }
+    return chars.join('');
+};
 
 export function feedbackDigest(rows: readonly FeedbackRow[], now: Date, days: number): string {
+    if (!Number.isFinite(now.getTime()) || !Number.isFinite(days) || days <= 0 || !Number.isFinite(days * 86_400_000)) throw new RangeError('反馈摘要日期或天数无效');
     const since = now.getTime() - days * 86_400_000;
-    const recent = rows.filter(row => Date.parse(row.at) >= since && Date.parse(row.at) <= now.getTime());
+    const seen = new Set<string>();
+    const recent = rows.filter(isFeedbackRow).filter(row => {
+        const key = feedbackKey(row);
+        if (seen.has(key) || Date.parse(row.at) < since || Date.parse(row.at) > now.getTime()) return false;
+        seen.add(key); return true;
+    });
     const fake = recent.filter(row => row.label === 'fake');
     const real = recent.filter(row => row.label === 'real');
     const lines = [`# 反馈摘要（最近 ${days} 天）`, '', `共 ${recent.length} 条：假 ${fake.length}、像 ${real.length}`];
