@@ -51,10 +51,10 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'vision', name: '看（视觉）',
         scope: '她怎么看图：照片货架、食物照片、图片安全检查、媒体（雪碧图/封面）与看图模型；只负责“看见”，不负责怎么说。',
-        files: ['vision/vision.ts', 'vision/photos.ts', 'vision/photo-sources.ts', 'vision/ai-photo-drafts.ts', 'vision/ai-photo-provider.ts', 'vision/ai-photo-quality.ts', 'vision/ai-photo-quality-adapter.ts', 'vision/ai-photo-references.ts', 'vision/ai-photo-storage.ts', 'vision/safe-image.ts', 'vision/media.ts', 'vision/hearing.ts', 'vision/voice-out.ts', 'vision/sticker-reads.ts'],
+        files: ['vision/vision.ts', 'vision/photos.ts', 'vision/photo-index-lock.ts', 'vision/photo-sources.ts', 'vision/ai-photo-drafts.ts', 'vision/ai-photo-provider.ts', 'vision/ai-photo-quality.ts', 'vision/ai-photo-quality-adapter.ts', 'vision/ai-photo-references.ts', 'vision/ai-photo-storage.ts', 'vision/safe-image.ts', 'vision/media.ts', 'vision/hearing.ts', 'vision/voice-out.ts', 'vision/sticker-reads.ts'],
         groups: ['照片和表情'],
         metrics: '周报「图片」；vision 相关单测；图片不发外网的比例',
-        adrs: ['0055', '0109', '0128', '0206', '0239', '0242', '0244', '0246'],
+        adrs: ['0055', '0109', '0128', '0206', '0239', '0242', '0244', '0246', '0306'],
     },
     {
         id: 'emotion', name: '心境与安全',
@@ -75,11 +75,11 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'memory', name: '记忆与数据',
         scope: '长期记忆（Hindsight）、聊天记录、状态文件的读写和校验、归档、遗忘、隐私审计。',
-        files: ['memory/', 'memory/history.ts', 'memory/archive.ts', 'memory/backfill.ts', 'memory/state-schema.ts', 'memory/tier-record.ts', 'memory/json-file.ts', 'memory/transient-io.ts', 'memory/privacy-audit.ts', 'memory/privacy-forget.ts',
+        files: ['local-date.ts', 'memory/', 'memory/history.ts', 'memory/archive.ts', 'memory/backfill.ts', 'memory/state-schema.ts', 'memory/tier-record.ts', 'memory/json-file.ts', 'memory/transient-io.ts', 'memory/privacy-audit.ts', 'memory/privacy-forget.ts',
             'memory/ledger.ts', 'memory/identity.ts', 'memory/memory-audit.ts', 'memory/timeline.ts', 'memory/dsh-inbox.ts', 'memory/dormancy.ts'],
         groups: ['记忆和安全'],
         metrics: '状态页「长期记忆」；ops/state-check-cli；ops/continuity-cli（设定账本 / 记忆账本）；聊天里发 /设定',
-        adrs: ['0012', '0017', '0043', '0157', '0158', '0159', '0161', '0176', '0177', '0201', '0226'],
+        adrs: ['0012', '0017', '0043', '0157', '0158', '0159', '0161', '0176', '0177', '0201', '0226', '0300', '0301', '0302', '0303', '0304', '0305'],
     },
     {
         id: 'social', name: '在 QQ 上的样子（社交）',

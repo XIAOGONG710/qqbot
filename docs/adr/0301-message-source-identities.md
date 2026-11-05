@@ -1,6 +1,6 @@
-# ADR0238：短消息 ID 的来源身份与保守兼容
+# ADR0301：短消息 ID 的来源身份与保守兼容
 
-状态：接受。2026-11-05。关联ADR0082、0237。
+状态：接受。2026-11-05。关联ADR0082、0300。
 
 证据：NapCat `api/msg.ts` 的 live/历史数据包含 QQ 源秒 `time` 和原始字符串 `real_seq=msgSeq`，而 `message_id`、`message_seq`、`real_id` 都是同一个短 ID。`SendMsg.ts` 的 ACK 仅返回短 ID，`friend_recall` 通知不包含原消息发送时间或序号；其 notice 时间是通知时钟。`get_msg` 仍按短 ID 反查，不能当作无条件权威的身份补全渠道。以上仅只读核对本仓上游源码，未修改或连接真实 QQ。
 
