@@ -63,6 +63,9 @@ export interface TastesOptions {
 export class Tastes {
     readonly #options: TastesOptions;
     readonly #path: string;
+    #stopped = false;
+    #jobs = new Map<Promise<number>, () => void>();
+    #drain: Promise<void> | undefined;
 
     constructor(options: TastesOptions) {
         this.#options = options;
@@ -77,12 +80,40 @@ export class Tastes {
     list(): Taste[] { return this.#load().tastes; }
 
     /** 回头看一次；一天最多一次。返回新增 / 更新的条数 */
-    async reflect(): Promise<number> {
+    reflect(): Promise<number> {
+        if (this.#stopped) return Promise.resolve(0);
+        let cancel!: () => void;
+        const cancelled = new Promise<undefined>(resolve => { cancel = () => resolve(undefined); });
+        // Register ownership before any user callback can synchronously stop the host.
+        const job = Promise.resolve().then(() => this.#reflect(cancelled));
+        this.#jobs.set(job, cancel);
+        const finished = () => { this.#jobs.delete(job); };
+        void job.then(finished, finished);
+        return job;
+    }
+
+    /** Permanently reject new reflection and discard late pure-model results. */
+    stop(): Promise<void> | undefined {
+        this.#stopped = true;
+        if (this.#drain) return this.#drain;
+        if (!this.#jobs.size) return undefined;
+        const jobs = [...this.#jobs.keys()];
+        for (const cancel of this.#jobs.values()) cancel();
+        return this.#drain = Promise.allSettled(jobs).then(() => undefined);
+    }
+
+    async #reflect(cancelled: Promise<undefined>): Promise<number> {
+        if (this.#stopped) return 0;
         const now = this.#options.now?.() ?? new Date();
+        if (this.#stopped) return 0;
         const file = this.#load();
         if (file.lastReflectAt && now.getTime() - Date.parse(file.lastReflectAt) < MIN_GAP_MS) return 0;
         const since = now.getTime() - DAYS * 86_400_000;
-        const experiences = this.#options.experiences(now).filter(e => Date.parse(e.at) >= since).slice(-60);
+        const experiences = this.#options.experiences(now).filter(e => {
+            const at = Date.parse(e.at);
+            return Number.isFinite(at) && at >= since && at <= now.getTime();
+        }).slice(-60);
+        if (this.#stopped) return 0;
         file.lastReflectAt = now.toISOString();
         if (experiences.length < 6) {
             writeJsonAtomic(this.#path, file);
@@ -90,16 +121,20 @@ export class Tastes {
         }
         const known = file.tastes.map(t => `${t.name}（${t.stance === 'like' ? '喜欢' : '不太喜欢'}）`).join('、');
         const list = experiences.map(e => `${e.ref} | ${whenText(new Date(e.at), now)} | ${e.kind} | ${clip(e.text, 40)}${e.outcome === 'bad' ? ' | 结果不好' : e.outcome === 'good' ? ' | 结果好' : ''}`).join('\n');
-        let raw: string;
+        let raw: string | undefined;
         try {
-            raw = await this.#options.ask(SYSTEM, `${known ? `已经发现的：${known}\n\n` : ''}经历清单（编号 | 时间 | 类别 | 内容）：\n${list}`);
+            raw = await Promise.race([cancelled, Promise.resolve().then(() => this.#stopped ? undefined
+                : this.#options.ask(SYSTEM, `${known ? `已经发现的：${known}\n\n` : ''}经历清单（编号 | 时间 | 类别 | 内容）：\n${list}`))]);
         } catch (error) {
+            if (this.#stopped) return 0;
             this.#options.log?.(`口味：回头看失败（${error instanceof Error ? error.message : String(error)}）`);
             return 0;
         }
+        if (this.#stopped || raw === undefined) return 0;
         const accepted = this.#validate(raw, experiences, file, now);
+        if (this.#stopped) return 0;
         writeJsonAtomic(this.#path, file);
-        this.#options.log?.(`口味：回头看了 ${experiences.length} 件经历，${accepted ? `记下 ${accepted} 条（日志不记内容）` : '没有新发现'}`);
+        if (!this.#stopped) this.#options.log?.(`口味：回头看了 ${experiences.length} 件经历，${accepted ? `记下 ${accepted} 条（日志不记内容）` : '没有新发现'}`);
         return accepted;
     }
 
@@ -109,7 +144,10 @@ export class Tastes {
         if (!Array.isArray(proposals)) return 0;
         const byRef = new Map(experiences.map(e => [e.ref, e]));
         let accepted = 0;
-        for (const item of proposals.slice(0, MAX_NEW_PER_REFLECTION)) {
+        for (const item of proposals) {
+            if (this.#stopped) break;
+            if (accepted >= MAX_NEW_PER_REFLECTION) break;
+            if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
             const p = item as Record<string, unknown>;
             const name = clean(p.name, 10);
             const why = clean(p.why, 40);

@@ -923,24 +923,30 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             onDone: e => noteTimeline({ channel: 'web', kind: e.kind, summary: e.summary, ok: e.ok }),
         })
         : undefined;
+    const tastesLog: Log = message => { if (!stopped) log(message); };
     const tastes = config.tastes
         ? new Tastes({
-            dataDir: config.dataDir, now: clockNow, log,
+            dataDir: config.dataDir, now: clockNow, log: tastesLog,
             experiences: () => [
                 ...experiencesFromLife(readLifeEvents(join(config.dataDir, 'world', 'events.json'), () => undefined)),
                 ...experiencesFromWatched(loadWatched(watchedPath(config.dataDir)).entries),
             ],
-            ask: (system, user) => (pipeline?.generate
-                ? pipeline.generate([{ role: 'system', content: system }, { role: 'user', content: user }], log)
-                : chatCompletion({ ...forExtraction(config.llm), temperature: 0 }, [{ role: 'system', content: system }, { role: 'user', content: user }], { log, purpose: 'background' })),
-            onChange: (taste, kind) => noteTimeline({ channel: 'tastes', kind, summary: `${kind === 'new' ? '发现自己' : '重新看了看自己'}${taste.stance === 'like' ? '喜欢' : '不太喜欢'}${taste.name}` }),
+            ask: (system, user) => {
+                if (stopped) return Promise.resolve('[]');
+                return pipeline?.generate
+                    ? pipeline.generate([{ role: 'system', content: system }, { role: 'user', content: user }], tastesLog)
+                    : chatCompletion({ ...forExtraction(config.llm), temperature: 0 }, [{ role: 'system', content: system }, { role: 'user', content: user }], { log: tastesLog, purpose: 'background' });
+            },
+            onChange: (taste, kind) => { if (!stopped) noteTimeline({ channel: 'tastes', kind, summary: `${kind === 'new' ? '发现自己' : '重新看了看自己'}${taste.stance === 'like' ? '喜欢' : '不太喜欢'}${taste.name}` }); },
         })
         : undefined;
+    construction.onFailure(() => tastes?.stop());
+    const reflectTastes = () => { if (!stopped) void tastes?.reflect().catch(error => tastesLog(`口味：出错（${error instanceof Error ? error.message : String(error)}）`)); };
     // 回头看一天最多一次（tastes.ts 里有间隔）：每小时来看一眼要不要看，启动两分钟后先看一次
-    const tastesTimer = tastes ? setInterval(() => void tastes.reflect().catch(error => log(`口味：出错（${error instanceof Error ? error.message : String(error)}）`)), 3_600_000) : undefined;
+    const tastesTimer = tastes ? setInterval(reflectTastes, 3_600_000) : undefined;
     construction.onFailure(() => clearInterval(tastesTimer));
     tastesTimer?.unref();
-    const tastesFirst = tastes ? setTimeout(() => void tastes.reflect().catch(error => log(`口味：出错（${error instanceof Error ? error.message : String(error)}）`)), 120_000) : undefined;
+    const tastesFirst = tastes ? setTimeout(reflectTastes, 120_000) : undefined;
     construction.onFailure(() => clearTimeout(tastesFirst));
     tastesFirst?.unref();
     const acquaintances = config.acquaintances ? new Acquaintances({ dataDir: config.dataDir, now: clockNow, log }) : undefined;
@@ -3836,6 +3842,7 @@ ${body}
             const diaryDrain = diaries?.stop();
             const promisesDrain = promises?.stop();
             const memoryDrain = memory?.stop();
+            const tastesDrain = tastes?.stop();
             const weatherDrains = [...weatherRefreshes];
             const airQualityDrains = [...airQualityRefreshes];
             const daylightDrains = [...daylightRefreshes];
@@ -3897,7 +3904,7 @@ ${body}
             useRealTransport(undefined);
             useWorldNeeds(undefined);
             const drains = [
-                diaryDrain, promisesDrain, memoryDrain, presenceDrain, browsingDrain, deviceDrain,
+                diaryDrain, promisesDrain, memoryDrain, tastesDrain, presenceDrain, browsingDrain, deviceDrain,
                 ...weatherDrains, ...airQualityDrains, ...daylightDrains, ...calendarDrains, ...transportDrains,
                 ...contextDrains, ...responderDrains,
             ].filter((task): task is Promise<void> => task !== undefined);
