@@ -44,6 +44,32 @@ test('纯生成未派发send时stop同步返回，迟到生成不能派发或写
     } finally { generated.release('清理'); f.responder.stop(); await f.responder.whenIdle(); }
 });
 
+test('默认安静窗口定时器归属回复器，stop会实际清除而不是等满窗口', async () => {
+    const originalSet = globalThis.setTimeout, originalClear = globalThis.clearTimeout;
+    let quietTimer: ReturnType<typeof setTimeout> | undefined, quietCleared = false;
+    globalThis.setTimeout = ((callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
+        const timer = originalSet(callback, ms, ...args);
+        if (ms === 4000) quietTimer = timer;
+        return timer;
+    }) as typeof setTimeout;
+    globalThis.clearTimeout = ((timer: Parameters<typeof clearTimeout>[0]) => {
+        if (timer === quietTimer) quietCleared = true;
+        return originalClear(timer);
+    }) as typeof clearTimeout;
+    const f = fixture({ sleep: undefined, now: Date.now, settle: { quietMs: 4000, maxMs: 4000 } });
+    try {
+        f.responder.receive('合成请求', 1, new Date()); await until(() => quietTimer !== undefined);
+        assert.equal(f.responder.stop(), undefined, '纯本地等待不应制造mutation drain');
+        await f.responder.whenIdle();
+        assert.equal(quietCleared, true);
+        assert.equal((quietTimer as unknown as { _destroyed?: boolean })._destroyed, true);
+        assert.deepEqual(f.sent, []); assert.equal(assistant(f).length, 0);
+    } finally {
+        f.responder.stop(); await f.responder.whenIdle();
+        globalThis.setTimeout = originalSet; globalThis.clearTimeout = originalClear;
+    }
+});
+
 test('ACK后的历史写入EIO不变成发送失败；已发布读回可确认，未发布只记安全诊断不重发', async () => {
     for (const phase of ['before', 'after', 'same-old-ack'] as const) {
         const published = phase === 'after';
