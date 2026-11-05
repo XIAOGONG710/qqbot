@@ -113,6 +113,21 @@ const operationUuid = (value: string): boolean => typeof value === 'string' && /
 
 export type RepairTagGroup = { tags: string[]; match: 'all_strict' | 'any_strict'; resolve?: 'exact' } | { not: RepairTagGroup };
 export interface RepairStats { pending_consolidation: number; failed_consolidation: number; last_memory_write_at: string | null }
+/** Fresh evidence only: neither this DTO nor /version proves the bank uses the PostgreSQL-owned memory store. */
+export interface ObservationRepairStats extends RepairStats {
+    bank_id: string; total_nodes: number; total_documents: number; total_observations: number;
+    nodes_by_fact_type: Record<string, number>; last_consolidated_at: string | null;
+}
+export interface ConsolidationOperation {
+    operation_id: string; operation_type: 'consolidation' | null; status: RetentionStatus;
+    created_at: string | null; updated_at: string | null; completed_at: string | null;
+    retry_count: number; next_retry_at: string | null;
+}
+export interface ObservationRepairApi {
+    repairObservationStats(bankId: string): Promise<ObservationRepairStats>;
+    /** A single round can enqueue its successor. completed does not mean the bank's queue has drained. */
+    repairConsolidationStatus(bankId: string, operationId: string): Promise<ConsolidationOperation>;
+}
 export interface RepairOperation { operation_id: string; task_type: string; status: 'pending' | 'processing' | 'failed' | 'cancelled'; mental_model_id: string | null }
 export interface RepairModelMetadata { id: string; bank_id: string; name: string; tags: string[]; last_memory_seen_at: string | null; last_refreshed_at: string | null }
 export interface RepairModelEvidence extends RepairModelMetadata {
@@ -162,7 +177,7 @@ export function repairDocumentContentHash(content: string): string {
     return createHash('sha256').update(sanitized, 'utf8').digest('hex');
 }
 
-export interface HindsightApi extends Partial<DerivedRepairApi> {
+export interface HindsightApi extends Partial<DerivedRepairApi>, Partial<ObservationRepairApi> {
     putBank(bankId: string, config: BankConfig): Promise<void>;
     retain(bankId: string, item: MemoryItem): Promise<void>;
     /** 可恢复的异步提交：调用方须先持久UUID与不可变请求；成功仅代表受理，不代表完成。 */
@@ -245,6 +260,47 @@ export class HindsightClient implements HindsightApi {
         if (!stateObject(value) || value.bank_id !== bankId || !repairCount(value.pending_consolidation) || !repairCount(value.failed_consolidation)
             || !repairTime(value.last_memory_write_at)) return this.#repairError();
         return { pending_consolidation: value.pending_consolidation, failed_consolidation: value.failed_consolidation, last_memory_write_at: value.last_memory_write_at as string ?? null };
+    }
+    async repairObservationStats(bankId: string): Promise<ObservationRepairStats> {
+        const value: unknown = await this.#request('GET', `${this.#bank(bankId)}/stats?refresh=true`, undefined, this.#repairRemaining()());
+        if (!stateObject(value) || value.bank_id !== bankId || !repairCount(value.total_nodes) || !repairCount(value.total_documents)
+            || !repairCount(value.total_observations) || !repairCount(value.pending_consolidation) || !repairCount(value.failed_consolidation)
+            || !('last_memory_write_at' in value) || !repairTime(value.last_memory_write_at)
+            || !('last_consolidated_at' in value) || !repairTime(value.last_consolidated_at)
+            || !stateObject(value.nodes_by_fact_type)) return this.#repairError();
+        const counts: Record<string, number> = {};
+        let total = 0;
+        for (const [type, count] of Object.entries(value.nodes_by_fact_type)) {
+            if (!/^[a-z_]+$/.test(type) || !repairCount(count)) return this.#repairError();
+            Object.defineProperty(counts, type, { value: count, enumerable: true, configurable: true, writable: true }); total += count;
+        }
+        if (!Number.isSafeInteger(total) || total !== value.total_nodes || (counts.observation ?? 0) !== value.total_observations
+            || value.pending_consolidation + value.failed_consolidation > (counts.world ?? 0) + (counts.experience ?? 0)) return this.#repairError();
+        return { bank_id: bankId, total_nodes: value.total_nodes, total_documents: value.total_documents, total_observations: value.total_observations,
+            nodes_by_fact_type: counts, pending_consolidation: value.pending_consolidation, failed_consolidation: value.failed_consolidation,
+            last_memory_write_at: value.last_memory_write_at as string ?? null, last_consolidated_at: value.last_consolidated_at as string ?? null };
+    }
+    async repairConsolidationStatus(bankId: string, operationId: string): Promise<ConsolidationOperation> {
+        if (!operationUuid(operationId)) return this.#repairError();
+        const empty: ConsolidationOperation = { operation_id: operationId, operation_type: null, status: 'not_found',
+            created_at: null, updated_at: null, completed_at: null, retry_count: 0, next_retry_at: null };
+        let value: unknown;
+        try { value = await this.#request('GET', `${this.#bank(bankId)}/operations/${encodeURIComponent(operationId)}`, undefined, this.#repairRemaining()()); }
+        catch (error) { if (error instanceof HindsightError && error.status === 404) return empty; throw error; }
+        if (!stateObject(value) || value.operation_id !== operationId || typeof value.status !== 'string' || !RETENTION_STATUSES.includes(value.status)
+            || value.id != null && value.id !== operationId || value.mental_model_id != null || value.details != null
+            || value.child_operations != null && (!Array.isArray(value.child_operations) || value.child_operations.length !== 0)) return this.#repairError();
+        if (value.status === 'not_found') {
+            if (value.operation_type != null || value.task_type != null) return this.#repairError();
+            return empty;
+        }
+        if (value.operation_type !== 'consolidation' || value.task_type != null && value.task_type !== 'consolidation'
+            || !('created_at' in value) || !repairTime(value.created_at) || !('updated_at' in value) || !repairTime(value.updated_at)
+            || !('completed_at' in value) || !repairTime(value.completed_at) || !repairTime(value.next_retry_at)
+            || !repairCount(value.retry_count) || value.status === 'completed' && !stateTimestamp(value.completed_at)) return this.#repairError();
+        return { operation_id: operationId, operation_type: 'consolidation', status: value.status as RetentionStatus,
+            created_at: value.created_at as string ?? null, updated_at: value.updated_at as string ?? null, completed_at: value.completed_at as string ?? null,
+            next_retry_at: value.next_retry_at as string ?? null, retry_count: value.retry_count };
     }
     async repairActiveOperations(bankId: string): Promise<RepairOperation[]> {
         const remaining = this.#repairRemaining(), out: RepairOperation[] = [];
