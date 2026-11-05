@@ -74,8 +74,8 @@ export function createMobileCompanion(options: {
         stop: () => {
             if (stopped) return runtime.stop();
             stopped = true;
-            pairing.clear();
-            media.clear();
+            pairing.stop();
+            media.stop();
             return runtime.stop();
         },
     };

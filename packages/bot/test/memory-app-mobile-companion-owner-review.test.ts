@@ -98,6 +98,8 @@ test('停止后旧集成对象不再接受消息、签发配对码或暴露会�
         const { companion, session } = await pair(f.app);
         await f.app.stop();
         assert.throws(() => companion.issuePairing('another-device'), /已经停止/);
+        assert.throws(() => companion.pairing.issue('direct-device'), /已经停止/);
+        assert.throws(() => companion.media.put({ clientId: 'direct-device', mime: 'image/png', data: Buffer.from('x'), bytes: 1 }), /已经停止/);
         assert.equal(companion.runtime.clientForSession(session), undefined);
         assert.deepEqual(companion.runtime.takeDownlinks('synthetic-device'), []);
         const rejected = await companion.runtime.handle(envelope('message.send', 'req-message-2', 'nonce-message-2', { kind: 'text', text: '停止后消息' }), session);

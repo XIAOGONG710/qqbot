@@ -49,6 +49,8 @@ try {
     const firstResult = await first;
     const secondResult = await companion.runtime.handle({ v: 1, requestId: 'req-message-2', kind: 'message.send', sentAt: protocolNow(), nonce: 'nonce-message-2', body: { kind: 'text', text: '第二条停止后消息' } }, session);
     assert.throws(() => companion.issuePairing('another-device'), /已经停止/);
+    assert.throws(() => companion.pairing.issue('direct-device'), /已经停止/);
+    assert.throws(() => companion.media.put({ clientId: 'direct-device', mime: 'image/png', data: Buffer.from('x'), bytes: 1 }), /已经停止/);
     const logCount = logs.length; held.resolve(); await settle();
     assert.deepEqual(afterStop, { leaseReleased: true, exposed: false, status: { connected: false, queued: 0, maxQueuedPerClient: 32 } });
     assert.deepEqual(firstResult, { accepted: false, error: '手机伴侣已经停止' });

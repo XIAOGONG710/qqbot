@@ -62,7 +62,8 @@ export class CompanionRuntime {
     }
 
     createSession(): string {
-        if (this.stopped) throw new Error('手机伴侣已经停止');
+        // 运输适配器可能在宿主停止后仍被旧 HTTP/WS 路由调用。
+        // 仍返回一个不入库的随机标识，让 handle() 统一安全拒绝，不向路由回调抛同步异常。
         return `session-${randomBytes(18).toString('hex')}`;
     }
 

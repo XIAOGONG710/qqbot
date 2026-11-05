@@ -30,6 +30,15 @@ test('内存媒体仓库按 TTL、设备归属和大小上限工作', () => {
     assert.equal(store.get('android-b', other.mediaId), undefined);
 });
 
+test('内存媒体仓库停止后清空旧数据并永久拒绝新写入', () => {
+    const store = new MemoryCompanionMediaStore({ id: () => '0123456789abcdef' });
+    const old = store.put({ clientId: 'android-stop', mime: 'image/png', data: Buffer.from('private'), bytes: 7 });
+    store.stop(); store.stop();
+    assert.equal(store.get('android-stop', old.mediaId), undefined);
+    assert.throws(() => store.put({ clientId: 'android-stop', mime: 'image/png', data: Buffer.from('new'), bytes: 3 }), /已经停止/);
+    assert.equal(store.clear(), 0);
+});
+
 test('媒体 HTTP 上传必须使用已配对 session，并返回短期 mediaId', async () => {
     let now = 10_000;
     const pairing = new MemoryPairingStore(60_000);

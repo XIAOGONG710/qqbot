@@ -83,3 +83,27 @@ test('Koishi Koa envelope 拒绝空 body 而不抛异常', async () => {
     assert.equal(ctx.status, 400);
     assert.deepEqual(ctx.body, { error: 'invalid_json' });
 });
+
+test('宿主停止后残留 Koa 路由只拒绝请求，不复活会话或媒体', async () => {
+    const now = 2_000, pairing = new MemoryPairingStore(60_000), ticket = pairing.issue('android-koa-stop', now);
+    const runtime = new CompanionRuntime(new CompanionGateway(pairing, () => now), {
+        onMessage: async message => message,
+        onAction: async (request, _clientId, requestId) => ({ requestId, ok: false, decision: request.decision }),
+    }, () => now);
+    const media = new MemoryCompanionMediaStore({ now: () => now });
+    const envelope = createCompanionKoaEnvelopeHandler(runtime), upload = createCompanionKoaMediaHandler(runtime, media), poll = createCompanionKoaActionPollHandler(runtime);
+    const helloCtx = context(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text', 'image'] }, 'req-koa-stop-hello', 'nonce-koa-stop-hello', new Date(now).toISOString()), {});
+    await envelope(helloCtx);
+    const session = (helloCtx as CompanionKoaContextLike & { responseHeaders: Record<string, string> }).responseHeaders['x-companion-session']; assert.ok(session);
+    await runtime.stop(); media.stop(); pairing.stop();
+
+    const staleMessage = context({ v: 1, requestId: 'req-koa-stop-message', kind: 'message.send', sentAt: new Date(now).toISOString(), nonce: 'nonce-koa-stop-message', body: { kind: 'text', text: '停止后' } }, { 'x-companion-session': session });
+    await envelope(staleMessage); assert.equal(staleMessage.status, 400); assert.deepEqual(staleMessage.body, { error: '手机伴侣已经停止' });
+    const staleUpload = context(undefined, { 'x-companion-session': session, 'x-companion-mime': 'image/png' }, Buffer.from('private'));
+    staleUpload.path = '/qqbot/companion/http/media'; await upload(staleUpload); assert.equal(staleUpload.status, 401);
+    const stalePoll = context(undefined, { 'x-companion-session': session }); stalePoll.path = '/qqbot/companion/http/actions'; stalePoll.method = 'GET';
+    await poll(stalePoll); assert.equal(stalePoll.status, 401);
+
+    const newHello = context(helloEnvelope({ clientId: 'android-koa-new', pairingCode: 'AAAA-BBBB-CCCC', capabilities: ['text'] }, 'req-koa-stop-new', 'nonce-koa-stop-new', new Date(now).toISOString()), {});
+    await envelope(newHello); assert.equal(newHello.status, 400); assert.deepEqual(newHello.body, { error: '手机伴侣已经停止' });
+});
