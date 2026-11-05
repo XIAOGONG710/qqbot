@@ -79,3 +79,14 @@ test('格式化回调才改变来源时，最终出口重核不返回先前日�
         assert.equal(formatted, true); assert.equal(value, undefined);
     } finally { await f.clean(); }
 });
+
+test('公共召回复用同栈已核验结果，保留await和格式化后的检查而不重复扫描一次来源', async () => {
+    const f = fixture(); let checks = 0;
+    try {
+        await f.memory.sync(B, { user: B.name, char: '合成角色' }, [{ role: 'user', content: 'SYNTHETIC_SAFE', time: '2026-11-08T12:00:00+08:00' }]);
+        f.register(() => { checks++; return true; });
+        f.results([{ id: 'diary', text: marker, type: 'world', document_id: 'diary:2026-11-08', mentioned_at: '2026-11-08T12:00:00+08:00' }]);
+        assert.match((await f.memory.recallCommon(A, query, now, [A, B]))!, /WRITTEN_SOURCE_PRIVATE/);
+        assert.ok(checks >= 2 && checks <= 4, `公共实际读链来源核验次数为${checks}，不能重复执行未跨await/回调的同一过滤检查`);
+    } finally { await f.clean(); }
+});

@@ -343,6 +343,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         })
         : undefined);
     let diaries = openDiaries();
+    const bindWrittenSources = () => {
+        const writer = diaries;
+        memory?.setWrittenSourceVerifier(writer ? intents => writer.verifySources(new Date(clock.now()), intents) : null);
+        memory?.derivedAvailable();
+    };
+    bindWrittenSources();
 
     let nextMessageId = 1;
     let armed: SayStep['interrupt'];
@@ -837,6 +843,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 ({ ledger: ledgerWorld, queue: queuedActions, world: sharedWorld } = openWorld());
                 promises = openPromises();
                 diaries = openDiaries();
+                bindWrittenSources();
                 noteMoodAndBooks = openHerDayLogger();
                 responder = createResponder();
                 planner = openPlanner();

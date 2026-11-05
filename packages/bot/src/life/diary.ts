@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import type { Contact } from '../platform/config.ts';
 import { bookProgressOn, moodAt, readingActivities, type DailyMood, type ReadingBook } from './her-days.ts';
 import type { StoredMessage } from '../memory/history.ts';
+import type { WrittenSourceIntent } from '../memory/written-retain.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { calendarDate, stateObject, stateTimestamp } from '../memory/state-schema.ts';
 import { civilDayNumber } from '../memory/civil-time.ts';
@@ -322,7 +323,7 @@ export function readDiaryState(path: string, log?: (message: string) => void): D
 /**
  * 补写还没写的日记：她这一天之前的 DIARY_BACKFILL_DAYS 天，一天一篇，按日期从早到晚；之后补周记、阶段总结（ADR 0018）。同一时间只跑一次
  */
-export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): Promise<void>; verifySources(now: Date): boolean; stop(): Promise<void> | undefined } {
+export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): Promise<void>; verifySources(now: Date, intents?: readonly WrittenSourceIntent[]): boolean; stop(): Promise<void> | undefined } {
     const path = join(options.dir, 'diary.json');
     let running: Promise<void> | undefined;
     let stopped = false;
@@ -389,7 +390,7 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         if (method) method.call(options.memory, documentId);
     };
     let verifying = false;
-    const verifySources = (now: Date): boolean => {
+    const verifySources = (now: Date, intents: readonly WrittenSourceIntent[] = []): boolean => {
         if (stopped) return false;
         if (verifying) throw new Error('日记来源复核未确认；暂不读取派生资料');
         verifying = true;
@@ -398,11 +399,29 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
             if (!Number.isFinite(now.getTime()) || civilDayNumber(today) === undefined || !calendarDate(formatDate(today))) throw new Error('invalid clock');
             const state = loadState(), view: SourceView = { chats: new Map(), since: new Map() };
             const diaries = Object.entries(state.confirmed).filter(([id, receipt]) => id.startsWith('diary:') && receipt.sourceVerified);
-            if (diaries.length) for (const contact of options.contacts.filter(contact => knowsPeople(contact.tier))) {
+            if (!Array.isArray(intents) || intents.some(intent => !stateObject(intent) || typeof intent.documentId !== 'string'
+                || !operationId(intent.operationId) || !digest(intent.requestHash) || typeof intent.phase !== 'string' || !['prepared', 'dispatched', 'completed'].includes(intent.phase))
+                || new Set(intents.map(intent => intent.documentId)).size !== intents.length || new Set(intents.map(intent => intent.operationId)).size !== intents.length) throw new Error('invalid written source intents');
+            const requiredPrepared: DiaryPrepared[] = intents.flatMap(intent => {
+                const prepared = state.prepared[intent.documentId];
+                return prepared && prepared.operationId === intent.operationId ? [prepared] : [];
+            });
+            // herDay maps an instant to its own local civil day or the previous
+            // one. An instant before the earliest required local day cannot
+            // contribute, but its timestamp must still pass schema validation.
+            let earliestSourceInstant = Infinity;
+            const sourceDates = [...diaries.map(([id]) => id.slice('diary:'.length)), ...requiredPrepared.filter(prepared => prepared.kind === 'diary').map(prepared => prepared.date)];
+            for (const date of sourceDates) {
+                const number = civilDayNumber(date), day = number === undefined ? undefined : localCivilDay(number);
+                if (!day) { earliestSourceInstant = -Infinity; break; }
+                earliestSourceInstant = Math.min(earliestSourceInstant, day.getTime());
+            }
+            if (diaries.length || requiredPrepared.some(prepared => prepared.kind === 'diary')) for (const contact of options.contacts.filter(contact => knowsPeople(contact.tier))) {
                 const days = new Map<string, StoredMessage[]>(), since = options.sourceSince?.(contact);
                 if (since !== undefined && !stateTimestamp(since)) throw new Error('invalid source permission');
                 for (const message of options.history.load(contact.qq)) {
                     if (!stateTimestamp(message.time)) throw new Error('invalid source time');
+                    if (Date.parse(message.time) < earliestSourceInstant) continue;
                     const date = formatDate(herDay(options.sources.schedule, new Date(message.time)));
                     const rows = days.get(date) ?? []; rows.push(message); days.set(date, rows);
                 }
@@ -416,7 +435,8 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
             for (const [id, receipt] of diaries) {
                 const date = id.slice('diary:'.length), dayNumber = civilDayNumber(date), day = dayNumber === undefined ? undefined : localCivilDay(dayNumber);
                 if (!day) throw new Error('unknown source date');
-                if (fingerprint(dayInput(day, view).manifest) !== receipt.sourceHash) invalidate(id, receipt);
+                if (receipt.manifest.kind !== 'diary' || state.texts[date] !== undefined && bodyDigest(state.texts[date]!) !== receipt.bodyHash
+                    || fingerprint(dayInput(day, view).manifest) !== receipt.sourceHash) invalidate(id, receipt);
             }
             for (const [id, receipt] of Object.entries(state.confirmed)) {
                 if (!receipt.sourceVerified || receipt.manifest.kind !== 'summary') continue;
@@ -430,7 +450,19 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
                 })) invalidate(id, receipt);
             }
             if (changed) save(state, today);
-            return Object.values(state.confirmed).every(receipt => receipt.sourceVerified);
+            const covered = intents.every(intent => {
+                const receipt = state.confirmed[intent.documentId];
+                if (receipt && receipt.operationId === intent.operationId) return intent.phase === 'completed' && receipt.sourceVerified
+                    && receipt.manifest.kind === (intent.documentId.startsWith('diary:') ? 'diary' : 'summary');
+                const prepared = state.prepared[intent.documentId];
+                if (!prepared || prepared.operationId !== intent.operationId) return false;
+                const current = localPreparedInput(prepared, state, today, view);
+                if (!current) return false;
+                const fresh = fingerprint(current.manifest) === prepared.sourceHash && fingerprint(current.messages) === prepared.promptHash;
+                if (!fresh && prepared.phase === 'dispatched') noteChanged(prepared.documentId);
+                return fresh;
+            });
+            return covered && Object.values(state.confirmed).every(receipt => receipt.sourceVerified);
         } catch {
             throw new Error('日记来源复核未确认；保留原状态与来源屏障');
         } finally { verifying = false; }
@@ -576,9 +608,7 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         return found;
     };
 
-    const summaryInput = async (state: DiaryState, days: Date[], period: string, documentId: string, localOnly = false, readOnly = false): Promise<Input | undefined> => {
-        const diaries = await diariesOn(days, state, localOnly, readOnly);
-        if (!diaries?.length) return undefined;
+    const summaryFromDiaries = (state: DiaryState, diaries: { date: Date; text: string }[], period: string, documentId: string): Input => {
         const messages = summaryMessages(options.sources.charName, period, diaries), material = messages[1]!.content;
         const manifest: DiarySourceManifest = { version: 1, kind: 'summary', contextHash: fingerprint({ sources: options.sources, documentId, period }), materialHash: bodyDigest(material), promptHash: fingerprint(messages),
             dependencies: diaries.map(diary => {
@@ -586,6 +616,41 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
                 return { documentId, bodyHash: bodyDigest(diary.text), ...(receipt ? { sourceHash: receipt.sourceHash } : {}), legacy: receipt === undefined };
             }) };
         return { material, messages, manifest };
+    };
+    const summaryInput = async (state: DiaryState, days: Date[], period: string, documentId: string, localOnly = false, readOnly = false): Promise<Input | undefined> => {
+        const diaries = await diariesOn(days, state, localOnly, readOnly);
+        return diaries?.length ? summaryFromDiaries(state, diaries, period, documentId) : undefined;
+    };
+    // This synchronous path authorizes only a previously prepared immutable
+    // request. It cannot use the remote fallback or recursively read a model.
+    const localPreparedInput = (p: DiaryPrepared, state: DiaryState, today: Date, view: SourceView): Input | undefined => {
+        const start = civilDayNumber(p.date), limit = civilDayNumber(today);
+        if (start === undefined || limit === undefined || start >= limit) return undefined;
+        if (p.kind === 'diary') { const day = localCivilDay(start); return day ? dayInput(day, view) : undefined; }
+        let days: Date[], period: string;
+        if (p.kind === 'week') {
+            if (start + 6 >= limit) return undefined;
+            days = Array.from({ length: 7 }, (_, i) => localCivilDay(start + i)).filter((day): day is Date => day !== undefined);
+            period = `这周（${civilMonthDay(start)}–${civilMonthDay(start + 6)}）`;
+        } else {
+            const holiday = options.sources.schedule.holidays.find(holiday => `phase:${holiday.name}:${holiday.end}` === p.documentId);
+            if (!holiday) return undefined;
+            const first = civilDayNumber(holiday.start), last = civilDayNumber(holiday.end);
+            if (first === undefined || last === undefined || first > last || last >= limit) return undefined;
+            days = Object.keys(state.written).filter(date => date >= holiday.start && date <= holiday.end).sort()
+                .map(date => localCivilDay(civilDayNumber(date)!)).filter((day): day is Date => day !== undefined);
+            period = `这个${holiday.name}（${civilMonthDay(first)}–${civilMonthDay(last)}）`;
+        }
+        const diaries: { date: Date; text: string }[] = [];
+        for (const day of days) {
+            const date = formatDate(day), receipt = state.confirmed[`diary:${date}`];
+            if (state.written[date] === undefined) continue;
+            if (state.prepared[`diary:${date}`] || receipt?.sourceVerified === false) return undefined;
+            const text = state.texts[date];
+            if (!text?.trim() || receipt && bodyDigest(text) !== receipt.bodyHash) return undefined;
+            diaries.push({ date: day, text });
+        }
+        return diaries.length ? summaryFromDiaries(state, diaries, period, p.documentId) : undefined;
     };
     const preparedInput = async (p: DiaryPrepared, readOnly = false): Promise<Input | undefined> => {
         const dayNumber = civilDayNumber(p.date), today = viewToday && civilDayNumber(viewToday);
