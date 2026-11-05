@@ -11,14 +11,17 @@
 //   存在同一个状态文件的 loops 里，生命周期和用法见 open-loops.ts。
 // 每个人一个状态文件 <数据目录>/promises/<QQ>-<档位>.json。
 
+import { localDate } from '../local-date.ts';
 import { mkdirSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { join } from 'node:path';
 import type { Contact } from '../platform/config.ts';
 import { logBody } from '../platform/sensitive.ts';
 import { MIDNIGHT_RULE } from '../proactive/follow-ups.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import { writeJsonAtomic } from '../memory/json-file.ts';
-import { PromiseStateUnavailable, readPromiseState, validPromiseState, type PromiseState } from './promise-state.ts';
+import { PromiseStateUnavailable, readPromiseState, validPromiseState, type PromiseState, type SourceEffect, type PromiseSourceEvidence } from './promise-state.ts';
 import { calendarDate } from '../memory/state-schema.ts';
 import { createTransientGate, describeError, isTransientIoError, TransientStateError } from '../memory/transient-io.ts';
 import { ModelUnreachable } from '../language/llm.ts';
@@ -232,6 +235,10 @@ function sameMeetup(a: HerPromise, b: HerPromise): boolean {
 
 /** 这一段先抽出来的约见面 */
 const earlyIn = (episode: string) => (p: HerPromise) => Boolean(p.early && p.episode === episode);
+const messagesDigest = (messages: readonly StoredMessage[]) => createHash('sha256').update(JSON.stringify(messages.map(message => [
+    message.role, message.time, message.content, message.messageId ?? null, message.sourceTime ?? null, message.messageSeq ?? null, message.recalled === true,
+]))).digest('hex');
+const sourceDigest = (episode: Episode, count = episode.messages.length) => messagesDigest(episode.messages.slice(0, count));
 
 /**
  * 最近几句里有约见面、也有时间的字眼（ADR 0047 调整）：只用来决定要不要先抽，抽不抽得出来看模型。
@@ -351,6 +358,89 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
     mkdirSync(options.dir, { recursive: true });
     const path = (contact: Contact) => join(options.dir, `${contact.qq}-${contact.tier}.json`);
     const paused = new Set<string>();
+    const sourceErrors = new Set<string>();
+    const sourceEpisodes = (contact: Contact): Episode[] | undefined => {
+        try { const episodes = splitEpisodes(structuredClone(options.history.load(contact.qq))); sourceErrors.delete(path(contact)); return episodes; }
+        catch {
+            if (!sourceErrors.has(path(contact))) options.log(`[${contact.qq}] 承诺聊天来源暂不可确认；不使用未知约定或旧抽取结果，原文件保留`);
+            sourceErrors.add(path(contact)); return undefined;
+        }
+    };
+    const sourceValid = (episode: Episode | undefined, source: PromiseSourceEvidence | undefined, count?: number): boolean => {
+        if (source) return Boolean(episode && episode.messages.length >= source.count && sourceDigest(episode, source.count) === source.digest);
+        // 旧状态无hash不猜复原；有可信遮盖来源则不能冒认旧early仍有效。
+        return !episode?.messages.slice(0, count ?? episode.messages.length).some(message => message.recalled === true);
+    };
+    const ownVersion = (versions: Record<string, string> | undefined, id: string): string | undefined => versions && Object.hasOwn(versions, id) ? versions[id] : undefined;
+    const setVersion = (versions: Record<string, string>, id: string, version: string): void => {
+        Object.defineProperty(versions, id, { value: version, writable: true, enumerable: true, configurable: true });
+    };
+    const undoList = <T extends { id: string }>(rows: T[], versions: Record<string, string>, effects: readonly SourceEffect<T>[]): { rows: T[]; changed: boolean } => {
+        let changed = false;
+        for (const effect of effects) {
+            const row = rows.find(item => item.id === effect.id);
+            if (ownVersion(versions, effect.id) !== effect.version || !isDeepStrictEqual(row, effect.after)) continue;
+            rows = rows.filter(item => item.id !== effect.id);
+            if (effect.before) rows.push(structuredClone(effect.before));
+            if (effect.beforeVersion) setVersion(versions, effect.id, effect.beforeVersion);
+            else delete versions[effect.id];
+            changed = true;
+        }
+        return { rows, changed };
+    };
+    const undoSource = (state: KeeperState, source: PromiseSourceEvidence | undefined): boolean => {
+        if (!source) return false;
+        const p = undoList(state.promises, state.promiseVersions ??= {}, source.promiseEffects ?? []);
+        const l = undoList(state.loops, state.loopVersions ??= {}, source.loopEffects ?? []);
+        state.promises = p.rows; state.loops = l.rows;
+        return p.changed || l.changed;
+    };
+    const legacyUncertain = (state: KeeperState, episodes: readonly Episode[]): string[] => episodes.filter(episode => !state.sources?.[episode.id]
+        && !state.attemptSources?.[episode.id] && (state.extracted[episode.id] !== undefined || state.early[episode.id] !== undefined)
+        && episode.messages.slice(0, state.early[episode.id] ?? episode.messages.length).some(message => message.recalled === true)).map(episode => episode.id);
+    const project = (state: KeeperState, episodes: readonly Episode[]): KeeperState | undefined => {
+        if (Object.keys(state.uncertainSources ?? {}).length || legacyUncertain(state, episodes).length) return undefined;
+        const projected = structuredClone(state), byId = new Map(episodes.map(episode => [episode.id, episode]));
+        const day = today(new Date(now()));
+        for (const [id, source] of Object.entries(state.sources ?? {})) {
+            const episode = byId.get(id);
+            if (episode && episode.messages.length >= source.count) continue;
+            // 消失/截短的历史不是“正文已明确修订”的证据，不能把未知还原成空日历。
+            const active = state.promises.some(item => item.episode === id && !forgotten(item, day))
+                || state.loops.some(item => item.episode === id && !loopForgotten(item, day))
+                || (source.promiseEffects ?? []).some(effect => [effect.before, effect.after].some(item => item && !forgotten(item, day)))
+                || (source.loopEffects ?? []).some(effect => [effect.before, effect.after].some(item => item && !loopForgotten(item, day)));
+            if (active) return undefined;
+        }
+        const invalid = Object.entries(state.sources ?? {}).filter(([id, source]) => !sourceValid(byId.get(id), source));
+        const effectCount = invalid.reduce((count, [, source]) => count + (source.promiseEffects?.length ?? 0) + (source.loopEffects?.length ?? 0), 0);
+        for (let pass = 0; pass <= effectCount; pass++) {
+            let changed = false;
+            for (const [, source] of [...invalid].reverse()) changed = undoSource(projected, source) || changed;
+            if (!changed) break;
+            if (pass === effectCount) return undefined;
+        }
+        // 无before-image的旧early只能暂避；不能从当前值猜出曾被它删除的已确认约。
+        projected.promises = projected.promises.filter(item => !item.early || state.sources?.[item.episode]
+            || sourceValid(byId.get(item.episode), undefined, state.early[item.episode]));
+        return projected;
+    };
+    const recordSource = (state: KeeperState, baseline: KeeperState, episode: Episode, phase: 'early' | 'closed', proof: { count: number; digest: string }) => {
+        const effects = <T extends { id: string }>(before: T[], after: T[], versions: Record<string, string>, previous: Record<string, string> = {}): SourceEffect<T>[] => {
+            const old = new Map(before.map(item => [item.id, item])), next = new Map(after.map(item => [item.id, item]));
+            return [...new Set([...old.keys(), ...next.keys()])].flatMap(id => {
+                const left = old.get(id), right = next.get(id);
+                if (isDeepStrictEqual(left, right)) return [];
+                const version = randomUUID(); setVersion(versions, id, version);
+                const beforeVersion = ownVersion(previous, id);
+                return [{ id, version, ...(beforeVersion ? { beforeVersion } : {}), ...(left ? { before: structuredClone(left) } : {}), ...(right ? { after: structuredClone(right) } : {}) }];
+            });
+        };
+        (state.sources ??= {})[episode.id] = { phase, ...proof,
+            promiseEffects: effects(baseline.promises, state.promises, state.promiseVersions ??= {}, baseline.promiseVersions),
+            loopEffects: effects(baseline.loops, state.loops, state.loopVersions ??= {}, baseline.loopVersions) };
+        (state.attemptSources ??= {})[episode.id] = { ...proof };
+    };
     const pause = (contact: Contact, error?: unknown) => {
         if (!paused.has(path(contact))) options.log(`[${contact.qq}] 承诺状态处理失败，暂停承诺抽取与使用；原文件未重建，请修复后重建 keeper${error === undefined ? '' : `（原因：${describeError(error)}）`}`);
         paused.add(path(contact));
@@ -383,15 +473,34 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
         const keepFrom = now() - 30 * DAY_MS;
         for (const id of Object.keys(state.extracted)) if (Number(id.slice(3)) < keepFrom) delete state.extracted[id];
-        for (const id of Object.keys(state.early)) if (Number(id.slice(3)) < keepFrom || state.extracted[id] === true) delete state.early[id];
+        for (const id of Object.keys(state.early)) if (state.extracted[id] === true || Number(id.slice(3)) < keepFrom && !state.sources?.[id]) delete state.early[id];
+        const day = today(new Date(now()));
+        for (const [id, source] of Object.entries(state.sources ?? {})) if (Number(id.slice(3)) < keepFrom
+            && !(source.promiseEffects ?? []).some(effect => [effect.before, effect.after].some(item => item && !forgotten(item, day)))
+            && !(source.loopEffects ?? []).some(effect => [effect.before, effect.after].some(item => item && !loopForgotten(item, day)))) {
+            delete state.sources![id]; delete state.early[id]; if (state.attemptSources) delete state.attemptSources[id];
+        }
+        for (const id of Object.keys(state.attemptSources ?? {})) if (Number(id.slice(3)) < keepFrom && !state.sources?.[id]) delete state.attemptSources![id];
+        const promiseIds = new Set([...state.promises.map(item => item.id), ...Object.values(state.sources ?? {}).flatMap(source => source.promiseEffects?.map(effect => effect.id) ?? [])]);
+        const loopIds = new Set([...state.loops.map(item => item.id), ...Object.values(state.sources ?? {}).flatMap(source => source.loopEffects?.map(effect => effect.id) ?? [])]);
+        for (const id of Object.keys(state.promiseVersions ?? {})) if (!promiseIds.has(id)) delete state.promiseVersions![id];
+        for (const id of Object.keys(state.loopVersions ?? {})) if (!loopIds.has(id)) delete state.loopVersions![id];
         if (paused.has(path(contact)) || !validPromiseState(state)) throw new PromiseStateUnavailable('承诺状态无效，拒绝写入');
         checkRunning();
         writeJsonAtomic(path(contact), state);
         recovered(contact, '写');
     };
-    const available = (): boolean => options.contacts.map(contact => load(contact) !== undefined).every(Boolean);
-    const knownAppointments = (from: Date, to: Date): Appointment[] => options.contacts.flatMap(contact =>
-        (load(contact)?.promises ?? []).flatMap(promise => {
+    const visible = (contact: Contact): KeeperState | undefined => {
+        const state = load(contact);
+        if (!state) return undefined;
+        const episodes = sourceEpisodes(contact);
+        if (!episodes) return undefined;
+        return project(state, episodes);
+    };
+    const available = (): boolean => options.contacts.map(contact => visible(contact) !== undefined).every(Boolean);
+    const views = () => options.contacts.map(contact => ({ contact, state: visible(contact) }));
+    const knownAppointments = (from: Date, to: Date, sources = views()): Appointment[] => sources.flatMap(({ contact, state }) =>
+        (state?.promises ?? []).flatMap(promise => {
             const window = meetWindow(promise);
             if (!window) return [];
             const lead = window.start.getTime() - MEET_LEAD_MINUTES * 60_000;
@@ -401,18 +510,60 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         .sort((a, b) => a.start.getTime() - b.start.getTime()
             || a.contact.qq - b.contact.qq || a.promise.id.localeCompare(b.promise.id));
     const appointmentsBetween = (from: Date, to: Date): Appointment[] => {
-        if (!available()) throw new PromiseStateUnavailable('约定来源不可用，不能将未知约定当成空日历继续安排');
-        return knownAppointments(from, to);
+        const sources = views();
+        if (sources.some(source => source.state === undefined)) throw new PromiseStateUnavailable('约定来源不可用，不能将未知约定当成空日历继续安排');
+        return knownAppointments(from, to, sources);
     };
-    const today = (at: Date) => (options.schedule ? herDay(options.schedule, at) : new Date(at.getFullYear(), at.getMonth(), at.getDate()));
+    const today = (at: Date) => (options.schedule ? herDay(options.schedule, at) : localDate(at.getFullYear(), at.getMonth(), at.getDate()));
+    const baselineFor = (state: KeeperState, episodes: readonly Episode[], episodeId: string, day: Date): KeeperState | undefined => {
+        const baseline = project(state, episodes);
+        if (!baseline) return undefined;
+        undoSource(baseline, baseline.sources?.[episodeId]);
+        baseline.promises = baseline.promises.filter(item => !forgotten(item, day));
+        baseline.loops = baseline.loops.filter(item => !loopForgotten(item, day));
+        return baseline;
+    };
+    const contextDigest = (state: KeeperState, episodeId: string) => createHash('sha256').update(JSON.stringify({
+        promises: state.promises.filter(item => !earlyIn(episodeId)(item)), loops: state.loops,
+    })).digest('hex');
+    const capture = (contact: Contact, state: KeeperState, episode: Episode, day: Date) => {
+        const episodes = sourceEpisodes(contact);
+        if (!episodes || !episodes.some(item => item.id === episode.id && sourceDigest(item) === sourceDigest(episode))) return undefined;
+        const baseline = baselineFor(state, episodes, episode.id, day);
+        return baseline ? { baseline, context: contextDigest(baseline, episode.id), count: episode.messages.length, digest: sourceDigest(episode) } : undefined;
+    };
+    const evidenceCurrent = (contact: Contact, episode: Episode, evidence: NonNullable<ReturnType<typeof capture>>, day: Date): boolean => {
+        const episodes = sourceEpisodes(contact), fresh = load(contact);
+        const source = episodes?.find(item => item.id === episode.id);
+        if (!episodes || !fresh || !source || source.messages.length !== evidence.count || sourceDigest(source) !== evidence.digest) return false;
+        const baseline = baselineFor(fresh, episodes, episode.id, day);
+        return Boolean(baseline && contextDigest(baseline, episode.id) === evidence.context);
+    };
+    const needsClosed = (state: KeeperState, episode: Episode): boolean => {
+        if (state.extracted[episode.id] !== true) return true;
+        const source = state.attemptSources?.[episode.id] ?? state.sources?.[episode.id];
+        return Boolean(source && (source.count !== episode.messages.length || source.digest !== sourceDigest(episode)));
+    };
 
     async function syncContact(contact: Contact): Promise<void> {
         if (stopped) return;
-        const state = load(contact);
+        let state = load(contact);
         if (!state || stopped) return;
+        const episodes = sourceEpisodes(contact);
+        if (!episodes) return;
+        const uncertain = legacyUncertain(state, episodes);
+        if (uncertain.length) {
+            for (const id of uncertain) (state.uncertainSources ??= {})[id] = true;
+            save(contact, state);
+            return;
+        }
+        const projected = project(state, episodes);
+        if (!projected) return;
+        let changed = !isDeepStrictEqual(state, projected);
+        state = projected;
         const log = (message: string) => { if (!stopped) options.log(`[${contact.qq}] 她答应的事：${message}`); };
         const loopLog = (message: string) => { if (!stopped) options.log(`[${contact.qq}] 挂着的事：${message}`); };
-        const names = options.names(contact);
+        const names = { ...options.names(contact) };
         if (stopped) return;
         const day = today(new Date(now()));
         const before = state.promises.length;
@@ -421,9 +572,8 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         const loopsBefore = state.loops.length;
         for (const loop of state.loops.filter(l => loopForgotten(l, day))) loopLog(`过了几天，放下「${loop.what}」`);
         state.loops = state.loops.filter(l => !loopForgotten(l, day));
-        let changed = state.promises.length !== before || state.loops.length !== loopsBefore;
-        const closed = splitEpisodes(options.history.load(contact.qq))
-            .filter(e => now() - e.end.getTime() >= EPISODE_GAP_MS && state.extracted[e.id] !== true);
+        changed ||= state.promises.length !== before || state.loops.length !== loopsBefore;
+        const closed = episodes.filter(e => now() - e.end.getTime() >= EPISODE_GAP_MS && needsClosed(state!, e));
         /** 这一轮没连上模型：后面的片段、还没结束的那段都不再抽 */
         let offline = false;
         for (const episode of closed) {
@@ -436,30 +586,37 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 continue;
             }
             let result: ExtractedPromises;
+            const evidence = capture(contact, state, episode, day);
+            if (!evidence) return;
+            const previousEarly = state.promises.filter(earlyIn(episode.id));
             // 这一段先抽出来的约见面不给模型（整段抽是这一段的定论，抽完整个替换）
-            const pending = state.promises.filter(p => !earlyIn(episode.id)(p));
+            const pending = evidence.baseline.promises.filter(p => !earlyIn(episode.id)(p));
             try {
-                const raw = await extract(promisePrompt(episodeTranscript(episode, names), pending, names, state.loops));
+                const raw = await extract(promisePrompt(episodeTranscript(episode, names), pending, names, evidence.baseline.loops));
                 if (stopped) return;
+                if (!evidenceCurrent(contact, episode, evidence, day)) return;
                 result = parsePromises(raw);
             } catch (error) {
                 if (stopped) return;
+                if (!evidenceCurrent(contact, episode, evidence, day)) return;
                 if (error instanceof ModelUnreachable) {
                     // 没连上模型（断网、DNS）不算这一段的失败次数，不然断网一会儿她答应的事就丢了；后面的片段也连不上，这一轮先停
                     log(`片段 ${episode.id} 没连上模型，等网络好了再抽：${error.message}`);
                     offline = true;
                     break;
                 }
-                const tries = (typeof state.extracted[episode.id] === 'number' ? state.extracted[episode.id] as number : 0) + 1;
+                const attempt = state.attemptSources?.[episode.id];
+                const tries = (attempt?.digest === sourceDigest(episode) && typeof state.extracted[episode.id] === 'number' ? state.extracted[episode.id] as number : 0) + 1;
                 // 模型回了、但连着 3 次都不对就放弃这一段（别一直调模型）
                 state.extracted[episode.id] = tries >= 3 ? true : tries;
+                (state.attemptSources ??= {})[episode.id] = { count: evidence.count, digest: evidence.digest };
                 save(contact, state);
                 log(`片段 ${episode.id} 抽取失败（第 ${tries} 次${tries >= 3 ? '，不再抽' : '，下次再抽'}）：${error instanceof Error ? error.message : String(error)}`);
                 continue;
             }
             if (stopped || paused.has(path(contact))) return;
             try {
-                options.onWorldActions?.(contact, episode, result.world);
+                options.onWorldActions?.(contact, structuredClone(episode), result.world);
             } catch (error) {
                 if (stopped) return;
                 // 模型结果是好的，但事实文件没写成：不标已抽，下次重试同一片段，不能只在内存里生效。
@@ -467,6 +624,8 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 continue;
             }
             if (stopped) return;
+            if (!evidenceCurrent(contact, episode, evidence, day)) return;
+            state = structuredClone(evidence.baseline);
             for (const id of result.resolved) {
                 const item = state.promises.find(p => p.id === id);
                 if (item) {
@@ -479,7 +638,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                     loopLog(`了结「${loop.what}」`);
                 }
             }
-            const earlier = state.promises.filter(earlyIn(episode.id));
+            const earlier = previousEarly;
             state.promises = state.promises.filter(p => !earlyIn(episode.id)(p));
             for (const [i, add] of result.add.entries()) {
                 const item: HerPromise = {
@@ -487,8 +646,16 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 };
                 // 日子在今天之前的不记：晚了才抽到（刚上线补抽以前的片段），那天已经过去了，不该再提醒「打算那天」（10-07 线上日志）
                 if (item.date && daysFrom(item.date, day) > 0) continue;
-                if (forgotten(item, day) || state.promises.some(p => p.what === item.what && p.date === item.date)) continue;
-                if (item.meet && state.promises.some(p => sameMeetup(p, item))) continue;
+                if (forgotten(item, day)) continue;
+                // 同一联系人的约定跨片段改地点也必须更新；先匹配见面身份，再做正文去重。
+                const existing = item.meet ? state.promises.find(p => sameMeetup(p, item)) ?? earlier.find(p => sameMeetup(p, item)) : undefined;
+                if (existing) {
+                    state.promises = state.promises.filter(p => p.id !== existing.id);
+                    state.promises.push({ ...item, id: existing.id });
+                    log(`更新约定「${logBody(item.what)}」（${item.date} ${item.meet!.time}${item.meet!.where ? ` ${logBody(item.meet!.where)}` : ''}）`);
+                    continue;
+                }
+                if (state.promises.some(p => p.what === item.what && p.date === item.date)) continue;
                 state.promises.push(item);
                 log(`记下「${logBody(item.what)}」（${item.date ?? '下次'}${item.meet ? ` ${item.meet.time}${item.meet.where ? ` ${logBody(item.meet.where)}` : ''}` : ''}）`);
             }
@@ -507,6 +674,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 }
             }
             if (result.feelings.length) loopLog(`写成了情绪、没记 ${result.feelings.length} 条（只记发生了什么）`);
+            recordSource(state, evidence.baseline, episode, 'closed', { count: evidence.count, digest: evidence.digest });
             state.extracted[episode.id] = true;
             save(contact, state);
             changed = false;
@@ -515,38 +683,63 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         // 两个人都说过话、最近几句里有约见面和时间的字眼、又多了新消息，就先抽一次，只记约好的见面。
         // 每次先抽都用新结果整个替换这一段先记下的（改时间、不去了跟着变）；片段结束后整段抽是定论，同样整个替换
         if (stopped) return;
-        const open = splitEpisodes(options.history.load(contact.qq)).at(-1);
+        const open = sourceEpisodes(contact)?.at(-1);
         if (stopped) return;
-        if (!offline && open && now() - open.end.getTime() < EPISODE_GAP_MS && state.extracted[open.id] !== true
-            && (state.early[open.id] ?? 0) < open.messages.length
-            && open.messages.some(m => m.role === 'assistant') && open.messages.some(m => m.role === 'user') && mentionsMeetup(open.messages)) {
+        const openAttempt = open ? state.attemptSources?.[open.id] : undefined;
+        if (!offline && open && now() - open.end.getTime() < EPISODE_GAP_MS && (state.extracted[open.id] !== true || needsClosed(state, open))
+            && ((state.early[open.id] ?? 0) < open.messages.length || openAttempt !== undefined && openAttempt.digest !== sourceDigest(open)
+                || state.sources?.[open.id] !== undefined && state.sources[open.id]!.digest !== sourceDigest(open)
+                || open.messages.some(message => message.recalled === true) && state.early[open.id] !== undefined)
+            && open.messages.some(m => m.role === 'assistant') && open.messages.some(m => m.role === 'user')
+            && (mentionsMeetup(open.messages) || state.sources?.[open.id] !== undefined || state.promises.some(earlyIn(open.id)))) {
+            const evidence = capture(contact, state, open, day);
+            if (!evidence) return;
+            const previousEarly = state.promises.filter(earlyIn(open.id));
             try {
-                const pending = state.promises.filter(p => !earlyIn(open.id)(p));
-                const raw = await extract(promisePrompt(episodeTranscript(open, names), pending, names, state.loops));
+                const pending = evidence.baseline.promises.filter(p => !earlyIn(open.id)(p));
+                const raw = await extract(promisePrompt(episodeTranscript(open, names), pending, names, evidence.baseline.loops));
                 if (stopped) return;
+                if (!evidenceCurrent(contact, open, evidence, day)) return;
                 const result = parsePromises(raw);
                 if (paused.has(path(contact))) return;
+                state = structuredClone(evidence.baseline);
+                // 旧片段落盘的见面也可以在聊天中立即取消；只在本次抽取成功后释放占用。
+                const resolved = new Set(result.resolved);
+                const canceled = pending.filter(p => p.meet && resolved.has(p.id));
+                const remaining = pending.filter(p => !canceled.includes(p));
+                for (const item of canceled) log(`划掉「${logBody(item.what)}」（见面取消）`);
                 const said = formatDate(today(open.end));
-                const earlier = state.promises.filter(earlyIn(open.id));
+                const earlier = previousEarly;
                 const next: HerPromise[] = [];
                 for (const [i, add] of result.add.entries()) {
                     if (!add.meet || !add.date || daysFrom(add.date, day) > 0) continue;
                     // id 带上这次先抽时的消息数：同一段第二次先抽不会和第一次撞
                     const item: HerPromise = { id: `p-${open.start.getTime()}-m${open.messages.length}-${i + 1}`, what: add.what, date: add.date, said, episode: open.id, meet: add.meet, early: true };
-                    if (pending.some(p => sameMeetup(p, item)) || next.some(p => sameMeetup(p, item))) continue;
-                    // 和上次先记下的是同一个约就留着原来那条（id 不变）
-                    next.push(earlier.find(p => sameMeetup(p, item)) ?? item);
+                    if (next.some(p => sameMeetup(p, item))) continue;
+                    const pendingIndex = remaining.findIndex(p => sameMeetup(p, item));
+                    const priorPending = pendingIndex >= 0 ? remaining.splice(pendingIndex, 1)[0] : undefined;
+                    // 同一约定沿用 ID，但改地点、正文或时长时采用最新内容；完全没变才复用原对象。
+                    const previous = earlier.find(p => sameMeetup(p, item)) ?? priorPending;
+                    next.push(previous && previous.what === item.what && previous.said === item.said
+                        && previous.episode === item.episode && previous.early === item.early
+                        && previous.meet?.where === item.meet?.where && previous.meet?.minutes === item.meet?.minutes
+                        ? previous : { ...item, id: previous?.id ?? item.id });
                 }
                 for (const item of earlier.filter(p => !next.includes(p))) log(`划掉先记下的「${logBody(item.what)}」（${item.date} ${item.meet!.time}；改了或者不去了）`);
                 for (const item of next.filter(p => !earlier.includes(p))) {
                     log(`聊着就约了，先记下「${logBody(item.what)}」（${item.date} ${item.meet!.time}${item.meet!.where ? ` ${logBody(item.meet!.where)}` : ''}）`);
                 }
-                state.promises = [...pending, ...next];
+                state.promises = [...remaining, ...next];
+                recordSource(state, evidence.baseline, open, 'early', { count: evidence.count, digest: evidence.digest });
                 state.early[open.id] = open.messages.length;
             } catch (error) {
                 if (stopped) return;
+                if (!evidenceCurrent(contact, open, evidence, day)) return;
                 // 没连上模型下一轮再试；别的错这几条消息不再试，片段结束后照常整段抽
-                if (!(error instanceof ModelUnreachable)) state.early[open.id] = open.messages.length;
+                if (!(error instanceof ModelUnreachable)) {
+                    state.early[open.id] = open.messages.length;
+                    (state.attemptSources ??= {})[open.id] = { count: evidence.count, digest: evidence.digest };
+                }
                 log(`还没结束的片段 ${open.id} 先抽约见面没抽成：${error instanceof Error ? error.message : String(error)}`);
             }
             changed = true;
@@ -579,17 +772,18 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         },
         available,
         describe: (contact, chat, at) => {
-            const state = load(contact);
+            const state = visible(contact);
             if (!state) return '承诺记录暂不可确认：不要编造过去答应的事或认定没有约定；涉及约见时先确认。不要把内部状态或错误信息说给对方。';
             const day = today(at);
             // 约好的见面到了快出门的时候就不在这里提醒了，状态行接手（ADR 0047）
             const items = duePromises(state.promises.filter(p => !forgotten(p, day) && !meetStarted(p, at)), day, chat);
             return describePromises(items, day, contact.name);
         },
-        openLoops: (contact, chat, at) => dueLoops(load(contact)?.loops ?? [], today(at), at, chat),
+        openLoops: (contact, chat, at) => dueLoops(visible(contact)?.loops ?? [], today(at), at, chat),
         plansOn: date => {
-            if (!available()) throw new PromiseStateUnavailable('承诺来源不可用，不能生成缺失计划来源的日记');
-            return options.contacts.flatMap(contact => load(contact)!.promises.filter(p => p.date === date).map(p => p.what));
+            const sources = views();
+            if (sources.some(source => source.state === undefined)) throw new PromiseStateUnavailable('承诺来源不可用，不能生成缺失计划来源的日记');
+            return sources.flatMap(source => source.state!.promises.filter(p => p.date === date).map(p => p.what));
         },
         appointmentsAt: at => knownAppointments(at, new Date(at.getTime() + 1)),
         appointmentsBetween,
