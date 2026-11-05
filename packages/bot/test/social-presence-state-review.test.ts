@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 import type { Schedule } from '../src/life/schedule.ts';
-import { createPresence, describeSelf } from '../src/social/presence.ts';
+import { createPresence, describeSelf, likePlan } from '../src/social/presence.ts';
 
 const roots: string[] = [];
 const temp = (): string => {
@@ -40,14 +40,14 @@ const flags = {
     qzoneVisibility: 'friends',
 } as const;
 
-function construct(dir: string, calls: string[] = []) {
+function construct(dir: string, calls: string[] = [], options: { profileLikes?: boolean; likeTargets?: number[]; now?: () => number } = {}) {
     return createPresence({
-        flags,
-        transport: { sendLike: async () => { calls.push('like'); } },
+        flags: { ...flags, profileLikes: options.profileLikes ?? false },
+        transport: { sendLike: async qq => { calls.push(String(qq)); } },
         schedule,
-        likeTargets: [10001],
+        likeTargets: options.likeTargets ?? [10001],
         dir,
-        now: () => new Date(2026, 10, 5, 20, 0).getTime(),
+        now: options.now ?? (() => new Date(2026, 10, 5, 20, 0).getTime()),
         log: () => {},
     });
 }
@@ -120,4 +120,33 @@ test('未来的空间观察不提前进入提示词', () => {
     assert.equal(describeSelf({ qzone: [], peek: { at: future, note: 'FUTURE_PEEK' } }, now), undefined);
     assert.equal(describeSelf({ qzone: [], strangers: { at: future, note: 'FUTURE_STRANGERS' } }, now), undefined);
     assert.match(describeSelf({ qzone: [], browse: { at: now, note: 'CURRENT_BROWSE' } }, now)!, /CURRENT_BROWSE/);
+});
+
+test('多个点赞目标分时到点时，较早目标在每分钟 tick 和重启后都不重复', async () => {
+    const day = '2026-11-05';
+    const planned = Array.from({ length: 200 }, (_, index) => 10_000 + index)
+        .map(qq => ({ qq, plan: likePlan(qq, day) }))
+        .filter((entry): entry is { qq: number; plan: { minutes: number; times: number } } => Boolean(entry.plan))
+        .sort((left, right) => left.plan.minutes - right.plan.minutes);
+    const first = planned[0]!;
+    const later = planned.find(entry => entry.plan.minutes >= first.plan.minutes + 2)!;
+    assert.ok(later, '合成目标应有错开的确定性点赞计划');
+    const dir = temp();
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'presence.json'), JSON.stringify({ version: 1, qzone: [], photosUsed: [] }));
+    let minute = first.plan.minutes;
+    const now = () => new Date(2026, 10, 5, Math.floor(minute / 60), minute % 60).getTime();
+    const calls: string[] = [];
+
+    await construct(dir, calls, { profileLikes: true, likeTargets: [first.qq, later.qq], now }).tick();
+    minute++;
+    await construct(dir, calls, { profileLikes: true, likeTargets: [first.qq, later.qq], now }).tick();
+    assert.deepEqual(calls, [String(first.qq)], '重启后不能在较晚目标到点前重做较早目标');
+
+    minute = later.plan.minutes;
+    await construct(dir, calls, { profileLikes: true, likeTargets: [first.qq, later.qq], now }).tick();
+    assert.deepEqual(calls, [String(first.qq), String(later.qq)]);
+    const saved = JSON.parse(readFileSync(join(dir, 'presence.json'), 'utf8')) as Record<string, unknown>;
+    assert.equal(saved.likedDay, day);
+    assert.equal('likeProgress' in saved, false, '全部计划收尾后清除逐目标预留');
 });

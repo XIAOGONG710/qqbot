@@ -208,6 +208,8 @@ interface PresenceFile {
     version: 1;
     status?: { label: string; at: number };
     likedDay?: string;
+    /** 当天各目标的保守预留。先持久化再发，避免较晚目标到点前每分钟/重启重复点赞。 */
+    likeProgress?: { day: string; targets: number[] };
     signature?: { text: string; at: number; next: number; draft?: boolean };
     qzone: QzoneRecord[];
     qzoneAttemptDay?: string;
@@ -320,6 +322,12 @@ function validSignature(value: unknown): boolean {
         && optional(record.draft, (candidate): candidate is boolean => typeof candidate === 'boolean'));
 }
 
+function validLikeProgress(value: unknown): boolean {
+    const record = stateRecord(value);
+    return Boolean(record && attemptDay(record.day) && Array.isArray(record.targets) && record.targets.length <= 1_000
+        && record.targets.every(target => Number.isSafeInteger(target) && (target as number) > 0));
+}
+
 function validQzoneRecord(value: unknown): boolean {
     const record = stateRecord(value);
     return Boolean(record && finite(record.at) && text(record.text, 1_000)
@@ -349,7 +357,9 @@ const validFile = (value: unknown): value is PresenceFile => {
         const status = stateRecord(candidate);
         return Boolean(status && text(status.label, 100) && finite(status.at));
     })) return false;
-    if (!optional(record.likedDay, attemptDay) || !optional(record.signature, (candidate): candidate is PresenceFile['signature'] => validSignature(candidate))) return false;
+    if (!optional(record.likedDay, attemptDay)
+        || !optional(record.likeProgress, (candidate): candidate is PresenceFile['likeProgress'] => validLikeProgress(candidate))
+        || !optional(record.signature, (candidate): candidate is PresenceFile['signature'] => validSignature(candidate))) return false;
     if (!optional(record.qzoneAttemptDay, attemptDay) || !optional(record.pokeOutAttemptDay, attemptDay)) return false;
     if (!optional(record.browse, (candidate): candidate is PresenceFile['browse'] => validSeen(candidate, 'browse'))
         || !optional(record.peek, (candidate): candidate is PresenceFile['peek'] => validSeen(candidate, 'peek'))
@@ -443,12 +453,20 @@ export function createPresence(options: PresenceOptions): Presence {
         if (!flags.profileLikes || !transport.sendLike || !awake || state.likedDay === day) return;
         const date = new Date(t);
         const minutes = date.getHours() * 60 + date.getMinutes();
+        const progress = state.likeProgress?.day === day ? state.likeProgress : { day, targets: [] };
+        const reserved = new Set(progress.targets);
         let waiting = false;
         for (const qq of options.likeTargets) {
             check();
             const plan = likePlan(qq, day);
             if (!plan) continue;
             if (minutes < plan.minutes) { waiting = true; continue; }
+            if (reserved.has(qq)) continue;
+            // 点赞和 JSON 不是事务。按既有“一天不重试”政策先持久预留，宁可在未知结果时少点，
+            // 也不能在较晚目标到点前每分钟、重启或崩溃恢复后重复点同一个人。
+            reserved.add(qq);
+            state.likeProgress = { day, targets: [...reserved] };
+            save();
             try {
                 check();
                 await transport.sendLike(qq, plan.times);
@@ -462,6 +480,7 @@ export function createPresence(options: PresenceOptions): Presence {
         // 点没点成都记这一天做过了（不一整天每分钟重试）；还有没到点的就等
         if (!waiting) {
             state.likedDay = day;
+            delete state.likeProgress;
             save();
         }
     }
