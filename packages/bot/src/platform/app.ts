@@ -471,6 +471,20 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         catch (error) { done(); return Promise.reject(error); }
     };
     construction.onFailure(() => accountGuardSettlements.size ? Promise.allSettled([...accountGuardSettlements]).then(() => {}) : undefined);
+    // Direct notices have no chat-history entry, but their already dispatched
+    // transport and outcome diagnostics still belong to this App's lease.
+    const noticeSettlements = new Set<Promise<void>>();
+    const sendOwnedNotice = (send: () => Promise<unknown>, success: () => void, failure: (error: unknown) => void): void => {
+        if (stopped) return;
+        let settle!: () => void;
+        const pending = new Promise<void>(resolve => { settle = resolve; });
+        noticeSettlements.add(pending);
+        const finish = () => { noticeSettlements.delete(pending); settle(); };
+        const report = (callback: () => void) => { try { callback(); } catch { /* Diagnostics cannot change a confirmed outcome or strand shutdown. */ } finally { finish(); } };
+        try { Promise.resolve(send()).then(() => report(success), error => report(() => failure(error))); }
+        catch (error) { report(() => failure(error)); }
+    };
+    construction.onFailure(() => noticeSettlements.size ? Promise.allSettled([...noticeSettlements]).then(() => {}) : undefined);
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -3406,8 +3420,9 @@ ${body}
     let selfIdKnown = 0;
     let lastDormantHint = 0;
     const tellOwner = (text: string): void => {
-        if (!deviceOwner) return;
-        transport.sendPrivateText(deviceOwner.qq, text).catch(error => log(`提示没发出去（${error instanceof Error ? error.message : String(error)}）`));
+        if (stopped || !deviceOwner) return;
+        sendOwnedNotice(() => transport.sendPrivateText(deviceOwner.qq, text), () => {},
+            error => log(`提示没发出去（${error instanceof Error ? error.message : String(error)}）`));
     };
 
     /** DSH 咨询只拿脱敏状态摘要，不带完整聊天记录。 */
@@ -3901,7 +3916,9 @@ ${body}
                 const timer = setTimeout(() => {
                     pokeTimers.delete(timer);
                     if (stopped) return;
-                    transport.pokeFriend!(contact.qq).then(() => log(`[${contact.qq}] 戳回去了`), error => log(`[${contact.qq}] 戳回去失败：${error instanceof Error ? error.message : String(error)}`));
+                    sendOwnedNotice(() => transport.pokeFriend!(contact.qq),
+                        () => log(`[${contact.qq}] 戳回去了`),
+                        error => log(`[${contact.qq}] 戳回去失败：${error instanceof Error ? error.message : String(error)}`));
                 }, back.delayMs);
                 timer.unref?.();
                 pokeTimers.add(timer);
@@ -3958,6 +3975,7 @@ ${body}
             const passiveReadDrain = stopPassiveReads();
             const stickerWorkDrain = stopStickerWork();
             const accountGuardDrains = [...accountGuardSettlements];
+            const noticeDrains = [...noticeSettlements];
             const weatherDrains = [...weatherRefreshes];
             const airQualityDrains = [...airQualityRefreshes];
             const daylightDrains = [...daylightRefreshes];
@@ -4019,7 +4037,7 @@ ${body}
             useRealTransport(undefined);
             useWorldNeeds(undefined);
             const drains = [
-                diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...accountGuardDrains, ...weatherDrains, ...airQualityDrains, ...daylightDrains, ...calendarDrains, ...transportDrains, ...contextDrains, ...responderDrains,
+                diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...airQualityDrains, ...daylightDrains, ...calendarDrains, ...transportDrains, ...contextDrains, ...responderDrains,
             ].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
