@@ -7,6 +7,7 @@
 // 选项：--prefix <新前缀>（默认旧前缀接上月日时分）、--data <数据目录>（默认 runtime/bot）、
 //      --koishi <实例目录>（默认 QQBOT_KOISHI_DIR 或 runtime/koishi，改其中 koishi.yml 的 bank 前缀）、
 //      --config <config.json>（默认 runtime/bot/config.json，独立入口用的）、--no-config（不改 config.json）
+// 参数不能重复；带值参数必须提供非空值；--config 与 --no-config 不能同时使用。
 // 做法见 packages/bot/src/archive.ts 开头。
 
 import { relative, resolve } from 'node:path';
@@ -15,24 +16,37 @@ import { archiveTestData } from '../packages/bot/src/memory/archive.ts';
 
 const repoRoot = resolve(fileURLToPath(import.meta.url), '../..');
 const args = process.argv.slice(2);
-const resumeAt = args.indexOf('--resume');
-if (resumeAt >= 0 && (!args[resumeAt + 1] || args[resumeAt + 1].startsWith('--'))) {
-    console.error('--resume 需要原归档任务UUID；不会创建新任务。'); process.exit(2);
+const switches = new Set(['--dry-run', '--no-config']);
+const valueOptions = new Set(['--prefix', '--resume', '--data', '--koishi', '--config']);
+const parsed = new Map();
+for (let index = 0; index < args.length; index++) {
+    const name = args[index];
+    if (!switches.has(name) && !valueOptions.has(name)) {
+        console.error('不认识的参数（用法见文件开头）'); process.exit(2);
+    }
+    if (parsed.has(name)) {
+        console.error(`参数重复：${name}；不会创建新归档任务。`); process.exit(2);
+    }
+    if (switches.has(name)) { parsed.set(name, true); continue; }
+    const value = args[++index];
+    if (value === undefined || !value.trim() || value.startsWith('--')) {
+        console.error(name === '--resume' ? '--resume 需要原归档任务UUID；不会创建新任务。' : `${name} 需要非空值；不会创建新归档任务。`);
+        process.exit(2);
+    }
+    parsed.set(name, value);
 }
-const flag = name => { const i = args.indexOf(name); if (i >= 0) args.splice(i, 1); return i >= 0; };
-const option = name => { const i = args.indexOf(name); if (i < 0) return undefined; const [, value] = args.splice(i, 2); return value; };
+if (parsed.has('--config') && parsed.has('--no-config')) {
+    console.error('--config 与 --no-config 冲突；不会创建新归档任务。'); process.exit(2);
+}
+const option = name => parsed.get(name);
 
-const dryRun = flag('--dry-run');
-const noConfig = flag('--no-config');
+const dryRun = parsed.has('--dry-run');
+const noConfig = parsed.has('--no-config');
 const prefix = option('--prefix');
 const resume = option('--resume');
 const dataDir = resolve(repoRoot, option('--data') ?? 'runtime/bot');
 const koishiDir = resolve(repoRoot, option('--koishi') ?? process.env.QQBOT_KOISHI_DIR ?? 'runtime/koishi');
 const configJson = resolve(repoRoot, option('--config') ?? 'runtime/bot/config.json');
-if (args.length) {
-    console.error(`不认识的参数：${args.join(' ')}（用法见文件开头）`);
-    process.exit(2);
-}
 
 // QQ 号只留尾号（输出可能贴进聊天或报告里）
 const rel = path => relative(repoRoot, path).replace(/(?<=[\\/])\d{5,}(?=[-.])/g, qq => `…${qq.slice(-2)}`);
