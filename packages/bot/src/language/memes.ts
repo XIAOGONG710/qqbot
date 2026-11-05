@@ -62,6 +62,17 @@ const dayNumber = (text: string) => Math.floor(Date.parse(`${text}T00:00:00Z`) /
 const chars = (text: string) => [...text].length;
 const clean = (value: unknown) => String(value ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 
+/** Cancel a pure read/model wait locally without authorizing its late result. */
+async function memeRead<T>(signal: AbortSignal | undefined, run: () => Promise<T>): Promise<T> {
+    signal?.throwIfAborted();
+    let abort: (() => void) | undefined;
+    const cancelled = signal ? new Promise<never>((_, reject) => { abort = () => reject(signal.reason); signal.addEventListener('abort', abort, { once: true }); }) : undefined;
+    try {
+        const pending = Promise.resolve().then(() => { signal?.throwIfAborted(); return run(); });
+        const value = await (cancelled ? Promise.race([pending, cancelled]) : pending); signal?.throwIfAborted(); return value;
+    } finally { if (abort) signal?.removeEventListener('abort', abort); }
+}
+
 // ───────── 存取 ─────────
 
 export function loadMemes(path: string, log: (message: string) => void = () => undefined): MemeFile {
@@ -131,12 +142,14 @@ export type JsonFetch = (url: string, init: { headers: Record<string, string>; s
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
 /** 读四个公开榜；哪个读不了就空着，不影响别的（全空由调用方决定怎么办） */
-export async function fetchLists(doFetch: JsonFetch, log: (message: string) => void = () => undefined): Promise<MemeLists> {
+export async function fetchLists(doFetch: JsonFetch, log: (message: string) => void = () => undefined, signal?: AbortSignal): Promise<MemeLists> {
+    signal?.throwIfAborted();
     const lists = emptyLists();
     const get = async (url: string, extra: Record<string, string> = {}): Promise<unknown> => {
-        const response = await doFetch(url, { headers: { 'user-agent': UA, ...extra }, signal: AbortSignal.timeout(15_000) });
+        const timeout = AbortSignal.timeout(15_000);
+        const response = await memeRead(signal, () => doFetch(url, { headers: { 'user-agent': UA, ...extra }, signal: signal ? AbortSignal.any([signal, timeout]) : timeout }));
         if (!response.ok) throw new Error(`返回 ${response.status}`);
-        return response.json();
+        return memeRead(signal, () => response.json());
     };
     const tries: [string, () => Promise<void>][] = [
         ['B 站热门', async () => { for (const pn of [1, 2, 3]) lists.popular.push(...parsePopular(await get(`https://api.bilibili.com/x/web-interface/popular?ps=20&pn=${pn}`))); }],
@@ -145,8 +158,9 @@ export async function fetchLists(doFetch: JsonFetch, log: (message: string) => v
         ['百度热榜', async () => { lists.baidu = parseBaidu(await get('https://top.baidu.com/api/board?platform=wise&tab=realtime')); }],
     ];
     for (const [name, run] of tries) {
-        try { await run(); } catch (error) { log(`网络热梗：读${name}失败（${error instanceof Error ? error.message : String(error)}）`); }
+        try { await run(); signal?.throwIfAborted(); } catch (error) { signal?.throwIfAborted(); log(`网络热梗：读${name}失败（${error instanceof Error ? error.message : String(error)}）`); }
     }
+    signal?.throwIfAborted();
     return lists;
 }
 
@@ -211,6 +225,7 @@ export interface EvidenceDeps {
     subtitle(video: BiliVideo): Promise<SubtitleResult>;
     hotComments(aid: number): Promise<string[]>;
     sleep(ms: number): Promise<void>;
+    signal?: AbortSignal;
 }
 
 const EXPLAINER = /梗|什么意思|是什么|含义|科普|出处|来源|解释/;
@@ -219,19 +234,21 @@ export const EVIDENCE_GAP_MS = 1_000;
 
 /** 搜「<词> 什么梗」：标题带这个词、又像在解释的视频排前面；读它们的字幕（前 360 字）、简介、热评。每个词最多 3 条证据 */
 export async function gatherEvidence(term: string, deps: EvidenceDeps): Promise<string[]> {
-    const found = await deps.search(`${term} 什么梗`);
+    const signal = deps.signal;
+    const found = await memeRead(signal, () => deps.search(`${term} 什么梗`));
     const core = term.replace(/[^一-龥A-Za-z0-9]/g, '').slice(0, 4);
     const score = (video: BiliVideo) => Number(video.title.includes(core)) * 2 + Number(EXPLAINER.test(video.title));
     const videos = [...found].sort((a, b) => score(b) - score(a)).slice(0, EVIDENCE_VIDEOS);
     const evidence: string[] = [];
     for (const video of videos) {
-        await deps.sleep(EVIDENCE_GAP_MS);
+        await memeRead(signal, () => deps.sleep(EVIDENCE_GAP_MS));
         let subtitle = '';
-        try { const result = await deps.subtitle(video); if (result.status === 'ok') subtitle = subtitleExcerpt(result.lines, 360); } catch { /* 读不到字幕就只用别的 */ }
+        try { const result = await memeRead(signal, () => deps.subtitle(video)); if (result.status === 'ok') subtitle = subtitleExcerpt(result.lines, 360); } catch { signal?.throwIfAborted(); /* 读不到字幕就只用别的 */ }
         let comments: string[] = [];
-        try { comments = await deps.hotComments(video.aid); } catch { /* 同上 */ }
+        try { comments = await memeRead(signal, () => deps.hotComments(video.aid)); } catch { signal?.throwIfAborted(); /* 同上 */ }
         evidence.push(`视频《${video.title}》${video.desc ? `简介：${video.desc.slice(0, 100)}` : ''}${subtitle ? `；字幕：${subtitle}` : ''}${comments.length ? `；热评：${comments.map(c => c.slice(0, 50)).join(' / ')}` : ''}`);
     }
+    signal?.throwIfAborted();
     return evidence;
 }
 
@@ -245,21 +262,29 @@ export interface RefreshDeps {
     /** 后台模型调用（和小梗抽取一样走 purpose: 'background'） */
     ask(prompt: string): Promise<string>;
     gather(term: string): Promise<string[]>;
+    signal?: AbortSignal;
 }
 
 export interface RefreshResult { added: number; bumped: number; tried: number; skipped?: string }
 
 /** 刷新一次：读榜 → 挑词 → 新词找证据写解释 → 老词记一笔“又出现了” → 过期、截断、存盘。失败都只记日志，不抛 */
 export async function refreshMemes(deps: RefreshDeps): Promise<RefreshResult> {
+    const signal = deps.signal;
+    try {
+    signal?.throwIfAborted();
     const now = deps.now();
+    signal?.throwIfAborted();
     const today = dayText(now);
+    signal?.throwIfAborted();
     const file = loadMemes(deps.path, deps.log);
+    signal?.throwIfAborted();
     let entries = [...file.entries];
-    const lists = await deps.fetchLists();
+    const lists = await memeRead(signal, () => deps.fetchLists());
     const total = lists.popular.length + lists.hot.length + lists.weibo.length + lists.baidu.length;
     if (!total) { deps.log('网络热梗：四个榜都没读到，这一轮不动'); return { added: 0, bumped: 0, tried: 0, skipped: '没读到榜' }; }
     let terms: string[];
-    try { terms = parseCandidates(await deps.ask(candidatePrompt(lists))); } catch (error) {
+    try { const prompt = candidatePrompt(lists); terms = parseCandidates(await memeRead(signal, () => deps.ask(prompt))); } catch (error) {
+        signal?.throwIfAborted();
         deps.log(`网络热梗：挑词失败（${error instanceof Error ? error.message : String(error)}）`);
         return { added: 0, bumped: 0, tried: 0, skipped: '挑词失败' };
     }
@@ -272,20 +297,26 @@ export async function refreshMemes(deps: RefreshDeps): Promise<RefreshResult> {
         if (tried >= MEME_EXPLAIN_PER_RUN) continue;
         tried++;
         try {
-            const evidence = await deps.gather(term);
+            const evidence = await memeRead(signal, () => deps.gather(term));
             if (!evidence.length) continue;
-            const explained = parseExplain(term, await deps.ask(explainPrompt(term, evidence)));
+            const prompt = explainPrompt(term, evidence);
+            const explained = parseExplain(term, await memeRead(signal, () => deps.ask(prompt)));
             if (!explained) continue;
             entries.push({ ...explained, firstSeen: today, lastSeen: today, seen: 1 });
             added++;
         } catch (error) {
+            signal?.throwIfAborted();
             deps.log(`网络热梗：「${term}」没弄成（${error instanceof Error ? error.message : String(error)}）`);
         }
     }
     entries = trimMemes(entries, now);
-    saveMemes(deps.path, { version: 1, refreshedAt: now.toISOString(), entries });
-    deps.log(`网络热梗：榜上挑出 ${terms.length} 个词，新学会 ${added} 个、老的又出现 ${bumped} 个，现在共 ${entries.length} 个`);
+    const next: MemeFile = { version: 1, refreshedAt: now.toISOString(), entries };
+    signal?.throwIfAborted();
+    saveMemes(deps.path, next);
+    const message = `网络热梗：榜上挑出 ${terms.length} 个词，新学会 ${added} 个、老的又出现 ${bumped} 个，现在共 ${entries.length} 个`;
+    if (!signal?.aborted) deps.log(message);
     return { added, bumped, tried };
+    } catch (error) { if (signal?.aborted) return { added: 0, bumped: 0, tried: 0, skipped: 'cancelled' }; throw error; }
 }
 
 /** 离上次刷新够久了（或从没刷过）就该刷 */

@@ -1570,32 +1570,33 @@ ${body}
     };
 
     // 网络热梗（ADR 0129）：每 12 小时一次（30 分钟看一眼该不该刷）；要她的 B 站号，没有就不学，只用库里已有的
-    const refreshMemeJob = async (): Promise<void> => {
-        if (!config.memes || stopped || memesRunning) return;
+    const refreshMemeJob = (): Promise<void> => {
+        if (!config.memes || stopped || memesRunning) return Promise.resolve();
         const source = bilibiliAccountSource();
-        if (!source) return;
+        if (!source) return Promise.resolve();
         const nowDate = new Date(pipeline?.now ? pipeline.now() : Date.now());
-        if (!refreshDue(loadMemes(memesFile, log), nowDate)) return;
+        if (stopped || !refreshDue(loadMemes(memesFile, log), nowDate)) return Promise.resolve();
         memesRunning = true;
+        return ownPassiveRead(async () => {
+        const signal = passiveLifetime.signal, scoped: Log = message => { if (!stopped && !signal.aborted) log(message); };
         try {
-            const account = await source();
-            if (!account) { log('网络热梗：她的 B 站号这会儿打不开，下次再学'); return; }
-            const biliFetch: BiliFetch = bilibiliFetch ?? ((url, init) => fetch(url, init));
+            const account = await passiveRead(source);
+            if (!account) { scoped('网络热梗：她的 B 站号这会儿打不开，下次再学'); return; }
+            const biliFetch = passiveFetch(bilibiliFetch ?? ((url, init) => fetch(url, init)));
             await refreshMemes({
-                path: memesFile, now: () => nowDate, log,
-                fetchLists: () => fetchLists((url, init) => fetch(url, init) as never, log),
-                ask: prompt => (pipeline?.generate ? pipeline.generate([{ role: 'user', content: prompt }], log) : chatCompletion(forExtraction(config.llm), [{ role: 'user', content: prompt }], { log, purpose: 'background' })),
+                path: memesFile, now: () => nowDate, log: scoped, signal,
+                fetchLists: () => fetchLists((url, init) => fetch(url, init) as never, scoped, signal),
+                ask: prompt => (pipeline?.generate ? pipeline.generate([{ role: 'user', content: prompt }], scoped) : chatCompletion(forExtraction(config.llm), [{ role: 'user', content: prompt }], { log: scoped, purpose: 'background' })),
                 gather: term => gatherEvidence(term, {
-                    search: keyword => account.search(keyword), subtitle: video => account.subtitle(video), hotComments: aid => fetchHotComments(biliFetch, aid, 3),
-                    sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+                    signal, search: keyword => account.search(keyword, undefined, signal), subtitle: video => account.subtitle(video, signal), hotComments: aid => fetchHotComments(biliFetch, aid, 3),
+                    sleep: passiveSleep,
                 }),
             });
-            memeEntries = loadMemes(memesFile, log).entries;
+            if (!stopped && !signal.aborted) memeEntries = loadMemes(memesFile, scoped).entries;
         } catch (error) {
-            log(`网络热梗：这一轮出错（${error instanceof Error ? error.message : String(error)}）`);
-        } finally {
-            memesRunning = false;
+            scoped(`网络热梗：这一轮出错（${error instanceof Error ? error.message : String(error)}）`);
         }
+        }, () => { memesRunning = false; });
     };
     // 被限流 / 断网打断了就过一会儿再来（上线时第一次就撞上 Wikimedia 的 429，货架空了 6 小时），最多 PHOTO_RETRY_MAX 次
     let photoRetries = 0;
