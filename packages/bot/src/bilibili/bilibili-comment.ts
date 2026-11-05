@@ -11,7 +11,7 @@ import type { OpenAIMessage } from '../language/prompt.ts';
 export interface CommentComposerDeps {
     /** 最低隐私档卡上的名字、资料、性格、这一档的禁用词 */
     character: { name: string; description: string; personality: string; banned: readonly string[] };
-    generate: (messages: OpenAIMessage[]) => Promise<string>;
+    generate: (messages: OpenAIMessage[], signal?: AbortSignal) => Promise<string>;
     log: (message: string) => void;
 }
 
@@ -58,8 +58,9 @@ const REPLY_SKIP = /^\s*SKIP\b/i;
 const REPLY_AI_WORDS = /\bai\b|人工智能|机器人|\btoken\b|tokens|算力|模型|提示词|\bprompt\b|程序|代码|部署|算法|\bllm\b|\bgpt\b|\bapi\b/i;
 
 /** 写回复的函数，给 createReplyWatcher 的 compose 用：写不出合格的（模型出错、三次都不合格）或模型说不该回，返回 undefined */
-export function replyComposer(deps: CommentComposerDeps): (input: ReplyInput) => Promise<string | undefined> {
-    return async ({ title, mine, theirs, fromUser, recent }) => {
+export function replyComposer(deps: CommentComposerDeps): (input: ReplyInput, signal?: AbortSignal) => Promise<string | undefined> {
+    return async ({ title, mine, theirs, fromUser, recent }, signal) => {
+        signal?.throwIfAborted();
         const lines = [
             ...(title ? [`视频：《${title}》`] : []),
             ...(mine ? [`你之前的话：「${mine}」`] : []),
@@ -74,8 +75,11 @@ export function replyComposer(deps: CommentComposerDeps): (input: ReplyInput) =>
         for (let attempt = 0; attempt < TRIES; attempt++) {
             let raw: string;
             try {
-                raw = await deps.generate(messages);
+                signal?.throwIfAborted();
+                raw = await deps.generate(messages, signal);
+                signal?.throwIfAborted();
             } catch (error) {
+                signal?.throwIfAborted();
                 deps.log(`B 站回复：模型出错（${error instanceof Error ? error.message : String(error)}）`);
                 return undefined;
             }

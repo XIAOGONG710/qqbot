@@ -45,11 +45,11 @@ export interface ReplyInput {
 
 export interface ReplyOptions {
     mode: 'dryRun' | 'on';
-    account: BiliAccount | (() => Promise<BiliAccount | undefined>);
+    account: BiliAccount | ((signal?: AbortSignal) => Promise<BiliAccount | undefined>);
     /** 他的 B 站 uid：他回的话先回 */
     userUid: number;
     /** 写回复正文（不含「回复 @昵称」，程序加）；不该回、写不出合格的返回 undefined */
-    compose: (input: ReplyInput) => Promise<string | undefined>;
+    compose: (input: ReplyInput, signal?: AbortSignal) => Promise<string | undefined>;
     dir: string;
     now: () => number;
     log: (message: string) => void;
@@ -63,7 +63,7 @@ export interface ReplyOptions {
 export interface ReplyWatcher {
     tick(): Promise<void>;
     start(): void;
-    stop(): void;
+    stop(): Promise<void>;
 }
 
 interface ReplyFile {
@@ -140,42 +140,57 @@ export function createReplyWatcher(options: ReplyOptions): ReplyWatcher {
     const random = options.random ?? Math.random;
     let timer: ReturnType<typeof setInterval> | undefined;
     let busy = false;
+    let stopped = false, running: Promise<void> | undefined, stopDrain: Promise<void> | undefined;
+    const lifetime = new AbortController();
+    const active = () => lifetime.signal.throwIfAborted();
+    const note = (message: string, confirmed = false) => { if (!stopped || confirmed) { try { log(message); } catch { /* Diagnostics cannot change a sent reply. */ } } };
+    const read = async <T>(run: () => Promise<T>): Promise<T> => {
+        active(); let abort!: () => void;
+        const cancelled = new Promise<never>((_, reject) => { abort = () => reject(lifetime.signal.reason); lifetime.signal.addEventListener('abort', abort, { once: true }); });
+        try { const task = Promise.resolve().then(() => { active(); return run(); }); const result = await Promise.race([task, cancelled]); active(); return result; }
+        finally { lifetime.signal.removeEventListener('abort', abort); }
+    };
     let halted = false;
     let brokenUntil = 0;
     const warned = new Set<string>();
-    const warnOnce = (key: string, message: string) => { if (!warned.has(key)) { warned.add(key); log(message); } };
+    const warnOnce = (key: string, message: string, confirmed = false) => { if (!warned.has(key)) { warned.add(key); note(message, confirmed); } };
     const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
     async function getAccount(): Promise<BiliAccount | undefined> {
-        if (options.now() < brokenUntil) return undefined;
-        return typeof options.account === 'function' ? options.account() : options.account;
+        const at = options.now(); active();
+        if (at < brokenUntil) return undefined;
+        return typeof options.account === 'function' ? options.account(lifetime.signal) : options.account;
     }
 
     /** 真人语料：有价值（没被拦下）的回复，连同她那句话和这次怎么处理的；不存昵称和 uid */
     function remember(item: ReplyItem, fromUser: boolean, answered: 'draft' | 'sent' | 'no', reply?: string): void {
         try {
-            appendFileSync(corpusPath, JSON.stringify({ at: new Date(options.now()).toISOString(), video: item.title, hers: item.mine, theirs: item.text, fromUser, answered, ...(reply ? { reply } : {}) }) + '\n');
+            const at = new Date(options.now()).toISOString();
+            if (answered !== 'sent') active();
+            appendFileSync(corpusPath, JSON.stringify({ at, video: item.title, hers: item.mine, theirs: item.text, fromUser, answered, ...(reply ? { reply } : {}) }) + '\n');
         } catch (error) {
-            warnOnce('corpus', `B 站回复：语料写不进去（之后不再记）：${reason(error)}`);
+            warnOnce('corpus', `B 站回复：语料写不进去（之后不再记）：${reason(error)}`, answered === 'sent');
         }
     }
 
-    async function tick(): Promise<void> {
-        if (busy || halted) return;
-        busy = true;
-        try {
+    async function runTick(): Promise<void> {
+            active(); let dispatched = false;
             const t = options.now();
+            active();
             if (t < (state.pausedUntil ?? 0) || t < (state.nextPollAt ?? 0)) return;
             if (options.risk?.halted()) return;
+            active();
             if (options.awake && !options.awake(t)) return;
-            const account = await getAccount();
+            active();
+            const account = await read(getAccount);
             if (!account) return;
             state.nextPollAt = t + REPLY_POLL_MS;
 
             let items: ReplyItem[];
             try {
-                items = await account.fetchReplies();
+                items = await read(() => account.fetchReplies(lifetime.signal));
             } catch (error) {
+                active();
                 if (error instanceof BiliApiError && (error.code === -101 || error.code === -111)) brokenUntil = t + AUTH_RETRY_MS;
                 warnOnce('fetch', `B 站回复：看「回复我的」失败（之后不再记，过 10 分钟再试）：${reason(error)}`);
                 save();
@@ -193,7 +208,8 @@ export function createReplyWatcher(options: ReplyOptions): ReplyWatcher {
                 const why = skipReason(item.text);
                 if (why) {
                     handled.add(item.id);
-                    log(`B 站回复：不回「${item.text.slice(0, 20)}」（${why}）`);
+                    note(`B 站回复：不回「${item.text.slice(0, 20)}」（${why}）`);
+                    active();
                     continue;
                 }
                 waiting.push({ item, fromUser, rank: score(item.text, fromUser) });
@@ -201,79 +217,102 @@ export function createReplyWatcher(options: ReplyOptions): ReplyWatcher {
             waiting.sort((a, b) => b.rank - a.rank || a.item.at - b.item.at);
 
             for (const { item, fromUser } of waiting) {
+                active();
                 if (t < (state.nextReplyAt ?? 0)) break;
                 const spent = fromUser ? (state.userCount ?? 0) >= REPLY_USER_DAY_MAX : (state.count ?? 0) >= REPLY_DAY_MAX || (state.perPerson?.[String(item.uid)] ?? 0) >= REPLY_PER_PERSON_DAY_MAX;
                 if (spent) continue;
 
                 let text: string | undefined;
                 try {
-                    text = await options.compose({ title: item.title, mine: item.mine, theirs: item.text, fromUser, recent: state.recent ?? [] });
+                    text = await read(() => options.compose({ title: item.title, mine: item.mine, theirs: item.text, fromUser, recent: [...(state.recent ?? [])] }, lifetime.signal));
                 } catch (error) {
-                    log(`B 站回复：写回复出错，这条先放着：${reason(error)}`);
+                    active();
+                    note(`B 站回复：写回复出错，这条先放着：${reason(error)}`);
                     break;
                 }
                 handled.add(item.id);
                 if (!text) {
-                    log(`B 站回复：「${item.text.slice(0, 20)}」写不出合格的回复（或模型说不该回），不回`);
+                    note(`B 站回复：「${item.text.slice(0, 20)}」写不出合格的回复（或模型说不该回），不回`);
+                    active();
                     remember(item, fromUser, 'no');
                     continue;
                 }
 
                 // 先记下再发：崩在中间最多漏回一条，不会回两遍
+                const nextReplyAt = t + REPLY_GAP_MS[0] + Math.floor(random() * (REPLY_GAP_MS[1] - REPLY_GAP_MS[0]));
+                active();
                 if (fromUser) state.userCount = (state.userCount ?? 0) + 1;
                 else {
                     state.count = (state.count ?? 0) + 1;
                     state.perPerson = { ...state.perPerson, [String(item.uid)]: (state.perPerson?.[String(item.uid)] ?? 0) + 1 };
                 }
-                state.nextReplyAt = t + REPLY_GAP_MS[0] + Math.floor(random() * (REPLY_GAP_MS[1] - REPLY_GAP_MS[0]));
+                state.nextReplyAt = nextReplyAt;
                 state.recent = [...(state.recent ?? []), text].slice(-5);
                 save();
+                active();
 
                 if (options.mode === 'dryRun') {
                     appendFileSync(draftsPath, `## ${new Date(t).toLocaleString('zh-CN')} 要在 B 站回复的话（草稿，没发）\n\n回复 @${item.name} :${text}\n\n（${fromUser ? '他' : '别人'}说：${item.text}｜她那条：${item.mine}${item.title ? `｜《${item.title}》` : ''}）\n\n`);
                     remember(item, fromUser, 'draft', text);
-                    log(`B 站回复（试运行，没发）：回${fromUser ? '他' : '别人'}「${item.text.slice(0, 20)}」→「${text}」，写进了 drafts.md`);
+                    note(`B 站回复（试运行，没发）：回${fromUser ? '他' : '别人'}「${item.text.slice(0, 20)}」→「${text}」，写进了 drafts.md`);
                     continue;
                 }
                 try {
+                    dispatched = true;
                     await account.postReply({ aid: item.aid, ...(item.bvid ? { bvid: item.bvid } : {}), root: item.root, parent: item.id, to: { name: item.name, uid: item.uid }, text });
                     state.failures = 0;
                     remember(item, fromUser, 'sent', text);
-                    log(`B 站回复：回了${fromUser ? '他' : '别人'}「${item.text.slice(0, 20)}」→「${text}」`);
+                    note(`B 站回复：回了${fromUser ? '他' : '别人'}「${item.text.slice(0, 20)}」→「${text}」`, true);
                 } catch (error) {
-                    if (error instanceof BiliApiError && error.code === COMMENT_CLOSED_CODE) { log(`B 站回复：《${item.title}》的评论区关了，这条不回`); continue; }
+                    if (error instanceof BiliApiError && error.code === COMMENT_CLOSED_CODE) { note(`B 站回复：《${item.title}》的评论区关了，这条不回`, true); if (stopped) break; continue; }
                     // 登录态不对不是回复的事：一小时内不用账号，到点再问来源（重新扫码换了凭证文件就自动换上），不算失败
                     if (error instanceof BiliApiError && (error.code === -101 || error.code === -111)) {
                         brokenUntil = t + AUTH_RETRY_MS;
-                        log(`B 站回复：账号的登录态不对（${reason(error)}），一小时内不回复；重新扫码后会自动换上`);
+                        note(`B 站回复：账号的登录态不对（${reason(error)}），一小时内不回复；重新扫码后会自动换上`, true);
                         break;
                     }
                     state.failures = (state.failures ?? 0) + 1;
                     state.pausedUntil = t + REPLY_PAUSE_MS;
                     if (state.failures >= FAILURES_MAX) halted = true;
-                    log(`B 站回复：没发出去（连着第 ${state.failures} 次${halted ? '，到重启前不再回复' : '，停 24 小时'}）：${reason(error)}`);
+                    note(`B 站回复：没发出去（连着第 ${state.failures} 次${halted ? '，到重启前不再回复' : '，停 24 小时'}）：${reason(error)}`, true);
                     // 验证码、风控、账号受限一类：改成私信告诉他，公开发言（评论和回复）都先停
-                    if (isRiskError(error)) await options.risk?.trip({ why: `回复被 B 站拦了（${reason(error)}）`, wanted: `回 @${item.name}：${text}`, ...(item.bvid ? { link: `https://www.bilibili.com/video/${item.bvid}` } : {}) });
+                    if (isRiskError(error) && options.risk) {
+                        const event = { why: `回复被 B 站拦了（${reason(error)}）`, wanted: `回 @${item.name}：${text}`, ...(item.bvid ? { link: `https://www.bilibili.com/video/${item.bvid}` } : {}) };
+                        if (stopped && options.risk.record) await options.risk.record(event);
+                        else await options.risk.trip(event);
+                    }
                     break;
                 }
+                if (stopped) break;
             }
+            if (!dispatched) active();
             save();
-        } finally {
-            busy = false;
-        }
+    }
+
+    function tick(): Promise<void> {
+        if (stopped || busy || halted) return Promise.resolve();
+        busy = true;
+        // Own the task before a public source or mutation can reenter stop().
+        const task = Promise.resolve().then(runTick).catch(error => { if (!stopped || error !== lifetime.signal.reason) throw error; }).finally(() => { busy = false; });
+        running = task;
+        return task;
     }
 
     return {
         tick,
         start() {
-            if (timer) return;
-            void tick();
-            timer = setInterval(() => void tick(), 60_000);
+            if (timer || stopped) return;
+            const poll = () => { void tick().catch(error => note(`B 站回复：检查失败，这轮保留状态（${reason(error)}）`)); };
+            poll();
+            if (stopped) return;
+            timer = setInterval(poll, 60_000);
             timer.unref?.();
         },
         stop() {
             if (timer) clearInterval(timer);
             timer = undefined;
+            if (!stopped) { stopped = true; lifetime.abort(); }
+            return stopDrain ??= running ?? Promise.resolve();
         },
     };
 }

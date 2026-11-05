@@ -279,16 +279,16 @@ export interface BiliAccount {
     /** 刚发的评论在公开的「最新」第一页里能不能找到（找不到不等于没发出去：可能在审核，也可能翻页看不到） */
     commentVisible(input: { aid: number; rpid: string }): Promise<boolean>;
     /** 别人回在她评论下面的话（消息中心「回复我的」第一页，新的在前）；只收视频评论区的 */
-    fetchReplies(): Promise<ReplyItem[]>;
+    fetchReplies(signal?: AbortSignal): Promise<ReplyItem[]>;
     /**
      * 回复评论区里的一条话（ADR 0090）：root 是那一串的根评论，parent 是被回复的那一条；
      * 回的是别人在串里的回复（parent 不是 root）时，按网页的写法在最前面加「回复 @昵称 :」并交上 at_name_to_mid
      */
     postReply(input: { aid: number; bvid?: string; root: string; parent: string; to: { name: string; uid: number }; text: string }): Promise<{ rpid: string }>;
     /** 系统通知的未读数（B 站在系统通知里发违规、风控、评论被删之类的消息；ADR 0090 的风险转私信用它） */
-    systemNoticeUnread(): Promise<number>;
+    systemNoticeUnread(signal?: AbortSignal): Promise<number>;
     /** 系统通知第一页，新的在前 */
-    systemNotices(): Promise<SystemNotice[]>;
+    systemNotices(signal?: AbortSignal): Promise<SystemNotice[]>;
     /**
      * 给一个人发私信（文字）。对方没关注她时 B 站限制很严（只能发一条，或直接被拒），所以用户要先关注她的号；
      * 过长（B 站实测约 500 字）会被拒，调用方自己控制长度
@@ -542,13 +542,15 @@ export async function openAccount(request: BiliRequest, credential: BiliCredenti
             return replies.some(reply => (str(rec(reply).rpid_str) || String(num(rec(reply).rpid))) === rpid);
         },
 
-        async fetchReplies() {
-            const { data } = await call(request, 'https://api.bilibili.com/x/msgfeed/reply?platform=web&build=0&mobi_app=web', { headers: { ...headers, Referer: 'https://message.bilibili.com/' } });
+        async fetchReplies(signal) {
+            const { data } = await call(readRequest(request, signal), 'https://api.bilibili.com/x/msgfeed/reply?platform=web&build=0&mobi_app=web', { headers: { ...headers, Referer: 'https://message.bilibili.com/' } });
+            signal?.throwIfAborted();
             return parseReplyFeed(data);
         },
 
-        async systemNoticeUnread() {
-            const { data } = await call(request, 'https://api.bilibili.com/x/msgfeed/unread?build=0&mobi_app=web', { headers: { ...headers, Referer: 'https://message.bilibili.com/' } });
+        async systemNoticeUnread(signal) {
+            const { data } = await call(readRequest(request, signal), 'https://api.bilibili.com/x/msgfeed/unread?build=0&mobi_app=web', { headers: { ...headers, Referer: 'https://message.bilibili.com/' } });
+            signal?.throwIfAborted();
             return num(rec(data).sys_msg);
         },
 
@@ -560,8 +562,9 @@ export async function openAccount(request: BiliRequest, credential: BiliCredenti
             }));
         },
 
-        async systemNotices() {
-            const { data } = await call(request, `https://message.bilibili.com/x/sys-msg/query_unified_notify?csrf=${credential.biliJct}&csrf_token=${credential.biliJct}&page_size=10&build=0&mobi_app=web`, { headers: { ...headers, Referer: 'https://message.bilibili.com/' } });
+        async systemNotices(signal) {
+            const { data } = await call(readRequest(request, signal), `https://message.bilibili.com/x/sys-msg/query_unified_notify?csrf=${credential.biliJct}&csrf_token=${credential.biliJct}&page_size=10&build=0&mobi_app=web`, { headers: { ...headers, Referer: 'https://message.bilibili.com/' } });
+            signal?.throwIfAborted();
             return parseSystemNotices(data);
         },
 
