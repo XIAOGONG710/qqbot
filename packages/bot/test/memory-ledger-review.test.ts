@@ -45,7 +45,8 @@ test('档位更新写失败不先发布内存，恢复后的相同目标仍会�
 
 test('时间线不读取未来事实、按发生时刻取最近、零limit不变全量，坏成功标记不被洗成成功', () => fixture(dir => {
  const path = join(dir, 'timeline.jsonl'); const timeline = new Timeline(path, () => at);
- for (const [offset, summary] of [[-1000, '最新'], [-3000, '最旧'], [-2000, '中间'], [30_000, '未来']] as const) timeline.record({ at: new Date(at.getTime() + offset), channel: 'web', kind: 'search', summary });
+// 「未来」要超出 recent() 给的 60 秒时钟偏差容忍（DSH 线保留的，跨进程时间戳可能略快）才算未来
+ for (const [offset, summary] of [[-1000, '最新'], [-3000, '最旧'], [-2000, '中间'], [120_000, '未来']] as const) timeline.record({ at: new Date(at.getTime() + offset), channel: 'web', kind: 'search', summary });
  assert.deepEqual(timeline.recent(at, 24, 2).map(item => item.summary), ['中间', '最新']); assert.deepEqual(timeline.recent(at, 24, 0), []);
  writeFileSync(path, JSON.stringify({ at: at.toISOString(), channel: 'web', kind: 'search', summary: '坏标记', ok: 'false' }) + '\n');
  assert.deepEqual(timeline.read(), []);

@@ -16,7 +16,8 @@ async function until(check: () => boolean) {
 test('真实App停止等待QQ ACK及历史收尾，同进程不能抢旧锁，完成后可重启且idle同步放锁', async () => {
     const root = mkdtempSync(join(tmpdir(), 'qqbot-app-send-drain-')), dataDir = join(root, 'bot'); mkdirSync(dataDir);
     const originalFetch = globalThis.fetch; let networkCalls = 0;
-    globalThis.fetch = async () => { networkCalls++; throw new Error('Network prohibited in synthetic App send fixture'); };
+    // DSH 线每次互动后会向常驻的她（127.0.0.1:7777）fire-and-forget 一条 /note，失败静默；它不是被测提供方，不计入
+    globalThis.fetch = async input => { if (String(input).startsWith('http://127.0.0.1:7777/')) throw new Error('resident off in synthetic fixture'); networkCalls++; throw new Error('Network prohibited in synthetic App send fixture'); };
     const apps: App[] = []; let release!: (id: number) => void;
     const held = new Promise<number>(resolve => { release = resolve; });
     const sent: string[] = [];

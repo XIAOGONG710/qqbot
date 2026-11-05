@@ -78,7 +78,7 @@ test('补回坏时间/ID/消息容器不拖垮其它合法事实，同批重复�
 
 test('未来的待回复消息不触发当前补回回复，正常三小时窗口保持', () => {
     const now = new Date('2026-11-05T12:00:00Z');
-    assert.equal(shouldCatchUp([{ ...message(1), time: '2026-11-05T12:01:00Z' }], now), false);
+    assert.equal(shouldCatchUp([{ ...message(1), time: '2026-11-05T12:02:00Z' }], now), false, '明显未来（超出一分钟校时容忍，DSH 线保留的 CATCH_UP_FUTURE_GRACE_MS）不触发补回');
     assert.equal(shouldCatchUp([{ ...message(1), time: '2026-11-05T11:59:00Z' }], now), true);
 });
 
