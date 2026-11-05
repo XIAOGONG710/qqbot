@@ -296,7 +296,7 @@ function validDiaryState(value: unknown): value is Partial<DiaryState> {
 /**
  * 补写还没写的日记：她这一天之前的 DIARY_BACKFILL_DAYS 天，一天一篇，按日期从早到晚；之后补周记、阶段总结（ADR 0018）。同一时间只跑一次
  */
-export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): Promise<void>; stop(): Promise<void> | undefined } {
+export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): Promise<void>; verifySources(now: Date): boolean; stop(): Promise<void> | undefined } {
     const path = join(options.dir, 'diary.json');
     let running: Promise<void> | undefined;
     let stopped = false;
@@ -344,14 +344,15 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         }
     };
     interface Input { material: string; messages: OpenAIMessage[]; manifest: DiarySourceManifest }
-    const dayInput = (day: Date): Input => {
+    interface SourceView { chats: Map<number, Map<string, StoredMessage[]>>; since: Map<number, string | undefined> }
+    const dayInput = (day: Date, view?: SourceView): Input => {
         const date = formatDate(day), people = options.contacts.filter(contact => knowsPeople(contact.tier));
-        const chats = people.map(contact => ({ name: contact.name, messages: options.history.load(contact.qq)
+        const chats = people.map(contact => ({ name: contact.name, messages: view ? view.chats.get(contact.qq)?.get(date) ?? [] : options.history.load(contact.qq)
             .filter(message => formatDate(herDay(options.sources.schedule, new Date(message.time))) === date) }));
         const plans = options.plans?.(date) ?? [], material = diaryMaterial(options.sources, day, chats, plans), messages = diaryMessages(options.sources.charName, day, material);
         const manifest: DiarySourceManifest = { version: 1, kind: 'diary', contextHash: fingerprint({ sources: options.sources, date, plans }), materialHash: bodyDigest(material), promptHash: fingerprint(messages),
             contributors: people.map((contact, i) => {
-                const since = options.sourceSince?.(contact);
+                const since = view ? view.since.get(contact.qq) : options.sourceSince?.(contact);
                 if (since !== undefined && !stateTimestamp(since)) throw new Error('日记来源权限时间无效');
                 return { qq: contact.qq, tier: contact.tier, sinceKnown: options.sourceSince !== undefined, ...(since === undefined ? {} : { since }),
                     messages: chatTail(chats[i]!).used.map(({ message, fragment }) => ({ identityHash: fingerprint({ role: message.role, time: message.time, messageId: message.messageId, messageSeq: message.messageSeq, sourceTime: message.sourceTime, recalled: message.recalled === true }), fragmentHash: bodyDigest(fragment) })) };
@@ -361,6 +362,53 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
     const noteChanged = (documentId: string) => {
         const method = (options.memory as LongTermMemory & { noteWrittenSourceChanged?: (id: string) => void }).noteWrittenSourceChanged;
         if (method) method.call(options.memory, documentId);
+    };
+    let verifying = false;
+    const verifySources = (now: Date): boolean => {
+        if (stopped) return false;
+        if (verifying) throw new Error('日记来源复核未确认；暂不读取派生资料');
+        verifying = true;
+        try {
+            const today = herDay(options.sources.schedule, now);
+            if (!Number.isFinite(now.getTime()) || civilDayNumber(today) === undefined || !calendarDate(formatDate(today))) throw new Error('invalid clock');
+            const state = loadState(), view: SourceView = { chats: new Map(), since: new Map() };
+            const diaries = Object.entries(state.confirmed).filter(([id, receipt]) => id.startsWith('diary:') && receipt.sourceVerified);
+            if (diaries.length) for (const contact of options.contacts.filter(contact => knowsPeople(contact.tier))) {
+                const days = new Map<string, StoredMessage[]>(), since = options.sourceSince?.(contact);
+                if (since !== undefined && !stateTimestamp(since)) throw new Error('invalid source permission');
+                for (const message of options.history.load(contact.qq)) {
+                    if (!stateTimestamp(message.time)) throw new Error('invalid source time');
+                    const date = formatDate(herDay(options.sources.schedule, new Date(message.time)));
+                    const rows = days.get(date) ?? []; rows.push(message); days.set(date, rows);
+                }
+                view.chats.set(contact.qq, days); view.since.set(contact.qq, since);
+            }
+            let changed = false;
+            const invalidate = (id: string, receipt: DiaryConfirmed) => {
+                // The durable bank barrier must precede publishing an invalid receipt.
+                noteChanged(id); receipt.sourceVerified = false; changed = true;
+            };
+            for (const [id, receipt] of diaries) {
+                const date = id.slice('diary:'.length), dayNumber = civilDayNumber(date), day = dayNumber === undefined ? undefined : localCivilDay(dayNumber);
+                if (!day) throw new Error('unknown source date');
+                if (fingerprint(dayInput(day, view).manifest) !== receipt.sourceHash) invalidate(id, receipt);
+            }
+            for (const [id, receipt] of Object.entries(state.confirmed)) {
+                if (!receipt.sourceVerified || receipt.manifest.kind !== 'summary') continue;
+                if (receipt.manifest.dependencies?.some(dependency => {
+                    const text = state.texts[dependency.documentId.slice('diary:'.length)];
+                    if (text !== undefined && bodyDigest(text) !== dependency.bodyHash) return true;
+                    const source = state.confirmed[dependency.documentId];
+                    if (source === undefined) return !dependency.legacy || dependency.sourceHash !== undefined;
+                    return !source.sourceVerified || source.bodyHash !== dependency.bodyHash
+                        || dependency.sourceHash !== undefined && source.sourceHash !== dependency.sourceHash;
+                })) invalidate(id, receipt);
+            }
+            if (changed) save(state, today);
+            return Object.values(state.confirmed).every(receipt => receipt.sourceVerified);
+        } catch {
+            throw new Error('日记来源复核未确认；保留原状态与来源屏障');
+        } finally { verifying = false; }
     };
     const commit = (state: DiaryState, p: DiaryPrepared, verified: boolean, today: Date) => {
         if (!verified) noteChanged(p.documentId);
@@ -375,15 +423,15 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         actual.confirmed[p.documentId] = { operationId: p.operationId, bodyHash: p.bodyHash, sourceHash: p.sourceHash, manifest: p.manifest, sourceVerified: verified };
         delete actual.prepared[p.documentId]; save(actual, today); Object.assign(state, actual);
     };
-    const dispatch = async (state: DiaryState, p: DiaryPrepared, today: Date, input?: Input): Promise<boolean> => {
+    const dispatch = async (state: DiaryState, p: DiaryPrepared, today: Date, input?: Input, allowNew = true): Promise<boolean> => {
         const verified = input !== undefined && fingerprint(input.manifest) === p.sourceHash && fingerprint(input.messages) === p.promptHash;
         if (p.phase === 'prepared' && !verified) { delete state.prepared[p.documentId]; save(state, today); return false; }
         if (p.phase === 'prepared' && !derivedReady()) return false;
         if (!verified) noteChanged(p.documentId);
         if (p.phase === 'prepared') { p.phase = 'dispatched'; save(state, today); }
         if (stopped) return false;
-        const args = { operationId: p.operationId, allowSubmit: verified && derivedReady(), canSubmit: async (signal?: AbortSignal) => {
-            if (stopped || signal?.aborted || !derivedReady()) return false;
+        const args = { operationId: p.operationId, allowSubmit: allowNew && verified && derivedReady(), canSubmit: async (signal?: AbortSignal) => {
+            if (!allowNew || stopped || signal?.aborted || !derivedReady()) return false;
             let latest: Input | undefined;
             try { latest = await preparedInput(p, true); } catch { /* Unknown source must not authorize a queued submission. */ }
             if (stopped || signal?.aborted) return false;
@@ -422,6 +470,9 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
     };
     const catchUp = async (now: Date) => {
         if (stopped) return;
+        let sourcesVerified = false;
+        try { sourcesVerified = verifySources(now); }
+        catch { options.log('日记来源尚未确认；本轮仅核对既有提交，不生成新正文'); }
         const state = loadState();
         const today = herDay(options.sources.schedule, now);
         viewToday = today;
@@ -429,11 +480,12 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         if (todayDay === undefined || !civilText(todayDay)) return;
         for (const p of Object.values(state.prepared)) {
             if (stopped) return;
+            if (!sourcesVerified && p.phase !== 'dispatched') continue;
             let input: Input | undefined;
             try { input = await preparedInput(p); } catch { /* Only reconcile a known old dispatch. */ }
-            if (!(await dispatch(state, p, today, input))) return;
+            if (!(await dispatch(state, p, today, input, sourcesVerified))) return;
         }
-        if (!derivedReady()) return;
+        if (!sourcesVerified || !derivedReady()) return;
         for (let back = DIARY_BACKFILL_DAYS; back >= 1; back--) {
             if (!derivedReady()) return;
             const target = todayDay - back, day = localCivilDay(target);
@@ -581,6 +633,7 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         }
     };
     return {
+        verifySources,
         catchUp: now => {
             if (stopped) return Promise.resolve();
             running ??= catchUp(now).finally(() => { running = undefined; });

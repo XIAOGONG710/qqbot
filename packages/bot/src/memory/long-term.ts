@@ -358,6 +358,8 @@ export class LongTermMemory {
     readonly #cancelReads = new Set<() => void>();
     readonly #written: WrittenRetainStore;
     readonly #writtenQueues = new Map<string, Promise<boolean>>();
+    #writtenSourceVerifier?: () => boolean;
+    #checkingWrittenSources = false;
     #drain?: Promise<void>;
     /** 最近一次写入、召回的结果（控制台的状态页，ADR 0010） */
     #lastWrite?: MemoryEvent;
@@ -439,8 +441,22 @@ export class LongTermMemory {
 
     #writtenBlocked(bankId: string): boolean {
         if (bankId !== this.commonBankId()) return false;
+        if (this.#writtenSourceVerifier) {
+            if (this.#checkingWrittenSources) return true;
+            this.#checkingWrittenSources = true;
+            try { if (this.#writtenSourceVerifier() !== true) return true; }
+            catch { return true; }
+            finally { this.#checkingWrittenSources = false; }
+        }
         try { return this.#written.blockedDocuments(bankId).length > 0; }
         catch { return true; }
+    }
+
+    /** The owning host supplies a synchronous local-only check; unknown sources never authorize a public read. */
+    setWrittenSourceVerifier(verifier: () => boolean): void {
+        if (typeof verifier !== 'function') throw new Error('日记来源核验接口无效');
+        this.#writtenSourceVerifier = verifier;
+        this.#invalidateEntities();
     }
 
     /** Public written sources have no reliable QQ owner. Keep a separate monotonic bank guard. */
@@ -582,7 +598,11 @@ export class LongTermMemory {
     #formatDerived(bankId: string, results: RecallResult[], options: Parameters<typeof formatRecalled>[1]): string | undefined {
         const snapshot = this.#derivedSnapshot(bankId);
         if (!snapshot) return undefined;
+        const writtenBlocked = this.#writtenBlocked(bankId);
         const text = formatRecalled(this.#filterDerived(bankId, results, snapshot), options);
+        // Formatting hooks can change source permissions after the first filter.
+        // A newly blocked public source invalidates the already-rendered mixture.
+        if (!writtenBlocked && this.#writtenBlocked(bankId)) return undefined;
         return this.#derivedSnapshot(bankId)?.generation === snapshot.generation ? text : undefined;
     }
 
