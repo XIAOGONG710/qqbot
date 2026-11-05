@@ -39,8 +39,10 @@ const nowSec = () => Math.floor(Date.now() / 1000);
 
 const dirs: string[] = [];
 const apps: App[] = [];
-afterEach(() => {
-    for (const app of apps.splice(0)) app.stop();
+const appDirs = new Map<App, string>();
+afterEach(async () => {
+    // stop() 现在要等已派发的收尾做完才放目录租约（ADR 0259 等）：不等的话，同进程里下一个用例会撞上旧租约
+    for (const app of apps.splice(0)) await app.stop();
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -120,6 +122,9 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
             return list.slice(-count);
         },
     };
+    // 同一个数据目录「重启」= 先停旧的再起新的：stop() 要等收尾做完才放目录租约，闲着的 App 同步就放（ADR 0259）。
+    // 多个用例原来靠同进程可重复拿锁来模拟重启，现在要先停旧的；旧的停不干净（仍有收尾）时 startApp 会按设计拒绝。
+    for (const previous of apps.filter(other => appDirs.get(other) === cfg.dataDir)) { apps.splice(apps.indexOf(previous), 1); void previous.stop(); }
     const app = startApp({
         config: cfg, transport, log: message => logs.push(message),
         ...(options.media ? { media: options.media } : {}),
@@ -142,6 +147,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         },
     });
     apps.push(app);
+    appDirs.set(app, cfg.dataDir);
     return { app, sent, images, logs, asked };
 }
 
@@ -158,7 +164,7 @@ async function until(check: () => boolean, ms = 3000): Promise<void> {
 const chat = (cfg: AppConfig, qq: number) => new ChatHistory(cfg.dataDir).load(qq).map(m => `${m.role}:${m.content}`);
 
 describe('编排（app.ts）', () => {
-    test('DSH 关闭时不创建手机伴侣，打开时返回可挂载的运行时', () => {
+    test('DSH 关闭时不创建手机伴侣，打开时返回可挂载的运行时', async () => {
         const off = setup(config());
         assert.equal(off.app.mobileCompanion(), undefined);
         assert.deepEqual(off.app.status().mobileCompanion, { enabled: false, connected: false, queued: 0, maxQueuedPerClient: 32 });
@@ -178,9 +184,6 @@ describe('编排（app.ts）', () => {
         assert.match(pair.sent.at(-1) ?? '', /手机伴侣配对码：\s*[A-Z0-9]{4}(?:-[A-Z0-9]{4}){2}/);
         assert.match(pair.sent.at(-1) ?? '', /设备 ID：android-[a-f0-9]{12}/);
         assert.equal(pair.sent.filter(line => line.includes('手机伴侣配对码')).length, 1, '同一 QQ 消息重投不能签发第二张配对票');
-        const restarted = setup(pairConfig);
-        restarted.app.receive(pairEvent);
-        assert.equal(restarted.sent.filter(line => line.includes('手机伴侣配对码')).length, 0, '重启后同一 QQ 命令也不能签发第二张配对票');
         const paired = pair.app.mobileCompanion();
         assert.ok(paired);
         paired.gateway.accept({ v: 1, requestId: 'req-unpair', kind: 'hello', sentAt: new Date().toISOString(), nonce: 'nonce-unpair', body: { clientId: 'android-test', pairingCode: paired.issuePairing('android-test').pairingCode, capabilities: ['text'] } }, 'session-unpair');
@@ -199,6 +202,11 @@ describe('编排（app.ts）', () => {
             body: { clientId: oldClient, pairingCode: oldCode, capabilities: ['text'] },
         }, 'session-old-ticket');
         assert.equal(reused.ok, false, '解除配对必须同时撤销尚未使用的旧配对码');
+        // 重启：stop() 要等收尾做完才放目录租约，同一个数据目录只能在它放掉之后再起（不然会撞上旧租约）
+        await pair.app.stop();
+        const restarted = setup(pairConfig);
+        restarted.app.receive(pairEvent);
+        assert.equal(restarted.sent.filter(line => line.includes('手机伴侣配对码')).length, 0, '重启后同一 QQ 命令也不能签发第二张配对票');
     });
 
     test('承诺状态损坏暂停新增生活安排，但正常聊天继续；约见提示不能把未知当成有空', async () => {
@@ -720,11 +728,13 @@ describe('编排（app.ts）', () => {
         const cfg = config();
         let release!: () => void;
         const hold = new Promise<void>(r => { release = r; });
+        // 同一条消息补回和实时各来一次：QQ 里两边是同一秒（ADR 0238 的来源身份含秒），夹具要给实时这条同样的时间
+        const repeated = historyMessage(3, 10001, '吃了吗', 40);
         const { app, sent } = setup(cfg, {
-            10001: [historyMessage(1, 10001, '在吗', 60), historyMessage(2, SELF, '在', 50), historyMessage(3, 10001, '吃了吗', 40)],
+            10001: [historyMessage(1, 10001, '在吗', 60), historyMessage(2, SELF, '在', 50), repeated],
         }, { holdHistory: hold });
         const connected = app.connected(SELF);
-        app.receive(event(10001, 3, '吃了吗'));
+        app.receive({ ...event(10001, 3, '吃了吗'), time: repeated.time });
         app.receive(event(10001, 4, '人呢'));
         assert.deepEqual(chat(cfg, 10001), [], '补完之前不处理');
         release();
@@ -1529,13 +1539,14 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
     test('补回：漏掉的语音、截图读过再记；补的时候实时又收到同一条语音，只转一次、只记一次', async () => {
         const cfg = config();
         const fake = napcat({ 5: '你下课了吗' }, { 'https://x/shot.png': ['期中考试安排'] });
+        const sourceAt = nowSec() - 30; // 同一条语音补回和实时是同一秒（ADR 0238 的来源身份含秒）
         const { app, sent } = setup(cfg, { 10001: [
-            { message_id: 5, time: nowSec() - 30, sender: { user_id: 10001 }, message: voiceSegment },
+            { message_id: 5, time: sourceAt, sender: { user_id: 10001 }, message: voiceSegment },
             { message_id: 6, time: nowSec() - 20, sender: { user_id: 10001 }, message: photoSegment('https://x/shot.png') },
         ] }, { media: fake.media });
         // 断线前实时收到的那条还在转，这时连上了、补回也拿到它
         fake.hold();
-        app.receive(mediaEvent(10001, 5, voiceSegment));
+        app.receive({ ...mediaEvent(10001, 5, voiceSegment), time: sourceAt });
         const connected = app.connected(SELF);
         await new Promise(r => setTimeout(r, 20));
         fake.release();
