@@ -324,3 +324,37 @@ SDK新repairObservationStats严格fresh总数/fact-type计数/pending/failed和�
 正式新增24项（外层8/App3/日历7/读取API6），记忆累计新增411项，其中6项是后续预检接口证据校验，不代表6项清理缺陷已修。主代理最终463/463可确认合成回归通过（memory系列、纯B站卡片及模块登记），全仓类型/差异检查通过；后续ADR/模块映射生成后再核模块4项通过。没有把历史3042全量结果当作本轮全仓验证。
 
 下一步仍先贯通日记prepared/outbox、来源manifest与实际completed，再处理summary对confirmed diary版本的依赖；旧无manifest来源保legacy、不猜净化或删除已回复事实。观察后端能力缺证不以default猜测，继续保护。其余记忆直接CLI/归档多文件恢复、外层发送失败持久outbox与实际资源性能按风险取证；本批不降低验证深度，不转模块或社区比较。
+
+## 第十二批：公共日记的固定意图、完成回执与来源依赖
+
+本批接续M32b的directretain子集，没有解除历史观察或旧公共派生守卫。三路代理分别负责writer/来源、LongTerm/SDK/outbox、独立真实链路回归；主代理整合隐私/归档、App起点与协议复核。没有执行依赖真实角色卡的旧diary/presence/bilibili/app测试或未经核实的全仓npm test。
+
+### 异步accepted与重启
+
+旧真实SDK假HTTP复现已明确：accepted全pending而writer已written/texts，重启不poll。现writer先持久固定body/角色/日期/标题/UUID与材料、提示词及来源manifest；LongTerm在独立written-retain.json先存完整不可变MemoryItem/canonical requestHash，再允许派发。SDK只有对应UUID父任务和非空children全completed才算完成。pending不写written/texts，重启查询同UUID及原正文，不重新生成另一body；新body不能冒认旧完成。failed/cancelled、坏状态及缺JSON见证保留保护；原UUID/not_found依原文与仍有效授权才可重交。
+
+独立written-retain-coordination子目录避免冷读新outbox误创建derived.json的缺失见证。单文档排队；stop取消纯读与未派生成，已派HTTP/真实ACK和本地发布由drain持有，completed发布前后EIO可重启读回原请求。高级pending不能因接口降级走legacy重发；旧无高级任务的fake按原同步完成契约兼容。初始坏或未知新版diary状态保原失败关闭，不quarantine为空。
+
+### 来源、总结与实际POST前守卫
+
+manifest只记录真正入1500代码点材料的消息身份/片段摘要和QQ/tier/since，以及实际计划、上下文、提示词；App传入TierRecord ISO起点，明确known-unbounded与没有callback的unknown。新summary绑定每篇diary的bodyHash和confirmed/sourceHash；已知pending或sourceVerified=false不参与，confirmed消费前fresh核当前来源。旧written/texts保持legacy，允许既有兼容总结但依赖明确legacy与实际bodyHash，不捏造旧收据。
+
+独立回归先红后绿确认两处后续缺口：confirmed后since变仍能生成总结；writer验证以后LongTerm建库await期间since变仍实际submit一次。现前者先持久blocker并保真实written，后者以可重算canSubmit贯通writer→LongTerm→SDK，队列、建库/status以后及SDK内部六次backlog预查后的最后POST前均fresh核验。最终hook只读本地材料，纳共享deadline/AbortSignal与stop守卫，不以入口捕获的布尔当派发时授权。SDK内部held backlog另有正式回归。已派旧body最终完成仅记真实body与sourceVerified=false，query-only不建库/不派新任务；公共屏障不因ACK解开。
+
+交叉复核另修：summary结旧ACK时必须fresh合并writer状态，不能把依赖刚置false又由外层旧state覆盖true。原stop测试从“初始空文件原字节”改核“已持久派发prepared原字节与body/UUID保留、written/texts/confirmed不推进、drain失败”；日历测试保精确日期集合和跨日禁止断言，允许fresh验源重复读取同日材料。没有删除或弱化原安全契约。
+
+### 隐私与归档
+
+新来源变化屏障按公共bank/document持久单调记录，空QQ贡献也不伪造owner。受污染公共派生继续避用，精确未污染标准QQ原始world/experience和其他私人bank仍可用。共享diary.json、完整body的written-retain.json、marker、独立coord及实际tmp纳mixed清单，不复制/移动整份共享正文供单联系人导出/遗忘。archive在既有租约内先核状态，未结/坏状态/缺JSON见证在改tiers或prefix之前拒绝；已完成意图/收据/屏障与marker保活目录，不以归档换bank丢失原身份。
+
+ADR0252记录协议与兼容边界。memory-diary-async-acceptance.mjs已改正确行为探针：pending不written，重启poll同UUID/body，completed才发布匹配收据；不再用其旧坏行为断言作为未修证据。
+
+### 残余边界
+
+本批没有清理服务端历史观察、自动修订旧公共diary/week/phase或提供有证据解封；旧无manifest已接受任务不能自动追认。跨运行时区的pending若MemoryItem hash不匹配，保原失败关闭，不猜迁移。source变化但未能持久观察的强杀恢复、多文件/远端非事务、未知DELETE、旧weak ID/legacy before和不合作外部写者边界不变。SQLite仅OS协调，运行中不可删换，50ms仅争锁预算。真实服务/数据库未访问或验证，未部署、未推送；记忆模块仍未完成。
+
+### 第十二批最终验证与提交
+
+新增39项正式回归：writer/manifest11、真实链路独立整合12、LongTerm/outbox/SDK12、隐私/归档4；记忆审查累计新增450项。主代理最终502/502已确认合成集通过（memory*.test.ts、纯bilibili-dm-card及模块登记），全仓类型、生成模块文档与Git差异检查通过。正确行为探针单独通过。不是新一轮全仓全量，不把历史3042等数量外推。早期两处旧fixture契约失败均在提交前修正并纳最终502完整重跑；Windows import装载错误不算旧红证据。
+
+本地代码提交`2c7f25d5`，含ADR0252和生成模块文档。AGENTS.md保持原未跟踪，没有夹带用户资料或推送。下一轮继续M32b历史观察独立清理/重建、公共派生文档对新manifest的修订与有证据解封；仅本批prepared/completed/客户端来源保护已完成，不能再说accepted仍直接推进writer，也不能声称公共bank已净。其余CLI/归档多文件恢复、外层发送失败持久outbox与性能仍按确证风险接续，不转模块/社区比较。
