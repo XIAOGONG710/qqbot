@@ -134,7 +134,8 @@ describe('AI 生活照草稿（ADR 0239）', () => {
 
     test('审核前复核文件编号、内容和普通文件类型，拒绝替换图与目录', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'ai-photo-integrity-'));
-        const store = aiPhotoDraftStore({ dir });
+        // 时钟钉在题材发生当晚：以前用真实时间，隔一天跑这条就全在「已过期」上失败（11-05 修）
+        const store = aiPhotoDraftStore({ dir, now: () => new Date('2026-11-04T18:30:00+08:00') });
         const draft = await store.generate(context({ eventKey: 'integrity' }), async () => ({ bytes: jpeg(10), model: 'm' }));
         const source = join(dir, 'files', draft.file);
         writeFileSync(source, jpeg(11));

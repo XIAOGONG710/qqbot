@@ -178,10 +178,13 @@ describe('控制台的 AI 照片审核（ADR 0239）', () => {
     });
 
     test('通过才进入照片货架；拒绝后不能直接通过；错误不泄露内部路径', async () => {
+        // 自己一份数据目录：上一条把时钟钉在 11-04，共用目录时这条会捞到那张已过期的草稿（11-05 修）
+        const dataDir = mkdtempSync(join(tmpdir(), 'qqbot-photo-review-approve-'));
+        after(() => rmSync(dataDir, { recursive: true, force: true }));
         setConsoleState({ dataDir });
         const drafts = aiPhotoDraftStore({ dir: join(dataDir, 'ai-photo-drafts') });
         const rejected = await drafts.generate({
-            kind: 'view', eventKey: 'console-view', subject: '阴天的窗外', caption: '窗外灰白的云压得很低', at: '2026-11-04T11:00:00.000Z',
+            kind: 'view', eventKey: 'console-view', subject: '阴天的窗外', caption: '窗外灰白的云压得很低', at: new Date(Date.now() - 60_000).toISOString(),
         }, async () => ({ bytes: jpeg(2), model: 'm' }));
         assert.deepEqual(reviewAiPhoto('reject', rejected.id, undefined), { ok: false, error: '审核请求无效，请重新确认后再试。' });
         assert.equal(aiPhotoDraftStore({ dir: join(dataDir, 'ai-photo-drafts') }).list().find(item => item.id === rejected.id)?.status, 'pending_review');
@@ -190,6 +193,11 @@ describe('控制台的 AI 照片审核（ADR 0239）', () => {
         assert.equal(retry.ok, false);
         assert.doesNotMatch(JSON.stringify(retry), /ai-photo-drafts|runtime|\\|rejected|status/);
 
+        // 这条测试自己造一张待审的草稿（以前是捡上一条测试留下的，隔离目录以后就得自己生）
+        await aiPhotoDraftStore({ dir: join(dataDir, 'ai-photo-drafts') }).generate({
+            kind: 'cat', eventKey: 'console-pending', subject: '土豆趴在窗台', caption: '土豆趴在窗台上晒太阳',
+            at: new Date(Date.now() - 60_000).toISOString(),
+        }, async () => ({ bytes: jpeg(3), model: 'm' }));
         const pending = listAiPhotoDrafts('pending_review', 24);
         assert.ok(pending.ok && pending.entries.length === 1);
         const approved = reviewAiPhoto('approve', pending.ok ? pending.entries[0]!.id : '', 'confirmed');
@@ -197,6 +205,7 @@ describe('控制台的 AI 照片审核（ADR 0239）', () => {
         assert.equal(photoShelf({ dir: join(dataDir, 'photos'), log: () => {} }).status().count, 1);
         assert.deepEqual(listAiPhotoDrafts('pending_review', 24), { ok: true, entries: [] });
         assert.deepEqual(reviewAiPhoto('send', pending.ok ? pending.entries[0]!.id : '', 'confirmed'), { ok: false, error: '审核请求无效，请重新确认后再试。' });
+        setConsoleState({ dataDir: undefined, status: undefined });
     });
 });
 
