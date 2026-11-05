@@ -1078,6 +1078,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     let lastFeelings: FeelingsReport | undefined;
     // 她夜里回想、指出了依据的感受（ADR 0197）：作为「别处算好的评估」进心境；要 herFeelings 开着
     const feelingReviewNow = config.feelingReview && config.herFeelings ? reviewReader(config.dataDir) : undefined;
+    const contextSummaries = new Set<ReturnType<typeof contextSummarizer>>();
     // 每个联系人一个回复器：聊天记录、生成和重新生成都互不影响
     const responders = new Map<number, Responder>(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
 
@@ -1327,16 +1328,21 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         if (!config.contextTurns || !memory || (config.contextContacts.length && !config.contextContacts.includes(contact.qq))) return {};
         const dir = join(config.dataDir, 'context');
         mkdirSync(dir, { recursive: true });
+        const summarize = contextSummarizer({
+            names: { user: contact.name, char: cardFor(contact.tier).character.name },
+            generate: messages => {
+                const scoped: Log = message => { if (!stopped) log(message); };
+                return pipeline?.generate ? pipeline.generate(messages, scoped) : chatCompletion(forExtraction(config.llm), messages, { log: scoped, purpose: 'background' });
+            },
+            log: message => log(`[${contact.qq}] ${message}`),
+            file: join(dir, `${contact.qq}.json`),
+        });
+        contextSummaries.add(summarize);
         return {
             contextWindow: {
                 turns: config.contextTurns,
                 step: 4,
-                summarize: contextSummarizer({
-                    names: { user: contact.name, char: cardFor(contact.tier).character.name },
-                    generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
-                    log: message => log(`[${contact.qq}] ${message}`),
-                    file: join(dir, `${contact.qq}.json`),
-                }),
+                summarize,
             },
         };
     }
@@ -3675,6 +3681,7 @@ ${body}
             const diaryDrain = diaries?.stop();
             const promisesDrain = promises?.stop();
             const memoryDrain = memory?.stop();
+            const contextDrains = [...contextSummaries].map(summarize => summarize.stop());
             clearTimeout(incomingRetryTimer);
             try { chatHistory.flushIncoming(); } catch (error) { log(`停止时入站状态仍未确认持久（${describeError(error)}）`); }
             for (const timer of pokeTimers) clearTimeout(timer);
@@ -3729,7 +3736,7 @@ ${body}
             useRealCalendar(undefined);
             useRealTransport(undefined);
             useWorldNeeds(undefined);
-            const drains = [diaryDrain, promisesDrain, memoryDrain, presenceDrain, browsingDrain, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
+            const drains = [diaryDrain, promisesDrain, memoryDrain, presenceDrain, browsingDrain, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
                     for (const result of results) if (result.status === 'rejected') {
