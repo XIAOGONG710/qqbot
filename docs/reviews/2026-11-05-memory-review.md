@@ -242,3 +242,23 @@
 新增51项正式回归：SDK12、store12、worker12、真实LongTerm8、审计5、隐私2；记忆累计新增325项。store既有10项加新增全部为61项定向，全部通过。另原LongTerm/model/lifecycle/schema30项、审计13项、隐私14项通过，模块登记4项和全仓类型通过；最终完整2980/2980通过（bot2833、转换61、Koishi47、移动35、PWA4），全仓类型与差异检查均通过。旧HEAD LongTerm运行时替换的3个实际行为对照全部失败（未启动修复、pending合法追加、旧缓存恢复），当前8项整合通过；SDK/审计/隐私及跨世代缺口另有先红后绿证据。首轮脚本Windows import路径格式错误不算旧红证据，已改file URL后重跑得到上述断言失败。
 
 ADR0244记录范围、固定版本依据和恢复限制。代码本地提交`342a1e2a`。本批所有资料均为合成事件/临时文件、假HTTP/API和故障注入，未访问真实运行时或模型/数据库，未部署、未推送。记忆模块仍未完成。下一步先接续旧世代已知UUID收尾与独立观察重建/证据，公共日记/总结来源依赖及directretain协议不能用本批私人收据冒充已完成；其余模块待审边界保持。
+
+## 第九批：旧世代known UUID收尾与独立任务身份
+
+实际LongTerm新回归先红：第一次撤回已开始refresh-pending，第二次撤回改变generation；即使服务端后来completed，新来源仍永久blocked。现用严格typed settlement追加旧任务已结束的事实，保留原phase/evidence/新事件/世代，不恢复旧auto、不以旧正文解新污染。新lease承接当前safe paused配置必须有原auto/间隔/模型身份/配置匹配的已settled证据，随后独立重新clear/full/完成核验/恢复auto/CAS。每次最多仲裁一个旧job，无无限轮询；未知无UUID、失败/取消/404/preserved及证据不符继续保护。
+
+独立交叉复核又发现UUID证据复用：第二refresh返回旧UUID、查询只给旧content_written时，新clear后的空模型仍可被误认作新重建成功。临时反例及正式worker回归均实证，已修为同bank每个刷新UUID唯一lease归属（大小写规范化）：worker ACK、store checkpoint及持久schema三处守界，同lease重复ACK允许；跨lease复用保refresh-dispatched未知，不盲改UUID/重POST。
+
+新增17项正式回归：store5、worker7、真实LongTerm5，记忆累计新增342项。覆盖旧新来源、跨重启、await后再撤回、stop取消纯读/晚返回、仅新配置ACK收尾、fresh pending/failed/四态静止、错绑定/配置、发布前后IO与旧UUID复用。此前的“knownUUID跨世代必须人工”边界case改为独立重建后的正确行为，并保留未知及不支持outcome对照。主代理78项最终定向、全仓类型、模块登记4项、差异检查均通过；最终完整2997/2997通过（bot2850、转换61、Koishi47、移动35、PWA4）。代码本地提交`91b71b66`，ADR0245；未推送/部署，AGENTS.md未跟踪状态保留。
+
+### 观察重建只读研究结论：尚未实现
+
+固定v0.10.2 PostgreSQL DELETE observations确实在单事务清所有观察/历史并重置raw fact整合进度，不删raw文档或mental models，不清failed标记，也不自动重建；需另派consolidate并等待全部后继链。同步DELETE没有请求UUID，timeout后原HTTP可能迟到；读回零或第二次DELETE成功仍不能证明第一请求不再执行，不能自动重试后立即重建。fresh stats水位是现存行max(updated_at)，删除后可下降，不应任意要求递增。非PG分支的百万源扫描和外部store事务不同，不能承诺相同保证。官方固定源码/链接与本批边界见ADR0245。现有observation及公共派生屏障保持，不把只读研究算已修。
+
+### 独立审查确认的下一工作单元（全部未修）
+
+- **M35，未来历史进入长期事实**：固定now=12:00，29条已发生消息+12:01的一条未来消息，凑30条后两库retain都含未来正文。另一反例先正常retain两库，再仅追加未来危机行，未新增retain却提前delete现有公共ep。运行`node docs/reviews/repro/memory-future-history.mjs`与`memory-future-crisis.mjs`可复现；它们断言当前坏行为，exit0不是正确性回归。需贯通事实视图、来源摘要、pending/count与clock rollback/旧进度兼容，不只挡episode.end或危机分支；保留实际来源顺序和既定危机政策。
+- **M29b，civil接口余波**：Pacific/Apia合法文档日diary:2011-12-30被lastTouched Date接口滚到31日，Jan7仍clear而按8日应vague；phase同样迟一日，日记/总结窗口也受影响。`node docs/reviews/repro/memory-apia-civil.mjs`为未修诊断。另真实recallCommon假provider给occurred_start=2026-02-30、合法mentioned_at=Feb1，会在Mar2窗口输出“3月2日”的该事实；fading已有校验没有贯通long-term的onDay/mentionedOnDay/日期标签。需统一宽兼容provider日历解析及civil日期接口，不能用UTC Date冒充本地Date。
+- **M30b，遗忘全过程互斥与续跑**：两独立进程临时复现：forget已move联系人state、停在fake deleteDocument时，另进程真实acquireLock(bot.lock)仍成功并重写聊天。此时强杀没有report，普通重跑已丢历史old-bank目标、远端0次且failures空；正常首轮远端全部503也同样第一轮5失败，第二轮普通重跑0调用且空失败。旧目标仍可在trash/report人工恢复，但没有持久不可变job/自动或显式resume。本大类此前已列open，现补确证；应分全过程真实锁与删除计划/checkpoint恢复两个可验证单元，不能只检查bot.lock或在move后才保存计划。仅临时合成数据、假删除API与子进程，无真实删除。
+
+后续仍在记忆模块内按风险独立推进上述可修单元，同时保留观察/公共日记协议工作；已保护能力不等于所有已确认缺陷已修。用户追问速度后明确要求继续最高标准，不降低审查或验证深度，不转模块/社区比较。
