@@ -86,7 +86,7 @@ import { useRealWeather, weatherFetcher, type WeatherFetcherStatus } from '.././
 import { featureStatuses, type FeatureStatus } from './features.ts';
 import { idiomRefresher, idiomStore, IDIOMS_CHECK_MS, verifiedIdioms } from '.././language/idioms.ts';
 import { jokeRefresher, jokeStore, JOKES_CHECK_MS, verifiedJokes } from '.././language/jokes.ts';
-import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes, type MemeEntry } from '.././language/memes.ts';
+import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes } from '.././language/memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from '.././language/watching.ts';
 import { feedFactEntry, feedOnce, feedPath, loadFeed } from '.././bilibili/feed-browsing.ts';
 import { fetchDanmaku, fetchStoryboard, fetchView } from '.././bilibili/bilibili-view.ts';
@@ -559,7 +559,6 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     };
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；刷新在下面（要她的 B 站号）
     const memesFile = memesPath(config.dataDir);
-    let memeEntries: readonly MemeEntry[] = config.memes ? loadMemes(memesFile, log).entries : [];
     // 她自己在 B 站看过的（ADR 0130）：派生数据，存 <数据目录>/watching/watched.json；“看”在下面（要她的 B 站号）
     const watchedFile = watchedPath(config.dataDir);
     let watchedEntries: readonly Watched[] = config.watching ? loadWatched(watchedFile, log).entries : [];
@@ -993,7 +992,8 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
             ...(config.interruptions ? { interruptions: true } : {}),
             ...(jokes && contact.tier === 'boyfriend' ? { jokes: () => verifiedJokes(jokes.load(contact.qq), history.load(contact.qq)) } : {}),
             ...(idioms && contact.tier === 'boyfriend' ? { idioms: () => verifiedIdioms(idioms.load(contact.qq), history.load(contact.qq), idiomBlockedFor(contact)) } : {}),
-            ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => memeEntries } : {}),
+            // Author CLI can correct/delete between turns. Do not reuse a pre-edit RAM snapshot.
+            ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => stopped ? [] : loadMemes(memesFile, log).entries } : {}),
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
@@ -1575,7 +1575,12 @@ ${body}
         const source = bilibiliAccountSource();
         if (!source) return Promise.resolve();
         const nowDate = new Date(pipeline?.now ? pipeline.now() : Date.now());
-        if (stopped || !refreshDue(loadMemes(memesFile, log), nowDate)) return Promise.resolve();
+        try {
+            if (stopped || !refreshDue(loadMemes(memesFile, log), nowDate)) return Promise.resolve();
+        } catch (error) {
+            if (!stopped) log(`网络热梗：本轮保留原库并跳过刷新（${error instanceof Error ? error.message : String(error)}）`);
+            return Promise.resolve();
+        }
         memesRunning = true;
         return ownPassiveRead(async () => {
         const signal = passiveLifetime.signal, scoped: Log = message => { if (!stopped && !signal.aborted) log(message); };
@@ -1592,7 +1597,6 @@ ${body}
                     sleep: passiveSleep,
                 }),
             });
-            if (!stopped && !signal.aborted) memeEntries = loadMemes(memesFile, scoped).entries;
         } catch (error) {
             scoped(`网络热梗：这一轮出错（${error instanceof Error ? error.message : String(error)}）`);
         }

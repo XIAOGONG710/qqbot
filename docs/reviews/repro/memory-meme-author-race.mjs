@@ -1,4 +1,4 @@
-// Synthetic diagnostic: exit 0 reports facts, not correctness or a repaired race.
+// Synthetic correctness probe: a confirmed CLI deletion survives an older refresh.
 // Uses only a temporary meme file, fake model and the real CLI with explicit --dir.
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -19,7 +19,9 @@ try {
  const cli = spawnSync(process.execPath,[fileURLToPath(new URL('../../../packages/bot/src/ops/meme-cli.ts', import.meta.url)),'remove',term,'--dir',dir],{encoding:'utf8'});
  assert.equal(cli.status,0,cli.stderr); const afterRemove = loadMemes(path).entries.length; assert.equal(afterRemove,0);
  release(JSON.stringify([term])); await task;
- console.log(JSON.stringify({cliRemoved:afterRemove===0,afterRefresh:loadMemes(path).entries.map(entry=>entry.term),authorRemovalPreserved:!loadMemes(path).entries.some(entry=>entry.term===term)}));
+ const afterRefresh=loadMemes(path).entries.map(entry=>entry.term);
+ assert.equal(afterRefresh.includes(term),false,'旧后台刷新不能复活作者已删除条目');
+ console.log(JSON.stringify({cliRemoved:afterRemove===0,afterRefresh,authorRemovalPreserved:true}));
 } finally {
  release?.('[]'); await task;
  assert.equal(dirname(resolve(dir)),resolve(tmpdir()));assert.ok(basename(dir).startsWith('qqbot-meme-author-race-'));rmSync(dir,{recursive:true,force:true});

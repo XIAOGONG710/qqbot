@@ -8,15 +8,16 @@
 
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadMemes, MEME_BLOCK, memesPath, saveMemes, trimMemes, type MemeEntry } from '../language/memes.ts';
+import { loadMemes, MEME_BLOCK, memesPath, updateMemes, trimMemes, type MemeEntry } from '../language/memes.ts';
+import { parseMemeArgs } from './meme-cli-args.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
-const args = process.argv.slice(2);
-const one = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
-const dir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? resolve(repoRoot, 'runtime/bot'));
+let parsed: ReturnType<typeof parseMemeArgs>;
+try { parsed = parseMemeArgs(process.argv.slice(2)); }
+catch (error) { console.error(error instanceof Error ? error.message : '参数无效'); process.exit(2); }
+const dir = resolve(process.env.INIT_CWD ?? process.cwd(), parsed.dir ?? resolve(repoRoot, 'runtime/bot'));
 const path = memesPath(dir);
-const command = args[0];
-const positional = args.slice(1).filter((a, i, all) => !a.startsWith('--') && !(i > 0 && all[i - 1]!.startsWith('--')));
+const { command, positional } = parsed;
 const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
 
 if (command === 'list') {
@@ -26,21 +27,22 @@ if (command === 'list') {
     console.log(`共 ${file.entries.length} 个${file.refreshedAt ? `；上一次自己刷新：${file.refreshedAt}` : ''}`);
 } else if (command === 'add') {
     const [term, meaning] = positional;
-    const example = one('--example') ?? '';
+    const example = parsed.example ?? '';
     if (!term || !meaning) { console.error('用法：add "<词>" "<一句话意思>" [--example "<例句>"]'); process.exit(2); }
     if ([...term].length < 2 || [...term].length > 12) { console.error('词要 2–12 个字'); process.exit(2); }
     if ([...meaning].length < 6 || [...meaning].length > 60) { console.error('意思要 6–60 个字'); process.exit(2); }
     if (MEME_BLOCK.test(term) || MEME_BLOCK.test(meaning) || MEME_BLOCK.test(example)) { console.error('带敏感词（政治、灾难、案件、低俗、骂人的一律不收）'); process.exit(2); }
-    const file = loadMemes(path);
     const entry: MemeEntry = { term, meaning, example, confidence: 'high', firstSeen: today, lastSeen: today, seen: 1 };
-    const rest = file.entries.filter(e => e.term !== term);
-    saveMemes(path, { version: 1, ...(file.refreshedAt ? { refreshedAt: file.refreshedAt } : {}), entries: trimMemes([...rest, entry], new Date()) });
+    updateMemes(path, file => ({ ...file, entries: trimMemes([...file.entries.filter(e => e.term !== term), entry], new Date()) }), { touch: [term] });
     console.log(`好了：「${term}」${meaning}`);
 } else if (command === 'remove') {
     const [term] = positional;
-    const file = loadMemes(path);
-    if (!term || !file.entries.some(e => e.term === term)) { console.error(`库里没有「${term ?? ''}」`); process.exit(2); }
-    saveMemes(path, { version: 1, ...(file.refreshedAt ? { refreshedAt: file.refreshedAt } : {}), entries: file.entries.filter(e => e.term !== term) });
+    let removed = false;
+    updateMemes(path, file => {
+        if (!term || !file.entries.some(e => e.term === term)) return undefined;
+        removed = true; return { ...file, entries: file.entries.filter(e => e.term !== term) };
+    }, { touch: term ? [term] : [] });
+    if (!removed) { console.error(`库里没有「${term ?? ''}」`); process.exit(2); }
     console.log(`删掉了「${term}」`);
 } else {
     console.error('用法：list | add "<词>" "<意思>" [--example "<例句>"] | remove "<词>"   [--dir <数据目录>]');
