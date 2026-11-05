@@ -358,3 +358,35 @@ ADR0252记录协议与兼容边界。memory-diary-async-acceptance.mjs已改正�
 新增39项正式回归：writer/manifest11、真实链路独立整合12、LongTerm/outbox/SDK12、隐私/归档4；记忆审查累计新增450项。主代理最终502/502已确认合成集通过（memory*.test.ts、纯bilibili-dm-card及模块登记），全仓类型、生成模块文档与Git差异检查通过。正确行为探针单独通过。不是新一轮全仓全量，不把历史3042等数量外推。早期两处旧fixture契约失败均在提交前修正并纳最终502完整重跑；Windows import装载错误不算旧红证据。
 
 本地代码提交`2c7f25d5`，含ADR0252和生成模块文档。AGENTS.md保持原未跟踪，没有夹带用户资料或推送。下一轮继续M32b历史观察独立清理/重建、公共派生文档对新manifest的修订与有证据解封；仅本批prepared/completed/客户端来源保护已完成，不能再说accepted仍直接推进writer，也不能声称公共bank已净。其余CLI/归档多文件恢复、外层发送失败持久outbox与性能仍按确证风险接续，不转模块/社区比较。
+
+## 第十三批：完成后的来源变化、归档中断恢复及live清单
+
+### M32b：已完成资料不能永久信任旧来源
+
+真实合成ChatHistory→writer先完成三日记、周记及阶段总结后，撤回/since变更/重启/离开回填窗口均复现receipt仍true：旧代码只有待完成总结才重验，全部完成时直接跳过。该反例不等于App.noteRecall通用保护被绕过。现同步verifySources不限回填窗口核所有新confirmed日记，先持久公共blocker，再失效receipt和已完成依赖；保原文、written及真实远端事实，不猜删旧文档。
+
+独立复核确认非legacy依赖收据缺失不能当legacy；已知legacy正文实际变更也须核现存bodyHash，但缺正文不从远端补读或猜已变。每轮每联系人history/since只读一次并按日分组，真正未入1500尾部的改动不误标。未知history/计划/IO安全拒读，可恢复复核；catchUp显式只核已派UUID，未知的是其它日期也不能让本篇沿旧allowSubmit派发。
+
+LongTerm公共读口注册同步本地验证，App在回复器前接线；读取开始、cache/await之后及格式化最终出口均核验，递归或异常不回退旧正文。真实writer完成后仅变since、未再catchUp也会形成持久保护。私人bank和明确QQ原始事实保持。宿主未提供来源或关闭writer后的证据迁移仍待单独验证，不把本批接线说成任意宿主的全局保证。
+
+### M30c：归档的原计划与崩溃续跑
+
+独立子进程在首chat rename后退出，旧归档已更新tiers/移走聊天但配置仍旧prefix，App会越过维护检查进入业务。现完整不可变archive job先于任何copy/tiers/move/config保存，含原目标、步骤和前后hash；逐步checkpoint，App在卡/业务初始化前挡未完成/坏job。--resume UUID只原计划，配置rename前后退出均可精确核目标并续跑，不重新发现空清单或换新prefix。冲突/坏状态/孤立tmp保原失败关闭，不宣称多文件原子或自动rollback。
+
+交叉主代理反例证明：未完成archive后普通forget确实能移动归档已done目标并破坏续跑。现同目录租约内互查持久维护任务；不开始远端DELETE。新journal含共享配置文本及可能密钥，全部mixed；有效plan精确定位配置文本tmp（包括数据目录外配置），不整份导出/遗忘；坏journal/tmp也只列未知shared并保原，不猜QQ或外部位置。原pending隐私测试的宽泛archive子串计数，改为精确专属chats/archive四文件，另断言共享maintenance journal存在，保留原字节/不恢复旧pending等全部安全断言。
+
+### M32b：后端无关的live证据，不是观察清理
+
+SDK新增metadata-only完整observation及world/experience consolidation清单，固定官方v0.10.2的抽象store list契约，无q/tags/time/entity/doc过滤；严格UUID/字段/状态/稳定total/唯一ID，共享截止预算、10万项及8MiB累计metadata上限，超限拒完整证据。保留孤儿source IDs和微秒时标，不输出正文、不伪造bank/revision回显。
+
+offset分页没有snapshot token，也不能排除同ID改文；live0不证明invalidated archive或无live行的observation_history孤儿已空，更不能证明未知DELETE停止。当前没有清理/trigger/解封。可信写者/任务冻结和实际store一致性能力仍缺独立证明，按ADR0251/0255保持保护。仅官方固定源码研究、假HTTP/合成数据，无真实部署/DB/API访问。
+
+本批ADR0253/0254/0255分别记录来源、归档和只读证据。记忆模块仍未完成，不转模块/社区比较；其余未持久观察、legacy before/weak ID、未知DELETE、病态历史重分片、不合作外部写者及fsync/网络FS边界保持。
+
+### 第十三批最终验证与提交
+
+新增34项正式回归：持续来源13、公共真实读口5、归档恢复6、共享归档隐私/交叉维护3、SDK live证据7；记忆累计新增484项。主代理最终536/536确认合成集通过（memory*.test.ts、纯bilibili-dm-card、模块登记），全仓类型、生成模块文档及Git差异检查全部通过。首轮535/536唯一失败为旧pending隐私测试将新共享archive journal误计为聊天归档；改为精确专属范围并补共享断言后完整重跑536绿，不隐瞒或忽略失败。测试进程仍只用假API、合成角色/聊天、临时文件和实际子进程；没有执行未经核实的全仓npm test或旧真实卡用例。
+
+独立本地提交：`ba66ad1d`（持续来源/读口）、`6fb3456b`（归档原计划/恢复/隐私/互斥）、`248eb426`（只读live证据及模块映射）。App的两处独立接线按index hunk分开提交，没有把未提交依赖混进前一个任务。未跟踪AGENTS.md保留，未部署或推送。
+
+下一轮优先复核完整公共文档来源到远端修订/任务静止的证据协议，观察清理仍不可用live0、稳定total或布尔适配冒证。当前所有已知污染保保护，不能说整库已净。可独立继续writer关闭/来源配置移除的启动迁移、长历史持续验证资源成本、归档各阶段强杀覆盖与外层发送失败持久outbox；这些本轮未声称完成，不重复旧bug列表或为凑数猜重构。
