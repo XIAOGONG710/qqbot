@@ -84,7 +84,10 @@ test('旧版仅有 written 字段的日记状态可读取并补全可选字段�
         memory: { retainDiary: async () => { retained++; return true; }, retainSummary: async () => true, readDiary: async () => undefined } as unknown as LongTermMemory });
     await writer.catchUp(now); await writer.catchUp(now);
     assert.equal(retained, 0);
-    assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(dir, 'diary.json'), 'utf8'))).sort(), ['phases', 'texts', 'weeks', 'written']);
+    const state = JSON.parse(readFileSync(join(dir, 'diary.json'), 'utf8'));
+    assert.deepEqual(Object.keys(state).sort(), ['confirmed', 'phases', 'prepared', 'texts', 'version', 'weeks', 'written']);
+    assert.equal(state.version, 1);
+    assert.deepEqual([state.prepared, state.confirmed], [{}, {}], '旧状态升级不伪造待提交或已确认的收据（ADR 0252）');
 });
 
 test('损坏日记 JSON 的错误不携带私人正文，也不隔离或覆盖原文件', async () => {

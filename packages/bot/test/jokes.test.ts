@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -97,8 +97,10 @@ describe('隔一阵抽一次', () => {
         const dir = tmp();
         writeFileSync(join(dir, '1.json'), '{坏的');
         const logs: string[] = [];
-        assert.deepEqual(jokeStore({ dir, log: m => logs.push(m) }).load(1), { version: 1, jokes: [] });
+        // 坏文件来源未知：source 记为 null（失败关闭），不当成可以重建的空白旧文件
+        assert.deepEqual(jokeStore({ dir, log: m => logs.push(m) }).load(1), { version: 1, jokes: [], source: null });
         assert.ok(logs.some(m => m.includes('读不了')));
+        assert.equal(readFileSync(join(dir, '1.json'), 'utf8'), '{坏的', '原文件不动');
     });
 });
 
