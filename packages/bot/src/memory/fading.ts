@@ -11,6 +11,7 @@ import { localDate } from '../local-date.ts';
 
 import { EPISODE_GAP_MS } from './episodes.ts';
 import type { RecallResult } from './hindsight.ts';
+import { calendarDate } from './state-schema.ts';
 
 /** 只提过一次的：几天以内清楚、几天以内记个大概 */
 export const CLEAR_DAYS = 7;
@@ -55,8 +56,11 @@ export function isSummary(result: RecallResult): boolean {
 }
 
 const time = (iso: string | null | undefined): number | undefined => {
+    // 保留供应商既有合法时间格式；带ISO日期前缀的来源不能把2月30日滚成3月。
+    const prefix = typeof iso === 'string' ? /^(\d{4}-\d{2}-\d{2})(?:[T ]|$)/.exec(iso) : undefined;
+    if (prefix && !calendarDate(prefix[1]!)) return undefined;
     const t = iso ? Date.parse(iso) : Number.NaN;
-    return Number.isNaN(t) ? undefined : t;
+    return Number.isFinite(t) ? t : undefined;
 };
 
 /** 开头的记号（两个都标时是「【重要】【长期】」） */
@@ -88,7 +92,9 @@ export function withoutMark(text: string): string {
  */
 export function lastTouched(result: RecallResult): Date | undefined {
     const document = DATED_DOCUMENT.exec(result.document_id ?? '');
-    if (document) return localDate(Number(document[2]), Number(document[3]) - 1, Number(document[4]) + (document[1] === 'week' ? 6 : 0));
+    if (document && calendarDate(`${document[2]}-${document[3]}-${document[4]}`)) {
+        return localDate(Number(document[2]), Number(document[3]) - 1, Number(document[4]) + (document[1] === 'week' ? 6 : 0));
+    }
     const times = [result.occurred_start, result.occurred_end, result.mentioned_at].map(time).filter(t => t !== undefined);
     return times.length ? new Date(Math.max(...times)) : undefined;
 }
@@ -97,13 +103,23 @@ const startOf = (date: Date) => localDate(date.getFullYear(), date.getMonth(), d
 
 /** 从 then 那天到 now 那天隔了几天（本地日历日） */
 function daysBetween(then: Date, now: Date): number {
-    const day = (date: Date) => localDate(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-    return Math.round((day(now) - day(then)) / DAY_MS);
+    const day = (date: Date) => {
+        // UTC只编码民用日序，不作时区转换；setUTCFullYear避免0–99年1900偏移。
+        const civil = new Date(0);
+        civil.setUTCFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+        return civil.getTime();
+    };
+    return (day(now) - day(then)) / DAY_MS;
 }
 
 /** 他这次的话里有没有这条的某个实体名 */
 function recognizes(result: RecallResult, options: FadeOptions): boolean {
-    return (result.entities ?? []).some(name => [...name].length >= MIN_NAME_CHARS && !options.ignore.includes(name) && options.heard.includes(name));
+    return (result.entities ?? []).some(name => {
+        // 只需知道是否至少两个代码点，不为大实体创建等长字符数组。
+        let count = 0;
+        for (const _char of name) { if (++count >= MIN_NAME_CHARS) break; }
+        return count >= MIN_NAME_CHARS && !options.ignore.includes(name) && options.heard.includes(name);
+    });
 }
 
 /** 这条现在还记得多清楚 */
