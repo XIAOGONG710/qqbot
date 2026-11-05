@@ -17,7 +17,9 @@ const roots: string[] = [], apps: App[] = [];
 let originalFetch: typeof fetch; let networkCalls = 0;
 beforeEach(() => {
     originalFetch = globalThis.fetch; networkCalls = 0;
-    globalThis.fetch = async () => { networkCalls++; throw new Error('Unexpected network in synthetic pending-recall fixture'); };
+    // DSH 线每次互动后会向常驻的她（HER_RESIDENT_URL，默认 127.0.0.1:7777）fire-and-forget 一条 /note，失败静默；
+    // 它不是被测的提供方，别算进「不得访问网络」。其余请求照旧计数并拒绝。
+    globalThis.fetch = async input => { if (String(input).startsWith('http://127.0.0.1:7777/')) throw new Error('resident off in synthetic fixture'); networkCalls++; throw new Error('Unexpected network in synthetic pending-recall fixture'); };
 });
 afterEach(() => {
     for (const app of apps.splice(0)) app.stop();
